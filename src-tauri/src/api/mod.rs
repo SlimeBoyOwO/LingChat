@@ -10,6 +10,8 @@ pub mod game;
 pub mod locale;
 pub mod music;
 pub mod pet;
+// 插件命令由 RustPython 驱动，移动端（Android/iOS）不编译
+#[cfg(desktop)]
 pub mod plugins;
 pub mod save;
 pub mod scene;

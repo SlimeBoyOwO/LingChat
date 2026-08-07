@@ -86,15 +86,16 @@ tokio-util = { version = "0.7", features = ["io"] }
 # Skill Agent：命令输出在中文 Windows 上是 GBK，需要回退解码
 encoding_rs = "0.8"
 
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 # 插件系统：嵌入 RustPython 跑插件 Python 脚本（目前是一个受限沙箱）。
+# 移动端（Android/iOS）构建时 rustpython 驱动的插件功能不可用，插件系统整体
+# 不参与移动端编译，故依赖只对桌面端生效。
 # 关闭 default（主要是含 wasmbind 引 wasm-bindgen，这玩意目前用不上）并且显式启用桌面端需要的特性。
 rustpython-vm = { version = "0.5", default-features = false, features = ["compiler", "gc", "host_env", "stdio", "serde", "freeze-stdlib"] }
 rustpython-pylib = { version = "0.5", features = ["freeze-stdlib"] }
 rustpython-derive = "0.5"
-
-[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-updater = "2"
-tauri-plugin-process = "2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi"] }
