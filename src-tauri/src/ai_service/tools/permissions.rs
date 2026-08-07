@@ -147,12 +147,40 @@ impl ToolPermissionConfig {
     pub fn load_or_create(data_dir: &Path, tool_names: impl IntoIterator<Item = String>) -> Result<Self> {
         let path = data_dir.join(CONFIG_FILE_NAME);
         if path.exists() {
-            return Self::load(&path);
+            let mut config = Self::load(&path)?;
+            // 存量配置迁移：剧本模式来源统一归一到禁用的场景组（见下方常量说明）。
+            if config.enforce_script_sources_without_tools() {
+                config.save(&path)?;
+            }
+            return Ok(config);
         }
 
         let config = Self::with_default_tools(tool_names);
         config.save(&path)?;
         Ok(config)
+    }
+
+    /// 剧本模式（剧本 AI 对话 / 剧本自由对话）按产品策略不开放工具：
+    /// 两个来源的场景映射统一归一到默认禁用的 `scene_default` 组。
+    /// 旧版本配置可能把剧本自由对话映射到带全量工具的 `scene_normal`，
+    /// 导致角色在剧本演出中调用 skills/tools 破坏剧情，这里在加载时迁移修正。
+    /// 返回是否有改动。
+    fn enforce_script_sources_without_tools(&mut self) -> bool {
+        let mut changed = false;
+        for key in [
+            GeneratorSourceKey::ScriptAiDialogue,
+            GeneratorSourceKey::ScriptFreeDialogue,
+        ] {
+            let entry = self
+                .scene_mapping
+                .entry(key)
+                .or_insert_with(|| "scene_default".to_string());
+            if entry != "scene_default" {
+                *entry = "scene_default".to_string();
+                changed = true;
+            }
+        }
+        changed
     }
 
     /// 确保已知角色都归属于某个角色组，未归属的自动加入 default 组。
@@ -196,14 +224,6 @@ impl ToolPermissionConfig {
     ) -> HashSet<String> {
         // 1. 查映射找到场景组名（映射不存在时回退到 scene_default）
         let key: GeneratorSourceKey = source.into();
-        // 剧本模式（剧本 AI 对话 / 剧本自由对话）一律不注册工具：
-        // 避免角色在剧本演出中调用 skills/tools 破坏剧情（维护者要求）。
-        if matches!(
-            key,
-            GeneratorSourceKey::ScriptAiDialogue | GeneratorSourceKey::ScriptFreeDialogue
-        ) {
-            return HashSet::new();
-        }
         let scene_group_name = self.scene_mapping.get(&key).map(|s| s.as_str()).unwrap_or("scene_default");
         let Some(scene) = self.scene_groups.get(scene_group_name) else {
             return HashSet::new();
@@ -334,11 +354,12 @@ impl ToolPermissionConfig {
     fn with_default_tools(tool_names: impl IntoIterator<Item = String>) -> Self {
         let all_tools: HashSet<_> = tool_names.into_iter().collect();
 
-        // 默认映射
+        // 默认映射。剧本模式两个来源一律进 scene_default（默认禁用工具），
+        // 与 enforce_script_sources_without_tools 的存量迁移保持一致。
         let mut scene_mapping = HashMap::new();
         scene_mapping.insert(GeneratorSourceKey::UserChat, "scene_admin".into());
         scene_mapping.insert(GeneratorSourceKey::Proactive, "scene_normal".into());
-        scene_mapping.insert(GeneratorSourceKey::ScriptFreeDialogue, "scene_normal".into());
+        scene_mapping.insert(GeneratorSourceKey::ScriptFreeDialogue, "scene_default".into());
         scene_mapping.insert(GeneratorSourceKey::ScriptAiDialogue, "scene_default".into());
         scene_mapping.insert(GeneratorSourceKey::EntryGreeting, "scene_default".into());
 
@@ -452,30 +473,25 @@ user_chat = "scene_admin"
         assert_eq!(loaded.available_tools, vec!["get_current_time"]);
     }
 
-    /// 剧本模式（剧本 AI 对话 / 剧本自由对话）即使配置了 all_tools 也必须返回空集。
+    /// 默认配置下，剧本模式两个来源都映射到禁用的 scene_default，因此拿不到任何工具。
     #[test]
-    fn script_mode_sources_never_get_tools() {
-        let mut scene_groups = HashMap::new();
-        scene_groups.insert(
-            "scene_admin".to_string(),
-            ToolPermission {
-                enabled: true,
-                tools: HashSet::new(),
-                all_tools: true,
-            },
-        );
-        let mut scene_mapping = HashMap::new();
-        scene_mapping.insert(GeneratorSourceKey::ScriptAiDialogue, "scene_admin".to_string());
-        scene_mapping.insert(GeneratorSourceKey::ScriptFreeDialogue, "scene_admin".to_string());
-        let config = ToolPermissionConfig {
-            scene_mapping,
-            scene_groups,
-            ..Default::default()
-        };
+    fn script_sources_default_to_disabled_scene() {
         let all_names: HashSet<String> = ["web_search".to_string(), "execute_command".to_string()]
             .into_iter()
             .collect();
+        let config = ToolPermissionConfig::with_default_tools(all_names.iter().cloned());
 
+        for key in [
+            GeneratorSourceKey::ScriptAiDialogue,
+            GeneratorSourceKey::ScriptFreeDialogue,
+        ] {
+            assert_eq!(
+                config.scene_mapping.get(&key).map(|s| s.as_str()),
+                Some("scene_default"),
+                "{key:?} 应映射到 scene_default"
+            );
+        }
+        // scene_default 默认 enabled = false，剧本模式对话拿不到工具
         for source in [
             GeneratorSource::ScriptAiDialogue,
             GeneratorSource::ScriptFreeDialogue,
@@ -485,5 +501,44 @@ user_chat = "scene_admin"
                 "{source:?} 不应获得任何工具"
             );
         }
+    }
+
+    /// 旧配置把剧本自由对话映射到带工具的 scene_normal 时，
+    /// load_or_create 必须迁移修正为 scene_default 并落盘。
+    #[test]
+    fn load_migrates_legacy_script_mapping() {
+        let dir = tempfile::tempdir().unwrap();
+        let legacy = r#"
+[scene_mapping]
+user_chat = "scene_admin"
+script_free_dialogue = "scene_normal"
+script_ai_dialogue = "scene_normal"
+
+[scene_groups.scene_normal]
+enabled = true
+all_tools = true
+"#;
+        std::fs::write(dir.path().join(CONFIG_FILE_NAME), legacy).unwrap();
+
+        let config = ToolPermissionConfig::load_or_create(dir.path(), vec!["web_search".to_string()]).unwrap();
+        assert_eq!(
+            config.scene_mapping.get(&GeneratorSourceKey::ScriptFreeDialogue).map(|s| s.as_str()),
+            Some("scene_default")
+        );
+        assert_eq!(
+            config.scene_mapping.get(&GeneratorSourceKey::ScriptAiDialogue).map(|s| s.as_str()),
+            Some("scene_default")
+        );
+        // 用户聊天的映射不受影响
+        assert_eq!(
+            config.scene_mapping.get(&GeneratorSourceKey::UserChat).map(|s| s.as_str()),
+            Some("scene_admin")
+        );
+        // 迁移结果已保存回文件
+        let reloaded = ToolPermissionConfig::load(&dir.path().join(CONFIG_FILE_NAME)).unwrap();
+        assert_eq!(
+            reloaded.scene_mapping.get(&GeneratorSourceKey::ScriptFreeDialogue).map(|s| s.as_str()),
+            Some("scene_default")
+        );
     }
 }
