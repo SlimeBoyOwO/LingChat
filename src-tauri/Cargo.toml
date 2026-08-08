@@ -20,6 +20,18 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # （不走 devUrl）。桌面端不受影响。
 custom-protocol = ["tauri/custom-protocol"]
 
+# ── GPU 推理加速（各平台选一个启用）────────────────────────────
+# Windows：DirectML（DX12，任意 GPU），默认启用
+tts-directml = ["sbv2_core/directml", "ort/directml"]
+# Linux/macOS：WebGPU（Linux 走 Vulkan，macOS 走 Metal，跨厂商）。
+# 构建：--no-default-features --features tts-webgpu
+tts-webgpu = ["sbv2_core/webgpu", "ort/webgpu"]
+# macOS 专用：CoreML（Apple 原生神经引擎/GPU）。构建：--features tts-coreml
+tts-coreml = ["sbv2_core/coreml", "ort/coreml"]
+
+# Windows 默认 DirectML；Linux/macOS 构建时用 --no-default-features --features tts-webgpu
+default = ["tts-directml"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -98,7 +110,12 @@ rustpython-pylib = { version = "0.5", features = ["freeze-stdlib"] }
 rustpython-derive = "0.5"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi"] }
+windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dxgi"] }
+
+# Linux 推理设备枚举：Vulkan 物理设备（与 WebGPU/Dawn 的 adapter 索引对齐）。
+# 仅运行时动态加载 libvulkan（loaded feature），无构建期 Vulkan 开发包依赖。
+[target.'cfg(target_os = "linux")'.dependencies]
+ash = { version = "0.38", default-features = false, features = ["loaded"] }
 
 
 # esaxx-rs 强制静态 CRT (/MT) 会在 Windows 下与 ort 等库冲突（LNK2038/LNK2005）。
@@ -107,3 +124,9 @@ windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win
 # 详见 patches/esaxx-rs/build.rs 的注释。
 [patch.crates-io]
 esaxx-rs = { path = "patches/esaxx-rs" }
+
+# 本地补丁：sbv2_core 增加推理硬件热切换（InferenceDevice：CPU/GPU/NPU/指定设备）。
+# 上游 model.rs 的 load_model 写死 EP 列表，无法运行时切换设备；
+# 本地副本加 load_model_with_device + TTSModelHolder::with_device。
+[patch."https://gh-proxy.org/github.com/shadow01a/sbv2-api/"]
+sbv2_core = { path = "patches/sbv2_core" }

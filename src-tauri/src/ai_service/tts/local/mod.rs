@@ -139,6 +139,12 @@ pub fn load_configured_enabled(app: &AppHandle) -> bool {
     read_configured_enabled(app).unwrap_or(false)
 }
 
+/// 读取持久化的推理设备配置（`features.local_tts_device`）。
+/// 返回 `None` 表示未配置（用引擎默认 CPU）。
+pub fn read_configured_device(app: &AppHandle) -> Option<sbv2_core::model::InferenceDevice> {
+    crate::utils::device::read_configured_device(app, crate::config::keys::LOCAL_TTS_DEVICE)
+}
+
 // ---------------------------------------------------------------------------
 // Tauri commands -- switch management
 // ---------------------------------------------------------------------------
@@ -196,6 +202,68 @@ pub async fn tts_local_set_enabled(
         configured_enabled: enabled,
         effective_enabled: enabled,
     })
+}
+
+/// 可用的推理设备（Windows DXGI / Linux Vulkan 枚举，复用 [`crate::utils::device::DeviceInfo`]）。
+pub type InferenceDeviceInfo = crate::utils::device::DeviceInfo;
+
+/// 获取当前推理设备（持久化配置或引擎实际值）。
+#[tauri::command]
+pub async fn tts_local_get_device(
+    app: AppHandle,
+    local_state: State<'_, LocalTtsState>,
+) -> Result<String, String> {
+    let engine_device = local_state.engine.device().await;
+    // 优先返回持久化配置（与引擎一致）；未配置返回引擎当前值
+    let configured = read_configured_device(&app).unwrap_or(engine_device);
+    Ok(crate::utils::device::device_to_string(configured))
+}
+
+/// 枚举系统 DirectML 设备（委托 [`crate::utils::device::list_devices`]）。
+#[tauri::command]
+pub fn tts_local_list_devices() -> Vec<InferenceDeviceInfo> {
+    crate::utils::device::list_devices()
+}
+
+/// 热切换本地 TTS 推理硬件设备。
+/// 流程：保存配置 → 设置引擎 device → unload 全部 session → 若引擎已启用则重新 init。
+/// 下次合成（或重新 init）时用新设备重建 session。
+#[tauri::command]
+pub async fn tts_local_set_device(
+    app: AppHandle,
+    local_state: State<'_, LocalTtsState>,
+    device: String,
+) -> Result<(), String> {
+    let device = crate::utils::device::parse_device(&device)?;
+    let device_str = crate::utils::device::device_to_string(device);
+
+    // 保存配置；失败时回滚（与 set_enabled 行为一致）
+    let store = config::settings_store(&app).map_err(|e| e.to_string())?;
+    let previous = store.get(config::keys::LOCAL_TTS_DEVICE);
+    store.set(config::keys::LOCAL_TTS_DEVICE, device_str.clone());
+    if let Err(error) = store.save() {
+        if let Some(value) = previous {
+            store.set(config::keys::LOCAL_TTS_DEVICE, value);
+        } else {
+            store.delete(config::keys::LOCAL_TTS_DEVICE);
+        }
+        return Err(format!("保存推理设备失败: {error}"));
+    }
+
+    // 设置引擎 device + 卸载重建（热切换）
+    local_state.engine.set_device(device).await;
+    local_state.engine.unload_all().await;
+
+    // 引擎已启用时重新初始化（用新设备）
+    let enabled = load_configured_enabled(&app);
+    if enabled && local_state.paths.asset_present("deberta") {
+        if let Err(e) = local_state.engine.init(&local_state.paths).await {
+            tracing::error!("切换推理设备后重新初始化引擎失败: {e}");
+        }
+    }
+
+    tracing::info!("本地 TTS 推理设备已切换: {device_str}");
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

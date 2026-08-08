@@ -881,6 +881,13 @@ export default {
       ready: 'Ready',
       notReady: 'Not ready',
     },
+    device: {
+      label: 'Inference device',
+      cpu: 'CPU',
+      gpu: 'GPU (DirectML)',
+      gpuWebgpu: 'GPU (WebGPU)',
+      npu: 'NPU (DirectML)',
+    },
     deberta: {
       label: 'DeBERTa & tokenizer',
       installed: 'Installed',

@@ -1,5 +1,6 @@
 pub mod archive;
 pub mod cpu_perf;
+pub mod device;
 pub mod download;
 pub mod fs;
 pub mod file_logger;

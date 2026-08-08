@@ -714,6 +714,10 @@ pub fn run() {
             ai_service::tts::local::tts_local_synthesize_preview,
             ai_service::tts::local::tts_local_get_enabled,
             ai_service::tts::local::tts_local_set_enabled,
+            // 推理设备选择：获取当前设备 / 枚举可用设备 / 切换设备
+            ai_service::tts::local::tts_local_get_device,
+            ai_service::tts::local::tts_local_list_devices,
+            ai_service::tts::local::tts_local_set_device,
             exit_app,
         ])
         .run(tauri::generate_context!())
