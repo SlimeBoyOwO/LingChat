@@ -450,6 +450,7 @@ impl MessageGenerator {
             gs.line_list.len()
         };
         let tool_messages = tool_loop_result.tool_messages;
+        let tool_calls_seen = tool_loop_result.tool_calls_seen;
         let llm_stream = tool_loop_result.stream;
 
         let (sentence_tx, sentence_rx) =
@@ -529,7 +530,13 @@ impl MessageGenerator {
         drop(publish_tx);
 
         // producer：LLM 流 -> 句子
-        let producer = StreamProducer::new(llm_stream, sentence_tx, self.deps.app.clone(), thinking_buf);
+        let producer = StreamProducer::new(
+            llm_stream,
+            sentence_tx,
+            self.deps.app.clone(),
+            thinking_buf,
+            tool_calls_seen,
+        );
         let acc = producer.run().await.context("StreamProducer 失败")?;
 
         for t in consumer_tasks {
