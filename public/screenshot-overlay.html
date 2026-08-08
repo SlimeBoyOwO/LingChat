@@ -81,6 +81,19 @@
       return invoke(cmd, args);
     }
 
+    // Fallback: try multiple methods to close the overlay window.
+    // Prevents the app from freezing if the Tauri command fails.
+    async function forceCloseWindow() {
+      try { await tauriInvoke('cancel_screenshot'); return; } catch (_) {}
+      try {
+        if (typeof window.__TAURI_INTERNALS__ !== 'undefined') {
+          await window.__TAURI_INTERNALS__.invoke('plugin:window|close');
+          return;
+        }
+      } catch (_) {}
+      try { window.close(); } catch (_) {}
+    }
+
     const stage = document.getElementById('stage');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
@@ -131,7 +144,10 @@
         img.src = 'data:image/jpeg;base64,' + base64;
       } catch (err) {
         console.error('Failed to load screenshot:', err);
-        hint.textContent = '加载截图失败，请按 Esc 关闭';
+        hint.innerHTML = '加载截图失败<br><span style="font-size:14px;opacity:0.8;text-decoration:underline;cursor:pointer;" id="force-close-link">点击此处关闭</span> · 或按 Esc 退出';
+        hint.style.pointerEvents = 'auto';
+        const closeLink = document.getElementById('force-close-link');
+        if (closeLink) closeLink.addEventListener('click', forceCloseWindow);
       }
     }
 
@@ -211,15 +227,12 @@
         await tauriInvoke('confirm_screenshot', { base64Cropped: base64 });
       } catch (err) {
         console.error('Failed to confirm screenshot:', err);
+        await forceCloseWindow();
       }
     }
 
     async function cancel() {
-      try {
-        await tauriInvoke('cancel_screenshot');
-      } catch (err) {
-        console.error('Failed to cancel screenshot:', err);
-      }
+      await forceCloseWindow();
     }
 
     init();
