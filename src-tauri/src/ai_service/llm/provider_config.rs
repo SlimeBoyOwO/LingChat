@@ -84,7 +84,7 @@ pub struct LlmProvidersResponse {
 // ============================================================
 
 pub fn load_providers(app: &AppHandle) -> Vec<LlmProviderConfig> {
-    let Some(store) = app.store(config::STORE_FILE).ok() else {
+    let Some(store) = app.store(config::store_path()).ok() else {
         return Vec::new();
     };
     match store.get(keys::LLM_PROVIDERS) {
@@ -98,7 +98,7 @@ pub fn load_providers(app: &AppHandle) -> Vec<LlmProviderConfig> {
 
 pub fn save_providers(app: &AppHandle, providers: &[LlmProviderConfig]) -> anyhow::Result<()> {
     let store = app
-        .store(config::STORE_FILE)
+        .store(config::store_path())
         .context("Failed to open settings store")?;
     let arr: Vec<JsonValue> = providers
         .iter()
@@ -110,7 +110,7 @@ pub fn save_providers(app: &AppHandle, providers: &[LlmProviderConfig]) -> anyho
 }
 
 pub fn load_role_assignment(app: &AppHandle) -> LlmRoleAssignment {
-    let Some(store) = app.store(config::STORE_FILE).ok() else {
+    let Some(store) = app.store(config::store_path()).ok() else {
         return LlmRoleAssignment::default();
     };
     LlmRoleAssignment {
@@ -123,7 +123,7 @@ pub fn load_role_assignment(app: &AppHandle) -> LlmRoleAssignment {
 
 pub fn save_role_assignment(app: &AppHandle, assignment: &LlmRoleAssignment) -> anyhow::Result<()> {
     let store = app
-        .store(config::STORE_FILE)
+        .store(config::store_path())
         .context("Failed to open settings store")?;
     store.set(
         keys::LLM_CHAT_PROVIDER_ID.to_string(),
@@ -246,7 +246,7 @@ pub fn build_llm_client_from_provider(
 // ============================================================
 
 pub fn migrate_if_needed(app: &AppHandle) {
-    let Ok(store) = app.store(config::STORE_FILE) else {
+    let Ok(store) = app.store(config::store_path()) else {
         return;
     };
 
@@ -352,7 +352,7 @@ pub fn migrate_if_needed(app: &AppHandle) {
 /// 大模型管理中的一个 provider，并分配为「视觉模型」角色。
 /// 视觉模型配置已统一到大模型管理，旧键迁移后会被清理。
 pub fn migrate_legacy_vision_keys(app: &AppHandle) {
-    let Ok(store) = app.store(config::STORE_FILE) else {
+    let Ok(store) = app.store(config::store_path()) else {
         return;
     };
 

@@ -37,7 +37,7 @@ impl Default for GodAgentConfig {
 impl GodAgentConfig {
     /// 从 Tauri store 加载配置。
     pub fn load(app: &AppHandle) -> Self {
-        let Ok(store) = app.store(config::STORE_FILE) else {
+        let Ok(store) = app.store(config::store_path()) else {
             return Self::default();
         };
 
