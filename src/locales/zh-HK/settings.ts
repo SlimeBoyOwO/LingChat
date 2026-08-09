@@ -229,6 +229,8 @@ export default {
         "aivis_api_url": "AIVIS 雲 API 地址",
         "aivis_api_key": "AIVIS API 密鑰（原環境變數 AIVIS_API_KRY）",
         "indextts_api_url": "IndexTTS2 API 地址",
+        "fish_s2_api_url": "Fish S2 API 地址",
+        "fish_s2_voice": "Fish S2 預設音色標識",
         "opentts_api_url": "OpenTTS API 地址（硅基流動）",
         "opentts_api_key": "OpenTTS API 密鑰",
         "opentts_model": "OpenTTS 模型名稱",
@@ -365,11 +367,14 @@ export default {
       "openttsVoicePlaceholder": "留空則使用進階設定中的全域音色標識",
       "localSbv2Api": "本地 SBV2 API",
       "openttsVoiceLabel": "OpenTTS 音色標識",
+      "fishS2": "Fish S2（本機 API）",
+      "fishS2Voice": "Fish S2 音色標識",
 
       "openttsVoice": "OpenTTS 音色標識"
     },
     "placeholders": {
-      "openttsVoice": "留空就用高級設定入面嘅全局音色標識"
+      "openttsVoice": "留空就用高級設定入面嘅全局音色標識",
+      "fishS2Voice": "留空就用高級設定入面嘅預設音色（paimeng）"
     },
     "voiceLangOptions": {
       "ja": "日語",

@@ -229,6 +229,8 @@ export default {
         aivis_api_url: "AIVIS cloud API address",
         aivis_api_key: "AIVIS API key (formerly the AIVIS_API_KRY env var)",
         indextts_api_url: "IndexTTS2 API address",
+        fish_s2_api_url: "Fish S2 API address",
+        fish_s2_voice: "Fish S2 default voice ID",
         opentts_api_url: "OpenTTS API address (SiliconFlow)",
         opentts_api_key: "OpenTTS API key",
         opentts_model: "OpenTTS model name",
@@ -365,11 +367,14 @@ export default {
       openttsVoicePlaceholder: 'Leave blank to use the global voice ID in advanced settings',
       localSbv2Api: "Local SBV2 API",
       openttsVoiceLabel: "OpenTTS Voice ID",
+      fishS2: "Fish S2 (Local API)",
+      fishS2Voice: "Fish S2 Voice ID",
 
       openttsVoice: "OpenTTS Voice ID",
     },
     placeholders: {
       openttsVoice: "Leave empty to use the global voice ID from Advanced Settings",
+      fishS2Voice: "Leave empty to use the default voice from Advanced Settings (paimeng)",
     },
     voiceLangOptions: {
       ja: "Japanese",

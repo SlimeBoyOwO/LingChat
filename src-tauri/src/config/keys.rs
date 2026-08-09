@@ -55,6 +55,10 @@ pub const AIVIS_API_URL: &str = "tts.aivis_api_url";
 pub const AIVIS_API_KEY: &str = "tts.aivis_api_key";
 pub const INDEXTTS_API_URL: &str = "tts.indextts_api_url";
 
+// ========== TTS Fish Audio S2 ==========
+pub const FISH_S2_API_URL: &str = "tts.fish_s2_api_url";
+pub const FISH_S2_VOICE: &str = "tts.fish_s2_voice";
+
 // ========== TTS OpenTTS ==========
 pub const OPENTTS_API_URL: &str = "tts.opentts_api_url";
 pub const OPENTTS_API_KEY: &str = "tts.opentts_api_key";

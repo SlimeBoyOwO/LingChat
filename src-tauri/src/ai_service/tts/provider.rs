@@ -10,6 +10,7 @@ use serde_json::Value as JsonValue;
 
 use super::adapters::aivis::AivisAdapter;
 use super::adapters::bv2::Bv2Adapter;
+use super::adapters::fish_s2::FishS2Adapter;
 use super::adapters::gsv::GsvAdapter;
 use super::adapters::indextts::IndexTtsAdapter;
 use super::adapters::opentts::OpenTtsAdapter;
@@ -20,7 +21,7 @@ use super::adapters::vits::VitsAdapter;
 /// TTS 一次合成返回原始音频字节。
 #[async_trait]
 pub trait TtsAdapter: Send + Sync {
-    /// `emo` 参数仅 IndexTTS2 使用，其它 adapter 忽略。
+    /// `emo` 参数由 IndexTTS2 和 Fish S2 使用，其它 adapter 忽略。
     async fn generate_voice(&self, text: &str, emo: &str) -> Result<Vec<u8>>;
 
     /// 返回当前适配器参数（对应 Python `get_params`）。
@@ -51,6 +52,7 @@ pub struct TtsProvider {
     pub aivis: Option<Arc<AivisAdapter>>,
     pub indextts: Option<Arc<IndexTtsAdapter>>,
     pub opentts: Option<Arc<OpenTtsAdapter>>,
+    pub fish_s2: Option<Arc<FishS2Adapter>>,
 }
 
 impl Default for TtsProvider {
@@ -68,6 +70,7 @@ impl Default for TtsProvider {
             aivis: None,
             indextts: None,
             opentts: None,
+            fish_s2: None,
         }
     }
 }
@@ -87,6 +90,7 @@ impl std::fmt::Debug for TtsProvider {
             .field("aivis", &self.aivis.is_some())
             .field("indextts", &self.indextts.is_some())
             .field("opentts", &self.opentts.is_some())
+            .field("fish_s2", &self.fish_s2.is_some())
             .finish()
     }
 }
@@ -184,6 +188,10 @@ impl TtsProvider {
                 .opentts
                 .clone()
                 .ok_or_else(|| anyhow!("OpenTTS 适配器未初始化"))?,
+            "fishs2" => self
+                .fish_s2
+                .clone()
+                .ok_or_else(|| anyhow!("Fish S2 适配器未初始化"))?,
             "" => {
                 // 旧版：未指定时优先 sbv2
                 if let Some(a) = self.sbv2.clone() {

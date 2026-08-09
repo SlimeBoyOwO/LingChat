@@ -47,7 +47,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "ansi", "chron
 serde_yaml = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
-reqwest = { version = "0.13", features = ["json", "query", "stream", "rustls", "system-proxy"], default-features = false }
+reqwest = { version = "0.13", features = ["json", "multipart", "query", "stream", "rustls", "system-proxy"], default-features = false }
 # 用 webpki-roots（内置 Mozilla CA）构造 rustls ClientConfig 注入 reqwest，
 # 绕开 reqwest 0.13 默认的 rustls-platform-verifier（Android 上需显式初始化，
 # 未初始化会 TLS panic）。版本与 reqwest 0.13.3 的 rustls 依赖保持一致（0.23）。

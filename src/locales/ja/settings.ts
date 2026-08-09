@@ -228,6 +228,8 @@ export default {
         aivis_api_url: 'AIVIS クラウド API アドレス',
         aivis_api_key: 'AIVIS API キー（旧環境変数 AIVIS_API_KRY）',
         indextts_api_url: 'IndexTTS2 API アドレス',
+        fish_s2_api_url: 'Fish S2 API アドレス',
+        fish_s2_voice: 'Fish S2 デフォルト音色 ID',
         opentts_api_url: 'OpenTTS API アドレス（SiliconFlow）',
         opentts_api_key: 'OpenTTS API キー',
         opentts_model: 'OpenTTS モデル名',
@@ -364,11 +366,14 @@ export default {
       openttsVoicePlaceholder: '空欄の場合、詳細設定のグローバル音色 ID を使用',
       localSbv2Api: 'ローカル SBV2 API',
       openttsVoiceLabel: 'OpenTTS 音色 ID',
+      fishS2: 'Fish S2（ローカル API）',
+      fishS2Voice: 'Fish S2 音色 ID',
 
       openttsVoice: 'OpenTTS 音色識別子',
     },
     placeholders: {
       openttsVoice: '空欄の場合は詳細設定のグローバル音色識別子を使用します',
+      fishS2Voice: '空欄の場合は詳細設定のデフォルト音色（paimeng）を使用します',
     },
     voiceLangOptions: {
       ja: '日本語',

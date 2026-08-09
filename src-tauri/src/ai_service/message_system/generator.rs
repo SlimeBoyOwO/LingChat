@@ -653,7 +653,7 @@ fn parse_segments(deps: &GeneratorDeps, sentence: &str) -> Vec<EmotionSegment> {
 /// 返回当前 TTS 需要的目标翻译语言。
 fn tts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
     match (tts_type, voice_lang) {
-        ("gsv" | "opentts" | "sbv2", "en") => Some("en"),
+        ("gsv" | "opentts" | "sbv2" | "fishs2", "en") => Some("en"),
         // IndexTTS2 官方支持中/英文：voice_lang=en 时先翻译成英文再合成
         ("indextts2", "en") => Some("en"),
         ("gsv" | "opentts", "ko") => Some("ko"),
