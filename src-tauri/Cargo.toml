@@ -102,9 +102,6 @@ encoding_rs = "0.8"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 # 插件系统：嵌入 RustPython 跑插件 Python 脚本（目前是一个受限沙箱）。
-# 移动端（Android/iOS）构建时 rustpython 驱动的插件功能不可用，插件系统整体
-# 不参与移动端编译，故依赖只对桌面端生效。
-# 关闭 default（主要是含 wasmbind 引 wasm-bindgen，这玩意目前用不上）并且显式启用桌面端需要的特性。
 rustpython-vm = { version = "0.5", default-features = false, features = ["compiler", "gc", "host_env", "stdio", "serde", "freeze-stdlib"] }
 rustpython-pylib = { version = "0.5", features = ["freeze-stdlib"] }
 rustpython-derive = "0.5"
@@ -124,6 +121,7 @@ ash = { version = "0.38", default-features = false, features = ["loaded"] }
 # 详见 patches/esaxx-rs/build.rs 的注释。
 [patch.crates-io]
 esaxx-rs = { path = "patches/esaxx-rs" }
+jpreprocess-naist-jdic = { git = "https://gh-proxy.org/github.com/shadow01a/jpreprocess", branch = "main" }
 
 # 本地补丁：sbv2_core 增加推理硬件热切换（InferenceDevice：CPU/GPU/NPU/指定设备）。
 # 上游 model.rs 的 load_model 写死 EP 列表，无法运行时切换设备；
