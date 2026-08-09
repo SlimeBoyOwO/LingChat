@@ -117,3 +117,7 @@ pub const LOG_ENABLE: &str = "log.enable";
 pub const LOG_RETENTION_DAYS: &str = "log.retention_days";
 /// 是否记录 LLM 请求体到文件（完整请求 JSON，默认关闭）
 pub const LOG_LLM_REQUEST_BODY: &str = "log.llm_request_body";
+
+// ========== 本地 TTS 推理设备 ==========
+/// 本地 TTS 推理硬件设备："cpu" | "gpu" | "npu" | "device:<id>"（Windows DirectML）
+pub const LOCAL_TTS_DEVICE: &str = "features.local_tts_device";

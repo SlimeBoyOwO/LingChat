@@ -884,6 +884,13 @@ export default {
       "ready": "已就緒",
       "notReady": "未就緒"
     },
+    "device": {
+      "label": "推理裝置",
+      "cpu": "CPU",
+      "gpu": "GPU（DirectML）",
+      "gpuWebgpu": "GPU（WebGPU）",
+      "npu": "NPU（DirectML）"
+    },
     "deberta": {
       "label": "DeBERTa 與分詞器",
       "installed": "已安裝",
