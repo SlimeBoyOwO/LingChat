@@ -1,11 +1,13 @@
 <template>
   <div
-    class="relative z-2 flex w-full scrollbar-thin [scrollbar-color:var(--accent-color)_transparent] justify-center bg-linear-to-t from-[rgba(0,14,39,0.7)] to-[rgba(0,14,39,0.6)] p-3.75 backdrop-blur-[1px] transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] before:pointer-events-none before:absolute before:-top-10 before:right-0 before:left-0 before:h-10 before:bg-linear-to-b before:from-transparent before:via-[rgba(0,14,39,0.3)] before:to-[rgba(0,14,39,0.6)] before:content-['']"
+    class="relative z-2 flex w-full scrollbar-thin [scrollbar-color:var(--accent-color)_transparent] justify-center p-3.75 transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] before:pointer-events-none before:absolute before:-top-10 before:right-0 before:left-0 before:h-10 before:bg-linear-to-b before:from-transparent before:via-[rgba(0,14,39,0.3)] before:to-[rgba(0,14,39,0.6)] before:content-['']"
     :class="{
       'z-[-1]! overflow-hidden opacity-0 duration-500! ease-linear before:opacity-0 before:duration-1000!':
         isHidden,
       'max-h-[40vh]': !uiStore.isNarrowScreen,
     }"
+    :style="dialogWrapperStyle"
+    @wheel="handleWheelHistory"
   >
     <div
       :style="{ width: containerWidth + '%' }"
@@ -16,10 +18,11 @@
         <div class="mb-2 flex items-baseline">
           <!-- 角色名称 -->
           <div
-            class="mr-3.75 font-[inherit] text-2xl font-bold text-white text-shadow-[inherit]"
+            class="mr-3.75 font-[inherit] text-2xl font-bold text-shadow-[inherit]"
             :class="{
               'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap': uiStore.isNarrowScreen,
             }"
+            :style="{ color: dialogTextColorValue }"
           >
             <div id="character">{{ uiStore.showCharacterTitle }}</div>
           </div>
@@ -206,27 +209,29 @@
         <div
           class="my-1.25 flex min-h-10 w-full resize-none flex-col border-none bg-transparent text-xl font-bold whitespace-pre-line text-white transition-all duration-300 outline-none"
         >
-          <!-- 内联动作文本显示区（仅内联模式+回应状态时可见） -->
-          <div
-            v-show="isInlineDisplayMode"
-            ref="inlineDisplayRef"
-            tabindex="0"
-            class="inline-motion-display my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none overflow-y-auto border-none bg-transparent font-[inherit] text-xl font-bold whitespace-pre-line outline-none text-shadow-[inherit]"
-            @keydown.enter.exact.prevent="sendOrContinue"
-          ></div>
+        <!-- 内联动作文本显示区（仅内联模式+回应状态时可见） -->
+        <div
+          v-show="isInlineDisplayMode"
+          ref="inlineDisplayRef"
+          tabindex="0"
+          class="inline-motion-display my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none overflow-y-auto border-none bg-transparent font-[inherit] text-xl font-bold whitespace-pre-line outline-none text-shadow-[inherit]"
+          :style="{ color: dialogTextColorValue }"
+          @keydown.enter.exact.prevent="sendOrContinue"
+        ></div>
 
-          <!-- 标准 textarea（输入模式或非内联显示模式） -->
-          <textarea
-            v-show="!isInlineDisplayMode"
-            id="inputMessage"
-            ref="textareaRef"
-            class="my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none border-none bg-transparent font-[inherit] text-xl font-bold text-white transition-all duration-300 outline-none text-shadow-[inherit] placeholder:text-white/50 placeholder:shadow-none"
-            :class="textareaMotionClass"
-            :placeholder="placeholderText"
-            v-model="inputMessage"
-            @keydown.enter.exact.prevent="sendOrContinue"
-            :readonly="!isInputEnabled"
-          ></textarea>
+        <!-- 标准 textarea（输入模式或非内联显示模式） -->
+        <textarea
+          v-show="!isInlineDisplayMode"
+          id="inputMessage"
+          ref="textareaRef"
+          class="my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none border-none bg-transparent font-[inherit] text-xl font-bold transition-all duration-300 outline-none text-shadow-[inherit] placeholder:text-white/50 placeholder:shadow-none"
+          :class="textareaMotionClass"
+          :placeholder="placeholderText"
+          :style="{ color: dialogTextColorValue }"
+          v-model="inputMessage"
+          @keydown.enter.exact.prevent="sendOrContinue"
+          :readonly="!isInputEnabled"
+        ></textarea>
         </div>
       </div>
       <!-- 发送按钮（内层右侧外部） -->
@@ -252,6 +257,7 @@ import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
 import { useLlmProvidersStore } from '../../../stores/modules/llm-providers'
 import { useTypeWriter } from '../../../composables/ui/useTypeWriter'
+import { useDialogAppearance } from '../../../composables/useDialogAppearance'
 import { escapeHtml } from '../../../utils/escapeHtml'
 import { eventQueue } from '../../../core/events/event-queue'
 import { invoke } from '@tauri-apps/api/core'
@@ -270,7 +276,15 @@ const uiStore = useUIStore()
 const dialogStore = useDialogStore()
 const settingsStore = useSettingsStore()
 const llmStore = useLlmProvidersStore()
-const isHidden = ref(false)
+
+// Dialog appearance managed by composable: useDialogAppearance
+const { isHidden, hide, dialogWrapperStyle, dialogTextColorValue, handleWheelHistory } =
+  useDialogAppearance({
+    openHistory: () => {
+      uiStore.toggleSettings(true)
+      uiStore.setSettingsTab('history')
+    },
+  })
 
 // 移动端按钮折叠状态（但是基于长宽比判断）
 const isMobile = ref(uiStore.aspectRatio <= 1)
@@ -746,9 +760,12 @@ function continueDialog(isPlayerTrigger: boolean): boolean {
   return needWait
 }
 
-function removeDialog(e: Event) {
-  isHidden.value = true
+function removeDialog(_e: Event) {
+  hide()
 }
+
+// ── 对话框外观（响应 settings store） ──
+// Dialog appearance logic extracted to composable: useDialogAppearance
 
 defineExpose({
   continueDialog,

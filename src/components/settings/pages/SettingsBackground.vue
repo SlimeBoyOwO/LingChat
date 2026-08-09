@@ -304,6 +304,16 @@
       </div>
     </MenuItem>
 
+    
+
+    <!-- ========== 对话框外观（自定义） ========== -->
+    <MenuItem :title="$t('settings.background.dialog.title')" size="large">
+      <template #header>
+        <MessageSquare :size="20" />
+      </template>
+      <DialogAppearancePanel />
+    </MenuItem>
+
     <SceneEditModal
       :show="showSceneEdit"
       :mode="editMode"
@@ -352,8 +362,9 @@ import {
   type CpuInfo,
   type PerfTier,
 } from '../../../api/services/cpu-perf'
-import { Image, PictureInPicture, Sparkles, Settings, Wand2, Wrench, Cpu } from 'lucide-vue-next'
+import { Image, PictureInPicture, Sparkles, Settings, Wand2, Wrench, Cpu, MessageSquare, Upload, RotateCcw } from 'lucide-vue-next'
 import SceneEditModal from '../scene/SceneEditModal.vue'
+import DialogAppearancePanel from '../dialog/DialogAppearancePanel.vue'
 import { useUserStore } from '../../../stores/modules/user/user'
 
 const gameStore = useGameStore()
@@ -730,4 +741,32 @@ function handleStarsInputEnter() {
 watch(starsFps, (newValue) => {
   starsFpsInput.value = newValue
 })
+
+// ── 对话框外观 ──
+const dialogBgInput = ref<HTMLInputElement | null>(null)
+
+
+
+
+
+
+
+
+
+
+
+
+function hexToRgba(hex: string, alpha: number): string {
+  const m = hex.replace('#', '').match(/^([0-9a-fA-F]{6})$/)
+  if (!m) return `rgba(0,14,39,${alpha})`
+  const r = parseInt(m[1]!.substring(0, 2), 16)
+  const g = parseInt(m[1]!.substring(2, 4), 16)
+  const b = parseInt(m[1]!.substring(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+
+
+
+
 </script>
