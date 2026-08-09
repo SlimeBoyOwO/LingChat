@@ -26,6 +26,9 @@ const FINAL_SYNTHESIS_PROMPT: &str = "工具调用已达到本轮上限。请停
 /// 工具结果返回后的续写引导。部分模型会把上一轮台词当作已结束回合而重新开场，
 /// 导致同一句话在多轮工具调用间被反复复读；显式要求接着上文继续、禁止重复。
 const CONTINUATION_PROMPT: &str = "工具结果已返回。请接着你上一条回复的内容继续，绝对不要重复之前已经发送过的台词、动作描写或翻译行；直接基于工具结果汇报结果或进行下一步。";
+/// 收尾轮只返回工具调用、没有任何正文时的补救提示：明确调用未执行、已无工具可用，
+/// 要求直接输出总结正文，避免整条回复落空触发前端报错。
+const FINAL_SYNTHESIS_RETRY_PROMPT: &str = "你刚才尝试调用的工具未被执行：当前已没有可用工具。请不要再尝试调用工具，直接基于已完成的工具结果，用正文给出最终答复；如仍有未完成事项，请明确说明。";
 const TOOL_USE_POLICY_PROMPT: &str = "你可以调用本请求随附的工具。用户要求执行文件读写/删除、命令运行、角色或场景切换等实际操作时，必须先真正调用相应工具，并在收到工具结果后再说明结果。绝不能只在思考中计划调用，或在没有成功工具结果时声称已经执行、删除、写入、切换或完成。需要用户确认的危险操作会由应用弹窗处理，请直接发起工具调用，不要用文字假装已经操作；如果工具失败、被拒绝或没有调用，必须明确说明操作尚未完成。";
 
 /// 工具消息收集槽：流消费过程中由闭环填充，消费完毕后调用方取走。
@@ -109,10 +112,12 @@ pub async fn stream_with_tool_loop(
         let mut active_role_name = role_name;
         let mut persisted_tool_result_chars = 0usize;
 
-        for round in 0..=MAX_TOOL_ROUNDS {
+        // 收尾轮（无工具定义）可能仍返回工具调用且不给正文，多留一轮补救重试。
+        let mut synthesis_retried = false;
+        for round in 0..=(MAX_TOOL_ROUNDS + 1) {
             tracing::info!(round = round + 1, "开始流式聊天工具决策");
-            let final_synthesis = round == MAX_TOOL_ROUNDS;
-            if final_synthesis {
+            let final_synthesis = round >= MAX_TOOL_ROUNDS;
+            if round == MAX_TOOL_ROUNDS {
                 // 八轮工具执行完毕后保留一次不带工具定义的收尾生成，避免直接报错并
                 // 丢掉已经完成的工具结果。
                 messages.push(LlmMessage::system(FINAL_SYNTHESIS_PROMPT));
@@ -166,6 +171,14 @@ pub async fn stream_with_tool_loop(
                     count = tool_calls.len(),
                     "无工具定义的最终收尾仍返回工具调用，已忽略"
                 );
+                // 收尾轮只返回工具调用、正文为空时，整条回复会落空并触发前端报错；
+                // 明确告知调用未执行、已无工具可用，补救重试一次让模型直接输出正文。
+                if round_text.trim().is_empty() && !synthesis_retried {
+                    synthesis_retried = true;
+                    tracing::info!("收尾轮无正文，追加补救提示后重试一次");
+                    messages.push(LlmMessage::system(FINAL_SYNTHESIS_RETRY_PROMPT));
+                    continue;
+                }
                 return;
             }
 
