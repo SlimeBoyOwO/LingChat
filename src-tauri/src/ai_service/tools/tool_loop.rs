@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
@@ -37,6 +38,9 @@ pub type ToolMessageSink = Arc<Mutex<Vec<LlmMessage>>>;
 pub struct ToolLoopResult {
     pub stream: ChunkStream,
     pub tool_messages: ToolMessageSink,
+    /// 工具闭环是否真的执行过工具。生产者据此只在工具场景暂存最后一段，
+    /// 让重复的收尾段可以被丢弃，同时仍把最后一条有效回复标为完成。
+    pub tool_calls_seen: Arc<AtomicBool>,
 }
 
 /// 保证工具参数进度在正常结束、流错误和上游取消时都会被清理。
@@ -85,11 +89,14 @@ pub async fn stream_with_tool_loop(
         return Ok(ToolLoopResult {
             stream: presentation_stream(llm.complete_stream(&messages).await?),
             tool_messages: Arc::new(Mutex::new(Vec::new())),
+            tool_calls_seen: Arc::new(AtomicBool::new(false)),
         });
     }
 
     let tool_messages: ToolMessageSink = Arc::new(Mutex::new(Vec::new()));
     let sink = tool_messages.clone();
+    let tool_calls_seen = Arc::new(AtomicBool::new(false));
+    let tool_calls_seen_in_stream = tool_calls_seen.clone();
 
     // 流需要 'static：闭环状态全部改为持有所有权（Arc/克隆）
     let llm = llm.clone();
@@ -182,6 +189,7 @@ pub async fn stream_with_tool_loop(
                 return;
             }
 
+            tool_calls_seen_in_stream.store(true, Ordering::Release);
             let calls = tool_calls;
 
             let mut ids = HashSet::new();
@@ -265,6 +273,7 @@ pub async fn stream_with_tool_loop(
     Ok(ToolLoopResult {
         stream: Box::pin(stream),
         tool_messages,
+        tool_calls_seen,
     })
 }
 
