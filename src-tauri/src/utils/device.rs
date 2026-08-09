@@ -17,17 +17,19 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 /// 解析推理设备字符串："cpu" | "gpu" | "npu" | "device:<id>"。
-/// - `gpu` / `device:<id>`：DirectML（Windows）或 WebGPU（Linux，Dawn 默认设备）
-///   支持；macOS/Android 不做硬件适配，只支持 cpu；
+/// - `gpu` / `device:<id>`：DirectML（Windows）或 WebGPU（x86_64 Linux，Dawn
+///   默认设备）支持；aarch64 Linux / macOS / Android 不做硬件适配，只支持 cpu；
 /// - `npu`：仅 DirectML（Windows，DXGI 枚举）。
 pub fn parse_device(s: &str) -> Result<InferenceDevice, String> {
     match s.trim().to_ascii_lowercase().as_str() {
         "cpu" => Ok(InferenceDevice::Cpu),
-        #[cfg(any(feature = "tts-directml", all(feature = "tts-webgpu", target_os = "linux")))]
+        // Windows 走 DirectML、Linux 走 WebGPU，均支持 gpu / device:<id>
+        #[cfg(any(target_os = "windows", all(target_os = "linux", target_arch = "x86_64")))]
         "gpu" => Ok(InferenceDevice::Gpu),
-        #[cfg(feature = "tts-directml")]
+        // npu 仅 DirectML（Windows，DXGI 枚举）
+        #[cfg(target_os = "windows")]
         "npu" => Ok(InferenceDevice::Npu),
-        #[cfg(any(feature = "tts-directml", all(feature = "tts-webgpu", target_os = "linux")))]
+        #[cfg(any(target_os = "windows", all(target_os = "linux", target_arch = "x86_64")))]
         _ if s.starts_with("device:") => {
             let id: i32 = s["device:".len()..]
                 .trim()
@@ -35,14 +37,12 @@ pub fn parse_device(s: &str) -> Result<InferenceDevice, String> {
                 .map_err(|_| format!("无效的设备 id: {}", s))?;
             Ok(InferenceDevice::Specific(id))
         }
-        #[cfg(feature = "tts-directml")]
+        #[cfg(target_os = "windows")]
         other => Err(format!("无效的推理设备: {}（可选: cpu/gpu/npu/device:<id>）", other)),
-        #[cfg(all(feature = "tts-webgpu", target_os = "linux", not(feature = "tts-directml")))]
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         other => Err(format!("无效的推理设备: {}（可选: cpu/gpu/device:<id>）", other)),
-        #[cfg(not(any(
-            feature = "tts-directml",
-            all(feature = "tts-webgpu", target_os = "linux")
-        )))]
+        // macOS/Android：仅 cpu（macOS 的 CoreML 在推理时自动启用，无需用户选择）
+        #[cfg(not(any(target_os = "windows", all(target_os = "linux", target_arch = "x86_64"))))]
         other => Err(format!("当前平台仅支持 cpu，收到: {}", other)),
     }
 }
@@ -68,8 +68,8 @@ pub struct DeviceInfo {
 
 /// 枚举推理设备（GPU 列表，供用户选择特定显卡）：
 /// - Windows：DirectML（DXGI 枚举，device_id 与 DirectML 对齐，已验证）。
-/// - Linux：WebGPU（Vulkan 物理设备，索引与 Dawn adapter 对齐）。
-/// - 其他平台：空列表。
+/// - x86_64 Linux：WebGPU（Vulkan 物理设备，索引与 Dawn adapter 对齐）。
+/// - 其他平台（含 aarch64 Linux）：空列表。
 ///
 /// Windows 按 `(vendor_id, device_id)` 去重——Intel 混合显卡系统会把同一核显枚举
 /// 多次（合成/渲染两个入口），去重后只保留 id 最小的。
@@ -108,11 +108,11 @@ pub fn list_devices() -> Vec<DeviceInfo> {
         }
         devices
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
         list_vulkan_devices()
     }
-    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    #[cfg(not(any(target_os = "windows", all(target_os = "linux", target_arch = "x86_64"))))]
     {
         Vec::new()
     }
@@ -124,7 +124,7 @@ pub fn list_devices() -> Vec<DeviceInfo> {
 /// `vkEnumeratePhysicalDevices` 的顺序枚举 adapter，与这里一致。
 /// 运行时通过 `libvulkan.so.1` 动态加载（ash loaded feature），无 Vulkan
 /// 时返回空列表。
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn list_vulkan_devices() -> Vec<DeviceInfo> {
     use ash::vk;
 

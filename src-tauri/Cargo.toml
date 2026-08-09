@@ -20,18 +20,6 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # （不走 devUrl）。桌面端不受影响。
 custom-protocol = ["tauri/custom-protocol"]
 
-# ── GPU 推理加速（各平台选一个启用）────────────────────────────
-# Windows：DirectML（DX12，任意 GPU），默认启用
-tts-directml = ["sbv2_core/directml", "ort/directml"]
-# Linux/macOS：WebGPU（Linux 走 Vulkan，macOS 走 Metal，跨厂商）。
-# 构建：--no-default-features --features tts-webgpu
-tts-webgpu = ["sbv2_core/webgpu", "ort/webgpu"]
-# macOS 专用：CoreML（Apple 原生神经引擎/GPU）。构建：--features tts-coreml
-tts-coreml = ["sbv2_core/coreml", "ort/coreml"]
-
-# Windows 默认 DirectML；Linux/macOS 构建时用 --no-default-features --features tts-webgpu
-default = ["tts-directml"]
-
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -45,9 +33,6 @@ tauri-plugin-notification = "2"
 tauri-plugin-screenshots = { path = "plugins/tauri-plugin-screenshots" }
 tauri-plugin-android-fs = "28"
 serde = { version = "1", features = ["derive"] }
-# preserve_order 让 serde_json::Map 变成 IndexMap：读进来的 YAML key 顺序原样写回。
-# 没有它 Map 是 BTreeMap，编辑器每次自动保存都会把章节里所有事件的字段重排成
-# 字典序（type 会跑到 text 后面），git diff 变成全文件级别。
 serde_json = { version = "1", features = ["preserve_order"] }
 toml = "0.8"
 sea-orm = { version = "1", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros", "with-chrono"] }
@@ -60,11 +45,6 @@ serde_yaml = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 reqwest = { version = "0.13", features = ["json", "multipart", "query", "stream", "rustls", "system-proxy"], default-features = false }
-# 用 webpki-roots（内置 Mozilla CA）构造 rustls ClientConfig 注入 reqwest，
-# 绕开 reqwest 0.13 默认的 rustls-platform-verifier（Android 上需显式初始化，
-# 未初始化会 TLS panic）。版本与 reqwest 0.13.3 的 rustls 依赖保持一致（0.23）。
-# aws-lc-rs：与 reqwest 0.13.3 的 provider 一致（否则 rustls 无法自动确定
-# CryptoProvider，TLS 握手会 panic）。
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
 webpki-roots = "0.26"
 futures-util = "0.3"
@@ -107,12 +87,20 @@ rustpython-pylib = { version = "0.5", features = ["freeze-stdlib"] }
 rustpython-derive = "0.5"
 
 [target.'cfg(target_os = "windows")'.dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["directml"] }
+sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["directml"] }
 windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dxgi"] }
 
-# Linux 推理设备枚举：Vulkan 物理设备（与 WebGPU/Dawn 的 adapter 索引对齐）。
-# 仅运行时动态加载 libvulkan（loaded feature），无构建期 Vulkan 开发包依赖。
-[target.'cfg(target_os = "linux")'.dependencies]
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["webgpu"] }
+sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["webgpu"] }
 ash = { version = "0.38", default-features = false, features = ["loaded"] }
+
+
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["coreml"] }
+sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["coreml"] }
 
 
 # esaxx-rs 强制静态 CRT (/MT) 会在 Windows 下与 ort 等库冲突（LNK2038/LNK2005）。

@@ -147,14 +147,19 @@ pub struct DeviceInfo {
 
 ### 4.4 设备解析（`device.rs` 的 `parse_device`）
 
-`device:<id>` 此前仅 DirectML 允许，现按 feature 放开到 WebGPU：
+EP 由 `Cargo.toml` 的 `[target.'cfg(...)'.dependencies]` 按平台+架构自动启用
+（Windows→DirectML、x86_64 Linux→WebGPU、arm64 macOS→CoreML），不再有顶层
+`tts-*` feature，代码侧直接用平台判断：
 
 ```rust
-#[cfg(any(feature = "tts-directml", feature = "tts-webgpu"))]
+// Windows 与 x86_64 Linux 支持 gpu / device:<id>
+#[cfg(any(target_os = "windows", all(target_os = "linux", target_arch = "x86_64")))]
 _ if s.starts_with("device:") => { /* → InferenceDevice::Specific(id) */ }
 ```
 
-`gpu` 仍是 `any(directml, webgpu)`；`npu` 保持仅 DirectML。
+- `gpu` 同样仅 Windows + x86_64 Linux；
+- `npu` 仅 Windows（DirectML）；
+- aarch64 Linux / macOS / Android 只接受 `cpu`（macOS 的 CoreML 在推理时自动启用）。
 
 ### 4.5 前端（`src/components/settings/pages/SettingsTts.vue`）
 
