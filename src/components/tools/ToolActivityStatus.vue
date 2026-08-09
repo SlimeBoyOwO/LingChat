@@ -7,8 +7,8 @@
     mode="out-in"
   >
     <div
-      v-if="activity && !uiStore.showSettings"
-      :key="`${activity.callId}-${activity.status}`"
+      v-if="(activity || preparing) && !uiStore.showSettings"
+      :key="viewKey"
       class="hidden
         pointer-events-none
         mr-2
@@ -33,13 +33,13 @@
         :class="statusClass"
       >
         <LoaderCircle
-          v-if="activity.status === 'running'"
+          v-if="preparing || activity?.status === 'running'"
           :size="14"
           class="shrink-0
             animate-spin"
         />
         <CheckCircle2
-          v-else-if="activity.status === 'success'"
+          v-else-if="activity?.status === 'success'"
           :size="14"
           class="shrink-0"
         />
@@ -58,12 +58,20 @@
 import { computed } from 'vue'
 import { CheckCircle2, CircleAlert, LoaderCircle } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
-import { currentToolActivity } from '@/api/services/tool-settings'
+import { currentToolActivity, toolCallPreparing } from '@/api/services/tool-settings'
 import { useUIStore } from '@/stores/modules/ui/ui'
 
 const uiStore = useUIStore()
 const { t, te } = useI18n()
 const activity = currentToolActivity
+// 工具调用参数的流式生成进度；存在时优先于执行状态展示
+const preparing = toolCallPreparing
+
+const viewKey = computed(() => {
+  if (preparing.value) return `preparing-${preparing.value.tool}`
+  const current = activity.value
+  return current ? `${current.callId}-${current.status}` : 'idle'
+})
 
 const readTools = new Set([
   'list_skills',
@@ -148,6 +156,12 @@ function runningKey(current: NonNullable<typeof activity.value>): string {
 }
 
 const statusText = computed(() => {
+  const pending = preparing.value
+  if (pending) {
+    const key = `ui.toolCalls.tools.${pending.tool}`
+    const label = te(key) ? t(key) : pending.tool
+    return t('ui.toolActivity.preparing', { tool: label, chars: pending.chars })
+  }
   const current = activity.value
   if (!current) return ''
   if (current.status === 'success') {
@@ -163,6 +177,7 @@ const statusText = computed(() => {
 })
 
 const statusClass = computed(() => {
+  if (preparing.value) return 'text-sky-200/90'
   switch (activity.value?.status) {
     case 'success':
       return 'text-emerald-300/90'

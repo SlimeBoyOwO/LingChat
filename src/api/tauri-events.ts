@@ -9,7 +9,9 @@ import { useGameStore } from '../stores/modules/game'
 import { i18n } from '@/locales'
 import { useScriptEditorStore } from '../stores/modules/script-editor'
 import {
+  clearToolCallPreparing,
   handleToolActivity,
+  handleToolCallProgress,
   interruptToolActivities,
   pushToolCallRecord,
   toolDisplayName,
@@ -93,6 +95,16 @@ export function initializeTauriEventListeners() {
   listen('ai:tool_activity', (event) => {
     const payload = event.payload as ToolActivityEvent
     handleToolActivity(payload)
+  })
+
+  // 工具调用参数流式生成进度：顶栏实时显示「正在生成…N 字」
+  listen('ai:tool_call_progress', (event) => {
+    handleToolCallProgress(event.payload as { tool: string; chars: number })
+  })
+
+  // 一轮 LLM 流结束：清除「正在生成」进度提示（工具被忽略的收尾轮不会再有执行事件）
+  listen('ai:tool_call_progress_end', () => {
+    clearToolCallPreparing()
   })
 
   // 工具调用结果：记入「工具调用」页面历史 + 左上角弹通知

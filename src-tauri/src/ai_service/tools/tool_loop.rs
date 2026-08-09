@@ -36,6 +36,26 @@ pub struct ToolLoopResult {
     pub tool_messages: ToolMessageSink,
 }
 
+/// 保证工具参数进度在正常结束、流错误和上游取消时都会被清理。
+///
+/// `async_stream` 在消费方提前丢弃流时不会继续执行循环后的语句，因此清理必须
+/// 绑定到 RAII guard，不能只依赖正常路径中的显式事件。
+struct ToolCallProgressEndGuard {
+    app: AppHandle,
+}
+
+impl ToolCallProgressEndGuard {
+    fn new(app: AppHandle) -> Self {
+        Self { app }
+    }
+}
+
+impl Drop for ToolCallProgressEndGuard {
+    fn drop(&mut self) {
+        emit_tool_call_progress_end_event(&self.app);
+    }
+}
+
 /// 以流式请求执行普通聊天的工具闭环。
 ///
 /// 仅支持原生流式 tools 的 provider 会携带工具定义请求。工具调用必须等到本轮
@@ -111,12 +131,17 @@ pub async fn stream_with_tool_loop(
                 llm.complete_stream_with_tools(&messages, &definitions, Some("auto"))
                     .await?
             };
+            let progress_end_guard = ToolCallProgressEndGuard::new(app.clone());
             let mut tool_calls = Vec::new();
             let mut round_text = String::new();
 
             while let Some(chunk) = response_stream.next().await {
                 match chunk? {
                     LlmChunk::ToolCalls(calls) => tool_calls.extend(calls),
+                    LlmChunk::ToolCallProgress { name, chars } => {
+                        // 参数生成进度直接转为前端事件，不进正文流
+                        emit_tool_call_progress_event(&app, &name, chars);
+                    }
                     LlmChunk::Content(text) => {
                         round_text.push_str(&text);
                         // 实时透传，保持下游流式体验
@@ -128,6 +153,9 @@ pub async fn stream_with_tool_loop(
                     }
                 }
             }
+
+            // 正常路径立即结束进度；流错误或消费方提前取消时由 Drop 自动兜底。
+            drop(progress_end_guard);
 
             if tool_calls.is_empty() {
                 // 本轮没有工具调用，工具闭环结束
@@ -314,6 +342,24 @@ pub(crate) fn emit_tool_activity_event(
     });
     if let Err(error) = app.emit(event_names::AI_TOOL_ACTIVITY, &payload) {
         tracing::warn!("emit ai:tool_activity 失败: {error}");
+    }
+}
+
+/// 工具调用参数的流式生成进度：驱动前端顶栏「正在写入… N 字」实时提示。
+pub(crate) fn emit_tool_call_progress_event(app: &AppHandle, tool: &str, chars: usize) {
+    let payload = serde_json::json!({
+        "tool": tool,
+        "chars": chars,
+    });
+    if let Err(error) = app.emit(event_names::AI_TOOL_CALL_PROGRESS, &payload) {
+        tracing::warn!("emit ai:tool_call_progress 失败: {error}");
+    }
+}
+
+/// 一轮 LLM 流结束：通知前端清除参数生成进度提示（无载荷）。
+pub(crate) fn emit_tool_call_progress_end_event(app: &AppHandle) {
+    if let Err(error) = app.emit(event_names::AI_TOOL_CALL_PROGRESS_END, ()) {
+        tracing::warn!("emit ai:tool_call_progress_end 失败: {error}");
     }
 }
 

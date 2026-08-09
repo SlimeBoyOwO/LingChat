@@ -179,6 +179,9 @@ impl StreamProducer {
                 LlmChunk::ToolCalls(_) => {
                     return Err(anyhow::anyhow!("工具调用片段不应进入正式回复流"));
                 }
+                LlmChunk::ToolCallProgress { .. } => {
+                    // 参数生成进度：不进正文，由 tool_loop 直接转发为前端事件
+                }
                 LlmChunk::StreamEnd { .. } => {
                     // 终止信号：主对话流忽略（截断检测仅供剧本导师等工具闭环消费）。
                 }
