@@ -73,18 +73,16 @@
       h-[calc(100%-5.5rem)]
       min-h-0">
       <Transition :name="transitionName">
-        <KeepAlive :max="8">
-          <component
-            :is="currentTabComponent"
-            :key="tabKey"
-            class="absolute
-              inset-0"
-            @new-script="openModal('script')"
-            @new-chapter="openModal('chapter')"
-            @new-character="openModal('character')"
-            @import-character="openModal('importChar')"
-          />
-        </KeepAlive>
+        <component
+          :is="currentTabComponent"
+          :key="tabKey"
+          class="absolute
+            inset-0"
+          @new-script="openModal('script')"
+          @new-chapter="openModal('chapter')"
+          @new-character="openModal('character')"
+          @import-character="openModal('importChar')"
+        />
       </Transition>
     </div>
 

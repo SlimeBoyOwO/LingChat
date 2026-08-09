@@ -495,6 +495,8 @@ impl MessageGenerator {
             let user_message = user_message.clone();
             let thinking_buf = thinking_buf.clone();
             consumer_tasks.push(tokio::spawn(async move {
+                // 句子处理仅需最小依赖集；llm / 工具等不在消费端使用。
+                let sdeps = SentenceDeps::from(&deps);
                 loop {
                     let item = {
                         let mut rx = sentence_rx.lock().await;
@@ -504,13 +506,13 @@ impl MessageGenerator {
                         break;
                     };
                     let resp = match consume_sentence(
-                        &deps,
-                        cid,
+                        &sdeps,
                         sentence,
                         &user_message,
                         is_final,
                         user_message_seq,
                         &thinking_buf,
+                        &ReplyOverrides::default(),
                     )
                     .await
                     {
@@ -605,15 +607,53 @@ impl MessageGenerator {
 // consumer 句子处理
 // ============================================================
 
+/// `consume_sentence` 的最小依赖集。仅含句子处理真正用到的字段，
+/// 不要求 LLM / 工具，剧本 `dialogue` 事件可在未配置模型时直接构建。
+#[derive(Clone)]
+pub struct SentenceDeps {
+    pub processor: Arc<MessageProcessor>,
+    pub translator: Arc<Translator>,
+    pub game_status: Arc<Mutex<GameStatus>>,
+    pub db: DatabaseConnection,
+    /// 试玩代号（写入守卫用）。非试玩时传入当前值即可，守卫恒等。
+    pub generation: u64,
+    pub is_preview: bool,
+}
+
+impl From<&GeneratorDeps> for SentenceDeps {
+    fn from(d: &GeneratorDeps) -> Self {
+        Self {
+            processor: d.processor.clone(),
+            translator: d.translator.clone(),
+            game_status: d.game_status.clone(),
+            db: d.db.clone(),
+            generation: d.generation,
+            is_preview: d.is_preview,
+        }
+    }
+}
+
+/// 剧本固定台词（dialogue 事件）对 `consume_sentence` 构建响应的覆盖字段。
+/// 生成路径用默认值，不覆盖任何字段。
+#[derive(Default, Clone)]
+pub struct ReplyOverrides {
+    pub display_name: Option<String>,
+    pub display_subtitle: Option<String>,
+    pub duration: Option<f64>,
+}
+
 /// 处理单个句子：解析 → 富化 → 构建响应 → 保存行。
-async fn consume_sentence(
-    deps: &GeneratorDeps,
-    _consumer_id: usize,
+///
+/// 供 MessageGenerator 的 consumer 池与剧本 `dialogue` 事件复用。
+/// `overrides` 让固定台词覆盖响应字段（显示名/副标题/时长），生成路径传默认值。
+pub(crate) async fn consume_sentence(
+    deps: &SentenceDeps,
     sentence: String,
     user_message: &str,
     is_final: bool,
     user_message_seq: Option<u32>,
     thinking_buf: &Mutex<String>,
+    overrides: &ReplyOverrides,
 ) -> Result<Option<ReplyResponse>> {
     if sentence.is_empty() {
         return Ok(None);
@@ -630,7 +670,8 @@ async fn consume_sentence(
 
     // 3. 构建前端响应
     let mut response =
-        build_reply_response(deps, &segments, user_message, is_final, user_message_seq).await?;
+        build_reply_response(deps, &segments, user_message, is_final, user_message_seq, overrides)
+            .await?;
 
     // 3.5 最终句：快照本轮思考链，挂载到响应与台词行（供历史对话展示思考过程）
     if is_final {
@@ -647,7 +688,7 @@ async fn consume_sentence(
 }
 
 /// Step A: 解析并分类情绪片段。
-fn parse_segments(deps: &GeneratorDeps, sentence: &str) -> Vec<EmotionSegment> {
+fn parse_segments(deps: &SentenceDeps, sentence: &str) -> Vec<EmotionSegment> {
     let segments = deps
         .processor
         .parse_and_classify_emotional_segments(sentence);
@@ -691,7 +732,7 @@ fn needs_japanese_translation(segments: &[EmotionSegment]) -> bool {
 
 
 /// Step B: 翻译与语音生成。
-async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) -> Result<()> {
+async fn enrich_segments(deps: &SentenceDeps, segments: &mut [EmotionSegment]) -> Result<()> {
     let (voice_maker, tts_type, voice_lang) = {
         let gs = deps.game_status.lock().await;
         gs.current_role_id
@@ -737,11 +778,12 @@ async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) 
 
 /// Step C: 构建 ReplyResponse（含角色信息填充）。
 async fn build_reply_response(
-    deps: &GeneratorDeps,
+    deps: &SentenceDeps,
     segments: &[EmotionSegment],
     user_message: &str,
     is_final: bool,
     user_message_seq: Option<u32>,
+    overrides: &ReplyOverrides,
 ) -> Result<ReplyResponse> {
     // 从 GameStatus 取当前角色信息
     let role_info: Option<(Option<String>, Option<i32>)> = {
@@ -799,11 +841,20 @@ async fn build_reply_response(
     // 试玩标记：前端据此丢弃中止后迟到的流式回复（非试玩为 None，不序列化）
     response.preview_gen = if deps.is_preview { Some(deps.generation) } else { None };
 
+    // 固定台词覆盖：dialogue 事件传入显示名/副标题/时长，生成路径全为默认值
+    if let Some(dn) = &overrides.display_name {
+        response.display_name = Some(dn.clone());
+    }
+    if let Some(ds) = &overrides.display_subtitle {
+        response.display_subtitle = Some(ds.clone());
+    }
+    response.duration = overrides.duration.unwrap_or(-1.0);
+
     Ok(response)
 }
 
 /// Step D: 将 assistant LINE 写入 GameStatus。
-async fn add_assistant_line(deps: &GeneratorDeps, response: &ReplyResponse) -> Result<()> {
+async fn add_assistant_line(deps: &SentenceDeps, response: &ReplyResponse) -> Result<()> {
     // 试玩代号守卫：试玩任务被中止后，游离的 consumer 任务仍会带着旧代号继续
     // 生成句子。此时 GameStatus 可能已还原回自由对话，写入会把试玩台词漏进
     // 自由对话的上下文与历史。捕获代号与当前值不一致即丢弃整条（含记忆同步）。
@@ -827,7 +878,8 @@ async fn add_assistant_line(deps: &GeneratorDeps, response: &ReplyResponse) -> R
         action_content: response.motion_text.clone(),
         audio_file: response.audio_file.clone(),
         thinking: response.thinking.clone(),
-        display_name: response.character.clone(),
+        // 优先使用覆盖的显示名（dialogue 事件），生成路径 display_name 为 None 时回退角色名
+        display_name: response.display_name.clone().or(response.character.clone()),
         attribute: LineAttributeExt(LineAttribute::Assistant),
         ..Default::default()
     };
