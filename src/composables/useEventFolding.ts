@@ -163,12 +163,17 @@ export function eventSummary(
       parts.push(s('text'))
       return parts.join(' · ')
     }
-    case 'ai_dialogue':
-      return s('prompt') || '（无提示 · 纯靠上下文生成）'
-    case 'free_dialogue':
-      return [s('hint'), s('end_line') ? `结束语「${s('end_line')}」` : '']
-        .filter(Boolean)
-        .join(' · ')
+    case 'ai_dialogue': {
+      // 与 dialogue 一致：摘要前缀显示对应角色名（MAIN 绑定名 / NPC 名字）
+      const parts = [roleLabel('character')]
+      parts.push(s('prompt') || '（无提示 · 纯靠上下文生成）')
+      return parts.join(' · ')
+    }
+    case 'free_dialogue': {
+      const parts = [roleLabel('character'), s('hint')]
+      if (s('end_line')) parts.push(`结束语「${s('end_line')}」`)
+      return parts.filter(Boolean).join(' · ')
+    }
     case 'choices': {
       const opts = Array.isArray(e.options) ? (e.options as Record<string, unknown>[]) : []
       return opts.map((o) => (typeof o.text === 'string' ? o.text : '（兜底）')).join('　/　')
