@@ -1,6 +1,7 @@
 pub mod archive;
 pub mod cpu_perf;
 pub mod file_logger;
+pub mod gpu_perf;
 pub mod llm_request_logger;
 pub mod log_bridge;
 pub mod path;

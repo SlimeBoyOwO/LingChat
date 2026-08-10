@@ -122,6 +122,27 @@ export function getSuggestedParticleScale(tier: PerfTier): number {
   return scaleMap[tier] ?? 0.5
 }
 
+/** 获取性能等级的排序权重（Internet < Low < Medium < High），用于取最高 / 最低 */
+export function getTierRank(tier: PerfTier): number {
+  const rankMap: Record<PerfTier, number> = {
+    Internet: 0,
+    Low: 1,
+    Medium: 2,
+    High: 3,
+  }
+  return rankMap[tier] ?? 1
+}
+
+/**
+ * 综合性能等级（取 CPU 与 GPU 中较低者）。
+ *
+ * gpuTier 为 null 时（GPU 分级不适用，如 Android / ARM macOS）仅按 CPU 分级。
+ */
+export function getCombinedTier(cpuTier: PerfTier, gpuTier: PerfTier | null): PerfTier {
+  if (!gpuTier) return cpuTier
+  return getTierRank(gpuTier) < getTierRank(cpuTier) ? gpuTier : cpuTier
+}
+
 /** 推荐的特效开关（根据性能等级自动关闭高开销特效） */
 export interface RecommendedEffects {
   mainMenuStarsEnabled: boolean
@@ -131,21 +152,36 @@ export interface RecommendedEffects {
 }
 
 /**
- * 根据 CPU 性能等级自动调整画质设定（供 main.ts 初始化调用）
+ * 根据 CPU + GPU 综合性能等级自动调整画质设定（供 main.ts 初始化调用）
  *
  * - 仅首次启动时生效（缓存已在 localStorage）
  * - 不覆盖用户手动调整的值（仅当当前值仍为默认值时覆盖）
  * - 低性能设备自动关闭高开销特效
  */
-export async function autoConfigureCpuPerformance(): Promise<void> {
+export async function autoConfigurePerformance(): Promise<void> {
   // 仅首次启动时执行自动配置（由 localStorage 标记控制）
   if (localStorage.getItem(CONFIGURED_KEY)) {
     return
   }
 
   try {
-    const info = await getCpuInfo()
-    const fps = getSuggestedMaxFps(info.tier)
+    const cpu = await getCpuInfo()
+
+    // GPU 分级（Android / ARM macOS 等平台不可用时仅按 CPU 配置）
+    let gpuTier: PerfTier | null = null
+    try {
+      const { getGpuInfo } = await import('./gpu-perf')
+      const gpu = await getGpuInfo()
+      if (gpu.is_applicable) {
+        gpuTier = gpu.tier
+      }
+    } catch {
+      // GPU 检测失败不阻塞自动配置
+    }
+
+    // 综合等级取 CPU / GPU 中较低者
+    const tier = getCombinedTier(cpu.tier, gpuTier)
+    const fps = getSuggestedMaxFps(tier)
 
     // 延迟导入避免循环依赖，等 pinia store 就绪
     const { useSettingsStore, DEFAULT_SETTINGS } = await import(
@@ -161,8 +197,8 @@ export async function autoConfigureCpuPerformance(): Promise<void> {
     }
 
     // 低性能设备自动关闭高开销特效
-    if (info.tier === 'Internet' || info.tier === 'Low') {
-      const effects = getRecommendedEffects(info.tier)
+    if (tier === 'Internet' || tier === 'Low') {
+      const effects = getRecommendedEffects(tier)
       if (
         settingsStore.display.mainMenuStarsEnabled ===
         DEFAULT_SETTINGS.display.mainMenuStarsEnabled
@@ -193,10 +229,10 @@ export async function autoConfigureCpuPerformance(): Promise<void> {
     localStorage.setItem(CONFIGURED_KEY, '1')
 
     console.log(
-      `[CPU-Perf] ${info.brand} → ${info.tier}, 建议帧率 ${fps}FPS, 粒子比例 ${getSuggestedParticleScale(info.tier)}`,
+      `[Perf] CPU ${cpu.brand}(${cpu.tier}) + GPU(${gpuTier ?? 'N/A'}) → ${tier}, 建议帧率 ${fps}FPS, 粒子比例 ${getSuggestedParticleScale(tier)}`,
     )
   } catch (e) {
-    console.warn('[CPU-Perf] 自动配置失效，使用默认画质', e)
+    console.warn('[Perf] 自动配置失效，使用默认画质', e)
   }
 }
 

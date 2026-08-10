@@ -13,7 +13,7 @@ import "./assets/styles/variables.css";
 
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import router from "./router";
-import { autoConfigureCpuPerformance } from "./api/services/cpu-perf";
+import { autoConfigurePerformance } from "./api/services/cpu-perf";
 
 // 仅主窗口启动时清除加载过渡标记，避免设置窗口等其他窗口误清除
 if (getCurrentWindow().label === 'main') {
@@ -29,5 +29,5 @@ app.use(pinia);
 app.use(router);
 app.mount("#app");
 
-// 延迟执行 CPU 画质自适应，确保 pinia store 已就绪
-setTimeout(autoConfigureCpuPerformance, 1000);
+// 延迟执行 CPU+GPU 画质自适应，确保 pinia store 已就绪
+setTimeout(autoConfigurePerformance, 1000);
