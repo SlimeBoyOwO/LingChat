@@ -38,16 +38,19 @@ export const useEditorGetters = (s: StateRefs) => {
   })
 
   /**
-   * character 字段的候选项：MAIN + 剧本内 NPC。
+   * character 字段的候选项：NPC +（羁绊剧本的）MAIN。
    * value 是引擎认的 roleKey（script_role_key，缺省回落目录名），
-   * label 显示角色名字（aiName）——避免作者看到目录键却认不出是谁；
-   * 重复 roleKey 去重（两个目录写相同 script_role_key 时只保留一个）。
+   * label 显示角色名字（name/aiName）——避免作者看到目录键却认不出是谁；
+   * 重复 roleKey 去重。
+   * 独立剧本（未绑定羁绊人物）不提供 MAIN 选项：引擎对 character 留空
+   * 回落 MAIN（当前主角），需要主角台词时留空即可（校验器不拦）。
    */
   const characterOptions = computed<{ value: string; label: string }[]>(() => {
-    const seen = new Set<string>(['MAIN'])
-    const out: { value: string; label: string }[] = [
-      { value: 'MAIN', label: mainRoleDisplayName.value },
-    ]
+    const out: { value: string; label: string }[] = []
+    if (s.detail.value?.package.boundCharacterFolder) {
+      out.push({ value: 'MAIN', label: mainRoleDisplayName.value })
+    }
+    const seen = new Set<string>()
     for (const c of s.detail.value?.characters ?? []) {
       if (seen.has(c.roleKey)) continue
       seen.add(c.roleKey)

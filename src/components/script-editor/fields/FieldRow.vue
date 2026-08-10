@@ -100,11 +100,17 @@
       :value="asText"
       @change="onSelect"
     >
+      <!-- 非必填字段：不设置。character 例外：独立剧本无 MAIN 选项时，
+           留空即引擎的 MAIN（当前主角），故也提供空选项并明确提示 -->
       <option
-        v-if="!field.required"
+        v-if="!field.required || field.kind === 'character'"
         value=""
       >
-        {{ t('scriptEditor.configTab.notSet') }}
+        {{
+          field.kind === 'character'
+            ? t('scriptEditor.fieldRow.characterEmpty')
+            : t('scriptEditor.configTab.notSet')
+        }}
       </option>
       <option
         v-for="opt in selectOptions"

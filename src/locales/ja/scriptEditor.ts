@@ -357,7 +357,8 @@ export default {
       'このシナリオにインポート —— シナリオと一緒に配布され、他のシナリオからは見えません',
     importGlobal:
       'グローバル素材としてインポート —— 全シナリオで共有されますが、書き出しには含まれません',
-    mainRole: 'MAIN（未バインド）',
+    mainRole: 'MAIN',
+    characterEmpty: '（空欄 = 現在の主人公）',
     clothesDefault: 'デフォルト（サブディレクトリに入らない）',
     image: '画像',
     audio: '音声',
