@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { i18n } from '@/locales'
 
 /** 性能等级枚举（与 Rust 端保持一致） */
 export type PerfTier = 'Internet' | 'Low' | 'Medium' | 'High'
@@ -78,13 +79,13 @@ export async function redetectCpu(): Promise<CpuInfo> {
   return info
 }
 
-/** 获取性能等级的中文描述 */
+/** 获取性能等级的界面显示文案 */
 export function getTierLabel(tier: PerfTier): string {
   const labels: Record<PerfTier, string> = {
-    Internet: '上网本',
-    Low: '低性能',
-    Medium: '中性能',
-    High: '高性能',
+    Internet: i18n.global.t('api.cpuPerf.tier.internet'),
+    Low: i18n.global.t('api.cpuPerf.tier.low'),
+    Medium: i18n.global.t('api.cpuPerf.tier.medium'),
+    High: i18n.global.t('api.cpuPerf.tier.high'),
   }
   return labels[tier] ?? tier
 }

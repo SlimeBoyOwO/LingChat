@@ -8,10 +8,16 @@
     <Save v-else-if="currentPage === 'save'" />
 
     <!-- 背景层（最底层） -->
-    <div class="video-background" ref="bgRef"></div>
+    <div
+      class="video-background"
+      ref="bgRef"
+    ></div>
 
     <!-- 流星层（SVG动画） -->
-    <MeteorAnimation :meteors-enabled="meteorsEnabled" :meteor-fps="meteorFps" />
+    <MeteorAnimation
+      :meteors-enabled="meteorsEnabled"
+      :meteor-fps="meteorFps"
+    />
 
     <!-- 星星粒子层（位于背景和人物之间） -->
     <StarAnimation
@@ -21,7 +27,12 @@
     />
 
     <!-- 人物图层（位于星星之上，菜单之下） -->
-    <img class="character-image" ref="charRef" src="../../assets/images/alona.png" alt="人物" />
+    <img
+      class="character-image"
+      ref="charRef"
+      src="../../assets/images/alona.png"
+      :alt="$t('views.mainMenu.characterAlt')" 
+    />
 
     <!-- 菜单容器，绑定鼠标移动和移出事件实现视差 -->
     <StartPage
@@ -37,6 +48,8 @@
           @start-game="showGameModeMenu"
           @open-settings="handleOpenSettings"
           @open-credits="handleOpenCredits"
+          @open-workshop="showWorkshopMenu"
+          @open-script-editor="() => router.push('/script-editor')"
         />
       </Transition>
 
@@ -60,14 +73,23 @@
         />
       </Transition>
 
+      <!-- 创意工坊菜单 -->
+      <Transition name="slide-right">
+        <WorkshopOptions
+          v-if="menuState === 'workshop'"
+          @back="backToMainMenu"
+          :scripts="scripts"
+        />
+      </Transition>
+
       <StartLogo @click="goToGithub" />
     </StartPage>
   </div>
 </template>
 
 <script setup lang="ts">
-import { StartPage, StartLogo } from './menu/base'
-import { MainMenuOptions, GameModeOptions, ScriptModeOptions } from './menu/page'
+import { StartLogo, StartPage } from './menu/base'
+import { WorkshopOptions, GameModeOptions, MainMenuOptions, ScriptModeOptions } from './menu/page'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { MainChat } from './'
@@ -82,14 +104,16 @@ import type { WebInitData } from '@/api/services/game-info'
 import MeteorAnimation from '../game/standard/animations/MeteorAnimation.vue'
 import StarAnimation from '../game/standard/animations/StarAnimation.vue'
 import { useParallaxAnimation } from '../game/standard/animations/ParallaxAnimation'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const router = useRouter()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 
 // 页面与菜单状态
 const currentPage = ref('mainMenu')
-const menuState = ref<'main' | 'gameMode' | 'scriptMode'>('main')
+const menuState = ref<'main' | 'gameMode' | 'scriptMode' | 'workshop'>('main')
 const scripts = ref<ScriptSummary[]>([])
 const loadingScripts = ref(false)
 const starsEnabled = computed(() => settingsStore.mainMenuStarsEnabled)
@@ -118,18 +142,24 @@ function backToMainMenu() {
 function showScriptModeMenu() {
   menuState.value = 'scriptMode'
 }
+function showWorkshopMenu() {
+  menuState.value = 'workshop'
+}
 function goToGithub() {
   window.open('https://github.com/SlimeBoyOwO/LingChat', '_blank')
 }
 
 const handleContinueGame = async () => {
   try {
-    const { saves } = await invoke<{ saves: Array<{ id: number }>; total: number }>(
-      'list_saves',
-      { page: 1, pageSize: 1 },
-    )
+    const { saves } = await invoke<{ saves: Array<{ id: number }>; total: number }>('list_saves', {
+      page: 1,
+      pageSize: 1,
+    })
     if (!saves || saves.length === 0) {
-      uiStore.showWarning({ title: '提示', message: '没有存档记录，请先创建存档' })
+      uiStore.showWarning({
+        title: t('views.mainMenu.noSaveTitle'),
+        message: t('views.mainMenu.noSaveMessage'),
+      })
       return
     }
     const gameInfo = await invoke<WebInitData>('load_save', { saveId: saves[0].id })
@@ -138,7 +168,10 @@ const handleContinueGame = async () => {
     router.push('/chat')
   } catch (error) {
     console.error('继续游戏失败:', error)
-    uiStore.showError({ title: '继续失败', message: '未创建存档或系统问题' })
+    uiStore.showError({
+      title: t('views.mainMenu.continueFailTitle'),
+      message: t('views.mainMenu.continueFailMessage'),
+    })
   }
 }
 
@@ -177,7 +210,7 @@ async function fetchScripts() {
   } catch (e) {
     uiStore.showError({
       errorCode: 'script_list_failed',
-      message: '获取剧本列表失败：请确认后端已启动',
+      message: t('views.mainMenu.scriptListFailed'),
     })
     scripts.value = []
   } finally {
@@ -196,7 +229,7 @@ onMounted(() => {
       localStorage.setItem(PERFORMANCE_TIP_KEY, 'true')
       uiStore.showInfo({
         title: 'Tip',
-        message: '如果你觉得在这个页面很卡，可以前往 通用设置 中关闭星星粒子或流星动画。',
+        message: t('views.mainMenu.perfTip'),
         duration: 5000,
       })
     }

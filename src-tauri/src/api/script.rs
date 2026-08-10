@@ -108,6 +108,7 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
             config: &config,
             llm: llm.as_ref(),
             channels,
+            is_preview: false,
         };
 
         match ScriptManager::execute_script(&script, &mut ctx, &is_running).await {
@@ -138,12 +139,31 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
 pub async fn script_submit_input(app: AppHandle, input: String) -> Result<(), String> {
     let state = app.state::<AppState>();
     let mut channels = state.script_channels.lock().await;
+
     if let Some(tx) = channels.input_tx.take() {
         let _ = tx.send(input);
-        Ok(())
-    } else {
-        Err("当前没有等待输入的脚本事件".to_string())
+        return Ok(());
     }
+
+    // No `input` event pending. If a `choices` event with `allow_free: true` is
+    // waiting, the user typing into the dialogue box *is* their choice — route it
+    // to the choice channel. Previously this returned Err, the frontend only
+    // logged it, and the script blocked on `choice_tx` forever.
+    if channels.choice_allow_free {
+        if let Some(tx) = channels.choice_tx.take() {
+            channels.choice_allow_free = false;
+            let _ = tx.send(input);
+            return Ok(());
+        }
+    }
+
+    if channels.choice_tx.is_some() {
+        // A choice is pending but does not accept free input. Reject without
+        // consuming the sender so the option buttons stay usable.
+        return Err("当前的选项不接受自由输入，请点击一个选项".to_string());
+    }
+
+    Err("当前没有等待输入的脚本事件".to_string())
 }
 
 #[tauri::command]
@@ -151,6 +171,7 @@ pub async fn script_submit_choice(app: AppHandle, choice: String) -> Result<(), 
     let state = app.state::<AppState>();
     let mut channels = state.script_channels.lock().await;
     if let Some(tx) = channels.choice_tx.take() {
+        channels.choice_allow_free = false;
         let _ = tx.send(choice);
         Ok(())
     } else {

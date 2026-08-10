@@ -1,0 +1,71 @@
+# LingChat 章节模板
+# 用法：复制到 <剧本目录>/Chapters/<章节名>.yaml
+# 章节路径规则：intro_chapter / chapter_end.next_chapter 均为相对 Chapters/ 的路径
+
+name: 章节名称
+events:
+  # ---- 开场：隐藏自由对话角色，切换背景 ----
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+    duration: 1.5
+
+  - type: background
+    imagePath: '背景图.png'       # 放 Assets/Backgrounds/
+    transition: 0.5
+
+  # ---- 旁白 ----
+  - type: narration
+    text: |
+      这里是旁白内容，可以写多行。
+
+  # ---- 玩家固定台词 ----
+  - type: player
+    text: 这里是玩家固定台词
+
+  # ---- 显示角色 ----
+  - type: modify_character
+    action: show_character
+    character: MAIN
+    emotion: 正常
+    duration: 1.5
+
+  # ---- AI 固定台词 ----
+  - type: dialogue
+    character: MAIN
+    text: |
+      【正常】这里是 AI 固定台词。
+
+  # ---- AI 生成台词（AI 对话）----
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 这里是给 AI 的剧情提示，告诉它此刻该说什么/做什么
+
+  # ---- 玩家输入 ----
+  - type: input
+    hint: '提示玩家输入什么内容'
+
+  # ---- 玩家选项 ----
+  - type: choices
+    options:
+      - text: '选项一'
+        actions:
+          - type: add_line
+            content: 选项一
+      - text: 选项二
+        actions:
+          - type: add_line
+            content: 选项二
+    allow_free: true
+
+  # ---- 多轮自由对话 ----
+  - type: free_dialogue
+    character: MAIN
+    hint: 在这里进行自由对话，输入"结束"结束对话
+    end_line: 结束
+    end_prompt: 自由对话结束时的 AI 提示
+
+  # ---- 章节结束 ----
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'end'           # 'end' = 剧本结束；或写下一个章节名如 '02'

@@ -10,6 +10,15 @@ use tauri::AppHandle;
 
 use crate::ai_service::llm::provider_config::{resolve_vision_provider, LlmProviderConfig};
 
+/// 构造预配置的 reqwest Client（TLS 见 crate::utils::tls::build_tls_config）。
+fn build_vlm_client() -> Client {
+    let tls_config = crate::utils::tls::build_tls_config().expect("TLS 配置失败");
+    Client::builder()
+        .tls_backend_preconfigured(tls_config)
+        .build()
+        .expect("reqwest client 构建失败")
+}
+
 /// 屏幕分析器的配置（从环境/Store 加载）。
 #[derive(Clone, Debug)]
 pub struct ScreenAnalyzerConfig {
@@ -100,7 +109,7 @@ impl ScreenAnalyzer {
     pub fn new(config: ScreenAnalyzerConfig) -> Self {
         Self {
             config,
-            client: Client::new(),
+            client: build_vlm_client(),
             last_report: AnalysisReport::default(),
         }
     }

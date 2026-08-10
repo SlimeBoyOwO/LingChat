@@ -2,7 +2,7 @@
   <div class="relative">
     <button
       class="export-trigger"
-      :title="'导出角色'"
+      :title="$t('ui.roleExport.title')"
       @click.stop="toggle"
     >
       <Upload :size="24" />
@@ -10,16 +10,16 @@
 
     <Transition name="menu-pop">
       <div v-if="open" class="export-menu" @click.stop>
-        <div class="menu-header">{{ roleName ? `${roleName} - 导出` : '导出角色' }}</div>
+        <div class="menu-header">{{ roleName ? $t('ui.roleExport.headerWithName', { name: roleName }) : $t('ui.roleExport.title') }}</div>
         <button class="menu-item" :disabled="busy" @click="choose('zip')">
           <span class="dot dot-zip"></span>
           <span class="label">ZIP</span>
-          <span class="hint">{{ busy && format === 'zip' ? '处理中...' : '通用压缩' }}</span>
+          <span class="hint">{{ busy && format === 'zip' ? $t('ui.roleExport.processing') : $t('ui.roleExport.zipHint') }}</span>
         </button>
         <button class="menu-item" :disabled="busy" @click="choose('7z')">
           <span class="dot dot-7z"></span>
           <span class="label">7Z</span>
-          <span class="hint">{{ busy && format === '7z' ? '处理中...' : '高压缩率' }}</span>
+          <span class="hint">{{ busy && format === '7z' ? $t('ui.roleExport.processing') : $t('ui.roleExport.p7zHint') }}</span>
         </button>
       </div>
     </Transition>

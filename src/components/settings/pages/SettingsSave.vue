@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem title="创建新存档（会记录当前对话）">
+    <MenuItem :title="$t('settings.save.create.title')">
       <template #header>
         <PencilLine :size="20" />
       </template>
@@ -8,7 +8,7 @@
         <Input
           type="text"
           v-model="newSaveTitle"
-          placeholder="输入存档名称"
+          :placeholder="$t('settings.save.create.placeholder')"
           @keyup.enter="handleCreateSave"
         />
         <button
@@ -16,21 +16,21 @@
           @click="handleCreateSave"
           :disabled="actionLoading !== null"
         >
-          {{ actionLoading === -1 ? '创建中...' : '创建' }}
+          {{ actionLoading === -1 ? $t('settings.save.create.creating') : $t('settings.save.create.button') }}
         </button>
       </div>
     </MenuItem>
-    <MenuItem title="存档列表">
+    <MenuItem :title="$t('settings.save.list.title')">
       <template #header>
         <LayoutList :size="20" />
       </template>
       <div class="flex flex-col">
         <div class="h-[calc(100vh-22rem)] min-h-[300px] overflow-y-auto pr-1 pb-4">
-          <div v-if="loading" class="text-center text-[#888] p-8">加载中...</div>
+          <div v-if="loading" class="text-center text-[#888] p-8">{{ $t('settings.shared.loading') }}</div>
 
-          <div v-else-if="error" class="text-center text-[#ff6b6b] p-8">加载失败: {{ error }}</div>
+          <div v-else-if="error" class="text-center text-[#ff6b6b] p-8">{{ $t('settings.save.list.loadFailed', { error }) }}</div>
 
-          <div v-else-if="saves.length === 0" class="text-center text-[#888] p-8">暂无存档记录</div>
+          <div v-else-if="saves.length === 0" class="text-center text-[#888] p-8">{{ $t('settings.save.list.empty') }}</div>
 
           <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-5 p-[5px]">
             <div
@@ -54,7 +54,7 @@
                     class="w-full h-full bg-white/[0.02] flex flex-col items-center justify-center"
                   >
                     <SaveIcon :size="24" class="text-white/20 mb-1" />
-                    <span class="text-[10px] text-white/30 font-semibold">暂无截图</span>
+                    <span class="text-[10px] text-white/30 font-semibold">{{ $t('settings.save.list.noScreenshot') }}</span>
                   </div>
                 </div>
 
@@ -83,9 +83,9 @@
                       v-else
                       @dblclick="startEditTitle(save)"
                       class="text-sm font-bold max-w-full select-none cursor-pointer text-white hover:text-sky-300 transition-colors duration-200 truncate"
-                      title="双击以修改存档标题"
+                      :title="$t('settings.save.list.editTitleTip')"
                     >
-                      {{ save.title || '未命名存档' }}
+                      {{ save.title || $t('settings.save.list.untitled') }}
                     </div>
                   </div>
 
@@ -97,7 +97,7 @@
                     class="text-xs text-white/65 leading-[1.4] h-[33px] italic line-clamp-2"
                     :title="save.last_message"
                   >
-                    {{ save.last_message || '暂无对话台词记录' }}
+                    {{ save.last_message || $t('settings.save.list.noMessage') }}
                   </div>
                 </div>
               </div>
@@ -109,21 +109,21 @@
                   class="px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer transition-all duration-200 text-white whitespace-nowrap bg-blue-500/25 border border-blue-500/40 hover:bg-blue-500/45 hover:shadow-[0_0_10px_rgba(59,130,246,0.2)] disabled:opacity-50 disabled:cursor-not-allowed flex-1"
                   :disabled="actionLoading !== null"
                 >
-                  {{ actionLoading === save.id ? '读取中...' : '读取存档' }}
+                  {{ actionLoading === save.id ? $t('settings.save.action.reading') : $t('settings.save.action.load') }}
                 </button>
                 <button
                   @click="handleSaveGame(save.id)"
                   class="px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer transition-all duration-200 text-white whitespace-nowrap bg-emerald-500/25 border border-emerald-500/40 hover:bg-emerald-500/45 hover:shadow-[0_0_10px_rgba(16,185,129,0.2)] disabled:opacity-50 disabled:cursor-not-allowed flex-1"
                   :disabled="actionLoading !== null"
                 >
-                  {{ actionLoading === save.id ? '保存中...' : '覆盖存档' }}
+                  {{ actionLoading === save.id ? $t('settings.save.action.saving') : $t('settings.save.action.overwrite') }}
                 </button>
                 <button
                   @click="handleDeleteSave(save.id)"
                   class="px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer transition-all duration-200 text-white whitespace-nowrap bg-red-500/25 border border-red-500/40 hover:bg-red-500/45 hover:shadow-[0_0_10px_rgba(239,68,68,0.2)] disabled:opacity-50 disabled:cursor-not-allowed flex-1"
                   :disabled="actionLoading !== null"
                 >
-                  {{ actionLoading === save.id ? '删除中...' : '删除存档' }}
+                  {{ actionLoading === save.id ? $t('settings.save.action.deleting') : $t('settings.save.action.delete') }}
                 </button>
               </div>
             </div>
@@ -136,6 +136,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { MenuPage, MenuItem } from '../../ui'
 import { Input } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
@@ -160,6 +161,7 @@ interface CreateSaveResponse {
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const dialogStore = useDialogStore()
+const { t } = useI18n()
 
 const saves = ref<SaveInfo[]>([])
 const newSaveTitle = ref('')
@@ -184,7 +186,7 @@ const startEditTitle = (save: SaveInfo) => {
 const handleSaveTitle = async (saveId: number) => {
   const newTitle = editTitleText.value.trim()
   if (!newTitle) {
-    uiStore.showWarning({ title: '提示', message: '存档名称不能为空' })
+    uiStore.showWarning({ title: t('settings.save.msg.warnTitle'), message: t('settings.save.msg.nameRequired') })
     editingSaveId.value = null
     return
   }
@@ -200,12 +202,12 @@ const handleSaveTitle = async (saveId: number) => {
     if (save) {
       save.title = newTitle
     }
-    uiStore.showSuccess({ title: '修改成功', message: '存档名称已修改' })
+    uiStore.showSuccess({ title: t('settings.save.msg.renameSuccessTitle'), message: t('settings.save.msg.renameSuccessMsg') })
   } catch (e: any) {
     console.error('修改存档名称失败:', e)
     uiStore.showError({
-      title: '修改失败',
-      message: typeof e === 'string' ? e : e.message || '未知错误',
+      title: t('settings.save.msg.renameFailTitle'),
+      message: typeof e === 'string' ? e : e.message || t('settings.save.msg.unknownError'),
     })
   } finally {
     editingSaveId.value = null
@@ -229,7 +231,7 @@ const fetchSaves = async () => {
     saves.value = result.saves
   } catch (e: any) {
     console.error('获取存档列表失败:', e)
-    error.value = typeof e === 'string' ? e : e.message || '未知错误'
+    error.value = typeof e === 'string' ? e : e.message || t('settings.save.msg.unknownError')
   } finally {
     loading.value = false
   }
@@ -246,7 +248,7 @@ const ensureScreenshot = async (): Promise<string | null> => {
 
 const handleCreateSave = async () => {
   if (!newSaveTitle.value.trim()) {
-    uiStore.showWarning({ title: '提示', message: '请输入存档名称' })
+    uiStore.showWarning({ title: t('settings.save.msg.warnTitle'), message: t('settings.save.msg.nameEmpty') })
     return
   }
   actionLoading.value = -1
@@ -256,13 +258,13 @@ const handleCreateSave = async () => {
       screenshotPath: await ensureScreenshot(),
     })
     newSaveTitle.value = ''
-    uiStore.showSuccess({ title: '创建成功', message: '存档已创建' })
+    uiStore.showSuccess({ title: t('settings.save.msg.createSuccessTitle'), message: t('settings.save.msg.createSuccessMsg') })
     await fetchSaves()
   } catch (e: any) {
     console.error('创建存档失败:', e)
     uiStore.showError({
-      title: '创建失败',
-      message: typeof e === 'string' ? e : e.message || '未知错误',
+      title: t('settings.save.msg.createFailTitle'),
+      message: typeof e === 'string' ? e : e.message || t('settings.save.msg.unknownError'),
     })
   } finally {
     actionLoading.value = null
@@ -270,18 +272,18 @@ const handleCreateSave = async () => {
 }
 
 const handleLoadSave = async (saveId: number) => {
-  const confirmed = await dialogStore.confirm('加载存档会导致丢失当前对话进度，确定要加载吗？')
+  const confirmed = await dialogStore.confirm(t('settings.save.msg.loadConfirm'))
   if (!confirmed) return
   actionLoading.value = saveId
   try {
     const gameInfo = await invoke<WebInitData>('load_save', { saveId })
     applyWebInitData(gameStore.$state, gameInfo)
-    uiStore.showSuccess({ title: '加载成功', message: '存档已加载' })
+    uiStore.showSuccess({ title: t('settings.save.msg.loadSuccessTitle'), message: t('settings.save.msg.loadSuccessMsg') })
   } catch (e: any) {
     console.error('读取存档失败:', e)
     uiStore.showError({
-      title: '加载失败',
-      message: typeof e === 'string' ? e : e.message || '未知错误',
+      title: t('settings.save.msg.loadFailTitle'),
+      message: typeof e === 'string' ? e : e.message || t('settings.save.msg.unknownError'),
     })
   } finally {
     actionLoading.value = null
@@ -289,7 +291,7 @@ const handleLoadSave = async (saveId: number) => {
 }
 
 const handleSaveGame = async (saveId: number) => {
-  const confirmed = await dialogStore.confirm('覆盖存档会导致丢失之前的存档进度，确定要覆盖吗？')
+  const confirmed = await dialogStore.confirm(t('settings.save.msg.overwriteConfirm'))
   if (!confirmed) return
   actionLoading.value = saveId
   try {
@@ -297,13 +299,13 @@ const handleSaveGame = async (saveId: number) => {
       saveId,
       screenshotPath: await ensureScreenshot(),
     })
-    uiStore.showSuccess({ title: '保存成功', message: '存档已覆盖' })
+    uiStore.showSuccess({ title: t('settings.save.msg.overwriteSuccessTitle'), message: t('settings.save.msg.overwriteSuccessMsg') })
     await fetchSaves()
   } catch (e: any) {
     console.error('保存游戏失败:', e)
     uiStore.showError({
-      title: '保存失败',
-      message: typeof e === 'string' ? e : e.message || '未知错误',
+      title: t('settings.save.msg.overwriteFailTitle'),
+      message: typeof e === 'string' ? e : e.message || t('settings.save.msg.unknownError'),
     })
   } finally {
     actionLoading.value = null
@@ -311,17 +313,17 @@ const handleSaveGame = async (saveId: number) => {
 }
 
 const handleDeleteSave = async (saveId: number) => {
-  if (!(await dialogStore.confirm('确定要删除这个存档吗？此操作不可撤销。'))) return
+  if (!(await dialogStore.confirm(t('settings.save.msg.deleteConfirm')))) return
   actionLoading.value = saveId
   try {
     await invoke('delete_save', { saveId })
-    uiStore.showSuccess({ title: '删除成功', message: '存档已删除' })
+    uiStore.showSuccess({ title: t('settings.save.msg.deleteSuccessTitle'), message: t('settings.save.msg.deleteSuccessMsg') })
     await fetchSaves()
   } catch (e: any) {
     console.error('删除存档失败:', e)
     uiStore.showError({
-      title: '删除失败',
-      message: typeof e === 'string' ? e : e.message || '未知错误',
+      title: t('settings.save.msg.deleteFailTitle'),
+      message: typeof e === 'string' ? e : e.message || t('settings.save.msg.unknownError'),
     })
   } finally {
     actionLoading.value = null

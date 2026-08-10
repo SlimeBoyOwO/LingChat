@@ -19,6 +19,7 @@ use crate::ai_service::llm::provider_config::{
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
 use crate::ai_service::service::{AIService, SharedAIService};
+use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::translator::Translator;
 use crate::ai_service::types::CharacterSettings;
 use crate::config::{self, AppConfig};
@@ -29,8 +30,12 @@ use crate::ChatComponents;
 
 pub async fn initialize(
     app: &App,
+    local_tts: Option<LocalTtsRuntime>,
 ) -> Result<(DatabaseConnection, SharedAIService, ChatComponents)> {
-    static_copy::init_data_dir(&app.handle());
+    // init_data_dir 已经在 Tauri 设置闭包中提前调用过了
+    // （参见 lib.rs），因此在此函数运行之前，缓存的数据目录就已经对
+    // LocalTtsPaths::resolve 可用了。如果在这里再次调用它，会导致
+    // OnceLock 发生 panic。
     static_copy::seed_data_dir(&app.handle())?;
     let data_dir = static_copy::get_data_dir().clone();
 
@@ -74,6 +79,7 @@ pub async fn initialize(
         data_dir.clone(),
         llm.clone(),
         app_config.tts.clone(),
+        local_tts,
         app_config.use_persistent_memory,
         app_config.memory_update_interval,
         app_config.memory_recent_window,

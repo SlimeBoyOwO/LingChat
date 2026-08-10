@@ -10,6 +10,7 @@
 
 import { onUnmounted, ref } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
+import { i18n } from '@/locales'
 
 const ZOOM_STORAGE_KEY = 'lingchat-ui-zoom'
 const ZOOM_STEP = 0.05
@@ -94,7 +95,7 @@ export function useZoom(): void {
       lastToastTime = now
       const uiStore = useUIStore()
       uiStore.showInfo({
-        title: '缩放',
+        title: i18n.global.t('stores.zoom.toastTitle'),
         message: toPercent(currentZoom.value),
         duration: 800,
       })

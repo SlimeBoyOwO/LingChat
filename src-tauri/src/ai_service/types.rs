@@ -129,6 +129,9 @@ pub struct LineBase {
     pub tts_content: Option<String>,
     pub action_content: Option<String>,
     pub audio_file: Option<String>,
+    /// 该轮生成的思考链（仅挂在每轮最后一条 assistant 行上）。
+    pub thinking: Option<String>,
+    pub tool_call: Option<String>,
     pub attribute: LineAttributeExt,
     pub sender_role_id: Option<i32>,
     pub display_name: Option<String>,
@@ -162,6 +165,7 @@ impl LineAttributeExt {
             LineAttribute::User => "user",
             LineAttribute::System => "system",
             LineAttribute::Assistant => "assistant",
+            LineAttribute::Tool => "tool",
         }
     }
 }
@@ -280,6 +284,14 @@ pub struct VoiceModel {
     pub gsv_sovits_model_name: Option<String>,
     pub aivis_model_uuid: Option<String>,
     pub opentts_voice: Option<String>,
+    pub fish_s2_voice: Option<String>,
+    pub sbv2_local_voice_id: Option<String>,
+    pub sbv2_local_speaker_id: Option<i64>,
+    pub sbv2_local_style_id: Option<i32>,
+    pub sbv2_local_length_scale: Option<f32>,
+    pub sbv2_local_sdp_ratio: Option<f32>,
+    pub sbv2_local_cloud_fallback_model: Option<String>,
+    pub sbv2_local_cloud_fallback_speaker_id: Option<String>,
 }
 
 /// 角色设定模型，对应 Python `CharacterSettings`。

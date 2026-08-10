@@ -95,53 +95,16 @@ pub async fn download_file(
         peer.port,
         urlencoding(remote_path)
     );
-    let client = &*HTTP_CLIENT;
-
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| format!("请求文件失败 [{}]: {e}", remote_path))?;
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "对端返回错误 [{}]: {}",
-            remote_path,
-            response.status()
-        ));
-    }
-
-    // 确保目标目录存在
-    if let Some(parent) = dest_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("创建目录失败 [{}]: {}", remote_path, e))?;
-    }
-
-    // 写入 .tmp 文件
-    let tmp_path = dest_path.with_extension(format!(
-        "{}.tmp",
-        dest_path
-            .extension()
-            .map(|e| format!(".{}", e.to_string_lossy()))
-            .unwrap_or_default()
-    ));
-
-    let mut dest = tokio::fs::File::create(&tmp_path)
-        .await
-        .map_err(|e| format!("创建文件失败 [{}]: {}", remote_path, e))?;
-
-    let mut stream = response.bytes_stream();
-    use futures_util::StreamExt;
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("接收数据失败 [{}]: {}", remote_path, e))?;
-        tokio::io::AsyncWriteExt::write_all(&mut dest, &chunk)
-            .await
-            .map_err(|e| format!("写入文件失败 [{}]: {}", remote_path, e))?;
-    }
-
-    // 原子重命名
-    std::fs::rename(&tmp_path, dest_path)
-        .map_err(|e| format!("重命名文件失败 [{}]: {}", remote_path, e))?;
+    crate::utils::download::download_to_file(
+        &HTTP_CLIENT,
+        &url,
+        dest_path,
+        None,
+        None,
+        0,
+    )
+    .await
+    .map_err(|e| format!("[{}]: {e}", remote_path))?;
 
     info!("已下载: {} -> {:?}", remote_path, dest_path);
     Ok(())

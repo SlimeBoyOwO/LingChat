@@ -87,6 +87,7 @@ import BAParticles from './BAParticles.vue'
 import ImageCrossFade from '@/components/ui/ImageAcrossFade.vue'
 import StarField from '../game/standard/particles/StarField.vue'
 import type { GameRole } from '@/stores/modules/game/state'
+import { useGameStore } from '@/stores/modules/game'
 import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import './avatar-animation.css'
@@ -98,6 +99,7 @@ const emit = defineEmits(['avatar-click'])
 const bubbleAudio = ref<HTMLAudioElement | null>(null)
 const imageFadeRef = ref<InstanceType<typeof ImageCrossFade> | null>(null)
 const uiStore = useUIStore()
+const gameStore = useGameStore()
 
 const activeAnimationClass = ref('normal')
 const isBubbleVisible = ref(false)
@@ -147,11 +149,6 @@ async function resolveAvatar() {
   const clothesName = r.clothesName === '默认' || !r.clothesName ? 'default' : r.clothesName
   const emotion = r.emotion
   const mappedEmotion = EMOTION_CONFIG_EMO[emotion] || '正常'
-
-  if (emotion === 'AI思考') {
-    targetAvatarUrl.value = 'none'
-    return
-  }
 
   const currentId = ++resolveAvatarId
   try {
@@ -223,6 +220,44 @@ watch(
     }
   },
   { immediate: true },
+)
+
+// 思考中反馈：气泡 + 音效（由 currentStatus 驱动，与 emotion 解耦）
+watch(
+  () => gameStore.currentStatus,
+  (newStatus) => {
+    if (newStatus === 'thinking') {
+      const config = EMOTION_CONFIG['AI思考']
+      if (config && config.bubbleImage && config.bubbleImage !== 'none') {
+        currentBubbleImageUrl.value = config.bubbleImage
+        currentBubbleClass.value = config.bubbleClass
+
+        if (bubbleTimeoutId !== null) {
+          window.clearTimeout(bubbleTimeoutId)
+          bubbleTimeoutId = null
+        }
+        if (!isBubbleVisible.value) {
+          isBubbleVisible.value = true
+        }
+        bubbleTimeoutId = window.setTimeout(() => {
+          isBubbleVisible.value = false
+          bubbleTimeoutId = null
+        }, 2000)
+      }
+      if (config?.audio && config.audio !== 'none' && bubbleAudio.value) {
+        bubbleAudio.value.src = config.audio
+        bubbleAudio.value.load()
+        bubbleAudio.value.play().catch((e) => console.error('Play error:', e))
+      }
+    } else {
+      // 离开思考态：隐藏思考气泡、停掉定时器
+      isBubbleVisible.value = false
+      if (bubbleTimeoutId !== null) {
+        window.clearTimeout(bubbleTimeoutId)
+        bubbleTimeoutId = null
+      }
+    }
+  },
 )
 </script>
 

@@ -8,7 +8,7 @@ use futures_util::StreamExt;
 use genai::adapter::AdapterKind;
 use genai::chat::{
     ChatMessage, ChatOptions, ChatRequest, ChatResponse, ChatStreamEvent,
-    ToolCall as GenaiToolCall, ToolChoice,
+    StopReason, ToolCall as GenaiToolCall, ToolChoice, ToolResponse,
 };
 use genai::resolver::{AuthData, Endpoint};
 use genai::Client as GenaiClient;
@@ -32,6 +32,21 @@ pub struct GenaiProvider {
     _reasoning_effort: Option<String>,
 }
 
+/// 规范化 base_url：确保以 `/` 结尾。
+///
+/// genai 的 OpenAI 兼容 adapter 用 `Url::join("chat/completions")` 拼接路径
+/// （不是字符串拼接）。若 base_url 不以 `/` 结尾（如 `https://api.deepseek.com/v1`），
+/// `v1` 会被当作"文件"替换掉，拼出 `https://api.deepseek.com/chat/completions` → 404。
+///
+/// 修复：在传给 genai 前补上尾斜杠（`https://api.deepseek.com/v1/`）。
+fn normalize_base_url(raw: &str) -> String {
+    let trimmed = raw.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return raw.to_string();
+    }
+    format!("{trimmed}/")
+}
+
 impl GenaiProvider {
     pub fn new(cfg: &LlmConfig, http: Client) -> Result<Self> {
         let model = cfg.model.clone();
@@ -40,10 +55,11 @@ impl GenaiProvider {
         match cfg.provider.to_lowercase().as_str() {
             "deepseek" => {
                 let key = cfg.api_key.clone();
+                // 默认 base_url 以 `/` 结尾；用户配置经 normalize 补尾斜杠
                 let base = if cfg.base_url.is_empty() {
                     "https://api.deepseek.com/".to_string()
                 } else {
-                    cfg.base_url.clone()
+                    normalize_base_url(&cfg.base_url)
                 };
                 builder = builder
                     .with_adapter_kind(AdapterKind::DeepSeek)
@@ -59,7 +75,7 @@ impl GenaiProvider {
                     .with_adapter_kind(AdapterKind::OpenAI)
                     .with_auth_resolver_fn(move |_| Ok(Some(AuthData::from_single(key))));
                 if !cfg.base_url.is_empty() {
-                    let base = cfg.base_url.clone();
+                    let base = normalize_base_url(&cfg.base_url);
                     builder =
                         builder.with_service_target_resolver_fn(move |mut t: ServiceTarget| {
                             t.endpoint = Endpoint::from_owned(base);
@@ -71,7 +87,7 @@ impl GenaiProvider {
                 builder = builder
                     .with_adapter_kind(AdapterKind::OpenAI)
                     .with_service_target_resolver_fn(|mut t: ServiceTarget| {
-                        t.endpoint = Endpoint::from_owned("http://localhost:1234/v1".to_string());
+                        t.endpoint = Endpoint::from_owned("http://localhost:1234/v1/".to_string());
                         Ok(t)
                     });
             }
@@ -81,7 +97,7 @@ impl GenaiProvider {
                     .with_adapter_kind(AdapterKind::Gemini)
                     .with_auth_resolver_fn(move |_| Ok(Some(AuthData::from_single(key))));
                 if !cfg.base_url.is_empty() {
-                    let base = cfg.base_url.clone();
+                    let base = normalize_base_url(&cfg.base_url);
                     builder =
                         builder.with_service_target_resolver_fn(move |mut t: ServiceTarget| {
                             t.endpoint = Endpoint::from_owned(base);
@@ -109,7 +125,7 @@ impl GenaiProvider {
         &self,
         messages: &[LlmMessage],
         tools: Option<&[ToolDefinition]>,
-    ) -> ChatRequest {
+    ) -> Result<ChatRequest> {
         let mut system_text = String::new();
         let mut genai_messages: Vec<ChatMessage> = Vec::new();
 
@@ -122,7 +138,32 @@ impl GenaiProvider {
                     system_text.push_str(&msg.content);
                 }
                 "tool" => {
-                    genai_messages.push(ChatMessage::user(&msg.content));
+                    let call_id = msg
+                        .tool_call_id
+                        .as_deref()
+                        .filter(|id| !id.trim().is_empty())
+                        .ok_or_else(|| anyhow!("tool 消息缺少 tool_call_id"))?;
+                    genai_messages
+                        .push(ChatMessage::from(ToolResponse::new(call_id, &msg.content)));
+                }
+                "assistant" if msg.tool_calls.is_some() => {
+                    let calls = msg
+                        .tool_calls
+                        .as_ref()
+                        .expect("tool_calls 已通过条件判断")
+                        .iter()
+                        .map(|call| {
+                            let arguments = serde_json::from_str(&call.function.arguments)
+                                .map_err(|error| anyhow!("工具调用参数无法编码: {error}"))?;
+                            Ok(GenaiToolCall {
+                                call_id: call.id.clone(),
+                                fn_name: call.function.name.clone(),
+                                fn_arguments: arguments,
+                                thought_signatures: None,
+                            })
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    genai_messages.push(ChatMessage::from(calls));
                 }
                 _ => {
                     let role = match msg.role.as_str() {
@@ -142,7 +183,7 @@ impl GenaiProvider {
             let gtools: Vec<_> = tools.iter().map(Self::convert_tool_def).collect();
             req = req.with_tools(gtools);
         }
-        req
+        Ok(req)
     }
 
     fn build_chat_options(&self, tool_choice: Option<&str>) -> ChatOptions {
@@ -208,6 +249,180 @@ impl GenaiProvider {
             },
         }
     }
+
+    /// 归一化 genai 的停止原因为稳定字符串，供上层做截断检测等决策。
+    fn normalize_stop_reason(reason: &StopReason) -> String {
+        match reason {
+            StopReason::Completed(_) => "stop".to_string(),
+            StopReason::MaxTokens(_) => "max_tokens".to_string(),
+            StopReason::ToolCall(_) => "tool_calls".to_string(),
+            StopReason::ContentFilter(_) => "content_filter".to_string(),
+            StopReason::StopSequence(_) => "stop_sequence".to_string(),
+            StopReason::Other(s) => s.clone(),
+        }
+    }
+
+    async fn complete_stream_inner(
+        &self,
+        messages: &[LlmMessage],
+        tools: Option<&[ToolDefinition]>,
+        tool_choice: Option<&str>,
+    ) -> Result<ChunkStream> {
+        let chat_req = self.build_chat_request(messages, tools)?;
+        crate::utils::llm_request_logger::log_request_body(
+            &self.model,
+            &serde_json::to_value(&chat_req).unwrap_or_default(),
+        );
+        let opts = self.build_chat_options(tool_choice);
+        let stream_resp = self
+            .client
+            .exec_chat_stream(&self.model, chat_req, Some(&opts))
+            .await
+            .map_err(|e| anyhow!("genai 流式请求失败: {e}"))?;
+        let mut inner = stream_resp.stream;
+
+        let output = async_stream::try_stream! {
+            while let Some(event) = inner.next().await {
+                match event.map_err(|e| anyhow!("genai 流式事件错误: {e}"))? {
+                    ChatStreamEvent::Start | ChatStreamEvent::ThoughtSignatureChunk(_) | ChatStreamEvent::ToolCallChunk(_) => {}
+                    ChatStreamEvent::Chunk(chunk) if !chunk.content.is_empty() => {
+                        yield LlmChunk::Content(chunk.content);
+                    }
+                    ChatStreamEvent::ReasoningChunk(chunk) if !chunk.content.is_empty() => {
+                        yield LlmChunk::Reasoning(chunk.content);
+                    }
+                    ChatStreamEvent::Chunk(_) | ChatStreamEvent::ReasoningChunk(_) => {}
+                    ChatStreamEvent::End(end) => {
+                        if let Some(reasoning) = end.captured_reasoning_content.clone() {
+                            if !reasoning.is_empty() {
+                                yield LlmChunk::Reasoning(reasoning);
+                            }
+                        }
+                        // 先取走停止原因（captured_into_tool_calls 会移动 end）
+                        let reason = end
+                            .captured_stop_reason
+                            .as_ref()
+                            .map(Self::normalize_stop_reason);
+                        if let Some(calls) = end.captured_into_tool_calls() {
+                            let calls = calls.iter().map(Self::convert_tool_call).collect();
+                            yield LlmChunk::ToolCalls(calls);
+                        }
+                        // 终止信号：透传归一化停止原因（工具闭环用它检测截断）
+                        yield LlmChunk::StreamEnd { reason };
+                    }
+                }
+            }
+        };
+
+        Ok(Box::pin(output))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai_service::types::{FunctionCall, ToolCall};
+
+    fn provider() -> GenaiProvider {
+        GenaiProvider::new(
+            &LlmConfig {
+                provider: "openai".to_string(),
+                model: "test-model".to_string(),
+                api_key: "test".to_string(),
+                base_url: String::new(),
+                timeout_secs: 30,
+                temperature: None,
+                top_p: None,
+                enable_thinking: false,
+                reasoning_effort: None,
+            },
+            Client::new(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn serializes_plain_messages() {
+        let request = provider()
+            .build_chat_request(
+                &[
+                    LlmMessage::system("系统"),
+                    LlmMessage::user("你好"),
+                    LlmMessage::assistant("你好呀"),
+                ],
+                None,
+            )
+            .unwrap();
+        let value = serde_json::to_value(request).unwrap();
+        assert_eq!(value["system"], "系统");
+        assert_eq!(value["messages"][0]["role"], "User");
+        assert_eq!(value["messages"][1]["role"], "Assistant");
+    }
+
+    #[test]
+    fn serializes_tool_call_and_response_with_matching_id() {
+        let call = ToolCall {
+            id: "call-1".to_string(),
+            type_: "function".to_string(),
+            function: FunctionCall {
+                name: "get_current_time".to_string(),
+                arguments: "{}".to_string(),
+            },
+        };
+        let request = provider()
+            .build_chat_request(
+                &[
+                    LlmMessage::user("几点了"),
+                    LlmMessage::tool(vec![call]),
+                    LlmMessage::tool_result("call-1", r#"{"local_time":"now"}"#),
+                ],
+                None,
+            )
+            .unwrap();
+        let value = serde_json::to_value(request).unwrap();
+        assert_eq!(value["messages"][1]["role"], "Assistant");
+        assert_eq!(
+            value["messages"][1]["content"][0]["ToolCall"]["call_id"],
+            "call-1"
+        );
+        assert_eq!(
+            value["messages"][1]["content"][0]["ToolCall"]["fn_name"],
+            "get_current_time"
+        );
+        assert_eq!(value["messages"][2]["role"], "Tool");
+        assert_eq!(
+            value["messages"][2]["content"][0]["ToolResponse"]["call_id"],
+            "call-1"
+        );
+    }
+
+    #[test]
+    fn rejects_tool_result_without_call_id() {
+        let mut message = LlmMessage::tool_result("call-1", "{}");
+        message.tool_call_id = None;
+        let error = provider()
+            .build_chat_request(&[message], None)
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("缺少 tool_call_id"));
+    }
+
+    #[test]
+    fn normalizes_stop_reason_for_truncation_detection() {
+        use genai::chat::StopReason;
+        let cases = [
+            (StopReason::Completed("stop".into()), "stop"),
+            // OpenAI/DeepSeek 用 "length" 表示输出被 max_tokens 截断
+            (StopReason::MaxTokens("length".into()), "max_tokens"),
+            (StopReason::ToolCall("tool_calls".into()), "tool_calls"),
+            (StopReason::ContentFilter("content_filter".into()), "content_filter"),
+            (StopReason::StopSequence("stop_sequence".into()), "stop_sequence"),
+            (StopReason::Other("custom".into()), "custom"),
+        ];
+        for (reason, expected) in cases {
+            assert_eq!(GenaiProvider::normalize_stop_reason(&reason), expected);
+        }
+    }
 }
 
 // ─── LlmProvider 实现 ────────────────────────────────────────────
@@ -215,7 +430,7 @@ impl GenaiProvider {
 #[async_trait]
 impl LlmProvider for GenaiProvider {
     async fn complete(&self, _http: &Client, messages: &[LlmMessage]) -> Result<String> {
-        let chat_req = self.build_chat_request(messages, None);
+        let chat_req = self.build_chat_request(messages, None)?;
         crate::utils::llm_request_logger::log_request_body(
             &self.model,
             &serde_json::to_value(&chat_req).unwrap_or_default(),
@@ -238,49 +453,22 @@ impl LlmProvider for GenaiProvider {
         _http: &Client,
         messages: &[LlmMessage],
     ) -> Result<ChunkStream> {
-        let chat_req = self.build_chat_request(messages, None);
-        crate::utils::llm_request_logger::log_request_body(
-            &self.model,
-            &serde_json::to_value(&chat_req).unwrap_or_default(),
-        );
-        let opts = self.build_chat_options(None);
+        self.complete_stream_inner(messages, None, None).await
+    }
 
-        let stream_resp = self
-            .client
-            .exec_chat_stream(&self.model, chat_req, Some(&opts))
+    fn supports_streaming_tools(&self) -> bool {
+        true
+    }
+
+    async fn complete_stream_with_tools(
+        &self,
+        _http: &Client,
+        messages: &[LlmMessage],
+        tools: &[ToolDefinition],
+        tool_choice: Option<&str>,
+    ) -> Result<ChunkStream> {
+        self.complete_stream_inner(messages, Some(tools), tool_choice)
             .await
-            .map_err(|e| anyhow!("genai 流式请求失败: {e}"))?;
-
-        let mut inner = stream_resp.stream;
-
-        let output = async_stream::try_stream! {
-            while let Some(event) = inner.next().await {
-                match event.map_err(|e| anyhow!("genai 流式事件错误: {e}"))? {
-                    ChatStreamEvent::Start => {}
-                    ChatStreamEvent::Chunk(chunk) => {
-                        if !chunk.content.is_empty() {
-                            yield LlmChunk::Content(chunk.content);
-                        }
-                    }
-                    ChatStreamEvent::ReasoningChunk(chunk) => {
-                        if !chunk.content.is_empty() {
-                            yield LlmChunk::Reasoning(chunk.content);
-                        }
-                    }
-                    ChatStreamEvent::ThoughtSignatureChunk(_) => {}
-                    ChatStreamEvent::ToolCallChunk(_) => {}
-                    ChatStreamEvent::End(end) => {
-                        if let Some(reasoning) = end.captured_reasoning_content {
-                            if !reasoning.is_empty() {
-                                yield LlmChunk::Reasoning(reasoning);
-                            }
-                        }
-                    }
-                }
-            }
-        };
-
-        Ok(Box::pin(output))
     }
 
     async fn complete_with_tools(
@@ -290,7 +478,7 @@ impl LlmProvider for GenaiProvider {
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
     ) -> Result<LlmResponseWithTools> {
-        let chat_req = self.build_chat_request(messages, Some(tools));
+        let chat_req = self.build_chat_request(messages, Some(tools))?;
         crate::utils::llm_request_logger::log_request_body(
             &self.model,
             &serde_json::to_value(&chat_req).unwrap_or_default(),

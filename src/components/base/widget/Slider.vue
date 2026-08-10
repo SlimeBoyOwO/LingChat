@@ -65,6 +65,15 @@ const slots: Slots = useSlots()
 // 使用计算属性处理v-model绑定
 const value = ref(Number(props.modelValue))
 
+// 外部值变化时同步滑块位置（如「恢复默认」后回到初始值）；
+// 本组件只 emit change/input，不 emit update:modelValue，外部需用 :model-value + @change
+watch(
+  () => props.modelValue,
+  (v) => {
+    value.value = Number(v)
+  },
+)
+
 // 分别设置滑块两端内容
 const leftLabel = computed(() => {
   if (slots.default) {

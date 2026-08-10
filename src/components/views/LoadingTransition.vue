@@ -68,10 +68,10 @@
       >
         <div class="flex items-center space-x-2">
           <span class="inline-block w-2 h-2 rounded-full bg-teal-400 animate-pulse"></span>
-          <span>LingChat 终端机启动ing...</span>
+          <span>{{ $t('views.loadingTransition.starting') }}</span>
         </div>
         <div class="flex items-center space-x-4">
-          <span>⩌⩊⩌ 小可爱马上准备就绪~</span>
+          <span>{{ $t('views.loadingTransition.almostReady') }}</span>
         </div>
       </div>
 

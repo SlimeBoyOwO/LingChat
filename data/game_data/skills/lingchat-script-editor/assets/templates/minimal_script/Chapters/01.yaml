@@ -1,0 +1,73 @@
+name: 第一章 开场
+events:
+  # 隐藏自由对话角色，进入剧本世界
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+    duration: 1.5
+
+  # 开场旁白
+  - type: narration
+    text: |
+      今天真是美好的一天！
+      鸟儿在歌唱，花儿在绽放。
+      在这样的一天，像大家的孩子...
+      就应该好好玩玩，放松一下！
+
+  # 玩家固定台词
+  - type: player
+    text: |
+      哎呀，好不容易有零花钱啦！
+      今天我要买一堆泡面犒劳一下我自己才行！
+      亏谁不能亏自己的嘴啊！
+
+  # 主角登场
+  - type: modify_character
+    action: show_character
+    character: MAIN
+    emotion: 生气
+    duration: 1.5
+
+  # AI 固定台词
+  - type: dialogue
+    character: MAIN
+    text: |
+      【生气】喂！能不能不要什么时候都想着吃那种垃圾食品啊！
+      【尴尬】虽然我也没吃少就是了...
+
+  # 玩家选项
+  - type: choices
+    options:
+      - text: '要不要一起吃红烧牛肉面！'
+        actions:
+          - type: add_line
+            content: 要不要一起吃红烧牛肉面！
+      - text: 要不要一起吃香菇肉鸡面！
+        actions:
+          - type: add_line
+            content: 要不要一起吃香菇肉鸡面！
+    allow_free: true
+
+  # AI 生成台词
+  - type: ai_dialogue
+    character: MAIN
+    prompt: '虽然是个斯文的美少女，但是她泡面却喜欢重口的呢，希望%player%能挑个好的'
+
+  # 玩家自由输入
+  - type: input
+    hint: '于是你打算买什么口味的泡面呢？'
+
+  - type: ai_dialogue
+    character: MAIN
+
+  # 自由多轮对话
+  - type: free_dialogue
+    character: MAIN
+    hint: 你们开始煮起了泡面，输入"泡面做出来啦！"结束对话
+    end_line: 泡面做出来啦！
+    end_prompt: 新鲜的泡面咕噜噜炖出来了~
+
+  # 剧本结束
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'end'

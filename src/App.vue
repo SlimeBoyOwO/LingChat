@@ -7,10 +7,11 @@
 
   <!-- 全局通知组件（直接从 uiStore 读取状态） -->
   <!-- 与桌宠专用通知组件区分开 -->
-  <Notification v-if="route.path !== '/pet'" />
-  <AchievementToast />
-  <AdventureUnlockNotify />
-  <AppDialog />
+  <!-- 弹窗类组件仅主窗口挂载：日志等独立窗口复用 App.vue，不重复弹出 -->
+  <Notification v-if="isMainWindow && route.path !== '/pet'" />
+  <AchievementToast v-if="isMainWindow" />
+  <AdventureUnlockNotify v-if="isMainWindow" />
+  <AppDialog v-if="isMainWindow" />
 </template>
 
 <script setup lang="ts">
@@ -25,6 +26,7 @@ import AchievementToast from './components/ui/AchievementToast.vue'
 import AdventureUnlockNotify from './components/ui/AdventureUnlockNotify.vue'
 import AppDialog from './components/ui/AppDialog.vue'
 import { initUIStore } from './stores/modules/ui/ui'
+import { i18n } from './locales'
 import { useSettingsStore } from './stores/modules/settings'
 import { useLlmProvidersStore } from './stores/modules/llm-providers'
 import { useAchievementStore } from './stores/modules/ui/achievement'
@@ -33,7 +35,7 @@ import { useSedentaryReminder } from './composables/useSedentaryReminder'
 import { useUpdater } from './composables/useUpdater'
 import { useCanDeliver } from './composables/useCanDeliver'
 import { useZoom } from './composables/useZoom'
-import { listSystemFonts } from './api/services/font'
+import { listSystemFonts, getImportedFonts, registerAllImportedFonts } from './api/services/font'
 
 // ─── 激活主动对话投放条件上报（仅在此处挂载一次） ────────────
 useCanDeliver()
@@ -60,9 +62,18 @@ watch(() => settingsStore.text.fontFamily, applyFont, { immediate: true })
 // SettingsText 进入时直接命中 font.ts 的缓存。
 void listSystemFonts()
 
+// 启动时加载导入字体并注册 @font-face 规则，确保用户之前导入的字
+// 体在 settings store 恢复字体选择前已可用。
+void getImportedFonts().then((fonts) => {
+  registerAllImportedFonts(fonts)
+})
+
 // ─── 键盘处理 ────────────────────────────────────────────────
 
 const route = useRoute()
+
+// 仅主窗口挂载全局弹窗（通知/成就/对话确认），日志窗口等复用 App.vue 的窗口不弹
+const isMainWindow = getCurrentWindow().label === 'main'
 
 const handleKeyDown = async (event: KeyboardEvent) => {
   if (event.key === 'F11') {
@@ -102,6 +113,14 @@ onMounted(async () => {
   // 初始化 UI Store（加载角色 tips）
   initUIStore()
 
+  // 启动时自动弹出独立日志窗口（仅主窗口触发，开关在日志页设置）
+  if (
+    getCurrentWindow().label === 'main' &&
+    localStorage.getItem('lingchat_log_window_auto_open') === '1'
+  ) {
+    invoke('open_log_window').catch((e) => console.error('自动打开日志窗口失败:', e))
+  }
+
   // 预加载 LLM 提供商配置，避免主界面因 store 未加载而误判未选择模型
   const llmStore = useLlmProvidersStore()
   llmStore.load().catch((e) => console.error('加载 LLM 提供商失败:', e))
@@ -137,7 +156,10 @@ onMounted(async () => {
       userConfirmedExit = false
 
       if (route.path === '/chat') {
-        const confirmed = await dialogStore.confirm('确定要退出程序吗？', '退出确认')
+        const confirmed = await dialogStore.confirm(
+          i18n.global.t('common.exitMessage'),
+          i18n.global.t('common.exitTitle'),
+        )
         if (!confirmed) return // 用户取消，窗口保持打开
       }
 

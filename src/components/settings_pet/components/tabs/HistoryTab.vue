@@ -7,10 +7,10 @@
         <h2 class="text-xl font-black tracking-wide mb-1 transition-colors flex items-center gap-2"
           :class="isDarkMode ? 'text-slate-100' : 'text-slate-800'">
           <History class="w-5 h-5" />
-          历史对话
+          {{ $t('pet.history.title') }}
         </h2>
         <p class="text-xs font-medium transition-colors" :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'">
-          回顾与ta的过往交流记录吧~
+          {{ $t('pet.history.desc') }}
         </p>
       </div>
       <span class="text-4xl font-bold italic select-none font-mono transition-colors"
@@ -30,7 +30,7 @@
           ">
         <MessageSquare class="w-12 h-12 mb-4 opacity-50" />
         <p class="text-sm font-bold tracking-wider">
-          暂无历史记录，去和ta聊聊天叭(*^▽^*)
+          {{ $t('pet.history.empty') }}
         </p>
       </div>
 
@@ -60,13 +60,34 @@
                   {{ item.displayName }}
                 </span>
                 <button
-                  v-if="item.userMessageSeq !== undefined"
+                  v-if="typeof item.userMessageSeq === 'number' && !gameStore.runningScript"
                   class="shrink-0 cursor-pointer rounded border border-white/10 bg-transparent px-2 py-0.5 text-xs text-white/40 transition-all duration-200 hover:border-red-400/50 hover:bg-red-500/20 hover:text-white"
-                  title="回溯到此消息之前（将清除此消息及之后所有对话）"
+                  :title="$t('pet.history.backtrackTitle')"
                   @click.stop="handleBacktrack(item.userMessageSeq!)"
                 >
-                  回溯
+                  {{ $t('pet.history.backtrack') }}
                 </button>
+              </div>
+              <div v-if="item.thinking" class="mb-1">
+                <button
+                  class="inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition-all duration-200"
+                  :class="isDarkMode
+                    ? 'border-sky-400/25 bg-sky-400/10 text-sky-200/70 hover:border-sky-400/50 hover:text-sky-100'
+                    : 'border-sky-200 bg-sky-50 text-sky-500/80 hover:border-sky-300 hover:text-sky-600'"
+                  @click.stop="toggleThinking(i)"
+                >
+                  <span>{{ isThinkingExpanded(i) ? '▼' : '▶' }}</span>
+                  <span>{{ $t('pet.history.thinking', { count: item.thinking.length }) }}</span>
+                </button>
+                <div
+                  v-if="isThinkingExpanded(i)"
+                  class="mt-1.5 max-h-64 overflow-y-auto rounded-2xl border px-4 py-3 text-[15px] leading-normal whitespace-pre-wrap scrollbar-thin"
+                  :class="isDarkMode
+                    ? 'border-sky-400/15 bg-sky-400/5 text-white/55'
+                    : 'border-sky-100 bg-sky-50/70 text-slate-500'"
+                >
+                  {{ item.thinking }}
+                </div>
               </div>
               <template v-for="(entry, j) in item.lines" :key="j">
                 <div
@@ -95,7 +116,7 @@
                     :class="isDarkMode
                       ? 'bg-[rgba(121,217,255,0.15)] text-sky-400 hover:bg-[rgba(121,217,255,0.35)] hover:text-white'
                       : 'bg-sky-100 text-sky-600 hover:bg-sky-200 hover:text-sky-800'"
-                    title="播放语音"
+                    :title="$t('pet.history.playVoice')"
                     @click="playAudio(entry.audioFile)"
                   >
                     <Volume2 :size="16" />
@@ -117,14 +138,14 @@
             :disabled="currentPage === 1"
             @click="currentPage--"
           >
-            <ChevronLeft class="w-4 h-4" /> 上一页
+            <ChevronLeft class="w-4 h-4" /> {{ $t('pet.history.prevPage') }}
           </button>
 
           <span
             class="text-xs font-bold tracking-widest font-mono transition-colors"
             :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'"
           >
-            第 {{ currentPage }} 页 / 共 {{ totalPages }} 页
+            {{ $t('pet.history.pageInfo', { current: currentPage, total: totalPages }) }}
           </span>
 
           <button
@@ -136,7 +157,7 @@
             :disabled="currentPage >= totalPages"
             @click="currentPage++"
           >
-            下一页
+            {{ $t('pet.history.nextPage') }}
             <ChevronRight class="w-4 h-4" />
           </button>
         </div>
@@ -149,6 +170,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   History,
   MessageSquare,
@@ -163,6 +185,7 @@ import { useDialogStore } from '../../../../stores/modules/ui/dialog'
 import { useUIStore } from '../../../../stores/modules/ui/ui'
 import { getVoiceAudio } from '@/api/services/game-info'
 import { invoke } from '@tauri-apps/api/core'
+import { hkify } from '@/locales'
 import type { GameLineInit } from '@/api/services/game-info'
 
 // --- Props ---
@@ -180,6 +203,7 @@ interface LineEntry {
   segments: Segment[]
   audioFile?: string
   userMessageSeq?: number
+  thinking?: string
 }
 
 interface HistoryBlock {
@@ -187,12 +211,15 @@ interface HistoryBlock {
   isNarration: boolean
   lines: LineEntry[]
   userMessageSeq?: number
+  /** 该对话块（一轮生成）的思考链，取块内最后一条非空值 */
+  thinking?: string
 }
 
 // --- Store & Refs ---
 const gameStore = useGameStore()
 const dialogStore = useDialogStore()
 const uiStore = useUIStore()
+const { t, locale } = useI18n()
 const audioRef = ref<HTMLAudioElement>()
 const contentRef = ref<HTMLDivElement>()
 
@@ -204,6 +231,23 @@ const ACTION_RE = /（[^）]*）/
 const PAGE_SIZE = 100
 const currentPage = ref(1)
 const totalPages = computed(() => Math.ceil(dialogHistory.value.length / PAGE_SIZE))
+
+// 思考过程展开状态（key: 对话块索引），默认全部折叠
+const expandedThinking = ref<Set<number>>(new Set())
+
+function isThinkingExpanded(blockIdx: number): boolean {
+  return expandedThinking.value.has(blockIdx)
+}
+
+function toggleThinking(blockIdx: number) {
+  const next = new Set(expandedThinking.value)
+  if (next.has(blockIdx)) {
+    next.delete(blockIdx)
+  } else {
+    next.add(blockIdx)
+  }
+  expandedThinking.value = next
+}
 
 const currentPageHistory = computed(() => {
   const start = (currentPage.value - 1) * PAGE_SIZE
@@ -224,21 +268,29 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
       ? ''
       : msg.displayName ||
         (msg.type === 'message'
-          ? gameStore.userName || gameStore.mainRole?.roleName || '你'
-          : '谜之音')
+          ? gameStore.userName || gameStore.mainRole?.roleName || t('pet.history.you')
+          : t('pet.history.mysteryVoice'))
 
-    const segments = parseSegments(msg.content, msg.motionText, isNarration)
+    // 日文界面且存在日语译文时显示日语译文；繁体（香港）界面下转繁体显示
+    const segments =
+      locale.value === 'ja' && msg.ttsText
+        ? [{ type: 'dialogue' as const, text: msg.ttsText }]
+        : parseSegments(hkify(msg.content), hkify(msg.motionText), isNarration)
 
     const entry: LineEntry = {
       segments,
       audioFile: msg.audioFile,
       userMessageSeq: msg.userMessageSeq,
+      thinking: msg.thinking,
     }
 
     const last = blocks.length > 0 ? blocks[blocks.length - 1] : null
     if (last && last.displayName === name && last.isNarration === isNarration) {
-      if (entry.userMessageSeq !== undefined && last.userMessageSeq === undefined) {
+      if (typeof entry.userMessageSeq === 'number' && last.userMessageSeq === undefined) {
         last.userMessageSeq = entry.userMessageSeq
+      }
+      if (entry.thinking) {
+        last.thinking = entry.thinking
       }
       last.lines.push(entry)
     } else {
@@ -247,6 +299,7 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
         isNarration,
         lines: [entry],
         userMessageSeq: entry.userMessageSeq,
+        thinking: entry.thinking,
       })
     }
   }
@@ -295,8 +348,8 @@ function parseSegments(
 // --- 回溯（与 SettingsHistory 同步逻辑）---
 async function handleBacktrack(messageSeq: number) {
   const confirmed = await dialogStore.confirm(
-    '确定要回溯到此对话吗？此操作将清除该消息及之后的所有对话，且不可撤销。',
-    '回溯确认',
+    t('pet.history.backtrackConfirmMessage'),
+    t('pet.history.backtrackConfirmTitle'),
   )
   if (!confirmed) return
 
@@ -318,6 +371,8 @@ async function handleBacktrack(messageSeq: number) {
           audio_file: l.audio_file,
           perceived_role_ids: l.perceived_role_ids,
           user_message_seq: l.user_message_seq,
+          thinking: l.thinking ?? null,
+          tts_content: l.tts_content ?? null,
         }),
       ),
     )
@@ -325,7 +380,11 @@ async function handleBacktrack(messageSeq: number) {
     gameStore.setGameMessages(messages)
   } catch (error: any) {
     console.error('回溯对话失败:', error)
-    await dialogStore.alert('回溯失败：' + (typeof error === 'string' ? error : error.message))
+    await dialogStore.alert(
+      t('pet.history.backtrackFailed', {
+        error: typeof error === 'string' ? error : error.message,
+      }),
+    )
   }
 }
 

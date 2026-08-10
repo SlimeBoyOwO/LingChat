@@ -5,6 +5,8 @@
 import { setCurrentBackground } from '@/api/services/background'
 import { setSceneAwareness } from '@/api/services/scene'
 import { defineStore } from 'pinia'
+import type { ShortcutAction, ShortcutBinding } from '@/utils/shortcuts'
+import { DEFAULT_SHORTCUTS, sanitizeShortcuts } from '@/utils/shortcuts'
 
 // 默认设置值
 export const DEFAULT_SETTINGS = {
@@ -24,6 +26,7 @@ export const DEFAULT_SETTINGS = {
     achievementVolume: 80, // 成就音量
     ambientVolume: 70, // 环境音音量
     chatEffectSound: true, // 对话音效开关
+    outputDeviceId: '', // 输出音频设备（'' = 跟随系统默认）
   },
   // 显示设置
   display: {
@@ -36,6 +39,17 @@ export const DEFAULT_SETTINGS = {
     meteorFps: 30, // 流星动画帧率
     starsFps: 30, // 星星动画帧率
     sceneAwarenessEnabled: true, // 场景感知开关
+    locale: 'zh-CN', // 界面显示语言（i18n，'zh-CN' / 'ja'）
+    // 对话框外观（自定义）
+    dialogBackgroundImage: '', // 自定义背景图 base64/dataURL；空字符串=无图
+    dialogOpacity: 0.7, // 背景透明度（0-1）
+    dialogBlur: 8, // 背景模糊（px）
+    dialogBorderRadius: 16, // 圆角（px）
+    dialogGradientColor: '#000e27', // 渐变底色
+    dialogTextColor: '#ffffff', // 文字颜色
+    dialogScrollHistoryEnabled: true, // 滚轮向上查看历史记录
+    dialogSpacebarHideEnabled: true, // 空格键隐藏/显示对话框
+    dialogAutoHideOnThinkEnabled: true, // AI 思考时自动隐藏
   },
   // 角色设置
   character: {
@@ -45,6 +59,8 @@ export const DEFAULT_SETTINGS = {
   pet: {
     scale: 1, // 桌宠缩放比例
   },
+  // 剧本编辑器快捷键（默认不含 Command 键；可在编辑器快捷键面板自定义）
+  shortcuts: DEFAULT_SHORTCUTS,
 }
 
 // 设置状态类型
@@ -62,6 +78,7 @@ export interface AudioSettings {
   achievementVolume: number
   ambientVolume: number
   chatEffectSound: boolean
+  outputDeviceId: string
 }
 export interface DisplaySettings {
   currentBackground: string
@@ -72,7 +89,18 @@ export interface DisplaySettings {
   clickAnimationEnabled: boolean
   meteorFps: number
   starsFps: number
-  sceneAwarenessEnabled: boolean
+    sceneAwarenessEnabled: boolean
+    locale: string
+    // 对话框外观
+    dialogBackgroundImage: string
+    dialogOpacity: number
+    dialogBlur: number
+    dialogBorderRadius: number
+    dialogGradientColor: string
+    dialogTextColor: string
+    dialogScrollHistoryEnabled: boolean
+    dialogSpacebarHideEnabled: boolean
+    dialogAutoHideOnThinkEnabled: boolean
 }
 
 export interface CharacterSettings {
@@ -89,6 +117,7 @@ export interface SettingsState {
   display: DisplaySettings
   character: CharacterSettings
   pet: PetSettings
+  shortcuts: Record<ShortcutAction, ShortcutBinding>
 }
 
 export const useSettingsStore = defineStore('settings', {
@@ -98,6 +127,7 @@ export const useSettingsStore = defineStore('settings', {
     display: { ...DEFAULT_SETTINGS.display },
     character: { ...DEFAULT_SETTINGS.character },
     pet: { ...DEFAULT_SETTINGS.pet },
+    shortcuts: { ...DEFAULT_SETTINGS.shortcuts },
   }),
 
   getters: {
@@ -127,6 +157,18 @@ export const useSettingsStore = defineStore('settings', {
     meteorFps: (state) => state.display.meteorFps,
     starsFps: (state) => state.display.starsFps,
     sceneAwarenessEnabled: (state) => state.display.sceneAwarenessEnabled,
+    // 界面显示语言（i18n）
+    uiLocale: (state) => state.display.locale,
+    // 对话框外观
+    dialogBackgroundImage: (state) => state.display.dialogBackgroundImage,
+    dialogOpacity: (state) => state.display.dialogOpacity,
+    dialogBlur: (state) => state.display.dialogBlur,
+    dialogBorderRadius: (state) => state.display.dialogBorderRadius,
+    dialogGradientColor: (state) => state.display.dialogGradientColor,
+    dialogTextColor: (state) => state.display.dialogTextColor,
+    dialogScrollHistoryEnabled: (state) => state.display.dialogScrollHistoryEnabled,
+    dialogSpacebarHideEnabled: (state) => state.display.dialogSpacebarHideEnabled,
+    dialogAutoHideOnThinkEnabled: (state) => state.display.dialogAutoHideOnThinkEnabled,
     // 各音量
     characterVolume: (state) => state.audio.characterVolume,
     bubbleVolume: (state) => state.audio.bubbleVolume,
@@ -138,6 +180,12 @@ export const useSettingsStore = defineStore('settings', {
   },
 
   actions: {
+    // 校验快捷键数据：旧版本捕获逻辑可能写入非法绑定（如把 Ctrl+S 绑成单独的 S），
+    // 非法项回退默认。编辑器挂载时调用一次，幂等。
+    ensureValidShortcuts() {
+      this.shortcuts = sanitizeShortcuts(this.shortcuts)
+    },
+
     // 更新设置值（支持路径）
     update(path: string, value: unknown) {
       const keys = path.split('.')
@@ -172,6 +220,7 @@ export const useSettingsStore = defineStore('settings', {
         this.text = { ...DEFAULT_SETTINGS.text }
         this.audio = { ...DEFAULT_SETTINGS.audio }
         this.display = { ...DEFAULT_SETTINGS.display }
+        this.shortcuts = { ...DEFAULT_SETTINGS.shortcuts }
       } else {
         const keys = path.split('.')
         if (keys.length === 1) {
@@ -211,6 +260,7 @@ export const useSettingsStore = defineStore('settings', {
         if (data.display) this.display = { ...DEFAULT_SETTINGS.display, ...data.display }
         if (data.character) this.character = { ...DEFAULT_SETTINGS.character, ...data.character }
         if (data.pet) this.pet = { ...DEFAULT_SETTINGS.pet, ...data.pet }
+        if (data.shortcuts) this.shortcuts = { ...DEFAULT_SETTINGS.shortcuts, ...data.shortcuts }
         return true
       } catch (e) {
         console.error('导入设置失败:', e)
@@ -282,6 +332,53 @@ export const useSettingsStore = defineStore('settings', {
     setSceneAwarenessEnabled(enabled: boolean) {
       this.display.sceneAwarenessEnabled = enabled
       setSceneAwareness(enabled)
+    },
+
+    // 设置界面显示语言（i18n）
+    setUiLocale(locale: string) {
+      this.display.locale = locale
+    },
+
+    // ===== 对话框外观 =====
+    setDialogBackgroundImage(image: string) {
+      this.display.dialogBackgroundImage = image
+    },
+    setDialogOpacity(opacity: number) {
+      this.display.dialogOpacity = Math.min(1, Math.max(0, opacity))
+    },
+    setDialogBlur(blur: number) {
+      this.display.dialogBlur = Math.max(0, blur)
+    },
+    setDialogBorderRadius(radius: number) {
+      this.display.dialogBorderRadius = Math.max(0, radius)
+    },
+    setDialogGradientColor(color: string) {
+      this.display.dialogGradientColor = color
+    },
+    setDialogTextColor(color: string) {
+      this.display.dialogTextColor = color
+    },
+    setDialogScrollHistoryEnabled(enabled: boolean) {
+      this.display.dialogScrollHistoryEnabled = enabled
+    },
+    setDialogSpacebarHideEnabled(enabled: boolean) {
+      this.display.dialogSpacebarHideEnabled = enabled
+    },
+    setDialogAutoHideOnThinkEnabled(enabled: boolean) {
+      this.display.dialogAutoHideOnThinkEnabled = enabled
+    },
+    // 全部重置为默认
+    resetDialogAppearance() {
+      const d = DEFAULT_SETTINGS.display
+      this.display.dialogBackgroundImage = d.dialogBackgroundImage
+      this.display.dialogOpacity = d.dialogOpacity
+      this.display.dialogBlur = d.dialogBlur
+      this.display.dialogBorderRadius = d.dialogBorderRadius
+      this.display.dialogGradientColor = d.dialogGradientColor
+      this.display.dialogTextColor = d.dialogTextColor
+      this.display.dialogScrollHistoryEnabled = d.dialogScrollHistoryEnabled
+      this.display.dialogSpacebarHideEnabled = d.dialogSpacebarHideEnabled
+      this.display.dialogAutoHideOnThinkEnabled = d.dialogAutoHideOnThinkEnabled
     },
 
     // 设置角色文件夹

@@ -6,6 +6,13 @@ use serde::Serialize;
 use crate::ai_service::llm::ChunkStream;
 use crate::ai_service::types::{LlmMessage, ToolCall, ToolDefinition};
 
+/// 模型声明的推理深度档位（think_efforts）。
+#[derive(Debug, Clone, Serialize)]
+pub struct ThinkEffortsInfo {
+    pub valid_efforts: Vec<String>,
+    pub default_effort: Option<String>,
+}
+
 /// `complete_with_tools` 的返回值。
 #[derive(Debug, Clone, Serialize)]
 pub struct LlmModelInfo {
@@ -14,6 +21,8 @@ pub struct LlmModelInfo {
     pub context_length: Option<u64>,
     pub supports_reasoning: bool,
     pub supports_thinking_type: Option<String>,
+    /// 推理深度档位；None 表示该模型不可调档（思考常开或不支持思考）
+    pub think_efforts: Option<ThinkEffortsInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -39,6 +48,24 @@ pub trait LlmProvider: Send + Sync {
 
     /// 流式：返回逐字符（或逐 token）的 chunk 流，每个 chunk 区分内容与思考链。
     async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream>;
+
+    /// 是否支持原生流式 function calling。
+    fn supports_streaming_tools(&self) -> bool {
+        false
+    }
+
+    /// 流式 + function calling。
+    ///
+    /// 仅在 `supports_streaming_tools()` 为 `true` 时由调用方使用。
+    async fn complete_stream_with_tools(
+        &self,
+        http: &Client,
+        messages: &[LlmMessage],
+        _tools: &[ToolDefinition],
+        _tool_choice: Option<&str>,
+    ) -> Result<ChunkStream> {
+        self.complete_stream(http, messages).await
+    }
 
     /// 非流式 + function calling。
     ///

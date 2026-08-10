@@ -20,6 +20,14 @@ pub mod event_names {
     pub const TTS_CLEANUP: &str = "tts:cleanup";
     /// AI 侧错误（鉴权失败 / 网络错误等）。
     pub const AI_ERROR: &str = "ai:error";
+    /// 工具调用结果（成功/失败、工具名、参数摘要）。
+    pub const AI_TOOL_CALL: &str = "ai:tool_call";
+    /// 工具执行生命周期（started/finished），供顶栏显示实时调用状态。
+    pub const AI_TOOL_ACTIVITY: &str = "ai:tool_activity";
+    /// 工具调用参数的流式生成进度（工具名 + 已生成字符数），供顶栏实时显示。
+    pub const AI_TOOL_CALL_PROGRESS: &str = "ai:tool_call_progress";
+    /// 一轮 LLM 流结束、参数生成阶段收尾：前端据此清除「正在生成…」进度提示。
+    pub const AI_TOOL_CALL_PROGRESS_END: &str = "ai:tool_call_progress_end";
     /// 强制将前端状态重置为 `input`。
     pub const STATUS_RESET: &str = "status:reset";
 }
@@ -48,8 +56,16 @@ pub struct ReplyResponse {
     pub display_name: Option<String>,
     pub display_subtitle: Option<String>,
     /// 触发此回复的用户消息序号（1-indexed，由 sender_role_id == Some(0) 计数得出）。
-    /// `None` 表示主动对话等非用户触发的回复。
+    /// `None` 表示主动对话等非用户触发的回复。`None` 时不序列化该字段，
+    /// 避免前端把 `null` 当成有效序号回填进用户消息、导致回溯传 null 报错。
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub user_message_seq: Option<u32>,
+    /// 本轮生成的思考链全文（仅最后一帧 is_final=true 时携带）。
+    pub thinking: Option<String>,
+    /// 试玩会话代号（编辑器试玩才有值）。前端据此丢弃试玩中止后迟到的
+    /// 流式回复：代号与当前轮不一致即过期。自由对话/正式剧本为 `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview_gen: Option<u64>,
 }
 
 impl ReplyResponse {
@@ -70,6 +86,8 @@ impl ReplyResponse {
             display_name: None,
             display_subtitle: None,
             user_message_seq: None,
+            thinking: None,
+            preview_gen: None,
         }
     }
 }

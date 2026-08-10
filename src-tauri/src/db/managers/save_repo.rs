@@ -247,7 +247,7 @@ impl SaveRepo {
             .into_iter()
             .map(|db_line| {
                 let perceived = perception_map.get(&db_line.id).cloned().unwrap_or_default();
-                GameLine {
+                Ok(GameLine {
                     base: crate::ai_service::types::LineBase {
                         id: Some(db_line.id),
                         content: db_line.content,
@@ -255,15 +255,17 @@ impl SaveRepo {
                         predicted_emotion: db_line.predicted_emotion,
                         tts_content: db_line.tts_content,
                         action_content: db_line.action_content,
+                        thinking: db_line.thinking,
                         audio_file: db_line.audio_file,
+                        tool_call: db_line.tool_call,
                         attribute: LineAttributeExt(db_line.attribute),
                         sender_role_id: db_line.sender_role_id,
                         display_name: db_line.display_name,
                     },
                     perceived_role_ids: perceived,
-                }
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(game_lines)
     }
@@ -297,6 +299,9 @@ impl SaveRepo {
                     if db_line.content != input_line.base.content
                         || db_line.attribute != input_line.base.attribute.0
                         || db_line.sender_role_id != input_line.base.sender_role_id
+                        || db_line.thinking != input_line.base.thinking
+                        || db_line.action_content != input_line.base.action_content
+                        || db_line.tool_call != input_line.base.tool_call
                     {
                         let mut active: line::ActiveModel = db_line.clone().into();
                         active.content = Set(input_line.base.content.clone());
@@ -307,17 +312,21 @@ impl SaveRepo {
                         active.tts_content = Set(input_line.base.tts_content.clone());
                         active.action_content = Set(input_line.base.action_content.clone());
                         active.audio_file = Set(input_line.base.audio_file.clone());
+                        active.thinking = Set(input_line.base.thinking.clone());
                         active.display_name = Set(input_line.base.display_name.clone());
+                        active.tool_call = Set(input_line.base.tool_call.clone());
                         active.update(db).await.map_err(|e| anyhow!("{e}"))?;
                     }
                     continue;
                 }
             }
 
-            // Try weak match by content + attribute + sender
+            // Try weak match by content + attribute + sender + action_content + tool_call
             if db_line.content == input_line.base.content
                 && db_line.attribute == input_line.base.attribute.0
                 && db_line.sender_role_id == input_line.base.sender_role_id
+                && db_line.action_content == input_line.base.action_content
+                && db_line.tool_call == input_line.base.tool_call
             {
                 // Same logical line — no update needed for existing DB row
                 continue;
@@ -367,6 +376,8 @@ impl SaveRepo {
                     tts_content: Set(input_line.base.tts_content.clone()),
                     action_content: Set(input_line.base.action_content.clone()),
                     audio_file: Set(input_line.base.audio_file.clone()),
+                    thinking: Set(input_line.base.thinking.clone()),
+                    tool_call: Set(input_line.base.tool_call.clone()),
                     save_id: Set(save_id),
                     parent_line_id: Set(parent_id),
                     ..Default::default()
@@ -525,3 +536,4 @@ impl SaveRepo {
         Ok(())
     }
 }
+

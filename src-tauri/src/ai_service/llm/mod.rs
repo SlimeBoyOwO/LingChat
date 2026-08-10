@@ -3,13 +3,13 @@
 //! 对标 Python 版 `ling_chat/core/llm_providers/` 的工厂+ABC 模式。
 //! `LlmClient` 是薄包装，具体协议由 `LlmProvider` trait 实现处理。
 
-mod factory;
+pub(crate) mod factory;
 mod provider;
 pub mod provider_config;
 mod providers;
 
 pub use factory::create_llm_client;
-pub use provider::{LlmModelInfo, LlmProvider};
+pub use provider::{LlmModelInfo, LlmProvider, LlmResponseWithTools};
 
 use std::pin::Pin;
 use std::sync::Arc;
@@ -20,7 +20,6 @@ use futures_util::{Stream, StreamExt};
 use reqwest::Client;
 use tokio::sync::RwLock;
 
-use crate::ai_service::llm::provider::LlmResponseWithTools;
 use crate::ai_service::types::{LlmMessage, ToolDefinition};
 
 // ============================================================
@@ -56,7 +55,7 @@ pub struct LlmConfig {
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
     pub enable_thinking: bool,
-    /// 推理深度（如 "low" / "high" / "max"），目前仅 Kimi Code 的 K3 模型使用。
+    /// 推理深度（如 "low" / "high" / "max"），由支持 reasoning 的模型使用（如 Kimi Code K3 系列）。
     pub reasoning_effort: Option<String>,
 }
 
@@ -73,6 +72,14 @@ pub enum LlmChunk {
     Content(String),
     /// 思考链内容（仅用于实时统计，不加入正式回复）。
     Reasoning(String),
+    /// 一轮流式请求结束后得到的完整工具调用，仅供工具闭环内部消费。
+    ToolCalls(Vec<crate::ai_service::types::ToolCall>),
+    /// 工具调用参数的流式生成进度（工具名 + 已生成字符数）。
+    /// 仅用于前端实时状态提示（如「正在写入：写入文件（N 字）」），不进正文/记忆。
+    ToolCallProgress { name: String, chars: usize },
+    /// 流终止信号：归一化停止原因（"stop" / "max_tokens" / "tool_calls" / …）。
+    /// 由 provider 在流末尾发射，消费方按需忽略（剧本导师用它检测截断）。
+    StreamEnd { reason: Option<String> },
 }
 
 pub type ChunkStream = Pin<Box<dyn Stream<Item = Result<LlmChunk>> + Send>>;
@@ -111,10 +118,41 @@ impl LlmClient {
 
     /// 流式：返回 `AsyncStream<Result<LlmChunk>>`。每个元素是一段内容或思考链片段。
     pub async fn complete_stream(&self, messages: &[LlmMessage]) -> Result<ChunkStream> {
+        self.complete_stream_inner(messages, None).await
+    }
+
+    /// 是否支持原生流式 function calling。
+    pub fn supports_streaming_tools(&self) -> bool {
+        self.provider.supports_streaming_tools()
+    }
+
+    /// 流式 + function calling。
+    pub async fn complete_stream_with_tools(
+        &self,
+        messages: &[LlmMessage],
+        tools: &[ToolDefinition],
+        tool_choice: Option<&str>,
+    ) -> Result<ChunkStream> {
+        self.complete_stream_inner(messages, Some((tools, tool_choice)))
+            .await
+    }
+
+    async fn complete_stream_inner(
+        &self,
+        messages: &[LlmMessage],
+        tools: Option<(&[ToolDefinition], Option<&str>)>,
+    ) -> Result<ChunkStream> {
         if !self.cfg.is_usable() {
             return Err(anyhow!("LLM 未配置 API key 或 model"));
         }
-        let mut inner = self.provider.complete_stream(&self.http, messages).await?;
+        let mut inner = match tools {
+            Some((definitions, tool_choice)) => {
+                self.provider
+                    .complete_stream_with_tools(&self.http, messages, definitions, tool_choice)
+                    .await?
+            }
+            None => self.provider.complete_stream(&self.http, messages).await?,
+        };
         let timeout_secs = self.cfg.timeout_secs;
         let idle_timeout = Duration::from_secs(timeout_secs);
         let stream = async_stream::try_stream! {

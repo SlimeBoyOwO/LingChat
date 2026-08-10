@@ -1,7 +1,9 @@
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::ai_service::message_system::events;
-use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
+use crate::ai_service::message_system::generator::{
+    GeneratorDeps, GeneratorSource, MessageGenerator,
+};
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::api::game::{compute_user_message_seqs, GameLineInit};
 use crate::config::AppConfig;
@@ -43,6 +45,8 @@ pub async fn send_chat_message(
     };
 
     let user_name = game_status.lock().await.player.user_name.clone();
+    // 捕获当前试玩代号（自由对话恒等，行为不变）
+    let preview_generation = game_status.lock().await.preview_generation;
 
     // 发送思考事件
     events::emit_thinking(&app, true);
@@ -79,15 +83,19 @@ pub async fn send_chat_message(
     }
 
     let deps = GeneratorDeps {
+        source: GeneratorSource::UserChat,
         app: app.clone(),
         db: state.db.clone(),
         game_status,
         processor: state.chat.processor.clone(),
         translator: state.chat.translator.clone(),
         llm,
+        tool_registry: state.tool_registry.clone(),
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: false,
+        generation: preview_generation,
+        is_preview: false,
     };
 
     // Notify proactive system of user input
@@ -303,6 +311,8 @@ pub async fn rollback_conversation(
             audio_file: gl.base.audio_file.clone(),
             perceived_role_ids: gl.perceived_role_ids.clone(),
             user_message_seq: seq,
+            thinking: gl.base.thinking.clone(),
+            tts_content: gl.base.tts_content.clone(),
         })
         .collect();
 
@@ -313,4 +323,122 @@ pub async fn rollback_conversation(
     );
 
     Ok(init_lines)
+}
+
+//拉起AI回复（无用户输入，直接触发对话）
+pub async fn trigger_ai_response(app: AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm)
+        .await
+        .ok_or_else(|| "LLM 未配置".to_string())?;
+    let concurrency = AppConfig::load(&app).map(|c| c.consumers as usize).unwrap_or(1).max(1);
+    let gs = { let svc = state.ai_service.lock().await; svc.game_status.clone() };
+    // 捕获当前试玩代号（自由对话恒等，行为不变）
+    let preview_generation = gs.lock().await.preview_generation;
+    let deps = GeneratorDeps {
+        source: GeneratorSource::Proactive,
+        app: app.clone(), db: state.db.clone(), game_status: gs,
+        processor: state.chat.processor.clone(), translator: state.chat.translator.clone(),
+        llm, tool_registry: state.tool_registry.clone(), concurrency, god_agent: state.god_agent.clone(), suppress_thinking: false,
+        generation: preview_generation,
+        is_preview: false,
+    };
+    let gen_lock = state.generation_lock.clone();
+    tokio::spawn(async move {
+        let _lock = gen_lock.lock().await;
+        let _ = MessageGenerator::new(deps).process_message(None).await;
+    });
+    tracing::info!("[chat] 触发 AI 回复");
+
+    Ok(())
+}
+
+//处理图片投喂
+#[tauri::command]
+pub async fn feed_image(
+    app: AppHandle,
+    path: String,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let (user_name, game_status) = {
+        let svc = state.ai_service.lock().await;
+        let gs = svc.game_status.lock().await;
+        (gs.player.user_name.clone(), svc.game_status.clone(),)
+    };
+
+    tracing::info!("[FileFeed] 收到图片投喂");
+    let prompt = format!("用户（名字是\"{}\"）给你看了一张图片，请你用第三人称叙述把你看到的画面描述给其他AI让他理解用户的图片内容",user_name);
+
+    events::emit_thinking(&app, true);
+    let analysis = {
+        let mut sa = state.screen_analyzer.lock().await;
+        sa.analyze_image_file(&path, &prompt).await
+    };
+
+    if let Some(narration) = analysis {
+        let mut gs = game_status.lock().await;
+        gs.add_line(
+            &state.db,
+            LineBase {
+                content: PromptRole::Narrator.build_prompt(&narration),
+                attribute: LineAttributeExt(LineAttribute::User),
+                display_name: Some("旁白".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| format!("添加旁白台词失败: {}", e))?;
+        tracing::info!("[FileFeed] 图片分析已注入上下文: {}", path);
+    }
+
+    events::emit_thinking(&app, false);
+    let _ = trigger_ai_response(app).await;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn feed_text(
+    app: AppHandle,
+    text: String,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let (user_name, game_status, ai_name) = {
+        let svc = state.ai_service.lock().await;
+        let gs = svc.game_status.lock().await;
+        let ai_name = gs
+            .current_role_id.and_then(|id| gs.role_manager.get_loaded(id)).and_then(|r| r.display_name.clone()).unwrap_or_else(|| "AI".to_string());
+        (gs.player.user_name.clone(), svc.game_status.clone(), ai_name)
+    };
+
+    tracing::info!("[FileFeed] 收到文本投喂");
+    // 截断过长文本，避免 token 爆炸
+    let truncated: String = if text.chars().count() > 2000 {
+        text.chars().take(2000).chain("...(内容已截断)".chars()).collect()
+    } else {
+        text
+    };
+
+    let prompt = format!(
+        "{} 给 {} 看了一段文字：\n\n{}\n\n",
+        user_name, ai_name, truncated
+    );
+
+    let mut gs = game_status.lock().await;
+    gs.add_line(
+        &state.db,
+        LineBase {
+            content: PromptRole::Narrator.build_prompt(&prompt),
+            attribute: LineAttributeExt(LineAttribute::User),
+            display_name: Some("旁白".to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(|e| format!("添加投喂文本台词失败: {}", e))?;
+    tracing::info!("[FileFeed] 文本投喂已注入上下文, 长度: {}", truncated.len());
+
+    let _ = trigger_ai_response(app).await;
+
+    Ok(())
 }

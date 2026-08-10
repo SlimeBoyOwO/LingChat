@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    parse_duration, register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::utils::script_function::{
     apply_variable_action, parse_variable_action,
@@ -18,6 +18,7 @@ use crate::ai_service::game_system::script_engine::utils::script_function::{
 
 pub struct SetVariableEvent {
     options: Vec<Value>,
+    duration: Option<f64>,
 }
 
 impl SetVariableEvent {
@@ -28,6 +29,7 @@ impl SetVariableEvent {
                 .and_then(|v| v.as_array())
                 .cloned()
                 .unwrap_or_default(),
+            duration: parse_duration(data),
         }
     }
 }
@@ -77,6 +79,13 @@ impl ScriptEvent for SetVariableEvent {
                         } else {
                             tracing::warn!("[SetVariableEvent] 无法解析操作: '{}'", content);
                         }
+                    } else {
+                        // 这里只实现 set_var。`choices` 的 handle_actions 还支持
+                        // add_line，作者很容易以为两处通用 —— 原先写错会被静默丢弃。
+                        tracing::warn!(
+                            "[SetVariableEvent] 忽略不支持的动作类型 '{}'（此事件仅支持 set_var）",
+                            action_type
+                        );
                     }
                 }
             }
@@ -87,6 +96,10 @@ impl ScriptEvent for SetVariableEvent {
 
     fn event_type() -> &'static str {
         "set_variable"
+    }
+
+    fn duration(&self) -> Option<f64> {
+        self.duration
     }
 }
 

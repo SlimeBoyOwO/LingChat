@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>事件 Schema · UML 类图</title>
+<style>
+  :root { --bg:#0f1720; --panel:#16202c; --border:#2a3a4a; --text:#e6edf3; --muted:#8b98a5; --brand:#79d9ff; }
+  body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft YaHei",sans-serif;padding:24px;}
+  h1{font-size:20px;margin:0 0 4px;} .sub{color:var(--muted);font-size:13px;margin-bottom:18px;}
+  .wrap{max-width:1260px;margin:0 auto;} svg{width:100%;height:auto;display:block;}
+  text{font-family:"Segoe UI","Microsoft YaHei",sans-serif;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>事件 Schema —— UML 类图（单一真相源）</h1>
+  <p class="sub">schema.rs 由 Rust 导出，前端驱动表单、后端驱动校验。测试保证它与引擎注册的 16 种事件一一对应、一个不多一个不少。</p>
+
+  <svg viewBox="0 0 1240 880" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8b98a5"/></marker>
+      <marker id="aD" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#79d9ff"/></marker>
+    </defs>
+
+    <!-- ===== 核心类：ScriptSchema ===== -->
+    <g>
+      <rect x="20" y="60" width="320" height="252" rx="10" fill="#241f17" stroke="#f4a261" stroke-width="1.6" />
+      <text x="180" y="86" text-anchor="middle" font-size="14" font-weight="700" fill="#f4a261">ScriptSchema</text>
+      <line x1="20" y1="98" x2="340" y2="98" stroke="#f4a261" stroke-opacity="0.4"/>
+      <text x="34" y="120" font-size="10.5" fill="#e6edf3">events: Vec&lt;EventSpec&gt;          —— 16 种事件</text>
+      <text x="34" y="140" font-size="10.5" fill="#e6edf3">common_fields: Vec&lt;FieldSpec&gt;    —— condition / duration</text>
+      <text x="34" y="160" font-size="10.5" fill="#e6edf3">story_config_fields: Vec&lt;FieldSpec&gt;</text>
+      <text x="34" y="180" font-size="10.5" fill="#e6edf3">action_types: Vec&lt;ActionSpec&gt;    —— add_line / set_var</text>
+      <text x="34" y="200" font-size="10.5" fill="#e6edf3">unlock_condition_types: Vec&lt;UnlockConditionSpec&gt;</text>
+      <text x="34" y="220" font-size="10.5" fill="#e6edf3">placeholder_fields: Vec&lt;str&gt;      —— %player% 替换范围</text>
+      <text x="34" y="240" font-size="10.5" fill="#e6edf3">condition_syntax: ConditionSyntax  —— 语法说明</text>
+      <line x1="20" y1="252" x2="340" y2="252" stroke="#f4a261" stroke-opacity="0.4"/>
+      <text x="34" y="272" font-size="10" fill="#8b98a5">+ build_schema() 静态构造</text>
+      <text x="34" y="290" font-size="10" fill="#8b98a5">测试：与引擎注册事件同步</text>
+    </g>
+
+    <!-- ===== 事件类型枚举区 ===== -->
+    <rect x="420" y="60" width="800" height="250" rx="12" fill="#101c28" stroke="#34d399" stroke-opacity="0.35" />
+    <text x="440" y="88" font-size="13" font-weight="700" fill="#34d399">16 种事件 EventSpec（type_key）</text>
+
+    <!-- 叙事 -->
+    <g>
+      <rect x="440" y="104" width="180" height="92" rx="8" fill="#16202c" stroke="#94a3b8" stroke-opacity="0.5" />
+      <text x="530" y="124" text-anchor="middle" font-size="11.5" font-weight="700" fill="#e6edf3">叙事</text>
+      <line x1="440" y1="132" x2="620" y2="132" stroke="#94a3b8" stroke-opacity="0.3"/>
+      <text x="452" y="150" font-size="10" fill="#94a3b8">narration · 旁白</text>
+      <text x="452" y="168" font-size="10" fill="#38bdf8">player · 玩家台词</text>
+      <text x="452" y="186" font-size="10" fill="#a78bfa">dialogue · 角色对话</text>
+    </g>
+    <!-- AI -->
+    <g>
+      <rect x="636" y="104" width="180" height="92" rx="8" fill="#16202c" stroke="#e879f9" stroke-opacity="0.5" />
+      <text x="726" y="124" text-anchor="middle" font-size="11.5" font-weight="700" fill="#e6edf3">AI</text>
+      <line x1="636" y1="132" x2="816" y2="132" stroke="#e879f9" stroke-opacity="0.3"/>
+      <text x="648" y="150" font-size="10" fill="#e879f9">ai_dialogue</text>
+      <text x="648" y="168" font-size="10" fill="#f472b6">free_dialogue · 自由对话</text>
+    </g>
+    <!-- 交互 -->
+    <g>
+      <rect x="832" y="104" width="180" height="92" rx="8" fill="#16202c" stroke="#818cf8" stroke-opacity="0.5" />
+      <text x="922" y="124" text-anchor="middle" font-size="11.5" font-weight="700" fill="#e6edf3">交互</text>
+      <line x1="832" y1="132" x2="1012" y2="132" stroke="#818cf8" stroke-opacity="0.3"/>
+      <text x="844" y="150" font-size="10" fill="#818cf8">choices · 选项</text>
+      <text x="844" y="168" font-size="10" fill="#60a5fa">input · 等待输入</text>
+    </g>
+    <!-- 流程 -->
+    <g>
+      <rect x="1028" y="104" width="180" height="92" rx="8" fill="#16202c" stroke="#f87171" stroke-opacity="0.5" />
+      <text x="1118" y="124" text-anchor="middle" font-size="11.5" font-weight="700" fill="#e6edf3">流程</text>
+      <line x1="1028" y1="132" x2="1208" y2="132" stroke="#f87171" stroke-opacity="0.3"/>
+      <text x="1040" y="150" font-size="10" fill="#f87171">set_variable</text>
+      <text x="1040" y="168" font-size="10" fill="#e2e8f0">chapter_end</text>
+    </g>
+    <!-- 演出 -->
+    <g>
+      <rect x="440" y="208" width="250" height="92" rx="8" fill="#16202c" stroke="#fbbf24" stroke-opacity="0.5" />
+      <text x="565" y="228" text-anchor="middle" font-size="11.5" font-weight="700" fill="#e6edf3">演出</text>
+      <line x1="440" y1="236" x2="690" y2="236" stroke="#fbbf24" stroke-opacity="0.3"/>
+      <text x="452" y="254" font-size="10" fill="#fbbf24">modify_character · 角色调整</text>
+      <text x="452" y="272" font-size="10" fill="#34d399">background · 背景</text>
+      <text x="452" y="290" font-size="10" fill="#2dd4bf">background_effect · 特效</text>
+    </g>
+    <!-- 演出+声音 -->
+    <g>
+      <rect x="706" y="208" width="250" height="92" rx="8" fill="#16202c" stroke="#a3e635" stroke-opacity="0.5" />
+      <text x="831" y="228" text-anchor="middle" font-size="11.5" font-weight="700" fill="#e6edf3">演出 / 声音</text>
+      <line x1="706" y1="236" x2="956" y2="236" stroke="#a3e635" stroke-opacity="0.3"/>
+      <text x="718" y="254" font-size="10" fill="#a3e635">present_pic · 插图</text>
+      <text x="718" y="272" font-size="10" fill="#fb923c">music · 背景音乐</text>
+      <text x="718" y="290" font-size="10" fill="#facc15">sound · 音效 / ambient · 环境音</text>
+    </g>
+    <!-- 词表归属 -->
+    <g>
+      <rect x="972" y="208" width="236" height="92" rx="8" fill="#2a1a2a" stroke="#e879f9" stroke-opacity="0.5" />
+      <text x="1090" y="228" text-anchor="middle" font-size="11.5" font-weight="700" fill="#e879f9">词表归属（不都归 Rust）</text>
+      <line x1="972" y1="236" x2="1208" y2="236" stroke="#e879f9" stroke-opacity="0.3"/>
+      <text x="984" y="254" font-size="9.5" fill="#c9bdf5">情绪 → 前端 emotion/config.ts</text>
+      <text x="984" y="272" font-size="9.5" fill="#c9bdf5">章节名 / 素材 → 前端从加载结果填</text>
+      <text x="984" y="290" font-size="9.5" fill="#c9bdf5">角色 → MAIN + characters/ 目录名</text>
+    </g>
+
+    <!-- ===== FieldSpec 类 ===== -->
+    <g>
+      <rect x="20" y="380" width="400" height="220" rx="10" fill="#16202c" stroke="#79d9ff" stroke-width="1.4" />
+      <text x="220" y="406" text-anchor="middle" font-size="14" font-weight="700" fill="#79d9ff">FieldSpec（一个字段）</text>
+      <line x1="20" y1="418" x2="420" y2="418" stroke="#79d9ff" stroke-opacity="0.4"/>
+      <text x="34" y="440" font-size="11" fill="#e6edf3">key: &amp;str         —— YAML 键名（照抄引擎风格）</text>
+      <text x="34" y="460" font-size="11" fill="#e6edf3">label: &amp;str         —— 中文标签</text>
+      <text x="34" y="480" font-size="11" fill="#e6edf3">kind: FieldKind      —— 决定用什么控件</text>
+      <text x="34" y="500" font-size="11" fill="#e6edf3">required: bool</text>
+      <text x="34" y="520" font-size="11" fill="#e6edf3">asset_kind: Option    —— kind=Asset 时的类别</text>
+      <text x="34" y="540" font-size="11" fill="#e6edf3">options: Vec&lt;str&gt;    —— Select 候选项</text>
+      <text x="34" y="560" font-size="11" fill="#e6edf3">placeholder / hint</text>
+      <text x="34" y="580" font-size="11" fill="#e6edf3">enabled: bool         —— false = 遗留字段</text>
+    </g>
+
+    <!-- ===== FieldKind 枚举 ===== -->
+    <g>
+      <rect x="470" y="380" width="380" height="220" rx="10" fill="#16202c" stroke="#34d399" stroke-width="1.4" />
+      <text x="660" y="406" text-anchor="middle" font-size="14" font-weight="700" fill="#34d399">FieldKind（控件类型）</text>
+      <line x1="470" y1="418" x2="850" y2="418" stroke="#34d399" stroke-opacity="0.4"/>
+      <text x="484" y="440" font-size="10.5" fill="#e6edf3">text / textarea / number / bool</text>
+      <text x="484" y="460" font-size="10.5" fill="#e6edf3">select（固定候选）</text>
+      <text x="484" y="480" font-size="10.5" fill="#e6edf3">character（MAIN + NPC）</text>
+      <text x="484" y="500" font-size="10.5" fill="#e6edf3">emotion（前端词表）</text>
+      <text x="484" y="520" font-size="10.5" fill="#e6edf3">chapter（章节列表 + 「剧本结束」）</text>
+      <text x="484" y="540" font-size="10.5" fill="#e6edf3">asset（素材下拉 + 导入）</text>
+      <text x="484" y="560" font-size="10.5" fill="#e6edf3">choice_options / branch_options / var_options（复合编辑器）</text>
+      <text x="484" y="580" font-size="10.5" fill="#8b98a5">deprecated（只展示不可编辑）</text>
+    </g>
+
+    <!-- ===== EventSpec + ActionSpec ===== -->
+    <g>
+      <rect x="900" y="380" width="320" height="136" rx="10" fill="#16202c" stroke="#f4a261" stroke-width="1.4" />
+      <text x="1060" y="406" text-anchor="middle" font-size="14" font-weight="700" fill="#f4a261">EventSpec</text>
+      <line x1="900" y1="418" x2="1220" y2="418" stroke="#f4a261" stroke-opacity="0.4"/>
+      <text x="914" y="440" font-size="11" fill="#e6edf3">type_key: &amp;str     —— YAML type 值</text>
+      <text x="914" y="460" font-size="11" fill="#e6edf3">label / category</text>
+      <text x="914" y="480" font-size="11" fill="#e6edf3">color: &amp;str        —— 时间线语义色</text>
+      <text x="914" y="500" font-size="11" fill="#e6edf3">fields: Vec&lt;FieldSpec&gt;</text>
+    </g>
+    <g>
+      <rect x="900" y="534" width="320" height="112" rx="10" fill="#16202c" stroke="#a78bfa" stroke-width="1.4" />
+      <text x="1060" y="560" text-anchor="middle" font-size="13" font-weight="700" fill="#a78bfa">ActionSpec</text>
+      <line x1="900" y1="572" x2="1220" y2="572" stroke="#a78bfa" stroke-opacity="0.4"/>
+      <text x="914" y="594" font-size="10.5" fill="#e6edf3">add_line —— 追加玩家台词（仅 choices）</text>
+      <text x="914" y="614" font-size="10.5" fill="#e6edf3">set_var —— 设置变量（choices / set_variable）</text>
+      <text x="914" y="634" font-size="10.5" fill="#8b98a5">allowed_in 声明归属，校验器据此报错</text>
+    </g>
+
+    <!-- 关联关系 -->
+    <path d="M340,220 L440,170" stroke="#8b98a5" stroke-width="1.3" fill="none" marker-end="url(#a)"/>
+    <path d="M400,520 L470,500" stroke="#79d9ff" stroke-width="1.3" fill="none" marker-end="url(#aD)"/>
+    <path d="M850,500 L900,470" stroke="#34d399" stroke-width="1.3" fill="none" marker-end="url(#a)"/>
+    <path d="M1220,460 L1240,460" stroke="none" />
+    <text x="330" y="352" font-size="10.5" fill="#8b98a5">1 ── 1..*</text>
+    <text x="408" y="474" font-size="10.5" fill="#8b98a5">1 ── 1</text>
+    <text x="862" y="468" font-size="10.5" fill="#8b98a5">1 ── 1</text>
+
+    <!-- 底部说明 -->
+    <g>
+      <rect x="20" y="690" width="1200" height="120" rx="10" fill="#101c28" stroke="#4ade80" stroke-opacity="0.4" />
+      <text x="40" y="716" font-size="12.5" font-weight="700" fill="#4ade80">为什么是「单一真相源」</text>
+      <text x="40" y="740" font-size="11" fill="#e6edf3">同一份 schema 此前散落三处：Rust 16 个 handler、前端 types/script.ts 运行时类型、原型编辑器的 constants/events.ts，三者互不同步，直接导致原型产出的 set_variable / chapter_end 跑不通。</text>
+      <text x="40" y="764" font-size="11" fill="#e6edf3">现在由 Rust 导出、前端只负责渲染。改引擎时必须同步改 schema.rs —— 测试会强制：</text>
+      <text x="40" y="788" font-size="11" fill="#e6edf3">① schema 覆盖引擎注册的全部 16 种事件（多一个少一个都失败）　② 每个事件至少一个字段且键唯一　③ 素材字段必带 asset_kind　④ 特效下拉来自 KNOWN_EFFECTS　⑤ duration 以不可编辑形态出现　⑥ set_variable 只允许 set_var action</text>
+    </g>
+  </svg>
+</div>
+</body>
+</html>

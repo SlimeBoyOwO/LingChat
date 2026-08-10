@@ -8,7 +8,9 @@ use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::message_system::events;
-use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
+use crate::ai_service::message_system::generator::{
+    GeneratorDeps, GeneratorSource, MessageGenerator,
+};
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::{self, AppConfig};
 use crate::db::entities::line;
@@ -111,6 +113,10 @@ pub struct GameLineInit {
     pub perceived_role_ids: Vec<i32>,
     /// 玩家消息序号（1-indexed），仅对 sender_role_id == Some(0) 的 User 行有值
     pub user_message_seq: Option<u32>,
+    /// 该轮生成的思考链（仅每轮最后一条 assistant 行有值）。
+    pub thinking: Option<String>,
+    /// 该台词的第二语言（日语）译文，供日文界面显示；无译文时为 None。
+    pub tts_content: Option<String>,
 }
 
 // ========== Tauri 命令 ==========
@@ -371,6 +377,33 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     Ok(init)
 }
 
+// ========== 清除对话 ==========
+
+/// 清除当前角色的全部对话历史，复用 `init_game_status` 逻辑，
+/// 保留角色设定、场景、背景音乐等配置。
+#[tauri::command]
+pub async fn clear_conversation(app: AppHandle) -> Result<WebInitData, String> {
+    let state = app.state::<AppState>();
+
+    // 串行化：等待正在进行的消息生成完成再重置
+    let gen_lock = state.generation_lock.clone();
+    let _lock = gen_lock.lock().await;
+
+    {
+        let mut service = state.ai_service.lock().await;
+        service
+            .init_game_status()
+            .await
+            .map_err(|e| format!("重置对话失败: {}", e))?;
+    }
+
+    let init = {
+        let service = state.ai_service.lock().await;
+        build_web_init_data(&service, &app).await?
+    };
+    Ok(init)
+}
+
 /// 为台词列表计算玩家消息序号（1-indexed）。
 /// 玩家消息由 `sender_role_id == Some(0) && attribute == User` 标识。
 pub fn compute_user_message_seqs(line_list: &[GameLine]) -> Vec<Option<u32>> {
@@ -429,6 +462,8 @@ pub(crate) async fn build_web_init_data(
                 audio_file: gl.base.audio_file.clone(),
                 perceived_role_ids: gl.perceived_role_ids.clone(),
                 user_message_seq: seq,
+                thinking: gl.base.thinking.clone(),
+                tts_content: gl.base.tts_content.clone(),
             })
             .collect();
 
@@ -866,17 +901,23 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
         let svc = state.ai_service.lock().await;
         svc.game_status.clone()
     };
+    // 捕获当前试玩代号（自由对话恒等，行为不变）
+    let preview_generation = game_status.lock().await.preview_generation;
 
     let deps = GeneratorDeps {
+        source: GeneratorSource::EntryGreeting,
         app: app.clone(),
         db: state.db.clone(),
         game_status,
         processor: state.chat.processor.clone(),
         translator: state.chat.translator.clone(),
         llm,
+        tool_registry: state.tool_registry.clone(),
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: true,
+        generation: preview_generation,
+        is_preview: false,
     };
 
     let generator = MessageGenerator::new(deps);

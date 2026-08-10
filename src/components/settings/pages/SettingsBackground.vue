@@ -1,39 +1,39 @@
 <template>
   <MenuPage>
     <!-- ========== 场景管理 ========== -->
-    <MenuItem title="场景管理">
+    <MenuItem :title="$t('settings.background.scene.title')">
       <template #header>
         <PictureInPicture :size="20" />
       </template>
 
       <!-- 当前场景信息 + 操作按钮 -->
       <div class="flex items-center gap-3 mb-4">
-        <div class="text-brand font-bold">当前场景：{{ currentSceneDisplay }}</div>
+        <div class="text-brand font-bold">{{ $t('settings.background.scene.current') }}{{ currentSceneDisplay }}</div>
         <div class="ml-auto flex gap-3">
           <button
             class="px-5 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-brand/80 border-brand text-white hover:bg-brand shadow-indigo-500/20"
             @click="handleCreateScene"
           >
-            创建场景
+            {{ $t('settings.background.scene.create') }}
           </button>
           <button
             class="px-4 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-white/10 border-white/20 text-white/80 hover:bg-white/20"
             @click="triggerUpload"
           >
-            上传背景
+            {{ $t('settings.background.scene.upload') }}
           </button>
           <button
             class="px-4 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-white/10 border-white/20 text-white/80 hover:bg-white/20"
             @click="handleOpenFolder"
           >
-            打开文件夹
+            {{ $t('settings.background.scene.openFolder') }}
           </button>
           <button
             class="px-4 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-red-500/20 border-red-500/30 text-red-300 hover:bg-red-500/30"
             :disabled="!currentScene"
             @click="handleDeleteScene"
           >
-            删除
+            {{ $t('settings.background.scene.delete') }}
           </button>
         </div>
       </div>
@@ -55,7 +55,7 @@
           <button
             class="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-black/50 text-white/60 hover:text-white hover:bg-black/70 transition-all opacity-0 group-hover:opacity-100"
             @click.stop="handleWrenchClick(scene)"
-            title="编辑场景"
+            :title="$t('settings.background.scene.edit')"
           >
             <Wrench :size="16" />
           </button>
@@ -88,9 +88,9 @@
             <span v-if="scene.scene_description" class="text-xs text-white/50 line-clamp-2">{{
               scene.scene_description
             }}</span>
-            <span v-else class="text-xs text-yellow-400/60 italic"
-              >暂无描述（选择后不会触发旁白）</span
-            >
+            <span v-else class="text-xs text-yellow-400/60 italic">{{
+              $t('settings.background.scene.noDescription')
+            }}</span>
           </div>
         </div>
       </div>
@@ -102,29 +102,31 @@
           @click="currentPage = 1"
           class="px-2 py-1 text-xs text-white/50 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
-          ← 首页
+          {{ $t('settings.background.pagination.first') }}
         </button>
         <button
           :disabled="currentPage <= 1"
           @click="currentPage = currentPage - 1"
           class="px-3 py-1 text-sm text-white/50 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
-          上一页
+          {{ $t('settings.shared.prevPage') }}
         </button>
-        <span class="text-xs text-white/60 px-3"> 第 {{ currentPage }} / {{ totalPages }} 页 </span>
+        <span class="text-xs text-white/60 px-3">
+          {{ $t('settings.shared.pageOf', { current: currentPage, total: totalPages }) }}
+        </span>
         <button
           :disabled="currentPage >= totalPages"
           @click="currentPage = currentPage + 1"
           class="px-3 py-1 text-sm text-white/50 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
-          下一页
+          {{ $t('settings.shared.nextPage') }}
         </button>
         <button
           :disabled="currentPage >= totalPages"
           @click="currentPage = totalPages"
           class="px-2 py-1 text-xs text-white/50 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
-          末页 →
+          {{ $t('settings.background.pagination.last') }}
         </button>
       </div>
 
@@ -138,21 +140,21 @@
       />
     </MenuItem>
 
-    <MenuItem title="粒子选择" size="large">
+    <MenuItem :title="$t('settings.background.particle.title')" size="large">
       <template #header>
         <Sparkles :size="20" />
       </template>
       <div class="effect-list flex gap-4 overflow-x-auto pb-2">
-        <Button type="big" @click="updateParticle(`None`)">无</Button>
-        <Button type="big" @click="updateParticle(`StarField`)">星空</Button>
-        <Button type="big" @click="updateParticle(`Rain`)">雨水</Button>
-        <Button type="big" @click="updateParticle(`Sakura`)">樱花</Button>
-        <Button type="big" @click="updateParticle(`Snow`)">雪景</Button>
-        <Button type="big" @click="updateParticle(`Fireworks`)">烟花</Button>
+        <Button type="big" @click="updateParticle(`None`)">{{ $t('settings.background.particle.none') }}</Button>
+        <Button type="big" @click="updateParticle(`StarField`)">{{ $t('settings.background.particle.starField') }}</Button>
+        <Button type="big" @click="updateParticle(`Rain`)">{{ $t('settings.background.particle.rain') }}</Button>
+        <Button type="big" @click="updateParticle(`Sakura`)">{{ $t('settings.background.particle.sakura') }}</Button>
+        <Button type="big" @click="updateParticle(`Snow`)">{{ $t('settings.background.particle.snow') }}</Button>
+        <Button type="big" @click="updateParticle(`Fireworks`)">{{ $t('settings.background.particle.fireworks') }}</Button>
       </div>
     </MenuItem>
 
-    <MenuItem title="动画开关" size="large">
+    <MenuItem :title="$t('settings.background.animation.switchTitle')" size="large">
       <template #header>
         <Settings :size="20" />
       </template>
@@ -161,42 +163,42 @@
           :checked="mainMenuStarsEnabled"
           @change="settingsStore.setMainMenuStarsEnabled($event)"
         >
-          启用主界面星星粒子
+          {{ $t('settings.background.animation.mainMenuStars') }}
         </Toggle>
         <Toggle
           :checked="mainMenuMeteorsEnabled"
           @change="settingsStore.setMainMenuMeteorsEnabled($event)"
         >
-          启用主界面流星动画
+          {{ $t('settings.background.animation.mainMenuMeteors') }}
         </Toggle>
         <Toggle
           :checked="globalMouseTrailEnabled"
           @change="settingsStore.setGlobalMouseTrailEnabled($event)"
         >
-          启用全局鼠标滑动动画
+          {{ $t('settings.background.animation.mouseTrail') }}
         </Toggle>
         <Toggle
           :checked="clickAnimationEnabled"
           @change="settingsStore.setClickAnimationEnabled($event)"
         >
-          启用点击动画
+          {{ $t('settings.background.animation.clickAnimation') }}
         </Toggle>
         <Toggle
           :checked="sceneAwarenessEnabled"
           @change="settingsStore.setSceneAwarenessEnabled($event)"
         >
-          启用场景感知（切换场景时触发旁白）
+          {{ $t('settings.background.animation.sceneAwareness') }}
         </Toggle>
       </div>
     </MenuItem>
 
-    <MenuItem title="动画设置" size="large">
+    <MenuItem :title="$t('settings.background.animation.settingsTitle')" size="large">
       <template #header>
         <Sparkles :size="20" />
       </template>
       <div class="flex flex-col gap-4 p-2">
-        <div class="flex items-center gap-4">
-          <span class="text-sm font-medium text-white/90 min-w-30">流星帧率 (FPS)</span>
+        <div class="flex items-center gap-4 max-[640px]:flex-col max-[640px]:items-stretch max-[640px]:gap-2">
+          <span class="text-sm font-medium text-white/90 min-w-30">{{ $t('settings.background.animation.meteorFps') }}</span>
           <Slider
             v-model="meteorFps"
             :min="10"
@@ -219,8 +221,8 @@
           />
         </div>
 
-        <div class="flex items-center gap-4">
-          <span class="text-sm font-medium text-white/90 min-w-30">星星帧率 (FPS)</span>
+        <div class="flex items-center gap-4 max-[640px]:flex-col max-[640px]:items-stretch max-[640px]:gap-2">
+          <span class="text-sm font-medium text-white/90 min-w-30">{{ $t('settings.background.animation.starsFps') }}</span>
           <Slider
             v-model="starsFps"
             :min="10"
@@ -334,6 +336,16 @@
       </div>
     </MenuItem>
 
+    
+
+    <!-- ========== 对话框外观（自定义） ========== -->
+    <MenuItem :title="$t('settings.background.dialog.title')" size="large">
+      <template #header>
+        <MessageSquare :size="20" />
+      </template>
+      <DialogAppearancePanel />
+    </MenuItem>
+
     <SceneEditModal
       :show="showSceneEdit"
       :mode="editMode"
@@ -348,6 +360,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { MenuPage, MenuItem } from '../../ui'
 import { Button, Toggle, Slider } from '../../base'
@@ -371,6 +384,7 @@ import {
   generateBackgroundImage,
   openBackgroundsFolder,
 } from '../../../api/services/background'
+import { unlockAchievement } from '../../../api/services/achievement'
 import {
   getCpuInfo,
   redetectCpu,
@@ -384,6 +398,7 @@ import {
 import { getGpuInfo, redetectGpu, type GpuInfo } from '../../../api/services/gpu-perf'
 import { Image, PictureInPicture, Sparkles, Settings, Wand2, Wrench, Cpu } from 'lucide-vue-next'
 import SceneEditModal from '../scene/SceneEditModal.vue'
+import DialogAppearancePanel from '../dialog/DialogAppearancePanel.vue'
 import { useUserStore } from '../../../stores/modules/user/user'
 
 const gameStore = useGameStore()
@@ -391,6 +406,7 @@ const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 const userStore = useUserStore()
 const dialogStore = useDialogStore()
+const { t } = useI18n()
 
 const mainMenuStarsEnabled = computed(() => settingsStore.mainMenuStarsEnabled)
 const mainMenuMeteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled)
@@ -480,7 +496,9 @@ const editInitialData = ref<
   | undefined
 >()
 
-const currentSceneDisplay = computed(() => gameStore.currentScene?.scene_name || '无')
+const currentSceneDisplay = computed(
+  () => gameStore.currentScene?.scene_name || t('settings.background.scene.none'),
+)
 const currentScene = computed(() => gameStore.currentScene)
 
 const fetchScenes = async () => {
@@ -496,11 +514,20 @@ const isSceneSelected = (sceneId: string): boolean => {
 }
 
 const handleSceneClick = async (scene: SceneInfo) => {
+  // 点击当前已激活的场景则取消选中，背景默认为透明
+  if (gameStore.currentScene?.id === scene.id) {
+    gameStore.clearCurrentScene()
+    uiStore.setCurrentBackground('')
+    unlockAchievement('see_through').catch(console.error)
+    await fetchScenes()
+    return
+  }
+
   // 无描述时提醒用户
   if (!scene.scene_description?.trim()) {
     uiStore.showInfo({
-      title: '提示',
-      message: `场景"${scene.scene_name}"暂无描述，选择后不会触发场景旁白`,
+      title: t('settings.background.scene.tip'),
+      message: t('settings.background.scene.noDescriptionTip', { name: scene.scene_name }),
       duration: 4000,
     })
   }
@@ -538,7 +565,7 @@ const handleCreateScene = () => {
 
 const handleDeleteScene = async () => {
   if (!currentScene.value) return
-  if (!(await dialogStore.confirm(`确定要删除场景"${currentScene.value.scene_name}"吗？`))) return
+  if (!(await dialogStore.confirm(t('settings.background.scene.deleteConfirm', { name: currentScene.value.scene_name })))) return
 
   try {
     await deleteScene(currentScene.value.id)
@@ -679,7 +706,7 @@ async function handleFileUpload(event: Event): Promise<void> {
   const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.svg', '.tif', '.gif']
 
   if (!allowedExts.includes(fileExt)) {
-    await dialogStore.alert('请上传支持的图片格式: ' + allowedExts.join(', '))
+    await dialogStore.alert(t('settings.background.upload.invalidFormat', { formats: allowedExts.join(', ') }))
     return
   }
 
@@ -692,7 +719,7 @@ async function handleFileUpload(event: Event): Promise<void> {
     if (target) target.value = ''
   } catch (error) {
     console.error('上传失败', error)
-    await dialogStore.alert('上传失败，请重试')
+    await dialogStore.alert(t('settings.background.upload.failed'))
   }
 }
 
@@ -705,8 +732,8 @@ async function handleOpenFolder(): Promise<void> {
     await openBackgroundsFolder()
   } catch (e: any) {
     uiStore.showError({
-      title: '错误',
-      message: '无法打开文件夹',
+      title: t('settings.background.folder.errorTitle'),
+      message: t('settings.background.folder.openFailed'),
     })
   }
 }
@@ -754,4 +781,32 @@ function handleStarsInputEnter() {
 watch(starsFps, (newValue) => {
   starsFpsInput.value = newValue
 })
+
+// ── 对话框外观 ──
+const dialogBgInput = ref<HTMLInputElement | null>(null)
+
+
+
+
+
+
+
+
+
+
+
+
+function hexToRgba(hex: string, alpha: number): string {
+  const m = hex.replace('#', '').match(/^([0-9a-fA-F]{6})$/)
+  if (!m) return `rgba(0,14,39,${alpha})`
+  const r = parseInt(m[1]!.substring(0, 2), 16)
+  const g = parseInt(m[1]!.substring(2, 4), 16)
+  const b = parseInt(m[1]!.substring(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+
+
+
+
 </script>

@@ -1,10 +1,11 @@
 use std::fs;
 use std::io::Write;
 
+use crate::utils::path::validate_path_in_base;
 use crate::utils::system::open_folder;
 use serde::{Deserialize, Serialize};
 
-use super::{backgrounds_dir, validate_path_in_base};
+use super::backgrounds_dir;
 
 // ========== 响应类型 ==========
 

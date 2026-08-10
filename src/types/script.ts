@@ -39,6 +39,8 @@ export interface ScriptDialogueEvent extends ScriptEvent {
   displaySubtitle?: string
   /** 触发此回复的用户消息序号（1-indexed） */
   userMessageSeq?: number
+  /** 本轮生成的思考链（仅最后一帧携带） */
+  thinking?: string
 }
 
 export interface ScriptThinkingEvent extends ScriptEvent {
@@ -78,6 +80,8 @@ export interface ScriptSoundEvent extends ScriptEvent {
 export interface ScriptMusicEvent extends ScriptEvent {
   type: 'music'
   musicPath: string
+  /** 播放速度倍率（1.0 原速）；未设置时前端按 1.0 处理 */
+  playbackSpeed?: number
 }
 
 /** 环境音事件 —— 循环持续的场景音效，与 BGM 共存 */
@@ -108,11 +112,19 @@ export interface ScriptInputEvent extends ScriptEvent {
 }
 export interface ScriptChoiceEvent extends ScriptEvent {
   type: 'choice'
-  choices: string[]
+  choices: ScriptChoiceItem[]
   allowFree: boolean
+}
+/** 单个选项。disabled 表示条件不满足不可选，reason 是作者写的锁定提示 */
+export interface ScriptChoiceItem {
+  text: string
+  disabled: boolean
+  reason?: string
 }
 export interface ScriptEndEvent extends ScriptEvent {
   type: 'script_end'
+  /** false 表示剧本是因为出错被中止的，不应记为完成 */
+  completed?: boolean
 }
 
 export interface ScriptErrorEvent extends ScriptEvent {

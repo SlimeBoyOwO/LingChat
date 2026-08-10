@@ -148,11 +148,6 @@ async function resolveAvatar() {
   const emotion = r.emotion
   const mappedEmotion = EMOTION_CONFIG_EMO[emotion] || '正常'
 
-  if (emotion === 'AI思考') {
-    targetAvatarUrl.value = 'none'
-    return
-  }
-
   const currentId = ++resolveAvatarId
   try {
     const path = await invoke<string>('get_avatar_file', {
@@ -233,6 +228,44 @@ watch(
     }
   },
   { immediate: true },
+)
+
+// 思考中反馈：气泡 + 音效（由 currentStatus 驱动，与 emotion 解耦）
+watch(
+  () => gameStore.currentStatus,
+  (newStatus) => {
+    if (newStatus === 'thinking') {
+      const config = EMOTION_CONFIG['AI思考']
+      if (config && config.bubbleImage && config.bubbleImage !== 'none') {
+        currentBubbleImageUrl.value = config.bubbleImage
+        currentBubbleClass.value = config.bubbleClass
+
+        if (bubbleTimeoutId !== null) {
+          window.clearTimeout(bubbleTimeoutId)
+          bubbleTimeoutId = null
+        }
+        if (!isBubbleVisible.value) {
+          isBubbleVisible.value = true
+        }
+        bubbleTimeoutId = window.setTimeout(() => {
+          isBubbleVisible.value = false
+          bubbleTimeoutId = null
+        }, 2000)
+      }
+      if (config?.audio && config.audio !== 'none' && bubbleAudio.value) {
+        bubbleAudio.value.src = config.audio
+        bubbleAudio.value.load()
+        bubbleAudio.value.play().catch((e) => console.error('Play error:', e))
+      }
+    } else {
+      // 离开思考态：隐藏思考气泡、停掉定时器
+      isBubbleVisible.value = false
+      if (bubbleTimeoutId !== null) {
+        window.clearTimeout(bubbleTimeoutId)
+        bubbleTimeoutId = null
+      }
+    }
+  },
 )
 
 const handleAnimationEnd = () => {

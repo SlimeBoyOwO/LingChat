@@ -1,0 +1,25 @@
+export default {
+  tabs: {
+    menu: '主菜单',
+    llm: '大模型管理',
+    tools: '工具配置',
+    other: '其他高级设置',
+    tts: '本地 TTS',
+  },
+  menu: {
+    llmTitle: '大模型管理',
+    llmDesc: '配置和管理 AI 大模型提供商，添加、编辑、测试模型连接参数',
+    llmButton: '进入大模型管理界面',
+    toolsTitle: '工具配置',
+    toolsDesc: '配置 AI 可调用的工具，比如网页搜索（联网查资料）',
+    toolsButton: '进入工具配置界面',
+    ttsTitle: '本地 TTS',
+    ttsDesc: '导入 DeBERTa 模型、分词器和人物语音，离线使用本地 TTS 引擎',
+    ttsButton: '进入本地 TTS 界面',
+    otherTitle: '其他高级设置',
+    otherDesc: '调整系统环境配置、提示词模板、对话参数等高级选项（重启后生效）',
+    otherButton: '进入其他高级设置界面',
+    languageTitle: '界面语言',
+    languageDesc: '切换应用界面显示语言，立即生效并自动保存',
+  },
+}

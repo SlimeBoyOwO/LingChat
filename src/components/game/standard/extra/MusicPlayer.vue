@@ -2,7 +2,7 @@
   <transition @before-enter="beforeEnter" @enter="enter" @before-leave="beforeLeave" @leave="leave">
     <div
       v-if="isVisible"
-      class="fixed bottom-6 left-0 pointer-events-auto z-1000 drop-shadow-[0_8px_12px_rgba(0,0,0,0.25)]"
+      class="fixed bottom-[calc(24px+var(--safe-area-inset-bottom))] left-0 pointer-events-auto z-1000 drop-shadow-[0_8px_12px_rgba(0,0,0,0.25)]"
     >
       <div
         class="relative flex items-center gap-1 pl-4 pr-5 py-2 bg-slate-900/40 backdrop-blur-md overflow-hidden rounded-tr-xl"
@@ -37,14 +37,14 @@
           <button
             class="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors duration-200"
             @click="handlePrevious"
-            title="上一首"
+            :title="$t('game.musicPlayer.previous')"
           >
             <SkipBack :size="16" />
           </button>
           <button
             class="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors duration-200"
             @click="handlePlayPause"
-            :title="isPaused ? '播放' : '暂停'"
+            :title="isPaused ? $t('game.musicPlayer.play') : $t('game.musicPlayer.pause')"
           >
             <Play v-if="isPaused" :size="16" />
             <Pause v-else :size="16" />
@@ -52,7 +52,7 @@
           <button
             class="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors duration-200"
             @click="handleNext"
-            title="下一首"
+            :title="$t('game.musicPlayer.next')"
           >
             <SkipForward :size="16" />
           </button>
@@ -64,12 +64,14 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Music, Play, Pause, SkipBack, SkipForward } from 'lucide-vue-next'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { musicGetAll } from '@/api/services/music'
 import type { MusicTrack } from '@/types'
 
 const uiStore = useUIStore()
+const { t } = useI18n()
 
 const musicList = ref<MusicTrack[]>([])
 const currentMusicName = ref('')
@@ -84,16 +86,16 @@ const isVisible = computed(() => {
 })
 
 const inferMusicNameFromUrl = (musicUrl: string): string => {
-  if (!musicUrl || musicUrl === 'None') return '未选择音乐'
+  if (!musicUrl || musicUrl === 'None') return t('game.musicPlayer.noMusic')
   const fileName = decodeURIComponent(musicUrl.split('/').pop() || '')
-  if (!fileName) return '未选择音乐'
+  if (!fileName) return t('game.musicPlayer.noMusic')
   return fileName.replace(/\.[^/.]+$/, '') || fileName
 }
 
 const syncCurrentMusicName = () => {
   const currentUrl = uiStore.currentBackgroundMusic
   if (!currentUrl || currentUrl === 'None') {
-    currentMusicName.value = '未选择音乐'
+    currentMusicName.value = t('game.musicPlayer.noMusic')
     return
   }
   const matched = musicList.value.find((item) => item.url === currentUrl)

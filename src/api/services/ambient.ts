@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { i18n } from '@/locales'
 
 // ========== 环境音数据模型 ==========
 export interface AmbientItem {
@@ -18,11 +19,11 @@ export const ambientGetAll = async (): Promise<AmbientItem[]> => {
   }
 }
 
-export const ambientUpload = async (fileName: string, fileData: Uint8Array): Promise<void> => {
+export const ambientUpload = async (path: string, fileName: string): Promise<void> => {
   try {
-    await invoke('upload_ambient', { fileName, fileData })
+    await invoke('upload_ambient', { path, fileName })
   } catch (error: any) {
-    throw new Error(typeof error === 'string' ? error : error.message || '环境音上传失败')
+    throw new Error(typeof error === 'string' ? error : error.message || i18n.global.t('api.ambient.uploadFailed'))
   }
 }
 
@@ -30,7 +31,7 @@ export const ambientDelete = async (url: string): Promise<void> => {
   try {
     await invoke('delete_ambient', { url })
   } catch (error: any) {
-    throw new Error(typeof error === 'string' ? error : error.message || '环境音删除失败')
+    throw new Error(typeof error === 'string' ? error : error.message || i18n.global.t('api.ambient.deleteFailed'))
   }
 }
 

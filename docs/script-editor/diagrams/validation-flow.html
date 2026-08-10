@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>剧本校验流程 · 流程图</title>
+<style>
+  :root { --bg:#0f1720; --panel:#16202c; --border:#2a3a4a; --text:#e6edf3; --muted:#8b98a5; --brand:#79d9ff; }
+  body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft YaHei",sans-serif;padding:24px;}
+  h1{font-size:20px;margin:0 0 4px;} .sub{color:var(--muted);font-size:13px;margin-bottom:18px;}
+  .wrap{max-width:1280px;margin:0 auto;} svg{width:100%;height:auto;display:block;}
+  text{font-family:"Segoe UI","Microsoft YaHei",sans-serif;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>剧本自动错误检测 —— 校验流程图</h1>
+  <p class="sub">目标：把引擎里的「静默失败」变成作者看得见的诊断。判定逻辑复用引擎自身函数（resolve_script_media / parse_variable_action / KNOWN_EFFECTS）。三级严重度：error 必出问题 · warn 大概率不是本意 · info 提示性。保存不拦，试玩/导出拦 error。</p>
+
+  <svg viewBox="0 0 1260 1160" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8b98a5"/></marker>
+      <marker id="aE" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f87171"/></marker>
+      <marker id="aW" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#fbbf24"/></marker>
+      <marker id="aI" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8b98a5"/></marker>
+    </defs>
+
+    <!-- ============ 阶段 1：story_config ============ -->
+    <g font-size="11">
+      <rect x="40" y="60" width="240" height="52" rx="10" fill="#241f17" stroke="#f4a261" stroke-width="1.6"/>
+      <text x="160" y="82" text-anchor="middle" font-size="12.5" font-weight="700" fill="#f4a261">validate(data_dir, script_dir)</text>
+      <text x="160" y="100" text-anchor="middle" font-size="9.5" fill="#8b98a5">other_script_names 查重映射</text>
+    </g>
+
+    <path d="M160,112 L160,150" stroke="#8b98a5" stroke-width="1.3" fill="none" marker-end="url(#a)"/>
+
+    <g>
+      <rect x="40" y="152" width="240" height="52" rx="10" fill="#16202c" stroke="#79d9ff"/>
+      <text x="160" y="174" text-anchor="middle" font-size="11.5" font-weight="600" fill="#79d9ff">读 story_config.yaml</text>
+      <text x="160" y="192" text-anchor="middle" font-size="9.5" fill="#8b98a5">io::read_story_config</text>
+    </g>
+
+    <!-- 读失败 -->
+    <path d="M280,178 L360,178" stroke="#f87171" stroke-width="1.2" fill="none" marker-end="url(#aE)"/>
+    <text x="326" y="170" text-anchor="middle" font-size="9.5" fill="#f87171">失败</text>
+    <g>
+      <rect x="364" y="150" width="250" height="56" rx="8" fill="#3a1a1a" stroke="#f87171"/>
+      <text x="489" y="172" text-anchor="middle" font-size="11" fill="#f87171">config.unreadable · error</text>
+      <text x="489" y="190" text-anchor="middle" font-size="9.5" fill="#8b98a5">提前 return finish()</text>
+    </g>
+
+    <!-- 剧本名检查 -->
+    <path d="M160,204 L160,244" stroke="#8b98a5" stroke-width="1.3" fill="none" marker-end="url(#a)"/>
+    <g>
+      <rect x="40" y="246" width="240" height="66" rx="10" fill="#16202c" stroke="#fbbf24"/>
+      <text x="160" y="268" text-anchor="middle" font-size="11.5" font-weight="600" fill="#fbbf24">剧本名 script_name 检查</text>
+      <text x="160" y="288" text-anchor="middle" font-size="9.5" fill="#8b98a5">空 → config.no_script_name · warn</text>
+      <text x="160" y="304" text-anchor="middle" font-size="9.5" fill="#f87171">重复 → config.duplicate_name · error</text>
+    </g>
+
+    <!-- 章节清单 -->
+    <path d="M160,312 L160,352" stroke="#8b98a5" stroke-width="1.3" fill="none" marker-end="url(#a)"/>
+    <g>
+      <rect x="40" y="354" width="240" height="66" rx="10" fill="#16202c" stroke="#79d9ff"/>
+      <text x="160" y="376" text-anchor="middle" font-size="11.5" font-weight="600" fill="#79d9ff">章节清单 / 开场章节</text>
+      <text x="160" y="396" text-anchor="middle" font-size="9.5" fill="#f87171">Chapters 空 → chapters.empty · error → return</text>
+      <text x="160" y="412" text-anchor="middle" font-size="9.5" fill="#f87171">intro_chapter 缺失 → config.intro_missing · error</text>
+    </g>
+
+    <!-- 角色人设 -->
+    <path d="M160,420 L160,460" stroke="#8b98a5" stroke-width="1.3" fill="none" marker-end="url(#a)"/>
+    <g>
+      <rect x="40" y="462" width="240" height="66" rx="10" fill="#16202c" stroke="#fbbf24"/>
+      <text x="160" y="484" text-anchor="middle" font-size="11.5" font-weight="600" fill="#fbbf24">剧本内 NPC 检查</text>
+      <text x="160" y="504" text-anchor="middle" font-size="9.5" fill="#f87171">缺 script_role_key → character.no_role_key · warn</text>
+      <text x="160" y="520" text-anchor="middle" font-size="9.5" fill="#8b98a5">空人设 → character.no_persona · info</text>
+    </g>
+
+    <!-- ============ 阶段 2：逐章节循环 ============ -->
+    <path d="M160,528 L160,570" stroke="#8b98a5" stroke-width="1.3" fill="none" marker-end="url(#a)"/>
+    <g>
+      <rect x="40" y="572" width="240" height="52" rx="10" fill="#241f17" stroke="#f4a261" stroke-width="1.6"/>
+      <text x="160" y="594" text-anchor="middle" font-size="12.5" font-weight="700" fill="#f4a261">逐章节循环</text>
+      <text x="160" y="612" text-anchor="middle" font-size="9.5" fill="#8b98a5">resolve → read → parse → ChapterDoc</text>
+    </g>
+
+    <path d="M160,624 L160,664" stroke="#8b98a5" stroke-width="1.3" fill="none" marker-end="url(#a)"/>
+    <g>
+      <rect x="40" y="666" width="240" height="66" rx="10" fill="#16202c" stroke="#79d9ff"/>
+      <text x="160" y="688" text-anchor="middle" font-size="11.5" font-weight="600" fill="#79d9ff">逐事件遍历</text>
+      <text x="160" y="708" text-anchor="middle" font-size="9.5" fill="#8b98a5">结构错误 → 该事件跳过</text>
+      <text x="160" y="724" text-anchor="middle" font-size="9.5" fill="#8b98a5">事件为空 → chapter.no_events · warn</text>
+    </g>
+
+    <!-- ============ 事件检查明细 ============ -->
+    <g>
+      <rect x="340" y="60" width="430" height="560" rx="12" fill="#101c28" stroke="#79d9ff" stroke-opacity="0.3"/>
+      <text x="555" y="88" font-size="12.5" font-weight="700" fill="#79d9ff">事件级检查（每一条都可能产出诊断）</text>
+
+      <g font-size="10.5">
+        <text x="360" y="120" fill="#e6edf3">① 结构：not_a_map / missing_type / unknown_type → <tspan fill="#f87171">error（运行中断）</tspan></text>
+        <text x="360" y="146" fill="#e6edf3">② 必填字段 → field.required_missing · <tspan fill="#f87171">error</tspan></text>
+        <text x="360" y="172" fill="#e6edf3">③ 未知字段（拼错）→ field.unknown · <tspan fill="#fbbf24">warn</tspan></text>
+        <text x="360" y="198" fill="#e6edf3">④ 遗留字段（duration）→ field.inert · <tspan fill="#8b98a5">info</tspan></text>
+        <text x="360" y="224" fill="#e6edf3">⑤ 条件语法 + 变量收集 → condition.* 系列</text>
+      </g>
+
+      <!-- 分类型 -->
+      <rect x="360" y="244" width="390" height="320" rx="8" fill="#16202c" stroke="#4ade80" stroke-opacity="0.4"/>
+      <text x="555" y="270" text-anchor="middle" font-size="11.5" font-weight="700" fill="#4ade80">⑥ 逐类型细查（match type）</text>
+
+      <g font-size="10">
+        <text x="376" y="298" fill="#f87171">素材类 background/pic/music/sound/ambient</text>
+        <text x="392" y="316" fill="#8b98a5">asset.missing（resolve_script_media 查不到）· error</text>
+        <text x="392" y="334" fill="#8b98a5">music.bad_speed（≤0 或 &gt;4）· warn</text>
+        <text x="376" y="358" fill="#fbbf24">background_effect</text>
+        <text x="392" y="376" fill="#8b98a5">effect.case（大小写，前端自动纠正）· info</text>
+        <text x="392" y="394" fill="#8b98a5">effect.unknown · warn</text>
+        <text x="376" y="418" fill="#818cf8">choices</text>
+        <text x="392" y="436" fill="#8b98a5">choices.empty · choices.option_not_a_map · error</text>
+        <text x="392" y="454" fill="#8b98a5">choices.catch_all_not_last · choices.duplicate_text · warn</text>
+        <text x="392" y="472" fill="#8b98a5">choices.option_next_ignored（选项级 next 无效）· error</text>
+        <text x="376" y="496" fill="#f87171">set_variable</text>
+        <text x="392" y="514" fill="#8b98a5">set_variable.no_options（原型形状检测）· error</text>
+        <text x="392" y="532" fill="#8b98a5">action.bad_expression · error / action.not_supported_here · warn</text>
+        <text x="376" y="556" fill="#f472b6">free_dialogue</text>
+        <text x="392" y="574" fill="#8b98a5">free_dialogue.no_exit（不限轮 + 无结束语）· error</text>
+      </g>
+    </g>
+
+    <!-- 角色引用 -->
+    <g>
+      <rect x="40" y="766" width="240" height="66" rx="10" fill="#16202c" stroke="#f87171"/>
+      <text x="160" y="788" text-anchor="middle" font-size="11.5" font-weight="600" fill="#f87171">角色引用检查</text>
+      <text x="160" y="808" text-anchor="middle" font-size="9.5" fill="#8b98a5">character ≠ MAIN 且不在 characters/</text>
+      <text x="160" y="824" text-anchor="middle" font-size="9.5" fill="#f87171">→ character.unknown · error</text>
+    </g>
+
+    <!-- chapter_end 分支框 -->
+    <g>
+      <rect x="40" y="850" width="430" height="230" rx="12" fill="#101c28" stroke="#fbbf24" stroke-opacity="0.35"/>
+      <text x="255" y="878" font-size="12.5" font-weight="700" fill="#fbbf24">chapter_end 专项（含章节图边收集）</text>
+      <g font-size="10">
+        <text x="60" y="906" fill="#e6edf3">linear：next 与 next_chapter 并存 → both_next_fields · warn</text>
+        <text x="60" y="928" fill="#e6edf3">linear 无下一章 → no_next · warn；悬空目标 → chapter_end.dangling · error</text>
+        <text x="60" y="950" fill="#e6edf3">branching / ai_judged：no_options · error、分支写成选项形状 → choice_shaped_option · error</text>
+        <text x="60" y="972" fill="#e6edf3">分支无条件 → branch_no_condition · warn；无 next → branch_no_next · error</text>
+        <text x="60" y="994" fill="#e6edf3">无 default 兜底 → no_default_branch · warn；未知 end_type → unknown_end_type · error</text>
+        <text x="60" y="1020" fill="#4ade80">位置：不在最后 → chapter_end.not_last · warn</text>
+        <text x="60" y="1042" fill="#4ade80">整章缺 chapter_end → chapter.no_end · error（引擎当剧本结束）</text>
+        <text x="60" y="1064" fill="#79d9ff">同时产出 ChapterEdge（from/to/label/end_type）供前端画真连线</text>
+      </g>
+    </g>
+
+    <!-- 连线：逐事件 → 角色引用 / chapter_end -->
+    <path d="M280,699 L340,699 L340,799 L280,799" stroke="#8b98a5" stroke-width="1.2" fill="none"/>
+    <path d="M280,732 L340,732 L340,965 L470,965" stroke="#8b98a5" stroke-width="1.2" fill="none"/>
+
+    <!-- 角色引用 → chapter_end -->
+    <path d="M160,832 L160,850" stroke="#8b98a5" stroke-width="1.3" fill="none" marker-end="url(#a)"/>
+
+    <!-- ============ 阶段 3：图 + 变量 ============ -->
+    <path d="M470,1040 L620,1040" stroke="#8b98a5" stroke-width="1.3" fill="none" marker-end="url(#a)"/>
+    <g>
+      <rect x="630" y="980" width="280" height="120" rx="10" fill="#16202c" stroke="#fbbf24"/>
+      <text x="770" y="1006" text-anchor="middle" font-size="12" font-weight="700" fill="#fbbf24">章节图分析 check_graph</text>
+      <text x="770" y="1030" text-anchor="middle" font-size="10" fill="#8b98a5">从 intro 做可达性（DFS）</text>
+      <text x="770" y="1050" text-anchor="middle" font-size="10" fill="#fbbf24">graph.unreachable · warn（孤儿章）</text>
+      <text x="770" y="1070" text-anchor="middle" font-size="10" fill="#fbbf24">graph.cycle · warn（三色 DFS 找环）</text>
+      <text x="770" y="1090" text-anchor="middle" font-size="10" fill="#8b98a5">引擎无循环检测，玩家可能被困</text>
+    </g>
+
+    <path d="M630,1060 L620,1060 L470,1100 L380,1100" stroke="#8b98a5" stroke-width="1.2" fill="none"/>
+
+    <g>
+      <rect x="60" y="1092" width="260" height="60" rx="10" fill="#16202c" stroke="#fbbf24"/>
+      <text x="190" y="1114" text-anchor="middle" font-size="12" font-weight="700" fill="#fbbf24">变量分析</text>
+      <text x="190" y="1134" text-anchor="middle" font-size="10" fill="#8b98a5">读了没写 → variable.never_set · warn</text>
+      <text x="190" y="1148" text-anchor="middle" font-size="10" fill="#8b98a5">写了没读 → variable.never_read · info</text>
+    </g>
+
+    <!-- ============ 收尾 ============ -->
+    <path d="M160,732 L160,766" stroke="#8b98a5" stroke-width="1.3" fill="none" marker-end="url(#a)"/>
+    <path d="M190,1152 L190,1180 L760,1180 L760,1130 L770,1100" stroke="#8b98a5" stroke-width="1.2" fill="none"/>
+
+    <g>
+      <rect x="900" y="60" width="320" height="96" rx="10" fill="#241f17" stroke="#4ade80" stroke-width="1.6"/>
+      <text x="1060" y="86" text-anchor="middle" font-size="13" font-weight="700" fill="#4ade80">finish(diags, vars, edges)</text>
+      <text x="1060" y="108" text-anchor="middle" font-size="10" fill="#8b98a5">排序：error → warn → info，同级按章节 + 事件序</text>
+      <text x="1060" y="126" text-anchor="middle" font-size="10" fill="#8b98a5">统计 errorCount / warnCount / infoCount</text>
+      <text x="1060" y="144" text-anchor="middle" font-size="10" fill="#8b98a5">返回 ValidationReport（含 variables、edges）</text>
+    </g>
+    <path d="M770,80 C840,80 880,90 900,100" stroke="#4ade80" stroke-width="1.3" fill="none" marker-end="url(#aO)"/>
+
+    <!-- 消费方 -->
+    <g>
+      <rect x="900" y="200" width="320" height="150" rx="10" fill="#101c28" stroke="#34d399" stroke-opacity="0.4"/>
+      <text x="1060" y="228" text-anchor="middle" font-size="12.5" font-weight="700" fill="#34d399">诊断的消费方</text>
+      <text x="1060" y="254" text-anchor="middle" font-size="10" fill="#e6edf3">校验页：按章节聚合 + 点击跳转到事件</text>
+      <text x="1060" y="274" text-anchor="middle" font-size="10" fill="#e6edf3">时间线：事件行红/黄标（chapterDiagnostics）</text>
+      <text x="1060" y="294" text-anchor="middle" font-size="10" fill="#e6edf3">流程图：nodes 错误角标 + 真实连线</text>
+      <text x="1060" y="314" text-anchor="middle" font-size="10" fill="#e6edf3">试玩拦截：errorCount &gt; 0 拒绝启动</text>
+      <text x="1060" y="334" text-anchor="middle" font-size="10" fill="#e6edf3">属性面板：逐字段诊断提示</text>
+    </g>
+    <path d="M1060,156 L1060,200" stroke="#34d399" stroke-width="1.3" fill="none" marker-end="url(#a)"/>
+
+    <g font-size="11">
+      <text x="360" y="620" fill="#8b98a5">稳定诊断码（code）设计原则：</text>
+      <text x="360" y="640" fill="#8b98a5">机器可读、带类型前缀（config.* / chapter.* / event.* / field.* / asset.* /</text>
+      <text x="360" y="660" fill="#8b98a5">condition.* / action.* / choices.* / chapter_end.* / graph.* / variable.*），</text>
+      <text x="360" y="680" fill="#8b98a5">前端据此做跳转与过滤；改引擎 handler 必须同步，否则测试失败。</text>
+    </g>
+  </svg>
+</div>
+</body>
+</html>

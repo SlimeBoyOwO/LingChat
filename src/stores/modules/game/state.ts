@@ -1,4 +1,5 @@
 import type { SceneInfo } from '@/api/services/scene' // 导入场景类型
+import type { ScriptChoiceItem } from '@/types/script'
 
 export interface GameMessage {
   type: 'message' | 'reply'
@@ -12,6 +13,10 @@ export interface GameMessage {
   timestamp?: number
   /** 玩家消息序号（1-indexed），用于回溯定位 */
   userMessageSeq?: number
+  /** 该轮生成的思考链（仅每轮最后一条回复消息有值） */
+  thinking?: string
+  /** 该台词的第二语言（日语）译文，日文界面下显示 */
+  ttsText?: string
 }
 
 export interface FreeDialogueInfo {
@@ -24,7 +29,7 @@ export interface FreeDialogueInfo {
 export interface ScriptInfo {
   scriptName: string
   currentChapterName: string
-  choices: string[]
+  choices: ScriptChoiceItem[]
   isRunning: boolean
   freeDialogueInfo: FreeDialogueInfo
 }

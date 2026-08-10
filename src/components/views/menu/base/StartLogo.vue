@@ -2,18 +2,18 @@
   <img
     src="../../../../assets/images/LingChatLogo.png"
     alt="LingChatLogo"
-    class="cursor-pointer
-      hover:scale-105
-      transition-transform
-      duration-300
-      absolute
+    class="absolute
       top-0
-      right-0
-      h-[16vw]
-      w-auto
-      max-w-[40vw]
       drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)]
-      z-5"
+      transition-transform
+      hover:scale-105
+      right-0
+      z-5
+      w-auto
+      cursor-pointer
+      duration-300
+      max-w-[40vw]
+      h-[16vw]"
     v-bind="$attrs"
   />
 </template>

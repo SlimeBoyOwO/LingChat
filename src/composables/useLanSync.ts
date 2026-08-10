@@ -8,6 +8,7 @@ import type {
   SyncResult,
   SyncPhase,
 } from '../types/lanSync'
+import { i18n } from '@/locales'
 
 // ─── 共享状态 ────────────────────────────────────────────────
 
@@ -157,7 +158,7 @@ export function useLanSync() {
 
   /** 计划拉取 */
   async function planPull(): Promise<void> {
-    if (!selectedPeer.value) throw new Error('未选择对等设备')
+    if (!selectedPeer.value) throw new Error(i18n.global.t('stores.lanSync.noPeerSelected'))
     phase.value = 'fetching'
     errorMessage.value = ''
     try {
@@ -171,7 +172,7 @@ export function useLanSync() {
 
   /** 计划推送 */
   async function planPush(): Promise<void> {
-    if (!selectedPeer.value) throw new Error('未选择对等设备')
+    if (!selectedPeer.value) throw new Error(i18n.global.t('stores.lanSync.noPeerSelected'))
     phase.value = 'fetching'
     errorMessage.value = ''
     try {
@@ -220,7 +221,7 @@ export function useLanSync() {
       await invoke('lan_sync_restart')
     } catch (e) {
       // 移动端或不支持时回退到手动重启提示
-      errorMessage.value = '请手动重启应用以应用同步文件'
+      errorMessage.value = i18n.global.t('stores.lanSync.manualRestart')
       phase.value = 'error'
     }
   }
@@ -257,15 +258,15 @@ export function useLanSync() {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
   }
 
-  /** 文件操作原因的中文标签 */
+  /** 文件操作原因的界面显示标签 */
   function reasonLabel(reason: string): string {
     switch (reason) {
       case 'new':
-        return '新增'
+        return i18n.global.t('stores.lanSync.reason.new')
       case 'modified':
-        return '修改'
+        return i18n.global.t('stores.lanSync.reason.modified')
       case 'newer':
-        return '更新'
+        return i18n.global.t('stores.lanSync.reason.newer')
       default:
         return reason
     }
