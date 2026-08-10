@@ -122,6 +122,7 @@ export interface ScriptCharacter {
   folder: string
   /** 剧本里 character: 应该写的值 */
   roleKey: string
+  /** 显示名：后端读 settings.yml 的 name 优先，回落 ai_name，再回落目录名 */
   aiName: string
   emotions: string[]
   clothes: string[]
@@ -306,6 +307,7 @@ export const deleteAsset = (key: string, kind: AssetKind, scope: AssetScope, nam
 /** 全局角色库里的一个角色 */
 export interface GlobalCharacter {
   folder: string
+  /** 显示名：后端读 settings.yml 的 name 优先，回落 ai_name，再回落目录名 */
   aiName: string
   /** 在当前剧本里是否已导入 */
   alreadyInScript: boolean

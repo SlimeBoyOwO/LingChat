@@ -62,13 +62,16 @@ export const useEditorGetters = (s: StateRefs) => {
    * 用于时间线摘要、事件属性面板等处的「MAIN」显示。
    */
   const mainRoleDisplayName = computed<string>(() => {
-    const fromReadiness = s.readiness.value?.mainRoleName
-    if (fromReadiness) return fromReadiness
+    // 优先用全局角色库的实时扫描结果（editor_list_global_characters 直接读
+    // settings.yml 的 name/ai_name）：readiness 来自 DB 缓存，角色卡改名后
+    // 可能过期，且此前可能拿到的是标题而非名字
     const bound = s.detail.value?.package.boundCharacterFolder
     if (bound) {
       const gc = s.globalCharacters.value.find((g) => g.folder === bound)
       if (gc?.aiName) return gc.aiName
     }
+    const fromReadiness = s.readiness.value?.mainRoleName
+    if (fromReadiness) return fromReadiness
     // 剧本显式设置了玩家名时，MAIN 显示玩家名（比字面 MAIN 更接近「名字」）
     const ss = s.detail.value?.storyConfig as Record<string, unknown> | undefined
     const scriptUserName = (ss?.script_settings as Record<string, unknown> | undefined)

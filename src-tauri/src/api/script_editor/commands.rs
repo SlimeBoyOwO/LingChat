@@ -288,11 +288,22 @@ fn read_characters(script_dir: &Path) -> Vec<ScriptCharacter> {
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| folder.clone());
 
+        // 显示名：`name`（作者手写剧本角色时用这个字段放真正的名字）优先，
+        // 回落 `ai_name`，再回落目录名。此前只读 ai_name，作者把标题写在
+        // ai_name 里时下拉/摘要会显示成「角色标题」而不是名字。
         let ai_name = settings
-            .get("ai_name")
+            .get("name")
             .and_then(|v| v.as_str())
-            .unwrap_or(&folder)
-            .to_string();
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                settings
+                    .get("ai_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+            })
+            .unwrap_or_else(|| folder.clone());
 
         let avatar = e.path().join("avatar");
         let mut emotions: Vec<String> = Vec::new();
@@ -1153,12 +1164,22 @@ pub fn editor_list_global_characters(key: String) -> Result<Vec<GlobalCharacter>
             }
         }
         clothes.sort();
+        // 显示名与 read_characters 同一规则：name 优先，回落 ai_name，再回落目录名
+        let display_name = settings
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                settings
+                    .get("ai_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+            })
+            .unwrap_or_else(|| folder.clone());
         out.push(GlobalCharacter {
-            ai_name: settings
-                .get("ai_name")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&folder)
-                .to_string(),
+            ai_name: display_name,
             already_in_script: existing.contains(&folder),
             has_avatar: e.path().join("avatar").is_dir(),
             folder,
