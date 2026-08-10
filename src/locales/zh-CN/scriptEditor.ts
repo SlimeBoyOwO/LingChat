@@ -358,6 +358,7 @@ export default {
   composite: {
     deleteAction: '删除这个动作',
     deleteOption: '删除这个选项',
+    deleteGroup: '删除这个赋值组',
     ifPrefix: '若',
     jumpPrefix: '跳到',
     notSelected: '（未选择）',

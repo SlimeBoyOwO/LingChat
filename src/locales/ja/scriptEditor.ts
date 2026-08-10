@@ -379,6 +379,7 @@ export default {
   composite: {
     deleteAction: 'このアクションを削除',
     deleteOption: 'この選択肢を削除',
+    deleteGroup: 'この代入グループを削除',
     ifPrefix: 'もし',
     jumpPrefix: 'ジャンプ先',
     notSelected: '（未選択）',

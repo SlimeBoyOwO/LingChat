@@ -380,6 +380,7 @@ export default {
   composite: {
     deleteAction: 'Delete this action',
     deleteOption: 'Delete this option',
+    deleteGroup: 'Delete this assignment group',
     ifPrefix: 'If',
     jumpPrefix: 'Go to',
     notSelected: '(Not selected)',

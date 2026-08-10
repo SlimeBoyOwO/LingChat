@@ -558,10 +558,15 @@
           p-2.5
           last:mb-0"
       >
-        <div class="mb-1.5
-          flex
-          items-center
-          gap-2">
+        <!-- 组条件：默认收起，点「＋ 条件」展开（与 choices 选项一致），
+             避免与事件级「触发条件」混在一起 -->
+        <div
+          v-if="conditionOpen(i)"
+          class="mb-1.5
+            flex
+            items-center
+            gap-2"
+        >
           <span class="shrink-0
             text-xs
             text-white/40">{{
@@ -584,6 +589,54 @@
               transition-all
               hover:text-[#fca5a5]
               hover:bg-[rgba(248,113,113,0.15)]"
+            :title="t('scriptEditor.composite.removeCondition')"
+            @click="closeCondition(i)"
+          >
+            ✕
+          </button>
+          <button
+            class="shrink-0
+              rounded-md
+              px-1.5
+              py-1
+              text-xs
+              text-white/[0.35]
+              transition-all
+              hover:text-[#fca5a5]
+              hover:bg-[rgba(248,113,113,0.15)]"
+            :title="t('scriptEditor.composite.deleteGroup')"
+            @click="removeRow(i)"
+          >
+            ✕
+          </button>
+        </div>
+        <div
+          v-else
+          class="mb-1.5
+            flex
+            items-center
+            gap-2"
+        >
+          <button
+            class="text-xs
+              text-brand
+              hover:underline"
+            @click="openCondition(i)"
+          >
+            ＋ {{ t('scriptEditor.composite.addCondition') }}
+          </button>
+          <button
+            class="ml-auto
+              shrink-0
+              rounded-md
+              px-1.5
+              py-1
+              text-xs
+              text-white/[0.35]
+              transition-all
+              hover:text-[#fca5a5]
+              hover:bg-[rgba(248,113,113,0.15)]"
+            :title="t('scriptEditor.composite.deleteGroup')"
             @click="removeRow(i)"
           >
             ✕
