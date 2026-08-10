@@ -594,17 +594,19 @@ export default {
       "meteorFps": "流星幀率 (FPS)",
       "starsFps": "星星幀率 (FPS)"
     },
-    "cpu": {
-      "title": "CPU 性能檢測",
-      "detecting": "檢測緊 CPU …",
-      "name": "CPU 名稱：",
-      "tier": "性能等級：",
+    "perf": {
+      "title": "性能檢測",
+      "detecting": "檢測緊硬件性能 …",
+      "cpuName": "CPU 名稱：",
+      "gpuName": "GPU 名稱：",
+      "combinedTier": "性能等級（取最低）：",
       "suggestedFps": "建議幀率：",
       "detectingShort": "檢測緊…",
       "redetect": "再檢測過",
-      "fetchFailed": "攞 CPU 資料失敗",
+      "fetchFailed": "攞硬件性能資料失敗",
       "detectComplete": "檢測搞掂",
-      "tierMessage": "CPU 性能等級：{tier}",
+      "tierMessage": "性能等級（取最低）：{tier}",
+      "unknown": "未知",
       "redetectFailed": "再檢測失敗"
     },
     "upload": {

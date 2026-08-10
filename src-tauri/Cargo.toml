@@ -90,7 +90,6 @@ rustpython-derive = "0.5"
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["directml"] }
 sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["directml"] }
 windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dxgi"] }
-windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dxgi"] }
 
 [target.'cfg(any(target_os = "linux", all(target_os = "macos", target_arch = "x86_64")))'.dependencies]
 # GPU 性能分级：Linux 走 Vulkan、macOS(x86_64) 走 Metal（WebGPU / wgpu）

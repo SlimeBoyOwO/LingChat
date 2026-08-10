@@ -41,5 +41,5 @@ app.mount("#app");
 // 初始化全局音频输出设备管理器（需 pinia 就绪）
 initAudioOutputManager();
 
-// 延迟执行 CPU 画质自适应，确保 pinia store 已就绪
-setTimeout(autoConfigureCpuPerformance, 1000);
+// 延迟执行 CPU+GPU 画质自适应，确保 pinia store 已就绪
+setTimeout(autoConfigurePerformance, 1000);

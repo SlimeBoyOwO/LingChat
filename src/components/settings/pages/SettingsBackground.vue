@@ -247,7 +247,7 @@
       </div>
     </MenuItem>
 
-    <MenuItem title="性能检测" size="large">
+    <MenuItem :title="$t('settings.background.perf.title')" size="large">
       <template #header>
         <Cpu :size="20" />
       </template>
@@ -255,7 +255,7 @@
         <!-- 加载中 -->
         <div v-if="perfLoading" class="flex items-center gap-2 text-white/60 text-sm">
           <span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white/80 rounded-full animate-spin"></span>
-          正在检测硬件性能 …
+          {{ $t('settings.background.perf.detecting') }}
         </div>
 
         <!-- 检测结果 -->
@@ -278,7 +278,7 @@
 
           <!-- CPU 行 -->
           <div class="flex items-center gap-2">
-            <span class="text-white/50 text-xs font-medium min-w-16 shrink-0">CPU 名称：</span>
+            <span class="text-white/50 text-xs font-medium min-w-16 shrink-0">{{ $t('settings.background.perf.cpuName') }}</span>
             <span class="text-white/90 text-sm font-mono break-all flex-1">{{ cpuInfo.brand }}</span>
             <span
               class="px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0"
@@ -291,7 +291,7 @@
 
           <!-- GPU 行（分级适用且有检测到 GPU 时显示） -->
           <div v-if="gpuInfo?.is_applicable && gpuInfo.name" class="flex items-center gap-2">
-            <span class="text-white/50 text-xs font-medium min-w-16 shrink-0">GPU 名称：</span>
+            <span class="text-white/50 text-xs font-medium min-w-16 shrink-0">{{ $t('settings.background.perf.gpuName') }}</span>
             <span class="text-white/90 text-sm font-mono break-all flex-1">{{ gpuInfo.name }}</span>
             <span
               class="px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0"
@@ -304,7 +304,7 @@
 
           <!-- 综合等级（取最低） -->
           <div class="flex items-center gap-2">
-            <span class="text-white/50 text-xs font-medium min-w-16 shrink-0">性能等级（取最低）：</span>
+            <span class="text-white/50 text-xs font-medium min-w-16 shrink-0">{{ $t('settings.background.perf.combinedTier') }}</span>
             <span
               v-if="combinedTier"
               class="px-2.5 py-0.5 rounded-full text-xs font-bold"
@@ -315,7 +315,7 @@
             </span>
           </div>
           <div class="flex items-center gap-2">
-            <span class="text-white/50 text-xs font-medium min-w-16 shrink-0">建议帧率：</span>
+            <span class="text-white/50 text-xs font-medium min-w-16 shrink-0">{{ $t('settings.background.perf.suggestedFps') }}</span>
             <span class="text-white/70 text-sm">{{ suggestedFps }} FPS</span>
           </div>
         </div>
@@ -331,7 +331,7 @@
           :disabled="perfLoading"
           @click="handleRedetectPerf"
         >
-          {{ perfLoading ? '检测中…' : '重新检测' }}
+          {{ perfLoading ? $t('settings.background.perf.detectingShort') : $t('settings.background.perf.redetect') }}
         </button>
       </div>
     </MenuItem>
@@ -646,7 +646,7 @@ async function fetchPerfInfo(): Promise<void> {
     cpuInfo.value = cpu
     gpuInfo.value = gpu
   } catch (e: any) {
-    perfError.value = e?.message || '获取硬件性能信息失败'
+    perfError.value = e?.message || t('settings.background.perf.fetchFailed')
     console.error('获取硬件性能信息失败', e)
   } finally {
     perfLoading.value = false
@@ -661,12 +661,16 @@ async function handleRedetectPerf(): Promise<void> {
     cpuInfo.value = cpu
     gpuInfo.value = gpu
     uiStore.showSuccess({
-      title: '检测完成',
-      message: `性能等级（取最低）：${combinedTier.value ? getTierLabel(combinedTier.value) : '未知'}`,
+      title: t('settings.background.perf.detectComplete'),
+      message: t('settings.background.perf.tierMessage', {
+        tier: combinedTier.value
+          ? getTierLabel(combinedTier.value)
+          : t('settings.background.perf.unknown'),
+      }),
       duration: 3000,
     })
   } catch (e: any) {
-    perfError.value = e?.message || '重新检测失败'
+    perfError.value = e?.message || t('settings.background.perf.redetectFailed')
     console.error('重新检测硬件性能失败', e)
   } finally {
     perfLoading.value = false
