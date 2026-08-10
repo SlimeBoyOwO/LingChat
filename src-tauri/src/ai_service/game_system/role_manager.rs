@@ -129,6 +129,49 @@ impl GameRoleManager {
         tracing::info!("所有角色 TTS 已重新启用");
     }
 
+    /// 按 DB/settings.yml 的最新 TTS 配置重建**所有已加载角色**的 VoiceMaker。
+    ///
+    /// 历史页「生成语音」前的预热：保证配好 TTS 后第一次点击就能成功，覆盖三种
+    /// 滞后场景——角色先于 TTS 配置注册（voice_maker 为 None）、provider 被禁用
+    /// 等待后台恢复、设置被改但运行时对象未刷新。新配置下仍无 VoiceMaker 的
+    /// （tts_type 为空）保持现状不动。返回刷新成功的角色数。
+    pub async fn rebuild_voice_makers_from_db(&mut self, db: &DatabaseConnection) -> usize {
+        let role_ids: Vec<i32> = self.loaded_roles.keys().copied().collect();
+        let mut ok = 0usize;
+        for role_id in role_ids {
+            let resource_path = self
+                .loaded_roles
+                .get(&role_id)
+                .and_then(|r| r.resource_path.clone());
+            let settings = match RoleRepo::get_role_settings_by_id(db, &self.data_dir, role_id).await
+            {
+                Ok(Some(s)) => s,
+                _ => continue,
+            };
+            let Some(vm) = build_voice_maker(
+                &self.data_dir,
+                &settings,
+                resource_path.as_deref(),
+                &self.tts_config,
+                self.local_tts.as_ref(),
+            ) else {
+                continue;
+            };
+            let Some(role) = self.loaded_roles.get_mut(&role_id) else {
+                continue;
+            };
+            role.settings.tts_type = settings.tts_type.clone();
+            role.settings.voice_lang = settings.voice_lang.clone();
+            role.settings.voice_models = settings.voice_models.clone();
+            role.voice_maker = Some(vm);
+            ok += 1;
+        }
+        if ok > 0 {
+            tracing::info!("生成语音预热：已按最新设置刷新 {} 个角色的 VoiceMaker", ok);
+        }
+        ok
+    }
+
     pub fn clear_all_memories(&mut self) {
         for r in self.loaded_roles.values_mut() {
             r.memory.clear();

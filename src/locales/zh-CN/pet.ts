@@ -35,6 +35,8 @@ export default {
     backtrackTitle: '回溯到此消息之前（将清除此消息及之后所有对话）',
     thinking: '思考过程（{count} 字）',
     playVoice: '播放语音',
+    generateVoice: '生成语音',
+    generateVoiceFailed: '生成语音失败：{error}',
     prevPage: '上一页',
     nextPage: '下一页',
     pageInfo: '第 {current} 页 / 共 {total} 页',

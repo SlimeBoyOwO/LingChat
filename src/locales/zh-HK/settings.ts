@@ -14,6 +14,8 @@ export default {
     "backtrack": "回溯",
     "thinking": "思考過程（{count} 字）",
     "playVoice": "播放語音",
+    "generateVoice": "生成語音",
+    "generateVoiceFailed": "生成語音失敗：{error}",
     "you": "你",
     "mysteryVoice": "謎之音",
     "backtrackConfirm": "確定要回溯返去呢個對話？呢個操作會清走嗰個訊息同埋之後嘅所有對話，而且撤銷唔返㗎。",

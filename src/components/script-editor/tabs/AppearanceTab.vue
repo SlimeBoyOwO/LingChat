@@ -250,7 +250,7 @@ import { useI18n } from 'vue-i18n'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Icon, Slider } from '@/components/base'
 import { MenuItem } from '@/components/ui'
-import ImageCropModal from '@/components/script-editor/ImageCropModal.vue'
+import ImageCropModal from '@/components/script-editor/modals/ImageCropModal.vue'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 
 const { t } = useI18n()

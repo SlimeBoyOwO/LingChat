@@ -79,6 +79,9 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     }
     await refreshScripts()
     void refreshGlobalAssets()
+    // 首次进入编辑器也要加载全局角色库（创建剧本/绑定羁绊人物时用得到），
+    // 空 key 时后端同样会返回全部全局角色，只是 already_in_script 全为 false
+    void refreshGlobalCharacters()
   }
 
   async function refreshScripts() {
@@ -850,8 +853,8 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
   }
 
   async function refreshGlobalCharacters() {
-    const key = g.scriptKey.value
-    if (!key) return
+    // key 可为空（首次进入编辑器尚未打开剧本）：后端对空 key 返回全部全局角色
+    const key = g.scriptKey.value ?? ''
     try {
       s.globalCharacters.value = await api.listGlobalCharacters(key)
     } catch (e) {

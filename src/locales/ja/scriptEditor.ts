@@ -89,7 +89,7 @@ export default {
     event: {
       narration: 'ナレーション',
       player: 'プレイヤーの台詞',
-      dialogue: 'キャラクターの台詞',
+      dialogue: 'AI のセリフ',
       aiDialogue: 'AI 会話',
       freeDialogue: '自由会話',
       choices: '選択肢',
@@ -347,6 +347,7 @@ export default {
     yamlKey: 'YAML フィールド名：{key}',
     optional: '任意',
     notSetDefault: '（未設定・エンジン既定値を使用）',
+    notSetDefaultWith: '（未設定・エンジン既定値：{default}）',
     noAssetsHint:
       '利用可能な素材がありません。「インポート」はこのスクリプトへ、「グローバル」は game_data に置かれ全スクリプトで共有されます。',
     globalOnlyHint: 'うち {count} 個はグローバル素材ライブラリから',
@@ -356,7 +357,8 @@ export default {
       'このシナリオにインポート —— シナリオと一緒に配布され、他のシナリオからは見えません',
     importGlobal:
       'グローバル素材としてインポート —— 全シナリオで共有されますが、書き出しには含まれません',
-    mainRole: 'MAIN（現在の主人公）',
+    mainRole: 'MAIN（未バインド）',
+    clothesDefault: 'デフォルト（サブディレクトリに入らない）',
     image: '画像',
     audio: '音声',
   },
@@ -401,11 +403,11 @@ export default {
     addVariable: '変数を設定',
     addCondition: '条件',
     addOption: '選択肢を追加',
-    conditionHelp:
-      '条件：設定すると、その条件を満たす場合のみこの選択肢を選べます。満たさない場合はグレー表示になり、タップすると「選択不可時のヒント」が表示されます。',
-    playerLineHelp:
-      'プレイヤーのセリフを追加：プレイヤー名義で AI のコンテキストにセリフを補足します。',
-    variableHelp: '変数を設定：この選択肢が世界線に与える影響を示します。',
+    addBtn: '追加',
+    added: '追加済み',
+    addLineDesc: '上記の選択肢文を自動でコピー。プレイヤー名義で AI コンテキストに補足します。特別な事情がなければ必須項目です',
+    addVarDesc: 'この選択肢を選ぶと、物語にどんな隠れた変化が起きるかを示します',
+    addConditionDesc: '満たさないと選択肢がグレー表示になり、タップで「選択不可時のヒント」を表示',
     elseBranch:
       'どの条件分岐も満たさない場合に進むルート。未設定だとシナリオはそのまま終了します。',
     deleteBranch: 'この分岐を削除',
@@ -419,7 +421,7 @@ export default {
     clear: 'クリアして入力し直す',
     invalidNotice:
       'この条件はサポートされていない書き方です（検証が原因を表示します）。「クリアして入力し直す」で下のフォームから再選択してください。',
-    operatorSet: '真である（設定済みか判定）',
+    operatorSet: '真である（変数が存在するか判定）',
     operatorEq: '等しい',
     operatorNeq: '等しくない',
     valueHint: '値を入力すると条件が有効になります',

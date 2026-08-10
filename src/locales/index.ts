@@ -25,6 +25,19 @@ const BUNDLED: Record<AppLocale, Record<string, unknown>> = {
   en: en as Record<string, unknown>,
 }
 
+/**
+ * 内置词条版本：对全部内置词条做轻量 hash。
+ * 后端据它与 data/locales/*.json 里的版本比对——版本不一致（即词条有更新）
+ * 时自动用新内置词条重新播种，避免用户环境里早期播种的旧词条永远覆盖新词条。
+ * 用户手动编辑词条不改变内置版本，编辑内容仍会被保留。
+ */
+const BUNDLE_VERSION = (() => {
+  let h = 0
+  const s = JSON.stringify(BUNDLED)
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
+  return h.toString(36)
+})()
+
 /** 与 stores/plugins/persist.ts 一致的统一设置存储键 */
 const SETTINGS_STORAGE_KEY = 'lingchat-settings'
 
@@ -76,15 +89,23 @@ function deepMergeMessages(base: any, override: any): any {
 /**
  * 从数据目录 data/locales/<locale>.json 加载语言文件并与内置词条深合并。
  * 文件不存在时后端会用内置词条播种；用户编辑过的内容优先，缺失键用内置兜底。
+ * 播种内容带 __locale_version 标记：后端发现内置词条版本变化时会自动重新播种，
+ * 修复旧版本残留词条覆盖新词条的问题（详见后端 api/locale.rs）。
  */
 async function loadLocaleMessages(locale: AppLocale) {
   try {
     const json = await invoke<string>('get_locale_messages', {
       locale,
-      // 缩进格式播种，方便用户直接编辑
-      seedContent: JSON.stringify(BUNDLED[locale], null, 2),
+      // 缩进格式播种，方便用户直接编辑；__locale_version 仅供后端版本比对
+      seedContent: JSON.stringify(
+        { __locale_version: BUNDLE_VERSION, ...BUNDLED[locale] },
+        null,
+        2,
+      ),
     })
     const fileMsgs = JSON.parse(json)
+    // 版本标记是内部字段，不进界面词条
+    delete fileMsgs.__locale_version
     i18n.global.setLocaleMessage(locale, deepMergeMessages(BUNDLED[locale], fileMsgs))
   } catch (e) {
     console.warn(`加载语言文件失败（使用内置词条）: ${locale}`, e)

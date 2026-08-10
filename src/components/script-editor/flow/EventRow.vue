@@ -304,9 +304,14 @@ const diagnostics = computed(() => store.chapterDiagnostics[props.index] ?? [])
 const errorCount = computed(() => diagnostics.value.filter((d) => d.severity === 'error').length)
 const warnCount = computed(() => diagnostics.value.filter((d) => d.severity === 'warn').length)
 
+/** roleKey → aiName 映射，供摘要显示角色名字（与事件属性下拉一致） */
+const roleNameMap = computed<Map<string, string>>(
+  () => new Map((store.detail?.characters ?? []).map((c) => [c.roleKey, c.aiName])),
+)
+
 /** 把摘要按 %player% 切开，占位符用强调色标出来 */
 const highlighted = computed(() => {
-  const text = eventSummary(props.event)
+  const text = eventSummary(props.event, store.mainRoleDisplayName, roleNameMap.value)
   const parts: { text: string; token: boolean }[] = []
   let rest = text
   while (true) {

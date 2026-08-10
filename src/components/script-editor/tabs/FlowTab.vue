@@ -4,9 +4,9 @@ import { useI18n } from 'vue-i18n'
 import { Icon, Toggle } from '@/components/base'
 import { MenuPage, MenuItem } from '@/components/ui'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
-import ChapterFlow from './ChapterFlow.vue'
-import ChapterTimeline from './ChapterTimeline.vue'
-import EventPropertyPanel from './EventPropertyPanel.vue'
+import ChapterFlow from '../flow/ChapterFlow.vue'
+import ChapterTimeline from '../flow/ChapterTimeline.vue'
+import EventPropertyPanel from '../flow/EventPropertyPanel.vue'
 import { openScriptFolder } from '@/api/services/script-editor'
 
 const emit = defineEmits<{ 'new-chapter': [] }>()

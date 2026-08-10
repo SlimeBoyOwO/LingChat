@@ -43,6 +43,7 @@ export default class DialogueProcessor implements IEventProcessor {
       userMessageSeq: event.userMessageSeq,
       thinking: event.thinking,
       ttsText: event.ttsText,
+      senderRoleId: event.roleId,
     })
 
     // 回溯更新最近一条没有序号标记的用户消息（前端发送消息时尚未拿到序号）

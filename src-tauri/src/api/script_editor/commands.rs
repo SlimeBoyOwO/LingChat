@@ -1110,6 +1110,8 @@ pub struct GlobalCharacter {
     pub already_in_script: bool,
     /// 全局目录里有没有 avatar/，没有的话导入后也不会有立绘
     pub has_avatar: bool,
+    /// 全局角色已上传的服装目录（avatar/ 下的子目录，供编辑器服装下拉使用）
+    pub clothes: Vec<String>,
 }
 
 /// 列出全局角色库，并标出哪些已经导入到当前剧本。
@@ -1141,6 +1143,16 @@ pub fn editor_list_global_characters(key: String) -> Result<Vec<GlobalCharacter>
             .ok()
             .and_then(|s| serde_yaml::from_str(&s).ok())
             .unwrap_or(JsonValue::Null);
+        // 服装候选：avatar/ 下的子目录（与 read_characters 的扫描规则一致）
+        let mut clothes = Vec::new();
+        if let Ok(files) = std::fs::read_dir(e.path().join("avatar")) {
+            for f in files.flatten() {
+                if f.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    clothes.push(f.file_name().to_string_lossy().to_string());
+                }
+            }
+        }
+        clothes.sort();
         out.push(GlobalCharacter {
             ai_name: settings
                 .get("ai_name")
@@ -1150,6 +1162,7 @@ pub fn editor_list_global_characters(key: String) -> Result<Vec<GlobalCharacter>
             already_in_script: existing.contains(&folder),
             has_avatar: e.path().join("avatar").is_dir(),
             folder,
+            clothes,
         });
     }
     out.sort_by(|a, b| a.folder.cmp(&b.folder));

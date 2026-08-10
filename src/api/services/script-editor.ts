@@ -40,6 +40,8 @@ export interface FieldSpec {
   /** 与 options 对齐的显示名（来自 Rust schema 的 option_labels），有则优先显示 */
   optionLabels?: string[]
   placeholder?: string
+  /** 引擎真实默认值的人类可读描述（可选字段「不设置」时展示） */
+  defaultDesc?: string
   hint?: string
   enabled: boolean
 }
@@ -308,6 +310,8 @@ export interface GlobalCharacter {
   /** 在当前剧本里是否已导入 */
   alreadyInScript: boolean
   hasAvatar: boolean
+  /** 已上传的服装目录（avatar/ 子目录），供服装下拉使用 */
+  clothes: string[]
 }
 
 export const listGlobalCharacters = (key: string) =>

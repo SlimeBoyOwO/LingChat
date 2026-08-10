@@ -13,6 +13,8 @@ export default {
     backtrack: '巻き戻し',
     thinking: '思考プロセス（{count} 文字）',
     playVoice: '音声を再生',
+    generateVoice: '音声を生成',
+    generateVoiceFailed: '音声の生成に失敗：{error}',
     you: 'あなた',
     mysteryVoice: '謎の声',
     backtrackConfirm: 'この会話まで巻き戻しますか？このメッセージ以降のすべての会話が消去され、元に戻せません。',

@@ -37,11 +37,47 @@ export const useEditorGetters = (s: StateRefs) => {
     return out
   })
 
-  /** character 字段的候选项：MAIN + 剧本内 NPC 的 roleKey */
-  const characterOptions = computed<string[]>(() => [
-    'MAIN',
-    ...(s.detail.value?.characters ?? []).map((c) => c.roleKey),
-  ])
+  /**
+   * character 字段的候选项：MAIN + 剧本内 NPC。
+   * value 是引擎认的 roleKey（script_role_key，缺省回落目录名），
+   * label 显示角色名字（aiName）——避免作者看到目录键却认不出是谁；
+   * 重复 roleKey 去重（两个目录写相同 script_role_key 时只保留一个）。
+   */
+  const characterOptions = computed<{ value: string; label: string }[]>(() => {
+    const seen = new Set<string>(['MAIN'])
+    const out: { value: string; label: string }[] = [
+      { value: 'MAIN', label: mainRoleDisplayName.value },
+    ]
+    for (const c of s.detail.value?.characters ?? []) {
+      if (seen.has(c.roleKey)) continue
+      seen.add(c.roleKey)
+      out.push({ value: c.roleKey, label: c.aiName || c.roleKey })
+    }
+    return out
+  })
+
+  /**
+   * MAIN 的展示名：优先用试玩可行性解析出的绑定角色名，其次按
+   * bound_character_folder 在全局角色库里匹配 aiName，都没有才回退词条。
+   * 用于时间线摘要、事件属性面板等处的「MAIN」显示。
+   */
+  const mainRoleDisplayName = computed<string>(() => {
+    const fromReadiness = s.readiness.value?.mainRoleName
+    if (fromReadiness) return fromReadiness
+    const bound = s.detail.value?.package.boundCharacterFolder
+    if (bound) {
+      const gc = s.globalCharacters.value.find((g) => g.folder === bound)
+      if (gc?.aiName) return gc.aiName
+    }
+    // 剧本显式设置了玩家名时，MAIN 显示玩家名（比字面 MAIN 更接近「名字」）
+    const ss = s.detail.value?.storyConfig as Record<string, unknown> | undefined
+    const scriptUserName = (ss?.script_settings as Record<string, unknown> | undefined)
+      ?.user_name
+    if (typeof scriptUserName === 'string' && scriptUserName.trim()) {
+      return scriptUserName.trim()
+    }
+    return i18n.global.t('scriptEditor.fieldRow.mainRole')
+  })
 
   /** chapter 字段的候选项，末尾附一个「剧本结束」 */
   const chapterOptions = computed<{ value: string; label: string }[]>(() => {
@@ -109,6 +145,7 @@ export const useEditorGetters = (s: StateRefs) => {
     characters,
     eventSpecs,
     characterOptions,
+    mainRoleDisplayName,
     chapterOptions,
     introChapter,
     edges,
