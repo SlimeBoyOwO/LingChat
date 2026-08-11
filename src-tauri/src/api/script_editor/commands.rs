@@ -182,14 +182,19 @@ fn read_package(key: &str, loaded_names: &HashSet<String>) -> Result<ScriptPacka
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
+    // 只有羁绊布局或真正的羁绊冒险才认 bound_character_folder：
+    // standalone 独立剧本即使 story_config 残留 adventure.bound_character_folder
+    // （如从羁绊剧本复制改的）也不算绑定，否则编辑器会误显示 MAIN 选项
     let bound_character_folder = if layout == ScriptLayout::Character {
         key.split('/').nth(1).map(|s| s.to_string())
-    } else {
+    } else if is_adventure {
         adventure
             .and_then(|a| a.get("bound_character_folder"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .filter(|s| !s.is_empty())
+    } else {
+        None
     };
 
     Ok(ScriptPackage {
@@ -1742,12 +1747,44 @@ async fn find_main_role_by_folder(
 }
 
 /// 角色显示名，查不到就算了 —— 这只是给作者看的提示文案，不值得让整个命令失败。
+///
+/// DB 的 roles.name 是角色初始化时写入的 title（见 role_sync），不是显示名；
+/// 这里改读角色的 settings.yml（name → ai_name），与 read_characters 同一规则。
+/// 剧本 NPC 用 script_key 定位到剧本内 characters/，全局角色直接读全局目录。
 async fn role_name_of(db: &DatabaseConnection, id: i32) -> Option<String> {
-    RoleRepo::get_role_by_id(db, id)
-        .await
-        .ok()
-        .flatten()
-        .map(|r| r.name)
+    let role = RoleRepo::get_role_by_id(db, id).await.ok().flatten()?;
+    let folder = role.resource_folder.as_deref().unwrap_or_default();
+
+    let settings_path = match role.script_key.as_deref() {
+        Some(script_key) => paths::resolve_script_dir(script_key)
+            .ok()
+            .map(|d| d.join("characters").join(folder).join("settings.yml")),
+        None => Some(crate::api::characters_dir().join(folder).join("settings.yml")),
+    };
+
+    if let Some(path) = settings_path {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            let settings: JsonValue = serde_yaml::from_str(&content).unwrap_or(JsonValue::Null);
+            let from_yaml = settings
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    settings
+                        .get("ai_name")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                });
+            if from_yaml.is_some() {
+                return from_yaml;
+            }
+        }
+    }
+
+    // settings.yml 读不到时兜底 DB name（聊胜于无）
+    Some(role.name)
 }
 
 /// 角色卡里写的玩家名（settings.user_name）。查不到或为空返回空串 ——

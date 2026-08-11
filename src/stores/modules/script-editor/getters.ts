@@ -65,16 +65,19 @@ export const useEditorGetters = (s: StateRefs) => {
    * 用于时间线摘要、事件属性面板等处的「MAIN」显示。
    */
   const mainRoleDisplayName = computed<string>(() => {
-    // 优先用全局角色库的实时扫描结果（editor_list_global_characters 直接读
-    // settings.yml 的 name/ai_name）：readiness 来自 DB 缓存，角色卡改名后
-    // 可能过期，且此前可能拿到的是标题而非名字
     const bound = s.detail.value?.package.boundCharacterFolder
     if (bound) {
+      // 羁绊剧本：优先全局角色库的实时扫描结果（editor_list_global_characters
+      // 直接读 settings.yml 的 name/ai_name）；readiness 的 DB name 是角色
+      // 初始化时写入的 title（非显示名），仅作最后兜底（后端 role_name_of
+      // 已改为读 settings.yml，返回的也是显示名）
       const gc = s.globalCharacters.value.find((g) => g.folder === bound)
       if (gc?.aiName) return gc.aiName
+      const fromReadiness = s.readiness.value?.mainRoleName
+      if (fromReadiness) return fromReadiness
     }
-    const fromReadiness = s.readiness.value?.mainRoleName
-    if (fromReadiness) return fromReadiness
+    // 独立剧本（未绑定）：MAIN = 运行时主角，readiness 的 DB name 是 title 且
+    // 不可靠（还可能是上次会话残留的主角），不采用——只落到玩家名/字面 MAIN
     // 剧本显式设置了玩家名时，MAIN 显示玩家名（比字面 MAIN 更接近「名字」）
     const ss = s.detail.value?.storyConfig as Record<string, unknown> | undefined
     const scriptUserName = (ss?.script_settings as Record<string, unknown> | undefined)
