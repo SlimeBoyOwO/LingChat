@@ -45,6 +45,7 @@ import {
 import SettingsNav from './SettingsNav.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { ref, watch, computed, type Component } from 'vue'
+import { isAndroid } from '@/utils/platform'
 
 const uiStore = useUIStore()
 
@@ -91,7 +92,8 @@ const TABS = [
   'advance',
   'log',
   'workshop',
-  'plugins',
+  // 插件系统由 RustPython 驱动，移动端不编译（cfg(desktop)），Android 上不显示该 tab
+  ...(isAndroid() ? [] : ['plugins']),
 ] as const
 
 // 标签 → 组件映射（推入推出转场用 v-if 动态组件）
