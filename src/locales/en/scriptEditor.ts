@@ -524,6 +524,7 @@ export default {
     deleteConversation: 'Delete this conversation',
     conversationTitle: 'Conversation {id}',
     clearConversation: 'Clear current conversation',
+    clearConfirm: 'Clear the current conversation and all its messages? This cannot be undone.',
     tokenUsage: 'Token usage',
     input: 'Input',
     output: 'Output',

@@ -108,7 +108,7 @@
           text-white/40
           transition-colors
           hover:text-white/70"
-        @click="store.clearConversation()"
+        @click="clearConversation"
       >
         {{ t('scriptEditor.agentChat.clearConversation') }}
       </button>
@@ -562,5 +562,11 @@ async function removeConversation(c: ConversationInfo) {
   )
     return
   await store.deleteConversation(c.id)
+}
+
+/** 清空当前对话为危险操作，先弹确认框（移动端容易误触）。 */
+async function clearConversation() {
+  if (!window.confirm(t('scriptEditor.agentChat.clearConfirm'))) return
+  await store.clearConversation()
 }
 </script>
