@@ -477,6 +477,7 @@
 import { nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@/components/base'
+import { useDialogStore } from '@/stores/modules/ui/dialog'
 import { useAgentStore } from '@/stores/modules/agent'
 import AgentThinkingBlock from './AgentThinkingBlock.vue'
 import AgentToolCard from './AgentToolCard.vue'
@@ -486,6 +487,7 @@ import type { ChatRound } from '@/stores/modules/agent/state'
 
 const { t } = useI18n()
 const store = useAgentStore()
+const dialogStore = useDialogStore()
 
 const draft = ref('')
 const composing = ref(false)
@@ -566,7 +568,7 @@ async function removeConversation(c: ConversationInfo) {
 
 /** 清空当前对话为危险操作，先弹确认框（移动端容易误触）。 */
 async function clearConversation() {
-  if (!window.confirm(t('scriptEditor.agentChat.clearConfirm'))) return
+  if (!(await dialogStore.confirm(t('scriptEditor.agentChat.clearConfirm')))) return
   await store.clearConversation()
 }
 </script>
