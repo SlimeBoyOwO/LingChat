@@ -48,7 +48,8 @@
         <FolderOpen :size="20" />
       </template>
       <div class="space-y-2">
-        <Button type="big" @click="openCharacterFolder">{{ $t('settings.character.openFolder.button') }}</Button>
+        <!-- 打开文件夹依赖桌面端文件管理器，移动端不可用（open_folder 无 Android 分支） -->
+        <Button v-if="!isAndroid()" type="big" @click="openCharacterFolder">{{ $t('settings.character.openFolder.button') }}</Button>
       </div>
     </MenuItem>
 
@@ -106,6 +107,7 @@ import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import type { Character as ApiCharacter, Clothes } from '../../../types'
+import { isAndroid } from '@/utils/platform'
 import RoleArchiveProgress from '@/components/ui/RoleArchiveProgress.vue'
 
 interface CharacterCardData {
