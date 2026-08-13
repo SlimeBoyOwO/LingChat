@@ -555,14 +555,12 @@ async function send() {
 }
 
 async function removeConversation(c: ConversationInfo) {
-  if (
-    !window.confirm(
-      t('scriptEditor.agentChat.deleteConfirm', {
-        title: c.title || t('scriptEditor.agentChat.conversationTitle', { id: c.id }),
-      }),
-    )
+  const ok = await dialogStore.confirm(
+    t('scriptEditor.agentChat.deleteConfirm', {
+      title: c.title || t('scriptEditor.agentChat.conversationTitle', { id: c.id }),
+    }),
   )
-    return
+  if (!ok) return
   await store.deleteConversation(c.id)
 }
 
