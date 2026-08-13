@@ -39,7 +39,6 @@ import {
   SettingsAchievement,
   SettingsAdventure,
   SettingsLog,
-  SettingsWorkshop,
   SettingsPlugins,
 } from './pages'
 import SettingsNav from './SettingsNav.vue'
@@ -90,7 +89,6 @@ const TABS = [
   'save',
   'advance',
   'log',
-  'workshop',
   'plugins',
 ] as const
 
@@ -106,7 +104,6 @@ const tabComponents: Record<string, Component> = {
   character: SettingsCharacter,
   background: SettingsBackground,
   log: SettingsLog,
-  workshop: SettingsWorkshop,
   plugins: SettingsPlugins,
 }
 const currentTabComponent = computed(() => tabComponents[uiStore.currentSettingsTab])
