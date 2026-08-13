@@ -55,7 +55,7 @@ export default {
     "freeDialogue": "自由傾偈模式",
     "storyMode": "劇情模式",
     "scriptEditor": "創意工坊",
-    "cloudWorkshop": "雲端創意工坊",
+    "cloudWorkshop": "雲·創意工坊",
     "miniGame": "小遊戲（開發緊）",
     "back": "返回"
   },
