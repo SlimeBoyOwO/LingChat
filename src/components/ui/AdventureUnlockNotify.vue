@@ -2,7 +2,7 @@
   <Transition name="slide-up">
     <div
       v-if="visible && currentAdventure"
-      class="fixed bottom-8 right-8 z-9999 flex items-center gap-4 p-4 min-w-[320px] max-w-100 overflow-hidden rounded-xl"
+      class="fixed bottom-[calc(32px+var(--safe-area-inset-bottom))] right-8 z-9999 flex items-center gap-4 p-4 min-w-[320px] max-w-100 overflow-hidden rounded-xl"
       style="
         background: rgba(15, 15, 15, 0.5);
         backdrop-filter: blur(20px);
@@ -40,7 +40,7 @@
 
       <!-- 内容 -->
       <div class="flex flex-col justify-center gap-0.5 flex-1">
-        <div class="text-purple-400 text-xs font-bold tracking-wider">羁绊冒险解锁</div>
+        <div class="text-purple-400 text-xs font-bold tracking-wider">{{ $t('ui.adventureUnlock.label') }}</div>
         <div class="text-white font-bold text-sm leading-tight">
           {{ currentAdventure.name }}
         </div>

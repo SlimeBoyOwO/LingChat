@@ -1,13 +1,11 @@
 //! 上帝 Agent 核心：决策逻辑、prompt 构建、发言者选择。
 
-use std::sync::Arc;
-
 use anyhow::{anyhow, Result};
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::god_agent::config::GodAgentConfig;
 use crate::ai_service::god_agent::tools;
-use crate::ai_service::llm::LlmClient;
+use crate::ai_service::llm::{slot_snapshot, LlmSlot};
 use crate::ai_service::types::{GameLine, LlmMessage};
 
 // ============================================================
@@ -15,12 +13,13 @@ use crate::ai_service::types::{GameLine, LlmMessage};
 // ============================================================
 
 pub struct GodAgentCore {
-    pub llm: Arc<LlmClient>,
+    /// LLM 槽位（支持运行时热切换）。
+    pub llm: LlmSlot,
     pub config: GodAgentConfig,
 }
 
 impl GodAgentCore {
-    pub fn new(llm: Arc<LlmClient>, config: GodAgentConfig) -> Self {
+    pub fn new(llm: LlmSlot, config: GodAgentConfig) -> Self {
         Self { llm, config }
     }
 
@@ -136,20 +135,11 @@ impl GodAgentCore {
         vec![LlmMessage::system(system_prompt)]
     }
 
-    // ============================================================
-    // 决策
-    // ============================================================
-
-    /// 调用 LLM function calling 决策下一个说话者。
-    ///
-    /// 返回 `(selected_role_id, reason)`。
-    /// - `selected_role_id == 0` 表示玩家
     pub async fn decide_next_speaker(
         &self,
         gs: &GameStatus,
         current_speaker: Option<i32>,
     ) -> Result<(i32, String)> {
-        // 收集非玩家在场角色 ID
         let npc_ids: Vec<i32> = gs
             .present_role_ids
             .iter()
@@ -157,12 +147,10 @@ impl GodAgentCore {
             .copied()
             .collect();
 
-        // 只有 0-1 个 NPC：无需 LLM 决策
         if npc_ids.len() <= 1 {
             return Ok((npc_ids.first().copied().unwrap_or(0), "single_npc".into()));
         }
 
-        // 取最近 N 条台词
         let window = self.config.recent_window;
         let lines: Vec<GameLine> = gs
             .line_list
@@ -175,34 +163,52 @@ impl GodAgentCore {
             .rev()
             .collect();
 
-        // 构建 prompt
         let messages = self.build_decision_prompt(&lines, &npc_ids, current_speaker, gs);
 
-        // 调用 LLM function calling
         let tools = vec![tools::select_next_speaker_tool()];
-        let response = self
-            .llm
+        let llm = slot_snapshot(&self.llm).await
+            .ok_or_else(|| anyhow!("上帝Agent LLM 未配置"))?;
+        
+        let response = llm
             .complete_with_tools(&messages, &tools, Some("auto"))
-            .await?;
+            .await
+            .map_err(|e| anyhow!("LLM 调用失败: {}", e))?;  // 增加具体错误
 
-        // 解析 tool call
+        // 更详细的错误信息
         if let Some(ref tool_calls) = response.tool_calls {
             if let Some(tc) = tool_calls.first() {
                 if let Some(result) = tools::parse_speaker_selection(tc) {
-                    // 校验：选中的 role_id 必须在 present_role_ids 中或为 0
                     if result.0 == 0 || gs.present_role_ids.contains(&result.0) {
                         return Ok(result);
                     }
                     tracing::warn!("上帝Agent 选择了不在场的角色 {}，忽略", result.0);
+                    return Err(anyhow!(
+                        "上帝Agent 选择了不在场的角色 {}，在场角色: {:?}", 
+                        result.0, 
+                        gs.present_role_ids
+                    ));
                 }
+                // 解析失败
+                return Err(anyhow!(
+                    "解析 tool_call 失败: {:?}, available roles: {:?}", 
+                    tc, 
+                    npc_ids
+                ));
             }
+            // tool_calls 不为空但第一个元素不存在（理论上不可能）
+            return Err(anyhow!("tool_calls 为空数组"));
         }
 
-        // Fallback：如果 LLM 返回了文本但未调用工具，尝试从内容解析
-        if let Some(ref content) = response.content {
-            tracing::warn!("上帝Agent 未调用工具，返回了文本: {content}");
-        }
-
-        Err(anyhow!("上帝Agent 无法解析下一个发言者"))
+        // LLM 没有返回 tool_calls
+        let content_info = response.content
+            .as_ref()
+            .map(|c| format!("，返回文本: {}", c))
+            .unwrap_or_default();
+        
+        Err(anyhow!(
+            "上帝Agent 未调用工具{}，可用角色: {:?}", 
+            content_info, 
+            npc_ids
+        ))
     }
 }

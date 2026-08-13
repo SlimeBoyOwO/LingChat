@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
-use tauri::Manager;
 
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -15,6 +14,12 @@ pub fn get_data_dir() -> &'static PathBuf {
     DATA_DIR
         .get()
         .expect("data_dir not initialized — call init_data_dir first")
+}
+
+/// 测试兜底：把 data_dir 初始化到临时目录（已初始化则忽略，OnceLock 二次 set 会 panic）。
+#[cfg(test)]
+pub fn init_data_dir_for_tests() {
+    let _ = DATA_DIR.set(std::env::temp_dir().join("lingchat_test_data"));
 }
 
 /// 解析 data 目录路径。
@@ -42,6 +47,7 @@ fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
 
 #[cfg(target_os = "ios")]
 fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
+    use tauri::Manager;
     // iOS 继续使用沙盒路径
     app.path()
         .app_data_dir()
@@ -133,6 +139,7 @@ fn seed_desktop(
 #[cfg(any(target_os = "android", target_os = "ios"))]
 fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> anyhow::Result<()> {
     use anyhow::Context;
+    use tauri::Manager;
     use tauri_plugin_fs::FsExt;
 
     let resource_dir = app

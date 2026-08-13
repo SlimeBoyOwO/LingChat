@@ -13,10 +13,17 @@
     >
       <button
         v-for="(choice, index) in displayChoices"
-        :key="choice"
+        :key="choice.text"
         :data-index="index"
-        @click="selectChoice(choice)"
-        class="group relative w-full py-4 px-8 border rounded-full text-sm text-white bg-slate-900/40 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass hover:outline-none hover:border-brand hover:ring-2 hover:ring-brand/20 shadow-[0_4px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_0_15px_rgba(0,0,0,0.5)] transform hover:-translate-y-1 transition-all duration-200"
+        :disabled="choice.disabled"
+        :title="choice.disabled ? choice.reason || '该选项当前不可选' : ''"
+        @click="selectChoice(choice.text)"
+        :class="[
+          'group relative w-full py-4 px-8 border rounded-full text-sm border-white/10 shadow-glass transition-all duration-200',
+          choice.disabled
+            ? 'text-white/30 bg-slate-900/20 cursor-not-allowed backdrop-blur-xl backdrop-saturate-150 hover:outline-none'
+            : 'text-white bg-slate-900/40 backdrop-blur-xl backdrop-saturate-150 hover:outline-none hover:border-brand hover:ring-2 hover:ring-brand/20 shadow-[0_4px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_0_15px_rgba(0,0,0,0.5)] transform hover:-translate-y-1',
+        ]"
       >
         <!-- 粒子效果 - 静态粒子 (小圆点) -->
         <div
@@ -81,7 +88,7 @@
         <span
           class="text-lg font-medium text-white group-hover:text-white tracking-widest text-center block drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
         >
-          {{ choice }}
+          {{ choice.text }}
         </span>
       </button>
     </transition-group>

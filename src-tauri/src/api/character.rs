@@ -1,20 +1,42 @@
-﻿use std::collections::HashMap;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_store::StoreExt;
 
-use crate::ai_service::types::{CharacterSettings, LineAttributeExt, LineBase};
-use crate::db::entities::line::LineAttribute;
+use crate::ai_service::types::CharacterSettings;
+use crate::config;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::utils::prompt::PromptRole;
 use crate::utils::system::open_folder;
 use crate::AppState;
 
 use super::{characters_dir, data_dir, game_data_dir};
+
+const LEGACY_VOICE_MODEL_FIELDS: &[&str] = &[
+    "sva_speaker_id",
+    "sbv2_name",
+    "sbv2_speaker_id",
+    "bv2_speaker_id",
+    "sbv2api_name",
+    "sbv2api_speaker_id",
+    "gsv_voice_text",
+    "gsv_voice_filename",
+    "gsv_gpt_model_name",
+    "gsv_sovits_model_name",
+    "aivis_model_uuid",
+    "opentts_voice",
+    "fish_s2_voice",
+];
+
+fn remove_legacy_voice_model_fields(settings: &mut CharacterSettings) {
+    for key in LEGACY_VOICE_MODEL_FIELDS {
+        settings.extra.remove(*key);
+    }
+}
 
 // ========== 响应类型 ==========
 
@@ -239,8 +261,10 @@ pub async fn get_character_list(
     let total = all_roles.len() as i64;
     let total_pages = ((total as f64) / (page_size as f64)).ceil() as i32;
     let start = ((page - 1) * page_size).max(0) as usize;
+    // 防御：start 可能 > len（极端：page 远超 total_pages），反向切片会 panic。
+    // 这里把 start 钳制到 len，使切片返回空数组而不是崩溃。
+    let start = start.min(all_roles.len());
     let end = (start + page_size as usize).min(all_roles.len());
-
     let page_roles = &all_roles[start..end];
 
     // Pre-compute adventure counts for all characters on this page
@@ -343,7 +367,7 @@ pub fn get_character_file(file_path: String) -> Result<String, String> {
     let base = characters_dir();
     let resolved = base.join(&file_path);
 
-    super::validate_path_in_base(&resolved, &base)?;
+    crate::utils::path::validate_path_in_base(&resolved, &base)?;
 
     if !resolved.exists() {
         return Err(format!("角色文件不存在: {}", file_path));
@@ -353,6 +377,64 @@ pub fn get_character_file(file_path: String) -> Result<String, String> {
         .canonicalize()
         .map_err(|e| format!("路径解析失败: {}", e))?;
     Ok(canon.to_string_lossy().into_owned())
+}
+
+/// Enumerate every script package directory on disk.
+///
+/// Mirrors the three layouts `ScriptManager::scan_scripts` accepts:
+/// `scripts/character/<角色>/<剧本>/`, `scripts/standalone/<剧本>/` and the
+/// legacy flat `scripts/<剧本>/`. The avatar lookup used to only walk one level,
+/// so a script NPC living under the two-level `character/<角色>/<剧本>/` layout —
+/// which is what every 羁绊冒险 uses — could never have its portrait found.
+fn script_package_dirs() -> Vec<PathBuf> {
+    let scripts_dir = game_data_dir().join("scripts");
+    let mut out = Vec::new();
+
+    let Ok(level1) = fs::read_dir(&scripts_dir) else {
+        return out;
+    };
+
+    for entry in level1.flatten() {
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+
+        match name.as_str() {
+            // scripts/character/<角色>/<剧本>/ —— 需要再下钻两级
+            "character" => {
+                if let Ok(roles) = fs::read_dir(&path) {
+                    for role in roles.flatten() {
+                        if !role.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                            continue;
+                        }
+                        if let Ok(scripts) = fs::read_dir(role.path()) {
+                            for s in scripts.flatten() {
+                                if s.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                                    out.push(s.path());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // scripts/standalone/<剧本>/ —— 再下钻一级
+            "standalone" => {
+                if let Ok(scripts) = fs::read_dir(&path) {
+                    for s in scripts.flatten() {
+                        if s.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                            out.push(s.path());
+                        }
+                    }
+                }
+            }
+            // scripts/<剧本>/ —— 兼容布局，目录本身就是剧本包
+            _ => out.push(path),
+        }
+    }
+
+    out
 }
 
 #[tauri::command]
@@ -377,21 +459,14 @@ pub fn get_avatar_file(
         candidate_bases.push(main_avatar);
     }
 
-    // 2. NPC/脚本角色: scripts/*/characters/{folder}/avatar
-    let scripts_dir = game_data_dir().join("scripts");
-    if let Ok(entries) = fs::read_dir(&scripts_dir) {
-        for entry in entries.flatten() {
-            if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                continue;
-            }
-            let npc_avatar = entry
-                .path()
-                .join("characters")
-                .join(&character_folder)
-                .join("avatar");
-            if npc_avatar.exists() {
-                candidate_bases.push(npc_avatar);
-            }
+    // 2. NPC/脚本角色: <剧本目录>/characters/{folder}/avatar
+    for script_dir in script_package_dirs() {
+        let npc_avatar = script_dir
+            .join("characters")
+            .join(&character_folder)
+            .join("avatar");
+        if npc_avatar.exists() {
+            candidate_bases.push(npc_avatar);
         }
     }
 
@@ -433,71 +508,43 @@ pub fn get_avatar_file(
 #[tauri::command]
 pub async fn select_clothes(
     app: AppHandle,
+    role_id: i32,
     clothes_name: String,
 ) -> Result<serde_json::Value, String> {
     let state = app.state::<AppState>();
     let service = state.ai_service.lock().await;
+
     let db = &state.db;
 
-    let main_role_id = service
-        .game_status
-        .lock()
-        .await
-        .main_role_id
-        .ok_or_else(|| "角色不存在".to_string())?;
+    // 持久化该角色的服装选择（按角色 ID 存储）
+    if let Ok(store) = app.store(config::STORE_FILE) {
+        let key = config::session::last_clothes_key(role_id);
+        store.set(key, JsonValue::String(clothes_name.clone()));
+        let _ = store.save();
+    }
 
-    // 收集角色数据后释放借用，再调用 add_line
-    let (_, prompt) = {
-        let mut gs = service.game_status.lock().await;
-        let role = gs
-            .get_role(db, main_role_id)
-            .await
-            .map_err(|e| format!("获取角色失败: {}", e))?;
-
-        if role.current_clothes == clothes_name {
-            return Ok(serde_json::json!({"success": true, "message": "当前衣服已经是选中状态"}));
-        }
-
-        role.current_clothes = clothes_name.clone();
-
-        let ai_name = role.settings.ai_name.clone();
-        let prompt = format!(
-            "{}换上了新服装：{}，{}",
-            ai_name,
-            clothes_name,
-            role.settings
-                .clothes
-                .as_ref()
-                .and_then(|list| list.iter().find_map(|item| {
-                    if item.get("name").map(|s| s.as_str()) == Some(clothes_name.as_str()) {
-                        item.get("prompt").cloned()
-                    } else {
-                        None
-                    }
-                }))
-                .unwrap_or_default()
-        );
-
-        (ai_name, prompt)
-    };
-
+    // 在游戏内记录服装方便复原
     service
         .game_status
         .lock()
         .await
-        .add_line(
-            db,
-            LineBase {
-                content: PromptRole::Plot.build_prompt(&prompt),
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some("旁白".to_string()),
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| format!("添加台词失败: {}", e))?;
+        .role_manager
+        .set_character_clothes_override(role_id, clothes_name.clone());
 
-    Ok(serde_json::json!({"success": true, "message": "衣服更换成功"}))
+    // 委托给 GameStatus 统一处理换装逻辑（去重 + 旁白生成）
+    let switched = service
+        .game_status
+        .lock()
+        .await
+        .on_character_change_clothes(db, role_id, &clothes_name)
+        .await
+        .map_err(|e| format!("切换服装失败: {}", e))?;
+
+    if switched {
+        Ok(serde_json::json!({"success": true, "message": "衣服更换成功"}))
+    } else {
+        Ok(serde_json::json!({"success": true, "message": "当前衣服已经是选中状态"}))
+    }
 }
 
 #[tauri::command]
@@ -541,10 +588,12 @@ pub async fn update_role_settings(
         return Err(format!("角色目录不存在: {:?}", base_path));
     }
 
-    let _validated: CharacterSettings =
-        serde_json::from_value(settings.clone()).map_err(|e| format!("配置验证失败: {}", e))?;
+    let mut validated: CharacterSettings =
+        serde_json::from_value(settings).map_err(|e| format!("配置验证失败: {}", e))?;
+    remove_legacy_voice_model_fields(&mut validated);
 
-    let mut save_data = settings;
+    let mut save_data =
+        serde_json::to_value(&validated).map_err(|e| format!("配置规范化失败: {}", e))?;
     if let Some(obj) = save_data.as_object_mut() {
         obj.remove("character_id");
         obj.remove("resource_path");
@@ -556,8 +605,24 @@ pub async fn update_role_settings(
     let yaml_str = serde_yaml::to_string(&save_data).map_err(|e| format!("序列化失败: {}", e))?;
     fs::write(&yaml_path, yaml_str).map_err(|e| format!("保存失败: {}", e))?;
 
-    tracing::info!("角色 {} 配置已保存到 {:?}", role_id, yaml_path);
-    Ok(serde_json::json!({"success": true, "message": "设置已保存"}))
+    let runtime_updated = {
+        let service = state.ai_service.lock().await;
+        let mut gs = service.game_status.lock().await;
+        gs.role_manager
+            .update_role_voice_settings(role_id, &validated)
+    };
+
+    tracing::info!(
+        "角色 {} 配置已保存到 {:?}, runtime_updated={}",
+        role_id,
+        yaml_path,
+        runtime_updated,
+    );
+    Ok(serde_json::json!({
+        "success": true,
+        "message": "设置已保存",
+        "runtime_updated": runtime_updated,
+    }))
 }
 
 #[tauri::command]
@@ -569,4 +634,84 @@ pub fn open_characters_folder() -> Result<(), String> {
 
     let path_str = char_dir.to_string_lossy().into_owned();
     open_folder(&path_str)
+}
+
+// ========== 角色删除 ==========
+
+/// 删除一个 main 类型角色（含关联存档、记忆、对话历史、物理资源目录）。
+///
+/// 校验链：
+/// 1. 角色存在
+/// 2. 不在系统保护列表（id ∈ {0, 1, 2}）
+/// 3. role_type == Main（NPC 由剧本管，system/user 不允许删）
+/// 4. 不在场（game_status.present_role_ids / current_role_id / main_role_id / onstage_role_ids 任一命中即拒绝）
+///
+/// 删除顺序：先物理资源（可选，用户确认），再 DB 级联（事务）。若失败：
+/// - 物理失败：整体放弃，DB 不动
+/// - DB 失败：物理已删但下次 rescan 会重新入库（可恢复）
+#[tauri::command]
+pub async fn delete_character(
+    app: AppHandle,
+    role_id: i32,
+    delete_resource_folder: bool,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let db = &state.db;
+
+    // ---- 1. 角色存在性 ----
+    let role = RoleRepo::get_role_by_id(db, role_id)
+        .await
+        .map_err(|e| format!("查询角色失败: {}", e))?
+        .ok_or_else(|| format!("角色 {} 不存在", role_id))?;
+
+    // ---- 2. 系统保护 ----
+    if RoleRepo::is_system_protected_role(role_id) {
+        return Err("无法删除".to_string());
+    }
+
+    // ---- 3. 角色类型校验 ----
+    if role.role_type != RoleType::Main {
+        return Err("只能删除 main 类型的主角色".to_string());
+    }
+
+    // ---- 4. 在场校验（后端权威） ----
+    {
+        let service = state.ai_service.lock().await;
+        let gs = service.game_status.lock().await;
+        let onstage = gs.present_role_ids.contains(&role_id)
+            || gs.current_role_id == Some(role_id)
+            || gs.main_role_id == Some(role_id)
+            || gs.onstage_role_ids.contains(&role_id);
+        if onstage {
+            return Err(format!("角色「{}」正在对话中，无法删除", role.name));
+        }
+    }
+
+    // ---- 5. 先删物理资源（可选） ----
+    if delete_resource_folder {
+        if let Some(folder) = &role.resource_folder {
+            let base = characters_dir();
+            let target = base.join(folder);
+            // 路径穿越防护
+            crate::utils::path::validate_path_in_base(&target, &base)?;
+            if target.exists() {
+                if let Err(e) = fs::remove_dir_all(&target) {
+                    return Err(format!("删除资源目录失败: {}", e));
+                }
+            }
+        }
+    }
+
+    // ---- 6. DB 级联删除（事务） ----
+    let deleted = RoleRepo::delete_main_role(db, role_id)
+        .await
+        .map_err(|e| format!("删除角色失败: {}", e))?;
+    if !deleted {
+        return Err(format!("角色 {} 不存在或已被删除", role_id));
+    }
+
+    // ---- 7. 广播角色列表更新事件 ----
+    let _ = app.emit("role:list-updated", ());
+
+    Ok(())
 }

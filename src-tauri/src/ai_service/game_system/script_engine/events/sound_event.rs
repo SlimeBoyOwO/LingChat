@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    parse_duration, register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_SOUND, SoundPayload,
@@ -17,6 +17,7 @@ use crate::ai_service::message_system::events::emit;
 
 pub struct SoundEvent {
     sound_path: String,
+    duration: Option<f64>,
 }
 
 impl SoundEvent {
@@ -27,6 +28,7 @@ impl SoundEvent {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string(),
+            duration: parse_duration(data),
         }
     }
 }
@@ -52,6 +54,7 @@ impl ScriptEvent for SoundEvent {
 
         let payload = SoundPayload {
             sound_path: resolved,
+            duration: self.duration,
         };
         let _ = emit(ctx.app, SCRIPT_SOUND, &payload);
 
@@ -61,6 +64,10 @@ impl ScriptEvent for SoundEvent {
 
     fn event_type() -> &'static str {
         "sound"
+    }
+
+    fn duration(&self) -> Option<f64> {
+        self.duration
     }
 }
 

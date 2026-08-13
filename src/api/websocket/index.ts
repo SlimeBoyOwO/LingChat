@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import type { WebSocketHandler } from '../../types'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useGameStore } from '../../stores/modules/game'
+import { i18n } from '@/locales'
 
 const socket = ref<WebSocket | null>(null)
 const handlers = new Map<string, WebSocketHandler>()
@@ -30,7 +31,7 @@ const shouldShowConnectionError = (): boolean => {
 }
 
 // 显示连接错误并重置状态的辅助函数
-const handleConnectionError = (errorMessage: string = '无法连接到服务器') => {
+const handleConnectionError = (errorMessage: string = i18n.global.t('api.websocket.connectFailed')) => {
   // 检查是否应该显示错误
   if (!shouldShowConnectionError()) {
     return
@@ -103,7 +104,7 @@ export const sendWebSocketMessage = (type: string, data: any) => {
     return true
   }
   // 发送失败时显示错误
-  handleConnectionError('后端服务未连接，请启动后端服务')
+  handleConnectionError(i18n.global.t('api.websocket.backendNotConnected'))
   return false
 }
 
@@ -113,7 +114,7 @@ export const sendWebSocketChatMessage = (type: string, content: string) => {
     return true
   }
   // 发送失败时显示错误
-  handleConnectionError('后端服务未连接，请启动后端服务')
+  handleConnectionError(i18n.global.t('api.websocket.backendNotConnected'))
   return false
 }
 

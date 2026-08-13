@@ -10,6 +10,7 @@ export interface LlmProviderConfig {
   temperature: number | null
   top_p: number | null
   enable_thinking: boolean
+  reasoning_effort: string | null
 }
 
 export interface LlmProvidersResponse {
@@ -17,6 +18,7 @@ export interface LlmProvidersResponse {
   chat_provider_id: string | null
   translate_provider_id: string | null
   god_agent_provider_id: string | null
+  vision_provider_id: string | null
 }
 
 export interface LlmModelInfo {
@@ -25,6 +27,10 @@ export interface LlmModelInfo {
   context_length: number | null
   supports_reasoning: boolean
   supports_thinking_type: string | null
+  think_efforts: {
+    valid_efforts: string[]
+    default_effort: string | null
+  } | null
 }
 
 export async function listLlmProviders(): Promise<LlmProvidersResponse> {
@@ -40,7 +46,7 @@ export async function deleteLlmProvider(id: string): Promise<void> {
 }
 
 export async function setLlmRole(
-  role: 'chat' | 'translate' | 'god_agent',
+  role: 'chat' | 'translate' | 'god_agent' | 'vision',
   providerId: string | null,
 ): Promise<void> {
   return invoke('set_llm_role', { role, providerId })
@@ -50,4 +56,9 @@ export async function listLlmModels(
   provider: LlmProviderConfig,
 ): Promise<LlmModelInfo[]> {
   return invoke('list_llm_models', { provider })
+}
+
+/** 热切换 LLM —— 重建所有角色的 LLM 客户端，无需重启应用。 */
+export async function switchLlm(): Promise<void> {
+  return invoke('switch_llm')
 }

@@ -73,6 +73,56 @@
   </div>
 
   <script type="module">
+    // ─── i18n：覆盖窗口是独立静态页，不走 vue-i18n，这里内嵌各语言词条 ───
+    // 语言读取逻辑与 src/locales/index.ts 保持一致：主应用把界面语言持久化在
+    // localStorage['lingchat-settings']（settings store persist，key=lingchat-settings），
+    // 覆盖窗口与主窗口同源（dev: localhost:1420 / prod: tauri.localhost），可直接读取。
+    const I18N = {
+      'zh-CN': {
+        hint: '拖拽鼠标框选区域<br>Enter 确认 · Esc 取消',
+        loadFailed: '加载截图失败，请按 Esc 关闭',
+        cancel: '取消 (Esc)',
+        confirm: '确认 (Enter)',
+      },
+      'zh-HK': {
+        hint: '拖拽鼠標框選區域<br>Enter 確認 · Esc 取消',
+        loadFailed: '載入截圖失敗，請按 Esc 關閉',
+        cancel: '取消 (Esc)',
+        confirm: '確認 (Enter)',
+      },
+      ja: {
+        hint: 'ドラッグで範囲を選択<br>Enter で確定 · Esc でキャンセル',
+        loadFailed: 'スクリーンショットの読み込みに失敗しました。Esc で閉じてください',
+        cancel: 'キャンセル (Esc)',
+        confirm: '確定 (Enter)',
+      },
+      en: {
+        hint: 'Drag to select an area<br>Enter to confirm · Esc to cancel',
+        loadFailed: 'Failed to load screenshot. Press Esc to close.',
+        cancel: 'Cancel (Esc)',
+        confirm: 'Confirm (Enter)',
+      },
+    }
+    const FALLBACK_LOCALE = 'zh-CN'
+
+    // 读取当前界面语言；localStorage 缺失 / 解析失败 / 语言不受支持时回退 zh-CN。
+    function detectLocale() {
+      try {
+        const raw = localStorage.getItem('lingchat-settings')
+        const locale = raw ? JSON.parse(raw)?.display?.locale : undefined
+        if (locale && I18N[locale]) return locale
+      } catch {
+        /* 解析失败走 fallback */
+      }
+      return FALLBACK_LOCALE
+    }
+
+    // 取词：目标语言缺键时逐键回退到中文，保证任何情况都有文案。
+    const UI_LOCALE = detectLocale()
+    function t(key) {
+      return I18N[UI_LOCALE][key] ?? I18N[FALLBACK_LOCALE][key]
+    }
+
     async function tauriInvoke(cmd, args) {
       if (typeof window.__TAURI_INTERNALS__ !== 'undefined') {
         return window.__TAURI_INTERNALS__.invoke(cmd, args);
@@ -88,6 +138,12 @@
     const toolbar = document.getElementById('toolbar');
     const hint = document.getElementById('hint');
     const dimensions = document.getElementById('dimensions');
+
+    // 应用界面语言（覆盖 HTML 里写死的中文默认文案）
+    document.documentElement.lang = UI_LOCALE;
+    hint.innerHTML = t('hint');
+    document.getElementById('confirm-btn').textContent = t('confirm');
+    document.getElementById('cancel-btn').textContent = t('cancel');
 
     let startX = 0, startY = 0;
     let isDragging = false;
@@ -131,7 +187,7 @@
         img.src = 'data:image/jpeg;base64,' + base64;
       } catch (err) {
         console.error('Failed to load screenshot:', err);
-        hint.textContent = '加载截图失败，请按 Esc 关闭';
+        hint.innerHTML = t('loadFailed');
       }
     }
 

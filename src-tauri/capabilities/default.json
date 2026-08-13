@@ -2,11 +2,12 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main", "settings"],
+  "windows": ["main", "settings", "log" , "screenshot-overlay"],
   "permissions": [
     "core:default",
     "core:webview:allow-create-webview-window",
     "core:window:allow-close",
+    "core:window:allow-destroy",
     "core:window:allow-hide",
     "core:window:allow-minimize",
     "core:window:allow-unminimize",
@@ -21,12 +22,19 @@
     "core:window:allow-inner-position",
     "core:window:allow-inner-size",
     "opener:default",
+    "dialog:allow-open",
     "screenshots:default",
     "fs:default",
+    "dialog:default",
     "notification:default",
+    "android-fs:allow-get-name",
     {
       "identifier": "fs:scope",
-      "allow": [{ "path": "$RESOURCE/**" }]
+      "allow": [
+        { "path": "$RESOURCE/**" },
+        { "path": "$APPCACHE/**" },
+        { "path": "$APPDATA/**" }
+      ]
     }
   ]
 }

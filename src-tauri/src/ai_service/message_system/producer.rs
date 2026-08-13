@@ -10,12 +10,14 @@
 //! - Python 里还会调用一个 `num_end > 0 && buffer[num_end]=='】'` 的数字拆分分支，
 //!   用于拦截 `【1】` 之类非情绪 tag 的起始符；这里等价处理（仍按 `【...】` 捕获）。
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use futures_util::StreamExt;
 use tauri::AppHandle;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 
 use crate::ai_service::llm::{ChunkStream, LlmChunk};
 use crate::ai_service::message_system::events;
@@ -28,11 +30,27 @@ pub struct StreamProducer {
     llm_stream: ChunkStream,
     tx: mpsc::Sender<SentenceItem>,
     app: AppHandle,
+    /// 与 consumer 共享的思考链缓冲：本轮生成的完整思考文本。
+    thinking_buf: Arc<Mutex<String>>,
+    /// 工具闭环执行过工具后，暂存最后一条有效句子，直到能确定真正的收尾句。
+    tool_calls_seen: Arc<AtomicBool>,
 }
 
 impl StreamProducer {
-    pub fn new(llm_stream: ChunkStream, tx: mpsc::Sender<SentenceItem>, app: AppHandle) -> Self {
-        Self { llm_stream, tx, app }
+    pub fn new(
+        llm_stream: ChunkStream,
+        tx: mpsc::Sender<SentenceItem>,
+        app: AppHandle,
+        thinking_buf: Arc<Mutex<String>>,
+        tool_calls_seen: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            llm_stream,
+            tx,
+            app,
+            thinking_buf,
+            tool_calls_seen,
+        }
     }
 
     /// 消耗整个 LLM 流；返回原始 accumulated_response（未拆分）。
@@ -40,11 +58,16 @@ impl StreamProducer {
         let mut accumulated = String::new();
         let mut realtime_buffer = String::new();
         let mut last_display = Instant::now();
-        let mut thinking_length: usize = 0;
 
         let mut buffer = String::new();
         let mut sentence = String::new();
         let mut sentence_index: usize = 0;
+        // 本轮回复内已投递句子的归一化集合：模型在多轮工具调用间容易把
+        // 开场白复读一遍，逐字重复的句子直接丢弃（短句豁免，避免误伤语气词）。
+        let mut seen_sentences = std::collections::HashSet::new();
+        // 工具闭环开始后保留最后一条有效句子，流结束时再决定它是否为最终句。
+        // 普通聊天没有工具调用，仍按原路径立即投递，不增加流式显示延迟。
+        let mut pending_sentence: Option<String> = None;
 
         while let Some(item) = self.llm_stream.next().await {
             let chunk = item?;
@@ -90,10 +113,13 @@ impl StreamProducer {
                                 buffer.clear();
                             }
 
-                            Self::dispatch_sentence(&self.tx,
+                            Self::dispatch_sentence(
+                                &self.tx,
                                 &mut sentence,
                                 &mut sentence_index,
-                                false,
+                                &mut seen_sentences,
+                                &mut pending_sentence,
+                                &self.tool_calls_seen,
                             )
                             .await?;
                         } else {
@@ -131,7 +157,9 @@ impl StreamProducer {
                                     &self.tx,
                                     &mut sentence,
                                     &mut sentence_index,
-                                    false,
+                                    &mut seen_sentences,
+                                    &mut pending_sentence,
+                                    &self.tool_calls_seen,
                                 )
                                 .await?;
                             } else {
@@ -142,11 +170,30 @@ impl StreamProducer {
                     }
                 }
                 LlmChunk::Reasoning(text) => {
-                    // 思考链内容：实时统计字数并通知前端，但不加入正式回复。
+                    // 思考链内容：累积进共享缓冲（供 consumer 挂载到台词行），
+                    // 并实时统计字数通知前端，但不加入正式回复。
                     if !text.is_empty() {
-                        thinking_length += text.chars().count();
+                        let mut buf = self.thinking_buf.lock().await;
+                        // 部分供应商（kimi_code / genai）会在流结束时重发完整快照，
+                        // 若新 chunk 以已有内容为前缀则整体替换，避免重复累积。
+                        if text.starts_with(buf.as_str()) {
+                            *buf = text;
+                        } else {
+                            buf.push_str(&text);
+                        }
+                        let thinking_length = buf.chars().count();
+                        drop(buf);
                         events::emit_thinking_progress(&self.app, thinking_length);
                     }
+                }
+                LlmChunk::ToolCalls(_) => {
+                    return Err(anyhow::anyhow!("工具调用片段不应进入正式回复流"));
+                }
+                LlmChunk::ToolCallProgress { .. } => {
+                    // 参数生成进度：不进正文，由 tool_loop 直接转发为前端事件
+                }
+                LlmChunk::StreamEnd { .. } => {
+                    // 终止信号：主对话流忽略（截断检测仅供剧本导师等工具闭环消费）。
                 }
             }
         }
@@ -167,10 +214,29 @@ impl StreamProducer {
             let final_content = fix_ai_generated_text(&final_content_raw);
             accumulated = fix_ai_generated_text(&accumulated);
 
-            self.tx
-                .send((final_content, sentence_index, true))
-                .await
-                .map_err(|_| anyhow::anyhow!("sentence channel closed"))?;
+            let final_is_duplicate = !final_content.is_empty()
+                && self.tool_calls_seen.load(Ordering::Acquire)
+                && Self::is_duplicate(&mut seen_sentences, &final_content);
+            if final_is_duplicate {
+                if let Some(pending) = pending_sentence.take() {
+                    tracing::info!("[dedupe] 丢弃末尾复读句子: {:.40}", final_content);
+                    Self::send_sentence(&self.tx, pending, &mut sentence_index, true).await?;
+                } else {
+                    // 理论上工具闭环启用暂存后不会走到这里；保留完成信号优先，
+                    // 避免异常格式导致前端永远停在等待状态。
+                    tracing::warn!("末尾句子重复但没有可提升为最终句的暂存内容");
+                    Self::send_sentence(&self.tx, final_content, &mut sentence_index, true).await?;
+                }
+            } else if !final_content.is_empty() {
+                if let Some(pending) = pending_sentence.take() {
+                    Self::send_sentence(&self.tx, pending, &mut sentence_index, false).await?;
+                }
+                Self::send_sentence(&self.tx, final_content, &mut sentence_index, true).await?;
+            } else if let Some(pending) = pending_sentence.take() {
+                Self::send_sentence(&self.tx, pending, &mut sentence_index, true).await?;
+            }
+        } else if let Some(pending) = pending_sentence.take() {
+            Self::send_sentence(&self.tx, pending, &mut sentence_index, true).await?;
         }
 
         Ok(accumulated)
@@ -180,14 +246,49 @@ impl StreamProducer {
         tx: &mpsc::Sender<SentenceItem>,
         sentence: &mut String,
         sentence_index: &mut usize,
-        is_final: bool,
+        seen: &mut std::collections::HashSet<String>,
+        pending: &mut Option<String>,
+        tool_calls_seen: &AtomicBool,
     ) -> Result<()> {
         let s = std::mem::take(sentence);
+        // 复读去重：与本轮已接收句子逐字重复（忽略空白差异）时丢弃。
+        // 丢弃时不消耗索引，保证 publisher 收到的索引仍然连续。
+        if Self::is_duplicate(seen, &s) {
+            tracing::info!("[dedupe] 丢弃复读句子: {:.40}", s);
+            return Ok(());
+        }
+
+        if tool_calls_seen.load(Ordering::Acquire) {
+            if let Some(previous) = pending.replace(s) {
+                Self::send_sentence(tx, previous, sentence_index, false).await?;
+            }
+            return Ok(());
+        }
+
+        Self::send_sentence(tx, s, sentence_index, false).await
+    }
+
+    async fn send_sentence(
+        tx: &mpsc::Sender<SentenceItem>,
+        sentence: String,
+        sentence_index: &mut usize,
+        is_final: bool,
+    ) -> Result<()> {
         let idx = *sentence_index;
         *sentence_index += 1;
-        tx.send((s, idx, is_final))
+        tx.send((sentence, idx, is_final))
             .await
             .map_err(|_| anyhow::anyhow!("sentence channel closed"))?;
         Ok(())
+    }
+
+    /// 判断句子是否是本轮回复内的逐字复读（忽略所有空白字符）。
+    /// 归一化后不足 8 个字符的短句不去重，避免误伤「嗯」「好哒」等合法重复。
+    fn is_duplicate(seen: &mut std::collections::HashSet<String>, sentence: &str) -> bool {
+        let normalized: String = sentence.chars().filter(|c| !c.is_whitespace()).collect();
+        if normalized.chars().count() < 8 {
+            return false;
+        }
+        !seen.insert(normalized)
     }
 }

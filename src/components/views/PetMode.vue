@@ -8,18 +8,21 @@
   >
     <!-- DialogueBox 区域 -->
     <div
-      ref="dialogContainer"
-      class="w-full shrink-0 flex items-end justify-center transition-none bg-transparent"
+      class="w-full shrink-0 flex flex-col justify-end transition-none bg-transparent"
       :style="{ height: 'var(--dialog-h)' }"
     >
-      <DialogueBox
-        ref="gameDialogRef"
-        @player-continued="manualTriggerContinue"
-        @dialog-proceed="resetInteraction"
-      />
+      <PetNotification />
+      <div class="flex items-end justify-center mt-1">
+        <DialogueBox
+          ref="gameDialogRef"
+          @player-continued="manualTriggerContinue"
+          @dialog-proceed="resetInteraction"
+        />
+      </div>
     </div>
 
     <!-- Avatar 区域 -->
+    <DragArea :isDragging="isDragging">
     <div
       ref="avatarContainer"
       class="shrink-0 flex items-center justify-center transition-all duration-100 bg-transparent"
@@ -34,6 +37,7 @@
         @audio-started="handleAudioStarted"
       />
     </div>
+    </DragArea>
 
     <!-- ChatInput 区域 -->
     <div
@@ -41,7 +45,7 @@
       class="w-full shrink-0 flex items-start justify-center transition-none bg-transparent"
       :style="{ height: 'var(--chat-h)' }"
     >
-      <ChatInput :visible="showChatInput" @message-sent="handleMessageSent" />
+      <ChatInput ref=ChatInputRef :visible="showChatInput" @message-sent="handleMessageSent" />
     </div>
   </div>
 </template>
@@ -49,6 +53,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -56,26 +61,28 @@ import { useGameStore } from '@/stores/modules/game'
 import { useSettingsStore } from '@/stores/modules/settings'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { eventQueue } from '@/core/events/event-queue'
+import { useFileDrop } from '../pet/useFileDrop'
 
+import PetNotification from '../pet/PetNotification.vue'
 import ChatInput from '../pet/ChatInput.vue'
 import DialogueBox from '../pet/DialogueBox.vue'
 import GameRolesStage from '../pet/GameRolesStage.vue'
+import DragArea from '../pet/DragArea.vue'
+import { BASE_AVATAR_SIZE, CHAT_BASE_H, DIALOG_MAX_BASE } from '../pet/constants'
 
-const BASE_AVATAR_SIZE = 240
-const CHAT_BASE_H = 45
-const DIALOG_BASE_H = 75
-
+const { t } = useI18n()
 const router = useRouter()
 const gameStore = useGameStore()
 const settingsStore = useSettingsStore()
 const uiStore = useUIStore()
 
 const showChatInput = ref(false)
+const { isDragging , hasFile } = useFileDrop()
 
-const dialogContainer = ref<HTMLElement | null>(null)
 const avatarContainer = ref<HTMLElement | null>(null)
 const chatContainer = ref<HTMLElement | null>(null)
 const gameDialogRef = ref<InstanceType<typeof DialogueBox> | null>(null)
+const ChatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 
 const appStyleVars = computed(() => {
   const scale = settingsStore.pet?.scale || 1.0
@@ -86,14 +93,14 @@ const appStyleVars = computed(() => {
     '--app-height': `${layout.height}px`,
     '--avatar-size': `${Math.round(BASE_AVATAR_SIZE * scale)}px`,
     '--chat-h': `${Math.round(CHAT_BASE_H * scale)}px`,
-    '--dialog-h': `${Math.round(DIALOG_BASE_H * scale)}px`,
+    '--dialog-h': `${Math.round(DIALOG_MAX_BASE * scale)}px`,
   }
 })
 
 const calcWindowLayout = (scale: number): { width: number; height: number } => {
   const S = Math.round(BASE_AVATAR_SIZE * scale)
   const chatH = Math.round(CHAT_BASE_H * scale)
-  const dialogH = Math.round(DIALOG_BASE_H * scale)
+  const dialogH = Math.round(DIALOG_MAX_BASE * scale)
   return { width: S, height: S + dialogH + chatH }
 }
 
@@ -158,14 +165,16 @@ onMounted(async () => {
   hitTestInterval = window.setInterval(() => {
     const rects = []
 
-    // 如果对话气泡正在显示，则加入 solid region 触发交互
+    // 如果对话气泡正在显示，则加入 solid region（用气泡元素精确 rect，避免包住整个对话框）
     if (
-      dialogContainer.value &&
+      gameDialogRef.value?.bubbleRef &&
       gameStore.currentStatus === 'responding' &&
       gameStore.currentLine.trim() !== ''
     ) {
-      const r = dialogContainer.value.getBoundingClientRect()
-      rects.push({ x: r.x, y: r.y, width: r.width, height: r.height })
+      const r = gameDialogRef.value.bubbleRef.getBoundingClientRect()
+      if (r.height > 0) {
+        rects.push({ x: r.x, y: r.y, width: r.width, height: r.height })
+      }
     }
 
     // 头像圆环常驻 solid region 触发拖拽和交互
@@ -231,12 +240,19 @@ const handleMessageSent = (message: string) => {
   })
 }
 
+
 const handleMouseEnter = () => {
   showChatInput.value = true
 }
 
 const handleMouseLeave = () => {
-  showChatInput.value = false
+  if (ChatInputRef.value?.isTyping()) {
+    showChatInput.value = true
+    return
+  }else{
+    showChatInput.value = false
+  }
+  
 }
 
 const handleAvatarClick = () => {
@@ -255,7 +271,7 @@ const handleOpenSettings = async () => {
 
     const webview = new WebviewWindow('settings', {
       url: '/second',
-      title: '设置',
+      title: t('views.petMode.settingsWindowTitle'),
       width: 1200,
       height: 800,
       resizable: true,

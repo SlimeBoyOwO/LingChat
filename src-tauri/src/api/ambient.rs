@@ -1,9 +1,11 @@
 use std::fs;
-use std::io::Write;
 
 use serde::{Deserialize, Serialize};
+use tauri_plugin_store::StoreExt;
 
-use super::{ambient_dir, validate_path_in_base};
+use crate::utils::path::validate_path_in_base;
+
+use super::ambient_dir;
 
 // ========== 响应类型 ==========
 
@@ -77,15 +79,7 @@ pub fn get_ambient_list() -> Result<Vec<AmbientItemInfo>, String> {
 }
 
 #[tauri::command]
-pub fn upload_ambient(
-    file_name: String,
-    file_data: Vec<u8>,
-) -> Result<Vec<AmbientItemInfo>, String> {
-    let ambient_dir = ambient_dir();
-    if !ambient_dir.exists() {
-        fs::create_dir_all(&ambient_dir).map_err(|e| format!("创建环境音目录失败: {}", e))?;
-    }
-
+pub async fn upload_ambient(app: tauri::AppHandle, path: String, file_name: String) -> Result<(), String> {
     // 安全检查：只保留文件名，防止路径遍历
     let safe_name = std::path::Path::new(&file_name)
         .file_name()
@@ -93,13 +87,30 @@ pub fn upload_ambient(
         .to_string_lossy()
         .into_owned();
 
-    let file_path = ambient_dir.join(&safe_name);
-    let mut f = fs::File::create(&file_path).map_err(|e| format!("创建文件失败: {}", e))?;
-    f.write_all(&file_data)
-        .map_err(|e| format!("写入文件失败: {}", e))?;
-    f.flush().map_err(|e| format!("刷新文件失败: {}", e))?;
+    let ambient_dir = ambient_dir();
+    if !ambient_dir.exists() {
+        tokio::fs::create_dir_all(&ambient_dir)
+            .await
+            .map_err(|e| format!("创建环境音目录失败: {}", e))?;
+    }
 
-    get_ambient_list()
+    let file_path = ambient_dir.join(&safe_name);
+
+    if path.starts_with("content://") {
+        // Android SAF：content:// URI 直接复制到目标文件（不经 IPC 传大文件）
+        use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
+        app.android_fs_async()
+            .copy(&FsUri::from_uri(&path), &FsUri::from_path(&file_path))
+            .await
+            .map_err(|e| format!("SAF 复制环境音失败: {}", e))?;
+    } else {
+        // 桌面端：Rust 直接复制源文件
+        tokio::fs::copy(std::path::PathBuf::from(&path), &file_path)
+            .await
+            .map_err(|e| format!("复制文件失败: {}", e))?;
+    }
+
+    Ok(())
 }
 
 /// 删除指定环境音文件
@@ -125,4 +136,22 @@ pub fn delete_ambient(url: String) -> Result<Vec<AmbientItemInfo>, String> {
     fs::remove_file(&file_path).map_err(|e| format!("删除环境音文件失败: {}", e))?;
 
     get_ambient_list()
+}
+
+// ========== 会话状态持久化 ==========
+
+/// 持久化环境音轨道列表到 settings.json，下次启动时自动恢复。
+#[tauri::command]
+pub fn save_ambient_state(
+    app: tauri::AppHandle,
+    tracks_json: String,
+) -> Result<(), String> {
+    let store = app
+        .store(crate::config::STORE_FILE)
+        .map_err(|e| format!("打开存储失败: {e}"))?;
+    store.set(
+        crate::config::session::LAST_AMBIENT_TRACKS.to_string(),
+        serde_json::Value::String(tracks_json),
+    );
+    store.save().map_err(|e| format!("保存失败: {e}"))
 }

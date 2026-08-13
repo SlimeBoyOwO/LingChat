@@ -2,6 +2,7 @@ import type { IEventProcessor } from '../event-processor'
 import type { ScriptDialogueEvent } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { isJaLocale, hkify } from '@/locales'
 
 export default class DialogueProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {
@@ -25,7 +26,9 @@ export default class DialogueProcessor implements IEventProcessor {
     const displayName = event.displayName ? event.displayName : role.roleName
     const displaySubtitle = event.displaySubtitle ? event.displaySubtitle : role.roleSubTitle
 
-    gameStore.currentLine = event.message || ''
+    // 日文界面且存在日语译文时显示日语译文；繁体（香港）界面下对话转繁体显示
+    const displayLine = hkify(isJaLocale() && event.ttsText ? event.ttsText : event.message || '')
+    gameStore.currentLine = displayLine
     uiStore.showCharacterMotionText = event.motionText || ''
 
     gameStore.appendGameMessage({
@@ -38,10 +41,13 @@ export default class DialogueProcessor implements IEventProcessor {
       motionText: event.motionText,
       originalTag: event.originalTag,
       userMessageSeq: event.userMessageSeq,
+      thinking: event.thinking,
+      ttsText: event.ttsText,
+      senderRoleId: event.roleId,
     })
 
     // 回溯更新最近一条没有序号标记的用户消息（前端发送消息时尚未拿到序号）
-    if (event.userMessageSeq !== undefined) {
+    if (typeof event.userMessageSeq === 'number') {
       const history = gameStore.dialogHistory
       for (let i = history.length - 1; i >= 0; i--) {
         if (history[i].type === 'message' && history[i].userMessageSeq === undefined) {

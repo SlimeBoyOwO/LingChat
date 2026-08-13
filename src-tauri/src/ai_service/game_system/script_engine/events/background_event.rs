@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    parse_duration, register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_BACKGROUND, BackgroundPayload,
@@ -18,6 +18,7 @@ use crate::ai_service::message_system::events::emit;
 pub struct BackgroundEvent {
     image_path: String,
     transition: f64,
+    duration: Option<f64>,
 }
 
 impl BackgroundEvent {
@@ -32,6 +33,7 @@ impl BackgroundEvent {
                 .get("transition")
                 .and_then(|v| v.as_f64())
                 .unwrap_or(1.0),
+            duration: parse_duration(data),
         }
     }
 }
@@ -60,6 +62,7 @@ impl ScriptEvent for BackgroundEvent {
         let payload = BackgroundPayload {
             image_path: resolved,
             transition: self.transition,
+            duration: self.duration,
         };
         let _ = emit(ctx.app, SCRIPT_BACKGROUND, &payload);
 
@@ -69,6 +72,10 @@ impl ScriptEvent for BackgroundEvent {
 
     fn event_type() -> &'static str {
         "background"
+    }
+
+    fn duration(&self) -> Option<f64> {
+        self.duration
     }
 }
 

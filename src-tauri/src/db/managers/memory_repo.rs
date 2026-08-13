@@ -143,6 +143,21 @@ impl MemoryRepo {
         Ok(result.rows_affected)
     }
 
+    /// 按 role_id 删除所有存档下的相关记忆（不限 save_id）。
+    /// 用于删除整个角色时的兜底清理，应对已被 save.main_role_id 解绑的孤儿记忆行。
+    #[allow(dead_code)]
+    pub async fn delete_all_memories_by_role_id(
+        db: &DatabaseConnection,
+        role_id: i32,
+    ) -> Result<u64, anyhow::Error> {
+        let result = memory_bank::Entity::delete_many()
+            .filter(memory_bank::Column::RoleId.eq(role_id))
+            .exec(db)
+            .await
+            .map_err(|e| anyhow!(e))?;
+        Ok(result.rows_affected)
+    }
+
     #[allow(dead_code)]
     pub async fn delete_memories_by_save(
         db: &DatabaseConnection,

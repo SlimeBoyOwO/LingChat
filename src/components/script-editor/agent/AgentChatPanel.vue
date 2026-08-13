@@ -1,0 +1,572 @@
+<template>
+  <div class="flex
+    w-full
+    min-h-0
+    flex-1
+    gap-4">
+    <!-- 左栏：会话列表 -->
+    <aside class="flex
+      w-[230px]
+      min-h-0
+      shrink-0
+      flex-col
+      gap-3">
+      <button
+        class="inline-flex
+          items-center
+          justify-center
+          gap-1
+          rounded-xl
+          border
+          border-brand/45
+          bg-brand/14
+          px-3
+          py-2
+          text-[0.82rem]
+          text-brand
+          transition-all
+          duration-200
+          hover:bg-brand/24
+          disabled:opacity-50"
+        :disabled="store.loading"
+        @click="store.createConversation()"
+      >
+        <span class="text-[1rem]
+          leading-none">＋</span>
+        {{ t('scriptEditor.agentChat.newConversation') }}
+      </button>
+
+      <div class="flex
+        min-h-0
+        flex-1
+        flex-col
+        gap-1.5
+        overflow-y-auto
+        pr-1">
+        <button
+          v-for="c in store.conversations"
+          :key="c.id"
+          class="group
+            rounded-[10px]
+            border
+            px-3
+            py-2.5
+            text-left
+            transition-all
+            duration-200"
+          :class="
+            c.id === store.currentId
+              ? `border-brand/60
+                bg-brand/12`
+              : `border-white/10
+                bg-white/6
+                hover:border-brand/40
+                hover:bg-white/10`
+          "
+          @click="store.switchConversation(c.id)"
+        >
+          <div class="flex
+            items-center
+            justify-between
+            gap-2">
+            <span class="truncate
+              text-[0.8rem]
+              text-white/85">{{
+              c.title || t('scriptEditor.agentChat.conversationTitle', { id: c.id })
+            }}</span>
+            <span
+              class="opacity-0
+                transition-opacity
+                group-hover:opacity-100"
+              :title="t('scriptEditor.agentChat.deleteConversation')"
+              @click.stop="removeConversation(c)"
+            >
+              <Icon
+                icon="close"
+                :size="13"
+                class="cursor-pointer
+                  text-white/50
+                  hover:text-red-300"
+              />
+            </span>
+          </div>
+          <div
+            v-if="c.scriptKey"
+            class="mt-1
+              truncate
+              font-mono
+              text-[0.66rem]
+              text-brand/70"
+          >
+            📕 {{ c.scriptKey }}
+          </div>
+        </button>
+      </div>
+
+      <button
+        class="text-[0.72rem]
+          text-white/40
+          transition-colors
+          hover:text-white/70"
+        @click="clearConversation"
+      >
+        {{ t('scriptEditor.agentChat.clearConversation') }}
+      </button>
+
+      <!-- Token 用量（窗口左下角；折叠卡片） -->
+      <div class="shrink-0
+        rounded-xl
+        border
+        border-white/10
+        bg-white/5
+        px-3
+        py-2.5">
+        <button
+          class="flex
+            w-full
+            items-center
+            justify-between
+            gap-2
+            text-left"
+          :title="
+            usageOpen
+              ? t('scriptEditor.agentChat.collapseUsage')
+              : t('scriptEditor.agentChat.expandUsage')
+          "
+          @click="usageOpen = !usageOpen"
+        >
+          <span class="inline-flex
+            items-center
+            gap-1.5
+            text-[0.72rem]
+            text-white/50">
+            <Icon
+              icon="advance"
+              :size="13"
+              class="text-brand"
+            />
+            {{ t('scriptEditor.agentChat.tokenUsage') }}
+          </span>
+          <span class="font-mono
+            text-[0.78rem]
+            text-brand">{{
+            store.totalTokens.toLocaleString()
+          }}</span>
+          <span class="text-[0.6rem]
+            text-white/30">{{ usageOpen ? '▾' : '▸' }}</span>
+        </button>
+
+        <div
+          v-if="usageOpen"
+          class="mt-2
+            flex
+            flex-col
+            gap-1.5
+            border-t
+            border-white/10
+            pt-2"
+        >
+          <template v-if="store.lastUsage">
+            <div class="grid
+              grid-cols-3
+              gap-1
+              text-center">
+              <div class="rounded-md
+                bg-white/5
+                py-1">
+                <div class="text-[0.6rem]
+                  text-white/40">
+                  {{ t('scriptEditor.agentChat.input') }}
+                </div>
+                <div class="font-mono
+                  text-[0.72rem]
+                  text-white/85">
+                  {{ store.lastUsage.prompt_tokens.toLocaleString() }}
+                </div>
+              </div>
+              <div class="rounded-md
+                bg-white/5
+                py-1">
+                <div class="text-[0.6rem]
+                  text-white/40">
+                  {{ t('scriptEditor.agentChat.output') }}
+                </div>
+                <div class="font-mono
+                  text-[0.72rem]
+                  text-white/85">
+                  {{ store.lastUsage.completion_tokens.toLocaleString() }}
+                </div>
+              </div>
+              <div class="rounded-md
+                bg-white/5
+                py-1">
+                <div class="text-[0.6rem]
+                  text-white/40">
+                  {{ t('scriptEditor.agentChat.currentRound') }}
+                </div>
+                <div class="font-mono
+                  text-[0.72rem]
+                  text-brand">
+                  {{ store.lastUsage.total_tokens.toLocaleString() }}
+                </div>
+              </div>
+            </div>
+            <div class="text-[0.62rem]
+              text-white/35">
+              {{
+                t('scriptEditor.agentChat.totalTokens', {
+                  count: store.totalTokens.toLocaleString(),
+                })
+              }}
+            </div>
+          </template>
+          <p
+            v-else
+            class="text-[0.68rem]
+              text-white/35"
+          >
+            {{ t('scriptEditor.agentChat.usageEmpty') }}
+          </p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 右栏：聊天 -->
+    <div
+      class="flex
+        min-w-0
+        min-h-0
+        flex-1
+        flex-col
+        overflow-hidden
+        rounded-xl
+        border
+        border-white/10
+        bg-white/4"
+    >
+      <!-- 消息区 -->
+      <div
+        ref="scroller"
+        class="flex
+          min-h-0
+          flex-1
+          flex-col
+          gap-3
+          overflow-y-auto
+          px-4
+          py-4"
+      >
+        <div
+          v-if="store.loading"
+          class="py-10
+            text-center
+            text-[0.82rem]
+            text-white/40"
+        >
+          {{ t('scriptEditor.agentChat.loading') }}
+        </div>
+        <div
+          v-else-if="!store.currentId"
+          class="py-10
+            text-center
+            text-[0.82rem]
+            text-white/40"
+        >
+          {{ t('scriptEditor.agentChat.empty') }}
+        </div>
+
+        <template v-else>
+          <template
+            v-for="item in store.items"
+            :key="item.id"
+          >
+            <!-- 用户消息 -->
+            <div
+              v-if="item.role === 'user'"
+              class="flex
+                justify-end"
+            >
+              <div
+                class="max-w-[76%]
+                  whitespace-pre-wrap
+                  break-words
+                  rounded-2xl
+                  rounded-tr-sm
+                  border
+                  border-brand/40
+                  bg-brand/12
+                  px-3.5
+                  py-2.5
+                  text-[0.86rem]
+                  leading-relaxed
+                  text-white/90"
+              >
+                {{ item.content }}
+              </div>
+            </div>
+
+            <!-- assistant 回复 -->
+            <div
+              v-else
+              class="flex
+                flex-col
+                gap-2"
+            >
+              <div
+                v-for="(round, i) in item.rounds"
+                :key="i"
+                class="flex
+                  flex-col
+                  gap-2"
+              >
+                <!-- 思考/规划块：有思考链，或该轮以工具调用结尾（正文是工具前叙述） -->
+                <AgentThinkingBlock
+                  v-if="thinkingText(round)"
+                  :text="thinkingText(round)"
+                />
+                <!-- 普通回复气泡：纯文本且无工具调用（最终答复） -->
+                <div
+                  v-else-if="round.content"
+                  class="max-w-[92%]
+                    rounded-2xl
+                    rounded-tl-sm
+                    border
+                    border-white/10
+                    bg-white/8
+                    px-3.5
+                    py-2.5"
+                >
+                  <MarkdownText :content="round.content" />
+                </div>
+                <AgentToolCard
+                  v-for="run in round.toolRuns"
+                  :key="run.callId"
+                  :run="run"
+                  class="max-w-[92%]"
+                  @allow="run.requestId && store.resolveApproval(run.requestId, true)"
+                  @deny="run.requestId && store.resolveApproval(run.requestId, false)"
+                />
+              </div>
+              <div
+                v-if="item.error"
+                class="text-[0.78rem]
+                  text-red-300"
+              >
+                ⚠ {{ item.error }}
+              </div>
+              <div
+                v-if="item.streaming && item.rounds.length === 0"
+                class="text-[0.78rem]
+                  text-white/40"
+              >
+                {{ t('scriptEditor.agentChat.thinking') }}
+              </div>
+            </div>
+          </template>
+        </template>
+      </div>
+
+      <!-- 状态行 -->
+      <div
+        v-if="store.status || store.lastUsage"
+        class="flex
+          items-center
+          justify-between
+          px-4
+          pb-1
+          text-[0.7rem]
+          text-white/40"
+      >
+        <span class="truncate">{{ store.status }}</span>
+        <span
+          v-if="store.lastUsage"
+          class="shrink-0
+            font-mono"
+        >
+          {{ store.lastUsage.total_tokens }} tokens
+        </span>
+      </div>
+
+      <!-- 输入区 -->
+      <div class="border-t
+        border-white/10
+        px-3
+        py-2.5">
+        <div
+          class="flex
+            items-end
+            gap-2
+            rounded-xl
+            border
+            border-white/10
+            bg-black/25
+            px-3
+            py-2
+            focus-within:border-brand/50"
+        >
+          <textarea
+            ref="inputEl"
+            v-model="draft"
+            rows="1"
+            class="max-h-40
+              flex-1
+              resize-y
+              bg-transparent
+              text-[0.86rem]
+              leading-relaxed
+              text-white
+              outline-none
+              placeholder:text-white/35
+              [field-sizing:content]"
+            :placeholder="t('scriptEditor.agentChat.placeholder')"
+            :disabled="store.sending"
+            @input="autoResizeInput"
+            @keydown.enter.exact.prevent="send"
+            @compositionstart="composing = true"
+            @compositionend="composing = false"
+          ></textarea>
+          <button
+            v-if="store.streaming"
+            class="inline-flex
+              shrink-0
+              items-center
+              gap-1
+              rounded-lg
+              border
+              border-red-400/35
+              bg-red-400/12
+              px-3
+              py-1.5
+              text-[0.78rem]
+              text-red-300
+              transition-colors
+              hover:bg-red-400/25"
+            @click="store.cancel()"
+          >
+            {{ t('scriptEditor.agentChat.stop') }}
+          </button>
+          <button
+            v-else
+            class="inline-flex
+              shrink-0
+              items-center
+              gap-1
+              rounded-lg
+              border
+              border-brand/45
+              bg-brand/14
+              px-3
+              py-1.5
+              text-[0.78rem]
+              text-brand
+              transition-colors
+              hover:bg-brand/24
+              disabled:opacity-50"
+            :disabled="!draft.trim() || store.sending"
+            @click="send"
+          >
+            {{ t('scriptEditor.agentChat.send') }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { nextTick, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { Icon } from '@/components/base'
+import { useDialogStore } from '@/stores/modules/ui/dialog'
+import { useAgentStore } from '@/stores/modules/agent'
+import AgentThinkingBlock from './AgentThinkingBlock.vue'
+import AgentToolCard from './AgentToolCard.vue'
+import MarkdownText from './MarkdownText.vue'
+import type { ConversationInfo } from '@/api/services/agent'
+import type { ChatRound } from '@/stores/modules/agent/state'
+
+const { t } = useI18n()
+const store = useAgentStore()
+const dialogStore = useDialogStore()
+
+const draft = ref('')
+const composing = ref(false)
+
+/**
+ * 一轮是否算「思考/规划」及其展示文本：
+ * - 该轮携带思考链（thinking 模式开启）→ 显示思考链；
+ * - 该轮以工具调用结尾 → 正文即工具前的叙述，一并放入思考块；
+ * - 纯文本且无工具调用（最终答复）→ 走普通气泡。
+ */
+function thinkingText(round: ChatRound): string {
+  const parts = [round.reasoning, round.toolRuns.length > 0 ? round.content : null].filter(
+    (s): s is string => !!s,
+  )
+  return parts.join('\n\n')
+}
+
+/** 左下角 Token 用量卡片是否展开明细。 */
+const usageOpen = ref(false)
+const scroller = ref<HTMLElement | null>(null)
+const inputEl = ref<HTMLTextAreaElement | null>(null)
+
+/**
+ * 输入框随内容自动增高。
+ * 优先用原生 `field-sizing: content`（WebView2 基于新版 Chromium，原生支持，且
+ * 与 `resize-y` 手动拖动天然兼容：拖出的内联高度优先于内容尺寸）；不支持的旧
+ * 内核退回 JS 量高。两个路径都不写死高度上限（max-h-40 由 CSS 封顶，超出滚动）。
+ */
+const MAX_INPUT_HEIGHT = 160
+const fieldSizingSupported = typeof CSS !== 'undefined' && CSS.supports('field-sizing', 'content')
+
+function autoResizeInput() {
+  if (fieldSizingSupported) return
+  const el = inputEl.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`
+}
+
+function scrollToBottom() {
+  nextTick(() => {
+    if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight
+  })
+}
+
+// 每次事件/切换会话后滚到底
+watch(
+  () => [store.version, store.currentId],
+  () => scrollToBottom(),
+)
+
+watch(store.conversations, () => scrollToBottom())
+
+onMounted(() => {
+  void store.initForEditor()
+})
+
+async function send() {
+  const text = draft.value
+  if (composing.value || store.streaming || !text.trim()) return
+  draft.value = ''
+  // 清空后把高度收回去（field-sizing 原生会自动收，这里给 JS 兜底路径）
+  void nextTick(autoResizeInput)
+  await store.sendMessage(text)
+}
+
+async function removeConversation(c: ConversationInfo) {
+  const ok = await dialogStore.confirm(
+    t('scriptEditor.agentChat.deleteConfirm', {
+      title: c.title || t('scriptEditor.agentChat.conversationTitle', { id: c.id }),
+    }),
+  )
+  if (!ok) return
+  await store.deleteConversation(c.id)
+}
+
+/** 清空当前对话为危险操作，先弹确认框（移动端容易误触）。 */
+async function clearConversation() {
+  if (!(await dialogStore.confirm(t('scriptEditor.agentChat.clearConfirm')))) return
+  await store.clearConversation()
+}
+</script>

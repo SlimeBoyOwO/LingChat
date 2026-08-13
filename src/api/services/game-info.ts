@@ -36,6 +36,10 @@ export interface GameLineInit {
   perceived_role_ids: number[]
   /** 玩家消息序号（1-indexed），仅 sender_role_id == 0 的 user 行有值 */
   user_message_seq: number | null
+  /** 该轮生成的思考链（仅每轮最后一条 assistant 行有值） */
+  thinking: string | null
+  /** 该台词的第二语言（日语）译文，供日文界面显示 */
+  tts_content: string | null
 }
 
 // 2. 定义完整的初始化数据接口 (对应 Rust WebInitData)
@@ -52,6 +56,14 @@ export interface WebInitData {
   current_scene: SceneInfo | null
   lines: GameLineInit[]
   scene_awareness_enabled: boolean
+  /** 上次会话的背景音乐曲目（session store 恢复） */
+  last_bgm_track?: string | null
+  /** 上次会话背景音乐是否暂停 */
+  last_bgm_paused?: boolean | null
+  /** 上次会话背景音乐播放模式 */
+  last_bgm_mode?: string | null
+  /** 上次会话环境音轨道（JSON 字符串） */
+  last_ambient_tracks?: string | null
 }
 
 /**

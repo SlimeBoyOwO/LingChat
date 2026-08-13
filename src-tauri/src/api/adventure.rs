@@ -199,7 +199,7 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
     let channels = state.script_channels.clone();
     let db = state.db.clone();
     let data_dir = state.ai_service.lock().await.data_dir.clone();
-    let llm = state.chat.llm.clone();
+    let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
     let achievement_manager = state.achievement_manager.clone();
 
     tokio::spawn(async move {
@@ -211,6 +211,7 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
             config: &config,
             llm: llm.as_ref(),
             channels,
+            is_preview: false,
         };
 
         match ScriptManager::execute_script(&script, &mut ctx, &is_running).await {
@@ -270,6 +271,7 @@ pub async fn check_adventure_unlocks(app: AppHandle) -> Result<Vec<UnlockedAdven
                             description: desc.to_string(),
                             ach_type: ach_type.to_string(),
                             target_progress: 1,
+                            hidden: false,
                             img_url: None,
                             audio_url: None,
                             duration: None,
@@ -369,6 +371,7 @@ pub(crate) async fn handle_adventure_completion(
                     description: desc.to_string(),
                     ach_type: ach_type.to_string(),
                     target_progress: 1,
+                    hidden: false,
                     img_url: None,
                     audio_url: None,
                     duration: None,

@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    parse_duration, register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_AMBIENT, AmbientPayload,
@@ -21,6 +21,7 @@ pub struct AmbientEvent {
     is_loop: bool,
     stop: bool,
     fade: bool,
+    duration: Option<f64>,
 }
 
 impl AmbientEvent {
@@ -39,6 +40,7 @@ impl AmbientEvent {
             stop: data.get("stop").and_then(|v| v.as_bool()).unwrap_or(false),
             // 淡入淡出字段，默认 true
             fade: data.get("fade").and_then(|v| v.as_bool()).unwrap_or(true),
+            duration: parse_duration(data),
         }
     }
 }
@@ -54,6 +56,7 @@ impl ScriptEvent for AmbientEvent {
                 is_loop: self.is_loop,
                 stop: true,
                 fade: self.fade,
+                duration: self.duration,
             };
             let _ = emit(ctx.app, SCRIPT_AMBIENT, &payload);
             tracing::info!("[AmbientEvent] 停止环境音: {}", self.ambient_path);
@@ -82,6 +85,7 @@ impl ScriptEvent for AmbientEvent {
             is_loop: self.is_loop,
             stop: false,
             fade: self.fade,
+            duration: self.duration,
         };
         let _ = emit(ctx.app, SCRIPT_AMBIENT, &payload);
 
@@ -96,6 +100,10 @@ impl ScriptEvent for AmbientEvent {
 
     fn event_type() -> &'static str {
         "ambient"
+    }
+
+    fn duration(&self) -> Option<f64> {
+        self.duration
     }
 }
 

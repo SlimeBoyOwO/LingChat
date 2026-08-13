@@ -10,9 +10,10 @@ use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, USER_AGENT};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
-use crate::ai_service::llm::provider::{LlmModelInfo, LlmProvider, LlmResponseWithTools};
+use crate::ai_service::llm::provider::{
+    LlmModelInfo, LlmProvider, LlmResponseWithTools, ThinkEffortsInfo,
+};
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig};
 use crate::ai_service::types::{LlmMessage, ToolCall, ToolDefinition};
 
@@ -32,6 +33,26 @@ struct KimiCodeModelRecord {
     supports_reasoning: bool,
     #[serde(default)]
     supports_thinking_type: Option<String>,
+    #[serde(default)]
+    think_efforts: Option<KimiCodeThinkEfforts>,
+}
+
+#[derive(Debug, Deserialize)]
+struct KimiCodeThinkEfforts {
+    #[serde(default)]
+    support: bool,
+    #[serde(default)]
+    valid_efforts: Vec<String>,
+    #[serde(default)]
+    default_effort: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ThinkingConfig {
+    #[serde(rename = "type")]
+    type_: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    effort: Option<String>,
 }
 
 fn kimi_code_models_endpoint(base_url: &str) -> String {
@@ -54,6 +75,7 @@ pub struct KimiCodeProvider {
     temperature: Option<f64>,
     top_p: Option<f64>,
     enable_thinking: bool,
+    reasoning_effort: Option<String>,
 }
 
 impl KimiCodeProvider {
@@ -76,6 +98,7 @@ impl KimiCodeProvider {
             temperature: cfg.temperature,
             top_p: cfg.top_p,
             enable_thinking: cfg.enable_thinking,
+            reasoning_effort: cfg.reasoning_effort.clone(),
         })
     }
 
@@ -100,7 +123,7 @@ impl KimiCodeProvider {
         stream: bool,
         tools: Option<&'a [ToolDefinition]>,
         tool_choice: Option<serde_json::Value>,
-    ) -> MessagesRequest<'a> {
+    ) -> Result<MessagesRequest<'a>> {
         // 拆分 system 与对话消息
         let mut system_text = String::new();
         let mut conversation: Vec<AnthropicMessage> = Vec::new();
@@ -113,21 +136,118 @@ impl KimiCodeProvider {
                     system_text.push_str(&m.content);
                 }
                 "user" => conversation.push(AnthropicMessage {
-                    role: "user",
-                    content: &m.content,
+                    role: "user".to_string(),
+                    content: AnthropicMessageContent::Text(m.content.clone()),
                 }),
-                "assistant" | "tool" => conversation.push(AnthropicMessage {
-                    role: "assistant",
-                    content: &m.content,
+                "assistant" if m.tool_calls.is_some() => {
+                    let mut blocks = Vec::new();
+                    if !m.content.is_empty() {
+                        blocks.push(AnthropicRequestBlock::Text {
+                            text: m.content.clone(),
+                        });
+                    }
+                    blocks.extend(
+                        m.tool_calls
+                            .as_ref()
+                            .expect("tool_calls 已通过条件判断")
+                            .iter()
+                            .map(|call| {
+                                let input = serde_json::from_str(&call.function.arguments)
+                                    .context("Kimi-Code 工具调用参数不是合法 JSON")?;
+                                Ok(AnthropicRequestBlock::ToolUse {
+                                    id: call.id.clone(),
+                                    name: call.function.name.clone(),
+                                    input,
+                                })
+                            })
+                            .collect::<Result<Vec<_>>>()?,
+                    );
+                    conversation.push(AnthropicMessage {
+                        role: "assistant".to_string(),
+                        content: AnthropicMessageContent::Blocks(blocks),
+                    });
+                }
+                "assistant" => conversation.push(AnthropicMessage {
+                    role: "assistant".to_string(),
+                    content: AnthropicMessageContent::Text(m.content.clone()),
                 }),
+                "tool" => {
+                    let tool_use_id = m
+                        .tool_call_id
+                        .clone()
+                        .filter(|id| !id.trim().is_empty())
+                        .ok_or_else(|| anyhow!("Kimi-Code tool 消息缺少 tool_call_id"))?;
+                    conversation.push(AnthropicMessage {
+                        role: "user".to_string(),
+                        content: AnthropicMessageContent::Blocks(vec![
+                            AnthropicRequestBlock::ToolResult {
+                                tool_use_id,
+                                content: m.content.clone(),
+                            },
+                        ]),
+                    });
+                }
                 _ => conversation.push(AnthropicMessage {
-                    role: "user",
-                    content: &m.content,
+                    role: "user".to_string(),
+                    content: AnthropicMessageContent::Text(m.content.clone()),
                 }),
             }
         }
 
-        MessagesRequest {
+        // 推理深度（K3）：对齐 kimi-code 的做法，在 thinking 中携带
+        // effort: "low"|"high"|"max"，未设置则不携带 effort 字段。
+        let reasoning_effort = self.reasoning_effort.clone().filter(|e| !e.is_empty());
+        // Anthropic Messages API 的 tool 格式为 {name, description, input_schema}
+        // 与项目内部通用的 OpenAI 格式 {type, function} 不同，需要在此转换
+        let anthropic_tools: Option<Vec<AnthropicTool<'a>>> = tools.map(|ts| {
+            ts.iter()
+                .map(|t| AnthropicTool {
+                    name: &t.function.name,
+                    description: &t.function.description,
+                    input_schema: &t.function.parameters,
+                })
+                .collect()
+        });
+
+        // Anthropic tool_choice 格式为 {"type": "auto"|"any"|"tool", "name": "..."}
+        let anthropic_tool_choice: Option<AnthropicToolChoice> =
+            tool_choice.and_then(|tc| match tc {
+                serde_json::Value::String(s) => match s.as_str() {
+                    "auto" => Some(AnthropicToolChoice {
+                        type_: "auto".to_string(),
+                        effort: None,
+                        name: None,
+                    }),
+                    "any" | "required" => Some(AnthropicToolChoice {
+                        type_: "any".to_string(),
+                        effort: None,
+                        name: None,
+                    }),
+
+                    "none" => None,
+                    _ => Some(AnthropicToolChoice {
+                        type_: "auto".to_string(),
+                        effort: None,
+                        name: None,
+                    }),
+                },
+                serde_json::Value::Object(obj) => {
+                    let type_ = obj
+                        .get("type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("auto")
+                        .to_string();
+                    let name = obj.get("name").and_then(|v| v.as_str()).map(String::from);
+                    Some(AnthropicToolChoice {
+                        type_,
+                        effort: None,
+                        name,
+                    })
+                }
+                _ => None,
+            });
+
+        Ok(MessagesRequest {
             model: &self.model,
             max_tokens: 65536,
             stream,
@@ -139,18 +259,67 @@ impl KimiCodeProvider {
                 Some(system_text)
             },
             messages: conversation,
-            tools,
-            tool_choice,
-            thinking: if self.enable_thinking {
-                Some(ThinkingConfig {
-                    type_: "enabled".to_string(),
-                })
-            } else {
-                Some(ThinkingConfig {
-                    type_: "disabled".to_string(),
-                })
+            tools: anthropic_tools,
+            tool_choice: anthropic_tool_choice,
+            thinking: {
+                // 设置了推理深度时视为启用思考链（K3 始终开启思考）
+                if reasoning_effort.is_some() || self.enable_thinking {
+                    Some(ThinkingConfig {
+                        type_: "enabled".to_string(),
+                        effort: reasoning_effort.clone(),
+                    })
+                } else {
+                    Some(ThinkingConfig {
+                        type_: "disabled".to_string(),
+                        effort: None,
+                    })
+                }
             },
+        })
+    }
+
+    fn parse_messages_with_tools_response(
+        &self,
+        parsed: MessagesResponse,
+    ) -> Result<LlmResponseWithTools> {
+        let mut content_text = String::new();
+        let mut tool_calls: Option<Vec<ToolCall>> = None;
+        for block in parsed.content {
+            if let Some(t) = block.text {
+                content_text.push_str(&t);
+            }
+            if block.type_ == "tool_use" {
+                let id = block
+                    .id
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or_else(|| anyhow!("Kimi-Code tool_use 缺少 id"))?;
+                let name = block
+                    .name
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or_else(|| anyhow!("Kimi-Code tool_use 缺少 name"))?;
+                let input = block
+                    .input
+                    .ok_or_else(|| anyhow!("Kimi-Code tool_use 缺少 input"))?;
+                let tc = ToolCall {
+                    id,
+                    type_: "function".to_string(),
+                    function: crate::ai_service::types::FunctionCall {
+                        name,
+                        arguments: input.to_string(),
+                    },
+                };
+                tool_calls.get_or_insert_with(Vec::new).push(tc);
+            }
         }
+
+        Ok(LlmResponseWithTools {
+            content: if content_text.is_empty() {
+                None
+            } else {
+                Some(content_text)
+            },
+            tool_calls,
+        })
     }
 
     fn parse_messages_response(&self, parsed: MessagesResponse) -> Result<String> {
@@ -177,7 +346,6 @@ impl LlmProvider for KimiCodeProvider {
         let endpoint = kimi_code_models_endpoint(&self.base_url);
         let response = http
             .get(&endpoint)
-            .timeout(Duration::from_secs(30))
             .bearer_auth(self.api_key.trim())
             .header(USER_AGENT, "claude-code/0.1.0")
             .header(ACCEPT, "application/json")
@@ -206,6 +374,18 @@ impl LlmProvider for KimiCodeProvider {
                 context_length: model.context_length,
                 supports_reasoning: model.supports_reasoning,
                 supports_thinking_type: model.supports_thinking_type,
+                // 仅当模型显式声明支持调档且给出档位列表时才透传，
+                // 否则视为不可调档（如 K2.7 思考常开、无 valid_efforts）
+                think_efforts: model.think_efforts.and_then(|e| {
+                    if e.support && !e.valid_efforts.is_empty() {
+                        Some(ThinkEffortsInfo {
+                            valid_efforts: e.valid_efforts,
+                            default_effort: e.default_effort,
+                        })
+                    } else {
+                        None
+                    }
+                }),
             })
             .collect::<Vec<_>>();
 
@@ -216,7 +396,11 @@ impl LlmProvider for KimiCodeProvider {
     }
 
     async fn complete(&self, http: &Client, messages: &[LlmMessage]) -> Result<String> {
-        let body = self.build_request(messages, false, None, None);
+        let body = self.build_request(messages, false, None, None)?;
+        crate::utils::llm_request_logger::log_request_body(
+            "kimicode",
+            &serde_json::to_value(&body).unwrap_or_default(),
+        );
         let resp = http
             .post(self.endpoint())
             .headers(self.headers()?)
@@ -243,15 +427,13 @@ impl LlmProvider for KimiCodeProvider {
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
     ) -> Result<LlmResponseWithTools> {
-        let tool_choice_value = tool_choice.map(|tc| {
-            if tc == "auto" || tc == "none" || tc == "required" {
-                serde_json::Value::String(tc.to_string())
-            } else {
-                serde_json::from_str(tc).unwrap_or(serde_json::Value::String("auto".to_string()))
-            }
-        });
+        let tool_choice_value = parse_tool_choice(tool_choice);
 
-        let body = self.build_request(messages, false, Some(tools), tool_choice_value);
+        let body = self.build_request(messages, false, Some(tools), tool_choice_value)?;
+        crate::utils::llm_request_logger::log_request_body(
+            "kimicode",
+            &serde_json::to_value(&body).unwrap_or_default(),
+        );
         let resp = http
             .post(self.endpoint())
             .headers(self.headers()?)
@@ -273,40 +455,61 @@ impl LlmProvider for KimiCodeProvider {
             .await
             .context("解析 Kimi-Code (tools) 响应 JSON 失败")?;
 
-        let mut content_text = String::new();
-        let mut tool_calls: Option<Vec<ToolCall>> = None;
-        for block in parsed.content {
-            if let Some(t) = block.text {
-                content_text.push_str(&t);
-            }
-            if block.type_ == "tool_use" {
-                if let (Some(id), Some(name), Some(input)) = (block.id, block.name, block.input) {
-                    let args = input.to_string();
-                    let tc = ToolCall {
-                        id,
-                        type_: "function".to_string(),
-                        function: crate::ai_service::types::FunctionCall {
-                            name,
-                            arguments: args,
-                        },
-                    };
-                    tool_calls.get_or_insert_with(Vec::new).push(tc);
-                }
-            }
-        }
-
-        Ok(LlmResponseWithTools {
-            content: if content_text.is_empty() {
-                None
-            } else {
-                Some(content_text)
-            },
-            tool_calls,
-        })
+        self.parse_messages_with_tools_response(parsed)
     }
 
     async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream> {
-        let body = self.build_request(messages, true, None, None);
+        self.stream_impl(http, messages, None, None).await
+    }
+
+    /// Kimi-Code 支持 Anthropic SSE 的原生流式 function calling。
+    fn supports_streaming_tools(&self) -> bool {
+        true
+    }
+
+    async fn complete_stream_with_tools(
+        &self,
+        http: &Client,
+        messages: &[LlmMessage],
+        tools: &[ToolDefinition],
+        tool_choice: Option<&str>,
+    ) -> Result<ChunkStream> {
+        let tool_choice_value = parse_tool_choice(tool_choice);
+        self.stream_impl(http, messages, Some(tools), tool_choice_value)
+            .await
+    }
+}
+
+fn parse_tool_choice(tool_choice: Option<&str>) -> Option<serde_json::Value> {
+    tool_choice.map(|choice| {
+        if matches!(choice, "auto" | "none" | "required") {
+            serde_json::Value::String(choice.to_string())
+        } else {
+            serde_json::from_str(choice)
+                .unwrap_or_else(|_| serde_json::Value::String("auto".to_string()))
+        }
+    })
+}
+
+impl KimiCodeProvider {
+    /// 统一的流式实现：Anthropic SSE 解析。
+    ///
+    /// 除文本/思考增量外，还处理工具调用块：
+    /// `content_block_start`(tool_use) 登记 id/name，
+    /// `content_block_delta`(input_json_delta) 累积 partial_json，
+    /// 流结束时一次性以 `LlmChunk::ToolCalls` 抛出（与 genai provider 的语义一致）。
+    async fn stream_impl(
+        &self,
+        http: &Client,
+        messages: &[LlmMessage],
+        tools: Option<&[ToolDefinition]>,
+        tool_choice: Option<serde_json::Value>,
+    ) -> Result<ChunkStream> {
+        let body = self.build_request(messages, true, tools, tool_choice)?;
+        crate::utils::llm_request_logger::log_request_body(
+            "kimicode",
+            &serde_json::to_value(&body).unwrap_or_default(),
+        );
         let resp = http
             .post(self.endpoint())
             .headers(self.headers()?)
@@ -327,6 +530,9 @@ impl LlmProvider for KimiCodeProvider {
             let mut thinking_buffer = String::new();
             let mut text_buffer = String::new();
             let mut last_flush_len: usize = 0;
+            // 流式工具调用累积：块 index → (id, name, partial_json)
+            let mut tool_blocks: std::collections::BTreeMap<usize, (String, String, String)> =
+                std::collections::BTreeMap::new();
             let mut bs = byte_stream;
             while let Some(item) = bs.next().await {
                 let chunk = item.map_err(|e| anyhow!("Kimi-Code 流式读取失败: {e}"))?;
@@ -348,14 +554,18 @@ impl LlmProvider for KimiCodeProvider {
                             if !thinking_buffer.is_empty() {
                                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
                                 yield LlmChunk::Reasoning(thinking_buffer.clone());
-                                thinking_buffer.clear();
                             }
                             // 如果 text 为空但 thinking 有内容，把 thinking 作为正式回复兜底
-                            if text_buffer.is_empty() && !thinking_buffer.is_empty() {
+                            // 工具调用轮的 thinking 只是决策过程，不能混入正文。
+                            if text_buffer.is_empty() && !thinking_buffer.is_empty() && tool_blocks.is_empty() {
                                 tracing::info!("[Kimi-Code] text 为空，使用 thinking 作为回复");
                                 for line in thinking_buffer.lines() {
                                     yield LlmChunk::Content(line.to_string());
                                 }
+                            }
+                            // 抛出累积完成的工具调用
+                            if !tool_blocks.is_empty() {
+                                yield LlmChunk::ToolCalls(collect_tool_calls(std::mem::take(&mut tool_blocks)));
                             }
                             return;
                         }
@@ -381,9 +591,38 @@ impl LlmProvider for KimiCodeProvider {
                                             thinking_buffer.push_str(&thinking);
                                         }
                                     }
+                                    if let Some(partial) = delta.partial_json {
+                                        let idx = parsed.index.unwrap_or(0);
+                                        if let Some(block) = tool_blocks.get_mut(&idx) {
+                                            block.2.push_str(&partial);
+                                            // 实时汇报参数生成进度（驱动前端「正在写入…N 字」提示）
+                                            yield LlmChunk::ToolCallProgress {
+                                                name: block.1.clone(),
+                                                chars: block.2.chars().count(),
+                                            };
+                                        }
+                                    }
                                 }
                             }
-                            "content_block_start" | "content_block_stop" | "message_start" | "message_delta" | "message_stop" => {
+                            "content_block_start" => {
+                                if let Some(block) = parsed.content_block {
+                                    if block.type_ == "tool_use" {
+                                        let idx = parsed.index.unwrap_or(0);
+                                        let name = block.name.unwrap_or_default();
+                                        tool_blocks.insert(
+                                            idx,
+                                            (
+                                                block.id.unwrap_or_default(),
+                                                name.clone(),
+                                                String::new(),
+                                            ),
+                                        );
+                                        // 工具块一开始就让前端亮出「正在生成」状态
+                                        yield LlmChunk::ToolCallProgress { name, chars: 0 };
+                                    }
+                                }
+                            }
+                            "content_block_stop" | "message_start" | "message_delta" | "message_stop" => {
                                 tracing::debug!("[Kimi-Code SSE] type={}, delta={:?}", parsed.type_, parsed.delta);
                             }
                             other => {
@@ -407,17 +646,44 @@ impl LlmProvider for KimiCodeProvider {
                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
                 yield LlmChunk::Reasoning(thinking_buffer.clone());
             }
-            // 兜底：text 为空时使用 thinking
-            if text_buffer.is_empty() && !thinking_buffer.is_empty() {
+            // 兜底：text 为空时使用 thinking。
+            // 但本轮若包含工具调用（tool_use 块），thinking 只是决策过程，
+            // 不能当正文下发——否则会污染工具闭环的 assistant 消息与下游句子解析。
+            if text_buffer.is_empty() && !thinking_buffer.is_empty() && tool_blocks.is_empty() {
                 tracing::info!("[Kimi-Code] text 为空，使用 thinking 作为回复");
                 for line in thinking_buffer.lines() {
                     yield LlmChunk::Content(line.to_string());
                 }
             }
+            // 流正常结束时抛出累积完成的工具调用
+            if !tool_blocks.is_empty() {
+                yield LlmChunk::ToolCalls(collect_tool_calls(std::mem::take(&mut tool_blocks)));
+            }
         };
 
         Ok(Box::pin(stream))
     }
+}
+
+/// 把流式累积的工具块组装成 ToolCall 列表（按块 index 升序）。
+fn collect_tool_calls(
+    blocks: std::collections::BTreeMap<usize, (String, String, String)>,
+) -> Vec<crate::ai_service::types::ToolCall> {
+    blocks
+        .into_values()
+        .map(|(id, name, arguments)| crate::ai_service::types::ToolCall {
+            id,
+            type_: "function".to_string(),
+            function: crate::ai_service::types::FunctionCall {
+                name,
+                arguments: if arguments.trim().is_empty() {
+                    "{}".to_string()
+                } else {
+                    arguments
+                },
+            },
+        })
+        .collect()
 }
 
 // ============================================================
@@ -435,25 +701,64 @@ struct MessagesRequest<'a> {
     top_p: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     system: Option<String>,
-    messages: Vec<AnthropicMessage<'a>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<&'a [ToolDefinition]>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<serde_json::Value>,
+    messages: Vec<AnthropicMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     thinking: Option<ThinkingConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<AnthropicTool<'a>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<AnthropicToolChoice>,
 }
 
 #[derive(Serialize)]
-struct AnthropicMessage<'a> {
-    role: &'a str,
-    content: &'a str,
+struct AnthropicMessage {
+    role: String,
+    content: AnthropicMessageContent,
 }
 
 #[derive(Serialize)]
-struct ThinkingConfig {
+#[serde(untagged)]
+enum AnthropicMessageContent {
+    Text(String),
+    Blocks(Vec<AnthropicRequestBlock>),
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type")]
+enum AnthropicRequestBlock {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "tool_use")]
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    #[serde(rename = "tool_result")]
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+    },
+}
+
+/// Anthropic Messages API 的 tool 定义格式：{name, description, input_schema}
+#[derive(Serialize)]
+struct AnthropicTool<'a> {
+    name: &'a str,
+    description: &'a str,
+    input_schema: &'a serde_json::Value,
+}
+
+/// Anthropic Messages API 的 tool_choice 格式：{"type": "auto" | "any" | "tool", "name": "..."}
+#[derive(Serialize)]
+struct AnthropicToolChoice {
     #[serde(rename = "type")]
     type_: String,
+    /// K3 推理深度："low" | "high" | "max"，未设置则不携带该字段
+    #[serde(skip_serializing_if = "Option::is_none")]
+    effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -479,6 +784,12 @@ struct ContentBlock {
 struct MessagesStreamChunk {
     #[serde(rename = "type")]
     type_: String,
+    /// 内容块序号（content_block_start/delta/stop 携带）。
+    #[serde(default)]
+    index: Option<usize>,
+    /// content_block_start 携带的块本体（tool_use 的 id/name 在这里）。
+    #[serde(default)]
+    content_block: Option<ContentBlock>,
     #[serde(default)]
     delta: Option<MessageDelta>,
 }
@@ -489,4 +800,124 @@ struct MessageDelta {
     text: Option<String>,
     #[serde(default)]
     thinking: Option<String>,
+    /// input_json_delta：流式工具调用参数的 JSON 片段。
+    #[serde(default)]
+    partial_json: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai_service::types::{FunctionCall, ToolCall};
+
+    fn provider() -> KimiCodeProvider {
+        KimiCodeProvider::from_config(&LlmConfig {
+            provider: "kimicode".to_string(),
+            model: "kimi-for-coding".to_string(),
+            api_key: "test".to_string(),
+            base_url: String::new(),
+            timeout_secs: 30,
+            temperature: None,
+            top_p: None,
+            enable_thinking: false,
+            reasoning_effort: None,
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn serializes_plain_messages_without_blocks() {
+        let provider = provider();
+        let messages = [
+            LlmMessage::system("系统"),
+            LlmMessage::user("你好"),
+            LlmMessage::assistant("你好呀"),
+        ];
+        let body = provider
+            .build_request(&messages, false, None, None)
+            .unwrap();
+        let value = serde_json::to_value(body).unwrap();
+        assert_eq!(value["system"], "系统");
+        assert_eq!(value["messages"][0]["role"], "user");
+        assert_eq!(value["messages"][0]["content"], "你好");
+        assert_eq!(value["messages"][1]["role"], "assistant");
+        assert_eq!(value["messages"][1]["content"], "你好呀");
+    }
+
+    #[test]
+    fn serializes_tool_use_and_result_with_matching_id() {
+        let call = ToolCall {
+            id: "call-1".to_string(),
+            type_: "function".to_string(),
+            function: FunctionCall {
+                name: "get_current_time".to_string(),
+                arguments: "{}".to_string(),
+            },
+        };
+        let provider = provider();
+        let messages = [
+            LlmMessage::user("几点了"),
+            LlmMessage::tool(vec![call]),
+            LlmMessage::tool_result("call-1", r#"{"local_time":"now"}"#),
+        ];
+        let body = provider
+            .build_request(&messages, false, None, None)
+            .unwrap();
+        let value = serde_json::to_value(body).unwrap();
+        assert_eq!(value["messages"][1]["role"], "assistant");
+        assert_eq!(value["messages"][1]["content"][0]["type"], "tool_use");
+        assert_eq!(value["messages"][1]["content"][0]["id"], "call-1");
+        assert_eq!(
+            value["messages"][1]["content"][0]["name"],
+            "get_current_time"
+        );
+        assert_eq!(value["messages"][2]["role"], "user");
+        assert_eq!(value["messages"][2]["content"][0]["type"], "tool_result");
+        assert_eq!(value["messages"][2]["content"][0]["tool_use_id"], "call-1");
+    }
+
+    #[test]
+    fn rejects_tool_result_without_call_id() {
+        let mut message = LlmMessage::tool_result("call-1", "{}");
+        message.tool_call_id = None;
+        let error = provider()
+            .build_request(&[message], false, None, None)
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("缺少 tool_call_id"));
+    }
+
+    #[test]
+    fn rejects_malformed_tool_use_response() {
+        let parsed: MessagesResponse = serde_json::from_value(serde_json::json!({
+            "content": [{"type": "tool_use", "name": "get_current_time", "input": {}}]
+        }))
+        .unwrap();
+        let error = provider()
+            .parse_messages_with_tools_response(parsed)
+            .unwrap_err();
+        assert!(error.to_string().contains("缺少 id"));
+    }
+
+    #[test]
+    fn serializes_required_tool_choice_for_streaming_requests() {
+        let tool = ToolDefinition::new(
+            "get_current_time",
+            "读取时间",
+            serde_json::json!({"type": "object", "properties": {}}),
+        );
+        let provider = provider();
+        let messages = [LlmMessage::user("几点了")];
+        let tools = [tool];
+        let body = provider
+            .build_request(
+                &messages,
+                true,
+                Some(&tools),
+                parse_tool_choice(Some("required")),
+            )
+            .unwrap();
+        let value = serde_json::to_value(body).unwrap();
+        assert_eq!(value["tool_choice"]["type"], "any");
+    }
 }

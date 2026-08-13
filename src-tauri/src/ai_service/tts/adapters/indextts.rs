@@ -34,13 +34,25 @@ impl Default for IndexTtsAdapter {
     }
 }
 
+/// 情绪分类器标签 → IndexTTS 服务端情绪表可识别标签的归一化。
+///
+/// 服务端（server_indextts.py 的 `EMO_LABEL_TO_VEC`）未覆盖的标签在此归一到
+/// 语义最近的已覆盖标签；其余标签原样透传。未识别的标签服务端会安全回退为
+/// 「跟随音色参考」，不会报错。
+fn normalize_emo_label(emo: &str) -> &str {
+    match emo.trim() {
+        "心动" => "情动",
+        other => other,
+    }
+}
+
 #[async_trait]
 impl TtsAdapter for IndexTtsAdapter {
     async fn generate_voice(&self, text: &str, emo: &str) -> Result<Vec<u8>> {
         let query: Vec<(&str, String)> = vec![
             ("id", self.speaker_id.to_string()),
             ("emo_control_method", "1".into()),
-            ("emo_id", emo.to_string()),
+            ("emo_id", normalize_emo_label(emo).to_string()),
             ("vec1", "0.0".into()),
             ("vec2", "0.0".into()),
             ("vec3", "0.0".into()),

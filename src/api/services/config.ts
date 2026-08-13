@@ -7,7 +7,7 @@ export interface ConfigItem {
   key: string
   value: string
   description: string
-  type: 'text' | 'bool' | 'textarea' | 'path'
+  type: 'text' | 'bool' | 'textarea' | 'path' | 'number'
 }
 
 export async function fetchEnvConfig(): Promise<StructuredConfig> {

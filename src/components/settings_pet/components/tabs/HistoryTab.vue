@@ -7,10 +7,10 @@
         <h2 class="text-xl font-black tracking-wide mb-1 transition-colors flex items-center gap-2"
           :class="isDarkMode ? 'text-slate-100' : 'text-slate-800'">
           <History class="w-5 h-5" />
-          历史对话
+          {{ $t('pet.history.title') }}
         </h2>
         <p class="text-xs font-medium transition-colors" :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'">
-          回顾与ta的过往交流记录吧~
+          {{ $t('pet.history.desc') }}
         </p>
       </div>
       <span class="text-4xl font-bold italic select-none font-mono transition-colors"
@@ -30,7 +30,7 @@
           ">
         <MessageSquare class="w-12 h-12 mb-4 opacity-50" />
         <p class="text-sm font-bold tracking-wider">
-          暂无历史记录，去和ta聊聊天叭(*^▽^*)
+          {{ $t('pet.history.empty') }}
         </p>
       </div>
 
@@ -60,13 +60,34 @@
                   {{ item.displayName }}
                 </span>
                 <button
-                  v-if="item.userMessageSeq !== undefined"
+                  v-if="typeof item.userMessageSeq === 'number' && !gameStore.runningScript"
                   class="shrink-0 cursor-pointer rounded border border-white/10 bg-transparent px-2 py-0.5 text-xs text-white/40 transition-all duration-200 hover:border-red-400/50 hover:bg-red-500/20 hover:text-white"
-                  title="回溯到此消息之前（将清除此消息及之后所有对话）"
+                  :title="$t('pet.history.backtrackTitle')"
                   @click.stop="handleBacktrack(item.userMessageSeq!)"
                 >
-                  回溯
+                  {{ $t('pet.history.backtrack') }}
                 </button>
+              </div>
+              <div v-if="item.thinking" class="mb-1">
+                <button
+                  class="inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition-all duration-200"
+                  :class="isDarkMode
+                    ? 'border-sky-400/25 bg-sky-400/10 text-sky-200/70 hover:border-sky-400/50 hover:text-sky-100'
+                    : 'border-sky-200 bg-sky-50 text-sky-500/80 hover:border-sky-300 hover:text-sky-600'"
+                  @click.stop="toggleThinking(i)"
+                >
+                  <span>{{ isThinkingExpanded(i) ? '▼' : '▶' }}</span>
+                  <span>{{ $t('pet.history.thinking', { count: item.thinking.length }) }}</span>
+                </button>
+                <div
+                  v-if="isThinkingExpanded(i)"
+                  class="mt-1.5 max-h-64 overflow-y-auto rounded-2xl border px-4 py-3 text-[15px] leading-normal whitespace-pre-wrap scrollbar-thin"
+                  :class="isDarkMode
+                    ? 'border-sky-400/15 bg-sky-400/5 text-white/55'
+                    : 'border-sky-100 bg-sky-50/70 text-slate-500'"
+                >
+                  {{ item.thinking }}
+                </div>
               </div>
               <template v-for="(entry, j) in item.lines" :key="j">
                 <div
@@ -95,10 +116,23 @@
                     :class="isDarkMode
                       ? 'bg-[rgba(121,217,255,0.15)] text-sky-400 hover:bg-[rgba(121,217,255,0.35)] hover:text-white'
                       : 'bg-sky-100 text-sky-600 hover:bg-sky-200 hover:text-sky-800'"
-                    title="播放语音"
+                    :title="$t('pet.history.playVoice')"
                     @click="playAudio(entry.audioFile)"
                   >
                     <Volume2 :size="16" />
+                  </button>
+                  <button
+                    v-if="seg.type !== 'action' && !entry.audioFile && canGenerateVoice(entry)"
+                    class="mt-0.5 inline-flex h-5.5 w-5.5 shrink-0 cursor-pointer items-center justify-center rounded border-0 transition-all duration-200 disabled:cursor-wait disabled:opacity-50"
+                    :class="isDarkMode
+                      ? 'bg-[rgba(121,217,255,0.1)] text-white/40 hover:bg-[rgba(121,217,255,0.35)] hover:text-white'
+                      : 'bg-sky-50 text-sky-500 hover:bg-sky-200 hover:text-sky-800'"
+                    :title="$t('pet.history.generateVoice')"
+                    :disabled="isGeneratingVoice(entry)"
+                    @click="generateVoice(entry)"
+                  >
+                    <LoaderCircle v-if="isGeneratingVoice(entry)" :size="16" class="animate-spin" />
+                    <AudioLines v-else :size="16" />
                   </button>
                 </div>
               </template>
@@ -117,14 +151,14 @@
             :disabled="currentPage === 1"
             @click="currentPage--"
           >
-            <ChevronLeft class="w-4 h-4" /> 上一页
+            <ChevronLeft class="w-4 h-4" /> {{ $t('pet.history.prevPage') }}
           </button>
 
           <span
             class="text-xs font-bold tracking-widest font-mono transition-colors"
             :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'"
           >
-            第 {{ currentPage }} 页 / 共 {{ totalPages }} 页
+            {{ $t('pet.history.pageInfo', { current: currentPage, total: totalPages }) }}
           </span>
 
           <button
@@ -136,7 +170,7 @@
             :disabled="currentPage >= totalPages"
             @click="currentPage++"
           >
-            下一页
+            {{ $t('pet.history.nextPage') }}
             <ChevronRight class="w-4 h-4" />
           </button>
         </div>
@@ -149,19 +183,25 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   History,
   MessageSquare,
   ChevronLeft,
   ChevronRight,
   Volume2,
+  AudioLines,
+  LoaderCircle,
 } from 'lucide-vue-next'
 import { useGameStore } from '../../../../stores/modules/game'
 import type { GameMessage } from '../../../../stores/modules/game/state'
 import { convertInitLines } from '../../../../stores/modules/game/actions'
 import { useDialogStore } from '../../../../stores/modules/ui/dialog'
+import { useUIStore } from '../../../../stores/modules/ui/ui'
 import { getVoiceAudio } from '@/api/services/game-info'
+import { eventQueue } from '@/core/events/event-queue'
 import { invoke } from '@tauri-apps/api/core'
+import { hkify } from '@/locales'
 import type { GameLineInit } from '@/api/services/game-info'
 
 // --- Props ---
@@ -179,6 +219,11 @@ interface LineEntry {
   segments: Segment[]
   audioFile?: string
   userMessageSeq?: number
+  thinking?: string
+  /** 该台词在 dialogHistory 中的绝对下标（生成语音后写回用） */
+  absIndex: number
+  /** AI 台词全局序号（0-based，供后端定位台词；与后端 Assistant 行计数一致） */
+  lineSeq?: number
 }
 
 interface HistoryBlock {
@@ -186,13 +231,20 @@ interface HistoryBlock {
   isNarration: boolean
   lines: LineEntry[]
   userMessageSeq?: number
+  /** 该对话块（一轮生成）的思考链，取块内最后一条非空值 */
+  thinking?: string
 }
 
 // --- Store & Refs ---
 const gameStore = useGameStore()
 const dialogStore = useDialogStore()
+const uiStore = useUIStore()
+const { t, locale } = useI18n()
 const audioRef = ref<HTMLAudioElement>()
 const contentRef = ref<HTMLDivElement>()
+
+// 补生成语音写回 audioFile 时抑制自动滚动（见 generateVoice），避免误跳底部
+let suppressAutoScroll = false
 
 const dialogHistory = computed<GameMessage[]>(() => gameStore.dialogHistory)
 const narrationNames = new Set(['', '旁白', '系统', 'Narrator', 'System'])
@@ -203,6 +255,23 @@ const PAGE_SIZE = 100
 const currentPage = ref(1)
 const totalPages = computed(() => Math.ceil(dialogHistory.value.length / PAGE_SIZE))
 
+// 思考过程展开状态（key: 对话块索引），默认全部折叠
+const expandedThinking = ref<Set<number>>(new Set())
+
+function isThinkingExpanded(blockIdx: number): boolean {
+  return expandedThinking.value.has(blockIdx)
+}
+
+function toggleThinking(blockIdx: number) {
+  const next = new Set(expandedThinking.value)
+  if (next.has(blockIdx)) {
+    next.delete(blockIdx)
+  } else {
+    next.add(blockIdx)
+  }
+  expandedThinking.value = next
+}
+
 const currentPageHistory = computed(() => {
   const start = (currentPage.value - 1) * PAGE_SIZE
   const end = start + PAGE_SIZE
@@ -210,10 +279,31 @@ const currentPageHistory = computed(() => {
 })
 
 // --- 分组历史（与 SettingsHistory 同步逻辑）---
+// AI 台词全局序号（镜像后端 generate_line_voice 的计数规则：
+// 只数 type=reply、有正文、且关联了角色的行，不分页、不依赖回合锚点，
+// 自由对话/开场白/主动对话/剧本台词都能定位；无角色的行（工具调用回填）
+// 跳过，避免实时与重载后计数漂移）
+const lineSeqs = computed<Map<number, number>>(() => {
+  const map = new Map<number, number>()
+  let seq = 0
+  dialogHistory.value.forEach((msg, absIndex) => {
+    if (!msg.content || msg.content.trim() === '') return
+    if (msg.type === 'reply' && msg.senderRoleId != null) {
+      map.set(absIndex, seq)
+      seq += 1
+    }
+  })
+  return map
+})
+
 const groupedHistory = computed<HistoryBlock[]>(() => {
   const blocks: HistoryBlock[] = []
 
-  for (const msg of currentPageHistory.value) {
+  const pageStart = (currentPage.value - 1) * PAGE_SIZE
+
+  for (const [pageIndex, msg] of currentPageHistory.value.entries()) {
+    // 写入 dialogHistory 的绝对下标（写回 audioFile 用）
+    const absIndex = pageStart + pageIndex
     if (!msg.content || msg.content.trim() === '') continue
 
     const isNarration = narrationNames.has(msg.displayName || '')
@@ -222,21 +312,31 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
       ? ''
       : msg.displayName ||
         (msg.type === 'message'
-          ? gameStore.userName || gameStore.mainRole?.roleName || '你'
-          : '谜之音')
+          ? gameStore.userName || gameStore.mainRole?.roleName || t('pet.history.you')
+          : t('pet.history.mysteryVoice'))
 
-    const segments = parseSegments(msg.content, msg.motionText, isNarration)
+    // 日文界面且存在日语译文时显示日语译文；繁体（香港）界面下转繁体显示
+    const segments =
+      locale.value === 'ja' && msg.ttsText
+        ? [{ type: 'dialogue' as const, text: msg.ttsText }]
+        : parseSegments(hkify(msg.content), hkify(msg.motionText), isNarration)
 
     const entry: LineEntry = {
       segments,
       audioFile: msg.audioFile,
       userMessageSeq: msg.userMessageSeq,
+      thinking: msg.thinking,
+      absIndex,
+      lineSeq: lineSeqs.value.get(absIndex),
     }
 
     const last = blocks.length > 0 ? blocks[blocks.length - 1] : null
     if (last && last.displayName === name && last.isNarration === isNarration) {
-      if (entry.userMessageSeq !== undefined && last.userMessageSeq === undefined) {
+      if (typeof entry.userMessageSeq === 'number' && last.userMessageSeq === undefined) {
         last.userMessageSeq = entry.userMessageSeq
+      }
+      if (entry.thinking) {
+        last.thinking = entry.thinking
       }
       last.lines.push(entry)
     } else {
@@ -245,6 +345,7 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
         isNarration,
         lines: [entry],
         userMessageSeq: entry.userMessageSeq,
+        thinking: entry.thinking,
       })
     }
   }
@@ -293,8 +394,8 @@ function parseSegments(
 // --- 回溯（与 SettingsHistory 同步逻辑）---
 async function handleBacktrack(messageSeq: number) {
   const confirmed = await dialogStore.confirm(
-    '确定要回溯到此对话吗？此操作将清除该消息及之后的所有对话，且不可撤销。',
-    '回溯确认',
+    t('pet.history.backtrackConfirmMessage'),
+    t('pet.history.backtrackConfirmTitle'),
   )
   if (!confirmed) return
 
@@ -316,14 +417,77 @@ async function handleBacktrack(messageSeq: number) {
           audio_file: l.audio_file,
           perceived_role_ids: l.perceived_role_ids,
           user_message_seq: l.user_message_seq,
+          thinking: l.thinking ?? null,
+          tts_content: l.tts_content ?? null,
         }),
       ),
     )
 
     gameStore.setGameMessages(messages)
+    resetAfterRollback()
   } catch (error: any) {
     console.error('回溯对话失败:', error)
-    await dialogStore.alert('回溯失败：' + (typeof error === 'string' ? error : error.message))
+    await dialogStore.alert(
+      t('pet.history.backtrackFailed', {
+        error: typeof error === 'string' ? error : error.message,
+      }),
+    )
+  }
+}
+
+/** 回溯成功后清理前端残留：清掉未点击的事件队列、停止当前语音、复位界面状态。
+ *  `rollback_conversation` 已等待 generation_lock，不会再有本回合迟到事件，清队列是安全的。 */
+function resetAfterRollback() {
+  eventQueue.clear()
+  // clear() 会把队列置为暂停，主界面常驻时需要恢复消费
+  eventQueue.resume()
+  uiStore.showCharacterLine = ''
+  uiStore.currentAvatarAudio = 'None'
+  gameStore.thinkingLength = 0
+}
+
+// --- 补生成语音（任意 AI 台词；用户消息/旁白不提供） ---
+const generatingVoiceKeys = ref<Set<string>>(new Set())
+
+function voiceKey(entry: LineEntry): string | null {
+  if (entry.lineSeq === undefined) return null
+  return String(entry.lineSeq)
+}
+
+function canGenerateVoice(entry: LineEntry): boolean {
+  return voiceKey(entry) !== null
+}
+
+function isGeneratingVoice(entry: LineEntry): boolean {
+  const key = voiceKey(entry)
+  return key !== null && generatingVoiceKeys.value.has(key)
+}
+
+async function generateVoice(entry: LineEntry) {
+  const key = voiceKey(entry)
+  if (key === null || generatingVoiceKeys.value.has(key)) return
+
+  generatingVoiceKeys.value.add(key)
+  try {
+    const lineSeq = Number(key)
+    const fileName = await invoke<string>('generate_line_voice', {
+      lineSeq,
+    })
+    // 写回对应台词并自动播放（dialogHistory 响应式刷新，重进历史页仍显示播放按钮）
+    suppressAutoScroll = true
+    const msg = gameStore.dialogHistory[entry.absIndex]
+    if (msg) msg.audioFile = fileName
+    await playAudio(fileName)
+    suppressAutoScroll = false
+  } catch (error: any) {
+    console.error('生成语音失败:', error)
+    await dialogStore.alert(
+      t('pet.history.generateVoiceFailed', {
+        error: typeof error === 'string' ? error : error.message,
+      }),
+    )
+  } finally {
+    generatingVoiceKeys.value.delete(key)
   }
 }
 
@@ -331,8 +495,16 @@ async function handleBacktrack(messageSeq: number) {
 const playAudio = async (audioFile: string) => {
   if (!audioFile || !audioRef.value) return
   audioRef.value.src = await getVoiceAudio(audioFile)
+  audioRef.value.volume = uiStore.characterVolume / 100
   audioRef.value.play()
 }
+
+watch(
+  () => uiStore.characterVolume,
+  (v) => {
+    if (audioRef.value) audioRef.value.volume = v / 100
+  },
+)
 
 // --- 滚动到内容底部 ---
 async function scrollToBottom() {
@@ -357,19 +529,20 @@ watch(currentPage, () => {
   }
 })
 
-// 当切换到最后一页时自动滚动到底部
+// 当切换到最后一页时自动滚动到底部（补语音期间跳过）
 watch([currentPage, groupedHistory], async () => {
+  if (suppressAutoScroll) return
   if (currentPage.value === totalPages.value) {
     await scrollToBottom()
   }
 })
 
-// 监听对话历史变化，跳转到最后一页（最新记录）
+// 新消息到达时跳转到最后一页（只监听长度变化；audioFile 回填不动长度，
+// 因此补语音不会触发跳页）
 watch(
-  dialogHistory,
+  () => dialogHistory.value.length,
   () => {
     currentPage.value = totalPages.value
   },
-  { deep: true },
 )
 </script>

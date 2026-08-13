@@ -138,8 +138,202 @@ mod x86_impl {
         let (_, ebx, ecx, edx) = cpuid(0, 0);
         ebx == 0x68747541 && edx == 0x69746e65 && ecx == 0x444d4163
     }
+    
+    /// AMD:提取 Ryzen 等级（3/5/7/9）
+    fn extract_ryzen_level(brand: &str) -> Option<u32> {
+        if brand.contains("Ryzen 9") {
+            Some(9)
+        } else if brand.contains("Ryzen 7") {
+            Some(7)
+        } else if brand.contains("Ryzen 5") {
+            Some(5)
+        } else if brand.contains("Ryzen 3") {
+            Some(3)
+        } else {
+            None
+        }
+    }
 
-    /// 从品牌字符串提取 Core 代数
+    /// 找到品牌字符串中的 Ryzen 型号单词（如 "7840U", "4650G", "8845HS"）
+    fn find_ryzen_model_word(brand: &str) -> Option<&str> {
+        for word in brand.split_whitespace() {
+            let digit_count = word
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .count();
+
+            if digit_count == 4 {
+                return Some(word);
+            }
+        }
+        None
+    }
+
+    /// 提取 Ryzen 型号（如 7840U -> 7840，4650G -> 4650）
+    fn extract_ryzen_model(brand: &str) -> Option<u32> {
+        let word = find_ryzen_model_word(brand)?;
+        let digits: String = word.chars().take_while(|c| c.is_ascii_digit()).collect();
+        digits.parse::<u32>().ok()
+    }
+
+    /// 提取后缀（从型号单词中提取字母后缀，如 "7840U" → "U"、"8845HS" → "HS"）
+    fn extract_ryzen_suffix(brand: &str) -> &'static str {
+        // 从型号单词中提取字母后缀（主要路径）
+        if let Some(word) = find_ryzen_model_word(brand) {
+            let suffix: String = word
+                .chars()
+                .skip_while(|c| c.is_ascii_digit())
+                .collect();
+
+            return match suffix.as_str() {
+                "HX" => "HX",
+                "HS" => "HS",
+                "GE" => "GE",
+                "PRO" => "PRO",
+                "U" => "U",
+                "H" => "H",
+                "X" => "X",
+                "G" => "G",
+                _ => "",
+            };
+        }
+
+        // 回退：旧逻辑（处理型号单词不在品牌字符串中的边缘情况）
+        if brand.contains("HX") {
+            "HX"
+        } else if brand.contains("HS") {
+            "HS"
+        } else if brand.contains("GE") {
+            "GE"
+        } else if brand.contains("PRO") {
+            "PRO"
+        } else if brand.contains(" U") || brand.ends_with('U') {
+            "U"
+        } else if brand.contains(" H") || brand.ends_with('H') {
+            "H"
+        } else if brand.contains(" X") || brand.ends_with('X') {
+            "X"
+        } else if brand.contains(" G") || brand.ends_with('G') {
+            "G"
+        } else {
+            ""
+        }
+    }
+
+    fn classify_amd_brand(brand: &str) -> PerfTier {
+        // 服务器
+        if brand.contains("EPYC") || brand.contains("Threadripper") {
+            return PerfTier::High;
+        }
+
+        // Ryzen AI
+        if brand.contains("Ryzen AI") {
+            return PerfTier::High;
+        }
+
+        // 老系列
+        if brand.contains("Sempron") {
+            return PerfTier::Internet;
+        }
+
+        if brand.contains("Athlon II") || brand.contains("Athlon") || brand.contains("Phenom")
+        {
+            return PerfTier::Low;
+        }
+
+        // FX
+        if brand.contains("FX-") {
+            return PerfTier::Medium;
+        }
+
+        // APU
+        if brand.contains("A4-") {
+            return PerfTier::Internet;
+        }
+
+        if brand.contains("A6-") {
+            return PerfTier::Low;
+        }
+
+        if brand.contains("A8-") || brand.contains("A10-") || brand.contains("A12-")
+        {
+            return PerfTier::Medium;
+        }
+
+        if !brand.contains("Ryzen") {
+            return PerfTier::Low;
+        }
+
+        let level = extract_ryzen_level(brand).unwrap_or(5);
+        let model = extract_ryzen_model(brand).unwrap_or(0);
+        let suffix = extract_ryzen_suffix(brand);
+
+        let series = model / 1000;
+
+        match level {
+            9 => PerfTier::High,
+
+            7 => {
+                if series <= 2 {
+                    PerfTier::Medium
+                } else {
+                    PerfTier::High
+                }
+            }
+
+            5 => {
+                // U 后缀优先处理（含 AMD 官方特殊型号映射，必须在 series >= 6 之前）
+                if suffix == "U" {
+                    if series <= 2 {
+                        return PerfTier::Low;
+                    }
+
+                    // AMD 官方 7000 系特殊命名
+                    match model {
+                        7520 | 7320 => return PerfTier::Medium,
+                        7530 | 7730 => return PerfTier::Medium,
+                        7535 | 7735 | 7640 | 7840 | 8840 | 8845 => {
+                            return PerfTier::High
+                        }
+                        _ => {}
+                    }
+
+                    return PerfTier::Medium;
+                }
+
+                if series >= 6 {
+                    return PerfTier::High;
+                }
+
+                if suffix == "H" || suffix == "HS" || suffix == "HX" || suffix == "X"
+                {
+                    return PerfTier::High;
+                }
+
+                if series <= 2 {
+                    PerfTier::Medium
+                } else {
+                    PerfTier::High
+                }
+            }
+
+            3 => {
+                if series >= 6 {
+                    return PerfTier::Medium;
+                }
+
+                if suffix == "H" || suffix == "HS" || suffix == "HX" || suffix == "X"
+                {
+                    return PerfTier::Medium;
+                }
+
+                PerfTier::Low
+            }
+
+            _ => PerfTier::Medium,
+        }
+    }
+    /// Intel:从品牌字符串提取 Core 代数
     fn extract_core_generation(brand: &str) -> Option<i32> {
         let p = brand.find("Core")?;
         let after_core = &brand[p..];
@@ -253,9 +447,10 @@ mod x86_impl {
 
         if !is_intel() {
             if is_amd() {
+            let tier = classify_amd_brand(&brand);    
                 return CpuInfo {
                     brand,
-                    tier: PerfTier::Low,
+                    tier,
                     is_unknown: false,
                     unknown_message: None,
                 };
@@ -277,25 +472,146 @@ mod x86_impl {
             unknown_message: None,
         }
     }
+
 }
 
 // ────────────────────────────────────────
-// 非 x86 平台（ARM 等）—— 直接返回 Low
+// 非 x86 平台（ARM 等）—— 核心拓扑 + 频率启发式
 // ────────────────────────────────────────
 
 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
 mod imp {
     use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    // ────────────────────────────────────────
+    // 频率分级阈值常量（经验值，后续可调）
+    // ────────────────────────────────────────
+
+    /// High 等级所需的最低最高频率 (MHz)
+    const HIGH_FREQ_THRESHOLD_MHZ: u64 = 3000;
+    /// High 等级所需的最低大核数量（频率 ≥ BIG_CORE_FREQ_THRESHOLD_MHZ 的核心）
+    const HIGH_BIG_CORE_MIN: usize = 2;
+    /// 统计 big core 时的频率门槛 (MHz)
+    const BIG_CORE_FREQ_THRESHOLD_MHZ: u64 = 2800;
+    /// Medium 等级所需的最低最高频率 (MHz)
+    const MEDIUM_FREQ_THRESHOLD_MHZ: u64 = 2400;
+    /// Medium 等级所需的最低总核心数
+    const MEDIUM_TOTAL_CORES_MIN: usize = 8;
+
+    // ────────────────────────────────────────
+    // 辅助函数
+    // ────────────────────────────────────────
+
+    /// 读取指定 CPU 核心的 `cpuinfo_max_freq`（单位 kHz），失败返回 `None`。
+    fn read_core_max_freq(core_index: usize) -> Option<u64> {
+        let path = format!(
+            "/sys/devices/system/cpu/cpu{}/cpufreq/cpuinfo_max_freq",
+            core_index
+        );
+        let content = fs::read_to_string(&path).ok()?;
+        let trimmed = content.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        trimmed.parse::<u64>().ok()
+    }
+
+    /// 收集所有逻辑核心的最高频率。
+    ///
+    /// 遍历 `/sys/devices/system/cpu/cpu[0-9]+/cpufreq/cpuinfo_max_freq`，
+    /// 读取失败的核心会被静默跳过。
+    /// 返回 `(freqs_mhz, total_cores)`，其中 `freqs_mhz` 为成功读取到的以 MHz 为单位的频率列表。
+    fn collect_core_frequencies() -> (Vec<u64>, usize) {
+        let cpu_dir = Path::new("/sys/devices/system/cpu");
+
+        // 非 Linux 系统（如 iOS/macOS ARM）上此路径不存在，直接返回空
+        if !cpu_dir.is_dir() {
+            return (Vec::new(), 0);
+        }
+
+        let mut freqs = Vec::new();
+        let mut total_cores = 0usize;
+
+        if let Ok(entries) = fs::read_dir(cpu_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+
+                if !name_str.starts_with("cpu") {
+                    continue;
+                }
+
+                // 提取 "cpu" 后面的数字部分
+                let num_part = &name_str[3..];
+                let index: usize = match num_part.parse() {
+                    Ok(n) => n,
+                    Err(_) => continue,
+                };
+
+                total_cores += 1;
+
+                if let Some(freq_khz) = read_core_max_freq(index) {
+                    freqs.push(freq_khz / 1000); // kHz → MHz
+                }
+            }
+        }
+
+        (freqs, total_cores)
+    }
+
+    /// 根据核心频率拓扑数据划分性能等级（纯函数，方便单元测试）。
+    fn classify_by_topology(freqs_mhz: &[u64], total_cores: usize) -> PerfTier {
+        if freqs_mhz.is_empty() || total_cores == 0 {
+            return PerfTier::Low;
+        }
+
+        let max_freq_mhz = *freqs_mhz.iter().max().unwrap_or(&0);
+        let big_core_count = freqs_mhz
+            .iter()
+            .filter(|&&f| f >= BIG_CORE_FREQ_THRESHOLD_MHZ)
+            .count();
+
+        if max_freq_mhz >= HIGH_FREQ_THRESHOLD_MHZ && big_core_count >= HIGH_BIG_CORE_MIN {
+            PerfTier::High
+        } else if max_freq_mhz >= MEDIUM_FREQ_THRESHOLD_MHZ
+            && total_cores >= MEDIUM_TOTAL_CORES_MIN
+        {
+            PerfTier::Medium
+        } else {
+            PerfTier::Low
+        }
+    }
+
+    /// 构建品牌字符串。
+    fn build_brand_string(total_cores: usize, max_freq_mhz: Option<u64>) -> String {
+        match max_freq_mhz {
+            Some(freq) => format!("ARM {}核 (最高{}MHz)", total_cores, freq),
+            None => format!("ARM {}核 (频率未知)", total_cores),
+        }
+    }
 
     pub fn detect_cpu() -> CpuInfo {
-        // ARM 或不支持 CPUID 的平台
-        let arch = std::env::consts::ARCH.to_string();
-        CpuInfo {
-            brand: format!("{arch} 架构处理器"),
-            tier: PerfTier::Low,
-            is_unknown: true,
-            unknown_message: Some("还有我不认识的设备，哈！".to_string()),
-        }
+        let (freqs_mhz, total_cores) = collect_core_frequencies();
+
+        let is_unknown = freqs_mhz.is_empty() || total_cores == 0;
+        let tier = if is_unknown {
+            PerfTier::Low
+        } else {
+            classify_by_topology(&freqs_mhz, total_cores)
+        };
+
+        let max_freq_mhz = freqs_mhz.iter().max().copied();
+        let brand = build_brand_string(total_cores, max_freq_mhz);
+
+        let unknown_message = if is_unknown {
+            Some("还有我不认识的设备，哈！".to_string())
+        } else {
+            None
+        };
+
+        CpuInfo {brand,tier,is_unknown,unknown_message,}
     }
 }
 

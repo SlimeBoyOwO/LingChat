@@ -1,67 +1,110 @@
 <template>
   <MenuPage>
+    <!-- 输出音频设备切换（顶部） -->
+    <MenuItem :title="$t('settings.sound.device.title')">
+      <template #header>
+        <Speaker :size="20" class="text-amber-400" />
+      </template>
+      <div v-if="audioOutputSupported" class="flex flex-col gap-2 w-full">
+        <div class="flex items-stretch gap-2 w-full">
+          <select
+            :value="currentDeviceId"
+            class="output-device-select flex-1 min-w-0 cursor-pointer bg-white/10 text-white border border-white/20 rounded-lg pl-3 pr-8 py-2 text-sm outline-none focus:border-(--accent-color) transition-colors appearance-none"
+            style="color-scheme: dark"
+            @change="onOutputDeviceChange"
+            :title="$t('settings.sound.device.selectTitle')"
+          >
+            <option value="">{{ $t('settings.sound.device.systemDefault') }}</option>
+            <option v-for="d in outputDevices" :key="d.deviceId" :value="d.deviceId">
+              {{ d.label }}{{ d.isDefault ? $t('settings.sound.device.currentDefault') : '' }}
+            </option>
+          </select>
+          <button
+            v-if="!labelsAvailable"
+            type="button"
+            class="flex-none inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-white/10 text-white border border-white/20 cursor-pointer text-sm transition-colors hover:border-(--accent-color) hover:bg-white/20 active:bg-white/30"
+            @click="requestDeviceLabelsAndRefresh"
+            :title="permissionDenied ? $t('settings.sound.device.retryLabels') : $t('settings.sound.device.getLabels')"
+          >
+            <ScanLine :size="15" /> {{ permissionDenied ? $t('settings.sound.device.retryLabels') : $t('settings.sound.device.getLabels') }}
+          </button>
+        </div>
+
+        <div class="w-full">
+          <span class="block text-xs text-gray-300 truncate">{{ currentDeviceLabel }}</span>
+          <p
+            v-if="!labelsAvailable && permissionDenied"
+            class="text-xs text-amber-400/80 leading-snug mt-1"
+          >
+            {{ $t('settings.sound.device.labelsDenied') }}
+          </p>
+        </div>
+      </div>
+      <p v-else class="text-xs text-gray-400">{{ $t('settings.sound.device.unsupported') }}</p>
+    </MenuItem>
+
     <!-- 音量控制部分 -->
-    <MenuItem title="角色音量" size="small">
+    <MenuItem :title="$t('settings.sound.volume.character')" size="small">
       <template #header>
         <MicVocal :size="20" class="text-indigo-400" />
       </template>
-      <Slider v-model="characterVolume" @change="updateCharacterVolume"> 弱/强 </Slider>
+      <Slider v-model="characterVolume" @change="updateCharacterVolume"> {{ $t('settings.sound.slider.weakStrong') }} </Slider>
     </MenuItem>
 
-    <MenuItem title="气泡音量" size="small">
+    <MenuItem :title="$t('settings.sound.volume.bubble')" size="small">
       <template #header>
         <MessageCircle :size="20" class="text-blue-400" />
       </template>
-      <Slider @change="updateBubbleVolume" v-model="bubbleVolume"> 弱/强 </Slider>
+      <Slider @change="updateBubbleVolume" v-model="bubbleVolume"> {{ $t('settings.sound.slider.weakStrong') }} </Slider>
     </MenuItem>
 
-    <MenuItem title="背景音量" size="small">
+    <MenuItem :title="$t('settings.sound.volume.background')" size="small">
       <template #header>
         <AudioLines :size="20" class="text-green-400" />
       </template>
-      <Slider @change="updateBackgroundVolume" v-model="backgroundVolume"> 弱/强 </Slider>
+      <Slider @change="updateBackgroundVolume" v-model="backgroundVolume"> {{ $t('settings.sound.slider.weakStrong') }} </Slider>
     </MenuItem>
 
-    <MenuItem title="成就音量" size="small">
+    <MenuItem :title="$t('settings.sound.volume.achievement')" size="small">
       <template #header>
         <Trophy :size="20" class="text-yellow-400" />
       </template>
-      <Slider @change="updateAchievementVolume" v-model="achievementVolume"> 弱/强 </Slider>
+      <Slider @change="updateAchievementVolume" v-model="achievementVolume"> {{ $t('settings.sound.slider.weakStrong') }} </Slider>
     </MenuItem>
 
     <!-- 测试声音部分 -->
     <!-- 环境音音量控制 -->
-    <MenuItem title="环境音音量" size="small">
+    <MenuItem :title="$t('settings.sound.volume.ambient')" size="small">
       <template #header>
         <CloudRain :size="20" class="text-cyan-400" />
       </template>
-      <Slider @change="updateAmbientVolume" v-model="ambientVolume"> 弱/强 </Slider>
+      <Slider @change="updateAmbientVolume" v-model="ambientVolume"> {{ $t('settings.sound.slider.weakStrong') }} </Slider>
     </MenuItem>
 
-    <!-- 声音测试（放在音量滑块下方、环境音管理上方） -->
-    <MenuItem title="声音测试" size="small">
+    <!-- 声音测试 -->
+    <MenuItem :title="$t('settings.sound.test.title')" size="small">
       <template #header>
         <FlaskConical :size="20" class="text-pink-400" />
       </template>
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <Button type="big" class="flex-1 min-w-30" @click="playCharacterTestSound">测试角色</Button>
-        <Button type="big" class="flex-1 min-w-30" @click="playBubbleTestSound">测试气泡</Button>
+        <Button type="big" class="flex-1 min-w-30" @click="playCharacterTestSound">{{ $t('settings.sound.test.character') }}</Button>
+        <Button type="big" class="flex-1 min-w-30" @click="playBubbleTestSound">{{ $t('settings.sound.test.bubble') }}</Button>
         <Button type="big" class="flex-1 min-w-30" @click="playAchievementTestSound"
-          >测试成就</Button
+          >{{ $t('settings.sound.test.achievement') }}</Button
         >
       </div>
     </MenuItem>
 
     <!-- 背景音乐设置部分 -->
-    <MenuItem title="背景音乐设置">
+    <MenuItem :title="$t('settings.sound.bgm.title')">
       <template #header>
         <Headphones :size="20" class="text-purple-400" />
       </template>
 
       <!-- 音乐控制台 -->
-      <div class="flex gap-3 bg-white/5 border border-white/10 rounded-xl p-4 backdrop-blur-md">
+      <div class="flex gap-3 bg-white/5 border border-white/10 rounded-xl p-4 backdrop-blur-md max-[640px]:flex-col max-[640px]:gap-2">
         <div
-          class="flex w-[60%] items-center justify-between text-sm font-medium text-gray-200 bg-black/20 px-3 py-2 rounded-lg"
+          class="flex w-[60%] items-center justify-between text-sm font-medium text-gray-200 bg-black/20 px-3 py-2 rounded-lg max-[640px]:w-full"
         >
           <span class="flex items-center gap-2 truncate">
             <Music :size="16" class="text-purple-400 shrink-0" />
@@ -72,7 +115,7 @@
           }}</span>
         </div>
 
-        <div class="flex w-[40%] items-center gap-2">
+        <div class="flex w-[40%] items-center gap-2 max-[640px]:w-full max-[640px]:flex-wrap">
           <Button
             type="big"
             @click="handlePlayPause"
@@ -83,7 +126,7 @@
             {{ playPauseButtonText }}
           </Button>
           <Button type="big" @click="handleStop" class="flex justify-center items-center gap-1">
-            <Square :size="14" /> 停止
+            <Square :size="14" /> {{ $t('settings.sound.bgm.stop') }}
           </Button>
           <Button
             type="big"
@@ -103,7 +146,7 @@
         class="mt-4 border border-white/10 rounded-xl bg-black/20 backdrop-blur-sm overflow-hidden flex flex-col"
       >
         <div v-if="musicList.length === 0" class="text-center text-gray-400 py-8 text-sm">
-          暂无音乐，请在下方上传
+          {{ $t('settings.sound.bgm.empty') }}
         </div>
         <div v-else class="max-h-52 overflow-y-auto p-1.5 space-y-1 custom-scrollbar">
           <div
@@ -121,7 +164,7 @@
             <button
               @click.stop="deleteMusic(music)"
               class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1.5 rounded-md bg-red-500/10 hover:bg-red-500/80 text-red-400 hover:text-white"
-              title="删除"
+              :title="$t('settings.sound.common.delete')"
             >
               <Trash2 :size="14" />
             </button>
@@ -136,31 +179,22 @@
           @click="triggerFileUpload"
           class="flex-1 flex justify-center items-center gap-2"
         >
-          <UploadCloud :size="18" /> 添加音乐
+          <UploadCloud :size="18" /> {{ $t('settings.sound.bgm.add') }}
         </Button>
-        <!-- 修改为支持 multiple 多选 -->
-        <input
-          ref="fileInput"
-          type="file"
-          multiple
-          @change="handleFileSelect"
-          accept=".mp3,.wav,.flac,.webm,.weba,.ogg,.m4a"
-          class="hidden"
-        />
         <div class="flex-1 flex items-center justify-between gap-2">
-          <span class="text-xs text-gray-400 truncate w-24" v-if="selectedFiles.length > 0">
-            已选 {{ selectedFiles.length }} 个文件
+          <span class="text-xs text-gray-400 truncate w-24" v-if="selectedPaths.length > 0">
+            {{ $t('settings.sound.common.selectedCount', { count: selectedPaths.length }) }}
           </span>
-          <span class="text-xs text-gray-500 truncate w-24" v-else>未选择文件</span>
+          <span class="text-xs text-gray-500 truncate w-24" v-else>{{ $t('settings.sound.common.noSelection') }}</span>
 
           <Button
             type="big"
             @click="uploadMusic"
-            :disabled="selectedFiles.length === 0"
+            :disabled="selectedPaths.length === 0"
             class="flex-1"
-            :class="{ 'opacity-50 cursor-not-allowed': selectedFiles.length === 0 }"
+            :class="{ 'opacity-50 cursor-not-allowed': selectedPaths.length === 0 }"
           >
-            确认上传
+            {{ $t('settings.sound.common.confirmUpload') }}
           </Button>
         </div>
       </div>
@@ -168,21 +202,21 @@
 
 
     <!-- 环境音管理 -->
-    <MenuItem title="环境音管理">
+    <MenuItem :title="$t('settings.sound.ambient.title')">
       <template #header>
         <Wind :size="20" class="text-teal-400" />
       </template>
 
       <!-- 环境音文件库 -->
       <div class="flex items-center justify-between mb-2">
-        <span class="text-xs text-gray-400">已导入文件</span>
-        <span class="text-xs text-gray-500">{{ ambientFileList.length }} 个</span>
+        <span class="text-xs text-gray-400">{{ $t('settings.sound.ambient.importedFiles') }}</span>
+        <span class="text-xs text-gray-500">{{ $t('settings.sound.ambient.fileCount', { count: ambientFileList.length }) }}</span>
       </div>
       <div
         class="border border-white/10 rounded-xl bg-black/20 backdrop-blur-sm overflow-hidden flex flex-col"
       >
         <div v-if="ambientFileList.length === 0" class="text-center text-gray-400 py-4 text-sm">
-          暂无环境音文件，请在下方上传
+          {{ $t('settings.sound.ambient.empty') }}
         </div>
         <div v-else class="max-h-32 overflow-y-auto p-1.5 space-y-1 custom-scrollbar">
           <div
@@ -195,14 +229,14 @@
             <button
               @click="addFileToTrack(ambient)"
               class="opacity-70 hover:opacity-100 transition-opacity px-2 py-0.5 text-xs rounded bg-teal-500/20 hover:bg-teal-500/40 text-teal-300"
-              title="添加到播放轨道"
+              :title="$t('settings.sound.ambient.addToTrack')"
             >
-              播放
+              {{ $t('settings.sound.ambient.play') }}
             </button>
             <button
               @click.stop="removeAmbientFile(ambient)"
               class="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md bg-red-500/10 hover:bg-red-500/80 text-red-400 hover:text-white"
-              title="删除"
+              :title="$t('settings.sound.common.delete')"
             >
               <Trash2 :size="14" />
             </button>
@@ -217,43 +251,35 @@
           @click="triggerAmbientUpload"
           class="flex-1 flex justify-center items-center gap-2"
         >
-          <UploadCloud :size="16" /> 添加环境音
+          <UploadCloud :size="16" /> {{ $t('settings.sound.ambient.add') }}
         </Button>
-        <input
-          ref="ambientFileInput"
-          type="file"
-          multiple
-          @change="handleAmbientFileSelect"
-          accept=".mp3,.wav,.flac,.ogg,.m4a"
-          class="hidden"
-        />
         <div class="flex-1 flex items-center justify-between gap-2">
-          <span class="text-xs text-gray-400 truncate w-24" v-if="selectedAmbientFiles.length > 0">
-            已选 {{ selectedAmbientFiles.length }} 个文件
+          <span class="text-xs text-gray-400 truncate w-24" v-if="selectedAmbientPaths.length > 0">
+            {{ $t('settings.sound.common.selectedCount', { count: selectedAmbientPaths.length }) }}
           </span>
-          <span class="text-xs text-gray-500 truncate w-24" v-else>未选择文件</span>
+          <span class="text-xs text-gray-500 truncate w-24" v-else>{{ $t('settings.sound.common.noSelection') }}</span>
           <Button
             type="big"
             @click="uploadAmbientFiles"
-            :disabled="selectedAmbientFiles.length === 0"
+            :disabled="selectedAmbientPaths.length === 0"
             class="flex-1"
-            :class="{ 'opacity-50 cursor-not-allowed': selectedAmbientFiles.length === 0 }"
+            :class="{ 'opacity-50 cursor-not-allowed': selectedAmbientPaths.length === 0 }"
           >
-            确认上传
+            {{ $t('settings.sound.common.confirmUpload') }}
           </Button>
         </div>
       </div>
 
       <!-- 活跃轨道（带单轨音量控制） -->
       <div class="mt-4 flex items-center justify-between mb-2">
-        <span class="text-xs text-gray-400">播放中的环境音</span>
+        <span class="text-xs text-gray-400">{{ $t('settings.sound.ambient.playing') }}</span>
         <span class="text-xs text-gray-500">{{ uiStore.ambientTracks.length }}/{{ maxAmbientTracks }}</span>
       </div>
       <div
         class="border border-white/10 rounded-xl bg-black/20 backdrop-blur-sm overflow-hidden flex flex-col"
       >
         <div v-if="uiStore.ambientTracks.length === 0" class="text-center text-gray-400 py-4 text-sm">
-          暂无正在播放的环境音（从上方添加或通过剧本指令触发）
+          {{ $t('settings.sound.ambient.noPlaying') }}
         </div>
         <div v-else class="max-h-48 overflow-y-auto p-1.5 space-y-1 custom-scrollbar">
           <div
@@ -268,7 +294,7 @@
               <button
                 @click="uiStore.toggleAmbientTrackPause(track.id)"
                 class="p-1 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-                :title="track.paused ? '恢复播放' : '暂停'"
+                :title="track.paused ? $t('settings.sound.ambient.resume') : $t('settings.sound.ambient.pause')"
               >
                 <Play v-if="track.paused" :size="12" />
                 <Pause v-else :size="12" />
@@ -276,14 +302,14 @@
               <button
                 @click="uiStore.removeAmbientTrack(track.id)"
                 class="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-red-500/10 hover:bg-red-500/40 text-red-400 hover:text-white"
-                title="移除轨道"
+                :title="$t('settings.sound.ambient.removeTrack')"
               >
                 <X :size="12" />
               </button>
             </div>
             <!-- 单轨音量滑块 -->
             <div class="flex items-center gap-2 pl-6">
-              <span class="text-xs text-gray-400 w-8 shrink-0">音量</span>
+              <span class="text-xs text-gray-400 w-8 shrink-0">{{ $t('settings.sound.ambient.volumeLabel') }}</span>
               <Slider
                 :model-value="track.volume"
                 @change="(val: number) => uiStore.updateAmbientTrackVolume(track.id, val)"
@@ -303,7 +329,7 @@
           class="w-full flex justify-center items-center gap-1"
           :disabled="uiStore.ambientTracks.length === 0"
         >
-          <Square :size="14" /> 全部停止
+          <Square :size="14" /> {{ $t('settings.sound.ambient.stopAll') }}
         </Button>
       </div>
     </MenuItem>
@@ -317,6 +343,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Button, Slider } from '../../base'
 import { MenuItem, MenuPage } from '../../ui'
 import {
@@ -329,6 +357,16 @@ import { ambientGetAll, ambientUpload, ambientDelete, type AmbientItem } from '.
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
+import {
+  currentDeviceId,
+  devices as outputDevices,
+  labelsAvailable,
+  permissionDenied,
+  refreshDevices,
+  requestDeviceLabels,
+  setDevice,
+  supported as audioOutputSupported,
+} from '../../../utils/audioOutputManager'
 import {
   AudioLines,
   FlaskConical,
@@ -348,11 +386,14 @@ import {
   CloudRain,
   Wind,
   X,
+  Speaker,
+  ScanLine,
 } from 'lucide-vue-next'
 
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 const dialogStore = useDialogStore()
+const { t } = useI18n()
 
 // 状态绑定
 const characterVolume = computed({
@@ -377,6 +418,25 @@ const ambientVolume = computed({
   set: (val: number) => settingsStore.update('audio.ambientVolume', val),
 })
 
+// ========== 输出音频设备（设置顶部） ==========
+const currentDeviceLabel = computed(() => {
+  if (!currentDeviceId.value) return t('settings.sound.device.usingSystemDefault')
+  const found = outputDevices.value.find((d) => d.deviceId === currentDeviceId.value)
+  return found
+    ? t('settings.sound.device.currentOutput', { label: found.label })
+    : t('settings.sound.device.unavailableFallback')
+})
+
+const onOutputDeviceChange = async (e: Event) => {
+  const target = e.target as HTMLSelectElement
+  await setDevice(target.value)
+}
+
+const requestDeviceLabelsAndRefresh = async () => {
+  await requestDeviceLabels(true)
+  await refreshDevices(false)
+}
+
 // 音频引用
 const characterTestPlayer = ref<HTMLAudioElement | null>(null)
 const bubbleTestPlayer = ref<HTMLAudioElement | null>(null)
@@ -389,19 +449,17 @@ interface MusicItem {
 }
 
 const musicList = ref<MusicItem[]>([])
-const currentMusicName = ref('未选择音乐')
 
 // 批量上传状态
-const selectedFiles = ref<File[]>([])
-const fileInput = ref<HTMLInputElement | null>(null)
+const selectedPaths = ref<string[]>([])
 
 // 播放模式设定 (loop-list: 列表循环, loop-single: 单曲循环, random: 随机)
 type PlaybackMode = 'loop-list' | 'loop-single' | 'random'
-const modeText = {
-  'loop-list': '列表循环',
-  'loop-single': '单曲循环',
-  random: '随机播放',
-}
+const modeText = computed(() => ({
+  'loop-list': t('settings.sound.bgm.mode.loopList'),
+  'loop-single': t('settings.sound.bgm.mode.loopSingle'),
+  random: t('settings.sound.bgm.mode.random'),
+}))
 
 // 播放模式切换逻辑
 const togglePlaybackMode = () => {
@@ -440,21 +498,20 @@ const handleTrackEnd = () => {
 }
 
 const inferMusicNameFromUrl = (musicUrl: string): string => {
-  if (!musicUrl || musicUrl === 'None') return '未选择音乐'
+  if (!musicUrl || musicUrl === 'None') return t('settings.sound.bgm.noMusicSelected')
   const fileName = decodeURIComponent(musicUrl.split('/').pop() || '')
-  if (!fileName) return '未选择音乐'
+  if (!fileName) return t('settings.sound.bgm.noMusicSelected')
   return fileName.replace(/\.[^/.]+$/, '') || fileName
 }
 
-const syncCurrentMusicName = () => {
+// 当前音乐名：computed 依赖 uiStore.currentBackgroundMusic / musicList / locale，
+// 切歌、删歌或切换语言时会自动重新求值（无需手动同步）
+const currentMusicName = computed(() => {
   const currentUrl = uiStore.currentBackgroundMusic
-  if (!currentUrl || currentUrl === 'None') {
-    currentMusicName.value = '未选择音乐'
-    return
-  }
+  if (!currentUrl || currentUrl === 'None') return t('settings.sound.bgm.noMusicSelected')
   const matched = musicList.value.find((item) => item.url === currentUrl)
-  currentMusicName.value = matched?.name || inferMusicNameFromUrl(currentUrl)
-}
+  return matched?.name || inferMusicNameFromUrl(currentUrl)
+})
 
 // 音量更新逻辑
 const updateCharacterVolume = (value: number) => {
@@ -486,19 +543,18 @@ const maxAmbientTracks = 8
 
 // 环境音文件库条目（服务端存储）
 const ambientFileList = ref<AmbientItem[]>([])
-const selectedAmbientFiles = ref<File[]>([])
-const ambientFileInput = ref<HTMLInputElement | null>(null)
+const selectedAmbientPaths = ref<string[]>([])
 
 // 从文件URL推断显示名称
 const inferTrackName = (src: string): string => {
-  if (!src) return '未知'
+  if (!src) return t('settings.sound.ambient.unknownName')
   try {
     // convertFileSrc 生成的 URL 取最后一段
     const parts = src.split(/[/\\]/)
-    const name = parts[parts.length - 1] || '未知'
-    return decodeURIComponent(name.replace(/\.[^/.]+$/, '')) || '未知'
+    const name = parts[parts.length - 1] || t('settings.sound.ambient.unknownName')
+    return decodeURIComponent(name.replace(/\.[^/.]+$/, '')) || t('settings.sound.ambient.unknownName')
   } catch {
-    return '未知'
+    return t('settings.sound.ambient.unknownName')
   }
 }
 
@@ -513,8 +569,45 @@ const stopAllAmbient = () => {
 }
 
 // 触发环境音文件选择
-const triggerAmbientUpload = () => {
-  ambientFileInput.value?.click()
+// 打开系统文件对话框选择环境音（拿路径，避免读文件进内存）
+const triggerAmbientUpload = async () => {
+  const selected = await openDialog({
+    multiple: true,
+    filters: [{ name: 'Ambient', extensions: ['mp3', 'wav', 'flac', 'ogg', 'm4a'] }],
+  })
+  if (!selected) return
+  selectedAmbientPaths.value = extractDialogPaths(selected)
+}
+
+/**
+ * 从 openDialog 的返回中提取文件路径列表。
+ *
+ * 桌面端返回：string（单选）或 string[]（多选）
+ * Android 返回：{ files: string[] }（SAF content:// URI）
+ * 兼容两种格式，过滤空值。
+ */
+const extractDialogPaths = (selected: unknown): string[] => {
+  const raw = Array.isArray(selected)
+    ? selected
+    : selected && typeof selected === 'object' && 'files' in (selected as any)
+      ? (selected as any).files
+      : [selected]
+  return raw
+    .map((p: any) => (typeof p === 'string' ? p : p?.path))
+    .filter((p: any) => typeof p === 'string' && p.length > 0)
+}
+
+/**
+ * 从文件路径提取文件名，兼容 content:// URI（URL 编码）。
+ * decodeURIComponent 遇到非法 % 序列会抛 URIError，这里兜底返回原值。
+ */
+const decodePathFileName = (path: string): string => {
+  const last = path.split(/[\\/]/).pop() || path
+  try {
+    return decodeURIComponent(last).split('?')[0]
+  } catch {
+    return last.split('?')[0]
+  }
 }
 
 // 从服务端加载环境音列表
@@ -526,38 +619,27 @@ const loadAmbientList = async () => {
   }
 }
 
-// 处理环境音文件选择（暂存文件，等待确认上传）
-const handleAmbientFileSelect = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  if (target.files && target.files.length > 0) {
-    selectedAmbientFiles.value = Array.from(target.files)
-  } else {
-    selectedAmbientFiles.value = []
-  }
-  target.value = ''
-}
-
 // 确认上传已选环境音文件到服务端
 const uploadAmbientFiles = async () => {
-  if (selectedAmbientFiles.value.length === 0) {
-    await dialogStore.alert('请先选择环境音文件')
+  if (selectedAmbientPaths.value.length === 0) {
+    await dialogStore.alert(t('settings.sound.ambient.selectFilesFirst'))
     return
   }
   const allowedExts = ['.mp3', '.wav', '.flac', '.ogg', '.m4a']
   try {
-    await Promise.all(
-      selectedAmbientFiles.value.map(async (file) => {
-        const fileExt = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
-        if (!allowedExts.includes(fileExt)) throw new Error(`格式不支持: ${file.name}`)
-        const buf = await file.arrayBuffer()
-        await ambientUpload(file.name, new Uint8Array(buf))
-      }),
-    )
-    selectedAmbientFiles.value = []
+    // 串行上传（仅传源文件路径，Rust 侧复制）
+    for (const path of selectedAmbientPaths.value) {
+      // content:// URI 文件名是 URL 编码的，解码后才是真实文件名
+      const fileName = decodePathFileName(path)
+      const fileExt = fileName.slice(fileName.lastIndexOf('.')).toLowerCase()
+      if (!allowedExts.includes(fileExt)) throw new Error(t('settings.sound.common.unsupportedFormat', { name: fileName }))
+      await ambientUpload(path, fileName)
+    }
+    selectedAmbientPaths.value = []
     await loadAmbientList()
   } catch (error: any) {
     console.error('上传环境音失败:', error)
-    await dialogStore.alert(error.message || '部分或全部环境音上传失败')
+    await dialogStore.alert(error.message || t('settings.sound.ambient.uploadFailed'))
   }
 }
 
@@ -574,18 +656,18 @@ const addFileToTrack = (ambient: AmbientItem) => {
 
 // 从服务端删除环境音文件
 const removeAmbientFile = async (ambient: AmbientItem) => {
-  if (!await dialogStore.confirm(`确定要删除环境音《${ambient.name}》吗？`)) return
+  if (!await dialogStore.confirm(t('settings.sound.ambient.confirmDelete', { name: ambient.name }))) return
   try {
     await ambientDelete(ambient.url)
     // 同时移除使用该文件的活跃轨道
-    const tracksToRemove = uiStore.ambientTracks.filter(t => t.src === ambient.url)
+    const tracksToRemove = uiStore.ambientTracks.filter(tr => tr.src === ambient.url)
     for (const track of tracksToRemove) {
       uiStore.removeAmbientTrack(track.id)
     }
     await loadAmbientList()
   } catch (error: any) {
     console.error('删除环境音失败:', error)
-    await dialogStore.alert('删除环境音失败')
+    await dialogStore.alert(t('settings.sound.ambient.deleteFailed'))
   }
 }
 
@@ -602,13 +684,7 @@ watch(
   },
 )
 
-watch(
-  () => uiStore.currentBackgroundMusic,
-  () => {
-    syncCurrentMusicName()
-    // 确保本地播放器的 URL 实时跟随 Store
-  },
-)
+// currentMusicName 已改为 computed，自动依赖 uiStore.currentBackgroundMusic，无需手动 watch 同步
 
 // 监听播放器状态控制本地播放器
 watch(
@@ -652,12 +728,11 @@ const playAchievementTestSound = () => {
 
 const loadMusicList = async () => {
   musicList.value = await musicGetAll()
-  syncCurrentMusicName()
 }
 
 const deleteMusic = async (music: MusicItem) => {
   if (!music) return
-  if (!await dialogStore.confirm(`确定要删除《${music.name}》吗？`)) return
+  if (!await dialogStore.confirm(t('settings.sound.bgm.confirmDelete', { name: music.name }))) return
 
   try {
     await musicDelete(music.url)
@@ -665,7 +740,6 @@ const deleteMusic = async (music: MusicItem) => {
 
     if (uiStore.currentBackgroundMusic === deletedMusicUrl) {
       uiStore.currentBackgroundMusic = 'None'
-      currentMusicName.value = '未选择音乐'
       await setCurrentBackgroundMusic('None')
 
       if (backgroundAudioPlayer.value) {
@@ -678,47 +752,44 @@ const deleteMusic = async (music: MusicItem) => {
     await loadMusicList()
   } catch (error) {
     console.error('删除音乐失败:', error)
-    await dialogStore.alert('删除音乐失败')
+    await dialogStore.alert(t('settings.sound.bgm.deleteFailed'))
   }
 }
 
 // 批量上传逻辑
 const uploadMusic = async () => {
-  if (selectedFiles.value.length === 0) {
-    await dialogStore.alert('请先选择音乐文件')
+  if (selectedPaths.value.length === 0) {
+    await dialogStore.alert(t('settings.sound.bgm.selectFilesFirst'))
     return
   }
 
   const allowedExts = ['.mp3', '.wav', '.flac', '.webm', '.weba', '.ogg', '.m4a']
 
   try {
-    // 使用 Promise.all 进行并发上传
-    await Promise.all(
-      selectedFiles.value.map(async (file) => {
-        const fileExt = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
-        if (!allowedExts.includes(fileExt)) {
-          throw new Error(`格式不支持: ${file.name}`)
-        }
-        const buf = await file.arrayBuffer()
-        await musicUpload(file.name, new Uint8Array(buf))
-      }),
-    )
+    // 串行上传（仅传源文件路径，Rust 侧复制）
+    for (const path of selectedPaths.value) {
+      // content:// URI 文件名是 URL 编码的，解码后才是真实文件名
+      const fileName = decodePathFileName(path)
+      const fileExt = fileName.slice(fileName.lastIndexOf('.')).toLowerCase()
+      if (!allowedExts.includes(fileExt)) {
+        throw new Error(t('settings.sound.common.unsupportedFormat', { name: fileName }))
+      }
+      await musicUpload(path, fileName)
+    }
 
-    selectedFiles.value = []
-    if (fileInput.value) fileInput.value.value = ''
+    selectedPaths.value = []
     await loadMusicList()
     // alert('音乐上传成功') // 可选提示
   } catch (error: any) {
     console.error('批量上传音乐出现问题:', error)
-    await dialogStore.alert(error.message || '部分或全部音乐上传失败')
+    await dialogStore.alert(error.message || t('settings.sound.bgm.uploadFailed'))
   }
 }
 
-const playPauseButtonText = computed(() => (!uiStore.bgMusicPaused ? '暂停' : '播放'))
+const playPauseButtonText = computed(() => (!uiStore.bgMusicPaused ? t('settings.sound.bgm.pause') : t('settings.sound.bgm.play')))
 
 const playMusic = async (music: MusicItem) => {
   let musicUrl = music.url
-  currentMusicName.value = music.name
 
   // 单曲循环的逻辑要更特殊一点
   // if (uiStore.bgMusicMode === 'loop-single') {
@@ -754,18 +825,16 @@ const handleStop = () => {
   }
 }
 
-const triggerFileUpload = () => {
-  fileInput.value?.click()
-}
-
-// 处理多文件选择
-const handleFileSelect = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  if (target.files && target.files.length > 0) {
-    selectedFiles.value = Array.from(target.files)
-  } else {
-    selectedFiles.value = []
-  }
+// 打开系统文件对话框选择音乐（仅拿路径）
+const triggerFileUpload = async () => {
+  const selected = await openDialog({
+    multiple: true,
+    filters: [
+      { name: 'Music', extensions: ['mp3', 'wav', 'flac', 'webm', 'weba', 'ogg', 'm4a'] },
+    ],
+  })
+  if (!selected) return
+  selectedPaths.value = extractDialogPaths(selected)
 }
 
 onMounted(async () => {
@@ -788,12 +857,24 @@ onMounted(async () => {
       }
     }
   }
-
-  syncCurrentMusicName()
 })
 </script>
 
 <style>
+/* 原生 select 下拉弹层跟随深色主题，避免白底白字 */
+.output-device-select {
+  color-scheme: dark;
+}
+/* 显式设置选项背景，兜底 color-scheme 未生效的情况 */
+.output-device-select option {
+  background-color: #1e1e2e;
+  color: #e2e8f0;
+}
+.output-device-select option:checked {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
 /* 仅保留无法用简短 Tailwind 涵盖的自定义滚动条样式 */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;

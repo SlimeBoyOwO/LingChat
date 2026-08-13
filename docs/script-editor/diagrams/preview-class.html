@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>试玩与会话隔离 · UML 类图</title>
+<style>
+  :root { --bg:#0f1720; --panel:#16202c; --border:#2a3a4a; --text:#e6edf3; --muted:#8b98a5; --brand:#79d9ff; }
+  body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft YaHei",sans-serif;padding:24px;}
+  h1{font-size:20px;margin:0 0 4px;} .sub{color:var(--muted);font-size:13px;margin-bottom:18px;}
+  .wrap{max-width:1280px;margin:0 auto;} svg{width:100%;height:auto;display:block;}
+  text{font-family:"Segoe UI","Microsoft YaHei",sans-serif;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>试玩与会话隔离 —— UML 类图（后端）</h1>
+  <p class="sub">PreviSession 把试玩对共享 GameStatus 的全部改动快照下来，走时整体还原；GameStatus.preview_generation 代号 + GeneratorDeps.generation 捕获构成孤儿写入守卫；ReplyResponse.preview_gen 标记让前端丢弃迟到事件。</p>
+
+  <svg viewBox="0 0 1260 900" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8b98a5"/></marker>
+      <marker id="aD" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#79d9ff"/></marker>
+    </defs>
+
+    <!-- ===== PreviewSession ===== -->
+    <g>
+      <rect x="20" y="60" width="380" height="310" rx="10" fill="#241f17" stroke="#f4a261" stroke-width="1.6"/>
+      <text x="210" y="88" text-anchor="middle" font-size="14" font-weight="700" fill="#f4a261">PreviewSession</text>
+      <text x="210" y="106" text-anchor="middle" font-size="10" fill="#8b98a5">（commands.rs · 一次试玩对共享会话的改动 + 还原能力）</text>
+      <line x1="20" y1="116" x2="400" y2="116" stroke="#f4a261" stroke-opacity="0.4"/>
+      <text x="34" y="140" font-size="10.5" fill="#e6edf3">line_len: usize         —— 台词表长度，截回即还原</text>
+      <text x="34" y="160" font-size="10.5" fill="#e6edf3">generation: u64        —— 本场试玩代号</text>
+      <text x="34" y="180" font-size="10.5" fill="#e6edf3">scene: GameStatusSnapshot</text>
+      <text x="34" y="200" font-size="10.5" fill="#e6edf3">main_role_id / current_role_id: Option&lt;i32&gt;</text>
+      <text x="34" y="220" font-size="10.5" fill="#e6edf3">script_status: Option&lt;Box&lt;ScriptStatus&gt;&gt;</text>
+      <text x="34" y="240" font-size="10.5" fill="#e6edf3">user_name / user_subtitle: String</text>
+      <line x1="20" y1="252" x2="400" y2="252" stroke="#f4a261" stroke-opacity="0.4"/>
+      <text x="34" y="274" font-size="10.5" fill="#4ade80">+ begin(db, data_dir, gs, script) -&gt; Result&lt;Self&gt;</text>
+      <text x="34" y="294" font-size="10.5" fill="#4ade80">+ restore(self, db, gs)          —— 幂等还原</text>
+      <text x="34" y="314" font-size="10.5" fill="#8b98a5">begin：resolve MAIN → 快照 → 搭场子 → 写人设台词</text>
+      <text x="34" y="334" font-size="10.5" fill="#8b98a5">restore：truncate + apply_snapshot + ++generation</text>
+      <text x="34" y="354" font-size="10.5" fill="#8b98a5">＋ refresh_memories 重建记忆</text>
+    </g>
+
+    <!-- ===== AppState ===== -->
+    <g>
+      <rect x="20" y="430" width="380" height="160" rx="10" fill="#16202c" stroke="#79d9ff" stroke-width="1.4"/>
+      <text x="210" y="456" text-anchor="middle" font-size="13.5" font-weight="700" fill="#79d9ff">AppState</text>
+      <line x1="20" y1="468" x2="400" y2="468" stroke="#79d9ff" stroke-opacity="0.4"/>
+      <text x="34" y="490" font-size="10.5" fill="#e6edf3">pending_preview_restore: Mutex&lt;Option&lt;PreviewSession&gt;&gt;</text>
+      <text x="34" y="510" font-size="10.5" fill="#e6edf3">preview_task: Mutex&lt;Option&lt;JoinHandle&lt;()&gt;&gt;&gt;</text>
+      <text x="34" y="530" font-size="10.5" fill="#e6edf3">ai_service / db / script_channels …</text>
+      <text x="34" y="556" font-size="10.5" fill="#8b98a5">快照托管在这里：试玩自然结束、被中止、报错</text>
+      <text x="34" y="576" font-size="10.5" fill="#8b98a5">三条路都经 apply_pending_restore 取回（Option::take</text>
+      <text x="34" y="592" font-size="10.5" fill="#8b98a5">幂等，先到者执行，后到者跳过）</text>
+    </g>
+
+    <!-- ===== GameStatus ===== -->
+    <g>
+      <rect x="470" y="60" width="380" height="330" rx="10" fill="#16202c" stroke="#34d399" stroke-width="1.6"/>
+      <text x="660" y="88" text-anchor="middle" font-size="14" font-weight="700" fill="#34d399">GameStatus（共享会话）</text>
+      <text x="660" y="106" text-anchor="middle" font-size="10" fill="#8b98a5">玩家自由对话与试玩共用同一个对象</text>
+      <line x1="470" y1="116" x2="850" y2="116" stroke="#34d399" stroke-opacity="0.4"/>
+      <text x="484" y="140" font-size="10.5" fill="#e6edf3">preview_generation: u64      ← 新增</text>
+      <text x="484" y="160" font-size="10.5" fill="#e6edf3">line_list: Vec&lt;GameLine&gt;     —— 追加式台词表</text>
+      <text x="484" y="180" font-size="10.5" fill="#e6edf3">present_role_ids / onstage_role_ids</text>
+      <text x="484" y="200" font-size="10.5" fill="#e6edf3">main_role_id / current_role_id</text>
+      <text x="484" y="220" font-size="10.5" fill="#e6edf3">background / background_music / effect</text>
+      <text x="484" y="240" font-size="10.5" fill="#e6edf3">script_status: Option&lt;ScriptStatus&gt;</text>
+      <text x="484" y="260" font-size="10.5" fill="#e6edf3">player: { user_name, user_subtitle }</text>
+      <text x="484" y="280" font-size="10.5" fill="#e6edf3">global_variables / completed_scripts …</text>
+      <line x1="470" y1="292" x2="850" y2="292" stroke="#34d399" stroke-opacity="0.4"/>
+      <text x="484" y="314" font-size="10.5" fill="#4ade80">+ add_line / onstage_role / get_role</text>
+      <text x="484" y="334" font-size="10.5" fill="#4ade80">+ to_snapshot() -&gt; GameStatusSnapshot</text>
+      <text x="484" y="354" font-size="10.5" fill="#4ade80">+ apply_snapshot(&amp;snapshot)  —— 恢复场景</text>
+      <text x="484" y="374" font-size="10.5" fill="#4ade80">+ refresh_memories(db)</text>
+    </g>
+
+    <!-- ===== GeneratorDeps ===== -->
+    <g>
+      <rect x="920" y="60" width="320" height="300" rx="10" fill="#2a1a2a" stroke="#e879f9" stroke-width="1.6"/>
+      <text x="1080" y="88" text-anchor="middle" font-size="14" font-weight="700" fill="#e879f9">GeneratorDeps</text>
+      <text x="1080" y="106" text-anchor="middle" font-size="10" fill="#8b98a5">构建时捕获现场，生成完成后比对</text>
+      <line x1="920" y1="116" x2="1240" y2="116" stroke="#e879f9" stroke-opacity="0.4"/>
+      <text x="934" y="140" font-size="10.5" fill="#e6edf3">source / app / db / game_status</text>
+      <text x="934" y="160" font-size="10.5" fill="#e6edf3">processor / translator / llm / tool_registry</text>
+      <text x="934" y="180" font-size="10.5" fill="#e6edf3">concurrency / god_agent / suppress_thinking</text>
+      <text x="934" y="210" font-size="11" fill="#e879f9">generation: u64     ← 新增 · 捕获 preview_generation</text>
+      <text x="934" y="236" font-size="11" fill="#e879f9">is_preview: bool    ← 新增 · 回复带 preview_gen 标记</text>
+      <line x1="920" y1="248" x2="1240" y2="248" stroke="#e879f9" stroke-opacity="0.4"/>
+      <text x="934" y="272" font-size="10" fill="#8b98a5">由 ai_dialogue / free_dialogue 事件在每次</text>
+      <text x="934" y="292" font-size="10" fill="#8b98a5">生成前构造，捕获当前代号</text>
+      <text x="934" y="312" font-size="10" fill="#8b98a5">自由对话的代号恒为当前值，比对恒等</text>
+    </g>
+
+    <!-- ===== add_assistant_line 守卫 ===== -->
+    <g>
+      <rect x="470" y="430" width="380" height="120" rx="10" fill="#16202c" stroke="#f87171" stroke-width="1.4"/>
+      <text x="660" y="456" text-anchor="middle" font-size="12.5" font-weight="700" fill="#f87171">add_assistant_line() —— 写入守卫</text>
+      <line x1="470" y1="468" x2="850" y2="468" stroke="#f87171" stroke-opacity="0.4"/>
+      <text x="484" y="492" font-size="10.5" fill="#e6edf3">if gs.preview_generation != deps.generation</text>
+      <text x="484" y="514" font-size="10.5" fill="#f87171">→ 丢弃整条（含记忆同步）· warn 日志</text>
+      <text x="484" y="536" font-size="10.5" fill="#8b98a5">被中止任务的游离流式任务持旧代号 → 写不进</text>
+    </g>
+
+    <!-- ===== ReplyResponse ===== -->
+    <g>
+      <rect x="920" y="430" width="320" height="150" rx="10" fill="#2a1a2a" stroke="#e879f9" stroke-width="1.4"/>
+      <text x="1080" y="456" text-anchor="middle" font-size="13.5" font-weight="700" fill="#e879f9">ReplyResponse</text>
+      <line x1="920" y1="468" x2="1240" y2="468" stroke="#e879f9" stroke-opacity="0.4"/>
+      <text x="934" y="490" font-size="10.5" fill="#e6edf3">message / role_id / is_final …</text>
+      <text x="934" y="512" font-size="10.5" fill="#e879f9">preview_gen: Option&lt;u64&gt;  ← 新增</text>
+      <text x="934" y="536" font-size="10" fill="#8b98a5">仅 is_preview 时 Some(generation)，否则 None</text>
+      <text x="934" y="556" font-size="10" fill="#8b98a5">（skip_serializing_if，自由对话不序列化）</text>
+      <text x="934" y="576" font-size="10" fill="#8b98a5">前端 tauri-events.isStalePreviewReply 据此丢弃</text>
+    </g>
+
+    <!-- ===== 关联 ===== -->
+    <g stroke="#8b98a5" stroke-width="1.3" fill="none">
+      <!-- PreviewSession 依赖 GameStatus -->
+      <path d="M400,200 L470,200" marker-end="url(#a)"/>
+      <text x="428" y="192" font-size="10" fill="#8b98a5">读/写</text>
+      <!-- GeneratorDeps 持有 GameStatus -->
+      <path d="M920,180 L850,180" marker-end="url(#a)"/>
+      <text x="878" y="172" font-size="10" fill="#8b98a5">持有</text>
+      <!-- GameStatus → to_snapshot 生成 GameStatusSnapshot -->
+      <path d="M470,300 L360,360" stroke="#79d9ff" marker-end="url(#aD)"/>
+      <text x="360" y="346" font-size="10" fill="#79d9ff">to_snapshot()</text>
+      <!-- generator 写 line_list -->
+      <path d="M1080,360 L850,300" stroke="#e879f9" stroke-dasharray="5 4" marker-end="url(#aD)"/>
+      <text x="980" y="352" font-size="10" fill="#e879f9">add_assistant_line</text>
+    </g>
+
+    <!-- ===== GameStatusSnapshot ===== -->
+    <g>
+      <rect x="20" y="640" width="380" height="210" rx="10" fill="#151028" stroke="#a78bfa" stroke-width="1.4"/>
+      <text x="210" y="666" text-anchor="middle" font-size="13.5" font-weight="700" fill="#a78bfa">GameStatusSnapshot（场景快照）</text>
+      <text x="210" y="684" text-anchor="middle" font-size="10" fill="#8b98a5">试玩前 to_snapshot()，还原时 apply_snapshot()</text>
+      <line x1="20" y1="694" x2="400" y2="694" stroke="#a78bfa" stroke-opacity="0.4"/>
+      <text x="34" y="718" font-size="10.5" fill="#e6edf3">present_role_ids / current_role_id</text>
+      <text x="34" y="740" font-size="10.5" fill="#e6edf3">background / background_music / background_effect</text>
+      <text x="34" y="762" font-size="10.5" fill="#e6edf3">current_scene_id / scene_awareness_enabled</text>
+      <text x="34" y="784" font-size="10.5" fill="#e6edf3">global_variables / completed_scripts</text>
+      <text x="34" y="806" font-size="10.5" fill="#e6edf3">last_dialog_time</text>
+      <text x="34" y="830" font-size="10" fill="#8b98a5">注意：不含 player 名/副标题、不含 script_status</text>
+      <text x="34" y="848" font-size="10" fill="#8b98a5">—— 那三个由 PreviewSession 单独存还原</text>
+    </g>
+
+    <!-- 底部说明 -->
+    <g>
+      <rect x="470" y="640" width="770" height="210" rx="10" fill="#101c28" stroke="#4ade80" stroke-opacity="0.4"/>
+      <text x="490" y="666" font-size="12.5" font-weight="700" fill="#4ade80">这一轮设计解决了什么（历史教训）</text>
+      <text x="490" y="690" font-size="11" fill="#e6edf3">此前试玩直接在 GameStatus 上跑 —— 那就是玩家正在用的同一个会话对象，两个方向都出问题：</text>
+      <text x="490" y="714" font-size="11" fill="#e6edf3"><tspan font-weight="700" fill="#f87171">往里看：</tspan>试玩场次残缺 —— 没走 init_game_status 的三件事（清空台词、写主角人设 SYSTEM 台词、主角 onstage），立绘不出现、日志刷「人设丢失」、AI 在没人设的上下文里生成。</text>
+      <text x="490" y="742" font-size="11" fill="#e6edf3"><tspan font-weight="700" fill="#f87171">往外看：</tspan>试玩往真实会话漏东西 —— 剧本台词、占位、背景、音乐、在场角色、script_status 全留在原地，退出编辑器回自由对话看到的就是试玩残留。</text>
+      <text x="490" y="770" font-size="11" fill="#4ade80">现在的做法：进来时整体备份、按新会话搭好场子、走的时候整体还原。试玩期间引擎爱怎么改怎么改，出去之后玩家的会话一个字节都没变。</text>
+      <text x="490" y="798" font-size="11" fill="#e6edf3">代号机制补最后一环：被中止的任务还在异步写，还原之后写入会污染自由对话 —— 由</text>
+      <text x="490" y="820" font-size="11" fill="#e6edf3">「代号不匹配即丢弃」在写入点拦下，前端再由 preview_gen 拦下迟到的流式事件。</text>
+    </g>
+  </svg>
+</div>
+</body>
+</html>

@@ -7,8 +7,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ai_service::game_system::role_manager::GameRoleManager;
-use crate::ai_service::types::{GameLine, GameRole, LineBase, Player, ScriptStatus};
+use crate::ai_service::types::{
+    GameLine, GameRole, LineAttributeExt, LineBase, Player, ScriptStatus,
+};
 use crate::db::entities::line::LineAttribute;
+use crate::utils::prompt::PromptRole;
 
 /// 存储所有运行时共享的游戏状态。
 pub struct GameStatus {
@@ -46,6 +49,13 @@ pub struct GameStatus {
     /// 当前激活的存档 ID（用于 MemoryBank 持久化/载入/自动压缩）
     pub active_save_id: Option<i32>,
 
+    /// 试玩会话代号。每次试玩「进来备份 / 走时还原」都会递增；
+    /// 消息生成管线在写入台词前比对捕获值与当前值，不一致即视为已过期
+    /// （试玩任务被中止后，游离的流式任务可能仍在写）——直接丢弃，保证
+    /// 试玩内容不会漏进已还原的自由对话会话。自由对话本身不递增，恒等比对，
+    /// 行为不受影响。
+    pub preview_generation: u64,
+
     /// 标记玩家是否已在本会话中入场（内存标记，重启重置）。
     /// 用于防止重复触发入场问候。
     pub player_entered: bool,
@@ -75,6 +85,7 @@ impl GameStatus {
             last_dialog_time: None,
             script_status: None,
             active_save_id: None,
+            preview_generation: 0,
             player_entered: false,
             scene_awareness_enabled: true,
         }
@@ -133,6 +144,78 @@ impl GameStatus {
     pub fn offstage_role(&mut self, role_id: i32) {
         self.onstage_role_ids.retain(|id| *id != role_id);
         self.present_role_ids.remove(&role_id);
+    }
+
+    pub async fn add_character_clothes_change_line(
+        &mut self,
+        db: &DatabaseConnection,
+        role_id: i32,
+        clothes_name: &str,
+    ) -> Result<()> {
+        let role = self
+            .role_manager
+            .get_loaded_mut(role_id)
+            .ok_or_else(|| anyhow::anyhow!("角色 {} 未加载", role_id))?;
+
+        role.current_clothes = clothes_name.to_string();
+
+        let ai_name = role.settings.ai_name.clone();
+        let clothes_prompt = role
+            .settings
+            .clothes
+            .as_ref()
+            .and_then(|list| {
+                list.iter().find_map(|item| {
+                    if item.get("name").map(|s| s.as_str()) == Some(clothes_name) {
+                        item.get("prompt").cloned()
+                    } else {
+                        None
+                    }
+                })
+            })
+            .unwrap_or_default();
+
+        let prompt = format!(
+            "{}换上了新服装：{}，{}",
+            ai_name, clothes_name, clothes_prompt
+        );
+
+        self.add_line(
+            db,
+            LineBase {
+                content: PromptRole::Narrator.build_prompt(&prompt),
+                attribute: LineAttributeExt(LineAttribute::User),
+                display_name: Some("旁白".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("添加换装台词失败: {}", e))?;
+
+        Ok(())
+    }
+
+    /// 切换角色服装并生成旁白台词。
+    /// 若已是目标服装则跳过。返回是否实际切换。
+    pub async fn on_character_change_clothes(
+        &mut self,
+        db: &DatabaseConnection,
+        role_id: i32,
+        clothes_name: &str,
+    ) -> Result<bool> {
+        let role = self
+            .role_manager
+            .get_loaded_mut(role_id)
+            .ok_or_else(|| anyhow::anyhow!("角色 {} 未加载", role_id))?;
+
+        if role.current_clothes == clothes_name {
+            return Ok(false);
+        }
+
+        self.add_character_clothes_change_line(db, role_id, clothes_name)
+            .await?;
+
+        Ok(true)
     }
 
     pub fn reactivate_all_voice_makers(&self) {

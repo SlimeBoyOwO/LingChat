@@ -10,7 +10,7 @@
       @click="toggleEnabled"
       v-show="!uiStore.showSettings"
     >
-      <h3 class="text-lg font-bold m-0 hidden xl:block">日程</h3>
+      <h3 class="text-lg font-bold m-0 hidden xl:block">{{ $t('ui.schedulePanel.title') }}</h3>
     </Button>
 
     <!-- Modal overlay -->
@@ -40,7 +40,7 @@
               <div class="flex items-center justify-between shrink-0 px-5 py-3 bg-[#12121c]/90 backdrop-blur-xl border-b border-white/10">
                 <div class="flex items-center gap-2">
                   <PawPrint :size="24" class="text-brand -rotate-18" />
-                  <h3 class="text-white text-base font-semibold">日程</h3>
+                  <h3 class="text-white text-base font-semibold">{{ $t('ui.schedulePanel.title') }}</h3>
                 </div>
                 <button
                   class="p-2 rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-colors"

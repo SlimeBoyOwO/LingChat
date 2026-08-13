@@ -148,11 +148,6 @@ async function resolveAvatar() {
   const emotion = r.emotion
   const mappedEmotion = EMOTION_CONFIG_EMO[emotion] || '正常'
 
-  if (emotion === 'AI思考') {
-    targetAvatarUrl.value = 'none'
-    return
-  }
-
   const currentId = ++resolveAvatarId
   try {
     const path = await invoke<string>('get_avatar_file', {
@@ -226,13 +221,64 @@ watch(
       })
     }
 
-    if (config.audio && config.audio !== 'none' && bubbleAudio.value) {
-      bubbleAudio.value.src = config.audio
-      bubbleAudio.value.load()
-      bubbleAudio.value.play()
+    if (config.audio && config.audio !== 'none') {
+      playBubbleAudio(config.audio)
     }
   },
   { immediate: true },
+)
+
+// 播放情绪气泡音效（音量跟随「气泡音量」设置，否则恒为满音量）
+const playBubbleAudio = (src: string) => {
+  if (!bubbleAudio.value) return
+  bubbleAudio.value.volume = uiStore.bubbleVolume / 100
+  bubbleAudio.value.src = src
+  bubbleAudio.value.load()
+  bubbleAudio.value.play().catch((e) => console.error('气泡音效播放失败:', e))
+}
+
+// 气泡音量设置变化时，对已加载的音效实时生效
+watch(
+  () => uiStore.bubbleVolume,
+  (v) => {
+    if (bubbleAudio.value) bubbleAudio.value.volume = v / 100
+  },
+)
+
+// 思考中反馈：气泡 + 音效（由 currentStatus 驱动，与 emotion 解耦）
+watch(
+  () => gameStore.currentStatus,
+  (newStatus) => {
+    if (newStatus === 'thinking') {
+      const config = EMOTION_CONFIG['AI思考']
+      if (config && config.bubbleImage && config.bubbleImage !== 'none') {
+        currentBubbleImageUrl.value = config.bubbleImage
+        currentBubbleClass.value = config.bubbleClass
+
+        if (bubbleTimeoutId !== null) {
+          window.clearTimeout(bubbleTimeoutId)
+          bubbleTimeoutId = null
+        }
+        if (!isBubbleVisible.value) {
+          isBubbleVisible.value = true
+        }
+        bubbleTimeoutId = window.setTimeout(() => {
+          isBubbleVisible.value = false
+          bubbleTimeoutId = null
+        }, 2000)
+      }
+      if (config?.audio && config.audio !== 'none') {
+        playBubbleAudio(config.audio)
+      }
+    } else {
+      // 离开思考态：隐藏思考气泡、停掉定时器
+      isBubbleVisible.value = false
+      if (bubbleTimeoutId !== null) {
+        window.clearTimeout(bubbleTimeoutId)
+        bubbleTimeoutId = null
+      }
+    }
+  },
 )
 
 const handleAnimationEnd = () => {

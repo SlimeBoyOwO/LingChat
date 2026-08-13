@@ -1,30 +1,17 @@
+//! 主动对话系统配置，从 settings.json 统一加载。
+
 use serde_json::Value;
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
-pub mod keys {
-    pub const ENABLE_PROACTIVE_SYSTEM: &str = "ENABLE_PROACTIVE_SYSTEM";
-    pub const MAX_PROACTIVE_TIMES: &str = "MAX_PROACTIVE_TIMES";
-    pub const VD_API_KEY: &str = "VD_API_KEY";
-    pub const VD_BASE_URL: &str = "VD_BASE_URL";
-    pub const VD_MODEL: &str = "VD_MODEL";
-    pub const ENABLE_VISUAL_PRECEPTION: &str = "ENABLE_VISUAL_PRECEPTION";
-    pub const SCREEN_WEIGHT: &str = "SCREEN_WEIGHT";
-    pub const ENABLE_TOPIC_CREATER: &str = "ENABLE_TOPIC_CREATER";
-    pub const TOPIC_WEIGHT: &str = "TOPIC_WEIGHT";
-    pub const ENABLE_TODO_PRECEPTION: &str = "ENABLE_TODO_PRECEPTION";
-    pub const TODO_WEIGHT: &str = "TODO_WEIGHT";
-    pub const ENABLE_SCHEDULE_REMINDER: &str = "ENABLE_SCHEDULE_REMINDER";
-    pub const ENABLE_IMPORTANT_DAY_REMINDER: &str = "ENABLE_IMPORTANT_DAY_REMINDER";
-}
+use super::keys;
+
+// ========== ProactiveConfig 结构体 ==========
 
 #[derive(Clone, Debug)]
 pub struct ProactiveConfig {
     pub enable_proactive_system: bool,
     pub max_proactive_times: i32,
-    pub vd_api_key: String,
-    pub vd_base_url: String,
-    pub vd_model: String,
     pub enable_visual_perception: bool,
     pub screen_weight: f64,
     pub enable_topic_creator: bool,
@@ -35,9 +22,32 @@ pub struct ProactiveConfig {
     pub enable_important_day_reminder: bool,
 }
 
+// ========== Default 实现（单一真相源） ==========
+
+impl Default for ProactiveConfig {
+    fn default() -> Self {
+        Self {
+            enable_proactive_system: false,
+            max_proactive_times: 3,
+            enable_visual_perception: true,
+            screen_weight: 30.0,
+            enable_topic_creator: true,
+            topic_weight: 60.0,
+            enable_todo_perception: true,
+            todo_weight: 10.0,
+            enable_schedule_reminder: true,
+            enable_important_day_reminder: true,
+        }
+    }
+}
+
+// ========== ProactiveConfig 方法 ==========
+
 impl ProactiveConfig {
+    /// 从 settings.json 加载主动对话配置，缺失项回退到 `Self::default()`。
     pub fn load(app: &AppHandle) -> Self {
         let store = app.store(super::STORE_FILE).ok();
+        let default = Self::default();
 
         let get_bool = |key: &str, default: bool| -> bool {
             store
@@ -49,17 +59,6 @@ impl ProactiveConfig {
                     _ => None,
                 })
                 .unwrap_or(default)
-        };
-
-        let get_string = |key: &str, default: &str| -> String {
-            store
-                .as_ref()
-                .and_then(|s| s.get(key))
-                .and_then(|v| match v {
-                    Value::String(s) => Some(s.clone()),
-                    _ => None,
-                })
-                .unwrap_or_else(|| default.to_string())
         };
 
         let get_i32 = |key: &str, default: i32| -> i32 {
@@ -87,22 +86,34 @@ impl ProactiveConfig {
         };
 
         Self {
-            enable_proactive_system: get_bool(keys::ENABLE_PROACTIVE_SYSTEM, false),
-            max_proactive_times: get_i32(keys::MAX_PROACTIVE_TIMES, 3),
-            vd_api_key: get_string(keys::VD_API_KEY, ""),
-            vd_base_url: get_string(
-                keys::VD_BASE_URL,
-                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            enable_proactive_system: get_bool(
+                keys::ENABLE_PROACTIVE_SYSTEM,
+                default.enable_proactive_system,
             ),
-            vd_model: get_string(keys::VD_MODEL, "qwen3.5-plus"),
-            enable_visual_perception: get_bool(keys::ENABLE_VISUAL_PRECEPTION, true),
-            screen_weight: get_f64(keys::SCREEN_WEIGHT, 30.0),
-            enable_topic_creator: get_bool(keys::ENABLE_TOPIC_CREATER, true),
-            topic_weight: get_f64(keys::TOPIC_WEIGHT, 60.0),
-            enable_todo_perception: get_bool(keys::ENABLE_TODO_PRECEPTION, true),
-            todo_weight: get_f64(keys::TODO_WEIGHT, 10.0),
-            enable_schedule_reminder: get_bool(keys::ENABLE_SCHEDULE_REMINDER, true),
-            enable_important_day_reminder: get_bool(keys::ENABLE_IMPORTANT_DAY_REMINDER, true),
+            max_proactive_times: get_i32(keys::MAX_PROACTIVE_TIMES, default.max_proactive_times),
+            enable_visual_perception: get_bool(
+                keys::ENABLE_VISUAL_PRECEPTION,
+                default.enable_visual_perception,
+            ),
+            screen_weight: get_f64(keys::SCREEN_WEIGHT, default.screen_weight),
+            enable_topic_creator: get_bool(
+                keys::ENABLE_TOPIC_CREATER,
+                default.enable_topic_creator,
+            ),
+            topic_weight: get_f64(keys::TOPIC_WEIGHT, default.topic_weight),
+            enable_todo_perception: get_bool(
+                keys::ENABLE_TODO_PRECEPTION,
+                default.enable_todo_perception,
+            ),
+            todo_weight: get_f64(keys::TODO_WEIGHT, default.todo_weight),
+            enable_schedule_reminder: get_bool(
+                keys::ENABLE_SCHEDULE_REMINDER,
+                default.enable_schedule_reminder,
+            ),
+            enable_important_day_reminder: get_bool(
+                keys::ENABLE_IMPORTANT_DAY_REMINDER,
+                default.enable_important_day_reminder,
+            ),
         }
     }
 }

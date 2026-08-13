@@ -4,16 +4,18 @@
       type="checkbox"
       :id="id"
       :checked="internalChecked"
+      :disabled="disabled"
       @change="handleChange"
       class="hidden"
     />
     <label
       :for="id"
-      class="relative cursor-pointer text-white text-3.5 select-none inline-flex items-center"
+      class="relative text-white text-3.5 select-none inline-flex items-center w-full"
+      :class="disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'"
       style="text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3)"
     >
       <span
-        class="relative inline-block w-12.5 h-6.5 rounded-[13px] transition-all duration-300 ease-in-out mr-2"
+        class="relative inline-block w-12.5 h-6.5 shrink-0 rounded-[13px] transition-all duration-300 ease-in-out mr-2"
         :class="[
           internalChecked
             ? 'border-(--accent-color) bg-[rgba(121,217,255,0.3)] shadow-[0_0_10px_rgba(121,217,255,0.3)]'
@@ -29,7 +31,7 @@
           ]"
         ></span>
       </span>
-      <slot></slot>
+      <span class="min-w-0 flex-1"><slot></slot></span>
     </label>
   </div>
 </template>
@@ -39,6 +41,12 @@ import { ref, watch } from 'vue'
 
 const props = defineProps({
   checked: {
+    type: Boolean,
+    default: false,
+  },
+  /// 禁用开关。禁用时原生 input 也会被 disabled，避免点穿；
+  /// 视觉上变灰且鼠标变 not-allowed。默认 false，既有调用方不受影响。
+  disabled: {
     type: Boolean,
     default: false,
   },

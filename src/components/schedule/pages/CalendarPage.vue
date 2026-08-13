@@ -18,7 +18,7 @@
             <ChevronLeft />
           </button>
           <h3 class="text-lg font-bold text-brand">
-            {{ calendarYear }}年 {{ calendarMonth + 1 }}月
+            {{ $t('ui.calendarPage.yearMonth', { year: calendarYear, month: calendarMonth + 1 }) }}
           </h3>
           <button
             @click="changeMonth(1)"
@@ -32,7 +32,7 @@
         <div
           class="calendar-grid border-b border-cyan-500 bg-slate-50/30 font-bold text-[10px] text-white text-center py-3 tracking-widest"
         >
-          <div v-for="d in ['日', '一', '二', '三', '四', '五', '六']" :key="d">
+          <div v-for="d in weekDays" :key="d">
             {{ d }}
           </div>
         </div>
@@ -73,14 +73,14 @@
       :class="uiStore.isNarrowScreen ? 'w-full min-h-0' : 'h-full w-1/3 pl-4'"
     >
       <div :class="uiStore.isNarrowScreen ? 'p-3' : 'p-4 h-full flex flex-col'">
-        <h3 class="text-lg font-bold text-brand mb-4">重要日子</h3>
+        <h3 class="text-lg font-bold text-brand mb-4">{{ $t('ui.calendarPage.title') }}</h3>
 
         <!-- 添加新事件按钮 -->
         <button
           @click="showAddEventModal = true"
           class="w-full bg-cyan-500 text-white rounded-lg py-2 px-4 mb-4 hover:bg-cyan-600 transition-all duration-300 flex items-center justify-center"
         >
-          <span class="mr-2">+</span> 添加重要日子
+          <span class="mr-2">+</span> {{ $t('ui.calendarPage.add') }}
         </button>
 
         <!-- 事件列表 -->
@@ -121,7 +121,7 @@
 
           <!-- 空状态 -->
           <div v-if="sortedEvents.length === 0" class="text-center py-8 text-gray-500">
-            暂无重要日子
+            {{ $t('ui.calendarPage.empty') }}
           </div>
         </div>
 
@@ -132,21 +132,21 @@
           @click.self="showAddEventModal = false"
         >
           <div class="glass-effect rounded-xl border border-cyan-500 shadow-sm p-6 w-96">
-            <h3 class="text-lg font-bold text-brand mb-4">添加重要日子</h3>
+            <h3 class="text-lg font-bold text-brand mb-4">{{ $t('ui.calendarPage.add') }}</h3>
 
             <div class="space-y-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">标题</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('ui.calendarPage.titleLabel') }}</label>
                 <input
                   v-model="newEvent.title"
                   type="text"
                   class="w-full px-3 py-2 border border-cyan-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                  placeholder="输入标题"
+                  :placeholder="$t('ui.calendarPage.titlePlaceholder')"
                 />
               </div>
 
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">日期</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('ui.calendarPage.dateLabel') }}</label>
                 <input
                   v-model="newEvent.date"
                   type="date"
@@ -155,25 +155,25 @@
               </div>
 
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">描述 (可选)</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('ui.calendarPage.descLabel') }}</label>
                 <textarea
                   v-model="newEvent.desc"
                   class="w-full px-3 py-2 border border-cyan-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
                   rows="3"
-                  placeholder="输入描述"
+                  :placeholder="$t('ui.calendarPage.descPlaceholder')"
                 ></textarea>
               </div>
 
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">周期 (可选)</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('ui.calendarPage.cycleLabel') }}</label>
                 <select
                   v-model="newEvent.cycle"
                   class="w-full px-3 py-2 border border-cyan-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
                 >
-                  <option value="">无</option>
-                  <option value="yearly">每年</option>
-                  <option value="monthly">每月</option>
-                  <option value="weekly">每周</option>
+                  <option value="">{{ $t('ui.calendarPage.cycleNone') }}</option>
+                  <option value="yearly">{{ $t('ui.calendarPage.cycleYearly') }}</option>
+                  <option value="monthly">{{ $t('ui.calendarPage.cycleMonthly') }}</option>
+                  <option value="weekly">{{ $t('ui.calendarPage.cycleWeekly') }}</option>
                 </select>
               </div>
             </div>
@@ -183,13 +183,13 @@
                 @click="showAddEventModal = false"
                 class="px-4 py-2 border border-cyan-500 text-cyan-500 rounded-lg hover:bg-cyan-50 transition-all duration-300"
               >
-                取消
+                {{ $t('ui.calendarPage.cancel') }}
               </button>
               <button
                 @click="addEvent"
                 class="px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-all duration-300"
               >
-                添加
+                {{ $t('ui.calendarPage.addConfirm') }}
               </button>
             </div>
           </div>
@@ -206,17 +206,17 @@
 
             <div class="space-y-2">
               <div>
-                <span class="text-sm font-medium text-gray-700">日期：</span>
+                <span class="text-sm font-medium text-gray-700">{{ $t('ui.calendarPage.detailDateLabel') }}</span>
                 <span class="text-sm">{{ formatDate(selectedEvent.date) }}</span>
               </div>
 
               <div v-if="selectedEvent.desc">
-                <span class="text-sm font-medium text-gray-700">描述：</span>
+                <span class="text-sm font-medium text-gray-700">{{ $t('ui.calendarPage.detailDescLabel') }}</span>
                 <p class="text-sm mt-1">{{ selectedEvent.desc }}</p>
               </div>
 
               <div v-if="selectedEvent.cycle">
-                <span class="text-sm font-medium text-gray-700">周期：</span>
+                <span class="text-sm font-medium text-gray-700">{{ $t('ui.calendarPage.detailCycleLabel') }}</span>
                 <span class="text-sm">{{ getCycleText(selectedEvent.cycle) }}</span>
               </div>
             </div>
@@ -226,7 +226,7 @@
                 @click="selectedEvent = null"
                 class="px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-all duration-300"
               >
-                关闭
+                {{ $t('ui.calendarPage.close') }}
               </button>
             </div>
           </div>
@@ -238,10 +238,12 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { ChevronRight, ChevronLeft } from 'lucide-vue-next'
 import { getSchedules, saveSchedules } from '@/api/services/schedule'
 
+const { t } = useI18n()
 const uiStore = useUIStore()
 
 // 数据存储
@@ -300,6 +302,15 @@ onMounted(() => {
 const calendarDate = ref(new Date())
 const calendarYear = computed(() => calendarDate.value.getFullYear())
 const calendarMonth = computed(() => calendarDate.value.getMonth())
+const weekDays = computed(() => [
+  t('ui.calendarPage.week.sun'),
+  t('ui.calendarPage.week.mon'),
+  t('ui.calendarPage.week.tue'),
+  t('ui.calendarPage.week.wed'),
+  t('ui.calendarPage.week.thu'),
+  t('ui.calendarPage.week.fri'),
+  t('ui.calendarPage.week.sat'),
+])
 const selectedDate = ref<Day | null>(null)
 
 const calendarDays = computed(() => {
@@ -366,15 +377,19 @@ const sortedEvents = computed(() => {
 // 格式化日期
 const formatDate = (dateString: string) => {
   const date = new Date(dateString)
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+  return t('ui.calendarPage.fullDate', {
+    year: date.getFullYear(),
+    month: date.getMonth() + 1,
+    day: date.getDate(),
+  })
 }
 
 // 获取周期文本
 const getCycleText = (cycle: string) => {
   const cycleMap: { [key: string]: string } = {
-    yearly: '每年',
-    monthly: '每月',
-    weekly: '每周',
+    yearly: t('ui.calendarPage.cycleYearly'),
+    monthly: t('ui.calendarPage.cycleMonthly'),
+    weekly: t('ui.calendarPage.cycleWeekly'),
   }
   return cycleMap[cycle] || cycle
 }

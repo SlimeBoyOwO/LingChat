@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>工具权限模型 · 「场景组 × 角色组」矩阵</title>
+<style>
+  :root {
+    --bg: #0f1720;
+    --panel: #16202c;
+    --panel-2: #1b2430;
+    --border: #2a3a4a;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --brand: #79d9ff;
+    --rust: #f4a261;
+    --vue: #34d399;
+    --db: #a78bfa;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --tool: #f472b6;
+  }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .wrap { max-width: 1340px; margin: 0 auto; }
+  svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 12.5px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  text { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>工具权限模型 —— 「场景组 × 角色组」二维矩阵</h1>
+  <p class="sub">PR #523 · permissions.rs · 配置存于 &lt;data_dir&gt;/tool_permissions.toml（原子写，无前端 UI）</p>
+
+  <svg viewBox="0 0 1320 1180" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#79d9ff" />
+      </marker>
+      <marker id="arrowGray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#8b98a5" />
+      </marker>
+      <marker id="arrowRust" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#f4a261" />
+      </marker>
+      <marker id="arrowPink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#f472b6" />
+      </marker>
+    </defs>
+
+    <!-- ================= 左：类图 ================= -->
+    <text x="40" y="34" font-size="14" font-weight="700" fill="#f4a261">① 数据结构（UML 类图）</text>
+
+    <!-- ToolPermissionConfig -->
+    <rect x="40" y="52" width="330" height="150" rx="9" fill="#1c1a16" stroke="#f4a261" />
+    <rect x="40" y="52" width="330" height="30" rx="9" fill="#f4a261" fill-opacity="0.15" />
+    <text x="55" y="71" font-size="12.5" font-weight="700" fill="#f4a261">ToolPermissionConfig</text>
+    <text x="55" y="100" font-size="10.5" fill="#e6edf3">scene_mapping: &lt;GeneratorSourceKey, String&gt;</text>
+    <text x="55" y="122" font-size="10.5" fill="#e6edf3">scene_groups:  &lt;String, ToolPermission&gt;</text>
+    <text x="55" y="144" font-size="10.5" fill="#e6edf3">role_groups:   &lt;String, GroupPermission&gt;</text>
+    <text x="55" y="172" font-size="9.5" fill="#8b98a5">load_or_create / save / allowed_tools / 管理 API</text>
+
+    <!-- 三张子表 -->
+    <rect x="420" y="52" width="300" height="96" rx="9" fill="#16202c" stroke="#f472b6" />
+    <rect x="420" y="52" width="300" height="28" rx="9" fill="#f472b6" fill-opacity="0.15" />
+    <text x="435" y="71" font-size="12" font-weight="700" fill="#f472b6">① scene_mapping · 调用来源 → 场景组</text>
+    <text x="435" y="98" font-size="10" fill="#e6edf3">UserChat → scene_admin</text>
+    <text x="435" y="118" font-size="10" fill="#e6edf3">Proactive / ScriptFreeDialogue → scene_normal</text>
+    <text x="435" y="138" font-size="10" fill="#e6edf3">ScriptAiDialogue / EntryGreeting → scene_default</text>
+
+    <rect x="420" y="166" width="300" height="128" rx="9" fill="#16202c" stroke="#f472b6" />
+    <rect x="420" y="166" width="300" height="28" rx="9" fill="#f472b6" fill-opacity="0.15" />
+    <text x="435" y="185" font-size="12" font-weight="700" fill="#f472b6">② scene_groups · 场景组权限</text>
+    <text x="435" y="212" font-size="10" fill="#e6edf3">scene_admin  : enabled ✅, all_tools ✅</text>
+    <text x="435" y="232" font-size="10" fill="#e6edf3">scene_normal : enabled ✅, tools=[...]</text>
+    <text x="435" y="252" font-size="10" fill="#e6edf3">scene_default: enabled ❌（无工具）</text>
+    <text x="435" y="278" font-size="9" fill="#8b98a5">ToolPermission{ enabled, tools, all_tools }</text>
+
+    <rect x="420" y="312" width="300" height="120" rx="9" fill="#16202c" stroke="#f472b6" />
+    <rect x="420" y="312" width="300" height="28" rx="9" fill="#f472b6" fill-opacity="0.15" />
+    <text x="435" y="331" font-size="12" font-weight="700" fill="#f472b6">③ role_groups · 角色组权限</text>
+    <text x="435" y="358" font-size="10" fill="#e6edf3">default : enabled ❌, roles=[未归组角色]</text>
+    <text x="435" y="378" font-size="10" fill="#8b98a5">（新角色自动进 default，无工具权限）</text>
+    <text x="435" y="404" font-size="9" fill="#8b98a5">GroupPermission{ enabled, tools, all_tools, roles }</text>
+    <text x="435" y="422" font-size="9" fill="#8b98a5">角色与组一对多→一对一（add_role_to_group 自动互斥）</text>
+
+    <!-- 关系连线 -->
+    <line x1="370" y1="105" x2="418" y2="105" stroke="#8b98a5" stroke-width="1.3" marker-end="url(#arrowGray)" />
+    <line x1="370" y1="130" x2="418" y2="222" stroke="#8b98a5" stroke-width="1.3" marker-end="url(#arrowGray)" />
+    <line x1="370" y1="155" x2="418" y2="360" stroke="#8b98a5" stroke-width="1.3" marker-end="url(#arrowGray)" />
+
+    <!-- GeneratorSourceKey -->
+    <rect x="40" y="226" width="330" height="120" rx="9" fill="#1c1a16" stroke="#f4a261" stroke-opacity="0.6" />
+    <rect x="40" y="226" width="330" height="28" rx="9" fill="#f4a261" fill-opacity="0.12" />
+    <text x="55" y="245" font-size="12" font-weight="700" fill="#f4a261">GeneratorSourceKey（serde snake_case）</text>
+    <text x="55" y="274" font-size="10" fill="#e6edf3">UserChat / Proactive</text>
+    <text x="55" y="294" font-size="10" fill="#e6edf3">ScriptAiDialogue / ScriptFreeDialogue</text>
+    <text x="55" y="314" font-size="10" fill="#e6edf3">EntryGreeting</text>
+    <text x="55" y="338" font-size="9" fill="#8b98a5">与 generator.rs 的 GeneratorSource 一一对应（From 转换）</text>
+
+    <!-- 默认语义表 -->
+    <text x="40" y="386" font-size="14" font-weight="700" fill="#f4a261">② 默认语义</text>
+    <rect x="40" y="400" width="680" height="146" rx="9" fill="#16202c" stroke="#2a3a4a" />
+    <text x="60" y="428" font-size="11" font-weight="700" fill="#e6edf3">调用来源 → 场景组 → 结果</text>
+    <line x1="60" y1="438" x2="700" y2="438" stroke="#2a3a4a" />
+    <text x="60" y="460" font-size="10" fill="#8b98a5">UserChat（玩家发消息）</text><text x="330" y="460" font-size="10" fill="#e6edf3">→ scene_admin（all_tools）→ 全部工具（只要角色组放行）</text>
+    <text x="60" y="484" font-size="10" fill="#8b98a5">Proactive（主动对话）</text><text x="330" y="484" font-size="10" fill="#e6edf3">→ scene_normal（显式列表）→ 列表内工具</text>
+    <text x="60" y="508" font-size="10" fill="#8b98a5">ScriptFreeDialogue（剧本自由对话）</text><text x="330" y="508" font-size="10" fill="#e6edf3">→ scene_normal → 列表内工具</text>
+    <text x="60" y="532" font-size="10" fill="#8b98a5">ScriptAiDialogue（剧本 AI 对话）</text><text x="330" y="532" font-size="10" fill="#e6edf3">→ scene_default（disabled）→ 无工具</text>
+    <text x="60" y="556" font-size="10" fill="#8b98a5">EntryGreeting（入场问候）</text><text x="330" y="556" font-size="10" fill="#e6edf3">→ scene_default（disabled）→ 无工具</text>
+
+    <!-- ================= 右：allowed_tools 决策流程 ================= -->
+    <text x="790" y="34" font-size="14" font-weight="700" fill="#f472b6">③ allowed_tools(source, role_name, all_names) 决策流程</text>
+
+    <rect x="790" y="52" width="220" height="44" rx="8" fill="#1b2430" stroke="#f472b6" />
+    <text x="900" y="70" text-anchor="middle" font-size="10.5" fill="#e6edf3">key = source.into()</text>
+    <text x="900" y="86" text-anchor="middle" font-size="9.5" fill="#8b98a5">场景组名 = mapping.get(key) ?? "scene_default"</text>
+
+    <line x1="900" y1="96" x2="900" y2="116" stroke="#f472b6" stroke-width="1.4" marker-end="url(#arrowPink)" />
+
+    <polygon points="900,120 960,140 900,160 840,140" fill="#1b2430" stroke="#f472b6" />
+    <text x="900" y="136" text-anchor="middle" font-size="9.5" fill="#f472b6">场景组存在且 enabled？</text>
+    <text x="905" y="150" text-anchor="middle" font-size="8.5" fill="#8b98a5">①</text>
+
+    <!-- 否 -->
+    <path d="M 960 140 L 1040 140 L 1040 60 L 1090 60" fill="none" stroke="#f472b6" stroke-width="1.3" marker-end="url(#arrowPink)" />
+    <text x="1000" y="112" font-size="9" fill="#f472b6">否</text>
+    <rect x="1090" y="40" width="170" height="40" rx="8" fill="#1c1a16" stroke="#f472b6" stroke-opacity="0.6" />
+    <text x="1175" y="57" text-anchor="middle" font-size="10" font-weight="600" fill="#f472b6">返回空集</text>
+    <text x="1175" y="73" text-anchor="middle" font-size="8.5" fill="#8b98a5">场景禁用 / 组不存在</text>
+
+    <!-- 是 -->
+    <line x1="900" y1="160" x2="900" y2="180" stroke="#f472b6" stroke-width="1.4" marker-end="url(#arrowPink)" />
+    <polygon points="900,184 960,204 900,224 840,204" fill="#1b2430" stroke="#f472b6" />
+    <text x="900" y="200" text-anchor="middle" font-size="9.5" fill="#f472b6">role_name 存在？</text>
+    <text x="905" y="214" text-anchor="middle" font-size="8.5" fill="#8b98a5">② 硬门槛：未指定角色 = 无工具</text>
+
+    <path d="M 960 204 L 1040 204 L 1040 60 L 1090 60" fill="none" stroke="#f472b6" stroke-width="1.3" marker-end="url(#arrowPink)" />
+    <text x="1000" y="178" font-size="9" fill="#f472b6">否</text>
+
+    <line x1="900" y1="224" x2="900" y2="244" stroke="#f472b6" stroke-width="1.4" marker-end="url(#arrowPink)" />
+    <polygon points="900,248 960,268 900,288 840,268" fill="#1b2430" stroke="#f472b6" />
+    <text x="900" y="264" text-anchor="middle" font-size="9.5" fill="#f472b6">角色在某个角色组？</text>
+    <text x="905" y="278" text-anchor="middle" font-size="8.5" fill="#8b98a5">③ find_role_group</text>
+
+    <path d="M 960 268 L 1040 268 L 1040 60 L 1090 60" fill="none" stroke="#f472b6" stroke-width="1.3" marker-end="url(#arrowPink)" />
+    <text x="1000" y="242" font-size="9" fill="#f472b6">否</text>
+
+    <line x1="900" y1="288" x2="900" y2="308" stroke="#f472b6" stroke-width="1.4" marker-end="url(#arrowPink)" />
+    <polygon points="900,312 960,332 900,352 840,332" fill="#1b2430" stroke="#f472b6" />
+    <text x="900" y="328" text-anchor="middle" font-size="9.5" fill="#f472b6">角色组 enabled？</text>
+    <text x="905" y="342" text-anchor="middle" font-size="8.5" fill="#8b98a5">④ default 组是 disabled</text>
+
+    <path d="M 960 332 L 1040 332 L 1040 60 L 1090 60" fill="none" stroke="#f472b6" stroke-width="1.3" marker-end="url(#arrowPink)" />
+    <text x="1000" y="306" font-size="9" fill="#f472b6">否</text>
+
+    <!-- 交集 -->
+    <line x1="900" y1="352" x2="900" y2="378" stroke="#f472b6" stroke-width="1.4" marker-end="url(#arrowPink)" />
+    <rect x="790" y="380" width="240" height="118" rx="8" fill="#1b2430" stroke="#f472b6" />
+    <text x="910" y="402" text-anchor="middle" font-size="10.5" font-weight="600" fill="#f472b6">⑤ 交集 / all_tools 短路</text>
+    <text x="910" y="424" text-anchor="middle" font-size="9.5" fill="#e6edf3">group.all_tools &amp;&amp; (scene.all_tools</text>
+    <text x="910" y="440" text-anchor="middle" font-size="9.5" fill="#e6edf3">  || scene.tools 为空) → all_names</text>
+    <text x="910" y="458" text-anchor="middle" font-size="9.5" fill="#e6edf3">scene.all_tools &amp;&amp; (group.all_tools</text>
+    <text x="910" y="474" text-anchor="middle" font-size="9.5" fill="#e6edf3">  || group.tools 为空) → all_names</text>
+    <text x="910" y="492" text-anchor="middle" font-size="9.5" fill="#e6edf3">否则 → scene.tools ∩ group.tools</text>
+
+    <line x1="1030" y1="400" x2="1090" y2="400" stroke="#f472b6" stroke-width="1.3" marker-end="url(#arrowPink)" />
+    <rect x="1090" y="380" width="170" height="118" rx="8" fill="#1c1a16" stroke="#4ade80" stroke-opacity="0.6" />
+    <text x="1175" y="400" text-anchor="middle" font-size="11" font-weight="700" fill="#4ade80">allowed_tools 集合</text>
+    <text x="1175" y="420" text-anchor="middle" font-size="9" fill="#8b98a5">→ definitions_for_allowed</text>
+    <text x="1175" y="438" text-anchor="middle" font-size="9" fill="#8b98a5">  （裁剪下发给 LLM）</text>
+    <text x="1175" y="456" text-anchor="middle" font-size="9" fill="#8b98a5">→ ToolContext{ allowed_tools }</text>
+    <text x="1175" y="474" text-anchor="middle" font-size="9" fill="#8b98a5">  （执行前二次复核）</text>
+    <text x="1175" y="490" text-anchor="middle" font-size="8.5" fill="#8b98a5">每轮生成现算，改 TOML 即时生效</text>
+
+    <!-- 底部 TOML 示例 -->
+    <text x="40" y="580" font-size="14" font-weight="700" fill="#34d399">④ tool_permissions.toml（默认生成）</text>
+    <rect x="40" y="594" width="640" height="330" rx="9" fill="#101820" stroke="#2a3a4a" />
+    <text x="60" y="620" font-size="10.5" fill="#8b98a5" font-family="Consolas, monospace"># 调用来源 → 场景组（serde snake_case）</text>
+    <text x="60" y="642" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">[scene_mapping]</text>
+    <text x="60" y="662" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">user_chat = "scene_admin"</text>
+    <text x="60" y="682" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">proactive = "scene_normal"</text>
+    <text x="60" y="702" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">script_free_dialogue = "scene_normal"</text>
+    <text x="60" y="722" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">script_ai_dialogue = "scene_default"</text>
+    <text x="60" y="742" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">entry_greeting = "scene_default"</text>
+    <text x="60" y="768" font-size="10.5" fill="#8b98a5" font-family="Consolas, monospace"># 场景组（管理员全放行 / 普通显式列表 / 默认禁用）</text>
+    <text x="60" y="790" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">[scene_groups.scene_admin]</text>
+    <text x="60" y="810" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">enabled = true / all_tools = true</text>
+    <text x="60" y="832" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">[scene_groups.scene_normal]</text>
+    <text x="60" y="852" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">enabled = true / tools = ["get_current_time"]</text>
+    <text x="60" y="874" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">[scene_groups.scene_default]</text>
+    <text x="60" y="894" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">enabled = false</text>
+    <text x="60" y="916" font-size="10.5" fill="#8b98a5" font-family="Consolas, monospace"># 角色组：新角色自动进 default（无权限）</text>
+    <text x="60" y="938" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">[role_groups.default] / enabled = false / roles = [...]</text>
+
+    <rect x="720" y="594" width="540" height="330" rx="9" fill="#16202c" stroke="#34d399" stroke-opacity="0.5" />
+    <text x="740" y="620" font-size="12.5" font-weight="700" fill="#34d399">要点</text>
+    <text x="740" y="650" font-size="10.5" fill="#e6edf3">· 默认情况下所有角色都无工具（default 组 disabled）。</text>
+    <text x="740" y="676" font-size="10.5" fill="#e6edf3">· all_tools 双向短路：任一方开 all_tools，另一方给全量。</text>
+    <text x="740" y="702" font-size="10.5" fill="#e6edf3">· 角色名 = ai_name（= display_name），改显示名会失效。</text>
+    <text x="740" y="728" font-size="10.5" fill="#e6edf3">· 角色与角色组一对一；default 组不可删除。</text>
+    <text x="740" y="754" font-size="10.5" fill="#e6edf3">· 写盘是原子写（.tmp → rename），防半写坏配置。</text>
+    <text x="740" y="780" font-size="10.5" fill="#e6edf3">· 管理 API 全在 Rust 侧（set_scene_group / create_role_group</text>
+    <text x="740" y="796" font-size="10.5" fill="#e6edf3">  / add_role_to_group / remove_role_from_group / allowed_tools）。</text>
+    <text x="740" y="822" font-size="10.5" fill="#e6edf3">· 本 PR 无前端管理 UI —— 配置靠 TOML 文件 + Rust API。</text>
+    <text x="740" y="854" font-size="10.5" fill="#8b98a5">扩展新工具后：all_tools 组自动包含；显式 tools 列表</text>
+    <text x="740" y="870" font-size="10.5" fill="#8b98a5">需要手动补上新工具名（见 extension.md §4）。</text>
+  </svg>
+
+  <div class="legend">
+    <span><span class="dot" style="background:#f4a261"></span>权限配置结构</span>
+    <span><span class="dot" style="background:#f472b6"></span>allowed_tools 决策流</span>
+    <span><span class="dot" style="background:#34d399"></span>TOML 配置 / 要点</span>
+    <span><span class="dot" style="background:#4ade80"></span>最终允许集合</span>
+  </div>
+</div>
+</body>
+</html>

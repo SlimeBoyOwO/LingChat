@@ -12,9 +12,9 @@ export const musicGetAll = async (): Promise<MusicTrack[]> => {
   }
 }
 
-export const musicUpload = async (fileName: string, fileData: Uint8Array): Promise<void> => {
+export const musicUpload = async (path: string, fileName: string): Promise<void> => {
   try {
-    await invoke('upload_music', { fileName, fileData })
+    await invoke('upload_music', { path, fileName })
   } catch (error: any) {
     throw new Error(typeof error === 'string' ? error : error.message || 'Music upload failed')
   }
@@ -30,4 +30,17 @@ export const musicDelete = async (url: string): Promise<void> => {
 
 export const setCurrentBackgroundMusic = async (music: string): Promise<void> => {
   await http.post('/v1/chat/back-music/select', { music })
+}
+
+/** 持久化背景音乐状态到 settings.json，下次启动时自动恢复 */
+export const saveBgmState = async (
+  track: string,
+  paused: boolean,
+  mode: string,
+): Promise<void> => {
+  try {
+    await invoke('save_bgm_state', { track, paused, mode })
+  } catch (error: any) {
+    console.warn('持久化BGM状态失败（非致命）:', typeof error === 'string' ? error : error.message)
+  }
 }

@@ -16,6 +16,8 @@
         :readonly="!isInputEnabled"
         class="flex-1 bg-transparent border-none outline-none text-white text-[calc(13px*var(--pet-ui-scale,1))] p-[calc(5px*var(--pet-ui-scale,1))] placeholder-white/40 [text-shadow:0_1px_4px_rgba(0,0,0,0.5)]"
         @keyup.enter="sendMessage"
+        @compositionstart="isCompsing = true"
+        @compositionend="isCompsing =false"
       />
       <button
         class="h-6 px-2 bg-linear-to-tr from-cyan-500 to-blue-400 hover:from-cyan-400 hover:to-blue-300 text-white font-bold text-sm rounded-full shadow-[0_4px_15px_rgba(6,182,212,0.4)] hover:shadow-[0_6px_20px_rgba(6,182,212,0.6)] transition-all duration-300 active:scale-95 flex items-center gap-1 overflow-hidden relative"
@@ -33,6 +35,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
@@ -42,6 +45,7 @@ import { useScreenshot } from '@/composables/useScreenshot'
 import { setInputHasText } from '@/composables/useCanDeliver'
 import { Forward } from 'lucide-vue-next'
 
+const { t } = useI18n()
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
@@ -62,24 +66,27 @@ const scale = computed(() => settingsStore.pet?.scale || 1.0)
 const placeholderText = computed(() => {
   switch (gameStore.currentStatus) {
     case 'input':
-      return uiStore.showPlayerHintLine || '输入消息...'
+      return uiStore.showPlayerHintLine || t('views.pet.chatInput.placeholder')
     case 'thinking':
       const currentInteractRole = gameStore.currentInteractRole
       if (currentInteractRole) {
         const baseMessage = currentInteractRole.thinkMessage
         if (gameStore.thinkingLength > 0) {
-          return `${baseMessage}（已深度思考 ${gameStore.thinkingLength} 字）`
+          return t('views.pet.chatInput.deepThought', {
+            message: baseMessage,
+            length: gameStore.thinkingLength,
+          })
         }
         return baseMessage
       } else {
-        return '等待回应中...'
+        return t('views.pet.chatInput.waiting')
       }
     case 'responding':
-      return '聊天ing~'
+      return t('views.pet.chatInput.chatting')
     case 'presenting':
       return ''
     default:
-      return '在这里输入消息...'
+      return t('views.pet.chatInput.placeholderDefault')
   }
 })
 
@@ -90,7 +97,7 @@ watch(
     if (newStatus === 'thinking') {
       const currentInteractRole = gameStore.currentInteractRole
       if (currentInteractRole) {
-        currentInteractRole.emotion = 'AI思考'
+        // 思考态不再写入 'AI思考' 伪情感，避免立绘组件因 emotion 残留而无法加载
         uiStore.showCharacterTitle = currentInteractRole.roleName
         uiStore.showCharacterSubtitle = currentInteractRole.roleSubTitle
       }
@@ -115,6 +122,10 @@ const messageText = ref('')
 // 输入框内容变化 → 通知 can_deliver 追踪
 watch(messageText, (val) => setInputHasText(Boolean(val.trim())), { immediate: true })
 
+const isCompsing = ref(false)
+const isTyping = () => messageText.value.trim() != '' || isCompsing.value
+defineExpose({ isTyping })
+
 const sendMessage = () => {
   const text = messageText.value.trim()
   if (!text) return
@@ -123,18 +134,12 @@ const sendMessage = () => {
   if (!llmStore.chatProviderId) {
     uiStore.showNotification({
       type: 'warning',
-      title: '提示',
-      message: '你还没选择对话模型呢，笨蛋！',
+      title: t('views.pet.chatInput.noModelTitle'),
+      message: t('views.pet.chatInput.noModelMessage'),
       skipTipsCheck: true,
     })
     return
   }
-
-  gameStore.appendGameMessage({
-    type: 'message',
-    displayName: gameStore.userName,
-    content: text,
-  })
 
   if (gameStore.runningScript) {
     invoke('script_submit_input', { input: text }).catch((error) => {

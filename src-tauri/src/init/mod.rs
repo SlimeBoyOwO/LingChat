@@ -2,6 +2,7 @@ pub mod role_sync;
 pub mod static_copy;
 pub mod voice_cleanup;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -12,11 +13,13 @@ use tokio::sync::Mutex;
 
 use crate::ai_service::emotion::EmotionClassifier;
 use crate::ai_service::llm::provider_config::{
-    build_llm_client_from_provider, migrate_if_needed, resolve_chat_provider,
-    resolve_translate_provider,
+    build_llm_client_from_provider, migrate_if_needed, migrate_legacy_vision_keys,
+    resolve_chat_provider, resolve_translate_provider,
 };
+use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
 use crate::ai_service::service::{AIService, SharedAIService};
+use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::translator::Translator;
 use crate::ai_service::types::CharacterSettings;
 use crate::config::{self, AppConfig};
@@ -27,8 +30,12 @@ use crate::ChatComponents;
 
 pub async fn initialize(
     app: &App,
+    local_tts: Option<LocalTtsRuntime>,
 ) -> Result<(DatabaseConnection, SharedAIService, ChatComponents)> {
-    static_copy::init_data_dir(&app.handle());
+    // init_data_dir 已经在 Tauri 设置闭包中提前调用过了
+    // （参见 lib.rs），因此在此函数运行之前，缓存的数据目录就已经对
+    // LocalTtsPaths::resolve 可用了。如果在这里再次调用它，会导致
+    // OnceLock 发生 panic。
     static_copy::seed_data_dir(&app.handle())?;
     let data_dir = static_copy::get_data_dir().clone();
 
@@ -52,19 +59,27 @@ pub async fn initialize(
 
     // 迁移旧的扁平 LLM 配置 → 多供应商列表
     migrate_if_needed(&app.handle());
+    // 迁移旧的主动视觉独立配置（VD_*）→ 大模型管理中的视觉模型角色
+    migrate_legacy_vision_keys(&app.handle());
 
     // 提前加载配置 + 构建 LlmClient（AIService 的子成员 GameRoleManager 需要它）
     let app_config = AppConfig::load(&app.handle()).unwrap_or_default();
 
-    let llm = resolve_chat_provider(&app.handle())
-        .and_then(|p| build_llm_client_from_provider(&p))
-        .map(Arc::new);
+    // 构建聊天主 LLM 槽位（支持运行时热切换）。
+    // 槽位本身始终存在，未配置模型时内部值为 None。
+    let llm: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(
+        resolve_chat_provider(&app.handle())
+            .and_then(|p| build_llm_client_from_provider(&app.handle(), &p))
+            .map(Arc::new),
+    ));
 
+    // AIService 内部的 GameRoleManager 共享同一个聊天 LLM 槽位
     let mut ai_service = AIService::new(
         db.clone(),
         data_dir.clone(),
         llm.clone(),
         app_config.tts.clone(),
+        local_tts,
         app_config.use_persistent_memory,
         app_config.memory_update_interval,
         app_config.memory_recent_window,
@@ -73,11 +88,32 @@ pub async fn initialize(
 
     // 加载默认角色：上次游玩的角色 → DB 中第一个主角色 → 默认空设定
     let settings = load_default_character(app, &db, &data_dir).await?;
+    let character_id = settings.character_id;
     let prompt_options = PromptOptions {
         output_sec_lang: app_config.llm_output_sec_lang,
         no_emotion_limit: app_config.no_emotion_limit_prompt,
     };
     ai_service.import_settings(settings, prompt_options).await;
+
+    // 从 session store 读取各角色的上次服装，注入 GameRoleManager
+    {
+        let mut overrides = HashMap::new();
+        if let Ok(store) = app.store(config::STORE_FILE) {
+            if let Some(cid) = character_id {
+                let key = config::session::last_clothes_key(cid);
+                if let Some(clothes) = store
+                    .get(&key)
+                    .and_then(|v| v.as_str().map(String::from))
+                {
+                    if !clothes.is_empty() {
+                        overrides.insert(cid, clothes);
+                    }
+                }
+            }
+        }
+        ai_service.set_clothes_overrides(overrides).await;
+    }
+
     ai_service.init_game_status().await?;
 
     tracing::info!(
@@ -89,8 +125,12 @@ pub async fn initialize(
     let ai_service: SharedAIService = Arc::new(Mutex::new(ai_service));
 
     // —— 构建聊天组件 ——
-    let translate_llm =
-        resolve_translate_provider(&app.handle()).and_then(|p| build_llm_client_from_provider(&p));
+    // 翻译 LLM 槽位（支持运行时热切换）；槽位本身始终存在。
+    let translate_llm: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(
+        resolve_translate_provider(&app.handle())
+            .and_then(|p| build_llm_client_from_provider(&app.handle(), &p))
+            .map(Arc::new),
+    ));
 
     let classifier = load_emotion_classifier(app_config.enable_emotion_classifier, &data_dir);
     let processor = Arc::new(MessageProcessor::new(
@@ -167,7 +207,7 @@ async fn load_default_character(
         .store(config::STORE_FILE)
         .unwrap_or_else(|_| app.handle().store(config::STORE_FILE).unwrap());
     if let Some(last_id) = store
-        .get(config::keys::LAST_CHARACTER_ID)
+        .get(config::session::LAST_CHARACTER_ID)
         .and_then(|v| v.as_i64())
     {
         if let Ok(Some(settings)) =

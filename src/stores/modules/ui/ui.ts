@@ -1,6 +1,9 @@
 // stores/ui.ts
 import { defineStore } from 'pinia'
 import { useSettingsStore } from '../settings'
+import { saveBgmState } from '../../../api/services/music'
+import { saveAmbientState } from '../../../api/services/ambient'
+import { i18n } from '@/locales'
 
 // 通知类型
 export type NotificationType = 'error' | 'success' | 'info' | 'warning'
@@ -31,6 +34,8 @@ interface UIState {
   showCharacterThinkLine: string
   showSettings: boolean
   currentSettingsTab: string
+  /** 高级设置内的子标签（menu / llm / tts / other / tools） */
+  advanceTab: string
 
   currentBackgroundTransition: number
   currentPresentPic: string
@@ -39,6 +44,8 @@ interface UIState {
   bgMusicMode: 'loop-list' | 'loop-single' | 'random'
   bgMusicPaused: boolean
   bgMusicStoped: boolean
+  /** 背景音乐播放速度倍率（1.0 原速），由剧本 music 事件的 playbackSpeed 设置 */
+  bgMusicPlaybackRate: number
 
   currentSoundEffect: string
   currentAvatarAudio: string
@@ -58,6 +65,12 @@ interface UIState {
   // 视口响应式追踪（全局唯一 resize 监听，组件直接读值）
   viewportWidth: number
   viewportHeight: number
+
+  // 刘海屏安全区（px，由 CSS env() 或原生注入的变量提供）
+  safeAreaInsetTop: number
+  safeAreaInsetBottom: number
+  safeAreaInsetLeft: number
+  safeAreaInsetRight: number
 
   // Schedule 相关状态
   scheduleView: string
@@ -92,6 +105,7 @@ export const useUIStore = defineStore('ui', {
     showCharacterThinkLine: 'Ling Ling Thinking...',
     showSettings: false,
     currentSettingsTab: 'text',
+    advanceTab: 'menu',
     currentBackgroundTransition: 300,
     currentPresentPic: '',
     currentPresentPicScale: 1,
@@ -100,6 +114,7 @@ export const useUIStore = defineStore('ui', {
     bgMusicMode: 'loop-single',
     bgMusicPaused: false,
     bgMusicStoped: false,
+    bgMusicPlaybackRate: 1,
 
     currentSoundEffect: 'None',
     currentAvatarAudio: 'None',
@@ -111,6 +126,12 @@ export const useUIStore = defineStore('ui', {
     // 视口响应式追踪
     viewportWidth: window.innerWidth,
     viewportHeight: window.innerHeight,
+
+    // 刘海屏安全区（会在 initUIStore 中从 CSS 变量同步）
+    safeAreaInsetTop: 0,
+    safeAreaInsetBottom: 0,
+    safeAreaInsetLeft: 0,
+    safeAreaInsetRight: 0,
 
     // Schedule 相关状态
     scheduleView: 'schedule_groups',
@@ -352,13 +373,16 @@ export const useUIStore = defineStore('ui', {
     }) {
       const { errorCode, statusCode, title, message, avatarUrl, duration = 3000 } = options
 
-      let finalTitle = title || '错误'
-      let finalMessage = message || '发生了未知错误'
+      let finalTitle = title || i18n.global.t('stores.notification.errorTitle')
+      let finalMessage = message || i18n.global.t('stores.notification.unknownError')
 
       // 优先使用错误代码查询
       if (errorCode) {
         const tip = this.tipsMap[errorCode] ||
-          this.tipsMap['default_error'] || { title: '错误', message: '发生了未知错误' }
+          this.tipsMap['default_error'] || {
+            title: i18n.global.t('stores.notification.errorTitle'),
+            message: i18n.global.t('stores.notification.unknownError'),
+          }
         finalTitle = title || tip.title
         finalMessage = message || tip.message
       }
@@ -424,8 +448,14 @@ export const useUIStore = defineStore('ui', {
       const key = type === 'success' ? 'switch_success' : 'switch_fail'
       return (
         this.tipsMap[key] || {
-          title: type === 'success' ? '切换成功' : '切换失败',
-          message: type === 'success' ? '角色已切换' : '切换时出了问题',
+          title:
+            type === 'success'
+              ? i18n.global.t('stores.notification.switchSuccessTitle')
+              : i18n.global.t('stores.notification.switchFailTitle'),
+          message:
+            type === 'success'
+              ? i18n.global.t('stores.notification.switchSuccessMessage')
+              : i18n.global.t('stores.notification.switchFailMessage'),
         }
       )
     },
@@ -437,8 +467,14 @@ export const useUIStore = defineStore('ui', {
       const key = type === 'success' ? 'refresh_success' : 'refresh_fail'
       return (
         this.tipsMap[key] || {
-          title: type === 'success' ? '刷新成功' : '刷新失败',
-          message: type === 'success' ? '角色列表已成功刷新！' : '刷新时出了问题',
+          title:
+            type === 'success'
+              ? i18n.global.t('stores.notification.refreshSuccessTitle')
+              : i18n.global.t('stores.notification.refreshFailTitle'),
+          message:
+            type === 'success'
+              ? i18n.global.t('stores.notification.refreshSuccessMessage')
+              : i18n.global.t('stores.notification.refreshFailMessage'),
         }
       )
     },
@@ -516,11 +552,33 @@ export const useUIStore = defineStore('ui', {
         this.ambientTracks = []
       }
     },
+
+    // ========== 会话状态持久化 ==========
+
+    /** 持久化 BGM 状态（防抖 500ms），由 $subscribe 自动触发 */
+    persistBgmState() {
+      if (bgmSaveTimer) clearTimeout(bgmSaveTimer)
+      bgmSaveTimer = setTimeout(() => {
+        saveBgmState(this.currentBackgroundMusic, this.bgMusicPaused, this.bgMusicMode)
+      }, 500)
+    },
+
+    /** 持久化环境音轨道（防抖 500ms），由 $subscribe 自动触发 */
+    persistAmbientState() {
+      if (ambientSaveTimer) clearTimeout(ambientSaveTimer)
+      ambientSaveTimer = setTimeout(() => {
+        saveAmbientState(JSON.stringify(this.ambientTracks))
+      }, 500)
+    },
   },
 })
 
 // 标记是否已初始化
 let initialized = false
+
+// 防抖定时器（模块级，避免污染 store state）
+let bgmSaveTimer: ReturnType<typeof setTimeout> | null = null
+let ambientSaveTimer: ReturnType<typeof setTimeout> | null = null
 
 // 初始化函数：在首次使用时调用
 export function initUIStore() {
@@ -529,13 +587,52 @@ export function initUIStore() {
 
   const store = useUIStore()
 
+  // 从 CSS 变量同步安全区值（由 Android 原生 / iOS env() 注入）
+  function syncSafeArea() {
+    const style = getComputedStyle(document.documentElement)
+    const parsePx = (val: string) => Math.round(parseFloat(val) || 0)
+    store.safeAreaInsetTop = parsePx(style.getPropertyValue('--safe-area-inset-top'))
+    store.safeAreaInsetBottom = parsePx(style.getPropertyValue('--safe-area-inset-bottom'))
+    store.safeAreaInsetLeft = parsePx(style.getPropertyValue('--safe-area-inset-left'))
+    store.safeAreaInsetRight = parsePx(style.getPropertyValue('--safe-area-inset-right'))
+  }
+  syncSafeArea()
+
   // 全局唯一 resize 监听：更新视口尺寸供所有组件复用
   window.addEventListener('resize', () => {
     store.viewportWidth = window.innerWidth
     store.viewportHeight = window.innerHeight
+    syncSafeArea()
   })
 
   const settingsStore = useSettingsStore()
   // 使用 getter 获取角色文件夹
   store.loadCharacterTips(store.currentCharacterFolder)
+
+  // 订阅 BGM / 环境音状态变更，自动持久化到 settings.json。
+  // 注意：Pinia 的 mutation.events 仅在 Vue DevTools 激活时填充，
+  // 所以不能依赖它来判断变更。这里直接用前后值比较，每次 mutation
+  // 都检查，实际写盘由 500ms 防抖控制。
+  let prevBgmTrack = store.currentBackgroundMusic
+  let prevBgmPaused = store.bgMusicPaused
+  let prevBgmMode = store.bgMusicMode
+  let prevAmbientJson = JSON.stringify(store.ambientTracks)
+
+  store.$subscribe((_mutation, state) => {
+    if (
+      state.currentBackgroundMusic !== prevBgmTrack ||
+      state.bgMusicPaused !== prevBgmPaused ||
+      state.bgMusicMode !== prevBgmMode
+    ) {
+      store.persistBgmState()
+      prevBgmTrack = state.currentBackgroundMusic
+      prevBgmPaused = state.bgMusicPaused
+      prevBgmMode = state.bgMusicMode
+    }
+    const curAmbientJson = JSON.stringify(state.ambientTracks)
+    if (curAmbientJson !== prevAmbientJson) {
+      store.persistAmbientState()
+      prevAmbientJson = curAmbientJson
+    }
+  })
 }
