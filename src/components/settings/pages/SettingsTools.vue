@@ -164,6 +164,10 @@
           {{ navLabel(selected) }}
         </h2>
         <p class="text-sm text-gray-400 mb-4 px-1">{{ $t('ui.toolCalls.otherToolsHint') }}</p>
+        <!-- 命令执行依赖本机 shell（cmd/sh），非 Windows 平台（如 Android）不可用 -->
+        <p v-if="!isWindows()" class="text-sm text-amber-400 px-1 mb-2">
+          {{ $t('ui.toolCalls.commandWindowsOnly') }}
+        </p>
         <div class="flex items-center gap-3 py-2.5 px-1">
           <Toggle
             :checked="form.groups[selected] ?? false"
@@ -241,6 +245,7 @@ import {
   type ToolSettings,
 } from '@/api/services/tool-settings'
 import Toggle from '@/components/base/widget/Toggle.vue'
+import { isWindows } from '@/utils/platform'
 
 const { t, te } = useI18n()
 
