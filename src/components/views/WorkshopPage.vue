@@ -1,14 +1,33 @@
 <template>
-  <MenuPage>
-    <MenuItem :title="$t('settings.workshop.title')">
-      <template #header>
-        <Icon icon="package" :size="20" />
-      </template>
+  <!-- 云端创意工坊：独立全屏页，主菜单「创意工坊」二级菜单进入（原设置页 workshop 标签迁移） -->
+  <div class="workshop-page">
+    <!-- 背景层（与主菜单同一张背景图 + 暗色遮罩保证对比度） -->
+    <div class="workshop-page__bg"></div>
 
-      <div class="flex flex-col h-full min-h-0">
+    <div class="relative z-10 flex h-full w-full flex-col gap-4 p-4 md:p-8">
+      <!-- 顶部：返回 + 标题 -->
+      <div class="flex shrink-0 items-center justify-between gap-4">
+        <button
+          class="inline-flex shrink-0 items-center gap-2 rounded-xl border border-white/15 bg-white/8 px-4 py-2 text-[0.9rem] text-white/80 backdrop-blur-xl transition-all duration-200 hover:bg-white/15 hover:text-white"
+          @click="goBack"
+        >
+          ← {{ t('views.menu.back') }}
+        </button>
+        <h1
+          class="flex-1 truncate text-center text-2xl font-bold text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)] md:text-3xl"
+        >
+          {{ t('views.menu.cloudWorkshop') }}
+        </h1>
+        <div class="w-16 shrink-0 md:w-20"></div>
+      </div>
+
+      <!-- 内容容器（毛玻璃卡片流，原 SettingsWorkshop 内容） -->
+      <div
+        class="min-h-0 flex-1 overflow-y-auto custom-scrollbar rounded-2xl border border-white/10 bg-white/8 p-4 backdrop-blur-2xl md:p-6"
+      >
         <!-- Toolbar: category filter + sort toggle -->
-        <div class="flex items-center justify-between mb-5 shrink-0 flex-wrap gap-2">
-          <div class="flex items-center gap-1.5 flex-wrap">
+        <div class="mb-5 flex shrink-0 flex-wrap items-center justify-between gap-2">
+          <div class="flex flex-wrap items-center gap-1.5">
             <button
               class="filter-btn"
               :class="{ active: selectedCategory === null }"
@@ -59,10 +78,10 @@
         </div>
 
         <!-- Error -->
-        <div v-else-if="error" class="flex flex-col items-center justify-center py-12 gap-3">
+        <div v-else-if="error" class="flex flex-col items-center justify-center gap-3 py-12">
           <p class="text-red-400">{{ error }}</p>
           <button
-            class="px-5 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/10"
+            class="rounded-lg border border-white/10 bg-white/10 px-5 py-2 text-white transition-colors hover:bg-white/20"
             @click="load"
           >
             {{ $t('settings.workshop.retry') }}
@@ -87,7 +106,7 @@
           <!-- Token hint: no real upvote data -->
           <div
             v-if="!hasAnyUpvoteData"
-            class="mb-5 px-5 py-3 rounded-xl bg-yellow-500/10 border border-yellow-500/25 text-yellow-200/80 text-sm flex items-center gap-3"
+            class="mb-5 flex items-center gap-3 rounded-xl border border-yellow-500/25 bg-yellow-500/10 px-5 py-3 text-sm text-yellow-200/80"
           >
             <span class="text-base">💡</span>
             <span>
@@ -97,24 +116,24 @@
             </span>
           </div>
 
-          <div class="grid gap-5 w-full grid-cols-1 xl:grid-cols-2">
+          <div class="grid w-full gap-5 grid-cols-1 xl:grid-cols-2">
             <div
               v-for="discussion in pagedDiscussions"
               :key="discussion.number"
-              class="relative flex items-start p-5 rounded-2xl transition-all duration-300 group cursor-pointer bg-white/10 backdrop-blur-xl border border-white/10 hover:border-white/20 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-white/5"
+              class="group relative flex items-start rounded-2xl border border-white/10 bg-white/10 p-5 backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:shadow-xl hover:shadow-white/5 cursor-pointer"
               @click="openDiscussion(discussion.html_url)"
             >
               <!-- Top-left: category icon -->
               <div
                 v-if="getCornerIcon(discussion.category.name)"
-                class="absolute -top-2 -left-2 w-6 h-6 rounded-full flex items-center justify-center text-brand shadow-md transform -rotate-18 z-10"
+                class="absolute -top-2 -left-2 z-10 flex w-6 h-6 -rotate-18 items-center justify-center rounded-full text-brand shadow-md"
               >
                 <component :is="getCornerIcon(discussion.category.name)" :size="20" />
               </div>
 
               <!-- Top-right: external link -->
               <button
-                class="absolute top-3 right-3 p-1.5 z-10 rounded-full bg-white/5 text-white/40 hover:text-white hover:bg-white/10 transition-all"
+                class="absolute top-3 right-3 z-10 rounded-full bg-white/5 p-1.5 text-white/40 transition-all hover:bg-white/10 hover:text-white"
                 @click.stop="openDiscussion(discussion.html_url)"
               >
                 <ExternalLink :size="14" />
@@ -122,28 +141,28 @@
 
               <!-- Left: Avatar section -->
               <div
-                class="flex flex-col items-center shrink-0 gap-3 w-32 border-r border-white/10 pr-5"
+                class="flex w-32 shrink-0 flex-col items-center gap-3 border-r border-white/10 pr-5"
               >
                 <div
-                  class="w-28 h-28 rounded-full overflow-hidden border-2 border-white/20 shadow-lg shrink-0"
+                  class="h-28 w-28 shrink-0 overflow-hidden rounded-full border-2 border-white/20 shadow-lg"
                 >
                   <img
                     v-if="discussion.avatar_url"
                     :src="discussion.avatar_url"
                     :alt="discussion.title"
-                    class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                    class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                   />
-                  <div v-else class="w-full h-full flex items-center justify-center bg-white/5">
+                  <div v-else class="flex h-full w-full items-center justify-center bg-white/5">
                     <img
                       src="@/assets/images/LingChatLogo.png"
                       alt="Logo"
-                      class="w-full h-full object-contain opacity-100 -rotate-20 scale-130"
+                      class="h-full w-full -rotate-20 scale-130 object-contain opacity-100"
                     />
                   </div>
                 </div>
                 <!-- Category badge -->
                 <span
-                  class="text-sm px-3 py-0.5 rounded-full border text-center leading-5 font-medium"
+                  class="rounded-full border px-3 py-0.5 text-center text-sm font-medium leading-5"
                   :style="{
                     backgroundColor: getCategoryColor(discussion.category.name) + '22',
                     borderColor: getCategoryColor(discussion.category.name) + '4D',
@@ -155,23 +174,26 @@
               </div>
 
               <!-- Right: Content -->
-              <div class="flex-1 min-w-0 flex flex-col pl-4 py-0.5 h-full">
+              <div class="flex h-full min-w-0 flex-1 flex-col py-0.5 pl-4">
                 <!-- Title -->
-                <h3 class="text-xl font-bold text-white mb-2 line-clamp-2 leading-7">
+                <h3 class="mb-2 line-clamp-2 text-xl font-bold leading-7 text-white">
                   {{ discussion.title }}
                 </h3>
 
                 <!-- Description -->
-                <p class="text-base text-white/60 line-clamp-4 leading-5 mb-3 flex-1">
+                <p class="mb-3 line-clamp-4 flex-1 text-base leading-5 text-white/60">
                   {{ getDisplayDescription(discussion) }}
                 </p>
 
                 <!-- Footer: tags -->
-                <div v-if="discussion.tags.length > 0" class="flex items-center gap-1.5 flex-wrap min-h-5 mb-2">
+                <div
+                  v-if="discussion.tags.length > 0"
+                  class="mb-2 flex min-h-5 flex-wrap items-center gap-1.5"
+                >
                   <span
                     v-for="(tag, i) in discussion.tags"
                     :key="tag"
-                    class="text-xs px-2 py-0.5 rounded-full border font-medium"
+                    class="rounded-full border px-2 py-0.5 text-xs font-medium"
                     :style="{
                       backgroundColor: getTagColor(i) + '22',
                       borderColor: getTagColor(i) + '4D',
@@ -184,7 +206,7 @@
 
                 <!-- Footer: meta info -->
                 <div
-                  class="flex items-center gap-4 text-xs text-white/35 border-t border-white/5 pt-2.5"
+                  class="flex items-center gap-4 border-t border-white/5 pt-2.5 text-xs text-white/35"
                 >
                   <!-- Upvotes -->
                   <span
@@ -200,7 +222,7 @@
                     {{ discussion.author?.login ?? $t('settings.workshop.unknownAuthor') }}
                   </span>
                   <!-- Time -->
-                  <span class="flex items-center gap-1 ml-auto">
+                  <span class="ml-auto flex items-center gap-1">
                     <Clock :size="12" />
                     {{ formatTime(discussion.created_at) }}
                   </span>
@@ -211,9 +233,9 @@
         </template>
 
         <!-- Pagination -->
-        <div v-if="totalPages > 1" class="flex items-center justify-between px-3 py-2 w-full mt-2">
+        <div v-if="totalPages > 1" class="mt-2 flex w-full items-center justify-between px-3 py-2">
           <button
-            class="px-5 py-2 text-base font-medium border-none rounded-lg cursor-pointer bg-white/8 text-white/60 transition-all duration-200 hover:bg-white/15 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+            class="rounded-lg border-none bg-white/8 px-5 py-2 text-base font-medium text-white/60 transition-all duration-200 hover:bg-white/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
             :disabled="currentPage <= 1"
             @click="currentPage--"
           >
@@ -223,7 +245,7 @@
             {{ $t('settings.shared.pageOf', { current: currentPage, total: totalPages }) }}
           </span>
           <button
-            class="px-5 py-2 text-base font-medium border-none rounded-lg cursor-pointer bg-white/8 text-white/60 transition-all duration-200 hover:bg-white/15 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+            class="rounded-lg border-none bg-white/8 px-5 py-2 text-base font-medium text-white/60 transition-all duration-200 hover:bg-white/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
             :disabled="currentPage >= totalPages"
             @click="currentPage++"
           >
@@ -232,24 +254,23 @@
         </div>
 
         <!-- Refresh button -->
-        <div v-if="!loading && !error" class="flex justify-center mt-6">
+        <div v-if="!loading && !error" class="mt-6 flex justify-center">
           <button
-            class="px-5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/70 text-sm transition-all border border-white/5 hover:border-white/15"
+            class="rounded-lg border border-white/5 bg-white/5 px-5 py-1.5 text-sm text-white/40 transition-all hover:border-white/15 hover:bg-white/10 hover:text-white/70"
             @click="load"
           >
             {{ $t('settings.workshop.refreshList') }}
           </button>
         </div>
       </div>
-    </MenuItem>
-  </MenuPage>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MenuPage, MenuItem } from '../../ui'
-import Icon from '@/components/base/widget/Icon.vue'
+import { useRouter } from 'vue-router'
 import { fetchDiscussions, type Discussion } from '@/api/services/workshop'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { Cat, Clover, ExternalLink, ThumbsUp, User, Clock } from 'lucide-vue-next'
@@ -264,7 +285,14 @@ const selectedCategory = ref<string | null>(null)
 const currentPage = ref(1)
 const sortMode = ref<'hot' | 'newest'>('hot')
 const { t } = useI18n()
+const router = useRouter()
 const ITEMS_PER_PAGE = 10
+
+const goBack = () => {
+  // 从主菜单（或设置）进入后返回上一页；直接访问时兜底回主菜单
+  if (window.history.length > 1) router.back()
+  else router.push('/')
+}
 
 // ── Category colors ───────────────────────────────────────────
 
@@ -414,6 +442,29 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.workshop-page {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 背景层：与主菜单同一张背景图，加暗色渐变遮罩保证卡片文字对比度 */
+.workshop-page__bg {
+  position: absolute;
+  inset: -10% -10% 0;
+  background-image: url('@/assets/images/background2.png');
+  background-size: cover;
+  background-position: center;
+}
+
+.workshop-page__bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.3) 40%, rgba(0, 0, 0, 0.55));
+}
+
 .filter-btn {
   font-size: 13px;
   font-weight: 600;

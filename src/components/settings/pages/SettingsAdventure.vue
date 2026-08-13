@@ -286,6 +286,7 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { MenuPage, MenuItem } from '../../ui'
@@ -300,7 +301,7 @@ import type { ScriptSummary } from '@/api/services/script-info'
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
-
+const router = useRouter()
 // 独立剧本相关状态
 const standaloneScripts = ref<ScriptSummary[]>([])
 const standaloneScriptsLoading = ref(true)
@@ -360,8 +361,8 @@ const fetchStandaloneScripts = async () => {
 }
 
 const openCreativeWeb = () => {
-  // 创意工坊已内置为设置页的独立标签，直接切换即可
-  uiStore.setSettingsTab('workshop')
+  // 云端创意工坊已迁移为主菜单「创意工坊」二级菜单的独立路由页
+  router.push('/workshop')
 }
 
 const openGuideWeb = () => {

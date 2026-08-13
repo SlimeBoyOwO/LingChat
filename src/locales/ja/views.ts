@@ -54,6 +54,7 @@ export default {
     freeDialogue: 'フリー会話モード',
     storyMode: 'ストーリーモード',
     scriptEditor: 'クリエイティブ工房',
+    cloudWorkshop: 'クラウド工房',
     miniGame: 'ミニゲーム（開発中）',
     back: '戻る',
   },

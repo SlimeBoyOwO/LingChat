@@ -39,7 +39,6 @@ import {
   SettingsAchievement,
   SettingsAdventure,
   SettingsLog,
-  SettingsWorkshop,
   SettingsPlugins,
 } from './pages'
 import SettingsNav from './SettingsNav.vue'
@@ -91,7 +90,6 @@ const TABS = [
   'save',
   'advance',
   'log',
-  'workshop',
   // 插件系统由 RustPython 驱动，移动端不编译（cfg(desktop)），Android 上不显示该 tab
   ...(isAndroid() ? [] : ['plugins']),
 ] as const
@@ -108,7 +106,6 @@ const tabComponents: Record<string, Component> = {
   character: SettingsCharacter,
   background: SettingsBackground,
   log: SettingsLog,
-  workshop: SettingsWorkshop,
   plugins: SettingsPlugins,
 }
 const currentTabComponent = computed(() => tabComponents[uiStore.currentSettingsTab])
@@ -171,123 +168,76 @@ const onTouchEnd = (e: TouchEvent) => {
   uiStore.setSettingsTab(TABS[nextIdx])
   setTimeout(() => {
     isSwipeAnimating = false
-  }, 400)
+  }, 300)
 }
 
-// 转场方向跟随 tab 顺序：前进 → slide-left（新页从右进），后退 → slide-right。
-// 滑动切换与导航栏点击统一走这里；首尾 wrap 处理（末→首 视为前进，首→末 视为后退）。
-watch(
-  () => uiStore.currentSettingsTab,
-  (newTab, oldTab) => {
-    if (!oldTab) return
-    const prevIdx = TABS.indexOf(oldTab as (typeof TABS)[number])
-    const nextIdx = TABS.indexOf(newTab as (typeof TABS)[number])
-    if (prevIdx < 0 || nextIdx < 0) return
-    const forward = nextIdx > prevIdx || (prevIdx === TABS.length - 1 && nextIdx === 0)
-    transitionName.value = forward ? 'slide-left' : 'slide-right'
-  },
-)
-
-// 2. 定义事件处理函数
-// 当 A 组件发来 "remove-more-menu-from-a" 事件时
+// 提供给 SettingsAdvance 的对外暴露接口（示例）
 const onAddFromA = () => {
-  // console.log('父组件收到 A 的添加事件，准备通知 B 组件');
-  // 调用 B 组件实例上暴露的 removeMoreMenu 方法
-  settingsAdvanceRef.value?.addMoreMenu()
+  // A 组件转发的事件处理
 }
 
-// 当 B 组件发来 "remove-more-menu-from-b" 事件时
 const onAddFromB = () => {
-  // console.log('父组件收到 B 的添加事件，准备通知 A 组件');
-  // 调用 A 组件实例上暴露的 addMoreMenu 方法
-  settingsNavRef.value?.addMoreMenu()
+  // B 组件转发的事件处理
 }
+
+// 在父组件中暴露引用（如需要）
+defineExpose({
+  settingsNavRef,
+  settingsAdvanceRef,
+})
 </script>
 
-<style>
-.header {
-  display: flex;
-  align-items: center;
-  padding: 10px 15px;
-  position: relative;
-  justify-content: space-between;
-  /* background: rgba(0, 0, 0, 0.2); */
+<style scoped>
+.blur-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 999;
+  transition: opacity 0.3s ease;
+  opacity: 0;
 }
 
 .settings-panel {
   position: fixed;
   top: 0;
-  right: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 1;
-  padding-top: var(--safe-area-inset-top);
-  padding-right: var(--safe-area-inset-right);
-  padding-bottom: var(--safe-area-inset-bottom);
-  padding-left: var(--safe-area-inset-left);
-  box-sizing: border-box;
-  z-index: 1000;
-  color: #333;
-  /* background-color: rgba(0, 0, 0, 0.25); */
-  background-color: transparent;
-}
-
-.container {
-  height: 90%;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--accent-color) transparent;
-  position: relative;
-  -ms-overflow-style: -ms-autohiding-scrollbar;
-}
-
-.blur-overlay {
-  position: fixed;
-  top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 10;
-
-  /* 初始状态 */
-  opacity: 0;
-  backdrop-filter: blur(5px);
-  background-color: rgba(0, 0, 0, 0.45);
-
-  /* 过渡效果 */
-  transition: opacity 0.3s ease;
-
-  /* 确保覆盖层可以点击穿透 */
-  pointer-events: none;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  background: var(--bg-primary, #1a1a2e);
+  color: var(--text-primary, #fff);
 }
 
-/* ========== 推入推出转场（iOS/Android 原生页面切换风格） ========== */
 .slide-left-enter-active,
 .slide-left-leave-active,
 .slide-right-enter-active,
 .slide-right-leave-active {
-  transition:
-    transform 0.32s cubic-bezier(0.32, 0.72, 0, 1),
-    opacity 0.32s ease;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 左滑 → 下一项：新页从右侧推入，旧页向左滑出 */
 .slide-left-enter-from {
   transform: translateX(100%);
-  opacity: 0.4;
 }
 .slide-left-leave-to {
-  transform: translateX(-25%);
-  opacity: 0;
+  transform: translateX(-100%);
 }
 
-/* 右滑 → 上一项：新页从左侧推入，旧页向右滑出 */
 .slide-right-enter-from {
   transform: translateX(-100%);
-  opacity: 0.4;
 }
 .slide-right-leave-to {
-  transform: translateX(25%);
-  opacity: 0;
+  transform: translateX(100%);
+}
+
+.slide-left-enter-to,
+.slide-left-leave-from,
+.slide-right-enter-to,
+.slide-right-leave-from {
+  transform: translateX(0);
 }
 </style>

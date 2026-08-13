@@ -55,6 +55,7 @@ export default {
     freeDialogue: "Free Chat Mode",
     storyMode: "Story Mode",
     scriptEditor: "Workshop",
+    cloudWorkshop: "Cloud Workshop",
     miniGame: "Mini Games (In Development)",
     back: "Back",
   },
