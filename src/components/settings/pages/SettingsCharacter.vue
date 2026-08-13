@@ -43,13 +43,13 @@
     </MenuItem>
     <RoleArchiveProgress />
 
-    <MenuItem :title="$t('settings.character.openFolder.title')" size="small">
+    <!-- 打开文件夹依赖桌面端文件管理器，移动端不可用（open_folder 无 Android 分支），整卡隐藏 -->
+    <MenuItem v-if="!isAndroid()" :title="$t('settings.character.openFolder.title')" size="small">
       <template #header>
         <FolderOpen :size="20" />
       </template>
       <div class="space-y-2">
-        <!-- 打开文件夹依赖桌面端文件管理器，移动端不可用（open_folder 无 Android 分支） -->
-        <Button v-if="!isAndroid()" type="big" @click="openCharacterFolder">{{ $t('settings.character.openFolder.button') }}</Button>
+        <Button type="big" @click="openCharacterFolder">{{ $t('settings.character.openFolder.button') }}</Button>
       </div>
     </MenuItem>
 
