@@ -9,7 +9,7 @@
     </StartLine>
 
     <StartLine>
-      <StartItem @click="router.push('/workshop')">🌐 {{ $t('views.menu.cloudWorkshop') }}</StartItem>
+      <StartItem @click="router.push('/workshop')">{{ $t('views.menu.cloudWorkshop') }}</StartItem>
     </StartLine>
 
     <StartLine>
