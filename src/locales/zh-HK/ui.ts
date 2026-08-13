@@ -164,6 +164,7 @@ export default {
     "commandDeleteApprovalTitle": "刪除命令確認",
     "commandDeleteApprovalMessage": "偵測到呢條命令可能會刪除檔案：\n\n{command}\n\n工作目錄：{cwd}\n\n刪除通常無法復原，允許執行嗎？",
     "commandHint": "每次執行前都會彈窗請你確認命令內容；uac 參數可要求管理員權限（Windows 彈 UAC 框）",
+    "commandWindowsOnly": "⚠ 命令執行僅 Windows 可用，當前平台無法運行 shell 命令",
     "commandAutoApprove": "免確認自動執行（ta 跑命令前唔再彈窗）",
     "commandAutoApproveHint": "⚠ 危險！開咗之後 ta 可以唔經你同意跑命令；識別到嘅刪除命令仍由下面獨立開關控制",
     "commandDeleteAutoApprove": "刪除命令免確認（偵測到刪除操作時唔再彈窗）",

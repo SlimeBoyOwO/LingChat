@@ -10,3 +10,10 @@ export function isAndroid(): boolean {
   if (typeof navigator === 'undefined') return false
   return /android/i.test(navigator.userAgent)
 }
+
+/** 是否 Windows 桌面端（WebView2 UA 含 "Windows NT"，Linux 为 "X11; Linux"）。
+ *  用于「仅 Windows 可用」的工具/功能标注。 */
+export function isWindows(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return /windows/i.test(navigator.userAgent)
+}

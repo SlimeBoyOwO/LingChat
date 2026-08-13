@@ -146,6 +146,7 @@ import Icon from '@/components/base/widget/Icon.vue'
 import { Toggle } from '@/components/base'
 import { i18n } from '@/locales'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
+import { isAndroid } from '@/utils/platform'
 import {
   listPlugins,
   setPluginEnabled,
@@ -216,5 +217,10 @@ const removePlugin = async (plugin: PluginInfo) => {
   }
 }
 
-onMounted(load)
+// 插件系统由 RustPython 驱动，移动端不编译后端（cfg(desktop)），
+// 导航与 TABS 已隐藏入口；此处双保险：Android 上不发起 invoke 避免报错。
+onMounted(() => {
+  if (isAndroid()) return
+  load()
+})
 </script>

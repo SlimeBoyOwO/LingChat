@@ -163,6 +163,7 @@ export default {
     commandDeleteApprovalTitle: '削除コマンドの確認',
     commandDeleteApprovalMessage: 'このコマンドはファイルを削除する可能性があります：\n\n{command}\n\n作業ディレクトリ：{cwd}\n\n削除は通常元に戻せません。実行を許可しますか？',
     commandHint: '実行のたびに確認ポップアップが出ます。uac パラメータで管理者権限（Windows の UAC）を要求できます',
+    commandWindowsOnly: '⚠ コマンド実行は Windows のみ利用可能です。現在のプラットフォームでは shell コマンドを実行できません',
     commandAutoApprove: '確認なしで自動実行（ポップアップを出さない）',
     commandAutoApproveHint: '⚠ 危険！コマンドを同意なしで実行します。検出した削除コマンドは下の独立スイッチに従います',
     commandDeleteAutoApprove: '削除コマンドを確認なしで実行',

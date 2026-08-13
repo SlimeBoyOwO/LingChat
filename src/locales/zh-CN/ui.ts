@@ -163,6 +163,7 @@ export default {
     commandDeleteApprovalTitle: '删除命令确认',
     commandDeleteApprovalMessage: '检测到这条命令可能删除文件：\n\n{command}\n\n工作目录：{cwd}\n\n删除通常无法撤销，是否允许执行？',
     commandHint: '每次执行前会弹窗请你确认命令内容；uac 参数可请求管理员权限（Windows 弹 UAC 框）',
+    commandWindowsOnly: '⚠ 命令执行仅 Windows 可用，当前平台无法运行 shell 命令',
     commandAutoApprove: '免确认自动执行（ta 跑命令前不再弹窗）',
     commandAutoApproveHint: '⚠ 危险！开启后 ta 可以不经你同意运行命令；识别到的删除命令仍由下方独立开关控制',
     commandDeleteAutoApprove: '删除命令免确认（检测到删除操作时不再弹窗）',
