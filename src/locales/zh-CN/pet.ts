@@ -16,7 +16,7 @@ export default {
     desc: '调整助手主体、输入框与对话框的缩放比例',
     modeNormal: '陪伴模式',
     modeNormalDesc: '正常的桌宠陪伴模式捏',
-    modeGame: '游戏模式',
+    modeGame: '游戏模式（敬请期待）',
     modeGameDesc: '可以让ta更多的感知你的屏幕',
     scaleTitle: '桌宠大小设置',
     scaleReset: '恢复默认尺寸',
@@ -43,7 +43,8 @@ export default {
     you: '你',
     mysteryVoice: '谜之音',
     backtrackConfirmTitle: '回溯确认',
-    backtrackConfirmMessage: '确定要回溯到此对话吗？此操作将清除该消息及之后的所有对话，且不可撤销。',
+    backtrackConfirmMessage:
+      '确定要回溯到此对话吗？此操作将清除该消息及之后的所有对话，且不可撤销。',
     backtrackFailed: '回溯失败：{error}',
     emotionTitle: '情感: {tag}',
   },
