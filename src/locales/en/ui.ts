@@ -164,6 +164,7 @@ export default {
     commandDeleteApprovalTitle: "Confirm Deletion Command",
     commandDeleteApprovalMessage: "This command may delete files:\n\n{command}\n\nWorking directory: {cwd}\n\nDeletion usually cannot be undone. Allow it to run?",
     commandHint: "You will be asked to confirm each command in a popup; the uac parameter requests admin rights (Windows UAC prompt)",
+    commandWindowsOnly: "⚠ Command execution is available on Windows only; shell commands cannot run on this platform",
     commandAutoApprove: "Run without confirmation (no popup before commands run)",
     commandAutoApproveHint: "⚠ Dangerous! Commands can run without consent; detected delete commands remain controlled by the separate switch below",
     commandDeleteAutoApprove: "Run delete commands without confirmation",
