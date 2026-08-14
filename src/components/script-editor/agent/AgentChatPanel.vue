@@ -207,6 +207,7 @@
               grid-cols-3
               gap-1
               text-center">
+              <!-- 输入/输出/总计均为会话内累计值（与折叠头「总计」同语义） -->
               <div class="rounded-md
                 bg-white/5
                 py-1">
@@ -217,7 +218,7 @@
                 <div class="font-mono
                   text-[0.72rem]
                   text-white/85">
-                  {{ store.lastUsage.prompt_tokens.toLocaleString() }}
+                  {{ store.totalPromptTokens.toLocaleString() }}
                 </div>
               </div>
               <div class="rounded-md
@@ -230,7 +231,7 @@
                 <div class="font-mono
                   text-[0.72rem]
                   text-white/85">
-                  {{ store.lastUsage.completion_tokens.toLocaleString() }}
+                  {{ store.totalCompletionTokens.toLocaleString() }}
                 </div>
               </div>
               <div class="rounded-md
@@ -238,35 +239,33 @@
                 py-1">
                 <div class="text-[0.6rem]
                   text-white/40">
-                  {{ t('scriptEditor.agentChat.currentRound') }}
+                  {{ t('scriptEditor.agentChat.total') }}
                 </div>
                 <div class="font-mono
                   text-[0.72rem]
                   text-brand">
-                  {{ store.lastUsage.total_tokens.toLocaleString() }}
+                  {{ store.totalTokens.toLocaleString() }}
                 </div>
               </div>
             </div>
             <div
-              v-if="store.lastUsage.cached_tokens > 0 && store.lastUsage.prompt_tokens > 0"
+              v-if="store.totalCachedTokens > 0 && store.totalPromptTokens > 0"
               class="text-[0.62rem]
                 text-brand/80"
             >
               {{
                 t('scriptEditor.agentChat.cacheHit', {
-                  cached: store.lastUsage.cached_tokens.toLocaleString(),
-                  prompt: store.lastUsage.prompt_tokens.toLocaleString(),
-                  percent: Math.round(
-                    (store.lastUsage.cached_tokens / store.lastUsage.prompt_tokens) * 100,
-                  ),
+                  cached: store.totalCachedTokens.toLocaleString(),
+                  prompt: store.totalPromptTokens.toLocaleString(),
+                  percent: Math.round((store.totalCachedTokens / store.totalPromptTokens) * 100),
                 })
               }}
             </div>
             <div class="text-[0.62rem]
               text-white/35">
               {{
-                t('scriptEditor.agentChat.totalTokens', {
-                  count: store.totalTokens.toLocaleString(),
+                t('scriptEditor.agentChat.currentRound', {
+                  count: store.lastUsage.total_tokens.toLocaleString(),
                 })
               }}
             </div>

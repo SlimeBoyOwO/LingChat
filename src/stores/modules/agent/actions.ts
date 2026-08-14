@@ -114,6 +114,9 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     await api.clearAgentConversation(state.currentId.value)
     state.items.value = []
     state.totalTokens.value = 0
+    state.totalPromptTokens.value = 0
+    state.totalCompletionTokens.value = 0
+    state.totalCachedTokens.value = 0
     state.lastUsage.value = null
     state.version.value++
   }
@@ -302,6 +305,9 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     if (usage) {
       state.lastUsage.value = usage
       state.totalTokens.value += usage.total_tokens
+      state.totalPromptTokens.value += usage.prompt_tokens
+      state.totalCompletionTokens.value += usage.completion_tokens
+      state.totalCachedTokens.value += usage.cached_tokens
     }
     state.streaming.value = false
     state.sending.value = false
@@ -374,26 +380,33 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
 
   /**
    * 从历史消息恢复用量统计：DB 只落 prompt/completion/cached 三列（assistant 消息），
-   * 「总计」按两者之和累计，「本轮」取最后一条有用量记录的消息。
+   * 累计值按各列求和，「本轮」取最后一条有用量记录的消息。
    * 旧库/旧消息无 token 列时为 null，保持 0/null 不显示。
    */
   function restoreUsage(msgs: PersistedMessage[]) {
     let total = 0
+    let prompt = 0
+    let completion = 0
+    let cached = 0
     let last: TokenUsage | null = null
     for (const m of msgs) {
       if (m.role === 'assistant' && m.promptTokens != null && m.completionTokens != null) {
-        const prompt = m.promptTokens
-        const completion = m.completionTokens
-        total += prompt + completion
+        prompt += m.promptTokens
+        completion += m.completionTokens
+        cached += m.cachedTokens ?? 0
+        total += m.promptTokens + m.completionTokens
         last = {
-          prompt_tokens: prompt,
-          completion_tokens: completion,
-          total_tokens: prompt + completion,
+          prompt_tokens: m.promptTokens,
+          completion_tokens: m.completionTokens,
+          total_tokens: m.promptTokens + m.completionTokens,
           cached_tokens: m.cachedTokens ?? 0,
         }
       }
     }
     state.totalTokens.value = total
+    state.totalPromptTokens.value = prompt
+    state.totalCompletionTokens.value = completion
+    state.totalCachedTokens.value = cached
     state.lastUsage.value = last
   }
 

@@ -532,8 +532,8 @@ export default {
     tokenUsage: 'Token usage',
     input: 'Input',
     output: 'Output',
-    currentRound: 'This round',
-    totalTokens: '{count} total \u00b7 this run',
+    currentRound: 'This round {count}',
+    total: 'Total',
     cacheHit: 'cache hit {cached} / {prompt} ({percent}%)',
     placeholder:
       'Ask the script coach to write scripts, edit files, run commands\u2026 (Enter to send, Shift+Enter for newline)',

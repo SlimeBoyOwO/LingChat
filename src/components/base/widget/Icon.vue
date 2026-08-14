@@ -2,7 +2,7 @@
   <span
     v-html="svg"
     :style="`width:${size}px; height:${size}px`"
-    @click="$emit('click')"
+    @click="$emit('click', $event)"
   ></span>
 </template>
 

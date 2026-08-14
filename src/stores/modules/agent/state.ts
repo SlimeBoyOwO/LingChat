@@ -74,6 +74,12 @@ export function useAgentState() {
   const version = ref(0)
   const lastUsage = ref<TokenUsage | null>(null)
   const totalTokens = ref(0)
+  /** 累计输入 token（会话内累计，切会话从历史恢复，与 totalTokens 同语义）。 */
+  const totalPromptTokens = ref(0)
+  /** 累计输出 token。 */
+  const totalCompletionTokens = ref(0)
+  /** 累计缓存命中 token（输入中命中 cache read 的部分）。 */
+  const totalCachedTokens = ref(0)
   const settings = ref<AgentSettings>(emptySettings())
   const skills = ref<SkillInfo[]>([])
   const defaultDirs = ref<AgentDefaultDirs | null>(null)
@@ -89,6 +95,9 @@ export function useAgentState() {
     version,
     lastUsage,
     totalTokens,
+    totalPromptTokens,
+    totalCompletionTokens,
+    totalCachedTokens,
     settings,
     skills,
     defaultDirs,

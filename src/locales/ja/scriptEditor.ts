@@ -532,8 +532,8 @@ export default {
     tokenUsage: 'トークン使用量',
     input: '入力',
     output: '出力',
-    currentRound: '今回',
-    totalTokens: '累計 {count} · 今回の実行',
+    currentRound: '今回 {count}',
+    total: '合計',
     cacheHit: 'キャッシュヒット {cached} / {prompt}（{percent}%）',
     placeholder:
       'シナリオライターにシナリオ作成、ファイル編集、コマンド実行などを依頼…（Enter で送信、Shift+Enter で改行）',
