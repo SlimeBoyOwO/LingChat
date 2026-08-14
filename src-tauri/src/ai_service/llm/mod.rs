@@ -65,6 +65,17 @@ impl LlmConfig {
     }
 }
 
+/// 单次 LLM 请求的 token 用量（provider 未上报时为 None）。
+///
+/// 由 provider 在流末尾（StreamEnd）或非流式响应中携带，供 AI 助手等
+/// 调用方做用量统计/持久化。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LlmUsage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+}
+
 /// LLM 流式返回的一个片段：可能是正式回复内容，也可能是思考链内容。
 #[derive(Debug, Clone)]
 pub enum LlmChunk {
@@ -79,7 +90,11 @@ pub enum LlmChunk {
     ToolCallProgress { name: String, chars: usize },
     /// 流终止信号：归一化停止原因（"stop" / "max_tokens" / "tool_calls" / …）。
     /// 由 provider 在流末尾发射，消费方按需忽略（剧本导师用它检测截断）。
-    StreamEnd { reason: Option<String> },
+    /// `usage` 为本轮累计 token 用量；provider 未上报时为 None。
+    StreamEnd {
+        reason: Option<String>,
+        usage: Option<LlmUsage>,
+    },
 }
 
 pub type ChunkStream = Pin<Box<dyn Stream<Item = Result<LlmChunk>> + Send>>;
