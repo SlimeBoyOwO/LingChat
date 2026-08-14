@@ -67,6 +67,25 @@ pub async fn touch_conversation(db: &DatabaseConnection, id: i32) -> Result<(), 
     Ok(())
 }
 
+/// 更新会话标题（用户重命名 / 首轮自动命名共用）。
+/// 顺带刷新 updated_at，保持会话列表「按最近更新倒序」的排序正确。
+pub async fn update_conversation_title(
+    db: &DatabaseConnection,
+    id: i32,
+    title: String,
+) -> Result<(), String> {
+    let Some(m) = get_conversation(db, id).await? else {
+        return Ok(());
+    };
+    let mut am: skill_agent_conversation::ActiveModel = m.into();
+    am.title = Set(Some(title));
+    am.updated_at = Set(Local::now().naive_local());
+    am.update(db)
+        .await
+        .map_err(|e| format!("更新会话标题失败: {}", e))?;
+    Ok(())
+}
+
 /// 删除会话及其全部消息。
 pub async fn delete_conversation(db: &DatabaseConnection, id: i32) -> Result<(), String> {
     MsgEntity::delete_many()
@@ -108,6 +127,7 @@ pub async fn insert_message(
         reasoning: Set(reasoning.map(|s| s.to_string())),
         prompt_tokens: Set(usage.map(|u| u.prompt_tokens as i64)),
         completion_tokens: Set(usage.map(|u| u.completion_tokens as i64)),
+        cached_tokens: Set(usage.map(|u| u.cached_tokens as i64)),
         tool_calls: Set(
             msg.tool_calls
                 .as_ref()

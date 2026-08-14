@@ -523,6 +523,8 @@ export default {
     newConversation: '新しい会話',
     empty: '会話がまだありません。左側の「新しい会話」から始めてください',
     deleteConversation: 'この会話を削除',
+    rename: '会話名を変更',
+    renamePlaceholder: '新しい名前を入力…',
     conversationTitle: '会話 {id}',
     clearConversation: '現在の会話をクリア',
     quote: '引用',
@@ -532,6 +534,7 @@ export default {
     output: '出力',
     currentRound: '今回',
     totalTokens: '累計 {count} · 今回の実行',
+    cacheHit: 'キャッシュヒット {cached} / {prompt}（{percent}%）',
     placeholder:
       'シナリオライターにシナリオ作成、ファイル編集、コマンド実行などを依頼…（Enter で送信、Shift+Enter で改行）',
     deleteConfirm: '会話「{title}」とすべてのメッセージを削除しますか？',

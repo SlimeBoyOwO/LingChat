@@ -324,6 +324,7 @@ impl KimiCodeProvider {
                 prompt_tokens: u.input_tokens.unwrap_or(0),
                 completion_tokens: u.output_tokens.unwrap_or(0),
                 total_tokens: u.input_tokens.unwrap_or(0) + u.output_tokens.unwrap_or(0),
+                cached_tokens: u.cache_read_input_tokens.unwrap_or(0),
             }),
         })
     }
@@ -543,6 +544,7 @@ impl KimiCodeProvider {
             // output_tokens 在 message_delta 逐段累加。
             let mut input_tokens: u64 = 0;
             let mut output_tokens: u64 = 0;
+            let mut cached_tokens: u64 = 0;
             let mut bs = byte_stream;
             while let Some(item) = bs.next().await {
                 let chunk = item.map_err(|e| anyhow!("Kimi-Code 流式读取失败: {e}"))?;
@@ -585,6 +587,7 @@ impl KimiCodeProvider {
                                     prompt_tokens: input_tokens,
                                     completion_tokens: output_tokens,
                                     total_tokens: input_tokens + output_tokens,
+                                    cached_tokens,
                                 }),
                             };
                             return;
@@ -648,6 +651,9 @@ impl KimiCodeProvider {
                                     if let Some(i) = u.input_tokens {
                                         input_tokens = i;
                                     }
+                                    if let Some(c) = u.cache_read_input_tokens {
+                                        cached_tokens = c;
+                                    }
                                 }
                             }
                             "message_delta" => {
@@ -702,6 +708,7 @@ impl KimiCodeProvider {
                     prompt_tokens: input_tokens,
                     completion_tokens: output_tokens,
                     total_tokens: input_tokens + output_tokens,
+                    cached_tokens,
                 }),
             };
         };
@@ -854,6 +861,9 @@ struct StreamUsage {
     input_tokens: Option<u64>,
     #[serde(default)]
     output_tokens: Option<u64>,
+    /// Anthropic：cache_read_input_tokens（输入中命中缓存的 token 数）。
+    #[serde(default)]
+    cache_read_input_tokens: Option<u64>,
 }
 
 #[derive(Deserialize, Default)]

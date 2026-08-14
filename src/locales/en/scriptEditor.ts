@@ -523,6 +523,8 @@ export default {
     newConversation: 'New conversation',
     empty: 'No conversations yet — start one with "New conversation" on the left',
     deleteConversation: 'Delete this conversation',
+    rename: 'Rename conversation',
+    renamePlaceholder: 'Enter a new name…',
     conversationTitle: 'Conversation {id}',
     clearConversation: 'Clear current conversation',
     quote: 'Quote',
@@ -532,6 +534,7 @@ export default {
     output: 'Output',
     currentRound: 'This round',
     totalTokens: '{count} total \u00b7 this run',
+    cacheHit: 'cache hit {cached} / {prompt} ({percent}%)',
     placeholder:
       'Ask the script coach to write scripts, edit files, run commands\u2026 (Enter to send, Shift+Enter for newline)',
     deleteConfirm: 'Delete conversation "{title}" and all its messages?',

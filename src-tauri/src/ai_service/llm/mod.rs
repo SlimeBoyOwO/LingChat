@@ -74,6 +74,9 @@ pub struct LlmUsage {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub total_tokens: u64,
+    /// 输入中命中缓存（cache read）的 token 数；provider 未上报缓存时为 0。
+    /// 命中率 = cached_tokens / prompt_tokens。
+    pub cached_tokens: u64,
 }
 
 /// LLM 流式返回的一个片段：可能是正式回复内容，也可能是思考链内容。

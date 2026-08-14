@@ -68,6 +68,8 @@ pub struct PersistedMessage {
     /// 产生该消息那一轮 LLM 调用的 token 用量（前端据此恢复「总计」；未上报为 NULL）。
     pub prompt_tokens: Option<i64>,
     pub completion_tokens: Option<i64>,
+    /// 输入中命中缓存（cache read）的 token 数（缓存命中统计；未上报为 NULL）。
+    pub cached_tokens: Option<i64>,
     pub tool_calls: Option<serde_json::Value>,
     pub tool_call_id: Option<String>,
     pub created_at: String,
@@ -185,16 +187,33 @@ pub async fn editor_agent_read_skill(app: AppHandle, name: String) -> Result<Ski
 // ==================== 会话 ====================
 
 /// 新建会话。只记录创建时的剧本 key（不存剧本内容快照）。
+/// 标题留空：首轮 AI 回复结束后由后端自动生成（见 `core.rs`），
+/// 用户也可手动重命名；title 非空后不再自动生成。
 #[tauri::command]
 pub async fn editor_agent_create_conversation(
     state: State<'_, AppState>,
     script_key: Option<String>,
 ) -> Result<ConversationInfo, String> {
-    let id = db::create_conversation(&state.db, Some("新对话".to_string()), script_key).await?;
+    let id = db::create_conversation(&state.db, None, script_key).await?;
     let conv = db::get_conversation(&state.db, id)
         .await?
         .ok_or_else(|| "创建会话失败".to_string())?;
     Ok(conv_to_info(&conv))
+}
+
+/// 重命名会话（用户自定义标题）。空标题拒绝，避免「清空标题」导致下次首轮
+/// 自动命名把它覆盖回自动生成的名字。
+#[tauri::command]
+pub async fn editor_agent_rename_conversation(
+    state: State<'_, AppState>,
+    conversation_id: i32,
+    title: String,
+) -> Result<(), String> {
+    let title = title.trim().to_string();
+    if title.is_empty() {
+        return Err("会话标题不能为空".to_string());
+    }
+    db::update_conversation_title(&state.db, conversation_id, title).await
 }
 
 #[tauri::command]
@@ -228,6 +247,7 @@ pub async fn editor_agent_get_messages(
             reasoning: m.reasoning.clone(),
             prompt_tokens: m.prompt_tokens,
             completion_tokens: m.completion_tokens,
+            cached_tokens: m.cached_tokens,
             tool_calls: m
                 .tool_calls
                 .as_ref()

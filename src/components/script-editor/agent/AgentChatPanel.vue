@@ -63,43 +63,79 @@
                 hover:border-brand/40
                 hover:bg-white/10`
           "
-          @click="store.switchConversation(c.id)"
+          @click="editingTitleId !== c.id && store.switchConversation(c.id)"
         >
-          <div class="flex
-            items-center
-            justify-between
-            gap-2">
-            <span class="truncate
+          <!-- 编辑态：inline 输入（回车保存 / Esc 取消 / 失焦保存） -->
+          <input
+            v-if="editingTitleId === c.id"
+            v-model="titleDraft"
+            :data-rename-id="c.id"
+            class="w-full
+              rounded-md
+              border
+              border-brand/50
+              bg-black/30
+              px-2
+              py-1
               text-[0.8rem]
-              text-white/85">{{
-              c.title || t('scriptEditor.agentChat.conversationTitle', { id: c.id })
-            }}</span>
-            <span
-              class="opacity-0
-                transition-opacity
-                group-hover:opacity-100"
-              :title="t('scriptEditor.agentChat.deleteConversation')"
-              @click.stop="removeConversation(c)"
+              text-white/90
+              outline-none"
+            :placeholder="t('scriptEditor.agentChat.renamePlaceholder')"
+            maxlength="60"
+            @click.stop
+            @keydown.enter.prevent="commitRename(c)"
+            @keydown.esc.prevent="cancelRename"
+            @blur="commitRename(c)"
+          />
+          <template v-else>
+            <div class="flex
+              items-center
+              justify-between
+              gap-2">
+              <span class="truncate
+                text-[0.8rem]
+                text-white/85">{{
+                c.title || t('scriptEditor.agentChat.conversationTitle', { id: c.id })
+              }}</span>
+              <span
+                class="opacity-0
+                  transition-opacity
+                  group-hover:opacity-100
+                  inline-flex
+                  items-center
+                  gap-1"
+              >
+                <Icon
+                  icon="edit"
+                  :size="13"
+                  class="cursor-pointer
+                    text-white/50
+                    hover:text-brand"
+                  :title="t('scriptEditor.agentChat.rename')"
+                  @click.stop="startRename(c)"
+                />
+                <Icon
+                  icon="close"
+                  :size="13"
+                  class="cursor-pointer
+                    text-white/50
+                    hover:text-red-300"
+                  :title="t('scriptEditor.agentChat.deleteConversation')"
+                  @click.stop="removeConversation(c)"
+                />
+              </span>
+            </div>
+            <div
+              v-if="c.scriptKey"
+              class="mt-1
+                truncate
+                font-mono
+                text-[0.66rem]
+                text-brand/70"
             >
-              <Icon
-                icon="close"
-                :size="13"
-                class="cursor-pointer
-                  text-white/50
-                  hover:text-red-300"
-              />
-            </span>
-          </div>
-          <div
-            v-if="c.scriptKey"
-            class="mt-1
-              truncate
-              font-mono
-              text-[0.66rem]
-              text-brand/70"
-          >
-            📕 {{ c.scriptKey }}
-          </div>
+              📕 {{ c.scriptKey }}
+            </div>
+          </template>
         </button>
       </div>
 
@@ -210,6 +246,21 @@
                   {{ store.lastUsage.total_tokens.toLocaleString() }}
                 </div>
               </div>
+            </div>
+            <div
+              v-if="store.lastUsage.cached_tokens > 0 && store.lastUsage.prompt_tokens > 0"
+              class="text-[0.62rem]
+                text-brand/80"
+            >
+              {{
+                t('scriptEditor.agentChat.cacheHit', {
+                  cached: store.lastUsage.cached_tokens.toLocaleString(),
+                  prompt: store.lastUsage.prompt_tokens.toLocaleString(),
+                  percent: Math.round(
+                    (store.lastUsage.cached_tokens / store.lastUsage.prompt_tokens) * 100,
+                  ),
+                })
+              }}
             </div>
             <div class="text-[0.62rem]
               text-white/35">
@@ -757,6 +808,46 @@ async function removeConversation(c: ConversationInfo) {
   )
   if (!ok) return
   await store.deleteConversation(c.id)
+}
+
+// ---- 重命名（inline 编辑） ----
+/** 正在编辑标题的会话 id（null = 无编辑态）。 */
+const editingTitleId = ref<number | null>(null)
+/** 编辑中的标题草稿。 */
+const titleDraft = ref('')
+/** 标记本次编辑是否已取消：Esc 先置 true，随后触发的 blur 不再保存。 */
+let renameCancelled = false
+
+function startRename(c: ConversationInfo) {
+  editingTitleId.value = c.id
+  titleDraft.value = c.title ?? ''
+  renameCancelled = false
+  // 输入框挂载后聚焦并全选，便于直接覆盖输入
+  void nextTick(() => {
+    const el = document.querySelector<HTMLInputElement>(`input[data-rename-id="${c.id}"]`)
+    el?.focus()
+    el?.select()
+  })
+}
+
+/** 保存：空标题不保存（后端同规则拒绝）；失败时回退编辑态，便于用户重试。 */
+async function commitRename(c: ConversationInfo) {
+  if (editingTitleId.value !== c.id) return
+  editingTitleId.value = null
+  if (renameCancelled) return
+  const trimmed = titleDraft.value.trim()
+  if (!trimmed) return
+  try {
+    await store.renameConversation(c.id, trimmed)
+  } catch (err) {
+    console.warn('[Agent] 重命名会话失败:', err)
+    editingTitleId.value = c.id
+  }
+}
+
+function cancelRename() {
+  renameCancelled = true
+  editingTitleId.value = null
 }
 
 /** 清空当前对话为危险操作，先弹确认框（移动端容易误触）。 */

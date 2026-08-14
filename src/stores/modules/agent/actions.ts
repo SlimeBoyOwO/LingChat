@@ -100,6 +100,15 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     }
   }
 
+  /** 重命名会话：写库后更新本地列表项标题。 */
+  async function renameConversation(id: number, title: string) {
+    const trimmed = title.trim()
+    if (!trimmed) return
+    await api.renameAgentConversation(id, trimmed)
+    const conv = state.conversations.value.find((c) => c.id === id)
+    if (conv) conv.title = trimmed
+  }
+
   async function clearConversation() {
     if (state.currentId.value == null) return
     await api.clearAgentConversation(state.currentId.value)
@@ -252,6 +261,12 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
       case 'done':
         finish(activeAssistantId, event.final_text || undefined, event.usage ?? null)
         break
+      case 'conversation_title': {
+        // 后端首轮自动生成标题后推送，刷新侧栏列表；迟到事件已被 finished 守卫丢弃
+        const conv = state.conversations.value.find((c) => c.id === state.currentId.value)
+        if (conv) conv.title = event.title
+        break
+      }
       case 'error':
         finishWithError(event.message)
         break
@@ -356,7 +371,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
   // ==================== 历史重建 ====================
 
   /**
-   * 从历史消息恢复用量统计：DB 只落 prompt/completion 两列（assistant 消息），
+   * 从历史消息恢复用量统计：DB 只落 prompt/completion/cached 三列（assistant 消息），
    * 「总计」按两者之和累计，「本轮」取最后一条有用量记录的消息。
    * 旧库/旧消息无 token 列时为 null，保持 0/null 不显示。
    */
@@ -372,6 +387,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
           prompt_tokens: prompt,
           completion_tokens: completion,
           total_tokens: prompt + completion,
+          cached_tokens: m.cachedTokens ?? 0,
         }
       }
     }
@@ -434,6 +450,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     createConversation,
     switchConversation,
     deleteConversation,
+    renameConversation,
     clearConversation,
     sendMessage,
     cancel,

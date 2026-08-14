@@ -269,11 +269,19 @@ impl GenaiProvider {
     ///
     /// genai 反序列化时把 0 视为 None（跨 provider 一致：OpenAI 常给不适用计数器
     /// 返回 0），这里统一补 0；「全 0 / 未上报」由上层按需过滤。
+    /// 缓存命中数取自 prompt_tokens_details.cached_tokens（OpenAI cached_tokens /
+    /// Anthropic cache_read_input_tokens 的归一化字段）。
     fn convert_usage(u: &genai::chat::Usage) -> LlmUsage {
         LlmUsage {
             prompt_tokens: u.prompt_tokens.unwrap_or(0).max(0) as u64,
             completion_tokens: u.completion_tokens.unwrap_or(0).max(0) as u64,
             total_tokens: u.total_tokens.unwrap_or(0).max(0) as u64,
+            cached_tokens: u
+                .prompt_tokens_details
+                .as_ref()
+                .and_then(|d| d.cached_tokens)
+                .unwrap_or(0)
+                .max(0) as u64,
         }
     }
 

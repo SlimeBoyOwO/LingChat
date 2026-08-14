@@ -49,6 +49,8 @@ export interface TokenUsage {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  /** 输入中命中缓存（cache read）的 token 数；未上报时为 0。 */
+  cached_tokens: number
 }
 
 export const emptySettings = (): AgentSettings => ({

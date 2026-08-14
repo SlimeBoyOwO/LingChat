@@ -58,6 +58,8 @@ export interface PersistedMessage {
   /** 产生该消息那一轮 LLM 调用的 token 用量（仅 assistant 消息有；旧数据为 null）。 */
   promptTokens: number | null
   completionTokens: number | null
+  /** 输入中命中缓存（cache read）的 token 数（旧数据为 null）。 */
+  cachedTokens: number | null
   toolCalls:
     | {
         id: string
@@ -81,6 +83,8 @@ export interface TokenUsage {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  /** 输入中命中缓存（cache read）的 token 数；未上报时为 0。 */
+  cached_tokens: number
 }
 
 /** 后端流式事件（serde tag="type"，snake_case）。 */
@@ -110,6 +114,7 @@ export type SkillAgentEvent =
       args: Record<string, unknown>
     }
   | { type: 'done'; final_text: string; usage: TokenUsage | null }
+  | { type: 'conversation_title'; title: string }
   | { type: 'error'; message: string }
 
 // ============================================================
@@ -144,6 +149,10 @@ export const listAgentConversations = () =>
 
 export const deleteAgentConversation = (conversationId: number) =>
   invoke<void>('editor_agent_delete_conversation', { conversationId })
+
+/** 重命名会话（用户自定义标题；标题非空后不再自动生成）。 */
+export const renameAgentConversation = (conversationId: number, title: string) =>
+  invoke<void>('editor_agent_rename_conversation', { conversationId, title })
 
 export const getAgentMessages = (conversationId: number) =>
   invoke<PersistedMessage[]>('editor_agent_get_messages', { conversationId })
