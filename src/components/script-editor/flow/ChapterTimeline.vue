@@ -180,7 +180,7 @@
     </button>
 
     <!-- 事件类型选择面板 -->
-    <!-- Teleport 到 #app 而非 body：body 下浮层脱离 #app 的 CSS zoom 缩放作用域，
+    <!-- Teleport 到 #app 而非 body：body 下浮层脱离 #app 的整体缩放作用域，
          缩放后与编辑器主体比例失调（详见 PreviewStage 注释） -->
     <Teleport to="#app">
       <Transition
