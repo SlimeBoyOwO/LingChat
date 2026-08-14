@@ -1,4 +1,4 @@
-name: 构建 测试用 全平台开发版
+name: 开发版构建测试
 
 on:
   push:
@@ -17,12 +17,6 @@ on:
 
 jobs:
   build:
-    # 避免 push 和 pull_request 重复触发
-    if: |
-      (github.event_name == 'push' && !github.event.pull_request) ||
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch'
-    
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -30,38 +24,22 @@ jobs:
         include:
           - platform: windows-amd64
             os: windows-latest
-            artifact-name: lingchat-dev-windows
-            artifact-path: src-tauri/target/release/ling_chat.exe
           - platform: linux-amd64
             os: ubuntu-latest
-            artifact-name: lingchat-dev-linux-amd64
-            artifact-path: src-tauri/target/release/ling_chat
           - platform: macos
             os: macos-latest
-            artifact-name: lingchat-dev-macos
-            artifact-path: src-tauri/target/release/ling_chat
           - platform: linux-aarch64
             os: ubuntu-24.04-arm
-            artifact-name: lingchat-dev-linux-aarch64
-            artifact-path: src-tauri/target/release/ling_chat
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v1
         with:
-          version: latest
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: 'pnpm'
-      
-      - name: 设置 pnpm store 缓存
-        uses: actions/cache@v4
-        with:
-          path: ~/.pnpm-store
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          runtime: node@26
+          cache: true
 
       - name: 安装 rust
         uses: dtolnay/rust-toolchain@stable
@@ -69,16 +47,15 @@ jobs:
       - name: 设置 rust 缓存
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: |
-              ./src-tauri
-          cache-targets: true
-          shared-key: ${{ runner.os }}-${{ runner.arch }}-main-pnpm-tauri-build-${{ hashFiles('src-tauri/Cargo.lock') }}
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
 
       - name: 安装 Linux 依赖 (Ubuntu)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install -y eatmydata
+          sudo eatmydata apt-get install -y \
             libwebkit2gtk-4.1-dev \
             build-essential \
             curl \
@@ -104,24 +81,23 @@ jobs:
             libwayland-dev \
             libdbus-1-dev \
             mold
-          
-      - name: pnpm 安装依赖
-        run: pnpm i
 
-      - name: 生成图标
+      - name: 创建占位文件
         shell: bash
         run: |
-          git lfs pull src-tauri/icons/icon.png
-          pnpm run init
-
+          mkdir -p data/.official/game_data
+          mkdir -p data/third_party
+          touch data/.official/game_data/.gitkeep
+          touch data/third_party/.gitkeep
+          node scripts/prepare-desktop-resources.mjs
+      
       - name: 构建应用
         env:
-          RUSTFLAGS: ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
-        run: pnpm tauri build --no-bundle
-
-      - name: 上传 artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact-name }}
-          path: ${{ matrix.artifact-path }}
-          retention-days: 7
+          RUSTFLAGS: |
+            ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
+            ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
+            ${{ runner.os == 'macOS' && '' || '' }}
+        run: |
+          pnpm build
+          cd src-tauri
+          cargo build
