@@ -277,14 +277,16 @@ pub async fn run_chat(
             // 首轮（本会话第一条 assistant 回复）→ 后台自动生成会话标题。
             // 不阻塞 Done：生成/写库/通知都在独立任务里完成；用户已在 UI 手动
             // 改名后（title 非空）自动生成会跳过（见 auto_title_conversation）。
-            let is_first_round = !history.iter().any(|m| m.role == "assistant");
+            // 用 messages 而非 history 判定：history 已被 sanitize_history 移动；
+            // 且截断续跑路径下 messages 同样不含有 assistant，语义等价。
+            let is_first_round = !messages.iter().any(|m| m.role == "assistant");
             if is_first_round {
                 let title_db = ctx.db.clone();
                 let title_llm = Arc::clone(&ctx.llm);
                 let title_channel = ctx.channel.clone();
                 let conv_id = ctx.conversation_id;
                 // 标题源：最后一条 user 消息（即本轮提问）+ 本次回复开头摘要
-                let first_user = history
+                let first_user = messages
                     .iter()
                     .rev()
                     .find(|m| m.role == "user")
