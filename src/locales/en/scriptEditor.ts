@@ -408,7 +408,8 @@ export default {
     addOption: 'Add option',
     addBtn: 'Add',
     added: 'Added',
-    addLineDesc: 'Automatically fills in the option text above; appended to the AI context as the player. Required unless there is a special reason',
+    addLineDesc:
+      'Automatically fills in the option text above; appended to the AI context as the player. Required unless there is a special reason',
     addVarDesc: 'Records what hidden change choosing this option causes to the story',
     addConditionDesc: 'When unmet, the option greys out and tapping shows the "disabled hint"',
     elseBranch: 'The path taken when no branch condition holds. If unset, the script just ends.',
@@ -589,6 +590,11 @@ export default {
     statusDone: 'Done',
     statusFailed: 'Failed',
     statusDenied: 'Denied',
+    groupTitle: 'Tool calls ×{count}',
+    groupPending: 'Awaiting approval',
+    groupRunning: 'Running',
+    groupFailed: 'Partially failed',
+    groupDone: 'All done',
   },
   agentThinking: {
     label: 'Thinking/planning\u2026',

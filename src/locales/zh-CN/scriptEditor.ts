@@ -553,6 +553,11 @@ export default {
     statusDone: '完成',
     statusFailed: '失败',
     statusDenied: '已拒绝',
+    groupTitle: '工具调用 ×{count}',
+    groupPending: '等待审批',
+    groupRunning: '执行中',
+    groupFailed: '部分失败',
+    groupDone: '全部完成',
   },
   agentThinking: {
     label: '思考/规划…',

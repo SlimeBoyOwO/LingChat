@@ -255,6 +255,7 @@
           overflow-y-auto
           px-4
           py-4"
+        @scroll="onScroll"
       >
         <div
           v-if="store.loading"
@@ -324,9 +325,12 @@
                   v-if="thinkingText(round)"
                   :text="thinkingText(round)"
                 />
-                <!-- 普通回复气泡：纯文本且无工具调用（最终答复） -->
+                <!-- 普通回复气泡：独立判断，与思考块并存显示。
+                     开启思考模式时最终答复轮同时携带 reasoning + content，
+                     若用 v-else-if 会吞掉正文；工具轮（含叙述）也在此排除，
+                     其正文已并入上方思考块。 -->
                 <div
-                  v-else-if="round.content"
+                  v-if="round.content && round.toolRuns.length === 0"
                   class="max-w-[92%]
                     rounded-2xl
                     rounded-tl-sm
@@ -338,14 +342,73 @@
                 >
                   <MarkdownText :content="round.content" />
                 </div>
-                <AgentToolCard
-                  v-for="run in round.toolRuns"
-                  :key="run.callId"
-                  :run="run"
-                  class="max-w-[92%]"
-                  @allow="run.requestId && store.resolveApproval(run.requestId, true)"
-                  @deny="run.requestId && store.resolveApproval(run.requestId, false)"
-                />
+                <!-- 工具调用折叠组：一轮的多次调用合并为一个容器，默认收起防刷屏；
+                     有等待审批（pending）时自动展开，保证允许/拒绝按钮可见 -->
+                <div
+                  v-if="round.toolRuns.length > 0"
+                  class="w-full
+                    max-w-[92%]
+                    overflow-hidden
+                    rounded-[10px]
+                    border
+                    border-white/10
+                    bg-white/5"
+                >
+                  <button
+                    class="flex
+                      w-full
+                      items-center
+                      gap-2
+                      px-3
+                      py-2
+                      text-left
+                      transition-colors
+                      hover:bg-white/8"
+                    :aria-expanded="toolGroupOpen(item.id, i, round)"
+                    @click="toggleToolGroup(item.id, i)"
+                  >
+                    <span class="text-[0.9rem]
+                      leading-none">🔧</span>
+                    <span class="text-[0.78rem]
+                      text-white/75">{{
+                      t('scriptEditor.agentTool.groupTitle', {
+                        count: round.toolRuns.length,
+                      })
+                    }}</span>
+                    <span class="ml-auto
+                      inline-flex
+                      items-center
+                      gap-1.5">
+                      <span
+                        v-if="toolGroupSummary(round)"
+                        class="text-[0.68rem]
+                          text-white/40"
+                        >{{ toolGroupSummary(round) }}</span
+                      >
+                      <span class="text-[0.6rem]
+                        text-white/35">{{
+                        toolGroupOpen(item.id, i, round) ? '▾' : '▸'
+                      }}</span>
+                    </span>
+                  </button>
+                  <div
+                    v-if="toolGroupOpen(item.id, i, round)"
+                    class="flex
+                      flex-col
+                      gap-2
+                      border-t
+                      border-white/10
+                      p-2.5"
+                  >
+                    <AgentToolCard
+                      v-for="run in round.toolRuns"
+                      :key="run.callId"
+                      :run="run"
+                      @allow="approveRun(run, item.id, i, true)"
+                      @deny="approveRun(run, item.id, i, false)"
+                    />
+                  </div>
+                </div>
               </div>
               <div
                 v-if="item.error"
@@ -483,7 +546,7 @@ import AgentThinkingBlock from './AgentThinkingBlock.vue'
 import AgentToolCard from './AgentToolCard.vue'
 import MarkdownText from './MarkdownText.vue'
 import type { ConversationInfo } from '@/api/services/agent'
-import type { ChatRound } from '@/stores/modules/agent/state'
+import type { ChatRound, ToolRun } from '@/stores/modules/agent/state'
 
 const { t } = useI18n()
 const store = useAgentStore()
@@ -493,16 +556,63 @@ const draft = ref('')
 const composing = ref(false)
 
 /**
- * 一轮是否算「思考/规划」及其展示文本：
+ * 一轮的「思考/规划」展示文本（折叠思考块内容）：
  * - 该轮携带思考链（thinking 模式开启）→ 显示思考链；
- * - 该轮以工具调用结尾 → 正文即工具前的叙述，一并放入思考块；
- * - 纯文本且无工具调用（最终答复）→ 走普通气泡。
+ * - 该轮以工具调用结尾 → 正文是工具前的叙述，一并放入思考块；
+ * - 纯文本且无工具调用（最终答复）→ 返回空，正文走独立气泡（见模板）。
  */
 function thinkingText(round: ChatRound): string {
   const parts = [round.reasoning, round.toolRuns.length > 0 ? round.content : null].filter(
     (s): s is string => !!s,
   )
   return parts.join('\n\n')
+}
+
+// ==================== 工具调用折叠组 ====================
+
+/** 手动展开过的工具调用组，key = 「消息 id:轮次」。会话切换/重建后旧 key 自然失效。 */
+const openToolGroups = ref<Set<string>>(new Set())
+
+function toolGroupKey(itemId: string, roundIdx: number): string {
+  return `${itemId}:${roundIdx}`
+}
+
+/** 组是否展开：手动展开过（含审批交互过的组），或组内有等待审批（pending）的工具。 */
+function toolGroupOpen(itemId: string, roundIdx: number, round: ChatRound): boolean {
+  return (
+    openToolGroups.value.has(toolGroupKey(itemId, roundIdx)) ||
+    round.toolRuns.some((r) => r.status === 'pending')
+  )
+}
+
+function toggleToolGroup(itemId: string, roundIdx: number) {
+  const key = toolGroupKey(itemId, roundIdx)
+  if (openToolGroups.value.has(key)) {
+    openToolGroups.value.delete(key)
+  } else {
+    openToolGroups.value.add(key)
+  }
+}
+
+/** 折叠态头部状态摘要：pending > running > 部分失败 > 全部完成。 */
+function toolGroupSummary(round: ChatRound): string {
+  const runs = round.toolRuns
+  if (runs.some((r) => r.status === 'pending')) {
+    return t('scriptEditor.agentTool.groupPending')
+  }
+  if (runs.some((r) => r.status === 'running')) {
+    return t('scriptEditor.agentTool.groupRunning')
+  }
+  if (runs.some((r) => r.status === 'error' || r.status === 'denied')) {
+    return t('scriptEditor.agentTool.groupFailed')
+  }
+  return t('scriptEditor.agentTool.groupDone')
+}
+
+/** 审批工具调用；交互过的组保持展开，方便观察执行结果。 */
+async function approveRun(run: ToolRun, itemId: string, roundIdx: number, allowed: boolean) {
+  openToolGroups.value.add(toolGroupKey(itemId, roundIdx))
+  if (run.requestId) await store.resolveApproval(run.requestId, allowed)
 }
 
 /** 左下角 Token 用量卡片是否展开明细。 */
@@ -527,19 +637,61 @@ function autoResizeInput() {
   el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`
 }
 
-function scrollToBottom() {
+// ==================== 滚动策略 ====================
+
+/** 距底部多少像素内视为「贴底」：贴底时流式输出自动跟随，上翻阅读时不打扰。 */
+const NEAR_BOTTOM_THRESHOLD = 80
+const nearBottom = ref(true)
+
+function onScroll() {
+  const el = scroller.value
+  if (!el) return
+  nearBottom.value = el.scrollTop + el.clientHeight >= el.scrollHeight - NEAR_BOTTOM_THRESHOLD
+}
+
+/**
+ * 滚动到对话底部。
+ * - force：进入面板 / 切换会话 / 历史加载完成等整段内容更替时无条件到底；
+ * - 非 force（流式事件）：仅贴底时跟随，用户上翻阅读时不再回弹。
+ * nextTick 等 DOM 更新后量高度，rAF 再等一帧，避开 tab 入场动画与
+ * loading → 消息列表切换的布局时机。
+ */
+function scrollToBottom(force = false) {
   nextTick(() => {
-    if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight
+    requestAnimationFrame(() => {
+      const el = scroller.value
+      if (!el) return
+      if (!force && !nearBottom.value) return
+      el.scrollTop = el.scrollHeight
+    })
   })
 }
 
-// 每次事件/切换会话后滚到底
+// 流式事件（每事件 version++）：贴底时跟随，用户上翻时不打扰
 watch(
-  () => [store.version, store.currentId],
+  () => store.version,
   () => scrollToBottom(),
 )
 
-watch(store.conversations, () => scrollToBottom())
+// 切换会话：整段内容更替，无条件滚到底
+watch(
+  () => store.currentId,
+  () => scrollToBottom(true),
+)
+
+// 历史加载完成（loading → 消息列表切换）后滚到底
+watch(
+  () => store.loading,
+  (v) => {
+    if (!v) scrollToBottom(true)
+  },
+)
+
+// 会话消息整体替换（getAgentMessages 重建 / 清空）后滚到底
+watch(
+  () => store.items,
+  () => scrollToBottom(true),
+)
 
 onMounted(() => {
   void store.initForEditor()

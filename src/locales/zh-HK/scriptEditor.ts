@@ -551,6 +551,11 @@ export default {
     statusDone: '完成',
     statusFailed: '失敗',
     statusDenied: '已拒絕',
+    groupTitle: '工具調用 ×{count}',
+    groupPending: '等待審批',
+    groupRunning: '執行中',
+    groupFailed: '部分失敗',
+    groupDone: '全部完成',
   },
   agentThinking: {
     label: '思考/規劃…',
