@@ -5,6 +5,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
 };
 
+use crate::ai_service::skill_agent::events::Usage;
 use crate::ai_service::types::LlmMessage;
 use crate::db::entities::skill_agent_conversation::{self, Entity as ConvEntity};
 use crate::db::entities::skill_agent_message::{self, Entity as MsgEntity};
@@ -84,11 +85,14 @@ pub async fn delete_conversation(db: &DatabaseConnection, id: i32) -> Result<(),
 
 /// 插入一条消息（OpenAI 格式；空 content 存 NULL）。
 /// `reasoning` 为 assistant 的思考链（仅展示用途，不参与 LLM 上下文）。
+/// `usage` 为产生该消息那一轮 LLM 调用的 token 用量（仅 assistant 消息携带，
+/// 用于用量统计持久化；tool/user 消息传 None）。
 pub async fn insert_message(
     db: &DatabaseConnection,
     conversation_id: i32,
     msg: &LlmMessage,
     reasoning: Option<&str>,
+    usage: Option<&Usage>,
 ) -> Result<(), String> {
     let now = Local::now().naive_local();
     let model = skill_agent_message::ActiveModel {
@@ -101,6 +105,8 @@ pub async fn insert_message(
             Some(msg.content.clone())
         }),
         reasoning: Set(reasoning.map(|s| s.to_string())),
+        prompt_tokens: Set(usage.map(|u| u.prompt_tokens as i64)),
+        completion_tokens: Set(usage.map(|u| u.completion_tokens as i64)),
         tool_calls: Set(
             msg.tool_calls
                 .as_ref()

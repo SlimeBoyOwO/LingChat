@@ -55,6 +55,9 @@ export interface PersistedMessage {
   content: string | null
   /** assistant 的思考链（仅展示，不参与 LLM 上下文；旧数据为 null）。 */
   reasoning: string | null
+  /** 产生该消息那一轮 LLM 调用的 token 用量（仅 assistant 消息有；旧数据为 null）。 */
+  promptTokens: number | null
+  completionTokens: number | null
   toolCalls:
     | {
         id: string

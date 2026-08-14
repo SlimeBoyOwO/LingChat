@@ -11,6 +11,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260729_000002_add_line_thinking::Migration),
             Box::new(m20260803_000001_create_skill_agent_tables::Migration),
             Box::new(m20260807_000001_add_skill_agent_reasoning::Migration),
+            Box::new(m20260814_000001_add_skill_agent_token_usage::Migration),
         ]
     }
 }
@@ -20,3 +21,4 @@ pub mod m20260727_000002_add_line_tool_call;
 pub mod m20260729_000002_add_line_thinking;
 pub mod m20260803_000001_create_skill_agent_tables;
 pub mod m20260807_000001_add_skill_agent_reasoning;
+pub mod m20260814_000001_add_skill_agent_token_usage;

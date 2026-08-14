@@ -241,8 +241,11 @@ pub async fn run_chat(
                     return Err(e);
                 }
             };
-        turn_prompt_tokens += usage.prompt_tokens;
-        turn_completion_tokens += usage.completion_tokens;
+        // 逐轮累加当轮用量（provider 未上报时为 None，跳过）
+        if let Some(u) = &usage {
+            turn_prompt_tokens += u.prompt_tokens;
+            turn_completion_tokens += u.completion_tokens;
+        }
 
         // 无工具调用 → 完成
         if tool_calls.is_empty() {
@@ -265,6 +268,7 @@ pub async fn run_chat(
                 ctx.conversation_id,
                 &final_msg,
                 Some(&reasoning_text),
+                usage.as_ref(),
             )
             .await;
             let usage = if turn_prompt_tokens + turn_completion_tokens > 0 {
@@ -308,6 +312,7 @@ pub async fn run_chat(
             ctx.conversation_id,
             &assistant_msg,
             Some(&reasoning_text),
+            usage.as_ref(),
         )
         .await;
 
@@ -350,7 +355,7 @@ pub async fn run_chat(
 
             let tool_msg = LlmMessage::tool_result(tc.id.clone(), &output);
             messages.push(tool_msg.clone());
-            let _ = db::insert_message(&ctx.db, ctx.conversation_id, &tool_msg, None).await;
+            let _ = db::insert_message(&ctx.db, ctx.conversation_id, &tool_msg, None, None).await;
         }
 
         if round == max_rounds - 1 {
@@ -371,12 +376,14 @@ async fn stream_completion(
     messages: &[LlmMessage],
     defs: &[ToolDefinition],
     cancelled: &CancelFlag,
-) -> Result<(String, String, Vec<AccumToolCall>, Option<String>, Usage), String> {
+) -> Result<(String, String, Vec<AccumToolCall>, Option<String>, Option<Usage>), String> {
     let llm = &ctx.llm;
     let mut text_out = String::new();
     // 思考链单独累积：只展示不落 LLM 上下文（Reasoning chunk 不进 text_out）。
     let mut reasoning_out = String::new();
-    let usage = Usage::default();
+    // 本轮 token 用量：由 provider 的 StreamEnd.usage / 非流式响应的 usage 填充；
+    // provider 未上报时保持 None，调用方按「无数据」处理。
+    let mut usage: Option<Usage> = None;
     // 最后一次 StreamEnd 携带的归一化停止原因（"stop" / "max_tokens" / …）。
     let mut finish_reason: Option<String> = None;
     let mut tool_map: HashMap<usize, AccumToolCall> = HashMap::new();
@@ -414,8 +421,9 @@ async fn stream_completion(
                         );
                     }
                 }
-                LlmChunk::StreamEnd { reason } => {
+                LlmChunk::StreamEnd { reason, usage: end_usage } => {
                     finish_reason = reason;
+                    usage = end_usage;
                 }
                 LlmChunk::ToolCallProgress { .. } => {
                     // 剧本编辑器的 agent 会话不需要参数生成进度提示
@@ -427,6 +435,11 @@ async fn stream_completion(
             .complete_with_tools(messages, defs, Some("auto"))
             .await
             .map_err(|e| e.to_string())?;
+        usage = resp.usage.as_ref().map(|u| Usage {
+            prompt_tokens: u.prompt_tokens,
+            completion_tokens: u.completion_tokens,
+            total_tokens: u.total_tokens,
+        });
         if let Some(c) = resp.content {
             if !c.is_empty() {
                 text_out.push_str(&c);

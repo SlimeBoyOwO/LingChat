@@ -75,6 +75,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     state.currentId.value = id
     const msgs = await api.getAgentMessages(id)
     state.items.value = rebuildItems(msgs)
+    restoreUsage(msgs)
     state.status.value = ''
     state.version.value++
   }
@@ -97,6 +98,8 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     if (state.currentId.value == null) return
     await api.clearAgentConversation(state.currentId.value)
     state.items.value = []
+    state.totalTokens.value = 0
+    state.lastUsage.value = null
     state.version.value++
   }
 
@@ -313,6 +316,30 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
   }
 
   // ==================== 历史重建 ====================
+
+  /**
+   * 从历史消息恢复用量统计：DB 只落 prompt/completion 两列（assistant 消息），
+   * 「总计」按两者之和累计，「本轮」取最后一条有用量记录的消息。
+   * 旧库/旧消息无 token 列时为 null，保持 0/null 不显示。
+   */
+  function restoreUsage(msgs: PersistedMessage[]) {
+    let total = 0
+    let last: TokenUsage | null = null
+    for (const m of msgs) {
+      if (m.role === 'assistant' && m.promptTokens != null && m.completionTokens != null) {
+        const prompt = m.promptTokens
+        const completion = m.completionTokens
+        total += prompt + completion
+        last = {
+          prompt_tokens: prompt,
+          completion_tokens: completion,
+          total_tokens: prompt + completion,
+        }
+      }
+    }
+    state.totalTokens.value = total
+    state.lastUsage.value = last
+  }
 
   /** 把后端返回的消息重建成 UI 的 ChatItem（assistant 按 tool_calls 拆 round，tool 结果挂回对应 run）。 */
   function rebuildItems(msgs: PersistedMessage[]): ChatItem[] {
