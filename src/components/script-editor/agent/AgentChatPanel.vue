@@ -69,12 +69,12 @@
           <input
             v-if="editingTitleId === c.id"
             v-model="titleDraft"
-            :data-rename-id="c.id"
+            ref="renameInputEl"
             class="w-full
               rounded-md
               border
               border-brand/50
-              bg-black/30
+              bg-[rgba(0,0,0,0.45)]
               px-2
               py-1
               text-[0.8rem]
@@ -612,7 +612,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@/components/base'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
@@ -815,6 +815,8 @@ async function removeConversation(c: ConversationInfo) {
 const editingTitleId = ref<number | null>(null)
 /** 编辑中的标题草稿。 */
 const titleDraft = ref('')
+/** 编辑态输入框的 DOM 引用（聚焦/全选用）。 */
+const renameInputEl = useTemplateRef<HTMLInputElement>('renameInputEl')
 /** 标记本次编辑是否已取消：Esc 先置 true，随后触发的 blur 不再保存。 */
 let renameCancelled = false
 
@@ -824,24 +826,27 @@ function startRename(c: ConversationInfo) {
   renameCancelled = false
   // 输入框挂载后聚焦并全选，便于直接覆盖输入
   void nextTick(() => {
-    const el = document.querySelector<HTMLInputElement>(`input[data-rename-id="${c.id}"]`)
-    el?.focus()
-    el?.select()
+    renameInputEl.value?.focus()
+    renameInputEl.value?.select()
   })
 }
 
-/** 保存：空标题不保存（后端同规则拒绝）；失败时回退编辑态，便于用户重试。 */
+/** 保存：空标题不退出编辑态（避免「点了没反应」的无声失败），失败时回退编辑态。 */
 async function commitRename(c: ConversationInfo) {
   if (editingTitleId.value !== c.id) return
-  editingTitleId.value = null
-  if (renameCancelled) return
+  if (renameCancelled) {
+    editingTitleId.value = null
+    return
+  }
   const trimmed = titleDraft.value.trim()
   if (!trimmed) return
+  editingTitleId.value = null
   try {
     await store.renameConversation(c.id, trimmed)
   } catch (err) {
     console.warn('[Agent] 重命名会话失败:', err)
     editingTitleId.value = c.id
+    void nextTick(() => renameInputEl.value?.focus())
   }
 }
 

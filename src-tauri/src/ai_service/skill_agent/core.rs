@@ -208,6 +208,10 @@ pub async fn run_chat(
 
     let mut messages: Vec<LlmMessage> = Vec::with_capacity(history.len() + 1);
     messages.push(LlmMessage::system(system_prompt));
+    // 首轮判定必须在 sanitize_history(history) 移动 history 之前记录：
+    // 本会话第一条 assistant 回复（含工具调用轮）结束时用于自动生成会话标题。
+    // 不能等收尾时再用 messages 判——工具轮会让 messages 提前含 assistant(tool_calls)。
+    let is_first_turn = !history.iter().any(|m| m.role == "assistant");
     // 历史先规整再并入：DB 里可能残留上一轮中断产生的「无 tool 回应的 assistant
     // (tool_calls)」，不处理会触发 OpenAI 400（insufficient tool messages）。
     messages.extend(sanitize_history(history));
@@ -274,13 +278,10 @@ pub async fn run_chat(
             )
             .await;
 
-            // 首轮（本会话第一条 assistant 回复）→ 后台自动生成会话标题。
+            // 首轮（本会话第一条 assistant 回复，含工具调用轮）→ 后台自动生成会话标题。
             // 不阻塞 Done：生成/写库/通知都在独立任务里完成；用户已在 UI 手动
             // 改名后（title 非空）自动生成会跳过（见 auto_title_conversation）。
-            // 用 messages 而非 history 判定：history 已被 sanitize_history 移动；
-            // 且截断续跑路径下 messages 同样不含有 assistant，语义等价。
-            let is_first_round = !messages.iter().any(|m| m.role == "assistant");
-            if is_first_round {
+            if is_first_turn {
                 let title_db = ctx.db.clone();
                 let title_llm = Arc::clone(&ctx.llm);
                 let title_channel = ctx.channel.clone();

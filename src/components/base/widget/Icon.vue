@@ -97,8 +97,9 @@ const html: Record<IconType, string> = {
 <style scoped>
 span {
   display: inline-flex;
-  min-width: 1.5rem;
-  min-height: 1.5rem;
+  /* 注意：不能设 min-width/min-height（曾为 1.5rem），它会压过内联的
+     `width:${size}px` 样式，导致所有小尺寸图标（size 13/16/18）都渲染成
+     24px。svg 自身的 0.75rem 下限已足够防止空图标塌陷。 */
 }
 
 span :deep(svg) {

@@ -177,8 +177,10 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
   }
 
   function handleEvent(event: SkillAgentEvent) {
-    // 本轮已结束（停止/完成/出错）后忽略迟到事件，防止停止后界面还在被写入
-    if (finished) return
+    // 本轮已结束（停止/完成/出错）后忽略迟到事件，防止停止后界面还在被写入。
+    // conversation_title 例外：它由后端后台任务在 Done 之后才推送（会话自动命名），
+    // 与流式内容无关，必须放行否则列表永远刷新不到新标题。
+    if (finished && event.type !== 'conversation_title') return
     const msg = currentAssistant()
     switch (event.type) {
       case 'status':
