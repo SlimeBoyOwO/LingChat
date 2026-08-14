@@ -492,6 +492,7 @@ export default {
     deleteConversation: '刪除此對話',
     conversationTitle: '對話 {id}',
     clearConversation: '清空當前對話',
+    quote: '回溯',
     clearConfirm: '確定清空當前對話及其全部消息嗎？此操作不可撤銷。',
     tokenUsage: 'Token 用量',
     input: '輸入',

@@ -284,8 +284,11 @@
             <!-- 用户消息 -->
             <div
               v-if="item.role === 'user'"
-              class="flex
-                justify-end"
+              class="group
+                flex
+                flex-col
+                items-end
+                gap-1"
             >
               <div
                 class="max-w-[76%]
@@ -304,6 +307,28 @@
               >
                 {{ item.content }}
               </div>
+              <!-- 回溯：hover 显示（移动端无 hover，常显低透明），点击把文字覆盖进输入框 -->
+              <button
+                class="inline-flex
+                  items-center
+                  gap-1
+                  rounded-full
+                  px-2
+                  py-0.5
+                  text-[0.7rem]
+                  text-white/35
+                  opacity-0
+                  transition-opacity
+                  duration-200
+                  hover:text-brand
+                  max-[640px]:opacity-100"
+                :title="t('scriptEditor.agentChat.quote')"
+                @click="quoteMessage(item)"
+              >
+                <span class="text-[0.6rem]
+                  leading-none">↩</span>
+                {{ t('scriptEditor.agentChat.quote') }}
+              </button>
             </div>
 
             <!-- assistant 回复 -->
@@ -546,7 +571,7 @@ import AgentThinkingBlock from './AgentThinkingBlock.vue'
 import AgentToolCard from './AgentToolCard.vue'
 import MarkdownText from './MarkdownText.vue'
 import type { ConversationInfo } from '@/api/services/agent'
-import type { ChatRound, ToolRun } from '@/stores/modules/agent/state'
+import type { ChatItem, ChatRound, ToolRun } from '@/stores/modules/agent/state'
 
 const { t } = useI18n()
 const store = useAgentStore()
@@ -613,6 +638,17 @@ function toolGroupSummary(round: ChatRound): string {
 async function approveRun(run: ToolRun, itemId: string, roundIdx: number, allowed: boolean) {
   openToolGroups.value.add(toolGroupKey(itemId, roundIdx))
   if (run.requestId) await store.resolveApproval(run.requestId, allowed)
+}
+
+/** 回溯用户消息：把消息文字覆盖到输入框并聚焦，光标置于末尾，可直接修改后发送。 */
+function quoteMessage(item: ChatItem) {
+  draft.value = item.content
+  void nextTick(() => {
+    const el = inputEl.value
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  })
 }
 
 /** 左下角 Token 用量卡片是否展开明细。 */

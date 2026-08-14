@@ -525,6 +525,7 @@ export default {
     deleteConversation: 'この会話を削除',
     conversationTitle: '会話 {id}',
     clearConversation: '現在の会話をクリア',
+    quote: '引用',
     clearConfirm: '現在の会話とすべてのメッセージをクリアしますか？この操作は元に戻せません。',
     tokenUsage: 'トークン使用量',
     input: '入力',

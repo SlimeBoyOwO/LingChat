@@ -45,6 +45,11 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
       state.skills.value = await api.listAgentSkills()
       state.defaultDirs.value = await api.getAgentDefaultDirs()
       state.conversations.value = await api.listAgentConversations()
+      // 流式进行中：面板重挂载（切标签页回来）时不能走 switchConversation——
+      // 它会 cancel 当前流，且 DB 里这一轮还没落库（后端轮结束时才写入），
+      // 重建 items 会丢掉已流出的思考/输出。这里保留进行中的 store 状态，
+      // 流式事件继续写入 items，面板直接渲染；流结束后自然落库，下次进入正常加载。
+      if (state.streaming.value && state.currentId.value != null) return
       if (state.conversations.value.length === 0) {
         await createConversation()
       } else {
