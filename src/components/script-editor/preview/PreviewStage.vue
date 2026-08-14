@@ -1,5 +1,10 @@
 <template>
-  <Teleport to="body">
+  <!--
+    Teleport 到 #app 而不是 body：全局 Ctrl+滚轮缩放是 CSS zoom 打在 #app 上
+    （useZoom），挂到 body 的浮层会脱离缩放作用域，永远按 100% 视口渲染，缩放后
+    与编辑器主体比例失调。试玩层是编辑器最常用的浮层，必须与主体等比缩放。
+  -->
+  <Teleport to="#app">
     <Transition
       enter-active-class="transition-opacity duration-[0.25s] ease-[cubic-bezier(0.18,0.89,0.32,1)]"
       leave-active-class="transition-opacity duration-[0.25s] ease-[cubic-bezier(0.18,0.89,0.32,1)]"
