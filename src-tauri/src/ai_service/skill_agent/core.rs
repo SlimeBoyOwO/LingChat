@@ -423,7 +423,12 @@ async fn stream_completion(
                 }
                 LlmChunk::StreamEnd { reason, usage: end_usage } => {
                     finish_reason = reason;
-                    usage = end_usage;
+                    // LlmUsage（LLM 层）→ Usage（skill_agent 事件层）字段同名直转
+                    usage = end_usage.map(|u| Usage {
+                        prompt_tokens: u.prompt_tokens,
+                        completion_tokens: u.completion_tokens,
+                        total_tokens: u.total_tokens,
+                    });
                 }
                 LlmChunk::ToolCallProgress { .. } => {
                     // 剧本编辑器的 agent 会话不需要参数生成进度提示

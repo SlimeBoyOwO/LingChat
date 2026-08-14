@@ -507,9 +507,14 @@ impl LlmProvider for GenaiProvider {
             .await
             .map_err(|e| anyhow!("genai 工具调用失败: {e}"))?;
 
-        // 先借用获取文本/用量，再消费获取 tool_calls
+        // 先借用获取文本/用量，再消费获取 tool_calls。
+        // 注意：ChatResponse.usage 是值而非 Option（未上报时字段全为 None）。
         let content = response.first_text().map(|s| s.to_string());
-        let usage = response.usage.as_ref().map(Self::convert_usage);
+        let usage = if response.usage.prompt_tokens.is_none() && response.usage.completion_tokens.is_none() {
+            None
+        } else {
+            Some(Self::convert_usage(&response.usage))
+        };
 
         let tool_calls: Option<Vec<crate::ai_service::types::ToolCall>> = {
             let calls = response.into_tool_calls();
