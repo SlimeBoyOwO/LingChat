@@ -1,14 +1,14 @@
-name: 构建开发版（测试）
+name: 构建 测试用 全平台开发版
 
 on:
   push:
-    branches: ['dev/**']
+    branches: ['dev', 'dev/**']
     paths-ignore:
       - '**.md'
       - 'docs/**'
       - '.vscode/**'
   pull_request:
-    branches: ['dev/**']
+    branches: ['dev', 'dev/**']
     paths-ignore:
       - '**.md'
       - 'docs/**'
