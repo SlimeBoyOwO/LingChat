@@ -562,6 +562,8 @@ export default {
   },
   agentThinking: {
     label: '思考/规划…',
+    // AI 正在流式生成时的 pill 文案（带转圈指示）
+    thinking: '思考中…',
   },
   scriptEditor: {
     playtestBlocked: '试玩会卡住',
