@@ -284,8 +284,7 @@
             <!-- 用户消息 -->
             <div
               v-if="item.role === 'user'"
-              class="group
-                flex
+              class="flex
                 flex-col
                 items-end
                 gap-1"
@@ -307,7 +306,7 @@
               >
                 {{ item.content }}
               </div>
-              <!-- 回溯：hover 显示（移动端无 hover，常显低透明），点击把文字覆盖进输入框 -->
+              <!-- 回溯：常驻显示（低透明，hover 加深），点击把文字覆盖进输入框 -->
               <button
                 class="inline-flex
                   items-center
@@ -317,11 +316,9 @@
                   py-0.5
                   text-[0.7rem]
                   text-white/35
-                  opacity-0
-                  transition-opacity
+                  transition-colors
                   duration-200
-                  hover:text-brand
-                  max-[640px]:opacity-100"
+                  hover:text-brand"
                 :title="t('scriptEditor.agentChat.quote')"
                 @click="quoteMessage(item)"
               >
