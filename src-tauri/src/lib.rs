@@ -606,6 +606,7 @@ pub fn run() {
             api::game::notify_player_entry,
             api::chat::send_chat_message,
             api::chat::rollback_conversation,
+            api::chat::generate_line_voice,
             api::chat::feed_image,
             api::chat::feed_text,
             api::screenshot::start_screenshot,

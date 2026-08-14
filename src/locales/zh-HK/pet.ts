@@ -36,6 +36,8 @@ export default {
     "backtrackTitle": "回溯到呢則訊息之前（會清除呢則訊息同之後所有對話）",
     "thinking": "思考過程（{count} 字）",
     "playVoice": "播放語音",
+    "generateVoice": "生成語音",
+    "generateVoiceFailed": "生成語音失敗：{error}",
     "prevPage": "上一頁",
     "nextPage": "下一頁",
     "pageInfo": "第 {current} 頁 / 共 {total} 頁",

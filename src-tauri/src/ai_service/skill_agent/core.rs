@@ -21,7 +21,7 @@ use crate::ai_service::skill_agent::command_executor::ApprovalMap;
 use crate::ai_service::skill_agent::config::SkillAgentConfig;
 use crate::ai_service::skill_agent::events::{SkillAgentEvent, Usage};
 use crate::ai_service::skill_agent::{db, skills, tools};
-use crate::ai_service::types::{FunctionCall, LlmMessage, ToolCall, ToolDefinition};
+use crate::ai_service::types::{parse_tool_args, FunctionCall, LlmMessage, ToolCall, ToolDefinition};
 
 /// 取消标志，跨 chat 运行共享。
 pub type CancelFlag = Arc<AtomicBool>;
@@ -110,36 +110,6 @@ fn build_system_prompt(
         _ => default,
     };
     format!("{}{}{}", base, script_block, skills_block)
-}
-
-// ---------- 参数归一化 ----------
-
-/// 归一化工具调用的 `arguments`。有些模型输出非标准形态（嵌套 `{"arguments": {...}}`
-/// / `{"params": {...}}`、双编码 JSON 字符串、甚至非法 JSON）。统一成普通对象，
-/// 绝不返回 `null` 让 UI 崩溃。
-fn parse_tool_args(raw: &str) -> Value {
-    let mut args: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
-
-    if let Some(s) = args.as_str() {
-        if let Ok(parsed) = serde_json::from_str::<Value>(s) {
-            args = parsed;
-        }
-    }
-
-    if let Value::Object(map) = &args {
-        if map.len() == 1 {
-            if let Some(inner) = map.get("arguments").or_else(|| map.get("params")) {
-                if inner.is_object() {
-                    args = inner.clone();
-                }
-            }
-        }
-    }
-
-    if !args.is_object() {
-        args = serde_json::json!({});
-    }
-    args
 }
 
 // ---------- 历史规整 ----------

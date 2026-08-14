@@ -62,6 +62,7 @@ impl ScriptEvent for NarrationEvent {
             content: PromptRole::Narrator.build_prompt(&self.text.clone()),
             attribute: LineAttributeExt(LineAttribute::User),
             display_name: self.display_name.clone().or_else(|| Some("旁白".into())),
+            sender_role_id: Some(0),
             ..Default::default()
         };
         ctx.game_status.lock().await.add_line(ctx.db, line).await?;

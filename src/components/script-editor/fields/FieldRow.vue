@@ -82,7 +82,13 @@
       :value="value === true ? 'true' : value === false ? 'false' : ''"
       @change="onTriState"
     >
-      <option value="">{{ t('scriptEditor.fieldRow.notSetDefault') }}</option>
+      <option value="">
+        {{
+          field.defaultDesc
+            ? t('scriptEditor.fieldRow.notSetDefaultWith', { default: field.defaultDesc })
+            : t('scriptEditor.fieldRow.notSetDefault')
+        }}
+      </option>
       <option value="true">{{ t('scriptEditor.fieldRow.on') }}</option>
       <option value="false">{{ t('scriptEditor.fieldRow.off') }}</option>
     </select>
@@ -94,11 +100,17 @@
       :value="asText"
       @change="onSelect"
     >
+      <!-- 非必填字段：不设置。character 例外：独立剧本无 MAIN 选项时，
+           留空即引擎的 MAIN（当前主角），故也提供空选项并明确提示 -->
       <option
-        v-if="!field.required"
+        v-if="!field.required || field.kind === 'character'"
         value=""
       >
-        {{ t('scriptEditor.configTab.notSet') }}
+        {{
+          field.kind === 'character'
+            ? t('scriptEditor.fieldRow.characterEmpty')
+            : t('scriptEditor.configTab.notSet')
+        }}
       </option>
       <option
         v-for="opt in selectOptions"
@@ -205,6 +217,28 @@
       @update="(v: unknown) => emit('update', v)"
     />
 
+    <!-- 服装：按事件所选角色动态生成候选（剧本 NPC 服装 + MAIN 绑定角色的全局服装） -->
+    <select
+      v-else-if="field.key === 'clothes'"
+      class="glass-input"
+      :value="asText"
+      @change="onSelect"
+    >
+      <option
+        v-if="!field.required"
+        value=""
+      >
+        {{ t('scriptEditor.configTab.notSet') }}
+      </option>
+      <option
+        v-for="opt in clothesOptions"
+        :key="opt.value"
+        :value="opt.value"
+      >
+        {{ opt.label }}
+      </option>
+    </select>
+
     <!-- 单行文本兜底 -->
     <input
       v-else
@@ -281,6 +315,35 @@ const asText = computed(() => {
   return String(v)
 })
 
+/**
+ * 服装下拉候选：
+ * - 先固定一个「默认（不进子目录）」—— 引擎把 default / 空都映射为不进子目录；
+ * - 剧本 NPC：当前事件 character 字段对应角色的 avatar/ 子目录；
+ * - MAIN（或未选角色）：绑定羁绊人物的全局角色服装（后端 editor_list_global_characters 已返回）。
+ */
+const clothesOptions = computed<{ value: string; label: string }[]>(() => {
+  const base: { value: string; label: string }[] = [
+    { value: 'default', label: t('scriptEditor.fieldRow.clothesDefault') },
+  ]
+  const seen = new Set<string>(['default'])
+  const add = (name: string) => {
+    if (!name || seen.has(name)) return
+    seen.add(name)
+    base.push({ value: name, label: name })
+  }
+
+  const charKey = typeof props.event?.character === 'string' ? props.event.character : ''
+  const npc = store.detail?.characters.find((c) => c.roleKey === charKey || c.folder === charKey)
+  npc?.clothes.forEach(add)
+
+  if (!charKey || charKey === 'MAIN') {
+    const bound = store.detail?.package.boundCharacterFolder
+    const gc = store.globalCharacters.find((g) => g.folder === bound)
+    gc?.clothes.forEach(add)
+  }
+  return base
+})
+
 /** 当前事件类型（schema 词条映射用）；无 event 时为 undefined，按 fieldKey 查通用表 */
 const eventType = computed(() =>
   typeof props.event?.type === 'string' ? props.event.type : undefined,
@@ -314,10 +377,8 @@ const selectOptions = computed<{ value: string; label: string }[]>(() => {
         return { value, label: optionLabelOf(props.field, eventType.value, value, idx) }
       })
     case 'character':
-      return store.characterOptions.map((o) => ({
-        value: o,
-        label: o === 'MAIN' ? t('scriptEditor.fieldRow.mainRole') : o,
-      }))
+      // store.characterOptions 已含 label（MAIN → 绑定角色名，NPC → aiName）
+      return store.characterOptions
     case 'emotion':
       return Object.keys(EMOTION_CONFIG_EMO).map((o) => ({ value: o, label: emotionLabelOf(o) }))
     case 'chapter':

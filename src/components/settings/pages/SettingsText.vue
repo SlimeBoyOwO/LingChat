@@ -5,15 +5,37 @@
         <template #header>
           <Type :size="20" />
         </template>
-        <div class="flex items-stretch gap-2 w-full">
+        <div class="flex
+          items-stretch
+          gap-2
+          w-full">
           <select
             v-model="fontFamily"
-            class="flex-none min-w-32 max-w-48 cursor-pointer bg-white/10 text-white border border-white/20 rounded-lg pl-3 pr-8 py-2 text-sm outline-none focus:border-(--accent-color) transition-colors appearance-none"
+            class="flex-none
+              min-w-32
+              max-w-48
+              cursor-pointer
+              bg-white/10
+              text-white
+              border
+              border-white/20
+              rounded-lg
+              pl-3
+              pr-8
+              py-2
+              text-sm
+              outline-none
+              focus:border-(--accent-color)
+              transition-colors
+              appearance-none"
             @change="onFontChange"
             :title="$t('settings.text.font.selectHint')"
           >
             <option value="">{{ $t('settings.text.font.default') }}</option>
-            <optgroup v-if="importedFonts.length > 0" :label="$t('settings.text.font.imported')">
+            <optgroup
+              v-if="importedFonts.length > 0"
+              :label="$t('settings.text.font.imported')"
+            >
               <option
                 v-for="f in importedFonts"
                 :key="f.name"
@@ -23,8 +45,19 @@
                 {{ f.name }}
               </option>
             </optgroup>
-            <option v-if="importedFonts.length > 0" disabled>──────────</option>
-            <option v-if="fontsLoading" value="" disabled>{{ $t('settings.text.font.loading') }}</option>
+            <option
+              v-if="importedFonts.length > 0"
+              disabled
+            >
+              ──────────
+            </option>
+            <option
+              v-if="fontsLoading"
+              value=""
+              disabled
+            >
+              {{ $t('settings.text.font.loading') }}
+            </option>
             <option
               v-for="f in systemFonts"
               :key="f"
@@ -35,13 +68,31 @@
             </option>
           </select>
           <button
-            class="flex-none flex items-center justify-center bg-white/10 text-white border border-white/20 rounded-lg px-[0.6rem] py-[0.35rem] cursor-pointer transition-colors hover:border-(--accent-color) hover:bg-white/20 active:bg-white/30"
+            class="flex-none
+              flex
+              items-center
+              justify-center
+              bg-white/10
+              text-white
+              border
+              border-white/20
+              rounded-lg
+              px-[0.6rem]
+              py-[0.35rem]
+              cursor-pointer
+              transition-colors
+              hover:border-(--accent-color)
+              hover:bg-white/20
+              active:bg-white/30"
             @click="handleImportFont"
             :title="$t('settings.text.font.importTitle')"
           >
             <Import :size="18" />
           </button>
-          <div class="font-demo" :style="{ fontFamily: demoFontFamily }">
+          <div
+            class="font-demo"
+            :style="{ fontFamily: demoFontFamily }"
+          >
             {{ $t('settings.text.font.demo') }}
           </div>
         </div>
@@ -51,7 +102,11 @@
         <template #header>
           <Zap :size="20" />
         </template>
-        <Slider @change="textSpeedChange" v-model="textSpeed">{{ $t('settings.text.speed.label') }}</Slider>
+        <Slider
+          @change="textSpeedChange"
+          v-model="textSpeed"
+          >{{ $t('settings.text.speed.label') }}</Slider
+        >
       </MenuItem>
 
       <MenuItem :title="$t('settings.text.sample.title')">
@@ -61,26 +116,45 @@
         <Text :speed="textSpeedSample">{{ $t('settings.text.sample.demo') }}</Text>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.inlineMotion.title')" size="small">
+      <MenuItem
+        :title="$t('settings.text.inlineMotion.title')"
+        size="small"
+      >
         <template #header>
           <AlignJustify :size="20" />
         </template>
-        <Toggle :checked="settingsStore.text.inlineMotionText" @change="toggleInlineMotionText">
+        <Toggle
+          :checked="settingsStore.text.inlineMotionText"
+          @change="toggleInlineMotionText"
+        >
           {{ $t('settings.text.inlineMotion.desc') }}
         </Toggle>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.sedentary.title')" size="small">
+      <MenuItem
+        :title="$t('settings.text.sedentary.title')"
+        size="small"
+      >
         <template #header>
           <GlassWater :size="20" />
         </template>
-        <Toggle :checked="settingsStore.text.sedentaryReminder" @change="toggleSedentaryReminder">
+        <Toggle
+          :checked="settingsStore.text.sedentaryReminder"
+          @change="toggleSedentaryReminder"
+        >
           {{ $t('settings.text.sedentary.desc') }}
         </Toggle>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.memory.title')" size="small">
-        <div v-for="setting in envSettings" :key="setting.key" class="">
+      <MenuItem
+        :title="$t('settings.text.memory.title')"
+        size="small"
+      >
+        <div
+          v-for="setting in envSettings"
+          :key="setting.key"
+          class=""
+        >
           <!-- 使用 SettingItem 组件渲染不同类型的输入控件 -->
           <Toggle
             :checked="setting.value.toLowerCase() === 'true'"
@@ -94,18 +168,25 @@
         </template>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.voiceSound.title')" size="small">
+      <MenuItem
+        :title="$t('settings.text.voiceSound.title')"
+        size="small"
+      >
         <template #header>
           <Earth :size="20" />
         </template>
         <Toggle @change="voiceSound">{{ $t('settings.text.voiceSound.desc') }}</Toggle>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.engineDownload.title')" size="small">
+      <MenuItem
+        :title="$t('settings.text.engineDownload.title')"
+        size="small"
+      >
         <template #header>
           <Download :size="20" />
         </template>
-        <div class="flex gap-3">
+        <div class="flex
+          gap-3">
           <Button
             type="big"
             :title="$t('settings.text.engineDownload.cpuHint')"
@@ -138,89 +219,166 @@
         </div>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.back.title')" size="small">
+      <MenuItem
+        :title="$t('settings.text.back.title')"
+        size="small"
+      >
         <template #header>
           <ArrowBigLeft :size="20" />
         </template>
-        <div class="flex gap-3">
-          <Button type="big" @click="returnToMain">{{ $t('settings.text.back.button') }}</Button>
-          <Button type="big" @click="refreshTTS">{{ $t('settings.text.back.refreshTts') }}</Button>
-          <Button v-if="isFreeDialogMode" type="big" variant="danger" @click="handleClearHistory"
+        <div class="flex
+          gap-3">
+          <Button
+            type="big"
+            @click="returnToMain"
+            >{{ $t('settings.text.back.button') }}</Button
+          >
+          <Button
+            type="big"
+            @click="refreshTTS"
+            >{{ $t('settings.text.back.refreshTts') }}</Button
+          >
+          <Button
+            v-if="isFreeDialogMode"
+            type="big"
+            variant="danger"
+            @click="handleClearHistory"
             >{{ $t('settings.text.back.clearHistory') }}</Button
           >
         </div>
       </MenuItem>
 
       <!-- ─── 语音缓存 ──────────────────────────────── -->
-      <MenuItem :title="$t('settings.text.ttsCache.title')" size="small">
+      <MenuItem
+        :title="$t('settings.text.ttsCache.title')"
+        size="small"
+      >
         <template #header>
           <HardDrive :size="20" />
         </template>
-        <div class="space-y-2 w-full">
-          <div class="flex items-center justify-between text-base">
+        <div class="space-y-2
+          w-full">
+          <div class="flex
+            items-center
+            justify-between
+            text-base">
             <span class="text-gray-50">{{ $t('settings.text.ttsCache.current') }}</span>
-            <span class="text-gray-50 font-medium">{{ ttsCacheSize }}</span>
+            <span class="text-gray-50
+              font-medium">{{ ttsCacheSize }}</span>
           </div>
-          <div class="text-gray-50/70 text-xs">
+          <div class="text-gray-50/70
+            text-xs">
             {{ $t('settings.text.ttsCache.files', { count: ttsCacheFiles }) }}
           </div>
           <div
             v-if="lastCleanupInfo && lastCleanupInfo.deleted > 0"
-            class="text-emerald-300/90 text-xs"
+            class="text-emerald-300/90
+              text-xs"
           >
             {{ $t('settings.text.ttsCache.lastCleanup', { count: lastCleanupInfo.deleted }) }}
           </div>
-          <div class="text-gray-50/70 text-xs">
-            {{ $t('settings.text.ttsCache.orphan', { count: ttsOrphanFiles, size: ttsOrphanSize }) }}
+          <div class="text-gray-50/70
+            text-xs">
+            {{
+              $t('settings.text.ttsCache.orphan', { count: ttsOrphanFiles, size: ttsOrphanSize })
+            }}
           </div>
-          <div class="flex gap-3 pt-1">
-            <Button type="big" @click="checkTtsCache">
-              <RefreshCw :size="16" class="mr-1" /> {{ $t('settings.text.ttsCache.check') }}
+          <div class="flex
+            gap-3
+            pt-1">
+            <Button
+              type="big"
+              @click="checkTtsCache"
+            >
+              <RefreshCw
+                :size="16"
+                class="mr-1"
+              />
+              {{ $t('settings.text.ttsCache.check') }}
             </Button>
-            <Button type="big" @click="handleClearTtsCache">
-              <Trash2 :size="16" class="mr-1" /> {{ $t('settings.text.ttsCache.clean') }}
+            <Button
+              type="big"
+              @click="handleClearTtsCache"
+            >
+              <Trash2
+                :size="16"
+                class="mr-1"
+              />
+              {{ $t('settings.text.ttsCache.clean') }}
             </Button>
           </div>
         </div>
       </MenuItem>
 
       <!-- ─── 版本更新 ──────────────────────────────── -->
-      <MenuItem :title="$t('settings.text.update.title')" size="small">
+      <MenuItem
+        :title="$t('settings.text.update.title')"
+        size="small"
+      >
         <template #header>
-          <RefreshCw :size="20" :class="{ 'animate-spin': updateChecking }" />
+          <RefreshCw
+            :size="20"
+            :class="{ 'animate-spin': updateChecking }"
+          />
         </template>
-        <div class="space-y-2 w-full">
+        <div class="space-y-2
+          w-full">
           <!-- 程序版本 -->
-          <div class="flex items-center justify-between text-base">
+          <div class="flex
+            items-center
+            justify-between
+            text-base">
             <span class="text-gray-50">{{ $t('settings.text.update.appVersion') }}</span>
             <span class="text-gray-50">v{{ currentAppVersion }}</span>
           </div>
           <!-- 数据版本 -->
-          <div class="flex items-center justify-between text-base">
+          <div class="flex
+            items-center
+            justify-between
+            text-base">
             <span class="text-gray-50">{{ $t('settings.text.update.dataVersion') }}</span>
             <span class="text-gray-50">v{{ currentDataVersion }}</span>
           </div>
           <!-- 状态文字（内联显示，不用 modal） -->
-          <div v-if="updateStatusText" :class="updateStatusColor" class="text-sm font-medium">
+          <div
+            v-if="updateStatusText"
+            :class="updateStatusColor"
+            class="text-sm
+              font-medium"
+          >
             {{ updateStatusText }}
           </div>
           <!-- 下载进度条 -->
           <div
             v-if="updatePhase === 'downloading'"
-            class="w-full bg-slate-700/50 rounded-full h-2 overflow-hidden"
+            class="w-full
+              bg-slate-700/50
+              rounded-full
+              h-2
+              overflow-hidden"
           >
             <div
-              class="h-full bg-cyan-400 rounded-full transition-all duration-300"
+              class="h-full
+                bg-cyan-400
+                rounded-full
+                transition-all
+                duration-300"
               :style="{ width: `${downloadProgress}%` }"
             ></div>
           </div>
-          <div class="flex gap-3 pt-1">
+          <div class="flex
+            gap-3
+            pt-1">
             <Button
               type="big"
               @click="handleCheckUpdate"
               :disabled="updateChecking || updatePhase === 'downloading'"
             >
-              {{ updateChecking ? $t('settings.text.update.checking') : $t('settings.text.update.checkButton') }}
+              {{
+                updateChecking
+                  ? $t('settings.text.update.checking')
+                  : $t('settings.text.update.checkButton')
+              }}
             </Button>
             <Button
               v-if="updateAvailable"
@@ -229,7 +387,11 @@
               :disabled="updatePhase === 'downloading'"
               @click="handleInstallUpdate"
             >
-              {{ updatePhase === 'downloading' ? $t('settings.text.update.downloading') : $t('settings.text.update.updateTo', { version: updateLatestVersion }) }}
+              {{
+                updatePhase === 'downloading'
+                  ? $t('settings.text.update.downloading')
+                  : $t('settings.text.update.updateTo', { version: updateLatestVersion })
+              }}
             </Button>
             <Button
               v-if="resourceSyncAvailable && updatePhase !== 'downloading'"
@@ -252,16 +414,28 @@
       </MenuItem>
 
       <!-- ─── 局域网同步 ──────────────────────────────── -->
-      <MenuItem :title="$t('settings.text.lanSync.title')" size="small">
+      <MenuItem
+        :title="$t('settings.text.lanSync.title')"
+        size="small"
+      >
         <template #header>
           <Wifi :size="20" />
         </template>
-        <div class="space-y-2 w-full">
-          <p class="text-gray-50/70 text-sm">
+        <div class="space-y-2
+          w-full">
+          <p class="text-gray-50/70
+            text-sm">
             {{ $t('settings.text.lanSync.desc') }}
           </p>
-          <div class="flex gap-3 pt-1">
-            <Button type="big" @click="openLanSync"> {{ $t('settings.text.lanSync.open') }} </Button>
+          <div class="flex
+            gap-3
+            pt-1">
+            <Button
+              type="big"
+              @click="openLanSync"
+            >
+              {{ $t('settings.text.lanSync.open') }}
+            </Button>
           </div>
           <!-- 局域网同步对话框 -->
           <LanSyncDialog
@@ -295,20 +469,27 @@
         </div>
       </MenuItem>
       <!-- ─── 相关文档 ──────────────────────────────── -->
-      <MenuItem :title="$t('settings.text.docs.title')" size="small">
+      <MenuItem
+        :title="$t('settings.text.docs.title')"
+        size="small"
+      >
         <template #header>
           <BookOpen :size="20" />
         </template>
-        <div class="space-y-2 w-full">
-          <p class="text-gray-50/70 text-sm">
+        <div class="space-y-2
+          w-full">
+          <p class="text-gray-50/70
+            text-sm">
             {{ $t('settings.text.docs.desc') }}
           </p>
-          <div class="flex gap-3 pt-1">
+          <div class="flex
+            gap-3
+            pt-1">
             <Button
               type="big"
               @click="
                 openWebsite(
-                  'https://slimeboyowo.github.io/LingBlog/blog/projects/ling-chat/develop/Style-Bert-VITS2%E6%A8%A1%E5%9E%8B%E8%AE%AD%E7%BB%83%E6%95%99%E7%A8%8B',
+                  'https://slimeboyowo.github.io/LingBlog/blog/projects/ling-chat/develop/',
                 )
               "
               >{{ $t('settings.text.docs.button') }}</Button

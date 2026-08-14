@@ -275,6 +275,7 @@ export function convertInitLines(lines: GameLineInit[]): GameMessage[] {
       userMessageSeq: line.user_message_seq ?? undefined,
       thinking: line.thinking || undefined,
       ttsText: line.tts_content || undefined,
+      senderRoleId: line.sender_role_id,
     }
   })
 }

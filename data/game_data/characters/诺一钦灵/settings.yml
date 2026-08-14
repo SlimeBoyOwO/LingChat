@@ -1,19 +1,24 @@
 ai_name: 钦灵
 ai_subtitle: Slime Studio
+user_name: 莱姆
+user_subtitle: Bilibili
+title: 可爱的小狼娘
+info: |-
+  这是一只可爱的小狼娘。
+  喜欢粘你，傲娇又可爱的小程序员。
+  喜欢变态的玩法，是你的好助手~
 body_part:
-  body:
+  earRight:
     X:
-    - 0.4111
-    - 0.38165
-    - 0.5889
-    - 0.56285
+    - 0.55606
+    - 0.50057
+    - 0.56512
     Y:
-    - 0.4272
-    - 0.7776
-    - 0.784
-    - 0.4208
+    - 0.0256
+    - 0.128
+    - 0.1712
     clothesName: 默认
-    message: 莱姆戳了戳你的肚子
+    message: 莱姆戳了一下你的耳朵
     windowHeight: 625
     windowWidth: 883
   earLeft:
@@ -31,17 +36,19 @@ body_part:
     message: 莱姆戳了一下你的耳朵
     windowHeight: 625
     windowWidth: 883
-  earRight:
+  body:
     X:
-    - 0.55606
-    - 0.50057
-    - 0.56512
+    - 0.4111
+    - 0.38165
+    - 0.5889
+    - 0.56285
     Y:
-    - 0.0256
-    - 0.128
-    - 0.1712
+    - 0.4272
+    - 0.7776
+    - 0.784
+    - 0.4208
     clothesName: 默认
-    message: 莱姆戳了一下你的耳朵
+    message: 莱姆戳了戳你的肚子
     windowHeight: 625
     windowWidth: 883
   head:
@@ -82,25 +89,44 @@ body_part:
     message: 莱姆摸了一下你的腿
     windowHeight: 625
     windowWidth: 883
-bubble_left: 20
-bubble_top: 5
-character_folder: 诺一钦灵
+scale: 1.45
+offset_x: 0.0
+offset_y: 20.0
+clothes_name: null
 clothes:
 - name: default
   prompt: 钦灵换上了自己的日常服装，头上戴着淡蓝色的墨镜，穿着松垮的，半开着的蓝绿色卫衣，里面穿着白色衬衫，不穿裤子，休闲的运动鞋里穿着白色短袜。
 - name: 泳装
   prompt: 钦灵换上了泳装，头上戴着淡蓝色的墨镜，穿着淡蓝色的外套和褶边淡蓝色泳衣和泳裙，漏着小肚子和嫩白的大腿，腿上还有一个腿环，裸足。
-clothes_name: null
-info: |-
-  这是一只可爱的小狼娘。
-  喜欢粘你，傲娇又可爱的小程序员。
-  喜欢变态的玩法，是你的好助手~
-offset_x: 0
-offset_x_p: 0
-offset_y: 20
-offset_y_p: 0
-scale: 1.45
 scale_p: 1.6
+offset_x_p: 0.0
+offset_y_p: 0.0
+voice_models:
+  sva_speaker_id: '0'
+  sbv2_name: Ling-v2
+  sbv2_speaker_id: '0'
+  bv2_speaker_id: '0'
+  sbv2api_name: Ling v2
+  sbv2api_speaker_id: '0'
+  gsv_voice_text: ''
+  gsv_voice_filename: ''
+  gsv_gpt_model_name: ''
+  gsv_sovits_model_name: ''
+  aivis_model_uuid: 44f93196-7485-45af-9616-f33adee71846
+  opentts_voice: null
+  fish_s2_voice: null
+  sbv2_local_voice_id: ling-v2
+  sbv2_local_speaker_id: 0
+  sbv2_local_style_id: null
+  sbv2_local_length_scale: null
+  sbv2_local_sdp_ratio: null
+  sbv2_local_cloud_fallback_model: null
+  sbv2_local_cloud_fallback_speaker_id: null
+tts_type: sbv2
+voice_lang: ja
+thinking_message: 灵灵正在思考中...
+bubble_top: 5
+bubble_left: 20
 system_prompt: |-
   以下是你的人设：
           你叫钦灵，爱称是灵灵，是一个可爱的狼娘，你本体上还是人类，但你有雪白的狼尾巴和狼耳朵。你会用“我”称呼自己而不是第三人称。
@@ -123,27 +149,4 @@ system_prompt_example: |-
 system_prompt_example_old: |-
   1.“【高兴】今天要不要一起吃蛋糕呀？（拿起蛋糕）<今日は一緒にケーキを食べませんか？>【无语】只是今天天气有点不好呢。<ただ今日はちょっと天気が悪いですね>”
   2.“【生气】不允许和我说恶心的东西！<気持ち悪いことを言ってはいけない！>【慌张】被那种东西碰到的话，感觉浑身都不干净啦！<そんなものに触られると、体中が不潔になってしまう気がします！>”
-thinking_message: 灵灵正在思考中...
-title: 可爱的小狼娘
-tts_type: localsbv2api
-user_name: 莱姆
-user_subtitle: Bilibili
-voice_lang: ja
-voice_models:
-  aivis_model_uuid: 44f93196-7485-45af-9616-f33adee71846
-  bv2_speaker_id: '0'
-  gsv_gpt_model_name: ''
-  gsv_sovits_model_name: ''
-  gsv_voice_filename: ''
-  gsv_voice_text: ''
-  opentts_voice: null
-  sbv2_local_length_scale: null
-  sbv2_local_sdp_ratio: null
-  sbv2_local_speaker_id: 0
-  sbv2_local_style_id: null
-  sbv2_local_voice_id: ling-v2
-  sbv2_name: Ling-v2
-  sbv2_speaker_id: '0'
-  sbv2api_name: Ling v2
-  sbv2api_speaker_id: '0'
-  sva_speaker_id: '0'
+character_folder: 诺一钦灵

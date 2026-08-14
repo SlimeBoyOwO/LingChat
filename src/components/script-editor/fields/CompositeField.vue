@@ -211,41 +211,163 @@
           </button>
         </div>
 
-        <!-- 独立动作按钮：追加玩家台词 / 设置变量 / 条件 -->
+        <!-- 动作区：每个可用动作一行 = 高亮概念名 + 短说明 + 右侧添加。
+             与底部说明合并，行距拉开，避免按钮横排拥挤 -->
         <div class="mt-1.5
+          ml-6
           flex
-          flex-wrap
-          items-center
-          gap-x-3
-          gap-y-1
-          ml-6">
-          <button
-            v-if="!hasAddLine(i)"
-            class="text-xs
-              text-brand
-              hover:underline"
-            @click="addAction(i, 'add_line')"
+          flex-col">
+          <div
+            class="flex
+              items-center
+              gap-2.5
+              rounded-md
+              px-1.5
+              py-1.5
+              transition-colors
+              hover:bg-white/[0.04]"
           >
-            ＋ {{ t('scriptEditor.composite.addPlayerLine') }}
-          </button>
-          <button
-            class="text-xs
-              text-brand
-              hover:underline"
-            @click="addAction(i, 'set_var')"
+            <span class="w-1.5
+              h-1.5
+              shrink-0
+              rounded-full
+              bg-brand"></span>
+            <span class="shrink-0
+              text-xs
+              font-semibold
+              text-brand">{{
+              t('scriptEditor.composite.addPlayerLine')
+            }}</span>
+            <span class="min-w-0
+              flex-1
+              text-xs
+              leading-snug
+              text-white/40">{{
+              t('scriptEditor.composite.addLineDesc')
+            }}</span>
+            <button
+              v-if="!hasAddLine(i)"
+              class="shrink-0
+                rounded-full
+                border
+                border-brand/40
+                bg-brand/10
+                px-2.5
+                py-0.5
+                text-xs
+                text-brand
+                transition-all
+                hover:bg-brand/20"
+              @click="addAction(i, 'add_line')"
+            >
+              ＋ {{ t('scriptEditor.composite.addBtn') }}
+            </button>
+            <span
+              v-else
+              class="shrink-0
+                text-xs
+                text-green-400/90"
+              >{{ t('scriptEditor.composite.added') }}</span
+            >
+          </div>
+          <div
+            class="flex
+              items-center
+              gap-2.5
+              rounded-md
+              px-1.5
+              py-1.5
+              transition-colors
+              hover:bg-white/[0.04]"
           >
-            ＋ {{ t('scriptEditor.composite.addVariable') }}
-          </button>
-          <button
-            v-if="!conditionOpen(i)"
-            class="text-xs
-              text-white/40
-              transition-all
-              hover:text-brand"
-            @click="openCondition(i)"
+            <span class="w-1.5
+              h-1.5
+              shrink-0
+              rounded-full
+              bg-brand"></span>
+            <span class="shrink-0
+              text-xs
+              font-semibold
+              text-brand">{{
+              t('scriptEditor.composite.addVariable')
+            }}</span>
+            <span class="min-w-0
+              flex-1
+              text-xs
+              leading-snug
+              text-white/40">{{
+              t('scriptEditor.composite.addVarDesc')
+            }}</span>
+            <button
+              class="shrink-0
+                rounded-full
+                border
+                border-brand/40
+                bg-brand/10
+                px-2.5
+                py-0.5
+                text-xs
+                text-brand
+                transition-all
+                hover:bg-brand/20"
+              @click="addAction(i, 'set_var')"
+            >
+              ＋ {{ t('scriptEditor.composite.addBtn') }}
+            </button>
+          </div>
+          <div
+            class="flex
+              items-center
+              gap-2.5
+              rounded-md
+              px-1.5
+              py-1.5
+              transition-colors
+              hover:bg-white/[0.04]"
           >
-            ＋ {{ t('scriptEditor.composite.addCondition') }}
-          </button>
+            <span class="w-1.5
+              h-1.5
+              shrink-0
+              rounded-full
+              bg-brand"></span>
+            <span class="shrink-0
+              text-xs
+              font-semibold
+              text-brand">{{
+              t('scriptEditor.composite.addCondition')
+            }}</span>
+            <span class="min-w-0
+              flex-1
+              text-xs
+              leading-snug
+              text-white/40">{{
+              t('scriptEditor.composite.addConditionDesc')
+            }}</span>
+            <button
+              v-if="!conditionOpen(i)"
+              class="shrink-0
+                rounded-full
+                border
+                border-brand/40
+                bg-brand/10
+                px-2.5
+                py-0.5
+                text-xs
+                text-brand
+                transition-all
+                hover:bg-brand/20"
+              @click="openCondition(i)"
+            >
+              ＋ {{ t('scriptEditor.composite.addBtn') }}
+            </button>
+            <span
+              v-else
+              class="shrink-0
+                text-xs
+                text-green-400/90"
+              >{{ t('scriptEditor.composite.added') }}</span
+            >
+          </div>
         </div>
       </div>
 
@@ -266,18 +388,6 @@
       >
         ＋ {{ t('scriptEditor.composite.addOption') }}
       </button>
-      <!-- 三个动作的说明各自成段：条件 / 追加玩家台词 / 设置变量 -->
-      <div class="mt-2
-        space-y-1
-        text-xs
-        leading-[1.7]
-        text-white/40">
-        <p>
-          {{ t('scriptEditor.composite.conditionHelp') }}
-        </p>
-        <p>{{ t('scriptEditor.composite.playerLineHelp') }}</p>
-        <p>{{ t('scriptEditor.composite.variableHelp') }}</p>
-      </div>
     </template>
 
     <!-- ============ chapter_end 的分支 ============ -->
@@ -448,10 +558,15 @@
           p-2.5
           last:mb-0"
       >
-        <div class="mb-1.5
-          flex
-          items-center
-          gap-2">
+        <!-- 组条件：默认收起，点「＋ 条件」展开（与 choices 选项一致），
+             避免与事件级「触发条件」混在一起 -->
+        <div
+          v-if="conditionOpen(i)"
+          class="mb-1.5
+            flex
+            items-center
+            gap-2"
+        >
           <span class="shrink-0
             text-xs
             text-white/40">{{
@@ -474,6 +589,54 @@
               transition-all
               hover:text-[#fca5a5]
               hover:bg-[rgba(248,113,113,0.15)]"
+            :title="t('scriptEditor.composite.removeCondition')"
+            @click="closeCondition(i)"
+          >
+            ✕
+          </button>
+          <button
+            class="shrink-0
+              rounded-md
+              px-1.5
+              py-1
+              text-xs
+              text-white/[0.35]
+              transition-all
+              hover:text-[#fca5a5]
+              hover:bg-[rgba(248,113,113,0.15)]"
+            :title="t('scriptEditor.composite.deleteGroup')"
+            @click="removeRow(i)"
+          >
+            ✕
+          </button>
+        </div>
+        <div
+          v-else
+          class="mb-1.5
+            flex
+            items-center
+            gap-2"
+        >
+          <button
+            class="text-xs
+              text-brand
+              hover:underline"
+            @click="openCondition(i)"
+          >
+            ＋ {{ t('scriptEditor.composite.addCondition') }}
+          </button>
+          <button
+            class="ml-auto
+              shrink-0
+              rounded-md
+              px-1.5
+              py-1
+              text-xs
+              text-white/[0.35]
+              transition-all
+              hover:text-[#fca5a5]
+              hover:bg-[rgba(248,113,113,0.15)]"
+            :title="t('scriptEditor.composite.deleteGroup')"
             @click="removeRow(i)"
           >
             ✕
@@ -690,7 +853,9 @@ const addAction = (i: number, type = 'add_line') => {
   const list = Array.isArray(next[i].actions) ? (next[i].actions as Row[]) : []
   // 同一个选项里不允许重复添加「追加玩家台词」——每条选项最多一句玩家台词有意义
   if (type === 'add_line' && list.some((a) => a.type === 'add_line')) return
-  list.push({ type, content: '' })
+  // 追加玩家台词：默认复制上方选项文案，免去重复输入（一般保持一致即可）
+  const content = type === 'add_line' ? str(rows.value[i]?.text) : ''
+  list.push({ type, content })
   next[i].actions = list
   commit(next)
 }

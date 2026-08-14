@@ -1,5 +1,7 @@
 package com.noiq.lingchat
 
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
@@ -14,6 +16,10 @@ class MainActivity : TauriActivity() {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
 
+    // 透明窗口背景，配合 themes.xml 的 windowShowWallpaper 透出系统壁纸
+    // （WebView 本身仍需单独置透明，见 injectSafeAreaToWebView）
+    window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
     // 延迟执行，等待 Tauri WebView 创建完成
     window.decorView.post { injectSafeAreaToWebView() }
   }
@@ -21,6 +27,11 @@ class MainActivity : TauriActivity() {
   /** 递归查找 WebView，并注入安全区 CSS 变量 */
   private fun injectSafeAreaToWebView() {
     val webView = findWebView(window.decorView as ViewGroup) ?: return
+
+    // 关键：Android WebView 默认背景是不透明的白色，必须置透明才能透出系统壁纸。
+    // 前端 html/body 已设为 transparent，这里兜底去掉 WebView 的白底。
+    // 硬件加速下 setBackgroundColor 即生效，无需 setLayerType(OVERLAY)（软件渲染，性能差）。
+    webView.setBackgroundColor(Color.TRANSPARENT)
 
     ViewCompat.setOnApplyWindowInsetsListener(webView) { _, insets ->
       val bars = insets.getInsets(systemBars())

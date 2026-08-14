@@ -23,6 +23,7 @@
             {{ $t('settings.background.scene.upload') }}
           </button>
           <button
+            v-if="!isAndroid()"
             class="px-4 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-white/10 border-white/20 text-white/80 hover:bg-white/20"
             @click="handleOpenFolder"
           >
@@ -368,6 +369,7 @@ import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
+import { isAndroid } from '@/utils/platform'
 import {
   listScenes,
   createScene,

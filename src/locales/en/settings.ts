@@ -14,6 +14,8 @@ export default {
     backtrack: "Rewind",
     thinking: "Thinking ({count} chars)",
     playVoice: "Play Voice",
+    generateVoice: "Generate Voice",
+    generateVoiceFailed: "Failed to generate voice: {error}",
     you: "You",
     mysteryVoice: "Mysterious Voice",
     backtrackConfirm: "Are you sure you want to rewind to this message? This will clear this message and all conversations after it, and cannot be undone.",

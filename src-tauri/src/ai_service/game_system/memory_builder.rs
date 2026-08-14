@@ -23,7 +23,7 @@ impl MemoryBuilder {
         line.perceived_role_ids.contains(&self.target_role_id)
     }
 
-    /// 格式化内容：【情绪】内容<TTS>（动作），仅用于 assistant (AI自身) 消息。
+    /// 格式化内容：【情绪】内容（动作）<TTS>，仅用于 assistant (AI自身) 消息。
     fn format_content_with_extras(&self, line: &LineBase) -> String {
         let mut s = String::new();
         if let Some(emo) = line.original_emotion.as_deref().filter(|v| !v.is_empty()) {
@@ -31,20 +31,24 @@ impl MemoryBuilder {
             s.push_str(emo);
             s.push('】');
         }
-        s.push('\n');
         s.push_str(&line.content);
-        s.push('\n');
-        if let Some(tts) = line.tts_content.as_deref().filter(|v| !v.is_empty()) {
-            s.push('<');
-            s.push_str(tts);
-            s.push('>');
-        }
         s.push('\n');
         if let Some(act) = line.action_content.as_deref().filter(|v| !v.is_empty()) {
             s.push('(');
             s.push_str(act);
             s.push(')');
+            s.push('\n');
         }
+
+        if let Some(tts) = line.tts_content.as_deref().filter(|v| !v.is_empty()) {
+            s.push('<');
+            s.push_str(tts);
+            s.push('>');
+            s.push('\n');
+        }
+
+        s.push('\n');
+
         s
     }
 
@@ -171,13 +175,20 @@ impl MemoryBuilder {
 
             // 工具调用 assistant 行：优先读 tool_call 字段，兼容旧版 \n\n 内嵌格式
             if matches!(line.attribute(), LineAttribute::Assistant) {
-                let has_tool_call = line.base.tool_call.as_deref().map(|s| !s.is_empty()).unwrap_or(false);
+                let has_tool_call = line
+                    .base
+                    .tool_call
+                    .as_deref()
+                    .map(|s| !s.is_empty())
+                    .unwrap_or(false);
 
                 if has_tool_call {
                     // 新版：tool_call 存 JSON，content 纯文本
-                    if let Ok(tool_calls) = serde_json::from_str::<Vec<crate::ai_service::types::ToolCall>>(
-                        line.base.tool_call.as_deref().unwrap_or(""),
-                    ) {
+                    if let Ok(tool_calls) =
+                        serde_json::from_str::<Vec<crate::ai_service::types::ToolCall>>(
+                            line.base.tool_call.as_deref().unwrap_or(""),
+                        )
+                    {
                         flush(&mut memory, &mut buffer, &mut buffer_kind, self);
                         memory.push(LlmMessage {
                             role: "assistant".into(),
@@ -189,13 +200,17 @@ impl MemoryBuilder {
                     }
                 } else if !line.base.content.is_empty() {
                     // 旧版兼容：content = "tool_calls_json\n\ntext"
-                    let (tool_calls_json, text) = if let Some(idx) = line.base.content.find("\n\n") {
+                    let (tool_calls_json, text) = if let Some(idx) = line.base.content.find("\n\n")
+                    {
                         let (head, tail) = line.base.content.split_at(idx);
                         (head, tail.strip_prefix("\n\n").unwrap_or(""))
                     } else {
                         (line.base.content.as_str(), "")
                     };
-                    if let Ok(tool_calls) = serde_json::from_str::<Vec<crate::ai_service::types::ToolCall>>(tool_calls_json) {
+                    if let Ok(tool_calls) = serde_json::from_str::<
+                        Vec<crate::ai_service::types::ToolCall>,
+                    >(tool_calls_json)
+                    {
                         flush(&mut memory, &mut buffer, &mut buffer_kind, self);
                         memory.push(LlmMessage {
                             role: "assistant".into(),
@@ -211,13 +226,18 @@ impl MemoryBuilder {
             // 工具返回行：content 存 JSON {"tool_call_id":..., "result":...}
             if matches!(line.attribute(), LineAttribute::Tool) {
                 flush(&mut memory, &mut buffer, &mut buffer_kind, self);
-                let (tool_call_id, result) = serde_json::from_str::<serde_json::Value>(&line.base.content)
-                    .ok()
-                    .map(|v| (
-                        v.get("tool_call_id").and_then(|s| s.as_str()).map(String::from),
-                        v.get("result").map(|r| r.to_string()).unwrap_or_default(),
-                    ))
-                    .unwrap_or((None, line.base.content.clone()));
+                let (tool_call_id, result) =
+                    serde_json::from_str::<serde_json::Value>(&line.base.content)
+                        .ok()
+                        .map(|v| {
+                            (
+                                v.get("tool_call_id")
+                                    .and_then(|s| s.as_str())
+                                    .map(String::from),
+                                v.get("result").map(|r| r.to_string()).unwrap_or_default(),
+                            )
+                        })
+                        .unwrap_or((None, line.base.content.clone()));
                 memory.push(LlmMessage {
                     role: "tool".into(),
                     content: result,
@@ -231,7 +251,8 @@ impl MemoryBuilder {
                 continue;
             }
 
-            let is_self_speaking = line.sender_role_id() == Some(self.target_role_id);
+            let is_self_speaking = (line.sender_role_id() == Some(self.target_role_id)
+                && line.attribute() == &LineAttribute::Assistant);
             if is_self_speaking {
                 if matches!(buffer_kind, Some(BufferKind::OtherBlock)) {
                     flush(&mut memory, &mut buffer, &mut buffer_kind, self);

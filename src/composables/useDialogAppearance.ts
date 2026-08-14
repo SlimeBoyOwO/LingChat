@@ -42,7 +42,6 @@ export function useDialogAppearance(options: UseDialogAppearanceOptions) {
     const hasImage = Boolean(dialogBgImage.value)
     const style: Record<string, string> = {
       color: dialogTextColorValue.value,
-      borderRadius: dialogBorderRadius.value + 'px',
     }
 
     if (hasImage) {
@@ -75,7 +74,10 @@ export function useDialogAppearance(options: UseDialogAppearanceOptions) {
     if (!spacebarHideEnabled.value) return
     // 在输入框中不触发
     const target = e.target as HTMLElement
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+    if (
+      target &&
+      (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+    ) {
       return
     }
     if (e.code === 'Space') {
@@ -83,20 +85,6 @@ export function useDialogAppearance(options: UseDialogAppearanceOptions) {
       isHidden.value = !isHidden.value
     }
   }
-
-  // ── AI 思考时自动隐藏 ──
-  watch(
-    () => gameStore.currentStatus,
-    (newStatus) => {
-      if (!autoHideOnThinkEnabled.value) return
-      if (newStatus === 'thinking') {
-        isHidden.value = true
-      } else if (newStatus === 'responding') {
-        // 思考完成时恢复显示（带过渡动画）
-        isHidden.value = false
-      }
-    },
-  )
 
   // ── 生命周期：绑定键盘事件 ──
   onMounted(() => {

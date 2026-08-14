@@ -13,6 +13,8 @@ export default {
     backtrack: '回溯',
     thinking: '思考过程（{count} 字）',
     playVoice: '播放语音',
+    generateVoice: '生成语音',
+    generateVoiceFailed: '生成语音失败：{error}',
     you: '你',
     mysteryVoice: '谜之音',
     backtrackConfirm: '确定要回溯到此对话吗？此操作将清除该消息及之后的所有对话，且不可撤销。',

@@ -1,9 +1,35 @@
 <template>
   <div
-    class="relative z-2 flex w-full scrollbar-thin [scrollbar-color:var(--accent-color)_transparent] justify-center p-3.75 transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] before:pointer-events-none before:absolute before:-top-10 before:right-0 before:left-0 before:h-10 before:bg-linear-to-b before:from-transparent before:via-[rgba(0,14,39,0.3)] before:to-[rgba(0,14,39,0.6)] before:content-['']"
+    class="relative
+      z-2
+      flex
+      w-full
+      scrollbar-thin
+      [scrollbar-color:var(--accent-color)_transparent]
+      justify-center
+      p-3.75
+      transition-all
+      duration-200
+      ease-[cubic-bezier(0.25,0.46,0.45,0.94)]
+      before:pointer-events-none
+      before:absolute
+      before:-top-10
+      before:right-0
+      before:left-0
+      before:h-10
+      before:bg-linear-to-b
+      before:from-transparent
+      before:via-[rgba(0,14,39,0.3)]
+      before:to-[rgba(0,14,39,0.6)]
+      before:content-['']"
     :class="{
-      'z-[-1]! overflow-hidden opacity-0 duration-500! ease-linear before:opacity-0 before:duration-1000!':
-        isHidden,
+      [`z-[-1]!
+      overflow-hidden
+      opacity-0
+      duration-500!
+      ease-linear
+      before:opacity-0
+      before:duration-1000!`]: isHidden,
       'max-h-[40vh]': !uiStore.isNarrowScreen,
     }"
     :style="dialogWrapperStyle"
@@ -15,12 +41,21 @@
     >
       <div class="overflow-y-auto">
         <!-- 标题栏 -->
-        <div class="mb-2 flex items-baseline">
+        <div class="mb-2
+          flex
+          items-baseline">
           <!-- 角色名称 -->
           <div
-            class="mr-3.75 font-[inherit] text-2xl font-bold text-shadow-[inherit]"
+            class="mr-3.75
+              font-[inherit]
+              text-2xl
+              font-bold
+              text-shadow-[inherit]"
             :class="{
-              'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap': uiStore.isNarrowScreen,
+              [`min-w-0
+              overflow-hidden
+              text-ellipsis
+              whitespace-nowrap`]: uiStore.isNarrowScreen,
             }"
             :style="{ color: dialogTextColorValue }"
           >
@@ -28,34 +63,55 @@
           </div>
           <div
             v-show="!uiStore.isNarrowScreen"
-            class="font-[inherit] text-xl font-bold text-[#6eb4ff] text-shadow-[inherit]"
+            class="font-[inherit]
+              text-xl
+              font-bold
+              text-[#6eb4ff]
+              text-shadow-[inherit]"
           >
             <div id="character-sub">{{ uiStore.showCharacterSubtitle }}</div>
           </div>
 
           <!-- 情绪标签 -->
           <div
-            class="mx-4 shrink-0 font-[inherit] text-xl font-bold text-[#ff77dd] text-shadow-[inherit]"
+            class="mx-4
+              shrink-0
+              font-[inherit]
+              text-xl
+              font-bold
+              text-[#ff77dd]
+              text-shadow-[inherit]"
           >
             <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
           </div>
 
           <!-- 操作按钮组配置 -->
-          <div class="ml-auto flex min-w-0 items-baseline">
+          <div class="ml-auto
+            flex
+            min-w-0
+            items-baseline">
             <!-- 桌面端：直接显示所有操作按钮 -->
             <template v-if="!isMobile">
               <!-- 操作按钮组 -->
               <div
-                class="custom-scroll overflow-x-auto"
-                :class="uiStore.isNarrowScreen ? 'min-w-0 flex-1' : 'shrink-0'"
+                class="custom-scroll
+                  overflow-x-auto"
+                :class="
+                  uiStore.isNarrowScreen
+                    ? `min-w-0
+                      flex-1`
+                    : 'shrink-0'
+                "
               >
-                <div class="flex whitespace-nowrap">
+                <div class="flex
+                  whitespace-nowrap">
                   <Button
                     type="nav"
                     icon="background"
                     :title="$t('game.dialog.sceneSettings')"
                     @click="openSceneSettings"
                   ></Button>
+                  <!-- 
                   <Button
                     type="nav"
                     icon="hand"
@@ -63,6 +119,7 @@
                     @click="toggleTouchMode"
                     @contextmenu.prevent="exitTouchMode"
                   ></Button>
+                  -->
                   <Button
                     type="nav"
                     icon="history"
@@ -77,18 +134,38 @@
                     :title="
                       isRecording ? $t('game.dialog.recordingStop') : $t('game.dialog.voiceInput')
                     "
-                    :class="{ 'animate-pulse text-red-500': isRecording }"
+                    :class="{
+                      [`animate-pulse
+                      text-red-500`]: isRecording,
+                    }"
                     @click="toggleRecording"
                   ></Button>
 
-                  <div class="group relative inline-flex">
+                  <div class="group
+                    relative
+                    inline-flex">
                     <div
                       v-if="hasScreenshot"
-                      class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                      class="pointer-events-none
+                        absolute
+                        bottom-full
+                        left-1/2
+                        z-50
+                        mb-2
+                        -translate-x-1/2
+                        opacity-0
+                        transition-opacity
+                        duration-200
+                        group-hover:opacity-100"
                     >
                       <img
                         :src="'data:image/jpeg;base64,' + screenshotBase64"
-                        class="max-h-64 max-w-96 rounded-lg border-2 object-contain shadow-lg"
+                        class="max-h-64
+                          max-w-96
+                          rounded-lg
+                          border-2
+                          object-contain
+                          shadow-lg"
                         style="border-color: var(--accent-color); background: #000"
                       />
                     </div>
@@ -119,7 +196,9 @@
             <!-- 移动端：箭头折叠按钮 + 关闭按钮 -->
             <div
               v-if="isMobile"
-              class="flex items-baseline gap-1"
+              class="flex
+                items-baseline
+                gap-1"
             >
               <button
                 class="mobile-toggle-btn"
@@ -145,7 +224,12 @@
             v-if="isMobile && showMobileMenu"
             class="mobile-menu-dropdown"
           >
-            <div class="custom-scroll flex gap-1 overflow-x-auto pb-1 whitespace-nowrap">
+            <div class="custom-scroll
+              flex
+              gap-1
+              overflow-x-auto
+              pb-1
+              whitespace-nowrap">
               <Button
                 type="nav"
                 icon="background"
@@ -171,17 +255,37 @@
                 :title="
                   isRecording ? $t('game.dialog.recordingStop') : $t('game.dialog.voiceInput')
                 "
-                :class="{ 'animate-pulse text-red-500': isRecording }"
+                :class="{
+                  [`animate-pulse
+                  text-red-500`]: isRecording,
+                }"
                 @click="onMobileMenuAction(toggleRecording)"
               ></Button>
-              <div class="group relative inline-flex">
+              <div class="group
+                relative
+                inline-flex">
                 <div
                   v-if="hasScreenshot"
-                  class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                  class="pointer-events-none
+                    absolute
+                    bottom-full
+                    left-1/2
+                    z-50
+                    mb-2
+                    -translate-x-1/2
+                    opacity-0
+                    transition-opacity
+                    duration-200
+                    group-hover:opacity-100"
                 >
                   <img
                     :src="'data:image/jpeg;base64,' + screenshotBase64"
-                    class="max-h-64 max-w-96 rounded-lg border-2 object-contain shadow-lg"
+                    class="max-h-64
+                      max-w-96
+                      rounded-lg
+                      border-2
+                      object-contain
+                      shadow-lg"
                     style="border-color: var(--accent-color); background: #000"
                   />
                 </div>
@@ -203,41 +307,105 @@
         </Transition>
 
         <!-- 分割线 -->
-        <div class="my-1.5 h-px bg-white/30"></div>
+        <div class="my-1.5
+          h-px
+          bg-white/30"></div>
 
         <!-- 输入区 -->
         <div
-          class="my-1.25 flex min-h-10 w-full resize-none flex-col border-none bg-transparent text-xl font-bold whitespace-pre-line text-white transition-all duration-300 outline-none"
+          class="my-1.25
+            flex
+            min-h-10
+            w-full
+            resize-none
+            flex-col
+            border-none
+            bg-transparent
+            text-xl
+            font-bold
+            whitespace-pre-line
+            text-white
+            transition-all
+            duration-300
+            outline-none"
         >
-        <!-- 内联动作文本显示区（仅内联模式+回应状态时可见） -->
-        <div
-          v-show="isInlineDisplayMode"
-          ref="inlineDisplayRef"
-          tabindex="0"
-          class="inline-motion-display my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none overflow-y-auto border-none bg-transparent font-[inherit] text-xl font-bold whitespace-pre-line outline-none text-shadow-[inherit]"
-          :style="{ color: dialogTextColorValue }"
-          @keydown.enter.exact.prevent="sendOrContinue"
-        ></div>
+          <!-- 内联动作文本显示区（仅内联模式+回应状态时可见） -->
+          <div
+            v-show="isInlineDisplayMode"
+            ref="inlineDisplayRef"
+            tabindex="0"
+            class="inline-motion-display
+              my-1.25
+              max-h-[50vh]
+              min-h-30
+              flex-1
+              resize-none
+              overflow-y-auto
+              border-none
+              bg-transparent
+              font-[inherit]
+              text-xl
+              font-bold
+              whitespace-pre-line
+              outline-none
+              text-shadow-[inherit]"
+            @keydown.enter.exact.prevent="sendOrContinue"
+          ></div>
 
-        <!-- 标准 textarea（输入模式或非内联显示模式） -->
-        <textarea
-          v-show="!isInlineDisplayMode"
-          id="inputMessage"
-          ref="textareaRef"
-          class="my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none border-none bg-transparent font-[inherit] text-xl font-bold transition-all duration-300 outline-none text-shadow-[inherit] placeholder:text-white/50 placeholder:shadow-none"
-          :class="textareaMotionClass"
-          :placeholder="placeholderText"
-          :style="{ color: dialogTextColorValue }"
-          v-model="inputMessage"
-          @keydown.enter.exact.prevent="sendOrContinue"
-          :readonly="!isInputEnabled"
-        ></textarea>
+          <!-- 标准 textarea（输入模式或非内联显示模式） -->
+          <textarea
+            v-show="!isInlineDisplayMode"
+            id="inputMessage"
+            ref="textareaRef"
+            class="my-1.25
+              max-h-[50vh]
+              min-h-30
+              flex-1
+              resize-none
+              border-none
+              bg-transparent
+              font-[inherit]
+              text-xl
+              font-bold
+              transition-all
+              duration-300
+              outline-none
+              text-shadow-[inherit]
+              placeholder:text-white/50
+              placeholder:shadow-none"
+            :class="textareaMotionClass"
+            :placeholder="placeholderText"
+            v-model="inputMessage"
+            @keydown.enter.exact.prevent="sendOrContinue"
+            :readonly="!isInputEnabled"
+          ></textarea>
         </div>
       </div>
       <!-- 发送按钮（内层右侧外部） -->
       <button
         id="sendButton"
-        class="absolute right-0 bottom-0 translate-x-full cursor-pointer rounded-[5px] border-none bg-transparent px-2 py-2 font-[inherit] text-sm font-bold text-[#04bcff] transition-all duration-300 text-shadow-[inherit] hover:bg-transparent hover:text-[rgba(136,255,251,0.827)] disabled:cursor-not-allowed disabled:bg-[#333] disabled:opacity-70"
+        class="absolute
+          right-0
+          bottom-0
+          translate-x-full
+          cursor-pointer
+          rounded-[5px]
+          border-none
+          bg-transparent
+          px-2
+          py-2
+          font-[inherit]
+          text-sm
+          font-bold
+          text-[#04bcff]
+          transition-all
+          duration-300
+          text-shadow-[inherit]
+          hover:bg-transparent
+          hover:text-[rgba(136,255,251,0.827)]
+          disabled:cursor-not-allowed
+          disabled:bg-[#333]
+          disabled:opacity-70"
         :disabled="isSending"
         @click="sendOrContinue"
       >

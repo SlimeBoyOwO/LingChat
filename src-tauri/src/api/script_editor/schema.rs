@@ -80,6 +80,10 @@ pub struct FieldSpec {
     /// 缺省值的人类可读描述（不是真正的默认值，仅作占位提示）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub placeholder: Option<&'static str>,
+    /// 引擎真实默认值的人类可读描述（与引擎代码逐项核对）。
+    /// 可选字段「不设置」时按此展示，避免作者猜不到默认是什么。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_desc: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<&'static str>,
     /// 该字段当前是否可用。false 时编辑器禁用并展示 `hint`
@@ -97,6 +101,7 @@ impl FieldSpec {
             options: Vec::new(),
             option_labels: Vec::new(),
             placeholder: None,
+            default_desc: None,
             hint: None,
             enabled: true,
         }
@@ -111,6 +116,11 @@ impl FieldSpec {
     }
     fn placeholder(mut self, p: &'static str) -> Self {
         self.placeholder = Some(p);
+        self
+    }
+    /// 标注引擎真实默认值（人类可读），供「不设置」选项展示
+    fn default_desc(mut self, d: &'static str) -> Self {
+        self.default_desc = Some(d);
         self
     }
     fn options<I: IntoIterator<Item = S>, S: Into<String>>(mut self, opts: I) -> Self {
@@ -240,12 +250,14 @@ pub fn build_schema() -> ScriptSchema {
         },
         EventSpec {
             type_key: "dialogue",
-            label: "角色对话",
+            label: "AI台词",
             category: "叙事",
             color: "#a78bfa",
             fields: vec![
                 character_field(),
-                FieldSpec::new("text", "台词", FieldKind::Textarea).required(),
+                FieldSpec::new("text", "台词", FieldKind::Textarea)
+                    .required()
+                    .hint("想让这句话真正「说」出来，必须同时满足两个条件：1) 台词最开头用【开心】【难过】等情绪标注；2) 所选角色已在「角色设置」里开启语音。缺一不可，否则只会显示文字、不会发声。例：【开心】今天能见到你，我真的很高兴！"),
                 emotion_field(),
                 FieldSpec::new("displayName", "显示名", FieldKind::Text),
                 FieldSpec::new("displaySubtitle", "副标题", FieldKind::Text),
@@ -294,6 +306,7 @@ pub fn build_schema() -> ScriptSchema {
                     .required()
                     .hint("顺序即优先级；不带文案的选项匹配任意输入，必须放最后"),
                 FieldSpec::new("allow_free", "允许自由输入", FieldKind::Bool)
+                    .default_desc("false")
                     .hint("开启后玩家可以在输入框里直接打字作答"),
             ],
         },
@@ -354,7 +367,9 @@ pub fn build_schema() -> ScriptSchema {
                 emotion_field(),
                 FieldSpec::new("clothes", "服装", FieldKind::Text)
                     .hint("对应 avatar/<服装>/ 子目录；留空或 default 表示不进子目录"),
-                FieldSpec::new("perceive", "能否听到后续台词", FieldKind::Bool).hint(
+                FieldSpec::new("perceive", "能否听到后续台词", FieldKind::Bool)
+                    .default_desc("保持当前状态")
+                    .hint(
                     "决定该角色是否出现在后续台词的「感知者」列表里。注意 hide_character 会同时把角色移出感知列表",
                 ),
             ],
@@ -431,10 +446,11 @@ pub fn build_schema() -> ScriptSchema {
                 FieldSpec::new("volume", "音量", FieldKind::Number)
                     .placeholder("100")
                     .hint("0–100"),
-                FieldSpec::new("loop", "循环", FieldKind::Bool),
+                FieldSpec::new("loop", "循环", FieldKind::Bool).default_desc("true"),
                 FieldSpec::new("stop", "停止该轨", FieldKind::Bool)
+                    .default_desc("false")
                     .hint("开启时会淡出停止；环境音留空则停止全部轨道"),
-                FieldSpec::new("fade", "淡入淡出", FieldKind::Bool),
+                FieldSpec::new("fade", "淡入淡出", FieldKind::Bool).default_desc("true"),
             ],
         },
         // ---------- 成就 ----------

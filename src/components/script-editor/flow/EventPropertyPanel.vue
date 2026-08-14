@@ -117,7 +117,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import type { Diagnostic, EventSpec, FieldSpec } from '@/api/services/script-editor'
-import FieldRow from './FieldRow.vue'
+import FieldRow from '../fields/FieldRow.vue'
 import { categoryLabelOf, eventLabelOf } from '@/locales/schema-i18n'
 
 const { t } = useI18n()

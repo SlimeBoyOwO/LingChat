@@ -430,6 +430,7 @@ const gpuDevices = ref<{ id: number; name: string }[]>([])
 let unlistenProgress: (() => void) | null = null
 let unlistenInstallComplete: UnlistenFn | null = null
 let unlistenDownloadComplete: UnlistenFn | null = null
+let unlistenStatusChanged: UnlistenFn | null = null
 let componentMounted = false
 
 async function saveInferenceDevice() {
@@ -741,21 +742,27 @@ watch(
 
 onMounted(async () => {
   componentMounted = true
-  const [installComplete, downloadComplete] = await Promise.all([
+  const [installComplete, downloadComplete, statusChanged] = await Promise.all([
     listen('tts://install-complete', () => {
       void refreshAll()
     }),
     listen('tts://download-complete', () => {
       void refreshAll()
     }),
+    // 历史页「生成语音」触发：生成前后端会广播，静默刷新引擎就绪状态
+    listen('tts://status-changed', () => {
+      void refreshAll()
+    }),
   ])
   if (!componentMounted) {
     installComplete()
     downloadComplete()
+    statusChanged()
     return
   }
   unlistenInstallComplete = installComplete
   unlistenDownloadComplete = downloadComplete
+  unlistenStatusChanged = statusChanged
 
   await loadLocalTtsSwitch()
   await refreshAll()
@@ -795,6 +802,8 @@ onUnmounted(() => {
   unlistenInstallComplete = null
   unlistenDownloadComplete?.()
   unlistenDownloadComplete = null
+  unlistenStatusChanged?.()
+  unlistenStatusChanged = null
 })
 
 async function triggerDownload(assetId: string): Promise<void> {

@@ -75,6 +75,16 @@
                     >
                       <Volume2 :size="16" />
                     </button>
+                    <button
+                      v-if="seg.type !== 'action' && !entry.audioFile && canGenerateVoice(entry)"
+                      class="mt-0.5 inline-flex h-5.5 w-5.5 shrink-0 cursor-pointer items-center justify-center rounded border-0 bg-[rgba(121,217,255,0.1)] text-white/35 transition-all duration-200 hover:bg-[rgba(121,217,255,0.35)] hover:text-white disabled:cursor-wait disabled:opacity-50"
+                      :title="$t('settings.history.generateVoice')"
+                      :disabled="isGeneratingVoice(entry)"
+                      @click="generateVoice(entry)"
+                    >
+                      <LoaderCircle v-if="isGeneratingVoice(entry)" :size="16" class="animate-spin" />
+                      <AudioLines v-else :size="16" />
+                    </button>
                   </div>
                 </template>
               </div>
@@ -121,7 +131,8 @@ import { useUIStore } from '@/stores/modules/ui/ui'
 import type { GameMessage } from '../../../stores/modules/game/state'
 import { convertInitLines } from '../../../stores/modules/game/actions'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
-import { History, Volume2 } from 'lucide-vue-next'
+import { History, Volume2, AudioLines, LoaderCircle } from 'lucide-vue-next'
+import { eventQueue } from '@/core/events/event-queue'
 import { getVoiceAudio } from '@/api/services/game-info'
 import { invoke } from '@tauri-apps/api/core'
 import { hkify } from '@/locales'
@@ -137,6 +148,10 @@ interface LineEntry {
   audioFile?: string
   userMessageSeq?: number
   thinking?: string
+  /** 该台词在 dialogHistory 中的绝对下标（生成语音后写回用） */
+  absIndex: number
+  /** AI 台词全局序号（0-based，供后端定位台词；与后端 Assistant 行计数一致） */
+  lineSeq?: number
 }
 
 interface HistoryBlock {
@@ -154,6 +169,9 @@ const dialogStore = useDialogStore()
 const { t, locale } = useI18n()
 const audioRef = ref<HTMLAudioElement>()
 const contentRef = ref<HTMLDivElement>()
+
+// 补生成语音写回 audioFile 时抑制自动滚动（见 generateVoice），避免误跳底部
+let suppressAutoScroll = false
 
 const dialogHistory = computed<GameMessage[]>(() => gameStore.dialogHistory)
 const narrationNames = new Set(['', '旁白', '系统', 'Narrator', 'System'])
@@ -192,10 +210,31 @@ const currentPageHistory = computed(() => {
   return dialogHistory.value.slice(start, end)
 })
 
+// AI 台词全局序号（镜像后端 generate_line_voice 的计数规则：
+// 只数 type=reply、有正文、且关联了角色的行，不分页、不依赖回合锚点，
+// 自由对话/开场白/主动对话/剧本台词都能定位；无角色的行（工具调用回填）
+// 跳过，避免实时与重载后计数漂移）
+const lineSeqs = computed<Map<number, number>>(() => {
+  const map = new Map<number, number>()
+  let seq = 0
+  dialogHistory.value.forEach((msg, absIndex) => {
+    if (!msg.content || msg.content.trim() === '') return
+    if (msg.type === 'reply' && msg.senderRoleId != null) {
+      map.set(absIndex, seq)
+      seq += 1
+    }
+  })
+  return map
+})
+
 const groupedHistory = computed<HistoryBlock[]>(() => {
   const blocks: HistoryBlock[] = []
 
-  for (const msg of currentPageHistory.value) {
+  const pageStart = (currentPage.value - 1) * PAGE_SIZE
+
+  for (const [pageIndex, msg] of currentPageHistory.value.entries()) {
+    // 写入 dialogHistory 的绝对下标（写回 audioFile 用）
+    const absIndex = pageStart + pageIndex
     if (!msg.content || msg.content.trim() === '') continue
 
     const isNarration = narrationNames.has(msg.displayName || '')
@@ -218,6 +257,8 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
       audioFile: msg.audioFile,
       userMessageSeq: msg.userMessageSeq,
       thinking: msg.thinking,
+      absIndex,
+      lineSeq: lineSeqs.value.get(absIndex),
     }
 
     const last = blocks.length > 0 ? blocks[blocks.length - 1] : null
@@ -313,9 +354,66 @@ async function handleBacktrack(messageSeq: number) {
     )
 
     gameStore.setGameMessages(messages)
+    resetAfterRollback()
   } catch (error: any) {
     console.error('回溯对话失败:', error)
     await dialogStore.alert(t('settings.history.backtrackFailed', { error: typeof error === 'string' ? error : error.message }))
+  }
+}
+
+/** 回溯成功后清理前端残留：清掉未点击的事件队列、停止当前语音、复位界面状态。
+ *  `rollback_conversation` 已等待 generation_lock，不会再有本回合迟到事件，清队列是安全的。 */
+function resetAfterRollback() {
+  eventQueue.clear()
+  // clear() 会把队列置为暂停，主界面常驻时需要恢复消费
+  eventQueue.resume()
+  uiStore.showCharacterLine = ''
+  uiStore.currentAvatarAudio = 'None'
+  gameStore.thinkingLength = 0
+}
+
+// --- 补生成语音（任意 AI 台词；用户消息/旁白不提供） ---
+const generatingVoiceKeys = ref<Set<string>>(new Set())
+
+function voiceKey(entry: LineEntry): string | null {
+  if (entry.lineSeq === undefined) return null
+  return String(entry.lineSeq)
+}
+
+function canGenerateVoice(entry: LineEntry): boolean {
+  return voiceKey(entry) !== null
+}
+
+function isGeneratingVoice(entry: LineEntry): boolean {
+  const key = voiceKey(entry)
+  return key !== null && generatingVoiceKeys.value.has(key)
+}
+
+async function generateVoice(entry: LineEntry) {
+  const key = voiceKey(entry)
+  if (key === null || generatingVoiceKeys.value.has(key)) return
+
+  generatingVoiceKeys.value.add(key)
+  try {
+    const lineSeq = Number(key)
+    const fileName = await invoke<string>('generate_line_voice', {
+      lineSeq,
+    })
+    // 写回对应台词并自动播放（dialogHistory 响应式刷新，重进历史页仍显示播放按钮）
+    suppressAutoScroll = true
+    const msg = gameStore.dialogHistory[entry.absIndex]
+    if (msg) msg.audioFile = fileName
+    await playAudio(fileName)
+    suppressAutoScroll = false
+  } catch (error: any) {
+    console.error('生成语音失败:', error)
+    await dialogStore.alert(
+      t('settings.history.generateVoiceFailed', {
+        error: typeof error === 'string' ? error : error.message,
+      }),
+    )
+  } finally {
+    generatingVoiceKeys.value.delete(key)
   }
 }
 
@@ -350,25 +448,27 @@ onMounted(async () => {
   }
 })
 
-// 当切换到最后一页时，自动滚动到底部
+// 当切换到最后一页时，自动滚动到底部（补语音期间跳过）
 watch([currentPage, groupedHistory], async () => {
+  if (suppressAutoScroll) return
   if (currentPage.value === totalPages.value) {
     await scrollToBottom()
   }
 })
 
 watch([() => uiStore.currentSettingsTab, () => uiStore.showSettings], async () => {
+  if (suppressAutoScroll) return
   if (uiStore.currentSettingsTab === 'history' && uiStore.showSettings) {
     await scrollToBottom()
   }
 })
 
-// 监听对话历史变化，跳转到最后一页（最新记录）
+// 新消息到达时跳转到最后一页（只监听长度变化；audioFile 回填不动长度，
+// 因此补语音不会触发跳页）
 watch(
-  dialogHistory,
+  () => dialogHistory.value.length,
   () => {
     currentPage.value = totalPages.value
   },
-  { deep: true },
 )
 </script>

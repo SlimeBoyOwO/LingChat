@@ -125,6 +125,7 @@
         <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.workshop') }}</p>
       </Button>
       <Button
+        v-if="!isAndroid()"
         ref="pluginsBtn"
         type="nav"
         class="shrink-0"
@@ -149,6 +150,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { Button } from '../base'
 import Icon from '../base/widget/Icon.vue'
+import { isAndroid } from '@/utils/platform'
 
 const props = defineProps<{}>()
 

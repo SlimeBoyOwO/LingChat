@@ -26,7 +26,9 @@
       >
         <h3 class="hidden xl:block">{{ $t('views.mainChat.auto') }}</h3>
       </Button>
+      <!-- 桌宠模式依赖 Windows 透明置顶窗口与 hit-test（lib.rs 为 cfg(windows)），Android 不可用 -->
       <Button
+        v-if="!isAndroid()"
         type="nav"
         icon="character"
         @click="goToPetMode"
@@ -63,6 +65,7 @@ import { eventQueue } from '@/core/events/event-queue'
 
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
 import ImageSourcePicker from '@/components/ui/ImageSourcePicker.vue'
+import { isAndroid } from '@/utils/platform'
 
 const LOADING_STORAGE_KEY = 'lingchat_loading_shown'
 

@@ -182,14 +182,19 @@ fn read_package(key: &str, loaded_names: &HashSet<String>) -> Result<ScriptPacka
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
+    // 只有羁绊布局或真正的羁绊冒险才认 bound_character_folder：
+    // standalone 独立剧本即使 story_config 残留 adventure.bound_character_folder
+    // （如从羁绊剧本复制改的）也不算绑定，否则编辑器会误显示 MAIN 选项
     let bound_character_folder = if layout == ScriptLayout::Character {
         key.split('/').nth(1).map(|s| s.to_string())
-    } else {
+    } else if is_adventure {
         adventure
             .and_then(|a| a.get("bound_character_folder"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .filter(|s| !s.is_empty())
+    } else {
+        None
     };
 
     Ok(ScriptPackage {
@@ -288,11 +293,22 @@ fn read_characters(script_dir: &Path) -> Vec<ScriptCharacter> {
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| folder.clone());
 
+        // 显示名：`name`（作者手写剧本角色时用这个字段放真正的名字）优先，
+        // 回落 `ai_name`，再回落目录名。此前只读 ai_name，作者把标题写在
+        // ai_name 里时下拉/摘要会显示成「角色标题」而不是名字。
         let ai_name = settings
-            .get("ai_name")
+            .get("name")
             .and_then(|v| v.as_str())
-            .unwrap_or(&folder)
-            .to_string();
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                settings
+                    .get("ai_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+            })
+            .unwrap_or_else(|| folder.clone());
 
         let avatar = e.path().join("avatar");
         let mut emotions: Vec<String> = Vec::new();
@@ -1110,6 +1126,8 @@ pub struct GlobalCharacter {
     pub already_in_script: bool,
     /// 全局目录里有没有 avatar/，没有的话导入后也不会有立绘
     pub has_avatar: bool,
+    /// 全局角色已上传的服装目录（avatar/ 下的子目录，供编辑器服装下拉使用）
+    pub clothes: Vec<String>,
 }
 
 /// 列出全局角色库，并标出哪些已经导入到当前剧本。
@@ -1141,15 +1159,36 @@ pub fn editor_list_global_characters(key: String) -> Result<Vec<GlobalCharacter>
             .ok()
             .and_then(|s| serde_yaml::from_str(&s).ok())
             .unwrap_or(JsonValue::Null);
+        // 服装候选：avatar/ 下的子目录（与 read_characters 的扫描规则一致）
+        let mut clothes = Vec::new();
+        if let Ok(files) = std::fs::read_dir(e.path().join("avatar")) {
+            for f in files.flatten() {
+                if f.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    clothes.push(f.file_name().to_string_lossy().to_string());
+                }
+            }
+        }
+        clothes.sort();
+        // 显示名与 read_characters 同一规则：name 优先，回落 ai_name，再回落目录名
+        let display_name = settings
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                settings
+                    .get("ai_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+            })
+            .unwrap_or_else(|| folder.clone());
         out.push(GlobalCharacter {
-            ai_name: settings
-                .get("ai_name")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&folder)
-                .to_string(),
+            ai_name: display_name,
             already_in_script: existing.contains(&folder),
             has_avatar: e.path().join("avatar").is_dir(),
             folder,
+            clothes,
         });
     }
     out.sort_by(|a, b| a.folder.cmp(&b.folder));
@@ -1708,12 +1747,44 @@ async fn find_main_role_by_folder(
 }
 
 /// 角色显示名，查不到就算了 —— 这只是给作者看的提示文案，不值得让整个命令失败。
+///
+/// DB 的 roles.name 是角色初始化时写入的 title（见 role_sync），不是显示名；
+/// 这里改读角色的 settings.yml（name → ai_name），与 read_characters 同一规则。
+/// 剧本 NPC 用 script_key 定位到剧本内 characters/，全局角色直接读全局目录。
 async fn role_name_of(db: &DatabaseConnection, id: i32) -> Option<String> {
-    RoleRepo::get_role_by_id(db, id)
-        .await
-        .ok()
-        .flatten()
-        .map(|r| r.name)
+    let role = RoleRepo::get_role_by_id(db, id).await.ok().flatten()?;
+    let folder = role.resource_folder.as_deref().unwrap_or_default();
+
+    let settings_path = match role.script_key.as_deref() {
+        Some(script_key) => paths::resolve_script_dir(script_key)
+            .ok()
+            .map(|d| d.join("characters").join(folder).join("settings.yml")),
+        None => Some(crate::api::characters_dir().join(folder).join("settings.yml")),
+    };
+
+    if let Some(path) = settings_path {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            let settings: JsonValue = serde_yaml::from_str(&content).unwrap_or(JsonValue::Null);
+            let from_yaml = settings
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    settings
+                        .get("ai_name")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                });
+            if from_yaml.is_some() {
+                return from_yaml;
+            }
+        }
+    }
+
+    // settings.yml 读不到时兜底 DB name（聊胜于无）
+    Some(role.name)
 }
 
 /// 角色卡里写的玩家名（settings.user_name）。查不到或为空返回空串 ——

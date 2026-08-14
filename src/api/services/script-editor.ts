@@ -40,6 +40,8 @@ export interface FieldSpec {
   /** 与 options 对齐的显示名（来自 Rust schema 的 option_labels），有则优先显示 */
   optionLabels?: string[]
   placeholder?: string
+  /** 引擎真实默认值的人类可读描述（可选字段「不设置」时展示） */
+  defaultDesc?: string
   hint?: string
   enabled: boolean
 }
@@ -120,6 +122,7 @@ export interface ScriptCharacter {
   folder: string
   /** 剧本里 character: 应该写的值 */
   roleKey: string
+  /** 显示名：后端读 settings.yml 的 name 优先，回落 ai_name，再回落目录名 */
   aiName: string
   emotions: string[]
   clothes: string[]
@@ -304,10 +307,13 @@ export const deleteAsset = (key: string, kind: AssetKind, scope: AssetScope, nam
 /** 全局角色库里的一个角色 */
 export interface GlobalCharacter {
   folder: string
+  /** 显示名：后端读 settings.yml 的 name 优先，回落 ai_name，再回落目录名 */
   aiName: string
   /** 在当前剧本里是否已导入 */
   alreadyInScript: boolean
   hasAvatar: boolean
+  /** 已上传的服装目录（avatar/ 子目录），供服装下拉使用 */
+  clothes: string[]
 }
 
 export const listGlobalCharacters = (key: string) =>

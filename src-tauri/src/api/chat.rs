@@ -1,9 +1,14 @@
+use std::sync::OnceLock;
+
+use regex::Regex;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
 };
+use crate::ai_service::message_system::processor::EmotionSegment;
+use crate::ai_service::tts::local::LocalTtsState;
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::api::game::{compute_user_message_seqs, GameLineInit};
 use crate::config::AppConfig;
@@ -323,6 +328,174 @@ pub async fn rollback_conversation(
     );
 
     Ok(init_lines)
+}
+
+/// 判断该台词行是否属于「可补生成语音」的 AI 台词：
+/// 剥掉 `{...}` 动作段后仍有正文。与前端 `convertInitLines` 判空规则对齐，
+/// 避免纯动作行（如整行都是 `{...}`）前后端计数不一致。
+fn has_tts_countable_content(content: &str) -> bool {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| Regex::new(r"\{[\s\S]*?\}").expect("invalid regex"));
+    !re.replace_all(content, "").trim().is_empty()
+}
+
+/// 为历史中某条 AI 台词补生成语音（「生成语音」按钮后端）。
+///
+/// `line_seq` 为 0-based 的「AI 台词」全局序号：按 `line_list` 中
+/// attribute == Assistant 且有正文、且关联角色（sender_role_id 非空）的行计数。
+/// 前端历史展示与后端计数规则一致（同样跳过空内容与无角色行），因此任意来源的
+/// AI 台词都能定位——自由对话轮次、AI 开场白、主动对话、剧本台词均适用。
+///
+/// 语音生成复用该台词角色已构建的 `VoiceMaker`（未加载时从 DB 惰性注册，
+/// 保证重启后剧本 NPC 等角色也能正确对应），产物写入 `<data_dir>/voice/`
+/// 后回填 `audio_file`，存在活跃存档时同步到 DB，重启后仍可播放。
+#[tauri::command]
+pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String, String> {
+    let state = app.state::<AppState>();
+    let db = state.db.clone();
+
+    // 串行化：等待正在进行的消息生成完成，避免与生成流程争抢 TTS
+    let gen_lock = state.generation_lock.clone();
+    let _lock = gen_lock.lock().await;
+
+    // ===== 预热（先于生成，保证配好 TTS 后第一次点击就能成功） =====
+    // 1. 本地 TTS 引擎：未就绪且 DeBERTa 已安装时初始化（秒级 ONNX 加载，
+    //    此时不持 gs 锁，避免堵住对话）
+    {
+        let local_state = app.state::<LocalTtsState>();
+        if !local_state.engine.is_ready().await && local_state.paths.asset_present("deberta") {
+            if let Err(e) = local_state.engine.init(&local_state.paths).await {
+                tracing::error!("生成语音前初始化本地 TTS 引擎失败: {e}");
+            }
+        }
+    }
+
+    // 2. 已加载角色按 DB 最新 TTS 配置重建 VoiceMaker：恢复被后台探测禁用的
+    //    provider、补齐「角色先于 TTS 配置注册」产生的 None，本次生成即用新配置
+    {
+        let svc = state.ai_service.lock().await;
+        let mut gs = svc.game_status.lock().await;
+        gs.role_manager.rebuild_voice_makers_from_db(&db).await;
+    }
+
+    // 3. 预热完成后再广播 TTS 状态变化事件：前端（TTS 设置页等）刷新到的是
+    //    真实就绪状态（静默刷新，无 toast），而非刷新前的旧状态
+    let _ = app.emit("tts://status-changed", ());
+
+    let file_name = {
+        let svc = state.ai_service.lock().await;
+        let mut gs = svc.game_status.lock().await;
+
+        // 1. 定位目标台词：数「assistant 且有正文且关联角色」的行，取第 line_seq 条。
+        //    跳过 sender_role_id 为 None 的行（工具调用回填的 assistant 前缀行，
+        //    实时对话时前端不可见，重载后可见——若计入序号会造成前后端计数漂移）。
+        let mut count = 0u32;
+        let mut target_idx: Option<usize> = None;
+        for (i, gl) in gs.line_list.iter().enumerate() {
+            if matches!(gl.attribute(), LineAttribute::Assistant)
+                && gl.base.sender_role_id.is_some()
+                && has_tts_countable_content(&gl.base.content)
+            {
+                if count == line_seq {
+                    target_idx = Some(i);
+                    break;
+                }
+                count += 1;
+            }
+        }
+        let idx = target_idx.ok_or_else(|| {
+            format!("未找到序号为 {} 的 AI 台词（共 {} 条）", line_seq, count)
+        })?;
+
+        // 2. 先克隆台词数据（之后要对 gs 做可变借用）
+        let role_id = gs.line_list[idx].base.sender_role_id;
+        let role_id = role_id.ok_or_else(|| "该台词没有关联角色，无法生成语音".to_string())?;
+        let text = gs.line_list[idx].base.content.clone();
+        if text.trim().is_empty() {
+            return Err("该台词没有可朗读的文本".to_string());
+        }
+        let original_tag = gs.line_list[idx]
+            .base
+            .original_emotion
+            .clone()
+            .unwrap_or_default();
+        let motion_text = gs.line_list[idx]
+            .base
+            .action_content
+            .clone()
+            .unwrap_or_default();
+        let japanese_text = gs.line_list[idx].base.tts_content.clone().unwrap_or_default();
+        let predicted = gs.line_list[idx]
+            .base
+            .predicted_emotion
+            .clone()
+            .unwrap_or_default();
+
+        // 3. 取角色 VoiceMaker：优先已加载角色；未加载（如重启后剧本 NPC）
+        //    从 DB 惰性注册再取，保证语音始终对应台词自己的角色
+        let voice_maker = {
+            let loaded = gs
+                .role_manager
+                .get_loaded(role_id)
+                .and_then(|r| r.voice_maker.clone());
+            if loaded.is_some() {
+                loaded
+            } else {
+                gs.get_role(&db, role_id)
+                    .await
+                    .ok()
+                    .and_then(|r| r.voice_maker.clone())
+            }
+        };
+        let voice_maker = voice_maker.ok_or_else(|| {
+            format!("角色 {} 未配置 TTS，请在角色设置中启用语音", role_id)
+        })?;
+
+        // 4. 构造单个情绪片段并生成语音。
+        //    选文逻辑与实时生成一致（voice_maker.rs 的 segment_text_for_lang：
+        //    语音语言为 ja 且存在日语译文时朗读译文）。
+        //    存储的台词已剥离【情绪】标签（生成时提取过），无需二次解析。
+        let mut seg = EmotionSegment {
+            index: 0,
+            original_tag,
+            following_text: text,
+            motion_text,
+            japanese_text,
+            predicted,
+            confidence: 1.0,
+            voice_file: String::new(),
+            character: None,
+            role_id: Some(role_id),
+        };
+        voice_maker.generate_voice_files(std::slice::from_mut(&mut seg)).await;
+
+        // 5. 校验产物并回填 audio_file（voice_maker 生成失败时只打日志不留文件）
+        let path = std::path::PathBuf::from(&seg.voice_file);
+        if seg.voice_file.is_empty() || !path.exists() {
+            return Err(
+                "语音生成失败：TTS 未启用或生成出错，请检查语音设置后再试".to_string(),
+            );
+        }
+        let file_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .ok_or_else(|| "语音文件路径异常".to_string())?;
+
+        gs.line_list[idx].base.audio_file = Some(file_name.clone());
+
+        // 6. 存在活跃存档时同步到 DB，保证重启后仍可播放
+        if let Some(save_id) = gs.active_save_id {
+            SaveRepo::sync_lines(&db, save_id, &gs.line_list)
+                .await
+                .map_err(|e| format!("同步存档失败: {}", e))?;
+        }
+
+        file_name
+    }; // 释放锁
+
+    tracing::info!("补生成语音完成: line_seq={}, file={}", line_seq, file_name);
+
+    Ok(file_name)
 }
 
 //拉起AI回复（无用户输入，直接触发对话）

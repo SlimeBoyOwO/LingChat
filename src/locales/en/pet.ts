@@ -36,6 +36,8 @@ export default {
     backtrackTitle: "Rewind to before this message (this message and all later chats will be cleared)",
     thinking: "Thinking ({count} chars)",
     playVoice: "Play Voice",
+    generateVoice: "Generate Voice",
+    generateVoiceFailed: "Failed to generate voice: {error}",
     prevPage: "Previous",
     nextPage: "Next",
     pageInfo: "Page {current} / {total}",

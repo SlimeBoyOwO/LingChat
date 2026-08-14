@@ -136,27 +136,44 @@ export function groupContaining(rows: FoldedRow[], eventIndex: number): number |
   return null
 }
 
-/** 一行摘要：把事件的关键字段浓缩成一句人话 */
-export function eventSummary(e: ScriptEventData): string {
+/** 一行摘要：把事件的关键字段浓缩成一句人话。
+ * `mainRoleName` 为绑定羁绊人物的展示名（供 MAIN 显示），
+ * `roleNameMap` 为 roleKey → aiName 映射（供剧本 NPC 显示名字而非键）。
+ * 两者缺省时回退字面 MAIN / roleKey。 */
+export function eventSummary(
+  e: ScriptEventData,
+  mainRoleName?: string,
+  roleNameMap?: Map<string, string>,
+): string {
   const t = typeOf(e)
   const s = (k: string) => str(e, k)
+  const roleLabel = (k: string) => {
+    const key = s(k)
+    if (!key || key === 'MAIN') return mainRoleName || 'MAIN'
+    return roleNameMap?.get(key) || key
+  }
 
   switch (t) {
     case 'narration':
     case 'player':
       return s('text').replace(/\n/g, ' ⏎ ')
     case 'dialogue': {
-      const parts = [s('character') || 'MAIN']
+      const parts = [roleLabel('character')]
       if (s('emotion')) parts.push(s('emotion'))
       parts.push(s('text'))
       return parts.join(' · ')
     }
-    case 'ai_dialogue':
-      return s('prompt') || '（无提示 · 纯靠上下文生成）'
-    case 'free_dialogue':
-      return [s('hint'), s('end_line') ? `结束语「${s('end_line')}」` : '']
-        .filter(Boolean)
-        .join(' · ')
+    case 'ai_dialogue': {
+      // 与 dialogue 一致：摘要前缀显示对应角色名（MAIN 绑定名 / NPC 名字）
+      const parts = [roleLabel('character')]
+      parts.push(s('prompt') || '（无提示 · 纯靠上下文生成）')
+      return parts.join(' · ')
+    }
+    case 'free_dialogue': {
+      const parts = [roleLabel('character'), s('hint')]
+      if (s('end_line')) parts.push(`结束语「${s('end_line')}」`)
+      return parts.filter(Boolean).join(' · ')
+    }
     case 'choices': {
       const opts = Array.isArray(e.options) ? (e.options as Record<string, unknown>[]) : []
       return opts.map((o) => (typeof o.text === 'string' ? o.text : '（兜底）')).join('　/　')
@@ -194,7 +211,7 @@ export function eventSummary(e: ScriptEventData): string {
     case 'modify_character': {
       const act = s('action')
       const label = act === 'show_character' ? '出场' : act === 'hide_character' ? '退场' : act
-      return [s('character') || 'MAIN', label, s('emotion')].filter(Boolean).join(' · ')
+      return [roleLabel('character'), label, s('emotion')].filter(Boolean).join(' · ')
     }
     case 'background':
     case 'present_pic':

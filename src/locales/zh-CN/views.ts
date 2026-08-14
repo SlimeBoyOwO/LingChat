@@ -52,7 +52,7 @@ export default {
     credits: '致谢名单',
     exitGame: '退出游戏',
     freeDialogue: '自由对话模式',
-    storyMode: '剧情模式',
+    storyMode: '剧情模式（在自由模式进入）',
     scriptEditor: '创意工坊',
     miniGame: '小游戏（开发中）',
     back: '返回',

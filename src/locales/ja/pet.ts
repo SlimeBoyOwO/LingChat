@@ -35,6 +35,8 @@ export default {
     backtrackTitle: 'このメッセージの前まで巻き戻します（このメッセージとそれ以降の会話はすべて削除されます）',
     thinking: '思考プロセス（{count} 文字）',
     playVoice: '音声を再生',
+    generateVoice: '音声を生成',
+    generateVoiceFailed: '音声の生成に失敗：{error}',
     prevPage: '前のページ',
     nextPage: '次のページ',
     pageInfo: '{current} / {total} ページ',
