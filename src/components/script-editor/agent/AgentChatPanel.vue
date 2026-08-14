@@ -342,10 +342,12 @@
                   flex-col
                   gap-2"
               >
-                <!-- 思考/规划块：有思考链，或该轮以工具调用结尾（正文是工具前叙述） -->
+                <!-- 思考/规划块：有思考链，或该轮以工具调用结尾（正文是工具前叙述）。
+                     streaming 时 pill 显示转圈 + 「思考中」高亮。 -->
                 <AgentThinkingBlock
                   v-if="thinkingText(round)"
                   :text="thinkingText(round)"
+                  :streaming="item.streaming"
                 />
                 <!-- 普通回复气泡：独立判断，与思考块并存显示。
                      开启思考模式时最终答复轮同时携带 reasoning + content，
@@ -417,10 +419,10 @@
                     v-if="toolGroupOpen(item.id, i, round)"
                     class="flex
                       flex-col
-                      gap-2
+                      gap-1
                       border-t
                       border-white/10
-                      p-2.5"
+                      p-1.5"
                   >
                     <AgentToolCard
                       v-for="run in round.toolRuns"
@@ -637,8 +639,11 @@ async function approveRun(run: ToolRun, itemId: string, roundIdx: number, allowe
   if (run.requestId) await store.resolveApproval(run.requestId, allowed)
 }
 
-/** 回溯用户消息：把消息文字覆盖到输入框并聚焦，光标置于末尾，可直接修改后发送。 */
-function quoteMessage(item: ChatItem) {
+/**
+ * 回溯用户消息：把消息文字覆盖到输入框并聚焦、光标置于末尾，随后删除该消息
+ * 及其后所有回复（撤回重发语义）——重发即新的一轮，历史里不留残缺回合。
+ */
+async function quoteMessage(item: ChatItem) {
   draft.value = item.content
   void nextTick(() => {
     const el = inputEl.value
@@ -646,6 +651,11 @@ function quoteMessage(item: ChatItem) {
     el.focus()
     el.setSelectionRange(el.value.length, el.value.length)
   })
+  try {
+    await store.rewindMessage(item)
+  } catch (err) {
+    console.warn('[Agent] 回溯删除消息失败:', err)
+  }
 }
 
 /** 左下角 Token 用量卡片是否展开明细。 */

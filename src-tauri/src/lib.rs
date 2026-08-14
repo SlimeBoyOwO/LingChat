@@ -665,6 +665,7 @@ pub fn run() {
             api::script_editor::agent::editor_agent_clear_conversation,
             api::script_editor::agent::editor_agent_start_chat,
             api::script_editor::agent::editor_agent_stop_chat,
+            api::script_editor::agent::editor_agent_rewind,
             api::script_editor::agent::editor_agent_resolve_approval,
             api::pet::update_solid_regions,
             api::pet::set_pet_mode,

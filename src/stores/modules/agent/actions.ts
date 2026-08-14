@@ -19,6 +19,12 @@ const nextId = () => `m-${Date.now()}-${++idCounter}`
 let activeAssistantId: string | null = null
 /** 当前 turn 的流式通道；turn 结束后置空。 */
 let channel: Channel<SkillAgentEvent> | null = null
+/**
+ * 本轮已结束标志：finish/finishWithError/cancel 后置 true，handleEvent 直接忽略
+ * 后续迟到事件（后端 abort 前已推入通道的 delta/status 等）。不解除 onmessage
+ * 是为了让迟到的 done/error 也走守卫而不是报未处理回调。
+ */
+let finished = false
 
 const safeParse = (s: string): Record<string, unknown> => {
   try {
@@ -103,19 +109,36 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     state.version.value++
   }
 
+  /**
+   * 回溯（撤回重发）：删除该消息及其后所有消息，把对话回退到该消息发送前。
+   * 正在生成时先停止；删除后重新加载历史以恢复 items 与用量统计。
+   */
+  async function rewindMessage(item: ChatItem) {
+    if (state.currentId.value == null) return
+    const dbId = Number(item.id.replace(/^p-/, ''))
+    if (Number.isNaN(dbId)) return
+    if (state.streaming.value) await cancel()
+    await api.rewindAgentMessages(state.currentId.value, dbId)
+    const msgs = await api.getAgentMessages(state.currentId.value)
+    state.items.value = rebuildItems(msgs)
+    restoreUsage(msgs)
+    state.version.value++
+  }
+
   // ==================== 对话 ====================
 
   async function sendMessage(text: string) {
     const content = text.trim()
     if (!content || state.streaming.value || state.currentId.value == null) return
 
-    state.items.value.push({
+    const userItem: ChatItem = {
       id: nextId(),
       role: 'user',
       content,
       rounds: [],
       streaming: false,
-    })
+    }
+    state.items.value.push(userItem)
     activeAssistantId = nextId()
     state.items.value.push({
       id: activeAssistantId,
@@ -129,18 +152,24 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     state.sending.value = true
     state.status.value = '思考中…'
     state.version.value++
+    finished = false
 
     channel = new Channel<SkillAgentEvent>()
     channel.onmessage = (event: SkillAgentEvent) => handleEvent(event)
 
     try {
-      await api.startAgentChat(state.currentId.value, content, channel)
+      // 用后端返回的 DB id 覆盖本地临时 id，与历史消息统一为 `p-<id>` 格式，
+      // 回溯删除才能定位到这条新消息（后端在返回前已落库）。
+      const dbId = await api.startAgentChat(state.currentId.value, content, channel)
+      userItem.id = `p-${dbId}`
     } catch (err) {
       finishWithError(String(err))
     }
   }
 
   function handleEvent(event: SkillAgentEvent) {
+    // 本轮已结束（停止/完成/出错）后忽略迟到事件，防止停止后界面还在被写入
+    if (finished) return
     const msg = currentAssistant()
     switch (event.type) {
       case 'status':
@@ -243,6 +272,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
   }
 
   function finish(assistantId: string | null, finalText?: string, usage?: TokenUsage | null) {
+    finished = true
     const msg = state.items.value.find((m) => m.id === assistantId)
     if (msg) {
       msg.streaming = false
@@ -265,6 +295,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
   }
 
   function finishWithError(message: string) {
+    finished = true
     const msg = currentAssistant()
     if (msg) {
       msg.streaming = false
@@ -280,7 +311,14 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
 
   async function cancel() {
     if (!state.streaming.value) return
-    await api.stopAgentChat()
+    // 先置结束标志再请求停止：abort 前通道里已积压的迟到事件直接被守卫丢弃
+    finished = true
+    try {
+      await api.stopAgentChat()
+    } catch (err) {
+      // 停止请求失败不能阻塞前端收尾（界面必须立刻回到可发送状态）
+      console.warn('[Agent] 停止请求失败:', err)
+    }
     finish(activeAssistantId)
   }
 
@@ -400,6 +438,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     sendMessage,
     cancel,
     resolveApproval,
+    rewindMessage,
     loadSettings,
     loadSkills,
     saveSettings,

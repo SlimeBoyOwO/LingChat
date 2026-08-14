@@ -155,13 +155,18 @@ export const clearAgentConversation = (conversationId: number) =>
 // 对话
 // ============================================================
 
+/** 开始一轮对话。返回本次用户消息的 DB id（用于回溯删除定位）。 */
 export const startAgentChat = (
   conversationId: number,
   message: string,
   channel: Channel<SkillAgentEvent>,
-) => invoke<void>('editor_agent_start_chat', { conversationId, message, channel })
+) => invoke<number>('editor_agent_start_chat', { conversationId, message, channel })
 
 export const stopAgentChat = () => invoke<void>('editor_agent_stop_chat')
+
+/** 回溯：删除会话中 id >= messageId 的消息（把对话回退到该消息发送前）。 */
+export const rewindAgentMessages = (conversationId: number, messageId: number) =>
+  invoke<void>('editor_agent_rewind', { conversationId, messageId })
 
 export const resolveAgentApproval = (requestId: string, allowed: boolean) =>
   invoke<void>('editor_agent_resolve_approval', { requestId, allowed })
