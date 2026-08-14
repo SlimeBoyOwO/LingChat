@@ -99,14 +99,10 @@ import GameExtraUI from '@/components/game/standard/GameExtraUI.vue'
 import { eventQueue } from '@/core/events/event-queue'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import { useGameStore } from '@/stores/modules/game'
-import { useUIStore } from '@/stores/modules/ui/ui'
-import { useSettingsStore } from '@/stores/modules/settings'
 
 const { t } = useI18n()
 const store = useScriptEditorStore()
 const gameStore = useGameStore()
-const uiStore = useUIStore()
-const settingsStore = useSettingsStore()
 
 const props = defineProps<{ fromChapter?: string }>()
 
@@ -121,149 +117,19 @@ const label = computed(() => {
 })
 
 /**
- * 试玩期间会被引擎改写的 gameStore 字段，进出各存/还一次。
+ * 试玩进出场的状态备份/还原已迁入 script-editor store（capturePreviewGameState /
+ * capturePreviewSceneState / restorePreviewState）：
  *
- * 后端已经把 `GameStatus` 整个备份还原了（见 `PreviewSession`），但前端这份是
- * 独立的一套状态：立绘在场名单、对话历史、剧情模式标记都只存在于浏览器里，
- * 引擎 emit 的事件经 eventQueue 直接改它。不管的话，退出编辑器回自由对话，
- * 看到的还是试玩留下的立绘和台词 —— 包括「AI 已关闭」那几条占位。
- *
- * 只存这几个字段而不是整个 `$state`：其余部分（用户名、场景配置、设置）试玩
- * 不会碰，整份深拷贝反而可能把别处刚改好的东西覆盖回去。
+ * - 后端已经把 `GameStatus` 整个备份还原了（见 `PreviewSession`），但前端这份是
+ *   独立的一套状态：立绘在场名单、对话历史、剧情模式标记都只存在于浏览器里，
+ *   引擎 emit 的事件经 eventQueue 直接改它。不管的话，退出编辑器回自由对话，
+ *   看到的还是试玩留下的立绘和台词 —— 包括「AI 已关闭」那几条占位。
+ * - 场景渲染态（背景/BGM/特效等）在 uiStore + settingsStore（persist），不还原
+ *   会跨试玩长期泄漏。
+ * - 搭新场必须早于 `editor_start_preview` invoke（引擎在其中就 spawn 并 emit，
+ *   晚于 invoke 的清场会丢 free_dialogue 等开头事件），所以由 startPreview 在
+ *   invoke 前调用 store.preparePreviewState()；本组件只在退出时还原。
  */
-type GameSnapshot = {
-  runningScript: typeof gameStore.runningScript
-  presentRoleIds: number[]
-  currentInteractRoleId: number | null
-  mainRoleId: number
-  userName: string
-  /** 玩家副标题（试玩时可能被剧本/角色卡覆盖），退出时还原，否则不同角色标题混搭 */
-  userSubtitle: string
-  /** 当前场景（光照/滤镜作用域），脚本场景会影响后续自由对话立绘可见性 */
-  currentScene: typeof gameStore.currentScene
-  currentLine: string
-  currentStatus: typeof gameStore.currentStatus
-  dialogHistory: typeof gameStore.dialogHistory
-  command: string | null
-  /** 试玩会往角色缓存里塞剧本角色，退出时要还回原样，否则回自由对话立绘会串/消失 */
-  gameRoles: typeof gameStore.gameRoles
-  /** 标记游戏是否已初始化。MainChat 据此决定是否重跑 initializeGame，
-   *  退出编辑器时会在 leave() 里设为 false，这里存一下保持语义一致 */
-  initialized: boolean
-}
-
-let snapshot: GameSnapshot | null = null
-
-const captureGameState = (): GameSnapshot => ({
-  runningScript: gameStore.runningScript,
-  presentRoleIds: [...gameStore.presentRoleIds],
-  currentInteractRoleId: gameStore.currentInteractRoleId,
-  mainRoleId: gameStore.mainRoleId,
-  userName: gameStore.userName,
-  userSubtitle: gameStore.userSubtitle,
-  currentScene: gameStore.currentScene,
-  currentLine: gameStore.currentLine,
-  currentStatus: gameStore.currentStatus,
-  dialogHistory: [...gameStore.dialogHistory],
-  command: gameStore.command,
-  // 深拷贝每个角色对象（含嵌套的 clothes/bodyPart），JSON 序列化确保完全切断
-  // 共享引用。浅拷贝 { ...role } 仍会共用嵌套对象，试玩期间修改 clothes 等会污染快照。
-  gameRoles: JSON.parse(JSON.stringify(gameStore.gameRoles)),
-  initialized: gameStore.initialized,
-})
-
-const restoreGameState = (s: GameSnapshot) => {
-  gameStore.runningScript = s.runningScript
-  gameStore.presentRoleIds = s.presentRoleIds
-  gameStore.currentInteractRoleId = s.currentInteractRoleId
-  gameStore.mainRoleId = s.mainRoleId
-  gameStore.userName = s.userName
-  gameStore.userSubtitle = s.userSubtitle
-  gameStore.currentScene = s.currentScene
-  gameStore.currentLine = s.currentLine
-  gameStore.currentStatus = s.currentStatus
-  gameStore.dialogHistory = s.dialogHistory
-  gameStore.command = s.command
-  gameStore.gameRoles = s.gameRoles
-  gameStore.initialized = s.initialized
-}
-
-/**
- * 试玩期间会被脚本事件（background/music/background_effect/present_pic/sound/ambient）
- * 改写的「场景渲染态」。这些不在 gameStore，而在 uiStore + settingsStore：
- * - 背景图、粒子特效存在 **settingsStore.display**（且 settingsStore 是 persist 的），
- *   不还原会写进 localStorage、跨试玩/跨自由对话长期泄漏；
- * - 其余（过渡时长、BGM 轨与速度、插图、音效、环境音轨）在 uiStore。
- *
- * 【还原断言】试玩结束（previewing=false）必须把这一整族还原回试玩前快照，
- * 否则：粒子特效不清空、BGM 不停、背景图/插图/音效串到自由对话或下一次试玩。
- * 新增任何会被脚本事件改写的渲染态字段时，务必同步加进这里存/还。
- */
-type SceneSnapshot = {
-  // settingsStore.display（持久化，必须还原）
-  background: string
-  backgroundEffect: string
-  // uiStore
-  backgroundTransition: number
-  backgroundMusic: string
-  bgMusicPlaybackRate: number
-  presentPic: string
-  presentPicScale: number
-  // 角色标题/副标题：试玩期间脚本对话会把它们改成剧本 NPC 的名字，
-  // 不还原的话回自由对话仍显示错误的角色身份
-  showCharacterTitle: string
-  showCharacterSubtitle: string
-  // 台词/情绪/动作文本：dialogue-processor 试玩期间逐句改写，纯展示字段，还回原值
-  showCharacterLine: string
-  showCharacterEmotion: string
-  showCharacterMotionText: string
-  // currentSoundEffect 不存：它是「值变化即播放」的一次性触发型字段，
-  // 还原成试玩前的路径会误重播；试玩结束直接清成 'None'（见 restoreSceneState）。
-  // currentAvatarAudio 同理（角色语音也是值变化即播），一并只清不存。
-  ambientTracks: typeof uiStore.ambientTracks
-}
-
-let sceneSnapshot: SceneSnapshot | null = null
-
-const captureSceneState = (): SceneSnapshot => ({
-  background: settingsStore.display.currentBackground,
-  backgroundEffect: settingsStore.display.backgroundEffect,
-  backgroundTransition: uiStore.currentBackgroundTransition,
-  backgroundMusic: uiStore.currentBackgroundMusic,
-  bgMusicPlaybackRate: uiStore.bgMusicPlaybackRate,
-  presentPic: uiStore.currentPresentPic,
-  presentPicScale: uiStore.currentPresentPicScale,
-  showCharacterTitle: uiStore.showCharacterTitle,
-  showCharacterSubtitle: uiStore.showCharacterSubtitle,
-  showCharacterLine: uiStore.showCharacterLine,
-  showCharacterEmotion: uiStore.showCharacterEmotion,
-  showCharacterMotionText: uiStore.showCharacterMotionText,
-  // 深拷贝：ambientTracks 元素是对象，浅拷贝会与试玩期间的操作互相串改
-  ambientTracks: uiStore.ambientTracks.map((t) => ({ ...t })),
-})
-
-const restoreSceneState = (s: SceneSnapshot) => {
-  // settingsStore：直接写字段（与 setCurrentBackground/setBackgroundEffect 等价，但还原走直写更直接）
-  settingsStore.display.currentBackground = s.background
-  settingsStore.display.backgroundEffect = s.backgroundEffect
-  // uiStore
-  uiStore.currentBackgroundTransition = s.backgroundTransition
-  uiStore.currentBackgroundMusic = s.backgroundMusic
-  uiStore.bgMusicPlaybackRate = s.bgMusicPlaybackRate
-  uiStore.currentPresentPic = s.presentPic
-  uiStore.currentPresentPicScale = s.presentPicScale
-  uiStore.showCharacterTitle = s.showCharacterTitle
-  uiStore.showCharacterSubtitle = s.showCharacterSubtitle
-  uiStore.showCharacterLine = s.showCharacterLine
-  uiStore.showCharacterEmotion = s.showCharacterEmotion
-  uiStore.showCharacterMotionText = s.showCharacterMotionText
-  // 音效是触发型字段，直接清成 'None'：GameBackground 的 watch 见 'None' 不会播放，
-  // 既不误重播试玩前的音效，也清掉试玩留下的脏路径
-  uiStore.currentSoundEffect = 'None'
-  // 角色语音同理：还原成试玩前的路径会误重播自由对话最后一句，直接清 'None'
-  uiStore.currentAvatarAudio = 'None'
-  uiStore.ambientTracks = s.ambientTracks
-}
 
 /**
  * eventQueue 初始是 paused 的 —— 正式游玩里由 LoadingTransition 完成时 resume。
@@ -274,35 +140,7 @@ watch(
   () => store.previewing,
   async (on) => {
     if (on) {
-      // 先清掉上一轮试玩可能残留在事件队列里的事件（如 show_character），
-      // 否则新试玩开始后它们还会被处理，把旧角色注入到当前舞台。
-      eventQueue.clear()
-      snapshot = captureGameState()
-      sceneSnapshot = captureSceneState()
-      // 从干净的舞台开始，而不是继承主界面此刻的立绘和台词。
-      // 清空整个角色缓存以确保多轮试玩之间不会残留前一回合剧本添加的角色
-      // 对象和立绘状态（否则切到不同剧本试玩时可能出现多角色站位残留）。
-      gameStore.presentRoleIds = []
-      gameStore.gameRoles = {}
-      gameStore.dialogHistory = []
-      gameStore.currentLine = ''
-      gameStore.currentStatus = 'presenting'
-
-      // 试玩需要 runningScript 非空：choice 处理器要求它存在才会显示选项（issue #4）。
-      // 不复用 enterStoryMode：它有 bgMusicMode 等 UI 副作用，这里只要一个最小标记。
-      const scriptName = store.detail?.package.scriptName ?? ''
-      gameStore.runningScript = {
-        scriptName,
-        currentChapterName: '',
-        choices: [],
-        isRunning: true,
-        freeDialogueInfo: {
-          isFreeDialogue: false,
-          maxRounds: -1,
-          currentRound: 0,
-          endLine: '',
-        },
-      }
+      // 搭场（快照/清队/清舞台/建 runningScript）已在 startPreview 中完成
 
       // 注入主角身份：羁绊剧本的 MAIN 来自绑定角色卡。不设的话玩家气泡空名、
       // 立绘也不会出现（issue #8）。readiness 已在试玩前算好 mainRoleId / userName。
@@ -329,16 +167,7 @@ watch(
     } else {
       // clear() 内部会把 paused 置回 true，所以不需要另外 pause
       eventQueue.clear()
-      if (snapshot) {
-        restoreGameState(snapshot)
-        snapshot = null
-      }
-      // 还原场景渲染态：清掉试玩留下的背景图/粒子特效/BGM/插图/音效/环境音，
-      // 否则会跨试玩、跨自由对话泄漏（settingsStore.display 还是 persist 的）。
-      if (sceneSnapshot) {
-        restoreSceneState(sceneSnapshot)
-        sceneSnapshot = null
-      }
+      store.restorePreviewState()
     }
   },
 )
