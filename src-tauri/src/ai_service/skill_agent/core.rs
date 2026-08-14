@@ -233,7 +233,7 @@ pub async fn run_chat(
         }
 
         let defs = tools::tool_definitions();
-        let (assistant_text, tool_calls, finish_reason, usage) =
+        let (assistant_text, reasoning_text, tool_calls, finish_reason, usage) =
             match stream_completion(&ctx, &messages, &defs, &cancelled).await {
                 Ok(r) => r,
                 Err(e) => {
@@ -260,7 +260,13 @@ pub async fn run_chat(
             }
 
             let final_msg = LlmMessage::assistant(&assistant_text);
-            let _ = db::insert_message(&ctx.db, ctx.conversation_id, &final_msg).await;
+            let _ = db::insert_message(
+                &ctx.db,
+                ctx.conversation_id,
+                &final_msg,
+                Some(&reasoning_text),
+            )
+            .await;
             let usage = if turn_prompt_tokens + turn_completion_tokens > 0 {
                 Some(Usage {
                     prompt_tokens: turn_prompt_tokens,
@@ -297,7 +303,13 @@ pub async fn run_chat(
             tool_call_id: None,
         };
         messages.push(assistant_msg.clone());
-        let _ = db::insert_message(&ctx.db, ctx.conversation_id, &assistant_msg).await;
+        let _ = db::insert_message(
+            &ctx.db,
+            ctx.conversation_id,
+            &assistant_msg,
+            Some(&reasoning_text),
+        )
+        .await;
 
         // 逐个执行工具，回填 tool 结果并持久化
         for tc in &tool_calls {
@@ -338,7 +350,7 @@ pub async fn run_chat(
 
             let tool_msg = LlmMessage::tool_result(tc.id.clone(), &output);
             messages.push(tool_msg.clone());
-            let _ = db::insert_message(&ctx.db, ctx.conversation_id, &tool_msg).await;
+            let _ = db::insert_message(&ctx.db, ctx.conversation_id, &tool_msg, None).await;
         }
 
         if round == max_rounds - 1 {
@@ -359,9 +371,11 @@ async fn stream_completion(
     messages: &[LlmMessage],
     defs: &[ToolDefinition],
     cancelled: &CancelFlag,
-) -> Result<(String, Vec<AccumToolCall>, Option<String>, Usage), String> {
+) -> Result<(String, String, Vec<AccumToolCall>, Option<String>, Usage), String> {
     let llm = &ctx.llm;
     let mut text_out = String::new();
+    // 思考链单独累积：只展示不落 LLM 上下文（Reasoning chunk 不进 text_out）。
+    let mut reasoning_out = String::new();
     let usage = Usage::default();
     // 最后一次 StreamEnd 携带的归一化停止原因（"stop" / "max_tokens" / …）。
     let mut finish_reason: Option<String> = None;
@@ -383,6 +397,7 @@ async fn stream_completion(
                     let _ = ctx.channel.send(SkillAgentEvent::MessageDelta { content: c });
                 }
                 LlmChunk::Reasoning(r) => {
+                    reasoning_out.push_str(&r);
                     let _ = ctx.channel.send(SkillAgentEvent::Reasoning { content: r });
                 }
                 LlmChunk::ToolCalls(calls) => {
@@ -441,7 +456,7 @@ async fn stream_completion(
             tc.id = format!("call_{}_{}", std::process::id(), tc.index);
         }
     }
-    Ok((text_out, tool_calls, finish_reason, usage))
+    Ok((text_out, reasoning_out, tool_calls, finish_reason, usage))
 }
 
 #[cfg(test)]

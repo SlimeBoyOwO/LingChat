@@ -63,6 +63,8 @@ pub struct PersistedMessage {
     pub id: i32,
     pub role: String,
     pub content: Option<String>,
+    /// assistant 的思考链（仅展示，不参与 LLM 上下文）。
+    pub reasoning: Option<String>,
     pub tool_calls: Option<serde_json::Value>,
     pub tool_call_id: Option<String>,
     pub created_at: String,
@@ -220,6 +222,7 @@ pub async fn editor_agent_get_messages(
             id: m.id,
             role: m.role.clone(),
             content: m.content.clone(),
+            reasoning: m.reasoning.clone(),
             tool_calls: m
                 .tool_calls
                 .as_ref()
@@ -270,7 +273,7 @@ pub async fn editor_agent_start_chat(
     // 追加用户消息并持久化，再并入本轮上下文（必须，否则 LLM 看不到这条提问）。
     // 历史完整保留、不裁剪：模型需要看到全部上下文。
     let user_msg = LlmMessage::user(message.trim());
-    db::insert_message(&state.db, conversation_id, &user_msg).await?;
+    db::insert_message(&state.db, conversation_id, &user_msg, None).await?;
     history.push(user_msg);
 
     let ctx = SkillAgentRunContext {

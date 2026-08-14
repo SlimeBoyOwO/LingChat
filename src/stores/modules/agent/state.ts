@@ -30,7 +30,7 @@ export interface ToolRun {
 export interface ChatRound {
   /** 回复正文（工具调用前的叙述也在这里）。 */
   content: string
-  /** 思考链（thinking 模式开启时才有；不落库，仅实时显示）。 */
+  /** 思考链（thinking 模式开启时才有；已持久化，旧数据缺失时为空）。 */
   reasoning?: string
   toolRuns: ToolRun[]
 }

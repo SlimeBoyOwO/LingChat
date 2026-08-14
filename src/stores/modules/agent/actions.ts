@@ -189,9 +189,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
         // 审批紧随对应 tool_call 到达：找最后一条该工具的 running run
         let run: ToolRun | undefined
         for (let i = msg.rounds.length - 1; i >= 0 && !run; i--) {
-          run = msg.rounds[i].toolRuns.find(
-            (r) => r.tool === event.tool && r.status === 'running',
-          )
+          run = msg.rounds[i].toolRuns.find((r) => r.tool === event.tool && r.status === 'running')
         }
         if (run) {
           run.status = 'pending'
@@ -213,11 +211,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
         const run = msg ? findRun(msg, event.call_id) : undefined
         if (run) {
           run.status =
-            !event.ok && event.output.includes('已拒绝')
-              ? 'denied'
-              : event.ok
-                ? 'done'
-                : 'error'
+            !event.ok && event.output.includes('已拒绝') ? 'denied' : event.ok ? 'done' : 'error'
           run.output = event.output
         }
         state.status.value = ''
@@ -245,11 +239,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     return undefined
   }
 
-  function finish(
-    assistantId: string | null,
-    finalText?: string,
-    usage?: TokenUsage | null,
-  ) {
+  function finish(assistantId: string | null, finalText?: string, usage?: TokenUsage | null) {
     const msg = state.items.value.find((m) => m.id === assistantId)
     if (msg) {
       msg.streaming = false
@@ -294,9 +284,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
   async function resolveApproval(requestId: string, allowed: boolean) {
     await api.resolveAgentApproval(requestId, allowed)
     const msg = currentAssistant()
-    const run = msg?.rounds
-      .flatMap((r) => r.toolRuns)
-      .find((r) => r.requestId === requestId)
+    const run = msg?.rounds.flatMap((r) => r.toolRuns).find((r) => r.requestId === requestId)
     if (run) {
       run.status = allowed ? 'running' : 'denied'
       if (!allowed) run.output = '已拒绝执行'
@@ -343,6 +331,8 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
       } else if (m.role === 'assistant') {
         const round: ChatRound = {
           content: m.content ?? '',
+          // 思考链已持久化；旧库数据为 null，按无思考链处理
+          reasoning: m.reasoning ?? undefined,
           toolRuns: (m.toolCalls ?? []).map((tc) => ({
             callId: tc.id,
             tool: tc.function.name,

@@ -83,10 +83,12 @@ pub async fn delete_conversation(db: &DatabaseConnection, id: i32) -> Result<(),
 // ==================== 消息 ====================
 
 /// 插入一条消息（OpenAI 格式；空 content 存 NULL）。
+/// `reasoning` 为 assistant 的思考链（仅展示用途，不参与 LLM 上下文）。
 pub async fn insert_message(
     db: &DatabaseConnection,
     conversation_id: i32,
     msg: &LlmMessage,
+    reasoning: Option<&str>,
 ) -> Result<(), String> {
     let now = Local::now().naive_local();
     let model = skill_agent_message::ActiveModel {
@@ -98,6 +100,7 @@ pub async fn insert_message(
         } else {
             Some(msg.content.clone())
         }),
+        reasoning: Set(reasoning.map(|s| s.to_string())),
         tool_calls: Set(
             msg.tool_calls
                 .as_ref()

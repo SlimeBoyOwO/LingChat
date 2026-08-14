@@ -53,11 +53,15 @@ export interface PersistedMessage {
   id: number
   role: 'user' | 'assistant' | 'tool' | 'system'
   content: string | null
-  toolCalls: {
-    id: string
-    type: string
-    function: { name: string; arguments: string }
-  }[] | null
+  /** assistant 的思考链（仅展示，不参与 LLM 上下文；旧数据为 null）。 */
+  reasoning: string | null
+  toolCalls:
+    | {
+        id: string
+        type: string
+        function: { name: string; arguments: string }
+      }[]
+    | null
   toolCallId: string | null
   createdAt: string
 }
@@ -132,7 +136,8 @@ export const readAgentSkill = (name: string) =>
 export const createAgentConversation = (scriptKey: string | null) =>
   invoke<ConversationInfo>('editor_agent_create_conversation', { scriptKey })
 
-export const listAgentConversations = () => invoke<ConversationInfo[]>('editor_agent_list_conversations')
+export const listAgentConversations = () =>
+  invoke<ConversationInfo[]>('editor_agent_list_conversations')
 
 export const deleteAgentConversation = (conversationId: number) =>
   invoke<void>('editor_agent_delete_conversation', { conversationId })
