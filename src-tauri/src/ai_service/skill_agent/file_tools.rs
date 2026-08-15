@@ -140,6 +140,12 @@ impl FileTools {
         } else {
             atomic_write(&file, content.as_bytes())?;
         }
+        crate::security::audit::file_written(
+            "skill_agent",
+            &file,
+            content.len() as u64,
+            append,
+        );
         Ok(format!(
             "{} {}（{} 字节）",
             if append { "已追加到" } else { "已写入" },
@@ -156,6 +162,7 @@ impl FileTools {
             anyhow::bail!("delete_file 只能删除文件，不能删除目录: {}", file.display());
         }
         std::fs::remove_file(&file)?;
+        crate::security::audit::file_deleted("skill_agent", &file);
         Ok(format!("已删除 {}", file.display()))
     }
 
@@ -190,6 +197,12 @@ impl FileTools {
             content.replacen(old_string, new_string, 1)
         };
         atomic_write(&file, replaced.as_bytes())?;
+        crate::security::audit::file_written(
+            "skill_agent",
+            &file,
+            replaced.len() as u64,
+            false,
+        );
         Ok(format!(
             "已编辑 {}（替换 {} 处）",
             file.display(),

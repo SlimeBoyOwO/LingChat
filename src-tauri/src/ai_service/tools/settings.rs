@@ -121,6 +121,8 @@ pub struct ToolSettings {
     /// 命令执行：免审批直接运行 shell（危险，仅在信任当前角色/模型时开启）。
     pub command_auto_approve: bool,
     /// 命令执行：识别到删除操作时免审批继续执行（危险；缺省 false）。
+    /// 注意：删除类命令已被 `security::command_guard` 判为 Dangerous 并强制审批，
+    /// 此开关当前不改变审批行为（保留字段仅为兼容旧配置）。
     pub command_delete_auto_approve: bool,
     /// 删除文件：免审批直接删除（危险；缺省 false，旧配置升级后仍会弹窗）。
     pub file_delete_auto_approve: bool,
@@ -143,23 +145,52 @@ impl ToolSettings {
 
 impl ToolSettings {
     /// 加载配置；文件不存在时写入一份默认配置。
+    /// 网页搜索 API Key 从系统 keyring 读取（旧版明文会在首次加载时自动迁移）。
     pub fn load_or_create(data_dir: &Path) -> Result<Self> {
         let path = data_dir.join(SETTINGS_FILE_NAME);
-        if path.exists() {
+        let mut settings = if path.exists() {
             let text = fs::read_to_string(&path)
                 .with_context(|| format!("读取工具配置失败: {}", path.display()))?;
-            return toml::from_str(&text)
-                .with_context(|| format!("解析工具配置失败: {}", path.display()));
-        }
-        let settings = Self::default();
-        settings.save(data_dir)?;
+            toml::from_str(&text)
+                .with_context(|| format!("解析工具配置失败: {}", path.display()))?
+        } else {
+            let defaults = Self::default();
+            defaults.save(data_dir)?;
+            defaults
+        };
+        // 凭据水合：keyring 优先；明文残留则迁走
+        settings.hydrate_secret();
         Ok(settings)
     }
 
+    /// 从 keyring 水合网页搜索 API Key；若 TOML 中仍有明文则迁移后清空。
+    fn hydrate_secret(&mut self) {
+        let key = crate::security::secrets::WEB_SEARCH_SECRET_KEY;
+        match crate::security::secrets::get_secret(key) {
+            Ok(Some(value)) => self.web_search.api_key = value,
+            Ok(None) => {
+                // 无 keyring 值：保留文件中的明文（移动端降级路径）
+            }
+            Err(e) => {
+                tracing::warn!("读取 keyring 中网页搜索 API Key 失败（回退明文）: {e}");
+            }
+        }
+    }
+
     /// 原子写入 `data/tool_settings.toml`。
+    /// 网页搜索 API Key 优先写入系统 keyring，磁盘文件只留空占位；
+    /// keyring 不可用（移动端或运行时失败）时保持明文，避免凭据丢失。
     pub fn save(&self, data_dir: &Path) -> Result<()> {
+        let key = crate::security::secrets::WEB_SEARCH_SECRET_KEY;
+        let mut disk = self.clone();
+        if crate::security::secrets::secret_storage_available() {
+            match crate::security::secrets::set_secret(key, &self.web_search.api_key) {
+                Ok(()) => disk.web_search.api_key = String::new(),
+                Err(e) => tracing::warn!("写入 keyring 失败（保持明文兼容）: {e}"),
+            }
+        }
         let path = data_dir.join(SETTINGS_FILE_NAME);
-        let text = toml::to_string_pretty(self).context("序列化工具配置失败")?;
+        let text = toml::to_string_pretty(&disk).context("序列化工具配置失败")?;
         super::atomic_replace(&path, text.as_bytes())
             .map_err(anyhow::Error::msg)
             .with_context(|| format!("保存工具配置失败: {}", path.display()))?;

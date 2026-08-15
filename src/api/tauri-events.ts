@@ -168,19 +168,24 @@ export function initializeTauriEventListeners() {
     }
   })
 
-  // execute_command 中识别到删除操作时使用独立危险确认；回传到删除审批队列。
+  // execute_command 中识别到危险/删除操作时使用独立危险确认；回传到删除审批队列。
   mainWindow?.listen('chat:command_delete_approval', async (event) => {
     const payload = event.payload as {
       request_id: string
       command: string
       cwd: string
       uac: boolean
+      risk_reason?: string
     }
     const dialogStore = useDialogStore()
+    const riskText =
+      payload.risk_reason ||
+      i18n.global.t('ui.toolCalls.commandDeleteRiskFallback')
     const message =
       i18n.global.t('ui.toolCalls.commandDeleteApprovalMessage', {
         command: payload.command,
         cwd: payload.cwd || i18n.global.t('ui.toolCalls.approvalDefaultCwd'),
+        risk: riskText,
       }) + (payload.uac ? `\n\n${i18n.global.t('ui.toolCalls.approvalUac')}` : '')
     const approved = await dialogStore.confirm(
       message,

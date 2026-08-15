@@ -81,6 +81,8 @@ encoding_rs = "0.8"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# 安全加固：敏感凭据存系统 keyring（Windows 凭据管理器 / macOS Keychain / Linux Secret Service）
+keyring = "3"
 # 插件系统：嵌入 RustPython 跑插件 Python 脚本（目前是一个受限沙箱）。
 rustpython-vm = { version = "0.5", default-features = false, features = ["compiler", "gc", "host_env", "stdio", "serde", "freeze-stdlib"] }
 rustpython-pylib = { version = "0.5", features = ["freeze-stdlib"] }

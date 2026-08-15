@@ -23,16 +23,19 @@ pub mod server;
 pub mod staging;
 pub mod sync_engine;
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
 use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_store::StoreExt;
 use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::api::data_dir;
+use crate::config::{self, keys};
 
 use self::messages::{DeviceIdentity, PeerInfo, SyncPlan, SyncResult};
 
@@ -176,12 +179,106 @@ fn get_hostname() -> String {
     "Unknown Device".to_string()
 }
 
+// ─── 配对令牌与受信设备 ────────────────────────────────────────
+
+/// 受信对端设备存储：`data/.lan_sync_peers.json`，`device_id → 配对令牌`。
+fn trusted_peers_path() -> PathBuf {
+    data_dir().join(".lan_sync_peers.json")
+}
+
+fn load_trusted_peers() -> HashMap<String, String> {
+    let path = trusted_peers_path();
+    let content = match fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(_) => return HashMap::new(),
+    };
+    serde_json::from_str::<HashMap<String, String>>(&content).unwrap_or_default()
+}
+
+fn save_trusted_peers(peers: &HashMap<String, String>) -> Result<(), String> {
+    let path = trusted_peers_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
+    }
+    let json = serde_json::to_string_pretty(peers).map_err(|e| format!("序列化失败: {e}"))?;
+    fs::write(&path, json).map_err(|e| format!("写入配对信息失败: {e}"))
+}
+
+/// 查询已配对设备的令牌（客户端请求时使用）。
+pub(crate) fn trusted_peer_token(device_id: &str) -> Option<String> {
+    load_trusted_peers().get(device_id).cloned()
+}
+
+/// 获取或生成本机配对令牌：优先 keyring，keyring 不可用时降级 settings.json 明文。
+fn get_or_create_auth_token(app: &AppHandle) -> Result<String, String> {
+    let key = keys::LAN_SYNC_AUTH_TOKEN;
+    if crate::security::secrets::secret_storage_available() {
+        // 1) keyring 已有
+        match crate::security::secrets::get_secret(key) {
+            Ok(Some(token)) => return Ok(token),
+            Ok(None) => {}
+            Err(e) => warn!("读取 keyring 中 LAN 同步令牌失败: {e}"),
+        }
+
+        let store = app
+            .store(config::STORE_FILE)
+            .map_err(|e| format!("打开设置存储失败: {e}"))?;
+        // 2) settings.json 明文残留 → 迁到 keyring 并清空明文
+        if let Some(token) = store
+            .get(key)
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .filter(|s| !s.is_empty())
+        {
+            match crate::security::secrets::set_secret(key, &token) {
+                Ok(()) => {
+                    store.set(key.to_string(), serde_json::json!(""));
+                    let _ = store.save();
+                }
+                Err(e) => warn!("迁移 LAN 同步令牌到 keyring 失败: {e}"),
+            }
+            return Ok(token);
+        }
+
+        // 3) 全新生成（keyring 失败则降级明文）
+        let token = Uuid::new_v4().to_string();
+        match crate::security::secrets::set_secret(key, &token) {
+            Ok(()) => {}
+            Err(e) => {
+                warn!("keyring 不可用，LAN 同步令牌降级明文存储: {e}");
+                store.set(key.to_string(), serde_json::json!(token));
+                store
+                    .save()
+                    .map_err(|e| format!("保存设置存储失败: {e}"))?;
+            }
+        }
+        return Ok(token);
+    }
+
+    // 无 keyring 平台（移动端）：settings.json 明文存储
+    let store = app
+        .store(config::STORE_FILE)
+        .map_err(|e| format!("打开设置存储失败: {e}"))?;
+    if let Some(token) = store
+        .get(key)
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .filter(|s| !s.is_empty())
+    {
+        return Ok(token);
+    }
+    let token = Uuid::new_v4().to_string();
+    store.set(key.to_string(), serde_json::json!(token));
+    store
+        .save()
+        .map_err(|e| format!("保存设置存储失败: {e}"))?;
+    Ok(token)
+}
+
 // ─── Tauri 命令 ──────────────────────────────────────────────
 
 /// 启动本地 HTTP 同步服务。
 ///
-/// 在随机可用端口绑定 axum 服务（0.0.0.0:0），注册 mDNS 宣告 + UDP 监听。
-/// 返回实际绑定的端口号。
+/// 默认仅绑定 127.0.0.1 回环 + 全端点 Bearer 令牌认证；用户显式开启
+/// 「暴露到局域网」后才绑定全网卡（仍要求令牌）。返回实际绑定的端口号。
 #[tauri::command]
 pub async fn lan_sync_start_server(
     app: AppHandle,
@@ -202,8 +299,17 @@ pub async fn lan_sync_start_server(
     let identity = get_device_identity(&state)?;
     let instance_id = generate_instance_id(&state);
 
+    // 配对令牌 + 局域网暴露开关
+    let auth_token = get_or_create_auth_token(&app)?;
+    let expose_lan = app
+        .store(config::STORE_FILE)
+        .ok()
+        .and_then(|store| store.get(keys::LAN_SYNC_EXPOSE_LAN))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
     // 启动 HTTP 服务
-    let port = server::start_server(app.clone(), &identity).await?;
+    let port = server::start_server(app.clone(), &identity, auth_token, expose_lan).await?;
 
     // 启动 mDNS 宣告 + UDP 监听
     let announcer = discovery::Announcer::start(&identity, &instance_id, port).await?;
@@ -213,11 +319,50 @@ pub async fn lan_sync_start_server(
     }
 
     info!(
-        "LAN 同步服务已启动，端口: {}, 实例: {}",
+        "LAN 同步服务已启动，端口: {}, 实例: {}, 暴露局域网: {}",
         port,
-        &instance_id[..8]
+        &instance_id[..8],
+        expose_lan
     );
     Ok(port)
+}
+
+/// 查看本机配对令牌（供用户在另一台设备上输入完成配对）。
+#[tauri::command]
+pub async fn lan_sync_get_token(app: AppHandle) -> Result<String, String> {
+    get_or_create_auth_token(&app)
+}
+
+/// 保存（或更新）某台对端设备的配对令牌；token 为空表示解除配对。
+#[tauri::command]
+pub async fn lan_sync_set_peer_token(
+    device_id: String,
+    token: String,
+) -> Result<(), String> {
+    let mut peers = load_trusted_peers();
+    let trimmed = token.trim().to_string();
+    if trimmed.is_empty() {
+        peers.remove(&device_id);
+    } else {
+        peers.insert(device_id.clone(), trimmed);
+    }
+    save_trusted_peers(&peers)?;
+    info!("已更新设备配对信息: {device_id}");
+    Ok(())
+}
+
+/// 解除与某台设备的配对。
+#[tauri::command]
+pub async fn lan_sync_remove_peer_token(device_id: String) -> Result<(), String> {
+    let mut peers = load_trusted_peers();
+    peers.remove(&device_id);
+    save_trusted_peers(&peers)
+}
+
+/// 查询某台设备是否已配对（返回已保存的令牌；None 表示未配对）。
+#[tauri::command]
+pub async fn lan_sync_get_peer_token(device_id: String) -> Result<Option<String>, String> {
+    Ok(load_trusted_peers().get(&device_id).cloned())
 }
 
 /// 停止本地 HTTP 同步服务。

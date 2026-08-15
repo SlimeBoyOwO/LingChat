@@ -44,6 +44,21 @@ pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result
     let store = config::settings_store(&app).map_err(|e| e.to_string())?;
 
     for (key, value) in &values {
+        // 敏感凭据不落盘：写入系统 keyring，settings.json 只留空占位
+        // （移动端等无 keyring 平台保持原有明文行为，避免凭据丢失）
+        if crate::security::secrets::secret_storage_available()
+            && crate::security::secrets::SECRET_SETTINGS_KEYS.contains(&key.as_str())
+        {
+            if value.is_empty() {
+                crate::security::secrets::delete_secret(key)
+                    .map_err(|e| format!("删除 keyring 凭据失败: {e}"))?;
+            } else {
+                crate::security::secrets::set_secret(key, value)
+                    .map_err(|e| format!("保存凭据到 keyring 失败: {e}"))?;
+            }
+            store.set(key.clone(), JsonValue::String(String::new()));
+            continue;
+        }
         let json_value = if value == "true" {
             JsonValue::Bool(true)
         } else if value == "false" {
@@ -130,6 +145,10 @@ pub fn save_llm_provider(app: AppHandle, provider: LlmProviderConfig) -> Result<
 pub fn delete_llm_provider(app: AppHandle, id: String) -> Result<(), String> {
     let mut providers = load_providers(&app);
     providers.retain(|p| p.id != id);
+    // 同步清理该 provider 的 keyring 凭据
+    let _ = crate::security::secrets::delete_secret(&crate::security::secrets::provider_secret_key(
+        &id,
+    ));
     save_providers(&app, &providers).map_err(|e| e.to_string())?;
 
     let mut assignment = load_role_assignment(&app);

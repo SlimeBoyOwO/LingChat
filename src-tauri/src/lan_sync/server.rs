@@ -11,8 +11,9 @@ use std::path::PathBuf;
 
 use axum::{
     body::Body,
-    extract::{DefaultBodyLimit, Query, State as AxumState},
-    http::StatusCode,
+    extract::{DefaultBodyLimit, Query, Request, State as AxumState},
+    http::{header, StatusCode},
+    middleware::{self, Next},
     response::{IntoResponse, Json, Response},
     routing::{get, post},
     Router,
@@ -38,6 +39,8 @@ use super::messages::{CompleteManifest, DeviceIdentity};
 struct ServerState {
     device_id: String,
     data_dir: PathBuf,
+    /// 配对令牌：除 /health 外的所有端点都必须携带 `Authorization: Bearer <token>`。
+    auth_token: String,
 }
 
 /// 全局服务关闭信号。
@@ -50,16 +53,50 @@ struct FileQuery {
     path: String,
 }
 
+// ─── 认证中间件 ──────────────────────────────────────────────
+
+/// 校验 `Authorization: Bearer <token>`。`/health` 保持开放（供设备发现探活）。
+async fn require_auth(
+    AxumState(state): AxumState<ServerState>,
+    request: Request,
+    next: Next,
+) -> Result<Response, AppError> {
+    if request.uri().path() == "/health" {
+        return Ok(next.run(request).await);
+    }
+    let authorized = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value == format!("Bearer {}", state.auth_token))
+        .unwrap_or(false);
+    if !authorized {
+        return Err(AppError(
+            StatusCode::UNAUTHORIZED,
+            "未授权：缺少或无效的配对令牌".to_string(),
+        ));
+    }
+    Ok(next.run(request).await)
+}
+
 // ─── 公开 API ────────────────────────────────────────────────
 
 /// 启动 axum HTTP 服务，绑定随机端口，返回实际端口号。
+///
+/// 安全设计：
+/// - `expose_lan = false`（默认）时仅绑定 `127.0.0.1` 回环；
+/// - 所有数据端点要求 `Authorization: Bearer <token>`（token 由调用方提供）；
+/// - 仅 `/health` 免认证，供 mDNS/UDP 发现探活。
 pub async fn start_server(
     app: tauri::AppHandle,
     identity: &DeviceIdentity,
+    auth_token: String,
+    expose_lan: bool,
 ) -> Result<u16, String> {
     let state = ServerState {
         device_id: identity.device_id.clone(),
         data_dir: data_dir(),
+        auth_token,
     };
 
     let router = Router::new()
@@ -71,10 +108,19 @@ pub async fn start_server(
         .route("/db-records", get(db_records_handler))
         .route("/db-records", post(db_records_push_handler))
         .layer(DefaultBodyLimit::disable())
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_auth,
+        ))
         .with_state(state);
 
-    // 绑定随机端口
-    let listener = TcpListener::bind("0.0.0.0:0")
+    // 绑定随机端口：默认只监听回环；显式开启后才暴露到局域网
+    let bind_addr = if expose_lan {
+        "0.0.0.0:0"
+    } else {
+        "127.0.0.1:0"
+    };
+    let listener = TcpListener::bind(bind_addr)
         .await
         .map_err(|e| format!("绑定端口失败: {e}"))?;
 

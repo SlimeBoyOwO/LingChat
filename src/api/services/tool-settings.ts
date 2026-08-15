@@ -24,7 +24,7 @@ export interface ToolSettings {
   groups: Record<string, boolean>
   /** 命令执行：免确认直接运行 shell（危险，默认关闭） */
   command_auto_approve: boolean
-  /** 命令执行：检测到删除操作时免确认继续执行（危险，默认关闭） */
+  /** 命令执行：检测到删除操作时免确认继续执行（已被安全策略强制覆盖：删除类危险命令无论此开关如何都会强制弹窗确认） */
   command_delete_auto_approve: boolean
   /** 删除文件：免确认直接删除（危险，默认关闭） */
   file_delete_auto_approve: boolean

@@ -47,6 +47,21 @@
 
           <!-- 设备列表：结果 -->
           <div v-if="view === 'device-list' && phase !== 'scanning'" class="space-y-3">
+            <!-- 本机配对令牌 -->
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-1.5">
+              <div class="flex items-center justify-between">
+                <span class="text-white/60 text-xs">{{ $t('ui.lanSync.ownTokenLabel') }}</span>
+                <button
+                  @click="copyToken"
+                  class="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                >
+                  {{ tokenCopied ? $t('ui.lanSync.ownTokenCopied') : $t('ui.lanSync.ownTokenCopy') }}
+                </button>
+              </div>
+              <p class="font-mono text-sm text-white/90 break-all select-all">{{ ownToken || '—' }}</p>
+              <p class="text-white/35 text-[0.68rem]">{{ $t('ui.lanSync.ownTokenHint') }}</p>
+            </div>
+
             <div class="flex items-center justify-between">
               <span class="text-white/50 text-xs">{{ $t('ui.lanSync.peersFound', { count: peers.length }) }}</span>
               <button
@@ -88,6 +103,44 @@
                   >
                     {{ $t('ui.lanSync.push') }}
                   </button>
+                </div>
+              </div>
+
+              <!-- 配对状态与操作 -->
+              <div class="mt-2.5 border-t border-white/5 pt-2">
+                <div v-if="isPaired(peer.deviceId)" class="flex items-center justify-between">
+                  <span class="text-emerald-400/90 text-xs">{{ $t('ui.lanSync.paired') }}</span>
+                  <button
+                    @click="emit('unpair', peer)"
+                    class="text-xs text-white/40 hover:text-red-400 transition-colors"
+                  >
+                    {{ $t('ui.lanSync.unpair') }}
+                  </button>
+                </div>
+                <div v-else class="space-y-1.5">
+                  <button
+                    @click="togglePairInput(peer.deviceId)"
+                    class="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                  >
+                    {{ $t('ui.lanSync.pair') }}
+                  </button>
+                  <div
+                    v-if="pairingPeerId === peer.deviceId"
+                    class="flex items-center gap-2"
+                  >
+                    <input
+                      v-model="pairToken"
+                      type="text"
+                      :placeholder="$t('ui.lanSync.pairTokenPlaceholder')"
+                      class="flex-1 rounded-lg bg-black/30 border border-white/10 px-2.5 py-1.5 text-xs text-white/90 outline-none focus:border-cyan-400/50"
+                    />
+                    <button
+                      @click="confirmPair(peer)"
+                      class="px-3 py-1.5 rounded-lg bg-cyan-500/80 hover:bg-cyan-500 text-white text-xs font-semibold transition-all active:scale-95"
+                    >
+                      {{ $t('ui.lanSync.pairConfirm') }}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -262,7 +315,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from './base'
 import { Wifi, Check, X } from 'lucide-vue-next'
@@ -278,6 +331,8 @@ const props = defineProps<{
   progress: SyncProgressEvent
   lastResult: SyncResult | null
   errorMessage: string
+  ownToken: string
+  pairedDeviceIds: string[]
 }>()
 
 const emit = defineEmits<{
@@ -288,9 +343,48 @@ const emit = defineEmits<{
   cancel: []
   close: []
   restart: []
+  pair: [peer: PeerInfo, token: string]
+  unpair: [peer: PeerInfo]
 }>()
 
 const { t } = useI18n()
+
+// ─── 配对交互状态 ───
+const pairingPeerId = ref<string | null>(null)
+const pairToken = ref('')
+const tokenCopied = ref(false)
+
+function isPaired(deviceId: string): boolean {
+  return props.pairedDeviceIds.includes(deviceId)
+}
+
+function togglePairInput(deviceId: string) {
+  pairingPeerId.value = pairingPeerId.value === deviceId ? null : deviceId
+  pairToken.value = ''
+}
+
+async function confirmPair(peer: PeerInfo) {
+  const token = pairToken.value.trim()
+  if (!token) return
+  try {
+    emit('pair', peer, token)
+    pairingPeerId.value = null
+    pairToken.value = ''
+  } catch {
+    // 父组件配对失败会通过 errorMessage 展示
+  }
+}
+
+async function copyToken() {
+  if (!props.ownToken) return
+  try {
+    await navigator.clipboard.writeText(props.ownToken)
+    tokenCopied.value = true
+    setTimeout(() => (tokenCopied.value = false), 2000)
+  } catch {
+    // 剪贴板不可用时忽略（用户可手动选择复制）
+  }
+}
 
 const dialogTitle = computed(() => {
   switch (props.view) {

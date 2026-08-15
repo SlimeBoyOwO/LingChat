@@ -110,6 +110,23 @@ pub async fn editor_agent_save_settings(
     app: AppHandle,
     settings: AgentSettings,
 ) -> Result<(), String> {
+    // 高危开关翻转写入审计日志（auto_approve_commands / allow_any_path）
+    let previous = SkillAgentConfig::load(&app);
+    if previous.auto_approve_commands != settings.auto_approve_commands {
+        crate::security::audit::settings_changed(
+            keys::AGENT_AUTO_APPROVE_COMMANDS,
+            previous.auto_approve_commands,
+            settings.auto_approve_commands,
+        );
+    }
+    if previous.allow_any_path != settings.allow_any_path {
+        crate::security::audit::settings_changed(
+            keys::AGENT_ALLOW_ANY_PATH,
+            previous.allow_any_path,
+            settings.allow_any_path,
+        );
+    }
+
     let store = app
         .store(crate::config::STORE_FILE)
         .map_err(|e| format!("无法打开设置存储: {}", e))?;

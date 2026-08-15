@@ -21,15 +21,78 @@ use crate::AppState;
 use super::http_host;
 use super::types::PluginManifest;
 
-/// 沙箱拦截的顶层模块名：碰文件系统、跑命令、调底层 C 的一律禁止导入。
-const BLOCKED_MODULES: &[&str] = &[
+/// 沙箱拦截的顶层模块名：碰文件系统、跑命令、调底层 C、走网络的一律禁止导入。
+const BLOCKED_MODULES_BASE: &[&str] = &[
     "os",
     "subprocess",
     "shutil",
     "pathlib",
     "ctypes",
     "sysconfig",
+    // 以下为安全加固新增：网络、动态导入、进程与内存直通
+    "socket",
+    "importlib",
+    "ssl",
+    "urllib",
+    "http",
+    "ftplib",
+    "smtplib",
+    "poplib",
+    "imaplib",
+    "telnetlib",
+    "multiprocessing",
+    "mmap",
+    "marshal",
 ];
+
+/// 平台相关的额外拦截模块。
+#[cfg(target_os = "windows")]
+const BLOCKED_MODULES_EXTRA: &[&str] = &["winreg", "msilib"];
+#[cfg(not(target_os = "windows"))]
+const BLOCKED_MODULES_EXTRA: &[&str] = &[];
+
+fn blocked_modules() -> Vec<&'static str> {
+    BLOCKED_MODULES_BASE
+        .iter()
+        .chain(BLOCKED_MODULES_EXTRA.iter())
+        .copied()
+        .collect()
+}
+
+/// 加载前源码审计：拦截明显的沙箱逃逸手段。
+///
+/// 运行时 `sys.modules` 置空只能挡住 `run()` 内的新 import；脚本若在顶层
+/// `import os` 并绑定别名（`o = os`）即可绕过。因此在编译前对源码做模式审计：
+/// 危险模块导入、动态导入、直接文件读写、动态代码执行、反射调用危险函数、
+/// 解释器内部访问一律拒绝。
+fn audit_plugin_source(script: &str) -> Result<(), String> {
+    let checks: &[(&str, &str)] = &[
+        (
+            r"(?m)^\s*(?:from\s+|import\s+)?\s*(os|subprocess|shutil|pathlib|ctypes|sysconfig|socket|importlib|ssl|urllib|http|ftplib|smtplib|poplib|imaplib|telnetlib|multiprocessing|mmap|marshal|winreg|msilib)\b",
+            "导入受限模块",
+        ),
+        (r"\b__import__\s*\(", "动态导入"),
+        (r"\bopen\s*\(", "文件读写"),
+        (r"\b(?:exec|eval|compile)\s*\(", "动态代码执行"),
+        (
+            r#"getattr\s*\([^)]*,\s*["'](?:system|popen|open|exec|eval|import)"#,
+            "反射调用危险函数",
+        ),
+        (r"\bsys\.modules\b|\b__builtins__\b", "解释器内部访问"),
+    ];
+    for (pattern, reason) in checks {
+        // 模式为静态常量，编译失败视为编程错误直接暴露
+        let regex = regex::Regex::new(pattern)
+            .map_err(|e| format!("插件安全审计模式编译失败: {e}"))?;
+        if let Some(matched) = regex.find(script) {
+            let snippet: String = matched.as_str().chars().take(80).collect();
+            return Err(format!(
+                "插件源码审计拒绝（{reason}）: {snippet} ...（如需文件/网络能力请使用注入的 plugin_host 接口）"
+            ));
+        }
+    }
+    Ok(())
+}
 
 /// 取 Python 异常的文本信息。
 fn exc_message(vm: &VirtualMachine, e: &PyBaseExceptionRef) -> String {
@@ -57,9 +120,26 @@ fn block_dangerous_imports(vm: &VirtualMachine) -> PyResult<()> {
     let sys_modules: PyDictRef = sys_modules.downcast().map_err(|_| {
         vm.new_runtime_error("sys.modules 不是 dict")
     })?;
-    for name in BLOCKED_MODULES {
-        sys_modules.set_item(vm.ctx.intern_str(*name), vm.ctx.none(), vm)?;
+    for name in blocked_modules() {
+        sys_modules.set_item(vm.ctx.intern_str(name), vm.ctx.none(), vm)?;
     }
+    Ok(())
+}
+
+/// 禁用 builtins.open：插件脚本只允许通过宿主注入的 plugin_host 访问外部资源。
+fn block_builtin_open(vm: &VirtualMachine) -> PyResult<()> {
+    let blocked = vm.new_function(
+        "open",
+        move |_args: PyObjectRef, vm: &VirtualMachine| -> PyResult<PyObjectRef> {
+            Err(vm.new_exception_msg(
+                vm.ctx.exceptions.permission_error.clone(),
+                "插件沙箱已禁用 open() 文件读写".to_string(),
+            ))
+        },
+    );
+    vm.builtins
+        .set_attr("open", blocked.into(), vm)
+        .map_err(|e| vm.new_runtime_error(format!("禁用 builtins.open 失败: {}", exc_message(vm, &e))))?;
     Ok(())
 }
 
@@ -148,6 +228,8 @@ pub(crate) fn run_plugin_script(
 ) -> Result<Value, String> {
     let script = std::fs::read_to_string(script_path)
         .map_err(|e| format!("读取脚本失败: {e}"))?;
+    // 编译前源码审计（第二道防线：防止顶层 import 绑定别名绕过运行时拦截）
+    audit_plugin_source(&script)?;
     let interpreter = build_interpreter();
     interpreter.enter(|vm| {
         let scope = vm.new_scope_with_builtins();
@@ -157,8 +239,9 @@ pub(crate) fn run_plugin_script(
         vm.run_code_obj(code, scope.clone())
             .map_err(|e| format!("脚本执行失败: {}", exc_message(vm, &e)))?;
 
-        // 顶层定义执行完毕后，拦截危险模块，再调用 run()
+        // 顶层定义执行完毕后，拦截危险模块与 builtins.open，再调用 run()
         block_dangerous_imports(vm).map_err(|e| exc_message(vm, &e))?;
+        block_builtin_open(vm).map_err(|e| exc_message(vm, &e))?;
 
         let ctx = build_ctx(vm, tool_name, args, config, env, app)
             .map_err(|e| exc_message(vm, &e))?;

@@ -66,6 +66,7 @@ pub async fn download_to_file(
     cancel: Option<Arc<CancellationToken>>,
     progress: Option<Arc<dyn Fn(DownloadProgress) + Send + Sync>>,
     expected_size: u64,
+    headers: Option<reqwest::header::HeaderMap>,
 ) -> Result<u64, String> {
     // 确保目标目录存在
     if let Some(parent) = dest.parent() {
@@ -76,12 +77,13 @@ pub async fn download_to_file(
 
     let tmp = dest.with_extension("part");
 
-    let resp = client
+    let mut request = client
         .get(url)
-        .header(reqwest::header::ACCEPT, "*/*")
-        .send()
-        .await
-        .map_err(|e| format!("request: {e}"))?;
+        .header(reqwest::header::ACCEPT, "*/*");
+    if let Some(extra_headers) = headers {
+        request = request.headers(extra_headers);
+    }
+    let resp = request.send().await.map_err(|e| format!("request: {e}"))?;
 
     if !resp.status().is_success() {
         let status = resp.status();

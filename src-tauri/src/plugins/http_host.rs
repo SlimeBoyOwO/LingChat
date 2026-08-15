@@ -1,7 +1,8 @@
 //! 注入给插件 Python 脚本的 HTTP 宿主能力。
 //!
-//! 通过 `#[pymodule]` 暴露 `http_get` / `http_post` 原生函数，
-//! 复用 `factory::build_http_client`（webpki-roots，Android 兼容）。
+//! 通过 `#[pymodule]` 暴露 `http_get` / `http_post` 原生函数。
+//! 内置 SSRF 防护：仅允许公网 http/https 目标，拒绝环回/内网/链路本地地址，
+//! 且关闭自动重定向（跳转目标会重新校验）。
 //! 返回 Python dict：`{ status, ok, body }`，body 为解析后的 JSON。
 
 use std::collections::HashMap;
@@ -12,9 +13,8 @@ use rustpython_vm::{
     PyObjectRef, PyResult, VirtualMachine, builtins::PyListRef, function::KwArgs, py_serde,
 };
 
-use crate::ai_service::llm::factory;
-
 /// 全局共享的 reqwest Client（连接池复用，进程内单例）。
+/// 关闭自动重定向：跳转目标不会经过 SSRF 校验，3xx 由脚本自行决定是否再次请求（会重新校验）。
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
 /// 插件脚本在 spawn_blocking 线程执行，线程上无 tokio runtime 上下文；
@@ -23,9 +23,78 @@ static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 
 fn client() -> &'static reqwest::Client {
     HTTP_CLIENT.get_or_init(|| {
-        factory::build_http_client(30)
-            .expect("构建插件 HTTP client 失败（rustls/webpki 配置错误）")
+        let tls_config = crate::utils::tls::build_tls_config()
+            .expect("构建插件 HTTP TLS 配置失败（rustls/webpki 配置错误）");
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            // 关闭自动重定向：跳转目标未经 SSRF 校验，3xx 由脚本自行决定是否重试
+            .redirect(reqwest::redirect::Policy::none())
+            .tls_backend_preconfigured(tls_config)
+            .build()
+            .expect("构建插件 HTTP client 失败")
     })
+}
+
+/// SSRF 防护：拒绝环回、链路本地、私网/共享地址与组播目标。
+///
+/// 插件 HTTP 能力只允许访问公网地址；需要访问内网服务的能力被有意关闭。
+/// 已知局限：DNS 解析到请求之间存在 TOCTOU 窗口（DNS 重绑定），
+/// 完整缓解需要自定义连接器固定解析结果，超出当前加固范围。
+fn reject_reserved_ip(ip: std::net::IpAddr) -> Result<(), String> {
+    if ip.is_loopback() {
+        return Err("SSRF 防护：拒绝访问环回地址（localhost/127.0.0.0/8/::1）".to_string());
+    }
+    if ip.is_private() {
+        return Err("SSRF 防护：拒绝访问内网地址（RFC1918/ULA）".to_string());
+    }
+    if ip.is_link_local() {
+        return Err("SSRF 防护：拒绝访问链路本地地址（169.254.0.0/16）".to_string());
+    }
+    if ip.is_multicast() {
+        return Err("SSRF 防护：拒绝访问组播地址".to_string());
+    }
+    // 100.64.0.0/10（CGNAT 共享地址段，非公网路由）
+    if let std::net::IpAddr::V4(v4) = ip {
+        let octets = v4.octets();
+        if octets[0] == 100 && (64..=127).contains(&octets[1]) {
+            return Err("SSRF 防护：拒绝访问共享地址段（100.64.0.0/10）".to_string());
+        }
+        if octets[0] == 0 {
+            return Err("SSRF 防护：拒绝访问保留地址（0.0.0.0/8）".to_string());
+        }
+    }
+    Ok(())
+}
+
+/// 校验插件请求的目标 URL：仅允许 http/https，解析全部地址并逐一拒绝保留地址段。
+fn validate_target_url(url: &str) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(url).map_err(|e| format!("URL 解析失败: {e}"))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        other => {
+            return Err(format!("SSRF 防护：仅允许 http/https 协议，收到: {other}"));
+        }
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "SSRF 防护：URL 缺少主机名".to_string())?
+        .to_string();
+    let port = parsed.port_or_known_default().unwrap_or(80);
+
+    // 字面 IP 直接校验
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        reject_reserved_ip(ip)?;
+        return Ok(());
+    }
+
+    // 域名：解析全部地址后逐一校验
+    let addrs = runtime()
+        .block_on(tokio::net::lookup_host((host.as_str(), port)))
+        .map_err(|e| format!("DNS 解析失败: {e}"))?;
+    for addr in addrs {
+        reject_reserved_ip(addr.ip())?;
+    }
+    Ok(())
 }
 
 pub(crate) fn runtime() -> &'static tokio::runtime::Runtime {
@@ -146,6 +215,9 @@ mod plugin_host {
         kwargs: KwArgs<PyObjectRef>,
         vm: &VirtualMachine,
     ) -> PyResult<PyObjectRef> {
+        // SSRF 防护：目标地址校验（拒绝环回/内网/链路本地）
+        super::validate_target_url(&url)
+            .map_err(|e| vm.new_value_error(format!("HTTP 请求被安全策略拒绝: {e}")))?;
         let kwargs = super::kwargs_map(kwargs);
         let timeout = super::kw_timeout(vm, &kwargs);
         let req = super::client()
@@ -165,6 +237,9 @@ mod plugin_host {
         kwargs: KwArgs<PyObjectRef>,
         vm: &VirtualMachine,
     ) -> PyResult<PyObjectRef> {
+        // SSRF 防护：目标地址校验（拒绝环回/内网/链路本地）
+        super::validate_target_url(&url)
+            .map_err(|e| vm.new_value_error(format!("HTTP 请求被安全策略拒绝: {e}")))?;
         let kwargs = super::kwargs_map(kwargs);
         let timeout = super::kw_timeout(vm, &kwargs);
         let req = super::client()

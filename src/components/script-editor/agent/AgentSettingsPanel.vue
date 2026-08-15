@@ -92,7 +92,7 @@
         gap-4">
         <Toggle
           :checked="store.settings.autoApproveCommands"
-          @change="(v: boolean) => (store.settings.autoApproveCommands = v)"
+          @change="(v: boolean) => handleAutoApproveToggle(v)"
         >
           <span class="text-[0.86rem]">{{ t('scriptEditor.agentSettings.autoApprove') }}</span>
         </Toggle>
@@ -105,7 +105,7 @@
 
         <Toggle
           :checked="store.settings.allowAnyPath"
-          @change="(v: boolean) => (store.settings.allowAnyPath = v)"
+          @change="(v: boolean) => handleAllowAnyPathToggle(v)"
         >
           <span class="text-[0.86rem]">{{ t('scriptEditor.agentSettings.allowAnyPath') }}</span>
         </Toggle>
@@ -358,14 +358,45 @@ import { listLlmProviders } from '@/api/services/llm-providers'
 import { getAgentDefaultDirs, readAgentSkill } from '@/api/services/agent'
 import type { LlmProviderConfig } from '@/api/services/llm-providers'
 import { useAgentStore } from '@/stores/modules/agent'
+import { useDialogStore } from '../../../stores/modules/ui/dialog'
 
 const { t } = useI18n()
 const store = useAgentStore()
+const dialogStore = useDialogStore()
 
 const providers = ref<LlmProviderConfig[]>([])
 const preview = ref<{ name: string; content: string } | null>(null)
 
 const providerId = ref<string>('')
+
+/** 高危开关：开启前必须二次确认（与后端审计日志配合）。 */
+async function handleAutoApproveToggle(v: boolean) {
+  if (!v) {
+    store.settings.autoApproveCommands = false
+    return
+  }
+  const ok = await dialogStore.confirm(
+    t('scriptEditor.agentSettings.autoApproveConfirm'),
+    t('scriptEditor.agentSettings.security'),
+  )
+  if (ok) {
+    store.settings.autoApproveCommands = true
+  }
+}
+
+async function handleAllowAnyPathToggle(v: boolean) {
+  if (!v) {
+    store.settings.allowAnyPath = false
+    return
+  }
+  const ok = await dialogStore.confirm(
+    t('scriptEditor.agentSettings.allowAnyPathConfirm'),
+    t('scriptEditor.agentSettings.security'),
+  )
+  if (ok) {
+    store.settings.allowAnyPath = true
+  }
+}
 
 const systemPromptText = computed({
   get: () => store.settings.systemPrompt ?? '',

@@ -87,20 +87,42 @@ pub fn load_providers(app: &AppHandle) -> Vec<LlmProviderConfig> {
     let Some(store) = app.store(config::STORE_FILE).ok() else {
         return Vec::new();
     };
-    match store.get(keys::LLM_PROVIDERS) {
+    let mut providers: Vec<LlmProviderConfig> = match store.get(keys::LLM_PROVIDERS) {
         Some(JsonValue::Array(arr)) => arr
             .iter()
             .filter_map(|v| serde_json::from_value(v.clone()).ok())
             .collect(),
         _ => Vec::new(),
+    };
+    // 凭据水合：api_key 存于系统 keyring（settings.json 只留空占位）
+    for provider in &mut providers {
+        provider.api_key =
+            crate::security::secrets::get_secret_or(&crate::security::secrets::provider_secret_key(&provider.id), Some(std::mem::take(&mut provider.api_key))).unwrap_or_default();
     }
+    providers
 }
 
 pub fn save_providers(app: &AppHandle, providers: &[LlmProviderConfig]) -> anyhow::Result<()> {
     let store = app
         .store(config::STORE_FILE)
         .context("Failed to open settings store")?;
-    let arr: Vec<JsonValue> = providers
+    // 凭据同步：api_key 写入 keyring，磁盘 JSON 只保留空占位。
+    // 空 api_key 视为用户清除该 provider 的凭据。
+    let mut stripped: Vec<LlmProviderConfig> = Vec::with_capacity(providers.len());
+    for p in providers {
+        let secret_key = crate::security::secrets::provider_secret_key(&p.id);
+        if p.api_key.is_empty() {
+            if let Err(e) = crate::security::secrets::delete_secret(&secret_key) {
+                tracing::warn!("删除 provider 凭据失败（保留旧值）: {}: {e}", p.id);
+            }
+        } else if let Err(e) = crate::security::secrets::set_secret(&secret_key, &p.api_key) {
+            tracing::warn!("保存 provider 凭据到 keyring 失败（保留明文）: {}: {e}", p.id);
+        }
+        let mut disk = p.clone();
+        disk.api_key = String::new();
+        stripped.push(disk);
+    }
+    let arr: Vec<JsonValue> = stripped
         .iter()
         .map(|p| serde_json::to_value(p).unwrap_or(JsonValue::Null))
         .collect();
@@ -263,7 +285,11 @@ pub fn migrate_if_needed(app: &AppHandle) {
     tracing::info!("Migrating flat LLM config keys to provider list...");
 
     let old_model = get_string_opt(&store, keys::LLM_MODEL).unwrap_or_default();
-    let old_api_key = get_string_opt(&store, keys::LLM_API_KEY).unwrap_or_default();
+    let old_api_key = crate::security::secrets::get_secret_or(
+        keys::LLM_API_KEY,
+        get_string_opt(&store, keys::LLM_API_KEY),
+    )
+    .unwrap_or_default();
     let old_base_url = get_string_opt(&store, keys::LLM_BASE_URL).unwrap_or_default();
     let old_temperature = get_f64_opt(&store, keys::LLM_TEMPERATURE);
     let old_top_p = get_f64_opt(&store, keys::LLM_TOP_P);
@@ -294,7 +320,11 @@ pub fn migrate_if_needed(app: &AppHandle) {
     // Migrate translate LLM
     let trans_provider = get_string_opt(&store, keys::TRANSLATE_PROVIDER).unwrap_or_default();
     let trans_model = get_string_opt(&store, keys::TRANSLATE_MODEL).unwrap_or_default();
-    let trans_api_key = get_string_opt(&store, keys::TRANSLATE_API_KEY).unwrap_or_default();
+    let trans_api_key = crate::security::secrets::get_secret_or(
+        keys::TRANSLATE_API_KEY,
+        get_string_opt(&store, keys::TRANSLATE_API_KEY),
+    )
+    .unwrap_or_default();
     let trans_base_url = get_string_opt(&store, keys::TRANSLATE_BASE_URL).unwrap_or_default();
 
     let mut translate_id: Option<String> = None;
@@ -303,7 +333,7 @@ pub fn migrate_if_needed(app: &AppHandle) {
         let is_different = trans_provider
             != get_string_opt(&store, keys::LLM_PROVIDER).unwrap_or_default()
             || trans_model != get_string_opt(&store, keys::LLM_MODEL).unwrap_or_default()
-            || trans_api_key != get_string_opt(&store, keys::LLM_API_KEY).unwrap_or_default()
+            || trans_api_key != old_api_key
             || trans_base_url != get_string_opt(&store, keys::LLM_BASE_URL).unwrap_or_default();
 
         if is_different {
