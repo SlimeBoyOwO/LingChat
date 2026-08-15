@@ -597,6 +597,7 @@ pub async fn update_role_settings(
     if let Some(obj) = save_data.as_object_mut() {
         obj.remove("character_id");
         obj.remove("resource_path");
+        obj.remove("character_folder");
         obj.remove("script_key");
         obj.remove("script_role_key");
     }
