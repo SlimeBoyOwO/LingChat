@@ -1,0 +1,118 @@
+name: 构建开发版（全量测试）
+
+on:
+  push:
+    branches: ['dev', 'dev/**']
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.vscode/**'
+  pull_request:
+    branches: ['dev', 'dev/**']
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.vscode/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-amd64
+            os: windows-latest
+            artifact-name: lingchat-dev-windows
+            artifact-path: src-tauri/target/release/ling_chat.exe
+          - platform: linux-amd64
+            os: ubuntu-latest
+            artifact-name: lingchat-dev-linux-amd64
+            artifact-path: src-tauri/target/release/ling_chat
+          - platform: macos
+            os: macos-latest
+            artifact-name: lingchat-dev-macos
+            artifact-path: src-tauri/target/release/ling_chat
+          - platform: linux-aarch64
+            os: ubuntu-24.04-arm
+            artifact-name: lingchat-dev-linux-aarch64
+            artifact-path: src-tauri/target/release/ling_chat
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - uses: pnpm/setup@v1
+        with:
+          runtime: node@26
+          cache: true
+
+      - name: 安装 rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 设置 rust 缓存
+        uses: swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
+
+      - name: 安装 Linux 依赖 (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev \
+            libpipewire-0.3-dev \
+            libspa-0.2-dev \
+            libgbm-dev \
+            libegl1-mesa-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libxrandr-dev \
+            libxcomposite-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxtst-dev \
+            libwayland-dev \
+            libdbus-1-dev \
+            mold
+          
+      - name: 创建占位文件和初始化
+        shell: bash
+        run: |
+          mkdir -p data/.official/game_data
+          mkdir -p data/third_party
+          touch data/.official/game_data/.gitkeep
+          touch data/third_party/.gitkeep
+          node scripts/prepare-desktop-resources.mjs
+          pip install Pillow
+          rm -rf ./src-tauri/icons/icon.png
+          python -c "from PIL import Image, ImageDraw; img=Image.new('RGB', (1024,1024), color='#4A90D9'); draw=ImageDraw.Draw(img); draw.ellipse((100,100,924,924), fill='#2C3E50'); img.save('./src-tauri/icons/icon.png')"
+          pnpm tauri icon ./src-tauri/icons/icon.png
+
+      - name: 构建应用
+        env:
+          RUSTFLAGS: |
+            ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
+            ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
+            ${{ runner.os == 'macOS' && '' || '' }}
+        run: pnpm tauri build --no-bundle
+
+      - name: 上传 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: ${{ matrix.artifact-path }}
+          retention-days: 7
