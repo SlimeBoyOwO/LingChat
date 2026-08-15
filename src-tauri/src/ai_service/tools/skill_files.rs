@@ -109,15 +109,49 @@ async fn request_user_approval(
     match decision {
         Ok(Ok(true)) => {
             tracing::info!("[approval] 用户已批准: request_id={request_id}");
+            crate::security::audit::approval_decided(
+                "chat_tool",
+                &request_id,
+                event,
+                true,
+                "用户批准",
+            );
             Ok(())
         }
-        Ok(Ok(false)) => Err(ToolError::Execution(format!("{action}已被用户拒绝"))),
-        Ok(Err(_)) => Err(ToolError::Execution(format!(
-            "审批通道已关闭，{action}未执行"
-        ))),
-        Err(_) => Err(ToolError::Execution(format!(
-            "{action}审批超时（120 秒），已自动拒绝"
-        ))),
+        Ok(Ok(false)) => {
+            crate::security::audit::approval_decided(
+                "chat_tool",
+                &request_id,
+                event,
+                false,
+                "用户拒绝",
+            );
+            Err(ToolError::Execution(format!("{action}已被用户拒绝")))
+        }
+        Ok(Err(_)) => {
+            crate::security::audit::approval_decided(
+                "chat_tool",
+                &request_id,
+                event,
+                false,
+                "审批通道已关闭",
+            );
+            Err(ToolError::Execution(format!(
+                "审批通道已关闭，{action}未执行"
+            )))
+        }
+        Err(_) => {
+            crate::security::audit::approval_decided(
+                "chat_tool",
+                &request_id,
+                event,
+                false,
+                "审批超时",
+            );
+            Err(ToolError::Execution(format!(
+                "{action}审批超时（120 秒），已自动拒绝"
+            )))
+        }
     }
 }
 
@@ -303,7 +337,16 @@ file_tool!(
             .and_then(Value::as_str)
             .ok_or_else(|| ToolError::InvalidArguments("缺少 content 参数".into()))?;
         let append = args.get("append").and_then(Value::as_bool).unwrap_or(false);
-        exec(ft.write_file(path, content, append))
+        let result = ft.write_file(path, content, append);
+        if result.is_ok() {
+            crate::security::audit::file_written(
+                "chat_tool",
+                std::path::Path::new(path),
+                content.len() as u64,
+                append,
+            );
+        }
+        exec(result)
     }
 );
 
@@ -381,7 +424,12 @@ impl Tool for DeleteFile {
             .await?;
         }
 
-        run_blocking(move || exec(ft.delete_file(&path))).await
+        run_blocking(move || exec(ft.delete_file(&path))).await.map(|result| {
+            if result.is_ok() {
+                crate::security::audit::file_deleted("chat_tool", std::path::Path::new(&path));
+            }
+            result
+        })
     }
 }
 
@@ -411,7 +459,16 @@ file_tool!(
             .and_then(Value::as_str)
             .ok_or_else(|| ToolError::InvalidArguments("缺少 new_string 参数".into()))?;
         let replace_all = args.get("replace_all").and_then(Value::as_bool).unwrap_or(false);
-        exec(ft.edit_file(path, old_string, new_string, replace_all))
+        let result = ft.edit_file(path, old_string, new_string, replace_all);
+        if result.is_ok() {
+            crate::security::audit::file_written(
+                "chat_tool",
+                std::path::Path::new(path),
+                new_string.len() as u64,
+                false,
+            );
+        }
+        exec(result)
     }
 );
 
@@ -463,57 +520,9 @@ file_tool!(
 
 /// 保守识别常见的文件删除命令。任意 shell/程序都可能间接删除文件，因此这里
 /// 优先避免漏报；误报只会多要求一次用户确认，不会改变命令内容。
+/// 实现委托给 `security::command_guard`（与危险命令分类共用同一套模式）。
 fn command_may_delete_files(command: &str) -> bool {
-    let normalized = command.to_ascii_lowercase();
-    let tokens = normalized
-        .split(|ch: char| !(ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.')))
-        .filter(|token| !token.is_empty())
-        .collect::<Vec<_>>();
-
-    if tokens.iter().any(|token| {
-        matches!(
-            *token,
-            "del"
-                | "del.exe"
-                | "erase"
-                | "erase.exe"
-                | "rd"
-                | "rd.exe"
-                | "rmdir"
-                | "rmdir.exe"
-                | "rm"
-                | "rm.exe"
-                | "ri"
-                | "unlink"
-                | "unlink.exe"
-                | "shred"
-                | "shred.exe"
-                | "sdelete"
-                | "sdelete.exe"
-                | "rimraf"
-                | "rimraf.cmd"
-                | "truncate"
-                | "truncate.exe"
-                | "remove-item"
-                | "clear-content"
-                | "-delete"
-                | "--delete"
-        )
-    }) {
-        return true;
-    }
-
-    (tokens.contains(&"git") || tokens.contains(&"git.exe"))
-        && (tokens.contains(&"rm") || tokens.contains(&"clean"))
-        || (tokens.contains(&"robocopy") || tokens.contains(&"robocopy.exe"))
-            && tokens.contains(&"mir")
-        || normalized.contains("os.remove(")
-        || normalized.contains("os.unlink(")
-        || normalized.contains("os.rmdir(")
-        || normalized.contains("shutil.rmtree(")
-        || normalized.contains(".unlink(")
-        || normalized.contains("file.delete(")
-        || normalized.contains("directory.delete(")
+    crate::security::command_guard::may_delete_files(command)
 }
 
 /// execute_command：在本机运行 shell 命令（默认需用户弹窗确认，可后台运行或 UAC 提权）。
@@ -613,9 +622,22 @@ impl Tool for ExecuteCommand {
         let config = SkillAgentConfig::load(&app);
         let sandbox_dir = config.resolve_sandbox_dir();
         let settings = self.settings.get();
+
+        // 安全前置分类：毁灭性命令直接拒绝；危险命令即使开启免审批也强制确认。
+        let (risk, risk_reason) = crate::security::command_guard::classify_command(command);
+        if risk == crate::security::command_guard::CommandRisk::Blocked {
+            let message = format!(
+                "命令已被安全策略拦截（{}），未执行。",
+                risk_reason.unwrap_or("危险命令")
+            );
+            crate::security::audit::command_blocked("chat_tool", command, &message);
+            return Err(ToolError::Execution(message));
+        }
+        let force_approval =
+            risk == crate::security::command_guard::CommandRisk::Dangerous;
         let is_delete_command = command_may_delete_files(command);
 
-        if is_delete_command && !settings.command_delete_auto_approve {
+        if force_approval || (is_delete_command && !settings.command_delete_auto_approve) {
             let approvals = app.state::<AppState>().chat_file_delete_approvals.clone();
             request_user_approval(
                 &app,
@@ -627,8 +649,10 @@ impl Tool for ExecuteCommand {
                     "uac": uac,
                     "run_in_background": run_in_background,
                     "description": description,
+                    "risk": risk.as_str(),
+                    "risk_reason": risk_reason,
                 }),
-                "删除命令",
+                if force_approval { "危险命令" } else { "删除命令" },
             )
             .await?;
         } else if !settings.command_auto_approve {
@@ -661,6 +685,7 @@ impl Tool for ExecuteCommand {
             .await;
         }
 
+        let started = std::time::Instant::now();
         let result = if uac {
             command_executor::run_shell_command_elevated_with_timeout(
                 &sandbox_dir,
@@ -673,6 +698,31 @@ impl Tool for ExecuteCommand {
             command_executor::run_shell_command_with_timeout(&sandbox_dir, command, cwd, timeout)
                 .await
         };
+        let (outcome, exit_code) = match &result {
+            Ok(out) => ("ok".to_string(), Some(out.exit_code)),
+            Err(e) => (format!("error: {e}"), None),
+        };
+        let approval_note = if force_approval {
+            "forced_approval"
+        } else if settings.command_auto_approve
+            && !(is_delete_command && !settings.command_delete_auto_approve)
+        {
+            "auto_approve"
+        } else {
+            "user_approval"
+        };
+        crate::security::audit::command_executed(
+            "chat_tool",
+            command,
+            cwd,
+            &sandbox_dir,
+            risk.as_str(),
+            approval_note,
+            true,
+            &outcome,
+            exit_code,
+            Some(started.elapsed().as_millis() as u64),
+        );
         match result {
             Ok(out) => Ok(json!({
                 "ok": out.exit_code == 0,

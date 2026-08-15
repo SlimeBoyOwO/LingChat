@@ -243,7 +243,25 @@ pub async fn stream_with_tool_loop(
                 if call.function.name == "character_switch" && succeeded {
                     character_switched = true;
                 }
-                let tool_result = LlmMessage::tool_result(call.id, result);
+                // 提示词注入防护：工具结果属于不可信数据，命中时打标并写审计
+                let injection_report = crate::security::injection_guard::scan(&result);
+                let result_for_model = if injection_report.level
+                    != crate::security::injection_guard::InjectionLevel::None
+                {
+                    crate::security::audit::injection_detected(
+                        "chat_tool_output",
+                        injection_report.level.as_str(),
+                        &injection_report.notes,
+                    );
+                    format!(
+                        "{}<不可信数据>\n{}\n</不可信数据>",
+                        crate::security::injection_guard::untrusted_banner(&injection_report),
+                        result
+                    )
+                } else {
+                    result
+                };
+                let tool_result = LlmMessage::tool_result(call.id, result_for_model);
                 round_messages.push(tool_result);
             }
 

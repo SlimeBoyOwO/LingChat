@@ -12,6 +12,7 @@ mod migration;
 #[cfg(desktop)]
 mod plugins;
 mod resource_sync;
+mod security;
 pub mod utils;
 
 use std::sync::Arc;
@@ -290,6 +291,14 @@ pub fn run() {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
                 utils::llm_request_logger::init(data_dir, llm_request_log_enable);
+            }
+
+            // 安全加固：启动时把 settings.json / tool_settings 中的明文凭据迁移到系统 keyring
+            if let Err(e) = security::secrets::migrate_settings_secrets(app.handle()) {
+                tracing::warn!("敏感凭据迁移到 keyring 失败（保留明文）: {e}");
+            }
+            if let Err(e) = security::secrets::migrate_tool_settings_secret(&api::data_dir()) {
+                tracing::warn!("工具配置凭据迁移失败（保留明文）: {e}");
             }
 
             // 启动时自动清理未被引用的孤立语音文件
@@ -696,6 +705,10 @@ pub fn run() {
             lan_sync::lan_sync_plan_pull,
             lan_sync::lan_sync_execute_pull,
             lan_sync::lan_sync_restart,
+            lan_sync::lan_sync_get_token,
+            lan_sync::lan_sync_set_peer_token,
+            lan_sync::lan_sync_remove_peer_token,
+            lan_sync::lan_sync_get_peer_token,
             utils::cpu_perf::get_cpu_info,
             utils::cpu_perf::redetect_cpu,
             api::role_archive::import_role,

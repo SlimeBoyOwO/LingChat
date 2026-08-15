@@ -16,6 +16,11 @@ pub fn get_data_dir() -> &'static PathBuf {
         .expect("data_dir not initialized — call init_data_dir first")
 }
 
+/// 安全获取 data 目录：未初始化时返回 `None`（供审计日志等低依赖场景使用）。
+pub fn try_get_data_dir() -> Option<&'static PathBuf> {
+    DATA_DIR.get()
+}
+
 /// 测试兜底：把 data_dir 初始化到临时目录（已初始化则忽略，OnceLock 二次 set 会 panic）。
 #[cfg(test)]
 pub fn init_data_dir_for_tests() {

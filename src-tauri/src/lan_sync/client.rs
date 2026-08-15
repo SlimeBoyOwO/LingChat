@@ -23,6 +23,19 @@ static HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
         .expect("reqwest 客户端构建失败")
 });
 
+/// 查询该对端设备的配对令牌并生成 Authorization 头。
+/// 未配对时返回可读错误，提示用户完成配对。
+fn peer_auth_header(peer: &PeerInfo) -> Result<reqwest::header::HeaderValue, String> {
+    let token = super::trusted_peer_token(&peer.device_id).ok_or_else(|| {
+        format!(
+            "尚未与设备「{}」配对。请先在设备列表中对它输入配对令牌（在对端的同步面板中查看）。",
+            peer.device_name
+        )
+    })?;
+    reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
+        .map_err(|e| format!("构造认证头失败: {e}"))
+}
+
 /// 获取对端的完整文件清单。
 pub async fn fetch_remote_manifest(peer: &PeerInfo) -> Result<CompleteManifest, String> {
     let url = format!("http://{}:{}/manifest", peer.host, peer.port);
@@ -32,6 +45,7 @@ pub async fn fetch_remote_manifest(peer: &PeerInfo) -> Result<CompleteManifest, 
 
     let response = client
         .get(&url)
+        .header(reqwest::header::AUTHORIZATION, peer_auth_header(peer)?)
         .send()
         .await
         .map_err(|e| format!("请求清单失败 [{}:{}]: {}", peer.host, peer.port, e))?;
@@ -65,6 +79,10 @@ pub async fn check_peer_health(peer: &PeerInfo) -> Result<(), String> {
 
     let response = client
         .get(&url)
+        .header(
+            reqwest::header::AUTHORIZATION,
+            peer_auth_header(peer)?,
+        )
         .send()
         .await
         .map_err(|e| format!("对端健康检查失败 [{}:{}]: {}", peer.host, peer.port, e))?;
@@ -95,6 +113,11 @@ pub async fn download_file(
         peer.port,
         urlencoding(remote_path)
     );
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::AUTHORIZATION,
+        peer_auth_header(peer)?,
+    );
     crate::utils::download::download_to_file(
         &HTTP_CLIENT,
         &url,
@@ -102,6 +125,7 @@ pub async fn download_file(
         None,
         None,
         0,
+        Some(headers),
     )
     .await
     .map_err(|e| format!("[{}]: {e}", remote_path))?;
@@ -141,6 +165,7 @@ pub async fn upload_file(
 
     let response = client
         .post(&url)
+        .header(reqwest::header::AUTHORIZATION, peer_auth_header(peer)?)
         .body(body)
         .send()
         .await
@@ -170,6 +195,7 @@ pub async fn push_delete(peer: &PeerInfo, remote_path: &str) -> Result<(), Strin
 
     let response = client
         .post(&url)
+        .header(reqwest::header::AUTHORIZATION, peer_auth_header(peer)?)
         .send()
         .await
         .map_err(|e| format!("发送删除指令失败 [{}]: {e}", remote_path))?;
@@ -196,6 +222,7 @@ pub async fn fetch_db_records(
 
     let response = client
         .get(&url)
+        .header(reqwest::header::AUTHORIZATION, peer_auth_header(peer)?)
         .send()
         .await
         .map_err(|e| format!("请求数据库记录失败 [{}:{}]: {}", peer.host, peer.port, e))?;
@@ -244,6 +271,7 @@ pub async fn push_db_records(
 
     let response = client
         .post(&url)
+        .header(reqwest::header::AUTHORIZATION, peer_auth_header(peer)?)
         .json(records)
         .send()
         .await

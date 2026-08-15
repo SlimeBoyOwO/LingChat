@@ -448,6 +448,8 @@
             :progress="lanSync.progress.value"
             :last-result="lanSync.lastResult.value"
             :error-message="lanSync.errorMessage.value"
+            :own-token="lanSync.ownToken.value"
+            :paired-device-ids="[...lanSync.pairedDeviceIds.value]"
             @close="lanSync.closeDialog()"
             @rescan="lanSync.scanPeers()"
             @pull="
@@ -460,6 +462,16 @@
               (peer) => {
                 lanSync.selectPeer(peer)
                 lanSync.planPush()
+              }
+            "
+            @pair="
+              (peer, token) => {
+                lanSync.pairPeer(peer.deviceId, token).catch(() => {})
+              }
+            "
+            @unpair="
+              (peer) => {
+                lanSync.unpairPeer(peer.deviceId).catch(() => {})
               }
             "
             @confirm="handleLanSyncConfirm"
@@ -718,6 +730,8 @@ async function openLanSync() {
   lanSync.init()
   await lanSync.openDialog()
   lanSyncView.value = 'device-list'
+  // 拉取本机配对令牌（失败不阻断打开面板）
+  lanSync.loadOwnToken().catch(() => {})
 }
 
 async function handleLanSyncConfirm() {

@@ -193,7 +193,7 @@
           />
           <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.commandDeleteAutoApprove') }}</p>
         </div>
-        <p v-if="form.command_delete_auto_approve" class="text-sm text-amber-400 px-1 mb-2">
+        <p class="text-sm text-amber-400 px-1 mb-2">
           {{ $t('ui.toolCalls.commandDeleteAutoApproveHint') }}
         </p>
       </div>

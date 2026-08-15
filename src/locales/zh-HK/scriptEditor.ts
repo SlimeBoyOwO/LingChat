@@ -513,9 +513,13 @@ export default {
     autoApprove: '命令自動執行（無需確認）',
     autoApproveHint:
       '開啟後 <code class="font-mono text-brand">execute_command</code> 不再彈審批，直接運行。建議保持關閉。',
+    autoApproveConfirm:
+      '開啟後 AI 執行的普通命令將不再彈窗確認（刪除、提權、系統管理等危險命令仍會強制確認）。這會顯著擴大 AI 對本機的操作權限，是否確認開啟？',
     allowAnyPath: '允許任意路徑',
     allowAnyPathWarn: '⚠ 開啟後劇本導師可讀寫沙箱之外的任意文件，風險極高。僅在可信場景使用。',
     allowAnyPathHint: '關閉時文件操作被限制在沙箱根目錄內。開啟後 AI 可訪問沙箱之外的任意路徑。',
+    allowAnyPathConfirm:
+      '開啟後 AI 可以讀寫沙箱之外的任意文件（包括系統目錄）。這會完全繞過文件沙箱，是否確認開啟？',
     sandbox: '文件沙箱根目錄',
     sandboxDefault: '（默認 data/）',
     sandboxHint:

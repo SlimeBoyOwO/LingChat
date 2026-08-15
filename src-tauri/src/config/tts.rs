@@ -171,24 +171,18 @@ impl TtsConfig {
             sbv2api_api_url: get_string(keys::SBV2API_API_URL, &default_sbv2api_url()),
             aivis_api_url: get_string(keys::AIVIS_API_URL, &default_aivis_url()),
             aivis_api_key: {
-                let s = get_string(keys::AIVIS_API_KEY, "");
-                if s.is_empty() {
-                    None
-                } else {
-                    Some(s)
-                }
+                let plain = get_string(keys::AIVIS_API_KEY, "");
+                crate::security::secrets::get_secret_or(keys::AIVIS_API_KEY, Some(plain))
+                    .filter(|s| !s.is_empty())
             },
             indextts_api_url: get_string(keys::INDEXTTS_API_URL, &default_indextts_url()),
             fish_s2_api_url: get_string(keys::FISH_S2_API_URL, &default_fish_s2_url()),
             fish_s2_voice: get_string(keys::FISH_S2_VOICE, &default_fish_s2_voice()),
             opentts_api_url: get_string(keys::OPENTTS_API_URL, &default_opentts_url()),
             opentts_api_key: {
-                let s = get_string(keys::OPENTTS_API_KEY, "");
-                if s.is_empty() {
-                    None
-                } else {
-                    Some(s)
-                }
+                let plain = get_string(keys::OPENTTS_API_KEY, "");
+                crate::security::secrets::get_secret_or(keys::OPENTTS_API_KEY, Some(plain))
+                    .filter(|s| !s.is_empty())
             },
             opentts_model: get_string(keys::OPENTTS_MODEL, &default_opentts_model()),
             opentts_voice: get_string(keys::OPENTTS_VOICE, &default_opentts_voice()),

@@ -547,11 +547,15 @@ export default {
     autoApprove: 'コマンドを自動実行（確認なし）',
     autoApproveHint:
       '有効にすると <code class="font-mono text-brand">execute_command</code> の承認を求めずに直接実行します。オフ推奨。',
+    autoApproveConfirm:
+      '有効にすると通常のコマンドは確認ダイアログなしで実行されます（削除・昇格・システム管理などの危険なコマンドは引き続き確認が必要）。AI によるこの端末への操作権限が大幅に広がります。有効にしますか？',
     allowAnyPath: '任意パスを許可',
     allowAnyPathWarn:
       '⚠ 有効にするとライターがサンドボックス外の任意ファイルを読み書きできます。リスクが非常に高いため、信頼できる場面でのみ使用してください。',
     allowAnyPathHint:
       'オフの間はファイル操作がサンドボックスルート内に制限されます。オンにすると AI が外部パスにもアクセスできます。',
+    allowAnyPathConfirm:
+      '有効にすると AI がサンドボックス外（システムディレクトリを含む）の任意ファイルを読み書きできます。ファイルサンドボックスが完全に無効化されます。有効にしますか？',
     sandbox: 'ファイルサンドボックスルート',
     sandboxDefault: '（デフォルト data/）',
     sandboxHint:

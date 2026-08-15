@@ -60,6 +60,7 @@ pub async fn download_asset(
         Some(cancel),
         Some(on_progress),
         entry.size_bytes,
+        None,
     )
     .await
 }

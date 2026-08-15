@@ -16,7 +16,7 @@ use super::types::{Category, ConfigSetting, ConfigTree, Subcategory};
 // ========== 辅助函数 ==========
 
 fn read_setting(app: &AppHandle, key: &str, default: &str) -> String {
-    super::settings_store(app)
+    let store_value = super::settings_store(app)
         .ok()
         .and_then(|store| {
             store.get(key).map(|v| match v {
@@ -26,7 +26,12 @@ fn read_setting(app: &AppHandle, key: &str, default: &str) -> String {
                 _ => default.to_string(),
             })
         })
-        .unwrap_or_else(|| default.to_string())
+        .unwrap_or_else(|| default.to_string());
+    // 敏感凭据从 keyring 水合（keyring 优先，明文回退用于移动端降级）
+    if crate::security::secrets::SECRET_SETTINGS_KEYS.contains(&key) {
+        return crate::security::secrets::get_secret_or(key, Some(store_value));
+    }
+    store_value
 }
 
 /// 构建前端"高级设置"页面所需的完整配置树。

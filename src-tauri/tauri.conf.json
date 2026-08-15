@@ -20,7 +20,7 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' asset: http://asset.localhost data: blob: https:; media-src 'self' asset: http://asset.localhost data: blob:; font-src 'self' data: asset: http://asset.localhost https://fonts.gstatic.com; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420 http://localhost:1420 https:; object-src 'none'; base-uri 'self'; frame-src 'none'; form-action 'none'",
       "assetProtocol": {
         "enable": true,
         "scope": ["**"]

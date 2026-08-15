@@ -109,7 +109,14 @@ fn build_system_prompt(
         Some(custom) if !custom.trim().is_empty() => custom.clone(),
         _ => default,
     };
-    format!("{}{}{}", base, script_block, skills_block)
+    // 注入防护加固：无论内置还是自定义提示词，末尾追加不可覆盖的核心规则
+    format!(
+        "{}{}{}{}",
+        base,
+        script_block,
+        skills_block,
+        crate::security::injection_guard::HARDENING_PROMPT
+    )
 }
 
 // ---------- 历史规整 ----------
@@ -315,6 +322,21 @@ pub async fn run_chat(
             });
 
             let (ok, mut output) = tools::execute_tool(&ctx, &tc.name, &args).await;
+
+            // 提示词注入防护：工具输出属于不可信数据，命中模式时打标并写审计
+            let injection_report = crate::security::injection_guard::scan(&output);
+            if injection_report.level != crate::security::injection_guard::InjectionLevel::None {
+                crate::security::audit::injection_detected(
+                    "skill_agent_tool_output",
+                    injection_report.level.as_str(),
+                    &injection_report.notes,
+                );
+                output = format!(
+                    "{}<不可信数据>\n{}\n</不可信数据>",
+                    crate::security::injection_guard::untrusted_banner(&injection_report),
+                    output
+                );
+            }
 
             // 参数不是有效 JSON → 大概率生成被截断，附上原文片段便于模型/user 定位
             if !ok

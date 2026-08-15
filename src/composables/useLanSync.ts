@@ -16,6 +16,10 @@ const serverRunning = ref(false)
 const serverPort = ref(0)
 const peers = ref<PeerInfo[]>([])
 const selectedPeer = ref<PeerInfo | null>(null)
+/** 本机配对令牌（另一台设备输入此令牌完成配对）。 */
+const ownToken = ref('')
+/** 已配对的设备 ID 集合。 */
+const pairedDeviceIds = ref<Set<string>>(new Set())
 const phase = ref<SyncPhase>('idle')
 const syncPlan = ref<SyncPlan | null>(null)
 const progress = ref<SyncProgressEvent>({
@@ -142,6 +146,19 @@ export function useLanSync() {
     try {
       const result = await invoke<PeerInfo[]>('lan_sync_scan_peers')
       peers.value = result
+      // 刷新配对状态（每台设备查询一次已保存的令牌）
+      const paired = new Set<string>()
+      for (const peer of result) {
+        try {
+          const token = await invoke<string | null>('lan_sync_get_peer_token', {
+            deviceId: peer.deviceId,
+          })
+          if (token) paired.add(peer.deviceId)
+        } catch {
+          // 单台设备查询失败不影响整体扫描
+        }
+      }
+      pairedDeviceIds.value = paired
       phase.value = result.length > 0 ? 'idle' : 'idle'
       return result
     } catch (e) {
@@ -149,6 +166,45 @@ export function useLanSync() {
       errorMessage.value = String(e)
       throw e
     }
+  }
+
+  /** 查看本机配对令牌 */
+  async function loadOwnToken(): Promise<string> {
+    try {
+      ownToken.value = await invoke<string>('lan_sync_get_token')
+      return ownToken.value
+    } catch (e) {
+      errorMessage.value = String(e)
+      throw e
+    }
+  }
+
+  /** 与对端设备配对（保存其配对令牌）。 */
+  async function pairPeer(deviceId: string, token: string): Promise<void> {
+    try {
+      await invoke('lan_sync_set_peer_token', { deviceId, token })
+      pairedDeviceIds.value = new Set([...pairedDeviceIds.value, deviceId])
+    } catch (e) {
+      errorMessage.value = String(e)
+      throw e
+    }
+  }
+
+  /** 解除与某台设备的配对。 */
+  async function unpairPeer(deviceId: string): Promise<void> {
+    try {
+      await invoke('lan_sync_remove_peer_token', { deviceId })
+      const next = new Set(pairedDeviceIds.value)
+      next.delete(deviceId)
+      pairedDeviceIds.value = next
+    } catch (e) {
+      errorMessage.value = String(e)
+      throw e
+    }
+  }
+
+  function isPeerPaired(deviceId: string): boolean {
+    return pairedDeviceIds.value.has(deviceId)
   }
 
   /** 选择对等设备 */
@@ -284,6 +340,8 @@ export function useLanSync() {
     lastResult,
     errorMessage,
     dialogVisible,
+    ownToken,
+    pairedDeviceIds,
     // 方法
     init,
     destroy,
@@ -299,6 +357,10 @@ export function useLanSync() {
     closeDialog,
     restart,
     reset,
+    loadOwnToken,
+    pairPeer,
+    unpairPeer,
+    isPeerPaired,
     formatBytes,
     reasonLabel,
   }

@@ -115,6 +115,12 @@ pub const GITHUB_TOKEN: &str = "workshop.github_token";
 pub const LOG_ENABLE: &str = "log.enable";
 /// 日志文件保留天数（超过此天数的旧日志在启动时自动清理）
 pub const LOG_RETENTION_DAYS: &str = "log.retention_days";
+
+// ========== LAN 同步安全 ==========
+/// 本机 LAN 同步服务的配对令牌（存于 keyring，settings.json 只留空占位）。
+pub const LAN_SYNC_AUTH_TOKEN: &str = "lan_sync.auth_token";
+/// 是否把同步服务暴露到局域网（false 时仅绑定 127.0.0.1 回环）。
+pub const LAN_SYNC_EXPOSE_LAN: &str = "lan_sync.expose_lan";
 /// 是否记录 LLM 请求体到文件（完整请求 JSON，默认关闭）
 pub const LOG_LLM_REQUEST_BODY: &str = "log.llm_request_body";
 

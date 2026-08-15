@@ -130,6 +130,16 @@ async fn run_shell_command_with_limits(
     if command.trim().is_empty() {
         anyhow::bail!("命令不能为空");
     }
+    // 安全前置检查：毁灭性命令直接拒绝（纵深防御第一道闸门）
+    let (risk, reason) = crate::security::command_guard::classify_command(command);
+    if risk == crate::security::command_guard::CommandRisk::Blocked {
+        let message = format!(
+            "命令已被安全策略拦截（{}）。请换一种不破坏系统的方式完成任务。",
+            reason.unwrap_or("危险命令")
+        );
+        crate::security::audit::command_blocked("command_executor", command, &message);
+        anyhow::bail!("{message}");
+    }
     let cwd_path = resolve_working_directory(sandbox_dir, cwd)?;
 
     #[cfg(windows)]
@@ -249,18 +259,32 @@ fn clamp_timeout(timeout: Duration, maximum: Duration) -> Duration {
 
 fn resolve_working_directory(sandbox_dir: &Path, cwd: &str) -> anyhow::Result<PathBuf> {
     let requested = cwd.trim();
+    // 沙箱根必须真实存在且可解析；后续校验以规范路径为准，
+    // 防止符号链接/junction 与绝对路径绕过沙箱。
+    let sandbox_root = std::fs::canonicalize(sandbox_dir)
+        .map_err(|e| anyhow::anyhow!("文件沙箱根目录不可用: {} ({e})", sandbox_dir.display()))?;
     let path = if requested.is_empty() {
-        sandbox_dir.to_path_buf()
+        sandbox_root.clone()
     } else {
-        let path = PathBuf::from(requested);
-        if path.is_absolute() {
-            path
+        let requested_path = PathBuf::from(requested);
+        if requested_path.is_absolute() {
+            std::fs::canonicalize(&requested_path)
+                .map_err(|e| anyhow::anyhow!("工作目录不可用: {} ({e})", requested_path.display()))?
         } else {
-            sandbox_dir.join(path)
+            std::fs::canonicalize(sandbox_root.join(&requested_path))
+                .map_err(|e| anyhow::anyhow!("工作目录不可用: {} ({e})", requested_path.display()))?
         }
     };
     if !path.is_dir() {
         anyhow::bail!("工作目录不存在或不是目录: {}", path.display());
+    }
+    // 绝对路径也必须位于沙箱内（漏洞修复：cwd 绝对路径不再绕过沙箱）
+    if !path.starts_with(&sandbox_root) {
+        anyhow::bail!(
+            "拒绝在文件沙箱之外的工作目录执行命令: {}（沙箱根: {}）",
+            path.display(),
+            sandbox_root.display()
+        );
     }
     Ok(path)
 }
@@ -598,6 +622,8 @@ pub async fn run_shell_command_elevated_with_timeout(
 }
 
 /// 剧本代理的命令执行，沿用其现有的审批通道。
+/// 安全策略：毁灭性命令直接拒绝；删除/提权/系统管理等危险命令即使
+/// 开启 auto_approve 也强制走用户审批；所有执行写入审计日志。
 #[allow(clippy::too_many_arguments)]
 pub async fn execute_command(
     channel: &tauri::ipc::Channel<SkillAgentEvent>,
@@ -613,9 +639,26 @@ pub async fn execute_command(
         command
     );
 
-    if !auto_approve {
+    // 安全前置分类：Blocked 拒绝；Dangerous 强制审批（例外机制）
+    let (risk, risk_reason) = crate::security::command_guard::classify_command(command);
+    if risk == crate::security::command_guard::CommandRisk::Blocked {
+        let message = format!(
+            "命令已被安全策略拦截（{}），未执行。",
+            risk_reason.unwrap_or("危险命令")
+        );
+        crate::security::audit::command_blocked("skill_agent", command, &message);
+        anyhow::bail!("{message}");
+    }
+    let require_approval = !auto_approve || risk == crate::security::command_guard::CommandRisk::Dangerous;
+
+    if require_approval {
         let request_id = new_request_id();
-        let args = serde_json::json!({ "command": command, "cwd": cwd });
+        let args = serde_json::json!({
+            "command": command,
+            "cwd": cwd,
+            "risk": risk.as_str(),
+            "risk_reason": risk_reason,
+        });
         let (tx, rx) = oneshot::channel::<bool>();
         approvals
             .lock()
@@ -628,20 +671,92 @@ pub async fn execute_command(
             args,
         }) {
             approvals.lock().await.remove(&request_id);
+            crate::security::audit::approval_decided(
+                "skill_agent",
+                &request_id,
+                "execute_command",
+                false,
+                "审批通道发送失败",
+            );
             anyhow::bail!("无法发送命令审批请求: {error}");
         }
 
         let decision = tokio::time::timeout(Duration::from_secs(120), rx).await;
         approvals.lock().await.remove(&request_id);
         match decision {
-            Ok(Ok(true)) => tracing::debug!("[skill_agent] approval granted: {}", request_id),
-            Ok(Ok(false)) => anyhow::bail!("命令已被用户拒绝"),
-            Ok(Err(_)) => anyhow::bail!("审批通道已关闭，命令未执行"),
-            Err(_) => anyhow::bail!("命令审批超时（120 秒），已自动拒绝"),
+            Ok(Ok(true)) => {
+                tracing::debug!("[skill_agent] approval granted: {}", request_id);
+                crate::security::audit::approval_decided(
+                    "skill_agent",
+                    &request_id,
+                    "execute_command",
+                    true,
+                    if risk == crate::security::command_guard::CommandRisk::Dangerous {
+                        "危险命令经用户确认"
+                    } else {
+                        "用户批准"
+                    },
+                );
+            }
+            Ok(Ok(false)) => {
+                crate::security::audit::approval_decided(
+                    "skill_agent",
+                    &request_id,
+                    "execute_command",
+                    false,
+                    "用户拒绝",
+                );
+                anyhow::bail!("命令已被用户拒绝")
+            }
+            Ok(Err(_)) => {
+                crate::security::audit::approval_decided(
+                    "skill_agent",
+                    &request_id,
+                    "execute_command",
+                    false,
+                    "审批通道已关闭",
+                );
+                anyhow::bail!("审批通道已关闭，命令未执行")
+            }
+            Err(_) => {
+                crate::security::audit::approval_decided(
+                    "skill_agent",
+                    &request_id,
+                    "execute_command",
+                    false,
+                    "审批超时",
+                );
+                anyhow::bail!("命令审批超时（120 秒），已自动拒绝")
+            }
         }
     }
 
-    run_shell_command(sandbox_dir, command, cwd).await
+    let started = std::time::Instant::now();
+    let result = run_shell_command(sandbox_dir, command, cwd).await;
+    let approval_note = if auto_approve && risk == crate::security::command_guard::CommandRisk::Safe {
+        "auto_approve"
+    } else if risk == crate::security::command_guard::CommandRisk::Dangerous {
+        "forced_approval"
+    } else {
+        "user_approval"
+    };
+    let (outcome, exit_code) = match &result {
+        Ok(output) => ("ok".to_string(), Some(output.exit_code)),
+        Err(e) => (format!("error: {e}"), None),
+    };
+    crate::security::audit::command_executed(
+        "skill_agent",
+        command,
+        cwd,
+        sandbox_dir,
+        risk.as_str(),
+        approval_note,
+        true,
+        &outcome,
+        exit_code,
+        Some(started.elapsed().as_millis() as u64),
+    );
+    result
 }
 
 #[cfg(test)]

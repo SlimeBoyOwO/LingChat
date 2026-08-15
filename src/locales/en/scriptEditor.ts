@@ -547,11 +547,15 @@ export default {
     autoApprove: 'Auto-run commands (no confirmation)',
     autoApproveHint:
       'When enabled, <code class="font-mono text-brand">execute_command</code> runs directly without approval. Keep it off.',
+    autoApproveConfirm:
+      'When enabled, ordinary commands run without a confirmation popup (dangerous commands such as deletion, elevation and system management still require confirmation). This significantly expands what the AI can do on this machine. Enable anyway?',
     allowAnyPath: 'Allow any path',
     allowAnyPathWarn:
       '\u26a0 Enabling lets the coach read/write files outside the sandbox \u2014 high risk. Only for trusted scenarios.',
     allowAnyPathHint:
       'When off, file operations are confined to the sandbox root. When on, the AI can access any path.',
+    allowAnyPathConfirm:
+      'When enabled, the AI can read/write files outside the sandbox (including system directories). This completely bypasses the file sandbox. Enable anyway?',
     sandbox: 'File sandbox root',
     sandboxDefault: '(default data/)',
     sandboxHint:
