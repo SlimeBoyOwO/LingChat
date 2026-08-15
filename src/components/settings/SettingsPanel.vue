@@ -209,7 +209,7 @@ defineExpose({
   right: 0;
   bottom: 0;
   z-index: 1000;
-  background: var(--bg-primary, #1a1a2e);
+  background: transparent;
   color: var(--text-primary, #fff);
 }
 
