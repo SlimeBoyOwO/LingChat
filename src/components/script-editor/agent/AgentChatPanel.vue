@@ -830,7 +830,7 @@ function startRename(c: ConversationInfo) {
   })
 }
 
-/** 保存：空标题不退出编辑态（避免「点了没反应」的无声失败），失败时回退编辑态。 */
+/** 保存/退出编辑态：Enter 或点击框外（blur）触发。有内容则保存，空内容直接退出。 */
 async function commitRename(c: ConversationInfo) {
   if (editingTitleId.value !== c.id) return
   if (renameCancelled) {
@@ -838,8 +838,9 @@ async function commitRename(c: ConversationInfo) {
     return
   }
   const trimmed = titleDraft.value.trim()
-  if (!trimmed) return
+  // 无论是否保存都先退出编辑态：点框外应能简易关闭，不能因空标题卡住
   editingTitleId.value = null
+  if (!trimmed) return
   try {
     await store.renameConversation(c.id, trimmed)
   } catch (err) {
