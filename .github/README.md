@@ -41,7 +41,7 @@
   <tr>
     <!-- 右侧：第三行数据 -->
     <td><b>开发者群</b></td>
-    <td><a href="https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/Q&A.md">QQ群：798012738</a></td>
+    <td><b>QQ群：798012738</b></td>
     <td>对 AI-GALGAME 有开发意向，需要有兴趣或能力的人。</td>
   </tr>
 </table>
