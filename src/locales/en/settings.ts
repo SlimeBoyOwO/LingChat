@@ -930,6 +930,7 @@ export default {
       installed: 'Installed',
       missing: 'Missing',
       warning: 'DeBERTa model or tokenizer is missing. Character voices cannot be loaded or previewed.',
+      delete: 'Delete DeBERTa',
     },
     voices: {
       label: 'Character voices',
@@ -946,10 +947,8 @@ export default {
     },
     import: {
       title: 'Local Import',
-      subtitle: 'Supports raw model files, ZIP and 7z archives',
-      deberta: 'Import DeBERTa',
-      tokenizer: 'Import tokenizer',
-      voice: 'Import voice',
+      subtitle: 'Supports raw .sbv2 / .onnx model files',
+      voice: 'Import voice model',
       voiceIdPlaceholder: 'Voice ID (optional)',
     },
     styleVectors: {
@@ -980,8 +979,6 @@ export default {
     },
     messages: {
       readStatusFailed: 'Failed to read local TTS status: {error}',
-      importSuccessDeberta: 'DeBERTa imported',
-      importSuccessTokenizer: 'Tokenizer imported',
       importFailed: 'Import failed: {error}',
       importVoiceSuccess: 'Voice {voiceId} imported',
       styleVectorsNeedSelect: 'Please select a voice to complete style_vectors first',
@@ -990,6 +987,12 @@ export default {
       deleteConfirmTitle: 'Delete local voice',
       deleteSuccess: 'Voice deleted',
       deleteFailed: 'Delete failed: {error}',
+      deleteDebertaConfirm: 'Delete DeBERTa model and tokenizer? You can re-download them later.',
+      deleteDebertaConfirmTitle: 'Delete DeBERTa',
+      deleteDebertaSuccess: 'DeBERTa deleted',
+      deleteDebertaFailed: 'Failed to delete DeBERTa: {error}',
+      enableHintTitle: 'Local TTS enabled',
+      enableHintMessage: 'After enabling local TTS, go to the character voice settings and select the TTS type "Local SBV2 API" and a local voice model',
       previewFailed: 'Preview failed: {error}',
       readSwitchFailed: 'Failed to read local TTS switch: {error}',
       switchEnabled: 'Local TTS enabled.',
