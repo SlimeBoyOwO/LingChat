@@ -30,6 +30,10 @@ pub struct GenaiProvider {
     top_p: Option<f64>,
     enable_thinking: bool,
     _reasoning_effort: Option<String>,
+    /// 是否 MiniMax 兼容接口（base_url 或模型名含 minimax）。
+    /// MiniMax 的 OpenAI 兼容 API 只接受 thinking.type = "adaptive" / "disabled"，
+    /// 传 "enabled" 会直接 400 报错（invalid thinking.type），需单独映射。
+    is_minimax: bool,
 }
 
 /// 规范化 base_url：确保以 `/` 结尾。
@@ -116,6 +120,8 @@ impl GenaiProvider {
             top_p: cfg.top_p,
             enable_thinking: cfg.enable_thinking,
             _reasoning_effort: cfg.reasoning_effort.clone(),
+            is_minimax: cfg.base_url.to_lowercase().contains("minimax")
+                || cfg.model.to_lowercase().contains("minimax"),
         })
     }
 
@@ -204,8 +210,18 @@ impl GenaiProvider {
         // DeepSeek Reasoner 等模型在 thinking 字段缺失时默认启用思考，
         // 始终注入 thinking 字段，不区分 provider — 与旧 OpenAiProvider 行为一致。
         // 对不支持该字段的 provider（如纯 OpenAI）通常会被忽略，无害。[TODO] 需要测试
+        //
+        // MiniMax 例外：其 OpenAI 兼容接口只接受 "adaptive" / "disabled"，
+        // 传 "enabled" 会返回 400（invalid thinking.type (2013)），启用思考时映射为
+        // "adaptive"（由模型自主决定思考深度），关闭时同样是 "disabled"。
 
-        let thinking_type = if self.enable_thinking {
+        let thinking_type = if self.is_minimax {
+            if self.enable_thinking {
+                "adaptive"
+            } else {
+                "disabled"
+            }
+        } else if self.enable_thinking {
             "enabled"
         } else {
             "disabled"
