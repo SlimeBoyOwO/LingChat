@@ -1,5 +1,5 @@
 /**
- * 全局音频输出设备管理器
+ * 全局音频输出设备管理器（仅桌面端）
  *
  * 基于浏览器标准 API：
  * - 枚举：navigator.mediaDevices.enumerateDevices()（audiooutput）
@@ -9,9 +9,14 @@
  * 构造器，实现全局（背景音乐、角色语音、音效、环境音、打字音效等）音频输出设备切换。
  *
  * 设备选择持久化在设置 store 的 audio.outputDeviceId（'' = 跟随系统默认）。
+ *
+ * ⚠️ Android 上禁用：安卓的音频路由（蓝牙/外放）由系统管理，本管理器对
+ * WebView 媒体栈的 setSinkId 调用与 load() 重启会干扰播放（曾导致安卓端
+ * 音乐「部分可播、部分播一会即停、部分完全无法播放」的回归），故 init 时跳过。
  */
 import { ref } from 'vue'
 import { useSettingsStore } from '@/stores/modules/settings'
+import { isAndroid } from '@/utils/platform'
 
 export interface OutputDevice {
   deviceId: string
@@ -334,10 +339,13 @@ export async function setDevice(id: string) {
   )
 }
 
-/** 全局初始化（应用启动时调用一次，需在 pinia 就绪后） */
+/** 全局初始化（应用启动时调用一次，需在 pinia 就绪后；Android 上禁用） */
 export async function initAudioOutputManager() {
   if (initialized) return
   initialized = true
+
+  // Android 跳过：见文件头注释（setSinkId 对 WebView 媒体栈的干扰曾导致播放回归）
+  if (isAndroid()) return
 
   const hasApi =
     typeof navigator !== 'undefined' &&
