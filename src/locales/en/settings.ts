@@ -246,6 +246,7 @@ export default {
         enable: "LOG_ENABLE — Whether to write runtime logs to files (in the data/log/app/ directory)",
         retention_days: "LOG_RETENTION_DAYS — Days to keep log files; older files are cleaned up automatically at startup",
         llm_request_body: "LOG_LLM_REQUEST_BODY — Log the full request body JSON of every LLM request to the data/log/llm/ directory (off by default)",
+        genai_debug: "LOG_GENAI_DEBUG — Enable genai SDK debug logs (request/response details; takes effect immediately on save, off by default)",
       },
       ENABLE_PROACTIVE_SYSTEM: "ENABLE_PROACTIVE_SYSTEM — Whether to enable the proactive chat system",
       MAX_PROACTIVE_TIMES: "MAX_PROACTIVE_TIMES — How many times the AI can chat proactively before the user responds",

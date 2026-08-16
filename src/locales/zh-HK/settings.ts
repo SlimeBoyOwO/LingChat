@@ -245,7 +245,8 @@ export default {
       "log": {
         "enable": "LOG_ENABLE — 使唔使將運行日誌寫入文件（喺 data/log/app/ 目錄）",
         "retention_days": "LOG_RETENTION_DAYS — 日誌文件保留日數，過咗期嘅舊文件會喺啟動嗰陣自動清走",
-        "llm_request_body": "LOG_LLM_REQUEST_BODY — 記低每次 LLM 請求嘅完整請求體 JSON 落 data/log/llm/ 目錄（預設閂）"
+        "llm_request_body": "LOG_LLM_REQUEST_BODY — 記低每次 LLM 請求嘅完整請求體 JSON 落 data/log/llm/ 目錄（預設閂）",
+        "genai_debug": "LOG_GENAI_DEBUG — 開啟 genai SDK 嘅調試日誌（包含請求/回應細節，儲存後即時生效，預設閂）"
       },
       "ENABLE_PROACTIVE_SYSTEM": "ENABLE_PROACTIVE_SYSTEM — 使唔使啟用主動對話系統",
       "MAX_PROACTIVE_TIMES": "MAX_PROACTIVE_TIMES — 喺用戶回應之前，可以主動對話嘅次數",

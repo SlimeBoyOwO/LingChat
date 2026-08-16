@@ -245,6 +245,7 @@ export default {
         enable: 'LOG_ENABLE — 実行ログをファイルに書き込む（data/log/app/ ディレクトリ）',
         retention_days: 'LOG_RETENTION_DAYS — ログファイルの保持日数。超過分は起動時に自動削除',
         llm_request_body: 'LOG_LLM_REQUEST_BODY — 各 LLM リクエストの完全な JSON を data/log/llm/ に記録（デフォルトオフ）',
+        genai_debug: 'LOG_GENAI_DEBUG — genai SDK のデバッグログを有効化（リクエスト/レスポンス詳細、保存後すぐ有効、デフォルトオフ）',
       },
       ENABLE_PROACTIVE_SYSTEM: 'ENABLE_PROACTIVE_SYSTEM — 自動会話システムを有効にするか',
       MAX_PROACTIVE_TIMES: 'MAX_PROACTIVE_TIMES — ユーザーが応答するまでの自動会話の最大回数',

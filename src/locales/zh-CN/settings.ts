@@ -246,6 +246,7 @@ export default {
         enable: 'LOG_ENABLE — 是否将运行日志写入文件（位于 data/log/app/ 目录）',
         retention_days: 'LOG_RETENTION_DAYS — 日志文件保留天数，超过的旧文件在启动时自动清理',
         llm_request_body: 'LOG_LLM_REQUEST_BODY — 记录每次 LLM 请求的完整请求体 JSON 到 data/log/llm/ 目录（默认关闭）',
+        genai_debug: 'LOG_GENAI_DEBUG — 开启 genai SDK 的调试日志（含请求/响应细节，保存后即时生效，默认关闭）',
       },
       ENABLE_PROACTIVE_SYSTEM: 'ENABLE_PROACTIVE_SYSTEM — 是否启用主动对话系统',
       MAX_PROACTIVE_TIMES: 'MAX_PROACTIVE_TIMES — 在用户响应之前，能主动对话的次数',

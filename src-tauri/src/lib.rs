@@ -18,11 +18,10 @@ use std::sync::Arc;
 
 use chrono::Local;
 use sea_orm::DatabaseConnection;
-use tauri::Manager;
+use tauri::{Listener, Manager};
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::Layer;
 
 use ai_service::god_agent::config::resolve_god_agent_provider;
 use ai_service::god_agent::GodAgentCore;
@@ -39,6 +38,21 @@ struct LocalTimer;
 impl FormatTime for LocalTimer {
     fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
         write!(w, "{}", Local::now().format("%H:%M:%S"))
+    }
+}
+
+/// 构建日志过滤器。
+///
+/// `genai_debug` 为 true 时把 `genai` crate 的日志级别从 error 提到 debug，
+/// 用于查看 LLM 请求/响应细节（默认关闭，由 `log.genai_debug` 设置控制）。
+fn build_log_filter(genai_debug: bool) -> tracing_subscriber::EnvFilter {
+    let base = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,ling_chat_lib=info"))
+        .add_directive("sqlx=warn".parse().unwrap());
+    if genai_debug {
+        base.add_directive("genai=debug".parse().unwrap())
+    } else {
+        base.add_directive("genai=error".parse().unwrap())
     }
 }
 
@@ -189,27 +203,22 @@ impl std::ops::Deref for AppState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // 配置日志过滤器
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,ling_chat_lib=info"))
-        .add_directive("sqlx=warn".parse().unwrap())
-        .add_directive("genai=error".parse().unwrap());
+    // 配置日志过滤器（genai 调试日志由 log.genai_debug 设置在 setup 阶段动态控制）。
+    // reload::Layer 包装的 EnvFilter 作为全局过滤层，避免在多个 fmt layer 上 clone 的限制。
+    let (filter, reload_handle) =
+        tracing_subscriber::reload::Layer::new(build_log_filter(false));
 
     // 初始化日志系统
     tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_timer(LocalTimer)
-                .with_filter(filter.clone()),
-        )
-        .with(utils::log_bridge::LogBridgeLayer.with_filter(filter.clone()))
+        .with(tracing_subscriber::fmt::layer().with_timer(LocalTimer))
+        .with(utils::log_bridge::LogBridgeLayer)
         .with(
             tracing_subscriber::fmt::layer()
                 .with_writer(utils::file_logger::LogFileWriter)
                 .with_timer(LocalTimer)
-                .with_ansi(false)
-                .with_filter(filter),
+                .with_ansi(false),
         )
+        .with(filter)
         .init();
 
     // 设置 WebView2 颜色配置文件（强制使用线性 sRGB）
@@ -238,7 +247,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init());
 
     builder
-        .setup(|app| {
+        .setup(move |app| {
             // 设置日志桥接的应用句柄
             utils::log_bridge::set_app_handle(app.handle().clone());
 
@@ -290,7 +299,44 @@ pub fn run() {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
                 utils::llm_request_logger::init(data_dir, llm_request_log_enable);
+
+                // 应用 genai 调试日志开关（log.genai_debug，默认关闭）
+                let genai_debug = store
+                    .as_ref()
+                    .and_then(|s| s.get(config::keys::LOG_GENAI_DEBUG))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                if let Err(e) = reload_handle.reload(build_log_filter(genai_debug)) {
+                    tracing::warn!("应用日志过滤器失败: {e}");
+                }
             }
+
+            // 热重载 genai 调试日志：settings store 变更时即时生效（无需重启）
+            let app_handle = app.handle().clone();
+            app_handle.listen("store://change", move |event| {
+                #[derive(serde::Deserialize)]
+                struct StoreChangePayload {
+                    key: String,
+                    value: Option<serde_json::Value>,
+                }
+                let Ok(payload) =
+                    serde_json::from_str::<StoreChangePayload>(event.payload())
+                else {
+                    return;
+                };
+                if payload.key != config::keys::LOG_GENAI_DEBUG {
+                    return;
+                }
+                let genai_debug = matches!(payload.value, Some(serde_json::Value::Bool(true)));
+                if let Err(e) = reload_handle.reload(build_log_filter(genai_debug)) {
+                    tracing::warn!("热重载 genai 调试日志失败: {e}");
+                } else {
+                    tracing::info!(
+                        "genai 调试日志已{}",
+                        if genai_debug { "开启" } else { "关闭" }
+                    );
+                }
+            });
 
             // 启动时自动清理未被引用的孤立语音文件
             match rt.block_on(init::voice_cleanup::cleanup_orphan_voice_files(
