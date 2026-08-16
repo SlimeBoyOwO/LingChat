@@ -10,9 +10,8 @@
  *
  * 设备选择持久化在设置 store 的 audio.outputDeviceId（'' = 跟随系统默认）。
  *
- * ⚠️ Android 上禁用：安卓的音频路由（蓝牙/外放）由系统管理，本管理器对
- * WebView 媒体栈的 setSinkId 调用与 load() 重启会干扰播放（曾导致安卓端
- * 音乐「部分可播、部分播一会即停、部分完全无法播放」的回归），故 init 时跳过。
+ * ⚠️ Android 上禁用：设备切换是桌面功能，安卓的音频路由（蓝牙/外放）
+ * 由系统管理，无需在此干预 WebView 媒体栈。
  */
 import { ref } from 'vue'
 import { useSettingsStore } from '@/stores/modules/settings'
@@ -344,7 +343,7 @@ export async function initAudioOutputManager() {
   if (initialized) return
   initialized = true
 
-  // Android 跳过：见文件头注释（setSinkId 对 WebView 媒体栈的干扰曾导致播放回归）
+  // Android 跳过：桌面功能，见文件头注释
   if (isAndroid()) return
 
   const hasApi =

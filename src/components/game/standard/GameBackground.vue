@@ -123,8 +123,7 @@ const backgroundSrc = computed(() => {
   return convertFileSrc(bg)
 })
 
-// 统一转换入口：currentBackgroundMusic 存储原始路径，在此一次性转换
-// Android 上 asset 协议有 1MB 响应上限（见 toPlayableMediaUrl），需整文件 fetch 成 blob
+// 统一转换入口：currentBackgroundMusic 存原始路径，此处转可播放 URL（Android 走 blob，见 toPlayableMediaUrl）
 const backgroundMusicSrc = ref('None')
 let bgmLoadSeq = 0
 watch(
@@ -248,7 +247,7 @@ const displayTracks = ref<
 
 const effectiveVolume = (trackVolume: number) => (trackVolume / 100) * (uiStore.ambientVolume / 100)
 
-// Android 上 asset 协议有 1MB 响应上限，整文件 fetch 成 blob 后替换 src（见 toPlayableMediaUrl）
+// 播放 URL 异步解析（Android 换 blob，见 toPlayableMediaUrl）
 const playableSrcMap = ref(new Map<string, string>())
 const resolvePlayableSrc = async (d: { id: string; src: string }) => {
   try {
@@ -280,7 +279,7 @@ watch(
           stopped: false,
         }
         displayTracks.value.push(entry)
-        // Android 上异步把 src 换成 blob URL（完成前组件先以 asset URL 挂载，失败会被 src 更新覆盖）
+        // 先以 asset URL 挂载，异步换 blob（Android 上 asset 协议有 1MB 响应上限）
         void resolvePlayableSrc(entry)
       } else if (!d.stopped) {
         d.src = t.src
