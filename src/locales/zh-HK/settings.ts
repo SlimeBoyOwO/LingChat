@@ -383,7 +383,9 @@ export default {
       "ja": "日語",
       "zh": "中文",
       "en": "英語",
-      "ko": "韓語"
+      "ko": "韓語",
+      "es": "西班牙語",
+      "ar": "阿拉伯語"
     },
     "clothes": {
       "listTitle": "服裝列表",

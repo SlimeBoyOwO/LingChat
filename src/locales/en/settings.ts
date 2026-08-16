@@ -384,6 +384,8 @@ export default {
       zh: "Chinese",
       en: "English",
       ko: "Korean",
+      es: "Spanish",
+      ar: "Arabic",
     },
     clothes: {
       listTitle: "Outfit List",
