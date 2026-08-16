@@ -57,8 +57,10 @@ ling_chat_pal/
 # ============================================================
 
 node_modules/
+.pnpm-store/
 build/
 dist/
+dist-windows/
 target/
 
 ling_chat/static/frontend/
