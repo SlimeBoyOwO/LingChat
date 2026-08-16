@@ -126,16 +126,22 @@ const backgroundSrc = computed(() => {
 // 统一转换入口：currentBackgroundMusic 存储原始路径，在此一次性转换
 // Android 上 asset 协议有 1MB 响应上限（见 toPlayableMediaUrl），需整文件 fetch 成 blob
 const backgroundMusicSrc = ref('None')
+let bgmLoadSeq = 0
 watch(
   () => uiStore.currentBackgroundMusic,
   async (src) => {
+    const seq = ++bgmLoadSeq
     if (!src || src === 'None') {
       backgroundMusicSrc.value = 'None'
       return
     }
     try {
-      backgroundMusicSrc.value = await toPlayableMediaUrl(src)
+      const url = await toPlayableMediaUrl(src)
+      // 竞态守卫：期间已切换过歌曲则丢弃过期结果
+      if (seq !== bgmLoadSeq) return
+      backgroundMusicSrc.value = url
     } catch (e) {
+      if (seq !== bgmLoadSeq) return
       console.warn('背景音乐加载失败:', src, e)
       backgroundMusicSrc.value = 'None'
     }
@@ -309,6 +315,8 @@ watch(
 const onStoppedDone = (id: string) => {
   const idx = displayTracks.value.findIndex((x) => x.id === id)
   if (idx >= 0) displayTracks.value.splice(idx, 1)
+  // 同步清理已解析的播放 URL，避免残留
+  playableSrcMap.value.delete(id)
 }
 </script>
 
