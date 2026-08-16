@@ -8,6 +8,7 @@
  * 模块级可变量（saveTimer/revision/…）仍放模块级：单一 store 实例，不需 per-instance。
  */
 import * as api from '@/api/services/script-editor'
+import * as achievementApi from '@/api/services/achievement'
 import type {
   AssetKind,
   AssetScope,
@@ -15,14 +16,24 @@ import type {
   GlobalCharacter,
   ScriptEventData,
 } from '@/api/services/script-editor'
+import { i18n } from '@/locales'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
 import { firstVisibleIndex } from '@/composables/useEventFolding'
 import { eventQueue } from '@/core/events/event-queue'
-import { AUTOSAVE_DELAY, UNDO_LIMIT, VALIDATE_DELAY, useEditorState } from './state'
+import {
+  AUTOSAVE_DELAY,
+  DEFAULT_EDITOR_BG,
+  UNDO_LIMIT,
+  VALIDATE_DELAY,
+  useEditorState,
+} from './state'
 import type { UndoFrame } from './state'
 import { useEditorGetters } from './getters'
 import { particleEffectOptions, canonicalEffectKey } from '@/components/game/standard/particles'
+
+/** 编辑器消息文案走 i18n（对齐 stores/ui 的做法） */
+const t = i18n.global.t
 
 type StateRefs = ReturnType<typeof useEditorState>
 type Getters = ReturnType<typeof useEditorGetters>
@@ -31,7 +42,9 @@ type Getters = ReturnType<typeof useEditorGetters>
  * 把 schema 里由后端常量驱动的下拉，改由前端注册表驱动。
  * 目前只有「背景特效」：用前端粒子注册表覆盖该字段 options，新增粒子只改前端。
  */
-function applyFrontendOverrides(schema: { events: { typeKey: string; fields: { key: string; options?: unknown[] }[] }[] } | null) {
+function applyFrontendOverrides(
+  schema: { events: { typeKey: string; fields: { key: string; options?: unknown[] }[] }[] } | null,
+) {
   if (!schema) return
   const effectField = schema.events
     .find((e) => e.typeKey === 'background_effect')
@@ -60,12 +73,15 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
         s.schema.value = await api.getSchema()
         applyFrontendOverrides(s.schema.value)
       } catch (e) {
-        notifyError('无法读取事件定义', e)
+        notifyError(t('scriptEditor.notify.schemaFailed'), e)
         return
       }
     }
     await refreshScripts()
     void refreshGlobalAssets()
+    // 首次进入编辑器也要加载全局角色库（创建剧本/绑定羁绊人物时用得到），
+    // 空 key 时后端同样会返回全部全局角色，只是 already_in_script 全为 false
+    void refreshGlobalCharacters()
   }
 
   async function refreshScripts() {
@@ -73,7 +89,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     try {
       s.scripts.value = await api.listScripts()
     } catch (e) {
-      notifyError('无法读取剧本列表', e)
+      notifyError(t('scriptEditor.notify.listFailed'), e)
     } finally {
       s.loading.value = false
     }
@@ -101,10 +117,11 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       s.level.value = 'flow'
       s.tab.value = 'flow'
       void refreshGlobalCharacters()
+      void loadAchievements()
       void checkReadiness()
       await runValidation()
     } catch (e) {
-      if (seq === openSeq) notifyError('打开剧本失败', e)
+      if (seq === openSeq) notifyError(t('scriptEditor.notify.openFailed'), e)
     } finally {
       if (seq === openSeq) s.loading.value = false
     }
@@ -126,10 +143,8 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
   async function deleteScript(key: string, displayName: string) {
     const dialog = useDialogStore()
     const ok = await dialog.confirm(
-      `确定删除剧本「${displayName}」吗？\n\n` +
-        '整个目录（章节、素材、角色）将被永久删除，无法恢复。' +
-        '若它是某个角色的羁绊冒险，角色卡上也会消失。',
-      '删除剧本',
+      t('scriptEditor.scriptList.deleteConfirm', { name: displayName }),
+      t('scriptEditor.scriptList.deleteConfirmTitle'),
     )
     if (!ok) return
     try {
@@ -138,9 +153,12 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       await refreshScripts()
       // 引擎内存里还留着这个剧本，不同步的话主菜单仍然列得出来
       await syncEngine()
-      notifyOk('剧本已删除', `${displayName} 已被永久删除`)
+      notifyOk(
+        t('scriptEditor.notify.scriptDeleted'),
+        t('scriptEditor.notify.scriptDeletedDesc', { name: displayName }),
+      )
     } catch (e) {
-      notifyError('删除剧本失败', e)
+      notifyError(t('scriptEditor.notify.deleteFailed'), e)
     }
   }
 
@@ -194,7 +212,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       s.level.value = 'chapter'
       return true
     } catch (e) {
-      if (seq === openSeq) notifyError('打开章节失败', e)
+      if (seq === openSeq) notifyError(t('scriptEditor.notify.chapterOpenFailed'), e)
       return false
     }
   }
@@ -452,7 +470,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       s.lastSavedAt.value = Date.now()
       syncChapterSummary()
     } catch (e) {
-      notifyError('自动保存失败，改动还在编辑器里', e)
+      notifyError(t('scriptEditor.notify.autosaveFailed'), e)
     } finally {
       s.saving.value = false
       if (savePending) {
@@ -502,9 +520,9 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       })
       s.detail.value.chapters.sort((a, b) => a.id.localeCompare(b.id))
       await runValidation()
-      notifyOk('章节已创建', created.id)
+      notifyOk(t('scriptEditor.notify.chapterCreated'), created.id)
     } catch (e) {
-      notifyError('创建章节失败', e)
+      notifyError(t('scriptEditor.notify.chapterCreateFailed'), e)
     }
   }
 
@@ -513,8 +531,8 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     if (!key || !s.detail.value) return
     const dialog = useDialogStore()
     const ok = await dialog.confirm(
-      `确定删除章节「${chapterId}」吗？\n\n文件将被永久删除，指向它的跳转会断链。`,
-      '删除章节',
+      t('scriptEditor.notify.chapterDeleteConfirm', { id: chapterId }),
+      t('scriptEditor.notify.chapterDeleteTitle'),
     )
     if (!ok) return
     try {
@@ -527,7 +545,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       }
       await runValidation()
     } catch (e) {
-      notifyError('删除章节失败', e)
+      notifyError(t('scriptEditor.notify.chapterDeleteFailed'), e)
     }
   }
 
@@ -564,7 +582,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       const report = await api.validateScript(key)
       if (seq === validateSeq) s.report.value = report
     } catch (e) {
-      if (seq === validateSeq) notifyError('校验失败', e)
+      if (seq === validateSeq) notifyError(t('scriptEditor.notify.validateFailed'), e)
     }
   }
 
@@ -592,8 +610,8 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     if (g.hasBlockingErrors.value) {
       s.tab.value = 'validate'
       notifyWarn(
-        '还有问题没解决',
-        `${s.report.value?.errorCount} 个错误会让剧本跑不通，先修掉再试玩`,
+        t('scriptEditor.notify.validateUnresolved'),
+        t('scriptEditor.notify.validateUnresolvedDesc', { count: s.report.value?.errorCount ?? 0 }),
       )
       return false
     }
@@ -601,7 +619,10 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     // 与其让作者对着不动的画面猜，不如现在就说清楚。
     await checkReadiness()
     if (s.readiness.value && !s.readiness.value.ok) {
-      notifyWarn('试玩前还差一步', s.readiness.value.reason ?? '主角未确定')
+      notifyWarn(
+        t('scriptEditor.notify.previewNeedFix'),
+        s.readiness.value.reason ?? t('scriptEditor.notify.previewNoMain'),
+      )
       return false
     }
     try {
@@ -611,7 +632,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       await refreshScripts()
       return true
     } catch (e) {
-      notifyError('试玩启动失败', e)
+      notifyError(t('scriptEditor.notify.previewStartFailed'), e)
       return false
     }
   }
@@ -671,13 +692,65 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       // 素材页开着的时候要跟着变，否则刚导进来的图不出现在列表里
       if (s.assetFiles.value.script || s.assetFiles.value.global) void refreshAssetFiles()
       notifyOk(
-        scope === 'global' ? '已导入为全局素材' : '已导入为剧本素材',
+        scope === 'global'
+          ? t('scriptEditor.notify.assetImportedGlobal')
+          : t('scriptEditor.notify.assetImportedScript'),
         saved,
       )
       return saved
     } catch (e) {
-      notifyError('导入素材失败', e)
+      notifyError(t('scriptEditor.notify.assetImportFailed'), e)
       return null
+    }
+  }
+
+  /**
+   * 上传编辑器自定义背景。成功后将 `editorBg.path` 指向复制后的文件
+   * （Rust 落盘在数据目录），返回该路径；`path` 为空串表示用默认背景。
+   */
+  async function uploadEditorBg(srcPath: string): Promise<string | null> {
+    try {
+      const saved = await api.uploadEditorBg(srcPath)
+      setEditorBgPath(saved)
+      notifyOk(t('scriptEditor.notify.bgSet'), t('scriptEditor.notify.bgSetHint'))
+      return saved
+    } catch (e) {
+      notifyError(t('scriptEditor.notify.bgSetFailed'), e)
+      return null
+    }
+  }
+
+  /** 设置编辑器背景路径并自增版本号：asset URL 相同而内容变化时，`?v=` 参数强制绕过缓存 */
+  function setEditorBgPath(path: string) {
+    s.editorBg.value = { ...s.editorBg.value, path }
+    s.bgVersion.value += 1
+  }
+
+  /** 上传裁剪后的编辑器背景（cropperjs 输出 base64），成功后更新 path 并自增版本号 */
+  async function uploadEditorBgData(dataUrl: string, name: string): Promise<string | null> {
+    try {
+      const saved = await api.uploadEditorBgData(dataUrl, name)
+      setEditorBgPath(saved)
+      notifyOk(t('scriptEditor.notify.bgSet'), t('scriptEditor.notify.bgSetHint'))
+      return saved
+    } catch (e) {
+      notifyError(t('scriptEditor.notify.bgSetFailed'), e)
+      return null
+    }
+  }
+
+  /** 恢复默认背景（path 置空 + 版本自增，同上规避缓存） */
+  function resetEditorBg() {
+    s.editorBg.value = { ...DEFAULT_EDITOR_BG }
+    s.bgVersion.value += 1
+  }
+
+  /** 刷新全局背景库列表（game_data/backgrounds），供外观页「从已有背景选择」 */
+  async function refreshGlobalBgFiles() {
+    try {
+      s.globalBgFiles.value = await api.listGlobalBackgrounds()
+    } catch (e) {
+      notifyError(t('scriptEditor.notify.bgListFailed'), e)
     }
   }
 
@@ -688,9 +761,12 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       const c = await api.createCharacter(key, folder, aiName, systemPrompt)
       s.detail.value.characters.push(c)
       void refreshGlobalCharacters()
-      notifyOk('角色已创建', `剧本里写 character: ${c.roleKey}`)
+      notifyOk(
+        t('scriptEditor.notify.characterCreated'),
+        t('scriptEditor.notify.characterCreatedDesc', { key: c.roleKey }),
+      )
     } catch (e) {
-      notifyError('创建角色失败', e)
+      notifyError(t('scriptEditor.notify.characterCreateFailed'), e)
     }
   }
 
@@ -704,22 +780,21 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     if (!key || !s.detail.value) return
     const dialog = useDialogStore()
     const ok = await dialog.confirm(
-      `确定删除角色「${displayName}」吗？\n\n` +
-        '整个目录（人设、立绘）将被永久删除，无法恢复。' +
-        '仍在引用它的台词会显示为校验错误。',
-      '删除角色',
+      t('scriptEditor.notify.characterDeleteConfirm', { name: displayName }),
+      t('scriptEditor.notify.characterDeleteTitle'),
     )
     if (!ok) return
     try {
       await api.deleteCharacter(key, folder)
-      s.detail.value.characters = s.detail.value.characters.filter(
-        (c) => c.folder !== folder,
-      )
+      s.detail.value.characters = s.detail.value.characters.filter((c) => c.folder !== folder)
       void refreshGlobalCharacters()
       await runValidation()
-      notifyOk('角色已删除', `${displayName} 已被永久删除`)
+      notifyOk(
+        t('scriptEditor.notify.characterDeleted'),
+        t('scriptEditor.notify.characterDeletedDesc', { name: displayName }),
+      )
     } catch (e) {
-      notifyError('删除角色失败', e)
+      notifyError(t('scriptEditor.notify.characterDeleteFailed'), e)
     }
   }
 
@@ -742,27 +817,26 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     const key = g.scriptKey.value
     if (!key) return
     const dialog = useDialogStore()
-    const where =
+    const scopeTag =
       scope === 'global'
-        ? '（全局素材）删掉之后所有引用它的剧本都会找不到文件。'
-        : '（本剧本素材）'
+        ? t('scriptEditor.notify.assetGlobalNote')
+        : t('scriptEditor.notify.assetScriptNote')
     const ok = await dialog.confirm(
-      `确定删除「${name}」吗？\n\n${where}\n如果还有事件在引用它，删完校验会报「素材找不到」。`,
-      '删除素材',
+      t('scriptEditor.notify.assetDeleteConfirm', { name, scopeTag }),
+      t('scriptEditor.notify.assetDeleteTitle'),
     )
     if (!ok) return
     try {
       await api.deleteAsset(key, kind, scope, name)
       // 三份列表都要刷：素材页的详情、属性面板下拉用的剧本内清单与全局清单
-      await Promise.all([
-        refreshAssetFiles(),
-        refreshGlobalAssets(),
-        reloadDetailAssets(),
-      ])
+      await Promise.all([refreshAssetFiles(), refreshGlobalAssets(), reloadDetailAssets()])
       await runValidation()
-      notifyOk('素材已删除', `${name} 已被永久删除`)
+      notifyOk(
+        t('scriptEditor.notify.assetDeleted'),
+        t('scriptEditor.notify.assetDeletedDesc', { name }),
+      )
     } catch (e) {
-      notifyError('删除素材失败', e)
+      notifyError(t('scriptEditor.notify.assetDeleteFailed'), e)
     }
   }
 
@@ -779,12 +853,24 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
   }
 
   async function refreshGlobalCharacters() {
-    const key = g.scriptKey.value
-    if (!key) return
+    // key 可为空（首次进入编辑器尚未打开剧本）：后端对空 key 返回全部全局角色
+    const key = g.scriptKey.value ?? ''
     try {
       s.globalCharacters.value = await api.listGlobalCharacters(key)
     } catch (e) {
       console.warn('读取全局角色失败:', e)
+    }
+  }
+
+  /** 拉取全局成就列表（id → 标题），供成就下拉选项；失败静默，下拉会变空 */
+  async function loadAchievements() {
+    try {
+      const list = await achievementApi.getAchievementList()
+      s.achievements.value = Object.fromEntries(
+        Object.entries(list).map(([id, a]) => [id, a.title ?? id]),
+      )
+    } catch (e) {
+      console.warn('读取成就列表失败:', e)
     }
   }
 
@@ -804,13 +890,13 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       s.detail.value.characters.sort((a, b) => a.folder.localeCompare(b.folder))
       await refreshGlobalCharacters()
       notifyOk(
-        `已导入角色「${c.aiName}」`,
+        t('scriptEditor.notify.characterImported', { name: c.aiName }),
         withAvatar
-          ? `立绘也复制了一份，剧本可以单独分发。剧本里写 character: ${c.roleKey}`
-          : `立绘仍读全局那份。剧本里写 character: ${c.roleKey}`,
+          ? t('scriptEditor.notify.characterImportedWithAvatar', { key: c.roleKey })
+          : t('scriptEditor.notify.characterImportedNoAvatar', { key: c.roleKey }),
       )
     } catch (e) {
-      notifyError('导入角色失败', e)
+      notifyError(t('scriptEditor.notify.characterImportFailed'), e)
     }
   }
 
@@ -826,9 +912,9 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       s.detail.value.storyConfig = config
       await refreshScripts()
       await runValidation()
-      notifyOk('剧本设置已保存')
+      notifyOk(t('scriptEditor.notify.configSaved'))
     } catch (e) {
-      notifyError('保存剧本设置失败', e)
+      notifyError(t('scriptEditor.notify.configSaveFailed'), e)
     }
   }
 
@@ -882,11 +968,17 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     startPreview,
     stopPreview,
     uploadAsset,
+    uploadEditorBg,
+    uploadEditorBgData,
+    setEditorBgPath,
+    resetEditorBg,
+    refreshGlobalBgFiles,
     createCharacter,
     deleteCharacter,
     refreshAssetFiles,
     deleteAsset,
     refreshGlobalCharacters,
+    loadAchievements,
     importGlobalCharacter,
     saveStoryConfig,
     notifyOk,

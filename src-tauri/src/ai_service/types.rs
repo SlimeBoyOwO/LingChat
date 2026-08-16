@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -59,6 +60,34 @@ pub struct FunctionSchema {
     pub name: String,
     pub description: String,
     pub parameters: serde_json::Value,
+}
+
+/// 归一化工具调用的 `arguments`。有些模型输出非标准形态（嵌套 `{"arguments": {...}}`
+/// / `{"params": {...}}`、双编码 JSON 字符串、甚至非法 JSON）。统一成普通对象，
+/// 绝不返回 `null` 让 UI 崩溃。
+pub(crate) fn parse_tool_args(raw: &str) -> Value {
+    let mut args: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
+
+    if let Some(s) = args.as_str() {
+        if let Ok(parsed) = serde_json::from_str::<Value>(s) {
+            args = parsed;
+        }
+    }
+
+    if let Value::Object(map) = &args {
+        if map.len() == 1 {
+            if let Some(inner) = map.get("arguments").or_else(|| map.get("params")) {
+                if inner.is_object() {
+                    args = inner.clone();
+                }
+            }
+        }
+    }
+
+    if !args.is_object() {
+        args = serde_json::json!({});
+    }
+    args
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -284,6 +313,7 @@ pub struct VoiceModel {
     pub gsv_sovits_model_name: Option<String>,
     pub aivis_model_uuid: Option<String>,
     pub opentts_voice: Option<String>,
+    pub fish_s2_voice: Option<String>,
     pub sbv2_local_voice_id: Option<String>,
     pub sbv2_local_speaker_id: Option<i64>,
     pub sbv2_local_style_id: Option<i32>,

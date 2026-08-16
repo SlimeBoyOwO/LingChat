@@ -427,13 +427,7 @@ impl LlmProvider for KimiCodeProvider {
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
     ) -> Result<LlmResponseWithTools> {
-        let tool_choice_value = tool_choice.map(|tc| {
-            if tc == "auto" || tc == "none" || tc == "required" {
-                serde_json::Value::String(tc.to_string())
-            } else {
-                serde_json::from_str(tc).unwrap_or(serde_json::Value::String("auto".to_string()))
-            }
-        });
+        let tool_choice_value = parse_tool_choice(tool_choice);
 
         let body = self.build_request(messages, false, Some(tools), tool_choice_value)?;
         crate::utils::llm_request_logger::log_request_body(
@@ -465,7 +459,53 @@ impl LlmProvider for KimiCodeProvider {
     }
 
     async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream> {
-        let body = self.build_request(messages, true, None, None)?;
+        self.stream_impl(http, messages, None, None).await
+    }
+
+    /// Kimi-Code 支持 Anthropic SSE 的原生流式 function calling。
+    fn supports_streaming_tools(&self) -> bool {
+        true
+    }
+
+    async fn complete_stream_with_tools(
+        &self,
+        http: &Client,
+        messages: &[LlmMessage],
+        tools: &[ToolDefinition],
+        tool_choice: Option<&str>,
+    ) -> Result<ChunkStream> {
+        let tool_choice_value = parse_tool_choice(tool_choice);
+        self.stream_impl(http, messages, Some(tools), tool_choice_value)
+            .await
+    }
+}
+
+fn parse_tool_choice(tool_choice: Option<&str>) -> Option<serde_json::Value> {
+    tool_choice.map(|choice| {
+        if matches!(choice, "auto" | "none" | "required") {
+            serde_json::Value::String(choice.to_string())
+        } else {
+            serde_json::from_str(choice)
+                .unwrap_or_else(|_| serde_json::Value::String("auto".to_string()))
+        }
+    })
+}
+
+impl KimiCodeProvider {
+    /// 统一的流式实现：Anthropic SSE 解析。
+    ///
+    /// 除文本/思考增量外，还处理工具调用块：
+    /// `content_block_start`(tool_use) 登记 id/name，
+    /// `content_block_delta`(input_json_delta) 累积 partial_json，
+    /// 流结束时一次性以 `LlmChunk::ToolCalls` 抛出（与 genai provider 的语义一致）。
+    async fn stream_impl(
+        &self,
+        http: &Client,
+        messages: &[LlmMessage],
+        tools: Option<&[ToolDefinition]>,
+        tool_choice: Option<serde_json::Value>,
+    ) -> Result<ChunkStream> {
+        let body = self.build_request(messages, true, tools, tool_choice)?;
         crate::utils::llm_request_logger::log_request_body(
             "kimicode",
             &serde_json::to_value(&body).unwrap_or_default(),
@@ -490,6 +530,9 @@ impl LlmProvider for KimiCodeProvider {
             let mut thinking_buffer = String::new();
             let mut text_buffer = String::new();
             let mut last_flush_len: usize = 0;
+            // 流式工具调用累积：块 index → (id, name, partial_json)
+            let mut tool_blocks: std::collections::BTreeMap<usize, (String, String, String)> =
+                std::collections::BTreeMap::new();
             let mut bs = byte_stream;
             while let Some(item) = bs.next().await {
                 let chunk = item.map_err(|e| anyhow!("Kimi-Code 流式读取失败: {e}"))?;
@@ -511,14 +554,18 @@ impl LlmProvider for KimiCodeProvider {
                             if !thinking_buffer.is_empty() {
                                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
                                 yield LlmChunk::Reasoning(thinking_buffer.clone());
-                                thinking_buffer.clear();
                             }
                             // 如果 text 为空但 thinking 有内容，把 thinking 作为正式回复兜底
-                            if text_buffer.is_empty() && !thinking_buffer.is_empty() {
+                            // 工具调用轮的 thinking 只是决策过程，不能混入正文。
+                            if text_buffer.is_empty() && !thinking_buffer.is_empty() && tool_blocks.is_empty() {
                                 tracing::info!("[Kimi-Code] text 为空，使用 thinking 作为回复");
                                 for line in thinking_buffer.lines() {
                                     yield LlmChunk::Content(line.to_string());
                                 }
+                            }
+                            // 抛出累积完成的工具调用
+                            if !tool_blocks.is_empty() {
+                                yield LlmChunk::ToolCalls(collect_tool_calls(std::mem::take(&mut tool_blocks)));
                             }
                             return;
                         }
@@ -544,9 +591,38 @@ impl LlmProvider for KimiCodeProvider {
                                             thinking_buffer.push_str(&thinking);
                                         }
                                     }
+                                    if let Some(partial) = delta.partial_json {
+                                        let idx = parsed.index.unwrap_or(0);
+                                        if let Some(block) = tool_blocks.get_mut(&idx) {
+                                            block.2.push_str(&partial);
+                                            // 实时汇报参数生成进度（驱动前端「正在写入…N 字」提示）
+                                            yield LlmChunk::ToolCallProgress {
+                                                name: block.1.clone(),
+                                                chars: block.2.chars().count(),
+                                            };
+                                        }
+                                    }
                                 }
                             }
-                            "content_block_start" | "content_block_stop" | "message_start" | "message_delta" | "message_stop" => {
+                            "content_block_start" => {
+                                if let Some(block) = parsed.content_block {
+                                    if block.type_ == "tool_use" {
+                                        let idx = parsed.index.unwrap_or(0);
+                                        let name = block.name.unwrap_or_default();
+                                        tool_blocks.insert(
+                                            idx,
+                                            (
+                                                block.id.unwrap_or_default(),
+                                                name.clone(),
+                                                String::new(),
+                                            ),
+                                        );
+                                        // 工具块一开始就让前端亮出「正在生成」状态
+                                        yield LlmChunk::ToolCallProgress { name, chars: 0 };
+                                    }
+                                }
+                            }
+                            "content_block_stop" | "message_start" | "message_delta" | "message_stop" => {
                                 tracing::debug!("[Kimi-Code SSE] type={}, delta={:?}", parsed.type_, parsed.delta);
                             }
                             other => {
@@ -570,17 +646,44 @@ impl LlmProvider for KimiCodeProvider {
                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
                 yield LlmChunk::Reasoning(thinking_buffer.clone());
             }
-            // 兜底：text 为空时使用 thinking
-            if text_buffer.is_empty() && !thinking_buffer.is_empty() {
+            // 兜底：text 为空时使用 thinking。
+            // 但本轮若包含工具调用（tool_use 块），thinking 只是决策过程，
+            // 不能当正文下发——否则会污染工具闭环的 assistant 消息与下游句子解析。
+            if text_buffer.is_empty() && !thinking_buffer.is_empty() && tool_blocks.is_empty() {
                 tracing::info!("[Kimi-Code] text 为空，使用 thinking 作为回复");
                 for line in thinking_buffer.lines() {
                     yield LlmChunk::Content(line.to_string());
                 }
             }
+            // 流正常结束时抛出累积完成的工具调用
+            if !tool_blocks.is_empty() {
+                yield LlmChunk::ToolCalls(collect_tool_calls(std::mem::take(&mut tool_blocks)));
+            }
         };
 
         Ok(Box::pin(stream))
     }
+}
+
+/// 把流式累积的工具块组装成 ToolCall 列表（按块 index 升序）。
+fn collect_tool_calls(
+    blocks: std::collections::BTreeMap<usize, (String, String, String)>,
+) -> Vec<crate::ai_service::types::ToolCall> {
+    blocks
+        .into_values()
+        .map(|(id, name, arguments)| crate::ai_service::types::ToolCall {
+            id,
+            type_: "function".to_string(),
+            function: crate::ai_service::types::FunctionCall {
+                name,
+                arguments: if arguments.trim().is_empty() {
+                    "{}".to_string()
+                } else {
+                    arguments
+                },
+            },
+        })
+        .collect()
 }
 
 // ============================================================
@@ -681,6 +784,12 @@ struct ContentBlock {
 struct MessagesStreamChunk {
     #[serde(rename = "type")]
     type_: String,
+    /// 内容块序号（content_block_start/delta/stop 携带）。
+    #[serde(default)]
+    index: Option<usize>,
+    /// content_block_start 携带的块本体（tool_use 的 id/name 在这里）。
+    #[serde(default)]
+    content_block: Option<ContentBlock>,
     #[serde(default)]
     delta: Option<MessageDelta>,
 }
@@ -691,6 +800,9 @@ struct MessageDelta {
     text: Option<String>,
     #[serde(default)]
     thinking: Option<String>,
+    /// input_json_delta：流式工具调用参数的 JSON 片段。
+    #[serde(default)]
+    partial_json: Option<String>,
 }
 
 #[cfg(test)]
@@ -786,5 +898,26 @@ mod tests {
             .unwrap_err();
         assert!(error.to_string().contains("缺少 id"));
     }
-}
 
+    #[test]
+    fn serializes_required_tool_choice_for_streaming_requests() {
+        let tool = ToolDefinition::new(
+            "get_current_time",
+            "读取时间",
+            serde_json::json!({"type": "object", "properties": {}}),
+        );
+        let provider = provider();
+        let messages = [LlmMessage::user("几点了")];
+        let tools = [tool];
+        let body = provider
+            .build_request(
+                &messages,
+                true,
+                Some(&tools),
+                parse_tool_choice(Some("required")),
+            )
+            .unwrap();
+        let value = serde_json::to_value(body).unwrap();
+        assert_eq!(value["tool_choice"]["type"], "any");
+    }
+}

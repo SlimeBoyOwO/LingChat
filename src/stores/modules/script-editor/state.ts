@@ -7,6 +7,7 @@
  */
 import { ref } from 'vue'
 import type {
+  AssetFile,
   AssetIndex,
   ChapterContent,
   GlobalCharacter,
@@ -18,6 +19,18 @@ import type {
   AssetFileIndex,
 } from '@/api/services/script-editor'
 import type { ScriptEventData } from '@/api/services/script-editor'
+
+/** 编辑器外观偏好（背景图 + 模糊/压暗），持久化于 script-editor-ui */
+export interface EditorBg {
+  /** 自定义背景绝对路径；'' 表示用内置默认背景（background2.png，加载失败回退渐变） */
+  path: string
+  /** 背景模糊半径（px） */
+  blur: number
+  /** 压暗遮罩不透明度（0~1） */
+  dim: number
+}
+
+export const DEFAULT_EDITOR_BG: EditorBg = { path: '', blur: 12, dim: 0.3 }
 
 /** 撤销栈里的一帧：某个章节某一时刻的完整事件列表 */
 export interface UndoFrame {
@@ -49,6 +62,8 @@ interface State {
   previewGeneration: number | null
   readiness: PreviewReadiness | null
   globalCharacters: GlobalCharacter[]
+  /** 全局成就列表（成就 id → 标题），供解锁条件/成就事件的成就下拉选项 */
+  achievements: Record<string, string>
   assetFiles: { script: AssetFileIndex | null; global: AssetFileIndex | null }
   level: 'flow' | 'chapter'
   tab:
@@ -59,7 +74,17 @@ interface State {
     | 'validate'
     | 'agent-chat'
     | 'agent-settings'
+    | 'appearance'
   foldCompounds: boolean
+  editorBg: EditorBg
+  /** 背景图版本号：path 变更时自增，用于 asset URL 缓存击穿（不持久化） */
+  bgVersion: number
+  /** 全局背景库文件列表（game_data/backgrounds，带绝对路径），供外观页选择 */
+  globalBgFiles: AssetFile[]
+  /** 事件属性栏是否展开（临时态，不持久化；Ctrl+Space / 边缘手柄切换） */
+  propsExpanded: boolean
+  /** 事件属性栏展开时的宽度（px，拖拽手柄调整后记忆，持久化） */
+  propsWidth: number
 }
 
 /** 撤销栈深度上限 */
@@ -101,6 +126,7 @@ export const useEditorState = () => {
   const previewGeneration = ref<number | null>(null)
   const readiness = ref<PreviewReadiness | null>(null)
   const globalCharacters = ref<GlobalCharacter[]>([])
+  const achievements = ref<Record<string, string>>({})
   const assetFiles = ref<{ script: AssetFileIndex | null; global: AssetFileIndex | null }>({
     script: null,
     global: null,
@@ -109,6 +135,11 @@ export const useEditorState = () => {
   const level = ref<State['level']>('flow')
   const tab = ref<State['tab']>('flow')
   const foldCompounds = ref(true)
+  const editorBg = ref<EditorBg>({ ...DEFAULT_EDITOR_BG })
+  const bgVersion = ref(0)
+  const globalBgFiles = ref<AssetFile[]>([])
+  const propsExpanded = ref(false)
+  const propsWidth = ref(720)
 
   return {
     schema,
@@ -128,9 +159,15 @@ export const useEditorState = () => {
     previewGeneration,
     readiness,
     globalCharacters,
+    achievements,
     assetFiles,
     level,
     tab,
     foldCompounds,
+    editorBg,
+    bgVersion,
+    globalBgFiles,
+    propsExpanded,
+    propsWidth,
   }
 }

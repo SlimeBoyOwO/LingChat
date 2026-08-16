@@ -9,6 +9,10 @@
     </StartLine>
 
     <StartLine>
+      <StartItem @click="router.push('/workshop')">{{ $t('views.menu.cloudWorkshop') }}</StartItem>
+    </StartLine>
+
+    <StartLine>
       <StartItem disabled="true">游戏编辑器(开发中)</StartItem>
     </StartLine>
 

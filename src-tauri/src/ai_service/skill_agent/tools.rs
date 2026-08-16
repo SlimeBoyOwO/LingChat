@@ -1,11 +1,14 @@
 //! Skill Agent 的工具定义与分派（OpenAI function-calling 格式）。
 
+use std::collections::HashMap;
+
 use serde_json::json;
 
 use crate::ai_service::skill_agent::command_executor;
 use crate::ai_service::skill_agent::core::SkillAgentRunContext;
 use crate::ai_service::skill_agent::file_tools::FileTools;
 use crate::ai_service::skill_agent::skills;
+use crate::api::script_editor::validate::{self, Diagnostic, Severity, ValidationReport};
 use crate::ai_service::types::ToolDefinition;
 
 /// LLM 可调用的工具定义。
@@ -25,6 +28,16 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
                     "name": {"type": "string", "description": "要加载的技能名（kebab-case）"}
                 },
                 "required": ["name"]
+            }),
+        ),
+        ToolDefinition::new(
+            "validate_script",
+            "用引擎真实的剧本校验器检查剧本（story_config.yaml + Chapters/*.yaml），返回错误/警告/提示诊断。剧本写完、交付之前必须运行本工具，修复所有「错误」后重新校验，直到 error_count == 0。",
+            json!({
+                "type": "object",
+                "properties": {
+                    "script_key": {"type": "string", "description": "要校验的剧本 key（如 standalone/我的剧本、character/角色/剧本）。省略时使用当前会话绑定的剧本 key。新建剧本若尚未绑定，必须显式传入。"}
+                }
             }),
         ),
         ToolDefinition::new(
@@ -141,6 +154,54 @@ pub async fn execute_tool(
                 None => (false, format!("未找到技能: {}", name_arg)),
             }
         }
+        "validate_script" => {
+            // 确定剧本 key：显式参数优先，否则回落会话绑定的剧本。
+            let arg_key = args
+                .get("script_key")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let key = if arg_key.is_empty() {
+                match &ctx.script_key {
+                    Some(k) => k.clone(),
+                    None => {
+                        return (
+                            false,
+                            "未指定要校验的剧本 key，且当前会话没有绑定剧本。请传入 script_key 参数（如 standalone/我的剧本）。"
+                                .into(),
+                        );
+                    }
+                }
+            } else {
+                arg_key
+            };
+
+            // 解析剧本目录（目录须已存在；写剧本流程先 write_file 建目录，交付前必然存在）。
+            let dir = match crate::utils::script_paths::resolve_script_dir(&key) {
+                Ok(d) => d,
+                Err(e) => return (false, format!("无法定位剧本「{}」：{}", key, e)),
+            };
+
+            // 收集其他剧本的 script_name 用于查重（与 editor_validate_script 相同）。
+            let mut names: HashMap<String, Vec<String>> = HashMap::new();
+            for other in crate::utils::script_paths::enumerate_script_keys() {
+                if let Ok(d) = crate::utils::script_paths::resolve_script_dir(&other) {
+                    if let Ok(cfg) = crate::utils::yaml_file::read_story_config(&d) {
+                        if let Some(n) = cfg.get("script_name").and_then(|v| v.as_str()) {
+                            let n = n.trim();
+                            if !n.is_empty() {
+                                names.entry(n.to_string()).or_default().push(other.clone());
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 运行引擎级校验（只读，无副作用）。诊断本身是工具的合法结果 —— 有错误也要返回 ok。
+            let report = validate::validate(&crate::api::data_dir(), &dir, &key, &names);
+            (true, format_validation_report(&key, &report))
+        }
         "list_files" => {
             let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
             if path.trim().is_empty() {
@@ -210,5 +271,169 @@ pub async fn execute_tool(
             }
         }
         other => (false, format!("未知工具: {}", other)),
+    }
+}
+
+/// 把校验报告格式化成给 LLM 看的中文文本块。
+///
+/// `report.diagnostics` 已按 severity（error → warn → info）排好序，这里按组渲染并做截断，
+/// 保证工具结果（会落库、显示在 UI）长度可控，同时让 LLM 始终看到真实总数。
+fn format_validation_report(key: &str, report: &ValidationReport) -> String {
+    const MAX_ERROR: usize = 100;
+    const MAX_WARN: usize = 40;
+    const MAX_INFO: usize = 10;
+
+    fn sev_tag(s: Severity) -> &'static str {
+        match s {
+            Severity::Error => "错误",
+            Severity::Warn => "警告",
+            Severity::Info => "提示",
+        }
+    }
+
+    /// 位置描述：章节「X」 · 第 N 个事件 · 字段「Y」；剧本级诊断无位置则留空。
+    fn location(d: &Diagnostic) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(c) = &d.chapter {
+            parts.push(format!("章节「{}」", c));
+        }
+        if let Some(i) = d.event_index {
+            parts.push(format!("第 {} 个事件", i + 1));
+        }
+        if let Some(f) = &d.field {
+            parts.push(format!("字段「{}」", f));
+        }
+        parts.join(" · ")
+    }
+
+    let mut out = String::new();
+    out.push_str(&format!(
+        "[校验报告] 剧本：{}\n错误 {} 条 · 警告 {} 条 · 提示 {} 条\n",
+        key, report.error_count, report.warn_count, report.info_count
+    ));
+
+    let mut render_group = |sev: Severity, cap: usize| {
+        let list: Vec<&Diagnostic> = report
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == sev)
+            .collect();
+        if list.is_empty() {
+            return;
+        }
+        out.push_str(&format!("\n【{}】{} 条\n", sev_tag(sev), list.len()));
+        for d in list.iter().take(cap) {
+            out.push_str(&format!(
+                "- [{}][{}] {}：{}\n",
+                sev_tag(sev),
+                d.code,
+                location(d),
+                d.message
+            ));
+        }
+        let overflow = list.len().saturating_sub(cap);
+        if overflow > 0 {
+            out.push_str(&format!(
+                "…另有 {} 条{}未显示（共 {} 条）\n",
+                overflow,
+                sev_tag(sev),
+                list.len()
+            ));
+        }
+    };
+
+    render_group(Severity::Error, MAX_ERROR);
+    render_group(Severity::Warn, MAX_WARN);
+    render_group(Severity::Info, MAX_INFO);
+
+    if report.error_count > 0 {
+        out.push_str("\n校验未通过：请按上述诊断修复后重新运行 validate_script，直到 error_count == 0。");
+    } else {
+        out.push_str("\n校验通过（error_count = 0）。");
+        if report.warn_count > 0 {
+            out.push_str(" 仍建议按诊断处理以下警告。");
+        }
+    }
+
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_validation_report_renders_counts_and_lines() {
+        let report = ValidationReport {
+            diagnostics: vec![
+                Diagnostic {
+                    severity: Severity::Error,
+                    code: "config.duplicate_name",
+                    message: "剧本名与另一个剧本重复，引擎按名索引会互相覆盖。".into(),
+                    chapter: None,
+                    event_index: None,
+                    field: None,
+                },
+                Diagnostic {
+                    severity: Severity::Warn,
+                    code: "graph.unreachable",
+                    message: "章节「03」从开场章节不可达。".into(),
+                    chapter: Some("03".into()),
+                    event_index: Some(2),
+                    field: None,
+                },
+            ],
+            error_count: 1,
+            warn_count: 1,
+            info_count: 0,
+            variables: Vec::new(),
+            edges: Vec::new(),
+        };
+        let s = format_validation_report("standalone/x", &report);
+        assert!(s.contains("错误 1 条 · 警告 1 条 · 提示 0 条"));
+        assert!(s.contains("[校验报告] 剧本：standalone/x"));
+        assert!(s.contains("[错误][config.duplicate_name]"));
+        assert!(s.contains("[警告][graph.unreachable]"));
+        assert!(s.contains("章节「03」 · 第 3 个事件"));
+        assert!(s.contains("校验未通过"));
+    }
+
+    #[test]
+    fn format_validation_report_clean_report() {
+        let report = ValidationReport {
+            diagnostics: Vec::new(),
+            error_count: 0,
+            warn_count: 2,
+            info_count: 0,
+            variables: Vec::new(),
+            edges: Vec::new(),
+        };
+        let s = format_validation_report("standalone/ok", &report);
+        assert!(s.contains("校验通过（error_count = 0）"));
+        assert!(s.contains("仍建议按诊断处理以下警告"));
+        assert!(!s.contains("校验未通过"));
+    }
+
+    #[test]
+    fn format_validation_report_truncates_warns() {
+        let report = ValidationReport {
+            diagnostics: (0..50)
+                .map(|i| Diagnostic {
+                    severity: Severity::Warn,
+                    code: "graph.unreachable",
+                    message: format!("警告 {}", i),
+                    chapter: None,
+                    event_index: None,
+                    field: None,
+                })
+                .collect(),
+            error_count: 0,
+            warn_count: 50,
+            info_count: 0,
+            variables: Vec::new(),
+            edges: Vec::new(),
+        };
+        let s = format_validation_report("standalone/x", &report);
+        assert!(s.contains("…另有 10 条警告未显示（共 50 条）"));
     }
 }

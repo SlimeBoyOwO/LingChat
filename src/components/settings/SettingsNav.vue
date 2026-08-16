@@ -115,14 +115,14 @@
         <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.log') }}</p>
       </Button>
       <Button
-        ref="workshopBtn"
+        ref="pluginsBtn"
         type="nav"
         class="shrink-0"
         icon="package"
-        @click="() => switchTab('workshop', 'workshopBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'workshop' }"
+        @click="() => switchTab('plugins', 'pluginsBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'plugins' }"
       >
-        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.workshop') }}</p>
+        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.plugins') }}</p>
       </Button>
     </nav>
     <Icon
@@ -139,6 +139,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { Button } from '../base'
 import Icon from '../base/widget/Icon.vue'
+import { isAndroid } from '@/utils/platform'
 
 const props = defineProps<{}>()
 
@@ -166,7 +167,7 @@ const advanceBtn = ref<ButtonRef | null>(null)
 const updateBtn = ref<ButtonRef | null>(null)
 const adventureBtn = ref<ButtonRef | null>(null)
 const logBtn = ref<ButtonRef | null>(null)
-const workshopBtn = ref<ButtonRef | null>(null)
+const pluginsBtn = ref<ButtonRef | null>(null)
 
 // 设置可重设的值（使用 ref 存储，确保响应式或跨函数访问）
 const oldRefName = ref('textBtn')
@@ -186,7 +187,7 @@ const handleIndicatorMove = (currentRefName: string) => {
     updateBtn,
     adventureBtn,
     logBtn,
-    workshopBtn,
+    pluginsBtn,
   }[currentRefName]
 
   if (buttonRef?.value?.$el) {
@@ -283,8 +284,8 @@ const initIndicator = () => {
     case 'log':
       activeButton = logBtn.value
       break
-    case 'workshop':
-      activeButton = workshopBtn.value
+    case 'plugins':
+      activeButton = pluginsBtn.value
       break
   }
 

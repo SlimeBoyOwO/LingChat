@@ -24,8 +24,9 @@ use tokio::sync::oneshot;
 use tokio_util::io::ReaderStream;
 use tracing::{error, info};
 
-use crate::api::{self, data_dir};
+use crate::api::data_dir;
 use crate::manifest::DataManifest;
+use crate::utils::path::validate_path_in_base;
 
 use super::manifest as sync_manifest;
 use super::messages::{CompleteManifest, DeviceIdentity};
@@ -192,7 +193,7 @@ async fn file_handler(
     }
 
     // 文件存在 → 可以安全 canonicalize
-    api::validate_path_in_base(&file_path, &state.data_dir)
+    validate_path_in_base(&file_path, &state.data_dir)
         .map_err(|e| AppError(StatusCode::FORBIDDEN, e))?;
 
     let file = tokio::fs::File::open(&file_path)
@@ -233,7 +234,7 @@ async fn push_file_handler(
                 format!("创建目录失败: {e}"),
             )
         })?;
-        api::validate_path_in_base(&parent.to_path_buf(), &state.data_dir)
+        validate_path_in_base(&parent.to_path_buf(), &state.data_dir)
             .map_err(|e| AppError(StatusCode::FORBIDDEN, e))?;
     }
 
@@ -311,7 +312,7 @@ async fn push_delete_handler(
     }
 
     // 文件存在 → 可以安全 canonicalize
-    api::validate_path_in_base(&file_path, &state.data_dir)
+    validate_path_in_base(&file_path, &state.data_dir)
         .map_err(|e| AppError(StatusCode::FORBIDDEN, e))?;
 
     // 软删除到 .trash/

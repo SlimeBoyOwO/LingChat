@@ -56,6 +56,36 @@
             </p>
           </div>
           <div class="h-8 w-px bg-white/10"></div>
+          <!-- 推理设备选择：DirectML（Windows）/ WebGPU（Linux）支持 GPU；Android/macOS 只有 CPU，隐藏 -->
+          <div v-if="isWindows || isLinux" class="flex items-center gap-2">
+            <label class="flex flex-col">
+              <span class="text-xs text-white/45">{{ t('settings.tts.device.label') }}</span>
+              <select
+                v-model="inferenceDevice"
+                class="mt-1 rounded-md border border-white/15 bg-white/5 px-2 py-1 text-sm text-white outline-none transition-colors focus:border-cyan-300/40"
+                :disabled="savingDevice"
+                @change="saveInferenceDevice"
+              >
+                <option value="cpu" class="bg-slate-800">{{ t('settings.tts.device.cpu') }}</option>
+                <!-- GPU：DirectML（Windows）/ WebGPU（Linux，Dawn 默认设备）都可选 -->
+                <option v-if="isWindows || isLinux" value="gpu" class="bg-slate-800">
+                  {{ isWindows ? t('settings.tts.device.gpu') : t('settings.tts.device.gpuWebgpu') }}
+                </option>
+                <!-- 特定显卡列表：Windows（DXGI）/ Linux（Vulkan）都枚举；其他平台无枚举 -->
+                <template v-if="isWindows || isLinux">
+                  <option
+                    v-for="dev in gpuDevices"
+                    :key="dev.id"
+                    :value="`device:${dev.id}`"
+                    class="bg-slate-800"
+                  >
+                    {{ dev.name }}
+                  </option>
+                </template>
+              </select>
+            </label>
+          </div>
+          <div class="h-8 w-px bg-white/10"></div>
           <div>
             <p class="text-xs text-white/45">{{ t('settings.tts.voices.label') }}</p>
             <p class="text-sm font-medium text-white">{{ t('settings.tts.voices.count', { count: snapshot.voices.length }) }}</p>
@@ -389,10 +419,39 @@ const downloadError = ref<Record<string, string>>({})
 const downloadingId = ref<string | null>(null)
 const localTtsEnabled = ref(false)
 const savingLocalTts = ref(false)
+// 推理设备（本地 TTS 热切换）：仅 Windows 显示 GPU 选项
+const inferenceDevice = ref('cpu')
+const savingDevice = ref(false)
+const isWindows = /win32|windows/i.test(navigator.userAgent)
+// 安卓 WebView 的 UA 也含 "Linux"，需排除（安卓无 GPU 推理后端）
+const isLinux = /linux/i.test(navigator.userAgent) && !/android/i.test(navigator.userAgent)
+// DirectML GPU 列表（device:<id> 选项）
+const gpuDevices = ref<{ id: number; name: string }[]>([])
 let unlistenProgress: (() => void) | null = null
 let unlistenInstallComplete: UnlistenFn | null = null
 let unlistenDownloadComplete: UnlistenFn | null = null
+let unlistenStatusChanged: UnlistenFn | null = null
 let componentMounted = false
+
+async function saveInferenceDevice() {
+  savingDevice.value = true
+  try {
+    await TtsLocal.setDevice(inferenceDevice.value)
+    // 提示用型号名而非 device:<id>
+    const dev = gpuDevices.value.find((d) => `device:${d.id}` === inferenceDevice.value)
+    notice.value = {
+      kind: 'success',
+      text: `推理设备已切换: ${dev ? dev.name : inferenceDevice.value}`,
+    }
+  } catch (e) {
+    console.error('切换推理设备失败:', e)
+    notice.value = { kind: 'error', text: `切换推理设备失败: ${e}` }
+    // 失败时回滚下拉显示
+    inferenceDevice.value = 'cpu'
+  } finally {
+    savingDevice.value = false
+  }
+}
 
 type FilterIntent = 'deberta' | 'tokenizer' | 'voice' | 'style_vectors'
 
@@ -683,24 +742,48 @@ watch(
 
 onMounted(async () => {
   componentMounted = true
-  const [installComplete, downloadComplete] = await Promise.all([
+  const [installComplete, downloadComplete, statusChanged] = await Promise.all([
     listen('tts://install-complete', () => {
       void refreshAll()
     }),
     listen('tts://download-complete', () => {
       void refreshAll()
     }),
+    // 历史页「生成语音」触发：生成前后端会广播，静默刷新引擎就绪状态
+    listen('tts://status-changed', () => {
+      void refreshAll()
+    }),
   ])
   if (!componentMounted) {
     installComplete()
     downloadComplete()
+    statusChanged()
     return
   }
   unlistenInstallComplete = installComplete
   unlistenDownloadComplete = downloadComplete
+  unlistenStatusChanged = statusChanged
 
   await loadLocalTtsSwitch()
   await refreshAll()
+
+  // 加载 GPU 设备列表（Windows 用 DXGI，Linux 用 Vulkan 枚举特定显卡）
+  if (isWindows || isLinux) {
+    try {
+      const devices = await TtsLocal.listDevices()
+      gpuDevices.value = devices.map((d) => ({ id: d.id, name: d.name }))
+    } catch (e) {
+      console.error('枚举推理设备失败:', e)
+    }
+  }
+
+  // 读取当前推理设备（持久化配置），同步下拉框显示
+  try {
+    const current = await TtsLocal.getDevice()
+    if (current) inferenceDevice.value = current
+  } catch (e) {
+    console.error('读取推理设备失败:', e)
+  }
   if (!componentMounted) return
   unlistenProgress = TtsLocal.onDownloadProgress((progress) => {
     progressByAsset.value = {
@@ -719,6 +802,8 @@ onUnmounted(() => {
   unlistenInstallComplete = null
   unlistenDownloadComplete?.()
   unlistenDownloadComplete = null
+  unlistenStatusChanged?.()
+  unlistenStatusChanged = null
 })
 
 async function triggerDownload(assetId: string): Promise<void> {

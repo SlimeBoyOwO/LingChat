@@ -9,6 +9,9 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+const MAX_SKILLS: usize = 200;
+const MAX_SKILL_BYTES: u64 = 512 * 1024;
+
 /// 发现的技能信息。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -47,21 +50,39 @@ pub fn find_all_skills(skills_root: &Path) -> Vec<SkillInfo> {
         if !dir.is_dir() {
             continue;
         }
-        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        let Ok(base) = dir.canonicalize() else {
+            continue;
+        };
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
+            if skills.len() >= MAX_SKILLS {
+                break;
+            }
             let name = entry.file_name().to_string_lossy().to_string();
             if seen.contains(&name) {
                 continue;
             }
             let path = entry.path();
-            if !path.is_dir() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if !file_type.is_dir() || file_type.is_symlink() {
                 continue;
             }
-            let skill_md = path.join("SKILL.md");
-            if !skill_md.exists() {
+            let Ok(canonical_skill_dir) = path.canonicalize() else {
+                continue;
+            };
+            if !canonical_skill_dir.starts_with(&base) {
                 continue;
             }
-            let Ok(content) = fs::read_to_string(&skill_md) else { continue };
+            let Some(skill_md) = safe_skill_file(&canonical_skill_dir) else {
+                continue;
+            };
+            let Ok(content) = fs::read_to_string(&skill_md) else {
+                continue;
+            };
             let description = extract_yaml_field(&content, "description");
             let location = if path.starts_with(skills_root) {
                 "project"
@@ -72,7 +93,7 @@ pub fn find_all_skills(skills_root: &Path) -> Vec<SkillInfo> {
                 name: name.clone(),
                 description,
                 location: location.to_string(),
-                path,
+                path: canonical_skill_dir,
             });
             seen.insert(name);
         }
@@ -88,20 +109,48 @@ pub fn find_all_skills(skills_root: &Path) -> Vec<SkillInfo> {
 
 /// 按名读取技能（SKILL.md 内容 + 所在目录）。
 pub fn find_skill(skills_root: &Path, name: &str) -> Option<SkillLoadResult> {
+    if !is_safe_skill_name(name) {
+        return None;
+    }
     for dir in search_dirs(skills_root) {
         let skill_dir = dir.join(name);
-        let skill_md = skill_dir.join("SKILL.md");
-        if skill_md.is_file() {
-            if let Ok(content) = fs::read_to_string(&skill_md) {
-                return Some(SkillLoadResult {
-                    name: name.to_string(),
-                    base_directory: skill_dir,
-                    content,
-                });
-            }
+        let Ok(base) = dir.canonicalize() else {
+            continue;
+        };
+        let Ok(canonical_skill_dir) = skill_dir.canonicalize() else {
+            continue;
+        };
+        if !canonical_skill_dir.starts_with(&base) {
+            continue;
+        }
+        let Some(skill_md) = safe_skill_file(&canonical_skill_dir) else {
+            continue;
+        };
+        if let Ok(content) = fs::read_to_string(&skill_md) {
+            return Some(SkillLoadResult {
+                name: name.to_string(),
+                base_directory: canonical_skill_dir,
+                content,
+            });
         }
     }
     None
+}
+
+/// Resolve the actual SKILL.md and require it to remain inside its canonical skill directory.
+fn safe_skill_file(canonical_skill_dir: &Path) -> Option<PathBuf> {
+    let skill_md = canonical_skill_dir.join("SKILL.md").canonicalize().ok()?;
+    if !skill_md.starts_with(canonical_skill_dir) {
+        return None;
+    }
+    let metadata = fs::metadata(&skill_md).ok()?;
+    (metadata.is_file() && metadata.len() <= MAX_SKILL_BYTES).then_some(skill_md)
+}
+
+fn is_safe_skill_name(name: &str) -> bool {
+    let mut components = Path::new(name).components();
+    matches!(components.next(), Some(std::path::Component::Normal(_)))
+        && components.next().is_none()
 }
 
 /// 从 YAML frontmatter 提取字段（最小正则，够用即可）。
@@ -132,7 +181,9 @@ pub fn build_skills_xml(skills: &[SkillInfo]) -> String {
         .map(|s| {
             format!(
                 "<skill>\n<name>{}</name>\n<description>{}</description>\n<location>{}</location>\n</skill>",
-                s.name, s.description, s.location
+                escape_xml(&s.name),
+                escape_xml(&s.description),
+                escape_xml(&s.location)
             )
         })
         .collect::<Vec<_>>()
@@ -141,6 +192,15 @@ pub fn build_skills_xml(skills: &[SkillInfo]) -> String {
         "\n\n<skills_system priority=\"1\">\n<available_skills>\n{}\n</available_skills>\n</skills_system>",
         tags
     )
+}
+
+fn escape_xml(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 #[cfg(test)]
@@ -167,5 +227,49 @@ mod tests {
     #[test]
     fn xml_empty_when_no_skills() {
         assert_eq!(build_skills_xml(&[]), "");
+    }
+
+    #[test]
+    fn rejects_skill_path_traversal() {
+        assert!(!is_safe_skill_name("../outside"));
+        assert!(!is_safe_skill_name("nested/skill"));
+        assert!(!is_safe_skill_name(""));
+        assert!(is_safe_skill_name("safe-skill"));
+    }
+
+    #[test]
+    fn xml_escapes_untrusted_skill_metadata() {
+        let skill = SkillInfo {
+            name: "safe<&>".into(),
+            description: "do </available_skills> safely".into(),
+            location: "project".into(),
+            path: PathBuf::new(),
+        };
+        let xml = build_skills_xml(&[skill]);
+        assert!(xml.contains("safe&lt;&amp;&gt;"));
+        assert!(!xml.contains("do </available_skills> safely"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn rejects_skill_file_symlink_outside_skill_directory() {
+        use std::os::windows::fs::symlink_file;
+
+        let temp = tempfile::tempdir().unwrap();
+        let skills_root = temp.path().join("project-skills");
+        let name = format!("unsafe-link-{}", std::process::id());
+        let skill_dir = skills_root.join(&name);
+        fs::create_dir_all(&skill_dir).unwrap();
+        let outside = temp.path().join("outside.md");
+        fs::write(&outside, "---\ndescription: secret\n---\n").unwrap();
+        if symlink_file(&outside, skill_dir.join("SKILL.md")).is_err() {
+            // 创建符号链接可能需要开发者模式或提权的测试权限。
+            return;
+        }
+
+        assert!(find_skill(&skills_root, &name).is_none());
+        assert!(!find_all_skills(&skills_root)
+            .iter()
+            .any(|skill| skill.name == name));
     }
 }

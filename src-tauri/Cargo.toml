@@ -1,6 +1,6 @@
 [package]
 name = "ling_chat"
-version = "0.4.6"
+version = "0.5.0"
 default-run = "ling_chat"
 description = "A Tauri App"
 authors = ["you"]
@@ -33,9 +33,6 @@ tauri-plugin-notification = "2"
 tauri-plugin-screenshots = { path = "plugins/tauri-plugin-screenshots" }
 tauri-plugin-android-fs = "28"
 serde = { version = "1", features = ["derive"] }
-# preserve_order 让 serde_json::Map 变成 IndexMap：读进来的 YAML key 顺序原样写回。
-# 没有它 Map 是 BTreeMap，编辑器每次自动保存都会把章节里所有事件的字段重排成
-# 字典序（type 会跑到 text 后面），git diff 变成全文件级别。
 serde_json = { version = "1", features = ["preserve_order"] }
 toml = "0.8"
 sea-orm = { version = "1", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros", "with-chrono"] }
@@ -47,15 +44,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "ansi", "chron
 serde_yaml = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
-reqwest = { version = "0.13", features = ["json", "query", "stream", "rustls", "system-proxy"], default-features = false }
-# 用 webpki-roots（内置 Mozilla CA）构造 rustls ClientConfig 注入 reqwest，
-# 绕开 reqwest 0.13 默认的 rustls-platform-verifier（Android 上需显式初始化，
-# 未初始化会 TLS panic）。版本与 reqwest 0.13.3 的 rustls 依赖保持一致（0.23）。
-# aws-lc-rs：与 reqwest 0.13.3 的 provider 一致（否则 rustls 无法自动确定
-# CryptoProvider，TLS 握手会 panic）。
+reqwest = { version = "0.13", features = ["json", "multipart", "query", "stream", "rustls", "system-proxy"], default-features = false }
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
 webpki-roots = "0.26"
 futures-util = "0.3"
+futures-executor = "0.3"
 async-stream = "0.3"
 bytes = "1"
 regex = "1"
@@ -88,13 +81,32 @@ encoding_rs = "0.8"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# 插件系统：嵌入 RustPython 跑插件 Python 脚本（目前是一个受限沙箱）。
+rustpython-vm = { version = "0.5", default-features = false, features = ["compiler", "gc", "host_env", "stdio", "serde", "freeze-stdlib"] }
+rustpython-pylib = { version = "0.5", features = ["freeze-stdlib"] }
+rustpython-derive = "0.5"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi"] }
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["directml"] }
+sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["directml"] }
+windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dxgi"] }
 
-# 本地补丁：esaxx-rs 0.1.10 上游 build.rs 硬编码 .static_crt(true)（/MT 静态 CRT），
-# 与 ort（onnxruntime，/MD 动态 CRT）在同一链接里混用，导致 MSVC 报
-# LNK2005/LNK2038/LNK4098。这里改用本地副本编译为 /MD，二者统一为动态 CRT。
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["webgpu"] }
+sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["webgpu"] }
+ash = { version = "0.38", default-features = false, features = ["loaded"] }
+
+
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["coreml"] }
+sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["coreml"] }
+
+
+# esaxx-rs 强制静态 CRT (/MT) 会在 Windows 下与 ort 等库冲突（LNK2038/LNK2005）。
+# 仓库已自带 patches/esaxx-rs（唯一改动：build.rs 去掉 .static_crt(true)，
+# 改用动态 CRT /MD），这里把它接到 [patch] 上真正生效。
 # 详见 patches/esaxx-rs/build.rs 的注释。
 [patch.crates-io]
 esaxx-rs = { path = "patches/esaxx-rs" }
+jpreprocess-naist-jdic = { git = "https://gh-proxy.org/github.com/shadow01a/jpreprocess", branch = "main" }

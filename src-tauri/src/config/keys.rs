@@ -55,6 +55,10 @@ pub const AIVIS_API_URL: &str = "tts.aivis_api_url";
 pub const AIVIS_API_KEY: &str = "tts.aivis_api_key";
 pub const INDEXTTS_API_URL: &str = "tts.indextts_api_url";
 
+// ========== TTS Fish Audio S2 ==========
+pub const FISH_S2_API_URL: &str = "tts.fish_s2_api_url";
+pub const FISH_S2_VOICE: &str = "tts.fish_s2_voice";
+
 // ========== TTS OpenTTS ==========
 pub const OPENTTS_API_URL: &str = "tts.opentts_api_url";
 pub const OPENTTS_API_KEY: &str = "tts.opentts_api_key";
@@ -99,6 +103,8 @@ pub const AGENT_ALLOW_ANY_PATH: &str = "agent.allow_any_path";
 pub const AGENT_MAX_TOOL_ROUNDS: &str = "agent.max_tool_rounds";
 /// 自定义系统提示（可覆盖内置默认提示；技能列表与剧本上下文始终追加）。
 pub const AGENT_SYSTEM_PROMPT: &str = "agent.system_prompt";
+/// 思考模式覆盖；未设置表示跟随 provider 默认（独立于主对话 LLM 设置）。
+pub const AGENT_ENABLE_THINKING: &str = "agent.enable_thinking";
 
 // ========== 创意工坊 ==========
 /// GitHub Personal Access Token（可选，用于 GraphQL 获取 upvote 数）
@@ -111,3 +117,9 @@ pub const LOG_ENABLE: &str = "log.enable";
 pub const LOG_RETENTION_DAYS: &str = "log.retention_days";
 /// 是否记录 LLM 请求体到文件（完整请求 JSON，默认关闭）
 pub const LOG_LLM_REQUEST_BODY: &str = "log.llm_request_body";
+/// 是否开启 genai SDK 的调试日志（请求/响应细节，默认关闭）
+pub const LOG_GENAI_DEBUG: &str = "log.genai_debug";
+
+// ========== 本地 TTS 推理设备 ==========
+/// 本地 TTS 推理硬件设备："cpu" | "gpu" | "npu" | "device:<id>"（Windows DirectML）
+pub const LOCAL_TTS_DEVICE: &str = "features.local_tts_device";

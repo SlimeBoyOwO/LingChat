@@ -282,6 +282,18 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         setting_type: "text".to_string(),
                     },
                     ConfigSetting {
+                        key: keys::FISH_S2_API_URL.to_string(),
+                        value: read_setting(app, keys::FISH_S2_API_URL, &tts_defaults.fish_s2_api_url),
+                        description: "Fish S2 API 地址".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::FISH_S2_VOICE.to_string(),
+                        value: read_setting(app, keys::FISH_S2_VOICE, &tts_defaults.fish_s2_voice),
+                        description: "Fish S2 默认音色标识".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
                         key: keys::OPENTTS_API_URL.to_string(),
                         value: read_setting(app, keys::OPENTTS_API_URL, &tts_defaults.opentts_api_url),
                         description: "OpenTTS API 地址（硅基流动）".to_string(),
@@ -388,6 +400,14 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         value: read_setting(app, keys::LOG_LLM_REQUEST_BODY, "false"),
                         description:
                             "LOG_LLM_REQUEST_BODY — 记录每次 LLM 请求的完整请求体 JSON 到 data/log/llm/ 目录（默认关闭）"
+                                .to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::LOG_GENAI_DEBUG.to_string(),
+                        value: read_setting(app, keys::LOG_GENAI_DEBUG, "false"),
+                        description:
+                            "LOG_GENAI_DEBUG — 开启 genai SDK 的调试日志（含请求/响应细节，保存后即时生效，默认关闭）"
                                 .to_string(),
                         setting_type: "bool".to_string(),
                     },

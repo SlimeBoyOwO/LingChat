@@ -113,7 +113,7 @@
 ### 📦 第一步：下载与安装
 
 1. 根据你的系统选择合适的版本：
-   - 💻 **Win10 64位及以上**：请下载最新版 `v0.4.5`。
+   - 💻 **Win10 64位及以上**：请下载最新版 `v0.5`。
    - 💻 **32位或老旧机器**：请前往 [Issues #379](https://github.com/SlimeBoyOwO/LingChat/issues/379) 下载兼容版（如 `LingChat v0.4.0-pre Python3.8 win32.7z`）。
 2. 在 [Releases](https://github.com/SlimeBoyOwO/LingChat/releases) 页面下载 `LingChat vX.X.X.7z`压缩包。
 3. 安装或解压后，双击 `LingChat.exe` 运行。
@@ -138,7 +138,7 @@
 1. 启动游戏后，在菜单【文字】部分找到语音引擎的下载链接，下载后缀为 `.7z` 的对应版本。
 2. 解压后，双击 `..01 启动API服务.bat` 即可开始使用。
 3. **性能提示**：如果你是核显或老电脑，单句语音生成可能需要 1 分钟；拥有 GPU 的设备可在 1 秒内生成。核显用户若遇大量报错可能无法使用此功能。
-4. **自定义角色使用**：若想给自定义角色使用语音，需在 `game_data/characters/<角色名>/settings.txt` 中修改 `model_name` 参数为导入模型的名称。
+4. **自定义角色使用**：若想给自定义角色使用语音，需在 `game_data/characters/<角色名>/settings.yml` 中修改 `model_name` 参数为导入模型的名称。
 </details>
 
 <details>
@@ -154,8 +154,7 @@
 <details>
 <summary><b>🧪 加入最新版测试与开发（点击展开）</b></summary><br>
 
-- 我们会随时将更新推送到 [`develop` 分支](https://github.com/SlimeBoyOwO/LingChat/tree/develop)，并在 [Issues](https://github.com/SlimeBoyOwO/LingChat/issues) 发布开发日志。
-- 你可以参考 [源代码使用教程](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/%E6%BA%90%E4%BB%A3%E7%A0%81%E4%BD%BF%E7%94%A8.md) 随时获取最新的开发版更新。
+- 我们会随时将更新推送到 [`dev` 分支](https://github.com/SlimeBoyOwO/LingChat/tree/dev)，并在 [Issues](https://github.com/SlimeBoyOwO/LingChat/issues) 发布开发日志。
 - _注：开发版可能不稳定，欢迎随时提交 Bug 反馈！_
 </details>
 
@@ -203,12 +202,12 @@
 
 **这是我们提升影响力和持续维护的最大动力！**
 
-<a href="https://star-history.com/#moeru-ai/airi&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=SlimeBoyOwO/LingChat&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=SlimeBoyOwO/LingChat&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=SlimeBoyOwO/LingChat&type=Date" />
-  </picture>
+<a href="https://www.star-history.com/?repos=SlimeBoyOwO%2FLingChat&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=SlimeBoyOwO/LingChat&type=date&theme=dark&legend=top-left&sealed_token=f6WRZ4p9InGhz0U54rRgz_HwjMmSc9eemTlaqvnmSwPyBmCda3YY1uxSMogjlPgMnhzTCoh0RwRbf5uzisM_cVFKlKwT7IdhF0oiYeLUES-fglWjYT969A" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=SlimeBoyOwO/LingChat&type=date&legend=top-left&sealed_token=f6WRZ4p9InGhz0U54rRgz_HwjMmSc9eemTlaqvnmSwPyBmCda3YY1uxSMogjlPgMnhzTCoh0RwRbf5uzisM_cVFKlKwT7IdhF0oiYeLUES-fglWjYT969A" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=SlimeBoyOwO/LingChat&type=date&legend=top-left&sealed_token=f6WRZ4p9InGhz0U54rRgz_HwjMmSc9eemTlaqvnmSwPyBmCda3YY1uxSMogjlPgMnhzTCoh0RwRbf5uzisM_cVFKlKwT7IdhF0oiYeLUES-fglWjYT969A" />
+ </picture>
 </a>
 
 > 如果你对开发 AI 感兴趣，加入我们开发者群~ ： 798012738

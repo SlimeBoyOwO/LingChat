@@ -115,11 +115,11 @@ impl MessageProcessor {
     pub fn parse_and_classify_emotional_segments(&self, text: &str) -> Vec<EmotionSegment> {
         let mut results: Vec<EmotionSegment> = Vec::new();
 
+        // 前处理：修复标签并清理非法内容
+        let text = Self::preprocess_text(text);
+
         let re = emotion_re();
         let mut i = 0usize;
-
-        // 前处理，修复 AI 回复可能出现的问题
-        let text = text.replace('＜', "<").replace('＞', ">");
 
         for cap in re.captures_iter(&text) {
             i += 1;
@@ -192,6 +192,69 @@ impl MessageProcessor {
         }
 
         results
+    }
+
+    /// 文本预处理：修复标签、清理非法内容
+    fn preprocess_text(text: &str) -> String {
+        let mut processed = text.to_string();
+
+        // 3. 清理违规内容
+        // 删除 {} 内容
+        let curly_re = Regex::new(r"\{[^{}]*\}").unwrap();
+        processed = curly_re.replace_all(&processed, "").to_string();
+
+        // 1. 统一括号风格
+        processed = processed
+            .replace('＜', "<")
+            .replace('＞', ">")
+            .replace('《', "<")
+            .replace('》', ">");
+
+        // 2. 修复未闭合标签（不使用正则前瞻）
+        processed = Self::fix_unclosed_tags(&processed);
+
+        processed
+    }
+
+    fn fix_unclosed_tags(text: &str) -> String {
+        let mut result = String::with_capacity(text.len() + 10);
+        let chars: Vec<char> = text.chars().collect();
+        let mut i = 0;
+
+        while i < chars.len() {
+            if chars[i] == '<' {
+                let start = i;
+                i += 1;
+
+                // 收集标签内容（直到遇到 '>' 或 '\n'）
+                let mut tag_content = String::new();
+                while i < chars.len() && chars[i] != '>' && chars[i] != '\n' {
+                    tag_content.push(chars[i]);
+                    i += 1;
+                }
+
+                // 检查当前位置是否是 '>'
+                let is_closed = i < chars.len() && chars[i] == '>';
+
+                // 重建标签
+                result.push('<');
+                result.push_str(&tag_content);
+
+                if is_closed {
+                    result.push('>');
+                    i += 1; // 跳过 '>'
+                } else {
+                    // 未闭合，补全 '>'
+                    result.push('>');
+                    // i 在换行符或结束位置，不要额外移动
+                }
+            } else {
+                result.push(chars[i]);
+                i += 1;
+            }
+        }
+
+        result
     }
 
     /// 处理用户消息，提取 `{...}` 旁白、`[!Temp!]...[/!Temp!]` 临时指令，拼接系统提醒。

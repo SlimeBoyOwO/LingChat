@@ -8,6 +8,9 @@ mod init;
 mod lan_sync;
 mod manifest;
 mod migration;
+// 插件系统由 RustPython 驱动，移动端（Android/iOS）构建时依赖不可用，整体排除
+#[cfg(desktop)]
+mod plugins;
 mod resource_sync;
 pub mod utils;
 
@@ -15,11 +18,10 @@ use std::sync::Arc;
 
 use chrono::Local;
 use sea_orm::DatabaseConnection;
-use tauri::Manager;
+use tauri::{Listener, Manager};
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::Layer;
 
 use ai_service::god_agent::config::resolve_god_agent_provider;
 use ai_service::god_agent::GodAgentCore;
@@ -36,6 +38,21 @@ struct LocalTimer;
 impl FormatTime for LocalTimer {
     fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
         write!(w, "{}", Local::now().format("%H:%M:%S"))
+    }
+}
+
+/// 构建日志过滤器。
+///
+/// `genai_debug` 为 true 时把 `genai` crate 的日志级别从 error 提到 debug，
+/// 用于查看 LLM 请求/响应细节（默认关闭，由 `log.genai_debug` 设置控制）。
+fn build_log_filter(genai_debug: bool) -> tracing_subscriber::EnvFilter {
+    let base = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,ling_chat_lib=info"))
+        .add_directive("sqlx=warn".parse().unwrap());
+    if genai_debug {
+        base.add_directive("genai=debug".parse().unwrap())
+    } else {
+        base.add_directive("genai=error".parse().unwrap())
     }
 }
 
@@ -75,6 +92,11 @@ pub struct InnerAppState {
     pub generation_lock: Arc<tokio::sync::Mutex<()>>,
     /// 主动系统实例（可选）。
     pub tool_registry: Arc<ToolRegistry>,
+    /// 聊天工具的用户配置（网页搜索 API Key、代理等），热更新共享句柄。
+    pub tool_settings: ai_service::tools::settings::SharedToolSettings,
+    /// 插件管理器（扫描/启停/配置）。仅桌面端可用。
+    #[cfg(desktop)]
+    pub plugin_manager: Arc<plugins::PluginManager>,
     pub proactive_system:
         Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
     /// 成就管理器。
@@ -90,6 +112,13 @@ pub struct InnerAppState {
     pub god_agent: Option<Arc<GodAgentCore>>,
     /// Skill Agent（剧本编辑器 AI 助手）共享状态。
     pub skill_agent: Arc<ai_service::skill_agent::SkillAgentState>,
+    /// 主聊天 `execute_command` 工具的待审批命令请求（request_id → oneshot）。
+    pub chat_command_approvals: ai_service::skill_agent::ApprovalMap,
+    /// 主聊天 `delete_file` 工具的待审批删除请求（request_id → oneshot）。
+    pub chat_file_delete_approvals: ai_service::skill_agent::ApprovalMap,
+    /// 主聊天后台命令的并发槽位与任务 ID 分配器。
+    pub background_commands:
+        Arc<ai_service::tools::background_command::BackgroundCommandManager>,
     /// 剧本编辑器「试玩」当前在跑的后台任务句柄。
     ///
     /// `editor_stop_preview` 会先唤醒被剧本阻塞的通道、把 `is_running` 置 false，
@@ -174,27 +203,22 @@ impl std::ops::Deref for AppState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // 配置日志过滤器
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,ling_chat_lib=info"))
-        .add_directive("sqlx=warn".parse().unwrap())
-        .add_directive("genai=error".parse().unwrap());
+    // 配置日志过滤器（genai 调试日志由 log.genai_debug 设置在 setup 阶段动态控制）。
+    // reload::Layer 包装的 EnvFilter 作为全局过滤层，避免在多个 fmt layer 上 clone 的限制。
+    let (filter, reload_handle) =
+        tracing_subscriber::reload::Layer::new(build_log_filter(false));
 
     // 初始化日志系统
     tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_timer(LocalTimer)
-                .with_filter(filter.clone()),
-        )
-        .with(utils::log_bridge::LogBridgeLayer.with_filter(filter.clone()))
+        .with(tracing_subscriber::fmt::layer().with_timer(LocalTimer))
+        .with(utils::log_bridge::LogBridgeLayer)
         .with(
             tracing_subscriber::fmt::layer()
                 .with_writer(utils::file_logger::LogFileWriter)
                 .with_timer(LocalTimer)
-                .with_ansi(false)
-                .with_filter(filter),
+                .with_ansi(false),
         )
+        .with(filter)
         .init();
 
     // 设置 WebView2 颜色配置文件（强制使用线性 sRGB）
@@ -223,7 +247,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init());
 
     builder
-        .setup(|app| {
+        .setup(move |app| {
             // 设置日志桥接的应用句柄
             utils::log_bridge::set_app_handle(app.handle().clone());
 
@@ -275,7 +299,44 @@ pub fn run() {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
                 utils::llm_request_logger::init(data_dir, llm_request_log_enable);
+
+                // 应用 genai 调试日志开关（log.genai_debug，默认关闭）
+                let genai_debug = store
+                    .as_ref()
+                    .and_then(|s| s.get(config::keys::LOG_GENAI_DEBUG))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                if let Err(e) = reload_handle.reload(build_log_filter(genai_debug)) {
+                    tracing::warn!("应用日志过滤器失败: {e}");
+                }
             }
+
+            // 热重载 genai 调试日志：settings store 变更时即时生效（无需重启）
+            let app_handle = app.handle().clone();
+            app_handle.listen("store://change", move |event| {
+                #[derive(serde::Deserialize)]
+                struct StoreChangePayload {
+                    key: String,
+                    value: Option<serde_json::Value>,
+                }
+                let Ok(payload) =
+                    serde_json::from_str::<StoreChangePayload>(event.payload())
+                else {
+                    return;
+                };
+                if payload.key != config::keys::LOG_GENAI_DEBUG {
+                    return;
+                }
+                let genai_debug = matches!(payload.value, Some(serde_json::Value::Bool(true)));
+                if let Err(e) = reload_handle.reload(build_log_filter(genai_debug)) {
+                    tracing::warn!("热重载 genai 调试日志失败: {e}");
+                } else {
+                    tracing::info!(
+                        "genai 调试日志已{}",
+                        if genai_debug { "开启" } else { "关闭" }
+                    );
+                }
+            });
 
             // 启动时自动清理未被引用的孤立语音文件
             match rt.block_on(init::voice_cleanup::cleanup_orphan_voice_files(
@@ -299,7 +360,34 @@ pub fn run() {
             let generation_lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
             let role_names = rt
                 .block_on(db::managers::role_repo::RoleRepo::get_all_tool_role_names(&db))?;
-            let tool_registry = Arc::new(ai_service::tools::built_in_registry(role_names)?);
+            let tool_settings = ai_service::tools::settings::SharedToolSettings::new(
+                ai_service::tools::settings::ToolSettings::load_or_create(&api::data_dir())?,
+            );
+            let tool_registry = Arc::new(ai_service::tools::built_in_registry(
+                role_names,
+                tool_settings.clone(),
+                app.handle().clone(),
+            )?);
+
+            // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）。
+            // 移动端（Android/iOS）不编译插件系统，跳过此段。
+            #[cfg(desktop)]
+            let plugin_manager = {
+                let data_dir = api::data_dir();
+                let plugins_root = data_dir.join("plugins");
+                if std::fs::create_dir_all(&plugins_root).is_err() {
+                    tracing::warn!("插件目录创建失败: {}", plugins_root.display());
+                }
+                let manager = Arc::new(plugins::PluginManager::new(
+                    data_dir.clone(),
+                    tool_registry.clone(),
+                ));
+                // 插件注册可能更新了 available_tools，落盘到权限配置
+                if let Err(e) = tool_registry.save_permissions(&data_dir) {
+                    tracing::warn!("插件注册后保存权限配置失败: {e}");
+                }
+                manager
+            };
 
             // 创建主动系统
             let proactive = std::sync::Arc::new(tokio::sync::Mutex::new(
@@ -370,6 +458,9 @@ pub fn run() {
                     script_channels,
                     generation_lock,
                     tool_registry,
+                    tool_settings,
+                    #[cfg(desktop)]
+                    plugin_manager,
                     proactive_system: Some(proactive),
                     achievement_manager,
                     screen_analyzer,
@@ -377,6 +468,11 @@ pub fn run() {
                     auto_save_manager: auto_save_manager.clone(),
                     god_agent,
                     skill_agent: Arc::new(ai_service::skill_agent::SkillAgentState::default()),
+                    chat_command_approvals: Default::default(),
+                    chat_file_delete_approvals: Default::default(),
+                    background_commands: Arc::new(
+                        ai_service::tools::background_command::BackgroundCommandManager::default(),
+                    ),
                     preview_task: Arc::new(tokio::sync::Mutex::new(None)),
                     pending_preview_restore: Arc::new(tokio::sync::Mutex::new(None)),
                 });
@@ -487,6 +583,16 @@ pub fn run() {
             utils::log_bridge::get_log_history,
             utils::log_bridge::open_log_window,
             utils::log_bridge::is_log_window_open,
+            #[cfg(desktop)]
+            api::plugins::plugin_list,
+            #[cfg(desktop)]
+            api::plugins::plugin_set_enabled,
+            #[cfg(desktop)]
+            api::plugins::plugin_save_config,
+            #[cfg(desktop)]
+            api::plugins::plugin_reload,
+            #[cfg(desktop)]
+            api::plugins::plugin_delete,
             api::settings::get_settings_tree,
             api::settings::save_settings,
             api::settings::get_setting_by_key,
@@ -545,6 +651,7 @@ pub fn run() {
             api::game::notify_player_entry,
             api::chat::send_chat_message,
             api::chat::rollback_conversation,
+            api::chat::generate_line_voice,
             api::chat::feed_image,
             api::chat::feed_text,
             api::screenshot::start_screenshot,
@@ -578,6 +685,8 @@ pub fn run() {
             api::script_editor::editor_create_script,
             api::script_editor::editor_delete_script,
             api::script_editor::editor_upload_asset,
+            api::script_editor::editor_upload_editor_bg,
+            api::script_editor::editor_upload_editor_bg_data,
             api::script_editor::editor_create_character,
             api::script_editor::editor_list_global_assets,
             api::script_editor::editor_list_asset_files,
@@ -609,6 +718,11 @@ pub fn run() {
             api::schedule::save_schedules,
             api::schedule::reload_proactive_system,
             api::proactive_set_can_deliver,
+            api::tool_settings::get_tool_settings,
+            api::tool_settings::save_tool_settings,
+            api::tool_settings::test_web_search,
+            api::tool_settings::resolve_command_approval,
+            api::tool_settings::resolve_file_delete_approval,
             api::achievement::get_achievement_list,
             api::achievement::unlock_achievement,
             api::adventure::list_character_adventures,
@@ -647,6 +761,10 @@ pub fn run() {
             ai_service::tts::local::tts_local_synthesize_preview,
             ai_service::tts::local::tts_local_get_enabled,
             ai_service::tts::local::tts_local_set_enabled,
+            // 推理设备选择：获取当前设备 / 枚举可用设备 / 切换设备
+            ai_service::tts::local::tts_local_get_device,
+            ai_service::tts::local::tts_local_list_devices,
+            ai_service::tts::local::tts_local_set_device,
             exit_app,
         ])
         .run(tauri::generate_context!())
@@ -658,4 +776,3 @@ pub fn run() {
 fn exit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
-

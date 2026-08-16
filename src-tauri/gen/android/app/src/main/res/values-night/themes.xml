@@ -7,5 +7,9 @@
     <item name="android:windowTranslucentNavigation">true</item>
     <item name="android:statusBarColor">@android:color/transparent</item>
     <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- 透明壁纸配置：窗口背景透明并显示系统壁纸（需配合 MainActivity 将 WebView 置透明） -->
+    <item name="android:windowShowWallpaper">true</item>
+    <item name="android:windowIsTranslucent">true</item>
+    <item name="android:windowBackground">@android:color/transparent</item>
     </style>
 </resources>

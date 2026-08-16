@@ -105,3 +105,133 @@
   background: #16202c;
   color: #fff;
 }
+
+/* ─── Markdown 渲染（剧本导师聊天） ─────────────────────
+   配套 MarkdownText.vue；深色主题下的完整排版，作用于 v-html 内容。 */
+.markdown-body {
+  font-size: 0.86rem;
+  line-height: 1.7;
+  word-break: break-word;
+  color: rgba(255, 255, 255, 0.88);
+}
+.markdown-body > :first-child {
+  margin-top: 0;
+}
+.markdown-body > :last-child {
+  margin-bottom: 0;
+}
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin: 0.85em 0 0.4em;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #fff;
+}
+.markdown-body h1 {
+  font-size: 1.25rem;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.markdown-body h2 {
+  font-size: 1.12rem;
+}
+.markdown-body h3 {
+  font-size: 1rem;
+}
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  font-size: 0.92rem;
+}
+.markdown-body p {
+  margin: 0.5em 0;
+}
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+.markdown-body ul {
+  list-style: disc;
+}
+.markdown-body ol {
+  list-style: decimal;
+}
+.markdown-body li {
+  margin: 0.2em 0;
+}
+.markdown-body li > ul,
+.markdown-body li > ol {
+  margin: 0.2em 0;
+}
+.markdown-body code {
+  font-family:
+    ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.82em;
+}
+.markdown-body pre {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 0.7em 0.9em;
+  overflow-x: auto;
+  margin: 0.6em 0;
+}
+.markdown-body pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+.markdown-body blockquote {
+  border-left: 3px solid var(--accent-color);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 0 6px 6px 0;
+  margin: 0.6em 0;
+  padding: 0.2em 0.9em;
+  color: rgba(255, 255, 255, 0.7);
+}
+.markdown-body blockquote p {
+  margin: 0.3em 0;
+}
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  width: 100%;
+  font-size: 0.84rem;
+}
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 0.35em 0.7em;
+  text-align: left;
+}
+.markdown-body th {
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 600;
+}
+.markdown-body a {
+  color: var(--accent-color);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.markdown-body a:hover {
+  text-decoration: none;
+}
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  margin: 0.8em 0;
+}
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 8px;
+}

@@ -112,8 +112,14 @@ export interface ScriptInputEvent extends ScriptEvent {
 }
 export interface ScriptChoiceEvent extends ScriptEvent {
   type: 'choice'
-  choices: string[]
+  choices: ScriptChoiceItem[]
   allowFree: boolean
+}
+/** 单个选项。disabled 表示条件不满足不可选，reason 是作者写的锁定提示 */
+export interface ScriptChoiceItem {
+  text: string
+  disabled: boolean
+  reason?: string
 }
 export interface ScriptEndEvent extends ScriptEvent {
   type: 'script_end'

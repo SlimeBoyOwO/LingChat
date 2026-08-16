@@ -23,8 +23,8 @@ use crate::ai_service::game_system::script_engine::utils::media::{
 };
 use crate::ai_service::game_system::script_engine::utils::script_function::parse_variable_action;
 
-use super::io;
-use super::paths;
+use crate::utils::yaml_file;
+use crate::utils::script_paths as paths;
 use super::schema::build_schema;
 
 /// 诊断级别。
@@ -176,14 +176,15 @@ pub struct ChapterEdge {
 
 /// 校验一个剧本包。
 ///
-/// `other_script_names` 是「script_name → 剧本 key」的映射，用于查重 —— 引擎
-/// 用 script_name 作索引，重名会让其中一个剧本在列表里完全消失。由调用方
-/// （`editor_validate_script`）扫盘收集后传入。
+/// `other_script_names` 是「script_name → 同名的全部剧本 key」的映射，用于查重 ——
+/// 引擎用 script_name 作索引，重名会让其中一些剧本在列表里完全消失。由调用方
+/// （`editor_validate_script`）扫盘收集后传入。用 Vec 存全部冲突者，三个以上
+/// 剧本重名时能一次性列全，而不是只报最后一个。
 pub fn validate(
     data_dir: &Path,
     script_dir: &Path,
     script_key: &str,
-    other_script_names: &HashMap<String, String>,
+    other_script_names: &HashMap<String, Vec<String>>,
 ) -> ValidationReport {
     let mut diags: Vec<Diagnostic> = Vec::new();
     let schema = build_schema();
@@ -196,7 +197,7 @@ pub fn validate(
     let common_keys: HashSet<&str> = schema.common_fields.iter().map(|f| f.key).collect();
 
     // ---------- story_config ----------
-    let config = match io::read_story_config(script_dir) {
+    let config = match yaml_file::read_story_config(script_dir) {
         Ok(c) => c,
         Err(e) => {
             diags.push(Diagnostic::script(Severity::Error, "config.unreadable", e));
@@ -222,14 +223,21 @@ pub fn validate(
             "config.no_script_name",
             format!("没有填剧本名，列表里会显示目录名「{}」", folder_name),
         ));
-    } else if let Some(other_key) = other_script_names.get(&script_name) {
-        if other_key != script_key {
+    } else if let Some(others) = other_script_names.get(&script_name) {
+        let conflicts: Vec<&str> = others
+            .iter()
+            .filter(|k| *k != script_key)
+            .map(|s| s.as_str())
+            .collect();
+        if !conflicts.is_empty() {
             diags.push(Diagnostic::script(
                 Severity::Error,
                 "config.duplicate_name",
                 format!(
-                    "剧本名「{}」与「{}」重复。引擎用剧本名作索引，重名会导致其中一个在列表里完全消失",
-                    script_name, other_key
+                    "剧本名「{}」与 {} 个剧本重名：{}。引擎用剧本名作索引，重名会导致其中一些在列表里完全消失",
+                    script_name,
+                    conflicts.len(),
+                    conflicts.join("、")
                 ),
             ));
         }
@@ -274,6 +282,9 @@ pub fn validate(
     let mut edges: Vec<ChapterEdge> = Vec::new();
     let mut vars_written: BTreeSet<String> = BTreeSet::new();
     let mut vars_read: BTreeSet<String> = BTreeSet::new();
+    // 「解锁成就」事件的键名：内置成就集合 + 本剧本已出现的键名（成就键名必须唯一）
+    let builtin_achievement_ids = crate::achievements::manager::builtin_achievement_ids();
+    let mut achievement_ids: HashMap<String, ()> = HashMap::new();
 
     for cid in &chapter_ids {
         let file = match paths::resolve_chapter_file(script_dir, cid, true) {
@@ -283,14 +294,14 @@ pub fn validate(
                 continue;
             }
         };
-        let raw = match io::read_yaml_as_json(&file) {
+        let raw = match yaml_file::read_yaml_as_json(&file) {
             Ok(v) => v,
             Err(e) => {
                 diags.push(Diagnostic::chapter(Severity::Error, "chapter.parse_failed", cid, e));
                 continue;
             }
         };
-        let doc = match io::ChapterDoc::from_json(raw) {
+        let doc = match yaml_file::ChapterDoc::from_json(raw) {
             Ok(d) => d,
             Err(e) => {
                 diags.push(Diagnostic::chapter(Severity::Error, "chapter.bad_shape", cid, e));
@@ -353,9 +364,47 @@ pub fn validate(
                 }
             };
 
+            // 成就事件的键名唯一性：内置成就与本剧本内都不能重名（重名会覆盖旧定义）
+            if ty == "unlock_achievement" {
+                if let Some(ach_id) = obj.get("achievement_id").and_then(|v| v.as_str()) {
+                    let id = ach_id.trim();
+                    if !id.is_empty() {
+                        if builtin_achievement_ids.iter().any(|b| *b == id) {
+                            diags.push(
+                                Diagnostic::event(
+                                    Severity::Error,
+                                    "achievement.id_conflicts_builtin",
+                                    cid,
+                                    i,
+                                    format!("「{}」和内置成就重名，会覆盖它的定义，请换个键名", id),
+                                )
+                                .with_field("achievement_id"),
+                            );
+                        }
+                        if achievement_ids.insert(id.to_string(), ()).is_some() {
+                            diags.push(
+                                Diagnostic::event(
+                                    Severity::Error,
+                                    "achievement.id_duplicated",
+                                    cid,
+                                    i,
+                                    format!("本剧本里已有成就「{}」，成就键名不能重复，请换个键名", id),
+                                )
+                                .with_field("achievement_id"),
+                            );
+                        }
+                    }
+                }
+            }
+
             // 必填字段
             for f in fields {
                 if !f.required {
+                    continue;
+                }
+                // 引擎有安全默认值的字段（character → MAIN、end_type → linear），缺失照常
+                // 运行，不必填检查会误报。schema 里保持必填是为了编辑器 UX（blankEvent 预填）。
+                if has_engine_default(ty, f.key) {
                     continue;
                 }
                 let present = obj
@@ -395,7 +444,7 @@ pub fn validate(
             }
 
             // 遗留字段（schema 里 enabled == false 的通用字段）。
-            // 由 schema 驱动而不是硬编码 "duration"，这样加第二个遗留字段只改 schema.rs
+            // 由 schema 驱动而不是硬编码字段名，这样加第二个遗留字段只改 schema.rs
             for f in schema.common_fields.iter().filter(|f| !f.enabled) {
                 if obj.contains_key(f.key) {
                     diags.push(
@@ -521,6 +570,12 @@ pub fn validate(
                     }
                     check_chapter_end(obj, cid, i, &chapter_set, &mut edges, &mut diags, &mut vars_read);
                 }
+                "modify_character" => {
+                    // 引擎只识别 show_character / hide_character，其余动作静默忽略
+                    // （modify_character_event.rs 的 `_ => {}`）。schema 的 select 已限定
+                    // 编辑器选项，这里兜住手写 YAML / 旧数据写错的情况。
+                    check_modify_character_action(obj, cid, i, &mut diags);
+                }
                 _ => {}
             }
 
@@ -563,7 +618,7 @@ pub fn validate(
             Severity::Warn,
             "variable.never_set",
             format!(
-                "条件里用到变量「{}」，但整个剧本都没有给它赋值过。没赋值的变量，用「等于」比较时永远不成立、用「不等于」比较时永远成立",
+                "「{}」这个变量不会正常运作，请使用「设置变量」给它赋值，或检查变量名是不是写错了",
                 v
             ),
         ));
@@ -606,6 +661,21 @@ fn finish(
         variables,
         edges,
     }
+}
+
+/// 这些字段在 schema 里标了 required，但引擎在缺失时有安全默认值，缺了也能正常跑
+/// （四个角色事件 `character` 全部 `unwrap_or("MAIN")`，`chapter_end.end_type` 回落
+/// `"linear"`）。schema 保持必填是为了编辑器 UX（blankEvent 预填），校验器跳过它们，
+/// 否则手写 YAML 明明能跑却报「缺少必填字段」的误报。
+fn has_engine_default(event_type: &str, field: &str) -> bool {
+    const DEFAULTS: [(&str, &str); 5] = [
+        ("dialogue", "character"),
+        ("ai_dialogue", "character"),
+        ("free_dialogue", "character"),
+        ("modify_character", "character"),
+        ("chapter_end", "end_type"),
+    ];
+    DEFAULTS.iter().any(|(t, k)| *t == event_type && *k == field)
 }
 
 fn collect_script_characters(script_dir: &Path) -> HashSet<String> {
@@ -714,6 +784,36 @@ fn media_field_of(ty: &str) -> (&'static str, MediaType) {
     }
 }
 
+/// modify_character 的动作取值检查。
+///
+/// 引擎只识别 `show_character` / `hide_character`，其余动作在 execute 里静默忽略
+/// （modify_character_event.rs 的 `_ => {}`）。schema 的 select 已经限定了编辑器选项，
+/// 这里兜住手写 YAML / 旧数据写错的情况，把静默失败变成可见诊断。
+fn check_modify_character_action(
+    obj: &serde_json::Map<String, JsonValue>,
+    cid: &str,
+    i: usize,
+    diags: &mut Vec<Diagnostic>,
+) {
+    if let Some(action) = obj.get("action").and_then(|v| v.as_str()) {
+        if !["show_character", "hide_character"].contains(&action) {
+            diags.push(
+                Diagnostic::event(
+                    Severity::Warn,
+                    "character.action_unknown",
+                    cid,
+                    i,
+                    format!(
+                        "动作「{}」引擎不识别，会被静默忽略。可用值：show_character（登场）/ hide_character（退场）",
+                        action
+                    ),
+                )
+                .with_field("action"),
+            );
+        }
+    }
+}
+
 fn check_asset(
     data_dir: &Path,
     script_dir: &Path,
@@ -729,7 +829,22 @@ fn check_asset(
     // ambient 的 stop=true 会跳过路径解析，空路径表示停全部轨
     if ty == "ambient" {
         let stopping = obj.get("stop").and_then(|v| v.as_bool()).unwrap_or(false);
-        if stopping || path.is_empty() {
+        if stopping {
+            return;
+        }
+        // 播放（未停）但没给路径：引擎会发一个空路径事件、静默无声音。
+        // ambientPath 在 schema 里刻意不标必填（「停全部轨」的写法），所以这里单独提示。
+        if path.is_empty() {
+            diags.push(
+                Diagnostic::event(
+                    Severity::Warn,
+                    "ambient.no_path",
+                    cid,
+                    i,
+                    "播放环境音但没有给路径，运行时只会发出空事件、没有声音；要停掉全部轨道请开启「停止该轨」".to_string(),
+                )
+                .with_field(key),
+            );
             return;
         }
     }
@@ -787,7 +902,7 @@ fn check_condition(
                 cid,
                 i,
                 format!(
-                    "条件里用了不支持的运算符「{}」。只支持「变量 == 值」「变量 != 值」或单独一个变量判断真假——写了别的不会报错，但这个条件永远不成立",
+                    "条件里用了不支持的运算符「{}」。只支持「变量 == 值」「变量 != 值」或单独一个变量判断真假——写了别的不会按你的意思执行（没赋过值的变量不会正常运作）",
                     op
                 ),
             )
@@ -861,21 +976,46 @@ fn check_actions(
         let content = ao.get("content").and_then(|v| v.as_str()).unwrap_or("");
 
         match at {
-            "set_var" => match parse_variable_action(content) {
-                Ok((_, name, _)) => {
-                    vars_written.insert(name);
+            "set_var" => {
+                if content.trim().is_empty() {
+                    // 旧原型形状：只写了 name/value/op，没有 content 表达式。引擎只读
+                    // content（parse_variable_action），缺它这段会被静默跳过、变量永远
+                    // 写不进去。报「空表达式」会让作者困惑（他明明填了赋值），这里点名真正原因。
+                    if ao.contains_key("name") || ao.contains_key("value") || ao.contains_key("op") {
+                        diags.push(Diagnostic::event(
+                            Severity::Error,
+                            "action.legacy_shape",
+                            cid,
+                            i,
+                            "这条设置变量是旧版本遗留下来的写法，运行时会被跳过。请改写成「变量名 等于/加/减 值」的形式，如 flag = warm".to_string(),
+                        ));
+                    } else {
+                        diags.push(Diagnostic::event(
+                            Severity::Error,
+                            "action.empty_expression",
+                            cid,
+                            i,
+                            "表达式为空，请填 变量 = 值 / 变量 += 值 / 变量 -= 值".to_string(),
+                        ));
+                    }
+                } else {
+                    match parse_variable_action(content) {
+                        Ok((_, name, _)) => {
+                            vars_written.insert(name);
+                        }
+                        Err(_) => diags.push(Diagnostic::event(
+                            Severity::Error,
+                            "action.bad_expression",
+                            cid,
+                            i,
+                            format!(
+                                "变量表达式「{}」无法解析。格式为 变量 = 值 / 变量 += 值 / 变量 -= 值（只有这三个运算符）",
+                                content
+                            ),
+                        )),
+                    }
                 }
-                Err(_) => diags.push(Diagnostic::event(
-                    Severity::Error,
-                    "action.bad_expression",
-                    cid,
-                    i,
-                    format!(
-                        "变量表达式「{}」无法解析。格式为 变量 = 值 / 变量 += 值 / 变量 -= 值（只有这三个运算符）",
-                        content
-                    ),
-                )),
-            },
+            }
             "add_line" => {
                 if event_type == "set_variable" {
                     diags.push(Diagnostic::event(
@@ -947,16 +1087,36 @@ fn check_choices(
         let text = oo.get("text").and_then(|v| v.as_str()).unwrap_or("");
         if text.is_empty() {
             if oi != last {
-                diags.push(Diagnostic::event(
-                    Severity::Warn,
-                    "choices.catch_all_not_last",
-                    cid,
-                    i,
-                    format!(
-                        "第 {} 个选项没有文案。这类选项会匹配任意输入，放在中间会让后面的选项永远选不到",
-                        oi + 1
-                    ),
-                ));
+                // 引擎 process_options 先求值 condition，为假时跳过该选项、后面的选项仍可达，
+                // 所以「带条件」的空文案选项不一定吞掉后续选项 —— 只有无条件时才是确定会吞。
+                let has_condition = oo
+                    .get("condition")
+                    .and_then(|v| v.as_str())
+                    .map(|s| !s.trim().is_empty())
+                    .unwrap_or(false);
+                if has_condition {
+                    diags.push(Diagnostic::event(
+                        Severity::Info,
+                        "choices.catch_all_conditional",
+                        cid,
+                        i,
+                        format!(
+                            "第 {} 个选项没有文案但带了条件：条件满足时会匹配任意输入、吞掉后面的选项，条件不满足时才会轮到后面",
+                            oi + 1
+                        ),
+                    ));
+                } else {
+                    diags.push(Diagnostic::event(
+                        Severity::Warn,
+                        "choices.catch_all_not_last",
+                        cid,
+                        i,
+                        format!(
+                            "第 {} 个选项没有文案。这类选项会匹配任意输入，放在中间会让后面的选项永远选不到",
+                            oi + 1
+                        ),
+                    ));
+                }
             }
         } else {
             if !seen_texts.insert(text) {
@@ -997,6 +1157,18 @@ fn check_choices(
 
         if let Some(c) = oo.get("condition").and_then(|v| v.as_str()) {
             check_condition(c, cid, i, diags, vars_read);
+        } else if oo.contains_key("lock_hint") {
+            // 不可选提示只在条件不满足时才会展示；没有条件则选项永远可选，这句提示是白写
+            diags.push(Diagnostic::event(
+                Severity::Info,
+                "choices.lock_hint_without_condition",
+                cid,
+                i,
+                format!(
+                    "第 {} 个选项填了不可选提示，但没有设置条件——选项不会变灰，这句提示永远不会显示",
+                    oi + 1
+                ),
+            ));
         }
 
         if let Some(actions) = oo.get("actions").and_then(|v| v.as_array()) {
@@ -1064,6 +1236,22 @@ fn push_target(
     let target = chapter_id_of(raw);
 
     if target == "end" {
+        // 引擎只认字面量 "end"（run_script 的 while next_chapter != "end"）。"end.yaml"
+        // 会被上面的归一剥成 "end"，但引擎会去读 Chapters/end.yaml —— 存在则继续跑、
+        // 不存在则中断，都不是「剧本结束」的语义，跟校验器看到的对不上，报出来。
+        if raw.trim() != "end" {
+            diags.push(Diagnostic::event(
+                Severity::Error,
+                "chapter_end.end_suffix",
+                cid,
+                i,
+                format!(
+                    "{}写了「{}」：引擎只认字面量 end，这里会尝试读取 Chapters/{}.yaml。请直接写 end",
+                    label, raw, target
+                ),
+            ));
+            return;
+        }
         edges.push(ChapterEdge {
             from: cid.to_string(),
             to: "end".to_string(),
@@ -1188,14 +1376,41 @@ fn check_chapter_end(
                     has_default = true;
                 }
 
-                if end_type == "ai_judged" && !oo.contains_key("name") {
+                // ai_judged 的 default 兜底分支**不需要 name** —— 引擎 match_ai_response_options
+                // 先按 name 子串匹配，匹配不到时再单独遍历 default 分支取 next。所以这里
+                // 只对「非 default 且缺 name」的分支告警，否则官方推荐的兜底写法会被误报。
+                if end_type == "ai_judged"
+                    && !oo.get("default").and_then(|v| v.as_bool()).unwrap_or(false)
+                    && !oo.contains_key("name")
+                {
                     diags.push(Diagnostic::event(
                         Severity::Warn,
                         "chapter_end.ai_option_no_name",
                         cid,
                         i,
-                        format!("第 {} 个分支没有 name，AI 判定时无法命中它", oi + 1),
+                        format!(
+                            "第 {} 个分支没有 name，AI 判定时无法命中它（除非它设了 default 兜底）",
+                            oi + 1
+                        ),
                     ));
+                }
+                // ai_judged 只按 name 匹配，分支里的 condition 会被引擎忽略 —— 作者意图
+                // 会静默丢失，这里提示出来（condition 是 common field，field.unknown 查不到）。
+                if end_type == "ai_judged" {
+                    if let Some(c) = oo.get("condition").and_then(|v| v.as_str()) {
+                        if !c.trim().is_empty() {
+                            diags.push(
+                                Diagnostic::event(
+                                    Severity::Info,
+                                    "chapter_end.ai_condition_ignored",
+                                    cid,
+                                    i,
+                                    "AI 判定分支不读 condition（按 name 匹配），这个条件会被忽略".to_string(),
+                                )
+                                .with_field("condition"),
+                            );
+                        }
+                    }
                 }
                 if end_type == "branching" {
                     match oo.get("condition").and_then(|v| v.as_str()) {
@@ -1212,7 +1427,7 @@ fn check_chapter_end(
                                     cid,
                                     i,
                                     format!(
-                                        "第 {} 个分支没有条件，会无条件命中，后面的分支都选不到",
+                                        "第 {} 个分支没有条件：若它带 next 会无条件命中、后面的分支都选不到；不带 next 则会被跳过",
                                         oi + 1
                                     ),
                                 ));
@@ -1233,12 +1448,18 @@ fn check_chapter_end(
                         edges,
                         diags,
                     ),
+                    // 引擎 branching 循环对「条件命中但无 next」的分支不 break，会继续尝试
+                    // 后面的分支，只有全部落空才走 default/end —— 所以这不是 Error，也不是
+                    // 「一定落到剧本结束」。
                     None => diags.push(Diagnostic::event(
-                        Severity::Error,
+                        Severity::Warn,
                         "chapter_end.branch_no_next",
                         cid,
                         i,
-                        format!("第 {} 个分支没有 next，命中后会落到「剧本结束」", oi + 1),
+                        format!(
+                            "第 {} 个分支没有 next：命中后它不会生效（引擎会跳过它继续尝试后面的分支）；若这是唯一分支则会直接结束剧本",
+                            oi + 1
+                        ),
                     )),
                 }
             }
@@ -1581,5 +1802,246 @@ mod tests {
         let rounds: i64 = -1;
         let end_line = "";
         assert!(rounds <= 0 && end_line.trim().is_empty());
+    }
+
+    // ---------- E1：set_var 表达式三态 ----------
+
+    fn run_actions(actions: &serde_json::Value) -> (Vec<Diagnostic>, BTreeSet<String>) {
+        let mut d = Vec::new();
+        let mut w = BTreeSet::new();
+        check_actions(actions.as_array().unwrap(), "choices", "main", 0, &mut d, &mut w);
+        (d, w)
+    }
+
+    /// 本次修复的直接动因：示例剧本把 set_var 写成 name/value/op 旧形状，
+    /// 之前被误报成「变量表达式「」无法解析」。现在应报定向的 legacy_shape。
+    #[test]
+    fn set_var_legacy_shape_is_diagnosed_clearly() {
+        let (d, w) = run_actions(&json!([
+            { "type": "set_var", "name": "flag", "value": "warm", "op": "=" }
+        ]));
+        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
+        assert!(codes.contains(&"action.legacy_shape"));
+        assert!(!codes.contains(&"action.empty_expression"));
+        assert!(!codes.contains(&"action.bad_expression"));
+        assert!(w.is_empty(), "旧形状不应收集到变量");
+    }
+
+    #[test]
+    fn set_var_truly_empty_expression_has_clear_message() {
+        let (d, _) = run_actions(&json!([{ "type": "set_var", "content": "" }]));
+        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
+        assert!(codes.contains(&"action.empty_expression"));
+    }
+
+    #[test]
+    fn set_var_valid_expression_collects_variable() {
+        let (d, w) = run_actions(&json!([{ "type": "set_var", "content": "affection += 1" }]));
+        assert!(d.is_empty(), "合法表达式不该有诊断: {:?}", d);
+        assert!(w.contains("affection"));
+    }
+
+    // ---------- A1：ai_judged 的 default 分支无需 name ----------
+
+    #[test]
+    fn ai_judged_default_branch_without_name_is_fine() {
+        let mut edges = Vec::new();
+        let mut d = Vec::new();
+        let mut r = BTreeSet::new();
+        let chapters: HashSet<&str> = ["shop", "home"].into_iter().collect();
+        let obj = json!({
+            "end_type": "ai_judged",
+            "options": [
+                { "name": "去商店", "next": "shop" },
+                { "default": true, "next": "home" }
+            ]
+        });
+        check_chapter_end(
+            obj.as_object().unwrap(),
+            "start",
+            0,
+            &chapters,
+            &mut edges,
+            &mut d,
+            &mut r,
+        );
+        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
+        assert!(
+            !codes.contains(&"chapter_end.ai_option_no_name"),
+            "default 兜底分支不该报缺 name: {:?}",
+            d
+        );
+    }
+
+    // ---------- A2：引擎有默认值的必填字段跳过检查 ----------
+
+    #[test]
+    fn engine_default_fields_are_skipped_by_required_check() {
+        assert!(has_engine_default("dialogue", "character"));
+        assert!(has_engine_default("ai_dialogue", "character"));
+        assert!(has_engine_default("free_dialogue", "character"));
+        assert!(has_engine_default("modify_character", "character"));
+        assert!(has_engine_default("chapter_end", "end_type"));
+        assert!(!has_engine_default("narration", "character"));
+        assert!(!has_engine_default("dialogue", "text"));
+        assert!(!has_engine_default("chapter_end", "next_chapter"));
+    }
+
+    // ---------- A3：带条件的空文案选项不是确定吞选项 ----------
+
+    #[test]
+    fn catch_all_with_condition_is_info_not_warn() {
+        let mut d = Vec::new();
+        let mut w = BTreeSet::new();
+        let mut r = BTreeSet::new();
+        let obj = json!({
+            "options": [
+                { "condition": "route == shop" },
+                { "text": "去公园" }
+            ]
+        });
+        check_choices(obj.as_object().unwrap(), "main", 0, &mut d, &mut w, &mut r);
+        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
+        assert!(codes.contains(&"choices.catch_all_conditional"));
+        assert!(!codes.contains(&"choices.catch_all_not_last"));
+    }
+
+    #[test]
+    fn catch_all_without_condition_still_warns() {
+        let mut d = Vec::new();
+        let mut w = BTreeSet::new();
+        let mut r = BTreeSet::new();
+        let obj = json!({ "options": [{}, { "text": "去公园" }] });
+        check_choices(obj.as_object().unwrap(), "main", 0, &mut d, &mut w, &mut r);
+        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
+        assert!(codes.contains(&"choices.catch_all_not_last"));
+    }
+
+    // ---------- B1：播放环境音但没给路径 ----------
+
+    #[test]
+    fn ambient_playing_without_path_warns() {
+        let mut d = Vec::new();
+        let obj = json!({ "ambientPath": "", "stop": false });
+        check_asset(
+            Path::new("/nonexistent"),
+            Path::new("/nonexistent"),
+            obj.as_object().unwrap(),
+            "ambient",
+            "main",
+            0,
+            &mut d,
+        );
+        assert!(d.iter().any(|x| x.code == "ambient.no_path"));
+
+        // stop=true 时空路径合法（停全部轨）
+        let mut d2 = Vec::new();
+        let obj2 = json!({ "ambientPath": "", "stop": true });
+        check_asset(
+            Path::new("/nonexistent"),
+            Path::new("/nonexistent"),
+            obj2.as_object().unwrap(),
+            "ambient",
+            "main",
+            0,
+            &mut d2,
+        );
+        assert!(d2.is_empty(), "停全部轨不该报路径缺失: {:?}", d2);
+    }
+
+    // ---------- B2：modify_character 未知动作 ----------
+
+    #[test]
+    fn modify_character_unknown_action_warns() {
+        let mut d = Vec::new();
+        let obj = json!({ "action": "hide" });
+        check_modify_character_action(obj.as_object().unwrap(), "main", 0, &mut d);
+        assert!(d.iter().any(|x| x.code == "character.action_unknown"));
+
+        let mut d2 = Vec::new();
+        let obj2 = json!({ "action": "show_character" });
+        check_modify_character_action(obj2.as_object().unwrap(), "main", 0, &mut d2);
+        assert!(d2.is_empty(), "show_character 不该被警告: {:?}", d2);
+    }
+
+    // ---------- B3：ai_judged 分支里的 condition 被引擎忽略 ----------
+
+    #[test]
+    fn ai_judged_option_condition_is_ignored_info() {
+        let mut edges = Vec::new();
+        let mut d = Vec::new();
+        let mut r = BTreeSet::new();
+        let chapters: HashSet<&str> = ["shop", "home"].into_iter().collect();
+        let obj = json!({
+            "end_type": "ai_judged",
+            "options": [
+                { "name": "去商店", "condition": "flag == true", "next": "shop" },
+                { "name": "回家", "next": "home" }
+            ]
+        });
+        check_chapter_end(
+            obj.as_object().unwrap(),
+            "start",
+            0,
+            &chapters,
+            &mut edges,
+            &mut d,
+            &mut r,
+        );
+        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
+        assert!(codes.contains(&"chapter_end.ai_condition_ignored"));
+    }
+
+    // ---------- C1：无 next 的分支是 warn，不是 error ----------
+
+    #[test]
+    fn branch_without_next_is_warn_not_error() {
+        let mut edges = Vec::new();
+        let mut d = Vec::new();
+        let mut r = BTreeSet::new();
+        let chapters: HashSet<&str> = ["home"].into_iter().collect();
+        let obj = json!({
+            "end_type": "branching",
+            "options": [
+                { "condition": "flag == x", "next": "home" },
+                { "condition": "other == y" }
+            ]
+        });
+        check_chapter_end(
+            obj.as_object().unwrap(),
+            "start",
+            0,
+            &chapters,
+            &mut edges,
+            &mut d,
+            &mut r,
+        );
+        let diag = d
+            .iter()
+            .find(|x| x.code == "chapter_end.branch_no_next")
+            .expect("应报 branch_no_next");
+        assert_eq!(diag.severity, Severity::Warn, "无 next 的分支应是 warn");
+    }
+
+    // ---------- D1：end.yaml 不是剧本结束 ----------
+
+    #[test]
+    fn end_with_yaml_suffix_is_rejected() {
+        let mut edges = Vec::new();
+        let mut d = Vec::new();
+        let mut r = BTreeSet::new();
+        let chapters: HashSet<&str> = ["main2"].into_iter().collect();
+        let obj = json!({ "end_type": "linear", "next_chapter": "end.yaml" });
+        check_chapter_end(
+            obj.as_object().unwrap(),
+            "main",
+            0,
+            &chapters,
+            &mut edges,
+            &mut d,
+            &mut r,
+        );
+        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
+        assert!(codes.contains(&"chapter_end.end_suffix"), "end.yaml 应被报出: {:?}", d);
     }
 }

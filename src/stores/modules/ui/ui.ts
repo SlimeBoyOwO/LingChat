@@ -34,6 +34,8 @@ interface UIState {
   showCharacterThinkLine: string
   showSettings: boolean
   currentSettingsTab: string
+  /** 高级设置内的子标签（menu / llm / tts / other / tools） */
+  advanceTab: string
 
   currentBackgroundTransition: number
   currentPresentPic: string
@@ -103,6 +105,7 @@ export const useUIStore = defineStore('ui', {
     showCharacterThinkLine: 'Ling Ling Thinking...',
     showSettings: false,
     currentSettingsTab: 'text',
+    advanceTab: 'menu',
     currentBackgroundTransition: 300,
     currentPresentPic: '',
     currentPresentPicScale: 1,

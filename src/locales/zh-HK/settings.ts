@@ -14,6 +14,8 @@ export default {
     "backtrack": "回溯",
     "thinking": "思考過程（{count} 字）",
     "playVoice": "播放語音",
+    "generateVoice": "生成語音",
+    "generateVoiceFailed": "生成語音失敗：{error}",
     "you": "你",
     "mysteryVoice": "謎之音",
     "backtrackConfirm": "確定要回溯返去呢個對話？呢個操作會清走嗰個訊息同埋之後嘅所有對話，而且撤銷唔返㗎。",
@@ -229,6 +231,8 @@ export default {
         "aivis_api_url": "AIVIS 雲 API 地址",
         "aivis_api_key": "AIVIS API 密鑰（原環境變數 AIVIS_API_KRY）",
         "indextts_api_url": "IndexTTS2 API 地址",
+        "fish_s2_api_url": "Fish S2 API 地址",
+        "fish_s2_voice": "Fish S2 預設音色標識",
         "opentts_api_url": "OpenTTS API 地址（硅基流動）",
         "opentts_api_key": "OpenTTS API 密鑰",
         "opentts_model": "OpenTTS 模型名稱",
@@ -241,7 +245,8 @@ export default {
       "log": {
         "enable": "LOG_ENABLE — 使唔使將運行日誌寫入文件（喺 data/log/app/ 目錄）",
         "retention_days": "LOG_RETENTION_DAYS — 日誌文件保留日數，過咗期嘅舊文件會喺啟動嗰陣自動清走",
-        "llm_request_body": "LOG_LLM_REQUEST_BODY — 記低每次 LLM 請求嘅完整請求體 JSON 落 data/log/llm/ 目錄（預設閂）"
+        "llm_request_body": "LOG_LLM_REQUEST_BODY — 記低每次 LLM 請求嘅完整請求體 JSON 落 data/log/llm/ 目錄（預設閂）",
+        "genai_debug": "LOG_GENAI_DEBUG — 開啟 genai SDK 嘅調試日誌（包含請求/回應細節，儲存後即時生效，預設閂）"
       },
       "ENABLE_PROACTIVE_SYSTEM": "ENABLE_PROACTIVE_SYSTEM — 使唔使啟用主動對話系統",
       "MAX_PROACTIVE_TIMES": "MAX_PROACTIVE_TIMES — 喺用戶回應之前，可以主動對話嘅次數",
@@ -281,6 +286,15 @@ export default {
       "monthsAgo": "{n} 個月前",
       "yearsAgo": "{n} 年前"
     }
+  },
+  "plugins": {
+    "title": "插件",
+    "envHint": "環境變數（從進程讀取）：",
+    "envFromProcess": "來自進程環境",
+    "saveConfig": "儲存",
+    "empty": "未搵到插件。請將插件資料夾放入 data/plugins/ 目錄",
+    "delete": "刪除",
+    "deleteConfirm": "確定要刪除插件「{name}」嗎？會刪除插件目錄，不可恢復"
   },
   "adventurePanel": {
     "header": {
@@ -356,11 +370,14 @@ export default {
       "openttsVoicePlaceholder": "留空則使用進階設定中的全域音色標識",
       "localSbv2Api": "本地 SBV2 API",
       "openttsVoiceLabel": "OpenTTS 音色標識",
+      "fishS2": "Fish S2（本機 API）",
+      "fishS2Voice": "Fish S2 音色標識",
 
       "openttsVoice": "OpenTTS 音色標識"
     },
     "placeholders": {
-      "openttsVoice": "留空就用高級設定入面嘅全局音色標識"
+      "openttsVoice": "留空就用高級設定入面嘅全局音色標識",
+      "fishS2Voice": "留空就用高級設定入面嘅預設音色（paimeng）"
     },
     "voiceLangOptions": {
       "ja": "日語",
@@ -748,6 +765,19 @@ export default {
       "bubble": "測試氣泡",
       "achievement": "測試成就"
     },
+    "device": {
+      "title": "輸出音頻設備",
+      "selectTitle": "揀音頻輸出設備",
+      "systemDefault": "系統默認",
+      "currentDefault": "（依家默認）",
+      "getLabels": "攞設備名",
+      "retryLabels": "重新攞設備名",
+      "usingSystemDefault": "依家用緊系統默認輸出設備",
+      "currentOutput": "依家輸出：{label}",
+      "unavailableFallback": "輸出設備唔可用（已退回系統默認）",
+      "labelsDenied": "冇攞到授權，顯示唔到設備名，可以喺系統設定允許咗再試",
+      "unsupported": "呢個環境唔支持切換音頻輸出設備"
+    },
     "bgm": {
       "title": "背景音樂設定",
       "stop": "停",
@@ -886,6 +916,13 @@ export default {
       "loading": "載入中",
       "ready": "已就緒",
       "notReady": "未就緒"
+    },
+    "device": {
+      "label": "推理裝置",
+      "cpu": "CPU",
+      "gpu": "GPU（DirectML）",
+      "gpuWebgpu": "GPU（WebGPU）",
+      "npu": "NPU（DirectML）"
     },
     "deberta": {
       "label": "DeBERTa 與分詞器",

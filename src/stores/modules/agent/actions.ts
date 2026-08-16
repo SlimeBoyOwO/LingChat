@@ -150,9 +150,17 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
         }
         break
       }
-      case 'reasoning':
-        // 暂不展示思考链
+      case 'reasoning': {
+        // 思考链：累积到当前轮；若上一轮以工具调用结尾则新开一轮承载思考。
+        if (!msg) break
+        const last = msg.rounds[msg.rounds.length - 1]
+        if (last && last.toolRuns.length === 0) {
+          last.reasoning = (last.reasoning ?? '') + event.content
+        } else {
+          msg.rounds.push({ content: '', reasoning: event.content, toolRuns: [] })
+        }
         break
+      }
       case 'tool_call': {
         if (!msg) break
         let round = msg.rounds[msg.rounds.length - 1]
@@ -306,7 +314,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     uiStore.showNotification({
       type: 'success',
       title: '设置已保存',
-      message: 'AI 助手设置已保存，下次对话生效。',
+      message: '剧本导师设置已保存，下次对话生效。',
       skipTipsCheck: true,
     })
   }

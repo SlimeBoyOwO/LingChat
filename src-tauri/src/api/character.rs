@@ -29,6 +29,7 @@ const LEGACY_VOICE_MODEL_FIELDS: &[&str] = &[
     "gsv_sovits_model_name",
     "aivis_model_uuid",
     "opentts_voice",
+    "fish_s2_voice",
 ];
 
 fn remove_legacy_voice_model_fields(settings: &mut CharacterSettings) {
@@ -366,7 +367,7 @@ pub fn get_character_file(file_path: String) -> Result<String, String> {
     let base = characters_dir();
     let resolved = base.join(&file_path);
 
-    super::validate_path_in_base(&resolved, &base)?;
+    crate::utils::path::validate_path_in_base(&resolved, &base)?;
 
     if !resolved.exists() {
         return Err(format!("角色文件不存在: {}", file_path));
@@ -596,6 +597,7 @@ pub async fn update_role_settings(
     if let Some(obj) = save_data.as_object_mut() {
         obj.remove("character_id");
         obj.remove("resource_path");
+        obj.remove("character_folder");
         obj.remove("script_key");
         obj.remove("script_role_key");
     }
@@ -682,10 +684,7 @@ pub async fn delete_character(
             || gs.main_role_id == Some(role_id)
             || gs.onstage_role_ids.contains(&role_id);
         if onstage {
-            return Err(format!(
-                "角色「{}」正在对话中，无法删除",
-                role.name
-            ));
+            return Err(format!("角色「{}」正在对话中，无法删除", role.name));
         }
     }
 
@@ -695,7 +694,7 @@ pub async fn delete_character(
             let base = characters_dir();
             let target = base.join(folder);
             // 路径穿越防护
-            super::validate_path_in_base(&target, &base)?;
+            crate::utils::path::validate_path_in_base(&target, &base)?;
             if target.exists() {
                 if let Err(e) = fs::remove_dir_all(&target) {
                     return Err(format!("删除资源目录失败: {}", e));

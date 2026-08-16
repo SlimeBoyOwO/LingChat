@@ -3,8 +3,7 @@ use std::fs;
 use base64::Engine as _;
 
 use crate::api::voice_dir;
-
-use super::validate_path_in_base;
+use crate::utils::path::validate_path_in_base;
 
 /// 读取文件并返回 base64 data URL（绕过 asset protocol scope 限制）
 #[tauri::command]

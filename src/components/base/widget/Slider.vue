@@ -84,7 +84,6 @@ function onInput(e: Event) {
   emit('update:modelValue', value.value)
   emit('input', value.value)
 }
-
 // 分别设置滑块两端内容
 const leftLabel = computed(() => {
   if (slots.default) {

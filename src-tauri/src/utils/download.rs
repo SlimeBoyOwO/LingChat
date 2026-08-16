@@ -157,11 +157,15 @@ pub async fn download_to_file(
 /// - 600 秒超时
 /// - 最多 10 次重定向
 /// - 标准 User-Agent
+/// - TLS 用 webpki-roots（见 [`crate::utils::tls::build_tls_config`]），
+///   绕开 rustls-platform-verifier 在 Android 上的 TLS panic
 pub fn build_download_client() -> Result<reqwest::Client, String> {
+    let tls_config = crate::utils::tls::build_tls_config()?;
     reqwest::Client::builder()
         .timeout(Duration::from_secs(600))
         .user_agent("LingChat/0.4.6")
         .redirect(reqwest::redirect::Policy::limited(10))
+        .tls_backend_preconfigured(tls_config)
         .build()
         .map_err(|e| format!("build http client: {e}"))
 }

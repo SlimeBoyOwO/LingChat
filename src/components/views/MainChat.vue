@@ -16,6 +16,7 @@
 
     <!-- 原有的菜单按钮 -->
     <div id="menu-panel">
+      <ToolActivityStatus v-if="!(gameStore.runningScript && gameStore.runningScript.isRunning)" />
       <Button
         type="nav"
         icon="play"
@@ -25,7 +26,9 @@
       >
         <h3 class="hidden xl:block">{{ $t('views.mainChat.auto') }}</h3>
       </Button>
+      <!-- 桌宠模式依赖 Windows 透明置顶窗口与 hit-test（lib.rs 为 cfg(windows)），Android 不可用 -->
       <Button
+        v-if="!isAndroid()"
         type="nav"
         icon="character"
         @click="goToPetMode"
@@ -51,6 +54,7 @@
 import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import FreeModeTools from '@/components/tools/FreeModeTools.vue'
+import ToolActivityStatus from '@/components/tools/ToolActivityStatus.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useGameStore } from '../../stores/modules/game'
 import { GameBackground, GameRolesStage } from '../game/standard'
@@ -61,6 +65,7 @@ import { eventQueue } from '@/core/events/event-queue'
 
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
 import ImageSourcePicker from '@/components/ui/ImageSourcePicker.vue'
+import { isAndroid } from '@/utils/platform'
 
 const LOADING_STORAGE_KEY = 'lingchat_loading_shown'
 

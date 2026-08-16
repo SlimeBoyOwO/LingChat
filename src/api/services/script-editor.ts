@@ -24,6 +24,7 @@ type FieldKind =
   | 'choice_options'
   | 'branch_options'
   | 'var_options'
+  | 'condition'
   | 'deprecated'
 
 export type AssetKind = 'background' | 'music' | 'sound' | 'ambient' | 'pic'
@@ -36,7 +37,11 @@ export interface FieldSpec {
   assetKind?: AssetKind
   /** 下拉候选项：字符串或 {value,label}（后者用于显示中文、写入英文 key，如粒子特效） */
   options?: (string | { value: string; label: string })[]
+  /** 与 options 对齐的显示名（来自 Rust schema 的 option_labels），有则优先显示 */
+  optionLabels?: string[]
   placeholder?: string
+  /** 引擎真实默认值的人类可读描述（可选字段「不设置」时展示） */
+  defaultDesc?: string
   hint?: string
   enabled: boolean
 }
@@ -49,20 +54,20 @@ export interface EventSpec {
   fields: FieldSpec[]
 }
 
-interface ActionSpec {
+export interface ActionSpec {
   typeKey: string
   label: string
   hint: string
   allowedIn: string[]
 }
 
-interface UnlockConditionSpec {
+export interface UnlockConditionSpec {
   typeKey: string
   label: string
   fields: FieldSpec[]
 }
 
-interface ConditionSyntax {
+export interface ConditionSyntax {
   supported: string[]
   unsupported: string[]
   note: string
@@ -117,6 +122,7 @@ export interface ScriptCharacter {
   folder: string
   /** 剧本里 character: 应该写的值 */
   roleKey: string
+  /** 显示名：后端读 settings.yml 的 name 优先，回落 ai_name，再回落目录名 */
   aiName: string
   emotions: string[]
   clothes: string[]
@@ -246,6 +252,21 @@ export type AssetScope = 'script' | 'global'
 export const uploadAsset = (key: string, kind: AssetKind, scope: AssetScope, srcPath: string) =>
   invoke<string>('editor_upload_asset', { key, kind, scope, srcPath })
 
+/**
+ * 上传编辑器自定义背景。只传源文件路径，由 Rust 复制到数据目录（与 uploadAsset
+ * 同一模式，见其后注释）；返回绝对路径，用 convertFileSrc 转 asset URL 显示。
+ * 重复导入覆盖旧图，'editorBg.path = ""' 即恢复默认背景。
+ */
+export const uploadEditorBg = (srcPath: string) =>
+  invoke<string>('editor_upload_editor_bg', { srcPath })
+
+/**
+ * 上传裁剪后的编辑器背景：dataUrl（data:image/webp;base64,...）由前端 cropperjs
+ * 裁剪输出，`name` 为输出文件名（原名去扩展名 + `_crop.webp`），后端解码落盘。
+ */
+export const uploadEditorBgData = (dataUrl: string, name: string) =>
+  invoke<string>('editor_upload_editor_bg_data', { data: dataUrl, name })
+
 /** 全局素材（game_data/backgrounds、musics、ambient） */
 export const listGlobalAssets = () => invoke<AssetIndex>('editor_list_global_assets')
 
@@ -269,6 +290,16 @@ export interface AssetFileIndex {
 export const listAssetFiles = (key: string, scope: AssetScope) =>
   invoke<AssetFileIndex>('editor_list_asset_files', { key, scope })
 
+/**
+ * 全局背景库（game_data/backgrounds）的文件列表，带绝对路径。
+ * 复用 editor_list_asset_files 的 global 落点：该落点不校验剧本 key，传空串即可。
+ * 供外观页「从已有背景选择」使用，选中即直接设为编辑器背景。
+ */
+export const listGlobalBackgrounds = () =>
+  invoke<AssetFileIndex>('editor_list_asset_files', { key: '', scope: 'global' }).then(
+    (idx) => idx.background,
+  )
+
 /** 删除素材。与章节、剧本一致，移到同级 .trash/ 而不是真删 */
 export const deleteAsset = (key: string, kind: AssetKind, scope: AssetScope, name: string) =>
   invoke<void>('editor_delete_asset', { key, kind, scope, name })
@@ -276,10 +307,13 @@ export const deleteAsset = (key: string, kind: AssetKind, scope: AssetScope, nam
 /** 全局角色库里的一个角色 */
 export interface GlobalCharacter {
   folder: string
+  /** 显示名：后端读 settings.yml 的 name 优先，回落 ai_name，再回落目录名 */
   aiName: string
   /** 在当前剧本里是否已导入 */
   alreadyInScript: boolean
   hasAvatar: boolean
+  /** 已上传的服装目录（avatar/ 子目录），供服装下拉使用 */
+  clothes: string[]
 }
 
 export const listGlobalCharacters = (key: string) =>

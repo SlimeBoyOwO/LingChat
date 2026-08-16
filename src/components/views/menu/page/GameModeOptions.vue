@@ -5,7 +5,7 @@
     </StartLine>
 
     <StartLine>
-      <StartItem @click="emit('open-scripts')">{{ $t('views.menu.storyMode') }}</StartItem>
+      <StartItem disabled="true">{{ $t('views.menu.storyMode') }}</StartItem>
     </StartLine>
 
     <StartLine>

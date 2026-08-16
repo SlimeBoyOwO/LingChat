@@ -79,6 +79,12 @@ static DEFAULT_ACHIEVEMENTS: LazyLock<HashMap<&'static str, AchievementDef>> =
 
 // ========== AchievementManager ==========
 
+/// 内置成就的键名集合。剧本编辑器的校验器用它检查「解锁成就」事件是否与
+/// 内置成就重名（重名会覆盖内置定义，应当禁止）。
+pub fn builtin_achievement_ids() -> Vec<&'static str> {
+    DEFAULT_ACHIEVEMENTS.keys().copied().collect()
+}
+
 pub struct AchievementManager {
     file_path: PathBuf,
     /// 动态注册的成就（如冒险脚本定义的 completion_achievements）

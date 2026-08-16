@@ -2,8 +2,10 @@
 // ONNX is CPU-bound and `ort::Session` is `!Send + !Sync`; the holder is
 // taken out of the async Mutex, used on the blocking pool, then put back.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+use sbv2_core::model::InferenceDevice;
 use sbv2_core::tts::{SynthesizeOptions, TTSModelHolder};
 use tokio::sync::Mutex;
 
@@ -17,6 +19,12 @@ pub struct LocalTtsEngine {
     // `take()` the holder (leaving the inner cell as None), and the
     // loser reports `engine not initialized` even though init succeeded.
     serialize: Arc<Mutex<()>>,
+    /// 推理硬件设备（热切换：改配置后 unload + 重新 init 生效）。
+    device: Arc<Mutex<InferenceDevice>>,
+    /// 引擎卸载次数：每次 `unload_all` 递增。`LocalTtsAdapter` 据此判断自己
+    /// 缓存的就绪/声线加载结果是否已被卸载动作（设备热切换、TTS 关闭）作废，
+    /// 从而在下次合成前重新 bootstrap 加载声线。
+    version: AtomicU64,
 }
 
 impl Default for LocalTtsEngine {
@@ -40,7 +48,25 @@ impl LocalTtsEngine {
         Self {
             holder: Arc::new(Mutex::new(None)),
             serialize: Arc::new(Mutex::new(())),
+            device: Arc::new(Mutex::new(InferenceDevice::Cpu)),
+            version: AtomicU64::new(0),
         }
+    }
+
+    /// 设置推理硬件设备。已加载的 session 不迁移——调用 [`Self::unload_all`]
+    /// 后下次 init/load 用新设备重建（热切换）。
+    pub async fn set_device(&self, device: InferenceDevice) {
+        *self.device.lock().await = device;
+    }
+
+    pub async fn device(&self) -> InferenceDevice {
+        *self.device.lock().await
+    }
+
+    /// 当前引擎卸载版本。每次 `unload_all` 递增；适配器据此判断
+    /// 自己缓存的就绪状态是否已被外部卸载动作作废。
+    pub fn version(&self) -> u64 {
+        self.version.load(Ordering::Acquire)
     }
 
     pub async fn is_ready(&self) -> bool {
@@ -62,8 +88,9 @@ impl LocalTtsEngine {
 
         let bert_clone = bert.clone();
         let tok_clone = tok.clone();
+        let device = *self.device.lock().await;
         let holder = tokio::task::spawn_blocking(move || {
-            TTSModelHolder::new(bert_clone, tok_clone, Some(4))
+            TTSModelHolder::new_with_device(bert_clone, tok_clone, Some(4), device)
         })
         .await
         .map_err(|e| format!("join: {e}"))?
@@ -173,6 +200,8 @@ impl LocalTtsEngine {
         let _serialize_guard = self.serialize.lock().await;
         let mut guard = self.holder.lock().await;
         *guard = None;
+        // 通知依赖引擎状态的适配器：缓存的就绪/声线加载结果已失效。
+        self.version.fetch_add(1, Ordering::AcqRel);
     }
 }
 

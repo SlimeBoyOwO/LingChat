@@ -352,6 +352,7 @@ const voiceModelKeys = [
   'gsv_sovits_model_name',
   'aivis_model_uuid',
   'opentts_voice',
+  'fish_s2_voice',
 ] as const
 
 // --- Schema Definition ---
@@ -430,6 +431,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
         { label: 'gsv', value: 'gsv' },
         { label: 'aivis', value: 'aivis' },
         { label: 'opentts', value: 'opentts' },
+        { label: t('settings.characterInfo.fields.fishS2'), value: 'fishs2' },
         { label: t('settings.characterInfo.fields.localSbv2Api'), value: 'localsbv2api' },
         { label: 'indextts2', value: 'indextts2' },
       ],
@@ -450,7 +452,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
         {
           label: t('settings.characterInfo.voiceLangOptions.en'),
           value: 'en',
-          visibleIf: (s) => ['gsv', 'opentts', 'sbv2', 'sbv2api', 'indextts2'].includes(s.tts_type),
+          visibleIf: (s) => ['gsv', 'opentts', 'sbv2', 'sbv2api', 'indextts2', 'fishs2'].includes(s.tts_type),
         },
         {
           label: t('settings.characterInfo.voiceLangOptions.ko'),
@@ -559,6 +561,16 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       type: 'text',
       isVoiceModel: true,
       visibleIf: (s) => s.tts_type === 'aivis',
+    },
+
+    {
+      key: 'fish_s2_voice',
+      label: t('settings.characterInfo.fields.fishS2Voice'),
+      type: 'text',
+      isVoiceModel: true,
+      realtime: true,
+      placeholder: t('settings.characterInfo.placeholders.fishS2Voice'),
+      visibleIf: (s) => s.tts_type === 'fishs2',
     },
 
     // --- Local SBV2 (localsbv2api) ---

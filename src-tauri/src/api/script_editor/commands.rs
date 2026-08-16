@@ -8,6 +8,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+// base64 0.21+ 的 decode 是 Engine trait 方法，必须引入 trait 才能调用
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as JsonValue};
 use tauri::{AppHandle, Manager};
@@ -22,8 +24,8 @@ use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use super::io::{self, ChapterDoc};
-use super::paths::{self, ScriptLayout};
+use crate::utils::yaml_file::{self, ChapterDoc};
+use crate::utils::script_paths::{self as paths, ScriptLayout};
 use super::schema::{build_schema, ScriptSchema};
 use super::validate::{self, ValidationReport};
 
@@ -160,7 +162,7 @@ pub struct WriteChapterRequest {
 fn read_package(key: &str, loaded_names: &HashSet<String>) -> Result<ScriptPackage, String> {
     let dir = paths::resolve_script_dir(key)?;
     let layout = paths::layout_of(key)?;
-    let config = io::read_story_config(&dir)?;
+    let config = yaml_file::read_story_config(&dir)?;
 
     let folder_name = dir
         .file_name()
@@ -180,14 +182,19 @@ fn read_package(key: &str, loaded_names: &HashSet<String>) -> Result<ScriptPacka
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
+    // 只有羁绊布局或真正的羁绊冒险才认 bound_character_folder：
+    // standalone 独立剧本即使 story_config 残留 adventure.bound_character_folder
+    // （如从羁绊剧本复制改的）也不算绑定，否则编辑器会误显示 MAIN 选项
     let bound_character_folder = if layout == ScriptLayout::Character {
         key.split('/').nth(1).map(|s| s.to_string())
-    } else {
+    } else if is_adventure {
         adventure
             .and_then(|a| a.get("bound_character_folder"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .filter(|s| !s.is_empty())
+    } else {
+        None
     };
 
     Ok(ScriptPackage {
@@ -286,11 +293,22 @@ fn read_characters(script_dir: &Path) -> Vec<ScriptCharacter> {
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| folder.clone());
 
+        // 显示名：`name`（作者手写剧本角色时用这个字段放真正的名字）优先，
+        // 回落 `ai_name`，再回落目录名。此前只读 ai_name，作者把标题写在
+        // ai_name 里时下拉/摘要会显示成「角色标题」而不是名字。
         let ai_name = settings
-            .get("ai_name")
+            .get("name")
             .and_then(|v| v.as_str())
-            .unwrap_or(&folder)
-            .to_string();
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                settings
+                    .get("ai_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+            })
+            .unwrap_or_else(|| folder.clone());
 
         let avatar = e.path().join("avatar");
         let mut emotions: Vec<String> = Vec::new();
@@ -372,7 +390,7 @@ fn chapter_summaries(script_dir: &Path) -> Vec<ChapterSummary> {
         .into_iter()
         .map(|id| {
             let (name, event_count) = match paths::resolve_chapter_file(script_dir, &id, true)
-                .and_then(|f| io::read_yaml_as_json(&f))
+                .and_then(|f| yaml_file::read_yaml_as_json(&f))
                 .and_then(ChapterDoc::from_json)
             {
                 Ok(doc) => (doc.name, doc.events.len()),
@@ -422,7 +440,7 @@ pub async fn editor_read_script(app: AppHandle, key: String) -> Result<ScriptDet
     let dir = paths::resolve_script_dir(&key)?;
     Ok(ScriptDetail {
         package: read_package(&key, &loaded)?,
-        story_config: io::read_story_config(&dir)?,
+        story_config: yaml_file::read_story_config(&dir)?,
         chapters: chapter_summaries(&dir),
         assets: read_asset_index(&dir),
         characters: read_characters(&dir),
@@ -433,7 +451,7 @@ pub async fn editor_read_script(app: AppHandle, key: String) -> Result<ScriptDet
 pub fn editor_read_chapter(key: String, chapter_id: String) -> Result<ChapterContent, String> {
     let dir = paths::resolve_script_dir(&key)?;
     let file = paths::resolve_chapter_file(&dir, &chapter_id, true)?;
-    let doc = ChapterDoc::from_json(io::read_yaml_as_json(&file)?)?;
+    let doc = ChapterDoc::from_json(yaml_file::read_yaml_as_json(&file)?)?;
     Ok(ChapterContent {
         id: chapter_id,
         name: doc.name,
@@ -446,15 +464,15 @@ pub fn editor_read_chapter(key: String, chapter_id: String) -> Result<ChapterCon
 pub fn editor_validate_script(key: String) -> Result<ValidationReport, String> {
     let dir = paths::resolve_script_dir(&key)?;
 
-    // 收集其他剧本的 script_name 用于查重
-    let mut names: HashMap<String, String> = HashMap::new();
+    // 收集其他剧本的 script_name 用于查重（同名剧本都收进来，重名时一次列全）
+    let mut names: HashMap<String, Vec<String>> = HashMap::new();
     for other in paths::enumerate_script_keys() {
         if let Ok(d) = paths::resolve_script_dir(&other) {
-            if let Ok(cfg) = io::read_story_config(&d) {
+            if let Ok(cfg) = yaml_file::read_story_config(&d) {
                 if let Some(n) = cfg.get("script_name").and_then(|v| v.as_str()) {
                     let n = n.trim();
                     if !n.is_empty() {
-                        names.insert(n.to_string(), other.clone());
+                        names.entry(n.to_string()).or_default().push(other.clone());
                     }
                 }
             }
@@ -477,13 +495,13 @@ pub fn editor_write_chapter(req: WriteChapterRequest) -> Result<(), String> {
         events: req.events,
         extra: req.extra,
     };
-    io::write_json_as_yaml(&file, &doc.to_json())
+    yaml_file::write_json_as_yaml(&file, &doc.to_json())
 }
 
 #[tauri::command]
 pub fn editor_write_story_config(key: String, config: JsonValue) -> Result<(), String> {
     let dir = paths::resolve_script_dir(&key)?;
-    io::write_story_config(&dir, &config)
+    yaml_file::write_story_config(&dir, &config)
 }
 
 #[tauri::command]
@@ -503,7 +521,7 @@ pub fn editor_create_chapter(
     if file.exists() {
         return Err(format!("章节已存在: '{}'", chapter_id));
     }
-    io::ensure_parent_dir(&file)?;
+    yaml_file::ensure_parent_dir(&file)?;
 
     let trimmed = name.trim();
     let doc = ChapterDoc {
@@ -520,7 +538,7 @@ pub fn editor_create_chapter(
         })],
         extra: Map::new(),
     };
-    io::write_json_as_yaml(&file, &doc.to_json())?;
+    yaml_file::write_json_as_yaml(&file, &doc.to_json())?;
 
     Ok(ChapterContent {
         id: chapter_id,
@@ -589,7 +607,7 @@ pub async fn editor_create_script(
         .any(|k| k.rsplit('/').next() == Some(folder.as_str()))
     {
         return Err(format!(
-            "已存在同名剧本目录「{}」。羁绊冒险用目录名作全局主键，不能重名",
+            "已存在同名剧本目录「{}」，剧本名不能重名哦",
             folder
         ));
     }
@@ -654,11 +672,11 @@ pub async fn editor_create_script(
     settings.insert("user_name".into(), JsonValue::String(String::new()));
     cfg.insert("script_settings".into(), JsonValue::Object(settings));
 
-    io::write_story_config(&dir, &JsonValue::Object(cfg))?;
+    yaml_file::write_story_config(&dir, &JsonValue::Object(cfg))?;
 
     // 开场章节
     let intro_file = paths::resolve_chapter_file(&dir, &intro, false)?;
-    io::ensure_parent_dir(&intro_file)?;
+    yaml_file::ensure_parent_dir(&intro_file)?;
     let first = ChapterDoc {
         name: Some("第一章".to_string()),
         events: vec![
@@ -671,7 +689,7 @@ pub async fn editor_create_script(
         ],
         extra: Map::new(),
     };
-    io::write_json_as_yaml(&intro_file, &first.to_json())?;
+    yaml_file::write_json_as_yaml(&intro_file, &first.to_json())?;
 
     let loaded = loaded_script_names(&app).await;
     read_package(&key, &loaded)
@@ -948,6 +966,86 @@ pub fn editor_upload_asset(
     Ok(name)
 }
 
+/// 上传编辑器自定义背景。
+///
+/// 与 `editor_upload_asset` 同一模式：只收**源文件路径**，由 Rust 复制 —— 用户从
+/// 任意位置选的文件不在 fs scope 内，大图走 IPC 又会 OOM。
+///
+/// 落盘为 `<data_dir>/editor/<清洗后的原文件名>`，保留用户原名便于识别；复制前
+/// 清空整个 `editor/` 目录（该目录专属于编辑器背景），磁盘上始终只有当前一张。
+#[tauri::command]
+pub fn editor_upload_editor_bg(src_path: String) -> Result<String, String> {
+    let src = Path::new(&src_path);
+    if !src.is_file() {
+        return Err(format!("源文件不存在: {}", src_path));
+    }
+
+    let ext = src
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let allowed = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
+    if !allowed.contains(&ext.as_str()) {
+        return Err(format!(
+            "不支持的文件类型 .{}；背景图支持: {}",
+            ext,
+            allowed.join(" / ")
+        ));
+    }
+
+    // 只取文件名，杜绝用源路径拼出目标路径；保留原名，清洗掉非法字符
+    let raw_name = src
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .ok_or_else(|| "无法从源路径取出文件名".to_string())?;
+    let name = paths::sanitize_file_name(&raw_name)?;
+
+    let dir = data_dir().join("editor");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建背景目录: {}", e))?;
+    clear_editor_bg_dir(&dir)?;
+    let target = dir.join(&name);
+    std::fs::copy(src, &target).map_err(|e| format!("复制背景图失败: {}", e))?;
+    Ok(target.to_string_lossy().to_string())
+}
+
+/// 上传裁剪后的编辑器背景（base64 形式）。
+///
+/// 裁剪在浏览器端完成（cropperjs → canvas → webp），这里只负责解码落盘；
+/// `name` 为前端生成的输出文件名（原名去扩展名 + `_crop.webp`），同样做清洗。
+#[tauri::command]
+pub fn editor_upload_editor_bg_data(data: String, name: String) -> Result<String, String> {
+    // 兼容 data:image/webp;base64, 前缀与纯 base64 两种输入
+    let b64 = data.split(',').next_back().unwrap_or(&data).trim();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("背景图数据解码失败: {}", e))?;
+    if bytes.len() < 4 {
+        return Err("背景图数据无效".to_string());
+    }
+
+    let name = paths::sanitize_file_name(&name)?;
+    let dir = data_dir().join("editor");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建背景目录: {}", e))?;
+    clear_editor_bg_dir(&dir)?;
+    let target = dir.join(&name);
+    std::fs::write(&target, &bytes).map_err(|e| format!("写入背景图失败: {}", e))?;
+    Ok(target.to_string_lossy().to_string())
+}
+
+/// 清空编辑器背景目录下的所有文件。
+///
+/// 该目录只属于「编辑器背景」一个功能，同一时刻磁盘上只允许存在当前这一张，
+/// 换扩展名/换文件名上传时旧文件必须被清掉，否则形成"覆盖不干净"的残留。
+fn clear_editor_bg_dir(dir: &Path) -> Result<(), String> {
+    for entry in std::fs::read_dir(dir).map_err(|e| format!("无法读取背景目录: {}", e))? {
+        let entry = entry.map_err(|e| format!("读取背景目录失败: {}", e))?;
+        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            std::fs::remove_file(entry.path()).map_err(|e| format!("清理旧背景图失败: {}", e))?;
+        }
+    }
+    Ok(())
+}
+
 /// 递归复制目录，供 rename 跨设备失败时兜底。
 fn copy_dir_recursive(from: &Path, to: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(to)?;
@@ -998,7 +1096,7 @@ pub fn editor_create_character(
         JsonValue::String(system_prompt.trim().to_string()),
     );
 
-    io::write_json_as_yaml(
+    yaml_file::write_json_as_yaml(
         &char_dir.join("settings.yml"),
         &JsonValue::Object(settings),
     )?;
@@ -1028,6 +1126,8 @@ pub struct GlobalCharacter {
     pub already_in_script: bool,
     /// 全局目录里有没有 avatar/，没有的话导入后也不会有立绘
     pub has_avatar: bool,
+    /// 全局角色已上传的服装目录（avatar/ 下的子目录，供编辑器服装下拉使用）
+    pub clothes: Vec<String>,
 }
 
 /// 列出全局角色库，并标出哪些已经导入到当前剧本。
@@ -1059,15 +1159,36 @@ pub fn editor_list_global_characters(key: String) -> Result<Vec<GlobalCharacter>
             .ok()
             .and_then(|s| serde_yaml::from_str(&s).ok())
             .unwrap_or(JsonValue::Null);
+        // 服装候选：avatar/ 下的子目录（与 read_characters 的扫描规则一致）
+        let mut clothes = Vec::new();
+        if let Ok(files) = std::fs::read_dir(e.path().join("avatar")) {
+            for f in files.flatten() {
+                if f.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    clothes.push(f.file_name().to_string_lossy().to_string());
+                }
+            }
+        }
+        clothes.sort();
+        // 显示名与 read_characters 同一规则：name 优先，回落 ai_name，再回落目录名
+        let display_name = settings
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                settings
+                    .get("ai_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+            })
+            .unwrap_or_else(|| folder.clone());
         out.push(GlobalCharacter {
-            ai_name: settings
-                .get("ai_name")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&folder)
-                .to_string(),
+            ai_name: display_name,
             already_in_script: existing.contains(&folder),
             has_avatar: e.path().join("avatar").is_dir(),
             folder,
+            clothes,
         });
     }
     out.sort_by(|a, b| a.folder.cmp(&b.folder));
@@ -1125,7 +1246,7 @@ pub fn editor_import_global_character(
     obj.remove("script_key");
     obj.insert("script_role_key".into(), JsonValue::String(folder.clone()));
 
-    io::write_json_as_yaml(&dest.join("settings.yml"), &settings)?;
+    yaml_file::write_json_as_yaml(&dest.join("settings.yml"), &settings)?;
 
     if with_avatar {
         let avatar = src.join("avatar");
@@ -1240,7 +1361,7 @@ pub async fn editor_start_preview(
 
     let state = app.state::<AppState>();
     let dir = paths::resolve_script_dir(&key)?;
-    let config_name = io::read_story_config(&dir)?
+    let config_name = yaml_file::read_story_config(&dir)?
         .get("script_name")
         .and_then(|v| v.as_str())
         .map(|s| s.trim().to_string())
@@ -1626,12 +1747,44 @@ async fn find_main_role_by_folder(
 }
 
 /// 角色显示名，查不到就算了 —— 这只是给作者看的提示文案，不值得让整个命令失败。
+///
+/// DB 的 roles.name 是角色初始化时写入的 title（见 role_sync），不是显示名；
+/// 这里改读角色的 settings.yml（name → ai_name），与 read_characters 同一规则。
+/// 剧本 NPC 用 script_key 定位到剧本内 characters/，全局角色直接读全局目录。
 async fn role_name_of(db: &DatabaseConnection, id: i32) -> Option<String> {
-    RoleRepo::get_role_by_id(db, id)
-        .await
-        .ok()
-        .flatten()
-        .map(|r| r.name)
+    let role = RoleRepo::get_role_by_id(db, id).await.ok().flatten()?;
+    let folder = role.resource_folder.as_deref().unwrap_or_default();
+
+    let settings_path = match role.script_key.as_deref() {
+        Some(script_key) => paths::resolve_script_dir(script_key)
+            .ok()
+            .map(|d| d.join("characters").join(folder).join("settings.yml")),
+        None => Some(crate::api::characters_dir().join(folder).join("settings.yml")),
+    };
+
+    if let Some(path) = settings_path {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            let settings: JsonValue = serde_yaml::from_str(&content).unwrap_or(JsonValue::Null);
+            let from_yaml = settings
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    settings
+                        .get("ai_name")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                });
+            if from_yaml.is_some() {
+                return from_yaml;
+            }
+        }
+    }
+
+    // settings.yml 读不到时兜底 DB name（聊胜于无）
+    Some(role.name)
 }
 
 /// 角色卡里写的玩家名（settings.user_name）。查不到或为空返回空串 ——
@@ -1673,7 +1826,7 @@ pub async fn editor_preview_readiness(
     key: String,
 ) -> Result<PreviewReadiness, String> {
     let dir = paths::resolve_script_dir(&key)?;
-    let cfg = io::read_story_config(&dir)?;
+    let cfg = yaml_file::read_story_config(&dir)?;
     let bound = cfg
         .get("adventure")
         .and_then(|a| a.get("bound_character_folder"))

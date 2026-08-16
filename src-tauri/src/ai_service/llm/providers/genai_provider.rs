@@ -8,7 +8,7 @@ use futures_util::StreamExt;
 use genai::adapter::AdapterKind;
 use genai::chat::{
     ChatMessage, ChatOptions, ChatRequest, ChatResponse, ChatStreamEvent,
-    ToolCall as GenaiToolCall, ToolChoice, ToolResponse,
+    StopReason, ToolCall as GenaiToolCall, ToolChoice, ToolResponse,
 };
 use genai::resolver::{AuthData, Endpoint};
 use genai::Client as GenaiClient;
@@ -250,6 +250,18 @@ impl GenaiProvider {
         }
     }
 
+    /// 归一化 genai 的停止原因为稳定字符串，供上层做截断检测等决策。
+    fn normalize_stop_reason(reason: &StopReason) -> String {
+        match reason {
+            StopReason::Completed(_) => "stop".to_string(),
+            StopReason::MaxTokens(_) => "max_tokens".to_string(),
+            StopReason::ToolCall(_) => "tool_calls".to_string(),
+            StopReason::ContentFilter(_) => "content_filter".to_string(),
+            StopReason::StopSequence(_) => "stop_sequence".to_string(),
+            StopReason::Other(s) => s.clone(),
+        }
+    }
+
     async fn complete_stream_inner(
         &self,
         messages: &[LlmMessage],
@@ -286,10 +298,17 @@ impl GenaiProvider {
                                 yield LlmChunk::Reasoning(reasoning);
                             }
                         }
+                        // 先取走停止原因（captured_into_tool_calls 会移动 end）
+                        let reason = end
+                            .captured_stop_reason
+                            .as_ref()
+                            .map(Self::normalize_stop_reason);
                         if let Some(calls) = end.captured_into_tool_calls() {
                             let calls = calls.iter().map(Self::convert_tool_call).collect();
                             yield LlmChunk::ToolCalls(calls);
                         }
+                        // 终止信号：透传归一化停止原因（工具闭环用它检测截断）
+                        yield LlmChunk::StreamEnd { reason };
                     }
                 }
             }
@@ -386,6 +405,23 @@ mod tests {
             .err()
             .unwrap();
         assert!(error.to_string().contains("缺少 tool_call_id"));
+    }
+
+    #[test]
+    fn normalizes_stop_reason_for_truncation_detection() {
+        use genai::chat::StopReason;
+        let cases = [
+            (StopReason::Completed("stop".into()), "stop"),
+            // OpenAI/DeepSeek 用 "length" 表示输出被 max_tokens 截断
+            (StopReason::MaxTokens("length".into()), "max_tokens"),
+            (StopReason::ToolCall("tool_calls".into()), "tool_calls"),
+            (StopReason::ContentFilter("content_filter".into()), "content_filter"),
+            (StopReason::StopSequence("stop_sequence".into()), "stop_sequence"),
+            (StopReason::Other("custom".into()), "custom"),
+        ];
+        for (reason, expected) in cases {
+            assert_eq!(GenaiProvider::normalize_stop_reason(&reason), expected);
+        }
     }
 }
 

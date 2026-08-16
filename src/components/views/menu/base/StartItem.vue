@@ -6,7 +6,6 @@
       border-none
       mt-[15px]
       p-[5px]
-      text-[clamp(40px,4vw,72px)]
       font-['Maoken_Assorted_Sans',-apple-system,BlinkMacSystemFont,'Segoe_UI',Roboto,'Helvetica_Neue',Arial,sans-serif]
       cursor-pointer
       text-justify
@@ -23,11 +22,16 @@
       disabled:cursor-not-allowed
       hover:disabled:text-white
       hover:disabled:text-shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
+    :class="isUltraWide ? 'text-[clamp(28px,3vw,52px)]' : 'text-[clamp(40px,4vw,72px)]'"
   >
     <slot />
   </button>
 </template>
 
 <script setup lang="ts">
+import { inject } from 'vue'
+
 defineOptions({ inheritAttrs: false })
+
+const isUltraWide = inject<{ value: boolean }>('isUltraWide', { value: false })
 </script>

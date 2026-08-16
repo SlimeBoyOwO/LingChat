@@ -41,6 +41,13 @@ pub struct TtsConfig {
     #[serde(default = "default_indextts_url")]
     pub indextts_api_url: String,
 
+    /// Fish Audio S2 / s2.cpp 服务地址
+    #[serde(default = "default_fish_s2_url")]
+    pub fish_s2_api_url: String,
+    /// Fish Audio S2 默认音色标识
+    #[serde(default = "default_fish_s2_voice")]
+    pub fish_s2_voice: String,
+
     /// OpenTTS API 地址
     #[serde(default = "default_opentts_url")]
     pub opentts_api_url: String,
@@ -85,6 +92,12 @@ pub fn default_aivis_url() -> String {
 pub fn default_indextts_url() -> String {
     "http://127.0.0.1:23467/voice/indextts/presets".into()
 }
+pub fn default_fish_s2_url() -> String {
+    "http://127.0.0.1:3030".into()
+}
+pub fn default_fish_s2_voice() -> String {
+    "paimeng".into()
+}
 pub fn default_opentts_url() -> String {
     "https://api.siliconflow.cn/v1".into()
 }
@@ -114,6 +127,8 @@ impl Default for TtsConfig {
             aivis_api_url: default_aivis_url(),
             aivis_api_key: None,
             indextts_api_url: default_indextts_url(),
+            fish_s2_api_url: default_fish_s2_url(),
+            fish_s2_voice: default_fish_s2_voice(),
             opentts_api_url: default_opentts_url(),
             opentts_api_key: None,
             opentts_model: default_opentts_model(),
@@ -164,6 +179,8 @@ impl TtsConfig {
                 }
             },
             indextts_api_url: get_string(keys::INDEXTTS_API_URL, &default_indextts_url()),
+            fish_s2_api_url: get_string(keys::FISH_S2_API_URL, &default_fish_s2_url()),
+            fish_s2_voice: get_string(keys::FISH_S2_VOICE, &default_fish_s2_voice()),
             opentts_api_url: get_string(keys::OPENTTS_API_URL, &default_opentts_url()),
             opentts_api_key: {
                 let s = get_string(keys::OPENTTS_API_KEY, "");
