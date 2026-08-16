@@ -992,7 +992,7 @@ export default {
       deleteDebertaSuccess: 'DeBERTa deleted',
       deleteDebertaFailed: 'Failed to delete DeBERTa: {error}',
       enableHintTitle: 'Local TTS enabled',
-      enableHintMessage: 'After enabling local TTS, go to the character voice settings and select the TTS type "Local SBV2 API" and a local voice model',
+      enableHintMessage: 'After enabling local TTS, go to the character voice settings and select the TTS type "Local SBV2 API" and a local voice ID',
       previewFailed: 'Preview failed: {error}',
       readSwitchFailed: 'Failed to read local TTS switch: {error}',
       switchEnabled: 'Local TTS enabled.',

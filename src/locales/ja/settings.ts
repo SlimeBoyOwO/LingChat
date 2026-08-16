@@ -990,7 +990,7 @@ export default {
       deleteDebertaSuccess: 'DeBERTa を削除しました',
       deleteDebertaFailed: 'DeBERTa の削除に失敗：{error}',
       enableHintTitle: 'ローカル TTS を有効にしました',
-      enableHintMessage: 'ローカル TTS を有効にしたら、キャラクター音声設定で TTS タイプを「ローカル SBV2 API」とローカル音声モデルに選択してください',
+      enableHintMessage: 'ローカル TTS を有効にしたら、キャラクター音声設定で TTS タイプを「ローカル SBV2 API」とローカル音声IDに選択してください',
       previewFailed: '試聴に失敗：{error}',
       readSwitchFailed: 'ローカル TTS スイッチの読み取りに失敗：{error}',
       switchEnabled: 'ローカル TTS を有効にしました。',

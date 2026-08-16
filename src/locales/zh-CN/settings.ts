@@ -991,7 +991,7 @@ export default {
       deleteDebertaSuccess: 'DeBERTa 已删除',
       deleteDebertaFailed: '删除 DeBERTa 失败：{error}',
       enableHintTitle: '本地 TTS 已开启',
-      enableHintMessage: '本地 TTS 开启后，请到角色语音设置 TTS 类型选择「本地 SBV2 API」和本地语音模型',
+      enableHintMessage: '本地 TTS 开启后，请到角色语音设置 TTS 类型选择「本地 SBV2 API」和本地语音ID',
       previewFailed: '试听失败：{error}',
       readSwitchFailed: '读取本地 TTS 开关失败：{error}',
       switchEnabled: '本地 TTS 已启用。',
