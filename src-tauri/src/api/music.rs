@@ -114,78 +114,80 @@ pub async fn upload_music(
     path: String,
     file_name: String,
 ) -> Result<UploadMusicResult, String> {
-    // 1. 防路径遍历
-    let original_name = std::path::Path::new(&file_name)
-        .file_name()
-        .ok_or_else(|| format!("无效的文件名: {}", file_name))?
-        .to_string_lossy()
-        .into_owned();
+    // Android SAF：先把 content URI 复制到本地 cache，magic sniff 和后续复制都用本地路径。
+    let (src_path, cleanup_after_import) =
+        crate::ai_service::tts::local::saf_bridge::prepare_file_import_source(&app, &path).await?;
 
-    // 2. magic sniff 决定真实格式
-    let src_path = std::path::PathBuf::from(&path);
-    let detected = infer::get_from_path(&src_path)
-        .map_err(|e| format!("读取文件头失败: {e}"))?;
-    let (kind, correct_ext) = match detected {
-        Some(k) if k.matcher_type() == infer::MatcherType::Audio => match k.mime_type() {
-            "audio/mpeg" => ("mp3",  "mp3"),
-            "audio/wav"  => ("wav",  "wav"),
-            "audio/flac" => ("flac", "flac"),
-            "audio/ogg"  => ("ogg",  "ogg"),
-            "audio/mp4"  => ("m4a",  "m4a"),
+    let result: Result<UploadMusicResult, String> = async {
+        // 1. 防路径遍历
+        let original_name = std::path::Path::new(&file_name)
+            .file_name()
+            .ok_or_else(|| format!("无效的文件名: {}", file_name))?
+            .to_string_lossy()
+            .into_owned();
+
+        // 2. magic sniff 决定真实格式（src_path 已是本地路径，desktop / SAF 都通）
+        let detected = infer::get_from_path(&src_path)
+            .map_err(|e| format!("读取文件头失败: {e}"))?;
+        let (kind, correct_ext) = match detected {
+            Some(k) if k.matcher_type() == infer::MatcherType::Audio => match k.mime_type() {
+                "audio/mpeg" => ("mp3",  "mp3"),
+                "audio/wav"  => ("wav",  "wav"),
+                "audio/flac" => ("flac", "flac"),
+                "audio/ogg"  => ("ogg",  "ogg"),
+                "audio/mp4"  => ("m4a",  "m4a"),
+                _ => return Err("MUSIC_INVALID_FORMAT".into()),
+            },
             _ => return Err("MUSIC_INVALID_FORMAT".into()),
-        },
-        _ => return Err("MUSIC_INVALID_FORMAT".into()),
-    };
+        };
 
-    // 3. 用 magic 决定的扩展名替换原扩展名
-    let stem = std::path::Path::new(&original_name)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("track");
-    let corrected_name = format!("{stem}.{correct_ext}");
+        // 3. 用 magic 决定的扩展名替换原扩展名
+        let stem = std::path::Path::new(&original_name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("track");
+        let corrected_name = format!("{stem}.{correct_ext}");
 
-    // 4. 确保目标目录存在
-    let music_dir = music_dir();
-    if !music_dir.exists() {
-        tokio::fs::create_dir_all(&music_dir)
-            .await
-            .map_err(|e| format!("创建音乐目录失败: {}", e))?;
-    }
-
-    // 5. 冲突时按 _2/_3/... 后缀
-    let mut final_name = corrected_name;
-    let mut counter = 2u32;
-    while music_dir.join(&final_name).exists() {
-        if counter > 999 {
-            final_name = format!("{stem}_{}{}", chrono::Utc::now().timestamp_millis(), correct_ext);
-            break;
+        // 4. 确保目标目录存在
+        let music_dir = music_dir();
+        if !music_dir.exists() {
+            tokio::fs::create_dir_all(&music_dir)
+                .await
+                .map_err(|e| format!("创建音乐目录失败: {}", e))?;
         }
-        final_name = format!("{stem}_{counter}.{correct_ext}");
-        counter += 1;
-    }
 
-    let was_corrected = original_name != final_name;
-    let file_path = music_dir.join(&final_name);
+        // 5. 冲突时按 _2/_3/... 后缀
+        let mut final_name = corrected_name;
+        let mut counter = 2u32;
+        while music_dir.join(&final_name).exists() {
+            if counter > 999 {
+                final_name = format!("{stem}_{}{}", chrono::Utc::now().timestamp_millis(), correct_ext);
+                break;
+            }
+            final_name = format!("{stem}_{counter}.{correct_ext}");
+            counter += 1;
+        }
 
-    // 6. 复制（桌面 vs Android SAF）
-    if path.starts_with("content://") {
-        use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
-        app.android_fs_async()
-            .copy(&FsUri::from_uri(&path), &FsUri::from_path(&file_path))
-            .await
-            .map_err(|e| format!("SAF 复制音乐失败: {}", e))?;
-    } else {
-        tokio::fs::copy(&src_path, &file_path)
-            .await
+        let was_corrected = original_name != final_name;
+        let file_path = music_dir.join(&final_name);
+
+        // 6. 复制（src_path 是本地 cache，dest 也是本地路径，用 std::fs::copy）
+        std::fs::copy(&src_path, &file_path)
             .map_err(|e| format!("复制文件失败: {}", e))?;
-    }
 
-    Ok(UploadMusicResult {
-        actual_name: final_name,
-        original_name,
-        detected_kind: kind.to_string(),
-        was_corrected,
-    })
+        Ok(UploadMusicResult {
+            actual_name: final_name,
+            original_name,
+            detected_kind: kind.to_string(),
+            was_corrected,
+        })
+    }
+    .await;
+
+    if cleanup_after_import {
+        let _ = tokio::fs::remove_file(&src_path).await;
+    }
+    result
 }
 
 /// 删除指定音乐文件

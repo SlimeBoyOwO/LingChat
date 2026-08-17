@@ -887,7 +887,7 @@ async function loadImportedFonts() {
 async function handleImportFont() {
   const selected = await openDialog({
     multiple: false,
-    filters: [{ name: '字体文件', extensions: ['ttf', 'woff2'] }],
+    filters: [{ name: '字体文件', extensions: ['ttf', 'otf', 'woff', 'woff2', 'ttc'] }],
   })
   if (!selected) return
 

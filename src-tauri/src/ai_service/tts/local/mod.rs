@@ -9,7 +9,7 @@ pub mod registry;
 pub mod setup;
 
 mod download;
-mod saf_bridge;
+pub(crate) mod saf_bridge;
 
 use std::sync::Arc;
 
