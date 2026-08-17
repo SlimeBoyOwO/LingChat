@@ -64,6 +64,23 @@ export default {
       ARCHIVE_MISSING_SETTINGS_YML: '压缩包缺少 settings.yml\n这可能是旧版角色，请下载新版角色后导入',
     },
   },
+  fontImport: {
+    errors: {
+      FONT_INVALID_FORMAT: '不是合法的字体文件（ttf/otf/woff/woff2），文件已损坏或扩展名与内容不符',
+    },
+  },
+  musicImport: {
+    errors: {
+      MUSIC_INVALID_FORMAT: '不是合法的音频文件（mp3/wav/flac/ogg/m4a），文件已损坏或扩展名与内容不符',
+    },
+  },
+  notice: {
+    autoCorrected: {
+      title: '已自动修正',
+      font: '{original} 不是 {originalExt} 字体格式（检测为 {detected}），已自动修正为 {corrected}',
+      music: '{original} 不是 {originalExt} 音频格式（检测为 {detected}），已自动修正为 {corrected}',
+    },
+  },
   menuItem: {
     defaultTitle: '默认标题',
   },

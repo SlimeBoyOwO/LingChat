@@ -65,6 +65,23 @@ export default {
       "ARCHIVE_MISSING_SETTINGS_YML": "壓縮包缺少 settings.yml\n這可能是舊版角色，請下載新版角色後匯入"
     }
   },
+  "fontImport": {
+    "errors": {
+      "FONT_INVALID_FORMAT": "不是合法的字體檔案（ttf/otf/woff/woff2），檔案已損壞或擴展名與內容不符"
+    }
+  },
+  "musicImport": {
+    "errors": {
+      "MUSIC_INVALID_FORMAT": "不是合法的音訊檔案（mp3/wav/flac/ogg/m4a），檔案已損壞或擴展名與內容不符"
+    }
+  },
+  "notice": {
+    "autoCorrected": {
+      "title": "已自動修正",
+      "font": "{original} 不是 {originalExt} 字體格式（偵測為 {detected}），已自動修正為 {corrected}",
+      "music": "{original} 不是 {originalExt} 音訊格式（偵測為 {detected}），已自動修正為 {corrected}"
+    }
+  },
   "menuItem": {
     "defaultTitle": "預設標題"
   },
