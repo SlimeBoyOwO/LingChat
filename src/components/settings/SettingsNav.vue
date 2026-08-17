@@ -115,6 +115,7 @@
         <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.log') }}</p>
       </Button>
       <Button
+        v-if="!isAndroid()"
         ref="pluginsBtn"
         type="nav"
         class="shrink-0"

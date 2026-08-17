@@ -90,9 +90,8 @@ jobs:
           touch data/.official/game_data/.gitkeep
           touch data/third_party/.gitkeep
           node scripts/prepare-desktop-resources.mjs
-          pip install Pillow
-          rm -rf ./src-tauri/icons/icon.png
-          python -c "from PIL import Image, ImageDraw; img=Image.new('RGB', (1024,1024), color='#4A90D9'); draw=ImageDraw.Draw(img); draw.ellipse((100,100,924,924), fill='#2C3E50'); img.save('./src-tauri/icons/icon.png')"
+          # icon.png 由 git LFS 追踪，checkout(lfs: true) 已拉取真实图标；
+          # 这里用真实图标生成全套尺寸（此前用 PIL 占位图导致应用图标异常）
           pnpm tauri icon ./src-tauri/icons/icon.png
 
       - name: 准备 Android 项目
