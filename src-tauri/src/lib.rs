@@ -725,6 +725,7 @@ pub fn run() {
             api::schedule::reload_proactive_system,
             api::proactive_set_can_deliver,
             api::tool_settings::get_tool_settings,
+            api::tool_settings::get_tool_runtime_info,
             api::tool_settings::save_tool_settings,
             api::tool_settings::test_web_search,
             api::tool_settings::resolve_command_approval,
