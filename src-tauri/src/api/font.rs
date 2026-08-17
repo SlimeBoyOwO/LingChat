@@ -33,6 +33,10 @@ pub struct UploadFontResult {
     pub detected_kind: String,
     /// 是否发生自动修正（原扩展名 != magic 决定的扩展名）
     pub was_corrected: bool,
+    /// 字体文件绝对路径，供前端 convertFileSrc 使用
+    pub file_path: String,
+    /// CSS font-family 名称（actual_name 去扩展名）
+    pub font_family: String,
 }
 
 // ========== Tauri 命令 ==========
@@ -179,10 +183,16 @@ pub fn import_font(path: String) -> Result<UploadFontResult, String> {
         .map_err(|e| format!("复制字体文件失败: {}", e))?;
 
     Ok(UploadFontResult {
-        actual_name: final_name,
+        actual_name: final_name.clone(),
         original_name,
         detected_kind: kind.to_string(),
         was_corrected,
+        file_path: dest_path.to_string_lossy().into_owned(),
+        font_family: Path::new(&final_name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("font")
+            .to_string(),
     })
 }
 
