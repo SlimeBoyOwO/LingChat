@@ -165,12 +165,13 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
     let cache_dir = plugins_root().join(".cache");
     let zip_path = cache_dir.join(format!("{}-{}.zip", pkg.id, pkg.version));
     let app_for_progress = app.clone();
+    let progress_id = id.clone();
     let progress: Option<Arc<dyn Fn(crate::utils::download::DownloadProgress) + Send + Sync>> =
         Some(Arc::new(move |p| {
             let _ = app_for_progress.emit(
                 "market:progress",
                 serde_json::json!({
-                    "id": id,
+                    "id": progress_id,
                     "phase": "download",
                     "percent": p.percent,
                     "bytes": p.bytes_done,

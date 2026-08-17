@@ -75,7 +75,7 @@ pub fn install_package(
 
         let manifest_text = fs::read_to_string(staging.join("manifest.toml"))
             .map_err(|e| format!("包内缺少 manifest.toml: {e}"))?;
-        let m = manifest::parse(&manifest_text)?;
+        let m = manifest::parse(&manifest_text).map_err(|e| e.to_string())?;
 
         let dir = match m.package_type.as_str() {
             "plugin" => install_plugin(&m, &staging, plugins_root)?,
