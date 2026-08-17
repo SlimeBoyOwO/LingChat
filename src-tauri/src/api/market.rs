@@ -8,10 +8,13 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
+#[cfg(desktop)]
+use tauri::Manager;
 
 use crate::init::static_copy;
 use crate::plugins::installer;
+#[cfg(desktop)]
 use crate::AppState;
 
 /// 市场仓库 plugins.json（main 分支，raw 直连）。
@@ -230,12 +233,22 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
         write_records(&records)?;
     }
 
-    // 插件类重新扫描（注册工具）；内容类无需注册
+    // 插件类重新扫描（注册工具）；内容类无需注册。
+    // 移动端（Android/iOS）不编译插件系统（RustPython 依赖问题），
+    // 插件包照常落盘 data/plugins/，但运行需桌面端。
     if installed.manifest.package_type == "plugin" {
-        let manager = app.state::<AppState>().data().plugin_manager.clone();
-        tokio::task::spawn_blocking(move || manager.reload())
-            .await
-            .map_err(|e| format!("插件重载线程异常: {e}"))?;
+        #[cfg(desktop)]
+        {
+            let manager = app.state::<AppState>().data().plugin_manager.clone();
+            tokio::task::spawn_blocking(move || manager.reload())
+                .await
+                .map_err(|e| format!("插件重载线程异常: {e}"))?;
+        }
+        #[cfg(not(desktop))]
+        tracing::info!(
+            "移动端安装插件 '{}'：已落盘 data/plugins/，运行需桌面端",
+            id
+        );
     }
 
     let _ = app.emit(
@@ -255,8 +268,20 @@ pub async fn market_uninstall(app: AppHandle, id: String) -> Result<(), String> 
 
     match record.package_type.as_str() {
         "plugin" => {
-            let manager = app.state::<AppState>().data().plugin_manager.clone();
-            manager.delete_plugin(&id).await?;
+            #[cfg(desktop)]
+            {
+                let manager = app.state::<AppState>().data().plugin_manager.clone();
+                manager.delete_plugin(&id).await?;
+            }
+            #[cfg(not(desktop))]
+            {
+                // 移动端没有 PluginManager：直接删目录（记录随后移除）
+                let dir = PathBuf::from(&record.dir);
+                if dir.exists() {
+                    std::fs::remove_dir_all(&dir)
+                        .map_err(|e| format!("删除目录失败: {e}"))?;
+                }
+            }
         }
         _ => {
             let dir = PathBuf::from(&record.dir);

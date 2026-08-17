@@ -8,8 +8,9 @@ mod init;
 mod lan_sync;
 mod manifest;
 mod migration;
-// 插件系统由 RustPython 驱动，移动端（Android/iOS）构建时依赖不可用，整体排除
-#[cfg(desktop)]
+// 插件系统：types/manifest/installer 全平台编译（市场安装链路）；
+// RustPython 运行部分（manager/python_backend/http_host/tool）仅桌面端，
+// 见 plugins/mod.rs。AppState.plugin_manager 字段同样 cfg(desktop)。
 mod plugins;
 mod resource_sync;
 pub mod utils;
