@@ -124,9 +124,10 @@ jobs:
       # dev 构建没有 secrets 时跳过手动签名，上传自动签名的 debug APK
       - name: 手动签名 APK
         if: ${{ env.ANDROID_KEY_B64 != '' }}
+        continue-on-error: true
         env:
           ANDROID_KEY_B64: ${{ secrets.ANDROID_KEY_BASE64 }}
-        continue-on-error: true
+          ANDROID_HOME: /usr/local/lib/android/sdk
         run: |
           VERSION="${{ github.event.inputs.tag_name }}"
           APK_PATH="src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk"
@@ -137,8 +138,6 @@ jobs:
             --ks-pass pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
             --key-pass pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
             "$APK_PATH"
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
 
       - name: 上传 artifact (APK)
         uses: actions/upload-artifact@v4
