@@ -53,21 +53,44 @@
           >
             <option value="kimi" class="bg-slate-800 text-white">Kimi /search</option>
             <option value="bocha" class="bg-slate-800 text-white">BoCha 博查</option>
+            <option value="deepseek" class="bg-slate-800 text-white">
+              {{ $t('ui.toolCalls.providerDeepSeek') }}
+            </option>
             <option value="custom" class="bg-slate-800 text-white">
               {{ $t('ui.toolCalls.providerCustom') }}
             </option>
           </select>
 
-          <!-- 独立端点模式下 kimi/bocha/custom 后端都强制校验 API Key，始终显示输入框 -->
+          <!-- 独立端点模式下 kimi/bocha/deepseek/custom 后端都强制校验 API Key，始终显示输入框 -->
           <label class="inline-flex items-center font-medium text-brand mt-4">
             {{ $t('ui.toolCalls.apiKey') }}
           </label>
           <input
             type="password"
             v-model="form.web_search.api_key"
-            :placeholder="$t('ui.toolCalls.apiKeyPlaceholder')"
+            :placeholder="
+              form.web_search.provider === 'deepseek'
+                ? $t('ui.toolCalls.dsApiKeyPlaceholder')
+                : $t('ui.toolCalls.apiKeyPlaceholder')
+            "
             class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
           />
+
+          <!-- DeepSeek Responses：可切换模型；结果数量由服务端决定，不展示条数设置 -->
+          <template v-if="form.web_search.provider === 'deepseek'">
+            <label class="inline-flex items-center font-medium text-brand mt-4">
+              {{ $t('ui.toolCalls.dsModel') }}
+            </label>
+            <input
+              type="text"
+              v-model="form.web_search.model"
+              placeholder="deepseek-v4-flash"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+            />
+            <p class="text-sm mt-2 mb-2 text-gray-300">
+              {{ $t('ui.toolCalls.dsHint') }}
+            </p>
+          </template>
 
           <!-- 仅自定义端点需要填写地址；kimi/bocha 使用各自的固定端点 -->
           <template v-if="form.web_search.provider === 'custom'">
@@ -86,17 +109,19 @@
             />
           </template>
 
-          <label class="inline-flex items-center font-medium text-brand mt-4">
-            {{ $t('ui.toolCalls.maxResults') }}
-          </label>
-          <input
-            type="number"
-            v-model.number="form.web_search.max_results"
-            min="1"
-            max="20"
-            step="1"
-            class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-          />
+          <template v-if="form.web_search.provider !== 'deepseek'">
+            <label class="inline-flex items-center font-medium text-brand mt-4">
+              {{ $t('ui.toolCalls.maxResults') }}
+            </label>
+            <input
+              type="number"
+              v-model.number="form.web_search.max_results"
+              min="1"
+              max="20"
+              step="1"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+            />
+          </template>
         </template>
 
         <div class="flex items-center gap-3 py-2.5 px-1">
@@ -266,6 +291,7 @@ const form = reactive<ToolSettings>({
     enabled: false,
     use_builtin: true,
     provider: 'kimi',
+    model: 'deepseek-v4-flash',
     api_key: '',
     base_url: '',
     proxy_enabled: false,

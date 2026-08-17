@@ -7,8 +7,10 @@ export interface WebSearchSettings {
   enabled: boolean
   /** true = 模型 API 内置联网（免 Key）；false = 独立搜索端点 + api_key */
   use_builtin: boolean
-  /** 独立端点模式的搜索提供商："kimi" | "bocha" | "custom"（仅 custom 用 base_url） */
+  /** 独立端点模式的搜索提供商："kimi" | "bocha" | "deepseek" | "custom"（仅 custom 用 base_url） */
   provider: string
+  /** DeepSeek Responses API 使用的模型（仅 provider = "deepseek" 时生效） */
+  model: string
   api_key: string
   base_url: string
   proxy_enabled: boolean
