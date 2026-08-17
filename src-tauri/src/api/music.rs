@@ -115,19 +115,28 @@ pub async fn upload_music(
     file_name: String,
 ) -> Result<UploadMusicResult, String> {
     // Android SAF：先把 content URI 复制到本地 cache，magic sniff 和后续复制都用本地路径。
-    let (src_path, cleanup_after_import) =
+    let src =
         crate::ai_service::tts::local::saf_bridge::prepare_file_import_source(&app, &path).await?;
 
     let result: Result<UploadMusicResult, String> = async {
-        // 1. 防路径遍历
-        let original_name = std::path::Path::new(&file_name)
-            .file_name()
-            .ok_or_else(|| format!("无效的文件名: {}", file_name))?
-            .to_string_lossy()
-            .into_owned();
+        // 1. 优先用前端传来的 file_name（桌面端是真实文件名；Android 上是
+        //    dialog 给的 URI 末段，已经前端 decode 过）。回退到 src 提供的
+        //    display_name（也是 SAF 末段）。
+        let original_name = if !file_name.is_empty() {
+            std::path::Path::new(&file_name)
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(src.display_name.clone())
+        } else {
+            src.display_name.clone()
+        };
+        if original_name.is_empty() {
+            return Err(format!("无效的文件名: {}", file_name));
+        }
 
-        // 2. magic sniff 决定真实格式（src_path 已是本地路径，desktop / SAF 都通）
-        let detected = infer::get_from_path(&src_path)
+        // 2. magic sniff 决定真实格式（src.path 已是本地路径，desktop / SAF 都通）
+        let detected = infer::get_from_path(&src.path)
             .map_err(|e| format!("读取文件头失败: {e}"))?;
         let (kind, correct_ext) = match detected {
             Some(k) if k.matcher_type() == infer::MatcherType::Audio => match k.mime_type() {
@@ -171,8 +180,8 @@ pub async fn upload_music(
         let was_corrected = original_name != final_name;
         let file_path = music_dir.join(&final_name);
 
-        // 6. 复制（src_path 是本地 cache，dest 也是本地路径，用 std::fs::copy）
-        std::fs::copy(&src_path, &file_path)
+        // 6. 复制（src.path 是本地 cache，dest 也是本地路径，用 std::fs::copy）
+        std::fs::copy(&src.path, &file_path)
             .map_err(|e| format!("复制文件失败: {}", e))?;
 
         Ok(UploadMusicResult {
@@ -184,8 +193,8 @@ pub async fn upload_music(
     }
     .await;
 
-    if cleanup_after_import {
-        let _ = tokio::fs::remove_file(&src_path).await;
+    if src.cleanup_after_import {
+        let _ = tokio::fs::remove_file(&src.path).await;
     }
     result
 }

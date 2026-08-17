@@ -140,14 +140,14 @@ pub async fn import_font(
     path: String,
 ) -> Result<UploadFontResult, String> {
     // Android SAF：先把 content URI 复制到本地 cache，magic sniff 和后续复制都用本地路径。
-    let (src, cleanup_after_import) =
+    let src =
         crate::ai_service::tts::local::saf_bridge::prepare_file_import_source(&app, &path).await?;
 
     let result: Result<UploadFontResult, String> = async {
         // 1. magic sniff 决定真实格式（替代原扩展名白名单）。
         //    注意：infer 把 WOFF 和 WOFF2 都映射到 mime "application/font-woff"，
         //    所以必须同时检查 mime + extension 才能区分。
-        let detected = infer::get_from_path(&src)
+        let detected = infer::get_from_path(&src.path)
             .map_err(|e| format!("读取文件头失败: {e}"))?;
         let (kind, correct_ext) = match detected {
             Some(k) if k.matcher_type() == infer::MatcherType::Font => match (k.mime_type(), k.extension()) {
@@ -160,12 +160,12 @@ pub async fn import_font(
             _ => return Err("FONT_INVALID_FORMAT".into()),
         };
 
-        // 2. 防路径穿越：只取文件名部分
-        let original_name = src
-            .file_name()
-            .and_then(|n| n.to_str())
-            .ok_or_else(|| "无效的文件名".to_string())?
-            .to_string();
+        // 2. 取用户面向的文件名（Android 上是 SAF 提供的 display name，
+        //    而不是 cache 里 `tts_import_saf_<uuid>_…` 的合成名）。
+        let original_name = src.display_name.clone();
+        if original_name.is_empty() {
+            return Err("无效的文件名".into());
+        }
 
         // 3. 用 magic 决定的扩展名替换原扩展名
         let stem = std::path::Path::new(&original_name)
@@ -192,7 +192,7 @@ pub async fn import_font(
         let dest_path = fonts_dir.join(&final_name);
 
         // 5. 复制（src 已经是本地路径，桌面/SAF 都用 std::fs::copy）
-        std::fs::copy(&src, &dest_path)
+        std::fs::copy(&src.path, &dest_path)
             .map_err(|e| format!("复制字体文件失败: {}", e))?;
 
         Ok(UploadFontResult {
@@ -210,8 +210,8 @@ pub async fn import_font(
     }
     .await;
 
-    if cleanup_after_import {
-        let _ = tokio::fs::remove_file(&src).await;
+    if src.cleanup_after_import {
+        let _ = tokio::fs::remove_file(&src.path).await;
     }
     result
 }

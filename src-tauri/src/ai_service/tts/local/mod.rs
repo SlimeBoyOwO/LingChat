@@ -365,14 +365,13 @@ pub async fn tts_local_import_from_path(
     path: String,
     voice_id: Option<String>,
 ) -> Result<ImportResult, String> {
-    let (src, cleanup_after_import) =
-        saf_bridge::prepare_file_import_source(&app, &path).await?;
+    let src = saf_bridge::prepare_file_import_source(&app, &path).await?;
 
     let result: std::result::Result<ImportResult, String> = async {
-        if !src.exists() {
-            return Err(format!("path not found: {}", src.display()));
+        if !src.path.exists() {
+            return Err(format!("path not found: {}", src.path.display()));
         }
-        let inspected = package::inspect_package(&src)?;
+        let inspected = package::inspect_package(&src.path)?;
         // 角色语音只支持直接导入 .sbv2 / .onnx 原始模型文件，不再接受 zip/7z 压缩包
         if matches!(
             inspected.kind,
@@ -385,10 +384,10 @@ pub async fn tts_local_import_from_path(
         }
         let voice_id = match voice_id {
             Some(v) => v,
-            None => default_voice_id(&inspected, &src),
+            None => default_voice_id(&inspected, &src.path),
         };
         let installed =
-            package::install_inspected(&inspected, &src, &state.paths, &voice_id)?;
+            package::install_inspected(&inspected, &src.path, &state.paths, &voice_id)?;
         let bytes = std::fs::metadata(&installed)
             .map(|m| m.len())
             .unwrap_or(0);
@@ -403,8 +402,8 @@ pub async fn tts_local_import_from_path(
     }
     .await;
 
-    if cleanup_after_import {
-        let _ = tokio::fs::remove_file(&src).await;
+    if src.cleanup_after_import {
+        let _ = tokio::fs::remove_file(&src.path).await;
     }
     result
 }
@@ -574,14 +573,13 @@ pub async fn tts_local_import_style_vectors(
         ));
     }
 
-    let (src, cleanup_after_import) =
-        saf_bridge::prepare_file_import_source(&app, &path).await?;
+    let src = saf_bridge::prepare_file_import_source(&app, &path).await?;
     let result: std::result::Result<ImportResult, String> = async {
-        if !src.exists() {
+        if !src.path.exists() {
             return Err(format!("path not found: {path}"));
         }
         let destination = state.paths.style_vectors_path(&voice_id);
-        std::fs::copy(&src, &destination)
+        std::fs::copy(&src.path, &destination)
             .map_err(|e| format!("copy style_vectors.json: {e}"))?;
         let bytes = std::fs::metadata(&destination).map(|m| m.len()).unwrap_or(0);
         let _ = app.emit("tts://install-complete", &voice_id);
@@ -595,8 +593,8 @@ pub async fn tts_local_import_style_vectors(
     }
     .await;
 
-    if cleanup_after_import {
-        let _ = tokio::fs::remove_file(&src).await;
+    if src.cleanup_after_import {
+        let _ = tokio::fs::remove_file(&src.path).await;
     }
     result
 }
