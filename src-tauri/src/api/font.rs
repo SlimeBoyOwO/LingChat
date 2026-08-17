@@ -136,14 +136,19 @@ pub fn list_system_fonts() -> Result<Vec<FontFamilyInfo>, String> {
 pub fn import_font(path: String) -> Result<UploadFontResult, String> {
     let src = Path::new(&path);
 
-    // 1. magic sniff 决定真实格式（替代原扩展名白名单）
+    // 1. magic sniff 决定真实格式（替代原扩展名白名单）。
+    //    注意：infer 把 WOFF 和 WOFF2 都映射到 mime "application/font-woff"，
+    //    所以必须同时检查 mime + extension 才能区分。
     let detected = infer::get_from_path(src)
         .map_err(|e| format!("读取文件头失败: {e}"))?;
-    let (kind, correct_ext) = match detected.map(|k| k.mime_type()) {
-        Some("font/ttf")  => ("ttf",  "ttf"),
-        Some("font/otf")  => ("otf",  "otf"),
-        Some("font/woff") => ("woff", "woff"),
-        Some("font/woff2")=> ("woff2","woff2"),
+    let (kind, correct_ext) = match detected {
+        Some(k) if k.matcher_type() == infer::MatcherType::Font => match (k.mime_type(), k.extension()) {
+            ("application/font-sfnt", "ttf")  => ("ttf",  "ttf"),
+            ("application/font-sfnt", "otf")  => ("otf",  "otf"),
+            ("application/font-woff", "woff") => ("woff", "woff"),
+            ("application/font-woff", "woff2")=> ("woff2","woff2"),
+            _ => return Err("FONT_INVALID_FORMAT".into()),
+        },
         _ => return Err("FONT_INVALID_FORMAT".into()),
     };
 
