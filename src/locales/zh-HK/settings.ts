@@ -287,6 +287,10 @@ export default {
     "uninstall": "卸載",
     "installFailed": "安裝失敗",
     "uninstallFailed": "卸載失敗",
+    "installSuccess": "安裝成功",
+    "uninstallSuccess": "卸載成功",
+    "installing": "安裝中…",
+    "uninstallConfirm": "確定卸載「{name}」嗎？此操作會刪除已安裝嘅內容",
     "time": {
       "justNow": "啱啱",
       "minutesAgo": "{n} 分鐘前",

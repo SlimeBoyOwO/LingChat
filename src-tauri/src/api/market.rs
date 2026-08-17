@@ -32,6 +32,34 @@ static INDEX_CACHE: Mutex<Option<(Vec<MarketPackage>, std::time::Instant)>> =
     Mutex::new(None);
 const INDEX_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(300);
 
+/// 重试参数：最多 `MAX_RETRIES` 次（含首次），退避 `BASE_DELAY * 2^attempt`。
+const MAX_RETRIES: usize = 3;
+const BASE_DELAY_MS: u64 = 500;
+
+/// 带指数退避的 GET 请求，成功（2xx）即返回。
+async fn get_with_retry(
+    client: &reqwest::Client,
+    url: &str,
+) -> Result<reqwest::Response, String> {
+    let mut last_err = String::new();
+    for attempt in 0..MAX_RETRIES {
+        match client.get(url).send().await {
+            Ok(resp) if resp.status().is_success() => return Ok(resp),
+            Ok(resp) => {
+                last_err = format!("HTTP {}", resp.status().as_u16());
+            }
+            Err(e) => last_err = format!("网络错误: {e}"),
+        }
+        if attempt + 1 < MAX_RETRIES {
+            tokio::time::sleep(std::time::Duration::from_millis(
+                BASE_DELAY_MS * (1 << attempt),
+            ))
+            .await;
+        }
+    }
+    Err(format!("GET {url} 重试 {MAX_RETRIES} 次均失败: {last_err}"))
+}
+
 /// plugins.json 条目（市场侧 schema，字段可能缺省，全部 default 兼容）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MarketPackage {
@@ -103,7 +131,7 @@ fn build_client() -> Result<reqwest::Client, String> {
     crate::utils::download::build_download_client()
 }
 
-/// 拉取 plugins.json 索引（5 分钟缓存）。
+/// 拉取 plugins.json 索引（5 分钟缓存；主源 jsDelivr → 兜底 raw，各自带重试）。
 async fn fetch_index() -> Result<Vec<MarketPackage>, String> {
     if let Ok(cache) = INDEX_CACHE.lock() {
         if let Some((ref data, ref ts)) = *cache {
@@ -113,27 +141,13 @@ async fn fetch_index() -> Result<Vec<MarketPackage>, String> {
         }
     }
     let client = build_client()?;
-    let mut resp = match client.get(MARKET_INDEX_URL).send().await {
+    let resp = match get_with_retry(&client, MARKET_INDEX_URL).await {
         Ok(r) => r,
-        Err(_) => client
-            .get(MARKET_INDEX_URL_FALLBACK)
-            .send()
-            .await
-            .map_err(|e| format!("拉取市场索引失败: {e}"))?,
+        Err(primary_err) => {
+            tracing::warn!("市场索引主源失败，改用兜底源: {primary_err}");
+            get_with_retry(&client, MARKET_INDEX_URL_FALLBACK).await?
+        }
     };
-    if !resp.status().is_success() {
-        resp = client
-            .get(MARKET_INDEX_URL_FALLBACK)
-            .send()
-            .await
-            .map_err(|e| format!("拉取市场索引失败: {e}"))?;
-    }
-    if !resp.status().is_success() {
-        return Err(format!(
-            "市场索引返回 HTTP {}",
-            resp.status().as_u16()
-        ));
-    }
     let json: serde_json::Value = resp
         .json()
         .await
@@ -193,17 +207,46 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
         }));
     let client = build_client()?;
     let expected = pkg.size.unwrap_or(0);
-    let _ = std::fs::remove_file(&zip_path);
-    crate::utils::download::download_to_file(
-        &client,
-        &pkg.download_url,
-        &zip_path,
-        None,
-        progress,
-        expected,
-    )
-    .await
-    .map_err(|e| format!("下载失败: {e}"))?;
+
+    // 下载（带指数退避重试：429/5xx/网络抖动都能扛）
+    let mut last_err = String::new();
+    let mut downloaded = false;
+    for attempt in 0..MAX_RETRIES {
+        let _ = std::fs::remove_file(&zip_path);
+        let progress = progress.clone();
+        match crate::utils::download::download_to_file(
+            &client,
+            &pkg.download_url,
+            &zip_path,
+            None,
+            progress,
+            expected,
+        )
+        .await
+        {
+            Ok(_) => {
+                downloaded = true;
+                break;
+            }
+            Err(e) => {
+                last_err = e;
+                tracing::warn!(
+                    "市场包 '{}' 下载失败（第 {} 次）: {last_err}",
+                    id,
+                    attempt + 1
+                );
+                if attempt + 1 < MAX_RETRIES {
+                    tokio::time::sleep(std::time::Duration::from_millis(
+                        BASE_DELAY_MS * (1 << attempt),
+                    ))
+                    .await;
+                }
+            }
+        }
+    }
+    if !downloaded {
+        return Err(format!("下载失败（已重试 {MAX_RETRIES} 次）: {last_err}"));
+    }
 
     // sha256 校验（fail-closed：索引声明了就必须匹配）
     if let Some(declared) = &pkg.sha256 {
@@ -217,7 +260,11 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
         }
     }
 
-    // 解包安装（同步阻塞，放 spawn_blocking）
+    // 解包安装（同步阻塞，放 spawn_blocking）；先通知进入安装阶段
+    let _ = app.emit(
+        "market:progress",
+        serde_json::json!({ "id": id, "phase": "install", "percent": 0 }),
+    );
     let data = data_dir();
     let root = plugins_root();
     let zip = zip_path.clone();

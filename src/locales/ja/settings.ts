@@ -286,6 +286,10 @@ export default {
     uninstall: 'アンインストール',
     installFailed: 'インストール失敗',
     uninstallFailed: 'アンインストール失敗',
+    installSuccess: 'インストール完了',
+    uninstallSuccess: 'アンインストール完了',
+    installing: 'インストール中…',
+    uninstallConfirm: '「{name}」をアンインストールしますか？インストール済みの内容が削除されます。',
     time: {
       justNow: 'たった今',
       minutesAgo: '{n} 分前',

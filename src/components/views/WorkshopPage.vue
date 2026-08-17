@@ -817,23 +817,52 @@
                   gap-2">
                   <!-- Installed badge / progress / button -->
                   <template v-if="installingId === pkg.id">
-                    <span class="text-xs
-                      text-white/50">
-                      {{ progressPercent[pkg.id] ?? 0 }}%</span>
-                    <div class="h-1
-                      w-24
-                      overflow-hidden
-                      rounded-full
-                      bg-white/10">
-                      <div
-                        class="h-full
+                    <template v-if="progressPhase[pkg.id] === 'install'">
+                      <span class="text-xs
+                        text-white/60">{{ $t('settings.workshop.installing') }}</span>
+                      <div class="flex
+                        items-center
+                        gap-1">
+                        <span class="h-1.5
+                          w-1.5
+                          animate-pulse
                           rounded-full
-                          bg-[color:var(--cat-color,#79d9ff)]
-                          transition-all
-                          duration-200"
-                        :style="{ width: (progressPercent[pkg.id] ?? 0) + '%' }"
-                      ></div>
-                    </div>
+                          bg-[color:var(--cat-color,#79d9ff)]"></span>
+                        <span class="h-1.5
+                          w-1.5
+                          animate-pulse
+                          rounded-full
+                          bg-[color:var(--cat-color,#79d9ff)] [animation-delay:150ms]"></span>
+                        <span class="h-1.5
+                          w-1.5
+                          animate-pulse
+                          rounded-full
+                          bg-[color:var(--cat-color,#79d9ff)] [animation-delay:300ms]"></span>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <span class="text-xs
+                        text-white/50">
+                        {{ progressPercent[pkg.id] ?? 0 }}%
+                        <template v-if="progressBytes[pkg.id]">
+                          · {{ formatBytes(progressBytes[pkg.id]) }}
+                        </template>
+                      </span>
+                      <div class="h-1
+                        w-24
+                        overflow-hidden
+                        rounded-full
+                        bg-white/10">
+                        <div
+                          class="h-full
+                            rounded-full
+                            bg-[color:var(--cat-color,#79d9ff)]
+                            transition-all
+                            duration-200"
+                          :style="{ width: (progressPercent[pkg.id] ?? 0) + '%' }"
+                        ></div>
+                      </div>
+                    </template>
                   </template>
                   <template v-else-if="installedMap[pkg.id]">
                     <span class="text-xs
@@ -895,6 +924,8 @@
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { useDialogStore } from '@/stores/modules/ui/dialog'
+import { useUIStore } from '@/stores/modules/ui/ui'
 import { fetchDiscussions, type Discussion } from '@/api/services/workshop'
 import {
   fetchMarketIndex,
@@ -919,6 +950,8 @@ const currentPage = ref(1)
 const sortMode = ref<'hot' | 'newest'>('hot')
 const { t } = useI18n()
 const router = useRouter()
+const dialogStore = useDialogStore()
+const uiStore = useUIStore()
 const ITEMS_PER_PAGE = 10
 
 // ── Market ────────────────────────────────────────────────────
@@ -930,6 +963,8 @@ const marketLoading = ref(false)
 const marketError = ref<string | null>(null)
 const installingId = ref<string | null>(null)
 const progressPercent = ref<Record<string, number>>({})
+const progressBytes = ref<Record<string, number>>({})
+const progressPhase = ref<Record<string, string>>({})
 let unlistenProgress: (() => void) | null = null
 
 function typeLabel(type: string): string {
@@ -940,6 +975,15 @@ function typeLabel(type: string): string {
     voice: '语音',
   }
   return map[type] || type
+}
+
+/** 字节数 → 人类可读（B/KB/MB/GB） */
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)))
+  const v = bytes / 1024 ** i
+  return `${v >= 100 || i === 0 ? v.toFixed(0) : v.toFixed(1)} ${units[i]}`
 }
 
 function typeColor(type: string): { bg: string; fg: string } {
@@ -981,14 +1025,19 @@ async function installPkg(id: string) {
   if (installingId.value) return
   installingId.value = id
   progressPercent.value[id] = 0
-  marketError.value = null
+  progressBytes.value[id] = 0
+  progressPhase.value[id] = 'download'
   try {
     await installPackage(id)
     progressPercent.value[id] = 100
     await loadInstalled()
+    uiStore.showSuccess({ title: t('settings.workshop.installSuccess') })
   } catch (e: unknown) {
     const err = e as { message?: string }
-    marketError.value = typeof e === 'string' ? e : err?.message || t('settings.workshop.installFailed')
+    uiStore.showError({
+      title: t('settings.workshop.installFailed'),
+      message: typeof e === 'string' ? e : err?.message,
+    })
   } finally {
     installingId.value = null
   }
@@ -996,14 +1045,22 @@ async function installPkg(id: string) {
 
 async function uninstallPkg(id: string) {
   if (installingId.value) return
+  const pkg = marketPackages.value.find((p) => p.id === id)
+  const confirmed = await dialogStore.confirm(
+    t('settings.workshop.uninstallConfirm', { name: pkg?.name ?? id }),
+  )
+  if (!confirmed) return
   installingId.value = id
-  marketError.value = null
   try {
     await uninstallPackage(id)
     await loadInstalled()
+    uiStore.showSuccess({ title: t('settings.workshop.uninstallSuccess') })
   } catch (e: unknown) {
     const err = e as { message?: string }
-    marketError.value = typeof e === 'string' ? e : err?.message || t('settings.workshop.uninstallFailed')
+    uiStore.showError({
+      title: t('settings.workshop.uninstallFailed'),
+      message: typeof e === 'string' ? e : err?.message,
+    })
   } finally {
     installingId.value = null
   }
@@ -1108,6 +1165,15 @@ watch(sortMode, () => {
   currentPage.value = 1
 })
 
+// 首次切到市场 tab 时自动加载（避免显示空态后还要手动点刷新）
+let marketLoadedOnce = false
+watch(activeTab, (tab) => {
+  if (tab === 'market' && !marketLoadedOnce) {
+    marketLoadedOnce = true
+    loadMarket()
+  }
+})
+
 // ── Display helpers ───────────────────────────────────────────
 
 function getDisplayDescription(d: Discussion): string {
@@ -1161,6 +1227,8 @@ onMounted(() => {
   load()
   onMarketProgress((p) => {
     progressPercent.value[p.id] = p.percent
+    if (p.bytes !== undefined) progressBytes.value[p.id] = p.bytes
+    if (p.phase) progressPhase.value[p.id] = p.phase
   }).then((fn) => {
     unlistenProgress = fn
   })

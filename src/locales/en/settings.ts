@@ -287,6 +287,10 @@ export default {
     uninstall: "Uninstall",
     installFailed: "Install failed",
     uninstallFailed: "Uninstall failed",
+    installSuccess: "Installed",
+    uninstallSuccess: "Uninstalled",
+    installing: "Installing…",
+    uninstallConfirm: 'Uninstall "{name}"? This will delete the installed content.',
     time: {
       justNow: "Just now",
       minutesAgo: "{n} min ago",
