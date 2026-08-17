@@ -356,6 +356,7 @@ import {
 import { ambientGetAll, ambientUpload, ambientDelete, type AmbientItem } from '../../../api/services/ambient'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
+import { useRoleArchiveStore } from '../../../stores/modules/ui/role-archive'
 import { useSettingsStore } from '../../../stores/modules/settings'
 import {
   currentDeviceId,
@@ -393,6 +394,7 @@ import {
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 const dialogStore = useDialogStore()
+const roleStore = useRoleArchiveStore()
 const { t } = useI18n()
 
 // 状态绑定
@@ -763,26 +765,36 @@ const uploadMusic = async () => {
     return
   }
 
-  const allowedExts = ['.mp3', '.wav', '.flac', '.webm', '.weba', '.ogg', '.m4a']
-
   try {
-    // 串行上传（仅传源文件路径，Rust 侧复制）
+    // 串行上传（仅传源文件路径，Rust 侧复制 + magic 校验）
     for (const path of selectedPaths.value) {
       // content:// URI 文件名是 URL 编码的，解码后才是真实文件名
       const fileName = decodePathFileName(path)
-      const fileExt = fileName.slice(fileName.lastIndexOf('.')).toLowerCase()
-      if (!allowedExts.includes(fileExt)) {
-        throw new Error(t('settings.sound.common.unsupportedFormat', { name: fileName }))
+      const result = await musicUpload(path, fileName)
+      // 自动修正时弹顶部 amber notice
+      if (result.was_corrected) {
+        const originalExt = result.original_name.split('.').pop() || ''
+        roleStore.showCorrected({
+          title: t('ui.notice.autoCorrected.title'),
+          message: t('ui.notice.autoCorrected.music', {
+            original: result.original_name,
+            originalExt,
+            detected: result.detected_kind,
+            corrected: result.actual_name,
+          }),
+        })
       }
-      await musicUpload(path, fileName)
     }
 
     selectedPaths.value = []
     await loadMusicList()
-    // alert('音乐上传成功') // 可选提示
   } catch (error: any) {
     console.error('批量上传音乐出现问题:', error)
-    await dialogStore.alert(error.message || t('settings.sound.bgm.uploadFailed'))
+    const rawMsg = error.message || String(error)
+    const translated = rawMsg === 'MUSIC_INVALID_FORMAT'
+      ? t('ui.musicImport.errors.MUSIC_INVALID_FORMAT')
+      : rawMsg
+    await dialogStore.alert(translated || t('settings.sound.bgm.uploadFailed'))
   }
 }
 
