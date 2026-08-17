@@ -383,6 +383,8 @@ export default {
       zh: '中国語',
       en: '英語',
       ko: '韓国語',
+      es: 'スペイン語',
+      ar: 'アラビア語',
     },
     clothes: {
       listTitle: '衣装リスト',

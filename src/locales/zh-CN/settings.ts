@@ -384,6 +384,8 @@ export default {
       zh: '中文',
       en: '英语',
       ko: '韩语',
+      es: '西班牙语',
+      ar: '阿拉伯语',
     },
     clothes: {
       listTitle: '服装列表',
