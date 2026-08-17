@@ -313,6 +313,24 @@ impl GenaiProvider {
             &serde_json::to_value(&chat_req).unwrap_or_default(),
         );
         let opts = self.build_chat_options(tool_choice);
+        // 诊断日志：记录实际 ChatOptions，帮助排查 MiniMax 等兼容问题。
+        // ChatOptions 字段为 public，直接访问；ToolChoice 转为字符串避免序列化依赖。
+        let tool_choice_str = opts.tool_choice.as_ref().map(|tc| match tc {
+            ToolChoice::Auto => "auto",
+            ToolChoice::None => "none",
+            ToolChoice::Required => "required",
+            ToolChoice::Tool { .. } => "specific",
+        });
+        tracing::debug!(
+            model = self.model,
+            is_minimax = self.is_minimax,
+            temperature = ?opts.temperature,
+            top_p = ?opts.top_p,
+            tool_choice = tool_choice_str,
+            extra_body = ?opts.extra_body,
+            "GenaiProvider 准备 LLM 请求"
+        );
+
         let stream_resp = self
             .client
             .exec_chat_stream(&self.model, chat_req, Some(&opts))
@@ -497,7 +515,11 @@ impl LlmProvider for GenaiProvider {
     }
 
     fn supports_streaming_tools(&self) -> bool {
-        true
+        // MiniMax 的 OpenAI 兼容端点在流式工具调用上行为不稳定（实测非流式可
+        // 靠返回 tool_calls，流式下模型常直接给文字回复而不调工具）。先降级到
+        // 非流式工具调用，保证功能可用；后续抓到真实请求/响应后再恢复流式。
+        // TODO: 待拿到 LLM 请求日志并定位流式 tool_calls 解析问题后恢复。
+        !self.is_minimax
     }
 
     async fn complete_stream_with_tools(
@@ -524,6 +546,22 @@ impl LlmProvider for GenaiProvider {
             &serde_json::to_value(&chat_req).unwrap_or_default(),
         );
         let opts = self.build_chat_options(tool_choice);
+        // 诊断日志：记录实际 ChatOptions。
+        let tool_choice_str = opts.tool_choice.as_ref().map(|tc| match tc {
+            ToolChoice::Auto => "auto",
+            ToolChoice::None => "none",
+            ToolChoice::Required => "required",
+            ToolChoice::Tool { .. } => "specific",
+        });
+        tracing::debug!(
+            model = self.model,
+            is_minimax = self.is_minimax,
+            temperature = ?opts.temperature,
+            top_p = ?opts.top_p,
+            tool_choice = tool_choice_str,
+            extra_body = ?opts.extra_body,
+            "GenaiProvider 准备非流式 LLM 请求"
+        );
 
         let response: ChatResponse = self
             .client
