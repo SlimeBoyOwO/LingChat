@@ -53,6 +53,7 @@
           >
             <option value="kimi" class="bg-slate-800 text-white">Kimi /search</option>
             <option value="bocha" class="bg-slate-800 text-white">BoCha 博查</option>
+            <option value="tavily" class="bg-slate-800 text-white">Tavily</option>
             <option value="custom" class="bg-slate-800 text-white">
               {{ $t('ui.toolCalls.providerCustom') }}
             </option>
