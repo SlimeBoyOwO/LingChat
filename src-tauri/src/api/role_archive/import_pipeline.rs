@@ -297,38 +297,38 @@ pub(super) async fn write_temp_archive(app: &AppHandle, bytes: &[u8]) -> Result<
 /// - 如果路径以 `content://` 开头，则把 Android SAF 文件复制到缓存目录。
 /// - 否则按桌面端文件系统路径处理，不创建额外副本。
 ///
-/// 返回值中的布尔值表示导入完成后是否需要清理本地副本。
-pub(super) async fn prepare_import_source(app: &AppHandle, path: &str) -> Result<(PathBuf, bool), String> {
-    if path.starts_with("content://") {
-        use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
-        let cache_dir = app
-            .path()
-            .app_cache_dir()
-            .map_err(|e| format!("cache dir: {e}"))?;
-        let imports_root = cache_dir.join("imports");
-        tokio::fs::create_dir_all(&imports_root)
-            .await
-            .map_err(|e| format!("create imports dir: {e}"))?;
+/// 返回 `(本地路径, 是否需要在导入完成后清理本地副本, 用户面向的文件名)`。
+/// `display_name` 在 Android 上由 SAF 元数据提供；桌面端则是路径的 basename。
+/// 后端用它做 fallback：当传入的 `file_name` 看起来是 percent-encoded hex blob
+/// （content URI 的末段未经前端 decode 的痕迹）时优先采用它，保证角色文件夹名
+/// 是真实可读的名字，而不是 `%E6%A9%98...` 之类的 hex 串。
+pub(super) async fn prepare_import_source(
+    app: &AppHandle,
+    path: &str,
+) -> Result<(PathBuf, bool, String), String> {
+    use crate::ai_service::tts::local::saf_bridge::prepare_file_import_source;
+    let src = prepare_file_import_source(app, path).await?;
+    Ok((src.path, src.cleanup_after_import, src.display_name))
+}
 
-        let tmp_id = uuid::Uuid::new_v4().to_string();
-        let local_path = imports_root.join(format!("import_saf_{tmp_id}.bin"));
-        let local_uri = FsUri::from_path(&local_path);
-        let src_uri = FsUri::from_uri(path.to_string());
-        tracing::info!(
-            "[RoleArchive] prepare_import_source SAF: src={}, local={}",
-            path,
-            local_path.display()
-        );
-
-        app.android_fs_async()
-            .copy(&src_uri, &local_uri)
-            .await
-            .map_err(|e| format!("SAF copy to local cache: {e}"))?;
-
-        Ok((local_path, true))
-    } else {
-        Ok((PathBuf::from(path), false))
+/// 判断一个字符串是否像是 percent-encoded hex blob（Android content URI
+/// 末段的典型形态）。仅当传入的 `file_name` 命中此模式时才考虑替换。
+pub(super) fn looks_like_percent_encoded_blob(s: &str) -> bool {
+    if s.is_empty() || !s.is_ascii() {
+        return false;
     }
+    // 整段几乎都是 hex 字符 + 极少其他字符（点/下划线/连字符）。
+    let hex_count = s
+        .chars()
+        .filter(|c| c.is_ascii_hexdigit())
+        .count();
+    let total = s.chars().count();
+    if total < 8 || hex_count * 10 < total * 9 {
+        return false;
+    }
+    s.split('.').next().is_some_and(|stem| {
+        stem.len() >= 6 && stem.chars().all(|c| c.is_ascii_hexdigit())
+    })
 }
 
 /// 定位解压后的角色内容根目录:

@@ -21,7 +21,10 @@ pub use state::{ImportTaskEntry, RoleArchiveState};
 use crate::utils::archive::ArchiveFormat;
 
 use export_pipeline::compress_role_to_temp;
-use import_pipeline::{do_import, parse_format, parse_format_opt, parse_policy, prepare_import_source, write_temp_archive};
+use import_pipeline::{
+    do_import, looks_like_percent_encoded_blob, parse_format, parse_format_opt, parse_policy,
+    prepare_import_source, write_temp_archive,
+};
 use state::{ImportingGuard, TaskRemoveGuard};
 
 #[derive(Debug, Serialize, Clone)]
@@ -178,7 +181,7 @@ pub async fn import_role_from_path(
     // 把 task_id 通过事件发给前端，让前端的取消按钮能找到正确的令牌。
     let _ = app.emit("role:import-started", serde_json::json!({ "task_id": &task_id }));
 
-    let (path_buf, cleanup_after_import) = prepare_import_source(&app, &path).await?;
+    let (path_buf, cleanup_after_import, display_name) = prepare_import_source(&app, &path).await?;
 
     // SAF 源文件复制完成后记录缓存路径，便于取消任务时立即清理。
     if cleanup_after_import {
@@ -186,6 +189,20 @@ pub async fn import_role_from_path(
             *entry.saf_cache_path.lock().unwrap() = Some(path_buf.clone());
         }
     }
+
+    // 文件名兜底：前端传来的 `file_name` 可能是 URI 末段未经 decode 的
+    // percent-encoded hex blob（如 `E6A998E585891784606515054.zip`）。
+    // 此时优先采用 SAF 提取的真实 display name，保证角色文件夹名可读。
+    let effective_file_name: Option<String> = match file_name {
+        Some(name) if !looks_like_percent_encoded_blob(&name) => Some(name),
+        Some(name) => {
+            tracing::warn!(
+                "[RoleArchive] import_role_from_path file_name 看起来是 percent-encoded blob ({name})，改用 SAF display_name={display_name}",
+            );
+            Some(display_name.clone())
+        }
+        None => Some(display_name.clone()),
+    };
 
     let result = async {
         if !path_buf.exists() {
@@ -205,7 +222,7 @@ pub async fn import_role_from_path(
             format,
             policy,
             cancel_token,
-            file_name.as_deref(),
+            effective_file_name.as_deref(),
         )
         .await
     }
