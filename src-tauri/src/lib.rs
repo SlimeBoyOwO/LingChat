@@ -762,6 +762,7 @@ pub fn run() {
             ai_service::tts::local::tts_local_import_from_path,
             ai_service::tts::local::tts_local_download,
             ai_service::tts::local::tts_local_delete_voice,
+            ai_service::tts::local::tts_local_delete_deberta,
             ai_service::tts::local::tts_local_import_style_vectors,
             ai_service::tts::local::tts_local_synthesize_preview,
             ai_service::tts::local::tts_local_get_enabled,

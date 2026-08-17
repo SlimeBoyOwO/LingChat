@@ -309,19 +309,6 @@ pub async fn tts_local_list_installed(
 
 // -- helpers ----------------------------------------------------------------
 
-fn install_shared_asset(
-    paths: &LocalTtsPaths,
-    src: &Path,
-    asset_id: &str,
-) -> Result<PathBuf, String> {
-    let (target, _label) = match asset_id {
-        "deberta" => (paths.deberta_dir().join("deberta.onnx"), "DeBERTa model"),
-        "deberta-tokenizer" => (paths.deberta_dir().join("tokenizer.json"), "DeBERTa tokenizer"),
-        other => return Err(format!("unknown shared asset: {other}")),
-    };
-    crate::utils::fs::copy_with_parent(src, &target)
-}
-
 fn install_style_vectors_for(
     paths: &LocalTtsPaths,
     src: &Path,
@@ -377,34 +364,25 @@ pub async fn tts_local_import_from_path(
     state: State<'_, LocalTtsState>,
     path: String,
     voice_id: Option<String>,
-    asset_id: Option<String>,
 ) -> Result<ImportResult, String> {
     let (src, cleanup_after_import) =
         saf_bridge::prepare_file_import_source(&app, &path).await?;
 
     let result: std::result::Result<ImportResult, String> = async {
-        if let Some(asset_id) = asset_id {
-            let installed = install_shared_asset(&state.paths, &src, &asset_id)?;
-            let bytes = std::fs::metadata(&installed)
-                .map(|m| m.len())
-                .unwrap_or(0);
-            if state.paths.asset_present("deberta") {
-                let _ = state.engine.init(&state.paths).await;
-            }
-            let _ = app.emit("tts://install-complete", &asset_id);
-            return Ok(ImportResult {
-                asset_id: asset_id.clone(),
-                voice_id: None,
-                path: installed.to_string_lossy().into_owned(),
-                bytes,
-                message: "shared asset imported".into(),
-            });
-        }
-
         if !src.exists() {
             return Err(format!("path not found: {}", src.display()));
         }
         let inspected = package::inspect_package(&src)?;
+        // 角色语音只支持直接导入 .sbv2 / .onnx 原始模型文件，不再接受 zip/7z 压缩包
+        if matches!(
+            inspected.kind,
+            package::PackageKind::Zip | package::PackageKind::SevenZ
+        ) {
+            return Err(
+                "voice import does not support archives; import a .sbv2 or .onnx file directly"
+                    .into(),
+            );
+        }
         let voice_id = match voice_id {
             Some(v) => v,
             None => default_voice_id(&inspected, &src),
@@ -546,6 +524,27 @@ pub async fn tts_local_delete_voice(
     model_manager::delete_voice(&state.paths, &voice_id)
 }
 
+/// 删除 DeBERTa 共享模型（deberta.onnx + tokenizer.json），并卸载引擎释放内存。
+/// 删除后可从模型下载目录重新下载。
+#[tauri::command]
+pub async fn tts_local_delete_deberta(
+    state: State<'_, LocalTtsState>,
+) -> Result<(), String> {
+    delete_deberta_asset(&state.paths)?;
+    state.engine.unload_all().await;
+    Ok(())
+}
+
+/// 移除 `assets/deberta` 目录（幂等：目录不存在时静默成功）。
+fn delete_deberta_asset(paths: &LocalTtsPaths) -> Result<(), String> {
+    let dir = paths.deberta_dir();
+    crate::utils::path::validate_path_in_base(&dir, &paths.assets)?;
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).map_err(|e| format!("remove_dir_all: {e}"))?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn tts_local_import_style_vectors(
     app: AppHandle,
@@ -669,34 +668,6 @@ mod tests {
     }
 
     #[test]
-    fn shared_deberta_import_uses_expected_file_names() {
-        let temp = tempfile::tempdir().unwrap();
-        let paths = test_paths(temp.path());
-        let source = temp.path().join("downloaded.bin");
-        std::fs::write(&source, b"fixture").unwrap();
-
-        let model = install_shared_asset(&paths, &source, "deberta").unwrap();
-        assert_eq!(model, paths.deberta_dir().join("deberta.onnx"));
-        assert_eq!(std::fs::read(model).unwrap(), b"fixture");
-
-        let tokenizer =
-            install_shared_asset(&paths, &source, "deberta-tokenizer").unwrap();
-        assert_eq!(tokenizer, paths.deberta_dir().join("tokenizer.json"));
-        assert_eq!(std::fs::read(tokenizer).unwrap(), b"fixture");
-    }
-
-    #[test]
-    fn shared_asset_import_rejects_unknown_asset() {
-        let temp = tempfile::tempdir().unwrap();
-        let paths = test_paths(temp.path());
-        let source = temp.path().join("downloaded.bin");
-        std::fs::write(&source, b"fixture").unwrap();
-
-        let error = install_shared_asset(&paths, &source, "voice-model").unwrap_err();
-        assert!(error.contains("unknown shared asset"));
-    }
-
-    #[test]
     fn shared_asset_download_uses_individual_canonical_file_names() {
         assert_eq!(shared_asset_file_name("deberta").unwrap(), "deberta.onnx");
         assert_eq!(
@@ -704,6 +675,21 @@ mod tests {
             "tokenizer.json"
         );
         assert!(shared_asset_file_name("unknown").is_err());
+    }
+
+    #[test]
+    fn delete_deberta_removes_asset_dir_and_is_idempotent() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        std::fs::create_dir_all(paths.deberta_dir()).unwrap();
+        std::fs::write(paths.deberta_dir().join("deberta.onnx"), b"model").unwrap();
+        std::fs::write(paths.deberta_dir().join("tokenizer.json"), b"{}").unwrap();
+
+        delete_deberta_asset(&paths).unwrap();
+        assert!(!paths.deberta_dir().exists());
+
+        // 幂等：目录不存在时也不报错
+        delete_deberta_asset(&paths).unwrap();
     }
 
     #[test]

@@ -932,6 +932,7 @@ export default {
       installed: '已安装',
       missing: '缺失',
       warning: '缺少 DeBERTa 模型或分词器，人物语音不能载入，也不能试听。',
+      delete: '删除 DeBERTa',
     },
     voices: {
       label: '人物语音',
@@ -948,10 +949,8 @@ export default {
     },
     import: {
       title: '本地导入',
-      subtitle: '支持原始模型文件、ZIP 和 7z 压缩包',
-      deberta: '导入 DeBERTa',
-      tokenizer: '导入分词器',
-      voice: '导入语音',
+      subtitle: '支持 .sbv2 / .onnx 原始模型文件',
+      voice: '导入语音模型',
       voiceIdPlaceholder: '语音 ID（可选）',
     },
     styleVectors: {
@@ -982,8 +981,6 @@ export default {
     },
     messages: {
       readStatusFailed: '读取本地 TTS 状态失败：{error}',
-      importSuccessDeberta: 'DeBERTa 已导入',
-      importSuccessTokenizer: '分词器已导入',
       importFailed: '导入失败：{error}',
       importVoiceSuccess: '语音 {voiceId} 已导入',
       styleVectorsNeedSelect: '请先选择需要补齐 style_vectors 的语音',
@@ -992,6 +989,12 @@ export default {
       deleteConfirmTitle: '删除本地语音',
       deleteSuccess: '语音已删除',
       deleteFailed: '删除失败：{error}',
+      deleteDebertaConfirm: '确定删除 DeBERTa 模型与分词器吗？删除后可重新下载。',
+      deleteDebertaConfirmTitle: '删除 DeBERTa',
+      deleteDebertaSuccess: 'DeBERTa 已删除',
+      deleteDebertaFailed: '删除 DeBERTa 失败：{error}',
+      enableHintTitle: '本地 TTS 已开启',
+      enableHintMessage: '本地 TTS 开启后，请到角色语音设置 TTS 类型选择「本地 SBV2 API」和本地语音ID',
       previewFailed: '试听失败：{error}',
       readSwitchFailed: '读取本地 TTS 开关失败：{error}',
       switchEnabled: '本地 TTS 已启用。',

@@ -931,6 +931,7 @@ export default {
       installed: 'インストール済み',
       missing: '未導入',
       warning: 'DeBERTa モデルまたはトークナイザーがありません。キャラクター音声を読み込めず、試聴もできません。',
+      delete: 'DeBERTa を削除',
     },
     voices: {
       label: 'キャラクター音声',
@@ -947,10 +948,8 @@ export default {
     },
     import: {
       title: 'ローカルインポート',
-      subtitle: 'モデルファイル、ZIP、7z 圧縮ファイルに対応',
-      deberta: 'DeBERTa をインポート',
-      tokenizer: 'トークナイザーをインポート',
-      voice: '音声をインポート',
+      subtitle: '.sbv2 / .onnx の元モデルファイルに対応',
+      voice: '音声モデルをインポート',
       voiceIdPlaceholder: '音声 ID（任意）',
     },
     styleVectors: {
@@ -981,8 +980,6 @@ export default {
     },
     messages: {
       readStatusFailed: 'ローカル TTS の状態の読み取りに失敗：{error}',
-      importSuccessDeberta: 'DeBERTa をインポートしました',
-      importSuccessTokenizer: 'トークナイザーをインポートしました',
       importFailed: 'インポートに失敗：{error}',
       importVoiceSuccess: '音声 {voiceId} をインポートしました',
       styleVectorsNeedSelect: 'style_vectors を補完する音声を選択してください',
@@ -991,6 +988,12 @@ export default {
       deleteConfirmTitle: 'ローカル音声を削除',
       deleteSuccess: '音声を削除しました',
       deleteFailed: '削除に失敗：{error}',
+      deleteDebertaConfirm: 'DeBERTa モデルとトークナイザーを削除しますか？削除後は再ダウンロードできます。',
+      deleteDebertaConfirmTitle: 'DeBERTa を削除',
+      deleteDebertaSuccess: 'DeBERTa を削除しました',
+      deleteDebertaFailed: 'DeBERTa の削除に失敗：{error}',
+      enableHintTitle: 'ローカル TTS を有効にしました',
+      enableHintMessage: 'ローカル TTS を有効にしたら、キャラクター音声設定で TTS タイプを「ローカル SBV2 API」とローカル音声IDに選択してください',
       previewFailed: '試聴に失敗：{error}',
       readSwitchFailed: 'ローカル TTS スイッチの読み取りに失敗：{error}',
       switchEnabled: 'ローカル TTS を有効にしました。',
