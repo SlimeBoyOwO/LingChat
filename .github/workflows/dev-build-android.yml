@@ -121,9 +121,9 @@ jobs:
           password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           EOF
 
-      # debug variant：gradle 自动用 debug keystore 签名，无需 secrets 即可安装
-      - name: 构建 Android APK (debug)
-        run: pnpm android:build -- --debug
+      # release 变体：无签名 secrets 时产出 unsigned APK（用户自行签名安装）
+      - name: 构建 Android APK (release)
+        run: pnpm android:build
 
       # dev 构建没有 secrets 时跳过手动签名，上传自动签名的 debug APK
       - name: 手动签名 APK
