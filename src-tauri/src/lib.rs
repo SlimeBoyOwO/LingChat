@@ -483,7 +483,7 @@ pub fn run() {
             // 因此首次消息延迟是启动时加载的代价。
             ai_service::tts::local::setup::spawn_preload(&app.handle(), &local_tts);
 
-            // 启动 Windows 鼠标轮询点击穿透循环
+            // 启动鼠标轮询点击穿透循环
             let window = app
                 .get_webview_window("main")
                 .ok_or_else(|| tauri::Error::AssetNotFound("main window not found".to_string()))?;
@@ -503,13 +503,19 @@ pub fn run() {
                 .await;
             });
 
-            // Windows 点击穿透逻辑
-            let hit_test_state = app.state::<api::pet::HitTestState>();
-            let rects_arc = hit_test_state.solid_rects.clone();
-            let enabled_arc = hit_test_state.enabled.clone();
-
-            #[cfg(target_os = "windows")]
+            // 桌宠点击穿透：全局轮询鼠标位置，只有落在前端上报的 solid 区域内才接收鼠标事件，
+            // 其余透明区域把点击让给底下的窗口。
+            //
+            // 原本用 Win32 的 GetCursorPos，因此整段是 cfg(windows) 独占，macOS 上桌宠窗口
+            // 会整块挡住底下窗口的点击。cursor_position() 与 set_ignore_cursor_events() 都是
+            // Tauri 的跨平台 API，改用前者后三个桌面平台可以共用同一个循环。
+            // （Linux 未实测：X11 / Wayland 下最差情况是 API 返回 Err，本轮直接跳过。）
+            #[cfg(desktop)]
             {
+                let hit_test_state = app.state::<api::pet::HitTestState>();
+                let rects_arc = hit_test_state.solid_rects.clone();
+                let enabled_arc = hit_test_state.enabled.clone();
+
                 tauri::async_runtime::spawn(async move {
                     let mut was_ignored = false;
                     loop {
@@ -529,18 +535,15 @@ pub fn run() {
                             continue;
                         }
 
-                        use windows::Win32::Foundation::POINT;
-                        use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
-
-                        let mut pt = POINT { x: 0, y: 0 };
-                        unsafe {
-                            let _ = GetCursorPos(&mut pt);
-                        }
+                        // 桌面全局坐标（物理像素），与 outer_position() 同一坐标系
+                        let Ok(cursor) = window.cursor_position() else {
+                            continue;
+                        };
 
                         if let Ok(window_pos) = window.outer_position() {
                             if let Ok(scale_factor) = window.scale_factor() {
-                                let mouse_x = f64::from(pt.x) - f64::from(window_pos.x);
-                                let mouse_y = f64::from(pt.y) - f64::from(window_pos.y);
+                                let mouse_x = cursor.x - f64::from(window_pos.x);
+                                let mouse_y = cursor.y - f64::from(window_pos.y);
 
                                 let logical_x = mouse_x / scale_factor;
                                 let logical_y = mouse_y / scale_factor;
