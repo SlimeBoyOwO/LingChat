@@ -20,6 +20,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # data/ 资源由 git LFS 追踪，必须拉取才能打进 APK
+          lfs: true
 
       - uses: pnpm/setup@v1
         with:
@@ -118,8 +121,9 @@ jobs:
           password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           EOF
 
-      - name: 构建 Android APK
-        run: pnpm android:build
+      # debug variant：gradle 自动用 debug keystore 签名，无需 secrets 即可安装
+      - name: 构建 Android APK (debug)
+        run: pnpm android:build -- --debug
 
       # dev 构建没有 secrets 时跳过手动签名，上传自动签名的 debug APK
       - name: 手动签名 APK
