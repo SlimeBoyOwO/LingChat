@@ -17,8 +17,11 @@ use crate::plugins::installer;
 #[cfg(desktop)]
 use crate::AppState;
 
-/// 市场仓库 plugins.json（main 分支，raw 直连）。
+/// 市场仓库 plugins.json（main 分支）。
+/// 主源 jsDelivr CDN（稳定、不限流），失败降级 raw.githubusercontent。
 const MARKET_INDEX_URL: &str =
+    "https://cdn.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/plugins.json";
+const MARKET_INDEX_URL_FALLBACK: &str =
     "https://raw.githubusercontent.com/zhangzm0/lingchat-marketplace/main/plugins.json";
 
 /// 安装记录文件（data/plugins/market.json）。
@@ -110,11 +113,21 @@ async fn fetch_index() -> Result<Vec<MarketPackage>, String> {
         }
     }
     let client = build_client()?;
-    let resp = client
-        .get(MARKET_INDEX_URL)
-        .send()
-        .await
-        .map_err(|e| format!("拉取市场索引失败: {e}"))?;
+    let mut resp = match client.get(MARKET_INDEX_URL).send().await {
+        Ok(r) => r,
+        Err(_) => client
+            .get(MARKET_INDEX_URL_FALLBACK)
+            .send()
+            .await
+            .map_err(|e| format!("拉取市场索引失败: {e}"))?,
+    };
+    if !resp.status().is_success() {
+        resp = client
+            .get(MARKET_INDEX_URL_FALLBACK)
+            .send()
+            .await
+            .map_err(|e| format!("拉取市场索引失败: {e}"))?;
+    }
     if !resp.status().is_success() {
         return Err(format!(
             "市场索引返回 HTTP {}",
