@@ -180,6 +180,28 @@ impl PluginManager {
         (config, env)
     }
 
+    /// 获取插件 manifest 声明的运行时权限：网络白名单 + call_tool 声明工具。
+    ///
+    /// 在 `spawn_blocking` 线程内调用，`blocking_lock` 等待锁安全。
+    pub fn plugin_decls(
+        &self,
+        id: &str,
+    ) -> (Vec<super::types::NetworkDecl>, Vec<String>) {
+        let records = self.records.blocking_lock();
+        let Some(record) = records.get(id) else {
+            return (Vec::new(), Vec::new());
+        };
+        let network = record.manifest.network.clone();
+        let declared_tools = record
+            .manifest
+            .permissions
+            .tools
+            .iter()
+            .map(|t| t.name.clone())
+            .collect();
+        (network, declared_tools)
+    }
+
     /// 列表（供前端）。
     pub async fn list(&self) -> Vec<PluginInfo> {
         let records = self.records.lock().await;

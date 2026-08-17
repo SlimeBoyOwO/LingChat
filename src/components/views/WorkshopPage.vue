@@ -72,6 +72,61 @@
           backdrop-blur-2xl
           md:p-6"
       >
+        <!-- Tab 切换：创意工坊讨论 / 市场商店 -->
+        <div class="mb-4
+          flex
+          shrink-0
+          items-center
+          gap-1.5">
+          <button
+            class="cursor-pointer
+              rounded-lg
+              border
+              border-white/10
+              bg-white/6
+              px-4
+              py-1.5
+              text-sm
+              font-semibold
+              text-white/60
+              transition-all
+              duration-200
+              hover:bg-white/12
+              hover:text-white/85
+              [&.active]:border-[color:var(--cat-color,#79d9ff)]
+              [&.active]:bg-[color:var(--cat-bg,rgba(121,217,255,0.15))]
+              [&.active]:text-[color:var(--cat-color,#79d9ff)]"
+            :class="{ active: activeTab === 'discussions' }"
+            @click="activeTab = 'discussions'"
+          >
+            {{ $t('settings.workshop.discussionsTab') }}
+          </button>
+          <button
+            class="cursor-pointer
+              rounded-lg
+              border
+              border-white/10
+              bg-white/6
+              px-4
+              py-1.5
+              text-sm
+              font-semibold
+              text-white/60
+              transition-all
+              duration-200
+              hover:bg-white/12
+              hover:text-white/85
+              [&.active]:border-[color:var(--cat-color,#79d9ff)]
+              [&.active]:bg-[color:var(--cat-bg,rgba(121,217,255,0.15))]
+              [&.active]:text-[color:var(--cat-color,#79d9ff)]"
+            :class="{ active: activeTab === 'market' }"
+            @click="activeTab = 'market'"
+          >
+            {{ $t('settings.workshop.marketTab') }}
+          </button>
+        </div>
+
+        <div v-show="activeTab === 'discussions'">
         <!-- Toolbar: category filter + sort toggle -->
         <div class="mb-5
           flex
@@ -617,16 +672,239 @@
             {{ $t('settings.workshop.refreshList') }}
           </button>
         </div>
+        </div>
+        <!-- /讨论区块 -->
+
+        <!-- 市场商店区块 -->
+        <div v-show="activeTab === 'market'" class="flex
+          h-full
+          flex-col">
+          <!-- Market toolbar -->
+          <div class="mb-4
+            flex
+            shrink-0
+            flex-wrap
+            items-center
+            justify-between
+            gap-2">
+            <span class="text-sm
+              text-white/40">{{ $t('settings.workshop.marketHint') }}</span>
+            <button
+              class="cursor-pointer
+                rounded-md
+                border
+                border-white/10
+                bg-white/6
+                px-3
+                py-1
+                text-xs
+                font-semibold
+                text-white/50
+                transition-all
+                duration-200
+                hover:bg-white/12
+                hover:text-white/80"
+              @click="loadMarket"
+            >
+              {{ $t('settings.workshop.refreshList') }}
+            </button>
+          </div>
+
+          <!-- Loading -->
+          <div
+            v-if="marketLoading"
+            class="flex
+              items-center
+              justify-center
+              py-12"
+          >
+            <p class="text-white/60">{{ $t('settings.workshop.loadingList') }}</p>
+          </div>
+
+          <!-- Error -->
+          <div
+            v-else-if="marketError"
+            class="flex
+              flex-col
+              items-center
+              justify-center
+              gap-3
+              py-12"
+          >
+            <p class="text-red-400">{{ marketError }}</p>
+            <button
+              class="rounded-lg
+                border
+                border-white/10
+                bg-white/10
+                px-5
+                py-2
+                text-white
+                transition-colors
+                hover:bg-white/20"
+              @click="loadMarket"
+            >
+              {{ $t('settings.workshop.retry') }}
+            </button>
+          </div>
+
+          <!-- Empty -->
+          <div
+            v-else-if="marketPackages.length === 0"
+            class="flex
+              items-center
+              justify-center
+              py-12"
+          >
+            <p class="text-white/50">{{ $t('settings.workshop.marketEmpty') }}</p>
+          </div>
+
+          <!-- Package list -->
+          <div
+            v-else
+            class="flex
+              flex-col
+              gap-3"
+          >
+            <div
+              v-for="pkg in marketPackages"
+              :key="pkg.id"
+              class="rounded-xl
+                border
+                border-white/10
+                bg-white/6
+                p-4
+                transition-colors
+                hover:border-white/20
+                hover:bg-white/10"
+            >
+              <div class="flex
+                items-start
+                justify-between
+                gap-3">
+                <div class="min-w-0">
+                  <div class="flex
+                    flex-wrap
+                    items-center
+                    gap-2">
+                    <span class="text-base
+                      font-bold
+                      text-white">{{ pkg.name }}</span>
+                    <span
+                      class="rounded-full
+                        px-2
+                        py-0.5
+                        text-[11px]
+                        font-semibold"
+                      :style="{ background: typeColor(pkg.type).bg, color: typeColor(pkg.type).fg }"
+                    >{{ typeLabel(pkg.type) }}</span>
+                    <span class="text-xs
+                      text-white/40">v{{ pkg.version }}</span>
+                  </div>
+                  <p class="mt-1
+                    text-sm
+                    leading-relaxed
+                    text-white/60">{{ pkg.description || $t('settings.workshop.noDesc') }}</p>
+                  <p class="mt-1
+                    text-xs
+                    text-white/35">{{ pkg.author ? pkg.author : '' }}</p>
+                </div>
+
+                <div class="flex
+                  shrink-0
+                  flex-col
+                  items-end
+                  gap-2">
+                  <!-- Installed badge / progress / button -->
+                  <template v-if="installingId === pkg.id">
+                    <span class="text-xs
+                      text-white/50">
+                      {{ progressPercent[pkg.id] ?? 0 }}%</span>
+                    <div class="h-1
+                      w-24
+                      overflow-hidden
+                      rounded-full
+                      bg-white/10">
+                      <div
+                        class="h-full
+                          rounded-full
+                          bg-[color:var(--cat-color,#79d9ff)]
+                          transition-all
+                          duration-200"
+                        :style="{ width: (progressPercent[pkg.id] ?? 0) + '%' }"
+                      ></div>
+                    </div>
+                  </template>
+                  <template v-else-if="installedMap[pkg.id]">
+                    <span class="text-xs
+                      text-emerald-300/80">
+                      {{ $t('settings.workshop.installed') }}
+                      <template v-if="installedMap[pkg.id].version !== pkg.version">(v{{ pkg.version }})</template>
+                    </span>
+                    <button
+                      class="rounded-lg
+                        border
+                        border-white/10
+                        bg-white/5
+                        px-3
+                        py-1
+                        text-xs
+                        text-white/50
+                        transition-colors
+                        hover:bg-white/10
+                        hover:text-red-300"
+                      :disabled="installingId !== null"
+                      @click="uninstallPkg(pkg.id)"
+                    >
+                      {{ $t('settings.workshop.uninstall') }}
+                    </button>
+                  </template>
+                  <button
+                    v-else
+                    class="rounded-lg
+                      border
+                      border-white/10
+                      bg-white/8
+                      px-3
+                      py-1
+                      text-xs
+                      font-semibold
+                      text-white/70
+                      transition-all
+                      hover:border-[color:var(--cat-color,#79d9ff)]
+                      hover:text-[color:var(--cat-color,#79d9ff)]
+                      disabled:cursor-not-allowed
+                      disabled:opacity-40"
+                    :disabled="installingId !== null"
+                    @click="installPkg(pkg.id)"
+                  >
+                    {{ $t('settings.workshop.install') }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- /市场区块 -->
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { fetchDiscussions, type Discussion } from '@/api/services/workshop'
+import {
+  fetchMarketIndex,
+  fetchInstalled,
+  installPackage,
+  uninstallPackage,
+  onMarketProgress,
+  type MarketPackage,
+  type InstalledRecord,
+} from '@/api/services/market'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { Cat, Clover, ExternalLink, ThumbsUp, User, Clock } from 'lucide-vue-next'
 import type { Component } from 'vue'
@@ -642,6 +920,94 @@ const sortMode = ref<'hot' | 'newest'>('hot')
 const { t } = useI18n()
 const router = useRouter()
 const ITEMS_PER_PAGE = 10
+
+// ── Market ────────────────────────────────────────────────────
+
+const activeTab = ref<'discussions' | 'market'>('discussions')
+const marketPackages = ref<MarketPackage[]>([])
+const installedMap = ref<Record<string, InstalledRecord>>({})
+const marketLoading = ref(false)
+const marketError = ref<string | null>(null)
+const installingId = ref<string | null>(null)
+const progressPercent = ref<Record<string, number>>({})
+let unlistenProgress: (() => void) | null = null
+
+function typeLabel(type: string): string {
+  const map: Record<string, string> = {
+    plugin: '插件',
+    character: '角色',
+    script: '剧本',
+    voice: '语音',
+  }
+  return map[type] || type
+}
+
+function typeColor(type: string): { bg: string; fg: string } {
+  const map: Record<string, { bg: string; fg: string }> = {
+    plugin: { bg: 'rgba(74,222,128,0.15)', fg: '#4ade80' },
+    character: { bg: 'rgba(121,217,255,0.15)', fg: '#79d9ff' },
+    script: { bg: 'rgba(168,85,247,0.15)', fg: '#a855f7' },
+    voice: { bg: 'rgba(234,179,8,0.15)', fg: '#eab308' },
+  }
+  return map[type] || { bg: 'rgba(107,114,128,0.15)', fg: '#6b7280' }
+}
+
+async function loadInstalled() {
+  try {
+    const records = await fetchInstalled()
+    const map: Record<string, InstalledRecord> = {}
+    for (const r of records) map[r.id] = r
+    installedMap.value = map
+  } catch {
+    // 已装列表失败不阻塞商店展示
+  }
+}
+
+async function loadMarket() {
+  marketLoading.value = true
+  marketError.value = null
+  try {
+    const [pkgs] = await Promise.all([fetchMarketIndex(), loadInstalled()])
+    marketPackages.value = pkgs
+  } catch (e: unknown) {
+    const err = e as { message?: string }
+    marketError.value = typeof e === 'string' ? e : err?.message || t('settings.workshop.loadFailed')
+  } finally {
+    marketLoading.value = false
+  }
+}
+
+async function installPkg(id: string) {
+  if (installingId.value) return
+  installingId.value = id
+  progressPercent.value[id] = 0
+  marketError.value = null
+  try {
+    await installPackage(id)
+    progressPercent.value[id] = 100
+    await loadInstalled()
+  } catch (e: unknown) {
+    const err = e as { message?: string }
+    marketError.value = typeof e === 'string' ? e : err?.message || t('settings.workshop.installFailed')
+  } finally {
+    installingId.value = null
+  }
+}
+
+async function uninstallPkg(id: string) {
+  if (installingId.value) return
+  installingId.value = id
+  marketError.value = null
+  try {
+    await uninstallPackage(id)
+    await loadInstalled()
+  } catch (e: unknown) {
+    const err = e as { message?: string }
+    marketError.value = typeof e === 'string' ? e : err?.message || t('settings.workshop.uninstallFailed')
+  } finally {
+    installingId.value = null
+  }
+}
 
 const goBack = () => {
   // 从主菜单（或设置）进入后返回上一页；直接访问时兜底回主菜单
@@ -793,6 +1159,15 @@ async function load() {
 
 onMounted(() => {
   load()
+  onMarketProgress((p) => {
+    progressPercent.value[p.id] = p.percent
+  }).then((fn) => {
+    unlistenProgress = fn
+  })
+})
+
+onUnmounted(() => {
+  unlistenProgress?.()
 })
 </script>
 

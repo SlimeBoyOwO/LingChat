@@ -36,8 +36,9 @@
 | 包结构 | 统一包壳：`manifest.toml` + `payload/` |
 | 分发载体 | GitHub Releases，每包每版本独立 Release |
 | 注册表入口 | 市场仓库 main 分支 `plugins.json`（raw URL） |
-| LLM 审查器 | 硅基流动免费模型（OpenAI 兼容），Provider 抽象可切换 |
+| LLM 审查器 | 魔搭 ModelScope 免费模型（OpenAI 兼容），Provider 抽象可切换 |
 | 审核原则 | 机器规则一票否决为主，LLM 负责语义判断，fail-closed |
+| 内容审核标准 | **宽松**：代码类严格，内容类（角色卡/剧本）只挡「明显违法」和「明显引人不适」；成人/擦边/galgame 尺度正常放行 |
 | 信任链 | 基础层：SHA256 + 分支保护 + bot 最小权限（签名二期） |
 | 权限模型 | URL 白名单（审核比对 + 运行时强制）；call_tool 读免声明、写必须声明 |
 | 大文件 | 不进 git/LFS，走外部 URL + sha256 声明 + bot 转存 Releases |

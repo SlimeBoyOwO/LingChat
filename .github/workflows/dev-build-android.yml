@@ -1,8 +1,13 @@
 name: 安卓测试版构建
 
 on:
-  # push:
-  #  branches: ['dev/**']
+  push:
+    branches: ['dev', 'dev/**']
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.vscode/**'
+      - '.github/workflows/*.yml'
   workflow_dispatch:
 
 jobs:

@@ -19,7 +19,7 @@ use crate::ai_service::tools::executor::ToolContext;
 use crate::AppState;
 
 use super::http_host;
-use super::types::PluginManifest;
+use super::types::{NetworkDecl, PluginManifest};
 
 /// 沙箱拦截的顶层模块名：碰文件系统、跑命令、调底层 C 的一律禁止导入。
 const BLOCKED_MODULES: &[&str] = &[
@@ -30,6 +30,39 @@ const BLOCKED_MODULES: &[&str] = &[
     "ctypes",
     "sysconfig",
 ];
+
+/// 内置只读工具集：插件脚本 `call_tool` 可无条件调用的无副作用查询工具。
+///
+/// 写工具（日程增改删、记忆增改删、场景/角色切换、文件写删改、命令执行）
+/// 必须由插件 manifest `[[permissions.tools]]` 显式声明，否则运行时拒绝
+/// （与市场审核规则 14 同源，客户端侧兜底）。
+pub(crate) const READ_TOOL_NAMES: &[&str] = &[
+    "get_current_time",
+    "status_get_current",
+    "status_get_scene",
+    "scene_list",
+    "schedule_get_all",
+    "memory_get_current",
+    "memory_get_notes",
+    "character_list",
+    "list_skills",
+    "read_skill",
+    "list_files",
+    "read_file",
+    "search_files",
+    "grep_files",
+    "web_search",
+];
+
+/// 网络白名单守卫：进入插件脚本执行时设置 thread_local 白名单，
+/// 无论脚本成败，离开作用域即清除，避免泄漏到同线程后续执行。
+struct NetworkGuard;
+
+impl Drop for NetworkGuard {
+    fn drop(&mut self) {
+        http_host::clear_active_network();
+    }
+}
 
 /// 取 Python 异常的文本信息。
 fn exc_message(vm: &VirtualMachine, e: &PyBaseExceptionRef) -> String {
@@ -70,6 +103,7 @@ fn build_ctx(
     args: &Value,
     config: &HashMap<String, Value>,
     env: &HashMap<String, String>,
+    declared_tools: &[String],
     app: AppHandle,
 ) -> PyResult<PyObjectRef> {
     let ctx = vm.ctx.new_dict();
@@ -86,8 +120,8 @@ fn build_ctx(
         env_dict.set_item(vm.ctx.intern_str(k.as_str()), vm.ctx.new_str(v.clone()).into(), vm)?;
     }
     ctx.set_item(vm.ctx.intern_str("env"), env_dict.into(), vm)?;
-    // call_tool：让插件脚本调用任意已注册工具（内置或插件），返回其 JSON 结果
-    ctx.set_item(vm.ctx.intern_str("call_tool"), make_call_tool(vm, app)?, vm)?;
+    // call_tool：让插件脚本调用已注册工具（内置只读 ∪ manifest 声明），返回其 JSON 结果
+    ctx.set_item(vm.ctx.intern_str("call_tool"), make_call_tool(vm, declared_tools, app)?, vm)?;
     Ok(ctx.into())
 }
 
@@ -95,11 +129,28 @@ fn build_ctx(
 ///
 /// 通过 AppHandle 取 ToolRegistry，在独立 runtime 内阻塞执行工具（脚本运行于
 /// spawn_blocking 线程，无 tokio runtime 上下文），返回序列化后的 JSON dict。
-fn make_call_tool(vm: &VirtualMachine, app: AppHandle) -> PyResult<PyObjectRef> {
+///
+/// 运行时过滤：仅放行「内置只读工具 ∪ manifest `[[permissions.tools]]` 声明」，
+/// 其余工具名直接拒绝（fail-closed），防止插件脚本越权调用写工具/命令执行。
+fn make_call_tool(
+    vm: &VirtualMachine,
+    declared_tools: &[String],
+    app: AppHandle,
+) -> PyResult<PyObjectRef> {
+    let mut allowed: std::collections::HashSet<String> = READ_TOOL_NAMES
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    allowed.extend(declared_tools.iter().cloned());
     let app_for_fn = app.clone();
     let func = vm.new_function(
         "call_tool",
         move |name: String, args: PyObjectRef, vm: &VirtualMachine| -> PyResult<PyObjectRef> {
+            if !allowed.contains(&name) {
+                return Err(vm.new_value_error(format!(
+                    "call_tool 越权: 工具 '{name}' 不在插件声明（manifest [[permissions.tools]]）与只读工具集内"
+                )));
+            }
             let args_value = py_serde::serialize(vm, &args, serde_json::value::Serializer)
                 .map_err(|e| vm.new_type_error(format!("call_tool 参数序列化失败: {e}")))?;
             let state = app_for_fn.state::<AppState>();
@@ -138,16 +189,24 @@ pub(crate) fn collect_env(manifest: &PluginManifest) -> HashMap<String, String> 
 /// 执行插件脚本，调用 `run(ctx)` 并返回结果。
 ///
 /// 必须在 `spawn_blocking` 内调用（`Interpreter::enter` 需要线程局部状态）。
+///
+/// `network` 是 manifest `[[network]]` 白名单（`http_get/http_post` 运行时强制），
+/// `declared_tools` 是 manifest `[[permissions.tools]]` 声明（`call_tool` 过滤）。
 pub(crate) fn run_plugin_script(
     script_path: &Path,
     tool_name: &str,
     args: &Value,
     config: &HashMap<String, Value>,
     env: &HashMap<String, String>,
+    network: &[NetworkDecl],
+    declared_tools: &[String],
     app: AppHandle,
 ) -> Result<Value, String> {
     let script = std::fs::read_to_string(script_path)
         .map_err(|e| format!("读取脚本失败: {e}"))?;
+    // 设置本线程网络白名单；离开本函数（含失败路径）自动清除
+    http_host::set_active_network(network.to_vec());
+    let _guard = NetworkGuard;
     let interpreter = build_interpreter();
     interpreter.enter(|vm| {
         let scope = vm.new_scope_with_builtins();
@@ -160,7 +219,7 @@ pub(crate) fn run_plugin_script(
         // 顶层定义执行完毕后，拦截危险模块，再调用 run()
         block_dangerous_imports(vm).map_err(|e| exc_message(vm, &e))?;
 
-        let ctx = build_ctx(vm, tool_name, args, config, env, app)
+        let ctx = build_ctx(vm, tool_name, args, config, env, declared_tools, app)
             .map_err(|e| exc_message(vm, &e))?;
         let run_func = scope
             .globals

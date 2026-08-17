@@ -12,6 +12,7 @@
 //! - [`manifest::parse`](manifest::parse)：解析并校验 manifest.toml
 
 pub mod http_host;
+pub mod installer;
 pub mod manager;
 pub mod manifest;
 pub mod python_backend;
