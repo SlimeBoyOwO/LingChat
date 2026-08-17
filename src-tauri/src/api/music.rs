@@ -114,33 +114,37 @@ pub async fn upload_music(
     path: String,
     file_name: String,
 ) -> Result<UploadMusicResult, String> {
-    // 防路径遍历
+    // 1. 防路径遍历
     let original_name = std::path::Path::new(&file_name)
         .file_name()
         .ok_or_else(|| format!("无效的文件名: {}", file_name))?
         .to_string_lossy()
         .into_owned();
 
-    // 1. magic sniff 决定真实格式
+    // 2. magic sniff 决定真实格式
     let src_path = std::path::PathBuf::from(&path);
     let detected = infer::get_from_path(&src_path)
         .map_err(|e| format!("读取文件头失败: {e}"))?;
-    let (kind, correct_ext) = match detected.map(|k| k.mime_type()) {
-        Some("audio/mpeg") => ("mp3",  "mp3"),
-        Some("audio/wav")  => ("wav",  "wav"),
-        Some("audio/flac") => ("flac", "flac"),
-        Some("audio/ogg")  => ("ogg",  "ogg"),
-        Some("audio/mp4")  => ("m4a",  "m4a"),
+    let (kind, correct_ext) = match detected {
+        Some(k) if k.matcher_type() == infer::MatcherType::Audio => match k.mime_type() {
+            "audio/mpeg" => ("mp3",  "mp3"),
+            "audio/wav"  => ("wav",  "wav"),
+            "audio/flac" => ("flac", "flac"),
+            "audio/ogg"  => ("ogg",  "ogg"),
+            "audio/mp4"  => ("m4a",  "m4a"),
+            _ => return Err("MUSIC_INVALID_FORMAT".into()),
+        },
         _ => return Err("MUSIC_INVALID_FORMAT".into()),
     };
 
-    // 2. 用 magic 决定的扩展名替换原扩展名
+    // 3. 用 magic 决定的扩展名替换原扩展名
     let stem = std::path::Path::new(&original_name)
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("track");
     let corrected_name = format!("{stem}.{correct_ext}");
 
+    // 4. 确保目标目录存在
     let music_dir = music_dir();
     if !music_dir.exists() {
         tokio::fs::create_dir_all(&music_dir)
@@ -148,7 +152,7 @@ pub async fn upload_music(
             .map_err(|e| format!("创建音乐目录失败: {}", e))?;
     }
 
-    // 3. 冲突时按 _2/_3/... 后缀
+    // 5. 冲突时按 _2/_3/... 后缀
     let mut final_name = corrected_name;
     let mut counter = 2u32;
     while music_dir.join(&final_name).exists() {
@@ -163,6 +167,7 @@ pub async fn upload_music(
     let was_corrected = original_name != final_name;
     let file_path = music_dir.join(&final_name);
 
+    // 6. 复制（桌面 vs Android SAF）
     if path.starts_with("content://") {
         use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
         app.android_fs_async()

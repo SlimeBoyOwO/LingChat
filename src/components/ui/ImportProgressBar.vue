@@ -4,7 +4,6 @@
     <div
       v-if="store.corrected.phase === 'active'"
       class="notice fixed top-8 right-8 z-[10000] flex items-start gap-3 p-4 min-w-[320px] max-w-[420px] rounded-xl backdrop-blur-[20px]"
-      :style="noticeStyle"
     >
       <div class="shrink-0 w-6 h-6 flex items-center justify-center text-amber-400">
         <svg
@@ -236,8 +235,6 @@ function dismiss() {
 function dismissCorrected() {
   store.dismissCorrected()
 }
-
-const noticeStyle = computed(() => ({}))
 
 let noticeTimer: number | null = null
 function clearNoticeTimer() {
