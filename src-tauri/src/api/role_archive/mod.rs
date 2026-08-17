@@ -18,8 +18,10 @@ mod state;
 
 pub use state::{ImportTaskEntry, RoleArchiveState};
 
+use crate::utils::archive::ArchiveFormat;
+
 use export_pipeline::compress_role_to_temp;
-use import_pipeline::{do_import, parse_format, parse_policy, prepare_import_source, write_temp_archive};
+use import_pipeline::{do_import, parse_format, parse_format_opt, parse_policy, prepare_import_source, write_temp_archive};
 use state::{ImportingGuard, TaskRemoveGuard};
 
 #[derive(Debug, Serialize, Clone)]
@@ -29,6 +31,8 @@ pub struct ImportResult {
     pub conflict_action: String,
     pub warnings: Vec<String>,
     pub bytes_extracted: u64,
+    /// 真实格式（后端 magic 决定）。前端 hint 可能不同，但 hint 不一致时以本字段为准。
+    pub format: ArchiveFormat,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -45,7 +49,7 @@ pub async fn import_role(
     app: AppHandle,
     state: State<'_, RoleArchiveState>,
     bytes: Vec<u8>,
-    format: String,
+    format: Option<String>,
     conflict: String,
     file_name: Option<String>,
 ) -> Result<ImportResult, String> {
@@ -59,7 +63,7 @@ pub async fn import_role(
         tracing::warn!("[RoleArchive] import_role 收到空文件");
         return Err("空文件".into());
     }
-    let format = parse_format(&format)?;
+    let format = parse_format_opt(format.as_deref())?;
     let policy = parse_policy(&conflict)?;
     tracing::info!(
         "[RoleArchive] import_role 开始: format={:?}, conflict={:?}, size={}B ({}MB)",
@@ -140,7 +144,7 @@ pub async fn import_role_from_path(
     app: AppHandle,
     state: State<'_, RoleArchiveState>,
     path: String,
-    format: String,
+    format: Option<String>,
     conflict: String,
     file_name: Option<String>,
 ) -> Result<ImportResult, String> {
@@ -154,7 +158,7 @@ pub async fn import_role_from_path(
         tracing::warn!("[RoleArchive] import_role_from_path 收到空 path");
         return Err("path 为空".into());
     }
-    let format = parse_format(&format)?;
+    let format = parse_format_opt(format.as_deref())?;
     let policy = parse_policy(&conflict)?;
     tracing::info!(
         "[RoleArchive] import_role_from_path 开始: path={}, format={:?}, conflict={:?}",

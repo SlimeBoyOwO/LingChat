@@ -20,19 +20,23 @@ use super::ImportResult;
 pub(super) async fn do_import(
     app: &AppHandle,
     tmp_path: &Path,
-    format: ArchiveFormat,
+    format: Option<ArchiveFormat>,
     policy: ConflictPolicy,
     cancel_token: Arc<CancellationToken>,
     file_name: Option<&str>,
 ) -> Result<ImportResult, String> {
-    // 1. 校验文件头魔数。
+    // 1. 校验文件头魔数。前端 hint 可选；以 magic 为准，hint 仅用于 debug 日志。
     let detected = archive::detect_format(tmp_path).map_err(|e| e.to_string())?;
-    if detected != format {
-        tracing::warn!("[RoleArchive] do_import 格式不匹配: 前端 {format:?}, 实际 {detected:?}");
-        return Err(format!(
-            "格式不匹配: 前端传 {format:?}, 实际 {detected:?}"
-        ));
-    }
+    let format = match format {
+        Some(hint) if hint == detected => detected,
+        Some(hint) => {
+            tracing::warn!(
+                "[RoleArchive] do_import 扩展名 hint={hint:?} 与 magic {detected:?} 不一致，采用 magic 结果"
+            );
+            detected
+        }
+        None => detected,
+    };
 
     // 2. 使用去除扩展名后的压缩包文件名作为角色文件夹名。
     let final_name = sanitize_role_folder_name(file_name, None);
@@ -122,6 +126,7 @@ pub(super) async fn do_import(
                 conflict_action: "skipped".into(),
                 warnings: vec![],
                 bytes_extracted: 0,
+                format,
             });
         }
         Err(e) => {
@@ -264,6 +269,7 @@ pub(super) async fn do_import(
         conflict_action: resolution.action.into(),
         warnings: summary.warnings,
         bytes_extracted: summary.bytes_extracted,
+        format,
     })
 }
 
@@ -438,6 +444,14 @@ pub(super) fn parse_format(s: &str) -> Result<ArchiveFormat, String> {
         "zip" => Ok(ArchiveFormat::Zip),
         "7z" => Ok(ArchiveFormat::SevenZ),
         _ => Err(format!("不支持的 format: {s}")),
+    }
+}
+
+/// Optional format parser: `None`/空字符串代表前端没传 hint，让后端用 magic 决定。
+pub(super) fn parse_format_opt(s: Option<&str>) -> Result<Option<ArchiveFormat>, String> {
+    match s {
+        None | Some("") | Some("auto") => Ok(None),
+        Some(v) => parse_format(v).map(Some),
     }
 }
 
