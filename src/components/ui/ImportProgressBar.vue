@@ -1,31 +1,33 @@
 <template>
   <Teleport to="body">
-    <Transition name="slide-up">
-      <div
-        v-if="store.corrected.phase === 'active'"
-        class="notice fixed top-8 right-8 z-[10000] flex items-start gap-3 p-4 min-w-[320px] max-w-[420px] rounded-xl backdrop-blur-[20px]"
-        :style="noticeStyle"
-      >
-        <div class="shrink-0 w-6 h-6 flex items-center justify-center text-amber-400">
-          <svg
-            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-            class="w-6 h-6"
-          >
-            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-            <line x1="12" y1="9" x2="12" y2="13" />
-            <line x1="12" y1="17" x2="12.01" y2="17" />
-          </svg>
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="text-amber-400 font-bold text-sm">{{ store.corrected.title }}</div>
-          <div class="text-gray-200 text-xs mt-1 whitespace-pre-line break-words">{{ store.corrected.message }}</div>
-        </div>
-        <button
-          class="shrink-0 text-white/60 hover:text-white text-lg leading-none"
-          @click="dismissCorrected"
-        >×</button>
+    <!-- notice 卡片与 import/export 进度条独立，不进入同一个 <Transition>。 -->
+    <div
+      v-if="store.corrected.phase === 'active'"
+      class="notice fixed top-8 right-8 z-[10000] flex items-start gap-3 p-4 min-w-[320px] max-w-[420px] rounded-xl backdrop-blur-[20px]"
+      :style="noticeStyle"
+    >
+      <div class="shrink-0 w-6 h-6 flex items-center justify-center text-amber-400">
+        <svg
+          xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+          class="w-6 h-6"
+        >
+          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          <line x1="12" y1="9" x2="12" y2="13" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
       </div>
+      <div class="flex-1 min-w-0">
+        <div class="text-amber-400 font-bold text-sm">{{ store.corrected.title }}</div>
+        <div class="text-gray-200 text-xs mt-1 whitespace-pre-line break-words">{{ store.corrected.message }}</div>
+      </div>
+      <button
+        class="shrink-0 text-white/60 hover:text-white text-lg leading-none"
+        @click="dismissCorrected"
+      >×</button>
+    </div>
+
+    <Transition name="slide-up">
       <div
         v-if="visible"
         :data-phase="state.phase"
