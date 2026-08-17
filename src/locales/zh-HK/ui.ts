@@ -60,7 +60,10 @@ export default {
     "defaultImportTitle": "角色壓縮檔",
     "defaultExportTitle": "角色匯出",
     "close": "關閉",
-    "cancel": "取消"
+    "cancel": "取消",
+    "errors": {
+      "ARCHIVE_MISSING_SETTINGS_YML": "壓縮包缺少 settings.yml\n這可能是舊版角色，請下載新版角色後匯入"
+    }
   },
   "menuItem": {
     "defaultTitle": "預設標題"

@@ -232,9 +232,8 @@ pub(super) async fn do_import(
             settings_yml.display()
         );
         let _ = tokio::fs::remove_dir_all(&resolution.target).await;
-        return Err(format!(
-            "压缩包缺少 settings.yml (角色配置文件不可缺少). 请确保压缩包内含 settings.yml 后重试."
-        ));
+        // 返回 i18n 错误码，前端按 ui.archiveProgress.errors.<code> 查表翻译。
+        return Err("ARCHIVE_MISSING_SETTINGS_YML".into());
     }
 
     // 同步角色数据前进行最后一次取消检查。

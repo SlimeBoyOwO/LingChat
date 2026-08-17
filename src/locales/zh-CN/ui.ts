@@ -60,6 +60,9 @@ export default {
     defaultExportTitle: '角色导出',
     close: '关闭',
     cancel: '取消',
+    errors: {
+      ARCHIVE_MISSING_SETTINGS_YML: '压缩包缺少 settings.yml\n这可能是旧版角色，请下载新版角色后导入',
+    },
   },
   menuItem: {
     defaultTitle: '默认标题',

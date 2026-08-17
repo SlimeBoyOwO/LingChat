@@ -65,7 +65,7 @@
           <div class="text-white font-bold text-sm leading-tight truncate">{{ title }}</div>
           <div
             v-if="message"
-            class="text-gray-300 text-xs leading-tight break-all line-clamp-2"
+            class="text-gray-300 text-xs leading-tight break-all whitespace-pre-line"
           >{{ message }}</div>
 
           <div
@@ -136,7 +136,12 @@ const title = computed(() => {
 
 const message = computed(() => {
   const s = state.value
-  if (s.phase === 'error') return s.error || s.message
+  if (s.phase === 'error') {
+    const raw = s.error || s.message
+    // 后端返回的 i18n 错误码（如 ARCHIVE_MISSING_SETTINGS_YML）优先查翻译表，
+    // 找不到则 fallback 到原文（兼容后端其他字符串错误）。
+    return t(`ui.archiveProgress.errors.${raw}`, raw)
+  }
   return s.message
 })
 

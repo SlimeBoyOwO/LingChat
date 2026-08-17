@@ -60,6 +60,9 @@ export default {
     defaultExportTitle: 'キャラクターのエクスポート',
     close: '閉じる',
     cancel: 'キャンセル',
+    errors: {
+      ARCHIVE_MISSING_SETTINGS_YML: '圧縮ファイルに settings.yml がありません\n旧バージョンのキャラクターかもしれません。新版をダウンロードしてからインポートしてください',
+    },
   },
   menuItem: {
     defaultTitle: 'デフォルトタイトル',

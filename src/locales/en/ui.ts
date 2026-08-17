@@ -61,6 +61,9 @@ export default {
     defaultExportTitle: "Character Export",
     close: "Close",
     cancel: "Cancel",
+    errors: {
+      ARCHIVE_MISSING_SETTINGS_YML: "Archive is missing settings.yml\nThis may be an older version role. Please download the new version and import it.",
+    },
   },
   menuItem: {
     defaultTitle: "Default Title",
