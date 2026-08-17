@@ -260,6 +260,7 @@ pub fn run() {
             app.manage(resource_sync::ResourceSyncState::default());
             app.manage(lan_sync::LanSyncState::default());
             app.manage(utils::cpu_perf::CpuDetectionCache::new());
+            app.manage(utils::gpu_perf::GpuDetectionCache::new());
             app.manage(api::role_archive::RoleArchiveState::default());
 
             // Android 修复：Tauri 在 setup 闭包执行前已创建 webview 窗口，前端 invoke
@@ -746,6 +747,8 @@ pub fn run() {
             lan_sync::lan_sync_restart,
             utils::cpu_perf::get_cpu_info,
             utils::cpu_perf::redetect_cpu,
+            utils::gpu_perf::get_gpu_info,
+            utils::gpu_perf::redetect_gpu,
             api::role_archive::import_role,
             api::role_archive::import_role_from_path,
             api::role_archive::cancel_role_import,
