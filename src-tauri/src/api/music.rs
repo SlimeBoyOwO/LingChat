@@ -17,6 +17,19 @@ pub struct MusicItemInfo {
     pub time: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct UploadMusicResult {
+    /// 实际落盘的文件名（含 magic 决定的正确扩展名）
+    pub actual_name: String,
+    /// 用户原始文件名
+    pub original_name: String,
+    /// infer 识别的格式：mp3 / wav / flac / ogg / m4a
+    pub detected_kind: String,
+    /// 是否发生自动修正（原扩展名 != magic 决定的扩展名）
+    pub was_corrected: bool,
+}
+
 // ========== Tauri 命令 ==========
 
 #[tauri::command]
@@ -96,13 +109,37 @@ pub fn get_music_file(filename: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn upload_music(app: tauri::AppHandle, path: String, file_name: String) -> Result<(), String> {
-    // 安全检查：只保留文件名，防止路径遍历
-    let safe_name = std::path::Path::new(&file_name)
+pub async fn upload_music(
+    app: tauri::AppHandle,
+    path: String,
+    file_name: String,
+) -> Result<UploadMusicResult, String> {
+    // 防路径遍历
+    let original_name = std::path::Path::new(&file_name)
         .file_name()
         .ok_or_else(|| format!("无效的文件名: {}", file_name))?
         .to_string_lossy()
         .into_owned();
+
+    // 1. magic sniff 决定真实格式
+    let src_path = std::path::PathBuf::from(&path);
+    let detected = infer::get_from_path(&src_path)
+        .map_err(|e| format!("读取文件头失败: {e}"))?;
+    let (kind, correct_ext) = match detected.map(|k| k.mime_type()) {
+        Some("audio/mpeg") => ("mp3",  "mp3"),
+        Some("audio/wav")  => ("wav",  "wav"),
+        Some("audio/flac") => ("flac", "flac"),
+        Some("audio/ogg")  => ("ogg",  "ogg"),
+        Some("audio/mp4")  => ("m4a",  "m4a"),
+        _ => return Err("MUSIC_INVALID_FORMAT".into()),
+    };
+
+    // 2. 用 magic 决定的扩展名替换原扩展名
+    let stem = std::path::Path::new(&original_name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("track");
+    let corrected_name = format!("{stem}.{correct_ext}");
 
     let music_dir = music_dir();
     if !music_dir.exists() {
@@ -111,23 +148,39 @@ pub async fn upload_music(app: tauri::AppHandle, path: String, file_name: String
             .map_err(|e| format!("创建音乐目录失败: {}", e))?;
     }
 
-    let file_path = music_dir.join(&safe_name);
+    // 3. 冲突时按 _2/_3/... 后缀
+    let mut final_name = corrected_name;
+    let mut counter = 2u32;
+    while music_dir.join(&final_name).exists() {
+        if counter > 999 {
+            final_name = format!("{stem}_{}{}", chrono::Utc::now().timestamp_millis(), correct_ext);
+            break;
+        }
+        final_name = format!("{stem}_{counter}.{correct_ext}");
+        counter += 1;
+    }
+
+    let was_corrected = original_name != final_name;
+    let file_path = music_dir.join(&final_name);
 
     if path.starts_with("content://") {
-        // Android SAF：content:// URI 直接复制到目标文件（不经 IPC 传大文件）
         use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
         app.android_fs_async()
             .copy(&FsUri::from_uri(&path), &FsUri::from_path(&file_path))
             .await
             .map_err(|e| format!("SAF 复制音乐失败: {}", e))?;
     } else {
-        // 桌面端：Rust 直接复制源文件
-        tokio::fs::copy(std::path::PathBuf::from(&path), &file_path)
+        tokio::fs::copy(&src_path, &file_path)
             .await
             .map_err(|e| format!("复制文件失败: {}", e))?;
     }
 
-    Ok(())
+    Ok(UploadMusicResult {
+        actual_name: final_name,
+        original_name,
+        detected_kind: kind.to_string(),
+        was_corrected,
+    })
 }
 
 /// 删除指定音乐文件
