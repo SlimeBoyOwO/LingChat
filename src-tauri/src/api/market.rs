@@ -561,7 +561,7 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
 
     let mut last_err = String::new();
     let mut downloaded = false;
-    for (src_idx, src) in sources.iter().enumerate() {
+    'sources: for (src_idx, src) in sources.iter().enumerate() {
         let mut src_err = String::new();
         // 每源最多 2 次（连接超时 8s，不可达镜像很快失败并换下一源，避免长时间卡住）
         for attempt in 0..2 {
@@ -577,9 +577,45 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
             )
             .await
             {
-                Ok(_) => {
+                Ok(bytes) => {
+                    // 大小校验：下载字节数不足说明连接提前中断（截断文件），视为该源失败换下一源
+                    if expected > 0 && bytes < expected {
+                        src_err = format!("下载不完整（{bytes}/{expected} 字节）");
+                        tracing::warn!("市场包 '{}' {}: {src_err}", id, src);
+                        if attempt + 1 < 2 {
+                            tokio::time::sleep(std::time::Duration::from_millis(
+                                BASE_DELAY_MS * (1 << attempt),
+                            ))
+                            .await;
+                        }
+                        continue;
+                    }
+                    // sha256 校验（fail-closed：索引声明了就必须匹配）——
+                    // 校验失败视为该源内容异常（镜像改写/损坏），换下一源重下，不直接失败
+                    if let Some(declared) = &pkg.sha256 {
+                        match installer::sha256_hex(&zip_path) {
+                            Ok(actual) if actual.eq_ignore_ascii_case(declared) => {}
+                            Ok(actual) => {
+                                src_err = format!(
+                                    "sha256 校验失败（声明 {declared}，实际 {actual}）"
+                                );
+                                tracing::warn!("市场包 '{}' {}（源 {}）", id, src_err, src);
+                                if attempt + 1 < 2 {
+                                    tokio::time::sleep(std::time::Duration::from_millis(
+                                        BASE_DELAY_MS * (1 << attempt),
+                                    ))
+                                    .await;
+                                }
+                                continue;
+                            }
+                            Err(e) => {
+                                src_err = format!("sha256 计算失败: {e}");
+                                continue;
+                            }
+                        }
+                    }
                     downloaded = true;
-                    break;
+                    break 'sources;
                 }
                 Err(e) => {
                     src_err = e;
@@ -598,9 +634,6 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
                 }
             }
         }
-        if downloaded {
-            break;
-        }
         last_err = format!("源 {} ({src}) 失败: {src_err}", src_idx + 1);
         // 换源前短暂停顿，避免对镜像站突发请求
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
@@ -612,17 +645,7 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
         ));
     }
 
-    // sha256 校验（fail-closed：索引声明了就必须匹配）
-    if let Some(declared) = &pkg.sha256 {
-        let actual = installer::sha256_hex(&zip_path)?;
-        if !actual.eq_ignore_ascii_case(declared) {
-            let _ = std::fs::remove_file(&zip_path);
-            return Err(format!(
-                "sha256 校验失败（{id} {ver}）：声明 {declared}，实际 {actual}",
-                ver = pkg.version
-            ));
-        }
-    }
+    // 下载成功（已通过大小 + sha256 校验），进入解包安装阶段
 
     // 解包安装（同步阻塞，放 spawn_blocking）；先通知进入安装阶段
     let _ = app.emit(

@@ -100,6 +100,7 @@ pub async fn download_to_file(
     }
 
     let total = resp.content_length().unwrap_or(expected_size);
+    let declared_len = resp.content_length();
     let mut stream = resp.bytes_stream();
     let mut file = tokio::fs::File::create(&tmp)
         .await
@@ -140,6 +141,17 @@ pub async fn download_to_file(
     tokio::io::AsyncWriteExt::shutdown(&mut file)
         .await
         .map_err(|e| format!("shutdown: {e}"))?;
+
+    // Content-Length 声明了但实际字节数不足 → 连接提前中断（截断文件），必须报错而不是静默返回
+    if let Some(declared) = declared_len {
+        if bytes_done < declared {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Err(format!(
+                "下载不完整（{bytes_done}/{declared} 字节，连接中断）"
+            ));
+        }
+    }
+
     tokio::fs::rename(&tmp, dest)
         .await
         .map_err(|e| format!("rename: {e}"))?;
