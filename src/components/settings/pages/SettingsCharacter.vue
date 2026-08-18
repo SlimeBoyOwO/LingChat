@@ -91,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { Birdhouse, FolderOpen, PackageOpen, Rabbit, RefreshCcw } from 'lucide-vue-next'
@@ -226,11 +226,19 @@ const handleSettingsSaved = () => {
 }
 
 onMounted(() => {
-  loadCharacters()
-  // 市场安装/卸载角色包后自动刷新列表（KeepAlive 缓存下 onMounted 不会重跑）
+  // 市场安装/卸载角色包后自动刷新列表。仅当本页恰好挂载时生效；
+  // 从云端创意工坊装完再回来时组件已随路由卸载重建，订阅早已丢失，
+  // 那类路径由下方 onActivated 兜底（KeepAlive 缓存下 onMounted 不会重跑）。
   unlistenMarketChanged = onMarketChanged(() => {
     refreshCharacters()
   })
+})
+
+// 首次展示与每次切回本页统一 rescan + 重拉（与 SettingsAdventure 同款模式）：
+// 覆盖「装完角色卡返回本页」——此时 onMounted 的订阅已丢失，
+// 而新角色目录还没同步进 DB，必须 rescan 才能出现在列表里。
+onActivated(() => {
+  refreshCharacters()
 })
 
 onUnmounted(() => {

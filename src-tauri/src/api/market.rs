@@ -308,6 +308,13 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
             "移动端安装插件 '{}'：已落盘 data/plugins/，运行需桌面端",
             id
         );
+    } else if installed.manifest.package_type == "character" {
+        // 角色卡：get_character_list 读 DB，而角色行只在启动/手动「刷新角色列表」时
+        // 由 rescan_roles 从目录同步。装完必须同步一次，否则角色列表
+        // 直到重启或手动刷新都不出现（与设置页刷新按钮同一条路径）。
+        if let Err(e) = crate::api::role_archive::rescan_roles(app.clone()).await {
+            tracing::warn!("角色安装后重扫角色表失败: {e}");
+        }
     } else if installed.manifest.package_type == "script" {
         // 剧本包：引擎启动时才扫一次剧本目录，装完必须重扫，
         // 否则主菜单剧本列表 / 羁绊冒险直到重启都不出现。
