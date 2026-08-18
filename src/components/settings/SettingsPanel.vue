@@ -11,10 +11,8 @@
       @touchstart="onTouchStart"
       @touchend="onTouchEnd"
     >
-      <Transition :name="transitionName" mode="out-in">
-        <!-- KeepAlive 缓存设置子页面实例：切换时只激活/停用，不销毁重建，保留状态。
-             mode="out-in"：旧 Tab 先完整滑出、再挂载/激活新 Tab。默认同时模式下，
-             新 Tab 的同步挂载会阻塞主线程，把旧 Tab 滑出的头 1~2 帧卡出「残留」。 -->
+      <Transition :name="transitionName">
+        <!-- KeepAlive 缓存设置子页面实例：切换时只激活/停用，不销毁重建，保留状态 -->
         <KeepAlive>
           <component
             :is="currentTabComponent"
@@ -219,21 +217,25 @@ defineExpose({
 .slide-left-leave-active,
 .slide-right-enter-active,
 .slide-right-leave-active {
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* 与剧本编辑器同一套动画参数：起步即快的缓动（而非默认的慢起步）——
+     切 Tab 时新页挂载/旧页缓存 DOM 重插会有 1~2 帧主线程开销，慢起步缓动
+     会让旧页看起来「卡在原地」形成残留；快速起步则把这点开销掩盖掉。 */
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .slide-left-enter-from {
   transform: translateX(100%);
 }
 .slide-left-leave-to {
-  transform: translateX(-100%);
+  /* 旧页滑出多一点（±150%），保证整页宽度的 Tab 也彻底离开视口 */
+  transform: translateX(-150%);
 }
 
 .slide-right-enter-from {
   transform: translateX(-100%);
 }
 .slide-right-leave-to {
-  transform: translateX(100%);
+  transform: translateX(150%);
 }
 
 .slide-left-enter-to,
