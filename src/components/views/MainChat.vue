@@ -7,7 +7,7 @@
       class="full-access-warning"
       role="alert"
     >
-      <ShieldAlert :size="16" aria-hidden="true" />
+      <ShieldAlert :size="18" aria-hidden="true" />
       <span>{{ $t('ui.toolCalls.fullAccessTopWarning') }}</span>
     </div>
     <GameBackground></GameBackground>
@@ -261,20 +261,23 @@ watch(
 
 .full-access-warning {
   position: fixed;
-  top: calc(20px + var(--safe-area-inset-top));
+  top: calc(15px + var(--safe-area-inset-top));
   left: 50%;
   z-index: 1001;
   display: flex;
+  height: 40px;
   max-width: min(44rem, calc(100vw - 34rem));
   transform: translateX(-50%);
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.45rem;
   padding: 0;
   color: rgb(250 204 21 / 78%);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 700;
   letter-spacing: 0.02em;
+  line-height: 1;
   pointer-events: none;
+  white-space: nowrap;
   text-shadow:
     0 1px 2px rgb(0 0 0 / 95%),
     0 0 8px rgb(0 0 0 / 75%);
