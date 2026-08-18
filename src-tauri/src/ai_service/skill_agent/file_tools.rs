@@ -8,6 +8,7 @@ const MAX_LIST_ENTRIES: usize = 500;
 const MAX_WALK_DEPTH: usize = 10;
 const MAX_WALK_FILES: usize = 500;
 const MAX_GREP_FILE_BYTES: u64 = 1024 * 1024;
+pub const MAX_GLOB_RESULTS: usize = 100;
 pub const MAX_GREP_RESULTS: usize = 100;
 
 /// 先写入目标旁的临时文件，完整刷盘后，再原子地替换目标文件。
@@ -230,8 +231,8 @@ impl FileTools {
         ))
     }
 
-    /// 用正则表达式搜索文本文件，返回 `文件:行号: 内容` 条目。
-    pub fn grep_files(
+    /// 按相对路径 glob 模式递归查找文件，支持 `*`、`?` 和 `**`。
+    pub fn glob_files(
         &self,
         path: &str,
         pattern: &str,
@@ -241,8 +242,65 @@ impl FileTools {
         if !dir.is_dir() {
             anyhow::bail!("目录不存在: {}", dir.display());
         }
-        let regex =
-            regex::Regex::new(pattern).map_err(|e| anyhow::anyhow!("正则表达式无效: {e}"))?;
+        let matcher = glob_pattern_regex(pattern)?;
+        let cap = max_results.clamp(1, MAX_GLOB_RESULTS);
+        let mut files = Vec::new();
+        let walk_truncated = walk_files(&dir, 0, &mut files);
+        let mut hits = files
+            .iter()
+            .filter(|file| glob_matches_file(&matcher, pattern, &dir, file))
+            .map(|file| self.display_path(file))
+            .collect::<Vec<_>>();
+        hits.sort_by_key(|path| path.to_lowercase());
+        let result_truncated = hits.len() > cap;
+        hits.truncate(cap);
+        if hits.is_empty() {
+            return Ok(format!("没有文件匹配 glob 模式“{pattern}”。"));
+        }
+        let suffix = if result_truncated || walk_truncated {
+            "\n...[结果已达到限制]..."
+        } else {
+            ""
+        };
+        Ok(format!(
+            "匹配 {} 个文件:\n{}{suffix}",
+            hits.len(),
+            hits.join("\n")
+        ))
+    }
+
+    /// 用正则表达式搜索文本文件，返回 `文件:行号: 内容` 条目。
+    pub fn grep_files(
+        &self,
+        path: &str,
+        pattern: &str,
+        max_results: usize,
+    ) -> anyhow::Result<String> {
+        self.grep(path, pattern, None, false, "content", max_results)
+    }
+
+    /// 类似 ripgrep 的文本搜索，可按 glob 过滤文件并切换输出模式。
+    pub fn grep(
+        &self,
+        path: &str,
+        pattern: &str,
+        file_glob: Option<&str>,
+        case_insensitive: bool,
+        output_mode: &str,
+        max_results: usize,
+    ) -> anyhow::Result<String> {
+        let dir = self.sanitize(path)?;
+        if !dir.is_dir() {
+            anyhow::bail!("目录不存在: {}", dir.display());
+        }
+        let regex = regex::RegexBuilder::new(pattern)
+            .case_insensitive(case_insensitive)
+            .build()
+            .map_err(|e| anyhow::anyhow!("正则表达式无效: {e}"))?;
+        let file_matcher = file_glob.map(glob_pattern_regex).transpose()?;
+        if !matches!(output_mode, "content" | "files_with_matches" | "count") {
+            anyhow::bail!("output_mode 必须是 content、files_with_matches 或 count");
+        }
         let cap = max_results.clamp(1, MAX_GREP_RESULTS);
         let mut files = Vec::new();
         let walk_truncated = walk_files(&dir, 0, &mut files);
@@ -250,6 +308,11 @@ impl FileTools {
         for file in files {
             if hits.len() >= cap {
                 break;
+            }
+            if let (Some(matcher), Some(pattern)) = (&file_matcher, file_glob) {
+                if !glob_matches_file(matcher, pattern, &dir, &file) {
+                    continue;
+                }
             }
             let Ok(metadata) = std::fs::metadata(&file) else {
                 continue;
@@ -264,18 +327,29 @@ impl FileTools {
                 continue;
             }
             let content = String::from_utf8_lossy(&bytes);
+            let mut file_match_count = 0usize;
             for (index, line) in content.lines().enumerate() {
                 if regex.is_match(line) {
-                    hits.push(format!(
-                        "{}:{}: {}",
-                        self.display_path(&file),
-                        index + 1,
-                        line.trim_end()
-                    ));
+                    file_match_count += 1;
+                    if output_mode == "content" {
+                        hits.push(format!(
+                            "{}:{}: {}",
+                            self.display_path(&file),
+                            index + 1,
+                            line.trim_end()
+                        ));
+                    }
                     if hits.len() >= cap {
                         break;
                     }
                 }
+            }
+            if file_match_count > 0 && output_mode != "content" {
+                hits.push(if output_mode == "count" {
+                    format!("{}: {file_match_count}", self.display_path(&file))
+                } else {
+                    self.display_path(&file)
+                });
             }
         }
         if hits.is_empty() {
@@ -288,7 +362,7 @@ impl FileTools {
             ""
         };
         Ok(format!(
-            "匹配 {} 行:\n{}{suffix}",
+            "匹配 {} 个结果:\n{}{suffix}",
             hits.len(),
             hits.join("\n")
         ))
@@ -365,6 +439,58 @@ fn wildcard_match(pattern: &str, name: &str) -> bool {
         pattern_index += 1;
     }
     pattern_index == pattern.len()
+}
+
+fn glob_pattern_regex(pattern: &str) -> anyhow::Result<regex::Regex> {
+    let normalized = pattern.trim().replace('\\', "/");
+    let normalized = normalized.strip_prefix("./").unwrap_or(&normalized);
+    if normalized.is_empty() {
+        anyhow::bail!("glob 模式不能为空");
+    }
+    let chars = normalized.chars().collect::<Vec<_>>();
+    let mut expression = String::from("^");
+    let mut index = 0usize;
+    while index < chars.len() {
+        match chars[index] {
+            '*' if chars.get(index + 1) == Some(&'*') => {
+                if chars.get(index + 2) == Some(&'/') {
+                    expression.push_str("(?:.*/)?");
+                    index += 3;
+                } else {
+                    expression.push_str(".*");
+                    index += 2;
+                }
+            }
+            '*' => {
+                expression.push_str("[^/]*");
+                index += 1;
+            }
+            '?' => {
+                expression.push_str("[^/]");
+                index += 1;
+            }
+            character => {
+                expression.push_str(&regex::escape(&character.to_string()));
+                index += 1;
+            }
+        }
+    }
+    expression.push('$');
+    regex::RegexBuilder::new(&expression)
+        .case_insensitive(true)
+        .build()
+        .map_err(Into::into)
+}
+
+fn glob_matches_file(matcher: &regex::Regex, pattern: &str, root: &Path, file: &Path) -> bool {
+    let relative = file.strip_prefix(root).unwrap_or(file);
+    let relative = relative.to_string_lossy().replace('\\', "/");
+    matcher.is_match(&relative)
+        || (!pattern.contains('/')
+            && !pattern.contains('\\')
+            && file
+                .file_name()
+                .is_some_and(|name| matcher.is_match(&name.to_string_lossy())))
 }
 
 /// 规范化最深存在的祖先目录，拼接缺失的后缀，再做归一化。
@@ -496,6 +622,34 @@ mod tests {
         assert!(grep.contains("example.txt:2: BETA"));
         file_tools.delete_file("notes/example.txt").unwrap();
         assert!(!root.0.join("notes/example.txt").exists());
+    }
+
+    #[test]
+    fn glob_and_grep_support_code_search_options() {
+        let root = TempDir::new("code_search");
+        std::fs::create_dir_all(root.0.join("src/nested")).unwrap();
+        std::fs::write(root.0.join("src/main.rs"), "fn Main() {}\n").unwrap();
+        std::fs::write(root.0.join("src/nested/lib.rs"), "fn helper() {}\n").unwrap();
+        std::fs::write(root.0.join("src/readme.md"), "fn Main() {}\n").unwrap();
+        let file_tools = tools(&root.0);
+
+        let glob = file_tools.glob_files(".", "**/*.RS", 100).unwrap();
+        assert!(glob.contains("main.rs"));
+        assert!(glob.contains("lib.rs"));
+        assert!(!glob.contains("readme.md"));
+
+        let grep = file_tools
+            .grep(
+                ".",
+                "fn main",
+                Some("**/*.rs"),
+                true,
+                "files_with_matches",
+                50,
+            )
+            .unwrap();
+        assert!(grep.contains("main.rs"));
+        assert!(!grep.contains("readme.md"));
     }
 
     #[test]

@@ -2,6 +2,14 @@
   <div class="main-box">
     <!-- 主界面始终渲染，加载动画期间在后台初始化 -->
     <FreeModeTools />
+    <div
+      v-if="currentToolAccessMode === 'full_access' && !uiStore.showSettings"
+      class="full-access-warning"
+      role="alert"
+    >
+      <ShieldAlert :size="18" aria-hidden="true" />
+      <span>{{ $t('ui.toolCalls.fullAccessTopWarning') }}</span>
+    </div>
     <GameBackground></GameBackground>
     <!-- <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />  -->
     <GameRolesStage
@@ -66,6 +74,8 @@ import { eventQueue } from '@/core/events/event-queue'
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
 import ImageSourcePicker from '@/components/ui/ImageSourcePicker.vue'
 import { isAndroid } from '@/utils/platform'
+import { ShieldAlert } from 'lucide-vue-next'
+import { currentToolAccessMode, getToolSettings } from '@/api/services/tool-settings'
 
 const LOADING_STORAGE_KEY = 'lingchat_loading_shown'
 
@@ -117,6 +127,9 @@ const runInitialization = async () => {
 
 // 初始化游戏信息
 onMounted(() => {
+  void getToolSettings().catch((error) => {
+    console.warn('[MainChat] 加载工具访问模式失败:', error)
+  })
   // 每次进入自由对话都恢复事件队列——编辑器试玩结束后 clear() 会把 paused 置 true，
   // 而 resume 只在首次加载的 LoadingTransition 里被调用，返回时走不到那里。
   // 但首次加载时不能在这里恢复：AI 开场白的打字机/音效必须等 LoadingTransition
@@ -244,6 +257,35 @@ watch(
   top: calc(15px + var(--safe-area-inset-top));
   right: 20px;
   z-index: 1000;
+}
+
+.full-access-warning {
+  position: fixed;
+  top: calc(12px + var(--safe-area-inset-top));
+  left: 50%;
+  z-index: 1001;
+  display: flex;
+  max-width: min(44rem, calc(100vw - 34rem));
+  transform: translateX(-50%);
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgb(250 204 21);
+  border-radius: 0.75rem;
+  background: rgb(250 204 21 / 92%);
+  padding: 0.55rem 0.9rem;
+  color: rgb(24 24 27);
+  font-size: 0.8rem;
+  font-weight: 800;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 35%);
+  backdrop-filter: blur(10px);
+}
+
+@media (max-width: 1279px) {
+  .full-access-warning {
+    top: calc(58px + var(--safe-area-inset-top));
+    max-width: calc(100vw - 2rem);
+    width: max-content;
+  }
 }
 .scene-controls {
   position: fixed;

@@ -113,6 +113,31 @@ export default {
     "subtitleDefault": "留低想佢提提你嘅嘢啦"
   },
   "toolCalls": {
+    "accessModeTitle": "工具存取權限",
+    "accessModeHint": "唯讀工具（Read / Glob / Grep）會直接執行；呢度控制修改檔案同執行命令要唔要確認。",
+    "accessModeSelected": "目前",
+    "accessModes": {
+      "manual": { "label": "逐次確認", "description": "寫入、編輯、刪除檔案同執行命令之前都會問你。" },
+      "auto_approve": { "label": "自動通過", "description": "普通寫入、編輯同命令會自動通過；刪除操作仍然會問。" },
+      "full_access": { "label": "完全存取", "description": "唔再詢問，可以讀寫電腦上任何路徑同執行命令。" }
+    },
+    "fullAccessConfirmTitle": "開啟完全存取？",
+    "fullAccessConfirmMessage": "開啟之後，模型可以唔經確認讀寫或刪除電腦上任何檔案，同埋執行本機命令。只好喺信任目前角色、模型同任務嗰陣使用。繼續嗎？",
+    "fullAccessSettingsWarning": "⚠ 完全存取會取消檔案同命令審批，亦會解除 data/ 沙箱限制。儲存後即時生效。",
+    "fullAccessTopWarning": "完全存取已開啟：AI 可以存取任何檔案同執行命令",
+    "fileAccessByMode": {
+      "manual": "寫入、編輯同刪除之前會逐次詢問；路徑限制喺 data/ 沙箱內。",
+      "auto_approve": "普通寫入同編輯自動通過，刪除仍要確認；路徑限制喺沙箱內。",
+      "full_access": "⚠ 可以免確認讀寫或刪除任何路徑。"
+    },
+    "commandAccessByMode": {
+      "manual": "每條命令執行之前都會問。",
+      "auto_approve": "普通命令自動通過；偵測到刪除操作時仍會問。",
+      "full_access": "⚠ 所有命令（包括刪除命令）都可以免確認執行。"
+    },
+    "fileChangeApprovalTitle": "檔案修改請求",
+    "fileChangeApprovalMessage": "ta 想{action}以下檔案：\n\n{path}\n\n允許嗎？",
+    "fileChangeActions": { "write": "寫入", "edit": "編輯" },
     "webSearchTitle": "網頁搜尋",
     "enableWebSearch": "啟用網頁搜尋工具（等ta可以上網查資料）",
     "useBuiltin": "使用模型 API 內建聯網（免 API Key）",
@@ -211,6 +236,8 @@ export default {
       "edit_file": "編輯檔案",
       "search_files": "搜尋檔案",
       "grep_files": "搜尋內容",
+      "glob": "Glob 搜尋檔案",
+      "grep": "Grep 搜尋內容",
       "execute_command": "執行命令"
     }
   },

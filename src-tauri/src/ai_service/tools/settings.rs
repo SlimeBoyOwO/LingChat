@@ -53,6 +53,8 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
             "edit_file",
             "search_files",
             "grep_files",
+            "glob",
+            "grep",
         ],
     ),
     ("command", &["execute_command"]),
@@ -111,6 +113,19 @@ impl WebSearchSettings {
     }
 }
 
+/// 主聊天工具的统一审批策略。只读工具始终可以直接运行。
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolAccessMode {
+    /// 写入、编辑、删除文件和执行命令前逐次询问。
+    #[default]
+    Manual,
+    /// 自动批准普通修改和命令；删除文件或删除命令仍需确认。
+    AutoApprove,
+    /// 不再询问，并允许文件工具访问沙箱外路径。
+    FullAccess,
+}
+
 /// 工具配置根。
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
@@ -118,17 +133,60 @@ pub struct ToolSettings {
     pub web_search: WebSearchSettings,
     /// 分组开关：组名（见 `TOOL_GROUPS`）→ 是否启用，缺省关闭。
     pub groups: std::collections::HashMap<String, bool>,
-    /// 命令执行：免审批直接运行 shell（危险，仅在信任当前角色/模型时开启）。
+    /// 文件修改与命令执行使用的统一审批模式。
+    pub access_mode: ToolAccessMode,
+    /// 以下四项仅用于读取旧版配置。保存后会迁移成 `access_mode`。
+    #[serde(default, skip_serializing)]
     pub command_auto_approve: bool,
-    /// 命令执行：识别到删除操作时免审批继续执行（危险；缺省 false）。
+    #[serde(default, skip_serializing)]
     pub command_delete_auto_approve: bool,
-    /// 删除文件：免审批直接删除（危险；缺省 false，旧配置升级后仍会弹窗）。
+    #[serde(default, skip_serializing)]
     pub file_delete_auto_approve: bool,
-    /// 文件操作：允许访问文件沙箱（默认 data/）之外的任意路径。
+    #[serde(default, skip_serializing)]
     pub file_ops_allow_any_path: bool,
+    /// 未保存过新模式的旧配置继续保持原审批行为，避免升级时静默扩大权限。
+    #[serde(skip)]
+    legacy_approval_behavior: bool,
 }
 
 impl ToolSettings {
+    pub fn allows_any_path(&self) -> bool {
+        if self.legacy_approval_behavior {
+            self.file_ops_allow_any_path
+        } else {
+            self.access_mode == ToolAccessMode::FullAccess
+        }
+    }
+
+    pub fn requires_file_change_approval(&self) -> bool {
+        if self.legacy_approval_behavior {
+            return false;
+        }
+        self.access_mode == ToolAccessMode::Manual
+    }
+
+    pub fn requires_file_delete_approval(&self) -> bool {
+        if self.legacy_approval_behavior {
+            return !self.file_delete_auto_approve;
+        }
+        self.access_mode != ToolAccessMode::FullAccess
+    }
+
+    pub fn requires_command_approval(&self, may_delete_files: bool) -> bool {
+        if self.legacy_approval_behavior {
+            return if may_delete_files {
+                !self.command_delete_auto_approve
+            } else {
+                !self.command_auto_approve
+            };
+        }
+        match self.access_mode {
+            ToolAccessMode::Manual => true,
+            ToolAccessMode::AutoApprove => may_delete_files,
+            ToolAccessMode::FullAccess => false,
+        }
+    }
+
     /// 把用户配置同步到权限矩阵的 default 角色组。
     pub fn sync_to_permissions(&self, permissions: &mut ToolPermissionConfig) {
         permissions.set_tool_allowed_for_default_group("web_search", self.web_search.is_ready());
@@ -148,8 +206,27 @@ impl ToolSettings {
         if path.exists() {
             let text = fs::read_to_string(&path)
                 .with_context(|| format!("读取工具配置失败: {}", path.display()))?;
-            return toml::from_str(&text)
-                .with_context(|| format!("解析工具配置失败: {}", path.display()));
+            let mut settings: Self = toml::from_str(&text)
+                .with_context(|| format!("解析工具配置失败: {}", path.display()))?;
+            if !text.lines().any(|line| {
+                line.trim_start()
+                    .strip_prefix("access_mode")
+                    .is_some_and(|tail| tail.trim_start().starts_with('='))
+            }) {
+                settings.legacy_approval_behavior = true;
+                settings.access_mode = if settings.command_auto_approve
+                    && settings.command_delete_auto_approve
+                    && settings.file_delete_auto_approve
+                    && settings.file_ops_allow_any_path
+                {
+                    ToolAccessMode::FullAccess
+                } else if settings.command_auto_approve {
+                    ToolAccessMode::AutoApprove
+                } else {
+                    ToolAccessMode::Manual
+                };
+            }
+            return Ok(settings);
         }
         let settings = Self::default();
         settings.save(data_dir)?;
@@ -197,9 +274,12 @@ mod tests {
 command_auto_approve = false
 file_ops_allow_any_path = false
 "#;
-        let settings: ToolSettings = toml::from_str(legacy).unwrap();
-        assert!(!settings.command_delete_auto_approve);
-        assert!(!settings.file_delete_auto_approve);
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(SETTINGS_FILE_NAME), legacy).unwrap();
+        let settings = ToolSettings::load_or_create(dir.path()).unwrap();
+        assert!(settings.requires_file_delete_approval());
+        assert!(settings.requires_command_approval(false));
+        assert!(!settings.requires_file_change_approval());
     }
 
     #[test]
@@ -207,10 +287,25 @@ file_ops_allow_any_path = false
         let dir = tempfile::tempdir().unwrap();
         let mut settings = ToolSettings::default();
         settings.save(dir.path()).unwrap();
-        settings.command_auto_approve = true;
+        settings.access_mode = ToolAccessMode::FullAccess;
         settings.save(dir.path()).unwrap();
 
         let loaded = ToolSettings::load_or_create(dir.path()).unwrap();
-        assert!(loaded.command_auto_approve);
+        assert_eq!(loaded.access_mode, ToolAccessMode::FullAccess);
+        assert!(loaded.allows_any_path());
+        assert!(!loaded.requires_file_delete_approval());
+    }
+
+    #[test]
+    fn auto_approve_keeps_destructive_actions_guarded() {
+        let settings = ToolSettings {
+            access_mode: ToolAccessMode::AutoApprove,
+            ..ToolSettings::default()
+        };
+        assert!(!settings.requires_file_change_approval());
+        assert!(!settings.requires_command_approval(false));
+        assert!(settings.requires_command_approval(true));
+        assert!(settings.requires_file_delete_approval());
+        assert!(!settings.allows_any_path());
     }
 }

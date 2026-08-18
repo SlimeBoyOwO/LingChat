@@ -18,19 +18,18 @@ export interface WebSearchSettings {
   hide_search_results: boolean
 }
 
+export type ToolAccessMode = 'manual' | 'auto_approve' | 'full_access'
+
 export interface ToolSettings {
   web_search: WebSearchSettings
   /** 分组开关：组名 → 是否启用（schedule/memory/character/scene/status/clock/skills/file_ops/command） */
   groups: Record<string, boolean>
-  /** 命令执行：免确认直接运行 shell（危险，默认关闭） */
-  command_auto_approve: boolean
-  /** 命令执行：检测到删除操作时免确认继续执行（危险，默认关闭） */
-  command_delete_auto_approve: boolean
-  /** 删除文件：免确认直接删除（危险，默认关闭） */
-  file_delete_auto_approve: boolean
-  /** 文件操作：允许访问沙箱（data/）之外的路径（默认关闭） */
-  file_ops_allow_any_path: boolean
+  /** 文件修改与命令执行的统一审批模式。 */
+  access_mode: ToolAccessMode
 }
+
+/** 全局访问模式快照，供主界面的完全访问警告即时响应设置保存。 */
+export const currentToolAccessMode = ref<ToolAccessMode>('manual')
 
 /** 「其他工具」分组（与后端 TOOL_GROUPS 对齐；web_search 有独立设置区） */
 export const TOOL_GROUP_KEYS = [
@@ -238,12 +237,15 @@ export function clearToolCallRecords() {
   recentToolCalls.value = []
 }
 
-export function getToolSettings(): Promise<ToolSettings> {
-  return invoke<ToolSettings>('get_tool_settings')
+export async function getToolSettings(): Promise<ToolSettings> {
+  const settings = await invoke<ToolSettings>('get_tool_settings')
+  currentToolAccessMode.value = settings.access_mode ?? 'manual'
+  return settings
 }
 
-export function saveToolSettings(settings: ToolSettings): Promise<void> {
-  return invoke<void>('save_tool_settings', { settings })
+export async function saveToolSettings(settings: ToolSettings): Promise<void> {
+  await invoke<void>('save_tool_settings', { settings })
+  currentToolAccessMode.value = settings.access_mode
 }
 
 /** 直接执行一次网页搜索；失败时 Promise reject 携带后端错误信息。 */

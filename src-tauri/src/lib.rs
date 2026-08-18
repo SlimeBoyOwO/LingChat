@@ -114,6 +114,8 @@ pub struct InnerAppState {
     pub skill_agent: Arc<ai_service::skill_agent::SkillAgentState>,
     /// 主聊天 `execute_command` 工具的待审批命令请求（request_id → oneshot）。
     pub chat_command_approvals: ai_service::skill_agent::ApprovalMap,
+    /// 主聊天 `write_file` / `edit_file` 工具的待审批修改请求。
+    pub chat_file_change_approvals: ai_service::skill_agent::ApprovalMap,
     /// 主聊天 `delete_file` 工具的待审批删除请求（request_id → oneshot）。
     pub chat_file_delete_approvals: ai_service::skill_agent::ApprovalMap,
     /// 主聊天后台命令的并发槽位与任务 ID 分配器。
@@ -470,6 +472,7 @@ pub fn run() {
                     god_agent,
                     skill_agent: Arc::new(ai_service::skill_agent::SkillAgentState::default()),
                     chat_command_approvals: Default::default(),
+                    chat_file_change_approvals: Default::default(),
                     chat_file_delete_approvals: Default::default(),
                     background_commands: Arc::new(
                         ai_service::tools::background_command::BackgroundCommandManager::default(),
@@ -728,6 +731,7 @@ pub fn run() {
             api::tool_settings::save_tool_settings,
             api::tool_settings::test_web_search,
             api::tool_settings::resolve_command_approval,
+            api::tool_settings::resolve_file_change_approval,
             api::tool_settings::resolve_file_delete_approval,
             api::achievement::get_achievement_list,
             api::achievement::unlock_achievement,

@@ -196,6 +196,31 @@ export function initializeTauriEventListeners() {
     }
   })
 
+  // 逐次确认模式下，write_file / edit_file 在真正修改前显示目标路径。
+  mainWindow?.listen('chat:file_change_approval', async (event) => {
+    const payload = event.payload as {
+      request_id: string
+      path: string
+      operation: 'write' | 'edit'
+    }
+    const dialogStore = useDialogStore()
+    const approved = await dialogStore.confirm(
+      i18n.global.t('ui.toolCalls.fileChangeApprovalMessage', {
+        action: i18n.global.t(`ui.toolCalls.fileChangeActions.${payload.operation}`),
+        path: payload.path,
+      }),
+      i18n.global.t('ui.toolCalls.fileChangeApprovalTitle'),
+    )
+    try {
+      await invoke('resolve_file_change_approval', {
+        requestId: payload.request_id,
+        approved,
+      })
+    } catch (e) {
+      console.warn('[Tauri] 回传文件修改审批结果失败（可能已超时）:', e)
+    }
+  })
+
   // 主聊天 delete_file 审批：先显示后端解析并校验过的真实路径，再把决定回传给工具。
   mainWindow?.listen('chat:file_delete_approval', async (event) => {
     const payload = event.payload as {

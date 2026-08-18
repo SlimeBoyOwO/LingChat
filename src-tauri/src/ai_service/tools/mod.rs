@@ -35,8 +35,8 @@ use scene::{SceneList, SceneSwitch};
 use schedule::{AddTodo, DeleteTodo, GetAllSchedule, UpdateTodo};
 use settings::SharedToolSettings;
 use skill_files::{
-    DeleteFile, EditFile, ExecuteCommand, GrepFiles, ListFiles, ListSkills, ReadFile, ReadSkill,
-    SearchFiles, WriteFile,
+    DeleteFile, EditFile, ExecuteCommand, Glob, Grep, GrepFiles, ListFiles, ListSkills, ReadFile,
+    ReadSkill, SearchFiles, WriteFile,
 };
 use status::{CurrentStatus, SceneStatus};
 use web_search::WebSearchTool;
@@ -119,6 +119,8 @@ pub fn built_in_registry(
     registry.register(Arc::new(EditFile::new(tool_settings.clone())))?;
     registry.register(Arc::new(SearchFiles::new(tool_settings.clone())))?;
     registry.register(Arc::new(GrepFiles::new(tool_settings.clone())))?;
+    registry.register(Arc::new(Glob::new(tool_settings.clone())))?;
+    registry.register(Arc::new(Grep::new(tool_settings.clone())))?;
     registry.register(Arc::new(ExecuteCommand::new(tool_settings.clone())))?;
     let data_dir = crate::api::data_dir();
     let mut permissions = ToolPermissionConfig::load_or_create(

@@ -17,8 +17,59 @@
 
     <!-- 右侧内容 -->
     <main class="h-full overflow-y-auto custom-scrollbar px-2 md:px-6 py-2">
+      <!-- ===== 工具访问模式 ===== -->
+      <div v-if="selected === 'access'">
+        <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
+          {{ $t('ui.toolCalls.accessModeTitle') }}
+        </h2>
+        <p class="text-sm text-gray-300 mb-4 px-1">
+          {{ $t('ui.toolCalls.accessModeHint') }}
+        </p>
+        <div class="grid gap-3">
+          <button
+            v-for="mode in accessModes"
+            :key="mode"
+            type="button"
+            class="w-full rounded-xl border px-4 py-3 text-left transition-all duration-200"
+            :class="[
+              form.access_mode === mode
+                ? mode === 'full_access'
+                  ? 'border-amber-400 bg-amber-400/20 ring-2 ring-amber-400/30'
+                  : 'border-brand bg-brand/20 ring-2 ring-brand/20'
+                : 'border-white/15 bg-white/5 hover:bg-white/10',
+            ]"
+            @click="selectAccessMode(mode)"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <span
+                class="font-semibold"
+                :class="mode === 'full_access' ? 'text-amber-300' : 'text-white'"
+              >
+                {{ $t(`ui.toolCalls.accessModes.${mode}.label`) }}
+              </span>
+              <span
+                v-if="form.access_mode === mode"
+                class="rounded-full px-2 py-0.5 text-xs"
+                :class="mode === 'full_access' ? 'bg-amber-400 text-black' : 'bg-brand text-white'"
+              >
+                {{ $t('ui.toolCalls.accessModeSelected') }}
+              </span>
+            </div>
+            <p class="mt-1 text-sm text-gray-300">
+              {{ $t(`ui.toolCalls.accessModes.${mode}.description`) }}
+            </p>
+          </button>
+        </div>
+        <div
+          v-if="form.access_mode === 'full_access'"
+          class="mt-4 rounded-xl border border-amber-400 bg-amber-400/20 px-4 py-3 text-sm font-semibold text-amber-200"
+        >
+          {{ $t('ui.toolCalls.fullAccessSettingsWarning') }}
+        </div>
+      </div>
+
       <!-- ===== 网页搜索 ===== -->
-      <div v-if="selected === 'web_search'">
+      <div v-else-if="selected === 'web_search'">
         <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
           {{ $t('ui.toolCalls.webSearchTitle') }}
         </h2>
@@ -136,25 +187,8 @@
           />
           <p class="text-sm text-gray-300">{{ $t(`ui.toolCalls.groups.${selected}`) }}</p>
         </div>
-        <div class="flex items-center gap-3 py-2.5 px-1">
-          <Toggle
-            :checked="form.file_ops_allow_any_path"
-            @change="(value: boolean) => (form.file_ops_allow_any_path = value)"
-          />
-          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.fileOpsAllowAnyPath') }}</p>
-        </div>
-        <p v-if="form.file_ops_allow_any_path" class="text-sm text-amber-400 px-1 mb-2">
-          {{ $t('ui.toolCalls.fileOpsAllowAnyPathHint') }}
-        </p>
-        <div class="flex items-center gap-3 py-2.5 px-1">
-          <Toggle
-            :checked="form.file_delete_auto_approve"
-            @change="(value: boolean) => (form.file_delete_auto_approve = value)"
-          />
-          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.fileDeleteAutoApprove') }}</p>
-        </div>
-        <p v-if="form.file_delete_auto_approve" class="text-sm text-amber-400 px-1 mb-2">
-          {{ $t('ui.toolCalls.fileDeleteAutoApproveHint') }}
+        <p class="text-sm px-1 mb-2" :class="form.access_mode === 'full_access' ? 'text-amber-300' : 'text-gray-400'">
+          {{ $t(`ui.toolCalls.fileAccessByMode.${form.access_mode}`) }}
         </p>
       </div>
 
@@ -175,26 +209,8 @@
           />
           <p class="text-sm text-gray-300">{{ $t(`ui.toolCalls.groups.${selected}`) }}</p>
         </div>
-        <p class="text-sm text-gray-400 px-1 mb-2">{{ $t('ui.toolCalls.commandHint') }}</p>
-        <div class="flex items-center gap-3 py-2.5 px-1">
-          <Toggle
-            :checked="form.command_auto_approve"
-            @change="(value: boolean) => (form.command_auto_approve = value)"
-          />
-          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.commandAutoApprove') }}</p>
-        </div>
-        <p v-if="form.command_auto_approve" class="text-sm text-amber-400 px-1 mb-2">
-          {{ $t('ui.toolCalls.commandAutoApproveHint') }}
-        </p>
-        <div class="flex items-center gap-3 py-2.5 px-1">
-          <Toggle
-            :checked="form.command_delete_auto_approve"
-            @change="(value: boolean) => (form.command_delete_auto_approve = value)"
-          />
-          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.commandDeleteAutoApprove') }}</p>
-        </div>
-        <p v-if="form.command_delete_auto_approve" class="text-sm text-amber-400 px-1 mb-2">
-          {{ $t('ui.toolCalls.commandDeleteAutoApproveHint') }}
+        <p class="text-sm px-1 mb-2" :class="form.access_mode === 'full_access' ? 'text-amber-300' : 'text-gray-400'">
+          {{ $t(`ui.toolCalls.commandAccessByMode.${form.access_mode}`) }}
         </p>
       </div>
 
@@ -242,20 +258,26 @@ import {
   saveToolSettings,
   testWebSearch,
   TOOL_GROUP_KEYS,
+  type ToolAccessMode,
   type ToolSettings,
 } from '@/api/services/tool-settings'
 import Toggle from '@/components/base/widget/Toggle.vue'
 import { isWindows } from '@/utils/platform'
+import { useDialogStore } from '@/stores/modules/ui/dialog'
 
 const { t, te } = useI18n()
+const dialogStore = useDialogStore()
 
-/** 当前选中的设置项：'web_search' 或工具组名 */
-const selected = ref<string>('web_search')
+/** 当前选中的设置项：访问模式、web_search 或工具组名 */
+const selected = ref<string>('access')
 
-const navItems = ['web_search', ...TOOL_GROUP_KEYS] as const
+const navItems = ['access', 'web_search', ...TOOL_GROUP_KEYS] as const
+const accessModes: ToolAccessMode[] = ['manual', 'auto_approve', 'full_access']
 
 const navLabel = (item: string) =>
-  item === 'web_search'
+  item === 'access'
+    ? t('ui.toolCalls.accessModeTitle')
+    : item === 'web_search'
     ? t('ui.toolCalls.webSearchTitle')
     : te(`ui.toolCalls.nav.${item}`)
       ? t(`ui.toolCalls.nav.${item}`)
@@ -274,10 +296,7 @@ const form = reactive<ToolSettings>({
     hide_search_results: false,
   },
   groups: {},
-  command_auto_approve: false,
-  command_delete_auto_approve: false,
-  file_delete_auto_approve: false,
-  file_ops_allow_any_path: false,
+  access_mode: 'manual',
 })
 
 const status = reactive({ message: '', color: '#4ade80' })
@@ -289,6 +308,18 @@ const showStatus = (message: string, color = '#4ade80') => {
   setTimeout(() => {
     status.message = ''
   }, 5000)
+}
+
+const selectAccessMode = async (mode: ToolAccessMode) => {
+  if (mode === form.access_mode) return
+  if (mode === 'full_access') {
+    const approved = await dialogStore.confirm(
+      t('ui.toolCalls.fullAccessConfirmMessage'),
+      t('ui.toolCalls.fullAccessConfirmTitle'),
+    )
+    if (!approved) return
+  }
+  form.access_mode = mode
 }
 
 const saveSettings = async () => {
@@ -323,10 +354,7 @@ onMounted(async () => {
     const settings = await getToolSettings()
     Object.assign(form.web_search, settings.web_search)
     Object.assign(form.groups, settings.groups ?? {})
-    form.command_auto_approve = settings.command_auto_approve ?? false
-    form.command_delete_auto_approve = settings.command_delete_auto_approve ?? false
-    form.file_delete_auto_approve = settings.file_delete_auto_approve ?? false
-    form.file_ops_allow_any_path = settings.file_ops_allow_any_path ?? false
+    form.access_mode = settings.access_mode ?? 'manual'
   } catch (error) {
     console.error('加载工具配置失败:', error)
   }
