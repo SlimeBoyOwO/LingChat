@@ -56,6 +56,12 @@ const MARKET_INDEX_URLS: &[&str] = &[
     "https://gcore.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/plugins.json",
 ];
 
+/// plugins.json 的 GitHub Release 产物地址（永远实时，不走 jsDelivr 缓存）。
+/// publish.yml 在每次发布后把 plugins.json 上传为 registry Release 的附件
+///（固定标签，--clobber 覆盖），客户端 trees API 限流/失败时优先从这里拉。
+const MARKET_RELEASE_PLUGINS_URL: &str =
+    "https://github.com/zhangzm0/lingchat-marketplace/releases/download/registry/plugins.json";
+
 /// GitHub Releases 下载镜像代理（下载时镜像优先、主源直连靠后；只转发不改内容，sha256 校验不受影响）。
 const DOWNLOAD_MIRRORS: &[&str] = &[
     "https://gh-proxy.com",
@@ -315,11 +321,24 @@ async fn fetch_index() -> Result<Vec<MarketPackage>, String> {
     }
 
     let client = build_client()?;
+    // 1) 动态索引（GitHub trees 实时优先）
+    // 2) 失败则拉 Release 产物 plugins.json（永远实时，绕过 jsDelivr 缓存）
+    // 3) 再失败才走 CDN/raw 多源兜底
     let plugins = match fetch_index_dynamic(&client).await {
         Ok(pkgs) => pkgs,
         Err(dyn_err) => {
-            tracing::warn!("市场动态索引失败，回退 plugins.json: {dyn_err}");
-            fetch_index_static(&client).await?
+            tracing::warn!("市场动态索引失败: {dyn_err}");
+            match fetch_plugins_from_release(&client).await {
+                Ok(pkgs) if !pkgs.is_empty() => pkgs,
+                Ok(_) => {
+                    tracing::warn!("Release plugins.json 为空，回退 CDN/raw");
+                    fetch_index_static(&client).await?
+                }
+                Err(rel_err) => {
+                    tracing::warn!("Release plugins.json 失败: {rel_err}，回退 CDN/raw");
+                    fetch_index_static(&client).await?
+                }
+            }
         }
     };
 
@@ -534,16 +553,35 @@ async fn fetch_pkg(client: &reqwest::Client, dir: String) -> Result<MarketPackag
     })
 }
 
+/// 从 GitHub Release 产物拉 plugins.json（永远实时，不走 jsDelivr 缓存）。
+async fn fetch_plugins_from_release(
+    client: &reqwest::Client,
+) -> Result<Vec<MarketPackage>, String> {
+    let resp = get_with_retry(client, MARKET_RELEASE_PLUGINS_URL).await?;
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取 Release plugins.json 响应失败: {e}"))?;
+    parse_plugins_json(&text)
+}
+
+/// 把 plugins.json 文本解析成 MarketPackage 列表。
+fn parse_plugins_json(text: &str) -> Result<Vec<MarketPackage>, String> {
+    let json: serde_json::Value = serde_json::from_str(text)
+        .map_err(|e| format!("解析 plugins.json 失败: {e}"))?;
+    serde_json::from_value(json.get("plugins").cloned().unwrap_or_default())
+        .map_err(|e| format!("plugins.json 格式错误: {e}"))
+}
+
 /// 兜底：老格式 plugins.json（多 CDN/raw 源链）。
 async fn fetch_index_static(client: &reqwest::Client) -> Result<Vec<MarketPackage>, String> {
     let urls: Vec<String> = MARKET_INDEX_URLS.iter().map(|u| u.to_string()).collect();
     let resp = fetch_first(client, &urls).await?;
-    let json: serde_json::Value = resp
-        .json()
+    let text = resp
+        .text()
         .await
-        .map_err(|e| format!("解析市场索引失败: {e}"))?;
-    serde_json::from_value(json.get("plugins").cloned().unwrap_or_default())
-        .map_err(|e| format!("市场索引格式错误: {e}"))
+        .map_err(|e| format!("读取市场索引响应失败: {e}"))?;
+    parse_plugins_json(&text)
 }
 
 // ─── Tauri Commands ─────────────────────────────────────────────
