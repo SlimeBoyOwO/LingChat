@@ -218,26 +218,30 @@ defineExpose({
 .slide-right-enter-active,
 .slide-right-leave-active {
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Tab 页是整页高的滚动容器，且嵌套在 #app 的 transform: scale 下。
+     不加 will-change 时 Chromium 在滑动期间逐帧在主线程重栅格化整棵缩放
+     子树，上一 Tab 滑出会卡顿残留；提前提升为合成层让滑动走合成器。 */
+  will-change: transform;
 }
 
 .slide-left-enter-from {
-  transform: translateX(100%);
+  transform: translate3d(100%, 0, 0);
 }
 .slide-left-leave-to {
-  transform: translateX(-100%);
+  transform: translate3d(-100%, 0, 0);
 }
 
 .slide-right-enter-from {
-  transform: translateX(-100%);
+  transform: translate3d(-100%, 0, 0);
 }
 .slide-right-leave-to {
-  transform: translateX(100%);
+  transform: translate3d(100%, 0, 0);
 }
 
 .slide-left-enter-to,
 .slide-left-leave-from,
 .slide-right-enter-to,
 .slide-right-leave-from {
-  transform: translateX(0);
+  transform: translate3d(0, 0, 0);
 }
 </style>
