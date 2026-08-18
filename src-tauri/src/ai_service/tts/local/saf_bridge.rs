@@ -59,11 +59,18 @@ pub async fn prepare_file_import_source(
 
             let local_path = imports_root.join(format!("tts_import_saf_{tmp_id}_{suffix}"));
             let local_uri = FsUri::from_path(&local_path);
+            // 用 `display_name` 而非 `display` 作变量名，避免某些 rustc/tracing 版本
+            // 把 `display` 解析为 `std::fmt::Display` trait path 而触发 E0277。
+            let display_name = if display.is_empty() {
+                "import.bin".to_string()
+            } else {
+                display
+            };
             tracing::info!(
-                "[tts_local] prepare_file_import_source SAF: src={}, local={}, display={}",
+                "[tts_local] prepare_file_import_source SAF: src={}, local={}, display_name={}",
                 path,
                 local_path.display(),
-                display,
+                display_name,
             );
             app.android_fs_async()
                 .copy(&src_uri, &local_uri)
@@ -72,11 +79,7 @@ pub async fn prepare_file_import_source(
             return Ok(ImportSource {
                 path: local_path,
                 cleanup_after_import: true,
-                display_name: if display.is_empty() {
-                    "import.bin".to_string()
-                } else {
-                    display
-                },
+                display_name,
             });
         }
 
