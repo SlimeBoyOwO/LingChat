@@ -9,7 +9,7 @@ export interface MarketPackage {
   version: string
   author?: string | null
   description?: string | null
-  download_url: string
+  download_url?: string | null
   sha256?: string | null
   size?: number | null
   manifest?: Record<string, unknown> | null

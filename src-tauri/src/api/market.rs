@@ -1,12 +1,20 @@
-//! 市场 API：拉取 `plugins.json` 索引、下载 zip、sha256 校验、安装/卸载。
+//! 市场 API：动态读取市场仓库索引（registry 目录 + manifest.toml + build.json，
+//! 兜底 plugins.json）、下载 zip（GitHub Releases + 镜像加速）、sha256 校验、安装/卸载。
 //!
-//! 索引来自市场仓库 `zhangzm0/lingchat-marketplace`（§7.1 分发流）。
+//! 索引来自市场仓库 `zhangzm0/lingchat-marketplace`（§7.1 分发流）：
+//! - 动态读取：jsDelivr data API 列目录 → 并发拉每包 `registry/<id>/manifest.toml`
+//!   与 `registry/<id>/build.json`（发布 CI 回写的 sha256/size/下载地址/审核链接）。
+//!   加新包/新类型只需往仓库 registry/ 加目录，客户端零改动——为多类型铺路。
+//! - 兜底：老格式 `plugins.json`（多 CDN 多源），兼容未重建 build.json 的旧包。
+//! - 镜像加速：jsDelivr 官方多 CDN（cdn/fastly/gcore）+ ghproxy 类代理（raw / Releases 下载）。
 //! 安装记录集中存放在 `data/plugins/market.json`，用于已装列表与卸载。
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
+use futures_util::future::join_all;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -15,15 +23,50 @@ use crate::init::static_copy;
 use crate::plugins::installer;
 use crate::AppState;
 
-/// 市场仓库 plugins.json（main 分支）。
-/// 主源 jsDelivr CDN（稳定、不限流），失败降级 raw.githubusercontent。
-const MARKET_INDEX_URL: &str =
-    "https://cdn.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/plugins.json";
-const MARKET_INDEX_URL_FALLBACK: &str =
-    "https://raw.githubusercontent.com/zhangzm0/lingchat-marketplace/main/plugins.json";
+/// 市场仓库 owner/repo（用于推导下载地址）。
+const MARKET_REPO: &str = "zhangzm0/lingchat-marketplace";
+
+/// 每包元数据基址（jsDelivr 官方多 CDN + raw + ghproxy 代理 raw，依次尝试）。
+/// `{base}registry/<dir>/<file>` 即元数据 URL。
+const MARKET_META_BASES: &[&str] = &[
+    "https://cdn.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/",
+    "https://fastly.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/",
+    "https://gcore.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/",
+    "https://raw.githubusercontent.com/zhangzm0/lingchat-marketplace/main/",
+    "https://gh-proxy.com/https://raw.githubusercontent.com/zhangzm0/lingchat-marketplace/main/",
+];
+
+/// 仓库目录清单源（jsDelivr data API 一次拿全文件树，不限流；失败降级 GitHub API / 代理）。
+const MARKET_TREE_URLS: &[&str] = &[
+    "https://data.jsdelivr.com/v1/packages/gh/zhangzm0/lingchat-marketplace@main",
+    "https://gh-proxy.com/https://data.jsdelivr.com/v1/packages/gh/zhangzm0/lingchat-marketplace@main",
+    "https://api.github.com/repos/zhangzm0/lingchat-marketplace/git/trees/main?recursive=1",
+    "https://gh-proxy.com/https://api.github.com/repos/zhangzm0/lingchat-marketplace/git/trees/main?recursive=1",
+];
+
+/// 兜底索引 plugins.json（多 CDN + raw 代理）。
+const MARKET_INDEX_URLS: &[&str] = &[
+    "https://cdn.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/plugins.json",
+    "https://fastly.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/plugins.json",
+    "https://gcore.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/plugins.json",
+    "https://raw.githubusercontent.com/zhangzm0/lingchat-marketplace/main/plugins.json",
+    "https://gh-proxy.com/https://raw.githubusercontent.com/zhangzm0/lingchat-marketplace/main/plugins.json",
+];
+
+/// GitHub Releases 下载镜像代理（主源失败时依次尝试；只转发不改内容，sha256 校验不受影响）。
+const DOWNLOAD_MIRRORS: &[&str] = &[
+    "https://gh-proxy.com",
+    "https://ghfast.top",
+    "https://ghproxy.net",
+];
 
 /// 安装记录文件（data/plugins/market.json）。
 const MARKET_RECORD_FILE: &str = "market.json";
+
+/// 索引磁盘缓存文件（data/plugins/ 下；动态读取是 N+1 次请求，落盘避免每次启动重拉）。
+const INDEX_CACHE_FILE: &str = "market-index-cache.json";
+/// 索引磁盘缓存 TTL（10 分钟）。
+const INDEX_DISK_TTL: Duration = Duration::from_secs(600);
 
 /// 索引内存缓存（5 分钟 TTL），避免重复拉取。
 static INDEX_CACHE: Mutex<Option<(Vec<MarketPackage>, std::time::Instant)>> =
@@ -58,6 +101,24 @@ async fn get_with_retry(
     Err(format!("GET {url} 重试 {MAX_RETRIES} 次均失败: {last_err}"))
 }
 
+/// 依次尝试多个 URL，第一个成功的响应返回（用于 CDN/镜像多源链）。
+async fn fetch_first(
+    client: &reqwest::Client,
+    urls: &[String],
+) -> Result<reqwest::Response, String> {
+    let mut last_err = String::new();
+    for url in urls {
+        match get_with_retry(client, url).await {
+            Ok(resp) => return Ok(resp),
+            Err(e) => {
+                last_err = e;
+                tracing::warn!("多源拉取失败，尝试下一源: {last_err}");
+            }
+        }
+    }
+    Err(last_err)
+}
+
 /// plugins.json 条目（市场侧 schema，字段可能缺省，全部 default 兼容）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MarketPackage {
@@ -70,7 +131,9 @@ pub struct MarketPackage {
     pub author: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
-    pub download_url: String,
+    /// 下载地址（动态来源可能缺失，缺失时安装报错）。
+    #[serde(default)]
+    pub download_url: Option<String>,
     #[serde(default)]
     pub sha256: Option<String>,
     #[serde(default)]
@@ -78,6 +141,19 @@ pub struct MarketPackage {
     /// 审核时快照的完整 manifest（展示用）。
     #[serde(default)]
     pub manifest: Option<serde_json::Value>,
+    #[serde(default)]
+    pub review_report_url: Option<String>,
+}
+
+/// 每包构建产物（registry/<id>/build.json，发布 CI 回写）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct BuildInfo {
+    #[serde(default)]
+    pub download_url: Option<String>,
+    #[serde(default)]
+    pub sha256: Option<String>,
+    #[serde(default)]
+    pub size: Option<u64>,
     #[serde(default)]
     pub review_report_url: Option<String>,
 }
@@ -129,7 +205,46 @@ fn build_client() -> Result<reqwest::Client, String> {
     crate::utils::download::build_download_client()
 }
 
-/// 拉取 plugins.json 索引（5 分钟缓存；主源 jsDelivr → 兜底 raw，各自带重试）。
+/// 索引磁盘缓存路径。
+fn index_cache_path() -> PathBuf {
+    plugins_root().join(INDEX_CACHE_FILE)
+}
+
+/// 读磁盘缓存（TTL 内按文件 mtime 判断）。
+fn read_disk_cache() -> Option<Vec<MarketPackage>> {
+    let path = index_cache_path();
+    let meta = std::fs::metadata(&path).ok()?;
+    let modified = meta.modified().ok()?;
+    if std::time::SystemTime::now()
+        .duration_since(modified)
+        .map(|d| d > INDEX_DISK_TTL)
+        .unwrap_or(true)
+    {
+        return None;
+    }
+    let text = std::fs::read_to_string(&path).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&text).ok()?;
+    serde_json::from_value(json.get("plugins").cloned().unwrap_or_default()).ok()
+}
+
+/// 写磁盘缓存。
+fn write_disk_cache(plugins: &[MarketPackage]) {
+    let path = index_cache_path();
+    let text = match serde_json::to_string_pretty(&serde_json::json!({ "plugins": plugins })) {
+        Ok(t) => t,
+        Err(_) => return,
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let tmp = path.with_extension("tmp");
+    if std::fs::write(&tmp, text).is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
+    }
+}
+
+/// 拉取市场索引：动态读取（registry 目录 + manifest.toml/build.json）优先，
+/// 失败回退老格式 plugins.json；两级缓存（内存 5 分钟 + 磁盘 10 分钟）。
 async fn fetch_index() -> Result<Vec<MarketPackage>, String> {
     if let Ok(cache) = INDEX_CACHE.lock() {
         if let Some((ref data, ref ts)) = *cache {
@@ -138,26 +253,211 @@ async fn fetch_index() -> Result<Vec<MarketPackage>, String> {
             }
         }
     }
+    // 磁盘缓存（跨启动复用，减少动态读取的 N+1 请求）
+    if let Some(plugins) = read_disk_cache() {
+        if let Ok(mut cache) = INDEX_CACHE.lock() {
+            *cache = Some((plugins.clone(), std::time::Instant::now()));
+        }
+        return Ok(plugins);
+    }
+
     let client = build_client()?;
-    let resp = match get_with_retry(&client, MARKET_INDEX_URL).await {
-        Ok(r) => r,
-        Err(primary_err) => {
-            tracing::warn!("市场索引主源失败，改用兜底源: {primary_err}");
-            get_with_retry(&client, MARKET_INDEX_URL_FALLBACK).await?
+    let plugins = match fetch_index_dynamic(&client).await {
+        Ok(pkgs) => pkgs,
+        Err(dyn_err) => {
+            tracing::warn!("市场动态索引失败，回退 plugins.json: {dyn_err}");
+            fetch_index_static(&client).await?
         }
     };
+
+    if let Ok(mut cache) = INDEX_CACHE.lock() {
+        *cache = Some((plugins.clone(), std::time::Instant::now()));
+    }
+    write_disk_cache(&plugins);
+    Ok(plugins)
+}
+
+/// 动态读取：列 registry 目录 → 并发拉每包 manifest.toml + build.json。
+async fn fetch_index_dynamic(
+    client: &reqwest::Client,
+) -> Result<Vec<MarketPackage>, String> {
+    let dirs = fetch_registry_tree(client).await?;
+    if dirs.is_empty() {
+        return Err("registry 目录为空".to_string());
+    }
+    let pkgs = join_all(dirs.into_iter().map(|dir| fetch_pkg(client, dir)))
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?;
+    tracing::info!("市场动态索引: 拉取 {} 个包", pkgs.len());
+    Ok(pkgs)
+}
+
+/// 列出 registry 下所有包目录名（jsDelivr data API → GitHub trees → 各自代理兜底）。
+async fn fetch_registry_tree(client: &reqwest::Client) -> Result<Vec<String>, String> {
+    let mut last_err = String::new();
+    for url in MARKET_TREE_URLS {
+        let resp = match get_with_retry(client, url).await {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = e;
+                continue;
+            }
+        };
+        if let Ok(dirs) = parse_registry_tree(resp, url).await {
+            return Ok(dirs);
+        }
+        last_err = format!("解析 {url} 失败");
+    }
+    Err(format!("列目录失败: {last_err}"))
+}
+
+/// 解析目录树响应 → 包目录名列表（兼容 jsDelivr data API 与 GitHub trees 两种格式）。
+async fn parse_registry_tree(
+    resp: reqwest::Response,
+    url: &str,
+) -> Result<Vec<String>, String> {
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读目录树失败: {e}"))?;
+    let json: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("解析目录树失败: {e}"))?;
+    let mut dirs = std::collections::BTreeSet::new();
+    if url.contains("data.jsdelivr.com") {
+        collect_jsdelivr_files(&json, "", &mut dirs);
+    } else {
+        // GitHub trees: tree[].path
+        if let Some(tree) = json.get("tree").and_then(|t| t.as_array()) {
+            for node in tree {
+                if let Some(path) = node.get("path").and_then(|p| p.as_str()) {
+                    if let Some(dir) = registry_dir_of_path(path) {
+                        dirs.insert(dir.to_string());
+                    }
+                }
+            }
+        }
+    }
+    Ok(dirs.into_iter().collect())
+}
+
+/// jsDelivr data API 的 files 是嵌套结构，递归收集 registry/<dir>/manifest.toml。
+fn collect_jsdelivr_files(
+    node: &serde_json::Value,
+    prefix: &str,
+    out: &mut std::collections::BTreeSet<String>,
+) {
+    let files = match node.get("files").and_then(|f| f.as_array()) {
+        Some(f) => f,
+        None => return,
+    };
+    for f in files {
+        let name = match f.get("name").and_then(|n| n.as_str()) {
+            Some(n) => n,
+            None => continue,
+        };
+        let path = if prefix.is_empty() {
+            name.to_string()
+        } else {
+            format!("{prefix}/{name}")
+        };
+        if let Some(dir) = registry_dir_of_path(&path) {
+            out.insert(dir.to_string());
+        }
+        if f.get("files").is_some() {
+            collect_jsdelivr_files(f, &path, out);
+        }
+    }
+}
+
+/// 从路径提取 registry 下的包目录名（形如 registry/<dir>/manifest.toml）。
+fn registry_dir_of_path(path: &str) -> Option<&str> {
+    let mut parts = path.split('/');
+    if parts.next() != Some("registry") {
+        return None;
+    }
+    let dir = parts.next()?;
+    if parts.next() == Some("manifest.toml") {
+        Some(dir)
+    } else {
+        None
+    }
+}
+
+/// 拉取单个包的 manifest.toml + build.json，组装 MarketPackage。
+async fn fetch_pkg(client: &reqwest::Client, dir: String) -> Result<MarketPackage, String> {
+    // manifest.toml：多 CDN/raw 源链
+    let manifest_urls: Vec<String> = MARKET_META_BASES
+        .iter()
+        .map(|base| format!("{base}registry/{dir}/manifest.toml"))
+        .collect();
+    let resp = fetch_first(client, &manifest_urls).await?;
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读 {dir} manifest.toml 失败: {e}"))?;
+    let toml_val: toml::Value = toml::from_str(&text)
+        .map_err(|e| format!("{dir} manifest.toml 解析失败: {e}"))?;
+
+    // build.json：CI 回写的构建产物（sha256/size/下载地址/审核链接），缺失则降级
+    let build_urls: Vec<String> = MARKET_META_BASES
+        .iter()
+        .map(|base| format!("{base}registry/{dir}/build.json"))
+        .collect();
+    let build: Option<BuildInfo> = match fetch_first(client, &build_urls).await {
+        Ok(resp) => resp
+            .json()
+            .await
+            .map_err(|e| format!("{dir} build.json 解析失败: {e}"))
+            .ok(),
+        Err(_) => None,
+    };
+
+    let manifest_json: serde_json::Value =
+        serde_json::to_value(&toml_val).unwrap_or(serde_json::Value::Null);
+
+    let get_str = |v: &toml::Value, key: &str| -> Option<String> {
+        v.get(key).and_then(|x| x.as_str()).map(|s| s.to_string())
+    };
+
+    let id = get_str(&toml_val, "id").unwrap_or_else(|| dir.clone());
+    let version = get_str(&toml_val, "version").unwrap_or_default();
+    // 下载地址：build.json 优先；缺失时按 Release 命名规则推导
+    // （releases/download/<dir>-<version>/<dir>-<version>.zip）
+    let download_url = build
+        .as_ref()
+        .and_then(|b| b.download_url.clone())
+        .or_else(|| {
+            Some(format!(
+                "https://github.com/{MARKET_REPO}/releases/download/{dir}-{version}/{dir}-{version}.zip"
+            ))
+        });
+
+    Ok(MarketPackage {
+        id,
+        name: get_str(&toml_val, "name").unwrap_or_else(|| dir.clone()),
+        package_type: get_str(&toml_val, "type").unwrap_or_else(|| "content".to_string()),
+        version,
+        author: get_str(&toml_val, "author"),
+        description: get_str(&toml_val, "description"),
+        download_url,
+        sha256: build.as_ref().and_then(|b| b.sha256.clone()),
+        size: build.as_ref().and_then(|b| b.size),
+        manifest: Some(manifest_json),
+        review_report_url: build.as_ref().and_then(|b| b.review_report_url.clone()),
+    })
+}
+
+/// 兜底：老格式 plugins.json（多 CDN/raw 源链）。
+async fn fetch_index_static(client: &reqwest::Client) -> Result<Vec<MarketPackage>, String> {
+    let urls: Vec<String> = MARKET_INDEX_URLS.iter().map(|u| u.to_string()).collect();
+    let resp = fetch_first(client, &urls).await?;
     let json: serde_json::Value = resp
         .json()
         .await
         .map_err(|e| format!("解析市场索引失败: {e}"))?;
-    let plugins: Vec<MarketPackage> = serde_json::from_value(
-        json.get("plugins").cloned().unwrap_or_default(),
-    )
-    .map_err(|e| format!("市场索引格式错误: {e}"))?;
-    if let Ok(mut cache) = INDEX_CACHE.lock() {
-        *cache = Some((plugins.clone(), std::time::Instant::now()));
-    }
-    Ok(plugins)
+    serde_json::from_value(json.get("plugins").cloned().unwrap_or_default())
+        .map_err(|e| format!("市场索引格式错误: {e}"))
 }
 
 // ─── Tauri Commands ─────────────────────────────────────────────
@@ -206,44 +506,69 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
     let client = build_client()?;
     let expected = pkg.size.unwrap_or(0);
 
-    // 下载（带指数退避重试：429/5xx/网络抖动都能扛）
+    // 下载地址（动态索引下 build.json 缺失时已按 Release 规则推导，理论不会为空）
+    let download_url = pkg
+        .download_url
+        .clone()
+        .ok_or_else(|| format!("包 '{id}' 缺少下载地址"))?;
+
+    // 多源下载链：GitHub Releases 主源 → 各镜像代理（只转发不改内容，sha256 校验不受影响）。
+    // 每源各自带指数退避重试，全部失败才报错。
+    let mut sources: Vec<String> = vec![download_url.clone()];
+    for mirror in DOWNLOAD_MIRRORS {
+        sources.push(format!("{mirror}/{download_url}"));
+    }
+
     let mut last_err = String::new();
     let mut downloaded = false;
-    for attempt in 0..MAX_RETRIES {
-        let _ = std::fs::remove_file(&zip_path);
-        let progress = progress.clone();
-        match crate::utils::download::download_to_file(
-            &client,
-            &pkg.download_url,
-            &zip_path,
-            None,
-            progress,
-            expected,
-        )
-        .await
-        {
-            Ok(_) => {
-                downloaded = true;
-                break;
-            }
-            Err(e) => {
-                last_err = e;
-                tracing::warn!(
-                    "市场包 '{}' 下载失败（第 {} 次）: {last_err}",
-                    id,
-                    attempt + 1
-                );
-                if attempt + 1 < MAX_RETRIES {
-                    tokio::time::sleep(std::time::Duration::from_millis(
-                        BASE_DELAY_MS * (1 << attempt),
-                    ))
-                    .await;
+    for (src_idx, src) in sources.iter().enumerate() {
+        let mut src_err = String::new();
+        for attempt in 0..MAX_RETRIES {
+            let _ = std::fs::remove_file(&zip_path);
+            let progress = progress.clone();
+            match crate::utils::download::download_to_file(
+                &client,
+                src,
+                &zip_path,
+                None,
+                progress,
+                expected,
+            )
+            .await
+            {
+                Ok(_) => {
+                    downloaded = true;
+                    break;
+                }
+                Err(e) => {
+                    src_err = e;
+                    tracing::warn!(
+                        "市场包 '{}' 下载失败（源 {}，第 {} 次）: {src_err}",
+                        id,
+                        src_idx + 1,
+                        attempt + 1
+                    );
+                    if attempt + 1 < MAX_RETRIES {
+                        tokio::time::sleep(std::time::Duration::from_millis(
+                            BASE_DELAY_MS * (1 << attempt),
+                        ))
+                        .await;
+                    }
                 }
             }
         }
+        if downloaded {
+            break;
+        }
+        last_err = format!("源 {} ({src}) 失败: {src_err}", src_idx + 1);
+        // 换源前短暂停顿，避免对镜像站突发请求
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     }
     if !downloaded {
-        return Err(format!("下载失败（已重试 {MAX_RETRIES} 次）: {last_err}"));
+        return Err(format!(
+            "下载失败（主源 + {} 个镜像均失败）: {last_err}",
+            DOWNLOAD_MIRRORS.len()
+        ));
     }
 
     // sha256 校验（fail-closed：索引声明了就必须匹配）
@@ -409,5 +734,6 @@ pub async fn market_clear_cache() -> Result<(), String> {
     if let Ok(mut cache) = INDEX_CACHE.lock() {
         *cache = None;
     }
+    let _ = std::fs::remove_file(index_cache_path());
     Ok(())
 }
