@@ -282,6 +282,8 @@ export default {
     marketTab: "Market",
     marketHint: "AI-reviewed marketplace: install = trust the review",
     marketEmpty: "No installable packages yet",
+    marketNoMatch: "No matching packages found",
+    searchPlaceholder: "Search name / author / description",
     installed: "Installed",
     install: "Install",
     uninstall: "Uninstall",

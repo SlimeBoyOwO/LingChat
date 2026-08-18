@@ -282,6 +282,8 @@ export default {
     "marketTab": "市場",
     "marketHint": "AI 全自動審核嘅市場：安裝即信任審核結果",
     "marketEmpty": "市場暫時冇可安裝嘅包",
+    "marketNoMatch": "冇搵到符合嘅包",
+    "searchPlaceholder": "搜尋包名 / 作者 / 描述",
     "installed": "已安裝",
     "install": "安裝",
     "uninstall": "卸載",
