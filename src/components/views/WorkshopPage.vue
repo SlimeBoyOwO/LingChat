@@ -1478,6 +1478,7 @@ import {
   uninstallPackage,
   onMarketProgress,
   notifyMarketChanged,
+  clearMarketCache,
   type MarketPackage,
   type InstalledRecord,
 } from '@/api/services/market'
@@ -1678,6 +1679,9 @@ async function loadMarket() {
   marketLoading.value = true
   marketError.value = null
   try {
+    // 先清后端缓存，强制从网络拉最新（绕过 5 分钟内存 / 10 分钟磁盘缓存），
+    // 否则点刷新拿到的仍是 jsDelivr 缓存的旧列表。
+    await clearMarketCache()
     const [pkgs] = await Promise.all([fetchMarketIndex(), loadInstalled()])
     marketPackages.value = pkgs
   } catch (e: unknown) {
