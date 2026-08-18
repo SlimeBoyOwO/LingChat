@@ -509,7 +509,8 @@ export default {
     },
     "placeholder": {
       "sceneName": "例如：海邊日落",
-      "sceneDescription": "講吓場景嘅環境、氣氛、光線等"
+      "sceneDescription": "講吓場景嘅環境、氣氛、光線等",
+      "promptTags": "AI 生成用嘅英文標籤，例如 beach, sunset, ocean"
     },
     "option": {
       "selectBackground": "揀背景圖片"
@@ -519,8 +520,15 @@ export default {
       "resetDefault": "重置返預設值",
       "cancel": "取消",
       "create": "創建",
-      "update": "更新"
+      "update": "更新",
+      "generate": "AI 生成",
+      "generating": "生成緊…"
     },
+    "hint": {
+      "promptTags": "用 NovelAI 畫張背景（要先喺工具配置填好 Token），大約十幾秒",
+      "saveFirst": "要先建立同儲存場景，先可以幫佢生成背景"
+    },
+    "generateFailed": "背景生成失敗：{message}",
     "lighting": {
       "title": "光影參數",
       "enableForScene": "幫呢個場景開光影參數",

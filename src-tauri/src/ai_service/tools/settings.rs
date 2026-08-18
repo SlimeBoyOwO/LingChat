@@ -39,7 +39,7 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
         ],
     ),
     ("character", &["character_list", "character_switch"]),
-    ("scene", &["scene_list", "scene_switch"]),
+    ("scene", &["scene_list", "scene_switch", "scene_return"]),
     ("status", &["status_get_current", "status_get_scene"]),
     ("clock", &["get_current_time"]),
     ("skills", &["list_skills", "read_skill"]),
@@ -111,11 +111,122 @@ impl WebSearchSettings {
     }
 }
 
+/// NovelAI 免费额度上限（Opus 订阅）：面积与步数同时满足才不计费。
+/// 与 novelai_SDK 的 `FREE_MAX_PIXELS` / `FREE_MAX_STEPS` 对齐。
+pub const NAI_FREE_MAX_PIXELS: u32 = 1_048_576;
+pub const NAI_FREE_MAX_STEPS: u32 = 28;
+
+/// 场景背景生成（NovelAI）配置。
+///
+/// 直连 NovelAI 官方图像端点（`image.novelai.net/ai/generate-image`），
+/// 不依赖任何本地 Python 服务。默认参数刻意压在 Opus 免费额度内：
+/// 1216×832 = 1,011,712 px ≤ 1,048,576，steps 23 ≤ 28。
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default)]
+pub struct ImageGenSettings {
+    /// 总开关：关闭时工具不下发给模型，执行也会被拒绝。
+    pub enabled: bool,
+    /// NovelAI 持久 API Token（Bearer 认证）。
+    pub api_token: String,
+    /// 图像端点基址，私有部署或代理转发时可改。
+    pub base_url: String,
+    /// 模型 ID。注意 API 实际接受的拼写：`nai-diffusion-4-curated-preview`
+    /// 与 `nai-diffusion-furry-3`（另两种旧拼写会被服务端拒绝）。
+    pub model: String,
+    pub width: u32,
+    pub height: u32,
+    pub steps: u32,
+    pub scale: f32,
+    pub sampler: String,
+    pub noise_schedule: String,
+    /// 负面预设：strong / light / furry_focus / human_focus / none。
+    pub uc_preset: String,
+    /// 是否追加品质标（`, very aesthetic, masterpiece, no text`）。
+    pub quality_toggle: bool,
+    /// 风格前缀标签，拼在每次生成的提示词最前面，用于统一画风。
+    pub style_prompt: String,
+    /// 追加的负面提示词，拼在 UC 预设文本之后。
+    /// 默认压掉人物：立绘会叠在背景上，背景本身不能烤进人。
+    pub negative_prompt: String,
+    /// 模型在对话中触发生成时，是否先弹确认框由用户拍板。
+    /// **默认关闭** —— 确认框会把英文提示词摊在对话中间，很出戏。
+    /// 关掉它不影响花费安全：那由 `free_tier_only` 负责。
+    pub require_confirm: bool,
+    /// 仅允许免费额度内的参数：超出面积/步数上限时直接拒绝，不发请求。
+    /// 这是「不偷花钱」的最后一道保证，默认开启。
+    pub free_tier_only: bool,
+    /// 是否通过本地 HTTP 代理访问 NovelAI。
+    pub proxy_enabled: bool,
+    pub proxy_addr: String,
+}
+
+impl Default for ImageGenSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            api_token: String::new(),
+            base_url: "https://image.novelai.net".to_string(),
+            model: "nai-diffusion-4-5-full".to_string(),
+            // 3:2 横幅，1,011,712 px —— 贴着免费额度上限但不越线。
+            width: 1216,
+            height: 832,
+            steps: 23,
+            scale: 5.0,
+            sampler: "k_euler_ancestral".to_string(),
+            noise_schedule: "karras".to_string(),
+            uc_preset: "light".to_string(),
+            quality_toggle: true,
+            style_prompt: "no humans, scenery, detailed background".to_string(),
+            negative_prompt: "1girl, 1boy, person, character focus".to_string(),
+            // 默认不弹确认框：对话里跳出一个满是英文 tag 的窗口很出戏。
+            // 花费防护不靠这个开关，靠下面的 free_tier_only —— 超出免费额度会
+            // 在发请求之前就被拒绝，所以「不问」也不会偷花钱。
+            require_confirm: false,
+            free_tier_only: true,
+            proxy_enabled: false,
+            proxy_addr: "http://127.0.0.1:10808".to_string(),
+        }
+    }
+}
+
+impl ImageGenSettings {
+    /// 配置是否达到可下发给模型的就绪状态。
+    pub fn is_ready(&self) -> bool {
+        self.enabled && !self.api_token.trim().is_empty()
+    }
+
+    /// 校验尺寸/步数是否落在免费额度内。
+    /// `free_tier_only` 开启时，越线即拒绝请求（返回人类可读原因）。
+    pub fn check_free_tier(&self) -> Result<(), String> {
+        if !self.free_tier_only {
+            return Ok(());
+        }
+        let pixels = self.width.saturating_mul(self.height);
+        if pixels > NAI_FREE_MAX_PIXELS {
+            return Err(format!(
+                "尺寸 {}×{} = {} 像素，超出免费额度上限 {} 像素，会开始扣 Anlas。\
+                 请调小尺寸，或在设置中关闭「仅使用免费额度」。",
+                self.width, self.height, pixels, NAI_FREE_MAX_PIXELS
+            ));
+        }
+        if self.steps > NAI_FREE_MAX_STEPS {
+            return Err(format!(
+                "步数 {} 超出免费额度上限 {}，会开始扣 Anlas。\
+                 请调低步数，或在设置中关闭「仅使用免费额度」。",
+                self.steps, NAI_FREE_MAX_STEPS
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// 工具配置根。
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ToolSettings {
     pub web_search: WebSearchSettings,
+    /// 场景背景生成（NovelAI 直连）。
+    pub image_gen: ImageGenSettings,
     /// 分组开关：组名（见 `TOOL_GROUPS`）→ 是否启用，缺省关闭。
     pub groups: std::collections::HashMap<String, bool>,
     /// 命令执行：免审批直接运行 shell（危险，仅在信任当前角色/模型时开启）。
@@ -136,6 +247,19 @@ impl ToolSettings {
             let enabled = self.groups.get(*group).copied().unwrap_or(false);
             for tool in *tools {
                 permissions.set_tool_allowed_for_default_group(tool, enabled);
+            }
+        }
+
+        // 场景背景生成隐含依赖整套场景工具：`scene_generate` 的正确用法是
+        // 「先 scene_list 看有没有现成的，没有才生成，剧情回来时 scene_return」。
+        // 只放开 scene_generate 的话，模型拿到的说明会指向它没有的工具，
+        // 结果是干脆不调用 —— 表现为「开了背景生成却什么都没发生」。
+        // 放在分组循环**之后**，否则会被上面那轮按分组开关的写入覆盖掉。
+        let image_gen_ready = self.image_gen.is_ready();
+        permissions.set_tool_allowed_for_default_group("scene_generate", image_gen_ready);
+        if image_gen_ready {
+            for tool in ["scene_list", "scene_switch", "scene_return"] {
+                permissions.set_tool_allowed_for_default_group(tool, true);
             }
         }
     }

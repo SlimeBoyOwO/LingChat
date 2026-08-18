@@ -70,7 +70,7 @@ where
 
 /// 发送主聊天审批事件并等待用户决定。审批请求自身 120 秒超时，调用工具的
 /// `timeout_hint` 必须留出额外清理时间。
-async fn request_user_approval(
+pub(super) async fn request_user_approval(
     app: &AppHandle,
     approvals: ApprovalMap,
     event: &str,

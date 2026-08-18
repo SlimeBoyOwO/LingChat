@@ -34,12 +34,9 @@ export const setCurrentBackgroundEffect = async (effect: string): Promise<void> 
   await http.post('/v1/chat/background/effect', { effect })
 }
 
-export const generateBackgroundImage = async (prompt: string, clientId: string): Promise<void> => {
-  await http.post('/v1/chat/background/generate', {
-    prompt,
-    client_id: clientId,
-  })
-}
+// 原先这里有个 generateBackgroundImage，打的是 Python 后端时代的
+// POST /v1/chat/background/generate —— 迁到 Rust 之后那条路由就不存在了，
+// 调用只会 404。背景生成现在走 scene.ts 的 generateSceneBackground（Tauri command）。
 
 export const openBackgroundsFolder = async (): Promise<void> => {
   await invoke('open_backgrounds_folder')

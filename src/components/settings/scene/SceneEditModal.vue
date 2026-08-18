@@ -68,6 +68,34 @@
                     {{ $t('settings.sceneEdit.button.upload') }}
                   </Button>
                 </div>
+
+                <!-- AI 生成背景：需要已保存的场景（要有 scene_id 才能把图挂回去） -->
+                <div class="mt-2 flex gap-2">
+                  <input
+                    v-model="promptTags"
+                    :placeholder="$t('settings.sceneEdit.placeholder.promptTags')"
+                    :disabled="!canGenerate || generating"
+                    class="flex-1 px-3 py-2 rounded-xl border border-white/10 bg-black/40 text-white text-sm placeholder-white/30 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/50 focus:outline-none transition-all disabled:opacity-40"
+                  />
+                  <Button
+                    :disabled="!canGenerate || generating || !promptTags.trim()"
+                    @click="$emit('generate', promptTags.trim())"
+                    class="bg-indigo-500/80! hover:bg-indigo-500! text-white! border border-indigo-400/40 whitespace-nowrap px-4 text-sm! rounded-xl disabled:opacity-40"
+                  >
+                    {{
+                      generating
+                        ? $t('settings.sceneEdit.button.generating')
+                        : $t('settings.sceneEdit.button.generate')
+                    }}
+                  </Button>
+                </div>
+                <p class="mt-1 text-xs text-white/40">
+                  {{
+                    canGenerate
+                      ? $t('settings.sceneEdit.hint.promptTags')
+                      : $t('settings.sceneEdit.hint.saveFirst')
+                  }}
+                </p>
               </section>
 
               <!-- 场景描述 -->
@@ -316,6 +344,15 @@ const props = defineProps<{
     sceneDescription: string
     lighting?: LightingParams | null
   }
+  /** 能否生成背景：只有已保存的场景才有 scene_id 可以挂图 */
+  canGenerate?: boolean
+  /** 生成进行中：禁用按钮并显示进度文案 */
+  generating?: boolean
+  /**
+   * 刚生成好的背景路径。后端在生成时已经把它写进场景记录了，这里同步到表单，
+   * 否则用户接着按保存会用表单里的旧图把刚生成的背景覆盖掉。
+   */
+  generatedImage?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -329,7 +366,11 @@ const emit = defineEmits<{
     },
   ]
   upload: []
+  generate: [promptTags: string]
 }>()
+
+/** AI 生成用的英文 danbooru 标签，仅存在于弹窗内，不参与场景表单提交。 */
+const promptTags = ref('')
 
 const gameStore = useGameStore()
 const { t } = useI18n()
@@ -509,6 +550,14 @@ async function resolveAvatar() {
 }
 
 // ---- init from initialData ----
+
+// 生成完成后把新背景同步进表单（不重置其他正在编辑的字段）。
+watch(
+  () => props.generatedImage,
+  (url) => {
+    if (url) formData.sceneImage = url
+  },
+)
 
 watch(
   () => props.show,

@@ -4,8 +4,14 @@
 // ========== 从 keys.rs 迁入（原 game.* → session.*） ==========
 /// 上次游玩的角色 ID（启动时自动恢复）
 pub const LAST_CHARACTER_ID: &str = "session.last_character_id";
-/// 上次选择的场景 ID（启动时自动恢复）
+/// 当前场景 ID（会话内的实时值，AI 切换场景也会写这里）
 pub const LAST_SCENE_ID: &str = "session.last_scene_id";
+/// 基准场景 ID —— 用户自己选定的那个「家」。
+///
+/// 与 [`LAST_SCENE_ID`] 的区别是**谁写的**：只有用户在设置里点选场景才会更新这里，
+/// AI 在对话中切换或生成场景只动 LAST_SCENE_ID。这样剧情跑到天文馆之后，
+/// `scene_return` 和下次启动都还知道该回到哪里。
+pub const BASE_SCENE_ID: &str = "session.base_scene_id";
 /// 场景感知开关（切换场景时是否自动产生旁白）
 pub const SCENE_AWARENESS_ENABLED: &str = "session.scene_awareness_enabled";
 

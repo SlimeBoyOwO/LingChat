@@ -509,6 +509,7 @@ export default {
     placeholder: {
       sceneName: '例：夕日の海辺',
       sceneDescription: 'シーンの環境・雰囲気・光線などを記述',
+      promptTags: 'AI 生成用の英語タグ（例：beach, sunset, ocean）',
     },
     option: {
       selectBackground: '背景画像を選択',
@@ -519,7 +520,15 @@ export default {
       cancel: 'キャンセル',
       create: '作成',
       update: '更新',
+      generate: 'AI 生成',
+      generating: '生成中…',
     },
+    hint: {
+      promptTags:
+        'NovelAI で背景を描きます（先にツール設定でトークンを登録してね）。十数秒かかります',
+      saveFirst: '先にシーンを作成・保存すると、背景を生成できるようになります',
+    },
+    generateFailed: '背景生成に失敗しました：{message}',
     lighting: {
       title: 'ライティングパラメータ',
       enableForScene: 'このシーンでライティングパラメータを有効にする',

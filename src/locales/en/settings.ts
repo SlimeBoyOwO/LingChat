@@ -511,6 +511,7 @@ export default {
     placeholder: {
       sceneName: "e.g. Seaside Sunset",
       sceneDescription: "Describe the scene's environment, mood, lighting, etc.",
+      promptTags: "English tags for AI generation, e.g. beach, sunset, ocean",
     },
     option: {
       selectBackground: "Choose a background image",
@@ -521,7 +522,15 @@ export default {
       cancel: "Cancel",
       create: "Create",
       update: "Update",
+      generate: "Generate",
+      generating: "Generating…",
     },
+    hint: {
+      promptTags:
+        "Paint a background with NovelAI (set your token in Tool Settings first). Takes 10–30 seconds.",
+      saveFirst: "Create and save the scene first, then you can generate a background for it",
+    },
+    generateFailed: "Background generation failed: {message}",
     lighting: {
       title: "Lighting Parameters",
       enableForScene: "Enable lighting parameters for this scene",

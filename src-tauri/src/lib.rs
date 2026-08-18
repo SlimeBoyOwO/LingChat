@@ -116,6 +116,8 @@ pub struct InnerAppState {
     pub chat_command_approvals: ai_service::skill_agent::ApprovalMap,
     /// 主聊天 `delete_file` 工具的待审批删除请求（request_id → oneshot）。
     pub chat_file_delete_approvals: ai_service::skill_agent::ApprovalMap,
+    /// 主聊天 `scene_generate` 工具的待确认背景生成请求（request_id → oneshot）。
+    pub chat_scene_generate_approvals: ai_service::skill_agent::ApprovalMap,
     /// 主聊天后台命令的并发槽位与任务 ID 分配器。
     pub background_commands:
         Arc<ai_service::tools::background_command::BackgroundCommandManager>,
@@ -471,6 +473,7 @@ pub fn run() {
                     skill_agent: Arc::new(ai_service::skill_agent::SkillAgentState::default()),
                     chat_command_approvals: Default::default(),
                     chat_file_delete_approvals: Default::default(),
+                    chat_scene_generate_approvals: Default::default(),
                     background_commands: Arc::new(
                         ai_service::tools::background_command::BackgroundCommandManager::default(),
                     ),
@@ -729,6 +732,9 @@ pub fn run() {
             api::tool_settings::test_web_search,
             api::tool_settings::resolve_command_approval,
             api::tool_settings::resolve_file_delete_approval,
+            api::tool_settings::resolve_scene_generate_approval,
+            api::scene::generate_scene_background,
+            api::scene::test_novelai_connection,
             api::achievement::get_achievement_list,
             api::achievement::unlock_achievement,
             api::adventure::list_character_adventures,

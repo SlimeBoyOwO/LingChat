@@ -2,6 +2,7 @@ pub mod config;
 pub mod emotion;
 pub mod game_system;
 pub mod god_agent;
+pub mod image_gen;
 pub mod llm;
 pub mod message_system;
 pub mod proactive_system;
