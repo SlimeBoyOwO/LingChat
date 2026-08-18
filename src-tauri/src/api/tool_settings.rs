@@ -2,6 +2,7 @@
 
 use tauri::Manager;
 
+use crate::ai_service::skill_agent::command_executor;
 use crate::ai_service::tools::executor::{Tool, ToolContext};
 use crate::ai_service::tools::permissions::CONFIG_FILE_NAME;
 use crate::ai_service::tools::settings::ToolSettings;
@@ -50,6 +51,29 @@ pub async fn test_web_search(app: tauri::AppHandle, query: String) -> Result<Str
         .await
         .map_err(|e| e.to_string())?;
     Ok(result.to_string())
+}
+
+/// 返回当前 LingChat 进程是否已通过 Windows UAC 获得管理员令牌。
+#[tauri::command]
+pub fn get_tool_elevation_status() -> bool {
+    command_executor::is_current_process_elevated()
+}
+
+/// 使用 Windows 正常 RunAs 流程启动管理员实例；成功启动后退出当前标准权限实例。
+#[tauri::command]
+pub async fn restart_tool_process_as_admin(app: tauri::AppHandle) -> Result<(), String> {
+    if command_executor::is_current_process_elevated() {
+        return Ok(());
+    }
+    tokio::task::spawn_blocking(command_executor::launch_current_process_as_admin)
+        .await
+        .map_err(|error| format!("管理员重启任务异常: {error}"))?
+        .map_err(|error| error.to_string())?;
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        app.exit(0);
+    });
+    Ok(())
 }
 
 /// 主聊天 `execute_command` 的审批回调：前端弹窗后把用户决定送回等待中的工具。

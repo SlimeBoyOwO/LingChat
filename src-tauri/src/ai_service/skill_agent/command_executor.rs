@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+#[cfg(windows)]
+use std::sync::OnceLock;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -20,6 +22,82 @@ const OUTPUT_DRAIN_GRACE: Duration = Duration::from_millis(400);
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[cfg(windows)]
+static PROCESS_ELEVATED: OnceLock<bool> = OnceLock::new();
+
+/// 当前 LingChat 进程是否已经持有管理员令牌。进程生命周期内权限不会变化，故缓存结果。
+#[cfg(windows)]
+pub fn is_current_process_elevated() -> bool {
+    *PROCESS_ELEVATED.get_or_init(|| {
+        use std::os::windows::process::CommandExt;
+
+        let check = "if ((New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { exit 0 } else { exit 1 }";
+        std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", check])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
+            .status()
+            .is_ok_and(|status| status.success())
+    })
+}
+
+#[cfg(not(windows))]
+pub fn is_current_process_elevated() -> bool {
+    false
+}
+
+/// `uac=true` 只有在当前进程尚未提权时才需要启动 RunAs 辅助进程。
+pub fn needs_elevated_launcher(uac_requested: bool, process_elevated: bool) -> bool {
+    uac_requested && !process_elevated
+}
+
+/// 通过 Windows 正常 RunAs 流程启动一个管理员权限的新实例。
+/// 用户仍需在系统 UAC 对话框中明确同意，本函数不绕过系统安全边界。
+#[cfg(windows)]
+pub fn launch_current_process_as_admin() -> anyhow::Result<()> {
+    use std::os::windows::process::CommandExt;
+
+    if is_current_process_elevated() {
+        return Ok(());
+    }
+    let executable = std::env::current_exe()?;
+    let working_directory = executable
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("当前程序路径没有父目录"))?;
+    let script = format!(
+        "$ErrorActionPreference = 'Stop'; Start-Process -FilePath '{}' -WorkingDirectory '{}' -Verb RunAs | Out-Null",
+        powershell_single_quoted_path(&executable),
+        powershell_single_quoted_path(working_directory),
+    );
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|error| anyhow::anyhow!("无法启动管理员实例: {error}"))?;
+    if !output.status.success() {
+        let message = decode_console_output(&output.stderr);
+        anyhow::bail!(
+            "管理员重启未完成（可能在 UAC 窗口选择了“否”）{}",
+            if message.trim().is_empty() {
+                String::new()
+            } else {
+                format!(": {}", message.trim())
+            }
+        );
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn launch_current_process_as_admin() -> anyhow::Result<()> {
+    anyhow::bail!("管理员重启仅支持 Windows")
+}
 
 /// 等待用户审批决定的命令。
 pub struct ApprovalRequest {
@@ -720,6 +798,13 @@ mod tests {
         .unwrap();
         assert_eq!(out.exit_code, 0, "{}", out.to_prompt_string());
         assert!(out.stdout.contains("BG_OK"), "{}", out.to_prompt_string());
+    }
+
+    #[test]
+    fn elevated_process_reuses_its_existing_admin_token() {
+        assert!(needs_elevated_launcher(true, false));
+        assert!(!needs_elevated_launcher(true, true));
+        assert!(!needs_elevated_launcher(false, false));
     }
 
     #[test]

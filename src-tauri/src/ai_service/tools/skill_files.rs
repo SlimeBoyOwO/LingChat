@@ -676,9 +676,9 @@ impl Tool for ExecuteCommand {
                 "properties": {
                     "command": {"type": "string", "description": "要运行的 shell 命令"},
                     "cwd": {"type": "string", "description": "工作目录，绝对路径或相对于文件沙箱根目录。留空表示沙箱根目录。"},
-                    "uac": {"type": "boolean", "description": "true 时请求管理员权限运行（仅 Windows，弹 UAC 确认框）"},
+                    "uac": {"type": "boolean", "description": "true 时要求管理员权限运行；若 LingChat 已是管理员进程则直接复用，否则弹 Windows UAC"},
                     "timeout_seconds": {"type": "integer", "description": "命令最长运行秒数（前台默认 60/最大 300；后台默认 600/最大 3600；最小 1）"},
-                    "run_in_background": {"type": "boolean", "description": "true 时在后台运行并立即返回任务 ID；完成后会自动通知模型，无需轮询。不能与 uac=true 同时使用"},
+                    "run_in_background": {"type": "boolean", "description": "true 时在后台运行并立即返回任务 ID；完成后会自动通知模型。标准权限下不能与 uac=true 同用，管理员进程可直接继承权限"},
                     "description": {"type": "string", "description": "后台任务的简短说明；run_in_background=true 时必填"}
                 },
                 "required": ["command"],
@@ -718,9 +718,10 @@ impl Tool for ExecuteCommand {
                 "run_in_background=true 时必须提供非空 description".into(),
             ));
         }
-        if run_in_background && uac {
+        let process_elevated = command_executor::is_current_process_elevated();
+        if run_in_background && uac && !process_elevated {
             return Err(ToolError::InvalidArguments(
-                "后台命令不支持 uac=true；需要提权时请以前台方式执行".into(),
+                "标准权限下，后台命令不支持 uac=true；请先以前台方式提权，或将 LingChat 以管理员身份重启".into(),
             ));
         }
         let (default_timeout, max_timeout) = if run_in_background {
@@ -792,7 +793,9 @@ impl Tool for ExecuteCommand {
             .await;
         }
 
-        let result = if uac {
+        let use_elevated_launcher =
+            command_executor::needs_elevated_launcher(uac, process_elevated);
+        let result = if use_elevated_launcher {
             command_executor::run_shell_command_elevated_with_timeout(
                 &sandbox_dir,
                 command,

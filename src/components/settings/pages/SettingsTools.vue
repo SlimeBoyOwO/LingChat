@@ -66,6 +66,47 @@
         >
           {{ $t('ui.toolCalls.fullAccessSettingsWarning') }}
         </div>
+        <div
+          v-if="form.access_mode === 'full_access' && isWindows()"
+          class="mt-4 rounded-xl border border-white/15 bg-black/20 px-4 py-3"
+        >
+          <div class="flex items-center gap-2 font-semibold text-white">
+            <span
+              class="h-2.5 w-2.5 rounded-full"
+              :class="elevationStatus === 'elevated' ? 'bg-emerald-400' : 'bg-amber-400'"
+            ></span>
+            {{ $t('ui.toolCalls.adminModeTitle') }}
+          </div>
+          <p class="mt-2 text-sm text-gray-300">
+            {{
+              $t(
+                elevationStatus === 'elevated'
+                  ? 'ui.toolCalls.adminModeElevated'
+                  : elevationStatus === 'checking'
+                    ? 'ui.toolCalls.adminModeChecking'
+                    : 'ui.toolCalls.adminModeStandard',
+              )
+            }}
+          </p>
+          <button
+            v-if="elevationStatus !== 'elevated'"
+            type="button"
+            class="mt-3 rounded-lg border border-amber-400/60 bg-amber-400/15 px-4 py-2 text-sm font-semibold text-amber-200 transition-colors hover:bg-amber-400/25 disabled:cursor-wait disabled:opacity-60"
+            :disabled="elevationRestarting || elevationStatus === 'checking'"
+            @click="restartAsAdmin"
+          >
+            {{
+              $t(
+                elevationRestarting
+                  ? 'ui.toolCalls.adminModeRestarting'
+                  : 'ui.toolCalls.adminModeRestart',
+              )
+            }}
+          </button>
+          <p v-if="elevationStatus !== 'elevated'" class="mt-2 text-xs text-gray-400">
+            {{ $t('ui.toolCalls.adminModeHint') }}
+          </p>
+        </div>
       </div>
 
       <!-- ===== 网页搜索 ===== -->
@@ -255,6 +296,8 @@ import { reactive, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   getToolSettings,
+  getToolElevationStatus,
+  restartToolProcessAsAdmin,
   saveToolSettings,
   testWebSearch,
   TOOL_GROUP_KEYS,
@@ -301,6 +344,8 @@ const form = reactive<ToolSettings>({
 
 const status = reactive({ message: '', color: '#4ade80' })
 const testing = ref(false)
+const elevationStatus = ref<'checking' | 'standard' | 'elevated'>('checking')
+const elevationRestarting = ref(false)
 
 const showStatus = (message: string, color = '#4ade80') => {
   status.message = message
@@ -322,14 +367,43 @@ const selectAccessMode = async (mode: ToolAccessMode) => {
   form.access_mode = mode
 }
 
-const saveSettings = async () => {
+const saveSettings = async (): Promise<boolean> => {
   try {
     // 深拷贝一份普通对象，避免把 reactive 代理传给 Tauri IPC
     const payload: ToolSettings = JSON.parse(JSON.stringify(form))
     await saveToolSettings(payload)
     showStatus(t('ui.toolCalls.saveSuccess'))
+    return true
   } catch (error: any) {
     showStatus(t('ui.toolCalls.saveFailed', { message: String(error) }), 'red')
+    return false
+  }
+}
+
+const refreshElevationStatus = async () => {
+  elevationStatus.value = 'checking'
+  try {
+    elevationStatus.value = (await getToolElevationStatus()) ? 'elevated' : 'standard'
+  } catch (error) {
+    console.warn('读取管理员权限状态失败:', error)
+    elevationStatus.value = 'standard'
+  }
+}
+
+const restartAsAdmin = async () => {
+  if (elevationRestarting.value) return
+  const approved = await dialogStore.confirm(
+    t('ui.toolCalls.adminModeConfirmMessage'),
+    t('ui.toolCalls.adminModeConfirmTitle'),
+  )
+  if (!approved) return
+  if (!(await saveSettings())) return
+  elevationRestarting.value = true
+  try {
+    await restartToolProcessAsAdmin()
+  } catch (error: any) {
+    elevationRestarting.value = false
+    showStatus(t('ui.toolCalls.adminModeRestartFailed', { message: String(error) }), 'red')
   }
 }
 
@@ -338,7 +412,7 @@ const runTest = async () => {
   testing.value = true
   try {
     // 测试前先保存，确保后端用的是页面上的最新配置
-    await saveSettings()
+    if (!(await saveSettings())) return
     const result = await testWebSearch('LingChat')
     const parsed = JSON.parse(result)
     showStatus(t('ui.toolCalls.testSuccess', { count: parsed.result_count ?? 0 }))
@@ -355,6 +429,7 @@ onMounted(async () => {
     Object.assign(form.web_search, settings.web_search)
     Object.assign(form.groups, settings.groups ?? {})
     form.access_mode = settings.access_mode ?? 'manual'
+    if (isWindows()) await refreshElevationStatus()
   } catch (error) {
     console.error('加载工具配置失败:', error)
   }

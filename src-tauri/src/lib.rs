@@ -730,6 +730,8 @@ pub fn run() {
             api::tool_settings::get_tool_settings,
             api::tool_settings::save_tool_settings,
             api::tool_settings::test_web_search,
+            api::tool_settings::get_tool_elevation_status,
+            api::tool_settings::restart_tool_process_as_admin,
             api::tool_settings::resolve_command_approval,
             api::tool_settings::resolve_file_change_approval,
             api::tool_settings::resolve_file_delete_approval,

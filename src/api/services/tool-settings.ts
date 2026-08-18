@@ -248,6 +248,16 @@ export async function saveToolSettings(settings: ToolSettings): Promise<void> {
   currentToolAccessMode.value = settings.access_mode
 }
 
+/** 当前 LingChat 进程是否已经由 Windows UAC 提升为管理员权限。 */
+export function getToolElevationStatus(): Promise<boolean> {
+  return invoke<boolean>('get_tool_elevation_status')
+}
+
+/** 经过正常 Windows UAC 确认后，以管理员权限启动新实例并退出当前实例。 */
+export function restartToolProcessAsAdmin(): Promise<void> {
+  return invoke<void>('restart_tool_process_as_admin')
+}
+
 /** 直接执行一次网页搜索；失败时 Promise reject 携带后端错误信息。 */
 export function testWebSearch(query: string): Promise<string> {
   return invoke<string>('test_web_search', { query })
