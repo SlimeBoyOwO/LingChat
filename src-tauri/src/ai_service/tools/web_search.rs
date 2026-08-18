@@ -395,13 +395,8 @@ impl WebSearchTool {
         query: &str,
         cfg: &WebSearchSettings,
     ) -> Result<ToolResult, ToolError> {
-        let base = cfg.base_url.trim().trim_end_matches('/');
-        let base = if base.is_empty() {
-            "https://api.deepseek.com".to_string()
-        } else {
-            base.to_string()
-        };
-        let endpoint = format!("{base}/responses");
+        // DeepSeek Responses API 固定使用官方端点（与 bocha/kimi 一致，不读 base_url 配置）
+        let endpoint = "https://api.deepseek.com/responses".to_string();
         let model = if cfg.model.trim().is_empty() {
             "deepseek-v4-flash"
         } else {

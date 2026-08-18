@@ -79,7 +79,7 @@ pub struct WebSearchSettings {
     pub model: String,
     /// API Key（Bearer 认证，仅 use_builtin = false 时需要）。
     pub api_key: String,
-    /// 搜索端点（仅 use_builtin = false 时使用；deepseek 留空使用官方端点）。
+    /// 搜索端点（仅 use_builtin = false 时使用；deepseek 固定走官方端点，不读此字段）。
     pub base_url: String,
     /// 是否通过本地 HTTP 代理（如 v2rayN）访问搜索端点。
     pub proxy_enabled: bool,

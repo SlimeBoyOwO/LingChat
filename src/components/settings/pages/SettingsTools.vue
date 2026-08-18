@@ -260,7 +260,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   getToolSettings,
@@ -321,12 +321,27 @@ const saveSettings = async () => {
   try {
     // 深拷贝一份普通对象，避免把 reactive 代理传给 Tauri IPC
     const payload: ToolSettings = JSON.parse(JSON.stringify(form))
+    // deepseek 使用官方 /responses 端点；base_url 对该 provider 不可编辑，
+    // 清空避免把 kimi 的默认端点残留进配置导致请求打到错误地址
+    if (payload.web_search.provider === 'deepseek') {
+      payload.web_search.base_url = ''
+    }
     await saveToolSettings(payload)
     showStatus(t('ui.toolCalls.saveSuccess'))
   } catch (error: any) {
     showStatus(t('ui.toolCalls.saveFailed', { message: String(error) }), 'red')
   }
 }
+
+// 切换到 deepseek provider 时同步清空 base_url（加载旧配置时同样生效）
+watch(
+  () => form.web_search.provider,
+  (provider) => {
+    if (provider === 'deepseek') {
+      form.web_search.base_url = ''
+    }
+  },
+)
 
 const runTest = async () => {
   if (testing.value) return
