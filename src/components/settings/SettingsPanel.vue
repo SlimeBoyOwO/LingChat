@@ -11,8 +11,10 @@
       @touchstart="onTouchStart"
       @touchend="onTouchEnd"
     >
-      <Transition :name="transitionName">
-        <!-- KeepAlive 缓存设置子页面实例：切换时只激活/停用，不销毁重建，保留状态 -->
+      <Transition :name="transitionName" mode="out-in">
+        <!-- KeepAlive 缓存设置子页面实例：切换时只激活/停用，不销毁重建，保留状态。
+             mode="out-in"：旧 Tab 先完整滑出、再挂载/激活新 Tab。默认同时模式下，
+             新 Tab 的同步挂载会阻塞主线程，把旧 Tab 滑出的头 1~2 帧卡出「残留」。 -->
         <KeepAlive>
           <component
             :is="currentTabComponent"
@@ -218,30 +220,26 @@ defineExpose({
 .slide-right-enter-active,
 .slide-right-leave-active {
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  /* Tab 页是整页高的滚动容器，且嵌套在 #app 的 transform: scale 下。
-     不加 will-change 时 Chromium 在滑动期间逐帧在主线程重栅格化整棵缩放
-     子树，上一 Tab 滑出会卡顿残留；提前提升为合成层让滑动走合成器。 */
-  will-change: transform;
 }
 
 .slide-left-enter-from {
-  transform: translate3d(100%, 0, 0);
+  transform: translateX(100%);
 }
 .slide-left-leave-to {
-  transform: translate3d(-100%, 0, 0);
+  transform: translateX(-100%);
 }
 
 .slide-right-enter-from {
-  transform: translate3d(-100%, 0, 0);
+  transform: translateX(-100%);
 }
 .slide-right-leave-to {
-  transform: translate3d(100%, 0, 0);
+  transform: translateX(100%);
 }
 
 .slide-left-enter-to,
 .slide-left-leave-from,
 .slide-right-enter-to,
 .slide-right-leave-from {
-  transform: translate3d(0, 0, 0);
+  transform: translateX(0);
 }
 </style>
