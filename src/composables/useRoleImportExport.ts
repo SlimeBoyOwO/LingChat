@@ -2,6 +2,7 @@ import { onUnmounted } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { useRoleArchiveStore } from '@/stores/modules/ui/role-archive'
+import { decodePathFileName } from '@/utils/path'
 import {
   importRoleFromPath,
   exportRoleToPath,
@@ -26,21 +27,6 @@ function detectFormat(fileName: string): ArchiveFormat | null {
   if (lower.endsWith('.zip')) return 'zip'
   if (lower.endsWith('.7z')) return '7z'
   return null
-}
-
-/**
- * 把 content:// URI 末段从 percent-encoded 还原回真实文件名。
- * Android dialog 返回的 URI 形如 `content://.../E6A998E585891784606515054.zip`，
- * 直接 split 拿到的就是 hex 串；非 URI 路径则原样返回。
- */
-function decodeURIComponentSafe(s: string): string {
-  // 仅对看起来像 percent-encoded 的字符串做 decode；避免误伤普通文件名里的 % 字符。
-  if (!/%[0-9A-Fa-f]{2}/.test(s)) return s
-  try {
-    return decodeURIComponent(s)
-  } catch {
-    return s
-  }
 }
 
 function isAndroidContentUri(p: string): boolean {
@@ -127,8 +113,7 @@ export function useRoleImportExport() {
     if (!filePath) return
     // content:// URI \u672b\u6bb5\u662f URL \u7f16\u7801\u7684\uff08\u5982 `E6A998E585891784606515054.zip`\uff09\uff0c
     // \u5fc5\u987b decode \u540e\u624d\u80fd\u5f97\u5230\u771f\u5b9e\u6587\u4ef6\u540d\uff08`\u8bfa\u4e00\u94a6\u7075.zip`\uff09\u3002
-    const fileName =
-      decodeURIComponentSafe(filePath.split(/[\\/]/).pop() || filePath) || filePath
+    const fileName = decodePathFileName(filePath) || filePath
     // \u6269\u5c55\u540d\u7f3a\u5931\u65f6\u4e0d\u518d\u786c\u62a5\u9519\uff1b\u540e\u7aef\u7528 magic \u51b3\u5b9a\u771f\u5b9e\u683c\u5f0f\u3002
     const format: ArchiveFormat | undefined = detectFormat(fileName) ?? undefined
     await runImport(filePath, fileName, format, conflict)

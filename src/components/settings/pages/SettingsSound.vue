@@ -368,6 +368,7 @@ import {
   setDevice,
   supported as audioOutputSupported,
 } from '../../../utils/audioOutputManager'
+import { decodePathFileName } from '../../../utils/path'
 import {
   AudioLines,
   FlaskConical,
@@ -597,19 +598,6 @@ const extractDialogPaths = (selected: unknown): string[] => {
   return raw
     .map((p: any) => (typeof p === 'string' ? p : p?.path))
     .filter((p: any) => typeof p === 'string' && p.length > 0)
-}
-
-/**
- * 从文件路径提取文件名，兼容 content:// URI（URL 编码）。
- * decodeURIComponent 遇到非法 % 序列会抛 URIError，这里兜底返回原值。
- */
-const decodePathFileName = (path: string): string => {
-  const last = path.split(/[\\/]/).pop() || path
-  try {
-    return decodeURIComponent(last).split('?')[0]
-  } catch {
-    return last.split('?')[0]
-  }
 }
 
 // 从服务端加载环境音列表

@@ -212,12 +212,12 @@ pub async fn import_role_from_path(
         serde_json::json!({ "task_id": &task_id }),
     );
 
-    let (path_buf, cleanup_after_import, display_name) = prepare_import_source(&app, &path).await?;
+    let src = prepare_import_source(&app, &path).await?;
 
     // SAF 源文件复制完成后记录缓存路径，便于取消任务时立即清理。
-    if cleanup_after_import {
+    if src.cleanup_after_import {
         if let Some(entry) = state.tasks.lock().unwrap().get_mut(&task_id) {
-            *entry.saf_cache_path.lock().unwrap() = Some(path_buf.clone());
+            *entry.saf_cache_path.lock().unwrap() = Some(src.path.clone());
         }
     }
 
@@ -228,18 +228,19 @@ pub async fn import_role_from_path(
         Some(name) if !looks_like_percent_encoded_blob(&name) => Some(name),
         Some(name) => {
             tracing::warn!(
-                "[RoleArchive] import_role_from_path file_name 看起来是 percent-encoded blob ({name})，改用 SAF display_name={display_name}",
+                "[RoleArchive] import_role_from_path file_name 看起来是 percent-encoded blob ({name})，改用 SAF display_name={}",
+                src.display_name
             );
-            Some(display_name.clone())
+            Some(src.display_name.clone())
         }
-        None => Some(display_name.clone()),
+        None => Some(src.display_name.clone()),
     };
 
     let result = async {
-        if !path_buf.exists() {
-            return Err(format!("文件不存在: {}", path_buf.display()));
+        if !src.path.exists() {
+            return Err(format!("文件不存在: {}", src.path.display()));
         }
-        let meta = tokio::fs::metadata(&path_buf)
+        let meta = tokio::fs::metadata(&src.path)
             .await
             .map_err(|e| format!("stat path: {e}"))?;
         tracing::info!(
@@ -249,7 +250,7 @@ pub async fn import_role_from_path(
         );
         do_import(
             &app,
-            &path_buf,
+            &src.path,
             format,
             policy,
             cancel_token,
@@ -259,11 +260,11 @@ pub async fn import_role_from_path(
     }
     .await;
 
-    if cleanup_after_import {
-        if let Err(error) = tokio::fs::remove_file(&path_buf).await {
+    if src.cleanup_after_import {
+        if let Err(error) = tokio::fs::remove_file(&src.path).await {
             tracing::warn!(
                 "[RoleArchive] import_role_from_path 清理 SAF 缓存失败: path={}, err={}",
-                path_buf.display(),
+                src.path.display(),
                 error
             );
         }

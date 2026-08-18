@@ -10,6 +10,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
+use crate::ai_service::tts::local::saf_bridge::{prepare_file_import_source, ImportSource};
 use crate::db::entities::role::{Column, Entity as RoleEntity};
 use crate::utils::archive::{
     self, ArchiveError, ArchiveFormat, ConflictPolicy, EntryEvent, ExtractSummary,
@@ -319,18 +320,17 @@ pub(super) async fn write_temp_archive(app: &AppHandle, bytes: &[u8]) -> Result<
 /// - 如果路径以 `content://` 开头，则把 Android SAF 文件复制到缓存目录。
 /// - 否则按桌面端文件系统路径处理，不创建额外副本。
 ///
-/// 返回 `(本地路径, 是否需要在导入完成后清理本地副本, 用户面向的文件名)`。
-/// `display_name` 在 Android 上由 SAF 元数据提供；桌面端则是路径的 basename。
+/// 返回 [`ImportSource`]：`path` 是本地可读路径，`cleanup_after_import` 指示调用方
+/// 是否需要在导入完成后清理本地副本，`display_name` 是用户面向的文件名
+/// （Android 上由 SAF 元数据提供；桌面端是路径的 basename）。
 /// 后端用它做 fallback：当传入的 `file_name` 看起来是 percent-encoded hex blob
 /// （content URI 的末段未经前端 decode 的痕迹）时优先采用它，保证角色文件夹名
 /// 是真实可读的名字，而不是 `%E6%A9%98...` 之类的 hex 串。
 pub(super) async fn prepare_import_source(
     app: &AppHandle,
     path: &str,
-) -> Result<(PathBuf, bool, String), String> {
-    use crate::ai_service::tts::local::saf_bridge::prepare_file_import_source;
-    let src = prepare_file_import_source(app, path).await?;
-    Ok((src.path, src.cleanup_after_import, src.display_name))
+) -> Result<ImportSource, String> {
+    prepare_file_import_source(app, path).await
 }
 
 /// 判断一个字符串是否像是 percent-encoded hex blob（Android content URI
