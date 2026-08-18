@@ -123,7 +123,7 @@ export default {
     fullAccessConfirmTitle: 'フルアクセスを有効にしますか？',
     fullAccessConfirmMessage: 'モデルは確認なしでPC上の任意のファイルを読み書き・削除し、ローカルコマンドを実行できるようになります。信頼できるキャラ、モデル、タスクでのみ使用してください。続行しますか？',
     fullAccessSettingsWarning: '⚠ フルアクセスはファイルとコマンドの承認を無効にし、data/ サンドボックス制限も解除します。保存後すぐに有効になります。',
-    fullAccessTopWarning: 'フルアクセス有効：AI は任意のファイルとコマンドにアクセスできます',
+    fullAccessTopWarning: 'フルアクセス権限を使用中',
     fileAccessByMode: {
       manual: '書込・編集・削除の前に毎回確認し、data/ サンドボックス内に制限します。',
       auto_approve: '通常の書込と編集は自動承認、削除は確認し、パスはサンドボックス内に制限します。',

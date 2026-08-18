@@ -2,14 +2,17 @@
   <div class="main-box">
     <!-- 主界面始终渲染，加载动画期间在后台初始化 -->
     <FreeModeTools />
-    <div
-      v-if="currentToolAccessMode === 'full_access' && !uiStore.showSettings"
-      class="full-access-warning"
-      role="alert"
-    >
-      <ShieldAlert :size="18" aria-hidden="true" />
-      <span>{{ $t('ui.toolCalls.fullAccessTopWarning') }}</span>
-    </div>
+    <Transition name="full-access-notice">
+      <div
+        v-if="fullAccessUseVisible && !uiStore.showSettings"
+        class="full-access-warning"
+        role="status"
+        aria-live="polite"
+      >
+        <ShieldAlert :size="18" aria-hidden="true" />
+        <span>{{ $t('ui.toolCalls.fullAccessTopWarning') }}</span>
+      </div>
+    </Transition>
     <GameBackground></GameBackground>
     <!-- <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />  -->
     <GameRolesStage
@@ -59,7 +62,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import FreeModeTools from '@/components/tools/FreeModeTools.vue'
 import ToolActivityStatus from '@/components/tools/ToolActivityStatus.vue'
@@ -75,7 +78,11 @@ import GameExtraUI from '../game/standard/GameExtraUI.vue'
 import ImageSourcePicker from '@/components/ui/ImageSourcePicker.vue'
 import { isAndroid } from '@/utils/platform'
 import { ShieldAlert } from 'lucide-vue-next'
-import { currentToolAccessMode, getToolSettings } from '@/api/services/tool-settings'
+import {
+  currentToolAccessMode,
+  currentToolActivity,
+  getToolSettings,
+} from '@/api/services/tool-settings'
 
 const LOADING_STORAGE_KEY = 'lingchat_loading_shown'
 
@@ -87,6 +94,42 @@ let loadingShownThisSession = false
 const router = useRouter()
 const uiStore = useUIStore()
 const gameStore = useGameStore()
+
+const fullAccessUseVisible = ref(false)
+let fullAccessUseTimer: ReturnType<typeof setTimeout> | null = null
+const fullAccessTools = new Set([
+  'list_files',
+  'read_file',
+  'write_file',
+  'delete_file',
+  'edit_file',
+  'search_files',
+  'grep_files',
+  'glob',
+  'grep',
+  'execute_command',
+])
+
+watch(currentToolActivity, (activity, previous) => {
+  if (
+    currentToolAccessMode.value !== 'full_access' ||
+    activity?.status !== 'running' ||
+    !fullAccessTools.has(activity.tool) ||
+    (previous?.callId === activity.callId && previous.status === 'running')
+  ) {
+    return
+  }
+  fullAccessUseVisible.value = true
+  if (fullAccessUseTimer) clearTimeout(fullAccessUseTimer)
+  fullAccessUseTimer = setTimeout(() => {
+    fullAccessUseVisible.value = false
+    fullAccessUseTimer = null
+  }, 2400)
+})
+
+onBeforeUnmount(() => {
+  if (fullAccessUseTimer) clearTimeout(fullAccessUseTimer)
+})
 
 // 首次加载过渡状态：仅当本次 session 未播放过且 localStorage 未标记时播放
 const showLoading = ref(!loadingShownThisSession && !localStorage.getItem(LOADING_STORAGE_KEY))
@@ -281,6 +324,16 @@ watch(
   text-shadow:
     0 1px 2px rgb(0 0 0 / 95%),
     0 0 8px rgb(0 0 0 / 75%);
+}
+
+.full-access-notice-enter-active,
+.full-access-notice-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.full-access-notice-enter-from,
+.full-access-notice-leave-to {
+  opacity: 0;
 }
 
 @media (max-width: 1279px) {

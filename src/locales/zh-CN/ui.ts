@@ -123,7 +123,7 @@ export default {
     fullAccessConfirmTitle: '开启完全访问？',
     fullAccessConfirmMessage: '开启后，模型可以不经确认读写或删除电脑上的任意文件，并执行本机命令。请只在信任当前角色、模型和任务时使用。是否继续？',
     fullAccessSettingsWarning: '⚠ 完全访问会取消文件与命令审批，并解除 data/ 文件沙箱限制。保存后立即生效。',
-    fullAccessTopWarning: '完全访问已开启：AI 可读写任意文件并执行命令',
+    fullAccessTopWarning: '执行完全访问权限',
     fileAccessByMode: {
       manual: '写入、编辑和删除前会逐次询问；路径限制在 data/ 沙箱内。',
       auto_approve: '普通写入和编辑自动通过，删除仍需确认；路径限制在 data/ 沙箱内。',

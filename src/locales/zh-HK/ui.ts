@@ -124,7 +124,7 @@ export default {
     "fullAccessConfirmTitle": "開啟完全存取？",
     "fullAccessConfirmMessage": "開啟之後，模型可以唔經確認讀寫或刪除電腦上任何檔案，同埋執行本機命令。只好喺信任目前角色、模型同任務嗰陣使用。繼續嗎？",
     "fullAccessSettingsWarning": "⚠ 完全存取會取消檔案同命令審批，亦會解除 data/ 沙箱限制。儲存後即時生效。",
-    "fullAccessTopWarning": "完全存取已開啟：AI 可以存取任何檔案同執行命令",
+    "fullAccessTopWarning": "執行完全存取權限",
     "fileAccessByMode": {
       "manual": "寫入、編輯同刪除之前會逐次詢問；路徑限制喺 data/ 沙箱內。",
       "auto_approve": "普通寫入同編輯自動通過，刪除仍要確認；路徑限制喺沙箱內。",

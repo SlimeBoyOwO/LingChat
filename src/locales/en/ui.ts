@@ -124,7 +124,7 @@ export default {
     fullAccessConfirmTitle: "Enable Full Access?",
     fullAccessConfirmMessage: "The model will be able to read, write or delete any file on this computer and run local commands without asking. Use this only with a trusted character, model and task. Continue?",
     fullAccessSettingsWarning: "⚠ Full Access disables file and command approvals and removes the data/ sandbox restriction. It takes effect immediately after saving.",
-    fullAccessTopWarning: "FULL ACCESS ON: AI can access any file and run commands",
+    fullAccessTopWarning: "Using Full Access",
     fileAccessByMode: {
       manual: "Ask before writes, edits and deletions; paths stay inside the data/ sandbox.",
       auto_approve: "Normal writes and edits are approved automatically; deletions still ask and paths stay sandboxed.",
