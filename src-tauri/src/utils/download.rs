@@ -154,7 +154,7 @@ pub async fn download_to_file(
 
 /// 构建一个预配置的 `reqwest::Client`，适合通用下载场景。
 ///
-/// - 600 秒总超时、30 秒连接超时（连接挂起不会占满总超时）
+/// - 600 秒总超时、8 秒连接超时（连接挂起快速失败，多源场景下及时换源；大文件下载不受影响）
 /// - 最多 10 次重定向
 /// - 标准 User-Agent
 /// - TLS 用 webpki-roots（见 [`crate::utils::tls::build_tls_config`]），
@@ -163,7 +163,7 @@ pub fn build_download_client() -> Result<reqwest::Client, String> {
     let tls_config = crate::utils::tls::build_tls_config()?;
     reqwest::Client::builder()
         .timeout(Duration::from_secs(600))
-        .connect_timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(8))
         .user_agent("LingChat/0.4.6")
         .redirect(reqwest::redirect::Policy::limited(10))
         .tls_backend_preconfigured(tls_config)

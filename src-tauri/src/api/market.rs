@@ -105,17 +105,23 @@ async fn get_with_retry(
 }
 
 /// 依次尝试多个 URL，第一个成功的响应返回（用于 CDN/镜像多源链）。
+/// 并行抢答：所有源同时发起，谁先成功用谁——镜像通就走镜像，直连挂不影响；
+/// 全部失败才返回错误。避免串行等待慢源（连接超时已缩短到 8s）。
 async fn fetch_first(
     client: &reqwest::Client,
     urls: &[String],
 ) -> Result<reqwest::Response, String> {
+    use futures_util::future::select_all;
+    let mut futures: Vec<_> = urls.iter().map(|u| get_with_retry(client, u)).collect();
     let mut last_err = String::new();
-    for url in urls {
-        match get_with_retry(client, url).await {
+    while !futures.is_empty() {
+        let (res, _idx, rest) = select_all(futures).await;
+        futures = rest;
+        match res {
             Ok(resp) => return Ok(resp),
             Err(e) => {
                 last_err = e;
-                tracing::warn!("多源拉取失败，尝试下一源: {last_err}");
+                tracing::warn!("多源并行拉取中一个源失败（继续等其余源）: {last_err}");
             }
         }
     }
@@ -321,23 +327,25 @@ async fn fetch_index_dynamic(
 }
 
 /// 列出 registry 下所有包目录名（GitHub trees 实时优先 → jsDelivr data API 兜底，镜像在前）。
+/// 并行抢答：所有源同时发起，第一个「成功且非空」的结果胜出——不被慢源/挂掉的镜像阻塞。
 async fn fetch_registry_tree(client: &reqwest::Client) -> Result<Vec<String>, String> {
+    use futures_util::future::select_all;
+    let mut futures: Vec<_> = MARKET_TREE_URLS
+        .iter()
+        .map(|url| async move {
+            let url = *url;
+            let resp = get_with_retry(client, url).await?;
+            parse_registry_tree(resp, url).await
+        })
+        .collect();
     let mut last_err = String::new();
-    for url in MARKET_TREE_URLS {
-        let resp = match get_with_retry(client, url).await {
-            Ok(r) => r,
-            Err(e) => {
-                last_err = e;
-                continue;
-            }
-        };
-        match parse_registry_tree(resp, url).await {
+    while !futures.is_empty() {
+        let (res, _idx, rest) = select_all(futures).await;
+        futures = rest;
+        match res {
             Ok(dirs) if !dirs.is_empty() => return Ok(dirs),
-            Ok(_) => {
-                // 200 但目录为空（如限流错误响应/空仓库）：不算成功，继续下一源
-                last_err = format!("{url} 返回空目录");
-            }
-            Err(e) => last_err = format!("解析 {url} 失败: {e}"),
+            Ok(_) => last_err = "某源返回空目录".to_string(),
+            Err(e) => last_err = e,
         }
     }
     Err(format!("列目录失败: {last_err}"))
@@ -555,7 +563,8 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
     let mut downloaded = false;
     for (src_idx, src) in sources.iter().enumerate() {
         let mut src_err = String::new();
-        for attempt in 0..MAX_RETRIES {
+        // 每源最多 2 次（连接超时 8s，不可达镜像很快失败并换下一源，避免长时间卡住）
+        for attempt in 0..2 {
             let _ = std::fs::remove_file(&zip_path);
             let progress = progress.clone();
             match crate::utils::download::download_to_file(
@@ -580,7 +589,7 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
                         src_idx + 1,
                         attempt + 1
                     );
-                    if attempt + 1 < MAX_RETRIES {
+                    if attempt + 1 < 2 {
                         tokio::time::sleep(std::time::Duration::from_millis(
                             BASE_DELAY_MS * (1 << attempt),
                         ))
