@@ -9,7 +9,7 @@
 //! for UX/notification purposes — the staged `PathBuf` has a synthetic
 //! `tts_import_saf_<uuid>_…` name on Android that must not leak into UI.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tauri::AppHandle;
 
 #[cfg(target_os = "android")]
@@ -98,9 +98,6 @@ pub async fn prepare_file_import_source(
             .and_then(|n| n.to_str())
             .map(|s| s.to_string())
             .unwrap_or_else(|| path.to_string());
-        // Touch `Path` to keep the import meaningful on platforms where the
-        // std-only branch is unused (lint hygiene for `Path` re-export above).
-        let _ = Path::new(path);
         Ok(ImportSource {
             path: pb,
             cleanup_after_import: false,

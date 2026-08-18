@@ -11,7 +11,6 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio_util::sync::CancellationToken;
 
-
 mod export_pipeline;
 mod import_pipeline;
 mod state;
@@ -57,10 +56,15 @@ pub async fn import_role(
     file_name: Option<String>,
 ) -> Result<ImportResult, String> {
     // 并发保护：同一时间只允许一个导入任务。
-    if state.importing.swap(true, std::sync::atomic::Ordering::SeqCst) {
+    if state
+        .importing
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+    {
         return Err("已有导入任务在进行中".into());
     }
-    let _import_guard = ImportingGuard { flag: &state.importing };
+    let _import_guard = ImportingGuard {
+        flag: &state.importing,
+    };
 
     if bytes.is_empty() {
         tracing::warn!("[RoleArchive] import_role 收到空文件");
@@ -86,14 +90,28 @@ pub async fn import_role(
             saf_cache_path: std::sync::Mutex::new(None),
         },
     );
-    let _remove_guard = TaskRemoveGuard { state: &state, task_id: &task_id };
+    let _remove_guard = TaskRemoveGuard {
+        state: &state,
+        task_id: &task_id,
+    };
     // 把 task_id 通过事件发给前端，让前端的取消按钮能找到正确的令牌。
-    let _ = app.emit("role:import-started", serde_json::json!({ "task_id": &task_id }));
+    let _ = app.emit(
+        "role:import-started",
+        serde_json::json!({ "task_id": &task_id }),
+    );
     // 写入临时文件，供文件头校验和 ZIP/7z 解压库读取。
     let tmp_path = write_temp_archive(&app, &bytes).await?;
     let cleanup_path = tmp_path.clone();
 
-    let result = do_import(&app, &tmp_path, format, policy, cancel_token, file_name.as_deref()).await;
+    let result = do_import(
+        &app,
+        &tmp_path,
+        format,
+        policy,
+        cancel_token,
+        file_name.as_deref(),
+    )
+    .await;
 
     // 兜底清理临时文件
     let _ = tokio::fs::remove_file(&cleanup_path).await;
@@ -152,10 +170,15 @@ pub async fn import_role_from_path(
     file_name: Option<String>,
 ) -> Result<ImportResult, String> {
     // 并发保护：同一时间只允许一个导入任务。
-    if state.importing.swap(true, std::sync::atomic::Ordering::SeqCst) {
+    if state
+        .importing
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+    {
         return Err("已有导入任务在进行中".into());
     }
-    let _import_guard = ImportingGuard { flag: &state.importing };
+    let _import_guard = ImportingGuard {
+        flag: &state.importing,
+    };
 
     if path.is_empty() {
         tracing::warn!("[RoleArchive] import_role_from_path 收到空 path");
@@ -165,7 +188,9 @@ pub async fn import_role_from_path(
     let policy = parse_policy(&conflict)?;
     tracing::info!(
         "[RoleArchive] import_role_from_path 开始: path={}, format={:?}, conflict={:?}",
-        path, format, policy
+        path,
+        format,
+        policy
     );
 
     // 为每个导入任务分配独立的取消令牌。
@@ -176,10 +201,16 @@ pub async fn import_role_from_path(
         saf_cache_path: std::sync::Mutex::new(None),
     };
     state.tasks.lock().unwrap().insert(task_id.clone(), entry);
-    let _remove_guard = TaskRemoveGuard { state: &state, task_id: &task_id };
+    let _remove_guard = TaskRemoveGuard {
+        state: &state,
+        task_id: &task_id,
+    };
 
     // 把 task_id 通过事件发给前端，让前端的取消按钮能找到正确的令牌。
-    let _ = app.emit("role:import-started", serde_json::json!({ "task_id": &task_id }));
+    let _ = app.emit(
+        "role:import-started",
+        serde_json::json!({ "task_id": &task_id }),
+    );
 
     let (path_buf, cleanup_after_import, display_name) = prepare_import_source(&app, &path).await?;
 
@@ -240,7 +271,9 @@ pub async fn import_role_from_path(
     match &result {
         Ok(r) => tracing::info!(
             "[RoleArchive] import_role_from_path 完成: role_name={}, role_id={:?}, action={}",
-            r.role_name, r.role_id, r.conflict_action
+            r.role_name,
+            r.role_id,
+            r.conflict_action
         ),
         Err(e) => tracing::error!("[RoleArchive] import_role_from_path 失败: {e}"),
     }
@@ -280,11 +313,12 @@ pub async fn export_role_to_path(
     }
     tracing::info!(
         "[RoleArchive] export_role_to_path 开始: role_id={}, format={:?}, dest={}",
-        role_id, format, dest_path
+        role_id,
+        format,
+        dest_path
     );
 
-    let (temp_path, suggested_name, size) =
-        compress_role_to_temp(&app, role_id, format).await?;
+    let (temp_path, suggested_name, size) = compress_role_to_temp(&app, role_id, format).await?;
 
     if dest_path.starts_with("content://") {
         use tauri_plugin_android_fs::{AndroidFsExt, FsUri};

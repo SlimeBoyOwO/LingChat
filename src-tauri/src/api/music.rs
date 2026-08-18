@@ -136,15 +136,15 @@ pub async fn upload_music(
         }
 
         // 2. magic sniff 决定真实格式（src.path 已是本地路径，desktop / SAF 都通）
-        let detected = infer::get_from_path(&src.path)
-            .map_err(|e| format!("读取文件头失败: {e}"))?;
+        let detected =
+            infer::get_from_path(&src.path).map_err(|e| format!("读取文件头失败: {e}"))?;
         let (kind, correct_ext) = match detected {
             Some(k) if k.matcher_type() == infer::MatcherType::Audio => match k.mime_type() {
-                "audio/mpeg" => ("mp3",  "mp3"),
-                "audio/wav"  => ("wav",  "wav"),
+                "audio/mpeg" => ("mp3", "mp3"),
+                "audio/wav" => ("wav", "wav"),
                 "audio/flac" => ("flac", "flac"),
-                "audio/ogg"  => ("ogg",  "ogg"),
-                "audio/mp4"  => ("m4a",  "m4a"),
+                "audio/ogg" => ("ogg", "ogg"),
+                "audio/mp4" => ("m4a", "m4a"),
                 _ => return Err("MUSIC_INVALID_FORMAT".into()),
             },
             _ => return Err("MUSIC_INVALID_FORMAT".into()),
@@ -170,19 +170,23 @@ pub async fn upload_music(
         let mut counter = 2u32;
         while music_dir.join(&final_name).exists() {
             if counter > 999 {
-                final_name = format!("{stem}_{}{}", chrono::Utc::now().timestamp_millis(), correct_ext);
+                final_name = format!(
+                    "{stem}_{}{}",
+                    chrono::Utc::now().timestamp_millis(),
+                    correct_ext
+                );
                 break;
             }
             final_name = format!("{stem}_{counter}.{correct_ext}");
             counter += 1;
         }
 
-        let was_corrected = original_name != final_name;
+        // 仅扩展名/名字实质变化才算"自动修正"；纯大小写差异（Song.MP3 → Song.mp3）不算。
+        let was_corrected = !original_name.eq_ignore_ascii_case(&final_name);
         let file_path = music_dir.join(&final_name);
 
         // 6. 复制（src.path 是本地 cache，dest 也是本地路径，用 std::fs::copy）
-        std::fs::copy(&src.path, &file_path)
-            .map_err(|e| format!("复制文件失败: {}", e))?;
+        std::fs::copy(&src.path, &file_path).map_err(|e| format!("复制文件失败: {}", e))?;
 
         Ok(UploadMusicResult {
             actual_name: final_name,

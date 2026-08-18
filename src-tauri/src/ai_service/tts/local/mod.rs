@@ -20,8 +20,8 @@ pub use paths::LocalTtsPaths;
 // LocalTtsState -- Tauri managed state for the local TTS engine
 // ---------------------------------------------------------------------------
 
-use std::path::{Path, PathBuf};
 use serde::Serialize;
+use std::path::{Path, PathBuf};
 use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, State};
 use tokio_util::sync::CancellationToken;
@@ -88,11 +88,7 @@ pub struct LocalTtsRuntime {
 }
 
 impl LocalTtsRuntime {
-    pub fn new(
-        engine: Arc<LocalTtsEngine>,
-        paths: LocalTtsPaths,
-        switch: LocalTtsSwitch,
-    ) -> Self {
+    pub fn new(engine: Arc<LocalTtsEngine>, paths: LocalTtsPaths, switch: LocalTtsSwitch) -> Self {
         Self {
             engine,
             paths,
@@ -187,9 +183,7 @@ pub async fn tts_local_set_enabled(
 
     // 关闭时卸载全部模型与引擎释放内存；重新启用时若 DeBERTa 已安装则重建引擎
     if enabled {
-        if !local_state.engine.is_ready().await
-            && local_state.paths.asset_present("deberta")
-        {
+        if !local_state.engine.is_ready().await && local_state.paths.asset_present("deberta") {
             if let Err(e) = local_state.engine.init(&local_state.paths).await {
                 tracing::error!("重新启用本地 TTS 时初始化引擎失败: {e}");
             }
@@ -271,9 +265,7 @@ pub async fn tts_local_set_device(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub async fn tts_local_status(
-    state: State<'_, LocalTtsState>,
-) -> Result<TtsLocalStatus, String> {
+pub async fn tts_local_status(state: State<'_, LocalTtsState>) -> Result<TtsLocalStatus, String> {
     let voices = model_manager::list_voices(&state.paths)?;
     let deberta_installed = state.paths.asset_present("deberta");
     Ok(TtsLocalStatus {
@@ -330,14 +322,8 @@ fn download_temp_path(entry: &registry::AssetEntry, cache: &Path) -> PathBuf {
     cache.join(format!("{}.download.{ext}", entry.id))
 }
 
-fn default_voice_id(
-    _inspected: &package::InspectedPackage,
-    src: &Path,
-) -> String {
-    let stem = src
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("voice");
+fn default_voice_id(_inspected: &package::InspectedPackage, src: &Path) -> String {
+    let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("voice");
     let cleaned: String = stem
         .chars()
         .map(|c| {
@@ -386,11 +372,8 @@ pub async fn tts_local_import_from_path(
             Some(v) => v,
             None => default_voice_id(&inspected, &src.path),
         };
-        let installed =
-            package::install_inspected(&inspected, &src.path, &state.paths, &voice_id)?;
-        let bytes = std::fs::metadata(&installed)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let installed = package::install_inspected(&inspected, &src.path, &state.paths, &voice_id)?;
+        let bytes = std::fs::metadata(&installed).map(|m| m.len()).unwrap_or(0);
         let _ = app.emit("tts://install-complete", &voice_id);
         Ok(ImportResult {
             asset_id: voice_id.clone(),
@@ -414,8 +397,8 @@ pub async fn tts_local_download(
     state: State<'_, LocalTtsState>,
     asset_id: String,
 ) -> Result<Vec<ImportResult>, String> {
-    let entry = registry::find(&asset_id)
-        .ok_or_else(|| format!("asset {asset_id} not in catalog"))?;
+    let entry =
+        registry::find(&asset_id).ok_or_else(|| format!("asset {asset_id} not in catalog"))?;
 
     let cancel = Arc::new(CancellationToken::new());
     {
@@ -480,12 +463,8 @@ async fn download_single_asset(
             let raw_dst = download_temp_path(entry, &state.paths.cache);
             let bytes = download::download_asset(app, entry, &raw_dst, cancel).await?;
             let inspected = package::inspect_package(&raw_dst)?;
-            let installed = package::install_inspected(
-                &inspected,
-                &raw_dst,
-                &state.paths,
-                &entry.id,
-            )?;
+            let installed =
+                package::install_inspected(&inspected, &raw_dst, &state.paths, &entry.id)?;
             let _ = tokio::fs::remove_file(&raw_dst).await;
             Ok(ImportResult {
                 asset_id: entry.id.clone(),
@@ -496,13 +475,13 @@ async fn download_single_asset(
             })
         }
         registry::AssetKind::StyleVectors => {
-            let voice_id = entry.voice_id.clone().ok_or_else(|| {
-                format!("style_vectors asset {} missing voice_id", entry.id)
-            })?;
+            let voice_id = entry
+                .voice_id
+                .clone()
+                .ok_or_else(|| format!("style_vectors asset {} missing voice_id", entry.id))?;
             let raw_dst = download_temp_path(entry, &state.paths.cache);
             let bytes = download::download_asset(app, entry, &raw_dst, cancel).await?;
-            let installed =
-                install_style_vectors_for(&state.paths, &raw_dst, &voice_id)?;
+            let installed = install_style_vectors_for(&state.paths, &raw_dst, &voice_id)?;
             let _ = tokio::fs::remove_file(&raw_dst).await;
             Ok(ImportResult {
                 asset_id: entry.id.clone(),
@@ -526,9 +505,7 @@ pub async fn tts_local_delete_voice(
 /// 删除 DeBERTa 共享模型（deberta.onnx + tokenizer.json），并卸载引擎释放内存。
 /// 删除后可从模型下载目录重新下载。
 #[tauri::command]
-pub async fn tts_local_delete_deberta(
-    state: State<'_, LocalTtsState>,
-) -> Result<(), String> {
+pub async fn tts_local_delete_deberta(state: State<'_, LocalTtsState>) -> Result<(), String> {
     delete_deberta_asset(&state.paths)?;
     state.engine.unload_all().await;
     Ok(())
@@ -581,7 +558,9 @@ pub async fn tts_local_import_style_vectors(
         let destination = state.paths.style_vectors_path(&voice_id);
         std::fs::copy(&src.path, &destination)
             .map_err(|e| format!("copy style_vectors.json: {e}"))?;
-        let bytes = std::fs::metadata(&destination).map(|m| m.len()).unwrap_or(0);
+        let bytes = std::fs::metadata(&destination)
+            .map(|m| m.len())
+            .unwrap_or(0);
         let _ = app.emit("tts://install-complete", &voice_id);
         Ok(ImportResult {
             asset_id: voice_id.clone(),
@@ -608,9 +587,7 @@ pub async fn tts_local_synthesize_preview(
     sdp_ratio: f32,
 ) -> Result<Response, String> {
     if !state.engine.is_ready().await {
-        return Err(
-            "local TTS engine not initialized (missing DeBerta)".into()
-        );
+        return Err("local TTS engine not initialized (missing DeBerta)".into());
     }
     state.engine.load_voice(&state.paths, &voice_id).await?;
     let req = SynthesizeRequest {
