@@ -7,7 +7,7 @@
       class="full-access-warning"
       role="alert"
     >
-      <ShieldAlert :size="18" aria-hidden="true" />
+      <ShieldAlert :size="16" aria-hidden="true" />
       <span>{{ $t('ui.toolCalls.fullAccessTopWarning') }}</span>
     </div>
     <GameBackground></GameBackground>
@@ -261,28 +261,28 @@ watch(
 
 .full-access-warning {
   position: fixed;
-  top: calc(12px + var(--safe-area-inset-top));
+  top: calc(20px + var(--safe-area-inset-top));
   left: 50%;
   z-index: 1001;
   display: flex;
   max-width: min(44rem, calc(100vw - 34rem));
   transform: translateX(-50%);
   align-items: center;
-  gap: 0.5rem;
-  border: 1px solid rgb(250 204 21);
-  border-radius: 0.75rem;
-  background: rgb(250 204 21 / 92%);
-  padding: 0.55rem 0.9rem;
-  color: rgb(24 24 27);
-  font-size: 0.8rem;
-  font-weight: 800;
-  box-shadow: 0 8px 28px rgb(0 0 0 / 35%);
-  backdrop-filter: blur(10px);
+  gap: 0.4rem;
+  padding: 0;
+  color: rgb(250 204 21 / 78%);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  text-shadow:
+    0 1px 2px rgb(0 0 0 / 95%),
+    0 0 8px rgb(0 0 0 / 75%);
 }
 
 @media (max-width: 1279px) {
   .full-access-warning {
-    top: calc(58px + var(--safe-area-inset-top));
+    top: calc(54px + var(--safe-area-inset-top));
     max-width: calc(100vw - 2rem);
     width: max-content;
   }
