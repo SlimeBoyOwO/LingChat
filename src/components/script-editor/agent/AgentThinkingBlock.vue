@@ -10,7 +10,11 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-defineProps<{ text: string }>()
+defineProps<{
+  text: string
+  /** 该条消息是否正在流式生成：思考中时 pill 显示转圈与「思考中」高亮态 */
+  streaming?: boolean
+}>()
 const { t } = useI18n()
 const expanded = ref(false)
 </script>
@@ -29,21 +33,41 @@ const expanded = ref(false)
         gap-1.5
         rounded-full
         border
-        border-white/10
-        bg-white/5
         px-2.5
         py-0.5
         text-[0.72rem]
-        text-white/45
-        transition-colors
-        hover:border-brand/30
-        hover:bg-white/10
-        hover:text-white/70"
+        transition-colors"
+      :class="
+        streaming
+          ? `border-brand/40
+            bg-brand/12
+            text-brand`
+          : `border-white/10
+            bg-white/5
+            text-white/45
+            hover:border-brand/30
+            hover:bg-white/10
+            hover:text-white/70`
+      "
       @click="expanded = !expanded"
     >
+      <!-- 思考中：转圈指示（CSS 圆环动画，不引入图标依赖） -->
+      <span
+        v-if="streaming"
+        class="h-2.5
+          w-2.5
+          shrink-0
+          rounded-full
+          border-[1.5px]
+          border-current
+          border-t-transparent
+          animate-spin"
+      ></span>
       <span class="text-[0.6rem]
         leading-none">{{ expanded ? '▼' : '▶' }}</span>
-      <span>{{ t('scriptEditor.agentThinking.label') }}</span>
+      <span>{{
+        streaming ? t('scriptEditor.agentThinking.thinking') : t('scriptEditor.agentThinking.label')
+      }}</span>
     </button>
     <div
       v-if="expanded"

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- 音频设备名称授权（getUserMedia 解锁 enumerateDevices 的真实设备名） -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 音频设备名称授权（getUserMedia 解锁 enumerateDevices 的真实设备名）已移除：
+         音频输出设备切换仅桌面端可用，Android 上 audioOutputManager 直接跳过，无需麦克风权限 -->
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />

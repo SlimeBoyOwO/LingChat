@@ -398,7 +398,9 @@ export default {
       "ja": "日語",
       "zh": "中文",
       "en": "英語",
-      "ko": "韓語"
+      "ko": "韓語",
+      "es": "西班牙語",
+      "ar": "阿拉伯語"
     },
     "clothes": {
       "listTitle": "服裝列表",
@@ -612,17 +614,19 @@ export default {
       "meteorFps": "流星幀率 (FPS)",
       "starsFps": "星星幀率 (FPS)"
     },
-    "cpu": {
-      "title": "CPU 性能檢測",
-      "detecting": "檢測緊 CPU …",
-      "name": "CPU 名稱：",
-      "tier": "性能等級：",
+    "perf": {
+      "title": "性能檢測",
+      "detecting": "檢測緊硬件性能 …",
+      "cpuName": "CPU 名稱：",
+      "gpuName": "GPU 名稱：",
+      "combinedTier": "性能等級（取最低）：",
       "suggestedFps": "建議幀率：",
       "detectingShort": "檢測緊…",
       "redetect": "再檢測過",
-      "fetchFailed": "攞 CPU 資料失敗",
+      "fetchFailed": "攞硬件性能資料失敗",
       "detectComplete": "檢測搞掂",
-      "tierMessage": "CPU 性能等級：{tier}",
+      "tierMessage": "性能等級（取最低）：{tier}",
+      "unknown": "未知",
       "redetectFailed": "再檢測失敗"
     },
     "upload": {
@@ -943,7 +947,8 @@ export default {
       "label": "DeBERTa 與分詞器",
       "installed": "已安裝",
       "missing": "缺失",
-      "warning": "缺少 DeBERTa 模型或分詞器，人物語音無法載入，也無法試聽。"
+      "warning": "缺少 DeBERTa 模型或分詞器，人物語音無法載入，也無法試聽。",
+      "delete": "刪除 DeBERTa"
     },
     "voices": {
       "label": "人物語音",
@@ -960,10 +965,8 @@ export default {
     },
     "import": {
       "title": "本機匯入",
-      "subtitle": "支援原始模型檔案、ZIP 和 7z 壓縮檔",
-      "deberta": "匯入 DeBERTa",
-      "tokenizer": "匯入分詞器",
-      "voice": "匯入語音",
+      "subtitle": "支援 .sbv2 / .onnx 原始模型檔案",
+      "voice": "匯入語音模型",
       "voiceIdPlaceholder": "語音 ID（可選）"
     },
     "styleVectors": {
@@ -994,8 +997,6 @@ export default {
     },
     "messages": {
       "readStatusFailed": "讀取本地 TTS 狀態失敗：{error}",
-      "importSuccessDeberta": "DeBERTa 已匯入",
-      "importSuccessTokenizer": "分詞器已匯入",
       "importFailed": "匯入失敗：{error}",
       "importVoiceSuccess": "語音 {voiceId} 已匯入",
       "styleVectorsNeedSelect": "請先選擇需要補齊 style_vectors 的語音",
@@ -1004,6 +1005,12 @@ export default {
       "deleteConfirmTitle": "刪除本地語音",
       "deleteSuccess": "語音已刪除",
       "deleteFailed": "刪除失敗：{error}",
+      "deleteDebertaConfirm": "確定刪除 DeBERTa 模型與分詞器嗎？刪除後可重新下載。",
+      "deleteDebertaConfirmTitle": "刪除 DeBERTa",
+      "deleteDebertaSuccess": "DeBERTa 已刪除",
+      "deleteDebertaFailed": "刪除 DeBERTa 失敗：{error}",
+      "enableHintTitle": "本地 TTS 已開啟",
+      "enableHintMessage": "本地 TTS 開啟後，請到角色語音設定 TTS 類型選擇「本地 SBV2 API」和本地語音ID",
       "previewFailed": "試聽失敗：{error}",
       "readSwitchFailed": "讀取本地 TTS 開關失敗：{error}",
       "switchEnabled": "本地 TTS 已啟用。",

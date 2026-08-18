@@ -83,11 +83,27 @@
         </select>
       </MenuItem>
     </div>
+
+    <!-- 内置 TTS 教程 -->
+    <div class="cursor-pointer transition-all duration-300" @click="openGuide">
+      <MenuItem :title="$t('advance.menu.guideTitle')" size="large">
+        <template #header>
+          <BookOpen :size="20" />
+        </template>
+        <p class="text-white/50 text-sm leading-relaxed mb-3">
+          {{ $t('advance.menu.guideDesc') }}
+        </p>
+        <Button type="big" icon="advance" :icon_size="18">
+          {{ $t('advance.menu.guideButton') }}
+        </Button>
+      </MenuItem>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { AudioLines, Cpu, SlidersHorizontal, Languages, Wrench } from 'lucide-vue-next'
+import { AudioLines, BookOpen, Cpu, SlidersHorizontal, Languages, Wrench } from 'lucide-vue-next'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { useI18n } from 'vue-i18n'
 import { MenuItem } from '../../ui'
 import { Button } from '../../base'
@@ -98,4 +114,11 @@ const { locale } = useI18n()
 const emit = defineEmits<{
   navigate: [tab: 'llm' | 'tts' | 'other' | 'tools']
 }>()
+
+// 内置 TTS 官方教程（LingBlog）
+const TTS_GUIDE_URL = 'https://slimeboyowo.github.io/LingBlog/blog/projects/ling-chat/develop/tts_guide'
+
+const openGuide = () => {
+  void openUrl(TTS_GUIDE_URL)
+}
 </script>

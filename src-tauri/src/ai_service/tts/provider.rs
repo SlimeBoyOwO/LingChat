@@ -1,7 +1,7 @@
 //! TTS 适配器 trait + 统一 Provider。
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
@@ -35,6 +35,13 @@ pub trait TtsAdapter: Send + Sync {
     }
 }
 
+/// 连续合成失败多少次才禁用 TTS。
+///
+/// 单句失败不应该关掉整个语音服务：个别句子可能因为文本本身（纯标点、
+/// 推理后端不支持的张量形状等）失败，而后面的句子完全正常。只有连续
+/// 失败才说明后端真的不可用（服务没启动、URL 配错等）。
+const MAX_CONSECUTIVE_FAILURES: u32 = 3;
+
 /// TTS Provider：持有所有已初始化的适配器并按 `tts_type` 路由。
 /// 对应 Python `TTS` 类。
 #[derive(Clone)]
@@ -42,6 +49,8 @@ pub struct TtsProvider {
     pub audio_format: String,
     enable: Arc<AtomicBool>,
     recovery_in_flight: Arc<AtomicBool>,
+    /// 连续失败计数；任意一次成功即归零。达到 [`MAX_CONSECUTIVE_FAILURES`] 才禁用。
+    consecutive_failures: Arc<AtomicU32>,
 
     pub sva: Option<Arc<VitsAdapter>>,
     pub sbv2: Option<Arc<Sbv2Adapter>>,
@@ -61,6 +70,7 @@ impl Default for TtsProvider {
             audio_format: String::new(),
             enable: Arc::new(AtomicBool::new(true)),
             recovery_in_flight: Arc::new(AtomicBool::new(false)),
+            consecutive_failures: Arc::new(AtomicU32::new(0)),
             sva: None,
             sbv2: None,
             sbv2api: None,
@@ -81,6 +91,7 @@ impl std::fmt::Debug for TtsProvider {
             .field("audio_format", &self.audio_format)
             .field("enable", &self.enable)
             .field("recovery_in_flight", &self.recovery_in_flight)
+            .field("consecutive_failures", &self.consecutive_failures)
             .field("sva", &self.sva.is_some())
             .field("sbv2", &self.sbv2.is_some())
             .field("sbv2api", &self.sbv2api.is_some())
@@ -116,6 +127,7 @@ impl TtsProvider {
 
     pub fn reactivate(&self) {
         self.enable.store(true, Ordering::Relaxed);
+        self.consecutive_failures.store(0, Ordering::Relaxed);
         tracing::info!("TTS 服务已重新启用");
     }
 
@@ -206,7 +218,10 @@ impl TtsProvider {
         Ok(adapter)
     }
 
-    /// 合成并把字节写入 `file_path`。失败时自动禁用 TTS（匹配 Python 行为）。
+    /// 合成并把字节写入 `file_path`。
+    ///
+    /// 连续失败 [`MAX_CONSECUTIVE_FAILURES`] 次才禁用 TTS —— 单句失败只回报错误，
+    /// 后面的句子仍会正常尝试合成。
     pub async fn generate_voice(
         &self,
         text: &str,
@@ -224,12 +239,22 @@ impl TtsProvider {
         let adapter = self.select(tts_type)?;
         match adapter.generate_voice(text, emo).await {
             Ok(bytes) => {
+                self.consecutive_failures.store(0, Ordering::Relaxed);
                 tokio::fs::write(file_path, &bytes).await?;
                 tracing::debug!("TTS 生成成功: {}", file_path.display());
                 Ok(())
             }
             Err(e) => {
-                self.disable();
+                let failures = self.consecutive_failures.fetch_add(1, Ordering::AcqRel) + 1;
+                if failures >= MAX_CONSECUTIVE_FAILURES {
+                    self.disable();
+                } else {
+                    tracing::warn!(
+                        "TTS 合成失败({}/{}), 保持启用继续尝试下一句: {e}",
+                        failures,
+                        MAX_CONSECUTIVE_FAILURES
+                    );
+                }
                 Err(e)
             }
         }

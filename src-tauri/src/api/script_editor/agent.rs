@@ -63,6 +63,13 @@ pub struct PersistedMessage {
     pub id: i32,
     pub role: String,
     pub content: Option<String>,
+    /// assistant 的思考链（仅展示，不参与 LLM 上下文）。
+    pub reasoning: Option<String>,
+    /// 产生该消息那一轮 LLM 调用的 token 用量（前端据此恢复「总计」；未上报为 NULL）。
+    pub prompt_tokens: Option<i64>,
+    pub completion_tokens: Option<i64>,
+    /// 输入中命中缓存（cache read）的 token 数（缓存命中统计；未上报为 NULL）。
+    pub cached_tokens: Option<i64>,
     pub tool_calls: Option<serde_json::Value>,
     pub tool_call_id: Option<String>,
     pub created_at: String,
@@ -180,16 +187,33 @@ pub async fn editor_agent_read_skill(app: AppHandle, name: String) -> Result<Ski
 // ==================== 会话 ====================
 
 /// 新建会话。只记录创建时的剧本 key（不存剧本内容快照）。
+/// 标题留空：首轮 AI 回复结束后由后端自动生成（见 `core.rs`），
+/// 用户也可手动重命名；title 非空后不再自动生成。
 #[tauri::command]
 pub async fn editor_agent_create_conversation(
     state: State<'_, AppState>,
     script_key: Option<String>,
 ) -> Result<ConversationInfo, String> {
-    let id = db::create_conversation(&state.db, Some("新对话".to_string()), script_key).await?;
+    let id = db::create_conversation(&state.db, None, script_key).await?;
     let conv = db::get_conversation(&state.db, id)
         .await?
         .ok_or_else(|| "创建会话失败".to_string())?;
     Ok(conv_to_info(&conv))
+}
+
+/// 重命名会话（用户自定义标题）。空标题拒绝，避免「清空标题」导致下次首轮
+/// 自动命名把它覆盖回自动生成的名字。
+#[tauri::command]
+pub async fn editor_agent_rename_conversation(
+    state: State<'_, AppState>,
+    conversation_id: i32,
+    title: String,
+) -> Result<(), String> {
+    let title = title.trim().to_string();
+    if title.is_empty() {
+        return Err("会话标题不能为空".to_string());
+    }
+    db::update_conversation_title(&state.db, conversation_id, title).await
 }
 
 #[tauri::command]
@@ -220,6 +244,10 @@ pub async fn editor_agent_get_messages(
             id: m.id,
             role: m.role.clone(),
             content: m.content.clone(),
+            reasoning: m.reasoning.clone(),
+            prompt_tokens: m.prompt_tokens,
+            completion_tokens: m.completion_tokens,
+            cached_tokens: m.cached_tokens,
             tool_calls: m
                 .tool_calls
                 .as_ref()
@@ -240,6 +268,7 @@ pub async fn editor_agent_clear_conversation(
 
 // ==================== 对话 ====================
 
+/// 开始一轮对话。返回本次用户消息的 DB id（前端用于「回溯删除」定位删除起点）。
 #[tauri::command]
 pub async fn editor_agent_start_chat(
     app: AppHandle,
@@ -247,7 +276,7 @@ pub async fn editor_agent_start_chat(
     conversation_id: i32,
     message: String,
     channel: tauri::ipc::Channel<SkillAgentEvent>,
-) -> Result<(), String> {
+) -> Result<i32, String> {
     if message.trim().is_empty() {
         return Err("消息不能为空".to_string());
     }
@@ -270,7 +299,7 @@ pub async fn editor_agent_start_chat(
     // 追加用户消息并持久化，再并入本轮上下文（必须，否则 LLM 看不到这条提问）。
     // 历史完整保留、不裁剪：模型需要看到全部上下文。
     let user_msg = LlmMessage::user(message.trim());
-    db::insert_message(&state.db, conversation_id, &user_msg).await?;
+    let user_msg_id = db::insert_message(&state.db, conversation_id, &user_msg, None, None).await?;
     history.push(user_msg);
 
     let ctx = SkillAgentRunContext {
@@ -302,7 +331,7 @@ pub async fn editor_agent_start_chat(
     *task_guard = Some(handle);
 
     let _ = db::touch_conversation(&state.db, conversation_id).await;
-    Ok(())
+    Ok(user_msg_id)
 }
 
 #[tauri::command]
@@ -313,6 +342,17 @@ pub async fn editor_agent_stop_chat(state: State<'_, AppState>) -> Result<(), St
         handle.abort();
     }
     Ok(())
+}
+
+/// 回溯：删除会话中 id >= message_id 的消息，把对话回退到该消息发送前。
+/// 配合前端「回溯」按钮使用（复制进输入框 + 撤回该轮），重发即新的一轮。
+#[tauri::command]
+pub async fn editor_agent_rewind(
+    state: State<'_, AppState>,
+    conversation_id: i32,
+    message_id: i32,
+) -> Result<(), String> {
+    db::delete_messages_from(&state.db, conversation_id, message_id).await
 }
 
 #[tauri::command]

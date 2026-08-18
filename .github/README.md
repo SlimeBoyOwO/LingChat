@@ -34,15 +34,15 @@
   </tr>
   <tr>
     <!-- 右侧：第二行数据 -->
-    <td><b>代码报错求助</b></td>
-    <td><a href="https://github.com/SlimeBoyOwO/LingChat/blob/main/README-help.md">👉 帮助文档-代码报错</a></td>
-    <td>遇到终端或后台代码红字报错时查看。</td>
+    <td><b>项目文档地址</b></td>
+    <td><a href="https://slimeboyowo.github.io/LingBlog/blog/projects/ling-chat/develop/">👉 帮助文档-代码报错</a></td>
+    <td>对项目有任何疑问可以在这里查看文档。</td>
   </tr>
   <tr>
     <!-- 右侧：第三行数据 -->
-    <td><b>截图报错求助</b></td>
-    <td><a href="https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/Q&A.md">👉 帮助文档-截图报错</a></td>
-    <td>遇到弹窗或画面显示异常时查看。</td>
+    <td><b>开发者群</b></td>
+    <td><b>QQ群：798012738</b></td>
+    <td>对 AI-GALGAME 有开发意向，需要有兴趣或能力的人。</td>
   </tr>
 </table>
 

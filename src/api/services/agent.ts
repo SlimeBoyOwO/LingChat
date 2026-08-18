@@ -53,11 +53,20 @@ export interface PersistedMessage {
   id: number
   role: 'user' | 'assistant' | 'tool' | 'system'
   content: string | null
-  toolCalls: {
-    id: string
-    type: string
-    function: { name: string; arguments: string }
-  }[] | null
+  /** assistant 的思考链（仅展示，不参与 LLM 上下文；旧数据为 null）。 */
+  reasoning: string | null
+  /** 产生该消息那一轮 LLM 调用的 token 用量（仅 assistant 消息有；旧数据为 null）。 */
+  promptTokens: number | null
+  completionTokens: number | null
+  /** 输入中命中缓存（cache read）的 token 数（旧数据为 null）。 */
+  cachedTokens: number | null
+  toolCalls:
+    | {
+        id: string
+        type: string
+        function: { name: string; arguments: string }
+      }[]
+    | null
   toolCallId: string | null
   createdAt: string
 }
@@ -74,6 +83,8 @@ export interface TokenUsage {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  /** 输入中命中缓存（cache read）的 token 数；未上报时为 0。 */
+  cached_tokens: number
 }
 
 /** 后端流式事件（serde tag="type"，snake_case）。 */
@@ -103,6 +114,7 @@ export type SkillAgentEvent =
       args: Record<string, unknown>
     }
   | { type: 'done'; final_text: string; usage: TokenUsage | null }
+  | { type: 'conversation_title'; title: string }
   | { type: 'error'; message: string }
 
 // ============================================================
@@ -132,10 +144,15 @@ export const readAgentSkill = (name: string) =>
 export const createAgentConversation = (scriptKey: string | null) =>
   invoke<ConversationInfo>('editor_agent_create_conversation', { scriptKey })
 
-export const listAgentConversations = () => invoke<ConversationInfo[]>('editor_agent_list_conversations')
+export const listAgentConversations = () =>
+  invoke<ConversationInfo[]>('editor_agent_list_conversations')
 
 export const deleteAgentConversation = (conversationId: number) =>
   invoke<void>('editor_agent_delete_conversation', { conversationId })
+
+/** 重命名会话（用户自定义标题；标题非空后不再自动生成）。 */
+export const renameAgentConversation = (conversationId: number, title: string) =>
+  invoke<void>('editor_agent_rename_conversation', { conversationId, title })
 
 export const getAgentMessages = (conversationId: number) =>
   invoke<PersistedMessage[]>('editor_agent_get_messages', { conversationId })
@@ -147,13 +164,18 @@ export const clearAgentConversation = (conversationId: number) =>
 // 对话
 // ============================================================
 
+/** 开始一轮对话。返回本次用户消息的 DB id（用于回溯删除定位）。 */
 export const startAgentChat = (
   conversationId: number,
   message: string,
   channel: Channel<SkillAgentEvent>,
-) => invoke<void>('editor_agent_start_chat', { conversationId, message, channel })
+) => invoke<number>('editor_agent_start_chat', { conversationId, message, channel })
 
 export const stopAgentChat = () => invoke<void>('editor_agent_stop_chat')
+
+/** 回溯：删除会话中 id >= messageId 的消息（把对话回退到该消息发送前）。 */
+export const rewindAgentMessages = (conversationId: number, messageId: number) =>
+  invoke<void>('editor_agent_rewind', { conversationId, messageId })
 
 export const resolveAgentApproval = (requestId: string, allowed: boolean) =>
   invoke<void>('editor_agent_resolve_approval', { requestId, allowed })

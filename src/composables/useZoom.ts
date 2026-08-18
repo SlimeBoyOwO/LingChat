@@ -2,7 +2,10 @@
  * Ctrl+滚轮 全局 UI 缩放 Composable
  *
  * 按住 Ctrl 并滚动鼠标滚轮来缩放整个 UI 界面。
- * 使用 CSS zoom 属性在 #app 元素上实现均匀缩放（Chromium / WebView2 原生支持）。
+ * 使用 `transform: scale` + 尺寸补偿在 #app 元素上实现均匀缩放：
+ * #app 布局尺寸设为 `calc(100vw / z) × calc(100vh / z)` 再整体放大 z 倍，
+ * 视觉上恒精确填满窗口 —— 旧实现用 CSS zoom 直接缩放 100vw×100vh，
+ * 放大时内容溢出视口被裁切（像放大镜）、缩小时填不满窗口留下空白。
  * 缩放级别保存在 localStorage 中，跨会话持久化。
  *
  * 在 App.vue 中调用一次以激活全局缩放功能。
@@ -23,6 +26,15 @@ const ZOOM_DECIMALS = 2
 const TOAST_DEBOUNCE_MS = 200
 
 let lastToastTime = 0
+
+/**
+ * 当前缩放级别（模块级共享 ref）。
+ *
+ * 放在 composable 外是为了让其他模块（如 EditorHeader 的 Tab 指示条）能读取
+ * 当前缩放值做坐标换算 —— transform 方案下 getBoundingClientRect 返回视觉坐标
+ * 而 scrollLeft 等是布局坐标，混用必须除以缩放值。
+ */
+export const currentZoom = ref<number>(loadZoom())
 
 /** 读取持久化的缩放值 */
 function loadZoom(): number {
@@ -54,11 +66,20 @@ function toPercent(level: number): string {
   return `${Math.round(level * 100)}%`
 }
 
-/** 应用缩放到 DOM */
+/**
+ * 应用缩放到 DOM。
+ *
+ * transform: scale + 尺寸补偿：transform 使 #app 成为 fixed 子孙的 containing
+ * block，布局尺寸 = 视口 / z，缩放后视觉恒精确填满窗口（zoom 方案在 z>1 裁切、
+ * z<1 留白）。副作用：fixed inset-0 元素相对 #app 盒定位，视觉仍填满视口。
+ */
 function applyZoom(level: number): void {
   const app = document.getElementById('app')
   if (app) {
-    app.style.zoom = level.toString()
+    app.style.transformOrigin = 'top left'
+    app.style.transform = `scale(${level})`
+    app.style.width = `calc(100vw / ${level})`
+    app.style.height = `calc(100vh / ${level})`
   }
 }
 
@@ -67,8 +88,6 @@ function applyZoom(level: number): void {
  * 应在 App.vue 等始终挂载的根组件中调用一次。
  */
 export function useZoom(): void {
-  const currentZoom = ref<number>(loadZoom())
-
   // 初始化时应用已保存的缩放
   applyZoom(currentZoom.value)
 
@@ -84,7 +103,8 @@ export function useZoom(): void {
     const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, newZoom))
 
     // 四舍五入到指定小数位数
-    currentZoom.value = Math.round(clamped * Math.pow(10, ZOOM_DECIMALS)) / Math.pow(10, ZOOM_DECIMALS)
+    currentZoom.value =
+      Math.round(clamped * Math.pow(10, ZOOM_DECIMALS)) / Math.pow(10, ZOOM_DECIMALS)
 
     applyZoom(currentZoom.value)
     saveZoom(currentZoom.value)

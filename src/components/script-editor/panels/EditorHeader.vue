@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Button, Icon } from '@/components/base'
+import { currentZoom } from '@/composables/useZoom'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import { useSettingsStore } from '@/stores/modules/settings'
 import { formatBinding } from '@/utils/shortcuts'
@@ -90,8 +91,13 @@ const moveIndicator = async (animate = true) => {
   }
   const navBox = nav.getBoundingClientRect()
   const box = target.getBoundingClientRect()
-  bar.style.left = `${box.left - navBox.left + nav.scrollLeft}px`
-  bar.style.width = `${box.width}px`
+  // 除以当前缩放值：getBoundingClientRect 返回的是含整体缩放（transform: scale）
+  // 的视觉坐标，而 nav.scrollLeft 是布局坐标；两者混用且 left 赋回后又被缩放
+  // 一次，会让指示条在缩放 ≠1 时错位（见 useZoom 的说明）。修正后公式与
+  // 缩放无关：视觉差 ÷ z 还原为布局差，+ scrollLeft 得到布局坐标，渲染时再乘 z。
+  const z = currentZoom.value
+  bar.style.left = `${(box.left - navBox.left) / z + nav.scrollLeft}px`
+  bar.style.width = `${box.width / z}px`
 }
 
 watch(
@@ -102,6 +108,8 @@ watch(
   () => store.detail?.package.key,
   () => moveIndicator(),
 )
+// Ctrl+滚轮缩放时指示条坐标依赖缩放值，需重新定位
+watch(currentZoom, () => void moveIndicator(false))
 
 let navObserver: ResizeObserver | null = null
 

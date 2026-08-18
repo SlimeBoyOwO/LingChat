@@ -49,11 +49,21 @@
             </div>
           </div>
           <div class="h-8 w-px bg-white/10"></div>
-          <div>
-            <p class="text-xs text-white/45">{{ t('settings.tts.deberta.label') }}</p>
-            <p class="text-sm font-medium" :class="status?.deberta_installed ? 'text-emerald-300' : 'text-red-300'">
-              {{ status?.deberta_installed ? t('settings.tts.deberta.installed') : t('settings.tts.deberta.missing') }}
-            </p>
+          <div class="flex items-center gap-2">
+            <div>
+              <p class="text-xs text-white/45">{{ t('settings.tts.deberta.label') }}</p>
+              <p class="text-sm font-medium" :class="status?.deberta_installed ? 'text-emerald-300' : 'text-red-300'">
+                {{ status?.deberta_installed ? t('settings.tts.deberta.installed') : t('settings.tts.deberta.missing') }}
+              </p>
+            </div>
+            <button
+              class="inline-flex h-[34px] w-[34px] items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 text-white/80 transition-colors duration-200 enabled:hover:border-red-400/50! enabled:hover:bg-red-400/10! enabled:hover:text-red-300! disabled:cursor-not-allowed disabled:opacity-40"
+              :title="t('settings.tts.deberta.delete')"
+              :disabled="!status?.deberta_installed || busyAction !== null"
+              @click="removeDeberta"
+            >
+              <Trash2 :size="16" />
+            </button>
           </div>
           <div class="h-8 w-px bg-white/10"></div>
           <!-- 推理设备选择：DirectML（Windows）/ WebGPU（Linux）支持 GPU；Android/macOS 只有 CPU，隐藏 -->
@@ -178,40 +188,22 @@
             <HardDriveDownload :size="18" class="text-white/40" />
           </div>
 
-          <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <div class="flex min-w-0 gap-2">
+            <input
+              v-model="importVoiceId"
+              class="w-full min-w-0 flex-1 rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white outline-none transition-colors focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45"
+              maxlength="64"
+              :placeholder="t('settings.tts.import.voiceIdPlaceholder')"
+              :aria-label="t('settings.tts.import.voiceIdPlaceholder')"
+            />
             <button
-              class="inline-flex min-h-9 items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
+              class="inline-flex min-h-9 shrink-0 items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="busyAction !== null"
-              @click="pickSharedAsset('deberta')"
+              @click="pickVoice"
             >
-              <FileUp :size="17" />
-              <span>{{ t('settings.tts.import.deberta') }}</span>
+              <FileArchive :size="17" />
+              <span>{{ t('settings.tts.import.voice') }}</span>
             </button>
-            <button
-              class="inline-flex min-h-9 items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
-              :disabled="busyAction !== null"
-              @click="pickSharedAsset('deberta-tokenizer')"
-            >
-              <FileJson :size="17" />
-              <span>{{ t('settings.tts.import.tokenizer') }}</span>
-            </button>
-            <div class="flex min-w-0 gap-2">
-              <input
-                v-model="importVoiceId"
-                class="w-full min-w-0 flex-1 rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white outline-none transition-colors focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45"
-                maxlength="64"
-                :placeholder="t('settings.tts.import.voiceIdPlaceholder')"
-                :aria-label="t('settings.tts.import.voiceIdPlaceholder')"
-              />
-              <button
-                class="inline-flex min-h-9 shrink-0 items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
-                :disabled="busyAction !== null"
-                @click="pickVoice"
-              >
-                <FileArchive :size="17" />
-                <span>{{ t('settings.tts.import.voice') }}</span>
-              </button>
-            </div>
           </div>
         </section>
 
@@ -373,7 +365,6 @@ import {
   FileArchive,
   FileDown,
   FileJson,
-  FileUp,
   HardDriveDownload,
   ListMusic,
   LoaderCircle,
@@ -385,6 +376,7 @@ import {
 } from 'lucide-vue-next'
 import { MenuItem, MenuPage } from '@/components/ui'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
+import { useUIStore } from '@/stores/modules/ui/ui'
 import * as TtsLocal from '@/api/services/tts/tts-local'
 import { speedToLengthScale } from '@/utils/tts/tts-speed'
 import { catalogRowState } from '@/utils/tts/tts-download-state'
@@ -396,6 +388,7 @@ import type {
 } from '@/api/services/tts/tts-local'
 
 const dialogStore = useDialogStore()
+const uiStore = useUIStore()
 const { t } = useI18n()
 const catalog = ref<readonly CatalogAsset[]>([])
 const status = ref<TtsLocalStatus | null>(null)
@@ -453,7 +446,7 @@ async function saveInferenceDevice() {
   }
 }
 
-type FilterIntent = 'deberta' | 'tokenizer' | 'voice' | 'style_vectors'
+type FilterIntent = 'voice' | 'style_vectors'
 
 // Android plugin-dialog interprets the `extensions` field as MIME types
 // (not file extensions). ONNX / SBV2 have no registered MIME, so they fall
@@ -462,30 +455,15 @@ type FilterIntent = 'deberta' | 'tokenizer' | 'voice' | 'style_vectors'
 function dialogFilters(intent: FilterIntent): DialogFilter[] {
   if (/android/i.test(navigator.userAgent)) {
     switch (intent) {
-      case 'deberta':
-        return [{ name: 'ONNX model', extensions: ['application/octet-stream'] }]
-      case 'tokenizer':
-        return [{ name: 'Tokenizer', extensions: ['application/json', 'text/json'] }]
       case 'voice':
-        return [{
-          name: 'Voice model',
-          extensions: [
-            'application/zip',
-            'application/x-7z-compressed',
-            'application/octet-stream',
-          ],
-        }]
+        return [{ name: 'Voice model', extensions: ['application/octet-stream'] }]
       case 'style_vectors':
         return [{ name: 'style_vectors JSON', extensions: ['application/json', 'text/json'] }]
     }
   }
   switch (intent) {
-    case 'deberta':
-      return [{ name: 'ONNX model', extensions: ['onnx'] }]
-    case 'tokenizer':
-      return [{ name: 'Tokenizer', extensions: ['json'] }]
     case 'voice':
-      return [{ name: 'SBV2 voice', extensions: ['sbv2', 'onnx', 'zip', '7z'] }]
+      return [{ name: 'SBV2 voice', extensions: ['sbv2', 'onnx'] }]
     case 'style_vectors':
       return [{ name: 'style_vectors JSON', extensions: ['json'] }]
   }
@@ -521,7 +499,7 @@ function selectedPath(value: string | string[] | null): string | null {
 }
 
 function normalizeVoiceId(value: string): string {
-  const fileName = value.split(/[\\/]/).pop()?.replace(/\.(sbv2|onnx|zip|7z)$/i, '') || 'local-voice'
+  const fileName = value.split(/[\\/]/).pop()?.replace(/\.(sbv2|onnx)$/i, '') || 'local-voice'
   const normalized = fileName
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/g, '-')
@@ -550,31 +528,6 @@ async function refreshAll(): Promise<void> {
   }
 }
 
-async function pickSharedAsset(assetId: 'deberta' | 'deberta-tokenizer'): Promise<void> {
-  const selection = await open({
-    multiple: false,
-    filters: [
-      ...(assetId === 'deberta'
-        ? dialogFilters('deberta')
-        : dialogFilters('tokenizer')),
-    ],
-  })
-  const path = selectedPath(selection)
-  if (!path) return
-
-  busyAction.value = `import:${assetId}`
-  notice.value = null
-  try {
-    await TtsLocal.importFromPath(path, { assetId })
-    notice.value = { kind: 'success', text: assetId === 'deberta' ? t('settings.tts.messages.importSuccessDeberta') : t('settings.tts.messages.importSuccessTokenizer') }
-    await refreshAll()
-  } catch (error) {
-    notice.value = { kind: 'error', text: `${t('settings.tts.messages.importFailed', { error: errorText(error) })}` }
-  } finally {
-    busyAction.value = null
-  }
-}
-
 async function pickVoice(): Promise<void> {
   const selection = await open({
     multiple: false,
@@ -587,7 +540,7 @@ async function pickVoice(): Promise<void> {
   notice.value = null
   try {
     const voiceId = normalizeVoiceId(importVoiceId.value.trim() || path)
-    await TtsLocal.importFromPath(path, { voiceId })
+    await TtsLocal.importFromPath(path, voiceId)
     importVoiceId.value = ''
     notice.value = { kind: 'success', text: `${t('settings.tts.messages.importVoiceSuccess', { voiceId })}` }
     await refreshAll()
@@ -644,6 +597,26 @@ async function removeVoice(voice: VoiceRecord): Promise<void> {
   }
 }
 
+async function removeDeberta(): Promise<void> {
+  const confirmed = await dialogStore.confirm(
+    t('settings.tts.messages.deleteDebertaConfirm'),
+    t('settings.tts.messages.deleteDebertaConfirmTitle'),
+  )
+  if (!confirmed) return
+
+  busyAction.value = 'delete:deberta'
+  notice.value = null
+  try {
+    await TtsLocal.deleteDeberta()
+    notice.value = { kind: 'success', text: t('settings.tts.messages.deleteDebertaSuccess') }
+    await refreshAll()
+  } catch (error) {
+    notice.value = { kind: 'error', text: `${t('settings.tts.messages.deleteDebertaFailed', { error: errorText(error) })}` }
+  } finally {
+    busyAction.value = null
+  }
+}
+
 async function runPreview(): Promise<void> {
   if (!canPreview.value) return
   previewing.value = true
@@ -688,6 +661,16 @@ async function saveLocalTtsSwitch(): Promise<void> {
     // 开关命令会同步初始化/卸载引擎，刷新 status 让 ready 反映真实状态，
     // 否则试听区域会一直停留在旧的"未就绪"禁用态。
     await refreshAll()
+    if (localTtsEnabled.value) {
+      // 开启成功：左上角弹窗引导去角色语音设置切换 TTS 类型
+      uiStore.showNotification({
+        type: 'info',
+        title: t('settings.tts.messages.enableHintTitle'),
+        message: t('settings.tts.messages.enableHintMessage'),
+        duration: 6000,
+        skipTipsCheck: true,
+      })
+    }
     notice.value = {
       kind: 'success',
       text: localTtsEnabled.value

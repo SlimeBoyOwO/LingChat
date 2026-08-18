@@ -208,6 +208,10 @@ pub async fn run_chat(
 
     let mut messages: Vec<LlmMessage> = Vec::with_capacity(history.len() + 1);
     messages.push(LlmMessage::system(system_prompt));
+    // 首轮判定必须在 sanitize_history(history) 移动 history 之前记录：
+    // 本会话第一条 assistant 回复（含工具调用轮）结束时用于自动生成会话标题。
+    // 不能等收尾时再用 messages 判——工具轮会让 messages 提前含 assistant(tool_calls)。
+    let is_first_turn = !history.iter().any(|m| m.role == "assistant");
     // 历史先规整再并入：DB 里可能残留上一轮中断产生的「无 tool 回应的 assistant
     // (tool_calls)」，不处理会触发 OpenAI 400（insufficient tool messages）。
     messages.extend(sanitize_history(history));
@@ -221,6 +225,7 @@ pub async fn run_chat(
     };
     let mut turn_prompt_tokens: u64 = 0;
     let mut turn_completion_tokens: u64 = 0;
+    let mut turn_cached_tokens: u64 = 0;
     // 截断自动续跑预算（最多补一次生成）
     let mut recovery_budget: usize = RECOVERY_BUDGET;
 
@@ -233,7 +238,7 @@ pub async fn run_chat(
         }
 
         let defs = tools::tool_definitions();
-        let (assistant_text, tool_calls, finish_reason, usage) =
+        let (assistant_text, reasoning_text, tool_calls, finish_reason, usage) =
             match stream_completion(&ctx, &messages, &defs, &cancelled).await {
                 Ok(r) => r,
                 Err(e) => {
@@ -241,8 +246,12 @@ pub async fn run_chat(
                     return Err(e);
                 }
             };
-        turn_prompt_tokens += usage.prompt_tokens;
-        turn_completion_tokens += usage.completion_tokens;
+        // 逐轮累加当轮用量（provider 未上报时为 None，跳过）
+        if let Some(u) = &usage {
+            turn_prompt_tokens += u.prompt_tokens;
+            turn_completion_tokens += u.completion_tokens;
+            turn_cached_tokens += u.cached_tokens;
+        }
 
         // 无工具调用 → 完成
         if tool_calls.is_empty() {
@@ -260,12 +269,50 @@ pub async fn run_chat(
             }
 
             let final_msg = LlmMessage::assistant(&assistant_text);
-            let _ = db::insert_message(&ctx.db, ctx.conversation_id, &final_msg).await;
+            let _ = db::insert_message(
+                &ctx.db,
+                ctx.conversation_id,
+                &final_msg,
+                Some(&reasoning_text),
+                usage.as_ref(),
+            )
+            .await;
+
+            // 首轮（本会话第一条 assistant 回复，含工具调用轮）→ 后台自动生成会话标题。
+            // 不阻塞 Done：生成/写库/通知都在独立任务里完成；用户已在 UI 手动
+            // 改名后（title 非空）自动生成会跳过（见 auto_title_conversation）。
+            if is_first_turn {
+                let title_db = ctx.db.clone();
+                let title_llm = Arc::clone(&ctx.llm);
+                let title_channel = ctx.channel.clone();
+                let conv_id = ctx.conversation_id;
+                // 标题源：最后一条 user 消息（即本轮提问）+ 本次回复开头摘要
+                let first_user = messages
+                    .iter()
+                    .rev()
+                    .find(|m| m.role == "user")
+                    .map(|m| m.content.clone())
+                    .unwrap_or_default();
+                let reply_summary: String = assistant_text.chars().take(200).collect();
+                tauri::async_runtime::spawn(async move {
+                    auto_title_conversation(
+                        title_db,
+                        title_llm,
+                        title_channel,
+                        conv_id,
+                        first_user,
+                        reply_summary,
+                    )
+                    .await;
+                });
+            }
+
             let usage = if turn_prompt_tokens + turn_completion_tokens > 0 {
                 Some(Usage {
                     prompt_tokens: turn_prompt_tokens,
                     completion_tokens: turn_completion_tokens,
                     total_tokens: turn_prompt_tokens + turn_completion_tokens,
+                    cached_tokens: turn_cached_tokens,
                 })
             } else {
                 None
@@ -297,7 +344,14 @@ pub async fn run_chat(
             tool_call_id: None,
         };
         messages.push(assistant_msg.clone());
-        let _ = db::insert_message(&ctx.db, ctx.conversation_id, &assistant_msg).await;
+        let _ = db::insert_message(
+            &ctx.db,
+            ctx.conversation_id,
+            &assistant_msg,
+            Some(&reasoning_text),
+            usage.as_ref(),
+        )
+        .await;
 
         // 逐个执行工具，回填 tool 结果并持久化
         for tc in &tool_calls {
@@ -338,7 +392,7 @@ pub async fn run_chat(
 
             let tool_msg = LlmMessage::tool_result(tc.id.clone(), &output);
             messages.push(tool_msg.clone());
-            let _ = db::insert_message(&ctx.db, ctx.conversation_id, &tool_msg).await;
+            let _ = db::insert_message(&ctx.db, ctx.conversation_id, &tool_msg, None, None).await;
         }
 
         if round == max_rounds - 1 {
@@ -352,6 +406,83 @@ pub async fn run_chat(
     Ok(())
 }
 
+// ---------- 会话自动命名 ----------
+
+/// 首轮回复结束后后台生成会话标题（由 `run_chat` 收尾处 spawn，不阻塞回复流）。
+///
+/// 生成前二次检查标题仍为空：用户可能已手动改名（或在 UI 上新建了标题），
+/// 非空则跳过，保证「用户已设置会话名时不再自动生成」。
+async fn auto_title_conversation(
+    db: DatabaseConnection,
+    llm: Arc<LlmClient>,
+    channel: tauri::ipc::Channel<SkillAgentEvent>,
+    conversation_id: i32,
+    first_user_msg: String,
+    reply_summary: String,
+) {
+    let Ok(Some(conv)) = db::get_conversation(&db, conversation_id).await else {
+        return;
+    };
+    let titled = conv
+        .title
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|t| !t.is_empty());
+    if titled {
+        return;
+    }
+    let title = generate_title(&llm, &first_user_msg, &reply_summary).await;
+    if title.is_empty() {
+        return;
+    }
+    if db::update_conversation_title(&db, conversation_id, title.clone())
+        .await
+        .is_err()
+    {
+        return;
+    }
+    let _ = channel.send(SkillAgentEvent::ConversationTitle { title });
+}
+
+/// 生成 4-10 字会话标题。优先 LLM（非流式单次调用），失败/未配置时
+/// 回退截取首条用户消息前 15 字并去掉尾部标点。
+async fn generate_title(llm: &LlmClient, first_user_msg: &str, reply_summary: &str) -> String {
+    let mut candidate = String::new();
+    if llm.config().is_usable() {
+        let msgs = vec![
+            LlmMessage::system(
+                "你是会话命名助手。根据用户的提问与助手的回复，用中文生成 4-10 个字的短标题，\
+                 概括这次对话的主题。只输出标题本身，不要引号、标点或任何解释。",
+            ),
+            LlmMessage::user(format!(
+                "用户提问：{}\n助手回复：{}",
+                first_user_msg, reply_summary
+            )),
+        ];
+        match llm.complete(&msgs).await {
+            Ok(text) => {
+                let t = text
+                    .trim()
+                    .trim_matches(|c| matches!(c, '"' | '「' | '」' | '《' | '》'));
+                if !t.is_empty() {
+                    candidate = t.chars().take(20).collect();
+                }
+            }
+            Err(e) => tracing::warn!("[SkillAgent] 自动生成会话标题失败，回退截取: {e}"),
+        }
+    }
+    if candidate.is_empty() {
+        candidate = first_user_msg
+            .trim()
+            .chars()
+            .take(15)
+            .collect::<String>()
+            .trim_end_matches(['，', '。', '！', '？', '；', '、', ',', '.', '!', '?', ':'])
+            .to_string();
+    }
+    candidate
+}
+
 // ---------- LLM 调用（双路径） ----------
 
 async fn stream_completion(
@@ -359,10 +490,14 @@ async fn stream_completion(
     messages: &[LlmMessage],
     defs: &[ToolDefinition],
     cancelled: &CancelFlag,
-) -> Result<(String, Vec<AccumToolCall>, Option<String>, Usage), String> {
+) -> Result<(String, String, Vec<AccumToolCall>, Option<String>, Option<Usage>), String> {
     let llm = &ctx.llm;
     let mut text_out = String::new();
-    let usage = Usage::default();
+    // 思考链单独累积：只展示不落 LLM 上下文（Reasoning chunk 不进 text_out）。
+    let mut reasoning_out = String::new();
+    // 本轮 token 用量：由 provider 的 StreamEnd.usage / 非流式响应的 usage 填充；
+    // provider 未上报时保持 None，调用方按「无数据」处理。
+    let mut usage: Option<Usage> = None;
     // 最后一次 StreamEnd 携带的归一化停止原因（"stop" / "max_tokens" / …）。
     let mut finish_reason: Option<String> = None;
     let mut tool_map: HashMap<usize, AccumToolCall> = HashMap::new();
@@ -383,6 +518,7 @@ async fn stream_completion(
                     let _ = ctx.channel.send(SkillAgentEvent::MessageDelta { content: c });
                 }
                 LlmChunk::Reasoning(r) => {
+                    reasoning_out.push_str(&r);
                     let _ = ctx.channel.send(SkillAgentEvent::Reasoning { content: r });
                 }
                 LlmChunk::ToolCalls(calls) => {
@@ -399,8 +535,15 @@ async fn stream_completion(
                         );
                     }
                 }
-                LlmChunk::StreamEnd { reason } => {
+                LlmChunk::StreamEnd { reason, usage: end_usage } => {
                     finish_reason = reason;
+                    // LlmUsage（LLM 层）→ Usage（skill_agent 事件层）字段同名直转
+                    usage = end_usage.map(|u| Usage {
+                        prompt_tokens: u.prompt_tokens,
+                        completion_tokens: u.completion_tokens,
+                        total_tokens: u.total_tokens,
+                        cached_tokens: u.cached_tokens,
+                    });
                 }
                 LlmChunk::ToolCallProgress { .. } => {
                     // 剧本编辑器的 agent 会话不需要参数生成进度提示
@@ -412,6 +555,12 @@ async fn stream_completion(
             .complete_with_tools(messages, defs, Some("auto"))
             .await
             .map_err(|e| e.to_string())?;
+        usage = resp.usage.as_ref().map(|u| Usage {
+            prompt_tokens: u.prompt_tokens,
+            completion_tokens: u.completion_tokens,
+            total_tokens: u.total_tokens,
+            cached_tokens: u.cached_tokens,
+        });
         if let Some(c) = resp.content {
             if !c.is_empty() {
                 text_out.push_str(&c);
@@ -441,7 +590,7 @@ async fn stream_completion(
             tc.id = format!("call_{}_{}", std::process::id(), tc.index);
         }
     }
-    Ok((text_out, tool_calls, finish_reason, usage))
+    Ok((text_out, reasoning_out, tool_calls, finish_reason, usage))
 }
 
 #[cfg(test)]

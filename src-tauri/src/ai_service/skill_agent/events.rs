@@ -51,6 +51,10 @@ pub enum SkillAgentEvent {
         /// 本轮累计 token 用量；provider 未上报时为 `None`。
         usage: Option<Usage>,
     },
+    /// 会话标题已自动生成（首轮回复结束后由后台任务生成，经此事件通知前端刷新列表）。
+    ConversationTitle {
+        title: String,
+    },
     /// 致命错误。
     Error {
         message: String,
@@ -63,4 +67,6 @@ pub struct Usage {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub total_tokens: u64,
+    /// 输入中命中缓存（cache read）的 token 数；provider 未上报缓存时为 0。
+    pub cached_tokens: u64,
 }

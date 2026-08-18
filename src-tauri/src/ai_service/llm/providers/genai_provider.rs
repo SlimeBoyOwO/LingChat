@@ -16,7 +16,7 @@ use genai::ServiceTarget;
 use reqwest::Client;
 
 use crate::ai_service::llm::provider::{LlmProvider, LlmResponseWithTools};
-use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig};
+use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig, LlmUsage};
 use crate::ai_service::types::{LlmMessage, ToolDefinition};
 
 // ─── Provider ────────────────────────────────────────────────────
@@ -189,7 +189,10 @@ impl GenaiProvider {
     fn build_chat_options(&self, tool_choice: Option<&str>) -> ChatOptions {
         let mut opts = ChatOptions::default()
             .with_capture_tool_calls(true)
-            .with_capture_content(true);
+            .with_capture_content(true)
+            // 捕获 token 用量：流式结束时从 StreamEnd.captured_usage 读取，
+            // 非流式从 ChatResponse.usage 读取，供 AI 助手用量统计使用。
+            .with_capture_usage(true);
 
         if let Some(temp) = self.temperature {
             opts = opts.with_temperature(temp);
@@ -262,6 +265,26 @@ impl GenaiProvider {
         }
     }
 
+    /// genai 归一化用量 → 项目 LlmUsage。
+    ///
+    /// genai 反序列化时把 0 视为 None（跨 provider 一致：OpenAI 常给不适用计数器
+    /// 返回 0），这里统一补 0；「全 0 / 未上报」由上层按需过滤。
+    /// 缓存命中数取自 prompt_tokens_details.cached_tokens（OpenAI cached_tokens /
+    /// Anthropic cache_read_input_tokens 的归一化字段）。
+    fn convert_usage(u: &genai::chat::Usage) -> LlmUsage {
+        LlmUsage {
+            prompt_tokens: u.prompt_tokens.unwrap_or(0).max(0) as u64,
+            completion_tokens: u.completion_tokens.unwrap_or(0).max(0) as u64,
+            total_tokens: u.total_tokens.unwrap_or(0).max(0) as u64,
+            cached_tokens: u
+                .prompt_tokens_details
+                .as_ref()
+                .and_then(|d| d.cached_tokens)
+                .unwrap_or(0)
+                .max(0) as u64,
+        }
+    }
+
     async fn complete_stream_inner(
         &self,
         messages: &[LlmMessage],
@@ -298,7 +321,8 @@ impl GenaiProvider {
                                 yield LlmChunk::Reasoning(reasoning);
                             }
                         }
-                        // 先取走停止原因（captured_into_tool_calls 会移动 end）
+                        // 先取走用量与停止原因（captured_into_tool_calls 会移动 end）
+                        let usage = end.captured_usage.as_ref().map(Self::convert_usage);
                         let reason = end
                             .captured_stop_reason
                             .as_ref()
@@ -307,8 +331,8 @@ impl GenaiProvider {
                             let calls = calls.iter().map(Self::convert_tool_call).collect();
                             yield LlmChunk::ToolCalls(calls);
                         }
-                        // 终止信号：透传归一化停止原因（工具闭环用它检测截断）
-                        yield LlmChunk::StreamEnd { reason };
+                        // 终止信号：透传归一化停止原因（工具闭环用它检测截断）+ 本轮用量
+                        yield LlmChunk::StreamEnd { reason, usage };
                     }
                 }
             }
@@ -491,8 +515,14 @@ impl LlmProvider for GenaiProvider {
             .await
             .map_err(|e| anyhow!("genai 工具调用失败: {e}"))?;
 
-        // 先借用获取文本，再消费获取 tool_calls
+        // 先借用获取文本/用量，再消费获取 tool_calls。
+        // 注意：ChatResponse.usage 是值而非 Option（未上报时字段全为 None）。
         let content = response.first_text().map(|s| s.to_string());
+        let usage = if response.usage.prompt_tokens.is_none() && response.usage.completion_tokens.is_none() {
+            None
+        } else {
+            Some(Self::convert_usage(&response.usage))
+        };
 
         let tool_calls: Option<Vec<crate::ai_service::types::ToolCall>> = {
             let calls = response.into_tool_calls();
@@ -506,6 +536,7 @@ impl LlmProvider for GenaiProvider {
         Ok(LlmResponseWithTools {
             content,
             tool_calls,
+            usage,
         })
     }
 }
