@@ -32,12 +32,24 @@ export interface MarketProgress {
   bytes?: number
 }
 
+/** 进行中的安装任务（对应 Rust 侧 InstallTask） */
+export interface InstallTask {
+  id: string
+  phase: 'download' | 'install'
+  percent: number
+}
+
 export async function fetchMarketIndex(): Promise<MarketPackage[]> {
   return invoke('market_fetch_index')
 }
 
 export async function fetchInstalled(): Promise<InstalledRecord[]> {
   return invoke('market_installed')
+}
+
+/** 查询是否有安装任务进行中（切页/重挂载后恢复按钮与进度） */
+export async function fetchInstalling(): Promise<InstallTask | null> {
+  return invoke<InstallTask | null>('market_installing')
 }
 
 export async function installPackage(id: string): Promise<void> {

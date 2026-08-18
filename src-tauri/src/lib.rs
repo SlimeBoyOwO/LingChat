@@ -740,6 +740,7 @@ pub fn run() {
             api::workshop::fetch_discussions,
             api::market::market_fetch_index,
             api::market::market_installed,
+            api::market::market_installing,
             api::market::market_install,
             api::market::market_uninstall,
             api::market::market_clear_cache,

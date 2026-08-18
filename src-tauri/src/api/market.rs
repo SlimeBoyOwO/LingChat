@@ -178,6 +178,46 @@ pub struct InstalledRecord {
     pub dir: String,
 }
 
+/// 进行中的安装任务状态（内存态，供前端切页/重挂载后恢复按钮与进度）。
+/// 与已安装记录分开：只描述「此刻是否在装、装到哪一步」，不落盘。
+#[derive(Debug, Clone, Serialize)]
+pub struct InstallTask {
+    pub id: String,
+    /// download | install
+    pub phase: String,
+    /// 0–100
+    pub percent: u8,
+}
+
+/// 全局唯一的进行中安装任务；`None` 表示空闲。
+/// 防重入：同一时刻只允许一个安装（下载写同一 zip 缓存路径，并发会互相覆盖）。
+static INSTALLING: Mutex<Option<InstallTask>> = Mutex::new(None);
+
+/// 读取当前进行中的安装任务（无则 None）。用于前端恢复按钮状态。
+fn installing_task() -> Option<InstallTask> {
+    INSTALLING.lock().ok().and_then(|g| g.clone())
+}
+
+/// 更新进行中任务的进度（下载/解包阶段回调）。
+fn update_installing(id: &str, phase: &str, percent: u8) {
+    if let Ok(mut g) = INSTALLING.lock() {
+        *g = Some(InstallTask {
+            id: id.to_string(),
+            phase: phase.to_string(),
+            percent,
+        });
+    }
+}
+
+/// 清除进行中任务（安装完成/失败/被重入拒绝时调用）。
+fn clear_installing(id: &str) {
+    if let Ok(mut g) = INSTALLING.lock() {
+        if g.as_ref().map(|t| t.id.as_str()) == Some(id) {
+            *g = None;
+        }
+    }
+}
+
 fn data_dir() -> PathBuf {
     static_copy::get_data_dir().clone()
 }
@@ -513,12 +553,39 @@ pub async fn market_installed() -> Result<Vec<InstalledRecord>, String> {
     Ok(read_records().into_values().collect())
 }
 
+/// 当前是否有安装任务进行中（供前端恢复按钮/进度，无则 None）。
+#[tauri::command]
+pub async fn market_installing() -> Result<Option<InstallTask>, String> {
+    Ok(installing_task())
+}
+
 /// 下载并安装市场包。
 ///
 /// 流程：索引查条目 → 下载 zip（带进度事件）→ sha256 校验 → 解包安装
 /// → 写安装记录 → 插件类 reload 注册工具。
 #[tauri::command]
 pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
+    // 防重入：同一时刻只允许一个安装（下载写同一 zip 缓存路径，并发互相覆盖会损坏文件）。
+    // 前端切页/重挂载后按钮状态由 market_installing 恢复，这里兜底拦截重复触发。
+    if let Some(task) = installing_task() {
+        if task.id == id {
+            return Err(format!("包 '{id}' 正在安装中，请稍候"));
+        }
+        return Err(format!(
+            "已有安装任务进行中（{}），请等待其完成后再试",
+            task.id
+        ));
+    }
+    update_installing(&id, "download", 0);
+
+    let result = market_install_inner(app, id.clone()).await;
+    // 无论成功失败都清除进行中标记（clear_installing 内部校验 id 匹配，不会误清新任务）
+    clear_installing(&id);
+    result
+}
+
+/// market_install 主体（下载 → 校验 → 解包 → 写记录 → 注册）。
+async fn market_install_inner(app: AppHandle, id: String) -> Result<(), String> {
     let pkg = fetch_index()
         .await?
         .into_iter()
@@ -532,6 +599,7 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
     let progress_id = id.clone();
     let progress: Option<Arc<dyn Fn(crate::utils::download::DownloadProgress) + Send + Sync>> =
         Some(Arc::new(move |p| {
+            update_installing(&progress_id, "download", p.percent as u8);
             let _ = app_for_progress.emit(
                 "market:progress",
                 serde_json::json!({
@@ -648,6 +716,7 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
     // 下载成功（已通过大小 + sha256 校验），进入解包安装阶段
 
     // 解包安装（同步阻塞，放 spawn_blocking）；先通知进入安装阶段
+    update_installing(&id, "install", 0);
     let _ = app.emit(
         "market:progress",
         serde_json::json!({ "id": id, "phase": "install", "percent": 0 }),

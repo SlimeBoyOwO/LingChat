@@ -1473,6 +1473,7 @@ import { fetchDiscussions, type Discussion } from '@/api/services/workshop'
 import {
   fetchMarketIndex,
   fetchInstalled,
+  fetchInstalling,
   installPackage,
   uninstallPackage,
   onMarketProgress,
@@ -1893,10 +1894,29 @@ async function load() {
 
 onMounted(() => {
   load()
+  // 恢复上次会话/切页时仍在进行的安装：按钮回到「安装中」并显示当前进度，
+  // 避免用户切页回来看到「安装」按钮而重复触发（后端也有防重入兜底）。
+  fetchInstalling()
+    .then((task) => {
+      if (!task) return
+      installingId.value = task.id
+      progressPercent.value[task.id] = task.percent
+      progressBytes.value[task.id] = 0
+      progressPhase.value[task.id] = task.phase
+    })
+    .catch(() => {
+      /* 查询失败不阻塞页面 */
+    })
   onMarketProgress((p) => {
     progressPercent.value[p.id] = p.percent
     if (p.bytes !== undefined) progressBytes.value[p.id] = p.bytes
     if (p.phase) progressPhase.value[p.id] = p.phase
+    // done：任务结束，清掉进行中标记让按钮回到「安装/已安装」
+    if (p.phase === 'done') {
+      if (installingId.value === p.id) installingId.value = null
+      loadInstalled()
+      notifyMarketChanged()
+    }
   }).then((fn) => {
     unlistenProgress = fn
   })
