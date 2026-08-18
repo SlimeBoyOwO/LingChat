@@ -8,13 +8,11 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
-#[cfg(desktop)]
-use tauri::Manager;
+use tauri::{AppHandle, Emitter, Manager};
 
+use crate::db::managers::role_repo::RoleRepo;
 use crate::init::static_copy;
 use crate::plugins::installer;
-#[cfg(desktop)]
 use crate::AppState;
 
 /// 市场仓库 plugins.json（main 分支）。
@@ -310,6 +308,14 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
             "移动端安装插件 '{}'：已落盘 data/plugins/，运行需桌面端",
             id
         );
+    } else if installed.manifest.package_type == "script" {
+        // 剧本包：引擎启动时才扫一次剧本目录，装完必须重扫，
+        // 否则主菜单剧本列表 / 羁绊冒险直到重启都不出现。
+        if let Err(e) =
+            crate::api::script_editor::commands::editor_rescan_scripts(app.clone()).await
+        {
+            tracing::warn!("剧本安装后重扫引擎失败（可能有剧本正在运行）: {e}");
+        }
     }
 
     let _ = app.emit(
@@ -319,7 +325,7 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
-/// 卸载市场包：删除目标目录并移除安装记录；插件类注销工具。
+/// 卸载市场包：删除目标目录并移除安装记录；插件类注销工具，角色类走完整删除。
 #[tauri::command]
 pub async fn market_uninstall(app: AppHandle, id: String) -> Result<(), String> {
     let record = read_records()
@@ -344,11 +350,42 @@ pub async fn market_uninstall(app: AppHandle, id: String) -> Result<(), String> 
                 }
             }
         }
+        "character" => {
+            // 复用设置页「删除角色」的完整卸载：DB 级联（存档/记忆/台词）+ 物理目录 + 广播。
+            // 角色包 id 即角色目录名，rescan 后 DB 里会有一条 resource_folder == id 的 main 角色。
+            let db = app.state::<AppState>().db.clone();
+            let role = RoleRepo::get_main_role_by_resource_folder(&db, &id)
+                .await
+                .map_err(|e| format!("查询角色失败: {e}"))?;
+            match role {
+                Some(role) => {
+                    // 完整删除（校验在场/类型，DB 级联，物理目录，role:list-updated）
+                    crate::api::character::delete_main_role_core(&app, role.id, true).await?;
+                }
+                None => {
+                    // 从未 rescan 入库（例如装完没刷新过角色列表）：退化为仅删目录
+                    let dir = PathBuf::from(&record.dir);
+                    if dir.exists() {
+                        std::fs::remove_dir_all(&dir)
+                            .map_err(|e| format!("删除目录失败: {e}"))?;
+                    }
+                }
+            }
+        }
         _ => {
             let dir = PathBuf::from(&record.dir);
             if dir.exists() {
                 std::fs::remove_dir_all(&dir)
                     .map_err(|e| format!("删除目录失败: {e}"))?;
+            }
+            // 剧本包：引擎内存里还留着它（羁绊冒险/剧本列表读的是引擎内存），
+            // 删目录后需重扫才能让它从主菜单剧本列表和羁绊冒险里消失。
+            if record.package_type == "script" {
+                if let Err(e) =
+                    crate::api::script_editor::commands::editor_rescan_scripts(app.clone()).await
+                {
+                    tracing::warn!("剧本卸载后重扫引擎失败（可能有剧本正在运行）: {e}");
+                }
             }
         }
     }

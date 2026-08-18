@@ -145,6 +145,18 @@ impl RoleRepo {
             .await?)
     }
 
+    /// 按资源目录名查找 main 类型角色（市场角色包 id 即目录名）。
+    pub async fn get_main_role_by_resource_folder(
+        db: &DatabaseConnection,
+        folder: &str,
+    ) -> Result<Option<RoleModel>> {
+        Ok(role::Entity::find()
+            .filter(role::Column::ResourceFolder.eq(folder))
+            .filter(role::Column::RoleType.eq(RoleType::Main))
+            .one(db)
+            .await?)
+    }
+
     /// 系统保护的角色 ID 集合，禁止删除。
     /// - 0: User 角色（玩家本体）
     /// - 1: 默认 main 角色（启动兜底）
