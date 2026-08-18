@@ -933,6 +933,7 @@ import {
   installPackage,
   uninstallPackage,
   onMarketProgress,
+  notifyMarketChanged,
   type MarketPackage,
   type InstalledRecord,
 } from '@/api/services/market'
@@ -1031,6 +1032,7 @@ async function installPkg(id: string) {
     await installPackage(id)
     progressPercent.value[id] = 100
     await loadInstalled()
+    notifyMarketChanged()
     uiStore.showSuccess({ title: t('settings.workshop.installSuccess') })
   } catch (e: unknown) {
     const err = e as { message?: string }
@@ -1054,6 +1056,7 @@ async function uninstallPkg(id: string) {
   try {
     await uninstallPackage(id)
     await loadInstalled()
+    notifyMarketChanged()
     uiStore.showSuccess({ title: t('settings.workshop.uninstallSuccess') })
   } catch (e: unknown) {
     const err = e as { message?: string }

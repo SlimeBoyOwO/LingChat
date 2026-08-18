@@ -91,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { Birdhouse, FolderOpen, PackageOpen, Rabbit, RefreshCcw } from 'lucide-vue-next'
@@ -102,6 +102,7 @@ import CharacterCard from '../../ui/Menu/CharacterCard.vue'
 import { Button } from '../../base'
 import { MenuItem, MenuPage } from '../../ui'
 import { characterGetAll } from '../../../api/services/character'
+import { onMarketChanged } from '../../../api/services/market'
 import { useRoleImportExport } from '../../../composables/useRoleImportExport'
 import type { ConflictPolicy } from '../../../api/services/role-archive'
 import { useGameStore } from '../../../stores/modules/game'
@@ -125,6 +126,7 @@ interface CharacterCardData {
 const characters = ref<CharacterCardData[]>([])
 const currentPage = ref(1)
 const totalPages = ref(1)
+let unlistenMarketChanged: (() => void) | null = null
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const router = useRouter()
@@ -225,6 +227,14 @@ const handleSettingsSaved = () => {
 
 onMounted(() => {
   loadCharacters()
+  // 市场安装/卸载角色包后自动刷新列表（KeepAlive 缓存下 onMounted 不会重跑）
+  unlistenMarketChanged = onMarketChanged(() => {
+    refreshCharacters()
+  })
+})
+
+onUnmounted(() => {
+  unlistenMarketChanged?.()
 })
 
 watch(

@@ -58,3 +58,20 @@ export function onMarketProgress(
 ): Promise<UnlistenFn> {
   return listen<MarketProgress>('market:progress', (event) => cb(event.payload))
 }
+
+// ── 市场数据变更通知（安装/卸载后刷新角色卡、剧本列表等） ──
+type MarketChangedListener = () => void
+const marketChangedListeners = new Set<MarketChangedListener>()
+
+/** 安装/卸载成功后广播：角色卡、剧本列表等依赖本地数据的地方应重新拉取 */
+export function notifyMarketChanged(): void {
+  for (const fn of marketChangedListeners) fn()
+}
+
+/** 订阅市场数据变更，返回取消函数 */
+export function onMarketChanged(cb: MarketChangedListener): () => void {
+  marketChangedListeners.add(cb)
+  return () => {
+    marketChangedListeners.delete(cb)
+  }
+}

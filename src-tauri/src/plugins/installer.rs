@@ -328,25 +328,17 @@ fn copy_non_yaml_contents(src: &Path, dst: &Path) -> Result<(), String> {
 
 // ─── character 类型 ─────────────────────────────────────────────
 
-/// 角色卡：`payload/role.txt`（TOML，取 `system_prompt`）→
-/// `data/game_data/characters/<id>/settings.yml`；其余 payload 内容
-/// （avatar 等）原样复制到角色目录。
+/// 角色卡安装。支持两种 payload 格式：
+/// - `payload/settings.yml`（完整角色卡 YAML，含 scale/offset/clothes 等显示配置）→ 原样落位，
+///   仅补写 `character_folder` 指向本包 id；
+/// - `payload/role.txt`（TOML，取 `system_prompt`）→ 生成最小 settings.yml（显示配置走默认值）。
+/// 其余 payload 内容（avatar 等）原样复制到角色目录。
 fn install_character(
     m: &PluginManifest,
     staging: &Path,
     data_dir: &Path,
 ) -> Result<PathBuf, String> {
     let payload = staging.join("payload");
-    let role_txt = payload.join("role.txt");
-    let text = fs::read_to_string(&role_txt)
-        .map_err(|e| format!("角色包缺少 role.txt: {e}"))?;
-    let role: toml::Value = toml::from_str(&text)
-        .map_err(|e| format!("role.txt 解析失败（须为 TOML）: {e}"))?;
-    let system_prompt = role
-        .get("system_prompt")
-        .and_then(toml::Value::as_str)
-        .unwrap_or("")
-        .to_string();
 
     let folder = &m.id;
     let dir = data_dir
@@ -359,15 +351,41 @@ fn install_character(
     }
     fs::create_dir_all(&dir).map_err(|e| format!("创建角色目录失败: {e}"))?;
 
-    let mut settings = CharacterSettings::default();
-    settings.ai_name = m.name.clone();
-    settings.system_prompt = Some(system_prompt);
-    settings.character_folder = folder.clone();
-    let yaml = serde_yaml::to_string(&settings)
-        .map_err(|e| format!("角色 settings 序列化失败: {e}"))?;
-    fs::write(dir.join("settings.yml"), yaml)
-        .map_err(|e| format!("写入 settings.yml 失败: {e}"))?;
+    // 优先完整角色卡 settings.yml；否则回退 role.txt（TOML 取 system_prompt）
+    let settings_yml = payload.join("settings.yml");
+    if settings_yml.exists() {
+        let text = fs::read_to_string(&settings_yml)
+            .map_err(|e| format!("读取 payload/settings.yml 失败: {e}"))?;
+        let mut settings: CharacterSettings = serde_yaml::from_str(&text)
+            .map_err(|e| format!("settings.yml 解析失败（须为 YAML）: {e}"))?;
+        settings.character_folder = folder.clone();
+        let yaml = serde_yaml::to_string(&settings)
+            .map_err(|e| format!("角色 settings 序列化失败: {e}"))?;
+        fs::write(dir.join("settings.yml"), yaml)
+            .map_err(|e| format!("写入 settings.yml 失败: {e}"))?;
+        copy_dir_contents(&payload, &dir, &["settings.yml"])?;
+    } else {
+        let role_txt = payload.join("role.txt");
+        let text = fs::read_to_string(&role_txt)
+            .map_err(|e| format!("角色包缺少 settings.yml 或 role.txt: {e}"))?;
+        let role: toml::Value = toml::from_str(&text)
+            .map_err(|e| format!("role.txt 解析失败（须为 TOML）: {e}"))?;
+        let system_prompt = role
+            .get("system_prompt")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .to_string();
 
-    copy_dir_contents(&payload, &dir, &["role.txt"])?;
+        let mut settings = CharacterSettings::default();
+        settings.ai_name = m.name.clone();
+        settings.system_prompt = Some(system_prompt);
+        settings.character_folder = folder.clone();
+        let yaml = serde_yaml::to_string(&settings)
+            .map_err(|e| format!("角色 settings 序列化失败: {e}"))?;
+        fs::write(dir.join("settings.yml"), yaml)
+            .map_err(|e| format!("写入 settings.yml 失败: {e}"))?;
+
+        copy_dir_contents(&payload, &dir, &["role.txt"])?;
+    }
     Ok(dir)
 }
