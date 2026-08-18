@@ -38,13 +38,14 @@ const MARKET_META_BASES: &[&str] = &[
     "https://gcore.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/",
 ];
 
-/// 仓库目录清单源（GitHub trees API 实时优先；jsDelivr data API 对 @main 目录树缓存可达一年，
-/// 新包上架后可能长期不刷新，故降为兜底）。镜像在前、直连在后，依次尝试。
+/// 仓库目录清单源（只包含实时源，相互赛跑抢答）。
+/// 仅放 GitHub trees API（镜像 + 直连），保证「第一个成功的响应」一定是实时目录树。
+/// 注意：不包含 jsDelivr data API——它对 @main 目录树缓存可达一年，若混入抢答会抢到旧数据，
+/// 导致上层跳过 Release 资产（实时）而直接返回旧目录。目录树兜底由 fetch_index 内的
+/// Release 资产 + CDN plugins.json 负责，不在此处。
 const MARKET_TREE_URLS: &[&str] = &[
     "https://gh-proxy.com/https://api.github.com/repos/zhangzm0/lingchat-marketplace/git/trees/main?recursive=1",
     "https://api.github.com/repos/zhangzm0/lingchat-marketplace/git/trees/main?recursive=1",
-    "https://gh-proxy.com/https://data.jsdelivr.com/v1/packages/gh/zhangzm0/lingchat-marketplace@main",
-    "https://data.jsdelivr.com/v1/packages/gh/zhangzm0/lingchat-marketplace@main",
 ];
 
 /// 兜底索引 plugins.json（ghproxy 镜像优先，直连 raw / 多 CDN 靠后）。
@@ -389,11 +390,12 @@ async fn fetch_index_dynamic(
     Ok(pkgs)
 }
 
-/// 列出 registry 下所有包目录名（GitHub trees 实时优先 → jsDelivr data API 兜底，镜像在前）。
-/// 并行抢答：所有源同时发起，第一个「成功且非空」的结果胜出——不被慢源/挂掉的镜像阻塞。
+/// 列出 registry 下所有包目录名。
+/// 仅让 GitHub trees 实时源相互赛跑——第一个成功的响应一定是实时目录树。
+/// 注意：此处不做 jsDelivr / CDN 兜底；一旦实时源全失败，返回 Err 让上层走
+/// Release 资产（实时）→ CDN plugins.json 的兜底链，避免缓存旧目录污染结果。
 async fn fetch_registry_tree(client: &reqwest::Client) -> Result<Vec<String>, String> {
     use futures_util::future::select_all;
-    // Box::pin：select_all 需要 Future + Unpin
     let mut futures: Vec<_> = MARKET_TREE_URLS
         .iter()
         .map(|url| {
@@ -410,7 +412,7 @@ async fn fetch_registry_tree(client: &reqwest::Client) -> Result<Vec<String>, St
         futures = rest;
         match res {
             Ok(dirs) if !dirs.is_empty() => return Ok(dirs),
-            Ok(_) => last_err = "某源返回空目录".to_string(),
+            Ok(_) => last_err = "实时源返回空目录".to_string(),
             Err(e) => last_err = e,
         }
     }
