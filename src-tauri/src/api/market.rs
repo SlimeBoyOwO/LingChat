@@ -2,11 +2,13 @@
 //! 兜底 plugins.json）、下载 zip（GitHub Releases + 镜像加速）、sha256 校验、安装/卸载。
 //!
 //! 索引来自市场仓库 `zhangzm0/lingchat-marketplace`（§7.1 分发流）：
-//! - 动态读取：jsDelivr data API 列目录 → 并发拉每包 `registry/<id>/manifest.toml`
-//!   与 `registry/<id>/build.json`（发布 CI 回写的 sha256/size/下载地址/审核链接）。
-//!   加新包/新类型只需往仓库 registry/ 加目录，客户端零改动——为多类型铺路。
+//! - 动态读取：GitHub trees API 列 registry 目录（实时，镜像优先）→ 并发拉每包
+//!   `registry/<id>/manifest.toml` 与 `registry/<id>/build.json`（发布 CI 回写的
+//!   sha256/size/下载地址/审核链接）。加新包/新类型只需往仓库 registry/ 加目录，
+//!   客户端零改动——为多类型铺路。jsDelivr data API 对 @main 目录树缓存可达一年，
+//!   仅作兜底。
 //! - 兜底：老格式 `plugins.json`（多 CDN 多源），兼容未重建 build.json 的旧包。
-//! - 镜像加速：jsDelivr 官方多 CDN（cdn/fastly/gcore）+ ghproxy 类代理（raw / Releases 下载）。
+//! - 镜像加速：ghproxy 类代理（raw / Releases 下载）优先，直连靠后。
 //! 安装记录集中存放在 `data/plugins/market.json`，用于已装列表与卸载。
 
 use std::collections::HashMap;
@@ -26,34 +28,35 @@ use crate::AppState;
 /// 市场仓库 owner/repo（用于推导下载地址）。
 const MARKET_REPO: &str = "zhangzm0/lingchat-marketplace";
 
-/// 每包元数据基址（jsDelivr 官方多 CDN + raw + ghproxy 代理 raw，依次尝试）。
+/// 每包元数据基址（ghproxy 代理 raw 镜像优先，直连 raw / jsDelivr 官方多 CDN 靠后，依次尝试）。
 /// `{base}registry/<dir>/<file>` 即元数据 URL。
 const MARKET_META_BASES: &[&str] = &[
+    "https://gh-proxy.com/https://raw.githubusercontent.com/zhangzm0/lingchat-marketplace/main/",
+    "https://raw.githubusercontent.com/zhangzm0/lingchat-marketplace/main/",
     "https://cdn.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/",
     "https://fastly.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/",
     "https://gcore.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/",
-    "https://raw.githubusercontent.com/zhangzm0/lingchat-marketplace/main/",
-    "https://gh-proxy.com/https://raw.githubusercontent.com/zhangzm0/lingchat-marketplace/main/",
 ];
 
-/// 仓库目录清单源（jsDelivr data API 一次拿全文件树，不限流；失败降级 GitHub API / 代理）。
+/// 仓库目录清单源（GitHub trees API 实时优先；jsDelivr data API 对 @main 目录树缓存可达一年，
+/// 新包上架后可能长期不刷新，故降为兜底）。镜像在前、直连在后，依次尝试。
 const MARKET_TREE_URLS: &[&str] = &[
-    "https://data.jsdelivr.com/v1/packages/gh/zhangzm0/lingchat-marketplace@main",
-    "https://gh-proxy.com/https://data.jsdelivr.com/v1/packages/gh/zhangzm0/lingchat-marketplace@main",
-    "https://api.github.com/repos/zhangzm0/lingchat-marketplace/git/trees/main?recursive=1",
     "https://gh-proxy.com/https://api.github.com/repos/zhangzm0/lingchat-marketplace/git/trees/main?recursive=1",
+    "https://api.github.com/repos/zhangzm0/lingchat-marketplace/git/trees/main?recursive=1",
+    "https://gh-proxy.com/https://data.jsdelivr.com/v1/packages/gh/zhangzm0/lingchat-marketplace@main",
+    "https://data.jsdelivr.com/v1/packages/gh/zhangzm0/lingchat-marketplace@main",
 ];
 
-/// 兜底索引 plugins.json（多 CDN + raw 代理）。
+/// 兜底索引 plugins.json（ghproxy 镜像优先，直连 raw / 多 CDN 靠后）。
 const MARKET_INDEX_URLS: &[&str] = &[
+    "https://gh-proxy.com/https://raw.githubusercontent.com/zhangzm0/lingchat-marketplace/main/plugins.json",
+    "https://raw.githubusercontent.com/zhangzm0/lingchat-marketplace/main/plugins.json",
     "https://cdn.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/plugins.json",
     "https://fastly.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/plugins.json",
     "https://gcore.jsdelivr.net/gh/zhangzm0/lingchat-marketplace@main/plugins.json",
-    "https://raw.githubusercontent.com/zhangzm0/lingchat-marketplace/main/plugins.json",
-    "https://gh-proxy.com/https://raw.githubusercontent.com/zhangzm0/lingchat-marketplace/main/plugins.json",
 ];
 
-/// GitHub Releases 下载镜像代理（主源失败时依次尝试；只转发不改内容，sha256 校验不受影响）。
+/// GitHub Releases 下载镜像代理（下载时镜像优先、主源直连靠后；只转发不改内容，sha256 校验不受影响）。
 const DOWNLOAD_MIRRORS: &[&str] = &[
     "https://gh-proxy.com",
     "https://ghfast.top",
@@ -285,15 +288,39 @@ async fn fetch_index_dynamic(
     if dirs.is_empty() {
         return Err("registry 目录为空".to_string());
     }
-    let pkgs = join_all(dirs.into_iter().map(|dir| fetch_pkg(client, dir)))
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>, _>>()?;
+    // 部分包拉取失败不整体失败：跳过坏包，拿到多少显示多少
+    //（例如某包 manifest 恰好解析失败 / 网络抖动，不应让整个市场列表消失）。
+    let dir_names: Vec<String> = dirs.clone();
+    let results = join_all(dirs.into_iter().map(|dir| fetch_pkg(client, dir))).await;
+    let mut pkgs: Vec<MarketPackage> = Vec::new();
+    let mut failed = 0usize;
+    for (dir, res) in dir_names.into_iter().zip(results) {
+        match res {
+            Ok(pkg) => pkgs.push(pkg),
+            Err(e) => {
+                failed += 1;
+                tracing::warn!("市场动态索引跳过包 '{}': {e}", dir);
+            }
+        }
+    }
+    if pkgs.is_empty() {
+        return Err(format!(
+            "市场索引拉取失败（{} 个目录全部不可读）",
+            failed
+        ));
+    }
+    if failed > 0 {
+        tracing::warn!(
+            "市场动态索引: 成功 {} 个，跳过 {} 个",
+            pkgs.len(),
+            failed
+        );
+    }
     tracing::info!("市场动态索引: 拉取 {} 个包", pkgs.len());
     Ok(pkgs)
 }
 
-/// 列出 registry 下所有包目录名（jsDelivr data API → GitHub trees → 各自代理兜底）。
+/// 列出 registry 下所有包目录名（GitHub trees 实时优先 → jsDelivr data API 兜底，镜像在前）。
 async fn fetch_registry_tree(client: &reqwest::Client) -> Result<Vec<String>, String> {
     let mut last_err = String::new();
     for url in MARKET_TREE_URLS {
@@ -304,10 +331,14 @@ async fn fetch_registry_tree(client: &reqwest::Client) -> Result<Vec<String>, St
                 continue;
             }
         };
-        if let Ok(dirs) = parse_registry_tree(resp, url).await {
-            return Ok(dirs);
+        match parse_registry_tree(resp, url).await {
+            Ok(dirs) if !dirs.is_empty() => return Ok(dirs),
+            Ok(_) => {
+                // 200 但目录为空（如限流错误响应/空仓库）：不算成功，继续下一源
+                last_err = format!("{url} 返回空目录");
+            }
+            Err(e) => last_err = format!("解析 {url} 失败: {e}"),
         }
-        last_err = format!("解析 {url} 失败");
     }
     Err(format!("列目录失败: {last_err}"))
 }
@@ -512,12 +543,13 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
         .clone()
         .ok_or_else(|| format!("包 '{id}' 缺少下载地址"))?;
 
-    // 多源下载链：GitHub Releases 主源 → 各镜像代理（只转发不改内容，sha256 校验不受影响）。
+    // 多源下载链：镜像代理优先（只转发不改内容，sha256 校验不受影响），GitHub Releases 主源靠后。
     // 每源各自带指数退避重试，全部失败才报错。
-    let mut sources: Vec<String> = vec![download_url.clone()];
+    let mut sources: Vec<String> = Vec::with_capacity(DOWNLOAD_MIRRORS.len() + 1);
     for mirror in DOWNLOAD_MIRRORS {
         sources.push(format!("{mirror}/{download_url}"));
     }
+    sources.push(download_url.clone());
 
     let mut last_err = String::new();
     let mut downloaded = false;
@@ -566,7 +598,7 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
     }
     if !downloaded {
         return Err(format!(
-            "下载失败（主源 + {} 个镜像均失败）: {last_err}",
+            "下载失败（{} 个镜像 + 主源均失败）: {last_err}",
             DOWNLOAD_MIRRORS.len()
         ));
     }
