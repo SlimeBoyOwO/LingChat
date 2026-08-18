@@ -112,7 +112,11 @@ async fn fetch_first(
     urls: &[String],
 ) -> Result<reqwest::Response, String> {
     use futures_util::future::select_all;
-    let mut futures: Vec<_> = urls.iter().map(|u| get_with_retry(client, u)).collect();
+    // Box::pin：select_all 需要 Future + Unpin
+    let mut futures: Vec<_> = urls
+        .iter()
+        .map(|u| Box::pin(get_with_retry(client, u)))
+        .collect();
     let mut last_err = String::new();
     while !futures.is_empty() {
         let (res, _idx, rest) = select_all(futures).await;
@@ -370,12 +374,15 @@ async fn fetch_index_dynamic(
 /// 并行抢答：所有源同时发起，第一个「成功且非空」的结果胜出——不被慢源/挂掉的镜像阻塞。
 async fn fetch_registry_tree(client: &reqwest::Client) -> Result<Vec<String>, String> {
     use futures_util::future::select_all;
+    // Box::pin：select_all 需要 Future + Unpin
     let mut futures: Vec<_> = MARKET_TREE_URLS
         .iter()
-        .map(|url| async move {
+        .map(|url| {
             let url = *url;
-            let resp = get_with_retry(client, url).await?;
-            parse_registry_tree(resp, url).await
+            Box::pin(async move {
+                let resp = get_with_retry(client, url).await?;
+                parse_registry_tree(resp, url).await
+            })
         })
         .collect();
     let mut last_err = String::new();
