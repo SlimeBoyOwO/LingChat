@@ -880,7 +880,9 @@
                 hover:-translate-y-0.5
                 hover:border-white/20
                 hover:shadow-xl
-                hover:shadow-white/5"
+                hover:shadow-white/5
+                cursor-pointer"
+              @click="openDetail(pkg)"
             >
               <!-- 左侧：封面区（类型主色渐变 + 图标 + 类型徽章） -->
               <div class="flex
@@ -1057,7 +1059,7 @@
                         hover:bg-white/10
                         hover:text-red-300"
                       :disabled="installingId !== null"
-                      @click="uninstallPkg(pkg.id)"
+                      @click.stop="uninstallPkg(pkg.id)"
                     >
                       {{ $t('settings.workshop.uninstall') }}
                     </button>
@@ -1087,7 +1089,7 @@
                         disabled:cursor-not-allowed
                         disabled:opacity-40"
                       :disabled="installingId !== null"
-                      @click="installPkg(pkg.id)"
+                      @click.stop="installPkg(pkg.id)"
                     >
                       {{ $t('settings.workshop.install') }}
                     </button>
@@ -1101,6 +1103,364 @@
       </div>
     </div>
   </div>
+
+  <!-- 包详情弹窗（点击商店卡片打开；manifest 字段动态渲染，为多类型铺路） -->
+  <Teleport to="body">
+    <Transition name="modal">
+      <div
+        v-if="selectedPkg"
+        class="fixed
+          inset-0
+          z-[10001]
+          flex
+          items-center
+          justify-center
+          p-4"
+      >
+        <!-- 遮罩 -->
+        <div
+          class="absolute
+            inset-0
+            bg-black/60
+            backdrop-blur-sm"
+          @click="selectedPkg = null"
+        ></div>
+
+        <!-- 弹窗主体 -->
+        <div
+          class="relative
+            z-10
+            max-h-[85vh]
+            w-full
+            max-w-lg
+            overflow-y-auto
+            custom-scrollbar
+            rounded-2xl
+            border
+            border-white/15
+            bg-[#141821]/95
+            p-6
+            shadow-2xl
+            backdrop-blur-2xl"
+        >
+          <!-- 关闭 -->
+          <button
+            class="absolute
+              right-4
+              top-4
+              z-10
+              rounded-full
+              bg-white/5
+              p-1.5
+              text-white/40
+              transition-all
+              hover:bg-white/10
+              hover:text-white"
+            @click="selectedPkg = null"
+          >
+            <X :size="16" />
+          </button>
+
+          <!-- 头部：封面 + 名称 + 类型徽章 + 版本/作者 -->
+          <div class="flex
+            items-center
+            gap-4
+            pr-8">
+            <div
+              class="flex
+                h-16
+                w-16
+                shrink-0
+                items-center
+                justify-center
+                overflow-hidden
+                rounded-2xl
+                border
+                border-white/15
+                shadow-lg"
+              :style="{ background: typeCover(selectedPkg.type) }"
+            >
+              <component
+                :is="typeIcon(selectedPkg.type)"
+                :size="28"
+                class="text-white/90
+                  drop-shadow-md"
+              />
+            </div>
+            <div class="min-w-0
+              flex-1">
+              <div class="flex
+                flex-wrap
+                items-center
+                gap-2">
+                <h3 class="truncate
+                  text-xl
+                  font-bold
+                  text-white">{{ selectedPkg.name }}</h3>
+                <span
+                  class="rounded-full
+                    border
+                    px-2
+                    py-0.5
+                    text-[11px]
+                    font-semibold"
+                  :style="{
+                    backgroundColor: typeColor(selectedPkg.type).bg,
+                    borderColor: typeColor(selectedPkg.type).fg + '4D',
+                    color: typeColor(selectedPkg.type).fg,
+                  }"
+                >{{ typeLabel(selectedPkg.type) }}</span>
+              </div>
+              <p class="mt-1
+                text-xs
+                text-white/40">v{{ selectedPkg.version }}<template v-if="selectedPkg.author"> · {{ selectedPkg.author }}</template></p>
+            </div>
+          </div>
+
+          <!-- 完整描述 -->
+          <p class="mt-4
+            whitespace-pre-wrap
+            text-sm
+            leading-relaxed
+            text-white/70">{{ selectedPkg.description || $t('settings.workshop.noDesc') }}</p>
+
+          <!-- manifest 动态区：分类 / 标签 / 工具 -->
+          <template v-if="manifestContent(selectedPkg).category || manifestTags(selectedPkg).length || manifestTools(selectedPkg).length">
+            <div class="mt-5
+              space-y-3
+              border-t
+              border-white/10
+              pt-4">
+              <!-- 分类 -->
+              <div
+                v-if="manifestContent(selectedPkg).category"
+                class="flex
+                  items-center
+                  gap-2
+                  text-sm"
+              >
+                <span class="shrink-0
+                  text-white/35">{{ $t('settings.workshop.detailCategory') }}</span>
+                <span
+                  class="rounded-full
+                    border
+                    px-2.5
+                    py-0.5
+                    text-xs
+                    font-medium"
+                  :style="{
+                    backgroundColor: getCategoryColor(manifestContent(selectedPkg).category!) + '22',
+                    borderColor: getCategoryColor(manifestContent(selectedPkg).category!) + '4D',
+                    color: getCategoryColor(manifestContent(selectedPkg).category!),
+                  }"
+                >{{ manifestContent(selectedPkg).category }}</span>
+              </div>
+              <!-- 标签（彩虹色，与讨论卡片同款） -->
+              <div
+                v-if="manifestTags(selectedPkg).length"
+                class="flex
+                  flex-wrap
+                  items-center
+                  gap-1.5"
+              >
+                <span class="shrink-0
+                  text-sm
+                  text-white/35">{{ $t('settings.workshop.detailTags') }}</span>
+                <span
+                  v-for="(tag, i) in manifestTags(selectedPkg)"
+                  :key="tag"
+                  class="rounded-full
+                    border
+                    px-2
+                    py-0.5
+                    text-xs
+                    font-medium"
+                  :style="{
+                    backgroundColor: getTagColor(i) + '22',
+                    borderColor: getTagColor(i) + '4D',
+                    color: getTagColor(i),
+                  }"
+                >{{ tag }}</span>
+              </div>
+              <!-- 插件工具声明 -->
+              <div v-if="manifestTools(selectedPkg).length">
+                <p class="mb-2
+                  text-sm
+                  text-white/35">{{ $t('settings.workshop.detailTools') }}</p>
+                <div class="space-y-2">
+                  <div
+                    v-for="tool in manifestTools(selectedPkg)"
+                    :key="tool.name"
+                    class="rounded-xl
+                      border
+                      border-white/10
+                      bg-white/5
+                      px-3
+                      py-2"
+                  >
+                    <p class="text-sm
+                      font-semibold
+                      text-white/85">{{ tool.name }}</p>
+                    <p class="mt-0.5
+                      text-xs
+                      leading-relaxed
+                      text-white/50">{{ tool.description }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- 元信息 -->
+          <div class="mt-5
+            space-y-1.5
+            rounded-xl
+            border
+            border-white/10
+            bg-white/5
+            p-3
+            text-xs
+            text-white/45">
+            <div class="flex
+              items-center
+              justify-between
+              gap-3">
+              <span>{{ $t('settings.workshop.detailSize') }}</span>
+              <span class="text-white/70">{{ formatBytes(selectedPkg.size || 0) }}</span>
+            </div>
+            <div
+              v-if="selectedPkg.sha256"
+              class="flex
+                items-center
+                justify-between
+                gap-3"
+            >
+              <span>{{ $t('settings.workshop.detailSha256') }}</span>
+              <span
+                class="max-w-[60%]
+                  truncate
+                  font-mono
+                  text-white/60"
+                :title="selectedPkg.sha256"
+              >{{ selectedPkg.sha256 }}</span>
+            </div>
+            <div
+              v-if="selectedPkg.review_report_url"
+              class="flex
+                items-center
+                justify-between
+                gap-3"
+            >
+              <span>{{ $t('settings.workshop.detailReview') }}</span>
+              <button
+                class="flex
+                  items-center
+                  gap-1
+                  text-[color:var(--cat-color,#79d9ff)]
+                  hover:underline"
+                @click="openUrl(selectedPkg.review_report_url!)"
+              >
+                <ExternalLink :size="12" />
+                {{ $t('settings.workshop.detailOpen') }}
+              </button>
+            </div>
+          </div>
+
+          <!-- 底部操作 -->
+          <div class="mt-5
+            flex
+            items-center
+            justify-end
+            gap-2.5">
+            <button
+              class="rounded-xl
+                border
+                border-white/15
+                bg-white/8
+                px-5
+                py-2
+                text-sm
+                font-semibold
+                text-white/70
+                transition-all
+                hover:bg-white/15
+                hover:text-white"
+              @click="selectedPkg = null"
+            >
+              {{ $t('settings.workshop.detailClose') }}
+            </button>
+            <template v-if="installingId === selectedPkg.id">
+              <span class="flex
+                items-center
+                gap-1.5
+                text-xs
+                text-white/60">
+                {{ $t('settings.workshop.installing') }}
+                <span class="flex
+                  items-center
+                  gap-1">
+                  <span class="h-1.5
+                    w-1.5
+                    animate-pulse
+                    rounded-full
+                    bg-[color:var(--cat-color,#79d9ff)]"></span>
+                  <span class="h-1.5
+                    w-1.5
+                    animate-pulse
+                    rounded-full
+                    bg-[color:var(--cat-color,#79d9ff)] [animation-delay:150ms]"></span>
+                  <span class="h-1.5
+                    w-1.5
+                    animate-pulse
+                    rounded-full
+                    bg-[color:var(--cat-color,#79d9ff)] [animation-delay:300ms]"></span>
+                </span>
+              </span>
+            </template>
+            <button
+              v-else-if="installedMap[selectedPkg.id]"
+              class="rounded-xl
+                border
+                border-white/10
+                bg-white/5
+                px-4
+                py-2
+                text-sm
+                text-white/60
+                transition-colors
+                hover:bg-white/10
+                hover:text-red-300"
+              :disabled="installingId !== null"
+              @click="uninstallPkg(selectedPkg.id)"
+            >
+              {{ $t('settings.workshop.uninstall') }}
+            </button>
+            <button
+              v-else
+              class="rounded-xl
+                border
+                border-white/10
+                bg-white/8
+                px-4
+                py-2
+                text-sm
+                font-semibold
+                text-white/70
+                transition-all
+                hover:border-[color:var(--cat-color,#79d9ff)]
+                hover:text-[color:var(--cat-color,#79d9ff)]
+                disabled:cursor-not-allowed
+                disabled:opacity-40"
+              :disabled="installingId !== null"
+              @click="installPkg(selectedPkg.id)"
+            >
+              {{ $t('settings.workshop.install') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -1135,6 +1495,7 @@ import {
   Search,
   ThumbsUp,
   User,
+  X,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
@@ -1164,6 +1525,12 @@ const progressPercent = ref<Record<string, number>>({})
 const progressBytes = ref<Record<string, number>>({})
 const progressPhase = ref<Record<string, string>>({})
 let unlistenProgress: (() => void) | null = null
+
+// 包详情弹窗
+const selectedPkg = ref<MarketPackage | null>(null)
+const openDetail = (pkg: MarketPackage) => {
+  selectedPkg.value = pkg
+}
 
 function typeLabel(type: string): string {
   const map: Record<string, string> = {
@@ -1214,6 +1581,49 @@ function typeIcon(type: string): Component {
     default:
       return Package
   }
+}
+
+// ── manifest 动态读取（为更多类型铺路：新类型在 manifest 里加字段即自动展示） ──
+
+interface ManifestContent {
+  category?: string
+  tags: string[]
+}
+
+/** manifest 的 content 段（分类/标签）——未知结构安全降级为空 */
+function manifestContent(pkg: MarketPackage): ManifestContent {
+  const m = pkg.manifest
+  if (!m || typeof m !== 'object') return { tags: [] }
+  const content = (m as Record<string, unknown>).content
+  if (!content || typeof content !== 'object') return { tags: [] }
+  const c = content as Record<string, unknown>
+  return {
+    category: typeof c.category === 'string' ? c.category : undefined,
+    tags: Array.isArray(c.tags)
+      ? c.tags.filter((x): x is string => typeof x === 'string')
+      : [],
+  }
+}
+
+function manifestTags(pkg: MarketPackage): string[] {
+  return manifestContent(pkg).tags
+}
+
+/** manifest 的 tools 段（插件声明，只读无副作用）——未知结构安全降级为空 */
+function manifestTools(
+  pkg: MarketPackage,
+): { name: string; description: string }[] {
+  const m = pkg.manifest
+  if (!m || typeof m !== 'object') return []
+  const tools = (m as Record<string, unknown>).tools
+  if (!Array.isArray(tools)) return []
+  return tools.flatMap((t) => {
+    if (!t || typeof t !== 'object') return []
+    const rec = t as Record<string, unknown>
+    const name = typeof rec.name === 'string' ? rec.name : ''
+    if (!name) return []
+    return [{ name, description: typeof rec.description === 'string' ? rec.description : '' }]
+  })
 }
 
 /** 类型筛选：全部 + 实际存在的各类型（含数量），顺序按约定类型排前 */
@@ -1524,5 +1934,17 @@ onUnmounted(() => {
     rgba(0, 0, 0, 0.3) 40%,
     rgba(0, 0, 0, 0.55)
   );
+}
+
+/* 包详情弹窗过渡（Teleport 到 body，scoped 下仍带组件作用域属性） */
+.modal-enter-active,
+.modal-leave-active {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+  transform: scale(0.98) translateY(8px);
 }
 </style>
