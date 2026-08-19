@@ -17,6 +17,11 @@ pub const SETTINGS_FILE_NAME: &str = "tool_settings.toml";
 pub const DEFAULT_TOOL_CALL_ROUND_LIMIT: u32 = 8;
 pub const MIN_TOOL_CALL_ROUND_LIMIT: u32 = 1;
 pub const MAX_TOOL_CALL_ROUND_LIMIT: u32 = 64;
+pub const DEFAULT_MEDIA_MAX_FILE_MB: u32 = 100;
+pub const MAX_MEDIA_MAX_FILE_MB: u32 = 100;
+pub const DEFAULT_MEDIA_IMAGE_MAX_EDGE: u32 = 2000;
+pub const DEFAULT_MEDIA_JPEG_QUALITY: u8 = 85;
+pub const DEFAULT_MEDIA_OUTPUT_TOKENS: u32 = 1024;
 
 /// 工具分组 → 组内工具注册名。
 /// 设置页按组开关，权限同步时组内工具一起放开/收回。
@@ -46,6 +51,7 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
     ("status", &["status_get_current", "status_get_scene"]),
     ("clock", &["get_current_time"]),
     ("skills", &["list_skills", "read_skill"]),
+    ("media", &["ReadMediaFile"]),
     (
         "file_ops",
         &[
@@ -116,6 +122,45 @@ impl WebSearchSettings {
     }
 }
 
+/// 图片/视频识别工具配置。识别请求复用“大模型管理”中指定的视觉模型。
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default)]
+pub struct MediaFileSettings {
+    pub image_enabled: bool,
+    pub video_enabled: bool,
+    pub max_file_mb: u32,
+    pub image_max_edge: u32,
+    pub jpeg_quality: u8,
+    pub max_output_tokens: u32,
+    pub default_prompt: String,
+}
+
+impl Default for MediaFileSettings {
+    fn default() -> Self {
+        Self {
+            image_enabled: true,
+            video_enabled: true,
+            max_file_mb: DEFAULT_MEDIA_MAX_FILE_MB,
+            image_max_edge: DEFAULT_MEDIA_IMAGE_MAX_EDGE,
+            jpeg_quality: DEFAULT_MEDIA_JPEG_QUALITY,
+            max_output_tokens: DEFAULT_MEDIA_OUTPUT_TOKENS,
+            default_prompt: "请详细识别并描述这个媒体文件的内容；如果其中包含文字、界面、人物、物体、动作或时间顺序，请准确说明。".to_string(),
+        }
+    }
+}
+
+impl MediaFileSettings {
+    pub fn normalize(&mut self) {
+        self.max_file_mb = self.max_file_mb.clamp(1, MAX_MEDIA_MAX_FILE_MB);
+        self.image_max_edge = self.image_max_edge.clamp(512, 4096);
+        self.jpeg_quality = self.jpeg_quality.clamp(50, 95);
+        self.max_output_tokens = self.max_output_tokens.clamp(128, 4096);
+        if self.default_prompt.trim().is_empty() {
+            self.default_prompt = Self::default().default_prompt;
+        }
+    }
+}
+
 /// 主聊天工具的统一审批策略。只读工具始终可以直接运行。
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -134,6 +179,7 @@ pub enum ToolAccessMode {
 #[serde(default)]
 pub struct ToolSettings {
     pub web_search: WebSearchSettings,
+    pub media_file: MediaFileSettings,
     /// 分组开关：组名（见 `TOOL_GROUPS`）→ 是否启用，缺省关闭。
     pub groups: std::collections::HashMap<String, bool>,
     /// 文件修改与命令执行使用的统一审批模式。
@@ -158,6 +204,7 @@ impl Default for ToolSettings {
     fn default() -> Self {
         Self {
             web_search: WebSearchSettings::default(),
+            media_file: MediaFileSettings::default(),
             groups: std::collections::HashMap::new(),
             access_mode: ToolAccessMode::default(),
             max_tool_rounds: DEFAULT_TOOL_CALL_ROUND_LIMIT,
@@ -172,6 +219,7 @@ impl Default for ToolSettings {
 
 impl ToolSettings {
     pub fn normalize(&mut self) {
+        self.media_file.normalize();
         self.max_tool_rounds = self
             .max_tool_rounds
             .clamp(MIN_TOOL_CALL_ROUND_LIMIT, MAX_TOOL_CALL_ROUND_LIMIT);

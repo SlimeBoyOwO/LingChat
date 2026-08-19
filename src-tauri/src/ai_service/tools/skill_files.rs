@@ -333,6 +333,18 @@ file_tool!(
     }),
     |ft: &FileTools, args: &Value| {
         let path = arg_str(args, "path")?;
+        let safe_path = ft
+            .sanitize(path)
+            .map_err(|error| ToolError::Execution(error.to_string()))?;
+        if super::read_media_file::is_supported_media_file(&safe_path) {
+            return Ok(json!({
+                "ok": false,
+                "error": {
+                    "code": "media_file",
+                    "message": "这是图片或视频文件，请改用 ReadMediaFile 识别媒体内容"
+                }
+            }));
+        }
         exec(ft.read_file(path))
     }
 );

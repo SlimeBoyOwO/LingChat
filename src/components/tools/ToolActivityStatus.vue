@@ -78,6 +78,7 @@ const readTools = new Set([
   'read_skill',
   'list_files',
   'read_file',
+  'ReadMediaFile',
   'glob',
   'grep',
   'memory_get_current',

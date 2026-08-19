@@ -100,6 +100,7 @@ let fullAccessUseTimer: ReturnType<typeof setTimeout> | null = null
 const fullAccessTools = new Set([
   'list_files',
   'read_file',
+  'ReadMediaFile',
   'write_file',
   'delete_file',
   'edit_file',

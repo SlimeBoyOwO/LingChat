@@ -18,11 +18,23 @@ export interface WebSearchSettings {
   hide_search_results: boolean
 }
 
+/** ReadMediaFile 图片/视频识别配置。 */
+export interface MediaFileSettings {
+  image_enabled: boolean
+  video_enabled: boolean
+  max_file_mb: number
+  image_max_edge: number
+  jpeg_quality: number
+  max_output_tokens: number
+  default_prompt: string
+}
+
 export type ToolAccessMode = 'manual' | 'auto_approve' | 'full_access'
 
 export interface ToolSettings {
   web_search: WebSearchSettings
-  /** 分组开关：组名 → 是否启用（schedule/memory/character/scene/status/clock/skills/file_ops/command） */
+  media_file: MediaFileSettings
+  /** 分组开关：组名 → 是否启用（schedule/memory/character/scene/status/clock/skills/media/file_ops/command） */
   groups: Record<string, boolean>
   /** 文件修改与命令执行的统一审批模式。 */
   access_mode: ToolAccessMode
@@ -42,6 +54,7 @@ export const TOOL_GROUP_KEYS = [
   'status',
   'clock',
   'skills',
+  'media',
   'file_ops',
   'command',
 ] as const

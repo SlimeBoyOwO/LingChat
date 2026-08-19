@@ -277,6 +277,107 @@
         />
       </div>
 
+      <!-- ===== 图片/视频识别 ===== -->
+      <div v-else-if="selected === 'media'">
+        <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
+          {{ $t('ui.toolCalls.mediaTitle') }}
+        </h2>
+        <p class="text-sm text-gray-300 mb-4 px-1">
+          {{ $t('ui.toolCalls.mediaHint') }}
+        </p>
+
+        <div class="flex items-center gap-3 py-2.5 px-1">
+          <Toggle
+            :checked="form.groups.media ?? false"
+            @change="(value: boolean) => (form.groups.media = value)"
+          />
+          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.mediaEnable') }}</p>
+        </div>
+
+        <div class="my-3 rounded-xl border border-brand/30 bg-brand/10 px-4 py-3">
+          <p class="text-sm text-gray-200">{{ $t('ui.toolCalls.mediaVisionModelHint') }}</p>
+        </div>
+
+        <div class="grid gap-2 sm:grid-cols-2">
+          <div class="flex items-center gap-3 rounded-lg bg-white/5 px-3 py-2.5">
+            <Toggle
+              :checked="form.media_file.image_enabled"
+              @change="(value: boolean) => (form.media_file.image_enabled = value)"
+            />
+            <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.mediaImages') }}</p>
+          </div>
+          <div class="flex items-center gap-3 rounded-lg bg-white/5 px-3 py-2.5">
+            <Toggle
+              :checked="form.media_file.video_enabled"
+              @change="(value: boolean) => (form.media_file.video_enabled = value)"
+            />
+            <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.mediaVideos') }}</p>
+          </div>
+        </div>
+
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <label class="block">
+            <span class="text-sm font-medium text-brand">{{ $t('ui.toolCalls.mediaMaxFileMb') }}</span>
+            <input
+              v-model.number="form.media_file.max_file_mb"
+              type="number"
+              min="1"
+              max="100"
+              step="1"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 border-white/10 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium text-brand">{{ $t('ui.toolCalls.mediaOutputTokens') }}</span>
+            <input
+              v-model.number="form.media_file.max_output_tokens"
+              type="number"
+              min="128"
+              max="4096"
+              step="128"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 border-white/10 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium text-brand">{{ $t('ui.toolCalls.mediaImageMaxEdge') }}</span>
+            <input
+              v-model.number="form.media_file.image_max_edge"
+              type="number"
+              min="512"
+              max="4096"
+              step="128"
+              :disabled="!form.media_file.image_enabled"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 border-white/10 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-50"
+            />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium text-brand">{{ $t('ui.toolCalls.mediaJpegQuality') }}</span>
+            <input
+              v-model.number="form.media_file.jpeg_quality"
+              type="number"
+              min="50"
+              max="95"
+              step="1"
+              :disabled="!form.media_file.image_enabled"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 border-white/10 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-50"
+            />
+          </label>
+        </div>
+
+        <label class="block mt-4">
+          <span class="text-sm font-medium text-brand">{{ $t('ui.toolCalls.mediaDefaultPrompt') }}</span>
+          <textarea
+            v-model="form.media_file.default_prompt"
+            rows="3"
+            class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 border-white/10 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 resize-y"
+          ></textarea>
+        </label>
+
+        <p v-if="form.media_file.video_enabled" class="mt-3 px-1 text-sm text-amber-300/90">
+          {{ $t('ui.toolCalls.mediaVideoCompatibility') }}
+        </p>
+      </div>
+
       <!-- ===== 文件操作 ===== -->
       <div v-else-if="selected === 'file_ops'">
         <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
@@ -381,6 +482,8 @@ const accessModes: ToolAccessMode[] = ['manual', 'auto_approve', 'full_access']
 const DEFAULT_TOOL_ROUND_LIMIT = 8
 const MIN_TOOL_ROUND_LIMIT = 1
 const MAX_TOOL_ROUND_LIMIT = 64
+const DEFAULT_MEDIA_PROMPT =
+  '请详细识别并描述这个媒体文件的内容；如果其中包含文字、界面、人物、物体、动作或时间顺序，请准确说明。'
 
 const navLabel = (item: string) =>
   item === 'access'
@@ -402,6 +505,15 @@ const form = reactive<ToolSettings>({
     proxy_addr: 'http://127.0.0.1:10808',
     max_results: 8,
     hide_search_results: false,
+  },
+  media_file: {
+    image_enabled: true,
+    video_enabled: true,
+    max_file_mb: 100,
+    image_max_edge: 2000,
+    jpeg_quality: 85,
+    max_output_tokens: 1024,
+    default_prompt: DEFAULT_MEDIA_PROMPT,
   },
   groups: {},
   access_mode: 'manual',
@@ -440,9 +552,22 @@ const normalizeToolRoundLimit = () => {
     : DEFAULT_TOOL_ROUND_LIMIT
 }
 
+const normalizeMediaSettings = () => {
+  const clamp = (value: unknown, fallback: number, min: number, max: number) => {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.round(parsed))) : fallback
+  }
+  form.media_file.max_file_mb = clamp(form.media_file.max_file_mb, 100, 1, 100)
+  form.media_file.image_max_edge = clamp(form.media_file.image_max_edge, 2000, 512, 4096)
+  form.media_file.jpeg_quality = clamp(form.media_file.jpeg_quality, 85, 50, 95)
+  form.media_file.max_output_tokens = clamp(form.media_file.max_output_tokens, 1024, 128, 4096)
+  if (!form.media_file.default_prompt.trim()) form.media_file.default_prompt = DEFAULT_MEDIA_PROMPT
+}
+
 const saveSettings = async (): Promise<boolean> => {
   try {
     normalizeToolRoundLimit()
+    normalizeMediaSettings()
     // 深拷贝一份普通对象，避免把 reactive 代理传给 Tauri IPC
     const payload: ToolSettings = JSON.parse(JSON.stringify(form))
     await saveToolSettings(payload)
@@ -501,10 +626,12 @@ onMounted(async () => {
   try {
     const settings = await getToolSettings()
     Object.assign(form.web_search, settings.web_search)
+    Object.assign(form.media_file, settings.media_file ?? {})
     Object.assign(form.groups, settings.groups ?? {})
     form.access_mode = settings.access_mode ?? 'manual'
     form.max_tool_rounds = settings.max_tool_rounds ?? DEFAULT_TOOL_ROUND_LIMIT
     normalizeToolRoundLimit()
+    normalizeMediaSettings()
     if (isWindows()) await refreshElevationStatus()
   } catch (error) {
     console.error('加载工具配置失败:', error)
