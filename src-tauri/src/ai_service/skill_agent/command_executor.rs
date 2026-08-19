@@ -33,19 +33,41 @@ static PROCESS_ELEVATED: OnceLock<bool> = OnceLock::new();
 /// 当前 LingChat 进程是否已经持有管理员令牌。进程生命周期内权限不会变化，故缓存结果。
 #[cfg(windows)]
 pub fn is_current_process_elevated() -> bool {
-    *PROCESS_ELEVATED.get_or_init(|| {
-        use std::os::windows::process::CommandExt;
-
-        let check = "if ((New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { exit 0 } else { exit 1 }";
-        std::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", check])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .creation_flags(CREATE_NO_WINDOW)
-            .status()
-            .is_ok_and(|status| status.success())
+    *PROCESS_ELEVATED.get_or_init(|| match query_current_process_elevation() {
+        Ok(elevated) => elevated,
+        Err(error) => {
+            tracing::warn!("无法读取当前进程的 Windows 令牌权限: {error}");
+            false
+        }
     })
+}
+
+#[cfg(windows)]
+fn query_current_process_elevation() -> windows::core::Result<bool> {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    unsafe {
+        let mut token = HANDLE::default();
+        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token)?;
+        let result = (|| {
+            let mut elevation = TOKEN_ELEVATION::default();
+            let mut returned_size = 0;
+            GetTokenInformation(
+                token,
+                TokenElevation,
+                Some((&mut elevation as *mut TOKEN_ELEVATION).cast()),
+                std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+                &mut returned_size,
+            )?;
+            Ok(elevation.TokenIsElevated != 0)
+        })();
+        let _ = CloseHandle(token);
+        result
+    }
 }
 
 #[cfg(not(windows))]
@@ -873,6 +895,12 @@ mod tests {
         assert!(needs_elevated_launcher(true, false));
         assert!(!needs_elevated_launcher(true, true));
         assert!(!needs_elevated_launcher(false, false));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn current_process_elevation_is_read_from_windows_token() {
+        assert!(query_current_process_elevation().is_ok());
     }
 
     #[cfg(windows)]
