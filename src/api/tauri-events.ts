@@ -58,7 +58,6 @@ function isStalePreviewReply(payload: Record<string, unknown>): boolean {
 export function initializeTauriEventListeners() {
   const currentWindow = getCurrentWindow()
   const mainWindow = currentWindow.label === 'main' ? currentWindow : null
-  const asrStore = useAsrStore()
 
   listen('ai:reply', (event) => {
     const payload = event.payload as Record<string, unknown>
@@ -273,21 +272,24 @@ export function initializeTauriEventListeners() {
   })
 
   // === ASR events ===
+  // 注意：useAsrStore() 必须在回调内调用 —— initializeTauriEventListeners
+  // 在 app.use(pinia) 之前被 main.ts 调用，顶层调用 store 会抛
+  // "getActivePinia was called with no active Pinia"，导致 app.mount 不执行。
 
   listen<VadEvent>('asr://speech_started', () => {
-    asrStore.onSpeechStarted()
+    useAsrStore().onSpeechStarted()
   })
   listen<VadEvent>('asr://turn_candidate', (event) => {
-    asrStore.onTurnCandidate(event.payload)
+    useAsrStore().onTurnCandidate(event.payload)
   })
   listen<VadEvent>('asr://turn_sealed', () => {
-    asrStore.onTurnSealed({ type: 'turn_sealed' })
+    useAsrStore().onTurnSealed({ type: 'turn_sealed' })
   })
   listen<AsrResult>('asr://result', (event) => {
-    asrStore.onResult(event.payload)
+    useAsrStore().onResult(event.payload)
   })
   listen<{ code: string }>('asr://error', (event) => {
-    asrStore.onError(event.payload.code)
+    useAsrStore().onError(event.payload.code)
   })
 
   // === Adventure events ===
