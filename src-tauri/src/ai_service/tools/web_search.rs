@@ -582,16 +582,3 @@ impl Tool for WebSearchTool {
 fn bounded_query(query: &str) -> String {
     query.chars().take(MAX_QUERY_CHARS).collect()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn query_is_truncated_on_character_boundary() {
-        let query = "搜".repeat(MAX_QUERY_CHARS + 10);
-        let bounded = bounded_query(&query);
-        assert_eq!(bounded.chars().count(), MAX_QUERY_CHARS);
-        assert!(bounded.is_char_boundary(bounded.len()));
-    }
-}

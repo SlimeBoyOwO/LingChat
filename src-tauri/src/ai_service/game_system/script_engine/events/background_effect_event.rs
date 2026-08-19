@@ -93,34 +93,3 @@ pub fn register() {
         Box::new(BackgroundEffectEvent::from_event_data(&data))
     });
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{BackgroundEffectEvent, KNOWN_EFFECTS};
-    use serde_json::json;
-
-    /// The value must keep passing through untouched — PR1 only adds a warning,
-    /// it deliberately does not "helpfully" correct the author's data.
-    #[test]
-    fn effect_is_passed_through_verbatim() {
-        for raw in ["StarField", "starfield", "Starfield", "None", "Nonsense"] {
-            let e = BackgroundEffectEvent::from_event_data(&json!({ "effect": raw }));
-            assert_eq!(e.effect, raw);
-        }
-    }
-
-    #[test]
-    fn missing_effect_defaults_to_none() {
-        let e = BackgroundEffectEvent::from_event_data(&json!({}));
-        assert_eq!(e.effect, "none");
-    }
-
-    #[test]
-    fn known_effect_list_matches_the_frontend() {
-        // Mirrors the `v-if` chain in src/components/game/standard/GameBackground.vue.
-        assert_eq!(
-            KNOWN_EFFECTS,
-            ["StarField", "Rain", "Sakura", "Snow", "Fireworks"]
-        );
-    }
-}

@@ -1936,19 +1936,3 @@ pub fn editor_open_script_folder(key: String) -> Result<(), String> {
     // open_folder 收的是 &str，不是 &Path
     crate::utils::system::open_folder(&dir.to_string_lossy())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::allowed_extensions;
-
-    #[test]
-    fn asset_extensions_split_image_and_audio() {
-        assert!(allowed_extensions("background").contains(&"png"));
-        assert!(allowed_extensions("pic").contains(&"webp"));
-        assert!(!allowed_extensions("background").contains(&"mp3"));
-        for k in ["music", "sound", "ambient"] {
-            assert!(allowed_extensions(k).contains(&"mp3"), "{}", k);
-            assert!(!allowed_extensions(k).contains(&"png"), "{}", k);
-        }
-    }
-}

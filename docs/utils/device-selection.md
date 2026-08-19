@@ -116,12 +116,6 @@ let some_setting = read_settings_string(&app, "llm.provider");
 - **Android/Linux**：只有 CPU（`parse_device` 非 "cpu" 报错，`list_devices()` 空）
 - 前端按平台显示设备选项（TTS 设置页用 `isWindows` 控制显示）
 
-## 测试
-
-`cargo test --lib utils::device` 覆盖：
-- 设备字符串解析（cpu/gpu/npu/device:id/非法值）
-- `device_to_string` 往返
-
 ## 配置键
 
 TTS 当前用 `features.local_tts_device`。其他功能可复用本模块但**使用各自的 key**

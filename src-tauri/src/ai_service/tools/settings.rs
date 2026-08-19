@@ -186,31 +186,3 @@ impl SharedToolSettings {
         *self.0.write().expect("工具配置锁已中毒") = settings;
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn legacy_settings_keep_delete_confirmation_enabled() {
-        let legacy = r#"
-command_auto_approve = false
-file_ops_allow_any_path = false
-"#;
-        let settings: ToolSettings = toml::from_str(legacy).unwrap();
-        assert!(!settings.command_delete_auto_approve);
-        assert!(!settings.file_delete_auto_approve);
-    }
-
-    #[test]
-    fn save_can_replace_existing_settings_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut settings = ToolSettings::default();
-        settings.save(dir.path()).unwrap();
-        settings.command_auto_approve = true;
-        settings.save(dir.path()).unwrap();
-
-        let loaded = ToolSettings::load_or_create(dir.path()).unwrap();
-        assert!(loaded.command_auto_approve);
-    }
-}

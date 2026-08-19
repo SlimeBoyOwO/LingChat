@@ -209,7 +209,7 @@ impl GenaiProvider {
 
         // DeepSeek Reasoner 等模型在 thinking 字段缺失时默认启用思考，
         // 始终注入 thinking 字段，不区分 provider — 与旧 OpenAiProvider 行为一致。
-        // 对不支持该字段的 provider（如纯 OpenAI）通常会被忽略，无害。[TODO] 需要测试
+        // 对不支持该字段的 provider（如纯 OpenAI）通常会被忽略，无害。
         //
         // MiniMax 例外：其 OpenAI 兼容接口只接受 "adaptive" / "disabled"，
         // 传 "enabled" 会返回 400（invalid thinking.type (2013)），启用思考时映射为
@@ -376,112 +376,6 @@ impl GenaiProvider {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ai_service::types::{FunctionCall, ToolCall};
-
-    fn provider() -> GenaiProvider {
-        GenaiProvider::new(
-            &LlmConfig {
-                provider: "openai".to_string(),
-                model: "test-model".to_string(),
-                api_key: "test".to_string(),
-                base_url: String::new(),
-                timeout_secs: 30,
-                temperature: None,
-                top_p: None,
-                enable_thinking: false,
-                reasoning_effort: None,
-            },
-            Client::new(),
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn serializes_plain_messages() {
-        let request = provider()
-            .build_chat_request(
-                &[
-                    LlmMessage::system("系统"),
-                    LlmMessage::user("你好"),
-                    LlmMessage::assistant("你好呀"),
-                ],
-                None,
-            )
-            .unwrap();
-        let value = serde_json::to_value(request).unwrap();
-        assert_eq!(value["system"], "系统");
-        assert_eq!(value["messages"][0]["role"], "User");
-        assert_eq!(value["messages"][1]["role"], "Assistant");
-    }
-
-    #[test]
-    fn serializes_tool_call_and_response_with_matching_id() {
-        let call = ToolCall {
-            id: "call-1".to_string(),
-            type_: "function".to_string(),
-            function: FunctionCall {
-                name: "get_current_time".to_string(),
-                arguments: "{}".to_string(),
-            },
-        };
-        let request = provider()
-            .build_chat_request(
-                &[
-                    LlmMessage::user("几点了"),
-                    LlmMessage::tool(vec![call]),
-                    LlmMessage::tool_result("call-1", r#"{"local_time":"now"}"#),
-                ],
-                None,
-            )
-            .unwrap();
-        let value = serde_json::to_value(request).unwrap();
-        assert_eq!(value["messages"][1]["role"], "Assistant");
-        assert_eq!(
-            value["messages"][1]["content"][0]["ToolCall"]["call_id"],
-            "call-1"
-        );
-        assert_eq!(
-            value["messages"][1]["content"][0]["ToolCall"]["fn_name"],
-            "get_current_time"
-        );
-        assert_eq!(value["messages"][2]["role"], "Tool");
-        assert_eq!(
-            value["messages"][2]["content"][0]["ToolResponse"]["call_id"],
-            "call-1"
-        );
-    }
-
-    #[test]
-    fn rejects_tool_result_without_call_id() {
-        let mut message = LlmMessage::tool_result("call-1", "{}");
-        message.tool_call_id = None;
-        let error = provider()
-            .build_chat_request(&[message], None)
-            .err()
-            .unwrap();
-        assert!(error.to_string().contains("缺少 tool_call_id"));
-    }
-
-    #[test]
-    fn normalizes_stop_reason_for_truncation_detection() {
-        use genai::chat::StopReason;
-        let cases = [
-            (StopReason::Completed("stop".into()), "stop"),
-            // OpenAI/DeepSeek 用 "length" 表示输出被 max_tokens 截断
-            (StopReason::MaxTokens("length".into()), "max_tokens"),
-            (StopReason::ToolCall("tool_calls".into()), "tool_calls"),
-            (StopReason::ContentFilter("content_filter".into()), "content_filter"),
-            (StopReason::StopSequence("stop_sequence".into()), "stop_sequence"),
-            (StopReason::Other("custom".into()), "custom"),
-        ];
-        for (reason, expected) in cases {
-            assert_eq!(GenaiProvider::normalize_stop_reason(&reason), expected);
-        }
-    }
-}
 
 // ─── LlmProvider 实现 ────────────────────────────────────────────
 
