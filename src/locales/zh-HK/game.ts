@@ -14,8 +14,6 @@ export default {
     "inputPlaceholder": "喺度輸入訊息...",
     "waitingResponse": "等緊回應...",
     "thinkingDepth": "（已經深入諗咗 {count} 字）",
-    "speechNotSupported": "你個瀏覽器唔支援語音輸入功能，建議用最新版嘅 Chrome 或者 Edge 瀏覽器。",
-    "inputNotAllowed": "而家嘅狀態唔入得字，唔該遲啲再試。",
     "screenshotFailed": "截圖功能初始化搞唔掂，唔該再試過",
     "noModelTitle": "提提你",
     "noModelMessage": "仲未揀對話模型喎，笨蛋！去高級設定嗰度配置同揀返個模型就得㗎啦，切換之後自動生效㗎！"

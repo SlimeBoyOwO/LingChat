@@ -14,8 +14,6 @@ export default {
     inputPlaceholder: "Type your message here...",
     waitingResponse: "Waiting for a reply...",
     thinkingDepth: "(Thought deeply for {count} characters)",
-    speechNotSupported: "Your browser doesn't support voice input. Please use the latest version of Chrome or Edge.",
-    inputNotAllowed: "You can't type right now. Please try again in a moment.",
     screenshotFailed: "Screenshot failed to initialize. Please try again.",
     noModelTitle: "Heads Up",
     noModelMessage: "You haven't picked a chat model yet, silly! Just go to Advanced Settings to configure and select one — it takes effect as soon as you switch!",

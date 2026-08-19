@@ -13,8 +13,6 @@ export default {
     inputPlaceholder: '在这里输入消息...',
     waitingResponse: '等待回应中...',
     thinkingDepth: '（已深度思考 {count} 字）',
-    speechNotSupported: '您的浏览器不支持语音输入功能，建议使用最新版的 Chrome 或 Edge 浏览器。',
-    inputNotAllowed: '当前状态不允许输入，请稍候再试。',
     screenshotFailed: '截图功能初始化失败，请重试',
     noModelTitle: '提示',
     noModelMessage: '还没选择对话模型呢，笨蛋！去高级设置里配置并选择模型就好啦，切换后自动生效哦！',
