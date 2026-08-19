@@ -1,13 +1,12 @@
 //! ASR (Automatic Speech Recognition) 服务。
 //!
-//! 本模块负责把语音（WAV 字节）转成文字。三阶段拆分：
-//!
-//! - [`error`] — 统一错误类型（含 i18n 码）。
-//! - [`provider`] — 云 ASR provider 抽象（OpenAI Whisper / Qwen ASR / Gemini / LAN Whisper）。
-//!
-//! 端点检测 (vad) 与会话编排 (session) / 持久化设置 (settings) 在后续 Task 引入。
+//! 端点检测由 [`vad::AsrVad`] 负责（本地 Silero ONNX）；
+//! 识别交由 [`provider`] 的云 ASR provider 实现；
+//! 会话编排由 [`session::AsrSession`] 统一管理互斥和取消；
+//! 配置由 [`settings`] 通过 tauri_plugin_store 持久化。
 
 pub mod error;
 pub mod provider;
+pub mod settings;
 
 pub use error::AsrError;
