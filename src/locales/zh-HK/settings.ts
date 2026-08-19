@@ -1061,4 +1061,45 @@ export default {
       "switchDisabled": "本地 TTS 已關閉，如需使用雲端 TTS，請將角色語音切換為「雲端」並重新啟動應用程式。",
       "saveSwitchFailed": "儲存本地 TTS 開關失敗：{error}"
     }
-  },}
+  },
+
+  "asr": {
+    "title": "語音識別",
+    "status": {
+      "ready": "已就緒",
+      "notReady": "未配置",
+      "mic": "麥克風",
+      "micIdle": "閒置",
+      "micActive": "使用中",
+      "micDenied": "權限被拒絕",
+      "vadLoaded": "VAD 模型",
+      "vadLoadedOk": "已載入",
+      "vadLoadedNo": "未載入"
+    },
+    "autoListen": "啟用自動語音識別",
+    "autoListenHint": "自動監聽麥克風，識別用戶說話後自動轉為文字",
+    "hotkey": {
+      "enable": "啟用快捷鍵語音輸入",
+      "combination": "快捷鍵",
+      "record": "錄製快捷鍵"
+    },
+    "sendMode": {
+      "title": "識別完成後",
+      "fillOnly": "填入輸入框（推薦）",
+      "autoSend": "自動發送",
+      "queue": "隊列發送（AI 回覆後再發送）"
+    },
+    "provider": {
+      "title": "識別服務商",
+      "test": "測試連接",
+      "testSuccess": "連接成功",
+      "testFailed": "連接失敗：{err}",
+      "options": {
+        "openai-whisper": "OpenAI Whisper",
+        "qwen-asr": "Qwen ASR",
+        "gemini": "Google Gemini",
+        "lan-whisper": "LAN Whisper（自託管）"
+      }
+    }
+  }
+}

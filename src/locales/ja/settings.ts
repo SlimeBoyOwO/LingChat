@@ -1061,4 +1061,45 @@ export default {
       switchDisabled: 'ローカル TTS を無効にしました。クラウド TTS を使用するには、キャラクター音声を「クラウド」に切り替えてアプリを再起動してください。',
       saveSwitchFailed: 'ローカル TTS スイッチの保存に失敗：{error}',
     },
-  },}
+  },
+
+  asr: {
+    title: '音声認識',
+    status: {
+      ready: '準備完了',
+      notReady: '未設定',
+      mic: 'マイク',
+      micIdle: 'アイドル',
+      micActive: '使用中',
+      micDenied: '権限拒否',
+      vadLoaded: 'VAD モデル',
+      vadLoadedOk: '読込済み',
+      vadLoadedNo: '未読込',
+    },
+    autoListen: '自動音声認識を有効化',
+    autoListenHint: 'マイクを自動監視し、ユーザーの発話をテキストに変換',
+    hotkey: {
+      enable: 'ホットキー音声入力を有効化',
+      combination: 'ホットキー',
+      record: 'ホットキーを録音',
+    },
+    sendMode: {
+      title: '認識後',
+      fillOnly: '入力欄に挿入（推奨）',
+      autoSend: '自動送信',
+      queue: 'キュー送信（AI 返信後）',
+    },
+    provider: {
+      title: '認識プロバイダ',
+      test: '接続テスト',
+      testSuccess: '接続成功',
+      testFailed: '失敗：{err}',
+      options: {
+        'openai-whisper': 'OpenAI Whisper',
+        'qwen-asr': 'Qwen ASR',
+        gemini: 'Google Gemini',
+        'lan-whisper': 'LAN Whisper（セルフホスト）',
+      },
+    },
+  },
+}

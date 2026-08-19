@@ -1062,4 +1062,45 @@ export default {
       switchDisabled: '本地 TTS 已关闭，如需使用云端 TTS，请将角色语音切换为“云端”并重启应用。',
       saveSwitchFailed: '保存本地 TTS 开关失败：{error}',
     },
-  },}
+  },
+
+  asr: {
+    title: '语音识别',
+    status: {
+      ready: '已就绪',
+      notReady: '未配置',
+      mic: '麦克风',
+      micIdle: '空闲',
+      micActive: '使用中',
+      micDenied: '权限被拒绝',
+      vadLoaded: 'VAD 模型',
+      vadLoadedOk: '已加载',
+      vadLoadedNo: '未加载',
+    },
+    autoListen: '启用自动语音识别',
+    autoListenHint: '自动监听麦克风，识别用户说话后自动转为文本',
+    hotkey: {
+      enable: '启用快捷键语音输入',
+      combination: '快捷键',
+      record: '录制快捷键',
+    },
+    sendMode: {
+      title: '识别完成后',
+      fillOnly: '填入输入框（推荐）',
+      autoSend: '自动发送',
+      queue: '队列发送（AI 回复后再发送）',
+    },
+    provider: {
+      title: '识别服务商',
+      test: '测试连接',
+      testSuccess: '连接成功',
+      testFailed: '连接失败：{err}',
+      options: {
+        'openai-whisper': 'OpenAI Whisper',
+        'qwen-asr': 'Qwen ASR',
+        gemini: 'Google Gemini',
+        'lan-whisper': 'LAN Whisper（自托管）',
+      },
+    },
+  },
+}

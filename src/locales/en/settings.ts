@@ -1063,4 +1063,45 @@ export default {
       switchDisabled: 'Local TTS disabled. To use cloud TTS, switch the character voice to "Cloud" and restart the app.',
       saveSwitchFailed: 'Failed to save local TTS switch: {error}',
     },
-  },}
+  },
+
+  asr: {
+    title: 'Speech Recognition',
+    status: {
+      ready: 'Ready',
+      notReady: 'Not configured',
+      mic: 'Microphone',
+      micIdle: 'Idle',
+      micActive: 'In use',
+      micDenied: 'Permission denied',
+      vadLoaded: 'VAD model',
+      vadLoadedOk: 'Loaded',
+      vadLoadedNo: 'Not loaded',
+    },
+    autoListen: 'Enable automatic speech recognition',
+    autoListenHint: 'Auto-listen to microphone and convert user speech to text',
+    hotkey: {
+      enable: 'Enable hotkey voice input',
+      combination: 'Hotkey',
+      record: 'Record hotkey',
+    },
+    sendMode: {
+      title: 'After recognition',
+      fillOnly: 'Fill input box (recommended)',
+      autoSend: 'Auto send',
+      queue: 'Queue send (after AI replies)',
+    },
+    provider: {
+      title: 'Recognition provider',
+      test: 'Test connection',
+      testSuccess: 'Connected',
+      testFailed: 'Failed: {err}',
+      options: {
+        'openai-whisper': 'OpenAI Whisper',
+        'qwen-asr': 'Qwen ASR',
+        gemini: 'Google Gemini',
+        'lan-whisper': 'LAN Whisper (self-hosted)',
+      },
+    },
+  },
+}
