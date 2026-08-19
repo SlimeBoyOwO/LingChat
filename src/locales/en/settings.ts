@@ -303,6 +303,9 @@ export default {
     installSuccess: "Installed",
     uninstallSuccess: "Uninstalled",
     installing: "Installing…",
+    cancel: "Cancel",
+    hasUpdate: "Update available",
+    update: "Update",
     uninstallConfirm: 'Uninstall "{name}"? This will delete the installed content.',
     time: {
       justNow: "Just now",

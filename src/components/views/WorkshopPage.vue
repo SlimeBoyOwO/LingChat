@@ -847,9 +847,9 @@
               md:block">{{ $t('settings.workshop.marketHint') }}</span>
           </div>
 
-          <!-- Loading -->
+          <!-- Loading（仅云端标签显示，已安装标签不受云端加载影响） -->
           <div
-            v-if="marketLoading"
+            v-if="marketLoading && marketSubTab !== 'installed'"
             class="flex
               items-center
               justify-center
@@ -858,9 +858,9 @@
             <p class="text-white/60">{{ $t('settings.workshop.loadingList') }}</p>
           </div>
 
-          <!-- Error -->
+          <!-- Error（仅云端标签显示） -->
           <div
-            v-else-if="marketError"
+            v-else-if="marketError && marketSubTab !== 'installed'"
             class="flex
               flex-col
               items-center
@@ -1017,7 +1017,7 @@
                   border-t
                   border-white/5
                   pt-2.5">
-                  <template v-if="installingId === pkg.id">
+                  <template v-if="isInstalling(pkg.id)">
                     <template v-if="progressPhase[pkg.id] === 'install'">
                       <span class="flex
                         items-center
@@ -1072,6 +1072,20 @@
                             :style="{ width: (progressPercent[pkg.id] ?? 0) + '%' }"
                           ></span>
                         </span>
+                        <button
+                          class="ml-1
+                            rounded
+                            border-none
+                            bg-transparent
+                            p-0.5
+                            text-white/40
+                            transition-colors
+                            hover:text-red-400"
+                          :title="$t('settings.workshop.cancel')"
+                          @click.stop="cancelInstall(pkg.id)"
+                        >
+                          <X :size="14" />
+                        </button>
                       </span>
                     </template>
                   </template>
@@ -1096,10 +1110,7 @@
                         text-white/70
                         transition-all
                         hover:border-[color:var(--cat-color,#79d9ff)]
-                        hover:text-[color:var(--cat-color,#79d9ff)]
-                        disabled:cursor-not-allowed
-                        disabled:opacity-40"
-                      :disabled="installingId !== null"
+                        hover:text-[color:var(--cat-color,#79d9ff)]"
                       @click.stop="installPkg(pkg.id)"
                     >
                       {{ $t('settings.workshop.install') }}
@@ -1242,7 +1253,7 @@
                   border-t
                   border-white/5
                   pt-2.5">
-                  <template v-if="installingId === pkg.id">
+                  <template v-if="isInstalling(pkg.id)">
                     <template v-if="progressPhase[pkg.id] === 'install'">
                       <span class="flex
                         items-center
@@ -1297,6 +1308,20 @@
                             :style="{ width: (progressPercent[pkg.id] ?? 0) + '%' }"
                           ></span>
                         </span>
+                        <button
+                          class="ml-1
+                            rounded
+                            border-none
+                            bg-transparent
+                            p-0.5
+                            text-white/40
+                            transition-colors
+                            hover:text-red-400"
+                          :title="$t('settings.workshop.cancel')"
+                          @click.stop="cancelInstall(pkg.id)"
+                        >
+                          <X :size="14" />
+                        </button>
                       </span>
                     </template>
                   </template>
@@ -1308,24 +1333,56 @@
                       text-emerald-300/80">
                       <CheckCircle2 :size="13" />
                       {{ $t('settings.workshop.installed') }}
+                      <span
+                        v-if="hasUpdateMap[pkg.id]"
+                        class="rounded-full
+                          border
+                          border-amber-400/40
+                          bg-amber-400/15
+                          px-1.5
+                          py-0.5
+                          text-[10px]
+                          font-medium
+                          text-amber-300"
+                      >{{ $t('settings.workshop.hasUpdate') }}</span>
                     </span>
-                    <button
-                      class="rounded-lg
-                        border
-                        border-white/10
-                        bg-white/5
-                        px-3
-                        py-1
-                        text-xs
-                        text-white/50
-                        transition-colors
-                        hover:bg-white/10
-                        hover:text-red-300"
-                      :disabled="installingId !== null"
-                      @click.stop="uninstallPkg(pkg.id)"
-                    >
-                      {{ $t('settings.workshop.uninstall') }}
-                    </button>
+                    <div class="flex
+                      items-center
+                      gap-1.5">
+                      <button
+                        v-if="hasUpdateMap[pkg.id]"
+                        class="rounded-lg
+                          border
+                          border-amber-400/30
+                          bg-amber-400/10
+                          px-2.5
+                          py-1
+                          text-xs
+                          font-semibold
+                          text-amber-300
+                          transition-colors
+                          hover:bg-amber-400/20"
+                        @click.stop="installPkg(pkg.id)"
+                      >
+                        {{ $t('settings.workshop.update') }}
+                      </button>
+                      <button
+                        class="rounded-lg
+                          border
+                          border-white/10
+                          bg-white/5
+                          px-3
+                          py-1
+                          text-xs
+                          text-white/50
+                          transition-colors
+                          hover:bg-white/10
+                          hover:text-red-300"
+                        @click.stop="uninstallPkg(pkg.id)"
+                      >
+                        {{ $t('settings.workshop.uninstall') }}
+                      </button>
+                    </div>
                   </template>
                 </div>
               </div>
@@ -1622,7 +1679,7 @@
             >
               {{ $t('settings.workshop.detailClose') }}
             </button>
-            <template v-if="installingId === selectedPkg.id">
+            <template v-if="isInstalling(selectedPkg.id)">
               <span class="flex
                 items-center
                 gap-1.5
@@ -1650,24 +1707,41 @@
                 </span>
               </span>
             </template>
-            <button
-              v-else-if="installedMap[selectedPkg.id]"
-              class="rounded-xl
-                border
-                border-white/10
-                bg-white/5
-                px-4
-                py-2
-                text-sm
-                text-white/60
-                transition-colors
-                hover:bg-white/10
-                hover:text-red-300"
-              :disabled="installingId !== null"
-              @click="uninstallPkg(selectedPkg.id)"
-            >
-              {{ $t('settings.workshop.uninstall') }}
-            </button>
+            <template v-else-if="installedMap[selectedPkg.id]">
+              <button
+                v-if="hasUpdateMap[selectedPkg.id]"
+                class="rounded-xl
+                  border
+                  border-amber-400/30
+                  bg-amber-400/10
+                  px-4
+                  py-2
+                  text-sm
+                  font-semibold
+                  text-amber-300
+                  transition-colors
+                  hover:bg-amber-400/20"
+                @click="installPkg(selectedPkg.id)"
+              >
+                {{ $t('settings.workshop.update') }}
+              </button>
+              <button
+                class="rounded-xl
+                  border
+                  border-white/10
+                  bg-white/5
+                  px-4
+                  py-2
+                  text-sm
+                  text-white/60
+                  transition-colors
+                  hover:bg-white/10
+                  hover:text-red-300"
+                @click="uninstallPkg(selectedPkg.id)"
+              >
+                {{ $t('settings.workshop.uninstall') }}
+              </button>
+            </template>
             <button
               v-else
               class="rounded-xl
@@ -1681,10 +1755,7 @@
                 text-white/70
                 transition-all
                 hover:border-[color:var(--cat-color,#79d9ff)]
-                hover:text-[color:var(--cat-color,#79d9ff)]
-                disabled:cursor-not-allowed
-                disabled:opacity-40"
-              :disabled="installingId !== null"
+                hover:text-[color:var(--cat-color,#79d9ff)]"
               @click="installPkg(selectedPkg.id)"
             >
               {{ $t('settings.workshop.install') }}
@@ -1756,11 +1827,42 @@ const marketPackages = ref<MarketPackage[]>([])
 const installedMap = ref<Record<string, InstalledRecord>>({})
 const marketLoading = ref(false)
 const marketError = ref<string | null>(null)
-const installingId = ref<string | null>(null)
+// 并行下载：从单个 installingId 改为 Set，支持多个同时下载
+const installingIds = ref<Set<string>>(new Set())
 const progressPercent = ref<Record<string, number>>({})
 const progressBytes = ref<Record<string, number>>({})
 const progressPhase = ref<Record<string, string>>({})
 let unlistenProgress: (() => void) | null = null
+
+/** 判断指定包是否正在安装（用于模板） */
+function isInstalling(id: string): boolean {
+  return installingIds.value.has(id)
+}
+
+/** 语义化版本比较：v1 > v2 返回 1，相等返回 0，v1 < v2 返回 -1 */
+function compareVer(v1: string, v2: string): number {
+  const a = v1.split('.').map(Number)
+  const b = v2.split('.').map(Number)
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] || 0
+    const y = b[i] || 0
+    if (x > y) return 1
+    if (x < y) return -1
+  }
+  return 0
+}
+
+/** 更新检测：已装包是否有新版本（市场版本 > 已装版本） */
+const hasUpdateMap = computed(() => {
+  const map: Record<string, boolean> = {}
+  for (const [id, rec] of Object.entries(installedMap.value)) {
+    const cloud = marketPackages.value.find((p) => p.id === id)
+    if (cloud && compareVer(cloud.version, rec.version) > 0) {
+      map[id] = true
+    }
+  }
+  return map
+})
 
 // 包详情弹窗
 const selectedPkg = ref<MarketPackage | null>(null)
@@ -1866,12 +1968,42 @@ function manifestTools(
 const marketFilter = ref<string | null>(null)
 const marketQuery = ref('')
 
+// 仅按搜索词过滤（不按类型过滤），用于类型筛选按钮的计数
+const cloudPackagesQueryOnly = computed(() => {
+  const q = marketQuery.value.trim().toLowerCase()
+  return marketPackages.value.filter((pkg) => {
+    if (installedMap.value[pkg.id]) return false
+    if (!q) return true
+    return `${pkg.name} ${pkg.author ?? ''} ${pkg.description ?? ''}`
+      .toLowerCase()
+      .includes(q)
+  })
+})
+
+const installedPackagesQueryOnly = computed(() => {
+  const marketMap = new Map(marketPackages.value.map((p) => [p.id, p]))
+  const q = marketQuery.value.trim().toLowerCase()
+  return Object.values(installedMap.value)
+    .map((rec) => marketMap.get(rec.id) ?? ({
+      id: rec.id,
+      name: rec.id,
+      type: rec.type,
+      version: rec.version,
+    }))
+    .filter((pkg) => {
+      if (!q) return true
+      return `${pkg.name} ${pkg.author ?? ''} ${pkg.description ?? ''}`
+        .toLowerCase()
+        .includes(q)
+    })
+})
+
 const marketFilters = computed(() => {
-  // 类型筛选作用于当前子标签的数据源
+  // 计数用「仅按搜索词过滤」的数据源，避免选择类型后其他类型计数消失
   const source =
     marketSubTab.value === 'installed'
-      ? installedMarketPackages.value
-      : filteredMarketPackages.value
+      ? installedPackagesQueryOnly.value
+      : cloudPackagesQueryOnly.value
   const counts: Record<string, number> = {}
   for (const p of source) {
     counts[p.type] = (counts[p.type] || 0) + 1
@@ -1951,8 +2083,8 @@ async function loadMarket() {
 }
 
 async function installPkg(id: string) {
-  if (installingId.value) return
-  installingId.value = id
+  if (installingIds.value.has(id)) return
+  installingIds.value = new Set([...installingIds.value, id])
   progressPercent.value[id] = 0
   progressBytes.value[id] = 0
   progressPhase.value[id] = 'download'
@@ -1969,18 +2101,20 @@ async function installPkg(id: string) {
       message: typeof e === 'string' ? e : err?.message,
     })
   } finally {
-    installingId.value = null
+    const next = new Set(installingIds.value)
+    next.delete(id)
+    installingIds.value = next
   }
 }
 
 async function uninstallPkg(id: string) {
-  if (installingId.value) return
+  if (installingIds.value.has(id)) return
   const pkg = marketPackages.value.find((p) => p.id === id)
   const confirmed = await dialogStore.confirm(
     t('settings.workshop.uninstallConfirm', { name: pkg?.name ?? id }),
   )
   if (!confirmed) return
-  installingId.value = id
+  installingIds.value = new Set([...installingIds.value, id])
   try {
     await uninstallPackage(id)
     await loadInstalled()
@@ -1993,8 +2127,21 @@ async function uninstallPkg(id: string) {
       message: typeof e === 'string' ? e : err?.message,
     })
   } finally {
-    installingId.value = null
+    const next = new Set(installingIds.value)
+    next.delete(id)
+    installingIds.value = next
   }
+}
+
+/** 取消下载 */
+function cancelInstall(id: string) {
+  // 前端标记取消（后端 CancellationToken 预留，当前版本先做前端取消）
+  const next = new Set(installingIds.value)
+  next.delete(id)
+  installingIds.value = next
+  delete progressPercent.value[id]
+  delete progressBytes.value[id]
+  delete progressPhase.value[id]
 }
 
 const goBack = () => {
@@ -2162,12 +2309,13 @@ onMounted(() => {
   // 恢复上次会话/切页时仍在进行的安装：按钮回到「安装中」并显示当前进度，
   // 避免用户切页回来看到「安装」按钮而重复触发（后端也有防重入兜底）。
   fetchInstalling()
-    .then((task) => {
-      if (!task) return
-      installingId.value = task.id
-      progressPercent.value[task.id] = task.percent
-      progressBytes.value[task.id] = 0
-      progressPhase.value[task.id] = task.phase
+    .then((tasks) => {
+      for (const task of tasks) {
+        installingIds.value = new Set([...installingIds.value, task.id])
+        progressPercent.value[task.id] = task.percent
+        progressBytes.value[task.id] = 0
+        progressPhase.value[task.id] = task.phase
+      }
     })
     .catch(() => {
       /* 查询失败不阻塞页面 */
@@ -2178,7 +2326,9 @@ onMounted(() => {
     if (p.phase) progressPhase.value[p.id] = p.phase
     // done：任务结束，清掉进行中标记让按钮回到「安装/已安装」
     if (p.phase === 'done') {
-      if (installingId.value === p.id) installingId.value = null
+      const next = new Set(installingIds.value)
+      next.delete(p.id)
+      installingIds.value = next
       loadInstalled()
       notifyMarketChanged()
     }

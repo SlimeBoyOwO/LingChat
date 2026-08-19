@@ -48,9 +48,9 @@ export async function fetchInstalled(): Promise<InstalledRecord[]> {
   return invoke('market_installed')
 }
 
-/** 查询是否有安装任务进行中（切页/重挂载后恢复按钮与进度） */
-export async function fetchInstalling(): Promise<InstallTask | null> {
-  return invoke<InstallTask | null>('market_installing')
+/** 查询所有进行中的安装任务（切页/重挂载后恢复按钮与进度，支持并行下载） */
+export async function fetchInstalling(): Promise<InstallTask[]> {
+  return invoke<InstallTask[]>('market_installing')
 }
 
 export async function installPackage(id: string): Promise<void> {

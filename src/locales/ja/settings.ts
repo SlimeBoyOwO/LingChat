@@ -302,6 +302,9 @@ export default {
     installSuccess: 'インストール完了',
     uninstallSuccess: 'アンインストール完了',
     installing: 'インストール中…',
+    cancel: 'キャンセル',
+    hasUpdate: '更新あり',
+    update: '更新',
     uninstallConfirm: '「{name}」をアンインストールしますか？インストール済みの内容が削除されます。',
     time: {
       justNow: 'たった今',

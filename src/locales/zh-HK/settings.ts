@@ -300,6 +300,9 @@ export default {
     "installSuccess": "安裝成功",
     "uninstallSuccess": "卸載成功",
     "installing": "安裝中…",
+    "cancel": "取消",
+    "hasUpdate": "有更新",
+    "update": "更新",
     "uninstallConfirm": "確定卸載「{name}」嗎？此操作會刪除已安裝嘅內容",
     "time": {
       "justNow": "啱啱",

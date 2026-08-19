@@ -164,31 +164,49 @@ pub struct InstallTask {
     pub percent: u8,
 }
 
-/// 全局唯一的进行中安装任务；`None` 表示空闲。
-/// 防重入：同一时刻只允许一个安装（下载写同一 zip 缓存路径，并发会互相覆盖）。
-static INSTALLING: Mutex<Option<InstallTask>> = Mutex::new(None);
+/// 进行中的安装任务集合（支持并行下载）。
+/// 每个包 id 对应一个任务，多个包可同时下载。
+static INSTALLING: Mutex<Option<HashMap<String, InstallTask>>> = Mutex::new(None);
 
-/// 读取当前进行中的安装任务（无则 None）。用于前端恢复按钮状态。
-fn installing_task() -> Option<InstallTask> {
-    INSTALLING.lock().ok().and_then(|g| g.clone())
+/// 读取所有进行中的安装任务。用于前端恢复按钮状态。
+fn installing_tasks() -> Vec<InstallTask> {
+    INSTALLING
+        .lock()
+        .ok()
+        .and_then(|g| g.clone())
+        .map(|m| m.into_values().collect())
+        .unwrap_or_default()
+}
+
+/// 读取指定 id 的进行中的安装任务。
+fn installing_task(id: &str) -> Option<InstallTask> {
+    INSTALLING
+        .lock()
+        .ok()
+        .and_then(|g| g.clone())
+        .and_then(|m| m.get(id).cloned())
 }
 
 /// 更新进行中任务的进度（下载/解包阶段回调）。
 fn update_installing(id: &str, phase: &str, percent: u8) {
     if let Ok(mut g) = INSTALLING.lock() {
-        *g = Some(InstallTask {
-            id: id.to_string(),
-            phase: phase.to_string(),
-            percent,
-        });
+        let m = g.get_or_insert_with(HashMap::new);
+        m.insert(
+            id.to_string(),
+            InstallTask {
+                id: id.to_string(),
+                phase: phase.to_string(),
+                percent,
+            },
+        );
     }
 }
 
-/// 清除进行中任务（安装完成/失败/被重入拒绝时调用）。
+/// 清除指定 id 的进行中任务（安装完成/失败时调用）。
 fn clear_installing(id: &str) {
     if let Ok(mut g) = INSTALLING.lock() {
-        if g.as_ref().map(|t| t.id.as_str()) == Some(id) {
-            *g = None;
+        if let Some(m) = g.as_mut() {
+            m.remove(id);
         }
     }
 }
@@ -359,33 +377,31 @@ pub async fn market_installed() -> Result<Vec<InstalledRecord>, String> {
     Ok(read_records().into_values().collect())
 }
 
-/// 当前是否有安装任务进行中（供前端恢复按钮/进度，无则 None）。
+/// 获取所有进行中的安装任务（供前端恢复按钮/进度，无则空数组）。
+/// 支持并行下载：每个包独立跟踪进度。
 #[tauri::command]
-pub async fn market_installing() -> Result<Option<InstallTask>, String> {
-    Ok(installing_task())
+pub async fn market_installing() -> Result<Vec<InstallTask>, String> {
+    Ok(installing_tasks())
 }
 
 /// 下载并安装市场包。
 ///
 /// 流程：索引查条目 → 下载 zip（带进度事件）→ sha256 校验 → 解包安装
 /// → 写安装记录 → 插件类 reload 注册工具。
+///
+/// 支持并行下载：多个包可同时安装（各自写独立缓存路径，互不覆盖）；
+/// 仅禁止同一包的重复安装。
 #[tauri::command]
 pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
-    // 防重入：同一时刻只允许一个安装（下载写同一 zip 缓存路径，并发互相覆盖会损坏文件）。
+    // 防重入：只禁止同一包的重复安装（每个包写独立缓存路径，不同包可并行）。
     // 前端切页/重挂载后按钮状态由 market_installing 恢复，这里兜底拦截重复触发。
-    if let Some(task) = installing_task() {
-        if task.id == id {
-            return Err(format!("包 '{id}' 正在安装中，请稍候"));
-        }
-        return Err(format!(
-            "已有安装任务进行中（{}），请等待其完成后再试",
-            task.id
-        ));
+    if let Some(task) = installing_task(&id) {
+        return Err(format!("包 '{id}' 正在安装中（{}%），请稍候", task.percent));
     }
     update_installing(&id, "download", 0);
 
     let result = market_install_inner(app, id.clone()).await;
-    // 无论成功失败都清除进行中标记（clear_installing 内部校验 id 匹配，不会误清新任务）
+    // 无论成功失败都清除进行中标记（clear_installing 按 id 清除，不会误清新任务）
     clear_installing(&id);
     result
 }
@@ -419,6 +435,11 @@ async fn market_install_inner(app: AppHandle, id: String) -> Result<(), String> 
     let client = build_client()?;
     let expected = pkg.size.unwrap_or(0);
 
+    // 大文件（>5MB）使用多线程分片下载加速；小文件用单线程
+    const PARALLEL_THRESHOLD: u64 = 5 * 1024 * 1024;
+    const PARALLEL_CHUNKS: usize = 4;
+    let use_parallel = expected > PARALLEL_THRESHOLD;
+
     // 下载地址（动态索引下 build.json 缺失时已按 Release 规则推导，理论不会为空）
     let download_url = pkg
         .download_url
@@ -439,18 +460,30 @@ async fn market_install_inner(app: AppHandle, id: String) -> Result<(), String> 
         let mut src_err = String::new();
         // 每源最多 2 次（连接超时 8s，不可达镜像很快失败并换下一源，避免长时间卡住）
         for attempt in 0..2 {
-            let _ = std::fs::remove_file(&zip_path);
             let progress = progress.clone();
-            match crate::utils::download::download_to_file(
-                &client,
-                src,
-                &zip_path,
-                None,
-                progress,
-                expected,
-            )
-            .await
-            {
+            let result = if use_parallel {
+                crate::utils::download::download_to_file_parallel(
+                    &client,
+                    src,
+                    &zip_path,
+                    None,
+                    progress,
+                    expected,
+                    PARALLEL_CHUNKS,
+                )
+                .await
+            } else {
+                crate::utils::download::download_to_file(
+                    &client,
+                    src,
+                    &zip_path,
+                    None,
+                    progress,
+                    expected,
+                )
+                .await
+            };
+            match result {
                 Ok(bytes) => {
                     // 大小校验：下载字节数不足说明连接提前中断（截断文件），视为该源失败换下一源
                     if expected > 0 && bytes < expected {
@@ -474,6 +507,8 @@ async fn market_install_inner(app: AppHandle, id: String) -> Result<(), String> 
                                     "sha256 校验失败（声明 {declared}，实际 {actual}）"
                                 );
                                 tracing::warn!("市场包 '{}' {}（源 {}）", id, src_err, src);
+                                // 删除损坏的文件，避免下次尝试误认为可续传
+                                let _ = std::fs::remove_file(&zip_path);
                                 if attempt + 1 < 2 {
                                     tokio::time::sleep(std::time::Duration::from_millis(
                                         BASE_DELAY_MS * (1 << attempt),
@@ -484,6 +519,7 @@ async fn market_install_inner(app: AppHandle, id: String) -> Result<(), String> 
                             }
                             Err(e) => {
                                 src_err = format!("sha256 计算失败: {e}");
+                                let _ = std::fs::remove_file(&zip_path);
                                 continue;
                             }
                         }
