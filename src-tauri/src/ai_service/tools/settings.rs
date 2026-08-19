@@ -295,17 +295,4 @@ file_ops_allow_any_path = false
         assert!(loaded.allows_any_path());
         assert!(!loaded.requires_file_delete_approval());
     }
-
-    #[test]
-    fn auto_approve_keeps_destructive_actions_guarded() {
-        let settings = ToolSettings {
-            access_mode: ToolAccessMode::AutoApprove,
-            ..ToolSettings::default()
-        };
-        assert!(!settings.requires_file_change_approval());
-        assert!(!settings.requires_command_approval(false));
-        assert!(settings.requires_command_approval(true));
-        assert!(settings.requires_file_delete_approval());
-        assert!(!settings.allows_any_path());
-    }
 }

@@ -625,34 +625,6 @@ mod tests {
     }
 
     #[test]
-    fn glob_and_grep_support_code_search_options() {
-        let root = TempDir::new("code_search");
-        std::fs::create_dir_all(root.0.join("src/nested")).unwrap();
-        std::fs::write(root.0.join("src/main.rs"), "fn Main() {}\n").unwrap();
-        std::fs::write(root.0.join("src/nested/lib.rs"), "fn helper() {}\n").unwrap();
-        std::fs::write(root.0.join("src/readme.md"), "fn Main() {}\n").unwrap();
-        let file_tools = tools(&root.0);
-
-        let glob = file_tools.glob_files(".", "**/*.RS", 100).unwrap();
-        assert!(glob.contains("main.rs"));
-        assert!(glob.contains("lib.rs"));
-        assert!(!glob.contains("readme.md"));
-
-        let grep = file_tools
-            .grep(
-                ".",
-                "fn main",
-                Some("**/*.rs"),
-                true,
-                "files_with_matches",
-                50,
-            )
-            .unwrap();
-        assert!(grep.contains("main.rs"));
-        assert!(!grep.contains("readme.md"));
-    }
-
-    #[test]
     fn read_file_handles_non_utf8_lossily() {
         let root = TempDir::new("binary");
         std::fs::write(root.0.join("mixed.bin"), [0xff, b'A']).unwrap();

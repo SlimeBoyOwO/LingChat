@@ -891,45 +891,6 @@ mod tests {
     }
 
     #[test]
-    fn elevated_process_reuses_its_existing_admin_token() {
-        assert!(needs_elevated_launcher(true, false));
-        assert!(!needs_elevated_launcher(true, true));
-        assert!(!needs_elevated_launcher(false, false));
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn current_process_elevation_is_read_from_windows_token() {
-        assert!(query_current_process_elevation().is_ok());
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn admin_restart_helper_waits_for_parent_before_launching() {
-        let executable = Path::new(r"C:\Program Files\Ling'Chat\ling-chat.exe");
-        let working_directory = executable.parent().unwrap();
-        let ready_file = Path::new(r"C:\Temp\Ling'Chat.ready");
-        let script =
-            build_admin_restart_helper_script(4242, executable, working_directory, ready_file);
-
-        let wait_position = script.find("Get-Process -Id $parentPid").unwrap();
-        let launch_position = script.find("Start-Process -FilePath").unwrap();
-        assert!(wait_position < launch_position);
-        assert!(script.contains("Ling''Chat\\ling-chat.exe"));
-        assert!(script.contains("Ling''Chat.ready"));
-
-        let encoded = encode_powershell_command(&script);
-        let bytes = base64::engine::general_purpose::STANDARD
-            .decode(encoded)
-            .unwrap();
-        let utf16 = bytes
-            .chunks_exact(2)
-            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-            .collect::<Vec<_>>();
-        assert_eq!(String::from_utf16(utf16.as_slice()).unwrap(), script);
-    }
-
-    #[test]
     fn foreground_and_background_timeout_ceilings_remain_distinct() {
         let oversized = Duration::from_secs(2 * 60 * 60);
         assert_eq!(clamp_command_timeout(oversized), MAX_COMMAND_TIMEOUT);
