@@ -69,9 +69,15 @@ pub async fn restart_tool_process_as_admin(app: tauri::AppHandle) -> Result<(), 
         .await
         .map_err(|error| format!("管理员重启任务异常: {error}"))?
         .map_err(|error| error.to_string())?;
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    // 使用独立系统线程而不是 Tauri async runtime：`app.exit(0)` 会关闭窗口并触发
+    // 退出存档，但某些仍在运行的后台任务可能让进程继续残留。重启场景下必须保证
+    // 旧 PID 最终释放，否则已提权的辅助进程会一直等不到启动新实例的时机。
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(150));
         app.exit(0);
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        tracing::warn!("管理员重启时旧进程未在宽限期内退出，正在结束残留进程");
+        std::process::exit(0);
     });
     Ok(())
 }
