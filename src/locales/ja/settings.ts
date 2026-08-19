@@ -282,6 +282,8 @@ export default {
     marketHint: 'AI 自動審査のマーケット：インストール＝審査結果を信頼',
     marketEmpty: 'インストール可能なパッケージはまだありません',
     marketNoMatch: '該当するパッケージが見つかりません',
+    installedHeader: 'インストール済み',
+    cloudHeader: 'クラウド',
     searchPlaceholder: 'パッケージ名・作者・説明を検索',
     detailCategory: 'カテゴリ',
     detailTags: 'タグ',

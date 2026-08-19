@@ -283,6 +283,8 @@ export default {
     marketHint: 'AI 全自动审核的市场：安装即信任审核结果',
     marketEmpty: '市场暂时没有可安装的包',
     marketNoMatch: '没有找到匹配的包',
+    installedHeader: '已安装',
+    cloudHeader: '云端',
     searchPlaceholder: '搜索包名 / 作者 / 描述',
     detailCategory: '分类',
     detailTags: '标签',

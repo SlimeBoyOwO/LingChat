@@ -853,250 +853,516 @@
             <p class="text-white/50">{{ $t('settings.workshop.marketNoMatch') }}</p>
           </div>
 
-          <!-- 包卡片网格（风格对齐创意工坊讨论卡片：左侧封面区 + 右侧信息区） -->
+          <!-- 已安装区块 -->
           <div
-            v-else
-            class="grid
+            v-if="installedMarketPackages.length > 0"
+            class="mb-6"
+          >
+            <h3 class="mb-3 text-sm font-semibold text-white/60">
+              {{ $t('settings.workshop.installedHeader') }} ({{ installedMarketPackages.length }})
+            </h3>
+            <div class="grid
               w-full
               gap-5
               grid-cols-1
-              xl:grid-cols-2"
-          >
-            <div
-              v-for="pkg in filteredMarketPackages"
-              :key="pkg.id"
-              class="group
-                relative
-                flex
-                items-start
-                rounded-2xl
-                border
-                border-white/10
-                bg-white/10
-                p-5
-                backdrop-blur-xl
-                transition-all
-                duration-300
-                hover:-translate-y-0.5
-                hover:border-white/20
-                hover:shadow-xl
-                hover:shadow-white/5
-                cursor-pointer"
-              @click="openDetail(pkg)"
-            >
-              <!-- 左侧：封面区（类型主色渐变 + 图标 + 类型徽章） -->
-              <div class="flex
-                w-28
-                shrink-0
-                flex-col
-                items-center
-                gap-3
-                border-r
-                border-white/10
-                pr-5">
-                <div
-                  class="flex
-                    h-24
-                    w-24
-                    shrink-0
-                    items-center
-                    justify-center
-                    overflow-hidden
-                    rounded-2xl
-                    border
-                    border-white/15
-                    shadow-lg
-                    transition-transform
-                    duration-500
-                    group-hover:scale-105"
-                  :style="{ background: typeCover(pkg.type) }"
-                >
-                  <component
-                    :is="typeIcon(pkg.type)"
-                    :size="40"
-                    class="text-white/90
-                      drop-shadow-md"
-                  />
-                </div>
-                <span
-                  class="rounded-full
-                    border
-                    px-3
-                    py-0.5
-                    text-center
-                    text-sm
-                    font-medium
-                    leading-5"
-                  :style="{
-                    backgroundColor: typeColor(pkg.type).bg,
-                    borderColor: typeColor(pkg.type).fg + '4D',
-                    color: typeColor(pkg.type).fg,
-                  }"
-                >
-                  {{ typeLabel(pkg.type) }}
-                </span>
-              </div>
-
-              <!-- 右侧：信息区 -->
-              <div class="flex
-                h-full
-                min-w-0
-                flex-1
-                flex-col
-                py-0.5
-                pl-4">
-                <!-- 名称 + 版本 -->
-                <div class="flex
-                  items-center
-                  justify-between
-                  gap-2">
-                  <h3 class="line-clamp-1
-                    text-base
-                    font-bold
-                    text-white">{{ pkg.name }}</h3>
-                  <span class="shrink-0
-                    text-xs
-                    text-white/40">v{{ pkg.version }}</span>
-                </div>
-                <!-- 描述 -->
-                <p class="mt-1.5
-                  line-clamp-2
-                  text-sm
-                  leading-relaxed
-                  text-white/60">{{ pkg.description || $t('settings.workshop.noDesc') }}</p>
-                <!-- 作者 -->
-                <p class="mt-1
-                  text-xs
-                  text-white/35">{{ pkg.author }}</p>
-
-                <!-- 底部：状态 + 操作 -->
-                <div class="mt-auto
+              xl:grid-cols-2">
+              <div
+                v-for="pkg in installedMarketPackages"
+                :key="pkg.id"
+                class="group
+                  relative
                   flex
+                  items-start
+                  rounded-2xl
+                  border
+                  border-white/10
+                  bg-white/10
+                  p-5
+                  backdrop-blur-xl
+                  transition-all
+                  duration-300
+                  hover:-translate-y-0.5
+                  hover:border-white/20
+                  hover:shadow-xl
+                  hover:shadow-white/5
+                  cursor-pointer"
+                @click="openDetail(pkg)"
+              >
+                <!-- 左侧：封面区（类型主色渐变 + 图标 + 类型徽章） -->
+                <div class="flex
+                  w-28
+                  shrink-0
+                  flex-col
                   items-center
-                  justify-between
-                  gap-2
-                  border-t
-                  border-white/5
-                  pt-2.5">
-                  <template v-if="installingId === pkg.id">
-                    <template v-if="progressPhase[pkg.id] === 'install'">
+                  gap-3
+                  border-r
+                  border-white/10
+                  pr-5">
+                  <div
+                    class="flex
+                      h-24
+                      w-24
+                      shrink-0
+                      items-center
+                      justify-center
+                      overflow-hidden
+                      rounded-2xl
+                      border
+                      border-white/15
+                      shadow-lg
+                      transition-transform
+                      duration-500
+                      group-hover:scale-105"
+                    :style="{ background: typeCover(pkg.type) }"
+                  >
+                    <component
+                      :is="typeIcon(pkg.type)"
+                      :size="40"
+                      class="text-white/90
+                        drop-shadow-md"
+                    />
+                  </div>
+                  <span
+                    class="rounded-full
+                      border
+                      px-3
+                      py-0.5
+                      text-center
+                      text-sm
+                      font-medium
+                      leading-5"
+                    :style="{
+                      backgroundColor: typeColor(pkg.type).bg,
+                      borderColor: typeColor(pkg.type).fg + '4D',
+                      color: typeColor(pkg.type).fg,
+                    }"
+                  >
+                    {{ typeLabel(pkg.type) }}
+                  </span>
+                </div>
+
+                <!-- 右侧：信息区 -->
+                <div class="flex
+                  h-full
+                  min-w-0
+                  flex-1
+                  flex-col
+                  py-0.5
+                  pl-4">
+                  <!-- 名称 + 版本 -->
+                  <div class="flex
+                    items-center
+                    justify-between
+                    gap-2">
+                    <h3 class="line-clamp-1
+                      text-base
+                      font-bold
+                      text-white">{{ pkg.name }}</h3>
+                    <span class="shrink-0
+                      text-xs
+                      text-white/40">v{{ pkg.version }}</span>
+                  </div>
+                  <!-- 描述 -->
+                  <p class="mt-1.5
+                    line-clamp-2
+                    text-sm
+                    leading-relaxed
+                    text-white/60">{{ pkg.description || $t('settings.workshop.noDesc') }}</p>
+                  <!-- 作者 -->
+                  <p class="mt-1
+                    text-xs
+                    text-white/35">{{ pkg.author }}</p>
+
+                  <!-- 底部：状态 + 操作 -->
+                  <div class="mt-auto
+                    flex
+                    items-center
+                    justify-between
+                    gap-2
+                    border-t
+                    border-white/5
+                    pt-2.5">
+                    <template v-if="installingId === pkg.id">
+                      <template v-if="progressPhase[pkg.id] === 'install'">
+                        <span class="flex
+                          items-center
+                          gap-1.5
+                          text-xs
+                          text-white/60">
+                          {{ $t('settings.workshop.installing') }}
+                          <span class="flex
+                            items-center
+                            gap-1">
+                            <span class="h-1.5
+                              w-1.5
+                              animate-pulse
+                              rounded-full
+                              bg-[color:var(--cat-color,#79d9ff)]"></span>
+                            <span class="h-1.5
+                              w-1.5
+                              animate-pulse
+                              rounded-full
+                              bg-[color:var(--cat-color,#79d9ff)] [animation-delay:150ms]"></span>
+                            <span class="h-1.5
+                              w-1.5
+                              animate-pulse
+                              rounded-full
+                              bg-[color:var(--cat-color,#79d9ff)] [animation-delay:300ms]"></span>
+                          </span>
+                        </span>
+                      </template>
+                      <template v-else>
+                        <span class="flex
+                          items-center
+                          gap-2">
+                          <span class="text-xs
+                            text-white/50">
+                            {{ progressPercent[pkg.id] ?? 0 }}%
+                            <template v-if="progressBytes[pkg.id]">
+                              · {{ formatBytes(progressBytes[pkg.id]) }}
+                            </template>
+                          </span>
+                          <span class="h-1
+                            w-24
+                            overflow-hidden
+                            rounded-full
+                            bg-white/10">
+                            <span
+                              class="block
+                                h-full
+                                rounded-full
+                                bg-[color:var(--cat-color,#79d9ff)]
+                                transition-all
+                                duration-200"
+                              :style="{ width: (progressPercent[pkg.id] ?? 0) + '%' }"
+                            ></span>
+                          </span>
+                        </span>
+                      </template>
+                    </template>
+                    <template v-else-if="installedMap[pkg.id]">
                       <span class="flex
                         items-center
                         gap-1.5
                         text-xs
-                        text-white/60">
-                        {{ $t('settings.workshop.installing') }}
-                        <span class="flex
-                          items-center
-                          gap-1">
-                          <span class="h-1.5
-                            w-1.5
-                            animate-pulse
-                            rounded-full
-                            bg-[color:var(--cat-color,#79d9ff)]"></span>
-                          <span class="h-1.5
-                            w-1.5
-                            animate-pulse
-                            rounded-full
-                            bg-[color:var(--cat-color,#79d9ff)] [animation-delay:150ms]"></span>
-                          <span class="h-1.5
-                            w-1.5
-                            animate-pulse
-                            rounded-full
-                            bg-[color:var(--cat-color,#79d9ff)] [animation-delay:300ms]"></span>
-                        </span>
+                        text-emerald-300/80">
+                        <CheckCircle2 :size="13" />
+                        {{ $t('settings.workshop.installed') }}
+                        <template v-if="installedMap[pkg.id].version !== pkg.version">(v{{ pkg.version }})</template>
                       </span>
+                      <button
+                        class="rounded-lg
+                          border
+                          border-white/10
+                          bg-white/5
+                          px-3
+                          py-1
+                          text-xs
+                          text-white/50
+                          transition-colors
+                          hover:bg-white/10
+                          hover:text-red-300"
+                        :disabled="installingId !== null"
+                        @click.stop="uninstallPkg(pkg.id)"
+                      >
+                        {{ $t('settings.workshop.uninstall') }}
+                      </button>
                     </template>
                     <template v-else>
                       <span class="flex
                         items-center
-                        gap-2">
-                        <span class="text-xs
-                          text-white/50">
-                          {{ progressPercent[pkg.id] ?? 0 }}%
-                          <template v-if="progressBytes[pkg.id]">
-                            · {{ formatBytes(progressBytes[pkg.id]) }}
-                          </template>
-                        </span>
-                        <span class="h-1
-                          w-24
-                          overflow-hidden
-                          rounded-full
-                          bg-white/10">
-                          <span
-                            class="block
-                              h-full
-                              rounded-full
-                              bg-[color:var(--cat-color,#79d9ff)]
-                              transition-all
-                              duration-200"
-                            :style="{ width: (progressPercent[pkg.id] ?? 0) + '%' }"
-                          ></span>
-                        </span>
+                        gap-1.5
+                        text-xs
+                        text-white/35">
+                        <Download :size="13" />
+                        {{ formatBytes(pkg.size || 0) }}
                       </span>
+                      <button
+                        class="rounded-lg
+                          border
+                          border-white/10
+                          bg-white/8
+                          px-3.5
+                          py-1
+                          text-xs
+                          font-semibold
+                          text-white/70
+                          transition-all
+                          hover:border-[color:var(--cat-color,#79d9ff)]
+                          hover:text-[color:var(--cat-color,#79d9ff)]
+                          disabled:cursor-not-allowed
+                          disabled:opacity-40"
+                        :disabled="installingId !== null"
+                        @click.stop="installPkg(pkg.id)"
+                      >
+                        {{ $t('settings.workshop.install') }}
+                      </button>
                     </template>
-                  </template>
-                  <template v-else-if="installedMap[pkg.id]">
-                    <span class="flex
-                      items-center
-                      gap-1.5
-                      text-xs
-                      text-emerald-300/80">
-                      <CheckCircle2 :size="13" />
-                      {{ $t('settings.workshop.installed') }}
-                      <template v-if="installedMap[pkg.id].version !== pkg.version">(v{{ pkg.version }})</template>
-                    </span>
-                    <button
-                      class="rounded-lg
-                        border
-                        border-white/10
-                        bg-white/5
-                        px-3
-                        py-1
-                        text-xs
-                        text-white/50
-                        transition-colors
-                        hover:bg-white/10
-                        hover:text-red-300"
-                      :disabled="installingId !== null"
-                      @click.stop="uninstallPkg(pkg.id)"
-                    >
-                      {{ $t('settings.workshop.uninstall') }}
-                    </button>
-                  </template>
-                  <template v-else>
-                    <span class="flex
-                      items-center
-                      gap-1.5
-                      text-xs
-                      text-white/35">
-                      <Download :size="13" />
-                      {{ formatBytes(pkg.size || 0) }}
-                    </span>
-                    <button
-                      class="rounded-lg
-                        border
-                        border-white/10
-                        bg-white/8
-                        px-3.5
-                        py-1
-                        text-xs
-                        font-semibold
-                        text-white/70
-                        transition-all
-                        hover:border-[color:var(--cat-color,#79d9ff)]
-                        hover:text-[color:var(--cat-color,#79d9ff)]
-                        disabled:cursor-not-allowed
-                        disabled:opacity-40"
-                      :disabled="installingId !== null"
-                      @click.stop="installPkg(pkg.id)"
-                    >
-                      {{ $t('settings.workshop.install') }}
-                    </button>
-                  </template>
+                  </div>
                 </div>
               </div>
             </div>
+          </div>
+
+          <!-- 云端区块 -->
+          <div
+            v-if="cloudMarketPackages.length > 0"
+          >
+            <h3 class="mb-3 text-sm font-semibold text-white/60">
+              {{ $t('settings.workshop.cloudHeader') }} ({{ cloudMarketPackages.length }})
+            </h3>
+            <div class="grid
+              w-full
+              gap-5
+              grid-cols-1
+              xl:grid-cols-2">
+              <div
+                v-for="pkg in cloudMarketPackages"
+                :key="pkg.id"
+                class="group
+                  relative
+                  flex
+                  items-start
+                  rounded-2xl
+                  border
+                  border-white/10
+                  bg-white/10
+                  p-5
+                  backdrop-blur-xl
+                  transition-all
+                  duration-300
+                  hover:-translate-y-0.5
+                  hover:border-white/20
+                  hover:shadow-xl
+                  hover:shadow-white/5
+                  cursor-pointer"
+                @click="openDetail(pkg)"
+              >
+                <!-- 左侧：封面区（类型主色渐变 + 图标 + 类型徽章） -->
+                <div class="flex
+                  w-28
+                  shrink-0
+                  flex-col
+                  items-center
+                  gap-3
+                  border-r
+                  border-white/10
+                  pr-5">
+                  <div
+                    class="flex
+                      h-24
+                      w-24
+                      shrink-0
+                      items-center
+                      justify-center
+                      overflow-hidden
+                      rounded-2xl
+                      border
+                      border-white/15
+                      shadow-lg
+                      transition-transform
+                      duration-500
+                      group-hover:scale-105"
+                    :style="{ background: typeCover(pkg.type) }"
+                  >
+                    <component
+                      :is="typeIcon(pkg.type)"
+                      :size="40"
+                      class="text-white/90
+                        drop-shadow-md"
+                    />
+                  </div>
+                  <span
+                    class="rounded-full
+                      border
+                      px-3
+                      py-0.5
+                      text-center
+                      text-sm
+                      font-medium
+                      leading-5"
+                    :style="{
+                      backgroundColor: typeColor(pkg.type).bg,
+                      borderColor: typeColor(pkg.type).fg + '4D',
+                      color: typeColor(pkg.type).fg,
+                    }"
+                  >
+                    {{ typeLabel(pkg.type) }}
+                  </span>
+                </div>
+
+                <!-- 右侧：信息区 -->
+                <div class="flex
+                  h-full
+                  min-w-0
+                  flex-1
+                  flex-col
+                  py-0.5
+                  pl-4">
+                  <!-- 名称 + 版本 -->
+                  <div class="flex
+                    items-center
+                    justify-between
+                    gap-2">
+                    <h3 class="line-clamp-1
+                      text-base
+                      font-bold
+                      text-white">{{ pkg.name }}</h3>
+                    <span class="shrink-0
+                      text-xs
+                      text-white/40">v{{ pkg.version }}</span>
+                  </div>
+                  <!-- 描述 -->
+                  <p class="mt-1.5
+                    line-clamp-2
+                    text-sm
+                    leading-relaxed
+                    text-white/60">{{ pkg.description || $t('settings.workshop.noDesc') }}</p>
+                  <!-- 作者 -->
+                  <p class="mt-1
+                    text-xs
+                    text-white/35">{{ pkg.author }}</p>
+
+                  <!-- 底部：状态 + 操作 -->
+                  <div class="mt-auto
+                    flex
+                    items-center
+                    justify-between
+                    gap-2
+                    border-t
+                    border-white/5
+                    pt-2.5">
+                    <template v-if="installingId === pkg.id">
+                      <template v-if="progressPhase[pkg.id] === 'install'">
+                        <span class="flex
+                          items-center
+                          gap-1.5
+                          text-xs
+                          text-white/60">
+                          {{ $t('settings.workshop.installing') }}
+                          <span class="flex
+                            items-center
+                            gap-1">
+                            <span class="h-1.5
+                              w-1.5
+                              animate-pulse
+                              rounded-full
+                              bg-[color:var(--cat-color,#79d9ff)]"></span>
+                            <span class="h-1.5
+                              w-1.5
+                              animate-pulse
+                              rounded-full
+                              bg-[color:var(--cat-color,#79d9ff)] [animation-delay:150ms]"></span>
+                            <span class="h-1.5
+                              w-1.5
+                              animate-pulse
+                              rounded-full
+                              bg-[color:var(--cat-color,#79d9ff)] [animation-delay:300ms]"></span>
+                          </span>
+                        </span>
+                      </template>
+                      <template v-else>
+                        <span class="flex
+                          items-center
+                          gap-2">
+                          <span class="text-xs
+                            text-white/50">
+                            {{ progressPercent[pkg.id] ?? 0 }}%
+                            <template v-if="progressBytes[pkg.id]">
+                              · {{ formatBytes(progressBytes[pkg.id]) }}
+                            </template>
+                          </span>
+                          <span class="h-1
+                            w-24
+                            overflow-hidden
+                            rounded-full
+                            bg-white/10">
+                            <span
+                              class="block
+                                h-full
+                                rounded-full
+                                bg-[color:var(--cat-color,#79d9ff)]
+                                transition-all
+                                duration-200"
+                              :style="{ width: (progressPercent[pkg.id] ?? 0) + '%' }"
+                            ></span>
+                          </span>
+                        </span>
+                      </template>
+                    </template>
+                    <template v-else-if="installedMap[pkg.id]">
+                      <span class="flex
+                        items-center
+                        gap-1.5
+                        text-xs
+                        text-emerald-300/80">
+                        <CheckCircle2 :size="13" />
+                        {{ $t('settings.workshop.installed') }}
+                        <template v-if="installedMap[pkg.id].version !== pkg.version">(v{{ pkg.version }})</template>
+                      </span>
+                      <button
+                        class="rounded-lg
+                          border
+                          border-white/10
+                          bg-white/5
+                          px-3
+                          py-1
+                          text-xs
+                          text-white/50
+                          transition-colors
+                          hover:bg-white/10
+                          hover:text-red-300"
+                        :disabled="installingId !== null"
+                        @click.stop="uninstallPkg(pkg.id)"
+                      >
+                        {{ $t('settings.workshop.uninstall') }}
+                      </button>
+                    </template>
+                    <template v-else>
+                      <span class="flex
+                        items-center
+                        gap-1.5
+                        text-xs
+                        text-white/35">
+                        <Download :size="13" />
+                        {{ formatBytes(pkg.size || 0) }}
+                      </span>
+                      <button
+                        class="rounded-lg
+                          border
+                          border-white/10
+                          bg-white/8
+                          px-3.5
+                          py-1
+                          text-xs
+                          font-semibold
+                          text-white/70
+                          transition-all
+                          hover:border-[color:var(--cat-color,#79d9ff)]
+                          hover:text-[color:var(--cat-color,#79d9ff)]
+                          disabled:cursor-not-allowed
+                          disabled:opacity-40"
+                        :disabled="installingId !== null"
+                        @click.stop="installPkg(pkg.id)"
+                      >
+                        {{ $t('settings.workshop.install') }}
+                      </button>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 空态：筛选/搜索无结果 -->
+          <div
+            v-if="filteredMarketPackages.length === 0"
+            class="flex
+              items-center
+              justify-center
+              py-12"
+          >
+            <p class="text-white/50">{{ $t('settings.workshop.marketNoMatch') }}</p>
           </div>
         </div>
         <!-- /市场区块 -->
@@ -1487,6 +1753,7 @@ import {
   Cat,
   CheckCircle2,
   Clock,
+  Cloud,
   Clover,
   Download,
   ExternalLink,
@@ -1663,6 +1930,16 @@ const filteredMarketPackages = computed(() => {
       .includes(q)
   })
 })
+
+/** 已安装包（筛选/搜索后） */
+const installedMarketPackages = computed(() =>
+  filteredMarketPackages.value.filter((pkg) => installedMap.value[pkg.id]),
+)
+
+/** 云端可下载包（筛选/搜索后） */
+const cloudMarketPackages = computed(() =>
+  filteredMarketPackages.value.filter((pkg) => !installedMap.value[pkg.id]),
+)
 
 async function loadInstalled() {
   try {

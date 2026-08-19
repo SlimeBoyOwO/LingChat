@@ -283,6 +283,8 @@ export default {
     marketHint: "AI-reviewed marketplace: install = trust the review",
     marketEmpty: "No installable packages yet",
     marketNoMatch: "No matching packages found",
+    installedHeader: "Installed",
+    cloudHeader: "Cloud",
     searchPlaceholder: "Search name / author / description",
     detailCategory: "Category",
     detailTags: "Tags",
