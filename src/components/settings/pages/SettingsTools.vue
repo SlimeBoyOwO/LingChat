@@ -139,38 +139,72 @@
         <p class="text-sm text-gray-400 px-1 mb-2">{{ $t('ui.toolCalls.imageGenHint') }}</p>
 
         <label class="inline-flex items-center font-medium text-brand mt-4">
+          {{ $t('ui.toolCalls.naiProvider') }}
+        </label>
+        <select
+          v-model="form.image_gen.provider"
+          class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200 cursor-pointer"
+        >
+          <option value="novelai" class="bg-slate-800 text-white">
+            {{ $t('ui.toolCalls.naiProviderOfficial') }}
+          </option>
+          <option value="rinko" class="bg-slate-800 text-white">
+            {{ $t('ui.toolCalls.naiProviderRinko') }}
+          </option>
+          <option value="custom" class="bg-slate-800 text-white">
+            {{ $t('ui.toolCalls.providerCustom') }}
+          </option>
+        </select>
+        <p v-if="form.image_gen.provider !== 'novelai'" class="text-sm text-amber-400 px-1 mt-2">
+          {{ $t('ui.toolCalls.naiThirdPartyHint') }}
+        </p>
+
+        <template v-if="form.image_gen.provider === 'custom'">
+          <label class="inline-flex items-center font-medium text-brand mt-4">
+            {{ $t('ui.toolCalls.baseUrl') }}
+          </label>
+          <input
+            type="text"
+            v-model="form.image_gen.base_url"
+            placeholder="https://image.novelai.net"
+            class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+          />
+          <p class="text-sm mt-1 text-gray-400">{{ $t('ui.toolCalls.naiBaseUrlHint') }}</p>
+        </template>
+
+        <label class="inline-flex items-center font-medium text-brand mt-4">
           {{ $t('ui.toolCalls.naiToken') }}
         </label>
-        <p class="text-sm mt-1 mb-2 text-gray-300">{{ $t('ui.toolCalls.naiTokenHint') }}</p>
+        <p class="text-sm mt-1 mb-2 text-gray-300">
+          {{
+            form.image_gen.provider === 'novelai'
+              ? $t('ui.toolCalls.naiTokenHint')
+              : $t('ui.toolCalls.naiTokenHintRelay')
+          }}
+        </p>
         <input
           type="password"
           v-model="form.image_gen.api_token"
-          :placeholder="$t('ui.toolCalls.naiTokenPlaceholder')"
+          :placeholder="form.image_gen.provider === 'novelai' ? 'pst-...' : 'sk-... / ynai-...'"
           class="w-full mt-1 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
         />
 
         <label class="inline-flex items-center font-medium text-brand mt-4">
           {{ $t('ui.toolCalls.naiModel') }}
         </label>
+        <!-- 模型名依服务商而异：官方只认 -curated-preview / nai-diffusion-furry-3，
+             中转站认的恰好是官方会拒绝的那两个拼写（实测各自的 /v1/models） -->
         <select
           v-model="form.image_gen.model"
           class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200 cursor-pointer"
         >
-          <option value="nai-diffusion-4-5-full" class="bg-slate-800 text-white">
-            NAI Diffusion V4.5 Full
-          </option>
-          <option value="nai-diffusion-4-5-curated" class="bg-slate-800 text-white">
-            NAI Diffusion V4.5 Curated
-          </option>
-          <option value="nai-diffusion-4-full" class="bg-slate-800 text-white">
-            NAI Diffusion V4 Full
-          </option>
-          <!-- 服务端只认 -curated-preview 这个拼写，nai-diffusion-4-curated 会被拒 -->
-          <option value="nai-diffusion-4-curated-preview" class="bg-slate-800 text-white">
-            NAI Diffusion V4 Curated
-          </option>
-          <option value="nai-diffusion-3" class="bg-slate-800 text-white">
-            NAI Diffusion V3
+          <option
+            v-for="m in modelOptions"
+            :key="m.value"
+            :value="m.value"
+            class="bg-slate-800 text-white"
+          >
+            {{ m.label }}
           </option>
         </select>
 
@@ -216,12 +250,14 @@
           </div>
         </div>
 
-        <!-- 免费额度实时提示：越线时用告警色，因为越线就开始扣 Anlas -->
+        <!-- 尺寸提示：官方讲免费额度，中转站讲按量计费，越线一律用告警色 -->
         <p class="text-sm px-1 mt-2" :class="withinFreeTier ? 'text-gray-400' : 'text-amber-400'">
           {{
             withinFreeTier
-              ? $t('ui.toolCalls.freeTierOk', { pixels: currentPixels.toLocaleString() })
-              : $t('ui.toolCalls.freeTierExceeded', {
+              ? isOfficialProvider
+                ? $t('ui.toolCalls.freeTierOk', { pixels: currentPixels.toLocaleString() })
+                : $t('ui.toolCalls.sizeOk', { pixels: currentPixels.toLocaleString() })
+              : $t(isOfficialProvider ? 'ui.toolCalls.freeTierExceeded' : 'ui.toolCalls.sizeExceeded', {
                   pixels: currentPixels.toLocaleString(),
                   maxPixels: NAI_FREE_MAX_PIXELS.toLocaleString(),
                   maxSteps: NAI_FREE_MAX_STEPS,
@@ -266,10 +302,12 @@
             :checked="form.image_gen.free_tier_only"
             @change="(value: boolean) => (form.image_gen.free_tier_only = value)"
           />
-          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.freeTierOnly') }}</p>
+          <p class="text-sm text-gray-300">
+            {{ isOfficialProvider ? $t('ui.toolCalls.freeTierOnly') : $t('ui.toolCalls.sizeLimitOnly') }}
+          </p>
         </div>
         <p v-if="!form.image_gen.free_tier_only" class="text-sm text-amber-400 px-1 mb-2">
-          {{ $t('ui.toolCalls.freeTierOnlyOffHint') }}
+          {{ isOfficialProvider ? $t('ui.toolCalls.freeTierOnlyOffHint') : $t('ui.toolCalls.sizeLimitOffHint') }}
         </p>
 
         <div class="flex items-center gap-3 py-2.5 px-1 mt-2">
@@ -394,7 +432,7 @@
           {{ $t('ui.toolCalls.test') }}
         </div>
         <div
-          v-if="selected === 'image_gen'"
+          v-if="selected === 'image_gen' && isOfficialProvider"
           class="px-5 py-2.5 bg-white/10 text-white border border-white/20 rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-white/20"
           @click="runConnectionTest"
         >
@@ -451,6 +489,7 @@ const form = reactive<ToolSettings>({
   },
   image_gen: {
     enabled: false,
+    provider: 'novelai',
     api_token: '',
     base_url: 'https://image.novelai.net',
     model: 'nai-diffusion-4-5-full',
@@ -478,6 +517,33 @@ const form = reactive<ToolSettings>({
 
 const status = reactive({ message: '', color: '#4ade80' })
 const testing = ref(false)
+
+/**
+ * 各服务商接受的模型 ID。两边的差异是实测出来的（各自的 /v1/models）：
+ * 官方认 `nai-diffusion-4-curated-preview` 与 `nai-diffusion-furry-3`，
+ * 中转站认的恰好是官方会拒绝的 `nai-diffusion-4-curated` 与 `nai-diffusion-3-furry`。
+ */
+const MODELS_OFFICIAL = [
+  { value: 'nai-diffusion-4-5-full', label: 'NAI Diffusion V4.5 Full' },
+  { value: 'nai-diffusion-4-5-curated', label: 'NAI Diffusion V4.5 Curated' },
+  { value: 'nai-diffusion-4-full', label: 'NAI Diffusion V4 Full' },
+  { value: 'nai-diffusion-4-curated-preview', label: 'NAI Diffusion V4 Curated' },
+  { value: 'nai-diffusion-3', label: 'NAI Diffusion V3' },
+  { value: 'nai-diffusion-furry-3', label: 'NAI Diffusion V3 Furry' },
+]
+const MODELS_RELAY = [
+  { value: 'nai-diffusion-4-5-full', label: 'NAI Diffusion V4.5 Full' },
+  { value: 'nai-diffusion-4-5-curated', label: 'NAI Diffusion V4.5 Curated' },
+  { value: 'nai-diffusion-4-full', label: 'NAI Diffusion V4 Full' },
+  { value: 'nai-diffusion-4-curated', label: 'NAI Diffusion V4 Curated' },
+  { value: 'nai-diffusion-3', label: 'NAI Diffusion V3' },
+  { value: 'nai-diffusion-3-furry', label: 'NAI Diffusion V3 Furry' },
+]
+
+const isOfficialProvider = computed(() => form.image_gen.provider === 'novelai')
+const modelOptions = computed(() =>
+  form.image_gen.provider === 'rinko' ? MODELS_RELAY : MODELS_OFFICIAL,
+)
 
 /** 当前尺寸的像素数与免费额度判定（与后端 check_free_tier 同一套规则）。 */
 const currentPixels = computed(() => form.image_gen.width * form.image_gen.height)

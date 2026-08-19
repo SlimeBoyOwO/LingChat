@@ -162,6 +162,18 @@ export default {
     enableImageGen: 'シーン背景生成を有効化（新しい場所の背景を描けるように）',
     imageGenHint:
       'NovelAI に直接つないで背景を生成します。会話で対応するシーンがない場所に行くと、あの子が scene_generate を呼んでその場で描き、シーンとして登録して切り替えます。',
+    naiProvider: 'サービス提供元',
+    naiProviderOfficial: 'NovelAI 公式',
+    naiProviderRinko: 'YesNovelAI 中継（nai.rinko.ai）',
+    naiThirdPartyHint:
+      '⚠ 第三者の中継を使うと、トークンとプロンプトがその事業者に送られます。信頼できる場合のみ使ってね',
+    naiBaseUrlHint: 'NovelAI ネイティブ互換が必要（POST {base}/ai/generate-image、応答は ZIP）',
+    naiTokenHintRelay: '中継事業者が発行する API キー（多くは sk- または ynai- で始まります）',
+    sizeOk: '現在 {pixels} ピクセル。安全上限内です',
+    sizeExceeded:
+      '⚠ 現在 {pixels} ピクセルで安全上限（{maxPixels} ピクセル / {maxSteps} ステップ）を超えています。中継は従量課金なので大きいほど高くなります',
+    sizeLimitOnly: 'サイズとステップ数の上限を制限（超えたら拒否）',
+    sizeLimitOffHint: '⚠ オフにすると大サイズ・高ステップの生成も実行されます（従量課金）',
     naiToken: 'NovelAI Token',
     naiTokenHint: 'NovelAI サイト → アカウント設定 → Account → Get Persistent API Token',
     naiTokenPlaceholder: 'pst-...',

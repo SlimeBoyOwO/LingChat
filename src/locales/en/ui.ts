@@ -163,6 +163,20 @@ export default {
     enableImageGen: "Enable scene background generation (let them paint new places)",
     imageGenHint:
       "Connects straight to NovelAI. When the story reaches a place with no matching scene, they can call scene_generate to paint one, then it becomes a scene and switches over automatically.",
+    naiProvider: "Service Provider",
+    naiProviderOfficial: "NovelAI Official",
+    naiProviderRinko: "YesNovelAI Relay (nai.rinko.ai)",
+    naiThirdPartyHint:
+      "⚠ With a third-party relay, your token and prompts are sent to that provider. Only use one you trust.",
+    naiBaseUrlHint:
+      "Must speak NovelAI's native protocol (POST {base}/ai/generate-image, ZIP response)",
+    naiTokenHintRelay: "The API key from your relay provider (usually starts with sk- or ynai-)",
+    sizeOk: "{pixels} pixels — within the safe limit",
+    sizeExceeded:
+      "⚠ {pixels} pixels exceeds the safe limit ({maxPixels} pixels / {maxSteps} steps). Relays bill by usage, so larger costs more.",
+    sizeLimitOnly: "Cap size and steps (reject requests over the limit)",
+    sizeLimitOffHint:
+      "⚠ Once off, large/high-step generations run anyway — relays bill by usage",
     naiToken: "NovelAI Token",
     naiTokenHint: "NovelAI site → Account Settings → Account → Get Persistent API Token",
     naiTokenPlaceholder: "pst-...",

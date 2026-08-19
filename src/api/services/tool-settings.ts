@@ -21,8 +21,11 @@ export interface WebSearchSettings {
 /** 场景背景生成配置（与后端 ImageGenSettings 对应，字段保持 snake_case）。 */
 export interface ImageGenSettings {
   enabled: boolean
-  /** NovelAI 持久 API Token */
+  /** 服务提供商："novelai"（官方）| "rinko"（YesNovelAI 中转）| "custom"（自填 base_url） */
+  provider: string
+  /** API Token。官方是 pst- 开头的持久令牌，中转站是各自的 key */
   api_token: string
+  /** 仅 provider = "custom" 时生效，其余由 provider 锁定 */
   base_url: string
   /** 模型 ID。注意服务端只认 nai-diffusion-4-curated-preview / nai-diffusion-furry-3 这两个拼写 */
   model: string

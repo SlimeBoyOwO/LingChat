@@ -159,6 +159,8 @@ pub enum ImageGenError {
     Network(String),
     #[error("解析返回图片失败：{0}")]
     Decode(String),
+    #[error("{0}")]
+    Unsupported(String),
 }
 
 // ========== 生成结果 ==========
@@ -369,7 +371,10 @@ pub async fn generate_image(
     let request = build_request(cfg, &prompt, seed);
 
     let client = build_client(cfg)?;
-    let url = format!("{}/ai/generate-image", cfg.base_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/ai/generate-image",
+        cfg.effective_base_url().trim_end_matches('/')
+    );
 
     let response = client
         .post(&url)
@@ -426,8 +431,18 @@ pub async fn fetch_subscription(cfg: &ImageGenSettings) -> Result<SubscriptionIn
     if cfg.api_token.trim().is_empty() {
         return Err(ImageGenError::MissingToken);
     }
+    // 只有官方有这个端点。中转站对未知路径的行为不可预测（404 / 401 / 200 空壳都可能），
+    // 硬试出来的结果没有诊断价值，不如直接说清楚。
+    if !cfg.is_official() {
+        return Err(ImageGenError::Unsupported(
+            "当前服务商不支持额度查询，请用场景编辑里的「AI 生成」实测一张".to_string(),
+        ));
+    }
     let client = build_client(cfg)?;
-    let url = format!("{}/user/subscription", cfg.base_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/user/subscription",
+        cfg.effective_base_url().trim_end_matches('/')
+    );
     let response = client
         .get(&url)
         .bearer_auth(cfg.api_token.trim())
@@ -553,6 +568,61 @@ mod tests {
         }
         assert_eq!(uc_preset_int("none"), 3);
         assert_eq!(uc_preset_int("light"), 1);
+    }
+
+    /// provider 决定实际打哪个端点。rinko 的基址带 `/native` —— 它的
+    /// `/ai/generate-image` 是静态资源，实测回 nginx 405。
+    #[test]
+    fn provider_resolves_endpoint() {
+        let official = ImageGenSettings::default();
+        assert!(official.is_official());
+        assert_eq!(official.effective_base_url(), "https://image.novelai.net");
+
+        let rinko = ImageGenSettings {
+            provider: "rinko".to_string(),
+            // base_url 留着官方的值也不该影响结果 —— provider 说了算
+            ..Default::default()
+        };
+        assert!(!rinko.is_official());
+        assert_eq!(rinko.effective_base_url(), "https://nai.rinko.ai/native");
+
+        let custom = ImageGenSettings {
+            provider: "custom".to_string(),
+            base_url: "https://example.com/nai/".to_string(),
+            ..Default::default()
+        };
+        assert!(!custom.is_official());
+        // 末尾斜线要吃掉，否则拼出来是 //ai/generate-image
+        assert_eq!(custom.effective_base_url(), "https://example.com/nai");
+    }
+
+    /// 旧配置没有 provider 这个键：升级后必须落在官方，不能默默变成 custom
+    /// （那会拿一个空 base_url 去拼 URL）。
+    #[test]
+    fn legacy_config_without_provider_defaults_to_official() {
+        let legacy = r#"
+enabled = true
+api_token = "pst-xxx"
+"#;
+        let cfg: ImageGenSettings = toml::from_str(legacy).unwrap();
+        assert_eq!(cfg.provider, "novelai");
+        assert!(cfg.is_official());
+        assert_eq!(cfg.effective_base_url(), "https://image.novelai.net");
+    }
+
+    /// 尺寸钳制对所有服务商都生效，只是理由不同 —— 中转站按像素计费，
+    /// 无上限的参数等于无上限的账单。
+    #[test]
+    fn size_clamp_applies_to_relay_providers_too() {
+        let cfg = ImageGenSettings {
+            provider: "rinko".to_string(),
+            width: 1920,
+            height: 1088,
+            ..Default::default()
+        };
+        let err = cfg.check_free_tier().unwrap_err();
+        assert!(err.contains("超出安全上限"), "中转站文案应说安全上限: {err}");
+        assert!(!err.contains("Anlas"), "中转站不该提 Anlas: {err}");
     }
 
     /// 非 ZIP 且非图片的响应必须报错，不能把错误 JSON 当图片存进背景目录。

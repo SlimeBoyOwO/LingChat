@@ -162,6 +162,17 @@ export default {
     enableImageGen: '启用场景背景生成（让 ta 能为新地点画背景）',
     imageGenHint:
       '直连 NovelAI 生成背景图。对话中去到没有对应场景的地方时，ta 可以调用 scene_generate 现画一张，画完自动建成场景并切过去。',
+    naiProvider: '服务提供商',
+    naiProviderOfficial: 'NovelAI 官方',
+    naiProviderRinko: 'YesNovelAI 中转（nai.rinko.ai）',
+    naiThirdPartyHint:
+      '⚠ 使用第三方中转时，你的 Token 与提示词会发往该服务商，请确认你信任它',
+    naiBaseUrlHint: '需兼容 NovelAI 原生协议（POST {base}/ai/generate-image，响应为 ZIP）',
+    naiTokenHintRelay: '中转服务商提供的 API Key（通常以 sk- 或 ynai- 开头）',
+    sizeOk: '当前 {pixels} 像素，在安全上限内',
+    sizeExceeded: '⚠ 当前 {pixels} 像素，超过安全上限（{maxPixels} 像素 / {maxSteps} 步）。中转服务按量计费，尺寸越大越贵',
+    sizeLimitOnly: '限制尺寸与步数上限（超出时直接拒绝）',
+    sizeLimitOffHint: '⚠ 关闭后大尺寸/高步数的生成会照常执行，中转服务按量计费',
     naiToken: 'NovelAI Token',
     naiTokenHint: 'NovelAI 网站 → 账号设置 → Account → Get Persistent API Token',
     naiTokenPlaceholder: 'pst-...',

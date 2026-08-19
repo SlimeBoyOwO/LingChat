@@ -126,9 +126,15 @@ pub const NAI_FREE_MAX_STEPS: u32 = 28;
 pub struct ImageGenSettings {
     /// 总开关：关闭时工具不下发给模型，执行也会被拒绝。
     pub enabled: bool,
-    /// NovelAI 持久 API Token（Bearer 认证）。
+    /// 服务提供商：
+    /// "novelai"（官方 image.novelai.net）
+    /// "rinko"（YesNovelAI 中转站，NovelAI 原生兼容）
+    /// "custom"（自填 base_url）
+    pub provider: String,
+    /// API Token（Bearer 认证）。官方是 `pst-` 开头的持久令牌，中转站是各自的 key。
     pub api_token: String,
-    /// 图像端点基址，私有部署或代理转发时可改。
+    /// 图像端点基址。**仅 provider = "custom" 时生效** —— 其余由 provider 锁定，
+    /// 读取一律走 `effective_base_url()`。
     pub base_url: String,
     /// 模型 ID。注意 API 实际接受的拼写：`nai-diffusion-4-curated-preview`
     /// 与 `nai-diffusion-furry-3`（另两种旧拼写会被服务端拒绝）。
@@ -164,6 +170,7 @@ impl Default for ImageGenSettings {
     fn default() -> Self {
         Self {
             enabled: false,
+            provider: "novelai".to_string(),
             api_token: String::new(),
             base_url: "https://image.novelai.net".to_string(),
             model: "nai-diffusion-4-5-full".to_string(),
@@ -195,26 +202,68 @@ impl ImageGenSettings {
         self.enabled && !self.api_token.trim().is_empty()
     }
 
-    /// 校验尺寸/步数是否落在免费额度内。
-    /// `free_tier_only` 开启时，越线即拒绝请求（返回人类可读原因）。
+    /// 是否为 NovelAI 官方端点。
+    /// 订阅查询与 Opus 免费额度这两个概念只对官方成立，中转站是另一套计费。
+    pub fn is_official(&self) -> bool {
+        self.provider == "novelai"
+    }
+
+    /// 实际请求的端点基址。
+    ///
+    /// 官方与 rinko 由 provider 锁定，只有 custom 才读 `base_url`。所有拼 URL 的地方
+    /// 都必须走这里 —— 直接读 `base_url` 会造成「选了中转站却打到官方」这种错位，
+    /// 而且只在真的发请求时才暴露出来。
+    ///
+    /// rinko 的基址带 `/native`：实测它的 `/ai/generate-image` 是静态资源（nginx 405），
+    /// NovelAI 原生兼容端点在 `/native/ai/generate-image`。
+    pub fn effective_base_url(&self) -> &str {
+        match self.provider.as_str() {
+            "rinko" => "https://nai.rinko.ai/native",
+            "custom" => self.base_url.trim().trim_end_matches('/'),
+            _ => "https://image.novelai.net",
+        }
+    }
+
+    /// 校验尺寸/步数是否在上限内，`free_tier_only` 开启时越线即拒绝。
+    ///
+    /// 同一组界限对所有提供商生效，只是理由不同：官方越线开始扣 Anlas，
+    /// 中转站则是按像素/步数计费 —— 无上限的参数等于无上限的账单，
+    /// 所以「额度」概念不适用不代表钳制可以一起拿掉。
     pub fn check_free_tier(&self) -> Result<(), String> {
         if !self.free_tier_only {
             return Ok(());
         }
+        let official = self.is_official();
         let pixels = self.width.saturating_mul(self.height);
         if pixels > NAI_FREE_MAX_PIXELS {
-            return Err(format!(
-                "尺寸 {}×{} = {} 像素，超出免费额度上限 {} 像素，会开始扣 Anlas。\
-                 请调小尺寸，或在设置中关闭「仅使用免费额度」。",
-                self.width, self.height, pixels, NAI_FREE_MAX_PIXELS
-            ));
+            return Err(if official {
+                format!(
+                    "尺寸 {}×{} = {} 像素，超出免费额度上限 {} 像素，会开始扣 Anlas。\
+                     请调小尺寸，或在设置中关闭「仅使用免费额度」。",
+                    self.width, self.height, pixels, NAI_FREE_MAX_PIXELS
+                )
+            } else {
+                format!(
+                    "尺寸 {}×{} = {} 像素，超出安全上限 {} 像素。中转服务按像素计费，\
+                     请调小尺寸，或在设置中关闭尺寸限制。",
+                    self.width, self.height, pixels, NAI_FREE_MAX_PIXELS
+                )
+            });
         }
         if self.steps > NAI_FREE_MAX_STEPS {
-            return Err(format!(
-                "步数 {} 超出免费额度上限 {}，会开始扣 Anlas。\
-                 请调低步数，或在设置中关闭「仅使用免费额度」。",
-                self.steps, NAI_FREE_MAX_STEPS
-            ));
+            return Err(if official {
+                format!(
+                    "步数 {} 超出免费额度上限 {}，会开始扣 Anlas。\
+                     请调低步数，或在设置中关闭「仅使用免费额度」。",
+                    self.steps, NAI_FREE_MAX_STEPS
+                )
+            } else {
+                format!(
+                    "步数 {} 超出安全上限 {}。中转服务按步数计费，\
+                     请调低步数，或在设置中关闭尺寸限制。",
+                    self.steps, NAI_FREE_MAX_STEPS
+                )
+            });
         }
         Ok(())
     }
