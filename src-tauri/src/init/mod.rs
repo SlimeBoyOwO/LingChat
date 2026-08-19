@@ -183,24 +183,24 @@ pub async fn init_asr(
         String,
         std::sync::Arc<dyn provider::AsrProvider>,
     > = std::collections::HashMap::new();
-    for info in provider::list_provider_info() {
-        let cred = cfg
-            .provider_configs
-            .get(info.id)
-            .map(|c| c.to_credentials())
-            .unwrap_or_default();
-        match provider::get_provider(info.id, &cred, &http).await {
-            Ok(p) => {
-                providers.insert(info.id.to_string(), p);
-                tracing::info!("[ASR] provider {} 已构建", info.id);
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "[ASR] provider {} 构建失败: {}",
-                    info.id,
-                    e.i18n_code()
-                );
-            }
+    // 只构建 active_provider：用户选哪个 STT 就启用哪个，未选的不初始化、
+    // 不报错（日志干净，registry 只含当前服务商）。
+    let cred = cfg
+        .provider_configs
+        .get(&cfg.active_provider)
+        .map(|c| c.to_credentials())
+        .unwrap_or_default();
+    match provider::get_provider(&cfg.active_provider, &cred, &http).await {
+        Ok(p) => {
+            providers.insert(cfg.active_provider.clone(), p);
+            tracing::info!("[ASR] provider {} 已构建", cfg.active_provider);
+        }
+        Err(e) => {
+            tracing::warn!(
+                "[ASR] provider {} 构建失败: {}",
+                cfg.active_provider,
+                e.i18n_code()
+            );
         }
     }
 

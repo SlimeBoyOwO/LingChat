@@ -267,8 +267,9 @@ pub async fn asr_test_provider(
 }
 
 /// 重建 provider registry——settings 改了之后生效。
-/// 失败仅 warn（不阻塞保存）：未配置的 provider 构建失败是预期情况，
-/// 使用/测试时由 resolve_provider 给出准确的 MissingCredentials。
+/// 只构建 active_provider（用户选哪个 STT 就启用哪个，其余不初始化、不报错）。
+/// 未配置 key 时构建失败仅 warn（不阻塞保存）；使用/测试时由
+/// resolve_provider 给出准确的 MissingCredentials。
 async fn rebuild_providers(
     state: &tauri::State<'_, AppState>,
     s: &AsrSettings,
@@ -278,24 +279,22 @@ async fn rebuild_providers(
         String,
         std::sync::Arc<dyn provider::AsrProvider>,
     > = std::collections::HashMap::new();
-    for info in provider::list_provider_info() {
-        let cred = s
-            .provider_configs
-            .get(info.id)
-            .cloned()
-            .unwrap_or_default();
-        match provider::get_provider(info.id, &cred.to_credentials(), &http).await {
-            Ok(p) => {
-                providers.insert(info.id.to_string(), p);
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "[ASR] rebuild provider {} failed ({}): {}",
-                    info.id,
-                    e.i18n_code(),
-                    e
-                );
-            }
+    let cred = s
+        .provider_configs
+        .get(&s.active_provider)
+        .cloned()
+        .unwrap_or_default();
+    match provider::get_provider(&s.active_provider, &cred.to_credentials(), &http).await {
+        Ok(p) => {
+            providers.insert(s.active_provider.clone(), p);
+        }
+        Err(e) => {
+            tracing::warn!(
+                "[ASR] rebuild provider {} failed ({}): {}",
+                s.active_provider,
+                e.i18n_code(),
+                e
+            );
         }
     }
     let session_arc = state.asr_state.session.clone();
