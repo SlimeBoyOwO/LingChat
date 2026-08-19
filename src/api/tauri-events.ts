@@ -19,7 +19,7 @@ import {
 } from './services/tool-settings'
 import { useDialogStore } from '../stores/modules/ui/dialog'
 import { useAsrStore } from '../stores/modules/settings/asr'
-import type { AsrResult, VadEvent } from '../api/services/asr'
+import type { VadEvent } from '../api/services/asr'
 import type { SceneInfo } from './services/scene'
 
 function asEvent(
@@ -159,10 +159,7 @@ export function initializeTauriEventListeners() {
         command: payload.command,
         cwd: payload.cwd || i18n.global.t('ui.toolCalls.approvalDefaultCwd'),
       }) + (payload.uac ? `\n\n${i18n.global.t('ui.toolCalls.approvalUac')}` : '')
-    const approved = await dialogStore.confirm(
-      message,
-      i18n.global.t('ui.toolCalls.approvalTitle'),
-    )
+    const approved = await dialogStore.confirm(message, i18n.global.t('ui.toolCalls.approvalTitle'))
     try {
       await invoke('resolve_command_approval', { requestId: payload.request_id, approved })
     } catch (e) {
@@ -275,6 +272,8 @@ export function initializeTauriEventListeners() {
   // 注意：useAsrStore() 必须在回调内调用 —— initializeTauriEventListeners
   // 在 app.use(pinia) 之前被 main.ts 调用，顶层调用 store 会抛
   // "getActivePinia was called with no active Pinia"，导致 app.mount 不执行。
+  // 仅保留后端确实 emit 的事件：asr://result / asr://error 不存在（走 invoke 返回），
+  // useAsrInput 通过 store.vadEvent 订阅 turn 事件做业务处理（不重复 listen）。
 
   listen<VadEvent>('asr://speech_started', () => {
     useAsrStore().onSpeechStarted()
@@ -284,12 +283,6 @@ export function initializeTauriEventListeners() {
   })
   listen<VadEvent>('asr://turn_sealed', () => {
     useAsrStore().onTurnSealed({ type: 'turn_sealed' })
-  })
-  listen<AsrResult>('asr://result', (event) => {
-    useAsrStore().onResult(event.payload)
-  })
-  listen<{ code: string }>('asr://error', (event) => {
-    useAsrStore().onError(event.payload.code)
   })
 
   // === Adventure events ===

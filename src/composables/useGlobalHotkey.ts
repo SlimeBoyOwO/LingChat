@@ -1,6 +1,14 @@
-import { onMounted, onUnmounted } from 'vue'
-import { useAsrInput } from './useAsrInput'
-import { useAsrStore } from '@/stores/modules/settings/asr'
+/**
+ * 全局快捷键 helper。
+ *
+ * v1 早期版本用前端 window keydown 监听 —— 只在窗口聚焦时生效。
+ * 现已升级为**系统级全局快捷键**（后台 / 最小化也可触发）：
+ * 后端 RegisterHotKey + WM_HOTKEY 消息循环（src-tauri/src/ai_service/asr/hotkey.rs），
+ * 按下/释放分别 emit `asr://hotkey_down` / `asr://hotkey_up`，
+ * useAsrInput（ensureInit，App.vue 全局挂载一次）监听并驱动 start('hotkey') / stop()。
+ *
+ * 本文件保留设置页录制快捷键所需的 helper，不注册任何 window 级监听。
+ */
 
 /**
  * 解析 KeyboardEvent 为 "Ctrl+Shift+Space" 形式的快捷键字符串。
@@ -63,35 +71,5 @@ export async function recordKeyUntilEscape(): Promise<string> {
       window.removeEventListener('keydown', handler, true)
     }
     window.addEventListener('keydown', handler, true)
-  })
-}
-
-/**
- * 全局快捷键 composable：在 chatActive 时监听 asrStore.settings.hotkey_combination。
- * 装在 App 根组件（如 App.vue 或 main.ts 挂载）一次即可。
- */
-export function useGlobalHotkey() {
-  const asr = useAsrInput()
-  const asrStore = useAsrStore()
-
-  const handler = (e: KeyboardEvent) => {
-    if (!asr.chatActive.value) return
-    if (!asrStore.settings.hotkey_enabled) return
-    if (!matchCombination(e, asrStore.settings.hotkey_combination)) return
-    e.preventDefault()
-    if (e.type === 'keydown' && !e.repeat) {
-      void asr.start('hotkey')
-    } else if (e.type === 'keyup') {
-      asr.stop()
-    }
-  }
-
-  onMounted(() => {
-    window.addEventListener('keydown', handler)
-    window.addEventListener('keyup', handler)
-  })
-  onUnmounted(() => {
-    window.removeEventListener('keydown', handler)
-    window.removeEventListener('keyup', handler)
   })
 }

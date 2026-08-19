@@ -100,9 +100,23 @@ impl AsrSession {
             .providers
             .get(&provider_id)
             .ok_or_else(|| AsrError::ProviderNotFound(provider_id.clone()))?;
-        provider
-            .recognize(wav_bytes, language_hint.as_deref())
+        self.recognize_wav_with(provider.clone(), wav_bytes, language_hint.as_deref())
             .await
+    }
+
+    /// 识别 + 取消支持：`tokio::select!` 竞争 provider 结果与取消令牌。
+    /// child_token 每次新建 —— 上一次 `cancel()` 不会影响后续识别。
+    pub async fn recognize_wav_with(
+        &self,
+        provider: Arc<dyn AsrProvider>,
+        wav_bytes: Vec<u8>,
+        language_hint: Option<&str>,
+    ) -> Result<AsrResult, AsrError> {
+        let cancel_child = self.cancel_token.child_token();
+        tokio::select! {
+            result = provider.recognize(wav_bytes, language_hint) => result,
+            _ = cancel_child.cancelled() => Err(AsrError::Canceled),
+        }
     }
 
     pub async fn current_source(&self) -> Option<AsrSource> {

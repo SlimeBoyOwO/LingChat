@@ -27,6 +27,7 @@ export const useAsrStore = defineStore('asr', {
     activeSource: null as AsrSource | null,
     lastResult: null as AsrResult | null,
     lastError: null as string | null,
+    vadEvent: null as VadEvent | null,
     providers: [] as ProviderInfo[],
     micState: 'idle' as 'idle' | 'recording' | 'denied',
     vadLoaded: false,
@@ -49,14 +50,14 @@ export const useAsrStore = defineStore('asr', {
         throw e
       }
     },
-    onTurnCandidate(_e: VadEvent) {
-      /* 由 useAsrInput 处理 */
+    onTurnCandidate(e: VadEvent) {
+      this.vadEvent = e
     },
-    onTurnSealed(_e: VadEvent) {
-      /* 由 useAsrInput 处理 */
+    onTurnSealed(e: VadEvent) {
+      this.vadEvent = e
     },
     onSpeechStarted() {
-      /* 由 useAsrInput 处理 */
+      this.micState = 'recording'
     },
     onResult(r: AsrResult) {
       this.lastResult = r
@@ -71,5 +72,7 @@ export const useAsrStore = defineStore('asr', {
       this.vadLoaded = v
     },
   },
-  persist: true,
+  // api_key 唯一真相在后端 settings.json（tauri_plugin_store），
+  // 不从 localStorage 持久化 provider_configs，避免明文 key 双副本。
+  persist: { key: 'lingchat-asr', exclude: ['provider_configs'] },
 })

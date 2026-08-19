@@ -77,6 +77,38 @@ impl AsrSettings {
 
 const STORE_KEY_PROVIDERS: &str = "ASR_PROVIDERS";
 const STORE_KEY_ACTIVE: &str = "ASR_ACTIVE_PROVIDER_ID";
+const STORE_KEY_PREFS: &str = "ASR_PREFS";
+
+/// UI 偏好字段（auto_listen / hotkey / send_mode），与 provider 凭据分开持久化。
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct AsrPrefs {
+    #[serde(default)]
+    pub auto_listen: bool,
+    #[serde(default)]
+    pub hotkey_enabled: bool,
+    #[serde(default)]
+    pub hotkey_combination: String,
+    #[serde(default)]
+    pub send_mode: SendMode,
+}
+
+impl AsrPrefs {
+    fn from_settings(s: &AsrSettings) -> Self {
+        Self {
+            auto_listen: s.auto_listen,
+            hotkey_enabled: s.hotkey_enabled,
+            hotkey_combination: s.hotkey_combination.clone(),
+            send_mode: s.send_mode.clone(),
+        }
+    }
+
+    fn apply_to(&self, s: &mut AsrSettings) {
+        s.auto_listen = self.auto_listen;
+        s.hotkey_enabled = self.hotkey_enabled;
+        s.hotkey_combination = self.hotkey_combination.clone();
+        s.send_mode = self.send_mode.clone();
+    }
+}
 
 /// 从 `settings.json` 加载 ASR 设置。缺失字段用 defaults；malformed JSON 走 fallback + warn。
 pub fn load(app: &AppHandle) -> Result<AsrSettings, AsrError> {
@@ -100,21 +132,31 @@ pub fn load(app: &AppHandle) -> Result<AsrSettings, AsrError> {
             s.active_provider = id.to_string();
         }
     }
+    // UI 偏好：独立 key 读取，缺省保持 defaults
+    if let Some(v) = store.get(STORE_KEY_PREFS) {
+        match serde_json::from_value::<AsrPrefs>(v) {
+            Ok(prefs) => prefs.apply_to(&mut s),
+            Err(e) => tracing::warn!("[ASR] ASR_PREFS malformed: {e}"),
+        }
+    }
     Ok(s)
 }
 
-/// 把 ASR 设置写回 `settings.json`。
+/// 把 ASR 设置写回 `settings.json`（全量：providers + active + UI 偏好）。
 pub fn save(app: &AppHandle, s: &AsrSettings) -> Result<(), AsrError> {
     let store = app
         .store("settings.json")
         .map_err(|e| AsrError::EngineLoadFailed(format!("store: {e}")))?;
     let providers_json = serde_json::to_value(&s.provider_configs)
         .map_err(|e| AsrError::EngineLoadFailed(format!("serialize providers: {e}")))?;
+    let prefs_json = serde_json::to_value(AsrPrefs::from_settings(s))
+        .map_err(|e| AsrError::EngineLoadFailed(format!("serialize prefs: {e}")))?;
     store.set(STORE_KEY_PROVIDERS, providers_json);
     store.set(
         STORE_KEY_ACTIVE,
         serde_json::Value::String(s.active_provider.clone()),
     );
+    store.set(STORE_KEY_PREFS, prefs_json);
     store
         .save()
         .map_err(|e| AsrError::EngineLoadFailed(format!("store save: {e}")))?;

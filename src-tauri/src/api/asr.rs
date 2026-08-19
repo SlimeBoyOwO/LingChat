@@ -12,14 +12,32 @@
 use tauri::AppHandle;
 
 use crate::ai_service::asr::error::AsrError;
-use crate::ai_service::asr::provider::{list_provider_info, AsrResult, ProviderInfo};
+use crate::ai_service::asr::provider::{self, list_provider_info, AsrResult, ProviderInfo};
 use crate::ai_service::asr::session::AsrSource;
 use crate::ai_service::asr::settings::{self, AsrSettings};
-use crate::ai_service::asr::AsrState;
 use crate::AppState;
 
 fn parse_source(s: &str) -> Result<AsrSource, String> {
     AsrSource::from_str(s).ok_or_else(|| format!("invalid source: {s}"))
+}
+
+/// 错误转前端可读字符串：i18n code（ProviderApiError 额外携带详情，格式 `CODE|detail`）。
+/// 前端 SettingsAsr.testConnection 拆分后展示。
+fn err_to_user(e: &AsrError) -> String {
+    match e {
+        AsrError::ProviderApiError { message, .. } => {
+            format!("ASR_PROVIDER_FAILED|{message}")
+        }
+        _ => e.i18n_code().to_string(),
+    }
+}
+
+/// 新建带 30s 超时的 HTTP 客户端（provider 网络请求统一用它）。
+fn build_http() -> Result<reqwest::Client, AsrError> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| AsrError::EngineLoadFailed(format!("build http client: {e}")))
 }
 
 /// 合成 1 秒静音 WAV（16kHz mono PCM16），用于 asr_test_provider 验证 API 可达性。
@@ -106,15 +124,52 @@ pub async fn asr_recognize_wav(
     provider_id: String,
     wav_bytes: Vec<u8>,
     language_hint: Option<String>,
+    app: AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<AsrResult, String> {
     let session_arc = state.asr_state.session.clone();
-    let guard = session_arc.lock().await;
-    let session = guard.as_ref().ok_or("ASR not initialized")?;
-    session
-        .recognize_wav(provider_id, wav_bytes, language_hint)
+    // 锁内只克隆 providers 注册表 + 取消令牌，立即释放锁：
+    // 网络调用（最长 30s）不占用 session 锁，避免阻塞 asr_set_settings 等并发命令。
+    let (providers, cancel_token) = {
+        let guard = session_arc.lock().await;
+        let s = guard.as_ref().ok_or("ASR not initialized")?;
+        (s.providers.clone(), s.cancel_token.clone())
+    };
+    let http = build_http().map_err(|e| e.i18n_code().to_string())?;
+    let p = resolve_provider(&providers, &provider_id, &app, &http)
         .await
-        .map_err(|e| e.i18n_code().to_string())
+        .map_err(|e| e.i18n_code().to_string())?;
+    let cancel_child = cancel_token.child_token();
+    tokio::select! {
+        result = p.recognize(wav_bytes, language_hint.as_deref()) => result.map_err(|e| e.i18n_code().to_string()),
+        _ = cancel_child.cancelled() => Err("ASR_CANCELED".to_string()),
+    }
+}
+
+/// 从 session registry 取 provider；不在 registry（如缺凭据被 init 跳过）时
+/// 尝试用当前设置重建，从而把"缺 api_key"准确报告为 MissingCredentials，
+/// 而不是误导性的 ProviderNotFound。
+async fn resolve_provider(
+    providers: &std::collections::HashMap<String, std::sync::Arc<dyn provider::AsrProvider>>,
+    provider_id: &str,
+    app: &AppHandle,
+    http: &reqwest::Client,
+) -> Result<std::sync::Arc<dyn provider::AsrProvider>, AsrError> {
+    if let Some(p) = providers.get(provider_id) {
+        return Ok(p.clone());
+    }
+    let settings = settings::load(app)?;
+    let cred = settings
+        .provider_configs
+        .get(provider_id)
+        .cloned()
+        .unwrap_or_default();
+    provider::get_provider(provider_id, &cred.to_credentials(), http)
+        .await
+        .map_err(|e| match e {
+            AsrError::MissingCredentials(_) => e,
+            _ => AsrError::ProviderNotFound(provider_id.into()),
+        })
 }
 
 #[tauri::command]
@@ -130,6 +185,30 @@ pub async fn asr_cancel(state: tauri::State<'_, AppState>) -> Result<(), String>
 #[tauri::command]
 pub async fn asr_list_providers() -> Vec<ProviderInfo> {
     list_provider_info()
+}
+
+#[tauri::command]
+pub async fn asr_register_hotkey(
+    combo: String,
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    state
+        .asr_state
+        .hotkey
+        .register(&app, &combo)
+        .await
+        .map_err(|e| e.i18n_code().to_string())
+}
+
+#[tauri::command]
+pub async fn asr_unregister_hotkey(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state
+        .asr_state
+        .hotkey
+        .unregister()
+        .await
+        .map_err(|e| e.i18n_code().to_string())
 }
 
 #[tauri::command]
@@ -152,29 +231,49 @@ pub async fn asr_set_settings(
 #[tauri::command]
 pub async fn asr_test_provider(
     provider_id: String,
+    app: AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let silence_wav = synth_silence_wav(1.0);
     let session_arc = state.asr_state.session.clone();
-    let guard = session_arc.lock().await;
-    let session = guard.as_ref().ok_or("ASR not initialized")?;
-    session
-        .recognize_wav(provider_id, silence_wav, None)
+    // 克隆 providers + cancel_token 后释放锁：测试网络请求（最长 30s）不阻塞其他命令
+    let (providers, cancel_token) = {
+        let guard = session_arc.lock().await;
+        let s = guard.as_ref().ok_or("ASR not initialized")?;
+        (s.providers.clone(), s.cancel_token.clone())
+    };
+    let http = build_http().map_err(|e| e.i18n_code().to_string())?;
+    let p = resolve_provider(&providers, &provider_id, &app, &http)
         .await
-        .map(|_| ())
-        .map_err(|e| e.i18n_code().to_string())
+        .map_err(|e| err_to_user(&e))?;
+    let cancel_child = cancel_token.child_token();
+    tokio::select! {
+        result = p.recognize(silence_wav, None) => match result {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                // 测试音频是 1 秒静音：部分 ASR（如 DashScope Fun-ASR）对静音
+                // 直接返回 "ASR_RESPONSE_HAVE_NO_WORDS"。服务能响应这个错误
+                // 恰好证明 API 可达 + key 有效 → 视为连接成功。
+                if let AsrError::ProviderApiError { message, .. } = &e {
+                    if message.contains("NO_WORDS") || message.contains("no_words") {
+                        return Ok(());
+                    }
+                }
+                Err(err_to_user(&e))
+            }
+        },
+        _ = cancel_child.cancelled() => Err("ASR_CANCELED".to_string()),
+    }
 }
 
 /// 重建 provider registry——settings 改了之后生效。
+/// 失败仅 warn（不阻塞保存）：未配置的 provider 构建失败是预期情况，
+/// 使用/测试时由 resolve_provider 给出准确的 MissingCredentials。
 async fn rebuild_providers(
     state: &tauri::State<'_, AppState>,
     s: &AsrSettings,
 ) -> Result<(), String> {
-    use crate::ai_service::asr::provider;
-    let http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("build http client: {e}"))?;
+    let http = build_http().map_err(|e| e.i18n_code().to_string())?;
     let mut providers: std::collections::HashMap<
         String,
         std::sync::Arc<dyn provider::AsrProvider>,
@@ -190,7 +289,12 @@ async fn rebuild_providers(
                 providers.insert(info.id.to_string(), p);
             }
             Err(e) => {
-                tracing::warn!("[ASR] rebuild provider {} failed: {}", info.id, e.i18n_code());
+                tracing::warn!(
+                    "[ASR] rebuild provider {} failed ({}): {}",
+                    info.id,
+                    e.i18n_code(),
+                    e
+                );
             }
         }
     }
@@ -201,16 +305,3 @@ async fn rebuild_providers(
     }
     Ok(())
 }
-
-// ========== 类型 re-export 辅助 ==========
-
-/// 让 `tauri::command` 宏能正确解析 `AsrError` 的 `Serialize` derive（仅占位 import，
-/// 实际序列化由宏根据返回类型自动注入）。
-#[allow(dead_code)]
-fn _ensure_asr_error_serialize(e: &AsrError) -> String {
-    e.i18n_code().to_string()
-}
-
-/// 让 `tauri::command` 宏能正确解析 `AsrState` 字段类型（仅占位 import）。
-#[allow(dead_code)]
-fn _ensure_asr_state_in_scope(_: &AsrState) {}

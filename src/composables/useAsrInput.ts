@@ -1,6 +1,7 @@
-import { ref, computed, shallowRef, watch, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, shallowRef, watch } from 'vue'
+import { useRoute, type RouteLocationNormalizedLoaded } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useAsrStore } from '@/stores/modules/settings/asr'
@@ -10,232 +11,375 @@ import {
   asrStopListening,
   asrRecognizeWav,
   asrCancel,
+  asrVadProcessChunk,
+  asrRegisterHotkey,
+  asrUnregisterHotkey,
   type AsrSource,
   type AsrResult,
+  type VadEvent,
 } from '@/api/services/asr'
+import { pcmToWavPcm16 } from '@/utils/asrAudio'
 
 /**
  * 统一 ASR 输入入口：三种触发源共用同一会话生命周期。
  *
  * 三种触发源：
- * - Button: GameDialog.vue / PetMode.vue 的 mic 按钮
- * - Hotkey: useGlobalHotkey.ts 注册的全局快捷键
- * - Auto: asrStore.settings.auto_listen=true 时由 energy monitor 触发
+ * - Button: GameDialog.vue 的 mic 按钮
+ * - Hotkey: useGlobalHotkey.ts 注册的全局快捷键（App.vue 挂载一次）
+ * - Auto: asrStore.settings.auto_listen=true 时由能量监测触发
  *
  * 窗口活跃门控：仅当 chatActive=true（/chat 路由 + 设置抽屉未开）时启用。
  * 失败降级：mic 不可用时 fail-open（不抛错到用户），退化为手动按钮 + 不录。
+ *
+ * ── 单例设计 ──────────────────────────────────────────────
+ * 状态全部在模块级（非函数内）：App.vue 的 hotkey 实例与 GameDialog 的
+ * mic 实例共享同一会话。若状态放在函数内，两实例各自持有 recorder/phase，
+ * hotkey 录音时 GameDialog 的 mic 按钮看不到状态、互不感知。
+ *
+ * ── 采集链路（spec §3.1）─────────────────────────────────
+ * 16kHz AudioContext + ScriptProcessor 直接拿 f32 PCM（不经过
+ * MediaRecorder webm 编码），停止时合成 16k mono PCM16 WAV 送去识别。
+ * auto 模式额外把每 512 samples（30ms）喂 asrVadProcessChunk，
+ * 由后端 Silero VAD 做端点检测（turn_candidate → 一轮说话结束）。
  *
  * 队列设计说明：项目里没有专门的 useChatStore（聊天状态由 useGameStore.currentStatus
  * 体现：'input' = 空闲可输入，'thinking'/'responding'/'presenting' = 生成中）。
  * 因此用 gameStore 顶一个非类型化字段 pendingAsrQueue 做兜底，作为 ASR→chat 的
  * 跨组件排队通道（GameDialog 在 currentStatus 转回 'input' 时 flush）。
  */
-export function useAsrInput() {
-  const route = useRoute()
-  const uiStore = useUIStore()
-  const asrStore = useAsrStore()
-  const gameStore = useGameStore()
 
-  // 状态
-  const phase = ref<'idle' | 'recording' | 'recognizing'>('idle')
-  const activeSource = shallowRef<AsrSource | null>(null)
-  const recorder = shallowRef<MediaRecorder | null>(null)
-  const stream = shallowRef<MediaStream | null>(null)
-  const chunks = shallowRef<Blob[]>([])
+// ── 模块级单例状态 ──────────────────────────────────────────
+const phase = ref<'idle' | 'recording' | 'recognizing'>('idle')
+const activeSource = shallowRef<AsrSource | null>(null)
 
-  // 关键修正：spec §3.0 用 showSettings，不是 settingsOpen
-  const chatActive = computed(() => route.path === '/chat' && !uiStore.showSettings)
+/** 本次录音累积的 f32 PCM（16kHz mono） */
+let pcmBuffer: number[] = []
+/** 待喂 VAD 的积累块（凑满 512 samples = 30ms 才发） */
+let vadPending: number[] = []
+let stream: MediaStream | null = null
+let audioCtx: AudioContext | null = null
+let processor: ScriptProcessorNode | null = null
+let energyMon: { ctx: AudioContext; raf: number; stream: MediaStream } | null = null
+/** auto 触发去重：能量触发后不再重复触发，直到本轮会话结束 */
+let autoTriggered = false
+/** 惰性依赖（首次 useAsrInput() 调用时初始化） */
+let route: RouteLocationNormalizedLoaded | null = null
+let uiStore: ReturnType<typeof useUIStore> | null = null
+let asrStore: ReturnType<typeof useAsrStore> | null = null
+let gameStore: ReturnType<typeof useGameStore> | null = null
 
-  // chat 等价"generating"：非 input 即视为生成中
-  const chatBusy = computed(() => gameStore.currentStatus !== 'input')
+// 关键修正：spec §3.0 用 showSettings，不是 settingsOpen
+const chatActive = computed(() => {
+  if (!route || !uiStore) return false
+  return route.path === '/chat' && !uiStore.showSettings
+})
 
-  function cleanup() {
-    try {
-      recorder.value?.stop()
-    } catch {
-      /* ignore */
-    }
-    stream.value?.getTracks().forEach((t) => t.stop())
-    recorder.value = null
-    stream.value = null
-    chunks.value = []
-    asrStore.setMicState('idle')
+/** 生成中（非 input 即视为 busy，用于 auto_send 降级 queue） */
+function isChatBusy(): boolean {
+  return !!gameStore && gameStore.currentStatus !== 'input'
+}
+
+/** 拆除录音链路（不触发 recognize） */
+function teardownRecorder() {
+  try {
+    processor?.disconnect()
+  } catch {
+    /* ignore */
   }
+  processor = null
+  void audioCtx?.close().catch(() => {})
+  audioCtx = null
+  stream?.getTracks().forEach((t) => t.stop())
+  stream = null
+  pcmBuffer = []
+  vadPending = []
+  if (asrStore) asrStore.setMicState('idle')
+}
 
-  /** webm/opus blob → 16kHz mono PCM16 WAV bytes */
-  async function webmToWavPcm16Mono16k(blob: Blob): Promise<Uint8Array> {
-    const arrayBuffer = await blob.arrayBuffer()
-    const audioCtx = new (window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
-    await audioCtx.close()
+/** 重置会话状态（录音拆除 + phase/activeSource 归位） */
+function resetSession() {
+  teardownRecorder()
+  phase.value = 'idle'
+  activeSource.value = null
+}
 
-    const targetRate = 16000
-    const numSamples = Math.ceil(audioBuffer.duration * targetRate)
-    const offlineCtx = new OfflineAudioContext(1, numSamples, targetRate)
-    const source = offlineCtx.createBufferSource()
-    source.buffer = audioBuffer
-    source.connect(offlineCtx.destination)
-    source.start()
-    const rendered = await offlineCtx.startRendering()
-    const channelData = rendered.getChannelData(0)
-
-    const pcm16 = new Int16Array(channelData.length)
-    for (let i = 0; i < channelData.length; i++) {
-      const s = Math.max(-1, Math.min(1, channelData[i]))
-      pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff
-    }
-
-    // WAV header (44 bytes)
-    const header = new ArrayBuffer(44)
-    const view = new DataView(header)
-    writeAscii(view, 0, 'RIFF')
-    view.setUint32(4, 36 + pcm16.byteLength, true)
-    writeAscii(view, 8, 'WAVE')
-    writeAscii(view, 12, 'fmt ')
-    view.setUint32(16, 16, true) // fmt chunk size
-    view.setUint16(20, 1, true) // PCM
-    view.setUint16(22, 1, true) // mono
-    view.setUint32(24, targetRate, true)
-    view.setUint32(28, targetRate * 2, true)
-    view.setUint16(32, 2, true) // block align
-    view.setUint16(34, 16, true) // bits per sample
-    writeAscii(view, 36, 'data')
-    view.setUint32(40, pcm16.byteLength, true)
-
-    // 拼接 header + pcm16（避免 .map((_,i) => ...) 的大数组构造）
-    const out = new Uint8Array(header.byteLength + pcm16.byteLength)
-    out.set(new Uint8Array(header), 0)
-    out.set(new Uint8Array(pcm16.buffer), header.byteLength)
-    return out
+/** 丢弃当前录音：停止但不触发 recognize（spec §3.0 —— 路由/抽屉离开时） */
+function discardRecording() {
+  const source = activeSource.value
+  if (phase.value === 'recognizing') {
+    void asrCancel()
   }
+  resetSession()
+  if (source) void asrStopListening(source)
+}
 
-  function writeAscii(view: DataView, offset: number, s: string) {
-    for (let i = 0; i < s.length; i++) {
-      view.setUint8(offset + i, s.charCodeAt(i))
-    }
+// ── VAD 流（auto 模式）：每 512 samples（30ms @ 16k）喂后端 ──
+function feedVad() {
+  if (!asrStore || phase.value !== 'recording' || activeSource.value !== 'auto') return
+  while (vadPending.length >= 512) {
+    const block = vadPending.splice(0, 512)
+    void asrVadProcessChunk(block).catch(() => {
+      /* VAD 失败不阻塞录音 */
+    })
   }
+}
 
-  async function start(source: AsrSource) {
-    if (!chatActive.value) return
-    if (activeSource.value !== null) {
-      throw new Error('ASR session busy')
-    }
-    activeSource.value = source
-    phase.value = 'recording'
-    asrStore.setMicState('recording')
-    try {
-      stream.value = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: 16000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-      })
-      const mr = new MediaRecorder(stream.value, {
-        mimeType: 'audio/webm;codecs=opus',
-      })
-      chunks.value = []
-      mr.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.value.push(e.data)
+/** VAD 检测到一轮说话结束（turn_candidate / turn_sealed）→ 结束 auto 会话 */
+async function onVadTurnEnd() {
+  if (activeSource.value !== 'auto') return
+  if (phase.value === 'recording') {
+    stop()
+  }
+}
+
+// ── 能量监测（auto_listen 常开，RMS 超阈值触发 auto 会话） ──
+function startEnergyMonitor() {
+  if (energyMon) return
+  if (!asrStore?.settings.auto_listen || !chatActive.value) return
+  navigator.mediaDevices
+    .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+    .then((s) => {
+      if (!asrStore?.settings.auto_listen || !chatActive.value) {
+        s.getTracks().forEach((t) => t.stop())
+        return
       }
-      mr.onstop = () => onStop(source)
-      recorder.value = mr
-      await asrStartListening(source)
-      mr.start(100)
-    } catch (err: unknown) {
-      const name = (err as { name?: string }).name
-      console.warn('[ASR] start failed:', err)
-      if (name === 'NotAllowedError' || name === 'NotReadableError') {
-        asrStore.setMicState('denied')
+      const ctx = new AudioContext()
+      const src = ctx.createMediaStreamSource(s)
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 1024
+      analyser.smoothingTimeConstant = 0.3
+      src.connect(analyser)
+      const buf = new Uint8Array(analyser.frequencyBinCount)
+      const tick = () => {
+        if (!asrStore?.settings.auto_listen || !chatActive.value) {
+          stopEnergyMonitor()
+          return
+        }
+        if (!energyMon) return
+        analyser.getByteFrequencyData(buf)
+        // RMS 归一化：byte 0-255 → 0-1，阈值 0.08 约等于明显人声能量
+        let sum = 0
+        for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
+        const rms = Math.sqrt(sum / buf.length) / 128
+        if (rms > 0.08 && phase.value === 'idle' && !autoTriggered) {
+          autoTriggered = true
+          void start('auto').catch(() => {
+            autoTriggered = false
+          })
+          return
+        }
+        energyMon.raf = requestAnimationFrame(tick)
       }
-      cleanup()
-      phase.value = 'idle'
-      activeSource.value = null
-      throw err
-    }
-  }
+      energyMon = { ctx, raf: requestAnimationFrame(tick), stream: s }
+    })
+    .catch(() => {
+      /* mic 不可用：能量监测静默降级 */
+    })
+}
 
-  function stop() {
-    if (phase.value !== 'recording') return
-    phase.value = 'recognizing'
-    try {
-      recorder.value?.stop()
-    } catch {
-      /* ignore */
-    }
-    stream.value?.getTracks().forEach((t) => t.stop())
-    void asrStopListening(activeSource.value as AsrSource)
-  }
+function stopEnergyMonitor() {
+  if (!energyMon) return
+  cancelAnimationFrame(energyMon.raf)
+  void energyMon.ctx.close().catch(() => {})
+  energyMon.stream.getTracks().forEach((t) => t.stop())
+  energyMon = null
+}
 
-  async function onStop(source: AsrSource) {
-    try {
-      const blob = new Blob(chunks.value, { type: 'audio/webm' })
-      const wav = await webmToWavPcm16Mono16k(blob)
-      const result = await asrRecognizeWav({
-        providerId: asrStore.settings.active_provider,
-        wavBytes: Array.from(wav),
-        languageHint: null,
-      })
-      asrStore.onResult(result)
-      handle(result.text, source)
-    } catch (err) {
-      console.error('[ASR] recognize failed:', err)
-      cleanup()
-      phase.value = 'idle'
-      activeSource.value = null
-    }
+// ── 会话生命周期 ────────────────────────────────────────────
+async function start(source: AsrSource) {
+  if (!chatActive.value) return
+  if (activeSource.value !== null) {
+    throw new Error('ASR session busy')
   }
-
-  /**
-   * 识别后处理：填入 / 自动发送 / 入队
-   * 三模式（asrStore.settings.send_mode）：
-   * - fill_only: emit window 'asr-text' event，GameDialog 监听后填 inputMessage
-   * - auto_send: 直接 invoke send_chat_message；生成锁忙时降级 queue
-   * - queue: 入 pendingAsrQueue，AI 生成结束后 flush
-   */
-  function handle(text: string, _source: AsrSource) {
-    const mode = asrStore.settings.send_mode
-    // pendingAsrQueue 兜底：gameStore 不一定有这字段
-    const queue = ((gameStore as unknown as { pendingAsrQueue?: string[] }).pendingAsrQueue ??= [])
-    if (mode === 'fill_only') {
-      window.dispatchEvent(new CustomEvent('asr-text', { detail: text }))
-    } else if (mode === 'auto_send') {
-      if (chatBusy.value) {
-        queue.push(text)
-      } else {
-        void invoke('send_chat_message', { text, screenshotBase64: null })
+  activeSource.value = source
+  phase.value = 'recording'
+  asrStore?.setMicState('recording')
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        sampleRate: 16000,
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
+    })
+    audioCtx = new AudioContext({ sampleRate: 16000 })
+    const src = audioCtx.createMediaStreamSource(stream)
+    processor = audioCtx.createScriptProcessor(1024, 1, 1)
+    src.connect(processor)
+    // 输出接零增益节点而非 destination，避免把采集流回放
+    const silence = audioCtx.createGain()
+    silence.gain.value = 0
+    processor.connect(silence)
+    silence.connect(audioCtx.destination)
+    processor.onaudioprocess = (e) => {
+      const data = e.inputBuffer.getChannelData(0)
+      pcmBuffer.push(...data)
+      if (source === 'auto') {
+        vadPending.push(...data)
+        feedVad()
       }
-    } else if (mode === 'queue') {
+    }
+    await asrStartListening(source)
+  } catch (err: unknown) {
+    const name = (err as { name?: string }).name
+    console.warn('[ASR] start failed:', err)
+    if (name === 'NotAllowedError' || name === 'NotReadableError') {
+      asrStore?.setMicState('denied')
+    }
+    resetSession()
+    throw err
+  }
+}
+
+/** 手动结束（mic 按钮 / 快捷键松开 / VAD turn 结束）：停止 → 识别 → 处理 */
+function stop() {
+  if (phase.value !== 'recording') return
+  const source = activeSource.value
+  if (!source) return
+  phase.value = 'recognizing'
+  teardownRecorder()
+  void asrStopListening(source)
+  void doRecognize(source)
+}
+
+/** 把本次录音的 PCM 合成 WAV 送识别，成功后 handle() */
+async function doRecognize(source: AsrSource) {
+  try {
+    const wav = pcmToWavPcm16(pcmBuffer)
+    if (wav.byteLength <= 44) {
+      // 纯静音（无采样）：直接放弃，不浪费一次识别调用
+      resetSession()
+      if (source === 'auto') {
+        autoTriggered = false
+        startEnergyMonitor()
+      }
+      return
+    }
+    const result = await asrRecognizeWav({
+      providerId: asrStore?.settings.active_provider ?? 'openai-whisper',
+      wavBytes: Array.from(wav),
+      languageHint: null,
+    })
+    asrStore?.onResult(result)
+    handle(result.text, source)
+  } catch (err) {
+    console.error('[ASR] recognize failed:', err)
+    resetSession()
+    if (source === 'auto') {
+      autoTriggered = false
+      startEnergyMonitor()
+    }
+  }
+}
+
+/**
+ * 识别后处理：填入 / 自动发送 / 入队
+ * 三模式（asrStore.settings.send_mode）：
+ * - fill_only: emit window 'asr-text' event，GameDialog 监听后填 inputMessage
+ * - auto_send: 直接 invoke send_chat_message；生成锁忙时降级 queue
+ * - queue: 入 pendingAsrQueue，AI 生成结束后 flush
+ */
+function handle(text: string, source: AsrSource) {
+  const mode = asrStore?.settings.send_mode ?? 'fill_only'
+  // pendingAsrQueue 兜底：gameStore 不一定有这字段
+  const queue = ((gameStore as unknown as { pendingAsrQueue?: string[] }).pendingAsrQueue ??= [])
+  if (mode === 'fill_only') {
+    window.dispatchEvent(new CustomEvent('asr-text', { detail: text }))
+  } else if (mode === 'auto_send') {
+    if (isChatBusy()) {
       queue.push(text)
+    } else {
+      void invoke('send_chat_message', { text, screenshotBase64: null })
     }
-    cleanup()
-    phase.value = 'idle'
-    activeSource.value = null
+  } else if (mode === 'queue') {
+    queue.push(text)
   }
+  resetSession()
+  // auto 模式本轮结束：复位触发标志 + 重新开始能量监听
+  if (source === 'auto') {
+    autoTriggered = false
+    startEnergyMonitor()
+  }
+}
 
-  // 路由/抽屉变化取消当前会话
+// ── 惰性初始化（首次调用时执行一次，注册全局监听） ──────────
+let initialized = false
+function ensureInit() {
+  if (initialized) return
+  initialized = true
+  route = useRoute()
+  uiStore = useUIStore()
+  asrStore = useAsrStore()
+  gameStore = useGameStore()
+
+  // 与后端同步设置：store 可能被 persist 恢复了 localStorage 旧值
+  // （如旧 active_provider），不 load 会导致识别走到错误的 provider。
+  // load 完成后热键/auto_listen 的 watch 会自动响应新值。
+  void asrStore.load().catch((e) => console.warn('[ASR] load settings failed:', e))
+
+  // VAD 事件（经 store 中转，与 tauri-events.ts 的全局监听共用 store 字段）
+  watch(
+    () => asrStore?.vadEvent ?? null,
+    (e: VadEvent | null) => {
+      if (!e) return
+      if (e.type === 'turn_candidate' || e.type === 'turn_sealed') {
+        void onVadTurnEnd()
+      }
+    },
+  )
+
+  // ── 系统级全局快捷键（后台可触发） ──
+  // 后端 RegisterHotKey 注册/注销，设置启用或组合变化时同步
+  watch(
+    () => [asrStore?.settings.hotkey_enabled, asrStore?.settings.hotkey_combination] as const,
+    ([enabled, combo]) => {
+      if (enabled && combo) {
+        void asrRegisterHotkey(combo).catch((e) => {
+          console.warn('[ASR] 注册全局快捷键失败:', e)
+        })
+      } else {
+        void asrUnregisterHotkey().catch(() => {
+          /* 未注册时注销失败可忽略 */
+        })
+      }
+    },
+    { immediate: true },
+  )
+  // 按下 → 开始录音；释放 → 停止（RegisterHotKey 只有按下通知，释放由后端轮询检测）
+  listen('asr://hotkey_down', () => {
+    if (chatActive.value && phase.value === 'idle') {
+      void start('hotkey').catch(() => {
+        /* 会话忙时静默忽略 */
+      })
+    }
+  })
+  listen('asr://hotkey_up', () => {
+    if (activeSource.value === 'hotkey') {
+      stop()
+    }
+  })
+
+  // 路由/抽屉变化：丢弃当前会话 + 能量监测启停（spec §3.0 门控）
   watch(chatActive, (active) => {
     if (!active) {
-      if (phase.value === 'recording') {
-        stop()
-      } else if (phase.value === 'recognizing') {
-        void asrCancel()
-      }
+      discardRecording()
+      stopEnergyMonitor()
+    } else if (asrStore?.settings.auto_listen) {
+      startEnergyMonitor()
     }
   })
+}
 
-  onUnmounted(() => {
-    cleanup()
-  })
-
+export function useAsrInput() {
+  ensureInit()
   return {
     phase,
     activeSource,
     chatActive,
     start,
     stop,
+    discardRecording,
     handle,
     cancel: () => asrCancel(),
   }

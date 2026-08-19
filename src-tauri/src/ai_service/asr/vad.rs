@@ -191,11 +191,16 @@ impl AsrVad {
             }
         } else if state.speech_active {
             // silence after speech
+            let is_first_silence = state.silence_started_ts.is_none();
             let silence_start = *state.silence_started_ts.get_or_insert(now);
             let elapsed_ms = now.duration_since(silence_start).as_millis();
 
+            // SilenceStarted 在静音起始就 emit（不等到 300ms 候选窗口）
+            if is_first_silence {
+                emitted.push(VadEvent::SilenceStarted { silence_ms: 0 });
+            }
+
             if elapsed_ms >= VAD_SILENCE_MS_FOR_CANDIDATE && state.confirm_token.is_none() {
-                emitted.push(VadEvent::SilenceStarted { silence_ms: elapsed_ms as u32 });
                 emitted.push(VadEvent::TurnCandidate { silence_ms: elapsed_ms as u32 });
 
                 // spawn 1s confirmation timer

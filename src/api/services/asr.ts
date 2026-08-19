@@ -26,16 +26,17 @@ export interface AsrSettings {
   provider_configs: Record<string, ProviderConfig>
 }
 
-export type ConfigFieldKind =
-  | { name: 'text'; placeholder: string }
-  | { name: 'secret' }
-  | { name: 'url'; placeholder: string }
+/** 与后端 `provider.rs` 的 `ConfigFieldKind`（snake_case 字符串）严格对齐 */
+export type ConfigFieldKind = 'text' | 'password' | 'number' | 'boolean'
 
 export interface AsrConfigField {
   key: string
   label: string
   kind: ConfigFieldKind
   required: boolean
+  default_value?: string
+  placeholder?: string
+  hint?: string
 }
 
 export interface ProviderInfo {
@@ -79,3 +80,9 @@ export const asrSetSettings = (settings: AsrSettings) =>
 
 export const asrTestProvider = (providerId: string) =>
   invoke<void>('asr_test_provider', { providerId })
+
+/** 注册系统级全局快捷键（后台也可触发；combo 格式 "Ctrl+Shift+Space"） */
+export const asrRegisterHotkey = (combo: string) =>
+  invoke<void>('asr_register_hotkey', { combo })
+
+export const asrUnregisterHotkey = () => invoke<void>('asr_unregister_hotkey')

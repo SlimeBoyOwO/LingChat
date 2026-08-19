@@ -25,6 +25,9 @@ pub enum AsrError {
     #[error("provider {0} 请求超时")]
     ProviderTimeout(String),
 
+    #[error("缺少凭据: {0}")]
+    MissingCredentials(String),
+
     #[error("音频格式无效: {0}")]
     InvalidAudioFormat(String),
 
@@ -47,6 +50,7 @@ impl AsrError {
             Self::ProviderNotFound(_) => "ASR_PROVIDER_NOT_FOUND",
             Self::ProviderApiError { .. } => "ASR_PROVIDER_FAILED",
             Self::ProviderTimeout(_) => "ASR_PROVIDER_TIMEOUT",
+            Self::MissingCredentials(_) => "ASR_MISSING_CREDENTIALS",
             Self::InvalidAudioFormat(_) => "ASR_INVALID_AUDIO",
             Self::SessionBusy => "ASR_SESSION_BUSY",
             Self::Canceled => "ASR_CANCELED",
@@ -77,6 +81,10 @@ mod tests {
         assert_eq!(
             AsrError::ProviderTimeout("qwen".into()).i18n_code(),
             "ASR_PROVIDER_TIMEOUT"
+        );
+        assert_eq!(
+            AsrError::MissingCredentials("openai".into()).i18n_code(),
+            "ASR_MISSING_CREDENTIALS"
         );
         assert_eq!(AsrError::SessionBusy.i18n_code(), "ASR_SESSION_BUSY");
         assert_eq!(AsrError::Canceled.i18n_code(), "ASR_CANCELED");
