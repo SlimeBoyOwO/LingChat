@@ -347,6 +347,7 @@ import { useI18n } from 'vue-i18n'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Button, Slider } from '../../base'
 import { MenuItem, MenuPage } from '../../ui'
+import { musicDialogFilters } from '@/utils/dialogFilters'
 import {
   musicDelete,
   musicGetAll,
@@ -576,7 +577,7 @@ const stopAllAmbient = () => {
 const triggerAmbientUpload = async () => {
   const selected = await openDialog({
     multiple: true,
-    filters: [{ name: 'Ambient', extensions: ['mp3', 'wav', 'flac', 'ogg'] }],
+    filters: musicDialogFilters(),
   })
   if (!selected) return
   selectedAmbientPaths.value = extractDialogPaths(selected)
@@ -833,9 +834,7 @@ const handleStop = () => {
 const triggerFileUpload = async () => {
   const selected = await openDialog({
     multiple: true,
-    filters: [
-      { name: 'Music', extensions: ['mp3', 'wav', 'flac', 'webm', 'weba', 'ogg'] },
-    ],
+    filters: musicDialogFilters(),
   })
   if (!selected) return
   selectedPaths.value = extractDialogPaths(selected)
