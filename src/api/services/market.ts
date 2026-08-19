@@ -57,6 +57,10 @@ export async function installPackage(id: string): Promise<void> {
   return invoke('market_install', { id })
 }
 
+export async function cancelPackage(id: string): Promise<void> {
+  return invoke('market_cancel', { id })
+}
+
 export async function uninstallPackage(id: string): Promise<void> {
   return invoke('market_uninstall', { id })
 }

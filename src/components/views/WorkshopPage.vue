@@ -1780,6 +1780,7 @@ import {
   fetchInstalling,
   installPackage,
   uninstallPackage,
+  cancelPackage,
   onMarketProgress,
   notifyMarketChanged,
   clearMarketCache,
@@ -2133,15 +2134,21 @@ async function uninstallPkg(id: string) {
   }
 }
 
-/** 取消下载 */
-function cancelInstall(id: string) {
-  // 前端标记取消（后端 CancellationToken 预留，当前版本先做前端取消）
+/** 取消下载：通知后端触发 CancellationToken + 清除前端状态 */
+async function cancelInstall(id: string) {
+  // 清除前端状态
   const next = new Set(installingIds.value)
   next.delete(id)
   installingIds.value = next
   delete progressPercent.value[id]
   delete progressBytes.value[id]
   delete progressPhase.value[id]
+  // 通知后端取消（触发 CancellationToken，下载阶段会检测并退出）
+  try {
+    await cancelPackage(id)
+  } catch {
+    // 取消失败不阻塞（后端可能已完成）
+  }
 }
 
 const goBack = () => {

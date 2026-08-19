@@ -168,6 +168,11 @@ pub struct InstallTask {
 /// 每个包 id 对应一个任务，多个包可同时下载。
 static INSTALLING: Mutex<Option<HashMap<String, InstallTask>>> = Mutex::new(None);
 
+/// 安装任务的取消令牌集合。每个包 id 对应一个 CancellationToken，
+/// 前端取消时触发，下载阶段检查并提前退出。
+static CANCELS: Mutex<Option<HashMap<String, tokio_util::sync::CancellationToken>>> =
+    Mutex::new(None);
+
 /// 读取所有进行中的安装任务。用于前端恢复按钮状态。
 fn installing_tasks() -> Vec<InstallTask> {
     INSTALLING
@@ -202,13 +207,48 @@ fn update_installing(id: &str, phase: &str, percent: u8) {
     }
 }
 
-/// 清除指定 id 的进行中任务（安装完成/失败时调用）。
+/// 清除指定 id 的进行中任务（安装完成/失败/取消时调用）。
 fn clear_installing(id: &str) {
     if let Ok(mut g) = INSTALLING.lock() {
         if let Some(m) = g.as_mut() {
             m.remove(id);
         }
     }
+}
+
+/// 安装开始时注册取消令牌。
+fn register_cancel(id: &str) -> tokio_util::sync::CancellationToken {
+    let token = tokio_util::sync::CancellationToken::new();
+    if let Ok(mut g) = CANCELS.lock() {
+        let m = g.get_or_insert_with(HashMap::new);
+        m.insert(id.to_string(), token.clone());
+    }
+    token
+}
+
+/// 安装结束时注销取消令牌。
+fn unregister_cancel(id: &str) {
+    if let Ok(mut g) = CANCELS.lock() {
+        if let Some(m) = g.as_mut() {
+            m.remove(id);
+        }
+    }
+}
+
+/// 取消指定 id 的安装任务：触发取消令牌 + 从 INSTALLING 中移除。
+/// 下载阶段会检查令牌并提前退出；安装阶段（spawn_blocking）不可中断，
+/// 但移除 INSTALLING 后前端可重新触发安装。
+fn cancel_install(id: &str) {
+    // 触发取消令牌（下载阶段会检测并退出）
+    if let Ok(mut g) = CANCELS.lock() {
+        if let Some(m) = g.as_mut() {
+            if let Some(token) = m.remove(id) {
+                token.cancel();
+            }
+        }
+    }
+    // 从 INSTALLING 中移除，让前端可以重新触发
+    clear_installing(id);
 }
 
 fn data_dir() -> PathBuf {
@@ -399,15 +439,28 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
         return Err(format!("包 '{id}' 正在安装中（{}%），请稍候", task.percent));
     }
     update_installing(&id, "download", 0);
+    let cancel_token = register_cancel(&id);
 
-    let result = market_install_inner(app, id.clone()).await;
-    // 无论成功失败都清除进行中标记（clear_installing 按 id 清除，不会误清新任务）
+    let result = market_install_inner(app, id.clone(), cancel_token.clone()).await;
+    // 无论成功失败都清除进行中标记和取消令牌（cancel_install 可能已清除，幂等）
     clear_installing(&id);
+    unregister_cancel(&id);
     result
 }
 
+/// 取消指定 id 的安装任务（前端点取消按钮时调用）。
+#[tauri::command]
+pub async fn market_cancel(id: String) -> Result<(), String> {
+    cancel_install(&id);
+    Ok(())
+}
+
 /// market_install 主体（下载 → 校验 → 解包 → 写记录 → 注册）。
-async fn market_install_inner(app: AppHandle, id: String) -> Result<(), String> {
+async fn market_install_inner(
+    app: AppHandle,
+    id: String,
+    cancel: tokio_util::sync::CancellationToken,
+) -> Result<(), String> {
     let pkg = fetch_index()
         .await?
         .into_iter()
@@ -454,6 +507,7 @@ async fn market_install_inner(app: AppHandle, id: String) -> Result<(), String> 
     }
     sources.push(download_url.clone());
 
+    let cancel_arc = Arc::new(cancel);
     let mut last_err = String::new();
     let mut downloaded = false;
     'sources: for (src_idx, src) in sources.iter().enumerate() {
@@ -461,12 +515,13 @@ async fn market_install_inner(app: AppHandle, id: String) -> Result<(), String> 
         // 每源最多 2 次（连接超时 8s，不可达镜像很快失败并换下一源，避免长时间卡住）
         for attempt in 0..2 {
             let progress = progress.clone();
+            let cancel = cancel_arc.clone();
             let result = if use_parallel {
                 crate::utils::download::download_to_file_parallel(
                     &client,
                     src,
                     &zip_path,
-                    None,
+                    Some(cancel),
                     progress,
                     expected,
                     PARALLEL_CHUNKS,
@@ -477,7 +532,7 @@ async fn market_install_inner(app: AppHandle, id: String) -> Result<(), String> 
                     &client,
                     src,
                     &zip_path,
-                    None,
+                    Some(cancel),
                     progress,
                     expected,
                 )
@@ -555,7 +610,21 @@ async fn market_install_inner(app: AppHandle, id: String) -> Result<(), String> 
         ));
     }
 
+    // 下载完成后检查是否被取消（前端点取消按钮）
+    if cancel_arc.is_cancelled() {
+        let _ = std::fs::remove_file(&zip_path);
+        clear_installing(&id);
+        return Err("下载已取消".into());
+    }
+
     // 下载成功（已通过大小 + sha256 校验），进入解包安装阶段
+
+    // 安装阶段前再次检查取消（spawn_blocking 不可中断，提前跳过）
+    if cancel_arc.is_cancelled() {
+        let _ = std::fs::remove_file(&zip_path);
+        clear_installing(&id);
+        return Err("安装已取消".into());
+    }
 
     // 解包安装（同步阻塞，放 spawn_blocking）；先通知进入安装阶段
     update_installing(&id, "install", 0);
