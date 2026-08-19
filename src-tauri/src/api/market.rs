@@ -348,6 +348,7 @@ async fn fetch_index() -> Result<Vec<MarketPackage>, String> {
 
     // 过滤已下架包：市场列表不展示，已装用户保留（由 installed 列表单独维护）
     let before = plugins.len();
+    let mut plugins = plugins;
     plugins.retain(|p| !p.delisted);
     if plugins.len() < before {
         tracing::info!("市场索引: 过滤 {} 个已下架包", before - plugins.len());
@@ -562,6 +563,7 @@ async fn fetch_pkg(client: &reqwest::Client, dir: String) -> Result<MarketPackag
         size: build.as_ref().and_then(|b| b.size),
         manifest: Some(manifest_json),
         review_report_url: build.as_ref().and_then(|b| b.review_report_url.clone()),
+        delisted: false,
     })
 }
 
