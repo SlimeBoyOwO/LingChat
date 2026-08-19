@@ -1092,7 +1092,11 @@ export default {
     "provider": {
       "title": "識別服務商",
       "test": "測試連接",
+      "testing": "正在錄音…請說話（4 秒）",
+      "testingStop": "停止並識別",
       "testSuccess": "連接成功",
+      "testResult": "識別結果：{text}",
+      "testNoSpeech": "未識別到語音，請重試",
       "testFailed": "連接失敗：{err}",
       "options": {
         "openai-whisper": "OpenAI Whisper",
@@ -1100,6 +1104,18 @@ export default {
         "gemini": "Google Gemini",
         "lan-whisper": "LAN Whisper（自託管）"
       }
+    },
+    errors: {
+      ASR_MODEL_MISSING: "VAD 模型未找到",
+      ASR_ENGINE_LOAD_FAILED: "識別引擎載入失敗",
+      ASR_PROVIDER_NOT_FOUND: "識別服務商未找到，請先配置",
+      ASR_PROVIDER_FAILED: "識別服務失敗，請稍後重試",
+      ASR_PROVIDER_TIMEOUT: "識別超時，請重試",
+      ASR_INVALID_AUDIO: "音訊數據無效",
+      ASR_SESSION_BUSY: "已有語音會話進行中",
+      ASR_CANCELED: "識別已取消",
+      ASR_MIC_DENIED: "麥克風權限被拒絕，請在系統設定中開啟",
+      ASR_MISSING_CREDENTIALS: "請先填寫該服務商的 API Key"
     }
   }
 }

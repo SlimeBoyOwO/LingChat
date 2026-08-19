@@ -167,7 +167,7 @@ impl OpenAiWhisperProvider {
 
     pub fn new(http: reqwest::Client, cred: ProviderCredentials) -> Result<Self, AsrError> {
         if !cred.has_api_key() {
-            return Err(AsrError::InvalidAudioFormat(
+            return Err(AsrError::MissingCredentials(
                 "OpenAI Whisper 需要 api_key".into(),
             ));
         }
@@ -284,12 +284,12 @@ impl QwenAsrProvider {
     const ID: &'static str = "qwen-asr";
     const DISPLAY: &'static str = "Qwen ASR";
     const DEFAULT_ENDPOINT: &'static str =
-        "https://dashscope.aliyuncs.com/compatible-mode/v1/audio/transcriptions";
-    const MODEL: &'static str = "qwen-audio-asr";
+        "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
+    const MODEL: &'static str = "fun-asr-realtime";
 
     pub fn new(http: reqwest::Client, cred: ProviderCredentials) -> Result<Self, AsrError> {
         if !cred.has_api_key() {
-            return Err(AsrError::InvalidAudioFormat(
+            return Err(AsrError::MissingCredentials(
                 "Qwen ASR 需要 DashScope api_key".into(),
             ));
         }
@@ -320,32 +320,38 @@ impl AsrProvider for QwenAsrProvider {
         let endpoint = if self.cred.normalized_endpoint().is_empty() {
             Self::DEFAULT_ENDPOINT.to_string()
         } else {
-            let base = self.cred.normalized_endpoint();
-            if base.ends_with("/audio/transcriptions") {
-                base
-            } else {
-                format!("{base}/audio/transcriptions")
-            }
+            self.cred.normalized_endpoint()
         };
 
-        let mut form = reqwest::multipart::Form::new()
-            .text("model", Self::MODEL)
-            .text("response_format", "json");
-        if let Some(lang) = language_hint {
-            // DashScope 兼容模式接受 ISO-639-1（如 zh / en / ja）
-            form = form.text("language", lang.to_string());
-        }
-        let part = reqwest::multipart::Part::bytes(wav_bytes)
-            .file_name("audio.wav")
-            .mime_str("audio/wav")
-            .map_err(|e| AsrError::InvalidAudioFormat(format!("构建 multipart 失败: {e}")))?;
-        form = form.part("file", part);
+        // DashScope 非实时 Fun-ASR-Realtime 协议（multimodal-generation）：
+        // JSON body + audio 以 data URL（base64 inline）放在 user message 里。
+        // 参考官方 SDK Recognition.call + 文档「非实时语音识别（Fun-ASR-Realtime）API参考」。
+        // 注：language_hints 仅 paraformer-realtime-v2 支持，fun-asr-realtime 不传。
+        let _ = language_hint;
+        let b64 = BASE64_STD.encode(&wav_bytes);
+        let body = json!({
+            "model": Self::MODEL,
+            "input": {
+                "messages": [{
+                    "role": "user",
+                    "content": [{
+                        "audio": format!("data:audio/wav;base64,{b64}")
+                    }]
+                }]
+            },
+            "parameters": {
+                "format": "wav",
+                "sample_rate": 16000
+            },
+            "resources": []
+        });
 
         let resp = self
             .http
             .post(&endpoint)
             .bearer_auth(&self.cred.api_key)
-            .multipart(form)
+            .header("X-DashScope-SSE", "disable")
+            .json(&body)
             .send()
             .await
             .map_err(map_reqwest_error)?;
@@ -364,8 +370,6 @@ impl AsrProvider for QwenAsrProvider {
             });
         }
 
-        // DashScope 兼容模式响应与 OpenAI 相同：`{"text": "..."}`
-        // 但偶尔会包一层 `output`，做宽松解析。
         let body_text = resp.text().await.map_err(map_reqwest_error)?;
         let text = parse_qwen_text(&body_text).ok_or_else(|| AsrError::ProviderApiError {
             provider: Self::ID.into(),
@@ -381,11 +385,54 @@ impl AsrProvider for QwenAsrProvider {
     }
 }
 
-/// 解析 DashScope 兼容模式返回文本。
+/// 解析 DashScope multimodal-generation 响应文本。
 ///
-/// 优先 `text` 字段；缺则尝试 `output.text` / `result.text`。
+/// Fun-ASR-Realtime 非流式实际响应结构（实测）：
+/// `{"output": {"output": {"text": "识别文本", "sentence": {...}}, "usage": {...}}}`
+/// 宽松解析：优先 `output.output.text` / `output.output.sentence.text`，
+/// 兜底 OpenAI 风格 `output.choices[0].message.content` 及 `text` 字段。
 fn parse_qwen_text(body: &str) -> Option<String> {
     let value: JsonValue = serde_json::from_str(body).ok()?;
+    // Fun-ASR-Realtime：output.output.text（sentence 内也有一份）
+    if let Some(s) = value
+        .get("output")
+        .and_then(|v| v.get("output"))
+        .and_then(|v| v.get("text"))
+        .and_then(|v| v.as_str())
+    {
+        return Some(s.to_string());
+    }
+    if let Some(s) = value
+        .get("output")
+        .and_then(|v| v.get("output"))
+        .and_then(|v| v.get("sentence"))
+        .and_then(|v| v.get("text"))
+        .and_then(|v| v.as_str())
+    {
+        return Some(s.to_string());
+    }
+    // OpenAI 风格：output.choices[0].message.content（content 可能是数组）
+    if let Some(content) = value
+        .get("output")
+        .and_then(|v| v.get("choices"))
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|v| v.get("message"))
+        .and_then(|v| v.get("content"))
+    {
+        if let Some(s) = content.as_str() {
+            return Some(s.to_string());
+        }
+        if let Some(arr) = content.as_array() {
+            let joined: String = arr
+                .iter()
+                .filter_map(|part| part.get("text").and_then(|t| t.as_str()))
+                .collect();
+            if !joined.is_empty() {
+                return Some(joined);
+            }
+        }
+    }
     if let Some(s) = value.get("text").and_then(|v| v.as_str()) {
         return Some(s.to_string());
     }
@@ -422,7 +469,7 @@ impl GeminiProvider {
 
     pub fn new(http: reqwest::Client, cred: ProviderCredentials) -> Result<Self, AsrError> {
         if !cred.has_api_key() {
-            return Err(AsrError::InvalidAudioFormat(
+            return Err(AsrError::MissingCredentials(
                 "Gemini 需要 api_key".into(),
             ));
         }
@@ -809,8 +856,8 @@ fn qwen_asr_config_fields() -> Vec<AsrConfigField> {
             kind: ConfigFieldKind::Text,
             required: false,
             default_value: Some(QwenAsrProvider::DEFAULT_ENDPOINT),
-            placeholder: Some("兼容模式端点，可换自建代理"),
-            hint: Some("默认 DashScope OpenAI-compatible；填 base 也可，自动补 /audio/transcriptions"),
+            placeholder: Some("非实时 Fun-ASR-Realtime 端点"),
+            hint: Some("默认 DashScope multimodal-generation；填自建代理时整段替换"),
         },
     ]
 }

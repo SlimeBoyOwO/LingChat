@@ -1094,7 +1094,11 @@ export default {
     provider: {
       title: 'Recognition provider',
       test: 'Test connection',
+      testing: 'Recording… please speak (4s)',
+      testingStop: 'Stop & recognize',
       testSuccess: 'Connected',
+      testResult: 'Recognized: {text}',
+      testNoSpeech: 'No speech detected, please retry',
       testFailed: 'Failed: {err}',
       options: {
         'openai-whisper': 'OpenAI Whisper',
@@ -1102,6 +1106,18 @@ export default {
         gemini: 'Google Gemini',
         'lan-whisper': 'LAN Whisper (self-hosted)',
       },
+    },
+    errors: {
+      ASR_MODEL_MISSING: 'VAD model not found',
+      ASR_ENGINE_LOAD_FAILED: 'Recognition engine failed to load',
+      ASR_PROVIDER_NOT_FOUND: 'Recognition provider not found, please configure it first',
+      ASR_PROVIDER_FAILED: 'Recognition service failed, please retry later',
+      ASR_PROVIDER_TIMEOUT: 'Recognition timed out, please retry',
+      ASR_INVALID_AUDIO: 'Invalid audio data',
+      ASR_SESSION_BUSY: 'A speech session is already in progress',
+      ASR_CANCELED: 'Recognition cancelled',
+      ASR_MIC_DENIED: 'Microphone permission denied, enable it in system settings',
+      ASR_MISSING_CREDENTIALS: 'Please fill in the API Key for this provider',
     },
   },
 }

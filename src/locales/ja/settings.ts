@@ -1092,7 +1092,11 @@ export default {
     provider: {
       title: '認識プロバイダ',
       test: '接続テスト',
+      testing: '録音中…話してください（4秒）',
+      testingStop: '停止して認識',
       testSuccess: '接続成功',
+      testResult: '認識結果：{text}',
+      testNoSpeech: '音声を検出できませんでした。もう一度お試しください',
       testFailed: '失敗：{err}',
       options: {
         'openai-whisper': 'OpenAI Whisper',
@@ -1100,6 +1104,18 @@ export default {
         gemini: 'Google Gemini',
         'lan-whisper': 'LAN Whisper（セルフホスト）',
       },
+    },
+    errors: {
+      ASR_MODEL_MISSING: 'VAD モデルが見つかりません',
+      ASR_ENGINE_LOAD_FAILED: '認識エンジンの読み込みに失敗しました',
+      ASR_PROVIDER_NOT_FOUND: '認識プロバイダが見つかりません。先に設定してください',
+      ASR_PROVIDER_FAILED: '認識サービスに失敗しました。後でもう一度お試しください',
+      ASR_PROVIDER_TIMEOUT: '認識がタイムアウトしました。もう一度お試しください',
+      ASR_INVALID_AUDIO: 'オーディオデータが無効です',
+      ASR_SESSION_BUSY: '音声セッションが進行中です',
+      ASR_CANCELED: '認識をキャンセルしました',
+      ASR_MIC_DENIED: 'マイク権限が拒否されました。システム設定で有効にしてください',
+      ASR_MISSING_CREDENTIALS: 'このプロバイダの API Key を入力してください',
     },
   },
 }
