@@ -163,6 +163,9 @@ pub struct MarketPackage {
     pub manifest: Option<serde_json::Value>,
     #[serde(default)]
     pub review_report_url: Option<String>,
+    /// 已下架标记：为 true 时客户端从市场列表隐藏，已装用户保留。
+    #[serde(default)]
+    pub delisted: bool,
 }
 
 /// 每包构建产物（registry/<id>/build.json，发布 CI 回写）。
@@ -342,6 +345,13 @@ async fn fetch_index() -> Result<Vec<MarketPackage>, String> {
             }
         }
     };
+
+    // 过滤已下架包：市场列表不展示，已装用户保留（由 installed 列表单独维护）
+    let before = plugins.len();
+    plugins.retain(|p| !p.delisted);
+    if plugins.len() < before {
+        tracing::info!("市场索引: 过滤 {} 个已下架包", before - plugins.len());
+    }
 
     if let Ok(mut cache) = INDEX_CACHE.lock() {
         *cache = Some((plugins.clone(), std::time::Instant::now()));
