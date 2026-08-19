@@ -14,6 +14,9 @@ use serde::{Deserialize, Serialize};
 use super::permissions::ToolPermissionConfig;
 
 pub const SETTINGS_FILE_NAME: &str = "tool_settings.toml";
+pub const DEFAULT_TOOL_CALL_ROUND_LIMIT: u32 = 8;
+pub const MIN_TOOL_CALL_ROUND_LIMIT: u32 = 1;
+pub const MAX_TOOL_CALL_ROUND_LIMIT: u32 = 64;
 
 /// 工具分组 → 组内工具注册名。
 /// 设置页按组开关，权限同步时组内工具一起放开/收回。
@@ -127,7 +130,7 @@ pub enum ToolAccessMode {
 }
 
 /// 工具配置根。
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ToolSettings {
     pub web_search: WebSearchSettings,
@@ -135,6 +138,8 @@ pub struct ToolSettings {
     pub groups: std::collections::HashMap<String, bool>,
     /// 文件修改与命令执行使用的统一审批模式。
     pub access_mode: ToolAccessMode,
+    /// 主聊天单次回复可连续执行工具的最大轮数；每轮可能包含多个工具调用。
+    pub max_tool_rounds: u32,
     /// 以下四项仅用于读取旧版配置。保存后会迁移成 `access_mode`。
     #[serde(default, skip_serializing)]
     pub command_auto_approve: bool,
@@ -149,7 +154,34 @@ pub struct ToolSettings {
     legacy_approval_behavior: bool,
 }
 
+impl Default for ToolSettings {
+    fn default() -> Self {
+        Self {
+            web_search: WebSearchSettings::default(),
+            groups: std::collections::HashMap::new(),
+            access_mode: ToolAccessMode::default(),
+            max_tool_rounds: DEFAULT_TOOL_CALL_ROUND_LIMIT,
+            command_auto_approve: false,
+            command_delete_auto_approve: false,
+            file_delete_auto_approve: false,
+            file_ops_allow_any_path: false,
+            legacy_approval_behavior: false,
+        }
+    }
+}
+
 impl ToolSettings {
+    pub fn normalize(&mut self) {
+        self.max_tool_rounds = self
+            .max_tool_rounds
+            .clamp(MIN_TOOL_CALL_ROUND_LIMIT, MAX_TOOL_CALL_ROUND_LIMIT);
+    }
+
+    pub fn tool_round_limit(&self) -> usize {
+        self.max_tool_rounds
+            .clamp(MIN_TOOL_CALL_ROUND_LIMIT, MAX_TOOL_CALL_ROUND_LIMIT) as usize
+    }
+
     pub fn allows_any_path(&self) -> bool {
         if self.legacy_approval_behavior {
             self.file_ops_allow_any_path
@@ -226,6 +258,7 @@ impl ToolSettings {
                     ToolAccessMode::Manual
                 };
             }
+            settings.normalize();
             return Ok(settings);
         }
         let settings = Self::default();
@@ -236,7 +269,9 @@ impl ToolSettings {
     /// 原子写入 `data/tool_settings.toml`。
     pub fn save(&self, data_dir: &Path) -> Result<()> {
         let path = data_dir.join(SETTINGS_FILE_NAME);
-        let text = toml::to_string_pretty(self).context("序列化工具配置失败")?;
+        let mut normalized = self.clone();
+        normalized.normalize();
+        let text = toml::to_string_pretty(&normalized).context("序列化工具配置失败")?;
         super::atomic_replace(&path, text.as_bytes())
             .map_err(anyhow::Error::msg)
             .with_context(|| format!("保存工具配置失败: {}", path.display()))?;

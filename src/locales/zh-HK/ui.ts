@@ -116,6 +116,9 @@ export default {
     "accessModeTitle": "工具存取權限",
     "accessModeHint": "唯讀工具（Read / Glob / Grep）會直接執行；呢度控制修改檔案同執行命令要唔要確認。",
     "accessModeSelected": "目前",
+    "maxToolRoundsTitle": "工具調用輪數上限",
+    "maxToolRoundsHint": "限制主聊天單次回覆可連續執行工具嘅輪數；每輪可能包含多個工具調用。可設定 1–64，預設 8。",
+    "maxToolRoundsUnit": "輪",
     "accessModes": {
       "manual": { "label": "逐次確認", "description": "寫入、編輯、刪除檔案同執行命令之前都會問你。" },
       "auto_approve": { "label": "自動通過", "description": "普通寫入、編輯同命令會自動通過；刪除操作仍然會問。" },

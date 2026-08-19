@@ -83,6 +83,33 @@
             </p>
           </button>
         </div>
+        <div class="mt-4 rounded-xl border border-white/15 bg-white/5 px-4 py-3">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="min-w-0">
+              <h3 class="font-semibold text-white">
+                {{ $t('ui.toolCalls.maxToolRoundsTitle') }}
+              </h3>
+              <p class="mt-1 text-sm leading-relaxed text-gray-300">
+                {{ $t('ui.toolCalls.maxToolRoundsHint') }}
+              </p>
+            </div>
+            <label
+              class="flex shrink-0 items-center gap-2 rounded-lg border border-white/20 bg-black/20 px-3 py-2 focus-within:border-brand"
+            >
+              <input
+                v-model.number="form.max_tool_rounds"
+                type="number"
+                :min="MIN_TOOL_ROUND_LIMIT"
+                :max="MAX_TOOL_ROUND_LIMIT"
+                step="1"
+                class="w-16 bg-transparent text-center font-semibold text-white outline-none"
+                :aria-label="$t('ui.toolCalls.maxToolRoundsTitle')"
+                @blur="normalizeToolRoundLimit"
+              />
+              <span class="text-sm text-gray-300">{{ $t('ui.toolCalls.maxToolRoundsUnit') }}</span>
+            </label>
+          </div>
+        </div>
         <div
           v-if="form.access_mode === 'full_access'"
           class="mt-3 rounded-lg border-l-4 border-amber-400/70 bg-amber-400/10 px-4 py-3 text-sm text-amber-200/90"
@@ -339,6 +366,9 @@ const selected = ref<string>('access')
 
 const navItems = ['access', 'web_search', ...TOOL_GROUP_KEYS] as const
 const accessModes: ToolAccessMode[] = ['manual', 'auto_approve', 'full_access']
+const DEFAULT_TOOL_ROUND_LIMIT = 8
+const MIN_TOOL_ROUND_LIMIT = 1
+const MAX_TOOL_ROUND_LIMIT = 64
 
 const navLabel = (item: string) =>
   item === 'access'
@@ -363,6 +393,7 @@ const form = reactive<ToolSettings>({
   },
   groups: {},
   access_mode: 'manual',
+  max_tool_rounds: DEFAULT_TOOL_ROUND_LIMIT,
 })
 
 const status = reactive({ message: '', color: '#4ade80' })
@@ -390,8 +421,16 @@ const selectAccessMode = async (mode: ToolAccessMode) => {
   form.access_mode = mode
 }
 
+const normalizeToolRoundLimit = () => {
+  const value = Number(form.max_tool_rounds)
+  form.max_tool_rounds = Number.isFinite(value)
+    ? Math.min(MAX_TOOL_ROUND_LIMIT, Math.max(MIN_TOOL_ROUND_LIMIT, Math.round(value)))
+    : DEFAULT_TOOL_ROUND_LIMIT
+}
+
 const saveSettings = async (): Promise<boolean> => {
   try {
+    normalizeToolRoundLimit()
     // 深拷贝一份普通对象，避免把 reactive 代理传给 Tauri IPC
     const payload: ToolSettings = JSON.parse(JSON.stringify(form))
     await saveToolSettings(payload)
@@ -452,6 +491,8 @@ onMounted(async () => {
     Object.assign(form.web_search, settings.web_search)
     Object.assign(form.groups, settings.groups ?? {})
     form.access_mode = settings.access_mode ?? 'manual'
+    form.max_tool_rounds = settings.max_tool_rounds ?? DEFAULT_TOOL_ROUND_LIMIT
+    normalizeToolRoundLimit()
     if (isWindows()) await refreshElevationStatus()
   } catch (error) {
     console.error('加载工具配置失败:', error)

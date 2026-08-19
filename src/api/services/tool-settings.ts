@@ -26,6 +26,8 @@ export interface ToolSettings {
   groups: Record<string, boolean>
   /** 文件修改与命令执行的统一审批模式。 */
   access_mode: ToolAccessMode
+  /** 主聊天单次回复可连续执行工具的最大轮数；每轮可能包含多个工具调用。 */
+  max_tool_rounds: number
 }
 
 /** 全局访问模式快照，供主界面的完全访问警告即时响应设置保存。 */

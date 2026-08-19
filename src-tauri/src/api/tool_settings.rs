@@ -23,10 +23,11 @@ pub async fn get_tool_settings(app: tauri::AppHandle) -> Result<ToolSettings, St
 #[tauri::command]
 pub async fn save_tool_settings(
     app: tauri::AppHandle,
-    settings: ToolSettings,
+    mut settings: ToolSettings,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
     let data_dir = super::data_dir();
+    settings.normalize();
     settings.save(&data_dir).map_err(|e| e.to_string())?;
     state.tool_settings.update(settings.clone());
 
