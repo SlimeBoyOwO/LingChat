@@ -187,6 +187,7 @@ impl AsrVad {
             }
             if !state.speech_active {
                 state.speech_active = true;
+                tracing::info!("[ASR/VAD] 录入开始 (SpeechStarted, prob={prob:.3})");
                 emitted.push(VadEvent::SpeechStarted);
             }
         } else if state.speech_active {
@@ -201,6 +202,9 @@ impl AsrVad {
             }
 
             if elapsed_ms >= VAD_SILENCE_MS_FOR_CANDIDATE && state.confirm_token.is_none() {
+                tracing::info!(
+                    "[ASR/VAD] TurnCandidate (silence={elapsed_ms}ms, prob={prob:.3})"
+                );
                 emitted.push(VadEvent::TurnCandidate { silence_ms: elapsed_ms as u32 });
 
                 // spawn 1s confirmation timer
@@ -224,6 +228,7 @@ impl AsrVad {
                         s.speech_active
                     };
                     if !still_speech {
+                        tracing::info!("[ASR/VAD] 录入结束 (TurnSealed, 静音 1s 确认)");
                         let _ = app_clone.emit("asr://turn_sealed", &VadEvent::TurnSealed);
                         // 清理 state 中的 confirm_token
                         let mut s = state_for_timer.lock().await;

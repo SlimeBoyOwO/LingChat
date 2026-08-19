@@ -139,10 +139,21 @@ pub async fn asr_recognize_wav(
     let p = resolve_provider(&providers, &provider_id, &app, &http)
         .await
         .map_err(|e| e.i18n_code().to_string())?;
+    tracing::info!(
+        "[ASR] 发送音频到 {provider_id}: {} bytes",
+        wav_bytes.len()
+    );
     let cancel_child = cancel_token.child_token();
-    tokio::select! {
-        result = p.recognize(wav_bytes, language_hint.as_deref()) => result.map_err(|e| e.i18n_code().to_string()),
-        _ = cancel_child.cancelled() => Err("ASR_CANCELED".to_string()),
+    let result = tokio::select! {
+        result = p.recognize(wav_bytes, language_hint.as_deref()) => result,
+        _ = cancel_child.cancelled() => Err(AsrError::Canceled),
+    };
+    match result {
+        Ok(r) => {
+            tracing::info!("[ASR] {provider_id} 识别结果: {}", r.text);
+            Ok(r)
+        }
+        Err(e) => Err(e.i18n_code().to_string()),
     }
 }
 
@@ -246,23 +257,30 @@ pub async fn asr_test_provider(
     let p = resolve_provider(&providers, &provider_id, &app, &http)
         .await
         .map_err(|e| err_to_user(&e))?;
+    tracing::info!("[ASR] 测试连接: 发送静音探测到 {provider_id}");
     let cancel_child = cancel_token.child_token();
-    tokio::select! {
-        result = p.recognize(silence_wav, None) => match result {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                // 测试音频是 1 秒静音：部分 ASR（如 DashScope Fun-ASR）对静音
-                // 直接返回 "ASR_RESPONSE_HAVE_NO_WORDS"。服务能响应这个错误
-                // 恰好证明 API 可达 + key 有效 → 视为连接成功。
-                if let AsrError::ProviderApiError { message, .. } = &e {
-                    if message.contains("NO_WORDS") || message.contains("no_words") {
-                        return Ok(());
-                    }
+    let result = tokio::select! {
+        result = p.recognize(silence_wav, None) => result,
+        _ = cancel_child.cancelled() => Err(AsrError::Canceled),
+    };
+    match result {
+        Ok(r) => {
+            tracing::info!("[ASR] 测试连接 {provider_id} 成功: {}", r.text);
+            Ok(())
+        }
+        Err(e) => {
+            // 测试音频是 1 秒静音：部分 ASR（如 DashScope Fun-ASR）对静音
+            // 直接返回 "ASR_RESPONSE_HAVE_NO_WORDS"。服务能响应这个错误
+            // 恰好证明 API 可达 + key 有效 → 视为连接成功。
+            if let AsrError::ProviderApiError { message, .. } = &e {
+                if message.contains("NO_WORDS") || message.contains("no_words") {
+                    tracing::info!("[ASR] 测试连接 {provider_id} 成功（静音无词，服务正常）");
+                    return Ok(());
                 }
-                Err(err_to_user(&e))
             }
-        },
-        _ = cancel_child.cancelled() => Err("ASR_CANCELED".to_string()),
+            tracing::warn!("[ASR] 测试连接 {provider_id} 失败: {e}");
+            Err(err_to_user(&e))
+        }
     }
 }
 

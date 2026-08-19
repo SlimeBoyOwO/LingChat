@@ -114,18 +114,28 @@ function discardRecording() {
 }
 
 // ── VAD 流（auto 模式）：每 512 samples（30ms @ 16k）喂后端 ──
+// 严格串行单飞：一块 invoke 完成才发下一块。Silero 的 h/c 隐状态依赖
+// 顺序输入——并发 fire-and-forget 会导致后端锁等待乱序，prob 结果无意义
+// （表现：VAD 永不触发 SpeechStarted / TurnCandidate）。
+let vadSending = false
 function feedVad() {
   if (!asrStore || phase.value !== 'recording' || activeSource.value !== 'auto') return
-  while (vadPending.length >= 512) {
-    const block = vadPending.splice(0, 512)
-    void asrVadProcessChunk(block).catch(() => {
+  if (vadSending || vadPending.length < 512) return
+  const block = vadPending.splice(0, 512)
+  vadSending = true
+  asrVadProcessChunk(block)
+    .catch(() => {
       /* VAD 失败不阻塞录音 */
     })
-  }
+    .finally(() => {
+      vadSending = false
+      feedVad()
+    })
 }
 
 /** VAD 检测到一轮说话结束（turn_candidate / turn_sealed）→ 结束 auto 会话 */
 async function onVadTurnEnd() {
+  console.log('[ASR] VAD turn 事件, activeSource=', activeSource.value, 'phase=', phase.value)
   if (activeSource.value !== 'auto') return
   if (phase.value === 'recording') {
     stop()
@@ -217,6 +227,11 @@ async function start(source: AsrSource) {
       pcmBuffer.push(...data)
       if (source === 'auto') {
         vadPending.push(...data)
+        // 上限保护：串行速率低于产生速率时丢弃最旧（8192 块 ≈ 4 分钟音频，
+        // VAD 端点检测只需要最近的音频）
+        if (vadPending.length > 8192) {
+          vadPending.splice(0, vadPending.length - 8192)
+        }
         feedVad()
       }
     }
@@ -238,15 +253,17 @@ function stop() {
   const source = activeSource.value
   if (!source) return
   phase.value = 'recognizing'
+  // 先拿走 PCM 再拆录音链路（teardownRecorder 会清空 pcmBuffer）
+  const captured = pcmBuffer
   teardownRecorder()
   void asrStopListening(source)
-  void doRecognize(source)
+  void doRecognize(source, captured)
 }
 
-/** 把本次录音的 PCM 合成 WAV 送识别，成功后 handle() */
-async function doRecognize(source: AsrSource) {
+/** 把录音 PCM 合成 WAV 送识别，成功后 handle() */
+async function doRecognize(source: AsrSource, captured: number[]) {
   try {
-    const wav = pcmToWavPcm16(pcmBuffer)
+    const wav = pcmToWavPcm16(captured)
     if (wav.byteLength <= 44) {
       // 纯静音（无采样）：直接放弃，不浪费一次识别调用
       resetSession()
