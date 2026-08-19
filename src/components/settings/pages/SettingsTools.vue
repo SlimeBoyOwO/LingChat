@@ -34,23 +34,46 @@
             :class="[
               form.access_mode === mode
                 ? mode === 'full_access'
-                  ? 'border-amber-400 bg-amber-400/20 ring-2 ring-amber-400/30'
-                  : 'border-brand bg-brand/20 ring-2 ring-brand/20'
+                  ? 'border-amber-400/80 bg-amber-400/10 ring-1 ring-amber-400/25'
+                  : 'border-brand bg-brand/15 ring-1 ring-brand/25'
                 : 'border-white/15 bg-white/5 hover:bg-white/10',
             ]"
             @click="selectAccessMode(mode)"
           >
             <div class="flex items-center justify-between gap-3">
-              <span
-                class="font-semibold"
-                :class="mode === 'full_access' ? 'text-amber-300' : 'text-white'"
-              >
-                {{ $t(`ui.toolCalls.accessModes.${mode}.label`) }}
+              <span class="flex items-center gap-2.5">
+                <!-- 单选圆点：选中态填充，未选中仅描边 -->
+                <span
+                  class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors duration-200"
+                  :class="
+                    form.access_mode === mode
+                      ? mode === 'full_access'
+                        ? 'border-amber-400'
+                        : 'border-brand'
+                      : 'border-white/30'
+                  "
+                >
+                  <span
+                    v-if="form.access_mode === mode"
+                    class="h-2 w-2 rounded-full"
+                    :class="mode === 'full_access' ? 'bg-amber-400' : 'bg-brand'"
+                  ></span>
+                </span>
+                <span
+                  class="font-semibold"
+                  :class="mode === 'full_access' ? 'text-amber-300' : 'text-white'"
+                >
+                  {{ $t(`ui.toolCalls.accessModes.${mode}.label`) }}
+                </span>
               </span>
               <span
                 v-if="form.access_mode === mode"
-                class="rounded-full px-2 py-0.5 text-xs"
-                :class="mode === 'full_access' ? 'bg-amber-400 text-black' : 'bg-brand text-white'"
+                class="rounded-full border px-2 py-0.5 text-xs"
+                :class="
+                  mode === 'full_access'
+                    ? 'border-amber-400/60 text-amber-300'
+                    : 'border-brand/60 text-brand'
+                "
               >
                 {{ $t('ui.toolCalls.accessModeSelected') }}
               </span>
@@ -62,13 +85,13 @@
         </div>
         <div
           v-if="form.access_mode === 'full_access'"
-          class="mt-4 rounded-xl border border-amber-400 bg-amber-400/20 px-4 py-3 text-sm font-semibold text-amber-200"
+          class="mt-3 rounded-lg border-l-4 border-amber-400/70 bg-amber-400/10 px-4 py-3 text-sm text-amber-200/90"
         >
           {{ $t('ui.toolCalls.fullAccessSettingsWarning') }}
         </div>
         <div
           v-if="form.access_mode === 'full_access' && isWindows()"
-          class="mt-4 rounded-xl border border-white/15 bg-black/20 px-4 py-3"
+          class="mt-3 rounded-xl border border-white/15 bg-black/20 px-4 py-3"
         >
           <div class="flex items-center gap-2 font-semibold text-white">
             <span
