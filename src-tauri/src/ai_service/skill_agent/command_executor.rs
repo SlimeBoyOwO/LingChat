@@ -1,6 +1,8 @@
 //! Shell 命令执行、用户审批、超时与输出上限。
 
 use crate::ai_service::skill_agent::events::SkillAgentEvent;
+#[cfg(windows)]
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -9,6 +11,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 #[cfg(windows)]
 use std::sync::OnceLock;
 use std::sync::{Arc, Mutex as StdMutex};
+#[cfg(windows)]
+use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::sync::{oneshot, Mutex, Notify};
@@ -54,8 +58,12 @@ pub fn needs_elevated_launcher(uac_requested: bool, process_elevated: bool) -> b
     uac_requested && !process_elevated
 }
 
-/// 通过 Windows 正常 RunAs 流程启动一个管理员权限的新实例。
-/// 用户仍需在系统 UAC 对话框中明确同意，本函数不绕过系统安全边界。
+/// 通过 Windows 正常 RunAs 流程启动管理员重启辅助进程。
+///
+/// 辅助进程先写入就绪标记，再等待当前 LingChat 完全退出，最后启动继承管理员
+/// 令牌的新实例。这样可以避免两个 WebView/Tauri 实例短暂重叠时，新实例因共享
+/// 资源仍被旧实例占用而立即退出。用户仍需在系统 UAC 对话框中明确同意，本函数
+/// 不绕过系统安全边界。
 #[cfg(windows)]
 pub fn launch_current_process_as_admin() -> anyhow::Result<()> {
     use std::os::windows::process::CommandExt;
@@ -67,10 +75,21 @@ pub fn launch_current_process_as_admin() -> anyhow::Result<()> {
     let working_directory = executable
         .parent()
         .ok_or_else(|| anyhow::anyhow!("当前程序路径没有父目录"))?;
+    let ready_file =
+        std::env::temp_dir().join(format!("lingchat_admin_restart_{}.ready", new_request_id()));
+    let helper_script = build_admin_restart_helper_script(
+        std::process::id(),
+        &executable,
+        working_directory,
+        &ready_file,
+    );
+    let encoded_helper = encode_powershell_command(&helper_script);
     let script = format!(
-        "$ErrorActionPreference = 'Stop'; Start-Process -FilePath '{}' -WorkingDirectory '{}' -Verb RunAs | Out-Null",
-        powershell_single_quoted_path(&executable),
-        powershell_single_quoted_path(working_directory),
+        "$ErrorActionPreference = 'Stop'; \
+         $p = Start-Process -FilePath powershell.exe \
+           -ArgumentList @('-NoProfile','-NonInteractive','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-EncodedCommand','{encoded_helper}') \
+           -WindowStyle Hidden -Verb RunAs -PassThru; \
+         Write-Output $p.Id",
     );
     let output = std::process::Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
@@ -81,6 +100,7 @@ pub fn launch_current_process_as_admin() -> anyhow::Result<()> {
         .output()
         .map_err(|error| anyhow::anyhow!("无法启动管理员实例: {error}"))?;
     if !output.status.success() {
+        let _ = std::fs::remove_file(&ready_file);
         let message = decode_console_output(&output.stderr);
         anyhow::bail!(
             "管理员重启未完成（可能在 UAC 窗口选择了“否”）{}",
@@ -91,7 +111,55 @@ pub fn launch_current_process_as_admin() -> anyhow::Result<()> {
             }
         );
     }
+
+    // Start-Process 返回只代表 ShellExecute 接受了请求。等到提权后的辅助进程
+    // 真正运行并写入标记后，调用方才可以安全关闭当前实例。
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !ready_file.is_file() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    if !ready_file.is_file() {
+        let _ = std::fs::remove_file(&ready_file);
+        anyhow::bail!("管理员启动器未能就绪，已保留当前 LingChat 窗口")
+    }
     Ok(())
+}
+
+#[cfg(windows)]
+fn build_admin_restart_helper_script(
+    parent_pid: u32,
+    executable: &Path,
+    working_directory: &Path,
+    ready_file: &Path,
+) -> String {
+    format!(
+        "$ErrorActionPreference = 'Stop'\r\n\
+         $parentPid = {parent_pid}\r\n\
+         $readyFile = '{}'\r\n\
+         Set-Content -LiteralPath $readyFile -Value $PID -NoNewline\r\n\
+         try {{\r\n\
+           $deadline = [DateTime]::UtcNow.AddSeconds(30)\r\n\
+           while ((Get-Process -Id $parentPid -ErrorAction SilentlyContinue) -and [DateTime]::UtcNow -lt $deadline) {{\r\n\
+             Start-Sleep -Milliseconds 100\r\n\
+           }}\r\n\
+           if (Get-Process -Id $parentPid -ErrorAction SilentlyContinue) {{ exit 124 }}\r\n\
+           Start-Process -FilePath '{}' -WorkingDirectory '{}' | Out-Null\r\n\
+         }} finally {{\r\n\
+           Remove-Item -LiteralPath $readyFile -Force -ErrorAction SilentlyContinue\r\n\
+         }}",
+        powershell_single_quoted_path(ready_file),
+        powershell_single_quoted_path(executable),
+        powershell_single_quoted_path(working_directory),
+    )
+}
+
+#[cfg(windows)]
+fn encode_powershell_command(script: &str) -> String {
+    let utf16_le = script
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect::<Vec<_>>();
+    base64::engine::general_purpose::STANDARD.encode(utf16_le)
 }
 
 #[cfg(not(windows))]
@@ -805,6 +873,32 @@ mod tests {
         assert!(needs_elevated_launcher(true, false));
         assert!(!needs_elevated_launcher(true, true));
         assert!(!needs_elevated_launcher(false, false));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn admin_restart_helper_waits_for_parent_before_launching() {
+        let executable = Path::new(r"C:\Program Files\Ling'Chat\ling-chat.exe");
+        let working_directory = executable.parent().unwrap();
+        let ready_file = Path::new(r"C:\Temp\Ling'Chat.ready");
+        let script =
+            build_admin_restart_helper_script(4242, executable, working_directory, ready_file);
+
+        let wait_position = script.find("Get-Process -Id $parentPid").unwrap();
+        let launch_position = script.find("Start-Process -FilePath").unwrap();
+        assert!(wait_position < launch_position);
+        assert!(script.contains("Ling''Chat\\ling-chat.exe"));
+        assert!(script.contains("Ling''Chat.ready"));
+
+        let encoded = encode_powershell_command(&script);
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .unwrap();
+        let utf16 = bytes
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect::<Vec<_>>();
+        assert_eq!(String::from_utf16(utf16.as_slice()).unwrap(), script);
     }
 
     #[test]
