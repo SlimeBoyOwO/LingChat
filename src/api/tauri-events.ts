@@ -18,6 +18,8 @@ import {
   type ToolActivityEvent,
 } from './services/tool-settings'
 import { useDialogStore } from '../stores/modules/ui/dialog'
+import { useAsrStore } from '../stores/modules/settings/asr'
+import type { AsrResult, VadEvent } from '../api/services/asr'
 import type { SceneInfo } from './services/scene'
 
 function asEvent(
@@ -56,6 +58,7 @@ function isStalePreviewReply(payload: Record<string, unknown>): boolean {
 export function initializeTauriEventListeners() {
   const currentWindow = getCurrentWindow()
   const mainWindow = currentWindow.label === 'main' ? currentWindow : null
+  const asrStore = useAsrStore()
 
   listen('ai:reply', (event) => {
     const payload = event.payload as Record<string, unknown>
@@ -267,6 +270,24 @@ export function initializeTauriEventListeners() {
     } catch (e) {
       console.warn('[Tauri] 保存 tts:cleanup 状态到 localStorage 失败:', e)
     }
+  })
+
+  // === ASR events ===
+
+  listen<VadEvent>('asr://speech_started', () => {
+    asrStore.onSpeechStarted()
+  })
+  listen<VadEvent>('asr://turn_candidate', (event) => {
+    asrStore.onTurnCandidate(event.payload)
+  })
+  listen<VadEvent>('asr://turn_sealed', () => {
+    asrStore.onTurnSealed({ type: 'turn_sealed' })
+  })
+  listen<AsrResult>('asr://result', (event) => {
+    asrStore.onResult(event.payload)
+  })
+  listen<{ code: string }>('asr://error', (event) => {
+    asrStore.onError(event.payload.code)
   })
 
   // === Adventure events ===
