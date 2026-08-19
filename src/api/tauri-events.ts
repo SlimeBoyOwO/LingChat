@@ -284,6 +284,10 @@ export function initializeTauriEventListeners() {
   listen<VadEvent>('asr://turn_sealed', () => {
     useAsrStore().onTurnSealed({ type: 'turn_sealed' })
   })
+  // 后端 init_asr VAD 模型加载成功（设置页状态面板显示"已加载"）
+  listen('asr://vad_ready', () => {
+    useAsrStore().setVadLoaded(true)
+  })
 
   // === Adventure events ===
 

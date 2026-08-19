@@ -8,6 +8,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use sea_orm::DatabaseConnection;
 use tauri::App;
+use tauri::Emitter;
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
@@ -207,6 +208,9 @@ pub async fn init_asr(
     let vad = AsrVad::load(app)?;
     let session = AsrSession::new(Arc::new(vad), providers);
     *asr_state.session.lock().await = Some(session);
+
+    // 通知前端 VAD 模型就绪（设置页状态面板显示"已加载"）
+    let _ = app.emit("asr://vad_ready", ());
 
     tracing::info!("[ASR] init_asr 完成");
     Ok(())
