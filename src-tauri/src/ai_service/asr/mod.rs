@@ -8,5 +8,6 @@
 pub mod error;
 pub mod provider;
 pub mod settings;
+pub mod vad;
 
 pub use error::AsrError;
