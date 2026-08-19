@@ -105,6 +105,8 @@ pub struct InnerAppState {
     /// 自动存档管理器。
     pub auto_save_manager:
         Arc<tokio::sync::Mutex<ai_service::game_system::auto_save::AutoSaveManager>>,
+    /// ASR 服务状态（详见 [`crate::ai_service::asr`]）。
+    pub asr_state: Arc<ai_service::asr::AsrState>,
     /// 上帝 Agent（多人对话编排器，可选）。
     pub god_agent: Option<Arc<GodAgentCore>>,
     /// Skill Agent（剧本编辑器 AI 助手）共享状态。
@@ -500,6 +502,9 @@ pub fn run() {
                     screen_analyzer,
                     screenshot_capture,
                     auto_save_manager: auto_save_manager.clone(),
+                    asr_state: Arc::new(ai_service::asr::AsrState {
+                        session: Arc::new(tokio::sync::Mutex::new(None)),
+                    }),
                     god_agent,
                     skill_agent: Arc::new(ai_service::skill_agent::SkillAgentState::default()),
                     chat_command_approvals: Default::default(),
@@ -511,6 +516,15 @@ pub fn run() {
                     preview_task: Arc::new(tokio::sync::Mutex::new(None)),
                     pending_preview_restore: Arc::new(tokio::sync::Mutex::new(None)),
                 });
+            }
+
+            // ASR 初始化：VAD 模型 + provider registry。失败仅 warn 不阻塞主程序。
+            {
+                let state = app.state::<AppState>();
+                let asr_state = state.asr_state.clone();
+                if let Err(e) = rt.block_on(init::init_asr(&app.handle(), &asr_state)) {
+                    tracing::warn!("[ASR] init_asr 失败，ASR 功能不可用: {e:#}");
+                }
             }
 
             // 延迟加载 DeBerta 直到应用主体挂载完成；
@@ -826,6 +840,16 @@ pub fn run() {
             ai_service::tts::local::tts_local_get_device,
             ai_service::tts::local::tts_local_list_devices,
             ai_service::tts::local::tts_local_set_device,
+            // ASR 相关命令
+            api::asr::asr_start_listening,
+            api::asr::asr_stop_listening,
+            api::asr::asr_vad_process_chunk,
+            api::asr::asr_recognize_wav,
+            api::asr::asr_cancel,
+            api::asr::asr_list_providers,
+            api::asr::asr_get_settings,
+            api::asr::asr_set_settings,
+            api::asr::asr_test_provider,
             exit_app,
         ])
         .run(context)

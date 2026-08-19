@@ -159,6 +159,59 @@ pub async fn initialize(
     Ok((db, ai_service, chat))
 }
 
+/// ASR 服务初始化：加载 VAD 模型 + 构建 provider registry + 写入 AsrState。
+///
+/// 失败返回 Err，由调用方决定是否降级（v1:失败 → ASR 不可用但不阻塞主程序）。
+///
+/// 调用方需保证传入的 `asr_state` 是已经 manage 进 AppState 的那个 Arc；
+/// 本函数只 mutate 内部的 `session: Option<AsrSession>`，不会重建外层 Arc。
+pub async fn init_asr(
+    app: &tauri::AppHandle,
+    asr_state: &Arc<crate::ai_service::asr::AsrState>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::ai_service::asr::{
+        provider, session::AsrSession, settings, vad::AsrVad,
+    };
+
+    tracing::info!("[ASR] init_asr 开始");
+    let cfg = settings::load(app)?;
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    let mut providers: std::collections::HashMap<
+        String,
+        std::sync::Arc<dyn provider::AsrProvider>,
+    > = std::collections::HashMap::new();
+    for info in provider::list_provider_info() {
+        let cred = cfg
+            .provider_configs
+            .get(info.id)
+            .map(|c| c.to_credentials())
+            .unwrap_or_default();
+        match provider::get_provider(info.id, &cred, &http).await {
+            Ok(p) => {
+                providers.insert(info.id.to_string(), p);
+                tracing::info!("[ASR] provider {} 已构建", info.id);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "[ASR] provider {} 构建失败: {}",
+                    info.id,
+                    e.i18n_code()
+                );
+            }
+        }
+    }
+
+    let vad = AsrVad::load(app)?;
+    let session = AsrSession::new(Arc::new(vad), providers);
+    *asr_state.session.lock().await = Some(session);
+
+    tracing::info!("[ASR] init_asr 完成");
+    Ok(())
+}
+
 fn load_emotion_classifier(
     enabled: bool,
     data_dir: &std::path::Path,

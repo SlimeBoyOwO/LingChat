@@ -4257,6 +4257,7 @@ dependencies = [
  "indoc",
  "infer",
  "mdns-sd",
+ "ndarray",
  "once_cell",
  "ort",
  "rand 0.8.7",

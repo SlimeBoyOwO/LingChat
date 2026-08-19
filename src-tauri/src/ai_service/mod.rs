@@ -12,3 +12,4 @@ pub mod tools;
 pub mod translator;
 pub mod tts;
 pub mod types;
+pub mod asr;

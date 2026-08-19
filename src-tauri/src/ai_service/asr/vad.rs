@@ -13,6 +13,8 @@ use std::sync::Arc;
 use std::time::Instant as StdInstant;
 
 use ndarray::Array2;
+use ort::session::Session;
+use ort::value::Tensor;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
@@ -65,7 +67,7 @@ impl VadState {
 
 /// Silero VAD wrapper。
 pub struct AsrVad {
-    session: Mutex<Option<Arc<ort::Session>>>,
+    session: Mutex<Option<Session>>,
     /// 端点检测状态。Arc 共享给 confirmation timer，
     /// 让 timer 触发时可以查询最新 speech_active 决定是否 SEAL。
     state: Arc<Mutex<VadState>>,
@@ -77,7 +79,7 @@ impl AsrVad {
     pub fn load(app: &AppHandle) -> Result<Self, AsrError> {
         let model_path = resolve_vad_model_path(app)?;
         tracing::info!("[ASR/VAD] loading model from {}", model_path.display());
-        let session = ort::Session::builder()
+        let session = Session::builder()
             .map_err(|e| AsrError::EngineLoadFailed(format!("SessionBuilder: {e}")))?
             .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
             .map_err(|e| AsrError::EngineLoadFailed(format!("optimization level: {e}")))?
@@ -88,7 +90,7 @@ impl AsrVad {
                 AsrError::EngineLoadFailed(format!("commit_from_file({}): {e}", model_path.display()))
             })?;
         Ok(Self {
-            session: Mutex::new(Some(Arc::new(session))),
+            session: Mutex::new(Some(session)),
             state: Arc::new(Mutex::new(VadState::new())),
         })
     }
@@ -116,12 +118,11 @@ impl AsrVad {
         app: &AppHandle,
         pcm: &[f32],
     ) -> Result<Option<VadProcessResult>, AsrError> {
-        let session_guard = self.session.lock().await;
-        let session = match session_guard.as_ref() {
-            Some(s) => s.clone(),
+        let mut session_guard = self.session.lock().await;
+        let session = match session_guard.as_mut() {
+            Some(s) => s,
             None => return Ok(None), // fail-open: 模型未加载返回 None
         };
-        drop(session_guard);
 
         // 取当前 state
         let mut state_guard = self.state.lock().await;
@@ -133,31 +134,40 @@ impl AsrVad {
         let c_tensor = state.c.clone().insert_axis(ndarray::Axis(1));
         let h_tensor = state.h.clone().insert_axis(ndarray::Axis(1));
 
+        let input_t = Tensor::from_array(input)
+            .map_err(|e| AsrError::EngineLoadFailed(format!("input tensor: {e}")))?;
+        let h_t = Tensor::from_array(h_tensor)
+            .map_err(|e| AsrError::EngineLoadFailed(format!("h tensor: {e}")))?;
+        let c_t = Tensor::from_array(c_tensor)
+            .map_err(|e| AsrError::EngineLoadFailed(format!("c tensor: {e}")))?;
+
         let outputs = session
             .run(ort::inputs![
-                "input" => input,
-                "h" => h_tensor,
-                "c" => c_tensor,
+                "input" => input_t,
+                "h" => h_t,
+                "c" => c_t,
             ])
             .map_err(|e| AsrError::EngineLoadFailed(format!("vad forward: {e}")))?;
 
         // 解析输出：prob + 更新后的 h, c
         let prob = outputs["output"]
-            .try_extract_tensor::<f32>()
+            .try_extract_array::<f32>()
             .map_err(|e| AsrError::EngineLoadFailed(format!("extract prob: {e}")))?
-            .1
-            .first()
+            .as_slice()
+            .and_then(|s| s.first())
             .copied()
             .unwrap_or(0.0);
 
         // 更新 h/c
-        if let (Ok((_, h_data)), Ok((_, c_data))) = (
-            outputs["hn"].try_extract_tensor::<f32>(),
-            outputs["cn"].try_extract_tensor::<f32>(),
+        if let (Ok(h_view), Ok(c_view)) = (
+            outputs["hn"].try_extract_array::<f32>(),
+            outputs["cn"].try_extract_array::<f32>(),
         ) {
-            if let (Some(h_arr), Some(c_arr)) = (
-                ndarray::Array2::from_shape_vec((2, VAD_STATE_DIM), h_data.to_vec()).ok(),
-                ndarray::Array2::from_shape_vec((2, VAD_STATE_DIM), c_data.to_vec()).ok(),
+            let h_data: Vec<f32> = h_view.iter().copied().collect();
+            let c_data: Vec<f32> = c_view.iter().copied().collect();
+            if let (Ok(h_arr), Ok(c_arr)) = (
+                ndarray::Array2::from_shape_vec((2, VAD_STATE_DIM), h_data),
+                ndarray::Array2::from_shape_vec((2, VAD_STATE_DIM), c_data),
             ) {
                 state.h = h_arr;
                 state.c = c_arr;

@@ -13,7 +13,7 @@ use super::error::AsrError;
 use super::provider::ProviderCredentials;
 
 /// 识别后文本如何处理。
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SendMode {
     /// 填入聊天输入框（默认），用户检查后手动发送。
@@ -23,12 +23,6 @@ pub enum SendMode {
     AutoSend,
     /// AI 生成中时入队，等 ai:reply 终态后再 flush。
     Queue,
-}
-
-impl Default for SendMode {
-    fn default() -> Self {
-        Self::FillOnly
-    }
 }
 
 /// 单个 provider 的配置：API key + endpoint + 任意额外字段。
@@ -68,7 +62,7 @@ impl AsrSettings {
     pub fn defaults() -> Self {
         let mut provider_configs = HashMap::new();
         for info in super::provider::list_provider_info() {
-            provider_configs.insert(info.id.clone(), ProviderConfig::default());
+            provider_configs.insert(info.id.to_string(), ProviderConfig::default());
         }
         Self {
             active_provider: "openai-whisper".into(),
