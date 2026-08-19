@@ -14,6 +14,7 @@ export interface MarketPackage {
   size?: number | null
   manifest?: Record<string, unknown> | null
   review_report_url?: string | null
+  delisted?: boolean
 }
 
 /** 已安装记录（对应 Rust 侧 InstalledRecord） */
