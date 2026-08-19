@@ -116,8 +116,9 @@ export default {
     accessModeHint: '読み取り専用ツール（Read / Glob / Grep）は直接実行します。ここではファイル変更とコマンドの確認方法を設定します。',
     accessModeSelected: '使用中',
     maxToolRoundsTitle: 'ツール呼び出しラウンド上限',
-    maxToolRoundsHint: 'メインチャットの1回の返信で連続実行できるツールラウンド数を制限します。1ラウンドに複数のツール呼び出しが含まれる場合があります。1～64、既定値は8です。',
+    maxToolRoundsHint: 'メインチャットの1回の返信で連続実行できるツールラウンド数を制限します。1ラウンドに複数のツール呼び出しが含まれる場合があります。',
     maxToolRoundsUnit: 'ラウンド',
+    maxToolRoundsRange: '範囲 {min}～{max} · 既定値 {default}',
     accessModes: {
       manual: { label: '毎回確認', description: 'ファイルの書込・編集・削除とコマンド実行の前に毎回確認します。' },
       auto_approve: { label: '自動承認', description: '通常の書込・編集・コマンドは自動承認し、削除操作は引き続き確認します。' },

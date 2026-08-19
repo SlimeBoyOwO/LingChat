@@ -117,8 +117,9 @@ export default {
     accessModeHint: "Read-only tools (Read / Glob / Grep) run directly. This controls approvals for file changes and commands.",
     accessModeSelected: "Active",
     maxToolRoundsTitle: "Tool Call Round Limit",
-    maxToolRoundsHint: "Limits consecutive tool-execution rounds in one main-chat reply. One round can contain multiple tool calls. Range 1–64; default 8.",
+    maxToolRoundsHint: "Limits consecutive tool-execution rounds in one main-chat reply. One round can contain multiple tool calls.",
     maxToolRoundsUnit: "rounds",
+    maxToolRoundsRange: "Range {min}–{max} · Default {default}",
     accessModes: {
       manual: { label: "Ask Every Time", description: "Ask before writing, editing or deleting files and before running commands." },
       auto_approve: { label: "Auto Approve", description: "Approve normal writes, edits and commands; still ask before destructive actions." },

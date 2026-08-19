@@ -116,8 +116,9 @@ export default {
     accessModeHint: '只读工具（Read / Glob / Grep）始终直接运行；这里控制文件修改和命令执行是否需要确认。',
     accessModeSelected: '当前',
     maxToolRoundsTitle: '工具调用轮数上限',
-    maxToolRoundsHint: '限制主聊中单次回复可连续执行工具的轮数；每轮可能包含多个工具调用。可设置 1–64，默认 8。',
+    maxToolRoundsHint: '限制主聊中单次回复可连续执行工具的轮数；每轮可能包含多个工具调用。',
     maxToolRoundsUnit: '轮',
+    maxToolRoundsRange: '范围 {min}–{max} · 默认 {default}',
     accessModes: {
       manual: { label: '逐次确认', description: '写入、编辑、删除文件和执行命令前都需要你确认。' },
       auto_approve: { label: '自动通过', description: '自动批准普通写入、编辑和命令；删除文件或删除命令仍会询问。' },

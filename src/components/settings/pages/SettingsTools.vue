@@ -83,7 +83,7 @@
             </p>
           </button>
         </div>
-        <div class="mt-4 rounded-xl border border-white/15 bg-white/5 px-4 py-3">
+        <div class="mt-3 rounded-xl border border-white/15 bg-white/5 px-4 py-3">
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div class="min-w-0">
               <h3 class="font-semibold text-white">
@@ -93,21 +93,33 @@
                 {{ $t('ui.toolCalls.maxToolRoundsHint') }}
               </p>
             </div>
-            <label
-              class="flex shrink-0 items-center gap-2 rounded-lg border border-white/20 bg-black/20 px-3 py-2 focus-within:border-brand"
-            >
-              <input
-                v-model.number="form.max_tool_rounds"
-                type="number"
-                :min="MIN_TOOL_ROUND_LIMIT"
-                :max="MAX_TOOL_ROUND_LIMIT"
-                step="1"
-                class="w-16 bg-transparent text-center font-semibold text-white outline-none"
-                :aria-label="$t('ui.toolCalls.maxToolRoundsTitle')"
-                @blur="normalizeToolRoundLimit"
-              />
-              <span class="text-sm text-gray-300">{{ $t('ui.toolCalls.maxToolRoundsUnit') }}</span>
-            </label>
+            <div class="flex shrink-0 flex-col items-start gap-1 sm:items-end">
+              <label
+                class="flex items-center gap-2 rounded-lg border border-white/20 bg-black/20 px-3 py-2 focus-within:border-brand"
+              >
+                <!-- 隐藏原生数字箭头，避免与深色玻璃风格冲突 -->
+                <input
+                  v-model.number="form.max_tool_rounds"
+                  type="number"
+                  :min="MIN_TOOL_ROUND_LIMIT"
+                  :max="MAX_TOOL_ROUND_LIMIT"
+                  step="1"
+                  class="w-16 bg-transparent text-center font-semibold text-white outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  :aria-label="$t('ui.toolCalls.maxToolRoundsTitle')"
+                  @blur="normalizeToolRoundLimit"
+                />
+                <span class="text-sm text-gray-300">{{ $t('ui.toolCalls.maxToolRoundsUnit') }}</span>
+              </label>
+              <p class="px-1 text-xs text-gray-400">
+                {{
+                  $t('ui.toolCalls.maxToolRoundsRange', {
+                    min: MIN_TOOL_ROUND_LIMIT,
+                    max: MAX_TOOL_ROUND_LIMIT,
+                    default: DEFAULT_TOOL_ROUND_LIMIT,
+                  })
+                }}
+              </p>
+            </div>
           </div>
         </div>
         <div
