@@ -19,7 +19,6 @@ pub mod schedule;
 pub mod screenshot;
 pub mod script;
 pub mod script_editor;
-pub mod script_protect;
 pub mod settings;
 pub mod tool_settings;
 pub mod workshop;

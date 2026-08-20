@@ -678,9 +678,9 @@ pub fn run() {
             api::script::warp_cursor,
             // ── 剧本编辑器 ──
             api::script_editor::editor_get_schema,
-            // 列表/读取经 script_protect 守卫接管（过滤内置受保护剧本），编辑器自身零改动
-            api::script_protect::editor_list_scripts,
-            api::script_protect::editor_read_script,
+            // 列表/读取的内置受保护剧本拦截在 utils::script_paths 路径层完成，编辑器自身零改动
+            api::script_editor::editor_list_scripts,
+            api::script_editor::editor_read_script,
             api::script_editor::editor_read_chapter,
             api::script_editor::editor_validate_script,
             api::script_editor::editor_write_chapter,
