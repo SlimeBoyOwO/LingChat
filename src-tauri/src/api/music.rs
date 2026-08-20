@@ -24,7 +24,7 @@ pub struct UploadMusicResult {
     pub actual_name: String,
     /// 用户原始文件名
     pub original_name: String,
-    /// infer 识别的格式：mp3 / wav / flac / ogg / m4a
+    /// infer 识别的格式：mp3 / wav / flac / ogg
     pub detected_kind: String,
     /// 是否发生自动修正（原扩展名 != magic 决定的扩展名）
     pub was_corrected: bool,
@@ -40,7 +40,7 @@ pub fn get_music_list() -> Result<Vec<MusicItemInfo>, String> {
         return Ok(Vec::new());
     }
 
-    let allowed_extensions = ["mp3", "wav", "flac", "webm", "weba", "ogg", "m4a", "oga"];
+    let allowed_extensions = ["mp3", "wav", "flac", "webm", "weba", "ogg", "oga"];
 
     let mut items: Vec<MusicItemInfo> = Vec::new();
 
@@ -135,16 +135,21 @@ pub async fn upload_music(
             return Err(format!("无效的文件名: {}", file_name));
         }
 
-        // 2. magic sniff 决定真实格式（src.path 已是本地路径，desktop / SAF 都通）
+        // 2. magic sniff 决定真实格式（src.path 已是本地路径，desktop / SAF 都通）。
+        //    注意：用 infer 返回的 extension() 做权威裁决 —— 它是 map.rs 里注册的
+        //    字面值，与 match 函数一一对应，不会被 mime 别名（如 audio/x-flac vs
+        //    audio/flac）干扰。
+        //
+        //    不接受 m4a：infer 把 brand=isom/mp42/dash 的 m4a 识别为 video/mp4，
+        //    而 brand=M4A 的边缘子集不值得为一个视频污染风险留着。
         let detected =
             infer::get_from_path(&src.path).map_err(|e| format!("读取文件头失败: {e}"))?;
         let (kind, correct_ext) = match detected {
-            Some(k) if k.matcher_type() == infer::MatcherType::Audio => match k.mime_type() {
-                "audio/mpeg" => ("mp3", "mp3"),
-                "audio/wav" => ("wav", "wav"),
-                "audio/flac" => ("flac", "flac"),
-                "audio/ogg" => ("ogg", "ogg"),
-                "audio/mp4" => ("m4a", "m4a"),
+            Some(k) if k.matcher_type() == infer::MatcherType::Audio => match k.extension() {
+                "mp3" => ("mp3", "mp3"),
+                "wav" => ("wav", "wav"),
+                "flac" => ("flac", "flac"),
+                "ogg" => ("ogg", "ogg"),
                 _ => return Err("MUSIC_INVALID_FORMAT".into()),
             },
             _ => return Err("MUSIC_INVALID_FORMAT".into()),
