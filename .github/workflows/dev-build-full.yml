@@ -14,6 +14,15 @@ on:
       - 'docs/**'
       - '.vscode/**'
   workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - windows-amd64
 
 jobs:
   build:
@@ -21,28 +30,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: windows-amd64
-            os: windows-latest
-            artifact-name: lingchat-dev-windows
-            artifact-path: src-tauri/target/release/ling_chat.exe
-          - platform: linux-amd64
-            os: ubuntu-latest
-            artifact-name: lingchat-dev-linux-amd64
-            artifact-path: src-tauri/target/release/ling_chat
-          - platform: macos
-            os: macos-latest
-            artifact-name: lingchat-dev-macos
-            artifact-path: src-tauri/target/release/ling_chat
-          - platform: linux-aarch64
-            os: ubuntu-24.04-arm
-            artifact-name: lingchat-dev-linux-aarch64
-            artifact-path: src-tauri/target/release/ling_chat
-    
+        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.platform == 'windows-amd64' && '[{"platform":"windows-amd64","os":"windows-latest","artifact-name":"lingchat-dev-windows-installer","artifact-path":"src-tauri/target/release/bundle/nsis/*.exe"}]' || '[{"platform":"windows-amd64","os":"windows-latest","artifact-name":"lingchat-dev-windows-installer","artifact-path":"src-tauri/target/release/bundle/nsis/*.exe"},{"platform":"linux-amd64","os":"ubuntu-latest","artifact-name":"lingchat-dev-linux-amd64","artifact-path":"src-tauri/target/release/ling_chat"},{"platform":"macos","os":"macos-latest","artifact-name":"lingchat-dev-macos","artifact-path":"src-tauri/target/release/ling_chat"},{"platform":"linux-aarch64","os":"ubuntu-24.04-arm","artifact-name":"lingchat-dev-linux-aarch64","artifact-path":"src-tauri/target/release/ling_chat"}]') }}
+
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: false
+          lfs: true
 
       - uses: pnpm/setup@v1
         with:
@@ -90,7 +83,7 @@ jobs:
             libwayland-dev \
             libdbus-1-dev \
             mold
-          
+
       - name: 创建占位文件和初始化
         shell: bash
         run: |
@@ -110,7 +103,7 @@ jobs:
             ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
             ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
             ${{ runner.os == 'macOS' && '' || '' }}
-        run: pnpm tauri build --no-bundle
+        run: pnpm tauri build ${{ runner.os != 'Windows' && '--no-bundle' || '' }}
 
       - name: 上传 artifact
         uses: actions/upload-artifact@v4
