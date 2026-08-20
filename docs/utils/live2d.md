@@ -61,7 +61,7 @@ The Live2D canvas is above static character images and below Live2D character bu
 
 ## Development Host
 
-Live2D frontend changes can be tested without rebuilding an installer. Run the `Windows Dev Host` workflow once, download `lingchat-windows-dev-host`, and start it with:
+Live2D frontend changes can be tested without rebuilding an installer. Run the existing **Build Development (Full Test)** workflow with platform `windows-dev-host`, download `lingchat-windows-dev-host`, and start it with:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/start-windows-dev-host.ps1 `
