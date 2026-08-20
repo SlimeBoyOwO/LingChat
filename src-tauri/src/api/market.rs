@@ -459,6 +459,17 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
     if let Some(task) = installing_task(&id) {
         return Err(format!("包 '{id}' 正在安装中（{}%），请稍候", task.percent));
     }
+
+    // 获取或创建该包的互斥锁，防止取消后立即重触发导致的并发写入
+    // （旧任务可能还在清理中，新任务等待其完成后再开始）
+    let lock = {
+        let mut locks = INSTALL_LOCKS.lock().map_err(|e| format!("锁错误: {e}"))?;
+        let locks = locks.get_or_insert_with(HashMap::new);
+        locks.entry(id.clone()).or_insert_with(|| Arc::new(TokioMutex::new(()))).clone()
+    };
+    // 获取锁（若旧任务仍持有锁，会等待其释放）
+    let _guard = lock.lock().await;
+
     update_installing(&id, "download", 0);
     let cancel_token = register_cancel(&id);
 
@@ -466,6 +477,7 @@ pub async fn market_install(app: AppHandle, id: String) -> Result<(), String> {
     // 无论成功失败都清除进行中标记和取消令牌（cancel_install 可能已清除，幂等）
     clear_installing(&id);
     unregister_cancel(&id);
+    // 锁在这里自动释放（_guard 离开作用域）
     result
 }
 
