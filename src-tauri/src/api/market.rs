@@ -143,14 +143,29 @@ pub struct MarketPackage {
 }
 
 /// 已安装记录（market.json 条目）。
+/// 安装时快照完整元数据，确保离线/云端加载失败时已安装列表仍有详情。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstalledRecord {
     pub id: String,
+    pub name: String,
     pub version: String,
     #[serde(rename = "type")]
     pub package_type: String,
     /// 安装目标目录。
     pub dir: String,
+    #[serde(default)]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub download_url: Option<String>,
+    #[serde(default)]
+    pub sha256: Option<String>,
+    #[serde(default)]
+    pub size: Option<u64>,
+    /// 审核时快照的完整 manifest（展示用）。
+    #[serde(default)]
+    pub manifest: Option<serde_json::Value>,
 }
 
 /// 进行中的安装任务状态（内存态，供前端切页/重挂载后恢复按钮与进度）。
@@ -667,9 +682,16 @@ async fn market_install_inner(
             pkg.id.clone(),
             InstalledRecord {
                 id: pkg.id.clone(),
+                name: pkg.name.clone(),
                 version: pkg.version.clone(),
                 package_type: pkg.package_type.clone(),
                 dir: installed.dir.display().to_string(),
+                author: pkg.author.clone(),
+                description: pkg.description.clone(),
+                download_url: pkg.download_url.clone(),
+                sha256: pkg.sha256.clone(),
+                size: pkg.size,
+                manifest: pkg.manifest.clone(),
             },
         );
         write_records(&records)?;

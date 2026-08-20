@@ -20,9 +20,16 @@ export interface MarketPackage {
 /** 已安装记录（对应 Rust 侧 InstalledRecord） */
 export interface InstalledRecord {
   id: string
+  name: string
   version: string
   type: string
   dir: string
+  author?: string
+  description?: string
+  download_url?: string
+  sha256?: string
+  size?: number
+  manifest?: Record<string, unknown>
 }
 
 /** 安装进度事件（market:progress） */

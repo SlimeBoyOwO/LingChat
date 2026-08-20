@@ -1985,12 +1985,24 @@ const installedPackagesQueryOnly = computed(() => {
   const marketMap = new Map(marketPackages.value.map((p) => [p.id, p]))
   const q = marketQuery.value.trim().toLowerCase()
   return Object.values(installedMap.value)
-    .map((rec) => marketMap.get(rec.id) ?? ({
-      id: rec.id,
-      name: rec.id,
-      type: rec.type,
-      version: rec.version,
-    }))
+    .map((rec) => {
+      // 优先使用云端最新元数据，回退到安装时快照的本地详情
+      const cloud = marketMap.get(rec.id)
+      if (cloud) return cloud
+      // 离线/云端失败：使用本地持久化的详情
+      return {
+        id: rec.id,
+        name: rec.name || rec.id,
+        type: rec.type,
+        version: rec.version,
+        author: rec.author,
+        description: rec.description,
+        download_url: rec.download_url,
+        sha256: rec.sha256,
+        size: rec.size,
+        manifest: rec.manifest,
+      }
+    })
     .filter((pkg) => {
       if (!q) return true
       return `${pkg.name} ${pkg.author ?? ''} ${pkg.description ?? ''}`
