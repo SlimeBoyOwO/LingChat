@@ -79,6 +79,103 @@ function variantNameFor(role: GameRole): string | null {
   return mapped || role.live2d.default_variant
 }
 
+const URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/
+
+function resolveModelReference(modelFile: string, reference: string): string {
+  if (
+    URL_SCHEME.test(reference) ||
+    reference.startsWith('/') ||
+    /^[a-zA-Z]:[\\/]/.test(reference)
+  ) {
+    throw new Error(`Live2D resource reference must be relative: ${reference}`)
+  }
+  const segments = modelFile.split('\\').join('/').split('/')
+  segments.pop()
+  for (const segment of reference.split('\\').join('/').split('/')) {
+    if (!segment || segment === '.') continue
+    if (segment === '..') {
+      if (!segments.length)
+        throw new Error(`Live2D resource escapes the role directory: ${reference}`)
+      segments.pop()
+    } else {
+      segments.push(segment)
+    }
+  }
+  return segments.join('/')
+}
+
+async function loadModelSource(roleId: number, modelFile: string) {
+  const modelPath = await getLive2dFilePath(roleId, modelFile)
+  const modelUrl = convertFileSrc(modelPath)
+  const response = await fetch(modelUrl)
+  if (!response.ok) throw new Error(`Failed to load Live2D settings: HTTP ${response.status}`)
+  const source = (await response.json()) as Record<string, any>
+  const references = source.FileReferences as Record<string, any> | undefined
+  if (!references) throw new Error('Live2D model3 is missing FileReferences')
+
+  const rewrite = async (reference: string) => {
+    const relative = resolveModelReference(modelFile, reference)
+    return convertFileSrc(await getLive2dFilePath(roleId, relative))
+  }
+  const rewrites: Promise<void>[] = []
+  for (const key of ['Moc', 'Physics', 'Pose', 'UserData', 'DisplayInfo']) {
+    if (typeof references[key] === 'string') {
+      rewrites.push(
+        rewrite(references[key]).then((url) => {
+          references[key] = url
+        }),
+      )
+    }
+  }
+  if (Array.isArray(references.Textures)) {
+    references.Textures.forEach((reference: unknown, index: number) => {
+      if (typeof reference === 'string') {
+        rewrites.push(
+          rewrite(reference).then((url) => {
+            references.Textures[index] = url
+          }),
+        )
+      }
+    })
+  }
+  if (Array.isArray(references.Expressions)) {
+    references.Expressions.forEach((expression: Record<string, unknown>) => {
+      if (typeof expression.File === 'string') {
+        rewrites.push(
+          rewrite(expression.File).then((url) => {
+            expression.File = url
+          }),
+        )
+      }
+    })
+  }
+  if (references.Motions && typeof references.Motions === 'object') {
+    for (const motions of Object.values(references.Motions) as Array<
+      Array<Record<string, unknown>>
+    >) {
+      for (const motion of motions) {
+        if (typeof motion.File === 'string') {
+          rewrites.push(
+            rewrite(motion.File).then((url) => {
+              motion.File = url
+            }),
+          )
+        }
+        if (typeof motion.Sound === 'string') {
+          rewrites.push(
+            rewrite(motion.Sound).then((url) => {
+              motion.Sound = url
+            }),
+          )
+        }
+      }
+    }
+  }
+  await Promise.all(rewrites)
+  source.url = modelUrl
+  return source
+}
+
 async function ensureApplication() {
   if (application || !host.value || disposed) return
   runtime = await loadLive2dRuntime()
@@ -190,9 +287,10 @@ async function loadRole(
 ) {
   await ensureApplication()
   if (!application || !runtime || disposed) return
+  let pendingModel: any = null
   try {
-    const path = await getLive2dFilePath(role.roleId, variant.model)
-    const model = await runtime.engine.Live2DModel.from(convertFileSrc(path), {
+    const source = await loadModelSource(role.roleId, variant.model)
+    const model = await runtime.engine.Live2DModel.from(source, {
       ticker: application.ticker,
       anchorMode: 'canvas',
       autoFocus: false,
@@ -203,6 +301,7 @@ async function loadRole(
       useHighPrecisionMask: 'auto',
       textureOptions: { lod: 'single-auto' },
     })
+    pendingModel = model
     if (
       disposed ||
       requestId !== requestSequenceFor(role.roleId) ||
@@ -210,10 +309,9 @@ async function loadRole(
         variantName
     ) {
       model.destroy({ children: true, texture: true, baseTexture: true })
+      pendingModel = null
       return
     }
-    const previous = models.get(role.roleId)
-    if (previous) destroyEntry(previous)
     const entry: RoleModel = {
       roleId: role.roleId,
       variantName,
@@ -260,15 +358,24 @@ async function loadRole(
         }
       }
     })
-    models.set(role.roleId, entry)
     application.stage.addChild(model)
     applyLayout(entry, role)
+    // Verify the render pipe before hiding the static fallback.
+    application.render()
+    const previous = models.get(role.roleId)
+    if (previous) destroyEntry(previous)
+    models.set(role.roleId, entry)
+    pendingModel = null
     startIdle(entry)
     applyEmotion(entry, mappedEmotion(role.emotion))
     failedRoleIds.delete(role.roleId)
     emitFailedRoles()
     emitActiveRoles()
   } catch (error) {
+    if (pendingModel) {
+      application?.stage.removeChild(pendingModel)
+      pendingModel.destroy({ children: true, texture: true, baseTexture: true })
+    }
     if (requestId === requestSequenceFor(role.roleId)) {
       failedRoleIds.add(role.roleId)
       emitFailedRoles()

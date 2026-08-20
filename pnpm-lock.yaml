@@ -54,8 +54,8 @@ importers:
         specifier: ^3.0.4
         version: 3.0.4(typescript@5.6.3)(vue@3.5.34(typescript@5.6.3))
       pixi.js:
-        specifier: 8.13.1
-        version: 8.13.1
+        specifier: 8.15.0
+        version: 8.15.0
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
@@ -64,7 +64,7 @@ importers:
         version: file:src-tauri/plugins/tauri-plugin-screenshots
       untitled-pixi-live2d-engine:
         specifier: 1.3.5
-        version: 1.3.5(@pixi/sound@6.0.1(pixi.js@8.13.1))(pixi.js@8.13.1)
+        version: 1.3.5(@pixi/sound@6.0.1(pixi.js@8.15.0))(pixi.js@8.15.0)
       vue:
         specifier: ^3.5.13
         version: 3.5.34(typescript@5.6.3)
@@ -1546,8 +1546,8 @@ packages:
       typescript:
         optional: true
 
-  pixi.js@8.13.1:
-    resolution: {integrity: sha512-n7lP3FG8noZV00O6ZTUNWQGg2j6xNjK/8TiGviptb4kfyGJvP4zMvF8s6DR0BymZ8P/lix/3Ye5rqilynpl/+g==}
+  pixi.js@8.15.0:
+    resolution: {integrity: sha512-J/Ghze/K9fjHRlfwC2EMZ7vnMIhGo4ByKCsKMcS0AB12iT79nf9zzWKUTzMJ8QAQFqQfDOl5ULwmHMUdeih2zQ==}
 
   pkg-types@1.3.1:
     resolution: {integrity: sha512-/Jm5M4RvtBFVkKWRu2BLUTNP8/M2a+UwuAX+ae4770q1qVGtfjG+WTCupoZixokjmHiry8uI+dlY8KXYV5HVVQ==}
@@ -2303,9 +2303,9 @@ snapshots:
 
   '@pixi/colord@2.9.6': {}
 
-  '@pixi/sound@6.0.1(pixi.js@8.13.1)':
+  '@pixi/sound@6.0.1(pixi.js@8.15.0)':
     dependencies:
-      pixi.js: 8.13.1
+      pixi.js: 8.15.0
 
   '@polka/url@1.0.0-next.29': {}
 
@@ -3100,7 +3100,7 @@ snapshots:
     optionalDependencies:
       typescript: 5.6.3
 
-  pixi.js@8.13.1:
+  pixi.js@8.15.0:
     dependencies:
       '@pixi/colord': 2.9.6
       '@types/css-font-loading-module': 0.0.12
@@ -3274,10 +3274,10 @@ snapshots:
       picomatch: 4.0.4
       webpack-virtual-modules: 0.6.2
 
-  untitled-pixi-live2d-engine@1.3.5(@pixi/sound@6.0.1(pixi.js@8.13.1))(pixi.js@8.13.1):
+  untitled-pixi-live2d-engine@1.3.5(@pixi/sound@6.0.1(pixi.js@8.15.0))(pixi.js@8.15.0):
     dependencies:
-      '@pixi/sound': 6.0.1(pixi.js@8.13.1)
-      pixi.js: 8.13.1
+      '@pixi/sound': 6.0.1(pixi.js@8.15.0)
+      pixi.js: 8.15.0
 
   update-browserslist-db@1.2.3(browserslist@4.28.2):
     dependencies:

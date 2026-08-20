@@ -30,7 +30,7 @@
     "marked": "^18.0.7",
     "opencc-js": "^1.4.1",
     "pinia": "^3.0.4",
-    "pixi.js": "8.13.1",
+    "pixi.js": "8.15.0",
     "tailwindcss": "^4.3.0",
     "tauri-plugin-screenshots-api": "file:./src-tauri/plugins/tauri-plugin-screenshots",
     "untitled-pixi-live2d-engine": "1.3.5",
