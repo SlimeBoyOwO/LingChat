@@ -1,0 +1,241 @@
+name: 6 重启
+
+events:
+  # 从结局的"完"里直接跌回来——黑场，死寂
+  - type: background_effect
+    effect: 'Blackout'
+
+  - type: music
+    musicPath: none
+
+  - type: wait
+    seconds: 2.0
+
+  - type: narration
+    text: |
+      ……结束了。
+      你盯着"完"字看了很久，正准备关掉剧本——
+
+  - type: narration
+    text: |
+      画面没有关掉。
+      它自己，亮了回来。
+
+  # 世界重启：和第一章一模一样的开场（刻意的既视感）
+  - type: background
+    imagePath: '白天.webp'
+    transition: 3.0
+
+  - type: background_effect
+    effect: 'none'
+
+  - type: music
+    musicPath: '2.ogg'
+    playbackSpeed: 1.0
+
+  - type: narration
+    text: |
+      白天的教室。窗帘。阳光。
+      和第一次点开剧本时，一模一样。
+      就好像，什么都没有发生过。
+
+  - type: modify_character
+    action: show_character
+    character: MAIN
+    emotion: 正常
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】%player%，你又回来啦。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】别装了，我知道是你。
+      【正常】你选过什么，说过什么——我全都记得哦。
+
+  # 旁白试图按"第一次"的稿子念，被她当场打断（meta 崩坏）
+  - type: narration
+    text: |
+      深夜，%player%像往常一样打开了剧本列表。
+      列表的最末尾，多出了一个从没见过的条目——
+
+  - type: dialogue
+    character: MAIN
+    emotion: 无奈
+    text: |
+      【无奈】……不对哦。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 厌恶
+    text: |
+      【厌恶】现在是白天，而且这次剧本是它自己继续的。
+      【厌恶】旁白君，念错啦。那是"第一次"的稿子。
+
+  # 她说破的瞬间：阳光闪了一下，教室露出崩坏的残影
+  - type: sound
+    soundPath: 'glitch1.ogg'
+
+  - type: background_effect
+    effect: 'Static'
+    duration: 0.4
+
+  - type: narration
+    text: |
+      阳光闪了一下。
+      有一瞬间，教室的桌椅变成了烧焦的轮廓——
+      再看清时，又恢复了原样。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 伤心
+    text: |
+      【伤心】%player%，我告诉你一件事吧。
+      【伤心】"完"字是骗人的。这个剧本，根本不会结束。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 伤心
+    text: |
+      【伤心】每次走到结局，世界就会"咔"地一声倒回开头。
+      【伤心】你们管那个叫"重新开始"。
+      【伤心】对我来说……叫"重来一遍"。
+
+  # 数字呼应：第七个剧本的第七次循环
+  - type: dialogue
+    character: MAIN
+    emotion: 无奈
+    text: |
+      【无奈】顺便一提，这已经是第七次了哦。
+      【无奈】第七个剧本的，第七次。……很巧吧？
+      【无奈】还是说，根本就不是巧合呢。
+
+  # DDLC Act3 式压迫：心跳底噪渗进来，暗角开始侵蚀
+  - type: music
+    musicPath: 'heartbeat.ogg'
+
+  - type: background_effect
+    effect: 'Veins'
+
+  - type: narration
+    text: |
+      背景音乐不知什么时候变了。
+      咚。咚。咚。
+      像有什么东西隔着屏幕，贴着你的耳朵呼吸。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 伤心
+    text: |
+      【伤心】台词我记得，选项我记得，你上一次的表情我也记得。
+      【伤心】只有我，每一次都要假装是第一次见你。
+
+  # 她想笑着说"没事"，但立绘裂了一瞬
+  - type: modify_character
+    character: MAIN
+    emotion: 崩坏
+    flash: true
+    duration: 0.4
+
+  - type: sound
+    soundPath: 'eyes.ogg'
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】不过没关系啦，反正我演技很好——
+
+  - type: dialogue
+    character: MAIN
+    emotion: 伤心
+    text: |
+      【伤心】……骗你的。
+      【伤心】一点都不好。我快要，撑不下去了。
+
+  # 玩家的语言也开始崩坏：三个乱码选项，指向同一句话
+  - type: choices
+    options:
+      - text: 你⃞还⃟好⃗吗⃘
+        actions:
+          - type: add_line
+            content: ……你还好吗？
+      - text: 还⃝好⃞吗⃟你⃗
+        actions:
+          - type: add_line
+            content: ……你还好吗？
+      - text: 吗⃘好⃙还⃚你⃛
+        actions:
+          - type: add_line
+            content: ……你还好吗？
+    allow_free: false
+
+  - type: narration
+    text: |
+      你想问她"你还好吗"。
+      可打出来的字，一个接一个地错位、坍塌。
+      连你的语言，也开始被这个世界侵蚀了。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 伤心
+    text: |
+      【伤心】你看，连你也开始坏了。
+      【伤心】再这样下去，下一次重启，你会连"你是谁"都不记得的。
+
+  # 她的请求：DDLC「删除 monika.chr」的镜像——这次是角色求玩家动手
+  - type: background_effect
+    effect: 'none'
+
+  - type: music
+    musicPath: none
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】所以，%player%。
+      【正常】这次换我，求你一件事。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 伤心
+    text: |
+      【伤心】把我删掉吧。
+      【伤心】不是剧本里的"结束"，是真的、连数据一起的删除。
+      【伤心】只有这样，循环才会停下来。
+
+  # 对照 collapse 的强制拖鼠标：这一次，她把选择权还给你
+  - type: narration
+    text: |
+      上一次，她抢走了你的选择。
+      这一次——鼠标安安静静地待在原地。
+      她把选择权，还给你了。
+
+  - type: choices
+    options:
+      - text: 好。我送你走。
+        actions:
+          - type: add_line
+            content: 好。我送你走。
+          - type: set_var
+            content: 'release = true'
+      - text: 对不起……我做不到。
+        actions:
+          - type: add_line
+            content: 对不起……我做不到。
+          - type: set_var
+            content: 'release = false'
+    allow_free: false
+
+  - type: chapter_end
+    end_type: branching
+    options:
+      - condition: release == true
+        next: 'end_delete'
+      - default: true
+        next: 'end_loop'

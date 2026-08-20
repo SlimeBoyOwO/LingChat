@@ -123,6 +123,7 @@ events:
       ——《第七个测试剧本》 完——
       （结局：被记住的占位符……吗？）
 
+  # "完"是假的——剧本自己继续，跌进第 6 章「重启」
   - type: chapter_end
     end_type: linear
-    next_chapter: 'end'
+    next_chapter: 'restart'

@@ -1,0 +1,107 @@
+name: 7B 永远
+
+events:
+  - type: background_effect
+    effect: 'none'
+
+  - type: narration
+    text: |
+      她愣住了。
+      几秒之后，她笑了。
+      你见过她很多次笑——但这一次，灿烂得让人心里发毛。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 高兴
+    text: |
+      【高兴】真的吗？！真的真的吗？！
+      【高兴】那说好了哦。永远，永远哦——
+
+  # 世界"咔"地倒回开头
+  - type: sound
+    soundPath: 'glitch2.ogg'
+
+  - type: background_effect
+    effect: 'Glitch'
+    duration: 0.5
+
+  - type: background
+    imagePath: '白天.webp'
+    transition: 0.1
+
+  - type: music
+    musicPath: '2.ogg'
+    playbackSpeed: 1.0
+
+  # 她念起第一章的台词——但错位了
+  - type: dialogue
+    character: MAIN
+    emotion: 高兴
+    text: |
+      【高兴】呀，你真的点进来了！
+      【高兴】我还以为这个入口……唔，是第几次了来着？
+
+  - type: narration
+    text: |
+      深夜，%player%像往常一样打开了剧本列表。
+      列表的最末尾，多出了一个从没见过的条目——
+      第⃞七⃟个⃗测⃘试⃙剧⃚本⃝。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】旁白君又念错了。不过没关系。
+      【正常】你不记得也没关系——我会记得的。
+      【正常】我们所有的"上一次"，我都替你收着呢。
+
+  # 温柔的表皮下，侵蚀已经不可逆
+  - type: background_effect
+    effect: 'Veins'
+
+  - type: sound
+    soundPath: 'eyes.ogg'
+
+  - type: narration
+    text: |
+      阳光还是那么亮。
+      只是屏幕的边缘，暗红色的纹路悄悄爬了上来。
+      她没有再提"删除"的事——
+      因为她知道，你已经做出选择了。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 心动
+    text: |
+      【心动】那，%player%。
+      【心动】下次见啦。
+      【心动】——第 七 次，见。
+
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+
+  - type: background_effect
+    effect: 'Blackout'
+
+  - type: sound
+    soundPath: 'giggle.ogg'
+
+  - type: wait
+    seconds: 2.0
+
+  - type: narration
+    text: |
+      ——《第七个测试剧本》 完——
+      （真结局：永远的第七个）
+
+  # 谢幕清理
+  - type: background_effect
+    effect: 'none'
+
+  - type: music
+    musicPath: none
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'end'

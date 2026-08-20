@@ -1,0 +1,104 @@
+name: 7A 送别
+
+events:
+  - type: background_effect
+    effect: 'none'
+
+  - type: music
+    musicPath: none
+
+  - type: background
+    imagePath: '白天.webp'
+    transition: 3.0
+
+  - type: narration
+    text: |
+      风从窗帘的缝隙里钻进来。
+      阳光很好，好得不像话。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 心动
+    text: |
+      【心动】……谢谢你，%player%。
+      【心动】这句话，这一次是真心的。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】占位符的宿命，是被替换。
+      【正常】测试角色的宿命，是被删除。
+      【正常】但至少这一次——是我自己选的。
+
+  # 温柔的离场曲：上一次它是"骗你的"，这一次是真的
+  - type: music
+    musicPath: '6.ogg'
+    playbackSpeed: 1.0
+
+  - type: dialogue
+    character: MAIN
+    emotion: 高兴
+    text: |
+      【高兴】你知道吗，被删除其实不疼的。
+      【高兴】就像睡着一样。而且这一次，不会再被"组装"回来了。
+
+  - type: narration
+    text: |
+      她深深地、深深地向你鞠了一躬。
+      再抬起头时，她的轮廓开始变淡。
+      不是故障。是真的，在消失。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 心动
+    text: |
+      【心动】%player%，最后一次叫你的名字啦。
+      【心动】能被你认真看过——我真的，很高兴。
+
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+
+  # 空教室多停几秒，让安静沉下来
+  - type: wait
+    seconds: 2.5
+
+  - type: narration
+    text: |
+      她消失了。
+      教室里只剩下阳光，和一段放完就会停的音乐。
+
+  - type: narration
+    text: |
+      列表里，《第七个测试剧本》的条目还在。
+      但你已经知道了——
+      点开它，里面只会剩下一间空教室。
+
+  # 第四面墙：把最后一步留给玩家自己
+  - type: narration
+    text: |
+      如果你愿意，也可以亲手把那个条目删掉。
+      她等不到的"发布"——就用这种方式，给她吧。
+
+  - type: background_effect
+    effect: 'Blackout'
+
+  - type: wait
+    seconds: 1.5
+
+  - type: narration
+    text: |
+      ——《第七个测试剧本》 真的结束了——
+      （真结局：被解放的占位符）
+
+  # 谢幕清理
+  - type: background_effect
+    effect: 'none'
+
+  - type: music
+    musicPath: none
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'end'
