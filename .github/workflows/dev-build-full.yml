@@ -14,31 +14,35 @@ on:
       - 'docs/**'
       - '.vscode/**'
   workflow_dispatch:
-    inputs:
-      platform:
-        description: 'Platform to build'
-        required: true
-        default: 'all'
-        type: choice
-        options:
-          - all
-          - windows-amd64
-          - windows-dev-host
 
 jobs:
   build:
-    env:
-      DATA_VERSION: ${{ github.run_id }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.platform == 'windows-dev-host' && '[{"platform":"windows-dev-host","os":"windows-latest","artifact-name":"lingchat-windows-dev-host","artifact-path":"src-tauri/target/debug/ling_chat.exe"}]' || github.event_name == 'workflow_dispatch' && inputs.platform == 'windows-amd64' && '[{"platform":"windows-amd64","os":"windows-latest","artifact-name":"lingchat-dev-windows-installer","artifact-path":"src-tauri/target/release/bundle/nsis/*.exe"}]' || '[{"platform":"windows-amd64","os":"windows-latest","artifact-name":"lingchat-dev-windows-installer","artifact-path":"src-tauri/target/release/bundle/nsis/*.exe"},{"platform":"linux-amd64","os":"ubuntu-latest","artifact-name":"lingchat-dev-linux-amd64","artifact-path":"src-tauri/target/release/ling_chat"},{"platform":"macos","os":"macos-latest","artifact-name":"lingchat-dev-macos","artifact-path":"src-tauri/target/release/ling_chat"},{"platform":"linux-aarch64","os":"ubuntu-24.04-arm","artifact-name":"lingchat-dev-linux-aarch64","artifact-path":"src-tauri/target/release/ling_chat"}]') }}
-
+        include:
+          - platform: windows-amd64
+            os: windows-latest
+            artifact-name: lingchat-dev-windows
+            artifact-path: src-tauri/target/release/ling_chat.exe
+          - platform: linux-amd64
+            os: ubuntu-latest
+            artifact-name: lingchat-dev-linux-amd64
+            artifact-path: src-tauri/target/release/ling_chat
+          - platform: macos
+            os: macos-latest
+            artifact-name: lingchat-dev-macos
+            artifact-path: src-tauri/target/release/ling_chat
+          - platform: linux-aarch64
+            os: ubuntu-24.04-arm
+            artifact-name: lingchat-dev-linux-aarch64
+            artifact-path: src-tauri/target/release/ling_chat
+    
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
 
       - uses: pnpm/setup@v1
         with:
@@ -54,7 +58,7 @@ jobs:
           cache-on-failure: true
           workspaces: |
             src-tauri
-          save-if: ${{ github.ref == 'refs/heads/dev' || matrix.platform == 'windows-dev-host' }}
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
 
       - name: 安装 Linux 依赖 (Ubuntu)
         if: runner.os == 'Linux'
@@ -86,7 +90,7 @@ jobs:
             libwayland-dev \
             libdbus-1-dev \
             mold
-
+          
       - name: 创建占位文件和初始化
         shell: bash
         run: |
@@ -100,36 +104,12 @@ jobs:
           python -c "from PIL import Image, ImageDraw; img=Image.new('RGB', (1024,1024), color='#4A90D9'); draw=ImageDraw.Draw(img); draw.ellipse((100,100,924,924), fill='#2C3E50'); img.save('./src-tauri/icons/icon.png')"
           pnpm tauri icon ./src-tauri/icons/icon.png
 
-      - name: 检查 Dev Host 合同
-        if: matrix.platform == 'windows-dev-host'
-        env:
-          RUSTFLAGS: -C linker=rust-lld
-          TAURI_CONFIG: '{"identifier":"com.noiq.ling-chat.dev"}'
-        shell: bash
-        run: |
-          pnpm test:live2d
-          cargo check --manifest-path src-tauri/Cargo.toml --tests
-
-      - name: 构建 Windows Dev Host
-        if: matrix.platform == 'windows-dev-host'
-        env:
-          RUSTFLAGS: -C linker=rust-lld
-          TAURI_CONFIG: '{"identifier":"com.noiq.ling-chat.dev"}'
-        run: cargo build --manifest-path src-tauri/Cargo.toml --locked
-
-      - name: 构建 Windows 安装包
-        if: matrix.platform == 'windows-amd64'
-        env:
-          RUSTFLAGS: -C linker=rust-lld
-        shell: bash
-        run: >-
-          pnpm tauri build --ci --no-sign --bundles nsis
-          --config '{"bundle":{"createUpdaterArtifacts":false}}'
-
       - name: 构建应用
-        if: runner.os != 'Windows'
         env:
-          RUSTFLAGS: ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
+          RUSTFLAGS: |
+            ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
+            ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
+            ${{ runner.os == 'macOS' && '' || '' }}
         run: pnpm tauri build --no-bundle
 
       - name: 上传 artifact

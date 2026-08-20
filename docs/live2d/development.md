@@ -146,26 +146,15 @@ cargo test live2d --manifest-path src-tauri/Cargo.toml
 cargo check --manifest-path src-tauri/Cargo.toml --tests
 ```
 
-### Windows Dev Host and HMR
+### Tauri Runtime Verification
 
-Use the `windows-dev-host` target in the **Build Development (Full Test)** workflow when Rust/Tauri behavior changes. Download the `lingchat-windows-dev-host` artifact and launch it from the repository:
+Run the normal development application when a change affects Tauri commands, the asset protocol, WebView rendering, or native window behavior:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/start-windows-dev-host.ps1 `
-  -ExePath C:\path\to\ling_chat.exe
+```bash
+pnpm tauri dev
 ```
 
-The downloaded Dev Host artifact is built with the isolated `com.noiq.ling-chat.dev` Tauri identifier. The launcher:
-
-- uses `.dev-data/live2d` unless `-DataDir` is supplied;
-- sets `LINGCHAT_DATA_DIR`;
-- starts Vite at `127.0.0.1:1420`;
-- enables WebView2 debugging;
-- terminates its Vite process tree when the host exits.
-
-Vue, TypeScript, and CSS changes update through HMR. Rust commands, serialized Rust types, Tauri configuration, and native window behavior require a newly built host.
-
-Do not point the Dev Host at normal installed application data. Keep test models and copyrighted assets in isolated ignored data.
+Frontend tests and browser probes cannot prove those native integration paths. Use test character data that you are permitted to use, and do not commit third-party model assets without redistribution rights.
 
 ## Validation Matrix
 
@@ -176,8 +165,8 @@ Do not point the Dev Host at normal installed application data. Keep test models
 | `pnpm run build` | Production frontend bundling | Native host behavior |
 | Focused Rust tests/check | Import, serialization, and command contracts | WebView rendering |
 | Browser/WebGL probe | Cubism Core, engine, model assets, framebuffer rendering | Tauri protocol and desktop pet windows |
-| Windows Dev Host | Real Tauri/WebView, isolated data, HMR, window modes | Installer/update behavior |
-| Installed build | Packaging, resource sync, upgrades, normal identifier | Source-tree HMR behavior |
+| `pnpm tauri dev` | Real Tauri/WebView, asset protocol, and native window modes | Installer/update behavior |
+| Installed build | Packaging, resource sync, upgrades, normal identifier | Source-tree development behavior |
 
 Before merging a change that affects lifecycle or rendering, verify at least:
 
@@ -202,6 +191,6 @@ When adding a serialized field:
 5. Preserve absent-field compatibility for existing characters.
 6. Add frontend and Rust tests.
 7. Update the package tutorial and manifest example.
-8. Rebuild and test a Windows Dev Host before producing an installer.
+8. Verify the normal Tauri development application before producing an installer.
 
 Keep fixes generic and contract-based. Character-specific calibration belongs in that character's `settings.yml`, not application source.

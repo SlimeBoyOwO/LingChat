@@ -66,19 +66,6 @@ Model paths in the import manifest are relative to the manifest file. Runtime mo
 
 The Live2D canvas is above static character images and below Live2D character bubbles. In a mixed scene where character images overlap, Live2D visuals appear above static visuals.
 
-## Development Host
-
-Live2D frontend changes can be tested without rebuilding an installer. Run the existing **Build Development (Full Test)** workflow with platform `windows-dev-host`, download `lingchat-windows-dev-host`, and start it with:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/start-windows-dev-host.ps1 `
-  -ExePath C:\path\to\ling_chat.exe
-```
-
-The launcher creates isolated data under `.dev-data/live2d`, isolates the Tauri settings store, starts Vite on port 1420, and then starts the precompiled Rust host. Vue, TypeScript, and CSS changes use Vite HMR. Rust command changes still require rebuilding the Dev Host.
-
-Set `LINGCHAT_DATA_DIR` to explicitly select a data directory when running a desktop debug host.
-
 ## Licensing
 
 Cubism Core is proprietary software and is stored under `public/vendor/live2d/` with its own license and redistribution notice. It is not covered by LingChat's AGPL license. Publishing an application that imports arbitrary Live2D models may require Live2D's Expandable Application review and Publication License.

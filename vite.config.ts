@@ -34,13 +34,15 @@ export default defineConfig(async () => ({
       : undefined,
     watch: {
       // 3. tell Vite to ignore watching some files
-      ignored: ['**/src-tauri/**', '**/.venv/**', '**/target/**', '**/data/**', '**/.dev-data/**'],
+      ignored: ['**/src-tauri/**', '**/.venv/**', '**/target/**', '**/data/**'],
     },
   },
 
   // 依赖优化配置
   optimizeDeps: {
     exclude: ['src-tauri/*'],
-    entries: ['src/*'],
+    entries: [
+      'src/*'
+    ],
   },
 }))

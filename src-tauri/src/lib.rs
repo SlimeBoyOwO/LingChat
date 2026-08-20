@@ -221,19 +221,13 @@ pub fn run() {
         .with(filter)
         .init();
 
-    // 设置 WebView2 颜色配置文件（强制使用线性 sRGB），并保留 Dev Host
-    // 调用方提供的调试参数。
+    // 设置 WebView2 颜色配置文件（强制使用线性 sRGB）
     #[allow(deprecated)]
     unsafe {
-        let mut browser_args = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS")
-            .unwrap_or_default();
-        if !browser_args.contains("--force-color-profile=") {
-            if !browser_args.is_empty() {
-                browser_args.push(' ');
-            }
-            browser_args.push_str("--force-color-profile=scrgb-linear");
-        }
-        std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", browser_args);
+        std::env::set_var(
+            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+            "--force-color-profile=scrgb-linear",
+        );
     }
 
     // 构建 Tauri 应用
