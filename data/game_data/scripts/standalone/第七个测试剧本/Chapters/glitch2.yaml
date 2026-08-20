@@ -16,6 +16,14 @@ events:
   - type: background_effect
     effect: 'Flash'
 
+  # 坏掉的过程：夜晚的房间先彻底碎成一帧，才露出崩坏教室
+  - type: background
+    imagePath: '夜晚-崩坏2.webp'
+    transition: 0
+
+  - type: wait
+    seconds: 0.3
+
   - type: background
     imagePath: '崩坏教室.webp'
     transition: 0.1

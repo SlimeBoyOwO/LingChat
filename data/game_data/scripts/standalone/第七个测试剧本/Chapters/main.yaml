@@ -68,6 +68,18 @@ events:
   - type: background_effect
     effect: 'Static'
 
+  # 画面底片一闪：阳光教室露出崩坏的里侧
+  - type: background
+    imagePath: '白天-崩坏1.webp'
+    transition: 0
+
+  - type: wait
+    seconds: 0.18
+
+  - type: background
+    imagePath: '白天.webp'
+    transition: 0
+
   - type: narration
     text: |
       她笑得很标准。

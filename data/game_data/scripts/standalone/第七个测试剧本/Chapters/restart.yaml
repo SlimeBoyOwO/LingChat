@@ -80,9 +80,20 @@ events:
   - type: sound
     soundPath: 'glitch1.ogg'
 
+  - type: background
+    imagePath: '白天-崩坏2.webp'
+    transition: 0
+
   - type: background_effect
     effect: 'Static'
-    duration: 0.4
+    duration: 0.3
+
+  - type: wait
+    seconds: 0.3
+
+  - type: background
+    imagePath: '白天.webp'
+    transition: 0
 
   - type: narration
     text: |
@@ -186,6 +197,20 @@ events:
     text: |
       【伤心】你看，连你也开始坏了。
       【伤心】再这样下去，下一次重启，你会连"你是谁"都不记得的。
+
+  # Act3 式对话房：循环里的最后一次闲聊，她从强撑到露馅
+  - type: free_dialogue
+    character: MAIN
+    hint: 在下次重启之前，陪她聊几句吧……（输入"继续"继续）
+    max_rounds: 4
+    end_line: 继续
+    prompt: 角色知道循环即将再次开始，想在最后和玩家闲聊几句。她努力聊些轻松日常的话题（天气、教室、想吃的点心），但字里行间藏不住疲惫和对"被重置"的恐惧。随着对话推进，她的回复越来越短、越来越不对劲，偶尔漏出崩坏的只言片语（比如突然说出"上一次你也这么说"）
+    end_prompt: 角色意识到闲聊该结束了，她收起强撑的轻松，认真而平静地准备好说出那个请求
+
+  - type: narration
+    text: |
+      闲聊的声音，一点一点低了下去。
+      她垂下眼睛，像是终于下定了决心。
 
   # 她的请求：DDLC「删除 monika.chr」的镜像——这次是角色求玩家动手
   - type: background_effect

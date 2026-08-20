@@ -55,7 +55,18 @@ events:
       【正常】你不记得也没关系——我会记得的。
       【正常】我们所有的"上一次"，我都替你收着呢。
 
-  # 温柔的表皮下，侵蚀已经不可逆
+  # 温柔的表皮下，侵蚀已经不可逆：日常的底片先裂开一瞬
+  - type: background
+    imagePath: '白天-崩坏1.webp'
+    transition: 0
+
+  - type: wait
+    seconds: 0.25
+
+  - type: background
+    imagePath: '白天.webp'
+    transition: 0
+
   - type: background_effect
     effect: 'Veins'
 

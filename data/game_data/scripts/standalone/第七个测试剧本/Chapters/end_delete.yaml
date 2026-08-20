@@ -99,6 +99,7 @@ events:
   - type: music
     musicPath: none
 
+  # 她走了——但剧本本身还不想被关上，跌进终章
   - type: chapter_end
     end_type: linear
-    next_chapter: 'end'
+    next_chapter: 'epilogue'

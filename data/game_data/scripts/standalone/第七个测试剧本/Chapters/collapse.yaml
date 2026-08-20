@@ -154,6 +154,9 @@ events:
   - type: chapter_end
     end_type: branching
     options:
+      # 隐藏线：从第一章就保持警惕（wary）的观察者，会被她单独"接待"
+      - condition: wary == true
+        next: 'watcher'
       - condition: finale == true
         next: 'end_warm'
       - default: true

@@ -10,6 +10,21 @@ events:
   - type: music
     musicPath: 'ghostmenu.ogg'
 
+  # 跳变的余波：夜晚的房间"坏掉"了一帧
+  - type: background
+    imagePath: '夜晚-崩坏1.webp'
+    transition: 0
+
+  - type: sound
+    soundPath: 'glitch1.ogg'
+
+  - type: wait
+    seconds: 0.22
+
+  - type: background
+    imagePath: '夜晚.webp'
+    transition: 0
+
   - type: narration
     text: |
       窗外，毫无征兆地暗了下来。

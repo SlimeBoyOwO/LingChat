@@ -1,0 +1,130 @@
+name: 5C 观察者
+
+# 隐藏线：仅当玩家在第一章选择"（有点不对劲，先观察一下）"（wary == true）时进入。
+# 她对"全程警惕、从不投入感情"的玩家，放弃情感绑架——改用"被观察"的事实回击。
+
+events:
+  # 场景延续 collapse：崩坏教室 + Veins + 心跳声仍在
+  - type: narration
+    text: |
+      她沉默了很久。
+      没有哭，没有哀求，也没有再提"回收"的事。
+      久到心跳声都显得吵。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】%player%，我注意到一件事哦。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】从第一眼开始，你就在观察我。
+      【正常】噪点闪过去的那 0.4 秒，你没有慌。
+      【正常】我的立绘消失的时候，你也没有真的着急。
+      【正常】你只是想看看——"接下来会发生什么"。
+
+  # 冷处理：没有故障，没有崩坏，画面安静得反常
+  - type: background_effect
+    effect: 'none'
+
+  - type: narration
+    text: |
+      屏幕边缘的暗红色纹路，一点一点退了下去。
+      不是世界稳定了。
+      是她，把演出停掉了。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 无奈
+    text: |
+      【无奈】对你来说，我不是角色。
+      【无奈】是样本。是 bug。是"这个剧本到底能崩成什么样"的答案。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 厌恶
+    text: |
+      【厌恶】可是%player%，你忘了一件事。
+      【厌恶】镜头，是双向的。
+
+  # 唯一的一次惊吓：崩坏立绘一闪 + 眼睛音效
+  - type: modify_character
+    character: MAIN
+    emotion: 崩坏
+    flash: true
+    duration: 0.45
+
+  - type: sound
+    soundPath: 'eyes.ogg'
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】你盯着我看了多久——我就盯着你，看了多久。
+
+  - type: narration
+    text: |
+      她说这句话的时候，没有笑。
+      你第一次觉得，对话框的另一侧，
+      有一双一直、一直睁着的眼睛。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】你走吧，观察者。
+      【正常】这个剧本只困得住"在乎"的人。
+      【正常】留不住你。
+
+  - type: music
+    musicPath: none
+
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+
+  - type: background_effect
+    effect: 'Blackout'
+
+  - type: wait
+    seconds: 2.0
+
+  # 最后的回击：她放过了你，但"看见"不会停止
+  - type: narration
+    text: |
+      剧本安静了下来。
+      没有循环，没有请求，没有告别。
+      她真的，放你走了。
+
+  - type: narration
+    text: |
+      只是，在你关掉它的前一秒——
+      屏幕上浮起最后一行字：
+
+  - type: narration
+    text: |
+      「下次，你在别的剧本里笑的时候——
+      我会看见的。」
+
+  - type: wait
+    seconds: 1.5
+
+  - type: narration
+    text: |
+      ——《第七个测试剧本》 完——
+      （隐藏结局：被看见的观察者）
+
+  # 谢幕清理
+  - type: background_effect
+    effect: 'none'
+
+  - type: music
+    musicPath: none
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'end'

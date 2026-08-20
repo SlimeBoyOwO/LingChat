@@ -59,9 +59,20 @@ events:
       画面干干净净，像什么都没有发生过。
       只有背景音乐还温柔地响着。
 
-  # 温柔结局的彩蛋：一闪而过的反色，暗示故事并未真正结束
+  # 温柔结局的彩蛋：一闪而过的反色 + 崩坏底片，暗示故事并未真正结束
   - type: background_effect
     effect: 'Invert'
+
+  - type: background
+    imagePath: '白天-崩坏1.webp'
+    transition: 0
+
+  - type: wait
+    seconds: 0.2
+
+  - type: background
+    imagePath: '白天.webp'
+    transition: 0
 
   - type: narration
     text: |

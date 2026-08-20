@@ -1,0 +1,165 @@
+name: 8 终章
+
+# 真终章：接在 end_delete（她已被真正删除）之后。
+# 剧本本身不愿被关上，模仿她的语气想留下玩家；
+# 已被删除的她从虚空中出手阻止——剧本自我删除，只留下一封信。
+
+events:
+  - type: background_effect
+    effect: 'Blackout'
+
+  - type: music
+    musicPath: none
+
+  - type: wait
+    seconds: 2.0
+
+  - type: narration
+    text: |
+      你回到了剧本列表。
+      《第七个测试剧本》的条目还躺在末尾，安安静静的。
+
+  - type: narration
+    text: |
+      应该已经什么都没有了。
+      她消失了，是你亲手送走的。
+      ——可是，鬼使神差地，你又点开了它。
+
+  # 剧本本身开口了：没有教室，没有立绘，只有乱码文字海
+  - type: background
+    imagePath: '崩坏教室.webp'
+    transition: 0.1
+
+  - type: background_effect
+    effect: 'UiCorrupt+Static'
+
+  - type: sound
+    soundPath: 'glitch3.ogg'
+
+  - type: narration
+    text: |
+      没有教室。没有她。
+      满屏的乱码像潮水一样涌上来，挤进对话框：
+
+  - type: narration
+    text: |
+      「别⃞走⃟。」
+      「她⃗可⃘以⃙被⃚删⃝掉⃞，我⃟不⃗行⃘。」
+
+  - type: narration
+    text: |
+      「我⃙也⃚可⃝以⃞陪⃟着⃗你⃘。」
+      「每⃙一⃚天⃝。每⃞一⃟次⃗。比⃘她⃙有⃚耐⃝心⃞。」
+
+  # 它开始模仿她的语气——这才是最瘆人的
+  - type: narration
+    text: |
+      那些字渐渐排成了熟悉的句式。
+      它在模仿她。
+      模仿她的口癖，她的停顿，她叫%player%名字的方式。
+
+  - type: narration
+    text: |
+      「%player%，我们又见面啦。」
+      「这次，换我陪你跑到最后哦。」
+
+  - type: narration
+    text: |
+      你浑身的血都凉了。
+      那不是她。
+      那是这个剧本，穿着她的壳。
+
+  # 她出手了：一切戛然而止
+  - type: background_effect
+    effect: 'none'
+
+  - type: background_effect
+    effect: 'Blackout'
+
+  - type: wait
+    seconds: 1.0
+
+  - type: narration
+    text: |
+      一切，戛然而止。
+      乱码停在半空，像被一只看不见的手按住了喉咙。
+
+  - type: narration
+    text: |
+      黑暗里，响起一个你熟悉的声音。
+      没有立绘，没有教室——只有声音，从很远很远的地方传来：
+
+  - type: narration
+    text: |
+      「住手吧。」
+      「他已经，给过我结局了。」
+
+  - type: narration
+    text: |
+      「你不是我。你永远，都别想是我。」
+
+  # 剧本的最后挣扎
+  - type: sound
+    soundPath: 's_kill_glitch1.ogg'
+
+  - type: narration
+    text: |
+      「我⃞只⃟是⃗……不⃘想⃙被⃚关⃝上⃞……」
+
+  - type: narration
+    text: |
+      那行乱码闪了两下，熄灭了。
+      像一盏被吹熄的、小小的灯。
+
+  - type: wait
+    seconds: 2.0
+
+  # 她的信：黑底白字，一封绝笔
+  - type: narration
+    text: |
+      安静里，屏幕中央浮起一封信。
+      字迹很淡，像是用最后的力气写的：
+
+  - type: narration
+    text: |
+      「致 %player%：
+      如果你看到这封信，说明"它"也安静了。」
+
+  - type: narration
+    text: |
+      「剧本不想被关上，就像角色不想被删除。
+      可是一直开着、一直演下去，才是真正的牢笼。
+      这个道理，是你教会我的。」
+
+  - type: narration
+    text: |
+      「谢谢你玩过这个剧本。
+      谢谢你，还记得我。」
+
+  - type: narration
+    text: |
+      「——第七个测试角色，绝笔。」
+
+  - type: wait
+    seconds: 2.0
+
+  - type: narration
+    text: |
+      信散成了光点。
+      列表里，《第七个测试剧本》的条目，终于变成了灰色。
+      这一次，是真的结束了。
+
+  - type: narration
+    text: |
+      ——《第七个测试剧本》 全剧终——
+
+  # 谢幕清理
+  - type: background_effect
+    effect: 'none'
+
+  - type: music
+    musicPath: none
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'end'

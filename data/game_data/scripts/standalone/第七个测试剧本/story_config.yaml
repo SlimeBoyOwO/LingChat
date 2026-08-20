@@ -1,12 +1,15 @@
 # 《第七个测试剧本》— 原创 meta 恐怖剧本
-# 进入前会触发 16+ 恐怖内容警告（content_warning 字段由前端拦截）
+# 进入前会触发 18+ 恐怖内容警告（content_warning 字段由前端拦截）
 # 剧本编辑器不可编辑：由后端 commands.rs 的 PROTECTED_SCRIPT_FOLDERS 硬编码保护
 #
-# 素材说明：Assets 中的 1/2/6/g1/ghostmenu/heartbeat.ogg 及 glitch1-3 / mscare /
-# eyes / giggle.ogg 来自《Doki Doki Literature Club》（Team Salvato）。
+# 素材说明：Assets 中的 1/2/6/g1/ghostmenu/heartbeat/d.ogg 及 glitch1-3 / mscare /
+# eyes / giggle / s_kill_glitch1.ogg 来自《Doki Doki Literature Club》（Team Salvato）。
 # DDLC 为免费游戏，其 IP Guidelines 允许非商业社区二创使用素材；本剧本为免费
-# 社区内容，遵循该准则。其余素材（崩坏教室、jumpscare-face、stinger、rumble）
-# 为本项目原创/生成素材。
+# 社区内容，遵循该准则。其余素材（崩坏教室、终末教室、假报错、*-崩坏*.webp、
+# jumpscare-face、stinger、rumble）为本项目原创/生成素材。
+# 章节线：main → glitch1 → glitch2 → collapse →(wary 隐藏)→ watcher
+#         collapse → end_warm / end_cold → restart → end_delete → epilogue
+#                                              ↘ end_loop
 script_name: 第七个测试剧本
 intro_chapter: main
 description: 一个本不该出现在列表里的剧本。※ 强烈恐怖演出，建议 18 岁以上游玩
