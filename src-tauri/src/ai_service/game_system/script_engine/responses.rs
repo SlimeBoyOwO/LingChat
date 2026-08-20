@@ -163,6 +163,10 @@ pub struct ModifyCharacterPayload {
     pub clothes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    /// true 时本次情绪切换是"闪现"演出：前端展示 `duration` 秒后自动还原，
+    /// 不覆盖角色当前情绪状态（DDLC 式立绘崩坏一闪）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flash: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]

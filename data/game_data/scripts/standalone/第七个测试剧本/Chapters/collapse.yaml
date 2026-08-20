@@ -37,6 +37,25 @@ events:
     emotion: 伤心
     text: |
       【伤心】%player%，我全都告诉你吧。
+
+  # 她说出真相的瞬间：崩坏立绘一闪 + 血红 UI 一闪 + 故障音（DDLC 式 glitch）
+  - type: modify_character
+    character: MAIN
+    emotion: 崩坏
+    flash: true
+    duration: 0.45
+
+  - type: background_effect
+    effect: 'Veins+BloodUI'
+    duration: 0.45
+
+  - type: sound
+    soundPath: 'glitch1.ogg'
+
+  - type: dialogue
+    character: MAIN
+    emotion: 伤心
+    text: |
       【伤心】我是被删掉的角色。
 
   - type: dialogue

@@ -104,6 +104,8 @@ export interface ScriptModifyCharacterEvent extends ScriptEvent {
   emotion?: string
   action?: string
   clothes?: string
+  /** true 时为"闪现"演出：情绪立绘短暂展示 duration 秒后自动还原，不写回角色状态 */
+  flash?: boolean
 }
 
 export interface ScriptInputEvent extends ScriptEvent {

@@ -58,6 +58,9 @@ interface UIState {
   /** 突脸收场时间戳（ms, Date.now() 基准），到点组件自行隐藏 */
   jumpscareUntil: number
 
+  /** 立绘闪现（DDLC 式崩坏一闪）：null = 无演出；seq 递增保证同情绪也能重复触发 */
+  spriteFlash: { roleId: number; emotion: string; duration: number; seq: number } | null
+
   /** 恐怖剧本入口过渡阶段：'' 无 / 'freeze' 卡死 / 'static' 花屏 */
   horrorEntryPhase: '' | 'freeze' | 'static'
 
@@ -104,6 +107,9 @@ const DEBOUNCE_MS_DEFAULT = 3000 // 其他 3秒
 
 let hideTimer: number | null = null
 
+// 立绘闪现序号：每次触发递增，同情绪连闪也能触发组件 watch
+let spriteFlashSeq = 0
+
 export const useUIStore = defineStore('ui', {
   state: (): UIState => ({
     showCharacterTitle: 'Lovely You',
@@ -134,6 +140,9 @@ export const useUIStore = defineStore('ui', {
     jumpscareImage: '',
     jumpscareSound: '',
     jumpscareUntil: 0,
+
+    // 立绘闪现演出初始状态
+    spriteFlash: null,
 
     horrorEntryPhase: '',
 
@@ -237,6 +246,16 @@ export const useUIStore = defineStore('ui', {
       this.jumpscareSound = ''
       this.jumpscareUntil = 0
     },
+    /** 立绘闪现：把 roleId 的立绘短暂替换为 emotion 版本，duration 秒后由组件自动还原 */
+    triggerSpriteFlash(roleId: number, emotion: string, durationSec: number) {
+      spriteFlashSeq += 1
+      this.spriteFlash = {
+        roleId,
+        emotion,
+        duration: Math.max(0.12, durationSec),
+        seq: spriteFlashSeq,
+      }
+    },
     /**
      * 恐怖特效残留清理：当前特效包含恐怖向名称时重置为 'None'。
      * 剧本异常退出/中途返回/重启后都可能残留，在剧本结束、进入剧本、应用启动时调用。
@@ -261,6 +280,7 @@ export const useUIStore = defineStore('ui', {
         useSettingsStore().setBackgroundEffect('None')
       }
       this.clearJumpscare()
+      this.spriteFlash = null
     },
     /**
      * 恐怖剧本入口过渡：卡死 1.1s → 花屏 0.8s，结束后 resolve。

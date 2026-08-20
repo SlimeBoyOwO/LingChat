@@ -142,7 +142,10 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
 /// 把系统鼠标指针拖动到窗口内的指定 CSS 坐标。
 ///
 /// 用于剧本的 `force_choice` 演出（DDLC 式强制拖动鼠标）。前端传视口 CSS 像素，
-/// 这里换算成物理像素再叠加窗口内容区左上角偏移。
+/// 这里只需换算成物理像素：**不能再叠加 `inner_position`**——tao 的
+/// `set_cursor_position` 收的就是"窗口客户区相对坐标"，内部会自己做
+/// ClientToScreen（Windows）/加窗口原点（macOS、Linux）。之前叠加了一次
+/// inner_position，窗口非最大化时鼠标会被多拽出一段窗口偏移，方向看着就是歪的。
 #[tauri::command]
 pub async fn warp_cursor(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -151,18 +154,15 @@ pub async fn warp_cursor(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
 
     let window = app.get_webview_window("main").ok_or("主窗口不存在")?;
     let scale = window.scale_factor().map_err(|e| e.to_string())?;
-    let inner = window.inner_position().map_err(|e| e.to_string())?;
-    let px = inner.x + (x * scale).round() as i32;
-    let py = inner.y + (y * scale).round() as i32;
+    let px = (x * scale).round() as i32;
+    let py = (y * scale).round() as i32;
     let result = window
         .set_cursor_position(tauri::PhysicalPosition::new(px, py))
         .map_err(|e| e.to_string());
     let n = LOG_COUNT.fetch_add(1, Ordering::Relaxed);
     if n < 3 {
         tracing::info!(
-            "[warp_cursor] logical=({x:.0},{y:.0}) scale={scale} inner=({},{}) physical=({px},{py}) ok={}",
-            inner.x,
-            inner.y,
+            "[warp_cursor] logical=({x:.0},{y:.0}) scale={scale} client=({px},{py}) ok={}",
             result.is_ok()
         );
     }
