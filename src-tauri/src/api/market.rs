@@ -188,6 +188,11 @@ static INSTALLING: Mutex<Option<HashMap<String, InstallTask>>> = Mutex::new(None
 static CANCELS: Mutex<Option<HashMap<String, tokio_util::sync::CancellationToken>>> =
     Mutex::new(None);
 
+/// 每包互斥锁：防止同一包并发安装（取消后立即重触发的竞争）。
+/// 新安装必须等旧任务完全结束并释放锁后才能开始。
+static INSTALL_LOCKS: Mutex<Option<HashMap<String, Arc<tokio::sync::Mutex<()>>>> =
+    Mutex::new(None);
+
 /// 读取所有进行中的安装任务。用于前端恢复按钮状态。
 fn installing_tasks() -> Vec<InstallTask> {
     INSTALLING
@@ -531,27 +536,30 @@ async fn market_install_inner(
         for attempt in 0..2 {
             let progress = progress.clone();
             let cancel = cancel_arc.clone();
-            let result = if use_parallel {
+            // 用 select! 让取消信号能立即中断下载（不用等当前 chunk 完成）
+            let download_fut = if use_parallel {
                 crate::utils::download::download_to_file_parallel(
                     &client,
                     src,
                     &zip_path,
-                    Some(cancel),
+                    Some(cancel.clone()),
                     progress,
                     expected,
                     PARALLEL_CHUNKS,
                 )
-                .await
             } else {
                 crate::utils::download::download_to_file(
                     &client,
                     src,
                     &zip_path,
-                    Some(cancel),
+                    Some(cancel.clone()),
                     progress,
                     expected,
                 )
-                .await
+            };
+            let result = tokio::select! {
+                _ = cancel.cancelled() => Err("download cancelled".into()),
+                r = download_fut => r,
             };
             match result {
                 Ok(bytes) => {
