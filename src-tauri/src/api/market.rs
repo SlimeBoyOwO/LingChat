@@ -568,29 +568,19 @@ async fn market_install_inner(
                         continue;
                     }
                     // sha256 校验（fail-closed：索引声明了就必须匹配）——
-                    // 校验失败视为该源内容异常（镜像改写/损坏），换下一源重下，不直接失败
+                    // 校验失败直接报错，不换源重试（sha256 不匹配说明索引或源文件有误，重试无意义）
                     if let Some(declared) = &pkg.sha256 {
                         match installer::sha256_hex(&zip_path) {
                             Ok(actual) if actual.eq_ignore_ascii_case(declared) => {}
                             Ok(actual) => {
-                                src_err = format!(
-                                    "sha256 校验失败（声明 {declared}，实际 {actual}）"
-                                );
-                                tracing::warn!("市场包 '{}' {}（源 {}）", id, src_err, src);
-                                // 删除损坏的文件，避免下次尝试误认为可续传
                                 let _ = std::fs::remove_file(&zip_path);
-                                if attempt + 1 < 2 {
-                                    tokio::time::sleep(std::time::Duration::from_millis(
-                                        BASE_DELAY_MS * (1 << attempt),
-                                    ))
-                                    .await;
-                                }
-                                continue;
+                                return Err(format!(
+                                    "sha256 校验失败（声明 {declared}，实际 {actual}）"
+                                ));
                             }
                             Err(e) => {
-                                src_err = format!("sha256 计算失败: {e}");
                                 let _ = std::fs::remove_file(&zip_path);
-                                continue;
+                                return Err(format!("sha256 计算失败: {e}"));
                             }
                         }
                     }
