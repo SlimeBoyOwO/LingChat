@@ -11,6 +11,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use tokio::sync::Mutex as TokioMutex;
+
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -190,8 +192,7 @@ static CANCELS: Mutex<Option<HashMap<String, tokio_util::sync::CancellationToken
 
 /// 每包互斥锁：防止同一包并发安装（取消后立即重触发的竞争）。
 /// 新安装必须等旧任务完全结束并释放锁后才能开始。
-static INSTALL_LOCKS: Mutex<Option<HashMap<String, Arc<tokio::sync::Mutex<()>>>> =
-    Mutex::new(None);
+static INSTALL_LOCKS: Mutex<Option<HashMap<String, Arc<TokioMutex<()>>>>> = Mutex::new(None);
 
 /// 读取所有进行中的安装任务。用于前端恢复按钮状态。
 fn installing_tasks() -> Vec<InstallTask> {
