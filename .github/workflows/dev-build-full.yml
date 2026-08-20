@@ -107,7 +107,7 @@ jobs:
         shell: bash
         run: |
           pnpm test:live2d
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --lib api::live2d::tests
+          cargo test --manifest-path src-tauri/Cargo.toml --lib api::live2d::tests
           cargo test --manifest-path src-tauri/Cargo.toml --locked --lib api::character::tests
           cargo test --manifest-path src-tauri/Cargo.toml --locked --lib init::static_copy::tests
 
