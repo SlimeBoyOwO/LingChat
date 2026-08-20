@@ -104,6 +104,7 @@ jobs:
         if: matrix.platform == 'windows-dev-host'
         env:
           RUSTFLAGS: -C linker=rust-lld
+          TAURI_CONFIG: '{"identifier":"com.noiq.ling-chat.dev"}'
         shell: bash
         run: |
           pnpm test:live2d
@@ -113,6 +114,7 @@ jobs:
         if: matrix.platform == 'windows-dev-host'
         env:
           RUSTFLAGS: -C linker=rust-lld
+          TAURI_CONFIG: '{"identifier":"com.noiq.ling-chat.dev"}'
         run: cargo build --manifest-path src-tauri/Cargo.toml --locked
 
       - name: 构建 Windows 安装包

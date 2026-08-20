@@ -1,13 +1,16 @@
 param(
   [Parameter(Mandatory = $true)]
   [string]$ExePath,
-  [string]$DataDir = (Join-Path $PSScriptRoot "..\.dev-data\live2d"),
+  [string]$DataDir = "",
   [int]$DebugPort = 9237
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $exe = (Resolve-Path $ExePath).Path
+if ([string]::IsNullOrWhiteSpace($DataDir)) {
+  $DataDir = Join-Path $repoRoot ".dev-data\live2d"
+}
 $data = [System.IO.Path]::GetFullPath($DataDir)
 
 if (-not (Test-Path (Join-Path $data "game_data"))) {
@@ -18,10 +21,8 @@ if (-not (Test-Path (Join-Path $data "game_data"))) {
   }
 }
 
-$isolatedAppData = Join-Path $data ".appdata"
-New-Item -ItemType Directory -Force -Path $isolatedAppData | Out-Null
 $env:LINGCHAT_DATA_DIR = $data
-$env:APPDATA = $isolatedAppData
+$env:TAURI_DEV_HOST = "127.0.0.1"
 $env:WEBVIEW2_USER_DATA_FOLDER = (Join-Path $data ".webview2")
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$DebugPort"
 
