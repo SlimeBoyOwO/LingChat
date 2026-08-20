@@ -46,6 +46,8 @@ pub fn init_event_registry() {
     // 注册恐怖演出事件处理器（突脸 / 强制选择）
     events::jumpscare_event::register();
     events::force_choice_event::register();
+    // 注册定拍等待事件处理器（DDLC 式时间轴演出）
+    events::wait_event::register();
 
     tracing::info!("[ScriptEngine] 所有事件处理器已注册");
 }

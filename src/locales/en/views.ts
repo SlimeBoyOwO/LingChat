@@ -62,7 +62,7 @@ export default {
   contentWarning: {
     horrorTitle: "⚠ Content Warning",
     horrorMessage:
-      "This story contains horror, jumpscares and disturbing content. Recommended for players aged 16 and above.\nIf you feel unwell while playing, please quit immediately.\n\nAre you sure you want to continue?",
+      "This story contains horror, jumpscares and disturbing content, including depictions of suicide and self-harm. Intended for adults aged 18 and above only (R18).\nIf you feel unwell while playing, please quit immediately.\n\nAre you sure you want to continue?",
   },
   pet: {
     chatInput: {
