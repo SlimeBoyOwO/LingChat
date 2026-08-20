@@ -10,6 +10,7 @@
     >
       <!-- 使用单独提取出来的图片淡入淡出组件 -->
       <ImageAcrossFade
+        v-show="!live2dActive"
         ref="imageFadeRef"
         class="absolute w-full h-[102%]"
         :class="containerClasses"
@@ -18,6 +19,13 @@
         position="center bottom"
         :object-fit="computedObjectFit"
       />
+
+      <div
+        v-if="live2dFailed && !targetAvatarUrl"
+        class="absolute inset-0 flex items-center justify-center text-sm text-white/60"
+      >
+        Live2D unavailable
+      </div>
 
       <!-- 气泡 -->
       <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
@@ -42,6 +50,8 @@ import './avatar-animation.css'
 
 const props = defineProps<{
   role: GameRole
+  live2dActive?: boolean
+  live2dFailed?: boolean
 }>()
 
 const gameStore = useGameStore()
@@ -114,7 +124,7 @@ const containerStyle = computed(() => {
     top: `${role.value.offsetY - narrowScreenYCompensation.value - wideScreenYCompensation.value}px`,
     transform: `translateX(-50%) scale(${role.value.scale})`,
     opacity: `${role.value.show ? 1 : 0}`,
-    zIndex: '1',
+    zIndex: props.live2dActive ? '3' : '1',
   }
   const filter = lightingFilter.value
   if (filter) {

@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import http from '../http'
 import type { Character, CharacterSelectParams } from '../../types'
 import type { WebInitData } from './game-info'
+import type { Live2dImportResult, Live2dSettings } from '@/types/live2d'
 import { i18n } from '@/locales'
 
 interface CharacterSelectResponse {
@@ -70,6 +71,7 @@ export interface RoleInfo {
   clothes: object
   clothes_name: string
   body_part: object
+  live2d?: Live2dSettings | null
   character_folder: string
 }
 
@@ -134,6 +136,22 @@ export const selectClothes = async (
   } catch (error: any) {
     throw new Error(typeof error === 'string' ? error : i18n.global.t('api.character.selectClothesFailed'))
   }
+}
+
+export const importLive2d = async (
+  roleId: number,
+  sourcePath: string,
+  sourceKind: 'directory' | 'zip',
+): Promise<Live2dImportResult> => {
+  return invoke<Live2dImportResult>('import_live2d', { roleId, sourcePath, sourceKind })
+}
+
+export const inspectLive2d = async (roleId: number): Promise<Live2dImportResult> => {
+  return invoke<Live2dImportResult>('inspect_live2d', { roleId })
+}
+
+export const getLive2dFilePath = async (roleId: number, filePath: string): Promise<string> => {
+  return invoke<string>('get_live2d_file', { roleId, filePath })
 }
 
 /** 获取角色资源文件的绝对路径（供 convertFileSrc 使用） */

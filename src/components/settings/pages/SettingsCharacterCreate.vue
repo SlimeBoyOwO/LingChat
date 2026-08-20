@@ -304,6 +304,39 @@
                   ></textarea>
                 </div>
               </div>
+
+              <div class="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
+                <div class="text-sm font-medium text-white/80">{{ $t('settings.characterCreate.live2d.title') }}</div>
+                <div class="text-xs text-white/50">{{ $t('settings.characterCreate.live2d.optional') }}</div>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    v-if="!isAndroid()"
+                    type="button"
+                    class="rounded-lg bg-white/10 px-3 py-2 text-sm hover:bg-white/20"
+                    @click="pickLive2dSource('directory')"
+                  >
+                    {{ $t('settings.characterCreate.live2d.directory') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-lg bg-white/10 px-3 py-2 text-sm hover:bg-white/20"
+                    @click="pickLive2dSource('zip')"
+                  >
+                    {{ $t('settings.characterCreate.live2d.zip') }}
+                  </button>
+                  <button
+                    v-if="live2dSourcePath"
+                    type="button"
+                    class="rounded-lg bg-red-500/15 px-3 py-2 text-sm text-red-200"
+                    @click="clearLive2dSource"
+                  >
+                    {{ $t('settings.characterCreate.live2d.clear') }}
+                  </button>
+                </div>
+                <div v-if="live2dSourcePath" class="break-all text-xs text-cyan-200/80">
+                  {{ live2dSourcePath }}
+                </div>
+              </div>
             </section>
           </div>
 
@@ -346,8 +379,10 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
-import { createCharacter } from '@/api/services/character'
+import { createCharacter, importLive2d } from '@/api/services/character'
+import { isAndroid } from '@/utils/platform'
 
 type StepId = 'basic' | 'avatar' | 'advanced'
 
@@ -446,6 +481,9 @@ const activeStep = ref<StepId>('basic')
 const showAdvanced = ref(false)
 const creating = ref(false)
 const errorMessage = ref('')
+const live2dSourcePath = ref('')
+const live2dSourceKind = ref<'directory' | 'zip'>('zip')
+const createdRole = ref<{ character_id: number; title: string; resource_folder: string } | null>(null)
 
 const form = reactive<CharacterFormState>({
   resource_folder: '',
@@ -487,6 +525,9 @@ const resetAll = () => {
   showAdvanced.value = false
   creating.value = false
   errorMessage.value = ''
+  live2dSourcePath.value = ''
+  live2dSourceKind.value = 'zip'
+  createdRole.value = null
 
   form.resource_folder = ''
   form.title = ''
@@ -665,6 +706,22 @@ const nextStep = () => {
   }
 }
 
+const clearLive2dSource = () => {
+  live2dSourcePath.value = ''
+}
+
+const pickLive2dSource = async (sourceKind: 'directory' | 'zip') => {
+  const selected = await open({
+    directory: sourceKind === 'directory',
+    multiple: false,
+    filters: sourceKind === 'zip' ? [{ name: 'Live2D ZIP', extensions: ['zip'] }] : undefined,
+  })
+  if (typeof selected === 'string') {
+    live2dSourcePath.value = selected
+    live2dSourceKind.value = sourceKind
+  }
+}
+
 const submitCreate = async () => {
   if (!canSubmit.value || !avatarFile.value) return
 
@@ -706,8 +763,16 @@ const submitCreate = async () => {
       formData.append('emotion_files', emotionFile)
     }
 
-    const response = await createCharacter(formData)
-    emit('created', response.data)
+    let role = createdRole.value
+    if (!role) {
+      const response = await createCharacter(formData)
+      role = response.data
+      createdRole.value = role
+    }
+    if (live2dSourcePath.value) {
+      await importLive2d(role.character_id, live2dSourcePath.value, live2dSourceKind.value)
+    }
+    emit('created', role)
     emit('close')
   } catch (error: any) {
     errorMessage.value = error?.message || t('settings.characterCreate.errors.createFailed')

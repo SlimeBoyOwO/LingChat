@@ -118,6 +118,14 @@
                 </div>
               </div>
 
+              <Live2DSettings
+                v-if="activeTab === 'live2d' && props.roleId"
+                v-model="localSettings.live2d"
+                :role-id="props.roleId"
+                :character-folder="localSettings.character_folder || ''"
+                :clothes="clothesList"
+              />
+
               <!-- Clothes Tab (custom UI, outside data-driven block) -->
               <div v-if="activeTab === 'clothes'" class="space-y-4">
                 <div class="flex items-center justify-between">
@@ -244,6 +252,7 @@ import {
   updateRoleSettings,
 } from '../../../api/services/character'
 import { Icon } from '../../base'
+import Live2DSettings from '../character/Live2DSettings.vue'
 import { isSystemProtectedRole } from '@/constants/character'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useGameStore } from '@/stores/modules/game'
@@ -335,6 +344,7 @@ const tabs = computed(() => [
   { id: 'prompts', label: t('settings.characterInfo.tabs.prompts') },
   { id: 'visuals', label: t('settings.characterInfo.tabs.visuals') },
   { id: 'clothes', label: t('settings.characterInfo.tabs.clothes') },
+  { id: 'live2d', label: t('settings.characterInfo.tabs.live2d') },
   { id: 'pet', label: t('settings.characterInfo.tabs.pet') },
   { id: 'voice', label: t('settings.characterInfo.tabs.voice') },
 ])
@@ -826,6 +836,12 @@ const saveSettings = async () => {
   saving.value = true
   try {
     await updateRoleSettings(props.roleId, localSettings.value)
+    const runtimeRole = gameStore.gameRoles[props.roleId]
+    if (runtimeRole) {
+      runtimeRole.live2d = localSettings.value.live2d
+        ? structuredClone(localSettings.value.live2d)
+        : null
+    }
     emit('saved')
     emit('close')
   } catch (e) {

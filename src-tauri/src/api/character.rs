@@ -91,6 +91,7 @@ pub struct RoleInfoResponse {
     pub clothes: Option<Vec<HashMap<String, String>>>,
     pub clothes_name: String,
     pub body_part: Option<HashMap<String, JsonValue>>,
+    pub live2d: Option<crate::ai_service::types::Live2dSettings>,
     pub character_folder: String,
 }
 
@@ -329,7 +330,10 @@ pub async fn get_role_info(app: AppHandle, role_id: i32) -> Result<RoleInfoRespo
         .ok_or_else(|| format!("角色 {} 不存在", role_id))?;
 
     let folder = role.resource_folder.clone().unwrap_or_default();
-    let settings = read_character_settings(&folder);
+    let settings = RoleRepo::get_role_settings_by_id(db, &data_dir(), role_id)
+        .await
+        .map_err(|e| format!("读取角色配置失败: {e}"))?
+        .unwrap_or_else(|| read_character_settings(&folder));
 
     Ok(RoleInfoResponse {
         character_id: role.id,
@@ -347,6 +351,7 @@ pub async fn get_role_info(app: AppHandle, role_id: i32) -> Result<RoleInfoRespo
         clothes: settings.clothes,
         clothes_name: settings.clothes_name.unwrap_or_default(),
         body_part: settings.body_part,
+        live2d: settings.live2d,
         character_folder: folder,
     })
 }

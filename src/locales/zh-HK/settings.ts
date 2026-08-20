@@ -334,6 +334,7 @@ export default {
       "prompts": "提示詞",
       "visuals": "視覺效果",
       "clothes": "服裝",
+      "live2d": "Live2D",
       "pet": "桌寵",
       "voice": "語音設定"
     },
@@ -393,6 +394,19 @@ export default {
       "item": "服裝 #{index}",
       "empty": "而家冇服裝配置，撳\"新增服裝\"開一個"
     },
+    "live2d": {
+      "importDirectory": "匯入模型資料夾",
+      "importZip": "匯入 ZIP",
+      "remove": "移除 Live2D 配置",
+      "loading": "讀取緊 Live2D 模型...",
+      "empty": "呢個角色未配置 Live2D。",
+      "defaultVariant": "預設模型變體",
+      "editVariant": "而家編輯嘅模型變體",
+      "defaultExpression": "預設表情",
+      "noExpression": "唔切換表情",
+      "noMotion": "唔播放動作",
+      "clothesMapping": "服裝同模型變體對應"
+    },
     "footer": {
       "cancel": "取消",
       "save": "儲存更改",
@@ -436,6 +450,13 @@ export default {
       "userSubtitle": "用戶副標題",
       "info": "角色簡介",
       "infoPlaceholder": "可填可唔填：用嚟做角色介紹展示"
+    },
+    "live2d": {
+      "title": "Live2D（可選）",
+      "optional": "建立角色之後匯入模型；表情同動作對應可以喺角色設定調整。",
+      "directory": "揀模型資料夾",
+      "zip": "揀 ZIP",
+      "clear": "清除選擇"
     },
     "avatar": {
       "uploadedStatus": "上傳咗 {count}/20 情緒 + {avatar}",

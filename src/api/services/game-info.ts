@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import type { Live2dSettings } from '@/types/live2d'
 import type { SceneInfo } from './scene'
 
 // 1. 定义角色配置接口 (原先摊平的字段现在归属到这里)
@@ -20,6 +21,7 @@ export interface CharacterSettings {
   clothes: Record<string, any>
   clothes_name: string
   body_part: Record<string, any>
+  live2d?: Live2dSettings | null
   character_folder: string
 }
 
