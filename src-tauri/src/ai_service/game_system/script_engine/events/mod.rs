@@ -15,6 +15,8 @@ pub mod choice_event;
 pub mod dialog_event;
 pub mod free_dialogue_event;
 pub mod input_event;
+pub mod jumpscare_event;
+pub mod force_choice_event;
 pub mod modify_character_event;
 pub mod music_event;
 pub mod narration_event;

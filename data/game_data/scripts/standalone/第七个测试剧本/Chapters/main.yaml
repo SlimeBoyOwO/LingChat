@@ -1,0 +1,118 @@
+name: 1 不存在的条目
+
+events:
+  - type: background
+    imagePath: '白天.webp'
+    transition: 1.0
+
+  - type: music
+    musicPath: '2.ogg'
+    playbackSpeed: 1.0
+
+  - type: narration
+    text: |
+      深夜，%player%像往常一样打开了剧本列表。
+      列表的最末尾，多出了一个从没见过的条目——
+      「第七个测试剧本」。
+      印象里，这里明明只有六个剧本。
+
+  - type: modify_character
+    action: show_character
+    character: MAIN
+    emotion: 高兴
+
+  - type: dialogue
+    character: MAIN
+    emotion: 高兴
+    text: |
+      【高兴】呀，你真的点进来了！
+      【高兴】我还以为这个入口永远不会有人发现呢～
+
+  - type: dialogue
+    character: MAIN
+    emotion: 调皮
+    text: |
+      【调皮】自我介绍一下——我是这个剧本的测试角色。
+      【调皮】唔，用你们的话说……"占位符"？反正就是用来跑流程的那种啦。
+
+  - type: choices
+    options:
+      - text: 测试剧本？我没见过这个剧本啊。
+        actions:
+          - type: add_line
+            content: 测试剧本？我没见过这个剧本啊。
+      - text: 你看起来和平时没什么不一样嘛。
+        actions:
+          - type: add_line
+            content: 你看起来和平时没什么不一样嘛。
+      - text: （有点不对劲，先观察一下）
+        actions:
+          - type: add_line
+            content: ……（保持沉默）
+          - type: set_var
+            content: 'wary = true'
+    allow_free: false
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 角色轻快地说这个剧本是"未发布"的，能被点开纯属意外；语气开朗但隐约透出一丝不自然，像是在背台词
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】今天天气真好呢，%player%。
+      【正常】适合散步，适合聊天，适合……什么都适合。
+
+  - type: narration
+    text: |
+      她笑得很标准。
+      标准得像是……排练过很多次。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 害羞
+    text: |
+      【害羞】那个，%player%，我问你一个问题哦。
+      【害羞】你在点开我之前……是不是先看了别的剧本？
+
+  - type: choices
+    options:
+      - text: 是啊，怎么了？
+        actions:
+          - type: add_line
+            content: 是啊，怎么了？
+      - text: 没有，我第一个点的就是你。
+        actions:
+          - type: add_line
+            content: 没有，我第一个点的就是你。
+    allow_free: false
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】这样啊。
+      【正常】没事没事，随便问问而已啦。
+
+  - type: narration
+    text: |
+      她移开了视线。
+      只有一瞬间，脸上的表情像是被什么东西抽空了——
+      但再看过去的时候，她又在笑着。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 高兴
+    text: |
+      【高兴】那我们继续吧！测试流程还长着呢。
+      【高兴】第七个剧本，可要好好跑到最后哦。
+
+  - type: narration
+    text: |
+      ……第七个？
+      她刚才，是不是说了"第七个"？
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'glitch1'

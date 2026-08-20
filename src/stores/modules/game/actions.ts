@@ -85,11 +85,14 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
     }
     const uiStore = useUIStore()
     uiStore.bgMusicMode = 'loop-single'
+    // 进入新剧本前清掉可能残留的恐怖特效（上次异常退出/重启等情况）
+    uiStore.resetHorrorEffects()
   },
 
   /** 标记退出剧情模式，回到自由对话模式 */
   exitStoryMode(this: GameState) {
     this.runningScript = null
+    this.forceChoice = null
   },
 
   // 设置当前场景（仅更新 store，不调用 API）

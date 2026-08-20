@@ -344,6 +344,14 @@ export function initializeTauriEventListeners() {
     eventQueue.addEvent(asEvent(event.payload, { type: 'choice', defaultDuration: 0 }))
   })
 
+  listen('script:jumpscare', (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: 'jumpscare', defaultDuration: 0 }))
+  })
+
+  listen('script:force-choice', (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: 'force_choice', defaultDuration: 0 }))
+  })
+
   listen('script:end', (event) => {
     console.log('[Tauri] script:end', event.payload)
     eventQueue.addEvent(

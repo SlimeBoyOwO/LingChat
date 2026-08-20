@@ -52,11 +52,16 @@ export default {
     credits: '致谢名单',
     exitGame: '退出游戏',
     freeDialogue: '自由对话模式',
-    storyMode: '剧情模式（在自由模式进入）',
+    storyMode: '剧情模式',
     scriptEditor: '创意工坊',
     cloudWorkshop: '云·创意工坊',
     miniGame: '小游戏（开发中）',
     back: '返回',
+  },
+  contentWarning: {
+    horrorTitle: '⚠ 内容警告',
+    horrorMessage:
+      '本剧本包含恐怖、惊吓与心理不适元素，建议 16 岁及以上玩家游玩。\n如在游玩过程中感到不适，请立即退出。\n\n确定要继续吗？',
   },
   pet: {
     chatInput: {

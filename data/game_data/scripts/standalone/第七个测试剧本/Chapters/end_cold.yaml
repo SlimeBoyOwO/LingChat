@@ -1,0 +1,115 @@
+name: 5B 故障消失
+
+events:
+  - type: background_effect
+    effect: 'Glitch'
+
+  - type: sound
+    soundPath: 'stinger.wav'
+
+  - type: dialogue
+    character: MAIN
+    emotion: 无奈
+    text: |
+      【无奈】这样啊。
+      【无奈】没关系。真的，没关系。
+
+  # 震屏 + 血滴叠加
+  - type: background_effect
+    effect: 'Shake+BloodDrip'
+
+  # 立绘崩坏（角色目录有 崩坏.webp 时切换，没有则保持原样）
+  - type: modify_character
+    action: show_character
+    character: MAIN
+    emotion: 崩坏
+
+  - type: narration
+    text: |
+      画面剧烈地摇晃起来。
+      有什么温热的东西，顺着屏幕内侧流了下来。
+      她的轮廓开始碎裂，像信号不良的旧电视。
+
+  # 文字渗血 + 反色爆发
+  - type: background_effect
+    effect: 'BloodUI+Invert'
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】反⃞正⃟……测⃗试⃘角⃙色⃚……本⃝来⃞……就⃟是⃞用⃡来⃢……删⃣掉⃤的⃥……
+
+  - type: narration
+    text: |
+      连对话框里的字，都变成了干涸的血色。
+
+  # 最后的突脸：黑屏前她的脸最后一次贴上来
+  - type: jumpscare
+    imagePath: 'jumpscare-face.webp'
+    soundPath: 'eyes.ogg'
+    duration: 0.7
+
+  - type: background_effect
+    effect: 'Blackout'
+
+  - type: sound
+    soundPath: 'stinger.wav'
+
+  - type: narration
+    text: |
+      黑暗吞没了一切。
+      最后消失的，是她的声音。
+
+  # 假死机前再补一记更短促的突脸
+  - type: jumpscare
+    imagePath: 'jumpscare-face.webp'
+    soundPath: 'glitch2.ogg'
+    duration: 0.35
+
+  # 假死机：最后一记惊吓
+  - type: background_effect
+    effect: 'BSOD'
+
+  - type: narration
+    text: |
+      ……
+      屏幕蓝得刺眼。
+      但你知道，那不是系统错误。
+
+  - type: background_effect
+    effect: 'none'
+
+  # 终幕：连 UI 都彻底崩坏
+  - type: background_effect
+    effect: 'UiCorrupt'
+
+  - type: narration
+    text: |
+      剧本结束了。
+      列表里，那个多出来的条目安静地躺在原地——
+      只是你再也不敢点开它了。
+
+  # 曲终人散，黑暗中传来一声轻笑
+  - type: sound
+    soundPath: 'giggle.ogg'
+
+  - type: narration
+    text: |
+      ——《第七个测试剧本》 完——
+      （结局：未被记住的占位符）
+
+  # 谢幕清理：特效/环境音/BGM 全部关闭，避免带出剧本外
+  - type: background_effect
+    effect: 'none'
+
+  - type: ambient
+    ambientPath: 'rumble.wav'
+    stop: true
+
+  - type: music
+    musicPath: none
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'end'

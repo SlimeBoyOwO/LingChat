@@ -58,6 +58,11 @@ export default {
     miniGame: 'ミニゲーム（開発中）',
     back: '戻る',
   },
+  contentWarning: {
+    horrorTitle: '⚠ コンテンツ警告',
+    horrorMessage:
+      'このシナリオにはホラー・驚かせる演出・精神的に不快な内容が含まれます。16歳以上のプレイヤーに推奨されます。\nプレイ中に気分が悪くなった場合は、すぐに終了してください。\n\n本当に続けますか？',
+  },
   pet: {
     chatInput: {
       placeholder: 'メッセージを入力...',

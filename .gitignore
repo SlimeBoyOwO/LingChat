@@ -155,6 +155,9 @@ data/game_data/scripts/character/**
 !data/game_data/scripts/character/DeepSeek/
 !data/game_data/scripts/standalone/
 data/game_data/scripts/standalone/**
+# 内置恐怖剧本《第七个测试剧本》随仓库发布（编辑器不可编辑，由后端硬编码保护）
+!data/game_data/scripts/standalone/第七个测试剧本/
+!data/game_data/scripts/standalone/第七个测试剧本/**
 !data/game_data/scripts/character/**
 # Skill Agent 技能库（AI 助手读取的 SKILL.md 技能）
 data/game_data/skills/**

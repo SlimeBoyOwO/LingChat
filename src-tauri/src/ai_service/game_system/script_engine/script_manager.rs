@@ -37,6 +37,8 @@ struct StoryConfigRaw {
     adventure: Option<AdventureConfig>,
     #[serde(default)]
     script_settings: Option<serde_json::Map<String, Value>>,
+    #[serde(default)]
+    content_warning: Option<String>,
 }
 
 /// Central orchestrator for the script/story mode engine.
@@ -165,6 +167,7 @@ impl ScriptManager {
             script_path: script_path.to_path_buf(),
             recommand_start: raw.recommand_start.unwrap_or_default(),
             adventure,
+            content_warning: raw.content_warning,
             running_client_id: None,
             current_chapter_key: String::new(),
             current_event_process: 0,

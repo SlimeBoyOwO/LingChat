@@ -51,6 +51,16 @@ interface UIState {
   currentAvatarAudio: string
   autoMode: boolean
 
+  /** 突脸惊吓：图片路径（空串 = 无演出） */
+  jumpscareImage: string
+  /** 突脸音效路径（由 Jumpscare 组件自行播放） */
+  jumpscareSound: string
+  /** 突脸收场时间戳（ms, Date.now() 基准），到点组件自行隐藏 */
+  jumpscareUntil: number
+
+  /** 恐怖剧本入口过渡阶段：'' 无 / 'freeze' 卡死 / 'static' 花屏 */
+  horrorEntryPhase: '' | 'freeze' | 'static'
+
   // 环境音轨道列表（多轨并行，最多8轨）
   ambientTracks: Array<{
     id: string         // 唯一标识（基于时间戳+随机数）
@@ -119,6 +129,13 @@ export const useUIStore = defineStore('ui', {
     currentSoundEffect: 'None',
     currentAvatarAudio: 'None',
     autoMode: false,
+
+    // 突脸惊吓演出初始状态
+    jumpscareImage: '',
+    jumpscareSound: '',
+    jumpscareUntil: 0,
+
+    horrorEntryPhase: '',
 
     // 环境音轨道列表初始值
     ambientTracks: [],
@@ -207,6 +224,59 @@ export const useUIStore = defineStore('ui', {
     // 设置背景效果（写入 settings store）
     setBackgroundEffect(effect: string) {
       useSettingsStore().setBackgroundEffect(effect)
+    },
+    /** 触发突脸惊吓：图片全屏闪现 durationSec 秒，自带音效 */
+    triggerJumpscare(image: string, sound: string, durationSec: number) {
+      this.jumpscareImage = image
+      this.jumpscareSound = sound
+      this.jumpscareUntil = Date.now() + Math.max(0.15, durationSec) * 1000
+    },
+    /** 立即收场（组件卸载或剧本结束时兜底调用） */
+    clearJumpscare() {
+      this.jumpscareImage = ''
+      this.jumpscareSound = ''
+      this.jumpscareUntil = 0
+    },
+    /**
+     * 恐怖特效残留清理：当前特效包含恐怖向名称时重置为 'None'。
+     * 剧本异常退出/中途返回/重启后都可能残留，在剧本结束、进入剧本、应用启动时调用。
+     */
+    resetHorrorEffects() {
+      const HORROR = [
+        'Glitch',
+        'Shake',
+        'Flash',
+        'Blackout',
+        'Tear',
+        'Static',
+        'Invert',
+        'BloodDrip',
+        'Veins',
+        'BSOD',
+        'UiCorrupt',
+        'BloodUI',
+      ]
+      const current = useSettingsStore().display.backgroundEffect
+      if (HORROR.some((h) => current.includes(h))) {
+        useSettingsStore().setBackgroundEffect('None')
+      }
+      this.clearJumpscare()
+    },
+    /**
+     * 恐怖剧本入口过渡：卡死 1.1s → 花屏 0.8s，结束后 resolve。
+     * 调用方 await 它再执行真正的进入逻辑。
+     */
+    beginHorrorEntry(): Promise<void> {
+      return new Promise((resolve) => {
+        this.horrorEntryPhase = 'freeze'
+        setTimeout(() => {
+          this.horrorEntryPhase = 'static'
+        }, 1100)
+        setTimeout(() => {
+          this.horrorEntryPhase = ''
+          resolve()
+        }, 1900)
+      })
     },
     // 设置对话音效开关（写入 settings store）
     setEnableChatEffectSound(enabled: boolean) {
@@ -586,6 +656,9 @@ export function initUIStore() {
   initialized = true
 
   const store = useUIStore()
+
+  // 启动时清掉上次会话残留的恐怖特效（设置是持久化的，血色 UI 不能带进新会话）
+  store.resetHorrorEffects()
 
   // 从 CSS 变量同步安全区值（由 Android 原生 / iOS env() 注入）
   function syncSafeArea() {

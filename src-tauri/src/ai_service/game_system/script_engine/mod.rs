@@ -43,6 +43,9 @@ pub fn init_event_registry() {
     events::ambient_event::register();
     // 注册成就解锁事件处理器
     events::achievement_event::register();
+    // 注册恐怖演出事件处理器（突脸 / 强制选择）
+    events::jumpscare_event::register();
+    events::force_choice_event::register();
 
     tracing::info!("[ScriptEngine] 所有事件处理器已注册");
 }

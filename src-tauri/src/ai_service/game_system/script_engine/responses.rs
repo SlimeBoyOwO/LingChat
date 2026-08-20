@@ -25,6 +25,8 @@ pub mod event_names {
     pub const SCRIPT_CHOICE: &str = "script:choice";
     pub const SCRIPT_END: &str = "script:end";
     pub const SCRIPT_FREE_DIALOGUE: &str = "script:free-dialogue";
+    pub const SCRIPT_JUMPSCARE: &str = "script:jumpscare";
+    pub const SCRIPT_FORCE_CHOICE: &str = "script:force-choice";
 }
 
 // ============================================================
@@ -91,6 +93,28 @@ pub struct MusicPayload {
 #[serde(rename_all = "camelCase")]
 pub struct SoundPayload {
     pub sound_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+/// 突脸惊吓：全屏图片闪现 + 音效。图片为空串表示解析失败（前端应跳过）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JumpscarePayload {
+    pub image_path: String,
+    /// 可选音效；空串表示无
+    pub sound_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+/// 强制选择：前端用"鼠标被拖向 forced 选项"的演出，最终只能提交 forced。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForceChoicePayload {
+    pub choices: Vec<ChoiceItem>,
+    /// 必然被选中的选项文本（必须在 choices 里存在）
+    pub forced: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
 }

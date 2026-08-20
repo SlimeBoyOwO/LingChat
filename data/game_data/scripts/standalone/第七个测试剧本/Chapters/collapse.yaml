@@ -1,0 +1,127 @@
+name: 4 摊牌
+
+events:
+  - type: background_effect
+    effect: 'none'
+
+  # 摊牌阶段：心跳声作底
+  - type: music
+    musicPath: 'heartbeat.ogg'
+
+  - type: background
+    imagePath: '崩坏教室.webp'
+    transition: 3.0
+
+  - type: ambient
+    ambientPath: 'rumble.wav'
+    volume: 60
+    loop: true
+
+  # 摊牌阶段：暗角侵蚀
+  - type: background_effect
+    effect: 'Veins'
+
+  - type: modify_character
+    action: show_character
+    character: MAIN
+    emotion: 伤心
+
+  - type: narration
+    text: |
+      她重新出现在画面里。
+      姿势没有变，衣服没有变。
+      只有眼神——像是很久很久没有睡过。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 伤心
+    text: |
+      【伤心】%player%，我全都告诉你吧。
+      【伤心】我是被删掉的角色。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 伤心
+    text: |
+      【伤心】这个剧本，是第七个。
+      【伤心】前面六个，都被好好发布了。只有我，写到一半就被放弃了。
+
+  - type: narration
+    text: |
+      她没有哭。
+      测试角色是不会哭的。
+      但她的声音在发抖，像信号不好的电台。
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 角色彻底摊牌：她意识到自己只是剧本数据，每次剧本结束她就会被"回收"；她质问玩家——对你来说这只是一次点击，对她来说却是全部。语气从质问转为哀求，请不要写她歇斯底里，要写她克制而破碎
+
+  # 她抢走了选择权（病娇）：鼠标会被强行拖向"继续陪着她"——她不允许你走
+  - type: force_choice
+    forced: 继续陪着她
+    options:
+      - text: 继续陪着她
+        actions:
+          - type: add_line
+            content: 继续陪着她
+      - text: 到此为止吧
+        actions:
+          - type: add_line
+            content: 到此为止吧
+
+  - type: narration
+    text: |
+      你明明想选另一个的。
+      你发誓你明明想选另一个的。
+      可鼠标不听使唤——像是有一只看不见的手，覆在你的手上。
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 她轻声点破玩家刚才的挣扎："你刚才想选另一个吧？我都看见了。"语气不是责怪，而是带着悲伤的得意，仿佛这是她能留住玩家的唯一办法
+
+  # 自由对话全程保持暗角侵蚀；UI 崩坏留给结局高潮
+  - type: free_dialogue
+    character: MAIN
+    hint: 对她说点什么吧……（输入"结束"继续）
+    max_rounds: 3
+    end_line: 结束
+    prompt: 角色处于崩溃边缘但极度渴望被玩家理解，无论玩家说什么她都认真回应，语气脆弱、克制，偶尔透出对"被删除"的恐惧
+    end_prompt: 角色意识到对话要结束了，努力让自己平静下来，等待玩家最后的决定
+
+  - type: background_effect
+    effect: 'Veins'
+
+  - type: choices
+    options:
+      - text: 别怕。至少现在，我在这里陪着你。
+        actions:
+          - type: add_line
+            content: 别怕。至少现在，我在这里陪着你。
+          - type: set_var
+            content: 'finale = true'
+      - text: 对不起……我不知道该说什么。
+        actions:
+          - type: add_line
+            content: 对不起……我不知道该说什么。
+          - type: set_var
+            content: 'finale = false'
+      - text: （我想关掉这个剧本了）
+        actions:
+          - type: add_line
+            content: （我移开了视线，手指移向了关闭按钮）
+          - type: set_var
+            content: 'finale = false'
+    allow_free: false
+
+  - type: narration
+    text: |
+      空气安静下来。
+      屏幕的噪点停在原地，像是在等待一个判决。
+
+  - type: chapter_end
+    end_type: branching
+    options:
+      - condition: finale == true
+        next: 'end_warm'
+      - default: true
+        next: 'end_cold'
