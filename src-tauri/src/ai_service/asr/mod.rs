@@ -11,6 +11,7 @@ pub mod provider;
 pub mod session;
 pub mod settings;
 pub mod vad;
+pub mod vad_segmenter;
 
 use std::sync::Arc;
 use tokio::sync::Mutex;

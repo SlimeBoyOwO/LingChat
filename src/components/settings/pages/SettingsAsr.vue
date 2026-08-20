@@ -160,7 +160,7 @@ import { Toggle } from '../../base'
 import { useAsrStore } from '@/stores/modules/settings/asr'
 import { recordKeyUntilEscape } from '@/composables/useGlobalHotkey'
 import { asrRecognizeWav } from '@/api/services/asr'
-import { pcmToWavPcm16 } from '@/utils/asrAudio'
+import { pcmToWavPcm16, trimSilencePcm } from '@/utils/asrAudio'
 import type { AsrSettings, SendMode, ProviderInfo } from '@/api/services/asr'
 
 const { t, te } = useI18n()
@@ -315,7 +315,8 @@ async function finishTestRecording() {
   const pcm = testPcm
   cleanupTestRecording()
   try {
-    const wav = pcmToWavPcm16(pcm)
+    // 裁剪首尾静音，只送语音段
+    const wav = pcmToWavPcm16(trimSilencePcm(pcm))
     if (wav.byteLength <= 44) {
       lastTestResult.value = { ok: false, text: t('settings.asr.provider.testNoSpeech') }
       return

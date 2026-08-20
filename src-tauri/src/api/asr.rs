@@ -115,6 +115,11 @@ pub async fn asr_vad_process_chunk(
             .await
             .map_err(|e| e.i18n_code().to_string())
     } else {
+        // 诊断：session 未初始化（VAD 模型加载失败等）时静默丢块会掩盖故障
+        tracing::warn!(
+            "[ASR/VAD] session 未初始化，丢弃 chunk ({} samples)",
+            pcm.len()
+        );
         Ok(())
     }
 }
@@ -153,7 +158,11 @@ pub async fn asr_recognize_wav(
             tracing::info!("[ASR] {provider_id} 识别结果: {}", r.text);
             Ok(r)
         }
-        Err(e) => Err(e.i18n_code().to_string()),
+        Err(e) => {
+            // 诊断：暴露 provider 失败的具体细节（之前仅前端 code，丢失 detail）
+            tracing::error!("[ASR] {provider_id} 识别失败: {e}");
+            Err(e.i18n_code().to_string())
+        }
     }
 }
 

@@ -64,3 +64,36 @@ export async function webmToWavPcm16Mono16k(blob: Blob): Promise<Uint8Array> {
   }
   return pcmToWavPcm16(pcm)
 }
+
+/**
+ * 裁剪首尾静音：找第一个/最后一个能量帧，前后各留 padMs 缓冲。
+ * 录音从能量触发开始、VAD 停顿结束，头尾通常带环境声/静音尾巴；
+ * 裁剪后发送给 ASR 的只含语音段（更准、更快、更省 token）。
+ */
+export function trimSilencePcm(
+  pcm: number[],
+  sampleRate = 16000,
+  frameMs = 30,
+  threshold = 0.005,
+  padMs = 200,
+): number[] {
+  const frame = Math.floor((sampleRate * frameMs) / 1000) // 480 samples @16k
+  let startSample = -1
+  let endSample = -1
+  for (let i = 0; i + frame <= pcm.length; i += frame) {
+    let sum = 0
+    for (let j = 0; j < frame; j++) {
+      sum += pcm[i + j] * pcm[i + j]
+    }
+    const rms = Math.sqrt(sum / frame)
+    if (rms > threshold) {
+      if (startSample === -1) startSample = i
+      endSample = i + frame
+    }
+  }
+  if (startSample === -1) return [] // 全静音
+  const pad = Math.floor((sampleRate * padMs) / 1000)
+  const start = Math.max(0, startSample - pad)
+  const end = Math.min(pcm.length, endSample + pad)
+  return pcm.slice(start, end)
+}

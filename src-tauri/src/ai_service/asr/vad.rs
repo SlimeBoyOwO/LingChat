@@ -10,7 +10,6 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant as StdInstant;
 
 use ndarray::Array2;
 use ort::session::Session;
@@ -18,15 +17,18 @@ use ort::value::Tensor;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
-use tokio_util::sync::CancellationToken;
 
 use super::error::AsrError;
+use super::vad_segmenter::SegmentEvent;
 
-/// Silero VAD v5 隐状态 shape (2, 1, 64) → ndarray (2, 64)
-const VAD_STATE_DIM: usize = 64;
-const VAD_THRESHOLD: f32 = 0.5;
-const VAD_SILENCE_MS_FOR_CANDIDATE: u128 = 300;
-const VAD_CONFIRMATION_WINDOW_MS: u128 = 1000;
+/// Silero VAD v5（snakers4 master ONNX 导出）：
+/// - 输入: `input` (1, 576) = 前帧 64 context + 当前帧 512
+///   （官方 utils_vad.py: `torch.cat([self._context, x], dim=1)` —— 只传 512
+///   会输出恒定 ~0.001 的 prob，VAD 永不触发）
+/// - 输入: `state` (2, 1, 128)（state[0]=h, state[1]=c）、`sr` (int64)
+/// - 输出: `output` prob、`stateN` (2, 1, 128)
+const VAD_STATE_DIM: usize = 128;
+const VAD_CONTEXT_SAMPLES: usize = 64;
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -43,24 +45,19 @@ pub struct VadProcessResult {
     pub event: Option<VadEvent>,
 }
 
+/// 模型隐状态（h/c 合并为 state）+ 帧 context。
 struct VadState {
-    h: Array2<f32>,
-    c: Array2<f32>,
-    last_speech_ts: Option<StdInstant>,
-    silence_started_ts: Option<StdInstant>,
-    speech_active: bool,
-    confirm_token: Option<CancellationToken>,
+    /// (2, 1, 128)：state[0]=h, state[1]=c
+    state: Array2<f32>,
+    /// 前帧尾部 64 samples（模型 context 输入）
+    context: Vec<f32>,
 }
 
 impl VadState {
     fn new() -> Self {
         Self {
-            h: Array2::zeros((2, VAD_STATE_DIM)),
-            c: Array2::zeros((2, VAD_STATE_DIM)),
-            last_speech_ts: None,
-            silence_started_ts: None,
-            speech_active: false,
-            confirm_token: None,
+            state: Array2::zeros((2, VAD_STATE_DIM)),
+            context: vec![0.0; VAD_CONTEXT_SAMPLES],
         }
     }
 }
@@ -68,9 +65,9 @@ impl VadState {
 /// Silero VAD wrapper。
 pub struct AsrVad {
     session: Mutex<Option<Session>>,
-    /// 端点检测状态。Arc 共享给 confirmation timer，
-    /// 让 timer 触发时可以查询最新 speech_active 决定是否 SEAL。
     state: Arc<Mutex<VadState>>,
+    /// 语音切分状态机（独立于模型推理，见 vad_segmenter.rs）。
+    segmenter: Mutex<super::vad_segmenter::VadSegmenter>,
 }
 
 impl AsrVad {
@@ -92,27 +89,20 @@ impl AsrVad {
         Ok(Self {
             session: Mutex::new(Some(session)),
             state: Arc::new(Mutex::new(VadState::new())),
+            segmenter: Mutex::new(super::vad_segmenter::VadSegmenter::new()),
         })
     }
 
-    /// 重置隐状态（每次新会话开始时调用）。
+    /// 重置隐状态 + 切分器（每次新会话开始时调用）。
     pub async fn reset(&self) {
-        let mut s = self.state.lock().await;
-        if let Some(token) = s.confirm_token.take() {
-            token.cancel();
-        }
-        *s = VadState::new();
+        *self.state.lock().await = VadState::new();
+        self.segmenter.lock().await.reset();
     }
 
     /// 处理 30ms 块 PCM（512 samples @ 16kHz），返回推理结果 + 可能的事件。
-    /// 端点检测状态机（spec §2.4）：
-    /// - prob > 0.5 → speech_active = true；silence_started_ts = None；emit SpeechStarted
-    /// - prob ≤ 0.5 且 speech_active：
-    ///   - silence_started_ts = Some(now())
-    ///   - elapsed ≥ 300ms 且无 confirm_token：emit TurnCandidate + spawn 1s confirmation timer
-    /// - confirmation timer 触发：
-    ///   - speech_active 仍 true → 取消 SEAL，回到 Listening
-    ///   - 否则 → emit TurnSealed
+    /// 推理：拼接前帧 context(64) + 当前帧(512) = 576 → Silero v5 ONNX；
+    /// 切分：prob 喂给 [`vad_segmenter::VadSegmenter`] 纯状态机，
+    /// 事件映射为 [`VadEvent`] 并 emit。
     pub async fn process_chunk(
         &self,
         app: &AppHandle,
@@ -124,131 +114,114 @@ impl AsrVad {
             None => return Ok(None), // fail-open: 模型未加载返回 None
         };
 
-        // 取当前 state
-        let mut state_guard = self.state.lock().await;
-        let state = &mut *state_guard;
+        // 取 state + 拼 context（先算完释放 state 锁再推理）
+        let (input_samples, state_tensor) = {
+            let mut st = self.state.lock().await;
+            let mut input = Vec::with_capacity(VAD_CONTEXT_SAMPLES + pcm.len());
+            input.extend_from_slice(&st.context);
+            input.extend_from_slice(pcm);
+            if pcm.len() >= VAD_CONTEXT_SAMPLES {
+                st.context = pcm[pcm.len() - VAD_CONTEXT_SAMPLES..].to_vec();
+            }
+            let state_tensor = st.state.clone().insert_axis(ndarray::Axis(1)); // (2, 1, 128)
+            (input, state_tensor)
+        };
 
-        // 构造输入 tensor。Silero VAD 期望输入 shape: [batch=1, samples=512]
-        let input = ndarray::Array::from_shape_vec((1, pcm.len()), pcm.to_vec())
-            .map_err(|e| AsrError::EngineLoadFailed(format!("input shape: {e}")))?;
-        let c_tensor = state.c.clone().insert_axis(ndarray::Axis(1));
-        let h_tensor = state.h.clone().insert_axis(ndarray::Axis(1));
-
+        // 构造输入 tensor
+        let input_len = input_samples.len();
+        let input = ndarray::Array::from_shape_vec((1, input_len), input_samples)
+            .map_err(|e| {
+                tracing::error!("[ASR/VAD] input shape 构造失败 (len={}): {e}", input_len);
+                AsrError::EngineLoadFailed(format!("input shape: {e}"))
+            })?;
         let input_t = Tensor::from_array(input)
-            .map_err(|e| AsrError::EngineLoadFailed(format!("input tensor: {e}")))?;
-        let h_t = Tensor::from_array(h_tensor)
-            .map_err(|e| AsrError::EngineLoadFailed(format!("h tensor: {e}")))?;
-        let c_t = Tensor::from_array(c_tensor)
-            .map_err(|e| AsrError::EngineLoadFailed(format!("c tensor: {e}")))?;
+            .map_err(|e| {
+                tracing::error!("[ASR/VAD] input Tensor::from_array 失败: {e}");
+                AsrError::EngineLoadFailed(format!("input tensor: {e}"))
+            })?;
+        let state_t = Tensor::from_array(state_tensor)
+            .map_err(|e| {
+                tracing::error!("[ASR/VAD] state Tensor::from_array 失败: {e}");
+                AsrError::EngineLoadFailed(format!("state tensor: {e}"))
+            })?;
+        let sr_t = Tensor::from_array(ndarray::arr0(16000i64))
+            .map_err(|e| {
+                tracing::error!("[ASR/VAD] sr Tensor::from_array 失败: {e}");
+                AsrError::EngineLoadFailed(format!("sr tensor: {e}"))
+            })?;
 
         let outputs = session
             .run(ort::inputs![
                 "input" => input_t,
-                "h" => h_t,
-                "c" => c_t,
+                "state" => state_t,
+                "sr" => sr_t,
             ])
-            .map_err(|e| AsrError::EngineLoadFailed(format!("vad forward: {e}")))?;
+            .map_err(|e| {
+                tracing::error!("[ASR/VAD] session.run 失败: {e}");
+                AsrError::EngineLoadFailed(format!("vad forward: {e}"))
+            })?;
 
-        // 解析输出：prob + 更新后的 h, c
+        // 解析输出：prob + 更新后的 stateN
         let prob = outputs["output"]
             .try_extract_array::<f32>()
-            .map_err(|e| AsrError::EngineLoadFailed(format!("extract prob: {e}")))?
+            .map_err(|e| {
+                tracing::error!("[ASR/VAD] extract output 失败: {e}");
+                AsrError::EngineLoadFailed(format!("extract prob: {e}"))
+            })?
             .as_slice()
             .and_then(|s| s.first())
             .copied()
             .unwrap_or(0.0);
 
-        // 更新 h/c
-        if let (Ok(h_view), Ok(c_view)) = (
-            outputs["hn"].try_extract_array::<f32>(),
-            outputs["cn"].try_extract_array::<f32>(),
-        ) {
-            let h_data: Vec<f32> = h_view.iter().copied().collect();
-            let c_data: Vec<f32> = c_view.iter().copied().collect();
-            if let (Ok(h_arr), Ok(c_arr)) = (
-                ndarray::Array2::from_shape_vec((2, VAD_STATE_DIM), h_data),
-                ndarray::Array2::from_shape_vec((2, VAD_STATE_DIM), c_data),
-            ) {
-                state.h = h_arr;
-                state.c = c_arr;
+        if let Ok(state_n) = outputs["stateN"].try_extract_array::<f32>() {
+            let data: Vec<f32> = state_n.iter().copied().collect();
+            if let Ok(arr) = Array2::from_shape_vec((2, VAD_STATE_DIM), data) {
+                self.state.lock().await.state = arr;
             }
         }
 
-        let now = StdInstant::now();
+        // 切分状态机：prob → 事件 → emit
+        let mut seg = self.segmenter.lock().await;
+        let frame = seg.current_frame();
+        let events = seg.feed(prob);
+        drop(seg);
+
+        // 诊断日志（切分链路观测）：前 10 帧 + 每秒 1 条（33 帧 @30ms），
+        // 确认前端 VAD 流在走、prob 是否检测到语音；块长异常直接暴露。
+        if pcm.len() != 512 {
+            tracing::warn!("[ASR/VAD] chunk 长度异常: {} samples（期望 512）", pcm.len());
+        }
+        if frame < 10 || frame % 33 == 0 {
+            tracing::info!("[ASR/VAD] frame={frame} prob={prob:.3} len={}", pcm.len());
+        }
+
         let mut emitted = Vec::new();
-
-        if prob > VAD_THRESHOLD {
-            // speech
-            state.last_speech_ts = Some(now);
-            state.silence_started_ts = None;
-            // 取消 confirmation timer
-            if let Some(token) = state.confirm_token.take() {
-                token.cancel();
-            }
-            if !state.speech_active {
-                state.speech_active = true;
-                tracing::info!("[ASR/VAD] 录入开始 (SpeechStarted, prob={prob:.3})");
-                emitted.push(VadEvent::SpeechStarted);
-            }
-        } else if state.speech_active {
-            // silence after speech
-            let is_first_silence = state.silence_started_ts.is_none();
-            let silence_start = *state.silence_started_ts.get_or_insert(now);
-            let elapsed_ms = now.duration_since(silence_start).as_millis();
-
-            // SilenceStarted 在静音起始就 emit（不等到 300ms 候选窗口）
-            if is_first_silence {
-                emitted.push(VadEvent::SilenceStarted { silence_ms: 0 });
-            }
-
-            if elapsed_ms >= VAD_SILENCE_MS_FOR_CANDIDATE && state.confirm_token.is_none() {
-                tracing::info!(
-                    "[ASR/VAD] TurnCandidate (silence={elapsed_ms}ms, prob={prob:.3})"
-                );
-                emitted.push(VadEvent::TurnCandidate { silence_ms: elapsed_ms as u32 });
-
-                // spawn 1s confirmation timer
-                let token = CancellationToken::new();
-                state.confirm_token = Some(token.clone());
-                drop(state_guard); // 释放锁，让 timer 可以获取
-
-                let app_clone = app.clone();
-                let state_for_timer = self.state.clone();
-                tokio::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_millis(
-                        VAD_CONFIRMATION_WINDOW_MS as u64,
-                    ))
-                    .await;
-                    if token.is_cancelled() {
-                        return;
+        for ev in &events {
+            let vad_event = match ev {
+                SegmentEvent::SpeechStart { .. } => {
+                    tracing::info!("[ASR/VAD] 录入开始 (SpeechStarted, prob={prob:.3})");
+                    VadEvent::SpeechStarted
+                }
+                SegmentEvent::SilenceStart { .. } => VadEvent::SilenceStarted { silence_ms: 0 },
+                SegmentEvent::TurnCandidate { silence_frames, .. } => {
+                    tracing::info!("[ASR/VAD] TurnCandidate (silence={}ms)", silence_frames * 30);
+                    VadEvent::TurnCandidate {
+                        silence_ms: (*silence_frames * 30) as u32,
                     }
-                    // 1 秒到时再判一次 speech_active
-                    let still_speech = {
-                        let s = state_for_timer.lock().await;
-                        s.speech_active
-                    };
-                    if !still_speech {
-                        tracing::info!("[ASR/VAD] 录入结束 (TurnSealed, 静音 1s 确认)");
-                        let _ = app_clone.emit("asr://turn_sealed", &VadEvent::TurnSealed);
-                        // 清理 state 中的 confirm_token
-                        let mut s = state_for_timer.lock().await;
-                        s.confirm_token = None;
-                        s.silence_started_ts = None;
-                        s.speech_active = false; // 进入下一轮 listening 准备
-                    }
-                    // else: speech 重启，取消 SEAL，回到 Listening（什么都不 emit）
-                });
-            }
-        }
-
-        for event in &emitted {
-            let name = match event {
+                }
+                SegmentEvent::TurnSealed { .. } => {
+                    tracing::info!("[ASR/VAD] 录入结束 (TurnSealed, 静音 1s 确认)");
+                    VadEvent::TurnSealed
+                }
+            };
+            let name = match &vad_event {
                 VadEvent::SpeechStarted => "asr://speech_started",
                 VadEvent::SilenceStarted { .. } => "asr://silence_started",
                 VadEvent::TurnCandidate { .. } => "asr://turn_candidate",
                 VadEvent::TurnSealed => "asr://turn_sealed",
             };
-            let _ = app.emit(name, event);
+            let _ = app.emit(name, &vad_event);
+            emitted.push(vad_event);
         }
 
         Ok(Some(VadProcessResult {

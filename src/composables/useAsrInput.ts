@@ -18,7 +18,7 @@ import {
   type AsrResult,
   type VadEvent,
 } from '@/api/services/asr'
-import { pcmToWavPcm16 } from '@/utils/asrAudio'
+import { pcmToWavPcm16, trimSilencePcm } from '@/utils/asrAudio'
 
 /**
  * 统一 ASR 输入入口：三种触发源共用同一会话生命周期。
@@ -62,6 +62,10 @@ let processor: ScriptProcessorNode | null = null
 let energyMon: { ctx: AudioContext; raf: number; stream: MediaStream } | null = null
 /** auto 触发去重：能量触发后不再重复触发，直到本轮会话结束 */
 let autoTriggered = false
+/** 移动端菜单展开状态（GameDialog 在 watch 中同步，§1.5 判定） */
+let mobileMenuOpen = false
+/** 短暂显示锁：识别后填入 inputMessage 到自动 send 之间的窗口期，期间 ASR 禁用（§1.10） */
+let asrLockedUntil = 0
 /** 惰性依赖（首次 useAsrInput() 调用时初始化） */
 let route: RouteLocationNormalizedLoaded | null = null
 let uiStore: ReturnType<typeof useUIStore> | null = null
@@ -93,6 +97,7 @@ function teardownRecorder() {
   stream = null
   pcmBuffer = []
   vadPending = []
+  vadSentFrames = 0
   if (asrStore) asrStore.setMicState('idle')
 }
 
@@ -113,19 +118,86 @@ function discardRecording() {
   if (source) void asrStopListening(source)
 }
 
+// ── ASR 可用性门控（§1 全 8 项） ──────────────────────────────
+// 综合判定当前能否启动 ASR 录音（所有禁用条件取 OR）：
+// 1-3. currentStatus ∈ {thinking, responding, presenting}
+// 4.    command === 'touch'（触摸模式）
+// 5.    showMobileMenu === true（移动端菜单展开）
+// 6.    route.path !== '/chat'
+// 7.    uiStore.showSettings === true
+// 8.    runningScript && choices.length > 0（剧本选择分支）
+// 任何一项满足即视为不可用。start() / startEnergyMonitor RMS 触发 / 按钮 enable 都查它。
+function canStartAsr(): boolean {
+  if (!route || !uiStore || !gameStore) return false
+  // 6 + 7：路由/抽屉门控（chatActive 已是这两项的合成）
+  if (route.path !== '/chat' || uiStore.showSettings) return false
+  // 9：LoadingTransition 启动动画未完成（§1.9）
+  if (!gameStore.loadingComplete) return false
+  // 1-3：核心对话状态
+  if (gameStore.currentStatus !== 'input') return false
+  // 4：触摸模式
+  if (gameStore.command === 'touch') return false
+  // 5：移动端菜单展开
+  if (mobileMenuOpen) return false
+  // 8：剧本选择分支
+  const script = (gameStore as unknown as { runningScript?: { choices?: unknown[] } })
+    .runningScript
+  if (script && Array.isArray(script.choices) && script.choices.length > 0) return false
+  // 10：识别结果短暂显示锁（fill_only 模式填入 inputMessage 到自动 send 之间的窗口期）
+  if (Date.now() < asrLockedUntil) return false
+  return true
+}
+
+/** 同步录音 + 能量监测状态到最新可用性（任一 watch 触发时调用） */
+function updateAsrAvailability(): void {
+  const wantMonitor = canStartAsr() && (asrStore?.settings.auto_listen ?? false)
+  if (wantMonitor) {
+    startEnergyMonitor()
+  } else {
+    // 不可用 → 拆掉在飞录音 + 停能量监测
+    if (phase.value === 'recording' || phase.value === 'recognizing') {
+      discardRecording()
+    }
+    stopEnergyMonitor()
+  }
+}
+
+/** GameDialog 调用：同步移动端菜单展开状态（§1.5） */
+export function setMobileMenuOpen(open: boolean): void {
+  mobileMenuOpen = open
+  updateAsrAvailability()
+}
+
+/**
+ * GameDialog 调用：锁定 ASR 一段时间（识别结果填入 inputMessage 后短暂显示用，§1.10）。
+ * 显示期间用户不能再次触发录音（避免 nextTick 期间又来一段覆盖识别结果）。
+ */
+export function lockAsrForDisplay(ms: number): void {
+  asrLockedUntil = Date.now() + ms
+  updateAsrAvailability()
+}
+
 // ── VAD 流（auto 模式）：每 512 samples（30ms @ 16k）喂后端 ──
 // 严格串行单飞：一块 invoke 完成才发下一块。Silero 的 h/c 隐状态依赖
 // 顺序输入——并发 fire-and-forget 会导致后端锁等待乱序，prob 结果无意义
 // （表现：VAD 永不触发 SpeechStarted / TurnCandidate）。
 let vadSending = false
+/** 诊断：已发送的 VAD 块数（用于降频日志） */
+let vadSentFrames = 0
 function feedVad() {
   if (!asrStore || phase.value !== 'recording' || activeSource.value !== 'auto') return
   if (vadSending || vadPending.length < 512) return
   const block = vadPending.splice(0, 512)
   vadSending = true
+  // 诊断日志：前 10 块 + 每秒 1 条（33 块），确认 VAD 流在走
+  if (vadSentFrames < 10 || vadSentFrames % 33 === 0) {
+    console.log(`[ASR/VAD] feedVad #${vadSentFrames} 发送 ${block.length} samples`)
+  }
+  vadSentFrames++
   asrVadProcessChunk(block)
-    .catch(() => {
-      /* VAD 失败不阻塞录音 */
+    .catch((e) => {
+      // VAD 失败不阻塞录音，但错误不能静默——暴露给调试者
+      console.warn('[ASR/VAD] feedVad 失败:', e)
     })
     .finally(() => {
       vadSending = false
@@ -145,11 +217,15 @@ async function onVadTurnEnd() {
 // ── 能量监测（auto_listen 常开，RMS 超阈值触发 auto 会话） ──
 function startEnergyMonitor() {
   if (energyMon) return
-  if (!asrStore?.settings.auto_listen || !chatActive.value) return
+  // §1 全 8 项 + auto_listen 设置：任何一项不满足则不开
+  if (!asrStore?.settings.auto_listen) return
+  if (!canStartAsr()) return
+  console.log('[ASR] startEnergyMonitor 启动 (auto_listen=on, canStartAsr=true)')
   navigator.mediaDevices
     .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
     .then((s) => {
       if (!asrStore?.settings.auto_listen || !chatActive.value) {
+        console.log('[ASR] startEnergyMonitor 启动后条件失效，关闭 stream')
         s.getTracks().forEach((t) => t.stop())
         return
       }
@@ -172,8 +248,15 @@ function startEnergyMonitor() {
         for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
         const rms = Math.sqrt(sum / buf.length) / 128
         if (rms > 0.08 && phase.value === 'idle' && !autoTriggered) {
+          // 二次校验：AI 可能在本帧之间从 input 进入 thinking，RMS 触发时已不可用
+          if (!canStartAsr()) {
+            energyMon.raf = requestAnimationFrame(tick)
+            return
+          }
+          console.log(`[ASR] energy trigger: rms=${rms.toFixed(3)} > 0.08, start('auto')`)
           autoTriggered = true
-          void start('auto').catch(() => {
+          void start('auto').catch((err) => {
+            console.warn('[ASR] start(auto) failed, reset autoTriggered:', err)
             autoTriggered = false
           })
           return
@@ -181,8 +264,10 @@ function startEnergyMonitor() {
         energyMon.raf = requestAnimationFrame(tick)
       }
       energyMon = { ctx, raf: requestAnimationFrame(tick), stream: s }
+      console.log('[ASR] startEnergyMonitor 已建立 analyser, tick loop 开始')
     })
-    .catch(() => {
+    .catch((err) => {
+      console.warn('[ASR] startEnergyMonitor getUserMedia 失败:', err)
       /* mic 不可用：能量监测静默降级 */
     })
 }
@@ -197,7 +282,8 @@ function stopEnergyMonitor() {
 
 // ── 会话生命周期 ────────────────────────────────────────────
 async function start(source: AsrSource) {
-  if (!chatActive.value) return
+  // §1 全 8 项门控；任何一项不满足即拒绝启动
+  if (!canStartAsr()) return
   if (activeSource.value !== null) {
     throw new Error('ASR session busy')
   }
@@ -263,13 +349,15 @@ function stop() {
 /** 把录音 PCM 合成 WAV 送识别，成功后 handle() */
 async function doRecognize(source: AsrSource, captured: number[]) {
   try {
-    const wav = pcmToWavPcm16(captured)
+    // 裁剪首尾静音：录音含触发前的环境声 + VAD 停顿尾巴，只送语音段
+    const trimmed = trimSilencePcm(captured)
+    const wav = pcmToWavPcm16(trimmed)
     if (wav.byteLength <= 44) {
       // 纯静音（无采样）：直接放弃，不浪费一次识别调用
       resetSession()
       if (source === 'auto') {
         autoTriggered = false
-        startEnergyMonitor()
+        updateAsrAvailability()
       }
       return
     }
@@ -285,7 +373,7 @@ async function doRecognize(source: AsrSource, captured: number[]) {
     resetSession()
     if (source === 'auto') {
       autoTriggered = false
-      startEnergyMonitor()
+      updateAsrAvailability()
     }
   }
 }
@@ -298,6 +386,19 @@ async function doRecognize(source: AsrSource, captured: number[]) {
  * - queue: 入 pendingAsrQueue，AI 生成结束后 flush
  */
 function handle(text: string, source: AsrSource) {
+  // §4: 识别请求在飞行中 AI 可能从 input 进入 thinking/responding/presenting
+  // 返回时 currentStatus 已变 → 识别结果丢弃（不填入 / 不发送 / 不入队）
+  if (!gameStore || gameStore.currentStatus !== 'input') {
+    console.log(
+      `[ASR] handle drop: status=${gameStore?.currentStatus}, text="${text.slice(0, 30)}"`,
+    )
+    resetSession()
+    if (source === 'auto') {
+      autoTriggered = false
+      updateAsrAvailability()
+    }
+    return
+  }
   const mode = asrStore?.settings.send_mode ?? 'fill_only'
   // pendingAsrQueue 兜底：gameStore 不一定有这字段
   const queue = ((gameStore as unknown as { pendingAsrQueue?: string[] }).pendingAsrQueue ??= [])
@@ -313,10 +414,10 @@ function handle(text: string, source: AsrSource) {
     queue.push(text)
   }
   resetSession()
-  // auto 模式本轮结束：复位触发标志 + 重新开始能量监听
+  // auto 模式本轮结束：复位触发标志 + 通过统一门控重新评估能量监测
   if (source === 'auto') {
     autoTriggered = false
-    startEnergyMonitor()
+    updateAsrAvailability()
   }
 }
 
@@ -365,7 +466,7 @@ function ensureInit() {
   )
   // 按下 → 开始录音；释放 → 停止（RegisterHotKey 只有按下通知，释放由后端轮询检测）
   listen('asr://hotkey_down', () => {
-    if (chatActive.value && phase.value === 'idle') {
+    if (canStartAsr() && phase.value === 'idle') {
       void start('hotkey').catch(() => {
         /* 会话忙时静默忽略 */
       })
@@ -377,15 +478,63 @@ function ensureInit() {
     }
   })
 
-  // 路由/抽屉变化：丢弃当前会话 + 能量监测启停（spec §3.0 门控）
-  watch(chatActive, (active) => {
-    if (!active) {
-      discardRecording()
-      stopEnergyMonitor()
-    } else if (asrStore?.settings.auto_listen) {
-      startEnergyMonitor()
-    }
-  })
+  // 路由/抽屉变化（§1.6/7）：通过统一 gate 同步录音/能量监测
+  // immediate:true 让首次进入 /chat（或刚初始化）时立刻同步 energy monitor 状态
+  watch(
+    chatActive,
+    (active) => {
+      console.log(`[ASR] chatActive -> ${active}`)
+      updateAsrAvailability()
+    },
+    { immediate: true },
+  )
+  // auto_listen 设置开关（用户在设置页切换时立即启停）
+  watch(
+    () => asrStore?.settings.auto_listen,
+    (enabled) => {
+      console.log(`[ASR] auto_listen -> ${enabled}`)
+      updateAsrAvailability()
+    },
+    { immediate: true },
+  )
+  // 触摸模式（§1.4）
+  watch(
+    () => gameStore?.command,
+    (cmd) => {
+      console.log(`[ASR] command -> ${cmd}`)
+      updateAsrAvailability()
+    },
+    { immediate: true },
+  )
+  // currentStatus（§1.1-3：thinking/responding/presenting）
+  watch(
+    () => gameStore?.currentStatus,
+    (status) => {
+      console.log(`[ASR] currentStatus -> ${status}`)
+      updateAsrAvailability()
+    },
+    { immediate: true },
+  )
+  // 剧本选择分支（§1.8）
+  watch(
+    () =>
+      (gameStore as unknown as { runningScript?: { choices?: unknown[] } })?.runningScript
+        ?.choices?.length ?? 0,
+    (n) => {
+      console.log(`[ASR] runningScript.choices.length -> ${n}`)
+      updateAsrAvailability()
+    },
+    { immediate: true },
+  )
+  // LoadingTransition 启动动画完成（§1.9）
+  watch(
+    () => gameStore?.loadingComplete,
+    (done) => {
+      console.log(`[ASR] loadingComplete -> ${done}`)
+      updateAsrAvailability()
+    },
+    { immediate: true },
+  )
 }
 
 export function useAsrInput() {
@@ -399,5 +548,6 @@ export function useAsrInput() {
     discardRecording,
     handle,
     cancel: () => asrCancel(),
+    canStartAsr,
   }
 }
