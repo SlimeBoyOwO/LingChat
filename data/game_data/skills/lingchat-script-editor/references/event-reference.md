@@ -129,6 +129,25 @@
 | `effect`   | 否   | string | `none` | 特效类型（如 Sakura 等） |
 | `duration` | 否   | number | —      | 持续时间                 |
 
+可用特效值（大小写敏感，与前端组件一一对应）：
+
+- 氛围类：`StarField`（星空）、`Rain`（雨）、`Sakura`（樱花）、`Snow`（雪）、`Fireworks`（烟花）
+- 恐怖/演出类：
+  - `Glitch`（画面故障：RGB 错位+扫描线+噪点+周期性整帧扭曲）
+  - `Shake`（震屏）
+  - `Flash`（血红心跳闪烁）/ `Blackout`（断电式黑闪）
+  - `Tear`（画面撕裂：背景切片横向错位抽动）
+  - `Static`（矩形噪点块满屏跳动）
+  - `Invert`（反色闪屏，随机短促爆发）
+  - `BloodDrip`（血滴粒子下落）
+  - `Veins`（黑暗暗角搏动收拢）
+  - `BSOD`（假死机蓝屏，整屏覆盖，慎用）
+  - `UiCorrupt`（UI 崩坏：全局文字 RGB 错位 + 界面抖动）
+  - `BloodUI`（UI 血化：全局文字变血红色 + 渗血辉光搏动）
+- 清除：`none` / `None` / 空串
+
+**组合叠加**：`effect` 支持用 `+` 连接多个特效同时生效，例如 `'Shake+BloodDrip'`、`'Glitch+BloodUI+Invert'`。
+
 ### 9. present_pic — 展示图片（Galgame 小窗口立绘）
 
 ```yaml
@@ -335,7 +354,6 @@
 | `prompt`                | ai_judged | string | —        | 给 AI 的判定提示                               |
 
 ### 17. unlock_achievement — 解锁成就
-
 ```yaml
 - type: unlock_achievement
   achievement_id: 'summer_star' # 成就键名（唯一，英文标识）
@@ -348,6 +366,44 @@
 | `achievement_id` | ✅   | string | —      | 成就键名（英文标识），**不能与内置成就或本剧本其他成就重名**（校验器会提示） |
 | `title`          | ✅   | string | —      | 成就标题，玩家在成就列表里看到的名字                                         |
 | `description`    | ✅   | string | —      | 达成条件说明，展示给玩家                                                     |
+
+### 18. jumpscare — 突脸惊吓（恐怖演出）
+
+```yaml
+- type: jumpscare
+  imagePath: 'jumpscare-face.webp' # Assets/Pics 下的文件名
+  soundPath: 'mscare.ogg' # 可选，Assets/Sounds 下的音效
+  duration: 0.6 # 可选，闪现秒数，默认 0.6
+```
+
+| 字段        | 必填 | 类型   | 默认值 | 说明                                |
+| ----------- | ---- | ------ | ------ | ----------------------------------- |
+| `imagePath` | ✅   | string | —      | 突脸图片（全屏闪现，黑底居中）      |
+| `soundPath` | 否   | string | —      | 同步播放的惊吓音效                  |
+| `duration`  | 否   | number | `0.6`  | 闪现时长（秒），事件本身不占时间轴  |
+
+### 19. force_choice — 强制选择（鼠标拖拽演出）
+
+```yaml
+- type: force_choice
+  forced: 继续陪着她 # 必然被选中的选项文本
+  options:
+    - text: 继续陪着她
+      actions:
+        - type: add_line
+          content: 继续陪着她
+    - text: 到此为止吧
+      actions:
+        - type: add_line
+          content: 到此为止吧
+```
+
+| 字段      | 必填 | 类型   | 默认值 | 说明                                                       |
+| --------- | ---- | ------ | ------ | ---------------------------------------------------------- |
+| `forced`  | ✅   | string | —      | 强制命中的选项文本（必须与某选项一致且未被锁定）           |
+| `options` | ✅   | list   | —      | 选项列表，字段同 `choices`（支持 `condition`/`lock_hint`） |
+
+演出行为：真实光标隐藏，假光标先跟随玩家、随后被磁力拖向 `forced` 选项并自动提交；`forced` 无效时退化为普通选项（不阻塞剧本）。
 
 ---
 
@@ -372,3 +428,12 @@
 | `set_variable`       | 设置变量         | `options`                                |
 | `chapter_end`        | 章节结束         | `end_type` + (next/options)              |
 | `unlock_achievement` | 解锁成就         | `achievement_id`, `title`, `description` |
+| `jumpscare`          | 突脸惊吓         | `imagePath`                              |
+| `force_choice`       | 强制选择         | `forced`, `options`                      |
+
+## 剧本级特殊字段（story_config.yaml）
+
+| 字段              | 说明                                                                 |
+| ----------------- | -------------------------------------------------------------------- |
+| `content_warning` | 设为 `horror` 时，进入剧本前弹恐怖内容/年龄确认框                    |
+| `editor_hidden`   | 设为 `true` 时，剧本不出现在剧本编辑器列表，也无法被编辑器打开       |

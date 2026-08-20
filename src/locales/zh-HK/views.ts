@@ -59,6 +59,10 @@ export default {
     "miniGame": "小遊戲（開發緊）",
     "back": "返回"
   },
+  "contentWarning": {
+    "horrorTitle": "⚠ 內容警告",
+    "horrorMessage": "本劇本包含恐怖、驚嚇同心理不適元素，建議 16 歲或以上玩家遊玩。\n如果遊玩期間感到不適，請立即退出。\n\n確定要繼續嗎？"
+  },
   "pet": {
     "chatInput": {
       "placeholder": "輸入訊息...",

@@ -20,6 +20,8 @@ pub struct ScriptSummary {
     pub description: String,
     pub folder_key: String,
     pub intro_chapter: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_warning: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -45,6 +47,7 @@ pub async fn list_scripts(app: AppHandle) -> Result<ScriptListResponse, String> 
             description: s.description.clone(),
             folder_key: s.folder_key.clone(),
             intro_chapter: s.intro_chapter.clone(),
+            content_warning: s.content_warning.clone(),
         })
         .collect();
 
@@ -65,6 +68,7 @@ pub async fn list_standalone_scripts(app: AppHandle) -> Result<ScriptListRespons
             description: s.description.clone(),
             folder_key: s.folder_key.clone(),
             intro_chapter: s.intro_chapter.clone(),
+            content_warning: s.content_warning.clone(),
         })
         .collect();
 
@@ -133,6 +137,22 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
     });
 
     Ok(())
+}
+
+/// 把系统鼠标指针拖动到窗口内的指定 CSS 坐标。
+///
+/// 用于剧本的 `force_choice` 演出（DDLC 式强制拖动鼠标）。前端传视口 CSS 像素，
+/// 这里换算成物理像素再叠加窗口内容区左上角偏移。
+#[tauri::command]
+pub async fn warp_cursor(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
+    let window = app.get_webview_window("main").ok_or("主窗口不存在")?;
+    let scale = window.scale_factor().map_err(|e| e.to_string())?;
+    let inner = window.inner_position().map_err(|e| e.to_string())?;
+    let px = inner.x + (x * scale).round() as i32;
+    let py = inner.y + (y * scale).round() as i32;
+    window
+        .set_cursor_position(tauri::PhysicalPosition::new(px, py))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

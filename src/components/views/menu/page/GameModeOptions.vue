@@ -5,7 +5,7 @@
     </StartLine>
 
     <StartLine>
-      <StartItem disabled="true">{{ $t('views.menu.storyMode') }}</StartItem>
+      <StartItem @click="startStoryMode">{{ $t('views.menu.storyMode') }}</StartItem>
     </StartLine>
 
     <StartLine>
@@ -34,5 +34,10 @@ const gameStore = useGameStore()
 const startFreeDialogue = () => {
   gameStore.exitStoryMode()
   router.push('/chat')
+}
+
+// 进入剧情模式：切到剧本列表页
+const startStoryMode = () => {
+  emit('open-scripts')
 }
 </script>

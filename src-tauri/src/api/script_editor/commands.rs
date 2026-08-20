@@ -50,6 +50,13 @@ pub struct ScriptPackage {
     pub chapter_count: usize,
     /// 该剧本是否已被引擎加载（未加载表示需要重启或 rescan）
     pub loaded_by_engine: bool,
+    /// 作者声明禁止编辑器打开（如内置恐怖剧本含有编辑器不支持的特殊事件）
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub editor_hidden: bool,
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -211,6 +218,10 @@ fn read_package(key: &str, loaded_names: &HashSet<String>) -> Result<ScriptPacka
             .to_string(),
         is_adventure,
         chapter_count: paths::enumerate_chapter_ids(&dir).len(),
+        editor_hidden: config
+            .get("editor_hidden")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
     })
 }
 
@@ -427,7 +438,9 @@ pub async fn editor_list_scripts(app: AppHandle) -> Result<Vec<ScriptPackage>, S
     let mut out = Vec::new();
     for key in paths::enumerate_script_keys() {
         match read_package(&key, &loaded) {
-            Ok(p) => out.push(p),
+            // 作者声明 editor_hidden 的剧本不在编辑器出现
+            Ok(p) if !p.editor_hidden => out.push(p),
+            Ok(_) => {}
             Err(e) => tracing::warn!("[ScriptEditor] 跳过无效剧本 {}: {}", key, e),
         }
     }
@@ -437,9 +450,13 @@ pub async fn editor_list_scripts(app: AppHandle) -> Result<Vec<ScriptPackage>, S
 #[tauri::command]
 pub async fn editor_read_script(app: AppHandle, key: String) -> Result<ScriptDetail, String> {
     let loaded = loaded_script_names(&app).await;
+    let package = read_package(&key, &loaded)?;
+    if package.editor_hidden {
+        return Err("该剧本已被作者锁定，无法在剧本编辑器中打开".to_string());
+    }
     let dir = paths::resolve_script_dir(&key)?;
     Ok(ScriptDetail {
-        package: read_package(&key, &loaded)?,
+        package,
         story_config: yaml_file::read_story_config(&dir)?,
         chapters: chapter_summaries(&dir),
         assets: read_asset_index(&dir),

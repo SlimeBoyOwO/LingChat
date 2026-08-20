@@ -19,6 +19,7 @@ export interface ScriptSummary {
   description?: string
   folder_key?: string
   intro_chapter?: string
+  content_warning?: string
 }
 
 export interface ScriptInfo {

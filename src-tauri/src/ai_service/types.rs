@@ -546,6 +546,8 @@ pub struct ScriptStatus {
 
     pub recommand_start: String,
     pub adventure: AdventureConfig,
+    /// `story_config.yaml` 的内容警告标记（如 "horror"），前端据此在进入前弹确认框。
+    pub content_warning: Option<String>,
     pub running_client_id: Option<String>,
 
     pub current_chapter_key: String,

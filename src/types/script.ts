@@ -127,6 +127,20 @@ export interface ScriptEndEvent extends ScriptEvent {
   completed?: boolean
 }
 
+/** 突脸惊吓事件：全屏图片闪现 + 音效 */
+export interface ScriptJumpscareEvent extends ScriptEvent {
+  type: 'jumpscare'
+  imagePath: string
+  soundPath?: string
+}
+
+/** 强制选择事件：鼠标被拖向 forced 选项，最终只能提交它 */
+export interface ScriptForceChoiceEvent extends ScriptEvent {
+  type: 'force_choice'
+  choices: ScriptChoiceItem[]
+  forced: string
+}
+
 export interface ScriptErrorEvent extends ScriptEvent {
   type: 'error'
   error_code?: string
@@ -157,3 +171,5 @@ export type ScriptEventType =
   | ScriptChoiceEvent
   | ScriptPresentPicEvent
   | ScriptFreeDialogueEvent
+  | ScriptJumpscareEvent
+  | ScriptForceChoiceEvent

@@ -53,6 +53,8 @@
       :intensity="1.5"
       :style="`z-index:${BACKGROUND_ZINDEX}`"
     />
+    <!-- 恐怖向特效（Glitch/Shake/Flash/Tear/Static/Invert/BloodDrip/Veins/BSOD/UiCorrupt/BloodUI）
+         已上移到 GameExtraUI 的 HorrorEffectsLayer，压过角色立绘渲染 -->
   </div>
 
   <!-- 背景光照叠加层（在背景上方、角色下方） -->

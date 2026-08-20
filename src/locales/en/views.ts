@@ -59,6 +59,11 @@ export default {
     miniGame: "Mini Games (In Development)",
     back: "Back",
   },
+  contentWarning: {
+    horrorTitle: "⚠ Content Warning",
+    horrorMessage:
+      "This story contains horror, jumpscares and disturbing content. Recommended for players aged 16 and above.\nIf you feel unwell while playing, please quit immediately.\n\nAre you sure you want to continue?",
+  },
   pet: {
     chatInput: {
       placeholder: "Type a message...",
