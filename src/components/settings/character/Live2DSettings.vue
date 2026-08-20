@@ -81,8 +81,9 @@
             text-white/70">
             {{ t('settings.characterInfo.live2d.defaultVariant') }}
             <select
-              v-model="localSettings.default_variant"
+              :value="localSettings.default_variant"
               class="live2d-control"
+              @change="setDefaultVariant(($event.target as HTMLSelectElement).value)"
             >
               <option
                 v-for="name in variantNames"
@@ -146,6 +147,53 @@
                 </option>
               </select>
             </label>
+            <div class="grid
+              grid-cols-2
+              gap-2">
+              <label class="flex
+                flex-col
+                gap-2
+                text-sm
+                text-white/70">
+                {{ t('settings.characterInfo.live2d.focusAnchorX') }}
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  class="live2d-control"
+                  :value="currentVariant.focus_anchor?.x ?? 0.5"
+                  @input="setFocusAnchor('x', ($event.target as HTMLInputElement).value)"
+                />
+              </label>
+              <label class="flex
+                flex-col
+                gap-2
+                text-sm
+                text-white/70">
+                {{ t('settings.characterInfo.live2d.focusAnchorY') }}
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  class="live2d-control"
+                  :value="currentVariant.focus_anchor?.y ?? 0.5"
+                  @input="setFocusAnchor('y', ($event.target as HTMLInputElement).value)"
+                />
+              </label>
+            </div>
+            <button
+              v-if="currentVariant.focus_anchor"
+              type="button"
+              class="text-left
+                text-xs
+                text-white/50
+                hover:text-white/80"
+              @click="currentVariant.focus_anchor = null"
+            >
+              {{ t('settings.characterInfo.live2d.focusAnchorReset') }}
+            </button>
             <div class="grid
               grid-cols-1
               gap-2
@@ -246,7 +294,7 @@
               h-full
               w-full"
             :roles="[previewRole]"
-            mode="pet"
+            mode="standard"
             :active-speaker-id="null"
             :audio-element="null"
             voice-data-url=""
@@ -272,6 +320,9 @@ const props = defineProps<{
   roleId: number
   characterFolder: string
   clothes: Array<{ name?: string }> | null | undefined
+  scale?: number
+  offsetX?: number
+  offsetY?: number
   modelValue: Live2dSettings | null | undefined
 }>()
 
@@ -348,9 +399,9 @@ const previewRole = computed<GameRole | null>(() => {
     thinkMessage: '',
     emotion: '正常',
     originalEmotion: '正常',
-    scale: 1,
-    offsetY: 0,
-    offsetX: 0,
+    scale: props.scale ?? 1,
+    offsetY: props.offsetY ?? 0,
+    offsetX: props.offsetX ?? 0,
     scaleP: 1,
     offsetXP: 0,
     offsetYP: 0,
@@ -387,6 +438,24 @@ watch(
   },
   { immediate: true },
 )
+
+function setFocusAnchor(axis: 'x' | 'y', rawValue: string) {
+  const variant = currentVariant.value
+  const value = Number(rawValue)
+  if (!variant || !Number.isFinite(value)) return
+  const anchor = variant.focus_anchor ?? { x: 0.5, y: 0.5 }
+  variant.focus_anchor = { ...anchor, [axis]: Math.min(1, Math.max(0, value)) }
+}
+
+function setDefaultVariant(variantName: string) {
+  const settings = localSettings.value
+  if (!settings?.variants[variantName]) return
+  settings.default_variant = variantName
+  if (Object.prototype.hasOwnProperty.call(settings.clothes_variants, 'default')) {
+    settings.clothes_variants.default = variantName
+  }
+  selectedVariant.value = variantName
+}
 
 function motionValue(emotion: string) {
   const motion = currentVariant.value?.motions[emotion]

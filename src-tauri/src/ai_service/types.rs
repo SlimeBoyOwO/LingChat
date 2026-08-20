@@ -344,6 +344,33 @@ pub struct Live2dEyeBlinkBinding {
     pub right: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Live2dFocusAnchor {
+    pub x: f64,
+    pub y: f64,
+}
+
+fn deserialize_live2d_focus_anchor<'de, D>(
+    deserializer: D,
+) -> Result<Option<Live2dFocusAnchor>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let anchor = Option::<Live2dFocusAnchor>::deserialize(deserializer)?;
+    if let Some(anchor) = &anchor {
+        if !anchor.x.is_finite()
+            || !anchor.y.is_finite()
+            || !(0.0..=1.0).contains(&anchor.x)
+            || !(0.0..=1.0).contains(&anchor.y)
+        {
+            return Err(serde::de::Error::custom(
+                "focus_anchor x/y must be finite values between 0 and 1",
+            ));
+        }
+    }
+    Ok(anchor)
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub struct Live2dVariant {
     pub model: String,
@@ -357,6 +384,8 @@ pub struct Live2dVariant {
     pub idle: Option<Live2dMotionBinding>,
     #[serde(default)]
     pub eye_blink: Option<Live2dEyeBlinkBinding>,
+    #[serde(default, deserialize_with = "deserialize_live2d_focus_anchor")]
+    pub focus_anchor: Option<Live2dFocusAnchor>,
     #[serde(default)]
     pub lip_sync: Option<Live2dParameterBinding>,
 }

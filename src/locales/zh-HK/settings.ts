@@ -403,6 +403,9 @@ export default {
       "defaultVariant": "預設模型變體",
       "editVariant": "而家編輯嘅模型變體",
       "defaultExpression": "預設表情",
+      "focusAnchorX": "視線基點 X（0-1）",
+      "focusAnchorY": "視線基點 Y（0-1）",
+      "focusAnchorReset": "恢復使用模型畫布中心",
       "noExpression": "唔切換表情",
       "noMotion": "唔播放動作",
       "clothesMapping": "服裝同模型變體對應"

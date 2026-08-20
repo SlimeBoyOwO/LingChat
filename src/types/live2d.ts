@@ -14,6 +14,11 @@ export interface Live2dEyeBlinkBinding {
   right: string
 }
 
+export interface Live2dFocusAnchor {
+  x: number
+  y: number
+}
+
 export interface Live2dVariant {
   model: string
   default_expression?: string | null
@@ -21,6 +26,7 @@ export interface Live2dVariant {
   motions: Record<string, Live2dMotionBinding>
   idle?: Live2dMotionBinding | null
   eye_blink?: Live2dEyeBlinkBinding | null
+  focus_anchor?: Live2dFocusAnchor | null
   lip_sync?: Live2dParameterBinding | null
 }
 

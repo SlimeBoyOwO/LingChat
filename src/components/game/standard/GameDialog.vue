@@ -642,8 +642,9 @@ watch(
         uiStore.showCharacterSubtitle = currentInteractRole.roleSubTitle
       }
     } else if (newStatus === 'input') {
-      uiStore.showCharacterTitle = gameStore.userName
-      uiStore.showCharacterSubtitle = gameStore.userSubtitle
+      const displayRole = gameStore.currentInteractRole ?? gameStore.mainRole
+      uiStore.showCharacterTitle = displayRole?.roleName ?? gameStore.userName
+      uiStore.showCharacterSubtitle = displayRole?.roleSubTitle ?? gameStore.userSubtitle
       uiStore.showCharacterEmotion = ''
     } else if (newStatus === 'presenting') {
       uiStore.showCharacterTitle = ''

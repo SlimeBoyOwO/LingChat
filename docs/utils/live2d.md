@@ -34,6 +34,10 @@ A package may include `lingchat-live2d.json`. It is used only during import; `se
         "left": "ParamEyeLOpen",
         "right": "ParamEyeROpen"
       },
+      "focus_anchor": {
+        "x": 0.5,
+        "y": 0.25
+      },
       "lip_sync": {
         "parameter": "ParamMouthOpenY",
         "gain": 1.0
@@ -46,7 +50,7 @@ A package may include `lingchat-live2d.json`. It is used only during import; `se
 }
 ```
 
-Model paths in the import manifest are relative to the manifest file. Runtime model paths are rewritten as character-relative paths when imported.
+Model paths in the import manifest are relative to the manifest file. Runtime model paths are rewritten as character-relative paths when imported. `focus_anchor` is optional; its `x` and `y` values are normalized positions from 0 to 1 within the model's drawable bounds. When configured, mouse gaze direction originates from that point instead of the Cubism canvas center.
 
 ## Runtime Behavior
 
@@ -54,6 +58,7 @@ Model paths in the import manifest are relative to the manifest file. Runtime mo
 - Models are loaded in on-stage order and removed when their role leaves the stage.
 - Cubism physics files referenced by `model3.json` are loaded by the runtime.
 - LingChat emotion values select configured expressions and one-shot motions. Idle resumes after a reaction motion.
+- Pointer gaze uses a variant's optional drawable-relative `focus_anchor`; reactions freeze the current gaze and closed eyes suspend tracking.
 - Lip sync passively decodes the existing character voice and follows the existing audio element's `currentTime`; it does not create another player or change audio routing.
 - If a model fails to load, LingChat keeps the existing static avatar. A placeholder is shown only when neither visual is available.
 

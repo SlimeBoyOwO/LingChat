@@ -285,6 +285,7 @@ fn inspect_model(
             left: "ParamEyeLOpen".to_string(),
             right: "ParamEyeROpen".to_string(),
         }),
+        focus_anchor: None,
         lip_sync: Some(Live2dParameterBinding {
             parameter: "ParamMouthOpenY".to_string(),
             gain: 1.0,
@@ -348,6 +349,17 @@ fn validate_variant_bindings(
     variant: &Live2dVariant,
     info: &Live2dModelInfo,
 ) -> Result<(), String> {
+    if let Some(anchor) = &variant.focus_anchor {
+        if !anchor.x.is_finite()
+            || !anchor.y.is_finite()
+            || !(0.0..=1.0).contains(&anchor.x)
+            || !(0.0..=1.0).contains(&anchor.y)
+        {
+            return Err(format!(
+                "variant {variant_name} 的 focus_anchor x/y 必须是 0 到 1 之间的有限数值"
+            ));
+        }
+    }
     if let Some(expression) = &variant.default_expression {
         if !info.expressions.contains(expression) {
             return Err(format!(
@@ -763,6 +775,18 @@ mod tests {
         assert!(validate_variant_bindings("Nori", &variant, &info)
             .unwrap_err()
             .contains("索引"));
+    }
+
+    #[test]
+    fn variant_validation_rejects_focus_anchor_outside_drawable_bounds() {
+        let fixture = Fixture::new();
+        let (info, mut variant) =
+            inspect_model(&fixture.model, &fixture.root, "Nori".into()).unwrap();
+        variant.focus_anchor =
+            Some(crate::ai_service::types::Live2dFocusAnchor { x: 0.5, y: 1.25 });
+        assert!(validate_variant_bindings("Nori", &variant, &info)
+            .unwrap_err()
+            .contains("focus_anchor"));
     }
 
     #[test]

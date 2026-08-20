@@ -124,6 +124,9 @@
                 :role-id="props.roleId"
                 :character-folder="localSettings.character_folder || ''"
                 :clothes="clothesList"
+                :scale="Number(localSettings.scale) || 1"
+                :offset-x="Number(localSettings.offset_x) || 0"
+                :offset-y="Number(localSettings.offset_y) || 0"
               />
 
               <!-- Clothes Tab (custom UI, outside data-driven block) -->
@@ -244,7 +247,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   deleteCharacter as deleteCharacterApi,
@@ -839,7 +842,7 @@ const saveSettings = async () => {
     const runtimeRole = gameStore.gameRoles[props.roleId]
     if (runtimeRole) {
       runtimeRole.live2d = localSettings.value.live2d
-        ? structuredClone(localSettings.value.live2d)
+        ? structuredClone(toRaw(localSettings.value.live2d))
         : null
     }
     emit('saved')

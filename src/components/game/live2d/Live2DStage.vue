@@ -17,6 +17,7 @@ import { getLive2dFilePath } from '@/api/services/character'
 import { EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
 import type { GameRole } from '@/stores/modules/game/state'
 import { resolveLive2dVariant, type Live2dVariant } from '@/types/live2d'
+import { areEyesOpen, focusDirection, pointerToStagePoint } from './live2d-interaction'
 import { loadLive2dRuntime, type Live2dRuntime } from './live2d-runtime'
 import { rewriteModelReferences, type Live2dModelSource } from './model-source'
 import { decodeVoiceForLipSync, sampleVoiceAmplitude, type DecodedVoice } from './useLive2dLipSync'
@@ -45,8 +46,9 @@ interface RoleModel {
   mouthValue: number
   eyeLeftParameterIndex: number
   eyeRightParameterIndex: number
-  nextBlinkAt: number
-  blinkStartedAt: number
+  eyesOpen: boolean
+  focusFrozen: boolean
+  reactionSequence: number
 }
 
 const host = ref<HTMLDivElement | null>(null)
@@ -58,6 +60,7 @@ let requestSequence = 0
 let decodedVoice: DecodedVoice | null = null
 let decodeSequence = 0
 let resizeObserver: ResizeObserver | null = null
+let pointerPosition: { clientX: number; clientY: number } | null = null
 const models = new Map<number, RoleModel>()
 const failedRoleIds = new Set<number>()
 
@@ -111,6 +114,7 @@ async function ensureApplication() {
   }
   app.canvas.className = 'absolute inset-0 w-full h-full'
   host.value.appendChild(app.canvas)
+  app.ticker.speed = 1.35
   app.ticker.add(updateLipSync)
   resizeObserver = new ResizeObserver(() => {
     for (const entry of models.values()) {
@@ -130,11 +134,51 @@ function findParameterIndex(entry: RoleModel, parameter: string): number {
   return -1
 }
 
+function updateModelFocus(entry: RoleModel) {
+  if (entry.focusFrozen) return
+  const focusController = entry.model.internalModel.focusController
+  if (!entry.eyesOpen || !entry.model.visible || !pointerPosition || !host.value || !application) {
+    focusController.focus(0, 0)
+    return
+  }
+  const point = pointerToStagePoint(
+    pointerPosition.clientX,
+    pointerPosition.clientY,
+    host.value.getBoundingClientRect(),
+    application.screen,
+  )
+  if (point) {
+    const anchor = entry.variant.focus_anchor
+    if (!anchor || !runtime) {
+      entry.model.focus(point.x, point.y)
+      return
+    }
+    const bounds = entry.model.getLocalBounds()
+    const localAnchor = new runtime.pixi.Point(
+      (bounds.minX ?? bounds.x ?? 0) + bounds.width * anchor.x,
+      (bounds.minY ?? bounds.y ?? 0) + bounds.height * anchor.y,
+    )
+    const worldAnchor = entry.model.toGlobal(localAnchor)
+    const direction = focusDirection(point, worldAnchor)
+    focusController.focus(direction.x, direction.y)
+  }
+}
+
+function handlePointerMove(event: PointerEvent) {
+  pointerPosition = { clientX: event.clientX, clientY: event.clientY }
+}
+
+function destroyModel(model: any) {
+  // Textures loaded through Pixi Assets are shared across stages and owned by the global cache.
+  model.destroy({ children: true, texture: false, baseTexture: false })
+}
+
 function applyLayout(entry: RoleModel, role: GameRole) {
   if (!application || !host.value) return
   const model = entry.model
-  const width = model.internalModel.width || model.width || 1
-  const height = model.internalModel.height || model.height || 1
+  const bounds = model.getLocalBounds()
+  const width = bounds.width || model.internalModel.width || model.width || 1
+  const height = bounds.height || model.internalModel.height || model.height || 1
   if (props.mode === 'pet') {
     const baseScale = Math.max(application.screen.width / width, application.screen.height / height)
     model.anchor.set(0.5, 0.5)
@@ -147,16 +191,16 @@ function applyLayout(entry: RoleModel, role: GameRole) {
     const index = props.roles.findIndex((item) => item.roleId === role.roleId)
     const count = props.roles.length
     const xPercent = index < 0 ? 0.5 : (index + 1) / (count + 1)
+    const roleScale = role.scale || 1
     const baseScale = application.screen.height / height
     model.anchor.set(0.5, 1)
-    model.scale.set(baseScale * (role.scale || 1))
+    model.scale.set(baseScale * roleScale)
     model.position.set(
       application.screen.width * xPercent + (role.offsetX || 0),
-      application.screen.height + (role.offsetY || 0),
+      application.screen.height * roleScale + (role.offsetY || 0),
     )
   }
   model.visible = role.show
-  model.automator.autoUpdate = role.show
 }
 
 function startIdle(entry: RoleModel) {
@@ -166,6 +210,19 @@ function startIdle(entry: RoleModel) {
     loop: idle.loop ?? true,
     resetExpression: false,
   })
+}
+
+function freezeModelFocus(entry: RoleModel) {
+  const focusController = entry.model.internalModel.focusController
+  focusController.focus(focusController.x, focusController.y, true)
+  entry.focusFrozen = true
+}
+
+function finishReaction(entry: RoleModel, sequence: number) {
+  if (sequence !== entry.reactionSequence) return
+  entry.focusFrozen = false
+  startIdle(entry)
+  updateModelFocus(entry)
 }
 
 function applyEmotion(entry: RoleModel, emotion: string) {
@@ -181,17 +238,27 @@ function applyEmotion(entry: RoleModel, emotion: string) {
   }
   const motion = entry.variant.motions[emotion]
   if (motion) {
-    void entry.model.motion(motion.group, motion.index, runtime.engine.MotionPriority.FORCE, {
-      loop: motion.loop ?? false,
-      resetExpression: false,
-      onFinish: () => startIdle(entry),
-    })
+    const sequence = ++entry.reactionSequence
+    freezeModelFocus(entry)
+    void entry.model
+      .motion(motion.group, motion.index, runtime.engine.MotionPriority.FORCE, {
+        loop: motion.loop ?? false,
+        resetExpression: false,
+        onFinish: () => finishReaction(entry, sequence),
+      })
+      .then((started: boolean) => {
+        if (!started) finishReaction(entry, sequence)
+      })
+      .catch((error: unknown) => {
+        finishReaction(entry, sequence)
+        console.warn(`[Live2D] motion failed for role ${entry.roleId}`, error)
+      })
   }
 }
 
 function destroyEntry(entry: RoleModel) {
   application?.stage.removeChild(entry.model)
-  entry.model.destroy({ children: true, texture: true, baseTexture: true })
+  destroyModel(entry.model)
   models.delete(entry.roleId)
   emitActiveRoles()
 }
@@ -205,14 +272,16 @@ async function loadRole(
   await ensureApplication()
   if (!application || !runtime || disposed) return
   let pendingModel: any = null
+  const previous = models.get(role.roleId)
+  let previousDetached = false
   try {
     const source = await loadModelSource(role.roleId, variant.model)
     const model = await runtime.engine.Live2DModel.from(source, {
       ticker: application.ticker,
-      anchorMode: 'canvas',
+      anchorMode: 'drawable',
       autoFocus: false,
       autoHitTest: false,
-      eyeBlink: false,
+      eyeBlink: true,
       idleMotionGroup: variant.idle?.group ?? 'Idle',
       motionPreload: runtime.engine.MotionPreloadStrategy.IDLE,
       useHighPrecisionMask: 'auto',
@@ -225,7 +294,7 @@ async function loadRole(
       variantNameFor(props.roles.find((item) => item.roleId === role.roleId) ?? role) !==
         variantName
     ) {
-      model.destroy({ children: true, texture: true, baseTexture: true })
+      destroyModel(model)
       pendingModel = null
       return
     }
@@ -240,8 +309,9 @@ async function loadRole(
       mouthValue: 0,
       eyeLeftParameterIndex: -1,
       eyeRightParameterIndex: -1,
-      nextBlinkAt: performance.now() + 2500 + Math.random() * 3500,
-      blinkStartedAt: 0,
+      eyesOpen: true,
+      focusFrozen: false,
+      reactionSequence: 0,
     }
     if (variant.lip_sync?.parameter) {
       entry.mouthParameterIndex = findParameterIndex(entry, variant.lip_sync.parameter)
@@ -253,33 +323,29 @@ async function loadRole(
     model.internalModel.on('beforeModelUpdate', () => {
       const coreModel = model.internalModel.coreModel as {
         addParameterValueByIndex(index: number, value: number, weight?: number): void
-        multiplyParameterValueByIndex(index: number, value: number, weight?: number): void
+        getParameterValueByIndex(index: number): number
       }
       if (entry.mouthParameterIndex >= 0) {
         coreModel.addParameterValueByIndex(entry.mouthParameterIndex, entry.mouthValue, 1)
       }
-      const now = performance.now()
-      if (!entry.blinkStartedAt && now >= entry.nextBlinkAt) entry.blinkStartedAt = now
-      if (entry.blinkStartedAt) {
-        const progress = (now - entry.blinkStartedAt) / 180
-        const openness = progress < 0.5 ? 1 - progress * 2 : Math.min(1, (progress - 0.5) * 2)
-        if (entry.eyeLeftParameterIndex >= 0) {
-          coreModel.multiplyParameterValueByIndex(entry.eyeLeftParameterIndex, openness, 1)
-        }
-        if (entry.eyeRightParameterIndex >= 0) {
-          coreModel.multiplyParameterValueByIndex(entry.eyeRightParameterIndex, openness, 1)
-        }
-        if (progress >= 1) {
-          entry.blinkStartedAt = 0
-          entry.nextBlinkAt = now + 2500 + Math.random() * 3500
-        }
+      const eyeValues: number[] = []
+      if (entry.eyeLeftParameterIndex >= 0) {
+        eyeValues.push(coreModel.getParameterValueByIndex(entry.eyeLeftParameterIndex))
       }
+      if (entry.eyeRightParameterIndex >= 0) {
+        eyeValues.push(coreModel.getParameterValueByIndex(entry.eyeRightParameterIndex))
+      }
+      entry.eyesOpen = areEyesOpen(eyeValues)
+      updateModelFocus(entry)
     })
+    if (previous) {
+      application.stage.removeChild(previous.model)
+      previousDetached = true
+    }
     application.stage.addChild(model)
     applyLayout(entry, role)
-    // Verify the render pipe before hiding the static fallback.
+    // Verify the new model in isolation before replacing the active variant.
     application.render()
-    const previous = models.get(role.roleId)
     if (previous) destroyEntry(previous)
     models.set(role.roleId, entry)
     pendingModel = null
@@ -291,13 +357,20 @@ async function loadRole(
   } catch (error) {
     if (pendingModel) {
       application?.stage.removeChild(pendingModel)
-      pendingModel.destroy({ children: true, texture: true, baseTexture: true })
+      destroyModel(pendingModel)
     }
     if (requestId === requestSequenceFor(role.roleId)) {
-      failedRoleIds.add(role.roleId)
-      emitFailedRoles()
       const current = models.get(role.roleId)
-      if (current && current.variantName !== variantName) destroyEntry(current)
+      if (current) {
+        if (previousDetached && !application.stage.children.includes(current.model)) {
+          application.stage.addChild(current.model)
+          applyLayout(current, role)
+        }
+        failedRoleIds.delete(role.roleId)
+      } else {
+        failedRoleIds.add(role.roleId)
+      }
+      emitFailedRoles()
     }
     console.warn(`[Live2D] model load failed for role ${role.roleId}; keeping static avatar`, error)
   }
@@ -409,8 +482,12 @@ watch(
   },
 )
 
-onMounted(queueSync)
+onMounted(() => {
+  window.addEventListener('pointermove', handlePointerMove, { passive: true })
+  queueSync()
+})
 onBeforeUnmount(() => {
+  window.removeEventListener('pointermove', handlePointerMove)
   disposed = true
   decodeSequence += 1
   resizeObserver?.disconnect()
