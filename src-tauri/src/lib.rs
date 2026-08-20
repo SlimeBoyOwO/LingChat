@@ -221,13 +221,19 @@ pub fn run() {
         .with(filter)
         .init();
 
-    // 设置 WebView2 颜色配置文件（强制使用线性 sRGB）
+    // 设置 WebView2 颜色配置文件（强制使用线性 sRGB），并保留 Dev Host
+    // 调用方提供的调试参数。
     #[allow(deprecated)]
     unsafe {
-        std::env::set_var(
-            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-            "--force-color-profile=scrgb-linear",
-        );
+        let mut browser_args = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS")
+            .unwrap_or_default();
+        if !browser_args.contains("--force-color-profile=") {
+            if !browser_args.is_empty() {
+                browser_args.push(' ');
+            }
+            browser_args.push_str("--force-color-profile=scrgb-linear");
+        }
+        std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", browser_args);
     }
 
     // 构建 Tauri 应用
@@ -613,6 +619,7 @@ pub fn run() {
             api::font::list_imported_fonts,
             api::font::delete_imported_font,
             api::character::get_character_list,
+            api::character::create_character_native,
             api::character::get_role_info,
             api::character::get_role_settings,
             api::character::get_character_file,

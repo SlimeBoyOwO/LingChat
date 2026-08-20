@@ -18,6 +18,7 @@ import { EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
 import type { GameRole } from '@/stores/modules/game/state'
 import { resolveLive2dVariant, type Live2dVariant } from '@/types/live2d'
 import { loadLive2dRuntime, type Live2dRuntime } from './live2d-runtime'
+import { rewriteModelReferences, type Live2dModelSource } from './model-source'
 import { decodeVoiceForLipSync, sampleVoiceAmplitude, type DecodedVoice } from './useLive2dLipSync'
 
 const props = defineProps<{
@@ -79,99 +80,15 @@ function variantNameFor(role: GameRole): string | null {
   return mapped || role.live2d.default_variant
 }
 
-const URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/
-
-function resolveModelReference(modelFile: string, reference: string): string {
-  if (
-    URL_SCHEME.test(reference) ||
-    reference.startsWith('/') ||
-    /^[a-zA-Z]:[\\/]/.test(reference)
-  ) {
-    throw new Error(`Live2D resource reference must be relative: ${reference}`)
-  }
-  const segments = modelFile.split('\\').join('/').split('/')
-  segments.pop()
-  for (const segment of reference.split('\\').join('/').split('/')) {
-    if (!segment || segment === '.') continue
-    if (segment === '..') {
-      if (!segments.length)
-        throw new Error(`Live2D resource escapes the role directory: ${reference}`)
-      segments.pop()
-    } else {
-      segments.push(segment)
-    }
-  }
-  return segments.join('/')
-}
-
 async function loadModelSource(roleId: number, modelFile: string) {
   const modelPath = await getLive2dFilePath(roleId, modelFile)
   const modelUrl = convertFileSrc(modelPath)
   const response = await fetch(modelUrl)
   if (!response.ok) throw new Error(`Failed to load Live2D settings: HTTP ${response.status}`)
-  const source = (await response.json()) as Record<string, any>
-  const references = source.FileReferences as Record<string, any> | undefined
-  if (!references) throw new Error('Live2D model3 is missing FileReferences')
-
-  const rewrite = async (reference: string) => {
-    const relative = resolveModelReference(modelFile, reference)
+  const source = (await response.json()) as Live2dModelSource
+  await rewriteModelReferences(source, modelFile, async (relative) => {
     return convertFileSrc(await getLive2dFilePath(roleId, relative))
-  }
-  const rewrites: Promise<void>[] = []
-  for (const key of ['Moc', 'Physics', 'Pose', 'UserData', 'DisplayInfo']) {
-    if (typeof references[key] === 'string') {
-      rewrites.push(
-        rewrite(references[key]).then((url) => {
-          references[key] = url
-        }),
-      )
-    }
-  }
-  if (Array.isArray(references.Textures)) {
-    references.Textures.forEach((reference: unknown, index: number) => {
-      if (typeof reference === 'string') {
-        rewrites.push(
-          rewrite(reference).then((url) => {
-            references.Textures[index] = url
-          }),
-        )
-      }
-    })
-  }
-  if (Array.isArray(references.Expressions)) {
-    references.Expressions.forEach((expression: Record<string, unknown>) => {
-      if (typeof expression.File === 'string') {
-        rewrites.push(
-          rewrite(expression.File).then((url) => {
-            expression.File = url
-          }),
-        )
-      }
-    })
-  }
-  if (references.Motions && typeof references.Motions === 'object') {
-    for (const motions of Object.values(references.Motions) as Array<
-      Array<Record<string, unknown>>
-    >) {
-      for (const motion of motions) {
-        if (typeof motion.File === 'string') {
-          rewrites.push(
-            rewrite(motion.File).then((url) => {
-              motion.File = url
-            }),
-          )
-        }
-        if (typeof motion.Sound === 'string') {
-          rewrites.push(
-            rewrite(motion.Sound).then((url) => {
-              motion.Sound = url
-            }),
-          )
-        }
-      }
-    }
-  }
-  await Promise.all(rewrites)
+  })
   source.url = modelUrl
   return source
 }

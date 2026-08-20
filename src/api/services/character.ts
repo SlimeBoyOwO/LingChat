@@ -120,6 +120,28 @@ export const createCharacter = async (formData: FormData): Promise<CreateCharact
   }
 }
 
+export interface CharacterFilePayload {
+  fileName: string
+  data: number[]
+}
+
+export interface CharacterEmotionPayload extends CharacterFilePayload {
+  emotion: string
+}
+
+export interface CreateCharacterNativeRequest {
+  resourceFolder: string
+  settings: Record<string, unknown>
+  avatar: CharacterFilePayload
+  emotions: CharacterEmotionPayload[]
+}
+
+export const createCharacterNative = async (
+  request: CreateCharacterNativeRequest,
+): Promise<CreateCharacterResponse['data']> => {
+  return invoke<CreateCharacterResponse['data']>('create_character_native', { request })
+}
+
 export interface SelectClothesResponse {
   success: boolean
   message: string

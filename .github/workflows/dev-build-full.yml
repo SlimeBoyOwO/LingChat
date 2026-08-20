@@ -26,6 +26,8 @@ on:
 
 jobs:
   build:
+    env:
+      DATA_VERSION: ${{ github.run_id }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

@@ -61,6 +61,7 @@ node_modules/
 build/
 dist/
 dist-windows/
+.dev-data/
 target/
 
 ling_chat/static/frontend/

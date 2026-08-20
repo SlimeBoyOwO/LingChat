@@ -1,0 +1,59 @@
+name: Windows Dev Host
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: pnpm/setup@v1
+        with:
+          runtime: node@26
+          cache: true
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          workspaces: src-tauri
+
+      - name: Prepare build resources
+        shell: bash
+        run: |
+          mkdir -p data/.official/game_data data/third_party
+          touch data/.official/game_data/.gitkeep data/third_party/.gitkeep
+          node scripts/prepare-desktop-resources.mjs
+          pip install Pillow
+          rm -f src-tauri/icons/icon.png
+          python -c "from PIL import Image, ImageDraw; img=Image.new('RGB', (1024,1024), color='#4A90D9'); draw=ImageDraw.Draw(img); draw.ellipse((100,100,924,924), fill='#2C3E50'); img.save('src-tauri/icons/icon.png')"
+          pnpm tauri icon src-tauri/icons/icon.png
+
+      - name: Test Live2D and character contracts
+        env:
+          RUSTFLAGS: -C linker=rust-lld
+        shell: bash
+        run: |
+          pnpm test:live2d
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --lib api::live2d::tests
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --lib api::character::tests
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --lib init::static_copy::tests
+
+      - name: Build debug host
+        env:
+          RUSTFLAGS: -C linker=rust-lld
+        run: cargo build --manifest-path src-tauri/Cargo.toml --locked
+
+      - name: Upload debug host
+        uses: actions/upload-artifact@v4
+        with:
+          name: lingchat-windows-dev-host
+          path: src-tauri/target/debug/ling_chat.exe
+          retention-days: 7

@@ -6,7 +6,7 @@ LingChat supports Live2D Cubism 3/4/5 character models as an optional visual lay
 
 Open a character's settings and select the **Live2D** tab. Desktop builds accept a model directory or ZIP file; Android accepts ZIP files. LingChat copies the imported files into the character's `live2d/` directory and scans every `.model3.json` file.
 
-The first model becomes the default variant. Expression and motion names are suggested from common English names and can be changed in the settings UI. Outfit names can be mapped to different model variants.
+The first model becomes the default variant. A variant is a visual rig inside the selected character; it does not create another selectable character. To make a model such as Nori appear as its own character, create that character first and import the model into its Live2D tab. Expression and motion names are suggested from common English names and can be changed in the settings UI. Outfit names can be mapped to different model variants.
 
 Character creation also accepts an optional Live2D source. The normal character is created first, then the Live2D files are imported. Existing static character creation behavior is unchanged.
 
@@ -58,6 +58,19 @@ Model paths in the import manifest are relative to the manifest file. Runtime mo
 - If a model fails to load, LingChat keeps the existing static avatar. A placeholder is shown only when neither visual is available.
 
 The Live2D canvas is above static character images and below Live2D character bubbles. In a mixed scene where character images overlap, Live2D visuals appear above static visuals.
+
+## Development Host
+
+Live2D frontend changes can be tested without rebuilding an installer. Run the `Windows Dev Host` workflow once, download `lingchat-windows-dev-host`, and start it with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/start-windows-dev-host.ps1 `
+  -ExePath C:\path\to\ling_chat.exe
+```
+
+The launcher creates isolated data under `.dev-data/live2d`, isolates the Tauri settings store, starts Vite on port 1420, and then starts the precompiled Rust host. Vue, TypeScript, and CSS changes use Vite HMR. Rust command changes still require rebuilding the Dev Host.
+
+Set `LINGCHAT_DATA_DIR` to explicitly select a data directory when running a desktop debug host.
 
 ## Licensing
 

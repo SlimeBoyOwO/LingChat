@@ -20,10 +20,12 @@ pub async fn sync_roles_from_folder(db: &DatabaseConnection, data_dir: &Path) ->
 
     let mut created_ids = Vec::new();
 
-    for entry in fs::read_dir(&characters_dir)
+    let mut entries = fs::read_dir(&characters_dir)
         .with_context(|| format!("Failed to read {:?}", characters_dir))?
-    {
-        let entry = entry?;
+        .collect::<std::io::Result<Vec<_>>>()?;
+    entries.sort_by_key(|entry| entry.file_name());
+
+    for entry in entries {
         if !entry.file_type()?.is_dir() {
             continue;
         }

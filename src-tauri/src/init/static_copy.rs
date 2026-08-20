@@ -27,8 +27,9 @@ pub fn init_data_dir_for_tests() {
 /// 优先级：
 /// 1. Android：应用专属外部存储 (/storage/emulated/0/Android/data/<package>/files)
 /// 2. iOS：平台沙盒内的应用数据目录
-/// 3. 桌面端开发模式（debug）：项目根目录下的 `data/`
-/// 4. 桌面端发布模式（release portable）：exe 所在目录下的 `data/`
+/// 3. 桌面端显式覆盖：`LINGCHAT_DATA_DIR`
+/// 4. 桌面端开发模式（debug）：项目根目录下的 `data/`
+/// 5. 桌面端发布模式（release portable）：exe 所在目录下的 `data/`
 fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
     resolve_data_dir_impl(app)
 }
@@ -56,18 +57,29 @@ fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn resolve_data_dir_impl(_app: &tauri::AppHandle) -> PathBuf {
-    if cfg!(debug_assertions) {
-        // 桌面端开发模式：项目根目录的 data/
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    if let Some(override_dir) =
+        std::env::var_os("LINGCHAT_DATA_DIR").filter(|value| !value.is_empty())
+    {
+        return PathBuf::from(override_dir);
+    }
+    resolve_desktop_data_dir(
+        cfg!(debug_assertions),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")),
+        std::env::current_exe().expect("failed to resolve current executable"),
+    )
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn resolve_desktop_data_dir(debug: bool, manifest_dir: PathBuf, executable: PathBuf) -> PathBuf {
+    if debug {
+        manifest_dir
             .parent()
-            .unwrap()
+            .expect("CARGO_MANIFEST_DIR has no parent")
             .join("data")
     } else {
-        // 桌面端便携发布：data 目录放在 exe 旁边
-        std::env::current_exe()
-            .unwrap()
+        executable
             .parent()
-            .unwrap()
+            .expect("current executable has no parent")
             .join("data")
     }
 }
@@ -164,4 +176,29 @@ fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> any
 
     tracing::info!("Data extraction from data.7z complete");
     Ok(())
+}
+
+#[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn desktop_debug_data_dir_uses_project_parent() {
+        let resolved = resolve_desktop_data_dir(
+            true,
+            PathBuf::from("C:/repo/src-tauri"),
+            PathBuf::from("C:/bin/ling_chat.exe"),
+        );
+        assert_eq!(resolved, PathBuf::from("C:/repo/data"));
+    }
+
+    #[test]
+    fn desktop_release_data_dir_uses_executable_parent() {
+        let resolved = resolve_desktop_data_dir(
+            false,
+            PathBuf::from("C:/repo/src-tauri"),
+            PathBuf::from("C:/bin/ling_chat.exe"),
+        );
+        assert_eq!(resolved, PathBuf::from("C:/bin/data"));
+    }
 }

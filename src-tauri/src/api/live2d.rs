@@ -15,6 +15,7 @@ use crate::ai_service::types::{
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::archive::extract_zip;
+use crate::utils::yaml_file::write_json_as_yaml;
 use crate::AppState;
 
 use super::{characters_dir, game_data_dir};
@@ -110,13 +111,28 @@ fn find_import_manifest(dir: &Path) -> Result<Option<PathBuf>, String> {
     Ok(None)
 }
 
-fn referenced_path(model_dir: &Path, value: &JsonValue, label: &str) -> Result<(), String> {
+fn referenced_path(
+    model_dir: &Path,
+    role_root: &Path,
+    value: &JsonValue,
+    label: &str,
+) -> Result<(), String> {
     let Some(relative) = value.as_str() else {
         return Err(format!("{label} 引用不是字符串"));
     };
-    if !model_dir.join(relative).is_file() {
+    let resolved = model_dir.join(relative);
+    if !resolved.is_file() {
         return Err(format!("缺少 {label} 文件: {relative}"));
     }
+    let canonical = resolved
+        .canonicalize()
+        .map_err(|e| format!("解析 {label} 文件失败: {e}"))?;
+    let canonical_root = role_root
+        .canonicalize()
+        .map_err(|e| format!("解析角色目录失败: {e}"))?;
+    canonical
+        .strip_prefix(canonical_root)
+        .map_err(|_| format!("{label} 文件必须位于角色目录内: {relative}"))?;
     Ok(())
 }
 
@@ -138,17 +154,18 @@ fn inspect_model(
 
     referenced_path(
         model_dir,
+        role_root,
         refs.get("Moc").unwrap_or(&JsonValue::Null),
         "Moc",
     )?;
     if let Some(textures) = refs.get("Textures").and_then(JsonValue::as_array) {
         for texture in textures {
-            referenced_path(model_dir, texture, "Texture")?;
+            referenced_path(model_dir, role_root, texture, "Texture")?;
         }
     }
-    for key in ["Physics", "Pose", "UserData"] {
+    for key in ["Physics", "Pose", "UserData", "DisplayInfo"] {
         if let Some(reference) = refs.get(key) {
-            referenced_path(model_dir, reference, key)?;
+            referenced_path(model_dir, role_root, reference, key)?;
         }
     }
 
@@ -156,7 +173,7 @@ fn inspect_model(
     if let Some(items) = refs.get("Expressions").and_then(JsonValue::as_array) {
         for item in items {
             if let Some(file) = item.get("File") {
-                referenced_path(model_dir, file, "Expression")?;
+                referenced_path(model_dir, role_root, file, "Expression")?;
             }
             if let Some(name) = item.get("Name").and_then(JsonValue::as_str) {
                 expressions.push(name.to_string());
@@ -173,9 +190,14 @@ fn inspect_model(
             let mut files = Vec::new();
             for item in items {
                 if let Some(file) = item.get("File") {
-                    referenced_path(model_dir, file, "Motion")?;
+                    referenced_path(model_dir, role_root, file, "Motion")?;
                     if let Some(file) = file.as_str() {
                         files.push(file.to_string());
+                    }
+                }
+                if let Some(sound) = item.get("Sound") {
+                    if sound.as_str() != Some("") {
+                        referenced_path(model_dir, role_root, sound, "Motion sound")?;
                     }
                 }
             }
@@ -296,6 +318,57 @@ fn unique_variant_name(model_file: &Path, existing: &HashMap<String, Live2dVaria
         }
     }
     unreachable!()
+}
+
+fn validate_motion_binding(
+    variant_name: &str,
+    label: &str,
+    binding: &Live2dMotionBinding,
+    info: &Live2dModelInfo,
+) -> Result<(), String> {
+    let files = info.motions.get(&binding.group).ok_or_else(|| {
+        format!(
+            "variant {variant_name} 的 {label} 引用了不存在的动作组 {}",
+            binding.group
+        )
+    })?;
+    if binding.index >= files.len() {
+        return Err(format!(
+            "variant {variant_name} 的 {label} 动作索引 {} 越界（组 {} 共 {} 个）",
+            binding.index,
+            binding.group,
+            files.len()
+        ));
+    }
+    Ok(())
+}
+
+fn validate_variant_bindings(
+    variant_name: &str,
+    variant: &Live2dVariant,
+    info: &Live2dModelInfo,
+) -> Result<(), String> {
+    if let Some(expression) = &variant.default_expression {
+        if !info.expressions.contains(expression) {
+            return Err(format!(
+                "variant {variant_name} 的默认表情不存在: {expression}"
+            ));
+        }
+    }
+    for (emotion, expression) in &variant.expressions {
+        if !info.expressions.contains(expression) {
+            return Err(format!(
+                "variant {variant_name} 的情绪 {emotion} 引用了不存在的表情: {expression}"
+            ));
+        }
+    }
+    if let Some(idle) = &variant.idle {
+        validate_motion_binding(variant_name, "idle", idle, info)?;
+    }
+    for (emotion, motion) in &variant.motions {
+        validate_motion_binding(variant_name, &format!("情绪 {emotion}"), motion, info)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -423,7 +496,15 @@ pub async fn import_live2d(
                         .replace('\\', "/");
                     variant.model = relative;
                     let (info, _) = inspect_model(&source_model, &root, variant_name.clone())?;
+                    validate_variant_bindings(variant_name, variant, &info)?;
                     inspected.push(info);
+                }
+                for (clothes, variant_name) in &configured.clothes_variants {
+                    if !configured.variants.contains_key(variant_name) {
+                        return Err(format!(
+                            "服装 {clothes} 映射到不存在的 variant: {variant_name}"
+                        ));
+                    }
                 }
                 inspected.sort_by(|left, right| left.variant.cmp(&right.variant));
                 Ok((configured, inspected))
@@ -469,12 +550,22 @@ pub async fn import_live2d(
         }
     };
 
-    let mut settings = RoleRepo::get_role_settings_by_id(&state.db, &super::data_dir(), role_id)
-        .await
-        .map_err(|e| format!("读取角色配置失败: {e}"))?
-        .unwrap_or_else(CharacterSettings::default);
+    let mut settings =
+        match RoleRepo::get_role_settings_by_id(&state.db, &super::data_dir(), role_id).await {
+            Ok(settings) => settings.unwrap_or_else(CharacterSettings::default),
+            Err(error) => {
+                let _ = fs::remove_dir_all(&target);
+                return Err(format!("读取角色配置失败: {error}"));
+            }
+        };
     settings.live2d = Some(live2d.clone());
-    let mut value = serde_json::to_value(&settings).map_err(|e| e.to_string())?;
+    let mut value = match serde_json::to_value(&settings) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&target);
+            return Err(error.to_string());
+        }
+    };
     if let Some(object) = value.as_object_mut() {
         for transient in [
             "character_id",
@@ -486,8 +577,18 @@ pub async fn import_live2d(
             object.remove(transient);
         }
     }
-    let yaml = serde_yaml::to_string(&value).map_err(|e| e.to_string())?;
-    fs::write(root.join("settings.yml"), yaml).map_err(|e| format!("保存 Live2D 配置失败: {e}"))?;
+    if let Err(error) = write_json_as_yaml(&root.join("settings.yml"), &value) {
+        let _ = fs::remove_dir_all(&target);
+        return Err(format!("保存 Live2D 配置失败: {error}"));
+    }
+
+    {
+        let service = state.ai_service.lock().await;
+        let mut game_status = service.game_status.lock().await;
+        game_status
+            .role_manager
+            .update_role_live2d_settings(role_id, &settings);
+    }
 
     Ok(Live2dImportResult { live2d, models })
 }
@@ -546,4 +647,137 @@ pub async fn inspect_live2d(app: AppHandle, role_id: i32) -> Result<Live2dImport
     }
     models.sort_by(|left, right| left.variant.cmp(&right.variant));
     Ok(Live2dImportResult { live2d, models })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    struct Fixture {
+        root: PathBuf,
+        model: PathBuf,
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            let root =
+                std::env::temp_dir().join(format!("lingchat-live2d-{}", uuid::Uuid::new_v4()));
+            let model_dir = root.join("model");
+            fs::create_dir_all(model_dir.join("textures")).unwrap();
+            fs::create_dir_all(model_dir.join("expressions")).unwrap();
+            fs::create_dir_all(model_dir.join("motions")).unwrap();
+            fs::create_dir_all(model_dir.join("sounds")).unwrap();
+            for relative in [
+                "Nori.moc3",
+                "Nori.physics3.json",
+                "Nori.cdi3.json",
+                "textures/texture.png",
+                "expressions/happy.exp3.json",
+                "motions/idle.motion3.json",
+                "sounds/idle.wav",
+            ] {
+                fs::write(model_dir.join(relative), b"fixture").unwrap();
+            }
+            let model = model_dir.join("Nori.model3.json");
+            fs::write(
+                &model,
+                serde_json::to_vec(&json!({
+                    "Version": 3,
+                    "FileReferences": {
+                        "Moc": "Nori.moc3",
+                        "Textures": ["textures/texture.png"],
+                        "Physics": "Nori.physics3.json",
+                        "DisplayInfo": "Nori.cdi3.json",
+                        "Expressions": [{"Name": "13_Happy", "File": "expressions/happy.exp3.json"}],
+                        "Motions": {"Idle": [{"File": "motions/idle.motion3.json", "Sound": "sounds/idle.wav"}]}
+                    }
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+            Self { root, model }
+        }
+
+        fn update_reference(&self, key: &str, value: &str) {
+            let mut json: JsonValue =
+                serde_json::from_slice(&fs::read(&self.model).unwrap()).unwrap();
+            json["FileReferences"][key] = JsonValue::String(value.to_string());
+            fs::write(&self.model, serde_json::to_vec(&json).unwrap()).unwrap();
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn inspect_model_accepts_complete_reference_chain() {
+        let fixture = Fixture::new();
+        let (info, variant) = inspect_model(&fixture.model, &fixture.root, "Nori".into()).unwrap();
+        assert_eq!(info.variant, "Nori");
+        assert_eq!(variant.default_expression.as_deref(), Some("13_Happy"));
+        assert_eq!(
+            variant.idle.as_ref().map(|idle| idle.group.as_str()),
+            Some("Idle")
+        );
+    }
+
+    #[test]
+    fn inspect_model_rejects_missing_display_info() {
+        let fixture = Fixture::new();
+        fixture.update_reference("DisplayInfo", "missing.cdi3.json");
+        let error = inspect_model(&fixture.model, &fixture.root, "Nori".into()).unwrap_err();
+        assert!(error.contains("DisplayInfo"));
+    }
+
+    #[test]
+    fn inspect_model_rejects_missing_motion_sound() {
+        let fixture = Fixture::new();
+        fs::remove_file(fixture.root.join("model/sounds/idle.wav")).unwrap();
+        let error = inspect_model(&fixture.model, &fixture.root, "Nori".into()).unwrap_err();
+        assert!(error.contains("Motion sound"));
+    }
+
+    #[test]
+    fn variant_validation_rejects_unknown_expression_and_motion_index() {
+        let fixture = Fixture::new();
+        let (info, mut variant) =
+            inspect_model(&fixture.model, &fixture.root, "Nori".into()).unwrap();
+        variant.default_expression = Some("missing".to_string());
+        assert!(validate_variant_bindings("Nori", &variant, &info)
+            .unwrap_err()
+            .contains("默认表情"));
+
+        variant.default_expression = Some("13_Happy".to_string());
+        variant.motions.insert(
+            "高兴".to_string(),
+            Live2dMotionBinding {
+                group: "Idle".to_string(),
+                index: 99,
+                loop_motion: false,
+            },
+        );
+        assert!(validate_variant_bindings("Nori", &variant, &info)
+            .unwrap_err()
+            .contains("索引"));
+    }
+
+    #[test]
+    fn inspect_model_rejects_reference_outside_role_directory() {
+        let fixture = Fixture::new();
+        let outside = fixture
+            .root
+            .parent()
+            .unwrap()
+            .join(format!("outside-live2d-{}.png", uuid::Uuid::new_v4()));
+        fs::write(&outside, b"outside").unwrap();
+        let reference = format!("../../{}", outside.file_name().unwrap().to_string_lossy());
+        fixture.update_reference("Moc", &reference);
+        let error = inspect_model(&fixture.model, &fixture.root, "Nori".into()).unwrap_err();
+        let _ = fs::remove_file(outside);
+        assert!(error.contains("角色目录内"));
+    }
 }

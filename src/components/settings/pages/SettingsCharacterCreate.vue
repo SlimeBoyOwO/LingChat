@@ -227,9 +227,17 @@
                     />
                   </div>
                   <div class="space-y-2">
-                    <label class="text-sm text-white/70">{{ $t('settings.characterCreate.advanced.offset') }}</label>
+                    <label class="text-sm text-white/70">{{ $t('settings.characterCreate.advanced.offsetX') }}</label>
                     <input
-                      v-model.number="form.offset"
+                      v-model.number="form.offset_x"
+                      type="number"
+                      class="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2"
+                    />
+                  </div>
+                  <div class="space-y-2">
+                    <label class="text-sm text-white/70">{{ $t('settings.characterCreate.advanced.offsetY') }}</label>
+                    <input
+                      v-model.number="form.offset_y"
                       type="number"
                       class="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2"
                     />
@@ -381,7 +389,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
-import { createCharacter, importLive2d } from '@/api/services/character'
+import { createCharacterNative, importLive2d } from '@/api/services/character'
 import { isAndroid } from '@/utils/platform'
 
 type StepId = 'basic' | 'avatar' | 'advanced'
@@ -395,7 +403,8 @@ interface CharacterFormState {
   user_subtitle: string
   info: string
   scale: number
-  offset: number
+  offset_x: number
+  offset_y: number
   bubble_top: number
   bubble_left: number
   thinking_message: string
@@ -494,7 +503,8 @@ const form = reactive<CharacterFormState>({
   user_subtitle: '',
   info: '',
   scale: 1,
-  offset: 0,
+  offset_x: 0,
+  offset_y: 0,
   bubble_top: 5,
   bubble_left: 20,
   thinking_message: '正在思考中...',
@@ -537,7 +547,8 @@ const resetAll = () => {
   form.user_subtitle = ''
   form.info = ''
   form.scale = 1
-  form.offset = 0
+  form.offset_x = 0
+  form.offset_y = 0
   form.bubble_top = 5
   form.bubble_left = 20
   form.thinking_message = '正在思考中...'
@@ -737,7 +748,8 @@ const submitCreate = async () => {
       title: form.title.trim(),
       info: form.info.trim(),
       scale: Number(form.scale),
-      offset: Number(form.offset),
+      offset_x: Number(form.offset_x),
+      offset_y: Number(form.offset_y),
       bubble_top: Number(form.bubble_top),
       bubble_left: Number(form.bubble_left),
       thinking_message: form.thinking_message.trim() || '正在思考中...',
@@ -747,26 +759,31 @@ const submitCreate = async () => {
       system_prompt_example_old: form.system_prompt_example_old.trim() || null,
     }
 
-    const formData = new FormData()
-    formData.append('resource_folder', form.resource_folder.trim())
-    formData.append('settings_json', JSON.stringify(settingsPayload))
-    formData.append('avatar_file', avatarFile.value)
-
-    for (const emotion of EMOTION_SLOTS) {
-      const emotionFile = emotionFiles[emotion]
-      if (!emotionFile) {
-        throw new Error(
-          t('settings.characterCreate.errors.missingEmotionFile', { name: emotionLabel(emotion) }),
-        )
-      }
-      formData.append('emotion_names', emotion)
-      formData.append('emotion_files', emotionFile)
-    }
-
     let role = createdRole.value
     if (!role) {
-      const response = await createCharacter(formData)
-      role = response.data
+      const filePayload = async (file: File) => ({
+        fileName: file.name,
+        data: Array.from(new Uint8Array(await file.arrayBuffer())),
+      })
+      const emotions = await Promise.all(
+        EMOTION_SLOTS.map(async (emotion) => {
+          const file = emotionFiles[emotion]
+          if (!file) {
+            throw new Error(
+              t('settings.characterCreate.errors.missingEmotionFile', {
+                name: emotionLabel(emotion),
+              }),
+            )
+          }
+          return { emotion, ...(await filePayload(file)) }
+        }),
+      )
+      role = await createCharacterNative({
+        resourceFolder: form.resource_folder.trim(),
+        settings: settingsPayload,
+        avatar: await filePayload(avatarFile.value),
+        emotions,
+      })
       createdRole.value = role
     }
     if (live2dSourcePath.value) {
