@@ -60,6 +60,8 @@ watch(
         mainAudio.value.src = dataUrl
         mainAudio.value.load()
         mainAudio.value.volume = uiStore.characterVolume / 100
+        // 剧本 voice_shift 恶魔音：playbackRate < 1 时音调同步降低（preservesPitch 默认 false）
+        mainAudio.value.playbackRate = uiStore.voiceRate > 0 ? uiStore.voiceRate : 1
         mainAudio.value.play().catch((e) => console.error('播放失败', e))
         emit('audio-started')
       } catch (e) {

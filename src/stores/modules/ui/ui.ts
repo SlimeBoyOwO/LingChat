@@ -49,6 +49,8 @@ interface UIState {
 
   currentSoundEffect: string
   currentAvatarAudio: string
+  /** 角色语音（TTS）播放倍率，由剧本 voice_shift 事件设置；<1 降调=恶魔音，1.0 正常 */
+  voiceRate: number
   autoMode: boolean
 
   /** 突脸惊吓：图片路径（空串 = 无演出） */
@@ -134,6 +136,7 @@ export const useUIStore = defineStore('ui', {
 
     currentSoundEffect: 'None',
     currentAvatarAudio: 'None',
+    voiceRate: 1,
     autoMode: false,
 
     // 突脸惊吓演出初始状态

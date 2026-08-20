@@ -48,6 +48,7 @@ pub fn init_event_registry() {
     events::force_choice_event::register();
     // 注册定拍等待事件处理器（DDLC 式时间轴演出）
     events::wait_event::register();
+    events::voice_shift_event::register();
 
     tracing::info!("[ScriptEngine] 所有事件处理器已注册");
 }

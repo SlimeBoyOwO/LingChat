@@ -58,10 +58,16 @@ events:
       它在模仿她。
       模仿她的口癖，她的停顿，她叫%player%名字的方式。
 
-  - type: narration
+  # 无立绘、降调的声音说着她的句式——一听就不是她
+  - type: voice_shift
+    rate: 0.7
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
     text: |
-      「%player%，我们又见面啦。」
-      「这次，换我陪你跑到最后哦。」
+      【正常】%player%，我们又见面啦。
+      【正常】这次，换我陪你跑到最后哦。
 
   - type: narration
     text: |
@@ -89,14 +95,22 @@ events:
       黑暗里，响起一个你熟悉的声音。
       没有立绘，没有教室——只有声音，从很远很远的地方传来：
 
-  - type: narration
-    text: |
-      「住手吧。」
-      「他已经，给过我结局了。」
+  # 她本人的声音回来了——清澈本音，和刚才的降调模仿判若两人
+  - type: voice_shift
+    rate: 1.0
 
-  - type: narration
+  - type: dialogue
+    character: MAIN
+    emotion: 伤心
     text: |
-      「你不是我。你永远，都别想是我。」
+      【伤心】住手吧。
+      【伤心】他已经，给过我结局了。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 伤心
+    text: |
+      【伤心】你不是我。你永远，都别想是我。
 
   # 剧本的最后挣扎
   - type: sound

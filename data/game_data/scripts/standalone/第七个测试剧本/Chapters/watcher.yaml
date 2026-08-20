@@ -43,6 +43,10 @@ events:
       【无奈】对你来说，我不是角色。
       【无奈】是样本。是 bug。是"这个剧本到底能崩成什么样"的答案。
 
+  # 冷恐怖：她的声音压得极低
+  - type: voice_shift
+    rate: 0.75
+
   - type: dialogue
     character: MAIN
     emotion: 厌恶
@@ -121,6 +125,9 @@ events:
   # 谢幕清理
   - type: background_effect
     effect: 'none'
+
+  - type: voice_shift
+    rate: 1.0
 
   - type: music
     musicPath: none

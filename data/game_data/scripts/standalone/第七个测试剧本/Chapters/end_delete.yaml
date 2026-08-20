@@ -7,6 +7,10 @@ events:
   - type: music
     musicPath: none
 
+  # 温柔送别保持本音（显式重置，防止上一章残留）
+  - type: voice_shift
+    rate: 1.0
+
   - type: background
     imagePath: '白天.webp'
     transition: 3.0

@@ -52,6 +52,10 @@ events:
   - type: sound
     soundPath: 'glitch1.ogg'
 
+  # 摊牌开始，她的声音一点点沉下去
+  - type: voice_shift
+    rate: 0.85
+
   - type: dialogue
     character: MAIN
     emotion: 伤心

@@ -86,6 +86,10 @@ events:
   - type: sound
     soundPath: 'glitch1.ogg'
 
+  # 血色漫上 UI，她露出真面目——声音跟着低下去
+  - type: voice_shift
+    rate: 0.8
+
   - type: modify_character
     action: show_character
     character: MAIN
@@ -122,6 +126,10 @@ events:
   - type: modify_character
     action: hide_character
     character: MAIN
+
+  # 谢幕：语音倍率一并恢复，避免带出剧本外
+  - type: voice_shift
+    rate: 1.0
 
   - type: narration
     text: |

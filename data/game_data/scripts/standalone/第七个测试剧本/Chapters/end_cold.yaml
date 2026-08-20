@@ -14,7 +14,10 @@ events:
       【无奈】这样啊。
       【无奈】没关系。真的，没关系。
 
-  # 文字渗血：她最后的话开始崩解
+  # 文字渗血：她最后的话开始崩解，声音沉成恶魔音
+  - type: voice_shift
+    rate: 0.7
+
   - type: background_effect
     effect: 'BloodUI+Invert'
 
@@ -210,6 +213,9 @@ events:
   # 谢幕清理：特效/环境音/BGM 全部关闭，避免带出剧本外
   - type: background_effect
     effect: 'none'
+
+  - type: voice_shift
+    rate: 1.0
 
   - type: ambient
     ambientPath: 'rumble.wav'

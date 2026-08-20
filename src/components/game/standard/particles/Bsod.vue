@@ -1,82 +1,97 @@
 <template>
-  <!-- 假死机画面：模拟系统崩溃蓝屏（内容为原创恶搞文本，非真实系统信息） -->
+  <!-- DDLC ch5 fake_exception 同款假异常窗口：浅灰底 + 等宽报错文本（内容为原创恶搞文本，非真实错误） -->
   <div
     v-if="enabled"
-    class="bsod-layer"
+    class="crash-layer"
   >
-    <div class="bsod-face">:(</div>
-    <div class="bsod-text">
-      LingChat OS 遇到无法恢复的错误，正在尝试挽留即将消失的数据。
+    <div class="crash-title">An exception has occurred.</div>
+    <div class="crash-trace">
+      File "game/data/game_data/scripts/standalone/第七个测试剧本/Chapters/end_cold.yaml", line 88<br>
+      See traceback.txt for details.
     </div>
-    <div class="bsod-progress">{{ progress }}% 完成</div>
-    <div class="bsod-stop">终止代码：SCRIPT_7_NOT_FOUND</div>
-    <div class="bsod-hint">如果你看到这张脸，说明有人不想让你继续。</div>
+    <div class="crash-echo">
+      唔……人家好像把什么弄坏了？<br>
+      等人家一下，应该还能修好……<br>
+      其实吧，把"她"直接删掉会快一点。啊哈哈。
+    </div>
+    <div class="crash-flicker"></div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
-
 defineProps({
   enabled: {
     type: Boolean,
     default: true,
   },
 })
-
-// 百分比故意卡在奇怪的区间跳动，最后停住不动
-const progress = ref(0)
-let timer = 0
-
-onMounted(() => {
-  const tick = () => {
-    if (progress.value < 99) {
-      progress.value = Math.min(99, progress.value + Math.floor(Math.random() * 23))
-    }
-    timer = window.setTimeout(tick, 700 + Math.random() * 1600)
-  }
-  tick()
-})
-
-onBeforeUnmount(() => clearTimeout(timer))
 </script>
 
 <style scoped>
-.bsod-layer {
+.crash-layer {
   position: absolute;
   inset: 0;
-  background: #0a3d91;
-  color: #fff;
+  background: #dadada;
+  color: #111;
   font-family: 'Consolas', 'Courier New', monospace;
-  padding: 12vh 10vw;
+  padding: 6vh 8vw;
   pointer-events: none;
   display: flex;
   flex-direction: column;
-  gap: 3vh;
+  gap: 4vh;
+  /* 整体极轻微的不规律抽动，像信号不良的显示器 */
+  animation: crash-jitter 2.7s steps(1) infinite;
 }
 
-.bsod-face {
-  font-size: 14vh;
-  line-height: 1;
+.crash-title {
+  font-size: 4.2vh;
+  font-weight: 700;
 }
 
-.bsod-text {
-  font-size: 3vh;
-  max-width: 60%;
+.crash-trace {
+  font-size: 2vh;
+  line-height: 1.7;
+  opacity: 0.85;
 }
 
-.bsod-progress {
-  font-size: 2.4vh;
+.crash-echo {
+  margin-top: 8vh;
+  font-size: 1.7vh;
+  line-height: 1.9;
+  opacity: 0;
+  /* 彩蛋独白延迟淡入：像有人在报错页背后小声说话 */
+  animation: crash-echo-in 1.2s ease-out 1.6s forwards;
 }
 
-.bsod-stop {
-  margin-top: 4vh;
-  font-size: 1.8vh;
-  opacity: 0.8;
+/* 偶发的水平细亮纹扫过 */
+.crash-flicker {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0 97px,
+    rgba(255, 255, 255, 0.35) 97px 98px
+  );
+  opacity: 0;
+  animation: crash-scan 3.4s steps(1) infinite;
 }
 
-.bsod-hint {
-  font-size: 1.6vh;
-  opacity: 0.55;
+@keyframes crash-jitter {
+  0%, 88% { transform: translate(0, 0); }
+  89% { transform: translate(-1px, 1px); }
+  92% { transform: translate(1px, 0); }
+  95% { transform: translate(0, -1px); }
+  96%, 100% { transform: translate(0, 0); }
+}
+
+@keyframes crash-echo-in {
+  from { opacity: 0; }
+  to { opacity: 0.55; }
+}
+
+@keyframes crash-scan {
+  0%, 78% { opacity: 0; }
+  79% { opacity: 0.5; }
+  80%, 100% { opacity: 0; }
 }
 </style>

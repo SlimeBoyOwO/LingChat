@@ -10,6 +10,10 @@ events:
       几秒之后，她笑了。
       你见过她很多次笑——但这一次，灿烂得让人心里发毛。
 
+  # 灿烂假笑下，声音已经不对了
+  - type: voice_shift
+    rate: 0.8
+
   - type: dialogue
     character: MAIN
     emotion: 高兴
@@ -109,6 +113,9 @@ events:
   # 谢幕清理
   - type: background_effect
     effect: 'none'
+
+  - type: voice_shift
+    rate: 1.0
 
   - type: music
     musicPath: none

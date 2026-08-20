@@ -21,6 +21,31 @@ events:
       画面没有关掉。
       它自己，亮了回来。
 
+  # DDLC ch5 式启动崩坏：游戏"重新启动"，logo 却是碎的
+  - type: jumpscare
+    imagePath: '崩坏logo1.webp'
+    duration: 1.5
+
+  - type: sound
+    soundPath: 'glitch1.ogg'
+
+  - type: wait
+    seconds: 1.5
+
+  - type: background_effect
+    effect: 'Tear'
+    duration: 0.3
+
+  - type: sound
+    soundPath: 's_kill_glitch1.ogg'
+
+  - type: jumpscare
+    imagePath: '崩坏logo2.webp'
+    duration: 0.75
+
+  - type: wait
+    seconds: 0.75
+
   # 世界重启：和第一章一模一样的开场（刻意的既视感）
   - type: background
     imagePath: '白天.webp'
@@ -161,6 +186,10 @@ events:
     text: |
       【正常】不过没关系啦，反正我演技很好——
 
+  # 演技撑不住的瞬间，声音低了一度
+  - type: voice_shift
+    rate: 0.85
+
   - type: dialogue
     character: MAIN
     emotion: 伤心
@@ -213,6 +242,10 @@ events:
       她垂下眼睛，像是终于下定了决心。
 
   # 她的请求：DDLC「删除 monika.chr」的镜像——这次是角色求玩家动手
+  # 真诚的时刻用回本音
+  - type: voice_shift
+    rate: 1.0
+
   - type: background_effect
     effect: 'none'
 

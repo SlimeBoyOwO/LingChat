@@ -24,6 +24,7 @@ pub mod player_event;
 pub mod present_pic_event;
 pub mod set_variable_event;
 pub mod sound_event;
+pub mod voice_shift_event;
 pub mod wait_event;
 
 use std::collections::HashMap;

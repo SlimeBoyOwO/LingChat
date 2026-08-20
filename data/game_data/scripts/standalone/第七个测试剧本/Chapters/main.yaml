@@ -9,6 +9,10 @@ events:
     musicPath: '2.ogg'
     playbackSpeed: 1.0
 
+  # 开局显式重置语音倍率（防止上一局恶魔音残留）
+  - type: voice_shift
+    rate: 1.0
+
   - type: narration
     text: |
       深夜，%player%像往常一样打开了剧本列表。

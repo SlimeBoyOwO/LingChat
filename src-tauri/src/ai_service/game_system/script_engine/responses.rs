@@ -27,6 +27,7 @@ pub mod event_names {
     pub const SCRIPT_FREE_DIALOGUE: &str = "script:free-dialogue";
     pub const SCRIPT_JUMPSCARE: &str = "script:jumpscare";
     pub const SCRIPT_FORCE_CHOICE: &str = "script:force-choice";
+    pub const SCRIPT_VOICE_SHIFT: &str = "script:voice-shift";
 }
 
 // ============================================================
@@ -219,4 +220,12 @@ pub struct ScriptEndPayload {
     /// reaching its end. The frontend must not credit the player with an
     /// adventure completion in that case.
     pub completed: bool,
+}
+
+/// Voice shift：角色语音（TTS）播放倍率。<1 时因 preservesPitch=false 同时
+/// 降调，即剧本演出的"恶魔音"；1.0 恢复正常。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoiceShiftPayload {
+    pub rate: f64,
 }
