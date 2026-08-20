@@ -550,29 +550,20 @@ async fn market_install_inner(
             let progress = progress.clone();
             let cancel = cancel_arc.clone();
             // 用 select! 让取消信号能立即中断下载（不用等当前 chunk 完成）
-            let download_fut = if use_parallel {
-                crate::utils::download::download_to_file_parallel(
-                    &client,
-                    src,
-                    &zip_path,
-                    Some(cancel.clone()),
-                    progress,
-                    expected,
-                    PARALLEL_CHUNKS,
-                )
+            let result = if use_parallel {
+                tokio::select! {
+                    _ = cancel.cancelled() => Err("download cancelled".into()),
+                    r = crate::utils::download::download_to_file_parallel(
+                        &client, src, &zip_path, Some(cancel.clone()), progress, expected, PARALLEL_CHUNKS,
+                    ) => r,
+                }
             } else {
-                crate::utils::download::download_to_file(
-                    &client,
-                    src,
-                    &zip_path,
-                    Some(cancel.clone()),
-                    progress,
-                    expected,
-                )
-            };
-            let result = tokio::select! {
-                _ = cancel.cancelled() => Err("download cancelled".into()),
-                r = download_fut => r,
+                tokio::select! {
+                    _ = cancel.cancelled() => Err("download cancelled".into()),
+                    r = crate::utils::download::download_to_file(
+                        &client, src, &zip_path, Some(cancel.clone()), progress, expected,
+                    ) => r,
+                }
             };
             match result {
                 Ok(bytes) => {
