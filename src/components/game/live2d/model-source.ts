@@ -1,3 +1,5 @@
+import type { Live2dMotionBinding } from '@/types/live2d'
+
 export interface Live2dModelReferences {
   Moc?: string
   Textures?: string[]
@@ -14,6 +16,22 @@ export interface Live2dModelSource {
   FileReferences?: Live2dModelReferences
   url?: string
   [key: string]: unknown
+}
+
+export const RUNTIME_IDLE_GROUP = '__LingChatConfiguredIdle'
+
+export function configureRuntimeIdle(
+  source: Live2dModelSource,
+  idle: Live2dMotionBinding | null | undefined,
+): Live2dMotionBinding | null {
+  if (!idle) return null
+  const motions = source.FileReferences?.Motions
+  const definition = motions?.[idle.group]?.[idle.index]
+  if (!motions || !definition) {
+    throw new Error(`Configured Live2D idle motion does not exist: ${idle.group}[${idle.index}]`)
+  }
+  motions[RUNTIME_IDLE_GROUP] = [{ ...definition }]
+  return { group: RUNTIME_IDLE_GROUP, index: 0, loop: idle.loop ?? true }
 }
 
 const URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/

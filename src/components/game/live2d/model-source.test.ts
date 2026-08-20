@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  configureRuntimeIdle,
   resolveModelReference,
   rewriteModelReferences,
+  RUNTIME_IDLE_GROUP,
   type Live2dModelSource,
 } from './model-source'
 
@@ -28,6 +30,58 @@ describe('resolveModelReference', () => {
   it('rejects references escaping the role directory', () => {
     expect(() => resolveModelReference('Nori.model3.json', '../outside.png')).toThrow(
       'escapes the role directory',
+    )
+  })
+})
+
+describe('configureRuntimeIdle', () => {
+  it('projects the configured idle into a single runtime-owned group', () => {
+    const source: Live2dModelSource = {
+      FileReferences: {
+        Motions: {
+          Idle: [
+            { File: 'idle.motion3.json' },
+            { File: 'sleep.motion3.json' },
+            { File: 'closed-eyes.motion3.json' },
+          ],
+        },
+      },
+    }
+
+    expect(configureRuntimeIdle(source, { group: 'Idle', index: 0, loop: true })).toEqual({
+      group: RUNTIME_IDLE_GROUP,
+      index: 0,
+      loop: true,
+    })
+    expect(source.FileReferences?.Motions?.[RUNTIME_IDLE_GROUP]).toEqual([
+      { File: 'idle.motion3.json' },
+    ])
+    expect(source.FileReferences?.Motions?.Idle).toHaveLength(3)
+  })
+
+  it('preserves an explicit non-looping idle override', () => {
+    const source: Live2dModelSource = {
+      FileReferences: { Motions: { Idle: [{ File: 'idle.motion3.json' }] } },
+    }
+    expect(configureRuntimeIdle(source, { group: 'Idle', index: 0, loop: false })).toEqual({
+      group: RUNTIME_IDLE_GROUP,
+      index: 0,
+      loop: false,
+    })
+  })
+
+  it('leaves the source unchanged when no idle is configured', () => {
+    const source: Live2dModelSource = { FileReferences: { Motions: {} } }
+    expect(configureRuntimeIdle(source, null)).toBeNull()
+    expect(source.FileReferences?.Motions).toEqual({})
+  })
+
+  it('rejects an invalid configured idle instead of selecting another motion', () => {
+    const source: Live2dModelSource = {
+      FileReferences: { Motions: { Idle: [{ File: 'idle.motion3.json' }] } },
+    }
+    expect(() => configureRuntimeIdle(source, { group: 'Idle', index: 2 })).toThrow(
+      'does not exist',
     )
   })
 })

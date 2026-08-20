@@ -16,10 +16,20 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getLive2dFilePath } from '@/api/services/character'
 import { EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
 import type { GameRole } from '@/stores/modules/game/state'
-import { resolveLive2dVariant, type Live2dVariant } from '@/types/live2d'
+import {
+  resolveLive2dVariant,
+  type Live2dMotionBinding,
+  type Live2dVariant,
+} from '@/types/live2d'
 import { areEyesOpen, focusDirection, pointerToStagePoint } from './live2d-interaction'
+import { calculatePetLayout } from './live2d-layout'
+import { trackMotionLifecycle } from './live2d-motion'
 import { loadLive2dRuntime, type Live2dRuntime } from './live2d-runtime'
-import { rewriteModelReferences, type Live2dModelSource } from './model-source'
+import {
+  configureRuntimeIdle,
+  rewriteModelReferences,
+  type Live2dModelSource,
+} from './model-source'
 import { decodeVoiceForLipSync, sampleVoiceAmplitude, type DecodedVoice } from './useLive2dLipSync'
 
 const props = defineProps<{
@@ -40,6 +50,7 @@ interface RoleModel {
   variantName: string
   model: any
   variant: Live2dVariant
+  runtimeIdle: Live2dMotionBinding | null
   emotion: string
   requestId: number
   mouthParameterIndex: number
@@ -49,6 +60,7 @@ interface RoleModel {
   eyesOpen: boolean
   focusFrozen: boolean
   reactionSequence: number
+  reactionLifecycleCleanup: (() => void) | null
 }
 
 const host = ref<HTMLDivElement | null>(null)
@@ -70,6 +82,18 @@ function emitFailedRoles() {
 
 function emitActiveRoles() {
   emit('activeChange', [...models.keys()])
+}
+
+function motionBindingEquals(
+  left: Live2dMotionBinding | null | undefined,
+  right: Live2dMotionBinding | null | undefined,
+) {
+  if (!left || !right) return left == null && right == null
+  return (
+    left.group === right.group &&
+    left.index === right.index &&
+    (left.loop ?? true) === (right.loop ?? true)
+  )
 }
 
 function mappedEmotion(emotion: string) {
@@ -180,13 +204,16 @@ function applyLayout(entry: RoleModel, role: GameRole) {
   const width = bounds.width || model.internalModel.width || model.width || 1
   const height = bounds.height || model.internalModel.height || model.height || 1
   if (props.mode === 'pet') {
-    const baseScale = Math.max(application.screen.width / width, application.screen.height / height)
-    model.anchor.set(0.5, 0.5)
-    model.scale.set(baseScale * (role.scaleP || 1))
-    model.position.set(
-      application.screen.width / 2 + (role.offsetXP || 0),
-      application.screen.height / 2 + (role.offsetYP || 0),
+    const layout = calculatePetLayout(
+      application.screen,
+      { width, height },
+      role.scaleP || 1,
+      role.offsetXP || 0,
+      role.offsetYP || 0,
     )
+    model.anchor.set(layout.anchorX, layout.anchorY)
+    model.scale.set(layout.scale)
+    model.position.set(layout.x, layout.y)
   } else {
     const index = props.roles.findIndex((item) => item.roleId === role.roleId)
     const count = props.roles.length
@@ -204,8 +231,8 @@ function applyLayout(entry: RoleModel, role: GameRole) {
 }
 
 function startIdle(entry: RoleModel) {
-  if (!entry.variant.idle || !runtime) return
-  const idle = entry.variant.idle
+  if (!entry.runtimeIdle || !runtime) return
+  const idle = entry.runtimeIdle
   void entry.model.motion(idle.group, idle.index, runtime.engine.MotionPriority.IDLE, {
     loop: idle.loop ?? true,
     resetExpression: false,
@@ -220,8 +247,9 @@ function freezeModelFocus(entry: RoleModel) {
 
 function finishReaction(entry: RoleModel, sequence: number) {
   if (sequence !== entry.reactionSequence) return
+  entry.reactionLifecycleCleanup?.()
+  entry.reactionLifecycleCleanup = null
   entry.focusFrozen = false
-  startIdle(entry)
   updateModelFocus(entry)
 }
 
@@ -240,11 +268,19 @@ function applyEmotion(entry: RoleModel, emotion: string) {
   if (motion) {
     const sequence = ++entry.reactionSequence
     freezeModelFocus(entry)
+    const motionManager = entry.model.internalModel.motionManager
+    entry.reactionLifecycleCleanup?.()
+    entry.reactionLifecycleCleanup = trackMotionLifecycle(
+      motionManager,
+      motion.group,
+      motion.index,
+      runtime.engine.MotionPriority.FORCE,
+      () => finishReaction(entry, sequence),
+    )
     void entry.model
       .motion(motion.group, motion.index, runtime.engine.MotionPriority.FORCE, {
         loop: motion.loop ?? false,
         resetExpression: false,
-        onFinish: () => finishReaction(entry, sequence),
       })
       .then((started: boolean) => {
         if (!started) finishReaction(entry, sequence)
@@ -257,6 +293,8 @@ function applyEmotion(entry: RoleModel, emotion: string) {
 }
 
 function destroyEntry(entry: RoleModel) {
+  entry.reactionLifecycleCleanup?.()
+  entry.reactionLifecycleCleanup = null
   application?.stage.removeChild(entry.model)
   destroyModel(entry.model)
   models.delete(entry.roleId)
@@ -276,13 +314,14 @@ async function loadRole(
   let previousDetached = false
   try {
     const source = await loadModelSource(role.roleId, variant.model)
+    const runtimeIdle = configureRuntimeIdle(source, variant.idle)
     const model = await runtime.engine.Live2DModel.from(source, {
       ticker: application.ticker,
       anchorMode: 'drawable',
       autoFocus: false,
       autoHitTest: false,
       eyeBlink: true,
-      idleMotionGroup: variant.idle?.group ?? 'Idle',
+      idleMotionGroup: runtimeIdle?.group ?? variant.idle?.group ?? 'Idle',
       motionPreload: runtime.engine.MotionPreloadStrategy.IDLE,
       useHighPrecisionMask: 'auto',
       textureOptions: { lod: 'single-auto' },
@@ -303,6 +342,7 @@ async function loadRole(
       variantName,
       model,
       variant,
+      runtimeIdle,
       emotion: '',
       requestId,
       mouthParameterIndex: -1,
@@ -312,6 +352,7 @@ async function loadRole(
       eyesOpen: true,
       focusFrozen: false,
       reactionSequence: 0,
+      reactionLifecycleCleanup: null,
     }
     if (variant.lip_sync?.parameter) {
       entry.mouthParameterIndex = findParameterIndex(entry, variant.lip_sync.parameter)
@@ -414,7 +455,12 @@ async function syncRoles() {
     const variant = variantName ? resolveLive2dVariant(settings, role.clothesName) : undefined
     if (!variantName || !variant) continue
     const entry = models.get(role.roleId)
-    if (!entry || entry.variantName !== variantName || entry.variant.model !== variant.model) {
+    if (
+      !entry ||
+      entry.variantName !== variantName ||
+      entry.variant.model !== variant.model ||
+      !motionBindingEquals(entry.variant.idle, variant.idle)
+    ) {
       await loadRole(role, variantName, variant, nextRequest(role.roleId))
       continue
     }
