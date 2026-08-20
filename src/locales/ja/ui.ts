@@ -71,7 +71,7 @@ export default {
   },
   musicImport: {
     errors: {
-      MUSIC_INVALID_FORMAT: '有効な音声ファイルではありません（mp3/wav/flac/ogg/m4a）。ファイルが破損しているか、拡張子と内容が一致していません',
+      MUSIC_INVALID_FORMAT: '有効な音声ファイルではありません（mp3/wav/flac/ogg）。ファイルが破損しているか、拡張子と内容が一致していません',
     },
   },
   notice: {

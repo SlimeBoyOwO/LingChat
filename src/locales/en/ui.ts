@@ -72,7 +72,7 @@ export default {
   },
   musicImport: {
     errors: {
-      MUSIC_INVALID_FORMAT: "Not a valid audio file (mp3/wav/flac/ogg/m4a). The file may be corrupted or the extension doesn't match its content.",
+      MUSIC_INVALID_FORMAT: "Not a valid audio file (mp3/wav/flac/ogg). The file may be corrupted or the extension doesn't match its content.",
     },
   },
   notice: {

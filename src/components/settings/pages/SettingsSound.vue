@@ -576,7 +576,7 @@ const stopAllAmbient = () => {
 const triggerAmbientUpload = async () => {
   const selected = await openDialog({
     multiple: true,
-    filters: [{ name: 'Ambient', extensions: ['mp3', 'wav', 'flac', 'ogg', 'm4a'] }],
+    filters: [{ name: 'Ambient', extensions: ['mp3', 'wav', 'flac', 'ogg'] }],
   })
   if (!selected) return
   selectedAmbientPaths.value = extractDialogPaths(selected)
@@ -615,7 +615,7 @@ const uploadAmbientFiles = async () => {
     await dialogStore.alert(t('settings.sound.ambient.selectFilesFirst'))
     return
   }
-  const allowedExts = ['.mp3', '.wav', '.flac', '.ogg', '.m4a']
+  const allowedExts = ['.mp3', '.wav', '.flac', '.ogg']
   try {
     // 串行上传（仅传源文件路径，Rust 侧复制）
     for (const path of selectedAmbientPaths.value) {
@@ -629,7 +629,11 @@ const uploadAmbientFiles = async () => {
     await loadAmbientList()
   } catch (error: any) {
     console.error('上传环境音失败:', error)
-    await dialogStore.alert(error.message || t('settings.sound.ambient.uploadFailed'))
+    const rawMsg = error.message || String(error)
+    const translated = rawMsg === 'MUSIC_INVALID_FORMAT'
+      ? t('ui.musicImport.errors.MUSIC_INVALID_FORMAT')
+      : rawMsg
+    await dialogStore.alert(translated || t('settings.sound.ambient.uploadFailed'))
   }
 }
 
@@ -830,7 +834,7 @@ const triggerFileUpload = async () => {
   const selected = await openDialog({
     multiple: true,
     filters: [
-      { name: 'Music', extensions: ['mp3', 'wav', 'flac', 'webm', 'weba', 'ogg', 'm4a'] },
+      { name: 'Music', extensions: ['mp3', 'wav', 'flac', 'webm', 'weba', 'ogg'] },
     ],
   })
   if (!selected) return

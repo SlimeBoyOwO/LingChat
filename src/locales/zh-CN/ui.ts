@@ -71,7 +71,7 @@ export default {
   },
   musicImport: {
     errors: {
-      MUSIC_INVALID_FORMAT: '不是合法的音频文件（mp3/wav/flac/ogg/m4a），文件已损坏或扩展名与内容不符',
+      MUSIC_INVALID_FORMAT: '不是合法的音频文件（mp3/wav/flac/ogg），文件已损坏或扩展名与内容不符',
     },
   },
   notice: {
