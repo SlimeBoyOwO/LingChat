@@ -488,9 +488,9 @@ async fn market_install_inner(
     let client = build_client()?;
     let expected = pkg.size.unwrap_or(0);
 
-    // 大文件（>5MB）使用多线程分片下载加速；小文件用单线程
-    const PARALLEL_THRESHOLD: u64 = 5 * 1024 * 1024;
-    const PARALLEL_CHUNKS: usize = 4;
+    // 文件 >1MB 即使用多线程分片下载；小文件用单线程（分片开销不划算）
+    const PARALLEL_THRESHOLD: u64 = 1024 * 1024;
+    const PARALLEL_CHUNKS: usize = 8;
     let use_parallel = expected > PARALLEL_THRESHOLD;
 
     // 下载地址（动态索引下 build.json 缺失时已按 Release 规则推导，理论不会为空）
@@ -583,7 +583,21 @@ async fn market_install_inner(
                     break 'sources;
                 }
                 Err(e) => {
-                    src_err = e;
+                    src_err = e.clone();
+                    // 取消是用户主动行为，不重试、不换源，立即退出
+                    if e == "download cancelled" {
+                        tracing::info!("市场包 '{}' 下载已取消，立即停止", id);
+                        clear_installing(&id);
+                        let _ = std::fs::remove_file(&zip_path);
+                        // 清理并行下载的临时文件（.part 和 .part.N）
+                        let part = zip_path.with_extension("part");
+                        let _ = std::fs::remove_file(&part);
+                        for i in 0..PARALLEL_CHUNKS {
+                            let chunk = part.with_extension(format!("part.{i}"));
+                            let _ = std::fs::remove_file(&chunk);
+                        }
+                        return Err("下载已取消".into());
+                    }
                     tracing::warn!(
                         "市场包 '{}' 下载失败（源 {}，第 {} 次）: {src_err}",
                         id,

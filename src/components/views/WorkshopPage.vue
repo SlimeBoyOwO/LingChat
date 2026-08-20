@@ -2097,10 +2097,14 @@ async function installPkg(id: string) {
     uiStore.showSuccess({ title: t('settings.workshop.installSuccess') })
   } catch (e: unknown) {
     const err = e as { message?: string }
-    uiStore.showError({
-      title: t('settings.workshop.installFailed'),
-      message: typeof e === 'string' ? e : err?.message,
-    })
+    const msg = typeof e === 'string' ? e : err?.message
+    // 用户主动取消不显示错误提示
+    if (msg !== '下载已取消') {
+      uiStore.showError({
+        title: t('settings.workshop.installFailed'),
+        message: msg,
+      })
+    }
   } finally {
     const next = new Set(installingIds.value)
     next.delete(id)

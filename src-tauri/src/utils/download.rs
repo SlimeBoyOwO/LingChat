@@ -242,20 +242,20 @@ pub async fn download_to_file_parallel(
     expected_size: u64,
     num_chunks: usize,
 ) -> Result<u64, String> {
-    // 先探测服务器是否支持 Range
-    let head_resp = client
-        .head(url)
-        .send()
-        .await
-        .map_err(|e| format!("head request: {e}"))?;
-
-    let total_size = head_resp.content_length().unwrap_or(expected_size);
-    let accepts_ranges = head_resp
-        .headers()
-        .get(reqwest::header::ACCEPT_RANGES)
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v != "none")
-        .unwrap_or(false);
+    // 先探测服务器是否支持 Range（HEAD 失败则回退单线程，不阻塞下载）
+    let (total_size, accepts_ranges) = match client.head(url).send().await {
+        Ok(resp) => {
+            let size = resp.content_length().unwrap_or(expected_size);
+            let ranges = resp
+                .headers()
+                .get(reqwest::header::ACCEPT_RANGES)
+                .and_then(|v| v.to_str().ok())
+                .map(|v| v != "none")
+                .unwrap_or(false);
+            (size, ranges)
+        }
+        Err(_) => (expected_size, false),
+    };
 
     // 不支持 Range 或文件太小：回退到单线程
     if !accepts_ranges || total_size < 1024 * 1024 || num_chunks <= 1 {
