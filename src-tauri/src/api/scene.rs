@@ -251,17 +251,101 @@ pub async fn select_scene(app: AppHandle, scene_id: Option<String>) -> Result<()
     let mut gs = service.game_status.lock().await;
     gs.current_scene_id = scene_id.clone();
 
-    // 持久化到 store，便于下次启动恢复
+    // 持久化到 store，便于下次启动恢复。
+    // 这里是**用户**手动选的场景，所以同时更新基准场景 —— 之后 AI 在对话里
+    // 切到别处，`scene_return` 与下次启动都以这个为准回来。
     if let Ok(store) = app.store(crate::config::STORE_FILE) {
         let val = match &scene_id {
             Some(id) => serde_json::Value::String(id.clone()),
             None => serde_json::Value::Null,
         };
-        store.set(crate::config::session::LAST_SCENE_ID.to_string(), val);
+        store.set(crate::config::session::LAST_SCENE_ID.to_string(), val.clone());
+        store.set(crate::config::session::BASE_SCENE_ID.to_string(), val);
         let _ = store.save();
     }
 
     Ok(())
+}
+
+/// 为指定场景生成背景图（设置页的手动生成按钮）。
+///
+/// 与对话工具 `scene_generate` 的区别：这里不弹确认框 —— 用户按下按钮本身就是同意。
+/// 两条路径共用同一把生成锁，避免同时打 NovelAI 触发 429。
+/// 旧背景文件不删除，仍留在背景库里可以随时切回去。
+#[tauri::command]
+pub async fn generate_scene_background(
+    app: AppHandle,
+    scene_id: String,
+    prompt_tags: String,
+) -> Result<SceneInfo, String> {
+    let cfg = {
+        let state = app.state::<AppState>();
+        state.tool_settings.get().image_gen
+    };
+    if cfg.api_token.trim().is_empty() {
+        return Err("未配置 NovelAI Token，请先在工具配置中填写".into());
+    }
+    cfg.check_free_tier()?;
+
+    let store = SceneStore::new(&data_dir());
+    let mut scenes = store
+        .load_all()
+        .map_err(|e| format!("加载场景列表失败: {}", e))?;
+    let idx = scenes
+        .iter()
+        .position(|s| s.id == scene_id)
+        .ok_or_else(|| format!("场景 {} 不存在", scene_id))?;
+
+    let _guard = crate::ai_service::image_gen::try_acquire_generation_lock()
+        .ok_or_else(|| "已有一张背景正在生成，请等它完成后再试".to_string())?;
+
+    let image = crate::ai_service::image_gen::generate_image(&cfg, &prompt_tags)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let file_name = format!(
+        "nai_{}_{}.png",
+        chrono::Utc::now().format("%Y%m%d%H%M%S"),
+        image.seed
+    );
+    let dir = super::backgrounds_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("创建背景目录失败: {}", e))?;
+    std::fs::write(dir.join(&file_name), &image.bytes)
+        .map_err(|e| format!("写入背景图片失败: {}", e))?;
+
+    scenes[idx].background = file_name;
+    scenes[idx].updated_at = now_iso();
+    let scene = scenes[idx].clone();
+    store
+        .save_all(&scenes)
+        .map_err(|e| format!("保存场景失败: {}", e))?;
+
+    // 改的正好是当前场景时，主动广播让画面立刻换上新背景。
+    let is_current = {
+        let state = app.state::<AppState>();
+        let service = state.ai_service.lock().await;
+        let gs = service.game_status.lock().await;
+        gs.current_scene_id.as_deref() == Some(scene_id.as_str())
+    };
+    if is_current {
+        crate::ai_service::tools::scene::activate_scene(&app, &scene).await;
+    }
+
+    Ok(model_to_info(&scene))
+}
+
+/// 验证 NovelAI Token 是否可用（设置页「测试连接」按钮）。
+#[tauri::command]
+pub async fn test_novelai_connection(
+    app: AppHandle,
+) -> Result<crate::ai_service::image_gen::SubscriptionInfo, String> {
+    let cfg = {
+        let state = app.state::<AppState>();
+        state.tool_settings.get().image_gen
+    };
+    crate::ai_service::image_gen::fetch_subscription(&cfg)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

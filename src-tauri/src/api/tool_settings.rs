@@ -78,6 +78,32 @@ pub async fn resolve_command_approval(
     }
 }
 
+/// 主聊天 `scene_generate` 的确认回调：前端确认框把用户决定送回等待中的生成工具。
+#[tauri::command]
+pub async fn resolve_scene_generate_approval(
+    app: tauri::AppHandle,
+    request_id: String,
+    approved: bool,
+) -> Result<(), String> {
+    tracing::info!("[approval] resolve_scene_generate_approval 收到回传: request_id={request_id} approved={approved}");
+    let state = app.state::<AppState>();
+    let request = state
+        .chat_scene_generate_approvals
+        .lock()
+        .await
+        .remove(&request_id);
+    match request {
+        Some(request) => {
+            let _ = request.tx.send(approved);
+            Ok(())
+        }
+        None => {
+            tracing::warn!("[approval] resolve_scene_generate_approval 未找到请求: request_id={request_id}");
+            Err("背景生成确认请求不存在或已过期".into())
+        }
+    }
+}
+
 /// 主聊天 `delete_file` 的审批回调：前端确认后把决定送回等待中的删除工具。
 #[tauri::command]
 pub async fn resolve_file_delete_approval(

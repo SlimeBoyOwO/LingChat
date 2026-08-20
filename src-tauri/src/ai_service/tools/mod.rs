@@ -31,7 +31,7 @@ use memory::{AddNote, DeleteNote, GetCurrentMemory, GetNotes, UpdateNote};
 use permissions::ToolPermissionConfig;
 use permissions::CONFIG_FILE_NAME;
 use registry::ToolRegistry;
-use scene::{SceneList, SceneSwitch};
+use scene::{SceneGenerate, SceneList, SceneReturn, SceneSwitch};
 use schedule::{AddTodo, DeleteTodo, GetAllSchedule, UpdateTodo};
 use settings::SharedToolSettings;
 use skill_files::{
@@ -108,6 +108,8 @@ pub fn built_in_registry(
     registry.register(Arc::new(SceneStatus))?;
     registry.register(Arc::new(SceneList))?;
     registry.register(Arc::new(SceneSwitch))?;
+    registry.register(Arc::new(SceneGenerate::new(tool_settings.clone())))?;
+    registry.register(Arc::new(SceneReturn))?;
     registry.register(Arc::new(CharacterList))?;
     registry.register(Arc::new(CharacterSwitch))?;
     registry.register(Arc::new(ListSkills))?;

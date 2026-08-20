@@ -469,13 +469,23 @@ pub(crate) async fn build_web_init_data(
 
         let mut sid = gs.current_scene_id.clone();
 
-        // 若无当前场景，尝试从 store 恢复上次选择的场景
+        // 若无当前场景，从 store 恢复。
+        // 优先用**基准场景**（用户自己选的那个），而不是 LAST_SCENE_ID —— 后者可能是
+        // AI 上次在对话里生成/切换过去的临时场景，重启后应该回到用户选定的家，
+        // 而不是停在剧情跑到一半的地方。旧配置没有基准场景时回退到 LAST_SCENE_ID。
         if sid.is_none() {
             if let Ok(store) = app.store(config::STORE_FILE) {
-                if let Some(v) = store.get(config::session::LAST_SCENE_ID) {
-                    if let Some(id) = v.as_str() {
-                        sid = Some(id.to_string());
-                    }
+                let restored = store
+                    .get(config::session::BASE_SCENE_ID)
+                    .and_then(|v| v.as_str().map(str::to_string))
+                    .or_else(|| {
+                        store
+                            .get(config::session::LAST_SCENE_ID)
+                            .and_then(|v| v.as_str().map(str::to_string))
+                    });
+
+                if let Some(id) = restored {
+                    sid = Some(id);
                 }
             }
         }
@@ -487,6 +497,27 @@ pub(crate) async fn build_web_init_data(
                 if !scenes.is_empty() {
                     let idx = chrono::Utc::now().timestamp_subsec_nanos() as usize % scenes.len();
                     sid = Some(scenes[idx].id.clone());
+                }
+            }
+        }
+
+        // 补写基准场景 —— 旧存档没有这个键（本功能之前就在用的安装）。
+        //
+        // 必须独立于上面的恢复分支：GameStatus 自己就带着场景 ID 时那个分支整个
+        // 不执行，补写会跟着被跳过，`scene_return` 便以为「用户从没选过场景」
+        // 而清空背景 —— 表现就是「回家」变成一片空白。
+        //
+        // 只在**键不存在**时补。键存在但值是 null 表示用户明确清除过场景，
+        // 那个 null 本身就是他选定的基准，不能拿当前场景覆盖回去。
+        if let Ok(store) = app.store(config::STORE_FILE) {
+            if store.get(config::session::BASE_SCENE_ID).is_none() {
+                if let Some(ref id) = sid {
+                    store.set(
+                        config::session::BASE_SCENE_ID.to_string(),
+                        serde_json::Value::String(id.clone()),
+                    );
+                    let _ = store.save();
+                    tracing::info!("已补写基准场景: {id}");
                 }
             }
         }

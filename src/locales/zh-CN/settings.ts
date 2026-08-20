@@ -510,6 +510,7 @@ export default {
     placeholder: {
       sceneName: '例如：海边日落',
       sceneDescription: '描述场景的环境、氛围、光线等',
+      promptTags: 'AI 生成用的英文标签，如 beach, sunset, ocean',
     },
     option: {
       selectBackground: '选择背景图片',
@@ -520,7 +521,14 @@ export default {
       cancel: '取消',
       create: '创建',
       update: '更新',
+      generate: 'AI 生成',
+      generating: '生成中…',
     },
+    hint: {
+      promptTags: '用 NovelAI 画一张背景（需先在工具配置中填好 Token），大约十几秒',
+      saveFirst: '先创建并保存场景，才能为它生成背景',
+    },
+    generateFailed: '背景生成失败：{message}',
     lighting: {
       title: '光影参数',
       enableForScene: '为此场景启用光影参数',

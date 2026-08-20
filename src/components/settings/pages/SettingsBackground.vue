@@ -352,9 +352,13 @@
       :mode="editMode"
       :backgrounds="backgroundList"
       :initial-data="editInitialData"
+      :can-generate="editMode === 'update' && !!editingSceneId"
+      :generating="generatingBackground"
+      :generated-image="generatedBackgroundUrl"
       @close="showSceneEdit = false"
       @submit="handleSceneSubmit"
       @upload="triggerUpload"
+      @generate="handleGenerateBackground"
     />
   </MenuPage>
 </template>
@@ -376,6 +380,7 @@ import {
   updateScene,
   deleteScene,
   selectScene,
+  generateSceneBackground,
   type SceneInfo,
   type LightingParams,
 } from '../../../api/services/scene'
@@ -383,7 +388,6 @@ import type { BackgroundImageInfo } from '../../../types'
 import {
   getBackgroundImages,
   uploadBackgroundImage,
-  generateBackgroundImage,
   openBackgroundsFolder,
 } from '../../../api/services/background'
 import { unlockAchievement } from '../../../api/services/achievement'
@@ -575,6 +579,33 @@ const handleDeleteScene = async () => {
     await fetchScenes()
   } catch (error) {
     console.error('删除场景失败', error)
+  }
+}
+
+// ── AI 生成场景背景（NovelAI） ──
+const generatingBackground = ref(false)
+const generatedBackgroundUrl = ref<string | null>(null)
+
+const handleGenerateBackground = async (promptTags: string) => {
+  if (!editingSceneId.value || generatingBackground.value) return
+  generatingBackground.value = true
+  try {
+    const scene = await generateSceneBackground(editingSceneId.value, promptTags)
+    // 后端已把新背景写进场景记录，这里同步表单与列表，保持三边一致
+    generatedBackgroundUrl.value = scene.background
+    await refreshBackground()
+    await fetchScenes()
+    // 改的正好是当前场景时立刻换上（后端只在对话路径广播，手动路径由这里负责）
+    if (gameStore.currentScene?.id === scene.id) {
+      gameStore.setCurrentScene(scene)
+      if (scene.background) uiStore.setCurrentBackground(scene.background)
+    }
+  } catch (error: any) {
+    await dialogStore.alert(
+      t('settings.sceneEdit.generateFailed', { message: String(error) }),
+    )
+  } finally {
+    generatingBackground.value = false
   }
 }
 

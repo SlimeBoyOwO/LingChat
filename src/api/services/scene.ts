@@ -71,3 +71,29 @@ export async function selectScene(sceneId: string | null): Promise<void> {
 export async function setSceneAwareness(enabled: boolean): Promise<void> {
   return invoke('set_scene_awareness', { enabled })
 }
+
+/** NovelAI 账号状态（测试连接用）。 */
+export interface NovelaiSubscription {
+  /** 订阅等级，3 及以上为 Opus */
+  tier: number
+  active: boolean
+  /** 剩余 Anlas（免费额度内的生成不消耗它） */
+  anlas: number
+  is_opus: boolean
+}
+
+/**
+ * 为指定场景生成背景图（手动触发，不弹确认框 —— 按下按钮本身就是同意）。
+ * 与对话工具 scene_generate 共用同一把生成锁，同时只能有一张在生成。
+ */
+export async function generateSceneBackground(
+  sceneId: string,
+  promptTags: string,
+): Promise<SceneInfo> {
+  return invoke<SceneInfo>('generate_scene_background', { sceneId, promptTags })
+}
+
+/** 验证 NovelAI Token 是否可用。 */
+export async function testNovelaiConnection(): Promise<NovelaiSubscription> {
+  return invoke<NovelaiSubscription>('test_novelai_connection')
+}

@@ -217,6 +217,45 @@ export function initializeTauriEventListeners() {
     }
   })
 
+  // 主聊天 scene_generate 确认：出图要十几秒、越过免费额度还会扣 Anlas，
+  // 所以先把提示词与实际参数摊开给用户看，确认后才真的去生成。
+  mainWindow?.listen('chat:scene_generate_approval', async (event) => {
+    const payload = event.payload as {
+      request_id: string
+      scene_name: string
+      scene_description: string
+      prompt: string
+      model: string
+      width: number
+      height: number
+      steps: number
+      free_tier: boolean
+    }
+    const dialogStore = useDialogStore()
+    const message = i18n.global.t('ui.toolCalls.sceneGenerateApprovalMessage', {
+      name: payload.scene_name,
+      description: payload.scene_description,
+      prompt: payload.prompt,
+      size: `${payload.width}×${payload.height}`,
+      steps: payload.steps,
+      cost: payload.free_tier
+        ? i18n.global.t('ui.toolCalls.sceneGenerateFreeTier')
+        : i18n.global.t('ui.toolCalls.sceneGeneratePaid'),
+    })
+    const approved = await dialogStore.confirm(
+      message,
+      i18n.global.t('ui.toolCalls.sceneGenerateApprovalTitle'),
+    )
+    try {
+      await invoke('resolve_scene_generate_approval', {
+        requestId: payload.request_id,
+        approved,
+      })
+    } catch (e) {
+      console.warn('[Tauri] 回传背景生成确认结果失败（可能已超时）:', e)
+    }
+  })
+
   listen('status:reset', (event) => {
     console.log('[Tauri] status:reset', event.payload)
     eventQueue.addEvent(asEvent(event.payload, { type: 'status_reset', defaultDuration: 0 }))
@@ -378,12 +417,15 @@ export function initializeTauriEventListeners() {
   // === LLM 场景工具事件 ===
 
   listen('scene:switch', (event) => {
-    const payload = event.payload as { type: string; scene: SceneInfo }
+    // scene 为 null = 回到「没有场景」的状态：scene_return 在用户从没选过基准场景、
+    // 或基准场景已被删除时会这样广播。不处理 null 的话这里会 TypeError，
+    // 背景就一直停在 AI 生成的那张图上。
+    const payload = event.payload as { type: string; scene: SceneInfo | null }
     console.log('[Tauri] scene:switch', payload)
     const gameStore = useGameStore()
     const uiStore = useUIStore()
     gameStore.setCurrentScene(payload.scene)
-    uiStore.setCurrentBackground(payload.scene.background ?? '')
+    uiStore.setCurrentBackground(payload.scene?.background ?? '')
   })
 
   console.log(
