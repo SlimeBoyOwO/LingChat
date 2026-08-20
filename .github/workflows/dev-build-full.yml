@@ -97,13 +97,20 @@ jobs:
           python -c "from PIL import Image, ImageDraw; img=Image.new('RGB', (1024,1024), color='#4A90D9'); draw=ImageDraw.Draw(img); draw.ellipse((100,100,924,924), fill='#2C3E50'); img.save('./src-tauri/icons/icon.png')"
           pnpm tauri icon ./src-tauri/icons/icon.png
 
-      - name: 构建应用
+      - name: 构建 Windows 安装包
+        if: runner.os == 'Windows'
         env:
-          RUSTFLAGS: |
-            ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
-            ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
-            ${{ runner.os == 'macOS' && '' || '' }}
-        run: pnpm tauri build ${{ runner.os != 'Windows' && '--no-bundle' || '' }}
+          RUSTFLAGS: -C linker=rust-lld
+        shell: bash
+        run: >-
+          pnpm tauri build --ci --no-sign --bundles nsis
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: 构建应用
+        if: runner.os != 'Windows'
+        env:
+          RUSTFLAGS: ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
+        run: pnpm tauri build --no-bundle
 
       - name: 上传 artifact
         uses: actions/upload-artifact@v4
