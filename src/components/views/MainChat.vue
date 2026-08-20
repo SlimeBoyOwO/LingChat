@@ -1,5 +1,5 @@
 <template>
-  <div class="main-box">
+  <div class="main-box" data-game-stage>
     <!-- 主界面始终渲染，加载动画期间在后台初始化 -->
     <FreeModeTools />
     <GameBackground></GameBackground>

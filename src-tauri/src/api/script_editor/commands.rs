@@ -52,15 +52,6 @@ pub struct ScriptPackage {
     pub loaded_by_engine: bool,
 }
 
-/// 硬编码的受保护剧本（按叶子目录名匹配）。
-/// 这些剧本随应用发布、含有编辑器不支持的特殊事件（jumpscare / force_choice 等），
-/// 不对剧本编辑器开放：不出现在列表，也无法被编辑器读取打开。
-const PROTECTED_SCRIPT_FOLDERS: [&str; 1] = ["第七个测试剧本"];
-
-fn is_protected_script(folder_name: &str) -> bool {
-    PROTECTED_SCRIPT_FOLDERS.contains(&folder_name)
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChapterSummary {
@@ -436,9 +427,7 @@ pub async fn editor_list_scripts(app: AppHandle) -> Result<Vec<ScriptPackage>, S
     let mut out = Vec::new();
     for key in paths::enumerate_script_keys() {
         match read_package(&key, &loaded) {
-            // 硬编码受保护的剧本不在编辑器出现
-            Ok(p) if !is_protected_script(&p.folder_name) => out.push(p),
-            Ok(_) => {}
+            Ok(p) => out.push(p),
             Err(e) => tracing::warn!("[ScriptEditor] 跳过无效剧本 {}: {}", key, e),
         }
     }
@@ -448,13 +437,9 @@ pub async fn editor_list_scripts(app: AppHandle) -> Result<Vec<ScriptPackage>, S
 #[tauri::command]
 pub async fn editor_read_script(app: AppHandle, key: String) -> Result<ScriptDetail, String> {
     let loaded = loaded_script_names(&app).await;
-    let package = read_package(&key, &loaded)?;
-    if is_protected_script(&package.folder_name) {
-        return Err("该剧本为内置剧本，无法在剧本编辑器中打开".to_string());
-    }
     let dir = paths::resolve_script_dir(&key)?;
     Ok(ScriptDetail {
-        package,
+        package: read_package(&key, &loaded)?,
         story_config: yaml_file::read_story_config(&dir)?,
         chapters: chapter_summaries(&dir),
         assets: read_asset_index(&dir),

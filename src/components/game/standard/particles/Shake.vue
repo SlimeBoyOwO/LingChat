@@ -32,6 +32,10 @@ const shakeTarget = ref<HTMLElement | null>(null)
 const SHAKE_CLASS = 'ling-shake-active'
 
 function findShakeTarget(anchor: HTMLElement | null): HTMLElement | null {
+  // 首选整个游戏舞台根节点（MainChat 的 .main-box）：背景/立绘/对话框/UI 全部一起抖，
+  // 才是 DDLC 式的全屏震动；找不到再退回旧的 DOM 溯源，最后退 document.body
+  const stage = document.querySelector<HTMLElement>('[data-game-stage]')
+  if (stage) return stage
   // 锚点的父级是粒子层，粒子层的父级即游戏画面容器；找不到就退回 body
   const layer = anchor?.parentElement
   const target = (layer?.parentElement as HTMLElement | null) ?? document.body
