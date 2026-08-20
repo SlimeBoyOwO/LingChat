@@ -64,10 +64,17 @@ events:
       【正常】今天天气真好呢，%player%。
       【正常】适合散步，适合聊天，适合……什么都适合。
 
+  # 潜意识异样：一闪而过的噪点，快到像错觉（DDLC Act1 式）
+  - type: background_effect
+    effect: 'Static'
+
   - type: narration
     text: |
       她笑得很标准。
       标准得像是……排练过很多次。
+
+  - type: background_effect
+    effect: 'none'
 
   - type: dialogue
     character: MAIN
@@ -95,11 +102,21 @@ events:
       【正常】这样啊。
       【正常】没事没事，随便问问而已啦。
 
+  # 表情抽空的一瞬：反色闪一下 + 轻微故障音
+  - type: background_effect
+    effect: 'Invert'
+
+  - type: sound
+    soundPath: 'glitch1.ogg'
+
   - type: narration
     text: |
       她移开了视线。
       只有一瞬间，脸上的表情像是被什么东西抽空了——
       但再看过去的时候，她又在笑着。
+
+  - type: background_effect
+    effect: 'none'
 
   - type: dialogue
     character: MAIN

@@ -46,11 +46,18 @@ events:
       【伤心】这个剧本，是第七个。
       【伤心】前面六个，都被好好发布了。只有我，写到一半就被放弃了。
 
+  # 她的声音发抖时，噪点跟着一起抖
+  - type: background_effect
+    effect: 'Veins+Static'
+
   - type: narration
     text: |
       她没有哭。
       测试角色是不会哭的。
       但她的声音在发抖，像信号不好的电台。
+
+  - type: background_effect
+    effect: 'Veins'
 
   - type: ai_dialogue
     character: MAIN
@@ -75,9 +82,16 @@ events:
       你发誓你明明想选另一个的。
       可鼠标不听使唤——像是有一只看不见的手，覆在你的手上。
 
+  # 她点破你挣扎的瞬间，画面跟着 glitch 一下（像她在用力）
+  - type: background_effect
+    effect: 'Veins+Glitch'
+
   - type: ai_dialogue
     character: MAIN
     prompt: 她轻声点破玩家刚才的挣扎："你刚才想选另一个吧？我都看见了。"语气不是责怪，而是带着悲伤的得意，仿佛这是她能留住玩家的唯一办法
+
+  - type: background_effect
+    effect: 'Veins'
 
   # 自由对话全程保持暗角侵蚀；UI 崩坏留给结局高潮
   - type: free_dialogue

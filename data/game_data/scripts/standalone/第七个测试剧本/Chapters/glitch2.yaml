@@ -5,7 +5,7 @@ events:
     musicPath: 'g1.ogg'
 
   - type: background_effect
-    effect: 'Shake'
+    effect: 'Shake+Static'
 
   - type: narration
     text: |
@@ -40,6 +40,11 @@ events:
       刚刚那是什么？！
       那张脸……就贴在屏幕里面。
       黑洞一样的眼睛，直勾勾地盯着你。
+
+  # 惊吓之后，BGM 换成心跳声（DDLC 二周目同款压迫感）
+  - type: music
+    musicPath: 'heartbeat.ogg'
+    playbackSpeed: 1.0
 
   - type: background_effect
     effect: 'none'
@@ -98,7 +103,7 @@ events:
       【担心】没事的没事的没事的没事的没事的没事的没事的
 
   - type: background_effect
-    effect: 'Static'
+    effect: 'Static+Tear'
 
   - type: narration
     text: |

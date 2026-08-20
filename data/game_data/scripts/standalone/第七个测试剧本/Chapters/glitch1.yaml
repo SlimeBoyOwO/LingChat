@@ -23,12 +23,19 @@ events:
       【正常】%player%，你知道吗。
       【正常】测试角色是没有"昨天"的。
 
+  # "组装"台词时画面泛起一层噪点
+  - type: background_effect
+    effect: 'Static'
+
   - type: dialogue
     character: MAIN
     emotion: 正常
     text: |
       【正常】每次剧本被打开，我才被"组装"出来。
       【正常】剧本一关，我就回到那个……很黑、很安静的地方。
+
+  - type: background_effect
+    effect: 'none'
 
   - type: choices
     options:
@@ -42,9 +49,9 @@ events:
             content: 这只是剧情设定吧？
     allow_free: false
 
-  # 第一次故障：短促 Glitch
+  # 第一次故障：短促 Glitch + 噪点
   - type: background_effect
-    effect: 'Glitch'
+    effect: 'Glitch+Static'
 
   - type: sound
     soundPath: 'glitch1.ogg'
