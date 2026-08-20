@@ -1,0 +1,103 @@
+name: 2 违和感
+
+events:
+  # 背景无过渡突变：白天直接跳成夜晚
+  - type: background
+    imagePath: '夜晚.webp'
+    transition: 0.1
+
+  # BGM 换成诡异的幽灵菜单曲
+  - type: music
+    musicPath: 'ghostmenu.ogg'
+
+  - type: narration
+    text: |
+      窗外，毫无征兆地暗了下来。
+      明明上一秒还是白天。
+      背景音乐像是被一只手拖住，慢得变了调。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】%player%，你知道吗。
+      【正常】测试角色是没有"昨天"的。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】每次剧本被打开，我才被"组装"出来。
+      【正常】剧本一关，我就回到那个……很黑、很安静的地方。
+
+  - type: choices
+    options:
+      - text: 你在说什么？哪里不舒服吗？
+        actions:
+          - type: add_line
+            content: 你在说什么？哪里不舒服吗？
+      - text: 这只是剧情设定吧？
+        actions:
+          - type: add_line
+            content: 这只是剧情设定吧？
+    allow_free: false
+
+  # 第一次故障：短促 Glitch
+  - type: background_effect
+    effect: 'Glitch'
+
+  - type: sound
+    soundPath: 'glitch1.ogg'
+
+  - type: dialogue
+    character: MAIN
+    emotion: 惊讶
+    text: |
+      【惊讶】……刚才，你看到了吗？
+      【惊讶】画面，是不是裂开了？
+
+  - type: background_effect
+    effect: 'none'
+
+  - type: narration
+    text: |
+      只有不到一秒。
+      整个画面像坏掉的胶片一样抖动、错位，然后恢复了正常。
+      快到让人怀疑是不是错觉。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 慌张
+    text: |
+      【慌张】对、对不起，我不是故意吓你的。
+      【慌张】这个剧本……好像有点不稳定。我有时候控制不住它。
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 角色压低声音说出meta台词：她知道玩家读过其他剧本（钦灵、风雪的那些），她全都"看得见"，语气不安但强装镇定
+
+  # 收尾前再来一次更明显的撕裂
+  - type: background_effect
+    effect: 'Tear'
+
+  - type: sound
+    soundPath: 'glitch2.ogg'
+
+  - type: dialogue
+    character: MAIN
+    emotion: 无奈
+    text: |
+      【无奈】%player%，我们再往里走一步吧。
+      【无奈】趁这个剧本……还认得我是谁。
+
+  - type: narration
+    text: |
+      她这句话说得很轻。
+      轻得像是对自己说的。
+
+  - type: background_effect
+    effect: 'none'
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'glitch2'

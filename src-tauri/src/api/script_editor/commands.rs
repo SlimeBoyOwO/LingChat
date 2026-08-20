@@ -50,13 +50,15 @@ pub struct ScriptPackage {
     pub chapter_count: usize,
     /// 该剧本是否已被引擎加载（未加载表示需要重启或 rescan）
     pub loaded_by_engine: bool,
-    /// 作者声明禁止编辑器打开（如内置恐怖剧本含有编辑器不支持的特殊事件）
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub editor_hidden: bool,
 }
 
-fn is_false(v: &bool) -> bool {
-    !*v
+/// 硬编码的受保护剧本（按叶子目录名匹配）。
+/// 这些剧本随应用发布、含有编辑器不支持的特殊事件（jumpscare / force_choice 等），
+/// 不对剧本编辑器开放：不出现在列表，也无法被编辑器读取打开。
+const PROTECTED_SCRIPT_FOLDERS: [&str; 1] = ["第七个测试剧本"];
+
+fn is_protected_script(folder_name: &str) -> bool {
+    PROTECTED_SCRIPT_FOLDERS.contains(&folder_name)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -218,10 +220,6 @@ fn read_package(key: &str, loaded_names: &HashSet<String>) -> Result<ScriptPacka
             .to_string(),
         is_adventure,
         chapter_count: paths::enumerate_chapter_ids(&dir).len(),
-        editor_hidden: config
-            .get("editor_hidden")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false),
     })
 }
 
@@ -438,8 +436,8 @@ pub async fn editor_list_scripts(app: AppHandle) -> Result<Vec<ScriptPackage>, S
     let mut out = Vec::new();
     for key in paths::enumerate_script_keys() {
         match read_package(&key, &loaded) {
-            // 作者声明 editor_hidden 的剧本不在编辑器出现
-            Ok(p) if !p.editor_hidden => out.push(p),
+            // 硬编码受保护的剧本不在编辑器出现
+            Ok(p) if !is_protected_script(&p.folder_name) => out.push(p),
             Ok(_) => {}
             Err(e) => tracing::warn!("[ScriptEditor] 跳过无效剧本 {}: {}", key, e),
         }
@@ -451,8 +449,8 @@ pub async fn editor_list_scripts(app: AppHandle) -> Result<Vec<ScriptPackage>, S
 pub async fn editor_read_script(app: AppHandle, key: String) -> Result<ScriptDetail, String> {
     let loaded = loaded_script_names(&app).await;
     let package = read_package(&key, &loaded)?;
-    if package.editor_hidden {
-        return Err("该剧本已被作者锁定，无法在剧本编辑器中打开".to_string());
+    if is_protected_script(&package.folder_name) {
+        return Err("该剧本为内置剧本，无法在剧本编辑器中打开".to_string());
     }
     let dir = paths::resolve_script_dir(&key)?;
     Ok(ScriptDetail {

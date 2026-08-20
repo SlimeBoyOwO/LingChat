@@ -145,14 +145,31 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
 /// 这里换算成物理像素再叠加窗口内容区左上角偏移。
 #[tauri::command]
 pub async fn warp_cursor(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    // 诊断计数：前几次调用写 INFO 日志，便于排查"拖动没生效/方向不对"类反馈
+    static LOG_COUNT: AtomicUsize = AtomicUsize::new(0);
+
     let window = app.get_webview_window("main").ok_or("主窗口不存在")?;
     let scale = window.scale_factor().map_err(|e| e.to_string())?;
     let inner = window.inner_position().map_err(|e| e.to_string())?;
     let px = inner.x + (x * scale).round() as i32;
     let py = inner.y + (y * scale).round() as i32;
-    window
+    let result = window
         .set_cursor_position(tauri::PhysicalPosition::new(px, py))
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string());
+    let n = LOG_COUNT.fetch_add(1, Ordering::Relaxed);
+    if n < 3 {
+        tracing::info!(
+            "[warp_cursor] logical=({x:.0},{y:.0}) scale={scale} inner=({},{}) physical=({px},{py}) ok={}",
+            inner.x,
+            inner.y,
+            result.is_ok()
+        );
+    }
+    if let Err(ref e) = result {
+        tracing::warn!("[warp_cursor] 设置光标位置失败: {e}");
+    }
+    result
 }
 
 #[tauri::command]

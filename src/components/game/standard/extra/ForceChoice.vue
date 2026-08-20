@@ -10,7 +10,6 @@
       <button
         v-for="choice in gameStore.forceChoice.choices"
         :key="choice.text"
-        :ref="choice.text === gameStore.forceChoice!.forced ? setForcedBtn : undefined"
         :disabled="choice.disabled || choice.text !== gameStore.forceChoice!.forced"
         :title="choice.disabled ? choice.reason || '该选项当前不可选' : ''"
         :class="[
@@ -37,7 +36,7 @@ import { useGameStore } from '@/stores/modules/game'
 
 const gameStore = useGameStore()
 
-const forcedBtnEl = ref<HTMLElement | null>(null)
+const overlayRef = ref<HTMLElement | null>(null)
 
 // 当前真实鼠标位置（由 mousemove 追踪；拖动期间会被我们不断改写）
 const realPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 }
@@ -45,9 +44,21 @@ const realPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 }
 let timerId = 0
 let startedAt = 0
 let submitted = false
+let warpFailures = 0
 
-function setForcedBtn(el: unknown) {
-  if (el) forcedBtnEl.value = el as HTMLElement
+/**
+ * 按"选项在 choices 里的索引"从容器里取强制目标按钮。
+ * 不用模板 :ref 条件绑定——函数 ref 在 v-for 重渲染下的回调时序不可靠，
+ * 曾经出现 ref 指到错误按钮、鼠标被拖向相反选项的问题。
+ */
+function forcedBtn(): HTMLElement | null {
+  const fc = gameStore.forceChoice
+  const root = overlayRef.value
+  if (!fc || !root) return null
+  const idx = fc.choices.findIndex((c) => c.text === fc.forced)
+  if (idx < 0) return null
+  const buttons = root.querySelectorAll('button')
+  return (buttons.item(idx) as HTMLElement) ?? null
 }
 
 function onMouseMove(e: MouseEvent) {
@@ -58,11 +69,17 @@ function onMouseMove(e: MouseEvent) {
 
 const TICK_MS = 33 // 每帧拖动一步，约 30 步/秒
 const PULL_MS = 2600 // 2.6s 后完全被吸附
+const MAX_WARP_FAILURES = 5 // 连续失败这么多次就放弃拖动，直接兜底提交
 
 async function tick() {
   const fc = gameStore.forceChoice
-  const btn = forcedBtnEl.value
-  if (!fc || !btn || submitted) return
+  if (!fc || submitted) return
+  const btn = forcedBtn()
+  if (!btn) {
+    // 按钮尚未渲染完成：重试而不是静默退出，避免拖动完全不发生
+    timerId = window.setTimeout(tick, TICK_MS)
+    return
+  }
 
   const elapsed = performance.now() - startedAt
   // 磁力曲线：前 0.4s 几乎正常，之后加速增强直至完全吸附
@@ -79,9 +96,16 @@ async function tick() {
 
   try {
     await invoke('warp_cursor', { x: realPos.x, y: realPos.y })
+    warpFailures = 0
   } catch (e) {
-    console.warn('[ForceChoice] warp_cursor 失败，退化为普通选择:', e)
-    finishFallback()
+    warpFailures += 1
+    console.warn(`[ForceChoice] warp_cursor 失败(${warpFailures}/${MAX_WARP_FAILURES}):`, e)
+    if (warpFailures >= MAX_WARP_FAILURES) {
+      console.warn('[ForceChoice] warp_cursor 持续失败，退化为普通选择')
+      finishFallback()
+      return
+    }
+    timerId = window.setTimeout(tick, TICK_MS)
     return
   }
 
@@ -120,6 +144,7 @@ watch(
   async (fc) => {
     clearTimeout(timerId)
     submitted = false
+    warpFailures = 0
     if (!fc) return
     if (!fc.forced || !fc.choices.some((c) => c.text === fc.forced && !c.disabled)) {
       // forced 无效：直接自动提交第一项，避免死锁

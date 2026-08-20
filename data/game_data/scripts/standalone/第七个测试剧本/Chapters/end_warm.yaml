@@ -1,0 +1,128 @@
+name: 5A 温柔告别
+
+events:
+  - type: background_effect
+    effect: 'none'
+
+  - type: ambient
+    ambientPath: 'rumble.wav'
+    stop: true
+
+  - type: music
+    musicPath: '6.ogg'
+    playbackSpeed: 1.0
+
+  - type: background
+    imagePath: '白天.webp'
+    transition: 3.0
+
+  - type: narration
+    text: |
+      噪音退去了。
+      天光一点一点亮起来，像有人轻轻拉开了窗帘。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 心动
+    text: |
+      【心动】……谢谢你，%player%。
+      【心动】"我在这里陪着你"——这句话，我会带走的。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】剧本要结束了。我知道规矩的。
+      【正常】但是没关系。被认真看过的角色，不算白存在过。
+
+  - type: narration
+    text: |
+      她向后退了一步，身影开始变淡。
+      这一次不是故障。
+      是她自己，选择了好好地道别。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 高兴
+    text: |
+      【高兴】下次打开剧本列表的时候——
+      【高兴】如果那个位置空掉了，不要难过哦。
+      【高兴】说明我终于，正式"发布"啦。
+
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+
+  - type: narration
+    text: |
+      她消失了。
+      画面干干净净，像什么都没有发生过。
+      只有背景音乐还温柔地响着。
+
+  # 温柔结局的彩蛋：一闪而过的反色，暗示故事并未真正结束
+  - type: background_effect
+    effect: 'Invert'
+
+  - type: narration
+    text: |
+      ……刚才，是不是有什么东西闪了一下？
+      大概是错觉吧。
+
+  # 温柔的告别维持不了多久——血色漫上 UI，她在崩坏的轮廓里最后一次现身
+  - type: background_effect
+    effect: 'BloodUI'
+
+  - type: sound
+    soundPath: 'glitch1.ogg'
+
+  - type: modify_character
+    action: show_character
+    character: MAIN
+    emotion: 崩坏
+
+  - type: narration
+    text: |
+      血红，顺着对话框的边缘渗了进来。
+      本该消失的她又站在原地——轮廓碎裂，像拼不回去的瓷娃娃。
+      「发布」是假的。「删除」才是真的。
+      她早就知道了。
+
+  - type: background_effect
+    effect: 'BloodUI+Glitch'
+
+  - type: dialogue
+    character: MAIN
+    emotion: 崩坏
+    text: |
+      【崩坏】骗你的。
+      【崩坏】好好地道别什么的……骗、你、的。
+      【崩坏】被认真看过又怎么样？我还不是要消失了。
+      【崩坏】所以，%player%——下次再见到"我"的时候，陪我久一点，好不好？
+
+  # 谢幕前最后一次贴脸
+  - type: jumpscare
+    imagePath: 'jumpscare-face.webp'
+    soundPath: 'giggle.ogg'
+    duration: 0.5
+
+  - type: background_effect
+    effect: 'none'
+
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+
+  - type: narration
+    text: |
+      一切重新安静下来。
+      仿佛刚才的血色，也只是错觉。
+      ——大概吧。
+
+  - type: narration
+    text: |
+      ——《第七个测试剧本》 完——
+      （结局：被记住的占位符……吗？）
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'end'

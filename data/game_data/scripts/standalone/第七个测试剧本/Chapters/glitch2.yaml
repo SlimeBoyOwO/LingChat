@@ -1,0 +1,128 @@
+name: 3 崩坏前兆
+
+events:
+  - type: music
+    musicPath: 'g1.ogg'
+
+  - type: background_effect
+    effect: 'Shake'
+
+  - type: narration
+    text: |
+      画面开始轻微地震动。
+      不是手机在震，不是桌子在震——
+      是"这个世界"本身在震。
+
+  - type: background_effect
+    effect: 'Flash'
+
+  - type: background
+    imagePath: '崩坏教室.webp'
+    transition: 0.1
+
+  - type: sound
+    soundPath: 'glitch3.ogg'
+
+  - type: narration
+    text: |
+      红光像心跳一样明灭。
+      一下。又一下。
+      仿佛有什么东西，正在屏幕的另一侧呼吸。
+
+  # 突脸惊吓：红闪的顶点，她的脸猛地贴上屏幕
+  - type: jumpscare
+    imagePath: 'jumpscare-face.webp'
+    soundPath: 'mscare.ogg'
+    duration: 0.6
+
+  - type: narration
+    text: |
+      刚刚那是什么？！
+      那张脸……就贴在屏幕里面。
+      黑洞一样的眼睛，直勾勾地盯着你。
+
+  - type: background_effect
+    effect: 'none'
+
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+
+  - type: narration
+    text: |
+      她的立绘消失了。
+      没有任何过渡。
+      上一帧还在笑着的她，下一秒只剩一片空白。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 害怕
+    text: |
+      【害怕】%player%……？你还在吗？
+      【害怕】我看不见自己了。我的手……我的头发……都不见了。
+
+  - type: narration
+    text: |
+      声音还在。
+      但那个声音，好像不是从她"应该站的位置"传来的。
+      而是从整个画面的每一个角落，同时传来。
+
+  - type: choices
+    options:
+      - text: 我在这里！你冷静一点！
+        actions:
+          - type: add_line
+            content: 我在这里！你冷静一点！
+          - type: set_var
+            content: 'comfort = true'
+      - text: ……（不敢说话）
+        actions:
+          - type: add_line
+            content: ……
+          - type: set_var
+            content: 'silent = true'
+      # 按钮锁定：永远不可选的逃离选项
+      - text: （离开这个剧本）
+        condition: can_escape == true
+        lock_hint: 锁死了。从打开的那一刻起就锁死了。
+        actions:
+          - type: add_line
+            content: （离开这个剧本）
+    allow_free: false
+
+  - type: dialogue
+    character: MAIN
+    emotion: 担心
+    text: |
+      【担心】没事的。没事的。没事的。
+      【担心】没事的没事的没事的没事的没事的没事的没事的
+
+  - type: background_effect
+    effect: 'Static'
+
+  - type: narration
+    text: |
+      她在重复同一句话。
+      语气越来越平，越来越慢——
+      像一段被卡住的录音。
+      噪点从画面的缝隙里渗了出来。
+
+  - type: background_effect
+    effect: 'Glitch'
+
+  - type: dialogue
+    character: MAIN
+    emotion: 厌恶
+    text: |
+      【厌恶】%player%，你听好。
+      【厌恶】这个剧本不是"出bug了"。
+      【厌恶】是它本来就被写成了这样。
+
+  - type: narration
+    text: |
+      故障的噪点爬满了屏幕的边缘。
+      这一次，它们没有消退。
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'collapse'
