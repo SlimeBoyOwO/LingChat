@@ -71,6 +71,7 @@ pub struct WebSearchSettings {
     /// 独立端点模式的搜索服务提供商：
     /// "kimi"（Kimi Code 同款 /v1/search，body 为 text_query）
     /// "bocha"（BoCha 博查 https://api.bochaai.com/v1/web-search）
+    /// "tavily"（Tavily https://api.tavily.com/search，body 为 query）
     /// 仅在 use_builtin = false 时生效。
     pub provider: String,
     /// API Key（Bearer 认证，仅 use_builtin = false 时需要）。
