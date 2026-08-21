@@ -225,13 +225,19 @@ pub async fn asr_start_streaming(
             .to_string());
     }
     let settings = settings::load(&app).map_err(|e| e.i18n_code().to_string())?;
-    let api_key = settings
+    let cred = settings
         .provider_configs
         .get(&provider_id)
-        .map(|c| c.api_key.clone())
+        .cloned()
         .unwrap_or_default();
+    // 流式模型：配置为空 → 默认 paraformer-realtime-v2
+    let model = if cred.model.is_empty() {
+        "paraformer-realtime-v2".to_string()
+    } else {
+        cred.model
+    };
     session
-        .start_streaming(&app, &provider_id, api_key, language_hint)
+        .start_streaming(&app, &provider_id, cred.api_key, model, language_hint)
         .await
         .map_err(|e| e.i18n_code().to_string())
 }
@@ -264,6 +270,11 @@ pub async fn asr_stop_streaming(state: tauri::State<'_, AppState>) -> Result<Asr
 #[tauri::command]
 pub async fn asr_list_providers() -> Vec<ProviderInfo> {
     list_provider_info()
+}
+
+#[tauri::command]
+pub async fn asr_list_models(provider_id: String) -> Vec<provider::ModelInfo> {
+    provider::list_models(&provider_id)
 }
 
 #[tauri::command]

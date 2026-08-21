@@ -848,6 +848,7 @@ pub fn run() {
             api::asr::asr_recognize_wav,
             api::asr::asr_cancel,
             api::asr::asr_list_providers,
+            api::asr::asr_list_models,
             api::asr::asr_get_settings,
             api::asr::asr_set_settings,
             api::asr::asr_test_provider,

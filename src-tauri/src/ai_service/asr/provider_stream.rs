@@ -201,11 +201,12 @@ fn build_start_payload(language_hint: Option<&str>) -> Vec<u8> {
 pub async fn start_streaming(
     app: AppHandle,
     api_key: String,
+    model: String,
     language_hint: Option<String>,
 ) -> Result<mpsc::UnboundedSender<StreamCommand>, AsrError> {
-    // query 参数（language_hints 可选，URL 编码的 JSON 数组字面量）
+    // query 参数（model 自选；language_hints 可选，URL 编码的 JSON 数组字面量）
     let mut url =
-        format!("{WS_PATH}?model={MODEL}&format=pcm&sample_rate=16000&enable_partial_results=true");
+        format!("{WS_PATH}?model={model}&format=pcm&sample_rate=16000&enable_partial_results=true");
     if let Some(lang) = language_hint.as_deref() {
         let _ = write!(url, "&language_hints=%5B%22{}%22%5D", lang);
     }

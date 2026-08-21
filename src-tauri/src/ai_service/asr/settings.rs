@@ -25,13 +25,15 @@ pub enum SendMode {
     Queue,
 }
 
-/// 单个 provider 的配置：API key + endpoint + 任意额外字段。
+/// 单个 provider 的配置：API key + endpoint + 模型 + 任意额外字段。
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct ProviderConfig {
     #[serde(default)]
     pub api_key: String,
     #[serde(default)]
     pub endpoint: String,
+    #[serde(default)]
+    pub model: String,
     #[serde(default)]
     pub extra: HashMap<String, String>,
 }
@@ -42,6 +44,7 @@ impl ProviderConfig {
         ProviderCredentials {
             api_key: self.api_key.clone(),
             endpoint: self.endpoint.clone(),
+            model: self.model.clone(),
         }
     }
 }

@@ -146,12 +146,14 @@ impl AsrSession {
         app: &tauri::AppHandle,
         provider_id: &str,
         api_key: String,
+        model: String,
         language_hint: Option<String>,
     ) -> Result<(), AsrError> {
         if self.stream.lock().await.is_some() {
             return Err(AsrError::SessionBusy);
         }
-        let tx = provider_stream::start_streaming(app.clone(), api_key, language_hint).await?;
+        let tx =
+            provider_stream::start_streaming(app.clone(), api_key, model, language_hint).await?;
         *self.stream.lock().await = Some(StreamHandle {
             provider_id: provider_id.to_string(),
             tx,

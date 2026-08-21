@@ -96,7 +96,7 @@ pub struct ProviderInfo {
 // Provider 凭证（最小子集，不依赖 settings.rs）
 // ============================================================================
 
-/// provider 运行时凭证：仅 api_key + endpoint。
+/// provider 运行时凭证：仅 api_key + endpoint + model。
 ///
 /// 设计原因：Task 3 才创建 settings.rs 中的 `AsrSettings` / `ProviderConfig`。
 /// 本 Task 先行定义 provider 真正需要的字段，Task 3 做适配层把
@@ -105,6 +105,8 @@ pub struct ProviderInfo {
 pub struct ProviderCredentials {
     pub api_key: String,
     pub endpoint: String,
+    /// 识别的模型名；空串 = provider 默认模型（如 qwen 的 fun-asr-realtime）。
+    pub model: String,
 }
 
 impl ProviderCredentials {
@@ -339,9 +341,15 @@ impl AsrProvider for QwenAsrProvider {
         // 参考官方 SDK Recognition.call + 文档「非实时语音识别（Fun-ASR-Realtime）API参考」。
         // 注：language_hints 仅 paraformer-realtime-v2 支持，fun-asr-realtime 不传。
         let _ = language_hint;
+        // 模型自选：cred.model 为空用默认（fun-asr-realtime）
+        let model = if self.cred.model.is_empty() {
+            Self::MODEL
+        } else {
+            self.cred.model.as_str()
+        };
         let b64 = BASE64_STD.encode(&wav_bytes);
         let body = json!({
-            "model": Self::MODEL,
+            "model": model,
             "input": {
                 "messages": [{
                     "role": "user",
@@ -804,6 +812,56 @@ pub fn list_provider_info() -> Vec<ProviderInfo> {
             config_fields: lan_whisper_config_fields(),
         },
     ]
+}
+
+/// 模型元数据（`asr_list_models` 返回给前端渲染下拉）。
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelInfo {
+    /// 模型 id（写入 `provider_configs[id].model`）。
+    pub id: &'static str,
+    /// UI 显示名。
+    pub display_name: &'static str,
+    /// 是否支持流式协议（前端流式开关可用性的权威判定）。
+    pub supports_streaming: bool,
+    /// 是否默认模型（`provider_configs[id].model` 为空时生效）。
+    pub is_default: bool,
+}
+
+/// qwen（DashScope）语音识别模型静态清单。
+///
+/// 仅列协议已接入的模型：multimodal-generation 一次性返回（非流式）+
+/// WebSocket 实时（流式）。异步任务类（paraformer-v2/-8k）与
+/// OpenAI-compatible（qwen-audio-asr）协议未接入，不列出。
+pub fn qwen_models() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo {
+            id: "fun-asr-realtime",
+            display_name: "Fun-ASR-Realtime（非实时）",
+            supports_streaming: false,
+            is_default: true,
+        },
+        ModelInfo {
+            id: "paraformer-realtime-v2",
+            display_name: "Paraformer-Realtime-V2",
+            supports_streaming: true,
+            is_default: false,
+        },
+        ModelInfo {
+            id: "paraformer-realtime-v1",
+            display_name: "Paraformer-Realtime-V1",
+            supports_streaming: true,
+            is_default: false,
+        },
+    ]
+}
+
+/// 按 provider id 返回模型清单；未接入模型选择的 provider 返回空数组
+/// （前端据此隐藏模型下拉）。
+pub fn list_models(provider_id: &str) -> Vec<ModelInfo> {
+    match provider_id {
+        QwenAsrProvider::ID => qwen_models(),
+        _ => Vec::new(),
+    }
 }
 
 /// 按 id 创建 provider 实例。
