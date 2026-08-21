@@ -169,13 +169,20 @@ events:
       【正常】这样啊。
       【正常】没事没事，随便问问而已啦。
 
-  # 表情抽空的一瞬：反色闪一下 + 轻微故障音
+  # 表情抽空的一瞬：立绘崩坏一闪 + 反色 + 轻微故障音
   - type: background_effect
     effect: 'Invert'
     duration: 0.16
 
   - type: sound
     soundPath: 'glitch1.ogg'
+
+  # 旁白浮现前，她的立绘先崩坏一闪（0.3s），还原后正好接上“她又在笑着”
+  - type: modify_character
+    character: MAIN
+    emotion: 崩坏
+    flash: true
+    duration: 0.3
 
   - type: narration
     text: |
