@@ -114,6 +114,38 @@ events:
       【崩坏】被认真看过又怎么样？我还不是要消失了。
       【崩坏】所以，%player%——下次再见到"我"的时候，陪我久一点，好不好？
 
+  # 崩坏场景闪现：整个房间跟着她一起碎裂——崩坏底片连闪后定格在崩坏2（DDLC 式场景 glitch）
+  - type: sound
+    soundPath: 'glitch2.ogg'
+
+  - type: background
+    imagePath: '白天-崩坏1.webp'
+    transition: 0
+
+  - type: wait
+    seconds: 0.18
+
+  - type: background
+    imagePath: '白天-崩坏2.webp'
+    transition: 0
+
+  - type: wait
+    seconds: 0.14
+
+  - type: background
+    imagePath: '白天.webp'
+    transition: 0
+
+  - type: wait
+    seconds: 0.1
+
+  - type: background
+    imagePath: '白天-崩坏2.webp'
+    transition: 0
+
+  - type: wait
+    seconds: 0.16
+
   # 谢幕前最后一次贴脸
   - type: jumpscare
     imagePath: 'jumpscare-face.webp'
@@ -122,6 +154,11 @@ events:
 
   - type: background_effect
     effect: 'none'
+
+  # 场景也一并还原，再进“一切重新安静下来”的收尾
+  - type: background
+    imagePath: '白天.webp'
+    transition: 0
 
   - type: modify_character
     action: hide_character

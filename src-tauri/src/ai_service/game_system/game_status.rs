@@ -46,6 +46,12 @@ pub struct GameStatus {
 
     pub script_status: Option<ScriptStatus>,
 
+    /// 正式剧本（非试玩）开始时 `line_list` 的长度快照。剧本运行期间写入的
+    /// 台词/旁白/自由对话轮次都进共享 `line_list`，若不清除会漏进自由对话的
+    /// LLM 上下文（提示词污染）。`on_script_end` 据此截断并重建角色记忆，
+    /// 对齐编辑器试玩 PreviewSession 的隔离策略。
+    pub script_start_line_len: Option<usize>,
+
     /// 当前激活的存档 ID（用于 MemoryBank 持久化/载入/自动压缩）
     pub active_save_id: Option<i32>,
 
@@ -84,6 +90,7 @@ impl GameStatus {
             completed_scripts: HashSet::new(),
             last_dialog_time: None,
             script_status: None,
+            script_start_line_len: None,
             active_save_id: None,
             preview_generation: 0,
             player_entered: false,

@@ -165,6 +165,45 @@ pub async fn reset_script_state(app: AppHandle, script_name: String) -> Result<b
     .map_err(|e| format!("重置剧本记忆失败: {:#}", e))
 }
 
+/// Stop a running script mid-way (user picked 自由对话 from the menu, cleared
+/// the conversation, etc.). There is no shutdown channel: the script task is
+/// typically blocked on a oneshot input/choice receiver, so dropping the
+/// senders makes it error out and run its normal teardown (`on_script_end`
+/// with completed=false → `script:end` → frontend cleanup + history rollback).
+/// Waits briefly for `is_running` to flip so an immediate re-entry does not
+/// race the old run's teardown; on timeout the old task still finishes its
+/// teardown later (e.g. it may be mid-LLM-roundtrip), the frontend has
+/// already cleaned up its own state by then.
+#[tauri::command]
+pub async fn stop_script(app: AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let is_running = {
+        let service = state.ai_service.lock().await;
+        service.script_manager.is_running.clone()
+    };
+    if !is_running.load(std::sync::atomic::Ordering::SeqCst) {
+        return Ok(());
+    }
+    {
+        let mut channels = state.script_channels.lock().await;
+        // 发送端一掉，阻塞中的 input/choices/free_dialogue 事件立刻收 Err
+        channels.input_tx = None;
+        channels.choice_tx = None;
+        channels.choice_allow_free = false;
+    }
+    // 等旧任务走完 on_script_end（含台词表截断），最多约 3 秒
+    for _ in 0..30 {
+        if !is_running.load(std::sync::atomic::Ordering::SeqCst) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    if is_running.load(std::sync::atomic::Ordering::SeqCst) {
+        tracing::warn!("[ScriptAPI] stop_script 等待超时，旧任务将在 IO 返回后自行收尾");
+    }
+    Ok(())
+}
+
 /// 把系统鼠标指针拖动到窗口内的指定 CSS 坐标。
 ///
 /// 用于剧本的 `force_choice` 演出（DDLC 式强制拖动鼠标）。前端传视口 CSS 像素，

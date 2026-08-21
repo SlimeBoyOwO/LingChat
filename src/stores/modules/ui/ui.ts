@@ -55,6 +55,8 @@ interface UIState {
   preScriptBgm: string | null
   /** 进入剧本前的 BGM 循环模式（同上，随 preScriptBgm 一起恢复） */
   preScriptBgmMode: 'loop-list' | 'loop-single' | 'random' | null
+  /** 进入剧本前的自由对话背景图（剧本换的背景不得带出剧本外） */
+  preScriptBackground: string | null
   /** true 时 BGM 状态变化不写入 session（剧本运行期间屏蔽，防剧本 BGM 泄漏到下次启动） */
   bgmPersistBlocked: boolean
   autoMode: boolean
@@ -145,6 +147,7 @@ export const useUIStore = defineStore('ui', {
     voiceRate: 1,
     preScriptBgm: null,
     preScriptBgmMode: null,
+    preScriptBackground: null,
     bgmPersistBlocked: false,
     autoMode: false,
 
