@@ -873,9 +873,10 @@ async function fetchProviderModels() {
     modelsMessage.value = t('settings.llmProviders.msg.modelsFetched', { count: models.length })
   } catch (error: any) {
     availableModels.value = []
-    modelsMessage.value = t('settings.llmProviders.msg.fetchFailed', {
-      error: typeof error === 'string' ? error : error?.message || JSON.stringify(error),
-    })
+    // 命令返回结构化 { code, detail }：code → i18n 文案，detail = 原始错误
+    const code = error?.code || 'other'
+    const raw = error?.detail || (typeof error === 'string' ? error : '')
+    modelsMessage.value = t(`stores.llmErrors.${code}`) + (raw ? `\n原始错误：${raw}` : '')
     modelsError.value = true
   } finally {
     loadingModels.value = false
@@ -954,7 +955,10 @@ async function doTest() {
     })
     testResponse.value = res
   } catch (e: any) {
-    testError.value = typeof e === 'string' ? e : e.message || JSON.stringify(e)
+    // 命令返回结构化 { code, detail }：code → i18n 文案，detail = 原始错误
+    const code = e?.code || 'other'
+    const raw = e?.detail || (typeof e === 'string' ? e : '')
+    testError.value = t(`stores.llmErrors.${code}`) + (raw ? `\n原始错误：${raw}` : '')
   } finally {
     testing.value = false
   }

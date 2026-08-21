@@ -378,13 +378,18 @@ export const useUIStore = defineStore('ui', {
 
       // 优先使用错误代码查询
       if (errorCode) {
+        // LLM 错误的内置 i18n 文案（stores.llmErrors.*），优先于角色 tips
+        const llmMsg = i18n.global.te(`stores.llmErrors.${errorCode}`)
+          ? i18n.global.t(`stores.llmErrors.${errorCode}`)
+          : ''
         const tip = this.tipsMap[errorCode] ||
           this.tipsMap['default_error'] || {
             title: i18n.global.t('stores.notification.errorTitle'),
             message: i18n.global.t('stores.notification.unknownError'),
           }
-        finalTitle = title || tip.title
-        finalMessage = message || tip.message
+        // 显式 message / 内置 LLM i18n 文案 → 标题用通用「错误」，避免「未注明的错误」
+        finalTitle = title || (message || llmMsg ? i18n.global.t('stores.notification.errorTitle') : tip.title)
+        finalMessage = message || llmMsg || tip.message
       }
       // 其次使用 HTTP 状态码
       else if (statusCode) {

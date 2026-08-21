@@ -3,6 +3,7 @@
 //! 对标 Python 版 `ling_chat/core/llm_providers/` 的工厂+ABC 模式。
 //! `LlmClient` 是薄包装，具体协议由 `LlmProvider` trait 实现处理。
 
+pub mod error;
 pub(crate) mod factory;
 mod provider;
 pub mod provider_config;
