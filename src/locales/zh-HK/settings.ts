@@ -1081,7 +1081,9 @@ export default {
     "hotkey": {
       "enable": "啟用快捷鍵語音輸入",
       "combination": "快捷鍵",
-      "record": "錄製快捷鍵"
+      "record": "錄製快捷鍵",
+      "toggleAutoListen": "快捷鍵用嚟開關自動語音輸入",
+      "toggleAutoListenHint": "開啟自動語音輸入之後，撳快捷鍵可以快速關閉；關咗呢個開關可以防止誤觸"
     },
     "sendMode": {
       "title": "識別完成後",
@@ -1089,6 +1091,9 @@ export default {
       "autoSend": "自動發送",
       "queue": "隊列發送（AI 回覆後再發送）"
     },
+    "streamMode": "串流識別",
+    "streamModeHint": "講嘢期間實時顯示識別文字，講完自動提交",
+    "streamNotSupported": "目前模型唔支援串流識別",
     "provider": {
       "title": "識別服務商",
       "test": "測試連接",

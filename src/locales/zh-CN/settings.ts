@@ -1083,6 +1083,8 @@ export default {
       enable: '启用快捷键语音输入',
       combination: '快捷键',
       record: '录制快捷键',
+      toggleAutoListen: '快捷键用于开关自动语音输入',
+      toggleAutoListenHint: '开启自动语音输入后，按快捷键可快速关闭；关闭此开关可防止误触',
     },
     sendMode: {
       title: '识别完成后',
@@ -1090,6 +1092,9 @@ export default {
       autoSend: '自动发送',
       queue: '队列发送（AI 回复后再发送）',
     },
+    streamMode: '流式识别',
+    streamModeHint: '说话过程中实时显示识别文字，说完后自动提交',
+    streamNotSupported: '当前模型不支持流式识别',
     provider: {
       title: '识别服务商',
       test: '测试连接',

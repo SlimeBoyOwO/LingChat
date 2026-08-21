@@ -37,6 +37,15 @@
           {{ t('settings.asr.hotkey.record') }}
         </button>
       </div>
+      <div v-if="localSettings.hotkey_enabled" class="mt-3">
+        <Toggle
+          :checked="localSettings.hotkey_toggle_auto_listen"
+          @change="(v: boolean) => (localSettings.hotkey_toggle_auto_listen = v)"
+        >
+          <span class="font-medium">{{ t('settings.asr.hotkey.toggleAutoListen') }}</span>
+          <span class="block text-sm text-gray-300 mt-0.5">{{ t('settings.asr.hotkey.toggleAutoListenHint') }}</span>
+        </Toggle>
+      </div>
     </section>
 
     <!-- 识别完成后处理方式 -->
@@ -136,6 +145,24 @@
           </p>
         </div>
       </div>
+
+      <!-- 流式识别开关：选中模型支持流式才可用 -->
+      <div class="mt-4 pt-4 border-t border-white/10">
+        <Toggle
+          :checked="localSettings.stream_enabled"
+          :disabled="!providerSupportsStreaming"
+          @change="(v: boolean) => (localSettings.stream_enabled = v)"
+        >
+          <span class="font-medium">{{ t('settings.asr.streamMode') }}</span>
+          <span class="block text-sm text-gray-300 mt-0.5">
+            {{
+              providerSupportsStreaming
+                ? t('settings.asr.streamModeHint')
+                : t('settings.asr.streamNotSupported')
+            }}
+          </span>
+        </Toggle>
+      </div>
     </section>
 
     <!-- 状态面板 -->
@@ -181,6 +208,11 @@ const sendModeOptions = computed<{ value: SendMode; label: string }[]>(() => [
 
 const activeProviderInfo = computed<ProviderInfo | undefined>(() =>
   asrStore.providers.find((p) => p.id === localSettings.value.active_provider),
+)
+
+// 选中模型是否支持流式协议（决定流式开关可用性）
+const providerSupportsStreaming = computed(
+  () => activeProviderInfo.value?.supports_streaming ?? false,
 )
 
 // provider 切换 / 挂载时显式初始化缺失配置（不在渲染期突变 state）

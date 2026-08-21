@@ -1084,6 +1084,9 @@ export default {
       enable: 'Enable hotkey voice input',
       combination: 'Hotkey',
       record: 'Record hotkey',
+      toggleAutoListen: 'Use hotkey to toggle auto voice input',
+      toggleAutoListenHint:
+        'While auto voice input is on, pressing the hotkey turns it off; disable this to prevent accidental triggers',
     },
     sendMode: {
       title: 'After recognition',
@@ -1091,6 +1094,9 @@ export default {
       autoSend: 'Auto send',
       queue: 'Queue send (after AI replies)',
     },
+    streamMode: 'Streaming Recognition',
+    streamModeHint: 'Shows recognized text in real time while speaking, auto-submits when done',
+    streamNotSupported: 'The selected model does not support streaming recognition',
     provider: {
       title: 'Recognition provider',
       test: 'Test connection',

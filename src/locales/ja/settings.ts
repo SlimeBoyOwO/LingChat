@@ -1082,6 +1082,9 @@ export default {
       enable: 'ホットキー音声入力を有効化',
       combination: 'ホットキー',
       record: 'ホットキーを録音',
+      toggleAutoListen: 'ホットキーで自動音声入力を切り替え',
+      toggleAutoListenHint:
+        '自動音声入力がオンのとき、ホットキーでオフにできます。誤操作防止にこのスイッチをオフにできます',
     },
     sendMode: {
       title: '認識後',
@@ -1089,6 +1092,9 @@ export default {
       autoSend: '自動送信',
       queue: 'キュー送信（AI 返信後）',
     },
+    streamMode: 'ストリーム認識',
+    streamModeHint: '話している間に認識テキストをリアルタイム表示し、終わったら自動送信',
+    streamNotSupported: '選択中のモデルはストリーム認識に対応していません',
     provider: {
       title: '認識プロバイダ',
       test: '接続テスト',
