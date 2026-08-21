@@ -2049,16 +2049,27 @@ const filteredMarketPackages = computed(() => {
   })
 })
 
-/** 已安装包（用本地安装记录补全市场元数据） */
+/** 已安装包（用本地安装记录补全市场元数据；下架包云端已过滤，此处用本地快照兜底） */
 const installedMarketPackages = computed(() => {
   const marketMap = new Map(marketPackages.value.map((p) => [p.id, p]))
   return Object.values(installedMap.value)
-    .map((rec) => marketMap.get(rec.id) ?? ({
-      id: rec.id,
-      name: rec.id,
-      type: rec.type,
-      version: rec.version,
-    }))
+    .map((rec) => {
+      // 优先使用云端最新元数据，回退到安装时快照的本地详情（含下架包）
+      const cloud = marketMap.get(rec.id)
+      if (cloud) return cloud
+      return {
+        id: rec.id,
+        name: rec.name || rec.id,
+        type: rec.type,
+        version: rec.version,
+        author: rec.author,
+        description: rec.description,
+        download_url: rec.download_url,
+        sha256: rec.sha256,
+        size: rec.size,
+        manifest: rec.manifest,
+      }
+    })
     .filter((pkg) => {
       if (marketFilter.value && pkg.type !== marketFilter.value) return false
       const q = marketQuery.value.trim().toLowerCase()
