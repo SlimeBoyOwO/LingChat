@@ -175,6 +175,12 @@ function updateAsrAvailability(): void {
   } else {
     // 不可用 → 拆掉在飞录音 + 停能量监测
     if (phase.value === 'recording' || phase.value === 'recognizing') {
+      // 诊断：丢弃会话是"录音意外停止"的最可能路径，暴露触发原因
+      console.log('[ASR] updateAsrAvailability 丢弃会话', {
+        phase: phase.value,
+        activeSource: activeSource.value,
+        autoListen: asrStore?.settings.auto_listen,
+      })
       discardRecording()
     }
     stopEnergyMonitor()
@@ -337,7 +343,18 @@ function stopEnergyMonitor() {
 // ── 会话生命周期 ────────────────────────────────────────────
 async function start(source: AsrSource) {
   // §1 全 8 项门控；任何一项不满足即拒绝启动
-  if (!canStartAsr()) return
+  if (!canStartAsr()) {
+    // 诊断：静默拒绝会让按钮"按下无反应"，暴露拒绝原因
+    console.log('[ASR] start 被门控拒绝', {
+      source,
+      phase: phase.value,
+      status: gameStore?.currentStatus,
+      command: gameStore?.command,
+      loadingComplete: gameStore?.loadingComplete,
+      locked: Date.now() < asrLockedUntil,
+    })
+    return
+  }
   if (activeSource.value !== null) {
     throw new Error('ASR session busy')
   }
