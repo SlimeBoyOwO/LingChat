@@ -5,6 +5,7 @@ export default {
     history: '历史记录',
     voiceInput: '语音输入',
     recordingStop: '录音中，点击停止',
+    asrAutoOff: '关闭自动语音输入',
     screenshotAsk: '截图提问',
     screenshotRetake: '点击重新截图，右键取消截图',
     closeDialog: '关闭对话',

@@ -5,6 +5,7 @@ export default {
     history: '会話履歴',
     voiceInput: '音声入力',
     recordingStop: '録音中、クリックで停止',
+    asrAutoOff: '自動音声入力をオフ',
     screenshotAsk: 'スクリーンショットで質問',
     screenshotRetake: 'クリックで撮り直し、右クリックでキャンセル',
     closeDialog: '会話を閉じる',
