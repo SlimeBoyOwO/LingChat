@@ -12,6 +12,9 @@ import {
   asrRecognizeWav,
   asrCancel,
   asrVadProcessChunk,
+  asrStartStreaming,
+  asrStreamAudioChunk,
+  asrStopStreaming,
   asrRegisterHotkey,
   asrUnregisterHotkey,
   type AsrSource,
@@ -66,6 +69,12 @@ let autoTriggered = false
 let mobileMenuOpen = false
 /** 短暂显示锁：识别后填入 inputMessage 到自动 send 之间的窗口期，期间 ASR 禁用（§1.10） */
 let asrLockedUntil = 0
+/** 输入框桥：GameDialog 注册，供 partial 实时写入 / 拼接基准读取 */
+let inputBridge: { getText: () => string; setText: (v: string) => void } | null = null
+/** 录音开始时的输入框内容快照（拼接语义的基准：partial 只追加在这之后） */
+let baseText = ''
+/** 语音会话进行中（GameDialog 据此 readonly 输入框，语音期间禁止手动输入） */
+export const asrVoiceActive = ref(false)
 /** 惰性依赖（首次 useAsrInput() 调用时初始化） */
 let route: RouteLocationNormalizedLoaded | null = null
 let uiStore: ReturnType<typeof useUIStore> | null = null
@@ -97,6 +106,7 @@ function teardownRecorder() {
   stream = null
   pcmBuffer = []
   vadPending = []
+  streamPending = []
   vadSentFrames = 0
   if (asrStore) asrStore.setMicState('idle')
 }
@@ -105,6 +115,7 @@ function teardownRecorder() {
 function resetSession() {
   teardownRecorder()
   phase.value = 'idle'
+  asrVoiceActive.value = false
   activeSource.value = null
 }
 
@@ -162,6 +173,22 @@ function updateAsrAvailability(): void {
   }
 }
 
+/** GameDialog 调用：注册输入框读写桥（partial 写入 / 拼接基准） */
+export function registerAsrInputBridge(b: {
+  getText: () => string
+  setText: (v: string) => void
+}): void {
+  inputBridge = b
+}
+
+/** 流式是否生效：设置开关 + 当前 provider 支持流式（不支持时回退非流式链路） */
+function isStreamEnabled(): boolean {
+  const provider = asrStore?.providers.find(
+    (p) => p.id === asrStore?.settings.active_provider,
+  )
+  return !!(asrStore?.settings.stream_enabled && provider?.supports_streaming)
+}
+
 /** GameDialog 调用：同步移动端菜单展开状态（§1.5） */
 export function setMobileMenuOpen(open: boolean): void {
   mobileMenuOpen = open
@@ -202,6 +229,23 @@ function feedVad() {
     .finally(() => {
       vadSending = false
       feedVad()
+    })
+}
+
+// ── 流式识别音频流（stream 模式）：与 VAD 同节奏喂后端 WebSocket ──
+// 与 feedVad 相同串行单飞：invoke 不保证顺序，WebSocket 帧必须保序。
+let streamPending: number[] = []
+let streamSending = false
+function feedStream() {
+  if (!asrStore || phase.value !== 'recording') return
+  if (streamSending || streamPending.length < 512) return
+  const block = streamPending.splice(0, 512)
+  streamSending = true
+  asrStreamAudioChunk(block)
+    .catch((e) => console.warn('[ASR/stream] 发送音频块失败:', e))
+    .finally(() => {
+      streamSending = false
+      feedStream()
     })
 }
 
@@ -289,8 +333,18 @@ async function start(source: AsrSource) {
   }
   activeSource.value = source
   phase.value = 'recording'
+  asrVoiceActive.value = true
   asrStore?.setMicState('recording')
   try {
+    // 拼接基准：录音开始时的输入框内容（按钮/快捷键输入可拼接，auto 统一处理）
+    baseText = inputBridge?.getText() ?? ''
+    // 流式：先建 WebSocket（互斥由后端 stream 检查 + start_listening 的 active 检查双层保证）
+    if (isStreamEnabled()) {
+      await asrStartStreaming({
+        providerId: asrStore?.settings.active_provider ?? 'openai-whisper',
+        languageHint: null,
+      })
+    }
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         sampleRate: 16000,
@@ -320,6 +374,14 @@ async function start(source: AsrSource) {
         }
         feedVad()
       }
+      if (isStreamEnabled()) {
+        streamPending.push(...data)
+        // 与 vadPending 同思路的上限保护（8192 块 ≈ 4 分钟音频）
+        if (streamPending.length > 8192) {
+          streamPending.splice(0, streamPending.length - 8192)
+        }
+        feedStream()
+      }
     }
     await asrStartListening(source)
   } catch (err: unknown) {
@@ -343,7 +405,27 @@ function stop() {
   const captured = pcmBuffer
   teardownRecorder()
   void asrStopListening(source)
-  void doRecognize(source, captured)
+  if (isStreamEnabled()) {
+    void doStreamFinish(source)
+  } else {
+    void doRecognize(source, captured)
+  }
+}
+
+/** 流式收尾：stop → 等整段 final → handle（与非流式同链路） */
+async function doStreamFinish(source: AsrSource) {
+  try {
+    const result = await asrStopStreaming()
+    asrStore?.onResult(result)
+    handle(result.text, source)
+  } catch (err) {
+    console.error('[ASR/stream] 收尾失败:', err)
+    resetSession()
+    if (source === 'auto') {
+      autoTriggered = false
+      updateAsrAvailability()
+    }
+  }
 }
 
 /** 把录音 PCM 合成 WAV 送识别，成功后 handle() */
@@ -447,6 +529,13 @@ function ensureInit() {
     },
   )
 
+  // 流式 partial：实时写入输入框（整体替换语音追加块，不触碰 baseText 之前的内容）
+  listen('asr://stream_partial', (e) => {
+    if (phase.value === 'recording' && typeof e.payload === 'string') {
+      inputBridge?.setText(baseText + e.payload)
+    }
+  })
+
   // ── 系统级全局快捷键（后台可触发） ──
   // 后端 RegisterHotKey 注册/注销，设置启用或组合变化时同步
   watch(
@@ -466,6 +555,15 @@ function ensureInit() {
   )
   // 按下 → 开始录音；释放 → 停止（RegisterHotKey 只有按下通知，释放由后端轮询检测）
   listen('asr://hotkey_down', () => {
+    const settings = asrStore?.settings
+    // auto_listen 开启时：快捷键 = 关闭自动语音输入（可独立禁用防误触）
+    if (settings?.auto_listen && settings.hotkey_toggle_auto_listen) {
+      console.log('[ASR] hotkey: 关闭自动语音输入')
+      settings.auto_listen = false
+      updateAsrAvailability()
+      void asrStore?.save(settings).catch((e) => console.warn('[ASR] save failed:', e))
+      return
+    }
     if (canStartAsr() && phase.value === 'idle') {
       void start('hotkey').catch(() => {
         /* 会话忙时静默忽略 */
