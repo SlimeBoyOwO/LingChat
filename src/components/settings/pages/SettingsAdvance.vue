@@ -41,6 +41,15 @@
         </button>
         <button
           class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
+          :class="advanceTab === 'dlc'
+            ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+            : 'text-white/60 hover:text-white/80'"
+          @click="advanceTab = 'dlc'"
+        >
+          {{ $t('advance.tabs.dlc') }}
+        </button>
+        <button
+          class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
           :class="advanceTab === 'other'
             ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
             : 'text-white/60 hover:text-white/80'"
@@ -70,6 +79,11 @@
         <SettingsTools />
       </div>
 
+      <!-- ====== DLC 管理 ====== -->
+      <div v-else-if="advanceTab === 'dlc'" class="flex-1 min-h-0 overflow-hidden">
+        <SettingsDlc />
+      </div>
+
       <!-- ====== 其他高级设置 ====== -->
       <div v-else class="flex-1 min-h-0">
         <SettingsAdvanceOther
@@ -88,6 +102,7 @@ import SettingsLlmProviders from './SettingsLlmProviders.vue'
 import SettingsAdvanceMenu from './SettingsAdvanceMenu.vue'
 import SettingsTts from './SettingsTts.vue'
 import SettingsTools from './SettingsTools.vue'
+import SettingsDlc from './SettingsDlc.vue'
 import SettingsAdvanceOther from './SettingsAdvanceOther.vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 

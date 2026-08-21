@@ -6,6 +6,7 @@ export default {
     tools: "Tool Settings",
     other: "Other Advanced Settings",
     tts: "Local TTS",
+    dlc: "DLC",
   },
   menu: {
     llmTitle: "LLM Management",
@@ -25,5 +26,18 @@ export default {
     guideTitle: "Built-in TTS Guide",
     guideDesc: "View the built-in TTS tutorial (downloading models, importing voices, switching devices, etc.)",
     guideButton: "Open guide",
+    dlcTitle: "DLC Manager",
+    dlcDesc: "Detect, import or remove DLC script packs (zip) — installed packs appear in the script list right away",
+    dlcButton: "Open DLC Manager",
+  },
+  dlc: {
+    notice:
+      "DLC packs are third-party script packages with unreviewed content and may contain horror, jumpscares or disturbing scenes. Only install packs from sources you trust.",
+    add: "Add DLC Pack (.zip)",
+    importing: "Importing…",
+    empty: "No DLC detected yet. Use the button above to pick a DLC zip and install it.",
+    remove: "Remove",
+    removeConfirm: "Remove \"{name}\"? All of its files will be deleted.",
+    warningHorror: "⚠ Horror",
   },
 }

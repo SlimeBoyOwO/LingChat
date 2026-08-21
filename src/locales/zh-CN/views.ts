@@ -19,6 +19,7 @@ export default {
     continueFailMessage: '未创建存档或系统问题',
     scriptListFailed: '获取剧本列表失败：请确认后端已启动',
     perfTip: '如果你觉得在这个页面很卡，可以前往 通用设置 中关闭星星粒子或流星动画。',
+    dlcRecognized: '已识别 DLC：{names}',
   },
   petMode: {
     settingsWindowTitle: '设置',

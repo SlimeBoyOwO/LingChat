@@ -78,6 +78,13 @@ pub struct BackgroundEffectPayload {
     pub effect: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    /// 可选的演出文本（目前仅 BSOD 假异常窗口使用：trace 行内容）。
+    /// 由剧本自带，引擎组件不再硬编码任何具体剧本的彩蛋文本。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// 可选的 BSOD 彩蛋独白（延迟淡入的小字），缺省不显示。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub echo: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

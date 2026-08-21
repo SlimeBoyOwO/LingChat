@@ -74,6 +74,14 @@ interface UIState {
   /** 恐怖剧本入口过渡阶段：'' 无 / 'freeze' 卡死 / 'static' 花屏 */
   horrorEntryPhase: '' | 'freeze' | 'static'
 
+  /** BSOD 假异常窗口的 trace 行文本（剧本经 background_effect.text 自带；空串 = 用通用默认） */
+  bsodText: string
+  /** BSOD 彩蛋独白（background_effect.echo；空串 = 不显示独白） */
+  bsodEcho: string
+
+  /** DLC 变更信号：导入/卸载后 +1，主菜单等监听它刷新剧本列表与 DLC 提示 */
+  dlcRefreshToken: number
+
   // 环境音轨道列表（多轨并行，最多8轨）
   ambientTracks: Array<{
     id: string         // 唯一标识（基于时间戳+随机数）
@@ -160,6 +168,12 @@ export const useUIStore = defineStore('ui', {
     spriteFlash: null,
 
     horrorEntryPhase: '',
+
+    // BSOD 假异常窗口的剧本自带文本（空串 = 通用默认/无独白）
+    bsodText: '',
+    bsodEcho: '',
+
+    dlcRefreshToken: 0,
 
     // 环境音轨道列表初始值
     ambientTracks: [],
@@ -298,6 +312,9 @@ export const useUIStore = defineStore('ui', {
       this.spriteFlash = null
       // 恶魔音残留一并清理（剧本结束/进入/启动时都会走到这里）
       this.voiceRate = 1
+      // BSOD 的剧本自带文本一并清掉，回到通用默认
+      this.bsodText = ''
+      this.bsodEcho = ''
     },
     /**
      * 恐怖剧本入口过渡：卡死 1.1s → 花屏 0.8s，结束后 resolve。

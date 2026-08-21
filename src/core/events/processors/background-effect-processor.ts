@@ -20,6 +20,15 @@ export default class BackgroundEffectProcessor implements IEventProcessor {
     // 处理对话逻辑
     gameStore.currentStatus = 'presenting'
 
+    // BSOD 的剧本自带彩蛋文本（trace 行/独白）；切到非 BSOD 特效时清掉
+    if (event.effect.split('+').includes('BSOD')) {
+      uiStore.bsodText = event.text ?? ''
+      uiStore.bsodEcho = event.echo ?? ''
+    } else if (uiStore.bsodText || uiStore.bsodEcho) {
+      uiStore.bsodText = ''
+      uiStore.bsodEcho = ''
+    }
+
     const duration = event.duration
     if (duration > 0) {
       // 限时特效（如 BloodUI 一闪）：展示 duration 秒后还原为之前的特效

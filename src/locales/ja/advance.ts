@@ -5,6 +5,7 @@ export default {
     tools: 'ツール設定',
     other: 'その他の詳細設定',
     tts: 'ローカル TTS',
+    dlc: 'DLC 管理',
   },
   menu: {
     llmTitle: 'モデル管理',
@@ -24,5 +25,18 @@ export default {
     guideTitle: '内蔵 TTS チュートリアル',
     guideDesc: '内蔵 TTS の使い方（モデルのダウンロード、音声のインポート、デバイス切り替えなど）を確認',
     guideButton: 'チュートリアルを開く',
+    dlcTitle: 'DLC 管理',
+    dlcDesc: 'DLC シナリオパック（zip）の認識・インポート・削除。インストール後すぐシナリオリストに表示',
+    dlcButton: 'DLC 管理画面へ',
+  },
+  dlc: {
+    notice:
+      'DLC はサードパーティ製のシナリオパックで内容は未審査です。ホラー・驚かせる演出・不快な内容が含まれる場合があります。信頼できる配布元のパックのみインストールしてください。',
+    add: 'DLC パックを追加（zip）',
+    importing: 'インポート中……',
+    empty: '認識済みの DLC はまだありません。上のボタンから DLC の zip を選んでインストールしてください。',
+    remove: '削除',
+    removeConfirm: '「{name}」を削除しますか？全ファイルが削除されます。',
+    warningHorror: '⚠ ホラー',
   },
 }

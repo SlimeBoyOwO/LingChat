@@ -1,29 +1,46 @@
 <template>
-  <!-- DDLC ch5 fake_exception 同款假异常窗口：浅灰底 + 等宽报错文本（内容为原创恶搞文本，非真实错误） -->
+  <!-- DDLC ch5 fake_exception 同款假异常窗口：浅灰底 + 等宽报错文本。
+       trace/独白文本由剧本经 background_effect 的 text/echo 字段自带；
+       缺省时 trace 用通用占位，无独白——引擎不硬编码任何剧本的彩蛋文本。 -->
   <div
     v-if="enabled"
     class="crash-layer"
   >
     <div class="crash-title">An exception has occurred.</div>
     <div class="crash-trace">
-      File "game/data/game_data/scripts/standalone/第七个测试剧本/Chapters/end_cold.yaml", line 88<br>
+      {{ traceLine }}<br>
       See traceback.txt for details.
     </div>
-    <div class="crash-echo">
-      唔……人家好像把什么弄坏了？<br>
-      等人家一下，应该还能修好……<br>
-      其实吧，把"她"直接删掉会快一点。啊哈哈。
-    </div>
+    <div v-if="echoHtml" class="crash-echo" v-html="echoHtml"></div>
     <div class="crash-flicker"></div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useUIStore } from '@/stores/modules/ui/ui'
+
 defineProps({
   enabled: {
     type: Boolean,
     default: true,
   },
+})
+
+const uiStore = useUIStore()
+
+const traceLine = computed(
+  () => uiStore.bsodText || 'File "game/script.rpy", line 88',
+)
+// 独白允许剧本用 \n 分行；转义后换行转 <br>，防 HTML 注入
+const echoHtml = computed(() => {
+  const raw = uiStore.bsodEcho
+  if (!raw) return ''
+  const escaped = raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  return escaped.replace(/\n/g, '<br>')
 })
 </script>
 

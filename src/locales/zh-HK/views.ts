@@ -19,7 +19,8 @@ export default {
     "continueFailTitle": "繼續失敗",
     "continueFailMessage": "未建立存檔或者系統出咗問題",
     "scriptListFailed": "攞劇本列表失敗：請確認後端已經啟動咗",
-    "perfTip": "如果你覺得喺呢個頁面好卡，可以去 通用設置 度閂咗星星粒子或者流星動畫。"
+    "perfTip": "如果你覺得喺呢個頁面好卡，可以去 通用設置 度閂咗星星粒子或者流星動畫。",
+    "dlcRecognized": "已識別 DLC：{names}"
   },
   "petMode": {
     "settingsWindowTitle": "設置"

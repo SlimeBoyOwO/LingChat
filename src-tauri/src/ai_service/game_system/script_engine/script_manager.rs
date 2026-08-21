@@ -196,6 +196,34 @@ impl ScriptManager {
         self.all_scripts.get(name)
     }
 
+    /// 运行中动态加载一个剧本目录（DLC 导入后立刻可玩，无需重启）。
+    /// 返回剧本名（`all_scripts` 的键）。
+    pub fn load_script_dir(&mut self, script_path: &Path) -> Result<String> {
+        let status = Self::read_script_config(script_path)?;
+        let name = status.name.clone();
+        if self.all_scripts.contains_key(&name) {
+            return Err(anyhow!("剧本 '{}' 已存在", name));
+        }
+        self.all_scripts.insert(name.clone(), status);
+        tracing::info!("[ScriptManager] 动态加载剧本: {} ({:?})", name, script_path);
+        Ok(name)
+    }
+
+    /// 按剧本目录动态卸载（DLC 移除用）。返回被卸载的剧本名。
+    /// 调用方负责在剧本未运行时执行。
+    pub fn unload_script_dir(&mut self, script_path: &Path) -> Option<String> {
+        let name = self
+            .all_scripts
+            .iter()
+            .find(|(_, s)| s.script_path == script_path)
+            .map(|(k, _)| k.clone());
+        if let Some(ref n) = name {
+            self.all_scripts.remove(n);
+            tracing::info!("[ScriptManager] 动态卸载剧本: {} ({:?})", n, script_path);
+        }
+        name
+    }
+
     // ============================================================
     // Script lifecycle
     // ============================================================

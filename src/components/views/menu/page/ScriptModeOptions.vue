@@ -7,9 +7,9 @@
       >
         {{ script.script_name }}
       </StartItem>
-      <!-- 带持久化记忆的剧本（恐怖向）提供一键重置，回到第一周目 -->
+      <!-- 声明了跨局记忆变量（persistent_vars）的剧本提供一键重置，回到第一周目 -->
       <button
-        v-if="script.content_warning === 'horror'"
+        v-if="script.has_persistent_vars"
         :key="`${script.script_name}-reset`"
         class="reset-memory-btn"
         type="button"

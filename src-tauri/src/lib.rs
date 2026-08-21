@@ -718,9 +718,13 @@ pub fn run() {
             api::script::reset_script_state,
             api::script::stop_script,
             api::script::warp_cursor,
+            // ── DLC 剧本包 ──
+            api::dlc::list_dlcs,
+            api::dlc::import_dlc,
+            api::dlc::remove_dlc,
             // ── 剧本编辑器 ──
             api::script_editor::editor_get_schema,
-            // 内置受保护剧本由 utils::script_paths 路径层拦截（枚举不列出/解析拒绝），编辑器自身零改动
+            // 声明 editor_locked 的剧本由 utils::script_paths 路径层拦截（枚举不列出/解析拒绝），编辑器自身零改动
             api::script_editor::editor_list_scripts,
             api::script_editor::editor_read_script,
             api::script_editor::editor_read_chapter,

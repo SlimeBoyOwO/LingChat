@@ -70,6 +70,10 @@ export interface ScriptPresentPicEvent extends ScriptEvent {
 export interface ScriptBackgroundEffectEvent extends ScriptEvent {
   type: 'background_effect'
   effect: string
+  /** BSOD 假异常窗口的 trace 行文本（剧本自带彩蛋，缺省用通用默认） */
+  text?: string
+  /** BSOD 彩蛋独白（延迟淡入的小字），缺省不显示 */
+  echo?: string
 }
 
 export interface ScriptSoundEvent extends ScriptEvent {

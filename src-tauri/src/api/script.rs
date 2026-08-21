@@ -22,6 +22,17 @@ pub struct ScriptSummary {
     pub intro_chapter: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_warning: Option<String>,
+    /// 剧本是否声明了 persistent_vars（跨局记忆变量）。前端据此显示
+    /// 「重置记忆」按钮——按能力声明而不是按剧本名/警告类型硬编码。
+    pub has_persistent_vars: bool,
+}
+
+/// 从剧本 settings（story_config 的 script_settings 段）读 persistent_vars 声明。
+fn has_persistent_vars(s: &crate::ai_service::types::ScriptStatus) -> bool {
+    s.settings
+        .get("persistent_vars")
+        .and_then(|v| v.as_array())
+        .is_some_and(|a| !a.is_empty())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -48,6 +59,7 @@ pub async fn list_scripts(app: AppHandle) -> Result<ScriptListResponse, String> 
             folder_key: s.folder_key.clone(),
             intro_chapter: s.intro_chapter.clone(),
             content_warning: s.content_warning.clone(),
+            has_persistent_vars: has_persistent_vars(s),
         })
         .collect();
 
@@ -69,6 +81,7 @@ pub async fn list_standalone_scripts(app: AppHandle) -> Result<ScriptListRespons
             folder_key: s.folder_key.clone(),
             intro_chapter: s.intro_chapter.clone(),
             content_warning: s.content_warning.clone(),
+            has_persistent_vars: has_persistent_vars(s),
         })
         .collect();
 

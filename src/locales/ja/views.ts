@@ -19,6 +19,7 @@ export default {
     continueFailMessage: 'セーブデータが未作成か、システムに問題があります',
     scriptListFailed: 'シナリオ一覧の取得に失敗しました：バックエンドが起動しているか確認してください',
     perfTip: 'このページの動作が重い場合は、一般設定で星のパーティクルや流星アニメーションをオフにできます。',
+    dlcRecognized: 'DLC 認識済み：{names}',
   },
   petMode: {
     settingsWindowTitle: '設定',

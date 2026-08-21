@@ -20,6 +20,8 @@ export interface ScriptSummary {
   folder_key?: string
   intro_chapter?: string
   content_warning?: string
+  /** 剧本声明了 persistent_vars（跨局记忆）时为 true，前端据此显示「重置记忆」 */
+  has_persistent_vars?: boolean
 }
 
 export interface ScriptInfo {

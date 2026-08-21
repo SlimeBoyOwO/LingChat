@@ -58,6 +58,21 @@
       </MenuItem>
     </div>
 
+    <!-- DLC 管理 -->
+    <div class="cursor-pointer transition-all duration-300" @click="emit('navigate', 'dlc')">
+      <MenuItem :title="$t('advance.menu.dlcTitle')" size="large">
+        <template #header>
+          <Package :size="20" />
+        </template>
+        <p class="text-white/50 text-sm leading-relaxed mb-3">
+          {{ $t('advance.menu.dlcDesc') }}
+        </p>
+        <Button type="big" icon="advance" :icon_size="18">
+          {{ $t('advance.menu.dlcButton') }}
+        </Button>
+      </MenuItem>
+    </div>
+
     <!-- 界面语言 -->
     <div class="transition-all duration-300">
       <MenuItem :title="$t('advance.menu.languageTitle')" size="large">
@@ -102,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { AudioLines, BookOpen, Cpu, SlidersHorizontal, Languages, Wrench } from 'lucide-vue-next'
+import { AudioLines, BookOpen, Cpu, SlidersHorizontal, Languages, Wrench, Package } from 'lucide-vue-next'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useI18n } from 'vue-i18n'
 import { MenuItem } from '../../ui'
@@ -112,7 +127,7 @@ import { SUPPORTED_LOCALES, setLocale, type AppLocale } from '@/locales'
 const { locale } = useI18n()
 
 const emit = defineEmits<{
-  navigate: [tab: 'llm' | 'tts' | 'other' | 'tools']
+  navigate: [tab: 'llm' | 'tts' | 'other' | 'tools' | 'dlc']
 }>()
 
 // 内置 TTS 官方教程（LingBlog）

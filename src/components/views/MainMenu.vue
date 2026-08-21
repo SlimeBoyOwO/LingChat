@@ -84,6 +84,14 @@
 
       <StartLogo @click="goToGithub" />
     </StartPage>
+
+    <!-- DLC 识别提示（右下角小字；有已识别 DLC 时才显示） -->
+    <div
+      v-if="currentPage === 'mainMenu' && dlcNames.length > 0"
+      class="dlc-hint"
+    >
+      {{ $t('views.mainMenu.dlcRecognized', { names: dlcNames.join('、') }) }}
+    </div>
   </div>
 </template>
 
@@ -97,6 +105,7 @@ import { SettingsPanel as Settings } from '../settings/'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useSettingsStore } from '../../stores/modules/settings'
 import { getScriptList, type ScriptSummary } from '@/api/services/script-info'
+import { listDlcs } from '@/api/services/dlc'
 import { invoke } from '@tauri-apps/api/core'
 import { useGameStore } from '../../stores/modules/game'
 import { applyWebInitData } from '../../stores/modules/game/actions'
@@ -116,6 +125,8 @@ const currentPage = ref('mainMenu')
 const menuState = ref<'main' | 'gameMode' | 'scriptMode' | 'workshop'>('main')
 const scripts = ref<ScriptSummary[]>([])
 const loadingScripts = ref(false)
+// 已识别的 DLC 剧本包名（主菜单右下角提示用）
+const dlcNames = ref<string[]>([])
 const starsEnabled = computed(() => settingsStore.mainMenuStarsEnabled)
 const meteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled)
 const meteorFps = computed(() => settingsStore.meteorFps)
@@ -218,6 +229,24 @@ async function fetchScripts() {
   }
 }
 
+// DLC 识别提示：读取已安装的 DLC 剧本包（失败静默，只是个小字提示）
+async function fetchDlcs() {
+  try {
+    dlcNames.value = (await listDlcs()).map((d) => d.name)
+  } catch {
+    dlcNames.value = []
+  }
+}
+
+// DLC 管理页导入/卸载后，剧本列表与提示一并刷新
+watch(
+  () => uiStore.dlcRefreshToken,
+  () => {
+    fetchScripts()
+    fetchDlcs()
+  },
+)
+
 onMounted(() => {
   const initializeMenu = async () => {
     // 性能提示只显示一次
@@ -235,6 +264,7 @@ onMounted(() => {
     }
 
     fetchScripts()
+    fetchDlcs()
   }
 
   initializeMenu()
@@ -263,6 +293,19 @@ onMounted(() => {
   inset: 0;
   backdrop-filter: blur(12px) brightness(0.9);
   z-index: 10;
+  pointer-events: none;
+}
+
+/* DLC 识别提示：右下角小白字，不挡菜单 */
+.dlc-hint {
+  position: absolute;
+  right: 14px;
+  bottom: 30px;
+  z-index: 5;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.55);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
   pointer-events: none;
 }
 

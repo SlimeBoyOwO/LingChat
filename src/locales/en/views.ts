@@ -20,6 +20,7 @@ export default {
     continueFailMessage: "No save has been created, or something went wrong.",
     scriptListFailed: "Failed to fetch the scenario list — please make sure the backend is running.",
     perfTip: "If this page feels laggy, you can turn off the star particles or meteor animation in General Settings.",
+    dlcRecognized: "DLC detected: {names}",
   },
   petMode: {
     settingsWindowTitle: "Settings",

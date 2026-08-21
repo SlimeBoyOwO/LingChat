@@ -43,6 +43,8 @@ const CLEARING_EFFECTS: [&str; 3] = ["none", "None", ""];
 pub struct BackgroundEffectEvent {
     effect: String,
     duration: Option<f64>,
+    text: Option<String>,
+    echo: Option<String>,
 }
 
 impl BackgroundEffectEvent {
@@ -83,6 +85,14 @@ impl BackgroundEffectEvent {
         Self {
             effect,
             duration: parse_duration(data),
+            text: data
+                .get("text")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            echo: data
+                .get("echo")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
         }
     }
 }
@@ -99,6 +109,8 @@ impl ScriptEvent for BackgroundEffectEvent {
         let payload = BackgroundEffectPayload {
             effect: self.effect.clone(),
             duration: self.duration,
+            text: self.text.clone(),
+            echo: self.echo.clone(),
         };
         let _ = emit(ctx.app, SCRIPT_BACKGROUND_EFFECT, &payload);
 
