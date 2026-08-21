@@ -599,6 +599,14 @@ export default {
       meteorFps: '流星帧率 (FPS)',
       starsFps: '星星帧率 (FPS)',
     },
+    hdr: {
+      title: 'HDR 显示',
+      enable: '启用 HDR 模式',
+      restartHint: '更改后需重启应用生效',
+      restartBtn: '立即重启应用',
+      restartConfirm: 'HDR 模式设置将在重启后生效，确定立即重启应用吗？',
+      restartFailed: '重启失败，请手动重启应用',
+    },
     perf: {
       title: '性能检测',
       detecting: '正在检测硬件性能 …',
