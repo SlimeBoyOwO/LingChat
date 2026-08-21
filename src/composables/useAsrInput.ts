@@ -119,12 +119,17 @@ function resetSession() {
   activeSource.value = null
 }
 
-/** 丢弃当前录音：停止但不触发 recognize（spec §3.0 —— 路由/抽屉离开时） */
+/**
+ * 丢弃当前录音：停止本地采集但不触发识别（spec §3.0 —— 路由/抽屉离开时）。
+ *
+ * 注意：**在飞的云端识别不主动 cancel**（状态门控 plan §4 选 C）——
+ * 让它自然完成，结果由 handle() 的 §4 判定（currentStatus ≠ input → drop）
+ * 丢弃。之前这里对 recognizing 调 asrCancel()：用户发送消息后 AI 进入
+ * thinking 会触发 updateAsrAvailability → discardRecording → 在飞识别被
+ * 取消，用户白说（症状：[ASR] 识别失败: ASR 已取消）。
+ */
 function discardRecording() {
   const source = activeSource.value
-  if (phase.value === 'recognizing') {
-    void asrCancel()
-  }
   resetSession()
   if (source) void asrStopListening(source)
 }
