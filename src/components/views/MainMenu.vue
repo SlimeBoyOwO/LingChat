@@ -304,8 +304,10 @@ onMounted(() => {
   z-index: 5;
   font-size: 12px;
   letter-spacing: 0.05em;
-  color: rgba(255, 255, 255, 0.55);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.75),
+    0 0 2px rgba(0, 0, 0, 0.5);
   pointer-events: none;
 }
 
