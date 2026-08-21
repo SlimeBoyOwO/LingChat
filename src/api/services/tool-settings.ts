@@ -32,6 +32,17 @@ export interface ToolSettings {
   file_ops_allow_any_path: boolean
 }
 
+/** 后端按当前设备、模型、角色权限计算出的真实工具可用状态。 */
+export interface ToolRuntimeInfo {
+  platform: string
+  modelConfigured: boolean
+  nativeToolCallsSupported: boolean
+  commandAvailable: boolean
+  fileOpsAppSandboxOnly: boolean
+  registeredToolCount: number
+  allowedTools: string[]
+}
+
 /** 「其他工具」分组（与后端 TOOL_GROUPS 对齐；web_search 有独立设置区） */
 export const TOOL_GROUP_KEYS = [
   'schedule',
@@ -240,6 +251,10 @@ export function clearToolCallRecords() {
 
 export function getToolSettings(): Promise<ToolSettings> {
   return invoke<ToolSettings>('get_tool_settings')
+}
+
+export function getToolRuntimeInfo(): Promise<ToolRuntimeInfo> {
+  return invoke<ToolRuntimeInfo>('get_tool_runtime_info')
 }
 
 export function saveToolSettings(settings: ToolSettings): Promise<void> {
