@@ -13,7 +13,7 @@
 pub mod chapter;
 pub mod events;
 pub mod events_handler;
-mod persistent_state;
+pub mod persistent_state;
 pub mod responses;
 pub mod script_manager;
 pub mod utils;
