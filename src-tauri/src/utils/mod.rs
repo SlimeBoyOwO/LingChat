@@ -4,6 +4,7 @@ pub mod device;
 pub mod download;
 pub mod fs;
 pub mod file_logger;
+pub mod gpu_perf;
 pub mod llm_request_logger;
 pub mod log_bridge;
 pub mod path;

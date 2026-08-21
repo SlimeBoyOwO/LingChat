@@ -11,6 +11,15 @@ export interface ImportedFontInfo {
   file_path: string
 }
 
+export interface UploadFontResult {
+  actual_name: string
+  original_name: string
+  detected_kind: string
+  was_corrected: boolean
+  file_path: string
+  font_family: string
+}
+
 // 系统字体族名缓存。一次 app 运行内只枚举一次。
 let cached: string[] | null = null
 // 导入字体缓存。一次 app 运行内只枚举一次。
@@ -38,8 +47,8 @@ export async function listSystemFonts(force = false): Promise<string[]> {
 // ========== 导入字体管理 ==========
 
 /** 导入用户选择的字体文件到 data/fonts/。 */
-export async function importFont(path: string): Promise<ImportedFontInfo> {
-  return invoke<ImportedFontInfo>('import_font', { path })
+export async function importFont(path: string): Promise<UploadFontResult> {
+  return invoke<UploadFontResult>('import_font', { path })
 }
 
 /** 列出 data/fonts/ 中所有已导入字体。 */
