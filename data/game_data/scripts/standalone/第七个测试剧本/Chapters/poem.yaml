@@ -27,7 +27,8 @@ events:
     glitchMusicPath: '4g.ogg'
     warmStickerPath: '写诗Q版-她.png'
     scriptStickerPath: '写诗Q版-剧本.png'
-    voidStickerPath: '写诗Q版-空白.png'
+    # “空白”灰立绘已按主人要求移除：void 倾向复用“剧本”差分；崩坏大图路径也由本项推导（写诗Q版-崩坏.png）。
+    voidStickerPath: '写诗Q版-剧本.png'
     wordListPath: 'poem_words.yaml'
     resultVar: 'poem_tone'
     rounds: 20
