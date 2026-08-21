@@ -1,5 +1,5 @@
 <template>
-  <!-- 强制选择（DDLC 式）：真实鼠标被磁力强行拖向指定选项，然后自动提交 -->
+  <!-- 强制选择（DDLC 式）：真实鼠标被磁力强行拖向指定选项，但点击必须玩家自己动手 -->
   <div
     v-if="gameStore.forceChoice"
     ref="overlayRef"
@@ -20,6 +20,7 @@
               ? 'text-white bg-slate-900/40 forced-target'
               : 'text-white/40 bg-slate-900/20',
         ]"
+        @click="onChoiceClick(choice)"
       >
         <span class="text-lg font-medium tracking-widest text-center block drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
           {{ choice.text }}
@@ -33,6 +34,7 @@
 import { onBeforeUnmount, ref, watch, nextTick } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useGameStore } from '@/stores/modules/game'
+import type { ScriptChoiceItem } from '@/types/script'
 
 const gameStore = useGameStore()
 
@@ -69,7 +71,7 @@ function onMouseMove(e: MouseEvent) {
 
 const TICK_MS = 33 // 每帧拖动一步，约 30 步/秒
 const PULL_MS = 2600 // 2.6s 后完全被吸附
-const MAX_WARP_FAILURES = 5 // 连续失败这么多次就放弃拖动，直接兜底提交
+const MAX_WARP_FAILURES = 5 // 连续失败这么多次就放弃拖动，留在原地等玩家自己点
 
 async function tick() {
   const fc = gameStore.forceChoice
@@ -101,8 +103,8 @@ async function tick() {
     warpFailures += 1
     console.warn(`[ForceChoice] warp_cursor 失败(${warpFailures}/${MAX_WARP_FAILURES}):`, e)
     if (warpFailures >= MAX_WARP_FAILURES) {
-      console.warn('[ForceChoice] warp_cursor 持续失败，退化为普通选择')
-      finishFallback()
+      // 拖不动就放弃拖动、保持选项开着等玩家自己点——只有强制项可点，不会死锁
+      console.warn('[ForceChoice] warp_cursor 持续失败，退化为普通点击选择')
       return
     }
     timerId = window.setTimeout(tick, TICK_MS)
@@ -111,22 +113,31 @@ async function tick() {
 
   const dist = Math.hypot(realPos.x - tx, realPos.y - ty)
   if (pull >= 1 && dist < 4) {
-    submitted = true
-    // 吸附到按钮中心，停顿一拍后强制提交
+    // 完全吸附后把指针钉在按钮中心，但【不替玩家点击】——继续拖动循环，
+    // 玩家挣扎会被立刻拉回，直到玩家自己点下强制项（onChoiceClick）为止
+    realPos.x = tx
+    realPos.y = ty
     invoke('warp_cursor', { x: tx, y: ty }).catch(() => {})
-    window.setTimeout(() => submit(fc.forced), 350)
-    return
   }
 
   timerId = window.setTimeout(tick, TICK_MS)
 }
 
-/** warp 不可用时的兜底：直接自动提交 forced，避免剧本卡死 */
+/** warp 不可用/配置错误时的兜底：直接自动提交 forced，避免剧本卡死（仅用于 forced 配置无效的异常情况） */
 function finishFallback() {
   const fc = gameStore.forceChoice
   if (!fc || submitted) return
   submitted = true
   window.setTimeout(() => submit(fc.forced), 800)
+}
+
+/** 玩家自己点击：只有未被禁用的强制项会真正提交（其余按钮本就 disabled） */
+function onChoiceClick(choice: ScriptChoiceItem) {
+  const fc = gameStore.forceChoice
+  if (!fc || submitted) return
+  if (choice.disabled || choice.text !== fc.forced) return
+  submitted = true
+  submit(choice.text)
 }
 
 function submit(choice: string) {
@@ -147,7 +158,7 @@ watch(
     warpFailures = 0
     if (!fc) return
     if (!fc.forced || !fc.choices.some((c) => c.text === fc.forced && !c.disabled)) {
-      // forced 无效：直接自动提交第一项，避免死锁
+      // forced 配置无效（剧本 bug，正常流程不会走到）：兜底自动提交 forced 原文，避免死锁
       finishFallback()
       return
     }
