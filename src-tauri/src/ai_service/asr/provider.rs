@@ -86,6 +86,8 @@ pub struct ProviderInfo {
     pub description: &'static str,
     /// 默认 endpoint。
     pub default_endpoint: &'static str,
+    /// 是否支持流式协议（前端据此决定流式开关是否可用）。
+    pub supports_streaming: bool,
     /// UI 需要展示的配置字段。
     pub config_fields: Vec<AsrConfigField>,
 }
@@ -144,6 +146,11 @@ pub trait AsrProvider: Send + Sync {
         wav_bytes: Vec<u8>,
         language_hint: Option<&str>,
     ) -> Result<AsrResult, AsrError>;
+
+    /// 是否支持流式协议（WebSocket 实时识别）。默认不支持。
+    fn supports_streaming(&self) -> bool {
+        false
+    }
 }
 
 // ============================================================================
@@ -309,6 +316,10 @@ impl AsrProvider for QwenAsrProvider {
 
     fn config_fields(&self) -> Vec<AsrConfigField> {
         qwen_asr_config_fields()
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
     }
 
     #[instrument(skip(self, wav_bytes), fields(provider = Self::ID))]
@@ -765,6 +776,7 @@ pub fn list_provider_info() -> Vec<ProviderInfo> {
             display_name: OpenAiWhisperProvider::DISPLAY,
             description: "OpenAI 官方 Whisper-1（multipart 协议，全球可用）",
             default_endpoint: OpenAiWhisperProvider::DEFAULT_ENDPOINT,
+            supports_streaming: false,
             config_fields: openai_whisper_config_fields(),
         },
         ProviderInfo {
@@ -772,6 +784,7 @@ pub fn list_provider_info() -> Vec<ProviderInfo> {
             display_name: QwenAsrProvider::DISPLAY,
             description: "阿里云 DashScope 兼容模式 ASR（qwen-audio-asr）",
             default_endpoint: QwenAsrProvider::DEFAULT_ENDPOINT,
+            supports_streaming: true,
             config_fields: qwen_asr_config_fields(),
         },
         ProviderInfo {
@@ -779,6 +792,7 @@ pub fn list_provider_info() -> Vec<ProviderInfo> {
             display_name: GeminiProvider::DISPLAY,
             description: "Google Gemini 多模态识别（gemini-2.0-flash）",
             default_endpoint: GeminiProvider::DEFAULT_ENDPOINT,
+            supports_streaming: false,
             config_fields: gemini_config_fields(),
         },
         ProviderInfo {
@@ -786,6 +800,7 @@ pub fn list_provider_info() -> Vec<ProviderInfo> {
             display_name: LanWhisperProvider::DISPLAY,
             description: "LAN Whisper 自托管（OpenAI 协议 HTTP，可选鉴权）",
             default_endpoint: LanWhisperProvider::DEFAULT_ENDPOINT,
+            supports_streaming: false,
             config_fields: lan_whisper_config_fields(),
         },
     ]

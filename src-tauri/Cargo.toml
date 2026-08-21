@@ -59,6 +59,7 @@ regex = "1"
 genai = "0.6"
 uuid = { version = "1", features = ["v4"] }
 async-trait = "0.1"
+tokio-tungstenite = "0.26"
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "download-binaries"] }
 ndarray = "0.17"
 

@@ -39,6 +39,9 @@ pub enum AsrError {
 
     #[error("麦克风权限被拒绝")]
     MicPermissionDenied,
+
+    #[error("流式识别不受支持: {0}")]
+    StreamingNotSupported(String),
 }
 
 impl AsrError {
@@ -55,6 +58,7 @@ impl AsrError {
             Self::SessionBusy => "ASR_SESSION_BUSY",
             Self::Canceled => "ASR_CANCELED",
             Self::MicPermissionDenied => "ASR_MIC_DENIED",
+            Self::StreamingNotSupported(_) => "ASR_STREAMING_UNSUPPORTED",
         }
     }
 }
@@ -91,6 +95,10 @@ mod tests {
         assert_eq!(
             AsrError::MicPermissionDenied.i18n_code(),
             "ASR_MIC_DENIED"
+        );
+        assert_eq!(
+            AsrError::StreamingNotSupported("openai".into()).i18n_code(),
+            "ASR_STREAMING_UNSUPPORTED"
         );
     }
 }
