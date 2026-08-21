@@ -197,9 +197,68 @@ pub async fn asr_cancel(state: tauri::State<'_, AppState>) -> Result<(), String>
     let session_arc = state.asr_state.session.clone();
     let guard = session_arc.lock().await;
     if let Some(session) = guard.as_ref() {
+        session.cancel_stream().await;
         session.cancel();
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn asr_start_streaming(
+    provider_id: String,
+    language_hint: Option<String>,
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let session_arc = state.asr_state.session.clone();
+    let guard = session_arc.lock().await;
+    let session = guard.as_ref().ok_or("ASR not initialized")?;
+    // 仅支持流式的 provider 可启动
+    let supports = session
+        .providers
+        .get(&provider_id)
+        .map(|p| p.supports_streaming())
+        .unwrap_or(false);
+    if !supports {
+        return Err(AsrError::StreamingNotSupported(provider_id)
+            .i18n_code()
+            .to_string());
+    }
+    let settings = settings::load(&app).map_err(|e| e.i18n_code().to_string())?;
+    let api_key = settings
+        .provider_configs
+        .get(&provider_id)
+        .map(|c| c.api_key.clone())
+        .unwrap_or_default();
+    session
+        .start_streaming(&app, &provider_id, api_key, language_hint)
+        .await
+        .map_err(|e| e.i18n_code().to_string())
+}
+
+#[tauri::command]
+pub async fn asr_stream_audio_chunk(
+    pcm: Vec<f32>,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let session_arc = state.asr_state.session.clone();
+    let guard = session_arc.lock().await;
+    let session = guard.as_ref().ok_or("ASR not initialized")?;
+    session
+        .stream_audio_chunk(pcm)
+        .await
+        .map_err(|e| e.i18n_code().to_string())
+}
+
+#[tauri::command]
+pub async fn asr_stop_streaming(state: tauri::State<'_, AppState>) -> Result<AsrResult, String> {
+    let session_arc = state.asr_state.session.clone();
+    let guard = session_arc.lock().await;
+    let session = guard.as_ref().ok_or("ASR not initialized")?;
+    session
+        .stop_streaming()
+        .await
+        .map_err(|e| e.i18n_code().to_string())
 }
 
 #[tauri::command]

@@ -853,6 +853,9 @@ pub fn run() {
             api::asr::asr_test_provider,
             api::asr::asr_register_hotkey,
             api::asr::asr_unregister_hotkey,
+            api::asr::asr_start_streaming,
+            api::asr::asr_stream_audio_chunk,
+            api::asr::asr_stop_streaming,
             exit_app,
         ])
         .run(context)
