@@ -15,6 +15,7 @@ use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::chapter::Chapter;
 use crate::ai_service::game_system::script_engine::events::ScriptContext;
+use crate::ai_service::game_system::script_engine::persistent_state;
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_END, ScriptEndPayload,
 };
@@ -263,8 +264,14 @@ impl ScriptManager {
 
     /// Initialize a script: register its roles, set script_status, load player info.
     pub async fn init_script(script: &ScriptStatus, ctx: &mut ScriptContext<'_>) -> Result<()> {
-        // Set script_status on GameStatus
-        ctx.game_status.lock().await.script_status = Some(script.clone());
+        // Story previews are isolated from persistent state. Real runs may opt
+        // in to a small allow-list of variables via `persistent_vars`.
+        let active_script = if ctx.is_preview {
+            persistent_state::prepare_preview(script)
+        } else {
+            persistent_state::prepare_playthrough(script, ctx.data_dir)
+        };
+        ctx.game_status.lock().await.script_status = Some(active_script);
 
         // Load player info from script settings
         if let Some(user_name) = script.settings.get("user_name").and_then(|v| v.as_str()) {
@@ -507,6 +514,18 @@ impl ScriptManager {
                 None => (None, false),
             }
         };
+
+        // Save only the explicitly allow-listed story variables. Persistence
+        // failures must never prevent the normal teardown path from releasing
+        // the UI, and editor previews never touch the player's state file.
+        if !ctx.is_preview {
+            let snapshot = ctx.game_status.lock().await.script_status.clone();
+            if let Some(snapshot) = snapshot {
+                if let Err(error) = persistent_state::save_playthrough(&snapshot, ctx.data_dir) {
+                    tracing::warn!("[ScriptState] 剧本状态保存失败: {:#}", error);
+                }
+            }
+        }
 
         // Now re-acquire the lock and do all writes in one critical section
         {

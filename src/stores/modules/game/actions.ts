@@ -71,6 +71,7 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
 
   /** 标记进入剧情模式（用于控制UI显示：隐藏番茄钟/日程等） */
   enterStoryMode(this: GameState, scriptName: string = 'unknown', contentWarning?: string) {
+    this.poemGame = null
     this.runningScript = {
       scriptName,
       currentChapterName: '',
@@ -101,6 +102,7 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
   exitStoryMode(this: GameState) {
     this.runningScript = null
     this.forceChoice = null
+    this.poemGame = null
     // 恢复自由对话的 BGM 与循环模式并解除持久化屏蔽（恢复后的值会经 $subscribe 正常写盘）
     const uiStore = useUIStore()
     if (uiStore.preScriptBgm !== null) {

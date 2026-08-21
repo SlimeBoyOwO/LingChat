@@ -143,6 +143,28 @@ export interface ScriptForceChoiceEvent extends ScriptEvent {
   forced: string
 }
 
+export interface ScriptPoemWord {
+  text: string
+  warmPoints: number
+  scriptPoints: number
+  voidPoints: number
+  glitch: boolean
+}
+
+/** 20 轮选词写诗互动；每轮包含 10 个词。 */
+export interface ScriptPoemGameEvent extends ScriptEvent {
+  type: 'poem_game'
+  backgroundPath: string
+  musicPath: string
+  glitchMusicPath: string
+  warmStickerPath: string
+  scriptStickerPath: string
+  voidStickerPath: string
+  rounds: ScriptPoemWord[][]
+  normalLoopStart: number
+  glitchLoopStart: number
+}
+
 export interface ScriptErrorEvent extends ScriptEvent {
   type: 'error'
   error_code?: string
@@ -175,3 +197,4 @@ export type ScriptEventType =
   | ScriptFreeDialogueEvent
   | ScriptJumpscareEvent
   | ScriptForceChoiceEvent
+  | ScriptPoemGameEvent

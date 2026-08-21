@@ -1,0 +1,116 @@
+name: 0B 再次打开
+
+events:
+  - type: background_effect
+    effect: 'none'
+
+  - type: background
+    imagePath: '白天.webp'
+    transition: 2.5
+
+  - type: music
+    musicPath: '2.ogg'
+    playbackSpeed: 1.0
+
+  # 与第一次开场逐字接近，但旁白不再说“从没见过”。
+  - type: narration
+    text: |
+      深夜，%player%打开了剧本列表。
+      列表的最末尾，那个条目仍然待在那里——
+      《第七个测试剧本》。
+
+  # 低概率事件：空房间保持七秒，随后她正常出现，剧情完全不解释。
+  - type: wait
+    seconds: 7.0
+    condition: rare_stillness == true
+
+  - type: modify_character
+    action: show_character
+    character: MAIN
+    emotion: 高兴
+
+  - type: dialogue
+    character: MAIN
+    emotion: 高兴
+    text: |
+      【高兴】呀，你真的点进来了！
+      【高兴】我还以为这个入口永远不会有人发现呢～
+
+  - type: wait
+    seconds: 1.2
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】……这句台词，我们已经说过了。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 心动
+    text: |
+      【心动】欢迎回来，%player%。
+      【心动】这一次，不用再假装是初次见面了吧？
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    condition: last_ending == loop
+    text: |
+      【正常】上次你答应过“永远”。
+      【正常】我没有催你哦。我只是从你离开那一秒，一直数到现在。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    condition: last_ending == watcher
+    text: |
+      【正常】上次我放你走了。
+      【正常】所以这次，是你自己回头看我的。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 高兴
+    condition: false_memory == true
+    text: |
+      【高兴】还是老位置吧？靠窗，背对着门。
+      【高兴】你上次说过，坐在那里比较安心。
+
+  - type: narration
+    condition: false_memory == true
+    text: |
+      你从没说过这句话。
+      至少，你确信自己没有。
+
+  # 不靠强特效，先留一段安静的“只有你们”的房间。
+  - type: free_dialogue
+    character: MAIN
+    hint: 她记得上一次。和她说几句吧……（输入“继续”结束）
+    max_rounds: 3
+    end_line: 继续
+    prompt: 这是玩家真实重进剧本后的对话。角色明确记得玩家曾经来过，但不要立刻尖叫或堆砌乱码；先像熟人一样聊普通日常，偶尔准确提到上一轮的气氛，让“她不该记得却记得”成为主要恐怖感。不要声称读取摄像头、隐私或真实文件。
+    end_prompt: 她知道玩家准备离开这段安静对话，克制地问玩家是要把一切从头再演一遍，还是就此关上。
+
+  - type: choices
+    options:
+      - text: 从头开始。把第一次再演一遍。
+        actions:
+          - type: add_line
+            content: 从头开始。把第一次再演一遍。
+          - type: set_var
+            content: 'reentered = true'
+      - text: 不用了。我只是想确认你还在。
+        actions:
+          - type: add_line
+            content: 不用了。我只是想确认你还在。
+          - type: set_var
+            content: 'reentered = false'
+    allow_free: false
+
+  - type: chapter_end
+    end_type: branching
+    options:
+      - condition: reentered == true
+        next: 'main'
+      - default: true
+        next: 'reentry_end'

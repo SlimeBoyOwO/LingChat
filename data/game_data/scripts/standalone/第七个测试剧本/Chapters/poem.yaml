@@ -1,0 +1,111 @@
+name: 1B 写给不存在的人
+
+events:
+  - type: dialogue
+    character: MAIN
+    emotion: 高兴
+    text: |
+      【高兴】正式测试之前，先写点东西吧！
+      【高兴】每次挑一个词，一共二十个。喜欢那个词的“声音”会动一下哦。
+
+  - type: narration
+    text: |
+      她把一本摊开的笔记本推到你面前。
+      左页有三个没有署名的标记：她、剧本、空白。
+      右页的词像是刚刚才从纸里浮出来。
+
+  # 对齐 DDLC 的进场节奏：旧 BGM 先收掉，空两秒，再由小游戏播放 4.ogg。
+  - type: music
+    musicPath: none
+
+  - type: wait
+    seconds: 2.0
+
+  - type: poem_game
+    backgroundPath: '深夜诗笺-半页.png'
+    musicPath: '4.ogg'
+    glitchMusicPath: '4g.ogg'
+    warmStickerPath: '写诗Q版-她.png'
+    scriptStickerPath: '写诗Q版-剧本.png'
+    voidStickerPath: '写诗Q版-空白.png'
+    wordListPath: 'poem_words.yaml'
+    resultVar: 'poem_tone'
+    rounds: 20
+
+  - type: dialogue
+    character: MAIN
+    emotion: 心动
+    condition: poem_tone == warm
+    text: |
+      【心动】你选了好多温柔的词。
+      【心动】左页那个写着“她”的标记，跳得像心脏一样。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 无奈
+    condition: poem_tone == script
+    text: |
+      【无奈】“剧本”最喜欢你的诗。
+      【无奈】真奇怪。明明你选的只是词，排在一起却像一串命令。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 担心
+    condition: poem_tone == void
+    text: |
+      【担心】“空白”赢了。
+      【担心】它明明什么都没有，却一直在左页下面……越跳越近。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    condition: poem_glitch == true
+    text: |
+      【正常】刚才那个词，不在我准备的词库里。
+      【正常】你还是点了。为什么？
+
+  # 后续周目：完成写诗后约 1/6 触发一次“画面正在看你”的短演出。
+  - type: random_var
+    variable: poem_eyes
+    chance: 0.1666667
+    condition: playthrough != 1
+
+  - type: sound
+    soundPath: 'eyes.ogg'
+    condition: poem_eyes == true
+
+  - type: background_effect
+    effect: 'Blackout'
+    condition: poem_eyes == true
+
+  - type: wait
+    seconds: 1.2
+    condition: poem_eyes == true
+
+  - type: background
+    imagePath: '白天-崩坏2.webp'
+    transition: 0
+    condition: poem_eyes == true
+
+  - type: wait
+    seconds: 0.5
+    condition: poem_eyes == true
+
+  - type: background
+    imagePath: '白天.webp'
+    transition: 0
+    condition: poem_eyes == true
+
+  - type: background_effect
+    effect: 'none'
+    condition: poem_eyes == true
+
+  - type: dialogue
+    character: MAIN
+    emotion: 高兴
+    text: |
+      【高兴】写完啦。我们继续测试吧。
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'glitch1'

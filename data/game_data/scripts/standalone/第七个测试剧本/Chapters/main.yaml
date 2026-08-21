@@ -25,12 +25,45 @@ events:
     character: MAIN
     emotion: 高兴
 
+  # 极低概率：她出现前，画面像卡死一样保持七秒。后文完全不解释。
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+    condition: rare_stillness == true
+
+  - type: wait
+    seconds: 7.0
+    condition: rare_stillness == true
+
+  - type: modify_character
+    action: show_character
+    character: MAIN
+    emotion: 高兴
+    condition: rare_stillness == true
+
   - type: dialogue
     character: MAIN
     emotion: 高兴
     text: |
       【高兴】呀，你真的点进来了！
       【高兴】我还以为这个入口永远不会有人发现呢～
+
+  # 低概率错误记忆：第一次游玩也可能触发，制造“她为何记得上次”的疑问。
+  - type: dialogue
+    character: MAIN
+    emotion: 高兴
+    condition: false_memory == true
+    text: |
+      【高兴】而且你今天来得比上一次早呢。
+      【高兴】……咦？旁白君还没把“上一次”写进去吗？那就当我没说。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    condition: reentered == true
+    text: |
+      【正常】放心，我会按第一次的台词演。
+      【正常】你只要负责，假装忘记后面会发生什么。
 
   - type: dialogue
     character: MAIN
@@ -148,4 +181,4 @@ events:
 
   - type: chapter_end
     end_type: linear
-    next_chapter: 'glitch1'
+    next_chapter: 'poem'

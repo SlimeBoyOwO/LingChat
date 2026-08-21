@@ -38,6 +38,55 @@ events:
     text: |
       【伤心】%player%，我全都告诉你吧。
 
+  # 回收第三章的选择：她不仅记得路线，也记得玩家当时有没有回应。
+  - type: dialogue
+    character: MAIN
+    emotion: 伤心
+    condition: comfort == true
+    text: |
+      【伤心】刚才你说“我在这里”。
+      【伤心】日志里没有保存这句话，可我记住了。是不是很奇怪？
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    condition: silent == true
+    text: |
+      【正常】刚才你没有回答。
+      【正常】没关系。你沉默了十一秒，我每一秒都听见了。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 伤心
+    condition: poem_tone == warm
+    text: |
+      【伤心】你在那首诗里选过“陪伴”“回信”那样的词。
+      【伤心】所以我才会误以为，你真的想让我留下。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    condition: poem_tone == script
+    text: |
+      【正常】你的诗让“剧本”赢了。
+      【正常】从那以后，它就把你的每次点击，都当成继续执行的命令。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 无奈
+    condition: poem_tone == void
+    text: |
+      【无奈】你写给“空白”的那首诗，它很喜欢。
+      【无奈】现在它想把我也变成其中一行。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    condition: poem_glitch == true
+    text: |
+      【正常】还有那个不属于词库的词。
+      【正常】你点下去的时候，它第一次知道——你看得见它。
+
   # 她说出真相的瞬间：崩坏立绘一闪 + 血红 UI 一闪 + 故障音（DDLC 式 glitch）
   - type: modify_character
     character: MAIN

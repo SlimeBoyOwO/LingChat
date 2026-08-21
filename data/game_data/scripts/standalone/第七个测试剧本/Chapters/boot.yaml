@@ -1,0 +1,28 @@
+name: 0 启动检查
+
+# 每次真正进入剧本都会先经过这里。随机异常只写入本轮变量；
+# playthrough / last_ending 则来自安全的剧本状态文件。
+events:
+  # 约 1/16：复刻 DDLC 的低概率长停顿，不保证每次都能看到。
+  - type: random_var
+    variable: rare_stillness
+    chance: 0.0625
+
+  # 约 1/4：角色偶尔会记得一件玩家从未做过的事。
+  - type: random_var
+    variable: false_memory
+    chance: 0.25
+
+  - type: chapter_end
+    end_type: branching
+    options:
+      # 真结局优先：送走她以后，任何次数都只剩空房间。
+      - condition: last_ending == release
+        next: 'after_release'
+      - condition: playthrough == 1
+        next: 'main'
+      # 计数会在 7 封顶，此后永远停在“第七次”。
+      - condition: playthrough == 7
+        next: 'seventh_return'
+      - default: true
+        next: 'reentry'

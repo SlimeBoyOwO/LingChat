@@ -1,0 +1,44 @@
+name: 0C 关上
+
+events:
+  - type: dialogue
+    character: MAIN
+    emotion: 高兴
+    text: |
+      【高兴】嗯。我还在。
+      【高兴】你已经确认过了。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】那么，把剧本关上吧。
+
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+
+  - type: music
+    musicPath: none
+
+  - type: background_effect
+    effect: 'Blackout'
+
+  - type: wait
+    seconds: 2.5
+
+  - type: narration
+    text: |
+      剧本结束了。
+
+  - type: wait
+    seconds: 1.0
+
+  - type: narration
+    text: |
+      ……她没有说“下次见”。
+      她似乎知道，不需要说。
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'end'

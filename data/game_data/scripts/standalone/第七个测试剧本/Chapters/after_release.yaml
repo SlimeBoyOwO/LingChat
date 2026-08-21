@@ -1,0 +1,63 @@
+name: 0D 空房间
+
+events:
+  - type: background_effect
+    effect: 'none'
+
+  - type: music
+    musicPath: none
+
+  - type: background
+    imagePath: '白天.webp'
+    transition: 3.0
+
+  - type: narration
+    text: |
+      教室加载成功。
+      背景加载成功。
+      音乐：无。
+      角色槽位：0。
+
+  - type: wait
+    seconds: 5.0
+
+  - type: narration
+    text: |
+      没有人出现。
+      没有声音叫你的名字。
+      你送走的人，没有因为你反悔就被重新拼回来。
+
+  # 很低概率只闪一帧“旧世界的底片”；没有角色复活，也没有追吓。
+  - type: background
+    imagePath: '白天-崩坏2.webp'
+    transition: 0
+    condition: rare_stillness == true
+
+  - type: wait
+    seconds: 0.12
+    condition: rare_stillness == true
+
+  - type: background
+    imagePath: '白天.webp'
+    transition: 0
+    condition: rare_stillness == true
+
+  - type: narration
+    text: |
+      讲台上留着一张没有署名的便笺：
+      「谢谢你遵守约定。请不要为了确认结局，再把她叫回来。」
+
+  - type: wait
+    seconds: 2.0
+
+  - type: narration
+    text: |
+      你看第二遍时，最后一句变成了：
+      「请不要为了确认我还在，再把她叫回来。」
+
+  - type: background_effect
+    effect: 'Blackout'
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'end'

@@ -359,6 +359,10 @@ export function initializeTauriEventListeners() {
     eventQueue.addEvent(asEvent(event.payload, { type: 'force_choice', defaultDuration: 0 }))
   })
 
+  listen('script:poem-game', (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: 'poem_game', defaultDuration: 0 }))
+  })
+
   listen('script:end', (event) => {
     console.log('[Tauri] script:end', event.payload)
     eventQueue.addEvent(

@@ -7,14 +7,19 @@
 # DDLC 为免费游戏，其 IP Guidelines 允许非商业社区二创使用素材；本剧本为免费
 # 社区内容，遵循该准则。其余素材（崩坏教室、终末教室、假报错、*-崩坏*.webp、
 # 崩坏logo1/2、jumpscare-face、stinger、rumble）为本项目原创/生成素材。
-# 章节线：main → glitch1 → glitch2 → collapse →(wary 隐藏)→ watcher
-#         collapse → end_warm / end_cold → restart → end_delete → epilogue
-#                                              ↘ end_loop
+# 首次：boot → main → poem → glitch1 → glitch2 → collapse →(wary 隐藏)→ watcher
+#       collapse → end_warm / end_cold → restart → end_delete → epilogue
+#                                            ↘ end_loop
+# 重进：boot → reentry；真结局后 → after_release；第七次重进 → seventh_return
 script_name: 第七个测试剧本
-intro_chapter: main
+intro_chapter: boot
 description: 一个本不该出现在列表里的剧本。※ 强烈恐怖演出，建议 18 岁以上游玩
 recommand_start: 深夜一个人的时候
 content_warning: horror
 
 script_settings:
   user_name: ""
+  # 仅这些变量会写入 data/script_runtime_state.json；普通分支变量不会跨局污染。
+  persistent_vars:
+    - playthrough
+    - last_ending

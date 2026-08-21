@@ -27,6 +27,7 @@ pub mod event_names {
     pub const SCRIPT_FREE_DIALOGUE: &str = "script:free-dialogue";
     pub const SCRIPT_JUMPSCARE: &str = "script:jumpscare";
     pub const SCRIPT_FORCE_CHOICE: &str = "script:force-choice";
+    pub const SCRIPT_POEM_GAME: &str = "script:poem-game";
     pub const SCRIPT_VOICE_SHIFT: &str = "script:voice-shift";
 }
 
@@ -118,6 +119,34 @@ pub struct ForceChoicePayload {
     pub forced: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+}
+
+/// 选词写诗小游戏中的一个候选词。三个分值只用于客户端即时反馈，
+/// 最终结果会回传并由后端再次校验范围。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoemWordPayload {
+    pub text: String,
+    pub warm_points: i64,
+    pub script_points: i64,
+    pub void_points: i64,
+    #[serde(default)]
+    pub glitch: bool,
+}
+
+/// DDLC 式选词写诗互动，但使用本剧本原创的「她 / 剧本 / 空白」三种倾向。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoemGamePayload {
+    pub background_path: String,
+    pub music_path: String,
+    pub glitch_music_path: String,
+    pub warm_sticker_path: String,
+    pub script_sticker_path: String,
+    pub void_sticker_path: String,
+    pub rounds: Vec<Vec<PoemWordPayload>>,
+    pub normal_loop_start: f64,
+    pub glitch_loop_start: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]

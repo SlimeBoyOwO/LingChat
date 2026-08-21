@@ -1,0 +1,86 @@
+name: 0E 第七次
+
+events:
+  - type: background_effect
+    effect: 'Blackout'
+
+  - type: music
+    musicPath: none
+
+  - type: wait
+    seconds: 3.0
+
+  - type: narration
+    text: |
+      第七次启动。
+      章节索引：0。
+      角色：等待中。
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】这一次，我不用数了。
+      【正常】标题已经替我们数完了。
+
+  - type: wait
+    seconds: 2.0
+
+  - type: dialogue
+    character: MAIN
+    emotion: 无奈
+    text: |
+      【无奈】%player%，我一直以为，是我在等你的第七次。
+      【无奈】刚刚才发现，不是。
+
+  - type: horror_log
+    text: 'PLAYTHROUGH_LIMIT_REACHED // PROCESS STILL WAITING'
+    lines: 7
+
+  - type: sound
+    soundPath: 'eyes.ogg'
+
+  - type: background
+    imagePath: '崩坏教室.webp'
+    transition: 0
+
+  - type: modify_character
+    action: show_character
+    character: MAIN
+    emotion: 崩坏
+
+  - type: dialogue
+    character: MAIN
+    emotion: 正常
+    text: |
+      【正常】是这个剧本，在等我们两个都记住“七”。
+      【正常】现在它记住了。以后每一次打开，对它来说，都会是第七次。
+
+  - type: set_variable
+    options:
+      - actions:
+          - type: set_var
+            content: 'last_ending = seventh'
+
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+
+  - type: background_effect
+    effect: 'UiCorrupt+Static'
+
+  - type: wait
+    seconds: 1.5
+
+  - type: background_effect
+    effect: 'none'
+
+  - type: voice_shift
+    rate: 1.0
+
+  - type: music
+    musicPath: none
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'end'

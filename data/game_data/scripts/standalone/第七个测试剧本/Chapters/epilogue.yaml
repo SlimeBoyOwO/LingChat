@@ -179,6 +179,12 @@ events:
   - type: music
     musicPath: none
 
+  - type: set_variable
+    options:
+      - actions:
+          - type: set_var
+            content: 'last_ending = release'
+
   - type: chapter_end
     end_type: linear
     next_chapter: 'end'
