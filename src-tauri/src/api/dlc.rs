@@ -17,12 +17,22 @@ use crate::utils::script_paths::sanitize_folder_name;
 use crate::AppState;
 
 /// DLC 清单文件（`dlc.json`），随剧本包分发；导入时缺省会补写一份。
+/// 全字段保留序列化：补写 imported_at 时不能丢掉作者自带的 name/min_engine 等元数据。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct DlcManifest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
     #[serde(default)]
     version: String,
     #[serde(default)]
     author: String,
+    /// 需要的最低游戏版本（仅展示用提示，不做强制拦截）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    min_engine: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    homepage: Option<String>,
     #[serde(default)]
     imported_at: String,
 }
@@ -189,20 +199,14 @@ pub async fn import_dlc(app: AppHandle, zip_path: String) -> Result<DlcInfo, Str
         return Err(format!("DLC 包缺少有效的 story_config.yaml: {:#}", e));
     }
 
-    // ---- 缺省补写 dlc.json 标记（作者自带的保留，只补 imported_at）----
+    // ---- 补写/补全 dlc.json 标记（作者自带的字段全保留，只补 imported_at）----
     let manifest_path = target.join("dlc.json");
     let mut manifest = read_manifest(&target);
     if manifest.imported_at.is_empty() {
         manifest.imported_at = chrono::Local::now().to_rfc3339();
     }
-    if !manifest_path.exists() {
-        let json = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
-        fs::write(&manifest_path, json).map_err(|e| format!("写入 dlc.json 失败: {}", e))?;
-    } else {
-        // 已有清单但缺导入时间：补写回去
-        let json = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
-        fs::write(&manifest_path, json).map_err(|e| format!("更新 dlc.json 失败: {}", e))?;
-    }
+    let json = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+    fs::write(&manifest_path, json).map_err(|e| format!("写入 dlc.json 失败: {}", e))?;
 
     // ---- 立刻注册进引擎 ----
     {
