@@ -37,6 +37,13 @@ events:
       一下。又一下。
       仿佛有什么东西，正在屏幕的另一侧呼吸。
 
+  # 先抽走音乐，让玩家在死寂里等不到下一句，再突然贴脸。
+  - type: music
+    musicPath: none
+
+  - type: wait
+    seconds: 1.35
+
   # 突脸惊吓：红闪的顶点，她的脸猛地贴上屏幕
   - type: jumpscare
     imagePath: 'jumpscare-face.webp'

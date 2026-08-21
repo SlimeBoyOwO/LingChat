@@ -32,6 +32,20 @@ const emit = defineEmits(['audio-ended', 'audio-started'])
 
 const mainAudio = ref<HTMLAudioElement | null>(null)
 
+type PitchControllableAudio = HTMLAudioElement & {
+  mozPreservesPitch?: boolean
+  webkitPreservesPitch?: boolean
+}
+
+/** 恐怖剧本变速必须同时改变音高；显式关闭各 WebView 的“保持音高”。 */
+const applyVoiceRate = (audio: HTMLAudioElement, rate: number) => {
+  const controllable = audio as PitchControllableAudio
+  controllable.preservesPitch = false
+  controllable.mozPreservesPitch = false
+  controllable.webkitPreservesPitch = false
+  controllable.playbackRate = rate > 0 ? rate : 1
+}
+
 const lightOverlayStyle = computed(() => {
   const l = gameStore.currentScene?.lighting
   if (!l?.overlay_enabled) return undefined
@@ -60,8 +74,8 @@ watch(
         mainAudio.value.src = dataUrl
         mainAudio.value.load()
         mainAudio.value.volume = uiStore.characterVolume / 100
-        // 剧本 voice_shift 恶魔音：playbackRate < 1 时音调同步降低（preservesPitch 默认 false）
-        mainAudio.value.playbackRate = uiStore.voiceRate > 0 ? uiStore.voiceRate : 1
+        // 剧本 voice_shift 恶魔音：降低播放倍率并关闭保音高。
+        applyVoiceRate(mainAudio.value, uiStore.voiceRate)
         mainAudio.value.play().catch((e) => console.error('播放失败', e))
         emit('audio-started')
       } catch (e) {
@@ -75,6 +89,14 @@ watch(
   () => uiStore.characterVolume,
   (v) => {
     if (mainAudio.value) mainAudio.value.volume = v / 100
+  },
+)
+
+// voice_shift 发生在当前一句播放途中时也立即生效；后续新语音会在加载时再次应用。
+watch(
+  () => uiStore.voiceRate,
+  (rate) => {
+    if (mainAudio.value) applyVoiceRate(mainAudio.value, rate)
   },
 )
 

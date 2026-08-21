@@ -48,6 +48,23 @@ events:
       【高兴】呀，你真的点进来了！
       【高兴】我还以为这个入口永远不会有人发现呢～
 
+  # DDLC 式低概率异常：不加说明、不配故障音，只让玩家怀疑自己看错了。
+  - type: modify_character
+    character: MAIN
+    emotion: 崩坏
+    flash: true
+    duration: 0.12
+    condition: rare_portrait_glitch == true
+
+  - type: background_effect
+    effect: 'UiCorrupt+BloodUI'
+    duration: 0.12
+    condition: rare_portrait_glitch == true
+
+  - type: wait
+    seconds: 0.14
+    condition: rare_portrait_glitch == true
+
   # 低概率错误记忆：第一次游玩也可能触发，制造“她为何记得上次”的疑问。
   - type: dialogue
     character: MAIN
@@ -104,6 +121,7 @@ events:
   # 潜意识异样：一闪而过的噪点，快到像错觉（DDLC Act1 式）
   - type: background_effect
     effect: 'Static'
+    duration: 0.18
 
   # 画面底片一闪：阳光教室露出崩坏的里侧
   - type: background
@@ -154,6 +172,7 @@ events:
   # 表情抽空的一瞬：反色闪一下 + 轻微故障音
   - type: background_effect
     effect: 'Invert'
+    duration: 0.16
 
   - type: sound
     soundPath: 'glitch1.ogg'

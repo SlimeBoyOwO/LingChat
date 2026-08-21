@@ -38,6 +38,10 @@ const audio2 = ref<HTMLAudioElement | null>(null)
 const applyRate = (el: HTMLAudioElement | null) => {
   if (!el) return
   const r = props.rate
+  // 恐怖剧本的慢速 BGM 需要随速度一起降调，不能让 WebView 自动保持原音高。
+  el.preservesPitch = false
+  ;(el as HTMLAudioElement & { mozPreservesPitch?: boolean }).mozPreservesPitch = false
+  ;(el as HTMLAudioElement & { webkitPreservesPitch?: boolean }).webkitPreservesPitch = false
   el.playbackRate = typeof r === 'number' && r > 0 ? r : 1
 }
 

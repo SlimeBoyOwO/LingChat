@@ -19,7 +19,7 @@ events:
     rate: 0.7
 
   - type: background_effect
-    effect: 'BloodUI+Invert'
+    effect: 'BloodUI+Invert+BloodDrip'
 
   - type: dialogue
     character: MAIN

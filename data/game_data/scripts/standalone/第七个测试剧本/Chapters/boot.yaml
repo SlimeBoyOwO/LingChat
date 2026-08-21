@@ -13,6 +13,11 @@ events:
     variable: false_memory
     chance: 0.25
 
+  # 约 1/16：一张不该出现的立绘会在正常对白中闪过，但没人承认看见过。
+  - type: random_var
+    variable: rare_portrait_glitch
+    chance: 0.0625
+
   - type: chapter_end
     end_type: branching
     options:

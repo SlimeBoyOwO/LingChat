@@ -67,6 +67,7 @@ events:
   # 第一次故障：短促 Glitch + 噪点
   - type: background_effect
     effect: 'Glitch+Static'
+    duration: 0.22
 
   - type: sound
     soundPath: 'glitch1.ogg'
@@ -101,6 +102,7 @@ events:
   # 收尾前再来一次更明显的撕裂
   - type: background_effect
     effect: 'Tear'
+    duration: 0.45
 
   - type: sound
     soundPath: 'glitch2.ogg'

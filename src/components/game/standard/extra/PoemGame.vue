@@ -294,8 +294,13 @@ onBeforeUnmount(() => {
 
 .poem-progress {
   position: absolute;
-  top: 8.6%;
-  left: 56.4%;
+  /* 贴在右页纸面内，而不是书本上沿；窄窗口缩放时也不会被裁掉。 */
+  top: 12.2%;
+  right: 42.2%;
+  min-width: 6ch;
+  text-align: right;
+  line-height: 1.15;
+  z-index: 2;
   color: #182331;
   font-family: 'Noto Serif SC', 'STKaiti', 'KaiTi', serif;
   font-size: clamp(18px, 2.1vw, 38px);
