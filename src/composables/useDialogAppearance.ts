@@ -87,20 +87,6 @@ export function useDialogAppearance(options: UseDialogAppearanceOptions) {
     }
   }
 
-  // ── AI 思考时自动隐藏 ──
-  watch(
-    () => gameStore.currentStatus,
-    (newStatus) => {
-      if (!autoHideOnThinkEnabled.value) return
-      if (newStatus === 'thinking') {
-        isHidden.value = true
-      } else if (newStatus === 'input' || newStatus === 'responding') {
-        // 思考完成时恢复显示（带过渡动画）
-        isHidden.value = false
-      }
-    },
-  )
-
   // ── 生命周期：绑定键盘事件 ──
   onMounted(() => {
     document.addEventListener('keydown', handleKeydown)
