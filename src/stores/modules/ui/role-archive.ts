@@ -27,6 +27,15 @@ export interface ExportState {
   error: string
 }
 
+export type NoticePhase = 'idle' | 'active'
+
+export interface CorrectedNotice {
+  phase: NoticePhase
+  title: string
+  message: string
+  durationMs: number
+}
+
 const initialImport = (): ImportState => ({
   phase: 'idle',
   fileName: '',
@@ -50,10 +59,18 @@ const initialExport = (): ExportState => ({
   error: '',
 })
 
+const initialCorrected = (): CorrectedNotice => ({
+  phase: 'idle',
+  title: '',
+  message: '',
+  durationMs: 5000,
+})
+
 export const useRoleArchiveStore = defineStore('role-archive', {
   state: () => ({
     import: initialImport(),
     export: initialExport(),
+    corrected: initialCorrected(),
   }),
 
   actions: {
@@ -62,6 +79,15 @@ export const useRoleArchiveStore = defineStore('role-archive', {
     },
     resetExport() {
       this.export = initialExport()
+    },
+    showCorrected(payload: { title: string; message: string; durationMs?: number }) {
+      this.corrected.phase = 'active'
+      this.corrected.title = payload.title
+      this.corrected.message = payload.message
+      this.corrected.durationMs = payload.durationMs ?? 5000
+    },
+    dismissCorrected() {
+      this.corrected = initialCorrected()
     },
   },
 })

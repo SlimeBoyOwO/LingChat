@@ -60,6 +60,26 @@ export default {
     defaultExportTitle: 'キャラクターのエクスポート',
     close: '閉じる',
     cancel: 'キャンセル',
+    errors: {
+      ARCHIVE_MISSING_SETTINGS_YML: '圧縮ファイルに settings.yml がありません\n旧バージョンのキャラクターかもしれません。新版をダウンロードしてからインポートしてください',
+    },
+  },
+  fontImport: {
+    errors: {
+      FONT_INVALID_FORMAT: '有効なフォントファイルではありません（ttf/otf/woff/woff2）。ファイルが破損しているか、拡張子と内容が一致していません',
+    },
+  },
+  musicImport: {
+    errors: {
+      MUSIC_INVALID_FORMAT: '有効な音声ファイルではありません（mp3/wav/flac/ogg）。ファイルが破損しているか、拡張子と内容が一致していません',
+    },
+  },
+  notice: {
+    autoCorrected: {
+      title: '自動修正済み',
+      font: '{original} は {originalExt} フォントではありません（検出: {detected}）。{corrected} として保存しました',
+      music: '{original} は {originalExt} 音声ファイルではありません（検出: {detected}）。{corrected} として保存しました',
+    },
   },
   menuItem: {
     defaultTitle: 'デフォルトタイトル',

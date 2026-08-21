@@ -61,6 +61,26 @@ export default {
     defaultExportTitle: "Character Export",
     close: "Close",
     cancel: "Cancel",
+    errors: {
+      ARCHIVE_MISSING_SETTINGS_YML: "Archive is missing settings.yml\nThis may be an older version role. Please download the new version and import it.",
+    },
+  },
+  fontImport: {
+    errors: {
+      FONT_INVALID_FORMAT: "Not a valid font file (ttf/otf/woff/woff2). The file may be corrupted or the extension doesn't match its content.",
+    },
+  },
+  musicImport: {
+    errors: {
+      MUSIC_INVALID_FORMAT: "Not a valid audio file (mp3/wav/flac/ogg). The file may be corrupted or the extension doesn't match its content.",
+    },
+  },
+  notice: {
+    autoCorrected: {
+      title: "Auto-corrected",
+      font: "{original} is not a {originalExt} font (detected {detected}), saved as {corrected}",
+      music: "{original} is not a {originalExt} audio file (detected {detected}), saved as {corrected}",
+    },
   },
   menuItem: {
     defaultTitle: "Default Title",
