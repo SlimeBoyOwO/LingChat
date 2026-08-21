@@ -23,11 +23,11 @@ use std::fmt::Write as _;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
 use serde_json::Value as JsonValue;
+use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http;
 use tokio_tungstenite::tungstenite::Message;
-use tauri::{AppHandle, Emitter};
 use tracing::{debug, warn};
 
 use super::error::AsrError;
@@ -56,12 +56,23 @@ pub struct StreamResult {
 /// 服务端事件（解析后的结构化形式）。
 #[derive(Debug, PartialEq)]
 enum ServerEvent {
-    SentenceStart { index: u32 },
-    Transcript { index: u32, text: String },
-    SentenceEnd { index: u32 },
+    SentenceStart {
+        index: u32,
+    },
+    Transcript {
+        index: u32,
+        text: String,
+    },
+    SentenceEnd {
+        index: u32,
+    },
     /// result 事件：整段句子数组拼成的最终文本。
-    Result { text: String },
-    Error { message: String },
+    Result {
+        text: String,
+    },
+    Error {
+        message: String,
+    },
 }
 
 /// 打包一帧：17 字节小端 header + payload。
@@ -193,9 +204,8 @@ pub async fn start_streaming(
     language_hint: Option<String>,
 ) -> Result<mpsc::UnboundedSender<StreamCommand>, AsrError> {
     // query 参数（language_hints 可选，URL 编码的 JSON 数组字面量）
-    let mut url = format!(
-        "{WS_PATH}?model={MODEL}&format=pcm&sample_rate=16000&enable_partial_results=true"
-    );
+    let mut url =
+        format!("{WS_PATH}?model={MODEL}&format=pcm&sample_rate=16000&enable_partial_results=true");
     if let Some(lang) = language_hint.as_deref() {
         let _ = write!(url, "&language_hints=%5B%22{}%22%5D", lang);
     }
@@ -219,7 +229,11 @@ pub async fn start_streaming(
         })?;
     let mut ws = ws;
     ws.send(Message::Binary(
-        pack_frame(&build_start_payload(language_hint.as_deref()), DATA_TYPE_JSON).into(),
+        pack_frame(
+            &build_start_payload(language_hint.as_deref()),
+            DATA_TYPE_JSON,
+        )
+        .into(),
     ))
     .await
     .map_err(|e| AsrError::ProviderApiError {
@@ -325,7 +339,9 @@ pub async fn start_streaming(
             }
             // 命令通道关闭且还有挂起的 stop reply → 兜底为取消
             if rx.is_closed() && pending_reply.is_some() {
-                let _ = pending_reply.take().map(|r| r.send(Err(AsrError::Canceled)));
+                let _ = pending_reply
+                    .take()
+                    .map(|r| r.send(Err(AsrError::Canceled)));
             }
         }
     });
@@ -345,8 +361,14 @@ mod tests {
         assert_eq!(frame[0], 1); // version
         assert_eq!(u32::from_le_bytes(frame[1..5].try_into().unwrap()), 16); // header_len
         assert_eq!(u32::from_le_bytes(frame[5..9].try_into().unwrap()), 5); // message_len
-        assert_eq!(u32::from_le_bytes(frame[9..13].try_into().unwrap()), 0x0A0000); // data_type
-        assert_eq!(u32::from_le_bytes(frame[13..17].try_into().unwrap()), 0x0B0000); // namespace
+        assert_eq!(
+            u32::from_le_bytes(frame[9..13].try_into().unwrap()),
+            0x0A0000
+        ); // data_type
+        assert_eq!(
+            u32::from_le_bytes(frame[13..17].try_into().unwrap()),
+            0x0B0000
+        ); // namespace
         assert_eq!(&frame[17..], payload);
     }
 
@@ -362,8 +384,7 @@ mod tests {
 
     #[test]
     fn parse_transcript_event() {
-        let body =
-            r#"{"header":{"action":"transcript"},"payload":{"index":0,"text":"你好世界"},"error":null}"#;
+        let body = r#"{"header":{"action":"transcript"},"payload":{"index":0,"text":"你好世界"},"error":null}"#;
         assert!(matches!(
             parse_server_event(body),
             Some(ServerEvent::Transcript { text, .. }) if text == "你好世界"

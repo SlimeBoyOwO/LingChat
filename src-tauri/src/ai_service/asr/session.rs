@@ -163,10 +163,10 @@ impl AsrSession {
     pub async fn stream_audio_chunk(&self, pcm: Vec<f32>) -> Result<(), AsrError> {
         let handle = self.stream.lock().await.clone();
         match handle {
-            Some(h) => h
-                .tx
-                .send(StreamCommand::Audio(pcm))
-                .map_err(|_| AsrError::Canceled),
+            Some(h) => {
+                h.tx.send(StreamCommand::Audio(pcm))
+                    .map_err(|_| AsrError::Canceled)
+            }
             None => Err(AsrError::EngineLoadFailed("流式会话未启动".into())),
         }
     }
@@ -179,8 +179,7 @@ impl AsrSession {
             return Err(AsrError::Canceled);
         };
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        h.tx
-            .send(StreamCommand::Stop { reply: reply_tx })
+        h.tx.send(StreamCommand::Stop { reply: reply_tx })
             .map_err(|_| AsrError::Canceled)?;
         // 超时保护：服务端不回 result 时不能无限等（前端 stop 会卡死）
         let result = tokio::time::timeout(std::time::Duration::from_secs(30), reply_rx)
