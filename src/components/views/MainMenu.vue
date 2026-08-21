@@ -296,7 +296,7 @@ onMounted(() => {
   pointer-events: none;
 }
 
-/* DLC 识别提示：右下角小白字，不挡菜单 */
+/* DLC 识别提示：右下角半透明黄小字，不挡菜单 */
 .dlc-hint {
   position: absolute;
   right: 14px;
@@ -304,10 +304,10 @@ onMounted(() => {
   z-index: 5;
   font-size: 12px;
   letter-spacing: 0.05em;
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(255, 214, 90, 0.78);
   text-shadow:
-    0 1px 4px rgba(0, 0, 0, 0.75),
-    0 0 2px rgba(0, 0, 0, 0.5);
+    0 1px 4px rgba(0, 0, 0, 0.7),
+    0 0 2px rgba(0, 0, 0, 0.45);
   pointer-events: none;
 }
 
