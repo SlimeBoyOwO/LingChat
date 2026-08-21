@@ -8,7 +8,7 @@
   >
     <div
       class="poem-stage"
-      :style="{ backgroundImage: `url('${backgroundSrc}')` }"
+      :style="{ backgroundImage: corrupted ? 'none' : `url('${backgroundSrc}')` }"
     >
       <div v-if="flash" class="poem-flash"></div>
 
@@ -28,14 +28,32 @@
         </button>
       </div>
 
-      <!-- 左下角只保留同一角色；不同倾向的词切换不同差分并触发跳动。 -->
+      <!-- 左下角只保留同一角色；不同倾向的词切换不同差分并触发跳动。
+           外层负责待机游走（位移+朝向翻转），内层 img 负责弹跳/hop 动画。 -->
       <div
+        v-if="!corrupted"
         class="poem-character"
-        :class="{ hop: hopping !== null, 'is-void': currentTone === 'void' }"
+        :style="{ transform: `translateX(${wanderOffset}px) scaleX(${wanderFlip})` }"
         aria-hidden="true"
       >
-        <img :src="currentStickerSrc" alt="" draggable="false" />
+        <img
+          :src="currentStickerSrc"
+          :class="{ hop: hopping !== null, wander: wanderBounce && hopping === null }"
+          alt=""
+          draggable="false"
+          @error="onStickerError"
+        />
       </div>
+
+      <!-- 词库损坏后：DDLC 同款——纯白底 + 左下巨大崩坏 sticker（半身出屏）。 -->
+      <img
+        v-else
+        class="poem-broken-sticker"
+        :src="brokenStickerSrc"
+        alt=""
+        draggable="false"
+        @error="onBrokenError"
+      />
 
       <div v-if="corrupted" class="poem-corrupt-caption">词库校验失败</div>
       <div v-if="finishing" class="poem-finish-caption">正在保存诗……</div>
@@ -66,24 +84,52 @@ const currentTone = ref<Tone>('warm')
 const corrupted = ref(false)
 const finishing = ref(false)
 const flash = ref(false)
+// DDLC 同款待机游走：每 4~8 秒随机挪一小步（±16px 内随机游走、翻转朝向）并小弹一下。
+const wanderOffset = ref(0)
+const wanderFlip = ref(1)
+const wanderBounce = ref(false)
+// 损坏后点词音效状态：baa 彩蛋全局只播一次（对齐原作 played_baa）。
+const baaPlayed = ref(false)
+// 跳姿/崩坏图缺失时回退到常姿，避免 asset 404 白图。
+const hopMissing = ref<Record<Tone, boolean>>({ warm: false, script: false, void: false })
+const brokenMissing = ref(false)
 
 let hopTimer = 0
 let flashTimer = 0
 let fadeTimer = 0
+let wanderTimer = 0
+let wanderBounceTimer = 0
 
 const game = computed(() => gameStore.poemGame)
 const currentWords = computed(() => game.value?.rounds[roundIndex.value] ?? [])
 const progressLabel = computed(() => {
   const total = game.value?.rounds.length ?? 20
-  return `${Math.min(roundIndex.value + 1, total)}/${total}`
+  const current = Math.min(roundIndex.value + 1, total)
+  // 词库损坏后进度显示退化成全 1（原作二周目的计数崩坏彩蛋）。
+  if (corrupted.value) return `${'1'.repeat(current)}/${total}`
+  return `${current}/${total}`
 })
 const backgroundSrc = computed(() => toAssetUrl(game.value?.backgroundPath ?? ''))
 const warmStickerSrc = computed(() => toAssetUrl(game.value?.warmStickerPath ?? ''))
 const scriptStickerSrc = computed(() => toAssetUrl(game.value?.scriptStickerPath ?? ''))
 const voidStickerSrc = computed(() => toAssetUrl(game.value?.voidStickerPath ?? ''))
+// hop 时换成「-跳」差分（沿用原作 _1/_2 双图切换，而不是纯位移动画）。
+const hopStickerSrcs = computed<Record<Tone, string>>(() => ({
+  warm: toAssetUrl(hopPathOf(game.value?.warmStickerPath ?? '')),
+  script: toAssetUrl(hopPathOf(game.value?.scriptStickerPath ?? '')),
+  void: toAssetUrl(hopPathOf(game.value?.voidStickerPath ?? '')),
+}))
+// 损坏后的巨大崩坏 sticker：由空白差分同目录推导「写诗Q版-崩坏.png」。
+const brokenStickerSrc = computed(() =>
+  brokenMissing.value
+    ? voidStickerSrc.value
+    : toAssetUrl(brokenPathOf(game.value?.voidStickerPath ?? '')),
+)
 const currentStickerSrc = computed(() => {
-  if (currentTone.value === 'script') return scriptStickerSrc.value
-  if (currentTone.value === 'void') return voidStickerSrc.value
+  const tone = currentTone.value
+  if (hopping.value !== null && !hopMissing.value[tone]) return hopStickerSrcs.value[tone]
+  if (tone === 'script') return scriptStickerSrc.value
+  if (tone === 'void') return voidStickerSrc.value
   return warmStickerSrc.value
 })
 
@@ -91,6 +137,60 @@ function toAssetUrl(path: string): string {
   if (!path) return ''
   if (/^(https?:|data:|blob:|asset:)/.test(path)) return path
   return convertFileSrc(path)
+}
+
+function hopPathOf(path: string): string {
+  return path.replace(/\.png$/i, '-跳.png')
+}
+
+function brokenPathOf(path: string): string {
+  return path.replace(/写诗Q版-[^/\\]+\.png$/i, '写诗Q版-崩坏.png')
+}
+
+// 点词音效从 BGM 路径推导 Sounds 目录（剧本目录结构固定：Assets/Musics、Assets/Sounds）。
+function soundPathOf(name: string): string {
+  const music = game.value?.musicPath ?? ''
+  return music.replace(/[/\\]Musics[/\\][^/\\]+$/, `/Sounds/${name}`)
+}
+
+const sfxCache = new Map<string, HTMLAudioElement>()
+
+function playSfx(name: string) {
+  const url = toAssetUrl(soundPathOf(name))
+  if (!url) return
+  let sfx = sfxCache.get(url)
+  if (!sfx) {
+    sfx = new Audio(url)
+    sfx.preload = 'auto'
+    sfxCache.set(url, sfx)
+  }
+  sfx.volume = Math.max(0, Math.min(1, uiStore.backgroundVolume / 100))
+  sfx.currentTime = 0
+  sfx.play().catch(() => {})
+}
+
+// 原作的点词音效规则：正常时 activate_sound；损坏后 randint(0,10) ——
+// r==0 且没播过放 baa，r<=5 放 glitch 音，其余静默。
+function playPickSfx() {
+  if (!corrupted.value) {
+    playSfx('select.ogg')
+    return
+  }
+  const r = Math.floor(Math.random() * 11)
+  if (r === 0 && !baaPlayed.value) {
+    baaPlayed.value = true
+    playSfx('baa.ogg')
+  } else if (r <= 5) {
+    playSfx('select_glitch.ogg')
+  }
+}
+
+function onStickerError() {
+  if (hopping.value !== null) hopMissing.value[currentTone.value] = true
+}
+
+function onBrokenError() {
+  brokenMissing.value = true
 }
 
 function displayWord(word: ScriptPoemWord): string {
@@ -115,8 +215,31 @@ function triggerHop(tone: Tone) {
   hopping.value = null
   requestAnimationFrame(() => {
     hopping.value = tone
-    hopTimer = window.setTimeout(() => (hopping.value = null), 520)
+    // sticker_hop：easein_quad .18 起跳 + easeout_quad .18 落地，连跳两次，共 0.72s。
+    hopTimer = window.setTimeout(() => (hopping.value = null), 720)
   })
+}
+
+// 待机游走调度：原作 randomPause(4~8s) → randomMove(随机方向小步) + sticker_move_n(小弹)。
+function scheduleWander() {
+  clearTimeout(wanderTimer)
+  wanderTimer = window.setTimeout(tickWander, 4000 + Math.random() * 4000)
+}
+
+function tickWander() {
+  if (!game.value || finishing.value) return
+  if (hopping.value === null && !corrupted.value) {
+    let dir = Math.floor(Math.random() * 3) - 1
+    // 原作的折返边界：继续同向会超出 ±5 起步范围就反向。
+    if (wanderOffset.value * dir > 5) dir = -dir
+    wanderOffset.value += dir * 16
+    if (dir > 0) wanderFlip.value = -1
+    else if (dir < 0) wanderFlip.value = 1
+    wanderBounce.value = true
+    clearTimeout(wanderBounceTimer)
+    wanderBounceTimer = window.setTimeout(() => (wanderBounce.value = false), 180)
+  }
+  scheduleWander()
 }
 
 async function ensureAudioPlaying() {
@@ -128,6 +251,7 @@ async function ensureAudioPlaying() {
 async function pickWord(word: ScriptPoemWord) {
   if (finishing.value || !game.value) return
   await ensureAudioPlaying()
+  playPickSfx()
 
   warmScore.value += word.warmPoints
   scriptScore.value += word.scriptPoints
@@ -135,14 +259,17 @@ async function pickWord(word: ScriptPoemWord) {
   // 一次只显示同一角色：词的最高倾向决定本次差分；污染词强制切到空白差分。
   const tone = word.glitch ? 'void' : strongestTone(word)
   currentTone.value = tone
-  triggerHop(tone)
 
   if (word.glitch && !corrupted.value) {
+    // 点到污染词：进入损坏状态——白屏、巨大崩坏 sticker、切故障 BGM；
+    // 原作此后再点词不再跳动，只有音效池回应。
     corrupted.value = true
     flash.value = true
     clearTimeout(flashTimer)
     flashTimer = window.setTimeout(() => (flash.value = false), 180)
     await startTrack(game.value.glitchMusicPath, game.value.glitchLoopStart)
+  } else if (!corrupted.value) {
+    triggerHop(tone)
   }
 
   if (roundIndex.value + 1 >= game.value.rounds.length) {
@@ -232,6 +359,8 @@ function resetGame() {
   clearTimeout(hopTimer)
   clearTimeout(flashTimer)
   clearTimeout(fadeTimer)
+  clearTimeout(wanderTimer)
+  clearTimeout(wanderBounceTimer)
   roundIndex.value = 0
   warmScore.value = 0
   scriptScore.value = 0
@@ -241,6 +370,12 @@ function resetGame() {
   corrupted.value = false
   finishing.value = false
   flash.value = false
+  wanderOffset.value = 0
+  wanderFlip.value = 1
+  wanderBounce.value = false
+  baaPlayed.value = false
+  hopMissing.value = { warm: false, script: false, void: false }
+  brokenMissing.value = false
 }
 
 watch(
@@ -258,6 +393,7 @@ watch(
     }
     await nextTick()
     await startTrack(next.musicPath, next.normalLoopStart)
+    scheduleWander()
   },
 )
 
@@ -356,6 +492,8 @@ onBeforeUnmount(() => {
   bottom: 9.5%;
   width: clamp(68px, 7.5vw, 124px);
   transform-origin: 50% 100%;
+  /* 待机游走的位移与朝向翻转走外层容器，平滑过渡。 */
+  transition: transform 180ms ease-out;
 }
 
 .poem-character img {
@@ -368,12 +506,30 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-.poem-character.hop {
-  animation: marker-hop 0.48s cubic-bezier(0.3, 0.85, 0.35, 1);
+/* 待机小弹：sticker_move_n —— easein_quad .08 起、easeout_quad .08 落。 */
+.poem-character img.wander {
+  animation: ddlc-wander 0.16s;
 }
 
-.is-corrupted .poem-character.is-void.hop {
-  animation: marker-glitch-hop 0.38s steps(2, end);
+/* 点词跳动：sticker_hop —— 同参数连跳两次（.18+.18）×2，共 0.72s。 */
+.poem-character img.hop {
+  animation: ddlc-hop 0.72s;
+}
+
+/* 损坏态：左下巨大崩坏 sticker（还原 sticker_glitch：xcenter 50 / yalign 1.8 / zoom 3
+   —— 中心贴近左边缘、底部约三分之一出屏）。 */
+.poem-broken-sticker {
+  position: absolute;
+  left: -9%;
+  top: 60.7%;
+  width: 25.8%;
+  min-width: 200px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.is-corrupted .poem-stage {
+  background-color: #fff;
 }
 
 .glitch-word {
@@ -404,10 +560,6 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-.is-corrupted .poem-stage {
-  animation: stage-breathe 3.4s ease-in-out infinite;
-}
-
 .is-corrupted .poem-progress {
   color: #651822;
 }
@@ -416,31 +568,24 @@ onBeforeUnmount(() => {
   cursor: wait;
 }
 
-@keyframes marker-hop {
-  0%, 100% { transform: translateY(0) rotate(0); }
-  35% { transform: translateY(-48%) rotate(-4deg); }
-  62% { transform: translateY(-8%) rotate(3deg); }
-  80% { transform: translateY(-28%) rotate(-2deg); }
+@keyframes ddlc-wander {
+  0%   { transform: translateY(0); animation-timing-function: cubic-bezier(0.11, 0, 0.5, 0); }
+  50%  { transform: translateY(-9%); animation-timing-function: cubic-bezier(0.5, 1, 0.89, 1); }
+  100% { transform: translateY(0); }
+}
+
+@keyframes ddlc-hop {
+  0%   { transform: translateY(0); animation-timing-function: cubic-bezier(0.11, 0, 0.5, 0); }
+  25%  { transform: translateY(-52%); animation-timing-function: cubic-bezier(0.5, 1, 0.89, 1); }
+  50%  { transform: translateY(0); animation-timing-function: cubic-bezier(0.11, 0, 0.5, 0); }
+  75%  { transform: translateY(-52%); animation-timing-function: cubic-bezier(0.5, 1, 0.89, 1); }
+  100% { transform: translateY(0); }
 }
 
 @keyframes word-jitter {
   0% { transform: translate(0, 0); }
   33% { transform: translate(-2px, 1px); }
   66% { transform: translate(2px, -1px); }
-}
-
-@keyframes marker-glitch-hop {
-  0%, 100% { transform: translate(0, 0) scale(1); filter: invert(0); }
-  25% { transform: translate(-8%, -42%) scale(1.16, 0.84); filter: invert(1); }
-  50% { transform: translate(7%, -12%) scale(0.88, 1.18); filter: invert(0); }
-  75% { transform: translate(-3%, -30%) scale(1.1, 0.9); filter: invert(1); }
-}
-
-@keyframes stage-breathe {
-  0%, 100% { filter: none; transform: translate(0, 0); }
-  48% { filter: contrast(1.04) saturate(0.86); transform: translate(0, 0); }
-  50% { filter: contrast(1.18) saturate(0.65); transform: translate(-1px, 1px); }
-  52% { filter: contrast(1.04) saturate(0.86); transform: translate(0, 0); }
 }
 
 @media (max-aspect-ratio: 1/1) {
