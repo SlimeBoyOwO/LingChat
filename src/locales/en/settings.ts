@@ -600,6 +600,14 @@ export default {
       meteorFps: "Meteor FPS",
       starsFps: "Star FPS",
     },
+    hdr: {
+      title: "HDR Display",
+      enable: "Enable HDR mode",
+      restartHint: "Restart the app for changes to take effect",
+      restartBtn: "Restart Now",
+      restartConfirm: "HDR mode takes effect after a restart. Restart the app now?",
+      restartFailed: "Restart failed. Please restart the app manually",
+    },
     perf: {
       title: "Performance Check",
       detecting: "Checking hardware performance…",

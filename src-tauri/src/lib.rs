@@ -201,6 +201,33 @@ impl std::ops::Deref for AppState {
     }
 }
 
+/// 读取 settings.json 中的「HDR 模式」开关（仅 Windows）。
+///
+/// 必须在 WebView2 环境创建（`Builder::build()`）之前调用——此时 `AppHandle` 尚不存在，
+/// 只能直接解析 store 文件。store 位于 `%APPDATA%\<identifier>\settings.json`
+/// （tauri-plugin-store 的 flat 点号键）。文件缺失/解析失败一律视为「未开启」。
+#[cfg(target_os = "windows")]
+fn read_hdr_mode_enabled(identifier: &str) -> bool {
+    use serde_json::Value;
+
+    let Some(appdata) = std::env::var("APPDATA").ok() else {
+        return false;
+    };
+    let path = std::path::Path::new(&appdata)
+        .join(identifier)
+        .join(crate::config::STORE_FILE);
+
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(json) = serde_json::from_str::<Value>(&content) else {
+        return false;
+    };
+    json.get(crate::config::keys::HDR_MODE_ENABLED)
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 配置日志过滤器（genai 调试日志由 log.genai_debug 设置在 setup 阶段动态控制）。
@@ -221,13 +248,24 @@ pub fn run() {
         .with(filter)
         .init();
 
-    // 设置 WebView2 颜色配置文件（强制使用线性 sRGB）
-    #[allow(deprecated)]
-    unsafe {
-        std::env::set_var(
-            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-            "--force-color-profile=scrgb-linear",
-        );
+    // 提前构建 Tauri 上下文（读取 bundle identifier，供 Windows HDR 开关定位 settings.json）
+    let context = tauri::generate_context!();
+
+    // Windows：设置 WebView2 颜色配置文件（强制使用线性 sRGB）。
+    // 用户开启「HDR 模式」时跳过强制，改用 WebView2 自动色彩管理，
+    // 避免 HDR 显示器下整体发灰/发暗。环境变量须在 WebView2 环境创建
+    // （Builder::build() 之前）设置，因此在此处直接解析 settings.json。
+    #[cfg(target_os = "windows")]
+    {
+        if !read_hdr_mode_enabled(&context.config().identifier) {
+            #[allow(deprecated)]
+            unsafe {
+                std::env::set_var(
+                    "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+                    "--force-color-profile=scrgb-linear",
+                );
+            }
+        }
     }
 
     // 构建 Tauri 应用
@@ -604,6 +642,8 @@ pub fn run() {
             api::settings::list_llm_providers,
             api::settings::save_llm_provider,
             api::settings::delete_llm_provider,
+            #[cfg(target_os = "windows")]
+            api::settings::set_hdr_mode,
             api::settings::set_llm_role,
             api::settings::switch_llm,
             api::settings::test_llm_provider,
@@ -777,7 +817,7 @@ pub fn run() {
             ai_service::tts::local::tts_local_set_device,
             exit_app,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }
 
