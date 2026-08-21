@@ -62,30 +62,29 @@
               }}</span>
             </div>
             <div class="text-sm text-white/40 truncate">{{ p.model || $t('settings.llmProviders.list.modelNotSet') }}</div>
-          </div>
-
-          <!-- Role badges -->
-          <div class="flex gap-1.5 shrink-0">
-            <span
-              v-if="store.chatProviderId === p.id"
-              class="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30"
-              >{{ $t('settings.llmProviders.role.chat') }}</span
-            >
-            <span
-              v-if="store.translateProviderId === p.id"
-              class="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30"
-              >{{ $t('settings.llmProviders.role.translate') }}</span
-            >
-            <span
-              v-if="store.godAgentProviderId === p.id"
-              class="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30"
-              >Agent</span
-            >
-            <span
-              v-if="store.visionProviderId === p.id"
-              class="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30"
-              >{{ $t('settings.llmProviders.role.vision') }}</span
-            >
+            <!-- Role badges -->
+            <div class="flex flex-wrap gap-1.5 mt-1.5">
+              <span
+                v-if="store.chatProviderId === p.id"
+                class="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30"
+                >{{ $t('settings.llmProviders.role.chat') }}</span
+              >
+              <span
+                v-if="store.translateProviderId === p.id"
+                class="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                >{{ $t('settings.llmProviders.role.translate') }}</span
+              >
+              <span
+                v-if="store.godAgentProviderId === p.id"
+                class="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                >Agent</span
+              >
+              <span
+                v-if="store.visionProviderId === p.id"
+                class="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30"
+                >{{ $t('settings.llmProviders.role.vision') }}</span
+              >
+            </div>
           </div>
 
           <!-- Actions -->
