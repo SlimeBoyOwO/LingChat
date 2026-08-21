@@ -1,6 +1,12 @@
 <template>
-  <div v-if="meteorsEnabled" class="meteor-wrapper">
-    <canvas ref="canvasRef" id="meteor-canvas"></canvas>
+  <div
+    v-if="meteorsEnabled"
+    class="meteor-wrapper"
+  >
+    <canvas
+      ref="canvasRef"
+      id="meteor-canvas"
+    ></canvas>
   </div>
 </template>
 
@@ -398,10 +404,11 @@ onUnmounted(() => {
 <style scoped>
 .meteor-wrapper {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
+  /* 用 inset-0 代替 100vw×100vh：#app 上 transform: scale 缩放时，vw/vh 尺寸
+     会被放大导致溢出裁切，inset-0 相对缩放后的 #app 盒恒填满视口 */
+  inset: 0;
+  width: 100%;
+  height: 100%;
   z-index: 2;
   pointer-events: none;
   overflow: hidden;

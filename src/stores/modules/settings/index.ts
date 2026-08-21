@@ -4,6 +4,7 @@
  */
 import { setCurrentBackground } from '@/api/services/background'
 import { setSceneAwareness } from '@/api/services/scene'
+import { setHdrMode } from '@/api/services/config'
 import { defineStore } from 'pinia'
 import type { ShortcutAction, ShortcutBinding } from '@/utils/shortcuts'
 import { DEFAULT_SHORTCUTS, sanitizeShortcuts } from '@/utils/shortcuts'
@@ -39,6 +40,7 @@ export const DEFAULT_SETTINGS = {
     meteorFps: 30, // 流星动画帧率
     starsFps: 30, // 星星动画帧率
     sceneAwarenessEnabled: true, // 场景感知开关
+    hdrModeEnabled: false, // HDR 模式开关（仅 Windows）
     locale: 'zh-CN', // 界面显示语言（i18n，'zh-CN' / 'ja'）
     // 对话框外观（自定义）
     dialogBackgroundImage: '', // 自定义背景图 base64/dataURL；空字符串=无图
@@ -90,6 +92,7 @@ export interface DisplaySettings {
   meteorFps: number
   starsFps: number
     sceneAwarenessEnabled: boolean
+    hdrModeEnabled: boolean
     locale: string
     // 对话框外观
     dialogBackgroundImage: string
@@ -157,6 +160,8 @@ export const useSettingsStore = defineStore('settings', {
     meteorFps: (state) => state.display.meteorFps,
     starsFps: (state) => state.display.starsFps,
     sceneAwarenessEnabled: (state) => state.display.sceneAwarenessEnabled,
+    // HDR 模式开关（仅 Windows）
+    hdrModeEnabled: (state) => state.display.hdrModeEnabled,
     // 界面显示语言（i18n）
     uiLocale: (state) => state.display.locale,
     // 对话框外观
@@ -332,6 +337,12 @@ export const useSettingsStore = defineStore('settings', {
     setSceneAwarenessEnabled(enabled: boolean) {
       this.display.sceneAwarenessEnabled = enabled
       setSceneAwareness(enabled)
+    },
+
+    // 设置 HDR 模式开关（仅 Windows；同步到后端，重启后生效）
+    setHdrModeEnabled(enabled: boolean) {
+      this.display.hdrModeEnabled = enabled
+      setHdrMode(enabled)
     },
 
     // 设置界面显示语言（i18n）

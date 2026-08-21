@@ -61,6 +61,26 @@ export default {
     defaultExportTitle: "Character Export",
     close: "Close",
     cancel: "Cancel",
+    errors: {
+      ARCHIVE_MISSING_SETTINGS_YML: "Archive is missing settings.yml\nThis may be an older version role. Please download the new version and import it.",
+    },
+  },
+  fontImport: {
+    errors: {
+      FONT_INVALID_FORMAT: "Not a valid font file (ttf/otf/woff/woff2). The file may be corrupted or the extension doesn't match its content.",
+    },
+  },
+  musicImport: {
+    errors: {
+      MUSIC_INVALID_FORMAT: "Not a valid audio file (mp3/wav/flac/ogg). The file may be corrupted or the extension doesn't match its content.",
+    },
+  },
+  notice: {
+    autoCorrected: {
+      title: "Auto-corrected",
+      font: "{original} is not a {originalExt} font (detected {detected}), saved as {corrected}",
+      music: "{original} is not a {originalExt} audio file (detected {detected}), saved as {corrected}",
+    },
   },
   menuItem: {
     defaultTitle: "Default Title",
@@ -113,6 +133,16 @@ export default {
     subtitleDefault: "Leave the things you want her to remind you about here",
   },
   toolCalls: {
+    androidTitle: "Android tool notes",
+    androidSummary: "Tool settings are stored per device and are not synced from Windows. Enable the tools you need on this phone and save. Command execution and desktop plugins are unavailable on Android.",
+    androidNoModel: "No usable chat model is configured. Set the model, API key, and model name first.",
+    androidModelUnsupported: "The current chat model does not support native tool calls. Switch to a model with function calling support.",
+    androidNoTools: "No usable tools are enabled for the current character. Enable them individually or apply the recommended setup below.",
+    androidReady: "The current character can use {count} tools. New chats use the latest settings after you save.",
+    androidEnableRecommended: "Enable Android tools (save required)",
+    androidRecommendedStaged: "Android-compatible tools selected. Tap Save to apply them.",
+    androidFileScope: "Android file tools can only access LingChat's app sandbox. Import photos, downloads, and other external files through the system file picker first.",
+    androidProxyHint: "On Android, 127.0.0.1 means the phone itself, not your Windows PC. Use the PC's LAN address when connecting to a proxy running on the PC.",
     webSearchTitle: "Web Search",
     enableWebSearch: "Enable the web search tool (let them look things up online)",
     useBuiltin: "Use model API built-in search (no API Key needed)",
@@ -164,7 +194,7 @@ export default {
     commandDeleteApprovalTitle: "Confirm Deletion Command",
     commandDeleteApprovalMessage: "This command may delete files:\n\n{command}\n\nWorking directory: {cwd}\n\nDeletion usually cannot be undone. Allow it to run?",
     commandHint: "You will be asked to confirm each command in a popup; the uac parameter requests admin rights (Windows UAC prompt)",
-    commandWindowsOnly: "⚠ Command execution is available on Windows only; shell commands cannot run on this platform",
+    commandWindowsOnly: "⚠ Command execution is available on desktop only and cannot run on Android",
     commandAutoApprove: "Run without confirmation (no popup before commands run)",
     commandAutoApproveHint: "⚠ Dangerous! Commands can run without consent; detected delete commands remain controlled by the separate switch below",
     commandDeleteAutoApprove: "Run delete commands without confirmation",

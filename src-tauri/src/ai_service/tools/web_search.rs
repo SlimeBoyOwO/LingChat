@@ -190,6 +190,7 @@ impl WebSearchTool {
         }
         match cfg.provider.as_str() {
             "bocha" => self.execute_bocha_search(query, cfg).await,
+            "tavily" => self.execute_tavily_search(query, cfg).await,
             "custom" => self.execute_kimi_endpoint(query, cfg).await,
             _ => self.execute_kimi_endpoint(query, cfg).await,
         }
@@ -302,6 +303,73 @@ impl WebSearchTool {
                     "site_name": get("siteName"),
                     "date": get("datePublished"),
                     "snippet": if get("summary").is_empty() { get("snippet") } else { get("summary") },
+                })
+            })
+            .collect();
+
+        let text = Self::format_results(
+            query,
+            &results,
+            cfg.max_results.max(1),
+            cfg.hide_search_results,
+        );
+        Ok(serde_json::json!({
+            "ok": true,
+            "query": query,
+            "result_count": results.len().min(cfg.max_results.max(1)),
+            "text": text,
+        }))
+    }
+
+    /// 独立端点模式 · Tavily（https://api.tavily.com/search）。
+    ///
+    /// Tavily 只认顶层的 `query` 字段。此前没有这个分支，选 Tavily 的配置会落进
+    /// 上面 match 的 Kimi 兜底、发出 `text_query`，Tavily 便返回 422（issue #630）。
+    /// 注意 `text_query` 是 Kimi 官方端点要求的格式，不能反过来去改那一侧。
+    async fn execute_tavily_search(
+        &self,
+        query: &str,
+        cfg: &WebSearchSettings,
+    ) -> Result<ToolResult, ToolError> {
+        let base_url = "https://api.tavily.com/search";
+        let client = Self::build_client(cfg)?;
+        let response = client
+            .post(base_url)
+            .bearer_auth(cfg.api_key.trim())
+            .json(&serde_json::json!({
+                "query": query,
+                "max_results": cfg.max_results.max(1),
+            }))
+            .send()
+            .await
+            .map_err(classify_request_error)?;
+
+        let status = response.status();
+        if !status.is_success() {
+            return Err(ToolError::Execution(
+                http_error_message(status, response).await,
+            ));
+        }
+
+        let payload: Value = response
+            .json()
+            .await
+            .map_err(|e| ToolError::Execution(format!("搜索结果解析失败: {e}")))?;
+        let rows = payload
+            .get("results")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        // 统一成 format_results 认识的字段：Tavily 的正文在 content，
+        // 没有站点名和日期，留空即可（format_results 会跳过空字段）。
+        let results: Vec<Value> = rows
+            .iter()
+            .map(|item| {
+                let get = |key: &str| item.get(key).and_then(Value::as_str).unwrap_or("");
+                serde_json::json!({
+                    "title": get("title"),
+                    "url": get("url"),
+                    "snippet": get("content"),
                 })
             })
             .collect();

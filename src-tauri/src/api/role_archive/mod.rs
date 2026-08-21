@@ -11,15 +11,19 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio_util::sync::CancellationToken;
 
-
 mod export_pipeline;
 mod import_pipeline;
 mod state;
 
 pub use state::{ImportTaskEntry, RoleArchiveState};
 
+use crate::utils::archive::ArchiveFormat;
+
 use export_pipeline::compress_role_to_temp;
-use import_pipeline::{do_import, parse_format, parse_policy, prepare_import_source, write_temp_archive};
+use import_pipeline::{
+    do_import, looks_like_percent_encoded_blob, parse_format, parse_format_opt, parse_policy,
+    prepare_import_source, write_temp_archive,
+};
 use state::{ImportingGuard, TaskRemoveGuard};
 
 #[derive(Debug, Serialize, Clone)]
@@ -29,6 +33,8 @@ pub struct ImportResult {
     pub conflict_action: String,
     pub warnings: Vec<String>,
     pub bytes_extracted: u64,
+    /// 真实格式（后端 magic 决定）。前端 hint 可能不同，但 hint 不一致时以本字段为准。
+    pub format: ArchiveFormat,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -45,21 +51,26 @@ pub async fn import_role(
     app: AppHandle,
     state: State<'_, RoleArchiveState>,
     bytes: Vec<u8>,
-    format: String,
+    format: Option<String>,
     conflict: String,
     file_name: Option<String>,
 ) -> Result<ImportResult, String> {
     // 并发保护：同一时间只允许一个导入任务。
-    if state.importing.swap(true, std::sync::atomic::Ordering::SeqCst) {
+    if state
+        .importing
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+    {
         return Err("已有导入任务在进行中".into());
     }
-    let _import_guard = ImportingGuard { flag: &state.importing };
+    let _import_guard = ImportingGuard {
+        flag: &state.importing,
+    };
 
     if bytes.is_empty() {
         tracing::warn!("[RoleArchive] import_role 收到空文件");
         return Err("空文件".into());
     }
-    let format = parse_format(&format)?;
+    let format = parse_format_opt(format.as_deref())?;
     let policy = parse_policy(&conflict)?;
     tracing::info!(
         "[RoleArchive] import_role 开始: format={:?}, conflict={:?}, size={}B ({}MB)",
@@ -79,14 +90,28 @@ pub async fn import_role(
             saf_cache_path: std::sync::Mutex::new(None),
         },
     );
-    let _remove_guard = TaskRemoveGuard { state: &state, task_id: &task_id };
+    let _remove_guard = TaskRemoveGuard {
+        state: &state,
+        task_id: &task_id,
+    };
     // 把 task_id 通过事件发给前端，让前端的取消按钮能找到正确的令牌。
-    let _ = app.emit("role:import-started", serde_json::json!({ "task_id": &task_id }));
+    let _ = app.emit(
+        "role:import-started",
+        serde_json::json!({ "task_id": &task_id }),
+    );
     // 写入临时文件，供文件头校验和 ZIP/7z 解压库读取。
     let tmp_path = write_temp_archive(&app, &bytes).await?;
     let cleanup_path = tmp_path.clone();
 
-    let result = do_import(&app, &tmp_path, format, policy, cancel_token, file_name.as_deref()).await;
+    let result = do_import(
+        &app,
+        &tmp_path,
+        format,
+        policy,
+        cancel_token,
+        file_name.as_deref(),
+    )
+    .await;
 
     // 兜底清理临时文件
     let _ = tokio::fs::remove_file(&cleanup_path).await;
@@ -140,25 +165,32 @@ pub async fn import_role_from_path(
     app: AppHandle,
     state: State<'_, RoleArchiveState>,
     path: String,
-    format: String,
+    format: Option<String>,
     conflict: String,
     file_name: Option<String>,
 ) -> Result<ImportResult, String> {
     // 并发保护：同一时间只允许一个导入任务。
-    if state.importing.swap(true, std::sync::atomic::Ordering::SeqCst) {
+    if state
+        .importing
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+    {
         return Err("已有导入任务在进行中".into());
     }
-    let _import_guard = ImportingGuard { flag: &state.importing };
+    let _import_guard = ImportingGuard {
+        flag: &state.importing,
+    };
 
     if path.is_empty() {
         tracing::warn!("[RoleArchive] import_role_from_path 收到空 path");
         return Err("path 为空".into());
     }
-    let format = parse_format(&format)?;
+    let format = parse_format_opt(format.as_deref())?;
     let policy = parse_policy(&conflict)?;
     tracing::info!(
         "[RoleArchive] import_role_from_path 开始: path={}, format={:?}, conflict={:?}",
-        path, format, policy
+        path,
+        format,
+        policy
     );
 
     // 为每个导入任务分配独立的取消令牌。
@@ -169,25 +201,46 @@ pub async fn import_role_from_path(
         saf_cache_path: std::sync::Mutex::new(None),
     };
     state.tasks.lock().unwrap().insert(task_id.clone(), entry);
-    let _remove_guard = TaskRemoveGuard { state: &state, task_id: &task_id };
+    let _remove_guard = TaskRemoveGuard {
+        state: &state,
+        task_id: &task_id,
+    };
 
     // 把 task_id 通过事件发给前端，让前端的取消按钮能找到正确的令牌。
-    let _ = app.emit("role:import-started", serde_json::json!({ "task_id": &task_id }));
+    let _ = app.emit(
+        "role:import-started",
+        serde_json::json!({ "task_id": &task_id }),
+    );
 
-    let (path_buf, cleanup_after_import) = prepare_import_source(&app, &path).await?;
+    let src = prepare_import_source(&app, &path).await?;
 
     // SAF 源文件复制完成后记录缓存路径，便于取消任务时立即清理。
-    if cleanup_after_import {
+    if src.cleanup_after_import {
         if let Some(entry) = state.tasks.lock().unwrap().get_mut(&task_id) {
-            *entry.saf_cache_path.lock().unwrap() = Some(path_buf.clone());
+            *entry.saf_cache_path.lock().unwrap() = Some(src.path.clone());
         }
     }
 
-    let result = async {
-        if !path_buf.exists() {
-            return Err(format!("文件不存在: {}", path_buf.display()));
+    // 文件名兜底：前端传来的 `file_name` 可能是 URI 末段未经 decode 的
+    // percent-encoded hex blob（如 `E6A998E585891784606515054.zip`）。
+    // 此时优先采用 SAF 提取的真实 display name，保证角色文件夹名可读。
+    let effective_file_name: Option<String> = match file_name {
+        Some(name) if !looks_like_percent_encoded_blob(&name) => Some(name),
+        Some(name) => {
+            tracing::warn!(
+                "[RoleArchive] import_role_from_path file_name 看起来是 percent-encoded blob ({name})，改用 SAF display_name={}",
+                src.display_name
+            );
+            Some(src.display_name.clone())
         }
-        let meta = tokio::fs::metadata(&path_buf)
+        None => Some(src.display_name.clone()),
+    };
+
+    let result = async {
+        if !src.path.exists() {
+            return Err(format!("文件不存在: {}", src.path.display()));
+        }
+        let meta = tokio::fs::metadata(&src.path)
             .await
             .map_err(|e| format!("stat path: {e}"))?;
         tracing::info!(
@@ -197,21 +250,21 @@ pub async fn import_role_from_path(
         );
         do_import(
             &app,
-            &path_buf,
+            &src.path,
             format,
             policy,
             cancel_token,
-            file_name.as_deref(),
+            effective_file_name.as_deref(),
         )
         .await
     }
     .await;
 
-    if cleanup_after_import {
-        if let Err(error) = tokio::fs::remove_file(&path_buf).await {
+    if src.cleanup_after_import {
+        if let Err(error) = tokio::fs::remove_file(&src.path).await {
             tracing::warn!(
                 "[RoleArchive] import_role_from_path 清理 SAF 缓存失败: path={}, err={}",
-                path_buf.display(),
+                src.path.display(),
                 error
             );
         }
@@ -219,7 +272,9 @@ pub async fn import_role_from_path(
     match &result {
         Ok(r) => tracing::info!(
             "[RoleArchive] import_role_from_path 完成: role_name={}, role_id={:?}, action={}",
-            r.role_name, r.role_id, r.conflict_action
+            r.role_name,
+            r.role_id,
+            r.conflict_action
         ),
         Err(e) => tracing::error!("[RoleArchive] import_role_from_path 失败: {e}"),
     }
@@ -259,11 +314,12 @@ pub async fn export_role_to_path(
     }
     tracing::info!(
         "[RoleArchive] export_role_to_path 开始: role_id={}, format={:?}, dest={}",
-        role_id, format, dest_path
+        role_id,
+        format,
+        dest_path
     );
 
-    let (temp_path, suggested_name, size) =
-        compress_role_to_temp(&app, role_id, format).await?;
+    let (temp_path, suggested_name, size) = compress_role_to_temp(&app, role_id, format).await?;
 
     if dest_path.starts_with("content://") {
         use tauri_plugin_android_fs::{AndroidFsExt, FsUri};

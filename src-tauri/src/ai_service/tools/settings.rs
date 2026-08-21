@@ -71,6 +71,7 @@ pub struct WebSearchSettings {
     /// 独立端点模式的搜索服务提供商：
     /// "kimi"（Kimi Code 同款 /v1/search，body 为 text_query）
     /// "bocha"（BoCha 博查 https://api.bochaai.com/v1/web-search）
+    /// "tavily"（Tavily https://api.tavily.com/search，body 为 query）
     /// 仅在 use_builtin = false 时生效。
     pub provider: String,
     /// API Key（Bearer 认证，仅 use_builtin = false 时需要）。
@@ -129,11 +130,28 @@ pub struct ToolSettings {
 }
 
 impl ToolSettings {
+    /// 移动端没有可供应用稳定调用的桌面 shell，且 Android/iOS 的分区存储
+    /// 不允许把“任意路径”理解为桌面文件系统访问。加载和保存时都收紧这些选项，
+    /// 避免旧配置继续把不可执行的工具下发给模型。
+    pub fn apply_platform_constraints(&mut self) {
+        if cfg!(any(target_os = "android", target_os = "ios")) {
+            self.groups.insert("command".to_string(), false);
+            self.command_auto_approve = false;
+            self.command_delete_auto_approve = false;
+            self.file_ops_allow_any_path = false;
+        }
+    }
+
+    pub fn group_supported_on_current_platform(group: &str) -> bool {
+        !(cfg!(any(target_os = "android", target_os = "ios")) && group == "command")
+    }
+
     /// 把用户配置同步到权限矩阵的 default 角色组。
     pub fn sync_to_permissions(&self, permissions: &mut ToolPermissionConfig) {
         permissions.set_tool_allowed_for_default_group("web_search", self.web_search.is_ready());
         for (group, tools) in TOOL_GROUPS {
-            let enabled = self.groups.get(*group).copied().unwrap_or(false);
+            let enabled = Self::group_supported_on_current_platform(group)
+                && self.groups.get(*group).copied().unwrap_or(false);
             for tool in *tools {
                 permissions.set_tool_allowed_for_default_group(tool, enabled);
             }
@@ -148,10 +166,13 @@ impl ToolSettings {
         if path.exists() {
             let text = fs::read_to_string(&path)
                 .with_context(|| format!("读取工具配置失败: {}", path.display()))?;
-            return toml::from_str(&text)
-                .with_context(|| format!("解析工具配置失败: {}", path.display()));
+            let mut settings: Self = toml::from_str(&text)
+                .with_context(|| format!("解析工具配置失败: {}", path.display()))?;
+            settings.apply_platform_constraints();
+            return Ok(settings);
         }
-        let settings = Self::default();
+        let mut settings = Self::default();
+        settings.apply_platform_constraints();
         settings.save(data_dir)?;
         Ok(settings)
     }

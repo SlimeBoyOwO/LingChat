@@ -201,6 +201,33 @@ impl std::ops::Deref for AppState {
     }
 }
 
+/// 读取 settings.json 中的「HDR 模式」开关（仅 Windows）。
+///
+/// 必须在 WebView2 环境创建（`Builder::build()`）之前调用——此时 `AppHandle` 尚不存在，
+/// 只能直接解析 store 文件。store 位于 `%APPDATA%\<identifier>\settings.json`
+/// （tauri-plugin-store 的 flat 点号键）。文件缺失/解析失败一律视为「未开启」。
+#[cfg(target_os = "windows")]
+fn read_hdr_mode_enabled(identifier: &str) -> bool {
+    use serde_json::Value;
+
+    let Some(appdata) = std::env::var("APPDATA").ok() else {
+        return false;
+    };
+    let path = std::path::Path::new(&appdata)
+        .join(identifier)
+        .join(crate::config::STORE_FILE);
+
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(json) = serde_json::from_str::<Value>(&content) else {
+        return false;
+    };
+    json.get(crate::config::keys::HDR_MODE_ENABLED)
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 配置日志过滤器（genai 调试日志由 log.genai_debug 设置在 setup 阶段动态控制）。
@@ -221,13 +248,24 @@ pub fn run() {
         .with(filter)
         .init();
 
-    // 设置 WebView2 颜色配置文件（强制使用线性 sRGB）
-    #[allow(deprecated)]
-    unsafe {
-        std::env::set_var(
-            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-            "--force-color-profile=scrgb-linear",
-        );
+    // 提前构建 Tauri 上下文（读取 bundle identifier，供 Windows HDR 开关定位 settings.json）
+    let context = tauri::generate_context!();
+
+    // Windows：设置 WebView2 颜色配置文件（强制使用线性 sRGB）。
+    // 用户开启「HDR 模式」时跳过强制，改用 WebView2 自动色彩管理，
+    // 避免 HDR 显示器下整体发灰/发暗。环境变量须在 WebView2 环境创建
+    // （Builder::build() 之前）设置，因此在此处直接解析 settings.json。
+    #[cfg(target_os = "windows")]
+    {
+        if !read_hdr_mode_enabled(&context.config().identifier) {
+            #[allow(deprecated)]
+            unsafe {
+                std::env::set_var(
+                    "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+                    "--force-color-profile=scrgb-linear",
+                );
+            }
+        }
     }
 
     // 构建 Tauri 应用
@@ -260,6 +298,7 @@ pub fn run() {
             app.manage(resource_sync::ResourceSyncState::default());
             app.manage(lan_sync::LanSyncState::default());
             app.manage(utils::cpu_perf::CpuDetectionCache::new());
+            app.manage(utils::gpu_perf::GpuDetectionCache::new());
             app.manage(api::role_archive::RoleArchiveState::default());
 
             // Android 修复：Tauri 在 setup 闭包执行前已创建 webview 窗口，前端 invoke
@@ -483,7 +522,7 @@ pub fn run() {
             // 因此首次消息延迟是启动时加载的代价。
             ai_service::tts::local::setup::spawn_preload(&app.handle(), &local_tts);
 
-            // 启动 Windows 鼠标轮询点击穿透循环
+            // 启动鼠标轮询点击穿透循环
             let window = app
                 .get_webview_window("main")
                 .ok_or_else(|| tauri::Error::AssetNotFound("main window not found".to_string()))?;
@@ -503,13 +542,19 @@ pub fn run() {
                 .await;
             });
 
-            // Windows 点击穿透逻辑
-            let hit_test_state = app.state::<api::pet::HitTestState>();
-            let rects_arc = hit_test_state.solid_rects.clone();
-            let enabled_arc = hit_test_state.enabled.clone();
-
-            #[cfg(target_os = "windows")]
+            // 桌宠点击穿透：全局轮询鼠标位置，只有落在前端上报的 solid 区域内才接收鼠标事件，
+            // 其余透明区域把点击让给底下的窗口。
+            //
+            // 原本用 Win32 的 GetCursorPos，因此整段是 cfg(windows) 独占，macOS 上桌宠窗口
+            // 会整块挡住底下窗口的点击。cursor_position() 与 set_ignore_cursor_events() 都是
+            // Tauri 的跨平台 API，改用前者后三个桌面平台可以共用同一个循环。
+            // （Linux 未实测：X11 / Wayland 下最差情况是 API 返回 Err，本轮直接跳过。）
+            #[cfg(desktop)]
             {
+                let hit_test_state = app.state::<api::pet::HitTestState>();
+                let rects_arc = hit_test_state.solid_rects.clone();
+                let enabled_arc = hit_test_state.enabled.clone();
+
                 tauri::async_runtime::spawn(async move {
                     let mut was_ignored = false;
                     loop {
@@ -529,18 +574,15 @@ pub fn run() {
                             continue;
                         }
 
-                        use windows::Win32::Foundation::POINT;
-                        use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
-
-                        let mut pt = POINT { x: 0, y: 0 };
-                        unsafe {
-                            let _ = GetCursorPos(&mut pt);
-                        }
+                        // 桌面全局坐标（物理像素），与 outer_position() 同一坐标系
+                        let Ok(cursor) = window.cursor_position() else {
+                            continue;
+                        };
 
                         if let Ok(window_pos) = window.outer_position() {
                             if let Ok(scale_factor) = window.scale_factor() {
-                                let mouse_x = f64::from(pt.x) - f64::from(window_pos.x);
-                                let mouse_y = f64::from(pt.y) - f64::from(window_pos.y);
+                                let mouse_x = cursor.x - f64::from(window_pos.x);
+                                let mouse_y = cursor.y - f64::from(window_pos.y);
 
                                 let logical_x = mouse_x / scale_factor;
                                 let logical_y = mouse_y / scale_factor;
@@ -600,6 +642,8 @@ pub fn run() {
             api::settings::list_llm_providers,
             api::settings::save_llm_provider,
             api::settings::delete_llm_provider,
+            #[cfg(target_os = "windows")]
+            api::settings::set_hdr_mode,
             api::settings::set_llm_role,
             api::settings::switch_llm,
             api::settings::test_llm_provider,
@@ -707,10 +751,12 @@ pub fn run() {
             api::script_editor::agent::editor_agent_create_conversation,
             api::script_editor::agent::editor_agent_list_conversations,
             api::script_editor::agent::editor_agent_delete_conversation,
+            api::script_editor::agent::editor_agent_rename_conversation,
             api::script_editor::agent::editor_agent_get_messages,
             api::script_editor::agent::editor_agent_clear_conversation,
             api::script_editor::agent::editor_agent_start_chat,
             api::script_editor::agent::editor_agent_stop_chat,
+            api::script_editor::agent::editor_agent_rewind,
             api::script_editor::agent::editor_agent_resolve_approval,
             api::pet::update_solid_regions,
             api::pet::set_pet_mode,
@@ -719,6 +765,7 @@ pub fn run() {
             api::schedule::reload_proactive_system,
             api::proactive_set_can_deliver,
             api::tool_settings::get_tool_settings,
+            api::tool_settings::get_tool_runtime_info,
             api::tool_settings::save_tool_settings,
             api::tool_settings::test_web_search,
             api::tool_settings::resolve_command_approval,
@@ -744,6 +791,8 @@ pub fn run() {
             lan_sync::lan_sync_restart,
             utils::cpu_perf::get_cpu_info,
             utils::cpu_perf::redetect_cpu,
+            utils::gpu_perf::get_gpu_info,
+            utils::gpu_perf::redetect_gpu,
             api::role_archive::import_role,
             api::role_archive::import_role_from_path,
             api::role_archive::cancel_role_import,
@@ -757,6 +806,7 @@ pub fn run() {
             ai_service::tts::local::tts_local_import_from_path,
             ai_service::tts::local::tts_local_download,
             ai_service::tts::local::tts_local_delete_voice,
+            ai_service::tts::local::tts_local_delete_deberta,
             ai_service::tts::local::tts_local_import_style_vectors,
             ai_service::tts::local::tts_local_synthesize_preview,
             ai_service::tts::local::tts_local_get_enabled,
@@ -767,7 +817,7 @@ pub fn run() {
             ai_service::tts::local::tts_local_set_device,
             exit_app,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }
 
