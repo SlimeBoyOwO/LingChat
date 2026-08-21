@@ -262,6 +262,25 @@ watch(activeModel, (m) => {
   }
 })
 
+// 流式开关 ↔ 模型自动同步：打开流式 → 切到流式模型；关闭 → 切到非流式模型。
+// 模型与协议强绑定（流式模型只能走 WebSocket 端点，反之亦然），
+// 设置层保持一致，后端回退兜底。
+watch(
+  () => localSettings.value.stream_enabled,
+  (on) => {
+    const m = activeModel.value
+    if (!m) return
+    const cfg = localSettings.value.provider_configs[localSettings.value.active_provider]
+    if (on && !m.supports_streaming) {
+      const sm = asrStore.models.find((x) => x.supports_streaming)
+      if (sm && cfg) cfg.model = sm.id
+    } else if (!on && m.supports_streaming) {
+      const nm = asrStore.models.find((x) => !x.supports_streaming)
+      if (nm && cfg) cfg.model = nm.id
+    }
+  },
+)
+
 // provider 切换 / 挂载时显式初始化缺失配置（不在渲染期突变 state）
 function ensureProviderConfig(id: string) {
   if (!localSettings.value.provider_configs[id]) {

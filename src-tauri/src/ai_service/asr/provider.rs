@@ -341,8 +341,10 @@ impl AsrProvider for QwenAsrProvider {
         // 参考官方 SDK Recognition.call + 文档「非实时语音识别（Fun-ASR-Realtime）API参考」。
         // 注：language_hints 仅 paraformer-realtime-v2 支持，fun-asr-realtime 不传。
         let _ = language_hint;
-        // 模型自选：cred.model 为空用默认（fun-asr-realtime）
-        let model = if self.cred.model.is_empty() {
+        // 模型自选：cred.model 为空或为流式模型（非流式端点不认识）→ 回退默认非流式模型。
+        // 流式模型（paraformer-realtime-*）只能走 WebSocket 实时端点（asr_start_streaming），
+        // 否则 DashScope 返回 HTTP 400 "url error"（模型名与端点不匹配）。
+        let model = if self.cred.model.is_empty() || qwen_is_streaming_model(&self.cred.model) {
             Self::MODEL
         } else {
             self.cred.model.as_str()
@@ -853,6 +855,14 @@ pub fn qwen_models() -> Vec<ModelInfo> {
             is_default: false,
         },
     ]
+}
+
+/// qwen 流式模型集合（与 [`qwen_models`] 保持同步）。
+///
+/// 流式模型只能走 WebSocket 实时端点；非流式端点（multimodal-generation）
+/// 不认识它们，DashScope 会返回 HTTP 400 "url error"（模型名与端点不匹配）。
+pub fn qwen_is_streaming_model(model: &str) -> bool {
+    matches!(model, "paraformer-realtime-v1" | "paraformer-realtime-v2")
 }
 
 /// 按 provider id 返回模型清单；未接入模型选择的 provider 返回空数组

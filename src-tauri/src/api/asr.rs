@@ -230,8 +230,9 @@ pub async fn asr_start_streaming(
         .get(&provider_id)
         .cloned()
         .unwrap_or_default();
-    // 流式模型：配置为空 → 默认 paraformer-realtime-v2
-    let model = if cred.model.is_empty() {
+    // 流式模型：配置为空或为非流式模型（实时端点不认识 fun-asr-realtime，
+    // 会返回 400 url error）→ 回退默认流式模型
+    let model = if cred.model.is_empty() || !provider::qwen_is_streaming_model(&cred.model) {
         "paraformer-realtime-v2".to_string()
     } else {
         cred.model
