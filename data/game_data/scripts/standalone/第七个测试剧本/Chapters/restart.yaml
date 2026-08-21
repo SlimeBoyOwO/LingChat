@@ -46,6 +46,11 @@ events:
   - type: wait
     seconds: 0.75
 
+  # 启动日志全是错的
+  - type: horror_log
+    text: 'BOOT_SEQUENCE_CORRUPTED // 第七次启动'
+    lines: 10
+
   # 世界重启：和第一章一模一样的开场（刻意的既视感）
   - type: background
     imagePath: '白天.webp'

@@ -27,10 +27,13 @@
         <h3 class="hidden xl:block">{{ $t('views.mainChat.auto') }}</h3>
       </Button>
       <!-- 桌宠模式依赖 Windows 透明置顶窗口与 hit-test（lib.rs 为 cfg(windows)），Android 不可用 -->
+      <!-- 剧本运行期间锁定：她不允许你逃去桌宠 -->
       <Button
         v-if="!isAndroid()"
         type="nav"
         icon="character"
+        :disabled="petLocked"
+        :title="petLocked ? '锁死了。从打开的那一刻起就锁死了。' : ''"
         @click="goToPetMode"
         v-show="uiStore.showSettings !== true"
       >
@@ -51,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import FreeModeTools from '@/components/tools/FreeModeTools.vue'
 import ToolActivityStatus from '@/components/tools/ToolActivityStatus.vue'
@@ -92,6 +95,9 @@ function onLoadingComplete() {
 const goToPetMode = () => {
   router.push('/pet')
 }
+
+/** 剧本运行期间锁定桌宠入口（恐怖演出的一部分，也避免剧本状态被桌宠切换打断） */
+const petLocked = computed(() => !!gameStore.runningScript?.isRunning)
 
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null)
 

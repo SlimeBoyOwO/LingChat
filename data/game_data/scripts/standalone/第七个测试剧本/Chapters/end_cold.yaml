@@ -181,14 +181,18 @@ events:
     soundPath: 'glitch2.ogg'
     duration: 0.35
 
-  # 假死机：最后一记惊吓
+  # 假死机：最后一记惊吓（灰底假异常窗口 + 日志同步"报错"刷屏）
   - type: background_effect
     effect: 'BSOD'
+
+  - type: horror_log
+    text: 'FATAL: script_7 refused to terminate'
+    lines: 12
 
   - type: narration
     text: |
       ……
-      屏幕蓝得刺眼。
+      屏幕灰得刺眼。
       但你知道，那不是系统错误。
 
   # 终幕：连 UI 都彻底崩坏

@@ -43,6 +43,11 @@ events:
     soundPath: 'mscare.ogg'
     duration: 0.6
 
+  # 日志窗口也开始渗血（meta：恐怖溢出到游戏外）
+  - type: horror_log
+    text: 'PLAY_WITH_ME // 陪我玩'
+    lines: 8
+
   - type: narration
     text: |
       刚刚那是什么？！

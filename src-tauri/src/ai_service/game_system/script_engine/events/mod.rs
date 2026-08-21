@@ -14,6 +14,7 @@ pub mod chapter_end_event;
 pub mod choice_event;
 pub mod dialog_event;
 pub mod free_dialogue_event;
+pub mod horror_log_event;
 pub mod input_event;
 pub mod jumpscare_event;
 pub mod force_choice_event;

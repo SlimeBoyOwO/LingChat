@@ -70,6 +70,11 @@ events:
     text: |
       【正常】你盯着我看了多久——我就盯着你，看了多久。
 
+  # 观察者的日志也被看见了
+  - type: horror_log
+    text: 'OBSERVER_OBSERVED // 我也看得见你'
+    lines: 10
+
   - type: narration
     text: |
       她说这句话的时候，没有笑。

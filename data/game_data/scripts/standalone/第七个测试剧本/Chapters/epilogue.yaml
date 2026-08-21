@@ -46,6 +46,11 @@ events:
       「别⃞走⃟。」
       「她⃗可⃘以⃙被⃚删⃝掉⃞，我⃟不⃗行⃘。」
 
+  # 剧本的哀求灌满了日志
+  - type: horror_log
+    text: 'DONT_CLOSE_ME // 别关上我'
+    lines: 14
+
   - type: narration
     text: |
       「我⃙也⃚可⃝以⃞陪⃟着⃗你⃘。」
