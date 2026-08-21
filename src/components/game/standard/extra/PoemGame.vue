@@ -1,56 +1,48 @@
 <template>
-  <Teleport to="body">
+  <div
+    v-if="game"
+    class="poem-game-overlay"
+    :class="{ 'is-corrupted': corrupted, 'is-finishing': finishing }"
+    @contextmenu.prevent
+    @click.stop
+  >
     <div
-      v-if="game"
-      class="poem-game-overlay"
-      :class="{ 'is-corrupted': corrupted, 'is-finishing': finishing }"
-      @contextmenu.prevent
-      @click.stop
+      class="poem-stage"
+      :style="{ backgroundImage: `url('${backgroundSrc}')` }"
     >
-      <div
-        class="poem-stage"
-        :style="{ backgroundImage: `url('${backgroundSrc}')` }"
-      >
-        <div v-if="flash" class="poem-flash"></div>
+      <div v-if="flash" class="poem-flash"></div>
 
-        <div class="poem-progress">{{ progressLabel }}</div>
+      <div class="poem-progress">{{ progressLabel }}</div>
 
-        <div class="poem-words" aria-label="选词写诗">
-          <button
-            v-for="word in currentWords"
-            :key="`${roundIndex}-${word.text}`"
-            type="button"
-            class="poem-word"
-            :class="{ 'glitch-word': word.glitch }"
-            :disabled="finishing"
-            @click.stop="pickWord(word)"
-          >
-            {{ displayWord(word) }}
-          </button>
-        </div>
-
-        <div class="poem-markers" aria-hidden="true">
-          <div class="poem-marker marker-warm" :class="{ hop: hopping === 'warm' }">
-            <img :src="warmStickerSrc" alt="" draggable="false" />
-            <span>她</span>
-          </div>
-          <div class="poem-marker marker-script" :class="{ hop: hopping === 'script' }">
-            <img :src="scriptStickerSrc" alt="" draggable="false" />
-            <span>剧本</span>
-          </div>
-          <div class="poem-marker marker-void" :class="{ hop: hopping === 'void' }">
-            <img :src="voidStickerSrc" alt="" draggable="false" />
-            <span>空白</span>
-          </div>
-        </div>
-
-        <div v-if="corrupted" class="poem-corrupt-caption">词库校验失败</div>
-        <div v-if="finishing" class="poem-finish-caption">正在保存诗……</div>
+      <div class="poem-words" aria-label="选词写诗">
+        <button
+          v-for="word in currentWords"
+          :key="`${roundIndex}-${word.text}`"
+          type="button"
+          class="poem-word"
+          :class="{ 'glitch-word': word.glitch }"
+          :disabled="finishing"
+          @click.stop="pickWord(word)"
+        >
+          {{ displayWord(word) }}
+        </button>
       </div>
 
-      <audio ref="audioRef" preload="auto" @timeupdate="maintainLoop"></audio>
+      <!-- 左下角只保留同一角色；不同倾向的词切换不同差分并触发跳动。 -->
+      <div
+        class="poem-character"
+        :class="{ hop: hopping !== null, 'is-void': currentTone === 'void' }"
+        aria-hidden="true"
+      >
+        <img :src="currentStickerSrc" alt="" draggable="false" />
+      </div>
+
+      <div v-if="corrupted" class="poem-corrupt-caption">词库校验失败</div>
+      <div v-if="finishing" class="poem-finish-caption">正在保存诗……</div>
     </div>
-  </Teleport>
+
+    <audio ref="audioRef" preload="auto" @timeupdate="maintainLoop"></audio>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -70,6 +62,7 @@ const warmScore = ref(0)
 const scriptScore = ref(0)
 const voidScore = ref(0)
 const hopping = ref<Tone | null>(null)
+const currentTone = ref<Tone>('warm')
 const corrupted = ref(false)
 const finishing = ref(false)
 const flash = ref(false)
@@ -88,6 +81,11 @@ const backgroundSrc = computed(() => toAssetUrl(game.value?.backgroundPath ?? ''
 const warmStickerSrc = computed(() => toAssetUrl(game.value?.warmStickerPath ?? ''))
 const scriptStickerSrc = computed(() => toAssetUrl(game.value?.scriptStickerPath ?? ''))
 const voidStickerSrc = computed(() => toAssetUrl(game.value?.voidStickerPath ?? ''))
+const currentStickerSrc = computed(() => {
+  if (currentTone.value === 'script') return scriptStickerSrc.value
+  if (currentTone.value === 'void') return voidStickerSrc.value
+  return warmStickerSrc.value
+})
 
 function toAssetUrl(path: string): string {
   if (!path) return ''
@@ -134,8 +132,10 @@ async function pickWord(word: ScriptPoemWord) {
   warmScore.value += word.warmPoints
   scriptScore.value += word.scriptPoints
   voidScore.value += word.voidPoints
-  // 污染词不属于任何正常倾向：让“空白”以异常节奏回应。
-  triggerHop(word.glitch ? 'void' : strongestTone(word))
+  // 一次只显示同一角色：词的最高倾向决定本次差分；污染词强制切到空白差分。
+  const tone = word.glitch ? 'void' : strongestTone(word)
+  currentTone.value = tone
+  triggerHop(tone)
 
   if (word.glitch && !corrupted.value) {
     corrupted.value = true
@@ -237,6 +237,7 @@ function resetGame() {
   scriptScore.value = 0
   voidScore.value = 0
   hopping.value = null
+  currentTone.value = 'warm'
   corrupted.value = false
   finishing.value = false
   flash.value = false
@@ -344,53 +345,29 @@ onBeforeUnmount(() => {
   transform: scale(0.96);
 }
 
-.poem-markers {
+.poem-character {
   position: absolute;
-  left: 0.7%;
+  left: 7.2%;
   bottom: 9.5%;
-  width: 21.7%;
-  display: flex;
-  align-items: end;
-  justify-content: space-around;
-}
-
-.poem-marker {
-  width: clamp(48px, 5.8vw, 96px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  color: #1c2632;
-  font-family: 'Noto Serif SC', 'STKaiti', serif;
-  font-size: clamp(11px, 1vw, 18px);
+  width: clamp(68px, 7.5vw, 124px);
   transform-origin: 50% 100%;
 }
 
-.poem-marker img {
+.poem-character img {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 16vh;
+  max-height: 21vh;
   object-fit: contain;
   filter: drop-shadow(0 5px 4px rgba(0, 0, 0, 0.32));
   pointer-events: none;
 }
 
-.poem-marker span {
-  margin-top: -0.15em;
-  padding: 0.08em 0.48em;
-  border-radius: 999px;
-  background: rgba(237, 227, 208, 0.82);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.16);
-  line-height: 1.25;
-}
-
-.poem-marker.hop {
+.poem-character.hop {
   animation: marker-hop 0.48s cubic-bezier(0.3, 0.85, 0.35, 1);
 }
 
-.is-corrupted .marker-void.hop {
+.is-corrupted .poem-character.is-void.hop {
   animation: marker-glitch-hop 0.38s steps(2, end);
 }
 
@@ -463,6 +440,5 @@ onBeforeUnmount(() => {
 
 @media (max-aspect-ratio: 1/1) {
   .poem-word { font-size: clamp(13px, 3vw, 22px); }
-  .poem-marker { border-width: 2px; }
 }
 </style>
