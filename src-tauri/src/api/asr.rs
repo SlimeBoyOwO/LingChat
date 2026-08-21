@@ -268,6 +268,18 @@ pub async fn asr_stop_streaming(state: tauri::State<'_, AppState>) -> Result<Asr
         .map_err(|e| e.i18n_code().to_string())
 }
 
+/// 丢弃流式会话（异常路径清理用）：只 take 流式句柄、断开连接，
+/// 不 cancel 非流式在飞识别（与 asr_cancel 的全局取消区分）。
+#[tauri::command]
+pub async fn asr_cancel_streaming(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let session_arc = state.asr_state.session.clone();
+    let guard = session_arc.lock().await;
+    if let Some(session) = guard.as_ref() {
+        session.cancel_stream().await;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn asr_list_providers() -> Vec<ProviderInfo> {
     list_provider_info()

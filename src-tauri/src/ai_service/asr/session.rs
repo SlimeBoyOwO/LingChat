@@ -149,8 +149,10 @@ impl AsrSession {
         model: String,
         language_hint: Option<String>,
     ) -> Result<(), AsrError> {
-        if self.stream.lock().await.is_some() {
-            return Err(AsrError::SessionBusy);
+        // 防御：残留句柄（前端异常路径未清理）先丢弃，避免 SessionBusy
+        // 卡死后续所有录音（症状：流式启动失败 → 无法录音）
+        if self.stream.lock().await.take().is_some() {
+            tracing::warn!("[ASR/stream] 丢弃残留流式会话句柄");
         }
         let tx =
             provider_stream::start_streaming(app.clone(), api_key, model, language_hint).await?;

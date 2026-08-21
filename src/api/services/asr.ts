@@ -105,6 +105,9 @@ export const asrStreamAudioChunk = (pcm: number[]) => invoke<void>('asr_stream_a
 
 export const asrStopStreaming = () => invoke<AsrResult>('asr_stop_streaming')
 
+/** 丢弃流式会话（异常路径清理用；不影响非流式在飞识别） */
+export const asrCancelStreaming = () => invoke<void>('asr_cancel_streaming')
+
 /** 注册系统级全局快捷键（后台也可触发；combo 格式 "Ctrl+Shift+Space"） */
 export const asrRegisterHotkey = (combo: string) =>
   invoke<void>('asr_register_hotkey', { combo })

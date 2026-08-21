@@ -15,6 +15,7 @@ import {
   asrStartStreaming,
   asrStreamAudioChunk,
   asrStopStreaming,
+  asrCancelStreaming,
   asrRegisterHotkey,
   asrUnregisterHotkey,
   type AsrSource,
@@ -130,6 +131,8 @@ function resetSession() {
  */
 function discardRecording() {
   const source = activeSource.value
+  // 流式会话清理：只丢流式句柄（不影响非流式在飞识别）
+  void asrCancelStreaming()
   resetSession()
   if (source) void asrStopListening(source)
 }
@@ -397,6 +400,9 @@ async function start(source: AsrSource) {
     if (name === 'NotAllowedError' || name === 'NotReadableError') {
       asrStore?.setMicState('denied')
     }
+    // 流式 WebSocket 可能已建立（getUserMedia / startListening 失败路径）：
+    // 必须清理，否则后端句柄残留 → 下次启动 SessionBusy
+    void asrCancelStreaming()
     resetSession()
     throw err
   }

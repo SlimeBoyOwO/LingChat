@@ -857,6 +857,7 @@ pub fn run() {
             api::asr::asr_start_streaming,
             api::asr::asr_stream_audio_chunk,
             api::asr::asr_stop_streaming,
+            api::asr::asr_cancel_streaming,
             exit_app,
         ])
         .run(context)
