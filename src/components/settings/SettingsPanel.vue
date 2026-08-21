@@ -112,6 +112,20 @@ const currentTabComponent = computed(() => tabComponents[uiStore.currentSettings
 // 转场方向：左滑下一项 → slide-left（新页从右进）；右滑上一项 → slide-right
 const transitionName = ref<'slide-left' | 'slide-right'>('slide-left')
 
+// 依据 TABS 顺序决定滑动方向：目标索引更大 → 下一项（slide-left）；更小 → 上一项（slide-right）。
+// watch 默认 flush: 'pre'，在重渲染前更新 transitionName，Transition 开始动画时能取到正确方向。
+watch(
+  () => uiStore.currentSettingsTab,
+  (newTab, oldTab) => {
+    if (!oldTab || oldTab === newTab) return
+    const newIdx = (TABS as readonly string[]).indexOf(newTab)
+    const oldIdx = (TABS as readonly string[]).indexOf(oldTab)
+    // 目标/来源不在滑动顺序里（理论不应发生）→ 保持原方向
+    if (newIdx === -1 || oldIdx === -1) return
+    transitionName.value = newIdx > oldIdx ? 'slide-left' : 'slide-right'
+  },
+)
+
 const contentRef = ref<HTMLElement | null>(null)
 let touchStartX = 0
 let touchStartY = 0

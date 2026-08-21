@@ -27,9 +27,6 @@ pub struct InspectedPackage {
     pub inner_model_name: Option<String>,
 }
 
-const MAGIC_PK: &[u8; 4] = b"PK\x03\x04";
-const MAGIC_7Z: &[u8; 2] = &[0x37, 0x7A];
-
 /// Cheap extension-first sniff.
 pub fn detect_by_extension(path: &Path) -> PackageKind {
     let ext = path
@@ -46,15 +43,15 @@ pub fn detect_by_extension(path: &Path) -> PackageKind {
     }
 }
 
-/// Sniff by magic bytes; falls back to Unknown if not a recognised archive.
-pub fn detect_by_magic(bytes: &[u8]) -> PackageKind {
-    if bytes.len() >= 4 && &bytes[..4] == MAGIC_PK {
-        PackageKind::Zip
-    } else if bytes.len() >= 2 && &bytes[..2] == MAGIC_7Z {
-        PackageKind::SevenZ
-    } else {
-        PackageKind::Unknown
-    }
+/// Sniff archive format via infer crate (replaces handwritten magic bytes).
+/// Falls back to Unknown for non-archive content.
+pub fn detect_archive_by_infer(path: &Path) -> std::result::Result<PackageKind, String> {
+    let kind = infer::get_from_path(path).map_err(|e| format!("infer: {e}"))?;
+    Ok(match kind.map(|k| k.mime_type()) {
+        Some("application/zip") | Some("application/x-zip-compressed") => PackageKind::Zip,
+        Some("application/x-7z-compressed") => PackageKind::SevenZ,
+        _ => PackageKind::Unknown,
+    })
 }
 
 pub fn inspect_package(path: &Path) -> std::result::Result<InspectedPackage, String> {
@@ -66,15 +63,9 @@ pub fn inspect_package(path: &Path) -> std::result::Result<InspectedPackage, Str
         .unwrap_or_default();
 
     let kind = detect_by_extension(path);
+    // 扩展名未知时用 infer 兜底（替代原 detect_by_magic）。
     let kind = if kind == PackageKind::Unknown {
-        let mut head = vec![0u8; 8.min(size_bytes as usize)];
-        if !head.is_empty() {
-            use std::io::Read;
-            std::fs::File::open(path)
-                .and_then(|mut f| f.read_exact(&mut head))
-                .map_err(|e| format!("read head: {e}"))?;
-        }
-        detect_by_magic(&head)
+        detect_archive_by_infer(path)?
     } else {
         kind
     };

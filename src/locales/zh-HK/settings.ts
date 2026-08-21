@@ -599,6 +599,14 @@ export default {
       "meteorFps": "流星幀率 (FPS)",
       "starsFps": "星星幀率 (FPS)"
     },
+    "hdr": {
+      "title": "HDR 顯示",
+      "enable": "啟用 HDR 模式",
+      "restartHint": "更改後需重啟應用先會生效",
+      "restartBtn": "即刻重啟應用",
+      "restartConfirm": "HDR 模式設定喺重啟後先會生效，確定即刻重啟應用？",
+      "restartFailed": "重啟失敗，請手動重啟應用"
+    },
     "perf": {
       "title": "性能檢測",
       "detecting": "檢測緊硬件性能 …",
