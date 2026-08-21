@@ -14,7 +14,15 @@ export interface AsrResult {
 export interface ProviderConfig {
   api_key: string
   endpoint: string
+  model: string
   extra?: Record<string, string>
+}
+
+export interface ModelInfo {
+  id: string
+  display_name: string
+  supports_streaming: boolean
+  is_default: boolean
 }
 
 export interface AsrSettings {
@@ -75,6 +83,9 @@ export const asrRecognizeWav = (params: {
 export const asrCancel = () => invoke<void>('asr_cancel')
 
 export const asrListProviders = () => invoke<ProviderInfo[]>('asr_list_providers')
+
+export const asrListModels = (providerId: string) =>
+  invoke<ModelInfo[]>('asr_list_models', { providerId })
 
 export const asrGetSettings = () => invoke<AsrSettings>('asr_get_settings')
 

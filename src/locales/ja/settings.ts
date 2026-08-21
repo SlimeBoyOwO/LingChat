@@ -1092,6 +1092,10 @@ export default {
       autoSend: '自動送信',
       queue: 'キュー送信（AI 返信後）',
     },
+    model: {
+      label: '認識モデル',
+      default: 'デフォルト',
+    },
     streamMode: 'ストリーム認識',
     streamModeHint: '話している間に認識テキストをリアルタイム表示し、終わったら自動送信',
     streamNotSupported: '選択中のモデルはストリーム認識に対応していません',

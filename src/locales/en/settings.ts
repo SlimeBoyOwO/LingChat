@@ -1094,6 +1094,10 @@ export default {
       autoSend: 'Auto send',
       queue: 'Queue send (after AI replies)',
     },
+    model: {
+      label: 'Recognition Model',
+      default: 'default',
+    },
     streamMode: 'Streaming Recognition',
     streamModeHint: 'Shows recognized text in real time while speaking, auto-submits when done',
     streamNotSupported: 'The selected model does not support streaming recognition',

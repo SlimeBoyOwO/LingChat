@@ -1091,6 +1091,10 @@ export default {
       "autoSend": "自動發送",
       "queue": "隊列發送（AI 回覆後再發送）"
     },
+    "model": {
+      "label": "識別模型",
+      "default": "預設"
+    },
     "streamMode": "串流識別",
     "streamModeHint": "講嘢期間實時顯示識別文字，講完自動提交",
     "streamNotSupported": "目前模型唔支援串流識別",

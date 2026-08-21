@@ -86,6 +86,25 @@
       </select>
 
       <div v-if="activeProviderInfo" class="mt-4 space-y-3">
+        <!-- 模型自选下拉（仅提供模型清单的 provider 显示） -->
+        <div v-if="asrModels.length > 0">
+          <label class="block text-sm mb-1.5 font-medium">
+            {{ t('settings.asr.model.label') }}
+          </label>
+          <select
+            v-model="providerCfgRecord.model"
+            class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+          >
+            <option
+              v-for="m in asrModels"
+              :key="m.id"
+              :value="m.id"
+              class="text-black"
+            >
+              {{ m.display_name }}{{ m.is_default ? `（${t('settings.asr.model.default')}）` : '' }}
+            </option>
+          </select>
+        </div>
         <div v-for="field in activeProviderInfo.config_fields" :key="field.key">
           <label class="block text-sm mb-1.5 font-medium">
             {{ field.label }}
@@ -186,7 +205,7 @@ import { useI18n } from 'vue-i18n'
 import { Toggle } from '../../base'
 import { useAsrStore } from '@/stores/modules/settings/asr'
 import { recordKeyUntilEscape } from '@/composables/useGlobalHotkey'
-import { asrRecognizeWav } from '@/api/services/asr'
+import { asrListModels, asrRecognizeWav } from '@/api/services/asr'
 import { pcmToWavPcm16, trimSilencePcm } from '@/utils/asrAudio'
 import type { AsrSettings, SendMode, ProviderInfo } from '@/api/services/asr'
 
@@ -210,15 +229,43 @@ const activeProviderInfo = computed<ProviderInfo | undefined>(() =>
   asrStore.providers.find((p) => p.id === localSettings.value.active_provider),
 )
 
-// 选中模型是否支持流式协议（决定流式开关可用性）
-const providerSupportsStreaming = computed(
-  () => activeProviderInfo.value?.supports_streaming ?? false,
+// ── 模型自选（仅 qwen 有模型清单；provider 切换时重新拉取） ──
+const asrModels = computed(() => asrStore.models)
+/** 当前生效模型：配置非空取配置，否则默认模型 */
+const activeModel = computed(() => {
+  const id = localSettings.value.provider_configs[localSettings.value.active_provider]?.model ?? ''
+  return (
+    asrStore.models.find((m) => m.id === id) ??
+    asrStore.models.find((m) => m.is_default)
+  )
+})
+watch(
+  () => localSettings.value.active_provider,
+  (id) => {
+    ensureProviderConfig(id)
+    void asrListModels(id)
+      .then((list) => (asrStore.models = list))
+      .catch(() => (asrStore.models = []))
+  },
+  { immediate: true },
 )
+
+// 流式开关可用性：当前生效模型的流式能力（模型级权威判定）
+const providerSupportsStreaming = computed(
+  () => activeModel.value?.supports_streaming ?? false,
+)
+
+// 切到不支持流式的模型 → 自动关闭流式开关（避免录音时后端报错）
+watch(activeModel, (m) => {
+  if (!m?.supports_streaming && localSettings.value.stream_enabled) {
+    localSettings.value.stream_enabled = false
+  }
+})
 
 // provider 切换 / 挂载时显式初始化缺失配置（不在渲染期突变 state）
 function ensureProviderConfig(id: string) {
   if (!localSettings.value.provider_configs[id]) {
-    localSettings.value.provider_configs[id] = { api_key: '', endpoint: '' }
+    localSettings.value.provider_configs[id] = { api_key: '', endpoint: '', model: '', extra: {} }
   }
 }
 watch(

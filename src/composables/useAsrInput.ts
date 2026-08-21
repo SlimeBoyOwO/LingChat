@@ -181,12 +181,14 @@ export function registerAsrInputBridge(b: {
   inputBridge = b
 }
 
-/** 流式是否生效：设置开关 + 当前 provider 支持流式（不支持时回退非流式链路） */
+/** 流式是否生效：设置开关 + 当前生效模型的流式能力（模型级权威判定） */
 function isStreamEnabled(): boolean {
-  const provider = asrStore?.providers.find(
-    (p) => p.id === asrStore?.settings.active_provider,
-  )
-  return !!(asrStore?.settings.stream_enabled && provider?.supports_streaming)
+  if (!asrStore?.settings.stream_enabled) return false
+  const sel = asrStore.settings.provider_configs[asrStore.settings.active_provider]?.model ?? ''
+  const model =
+    asrStore.models.find((m) => m.id === sel) ??
+    asrStore.models.find((m) => m.is_default)
+  return model?.supports_streaming ?? false
 }
 
 /** GameDialog 调用：同步移动端菜单展开状态（§1.5） */

@@ -1,12 +1,14 @@
 import { defineStore } from 'pinia'
 import {
   asrGetSettings,
+  asrListModels,
   asrListProviders,
   asrSetSettings,
   type AsrPhase,
   type AsrResult,
   type AsrSettings,
   type AsrSource,
+  type ModelInfo,
   type ProviderInfo,
   type VadEvent,
 } from '@/api/services/asr'
@@ -31,6 +33,7 @@ export const useAsrStore = defineStore('asr', {
     lastError: null as string | null,
     vadEvent: null as VadEvent | null,
     providers: [] as ProviderInfo[],
+    models: [] as ModelInfo[],
     micState: 'idle' as 'idle' | 'recording' | 'denied',
     vadLoaded: false,
   }),
@@ -39,6 +42,8 @@ export const useAsrStore = defineStore('asr', {
       try {
         this.settings = await asrGetSettings()
         this.providers = await asrListProviders()
+        // 模型清单（按 active provider 拉取；provider 切换时由 SettingsAsr 重新拉）
+        this.models = await asrListModels(this.settings.active_provider).catch(() => [])
       } catch (e) {
         console.warn('[ASR] load failed:', e)
       }

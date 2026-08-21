@@ -1092,6 +1092,10 @@ export default {
       autoSend: '自动发送',
       queue: '队列发送（AI 回复后再发送）',
     },
+    model: {
+      label: '识别模型',
+      default: '默认',
+    },
     streamMode: '流式识别',
     streamModeHint: '说话过程中实时显示识别文字，说完后自动提交',
     streamNotSupported: '当前模型不支持流式识别',
