@@ -166,3 +166,18 @@ pub fn save_playthrough(script: &ScriptStatus, data_dir: &Path) -> Result<()> {
         .insert(script.path_key(), selected_values(script, &keys));
     write_state(data_dir, &state)
 }
+
+/// Drop one script's persisted runtime state so its next visit starts from
+/// the first-run route again. Returns true when anything was removed.
+pub fn reset_playthrough(data_dir: &Path, path_key: &str) -> Result<bool> {
+    let path = state_path(data_dir);
+    if !path.exists() {
+        return Ok(false);
+    }
+    let mut state = read_state(data_dir)?;
+    if state.scripts.remove(path_key).is_none() {
+        return Ok(false);
+    }
+    write_state(data_dir, &state)?;
+    Ok(true)
+}

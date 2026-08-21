@@ -58,6 +58,13 @@ export default {
     cloudWorkshop: "Cloud Workshop",
     miniGame: "Mini Games (In Development)",
     back: "Back",
+    resetMemoryTitle: "Reset Memory",
+    resetMemoryMessage:
+      'This will erase all memories (playthrough progress) of "{name}". Your next visit will start from the first playthrough.\n\nAre you sure?',
+    resetMemoryDone: "Memories erased. She no longer remembers you.",
+    resetMemoryEmpty: "This script has no stored memories yet.",
+    resetMemoryFailed: "Reset failed. Please try again later.",
+    resetMemoryTip: "Reset memory (back to the first playthrough)",
   },
   contentWarning: {
     horrorTitle: "⚠ Content Warning",

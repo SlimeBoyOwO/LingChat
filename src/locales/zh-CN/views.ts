@@ -57,6 +57,13 @@ export default {
     cloudWorkshop: '云·创意工坊',
     miniGame: '小游戏（开发中）',
     back: '返回',
+    resetMemoryTitle: '重置记忆',
+    resetMemoryMessage:
+      '将清除《{name}》的全部记忆（周目进度），下次进入会从第一周目重新开始。\n\n确定要重置吗？',
+    resetMemoryDone: '记忆已清除。她已经不记得你了。',
+    resetMemoryEmpty: '这个剧本还没有任何记忆。',
+    resetMemoryFailed: '重置失败，请稍后再试。',
+    resetMemoryTip: '重置记忆（回到第一周目）',
   },
   contentWarning: {
     horrorTitle: '⚠ 内容警告',

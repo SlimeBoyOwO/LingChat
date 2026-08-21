@@ -139,6 +139,32 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
     Ok(())
 }
 
+/// Clear one script's persisted runtime state (playthrough memory), so the
+/// next entry starts from the first-run route again. Refused while any script
+/// is still running to avoid yanking state out from under a live run.
+#[tauri::command]
+pub async fn reset_script_state(app: AppHandle, script_name: String) -> Result<bool, String> {
+    let state = app.state::<AppState>();
+    let service = state.ai_service.lock().await;
+    if service
+        .script_manager
+        .is_running
+        .load(std::sync::atomic::Ordering::SeqCst)
+    {
+        return Err("剧本正在运行，请先退出再重置记忆".to_string());
+    }
+    let script = service
+        .script_manager
+        .all_scripts
+        .get(&script_name)
+        .ok_or_else(|| format!("剧本不存在: '{}'", script_name))?;
+    crate::ai_service::game_system::script_engine::persistent_state::reset_playthrough(
+        &service.data_dir,
+        &script.path_key(),
+    )
+    .map_err(|e| format!("重置剧本记忆失败: {:#}", e))
+}
+
 /// 把系统鼠标指针拖动到窗口内的指定 CSS 坐标。
 ///
 /// 用于剧本的 `force_choice` 演出（DDLC 式强制拖动鼠标）。前端传视口 CSS 像素，

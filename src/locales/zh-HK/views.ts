@@ -57,7 +57,13 @@ export default {
     "scriptEditor": "創意工坊",
     "cloudWorkshop": "雲·創意工坊",
     "miniGame": "小遊戲（開發緊）",
-    "back": "返回"
+    "back": "返回",
+    "resetMemoryTitle": "重置記憶",
+    "resetMemoryMessage": "將清除《{name}》嘅全部記憶（周目進度），下次進入會由第一週目重新開始。\n\n確定要重置嗎？",
+    "resetMemoryDone": "記憶已清除。佢已經唔記得你喇。",
+    "resetMemoryEmpty": "呢個劇本仲未有任何記憶。",
+    "resetMemoryFailed": "重置失敗，請遲啲再試。",
+    "resetMemoryTip": "重置記憶（返到第一週目）"
   },
   "contentWarning": {
     "horrorTitle": "⚠ 內容警告",

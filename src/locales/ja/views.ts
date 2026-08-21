@@ -57,6 +57,13 @@ export default {
     cloudWorkshop: 'クラウド工房',
     miniGame: 'ミニゲーム（開発中）',
     back: '戻る',
+    resetMemoryTitle: '記憶をリセット',
+    resetMemoryMessage:
+      '《{name}》のすべての記憶（周回進行）を消去します。次回は1周目から始まります。\n\n本当にリセットしますか？',
+    resetMemoryDone: '記憶を消去しました。彼女はもうあなたを覚えていません。',
+    resetMemoryEmpty: 'このシナリオにはまだ記憶がありません。',
+    resetMemoryFailed: 'リセットに失敗しました。後でもう一度お試しください。',
+    resetMemoryTip: '記憶をリセット（1周目に戻る）',
   },
   contentWarning: {
     horrorTitle: '⚠ コンテンツ警告',

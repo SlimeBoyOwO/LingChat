@@ -675,6 +675,7 @@ pub fn run() {
             api::script::start_script,
             api::script::script_submit_input,
             api::script::script_submit_choice,
+            api::script::reset_script_state,
             api::script::warp_cursor,
             // ── 剧本编辑器 ──
             api::script_editor::editor_get_schema,
