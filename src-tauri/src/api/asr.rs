@@ -240,7 +240,13 @@ pub async fn asr_start_streaming(
     session
         .start_streaming(&app, &provider_id, cred.api_key, model, language_hint)
         .await
-        .map_err(|e| e.i18n_code().to_string())
+        .map_err(|e| match &e {
+            // 透传详情（WebSocket 连接失败的具体原因），前端 split('|') 展示
+            AsrError::ProviderApiError { message, .. } => {
+                format!("ASR_PROVIDER_FAILED|{message}")
+            }
+            _ => e.i18n_code().to_string(),
+        })
 }
 
 #[tauri::command]
