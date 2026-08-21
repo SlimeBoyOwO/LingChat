@@ -68,6 +68,7 @@ rand = "0.8"
 indoc = "2"
 
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+infer = "0.19"
 sevenz-rust2 = "0.21"
 sha2 = "0.10"
 tempfile = "3"

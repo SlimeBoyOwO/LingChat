@@ -60,6 +60,26 @@ export default {
     defaultExportTitle: '角色导出',
     close: '关闭',
     cancel: '取消',
+    errors: {
+      ARCHIVE_MISSING_SETTINGS_YML: '压缩包缺少 settings.yml\n这可能是旧版角色，请下载新版角色后导入',
+    },
+  },
+  fontImport: {
+    errors: {
+      FONT_INVALID_FORMAT: '不是合法的字体文件（ttf/otf/woff/woff2），文件已损坏或扩展名与内容不符',
+    },
+  },
+  musicImport: {
+    errors: {
+      MUSIC_INVALID_FORMAT: '不是合法的音频文件（mp3/wav/flac/ogg），文件已损坏或扩展名与内容不符',
+    },
+  },
+  notice: {
+    autoCorrected: {
+      title: '已自动修正',
+      font: '{original} 不是 {originalExt} 字体格式（检测为 {detected}），已自动修正为 {corrected}',
+      music: '{original} 不是 {originalExt} 音频格式（检测为 {detected}），已自动修正为 {corrected}',
+    },
   },
   menuItem: {
     defaultTitle: '默认标题',
@@ -151,6 +171,16 @@ export default {
     fileChangeApprovalTitle: '文件修改请求',
     fileChangeApprovalMessage: 'ta 想要{action}以下文件：\n\n{path}\n\n是否允许？',
     fileChangeActions: { write: '写入', edit: '编辑' },
+    androidTitle: 'Android 工具说明',
+    androidSummary: '工具设置按设备单独保存，不会从 Windows 同步。请在这台手机上开启需要的工具并点击保存；命令执行和桌面插件在 Android 上不可用。',
+    androidNoModel: '当前没有可用的聊天模型，请先配置模型、API Key 和模型名称。',
+    androidModelUnsupported: '当前聊天模型不支持原生工具调用，请换用支持 function calling 的模型。',
+    androidNoTools: '当前角色还没有启用任何可用工具。可逐项开启，或使用下方的推荐配置。',
+    androidReady: '当前角色有 {count} 个工具可用。保存后新对话会使用最新配置。',
+    androidEnableRecommended: '启用 Android 可用工具（仍需保存）',
+    androidRecommendedStaged: '已勾选 Android 可用工具，请点击保存使其生效',
+    androidFileScope: 'Android 文件工具仅能访问 LingChat 应用沙箱。相册、下载目录等外部文件请先通过系统文件选择器导入。',
+    androidProxyHint: 'Android 上的 127.0.0.1 指手机本身，不是 Windows 电脑；使用电脑代理时请填写电脑的局域网地址。',
     webSearchTitle: '网页搜索',
     mediaTitle: '图片与视频识别',
     mediaHint: 'ReadMediaFile 会读取本地媒体，并把内容交给“模型管理”中指定的视觉模型分析。路径权限与文件操作工具一致。',
@@ -215,7 +245,7 @@ export default {
     commandDeleteApprovalTitle: '删除命令确认',
     commandDeleteApprovalMessage: '检测到这条命令可能删除文件：\n\n{command}\n\n工作目录：{cwd}\n\n删除通常无法撤销，是否允许执行？',
     commandHint: '每次执行前会弹窗请你确认命令内容；uac 参数可请求管理员权限（Windows 弹 UAC 框）',
-    commandWindowsOnly: '⚠ 命令执行仅 Windows 可用，当前平台无法运行 shell 命令',
+    commandWindowsOnly: '⚠ 命令执行仅桌面端可用，Android 无法运行此工具',
     commandAutoApprove: '免确认自动执行（ta 跑命令前不再弹窗）',
     commandAutoApproveHint: '⚠ 危险！开启后 ta 可以不经你同意运行命令；识别到的删除命令仍由下方独立开关控制',
     commandDeleteAutoApprove: '删除命令免确认（检测到删除操作时不再弹窗）',

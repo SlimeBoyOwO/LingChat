@@ -17,6 +17,36 @@
 
     <!-- 右侧内容 -->
     <main class="h-full overflow-y-auto custom-scrollbar px-2 md:px-6 py-2">
+      <div
+        v-if="android"
+        class="mb-5 rounded-xl border border-sky-300/30 bg-sky-400/10 px-4 py-3 text-sm"
+      >
+        <p class="font-semibold text-sky-200">{{ $t('ui.toolCalls.androidTitle') }}</p>
+        <p class="mt-1 text-gray-300">{{ $t('ui.toolCalls.androidSummary') }}</p>
+        <p v-if="runtimeInfo && !runtimeInfo.modelConfigured" class="mt-2 text-amber-300">
+          {{ $t('ui.toolCalls.androidNoModel') }}
+        </p>
+        <p
+          v-else-if="runtimeInfo && !runtimeInfo.nativeToolCallsSupported"
+          class="mt-2 text-amber-300"
+        >
+          {{ $t('ui.toolCalls.androidModelUnsupported') }}
+        </p>
+        <p v-else-if="runtimeInfo && runtimeInfo.allowedTools.length === 0" class="mt-2 text-amber-300">
+          {{ $t('ui.toolCalls.androidNoTools') }}
+        </p>
+        <p v-else-if="runtimeInfo" class="mt-2 text-emerald-300">
+          {{ $t('ui.toolCalls.androidReady', { count: runtimeInfo.allowedTools.length }) }}
+        </p>
+        <button
+          type="button"
+          class="mt-3 rounded-lg border border-sky-200/30 bg-sky-300/15 px-3 py-2 text-sky-100 transition-colors hover:bg-sky-300/25"
+          @click="enableAndroidRecommended"
+        >
+          {{ $t('ui.toolCalls.androidEnableRecommended') }}
+        </button>
+      </div>
+
       <!-- ===== 工具访问模式 ===== -->
       <div v-if="selected === 'access'">
         <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
@@ -207,6 +237,7 @@
           >
             <option value="kimi" class="bg-slate-800 text-white">Kimi /search</option>
             <option value="bocha" class="bg-slate-800 text-white">BoCha 博查</option>
+            <option value="tavily" class="bg-slate-800 text-white">Tavily</option>
             <option value="custom" class="bg-slate-800 text-white">
               {{ $t('ui.toolCalls.providerCustom') }}
             </option>
@@ -268,6 +299,9 @@
           />
           <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.proxyEnable') }}</p>
         </div>
+        <p v-if="android" class="text-sm text-amber-300 px-1 mb-2">
+          {{ $t('ui.toolCalls.androidProxyHint') }}
+        </p>
         <input
           v-if="form.web_search.proxy_enabled"
           type="text"
@@ -394,6 +428,9 @@
         <p class="text-sm px-1 mb-2" :class="form.access_mode === 'full_access' ? 'text-amber-300' : 'text-gray-400'">
           {{ $t(`ui.toolCalls.fileAccessByMode.${form.access_mode}`) }}
         </p>
+        <p v-if="android" class="text-sm text-amber-300 px-1 mb-2">
+          {{ $t('ui.toolCalls.androidFileScope') }}
+        </p>
       </div>
 
       <!-- ===== 命令执行 ===== -->
@@ -402,13 +439,13 @@
           {{ navLabel(selected) }}
         </h2>
         <p class="text-sm text-gray-400 mb-4 px-1">{{ $t('ui.toolCalls.otherToolsHint') }}</p>
-        <!-- 命令执行依赖本机 shell（cmd/sh），非 Windows 平台（如 Android）不可用 -->
-        <p v-if="!isWindows()" class="text-sm text-amber-400 px-1 mb-2">
+        <p v-if="!commandAvailable" class="text-sm text-amber-400 px-1 mb-2">
           {{ $t('ui.toolCalls.commandWindowsOnly') }}
         </p>
         <div class="flex items-center gap-3 py-2.5 px-1">
           <Toggle
             :checked="form.groups[selected] ?? false"
+            :disabled="!commandAvailable"
             @change="(value: boolean) => (form.groups[selected] = value)"
           />
           <p class="text-sm text-gray-300">{{ $t(`ui.toolCalls.groups.${selected}`) }}</p>
@@ -455,20 +492,22 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
+import { computed, reactive, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   getToolSettings,
   getToolElevationStatus,
+  getToolRuntimeInfo,
   restartToolProcessAsAdmin,
   saveToolSettings,
   testWebSearch,
   TOOL_GROUP_KEYS,
   type ToolAccessMode,
+  type ToolRuntimeInfo,
   type ToolSettings,
 } from '@/api/services/tool-settings'
 import Toggle from '@/components/base/widget/Toggle.vue'
-import { isWindows } from '@/utils/platform'
+import { isAndroid, isWindows } from '@/utils/platform'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
 
 const { t, te } = useI18n()
@@ -476,6 +515,9 @@ const dialogStore = useDialogStore()
 
 /** 当前选中的设置项：访问模式、web_search 或工具组名 */
 const selected = ref<string>('access')
+const android = isAndroid()
+const runtimeInfo = ref<ToolRuntimeInfo | null>(null)
+const commandAvailable = computed(() => runtimeInfo.value?.commandAvailable ?? !android)
 
 const navItems = ['access', 'web_search', ...TOOL_GROUP_KEYS] as const
 const accessModes: ToolAccessMode[] = ['manual', 'auto_approve', 'full_access']
@@ -525,6 +567,21 @@ const testing = ref(false)
 const elevationStatus = ref<'checking' | 'standard' | 'elevated'>('checking')
 const elevationRestarting = ref(false)
 
+const loadRuntimeInfo = async () => {
+  try {
+    runtimeInfo.value = await getToolRuntimeInfo()
+  } catch (error) {
+    console.warn('加载工具运行状态失败:', error)
+  }
+}
+
+const enableAndroidRecommended = () => {
+  for (const group of TOOL_GROUP_KEYS) {
+    form.groups[group] = group !== 'command'
+  }
+  showStatus(t('ui.toolCalls.androidRecommendedStaged'), '#7dd3fc')
+}
+
 const showStatus = (message: string, color = '#4ade80') => {
   status.message = message
   status.color = color
@@ -568,9 +625,13 @@ const saveSettings = async (): Promise<boolean> => {
   try {
     normalizeToolRoundLimit()
     normalizeMediaSettings()
+    if (android) {
+      form.groups.command = false
+    }
     // 深拷贝一份普通对象，避免把 reactive 代理传给 Tauri IPC
     const payload: ToolSettings = JSON.parse(JSON.stringify(form))
     await saveToolSettings(payload)
+    await loadRuntimeInfo()
     showStatus(t('ui.toolCalls.saveSuccess'))
     return true
   } catch (error: any) {
@@ -632,6 +693,7 @@ onMounted(async () => {
     form.max_tool_rounds = settings.max_tool_rounds ?? DEFAULT_TOOL_ROUND_LIMIT
     normalizeToolRoundLimit()
     normalizeMediaSettings()
+    await loadRuntimeInfo()
     if (isWindows()) await refreshElevationStatus()
   } catch (error) {
     console.error('加载工具配置失败:', error)

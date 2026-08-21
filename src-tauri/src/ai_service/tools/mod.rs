@@ -36,9 +36,11 @@ use registry::ToolRegistry;
 use scene::{SceneList, SceneSwitch};
 use schedule::{AddTodo, DeleteTodo, GetAllSchedule, UpdateTodo};
 use settings::SharedToolSettings;
+#[cfg(desktop)]
+use skill_files::ExecuteCommand;
 use skill_files::{
-    DeleteFile, EditFile, ExecuteCommand, Glob, Grep, GrepFiles, ListFiles, ListSkills, ReadFile,
-    ReadSkill, SearchFiles, WriteFile,
+    DeleteFile, EditFile, Glob, Grep, GrepFiles, ListFiles, ListSkills, ReadFile, ReadSkill,
+    SearchFiles, WriteFile,
 };
 use status::{CurrentStatus, SceneStatus};
 use web_search::WebSearchTool;
@@ -124,6 +126,9 @@ pub fn built_in_registry(
     registry.register(Arc::new(GrepFiles::new(tool_settings.clone())))?;
     registry.register(Arc::new(Glob::new(tool_settings.clone())))?;
     registry.register(Arc::new(Grep::new(tool_settings.clone())))?;
+    // Android/iOS 没有稳定、可审批的桌面 shell 环境。移动端不注册命令工具，
+    // 避免模型选中 execute_command 后才得到系统级执行失败。
+    #[cfg(desktop)]
     registry.register(Arc::new(ExecuteCommand::new(tool_settings.clone())))?;
     let data_dir = crate::api::data_dir();
     let mut permissions = ToolPermissionConfig::load_or_create(

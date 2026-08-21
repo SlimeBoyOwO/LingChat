@@ -47,7 +47,7 @@ impl FileTools {
             self.sandbox_dir.join(requested)
         };
         let target = canonicalize_allow_missing(&joined)?;
-        if self.allow_any_path {
+        if self.allow_any_path && !cfg!(any(target_os = "android", target_os = "ios")) {
             return Ok(target);
         }
 
@@ -55,10 +55,17 @@ impl FileTools {
         if target.starts_with(&root) {
             Ok(target)
         } else {
-            anyhow::bail!(
-                "拒绝访问文件沙箱之外的路径: {}（可在“助手设置”中开启允许任意路径）",
-                path
-            )
+            if cfg!(any(target_os = "android", target_os = "ios")) {
+                anyhow::bail!(
+                    "移动端文件工具只能访问 LingChat 应用沙箱，不能直接访问共享存储路径: {}。请使用应用内相对路径；相册/下载目录等外部文件需通过系统文件选择器导入。",
+                    path
+                )
+            } else {
+                anyhow::bail!(
+                    "拒绝访问文件沙箱之外的路径: {}（可在“助手设置”中开启允许任意路径）",
+                    path
+                )
+            }
         }
     }
 

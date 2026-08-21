@@ -7,7 +7,7 @@ export interface WebSearchSettings {
   enabled: boolean
   /** true = 模型 API 内置联网（免 Key）；false = 独立搜索端点 + api_key */
   use_builtin: boolean
-  /** 独立端点模式的搜索提供商："kimi" | "bocha" | "custom"（仅 custom 用 base_url） */
+  /** 独立端点模式的搜索提供商："kimi" | "bocha" | "tavily" | "custom"（仅 custom 用 base_url） */
   provider: string
   api_key: string
   base_url: string
@@ -44,6 +44,17 @@ export interface ToolSettings {
 
 /** 全局访问模式快照，供主界面的完全访问警告即时响应设置保存。 */
 export const currentToolAccessMode = ref<ToolAccessMode>('manual')
+
+/** 后端按当前设备、模型、角色权限计算出的真实工具可用状态。 */
+export interface ToolRuntimeInfo {
+  platform: string
+  modelConfigured: boolean
+  nativeToolCallsSupported: boolean
+  commandAvailable: boolean
+  fileOpsAppSandboxOnly: boolean
+  registeredToolCount: number
+  allowedTools: string[]
+}
 
 /** 「其他工具」分组（与后端 TOOL_GROUPS 对齐；web_search 有独立设置区） */
 export const TOOL_GROUP_KEYS = [
@@ -271,6 +282,10 @@ export function getToolElevationStatus(): Promise<boolean> {
 /** 经过正常 Windows UAC 确认后，以管理员权限启动新实例并退出当前实例。 */
 export function restartToolProcessAsAdmin(): Promise<void> {
   return invoke<void>('restart_tool_process_as_admin')
+}
+
+export function getToolRuntimeInfo(): Promise<ToolRuntimeInfo> {
+  return invoke<ToolRuntimeInfo>('get_tool_runtime_info')
 }
 
 /** 直接执行一次网页搜索；失败时 Promise reject 携带后端错误信息。 */

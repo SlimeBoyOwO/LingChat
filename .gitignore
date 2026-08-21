@@ -8,6 +8,14 @@ Thumbs.db
 # 忽略日志文件
 *.log
 logs/
+# 构建临时备份目录（safe-delete 绕过产生的 rename 残留）
+dist_old_*/
+src-tauri/.bundled_resources_old_*/
+# Android 签名密钥（禁止提交）
+*.p12
+*.keystore
+*.jks
+keystore.properties
 # 忽略配置文件和敏感信息
 .env
 .env.*
@@ -57,8 +65,11 @@ ling_chat_pal/
 # ============================================================
 
 node_modules/
+.pnpm-store/
 build/
 dist/
+dist_old_*/
+dist-windows/
 target/
 
 ling_chat/static/frontend/
@@ -85,6 +96,7 @@ src-tauri/icons/ios/*.png
 # Android 自动生成的资源
 src-tauri/gen/android/app/src/main/assets/
 src-tauri/gen/android/app/src/main/res/mipmap-*/ic_launcher*.png
+src-tauri/gen/android/app/src/main/res/mipmap-anydpi-v26/
 
 **/.cargo/**
 
