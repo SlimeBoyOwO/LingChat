@@ -8,6 +8,7 @@
 pub mod error;
 pub mod hotkey;
 pub mod provider;
+pub mod provider_stream;
 pub mod session;
 pub mod settings;
 pub mod vad;
