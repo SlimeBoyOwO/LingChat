@@ -25,6 +25,10 @@ pub mod event_names {
     pub const SCRIPT_CHOICE: &str = "script:choice";
     pub const SCRIPT_END: &str = "script:end";
     pub const SCRIPT_FREE_DIALOGUE: &str = "script:free-dialogue";
+    pub const SCRIPT_JUMPSCARE: &str = "script:jumpscare";
+    pub const SCRIPT_FORCE_CHOICE: &str = "script:force-choice";
+    pub const SCRIPT_POEM_GAME: &str = "script:poem-game";
+    pub const SCRIPT_VOICE_SHIFT: &str = "script:voice-shift";
 }
 
 // ============================================================
@@ -95,6 +99,56 @@ pub struct SoundPayload {
     pub duration: Option<f64>,
 }
 
+/// 突脸惊吓：全屏图片闪现 + 音效。图片为空串表示解析失败（前端应跳过）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JumpscarePayload {
+    pub image_path: String,
+    /// 可选音效；空串表示无
+    pub sound_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+/// 强制选择：前端用"鼠标被拖向 forced 选项"的演出，最终只能提交 forced。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForceChoicePayload {
+    pub choices: Vec<ChoiceItem>,
+    /// 必然被选中的选项文本（必须在 choices 里存在）
+    pub forced: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+/// 选词写诗小游戏中的一个候选词。三个分值只用于客户端即时反馈，
+/// 最终结果会回传并由后端再次校验范围。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoemWordPayload {
+    pub text: String,
+    pub warm_points: i64,
+    pub script_points: i64,
+    pub void_points: i64,
+    #[serde(default)]
+    pub glitch: bool,
+}
+
+/// DDLC 式选词写诗互动，但使用本剧本原创的「她 / 剧本 / 空白」三种倾向。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoemGamePayload {
+    pub background_path: String,
+    pub music_path: String,
+    pub glitch_music_path: String,
+    pub warm_sticker_path: String,
+    pub script_sticker_path: String,
+    pub void_sticker_path: String,
+    pub rounds: Vec<Vec<PoemWordPayload>>,
+    pub normal_loop_start: f64,
+    pub glitch_loop_start: f64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AmbientPayload {
@@ -139,6 +193,10 @@ pub struct ModifyCharacterPayload {
     pub clothes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    /// true 时本次情绪切换是"闪现"演出：前端展示 `duration` 秒后自动还原，
+    /// 不覆盖角色当前情绪状态（DDLC 式立绘崩坏一闪）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flash: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -191,4 +249,12 @@ pub struct ScriptEndPayload {
     /// reaching its end. The frontend must not credit the player with an
     /// adventure completion in that case.
     pub completed: bool,
+}
+
+/// Voice shift：角色语音（TTS）播放倍率。<1 时因 preservesPitch=false 同时
+/// 降调，即剧本演出的"恶魔音"；1.0 恢复正常。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoiceShiftPayload {
+    pub rate: f64,
 }

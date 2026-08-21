@@ -1,5 +1,5 @@
 import type { SceneInfo } from '@/api/services/scene' // 导入场景类型
-import type { ScriptChoiceItem } from '@/types/script'
+import type { ScriptChoiceItem, ScriptPoemGameEvent } from '@/types/script'
 
 export interface GameMessage {
   type: 'message' | 'reply'
@@ -34,6 +34,8 @@ export interface ScriptInfo {
   choices: ScriptChoiceItem[]
   isRunning: boolean
   freeDialogueInfo: FreeDialogueInfo
+  /** 剧本内容警告标记（如 'horror'）：恐怖剧本运行时用于锁定桌宠入口等 */
+  contentWarning?: string
 }
 
 export interface GameRole {
@@ -60,6 +62,10 @@ export interface GameRole {
 
 export interface GameState {
   runningScript: ScriptInfo | null
+  /** 强制选择演出（DDLC 式鼠标拖拽）；非 null 时 ForceChoice 组件接管选择 */
+  forceChoice: { choices: ScriptChoiceItem[]; forced: string } | null
+  /** 选词写诗全屏互动；非 null 时 PoemGame 接管输入。 */
+  poemGame: ScriptPoemGameEvent | null
 
   gameRoles: Record<number, GameRole>
   presentRoleIds: number[]
@@ -85,6 +91,8 @@ export interface GameState {
 
 export const state: GameState = {
   runningScript: null,
+  forceChoice: null,
+  poemGame: null,
 
   gameRoles: {},
   presentRoleIds: [],

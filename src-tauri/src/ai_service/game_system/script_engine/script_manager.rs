@@ -15,6 +15,7 @@ use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::chapter::Chapter;
 use crate::ai_service::game_system::script_engine::events::ScriptContext;
+use crate::ai_service::game_system::script_engine::persistent_state;
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_END, ScriptEndPayload,
 };
@@ -37,6 +38,8 @@ struct StoryConfigRaw {
     adventure: Option<AdventureConfig>,
     #[serde(default)]
     script_settings: Option<serde_json::Map<String, Value>>,
+    #[serde(default)]
+    content_warning: Option<String>,
 }
 
 /// Central orchestrator for the script/story mode engine.
@@ -165,6 +168,7 @@ impl ScriptManager {
             script_path: script_path.to_path_buf(),
             recommand_start: raw.recommand_start.unwrap_or_default(),
             adventure,
+            content_warning: raw.content_warning,
             running_client_id: None,
             current_chapter_key: String::new(),
             current_event_process: 0,
@@ -260,8 +264,21 @@ impl ScriptManager {
 
     /// Initialize a script: register its roles, set script_status, load player info.
     pub async fn init_script(script: &ScriptStatus, ctx: &mut ScriptContext<'_>) -> Result<()> {
-        // Set script_status on GameStatus
-        ctx.game_status.lock().await.script_status = Some(script.clone());
+        // 正式剧本：先拍台词表长度快照，剧本结束时据此截断（防提示词污染）。
+        // 必须在注册剧本角色之前拍——角色 SYSTEM 人设行也在剧本期间写入，
+        // 属于要一并截掉的部分。试玩由 PreviewSession 自己的快照/还原负责。
+        if !ctx.is_preview {
+            let mut gs = ctx.game_status.lock().await;
+            gs.script_start_line_len = Some(gs.line_list.len());
+        }
+        // Story previews are isolated from persistent state. Real runs may opt
+        // in to a small allow-list of variables via `persistent_vars`.
+        let active_script = if ctx.is_preview {
+            persistent_state::prepare_preview(script)
+        } else {
+            persistent_state::prepare_playthrough(script, ctx.data_dir)
+        };
+        ctx.game_status.lock().await.script_status = Some(active_script);
 
         // Load player info from script settings
         if let Some(user_name) = script.settings.get("user_name").and_then(|v| v.as_str()) {
@@ -505,6 +522,18 @@ impl ScriptManager {
             }
         };
 
+        // Save only the explicitly allow-listed story variables. Persistence
+        // failures must never prevent the normal teardown path from releasing
+        // the UI, and editor previews never touch the player's state file.
+        if !ctx.is_preview {
+            let snapshot = ctx.game_status.lock().await.script_status.clone();
+            if let Some(snapshot) = snapshot {
+                if let Err(error) = persistent_state::save_playthrough(&snapshot, ctx.data_dir) {
+                    tracing::warn!("[ScriptState] 剧本状态保存失败: {:#}", error);
+                }
+            }
+        }
+
         // Now re-acquire the lock and do all writes in one critical section
         {
             let mut gs = ctx.game_status.lock().await;
@@ -519,6 +548,22 @@ impl ScriptManager {
                 }
             }
             gs.script_status = None;
+        }
+
+        // 防提示词污染：正式剧本结束后，把剧本期间写入共享台词表的内容整段
+        // 截掉，角色记忆按截断后的列表重建——剧本台词/旁白/自由对话轮次不会
+        // 漏进自由对话的 LLM 上下文。试玩由 PreviewSession 还原，不走这里。
+        if !ctx.is_preview {
+            let mut gs = ctx.game_status.lock().await;
+            if let Some(len) = gs.script_start_line_len.take() {
+                if gs.line_list.len() > len {
+                    gs.line_list.truncate(len);
+                    tracing::info!("[ScriptManager] 已截断剧本期间台词表（回退到 {} 行）", len);
+                    if let Err(e) = gs.refresh_memories(ctx.db).await {
+                        tracing::warn!("[ScriptManager] 剧本结束后重建记忆失败: {:#}", e);
+                    }
+                }
+            }
         }
 
         is_running.store(false, Ordering::SeqCst);

@@ -49,7 +49,30 @@ interface UIState {
 
   currentSoundEffect: string
   currentAvatarAudio: string
+  /** 角色语音（TTS）播放倍率，由剧本 voice_shift 事件设置；<1 降调=恶魔音，1.0 正常 */
+  voiceRate: number
+  /** 进入剧本前的自由对话 BGM（会话级，退出剧本时恢复；null = 不在剧本中） */
+  preScriptBgm: string | null
+  /** 进入剧本前的 BGM 循环模式（同上，随 preScriptBgm 一起恢复） */
+  preScriptBgmMode: 'loop-list' | 'loop-single' | 'random' | null
+  /** 进入剧本前的自由对话背景图（剧本换的背景不得带出剧本外） */
+  preScriptBackground: string | null
+  /** true 时 BGM 状态变化不写入 session（剧本运行期间屏蔽，防剧本 BGM 泄漏到下次启动） */
+  bgmPersistBlocked: boolean
   autoMode: boolean
+
+  /** 突脸惊吓：图片路径（空串 = 无演出） */
+  jumpscareImage: string
+  /** 突脸音效路径（由 Jumpscare 组件自行播放） */
+  jumpscareSound: string
+  /** 突脸收场时间戳（ms, Date.now() 基准），到点组件自行隐藏 */
+  jumpscareUntil: number
+
+  /** 立绘闪现（DDLC 式崩坏一闪）：null = 无演出；seq 递增保证同情绪也能重复触发 */
+  spriteFlash: { roleId: number; emotion: string; duration: number; seq: number } | null
+
+  /** 恐怖剧本入口过渡阶段：'' 无 / 'freeze' 卡死 / 'static' 花屏 */
+  horrorEntryPhase: '' | 'freeze' | 'static'
 
   // 环境音轨道列表（多轨并行，最多8轨）
   ambientTracks: Array<{
@@ -94,6 +117,9 @@ const DEBOUNCE_MS_DEFAULT = 3000 // 其他 3秒
 
 let hideTimer: number | null = null
 
+// 立绘闪现序号：每次触发递增，同情绪连闪也能触发组件 watch
+let spriteFlashSeq = 0
+
 export const useUIStore = defineStore('ui', {
   state: (): UIState => ({
     showCharacterTitle: 'Lovely You',
@@ -118,7 +144,22 @@ export const useUIStore = defineStore('ui', {
 
     currentSoundEffect: 'None',
     currentAvatarAudio: 'None',
+    voiceRate: 1,
+    preScriptBgm: null,
+    preScriptBgmMode: null,
+    preScriptBackground: null,
+    bgmPersistBlocked: false,
     autoMode: false,
+
+    // 突脸惊吓演出初始状态
+    jumpscareImage: '',
+    jumpscareSound: '',
+    jumpscareUntil: 0,
+
+    // 立绘闪现演出初始状态
+    spriteFlash: null,
+
+    horrorEntryPhase: '',
 
     // 环境音轨道列表初始值
     ambientTracks: [],
@@ -207,6 +248,72 @@ export const useUIStore = defineStore('ui', {
     // 设置背景效果（写入 settings store）
     setBackgroundEffect(effect: string) {
       useSettingsStore().setBackgroundEffect(effect)
+    },
+    /** 触发突脸惊吓：图片全屏闪现 durationSec 秒，自带音效 */
+    triggerJumpscare(image: string, sound: string, durationSec: number) {
+      this.jumpscareImage = image
+      this.jumpscareSound = sound
+      this.jumpscareUntil = Date.now() + Math.max(0.15, durationSec) * 1000
+    },
+    /** 立即收场（组件卸载或剧本结束时兜底调用） */
+    clearJumpscare() {
+      this.jumpscareImage = ''
+      this.jumpscareSound = ''
+      this.jumpscareUntil = 0
+    },
+    /** 立绘闪现：把 roleId 的立绘短暂替换为 emotion 版本，duration 秒后由组件自动还原 */
+    triggerSpriteFlash(roleId: number, emotion: string, durationSec: number) {
+      spriteFlashSeq += 1
+      this.spriteFlash = {
+        roleId,
+        emotion,
+        duration: Math.max(0.12, durationSec),
+        seq: spriteFlashSeq,
+      }
+    },
+    /**
+     * 恐怖特效残留清理：当前特效包含恐怖向名称时重置为 'None'。
+     * 剧本异常退出/中途返回/重启后都可能残留，在剧本结束、进入剧本、应用启动时调用。
+     */
+    resetHorrorEffects() {
+      const HORROR = [
+        'Glitch',
+        'Shake',
+        'Flash',
+        'Blackout',
+        'Tear',
+        'Static',
+        'Invert',
+        'BloodDrip',
+        'Veins',
+        'BSOD',
+        'UiCorrupt',
+        'BloodUI',
+      ]
+      const current = useSettingsStore().display.backgroundEffect
+      if (HORROR.some((h) => current.includes(h))) {
+        useSettingsStore().setBackgroundEffect('None')
+      }
+      this.clearJumpscare()
+      this.spriteFlash = null
+      // 恶魔音残留一并清理（剧本结束/进入/启动时都会走到这里）
+      this.voiceRate = 1
+    },
+    /**
+     * 恐怖剧本入口过渡：卡死 1.1s → 花屏 0.8s，结束后 resolve。
+     * 调用方 await 它再执行真正的进入逻辑。
+     */
+    beginHorrorEntry(): Promise<void> {
+      return new Promise((resolve) => {
+        this.horrorEntryPhase = 'freeze'
+        setTimeout(() => {
+          this.horrorEntryPhase = 'static'
+        }, 1100)
+        setTimeout(() => {
+          this.horrorEntryPhase = ''
+          resolve()
+        }, 1900)
+      })
     },
     // 设置对话音效开关（写入 settings store）
     setEnableChatEffectSound(enabled: boolean) {
@@ -557,6 +664,8 @@ export const useUIStore = defineStore('ui', {
 
     /** 持久化 BGM 状态（防抖 500ms），由 $subscribe 自动触发 */
     persistBgmState() {
+      // 剧本运行期间不持久化：剧本 BGM 不得写进 session（防泄漏到下次启动）
+      if (this.bgmPersistBlocked) return
       if (bgmSaveTimer) clearTimeout(bgmSaveTimer)
       bgmSaveTimer = setTimeout(() => {
         saveBgmState(this.currentBackgroundMusic, this.bgMusicPaused, this.bgMusicMode)
@@ -565,6 +674,8 @@ export const useUIStore = defineStore('ui', {
 
     /** 持久化环境音轨道（防抖 500ms），由 $subscribe 自动触发 */
     persistAmbientState() {
+      // 剧本运行期间不持久化：剧本的恐怖环境音（rumble 等）不得写进 session
+      if (this.bgmPersistBlocked) return
       if (ambientSaveTimer) clearTimeout(ambientSaveTimer)
       ambientSaveTimer = setTimeout(() => {
         saveAmbientState(JSON.stringify(this.ambientTracks))
@@ -586,6 +697,9 @@ export function initUIStore() {
   initialized = true
 
   const store = useUIStore()
+
+  // 启动时清掉上次会话残留的恐怖特效（设置是持久化的，血色 UI 不能带进新会话）
+  store.resetHorrorEffects()
 
   // 从 CSS 变量同步安全区值（由 Android 原生 / iOS env() 注入）
   function syncSafeArea() {

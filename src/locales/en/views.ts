@@ -58,6 +58,19 @@ export default {
     cloudWorkshop: "Cloud Workshop",
     miniGame: "Mini Games (In Development)",
     back: "Back",
+    resetMemoryTitle: "Reset Memory",
+    resetMemory: "Reset Memory",
+    resetMemoryDone2: "Reset",
+    resetMemoryMessage:
+      'This will erase all memories (playthrough progress) of "{name}". Your next visit will start from the first playthrough.\n\nAre you sure?',
+    resetMemoryDone: "Memories erased. She no longer remembers you.",
+    resetMemoryEmpty: "This script has no stored memories yet.",
+    resetMemoryFailed: "Reset failed. Please try again later.",
+  },
+  contentWarning: {
+    horrorTitle: "⚠ Content Warning",
+    horrorMessage:
+      "This story contains horror, jumpscares and disturbing content, including depictions of suicide and self-harm. Intended for adults aged 18 and above only (R18).\nIf you feel unwell while playing, please quit immediately.\n\nAre you sure you want to continue?",
   },
   pet: {
     chatInput: {

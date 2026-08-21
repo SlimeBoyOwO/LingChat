@@ -27,5 +27,7 @@ export default class ScriptEndProcessor implements IEventProcessor {
     gameStore.exitStoryMode()
     const uiStore = useUIStore()
     uiStore.showPlayerHintLine = ''
+    // 恐怖特效/突脸不得带出剧本外
+    uiStore.resetHorrorEffects()
   }
 }

@@ -20,6 +20,7 @@ pub struct ModifyCharacterEvent {
     clothes: Option<String>,
     perceive: Option<bool>,
     duration: Option<f64>,
+    flash: bool,
 }
 
 impl ModifyCharacterEvent {
@@ -44,6 +45,7 @@ impl ModifyCharacterEvent {
                 .map(|s| s.to_string()),
             perceive: data.get("perceive").and_then(loose_bool),
             duration: parse_duration(data),
+            flash: data.get("flash").and_then(loose_bool).unwrap_or(false),
         }
     }
 }
@@ -141,14 +143,16 @@ impl ScriptEvent for ModifyCharacterEvent {
             action: self.action.clone(),
             clothes: self.clothes.clone(),
             duration: self.duration,
+            flash: self.flash.then_some(true),
         };
         let _ = emit(ctx.app, SCRIPT_MODIFY_CHARACTER, &payload);
 
         tracing::info!(
-            "[ModifyCharacterEvent] role={} action={:?} emotion={:?}",
+            "[ModifyCharacterEvent] role={} action={:?} emotion={:?} flash={}",
             role_id,
             self.action,
-            self.emotion
+            self.emotion,
+            self.flash
         );
         Ok(None)
     }

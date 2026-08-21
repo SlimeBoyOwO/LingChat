@@ -57,6 +57,19 @@ export default {
     cloudWorkshop: 'クラウド工房',
     miniGame: 'ミニゲーム（開発中）',
     back: '戻る',
+    resetMemoryTitle: '記憶をリセット',
+    resetMemory: '記憶をリセット',
+    resetMemoryDone2: 'リセット済み',
+    resetMemoryMessage:
+      '《{name}》のすべての記憶（周回進行）を消去します。次回は1周目から始まります。\n\n本当にリセットしますか？',
+    resetMemoryDone: '記憶を消去しました。彼女はもうあなたを覚えていません。',
+    resetMemoryEmpty: 'このシナリオにはまだ記憶がありません。',
+    resetMemoryFailed: 'リセットに失敗しました。後でもう一度お試しください。',
+  },
+  contentWarning: {
+    horrorTitle: '⚠ コンテンツ警告',
+    horrorMessage:
+      'このシナリオにはホラー・驚かせる演出・精神的に不快な内容に加え、自殺・自傷行為に関する描写が含まれます。18歳以上のプレイヤー（R18）のみご利用ください。\nプレイ中に気分が悪くなった場合は、すぐに終了してください。\n\n本当に続けますか？',
   },
   pet: {
     chatInput: {

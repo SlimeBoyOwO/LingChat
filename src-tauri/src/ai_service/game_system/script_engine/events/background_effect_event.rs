@@ -17,7 +17,25 @@ use crate::ai_service::message_system::events::emit;
 /// `GameBackground.vue` compares with `===`, so these are **case sensitive**:
 /// `starfield` and `Starfield` both silently render nothing. Anything not in
 /// this list (including the conventional `None`) clears the current effect.
-pub const KNOWN_EFFECTS: [&str; 5] = ["StarField", "Rain", "Sakura", "Snow", "Fireworks"];
+pub const KNOWN_EFFECTS: [&str; 17] = [
+    "StarField",
+    "Rain",
+    "Sakura",
+    "Snow",
+    "Fireworks",
+    "Glitch",
+    "Shake",
+    "Flash",
+    "Blackout",
+    "Tear",
+    "Static",
+    "Invert",
+    "BloodDrip",
+    "Veins",
+    "BSOD",
+    "UiCorrupt",
+    "BloodUI",
+];
 
 /// Names that explicitly mean "no effect" and therefore must not be warned about.
 const CLEARING_EFFECTS: [&str; 3] = ["none", "None", ""];
@@ -39,8 +57,12 @@ impl BackgroundEffectEvent {
         // The warning exists because the failure was previously completely
         // silent: two of the shipped scripts write `starfield` / `Starfield`
         // and get no particles at all with no diagnostic anywhere.
-        if !CLEARING_EFFECTS.contains(&effect.as_str()) && !KNOWN_EFFECTS.contains(&effect.as_str())
-        {
+        // 支持 '+' 组合叠加（如 "Glitch+BloodDrip"），逐段校验
+        let all_known = effect
+            .split('+')
+            .map(|p| p.trim())
+            .all(|p| CLEARING_EFFECTS.contains(&p) || KNOWN_EFFECTS.contains(&p));
+        if !all_known && !CLEARING_EFFECTS.contains(&effect.as_str()) {
             let hint = KNOWN_EFFECTS
                 .iter()
                 .find(|k| k.eq_ignore_ascii_case(&effect));
@@ -68,7 +90,11 @@ impl BackgroundEffectEvent {
 #[async_trait]
 impl ScriptEvent for BackgroundEffectEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        ctx.game_status.lock().await.background_effect = self.effect.clone();
+        // 限时特效只是一层瞬时演出，由前端计时并还原；不要把它写进存档快照，
+        // 否则恰好在闪烁期间自动保存，重载后会把血色 UI / Tear 永久恢复出来。
+        if self.duration.unwrap_or(0.0) <= 0.0 {
+            ctx.game_status.lock().await.background_effect = self.effect.clone();
+        }
 
         let payload = BackgroundEffectPayload {
             effect: self.effect.clone(),
@@ -120,7 +146,11 @@ mod tests {
         // Mirrors the `v-if` chain in src/components/game/standard/GameBackground.vue.
         assert_eq!(
             KNOWN_EFFECTS,
-            ["StarField", "Rain", "Sakura", "Snow", "Fireworks"]
+            [
+                "StarField", "Rain", "Sakura", "Snow", "Fireworks", "Glitch", "Shake", "Flash",
+                "Blackout", "Tear", "Static", "Invert", "BloodDrip", "Veins", "BSOD", "UiCorrupt",
+                "BloodUI"
+            ]
         );
     }
 }

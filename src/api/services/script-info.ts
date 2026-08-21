@@ -19,6 +19,7 @@ export interface ScriptSummary {
   description?: string
   folder_key?: string
   intro_chapter?: string
+  content_warning?: string
 }
 
 export interface ScriptInfo {
@@ -65,6 +66,17 @@ export const startScript = async (scriptName: string): Promise<void> => {
     await invoke('start_script', { scriptName })
   } catch (error: any) {
     console.error('启动剧本错误:', error)
+    throw error
+  }
+}
+
+// 清除剧本的持久化运行状态（周目记忆），下次进入从第一周目重新开始。
+// 返回 true 表示确实有记忆被清掉。
+export const resetScriptState = async (scriptName: string): Promise<boolean> => {
+  try {
+    return await invoke<boolean>('reset_script_state', { scriptName })
+  } catch (error: any) {
+    console.error('重置剧本记忆错误:', error)
     throw error
   }
 }

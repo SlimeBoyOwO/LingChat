@@ -13,6 +13,7 @@
 pub mod chapter;
 pub mod events;
 pub mod events_handler;
+pub mod persistent_state;
 pub mod responses;
 pub mod script_manager;
 pub mod utils;
@@ -27,6 +28,7 @@ pub fn init_event_registry() {
     events::dialog_event::register();
     events::narration_event::register();
     events::player_event::register();
+    events::poem_game_event::register();
     events::input_event::register();
     events::choice_event::register();
     events::ai_dialogue_event::register();
@@ -43,6 +45,14 @@ pub fn init_event_registry() {
     events::ambient_event::register();
     // 注册成就解锁事件处理器
     events::achievement_event::register();
+    // 注册恐怖演出事件处理器（突脸 / 强制选择）
+    events::jumpscare_event::register();
+    events::force_choice_event::register();
+    // 注册定拍等待事件处理器（DDLC 式时间轴演出）
+    events::wait_event::register();
+    events::voice_shift_event::register();
+    events::horror_log_event::register();
+    events::random_var_event::register();
 
     tracing::info!("[ScriptEngine] 所有事件处理器已注册");
 }

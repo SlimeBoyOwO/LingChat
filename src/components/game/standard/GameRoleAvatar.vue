@@ -19,6 +19,16 @@
         :object-fit="computedObjectFit"
       />
 
+      <!-- 立绘闪现覆盖层（DDLC 式崩坏一闪）：硬切无淡入淡出，盖在正常立绘上 -->
+      <img
+        v-if="flashAvatarUrl"
+        :src="flashAvatarUrl"
+        class="absolute w-full h-[102%] sprite-flash-overlay"
+        :style="flashOverlayStyle"
+        alt=""
+        draggable="false"
+      />
+
       <!-- 气泡 -->
       <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
 
@@ -30,6 +40,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, toRefs } from 'vue'
+import type { CSSProperties } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useGameStore } from '@/stores/modules/game'
@@ -140,6 +151,51 @@ const bubbleStyles = computed(() => ({
 
 const targetAvatarUrl = ref('')
 
+// --- 立绘闪现（崩坏一闪）覆盖层 ---
+const flashAvatarUrl = ref('')
+const flashOverlayStyle = computed<CSSProperties>(() => ({
+  objectFit: computedObjectFit.value as CSSProperties['objectFit'],
+}))
+let flashTimerId: number | null = null
+let flashResolveId = 0
+
+watch(
+  () => uiStore.spriteFlash,
+  async (flash) => {
+    if (!flash) {
+      // 剧本结束/重置时的兜底：立即收掉覆盖层
+      flashAvatarUrl.value = ''
+      return
+    }
+    if (flash.roleId !== role.value.roleId) return
+    const currentId = ++flashResolveId
+    const r = role.value
+    const clothesName = r.clothesName === '默认' || !r.clothesName ? 'default' : r.clothesName
+    const mappedEmotion = EMOTION_CONFIG_EMO[flash.emotion] || flash.emotion
+
+    let url = ''
+    try {
+      const path = await invoke<string>('get_avatar_file', {
+        characterFolder: r.character_folder,
+        emotion: mappedEmotion,
+        clothesName,
+      })
+      url = convertFileSrc(path)
+    } catch {
+      // 角色目录没有该演出情绪的立绘文件：静默跳过这次闪现
+      return
+    }
+    if (currentId !== flashResolveId) return
+
+    flashAvatarUrl.value = url
+    if (flashTimerId !== null) window.clearTimeout(flashTimerId)
+    flashTimerId = window.setTimeout(() => {
+      flashAvatarUrl.value = ''
+      flashTimerId = null
+    }, flash.duration * 1000)
+  },
+)
+
 let resolveAvatarId = 0
 
 async function resolveAvatar() {
@@ -159,6 +215,22 @@ async function resolveAvatar() {
       targetAvatarUrl.value = convertFileSrc(path)
     }
   } catch {
+    // 演出专用情绪（如"崩坏"）在角色目录里可能没有对应文件，回退到"正常"再试一次
+    if (mappedEmotion !== '正常') {
+      try {
+        const fallback = await invoke<string>('get_avatar_file', {
+          characterFolder: r.character_folder,
+          emotion: '正常',
+          clothesName,
+        })
+        if (currentId === resolveAvatarId) {
+          targetAvatarUrl.value = convertFileSrc(fallback)
+        }
+        return
+      } catch {
+        // 继续走置空兜底
+      }
+    }
     if (currentId === resolveAvatarId) {
       targetAvatarUrl.value = ''
     }
@@ -311,5 +383,29 @@ const handleAnimationEnd = () => {
 
 :deep(.touch-area) {
   pointer-events: auto;
+}
+
+/* 立绘闪现覆盖层：与主立绘同位同尺寸，硬切 + 高频抖动，模拟信号故障 */
+.sprite-flash-overlay {
+  object-position: center bottom;
+  z-index: 2;
+  pointer-events: none;
+  animation: sprite-flash-jitter 0.09s steps(2, end) infinite;
+  filter: saturate(1.4) contrast(1.15);
+}
+
+@keyframes sprite-flash-jitter {
+  0% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-6px, 2px);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(4px, -3px);
+    opacity: 1;
+  }
 }
 </style>

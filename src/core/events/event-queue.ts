@@ -52,6 +52,11 @@ export class EventQueue {
     // 处理事件并等待完成
     await eventProcessorManager.processEvent(event)
 
+    // 这些视觉事件由组件自己的计时器收场。duration 表示“显示多久”，
+    // 不是“多久以后才允许下一事件开始”；否则故障音、立绘闪现和红色 UI
+    // 会被拆成前后几拍，无法形成一次完整的恐怖冲击。
+    if (this.isSelfTimedVisual(event)) return
+
     // 如果事件需要等待用户继续，就等待
     if (this.shouldWaitForUser(event)) {
       await this.waitForUserContinue()
@@ -59,6 +64,12 @@ export class EventQueue {
       await this.waitForDuration(event.duration)
       console.log('等待' + event.duration + '秒')
     }
+  }
+
+  private isSelfTimedVisual(event: ScriptEventType): boolean {
+    if (event.type === 'jumpscare') return true
+    if (event.type === 'background_effect' && event.duration > 0) return true
+    return event.type === 'modify_character' && event.flash === true
   }
 
   private shouldWaitForUser(event: ScriptEventType): boolean {

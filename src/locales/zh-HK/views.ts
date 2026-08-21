@@ -57,7 +57,18 @@ export default {
     "scriptEditor": "創意工坊",
     "cloudWorkshop": "雲·創意工坊",
     "miniGame": "小遊戲（開發緊）",
-    "back": "返回"
+    "back": "返回",
+    "resetMemoryTitle": "重置記憶",
+    "resetMemory": "重置記憶",
+    "resetMemoryDone2": "已重置",
+    "resetMemoryMessage": "將清除《{name}》嘅全部記憶（周目進度），下次進入會由第一週目重新開始。\n\n確定要重置嗎？",
+    "resetMemoryDone": "記憶已清除。佢已經唔記得你喇。",
+    "resetMemoryEmpty": "呢個劇本仲未有任何記憶。",
+    "resetMemoryFailed": "重置失敗，請遲啲再試。"
+  },
+  "contentWarning": {
+    "horrorTitle": "⚠ 內容警告",
+    "horrorMessage": "本劇本包含恐怖、驚嚇同心理不適元素，並涉及自殺與自我傷害嘅相關描寫，僅限 18 歲或以上玩家（R18）遊玩。\n如果遊玩期間感到不適，請立即退出。\n\n確定要繼續嗎？"
   },
   "pet": {
     "chatInput": {

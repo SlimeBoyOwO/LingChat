@@ -52,11 +52,24 @@ export default {
     credits: '致谢名单',
     exitGame: '退出游戏',
     freeDialogue: '自由对话模式',
-    storyMode: '剧情模式（在自由模式进入）',
+    storyMode: '剧情模式',
     scriptEditor: '创意工坊',
     cloudWorkshop: '云·创意工坊',
     miniGame: '小游戏（开发中）',
     back: '返回',
+    resetMemoryTitle: '重置记忆',
+    resetMemory: '重置记忆',
+    resetMemoryDone2: '已重置',
+    resetMemoryMessage:
+      '将清除《{name}》的全部记忆（周目进度），下次进入会从第一周目重新开始。\n\n确定要重置吗？',
+    resetMemoryDone: '记忆已清除。她已经不记得你了。',
+    resetMemoryEmpty: '这个剧本还没有任何记忆。',
+    resetMemoryFailed: '重置失败，请稍后再试。',
+  },
+  contentWarning: {
+    horrorTitle: '⚠ 内容警告',
+    horrorMessage:
+      '本剧本包含恐怖、惊吓与心理不适元素，并涉及自杀与自我伤害的相关描写，仅限 18 岁及以上玩家（R18）游玩。\n如在游玩过程中感到不适，请立即退出。\n\n确定要继续吗？',
   },
   pet: {
     chatInput: {

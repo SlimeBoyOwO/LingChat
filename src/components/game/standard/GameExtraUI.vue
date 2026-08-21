@@ -16,6 +16,15 @@
     <!-- 5. 自由对话动画与提示区域 -->
     <ScriptFreeDialogueDisplay />
 
+    <!-- 5.5 强制选择（DDLC 式鼠标拖拽演出） -->
+    <ForceChoice />
+
+    <!-- 5.55 选词写诗：全屏接管输入并自行播放带 loop 点的 BGM -->
+    <PoemGame />
+
+    <!-- 5.6 恐怖特效层（压过角色立绘与对话框） -->
+    <HorrorEffectsLayer />
+
     <!-- 6. 声效控制面板 -->
     <SoundEffectPanel />
   </div>
@@ -27,5 +36,8 @@ import GameChoices from './extra/GameChoices.vue'
 import ScriptCompleteDisplay from './extra/ScriptCompleteDisplay.vue'
 import ScriptPicDisplay from './extra/ScriptPicDisplay.vue'
 import ScriptFreeDialogueDisplay from './extra/ScriptFreeDialogueDisplay.vue'
+import ForceChoice from './extra/ForceChoice.vue'
+import PoemGame from './extra/PoemGame.vue'
+import HorrorEffectsLayer from './HorrorEffectsLayer.vue'
 import SoundEffectPanel from './extra/SoundEffectPanel.vue'
 </script>

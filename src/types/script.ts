@@ -104,6 +104,8 @@ export interface ScriptModifyCharacterEvent extends ScriptEvent {
   emotion?: string
   action?: string
   clothes?: string
+  /** true 时为"闪现"演出：情绪立绘短暂展示 duration 秒后自动还原，不写回角色状态 */
+  flash?: boolean
 }
 
 export interface ScriptInputEvent extends ScriptEvent {
@@ -125,6 +127,42 @@ export interface ScriptEndEvent extends ScriptEvent {
   type: 'script_end'
   /** false 表示剧本是因为出错被中止的，不应记为完成 */
   completed?: boolean
+}
+
+/** 突脸惊吓事件：全屏图片闪现 + 音效 */
+export interface ScriptJumpscareEvent extends ScriptEvent {
+  type: 'jumpscare'
+  imagePath: string
+  soundPath?: string
+}
+
+/** 强制选择事件：鼠标被拖向 forced 选项，最终只能提交它 */
+export interface ScriptForceChoiceEvent extends ScriptEvent {
+  type: 'force_choice'
+  choices: ScriptChoiceItem[]
+  forced: string
+}
+
+export interface ScriptPoemWord {
+  text: string
+  warmPoints: number
+  scriptPoints: number
+  voidPoints: number
+  glitch: boolean
+}
+
+/** 20 轮选词写诗互动；每轮包含 10 个词。 */
+export interface ScriptPoemGameEvent extends ScriptEvent {
+  type: 'poem_game'
+  backgroundPath: string
+  musicPath: string
+  glitchMusicPath: string
+  warmStickerPath: string
+  scriptStickerPath: string
+  voidStickerPath: string
+  rounds: ScriptPoemWord[][]
+  normalLoopStart: number
+  glitchLoopStart: number
 }
 
 export interface ScriptErrorEvent extends ScriptEvent {
@@ -157,3 +195,6 @@ export type ScriptEventType =
   | ScriptChoiceEvent
   | ScriptPresentPicEvent
   | ScriptFreeDialogueEvent
+  | ScriptJumpscareEvent
+  | ScriptForceChoiceEvent
+  | ScriptPoemGameEvent
