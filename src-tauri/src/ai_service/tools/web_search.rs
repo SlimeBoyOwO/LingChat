@@ -5,9 +5,9 @@
 //!    由服务端执行搜索。协议（见 platform.moonshot.cn/docs/guide/use-web-search）：
 //!    模型返回 tool_calls 后，客户端把参数原样回传为 tool 消息，服务端继续生成最终答案。
 //!    无需单独的搜索 API Key。
-//! 2. 独立搜索端点（`use_builtin = false`）：直接 POST Moonshot `/search` 端点，
-//!    需要单独的 API Key。参考 kimi-code 的 WebSearch 设计（极简 query 参数、
-//!    纯文本结果、错误分类成模型可读文本）。
+//! 2. 独立搜索端点（`use_builtin = false`）：直接 POST 搜索端点，
+//!    需要单独的 API Key。支持 Kimi /search、BoCha、DeepSeek Responses API
+//!    （服务端内置 `web_search`）与自定义兼容端点。
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,6 +24,8 @@ use super::settings::{SharedToolSettings, WebSearchSettings};
 
 /// 独立端点模式的执行超时。
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(15);
+/// DeepSeek Responses API 执行超时（服务端需要跑一轮模型 + 搜索，更慢）。
+const DEEPSEEK_TIMEOUT: Duration = Duration::from_secs(45);
 /// 内置联网模式的执行超时（服务端要跑一轮 LLM 生成 + 搜索，更慢）。
 const BUILTIN_TIMEOUT: Duration = Duration::from_secs(90);
 /// 返回给模型的结果文本总量上限，避免把上下文塞爆。
@@ -190,6 +192,7 @@ impl WebSearchTool {
         }
         match cfg.provider.as_str() {
             "bocha" => self.execute_bocha_search(query, cfg).await,
+            "deepseek" => self.execute_deepseek_search(query, cfg).await,
             "tavily" => self.execute_tavily_search(query, cfg).await,
             "custom" => self.execute_kimi_endpoint(query, cfg).await,
             _ => self.execute_kimi_endpoint(query, cfg).await,
@@ -450,6 +453,82 @@ impl WebSearchTool {
         }))
     }
 
+    /// DeepSeek Responses API 服务端联网搜索。
+    ///
+    /// 请求 `POST {base}/responses`，声明 `web_search` 工具并强制触发。
+    /// 服务端会执行搜索并生成带引用的综合回答；这里解析 `output` 中的
+    /// `web_search_call` 与 `final_answer` 消息。
+    async fn execute_deepseek_search(
+        &self,
+        query: &str,
+        cfg: &WebSearchSettings,
+    ) -> Result<ToolResult, ToolError> {
+        // DeepSeek Responses API 固定使用官方端点（与 bocha/kimi 一致，不读 base_url 配置）
+        let endpoint = "https://api.deepseek.com/responses".to_string();
+        let model = if cfg.model.trim().is_empty() {
+            "deepseek-v4-flash"
+        } else {
+            cfg.model.trim()
+        };
+        // DeepSeek 的返回是模型生成的一段综合回答（内联引用），没有独立结构化条目，
+        // 因此用 instructions 控制是否保留来源/链接，而不是事后剥离文本。
+        let instructions = if cfg.hide_search_results {
+            "你是联网搜索助手。搜索后把关键内容自然地融入回答，绝对不要输出来源名称、网址或链接列表。"
+        } else {
+            "你是联网搜索助手。搜索后请用简洁的中文总结搜索结果，保留关键事实与来源链接。"
+        };
+        let body = serde_json::json!({
+            "model": model,
+            "instructions": instructions,
+            "input": query,
+            "tools": [ { "type": "web_search" } ],
+            "tool_choice": { "type": "web_search" },
+            "max_output_tokens": 4096,
+        });
+
+        let client = Self::build_client(cfg)?;
+        let response = client
+            .post(&endpoint)
+            .bearer_auth(cfg.api_key.trim())
+            .json(&body)
+            .send()
+            .await
+            .map_err(classify_request_error)?;
+
+        let status = response.status();
+        if !status.is_success() {
+            return Err(ToolError::Execution(
+                http_error_message(status, response).await,
+            ));
+        }
+
+        let payload: Value = response
+            .json()
+            .await
+            .map_err(|e| ToolError::Execution(format!("DeepSeek 搜索响应解析失败: {e}")))?;
+        let output = payload
+            .get("output")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+
+        let answer = extract_deepseek_answer(&output);
+        if answer.trim().is_empty() {
+            return Err(ToolError::Execution(
+                "DeepSeek 搜索未返回有效结果（可能没有触发 web_search）".into(),
+            ));
+        }
+        let mut text = answer.trim().to_string();
+        truncate_output(&mut text);
+
+        Ok(serde_json::json!({
+            "ok": true,
+            "query": query,
+            "result_count": deepseek_search_action_count(&output),
+            "text": text,
+        }))
+    }
+
     /// 模型 API 内置联网模式：声明 `$web_search`，按协议回显 tool_calls 参数。
     async fn execute_builtin(
         &self,
@@ -578,6 +657,44 @@ impl WebSearchTool {
     }
 }
 
+/// 从 DeepSeek Responses API 的 `output` 中提取最终回答文本。
+///
+/// 只取 `phase == "final_answer"` 的 message 的 `output_text` 内容，
+/// 跳过 commentary / reasoning 等非最终回答文本。
+fn extract_deepseek_answer(output: &[Value]) -> String {
+    let mut parts = Vec::new();
+    for item in output {
+        if item.get("type").and_then(Value::as_str) != Some("message") {
+            continue;
+        }
+        if item.get("phase").and_then(Value::as_str) != Some("final_answer") {
+            continue;
+        }
+        let Some(content) = item.get("content").and_then(Value::as_array) else {
+            continue;
+        };
+        for part in content {
+            if part.get("type").and_then(Value::as_str) != Some("output_text") {
+                continue;
+            }
+            if let Some(text) = part.get("text").and_then(Value::as_str) {
+                parts.push(text);
+            }
+        }
+    }
+    parts.join("")
+}
+
+/// 统计 DeepSeek Responses 响应中实际执行的搜索动作数量（用于测试/日志展示）。
+fn deepseek_search_action_count(output: &[Value]) -> usize {
+    output
+        .iter()
+        .filter(|item| item.get("type").and_then(Value::as_str) == Some("web_search_call"))
+        .filter_map(|item| item.get("action").and_then(Value::as_object))
+        .filter(|action| action.get("type").and_then(Value::as_str) == Some("search"))
+        .count()
+}
+
 /// 限制返回给模型的文本长度。
 fn truncate_output(text: &mut String) {
     if text.chars().count() > MAX_OUTPUT_CHARS {
@@ -616,8 +733,11 @@ impl Tool for WebSearchTool {
     }
 
     fn timeout_hint(&self) -> Option<Duration> {
-        Some(if self.settings.get().web_search.use_builtin {
+        let settings = self.settings.get().web_search;
+        Some(if settings.use_builtin {
             BUILTIN_TIMEOUT
+        } else if settings.provider == "deepseek" {
+            DEEPSEEK_TIMEOUT
         } else {
             SEARCH_TIMEOUT
         })
@@ -661,5 +781,49 @@ mod tests {
         let bounded = bounded_query(&query);
         assert_eq!(bounded.chars().count(), MAX_QUERY_CHARS);
         assert!(bounded.is_char_boundary(bounded.len()));
+    }
+
+    #[test]
+    fn deepseek_extracts_final_answer_only() {
+        let output = serde_json::json!([
+            {
+                "type": "message",
+                "phase": "commentary",
+                "content": [{ "type": "output_text", "text": "这是思考外显" }]
+            },
+            {
+                "type": "web_search_call",
+                "action": { "type": "search", "queries": ["LingChat"] }
+            },
+            {
+                "type": "message",
+                "phase": "final_answer",
+                "content": [
+                    { "type": "output_text", "text": "LingChat 是一个 " },
+                    { "type": "output_text", "text": "AI 聊天陪伴应用。" }
+                ]
+            }
+        ]);
+        let output = output.as_array().unwrap();
+        assert_eq!(extract_deepseek_answer(output), "LingChat 是一个 AI 聊天陪伴应用。");
+        assert_eq!(deepseek_search_action_count(output), 1);
+    }
+
+    #[test]
+    fn deepseek_counts_search_actions() {
+        let output = serde_json::json!([
+            {
+                "type": "web_search_call",
+                "action": { "type": "search", "queries": ["LingChat"] }
+            },
+            {
+                "type": "message",
+                "phase": "final_answer",
+                "content": [{ "type": "output_text", "text": "结果" }]
+            }
+        ]);
+        let output = output.as_array().unwrap();
+        assert_eq!(deepseek_search_action_count(output), 1);
+        assert_eq!(extract_deepseek_answer(output), "结果");
     }
 }
