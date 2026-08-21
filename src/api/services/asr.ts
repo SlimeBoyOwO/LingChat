@@ -23,6 +23,8 @@ export interface AsrSettings {
   hotkey_enabled: boolean
   hotkey_combination: string
   send_mode: SendMode
+  stream_enabled: boolean
+  hotkey_toggle_auto_listen: boolean
   provider_configs: Record<string, ProviderConfig>
 }
 
@@ -43,6 +45,7 @@ export interface ProviderInfo {
   id: string
   display_name: string
   config_fields: AsrConfigField[]
+  supports_streaming: boolean
 }
 
 export interface VadEvent {
@@ -80,6 +83,16 @@ export const asrSetSettings = (settings: AsrSettings) =>
 
 export const asrTestProvider = (providerId: string) =>
   invoke<void>('asr_test_provider', { providerId })
+
+export const asrStartStreaming = (params: { providerId: string; languageHint?: string | null }) =>
+  invoke<void>('asr_start_streaming', {
+    providerId: params.providerId,
+    languageHint: params.languageHint ?? null,
+  })
+
+export const asrStreamAudioChunk = (pcm: number[]) => invoke<void>('asr_stream_audio_chunk', { pcm })
+
+export const asrStopStreaming = () => invoke<AsrResult>('asr_stop_streaming')
 
 /** 注册系统级全局快捷键（后台也可触发；combo 格式 "Ctrl+Shift+Space"） */
 export const asrRegisterHotkey = (combo: string) =>

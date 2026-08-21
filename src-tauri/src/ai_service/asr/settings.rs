@@ -54,6 +54,8 @@ pub struct AsrSettings {
     pub hotkey_enabled: bool,
     pub hotkey_combination: String,
     pub send_mode: SendMode,
+    pub stream_enabled: bool,
+    pub hotkey_toggle_auto_listen: bool,
     pub provider_configs: HashMap<String, ProviderConfig>,
 }
 
@@ -70,6 +72,8 @@ impl AsrSettings {
             hotkey_enabled: false,
             hotkey_combination: "Ctrl+Shift+Space".into(),
             send_mode: SendMode::FillOnly,
+            stream_enabled: false,
+            hotkey_toggle_auto_listen: true,
             provider_configs,
         }
     }
@@ -79,7 +83,7 @@ const STORE_KEY_PROVIDERS: &str = "ASR_PROVIDERS";
 const STORE_KEY_ACTIVE: &str = "ASR_ACTIVE_PROVIDER_ID";
 const STORE_KEY_PREFS: &str = "ASR_PREFS";
 
-/// UI 偏好字段（auto_listen / hotkey / send_mode），与 provider 凭据分开持久化。
+/// UI 偏好字段（auto_listen / hotkey / send_mode / 流式），与 provider 凭据分开持久化。
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct AsrPrefs {
     #[serde(default)]
@@ -90,6 +94,10 @@ pub struct AsrPrefs {
     pub hotkey_combination: String,
     #[serde(default)]
     pub send_mode: SendMode,
+    #[serde(default)]
+    pub stream_enabled: bool,
+    #[serde(default)]
+    pub hotkey_toggle_auto_listen: bool,
 }
 
 impl AsrPrefs {
@@ -99,6 +107,8 @@ impl AsrPrefs {
             hotkey_enabled: s.hotkey_enabled,
             hotkey_combination: s.hotkey_combination.clone(),
             send_mode: s.send_mode.clone(),
+            stream_enabled: s.stream_enabled,
+            hotkey_toggle_auto_listen: s.hotkey_toggle_auto_listen,
         }
     }
 
@@ -107,6 +117,8 @@ impl AsrPrefs {
         s.hotkey_enabled = self.hotkey_enabled;
         s.hotkey_combination = self.hotkey_combination.clone();
         s.send_mode = self.send_mode.clone();
+        s.stream_enabled = self.stream_enabled;
+        s.hotkey_toggle_auto_listen = self.hotkey_toggle_auto_listen;
     }
 }
 

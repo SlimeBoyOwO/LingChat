@@ -17,6 +17,8 @@ const DEFAULT_SETTINGS: AsrSettings = {
   hotkey_enabled: false,
   hotkey_combination: 'Ctrl+Shift+Space',
   send_mode: 'fill_only',
+  stream_enabled: false,
+  hotkey_toggle_auto_listen: true,
   provider_configs: {},
 }
 
