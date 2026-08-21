@@ -19,21 +19,27 @@
 //! 发 stop 事件后等服务端 result 事件，整段文本经 oneshot 回传。
 
 use std::fmt::Write as _;
+use std::sync::Arc;
 
+use base64::engine::general_purpose::STANDARD as BASE64_STD;
+use base64::Engine as _;
 use futures_util::{SinkExt, StreamExt};
+use rustls::pki_types::ServerName;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use tauri::{AppHandle, Emitter};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, oneshot};
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use tokio_tungstenite::tungstenite::http;
+use tokio_rustls::TlsConnector;
+use tokio_tungstenite::tungstenite::protocol::Role;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::WebSocketStream;
 use tracing::{debug, warn};
 
 use super::error::AsrError;
 
-const WS_PATH: &str = "wss://dashscope.aliyuncs.com/api/v1/services/audio/asr/recognition";
-const MODEL: &str = "paraformer-realtime-v2";
+const WS_HOST: &str = "dashscope.aliyuncs.com";
+const WS_PATH: &str = "/api/v1/services/audio/asr/recognition";
 const DATA_TYPE_JSON: u32 = 0x0B0000;
 const DATA_TYPE_AUDIO: u32 = 0x0A0000;
 const NAMESPACE_AUDIO: u32 = 0x0B0000;
@@ -172,9 +178,11 @@ fn parse_server_event(text: &str) -> Option<ServerEvent> {
     }
 }
 
-/// 构造 start 事件 payload（JSON）。
-fn build_start_payload(language_hint: Option<&str>) -> Vec<u8> {
+/// 构造 start 事件 payload（JSON）——作为 HTTP 握手请求的 body 发送
+/// （DashScope 实时端点要求 "Request body is required"，body 内必须带 model）。
+fn build_start_payload(model: &str, language_hint: Option<&str>) -> Vec<u8> {
     let mut payload = json!({
+        "model": model,
         "header": {
             "message_id": "msg_1",
             "task_id": "task_1",
@@ -193,7 +201,125 @@ fn build_start_payload(language_hint: Option<&str>) -> Vec<u8> {
     serde_json::to_vec(&payload).expect("start payload 序列化不应失败")
 }
 
-/// 建立 WebSocket 连接 + 发 start 事件 + spawn 读写分离 task。
+/// 建立 DashScope 实时 ASR WebSocket 连接（POST 升级 + start JSON body）。
+///
+/// DashScope 实时端点不接受标准 GET 升级（400 "Request method 'GET' is not
+/// supported"），且 start 事件必须作为 HTTP 请求 body（"Request body is
+/// required"，body 内需带 model）。tokio-tungstenite 的 connect_async 写死
+/// GET 且不发 body → 这里手写握手（TCP + rustls + HTTP 升级），帧层仍复用
+/// tungstenite（`from_partially_read`）。
+async fn connect_dashscope(
+    api_key: &str,
+    path_and_query: &str,
+    body: &[u8],
+) -> Result<WebSocketStream<tokio_rustls::client::TlsStream<tokio::net::TcpStream>>, AsrError> {
+    // TCP + TLS（rustls 0.23 + webpki-roots，与项目 reqwest 同一栈）
+    let tcp = tokio::net::TcpStream::connect((WS_HOST, 443))
+        .await
+        .map_err(|e| AsrError::ProviderApiError {
+            provider: "qwen-asr".into(),
+            message: format!("TCP 连接失败: {e}"),
+        })?;
+    let mut roots = rustls::RootCertStore::empty();
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let config = rustls::ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    let connector = TlsConnector::from(Arc::new(config));
+    let server_name = ServerName::try_from(WS_HOST.to_string())
+        .map_err(|e| AsrError::EngineLoadFailed(format!("server name: {e}")))?;
+    let mut tls =
+        connector
+            .connect(server_name, tcp)
+            .await
+            .map_err(|e| AsrError::ProviderApiError {
+                provider: "qwen-asr".into(),
+                message: format!("TLS 握手失败: {e}"),
+            })?;
+
+    // HTTP 升级请求（POST）
+    let mut sec_key = [0u8; 16];
+    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut sec_key);
+    let sec_key_b64 = BASE64_STD.encode(sec_key);
+    let head = format!(
+        "POST {path_and_query} HTTP/1.1\r\n\
+         Host: {WS_HOST}\r\n\
+         Authorization: Bearer {api_key}\r\n\
+         Content-Type: application/json\r\n\
+         Content-Length: {}\r\n\
+         Connection: Upgrade\r\n\
+         Upgrade: websocket\r\n\
+         Sec-WebSocket-Version: 13\r\n\
+         Sec-WebSocket-Key: {sec_key_b64}\r\n\
+         \r\n",
+        body.len()
+    );
+    let mut raw = head.into_bytes();
+    raw.extend_from_slice(body);
+    tls.write_all(&raw)
+        .await
+        .map_err(|e| AsrError::ProviderApiError {
+            provider: "qwen-asr".into(),
+            message: format!("发送握手请求失败: {e}"),
+        })?;
+
+    // 读响应头（逐字节到 \r\n\r\n；每次 read 只填 1 字节 buf，不会多读）
+    let mut resp_head = Vec::new();
+    let mut byte = [0u8; 1];
+    loop {
+        match tls.read(&mut byte).await {
+            Ok(0) => {
+                return Err(AsrError::ProviderApiError {
+                    provider: "qwen-asr".into(),
+                    message: "连接被服务端关闭".into(),
+                })
+            }
+            Ok(_) => {
+                resp_head.push(byte[0]);
+                if resp_head.ends_with(b"\r\n\r\n") || resp_head.len() > 16384 {
+                    break;
+                }
+            }
+            Err(e) => {
+                return Err(AsrError::ProviderApiError {
+                    provider: "qwen-asr".into(),
+                    message: format!("读取握手响应失败: {e}"),
+                })
+            }
+        }
+    }
+
+    // 非 101：读 body 一并报错（DashScope 的错误详情在 JSON body 里）
+    if !resp_head.starts_with(b"HTTP/1.1 101") && !resp_head.starts_with(b"HTTP/1.0 101") {
+        let mut err = String::from_utf8_lossy(&resp_head).to_string();
+        if let Some(cl) = parse_content_length(&resp_head) {
+            let mut body_buf = vec![0u8; cl.min(2048) as usize];
+            let _ = tls.read_exact(&mut body_buf).await;
+            err.push_str(&String::from_utf8_lossy(&body_buf));
+        }
+        return Err(AsrError::ProviderApiError {
+            provider: "qwen-asr".into(),
+            message: err,
+        });
+    }
+
+    Ok(WebSocketStream::from_partially_read(tls, Vec::new(), Role::Client, None).await)
+}
+
+/// 从响应头解析 Content-Length（非 101 错误响应读取 body 用）。
+fn parse_content_length(head: &[u8]) -> Option<usize> {
+    let s = String::from_utf8_lossy(head);
+    s.lines().find_map(|l| {
+        let l = l.trim_end_matches('\r');
+        if let Some(v) = l.to_lowercase().strip_prefix("content-length:") {
+            v.trim().parse().ok()
+        } else {
+            None
+        }
+    })
+}
+
+/// 建立 WebSocket 连接（start 事件已在握手 body 中携带）+ spawn 读写分离 task。
 ///
 /// 返回命令通道发送端。连接与读写完全在后台 task，不占用调用方。
 /// partial 文本通过 `asr://stream_partial` 事件实时 emit（整段累积视图：
@@ -205,42 +331,16 @@ pub async fn start_streaming(
     language_hint: Option<String>,
 ) -> Result<mpsc::UnboundedSender<StreamCommand>, AsrError> {
     // query 参数（model 自选；language_hints 可选，URL 编码的 JSON 数组字面量）
-    let mut url =
+    let mut path_and_query =
         format!("{WS_PATH}?model={model}&format=pcm&sample_rate=16000&enable_partial_results=true");
     if let Some(lang) = language_hint.as_deref() {
-        let _ = write!(url, "&language_hints=%5B%22{}%22%5D", lang);
+        let _ = write!(path_and_query, "&language_hints=%5B%22{}%22%5D", lang);
     }
-    debug!("[ASR/stream] 连接 DashScope 实时识别: {url}");
+    debug!("[ASR/stream] 连接 DashScope 实时识别: {path_and_query}");
 
-    // 鉴权必须在建连时通过 request header 携带（connect_async 之后补 header 无效）
-    let mut request = url
-        .into_client_request()
-        .map_err(|e| AsrError::EngineLoadFailed(format!("构建 WebSocket 请求失败: {e}")))?;
-    request.headers_mut().insert(
-        http::header::AUTHORIZATION,
-        format!("Bearer {api_key}")
-            .parse()
-            .map_err(|e| AsrError::EngineLoadFailed(format!("header parse: {e}")))?,
-    );
-    let (ws, _resp) = tokio_tungstenite::connect_async(request)
-        .await
-        .map_err(|e| AsrError::ProviderApiError {
-            provider: "qwen-asr".into(),
-            message: format!("WebSocket 连接失败: {e}"),
-        })?;
-    let mut ws = ws;
-    ws.send(Message::Binary(
-        pack_frame(
-            &build_start_payload(language_hint.as_deref()),
-            DATA_TYPE_JSON,
-        )
-        .into(),
-    ))
-    .await
-    .map_err(|e| AsrError::ProviderApiError {
-        provider: "qwen-asr".into(),
-        message: format!("发送 start 失败: {e}"),
-    })?;
+    // start 事件作为握手 body（model 在 query 与 body 双重声明）
+    let body = build_start_payload(&model, language_hint.as_deref());
+    let ws = connect_dashscope(&api_key, &path_and_query, &body).await?;
 
     let (mut write, mut read) = ws.split();
     let (tx, mut rx) = mpsc::unbounded_channel::<StreamCommand>();

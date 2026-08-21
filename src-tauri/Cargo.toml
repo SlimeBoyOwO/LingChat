@@ -59,9 +59,11 @@ regex = "1"
 genai = "0.6"
 uuid = { version = "1", features = ["v4"] }
 async-trait = "0.1"
-# rustls-tls-webpki-roots：默认 features 无 TLS backend，wss:// 连接会运行时报
-# "TLS support not compiled in"；与项目 reqwest 的 rustls + webpki-roots 栈一致
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+# 帧层复用 tungstenite（WebSocketStream::from_partially_read）；
+# 握手不依赖 connect_async——DashScope 实时 ASR 端点要求 POST 升级
+# （tungstenite 写死 GET），start 事件作为请求 body，见 provider_stream.rs
+tokio-tungstenite = { version = "0.26", default-features = false, features = ["stream", "handshake"] }
+tokio-rustls = "0.26"
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "download-binaries"] }
 ndarray = "0.17"
 
