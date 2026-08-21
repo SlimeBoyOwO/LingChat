@@ -70,7 +70,7 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
   },
 
   /** 标记进入剧情模式（用于控制UI显示：隐藏番茄钟/日程等） */
-  enterStoryMode(this: GameState, scriptName: string = 'unknown') {
+  enterStoryMode(this: GameState, scriptName: string = 'unknown', contentWarning?: string) {
     this.runningScript = {
       scriptName,
       currentChapterName: '',
@@ -82,8 +82,16 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
         currentRound: 0,
         endLine: '',
       },
+      contentWarning,
     }
     const uiStore = useUIStore()
+    // 剧本 BGM 隔离：保存自由对话的 BGM 与循环模式（已在剧本中则保留最早的值），
+    // 并阻止剧本期间的 BGM 变化被持久化到 session（防泄漏到下次启动）
+    if (uiStore.preScriptBgm === null) {
+      uiStore.preScriptBgm = uiStore.currentBackgroundMusic
+      uiStore.preScriptBgmMode = uiStore.bgMusicMode
+    }
+    uiStore.bgmPersistBlocked = true
     uiStore.bgMusicMode = 'loop-single'
     // 进入新剧本前清掉可能残留的恐怖特效（上次异常退出/重启等情况）
     uiStore.resetHorrorEffects()
@@ -93,6 +101,17 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
   exitStoryMode(this: GameState) {
     this.runningScript = null
     this.forceChoice = null
+    // 恢复自由对话的 BGM 与循环模式并解除持久化屏蔽（恢复后的值会经 $subscribe 正常写盘）
+    const uiStore = useUIStore()
+    if (uiStore.preScriptBgm !== null) {
+      uiStore.currentBackgroundMusic = uiStore.preScriptBgm
+      uiStore.preScriptBgm = null
+    }
+    if (uiStore.preScriptBgmMode !== null) {
+      uiStore.bgMusicMode = uiStore.preScriptBgmMode
+      uiStore.preScriptBgmMode = null
+    }
+    uiStore.bgmPersistBlocked = false
   },
 
   // 设置当前场景（仅更新 store，不调用 API）

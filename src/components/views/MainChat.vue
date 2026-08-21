@@ -96,8 +96,8 @@ const goToPetMode = () => {
   router.push('/pet')
 }
 
-/** 剧本运行期间锁定桌宠入口（恐怖演出的一部分，也避免剧本状态被桌宠切换打断） */
-const petLocked = computed(() => !!gameStore.runningScript?.isRunning)
+/** 恐怖剧本运行期间锁定桌宠入口（她不允许你逃去桌宠；正常剧本不受影响） */
+const petLocked = computed(() => gameStore.runningScript?.contentWarning === 'horror')
 
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null)
 

@@ -34,6 +34,8 @@ export interface ScriptInfo {
   choices: ScriptChoiceItem[]
   isRunning: boolean
   freeDialogueInfo: FreeDialogueInfo
+  /** 剧本内容警告标记（如 'horror'）：恐怖剧本运行时用于锁定桌宠入口等 */
+  contentWarning?: string
 }
 
 export interface GameRole {

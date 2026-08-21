@@ -127,9 +127,12 @@ events:
     action: hide_character
     character: MAIN
 
-  # 谢幕：语音倍率一并恢复，避免带出剧本外
+  # 谢幕：语音倍率与 BGM 一并恢复，避免带出剧本外
   - type: voice_shift
     rate: 1.0
+
+  - type: music
+    musicPath: none
 
   - type: narration
     text: |

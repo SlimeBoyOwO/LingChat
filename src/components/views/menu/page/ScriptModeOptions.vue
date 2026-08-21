@@ -88,7 +88,7 @@ const selectScript = async (script: ScriptSummary) => {
 
   await router.push('/chat')
 
-  gameStore.enterStoryMode(script.script_name)
+  gameStore.enterStoryMode(script.script_name, script.content_warning)
 
   await startScript(script.script_name)
 }

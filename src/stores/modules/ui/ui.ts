@@ -51,6 +51,12 @@ interface UIState {
   currentAvatarAudio: string
   /** 角色语音（TTS）播放倍率，由剧本 voice_shift 事件设置；<1 降调=恶魔音，1.0 正常 */
   voiceRate: number
+  /** 进入剧本前的自由对话 BGM（会话级，退出剧本时恢复；null = 不在剧本中） */
+  preScriptBgm: string | null
+  /** 进入剧本前的 BGM 循环模式（同上，随 preScriptBgm 一起恢复） */
+  preScriptBgmMode: 'loop-list' | 'loop-single' | 'random' | null
+  /** true 时 BGM 状态变化不写入 session（剧本运行期间屏蔽，防剧本 BGM 泄漏到下次启动） */
+  bgmPersistBlocked: boolean
   autoMode: boolean
 
   /** 突脸惊吓：图片路径（空串 = 无演出） */
@@ -137,6 +143,9 @@ export const useUIStore = defineStore('ui', {
     currentSoundEffect: 'None',
     currentAvatarAudio: 'None',
     voiceRate: 1,
+    preScriptBgm: null,
+    preScriptBgmMode: null,
+    bgmPersistBlocked: false,
     autoMode: false,
 
     // 突脸惊吓演出初始状态
@@ -284,6 +293,8 @@ export const useUIStore = defineStore('ui', {
       }
       this.clearJumpscare()
       this.spriteFlash = null
+      // 恶魔音残留一并清理（剧本结束/进入/启动时都会走到这里）
+      this.voiceRate = 1
     },
     /**
      * 恐怖剧本入口过渡：卡死 1.1s → 花屏 0.8s，结束后 resolve。
@@ -650,6 +661,8 @@ export const useUIStore = defineStore('ui', {
 
     /** 持久化 BGM 状态（防抖 500ms），由 $subscribe 自动触发 */
     persistBgmState() {
+      // 剧本运行期间不持久化：剧本 BGM 不得写进 session（防泄漏到下次启动）
+      if (this.bgmPersistBlocked) return
       if (bgmSaveTimer) clearTimeout(bgmSaveTimer)
       bgmSaveTimer = setTimeout(() => {
         saveBgmState(this.currentBackgroundMusic, this.bgMusicPaused, this.bgMusicMode)
@@ -658,6 +671,8 @@ export const useUIStore = defineStore('ui', {
 
     /** 持久化环境音轨道（防抖 500ms），由 $subscribe 自动触发 */
     persistAmbientState() {
+      // 剧本运行期间不持久化：剧本的恐怖环境音（rumble 等）不得写进 session
+      if (this.bgmPersistBlocked) return
       if (ambientSaveTimer) clearTimeout(ambientSaveTimer)
       ambientSaveTimer = setTimeout(() => {
         saveAmbientState(JSON.stringify(this.ambientTracks))
