@@ -13,11 +13,10 @@
         :key="`${script.script_name}-reset`"
         class="reset-memory-btn"
         type="button"
-        :title="$t('views.menu.resetMemoryTip')"
         :disabled="resettingName !== null"
         @click.stop="resetMemory(script)"
       >
-        {{ resetDoneName === script.script_name ? '✓' : '↺' }}
+        {{ resetDoneName === script.script_name ? `✓ ${$t('views.menu.resetMemoryDone2')}` : $t('views.menu.resetMemory') }}
       </button>
     </StartLine>
 
@@ -151,28 +150,33 @@ const currentPageScripts = computed(() => {
 </script>
 
 <style scoped>
-/* 跟在大号剧本名按钮后面的记忆重置小按钮 */
+/* 跟在大号剧本名按钮后面的记忆重置小按钮：深色半透明底，亮背景上也可见 */
 .reset-memory-btn {
-  margin-top: 22px;
-  margin-left: 6px;
-  padding: 4px 8px;
-  background: transparent;
-  border: none;
-  color: rgba(255, 255, 255, 0.45);
-  font-size: clamp(20px, 2.2vw, 36px);
-  line-height: 1;
+  margin-top: 15px;
+  margin-left: 14px;
+  padding: 8px 18px;
+  vertical-align: middle;
+  background: rgba(8, 12, 20, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: 'Maoken_Assorted_Sans', -apple-system, BlinkMacSystemFont, 'Segoe_UI', Roboto,
+    'Helvetica_Neue', Arial, sans-serif;
+  font-size: clamp(14px, 1.4vw, 24px);
+  line-height: 1.2;
   cursor: pointer;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  transition: color 0.25s ease, transform 0.25s ease;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: background 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
 }
 
 .reset-memory-btn:hover:not(:disabled) {
-  color: #ff5566;
-  transform: rotate(-180deg);
+  background: rgba(120, 20, 30, 0.75);
+  border-color: rgba(255, 120, 130, 0.65);
+  transform: translateY(-2px);
 }
 
 .reset-memory-btn:disabled {
-  opacity: 0.35;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 </style>
