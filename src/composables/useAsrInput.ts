@@ -70,6 +70,8 @@ let autoTriggered = false
 let mobileMenuOpen = false
 /** 短暂显示锁：识别后填入 inputMessage 到自动 send 之间的窗口期，期间 ASR 禁用（§1.10） */
 let asrLockedUntil = 0
+/** auto_send 模式：识别完成后延迟发送的毫秒数（给用户看到结果的窗口，防乱序） */
+const AUTO_SEND_DELAY_MS = 800
 /** 输入框桥：GameDialog 注册，供 partial 实时写入 / 拼接基准读取 */
 let inputBridge: { getText: () => string; setText: (v: string) => void } | null = null
 /** 录音开始时的输入框内容快照（拼接语义的基准：partial 只追加在这之后） */
@@ -534,11 +536,17 @@ function handle(text: string, source: AsrSource) {
   if (mode === 'fill_only') {
     window.dispatchEvent(new CustomEvent('asr-text', { detail: text }))
   } else if (mode === 'auto_send') {
-    if (isChatBusy()) {
-      queue.push(text)
-    } else {
-      void invoke('send_chat_message', { text, screenshotBase64: null })
-    }
+    // 统一延迟 0.8s 再发送：识别完成给用户看到结果的窗口，防止与下一条录音乱序。
+    // 直接赋值 asrLockedUntil 而非 lockAsrForDisplay()：handle 执行时 phase 尚在
+    // 'recognizing'，lockAsrForDisplay → updateAsrAvailability 会误判丢弃会话（递归）。
+    asrLockedUntil = Date.now() + AUTO_SEND_DELAY_MS
+    window.setTimeout(() => {
+      if (isChatBusy()) {
+        queue.push(text)
+      } else {
+        void invoke('send_chat_message', { text, screenshotBase64: null })
+      }
+    }, AUTO_SEND_DELAY_MS)
   } else if (mode === 'queue') {
     queue.push(text)
   }
