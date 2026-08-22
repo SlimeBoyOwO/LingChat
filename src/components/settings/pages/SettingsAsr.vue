@@ -73,39 +73,27 @@
     <!-- 识别服务商 -->
     <section class="mb-6">
       <div class="font-medium text-brand mb-3">{{ t('settings.asr.provider.title') }}</div>
-      <select
-        v-model="localSettings.active_provider"
-        class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-      >
-        <option
-          v-for="p in asrStore.providers"
-          :key="p.id"
-          :value="p.id"
-          class="text-black"
-        >
-          {{ t(`settings.asr.provider.options.${p.id}`) }}
-        </option>
-      </select>
 
-      <div v-if="activeProviderInfo" class="mt-4 space-y-3">
-        <!-- 模型自选下拉（仅提供模型清单的 provider 显示） -->
-        <div v-if="asrModels.length > 0">
-          <label class="block text-sm mb-1.5 font-medium">
-            {{ t('settings.asr.model.label') }}
-          </label>
-          <select
-            v-model="providerCfgRecord.model"
-            class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-          >
-            <option
-              v-for="m in asrModels"
-              :key="m.id"
-              :value="m.id"
-              class="text-black"
+        <div v-if="activeProviderInfo" class="space-y-3">
+        <!-- 模型预设：点击自动填入模型 + 接口地址（参考大模型管理的 Presets） -->
+        <div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="preset in asrPresets"
+              :key="preset.model"
+              type="button"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
+              :class="
+                providerCfgRecord.model === preset.model
+                  ? 'bg-brand/20 text-brand border-brand/40'
+                  : 'bg-white/5 text-white/60 border-white/15 hover:bg-white/10 hover:text-white/80 hover:border-white/25'
+              "
+              @click="applyAsrPreset(preset.model)"
             >
-              {{ m.display_name }}{{ m.is_default ? `（${t('settings.asr.model.default')}）` : '' }}
-            </option>
-          </select>
+              {{ preset.label }}
+            </button>
+          </div>
+          <p class="block text-sm text-gray-300 mt-1.5">{{ t('settings.asr.provider.presetHint') }}</p>
         </div>
         <div v-for="field in activeProviderInfo.config_fields" :key="field.key">
           <label class="block text-sm mb-1.5 font-medium">
@@ -226,12 +214,39 @@ const sendModeOptions = computed<{ value: SendMode; label: string }[]>(() => [
   { value: 'auto_send', label: t('settings.asr.sendMode.autoSend') },
 ])
 
+// ── 模型预设（与后端 qwen_models / provider.rs 端点保持一致） ──
+interface AsrPreset {
+  model: string
+  label: string
+  endpoint: string
+}
+const asrPresets: AsrPreset[] = [
+  {
+    model: 'fun-asr-realtime',
+    label: 'Fun-ASR-Realtime（非实时）',
+    endpoint:
+      'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
+  },
+  {
+    model: 'paraformer-realtime-v2',
+    label: 'Paraformer-Realtime-V2（流式）',
+    endpoint: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
+  },
+]
+
+/** 应用模型预设：填 model + 预设 endpoint（用户手改的 endpoint 被覆盖，与 LLM 预设一致） */
+function applyAsrPreset(model: string) {
+  const preset = asrPresets.find((p) => p.model === model)
+  const cfg = localSettings.value.provider_configs[localSettings.value.active_provider]
+  if (!cfg || !preset) return
+  cfg.model = preset.model
+  cfg.endpoint = preset.endpoint
+}
+
 const activeProviderInfo = computed<ProviderInfo | undefined>(() =>
   asrStore.providers.find((p) => p.id === localSettings.value.active_provider),
 )
 
-// ── 模型自选（仅 qwen 有模型清单；provider 切换时重新拉取） ──
-const asrModels = computed(() => asrStore.models)
 /** 当前生效模型：配置非空取配置，否则默认模型 */
 const activeModel = computed(() => {
   const id = localSettings.value.provider_configs[localSettings.value.active_provider]?.model ?? ''
@@ -265,19 +280,18 @@ watch(activeModel, (m) => {
 
 // 流式开关 ↔ 模型自动同步：打开流式 → 切到流式模型；关闭 → 切到非流式模型。
 // 模型与协议强绑定（流式模型只能走 WebSocket 端点，反之亦然），
-// 设置层保持一致，后端回退兜底。
+// 设置层保持一致，后端回退兜底。切模型用 applyAsrPreset（endpoint 同步填入）。
 watch(
   () => localSettings.value.stream_enabled,
   (on) => {
     const m = activeModel.value
     if (!m) return
-    const cfg = localSettings.value.provider_configs[localSettings.value.active_provider]
     if (on && !m.supports_streaming) {
       const sm = asrStore.models.find((x) => x.supports_streaming)
-      if (sm && cfg) cfg.model = sm.id
+      if (sm) applyAsrPreset(sm.id)
     } else if (!on && m.supports_streaming) {
       const nm = asrStore.models.find((x) => !x.supports_streaming)
-      if (nm && cfg) cfg.model = nm.id
+      if (nm) applyAsrPreset(nm.id)
     }
   },
 )

@@ -1090,17 +1090,12 @@ export default {
       title: '识别完成后',
       fillOnly: '填入输入框（推荐）',
       autoSend: '自动发送',
-      queue: '队列发送（AI 回复后再发送）',
-    },
-    model: {
-      label: '识别模型',
-      default: '默认',
     },
     streamMode: '流式识别',
     streamModeHint: '说话过程中实时显示识别文字',
     streamNotSupported: '当前模型不支持流式识别',
     provider: {
-      title: '识别服务商',
+      title: '阿里云语音识别',
       test: '测试连接',
       testing: '正在录音…请说话（4 秒）',
       testingStop: '停止并识别',
@@ -1108,12 +1103,7 @@ export default {
       testResult: '识别结果：{text}',
       testNoSpeech: '未识别到语音，请重试',
       testFailed: '连接失败：{err}',
-      options: {
-        'openai-whisper': 'OpenAI Whisper',
-        'qwen-asr': 'Qwen ASR',
-        gemini: 'Google Gemini',
-        'lan-whisper': 'LAN Whisper（自托管）',
-      },
+      presetHint: '选择模型后自动填入接口地址（Endpoint），只需填写 API Key',
     },
     errors: {
       ASR_MODEL_MISSING: 'VAD 模型未找到',

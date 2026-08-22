@@ -1089,17 +1089,12 @@ export default {
       title: '認識後',
       fillOnly: '入力欄に挿入（推奨）',
       autoSend: '自動送信',
-      queue: 'キュー送信（AI 返信後）',
-    },
-    model: {
-      label: '認識モデル',
-      default: 'デフォルト',
     },
     streamMode: 'ストリーム認識',
     streamModeHint: '話している間に認識テキストをリアルタイム表示',
     streamNotSupported: '選択中のモデルはストリーム認識に対応していません',
     provider: {
-      title: '認識プロバイダ',
+      title: '阿里雲音声認識',
       test: '接続テスト',
       testing: '録音中…話してください（4秒）',
       testingStop: '停止して認識',
@@ -1107,12 +1102,7 @@ export default {
       testResult: '認識結果：{text}',
       testNoSpeech: '音声を検出できませんでした。もう一度お試しください',
       testFailed: '失敗：{err}',
-      options: {
-        'openai-whisper': 'OpenAI Whisper',
-        'qwen-asr': 'Qwen ASR',
-        gemini: 'Google Gemini',
-        'lan-whisper': 'LAN Whisper（セルフホスト）',
-      },
+      presetHint: 'モデル選択でエンドポイントが自動入力されます。API キーのみ必要です',
     },
     errors: {
       ASR_MODEL_MISSING: 'VAD モデルが見つかりません',

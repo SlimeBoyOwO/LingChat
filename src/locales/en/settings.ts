@@ -1092,17 +1092,12 @@ export default {
       title: 'After recognition',
       fillOnly: 'Fill input box (recommended)',
       autoSend: 'Auto send',
-      queue: 'Queue send (after AI replies)',
-    },
-    model: {
-      label: 'Recognition Model',
-      default: 'default',
     },
     streamMode: 'Streaming Recognition',
     streamModeHint: 'Shows recognized text in real time while speaking',
     streamNotSupported: 'The selected model does not support streaming recognition',
     provider: {
-      title: 'Recognition provider',
+      title: 'Alibaba Cloud ASR',
       test: 'Test connection',
       testing: 'Recording… please speak (4s)',
       testingStop: 'Stop & recognize',
@@ -1110,12 +1105,7 @@ export default {
       testResult: 'Recognized: {text}',
       testNoSpeech: 'No speech detected, please retry',
       testFailed: 'Failed: {err}',
-      options: {
-        'openai-whisper': 'OpenAI Whisper',
-        'qwen-asr': 'Qwen ASR',
-        gemini: 'Google Gemini',
-        'lan-whisper': 'LAN Whisper (self-hosted)',
-      },
+      presetHint: 'Selecting a model auto-fills the endpoint; only the API Key is required',
     },
     errors: {
       ASR_MODEL_MISSING: 'VAD model not found',

@@ -1088,18 +1088,13 @@ export default {
     "sendMode": {
       "title": "識別完成後",
       "fillOnly": "填入輸入框（推薦）",
-      "autoSend": "自動發送",
-      "queue": "隊列發送（AI 回覆後再發送）"
-    },
-    "model": {
-      "label": "識別模型",
-      "default": "預設"
+      "autoSend": "自動發送"
     },
     "streamMode": "串流識別",
     "streamModeHint": "講嘢期間實時顯示識別文字",
     "streamNotSupported": "目前模型唔支援串流識別",
     "provider": {
-      "title": "識別服務商",
+      "title": "阿里雲語音識別",
       "test": "測試連接",
       "testing": "正在錄音…請說話（4 秒）",
       "testingStop": "停止並識別",
@@ -1107,12 +1102,7 @@ export default {
       "testResult": "識別結果：{text}",
       "testNoSpeech": "未識別到語音，請重試",
       "testFailed": "連接失敗：{err}",
-      "options": {
-        "openai-whisper": "OpenAI Whisper",
-        "qwen-asr": "Qwen ASR",
-        "gemini": "Google Gemini",
-        "lan-whisper": "LAN Whisper（自託管）"
-      }
+      "presetHint": "選擇模型後自動填入接口地址（Endpoint），只需填寫 API Key"
     },
     errors: {
       ASR_MODEL_MISSING: "VAD 模型未找到",
