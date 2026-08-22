@@ -1097,7 +1097,7 @@ export default {
       default: '默认',
     },
     streamMode: '流式识别',
-    streamModeHint: '说话过程中实时显示识别文字，说完后自动提交',
+    streamModeHint: '说话过程中实时显示识别文字',
     streamNotSupported: '当前模型不支持流式识别',
     provider: {
       title: '识别服务商',

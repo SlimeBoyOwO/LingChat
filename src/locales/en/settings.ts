@@ -1099,7 +1099,7 @@ export default {
       default: 'default',
     },
     streamMode: 'Streaming Recognition',
-    streamModeHint: 'Shows recognized text in real time while speaking, auto-submits when done',
+    streamModeHint: 'Shows recognized text in real time while speaking',
     streamNotSupported: 'The selected model does not support streaming recognition',
     provider: {
       title: 'Recognition provider',

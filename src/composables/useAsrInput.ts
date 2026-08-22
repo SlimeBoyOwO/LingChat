@@ -93,11 +93,6 @@ const chatActive = computed(() => {
   return route.path === '/chat' && !uiStore.showSettings
 })
 
-/** 生成中（非 input 即视为 busy，用于 auto_send 降级 queue） */
-function isChatBusy(): boolean {
-  return !!gameStore && gameStore.currentStatus !== 'input'
-}
-
 /** 拆除录音链路（不触发 recognize） */
 function teardownRecorder() {
   try {
@@ -517,11 +512,12 @@ async function doRecognize(source: AsrSource, captured: number[]) {
 }
 
 /**
- * 识别后处理：填入 / 自动发送 / 入队
+ * 识别后处理：填入 / 渲染后延迟发送 / 入队
  * 三模式（asrStore.settings.send_mode）：
  * - fill_only: emit window 'asr-text' event，GameDialog 监听后填 inputMessage
- * - auto_send: 直接 invoke send_chat_message；生成锁忙时降级 queue
- * - queue: 入 pendingAsrQueue，AI 生成结束后 flush
+ * - auto_send: 识别内容完整渲染到聊天（与手动发送一致），800ms 后 invoke
+ *   send_chat_message（AI 忙时由后端 generation_lock 排队，无需前端降级）
+ * - queue: 入 pendingAsrQueue，AI 生成结束后 flush（flush 时由 GameDialog send() 渲染）
  */
 function handle(text: string, source: AsrSource) {
   // §4: 识别请求在飞行中 AI 可能从 input 进入 thinking/responding/presenting
@@ -543,16 +539,22 @@ function handle(text: string, source: AsrSource) {
   if (mode === 'fill_only') {
     window.dispatchEvent(new CustomEvent('asr-text', { detail: text }))
   } else if (mode === 'auto_send') {
-    // 统一延迟 0.8s 再发送：识别完成给用户看到结果的窗口，防止与下一条录音乱序。
+    // 识别内容完整渲染到聊天（与手动发送一致：先 appendGameMessage 再 invoke——
+    // 否则消息只入库不显示在对话里），800ms 后发送给 LLM。
+    // 不降级 queue：消息已渲染，flush 时 GameDialog.send() 会重复渲染；
+    // 直接 invoke 由后端 generation_lock 排队（AI 忙时同样正确，顺序保持）。
     // 直接赋值 asrLockedUntil 而非 lockAsrForDisplay()：handle 执行时 phase 尚在
     // 'recognizing'，lockAsrForDisplay → updateAsrAvailability 会误判丢弃会话（递归）。
+    gameStore?.appendGameMessage({
+      type: 'message',
+      displayName: gameStore.userName,
+      content: text,
+    })
+    // 内容已进聊天，清空输入框（partial 拼接的 baseText 一并清除，与手动发送后一致）
+    inputBridge?.setText('')
     asrLockedUntil = Date.now() + AUTO_SEND_DELAY_MS
     window.setTimeout(() => {
-      if (isChatBusy()) {
-        queue.push(text)
-      } else {
-        void invoke('send_chat_message', { text, screenshotBase64: null })
-      }
+      void invoke('send_chat_message', { text, screenshotBase64: null })
     }, AUTO_SEND_DELAY_MS)
   } else if (mode === 'queue') {
     queue.push(text)

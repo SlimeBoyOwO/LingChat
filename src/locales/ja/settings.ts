@@ -1096,7 +1096,7 @@ export default {
       default: 'デフォルト',
     },
     streamMode: 'ストリーム認識',
-    streamModeHint: '話している間に認識テキストをリアルタイム表示し、終わったら自動送信',
+    streamModeHint: '話している間に認識テキストをリアルタイム表示',
     streamNotSupported: '選択中のモデルはストリーム認識に対応していません',
     provider: {
       title: '認識プロバイダ',

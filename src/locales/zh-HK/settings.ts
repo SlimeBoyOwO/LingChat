@@ -1096,7 +1096,7 @@ export default {
       "default": "預設"
     },
     "streamMode": "串流識別",
-    "streamModeHint": "講嘢期間實時顯示識別文字，講完自動提交",
+    "streamModeHint": "講嘢期間實時顯示識別文字",
     "streamNotSupported": "目前模型唔支援串流識別",
     "provider": {
       "title": "識別服務商",
