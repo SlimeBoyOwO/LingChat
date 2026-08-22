@@ -1,7 +1,8 @@
 //! DashScope 实时语音识别 WebSocket 客户端（paraformer-realtime-v2）。
 //!
 //! 协议（通过官方 Python SDK（dashscope 1.27）debug 日志实证，非猜测）：
-//! - 端点 `wss://dashscope.aliyuncs.com/api-ws/v1/inference`（**无 query 参数**；
+//! - 端点默认 `wss://dashscope.aliyuncs.com/api-ws/v1/inference`（**无 query 参数**；
+//!   可由设置 `provider_configs[id].endpoint` 覆盖）；
 //!   `/api/v1/services/audio/asr/recognition` 是另一个 HTTP API，不是实时端点）
 //! - 标准 WebSocket 升级（GET）+ `Authorization: Bearer <api_key>` header
 //! - 客户端事件（文本帧）：
@@ -176,14 +177,21 @@ fn build_finish_task_payload(task_id: &str) -> Vec<u8> {
 /// 已定稿句 + 当前句 partial，前端整体替换输入框的语音追加块）。
 pub async fn start_streaming(
     app: AppHandle,
+    endpoint: String,
     api_key: String,
     model: String,
     language_hint: Option<String>,
 ) -> Result<mpsc::UnboundedSender<StreamCommand>, AsrError> {
-    debug!("[ASR/stream] 连接 DashScope 实时识别: {WS_URL} (model={model})");
+    // 端点可配置：设置为空时用默认 WS_URL
+    let ws_url = if endpoint.trim().is_empty() {
+        WS_URL.to_string()
+    } else {
+        endpoint
+    };
+    debug!("[ASR/stream] 连接 DashScope 实时识别: {ws_url} (model={model})");
 
     // 标准 GET 升级 + Bearer 鉴权
-    let mut request = WS_URL
+    let mut request = ws_url
         .into_client_request()
         .map_err(|e| AsrError::EngineLoadFailed(format!("构建 WebSocket 请求失败: {e}")))?;
     request.headers_mut().insert(

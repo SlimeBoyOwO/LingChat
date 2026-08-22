@@ -21,8 +21,6 @@ pub enum SendMode {
     FillOnly,
     /// 识别完成后自动 send_chat_message。
     AutoSend,
-    /// AI 生成中时入队，等 ai:reply 终态后再 flush。
-    Queue,
 }
 
 /// 单个 provider 的配置：API key + endpoint + 模型 + 任意额外字段。
@@ -70,7 +68,7 @@ impl AsrSettings {
             provider_configs.insert(info.id.to_string(), ProviderConfig::default());
         }
         Self {
-            active_provider: "openai-whisper".into(),
+            active_provider: "qwen-asr".into(),
             auto_listen: false,
             hotkey_enabled: false,
             hotkey_combination: "Ctrl+Shift+Space".into(),
@@ -153,6 +151,17 @@ pub fn load(app: &AppHandle) -> Result<AsrSettings, AsrError> {
         if let Some(id) = v.as_str() {
             s.active_provider = id.to_string();
         }
+    }
+    // 兼容：active_provider 指向已删除的 provider（旧版本数据）→ 回退默认
+    if !super::provider::list_provider_info()
+        .iter()
+        .any(|p| p.id == s.active_provider)
+    {
+        tracing::warn!(
+            "[ASR] active_provider '{}' 不在注册表中，回退默认",
+            s.active_provider
+        );
+        s.active_provider = "qwen-asr".into();
     }
     // UI 偏好：独立 key 读取，缺省保持 defaults
     if let Some(v) = store.get(STORE_KEY_PREFS) {

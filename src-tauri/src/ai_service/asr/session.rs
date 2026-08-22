@@ -145,6 +145,7 @@ impl AsrSession {
         &self,
         app: &tauri::AppHandle,
         provider_id: &str,
+        endpoint: String,
         api_key: String,
         model: String,
         language_hint: Option<String>,
@@ -154,8 +155,14 @@ impl AsrSession {
         if self.stream.lock().await.take().is_some() {
             tracing::warn!("[ASR/stream] 丢弃残留流式会话句柄");
         }
-        let tx =
-            provider_stream::start_streaming(app.clone(), api_key, model, language_hint).await?;
+        let tx = provider_stream::start_streaming(
+            app.clone(),
+            endpoint,
+            api_key,
+            model,
+            language_hint,
+        )
+        .await?;
         *self.stream.lock().await = Some(StreamHandle {
             provider_id: provider_id.to_string(),
             tx,
