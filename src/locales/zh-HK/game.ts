@@ -7,6 +7,7 @@ export default {
     "voiceInput": "語音輸入",
     "recordingStop": "錄緊音，撳一下就停",
     "asrAutoOff": "關閉自動語音輸入",
+    "asrAutoResume": "恢復自動語音輸入",
     "screenshotAsk": "截圖提問",
     "screenshotRetake": "撳一下重新截圖，右鍵取消截圖",
     "closeDialog": "關閉對話",

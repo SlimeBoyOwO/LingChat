@@ -6,6 +6,17 @@
       <span class="text-sm" :class="statusClass">{{ statusText }}</span>
     </header>
 
+    <!-- 语音输入总开关（控制所有输入来源） -->
+    <section class="mb-6">
+      <Toggle
+        :checked="localSettings.voice_input_enabled"
+        @change="(v: boolean) => (localSettings.voice_input_enabled = v)"
+      >
+        <span class="font-medium">{{ t('settings.asr.voiceInput') }}</span>
+        <span class="block text-sm text-gray-300 mt-0.5">{{ t('settings.asr.voiceInputHint') }}</span>
+      </Toggle>
+    </section>
+
     <!-- 自动语音识别开关 -->
     <section class="mb-6">
       <Toggle :checked="localSettings.auto_listen" @change="(v: boolean) => (localSettings.auto_listen = v)">

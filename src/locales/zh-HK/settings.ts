@@ -1076,6 +1076,8 @@ export default {
       "vadLoadedOk": "已載入",
       "vadLoadedNo": "未載入"
     },
+    "voiceInput": "語音輸入",
+    "voiceInputHint": "總開關：關閉後麥克風按鈕、快捷鍵與自動語音輸入均不可用",
     "autoListen": "啟用自動語音識別",
     "autoListenHint": "自動監聽麥克風，識別用戶說話後自動轉為文字",
     "hotkey": {

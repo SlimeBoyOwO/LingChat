@@ -1076,6 +1076,8 @@ export default {
       vadLoadedOk: '読込済み',
       vadLoadedNo: '未読込',
     },
+    voiceInput: '音声入力',
+    voiceInputHint: 'マスタースイッチ：オフにするとマイクボタン・ホットキー・自動音声入力がすべて無効',
     autoListen: '自動音声認識を有効化',
     autoListenHint: 'マイクを自動監視し、ユーザーの発話をテキストに変換',
     hotkey: {

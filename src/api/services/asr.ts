@@ -32,6 +32,7 @@ export interface AsrSettings {
   hotkey_combination: string
   send_mode: SendMode
   stream_enabled: boolean
+  voice_input_enabled: boolean
   provider_configs: Record<string, ProviderConfig>
 }
 

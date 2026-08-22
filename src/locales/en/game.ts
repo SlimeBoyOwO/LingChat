@@ -7,6 +7,7 @@ export default {
     voiceInput: "Voice Input",
     recordingStop: "Recording... tap to stop",
     asrAutoOff: "Turn off auto voice input",
+    asrAutoResume: "Resume auto voice input",
     screenshotAsk: "Ask with Screenshot",
     screenshotRetake: "Click to retake the screenshot, right-click to cancel",
     closeDialog: "Close Chat",

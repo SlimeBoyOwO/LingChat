@@ -6,6 +6,7 @@ export default {
     voiceInput: '语音输入',
     recordingStop: '录音中，点击停止',
     asrAutoOff: '关闭自动语音输入',
+    asrAutoResume: '恢复自动语音输入',
     screenshotAsk: '截图提问',
     screenshotRetake: '点击重新截图，右键取消截图',
     closeDialog: '关闭对话',

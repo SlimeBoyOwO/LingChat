@@ -1078,6 +1078,9 @@ export default {
       vadLoadedOk: 'Loaded',
       vadLoadedNo: 'Not loaded',
     },
+    voiceInput: 'Voice input',
+    voiceInputHint:
+      'Master switch: when off, mic button, hotkey and auto voice input are all disabled',
     autoListen: 'Enable automatic speech recognition',
     autoListenHint: 'Auto-listen to microphone and convert user speech to text',
     hotkey: {
