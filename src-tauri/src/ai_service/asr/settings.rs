@@ -58,6 +58,7 @@ pub struct AsrSettings {
     pub hotkey_combination: String,
     pub send_mode: SendMode,
     pub stream_enabled: bool,
+    pub voice_input_enabled: bool,
     pub provider_configs: HashMap<String, ProviderConfig>,
 }
 
@@ -75,6 +76,7 @@ impl AsrSettings {
             hotkey_combination: "Ctrl+Shift+Space".into(),
             send_mode: SendMode::FillOnly,
             stream_enabled: false,
+            voice_input_enabled: true,
             provider_configs,
         }
     }
@@ -84,7 +86,7 @@ const STORE_KEY_PROVIDERS: &str = "ASR_PROVIDERS";
 const STORE_KEY_ACTIVE: &str = "ASR_ACTIVE_PROVIDER_ID";
 const STORE_KEY_PREFS: &str = "ASR_PREFS";
 
-/// UI 偏好字段（auto_listen / hotkey / send_mode / 流式），与 provider 凭据分开持久化。
+/// UI 偏好字段（auto_listen / hotkey / send_mode / 流式 / 总开关），与 provider 凭据分开持久化。
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct AsrPrefs {
     #[serde(default)]
@@ -97,6 +99,15 @@ pub struct AsrPrefs {
     pub send_mode: SendMode,
     #[serde(default)]
     pub stream_enabled: bool,
+    // 新字段缺省必须为 true（其余字段 #[serde(default)] 缺省 false，
+    // 直接 default 会让旧持久化数据反序列化后语音输入被意外禁用）。
+    #[serde(default = "default_true")]
+    pub voice_input_enabled: bool,
+}
+
+/// AsrPrefs 的 voice_input_enabled 兜底：默认开启。
+fn default_true() -> bool {
+    true
 }
 
 impl AsrPrefs {
@@ -107,6 +118,7 @@ impl AsrPrefs {
             hotkey_combination: s.hotkey_combination.clone(),
             send_mode: s.send_mode.clone(),
             stream_enabled: s.stream_enabled,
+            voice_input_enabled: s.voice_input_enabled,
         }
     }
 
@@ -116,6 +128,7 @@ impl AsrPrefs {
         s.hotkey_combination = self.hotkey_combination.clone();
         s.send_mode = self.send_mode.clone();
         s.stream_enabled = self.stream_enabled;
+        s.voice_input_enabled = self.voice_input_enabled;
     }
 }
 
