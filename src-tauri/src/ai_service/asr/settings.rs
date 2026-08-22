@@ -80,7 +80,7 @@ const STORE_KEY_PROVIDERS: &str = "ASR_PROVIDERS";
 const STORE_KEY_ACTIVE: &str = "ASR_ACTIVE_PROVIDER_ID";
 const STORE_KEY_PREFS: &str = "ASR_PREFS";
 
-/// UI 偏好字段（auto_listen / hotkey / send_mode / 流式 / 总开关），与 provider 凭据分开持久化。
+/// UI 偏好字段（auto_listen / send_mode / 流式 / 总开关），与 provider 凭据分开持久化。
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct AsrPrefs {
     #[serde(default)]

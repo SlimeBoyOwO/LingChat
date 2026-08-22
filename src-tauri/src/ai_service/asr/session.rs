@@ -43,7 +43,7 @@ pub struct StreamHandle {
 /// - `providers`：provider id → 实例，注册表。
 /// - `active_source`：当前活跃的会话来源（None 表示无活跃会话）。
 /// - `cancel_token`：长生命周期取消令牌；cancel 不会立即停掉 in-flight 推理，
-///   只让持续轮询的下游（如未来的 hotkey listener loop）有机会退出。
+///   只让持续轮询的下游（如未来的持续触发逻辑）有机会退出。
 /// - `stream`：流式识别会话句柄（WebSocket 连接常驻后台 task）。
 /// - `lock`：互斥锁，保证 start/stop 序列原子化。
 pub struct AsrSession {
