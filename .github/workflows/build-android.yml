@@ -37,7 +37,7 @@ jobs:
       - uses: pnpm/setup@v1
         with:
           runtime: node@26
-          cache: true'
+          cache: true
 
       - name: 签出 lfs 文件
         run: git lfs pull
