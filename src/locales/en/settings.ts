@@ -1083,10 +1083,7 @@ export default {
     hotkey: {
       enable: 'Enable hotkey voice input',
       combination: 'Hotkey',
-      record: 'Record hotkey',
-      toggleAutoListen: 'Use hotkey to toggle auto voice input',
-      toggleAutoListenHint:
-        'While auto voice input is on, pressing the hotkey turns it off; disable this to prevent accidental triggers',
+      record: 'Record hotkey'
     },
     sendMode: {
       title: 'After recognition',

@@ -32,7 +32,6 @@ export interface AsrSettings {
   hotkey_combination: string
   send_mode: SendMode
   stream_enabled: boolean
-  hotkey_toggle_auto_listen: boolean
   provider_configs: Record<string, ProviderConfig>
 }
 

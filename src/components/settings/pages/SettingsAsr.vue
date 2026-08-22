@@ -37,15 +37,6 @@
           {{ t('settings.asr.hotkey.record') }}
         </button>
       </div>
-      <div v-if="localSettings.hotkey_enabled" class="mt-3">
-        <Toggle
-          :checked="localSettings.hotkey_toggle_auto_listen"
-          @change="(v: boolean) => (localSettings.hotkey_toggle_auto_listen = v)"
-        >
-          <span class="font-medium">{{ t('settings.asr.hotkey.toggleAutoListen') }}</span>
-          <span class="block text-sm text-gray-300 mt-0.5">{{ t('settings.asr.hotkey.toggleAutoListenHint') }}</span>
-        </Toggle>
-      </div>
     </section>
 
     <!-- 识别完成后处理方式 -->

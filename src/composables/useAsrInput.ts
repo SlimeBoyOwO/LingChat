@@ -586,8 +586,8 @@ function ensureInit() {
   // 按下 → 开始录音；释放 → 停止（RegisterHotKey 只有按下通知，释放由后端轮询检测）
   listen('asr://hotkey_down', () => {
     const settings = asrStore?.settings
-    // auto_listen 开启时：快捷键 = 关闭自动语音输入（可独立禁用防误触）
-    if (settings?.auto_listen && settings.hotkey_toggle_auto_listen) {
+    // auto_listen 排他模式：快捷键 = 关闭自动语音输入（Task 3 起收敛到 turnOffAutoListen）
+    if (settings?.auto_listen) {
       console.log('[ASR] hotkey: 关闭自动语音输入')
       settings.auto_listen = false
       updateAsrAvailability()

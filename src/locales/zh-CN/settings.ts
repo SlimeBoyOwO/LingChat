@@ -1082,9 +1082,7 @@ export default {
     hotkey: {
       enable: '启用快捷键语音输入',
       combination: '快捷键',
-      record: '录制快捷键',
-      toggleAutoListen: '快捷键用于开关自动语音输入',
-      toggleAutoListenHint: '开启自动语音输入后，按快捷键可快速关闭；关闭此开关可防止误触',
+      record: '录制快捷键'
     },
     sendMode: {
       title: '识别完成后',

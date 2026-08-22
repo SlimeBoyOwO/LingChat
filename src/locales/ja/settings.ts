@@ -1081,10 +1081,7 @@ export default {
     hotkey: {
       enable: 'ホットキー音声入力を有効化',
       combination: 'ホットキー',
-      record: 'ホットキーを録音',
-      toggleAutoListen: 'ホットキーで自動音声入力を切り替え',
-      toggleAutoListenHint:
-        '自動音声入力がオンのとき、ホットキーでオフにできます。誤操作防止にこのスイッチをオフにできます',
+      record: 'ホットキーを録音'
     },
     sendMode: {
       title: '認識後',

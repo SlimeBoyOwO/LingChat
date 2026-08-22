@@ -1081,9 +1081,7 @@ export default {
     "hotkey": {
       "enable": "啟用快捷鍵語音輸入",
       "combination": "快捷鍵",
-      "record": "錄製快捷鍵",
-      "toggleAutoListen": "快捷鍵用嚟開關自動語音輸入",
-      "toggleAutoListenHint": "開啟自動語音輸入之後，撳快捷鍵可以快速關閉；關咗呢個開關可以防止誤觸"
+      "record": "錄製快捷鍵"
     },
     "sendMode": {
       "title": "識別完成後",
