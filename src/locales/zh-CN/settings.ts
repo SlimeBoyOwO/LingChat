@@ -1078,14 +1078,9 @@ export default {
       vadLoadedNo: '未加载',
     },
     voiceInput: '语音输入',
-    voiceInputHint: '总开关：关闭后麦克风按钮、快捷键与自动语音输入均不可用',
+    voiceInputHint: '总开关：关闭后麦克风按钮与自动语音输入均不可用',
     autoListen: '启用自动语音识别',
     autoListenHint: '自动监听麦克风，识别用户说话后自动转为文本',
-    hotkey: {
-      enable: '启用快捷键语音输入',
-      combination: '快捷键',
-      record: '录制快捷键'
-    },
     sendMode: {
       title: '识别完成后',
       fillOnly: '填入输入框（推荐）',

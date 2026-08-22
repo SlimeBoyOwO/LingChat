@@ -1077,14 +1077,9 @@ export default {
       "vadLoadedNo": "未載入"
     },
     "voiceInput": "語音輸入",
-    "voiceInputHint": "總開關：關閉後麥克風按鈕、快捷鍵與自動語音輸入均不可用",
+    "voiceInputHint": "總開關：關閉後麥克風按鈕與自動語音輸入均不可用",
     "autoListen": "啟用自動語音識別",
     "autoListenHint": "自動監聽麥克風，識別用戶說話後自動轉為文字",
-    "hotkey": {
-      "enable": "啟用快捷鍵語音輸入",
-      "combination": "快捷鍵",
-      "record": "錄製快捷鍵"
-    },
     "sendMode": {
       "title": "識別完成後",
       "fillOnly": "填入輸入框（推薦）",

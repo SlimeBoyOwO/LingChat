@@ -1077,14 +1077,9 @@ export default {
       vadLoadedNo: '未読込',
     },
     voiceInput: '音声入力',
-    voiceInputHint: 'マスタースイッチ：オフにするとマイクボタン・ホットキー・自動音声入力がすべて無効',
+    voiceInputHint: 'マスタースイッチ：オフにするとマイクボタン・自動音声入力がすべて無効',
     autoListen: '自動音声認識を有効化',
     autoListenHint: 'マイクを自動監視し、ユーザーの発話をテキストに変換',
-    hotkey: {
-      enable: 'ホットキー音声入力を有効化',
-      combination: 'ホットキー',
-      record: 'ホットキーを録音'
-    },
     sendMode: {
       title: '認識後',
       fillOnly: '入力欄に挿入（推奨）',

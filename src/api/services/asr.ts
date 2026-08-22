@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 
-export type AsrSource = 'button' | 'hotkey' | 'auto'
+export type AsrSource = 'button' | 'auto'
 export type SendMode = 'fill_only' | 'auto_send'
 export type AsrPhase = 'idle' | 'recording' | 'recognizing'
 
@@ -28,8 +28,6 @@ export interface ModelInfo {
 export interface AsrSettings {
   active_provider: string
   auto_listen: boolean
-  hotkey_enabled: boolean
-  hotkey_combination: string
   send_mode: SendMode
   stream_enabled: boolean
   voice_input_enabled: boolean
@@ -107,9 +105,3 @@ export const asrStopStreaming = () => invoke<AsrResult>('asr_stop_streaming')
 
 /** 丢弃流式会话（异常路径清理用；不影响非流式在飞识别） */
 export const asrCancelStreaming = () => invoke<void>('asr_cancel_streaming')
-
-/** 注册系统级全局快捷键（后台也可触发；combo 格式 "Ctrl+Shift+Space"） */
-export const asrRegisterHotkey = (combo: string) =>
-  invoke<void>('asr_register_hotkey', { combo })
-
-export const asrUnregisterHotkey = () => invoke<void>('asr_unregister_hotkey')

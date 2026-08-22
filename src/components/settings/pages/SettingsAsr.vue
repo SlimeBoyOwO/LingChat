@@ -25,31 +25,6 @@
       </Toggle>
     </section>
 
-    <!-- 快捷键开关 + 录制 -->
-    <section class="mb-6">
-      <Toggle
-        :checked="localSettings.hotkey_enabled"
-        @change="(v: boolean) => (localSettings.hotkey_enabled = v)"
-      >
-        <span class="font-medium">{{ t('settings.asr.hotkey.enable') }}</span>
-      </Toggle>
-      <div v-if="localSettings.hotkey_enabled" class="mt-3 flex items-center gap-3 pl-1">
-        <span class="text-sm text-gray-300">
-          {{ t('settings.asr.hotkey.combination') }}:
-          <kbd
-            class="px-2.5 py-1 rounded-md text-xs font-mono border border-white/20 bg-white/10"
-          >{{ localSettings.hotkey_combination }}</kbd>
-        </span>
-        <button
-          type="button"
-          class="px-4 py-2 bg-brand text-white rounded-lg hover:bg-[#0056b3] transition-colors duration-200 text-sm"
-          @click="recordHotkey"
-        >
-          {{ t('settings.asr.hotkey.record') }}
-        </button>
-      </div>
-    </section>
-
     <!-- 识别完成后处理方式 -->
     <section class="mb-6">
       <div class="font-medium text-brand mb-3">{{ t('settings.asr.sendMode.title') }}</div>
@@ -194,7 +169,6 @@ import { useI18n } from 'vue-i18n'
 
 import { Toggle } from '../../base'
 import { useAsrStore } from '@/stores/modules/settings/asr'
-import { recordKeyUntilEscape } from '@/composables/useGlobalHotkey'
 import { asrListModels, asrRecognizeWav } from '@/api/services/asr'
 import { pcmToWavPcm16, trimSilencePcm } from '@/utils/asrAudio'
 import type { AsrSettings, SendMode, ProviderInfo } from '@/api/services/asr'
@@ -354,10 +328,6 @@ watch(
   },
   { deep: true },
 )
-
-async function recordHotkey() {
-  localSettings.value.hotkey_combination = await recordKeyUntilEscape()
-}
 
 // ── 测试连接：完整识别链路（录音 4 秒 → 16k PCM → recognize → 显示文本） ──
 // 不用 MediaRecorder（webm 在 WebView2 decodeAudioData 会失败），

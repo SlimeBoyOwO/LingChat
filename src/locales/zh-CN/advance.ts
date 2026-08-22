@@ -18,7 +18,7 @@ export default {
     ttsDesc: '下载并管理 DeBERTa 与人物语音模型，离线使用本地 TTS 引擎',
     ttsButton: '进入本地 TTS 界面',
     asrTitle: '语音识别',
-    asrDesc: '配置自动语音识别服务商、快捷键、发送方式与麦克风监听',
+    asrDesc: '配置阿里云语音识别、发送方式与麦克风监听',
     asrButton: '进入语音识别界面',
     otherTitle: '其他高级设置',
     otherDesc: '调整系统环境配置、提示词模板、对话参数等高级选项（重启后生效）',

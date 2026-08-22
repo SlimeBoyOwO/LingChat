@@ -19,7 +19,7 @@ export default {
     ttsDesc: "Download and manage DeBERTa and character voice models to use the local TTS engine offline",
     ttsButton: "Enter Local TTS",
     asrTitle: "Speech Recognition",
-    asrDesc: "Configure ASR providers, hotkey, send mode, and microphone auto-listen",
+    asrDesc: "Configure Alibaba Cloud ASR, send mode, and microphone auto-listen",
     asrButton: "Open Speech Recognition",
     otherTitle: "Other Advanced Settings",
     otherDesc: "Tweak system environment settings, prompt templates, chat parameters, and more (takes effect after restart)",

@@ -76,8 +76,8 @@ const route = useRoute()
 // 仅主窗口挂载全局弹窗（通知/成就/对话确认），日志窗口等复用 App.vue 的窗口不弹
 const isMainWindow = getCurrentWindow().label === 'main'
 
-// ASR 全局初始化（仅主窗口一次）：系统级快捷键注册 / asr://hotkey_down|up 监听 /
-// auto_listen 能量监测门控。useAsrInput 状态是模块级单例，GameDialog 的 mic 按钮
+// ASR 全局初始化（仅主窗口一次）：auto_listen 能量监测门控 + 事件监听。
+// useAsrInput 状态是模块级单例，GameDialog / ChatInput（桌宠）的 mic 按钮
 // 与这里共享同一会话。
 if (isMainWindow) {
   useAsrInput()

@@ -16,8 +16,6 @@ import {
   asrStreamAudioChunk,
   asrStopStreaming,
   asrCancelStreaming,
-  asrRegisterHotkey,
-  asrUnregisterHotkey,
   type AsrSource,
   type AsrResult,
   type VadEvent,
@@ -25,20 +23,19 @@ import {
 import { pcmToWavPcm16, trimSilencePcm } from '@/utils/asrAudio'
 
 /**
- * 统一 ASR 输入入口：三种触发源共用同一会话生命周期。
+ * 统一 ASR 输入入口：两种触发源共用同一会话生命周期。
  *
- * 三种触发源：
- * - Button: GameDialog.vue 的 mic 按钮
- * - Hotkey: useGlobalHotkey.ts 注册的全局快捷键（App.vue 挂载一次）
+ * 两种触发源：
+ * - Button: GameDialog.vue / ChatInput.vue（桌宠）的 mic 按钮
  * - Auto: asrStore.settings.auto_listen=true 时由能量监测触发
  *
- * 窗口活跃门控：仅当 chatActive=true（/chat 路由 + 设置抽屉未开）时启用。
+ * 窗口活跃门控：仅当 chatActive=true（/chat 或 /pet 路由 + 设置抽屉未开）时启用。
  * 失败降级：mic 不可用时 fail-open（不抛错到用户），退化为手动按钮 + 不录。
  *
  * ── 单例设计 ──────────────────────────────────────────────
- * 状态全部在模块级（非函数内）：App.vue 的 hotkey 实例与 GameDialog 的
- * mic 实例共享同一会话。若状态放在函数内，两实例各自持有 recorder/phase，
- * hotkey 录音时 GameDialog 的 mic 按钮看不到状态、互不感知。
+ * 状态全部在模块级（非函数内）：App.vue 的初始化实例与 GameDialog /
+ * ChatInput 的 mic 实例共享同一会话。若状态放在函数内，两实例各自持有
+ * recorder/phase，mic 按钮看不到录音状态、互不感知。
  *
  * ── 采集链路（spec §3.1）─────────────────────────────────
  * 16kHz AudioContext + ScriptProcessor 直接拿 f32 PCM（不经过
@@ -235,7 +232,7 @@ export function lockAsrForDisplay(ms: number): void {
   updateAsrAvailability()
 }
 
-/** GameDialog / hotkey 调用：模式开时切换功能开关（暂停/恢复自动监听）。
+/** GameDialog / ChatInput（桌宠）调用：模式开时切换功能开关（暂停/恢复自动监听）。
  *  只动运行态 autoListenActive，不改 auto_listen 模式设置（无 save）。 */
 function toggleAutoListenFunction() {
   if (autoListenActive.value) {
@@ -609,48 +606,6 @@ function ensureInit() {
     )
     if (phase.value === 'recording' && typeof e.payload === 'string') {
       inputBridge?.setText(baseText + e.payload)
-    }
-  })
-
-  // ── 系统级全局快捷键（后台可触发） ──
-  // 后端 RegisterHotKey 注册/注销，设置启用或组合变化时同步
-  watch(
-    () => [asrStore?.settings.hotkey_enabled, asrStore?.settings.hotkey_combination] as const,
-    ([enabled, combo]) => {
-      if (enabled && combo) {
-        void asrRegisterHotkey(combo).catch((e) => {
-          console.warn('[ASR] 注册全局快捷键失败:', e)
-        })
-      } else {
-        void asrUnregisterHotkey().catch(() => {
-          /* 未注册时注销失败可忽略 */
-        })
-      }
-    },
-    { immediate: true },
-  )
-  // 按下 → 开始录音；释放 → 停止（RegisterHotKey 只有按下通知，释放由后端轮询检测）
-  listen('asr://hotkey_down', () => {
-    // 总开关：语音输入整体禁用
-    if (!asrStore?.settings.voice_input_enabled) {
-      console.log('[ASR] hotkey: 语音输入已禁用（总开关关闭）')
-      return
-    }
-    // auto_listen 模式开：快捷键 = 切换功能开关（暂停/恢复监听），不改模式设置
-    if (asrStore.settings.auto_listen) {
-      console.log('[ASR] hotkey: 切换自动监听功能')
-      toggleAutoListenFunction()
-      return
-    }
-    if (canStartAsr() && phase.value === 'idle') {
-      void start('hotkey').catch(() => {
-        /* 会话忙时静默忽略 */
-      })
-    }
-  })
-  listen('asr://hotkey_up', () => {
-    if (activeSource.value === 'hotkey') {
-      stop()
     }
   })
 
