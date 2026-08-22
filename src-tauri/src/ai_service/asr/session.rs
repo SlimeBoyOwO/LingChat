@@ -12,12 +12,11 @@ use super::provider::{AsrProvider, AsrResult};
 use super::provider_stream::{self, StreamCommand};
 use super::vad::AsrVad;
 
-/// ASR 会话来源。三种触发源共享同一会话生命周期。
+/// ASR 会话来源。两种触发源共享同一会话生命周期。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AsrSource {
     Button,
-    Hotkey,
     Auto,
 }
 
@@ -25,7 +24,6 @@ impl AsrSource {
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "button" => Some(Self::Button),
-            "hotkey" => Some(Self::Hotkey),
             "auto" => Some(Self::Auto),
             _ => None,
         }
