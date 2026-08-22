@@ -25,6 +25,20 @@
       </Toggle>
     </section>
 
+    <!-- VAD 静音计时（自动模式：停止说话后等多久才结束录音） -->
+    <section class="mb-6">
+      <label class="block text-sm mb-1.5 font-medium">{{ t('settings.asr.vadSilence') }}</label>
+      <input
+        type="number"
+        min="100"
+        max="3000"
+        step="100"
+        v-model.number="localSettings.vad_silence_ms"
+        class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+      />
+      <p class="block text-sm text-gray-300 mt-1.5">{{ t('settings.asr.vadSilenceHint') }}</p>
+    </section>
+
     <!-- 识别完成后处理方式 -->
     <section class="mb-6">
       <div class="font-medium text-brand mb-3">{{ t('settings.asr.sendMode.title') }}</div>

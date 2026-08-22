@@ -14,7 +14,7 @@ pub struct SegmenterConfig {
     pub threshold: f32,
     /// 语音段最大长度（帧数），超长强制切段（默认 2000 帧 = 60s）。
     pub max_segment_frames: u64,
-    /// 静音多少帧后触发「候选结束」（默认 10 帧 = 300ms）。
+    /// 静音多少帧后触发「候选结束」（默认 27 帧 ≈ 800ms，设置页可自定义）。
     pub candidate_silence_frames: u64,
     /// 候选后仍静音多少帧 → 确认结束（默认 33 帧 ≈ 1s）。
     pub confirm_frames: u64,
@@ -25,7 +25,7 @@ impl Default for SegmenterConfig {
         Self {
             threshold: 0.5,
             max_segment_frames: 2000,
-            candidate_silence_frames: 10,
+            candidate_silence_frames: 27,
             confirm_frames: 33,
         }
     }
@@ -89,6 +89,12 @@ impl VadSegmenter {
     /// 当前帧号（可用于与外部帧计数对齐）。
     pub fn current_frame(&self) -> u64 {
         self.frame
+    }
+
+    /// 设置候选静音帧数（静音计时可自定义；由 [`super::vad::AsrVad::set_silence_timeout_ms`]
+    /// 把毫秒换算成帧后调用）。
+    pub fn set_candidate_silence_frames(&mut self, frames: u64) {
+        self.cfg.candidate_silence_frames = frames;
     }
 
     /// 当前是否处于语音段内。
@@ -187,17 +193,34 @@ mod tests {
     }
 
     #[test]
-    fn turn_candidate_after_300ms_silence() {
+    fn turn_candidate_after_default_silence() {
         let mut seg = VadSegmenter::new();
         let mut events = Vec::new();
         for _ in 0..5 {
             events.extend(seg.feed(0.9)); // 150ms 语音
         }
-        for _ in 0..9 {
-            events.extend(seg.feed(0.1)); // 270ms 静音 → 无候选
+        for _ in 0..26 {
+            events.extend(seg.feed(0.1)); // 780ms 静音 → 无候选
         }
         assert!(!events.iter().any(|e| matches!(e, SegmentEvent::TurnCandidate { .. })));
-        events.extend(seg.feed(0.1)); // 第 10 帧静音 = 300ms
+        events.extend(seg.feed(0.1)); // 第 27 帧静音 ≈ 810ms
+        assert!(events.iter().any(|e| matches!(e, SegmentEvent::TurnCandidate { silence_frames: 27, .. })));
+    }
+
+    #[test]
+    fn turn_candidate_custom_silence_frames() {
+        // 自定义静音计时（如 300ms = 10 帧）生效
+        let mut seg = VadSegmenter::new();
+        seg.set_candidate_silence_frames(10);
+        let mut events = Vec::new();
+        for _ in 0..5 {
+            events.extend(seg.feed(0.9));
+        }
+        for _ in 0..9 {
+            events.extend(seg.feed(0.1));
+        }
+        assert!(!events.iter().any(|e| matches!(e, SegmentEvent::TurnCandidate { .. })));
+        events.extend(seg.feed(0.1));
         assert!(events.iter().any(|e| matches!(e, SegmentEvent::TurnCandidate { silence_frames: 10, .. })));
     }
 
@@ -208,11 +231,11 @@ mod tests {
         for _ in 0..5 {
             events.extend(seg.feed(0.9)); // 语音帧 0-4
         }
-        for _ in 0..10 {
-            events.extend(seg.feed(0.1)); // 静音帧 5-14 → 候选(14)
+        for _ in 0..27 {
+            events.extend(seg.feed(0.1)); // 静音帧 5-31 → 候选(31)
         }
         for _ in 0..33 {
-            events.extend(seg.feed(0.1)); // 帧 15-47 → 确认
+            events.extend(seg.feed(0.1)); // 帧 32-64 → 确认
         }
         let sealed = events
             .iter()
@@ -233,8 +256,8 @@ mod tests {
         for _ in 0..5 {
             events.extend(seg.feed(0.9));
         }
-        for _ in 0..12 {
-            events.extend(seg.feed(0.1)); // 360ms 静音 → 候选已触发
+        for _ in 0..28 {
+            events.extend(seg.feed(0.1)); // 840ms 静音 → 候选已触发
         }
         assert!(events.iter().any(|e| matches!(e, SegmentEvent::TurnCandidate { .. })));
         // 语音恢复

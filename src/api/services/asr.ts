@@ -31,6 +31,8 @@ export interface AsrSettings {
   send_mode: SendMode
   stream_enabled: boolean
   voice_input_enabled: boolean
+  /** VAD 静音计时（毫秒）：停止说话后静音该时长才结束一轮录音（默认 800） */
+  vad_silence_ms: number
   provider_configs: Record<string, ProviderConfig>
 }
 

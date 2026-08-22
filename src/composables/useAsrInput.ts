@@ -68,6 +68,14 @@ let mobileMenuOpen = false
 let asrLockedUntil = 0
 /** auto_send 模式：识别完成后延迟发送的毫秒数（给用户看到结果的窗口，防乱序） */
 const AUTO_SEND_DELAY_MS = 800
+/** 能量监测启动缓冲期（毫秒）：刚恢复监听的头 1 秒不触发录音。
+ *  TTS 话音刚落的环境声/残响最易误触（AI 说完 → input → 监测恢复，用户还没
+ *  进入"轮到我说话"状态），让这段时间静默过去，用户准备好开口才响应。 */
+const ENERGY_WARMUP_MS = 1000
+/** 角色语音（TTS）播放中（GameRolesStage 桌面/桌宠通过 setVoicePlaying 同步）：
+ *  外放 TTS 会被麦克风捕获 → RMS 触发 → VAD 判定为人声 → 误识别 AI 自己的话。
+ *  播放期间 ASR 整体禁用（canStartAsr 门控 + handle drop），播完才恢复。 */
+let voicePlaying = false
 /** 输入框桥：GameDialog 注册，供 partial 实时写入 / 拼接基准读取 */
 let inputBridge: { getText: () => string; setText: (v: string) => void } | null = null
 /** 录音开始时的输入框内容快照（拼接语义的基准：partial 只追加在这之后） */
@@ -161,6 +169,8 @@ function canStartAsr(): boolean {
   if (script && Array.isArray(script.choices) && script.choices.length > 0) return false
   // 11：语音输入总开关
   if (!asrStore?.settings.voice_input_enabled) return false
+  // 12：角色语音（TTS）播放中（外放 TTS 进麦克风 → 误识别 AI 自己的话）
+  if (voicePlaying) return false
   // 10：识别结果短暂显示锁（fill_only 模式填入 inputMessage 到自动 send 之间的窗口期）
   if (Date.now() < asrLockedUntil) return false
   return true
@@ -221,6 +231,14 @@ function isStreamEnabled(): boolean {
 /** GameDialog 调用：同步移动端菜单展开状态（§1.5） */
 export function setMobileMenuOpen(open: boolean): void {
   mobileMenuOpen = open
+  updateAsrAvailability()
+}
+
+/** GameRolesStage（桌面/桌宠）调用：同步角色语音播放状态。
+ *  TTS 播放开始 → 停能量监测 + 丢弃在飞 auto 录音（那是在录 AI 的声音）；
+ *  播放结束 → 恢复监听。 */
+export function setVoicePlaying(playing: boolean): void {
+  voicePlaying = playing
   updateAsrAvailability()
 }
 
@@ -325,12 +343,19 @@ function startEnergyMonitor() {
       analyser.smoothingTimeConstant = 0.3
       src.connect(analyser)
       const buf = new Uint8Array(analyser.frequencyBinCount)
+      // 启动缓冲期：从 analyser 建立起算，前 1 秒不触发录音（TTS 话音刚落
+      // 的环境声/残响最易误触——用户还没进入"轮到我说话"状态）
+      const warmupUntil = Date.now() + ENERGY_WARMUP_MS
       const tick = () => {
         if (!asrStore?.settings.auto_listen || !chatActive.value) {
           stopEnergyMonitor()
           return
         }
         if (!energyMon) return
+        if (Date.now() < warmupUntil) {
+          energyMon.raf = requestAnimationFrame(tick)
+          return
+        }
         analyser.getByteFrequencyData(buf)
         // RMS 归一化：byte 0-255 → 0-1，阈值 0.08 约等于明显人声能量
         let sum = 0
@@ -528,8 +553,10 @@ async function doRecognize(source: AsrSource, captured: number[]) {
  */
 function handle(text: string, source: AsrSource) {
   // §4: 识别请求在飞行中 AI 可能从 input 进入 thinking/responding/presenting
-  // 返回时 currentStatus 已变 → 识别结果丢弃（不填入 / 不发送 / 不入队）
-  if (!gameStore || gameStore.currentStatus !== 'input') {
+  // 返回时 currentStatus 已变 → 识别结果丢弃（不填入 / 不发送 / 不入队）。
+  // voicePlaying：手动模式点击继续后 TTS 还在播，在飞识别（误录的 AI 语音）
+  // 返回时同样丢弃。
+  if (!gameStore || gameStore.currentStatus !== 'input' || voicePlaying) {
     console.log(
       `[ASR] handle drop: status=${gameStore?.currentStatus}, text="${text.slice(0, 30)}"`,
     )

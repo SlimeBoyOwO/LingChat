@@ -99,6 +99,14 @@ impl AsrVad {
         self.segmenter.lock().await.reset();
     }
 
+    /// 设置 VAD 静音计时（毫秒）：停止说话后静音该时长才触发「候选结束」。
+    /// 设置页可自定义（默认 800ms）；帧率 30ms/帧，毫秒向上取整到帧。
+    pub async fn set_silence_timeout_ms(&self, ms: u32) {
+        let frames = (ms as u64 + 29) / 30;
+        self.segmenter.lock().await.set_candidate_silence_frames(frames);
+        tracing::info!("[ASR/VAD] 静音计时设置为 {ms}ms（{frames} 帧）");
+    }
+
     /// 处理 30ms 块 PCM（512 samples @ 16kHz），返回推理结果 + 可能的事件。
     /// 推理：拼接前帧 context(64) + 当前帧(512) = 576 → Silero v5 ONNX；
     /// 切分：prob 喂给 [`vad_segmenter::VadSegmenter`] 纯状态机，

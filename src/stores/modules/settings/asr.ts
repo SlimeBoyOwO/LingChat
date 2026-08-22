@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS: AsrSettings = {
   send_mode: 'fill_only',
   stream_enabled: false,
   voice_input_enabled: true,
+  vad_silence_ms: 800,
   provider_configs: {},
 }
 

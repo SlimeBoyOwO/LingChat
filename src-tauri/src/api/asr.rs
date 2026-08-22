@@ -317,6 +317,15 @@ pub async fn asr_set_settings(
     settings::save(&app, &settings).map_err(|e| e.i18n_code().to_string())?;
     // 重建 provider registry（settings 改了 credentials 后立即生效）
     rebuild_providers(&state, &settings).await?;
+    // VAD 静音计时立即生效（下一轮录音按新配置切分）
+    let session_arc = state.asr_state.session.clone();
+    let guard = session_arc.lock().await;
+    if let Some(session) = guard.as_ref() {
+        session
+            .vad
+            .set_silence_timeout_ms(settings.vad_silence_ms)
+            .await;
+    }
     Ok(())
 }
 

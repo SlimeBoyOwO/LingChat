@@ -1080,6 +1080,8 @@ export default {
     "voiceInputHint": "總開關：關閉後麥克風按鈕與自動語音輸入均不可用",
     "autoListen": "啟用自動語音識別",
     "autoListenHint": "自動監聽麥克風，識別用戶說話後自動轉為文字",
+    "vadSilence": "靜音計時（毫秒）",
+    "vadSilenceHint": "停止講嘢後等待呢段時間先至結束錄音（預設 800ms，數字越大越唔容易被停頓切斷）",
     "sendMode": {
       "title": "識別完成後",
       "fillOnly": "填入輸入框（推薦）",

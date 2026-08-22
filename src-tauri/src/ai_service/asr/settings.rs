@@ -55,6 +55,8 @@ pub struct AsrSettings {
     pub send_mode: SendMode,
     pub stream_enabled: bool,
     pub voice_input_enabled: bool,
+    /// VAD 静音计时（毫秒）：停止说话后静音该时长才结束一轮录音（默认 800ms）。
+    pub vad_silence_ms: u32,
     pub provider_configs: HashMap<String, ProviderConfig>,
 }
 
@@ -71,6 +73,7 @@ impl AsrSettings {
             send_mode: SendMode::FillOnly,
             stream_enabled: false,
             voice_input_enabled: true,
+            vad_silence_ms: 800,
             provider_configs,
         }
     }
@@ -80,7 +83,7 @@ const STORE_KEY_PROVIDERS: &str = "ASR_PROVIDERS";
 const STORE_KEY_ACTIVE: &str = "ASR_ACTIVE_PROVIDER_ID";
 const STORE_KEY_PREFS: &str = "ASR_PREFS";
 
-/// UI 偏好字段（auto_listen / send_mode / 流式 / 总开关），与 provider 凭据分开持久化。
+/// UI 偏好字段（auto_listen / send_mode / 流式 / 总开关 / 静音计时），与 provider 凭据分开持久化。
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct AsrPrefs {
     #[serde(default)]
@@ -93,11 +96,19 @@ pub struct AsrPrefs {
     // 直接 default 会让旧持久化数据反序列化后语音输入被意外禁用）。
     #[serde(default = "default_true")]
     pub voice_input_enabled: bool,
+    // 同理：缺省为 0 会让老数据的 VAD 静音计时变成 0（一静音立即切段）。
+    #[serde(default = "default_vad_silence_ms")]
+    pub vad_silence_ms: u32,
 }
 
 /// AsrPrefs 的 voice_input_enabled 兜底：默认开启。
 fn default_true() -> bool {
     true
+}
+
+/// AsrPrefs 的 vad_silence_ms 兜底：默认 800ms。
+fn default_vad_silence_ms() -> u32 {
+    800
 }
 
 impl AsrPrefs {
@@ -107,6 +118,7 @@ impl AsrPrefs {
             send_mode: s.send_mode.clone(),
             stream_enabled: s.stream_enabled,
             voice_input_enabled: s.voice_input_enabled,
+            vad_silence_ms: s.vad_silence_ms,
         }
     }
 
@@ -115,6 +127,7 @@ impl AsrPrefs {
         s.send_mode = self.send_mode.clone();
         s.stream_enabled = self.stream_enabled;
         s.voice_input_enabled = self.voice_input_enabled;
+        s.vad_silence_ms = self.vad_silence_ms;
     }
 }
 

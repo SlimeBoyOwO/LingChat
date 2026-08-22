@@ -1083,6 +1083,9 @@ export default {
       'Master switch: when off, mic button and auto voice input are all disabled',
     autoListen: 'Enable automatic speech recognition',
     autoListenHint: 'Auto-listen to microphone and convert user speech to text',
+    vadSilence: 'Silence timeout (ms)',
+    vadSilenceHint:
+      'Wait this long after you stop speaking before ending the recording (default 800ms; higher values are less likely to cut off mid-sentence)',
     sendMode: {
       title: 'After recognition',
       fillOnly: 'Fill input box (recommended)',

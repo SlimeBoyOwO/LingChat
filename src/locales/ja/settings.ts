@@ -1080,6 +1080,9 @@ export default {
     voiceInputHint: 'マスタースイッチ：オフにするとマイクボタン・自動音声入力がすべて無効',
     autoListen: '自動音声認識を有効化',
     autoListenHint: 'マイクを自動監視し、ユーザーの発話をテキストに変換',
+    vadSilence: '無音タイムアウト（ms）',
+    vadSilenceHint:
+      '発話停止後、この時間だけ無音が続いたら録音を終了します（デフォルト 800ms。大きいほど発話途中で切れにくくなります）',
     sendMode: {
       title: '認識後',
       fillOnly: '入力欄に挿入（推奨）',
