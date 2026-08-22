@@ -207,7 +207,18 @@ function isStreamEnabled(): boolean {
   const model =
     asrStore.models.find((m) => m.id === sel) ??
     asrStore.models.find((m) => m.is_default)
-  return model?.supports_streaming ?? false
+  // 静态兜底：models 清单可能未加载（load 失败 / 未打开设置页 / provider_configs
+  // 被 persist 排除）——此时不能用"找不到模型 = 不支持"静默降级非流式，否则
+  // 配置了流式模型却走整句识别（症状：说话时无 partial、识别完成才整句显示）。
+  // 静态集合与后端 provider.rs 的 qwen_is_streaming_model 保持一致。
+  const staticStreaming = new Set(['paraformer-realtime-v1', 'paraformer-realtime-v2'])
+  const enabled = model ? model.supports_streaming : staticStreaming.has(sel)
+  // 诊断：暴露流式判定的依据（模型清单是否命中、命中哪个模型）
+  console.log(
+    `[ASR] isStreamEnabled: stream=${asrStore.settings.stream_enabled}, ` +
+      `model=${sel || '(default)'}${model ? ` (${model.supports_streaming ? 'stream' : 'batch'})` : ' (static fallback)'} → ${enabled}`,
+  )
+  return enabled
 }
 
 /** GameDialog 调用：同步移动端菜单展开状态（§1.5） */
@@ -539,8 +550,10 @@ function handle(text: string, source: AsrSource) {
   if (mode === 'fill_only') {
     window.dispatchEvent(new CustomEvent('asr-text', { detail: text }))
   } else if (mode === 'auto_send') {
-    // 识别内容完整渲染到聊天（与手动发送一致：先 appendGameMessage 再 invoke——
-    // 否则消息只入库不显示在对话里），800ms 后发送给 LLM。
+    // 完整识别结果填入输入框显示（用户可看到完整内容，流式时 partial 已实时
+    // 填充、此处覆盖为 final 整句），800ms 后发送给 LLM；AI 回复时
+    // GameDialog 的 showCharacterLine watch 自动清空输入框（与手动发送一致）。
+    // 同时渲染 dialogHistory（历史记录可见，问题 3）。
     // 不降级 queue：消息已渲染，flush 时 GameDialog.send() 会重复渲染；
     // 直接 invoke 由后端 generation_lock 排队（AI 忙时同样正确，顺序保持）。
     // 直接赋值 asrLockedUntil 而非 lockAsrForDisplay()：handle 执行时 phase 尚在
@@ -550,8 +563,8 @@ function handle(text: string, source: AsrSource) {
       displayName: gameStore.userName,
       content: text,
     })
-    // 内容已进聊天，清空输入框（partial 拼接的 baseText 一并清除，与手动发送后一致）
-    inputBridge?.setText('')
+    // 输入框显示完整结果（不清空——清空会导致"内容没显示就发送"）
+    inputBridge?.setText(text)
     asrLockedUntil = Date.now() + AUTO_SEND_DELAY_MS
     window.setTimeout(() => {
       void invoke('send_chat_message', { text, screenshotBase64: null })
@@ -595,6 +608,11 @@ function ensureInit() {
 
   // 流式 partial：实时写入输入框（整体替换语音追加块，不触碰 baseText 之前的内容）
   listen('asr://stream_partial', (e) => {
+    // 诊断：暴露 partial 是否到达前端、写入条件（phase/inputBridge）是否满足
+    console.log(
+      `[ASR/stream] partial 事件: len=${String(e.payload).length}, phase=${phase.value}, ` +
+        `bridge=${inputBridge ? 'ok' : 'null'}`,
+    )
     if (phase.value === 'recording' && typeof e.payload === 'string') {
       inputBridge?.setText(baseText + e.payload)
     }
