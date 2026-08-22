@@ -83,6 +83,7 @@ pub struct PoemGameEvent {
     result_var: String,
     rounds: usize,
     force_glitch: Option<bool>,
+    mode: String,
 }
 
 impl PoemGameEvent {
@@ -92,6 +93,18 @@ impl PoemGameEvent {
             .and_then(Value::as_u64)
             .unwrap_or(MAX_ROUNDS as u64)
             .clamp(1, MAX_ROUNDS as u64) as usize;
+
+        let requested_mode = string_field(data, "mode", "normal");
+        let mode = match requested_mode.as_str() {
+            "normal" | "act2" | "act2_final" => requested_mode,
+            _ => {
+                tracing::warn!(
+                    "[PoemGameEvent] 未知写诗模式 '{}'，回退为 normal",
+                    requested_mode
+                );
+                "normal".to_string()
+            }
+        };
 
         Self {
             background_path: string_field(data, "backgroundPath", "深夜诗笺-半页.png"),
@@ -104,13 +117,16 @@ impl PoemGameEvent {
             result_var: string_field(data, "resultVar", "poem_tone"),
             rounds,
             force_glitch: data.get("glitch").and_then(Value::as_bool),
+            mode,
         }
     }
 
     fn load_words(&self, script_path: &Path) -> Result<WordListFile> {
         let relative = Path::new(&self.word_list_path);
         if relative.components().count() != 1 || relative.file_name().is_none() {
-            return Err(anyhow!("poem_game 的 wordListPath 只能是剧本根目录下的文件名"));
+            return Err(anyhow!(
+                "poem_game 的 wordListPath 只能是剧本根目录下的文件名"
+            ));
         }
 
         let path = script_path.join(relative);
@@ -130,35 +146,35 @@ impl PoemGameEvent {
 
     fn build_rounds(&self, words: &WordListFile, corrupted: bool) -> Vec<Vec<PoemWordPayload>> {
         let mut rng = rand::thread_rng();
-        let mut glitch_inserted = false;
+        let mut pool: Vec<&WordDefinition> = words.words.iter().collect();
         let mut rounds = Vec::with_capacity(self.rounds);
 
         for round_index in 0..self.rounds {
-            let mut options: Vec<PoemWordPayload> = words
-                .words
-                .choose_multiple(&mut rng, OPTIONS_PER_ROUND)
-                .map(|word| word.payload(false))
-                .collect();
+            let mut options = Vec::with_capacity(OPTIONS_PER_ROUND);
+            for _ in 0..OPTIONS_PER_ROUND {
+                // Ren'Py uses randint(0, 400) == 0: 1/401 per visible slot.
+                // The twentieth screen is excluded because progress == numWords.
+                let is_glitch = corrupted
+                    && round_index + 1 < self.rounds
+                    && !words.glitch_words.is_empty()
+                    && rng.gen_ratio(1, 401);
 
-            // Match the original interaction's per-slot 1/401 anomaly check.
-            // We cap it at one pre-generated corrupt word because this client
-            // builds all rounds up front rather than one screen at a time.
-            if corrupted
-                && !glitch_inserted
-                && round_index + 1 < self.rounds
-                && !words.glitch_words.is_empty()
-            {
-                for slot in 0..OPTIONS_PER_ROUND {
-                    if rng.gen_ratio(1, 401) {
-                        if let Some(glitch_word) = words.glitch_words.choose(&mut rng) {
-                            options[slot] = glitch_word.payload(true);
-                            glitch_inserted = true;
-                        }
-                        break;
+                if is_glitch {
+                    if let Some(glitch_word) = words.glitch_words.choose(&mut rng) {
+                        options.push(glitch_word.payload(true));
+                        continue;
                     }
                 }
-            }
 
+                // The original removes every displayed normal word from the
+                // per-game pool, not merely the selected word. Refill only for
+                // compact third-party word lists; a 200-word list never repeats.
+                if pool.is_empty() {
+                    pool.extend(words.words.iter());
+                }
+                let index = rng.gen_range(0..pool.len());
+                options.push(pool.swap_remove(index).payload(false));
+            }
             rounds.push(options);
         }
 
@@ -246,6 +262,7 @@ impl ScriptEvent for PoemGameEvent {
             warm_sticker_path,
             script_sticker_path,
             void_sticker_path,
+            mode: self.mode.clone(),
             rounds: self.build_rounds(&words, corrupted),
             // DDLC 的原始 loop 标记：普通曲从 19.451s、故障曲从 1.000s 回环。
             normal_loop_start: 19.451,
@@ -300,4 +317,57 @@ pub fn register() {
     register_event(PoemGameEvent::event_type(), |data| {
         Box::new(PoemGameEvent::from_event_data(&data))
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use serde_json::json;
+
+    use super::{PoemGameEvent, WordDefinition, WordListFile, MAX_ROUNDS};
+
+    fn words(count: usize) -> WordListFile {
+        WordListFile {
+            words: (0..count)
+                .map(|index| WordDefinition {
+                    text: format!("word-{index}"),
+                    warm: 3,
+                    script_score: 1,
+                    void_score: 0,
+                })
+                .collect(),
+            glitch_words: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn normal_mode_uses_every_word_once_when_pool_is_large_enough() {
+        let event = PoemGameEvent::from_event_data(&json!({ "rounds": MAX_ROUNDS }));
+        let rounds = event.build_rounds(&words(200), false);
+        let texts: Vec<&str> = rounds
+            .iter()
+            .flatten()
+            .map(|word| word.text.as_str())
+            .collect();
+        let unique: HashSet<&str> = texts.iter().copied().collect();
+
+        assert_eq!(texts.len(), 200);
+        assert_eq!(unique.len(), 200);
+    }
+
+    #[test]
+    fn compact_word_lists_refill_without_short_rounds() {
+        let event = PoemGameEvent::from_event_data(&json!({ "rounds": 3 }));
+        let rounds = event.build_rounds(&words(10), false);
+
+        assert_eq!(rounds.len(), 3);
+        assert!(rounds.iter().all(|round| round.len() == 10));
+    }
+
+    #[test]
+    fn unknown_mode_falls_back_to_normal() {
+        let event = PoemGameEvent::from_event_data(&json!({ "mode": "act9" }));
+        assert_eq!(event.mode, "normal");
+    }
 }

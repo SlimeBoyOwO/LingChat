@@ -151,6 +151,8 @@ pub struct PoemGamePayload {
     pub warm_sticker_path: String,
     pub script_sticker_path: String,
     pub void_sticker_path: String,
+    /// Explicit presentation mode; the client must not infer an act from playthrough.
+    pub mode: String,
     pub rounds: Vec<Vec<PoemWordPayload>>,
     pub normal_loop_start: f64,
     pub glitch_loop_start: f64,

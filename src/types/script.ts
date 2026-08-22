@@ -164,6 +164,7 @@ export interface ScriptPoemGameEvent extends ScriptEvent {
   warmStickerPath: string
   scriptStickerPath: string
   voidStickerPath: string
+  mode: 'normal' | 'act2' | 'act2_final'
   rounds: ScriptPoemWord[][]
   normalLoopStart: number
   glitchLoopStart: number
