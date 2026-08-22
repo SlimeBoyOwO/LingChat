@@ -78,6 +78,9 @@ let inputBridge: { getText: () => string; setText: (v: string) => void } | null 
 let baseText = ''
 /** 语音会话进行中（GameDialog 据此 readonly 输入框，语音期间禁止手动输入） */
 export const asrVoiceActive = ref(false)
+/** 功能开关（运行态）：auto_listen 模式开启时由 mic/快捷键切换——监听激活/暂停。
+ *  不持久化、不改 auto_listen 模式设置。 */
+const autoListenActive = ref(false)
 /** 惰性依赖（首次 useAsrInput() 调用时初始化） */
 let route: RouteLocationNormalizedLoaded | null = null
 let uiStore: ReturnType<typeof useUIStore> | null = null
@@ -164,6 +167,8 @@ function canStartAsr(): boolean {
   const script = (gameStore as unknown as { runningScript?: { choices?: unknown[] } })
     .runningScript
   if (script && Array.isArray(script.choices) && script.choices.length > 0) return false
+  // 11：语音输入总开关
+  if (!asrStore?.settings.voice_input_enabled) return false
   // 10：识别结果短暂显示锁（fill_only 模式填入 inputMessage 到自动 send 之间的窗口期）
   if (Date.now() < asrLockedUntil) return false
   return true
@@ -171,7 +176,8 @@ function canStartAsr(): boolean {
 
 /** 同步录音 + 能量监测状态到最新可用性（任一 watch 触发时调用） */
 function updateAsrAvailability(): void {
-  const wantMonitor = canStartAsr() && (asrStore?.settings.auto_listen ?? false)
+  const wantMonitor =
+    canStartAsr() && (asrStore?.settings.auto_listen ?? false) && autoListenActive.value
   if (wantMonitor) {
     startEnergyMonitor()
   } else {
@@ -224,19 +230,20 @@ export function lockAsrForDisplay(ms: number): void {
   updateAsrAvailability()
 }
 
-/** GameDialog / hotkey 调用：关闭自动语音输入（录音中先收尾识别，不丢话） */
-export function turnOffAutoListen() {
-  const settings = asrStore?.settings
-  if (!settings) return
-  // auto 录音中：先 stop() 收尾（同步置 recognizing，异步走
-  // doStreamFinish/doRecognize 完整识别链路），updateAsrAvailability
-  // 对 recognizing 不丢弃（上述丢弃分支），识别结果照常按 send_mode 处理
-  if (phase.value === 'recording' && activeSource.value === 'auto') {
-    stop()
+/** GameDialog / hotkey 调用：模式开时切换功能开关（暂停/恢复自动监听）。
+ *  只动运行态 autoListenActive，不改 auto_listen 模式设置（无 save）。 */
+function toggleAutoListenFunction() {
+  if (autoListenActive.value) {
+    // 暂停：auto 录音中先收尾识别（不丢话），updateAsrAvailability 对
+    // recognizing 不丢弃，识别结果照常按 send_mode 处理
+    if (phase.value === 'recording' && activeSource.value === 'auto') {
+      stop()
+    }
+    autoListenActive.value = false
+  } else {
+    autoListenActive.value = true
   }
-  settings.auto_listen = false
   updateAsrAvailability()
-  void asrStore?.save(settings).catch((e) => console.warn('[ASR] save failed:', e))
 }
 
 // ── VAD 流（auto 模式）：每 512 samples（30ms @ 16k）喂后端 ──
@@ -610,10 +617,15 @@ function ensureInit() {
   )
   // 按下 → 开始录音；释放 → 停止（RegisterHotKey 只有按下通知，释放由后端轮询检测）
   listen('asr://hotkey_down', () => {
-    // auto_listen 排他模式：快捷键 = 关闭自动语音输入（录音中先收尾）
-    if (asrStore?.settings.auto_listen) {
-      console.log('[ASR] hotkey: 关闭自动语音输入')
-      turnOffAutoListen()
+    // 总开关：语音输入整体禁用
+    if (!asrStore?.settings.voice_input_enabled) {
+      console.log('[ASR] hotkey: 语音输入已禁用（总开关关闭）')
+      return
+    }
+    // auto_listen 模式开：快捷键 = 切换功能开关（暂停/恢复监听），不改模式设置
+    if (asrStore.settings.auto_listen) {
+      console.log('[ASR] hotkey: 切换自动监听功能')
+      toggleAutoListenFunction()
       return
     }
     if (canStartAsr() && phase.value === 'idle') {
@@ -643,6 +655,17 @@ function ensureInit() {
     () => asrStore?.settings.auto_listen,
     (enabled) => {
       console.log(`[ASR] auto_listen -> ${enabled}`)
+      // 模式开关：开 = 功能默认激活；关 = 功能复位（功能开关只在模式开时有意义）
+      autoListenActive.value = !!enabled
+      updateAsrAvailability()
+    },
+    { immediate: true },
+  )
+  // 语音输入总开关（设置页切换立即生效）
+  watch(
+    () => asrStore?.settings.voice_input_enabled,
+    (enabled) => {
+      console.log(`[ASR] voice_input_enabled -> ${enabled}`)
       updateAsrAvailability()
     },
     { immediate: true },
@@ -699,6 +722,7 @@ export function useAsrInput() {
     handle,
     cancel: () => asrCancel(),
     canStartAsr,
-    turnOffAutoListen,
+    autoListenActive,
+    toggleAutoListenFunction,
   }
 }
