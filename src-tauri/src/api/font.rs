@@ -22,6 +22,23 @@ pub struct ImportedFontInfo {
     pub file_path: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct UploadFontResult {
+    /// 实际落盘的文件名（含 magic 决定的正确扩展名）
+    pub actual_name: String,
+    /// 用户原始文件名
+    pub original_name: String,
+    /// infer 识别的格式：ttf / otf / woff / woff2
+    pub detected_kind: String,
+    /// 是否发生自动修正（原扩展名 != magic 决定的扩展名）
+    pub was_corrected: bool,
+    /// 字体文件绝对路径，供前端 convertFileSrc 使用
+    pub file_path: String,
+    /// CSS font-family 名称（actual_name 去扩展名）
+    pub font_family: String,
+}
+
 // ========== Tauri 命令 ==========
 
 /// 枚举系统已安装的字体族名，供前端字体选择器使用。
@@ -66,9 +83,7 @@ pub fn list_system_fonts() -> Result<Vec<FontFamilyInfo>, String> {
         if !store_ptr.is_null() {
             let store = &*store_ptr;
             if let Ok(mut guard) = store.try_borrow_mut() {
-                if !name.is_empty()
-                    && !guard.iter().any(|n| n.eq_ignore_ascii_case(&name))
-                {
+                if !name.is_empty() && !guard.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
                     guard.push(name);
                 }
             }
@@ -97,7 +112,10 @@ pub fn list_system_fonts() -> Result<Vec<FontFamilyInfo>, String> {
 
     let mut guard = names.borrow_mut();
     guard.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
-    Ok(guard.drain(..).map(|name| FontFamilyInfo { name }).collect())
+    Ok(guard
+        .drain(..)
+        .map(|name| FontFamilyInfo { name })
+        .collect())
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -113,57 +131,93 @@ pub fn list_system_fonts() -> Result<Vec<FontFamilyInfo>, String> {
 ///
 /// 前端通过 `@tauri-apps/plugin-dialog` 的 `open()` 选择文件后，
 /// 将文件路径传入此命令，后端负责校验和复制。
+///
+/// magic sniff 用 infer（替代原纯扩展名白名单）；扩展名错但内容对时自动修正。
+/// Android 上 dialog 返回的 content:// URI 先经 SAF bridge 复制到 cache，
+/// 再走本地 magic sniff + 本地复制（桌面 path 直接用）。
 #[tauri::command]
-pub fn import_font(path: String) -> Result<ImportedFontInfo, String> {
-    let src = Path::new(&path);
+pub async fn import_font(app: tauri::AppHandle, path: String) -> Result<UploadFontResult, String> {
+    // Android SAF：先把 content URI 复制到本地 cache，magic sniff 和后续复制都用本地路径。
+    let src =
+        crate::ai_service::tts::local::saf_bridge::prepare_file_import_source(&app, &path).await?;
 
-    // 校验扩展名
-    let ext = src
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    if ext != "ttf" && ext != "woff2" {
-        return Err(format!(
-            "不支持的字体格式: .{}——仅支持 .ttf 和 .woff2",
-            ext
-        ));
+    let result: Result<UploadFontResult, String> = async {
+        // 1. magic sniff 决定真实格式（替代原扩展名白名单）。
+        //    注意：infer 把 WOFF 和 WOFF2 都映射到 mime "application/font-woff"，
+        //    所以必须同时检查 mime + extension 才能区分。
+        let detected =
+            infer::get_from_path(&src.path).map_err(|e| format!("读取文件头失败: {e}"))?;
+        let (kind, correct_ext) = match detected {
+            Some(k) if k.matcher_type() == infer::MatcherType::Font => {
+                match (k.mime_type(), k.extension()) {
+                    ("application/font-sfnt", "ttf") => ("ttf", "ttf"),
+                    ("application/font-sfnt", "otf") => ("otf", "otf"),
+                    ("application/font-woff", "woff") => ("woff", "woff"),
+                    ("application/font-woff", "woff2") => ("woff2", "woff2"),
+                    _ => return Err("FONT_INVALID_FORMAT".into()),
+                }
+            }
+            _ => return Err("FONT_INVALID_FORMAT".into()),
+        };
+
+        // 2. 取用户面向的文件名（Android 上是 SAF 提供的 display name，
+        //    而不是 cache 里 `tts_import_saf_<uuid>_…` 的合成名）。
+        let original_name = src.display_name.clone();
+        if original_name.is_empty() {
+            return Err("无效的文件名".into());
+        }
+
+        // 3. 用 magic 决定的扩展名替换原扩展名
+        let stem = std::path::Path::new(&original_name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("font");
+        let corrected_name = format!("{stem}.{correct_ext}");
+
+        // 4. 冲突时按 _2/_3/... 后缀
+        let fonts_dir = api::fonts_dir();
+        std::fs::create_dir_all(&fonts_dir).map_err(|e| format!("无法创建字体目录: {}", e))?;
+        let mut final_name = corrected_name.clone();
+        let mut counter = 2u32;
+        while fonts_dir.join(&final_name).exists() {
+            if counter > 999 {
+                final_name = format!(
+                    "{stem}_{}{}",
+                    chrono::Utc::now().timestamp_millis(),
+                    correct_ext
+                );
+                break;
+            }
+            final_name = format!("{stem}_{counter}.{correct_ext}");
+            counter += 1;
+        }
+
+        // 仅扩展名/名字实质变化才算"自动修正"；纯大小写差异（Song.TTF → Song.ttf）不算。
+        let was_corrected = !original_name.eq_ignore_ascii_case(&final_name);
+        let dest_path = fonts_dir.join(&final_name);
+
+        // 5. 复制（src 已经是本地路径，桌面/SAF 都用 std::fs::copy）
+        std::fs::copy(&src.path, &dest_path).map_err(|e| format!("复制字体文件失败: {}", e))?;
+
+        Ok(UploadFontResult {
+            actual_name: final_name.clone(),
+            original_name,
+            detected_kind: kind.to_string(),
+            was_corrected,
+            file_path: dest_path.to_string_lossy().into_owned(),
+            font_family: std::path::Path::new(&final_name)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("font")
+                .to_string(),
+        })
     }
+    .await;
 
-    // 防路径穿越：只取文件名部分
-    let original_name = src
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| "无效的文件名".to_string())?
-        .to_string();
-
-    // stem 作为 CSS font-family 名称
-    let stem = Path::new(&original_name)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .ok_or_else(|| "无法解析字体名称".to_string())?
-        .to_string();
-
-    let dest_path = api::fonts_dir().join(&original_name);
-
-    // 确保字体目录存在
-    std::fs::create_dir_all(api::fonts_dir())
-        .map_err(|e| format!("无法创建字体目录: {}", e))?;
-
-    // 同名文件不允许导入
-    if dest_path.exists() {
-        return Err(format!("字体 \"{}\" 已存在，不能重复导入", stem));
+    if src.cleanup_after_import {
+        let _ = tokio::fs::remove_file(&src.path).await;
     }
-
-    // 复制文件
-    std::fs::copy(&src, &dest_path)
-        .map_err(|e| format!("复制字体文件失败: {}", e))?;
-
-    Ok(ImportedFontInfo {
-        name: stem,
-        file_name: original_name,
-        file_path: dest_path.to_string_lossy().into_owned(),
-    })
+    result
 }
 
 /// 列出 data/fonts/ 目录下所有已导入的字体文件。
@@ -175,8 +229,7 @@ pub fn list_imported_fonts() -> Result<Vec<ImportedFontInfo>, String> {
     }
 
     let mut fonts: Vec<ImportedFontInfo> = Vec::new();
-    let entries = std::fs::read_dir(&dir)
-        .map_err(|e| format!("无法读取字体目录: {}", e))?;
+    let entries = std::fs::read_dir(&dir).map_err(|e| format!("无法读取字体目录: {}", e))?;
 
     for entry in entries {
         let entry = match entry {
@@ -238,6 +291,5 @@ pub fn delete_imported_font(name: String) -> Result<(), String> {
         return Err(format!("字体文件不存在: {}", safe_name));
     }
 
-    std::fs::remove_file(&file_path)
-        .map_err(|e| format!("删除字体文件失败: {}", e))
+    std::fs::remove_file(&file_path).map_err(|e| format!("删除字体文件失败: {}", e))
 }

@@ -57,7 +57,7 @@ const setRate = (path: string, rate: number) => {
 }
 
 const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif']
-const AUDIO_EXT = ['mp3', 'wav', 'ogg', 'flac', 'm4a']
+const AUDIO_EXT = ['mp3', 'wav', 'ogg', 'flac']
 
 const importAsset = async (kind: AssetKind, scope: AssetScope) => {
   const isImage = kind === 'background' || kind === 'pic'

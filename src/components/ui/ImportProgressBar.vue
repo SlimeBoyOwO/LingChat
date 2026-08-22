@@ -1,5 +1,31 @@
 <template>
   <Teleport to="body">
+    <!-- notice 卡片与 import/export 进度条独立，不进入同一个 <Transition>。 -->
+    <div
+      v-if="store.corrected.phase === 'active'"
+      class="notice fixed top-8 right-8 z-[10000] flex items-start gap-3 p-4 min-w-[320px] max-w-[420px] rounded-xl backdrop-blur-[20px]"
+    >
+      <div class="shrink-0 w-6 h-6 flex items-center justify-center text-amber-400">
+        <svg
+          xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+          class="w-6 h-6"
+        >
+          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          <line x1="12" y1="9" x2="12" y2="13" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="text-amber-400 font-bold text-sm">{{ store.corrected.title }}</div>
+        <div class="text-gray-200 text-xs mt-1 whitespace-pre-line break-words">{{ store.corrected.message }}</div>
+      </div>
+      <button
+        class="shrink-0 text-white/60 hover:text-white text-lg leading-none"
+        @click="dismissCorrected"
+      >×</button>
+    </div>
+
     <Transition name="slide-up">
       <div
         v-if="visible"
@@ -65,7 +91,7 @@
           <div class="text-white font-bold text-sm leading-tight truncate">{{ title }}</div>
           <div
             v-if="message"
-            class="text-gray-300 text-xs leading-tight break-all line-clamp-2"
+            class="text-gray-300 text-xs leading-tight break-all whitespace-pre-line"
           >{{ message }}</div>
 
           <div
@@ -136,7 +162,12 @@ const title = computed(() => {
 
 const message = computed(() => {
   const s = state.value
-  if (s.phase === 'error') return s.error || s.message
+  if (s.phase === 'error') {
+    const raw = s.error || s.message
+    // 后端返回的 i18n 错误码（如 ARCHIVE_MISSING_SETTINGS_YML）优先查翻译表，
+    // 找不到则 fallback 到原文（兼容后端其他字符串错误）。
+    return t(`ui.archiveProgress.errors.${raw}`, raw)
+  }
   return s.message
 })
 
@@ -201,7 +232,39 @@ function dismiss() {
   else store.resetExport()
 }
 
-onUnmounted(() => clearDismiss())
+function dismissCorrected() {
+  store.dismissCorrected()
+}
+
+let noticeTimer: number | null = null
+function clearNoticeTimer() {
+  if (noticeTimer !== null) {
+    window.clearTimeout(noticeTimer)
+    noticeTimer = null
+  }
+}
+function scheduleNoticeDismiss(ms: number) {
+  clearNoticeTimer()
+  noticeTimer = window.setTimeout(() => {
+    store.dismissCorrected()
+  }, ms)
+}
+
+watch(
+  () => store.corrected.phase,
+  (phase) => {
+    if (phase === 'active') {
+      scheduleNoticeDismiss(store.corrected.durationMs)
+    } else {
+      clearNoticeTimer()
+    }
+  },
+)
+
+onUnmounted(() => {
+  clearDismiss()
+  clearNoticeTimer()
+})
 </script>
 
 <style>
@@ -238,6 +301,12 @@ onUnmounted(() => clearDismiss())
   background: rgba(15, 15, 15, 0.55);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.notice {
+  background: rgba(15, 15, 15, 0.85);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
 [data-phase="running"].bar {

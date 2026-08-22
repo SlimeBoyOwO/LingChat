@@ -7,8 +7,10 @@ export interface WebSearchSettings {
   enabled: boolean
   /** true = 模型 API 内置联网（免 Key）；false = 独立搜索端点 + api_key */
   use_builtin: boolean
-  /** 独立端点模式的搜索提供商："kimi" | "bocha" | "custom"（仅 custom 用 base_url） */
+  /** 独立端点模式的搜索提供商："kimi" | "bocha" | "deepseek"  | "tavily" | "custom"（仅 custom 用 base_url） */
   provider: string
+  /** DeepSeek Responses API 使用的模型（仅 provider = "deepseek" 时生效） */
+  model: string
   api_key: string
   base_url: string
   proxy_enabled: boolean
@@ -30,6 +32,17 @@ export interface ToolSettings {
   file_delete_auto_approve: boolean
   /** 文件操作：允许访问沙箱（data/）之外的路径（默认关闭） */
   file_ops_allow_any_path: boolean
+}
+
+/** 后端按当前设备、模型、角色权限计算出的真实工具可用状态。 */
+export interface ToolRuntimeInfo {
+  platform: string
+  modelConfigured: boolean
+  nativeToolCallsSupported: boolean
+  commandAvailable: boolean
+  fileOpsAppSandboxOnly: boolean
+  registeredToolCount: number
+  allowedTools: string[]
 }
 
 /** 「其他工具」分组（与后端 TOOL_GROUPS 对齐；web_search 有独立设置区） */
@@ -240,6 +253,10 @@ export function clearToolCallRecords() {
 
 export function getToolSettings(): Promise<ToolSettings> {
   return invoke<ToolSettings>('get_tool_settings')
+}
+
+export function getToolRuntimeInfo(): Promise<ToolRuntimeInfo> {
+  return invoke<ToolRuntimeInfo>('get_tool_runtime_info')
 }
 
 export function saveToolSettings(settings: ToolSettings): Promise<void> {

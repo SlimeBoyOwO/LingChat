@@ -4255,6 +4255,7 @@ dependencies = [
  "if-addrs",
  "image",
  "indoc",
+ "infer",
  "mdns-sd",
  "once_cell",
  "ort",

@@ -193,6 +193,35 @@
       </div>
     </MenuItem>
 
+    <!-- HDR 模式（仅 Windows：WebView2 强制色彩配置在 HDR 下会发灰/发暗） -->
+    <MenuItem
+      v-if="isWindows()"
+      :title="$t('settings.background.hdr.title')"
+      size="large"
+    >
+      <template #header>
+        <Settings :size="20" />
+      </template>
+      <div class="flex flex-col gap-3">
+        <Toggle
+          :checked="hdrModeEnabled"
+          @change="settingsStore.setHdrModeEnabled($event)"
+        >
+          {{ $t('settings.background.hdr.enable') }}
+        </Toggle>
+        <p class="text-xs text-yellow-400/70">
+          {{ $t('settings.background.hdr.restartHint') }}
+        </p>
+        <button
+          class="self-start px-4 py-2 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-sm font-medium transition-colors hover:bg-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="!hdrChanged"
+          @click="restartApp"
+        >
+          {{ $t('settings.background.hdr.restartBtn') }}
+        </button>
+      </div>
+    </MenuItem>
+
     <MenuItem :title="$t('settings.background.animation.settingsTitle')" size="large">
       <template #header>
         <Sparkles :size="20" />
@@ -369,7 +398,8 @@ import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
-import { isAndroid } from '@/utils/platform'
+import { isAndroid, isWindows } from '@/utils/platform'
+import { relaunch } from '@tauri-apps/plugin-process'
 import {
   listScenes,
   createScene,
@@ -415,6 +445,23 @@ const mainMenuMeteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabl
 const globalMouseTrailEnabled = computed(() => settingsStore.globalMouseTrailEnabled)
 const clickAnimationEnabled = computed(() => settingsStore.clickAnimationEnabled)
 const sceneAwarenessEnabled = computed(() => settingsStore.sceneAwarenessEnabled)
+const hdrModeEnabled = computed(() => settingsStore.hdrModeEnabled)
+
+// 记录进入设置页时的初始值；开关改变后「立即重启」按钮才可用，改回原值则恢复置灰
+const initialHdrMode = ref(settingsStore.hdrModeEnabled)
+const hdrChanged = computed(() => settingsStore.hdrModeEnabled !== initialHdrMode.value)
+
+// 立即重启应用（HDR 模式等设置需重启后生效）
+async function restartApp() {
+  const ok = await dialogStore.confirm(t('settings.background.hdr.restartConfirm'))
+  if (!ok) return
+  try {
+    await relaunch()
+  } catch (e) {
+    console.error('重启失败:', e)
+    dialogStore.alert(t('settings.background.hdr.restartFailed'))
+  }
+}
 const meteorFps = computed({
   get: () => settingsStore.meteorFps,
   set: (value: number) => {

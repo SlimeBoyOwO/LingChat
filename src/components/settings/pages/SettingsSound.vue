@@ -347,6 +347,7 @@ import { useI18n } from 'vue-i18n'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Button, Slider } from '../../base'
 import { MenuItem, MenuPage } from '../../ui'
+import { musicDialogFilters } from '@/utils/dialogFilters'
 import {
   musicDelete,
   musicGetAll,
@@ -356,6 +357,7 @@ import {
 import { ambientGetAll, ambientUpload, ambientDelete, type AmbientItem } from '../../../api/services/ambient'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
+import { useRoleArchiveStore } from '../../../stores/modules/ui/role-archive'
 import { useSettingsStore } from '../../../stores/modules/settings'
 import {
   currentDeviceId,
@@ -367,6 +369,7 @@ import {
   setDevice,
   supported as audioOutputSupported,
 } from '../../../utils/audioOutputManager'
+import { decodePathFileName } from '../../../utils/path'
 import {
   AudioLines,
   FlaskConical,
@@ -393,6 +396,7 @@ import {
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 const dialogStore = useDialogStore()
+const roleStore = useRoleArchiveStore()
 const { t } = useI18n()
 
 // 状态绑定
@@ -573,7 +577,7 @@ const stopAllAmbient = () => {
 const triggerAmbientUpload = async () => {
   const selected = await openDialog({
     multiple: true,
-    filters: [{ name: 'Ambient', extensions: ['mp3', 'wav', 'flac', 'ogg', 'm4a'] }],
+    filters: musicDialogFilters(),
   })
   if (!selected) return
   selectedAmbientPaths.value = extractDialogPaths(selected)
@@ -597,19 +601,6 @@ const extractDialogPaths = (selected: unknown): string[] => {
     .filter((p: any) => typeof p === 'string' && p.length > 0)
 }
 
-/**
- * 从文件路径提取文件名，兼容 content:// URI（URL 编码）。
- * decodeURIComponent 遇到非法 % 序列会抛 URIError，这里兜底返回原值。
- */
-const decodePathFileName = (path: string): string => {
-  const last = path.split(/[\\/]/).pop() || path
-  try {
-    return decodeURIComponent(last).split('?')[0]
-  } catch {
-    return last.split('?')[0]
-  }
-}
-
 // 从服务端加载环境音列表
 const loadAmbientList = async () => {
   try {
@@ -625,7 +616,7 @@ const uploadAmbientFiles = async () => {
     await dialogStore.alert(t('settings.sound.ambient.selectFilesFirst'))
     return
   }
-  const allowedExts = ['.mp3', '.wav', '.flac', '.ogg', '.m4a']
+  const allowedExts = ['.mp3', '.wav', '.flac', '.ogg']
   try {
     // 串行上传（仅传源文件路径，Rust 侧复制）
     for (const path of selectedAmbientPaths.value) {
@@ -639,7 +630,11 @@ const uploadAmbientFiles = async () => {
     await loadAmbientList()
   } catch (error: any) {
     console.error('上传环境音失败:', error)
-    await dialogStore.alert(error.message || t('settings.sound.ambient.uploadFailed'))
+    const rawMsg = error.message || String(error)
+    const translated = rawMsg === 'MUSIC_INVALID_FORMAT'
+      ? t('ui.musicImport.errors.MUSIC_INVALID_FORMAT')
+      : rawMsg
+    await dialogStore.alert(translated || t('settings.sound.ambient.uploadFailed'))
   }
 }
 
@@ -763,26 +758,36 @@ const uploadMusic = async () => {
     return
   }
 
-  const allowedExts = ['.mp3', '.wav', '.flac', '.webm', '.weba', '.ogg', '.m4a']
-
   try {
-    // 串行上传（仅传源文件路径，Rust 侧复制）
+    // 串行上传（仅传源文件路径，Rust 侧复制 + magic 校验）
     for (const path of selectedPaths.value) {
       // content:// URI 文件名是 URL 编码的，解码后才是真实文件名
       const fileName = decodePathFileName(path)
-      const fileExt = fileName.slice(fileName.lastIndexOf('.')).toLowerCase()
-      if (!allowedExts.includes(fileExt)) {
-        throw new Error(t('settings.sound.common.unsupportedFormat', { name: fileName }))
+      const result = await musicUpload(path, fileName)
+      // 自动修正时弹顶部 amber notice
+      if (result.was_corrected) {
+        const originalExt = result.original_name.split('.').pop() || ''
+        roleStore.showCorrected({
+          title: t('ui.notice.autoCorrected.title'),
+          message: t('ui.notice.autoCorrected.music', {
+            original: result.original_name,
+            originalExt,
+            detected: result.detected_kind,
+            corrected: result.actual_name,
+          }),
+        })
       }
-      await musicUpload(path, fileName)
     }
 
     selectedPaths.value = []
     await loadMusicList()
-    // alert('音乐上传成功') // 可选提示
   } catch (error: any) {
     console.error('批量上传音乐出现问题:', error)
-    await dialogStore.alert(error.message || t('settings.sound.bgm.uploadFailed'))
+    const rawMsg = error.message || String(error)
+    const translated = rawMsg === 'MUSIC_INVALID_FORMAT'
+      ? t('ui.musicImport.errors.MUSIC_INVALID_FORMAT')
+      : rawMsg
+    await dialogStore.alert(translated || t('settings.sound.bgm.uploadFailed'))
   }
 }
 
@@ -829,9 +834,7 @@ const handleStop = () => {
 const triggerFileUpload = async () => {
   const selected = await openDialog({
     multiple: true,
-    filters: [
-      { name: 'Music', extensions: ['mp3', 'wav', 'flac', 'webm', 'weba', 'ogg', 'm4a'] },
-    ],
+    filters: musicDialogFilters(),
   })
   if (!selected) return
   selectedPaths.value = extractDialogPaths(selected)

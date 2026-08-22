@@ -509,6 +509,7 @@ import { MenuPage, MenuItem } from '../../ui'
 import { Slider, Text, Toggle, Button } from '../../base'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
+import { useRoleArchiveStore } from '../../../stores/modules/ui/role-archive'
 import { useSettingsStore } from '../../../stores/modules/settings'
 import { useGameStore } from '../../../stores/modules/game'
 import type { ConfigItem } from '@/api/services/config'
@@ -556,6 +557,7 @@ import type { DialogView } from '@/types/lanSync'
 const router = useRouter()
 const { t } = useI18n()
 const uiStore = useUIStore()
+const roleStore = useRoleArchiveStore()
 const settingsStore = useSettingsStore()
 const gameStore = useGameStore()
 const dialogStore = useDialogStore()
@@ -885,7 +887,7 @@ async function loadImportedFonts() {
 async function handleImportFont() {
   const selected = await openDialog({
     multiple: false,
-    filters: [{ name: '字体文件', extensions: ['ttf', 'woff2'] }],
+    filters: [{ name: '字体文件', extensions: ['ttf', 'otf', 'woff', 'woff2'] }],
   })
   if (!selected) return
 
@@ -893,22 +895,39 @@ async function handleImportFont() {
   if (!filePath) return
 
   try {
-    const info = await importFont(filePath)
-    registerFontFace(info.name, info.file_path)
+    const result = await importFont(filePath)
+    registerFontFace(result.font_family, result.file_path)
     clearImportedFontsCache()
     await loadImportedFonts()
+    // 发生自动修正时弹顶部 amber notice 提示用户
+    if (result.was_corrected) {
+      const originalExt = result.original_name.split('.').pop() || ''
+      roleStore.showCorrected({
+        title: t('ui.notice.autoCorrected.title'),
+        message: t('ui.notice.autoCorrected.font', {
+          original: result.original_name,
+          originalExt,
+          detected: result.detected_kind,
+          corrected: result.actual_name,
+        }),
+      })
+    }
     uiStore.showNotification({
       type: 'success',
       title: '字体导入成功',
-      message: `字体 "${info.name}" 已导入`,
+      message: `字体 "${result.font_family}" 已导入`,
       duration: 3000,
       skipTipsCheck: true,
     })
   } catch (error: any) {
+    const rawMsg = typeof error === 'string' ? error : error?.message || String(error)
+    const translated = rawMsg === 'FONT_INVALID_FORMAT'
+      ? t('ui.fontImport.errors.FONT_INVALID_FORMAT')
+      : rawMsg
     uiStore.showNotification({
       type: 'error',
       title: '字体导入失败',
-      message: typeof error === 'string' ? error : error.message || '导入失败',
+      message: translated,
       duration: 3000,
       skipTipsCheck: true,
     })

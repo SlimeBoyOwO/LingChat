@@ -92,6 +92,7 @@
         gap-4">
         <Toggle
           :checked="store.settings.autoApproveCommands"
+          :disabled="android"
           @change="(v: boolean) => (store.settings.autoApproveCommands = v)"
         >
           <span class="text-[0.86rem]">{{ t('scriptEditor.agentSettings.autoApprove') }}</span>
@@ -100,17 +101,22 @@
           class="-mt-2
             text-[0.72rem]
             text-white/40"
-          v-html="t('scriptEditor.agentSettings.autoApproveHint')"
+          v-html="
+            android
+              ? t('ui.toolCalls.commandWindowsOnly')
+              : t('scriptEditor.agentSettings.autoApproveHint')
+          "
         ></p>
 
         <Toggle
           :checked="store.settings.allowAnyPath"
+          :disabled="android"
           @change="(v: boolean) => (store.settings.allowAnyPath = v)"
         >
           <span class="text-[0.86rem]">{{ t('scriptEditor.agentSettings.allowAnyPath') }}</span>
         </Toggle>
         <p
-          v-if="store.settings.allowAnyPath"
+          v-if="store.settings.allowAnyPath && !android"
           class="-mt-2
             rounded-lg
             border
@@ -127,7 +133,11 @@
           class="-mt-2
             text-[0.72rem]
             text-white/40"
-          v-html="t('scriptEditor.agentSettings.allowAnyPathHint')"
+          v-html="
+            android
+              ? t('ui.toolCalls.androidFileScope')
+              : t('scriptEditor.agentSettings.allowAnyPathHint')
+          "
         ></p>
 
         <div class="rounded-lg
@@ -358,9 +368,11 @@ import { listLlmProviders } from '@/api/services/llm-providers'
 import { getAgentDefaultDirs, readAgentSkill } from '@/api/services/agent'
 import type { LlmProviderConfig } from '@/api/services/llm-providers'
 import { useAgentStore } from '@/stores/modules/agent'
+import { isAndroid } from '@/utils/platform'
 
 const { t } = useI18n()
 const store = useAgentStore()
+const android = isAndroid()
 
 const providers = ref<LlmProviderConfig[]>([])
 const preview = ref<{ name: string; content: string } | null>(null)

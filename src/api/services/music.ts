@@ -12,9 +12,16 @@ export const musicGetAll = async (): Promise<MusicTrack[]> => {
   }
 }
 
-export const musicUpload = async (path: string, fileName: string): Promise<void> => {
+export interface UploadMusicResult {
+  actual_name: string
+  original_name: string
+  detected_kind: string
+  was_corrected: boolean
+}
+
+export const musicUpload = async (path: string, fileName: string): Promise<UploadMusicResult> => {
   try {
-    await invoke('upload_music', { path, fileName })
+    return await invoke<UploadMusicResult>('upload_music', { path, fileName })
   } catch (error: any) {
     throw new Error(typeof error === 'string' ? error : error.message || 'Music upload failed')
   }

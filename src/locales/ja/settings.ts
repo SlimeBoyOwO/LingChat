@@ -629,6 +629,14 @@ export default {
       meteorFps: '流星フレームレート (FPS)',
       starsFps: '星フレームレート (FPS)',
     },
+    hdr: {
+      title: 'HDR 表示',
+      enable: 'HDR モードを有効化',
+      restartHint: '変更はアプリの再起動後に反映されます',
+      restartBtn: '今すぐ再起動',
+      restartConfirm: 'HDR モードは再起動後に反映されます。今すぐアプリを再起動しますか？',
+      restartFailed: '再起動に失敗しました。手動で再起動してください',
+    },
     perf: {
       title: '性能チェック',
       detecting: 'ハードウェア性能をチェック中…',

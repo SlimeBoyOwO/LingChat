@@ -445,7 +445,7 @@ const onNumber = (e: Event) => {
 }
 
 const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif']
-const AUDIO_EXT = ['mp3', 'wav', 'ogg', 'flac', 'm4a']
+const AUDIO_EXT = ['mp3', 'wav', 'ogg', 'flac']
 
 /**
  * 选一个文件导入。只把**路径**交给后端，由 Rust 自己复制 —— 与

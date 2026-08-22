@@ -2,6 +2,7 @@ import { onUnmounted } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { useRoleArchiveStore } from '@/stores/modules/ui/role-archive'
+import { decodePathFileName } from '@/utils/path'
 import {
   importRoleFromPath,
   exportRoleToPath,
@@ -110,27 +111,25 @@ export function useRoleImportExport() {
     }
     const filePath = typeof selected === 'string' ? selected : (selected as any).path
     if (!filePath) return
-    const fileName = filePath.split(/[\\/]/).pop() || filePath
-    const format = detectFormat(fileName)
-    if (!format) {
-      console.warn('[RoleArchive] pickAndImport \u4e0d\u652f\u6301\u7684\u683c\u5f0f:', fileName)
-      store.import.phase = 'error'
-      store.import.error = '\u4ec5\u652f\u6301 .zip / .7z \u683c\u5f0f'
-      return
-    }
+    // content:// URI \u672b\u6bb5\u662f URL \u7f16\u7801\u7684\uff08\u5982 `E6A998E585891784606515054.zip`\uff09\uff0c
+    // \u5fc5\u987b decode \u540e\u624d\u80fd\u5f97\u5230\u771f\u5b9e\u6587\u4ef6\u540d\uff08`\u8bfa\u4e00\u94a6\u7075.zip`\uff09\u3002
+    const fileName = decodePathFileName(filePath) || filePath
+    // \u6269\u5c55\u540d\u7f3a\u5931\u65f6\u4e0d\u518d\u786c\u62a5\u9519\uff1b\u540e\u7aef\u7528 magic \u51b3\u5b9a\u771f\u5b9e\u683c\u5f0f\u3002
+    const format: ArchiveFormat | undefined = detectFormat(fileName) ?? undefined
     await runImport(filePath, fileName, format, conflict)
   }
 
   async function runImport(
     filePath: string,
     fileName: string,
-    format: ArchiveFormat,
+    format: ArchiveFormat | undefined,
     conflict: ConflictPolicy,
   ) {
     store.resetImport()
     store.import.phase = 'running'
     store.import.fileName = truncateName(fileName)
-    store.import.format = format
+    // hint 可能为 undefined；用 'zip' 占位，等 result 返回后用真实格式覆盖。
+    store.import.format = format ?? 'zip'
     store.import.conflict = conflict
     store.import.startedAt = Date.now()
     console.log(
@@ -157,6 +156,7 @@ export function useRoleImportExport() {
       })
 
       store.import.result = result
+      store.import.format = result.format  // 后端 magic 决定的真实格式
       store.import.phase = 'done'
       store.import.percent = 100
       store.import.message = `\u5bfc\u5165\u6210\u529f: ${result.role_name}`

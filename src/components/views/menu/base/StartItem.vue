@@ -31,5 +31,7 @@
 <script setup lang="ts">
 import { inject } from 'vue'
 
+defineOptions({ inheritAttrs: false })
+
 const isUltraWide = inject<{ value: boolean }>('isUltraWide', { value: false })
 </script>

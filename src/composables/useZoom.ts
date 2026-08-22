@@ -81,6 +81,13 @@ function applyZoom(level: number): void {
     app.style.width = `calc(100vw / ${level})`
     app.style.height = `calc(100vh / ${level})`
   }
+  // 防御性归零页面级滚动：transform 方案下 #app 布局尺寸 = 视口 / z，超出视口
+  // 使 body 成为可滚动容器，任何 scrollIntoView/编程滚动都可能把 fixed 面板
+  // （containing block 是 #app）滚出视口。归零保证缩放后页面始终锚定原点。
+  // （源头修复见 SettingsNav：tab 指示条滚动已限定在 nav 容器内。）
+  window.scrollTo(0, 0)
+  document.body.scrollLeft = 0
+  document.body.scrollTop = 0
 }
 
 /**

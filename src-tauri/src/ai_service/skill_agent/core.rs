@@ -27,7 +27,10 @@ use crate::ai_service::types::{parse_tool_args, FunctionCall, LlmMessage, ToolCa
 pub type CancelFlag = Arc<AtomicBool>;
 
 /// 截断自动续跑时推给模型的纠正提示。只进内存 `messages`，不落库。
+#[cfg(desktop)]
 const CORRECTIVE_HINT: &str = "（系统提示：你上一条回复因输出长度上限被截断且未调用任何工具。请直接调用 write_file / execute_command 完成当前任务，不要再叙述计划。）";
+#[cfg(mobile)]
+const CORRECTIVE_HINT: &str = "（系统提示：你上一条回复因输出长度上限被截断且未调用任何工具。请直接调用 write_file 完成当前任务，不要再叙述计划。移动端不提供 execute_command。）";
 
 /// 截断自动续跑预算：最多补一次生成；再次截断仍无工具调用则按现状收尾。
 const RECOVERY_BUDGET: usize = 1;
@@ -85,22 +88,31 @@ fn build_system_prompt(
     skills_dir: &Path,
 ) -> String {
     let tool_names = tools::tool_names();
+    let platform = if cfg!(mobile) { "移动端" } else { "桌面" };
+    let command_guidance = if cfg!(mobile) {
+        "\n- 当前移动端不提供 execute_command，不能运行 shell 命令\
+         \n3. 不要尝试调用或编造 execute_command 结果；需要产出文件时使用 write_file"
+    } else {
+        "\n- execute_command 可能需要用户确认\
+         \n3. 需要运行本地命令时使用 execute_command；命令由系统 shell 执行，带空格的参数请用引号包裹（引号会原样传递）"
+    };
     let default = format!(
-        "你是运行在本机 LingChat 桌面应用里的 AI 剧本创作助手。你拥有以下能力：\
+        "你是运行在本机 LingChat {platform}应用里的 AI 剧本创作助手。你拥有以下能力：\
 \n- 调用工具完成真实操作：{tool_names}\
 \n- 通过 read_skill 加载技能指令后再执行任务\
 \n- 文件路径默认相对于文件沙箱根目录（{sandbox}）\
 \n- 技能目录：{skills_dir}（技能文件以 SKILL.md 存放，需要时可用 list_files / read_file 直接查看）\
-\n- execute_command 可能需要用户确认\
+{command_guidance}\
 \n使用规则：\
 \n1. 当任务匹配某个技能的描述时，先调用 read_skill 加载该技能，再按指令执行；已读取过的技能不要重复读取\
 \n2. 需要操作文件时使用 list_files / read_file / write_file / delete_file\
-\n3. 需要运行本地命令时使用 execute_command；命令由 cmd 执行，带空格的参数请用引号包裹（引号会原样传递）\
 \n4. 任务必须完成到产出物为止：读取技能、查询配色、运行搜索都只是中间步骤，最终必须调用 write_file 实际写出用户要求的文件，才算完成任务\
 \n5. 未写出文件之前禁止总结收尾，禁止以「已获取到所需信息」「以上就是设计建议」之类的说法结束回答；继续调用工具，直到文件真正创建成功\
 \n6. 写文件时一次性用 write_file 写完整内容，不要提前分段；只有当一次写入因参数过长而失败（报错会附带 [诊断] 提示）时，才改用 write_file（append=true）分段补齐\
 \n7. 文件范围受限时如实说明，不要编造文件内容",
         tool_names = tool_names,
+        platform = platform,
+        command_guidance = command_guidance,
         sandbox = sandbox_dir.display(),
         skills_dir = skills_dir.display(),
     );

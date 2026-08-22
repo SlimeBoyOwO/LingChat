@@ -115,8 +115,12 @@ pub async fn editor_agent_get_settings(app: AppHandle) -> AgentSettings {
 #[tauri::command]
 pub async fn editor_agent_save_settings(
     app: AppHandle,
-    settings: AgentSettings,
+    mut settings: AgentSettings,
 ) -> Result<(), String> {
+    if cfg!(mobile) {
+        settings.auto_approve_commands = false;
+        settings.allow_any_path = false;
+    }
     let store = app
         .store(crate::config::STORE_FILE)
         .map_err(|e| format!("无法打开设置存储: {}", e))?;
