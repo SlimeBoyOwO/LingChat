@@ -84,9 +84,10 @@ let asrStore: ReturnType<typeof useAsrStore> | null = null
 let gameStore: ReturnType<typeof useGameStore> | null = null
 
 // 关键修正：spec §3.0 用 showSettings，不是 settingsOpen
+// /chat（主界面）与 /pet（桌宠）都算聊天场景；设置抽屉打开时不可用
 const chatActive = computed(() => {
   if (!route || !uiStore) return false
-  return route.path === '/chat' && !uiStore.showSettings
+  return (route.path === '/chat' || route.path === '/pet') && !uiStore.showSettings
 })
 
 /** 拆除录音链路（不触发 recognize） */
@@ -144,8 +145,8 @@ function discardRecording() {
 // 任何一项满足即视为不可用。start() / startEnergyMonitor RMS 触发 / 按钮 enable 都查它。
 function canStartAsr(): boolean {
   if (!route || !uiStore || !gameStore) return false
-  // 6 + 7：路由/抽屉门控（chatActive 已是这两项的合成）
-  if (route.path !== '/chat' || uiStore.showSettings) return false
+  // 6 + 7：路由/抽屉门控（chatActive 已是这两项的合成；/chat 与 /pet 均可）
+  if ((route.path !== '/chat' && route.path !== '/pet') || uiStore.showSettings) return false
   // 9：LoadingTransition 启动动画未完成（§1.9）
   if (!gameStore.loadingComplete) return false
   // 1-3：核心对话状态
