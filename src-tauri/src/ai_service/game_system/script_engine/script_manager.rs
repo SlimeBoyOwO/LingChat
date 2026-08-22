@@ -298,6 +298,11 @@ impl ScriptManager {
         if !ctx.is_preview {
             let mut gs = ctx.game_status.lock().await;
             gs.script_start_line_len = Some(gs.line_list.len());
+            // 舞台状态同样拍快照：剧本演出里的 hide_character（"角色消失"）
+            // 会改写 onstage/present 集合，剧本结束时需要恢复到进剧本前的样子，
+            // 否则自由对话的立绘不再显示。
+            gs.script_start_onstage_ids = Some(gs.onstage_role_ids.clone());
+            gs.script_start_present_ids = Some(gs.present_role_ids.clone());
         }
         // Story previews are isolated from persistent state. Real runs may opt
         // in to a small allow-list of variables via `persistent_vars`.
@@ -591,6 +596,13 @@ impl ScriptManager {
                         tracing::warn!("[ScriptManager] 剧本结束后重建记忆失败: {:#}", e);
                     }
                 }
+            }
+            // 舞台状态恢复：剧本演出的 hide_character 不得带走自由对话的立绘
+            if let Some(onstage) = gs.script_start_onstage_ids.take() {
+                gs.onstage_role_ids = onstage;
+            }
+            if let Some(present) = gs.script_start_present_ids.take() {
+                gs.present_role_ids = present;
             }
         }
 

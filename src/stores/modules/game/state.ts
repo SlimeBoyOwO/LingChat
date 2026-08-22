@@ -69,6 +69,9 @@ export interface GameState {
 
   gameRoles: Record<number, GameRole>
   presentRoleIds: number[]
+  /** 进入剧本前的在场角色快照；剧本演出的 hide_character 会改写 presentRoleIds，
+      退出剧本时据此恢复，否则自由对话立绘消失（与后端 onstage/present 快照配套） */
+  preScriptRoleIds: number[] | null
   mainRoleId: number
   currentInteractRoleId: number | null
 
@@ -96,6 +99,7 @@ export const state: GameState = {
 
   gameRoles: {},
   presentRoleIds: [],
+  preScriptRoleIds: null,
   mainRoleId: -1,
   currentInteractRoleId: -1,
 

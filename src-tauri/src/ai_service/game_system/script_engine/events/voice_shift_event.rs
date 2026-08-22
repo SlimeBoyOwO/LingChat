@@ -20,9 +20,13 @@ use crate::ai_service::message_system::events::emit;
 /// 变速合法区间：过慢会听不懂，过快花栗鼠；限制在恐怖演出可用范围
 const MIN_RATE: f64 = 0.5;
 const MAX_RATE: f64 = 1.5;
+/// 音调偏移合法区间（半音数）：±12 即一个八度，恐怖演出一般用 -2 ~ -6
+const MIN_PITCH: f64 = -12.0;
+const MAX_PITCH: f64 = 12.0;
 
 pub struct VoiceShiftEvent {
     rate: f64,
+    pitch: f64,
     duration: Option<f64>,
 }
 
@@ -42,8 +46,23 @@ impl VoiceShiftEvent {
                 MAX_RATE
             );
         }
+        let raw_pitch = data
+            .get("pitch")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let pitch = raw_pitch.clamp(MIN_PITCH, MAX_PITCH);
+        if (raw_pitch - pitch).abs() > f64::EPSILON {
+            tracing::warn!(
+                "[VoiceShiftEvent] pitch {} 超出范围，已截断为 {}（合法区间 {}-{}）",
+                raw_pitch,
+                pitch,
+                MIN_PITCH,
+                MAX_PITCH
+            );
+        }
         Self {
             rate,
+            pitch,
             duration: parse_duration(data),
         }
     }
@@ -55,12 +74,16 @@ impl ScriptEvent for VoiceShiftEvent {
         // 存进剧本变量：跨章节保留，也可被 condition 引用（如 voice_rate != 1）
         if let Some(script_status) = ctx.game_status.lock().await.script_status.as_mut() {
             script_status.set_variable("voice_rate", json!(self.rate));
+            script_status.set_variable("voice_pitch", json!(self.pitch));
         }
 
         let _ = emit(
             ctx.app,
             SCRIPT_VOICE_SHIFT,
-            &VoiceShiftPayload { rate: self.rate },
+            &VoiceShiftPayload {
+                rate: self.rate,
+                pitch: self.pitch,
+            },
         );
 
         Ok(None)
@@ -90,6 +113,7 @@ mod tests {
     fn rate_defaults_to_one() {
         let e = VoiceShiftEvent::from_event_data(&json!({}));
         assert_eq!(e.rate, 1.0);
+        assert_eq!(e.pitch, 0.0);
     }
 
     #[test]
@@ -97,5 +121,12 @@ mod tests {
         assert_eq!(VoiceShiftEvent::from_event_data(&json!({"rate": 0.1})).rate, 0.5);
         assert_eq!(VoiceShiftEvent::from_event_data(&json!({"rate": 9.9})).rate, 1.5);
         assert_eq!(VoiceShiftEvent::from_event_data(&json!({"rate": 0.8})).rate, 0.8);
+    }
+
+    #[test]
+    fn pitch_is_clamped() {
+        assert_eq!(VoiceShiftEvent::from_event_data(&json!({"pitch": -99.0})).pitch, -12.0);
+        assert_eq!(VoiceShiftEvent::from_event_data(&json!({"pitch": 99.0})).pitch, 12.0);
+        assert_eq!(VoiceShiftEvent::from_event_data(&json!({"pitch": -4.0})).pitch, -4.0);
     }
 }

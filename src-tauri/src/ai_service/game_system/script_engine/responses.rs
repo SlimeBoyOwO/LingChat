@@ -258,10 +258,12 @@ pub struct ScriptEndPayload {
     pub completed: bool,
 }
 
-/// Voice shift：角色语音（TTS）播放倍率。<1 时因 preservesPitch=false 同时
-/// 降调，即剧本演出的"恶魔音"；1.0 恢复正常。
+/// Voice shift：角色语音（TTS）播放倍率 + 音调偏移。rate <1 时因
+/// preservesPitch=false 同时降调；pitch 为纯音调偏移（半音数，负数=低沉，
+/// 由前端 Web Audio detune 实现，不改变语速），两者可叠加。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VoiceShiftPayload {
     pub rate: f64,
+    pub pitch: f64,
 }

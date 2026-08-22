@@ -46,6 +46,65 @@ const applyVoiceRate = (audio: HTMLAudioElement, rate: number) => {
   controllable.playbackRate = rate > 0 ? rate : 1
 }
 
+// ---------- Web Audio 纯降调路径（voice_shift 的 pitch != 0 时启用） ----------
+// AudioBufferSourceNode.detune 以音分（1/100 半音）为单位做纯音调偏移，不改变语速；
+// 与 playbackRate（变速变调）可叠加。HTMLAudioElement 无此能力，故 pitch 模式走这里。
+let audioCtx: AudioContext | null = null
+let bufferSource: AudioBufferSourceNode | null = null
+let gainNode: GainNode | null = null
+const audioBufferCache = new Map<string, AudioBuffer>()
+
+const getAudioCtx = (): AudioContext => {
+  if (!audioCtx) audioCtx = new AudioContext()
+  return audioCtx
+}
+
+const loadVoiceBuffer = async (dataUrl: string): Promise<AudioBuffer> => {
+  const cached = audioBufferCache.get(dataUrl)
+  if (cached) return cached
+  const resp = await fetch(dataUrl)
+  const buf = await getAudioCtx().decodeAudioData(await resp.arrayBuffer())
+  audioBufferCache.set(dataUrl, buf)
+  return buf
+}
+
+const stopWebAudio = () => {
+  if (bufferSource) {
+    bufferSource.onended = null
+    try {
+      bufferSource.stop()
+    } catch {
+      // 未 start 或已停止：忽略
+    }
+    bufferSource.disconnect()
+    bufferSource = null
+  }
+  gainNode = null
+}
+
+const playVoiceWithPitch = async (dataUrl: string, volume: number) => {
+  stopWebAudio()
+  const buf = await loadVoiceBuffer(dataUrl)
+  const ctx = getAudioCtx()
+  if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
+  const src = ctx.createBufferSource()
+  src.buffer = buf
+  // 半音 → 音分
+  src.detune.value = uiStore.voicePitch * 100
+  src.playbackRate.value = uiStore.voiceRate > 0 ? uiStore.voiceRate : 1
+  const gain = ctx.createGain()
+  gain.gain.value = volume
+  src.connect(gain).connect(ctx.destination)
+  src.onended = () => {
+    if (bufferSource === src) bufferSource = null
+    onAudioEnded()
+  }
+  bufferSource = src
+  gainNode = gain
+  src.start()
+  emit('audio-started')
+}
+
 const lightOverlayStyle = computed(() => {
   const l = gameStore.currentScene?.lighting
   if (!l?.overlay_enabled) return undefined
@@ -65,15 +124,25 @@ watch(
     if (newAudio === 'None' || !newAudio) {
       mainAudio.value.pause()
       mainAudio.value.currentTime = 0
+      stopWebAudio()
       return
     }
 
     if (newAudio && newAudio !== 'None') {
       try {
         const dataUrl = await getVoiceAudio(newAudio)
+        const volume = uiStore.characterVolume / 100
+        if (uiStore.voicePitch !== 0) {
+          // 纯降调模式：走 Web Audio detune（不变速），与 HTMLAudio 路径互斥
+          mainAudio.value.pause()
+          mainAudio.value.currentTime = 0
+          await playVoiceWithPitch(dataUrl, volume)
+          return
+        }
+        stopWebAudio()
         mainAudio.value.src = dataUrl
         mainAudio.value.load()
-        mainAudio.value.volume = uiStore.characterVolume / 100
+        mainAudio.value.volume = volume
         // 剧本 voice_shift 恶魔音：降低播放倍率并关闭保音高。
         applyVoiceRate(mainAudio.value, uiStore.voiceRate)
         mainAudio.value.play().catch((e) => console.error('播放失败', e))
@@ -89,6 +158,7 @@ watch(
   () => uiStore.characterVolume,
   (v) => {
     if (mainAudio.value) mainAudio.value.volume = v / 100
+    if (gainNode) gainNode.gain.value = v / 100
   },
 )
 
@@ -97,6 +167,15 @@ watch(
   () => uiStore.voiceRate,
   (rate) => {
     if (mainAudio.value) applyVoiceRate(mainAudio.value, rate)
+    if (bufferSource) bufferSource.playbackRate.value = rate > 0 ? rate : 1
+  },
+)
+
+// 音调偏移（半音 → 音分）在播放途中同样即时生效
+watch(
+  () => uiStore.voicePitch,
+  (pitch) => {
+    if (bufferSource) bufferSource.detune.value = pitch * 100
   },
 )
 
@@ -110,6 +189,7 @@ const stopAudio = () => {
     mainAudio.value.pause()
     mainAudio.value.currentTime = 0
   }
+  stopWebAudio()
 }
 
 defineExpose({

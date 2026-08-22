@@ -107,11 +107,12 @@ export function initializeTauriEventListeners() {
     clearToolCallPreparing()
   })
 
-  // 剧本 voice_shift：调整角色语音播放倍率（<1 降调=恶魔音，1.0 恢复）
+  // 剧本 voice_shift：调整角色语音播放倍率与音调（rate<1 降调=恶魔音；pitch 纯降调半音数，0 恢复）
   listen('script:voice-shift', (event) => {
-    const payload = event.payload as { rate?: number }
+    const payload = event.payload as { rate?: number; pitch?: number }
     const uiStore = useUIStore()
     uiStore.voiceRate = typeof payload.rate === 'number' && payload.rate > 0 ? payload.rate : 1
+    uiStore.voicePitch = typeof payload.pitch === 'number' ? payload.pitch : 0
   })
 
   // 工具调用结果：记入「工具调用」页面历史 + 左上角弹通知

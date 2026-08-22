@@ -96,6 +96,11 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
     if (uiStore.preScriptBackground === null) {
       uiStore.preScriptBackground = useSettingsStore().display.currentBackground
     }
+    // 在场角色快照：剧本演出的 hide_character（结局"角色消失"）会改写
+    // presentRoleIds，退出时必须恢复，否则自由对话立绘消失
+    if (this.preScriptRoleIds === null) {
+      this.preScriptRoleIds = [...this.presentRoleIds]
+    }
     uiStore.bgmPersistBlocked = true
     uiStore.bgMusicMode = 'loop-single'
     // 进入新剧本前清掉可能残留的恐怖特效（上次异常退出/重启等情况）
@@ -139,6 +144,15 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
     for (const id of this.presentRoleIds) {
       const role = this.gameRoles[id]
       if (role) role.emotion = '正常'
+    }
+    // 在场角色还原：剧本演出的 hide_character（角色消失）不得带走自由对话立绘
+    if (this.preScriptRoleIds !== null) {
+      this.presentRoleIds = this.preScriptRoleIds
+      this.preScriptRoleIds = null
+      for (const id of this.presentRoleIds) {
+        const role = this.gameRoles[id]
+        if (role) role.emotion = '正常'
+      }
     }
     // 后端剧本任务可能还阻塞在输入等待上：丢掉发送端让它走统一收尾，
     // 否则 is_running 卡死会导致「重置记忆」一直被拒、重进剧本起双任务

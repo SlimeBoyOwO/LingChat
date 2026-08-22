@@ -52,6 +52,12 @@ pub struct GameStatus {
     /// 对齐编辑器试玩 PreviewSession 的隔离策略。
     pub script_start_line_len: Option<usize>,
 
+    /// 正式剧本开始时的舞台状态快照（上场/在场角色集合）。剧本演出里的
+    /// `hide_character`（结局"角色消失"）会把角色从舞台上拿掉；若不在剧本
+    /// 结束时恢复，自由对话的立绘就再也显示不出来。
+    pub script_start_onstage_ids: Option<Vec<i32>>,
+    pub script_start_present_ids: Option<HashSet<i32>>,
+
     /// 当前激活的存档 ID（用于 MemoryBank 持久化/载入/自动压缩）
     pub active_save_id: Option<i32>,
 
@@ -91,6 +97,8 @@ impl GameStatus {
             last_dialog_time: None,
             script_status: None,
             script_start_line_len: None,
+            script_start_onstage_ids: None,
+            script_start_present_ids: None,
             active_save_id: None,
             preview_generation: 0,
             player_entered: false,

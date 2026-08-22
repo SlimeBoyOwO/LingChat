@@ -51,6 +51,9 @@ interface UIState {
   currentAvatarAudio: string
   /** 角色语音（TTS）播放倍率，由剧本 voice_shift 事件设置；<1 降调=恶魔音，1.0 正常 */
   voiceRate: number
+  /** 角色语音纯音调偏移（半音数，负数=低沉），由剧本 voice_shift 事件设置；0 正常。
+   *  经 Web Audio detune 实现，不改变语速，可与 voiceRate 叠加 */
+  voicePitch: number
   /** 进入剧本前的自由对话 BGM（会话级，退出剧本时恢复；null = 不在剧本中） */
   preScriptBgm: string | null
   /** 进入剧本前的 BGM 循环模式（同上，随 preScriptBgm 一起恢复） */
@@ -153,6 +156,7 @@ export const useUIStore = defineStore('ui', {
     currentSoundEffect: 'None',
     currentAvatarAudio: 'None',
     voiceRate: 1,
+    voicePitch: 0,
     preScriptBgm: null,
     preScriptBgmMode: null,
     preScriptBackground: null,
@@ -312,6 +316,7 @@ export const useUIStore = defineStore('ui', {
       this.spriteFlash = null
       // 恶魔音残留一并清理（剧本结束/进入/启动时都会走到这里）
       this.voiceRate = 1
+      this.voicePitch = 0
       // BSOD 的剧本自带文本一并清掉，回到通用默认
       this.bsodText = ''
       this.bsodEcho = ''
