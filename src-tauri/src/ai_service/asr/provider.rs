@@ -210,10 +210,15 @@ impl AsrProvider for QwenAsrProvider {
         wav_bytes: Vec<u8>,
         language_hint: Option<&str>,
     ) -> Result<AsrResult, AsrError> {
-        let endpoint = if self.cred.normalized_endpoint().is_empty() {
-            Self::DEFAULT_ENDPOINT.to_string()
-        } else {
-            self.cred.normalized_endpoint()
+        // 非流式端点校验：仅接受 http(s) URL。流式预设（wss://...）或空值
+        // 一律回退默认 HTTP 端点——否则 reqwest 对 wss:// 报 builder error。
+        let endpoint = {
+            let e = self.cred.normalized_endpoint();
+            if e.is_empty() || !(e.starts_with("http://") || e.starts_with("https://")) {
+                Self::DEFAULT_ENDPOINT.to_string()
+            } else {
+                e
+            }
         };
 
         // DashScope 非实时 Fun-ASR-Realtime 协议（multimodal-generation）：
