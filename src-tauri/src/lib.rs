@@ -504,7 +504,6 @@ pub fn run() {
                     auto_save_manager: auto_save_manager.clone(),
                     asr_state: Arc::new(ai_service::asr::AsrState {
                         session: Arc::new(tokio::sync::Mutex::new(None)),
-                        hotkey: ai_service::asr::hotkey::AsrHotkey::new(),
                     }),
                     god_agent,
                     skill_agent: Arc::new(ai_service::skill_agent::SkillAgentState::default()),
@@ -852,8 +851,6 @@ pub fn run() {
             api::asr::asr_get_settings,
             api::asr::asr_set_settings,
             api::asr::asr_test_provider,
-            api::asr::asr_register_hotkey,
-            api::asr::asr_unregister_hotkey,
             api::asr::asr_start_streaming,
             api::asr::asr_stream_audio_chunk,
             api::asr::asr_stop_streaming,

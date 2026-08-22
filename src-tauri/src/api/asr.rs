@@ -304,30 +304,6 @@ pub async fn asr_list_models(provider_id: String) -> Vec<provider::ModelInfo> {
 }
 
 #[tauri::command]
-pub async fn asr_register_hotkey(
-    combo: String,
-    app: AppHandle,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    state
-        .asr_state
-        .hotkey
-        .register(&app, &combo)
-        .await
-        .map_err(|e| e.i18n_code().to_string())
-}
-
-#[tauri::command]
-pub async fn asr_unregister_hotkey(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    state
-        .asr_state
-        .hotkey
-        .unregister()
-        .await
-        .map_err(|e| e.i18n_code().to_string())
-}
-
-#[tauri::command]
 pub async fn asr_get_settings(app: AppHandle) -> Result<AsrSettings, String> {
     settings::load(&app).map_err(|e| e.i18n_code().to_string())
 }

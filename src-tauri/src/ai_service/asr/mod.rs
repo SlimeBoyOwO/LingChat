@@ -6,7 +6,6 @@
 //! 配置由 [`settings`] 通过 tauri_plugin_store 持久化。
 
 pub mod error;
-pub mod hotkey;
 pub mod provider;
 pub mod provider_stream;
 pub mod session;
@@ -22,8 +21,6 @@ use tokio::sync::Mutex;
 /// `session` 字段在 `init::initialize` 之前为 `None`；命令侧需自行处理"未初始化"。
 pub struct AsrState {
     /// 当前活跃的 ASR 会话。`None` 表示未启动或 init 失败。
-    /// 互斥：同一时刻最多一个 `AsrSource`（Button / Hotkey / Auto）。
+    /// 互斥：同一时刻最多一个 `AsrSource`（Button / Auto）。
     pub session: Arc<Mutex<Option<crate::ai_service::asr::session::AsrSession>>>,
-    /// 系统级全局快捷键（后台可触发；前端 window keydown 监听只在聚焦时生效）。
-    pub hotkey: hotkey::AsrHotkey,
 }

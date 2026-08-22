@@ -52,8 +52,6 @@ impl ProviderConfig {
 pub struct AsrSettings {
     pub active_provider: String,
     pub auto_listen: bool,
-    pub hotkey_enabled: bool,
-    pub hotkey_combination: String,
     pub send_mode: SendMode,
     pub stream_enabled: bool,
     pub voice_input_enabled: bool,
@@ -70,8 +68,6 @@ impl AsrSettings {
         Self {
             active_provider: "qwen-asr".into(),
             auto_listen: false,
-            hotkey_enabled: false,
-            hotkey_combination: "Ctrl+Shift+Space".into(),
             send_mode: SendMode::FillOnly,
             stream_enabled: false,
             voice_input_enabled: true,
@@ -89,10 +85,6 @@ const STORE_KEY_PREFS: &str = "ASR_PREFS";
 pub struct AsrPrefs {
     #[serde(default)]
     pub auto_listen: bool,
-    #[serde(default)]
-    pub hotkey_enabled: bool,
-    #[serde(default)]
-    pub hotkey_combination: String,
     #[serde(default)]
     pub send_mode: SendMode,
     #[serde(default)]
@@ -112,8 +104,6 @@ impl AsrPrefs {
     fn from_settings(s: &AsrSettings) -> Self {
         Self {
             auto_listen: s.auto_listen,
-            hotkey_enabled: s.hotkey_enabled,
-            hotkey_combination: s.hotkey_combination.clone(),
             send_mode: s.send_mode.clone(),
             stream_enabled: s.stream_enabled,
             voice_input_enabled: s.voice_input_enabled,
@@ -122,8 +112,6 @@ impl AsrPrefs {
 
     fn apply_to(&self, s: &mut AsrSettings) {
         s.auto_listen = self.auto_listen;
-        s.hotkey_enabled = self.hotkey_enabled;
-        s.hotkey_combination = self.hotkey_combination.clone();
         s.send_mode = self.send_mode.clone();
         s.stream_enabled = self.stream_enabled;
         s.voice_input_enabled = self.voice_input_enabled;
