@@ -173,8 +173,10 @@ function updateAsrAvailability(): void {
   if (wantMonitor) {
     startEnergyMonitor()
   } else {
-    // 不可用 → 拆掉在飞录音 + 停能量监测
-    if (phase.value === 'recording' || phase.value === 'recognizing') {
+    // 不可用 → 拆掉在飞录音 + 停能量监测。
+    // 仅 recording 丢弃；recognizing 是收尾中（云端在飞识别不取消，§4 不变量），
+    // 让 handle() 自然处理结果——否则关闭 auto_listen 会掐断正在识别的会话丢话。
+    if (phase.value === 'recording') {
       // 诊断：丢弃会话是"录音意外停止"的最可能路径，暴露触发原因
       console.log('[ASR] updateAsrAvailability 丢弃会话', {
         phase: phase.value,
@@ -218,6 +220,21 @@ export function setMobileMenuOpen(open: boolean): void {
 export function lockAsrForDisplay(ms: number): void {
   asrLockedUntil = Date.now() + ms
   updateAsrAvailability()
+}
+
+/** GameDialog / hotkey 调用：关闭自动语音输入（录音中先收尾识别，不丢话） */
+export function turnOffAutoListen() {
+  const settings = asrStore?.settings
+  if (!settings) return
+  // auto 录音中：先 stop() 收尾（同步置 recognizing，异步走
+  // doStreamFinish/doRecognize 完整识别链路），updateAsrAvailability
+  // 对 recognizing 不丢弃（上述丢弃分支），识别结果照常按 send_mode 处理
+  if (phase.value === 'recording' && activeSource.value === 'auto') {
+    stop()
+  }
+  settings.auto_listen = false
+  updateAsrAvailability()
+  void asrStore?.save(settings).catch((e) => console.warn('[ASR] save failed:', e))
 }
 
 // ── VAD 流（auto 模式）：每 512 samples（30ms @ 16k）喂后端 ──
@@ -585,13 +602,10 @@ function ensureInit() {
   )
   // 按下 → 开始录音；释放 → 停止（RegisterHotKey 只有按下通知，释放由后端轮询检测）
   listen('asr://hotkey_down', () => {
-    const settings = asrStore?.settings
-    // auto_listen 排他模式：快捷键 = 关闭自动语音输入（Task 3 起收敛到 turnOffAutoListen）
-    if (settings?.auto_listen) {
+    // auto_listen 排他模式：快捷键 = 关闭自动语音输入（录音中先收尾）
+    if (asrStore?.settings.auto_listen) {
       console.log('[ASR] hotkey: 关闭自动语音输入')
-      settings.auto_listen = false
-      updateAsrAvailability()
-      void asrStore?.save(settings).catch((e) => console.warn('[ASR] save failed:', e))
+      turnOffAutoListen()
       return
     }
     if (canStartAsr() && phase.value === 'idle') {
@@ -677,5 +691,6 @@ export function useAsrInput() {
     handle,
     cancel: () => asrCancel(),
     canStartAsr,
+    turnOffAutoListen,
   }
 }
