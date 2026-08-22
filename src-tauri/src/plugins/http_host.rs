@@ -4,6 +4,7 @@
 //! 复用 `factory::build_http_client`（webpki-roots，Android 兼容）。
 //! 返回 Python dict：`{ status, ok, body }`，body 为解析后的 JSON。
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
@@ -13,6 +14,7 @@ use rustpython_vm::{
 };
 
 use crate::ai_service::llm::factory;
+use crate::plugins::types::NetworkDecl;
 
 /// 全局共享的 reqwest Client（连接池复用，进程内单例）。
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
@@ -20,6 +22,73 @@ static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 /// 插件脚本在 spawn_blocking 线程执行，线程上无 tokio runtime 上下文；
 /// reqwest 是异步 client，需要 tokio reactor，这里用独立多线程 runtime 驱动。
 static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+
+/// 当前线程（正在执行的插件脚本）的网络白名单。
+///
+/// 由 `run_plugin_script` 在进入解释器前设置、执行完毕后清除；
+/// `http_get/http_post` 请求前必须通过 [`check_url_allowed`]。
+thread_local! {
+    static ACTIVE_NETWORK: RefCell<Vec<NetworkDecl>> = const { RefCell::new(Vec::new()) };
+}
+
+/// 设置当前线程（插件脚本执行）的网络白名单。
+pub(crate) fn set_active_network(decls: Vec<NetworkDecl>) {
+    ACTIVE_NETWORK.with(|n| *n.borrow_mut() = decls);
+}
+
+/// 清除当前线程的网络白名单（脚本执行结束）。
+pub(crate) fn clear_active_network() {
+    ACTIVE_NETWORK.with(|n| n.borrow_mut().clear());
+}
+
+/// 校验 URL 是否被当前白名单放行。
+///
+/// 匹配规则（与市场审核规则 11/13 同源，客户端侧兜底）：
+/// - 白名单为空 → 拒绝一切外部请求（fail-closed）
+/// - `https_only` 声明（默认 true）→ 拒绝 http
+/// - host 精确匹配（忽略大小写，可带端口）；不带端口声明时接受任意端口
+/// - 声明了 paths → 请求路径必须以其中某个前缀开头
+fn check_url_allowed(url: &str) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(url).map_err(|e| format!("非法 URL: {e}"))?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return Err(format!("URL scheme 非法（仅支持 http/https）: {url}"));
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "URL 缺少主机名".to_string())?
+        .to_lowercase();
+    let port = parsed.port_or_known_default();
+    let path = parsed.path().to_string();
+
+    let allowed = ACTIVE_NETWORK.with(|n| n.borrow().clone());
+    if allowed.is_empty() {
+        return Err("插件未声明网络白名单（manifest [[network]]），禁止外部请求".to_string());
+    }
+
+    for decl in &allowed {
+        if decl.https_only && parsed.scheme() != "https" {
+            continue;
+        }
+        // 拆声明 host 与端口（is_clean_host 已保证格式，此处仅解析）
+        let (decl_name, decl_port) = match decl.host.to_lowercase().rsplit_once(':') {
+            Some((n, p)) => (n.to_string(), p.parse::<u16>().ok()),
+            None => (decl.host.to_lowercase(), None),
+        };
+        if host != decl_name {
+            continue;
+        }
+        if let Some(dp) = decl_port {
+            if port != Some(dp) {
+                continue;
+            }
+        }
+        if !decl.paths.is_empty() && !decl.paths.iter().any(|p| path.starts_with(p.as_str())) {
+            continue;
+        }
+        return Ok(());
+    }
+    Err(format!("URL 不在插件网络白名单内: {url}"))
+}
 
 fn client() -> &'static reqwest::Client {
     HTTP_CLIENT.get_or_init(|| {
@@ -140,12 +209,15 @@ mod plugin_host {
     /// 执行 HTTP GET。
     ///
     /// 用法：`ctx.http_get(url, query={...}, headers={...}, timeout_ms=30000)`
+    ///
+    /// URL 必须命中 manifest `[[network]]` 白名单，否则抛 ValueError。
     #[pyfunction]
     fn http_get(
         url: String,
         kwargs: KwArgs<PyObjectRef>,
         vm: &VirtualMachine,
     ) -> PyResult<PyObjectRef> {
+        super::check_url_allowed(&url).map_err(|e| vm.new_value_error(e))?;
         let kwargs = super::kwargs_map(kwargs);
         let timeout = super::kw_timeout(vm, &kwargs);
         let req = super::client()
@@ -159,12 +231,15 @@ mod plugin_host {
     /// 执行 HTTP POST（JSON body）。
     ///
     /// 用法：`ctx.http_post(url, headers={...}, body={...}, timeout_ms=30000)`
+    ///
+    /// URL 必须命中 manifest `[[network]]` 白名单，否则抛 ValueError。
     #[pyfunction]
     fn http_post(
         url: String,
         kwargs: KwArgs<PyObjectRef>,
         vm: &VirtualMachine,
     ) -> PyResult<PyObjectRef> {
+        super::check_url_allowed(&url).map_err(|e| vm.new_value_error(e))?;
         let kwargs = super::kwargs_map(kwargs);
         let timeout = super::kw_timeout(vm, &kwargs);
         let req = super::client()

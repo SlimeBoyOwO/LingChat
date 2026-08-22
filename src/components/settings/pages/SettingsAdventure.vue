@@ -285,7 +285,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, onActivated, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -294,7 +294,9 @@ import { Button } from '@/components/base'
 import AdventurePanel from './Adeventure/AdventurePanel.vue'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
+import { useAdventureStore } from '@/stores/modules/adventure'
 import { getAvatarFile } from '@/api/services/character'
+import { onMarketChanged } from '@/api/services/market'
 import { Birdhouse, Book, FileText, UserPlus } from 'lucide-vue-next'
 import { getStandaloneScriptList, startScript as startScriptApi } from '@/api/services/script-info'
 import type { ScriptSummary } from '@/api/services/script-info'
@@ -302,9 +304,11 @@ import type { ScriptSummary } from '@/api/services/script-info'
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const router = useRouter()
+const adventureStore = useAdventureStore()
 // 独立剧本相关状态
 const standaloneScripts = ref<ScriptSummary[]>([])
 const standaloneScriptsLoading = ref(true)
+let unlistenMarketChanged: (() => void) | null = null
 
 // 获取当前主角
 const currentCharacter = computed(() => gameStore.mainRole)
@@ -369,10 +373,35 @@ const openGuideWeb = () => {
   openUrl('https://slimeboyowo.github.io/LingBlog/blog/projects/ling-chat/script-guide')
 }
 
-// 组件挂载时获取独立剧本列表
+// 组件挂载时订阅市场变更（安装/卸载剧本包后自动刷新）。
+// 首次展示与每次切回本页由 onActivated 统一拉取（KeepAlive 缓存下 onMounted 不重跑）
 onMounted(() => {
-  fetchStandaloneScripts()
+  unlistenMarketChanged = onMarketChanged(() => {
+    fetchStandaloneScripts()
+    refreshAdventures()
+  })
 })
+
+// KeepAlive 缓存下每次切回本页重新拉取（剧本被删除/安装后引擎内存已重扫，
+// 但本页实例不会重挂载，必须手动刷新才能看到最新列表）
+onActivated(() => {
+  fetchStandaloneScripts()
+  refreshAdventures()
+})
+
+onUnmounted(() => {
+  unlistenMarketChanged?.()
+})
+
+async function refreshAdventures() {
+  const folder = gameStore.mainRole?.character_folder
+  if (!folder) return
+  try {
+    await adventureStore.fetchCharacterAdventures(folder)
+  } catch (e) {
+    console.error('[SettingsAdventure] 刷新羁绊冒险失败:', e)
+  }
+}
 </script>
 
 <style scoped>

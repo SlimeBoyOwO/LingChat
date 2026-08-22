@@ -66,6 +66,65 @@ fn default_timeout_ms() -> u64 {
     30_000
 }
 
+/// 网络白名单声明：插件脚本可访问的 URL（审核比对与运行时强制共用）。
+///
+/// 对应 manifest `[[network]]`。运行时 `http_get/http_post` 仅放行
+/// 与某条声明匹配的请求：精确 host（可带端口）+ 可选路径前缀 + https 限制。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NetworkDecl {
+    /// 精确域名（不含 scheme / path / query），可带端口，如 `api.tavily.com`。
+    pub host: String,
+    /// 可选：仅放行这些路径前缀（须以 `/` 开头，不含 query/fragment）。
+    #[serde(default)]
+    pub paths: Vec<String>,
+    /// 仅允许 https；默认 true。
+    #[serde(default = "default_https_only")]
+    pub https_only: bool,
+}
+
+fn default_https_only() -> bool {
+    true
+}
+
+/// call_tool 写工具声明：插件脚本可调用且不在读工具集内的工具名。
+///
+/// 对应 manifest `[[permissions.tools]]`。读工具（时钟/状态/只读查询）免声明。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PermissionToolDecl {
+    pub name: String,
+}
+
+/// `[[permissions]]` 段（当前只有 tools 子段）。
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PermissionsSection {
+    #[serde(default)]
+    pub tools: Vec<PermissionToolDecl>,
+}
+
+/// 大文件声明（>5MB 资源，不进 git，独立下载通道）。
+///
+/// 对应 manifest `[[assets]]`。安装时客户端不随 zip 附带这些文件，
+/// 需按 `url` 单独下载并校验 sha256 后放入 payload 对应位置。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AssetDecl {
+    pub name: String,
+    /// 下载地址（市场仓库 Releases，审核时已验证）。
+    pub url: String,
+    /// 完整 sha256（64 位 hex），安装时校验。
+    pub sha256: String,
+    /// 字节数。
+    pub size: u64,
+}
+
+/// `[content]` 段：市场内容元信息（分类/标签），展示用，不影响运行。
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ContentMeta {
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
 /// 插件 manifest（manifest.toml）。
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -74,6 +133,10 @@ pub struct PluginManifest {
     pub name: String,
     pub description: String,
     pub version: String,
+    /// 包类型：`plugin` / `character` / `script` / `voice`（默认 `plugin`，
+    /// 兼容旧的手动安装插件）。TOML 字段名是 `type`。
+    #[serde(rename = "type", default = "default_package_type")]
+    pub package_type: String,
     #[serde(default)]
     pub author: Option<String>,
     #[serde(default)]
@@ -82,6 +145,22 @@ pub struct PluginManifest {
     pub env: Vec<EnvDecl>,
     #[serde(default)]
     pub tools: Vec<ToolSpec>,
+    /// 网络白名单（`[[network]]`），空 = 禁止任何外部请求。
+    #[serde(default)]
+    pub network: Vec<NetworkDecl>,
+    /// call_tool 声明（`[[permissions.tools]]`）。
+    #[serde(default)]
+    pub permissions: PermissionsSection,
+    /// 大文件声明（`[[assets]]`）。
+    #[serde(default)]
+    pub assets: Vec<AssetDecl>,
+    /// 市场内容元信息（`[content]`）。
+    #[serde(default)]
+    pub content: Option<ContentMeta>,
+}
+
+fn default_package_type() -> String {
+    "plugin".to_string()
 }
 
 /// 插件运行期状态（含持久化开关与配置）。
@@ -124,6 +203,15 @@ pub struct PluginInfo {
     pub config_schema: Vec<ConfigFieldDecl>,
     pub env: Vec<EnvDecl>,
     pub tools: Vec<String>,
+    /// 网络白名单（供设置页展示权限）。
+    #[serde(default)]
+    pub network: Vec<NetworkDecl>,
+    /// call_tool 声明工具名。
+    #[serde(default)]
+    pub declared_tools: Vec<String>,
+    /// 大文件声明。
+    #[serde(default)]
+    pub assets: Vec<AssetDecl>,
     pub error: Option<String>,
 }
 
@@ -139,6 +227,15 @@ impl From<&PluginRecord> for PluginInfo {
             config_schema: record.manifest.config.clone(),
             env: record.manifest.env.clone(),
             tools: record.manifest.tools.iter().map(|t| t.name.clone()).collect(),
+            network: record.manifest.network.clone(),
+            declared_tools: record
+                .manifest
+                .permissions
+                .tools
+                .iter()
+                .map(|t| t.name.clone())
+                .collect(),
+            assets: record.manifest.assets.clone(),
             error: record.error.clone(),
         }
     }

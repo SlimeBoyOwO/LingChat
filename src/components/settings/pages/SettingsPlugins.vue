@@ -67,6 +67,34 @@
             </div>
           </div>
 
+          <!-- 网络白名单 -->
+          <div v-if="plugin.network?.length" class="mt-3">
+            <p class="text-[11px] text-white/50 mb-1">{{ $t('settings.plugins.networkHint') }}</p>
+            <div class="flex flex-wrap gap-1.5">
+              <span
+                v-for="(decl, i) in plugin.network"
+                :key="i"
+                class="text-[11px] px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-white/70 font-mono"
+              >
+                {{ decl.https_only ? 'https' : 'http' }}://{{ decl.host }}{{ decl.paths?.length ? ' ' + decl.paths.join(' ') : '' }}
+              </span>
+            </div>
+          </div>
+
+          <!-- call_tool 声明工具 -->
+          <div v-if="plugin.declared_tools?.length" class="mt-3">
+            <p class="text-[11px] text-white/50 mb-1">{{ $t('settings.plugins.declaredToolsHint') }}</p>
+            <div class="flex flex-wrap gap-1.5">
+              <span
+                v-for="name in plugin.declared_tools"
+                :key="name"
+                class="text-[11px] px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-200/80 font-mono"
+              >
+                {{ name }}
+              </span>
+            </div>
+          </div>
+
           <!-- 配置表单 -->
           <div v-if="plugin.config_schema.length" class="mt-3 space-y-2.5">
             <div

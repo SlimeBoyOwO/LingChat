@@ -1,8 +1,13 @@
 name: 安卓测试版构建
 
 on:
-  # push:
-  #  branches: ['dev/**']
+  push:
+    branches: ['dev', 'dev/**']
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.vscode/**'
+      - '.github/workflows/*.yml'
   workflow_dispatch:
 
 jobs:
@@ -15,6 +20,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # data/ 资源由 git LFS 追踪，必须拉取才能打进 APK
+          lfs: true
 
       - uses: pnpm/setup@v1
         with:
@@ -82,9 +90,8 @@ jobs:
           touch data/.official/game_data/.gitkeep
           touch data/third_party/.gitkeep
           node scripts/prepare-desktop-resources.mjs
-          pip install Pillow
-          rm -rf ./src-tauri/icons/icon.png
-          python -c "from PIL import Image, ImageDraw; img=Image.new('RGB', (1024,1024), color='#4A90D9'); draw=ImageDraw.Draw(img); draw.ellipse((100,100,924,924), fill='#2C3E50'); img.save('./src-tauri/icons/icon.png')"
+          # icon.png 由 git LFS 追踪，checkout(lfs: true) 已拉取真实图标；
+          # 这里用真实图标生成全套尺寸（此前用 PIL 占位图导致应用图标异常）
           pnpm tauri icon ./src-tauri/icons/icon.png
 
       - name: 准备 Android 项目
@@ -101,19 +108,29 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: 配置 Android 签名
+      - name: 配置 Android 签名（有 secrets 才执行）
+        if: ${{ env.ANDROID_KEY_B64 != '' }}
+        env:
+          ANDROID_KEY_B64: ${{ secrets.ANDROID_KEY_BASE64 }}
         run: |
-          echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > $HOME/upload-keystore.p12
+          echo "$ANDROID_KEY_B64" | base64 -d > $HOME/upload-keystore.p12
           cat > src-tauri/gen/android/keystore.properties << EOF
           storeFile=$HOME/upload-keystore.p12
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           EOF
 
-      - name: 构建 Android APK
+      # release 变体：无签名 secrets 时产出 unsigned APK（用户自行签名安装）
+      - name: 构建 Android APK (release)
         run: pnpm android:build
 
+      # dev 构建没有 secrets 时跳过手动签名，上传自动签名的 debug APK
       - name: 手动签名 APK
+        if: ${{ env.ANDROID_KEY_B64 != '' }}
+        continue-on-error: true
+        env:
+          ANDROID_KEY_B64: ${{ secrets.ANDROID_KEY_BASE64 }}
+          ANDROID_HOME: /usr/local/lib/android/sdk
         run: |
           VERSION="${{ github.event.inputs.tag_name }}"
           APK_PATH="src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk"
@@ -124,8 +141,6 @@ jobs:
             --ks-pass pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
             --key-pass pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
             "$APK_PATH"
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
 
       - name: 上传 artifact (APK)
         uses: actions/upload-artifact@v4

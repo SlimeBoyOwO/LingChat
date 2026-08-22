@@ -185,13 +185,28 @@ const onTouchEnd = (e: TouchEvent) => {
   }, 300)
 }
 
-// 提供给 SettingsAdvance 的对外暴露接口（示例）
+// 转场方向跟随 tab 顺序：前进 → slide-left（新页从右进），后退 → slide-right。
+// 滑动切换与导航栏点击统一走这里；首尾 wrap 处理（末→首 视为前进，首→末 视为后退）。
+watch(
+  () => uiStore.currentSettingsTab,
+  (newTab, oldTab) => {
+    if (!oldTab) return
+    const prevIdx = TABS.indexOf(oldTab as (typeof TABS)[number])
+    const nextIdx = TABS.indexOf(newTab as (typeof TABS)[number])
+    if (prevIdx < 0 || nextIdx < 0) return
+    const forward = nextIdx > prevIdx || (prevIdx === TABS.length - 1 && nextIdx === 0)
+    transitionName.value = forward ? 'slide-left' : 'slide-right'
+  },
+)
+
+// 当 A 组件发来 "remove-more-menu-from-a" 事件时 → 触发 B 组件的 addMoreMenu
 const onAddFromA = () => {
-  // A 组件转发的事件处理
+  settingsAdvanceRef.value?.addMoreMenu()
 }
 
+// 当 B 组件发来 "remove-more-menu-from-b" 事件时 → 触发 A 组件的 addMoreMenu
 const onAddFromB = () => {
-  // B 组件转发的事件处理
+  settingsNavRef.value?.addMoreMenu()
 }
 
 // 在父组件中暴露引用（如需要）
@@ -222,6 +237,11 @@ defineExpose({
   left: 0;
   right: 0;
   bottom: 0;
+  box-sizing: border-box;
+  padding-top: var(--safe-area-inset-top);
+  padding-right: var(--safe-area-inset-right);
+  padding-bottom: var(--safe-area-inset-bottom);
+  padding-left: var(--safe-area-inset-left);
   z-index: 1000;
   background: transparent;
   color: var(--text-primary, #fff);

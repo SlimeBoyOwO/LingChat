@@ -656,6 +656,15 @@ pub async fn delete_character(
     role_id: i32,
     delete_resource_folder: bool,
 ) -> Result<(), String> {
+    delete_main_role_core(&app, role_id, delete_resource_folder).await
+}
+
+/// `delete_character` 的核心实现，供命令与市场卸载（角色包）复用。
+pub async fn delete_main_role_core(
+    app: &AppHandle,
+    role_id: i32,
+    delete_resource_folder: bool,
+) -> Result<(), String> {
     let state = app.state::<AppState>();
     let db = &state.db;
 

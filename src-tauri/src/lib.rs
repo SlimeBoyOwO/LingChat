@@ -8,8 +8,9 @@ mod init;
 mod lan_sync;
 mod manifest;
 mod migration;
-// 插件系统由 RustPython 驱动，移动端（Android/iOS）构建时依赖不可用，整体排除
-#[cfg(desktop)]
+// 插件系统：types/manifest/installer 全平台编译（市场安装链路）；
+// RustPython 运行部分（manager/python_backend/http_host/tool）仅桌面端，
+// 见 plugins/mod.rs。AppState.plugin_manager 字段同样 cfg(desktop)。
 mod plugins;
 mod resource_sync;
 pub mod utils;
@@ -778,6 +779,12 @@ pub fn run() {
             api::adventure::check_adventure_unlocks,
             api::adventure::reset_adventure,
             api::workshop::fetch_discussions,
+            api::market::market_fetch_index,
+            api::market::market_installed,
+            api::market::market_installing,
+            api::market::market_install,
+            api::market::market_uninstall,
+            api::market::market_clear_cache,
             resource_sync::check_resource_sync,
             resource_sync::apply_resource_sync,
             resource_sync::get_data_version,
