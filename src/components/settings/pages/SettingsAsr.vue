@@ -224,7 +224,6 @@ let saveTimer: number | null = null
 const sendModeOptions = computed<{ value: SendMode; label: string }[]>(() => [
   { value: 'fill_only', label: t('settings.asr.sendMode.fillOnly') },
   { value: 'auto_send', label: t('settings.asr.sendMode.autoSend') },
-  { value: 'queue', label: t('settings.asr.sendMode.queue') },
 ])
 
 const activeProviderInfo = computed<ProviderInfo | undefined>(() =>

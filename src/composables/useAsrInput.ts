@@ -48,8 +48,7 @@ import { pcmToWavPcm16, trimSilencePcm } from '@/utils/asrAudio'
  *
  * 队列设计说明：项目里没有专门的 useChatStore（聊天状态由 useGameStore.currentStatus
  * 体现：'input' = 空闲可输入，'thinking'/'responding'/'presenting' = 生成中）。
- * 因此用 gameStore 顶一个非类型化字段 pendingAsrQueue 做兜底，作为 ASR→chat 的
- * 跨组件排队通道（GameDialog 在 currentStatus 转回 'input' 时 flush）。
+ * auto_send 由后端 generation_lock 排队，无需前端队列（queue 模式已移除）。
  */
 
 // ── 模块级单例状态 ──────────────────────────────────────────
@@ -211,7 +210,7 @@ function isStreamEnabled(): boolean {
   // 被 persist 排除）——此时不能用"找不到模型 = 不支持"静默降级非流式，否则
   // 配置了流式模型却走整句识别（症状：说话时无 partial、识别完成才整句显示）。
   // 静态集合与后端 provider.rs 的 qwen_is_streaming_model 保持一致。
-  const staticStreaming = new Set(['paraformer-realtime-v1', 'paraformer-realtime-v2'])
+  const staticStreaming = new Set(['paraformer-realtime-v2'])
   const enabled = model ? model.supports_streaming : staticStreaming.has(sel)
   // 诊断：暴露流式判定的依据（模型清单是否命中、命中哪个模型）
   console.log(
@@ -523,12 +522,11 @@ async function doRecognize(source: AsrSource, captured: number[]) {
 }
 
 /**
- * 识别后处理：填入 / 渲染后延迟发送 / 入队
- * 三模式（asrStore.settings.send_mode）：
+ * 识别后处理：填入 / 渲染后延迟发送
+ * 两模式（asrStore.settings.send_mode）：
  * - fill_only: emit window 'asr-text' event，GameDialog 监听后填 inputMessage
  * - auto_send: 识别内容完整渲染到聊天（与手动发送一致），800ms 后 invoke
  *   send_chat_message（AI 忙时由后端 generation_lock 排队，无需前端降级）
- * - queue: 入 pendingAsrQueue，AI 生成结束后 flush（flush 时由 GameDialog send() 渲染）
  */
 function handle(text: string, source: AsrSource) {
   // §4: 识别请求在飞行中 AI 可能从 input 进入 thinking/responding/presenting
@@ -545,8 +543,6 @@ function handle(text: string, source: AsrSource) {
     return
   }
   const mode = asrStore?.settings.send_mode ?? 'fill_only'
-  // pendingAsrQueue 兜底：gameStore 不一定有这字段
-  const queue = ((gameStore as unknown as { pendingAsrQueue?: string[] }).pendingAsrQueue ??= [])
   if (mode === 'fill_only') {
     window.dispatchEvent(new CustomEvent('asr-text', { detail: text }))
   } else if (mode === 'auto_send') {
@@ -569,8 +565,6 @@ function handle(text: string, source: AsrSource) {
     window.setTimeout(() => {
       void invoke('send_chat_message', { text, screenshotBase64: null })
     }, AUTO_SEND_DELAY_MS)
-  } else if (mode === 'queue') {
-    queue.push(text)
   }
   resetSession()
   // auto 模式本轮结束：复位触发标志 + 通过统一门控重新评估能量监测

@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
 export type AsrSource = 'button' | 'hotkey' | 'auto'
-export type SendMode = 'fill_only' | 'auto_send' | 'queue'
+export type SendMode = 'fill_only' | 'auto_send'
 export type AsrPhase = 'idle' | 'recording' | 'recognizing'
 
 export interface AsrResult {

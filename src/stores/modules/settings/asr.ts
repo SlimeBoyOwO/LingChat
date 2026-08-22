@@ -14,7 +14,7 @@ import {
 } from '@/api/services/asr'
 
 const DEFAULT_SETTINGS: AsrSettings = {
-  active_provider: 'openai-whisper',
+  active_provider: 'qwen-asr',
   auto_listen: false,
   hotkey_enabled: false,
   hotkey_combination: 'Ctrl+Shift+Space',
