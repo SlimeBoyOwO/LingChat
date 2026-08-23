@@ -41,7 +41,7 @@
         v-if="!corrupted && game.mode !== 'act2' && game.mode !== 'act2_final'"
         class="poem-character
           poem-character-warm"
-        :style="{ transform: `translateX(${warmWanderOffset}px) scaleX(${warmWanderFlip})` }"
+        :style="{ transform: `translateX(${warmWanderOffset}px)`, scale: `${warmWanderFlip} 1` }"
         aria-hidden="true"
       >
         <img
@@ -56,7 +56,7 @@
         v-if="!corrupted"
         class="poem-character
           poem-character-script"
-        :style="{ transform: `translateX(${scriptWanderOffset}px) scaleX(${scriptWanderFlip})` }"
+        :style="{ transform: `translateX(${scriptWanderOffset}px)`, scale: `${scriptWanderFlip} 1` }"
         aria-hidden="true"
       >
         <img
@@ -628,7 +628,7 @@ onBeforeUnmount(() => {
   bottom: 9.5%;
   width: clamp(68px, 7.5vw, 124px);
   transform-origin: 50% 100%;
-  /* 待机游走的位移与朝向翻转走外层容器，平滑过渡。 */
+  /* 位移平滑过渡；朝向使用独立 scale 属性瞬时翻转，避免穿过 scaleX(0) 被压扁。 */
   transition: transform 180ms ease-out;
 }
 
