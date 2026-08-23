@@ -219,17 +219,21 @@ impl PersistentMemorySystem {
 
         let current_total = all_lines.len();
 
-        // 读取并校验指针
+        // 读取并校验指针。越界（清空对话/读档后 line_list 变短）时**写回**重置，
+        // 否则指针残留旧值，get_slice_start_index 会一直返回过期大索引，
+        // 导致上下文窗口无限膨胀且每轮都从 index 0 重建整段上下文。
         let last_idx = {
-            let bank_guard = match self.memory_bank.try_lock() {
+            let mut bank_guard = match self.memory_bank.try_lock() {
                 Ok(g) => g,
                 Err(_) => return, // 后台任务正在写，跳过
             };
-            let mut idx = bank_guard.meta.last_processed_global_idx;
+            let idx = bank_guard.meta.last_processed_global_idx;
             if idx < 0 || idx as usize > current_total {
-                idx = 0;
+                bank_guard.meta.last_processed_global_idx = 0;
+                0
+            } else {
+                idx as usize
             }
-            idx as usize
         };
 
         let new_lines = &all_lines[last_idx..current_total];
@@ -517,6 +521,22 @@ mod tests {
         // 可见台词 1 条 < 阈值 10，不应触发，也不应移动指针
         assert!(!sys.is_updating.load(Ordering::Acquire));
         assert_eq!(sys.fail_count.load(Ordering::Acquire), 0);
+    }
+
+    #[tokio::test]
+    async fn stale_pointer_is_written_back_when_out_of_range() {
+        let (sys, bank) = make_sys(10);
+        // 模拟清空对话后指针残留：指针 50 > 当前 3 条台词
+        bank.lock().await.meta.last_processed_global_idx = 50;
+        let lines = vec![
+            make_line(1, "新对话1"),
+            make_line(1, "新对话2"),
+            make_line(1, "新对话3"),
+        ];
+        sys.check_and_trigger_auto_update(&lines);
+        // 可见 3 < 阈值 10 不触发压缩，但越界指针必须已被写回重置为 0，
+        // 否则 get_slice_start_index 会基于过期指针返回大索引
+        assert_eq!(bank.lock().await.meta.last_processed_global_idx, 0);
     }
 
     #[tokio::test]
