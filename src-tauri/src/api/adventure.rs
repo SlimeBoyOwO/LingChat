@@ -192,6 +192,14 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
         let game_status = service.game_status.clone();
         let config = service.config.clone();
         let is_running = service.script_manager.is_running.clone();
+        is_running
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            )
+            .map_err(|_| "已有剧本正在运行或 DLC 管理操作尚未完成".to_string())?;
         (script, game_status, config, is_running)
     };
 

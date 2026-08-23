@@ -62,14 +62,14 @@ export default {
     "resetMemoryTitle": "重置記憶",
     "resetMemory": "重置記憶",
     "resetMemoryDone2": "已重置",
-    "resetMemoryMessage": "將清除《{name}》嘅全部記憶（周目進度），下次進入會由第一週目重新開始。\n\n確定要重置嗎？",
+    "resetMemoryMessage": "將清除《{name}》嘅全部記憶（周目進度），恢復該劇本已聲明嘅安全劇情檔案並清除佢嘅主選單效果；下次進入會由第一週目重新開始。\n\n確定要重置嗎？",
     "resetMemoryDone": "記憶已清除。佢已經唔記得你喇。",
     "resetMemoryEmpty": "呢個劇本仲未有任何記憶。",
     "resetMemoryFailed": "重置失敗，請遲啲再試。"
   },
   "contentWarning": {
     "horrorTitle": "⚠ 內容警告",
-    "horrorMessage": "本劇本包含恐怖、驚嚇同心理不適元素，並涉及自殺與自我傷害嘅相關描寫，僅限 18 歲或以上玩家（R18）遊玩。\n如果遊玩期間感到不適，請立即退出。\n\n確定要繼續嗎？"
+    "horrorMessage": "本劇本包含恐怖、驚嚇同心理不適元素，並涉及自殺與自我傷害嘅相關描寫，僅限 18 歲或以上玩家（R18）遊玩。\n部分恐怖劇本亦會建立數秒後自動關閉嘅本機故障視窗，並喺應用程式 data 目錄旁邊嘅 characters 子目錄寫入自身無害嘅 .chr 劇情標記；唔會執行外部指令，亦唔會改動真實角色檔案。\n如果遊玩期間感到不適，請立即退出。\n\n確定要繼續嗎？"
   },
   "pet": {
     "chatInput": {

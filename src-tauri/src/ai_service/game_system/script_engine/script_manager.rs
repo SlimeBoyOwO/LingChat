@@ -42,10 +42,70 @@ struct StoryConfigRaw {
     content_warning: Option<String>,
 }
 
+#[derive(serde::Deserialize, Default)]
+struct DlcVersionManifest {
+    #[serde(default)]
+    min_engine: Option<String>,
+}
+
+fn version_triplet(value: &str) -> Result<[u64; 3]> {
+    let core = value
+        .trim()
+        .split(|character| matches!(character, '-' | '+'))
+        .next()
+        .unwrap_or_default();
+    let parts: Vec<_> = core.split('.').collect();
+    if parts.len() != 3 {
+        return Err(anyhow!("版本 '{}' 必须使用 major.minor.patch 格式", value));
+    }
+    Ok([
+        parts[0]
+            .parse()
+            .with_context(|| format!("版本号非法: {value}"))?,
+        parts[1]
+            .parse()
+            .with_context(|| format!("版本号非法: {value}"))?,
+        parts[2]
+            .parse()
+            .with_context(|| format!("版本号非法: {value}"))?,
+    ])
+}
+
+fn ensure_dlc_engine_compatible(script_path: &Path) -> Result<()> {
+    let manifest_path = script_path.join("dlc.json");
+    if !manifest_path.is_file() {
+        return Ok(());
+    }
+    let text = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("无法读取 DLC 版本清单: {}", manifest_path.display()))?;
+    let manifest: DlcVersionManifest = serde_json::from_str(&text)
+        .with_context(|| format!("无法解析 DLC 版本清单: {}", manifest_path.display()))?;
+    let Some(required) = manifest
+        .min_engine
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    else {
+        return Ok(());
+    };
+    let current = env!("CARGO_PKG_VERSION");
+    if version_triplet(current)? < version_triplet(required)? {
+        return Err(anyhow!(
+            "DLC 要求 LingChat >= {}，当前引擎为 {}；已拒绝加载以避免未知事件损坏周目",
+            required,
+            current
+        ));
+    }
+    Ok(())
+}
+
 /// Central orchestrator for the script/story mode engine.
 pub struct ScriptManager {
     /// All discovered scripts by name (folder_key or display name).
     pub all_scripts: HashMap<String, ScriptStatus>,
+    /// Display names claimed by multiple paths. None is runnable until the
+    /// conflict is removed; keeping every path makes import checks fail closed.
+    duplicate_name_claims: HashMap<String, Vec<PathBuf>>,
     /// Whether a script is currently running (shared so callers can read without lock).
     pub is_running: Arc<AtomicBool>,
 }
@@ -59,19 +119,25 @@ impl ScriptManager {
     pub fn new(data_dir: &Path) -> Self {
         let mut manager = Self {
             all_scripts: HashMap::new(),
+            duplicate_name_claims: HashMap::new(),
             is_running: Arc::new(AtomicBool::new(false)),
         };
+        super::dlc_transaction::recover_pending_uninstalls(data_dir);
         manager.init_all_scripts(data_dir);
+        super::reset_transaction::recover_pending_resets(data_dir, &manager.all_scripts);
         manager
     }
 
     /// Scan `data_dir/game_data/scripts/` for all `story_config.yaml` files.
+    /// Parse every candidate before publishing the catalog: if two paths claim
+    /// one display name, fail closed and activate neither path.
     fn init_all_scripts(&mut self, data_dir: &Path) {
         let scripts_dir = data_dir.join("game_data").join("scripts");
         if !scripts_dir.exists() {
             tracing::warn!("[ScriptManager] 剧本目录不存在: {:?}", scripts_dir);
             return;
         }
+        let mut candidates = Vec::new();
 
         // 1. Scan `character/<character>/<script>/` (two levels)
         let char_dir = scripts_dir.join("character");
@@ -84,7 +150,7 @@ impl ScriptManager {
                             for sub in sub_entries.flatten() {
                                 let sub_path = sub.path();
                                 if sub_path.is_dir() {
-                                    self.try_load_script(&sub_path);
+                                    candidates.push(sub_path);
                                 }
                             }
                         }
@@ -100,7 +166,7 @@ impl ScriptManager {
                 for entry in entries.flatten() {
                     let path = entry.path();
                     if path.is_dir() {
-                        self.try_load_script(&path);
+                        candidates.push(path);
                     }
                 }
             }
@@ -115,32 +181,53 @@ impl ScriptManager {
                         .file_name()
                         .map(|n| n != "character" && n != "standalone")
                         .unwrap_or(false)
+                    && path.join("story_config.yaml").exists()
                 {
-                    let config = path.join("story_config.yaml");
-                    if config.exists() {
-                        self.try_load_script(&path);
-                    }
+                    candidates.push(path);
                 }
             }
         }
 
-        tracing::info!("[ScriptManager] 发现 {} 个剧本", self.all_scripts.len());
-    }
-
-    fn try_load_script(&mut self, script_path: &Path) {
-        match Self::read_script_config(script_path) {
-            Ok(script_status) => {
-                let name = script_status.name.clone();
-                self.all_scripts.insert(name, script_status);
-            }
-            Err(e) => {
-                tracing::warn!("[ScriptManager] 跳过无效剧本目录 {:?}: {}", script_path, e);
+        candidates.sort();
+        let mut claims: HashMap<String, Vec<ScriptStatus>> = HashMap::new();
+        for path in candidates {
+            match Self::read_script_config(&path) {
+                Ok(status) => claims.entry(status.name.clone()).or_default().push(status),
+                Err(error) => {
+                    tracing::warn!("[ScriptManager] 跳过无效剧本目录 {:?}: {}", path, error)
+                }
             }
         }
+        for (name, mut statuses) in claims {
+            if statuses.len() == 1 {
+                self.all_scripts.insert(name, statuses.pop().unwrap());
+                continue;
+            }
+            let paths: Vec<PathBuf> = statuses
+                .into_iter()
+                .map(|status| status.script_path)
+                .collect();
+            tracing::error!(
+                "[ScriptManager] 剧本名 '{}' 被多个目录声明，全部禁用: {:?}",
+                name,
+                paths
+            );
+            self.duplicate_name_claims.insert(name, paths);
+        }
+
+        tracing::info!("[ScriptManager] 发现 {} 个可用剧本", self.all_scripts.len());
     }
 
-    /// Parse `story_config.yaml` from a script directory into a `ScriptStatus`.
+    /// Parse a runnable script and enforce any DLC engine-version gate.
     pub fn read_script_config(script_path: &Path) -> Result<ScriptStatus> {
+        ensure_dlc_engine_compatible(script_path)?;
+        Self::read_script_config_unchecked(script_path)
+    }
+
+    /// Parse cleanup/listing identity without applying `min_engine`. This must
+    /// never be used to start or register a script; it exists so a downgraded
+    /// engine can still show and uninstall an incompatible DLC safely.
+    pub(crate) fn read_script_config_unchecked(script_path: &Path) -> Result<ScriptStatus> {
         let config_path = script_path.join("story_config.yaml");
         let content = fs::read_to_string(&config_path)
             .with_context(|| format!("无法读取剧本配置: {:?}", config_path))?;
@@ -196,13 +283,54 @@ impl ScriptManager {
         self.all_scripts.get(name)
     }
 
+    pub(crate) fn script_name_claim_paths(&self, name: &str) -> Vec<PathBuf> {
+        if let Some(paths) = self.duplicate_name_claims.get(name) {
+            return paths.clone();
+        }
+        self.all_scripts
+            .get(name)
+            .map(|status| vec![status.script_path.clone()])
+            .unwrap_or_default()
+    }
+
+    /// Reconcile a freshly scanned catalog while preserving live per-script
+    /// progress and this manager's shared lifecycle reservation.
+    pub(crate) fn merge_scanned_catalog(&mut self, fresh: Self) -> usize {
+        let Self {
+            all_scripts: fresh_scripts,
+            duplicate_name_claims: fresh_duplicates,
+            ..
+        } = fresh;
+        self.all_scripts
+            .retain(|name, _| fresh_scripts.contains_key(name));
+        for (name, scanned) in fresh_scripts {
+            match self.all_scripts.get_mut(&name) {
+                Some(old) => {
+                    old.folder_key = scanned.folder_key;
+                    old.description = scanned.description;
+                    old.intro_chapter = scanned.intro_chapter;
+                    old.settings = scanned.settings;
+                    old.script_path = scanned.script_path;
+                    old.recommand_start = scanned.recommand_start;
+                    old.adventure = scanned.adventure;
+                    old.content_warning = scanned.content_warning;
+                }
+                None => {
+                    self.all_scripts.insert(name, scanned);
+                }
+            }
+        }
+        self.duplicate_name_claims = fresh_duplicates;
+        self.all_scripts.len()
+    }
+
     /// 运行中动态加载一个剧本目录（DLC 导入后立刻可玩，无需重启）。
     /// 返回剧本名（`all_scripts` 的键）。
     pub fn load_script_dir(&mut self, script_path: &Path) -> Result<String> {
         let status = Self::read_script_config(script_path)?;
         let name = status.name.clone();
-        if self.all_scripts.contains_key(&name) {
-            return Err(anyhow!("剧本 '{}' 已存在", name));
+        if !self.script_name_claim_paths(&name).is_empty() {
+            return Err(anyhow!("剧本 '{}' 已存在或处于重名禁用状态", name));
         }
         self.all_scripts.insert(name.clone(), status);
         tracing::info!("[ScriptManager] 动态加载剧本: {} ({:?})", name, script_path);
@@ -220,8 +348,36 @@ impl ScriptManager {
         if let Some(ref n) = name {
             self.all_scripts.remove(n);
             tracing::info!("[ScriptManager] 动态卸载剧本: {} ({:?})", n, script_path);
+            return name;
         }
-        name
+
+        let conflict_name = self
+            .duplicate_name_claims
+            .iter()
+            .find(|(_, paths)| paths.iter().any(|path| path == script_path))
+            .map(|(name, _)| name.clone());
+        if let Some(name) = conflict_name {
+            let mut remaining = self.duplicate_name_claims.remove(&name).unwrap_or_default();
+            remaining.retain(|path| path != script_path);
+            if remaining.len() == 1 {
+                let remaining_path = remaining.pop().unwrap();
+                match Self::read_script_config(&remaining_path) {
+                    Ok(status) => {
+                        self.all_scripts.insert(name.clone(), status);
+                        tracing::info!("[ScriptManager] 重名冲突解除，启用剧本: {}", name);
+                    }
+                    Err(error) => tracing::warn!(
+                        "[ScriptManager] 重名冲突解除后仍无法加载 {:?}: {}",
+                        remaining_path,
+                        error
+                    ),
+                }
+            } else if !remaining.is_empty() {
+                self.duplicate_name_claims.insert(name.clone(), remaining);
+            }
+            return Some(name);
+        }
+        None
     }
 
     // ============================================================
@@ -400,18 +556,10 @@ impl ScriptManager {
                 }
             };
 
-            // Check if role already exists in DB — same key that creation uses.
+            // Upsert by the namespaced script/role keys. Existing rows are
+            // refreshed from current settings so reinstall cannot reuse stale
+            // display/resource metadata.
             let path_key = script.path_key();
-            let existing = RoleRepo::get_role_by_script_keys(ctx.db, &path_key, &role_key).await?;
-
-            if existing.is_some() {
-                tracing::info!(
-                    "[ScriptManager] 角色已存在: script={}, role_key={}",
-                    path_key,
-                    role_key
-                );
-                continue;
-            }
 
             // Register role in DB via RoleRepo
             let role_id = RoleRepo::find_or_create_role(
@@ -432,13 +580,14 @@ impl ScriptManager {
                 role_key
             );
 
-            // Load the role into RoleManager
-            let _ = ctx
-                .game_status
-                .lock()
-                .await
-                .get_role(ctx.db, role_id)
-                .await?;
+            // The same DB id may already be cached from an older install or
+            // editor revision. Evict first so this run uses the upserted
+            // resource folder/settings instead of stale runtime metadata.
+            {
+                let mut game_status = ctx.game_status.lock().await;
+                game_status.role_manager.evict_role(role_id);
+                let _ = game_status.get_role(ctx.db, role_id).await?;
+            }
 
             // Add system prompt line for this role
             let prompt = settings.system_prompt.clone().unwrap_or_default();
@@ -533,19 +682,18 @@ impl ScriptManager {
     /// run is added to `completed_scripts` (which gates adventure unlocks);
     /// a run that ended in an error still gets fully torn down so the UI is
     /// released, but is not credited to the player.
-    pub async fn on_script_end(
+    async fn on_script_end_inner(
         ctx: &mut ScriptContext<'_>,
         is_running: &AtomicBool,
         completed: bool,
+        release_running: bool,
     ) -> Result<()> {
         tracing::info!("[ScriptManager] 剧本结束 (completed={})", completed);
 
-        // Emit script_end event. This is what releases the frontend from story
-        // mode, so it must fire on the error path too — but flagged so the
-        // client does not mark the adventure as completed.
-        let _ = emit(ctx.app, SCRIPT_END, &ScriptEndPayload { completed });
+        // Extract data under one lock, then mutate under a second lock. The
+        // frontend end event is emitted only after persistence and teardown so
+        // the remounted main menu cannot race stale act/theme state.
 
-        // Extract data under one lock, then mutate under a second lock.
         // tokio::sync::Mutex is NOT reentrant — nesting lock().await deadlocks.
         let (folder, is_adventure) = {
             let gs = ctx.game_status.lock().await;
@@ -606,11 +754,39 @@ impl ScriptManager {
             }
         }
 
-        is_running.store(false, Ordering::SeqCst);
+        // No script-owned auxiliary window may survive a natural end, manual
+        // stop, or error teardown.
+        crate::ai_service::game_system::script_engine::events::glitch_window_event::close_all_glitch_windows(
+            ctx.app,
+        );
+
+        if release_running {
+            is_running.store(false, Ordering::SeqCst);
+        }
+
+        // This releases the frontend from story mode. Normal runs publish only
+        // after is_running is false. Editor preview deliberately keeps its
+        // reservation until PreviewSession has restored shared GameStatus.
+        let _ = emit(ctx.app, SCRIPT_END, &ScriptEndPayload { completed });
 
         tracing::info!("[ScriptManager] 剧本状态已清除");
 
         Ok(())
+    }
+
+    pub async fn on_script_end(
+        ctx: &mut ScriptContext<'_>,
+        is_running: &AtomicBool,
+        completed: bool,
+    ) -> Result<()> {
+        Self::on_script_end_inner(ctx, is_running, completed, true).await
+    }
+
+    pub(crate) async fn on_preview_script_end(
+        ctx: &mut ScriptContext<'_>,
+        is_running: &AtomicBool,
+    ) -> Result<()> {
+        Self::on_script_end_inner(ctx, is_running, false, false).await
     }
 
     // ============================================================
@@ -638,5 +814,41 @@ impl ScriptManager {
             Some(script) => script.script_path.join("Assets"),
             None => PathBuf::from(""),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ensure_dlc_engine_compatible, version_triplet};
+
+    #[test]
+    fn parses_engine_versions_for_dlc_gating() {
+        assert_eq!(version_triplet("0.5.1").unwrap(), [0, 5, 1]);
+        assert_eq!(version_triplet("1.2.3-beta+7").unwrap(), [1, 2, 3]);
+        assert!(version_triplet("0.5").is_err());
+        assert!(version_triplet("latest").is_err());
+        assert!(version_triplet("0.5.0").unwrap() < version_triplet("0.5.1").unwrap());
+    }
+
+    #[test]
+    fn rejects_dlc_requiring_a_newer_engine() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "lingchat-dlc-version-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(dir.join("dlc.json"), r#"{"min_engine":"0.5.1"}"#).unwrap();
+        assert!(ensure_dlc_engine_compatible(&dir).is_ok());
+        std::fs::write(dir.join("dlc.json"), r#"{"min_engine":"999.0.0"}"#).unwrap();
+        assert!(ensure_dlc_engine_compatible(&dir).is_err());
+        std::fs::write(dir.join("dlc.json"), "not-json").unwrap();
+        assert!(ensure_dlc_engine_compatible(&dir).is_err());
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

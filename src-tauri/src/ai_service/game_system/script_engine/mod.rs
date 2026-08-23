@@ -11,9 +11,11 @@
 //! - `responses` — Tauri event payload types
 
 pub mod chapter;
+pub(crate) mod dlc_transaction;
 pub mod events;
 pub mod events_handler;
 pub mod persistent_state;
+pub(crate) mod reset_transaction;
 pub mod responses;
 pub mod script_manager;
 pub mod utils;
@@ -53,6 +55,10 @@ pub fn init_event_registry() {
     events::voice_shift_event::register();
     events::horror_log_event::register();
     events::random_var_event::register();
+    // 剧本边界特效：持久菜单主题、外部角色标记、安全辅助窗口
+    events::menu_effect_event::register();
+    events::character_file_event::register();
+    events::glitch_window_event::register();
 
     tracing::info!("[ScriptEngine] 所有事件处理器已注册");
 }

@@ -7,8 +7,8 @@ use sea_orm::DatabaseConnection;
 use crate::ai_service::game_system::memory_builder::MemoryBuilder;
 use crate::ai_service::game_system::persistent_memory_system::PersistentMemorySystem;
 use crate::ai_service::llm::LlmSlot;
-use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::tts::local::LocalTtsRuntime;
+use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::types::{CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
@@ -65,6 +65,19 @@ impl GameRoleManager {
         }
     }
 
+    /// Evict cached role data so current database/resource settings are reloaded.
+    /// Session clothing overrides deliberately survive a normal metadata refresh.
+    pub fn evict_role(&mut self, role_id: i32) {
+        self.loaded_roles.remove(&role_id);
+        self.memory_bank_systems.remove(&role_id);
+    }
+
+    /// Drop every trace of a role row created only by editor preview.
+    pub fn remove_preview_role(&mut self, role_id: i32) {
+        self.evict_role(role_id);
+        self.clothes_overrides.remove(&role_id);
+    }
+
     /// 设置角色服装覆盖（来自 session store，优先于 settings.yml 的默认值）。
     pub fn set_clothes_overrides(&mut self, overrides: HashMap<i32, String>) {
         self.clothes_overrides = overrides;
@@ -83,10 +96,7 @@ impl GameRoleManager {
         if !self.loaded_roles.contains_key(&role_id) {
             self.register_role_by_id(db, role_id).await?;
         }
-        Ok(self
-            .loaded_roles
-            .get_mut(&role_id)
-            .expect("角色刚刚插入"))
+        Ok(self.loaded_roles.get_mut(&role_id).expect("角色刚刚插入"))
     }
 
     pub fn get_loaded(&self, role_id: i32) -> Option<&GameRole> {
@@ -143,11 +153,11 @@ impl GameRoleManager {
                 .loaded_roles
                 .get(&role_id)
                 .and_then(|r| r.resource_path.clone());
-            let settings = match RoleRepo::get_role_settings_by_id(db, &self.data_dir, role_id).await
-            {
-                Ok(Some(s)) => s,
-                _ => continue,
-            };
+            let settings =
+                match RoleRepo::get_role_settings_by_id(db, &self.data_dir, role_id).await {
+                    Ok(Some(s)) => s,
+                    _ => continue,
+                };
             let Some(vm) = build_voice_maker(
                 &self.data_dir,
                 &settings,

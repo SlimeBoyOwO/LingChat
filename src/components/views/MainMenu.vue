@@ -1,7 +1,7 @@
 <template>
   <div
     class="main-menu-page"
-    :class="{ 'main-menu-page--panel-active': currentPage !== 'mainMenu' }"
+    :class="[{ 'main-menu-page--panel-active': currentPage !== 'mainMenu' }, menuThemeClass]"
   >
     <MainChat v-if="currentPage === 'gameMainView'" />
     <Settings v-else-if="currentPage === 'settings'" />
@@ -13,15 +13,30 @@
       ref="bgRef"
     ></div>
 
+    <!-- 剧本可持久化的预设式标题异常层：只渲染纯文本/CSS，不接受 HTML 或资源路径。 -->
+    <div
+      v-if="menuEffect.theme !== 'normal'"
+      class="script-menu-effect"
+      aria-hidden="true"
+    >
+      <div class="script-menu-effect__scanlines"></div>
+      <div
+        v-if="menuEffect.message"
+        class="script-menu-effect__message"
+      >
+        {{ menuEffect.message }}
+      </div>
+    </div>
+
     <!-- 流星层（SVG动画） -->
     <MeteorAnimation
-      :meteors-enabled="meteorsEnabled"
+      :meteors-enabled="visualMeteorsEnabled"
       :meteor-fps="meteorFps"
     />
 
     <!-- 星星粒子层（位于背景和人物之间） -->
     <StarAnimation
-      :stars-enabled="starsEnabled"
+      :stars-enabled="visualStarsEnabled"
       :stars-layer-ref="starsLayerRef"
       :stars-fps="starsFps"
     />
@@ -69,6 +84,7 @@
         <ScriptModeOptions
           v-if="menuState === 'scriptMode'"
           @back="showGameModeMenu"
+          @script-state-reset="fetchScriptMenuEffect"
           :scripts="scripts"
         />
       </Transition>
@@ -127,8 +143,19 @@ const scripts = ref<ScriptSummary[]>([])
 const loadingScripts = ref(false)
 // 已识别的 DLC 剧本包名（主菜单右下角提示用）
 const dlcNames = ref<string[]>([])
+type ScriptMenuTheme = 'normal' | 'blood' | 'ghost'
+interface ScriptMenuEffect {
+  theme: ScriptMenuTheme
+  message?: string
+}
+const menuEffect = ref<ScriptMenuEffect>({ theme: 'normal' })
 const starsEnabled = computed(() => settingsStore.mainMenuStarsEnabled)
 const meteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled)
+const visualStarsEnabled = computed(() => starsEnabled.value && menuEffect.value.theme === 'normal')
+const visualMeteorsEnabled = computed(
+  () => meteorsEnabled.value && menuEffect.value.theme === 'normal',
+)
+const menuThemeClass = computed(() => `main-menu-page--${menuEffect.value.theme}`)
 const meteorFps = computed(() => settingsStore.meteorFps)
 const starsFps = computed(() => settingsStore.starsFps)
 
@@ -238,12 +265,27 @@ async function fetchDlcs() {
   }
 }
 
+async function fetchScriptMenuEffect() {
+  try {
+    const effect = await invoke<ScriptMenuEffect | null>('get_script_menu_effect')
+    if (effect && ['blood', 'ghost'].includes(effect.theme)) {
+      menuEffect.value = effect
+    } else {
+      menuEffect.value = { theme: 'normal' }
+    }
+  } catch {
+    // Invalid/missing state must always fail open to the ordinary accessible menu.
+    menuEffect.value = { theme: 'normal' }
+  }
+}
+
 // DLC 管理页导入/卸载后，剧本列表与提示一并刷新
 watch(
   () => uiStore.dlcRefreshToken,
   () => {
     fetchScripts()
     fetchDlcs()
+    fetchScriptMenuEffect()
   },
 )
 
@@ -265,6 +307,7 @@ onMounted(() => {
 
     fetchScripts()
     fetchDlcs()
+    fetchScriptMenuEffect()
   }
 
   initializeMenu()
@@ -366,5 +409,163 @@ onMounted(() => {
   pointer-events: none;
   /* 移除 transition */
   will-change: transform;
+}
+
+/* ========== 剧本驱动的标题异常预设 ========== */
+.script-menu-effect {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.script-menu-effect::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 55%, transparent 0 28%, rgba(20, 0, 0, 0.44) 80%),
+    repeating-linear-gradient(90deg, transparent 0 43px, rgba(255, 255, 255, 0.018) 44px 45px);
+  mix-blend-mode: multiply;
+}
+
+.script-menu-effect__scanlines {
+  position: absolute;
+  inset: -12%;
+  opacity: 0.3;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0 2px,
+    rgba(0, 0, 0, 0.45) 3px,
+    rgba(255, 255, 255, 0.025) 4px
+  );
+  animation: menu-scan 7s linear infinite;
+}
+
+.script-menu-effect__message {
+  position: absolute;
+  top: 18px;
+  left: 20px;
+  max-width: min(620px, 70vw);
+  color: rgba(255, 214, 214, 0.92);
+  font:
+    600 13px/1.45 Consolas,
+    'Cascadia Mono',
+    monospace;
+  letter-spacing: 0.12em;
+  white-space: pre-wrap;
+  text-shadow:
+    -2px 0 rgba(255, 0, 0, 0.75),
+    2px 0 rgba(0, 180, 255, 0.55),
+    0 0 8px rgba(255, 0, 0, 0.8);
+  animation: menu-message-glitch 2.8s steps(1, end) infinite;
+}
+
+.main-menu-page--blood {
+  background: #090000;
+}
+
+.main-menu-page--blood .video-background {
+  filter: grayscale(0.76) sepia(0.86) hue-rotate(315deg) saturate(3.4) brightness(0.46)
+    contrast(1.45);
+}
+
+.main-menu-page--blood .character-image {
+  opacity: 0.68;
+  filter: grayscale(0.8) sepia(0.9) hue-rotate(315deg) saturate(2.5) contrast(1.45)
+    drop-shadow(8px 0 0 rgba(150, 0, 0, 0.22));
+}
+
+.main-menu-page--blood .script-menu-effect {
+  background:
+    linear-gradient(110deg, rgba(75, 0, 0, 0.34), transparent 42%),
+    radial-gradient(circle at 50% 50%, transparent 20%, rgba(95, 0, 0, 0.4));
+}
+
+.main-menu-page--blood :deep(.start-item) {
+  color: #ffd8d8 !important;
+  text-shadow:
+    2px 0 rgba(120, 0, 0, 0.8),
+    -1px 0 rgba(0, 110, 130, 0.65) !important;
+}
+
+.main-menu-page--ghost {
+  background: #090b0d;
+}
+
+.main-menu-page--ghost .video-background {
+  filter: grayscale(1) brightness(0.42) contrast(1.35);
+}
+
+.main-menu-page--ghost .character-image {
+  opacity: 0.2;
+  filter: grayscale(1) contrast(1.5) blur(0.5px);
+  animation: ghost-character 5.5s steps(1, end) infinite;
+}
+
+.main-menu-page--ghost .script-menu-effect {
+  background: radial-gradient(circle at 50% 45%, transparent 20%, rgba(220, 230, 235, 0.11));
+}
+
+.main-menu-page--ghost .script-menu-effect__message {
+  color: rgba(225, 235, 238, 0.84);
+  text-shadow:
+    -2px 0 rgba(255, 255, 255, 0.5),
+    2px 0 rgba(20, 20, 20, 0.9);
+}
+
+@keyframes menu-scan {
+  from {
+    transform: translateY(-8%);
+  }
+  to {
+    transform: translateY(8%);
+  }
+}
+
+@keyframes menu-message-glitch {
+  0%,
+  90%,
+  100% {
+    transform: translate(0);
+    opacity: 0.92;
+  }
+  91% {
+    transform: translate(-3px, 1px);
+    opacity: 0.55;
+  }
+  93% {
+    transform: translate(4px, -1px);
+    opacity: 1;
+  }
+  95% {
+    transform: translate(0);
+  }
+}
+
+@keyframes ghost-character {
+  0%,
+  86%,
+  100% {
+    transform: translate(-50%, -50%);
+  }
+  87% {
+    transform: translate(calc(-50% - 5px), -50%);
+  }
+  89% {
+    transform: translate(calc(-50% + 7px), calc(-50% + 2px));
+  }
+  91% {
+    transform: translate(-50%, -50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .script-menu-effect__scanlines,
+  .script-menu-effect__message,
+  .main-menu-page--ghost .character-image {
+    animation: none !important;
+  }
 }
 </style>

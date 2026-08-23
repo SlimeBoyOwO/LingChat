@@ -11,13 +11,16 @@ pub mod ambient_event;
 pub mod background_effect_event;
 pub mod background_event;
 pub mod chapter_end_event;
+pub mod character_file_event;
 pub mod choice_event;
 pub mod dialog_event;
 pub mod force_choice_event;
 pub mod free_dialogue_event;
+pub mod glitch_window_event;
 pub mod horror_log_event;
 pub mod input_event;
 pub mod jumpscare_event;
+pub mod menu_effect_event;
 pub mod modify_character_event;
 pub mod music_event;
 pub mod narration_event;
@@ -185,19 +188,57 @@ pub fn parse_duration(data: &Value) -> Option<f64> {
 /// 未定义变量视为「不持有任何值」，于是对任意 `v`，`x == v` 为假、`x != v` 为真。
 /// 两者相互自洽——不要只改其中一个而不改另一个。
 ///
-/// # 不支持的写法
+/// # 支持的组合
 ///
-/// `>`、`<`、`>=`、`<=`、`&&`、`||`、`!`、括号、算术运算**均未实现**。
-/// `hp >= 5` 不会做任何比较：它会落到裸变量分支，去查一个字面名为 `"hp >= 5"`
-/// 的变量，该变量永远不存在，故条件恒为假。
+/// 支持 `&&`、`||`（`&&` 优先级更高）以及数字的 `>` / `<` / `>=` / `<=`。
+/// 仍不解析括号、任意算术表达式或字符串排序；复杂逻辑应拆成多个章节门。
+fn split_once_unquoted<'a>(input: &'a str, operator: &str) -> Option<(&'a str, &'a str)> {
+    let mut quote = None;
+    let mut escaped = false;
+    for (index, character) in input.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if character == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(active_quote) = quote {
+            if character == active_quote {
+                quote = None;
+            }
+            continue;
+        }
+        if matches!(character, '\'' | '"') {
+            quote = Some(character);
+            continue;
+        }
+        if input[index..].starts_with(operator) {
+            let right = index + operator.len();
+            return Some((&input[..index], &input[right..]));
+        }
+    }
+    None
+}
+
 pub fn evaluate_condition(condition: &str, vars: &serde_json::Map<String, Value>) -> bool {
     let condition = condition.trim();
     if condition.is_empty() {
         return true;
     }
 
+    // 最低优先级：OR；随后是 AND。只拆引号之外的运算符，避免破坏
+    // 旧剧本里含 `||` / `&&` 字样的普通字符串值。
+    if let Some((left, right)) = split_once_unquoted(condition, "||") {
+        return evaluate_condition(left, vars) || evaluate_condition(right, vars);
+    }
+    if let Some((left, right)) = split_once_unquoted(condition, "&&") {
+        return evaluate_condition(left, vars) && evaluate_condition(right, vars);
+    }
+
     // 先试 `!=`（更长的模式，优先匹配）
-    if let Some((var, val)) = condition.split_once("!=") {
+    if let Some((var, val)) = split_once_unquoted(condition, "!=") {
         let var = var.trim();
         let val = val.trim().trim_matches('"').trim_matches('\'');
         if let Some(current) = vars.get(var) {
@@ -213,7 +254,7 @@ pub fn evaluate_condition(condition: &str, vars: &serde_json::Map<String, Value>
     }
 
     // 再试 `==`
-    if let Some((var, val)) = condition.split_once("==") {
+    if let Some((var, val)) = split_once_unquoted(condition, "==") {
         let var = var.trim();
         let val = val.trim().trim_matches('"').trim_matches('\'');
         if let Some(current) = vars.get(var) {
@@ -224,6 +265,26 @@ pub fn evaluate_condition(condition: &str, vars: &serde_json::Map<String, Value>
             return current_str == val;
         }
         return false;
+    }
+
+    // 数字比较。长操作符必须先于短操作符匹配；放在等值比较之后，
+    // 避免字符串值本身含有 `<` / `>` 时改变旧有 `==` / `!=` 语义。
+    for operator in [">=", "<=", ">", "<"] {
+        if let Some((var, raw_value)) = split_once_unquoted(condition, operator) {
+            let Some(current) = vars.get(var.trim()).and_then(Value::as_f64) else {
+                return false;
+            };
+            let Ok(expected) = raw_value.trim().parse::<f64>() else {
+                return false;
+            };
+            return match operator {
+                ">=" => current >= expected,
+                "<=" => current <= expected,
+                ">" => current > expected,
+                "<" => current < expected,
+                _ => unreachable!(),
+            };
+        }
     }
 
     // 默认：当作布尔变量查找
@@ -304,11 +365,23 @@ mod tests {
         assert!(evaluate_condition("zero", &v));
     }
 
-    /// 记录一处有意保留的限制，免得有人以为 `>` 能用。
     #[test]
-    fn comparison_operators_are_not_supported() {
-        let v = vars(&[("hp", json!(10))]);
-        assert!(!evaluate_condition("hp >= 5", &v));
-        assert!(!evaluate_condition("hp > 5", &v));
+    fn supports_numeric_comparisons_and_boolean_composition() {
+        let v = vars(&[
+            ("hp", json!(10)),
+            ("act", json!(4)),
+            ("done", json!(true)),
+            ("label", json!("a>b")),
+            ("pipes", json!("a||b&&c")),
+        ]);
+        assert!(evaluate_condition("hp >= 5", &v));
+        assert!(evaluate_condition("hp > 5", &v));
+        assert!(evaluate_condition("hp <= 10", &v));
+        assert!(!evaluate_condition("hp < 10", &v));
+        assert!(evaluate_condition("act == 4 && done == true", &v));
+        assert!(evaluate_condition("act == 3 || done == true", &v));
+        assert!(!evaluate_condition("act == 3 || hp < 2", &v));
+        assert!(evaluate_condition("label == a>b", &v));
+        assert!(evaluate_condition("pipes == \"a||b&&c\"", &v));
     }
 }

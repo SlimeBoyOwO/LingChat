@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -5,7 +6,7 @@ use anyhow::{Context, Result};
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,
-    QueryFilter, QuerySelect, Set, Statement,
+    IntoActiveModel, QueryFilter, QuerySelect, Set, Statement,
 };
 use tracing::warn;
 
@@ -109,6 +110,25 @@ impl RoleRepo {
             .await?)
     }
 
+    /// Remove only script-role rows created after a preview snapshot.
+    pub async fn delete_preview_created_script_roles(
+        db: &DatabaseConnection,
+        script_key: &str,
+        retained_ids: &HashSet<i32>,
+    ) -> Result<Vec<i32>> {
+        let roles = Self::get_script_roles(db, script_key).await?;
+        let mut deleted = Vec::new();
+        for role in roles {
+            if retained_ids.contains(&role.id) || Self::is_system_protected_role(role.id) {
+                continue;
+            }
+            MemoryRepo::delete_all_memories_by_role_id(db, role.id).await?;
+            role::Entity::delete_by_id(role.id).exec(db).await?;
+            deleted.push(role.id);
+        }
+        Ok(deleted)
+    }
+
     /// Find an existing role by script keys, or create a new one.
     pub async fn find_or_create_role(
         db: &DatabaseConnection,
@@ -121,7 +141,13 @@ impl RoleRepo {
         // Try to find existing
         if let (Some(sk), Some(srk)) = (script_key, script_role_key) {
             if let Some(existing) = Self::get_role_by_script_keys(db, sk, srk).await? {
-                return Ok(existing.id);
+                let id = existing.id;
+                let mut active = existing.into_active_model();
+                active.name = Set(name.to_string());
+                active.role_type = Set(role_type);
+                active.resource_folder = Set(resource_folder.map(str::to_string));
+                active.update(db).await?;
+                return Ok(id);
             }
         }
 

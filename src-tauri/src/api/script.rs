@@ -41,6 +41,16 @@ pub struct ScriptListResponse {
     pub scripts: Vec<ScriptSummary>,
 }
 
+/// One preset-only persistent main-menu effect selected by the last script run.
+/// The response contains no paths, CSS or HTML and is therefore safe to bind in
+/// the shell menu.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ScriptMenuEffectResponse {
+    pub theme: String,
+    pub message: Option<String>,
+}
+
 // ============================================================
 // Tauri commands
 // ============================================================
@@ -64,6 +74,37 @@ pub async fn list_scripts(app: AppHandle) -> Result<ScriptListResponse, String> 
         .collect();
 
     Ok(ScriptListResponse { scripts })
+}
+
+#[tauri::command]
+pub async fn get_script_menu_effect(app: AppHandle) -> Option<ScriptMenuEffectResponse> {
+    let app_state = app.state::<AppState>();
+    let service = app_state.ai_service.lock().await;
+    let state =
+        crate::ai_service::game_system::script_engine::events::menu_effect_event::read_menu_effect(
+            &service.data_dir,
+        )?;
+
+    // A DLC may also be removed manually while LingChat is closed. Never leave
+    // an orphaned title skin behind when its owning script no longer exists.
+    let owner_exists = service
+        .script_manager
+        .all_scripts
+        .values()
+        .any(|script| script.path_key() == state.owner);
+    if !owner_exists {
+        if let Err(error) = crate::ai_service::game_system::script_engine::events::menu_effect_event::clear_menu_effect(
+            &service.data_dir,
+        ) {
+            tracing::warn!("[ScriptAPI] 清理孤立主菜单特效失败: {error:#}");
+        }
+        return None;
+    }
+
+    Some(ScriptMenuEffectResponse {
+        theme: state.theme,
+        message: state.message,
+    })
 }
 
 #[tauri::command]
@@ -112,6 +153,14 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
         let game_status = service.game_status.clone();
         let config = service.config.clone();
         let is_running = service.script_manager.is_running.clone();
+        is_running
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            )
+            .map_err(|_| "已有剧本正在运行或 DLC 管理操作尚未完成".to_string())?;
         (script, game_status, config, is_running)
     };
 
@@ -171,11 +220,111 @@ pub async fn reset_script_state(app: AppHandle, script_name: String) -> Result<b
         .all_scripts
         .get(&script_name)
         .ok_or_else(|| format!("剧本不存在: '{}'", script_name))?;
-    crate::ai_service::game_system::script_engine::persistent_state::reset_playthrough(
+    let owner = script.path_key();
+
+    // Snapshot every boundary artifact, then durably journal reset intent before
+    // detaching progress. Ordinary I/O failures restore exact bytes/state; a
+    // hard kill is completed generically at startup for any compatible script.
+    let marker_snapshot = crate::ai_service::game_system::script_engine::events::character_file_event::snapshot_declared_character_files(
+        script,
         &service.data_dir,
-        &script.path_key(),
     )
-    .map_err(|e| format!("重置剧本记忆失败: {:#}", e))
+    .map_err(|e| format!("准备角色文件重置快照失败: {:#}", e))?;
+    let menu_snapshot = crate::ai_service::game_system::script_engine::events::menu_effect_event::snapshot_menu_effect_file(
+        &service.data_dir,
+    )
+    .map_err(|e| format!("准备菜单特效重置快照失败: {:#}", e))?;
+    let reset_record =
+        crate::ai_service::game_system::script_engine::reset_transaction::begin_reset(
+            &service.data_dir,
+            &owner,
+        )
+        .map_err(|e| format!("创建持久重置事务失败: {e:#}"))?;
+    let state_backup =
+        match crate::ai_service::game_system::script_engine::persistent_state::take_playthrough(
+            &service.data_dir,
+            &owner,
+        ) {
+            Ok(backup) => backup,
+            Err(error) => {
+                // atomic_replace may have changed the state before a parent-dir
+                // flush reported failure. Keep durable intent so startup can
+                // finish the requested reset rather than deleting evidence.
+                return Err(format!(
+                    "准备重置剧本记忆失败，已保留恢复事务供下次启动重试: {error:#}"
+                ));
+            }
+        };
+
+    let rollback_boundaries = || {
+        let mut failures = Vec::new();
+        if let Err(error) = crate::ai_service::game_system::script_engine::events::character_file_event::restore_character_files_snapshot(
+            script,
+            &service.data_dir,
+            &marker_snapshot,
+        ) {
+            failures.push(format!("角色标记回滚失败: {error:#}"));
+        }
+        if let Err(error) = crate::ai_service::game_system::script_engine::events::menu_effect_event::restore_menu_effect_snapshot(
+            &service.data_dir,
+            &menu_snapshot,
+        ) {
+            failures.push(format!("菜单特效回滚失败: {error:#}"));
+        }
+        if let Some(backup) = state_backup.clone() {
+            if let Err(error) =
+                crate::ai_service::game_system::script_engine::persistent_state::restore_playthrough(
+                    &service.data_dir,
+                    &owner,
+                    backup,
+                )
+            {
+                failures.push(format!("周目状态回滚失败: {error:#}"));
+            }
+        }
+        if failures.is_empty() {
+            if let Err(error) =
+                crate::ai_service::game_system::script_engine::reset_transaction::finish_reset(
+                    &service.data_dir,
+                    &reset_record,
+                )
+            {
+                failures.push(format!("重置事务回滚退休失败: {error:#}"));
+            }
+        } else {
+            failures.push("已保留持久重置事务，启动恢复器会完成请求".to_string());
+        }
+        failures
+    };
+    let reset_error = |message: String| {
+        let rollback_failures = rollback_boundaries();
+        if rollback_failures.is_empty() {
+            message
+        } else {
+            format!("{}；{}", message, rollback_failures.join("；"))
+        }
+    };
+
+    let restored = match crate::ai_service::game_system::script_engine::events::character_file_event::restore_declared_character_files(
+        script,
+        &service.data_dir,
+    ) {
+        Ok(restored) => restored,
+        Err(error) => return Err(reset_error(format!("恢复剧本角色文件失败: {error:#}"))),
+    };
+    let menu_cleared = match crate::ai_service::game_system::script_engine::events::menu_effect_event::clear_menu_effect_for_owner(
+        &service.data_dir,
+        &owner,
+    ) {
+        Ok(cleared) => cleared,
+        Err(error) => return Err(reset_error(format!("清除剧本菜单特效失败: {error:#}"))),
+    };
+    crate::ai_service::game_system::script_engine::reset_transaction::finish_reset(
+        &service.data_dir,
+        &reset_record,
+    )
+    .map_err(|error| format!("重置已完成，但持久事务退休失败；下次启动会安全重放: {error:#}"))?;
+    Ok(state_backup.is_some() || restored > 0 || menu_cleared)
 }
 
 /// Stop a running script mid-way (user picked 自由对话 from the menu, cleared

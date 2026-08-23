@@ -712,6 +712,7 @@ pub fn run() {
             api::save::capture_main_window_screenshot,
             api::script::list_scripts,
             api::script::list_standalone_scripts,
+            api::script::get_script_menu_effect,
             api::script::start_script,
             api::script::script_submit_input,
             api::script::script_submit_choice,

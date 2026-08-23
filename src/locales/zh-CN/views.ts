@@ -62,7 +62,7 @@ export default {
     resetMemory: '重置记忆',
     resetMemoryDone2: '已重置',
     resetMemoryMessage:
-      '将清除《{name}》的全部记忆（周目进度），下次进入会从第一周目重新开始。\n\n确定要重置吗？',
+      '将清除《{name}》的全部记忆（周目进度），恢复该剧本声明的安全剧情文件并清除它的主菜单效果；下次进入会从第一周目重新开始。\n\n确定要重置吗？',
     resetMemoryDone: '记忆已清除。她已经不记得你了。',
     resetMemoryEmpty: '这个剧本还没有任何记忆。',
     resetMemoryFailed: '重置失败，请稍后再试。',
@@ -70,7 +70,7 @@ export default {
   contentWarning: {
     horrorTitle: '⚠ 内容警告',
     horrorMessage:
-      '本剧本包含恐怖、惊吓与心理不适元素，并涉及自杀与自我伤害的相关描写，仅限 18 岁及以上玩家（R18）游玩。\n如在游玩过程中感到不适，请立即退出。\n\n确定要继续吗？',
+      '本剧本包含恐怖、惊吓与心理不适元素，并涉及自杀与自我伤害的相关描写，仅限 18 岁及以上玩家（R18）游玩。\n部分恐怖剧本还会创建数秒后自动关闭的本地故障窗口，并在应用 data 目录旁的 characters 子目录中写入自身无害的 .chr 剧情标记；不会执行外部命令，也不会改动真实角色文件。\n如在游玩过程中感到不适，请立即退出。\n\n确定要继续吗？',
   },
   pet: {
     chatInput: {

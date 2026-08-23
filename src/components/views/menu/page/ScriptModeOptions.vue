@@ -67,6 +67,7 @@ import { i18n } from '@/locales'
 
 const emit = defineEmits<{
   (e: 'back'): void
+  (e: 'script-state-reset'): void
 }>()
 
 const props = defineProps({
@@ -99,6 +100,7 @@ const resetMemory = async (script: ScriptSummary) => {
   resettingName.value = script.script_name
   try {
     const removed = await resetScriptState(script.script_name)
+    emit('script-state-reset')
     await dialogStore.alert(
       removed
         ? i18n.global.t('views.menu.resetMemoryDone')

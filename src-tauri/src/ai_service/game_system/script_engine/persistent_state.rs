@@ -70,7 +70,8 @@ fn write_state(data_dir: &Path, state: &RuntimeState) -> Result<()> {
     let content = serde_json::to_vec_pretty(state).context("无法序列化剧本运行状态")?;
     crate::ai_service::tools::atomic_replace(&path, &content)
         .map_err(anyhow::Error::msg)
-        .with_context(|| format!("无法保存剧本运行状态: {}", path.display()))
+        .with_context(|| format!("无法保存剧本运行状态: {}", path.display()))?;
+    super::dlc_transaction::sync_directory(data_dir).context("提交剧本运行状态目录项失败")
 }
 
 fn selected_values(script: &ScriptStatus, keys: &[String]) -> Map<String, Value> {
@@ -167,17 +168,76 @@ pub fn save_playthrough(script: &ScriptStatus, data_dir: &Path) -> Result<()> {
     write_state(data_dir, &state)
 }
 
+pub(crate) type ScriptStateBackup = Map<String, Value>;
+
+/// Atomically remove one script state and return its previous values. The DLC
+/// uninstaller uses the backup to roll back when Windows refuses package
+/// deletion, while a successful uninstall can simply discard it.
+pub(crate) fn take_playthrough(
+    data_dir: &Path,
+    path_key: &str,
+) -> Result<Option<ScriptStateBackup>> {
+    let path = state_path(data_dir);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let mut state = read_state(data_dir)?;
+    let Some(previous) = state.scripts.remove(path_key) else {
+        return Ok(None);
+    };
+    write_state(data_dir, &state)?;
+    Ok(Some(previous))
+}
+
+pub(crate) fn restore_playthrough(
+    data_dir: &Path,
+    path_key: &str,
+    backup: ScriptStateBackup,
+) -> Result<()> {
+    let mut state = read_state(data_dir)?;
+    state.version = STATE_VERSION;
+    state.scripts.insert(path_key.to_string(), backup);
+    write_state(data_dir, &state)
+}
+
 /// Drop one script's persisted runtime state so its next visit starts from
 /// the first-run route again. Returns true when anything was removed.
 pub fn reset_playthrough(data_dir: &Path, path_key: &str) -> Result<bool> {
-    let path = state_path(data_dir);
-    if !path.exists() {
-        return Ok(false);
+    Ok(take_playthrough(data_dir, path_key)?.is_some())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detached_state_can_be_restored_after_failed_uninstall() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "lingchat-script-state-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let owner = "standalone\\seventh";
+        let mut values = Map::new();
+        values.insert("current_act".to_string(), Value::from(3));
+        let mut state = RuntimeState {
+            version: STATE_VERSION,
+            ..RuntimeState::default()
+        };
+        state.scripts.insert(owner.to_string(), values.clone());
+        write_state(&dir, &state).unwrap();
+
+        let backup = take_playthrough(&dir, owner).unwrap().unwrap();
+        assert_eq!(backup, values);
+        assert!(!read_state(&dir).unwrap().scripts.contains_key(owner));
+        restore_playthrough(&dir, owner, backup).unwrap();
+        assert_eq!(read_state(&dir).unwrap().scripts.get(owner), Some(&values));
+
+        let _ = std::fs::remove_dir_all(dir);
     }
-    let mut state = read_state(data_dir)?;
-    if state.scripts.remove(path_key).is_none() {
-        return Ok(false);
-    }
-    write_state(data_dir, &state)?;
-    Ok(true)
 }

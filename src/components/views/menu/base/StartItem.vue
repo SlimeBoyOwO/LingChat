@@ -1,7 +1,8 @@
 <template>
   <button
     v-bind="$attrs"
-    class="bg-transparent
+    class="start-item
+      bg-transparent
       text-white
       border-none
       mt-[15px]
