@@ -375,13 +375,16 @@ fn map_reqwest_error(e: reqwest::Error) -> AsrError {
     }
 }
 
-/// 构造一个 30s 超时的默认 reqwest Client。
+/// 构造一个 30s 超时的默认 reqwest Client（TLS 走统一的 webpki-roots 配置，
+/// Android 上 rustls-platform-verifier 未初始化会 panic，见 utils/tls.rs）。
 ///
 /// 仅供测试 / 内部默认；生产环境调用方应通过 `factory::build_http_client`
 /// 注入正确的 TLS 配置。
 #[allow(dead_code)]
 pub fn default_http_client() -> reqwest::Client {
+    let tls = crate::utils::tls::build_tls_config().expect("构建默认 TLS 配置失败");
     reqwest::Client::builder()
+        .tls_backend_preconfigured(tls)
         .timeout(Duration::from_secs(30))
         .build()
         .expect("构建默认 HTTP 客户端失败")

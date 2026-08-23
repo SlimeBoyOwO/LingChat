@@ -176,7 +176,10 @@ pub async fn init_asr(
 
     tracing::info!("[ASR] init_asr 开始");
     let cfg = settings::load(app)?;
+    // TLS 走统一的 webpki-roots 配置（Android 上 rustls-platform-verifier 未初始化会 panic）
+    let tls_config = crate::utils::tls::build_tls_config()?;
     let http = reqwest::Client::builder()
+        .tls_backend_preconfigured(tls_config)
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
 

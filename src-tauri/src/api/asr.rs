@@ -34,7 +34,12 @@ fn err_to_user(e: &AsrError) -> String {
 
 /// 新建带 30s 超时的 HTTP 客户端（provider 网络请求统一用它）。
 fn build_http() -> Result<reqwest::Client, AsrError> {
+    // TLS 必须走统一的 webpki-roots 配置：reqwest 默认的 rustls-platform-verifier
+    // 在 Android 上未显式初始化会 panic（见 utils/tls.rs）。
+    let tls_config = crate::utils::tls::build_tls_config()
+        .map_err(|e| AsrError::EngineLoadFailed(format!("build tls config: {e}")))?;
     reqwest::Client::builder()
+        .tls_backend_preconfigured(tls_config)
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| AsrError::EngineLoadFailed(format!("build http client: {e}")))
