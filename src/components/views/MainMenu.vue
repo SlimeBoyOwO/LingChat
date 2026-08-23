@@ -98,7 +98,10 @@
         />
       </Transition>
 
-      <StartLogo @click="goToGithub" />
+      <StartLogo
+        :corrupted="menuEffect.theme !== 'normal'"
+        @click="goToGithub"
+      />
     </StartPage>
 
     <!-- DLC 识别提示（右下角小字；有已识别 DLC 时才显示） -->
