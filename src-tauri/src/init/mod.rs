@@ -170,9 +170,7 @@ pub async fn init_asr(
     app: &tauri::AppHandle,
     asr_state: &Arc<crate::ai_service::asr::AsrState>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use crate::ai_service::asr::{
-        provider, session::AsrSession, settings, vad::AsrVad,
-    };
+    use crate::ai_service::asr::{provider, session::AsrSession, settings, vad::AsrVad};
 
     tracing::info!("[ASR] init_asr 开始");
     let cfg = settings::load(app)?;

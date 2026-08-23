@@ -1,7 +1,8 @@
 //! ASR 配置持久化。
 //!
-//! 复用 `tauri_plugin_store` 的 `settings.json`，使用单 key `ASR_PROVIDERS` 存
-//! `Vec<ProviderConfig>` 与单 key `ASR_ACTIVE_PROVIDER_ID` 存当前激活 provider id。
+//! 复用 `tauri_plugin_store` 的 `settings.json`，三个 key 分开存：
+//! `ASR_PROVIDERS`（provider 凭据）、`ASR_ACTIVE_PROVIDER_ID`（当前激活 id）、
+//! `ASR_PREFS`（UI 偏好：总开关 / 自动监听 / 发送模式 / 流式 / 静音计时）。
 //! 与 [`crate::ai_service::llm::provider_config`] 的持久化模式一致。
 
 use serde::{Deserialize, Serialize};

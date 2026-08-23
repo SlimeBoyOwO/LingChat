@@ -97,11 +97,6 @@ impl VadSegmenter {
         self.cfg.candidate_silence_frames = frames;
     }
 
-    /// 当前是否处于语音段内。
-    pub fn is_speech_active(&self) -> bool {
-        self.speech_active
-    }
-
     /// 喂一帧语音概率，返回本帧产生的事件（0~2 个）。
     ///
     /// 状态机（30ms/帧）：
@@ -152,9 +147,7 @@ impl VadSegmenter {
                 });
             }
 
-            if self.candidate_fired
-                && frame - self.candidate_frame >= self.cfg.confirm_frames
-            {
+            if self.candidate_fired && frame - self.candidate_frame >= self.cfg.confirm_frames {
                 // 确认一轮结束
                 self.speech_active = false;
                 self.silence_start_frame = None;
@@ -202,9 +195,17 @@ mod tests {
         for _ in 0..26 {
             events.extend(seg.feed(0.1)); // 780ms 静音 → 无候选
         }
-        assert!(!events.iter().any(|e| matches!(e, SegmentEvent::TurnCandidate { .. })));
+        assert!(!events
+            .iter()
+            .any(|e| matches!(e, SegmentEvent::TurnCandidate { .. })));
         events.extend(seg.feed(0.1)); // 第 27 帧静音 ≈ 810ms
-        assert!(events.iter().any(|e| matches!(e, SegmentEvent::TurnCandidate { silence_frames: 27, .. })));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            SegmentEvent::TurnCandidate {
+                silence_frames: 27,
+                ..
+            }
+        )));
     }
 
     #[test]
@@ -219,9 +220,17 @@ mod tests {
         for _ in 0..9 {
             events.extend(seg.feed(0.1));
         }
-        assert!(!events.iter().any(|e| matches!(e, SegmentEvent::TurnCandidate { .. })));
+        assert!(!events
+            .iter()
+            .any(|e| matches!(e, SegmentEvent::TurnCandidate { .. })));
         events.extend(seg.feed(0.1));
-        assert!(events.iter().any(|e| matches!(e, SegmentEvent::TurnCandidate { silence_frames: 10, .. })));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            SegmentEvent::TurnCandidate {
+                silence_frames: 10,
+                ..
+            }
+        )));
     }
 
     #[test]
@@ -240,9 +249,10 @@ mod tests {
         let sealed = events
             .iter()
             .filter_map(|e| match e {
-                SegmentEvent::TurnSealed { start_frame, end_frame } => {
-                    Some((*start_frame, *end_frame))
-                }
+                SegmentEvent::TurnSealed {
+                    start_frame,
+                    end_frame,
+                } => Some((*start_frame, *end_frame)),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -259,13 +269,17 @@ mod tests {
         for _ in 0..28 {
             events.extend(seg.feed(0.1)); // 840ms 静音 → 候选已触发
         }
-        assert!(events.iter().any(|e| matches!(e, SegmentEvent::TurnCandidate { .. })));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, SegmentEvent::TurnCandidate { .. })));
         // 语音恢复
         events.extend(seg.feed(0.9));
         // 再静音 → 重新走候选流程
         events.extend(seg.feed(0.1));
-        assert!(!events.iter().any(|e| matches!(e, SegmentEvent::TurnSealed { .. })));
-        assert!(seg.is_speech_active());
+        assert!(!events
+            .iter()
+            .any(|e| matches!(e, SegmentEvent::TurnSealed { .. })));
+        assert!(seg.speech_active);
     }
 
     #[test]
@@ -291,9 +305,9 @@ mod tests {
     fn reset_clears_state() {
         let mut seg = VadSegmenter::new();
         seg.feed(0.9);
-        assert!(seg.is_speech_active());
+        assert!(seg.speech_active);
         seg.reset();
-        assert!(!seg.is_speech_active());
+        assert!(!seg.speech_active);
         assert_eq!(seg.current_frame(), 0);
     }
 }

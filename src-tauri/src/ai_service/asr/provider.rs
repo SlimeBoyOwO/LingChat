@@ -97,10 +97,6 @@ pub struct ProviderInfo {
 // ============================================================================
 
 /// provider 运行时凭证：仅 api_key + endpoint + model。
-///
-/// 设计原因：Task 3 才创建 settings.rs 中的 `AsrSettings` / `ProviderConfig`。
-/// 本 Task 先行定义 provider 真正需要的字段，Task 3 做适配层把
-/// `AsrSettings::provider_configs[id]` 转成本结构传入。
 #[derive(Debug, Clone, Default)]
 pub struct ProviderCredentials {
     pub api_key: String,
@@ -154,7 +150,6 @@ pub trait AsrProvider: Send + Sync {
         false
     }
 }
-
 
 // ============================================================================
 // Qwen ASR (DashScope)
@@ -342,10 +337,18 @@ fn parse_qwen_text(body: &str) -> Option<String> {
     if let Some(s) = value.get("text").and_then(|v| v.as_str()) {
         return Some(s.to_string());
     }
-    if let Some(s) = value.get("output").and_then(|v| v.get("text")).and_then(|v| v.as_str()) {
+    if let Some(s) = value
+        .get("output")
+        .and_then(|v| v.get("text"))
+        .and_then(|v| v.as_str())
+    {
         return Some(s.to_string());
     }
-    if let Some(s) = value.get("result").and_then(|v| v.get("text")).and_then(|v| v.as_str()) {
+    if let Some(s) = value
+        .get("result")
+        .and_then(|v| v.get("text"))
+        .and_then(|v| v.as_str())
+    {
         return Some(s.to_string());
     }
     None
@@ -540,6 +543,7 @@ mod tests {
         let c = ProviderCredentials {
             api_key: "k".into(),
             endpoint: "http://x.example.com/".into(),
+            model: String::new(),
         };
         assert_eq!(c.normalized_endpoint(), "http://x.example.com");
         assert!(c.has_api_key());
@@ -550,6 +554,7 @@ mod tests {
         let c = ProviderCredentials {
             api_key: "   ".into(),
             endpoint: "".into(),
+            model: String::new(),
         };
         assert!(!c.has_api_key());
     }

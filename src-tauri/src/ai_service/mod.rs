@@ -1,3 +1,4 @@
+pub mod asr;
 pub mod config;
 pub mod emotion;
 pub mod game_system;
@@ -12,4 +13,3 @@ pub mod tools;
 pub mod translator;
 pub mod tts;
 pub mod types;
-pub mod asr;

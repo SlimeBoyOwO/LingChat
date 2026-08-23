@@ -92,10 +92,7 @@ mod tests {
         );
         assert_eq!(AsrError::SessionBusy.i18n_code(), "ASR_SESSION_BUSY");
         assert_eq!(AsrError::Canceled.i18n_code(), "ASR_CANCELED");
-        assert_eq!(
-            AsrError::MicPermissionDenied.i18n_code(),
-            "ASR_MIC_DENIED"
-        );
+        assert_eq!(AsrError::MicPermissionDenied.i18n_code(), "ASR_MIC_DENIED");
         assert_eq!(
             AsrError::StreamingNotSupported("openai".into()).i18n_code(),
             "ASR_STREAMING_UNSUPPORTED"

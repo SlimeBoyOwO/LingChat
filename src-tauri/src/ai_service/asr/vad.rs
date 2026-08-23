@@ -1,12 +1,8 @@
 //! Silero VAD v5 端点检测。
 //!
-//! 加载 bundled `silero-vad.onnx` 模型到 ort Session，
-//! 对 30ms PCM 块连续推理，按 spec §2.4 三阶段状态机：
-//! - Phase 1: 粗粒度 silence 累计 ≥300ms → emit TurnCandidate
-//! - Phase 2: 1 秒 confirmation 窗口，speech 概率 > 0.5 取消 SEAL
-//! - Phase 3: 终态 SEAL → emit TurnSealed
-//!
-//! 与情绪识别共用 ort 运行时，各持独立 Session。
+//! 加载 bundled `silero-vad.onnx` 模型到 ort Session，对 30ms PCM 块连续
+//! 推理出语音概率，喂给 [`vad_segmenter`] 纯状态机做端点切分，
+//! 事件映射为 `asr://*` 事件推送给前端。
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -84,7 +80,10 @@ impl AsrVad {
             .map_err(|e| AsrError::EngineLoadFailed(format!("intra threads: {e}")))?
             .commit_from_file(model_path.as_path())
             .map_err(|e| {
-                AsrError::EngineLoadFailed(format!("commit_from_file({}): {e}", model_path.display()))
+                AsrError::EngineLoadFailed(format!(
+                    "commit_from_file({}): {e}",
+                    model_path.display()
+                ))
             })?;
         Ok(Self {
             session: Mutex::new(Some(session)),
@@ -102,8 +101,11 @@ impl AsrVad {
     /// 设置 VAD 静音计时（毫秒）：停止说话后静音该时长才触发「候选结束」。
     /// 设置页可自定义（默认 800ms）；帧率 30ms/帧，毫秒向上取整到帧。
     pub async fn set_silence_timeout_ms(&self, ms: u32) {
-        let frames = (ms as u64 + 29) / 30;
-        self.segmenter.lock().await.set_candidate_silence_frames(frames);
+        let frames = (ms as u64).div_ceil(30);
+        self.segmenter
+            .lock()
+            .await
+            .set_candidate_silence_frames(frames);
         tracing::info!("[ASR/VAD] 静音计时设置为 {ms}ms（{frames} 帧）");
     }
 
@@ -135,28 +137,23 @@ impl AsrVad {
             (input, state_tensor)
         };
 
-        // 构造输入 tensor
         let input_len = input_samples.len();
-        let input = ndarray::Array::from_shape_vec((1, input_len), input_samples)
-            .map_err(|e| {
-                tracing::error!("[ASR/VAD] input shape 构造失败 (len={}): {e}", input_len);
-                AsrError::EngineLoadFailed(format!("input shape: {e}"))
-            })?;
-        let input_t = Tensor::from_array(input)
-            .map_err(|e| {
-                tracing::error!("[ASR/VAD] input Tensor::from_array 失败: {e}");
-                AsrError::EngineLoadFailed(format!("input tensor: {e}"))
-            })?;
-        let state_t = Tensor::from_array(state_tensor)
-            .map_err(|e| {
-                tracing::error!("[ASR/VAD] state Tensor::from_array 失败: {e}");
-                AsrError::EngineLoadFailed(format!("state tensor: {e}"))
-            })?;
-        let sr_t = Tensor::from_array(ndarray::arr0(16000i64))
-            .map_err(|e| {
-                tracing::error!("[ASR/VAD] sr Tensor::from_array 失败: {e}");
-                AsrError::EngineLoadFailed(format!("sr tensor: {e}"))
-            })?;
+        let input = ndarray::Array::from_shape_vec((1, input_len), input_samples).map_err(|e| {
+            tracing::error!("[ASR/VAD] input shape 构造失败 (len={}): {e}", input_len);
+            AsrError::EngineLoadFailed(format!("input shape: {e}"))
+        })?;
+        let input_t = Tensor::from_array(input).map_err(|e| {
+            tracing::error!("[ASR/VAD] input Tensor::from_array 失败: {e}");
+            AsrError::EngineLoadFailed(format!("input tensor: {e}"))
+        })?;
+        let state_t = Tensor::from_array(state_tensor).map_err(|e| {
+            tracing::error!("[ASR/VAD] state Tensor::from_array 失败: {e}");
+            AsrError::EngineLoadFailed(format!("state tensor: {e}"))
+        })?;
+        let sr_t = Tensor::from_array(ndarray::arr0(16000i64)).map_err(|e| {
+            tracing::error!("[ASR/VAD] sr Tensor::from_array 失败: {e}");
+            AsrError::EngineLoadFailed(format!("sr tensor: {e}"))
+        })?;
 
         let outputs = session
             .run(ort::inputs![
@@ -197,7 +194,10 @@ impl AsrVad {
         // 诊断日志（切分链路观测）：前 10 帧 + 每秒 1 条（33 帧 @30ms），
         // 确认前端 VAD 流在走、prob 是否检测到语音；块长异常直接暴露。
         if pcm.len() != 512 {
-            tracing::warn!("[ASR/VAD] chunk 长度异常: {} samples（期望 512）", pcm.len());
+            tracing::warn!(
+                "[ASR/VAD] chunk 长度异常: {} samples（期望 512）",
+                pcm.len()
+            );
         }
         if frame < 10 || frame % 33 == 0 {
             tracing::info!("[ASR/VAD] frame={frame} prob={prob:.3} len={}", pcm.len());
@@ -212,7 +212,10 @@ impl AsrVad {
                 }
                 SegmentEvent::SilenceStart { .. } => VadEvent::SilenceStarted { silence_ms: 0 },
                 SegmentEvent::TurnCandidate { silence_frames, .. } => {
-                    tracing::info!("[ASR/VAD] TurnCandidate (silence={}ms)", silence_frames * 30);
+                    tracing::info!(
+                        "[ASR/VAD] TurnCandidate (silence={}ms)",
+                        silence_frames * 30
+                    );
                     VadEvent::TurnCandidate {
                         silence_ms: (*silence_frames * 30) as u32,
                     }
@@ -239,10 +242,8 @@ impl AsrVad {
     }
 }
 
-/// 解析 VAD 模型 bundled 路径（与 emotion 同款策略）：
-/// - 桌面 release: `app.path().resource_dir()/data/third_party/asr_vad/silero-vad.onnx`
-/// - 桌面 debug: `CARGO_MANIFEST_DIR/../data/third_party/asr_vad/silero-vad.onnx`
-/// - Android: `static_copy::get_data_dir()/third_party/asr_vad/silero-vad.onnx`
+/// 解析 VAD 模型路径：`data_dir/third_party/asr_vad/silero-vad.onnx`。
+/// （data_dir 按平台由 [`crate::init::static_copy`] 解析，与 emotion 模型同策略。）
 fn resolve_vad_model_path(_app: &AppHandle) -> Result<PathBuf, AsrError> {
     let data_dir = crate::init::static_copy::get_data_dir().clone();
     let path = data_dir

@@ -113,8 +113,8 @@ impl AsrSession {
             .await
     }
 
-    /// 识别 + 取消支持：`tokio::select!` 竞争 provider 结果与取消令牌。
-    /// child_token 每次新建 —— 上一次 `cancel()` 不会影响后续识别。
+    /// 识别并支持取消：`tokio::select!` 竞争 provider 结果与取消令牌；
+    /// child_token 每次新建，上一次 cancel 不影响后续识别。
     pub async fn recognize_wav_with(
         &self,
         provider: Arc<dyn AsrProvider>,
@@ -153,14 +153,9 @@ impl AsrSession {
         if self.stream.lock().await.take().is_some() {
             tracing::warn!("[ASR/stream] 丢弃残留流式会话句柄");
         }
-        let tx = provider_stream::start_streaming(
-            app.clone(),
-            endpoint,
-            api_key,
-            model,
-            language_hint,
-        )
-        .await?;
+        let tx =
+            provider_stream::start_streaming(app.clone(), endpoint, api_key, model, language_hint)
+                .await?;
         *self.stream.lock().await = Some(StreamHandle {
             provider_id: provider_id.to_string(),
             tx,

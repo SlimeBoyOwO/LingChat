@@ -150,10 +150,7 @@ pub async fn asr_recognize_wav(
     let p = resolve_provider(&providers, &provider_id, &app, &http)
         .await
         .map_err(|e| e.i18n_code().to_string())?;
-    tracing::info!(
-        "[ASR] 发送音频到 {provider_id}: {} bytes",
-        wav_bytes.len()
-    );
+    tracing::info!("[ASR] 发送音频到 {provider_id}: {} bytes", wav_bytes.len());
     let cancel_child = cancel_token.child_token();
     let result = tokio::select! {
         result = p.recognize(wav_bytes, language_hint.as_deref()) => result,

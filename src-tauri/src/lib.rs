@@ -522,7 +522,7 @@ pub fn run() {
             {
                 let state = app.state::<AppState>();
                 let asr_state = state.asr_state.clone();
-                if let Err(e) = rt.block_on(init::init_asr(&app.handle(), &asr_state)) {
+                if let Err(e) = rt.block_on(init::init_asr(app.handle(), &asr_state)) {
                     tracing::warn!("[ASR] init_asr 失败，ASR 功能不可用: {e:#}");
                 }
             }
