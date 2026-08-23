@@ -53,7 +53,7 @@
               ? { color: 'var(--accent-color)', borderColor: 'var(--accent-color)' }
               : {}
           "
-          @click.stop="startScreenshot"
+          @click.stop="start_screen_capture"
           @contextmenu.prevent="clearScreenshot"
         >
           <Camera :size="16" />
@@ -81,9 +81,11 @@ import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useSettingsStore } from '@/stores/modules/settings'
 import { useScreenshot } from '@/composables/useScreenshot'
+import { useImageSourcePicker } from '@/composables/useImageSourcePicker'
 import { isAndroid } from '@/utils/platform'
 import RoleAvatar from './GameRoleAvatar.vue'
 import { Play, Pause, Settings, LogOut, Camera } from 'lucide-vue-next'
+import { invoke } from '@tauri-apps/api/core'
 
 const { t } = useI18n()
 const gameStore = useGameStore()
@@ -118,6 +120,13 @@ const {
   start: startScreenshot,
   clear: clearScreenshot,
 } = useScreenshot()
+
+const { pickFromCamera } = useImageSourcePicker()
+
+async function start_screen_capture() {
+  startScreenshot
+  await pickFromCamera()
+}
 
 const titleText = computed(() => {
   if (isAndroid()) {

@@ -22,7 +22,7 @@
     </div>
 
     <!-- Avatar 区域 -->
-    <DragArea :isDragging="isDragging">
+    <DragArea @mousedown="startDrag" :isDragging="isDragging">
     <div
       ref="avatarContainer"
       class="shrink-0 flex items-center justify-center transition-all duration-100 bg-transparent"
@@ -112,6 +112,18 @@ const applyWindowLayout = async () => {
     console.error('调整窗口布局失败:', error)
   }
 }
+
+const startDrag = (e: MouseEvent) => {
+  // 防止选中文本或触发其他交互
+  e.preventDefault();
+  // 如果点击的是按钮、输入框、气泡等，不启动拖动
+  const target = e.target as HTMLElement;
+  if (target.closest('button, input, textarea, .dialogue-box, .chat-input')) {
+    return;
+  }
+  // 调用 Tauri 窗口拖动
+  getCurrentWindow().startDragging();
+};
 
 let hitTestInterval: number | undefined
 let scaleUnlisten: (() => void) | null = null

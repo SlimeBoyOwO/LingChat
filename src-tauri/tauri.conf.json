@@ -10,12 +10,14 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "LingChat",
         "width": 1500,
         "height": 800,
         "transparent": true,
+        "decorations": false, 
         "shadow": false
       }
     ],

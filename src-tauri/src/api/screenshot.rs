@@ -3,6 +3,9 @@
 use tauri::{AppHandle, Emitter, Manager};
 #[cfg(desktop)]
 use tauri::{WebviewUrl, WebviewWindowBuilder};
+use rfd::AsyncFileDialog;
+use tokio::fs;
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 
 use crate::ai_service::screen_analyzer::capture_screen_raw_jpeg;
 
@@ -14,14 +17,21 @@ pub async fn start_screenshot(app: AppHandle) -> Result<(), String> {
     // 让前端弹出底部 sheet(拍照 / 相册 / 取消)。
     // 用户选好图后,前端调 confirm_screenshot 把图片 base64 传回来,
     // 走和桌面端同一份数据通道。
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "macos", target_os = "windows"))]
     {
         app.emit("screenshot:request-source", ())
             .map_err(|e| format!("emit screenshot:request-source failed: {}", e))?;
-        tracing::info!("[Screenshot] Android picker requested.");
+        tracing::info!("[Screenshot] Image picker requested.");
         return Ok(());
     }
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "windows")))]
+    {
+        Err("当前平台不支持此功能".to_string())
+    }
+}
 
+#[tauri::command]
+pub async fn capture_full_screenshot(app: AppHandle) -> Result<(), String> {
     // 如果已有覆盖窗口，先关闭
     if let Some(overlay) = app.get_webview_window("screenshot-overlay") {
         let _ = overlay.close();
@@ -80,6 +90,43 @@ pub async fn get_overlay_data(app: AppHandle) -> Result<String, String> {
         .full_capture_base64
         .clone()
         .ok_or_else(|| "没有待处理的截图数据".to_string())
+}
+
+#[tauri::command]
+pub async fn pick_image_from_desktop(app: AppHandle) -> Result<(), String> {
+    // 1. 打开文件选择对话框（异步，不阻塞 UI）
+    let file_handle = AsyncFileDialog::new()
+        .set_title("选择一张图片")
+        .add_filter("图片", &["png", "jpg", "jpeg", "gif", "bmp", "webp"])
+        .pick_file()
+        .await;
+
+    if file_handle.is_none() {
+        let _ = cancel_screenshot(app).await;
+        return Ok(());
+    }
+
+    // 2. 读取文件二进制数据
+    let path = file_handle.unwrap().path().to_path_buf();
+    let data = fs::read(&path)
+        .await
+        .map_err(|e| format!("读取文件失败: {}", e))?;
+
+    // 3. 转 Base64（直接用标准库，无栈溢出风险）
+    let base64 = BASE64_STANDARD.encode(&data);
+
+    // 4. 发送事件到主窗口（跟 confirm_screenshot 行为一致）
+    app.emit(
+        "screenshot:captured",
+        serde_json::json!({ "base64": base64 }),
+    )
+    .map_err(|e| format!("发送截图事件失败: {}", e))?;
+
+    // 5. 可选：调用 cleanup
+    cleanup(&app).await;
+
+    tracing::info!("[Screenshot] Picked image and sent to main window.");
+    Ok(())
 }
 
 /// 覆盖窗口调用：用户确认选区，发送裁剪后的 base64 回主窗口。

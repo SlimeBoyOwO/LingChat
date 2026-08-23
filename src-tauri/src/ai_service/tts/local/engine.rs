@@ -89,6 +89,7 @@ impl LocalTtsEngine {
         let bert_clone = bert.clone();
         let tok_clone = tok.clone();
         let device = *self.device.lock().await;
+        tracing::info!("[TTS] 使用推理设备: {:?}", device);  // 确认是否真的是 Cpu
         let holder = tokio::task::spawn_blocking(move || {
             TTSModelHolder::new_with_device(bert_clone, tok_clone, Some(4), device)
         })

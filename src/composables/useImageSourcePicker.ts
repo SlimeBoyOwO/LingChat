@@ -19,6 +19,7 @@
 import { ref } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
+import { platform } from '@tauri-apps/plugin-os'
 
 const isOpen = ref(false)
 
@@ -56,17 +57,57 @@ export function useImageSourcePicker() {
     isOpen.value = false
   }
 
-  async function pickFromCamera(): Promise<void> {
+  // 桌面端统一使用原生对话框
+  async function pickFromDesktop() {
     close()
-    await readFileAsBase64({ accept: 'image/*', capture: 'environment' })
+    try {
+      await invoke('pick_image_from_desktop');
+    } catch (e) {
+      console.error('[ImageSourcePicker] 出错:', e)
+      await invoke('cancel_screenshot')
+    }
   }
 
-  async function pickFromGallery(): Promise<void> {
+  // Android 保留原 input 方式
+  async function pickFromAndroid(source: 'camera' | 'gallery') {
     close()
-    await readFileAsBase64({ accept: 'image/*' })
+    await readFileAsBase64({
+      accept: 'image/*',
+      capture: source === 'camera' ? 'environment' : undefined,
+    })
   }
 
-  async function cancel(): Promise<void> {
+  // 对外暴露的方法，根据平台决定行为
+  async function pickFromCamera() {
+    close()
+    const os = await platform()
+    if (os === 'android') {
+      await pickFromAndroid('camera')
+    } else {
+      // 桌面端：执行全屏截图
+      try {
+        await invoke('capture_full_screenshot')
+        await readFileAsBase64({
+          accept: 'image/*',
+          capture: 'environment',
+        })
+      } catch (e) {
+        console.error('[ImageSourcePicker] 截图失败:', e)
+        await invoke('cancel_screenshot')
+      }
+    }
+  }
+
+  async function pickFromGallery() {
+    const os = await platform()
+    if (os === 'android') {
+      await pickFromAndroid('gallery')
+    } else {
+      await pickFromDesktop()
+    }
+  }
+
+  async function cancel() {
     close()
     try {
       await invoke('cancel_screenshot')
@@ -85,6 +126,8 @@ export function useImageSourcePicker() {
     cancel,
   }
 }
+
+// --- 以下保留 Android 的 input 逻辑（未改动）---
 
 // --- internals ---
 
