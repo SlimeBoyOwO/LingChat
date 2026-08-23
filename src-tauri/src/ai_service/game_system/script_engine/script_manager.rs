@@ -694,6 +694,9 @@ impl ScriptManager {
     ) -> Result<()> {
         tracing::info!("[ScriptManager] 剧本结束 (completed={})", completed);
 
+        // OS 窗口标题是纯内存演出，结束时无条件还原（乱码标题不能泄漏到主菜单）
+        super::events::window_title_event::restore_window_title(ctx.app);
+
         // Extract data under one lock, then mutate under a second lock. The
         // frontend end event is emitted only after persistence and teardown so
         // the remounted main menu cannot race stale act/theme state.

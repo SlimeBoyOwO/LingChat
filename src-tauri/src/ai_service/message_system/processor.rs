@@ -49,6 +49,14 @@ fn emotion_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"【([^】]*)】([^【】]*)").expect("invalid regex"))
 }
+
+/// 剧本演出专用情绪（恐怖剧本的崩坏立绘等）：角色目录可自带对应立绘文件，
+/// 但 19 类 ONNX 分类器不认识它们——必须原样透传，否则【崩坏】会被映射成
+/// "难为情"之类的日常情绪，舞台立绘在台词落地的瞬间从崩坏脸跳回可爱脸。
+fn is_staging_emotion(tag: &str) -> bool {
+    matches!(tag, "崩坏" | "崩坏1" | "崩坏2")
+}
+
 fn japanese_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"<([^>]*)>").expect("invalid regex"))
@@ -163,12 +171,17 @@ impl MessageProcessor {
             }
 
             // 情绪分类器：有分类器走 ONNX，否则回退为原 tag。
-            let (predicted, confidence) = match self.classifier.as_ref() {
-                Some(clf) => {
-                    let p = clf.predict(emotion_tag, None);
-                    (p.label, p.confidence as f64)
+            // 演出专用情绪（崩坏系）不在 19 类模型里，直接透传保留舞台立绘。
+            let (predicted, confidence) = if is_staging_emotion(emotion_tag) {
+                (emotion_tag.to_string(), 1.0)
+            } else {
+                match self.classifier.as_ref() {
+                    Some(clf) => {
+                        let p = clf.predict(emotion_tag, None);
+                        (p.label, p.confidence as f64)
+                    }
+                    None => (emotion_tag.to_string(), 1.0),
                 }
-                None => (emotion_tag.to_string(), 1.0),
             };
 
             let voice_file = format!("{}_part_{}.wav", Uuid::new_v4(), i);

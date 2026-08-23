@@ -13,6 +13,7 @@ pub mod background_event;
 pub mod chapter_end_event;
 pub mod character_file_event;
 pub mod choice_event;
+pub mod console_window_event;
 pub mod dialog_event;
 pub mod force_choice_event;
 pub mod free_dialogue_event;
@@ -32,6 +33,7 @@ pub mod set_variable_event;
 pub mod sound_event;
 pub mod voice_shift_event;
 pub mod wait_event;
+pub mod window_title_event;
 
 use std::collections::HashMap;
 use std::path::Path;

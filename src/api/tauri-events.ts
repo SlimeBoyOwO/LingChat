@@ -365,6 +365,11 @@ export function initializeTauriEventListeners() {
     eventQueue.addEvent(asEvent(event.payload, { type: 'glitch_window', defaultDuration: 0 }))
   })
 
+  // 真实系统控制台窗口：前端推进到该拍时才调用 spawn 命令拉起真实 cmd
+  listen('script:console-window', (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: 'console_window', defaultDuration: 0 }))
+  })
+
   listen('script:force-choice', (event) => {
     eventQueue.addEvent(asEvent(event.payload, { type: 'force_choice', defaultDuration: 0 }))
   })

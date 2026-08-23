@@ -31,6 +31,7 @@ pub mod event_names {
     pub const SCRIPT_VOICE_SHIFT: &str = "script:voice-shift";
     pub const SCRIPT_WAIT: &str = "script:wait";
     pub const SCRIPT_GLITCH_WINDOW: &str = "script:glitch-window";
+    pub const SCRIPT_CONSOLE_WINDOW: &str = "script:console-window";
 }
 
 // ============================================================
@@ -133,6 +134,20 @@ pub struct GlitchWindowTicketPayload {
     pub request_id: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+}
+
+/// 真实系统控制台窗口：字段已在事件层净化+截断，前端在玩家推进到正确剧情
+/// 位置时才调用 `spawn_script_console_window` 拉起（否则后端会提前数章引爆）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConsoleWindowPayload {
+    pub title: String,
+    pub text: String,
+    pub count: usize,
+    pub interval: f64,
+    pub lifetime: u64,
+    /// console（蓝底 PowerShell）/ error（红叉系统错误框）/ warning（黄色警告框）/ notepad（真实记事本）
+    pub style: String,
 }
 
 /// 强制选择：前端用"鼠标被拖向 forced 选项"的演出，最终只能提交 forced。

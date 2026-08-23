@@ -59,6 +59,10 @@ pub fn init_event_registry() {
     events::menu_effect_event::register();
     events::character_file_event::register();
     events::glitch_window_event::register();
+    // 真实系统控制台窗口（固定模板、文本净化、自动关闭）
+    events::console_window_event::register();
+    // OS 窗口标题乱码（血字/崩坏演出用，剧本结束自动还原）
+    events::window_title_event::register();
 
     tracing::info!("[ScriptEngine] 所有事件处理器已注册");
 }

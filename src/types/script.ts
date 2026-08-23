@@ -151,6 +151,17 @@ export interface ScriptGlitchWindowEvent extends ScriptEvent {
   requestId: number
 }
 
+/** 真实系统弹窗：前端推进到该拍时才拉起（文本已净化）。style: console/error/warning/notepad */
+export interface ScriptConsoleWindowEvent extends ScriptEvent {
+  type: 'console_window'
+  title: string
+  text: string
+  count: number
+  interval: number
+  lifetime: number
+  style: string
+}
+
 /** 必须与目标台词同处前端时间轴的语音变速/变调。 */
 export interface ScriptVoiceShiftEvent extends ScriptEvent {
   type: 'voice_shift'
@@ -221,6 +232,7 @@ export type ScriptEventType =
   | ScriptJumpscareEvent
   | ScriptWaitEvent
   | ScriptGlitchWindowEvent
+  | ScriptConsoleWindowEvent
   | ScriptVoiceShiftEvent
   | ScriptForceChoiceEvent
   | ScriptPoemGameEvent

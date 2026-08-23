@@ -20,7 +20,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, watch } from 'vue'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import Glitch from './particles/Glitch.vue'
 import Shake from './particles/Shake.vue'
@@ -42,6 +43,36 @@ const active = computed<Set<string>>(() => {
   const raw = uiStore.currentBackgroundEffect
   if (!raw || raw === 'none' || raw === 'None') return new Set()
   return new Set(raw.split('+').map((s) => s.trim()).filter(Boolean))
+})
+
+// DDLC 式窗口标题崩坏：恐怖特效"显示在前端屏幕上"期间，OS 窗口标题同步乱码。
+// 必须挂在前端展示侧——后端会一口气跑完非阻塞事件，只有前端队列的节奏与玩家看到的一致。
+const GLITCH_TITLE = 'L⃞i⃟n⃗g⃘C⃙h⃚a⃝t⃞'
+const DEFAULT_TITLE = 'LingChat'
+let titleOwnedByEffects = false
+
+watch(
+  active,
+  (set) => {
+    const win = getCurrentWindow()
+    if (set.size > 0) {
+      titleOwnedByEffects = true
+      void win.setTitle(GLITCH_TITLE).catch(() => {})
+    } else if (titleOwnedByEffects) {
+      titleOwnedByEffects = false
+      void win.setTitle(DEFAULT_TITLE).catch(() => {})
+    }
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(() => {
+  if (titleOwnedByEffects) {
+    titleOwnedByEffects = false
+    void getCurrentWindow()
+      .setTitle(DEFAULT_TITLE)
+      .catch(() => {})
+  }
 })
 </script>
 

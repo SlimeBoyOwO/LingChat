@@ -36,6 +36,8 @@ export const EMOTION_CONFIG_EMO: EmotionMap = {
   平静: '平静',
   // 剧本演出专用情绪（恐怖剧本的崩坏立绘等）；角色目录缺对应文件时回退"正常"
   崩坏: '崩坏',
+  崩坏1: '崩坏1',
+  崩坏2: '崩坏2',
 }
 
 export const EMOTION_CONFIG: EmotionConfigMap = {

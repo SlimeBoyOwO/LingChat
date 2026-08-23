@@ -71,7 +71,7 @@ export default {
   contentWarning: {
     horrorTitle: "⚠ Content Warning",
     horrorMessage:
-      "This story contains horror, jumpscares and disturbing content, including depictions of suicide and self-harm. Intended for adults aged 18 and above only (R18).\nSome horror scripts also create temporary local glitch windows that close after a few seconds and write their own harmless .chr narrative markers under the characters folder beside the app data directory. They do not run external commands or modify real character files.\nIf you feel unwell while playing, please quit immediately.\n\nAre you sure you want to continue?",
+      "This story contains horror, jumpscares and intense visual corruption effects. Recommended for players aged 16 and above.\nSome horror scripts also create temporary local glitch windows that close after a few seconds and write their own harmless .chr narrative markers under the characters folder beside the app data directory. They do not run external commands or modify real character files.\nIf you feel unwell while playing, please quit immediately.\n\nAre you sure you want to continue?",
   },
   pet: {
     chatInput: {

@@ -131,6 +131,114 @@ pub fn close_script_glitch_windows(app: AppHandle) {
     );
 }
 
+/// Spawn real system popups for horror staging: blue PowerShell console
+/// (`console`), native system error dialog (`error`) / warning dialog
+/// (`warning`) via WScript Popup with auto-timeout, or a real Notepad window
+/// holding the text (`notepad`). Called by the frontend event queue at the
+/// exact beat; every text field is re-sanitized here (defense in depth) and
+/// single-quote-escaped into fixed PowerShell templates. count ≤ 4, lifetime
+/// ≤ 12s, all popups auto-close.
+#[tauri::command]
+pub async fn spawn_script_console_window(
+    app: AppHandle,
+    title: String,
+    text: String,
+    count: Option<usize>,
+    interval: Option<f64>,
+    lifetime: Option<u64>,
+    style: Option<String>,
+) -> Result<(), String> {
+    use crate::ai_service::game_system::script_engine::events::console_window_event as cw;
+    use std::os::windows::process::CommandExt;
+
+    // PowerShell 单引号字符串：内容只剩字面量（事件层已剥 cmd 元字符）
+    fn psq(s: &str) -> String {
+        format!("'{}'", s.replace('\'', "''"))
+    }
+
+    let title = cw::sanitize_console_field(&title);
+    let title = if title.is_empty() { "RUNTIME".to_string() } else { title };
+    let mut lines: Vec<String> = text
+        .lines()
+        .map(cw::sanitize_console_field)
+        .filter(|l| !l.is_empty())
+        .collect();
+    if lines.is_empty() {
+        lines.push("...".to_string());
+    }
+    let count = count.unwrap_or(1).clamp(1, cw::MAX_WINDOWS);
+    let interval = interval.unwrap_or(0.25).clamp(0.0, 5.0);
+    let lifetime = lifetime.unwrap_or(4).clamp(1, cw::MAX_LIFETIME_SECS);
+    let style = style.unwrap_or_else(|| "console".to_string());
+    let style = match style.as_str() {
+        "console" | "error" | "warning" | "notepad" => style,
+        _ => "console".to_string(),
+    };
+
+    // 多行文本：数组字面量 -join 换行，避免在命令行里出现裸换行
+    let array_literal = lines
+        .iter()
+        .map(|l| psq(l))
+        .collect::<Vec<_>>()
+        .join(",");
+    let text_expr = format!("@({}) -join [char]10", array_literal);
+
+    let script = match style.as_str() {
+        // 系统错误框（红叉）/ 警告框（黄三角）：WScript Popup 自带超时自动关闭
+        "error" | "warning" => {
+            let icon = if style == "error" { 16 } else { 48 };
+            format!(
+                "$w=New-Object -ComObject WScript.Shell; [void]$w.Popup({}, {}, {}, {}); exit",
+                text_expr, lifetime, psq(&title), icon
+            )
+        }
+        // 真实记事本：剧本文字写进临时 txt，打开后到时自动关闭并删除
+        "notepad" => {
+            format!(
+                "$f=Join-Path $env:TEMP ('lingchat-note-'+[guid]::NewGuid().ToString()+'.txt'); Set-Content -Path $f -Value {} -Encoding UTF8; $p=Start-Process notepad.exe -ArgumentList $f -PassThru; Start-Sleep {}; if(!$p.HasExited){{$p.Kill()}}; Remove-Item $f -Force -ErrorAction SilentlyContinue; exit",
+                text_expr, lifetime
+            )
+        }
+        // 蓝底 PowerShell 控制台
+        _ => {
+            let mut s = format!("$Host.UI.RawUI.WindowTitle={}", psq(&title));
+            s.push_str(&format!("; Write-Host {}", text_expr));
+            s.push_str(&format!("; Start-Sleep {}", lifetime));
+            s.push_str("; exit");
+            s
+        }
+    };
+
+    // 后台逐个拉起，interval 控制节奏；调用方（前端队列）不被阻塞
+    // console 样式才需要可见控制台窗口；error/warning/notepad 的 PS 宿主必须隐藏，
+    // 否则会先弹出一个多余的管理员终端窗口。
+    let hide_host = style != "console";
+    let _ = app;
+    tokio::spawn(async move {
+        for index in 0..count {
+            let mut command = std::process::Command::new("powershell");
+            command.arg("-NoProfile");
+            if hide_host {
+                command.arg("-WindowStyle").arg("Hidden");
+            }
+            command.arg("-Command").arg(&script);
+            if !hide_host {
+                command.creation_flags(0x0000_0010); // CREATE_NEW_CONSOLE
+            }
+            let result = command.spawn();
+            if let Err(error) = result {
+                tracing::warn!("[ScriptAPI] 拉起系统弹窗失败: {error}");
+                break;
+            }
+            if interval > 0.0 && index + 1 < count {
+                tokio::time::sleep(std::time::Duration::from_secs_f64(interval)).await;
+            }
+        }
+    });
+    Ok(())
+}
+
+
 #[tauri::command]
 pub async fn list_standalone_scripts(app: AppHandle) -> Result<ScriptListResponse, String> {
     let state = app.state::<AppState>();
@@ -379,6 +487,10 @@ pub async fn stop_script(app: AppHandle) -> Result<(), String> {
     // Invalidate the run-owned native-window epoch before waiting for the task.
     // This is authoritative even if the frontend's separate close invoke races/fails.
     crate::ai_service::game_system::script_engine::events::glitch_window_event::close_all_glitch_windows(
+        &app,
+    );
+    // 乱码窗口标题同样是运行期演出，停止剧本时立刻还原
+    crate::ai_service::game_system::script_engine::events::window_title_event::restore_window_title(
         &app,
     );
     let state = app.state::<AppState>();
