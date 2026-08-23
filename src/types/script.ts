@@ -140,6 +140,24 @@ export interface ScriptJumpscareEvent extends ScriptEvent {
   soundPath?: string
 }
 
+/** 玩家可见时间轴上的显式停顿。 */
+export interface ScriptWaitEvent extends ScriptEvent {
+  type: 'wait'
+}
+
+/** Rust 已安全校验、等待在正确剧情位置显示的本地故障窗口票据。 */
+export interface ScriptGlitchWindowEvent extends ScriptEvent {
+  type: 'glitch_window'
+  requestId: number
+}
+
+/** 必须与目标台词同处前端时间轴的语音变速/变调。 */
+export interface ScriptVoiceShiftEvent extends ScriptEvent {
+  type: 'voice_shift'
+  rate?: number
+  pitch?: number
+}
+
 /** 强制选择事件：鼠标被拖向 forced 选项，最终只能提交它 */
 export interface ScriptForceChoiceEvent extends ScriptEvent {
   type: 'force_choice'
@@ -201,5 +219,8 @@ export type ScriptEventType =
   | ScriptPresentPicEvent
   | ScriptFreeDialogueEvent
   | ScriptJumpscareEvent
+  | ScriptWaitEvent
+  | ScriptGlitchWindowEvent
+  | ScriptVoiceShiftEvent
   | ScriptForceChoiceEvent
   | ScriptPoemGameEvent

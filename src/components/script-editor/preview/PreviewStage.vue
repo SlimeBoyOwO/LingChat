@@ -32,6 +32,7 @@
                引擎 emit 的事件经 eventQueue 进来后，表现与正式游玩逐帧一致。 -->
           <GameBackground />
           <GameRolesStage />
+          <StageBlackout />
           <GameExtraUI />
           <GameDialog />
         </div>
@@ -101,6 +102,7 @@ import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { GameBackground, GameDialog, GameRolesStage } from '@/components/game/standard'
 import GameExtraUI from '@/components/game/standard/GameExtraUI.vue'
+import StageBlackout from '@/components/game/standard/StageBlackout.vue'
 import { eventQueue } from '@/core/events/event-queue'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import { useGameStore } from '@/stores/modules/game'

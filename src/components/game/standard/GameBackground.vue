@@ -210,24 +210,29 @@ const onStarfieldReady = (instance: any): void => {
 }
 
 // 只保留监听瞬时音效 (由于音效很短，不需要淡入淡出，保持原生调用)
-// currentSoundEffect 存原始路径（与 music/ambient 同一约定），在此统一转换
+// seq 使相同路径也可重播；requestId 防止较慢的旧 URL 解析反过来截断新音效。
+let soundEffectRequestId = 0
 watch(
-  () => uiStore.currentSoundEffect,
-  (rawPath: string | null | undefined) => {
-    if (soundEffectPlayer.value && rawPath && rawPath !== 'None') {
-      // 重置 src 确保相同路径的重复事件也能触发播放
-      soundEffectPlayer.value.pause()
-      soundEffectPlayer.value.currentTime = 0
-      soundEffectPlayer.value.src = ''
-      void toPlayableMediaUrl(rawPath)
-        .then((url) => {
-          if (!soundEffectPlayer.value) return
-          soundEffectPlayer.value.src = url
-          soundEffectPlayer.value.load()
-          soundEffectPlayer.value.play().catch(() => {})
-        })
-        .catch((e) => console.warn('音效加载失败:', rawPath, e))
-    }
+  () => [uiStore.currentSoundEffect, uiStore.soundEffectSeq] as const,
+  ([rawPath]) => {
+    const requestId = ++soundEffectRequestId
+    const player = soundEffectPlayer.value
+    if (!player) return
+    player.pause()
+    player.currentTime = 0
+    player.src = ''
+    if (!rawPath || rawPath === 'None') return
+
+    void toPlayableMediaUrl(rawPath)
+      .then((url) => {
+        if (requestId !== soundEffectRequestId || !soundEffectPlayer.value) return
+        soundEffectPlayer.value.src = url
+        soundEffectPlayer.value.load()
+        soundEffectPlayer.value.play().catch(() => {})
+      })
+      .catch((e) => {
+        if (requestId === soundEffectRequestId) console.warn('音效加载失败:', rawPath, e)
+      })
   },
 )
 

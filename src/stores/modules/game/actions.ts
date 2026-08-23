@@ -24,9 +24,12 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
     try {
       const gameInfo = await getGameInfo()
       applyWebInitData(this, gameInfo)
-      // 剧本入口会先标记 runningScript 再挂载聊天页；此时禁止自由模式问候
-      // 混进剧本事件队列，避免玩家进入恐怖流程后还要清理迟到的 AI 寒暄。
-      if (!this.runningScript) {
+      // 剧本入口会先标记 runningScript 再挂载聊天页。initializeGame 的
+      // backend snapshot 仍可能带回自由对话角色，所以必须在事件队列 resume
+      // 之前再次清台；随后 authored show_character 事件会按顺序重建舞台。
+      if (this.runningScript) {
+        this.presentRoleIds = []
+      } else {
         invoke('notify_player_entry').catch((err) =>
           console.warn('[Entry] 问候触发失败（非致命）:', err),
         )
@@ -104,6 +107,9 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
     if (this.preScriptRoleIds === null) {
       this.preScriptRoleIds = [...this.presentRoleIds]
     }
+    // Every story run owns a deterministic stage. Free-dialogue characters must
+    // not leak into missing/empty scenes; the snapshot is restored on exit.
+    this.presentRoleIds = []
     uiStore.bgmPersistBlocked = true
     uiStore.bgMusicMode = 'loop-single'
     // 进入新剧本前清掉可能残留的恐怖特效（上次异常退出/重启等情况）
@@ -134,8 +140,9 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
     uiStore.resetHorrorEffects()
     // 剧本的输入提示（如「输入"继续"继续」）不得留在自由对话输入框
     uiStore.showPlayerHintLine = ''
-    // 剧本挂起的环境音（rumble 等循环轨）立即停
+    // 剧本挂起的环境音（rumble 等循环轨）和短音效立即停
     uiStore.clearAmbientTracks()
+    uiStore.triggerSoundEffect('None')
     // BGM 变速还原
     uiStore.bgMusicPlaybackRate = 1
     // 背景图还原成进剧本前的自由对话背景
@@ -154,9 +161,16 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
       this.preScriptRoleIds = null
       for (const id of this.presentRoleIds) {
         const role = this.gameRoles[id]
-        if (role) role.emotion = '正常'
+        if (role) {
+          role.show = true
+          role.emotion = '正常'
+        }
       }
     }
+    // 原生故障窗口/尚未消费的一次性票据也必须在任意退出路径立即收掉。
+    invoke('close_script_glitch_windows').catch((err) =>
+      console.warn('[Script] 关闭故障窗口失败（非致命）:', err),
+    )
     // 后端剧本任务可能还阻塞在输入等待上：丢掉发送端让它走统一收尾，
     // 否则 is_running 卡死会导致「重置记忆」一直被拒、重进剧本起双任务
     invoke('stop_script').catch((err) => console.warn('[Script] stop_script 失败（非致命）:', err))

@@ -29,6 +29,8 @@ pub mod event_names {
     pub const SCRIPT_FORCE_CHOICE: &str = "script:force-choice";
     pub const SCRIPT_POEM_GAME: &str = "script:poem-game";
     pub const SCRIPT_VOICE_SHIFT: &str = "script:voice-shift";
+    pub const SCRIPT_WAIT: &str = "script:wait";
+    pub const SCRIPT_GLITCH_WINDOW: &str = "script:glitch-window";
 }
 
 // ============================================================
@@ -113,6 +115,22 @@ pub struct JumpscarePayload {
     pub image_path: String,
     /// 可选音效；空串表示无
     pub sound_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+/// 显式时间轴停顿。必须进入前端事件队列，才能相对玩家点击后的真实画面计时。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WaitPayload {
+    pub duration: f64,
+}
+
+/// 已在 Rust 端完成安全校验的辅助故障窗口一次性票据。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GlitchWindowTicketPayload {
+    pub request_id: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
 }
@@ -268,4 +286,6 @@ pub struct ScriptEndPayload {
 pub struct VoiceShiftPayload {
     pub rate: f64,
     pub pitch: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }

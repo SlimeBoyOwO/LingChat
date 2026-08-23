@@ -48,6 +48,8 @@ interface UIState {
   bgMusicPlaybackRate: number
 
   currentSoundEffect: string
+  /** 每次音效事件递增，确保相同路径也触发重播。 */
+  soundEffectSeq: number
   currentAvatarAudio: string
   /** 角色语音（TTS）播放倍率，由剧本 voice_shift 事件设置；<1 降调=恶魔音，1.0 正常 */
   voiceRate: number
@@ -154,6 +156,7 @@ export const useUIStore = defineStore('ui', {
     bgMusicPlaybackRate: 1,
 
     currentSoundEffect: 'None',
+    soundEffectSeq: 0,
     currentAvatarAudio: 'None',
     voiceRate: 1,
     voicePitch: 0,
@@ -266,6 +269,11 @@ export const useUIStore = defineStore('ui', {
     // 设置背景效果（写入 settings store）
     setBackgroundEffect(effect: string) {
       useSettingsStore().setBackgroundEffect(effect)
+    },
+    /** 触发一次短音效；序号让同一路径连续事件也可观察。 */
+    triggerSoundEffect(path: string) {
+      this.currentSoundEffect = path || 'None'
+      this.soundEffectSeq += 1
     },
     /** 触发突脸惊吓：图片全屏闪现 durationSec 秒，自带音效 */
     triggerJumpscare(image: string, sound: string, durationSec: number) {

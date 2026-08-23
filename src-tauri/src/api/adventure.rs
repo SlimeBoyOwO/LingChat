@@ -202,6 +202,10 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
             .map_err(|_| "已有剧本正在运行或 DLC 管理操作尚未完成".to_string())?;
         (script, game_status, config, is_running)
     };
+    // Capture the epoch immediately after reserving the run, before any more awaits.
+    let glitch_window_generation = crate::ai_service::game_system::script_engine::events::glitch_window_event::begin_glitch_window_run(
+        &app,
+    );
 
     let ai_service = state.ai_service.clone();
     let channels = state.script_channels.clone();
@@ -220,6 +224,7 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
             llm: llm.as_ref(),
             channels,
             is_preview: false,
+            glitch_window_generation,
         };
 
         match ScriptManager::execute_script(&script, &mut ctx, &is_running).await {

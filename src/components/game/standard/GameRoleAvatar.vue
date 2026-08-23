@@ -163,7 +163,12 @@ watch(
   () => uiStore.spriteFlash,
   async (flash) => {
     if (!flash) {
-      // 剧本结束/重置时的兜底：立即收掉覆盖层
+      // 剧本结束/重置时的兜底：使尚未返回的异步解析失效，并取消旧计时器。
+      flashResolveId += 1
+      if (flashTimerId !== null) {
+        window.clearTimeout(flashTimerId)
+        flashTimerId = null
+      }
       flashAvatarUrl.value = ''
       return
     }
@@ -184,6 +189,17 @@ watch(
     } catch {
       // 角色目录没有该演出情绪的立绘文件：静默跳过这次闪现
       return
+    }
+    if (currentId !== flashResolveId) return
+
+    // Start the authored flash timer only after the browser has decoded the
+    // image; otherwise a 300ms beat can expire while its first frame loads.
+    try {
+      const image = new Image()
+      image.src = url
+      await image.decode()
+    } catch {
+      // Cached/local images may report decode errors transiently; still render.
     }
     if (currentId !== flashResolveId) return
 

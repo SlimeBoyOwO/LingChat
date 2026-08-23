@@ -64,6 +64,7 @@ import { useGameStore } from '@/stores/modules/game'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { i18n } from '@/locales'
+import { eventQueue } from '@/core/events/event-queue'
 
 const emit = defineEmits<{
   (e: 'back'): void
@@ -133,6 +134,8 @@ const selectScript = async (script: ScriptSummary) => {
     await uiStore.beginHorrorEntry()
   }
 
+  // 新剧本必须使用全新的队列代号，取消任何上轮尚未返回的点击/视觉计时。
+  eventQueue.clear()
   // 先标记剧情模式再挂载 MainChat：初始化逻辑据此跳过自由对话入场问候，
   // 防止后台生成的寒暄在剧本开始后才插入队列并拖慢剧情。
   gameStore.enterStoryMode(script.script_name, script.content_warning)

@@ -1,8 +1,8 @@
-//! Wait event — holds the script timeline for N seconds.
+//! Wait event — holds the player-visible frontend timeline for N seconds.
 //!
-//! DDLC 式定拍演出（发现 CG 后静止 3.75s、假报错挂 6s 等）靠它撑起来：
-//! 非交互事件默认瞬时连发，没有时间轴上的"停在这一拍"手段。
-//! 只阻塞剧本时间轴，不向前端发任何消息。
+//! DDLC 式定拍演出（发现 CG 后静止 3.75s、假报错挂 6s 等）必须进入
+//! 前端事件队列：Rust 端若只 sleep，等待会在玩家仍阅读上一句对白时提前耗尽，
+//! 等画面事件真正被消费时便会瞬间连发。
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -11,6 +11,10 @@ use serde_json::Value;
 use crate::ai_service::game_system::script_engine::events::{
     register_event, ScriptContext, ScriptEvent,
 };
+use crate::ai_service::game_system::script_engine::responses::{
+    event_names::SCRIPT_WAIT, WaitPayload,
+};
+use crate::ai_service::message_system::events::emit;
 
 /// 单次等待上限，防止笔误把剧本卡死
 const MAX_WAIT_SECS: f64 = 30.0;
@@ -31,7 +35,7 @@ impl WaitEvent {
 
 #[async_trait]
 impl ScriptEvent for WaitEvent {
-    async fn execute(&mut self, _ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
+    async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
         let secs = self.seconds.clamp(0.05, MAX_WAIT_SECS);
         if self.seconds > MAX_WAIT_SECS {
             tracing::warn!(
@@ -40,7 +44,7 @@ impl ScriptEvent for WaitEvent {
                 MAX_WAIT_SECS
             );
         }
-        tokio::time::sleep(std::time::Duration::from_secs_f64(secs)).await;
+        emit(ctx.app, SCRIPT_WAIT, &WaitPayload { duration: secs })?;
         Ok(None)
     }
 

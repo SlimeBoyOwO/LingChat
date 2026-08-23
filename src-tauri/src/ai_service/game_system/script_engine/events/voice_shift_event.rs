@@ -77,14 +77,15 @@ impl ScriptEvent for VoiceShiftEvent {
             script_status.set_variable("voice_pitch", json!(self.pitch));
         }
 
-        let _ = emit(
+        emit(
             ctx.app,
             SCRIPT_VOICE_SHIFT,
             &VoiceShiftPayload {
                 rate: self.rate,
                 pitch: self.pitch,
+                duration: self.duration,
             },
-        );
+        )?;
 
         Ok(None)
     }

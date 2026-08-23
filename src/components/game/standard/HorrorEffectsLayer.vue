@@ -5,7 +5,6 @@
     <Glitch v-if="active.has('Glitch')" :enabled="true" />
     <Shake v-if="active.has('Shake')" :enabled="true" />
     <Flash v-if="active.has('Flash')" :enabled="true" mode="red" />
-    <Flash v-if="active.has('Blackout')" :enabled="true" mode="black" />
     <Tear v-if="active.has('Tear')" :enabled="true" />
     <Static v-if="active.has('Static')" :enabled="true" />
     <Invert v-if="active.has('Invert')" :enabled="true" />

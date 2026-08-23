@@ -459,6 +459,10 @@ impl ScriptManager {
             // 否则自由对话的立绘不再显示。
             gs.script_start_onstage_ids = Some(gs.onstage_role_ids.clone());
             gs.script_start_present_ids = Some(gs.present_role_ids.clone());
+            // A script owns an isolated stage. Roles carried from free dialogue
+            // would otherwise leak into empty/missing scenes and backend state.
+            gs.onstage_role_ids.clear();
+            gs.present_role_ids.clear();
         }
         // Story previews are isolated from persistent state. Real runs may opt
         // in to a small allow-list of variables via `persistent_vars`.
@@ -754,11 +758,15 @@ impl ScriptManager {
             }
         }
 
-        // No script-owned auxiliary window may survive a natural end, manual
-        // stop, or error teardown.
-        crate::ai_service::game_system::script_engine::events::glitch_window_event::close_all_glitch_windows(
-            ctx.app,
-        );
+        // A normal backend run can finish long before the player consumes the
+        // frontend dialogue queue. Keep validated window tickets alive until the
+        // queue-ordered script:end processor closes them; stop/error/preview
+        // teardown still cleans immediately.
+        if !completed && release_running {
+            crate::ai_service::game_system::script_engine::events::glitch_window_event::close_all_glitch_windows(
+                ctx.app,
+            );
+        }
 
         if release_running {
             is_running.store(false, Ordering::SeqCst);
@@ -767,7 +775,13 @@ impl ScriptManager {
         // This releases the frontend from story mode. Normal runs publish only
         // after is_running is false. Editor preview deliberately keeps its
         // reservation until PreviewSession has restored shared GameStatus.
-        let _ = emit(ctx.app, SCRIPT_END, &ScriptEndPayload { completed });
+        if let Err(error) = emit(ctx.app, SCRIPT_END, &ScriptEndPayload { completed }) {
+            // No frontend consumer will arrive to close deferred tickets/windows.
+            crate::ai_service::game_system::script_engine::events::glitch_window_event::close_all_glitch_windows(
+                ctx.app,
+            );
+            tracing::error!("[ScriptManager] script:end 发送失败，已执行原生窗口回退清理: {error:#}");
+        }
 
         tracing::info!("[ScriptManager] 剧本状态已清除");
 

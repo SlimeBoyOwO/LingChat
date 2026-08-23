@@ -107,6 +107,30 @@ pub async fn get_script_menu_effect(app: AppHandle) -> Option<ScriptMenuEffectRe
     })
 }
 
+/// Display one auxiliary horror window only after the frontend event queue has
+/// reached its Rust-validated one-time ticket.
+#[tauri::command]
+pub async fn show_script_glitch_window(
+    app: AppHandle,
+    request_id: u64,
+) -> Result<(), String> {
+    crate::ai_service::game_system::script_engine::events::glitch_window_event::show_pending_glitch_window(
+        &app,
+        request_id,
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
+/// Queue-ordered natural completion and immediate stop/error paths share this
+/// idempotent cleanup command.
+#[tauri::command]
+pub fn close_script_glitch_windows(app: AppHandle) {
+    crate::ai_service::game_system::script_engine::events::glitch_window_event::close_all_glitch_windows(
+        &app,
+    );
+}
+
 #[tauri::command]
 pub async fn list_standalone_scripts(app: AppHandle) -> Result<ScriptListResponse, String> {
     let state = app.state::<AppState>();
@@ -164,6 +188,12 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
         (script, game_status, config, is_running)
     };
 
+    // A previous frontend may have been closed before consuming script:end.
+    // Bind every auxiliary-window ticket to this exact formal run.
+    let glitch_window_generation = crate::ai_service::game_system::script_engine::events::glitch_window_event::begin_glitch_window_run(
+        &app,
+    );
+
     // 切入正式剧本即推进生成代号：自由对话/入场问候若仍在后台流式生成，
     // publisher 与最终写入守卫都会丢弃旧代号，禁止迟到寒暄混进剧本队列。
     {
@@ -182,6 +212,7 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
             llm: llm.as_ref(),
             channels,
             is_preview: false,
+            glitch_window_generation,
         };
 
         match ScriptManager::execute_script(&script, &mut ctx, &is_running).await {
@@ -345,6 +376,11 @@ pub async fn reset_script_state(app: AppHandle, script_name: String) -> Result<b
 /// already cleaned up its own state by then.
 #[tauri::command]
 pub async fn stop_script(app: AppHandle) -> Result<(), String> {
+    // Invalidate the run-owned native-window epoch before waiting for the task.
+    // This is authoritative even if the frontend's separate close invoke races/fails.
+    crate::ai_service::game_system::script_engine::events::glitch_window_event::close_all_glitch_windows(
+        &app,
+    );
     let state = app.state::<AppState>();
     let is_running = {
         let service = state.ai_service.lock().await;

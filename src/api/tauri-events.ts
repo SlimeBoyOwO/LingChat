@@ -107,12 +107,9 @@ export function initializeTauriEventListeners() {
     clearToolCallPreparing()
   })
 
-  // 剧本 voice_shift：调整角色语音播放倍率与音调（rate<1 降调=恶魔音；pitch 纯降调半音数，0 恢复）
+  // 语音变调必须与目标对白使用同一 FIFO；直接改 store 会在玩家仍读旧台词时提前生效并重置。
   listen('script:voice-shift', (event) => {
-    const payload = event.payload as { rate?: number; pitch?: number }
-    const uiStore = useUIStore()
-    uiStore.voiceRate = typeof payload.rate === 'number' && payload.rate > 0 ? payload.rate : 1
-    uiStore.voicePitch = typeof payload.pitch === 'number' ? payload.pitch : 0
+    eventQueue.addEvent(asEvent(event.payload, { type: 'voice_shift', defaultDuration: 0 }))
   })
 
   // 工具调用结果：记入「工具调用」页面历史 + 左上角弹通知
@@ -353,7 +350,19 @@ export function initializeTauriEventListeners() {
   })
 
   listen('script:jumpscare', (event) => {
-    eventQueue.addEvent(asEvent(event.payload, { type: 'jumpscare', defaultDuration: 0 }))
+    eventQueue.addEvent(asEvent(event.payload, { type: 'jumpscare', defaultDuration: 0.6 }))
+  })
+
+  // Rust-side sleep runs ahead while the player reads dialogue; queue the wait
+  // itself so horror beats hold for their authored duration on the visible UI.
+  listen('script:wait', (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: 'wait', defaultDuration: 0 }))
+  })
+
+  // The payload is only a one-time ticket validated by Rust. Its processor asks
+  // Rust to create the bounded local window at this exact queue position.
+  listen('script:glitch-window', (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: 'glitch_window', defaultDuration: 0 }))
   })
 
   listen('script:force-choice', (event) => {

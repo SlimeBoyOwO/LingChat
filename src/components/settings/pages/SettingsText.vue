@@ -512,6 +512,7 @@ import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useRoleArchiveStore } from '../../../stores/modules/ui/role-archive'
 import { useSettingsStore } from '../../../stores/modules/settings'
 import { useGameStore } from '../../../stores/modules/game'
+import { eventQueue } from '@/core/events/event-queue'
 import type { ConfigItem } from '@/api/services/config'
 import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
 import { applyWebInitData } from '@/stores/modules/game/actions'
@@ -749,6 +750,8 @@ async function checkResourceSyncAvailability() {
 }
 
 const returnToMain = () => {
+  eventQueue.clear()
+  gameStore.exitStoryMode()
   uiStore.toggleSettings(false)
   router.push('/')
 }
@@ -773,8 +776,11 @@ const handleClearHistory = async () => {
     uiStore.bgMusicPaused = false
     uiStore.bgMusicStoped = true
 
-    // 清除运行中的剧本状态
+    // 清除运行中的剧本状态和所有尚未消费的视觉/点击等待
+    eventQueue.clear()
     gameStore.exitStoryMode()
+    // Settings overlays MainChat in place; no mount hook will resume this queue.
+    eventQueue.resume()
 
     uiStore.showNotification({
       type: 'success',

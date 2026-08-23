@@ -9,6 +9,7 @@
       @audio-ended="handleAudioFinished"
       @audio-started="handleAudioStarted"
     />
+    <StageBlackout />
     <GameDialog
       ref="gameDialogRef"
       @player-continued="manualTriggerContinue"
@@ -67,6 +68,7 @@ import LoadingTransition from './LoadingTransition.vue'
 import { eventQueue } from '@/core/events/event-queue'
 
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
+import StageBlackout from '../game/standard/StageBlackout.vue'
 import ImageSourcePicker from '@/components/ui/ImageSourcePicker.vue'
 import { isAndroid } from '@/utils/platform'
 

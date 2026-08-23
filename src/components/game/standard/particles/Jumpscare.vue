@@ -38,7 +38,14 @@ watch(
   () => uiStore.jumpscareUntil,
   (until) => {
     clearTimeout(hideTimer)
-    if (!until || !uiStore.jumpscareImage) return
+    if (!until || !uiStore.jumpscareImage) {
+      visible.value = false
+      if (audioRef.value) {
+        audioRef.value.pause()
+        audioRef.value.currentTime = 0
+      }
+      return
+    }
 
     visible.value = true
 

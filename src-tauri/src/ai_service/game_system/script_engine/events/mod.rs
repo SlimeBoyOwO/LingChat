@@ -102,6 +102,10 @@ pub struct ScriptContext<'a> {
     /// 标记，前端据此丢弃中止后迟到的流式回复（见 `ReplyResponse.preview_gen`）。
     /// 正式游玩显式置 `false`。
     pub is_preview: bool,
+
+    /// Auxiliary-window epoch captured when this exact script run starts.
+    /// Teardown advances the global epoch, so late events from an old task are rejected.
+    pub glitch_window_generation: u64,
 }
 
 // ============================================================

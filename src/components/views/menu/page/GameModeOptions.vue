@@ -22,6 +22,7 @@
 import { StartItem, StartLine, StartList } from '../base'
 import { useRouter } from 'vue-router'
 import { useGameStore } from '@/stores/modules/game'
+import { eventQueue } from '@/core/events/event-queue'
 
 const emit = defineEmits<{
   (e: 'back'): void
@@ -32,6 +33,7 @@ const router = useRouter()
 const gameStore = useGameStore()
 
 const startFreeDialogue = () => {
+  eventQueue.clear()
   gameStore.exitStoryMode()
   router.push('/chat')
 }

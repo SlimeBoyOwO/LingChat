@@ -76,8 +76,8 @@ const echoHtml = computed(() => {
   font-size: 1.7vh;
   line-height: 1.9;
   opacity: 0;
-  /* 彩蛋独白延迟淡入：像有人在报错页背后小声说话 */
-  animation: crash-echo-in 1.2s ease-out 1.6s forwards;
+  /* 在常用 1.6–2.4s 演出窗口内完成淡入，避免刚出现就被下一拍收掉。 */
+  animation: crash-echo-in 0.7s ease-out 0.55s forwards;
 }
 
 /* 偶发的水平细亮纹扫过 */

@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core'
 import type { IEventProcessor } from '../event-processor'
 import type { ScriptEndEvent } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
@@ -5,6 +6,7 @@ import { useUIStore } from '../../../stores/modules/ui/ui'
 import { WebSocketMessageTypes } from '../../../types'
 import { useAdventureStore } from '@/stores/modules/adventure'
 import router from '@/router'
+import { eventQueue } from '../event-queue'
 
 export default class ScriptEndProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {
@@ -23,6 +25,18 @@ export default class ScriptEndProcessor implements IEventProcessor {
         adventureStore.markAdventureCompleted(adventure.adventure_folder)
       }
     }
+
+    // Natural backend completion can happen while visual events are still queued.
+    // Close native glitch windows only now, after every preceding beat was shown.
+    try {
+      await invoke('close_script_glitch_windows')
+    } catch (error) {
+      console.error('[ScriptEndProcessor] failed to close glitch windows:', error)
+    }
+
+    // Cancel this run's queue epoch as part of the same teardown, so a late
+    // timer/reply cannot resume behind the main menu or a new story run.
+    eventQueue.clear()
 
     const gameStore = useGameStore()
     gameStore.exitStoryMode()

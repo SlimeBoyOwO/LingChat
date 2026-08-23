@@ -8,7 +8,7 @@ export default class ModifyCharacterProcessor implements IEventProcessor {
     return eventType === 'modify_character'
   }
 
-  async processEvent(event: ScriptModifyCharacterEvent): Promise<void> {
+  async processEvent(event: ScriptModifyCharacterEvent, signal?: AbortSignal): Promise<void> {
     const gameStore = useGameStore()
 
     console.log('执行修改角色' + event.characterId + event.emotion + event.action)
@@ -20,12 +20,17 @@ export default class ModifyCharacterProcessor implements IEventProcessor {
       // 闪现演出：立绘短暂换成指定情绪后自动还原，不触碰角色真实状态
       // （后续 dialogue 事件回写 emotion 也不会把闪现冲掉——闪现在组件层做覆盖层）
       if (event.flash && event.emotion) {
+        // Ensure the role/folder is ready before the avatar overlay starts its
+        // short resolution window; otherwise the authored beat can be missed.
+        await gameStore.getOrCreateGameRole(event.characterId)
+        if (signal?.aborted) return
         useUIStore().triggerSpriteFlash(event.characterId, event.emotion, delay > 0 ? delay : 0.45)
         return
       }
 
       // 确保游戏初始化包含角色
       const role = await gameStore.getOrCreateGameRole(event.characterId)
+      if (signal?.aborted) return
 
       if (event.action) {
         switch (event.action) {

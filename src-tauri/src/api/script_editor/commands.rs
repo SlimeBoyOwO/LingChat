@@ -1335,7 +1335,7 @@ pub async fn editor_start_preview(
     key: String,
     from_chapter: Option<String>,
 ) -> Result<PreviewStartInfo, String> {
-    // 先把磁盘状态同步进引擎
+    // 先把磁盘状态同步进引擎。
     editor_rescan_scripts(app.clone()).await?;
 
     let state = app.state::<AppState>();
@@ -1415,6 +1415,10 @@ pub async fn editor_start_preview(
             service.data_dir.clone(),
         )
     };
+    // Capture the native-window epoch immediately after reserving the preview.
+    let glitch_window_generation = crate::ai_service::game_system::script_engine::events::glitch_window_event::begin_glitch_window_run(
+        &app,
+    );
 
     // 从哪一章开始 —— run_script 以 script.intro_chapter 为起点
     if let Some(from) = from_chapter {
@@ -1474,6 +1478,7 @@ pub async fn editor_start_preview(
             channels,
             // 试玩产出标记：ai:reply 会带 preview_gen，前端据此丢弃迟到的流式回复
             is_preview: true,
+            glitch_window_generation,
         };
         use crate::ai_service::game_system::script_engine::ScriptManager;
 
