@@ -41,12 +41,12 @@
         v-if="!corrupted && game.mode !== 'act2' && game.mode !== 'act2_final'"
         class="poem-character
           poem-character-warm"
-        :style="{ transform: `translateX(${wanderOffset}px) scaleX(${wanderFlip})` }"
+        :style="{ transform: `translateX(${warmWanderOffset}px) scaleX(${warmWanderFlip})` }"
         aria-hidden="true"
       >
         <img
           :src="warmDisplaySrc"
-          :class="{ hop: hopping === 'warm', wander: wanderBounce && hopping === null }"
+          :class="{ hop: hopping === 'warm', wander: warmWanderBounce && hopping === null }"
           alt=""
           draggable="false"
           @error="onStickerError('warm')"
@@ -56,12 +56,12 @@
         v-if="!corrupted"
         class="poem-character
           poem-character-script"
-        :style="{ transform: `translateX(${wanderOffsetQ}px) scaleX(${wanderFlipQ})` }"
+        :style="{ transform: `translateX(${scriptWanderOffset}px) scaleX(${scriptWanderFlip})` }"
         aria-hidden="true"
       >
         <img
           :src="scriptDisplaySrc"
-          :class="{ hop: hopping === 'script', wander: wanderBounce && hopping === null }"
+          :class="{ hop: hopping === 'script', wander: scriptWanderBounce && hopping === null }"
           alt=""
           draggable="false"
           @error="onStickerError('script')"
@@ -143,10 +143,13 @@ const submitError = ref(false)
 const pendingResult = ref<string | null>(null)
 const stalkerHopping = ref(false)
 const flash = ref(false)
-// DDLC 同款待机游走：每 4~8 秒随机挪一小步（±16px 内随机游走、翻转朝向）并小弹一下。
-const wanderOffset = ref(0)
-const wanderFlip = ref(1)
-const wanderBounce = ref(false)
+// 两枚贴纸拥有完全独立的随机待机时钟与位移状态，避免同帧同步弹跳。
+const warmWanderOffset = ref(0)
+const warmWanderFlip = ref(1)
+const warmWanderBounce = ref(false)
+const scriptWanderOffset = ref(0)
+const scriptWanderFlip = ref(-1)
+const scriptWanderBounce = ref(false)
 // 损坏后点词音效状态：baa 彩蛋全局只播一次（对齐原作 played_baa）。
 const baaPlayed = ref(false)
 // 跳姿/崩坏图缺失时回退到常姿，避免 asset 404 白图。
@@ -157,8 +160,10 @@ let hopTimer = 0
 let stalkerHopTimer = 0
 let flashTimer = 0
 let fadeTimer = 0
-let wanderTimer = 0
-let wanderBounceTimer = 0
+let warmWanderTimer = 0
+let warmWanderBounceTimer = 0
+let scriptWanderTimer = 0
+let scriptWanderBounceTimer = 0
 
 const game = computed(() => gameStore.poemGame)
 const currentWords = computed(() => game.value?.rounds[roundIndex.value] ?? [])
@@ -197,10 +202,6 @@ const scriptDisplaySrc = computed(() => {
   if (hopping.value === 'script' && !hopMissing.value.script) return hopStickerSrcs.value.script
   return scriptStickerSrc.value
 })
-// 钦灵贴纸的游走：与她错开相位（反向+半程），两只各走各的
-const wanderOffsetQ = computed(() => -wanderOffset.value * 0.6)
-const wanderFlipQ = computed(() => -wanderFlip.value)
-
 function toAssetUrl(path: string): string {
   if (!path) return ''
   if (/^(https?:|data:|blob:|asset:)/.test(path)) return path
@@ -298,26 +299,42 @@ function triggerStalkerHop() {
   })
 }
 
-// 待机游走调度：原作 randomPause(4~8s) → randomMove(随机方向小步) + sticker_move_n(小弹)。
-function scheduleWander() {
-  clearTimeout(wanderTimer)
-  wanderTimer = window.setTimeout(tickWander, 4000 + Math.random() * 4000)
+// 独立待机调度：两枚贴纸各取自己的随机停顿，初次出现也加入随机相位。
+type WanderCharacter = 'warm' | 'script'
+
+function scheduleWander(character: WanderCharacter, initial = false) {
+  const delay = initial ? 800 + Math.random() * 3000 : 2600 + Math.random() * 4400
+  if (character === 'warm') {
+    clearTimeout(warmWanderTimer)
+    warmWanderTimer = window.setTimeout(() => tickWander('warm'), delay)
+  } else {
+    clearTimeout(scriptWanderTimer)
+    scriptWanderTimer = window.setTimeout(() => tickWander('script'), delay)
+  }
 }
 
-function tickWander() {
-  if (!game.value || finishing.value) return
-  if (hopping.value === null && !corrupted.value) {
+function tickWander(character: WanderCharacter) {
+  if (!game.value || finishing.value || corrupted.value) return
+  if (hopping.value === null) {
+    const offset = character === 'warm' ? warmWanderOffset : scriptWanderOffset
+    const flip = character === 'warm' ? warmWanderFlip : scriptWanderFlip
+    const bounce = character === 'warm' ? warmWanderBounce : scriptWanderBounce
     let dir = Math.floor(Math.random() * 3) - 1
-    // 原作的折返边界：继续同向会超出 ±5 起步范围就反向。
-    if (wanderOffset.value * dir > 5) dir = -dir
-    wanderOffset.value += dir * 16
-    if (dir > 0) wanderFlip.value = -1
-    else if (dir < 0) wanderFlip.value = 1
-    wanderBounce.value = true
-    clearTimeout(wanderBounceTimer)
-    wanderBounceTimer = window.setTimeout(() => (wanderBounce.value = false), 180)
+    // 继续同向会走出一步范围时折返；零方向仍会只做一次轻弹。
+    if (offset.value * dir > 5) dir = -dir
+    offset.value += dir * 16
+    if (dir > 0) flip.value = -1
+    else if (dir < 0) flip.value = 1
+    bounce.value = true
+    if (character === 'warm') {
+      clearTimeout(warmWanderBounceTimer)
+      warmWanderBounceTimer = window.setTimeout(() => (warmWanderBounce.value = false), 180)
+    } else {
+      clearTimeout(scriptWanderBounceTimer)
+      scriptWanderBounceTimer = window.setTimeout(() => (scriptWanderBounce.value = false), 180)
+    }
   }
-  scheduleWander()
+  scheduleWander(character)
 }
 
 async function ensureAudioPlaying() {
@@ -464,8 +481,10 @@ function resetGame() {
   clearTimeout(stalkerHopTimer)
   clearTimeout(flashTimer)
   clearTimeout(fadeTimer)
-  clearTimeout(wanderTimer)
-  clearTimeout(wanderBounceTimer)
+  clearTimeout(warmWanderTimer)
+  clearTimeout(warmWanderBounceTimer)
+  clearTimeout(scriptWanderTimer)
+  clearTimeout(scriptWanderBounceTimer)
   roundIndex.value = 0
   warmScore.value = 0
   scriptScore.value = 0
@@ -478,9 +497,12 @@ function resetGame() {
   pendingResult.value = null
   stalkerHopping.value = false
   flash.value = false
-  wanderOffset.value = 0
-  wanderFlip.value = 1
-  wanderBounce.value = false
+  warmWanderOffset.value = 0
+  warmWanderFlip.value = 1
+  warmWanderBounce.value = false
+  scriptWanderOffset.value = 0
+  scriptWanderFlip.value = -1
+  scriptWanderBounce.value = false
   baaPlayed.value = false
   hopMissing.value = { warm: false, script: false, void: false }
   brokenMissing.value = false
@@ -499,7 +521,11 @@ watch(game, async (next) => {
   }
   await nextTick()
   await startTrack(next.musicPath, next.normalLoopStart)
-  scheduleWander()
+  // 两次独立采样初始延迟，避免同一帧开始待机弹跳；快速切换游戏时不启动旧计时器。
+  if (game.value === next) {
+    scheduleWander('warm', true)
+    scheduleWander('script', true)
+  }
 })
 
 onBeforeUnmount(() => {
