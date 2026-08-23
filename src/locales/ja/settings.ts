@@ -1083,6 +1083,9 @@ export default {
     vadSilence: '無音タイムアウト（ms）',
     vadSilenceHint:
       '発話停止後、この時間だけ無音が続いたら録音を終了します（デフォルト 800ms。大きいほど発話途中で切れにくくなります）',
+    energyWarmup: 'エネルギーモニター起動バッファ（ms）',
+    energyWarmupHint:
+      'AI の発話終了後、この時間だけ音声トリガーを待機します（デフォルト 100ms。0 で即時トリガー。AI 発話直後の環境音で誤反応する場合は大きくしてください）',
     sendMode: {
       title: '認識後',
       fillOnly: '入力欄に挿入（推奨）',

@@ -68,10 +68,11 @@ let mobileMenuOpen = false
 let asrLockedUntil = 0
 /** auto_send 模式：识别完成后延迟发送的毫秒数（给用户看到结果的窗口，防乱序） */
 const AUTO_SEND_DELAY_MS = 800
-/** 能量监测启动缓冲期（毫秒）：刚恢复监听的头 1 秒不触发录音。
- *  TTS 话音刚落的环境声/残响最易误触（AI 说完 → input → 监测恢复，用户还没
- *  进入"轮到我说话"状态），让这段时间静默过去，用户准备好开口才响应。 */
-const ENERGY_WARMUP_MS = 1000
+/** 能量监测启动缓冲期兜底值（毫秒）：未加载设置时用 100ms。
+ *  实际值来自 asrStore.settings.energy_warmup_ms（设置页可自定义，
+ *  0 = 无缓冲）。voicePlaying 门控已保证 TTS 播放期间完全不监听，
+ *  此缓冲期只兜底播放结束瞬间的残响尾巴。 */
+const ENERGY_WARMUP_MS = 100
 /** 角色语音（TTS）播放中（GameRolesStage 桌面/桌宠通过 setVoicePlaying 同步）：
  *  外放 TTS 会被麦克风捕获 → RMS 触发 → VAD 判定为人声 → 误识别 AI 自己的话。
  *  播放期间 ASR 整体禁用（canStartAsr 门控 + handle drop），播完才恢复。 */
@@ -343,9 +344,9 @@ function startEnergyMonitor() {
       analyser.smoothingTimeConstant = 0.3
       src.connect(analyser)
       const buf = new Uint8Array(analyser.frequencyBinCount)
-      // 启动缓冲期：从 analyser 建立起算，前 1 秒不触发录音（TTS 话音刚落
-      // 的环境声/残响最易误触——用户还没进入"轮到我说话"状态）
-      const warmupUntil = Date.now() + ENERGY_WARMUP_MS
+      // 启动缓冲期：从 analyser 建立起算，头 N 毫秒不触发录音
+      // （N = 设置页 energy_warmup_ms，兜底 TTS 播完瞬间的残响尾巴，0=无缓冲）
+      const warmupUntil = Date.now() + (asrStore?.settings.energy_warmup_ms ?? ENERGY_WARMUP_MS)
       const tick = () => {
         if (!asrStore?.settings.auto_listen || !chatActive.value) {
           stopEnergyMonitor()

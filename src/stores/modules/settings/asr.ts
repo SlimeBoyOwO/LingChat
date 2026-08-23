@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS: AsrSettings = {
   stream_enabled: false,
   voice_input_enabled: true,
   vad_silence_ms: 800,
+  energy_warmup_ms: 100,
   provider_configs: {},
 }
 
@@ -39,7 +40,11 @@ export const useAsrStore = defineStore('asr', {
   actions: {
     async load() {
       try {
-        this.settings = await asrGetSettings()
+        // 合并默认值：后端 settings.json 只含后端字段（如 vad_silence_ms），
+        // 纯前端参数（如 energy_warmup_ms）以 persist 恢复值为准（localStorage
+        // 权威），缺失时才用默认值兜底——保证设置框与 useAsrInput 读取总有值，
+        // 且用户改过的前端参数不被后端数据覆盖。
+        this.settings = { ...DEFAULT_SETTINGS, ...this.settings, ...(await asrGetSettings()) }
         this.providers = await asrListProviders()
         // 模型清单（按 active provider 拉取；provider 切换时由 SettingsAsr 重新拉）
         this.models = await asrListModels(this.settings.active_provider).catch(() => [])

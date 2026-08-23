@@ -33,6 +33,8 @@ export interface AsrSettings {
   voice_input_enabled: boolean
   /** VAD 静音计时（毫秒）：停止说话后静音该时长才结束一轮录音（默认 800） */
   vad_silence_ms: number
+  /** 能量监测启动缓冲期（毫秒）：TTS 播完恢复监听后该时长内不触发录音（默认 100，0=无缓冲） */
+  energy_warmup_ms: number
   provider_configs: Record<string, ProviderConfig>
 }
 
@@ -88,6 +90,14 @@ export const asrListModels = (providerId: string) =>
   invoke<ModelInfo[]>('asr_list_models', { providerId })
 
 export const asrGetSettings = () => invoke<AsrSettings>('asr_get_settings')
+
+/** ASR 运行时状态（设置页状态面板） */
+export interface AsrStatus {
+  /** VAD 模型是否加载成功（session 存在 = init_asr 完成） */
+  vad_loaded: boolean
+}
+
+export const asrGetStatus = () => invoke<AsrStatus>('asr_get_status')
 
 export const asrSetSettings = (settings: AsrSettings) =>
   invoke<void>('asr_set_settings', { settings })

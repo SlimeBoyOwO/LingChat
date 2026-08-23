@@ -39,6 +39,20 @@
       <p class="block text-sm text-gray-300 mt-1.5">{{ t('settings.asr.vadSilenceHint') }}</p>
     </section>
 
+    <!-- 能量监测缓冲期（自动模式：TTS 播完恢复监听后多久内不触发录音） -->
+    <section class="mb-6">
+      <label class="block text-sm mb-1.5 font-medium">{{ t('settings.asr.energyWarmup') }}</label>
+      <input
+        type="number"
+        min="0"
+        max="2000"
+        step="100"
+        v-model.number="localSettings.energy_warmup_ms"
+        class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+      />
+      <p class="block text-sm text-gray-300 mt-1.5">{{ t('settings.asr.energyWarmupHint') }}</p>
+    </section>
+
     <!-- 识别完成后处理方式 -->
     <section class="mb-6">
       <div class="font-medium text-brand mb-3">{{ t('settings.asr.sendMode.title') }}</div>
@@ -163,15 +177,12 @@
       </div>
     </section>
 
-    <!-- 状态面板 -->
-    <section class="text-sm text-gray-300 space-y-1.5 border-t border-white/10 pt-4">
-      <div>
-        {{ t('settings.asr.status.mic') }}:
-        {{ micStateText }}
-      </div>
+    <!-- 状态面板：只保留 VAD 模型状态（init_asr 失败诊断的关键信号，
+         麦克风状态在设置页恒为空闲无信息量，已移除） -->
+    <section class="text-sm text-gray-300 border-t border-white/10 pt-4">
       <div>
         {{ t('settings.asr.status.vadLoaded') }}:
-        {{ vadStateText }}
+        <span :class="vadStateClass">{{ vadStateText }}</span>
       </div>
     </section>
   </div>
@@ -183,7 +194,7 @@ import { useI18n } from 'vue-i18n'
 
 import { Toggle } from '../../base'
 import { useAsrStore } from '@/stores/modules/settings/asr'
-import { asrListModels, asrRecognizeWav } from '@/api/services/asr'
+import { asrListModels, asrRecognizeWav, asrGetStatus } from '@/api/services/asr'
 import { pcmToWavPcm16, trimSilencePcm } from '@/utils/asrAudio'
 import type { AsrSettings, SendMode, ProviderInfo } from '@/api/services/asr'
 
@@ -196,6 +207,8 @@ const localSettings = ref<AsrSettings>(JSON.parse(JSON.stringify(asrStore.settin
 const lastTestResult = ref<{ ok: boolean; text: string } | null>(null)
 
 let saveTimer: number | null = null
+/** 初始化完成标记：onMounted 赋值后置 true，跳过一次初始化触发的保存 */
+let initialized = false
 
 const sendModeOptions = computed<{ value: SendMode; label: string }[]>(() => [
   { value: 'fill_only', label: t('settings.asr.sendMode.fillOnly') },
@@ -310,37 +323,41 @@ const statusText = computed(() =>
 )
 const statusClass = computed(() => (asrStore.lastError ? 'text-red-400' : 'text-green-400'))
 
-const micStateText = computed(() => {
-  switch (asrStore.micState) {
-    case 'recording':
-      return t('settings.asr.status.micActive')
-    case 'denied':
-      return t('settings.asr.status.micDenied')
-    default:
-      return t('settings.asr.status.micIdle')
-  }
-})
-
 const vadStateText = computed(() =>
   asrStore.vadLoaded ? t('settings.asr.status.vadLoadedOk') : t('settings.asr.status.vadLoadedNo'),
 )
+const vadStateClass = computed(() => (asrStore.vadLoaded ? 'text-green-400' : 'text-red-400'))
 
 onMounted(async () => {
   await asrStore.load()
   // 用 spread 完成顶层浅拷贝（settings 结构本身简单可序列化）；provider_configs 内部由
   // providerCfg 计算属性的懒初始化处理。spread 也足以让 v-model 写入不影响 store。
   localSettings.value = { ...asrStore.settings }
+  // 初始化赋值不算"用户更改"：赋值在前、置位在后，sync watch 回调在赋值瞬间
+  // 同步执行时 initialized 仍为 false 而被跳过——避免每次打开设置页都触发一次
+  // 无意义的 asr_set_settings（后端重应用静音计时 + 重建 provider 并刷日志）
+  initialized = true
+  // 查询式获取 VAD 状态：asr://vad_ready 事件在启动早期发射，前端监听器注册
+  // 晚于事件会丢失（Tauri 事件不缓存历史）——以查询结果为准，无竞态
+  asrGetStatus()
+    .then((s) => asrStore.setVadLoaded(s.vad_loaded))
+    .catch((e) => console.warn('[ASR] 查询状态失败:', e))
 })
 
 watch(
   localSettings,
   (s) => {
+    // 初始化赋值（onMounted 的 spread 拷贝）不触发保存——打开设置页不改任何值
+    // 不应该向后端重写设置（asr_set_settings 会重应用 VAD 计时并重建 provider）。
+    // flush:'sync' 保证回调同步执行：onMounted 赋值时 initialized 仍是 false 被跳过，
+    // 置位后用户的实际修改才走保存。
+    if (!initialized) return
     if (saveTimer !== null) clearTimeout(saveTimer)
     saveTimer = window.setTimeout(() => {
       void asrStore.save(s).catch((e) => console.warn('[ASR] autosave failed:', e))
     }, 500)
   },
-  { deep: true },
+  { deep: true, flush: 'sync' },
 )
 
 // ── 测试连接：完整识别链路（录音 4 秒 → 16k PCM → recognize → 显示文本） ──

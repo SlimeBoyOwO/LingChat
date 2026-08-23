@@ -1083,6 +1083,8 @@ export default {
     autoListenHint: '自动监听麦克风，识别用户说话后自动转为文本',
     vadSilence: '静音计时（毫秒）',
     vadSilenceHint: '停止说话后等待该时长才结束录音（默认 800ms，数字越大越不容易被停顿切断）',
+    energyWarmup: '能量监测缓冲期（毫秒）',
+    energyWarmupHint: 'AI 说完话后等待该时长才恢复语音触发（默认 100ms，设 0 立即触发；若 AI 话音刚落环境声会误触发可调大）',
     sendMode: {
       title: '识别完成后',
       fillOnly: '填入输入框（推荐）',

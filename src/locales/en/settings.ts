@@ -1086,6 +1086,9 @@ export default {
     vadSilence: 'Silence timeout (ms)',
     vadSilenceHint:
       'Wait this long after you stop speaking before ending the recording (default 800ms; higher values are less likely to cut off mid-sentence)',
+    energyWarmup: 'Energy monitor warm-up (ms)',
+    energyWarmupHint:
+      'How long to wait after AI finishes speaking before voice trigger re-arms (default 100ms; set 0 to re-arm instantly. Increase if ambient sound right after AI speech causes false triggers)',
     sendMode: {
       title: 'After recognition',
       fillOnly: 'Fill input box (recommended)',
