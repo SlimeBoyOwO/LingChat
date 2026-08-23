@@ -908,7 +908,6 @@ export default {
       deleteFailed: "Delete failed: {error}",
       saveSuccess: "Saved successfully!",
       saveFailed: "Save failed: {error}",
-      apiKeyRequired: "Please enter an API key first",
       modelsFetched: "Fetched {count} available models",
       fetchFailed: "Fetch failed: {error}",
       chatSwitched: "Chat model switched and active!",

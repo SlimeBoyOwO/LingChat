@@ -907,7 +907,6 @@ export default {
       deleteFailed: '删除失败: {error}',
       saveSuccess: '保存成功！',
       saveFailed: '保存失败: {error}',
-      apiKeyRequired: '请先填写 API 密钥',
       modelsFetched: '已获取 {count} 个可用模型',
       fetchFailed: '获取失败: {error}',
       chatSwitched: '对话模型已切换并生效！',
