@@ -8,8 +8,6 @@ mod init;
 mod lan_sync;
 mod manifest;
 mod migration;
-// 插件系统由 RustPython 驱动，移动端（Android/iOS）构建时依赖不可用，整体排除
-#[cfg(desktop)]
 mod plugins;
 mod resource_sync;
 pub mod utils;
@@ -94,8 +92,7 @@ pub struct InnerAppState {
     pub tool_registry: Arc<ToolRegistry>,
     /// 聊天工具的用户配置（网页搜索 API Key、代理等），热更新共享句柄。
     pub tool_settings: ai_service::tools::settings::SharedToolSettings,
-    /// 插件管理器（扫描/启停/配置）。仅桌面端可用。
-    #[cfg(desktop)]
+    /// 插件管理器（扫描/启停/配置）。
     pub plugin_manager: Arc<plugins::PluginManager>,
     pub proactive_system:
         Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
@@ -409,8 +406,6 @@ pub fn run() {
             )?);
 
             // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）。
-            // 移动端（Android/iOS）不编译插件系统，跳过此段。
-            #[cfg(desktop)]
             let plugin_manager = {
                 let data_dir = api::data_dir();
                 let plugins_root = data_dir.join("plugins");
@@ -498,7 +493,6 @@ pub fn run() {
                     generation_lock,
                     tool_registry,
                     tool_settings,
-                    #[cfg(desktop)]
                     plugin_manager,
                     proactive_system: Some(proactive),
                     achievement_manager,
@@ -625,15 +619,10 @@ pub fn run() {
             utils::log_bridge::get_log_history,
             utils::log_bridge::open_log_window,
             utils::log_bridge::is_log_window_open,
-            #[cfg(desktop)]
             api::plugins::plugin_list,
-            #[cfg(desktop)]
             api::plugins::plugin_set_enabled,
-            #[cfg(desktop)]
             api::plugins::plugin_save_config,
-            #[cfg(desktop)]
             api::plugins::plugin_reload,
-            #[cfg(desktop)]
             api::plugins::plugin_delete,
             api::settings::get_settings_tree,
             api::settings::save_settings,
