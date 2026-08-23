@@ -62,9 +62,9 @@ pub struct GeneratorDeps {
     pub god_agent: Option<Arc<GodAgentCore>>,
     /// 抑制 ai:thinking 事件。用于系统触发的后台生成（如入场问候）。
     pub suppress_thinking: bool,
-    /// 构建 deps 时捕获的 `GameStatus.preview_generation`。写入台词前比对，
-    /// 不一致说明本轮生成已过期（试玩被中止后游离任务仍在写），丢弃写入。
-    /// 自由对话的代号恒为当前值，比对恒等，行为不变。
+    /// 构建 deps 时捕获的 `GameStatus.preview_generation`。前端 emit 与写入台词前
+    /// 都会比对；不一致说明本轮生成已被试玩切换或正式剧本入口淘汰，整轮丢弃。
+    /// 普通自由对话的代号恒为当前值，比对恒等，行为不变。
     pub generation: u64,
     /// 是否运行在编辑器试玩中。为 true 时回复带 `preview_gen` 标记，
     /// 前端据此丢弃中止后迟到的流式回复。
@@ -462,12 +462,22 @@ impl MessageGenerator {
         // 由最终句（is_final）的 consumer 快照并挂载到台词行与前端响应。
         let thinking_buf = Arc::new(Mutex::new(String::new()));
 
-        // publisher：按索引顺序 emit 到前端
+        // publisher：按索引顺序 emit 到前端。代号不仅保护最终 DB 写入，也必须在
+        // emit 前检查；否则旧自由对话虽未落库，流式句子仍会先污染新剧本的 UI 队列。
         let app = self.deps.app.clone();
+        let publish_status = self.deps.game_status.clone();
+        let publish_generation = self.deps.generation;
         let publisher = tokio::spawn(async move {
             let mut next_index = 0usize;
             let mut buf: HashMap<usize, Option<ReplyResponse>> = HashMap::new();
             while let Some((idx, resp)) = publish_rx.recv().await {
+                if publish_status.lock().await.preview_generation != publish_generation {
+                    tracing::warn!(
+                        "[Generator] 丢弃过期流式回复（代号 {} 已失效）",
+                        publish_generation
+                    );
+                    return;
+                }
                 buf.insert(idx, resp);
                 while let Some(item) = buf.remove(&next_index) {
                     next_index += 1;

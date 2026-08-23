@@ -24,10 +24,13 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
     try {
       const gameInfo = await getGameInfo()
       applyWebInitData(this, gameInfo)
-      // 通知后端玩家已入场，触发 AI 问候（不等 LoadingTransition，fire-and-forget）
-      invoke('notify_player_entry').catch((err) =>
-        console.warn('[Entry] 问候触发失败（非致命）:', err),
-      )
+      // 剧本入口会先标记 runningScript 再挂载聊天页；此时禁止自由模式问候
+      // 混进剧本事件队列，避免玩家进入恐怖流程后还要清理迟到的 AI 寒暄。
+      if (!this.runningScript) {
+        invoke('notify_player_entry').catch((err) =>
+          console.warn('[Entry] 问候触发失败（非致命）:', err),
+        )
+      }
       return gameInfo
     } catch (error) {
       console.error('初始化游戏信息失败:', error)

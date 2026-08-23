@@ -164,6 +164,13 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
         (script, game_status, config, is_running)
     };
 
+    // 切入正式剧本即推进生成代号：自由对话/入场问候若仍在后台流式生成，
+    // publisher 与最终写入守卫都会丢弃旧代号，禁止迟到寒暄混进剧本队列。
+    {
+        let mut status = game_status.lock().await;
+        status.preview_generation = status.preview_generation.wrapping_add(1);
+    }
+
     // Run script in background task (does NOT hold AIService lock across awaits)
     tokio::spawn(async move {
         let mut ctx = ScriptContext {
