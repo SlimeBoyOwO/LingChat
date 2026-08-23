@@ -1,6 +1,6 @@
 //! ASR 相关 Tauri commands。
 //!
-//! 9 个 command：
+//! 10 个 command：
 //! - `asr_start_listening` / `asr_stop_listening`：会话生命周期
 //! - `asr_vad_process_chunk`：转发 PCM 块到 VAD
 //! - `asr_recognize_wav`：单次识别（前端 mic 模式主动调用）
@@ -8,6 +8,7 @@
 //! - `asr_list_providers`：列出所有 provider 元数据
 //! - `asr_get_settings` / `asr_set_settings`：配置读写（set 会重建 registry）
 //! - `asr_test_provider`：用 1 秒静音 WAV 探测 provider 可达性
+//! - `asr_get_status`：查询运行时状态（VAD 是否就绪）
 
 use tauri::AppHandle;
 
@@ -416,4 +417,24 @@ async fn rebuild_providers(
         session.providers = providers;
     }
     Ok(())
+}
+
+/// ASR 运行时状态（设置页状态面板）。
+#[derive(serde::Serialize)]
+pub struct AsrStatus {
+    /// VAD 模型是否加载成功。session 存在 = init_asr 完成 = AsrVad::load 成功
+    /// （模型加载失败会直接中断 init_asr，session 保持 None）。
+    pub vad_loaded: bool,
+}
+
+/// 查询 ASR 运行时状态。
+///
+/// 设置页状态面板用。`asr://vad_ready` 事件在启动早期 emit，前端监听器注册
+/// 晚于事件会丢失（Tauri 事件不缓存历史）——查询式获取无竞态。
+#[tauri::command]
+pub async fn asr_get_status(state: tauri::State<'_, AppState>) -> Result<AsrStatus, String> {
+    let guard = state.asr_state.session.lock().await;
+    Ok(AsrStatus {
+        vad_loaded: guard.as_ref().is_some(),
+    })
 }

@@ -850,6 +850,7 @@ pub fn run() {
             api::asr::asr_list_models,
             api::asr::asr_get_settings,
             api::asr::asr_set_settings,
+            api::asr::asr_get_status,
             api::asr::asr_test_provider,
             api::asr::asr_start_streaming,
             api::asr::asr_stream_audio_chunk,
