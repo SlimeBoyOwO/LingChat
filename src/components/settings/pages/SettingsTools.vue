@@ -47,8 +47,162 @@
         </button>
       </div>
 
+      <!-- ===== 工具访问模式 ===== -->
+      <div v-if="selected === 'access'">
+        <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
+          {{ $t('ui.toolCalls.accessModeTitle') }}
+        </h2>
+        <p class="text-sm text-gray-300 mb-4 px-1">
+          {{ $t('ui.toolCalls.accessModeHint') }}
+        </p>
+        <div class="grid gap-3">
+          <button
+            v-for="mode in accessModes"
+            :key="mode"
+            type="button"
+            class="w-full rounded-xl border px-4 py-3 text-left transition-all duration-200"
+            :class="[
+              form.access_mode === mode
+                ? mode === 'full_access'
+                  ? 'border-amber-400/80 bg-amber-400/10 ring-1 ring-amber-400/25'
+                  : 'border-brand bg-brand/15 ring-1 ring-brand/25'
+                : 'border-white/15 bg-white/5 hover:bg-white/10',
+            ]"
+            @click="selectAccessMode(mode)"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <span class="flex items-center gap-2.5">
+                <!-- 单选圆点：选中态填充，未选中仅描边 -->
+                <span
+                  class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors duration-200"
+                  :class="
+                    form.access_mode === mode
+                      ? mode === 'full_access'
+                        ? 'border-amber-400'
+                        : 'border-brand'
+                      : 'border-white/30'
+                  "
+                >
+                  <span
+                    v-if="form.access_mode === mode"
+                    class="h-2 w-2 rounded-full"
+                    :class="mode === 'full_access' ? 'bg-amber-400' : 'bg-brand'"
+                  ></span>
+                </span>
+                <span
+                  class="font-semibold"
+                  :class="mode === 'full_access' ? 'text-amber-300' : 'text-white'"
+                >
+                  {{ $t(`ui.toolCalls.accessModes.${mode}.label`) }}
+                </span>
+              </span>
+              <span
+                v-if="form.access_mode === mode"
+                class="rounded-full border px-2 py-0.5 text-xs"
+                :class="
+                  mode === 'full_access'
+                    ? 'border-amber-400/60 text-amber-300'
+                    : 'border-brand/60 text-brand'
+                "
+              >
+                {{ $t('ui.toolCalls.accessModeSelected') }}
+              </span>
+            </div>
+            <p class="mt-1 text-sm text-gray-300">
+              {{ $t(`ui.toolCalls.accessModes.${mode}.description`) }}
+            </p>
+          </button>
+        </div>
+        <div class="mt-3 rounded-xl border border-white/15 bg-white/5 px-4 py-3">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="min-w-0">
+              <h3 class="font-semibold text-white">
+                {{ $t('ui.toolCalls.maxToolRoundsTitle') }}
+              </h3>
+              <p class="mt-1 text-sm leading-relaxed text-gray-300">
+                {{ $t('ui.toolCalls.maxToolRoundsHint') }}
+              </p>
+            </div>
+            <div class="flex shrink-0 flex-col items-start gap-1 sm:items-end">
+              <label
+                class="flex items-center gap-2 rounded-lg border border-white/20 bg-black/20 px-3 py-2 focus-within:border-brand"
+              >
+                <!-- 隐藏原生数字箭头，避免与深色玻璃风格冲突 -->
+                <input
+                  v-model.number="form.max_tool_rounds"
+                  type="number"
+                  :min="MIN_TOOL_ROUND_LIMIT"
+                  :max="MAX_TOOL_ROUND_LIMIT"
+                  step="1"
+                  class="w-16 bg-transparent text-center font-semibold text-white outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  :aria-label="$t('ui.toolCalls.maxToolRoundsTitle')"
+                  @blur="normalizeToolRoundLimit"
+                />
+                <span class="text-sm text-gray-300">{{ $t('ui.toolCalls.maxToolRoundsUnit') }}</span>
+              </label>
+              <p class="px-1 text-xs text-gray-400">
+                {{
+                  $t('ui.toolCalls.maxToolRoundsRange', {
+                    min: MIN_TOOL_ROUND_LIMIT,
+                    max: MAX_TOOL_ROUND_LIMIT,
+                    default: DEFAULT_TOOL_ROUND_LIMIT,
+                  })
+                }}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div
+          v-if="form.access_mode === 'full_access'"
+          class="mt-3 rounded-lg border-l-4 border-amber-400/70 bg-amber-400/10 px-4 py-3 text-sm text-amber-200/90"
+        >
+          {{ $t('ui.toolCalls.fullAccessSettingsWarning') }}
+        </div>
+        <div
+          v-if="form.access_mode === 'full_access' && isWindows()"
+          class="mt-3 rounded-xl border border-white/15 bg-black/20 px-4 py-3"
+        >
+          <div class="flex items-center gap-2 font-semibold text-white">
+            <span
+              class="h-2.5 w-2.5 rounded-full"
+              :class="elevationStatus === 'elevated' ? 'bg-emerald-400' : 'bg-amber-400'"
+            ></span>
+            {{ $t('ui.toolCalls.adminModeTitle') }}
+          </div>
+          <p class="mt-2 text-sm text-gray-300">
+            {{
+              $t(
+                elevationStatus === 'elevated'
+                  ? 'ui.toolCalls.adminModeElevated'
+                  : elevationStatus === 'checking'
+                    ? 'ui.toolCalls.adminModeChecking'
+                    : 'ui.toolCalls.adminModeStandard',
+              )
+            }}
+          </p>
+          <button
+            v-if="elevationStatus !== 'elevated'"
+            type="button"
+            class="mt-3 rounded-lg border border-amber-400/60 bg-amber-400/15 px-4 py-2 text-sm font-semibold text-amber-200 transition-colors hover:bg-amber-400/25 disabled:cursor-wait disabled:opacity-60"
+            :disabled="elevationRestarting || elevationStatus === 'checking'"
+            @click="restartAsAdmin"
+          >
+            {{
+              $t(
+                elevationRestarting
+                  ? 'ui.toolCalls.adminModeRestarting'
+                  : 'ui.toolCalls.adminModeRestart',
+              )
+            }}
+          </button>
+          <p v-if="elevationStatus !== 'elevated'" class="mt-2 text-xs text-gray-400">
+            {{ $t('ui.toolCalls.adminModeHint') }}
+          </p>
+        </div>
+      </div>
+
       <!-- ===== 网页搜索 ===== -->
-      <div v-if="selected === 'web_search'">
+      <div v-else-if="selected === 'web_search'">
         <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
           {{ $t('ui.toolCalls.webSearchTitle') }}
         </h2>
@@ -168,6 +322,107 @@
         />
       </div>
 
+      <!-- ===== 图片/视频识别 ===== -->
+      <div v-else-if="selected === 'media'">
+        <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
+          {{ $t('ui.toolCalls.mediaTitle') }}
+        </h2>
+        <p class="text-sm text-gray-300 mb-4 px-1">
+          {{ $t('ui.toolCalls.mediaHint') }}
+        </p>
+
+        <div class="flex items-center gap-3 py-2.5 px-1">
+          <Toggle
+            :checked="form.groups.media ?? false"
+            @change="(value: boolean) => (form.groups.media = value)"
+          />
+          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.mediaEnable') }}</p>
+        </div>
+
+        <div class="my-3 rounded-xl border border-brand/30 bg-brand/10 px-4 py-3">
+          <p class="text-sm text-gray-200">{{ $t('ui.toolCalls.mediaVisionModelHint') }}</p>
+        </div>
+
+        <div class="grid gap-2 sm:grid-cols-2">
+          <div class="flex items-center gap-3 rounded-lg bg-white/5 px-3 py-2.5">
+            <Toggle
+              :checked="form.media_file.image_enabled"
+              @change="(value: boolean) => (form.media_file.image_enabled = value)"
+            />
+            <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.mediaImages') }}</p>
+          </div>
+          <div class="flex items-center gap-3 rounded-lg bg-white/5 px-3 py-2.5">
+            <Toggle
+              :checked="form.media_file.video_enabled"
+              @change="(value: boolean) => (form.media_file.video_enabled = value)"
+            />
+            <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.mediaVideos') }}</p>
+          </div>
+        </div>
+
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <label class="block">
+            <span class="text-sm font-medium text-brand">{{ $t('ui.toolCalls.mediaMaxFileMb') }}</span>
+            <input
+              v-model.number="form.media_file.max_file_mb"
+              type="number"
+              min="1"
+              max="100"
+              step="1"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 border-white/10 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium text-brand">{{ $t('ui.toolCalls.mediaOutputTokens') }}</span>
+            <input
+              v-model.number="form.media_file.max_output_tokens"
+              type="number"
+              min="128"
+              max="4096"
+              step="128"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 border-white/10 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium text-brand">{{ $t('ui.toolCalls.mediaImageMaxEdge') }}</span>
+            <input
+              v-model.number="form.media_file.image_max_edge"
+              type="number"
+              min="512"
+              max="4096"
+              step="128"
+              :disabled="!form.media_file.image_enabled"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 border-white/10 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-50"
+            />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium text-brand">{{ $t('ui.toolCalls.mediaJpegQuality') }}</span>
+            <input
+              v-model.number="form.media_file.jpeg_quality"
+              type="number"
+              min="50"
+              max="95"
+              step="1"
+              :disabled="!form.media_file.image_enabled"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 border-white/10 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-50"
+            />
+          </label>
+        </div>
+
+        <label class="block mt-4">
+          <span class="text-sm font-medium text-brand">{{ $t('ui.toolCalls.mediaDefaultPrompt') }}</span>
+          <textarea
+            v-model="form.media_file.default_prompt"
+            rows="3"
+            class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 border-white/10 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 resize-y"
+          ></textarea>
+        </label>
+
+        <p v-if="form.media_file.video_enabled" class="mt-3 px-1 text-sm text-amber-300/90">
+          {{ $t('ui.toolCalls.mediaVideoCompatibility') }}
+        </p>
+      </div>
+
       <!-- ===== 文件操作 ===== -->
       <div v-else-if="selected === 'file_ops'">
         <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
@@ -181,29 +436,11 @@
           />
           <p class="text-sm text-gray-300">{{ $t(`ui.toolCalls.groups.${selected}`) }}</p>
         </div>
-        <div class="flex items-center gap-3 py-2.5 px-1">
-          <Toggle
-            :checked="form.file_ops_allow_any_path"
-            :disabled="android"
-            @change="(value: boolean) => (form.file_ops_allow_any_path = value)"
-          />
-          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.fileOpsAllowAnyPath') }}</p>
-        </div>
+        <p class="text-sm px-1 mb-2" :class="form.access_mode === 'full_access' ? 'text-amber-300' : 'text-gray-400'">
+          {{ $t(`ui.toolCalls.fileAccessByMode.${form.access_mode}`) }}
+        </p>
         <p v-if="android" class="text-sm text-amber-300 px-1 mb-2">
           {{ $t('ui.toolCalls.androidFileScope') }}
-        </p>
-        <p v-else-if="form.file_ops_allow_any_path" class="text-sm text-amber-400 px-1 mb-2">
-          {{ $t('ui.toolCalls.fileOpsAllowAnyPathHint') }}
-        </p>
-        <div class="flex items-center gap-3 py-2.5 px-1">
-          <Toggle
-            :checked="form.file_delete_auto_approve"
-            @change="(value: boolean) => (form.file_delete_auto_approve = value)"
-          />
-          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.fileDeleteAutoApprove') }}</p>
-        </div>
-        <p v-if="form.file_delete_auto_approve" class="text-sm text-amber-400 px-1 mb-2">
-          {{ $t('ui.toolCalls.fileDeleteAutoApproveHint') }}
         </p>
       </div>
 
@@ -224,29 +461,9 @@
           />
           <p class="text-sm text-gray-300">{{ $t(`ui.toolCalls.groups.${selected}`) }}</p>
         </div>
-        <template v-if="commandAvailable">
-          <p class="text-sm text-gray-400 px-1 mb-2">{{ $t('ui.toolCalls.commandHint') }}</p>
-          <div class="flex items-center gap-3 py-2.5 px-1">
-            <Toggle
-              :checked="form.command_auto_approve"
-              @change="(value: boolean) => (form.command_auto_approve = value)"
-            />
-            <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.commandAutoApprove') }}</p>
-          </div>
-          <p v-if="form.command_auto_approve" class="text-sm text-amber-400 px-1 mb-2">
-            {{ $t('ui.toolCalls.commandAutoApproveHint') }}
-          </p>
-          <div class="flex items-center gap-3 py-2.5 px-1">
-            <Toggle
-              :checked="form.command_delete_auto_approve"
-              @change="(value: boolean) => (form.command_delete_auto_approve = value)"
-            />
-            <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.commandDeleteAutoApprove') }}</p>
-          </div>
-          <p v-if="form.command_delete_auto_approve" class="text-sm text-amber-400 px-1 mb-2">
-            {{ $t('ui.toolCalls.commandDeleteAutoApproveHint') }}
-          </p>
-        </template>
+        <p class="text-sm px-1 mb-2" :class="form.access_mode === 'full_access' ? 'text-amber-300' : 'text-gray-400'">
+          {{ $t(`ui.toolCalls.commandAccessByMode.${form.access_mode}`) }}
+        </p>
       </div>
 
       <!-- ===== 其他工具组 ===== -->
@@ -290,28 +507,41 @@ import { computed, reactive, ref, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   getToolSettings,
+  getToolElevationStatus,
   getToolRuntimeInfo,
+  restartToolProcessAsAdmin,
   saveToolSettings,
   testWebSearch,
   TOOL_GROUP_KEYS,
+  type ToolAccessMode,
   type ToolRuntimeInfo,
   type ToolSettings,
 } from '@/api/services/tool-settings'
 import Toggle from '@/components/base/widget/Toggle.vue'
-import { isAndroid } from '@/utils/platform'
+import { isAndroid, isWindows } from '@/utils/platform'
+import { useDialogStore } from '@/stores/modules/ui/dialog'
 
 const { t, te } = useI18n()
+const dialogStore = useDialogStore()
 
-/** 当前选中的设置项：'web_search' 或工具组名 */
-const selected = ref<string>('web_search')
+/** 当前选中的设置项：访问模式、web_search 或工具组名 */
+const selected = ref<string>('access')
 const android = isAndroid()
 const runtimeInfo = ref<ToolRuntimeInfo | null>(null)
 const commandAvailable = computed(() => runtimeInfo.value?.commandAvailable ?? !android)
 
-const navItems = ['web_search', ...TOOL_GROUP_KEYS] as const
+const navItems = ['access', 'web_search', ...TOOL_GROUP_KEYS] as const
+const accessModes: ToolAccessMode[] = ['manual', 'auto_approve', 'full_access']
+const DEFAULT_TOOL_ROUND_LIMIT = 8
+const MIN_TOOL_ROUND_LIMIT = 1
+const MAX_TOOL_ROUND_LIMIT = 64
+const DEFAULT_MEDIA_PROMPT =
+  '请详细识别并描述这个媒体文件的内容；如果其中包含文字、界面、人物、物体、动作或时间顺序，请准确说明。'
 
 const navLabel = (item: string) =>
-  item === 'web_search'
+  item === 'access'
+    ? t('ui.toolCalls.accessModeTitle')
+    : item === 'web_search'
     ? t('ui.toolCalls.webSearchTitle')
     : te(`ui.toolCalls.nav.${item}`)
       ? t(`ui.toolCalls.nav.${item}`)
@@ -329,15 +559,24 @@ const form = reactive<ToolSettings>({
     max_results: 8,
     hide_search_results: false,
   },
+  media_file: {
+    image_enabled: true,
+    video_enabled: true,
+    max_file_mb: 100,
+    image_max_edge: 2000,
+    jpeg_quality: 85,
+    max_output_tokens: 1024,
+    default_prompt: DEFAULT_MEDIA_PROMPT,
+  },
   groups: {},
-  command_auto_approve: false,
-  command_delete_auto_approve: false,
-  file_delete_auto_approve: false,
-  file_ops_allow_any_path: false,
+  access_mode: 'manual',
+  max_tool_rounds: DEFAULT_TOOL_ROUND_LIMIT,
 })
 
 const status = reactive({ message: '', color: '#4ade80' })
 const testing = ref(false)
+const elevationStatus = ref<'checking' | 'standard' | 'elevated'>('checking')
+const elevationRestarting = ref(false)
 
 const loadRuntimeInfo = async () => {
   try {
@@ -351,9 +590,6 @@ const enableAndroidRecommended = () => {
   for (const group of TOOL_GROUP_KEYS) {
     form.groups[group] = group !== 'command'
   }
-  form.file_ops_allow_any_path = false
-  form.command_auto_approve = false
-  form.command_delete_auto_approve = false
   showStatus(t('ui.toolCalls.androidRecommendedStaged'), '#7dd3fc')
 }
 
@@ -365,13 +601,43 @@ const showStatus = (message: string, color = '#4ade80') => {
   }, 5000)
 }
 
-const saveSettings = async () => {
+const selectAccessMode = async (mode: ToolAccessMode) => {
+  if (mode === form.access_mode) return
+  if (mode === 'full_access') {
+    const approved = await dialogStore.confirm(
+      t('ui.toolCalls.fullAccessConfirmMessage'),
+      t('ui.toolCalls.fullAccessConfirmTitle'),
+    )
+    if (!approved) return
+  }
+  form.access_mode = mode
+}
+
+const normalizeToolRoundLimit = () => {
+  const value = Number(form.max_tool_rounds)
+  form.max_tool_rounds = Number.isFinite(value)
+    ? Math.min(MAX_TOOL_ROUND_LIMIT, Math.max(MIN_TOOL_ROUND_LIMIT, Math.round(value)))
+    : DEFAULT_TOOL_ROUND_LIMIT
+}
+
+const normalizeMediaSettings = () => {
+  const clamp = (value: unknown, fallback: number, min: number, max: number) => {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.round(parsed))) : fallback
+  }
+  form.media_file.max_file_mb = clamp(form.media_file.max_file_mb, 100, 1, 100)
+  form.media_file.image_max_edge = clamp(form.media_file.image_max_edge, 2000, 512, 4096)
+  form.media_file.jpeg_quality = clamp(form.media_file.jpeg_quality, 85, 50, 95)
+  form.media_file.max_output_tokens = clamp(form.media_file.max_output_tokens, 1024, 128, 4096)
+  if (!form.media_file.default_prompt.trim()) form.media_file.default_prompt = DEFAULT_MEDIA_PROMPT
+}
+
+const saveSettings = async (): Promise<boolean> => {
   try {
+    normalizeToolRoundLimit()
+    normalizeMediaSettings()
     if (android) {
       form.groups.command = false
-      form.file_ops_allow_any_path = false
-      form.command_auto_approve = false
-      form.command_delete_auto_approve = false
     }
     // 深拷贝一份普通对象，避免把 reactive 代理传给 Tauri IPC
     const payload: ToolSettings = JSON.parse(JSON.stringify(form))
@@ -383,8 +649,37 @@ const saveSettings = async () => {
     await saveToolSettings(payload)
     await loadRuntimeInfo()
     showStatus(t('ui.toolCalls.saveSuccess'))
+    return true
   } catch (error: any) {
     showStatus(t('ui.toolCalls.saveFailed', { message: String(error) }), 'red')
+    return false
+  }
+}
+
+const refreshElevationStatus = async () => {
+  elevationStatus.value = 'checking'
+  try {
+    elevationStatus.value = (await getToolElevationStatus()) ? 'elevated' : 'standard'
+  } catch (error) {
+    console.warn('读取管理员权限状态失败:', error)
+    elevationStatus.value = 'standard'
+  }
+}
+
+const restartAsAdmin = async () => {
+  if (elevationRestarting.value) return
+  const approved = await dialogStore.confirm(
+    t('ui.toolCalls.adminModeConfirmMessage'),
+    t('ui.toolCalls.adminModeConfirmTitle'),
+  )
+  if (!approved) return
+  if (!(await saveSettings())) return
+  elevationRestarting.value = true
+  try {
+    await restartToolProcessAsAdmin()
+  } catch (error: any) {
+    elevationRestarting.value = false
+    showStatus(t('ui.toolCalls.adminModeRestartFailed', { message: String(error) }), 'red')
   }
 }
 
@@ -403,7 +698,7 @@ const runTest = async () => {
   testing.value = true
   try {
     // 测试前先保存，确保后端用的是页面上的最新配置
-    await saveSettings()
+    if (!(await saveSettings())) return
     const result = await testWebSearch('LingChat')
     const parsed = JSON.parse(result)
     showStatus(t('ui.toolCalls.testSuccess', { count: parsed.result_count ?? 0 }))
@@ -418,12 +713,14 @@ onMounted(async () => {
   try {
     const settings = await getToolSettings()
     Object.assign(form.web_search, settings.web_search)
+    Object.assign(form.media_file, settings.media_file ?? {})
     Object.assign(form.groups, settings.groups ?? {})
-    form.command_auto_approve = settings.command_auto_approve ?? false
-    form.command_delete_auto_approve = settings.command_delete_auto_approve ?? false
-    form.file_delete_auto_approve = settings.file_delete_auto_approve ?? false
-    form.file_ops_allow_any_path = settings.file_ops_allow_any_path ?? false
+    form.access_mode = settings.access_mode ?? 'manual'
+    form.max_tool_rounds = settings.max_tool_rounds ?? DEFAULT_TOOL_ROUND_LIMIT
+    normalizeToolRoundLimit()
+    normalizeMediaSettings()
     await loadRuntimeInfo()
+    if (isWindows()) await refreshElevationStatus()
   } catch (error) {
     console.error('加载工具配置失败:', error)
   }

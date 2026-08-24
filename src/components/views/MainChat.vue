@@ -2,6 +2,7 @@
   <div class="main-box">
     <!-- 主界面始终渲染，加载动画期间在后台初始化 -->
     <FreeModeTools />
+    <FullAccessWarning />
     <GameBackground></GameBackground>
     <!-- <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />  -->
     <GameRolesStage
@@ -66,6 +67,7 @@ import { eventQueue } from '@/core/events/event-queue'
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
 import ImageSourcePicker from '@/components/ui/ImageSourcePicker.vue'
 import { isAndroid } from '@/utils/platform'
+import FullAccessWarning from '@/components/tools/FullAccessWarning.vue'
 
 const LOADING_STORAGE_KEY = 'lingchat_loading_shown'
 
