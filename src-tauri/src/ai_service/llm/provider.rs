@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::Serialize;
 
-use crate::ai_service::llm::ChunkStream;
+use crate::ai_service::llm::{ChunkStream, LlmUsage};
 use crate::ai_service::types::{LlmMessage, ToolCall, ToolDefinition};
 
 /// 模型声明的推理深度档位（think_efforts）。
@@ -31,6 +31,8 @@ pub struct LlmResponseWithTools {
     pub content: Option<String>,
     /// LLM 请求调用的工具列表。
     pub tool_calls: Option<Vec<ToolCall>>,
+    /// 本轮 token 用量；provider 未上报时为 None。
+    pub usage: Option<LlmUsage>,
 }
 
 /// LLM 供应商协议：不同供应商的唯一区别在于 HTTP 请求/响应的格式。
@@ -81,6 +83,7 @@ pub trait LlmProvider: Send + Sync {
         Ok(LlmResponseWithTools {
             content: Some(text),
             tool_calls: None,
+            usage: None,
         })
     }
 }

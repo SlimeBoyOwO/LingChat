@@ -42,6 +42,12 @@ pub const USE_PERSISTENT_MEMORY: &str = "features.use_persistent_memory";
 pub const MEMORY_UPDATE_INTERVAL: &str = "features.memory_update_interval";
 pub const MEMORY_RECENT_WINDOW: &str = "features.memory_recent_window";
 
+// ========== 记忆段长度上限（字符数，0 = 不截断） ==========
+pub const MEMORY_SHORT_TERM_MAX_CHARS: &str = "features.memory_short_term_max_chars";
+pub const MEMORY_LONG_TERM_MAX_CHARS: &str = "features.memory_long_term_max_chars";
+pub const MEMORY_USER_INFO_MAX_CHARS: &str = "features.memory_user_info_max_chars";
+pub const MEMORY_PROMISES_MAX_CHARS: &str = "features.memory_promises_max_chars";
+
 // ========== TTS 本地引擎 ==========
 pub const ENABLE_LOCAL_TTS: &str = "features.enable_local_tts";
 
@@ -123,3 +129,7 @@ pub const LOG_GENAI_DEBUG: &str = "log.genai_debug";
 // ========== 本地 TTS 推理设备 ==========
 /// 本地 TTS 推理硬件设备："cpu" | "gpu" | "npu" | "device:<id>"（Windows DirectML）
 pub const LOCAL_TTS_DEVICE: &str = "features.local_tts_device";
+
+// ========== 显示（HDR 模式，仅 Windows） ==========
+/// 是否启用 HDR 模式：开启时不强制 WebView2 色彩配置（自动适配 HDR），关闭时强制线性 sRGB。
+pub const HDR_MODE_ENABLED: &str = "display.hdr_mode_enabled";

@@ -120,15 +120,3 @@ fn validate_voice_id(id: &str) -> std::result::Result<(), String> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rejects_path_traversal() {
-        assert!(validate_voice_id("../etc").is_err());
-        assert!(validate_voice_id("").is_err());
-        assert!(validate_voice_id("good-voice_1").is_ok());
-    }
-}

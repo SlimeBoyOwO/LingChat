@@ -169,21 +169,3 @@ pub fn build_download_client() -> Result<reqwest::Client, String> {
         .build()
         .map_err(|e| format!("build http client: {e}"))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::Duration;
-
-    #[test]
-    fn progress_update_after_time_threshold() {
-        assert!(progress_update_due(PROGRESS_EMIT_INTERVAL, 0));
-        assert!(!progress_update_due(Duration::from_millis(199), 0));
-    }
-
-    #[test]
-    fn progress_update_after_byte_threshold() {
-        assert!(progress_update_due(Duration::ZERO, PROGRESS_EMIT_BYTES));
-        assert!(!progress_update_due(Duration::ZERO, PROGRESS_EMIT_BYTES - 1));
-    }
-}

@@ -17,6 +17,36 @@
 
     <!-- 右侧内容 -->
     <main class="h-full overflow-y-auto custom-scrollbar px-2 md:px-6 py-2">
+      <div
+        v-if="android"
+        class="mb-5 rounded-xl border border-sky-300/30 bg-sky-400/10 px-4 py-3 text-sm"
+      >
+        <p class="font-semibold text-sky-200">{{ $t('ui.toolCalls.androidTitle') }}</p>
+        <p class="mt-1 text-gray-300">{{ $t('ui.toolCalls.androidSummary') }}</p>
+        <p v-if="runtimeInfo && !runtimeInfo.modelConfigured" class="mt-2 text-amber-300">
+          {{ $t('ui.toolCalls.androidNoModel') }}
+        </p>
+        <p
+          v-else-if="runtimeInfo && !runtimeInfo.nativeToolCallsSupported"
+          class="mt-2 text-amber-300"
+        >
+          {{ $t('ui.toolCalls.androidModelUnsupported') }}
+        </p>
+        <p v-else-if="runtimeInfo && runtimeInfo.allowedTools.length === 0" class="mt-2 text-amber-300">
+          {{ $t('ui.toolCalls.androidNoTools') }}
+        </p>
+        <p v-else-if="runtimeInfo" class="mt-2 text-emerald-300">
+          {{ $t('ui.toolCalls.androidReady', { count: runtimeInfo.allowedTools.length }) }}
+        </p>
+        <button
+          type="button"
+          class="mt-3 rounded-lg border border-sky-200/30 bg-sky-300/15 px-3 py-2 text-sky-100 transition-colors hover:bg-sky-300/25"
+          @click="enableAndroidRecommended"
+        >
+          {{ $t('ui.toolCalls.androidEnableRecommended') }}
+        </button>
+      </div>
+
       <!-- ===== 网页搜索 ===== -->
       <div v-if="selected === 'web_search'">
         <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
@@ -53,21 +83,45 @@
           >
             <option value="kimi" class="bg-slate-800 text-white">Kimi /search</option>
             <option value="bocha" class="bg-slate-800 text-white">BoCha 博查</option>
+            <option value="deepseek" class="bg-slate-800 text-white">
+              {{ $t('ui.toolCalls.providerDeepSeek') }}
+            </option>
+            <option value="tavily" class="bg-slate-800 text-white">Tavily</option>
             <option value="custom" class="bg-slate-800 text-white">
               {{ $t('ui.toolCalls.providerCustom') }}
             </option>
           </select>
 
-          <!-- 独立端点模式下 kimi/bocha/custom 后端都强制校验 API Key，始终显示输入框 -->
+          <!-- 独立端点模式下 kimi/bocha/deepseek/custom 后端都强制校验 API Key，始终显示输入框 -->
           <label class="inline-flex items-center font-medium text-brand mt-4">
             {{ $t('ui.toolCalls.apiKey') }}
           </label>
           <input
             type="password"
             v-model="form.web_search.api_key"
-            :placeholder="$t('ui.toolCalls.apiKeyPlaceholder')"
+            :placeholder="
+              form.web_search.provider === 'deepseek'
+                ? $t('ui.toolCalls.dsApiKeyPlaceholder')
+                : $t('ui.toolCalls.apiKeyPlaceholder')
+            "
             class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
           />
+
+          <!-- DeepSeek Responses：可切换模型；结果数量由服务端决定，不展示条数设置 -->
+          <template v-if="form.web_search.provider === 'deepseek'">
+            <label class="inline-flex items-center font-medium text-brand mt-4">
+              {{ $t('ui.toolCalls.dsModel') }}
+            </label>
+            <input
+              type="text"
+              v-model="form.web_search.model"
+              placeholder="deepseek-v4-flash"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+            />
+            <p class="text-sm mt-2 mb-2 text-gray-300">
+              {{ $t('ui.toolCalls.dsHint') }}
+            </p>
+          </template>
 
           <!-- 仅自定义端点需要填写地址；kimi/bocha 使用各自的固定端点 -->
           <template v-if="form.web_search.provider === 'custom'">
@@ -86,17 +140,19 @@
             />
           </template>
 
-          <label class="inline-flex items-center font-medium text-brand mt-4">
-            {{ $t('ui.toolCalls.maxResults') }}
-          </label>
-          <input
-            type="number"
-            v-model.number="form.web_search.max_results"
-            min="1"
-            max="20"
-            step="1"
-            class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-          />
+          <template v-if="form.web_search.provider !== 'deepseek'">
+            <label class="inline-flex items-center font-medium text-brand mt-4">
+              {{ $t('ui.toolCalls.maxResults') }}
+            </label>
+            <input
+              type="number"
+              v-model.number="form.web_search.max_results"
+              min="1"
+              max="20"
+              step="1"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+            />
+          </template>
         </template>
 
         <div class="flex items-center gap-3 py-2.5 px-1">
@@ -114,6 +170,9 @@
           />
           <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.proxyEnable') }}</p>
         </div>
+        <p v-if="android" class="text-sm text-amber-300 px-1 mb-2">
+          {{ $t('ui.toolCalls.androidProxyHint') }}
+        </p>
         <input
           v-if="form.web_search.proxy_enabled"
           type="text"
@@ -139,11 +198,15 @@
         <div class="flex items-center gap-3 py-2.5 px-1">
           <Toggle
             :checked="form.file_ops_allow_any_path"
+            :disabled="android"
             @change="(value: boolean) => (form.file_ops_allow_any_path = value)"
           />
           <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.fileOpsAllowAnyPath') }}</p>
         </div>
-        <p v-if="form.file_ops_allow_any_path" class="text-sm text-amber-400 px-1 mb-2">
+        <p v-if="android" class="text-sm text-amber-300 px-1 mb-2">
+          {{ $t('ui.toolCalls.androidFileScope') }}
+        </p>
+        <p v-else-if="form.file_ops_allow_any_path" class="text-sm text-amber-400 px-1 mb-2">
           {{ $t('ui.toolCalls.fileOpsAllowAnyPathHint') }}
         </p>
         <div class="flex items-center gap-3 py-2.5 px-1">
@@ -164,38 +227,40 @@
           {{ navLabel(selected) }}
         </h2>
         <p class="text-sm text-gray-400 mb-4 px-1">{{ $t('ui.toolCalls.otherToolsHint') }}</p>
-        <!-- 命令执行依赖本机 shell（cmd/sh），非 Windows 平台（如 Android）不可用 -->
-        <p v-if="!isWindows()" class="text-sm text-amber-400 px-1 mb-2">
+        <p v-if="!commandAvailable" class="text-sm text-amber-400 px-1 mb-2">
           {{ $t('ui.toolCalls.commandWindowsOnly') }}
         </p>
         <div class="flex items-center gap-3 py-2.5 px-1">
           <Toggle
             :checked="form.groups[selected] ?? false"
+            :disabled="!commandAvailable"
             @change="(value: boolean) => (form.groups[selected] = value)"
           />
           <p class="text-sm text-gray-300">{{ $t(`ui.toolCalls.groups.${selected}`) }}</p>
         </div>
-        <p class="text-sm text-gray-400 px-1 mb-2">{{ $t('ui.toolCalls.commandHint') }}</p>
-        <div class="flex items-center gap-3 py-2.5 px-1">
-          <Toggle
-            :checked="form.command_auto_approve"
-            @change="(value: boolean) => (form.command_auto_approve = value)"
-          />
-          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.commandAutoApprove') }}</p>
-        </div>
-        <p v-if="form.command_auto_approve" class="text-sm text-amber-400 px-1 mb-2">
-          {{ $t('ui.toolCalls.commandAutoApproveHint') }}
-        </p>
-        <div class="flex items-center gap-3 py-2.5 px-1">
-          <Toggle
-            :checked="form.command_delete_auto_approve"
-            @change="(value: boolean) => (form.command_delete_auto_approve = value)"
-          />
-          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.commandDeleteAutoApprove') }}</p>
-        </div>
-        <p v-if="form.command_delete_auto_approve" class="text-sm text-amber-400 px-1 mb-2">
-          {{ $t('ui.toolCalls.commandDeleteAutoApproveHint') }}
-        </p>
+        <template v-if="commandAvailable">
+          <p class="text-sm text-gray-400 px-1 mb-2">{{ $t('ui.toolCalls.commandHint') }}</p>
+          <div class="flex items-center gap-3 py-2.5 px-1">
+            <Toggle
+              :checked="form.command_auto_approve"
+              @change="(value: boolean) => (form.command_auto_approve = value)"
+            />
+            <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.commandAutoApprove') }}</p>
+          </div>
+          <p v-if="form.command_auto_approve" class="text-sm text-amber-400 px-1 mb-2">
+            {{ $t('ui.toolCalls.commandAutoApproveHint') }}
+          </p>
+          <div class="flex items-center gap-3 py-2.5 px-1">
+            <Toggle
+              :checked="form.command_delete_auto_approve"
+              @change="(value: boolean) => (form.command_delete_auto_approve = value)"
+            />
+            <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.commandDeleteAutoApprove') }}</p>
+          </div>
+          <p v-if="form.command_delete_auto_approve" class="text-sm text-amber-400 px-1 mb-2">
+            {{ $t('ui.toolCalls.commandDeleteAutoApproveHint') }}
+          </p>
+        </template>
       </div>
 
       <!-- ===== 其他工具组 ===== -->
@@ -235,22 +300,27 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
+import { computed, reactive, ref, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   getToolSettings,
+  getToolRuntimeInfo,
   saveToolSettings,
   testWebSearch,
   TOOL_GROUP_KEYS,
+  type ToolRuntimeInfo,
   type ToolSettings,
 } from '@/api/services/tool-settings'
 import Toggle from '@/components/base/widget/Toggle.vue'
-import { isWindows } from '@/utils/platform'
+import { isAndroid } from '@/utils/platform'
 
 const { t, te } = useI18n()
 
 /** 当前选中的设置项：'web_search' 或工具组名 */
 const selected = ref<string>('web_search')
+const android = isAndroid()
+const runtimeInfo = ref<ToolRuntimeInfo | null>(null)
+const commandAvailable = computed(() => runtimeInfo.value?.commandAvailable ?? !android)
 
 const navItems = ['web_search', ...TOOL_GROUP_KEYS] as const
 
@@ -266,6 +336,7 @@ const form = reactive<ToolSettings>({
     enabled: false,
     use_builtin: true,
     provider: 'kimi',
+    model: 'deepseek-v4-flash',
     api_key: '',
     base_url: '',
     proxy_enabled: false,
@@ -283,6 +354,24 @@ const form = reactive<ToolSettings>({
 const status = reactive({ message: '', color: '#4ade80' })
 const testing = ref(false)
 
+const loadRuntimeInfo = async () => {
+  try {
+    runtimeInfo.value = await getToolRuntimeInfo()
+  } catch (error) {
+    console.warn('加载工具运行状态失败:', error)
+  }
+}
+
+const enableAndroidRecommended = () => {
+  for (const group of TOOL_GROUP_KEYS) {
+    form.groups[group] = group !== 'command'
+  }
+  form.file_ops_allow_any_path = false
+  form.command_auto_approve = false
+  form.command_delete_auto_approve = false
+  showStatus(t('ui.toolCalls.androidRecommendedStaged'), '#7dd3fc')
+}
+
 const showStatus = (message: string, color = '#4ade80') => {
   status.message = message
   status.color = color
@@ -293,14 +382,36 @@ const showStatus = (message: string, color = '#4ade80') => {
 
 const saveSettings = async () => {
   try {
+    if (android) {
+      form.groups.command = false
+      form.file_ops_allow_any_path = false
+      form.command_auto_approve = false
+      form.command_delete_auto_approve = false
+    }
     // 深拷贝一份普通对象，避免把 reactive 代理传给 Tauri IPC
     const payload: ToolSettings = JSON.parse(JSON.stringify(form))
+    // deepseek 使用官方 /responses 端点；base_url 对该 provider 不可编辑，
+    // 清空避免把 kimi 的默认端点残留进配置导致请求打到错误地址
+    if (payload.web_search.provider === 'deepseek') {
+      payload.web_search.base_url = ''
+    }
     await saveToolSettings(payload)
+    await loadRuntimeInfo()
     showStatus(t('ui.toolCalls.saveSuccess'))
   } catch (error: any) {
     showStatus(t('ui.toolCalls.saveFailed', { message: String(error) }), 'red')
   }
 }
+
+// 切换到 deepseek provider 时同步清空 base_url（加载旧配置时同样生效）
+watch(
+  () => form.web_search.provider,
+  (provider) => {
+    if (provider === 'deepseek') {
+      form.web_search.base_url = ''
+    }
+  },
+)
 
 const runTest = async () => {
   if (testing.value) return
@@ -327,6 +438,7 @@ onMounted(async () => {
     form.command_delete_auto_approve = settings.command_delete_auto_approve ?? false
     form.file_delete_auto_approve = settings.file_delete_auto_approve ?? false
     form.file_ops_allow_any_path = settings.file_ops_allow_any_path ?? false
+    await loadRuntimeInfo()
   } catch (error) {
     console.error('加载工具配置失败:', error)
   }

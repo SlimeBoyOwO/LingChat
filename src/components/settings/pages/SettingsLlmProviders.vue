@@ -62,30 +62,29 @@
               }}</span>
             </div>
             <div class="text-sm text-white/40 truncate">{{ p.model || $t('settings.llmProviders.list.modelNotSet') }}</div>
-          </div>
-
-          <!-- Role badges -->
-          <div class="flex gap-1.5 shrink-0">
-            <span
-              v-if="store.chatProviderId === p.id"
-              class="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30"
-              >{{ $t('settings.llmProviders.role.chat') }}</span
-            >
-            <span
-              v-if="store.translateProviderId === p.id"
-              class="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30"
-              >{{ $t('settings.llmProviders.role.translate') }}</span
-            >
-            <span
-              v-if="store.godAgentProviderId === p.id"
-              class="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30"
-              >Agent</span
-            >
-            <span
-              v-if="store.visionProviderId === p.id"
-              class="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30"
-              >{{ $t('settings.llmProviders.role.vision') }}</span
-            >
+            <!-- Role badges -->
+            <div class="flex flex-wrap gap-1.5 mt-1.5">
+              <span
+                v-if="store.chatProviderId === p.id"
+                class="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30"
+                >{{ $t('settings.llmProviders.role.chat') }}</span
+              >
+              <span
+                v-if="store.translateProviderId === p.id"
+                class="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                >{{ $t('settings.llmProviders.role.translate') }}</span
+              >
+              <span
+                v-if="store.godAgentProviderId === p.id"
+                class="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                >Agent</span
+              >
+              <span
+                v-if="store.visionProviderId === p.id"
+                class="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30"
+                >{{ $t('settings.llmProviders.role.vision') }}</span
+              >
+            </div>
           </div>
 
           <!-- Actions -->
@@ -462,7 +461,7 @@
                 <button
                   type="button"
                   class="shrink-0 px-3 py-2 rounded-lg bg-brand/80 text-white text-sm hover:bg-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  :disabled="loadingModels || !editing.api_key.trim()"
+                  :disabled="loadingModels"
                   @click="fetchProviderModels"
                 >
                   {{ loadingModels ? $t('settings.llmProviders.form.fetchingModels') : $t('settings.llmProviders.form.fetchModels') }}
@@ -670,71 +669,11 @@ import {
   type LlmProviderConfig,
 } from '@/api/services/llm-providers'
 import { useI18n } from 'vue-i18n'
+import { llmPresets as presets, type LlmPreset } from '@/constants/llm-presets'
 
 const store = useLlmProvidersStore()
 const uiStore = useUIStore()
 const { t } = useI18n()
-
-// ---- 预设 ----
-interface LlmPreset {
-  key: string
-  label: string
-  provider: string
-  model: string
-  base_url: string
-}
-
-const presets: LlmPreset[] = [
-  {
-    key: 'deepseek-v4-flash',
-    label: 'DeepSeek V4 Flash',
-    provider: 'openai',
-    model: 'deepseek-v4-flash',
-    base_url: 'https://api.deepseek.com',
-  },
-  {
-    key: 'deepseek-v4-pro',
-    label: 'DeepSeek V4 Pro',
-    provider: 'openai',
-    model: 'deepseek-v4-pro',
-    base_url: 'https://api.deepseek.com',
-  },
-  {
-    key: 'qwen-max',
-    label: '通义千问 Max',
-    provider: 'openai',
-    model: 'qwen3.7-max',
-    base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-  },
-  {
-    key: 'qwen-plus',
-    label: '通义千问 Plus',
-    provider: 'openai',
-    model: 'qwen3.7-plus',
-    base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-  },
-  {
-    key: 'kimi',
-    label: 'Kimi K2.6',
-    provider: 'openai',
-    model: 'kimi-k2.6',
-    base_url: 'https://api.moonshot.cn/v1',
-  },
-  {
-    key: 'ollama',
-    label: 'Ollama',
-    provider: 'openai',
-    model: '',
-    base_url: 'http://localhost:11434/v1',
-  },
-  {
-    key: 'lmstudio',
-    label: 'LM Studio',
-    provider: 'lmstudio',
-    model: '',
-    base_url: 'http://localhost:1234/v1',
-  },
-]
 
 function applyPreset(preset: LlmPreset) {
   editing.label = preset.label
@@ -920,11 +859,6 @@ async function saveCurrent() {
 
 async function fetchProviderModels() {
   if (loadingModels.value) return
-  if (!editing.api_key.trim()) {
-    modelsMessage.value = t('settings.llmProviders.msg.apiKeyRequired')
-    modelsError.value = true
-    return
-  }
 
   loadingModels.value = true
   modelsMessage.value = ''

@@ -44,7 +44,6 @@ import {
 import SettingsNav from './SettingsNav.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { ref, watch, computed, type Component } from 'vue'
-import { isAndroid } from '@/utils/platform'
 
 const uiStore = useUIStore()
 
@@ -90,8 +89,7 @@ const TABS = [
   'save',
   'advance',
   'log',
-  // 插件系统由 RustPython 驱动，移动端不编译（cfg(desktop)），Android 上不显示该 tab
-  ...(isAndroid() ? [] : ['plugins']),
+  'plugins',
 ] as const
 
 // 标签 → 组件映射（推入推出转场用 v-if 动态组件）
@@ -111,6 +109,20 @@ const tabComponents: Record<string, Component> = {
 const currentTabComponent = computed(() => tabComponents[uiStore.currentSettingsTab])
 // 转场方向：左滑下一项 → slide-left（新页从右进）；右滑上一项 → slide-right
 const transitionName = ref<'slide-left' | 'slide-right'>('slide-left')
+
+// 依据 TABS 顺序决定滑动方向：目标索引更大 → 下一项（slide-left）；更小 → 上一项（slide-right）。
+// watch 默认 flush: 'pre'，在重渲染前更新 transitionName，Transition 开始动画时能取到正确方向。
+watch(
+  () => uiStore.currentSettingsTab,
+  (newTab, oldTab) => {
+    if (!oldTab || oldTab === newTab) return
+    const newIdx = (TABS as readonly string[]).indexOf(newTab)
+    const oldIdx = (TABS as readonly string[]).indexOf(oldTab)
+    // 目标/来源不在滑动顺序里（理论不应发生）→ 保持原方向
+    if (newIdx === -1 || oldIdx === -1) return
+    transitionName.value = newIdx > oldIdx ? 'slide-left' : 'slide-right'
+  },
+)
 
 const contentRef = ref<HTMLElement | null>(null)
 let touchStartX = 0
@@ -217,21 +229,25 @@ defineExpose({
 .slide-left-leave-active,
 .slide-right-enter-active,
 .slide-right-leave-active {
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* 与剧本编辑器同一套动画参数：起步即快的缓动（而非默认的慢起步）——
+     切 Tab 时新页挂载/旧页缓存 DOM 重插会有 1~2 帧主线程开销，慢起步缓动
+     会让旧页看起来「卡在原地」形成残留；快速起步则把这点开销掩盖掉。 */
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .slide-left-enter-from {
   transform: translateX(100%);
 }
 .slide-left-leave-to {
-  transform: translateX(-100%);
+  /* 旧页滑出多一点（±150%），保证整页宽度的 Tab 也彻底离开视口 */
+  transform: translateX(-150%);
 }
 
 .slide-right-enter-from {
   transform: translateX(-100%);
 }
 .slide-right-leave-to {
-  transform: translateX(100%);
+  transform: translateX(150%);
 }
 
 .slide-left-enter-to,

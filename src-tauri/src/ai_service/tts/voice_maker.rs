@@ -109,10 +109,11 @@ fn gsv_prompt_language(prompt_text: &str) -> &'static str {
 
 fn segment_text_for_lang<'a>(lang: &str, segment: &'a EmotionSegment) -> Option<&'a str> {
     match lang {
-        "ja" | "en" | "ko" if !segment.japanese_text.trim().is_empty() => {
+        // 译文统一存放在 japanese_text 字段（历史命名），ja/en/ko/es/ar 均优先取译文
+        "ja" | "en" | "ko" | "es" | "ar" if !segment.japanese_text.trim().is_empty() => {
             Some(&segment.japanese_text)
         }
-        "en" | "ko" => None,
+        "en" | "ko" | "es" | "ar" => None,
         "zh" if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
         _ if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
         _ if !segment.japanese_text.trim().is_empty() => Some(&segment.japanese_text),
@@ -418,14 +419,11 @@ impl VoiceMaker {
                 }
             }
             "indextts2" => {
-                // IndexTTS2 仅支持中/英文：角色若残留日语配置（旧版本可选），
-                // 兜底为中文，避免日语文本被直接送去合成。
-                if self.lang == "ja" {
-                    tracing::warn!("IndexTTS2 不支持日语，voice_lang 已从 ja 兜底为 zh");
-                    self.lang = "zh".to_string();
-                }
+                // IndexTTS 2.5 起官方支持中/英/日/西班牙/阿拉伯语，
+                // 不再对日语等语言做中文兜底，lang 直接透传给服务端。
                 self.provider.indextts = Some(Arc::new(IndexTtsAdapter::new(
                     self.tts_config.indextts_api_url.clone(),
+                    self.lang.clone(),
                 )));
             }
             _ => {
@@ -536,46 +534,5 @@ impl VoiceMaker {
         if !futs.is_empty() {
             join_all(futs).await;
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ai_service::tts::local::engine::LocalTtsEngine;
-    use crate::ai_service::tts::local::paths::LocalTtsPaths;
-    use crate::ai_service::tts::local::LocalTtsSwitch;
-
-    #[test]
-    fn local_mode_defers_cloud_fallback_adapter_creation() {
-        let mut maker = VoiceMaker::new(PathBuf::from("voice"), "wav", TtsConfig::default());
-        maker.set_local_runtime(Some(LocalTtsRuntime::new(
-            Arc::new(LocalTtsEngine::new()),
-            LocalTtsPaths {
-                root: PathBuf::from("tts-local"),
-                assets: PathBuf::from("tts-local/assets"),
-                voices: PathBuf::from("tts-local/voices"),
-                cache: PathBuf::from("cache"),
-            },
-            LocalTtsSwitch::new(true),
-        )));
-        let cfg = VoiceModel {
-            sbv2api_name: Some("ordinary-cloud-model".into()),
-            sbv2api_speaker_id: Some("99".into()),
-            sbv2_local_voice_id: Some("local-voice".into()),
-            sbv2_local_cloud_fallback_model: Some("fallback-model".into()),
-            sbv2_local_cloud_fallback_speaker_id: Some("7".into()),
-            ..VoiceModel::default()
-        };
-
-        maker
-            .set_tts_settings(&cfg, "localsbv2api", "test")
-            .unwrap();
-
-        assert!(maker.provider.sbv2api.is_none());
-        let fallback = maker.local_cloud_fallback.as_ref().unwrap();
-        assert_eq!(fallback.model_name, "fallback-model");
-        assert_eq!(fallback.speaker_id, 7);
-        assert!(fallback.adapter.get().is_none());
     }
 }

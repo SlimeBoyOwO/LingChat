@@ -34,7 +34,7 @@
 <body>
 <div class="wrap">
   <h1>如何扩展新的工具函数 —— 步骤流程</h1>
-  <p class="sub">PR #523 · 实现 Tool trait → 注册 → 配置权限 → 测试；不动 LLM 层、不动权限核心、不动台词表与记忆</p>
+  <p class="sub">PR #523 · 实现 Tool trait → 注册 → 配置权限 → 构建检查；不动 LLM 层、不动权限核心、不动台词表与记忆</p>
 
   <svg viewBox="0 0 1320 1180" xmlns="http://www.w3.org/2000/svg">
     <defs>
@@ -115,7 +115,7 @@
     <line x1="350" y1="724" x2="350" y2="762" stroke="#f4a261" stroke-width="1.6" marker-end="url(#arrow)" />
 
     <!-- ================= 第 4 步 ================= -->
-    <text x="40" y="782" font-size="14" font-weight="700" fill="#79d9ff">第 4 步 · 测试与验证</text>
+    <text x="40" y="782" font-size="14" font-weight="700" fill="#79d9ff">第 4 步 · 构建与验证</text>
     <rect x="40" y="798" width="620" height="130" rx="9" fill="#1b2430" stroke="#79d9ff" stroke-opacity="0.5" />
     <text x="60" y="826" font-size="11" font-weight="700" fill="#79d9ff">单测（参考 clock.rs / executor.rs）</text>
     <text x="60" y="852" font-size="10.5" fill="#e6edf3">· definition：additionalProperties=false、工具名正确；</text>
@@ -134,7 +134,7 @@
     <line x1="350" y1="928" x2="350" y2="960" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#arrow)" />
     <rect x="40" y="962" width="1220" height="150" rx="10" fill="#16202c" stroke="#34d399" stroke-opacity="0.4" />
     <text x="60" y="990" font-size="12" font-weight="700" fill="#34d399">你要写什么 / 不用动什么</text>
-    <text x="60" y="1016" font-size="10.5" fill="#e6edf3">✅ 要写：一个实现 Tool trait 的文件（definition + execute）→ 一行注册 → 一段权限配置 → 一组测试。</text>
+    <text x="60" y="1016" font-size="10.5" fill="#e6edf3">✅ 要写：一个实现 Tool trait 的文件（definition + execute）→ 一行注册 → 一段权限配置 → 完整构建。</text>
     <text x="60" y="1040" font-size="10.5" fill="#e6edf3">✅ 会自动生效：工具定义自动进 definitions（权限放行时）、结果自动进台词表 + 记忆、错误自动回填给 LLM。</text>
     <text x="60" y="1064" font-size="10.5" fill="#e6edf3">✅ 可复用：ToolContext.allows 二次校验、ToolError 稳定编码、2s 超时、错误 JSON 回填 —— 全都由执行器统一处理。</text>
     <text x="60" y="1088" font-size="10.5" fill="#8b98a5">❌ 不用动：LlmProvider / genai / kimi_code、permissions.rs 核心、MemoryBuilder、台词表结构与迁移。</text>
@@ -142,7 +142,7 @@
   </svg>
 
   <div class="legend">
-    <span><span class="dot" style="background:#34d399"></span>实现 / 测试</span>
+    <span><span class="dot" style="background:#34d399"></span>实现 / 构建</span>
     <span><span class="dot" style="background:#f472b6"></span>注册</span>
     <span><span class="dot" style="background:#f4a261"></span>权限配置</span>
     <span><span class="dot" style="background:#79d9ff"></span>验证</span>

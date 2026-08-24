@@ -24,7 +24,11 @@ custom-protocol = ["tauri/custom-protocol"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset"] }
+# macos-private-api：macOS 上透明窗口（桌宠模式）的必要条件。缺少它时 tauri.conf.json
+# 的 transparent: true 会被静默忽略，webview 仍然绘制不透明白底。
+# 该 feature 内部由 cfg(target_os = "macos") 门控，Windows / Linux / Android 无影响。
+# 由 tauri.conf.json 的 app.macOSPrivateApi 驱动，tauri CLI 会自动同步这里的 features。
+tauri = { version = "2", features = ["macos-private-api", "protocol-asset"] }
 tauri-plugin-opener = "2"
 tauri-plugin-store = "2"
 tauri-plugin-dialog = "2"
@@ -64,10 +68,18 @@ rand = "0.8"
 indoc = "2"
 
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+infer = "0.19"
 sevenz-rust2 = "0.21"
 sha2 = "0.10"
 tempfile = "3"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# 插件系统：嵌入 RustPython 跑插件 Python 脚本（目前是一个受限沙箱）。
+# 桌面与移动端（Android/iOS）都编译，供安卓自测。
+rustpython-vm = { version = "0.5", default-features = false, features = ["compiler", "gc", "stdio", "serde", "freeze-stdlib"] }
+rustpython-pylib = { version = "0.5", features = ["freeze-stdlib"] }
+rustpython-derive = "0.5"
+
 
 # LAN Sync
 axum = { version = "0.7", features = ["tokio"] }
@@ -81,15 +93,15 @@ encoding_rs = "0.8"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
-# 插件系统：嵌入 RustPython 跑插件 Python 脚本（目前是一个受限沙箱）。
-rustpython-vm = { version = "0.5", default-features = false, features = ["compiler", "gc", "stdio", "serde", "freeze-stdlib"] }
-rustpython-pylib = { version = "0.5", features = ["freeze-stdlib"] }
-rustpython-derive = "0.5"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["directml"] }
 sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["directml"] }
 windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dxgi"] }
+
+[target.'cfg(any(target_os = "linux", all(target_os = "macos", target_arch = "x86_64")))'.dependencies]
+# GPU 性能分级：Linux 走 Vulkan、macOS(x86_64) 走 Metal（WebGPU / wgpu）
+wgpu = "26"
 
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
