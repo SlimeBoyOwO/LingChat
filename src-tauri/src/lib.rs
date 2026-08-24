@@ -402,7 +402,6 @@ pub fn run() {
             let tool_registry = Arc::new(ai_service::tools::built_in_registry(
                 role_names,
                 tool_settings.clone(),
-                app.handle().clone(),
             )?);
 
             // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）。
