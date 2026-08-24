@@ -41,7 +41,7 @@ import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useSettingsStore } from '@/stores/modules/settings'
 import { useLlmProvidersStore } from '@/stores/modules/llm-providers'
-import { useAsrInput, registerAsrInputBridge } from '@/composables/useAsrInput'
+import { useAsrInput, registerAsrInputBridge, lockAsrForDisplay } from '@/composables/useAsrInput'
 import { useScreenshot } from '@/composables/useScreenshot'
 import { setInputHasText } from '@/composables/useCanDeliver'
 import { Forward } from 'lucide-vue-next'
@@ -59,11 +59,14 @@ const {
   clear: clearScreenshot,
 } = useScreenshot()
 
-// fill_only：识别完成整句填入（与桌面 onAsrText 一致）
+// fill_only：识别完成整句填入（与桌面 onAsrText 一致）；400ms 显示锁防
+// auto RMS 识别完立即再触发覆盖刚填入的内容（手动不受锁限）
+const ASR_DISPLAY_MS = 400
 function onAsrText(e: Event) {
   const ce = e as CustomEvent<string>
   if (typeof ce.detail === 'string') {
     messageText.value = ce.detail
+    lockAsrForDisplay(ASR_DISPLAY_MS)
   }
 }
 

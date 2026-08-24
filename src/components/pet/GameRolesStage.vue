@@ -239,15 +239,18 @@ const onAudioEnded = () => {
 const asrInput = useAsrInput()
 const asrStore = useAsrStore()
 
-// 三层状态（与 GameDialog 一致）：auto_listen 模式开 → mic = 功能开关
+// 三层状态（与 GameDialog 一致）：auto_listen 模式开 + 总开关开 → mic = 功能开关；
+// 总开关关（自动模式已停）→ 退化为手动录音
 const autoListenOn = computed(() => asrStore.settings.auto_listen)
 const autoListenActive = computed(() => asrInput.autoListenActive.value)
 const micIcon = computed(() => {
-  if (autoListenOn.value) return autoListenActive.value ? MicOff : Mic
+  if (autoListenOn.value && asrStore.settings.voice_input_enabled) {
+    return autoListenActive.value ? MicOff : Mic
+  }
   return Mic
 })
 const micTitle = computed(() => {
-  if (autoListenOn.value) {
+  if (autoListenOn.value && asrStore.settings.voice_input_enabled) {
     return autoListenActive.value
       ? t('game.dialog.asrAutoOff') // 监听中：暂停
       : t('game.dialog.asrAutoResume') // 已暂停：恢复
@@ -256,14 +259,20 @@ const micTitle = computed(() => {
     ? t('game.dialog.recordingStop')
     : t('game.dialog.voiceInput')
 })
+// mic 按钮 enabled 条件（与 GameDialog 一致）：
+// - auto_listen 模式开 + 总开关开：功能开关可用
+// - 总开关关 → 退化为手动录音（canStartAsr 手动变体——总开关只挡自动，不锁手动；
+//   显示锁只挡 auto 触发，手动不受限）
 const canStartMic = computed(
   () =>
-    asrStore.settings.voice_input_enabled &&
-    (autoListenOn.value || asrInput.phase.value === 'recording' || asrInput.canStartAsr()),
+    (autoListenOn.value && asrStore.settings.voice_input_enabled) ||
+    asrInput.phase.value === 'recording' ||
+    asrInput.canStartAsr(false, true),
 )
 function toggleRecording() {
-  // auto_listen 模式开：mic 按钮 = 切换功能开关（暂停/恢复监听），不改模式设置
-  if (autoListenOn.value) {
+  // auto_listen 模式开 + 总开关开：mic 按钮 = 切换功能开关（暂停/恢复监听），
+  // 不改模式设置；总开关关 → 走手动录音分支
+  if (autoListenOn.value && asrStore.settings.voice_input_enabled) {
     asrInput.toggleAutoListenFunction()
     return
   }
