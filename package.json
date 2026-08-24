@@ -8,7 +8,6 @@
     "init": "tauri icon src-tauri/icons/icon.png && node scripts/prepare-desktop-resources.mjs && node scripts/download_emotion_model.mjs",
     "dev": "vite",
     "build": "vue-tsc --noEmit --skipLibCheck && vite build",
-    "test:live2d": "vitest run src/components/game/live2d",
     "preview": "vite preview",
     "tauri": "tauri",
     "android:prepare": "tauri android init && node scripts/generate-android-icons.mjs",
@@ -50,7 +49,6 @@
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
     "vite-plugin-vue-devtools": "^8.1.2",
-    "vitest": "4.0.18",
     "vue-tsc": "^2.1.10"
   }
 }

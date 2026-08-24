@@ -329,6 +329,8 @@ pub struct Live2dMotionBinding {
     pub index: usize,
     #[serde(default, rename = "loop")]
     pub loop_motion: bool,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -336,18 +338,24 @@ pub struct Live2dParameterBinding {
     pub parameter: String,
     #[serde(default = "default_live2d_gain")]
     pub gain: f64,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Live2dEyeBlinkBinding {
     pub left: String,
     pub right: String,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Live2dFocusAnchor {
     pub x: f64,
     pub y: f64,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
 }
 
 fn deserialize_live2d_focus_anchor<'de, D>(
@@ -388,6 +396,8 @@ pub struct Live2dVariant {
     pub focus_anchor: Option<Live2dFocusAnchor>,
     #[serde(default)]
     pub lip_sync: Option<Live2dParameterBinding>,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -399,6 +409,8 @@ pub struct Live2dSettings {
     pub variants: HashMap<String, Live2dVariant>,
     #[serde(default)]
     pub clothes_variants: HashMap<String, String>,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
 }
 
 fn default_live2d_version() -> u32 {

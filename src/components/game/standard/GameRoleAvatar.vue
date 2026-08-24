@@ -1,16 +1,13 @@
 <template>
-  <!-- 触摸区域 -->
-  <TouchAreas v-if="gameStore.command === 'touch'" :body-parts="role.bodyPart" />
-
+  <!-- 静态角色与 Live2D fallback 始终位于共享 Pixi 舞台下方。 -->
   <Transition name="character-fade">
     <div
       class="absolute w-full h-full pointer-events-none origin-[center_0%] role-container-transition"
-      :style="containerStyle"
+      :style="staticLayerStyle"
       @animationend="handleAnimationEnd"
     >
-      <!-- 使用单独提取出来的图片淡入淡出组件 -->
       <ImageAcrossFade
-        v-show="!live2dActive"
+        v-show="!role.live2d || !live2dReady"
         ref="imageFadeRef"
         class="absolute w-full h-[102%]"
         :class="containerClasses"
@@ -21,19 +18,23 @@
       />
 
       <div
-        v-if="live2dFailed && !targetAvatarUrl"
+        v-if="role.live2d && live2dUnavailable && !targetAvatarUrl"
         class="absolute inset-0 flex items-center justify-center text-sm text-white/60"
       >
-        Live2D unavailable
+        {{ $t('game.avatar.live2dUnavailable') }}
       </div>
-
-      <!-- 气泡 -->
-      <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
-
-      <!-- 情绪音效 -->
-      <audio ref="bubbleAudio"></audio>
     </div>
   </Transition>
+
+  <!-- 原有气泡、触摸层和情绪音效位于共享 Pixi 舞台上方。 -->
+  <TouchAreas v-if="gameStore.command === 'touch'" :body-parts="role.bodyPart" />
+  <div
+    class="absolute w-full h-full pointer-events-none origin-[center_0%] role-container-transition"
+    :style="effectsLayerStyle"
+  >
+    <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
+    <audio ref="bubbleAudio"></audio>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -50,8 +51,8 @@ import './avatar-animation.css'
 
 const props = defineProps<{
   role: GameRole
-  live2dActive?: boolean
-  live2dFailed?: boolean
+  live2dReady: boolean
+  live2dUnavailable: boolean
 }>()
 
 const gameStore = useGameStore()
@@ -115,7 +116,7 @@ const lightingFilter = computed(() => {
   return parts.length > 0 ? parts.join(' ') : undefined
 })
 
-const containerStyle = computed(() => {
+const roleLayerStyle = computed(() => {
   const autoLeft = layoutPosition.value
   const manualOffset = role.value.offsetX || 0
 
@@ -124,7 +125,6 @@ const containerStyle = computed(() => {
     top: `${role.value.offsetY - narrowScreenYCompensation.value - wideScreenYCompensation.value}px`,
     transform: `translateX(-50%) scale(${role.value.scale})`,
     opacity: `${role.value.show ? 1 : 0}`,
-    zIndex: props.live2dActive ? '3' : '1',
   }
   const filter = lightingFilter.value
   if (filter) {
@@ -132,6 +132,9 @@ const containerStyle = computed(() => {
   }
   return style
 })
+
+const staticLayerStyle = computed(() => ({ ...roleLayerStyle.value, zIndex: '1' }))
+const effectsLayerStyle = computed(() => ({ ...roleLayerStyle.value, zIndex: '2' }))
 
 const containerClasses = computed(() => ({
   [activeAnimationClass.value]: true,

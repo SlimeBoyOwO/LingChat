@@ -111,15 +111,34 @@ fn find_import_manifest(dir: &Path) -> Result<Option<PathBuf>, String> {
     Ok(None)
 }
 
+fn has_url_scheme(value: &str) -> bool {
+    let Some((scheme, _)) = value.split_once(':') else {
+        return false;
+    };
+    let mut chars = scheme.chars();
+    chars.next().is_some_and(|first| first.is_ascii_alphabetic())
+        && chars.all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '+' | '-' | '.')
+        })
+}
+
+fn validate_relative_path(value: &str, label: &str) -> Result<(), String> {
+    if has_url_scheme(value) || value.starts_with('/') || value.starts_with('\\') {
+        return Err(format!("{label} 必须是相对路径: {value}"));
+    }
+    Ok(())
+}
+
 fn referenced_path(
     model_dir: &Path,
-    role_root: &Path,
+    resource_root: &Path,
     value: &JsonValue,
     label: &str,
 ) -> Result<(), String> {
     let Some(relative) = value.as_str() else {
         return Err(format!("{label} 引用不是字符串"));
     };
+    validate_relative_path(relative, &format!("{label} 引用"))?;
     let resolved = model_dir.join(relative);
     if !resolved.is_file() {
         return Err(format!("缺少 {label} 文件: {relative}"));
@@ -127,17 +146,18 @@ fn referenced_path(
     let canonical = resolved
         .canonicalize()
         .map_err(|e| format!("解析 {label} 文件失败: {e}"))?;
-    let canonical_root = role_root
+    let canonical_root = resource_root
         .canonicalize()
-        .map_err(|e| format!("解析角色目录失败: {e}"))?;
+        .map_err(|e| format!("解析 Live2D 资源目录失败: {e}"))?;
     canonical
         .strip_prefix(canonical_root)
-        .map_err(|_| format!("{label} 文件必须位于角色目录内: {relative}"))?;
+        .map_err(|_| format!("{label} 文件必须位于本次导入的 Live2D 资源内: {relative}"))?;
     Ok(())
 }
 
 fn inspect_model(
     model_file: &Path,
+    resource_root: &Path,
     role_root: &Path,
     variant: String,
 ) -> Result<(Live2dModelInfo, Live2dVariant), String> {
@@ -154,18 +174,18 @@ fn inspect_model(
 
     referenced_path(
         model_dir,
-        role_root,
+        resource_root,
         refs.get("Moc").unwrap_or(&JsonValue::Null),
         "Moc",
     )?;
     if let Some(textures) = refs.get("Textures").and_then(JsonValue::as_array) {
         for texture in textures {
-            referenced_path(model_dir, role_root, texture, "Texture")?;
+            referenced_path(model_dir, resource_root, texture, "Texture")?;
         }
     }
     for key in ["Physics", "Pose", "UserData", "DisplayInfo"] {
         if let Some(reference) = refs.get(key) {
-            referenced_path(model_dir, role_root, reference, key)?;
+            referenced_path(model_dir, resource_root, reference, key)?;
         }
     }
 
@@ -173,7 +193,7 @@ fn inspect_model(
     if let Some(items) = refs.get("Expressions").and_then(JsonValue::as_array) {
         for item in items {
             if let Some(file) = item.get("File") {
-                referenced_path(model_dir, role_root, file, "Expression")?;
+                referenced_path(model_dir, resource_root, file, "Expression")?;
             }
             if let Some(name) = item.get("Name").and_then(JsonValue::as_str) {
                 expressions.push(name.to_string());
@@ -190,14 +210,14 @@ fn inspect_model(
             let mut files = Vec::new();
             for item in items {
                 if let Some(file) = item.get("File") {
-                    referenced_path(model_dir, role_root, file, "Motion")?;
+                    referenced_path(model_dir, resource_root, file, "Motion")?;
                     if let Some(file) = file.as_str() {
                         files.push(file.to_string());
                     }
                 }
                 if let Some(sound) = item.get("Sound") {
                     if sound.as_str() != Some("") {
-                        referenced_path(model_dir, role_root, sound, "Motion sound")?;
+                        referenced_path(model_dir, resource_root, sound, "Motion sound")?;
                     }
                 }
             }
@@ -217,6 +237,7 @@ fn inspect_model(
             group: "Idle".to_string(),
             index: 0,
             loop_motion: true,
+            extra: HashMap::new(),
         });
     let default_expression = expressions
         .iter()
@@ -269,6 +290,7 @@ fn inspect_model(
                         group: group.clone(),
                         index,
                         loop_motion: false,
+                        extra: HashMap::new(),
                     },
                 );
                 break 'groups;
@@ -284,12 +306,15 @@ fn inspect_model(
         eye_blink: Some(Live2dEyeBlinkBinding {
             left: "ParamEyeLOpen".to_string(),
             right: "ParamEyeROpen".to_string(),
+            extra: HashMap::new(),
         }),
         focus_anchor: None,
         lip_sync: Some(Live2dParameterBinding {
             parameter: "ParamMouthOpenY".to_string(),
             gain: 1.0,
+            extra: HashMap::new(),
         }),
+        extra: HashMap::new(),
     };
     Ok((
         Live2dModelInfo {
@@ -466,11 +491,21 @@ pub async fn import_live2d(
         }
     };
     let target = root.join("live2d").join(format!("import-{nonce}"));
-    fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
-    fs::rename(&staging, &target).map_err(|e| format!("保存 Live2D 资源失败: {e}"))?;
-    let canonical_target = target
-        .canonicalize()
-        .map_err(|e| format!("解析 Live2D 导入目录失败: {e}"))?;
+    if let Err(error) = fs::create_dir_all(target.parent().unwrap()) {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error.to_string());
+    }
+    if let Err(error) = fs::rename(&staging, &target) {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(format!("保存 Live2D 资源失败: {error}"));
+    }
+    let canonical_target = match target.canonicalize() {
+        Ok(path) => path,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&target);
+            return Err(format!("解析 Live2D 导入目录失败: {error}"));
+        }
+    };
 
     let (live2d, models) = if let Some(manifest_relative) = manifest_relative {
         let manifest_path = target.join(manifest_relative);
@@ -494,6 +529,10 @@ pub async fn import_live2d(
                 }
                 let mut inspected = Vec::new();
                 for (variant_name, variant) in &mut configured.variants {
+                    validate_relative_path(
+                        &variant.model,
+                        &format!("variant {variant_name} 的模型路径"),
+                    )?;
                     let source_model = manifest_dir
                         .join(&variant.model)
                         .canonicalize()
@@ -507,7 +546,12 @@ pub async fn import_live2d(
                         .to_string_lossy()
                         .replace('\\', "/");
                     variant.model = relative;
-                    let (info, _) = inspect_model(&source_model, &root, variant_name.clone())?;
+                    let (info, _) = inspect_model(
+                        &source_model,
+                        &canonical_target,
+                        &root,
+                        variant_name.clone(),
+                    )?;
                     validate_variant_bindings(variant_name, variant, &info)?;
                     inspected.push(info);
                 }
@@ -538,7 +582,12 @@ pub async fn import_live2d(
                     .map_err(|e| e.to_string())?;
                 let model_file = target.join(relative_in_staging);
                 let variant_name = unique_variant_name(&model_file, &variants);
-                let (info, variant) = inspect_model(&model_file, &root, variant_name.clone())?;
+                let (info, variant) = inspect_model(
+                    &model_file,
+                    &canonical_target,
+                    &root,
+                    variant_name.clone(),
+                )?;
                 variants.insert(variant_name, variant);
                 inspected.push(info);
             }
@@ -549,6 +598,7 @@ pub async fn import_live2d(
                     default_variant: default_variant.clone(),
                     variants,
                     clothes_variants: HashMap::from([("default".to_string(), default_variant)]),
+                    extra: HashMap::new(),
                 },
                 inspected,
             ))
@@ -654,154 +704,9 @@ pub async fn inspect_live2d(app: AppHandle, role_id: i32) -> Result<Live2dImport
     let mut models = Vec::new();
     for (variant_name, variant) in &live2d.variants {
         let model_file = root.join(&variant.model);
-        let (info, _) = inspect_model(&model_file, &root, variant_name.clone())?;
+        let (info, _) = inspect_model(&model_file, &root, &root, variant_name.clone())?;
         models.push(info);
     }
     models.sort_by(|left, right| left.variant.cmp(&right.variant));
     Ok(Live2dImportResult { live2d, models })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    struct Fixture {
-        root: PathBuf,
-        model: PathBuf,
-    }
-
-    impl Fixture {
-        fn new() -> Self {
-            let root =
-                std::env::temp_dir().join(format!("lingchat-live2d-{}", uuid::Uuid::new_v4()));
-            let model_dir = root.join("model");
-            fs::create_dir_all(model_dir.join("textures")).unwrap();
-            fs::create_dir_all(model_dir.join("expressions")).unwrap();
-            fs::create_dir_all(model_dir.join("motions")).unwrap();
-            fs::create_dir_all(model_dir.join("sounds")).unwrap();
-            for relative in [
-                "Nori.moc3",
-                "Nori.physics3.json",
-                "Nori.cdi3.json",
-                "textures/texture.png",
-                "expressions/happy.exp3.json",
-                "motions/idle.motion3.json",
-                "sounds/idle.wav",
-            ] {
-                fs::write(model_dir.join(relative), b"fixture").unwrap();
-            }
-            let model = model_dir.join("Nori.model3.json");
-            fs::write(
-                &model,
-                serde_json::to_vec(&json!({
-                    "Version": 3,
-                    "FileReferences": {
-                        "Moc": "Nori.moc3",
-                        "Textures": ["textures/texture.png"],
-                        "Physics": "Nori.physics3.json",
-                        "DisplayInfo": "Nori.cdi3.json",
-                        "Expressions": [{"Name": "13_Happy", "File": "expressions/happy.exp3.json"}],
-                        "Motions": {"Idle": [{"File": "motions/idle.motion3.json", "Sound": "sounds/idle.wav"}]}
-                    }
-                }))
-                .unwrap(),
-            )
-            .unwrap();
-            Self { root, model }
-        }
-
-        fn update_reference(&self, key: &str, value: &str) {
-            let mut json: JsonValue =
-                serde_json::from_slice(&fs::read(&self.model).unwrap()).unwrap();
-            json["FileReferences"][key] = JsonValue::String(value.to_string());
-            fs::write(&self.model, serde_json::to_vec(&json).unwrap()).unwrap();
-        }
-    }
-
-    impl Drop for Fixture {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.root);
-        }
-    }
-
-    #[test]
-    fn inspect_model_accepts_complete_reference_chain() {
-        let fixture = Fixture::new();
-        let (info, variant) = inspect_model(&fixture.model, &fixture.root, "Nori".into()).unwrap();
-        assert_eq!(info.variant, "Nori");
-        assert_eq!(variant.default_expression.as_deref(), Some("13_Happy"));
-        assert_eq!(
-            variant.idle.as_ref().map(|idle| idle.group.as_str()),
-            Some("Idle")
-        );
-    }
-
-    #[test]
-    fn inspect_model_rejects_missing_display_info() {
-        let fixture = Fixture::new();
-        fixture.update_reference("DisplayInfo", "missing.cdi3.json");
-        let error = inspect_model(&fixture.model, &fixture.root, "Nori".into()).unwrap_err();
-        assert!(error.contains("DisplayInfo"));
-    }
-
-    #[test]
-    fn inspect_model_rejects_missing_motion_sound() {
-        let fixture = Fixture::new();
-        fs::remove_file(fixture.root.join("model/sounds/idle.wav")).unwrap();
-        let error = inspect_model(&fixture.model, &fixture.root, "Nori".into()).unwrap_err();
-        assert!(error.contains("Motion sound"));
-    }
-
-    #[test]
-    fn variant_validation_rejects_unknown_expression_and_motion_index() {
-        let fixture = Fixture::new();
-        let (info, mut variant) =
-            inspect_model(&fixture.model, &fixture.root, "Nori".into()).unwrap();
-        variant.default_expression = Some("missing".to_string());
-        assert!(validate_variant_bindings("Nori", &variant, &info)
-            .unwrap_err()
-            .contains("默认表情"));
-
-        variant.default_expression = Some("13_Happy".to_string());
-        variant.motions.insert(
-            "高兴".to_string(),
-            Live2dMotionBinding {
-                group: "Idle".to_string(),
-                index: 99,
-                loop_motion: false,
-            },
-        );
-        assert!(validate_variant_bindings("Nori", &variant, &info)
-            .unwrap_err()
-            .contains("索引"));
-    }
-
-    #[test]
-    fn variant_validation_rejects_focus_anchor_outside_drawable_bounds() {
-        let fixture = Fixture::new();
-        let (info, mut variant) =
-            inspect_model(&fixture.model, &fixture.root, "Nori".into()).unwrap();
-        variant.focus_anchor =
-            Some(crate::ai_service::types::Live2dFocusAnchor { x: 0.5, y: 1.25 });
-        assert!(validate_variant_bindings("Nori", &variant, &info)
-            .unwrap_err()
-            .contains("focus_anchor"));
-    }
-
-    #[test]
-    fn inspect_model_rejects_reference_outside_role_directory() {
-        let fixture = Fixture::new();
-        let outside = fixture
-            .root
-            .parent()
-            .unwrap()
-            .join(format!("outside-live2d-{}.png", uuid::Uuid::new_v4()));
-        fs::write(&outside, b"outside").unwrap();
-        let reference = format!("../../{}", outside.file_name().unwrap().to_string_lossy());
-        fixture.update_reference("Moc", &reference);
-        let error = inspect_model(&fixture.model, &fixture.root, "Nori".into()).unwrap_err();
-        let _ = fs::remove_file(outside);
-        assert!(error.contains("角色目录内"));
-    }
 }

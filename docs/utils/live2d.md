@@ -6,11 +6,11 @@ LingChat supports Live2D Cubism 3/4/5 character models as an optional visual lay
 
 ## Import
 
-Open a character's settings and select the **Live2D** tab. Desktop builds accept a model directory or ZIP file; Android accepts ZIP files. LingChat copies the imported files into the character's `live2d/` directory and scans every `.model3.json` file.
+A complete character archive is imported from **Settings > Character > Import from archive**. Its root contains `settings.yml` and `avatar/`, and it may already include `settings.yml.live2d` configuration plus a `live2d/` resource directory. Importing that archive creates a selectable character and preserves those files.
 
-The first model becomes the default variant. A variant is a visual rig inside the selected character; it does not create another selectable character. To make a model such as Nori appear as its own character, create that character first and import the model into its Live2D tab. Expression and motion names are suggested from common English names and can be changed in the settings UI. Outfit names can be mapped to different model variants.
+To add Live2D to a character that already exists in the character list, open the character's settings and select the **Live2D** tab. Desktop builds accept a model directory or ZIP file; Android accepts ZIP files. LingChat copies the imported files into that character's `live2d/` directory and scans every `.model3.json` file. ZIP entry names must use `/`, not Windows-style `\`, so the imported directory structure is preserved.
 
-Character creation also accepts an optional Live2D source. The normal character is created first, then the Live2D files are imported. Existing static character creation behavior is unchanged.
+The first model becomes the default variant. A variant is a visual rig inside the selected character; it does not create another selectable character. Expression and motion names are suggested from common English names and can be changed in the settings UI. Outfit names can be mapped to different model variants.
 
 ## Import Manifest
 
@@ -22,7 +22,7 @@ A package may include `lingchat-live2d.json`. It is used only during import; `se
   "default_variant": "default",
   "variants": {
     "default": {
-      "model": "Nori/Nori.model3.json",
+      "model": "sample-rig/Sample.model3.json",
       "default_expression": "00_Default",
       "expressions": {
         "正常": "00_Default",

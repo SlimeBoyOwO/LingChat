@@ -613,7 +613,6 @@ pub fn run() {
             api::font::list_imported_fonts,
             api::font::delete_imported_font,
             api::character::get_character_list,
-            api::character::create_character_native,
             api::character::get_role_info,
             api::character::get_role_settings,
             api::character::get_character_file,

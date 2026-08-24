@@ -1,14 +1,6 @@
 <template>
   <div class="absolute w-full h-full overflow-hidden">
-    <!-- 1. 遍历渲染所有在场角色 -->
-    <RoleAvatar
-      v-for="(role, index) in gameStore.presentRolesList"
-      :key="role.roleId"
-      :role="role"
-      :live2d-active="live2dActiveRoleIds.has(role.roleId)"
-      :live2d-failed="live2dFailedRoleIds.has(role.roleId)"
-    />
-
+    <!-- 1. 所有 Live2D 角色共享一个场景级 Pixi Application -->
     <Live2DStage
       v-if="hasLive2dRoles"
       class="z-2"
@@ -17,18 +9,27 @@
       :active-speaker-id="gameStore.currentInteractRoleId"
       :audio-element="mainAudio"
       :voice-data-url="voiceDataUrl"
-      @active-change="setLive2dActiveRoles"
-      @failed-change="setLive2dFailedRoles"
+      @active-change="setLive2dReadyRoles"
+      @failed-change="setLive2dUnavailableRoles"
     />
 
-    <!-- 2. 场景光照叠加层 -->
+    <!-- 2. 每个角色保留原有静态视觉、气泡和触摸层 -->
+    <RoleAvatar
+      v-for="role in gameStore.presentRolesList"
+      :key="role.roleId"
+      :role="role"
+      :live2d-ready="live2dReadyRoleIds.has(role.roleId)"
+      :live2d-unavailable="live2dUnavailableRoleIds.has(role.roleId)"
+    />
+
+    <!-- 3. 场景光照叠加层 -->
     <div
       v-if="lightOverlayStyle"
       class="absolute inset-0 pointer-events-none z-10"
       :style="lightOverlayStyle as any"
     ></div>
 
-    <!-- 3. 全局主语音播放器 -->
+    <!-- 4. 全局主语音播放器 -->
     <audio ref="mainAudio" @ended="onAudioEnded"></audio>
   </div>
 </template>
@@ -47,16 +48,16 @@ const emit = defineEmits(['audio-ended', 'audio-started'])
 
 const mainAudio = ref<HTMLAudioElement | null>(null)
 const voiceDataUrl = ref('')
-const live2dActiveRoleIds = ref(new Set<number>())
-const live2dFailedRoleIds = ref(new Set<number>())
+const live2dReadyRoleIds = ref(new Set<number>())
+const live2dUnavailableRoleIds = ref(new Set<number>())
 const hasLive2dRoles = computed(() => gameStore.presentRolesList.some((role) => Boolean(role.live2d)))
 
-const setLive2dActiveRoles = (roleIds: number[]) => {
-  live2dActiveRoleIds.value = new Set(roleIds)
+const setLive2dReadyRoles = (roleIds: number[]) => {
+  live2dReadyRoleIds.value = new Set(roleIds)
 }
 
-const setLive2dFailedRoles = (roleIds: number[]) => {
-  live2dFailedRoleIds.value = new Set(roleIds)
+const setLive2dUnavailableRoles = (roleIds: number[]) => {
+  live2dUnavailableRoleIds.value = new Set(roleIds)
 }
 
 const lightOverlayStyle = computed(() => {

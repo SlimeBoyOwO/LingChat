@@ -19,6 +19,9 @@ export default {
     noModelTitle: '提示',
     noModelMessage: '还没选择对话模型呢，笨蛋！去高级设置里配置并选择模型就好啦，切换后自动生效哦！',
   },
+  avatar: {
+    live2dUnavailable: 'Live2D 不可用',
+  },
   musicPlayer: {
     previous: '上一首',
     play: '播放',

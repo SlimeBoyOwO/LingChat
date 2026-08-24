@@ -293,6 +293,7 @@ function applyEmotion(entry: RoleModel, emotion: string) {
 }
 
 function destroyEntry(entry: RoleModel) {
+  entry.reactionSequence += 1
   entry.reactionLifecycleCleanup?.()
   entry.reactionLifecycleCleanup = null
   application?.stage.removeChild(entry.model)

@@ -454,13 +454,6 @@ export default {
       info: '角色简介',
       infoPlaceholder: '可选：用于角色介绍展示',
     },
-    live2d: {
-      title: 'Live2D（可选）',
-      optional: '角色创建后导入模型；详细表情和动作映射可在角色设置中调整。',
-      directory: '选择模型目录',
-      zip: '选择 ZIP',
-      clear: '清除选择',
-    },
     avatar: {
       uploadedStatus: '已上传 {count}/20 情绪 + {avatar}',
       avatarUploaded: '头像已上传',
@@ -475,8 +468,7 @@ export default {
       expand: '展开高级设置',
       collapse: '收起高级设置',
       scale: '缩放',
-      offsetX: '水平偏移',
-      offsetY: '垂直偏移',
+      offset: '偏移',
       bubbleTop: '气泡顶部距离',
       bubbleLeft: '气泡左侧距离',
       thinkingMessage: '思考提示文本',

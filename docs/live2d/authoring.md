@@ -1,6 +1,8 @@
 # Live2D Character Package Tutorial
 
-This tutorial creates an importable Live2D package for an existing LingChat character. Desktop builds can import a directory or ZIP. Android imports ZIP files.
+This tutorial creates a Live2D add-on package for an existing LingChat character. Desktop builds can import a directory or ZIP from that character's **Live2D** settings tab; Android imports ZIP files.
+
+This is different from a complete character archive. A character archive has `settings.yml`, `avatar/`, and optionally `live2d/` at its root and is imported from **Settings > Character > Import from archive**. It creates a selectable character and preserves an included `settings.yml.live2d` configuration and `live2d/` resource directory. A Live2D add-on package only adds visual rigs to a character that already exists in the character list.
 
 ## 1. Check the Export
 
@@ -164,7 +166,7 @@ For an existing character:
 7. Switch outfits and verify that the model, expression, idle, and gaze anchor all change together.
 8. Enter desktop pet mode and confirm that the head is visible and top-aligned in the circular frame.
 
-For a new character, create the normal character first and then perform the optional Live2D import. Live2D import failure does not roll back an already-created character.
+For a new selectable character, import a complete character archive first. If that archive does not already include Live2D configuration and resources, open the imported character's **Live2D** settings tab and import this add-on package separately. A failed add-on import does not remove the existing character.
 
 ## Troubleshooting
 
@@ -192,4 +194,6 @@ LingChat imports through a staging directory and removes staged or promoted reso
 
 ## Packaging and Licensing
 
-ZIP the package contents so that the manifest and model directories retain their relative layout. Model copyrights and Cubism licensing are separate from LingChat's AGPL license. Distribute only assets for which you have permission.
+ZIP the package contents so that the manifest and model directories retain their relative layout. ZIP entry names must use the standard `/` separator; do not store Windows-style `\` separators, because the archive safety layer sanitizes them as filename characters and the directory layout will be lost.
+
+Model copyrights and Cubism licensing are separate from LingChat's AGPL license. Distribute only assets for which you have permission.

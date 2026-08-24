@@ -227,17 +227,9 @@
                     />
                   </div>
                   <div class="space-y-2">
-                    <label class="text-sm text-white/70">{{ $t('settings.characterCreate.advanced.offsetX') }}</label>
+                    <label class="text-sm text-white/70">{{ $t('settings.characterCreate.advanced.offset') }}</label>
                     <input
-                      v-model.number="form.offset_x"
-                      type="number"
-                      class="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2"
-                    />
-                  </div>
-                  <div class="space-y-2">
-                    <label class="text-sm text-white/70">{{ $t('settings.characterCreate.advanced.offsetY') }}</label>
-                    <input
-                      v-model.number="form.offset_y"
+                      v-model.number="form.offset"
                       type="number"
                       class="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2"
                     />
@@ -312,39 +304,6 @@
                   ></textarea>
                 </div>
               </div>
-
-              <div class="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
-                <div class="text-sm font-medium text-white/80">{{ $t('settings.characterCreate.live2d.title') }}</div>
-                <div class="text-xs text-white/50">{{ $t('settings.characterCreate.live2d.optional') }}</div>
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    v-if="!isAndroid()"
-                    type="button"
-                    class="rounded-lg bg-white/10 px-3 py-2 text-sm hover:bg-white/20"
-                    @click="pickLive2dSource('directory')"
-                  >
-                    {{ $t('settings.characterCreate.live2d.directory') }}
-                  </button>
-                  <button
-                    type="button"
-                    class="rounded-lg bg-white/10 px-3 py-2 text-sm hover:bg-white/20"
-                    @click="pickLive2dSource('zip')"
-                  >
-                    {{ $t('settings.characterCreate.live2d.zip') }}
-                  </button>
-                  <button
-                    v-if="live2dSourcePath"
-                    type="button"
-                    class="rounded-lg bg-red-500/15 px-3 py-2 text-sm text-red-200"
-                    @click="clearLive2dSource"
-                  >
-                    {{ $t('settings.characterCreate.live2d.clear') }}
-                  </button>
-                </div>
-                <div v-if="live2dSourcePath" class="break-all text-xs text-cyan-200/80">
-                  {{ live2dSourcePath }}
-                </div>
-              </div>
             </section>
           </div>
 
@@ -387,10 +346,8 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
-import { createCharacterNative, importLive2d } from '@/api/services/character'
-import { isAndroid } from '@/utils/platform'
+import { createCharacter } from '@/api/services/character'
 
 type StepId = 'basic' | 'avatar' | 'advanced'
 
@@ -403,8 +360,7 @@ interface CharacterFormState {
   user_subtitle: string
   info: string
   scale: number
-  offset_x: number
-  offset_y: number
+  offset: number
   bubble_top: number
   bubble_left: number
   thinking_message: string
@@ -490,9 +446,6 @@ const activeStep = ref<StepId>('basic')
 const showAdvanced = ref(false)
 const creating = ref(false)
 const errorMessage = ref('')
-const live2dSourcePath = ref('')
-const live2dSourceKind = ref<'directory' | 'zip'>('zip')
-const createdRole = ref<{ character_id: number; title: string; resource_folder: string } | null>(null)
 
 const form = reactive<CharacterFormState>({
   resource_folder: '',
@@ -503,8 +456,7 @@ const form = reactive<CharacterFormState>({
   user_subtitle: '',
   info: '',
   scale: 1,
-  offset_x: 0,
-  offset_y: 0,
+  offset: 0,
   bubble_top: 5,
   bubble_left: 20,
   thinking_message: '正在思考中...',
@@ -535,9 +487,6 @@ const resetAll = () => {
   showAdvanced.value = false
   creating.value = false
   errorMessage.value = ''
-  live2dSourcePath.value = ''
-  live2dSourceKind.value = 'zip'
-  createdRole.value = null
 
   form.resource_folder = ''
   form.title = ''
@@ -547,8 +496,7 @@ const resetAll = () => {
   form.user_subtitle = ''
   form.info = ''
   form.scale = 1
-  form.offset_x = 0
-  form.offset_y = 0
+  form.offset = 0
   form.bubble_top = 5
   form.bubble_left = 20
   form.thinking_message = '正在思考中...'
@@ -717,22 +665,6 @@ const nextStep = () => {
   }
 }
 
-const clearLive2dSource = () => {
-  live2dSourcePath.value = ''
-}
-
-const pickLive2dSource = async (sourceKind: 'directory' | 'zip') => {
-  const selected = await open({
-    directory: sourceKind === 'directory',
-    multiple: false,
-    filters: sourceKind === 'zip' ? [{ name: 'Live2D ZIP', extensions: ['zip'] }] : undefined,
-  })
-  if (typeof selected === 'string') {
-    live2dSourcePath.value = selected
-    live2dSourceKind.value = sourceKind
-  }
-}
-
 const submitCreate = async () => {
   if (!canSubmit.value || !avatarFile.value) return
 
@@ -748,8 +680,7 @@ const submitCreate = async () => {
       title: form.title.trim(),
       info: form.info.trim(),
       scale: Number(form.scale),
-      offset_x: Number(form.offset_x),
-      offset_y: Number(form.offset_y),
+      offset: Number(form.offset),
       bubble_top: Number(form.bubble_top),
       bubble_left: Number(form.bubble_left),
       thinking_message: form.thinking_message.trim() || '正在思考中...',
@@ -759,37 +690,24 @@ const submitCreate = async () => {
       system_prompt_example_old: form.system_prompt_example_old.trim() || null,
     }
 
-    let role = createdRole.value
-    if (!role) {
-      const filePayload = async (file: File) => ({
-        fileName: file.name,
-        data: Array.from(new Uint8Array(await file.arrayBuffer())),
-      })
-      const emotions = await Promise.all(
-        EMOTION_SLOTS.map(async (emotion) => {
-          const file = emotionFiles[emotion]
-          if (!file) {
-            throw new Error(
-              t('settings.characterCreate.errors.missingEmotionFile', {
-                name: emotionLabel(emotion),
-              }),
-            )
-          }
-          return { emotion, ...(await filePayload(file)) }
-        }),
-      )
-      role = await createCharacterNative({
-        resourceFolder: form.resource_folder.trim(),
-        settings: settingsPayload,
-        avatar: await filePayload(avatarFile.value),
-        emotions,
-      })
-      createdRole.value = role
+    const formData = new FormData()
+    formData.append('resource_folder', form.resource_folder.trim())
+    formData.append('settings_json', JSON.stringify(settingsPayload))
+    formData.append('avatar_file', avatarFile.value)
+
+    for (const emotion of EMOTION_SLOTS) {
+      const emotionFile = emotionFiles[emotion]
+      if (!emotionFile) {
+        throw new Error(
+          t('settings.characterCreate.errors.missingEmotionFile', { name: emotionLabel(emotion) }),
+        )
+      }
+      formData.append('emotion_names', emotion)
+      formData.append('emotion_files', emotionFile)
     }
-    if (live2dSourcePath.value) {
-      await importLive2d(role.character_id, live2dSourcePath.value, live2dSourceKind.value)
-    }
-    emit('created', role)
+
+    const response = await createCharacter(formData)
+    emit('created', response.data)
     emit('close')
   } catch (error: any) {
     errorMessage.value = error?.message || t('settings.characterCreate.errors.createFailed')

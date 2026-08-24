@@ -453,13 +453,6 @@ export default {
       info: 'キャラクター紹介',
       infoPlaceholder: '任意：キャラクター紹介の表示に使用',
     },
-    live2d: {
-      title: 'Live2D（任意）',
-      optional: 'キャラクター作成後にモデルをインポートします。表情とモーションはキャラクター設定で編集できます。',
-      directory: 'モデルフォルダーを選択',
-      zip: 'ZIP を選択',
-      clear: '選択を解除',
-    },
     avatar: {
       uploadedStatus: '{count}/20 個の感情をアップロード済み + {avatar}',
       avatarUploaded: 'アバターアップロード済み',
@@ -474,8 +467,7 @@ export default {
       expand: '詳細設定を展開',
       collapse: '詳細設定を折りたたむ',
       scale: 'スケール',
-      offsetX: '水平オフセット',
-      offsetY: '垂直オフセット',
+      offset: 'オフセット',
       bubbleTop: '吹き出しの上端距離',
       bubbleLeft: '吹き出しの左端距離',
       thinkingMessage: '思考中テキスト',

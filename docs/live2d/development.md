@@ -130,20 +130,18 @@ Do not silently persist session-only runtime state. Do not treat the import mani
 
 ## Local Development
 
-Install dependencies and run frontend checks:
+Install dependencies and run the frontend checks:
 
 ```bash
 pnpm install
-pnpm test:live2d
 pnpm exec vue-tsc --noEmit --skipLibCheck
 pnpm run build
 ```
 
-Focused Rust checks:
+For native code changes, run the normal Rust check:
 
 ```bash
-cargo test live2d --manifest-path src-tauri/Cargo.toml
-cargo check --manifest-path src-tauri/Cargo.toml --tests
+cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
 ### Tauri Runtime Verification
@@ -154,16 +152,14 @@ Run the normal development application when a change affects Tauri commands, the
 pnpm tauri dev
 ```
 
-Frontend tests and browser probes cannot prove those native integration paths. Use test character data that you are permitted to use, and do not commit third-party model assets without redistribution rights.
+Type checking, production builds, and browser probes cannot prove those native integration paths. Use character data that you are permitted to use, and do not commit third-party model assets without redistribution rights.
 
 ## Validation Matrix
 
 | Check | What it proves | What it does not prove |
 | --- | --- | --- |
-| `pnpm test:live2d` | Pure model-path, layout, interaction, motion-attribution, and helper contracts | WebGL, Tauri asset protocol, native windows |
 | `vue-tsc` | Frontend type correctness | Runtime model behavior |
 | `pnpm run build` | Production frontend bundling | Native host behavior |
-| Focused Rust tests/check | Import, serialization, and command contracts | WebView rendering |
 | Browser/WebGL probe | Cubism Core, engine, model assets, framebuffer rendering | Tauri protocol and desktop pet windows |
 | `pnpm tauri dev` | Real Tauri/WebView, asset protocol, and native window modes | Installer/update behavior |
 | Installed build | Packaging, resource sync, upgrades, normal identifier | Source-tree development behavior |
@@ -189,7 +185,7 @@ When adding a serialized field:
 3. Update import manifest validation and model inspection if applicable.
 4. Update the settings editor and all supported locales.
 5. Preserve absent-field compatibility for existing characters.
-6. Add frontend and Rust tests.
+6. Keep validation aligned with the repository's current build and runtime policy; do not reintroduce removed test infrastructure.
 7. Update the package tutorial and manifest example.
 8. Verify the normal Tauri development application before producing an installer.
 

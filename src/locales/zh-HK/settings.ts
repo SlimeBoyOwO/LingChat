@@ -454,13 +454,6 @@ export default {
       "info": "角色簡介",
       "infoPlaceholder": "可填可唔填：用嚟做角色介紹展示"
     },
-    "live2d": {
-      "title": "Live2D（可選）",
-      "optional": "建立角色之後匯入模型；表情同動作對應可以喺角色設定調整。",
-      "directory": "揀模型資料夾",
-      "zip": "揀 ZIP",
-      "clear": "清除選擇"
-    },
     "avatar": {
       "uploadedStatus": "上傳咗 {count}/20 情緒 + {avatar}",
       "avatarUploaded": "頭像上傳咗",
@@ -475,8 +468,7 @@ export default {
       "expand": "展開高級設定",
       "collapse": "收埋高級設定",
       "scale": "縮放",
-      "offsetX": "水平偏移",
-      "offsetY": "垂直偏移",
+      "offset": "偏移",
       "bubbleTop": "氣泡頂部距離",
       "bubbleLeft": "氣泡左側距離",
       "thinkingMessage": "思考提示文字",

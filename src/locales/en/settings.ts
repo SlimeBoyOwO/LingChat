@@ -455,13 +455,6 @@ export default {
       info: "Character Bio",
       infoPlaceholder: "Optional: shown in the character introduction",
     },
-    live2d: {
-      title: "Live2D (Optional)",
-      optional: "Import a model after character creation. Expression and motion mappings can be edited in character settings.",
-      directory: "Choose Model Folder",
-      zip: "Choose ZIP",
-      clear: "Clear Selection",
-    },
     avatar: {
       uploadedStatus: "Uploaded {count}/20 emotions + {avatar}",
       avatarUploaded: "Avatar uploaded",
@@ -476,8 +469,7 @@ export default {
       expand: "Expand Advanced Settings",
       collapse: "Collapse Advanced Settings",
       scale: "Scale",
-      offsetX: "Horizontal Offset",
-      offsetY: "Vertical Offset",
+      offset: "Offset",
       bubbleTop: "Bubble Top Distance",
       bubbleLeft: "Bubble Left Distance",
       thinkingMessage: "Thinking Message Text",

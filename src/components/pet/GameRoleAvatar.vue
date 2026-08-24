@@ -67,7 +67,7 @@
               v-if="live2dFailed && !targetAvatarUrl"
               class="flex h-full w-full items-center justify-center text-xs text-white/60"
             >
-              Live2D unavailable
+              {{ $t('game.avatar.live2dUnavailable') }}
             </div>
             <ImageCrossFade
               v-show="!live2dActive"

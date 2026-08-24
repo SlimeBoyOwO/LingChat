@@ -43,21 +43,6 @@
     </MenuItem>
     <RoleArchiveProgress />
 
-    <MenuItem :title="$t('settings.characterCreate.header.title')" size="small">
-      <template #header>
-        <Plus :size="20" />
-      </template>
-      <Button type="big" @click="createVisible = true">
-        {{ $t('settings.characterCreate.footer.confirmCreate') }}
-      </Button>
-    </MenuItem>
-
-    <SettingsCharacterCreate
-      :visible="createVisible"
-      @close="createVisible = false"
-      @created="handleCharacterCreated"
-    />
-
     <!-- 打开文件夹依赖桌面端文件管理器，移动端不可用（open_folder 无 Android 分支），整卡隐藏 -->
     <MenuItem v-if="!isAndroid()" :title="$t('settings.character.openFolder.title')" size="small">
       <template #header>
@@ -109,7 +94,7 @@
 import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { Birdhouse, FolderOpen, PackageOpen, Plus, Rabbit, RefreshCcw } from 'lucide-vue-next'
+import { Birdhouse, FolderOpen, PackageOpen, Rabbit, RefreshCcw } from 'lucide-vue-next'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { invoke } from '@tauri-apps/api/core'
 
@@ -125,7 +110,6 @@ import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import type { Character as ApiCharacter, Clothes } from '../../../types'
 import { isAndroid } from '@/utils/platform'
 import RoleArchiveProgress from '@/components/ui/RoleArchiveProgress.vue'
-import SettingsCharacterCreate from './SettingsCharacterCreate.vue'
 
 interface CharacterCardData {
   id: number
@@ -141,7 +125,6 @@ interface CharacterCardData {
 const characters = ref<CharacterCardData[]>([])
 const currentPage = ref(1)
 const totalPages = ref(1)
-const createVisible = ref(false)
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const router = useRouter()
@@ -238,12 +221,6 @@ const openCharacterFolder = async () => {
 
 const handleSettingsSaved = () => {
   refreshCharacters()
-}
-
-const handleCharacterCreated = async () => {
-  createVisible.value = false
-  currentPage.value = 1
-  await refreshCharacters()
 }
 
 onMounted(() => {

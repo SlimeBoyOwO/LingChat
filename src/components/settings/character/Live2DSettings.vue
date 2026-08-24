@@ -471,6 +471,7 @@ function setMotion(emotion: string, value: string) {
   }
   const separator = value.lastIndexOf(':')
   variant.motions[emotion] = {
+    ...variant.motions[emotion],
     group: value.slice(0, separator),
     index: Number(value.slice(separator + 1)),
     loop: false,
