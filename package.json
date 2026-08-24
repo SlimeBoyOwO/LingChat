@@ -2,7 +2,7 @@
   "name": "ling-chat",
   "private": false,
   "version": "0.5.0",
-  "packageManager": "pnpm@11.21.0", 
+  "packageManager": "pnpm@11.21.0",
   "type": "module",
   "scripts": {
     "init": "tauri icon src-tauri/icons/icon.png && node scripts/prepare-desktop-resources.mjs && node scripts/download_emotion_model.mjs",
@@ -12,7 +12,11 @@
     "tauri": "tauri",
     "android:prepare": "tauri android init && node scripts/generate-android-icons.mjs",
     "android:dev": "tauri android dev",
-    "android:build": "node scripts/prepare-bundled-resources.mjs 9 && tauri android build --target aarch64"
+    "android:build": "node scripts/prepare-bundled-resources.mjs 9 && tauri android build --target aarch64",
+    "format": "prettier --write . && cargo fmt --manifest-path src-tauri/Cargo.toml",
+    "format:rs": "cargo fmt --manifest-path src-tauri/Cargo.toml",
+    "format:frontend": "prettier --write \"src/**/*.{vue,js,ts,css,scss}\"",
+    "format:check": "prettier --check . && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check"
   },
   "dependencies": {
     "7zip-min": "^3.0.1",
@@ -42,6 +46,7 @@
     "@vitejs/plugin-vue": "^5.2.1",
     "prettier": "^3.8.3",
     "prettier-plugin-classnames": "^0.10.3",
+    "prettier-plugin-merge": "^0.10.1",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "sharp": "^0.35.3",
     "typescript": "~5.6.2",

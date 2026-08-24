@@ -4,6 +4,10 @@
     "tauri-apps.tauri-vscode",
     "rust-lang.rust-analyzer",
     "lokalise.i18n-ally",
-    "tamasfe.even-better-toml"
+    "tamasfe.even-better-toml",
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "editorconfig.editorconfig",
+    "bradlc.vscode-tailwindcss"
   ]
 }

@@ -1,10 +1,10 @@
 {
-  "semi": false,
+  "semi": true,
   "singleQuote": true,
-  "printWidth": 100,
-  "trailingComma": "all",
-  "singleAttributePerLine": true,
   "tabWidth": 2,
-  "plugins": ["prettier-plugin-tailwindcss", "prettier-plugin-classnames"],
-  "classnamesPrintWidth": 0
+  "useTabs": false,
+  "trailingComma": "es5",
+  "printWidth": 100,
+  "endOfLine": "lf",
+  "vueIndentScriptAndStyle": true
 }

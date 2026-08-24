@@ -1,0 +1,25 @@
+# rustfmt.toml
+# 参考：https://rust-lang.github.io/rustfmt/
+
+# --- 基础配置 ---
+edition = "2021"
+style_edition = "2024"
+
+# --- 格式化风格 ---
+max_width = 100
+hard_tabs = false
+tab_spaces = 4
+
+# --- 导入与模块 ---
+reorder_imports = true
+reorder_modules = true
+
+# --- 其他常用选项 ---
+use_field_init_shorthand = true
+match_block_trailing_comma = true
+newline_style = "Unix"
+
+# --- 可选：需要 nightly 工具链才能使用的实验性功能 ---
+# 如需使用，取消注释下面两行，并使用 cargo +nightly fmt
+# unstable_features = true
+# group_imports = "StdExternalCrate"

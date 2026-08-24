@@ -2,12 +2,48 @@
   "Codegeex.RepoIndex": true,
   "editor.formatOnSave": true,
   "editor.defaultFormatter": "esbenp.prettier-vscode",
+  
+  // 文件编码和换行符
+  "files.encoding": "utf8",
+  "files.eol": "\n",
+  "files.autoGuessEncoding": false,
+  "files.insertFinalNewline": true,
+  
+  // 保存时自动修复
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit",
+    "source.organizeImports": "explicit"
+  },
+  
   "[vue]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
-  "prettier.requireConfig": true,
-  "prettier.useEditorConfig": false,
-  "prettier.configPath": "./.prettierrc.json",
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[scss]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer"
+  },
+  "[toml]": {
+    "editor.defaultFormatter": "tamasfe.even-better-toml"
+  },
+  
+  // i18n 配置
   "i18n-ally.localesPaths": ["src/locales"],
   "i18n-ally.pathMatcher": "{locale}/{namespace}.ts",
   "i18n-ally.namespace": true,
@@ -22,7 +58,12 @@
   "i18n-ally.enabledFrameworks": ["vue"],
   "i18n-ally.indent": 2,
   "i18n-ally.translate.fallbackToSourceLanguage": true,
-  "[toml]": {
-    "editor.defaultFormatter": "tamasfe.even-better-toml"
+  
+  "prettier.requireConfig": true,
+  "prettier.useEditorConfig": false,
+  "prettier.configPath": "./.prettierrc.json",
+  "files.associations": {
+    "*.env.*": "dotenv",
+    ".prettierrc": "json"
   }
 }
