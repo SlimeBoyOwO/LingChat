@@ -139,7 +139,6 @@ import { ref, onMounted, watch } from 'vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { Button } from '../base'
 import Icon from '../base/widget/Icon.vue'
-import { isAndroid } from '@/utils/platform'
 
 const props = defineProps<{}>()
 

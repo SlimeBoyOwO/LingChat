@@ -907,7 +907,6 @@ export default {
       "deleteFailed": "刪除失敗: {error}",
       "saveSuccess": "儲存成功！",
       "saveFailed": "儲存失敗: {error}",
-      "apiKeyRequired": "唔該先填 API 密鑰",
       "modelsFetched": "攞到 {count} 個可用模型",
       "fetchFailed": "攞唔到資料: {error}",
       "chatSwitched": "對話模型轉咗，已經生效！",

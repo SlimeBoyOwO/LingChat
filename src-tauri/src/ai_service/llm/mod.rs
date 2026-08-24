@@ -60,8 +60,12 @@ pub struct LlmConfig {
 }
 
 impl LlmConfig {
+    /// 判断配置是否可用于发起 LLM 请求。
+    ///
+    /// 允许 api_key 为空（本地模型 / 自托管 OpenAI 兼容服务无需密钥），
+    /// 只要求 model 非空。
     pub fn is_usable(&self) -> bool {
-        !self.api_key.is_empty() && !self.model.is_empty()
+        !self.model.is_empty()
     }
 }
 
@@ -129,7 +133,7 @@ impl LlmClient {
     /// 非流式：一次性取完整回复。
     pub async fn complete(&self, messages: &[LlmMessage]) -> Result<String> {
         if !self.cfg.is_usable() {
-            return Err(anyhow!("LLM 未配置 API key 或 model"));
+            return Err(anyhow!("LLM 未配置 model"));
         }
         self.provider.complete(&self.http, messages).await
     }
@@ -161,7 +165,7 @@ impl LlmClient {
         tools: Option<(&[ToolDefinition], Option<&str>)>,
     ) -> Result<ChunkStream> {
         if !self.cfg.is_usable() {
-            return Err(anyhow!("LLM 未配置 API key 或 model"));
+            return Err(anyhow!("LLM 未配置 model"));
         }
         let mut inner = match tools {
             Some((definitions, tool_choice)) => {
@@ -195,7 +199,7 @@ impl LlmClient {
         tool_choice: Option<&str>,
     ) -> Result<LlmResponseWithTools> {
         if !self.cfg.is_usable() {
-            return Err(anyhow!("LLM 未配置 API key 或 model"));
+            return Err(anyhow!("LLM 未配置 model"));
         }
         self.provider
             .complete_with_tools(&self.http, messages, tools, tool_choice)

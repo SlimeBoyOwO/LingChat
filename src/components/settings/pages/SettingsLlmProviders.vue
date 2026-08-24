@@ -462,7 +462,7 @@
                 <button
                   type="button"
                   class="shrink-0 px-3 py-2 rounded-lg bg-brand/80 text-white text-sm hover:bg-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  :disabled="loadingModels || !editing.api_key.trim()"
+                  :disabled="loadingModels"
                   @click="fetchProviderModels"
                 >
                   {{ loadingModels ? $t('settings.llmProviders.form.fetchingModels') : $t('settings.llmProviders.form.fetchModels') }}
@@ -860,11 +860,6 @@ async function saveCurrent() {
 
 async function fetchProviderModels() {
   if (loadingModels.value) return
-  if (!editing.api_key.trim()) {
-    modelsMessage.value = t('settings.llmProviders.msg.apiKeyRequired')
-    modelsError.value = true
-    return
-  }
 
   loadingModels.value = true
   modelsMessage.value = ''
