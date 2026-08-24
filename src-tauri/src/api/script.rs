@@ -153,7 +153,6 @@ pub async fn spawn_script_console_window(
     style: Option<String>,
 ) -> Result<(), String> {
     use crate::ai_service::game_system::script_engine::events::console_window_event as cw;
-    use std::os::windows::process::CommandExt;
 
     // PowerShell 单引号字符串：内容只剩字面量（事件层已剥 cmd 元字符）
     fn psq(s: &str) -> String {
@@ -178,6 +177,19 @@ pub async fn spawn_script_console_window(
         "console" | "error" | "warning" | "notepad" => style,
         _ => "console".to_string(),
     };
+
+    // 系统弹窗演出目前只有 Windows 实现（PowerShell/WScript/记事本）；
+    // 其他平台安全降级为静默跳过，剧本照常继续。
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, title, lines, count, interval, lifetime, style);
+        tracing::info!("[ScriptAPI] 非 Windows 平台：跳过系统弹窗演出（剧本继续）");
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+    use std::os::windows::process::CommandExt;
 
     // 多行文本：数组字面量 -join 换行，避免在命令行里出现裸换行
     let array_literal = lines
@@ -240,6 +252,7 @@ pub async fn spawn_script_console_window(
         }
     });
     Ok(())
+    }
 }
 
 
