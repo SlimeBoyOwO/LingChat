@@ -3,7 +3,7 @@
 //! no frontend event is emitted, the lines travel via the log bridge.
 //!
 //! YAML: `- type: horror_log` with `text` (message) and `lines` (repeat
-//! count, default 1, clamped to 50 to keep the 5000-line buffer sane).
+//! count, default 1, clamped to 300 so one bounded collapse beat can flood the 5000-line buffer).
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn lines_clamped() {
         assert_eq!(HorrorLogEvent::from_event_data(&json!({"lines": 0})).lines, 1);
-        assert_eq!(HorrorLogEvent::from_event_data(&json!({"lines": 999})).lines, 50);
+        assert_eq!(HorrorLogEvent::from_event_data(&json!({"lines": 999})).lines, 300);
         assert_eq!(HorrorLogEvent::from_event_data(&json!({"lines": 12})).lines, 12);
     }
 }

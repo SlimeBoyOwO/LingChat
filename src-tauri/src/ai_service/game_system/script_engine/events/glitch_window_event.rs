@@ -186,7 +186,7 @@ fn clear_pending_windows() {
     }
 }
 
-fn script_allows_system_effects(status: &crate::ai_service::types::ScriptStatus) -> bool {
+pub(crate) fn script_allows_system_effects(status: &crate::ai_service::types::ScriptStatus) -> bool {
     status.content_warning.as_deref() == Some("horror")
         && status
             .settings

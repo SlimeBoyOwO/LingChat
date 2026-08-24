@@ -836,5 +836,6 @@ pub fn run() {
 /// 前端确认关闭后调用，终止整个 Tauri 进程。
 #[tauri::command]
 fn exit_app(app: tauri::AppHandle) {
+    api::script::close_script_glitch_windows(app.clone());
     app.exit(0);
 }

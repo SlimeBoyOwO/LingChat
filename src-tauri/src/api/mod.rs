@@ -19,6 +19,7 @@ pub mod scene;
 pub mod schedule;
 pub mod screenshot;
 pub mod script;
+pub(crate) mod script_popups;
 pub mod script_editor;
 pub mod settings;
 pub mod tool_settings;

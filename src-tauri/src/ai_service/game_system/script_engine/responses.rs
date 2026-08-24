@@ -137,18 +137,12 @@ pub struct GlitchWindowTicketPayload {
     pub duration: Option<f64>,
 }
 
-/// 真实系统控制台窗口：字段已在事件层净化+截断，前端在玩家推进到正确剧情
-/// 位置时才调用 `spawn_script_console_window` 拉起（否则后端会提前数章引爆）。
+/// 真实系统窗口的一次性票据：完整内容仅保存在 Rust，前端无法自由构造、
+/// 重放或跨剧本运行消费。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConsoleWindowPayload {
-    pub title: String,
-    pub text: String,
-    pub count: usize,
-    pub interval: f64,
-    pub lifetime: u64,
-    /// console（蓝底 PowerShell）/ error（红叉系统错误框）/ warning（黄色警告框）/ notepad（真实记事本）
-    pub style: String,
+pub struct ConsoleWindowTicketPayload {
+    pub request_id: u64,
 }
 
 /// 文件监视跳转：前端收到后应立刻清掉被中断章节的积压事件，让崩坏章节即时上演。

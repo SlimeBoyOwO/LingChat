@@ -365,7 +365,7 @@ export function initializeTauriEventListeners() {
     eventQueue.addEvent(asEvent(event.payload, { type: 'glitch_window', defaultDuration: 0 }))
   })
 
-  // 真实系统控制台窗口：前端推进到该拍时才调用 spawn 命令拉起真实 cmd
+  // 原生系统窗口：前端推进到该拍时才拉起 TaskDialog、Notepad 或真实 CMD（无 PowerShell 宿主）
   listen('script:console-window', (event) => {
     eventQueue.addEvent(asEvent(event.payload, { type: 'console_window', defaultDuration: 0 }))
   })

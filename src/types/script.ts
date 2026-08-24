@@ -151,15 +151,10 @@ export interface ScriptGlitchWindowEvent extends ScriptEvent {
   requestId: number
 }
 
-/** 真实系统弹窗：前端推进到该拍时才拉起（文本已净化）。style: console/error/warning/notepad */
+/** Rust 已校验且绑定当前剧本运行的一次性原生系统窗口票据。 */
 export interface ScriptConsoleWindowEvent extends ScriptEvent {
   type: 'console_window'
-  title: string
-  text: string
-  count: number
-  interval: number
-  lifetime: number
-  style: string
+  requestId: number
 }
 
 /** 必须与目标台词同处前端时间轴的语音变速/变调。 */

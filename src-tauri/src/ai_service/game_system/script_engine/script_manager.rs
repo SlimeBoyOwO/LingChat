@@ -778,6 +778,7 @@ impl ScriptManager {
             crate::ai_service::game_system::script_engine::events::glitch_window_event::close_all_glitch_windows(
                 ctx.app,
             );
+            crate::api::script_popups::close_all();
         }
 
         if release_running {
@@ -792,6 +793,7 @@ impl ScriptManager {
             crate::ai_service::game_system::script_engine::events::glitch_window_event::close_all_glitch_windows(
                 ctx.app,
             );
+            crate::api::script_popups::close_all();
             tracing::error!("[ScriptManager] script:end 发送失败，已执行原生窗口回退清理: {error:#}");
         }
 

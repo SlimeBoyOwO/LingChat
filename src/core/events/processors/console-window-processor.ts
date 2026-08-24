@@ -12,17 +12,10 @@ export default class ConsoleWindowProcessor implements IEventProcessor {
     if (signal?.aborted) return
     useGameStore().currentStatus = 'presenting'
     try {
-      // 在此队列位置才真正拉起真实系统控制台；文本由 Rust 命令侧再次净化
-      await invoke('spawn_script_console_window', {
-        title: event.title,
-        text: event.text,
-        count: event.count,
-        interval: event.interval,
-        lifetime: event.lifetime,
-        style: event.style,
-      })
+      // 这里只消费 Rust 校验并绑定当前剧本运行的一次性票据。
+      await invoke('spawn_script_console_window', { requestId: event.requestId })
     } catch (error) {
-      console.error('[ConsoleWindowProcessor] failed to spawn console window:', error)
+      console.error('[ConsoleWindowProcessor] failed to spawn native system window:', error)
     }
   }
 }

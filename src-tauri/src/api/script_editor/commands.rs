@@ -1415,7 +1415,8 @@ pub async fn editor_start_preview(
             service.data_dir.clone(),
         )
     };
-    // Capture the native-window epoch immediately after reserving the preview.
+    // Capture fresh auxiliary/system-window ownership for this preview.
+    crate::api::script_popups::begin_run();
     let glitch_window_generation = crate::ai_service::game_system::script_engine::events::glitch_window_event::begin_glitch_window_run(
         &app,
     );
@@ -1986,6 +1987,7 @@ pub async fn editor_stop_preview(app: AppHandle) -> Result<(), String> {
     crate::ai_service::game_system::script_engine::events::glitch_window_event::close_all_glitch_windows(
         &app,
     );
+    crate::api::script_popups::close_all();
     state
         .ai_service
         .lock()
