@@ -906,7 +906,6 @@ export default {
       deleteFailed: '削除に失敗しました: {error}',
       saveSuccess: '保存しました！',
       saveFailed: '保存に失敗しました: {error}',
-      apiKeyRequired: '先に API キーを入力してください',
       modelsFetched: '{count} 個の利用可能なモデルを取得しました',
       fetchFailed: '取得に失敗しました: {error}',
       chatSwitched: '会話モデルを切り替え、適用しました！',

@@ -212,6 +212,54 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             .to_string(),
                         setting_type: "text".to_string(),
                     },
+                    ConfigSetting {
+                        key: keys::MEMORY_SHORT_TERM_MAX_CHARS.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::MEMORY_SHORT_TERM_MAX_CHARS,
+                            &app_defaults.memory_short_term_max_chars.to_string(),
+                        ),
+                        description:
+                            "MEMORY_SHORT_TERM_MAX_CHARS — 近期回顾长度上限（字符数，默认 500，0 不截断）"
+                                .to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::MEMORY_LONG_TERM_MAX_CHARS.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::MEMORY_LONG_TERM_MAX_CHARS,
+                            &app_defaults.memory_long_term_max_chars.to_string(),
+                        ),
+                        description:
+                            "MEMORY_LONG_TERM_MAX_CHARS — 长期经历长度上限（字符数，默认 2000，0 不截断）"
+                                .to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::MEMORY_USER_INFO_MAX_CHARS.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::MEMORY_USER_INFO_MAX_CHARS,
+                            &app_defaults.memory_user_info_max_chars.to_string(),
+                        ),
+                        description:
+                            "MEMORY_USER_INFO_MAX_CHARS — taの信息长度上限（字符数，默认 800，0 不截断）"
+                                .to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::MEMORY_PROMISES_MAX_CHARS.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::MEMORY_PROMISES_MAX_CHARS,
+                            &app_defaults.memory_promises_max_chars.to_string(),
+                        ),
+                        description:
+                            "MEMORY_PROMISES_MAX_CHARS — 重要约定长度上限（字符数，默认 800，0 不截断）"
+                                .to_string(),
+                        setting_type: "text".to_string(),
+                    },
                 ],
             },
         );

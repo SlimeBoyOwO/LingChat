@@ -99,7 +99,7 @@ ScriptSchema
 
 **字段控件 `FieldKind`：** `text / textarea / number / bool / select / character / emotion / chapter / asset / choice_options / branch_options / var_options / deprecated`。其中 `deprecated` 只展示不可编辑（如遗留字段 `duration` —— 引擎从不读取，但保存时原样保留，不丢数据）。
 
-**强制同步的测试：** `schema_covers_every_registered_event_type` 硬编码引擎注册的 16 种事件，任何一侧增删事件都会让测试失败；另有「字段键唯一」「素材字段必带 asset_kind」「特效下拉来自 KNOWN_EFFECTS」「duration 必须以不可编辑形态出现」「set_variable 只允许 set_var action」等测试。
+**同步约束：** 引擎注册的事件类型、字段键、素材字段的 `asset_kind`、来自 `KNOWN_EFFECTS` 的特效选项、只读 `duration` 字段，以及 `set_variable` 的 action 范围，都必须与本 schema 保持一致。
 
 ## 5. 前端后端的分工
 

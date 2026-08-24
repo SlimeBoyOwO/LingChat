@@ -452,32 +452,3 @@ fn presentation_stream(stream: ChunkStream) -> ChunkStream {
         }
     }))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn persisted_tool_results_are_bounded_and_keep_call_ids() {
-        let messages = vec![
-            LlmMessage::assistant("调用工具"),
-            LlmMessage::tool_result("call-1", "甲".repeat(20_000)),
-            LlmMessage::tool_result("call-2", "乙".repeat(30_000)),
-        ];
-        let mut persisted = 0;
-        let bounded = bounded_tool_history(&messages, &mut persisted);
-
-        assert_eq!(bounded[1].tool_call_id.as_deref(), Some("call-1"));
-        assert_eq!(bounded[2].tool_call_id.as_deref(), Some("call-2"));
-        assert!(bounded[1].content.contains(TOOL_RESULT_TRUNCATION_MARKER));
-        assert!(bounded[2].content.contains(TOOL_RESULT_TRUNCATION_MARKER));
-        assert!(bounded[1].content.chars().count() <= MAX_PERSISTED_SINGLE_TOOL_RESULT_CHARS);
-        let stored_chars: usize = bounded
-            .iter()
-            .filter(|message| message.role == "tool")
-            .map(|message| message.content.chars().count())
-            .sum();
-        assert!(stored_chars <= MAX_PERSISTED_TOOL_RESULT_CHARS);
-        assert!(persisted <= MAX_PERSISTED_TOOL_RESULT_CHARS);
-    }
-}

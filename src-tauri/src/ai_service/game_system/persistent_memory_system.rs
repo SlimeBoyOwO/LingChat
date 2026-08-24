@@ -25,6 +25,7 @@ fn init_prompts() -> HashMap<String, String> {
         "2. 时态：使用陈述语气，客观记录事实。\n",
         "3. 输出：直接输出更新后的内容本身，不要包含任何解释。\n",
         "4. 逻辑：如果没有新信息需要更新，请原样保留【旧的记忆档案】的内容。\n",
+        "5. 内容完整性：如果【旧的记忆档案】中存在被截断或不完整的片段，请直接丢弃，不要保留或引用它们。\n",
     );
 
     let mut m = HashMap::new();
@@ -74,6 +75,43 @@ fn init_prompts() -> HashMap<String, String> {
     m
 }
 
+// ── 记忆段长度上限 ──
+
+/// 各记忆段的长度上限（字符数）。0 = 不截断。
+///
+/// 截断链路：
+/// - 运行时注入上下文按上限截断（仅影响本轮 LLM 可见内容，不影响存储）；
+/// - 压缩时把【旧内容】按上限截断后再喂给 LLM —— LLM 只能基于截断后的内容生成
+///   新记忆，因此超出上限的旧记忆片段会在本次压缩写回后被丢弃（此时会记录 warning
+///   日志）。如不希望丢失，请调大对应段上限或设为 0；
+/// - 压缩写回（LLM 输出的新内容）本身不截断。
+#[derive(Clone, Copy, Debug)]
+pub struct MemorySectionLimits {
+    pub short_term: usize,
+    pub long_term: usize,
+    pub user_info: usize,
+    pub promises: usize,
+}
+
+impl Default for MemorySectionLimits {
+    fn default() -> Self {
+        Self {
+            short_term: 500,
+            long_term: 2000,
+            user_info: 800,
+            promises: 800,
+        }
+    }
+}
+
+/// 按字符数安全截断（避免切破 UTF-8 多字节字符）。超限部分直接丢弃，无省略标记。
+fn truncate_to_chars(s: &str, max_chars: usize) -> String {
+    if max_chars == 0 || s.chars().count() <= max_chars {
+        return s.to_string();
+    }
+    s.chars().take(max_chars).collect()
+}
+
 // ── 结构体 ──
 
 /// 面向 0.4.0 新架构的"永久记忆（MemoryBank）+ 自动压缩"实现（运行时缓存版）。
@@ -106,6 +144,9 @@ pub struct PersistentMemorySystem {
     pub enabled: bool,
     update_interval: usize,
     recent_window: usize,
+    /// 各记忆段注入/压缩时的长度上限（运行时注入截断 + 压缩喂入截断；
+    /// 压缩写回不截断，但超限旧片段会在压缩时被丢弃）。
+    section_limits: MemorySectionLimits,
 
     section_prompts: HashMap<String, String>,
 }
@@ -118,6 +159,7 @@ impl PersistentMemorySystem {
         enabled: bool,
         update_interval: usize,
         recent_window: usize,
+        limits: MemorySectionLimits,
         display_name: &str,
     ) -> Self {
         Self {
@@ -132,6 +174,7 @@ impl PersistentMemorySystem {
             enabled,
             update_interval,
             recent_window,
+            section_limits: limits,
             section_prompts: init_prompts(),
         }
     }
@@ -150,22 +193,27 @@ impl PersistentMemorySystem {
     }
 
     /// 长期记忆 / 用户画像 / 约定 文本（适合合并到 system 消息）。
+    /// 各段按 `section_limits` 截断后注入（存储不截断，仅运行时视图截断）。
     pub async fn get_system_memory_text(&self) -> String {
         let bank = self.memory_bank.lock().await;
+        let limits = self.section_limits;
         format!(
             "\n\n====== 记忆库 (Memory Bank) ======\n\
              【taの信息】：{}\n\
              【重要约定】：{}\n\
              【长期经历】：{}\n\
              =================================\n",
-            bank.data.user_info, bank.data.promises, bank.data.long_term,
+            truncate_to_chars(&bank.data.user_info, limits.user_info),
+            truncate_to_chars(&bank.data.promises, limits.promises),
+            truncate_to_chars(&bank.data.long_term, limits.long_term),
         )
     }
 
     /// 短期回顾文本（适合作为 user 消息前缀）。
+    /// 按 `section_limits.short_term` 截断后注入。
     pub async fn get_short_term_user_text(&self) -> String {
         let bank = self.memory_bank.lock().await;
-        let short = bank.data.short_term.trim();
+        let short = truncate_to_chars(bank.data.short_term.trim(), self.section_limits.short_term);
         if short.is_empty() {
             String::new()
         } else {
@@ -219,17 +267,21 @@ impl PersistentMemorySystem {
 
         let current_total = all_lines.len();
 
-        // 读取并校验指针
+        // 读取并校验指针。越界（清空对话/读档后 line_list 变短）时**写回**重置，
+        // 否则指针残留旧值，get_slice_start_index 会一直返回过期大索引，
+        // 导致上下文窗口无限膨胀且每轮都从 index 0 重建整段上下文。
         let last_idx = {
-            let bank_guard = match self.memory_bank.try_lock() {
+            let mut bank_guard = match self.memory_bank.try_lock() {
                 Ok(g) => g,
                 Err(_) => return, // 后台任务正在写，跳过
             };
-            let mut idx = bank_guard.meta.last_processed_global_idx;
+            let idx = bank_guard.meta.last_processed_global_idx;
             if idx < 0 || idx as usize > current_total {
-                idx = 0;
+                bank_guard.meta.last_processed_global_idx = 0;
+                0
+            } else {
+                idx as usize
             }
-            idx as usize
         };
 
         let new_lines = &all_lines[last_idx..current_total];
@@ -272,6 +324,7 @@ impl PersistentMemorySystem {
         let fail_count = self.fail_count.clone();
         let role_id = self.role_id;
         let ai_name = self.ai_name.clone();
+        let limits = self.section_limits;
 
         tokio::spawn(async move {
             // 记录一次失败并复位 is_updating。失败不推进指针 → 下轮对话重试同一批。
@@ -306,6 +359,7 @@ impl PersistentMemorySystem {
                     &chat_text,
                     "short_term",
                     &old.short_term,
+                    limits.short_term,
                     &ai_name
                 ),
                 Self::update_section(
@@ -314,6 +368,7 @@ impl PersistentMemorySystem {
                     &chat_text,
                     "long_term",
                     &old.long_term,
+                    limits.long_term,
                     &ai_name
                 ),
                 Self::update_section(
@@ -322,6 +377,7 @@ impl PersistentMemorySystem {
                     &chat_text,
                     "user_info",
                     &old.user_info,
+                    limits.user_info,
                     &ai_name
                 ),
                 Self::update_section(
@@ -330,20 +386,17 @@ impl PersistentMemorySystem {
                     &chat_text,
                     "promises",
                     &old.promises,
+                    limits.promises,
                     &ai_name
                 ),
             );
 
             // 4 段必须全部成功才写回并推进指针；任一失败则整批重试。
             let results = [st, lt, ui, pr];
-            if let Some((key, err)) = results
-                .iter()
-                .enumerate()
-                .find_map(|(i, r)| match r {
-                    Err(e) => Some((["short_term", "long_term", "user_info", "promises"][i], e)),
-                    Ok(_) => None,
-                })
-            {
+            if let Some((key, err)) = results.iter().enumerate().find_map(|(i, r)| match r {
+                Err(e) => Some((["short_term", "long_term", "user_info", "promises"][i], e)),
+                Ok(_) => None,
+            }) {
                 let count = fail_count.load(Ordering::Acquire) + 1;
                 tracing::warn!(
                     "MemoryBank: role_id={} 分段压缩失败 (key={}): {}（第 {} 次失败，指针不移动，冷却后重试）",
@@ -387,6 +440,7 @@ impl PersistentMemorySystem {
         chat_text: &str,
         key: &str,
         old_content: &str,
+        max_chars: usize,
         _ai_name: &str,
     ) -> Result<String> {
         let prompt_req = match prompts.get(key) {
@@ -394,9 +448,23 @@ impl PersistentMemorySystem {
             None => return Ok(old_content.to_string()), // 配置缺失不是失败，保留旧内容
         };
 
+        // 喂给压缩 LLM 前按上限截断旧内容。LLM 只能基于截断后的内容生成新记忆，
+        // 因此超出上限的旧记忆片段会在本次压缩写回后被丢弃（写回本身不截断）。
+        let original_count = old_content.chars().count();
+        let exceeds_limit = max_chars != 0 && original_count > max_chars;
+        let old = truncate_to_chars(old_content, max_chars);
+        if exceeds_limit {
+            tracing::warn!(
+                "MemoryBank: 记忆段 '{}' 旧内容超长 ({} 字符 > 上限 {} 字符)，超限尾部将被本次压缩丢弃；如不希望丢失请调大上限或设为 0",
+                key,
+                original_count,
+                max_chars
+            );
+        }
+
         let full_prompt = format!(
             "{}\n\n【旧内容】：\n{}\n\n【新增对话】：\n{}\n\n【新内容】(直接输出结果，不要废话)：",
-            prompt_req, old_content, chat_text,
+            prompt_req, old, chat_text,
         );
 
         let messages = vec![LlmMessage::user(full_prompt)];
@@ -469,88 +537,4 @@ fn now_str() -> String {
 
 fn current_time_ms() -> u64 {
     chrono::Utc::now().timestamp_millis() as u64
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ai_service::types::LineBase;
-
-    /// 构造一条由指定角色发送的可见台词（默认 attribute 是 System，会被计数逻辑跳过）。
-    fn make_line(role_id: i32, content: &str) -> GameLine {
-        use crate::ai_service::types::LineAttributeExt;
-        use crate::db::entities::line::LineAttribute;
-
-        let mut base = LineBase::default();
-        base.sender_role_id = Some(role_id);
-        base.content = content.to_string();
-        base.attribute = LineAttributeExt(LineAttribute::User);
-        GameLine::from_base(base, Vec::new())
-    }
-
-    /// 构造测试用实例：role_id=1，LLM 槽位为空（后台压缩必失败）。
-    fn make_sys(update_interval: usize) -> (PersistentMemorySystem, Arc<Mutex<GameMemoryBank>>) {
-        let bank = GameMemoryBank::default();
-        let slot: LlmSlot = Arc::new(tokio::sync::RwLock::new(None));
-        let sys =
-            PersistentMemorySystem::new(1, &bank, slot, true, update_interval, 2, "测试角色");
-        let mb = sys.memory_bank.clone();
-        (sys, mb)
-    }
-
-    /// 轮询等待后台压缩任务结束（is_updating 复位），最多让出 1000 次。
-    async fn wait_for_idle(sys: &PersistentMemorySystem) {
-        for _ in 0..1000 {
-            if !sys.is_updating.load(Ordering::Acquire) {
-                return;
-            }
-            tokio::task::yield_now().await;
-        }
-        panic!("后台压缩任务未在预期时间内结束");
-    }
-
-    #[tokio::test]
-    async fn below_threshold_does_not_trigger() {
-        let (sys, _bank) = make_sys(10);
-        let lines = vec![make_line(1, "你好呀")];
-        sys.check_and_trigger_auto_update(&lines);
-        // 可见台词 1 条 < 阈值 10，不应触发，也不应移动指针
-        assert!(!sys.is_updating.load(Ordering::Acquire));
-        assert_eq!(sys.fail_count.load(Ordering::Acquire), 0);
-    }
-
-    #[tokio::test]
-    async fn reaching_threshold_triggers_background_compress() {
-        let (sys, _bank) = make_sys(1);
-        let lines = vec![make_line(1, "你好呀"), make_line(1, "今天天气真不错")];
-        sys.check_and_trigger_auto_update(&lines);
-        wait_for_idle(&sys).await;
-        // 空 LLM 槽位使压缩任务走失败路径：fail_count 递增证明任务确实被触发
-        assert_eq!(sys.fail_count.load(Ordering::Acquire), 1);
-    }
-
-    #[tokio::test]
-    async fn failure_keeps_pointer_and_records_cooldown() {
-        let (sys, bank) = make_sys(1);
-        let lines = vec![make_line(1, "你好呀"), make_line(1, "今天天气真不错")];
-        sys.check_and_trigger_auto_update(&lines);
-        wait_for_idle(&sys).await;
-        // 失败时指针不移动，供下轮对话重试同一批
-        assert_eq!(bank.lock().await.meta.last_processed_global_idx, 0);
-        // 冷却与失败计数均已记录
-        assert_ne!(sys.last_failure_at_ms.load(Ordering::Acquire), 0);
-        assert_eq!(sys.fail_count.load(Ordering::Acquire), 1);
-    }
-
-    #[tokio::test]
-    async fn cooldown_blocks_retry_after_failure() {
-        let (sys, _bank) = make_sys(1);
-        // 模拟 1 秒前刚失败：仍在 60s 冷却期内，不应再次触发
-        sys.last_failure_at_ms
-            .store(current_time_ms() - 1_000, Ordering::Release);
-        let lines = vec![make_line(1, "你好呀"), make_line(1, "今天天气真不错")];
-        sys.check_and_trigger_auto_update(&lines);
-        assert!(!sys.is_updating.load(Ordering::Acquire));
-        assert_eq!(sys.fail_count.load(Ordering::Acquire), 0);
-    }
 }

@@ -250,7 +250,7 @@ pub async fn list_llm_models(
     provider: LlmProviderConfig,
 ) -> Result<Vec<LlmModelInfo>, String> {
     let Some(client) = build_llm_client_from_provider(&app, &provider) else {
-        return Err("无法创建 LLM 客户端，请检查 API Key 和模型名称".to_string());
+        return Err("无法创建 LLM 客户端，请检查模型名称（API Key 可为空）".to_string());
     };
 
     client

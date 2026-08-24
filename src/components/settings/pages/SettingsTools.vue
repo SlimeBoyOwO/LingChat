@@ -237,22 +237,45 @@
           >
             <option value="kimi" class="bg-slate-800 text-white">Kimi /search</option>
             <option value="bocha" class="bg-slate-800 text-white">BoCha 博查</option>
+            <option value="deepseek" class="bg-slate-800 text-white">
+              {{ $t('ui.toolCalls.providerDeepSeek') }}
+            </option>
             <option value="tavily" class="bg-slate-800 text-white">Tavily</option>
             <option value="custom" class="bg-slate-800 text-white">
               {{ $t('ui.toolCalls.providerCustom') }}
             </option>
           </select>
 
-          <!-- 独立端点模式下 kimi/bocha/custom 后端都强制校验 API Key，始终显示输入框 -->
+          <!-- 独立端点模式下 kimi/bocha/deepseek/custom 后端都强制校验 API Key，始终显示输入框 -->
           <label class="inline-flex items-center font-medium text-brand mt-4">
             {{ $t('ui.toolCalls.apiKey') }}
           </label>
           <input
             type="password"
             v-model="form.web_search.api_key"
-            :placeholder="$t('ui.toolCalls.apiKeyPlaceholder')"
+            :placeholder="
+              form.web_search.provider === 'deepseek'
+                ? $t('ui.toolCalls.dsApiKeyPlaceholder')
+                : $t('ui.toolCalls.apiKeyPlaceholder')
+            "
             class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
           />
+
+          <!-- DeepSeek Responses：可切换模型；结果数量由服务端决定，不展示条数设置 -->
+          <template v-if="form.web_search.provider === 'deepseek'">
+            <label class="inline-flex items-center font-medium text-brand mt-4">
+              {{ $t('ui.toolCalls.dsModel') }}
+            </label>
+            <input
+              type="text"
+              v-model="form.web_search.model"
+              placeholder="deepseek-v4-flash"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+            />
+            <p class="text-sm mt-2 mb-2 text-gray-300">
+              {{ $t('ui.toolCalls.dsHint') }}
+            </p>
+          </template>
 
           <!-- 仅自定义端点需要填写地址；kimi/bocha 使用各自的固定端点 -->
           <template v-if="form.web_search.provider === 'custom'">
@@ -271,17 +294,19 @@
             />
           </template>
 
-          <label class="inline-flex items-center font-medium text-brand mt-4">
-            {{ $t('ui.toolCalls.maxResults') }}
-          </label>
-          <input
-            type="number"
-            v-model.number="form.web_search.max_results"
-            min="1"
-            max="20"
-            step="1"
-            class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-          />
+          <template v-if="form.web_search.provider !== 'deepseek'">
+            <label class="inline-flex items-center font-medium text-brand mt-4">
+              {{ $t('ui.toolCalls.maxResults') }}
+            </label>
+            <input
+              type="number"
+              v-model.number="form.web_search.max_results"
+              min="1"
+              max="20"
+              step="1"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+            />
+          </template>
         </template>
 
         <div class="flex items-center gap-3 py-2.5 px-1">
@@ -492,7 +517,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, onMounted } from 'vue'
+import { computed, reactive, ref, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   getToolSettings,
@@ -541,6 +566,7 @@ const form = reactive<ToolSettings>({
     enabled: false,
     use_builtin: true,
     provider: 'kimi',
+    model: 'deepseek-v4-flash',
     api_key: '',
     base_url: '',
     proxy_enabled: false,
@@ -630,6 +656,11 @@ const saveSettings = async (): Promise<boolean> => {
     }
     // 深拷贝一份普通对象，避免把 reactive 代理传给 Tauri IPC
     const payload: ToolSettings = JSON.parse(JSON.stringify(form))
+    // deepseek 使用官方 /responses 端点；base_url 对该 provider 不可编辑，
+    // 清空避免把 kimi 的默认端点残留进配置导致请求打到错误地址
+    if (payload.web_search.provider === 'deepseek') {
+      payload.web_search.base_url = ''
+    }
     await saveToolSettings(payload)
     await loadRuntimeInfo()
     showStatus(t('ui.toolCalls.saveSuccess'))
@@ -666,6 +697,16 @@ const restartAsAdmin = async () => {
     showStatus(t('ui.toolCalls.adminModeRestartFailed', { message: String(error) }), 'red')
   }
 }
+
+// 切换到 deepseek provider 时同步清空 base_url（加载旧配置时同样生效）
+watch(
+  () => form.web_search.provider,
+  (provider) => {
+    if (provider === 'deepseek') {
+      form.web_search.base_url = ''
+    }
+  },
+)
 
 const runTest = async () => {
   if (testing.value) return

@@ -12,6 +12,7 @@ use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
 use crate::ai_service::emotion::EmotionClassifier;
+use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
 use crate::ai_service::llm::provider_config::{
     build_llm_client_from_provider, migrate_if_needed, migrate_legacy_vision_keys,
     resolve_chat_provider, resolve_translate_provider,
@@ -19,8 +20,8 @@ use crate::ai_service::llm::provider_config::{
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
 use crate::ai_service::service::{AIService, SharedAIService};
-use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::translator::Translator;
+use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::types::CharacterSettings;
 use crate::config::{self, AppConfig};
 use crate::db;
@@ -83,6 +84,12 @@ pub async fn initialize(
         app_config.use_persistent_memory,
         app_config.memory_update_interval,
         app_config.memory_recent_window,
+        MemorySectionLimits {
+            short_term: app_config.memory_short_term_max_chars as usize,
+            long_term: app_config.memory_long_term_max_chars as usize,
+            user_info: app_config.memory_user_info_max_chars as usize,
+            promises: app_config.memory_promises_max_chars as usize,
+        },
     )
     .await;
 
@@ -101,10 +108,7 @@ pub async fn initialize(
         if let Ok(store) = app.store(config::STORE_FILE) {
             if let Some(cid) = character_id {
                 let key = config::session::last_clothes_key(cid);
-                if let Some(clothes) = store
-                    .get(&key)
-                    .and_then(|v| v.as_str().map(String::from))
-                {
+                if let Some(clothes) = store.get(&key).and_then(|v| v.as_str().map(String::from)) {
                     if !clothes.is_empty() {
                         overrides.insert(cid, clothes);
                     }
