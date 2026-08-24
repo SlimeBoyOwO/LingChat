@@ -70,7 +70,7 @@
           :disabled="!canStartMic"
           class="w-8 h-8 rounded-full bg-neutral-950/60 backdrop-blur-xl border border-white/10 text-white flex items-center justify-center hover:bg-cyan-500/80 hover:text-white hover:scale-110 shadow-[0_4px_12px_rgba(0,0,0,0.3)] transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
           :class="{
-            '!text-red-400 !border-red-400/50 !bg-red-950/40 animate-pulse':
+            '!text-blue-400 !border-blue-400/50 !bg-blue-950/40 animate-asr-breathe':
               asrInput.phase.value === 'recording',
           }"
           :style="
