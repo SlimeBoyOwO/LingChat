@@ -76,10 +76,10 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # 插件系统：嵌入 RustPython 跑插件 Python 脚本（目前是一个受限沙箱）。
 # 桌面与移动端（Android/iOS）都编译，供安卓自测。
-rustpython-vm = { version = "0.5", default-features = false, features = ["compiler", "gc", "host_env", "stdio", "serde", "freeze-stdlib"] }
+rustpython-vm = { version = "0.5", default-features = false, features = ["compiler", "gc", "stdio", "serde", "freeze-stdlib"] }
 rustpython-pylib = { version = "0.5", features = ["freeze-stdlib"] }
 rustpython-derive = "0.5"
-#libffi = { version = "*", default-features = false, features = ["std"] }
+
 
 # LAN Sync
 axum = { version = "0.7", features = ["tokio"] }
