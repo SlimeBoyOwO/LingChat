@@ -1080,7 +1080,7 @@ export default {
     },
     voiceInput: 'Voice input',
     voiceInputHint:
-      'Master switch: when off, mic button and auto voice input are all disabled',
+      'Master switch: when off, auto voice input is disabled; manual mic recording still works',
     autoListen: 'Enable automatic speech recognition',
     autoListenHint: 'Auto-listen to microphone and convert user speech to text',
     vadSilence: 'Silence timeout (ms)',

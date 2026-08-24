@@ -199,9 +199,13 @@ impl AsrSession {
         })
     }
 
-    /// 取消流式会话（丢弃连接，不等待 final）。
+    /// 取消流式会话：发 finish-task 让服务端干净收尾（不等待结果），再清空句柄。
+    /// 前端切界面/丢弃录音时调用——之前只 take 句柄导致旧 WebSocket 连接残留，
+    /// 服务端报 NO_VALID_AUDIO_ERROR 且旧任务占住并发额度，后续识别无法开启。
     pub async fn cancel_stream(&self) {
         let mut g = self.stream.lock().await;
-        g.take();
+        if let Some(h) = g.take() {
+            let _ = h.tx.send(StreamCommand::Abort);
+        }
     }
 }

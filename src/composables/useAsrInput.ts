@@ -155,7 +155,8 @@ function discardRecording() {
 // 7.    uiStore.showSettings === true
 // 8.    runningScript && choices.length > 0（剧本选择分支）
 // 任何一项满足即视为不可用。start() / startEnergyMonitor RMS 触发 / 按钮 enable 都查它。
-function canStartAsr(ignoreLock = false): boolean {
+// forManual=true（手动 mic 录音）：跳过语音输入总开关——总开关只挡自动模式。
+function canStartAsr(ignoreLock = false, forManual = false): boolean {
   if (!route || !uiStore || !gameStore) return false
   // 6 + 7：路由/抽屉门控（chatActive 已是这两项的合成；/chat 与 /pet 均可）
   if ((route.path !== '/chat' && route.path !== '/pet') || uiStore.showSettings) return false
@@ -171,8 +172,8 @@ function canStartAsr(ignoreLock = false): boolean {
   const script = (gameStore as unknown as { runningScript?: { choices?: unknown[] } })
     .runningScript
   if (script && Array.isArray(script.choices) && script.choices.length > 0) return false
-  // 11：语音输入总开关
-  if (!asrStore?.settings.voice_input_enabled) return false
+  // 11：语音输入总开关——只挡自动模式（auto 触发/自动监听）；手动 mic 录音不受限
+  if (!forManual && !asrStore?.settings.voice_input_enabled) return false
   // 12：角色语音（TTS）播放中（外放 TTS 进麦克风 → 误识别 AI 自己的话）
   if (voicePlaying) return false
   // 10：识别结果短暂显示锁（fill_only 模式填入 inputMessage 到自动 send 之间的窗口期）。
@@ -404,8 +405,8 @@ function stopEnergyMonitor() {
 
 // ── 会话生命周期 ────────────────────────────────────────────
 async function start(source: AsrSource) {
-  // §1 全 8 项门控；任何一项不满足即拒绝启动
-  if (!canStartAsr()) {
+  // §1 全 8 项门控；手动模式（button）跳过语音输入总开关（总开关只挡自动）
+  if (!canStartAsr(false, source === 'button')) {
     // 诊断：静默拒绝会让按钮"按下无反应"，暴露拒绝原因
     console.log('[ASR] start 被门控拒绝', {
       source,
@@ -593,8 +594,11 @@ function handle(text: string, source: AsrSource) {
     return
   }
   const mode = asrStore?.settings.send_mode ?? 'fill_only'
+  // 拼接语义：识别结果追加到录音开始时的输入框内容（baseText）之后，不覆盖
+  // 已有输入（手动录音继续输入；流式 partial 已是 baseText+partial 同语义）。
+  const full = baseText + text
   if (mode === 'fill_only') {
-    window.dispatchEvent(new CustomEvent('asr-text', { detail: text }))
+    window.dispatchEvent(new CustomEvent('asr-text', { detail: full }))
   } else if (mode === 'auto_send') {
     // 完整识别结果填入输入框显示（用户可看到完整内容，流式时 partial 已实时
     // 填充、此处覆盖为 final 整句），800ms 后发送给 LLM；AI 回复时
@@ -607,13 +611,13 @@ function handle(text: string, source: AsrSource) {
     gameStore?.appendGameMessage({
       type: 'message',
       displayName: gameStore.userName,
-      content: text,
+      content: full,
     })
     // 输入框显示完整结果（不清空——清空会导致"内容没显示就发送"）
-    inputBridge?.setText(text)
+    inputBridge?.setText(full)
     asrLockedUntil = Date.now() + AUTO_SEND_DELAY_MS
     window.setTimeout(() => {
-      void invoke('send_chat_message', { text, screenshotBase64: null })
+      void invoke('send_chat_message', { text: full, screenshotBase64: null })
     }, AUTO_SEND_DELAY_MS)
   }
   resetSession()

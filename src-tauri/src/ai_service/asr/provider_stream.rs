@@ -46,6 +46,9 @@ pub enum StreamCommand {
     Stop {
         reply: oneshot::Sender<Result<StreamResult, AsrError>>,
     },
+    /// 丢弃会话（前端切界面等）：发 finish-task 让服务端干净收尾，不等待结果。
+    /// 与 Stop 的区别：无 reply、无超时等待；服务端不回时由连接关闭兜底退出。
+    Abort,
 }
 
 /// 流式识别结果（整段 final 文本）。
@@ -260,6 +263,23 @@ pub async fn start_streaming(
                                         message: "发送 finish-task 失败".into(),
                                     }));
                                 }
+                                break;
+                            }
+                            stopped = true;
+                        }
+                        StreamCommand::Abort => {
+                            // 干净收尾：发 finish-task（无 reply），服务端正常结束任务，
+                            // 不报 NO_VALID_AUDIO_ERROR；等 Finished 或连接关闭后退出。
+                            let frame = build_finish_task_payload(&task_id);
+                            if write
+                                .send(Message::Text(
+                                    String::from_utf8(frame)
+                                        .expect("finish-task 是合法 UTF-8")
+                                        .into(),
+                                ))
+                                .await
+                                .is_err()
+                            {
                                 break;
                             }
                             stopped = true;
