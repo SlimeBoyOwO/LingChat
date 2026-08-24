@@ -115,17 +115,6 @@
         <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.log') }}</p>
       </Button>
       <Button
-        ref="workshopBtn"
-        type="nav"
-        class="shrink-0"
-        icon="package"
-        @click="() => switchTab('workshop', 'workshopBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'workshop' }"
-      >
-        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.workshop') }}</p>
-      </Button>
-      <Button
-        v-if="!isAndroid()"
         ref="pluginsBtn"
         type="nav"
         class="shrink-0"
@@ -150,7 +139,6 @@ import { ref, onMounted, watch } from 'vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { Button } from '../base'
 import Icon from '../base/widget/Icon.vue'
-import { isAndroid } from '@/utils/platform'
 
 const props = defineProps<{}>()
 
@@ -178,7 +166,6 @@ const advanceBtn = ref<ButtonRef | null>(null)
 const updateBtn = ref<ButtonRef | null>(null)
 const adventureBtn = ref<ButtonRef | null>(null)
 const logBtn = ref<ButtonRef | null>(null)
-const workshopBtn = ref<ButtonRef | null>(null)
 const pluginsBtn = ref<ButtonRef | null>(null)
 
 // 设置可重设的值（使用 ref 存储，确保响应式或跨函数访问）
@@ -199,7 +186,6 @@ const handleIndicatorMove = (currentRefName: string) => {
     updateBtn,
     adventureBtn,
     logBtn,
-    workshopBtn,
     pluginsBtn,
   }[currentRefName]
 
@@ -297,9 +283,6 @@ const initIndicator = () => {
     case 'log':
       activeButton = logBtn.value
       break
-    case 'workshop':
-      activeButton = workshopBtn.value
-      break
     case 'plugins':
       activeButton = pluginsBtn.value
       break
@@ -307,8 +290,18 @@ const initIndicator = () => {
 
   if (activeButton?.$el) {
     moveIndicator(activeButton.$el)
-    // 滑动/点击切换时激活项可能被滚出视野 → 滚回可视区（窄屏横向导航跟随）
-    activeButton.$el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+    // 滑动/点击切换时激活项可能被滚出视野 → 滚回可视区（窄屏横向导航跟随）。
+    // 注意：不能用 scrollIntoView —— transform 缩放下 #app 布局尺寸超过视口
+    // （calc(100vw/z)），body 成为可滚动容器，scrollIntoView 会连带滚动 body，
+    // 把 fixed 定位的设置面板（containing block 是 #app）滚出视口，导致
+    // 非 100% 缩放下设置页右侧/底部露出空白。这里只滚动 nav 容器本身。
+    const nav = navContainer.value
+    if (nav) {
+      const btn = activeButton.$el as HTMLElement
+      // offsetLeft 相对 nav（nav 为 relative 定位），把按钮水平居中到容器
+      const target = btn.offsetLeft - nav.clientWidth / 2 + btn.clientWidth / 2
+      nav.scrollTo({ left: target, behavior: 'smooth' })
+    }
   }
 }
 

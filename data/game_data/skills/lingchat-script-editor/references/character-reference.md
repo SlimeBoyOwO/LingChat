@@ -11,7 +11,6 @@ ai_subtitle: LingChat Studio
 body_part: null
 bubble_left: 25
 bubble_top: 5
-character_folder: 风雪
 
 # 剧本内唯一 id（在剧本事件中通过该 id 调用角色）
 script_role_key: snow_wind
@@ -37,7 +36,6 @@ script_role_key: snow_wind
 |------|------|
 | `ai_name` | 角色显示名 |
 | `ai_subtitle` | 副标题 |
-| `character_folder` | 角色资源文件夹名 |
 | `script_role_key` | **剧本内唯一 id**（必加） |
 | `system_prompt` | 系统提示（人设） |
 | `system_prompt_example` | 人设示例对话 |

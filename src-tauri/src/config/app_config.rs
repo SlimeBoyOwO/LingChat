@@ -40,6 +40,18 @@ fn default_memory_update_interval() -> u32 {
 fn default_memory_recent_window() -> u32 {
     30
 }
+fn default_memory_short_term_max_chars() -> u32 {
+    500
+}
+fn default_memory_long_term_max_chars() -> u32 {
+    2000
+}
+fn default_memory_user_info_max_chars() -> u32 {
+    800
+}
+fn default_memory_promises_max_chars() -> u32 {
+    800
+}
 
 pub const DEFAULT_LLM_TIMEOUT_SECS: u64 = 120;
 pub const MIN_LLM_TIMEOUT_SECS: u64 = 10;
@@ -80,6 +92,15 @@ pub struct AppConfig {
     pub memory_update_interval: u32,
     #[serde(default = "default_memory_recent_window")]
     pub memory_recent_window: u32,
+    // 记忆段长度上限（字符数，0 = 不截断）：决定压缩喂给 LLM 的旧内容与运行时注入上下文的长度
+    #[serde(default = "default_memory_short_term_max_chars")]
+    pub memory_short_term_max_chars: u32,
+    #[serde(default = "default_memory_long_term_max_chars")]
+    pub memory_long_term_max_chars: u32,
+    #[serde(default = "default_memory_user_info_max_chars")]
+    pub memory_user_info_max_chars: u32,
+    #[serde(default = "default_memory_promises_max_chars")]
+    pub memory_promises_max_chars: u32,
 
     /// TTS 引擎配置（适配器 URL、音频格式等）
     #[serde(default)]
@@ -101,6 +122,10 @@ impl Default for AppConfig {
             use_persistent_memory: true,
             memory_update_interval: default_memory_update_interval(),
             memory_recent_window: default_memory_recent_window(),
+            memory_short_term_max_chars: default_memory_short_term_max_chars(),
+            memory_long_term_max_chars: default_memory_long_term_max_chars(),
+            memory_user_info_max_chars: default_memory_user_info_max_chars(),
+            memory_promises_max_chars: default_memory_promises_max_chars(),
             tts: TtsConfig::default(),
         }
     }
@@ -171,16 +196,8 @@ impl AppConfig {
                 MIN_LLM_TIMEOUT_SECS,
                 MAX_LLM_TIMEOUT_SECS,
             ),
-            enable_translate: get_bool(
-                &store,
-                keys::TRANSLATE_ENABLE,
-                default.enable_translate,
-            ),
-            enable_time_sense: get_bool(
-                &store,
-                keys::ENABLE_TIME_SENSE,
-                default.enable_time_sense,
-            ),
+            enable_translate: get_bool(&store, keys::TRANSLATE_ENABLE, default.enable_translate),
+            enable_time_sense: get_bool(&store, keys::ENABLE_TIME_SENSE, default.enable_time_sense),
             enable_emotion_classifier: get_bool(
                 &store,
                 keys::ENABLE_EMOTION_CLASSIFIER,
@@ -200,6 +217,26 @@ impl AppConfig {
                 &store,
                 keys::MEMORY_RECENT_WINDOW,
                 default.memory_recent_window,
+            ),
+            memory_short_term_max_chars: get_u32(
+                &store,
+                keys::MEMORY_SHORT_TERM_MAX_CHARS,
+                default.memory_short_term_max_chars,
+            ),
+            memory_long_term_max_chars: get_u32(
+                &store,
+                keys::MEMORY_LONG_TERM_MAX_CHARS,
+                default.memory_long_term_max_chars,
+            ),
+            memory_user_info_max_chars: get_u32(
+                &store,
+                keys::MEMORY_USER_INFO_MAX_CHARS,
+                default.memory_user_info_max_chars,
+            ),
+            memory_promises_max_chars: get_u32(
+                &store,
+                keys::MEMORY_PROMISES_MAX_CHARS,
+                default.memory_promises_max_chars,
             ),
             tts: TtsConfig::from_store(Some(&store)),
         })

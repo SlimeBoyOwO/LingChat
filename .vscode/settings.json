@@ -1,5 +1,4 @@
 {
-  "python.analysis.autoImportCompletions": true,
   "Codegeex.RepoIndex": true,
   "editor.formatOnSave": true,
   "editor.defaultFormatter": "esbenp.prettier-vscode",
@@ -22,5 +21,8 @@
   "i18n-ally.ignoreFiles": ["src/locales/index.ts", "src/locales/*/index.ts"],
   "i18n-ally.enabledFrameworks": ["vue"],
   "i18n-ally.indent": 2,
-  "i18n-ally.translate.fallbackToSourceLanguage": true
+  "i18n-ally.translate.fallbackToSourceLanguage": true,
+  "[toml]": {
+    "editor.defaultFormatter": "tamasfe.even-better-toml"
+  }
 }

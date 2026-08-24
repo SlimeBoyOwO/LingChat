@@ -9,7 +9,7 @@ pub mod registry;
 pub mod setup;
 
 mod download;
-mod saf_bridge;
+pub(crate) mod saf_bridge;
 
 use std::sync::Arc;
 
@@ -20,8 +20,8 @@ pub use paths::LocalTtsPaths;
 // LocalTtsState -- Tauri managed state for the local TTS engine
 // ---------------------------------------------------------------------------
 
-use std::path::{Path, PathBuf};
 use serde::Serialize;
+use std::path::{Path, PathBuf};
 use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, State};
 use tokio_util::sync::CancellationToken;
@@ -88,11 +88,7 @@ pub struct LocalTtsRuntime {
 }
 
 impl LocalTtsRuntime {
-    pub fn new(
-        engine: Arc<LocalTtsEngine>,
-        paths: LocalTtsPaths,
-        switch: LocalTtsSwitch,
-    ) -> Self {
+    pub fn new(engine: Arc<LocalTtsEngine>, paths: LocalTtsPaths, switch: LocalTtsSwitch) -> Self {
         Self {
             engine,
             paths,
@@ -187,9 +183,7 @@ pub async fn tts_local_set_enabled(
 
     // 关闭时卸载全部模型与引擎释放内存；重新启用时若 DeBERTa 已安装则重建引擎
     if enabled {
-        if !local_state.engine.is_ready().await
-            && local_state.paths.asset_present("deberta")
-        {
+        if !local_state.engine.is_ready().await && local_state.paths.asset_present("deberta") {
             if let Err(e) = local_state.engine.init(&local_state.paths).await {
                 tracing::error!("重新启用本地 TTS 时初始化引擎失败: {e}");
             }
@@ -271,9 +265,7 @@ pub async fn tts_local_set_device(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub async fn tts_local_status(
-    state: State<'_, LocalTtsState>,
-) -> Result<TtsLocalStatus, String> {
+pub async fn tts_local_status(state: State<'_, LocalTtsState>) -> Result<TtsLocalStatus, String> {
     let voices = model_manager::list_voices(&state.paths)?;
     let deberta_installed = state.paths.asset_present("deberta");
     Ok(TtsLocalStatus {
@@ -309,19 +301,6 @@ pub async fn tts_local_list_installed(
 
 // -- helpers ----------------------------------------------------------------
 
-fn install_shared_asset(
-    paths: &LocalTtsPaths,
-    src: &Path,
-    asset_id: &str,
-) -> Result<PathBuf, String> {
-    let (target, _label) = match asset_id {
-        "deberta" => (paths.deberta_dir().join("deberta.onnx"), "DeBERTa model"),
-        "deberta-tokenizer" => (paths.deberta_dir().join("tokenizer.json"), "DeBERTa tokenizer"),
-        other => return Err(format!("unknown shared asset: {other}")),
-    };
-    crate::utils::fs::copy_with_parent(src, &target)
-}
-
 fn install_style_vectors_for(
     paths: &LocalTtsPaths,
     src: &Path,
@@ -343,14 +322,8 @@ fn download_temp_path(entry: &registry::AssetEntry, cache: &Path) -> PathBuf {
     cache.join(format!("{}.download.{ext}", entry.id))
 }
 
-fn default_voice_id(
-    _inspected: &package::InspectedPackage,
-    src: &Path,
-) -> String {
-    let stem = src
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("voice");
+fn default_voice_id(_inspected: &package::InspectedPackage, src: &Path) -> String {
+    let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("voice");
     let cleaned: String = stem
         .chars()
         .map(|c| {
@@ -377,43 +350,30 @@ pub async fn tts_local_import_from_path(
     state: State<'_, LocalTtsState>,
     path: String,
     voice_id: Option<String>,
-    asset_id: Option<String>,
 ) -> Result<ImportResult, String> {
-    let (src, cleanup_after_import) =
-        saf_bridge::prepare_file_import_source(&app, &path).await?;
+    let src = saf_bridge::prepare_file_import_source(&app, &path).await?;
 
     let result: std::result::Result<ImportResult, String> = async {
-        if let Some(asset_id) = asset_id {
-            let installed = install_shared_asset(&state.paths, &src, &asset_id)?;
-            let bytes = std::fs::metadata(&installed)
-                .map(|m| m.len())
-                .unwrap_or(0);
-            if state.paths.asset_present("deberta") {
-                let _ = state.engine.init(&state.paths).await;
-            }
-            let _ = app.emit("tts://install-complete", &asset_id);
-            return Ok(ImportResult {
-                asset_id: asset_id.clone(),
-                voice_id: None,
-                path: installed.to_string_lossy().into_owned(),
-                bytes,
-                message: "shared asset imported".into(),
-            });
+        if !src.path.exists() {
+            return Err(format!("path not found: {}", src.path.display()));
         }
-
-        if !src.exists() {
-            return Err(format!("path not found: {}", src.display()));
+        let inspected = package::inspect_package(&src.path)?;
+        // 角色语音只支持直接导入 .sbv2 / .onnx 原始模型文件，不再接受 zip/7z 压缩包
+        if matches!(
+            inspected.kind,
+            package::PackageKind::Zip | package::PackageKind::SevenZ
+        ) {
+            return Err(
+                "voice import does not support archives; import a .sbv2 or .onnx file directly"
+                    .into(),
+            );
         }
-        let inspected = package::inspect_package(&src)?;
         let voice_id = match voice_id {
             Some(v) => v,
-            None => default_voice_id(&inspected, &src),
+            None => default_voice_id(&inspected, &src.path),
         };
-        let installed =
-            package::install_inspected(&inspected, &src, &state.paths, &voice_id)?;
-        let bytes = std::fs::metadata(&installed)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let installed = package::install_inspected(&inspected, &src.path, &state.paths, &voice_id)?;
+        let bytes = std::fs::metadata(&installed).map(|m| m.len()).unwrap_or(0);
         let _ = app.emit("tts://install-complete", &voice_id);
         Ok(ImportResult {
             asset_id: voice_id.clone(),
@@ -425,8 +385,8 @@ pub async fn tts_local_import_from_path(
     }
     .await;
 
-    if cleanup_after_import {
-        let _ = tokio::fs::remove_file(&src).await;
+    if src.cleanup_after_import {
+        let _ = tokio::fs::remove_file(&src.path).await;
     }
     result
 }
@@ -437,8 +397,8 @@ pub async fn tts_local_download(
     state: State<'_, LocalTtsState>,
     asset_id: String,
 ) -> Result<Vec<ImportResult>, String> {
-    let entry = registry::find(&asset_id)
-        .ok_or_else(|| format!("asset {asset_id} not in catalog"))?;
+    let entry =
+        registry::find(&asset_id).ok_or_else(|| format!("asset {asset_id} not in catalog"))?;
 
     let cancel = Arc::new(CancellationToken::new());
     {
@@ -503,12 +463,8 @@ async fn download_single_asset(
             let raw_dst = download_temp_path(entry, &state.paths.cache);
             let bytes = download::download_asset(app, entry, &raw_dst, cancel).await?;
             let inspected = package::inspect_package(&raw_dst)?;
-            let installed = package::install_inspected(
-                &inspected,
-                &raw_dst,
-                &state.paths,
-                &entry.id,
-            )?;
+            let installed =
+                package::install_inspected(&inspected, &raw_dst, &state.paths, &entry.id)?;
             let _ = tokio::fs::remove_file(&raw_dst).await;
             Ok(ImportResult {
                 asset_id: entry.id.clone(),
@@ -519,13 +475,13 @@ async fn download_single_asset(
             })
         }
         registry::AssetKind::StyleVectors => {
-            let voice_id = entry.voice_id.clone().ok_or_else(|| {
-                format!("style_vectors asset {} missing voice_id", entry.id)
-            })?;
+            let voice_id = entry
+                .voice_id
+                .clone()
+                .ok_or_else(|| format!("style_vectors asset {} missing voice_id", entry.id))?;
             let raw_dst = download_temp_path(entry, &state.paths.cache);
             let bytes = download::download_asset(app, entry, &raw_dst, cancel).await?;
-            let installed =
-                install_style_vectors_for(&state.paths, &raw_dst, &voice_id)?;
+            let installed = install_style_vectors_for(&state.paths, &raw_dst, &voice_id)?;
             let _ = tokio::fs::remove_file(&raw_dst).await;
             Ok(ImportResult {
                 asset_id: entry.id.clone(),
@@ -544,6 +500,25 @@ pub async fn tts_local_delete_voice(
     voice_id: String,
 ) -> Result<(), String> {
     model_manager::delete_voice(&state.paths, &voice_id)
+}
+
+/// 删除 DeBERTa 共享模型（deberta.onnx + tokenizer.json），并卸载引擎释放内存。
+/// 删除后可从模型下载目录重新下载。
+#[tauri::command]
+pub async fn tts_local_delete_deberta(state: State<'_, LocalTtsState>) -> Result<(), String> {
+    delete_deberta_asset(&state.paths)?;
+    state.engine.unload_all().await;
+    Ok(())
+}
+
+/// 移除 `assets/deberta` 目录（幂等：目录不存在时静默成功）。
+fn delete_deberta_asset(paths: &LocalTtsPaths) -> Result<(), String> {
+    let dir = paths.deberta_dir();
+    crate::utils::path::validate_path_in_base(&dir, &paths.assets)?;
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).map_err(|e| format!("remove_dir_all: {e}"))?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -575,16 +550,17 @@ pub async fn tts_local_import_style_vectors(
         ));
     }
 
-    let (src, cleanup_after_import) =
-        saf_bridge::prepare_file_import_source(&app, &path).await?;
+    let src = saf_bridge::prepare_file_import_source(&app, &path).await?;
     let result: std::result::Result<ImportResult, String> = async {
-        if !src.exists() {
+        if !src.path.exists() {
             return Err(format!("path not found: {path}"));
         }
         let destination = state.paths.style_vectors_path(&voice_id);
-        std::fs::copy(&src, &destination)
+        std::fs::copy(&src.path, &destination)
             .map_err(|e| format!("copy style_vectors.json: {e}"))?;
-        let bytes = std::fs::metadata(&destination).map(|m| m.len()).unwrap_or(0);
+        let bytes = std::fs::metadata(&destination)
+            .map(|m| m.len())
+            .unwrap_or(0);
         let _ = app.emit("tts://install-complete", &voice_id);
         Ok(ImportResult {
             asset_id: voice_id.clone(),
@@ -596,8 +572,8 @@ pub async fn tts_local_import_style_vectors(
     }
     .await;
 
-    if cleanup_after_import {
-        let _ = tokio::fs::remove_file(&src).await;
+    if src.cleanup_after_import {
+        let _ = tokio::fs::remove_file(&src.path).await;
     }
     result
 }
@@ -611,9 +587,7 @@ pub async fn tts_local_synthesize_preview(
     sdp_ratio: f32,
 ) -> Result<Response, String> {
     if !state.engine.is_ready().await {
-        return Err(
-            "local TTS engine not initialized (missing DeBerta)".into()
-        );
+        return Err("local TTS engine not initialized (missing DeBerta)".into());
     }
     state.engine.load_voice(&state.paths, &voice_id).await?;
     let req = SynthesizeRequest {
@@ -669,34 +643,6 @@ mod tests {
     }
 
     #[test]
-    fn shared_deberta_import_uses_expected_file_names() {
-        let temp = tempfile::tempdir().unwrap();
-        let paths = test_paths(temp.path());
-        let source = temp.path().join("downloaded.bin");
-        std::fs::write(&source, b"fixture").unwrap();
-
-        let model = install_shared_asset(&paths, &source, "deberta").unwrap();
-        assert_eq!(model, paths.deberta_dir().join("deberta.onnx"));
-        assert_eq!(std::fs::read(model).unwrap(), b"fixture");
-
-        let tokenizer =
-            install_shared_asset(&paths, &source, "deberta-tokenizer").unwrap();
-        assert_eq!(tokenizer, paths.deberta_dir().join("tokenizer.json"));
-        assert_eq!(std::fs::read(tokenizer).unwrap(), b"fixture");
-    }
-
-    #[test]
-    fn shared_asset_import_rejects_unknown_asset() {
-        let temp = tempfile::tempdir().unwrap();
-        let paths = test_paths(temp.path());
-        let source = temp.path().join("downloaded.bin");
-        std::fs::write(&source, b"fixture").unwrap();
-
-        let error = install_shared_asset(&paths, &source, "voice-model").unwrap_err();
-        assert!(error.contains("unknown shared asset"));
-    }
-
-    #[test]
     fn shared_asset_download_uses_individual_canonical_file_names() {
         assert_eq!(shared_asset_file_name("deberta").unwrap(), "deberta.onnx");
         assert_eq!(
@@ -704,6 +650,21 @@ mod tests {
             "tokenizer.json"
         );
         assert!(shared_asset_file_name("unknown").is_err());
+    }
+
+    #[test]
+    fn delete_deberta_removes_asset_dir_and_is_idempotent() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        std::fs::create_dir_all(paths.deberta_dir()).unwrap();
+        std::fs::write(paths.deberta_dir().join("deberta.onnx"), b"model").unwrap();
+        std::fs::write(paths.deberta_dir().join("tokenizer.json"), b"{}").unwrap();
+
+        delete_deberta_asset(&paths).unwrap();
+        assert!(!paths.deberta_dir().exists());
+
+        // 幂等：目录不存在时也不报错
+        delete_deberta_asset(&paths).unwrap();
     }
 
     #[test]

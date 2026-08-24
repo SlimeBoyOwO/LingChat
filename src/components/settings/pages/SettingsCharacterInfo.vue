@@ -443,11 +443,8 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       type: 'select',
       realtime: true,
       options: [
-        {
-          label: t('settings.characterInfo.voiceLangOptions.ja'),
-          value: 'ja',
-          visibleIf: (s) => s.tts_type !== 'indextts2',
-        },
+        // IndexTTS 2.5 起 indextts2 支持日/西班牙/阿拉伯等多语言，日语不再对其隐藏
+        { label: t('settings.characterInfo.voiceLangOptions.ja'), value: 'ja' },
         { label: t('settings.characterInfo.voiceLangOptions.zh'), value: 'zh' },
         {
           label: t('settings.characterInfo.voiceLangOptions.en'),
@@ -458,6 +455,16 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
           label: t('settings.characterInfo.voiceLangOptions.ko'),
           value: 'ko',
           visibleIf: (s) => ['gsv', 'opentts'].includes(s.tts_type),
+        },
+        {
+          label: t('settings.characterInfo.voiceLangOptions.es'),
+          value: 'es',
+          visibleIf: (s) => s.tts_type === 'indextts2',
+        },
+        {
+          label: t('settings.characterInfo.voiceLangOptions.ar'),
+          value: 'ar',
+          visibleIf: (s) => s.tts_type === 'indextts2',
         },
       ],
     },
@@ -796,15 +803,6 @@ const handleClose = () => {
 
 const handleFieldChange = (field: FieldSchema) => {
   if (!field.realtime || !props.roleId) return
-
-  // tauri-refactor 分支的逻辑：indextts2 类型时重置日语
-  if (
-    field.key === 'tts_type' &&
-    localSettings.value.tts_type === 'indextts2' &&
-    localSettings.value.voice_lang === 'ja'
-  ) {
-    localSettings.value.voice_lang = 'zh'
-  }
 
   // 防抖逻辑
   const roleId = props.roleId

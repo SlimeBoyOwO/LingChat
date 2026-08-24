@@ -42,6 +42,7 @@ export function useDialogAppearance(options: UseDialogAppearanceOptions) {
     const hasImage = Boolean(dialogBgImage.value)
     const style: Record<string, string> = {
       color: dialogTextColorValue.value,
+      borderRadius: dialogBorderRadius.value + 'px',
     }
 
     if (hasImage) {

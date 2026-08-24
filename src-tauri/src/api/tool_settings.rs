@@ -1,7 +1,9 @@
 //! 聊天工具的用户配置命令（网页搜索等）。
 
+use serde::Serialize;
 use tauri::Manager;
 
+use crate::ai_service::message_system::generator::GeneratorSource;
 use crate::ai_service::tools::executor::{Tool, ToolContext};
 use crate::ai_service::tools::permissions::CONFIG_FILE_NAME;
 use crate::ai_service::tools::settings::ToolSettings;
@@ -15,6 +17,81 @@ pub async fn get_tool_settings(app: tauri::AppHandle) -> Result<ToolSettings, St
     Ok(state.tool_settings.get())
 }
 
+/// 设置页使用的运行时诊断信息。尤其用于 Android：工具配置按设备保存，
+/// 仅看开关无法区分“当前角色没有权限”和“当前模型不支持原生工具调用”。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolRuntimeInfo {
+    platform: &'static str,
+    model_configured: bool,
+    native_tool_calls_supported: bool,
+    command_available: bool,
+    file_ops_app_sandbox_only: bool,
+    registered_tool_count: usize,
+    allowed_tools: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn get_tool_runtime_info(app: tauri::AppHandle) -> Result<ToolRuntimeInfo, String> {
+    let state = app.state::<AppState>();
+    let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
+    let model_configured = llm.is_some();
+    let native_tool_calls_supported = llm
+        .as_ref()
+        .map(|client| client.supports_streaming_tools())
+        .unwrap_or(false);
+
+    let game_status = {
+        let service = state.ai_service.lock().await;
+        service.game_status.clone()
+    };
+    let role_name = {
+        let mut game_status = game_status.lock().await;
+        match game_status.current_role_id {
+            Some(role_id) => game_status
+                .get_role(&state.db, role_id)
+                .await
+                .ok()
+                .and_then(|role| role.display_name.clone()),
+            None => None,
+        }
+    };
+
+    let mut allowed_tools = role_name
+        .as_deref()
+        .map(|name| {
+            state
+                .tool_registry
+                .allowed_tools(GeneratorSource::UserChat, Some(name))
+                .into_iter()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    allowed_tools.sort();
+
+    let platform = if cfg!(target_os = "android") {
+        "android"
+    } else if cfg!(target_os = "ios") {
+        "ios"
+    } else if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "desktop"
+    };
+
+    Ok(ToolRuntimeInfo {
+        platform,
+        model_configured,
+        native_tool_calls_supported,
+        command_available: cfg!(desktop),
+        file_ops_app_sandbox_only: cfg!(any(target_os = "android", target_os = "ios")),
+        registered_tool_count: state.tool_registry.definitions().len(),
+        allowed_tools,
+    })
+}
+
 /// 保存工具配置：写盘 + 热更新 + 同步权限矩阵。
 ///
 /// 网页搜索「启用且配好 API Key」时，自动放开 default 角色组的
@@ -22,10 +99,11 @@ pub async fn get_tool_settings(app: tauri::AppHandle) -> Result<ToolSettings, St
 #[tauri::command]
 pub async fn save_tool_settings(
     app: tauri::AppHandle,
-    settings: ToolSettings,
+    mut settings: ToolSettings,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
     let data_dir = super::data_dir();
+    settings.apply_platform_constraints();
     settings.save(&data_dir).map_err(|e| e.to_string())?;
     state.tool_settings.update(settings.clone());
 

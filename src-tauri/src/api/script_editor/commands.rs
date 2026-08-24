@@ -736,7 +736,7 @@ fn asset_dirs(kind: &str) -> Result<(&'static str, PathBuf), String> {
 fn allowed_extensions(kind: &str) -> &'static [&'static str] {
     match kind {
         "background" | "pic" => &["png", "jpg", "jpeg", "webp", "bmp", "gif"],
-        _ => &["mp3", "wav", "ogg", "flac", "m4a"],
+        _ => &["mp3", "wav", "ogg", "flac"],
     }
 }
 

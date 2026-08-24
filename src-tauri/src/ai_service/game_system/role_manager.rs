@@ -5,10 +5,12 @@ use anyhow::{anyhow, Result};
 use sea_orm::DatabaseConnection;
 
 use crate::ai_service::game_system::memory_builder::MemoryBuilder;
-use crate::ai_service::game_system::persistent_memory_system::PersistentMemorySystem;
+use crate::ai_service::game_system::persistent_memory_system::{
+    MemorySectionLimits, PersistentMemorySystem,
+};
 use crate::ai_service::llm::LlmSlot;
-use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::tts::local::LocalTtsRuntime;
+use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::types::{CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
@@ -37,6 +39,8 @@ pub struct GameRoleManager {
     memory_update_interval: u32,
     /// 摘要时保留的最近消息数（来自 `AppConfig::memory_recent_window`）。
     memory_recent_window: u32,
+    /// 各记忆段长度上限（来自 `AppConfig::memory_*_max_chars`），透传给压缩系统。
+    memory_limits: MemorySectionLimits,
     /// 角色服装覆盖（session store → register_role_by_id 时优先读取）
     clothes_overrides: HashMap<i32, String>,
 }
@@ -50,6 +54,7 @@ impl GameRoleManager {
         use_persistent_memory: bool,
         memory_update_interval: u32,
         memory_recent_window: u32,
+        memory_limits: MemorySectionLimits,
     ) -> Self {
         Self {
             loaded_roles: HashMap::new(),
@@ -61,6 +66,7 @@ impl GameRoleManager {
             use_persistent_memory,
             memory_update_interval,
             memory_recent_window,
+            memory_limits,
             clothes_overrides: HashMap::new(),
         }
     }
@@ -83,10 +89,7 @@ impl GameRoleManager {
         if !self.loaded_roles.contains_key(&role_id) {
             self.register_role_by_id(db, role_id).await?;
         }
-        Ok(self
-            .loaded_roles
-            .get_mut(&role_id)
-            .expect("角色刚刚插入"))
+        Ok(self.loaded_roles.get_mut(&role_id).expect("角色刚刚插入"))
     }
 
     pub fn get_loaded(&self, role_id: i32) -> Option<&GameRole> {
@@ -143,11 +146,11 @@ impl GameRoleManager {
                 .loaded_roles
                 .get(&role_id)
                 .and_then(|r| r.resource_path.clone());
-            let settings = match RoleRepo::get_role_settings_by_id(db, &self.data_dir, role_id).await
-            {
-                Ok(Some(s)) => s,
-                _ => continue,
-            };
+            let settings =
+                match RoleRepo::get_role_settings_by_id(db, &self.data_dir, role_id).await {
+                    Ok(Some(s)) => s,
+                    _ => continue,
+                };
             let Some(vm) = build_voice_maker(
                 &self.data_dir,
                 &settings,
@@ -300,6 +303,7 @@ impl GameRoleManager {
                 mb_enabled,
                 self.memory_update_interval as usize,
                 self.memory_recent_window as usize,
+                self.memory_limits,
             );
 
             // 阶段 2: MemoryBank 启用时 — 同步后台结果 + 触发压缩 + 获取记忆文本
@@ -373,6 +377,7 @@ impl GameRoleManager {
         enabled: bool,
         update_interval: usize,
         recent_window: usize,
+        limits: MemorySectionLimits,
     ) {
         if self.memory_bank_systems.contains_key(&role_id) {
             return;
@@ -396,6 +401,7 @@ impl GameRoleManager {
                 enabled,
                 update_interval,
                 recent_window,
+                limits,
                 display_name,
             ),
         );
@@ -458,6 +464,7 @@ impl GameRoleManager {
                 enabled,
                 self.memory_update_interval as usize,
                 self.memory_recent_window as usize,
+                self.memory_limits,
             );
 
             // 若已有压缩系统且 DB 有数据，同步重置

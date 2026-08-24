@@ -4,7 +4,7 @@
   Android 端的"截屏"功能入口 —— 弹出一个底部 sheet 让用户选拍照或从相册选图。
   桌面端不显示(后端不会 emit `screenshot:request-source`)。
 
-  通过 <Teleport to="body"> 挂到 body,避免被外层 CSS zoom 干扰布局。
+  通过 <Teleport to="body"> 挂到 body,避免被外层整体缩放（transform: scale）干扰布局。
 -->
 <template>
   <Teleport to="body">

@@ -9,6 +9,16 @@ on:
         description: '数据版本号（整数）'
         required: false
         default: '1'
+      tag_name:
+        description: 'Release Tag 名称'
+        required: true
+        type: string
+        default: 'v0.0.0'
+      is_prerelease:
+        description: '是否标记为预发布版本（仅新建时生效）'
+        required: false
+        type: boolean
+        default: true
 
 env:
   DATA_VERSION: ${{ github.event.inputs.data_version || github.run_number }}
@@ -25,9 +35,10 @@ jobs:
       - name: 拉取 LFS 游戏资源 (仅 data/game_data/)
         run: git lfs pull --include="data/game_data/**"
 
-      - uses: actions/setup-node@v5
+      - uses: pnpm/setup@v1
         with:
-          node-version: 24
+          runtime: node@26
+          cache: false
 
       - name: 生成 data_manifest.json
         run: node scripts/generate-data-manifest.js --data-version ${{ env.DATA_VERSION }}
@@ -71,7 +82,7 @@ jobs:
           - platform: linux-aarch64
             os: ubuntu-24.04-arm
             target: ''
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -83,28 +94,17 @@ jobs:
         with:
           name: data-artifacts
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v1
         with:
-          version: latest
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: 'pnpm'
-      
-      - name: 设置 pnpm store 缓存
-        uses: actions/cache@v4
-        with:
-          path: ~/.pnpm-store
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          runtime: node@26
+          cache: true
 
       - name: 安装前端依赖
         run: |
-          pnpm i
           pnpm run init
 
       - name: 安装系统依赖 (仅 Linux)
-        if: matrix.platform == 'ubuntu-latest'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install eatmydata
@@ -112,14 +112,12 @@ jobs:
 
       - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable
-
+        
       - name: 设置 rust 缓存
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: |
-              ./src-tauri
-          cache-targets: true
-          shared-key: ${{ runner.os }}-${{ runner.arch }}-main-pnpm-tauri-build-${{ hashFiles('src-tauri/Cargo.lock') }}
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
 
       - name: 构建 Tauri 应用
         uses: tauri-apps/tauri-action@v1
@@ -128,7 +126,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          RUSTFLAGS: ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
+          RUSTFLAGS: |
+            ${{ runner.os == 'Linux' && '' || '' }}
+            ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
+            ${{ runner.os == 'macOS' && '' || '' }}
         with:
           uploadWorkflowArtifacts: true
           workflowArtifactNamePattern: '${{ matrix.platform }}-build'
@@ -159,7 +160,7 @@ jobs:
       - name: 创建 GitHub Release 并上传所有文件
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ github.event.inputs.tag_name }}
           name: 'LingChat ${{ github.ref_name }}'
           body: |
             ## 更新内容
@@ -177,7 +178,7 @@ jobs:
 
             如需手动更新游戏资源，请下载 `data_files.zip` 并解压到程序目录下的 `data/` 文件夹。
           draft: true
-          prerelease: false
+          prerelease: ${{ github.event.inputs.is_prerelease }}
           files: |
             artifacts/data/*
             artifacts/builds/**

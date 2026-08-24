@@ -38,7 +38,8 @@ impl Default for ScreenAnalyzerConfig {
         Self {
             vd_api_key: String::new(),
             vd_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string(),
-            vd_model: "qwen3.5-plus".to_string(),
+            // model 为空表示未配置任何视觉 provider，分析会被跳过
+            vd_model: String::new(),
         }
     }
 }
@@ -46,7 +47,7 @@ impl Default for ScreenAnalyzerConfig {
 impl ScreenAnalyzerConfig {
     /// 从大模型管理解析视觉分析配置：
     /// 优先使用「视觉模型」角色指定的 provider，缺省时跟随对话模型；
-    /// 都没有可用配置时返回默认值（api_key 为空，分析会被跳过）。
+    /// 都没有可用配置时返回默认值（model 为空，分析会被跳过）。
     pub fn resolve(app: &AppHandle) -> Self {
         let Some(provider) = resolve_vision_provider(app) else {
             return Self::default();
@@ -133,9 +134,8 @@ impl ScreenAnalyzer {
     /// 核心方法：截屏 → 发送给 VLM 分析 → 返回文本描述。
     /// 这是策略分发器和主动对话系统的主要入口。
     pub async fn analyze_screen(&mut self, prompt: &str) -> Option<String> {
-        let api_key = &self.config.vd_api_key;
-        if api_key.is_empty() {
-            tracing::warn!("[ScreenAnalyzer] Vision provider api key is empty, skipping screenshot analysis.");
+        if self.config.vd_model.is_empty() {
+            tracing::warn!("[ScreenAnalyzer] Vision provider model is not configured, skipping screenshot analysis.");
             return None;
         }
 
@@ -148,9 +148,8 @@ impl ScreenAnalyzer {
     /// 分析任意图片字节（支持 JPEG / PNG / WebP 等格式）。
     /// 供脚本事件、文件分析等外部调用方使用。
     pub async fn analyze_image(&mut self, image_bytes: &[u8], prompt: &str) -> Option<String> {
-        let api_key = &self.config.vd_api_key;
-        if api_key.is_empty() {
-            tracing::warn!("[ScreenAnalyzer] Vision provider api key is empty, skipping image analysis.");
+        if self.config.vd_model.is_empty() {
+            tracing::warn!("[ScreenAnalyzer] Vision provider model is not configured, skipping image analysis.");
             return None;
         }
 
@@ -160,9 +159,8 @@ impl ScreenAnalyzer {
 
     /// 分析本地图片文件路径。
     pub async fn analyze_image_file(&mut self, image_path: &str, prompt: &str) -> Option<String> {
-        let api_key = &self.config.vd_api_key;
-        if api_key.is_empty() {
-            tracing::warn!("[ScreenAnalyzer] Vision provider api key is empty, skipping image file analysis.");
+        if self.config.vd_model.is_empty() {
+            tracing::warn!("[ScreenAnalyzer] Vision provider model is not configured, skipping image file analysis.");
             return None;
         }
 

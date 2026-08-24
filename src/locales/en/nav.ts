@@ -10,6 +10,5 @@ export default {
   save: "Save",
   advance: "Advanced Settings",
   log: "Logs",
-  workshop: "Workshop",
   plugins: "Plugins",
 }

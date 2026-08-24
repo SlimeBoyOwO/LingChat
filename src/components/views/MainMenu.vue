@@ -31,7 +31,7 @@
       class="character-image"
       ref="charRef"
       src="../../assets/images/alona.png"
-      :alt="$t('views.mainMenu.characterAlt')" 
+      :alt="$t('views.mainMenu.characterAlt')"
     />
 
     <!-- 菜单容器，绑定鼠标移动和移出事件实现视差 -->
@@ -92,7 +92,7 @@ import { StartLogo, StartPage } from './menu/base'
 import { WorkshopOptions, GameModeOptions, MainMenuOptions, ScriptModeOptions } from './menu/page'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { MainChat } from './'
+import MainChat from './MainChat.vue'
 import { SettingsPanel as Settings } from '../settings/'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useSettingsStore } from '../../stores/modules/settings'

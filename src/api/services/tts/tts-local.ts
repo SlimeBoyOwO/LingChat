@@ -101,11 +101,6 @@ export interface TtsLocalImportResult {
   message: string
 }
 
-export interface ImportOptions {
-  voiceId?: string
-  assetId?: 'deberta' | 'deberta-tokenizer'
-}
-
 export function status(): Promise<TtsLocalStatus> {
   return invoke<TtsLocalStatus>('tts_local_status')
 }
@@ -146,17 +141,21 @@ export function listInstalled(): Promise<TtsLocalInstallSnapshot> {
 
 export function importFromPath(
   path: string,
-  options: ImportOptions = {},
+  voiceId?: string,
 ): Promise<TtsLocalImportResult> {
   return invoke<TtsLocalImportResult>('tts_local_import_from_path', {
     path,
-    voiceId: options.voiceId ?? null,
-    assetId: options.assetId ?? null,
+    voiceId: voiceId ?? null,
   })
 }
 
 export async function deleteVoice(voiceId: string): Promise<void> {
   await invoke('tts_local_delete_voice', { voiceId })
+}
+
+/** 删除 DeBERTa 共享模型（deberta.onnx + tokenizer.json），并卸载引擎 */
+export function deleteDeberta(): Promise<void> {
+  return invoke('tts_local_delete_deberta')
 }
 
 export function importStyleVectors(

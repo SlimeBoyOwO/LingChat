@@ -102,7 +102,9 @@ const rowBinding = (a: ShortcutAction) => settings.shortcuts[a] as ShortcutBindi
 </script>
 
 <template>
-  <Teleport to="body">
+  <!-- Teleport 到 #app 而非 body：body 下浮层脱离 #app 的整体缩放作用域，
+       缩放后与编辑器主体比例失调（详见 PreviewStage 注释） -->
+  <Teleport to="#app">
     <Transition
       enter-active-class="transition-opacity duration-200 ease"
       leave-active-class="transition-opacity duration-200 ease"

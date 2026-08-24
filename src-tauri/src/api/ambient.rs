@@ -27,7 +27,7 @@ pub fn get_ambient_list() -> Result<Vec<AmbientItemInfo>, String> {
         return Ok(Vec::new());
     }
 
-    let allowed_extensions = ["mp3", "wav", "flac", "webm", "weba", "ogg", "m4a", "oga"];
+    let allowed_extensions = ["mp3", "wav", "flac", "webm", "weba", "ogg", "oga"];
 
     let mut items: Vec<AmbientItemInfo> = Vec::new();
 
@@ -79,13 +79,47 @@ pub fn get_ambient_list() -> Result<Vec<AmbientItemInfo>, String> {
 }
 
 #[tauri::command]
-pub async fn upload_ambient(app: tauri::AppHandle, path: String, file_name: String) -> Result<(), String> {
-    // 安全检查：只保留文件名，防止路径遍历
-    let safe_name = std::path::Path::new(&file_name)
-        .file_name()
-        .ok_or_else(|| format!("无效的文件名: {}", file_name))?
-        .to_string_lossy()
-        .into_owned();
+pub async fn upload_ambient(
+    app: tauri::AppHandle,
+    path: String,
+    file_name: String,
+) -> Result<(), String> {
+    // 安全检查：只保留文件名（basename），防止路径遍历。空 basename 直接拒。
+    let safe_name = {
+        let stem = std::path::Path::new(&file_name)
+            .file_name()
+            .ok_or_else(|| format!("无效的文件名: {}", file_name))?
+            .to_string_lossy()
+            .into_owned();
+        if stem.is_empty() {
+            return Err(format!("无效的文件名: {}", file_name));
+        }
+        stem
+    };
+
+    // Android SAF：先把 content URI 复制到本地 cache，magic sniff 在本地路径上做。
+    let src =
+        crate::ai_service::tts::local::saf_bridge::prepare_file_import_source(&app, &path).await?;
+
+    // magic sniff：与 music.rs 同源策略，用 infer extension() 而非 mime_type()
+    // 做权威裁决（绕过 mime 别名问题：audio/x-flac 不匹配 audio/flac）。
+    // 环境音不做扩展名修正，命中失败即拒。同时主动放弃 m4a。
+    if let Some(k) = infer::get_from_path(&src.path).map_err(|e| format!("读取文件头失败: {e}"))?
+    {
+        let valid = k.matcher_type() == infer::MatcherType::Audio
+            && matches!(k.extension(), "mp3" | "wav" | "flac" | "ogg");
+        if !valid {
+            if src.cleanup_after_import {
+                let _ = tokio::fs::remove_file(&src.path).await;
+            }
+            return Err("MUSIC_INVALID_FORMAT".into());
+        }
+    } else {
+        if src.cleanup_after_import {
+            let _ = tokio::fs::remove_file(&src.path).await;
+        }
+        return Err("MUSIC_INVALID_FORMAT".into());
+    }
 
     let ambient_dir = ambient_dir();
     if !ambient_dir.exists() {
@@ -96,19 +130,14 @@ pub async fn upload_ambient(app: tauri::AppHandle, path: String, file_name: Stri
 
     let file_path = ambient_dir.join(&safe_name);
 
-    if path.starts_with("content://") {
-        // Android SAF：content:// URI 直接复制到目标文件（不经 IPC 传大文件）
-        use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
-        app.android_fs_async()
-            .copy(&FsUri::from_uri(&path), &FsUri::from_path(&file_path))
-            .await
-            .map_err(|e| format!("SAF 复制环境音失败: {}", e))?;
-    } else {
-        // 桌面端：Rust 直接复制源文件
-        tokio::fs::copy(std::path::PathBuf::from(&path), &file_path)
-            .await
-            .map_err(|e| format!("复制文件失败: {}", e))?;
+    // 把已通过 sniff 的本地 src 复制到 ambient_dir（Android SAF 路径走 src.path；
+    // 桌面端 src.path == 原始 path，效果等价于直接复制源文件）。
+    let copy_result =
+        std::fs::copy(&src.path, &file_path).map_err(|e| format!("复制文件失败: {}", e));
+    if src.cleanup_after_import {
+        let _ = tokio::fs::remove_file(&src.path).await;
     }
+    copy_result?;
 
     Ok(())
 }
@@ -142,10 +171,7 @@ pub fn delete_ambient(url: String) -> Result<Vec<AmbientItemInfo>, String> {
 
 /// 持久化环境音轨道列表到 settings.json，下次启动时自动恢复。
 #[tauri::command]
-pub fn save_ambient_state(
-    app: tauri::AppHandle,
-    tracks_json: String,
-) -> Result<(), String> {
+pub fn save_ambient_state(app: tauri::AppHandle, tracks_json: String) -> Result<(), String> {
     let store = app
         .store(crate::config::STORE_FILE)
         .map_err(|e| format!("打开存储失败: {e}"))?;

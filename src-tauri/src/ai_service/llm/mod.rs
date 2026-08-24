@@ -60,9 +60,27 @@ pub struct LlmConfig {
 }
 
 impl LlmConfig {
+    /// 判断配置是否可用于发起 LLM 请求。
+    ///
+    /// 允许 api_key 为空（本地模型 / 自托管 OpenAI 兼容服务无需密钥），
+    /// 只要求 model 非空。
     pub fn is_usable(&self) -> bool {
-        !self.api_key.is_empty() && !self.model.is_empty()
+        !self.model.is_empty()
     }
+}
+
+/// 单次 LLM 请求的 token 用量（provider 未上报时为 None）。
+///
+/// 由 provider 在流末尾（StreamEnd）或非流式响应中携带，供 AI 助手等
+/// 调用方做用量统计/持久化。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LlmUsage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+    /// 输入中命中缓存（cache read）的 token 数；provider 未上报缓存时为 0。
+    /// 命中率 = cached_tokens / prompt_tokens。
+    pub cached_tokens: u64,
 }
 
 /// LLM 流式返回的一个片段：可能是正式回复内容，也可能是思考链内容。
@@ -79,7 +97,11 @@ pub enum LlmChunk {
     ToolCallProgress { name: String, chars: usize },
     /// 流终止信号：归一化停止原因（"stop" / "max_tokens" / "tool_calls" / …）。
     /// 由 provider 在流末尾发射，消费方按需忽略（剧本导师用它检测截断）。
-    StreamEnd { reason: Option<String> },
+    /// `usage` 为本轮累计 token 用量；provider 未上报时为 None。
+    StreamEnd {
+        reason: Option<String>,
+        usage: Option<LlmUsage>,
+    },
 }
 
 pub type ChunkStream = Pin<Box<dyn Stream<Item = Result<LlmChunk>> + Send>>;
@@ -111,7 +133,7 @@ impl LlmClient {
     /// 非流式：一次性取完整回复。
     pub async fn complete(&self, messages: &[LlmMessage]) -> Result<String> {
         if !self.cfg.is_usable() {
-            return Err(anyhow!("LLM 未配置 API key 或 model"));
+            return Err(anyhow!("LLM 未配置 model"));
         }
         self.provider.complete(&self.http, messages).await
     }
@@ -143,7 +165,7 @@ impl LlmClient {
         tools: Option<(&[ToolDefinition], Option<&str>)>,
     ) -> Result<ChunkStream> {
         if !self.cfg.is_usable() {
-            return Err(anyhow!("LLM 未配置 API key 或 model"));
+            return Err(anyhow!("LLM 未配置 model"));
         }
         let mut inner = match tools {
             Some((definitions, tool_choice)) => {
@@ -177,7 +199,7 @@ impl LlmClient {
         tool_choice: Option<&str>,
     ) -> Result<LlmResponseWithTools> {
         if !self.cfg.is_usable() {
-            return Err(anyhow!("LLM 未配置 API key 或 model"));
+            return Err(anyhow!("LLM 未配置 model"));
         }
         self.provider
             .complete_with_tools(&self.http, messages, tools, tool_choice)

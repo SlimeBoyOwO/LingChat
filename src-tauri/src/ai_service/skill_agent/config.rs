@@ -57,7 +57,7 @@ impl SkillAgentConfig {
                 .and_then(|v| v.as_str().map(|s| s.to_string()))
                 .filter(|s| !s.trim().is_empty())
         };
-        Self {
+        let mut config = Self {
             provider_id: str_opt(keys::AGENT_PROVIDER_ID),
             sandbox_dir: str_opt(keys::AGENT_SANDBOX_DIR).map(PathBuf::from),
             auto_approve_commands: store
@@ -76,7 +76,12 @@ impl SkillAgentConfig {
             enable_thinking: store
                 .get(keys::AGENT_ENABLE_THINKING)
                 .and_then(|v| v.as_bool()),
+        };
+        if cfg!(mobile) {
+            config.auto_approve_commands = false;
+            config.allow_any_path = false;
         }
+        config
     }
 
     /// 解析后的沙箱根目录（默认 `data/`）。

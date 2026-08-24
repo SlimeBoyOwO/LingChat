@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::ai_service::llm::provider::{
     LlmModelInfo, LlmProvider, LlmResponseWithTools, ThinkEffortsInfo,
 };
-use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig};
+use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig, LlmUsage};
 use crate::ai_service::types::{LlmMessage, ToolCall, ToolDefinition};
 
 #[derive(Debug, Deserialize)]
@@ -319,6 +319,13 @@ impl KimiCodeProvider {
                 Some(content_text)
             },
             tool_calls,
+            // 非流式请求的 usage 落在消息 JSON 的 usage 字段（若响应携带）
+            usage: parsed.usage.as_ref().map(|u| LlmUsage {
+                prompt_tokens: u.input_tokens.unwrap_or(0),
+                completion_tokens: u.output_tokens.unwrap_or(0),
+                total_tokens: u.input_tokens.unwrap_or(0) + u.output_tokens.unwrap_or(0),
+                cached_tokens: u.cache_read_input_tokens.unwrap_or(0),
+            }),
         })
     }
 
@@ -533,6 +540,11 @@ impl KimiCodeProvider {
             // 流式工具调用累积：块 index → (id, name, partial_json)
             let mut tool_blocks: std::collections::BTreeMap<usize, (String, String, String)> =
                 std::collections::BTreeMap::new();
+            // Anthropic 流式 usage：input_tokens 在 message_start 一次性给出，
+            // output_tokens 在 message_delta 逐段累加。
+            let mut input_tokens: u64 = 0;
+            let mut output_tokens: u64 = 0;
+            let mut cached_tokens: u64 = 0;
             let mut bs = byte_stream;
             while let Some(item) = bs.next().await {
                 let chunk = item.map_err(|e| anyhow!("Kimi-Code 流式读取失败: {e}"))?;
@@ -567,6 +579,17 @@ impl KimiCodeProvider {
                             if !tool_blocks.is_empty() {
                                 yield LlmChunk::ToolCalls(collect_tool_calls(std::mem::take(&mut tool_blocks)));
                             }
+                            // 终止信号：补发 usage（其他 provider 的 usage 随 StreamEnd 携带，
+                            // Kimi 流此前没有 StreamEnd，顺带让上层拿到停止原因与用量）
+                            yield LlmChunk::StreamEnd {
+                                reason: Some("stop".to_string()),
+                                usage: Some(LlmUsage {
+                                    prompt_tokens: input_tokens,
+                                    completion_tokens: output_tokens,
+                                    total_tokens: input_tokens + output_tokens,
+                                    cached_tokens,
+                                }),
+                            };
                             return;
                         }
                         if data.is_empty() { continue; }
@@ -622,7 +645,26 @@ impl KimiCodeProvider {
                                     }
                                 }
                             }
-                            "content_block_stop" | "message_start" | "message_delta" | "message_stop" => {
+                            "message_start" => {
+                                // input_tokens 在 message_start 一次性给出（含缓存统计）
+                                if let Some(u) = parsed.message.and_then(|m| m.usage) {
+                                    if let Some(i) = u.input_tokens {
+                                        input_tokens = i;
+                                    }
+                                    if let Some(c) = u.cache_read_input_tokens {
+                                        cached_tokens = c;
+                                    }
+                                }
+                            }
+                            "message_delta" => {
+                                // output_tokens 是每个 delta 的增量，需累加
+                                if let Some(u) = parsed.usage {
+                                    if let Some(o) = u.output_tokens {
+                                        output_tokens += o;
+                                    }
+                                }
+                            }
+                            "content_block_stop" | "message_stop" => {
                                 tracing::debug!("[Kimi-Code SSE] type={}, delta={:?}", parsed.type_, parsed.delta);
                             }
                             other => {
@@ -659,6 +701,16 @@ impl KimiCodeProvider {
             if !tool_blocks.is_empty() {
                 yield LlmChunk::ToolCalls(collect_tool_calls(std::mem::take(&mut tool_blocks)));
             }
+            // 终止信号（与 [DONE] 分支同语义；无 [DONE] 时也会走到这里）
+            yield LlmChunk::StreamEnd {
+                reason: Some("stop".to_string()),
+                usage: Some(LlmUsage {
+                    prompt_tokens: input_tokens,
+                    completion_tokens: output_tokens,
+                    total_tokens: input_tokens + output_tokens,
+                    cached_tokens,
+                }),
+            };
         };
 
         Ok(Box::pin(stream))
@@ -764,6 +816,9 @@ struct AnthropicToolChoice {
 #[derive(Deserialize)]
 struct MessagesResponse {
     content: Vec<ContentBlock>,
+    /// 非流式响应的用量（Anthropic 顶层 usage 字段）。
+    #[serde(default)]
+    usage: Option<StreamUsage>,
 }
 
 #[derive(Deserialize, Default)]
@@ -792,6 +847,29 @@ struct MessagesStreamChunk {
     content_block: Option<ContentBlock>,
     #[serde(default)]
     delta: Option<MessageDelta>,
+    /// message_delta 携带的 usage（output_tokens 为该 delta 的增量）。
+    #[serde(default)]
+    usage: Option<StreamUsage>,
+    /// message_start 携带的 message 头（input_tokens 一次性给出）。
+    #[serde(default)]
+    message: Option<StreamMessageHeader>,
+}
+
+#[derive(Deserialize, Default)]
+struct StreamUsage {
+    #[serde(default)]
+    input_tokens: Option<u64>,
+    #[serde(default)]
+    output_tokens: Option<u64>,
+    /// Anthropic：cache_read_input_tokens（输入中命中缓存的 token 数）。
+    #[serde(default)]
+    cache_read_input_tokens: Option<u64>,
+}
+
+#[derive(Deserialize, Default)]
+struct StreamMessageHeader {
+    #[serde(default)]
+    usage: Option<StreamUsage>,
 }
 
 #[derive(Deserialize, Default, Debug)]

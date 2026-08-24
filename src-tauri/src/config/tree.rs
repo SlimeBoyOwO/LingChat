@@ -212,6 +212,54 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             .to_string(),
                         setting_type: "text".to_string(),
                     },
+                    ConfigSetting {
+                        key: keys::MEMORY_SHORT_TERM_MAX_CHARS.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::MEMORY_SHORT_TERM_MAX_CHARS,
+                            &app_defaults.memory_short_term_max_chars.to_string(),
+                        ),
+                        description:
+                            "MEMORY_SHORT_TERM_MAX_CHARS — 近期回顾长度上限（字符数，默认 500，0 不截断）"
+                                .to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::MEMORY_LONG_TERM_MAX_CHARS.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::MEMORY_LONG_TERM_MAX_CHARS,
+                            &app_defaults.memory_long_term_max_chars.to_string(),
+                        ),
+                        description:
+                            "MEMORY_LONG_TERM_MAX_CHARS — 长期经历长度上限（字符数，默认 2000，0 不截断）"
+                                .to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::MEMORY_USER_INFO_MAX_CHARS.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::MEMORY_USER_INFO_MAX_CHARS,
+                            &app_defaults.memory_user_info_max_chars.to_string(),
+                        ),
+                        description:
+                            "MEMORY_USER_INFO_MAX_CHARS — taの信息长度上限（字符数，默认 800，0 不截断）"
+                                .to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::MEMORY_PROMISES_MAX_CHARS.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::MEMORY_PROMISES_MAX_CHARS,
+                            &app_defaults.memory_promises_max_chars.to_string(),
+                        ),
+                        description:
+                            "MEMORY_PROMISES_MAX_CHARS — 重要约定长度上限（字符数，默认 800，0 不截断）"
+                                .to_string(),
+                        setting_type: "text".to_string(),
+                    },
                 ],
             },
         );
@@ -400,6 +448,14 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         value: read_setting(app, keys::LOG_LLM_REQUEST_BODY, "false"),
                         description:
                             "LOG_LLM_REQUEST_BODY — 记录每次 LLM 请求的完整请求体 JSON 到 data/log/llm/ 目录（默认关闭）"
+                                .to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::LOG_GENAI_DEBUG.to_string(),
+                        value: read_setting(app, keys::LOG_GENAI_DEBUG, "false"),
+                        description:
+                            "LOG_GENAI_DEBUG — 开启 genai SDK 的调试日志（含请求/响应细节，保存后即时生效，默认关闭）"
                                 .to_string(),
                         setting_type: "bool".to_string(),
                     },

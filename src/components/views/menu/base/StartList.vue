@@ -13,6 +13,8 @@
 <script setup lang="ts">
 import { inject, onUnmounted, provide, ref } from 'vue'
 
+defineOptions({ inheritAttrs: false })
+
 interface Props {
   /** 是否启用超宽屏 2 列切换（仅主菜单开启，二级菜单保持单列） */
   responsive?: boolean

@@ -250,11 +250,29 @@ pub async fn list_llm_models(
     provider: LlmProviderConfig,
 ) -> Result<Vec<LlmModelInfo>, String> {
     let Some(client) = build_llm_client_from_provider(&app, &provider) else {
-        return Err("无法创建 LLM 客户端，请检查 API Key 和模型名称".to_string());
+        return Err("无法创建 LLM 客户端，请检查模型名称（API Key 可为空）".to_string());
     };
 
     client
         .list_models()
         .await
         .map_err(|error| error.to_string())
+}
+
+/// 设置「HDR 模式」开关（仅 Windows）。
+///
+/// 持久化到 settings.json 的 `display.hdr_mode_enabled`，下次启动时由
+/// `lib.rs::read_hdr_mode_enabled` 读取，决定是否强制 WebView2 色彩配置：
+/// - 开启 → 不强制（WebView2 自动色彩管理，正确适配 HDR）
+/// - 关闭 → 强制 `--force-color-profile=scrgb-linear`（现状）
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn set_hdr_mode(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let store = crate::config::settings_store(&app).map_err(|e| e.to_string())?;
+    store.set(
+        crate::config::keys::HDR_MODE_ENABLED.to_string(),
+        serde_json::Value::Bool(enabled),
+    );
+    store.save().map_err(|e| e.to_string())?;
+    Ok(())
 }

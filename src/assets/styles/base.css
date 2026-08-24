@@ -49,6 +49,13 @@
   html {
     font-family: var(--font-app), var(--font-sans);
     font-size: clamp(12px, min(2.5vw, 2.5vh), 16px) !important;
+    /* 应用为固定视口游戏 UI：禁止页面级滚动（所有滚动都在组件内部容器），
+       同时避免 transform 缩放下 body 溢出出现滚动条/被滚动（见 useZoom） */
+    overflow: hidden;
+  }
+
+  body {
+    overflow: hidden;
   }
 }
 

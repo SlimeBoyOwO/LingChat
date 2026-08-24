@@ -702,8 +702,12 @@ fn parse_segments(deps: &SentenceDeps, sentence: &str) -> Vec<EmotionSegment> {
 fn tts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
     match (tts_type, voice_lang) {
         ("gsv" | "opentts" | "sbv2" | "fishs2", "en") => Some("en"),
-        // IndexTTS2 官方支持中/英文：voice_lang=en 时先翻译成英文再合成
+        // IndexTTS 2.5 起官方支持中/英/日/西班牙/阿拉伯语：
+        // voice_lang 为非中文目标语言时先翻译成对应语言再合成
+        // （日语台词主模型已自带 japanese_text，无需在此强制重译）
         ("indextts2", "en") => Some("en"),
+        ("indextts2", "es") => Some("es"),
+        ("indextts2", "ar") => Some("ar"),
         ("gsv" | "opentts", "ko") => Some("ko"),
         _ => None,
     }

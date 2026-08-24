@@ -93,6 +93,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { Birdhouse, FolderOpen, PackageOpen, Rabbit, RefreshCcw } from 'lucide-vue-next'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { invoke } from '@tauri-apps/api/core'
@@ -126,6 +127,7 @@ const currentPage = ref(1)
 const totalPages = ref(1)
 const gameStore = useGameStore()
 const uiStore = useUIStore()
+const router = useRouter()
 const dialogStore = useDialogStore()
 const { t } = useI18n()
 
@@ -203,7 +205,8 @@ const refreshCharacters = async (): Promise<void> => {
 }
 
 const openCreativeWeb = async (): Promise<void> => {
-  uiStore.currentSettingsTab = 'workshop'
+  // 云端创意工坊已迁移为主菜单「创意工坊」二级菜单的独立路由页
+  router.push('/workshop')
 }
 
 const handleImport = async () => {

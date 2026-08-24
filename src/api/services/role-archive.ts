@@ -9,6 +9,8 @@ export interface ImportResult {
   conflict_action: string
   warnings: string[]
   bytes_extracted: number
+  /// 后端 magic 决定的真实格式（与前端 hint 可能不同）
+  format: ArchiveFormat
 }
 
 export interface ExportResult {
@@ -35,14 +37,14 @@ export interface EntryEvent {
 // 保留字节导入接口，供已经在内存中持有压缩包数据的调用方使用。
 export async function importRole(params: {
   bytes: number[] | Uint8Array
-  format: ArchiveFormat
+  format?: ArchiveFormat  // 可选；后端用 magic 裁决
   conflict: ConflictPolicy
   fileName?: string
 }): Promise<ImportResult> {
   const bytes = params.bytes instanceof Uint8Array ? Array.from(params.bytes) : params.bytes
   return invoke<ImportResult>('import_role', {
     bytes,
-    format: params.format,
+    format: params.format ?? null,
     conflict: params.conflict,
     fileName: params.fileName ?? null,
   })
@@ -51,13 +53,13 @@ export async function importRole(params: {
 // 推荐的导入接口：支持桌面文件路径和 Android SAF 内容 URI。
 export async function importRoleFromPath(params: {
   path: string
-  format: ArchiveFormat
+  format?: ArchiveFormat  // 可选；后端用 magic 裁决
   conflict: ConflictPolicy
   fileName?: string
 }): Promise<ImportResult> {
   return invoke<ImportResult>('import_role_from_path', {
     path: params.path,
-    format: params.format,
+    format: params.format ?? null,
     conflict: params.conflict,
     fileName: params.fileName ?? null,
   })

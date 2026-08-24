@@ -30,7 +30,7 @@ export interface ToolRun {
 export interface ChatRound {
   /** 回复正文（工具调用前的叙述也在这里）。 */
   content: string
-  /** 思考链（thinking 模式开启时才有；不落库，仅实时显示）。 */
+  /** 思考链（thinking 模式开启时才有；已持久化，旧数据缺失时为空）。 */
   reasoning?: string
   toolRuns: ToolRun[]
 }
@@ -49,6 +49,8 @@ export interface TokenUsage {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  /** 输入中命中缓存（cache read）的 token 数；未上报时为 0。 */
+  cached_tokens: number
 }
 
 export const emptySettings = (): AgentSettings => ({
@@ -72,6 +74,12 @@ export function useAgentState() {
   const version = ref(0)
   const lastUsage = ref<TokenUsage | null>(null)
   const totalTokens = ref(0)
+  /** 累计输入 token（会话内累计，切会话从历史恢复，与 totalTokens 同语义）。 */
+  const totalPromptTokens = ref(0)
+  /** 累计输出 token。 */
+  const totalCompletionTokens = ref(0)
+  /** 累计缓存命中 token（输入中命中 cache read 的部分）。 */
+  const totalCachedTokens = ref(0)
   const settings = ref<AgentSettings>(emptySettings())
   const skills = ref<SkillInfo[]>([])
   const defaultDirs = ref<AgentDefaultDirs | null>(null)
@@ -87,6 +95,9 @@ export function useAgentState() {
     version,
     lastUsage,
     totalTokens,
+    totalPromptTokens,
+    totalCompletionTokens,
+    totalCachedTokens,
     settings,
     skills,
     defaultDirs,

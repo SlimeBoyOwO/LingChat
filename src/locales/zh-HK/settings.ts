@@ -245,7 +245,8 @@ export default {
       "log": {
         "enable": "LOG_ENABLE — 使唔使將運行日誌寫入文件（喺 data/log/app/ 目錄）",
         "retention_days": "LOG_RETENTION_DAYS — 日誌文件保留日數，過咗期嘅舊文件會喺啟動嗰陣自動清走",
-        "llm_request_body": "LOG_LLM_REQUEST_BODY — 記低每次 LLM 請求嘅完整請求體 JSON 落 data/log/llm/ 目錄（預設閂）"
+        "llm_request_body": "LOG_LLM_REQUEST_BODY — 記低每次 LLM 請求嘅完整請求體 JSON 落 data/log/llm/ 目錄（預設閂）",
+        "genai_debug": "LOG_GENAI_DEBUG — 開啟 genai SDK 嘅調試日誌（包含請求/回應細節，儲存後即時生效，預設閂）"
       },
       "ENABLE_PROACTIVE_SYSTEM": "ENABLE_PROACTIVE_SYSTEM — 使唔使啟用主動對話系統",
       "MAX_PROACTIVE_TIMES": "MAX_PROACTIVE_TIMES — 喺用戶回應之前，可以主動對話嘅次數",
@@ -382,7 +383,9 @@ export default {
       "ja": "日語",
       "zh": "中文",
       "en": "英語",
-      "ko": "韓語"
+      "ko": "韓語",
+      "es": "西班牙語",
+      "ar": "阿拉伯語"
     },
     "clothes": {
       "listTitle": "服裝列表",
@@ -596,17 +599,27 @@ export default {
       "meteorFps": "流星幀率 (FPS)",
       "starsFps": "星星幀率 (FPS)"
     },
-    "cpu": {
-      "title": "CPU 性能檢測",
-      "detecting": "檢測緊 CPU …",
-      "name": "CPU 名稱：",
-      "tier": "性能等級：",
+    "hdr": {
+      "title": "HDR 顯示",
+      "enable": "啟用 HDR 模式",
+      "restartHint": "更改後需重啟應用先會生效",
+      "restartBtn": "即刻重啟應用",
+      "restartConfirm": "HDR 模式設定喺重啟後先會生效，確定即刻重啟應用？",
+      "restartFailed": "重啟失敗，請手動重啟應用"
+    },
+    "perf": {
+      "title": "性能檢測",
+      "detecting": "檢測緊硬件性能 …",
+      "cpuName": "CPU 名稱：",
+      "gpuName": "GPU 名稱：",
+      "combinedTier": "性能等級（取最低）：",
       "suggestedFps": "建議幀率：",
       "detectingShort": "檢測緊…",
       "redetect": "再檢測過",
-      "fetchFailed": "攞 CPU 資料失敗",
+      "fetchFailed": "攞硬件性能資料失敗",
       "detectComplete": "檢測搞掂",
-      "tierMessage": "CPU 性能等級：{tier}",
+      "tierMessage": "性能等級（取最低）：{tier}",
+      "unknown": "未知",
       "redetectFailed": "再檢測失敗"
     },
     "upload": {
@@ -894,7 +907,6 @@ export default {
       "deleteFailed": "刪除失敗: {error}",
       "saveSuccess": "儲存成功！",
       "saveFailed": "儲存失敗: {error}",
-      "apiKeyRequired": "唔該先填 API 密鑰",
       "modelsFetched": "攞到 {count} 個可用模型",
       "fetchFailed": "攞唔到資料: {error}",
       "chatSwitched": "對話模型轉咗，已經生效！",
@@ -927,7 +939,8 @@ export default {
       "label": "DeBERTa 與分詞器",
       "installed": "已安裝",
       "missing": "缺失",
-      "warning": "缺少 DeBERTa 模型或分詞器，人物語音無法載入，也無法試聽。"
+      "warning": "缺少 DeBERTa 模型或分詞器，人物語音無法載入，也無法試聽。",
+      "delete": "刪除 DeBERTa"
     },
     "voices": {
       "label": "人物語音",
@@ -944,10 +957,8 @@ export default {
     },
     "import": {
       "title": "本機匯入",
-      "subtitle": "支援原始模型檔案、ZIP 和 7z 壓縮檔",
-      "deberta": "匯入 DeBERTa",
-      "tokenizer": "匯入分詞器",
-      "voice": "匯入語音",
+      "subtitle": "支援 .sbv2 / .onnx 原始模型檔案",
+      "voice": "匯入語音模型",
       "voiceIdPlaceholder": "語音 ID（可選）"
     },
     "styleVectors": {
@@ -978,8 +989,6 @@ export default {
     },
     "messages": {
       "readStatusFailed": "讀取本地 TTS 狀態失敗：{error}",
-      "importSuccessDeberta": "DeBERTa 已匯入",
-      "importSuccessTokenizer": "分詞器已匯入",
       "importFailed": "匯入失敗：{error}",
       "importVoiceSuccess": "語音 {voiceId} 已匯入",
       "styleVectorsNeedSelect": "請先選擇需要補齊 style_vectors 的語音",
@@ -988,6 +997,12 @@ export default {
       "deleteConfirmTitle": "刪除本地語音",
       "deleteSuccess": "語音已刪除",
       "deleteFailed": "刪除失敗：{error}",
+      "deleteDebertaConfirm": "確定刪除 DeBERTa 模型與分詞器嗎？刪除後可重新下載。",
+      "deleteDebertaConfirmTitle": "刪除 DeBERTa",
+      "deleteDebertaSuccess": "DeBERTa 已刪除",
+      "deleteDebertaFailed": "刪除 DeBERTa 失敗：{error}",
+      "enableHintTitle": "本地 TTS 已開啟",
+      "enableHintMessage": "本地 TTS 開啟後，請到角色語音設定 TTS 類型選擇「本地 SBV2 API」和本地語音ID",
       "previewFailed": "試聽失敗：{error}",
       "readSwitchFailed": "讀取本地 TTS 開關失敗：{error}",
       "switchEnabled": "本地 TTS 已啟用。",

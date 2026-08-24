@@ -124,6 +124,8 @@ const shouldShowInfo = computed(() => {
 })
 
 // 监听自由对话状态变化
+// immediate：防御「事件先于本组件挂载到达」的边缘路径（如试玩开场即进入自由对话，
+// isFreeDialogue 初始即 true 时没有 false→true 变化可触发），挂载时直接按当前值显示
 watch(
   () => freeDialogueInfo.value.isFreeDialogue,
   (newVal, oldVal) => {
@@ -142,6 +144,7 @@ watch(
       showInfo.value = false
     }
   },
+  { immediate: true },
 )
 
 // === JS 生命周期钩子：实现丝滑的高斯模糊缩放淡入淡出 ===

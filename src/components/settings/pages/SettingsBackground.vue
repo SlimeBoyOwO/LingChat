@@ -193,6 +193,35 @@
       </div>
     </MenuItem>
 
+    <!-- HDR 模式（仅 Windows：WebView2 强制色彩配置在 HDR 下会发灰/发暗） -->
+    <MenuItem
+      v-if="isWindows()"
+      :title="$t('settings.background.hdr.title')"
+      size="large"
+    >
+      <template #header>
+        <Settings :size="20" />
+      </template>
+      <div class="flex flex-col gap-3">
+        <Toggle
+          :checked="hdrModeEnabled"
+          @change="settingsStore.setHdrModeEnabled($event)"
+        >
+          {{ $t('settings.background.hdr.enable') }}
+        </Toggle>
+        <p class="text-xs text-yellow-400/70">
+          {{ $t('settings.background.hdr.restartHint') }}
+        </p>
+        <button
+          class="self-start px-4 py-2 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-sm font-medium transition-colors hover:bg-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="!hdrChanged"
+          @click="restartApp"
+        >
+          {{ $t('settings.background.hdr.restartBtn') }}
+        </button>
+      </div>
+    </MenuItem>
+
     <MenuItem :title="$t('settings.background.animation.settingsTitle')" size="large">
       <template #header>
         <Sparkles :size="20" />
@@ -248,15 +277,15 @@
       </div>
     </MenuItem>
 
-    <MenuItem :title="$t('settings.background.cpu.title')" size="large">
+    <MenuItem :title="$t('settings.background.perf.title')" size="large">
       <template #header>
         <Cpu :size="20" />
       </template>
       <div class="flex flex-col gap-3">
         <!-- 加载中 -->
-        <div v-if="cpuLoading" class="flex items-center gap-2 text-white/60 text-sm">
+        <div v-if="perfLoading" class="flex items-center gap-2 text-white/60 text-sm">
           <span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white/80 rounded-full animate-spin"></span>
-          {{ $t('settings.background.cpu.detecting') }}
+          {{ $t('settings.background.perf.detecting') }}
         </div>
 
         <!-- 检测结果 -->
@@ -269,38 +298,70 @@
             <span>⚠️ {{ cpuInfo.unknown_message }}</span>
           </div>
 
-          <div class="flex items-center gap-2">
-            <span class="text-white/50 text-xs font-medium min-w-16">{{ $t('settings.background.cpu.name') }}</span>
-            <span class="text-white/90 text-sm font-mono break-all">{{ cpuInfo.brand }}</span>
+          <!-- GPU 分级不适用 / 未检测到 GPU 提示 -->
+          <div
+            v-if="gpuInfo?.message"
+            class="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/15 border border-yellow-500/30 text-yellow-200 text-sm"
+          >
+            <span>⚠️ {{ gpuInfo.message }}</span>
           </div>
+
+          <!-- CPU 行 -->
           <div class="flex items-center gap-2">
-            <span class="text-white/50 text-xs font-medium min-w-16">{{ $t('settings.background.cpu.tier') }}</span>
+            <span class="text-white/50 text-xs font-medium min-w-16 shrink-0">{{ $t('settings.background.perf.cpuName') }}</span>
+            <span class="text-white/90 text-sm font-mono break-all flex-1">{{ cpuInfo.brand }}</span>
             <span
-              class="px-2.5 py-0.5 rounded-full text-xs font-bold"
-              :class="tierBadgeClass"
-              :style="{ backgroundColor: cpuTierColor + '99' }"
+              class="px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0"
+              :class="tierBadgeClassFor(cpuInfo.tier as PerfTier)"
+              :style="{ backgroundColor: getPerfTierColor(cpuInfo.tier as PerfTier) + '99' }"
             >
-              {{ cpuTierLabel }}
+              {{ getTierLabel(cpuInfo.tier as PerfTier) }}
+            </span>
+          </div>
+
+          <!-- GPU 行（分级适用且有检测到 GPU 时显示） -->
+          <div v-if="gpuInfo?.is_applicable && gpuInfo.name" class="flex items-center gap-2">
+            <span class="text-white/50 text-xs font-medium min-w-16 shrink-0">{{ $t('settings.background.perf.gpuName') }}</span>
+            <span class="text-white/90 text-sm font-mono break-all flex-1">{{ gpuInfo.name }}</span>
+            <span
+              class="px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0"
+              :class="tierBadgeClassFor(gpuInfo.tier as PerfTier)"
+              :style="{ backgroundColor: getPerfTierColor(gpuInfo.tier as PerfTier) + '99' }"
+            >
+              {{ getTierLabel(gpuInfo.tier as PerfTier) }}
+            </span>
+          </div>
+
+          <!-- 综合等级（取最低） -->
+          <div class="flex items-center gap-2">
+            <span class="text-white/50 text-xs font-medium min-w-16 shrink-0">{{ $t('settings.background.perf.combinedTier') }}</span>
+            <span
+              v-if="combinedTier"
+              class="px-2.5 py-0.5 rounded-full text-xs font-bold"
+              :class="tierBadgeClassFor(combinedTier)"
+              :style="{ backgroundColor: getPerfTierColor(combinedTier) + '99' }"
+            >
+              {{ getTierLabel(combinedTier) }}
             </span>
           </div>
           <div class="flex items-center gap-2">
-            <span class="text-white/50 text-xs font-medium min-w-16">{{ $t('settings.background.cpu.suggestedFps') }}</span>
-            <span class="text-white/70 text-sm">{{ cpuSuggestedFps }} FPS</span>
+            <span class="text-white/50 text-xs font-medium min-w-16 shrink-0">{{ $t('settings.background.perf.suggestedFps') }}</span>
+            <span class="text-white/70 text-sm">{{ suggestedFps }} FPS</span>
           </div>
         </div>
 
         <!-- 错误状态 -->
-        <div v-else-if="cpuError" class="text-red-300 text-sm">
-          {{ cpuError }}
+        <div v-else-if="perfError" class="text-red-300 text-sm">
+          {{ perfError }}
         </div>
 
-        <!-- 重新检测按钮 -->
+        <!-- 重新检测按钮（同时重新检测 CPU 与 GPU） -->
         <button
           class="self-start mt-1 px-4 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-brand/80 border-brand text-white hover:bg-brand shadow-indigo-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
-          :disabled="cpuLoading"
-          @click="handleRedetectCpu"
+          :disabled="perfLoading"
+          @click="handleRedetectPerf"
         >
-          {{ cpuLoading ? $t('settings.background.cpu.detectingShort') : $t('settings.background.cpu.redetect') }}
+          {{ perfLoading ? $t('settings.background.perf.detectingShort') : $t('settings.background.perf.redetect') }}
         </button>
       </div>
     </MenuItem>
@@ -337,7 +398,8 @@ import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
-import { isAndroid } from '@/utils/platform'
+import { isAndroid, isWindows } from '@/utils/platform'
+import { relaunch } from '@tauri-apps/plugin-process'
 import {
   listScenes,
   createScene,
@@ -361,10 +423,12 @@ import {
   getTierLabel,
   getSuggestedMaxFps,
   getPerfTierColor,
+  getCombinedTier,
   type CpuInfo,
   type PerfTier,
 } from '../../../api/services/cpu-perf'
-import { Image, PictureInPicture, Sparkles, Settings, Wand2, Wrench, Cpu, MessageSquare, Upload, RotateCcw } from 'lucide-vue-next'
+import { getGpuInfo, redetectGpu, type GpuInfo } from '../../../api/services/gpu-perf'
+import { Image, PictureInPicture, Sparkles, Settings, Wand2, Wrench, Cpu } from 'lucide-vue-next'
 import SceneEditModal from '../scene/SceneEditModal.vue'
 import DialogAppearancePanel from '../dialog/DialogAppearancePanel.vue'
 import { useUserStore } from '../../../stores/modules/user/user'
@@ -381,6 +445,23 @@ const mainMenuMeteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabl
 const globalMouseTrailEnabled = computed(() => settingsStore.globalMouseTrailEnabled)
 const clickAnimationEnabled = computed(() => settingsStore.clickAnimationEnabled)
 const sceneAwarenessEnabled = computed(() => settingsStore.sceneAwarenessEnabled)
+const hdrModeEnabled = computed(() => settingsStore.hdrModeEnabled)
+
+// 记录进入设置页时的初始值；开关改变后「立即重启」按钮才可用，改回原值则恢复置灰
+const initialHdrMode = ref(settingsStore.hdrModeEnabled)
+const hdrChanged = computed(() => settingsStore.hdrModeEnabled !== initialHdrMode.value)
+
+// 立即重启应用（HDR 模式等设置需重启后生效）
+async function restartApp() {
+  const ok = await dialogStore.confirm(t('settings.background.hdr.restartConfirm'))
+  if (!ok) return
+  try {
+    await relaunch()
+  } catch (e) {
+    console.error('重启失败:', e)
+    dialogStore.alert(t('settings.background.hdr.restartFailed'))
+  }
+}
 const meteorFps = computed({
   get: () => settingsStore.meteorFps,
   set: (value: number) => {
@@ -402,23 +483,15 @@ const starsFpsInput = ref(settingsStore.starsFps)
 const backgroundList = ref<BackgroundImageInfo[]>([])
 const uploadInput = ref<HTMLInputElement | null>(null)
 
-// ── CPU 性能检测 ──
+// ── 硬件性能检测（CPU + GPU） ──
 const cpuInfo = ref<CpuInfo | null>(null)
-const cpuLoading = ref(true)
-const cpuError = ref<string | null>(null)
+const gpuInfo = ref<GpuInfo | null>(null)
+const perfLoading = ref(true)
+const perfError = ref<string | null>(null)
 
-const cpuTierLabel = computed(() =>
-  cpuInfo.value ? getTierLabel(cpuInfo.value.tier as PerfTier) : '',
-)
-const cpuTierColor = computed(() =>
-  cpuInfo.value ? getPerfTierColor(cpuInfo.value.tier as PerfTier) : '#888888',
-)
-const cpuSuggestedFps = computed(() =>
-  cpuInfo.value ? getSuggestedMaxFps(cpuInfo.value.tier as PerfTier) : 30,
-)
-const tierBadgeClass = computed(() => {
-  if (!cpuInfo.value) return 'bg-white/20 text-white/60'
-  switch (cpuInfo.value.tier as PerfTier) {
+/** 性能等级徽章样式 */
+function tierBadgeClassFor(tier: PerfTier): string {
+  switch (tier) {
     case 'Internet':
       return 'bg-gray-500/60 text-gray-100'
     case 'Low':
@@ -430,7 +503,19 @@ const tierBadgeClass = computed(() => {
     default:
       return 'bg-white/20 text-white/60'
   }
+}
+
+/** 综合性能等级（取最低；GPU 分级不适用时仅按 CPU） */
+const combinedTier = computed<PerfTier | null>(() => {
+  if (!cpuInfo.value) return null
+  const cpuTier = cpuInfo.value.tier as PerfTier
+  const gpuTier = gpuInfo.value?.is_applicable ? (gpuInfo.value.tier as PerfTier) : null
+  return getCombinedTier(cpuTier, gpuTier)
 })
+
+const suggestedFps = computed(() =>
+  combinedTier.value ? getSuggestedMaxFps(combinedTier.value) : 30,
+)
 
 const scenes = ref<SceneInfo[]>([])
 
@@ -596,42 +681,48 @@ onMounted(async () => {
     uiStore.setCurrentBackground(gameStore.currentScene.background)
   }
 
-  // 加载 CPU 信息
-  await fetchCpuInfo()
+  // 加载 CPU + GPU 性能信息
+  await fetchPerfInfo()
 })
 
-// ── CPU 性能检测 ──
+// ── 硬件性能检测（CPU + GPU） ──
 
-async function fetchCpuInfo(): Promise<void> {
-  cpuLoading.value = true
-  cpuError.value = null
+async function fetchPerfInfo(): Promise<void> {
+  perfLoading.value = true
+  perfError.value = null
   try {
-    const info = await getCpuInfo()
-    cpuInfo.value = info
+    const [cpu, gpu] = await Promise.all([getCpuInfo(), getGpuInfo()])
+    cpuInfo.value = cpu
+    gpuInfo.value = gpu
   } catch (e: any) {
-    cpuError.value = e?.message || t('settings.background.cpu.fetchFailed')
-    console.error('获取 CPU 信息失败', e)
+    perfError.value = e?.message || t('settings.background.perf.fetchFailed')
+    console.error('获取硬件性能信息失败', e)
   } finally {
-    cpuLoading.value = false
+    perfLoading.value = false
   }
 }
 
-async function handleRedetectCpu(): Promise<void> {
-  cpuLoading.value = true
-  cpuError.value = null
+async function handleRedetectPerf(): Promise<void> {
+  perfLoading.value = true
+  perfError.value = null
   try {
-    const info = await redetectCpu()
-    cpuInfo.value = info
+    const [cpu, gpu] = await Promise.all([redetectCpu(), redetectGpu()])
+    cpuInfo.value = cpu
+    gpuInfo.value = gpu
     uiStore.showSuccess({
-      title: t('settings.background.cpu.detectComplete'),
-      message: t('settings.background.cpu.tierMessage', { tier: getTierLabel(info.tier as PerfTier) }),
+      title: t('settings.background.perf.detectComplete'),
+      message: t('settings.background.perf.tierMessage', {
+        tier: combinedTier.value
+          ? getTierLabel(combinedTier.value)
+          : t('settings.background.perf.unknown'),
+      }),
       duration: 3000,
     })
   } catch (e: any) {
-    cpuError.value = e?.message || t('settings.background.cpu.redetectFailed')
-    console.error('重新检测 CPU 失败', e)
+    perfError.value = e?.message || t('settings.background.perf.redetectFailed')
+    console.error('重新检测硬件性能失败', e)
   } finally {
-    cpuLoading.value = false
+    perfLoading.value = false
   }
 }
 

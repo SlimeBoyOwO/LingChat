@@ -60,7 +60,27 @@ export default {
     "defaultImportTitle": "角色壓縮檔",
     "defaultExportTitle": "角色匯出",
     "close": "關閉",
-    "cancel": "取消"
+    "cancel": "取消",
+    "errors": {
+      "ARCHIVE_MISSING_SETTINGS_YML": "壓縮包缺少 settings.yml\n這可能是舊版角色，請下載新版角色後匯入"
+    }
+  },
+  "fontImport": {
+    "errors": {
+      "FONT_INVALID_FORMAT": "不是合法的字體檔案（ttf/otf/woff/woff2），檔案已損壞或擴展名與內容不符"
+    }
+  },
+  "musicImport": {
+    "errors": {
+      "MUSIC_INVALID_FORMAT": "不是合法的音訊檔案（mp3/wav/flac/ogg），檔案已損壞或擴展名與內容不符"
+    }
+  },
+  "notice": {
+    "autoCorrected": {
+      "title": "已自動修正",
+      "font": "{original} 不是 {originalExt} 字體格式（偵測為 {detected}），已自動修正為 {corrected}",
+      "music": "{original} 不是 {originalExt} 音訊格式（偵測為 {detected}），已自動修正為 {corrected}"
+    }
   },
   "menuItem": {
     "defaultTitle": "預設標題"
@@ -113,6 +133,16 @@ export default {
     "subtitleDefault": "留低想佢提提你嘅嘢啦"
   },
   "toolCalls": {
+    "androidTitle": "Android 工具說明",
+    "androidSummary": "工具設定會按裝置分開儲存，唔會由 Windows 同步。請喺呢部手機開啟需要嘅工具並儲存；命令執行同桌面插件喺 Android 唔可用。",
+    "androidNoModel": "目前未有可用嘅聊天模型，請先設定模型、API Key 同模型名稱。",
+    "androidModelUnsupported": "目前聊天模型唔支援原生工具調用，請改用支援 function calling 嘅模型。",
+    "androidNoTools": "目前角色未啟用任何可用工具。可以逐項開啟，或者使用下方推薦設定。",
+    "androidReady": "目前角色有 {count} 個工具可用。儲存後新對話會使用最新設定。",
+    "androidEnableRecommended": "啟用 Android 可用工具（仍需儲存）",
+    "androidRecommendedStaged": "已揀選 Android 可用工具，請撳儲存令設定生效",
+    "androidFileScope": "Android 檔案工具只可以存取 LingChat 應用程式沙箱。相簿、下載資料夾等外部檔案請先用系統檔案選擇器匯入。",
+    "androidProxyHint": "Android 上嘅 127.0.0.1 係指手機本身，唔係 Windows 電腦；使用電腦代理時請填電腦嘅區域網絡地址。",
     "webSearchTitle": "網頁搜尋",
     "enableWebSearch": "啟用網頁搜尋工具（等ta可以上網查資料）",
     "useBuiltin": "使用模型 API 內建聯網（免 API Key）",
@@ -121,8 +151,12 @@ export default {
     "apiKey": "API Key",
     "provider": "搜尋供應商",
     "providerCustom": "自訂端點",
+    "providerDeepSeek": "DeepSeek Responses",
     "customHint": "自訂端點需要兼容 Kimi /search 協議（POST JSON，欄位名稱為 text_query）",
     "apiKeyPlaceholder": "填入自訂端點 API Key",
+    "dsApiKeyPlaceholder": "填入 DeepSeek API Key",
+    "dsModel": "DeepSeek 模型",
+    "dsHint": "透過 DeepSeek Responses API 嘅服務端 web_search 聯網；需要單獨填 DeepSeek API Key，結果由服務端生成綜合回答",
     "baseUrl": "搜尋服務地址",
     "proxyEnable": "透過代理存取搜尋服務（如 v2rayN）",
     "maxResults": "返回結果條數",
@@ -164,7 +198,7 @@ export default {
     "commandDeleteApprovalTitle": "刪除命令確認",
     "commandDeleteApprovalMessage": "偵測到呢條命令可能會刪除檔案：\n\n{command}\n\n工作目錄：{cwd}\n\n刪除通常無法復原，允許執行嗎？",
     "commandHint": "每次執行前都會彈窗請你確認命令內容；uac 參數可要求管理員權限（Windows 彈 UAC 框）",
-    "commandWindowsOnly": "⚠ 命令執行僅 Windows 可用，當前平台無法運行 shell 命令",
+    "commandWindowsOnly": "⚠ 命令執行只限桌面端使用，Android 無法運行此工具",
     "commandAutoApprove": "免確認自動執行（ta 跑命令前唔再彈窗）",
     "commandAutoApproveHint": "⚠ 危險！開咗之後 ta 可以唔經你同意跑命令；識別到嘅刪除命令仍由下面獨立開關控制",
     "commandDeleteAutoApprove": "刪除命令免確認（偵測到刪除操作時唔再彈窗）",

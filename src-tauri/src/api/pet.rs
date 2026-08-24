@@ -33,11 +33,37 @@ pub fn update_solid_regions(rects: Vec<Rect>, state: tauri::State<'_, HitTestSta
     }
 }
 
+/// 退出全屏，并等到它真正结束。
+///
+/// 窗口处于全屏时，平台会吞掉后续的 `set_decorations` / `set_size`：
+/// tao 在 macOS 上是 `if fullscreen { return; }` 直接跳过，只把 decorations
+/// 记进状态；等真正退出全屏时，`restore_state_from_fullscreen` 又用的是
+/// **进入全屏那一刻保存的** style mask，中途记下的状态就丢了。Windows 侧
+/// 机制不同（改 `MARKER_DECORATIONS` 标志位），但同样会和全屏标志打架。
+/// 结果就是全屏状态下进出桌宠模式，窗口边框会消失。
+#[cfg(desktop)]
+async fn leave_fullscreen(window: &tauri::WebviewWindow) {
+    if !window.is_fullscreen().unwrap_or(false) {
+        return;
+    }
+    let _ = window.set_fullscreen(false);
+
+    // macOS 退出全屏带动画，动画期间 is_fullscreen() 仍然是 true，
+    // 这时改窗口一样会被丢掉，所以要等到状态真的翻过来。
+    // 超时就继续往下走：降级成修复前的行为，总好过让桌宠模式进不去。
+    for _ in 0..40 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        if !window.is_fullscreen().unwrap_or(false) {
+            return;
+        }
+    }
+}
+
 #[tauri::command]
 // scale/app_handle 只在桌面分支（cfg(desktop) 内调整窗口）使用，
 // 安卓/iOS 编译时视为未使用——用 cfg_attr 消除该平台上的警告
 #[cfg_attr(not(desktop), allow(unused_variables))]
-pub fn set_pet_mode(
+pub async fn set_pet_mode(
     enable: bool,
     scale: Option<f64>,
     app_handle: AppHandle,
@@ -49,6 +75,11 @@ pub fn set_pet_mode(
 
     #[cfg(desktop)]
     if let Some(window) = app_handle.get_webview_window("main") {
+        // 两个分支都要先退全屏：进入时防的是 issue #618 的复现路径
+        // （F11 全屏 → 进桌宠 → 退出，边框消失）；退出时防的是状态脱钩，
+        // 例如路由异常导致桌宠状态与全屏状态不一致时，恢复装饰同样会被吞。
+        leave_fullscreen(&window).await;
+
         if enable {
             let scale_val = scale.unwrap_or(1.0);
 

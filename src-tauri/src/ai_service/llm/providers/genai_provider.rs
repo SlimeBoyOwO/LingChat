@@ -16,7 +16,7 @@ use genai::ServiceTarget;
 use reqwest::Client;
 
 use crate::ai_service::llm::provider::{LlmProvider, LlmResponseWithTools};
-use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig};
+use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig, LlmUsage};
 use crate::ai_service::types::{LlmMessage, ToolDefinition};
 
 // ─── Provider ────────────────────────────────────────────────────
@@ -30,6 +30,10 @@ pub struct GenaiProvider {
     top_p: Option<f64>,
     enable_thinking: bool,
     _reasoning_effort: Option<String>,
+    /// 是否 MiniMax 兼容接口（base_url 或模型名含 minimax）。
+    /// MiniMax 的 OpenAI 兼容 API 只接受 thinking.type = "adaptive" / "disabled"，
+    /// 传 "enabled" 会直接 400 报错（invalid thinking.type），需单独映射。
+    is_minimax: bool,
 }
 
 /// 规范化 base_url：确保以 `/` 结尾。
@@ -116,6 +120,8 @@ impl GenaiProvider {
             top_p: cfg.top_p,
             enable_thinking: cfg.enable_thinking,
             _reasoning_effort: cfg.reasoning_effort.clone(),
+            is_minimax: cfg.base_url.to_lowercase().contains("minimax")
+                || cfg.model.to_lowercase().contains("minimax"),
         })
     }
 
@@ -189,7 +195,10 @@ impl GenaiProvider {
     fn build_chat_options(&self, tool_choice: Option<&str>) -> ChatOptions {
         let mut opts = ChatOptions::default()
             .with_capture_tool_calls(true)
-            .with_capture_content(true);
+            .with_capture_content(true)
+            // 捕获 token 用量：流式结束时从 StreamEnd.captured_usage 读取，
+            // 非流式从 ChatResponse.usage 读取，供 AI 助手用量统计使用。
+            .with_capture_usage(true);
 
         if let Some(temp) = self.temperature {
             opts = opts.with_temperature(temp);
@@ -201,8 +210,18 @@ impl GenaiProvider {
         // DeepSeek Reasoner 等模型在 thinking 字段缺失时默认启用思考，
         // 始终注入 thinking 字段，不区分 provider — 与旧 OpenAiProvider 行为一致。
         // 对不支持该字段的 provider（如纯 OpenAI）通常会被忽略，无害。[TODO] 需要测试
+        //
+        // MiniMax 例外：其 OpenAI 兼容接口只接受 "adaptive" / "disabled"，
+        // 传 "enabled" 会返回 400（invalid thinking.type (2013)），启用思考时映射为
+        // "adaptive"（由模型自主决定思考深度），关闭时同样是 "disabled"。
 
-        let thinking_type = if self.enable_thinking {
+        let thinking_type = if self.is_minimax {
+            if self.enable_thinking {
+                "adaptive"
+            } else {
+                "disabled"
+            }
+        } else if self.enable_thinking {
             "enabled"
         } else {
             "disabled"
@@ -262,6 +281,26 @@ impl GenaiProvider {
         }
     }
 
+    /// genai 归一化用量 → 项目 LlmUsage。
+    ///
+    /// genai 反序列化时把 0 视为 None（跨 provider 一致：OpenAI 常给不适用计数器
+    /// 返回 0），这里统一补 0；「全 0 / 未上报」由上层按需过滤。
+    /// 缓存命中数取自 prompt_tokens_details.cached_tokens（OpenAI cached_tokens /
+    /// Anthropic cache_read_input_tokens 的归一化字段）。
+    fn convert_usage(u: &genai::chat::Usage) -> LlmUsage {
+        LlmUsage {
+            prompt_tokens: u.prompt_tokens.unwrap_or(0).max(0) as u64,
+            completion_tokens: u.completion_tokens.unwrap_or(0).max(0) as u64,
+            total_tokens: u.total_tokens.unwrap_or(0).max(0) as u64,
+            cached_tokens: u
+                .prompt_tokens_details
+                .as_ref()
+                .and_then(|d| d.cached_tokens)
+                .unwrap_or(0)
+                .max(0) as u64,
+        }
+    }
+
     async fn complete_stream_inner(
         &self,
         messages: &[LlmMessage],
@@ -274,6 +313,24 @@ impl GenaiProvider {
             &serde_json::to_value(&chat_req).unwrap_or_default(),
         );
         let opts = self.build_chat_options(tool_choice);
+        // 诊断日志：记录实际 ChatOptions，帮助排查 MiniMax 等兼容问题。
+        // ChatOptions 字段为 public，直接访问；ToolChoice 转为字符串避免序列化依赖。
+        let tool_choice_str = opts.tool_choice.as_ref().map(|tc| match tc {
+            ToolChoice::Auto => "auto",
+            ToolChoice::None => "none",
+            ToolChoice::Required => "required",
+            ToolChoice::Tool { .. } => "specific",
+        });
+        tracing::debug!(
+            model = self.model,
+            is_minimax = self.is_minimax,
+            temperature = ?opts.temperature,
+            top_p = ?opts.top_p,
+            tool_choice = tool_choice_str,
+            extra_body = ?opts.extra_body,
+            "GenaiProvider 准备 LLM 请求"
+        );
+
         let stream_resp = self
             .client
             .exec_chat_stream(&self.model, chat_req, Some(&opts))
@@ -298,7 +355,8 @@ impl GenaiProvider {
                                 yield LlmChunk::Reasoning(reasoning);
                             }
                         }
-                        // 先取走停止原因（captured_into_tool_calls 会移动 end）
+                        // 先取走用量与停止原因（captured_into_tool_calls 会移动 end）
+                        let usage = end.captured_usage.as_ref().map(Self::convert_usage);
                         let reason = end
                             .captured_stop_reason
                             .as_ref()
@@ -307,8 +365,8 @@ impl GenaiProvider {
                             let calls = calls.iter().map(Self::convert_tool_call).collect();
                             yield LlmChunk::ToolCalls(calls);
                         }
-                        // 终止信号：透传归一化停止原因（工具闭环用它检测截断）
-                        yield LlmChunk::StreamEnd { reason };
+                        // 终止信号：透传归一化停止原因（工具闭环用它检测截断）+ 本轮用量
+                        yield LlmChunk::StreamEnd { reason, usage };
                     }
                 }
             }
@@ -457,7 +515,11 @@ impl LlmProvider for GenaiProvider {
     }
 
     fn supports_streaming_tools(&self) -> bool {
-        true
+        // MiniMax 的 OpenAI 兼容端点在流式工具调用上行为不稳定（实测非流式可
+        // 靠返回 tool_calls，流式下模型常直接给文字回复而不调工具）。先降级到
+        // 非流式工具调用，保证功能可用；后续抓到真实请求/响应后再恢复流式。
+        // TODO: 待拿到 LLM 请求日志并定位流式 tool_calls 解析问题后恢复。
+        !self.is_minimax
     }
 
     async fn complete_stream_with_tools(
@@ -484,6 +546,22 @@ impl LlmProvider for GenaiProvider {
             &serde_json::to_value(&chat_req).unwrap_or_default(),
         );
         let opts = self.build_chat_options(tool_choice);
+        // 诊断日志：记录实际 ChatOptions。
+        let tool_choice_str = opts.tool_choice.as_ref().map(|tc| match tc {
+            ToolChoice::Auto => "auto",
+            ToolChoice::None => "none",
+            ToolChoice::Required => "required",
+            ToolChoice::Tool { .. } => "specific",
+        });
+        tracing::debug!(
+            model = self.model,
+            is_minimax = self.is_minimax,
+            temperature = ?opts.temperature,
+            top_p = ?opts.top_p,
+            tool_choice = tool_choice_str,
+            extra_body = ?opts.extra_body,
+            "GenaiProvider 准备非流式 LLM 请求"
+        );
 
         let response: ChatResponse = self
             .client
@@ -491,8 +569,14 @@ impl LlmProvider for GenaiProvider {
             .await
             .map_err(|e| anyhow!("genai 工具调用失败: {e}"))?;
 
-        // 先借用获取文本，再消费获取 tool_calls
+        // 先借用获取文本/用量，再消费获取 tool_calls。
+        // 注意：ChatResponse.usage 是值而非 Option（未上报时字段全为 None）。
         let content = response.first_text().map(|s| s.to_string());
+        let usage = if response.usage.prompt_tokens.is_none() && response.usage.completion_tokens.is_none() {
+            None
+        } else {
+            Some(Self::convert_usage(&response.usage))
+        };
 
         let tool_calls: Option<Vec<crate::ai_service::types::ToolCall>> = {
             let calls = response.into_tool_calls();
@@ -506,6 +590,7 @@ impl LlmProvider for GenaiProvider {
         Ok(LlmResponseWithTools {
             content,
             tool_calls,
+            usage,
         })
     }
 }
