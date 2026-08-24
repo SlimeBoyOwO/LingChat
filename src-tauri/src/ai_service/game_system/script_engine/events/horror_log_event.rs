@@ -13,7 +13,7 @@ use crate::ai_service::game_system::script_engine::events::{
     parse_duration, register_event, ScriptContext, ScriptEvent,
 };
 
-const MAX_LINES: i64 = 50;
+const MAX_LINES: i64 = 300;
 /// 乱码碎片：追加在文本后面，模拟"日志本身被污染"的感觉
 const GLITCH_SHARDS: [&str; 8] = [
     "▓▒░", "█▓▒", "░▒▓", "▒█░", "▓░█", "█░▒", "░█▓", "▒░▓",

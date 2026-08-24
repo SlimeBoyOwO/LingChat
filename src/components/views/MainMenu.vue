@@ -60,11 +60,11 @@
       <Transition name="slide-left">
         <MainMenuOptions
           v-if="menuState === 'main'"
-          @start-game="hijackOr(showGameModeMenu)"
-          @open-settings="(tab?: string) => hijackOr(() => handleOpenSettings(tab))"
-          @open-credits="hijackOr(handleOpenCredits)"
-          @open-workshop="hijackOr(showWorkshopMenu)"
-          @open-script-editor="() => hijackOr(() => router.push('/script-editor'))"
+          @start-game="showGameModeMenu"
+          @open-settings="handleOpenSettings"
+          @open-credits="handleOpenCredits"
+          @open-workshop="showWorkshopMenu"
+          @open-script-editor="() => router.push('/script-editor')"
         />
       </Transition>
 
@@ -123,7 +123,7 @@ import MainChat from './MainChat.vue'
 import { SettingsPanel as Settings } from '../settings/'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useSettingsStore } from '../../stores/modules/settings'
-import { getScriptList, startScript, type ScriptSummary } from '@/api/services/script-info'
+import { getScriptList, type ScriptSummary } from '@/api/services/script-info'
 import { listDlcs } from '@/api/services/dlc'
 import { invoke } from '@tauri-apps/api/core'
 import { useGameStore } from '../../stores/modules/game'
@@ -173,29 +173,6 @@ const starsLayerRef = ref<HTMLElement | null>(null)
 const Save = Settings
 
 /* ================== 菜单逻辑 ================== */
-// DDLC 式菜单劫持：剧本菜单特效（blood/ghost）激活期间，除「退出游戏」外的
-// 所有主菜单入口都直接启动特效归属的剧本——按钮照常显示，但已经没有别的选择了。
-const menuHijackScriptName = computed(() => {
-  if (menuEffect.value.theme === 'normal' || !menuEffect.value.owner) return null
-  // owner 是 path_key（如 standalone\第七个测试剧本），folder_key 是其最后一段
-  const folder = menuEffect.value.owner.split(/[\\/]/).pop()
-  const target = scripts.value.find((s) => s.folder_key === folder)
-  return target?.script_name ?? null
-})
-
-function hijackOr(original: () => void) {
-  const target = menuHijackScriptName.value
-  if (!target) {
-    original()
-    return
-  }
-  // 与剧本列表的 selectScript 同序：先切到游戏视图再启动剧本
-  router
-    .push('/chat')
-    .then(() => startScript(target))
-    .catch(() => original())
-}
-
 function showGameModeMenu() {
   menuState.value = 'gameMode'
 }
