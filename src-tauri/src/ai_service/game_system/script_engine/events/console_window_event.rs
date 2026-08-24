@@ -152,6 +152,12 @@ impl ScriptEvent for ConsoleWindowEvent {
                 style: self.style.clone(),
             })
             .map_err(anyhow::Error::msg)?;
+        tracing::info!(
+            "[ConsoleWindowEvent] 票据 {} 已排队（style={} count={}）",
+            request_id,
+            self.style,
+            self.count
+        );
         let payload = ConsoleWindowTicketPayload { request_id };
         if let Err(error) = emit(ctx.app, SCRIPT_CONSOLE_WINDOW, &payload) {
             crate::api::script_popups::discard_pending(request_id);

@@ -2,9 +2,9 @@
 //!
 //! Windows never launches PowerShell/pwsh here. Error and warning beats use a
 //! native TaskDialog, notes launch Notepad directly, and console beats launch
-//! cmd.exe directly (blue or blood-red). Every object is generation-owned,
-//! bounded by the event validator, and closed when its lifetime or script run
-//! ends.
+//! cmd.exe directly (blue or blood-red). Every object is generation-owned and
+//! bounded by the event validator; windows stay open until the player closes
+//! them, and any leftovers are torn down when the script run ends.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -87,9 +87,21 @@ fn take_pending(request_id: u64) -> Result<PendingPopup, String> {
 }
 
 pub fn show_pending(request_id: u64) -> Result<(), String> {
-    let pending = take_pending(request_id)?;
-    spawn_sequence(pending.request, pending.generation);
-    Ok(())
+    match take_pending(request_id) {
+        Ok(pending) => {
+            tracing::info!(
+                "[ScriptPopup] 票据 {} 消费成功，拉起系统窗口（style={}）",
+                request_id,
+                pending.request.style
+            );
+            spawn_sequence(pending.request, pending.generation);
+            Ok(())
+        }
+        Err(error) => {
+            tracing::warn!("[ScriptPopup] 票据 {} 消费失败: {}", request_id, error);
+            Err(error)
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -103,12 +115,12 @@ mod windows_impl {
     use std::sync::{LazyLock, Mutex};
     use std::time::Duration;
     use uuid::Uuid;
-    use windows::core::{BOOL, HRESULT, PCWSTR};
+    use windows::core::{s, w, BOOL, HRESULT, PCWSTR};
     use windows::Win32::Foundation::{HWND, LPARAM, TRUE, WPARAM};
+    use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
     use windows::Win32::UI::Controls::{
-        TaskDialogIndirect, TASKDIALOGCONFIG, TDCBF_OK_BUTTON, TDF_ALLOW_DIALOG_CANCELLATION,
-        TDF_CALLBACK_TIMER, TDF_SIZE_TO_CONTENT, TDM_CLICK_BUTTON, TDN_CREATED, TDN_DESTROYED,
-        TDN_TIMER, TD_ERROR_ICON, TD_WARNING_ICON,
+        TASKDIALOGCONFIG, TDCBF_OK_BUTTON, TDF_ALLOW_DIALOG_CANCELLATION, TDF_SIZE_TO_CONTENT,
+        TDN_CREATED, TDN_DESTROYED, TD_ERROR_ICON, TD_WARNING_ICON,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsWindow,
@@ -116,7 +128,6 @@ mod windows_impl {
         WM_CLOSE, WM_SYSCOMMAND,
     };
 
-    const ID_OK: usize = 1;
     const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -137,7 +148,6 @@ mod windows_impl {
     struct DialogContext {
         id: u64,
         generation: u64,
-        lifetime_ms: u64,
     }
 
     fn wide(value: &str) -> Vec<u16> {
@@ -165,7 +175,7 @@ mod windows_impl {
     unsafe extern "system" fn task_dialog_callback(
         hwnd: HWND,
         notification: windows::Win32::UI::Controls::TASKDIALOG_NOTIFICATIONS,
-        wparam: WPARAM,
+        _wparam: WPARAM,
         _lparam: LPARAM,
         callback_data: isize,
     ) -> HRESULT {
@@ -200,15 +210,6 @@ mod windows_impl {
                     SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
                 )
             };
-        } else if notification == TDN_TIMER && wparam.0 as u64 >= context.lifetime_ms {
-            let _ = unsafe {
-                PostMessageW(
-                    Some(hwnd),
-                    TDM_CLICK_BUTTON.0 as u32,
-                    WPARAM(ID_OK),
-                    LPARAM(0),
-                )
-            };
         } else if notification == TDN_DESTROYED {
             DIALOGS
                 .lock()
@@ -218,10 +219,22 @@ mod windows_impl {
         HRESULT(0)
     }
 
+    /// TaskDialogIndirect 只存在于 comctl32 v6（应用清单声明 Common-Controls 6.0
+    /// 才加载）。正式 exe 嵌有清单；cargo test 生成的测试二进制没有清单，静态导入会
+    /// 让 loader 直接报 0xc0000139。改为运行时解析：v6 不可用时优雅跳过弹窗，
+    /// 测试进程也能正常存活。
+    type TaskDialogIndirectFn =
+        unsafe extern "system" fn(*const TASKDIALOGCONFIG, *mut i32, *mut i32, *mut i32) -> HRESULT;
+
+    fn resolve_task_dialog_indirect() -> Option<TaskDialogIndirectFn> {
+        let module = unsafe { GetModuleHandleW(w!("comctl32.dll")) }.ok()?;
+        let proc = unsafe { GetProcAddress(module, s!("TaskDialogIndirect")) }?;
+        Some(unsafe { std::mem::transmute::<_, TaskDialogIndirectFn>(proc) })
+    }
+
     fn spawn_task_dialog(
         title: String,
         text: String,
-        lifetime: f64,
         warning: bool,
         generation: u64,
     ) {
@@ -233,16 +246,12 @@ mod windows_impl {
             }
             let title_w = wide(&title);
             let text_w = wide(&text);
-            let context = Box::new(DialogContext {
-                id,
-                generation,
-                lifetime_ms: (lifetime * 1000.0).round() as u64,
-            });
+            let context = Box::new(DialogContext { id, generation });
             let context_ptr = Box::into_raw(context);
             let mut config = TASKDIALOGCONFIG::default();
             config.cbSize = std::mem::size_of::<TASKDIALOGCONFIG>() as u32;
-            config.dwFlags =
-                TDF_ALLOW_DIALOG_CANCELLATION | TDF_CALLBACK_TIMER | TDF_SIZE_TO_CONTENT;
+            // 弹窗不自动关闭：玩家自己点确定/关闭；剧本结束由 close_all 统一清理。
+            config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
             config.dwCommonButtons = TDCBF_OK_BUTTON;
             config.pszWindowTitle = PCWSTR(title_w.as_ptr());
             config.pszMainInstruction = PCWSTR(title_w.as_ptr());
@@ -255,7 +264,20 @@ mod windows_impl {
             config.pfCallback = Some(task_dialog_callback);
             config.lpCallbackData = context_ptr as isize;
 
-            let result = unsafe { TaskDialogIndirect(&config, None, None, None) };
+            let Some(task_dialog_indirect) = resolve_task_dialog_indirect() else {
+                tracing::warn!("[ScriptPopup] comctl32 v6 不可用，跳过原生系统弹窗");
+                drop(unsafe { Box::from_raw(context_ptr) });
+                release_slot();
+                return;
+            };
+            let result = unsafe {
+                task_dialog_indirect(
+                    &config,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            };
             // SAFETY: TaskDialogIndirect has returned and can no longer call the
             // callback, so the context has no remaining borrowers.
             drop(unsafe { Box::from_raw(context_ptr) });
@@ -264,8 +286,8 @@ mod windows_impl {
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .remove(&id);
             release_slot();
-            if let Err(error) = result {
-                tracing::warn!("[ScriptPopup] 原生系统弹窗失败: {error}");
+            if result.is_err() {
+                tracing::warn!("[ScriptPopup] 原生系统弹窗失败: {}", result.message());
             }
         });
     }
@@ -283,20 +305,41 @@ mod windows_impl {
             .collect::<String>()
     }
 
-    fn cmd_script(title: &str, text_filename: &str, blood_red: bool) -> String {
+    /// 直接拼进 cmd /K 的启动命令串（不走 .bat 文件）。
+    /// .bat 里 chcp 65001 有个老坑：默认代码页（如 936）启动的 cmd 读到这行后，
+    /// 批处理解析器按新代码页重扫缓冲会错位吞行——演出窗口黑屏只剩标题。
+    /// 命令行参数本身走 Unicode，不经过代码页文件读取，没有这个问题。
+    /// 文件路径转成 8.3 短名：串内不再出现嵌套引号（cmd /K 引号规则会把它拆散），
+    /// 也天然免疫含空格的用户目录。
+    /// type 必须重定向到 CON：宿主是无控制台的 GUI 进程，cmd 继承不到有效 std，
+    /// 直写 stdout 会全丢——CON 才是它新控制台这块屏幕。末尾长 ping 只为吊命：
+    /// /K 在 std 无效时无法进入交互，没有它窗口执行完即消失（玩家自己点 X 结束）。
+    fn cmd_launch_line(title: &str, text_path: &std::path::Path, blood_red: bool) -> String {
+        use windows::Win32::Storage::FileSystem::GetShortPathNameW;
         let color = if blood_red { "4F" } else { "1F" };
-        [
-            "@echo off".to_string(),
-            "chcp 65001 >nul".to_string(),
-            format!("title {}", cmd_literal(title)),
-            format!("color {color}"),
-            "cls".to_string(),
-            format!("type \"%~dp0{text_filename}\""),
-            ":lingchat_wait".to_string(),
-            "ping -n 2 127.0.0.1 >nul".to_string(),
-            "goto lingchat_wait".to_string(),
-        ]
-        .join("\r\n")
+        let short_path = {
+            let wide: Vec<u16> = text_path
+                .to_string_lossy()
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
+            let needed = unsafe { GetShortPathNameW(PCWSTR(wide.as_ptr()), None) };
+            if needed == 0 {
+                text_path.to_string_lossy().into_owned()
+            } else {
+                let mut buffer = vec![0u16; needed as usize];
+                let copied = unsafe { GetShortPathNameW(PCWSTR(wide.as_ptr()), Some(&mut buffer)) };
+                if copied == 0 {
+                    text_path.to_string_lossy().into_owned()
+                } else {
+                    String::from_utf16_lossy(&buffer[..copied as usize])
+                }
+            }
+        };
+        format!(
+            "chcp 65001 >nul & title {} & color {color} & cls & type {short_path} > CON & ping -n 999999 127.0.0.1 >nul",
+            cmd_literal(title),
+        )
     }
 
     struct WindowSearch {
@@ -389,7 +432,6 @@ mod windows_impl {
         temp_files: Vec<PathBuf>,
         window_marker: Option<String>,
         kill_process: bool,
-        lifetime: f64,
         generation: u64,
     ) {
         let id = next_id();
@@ -412,8 +454,27 @@ mod windows_impl {
             return;
         }
         std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_secs_f64(lifetime));
-            close_process(id);
+            // 弹窗不自动关闭：玩家自己关窗后进程退出，这里再收尾临时文件与窗口槽位；
+            // 剧本运行结束时 close_all 仍会统一清理所有残留窗口。
+            loop {
+                std::thread::sleep(Duration::from_millis(400));
+                if !generation_is_current(generation) {
+                    return;
+                }
+                let exited = {
+                    let mut processes = PROCESSES
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    match processes.get_mut(&id) {
+                        Some(popup) => matches!(popup.child.try_wait(), Ok(Some(_))),
+                        None => return,
+                    }
+                };
+                if exited {
+                    close_process(id);
+                    return;
+                }
+            }
         });
     }
 
@@ -523,52 +584,37 @@ mod windows_impl {
     fn spawn_cmd(
         title: &str,
         lines: &[String],
-        lifetime: f64,
         blood_red: bool,
         generation: u64,
     ) -> Result<(), String> {
         use std::os::windows::process::CommandExt;
         // 剧本文字只进入临时纯文本文件，绝不成为 cmd.exe 命令的一部分；
-        // .cmd 仅含固定命令、净化后的标题与随机安全文件名。
+        // 启动命令串仅含固定命令、净化后的标题与随机安全文件路径。
         let id = Uuid::new_v4();
-        let temp_dir = std::env::temp_dir();
-        let text_filename = format!("lingchat-console-{id}.txt");
-        let script_filename = format!("lingchat-console-{id}.cmd");
-        let text_path = temp_dir.join(&text_filename);
-        let script_path = temp_dir.join(&script_filename);
+        let text_path =
+            std::env::temp_dir().join(format!("lingchat-console-{id}.txt"));
         let body = format!("{}\r\n", lines.join("\r\n"));
         fs::write(&text_path, body.as_bytes())
             .map_err(|error| format!("写入 CMD 演出文本失败: {error}"))?;
-        if let Err(error) = fs::write(
-            &script_path,
-            cmd_script(title, &text_filename, blood_red).as_bytes(),
-        ) {
-            let _ = fs::remove_file(&text_path);
-            return Err(format!("写入 CMD 启动脚本失败: {error}"));
-        }
 
         let mut command = Command::new("cmd.exe");
+        // cmd /K 的命令串按 cmd 自己的引号规则解析（不识别 Rust arg() 的 MSVCRT \" 转义）。
+        // raw_arg 手工包外层引号 + /S 剥掉它：串内嵌套的 type "..." 引号原样保留。
+        // CREATE_NEW_CONSOLE 必须给：宿主是无控制台的 GUI 进程，不给就是无窗后台 cmd；
+        // 窗口内内容靠命令串里的 type > CON 落到这块新屏幕上。
         command
-            .arg("/D")
-            .arg("/Q")
-            .arg("/K")
-            .arg(&script_filename)
-            .current_dir(&temp_dir)
+            .raw_arg(format!(
+                "/D /Q /S /K \"{}\"",
+                cmd_launch_line(title, &text_path, blood_red)
+            ))
             .creation_flags(CREATE_NEW_CONSOLE);
         match command.spawn() {
             Ok(child) => {
-                register_process(
-                    child,
-                    vec![script_path, text_path],
-                    None,
-                    true,
-                    lifetime,
-                    generation,
-                );
+                tracing::info!("[ScriptPopup] cmd.exe 已拉起（pid={}）", child.id());
+                register_process(child, vec![text_path], None, true, generation);
                 Ok(())
             }
             Err(error) => {
-                let _ = fs::remove_file(&script_path);
                 let _ = fs::remove_file(&text_path);
                 Err(format!("启动真实 CMD 失败: {error}"))
             }
@@ -578,7 +624,6 @@ mod windows_impl {
     fn spawn_notepad(
         title: &str,
         lines: &[String],
-        lifetime: f64,
         generation: u64,
     ) -> Result<(), String> {
         use std::os::windows::process::CommandExt;
@@ -595,7 +640,7 @@ mod windows_impl {
             .creation_flags(CREATE_NO_WINDOW);
         match command.spawn() {
             Ok(child) => {
-                register_process(child, vec![path], Some(marker), false, lifetime, generation);
+                register_process(child, vec![path], Some(marker), false, generation);
                 Ok(())
             }
             Err(error) => {
@@ -613,44 +658,19 @@ mod windows_impl {
             return Err("真实系统窗口全局上限为 4，已拒绝额外窗口".to_string());
         }
         let text = request.lines.join("\n");
+        tracing::info!("[ScriptPopup] spawn_one 开始：style={} title={:?}", request.style, request.title);
         let result = match request.style.as_str() {
             "error" => {
-                spawn_task_dialog(
-                    request.title.clone(),
-                    text,
-                    request.lifetime,
-                    false,
-                    generation,
-                );
+                spawn_task_dialog(request.title.clone(), text, false, generation);
                 Ok(())
             }
             "warning" => {
-                spawn_task_dialog(
-                    request.title.clone(),
-                    text,
-                    request.lifetime,
-                    true,
-                    generation,
-                );
+                spawn_task_dialog(request.title.clone(), text, true, generation);
                 Ok(())
             }
-            "notepad" => {
-                spawn_notepad(&request.title, &request.lines, request.lifetime, generation)
-            }
-            "blood_cmd" => spawn_cmd(
-                &request.title,
-                &request.lines,
-                request.lifetime,
-                true,
-                generation,
-            ),
-            _ => spawn_cmd(
-                &request.title,
-                &request.lines,
-                request.lifetime,
-                false,
-                generation,
-            ),
+            "notepad" => spawn_notepad(&request.title, &request.lines, generation),
+            "blood_cmd" => spawn_cmd(&request.title, &request.lines, true, generation),
+            _ => spawn_cmd(&request.title, &request.lines, false, generation),
         };
         if result.is_err() {
             release_slot();
@@ -700,13 +720,17 @@ mod windows_impl {
 
     #[cfg(test)]
     mod tests {
-        use super::cmd_script;
+        use super::cmd_launch_line;
 
         #[test]
         fn blood_cmd_uses_red_background_without_powershell() {
-            let command = cmd_script("RUNTIME", "lingchat-console-test.txt", true);
+            let command = cmd_launch_line(
+                "RUNTIME",
+                std::path::Path::new(r"C:\Temp\lingchat-console-test.txt"),
+                true,
+            );
             assert!(command.contains("color 4F"));
-            assert!(command.contains("%~dp0lingchat-console-test.txt"));
+            assert!(command.contains("type "));
             assert!(!command.to_ascii_lowercase().contains("powershell"));
             assert!(!command.to_ascii_lowercase().contains("pwsh"));
             assert!(!command.contains("safe story text"));
@@ -714,7 +738,11 @@ mod windows_impl {
 
         #[test]
         fn normal_cmd_uses_blue_background() {
-            let command = cmd_script("RUNTIME", "lingchat-console-test.txt", false);
+            let command = cmd_launch_line(
+                "RUNTIME",
+                std::path::Path::new(r"C:\Temp\lingchat-console-test.txt"),
+                false,
+            );
             assert!(command.contains("color 1F"));
         }
     }
