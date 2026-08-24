@@ -33,6 +33,7 @@ pub mod set_variable_event;
 pub mod sound_event;
 pub mod voice_shift_event;
 pub mod wait_event;
+pub mod watch_file_event;
 pub mod window_title_event;
 
 use std::collections::HashMap;
@@ -65,6 +66,12 @@ pub struct ScriptChannels {
     /// `script_submit_input` 据此判断：当选项挂起时，输入框里打的字可以转投
     /// `choice_tx` 而不是被拒绝——否则选项永远无法解决，剧本永久阻塞。
     pub choice_allow_free: bool,
+    /// 文件监视（watch_file）：目标 .chr 消失时要跳转的章节。
+    /// 章节循环在事件之间/事件报错时检查它——监视器会同时丢弃挂起的输入通道，
+    /// 让阻塞中的事件立刻以 Err 返回，从而及时让位给目标章节。
+    pub watch_jump: Option<String>,
+    /// 监视任务句柄；新监视/停止/剧本结束时 abort。
+    pub watch_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl ScriptChannels {
@@ -73,6 +80,8 @@ impl ScriptChannels {
             input_tx: None,
             choice_tx: None,
             choice_allow_free: false,
+            watch_jump: None,
+            watch_task: None,
         }
     }
 }

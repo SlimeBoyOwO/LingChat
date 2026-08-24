@@ -63,6 +63,8 @@ pub fn init_event_registry() {
     events::console_window_event::register();
     // OS 窗口标题乱码（血字/崩坏演出用，剧本结束自动还原）
     events::window_title_event::register();
+    // .chr 文件实时监视（DDLC Act3 空房间：玩家删文件即跳崩坏序列）
+    events::watch_file_event::register();
 
     tracing::info!("[ScriptEngine] 所有事件处理器已注册");
 }

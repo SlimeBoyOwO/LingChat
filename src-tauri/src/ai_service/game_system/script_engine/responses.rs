@@ -32,6 +32,7 @@ pub mod event_names {
     pub const SCRIPT_WAIT: &str = "script:wait";
     pub const SCRIPT_GLITCH_WINDOW: &str = "script:glitch-window";
     pub const SCRIPT_CONSOLE_WINDOW: &str = "script:console-window";
+    pub const SCRIPT_WATCH_JUMP: &str = "script:watch-jump";
 }
 
 // ============================================================
@@ -148,6 +149,13 @@ pub struct ConsoleWindowPayload {
     pub lifetime: u64,
     /// console（蓝底 PowerShell）/ error（红叉系统错误框）/ warning（黄色警告框）/ notepad（真实记事本）
     pub style: String,
+}
+
+/// 文件监视跳转：前端收到后应立刻清掉被中断章节的积压事件，让崩坏章节即时上演。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WatchJumpPayload {
+    pub target: String,
 }
 
 /// 强制选择：前端用"鼠标被拖向 forced 选项"的演出，最终只能提交 forced。

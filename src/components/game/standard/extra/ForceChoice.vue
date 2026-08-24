@@ -69,8 +69,8 @@ function onMouseMove(e: MouseEvent) {
   realPos.y = e.clientY
 }
 
-const TICK_MS = 33 // 每帧拖动一步，约 30 步/秒
-const PULL_MS = 2600 // 2.6s 后完全被吸附
+const TICK_MS = 25 // 每帧拖动一步，约 40 步/秒
+const PULL_MS = 1800 // 1.8s 后完全被吸附（v2.7 加强：夺鼠标更凶）
 const MAX_WARP_FAILURES = 5 // 连续失败这么多次就放弃拖动，留在原地等玩家自己点
 
 async function tick() {

@@ -290,6 +290,15 @@ fn target_path(script: &ScriptStatus, data_dir: &Path, file: &str) -> Result<Pat
     Ok(target)
 }
 
+/// 供 `watch_file` 事件复用：与 character_file 完全相同的声明校验与路径解析。
+pub(crate) fn resolve_declared_target_path(
+    script: &ScriptStatus,
+    data_dir: &Path,
+    file: &str,
+) -> Result<PathBuf> {
+    target_path(script, data_dir, file)
+}
+
 fn source_path(script: &ScriptStatus, file: &str) -> Result<PathBuf> {
     require_declared(script, file)?;
     let source_dir = script.script_path.join("CharacterFiles");

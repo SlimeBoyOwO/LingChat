@@ -370,6 +370,13 @@ export function initializeTauriEventListeners() {
     eventQueue.addEvent(asEvent(event.payload, { type: 'console_window', defaultDuration: 0 }))
   })
 
+  // 文件监视跳转：被中断章节的积压事件立刻作废，崩坏章节即时上演（DDLC Act3 的
+  // 实时删文件检查——玩家不等旧台词点完就该看到房间塌掉）
+  listen('script:watch-jump', () => {
+    eventQueue.clear()
+    eventQueue.resume()
+  })
+
   listen('script:force-choice', (event) => {
     eventQueue.addEvent(asEvent(event.payload, { type: 'force_choice', defaultDuration: 0 }))
   })

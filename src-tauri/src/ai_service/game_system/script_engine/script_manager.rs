@@ -697,6 +697,15 @@ impl ScriptManager {
         // OS 窗口标题是纯内存演出，结束时无条件还原（乱码标题不能泄漏到主菜单）
         super::events::window_title_event::restore_window_title(ctx.app);
 
+        // 文件监视器同理：剧本结束必须停掉，否则它会盯着已结束的演出
+        {
+            let mut channels = ctx.channels.lock().await;
+            if let Some(task) = channels.watch_task.take() {
+                task.abort();
+            }
+            channels.watch_jump = None;
+        }
+
         // Extract data under one lock, then mutate under a second lock. The
         // frontend end event is emitted only after persistence and teardown so
         // the remounted main menu cannot race stale act/theme state.

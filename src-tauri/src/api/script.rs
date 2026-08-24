@@ -49,6 +49,9 @@ pub struct ScriptListResponse {
 pub struct ScriptMenuEffectResponse {
     pub theme: String,
     pub message: Option<String>,
+    /// 特效归属剧本的 path_key（如 `standalone/第七个测试剧本`）；
+    /// 前端据此在主题激活时把所有主菜单入口劫持到该剧本。
+    pub owner: String,
 }
 
 // ============================================================
@@ -104,6 +107,7 @@ pub async fn get_script_menu_effect(app: AppHandle) -> Option<ScriptMenuEffectRe
     Some(ScriptMenuEffectResponse {
         theme: state.theme,
         message: state.message,
+        owner: state.owner,
     })
 }
 
@@ -507,6 +511,11 @@ pub async fn stop_script(app: AppHandle) -> Result<(), String> {
         channels.input_tx = None;
         channels.choice_tx = None;
         channels.choice_allow_free = false;
+        // 文件监视器一并停掉并丢弃未消费的跳转
+        if let Some(task) = channels.watch_task.take() {
+            task.abort();
+        }
+        channels.watch_jump = None;
     }
     // 等旧任务走完 on_script_end（含台词表截断），最多约 3 秒
     for _ in 0..30 {
