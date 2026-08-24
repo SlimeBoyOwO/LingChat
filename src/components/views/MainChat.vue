@@ -2,17 +2,7 @@
   <div class="main-box">
     <!-- 主界面始终渲染，加载动画期间在后台初始化 -->
     <FreeModeTools />
-    <Transition name="full-access-notice">
-      <div
-        v-if="fullAccessUseVisible && !uiStore.showSettings"
-        class="full-access-warning"
-        role="status"
-        aria-live="polite"
-      >
-        <ShieldAlert :size="18" aria-hidden="true" />
-        <span>{{ $t('ui.toolCalls.fullAccessTopWarning') }}</span>
-      </div>
-    </Transition>
+    <FullAccessWarning />
     <GameBackground></GameBackground>
     <!-- <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />  -->
     <GameRolesStage
@@ -62,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import FreeModeTools from '@/components/tools/FreeModeTools.vue'
 import ToolActivityStatus from '@/components/tools/ToolActivityStatus.vue'
@@ -77,12 +67,7 @@ import { eventQueue } from '@/core/events/event-queue'
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
 import ImageSourcePicker from '@/components/ui/ImageSourcePicker.vue'
 import { isAndroid } from '@/utils/platform'
-import { ShieldAlert } from 'lucide-vue-next'
-import {
-  currentToolAccessMode,
-  currentToolActivity,
-  getToolSettings,
-} from '@/api/services/tool-settings'
+import FullAccessWarning from '@/components/tools/FullAccessWarning.vue'
 
 const LOADING_STORAGE_KEY = 'lingchat_loading_shown'
 
@@ -94,43 +79,6 @@ let loadingShownThisSession = false
 const router = useRouter()
 const uiStore = useUIStore()
 const gameStore = useGameStore()
-
-const fullAccessUseVisible = ref(false)
-let fullAccessUseTimer: ReturnType<typeof setTimeout> | null = null
-const fullAccessTools = new Set([
-  'list_files',
-  'read_file',
-  'ReadMediaFile',
-  'write_file',
-  'delete_file',
-  'edit_file',
-  'search_files',
-  'grep_files',
-  'glob',
-  'grep',
-  'execute_command',
-])
-
-watch(currentToolActivity, (activity, previous) => {
-  if (
-    currentToolAccessMode.value !== 'full_access' ||
-    activity?.status !== 'running' ||
-    !fullAccessTools.has(activity.tool) ||
-    (previous?.callId === activity.callId && previous.status === 'running')
-  ) {
-    return
-  }
-  fullAccessUseVisible.value = true
-  if (fullAccessUseTimer) clearTimeout(fullAccessUseTimer)
-  fullAccessUseTimer = setTimeout(() => {
-    fullAccessUseVisible.value = false
-    fullAccessUseTimer = null
-  }, 2400)
-})
-
-onBeforeUnmount(() => {
-  if (fullAccessUseTimer) clearTimeout(fullAccessUseTimer)
-})
 
 // 首次加载过渡状态：仅当本次 session 未播放过且 localStorage 未标记时播放
 const showLoading = ref(!loadingShownThisSession && !localStorage.getItem(LOADING_STORAGE_KEY))
@@ -171,9 +119,6 @@ const runInitialization = async () => {
 
 // 初始化游戏信息
 onMounted(() => {
-  void getToolSettings().catch((error) => {
-    console.warn('[MainChat] 加载工具访问模式失败:', error)
-  })
   // 每次进入自由对话都恢复事件队列——编辑器试玩结束后 clear() 会把 paused 置 true，
   // 而 resume 只在首次加载的 LoadingTransition 里被调用，返回时走不到那里。
   // 但首次加载时不能在这里恢复：AI 开场白的打字机/音效必须等 LoadingTransition
@@ -301,48 +246,6 @@ watch(
   top: calc(15px + var(--safe-area-inset-top));
   right: 20px;
   z-index: 1000;
-}
-
-.full-access-warning {
-  position: fixed;
-  top: calc(15px + var(--safe-area-inset-top));
-  left: 50%;
-  z-index: 1001;
-  display: flex;
-  height: 40px;
-  max-width: min(44rem, calc(100vw - 34rem));
-  transform: translateX(-50%);
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0;
-  color: rgb(250 204 21 / 78%);
-  font-size: 0.875rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  line-height: 1;
-  pointer-events: none;
-  white-space: nowrap;
-  text-shadow:
-    0 1px 2px rgb(0 0 0 / 95%),
-    0 0 8px rgb(0 0 0 / 75%);
-}
-
-.full-access-notice-enter-active,
-.full-access-notice-leave-active {
-  transition: opacity 0.25s ease;
-}
-
-.full-access-notice-enter-from,
-.full-access-notice-leave-to {
-  opacity: 0;
-}
-
-@media (max-width: 1279px) {
-  .full-access-warning {
-    top: calc(54px + var(--safe-area-inset-top));
-    max-width: calc(100vw - 2rem);
-    width: max-content;
-  }
 }
 .scene-controls {
   position: fixed;
