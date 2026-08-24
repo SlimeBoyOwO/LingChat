@@ -141,6 +141,9 @@ function discardRecording() {
   void asrCancelStreaming()
   resetSession()
   if (source) void asrStopListening(source)
+  // 会话被丢弃（路由/抽屉/TTS/触摸模式等门控打断）→ auto 触发标志必须复位，
+  // 否则 autoTriggered 卡死 true → 能量监测永不触发（切界面后 auto_listen 失效）
+  if (source === 'auto') autoTriggered = false
 }
 
 // ── ASR 可用性门控（§1 全 8 项） ──────────────────────────────
@@ -152,7 +155,7 @@ function discardRecording() {
 // 7.    uiStore.showSettings === true
 // 8.    runningScript && choices.length > 0（剧本选择分支）
 // 任何一项满足即视为不可用。start() / startEnergyMonitor RMS 触发 / 按钮 enable 都查它。
-function canStartAsr(): boolean {
+function canStartAsr(ignoreLock = false): boolean {
   if (!route || !uiStore || !gameStore) return false
   // 6 + 7：路由/抽屉门控（chatActive 已是这两项的合成；/chat 与 /pet 均可）
   if ((route.path !== '/chat' && route.path !== '/pet') || uiStore.showSettings) return false
@@ -172,15 +175,19 @@ function canStartAsr(): boolean {
   if (!asrStore?.settings.voice_input_enabled) return false
   // 12：角色语音（TTS）播放中（外放 TTS 进麦克风 → 误识别 AI 自己的话）
   if (voicePlaying) return false
-  // 10：识别结果短暂显示锁（fill_only 模式填入 inputMessage 到自动 send 之间的窗口期）
-  if (Date.now() < asrLockedUntil) return false
+  // 10：识别结果短暂显示锁（fill_only 模式填入 inputMessage 到自动 send 之间的窗口期）。
+  // ignoreLock=true 供 updateAsrAvailability 用：锁只挡"触发录音"，不挡"监测启停"——
+  // 否则识别完成后锁一设监测就停、锁过期无人复活（触发后死锁）。
+  if (!ignoreLock && Date.now() < asrLockedUntil) return false
   return true
 }
 
 /** 同步录音 + 能量监测状态到最新可用性（任一 watch 触发时调用） */
 function updateAsrAvailability(): void {
+  // 监测启停不查显示锁（canStartAsr(true)）：锁只挡"触发录音"——识别完成后
+  // 锁一设监测就停、锁过期无人复活，auto_listen 永久死锁（触发后死锁根因）
   const wantMonitor =
-    canStartAsr() && (asrStore?.settings.auto_listen ?? false) && autoListenActive.value
+    canStartAsr(true) && (asrStore?.settings.auto_listen ?? false) && autoListenActive.value
   if (wantMonitor) {
     startEnergyMonitor()
   } else {
@@ -556,11 +563,28 @@ function handle(text: string, source: AsrSource) {
   // §4: 识别请求在飞行中 AI 可能从 input 进入 thinking/responding/presenting
   // 返回时 currentStatus 已变 → 识别结果丢弃（不填入 / 不发送 / 不入队）。
   // voicePlaying：手动模式点击继续后 TTS 还在播，在飞识别（误录的 AI 语音）
-  // 返回时同样丢弃。
-  if (!gameStore || gameStore.currentStatus !== 'input' || voicePlaying) {
+  // 返回时同样丢弃。!chatActive：识别期间已切界面/打开设置抽屉 → 结果丢弃
+  // （用户方案：没说完不发送，回来点 mic 重新启用）。
+  if (
+    !gameStore ||
+    gameStore.currentStatus !== 'input' ||
+    voicePlaying ||
+    !chatActive.value
+  ) {
     console.log(
-      `[ASR] handle drop: status=${gameStore?.currentStatus}, text="${text.slice(0, 30)}"`,
+      `[ASR] handle drop: status=${gameStore?.currentStatus}, chatActive=${chatActive.value}, text="${text.slice(0, 30)}"`,
     )
+    resetSession()
+    if (source === 'auto') {
+      autoTriggered = false
+      updateAsrAvailability()
+    }
+    return
+  }
+  // 空识别结果（云端未识别出内容）：静默复位 + 重启监听，不 dispatch / 不发送——
+  // 否则 fill_only 空串覆盖输入框（清空用户草稿），auto_send 空消息报后端"消息内容不能为空"。
+  if (!text.trim()) {
+    console.log('[ASR] handle: 空识别结果，复位会话并重启监听')
     resetSession()
     if (source === 'auto') {
       autoTriggered = false
@@ -644,6 +668,12 @@ function ensureInit() {
     chatActive,
     (active) => {
       console.log(`[ASR] chatActive -> ${active}`)
+      if (!active) {
+        // 切界面（路由离开 /chat+/pet / 设置抽屉打开）= 等同 mic 关闭：
+        // 暂停 auto 监听（回来需点 mic 重新启用），在飞识别结果由
+        // handle 的 chatActive 检查丢弃（"没说完不发送"）
+        autoListenActive.value = false
+      }
       updateAsrAvailability()
     },
     { immediate: true },
