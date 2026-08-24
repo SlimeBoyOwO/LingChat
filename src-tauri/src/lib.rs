@@ -231,6 +231,12 @@ fn read_hdr_mode_enabled(identifier: &str) -> bool {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // TLS 兜底：rustls 依赖图同时启用 aws-lc-rs（本项目显式）与 ring
+    // （tokio-tungstenite rustls-tls-webpki-roots 引入）两个 crypto feature，
+    // 进程级默认 provider 无法自动确定 → 走默认 ClientConfig::builder() 的
+    // 路径（如 ASR 流式 WebSocket 握手）会 panic。显式安装 aws-lc-rs 为默认。
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     // 配置日志过滤器（genai 调试日志由 log.genai_debug 设置在 setup 阶段动态控制）。
     // reload::Layer 包装的 EnvFilter 作为全局过滤层，避免在多个 fmt layer 上 clone 的限制。
     let (filter, reload_handle) =
