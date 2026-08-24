@@ -230,6 +230,7 @@ pub async fn start_streaming(
         let mut current = String::new(); // 当前句 partial
         let mut pending_reply: Option<oneshot::Sender<Result<StreamResult, AsrError>>> = None;
         let mut stopped = false;
+        let mut aborted = false;
 
         loop {
             tokio::select! {
@@ -270,6 +271,9 @@ pub async fn start_streaming(
                         StreamCommand::Abort => {
                             // 干净收尾：发 finish-task（无 reply），服务端正常结束任务，
                             // 不报 NO_VALID_AUDIO_ERROR；等 Finished 或连接关闭后退出。
+                            // aborted 抑制残余 emit：旧任务 Finished 的 final buffer
+                            // 若此时前端已开启新会话（phase 回到 recording），
+                            // 会被误当新会话的 partial 写入输入框。
                             let frame = build_finish_task_payload(&task_id);
                             if write
                                 .send(Message::Text(
@@ -283,6 +287,7 @@ pub async fn start_streaming(
                                 break;
                             }
                             stopped = true;
+                            aborted = true;
                         }
                     }
                 }
@@ -310,7 +315,9 @@ pub async fn start_streaming(
                                     if let Some(r) = pending_reply.take() {
                                         let _ = r.send(Ok(StreamResult { text: buffer.clone() }));
                                     }
-                                    let _ = app.emit("asr://stream_partial", buffer.clone());
+                                    if !aborted {
+                                        let _ = app.emit("asr://stream_partial", buffer.clone());
+                                    }
                                     break;
                                 }
                                 Some(ServerEvent::Error { code, message }) => {

@@ -94,7 +94,6 @@ let uiStore: ReturnType<typeof useUIStore> | null = null
 let asrStore: ReturnType<typeof useAsrStore> | null = null
 let gameStore: ReturnType<typeof useGameStore> | null = null
 
-// 关键修正：spec §3.0 用 showSettings，不是 settingsOpen
 // /chat（主界面）与 /pet（桌宠）都算聊天场景；设置抽屉打开时不可用
 const chatActive = computed(() => {
   if (!route || !uiStore) return false
@@ -148,7 +147,7 @@ function discardRecording() {
   if (source === 'auto') autoTriggered = false
 }
 
-// ── ASR 可用性门控（§1 全 8 项） ──────────────────────────────
+// ── ASR 可用性门控（§1 全 12 项） ──────────────────────────────
 // 综合判定当前能否启动 ASR 录音（所有禁用条件取 OR）：
 // 1-3. currentStatus ∈ {thinking, responding, presenting}
 // 4.    command === 'touch'（触摸模式）
@@ -156,8 +155,13 @@ function discardRecording() {
 // 6.    route.path !== '/chat'
 // 7.    uiStore.showSettings === true
 // 8.    runningScript && choices.length > 0（剧本选择分支）
+// 9.    loadingComplete === false（启动动画未完成）
+// 10.   显示锁未过期（识别结果填入后短暂禁止再触发；ignoreLock 供监测启停跳过）
+// 11.   语音输入总开关关（auto 触发被挡）
+// 12.   TTS 播放中（外放语音会被误识别）
 // 任何一项满足即视为不可用。start() / startEnergyMonitor RMS 触发 / 按钮 enable 都查它。
-// forManual=true（手动 mic 录音）：跳过语音输入总开关——总开关只挡自动模式。
+// forManual=true（手动 mic 录音）：跳过 10 显示锁与 11 总开关——总开关只挡自动模式、
+// 锁防的是 auto 触发覆盖识别结果（手动是用户主动，不受限）。
 function canStartAsr(ignoreLock = false, forManual = false): boolean {
   if (!route || !uiStore || !gameStore) return false
   // 6 + 7：路由/抽屉门控（chatActive 已是这两项的合成；/chat 与 /pet 均可）
@@ -337,7 +341,7 @@ async function onVadTurnEnd() {
 // ── 能量监测（auto_listen 常开，RMS 超阈值触发 auto 会话） ──
 function startEnergyMonitor() {
   if (energyMon) return
-  // §1 全 8 项 + auto_listen 设置：任何一项不满足则不开
+  // §1 全 12 项 + auto_listen 设置：任何一项不满足则不开
   if (!asrStore?.settings.auto_listen) return
   if (!canStartAsr()) return
   console.log('[ASR] startEnergyMonitor 启动 (auto_listen=on, canStartAsr=true)')
@@ -409,7 +413,7 @@ function stopEnergyMonitor() {
 
 // ── 会话生命周期 ────────────────────────────────────────────
 async function start(source: AsrSource) {
-  // §1 全 8 项门控；手动模式（button）跳过语音输入总开关（总开关只挡自动）
+  // §1 全 12 项门控；手动模式（button）跳过显示锁与总开关（总开关只挡自动）
   if (!canStartAsr(false, source === 'button')) {
     // 诊断：静默拒绝会让按钮"按下无反应"，暴露拒绝原因
     console.log('[ASR] start 被门控拒绝', {
@@ -430,7 +434,7 @@ async function start(source: AsrSource) {
   asrVoiceActive.value = true
   asrStore?.setMicState('recording')
   try {
-    // 拼接基准：录音开始时的输入框内容（按钮/快捷键输入可拼接，auto 统一处理）
+    // 拼接基准：录音开始时的输入框内容（仅按钮源可拼接，auto 统一处理）
     baseText = inputBridge?.getText() ?? ''
     // 流式：先建 WebSocket（互斥由后端 stream 检查 + start_listening 的 active 检查双层保证）
     if (isStreamEnabled()) {
