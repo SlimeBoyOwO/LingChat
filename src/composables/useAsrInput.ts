@@ -64,8 +64,9 @@ let energyMon: { ctx: AudioContext; raf: number; stream: MediaStream } | null = 
 let autoTriggered = false
 /** 移动端菜单展开状态（GameDialog 在 watch 中同步，§1.5 判定） */
 let mobileMenuOpen = false
-/** 短暂显示锁：识别后填入 inputMessage 到自动 send 之间的窗口期，期间 ASR 禁用（§1.10） */
-let asrLockedUntil = 0
+/** 短暂显示锁：识别后填入 inputMessage 到自动 send 之间的窗口期，期间 auto 触发禁用（§1.10）。
+ *  ref 化（非普通变量）：canStartMic 等 computed 依赖它，锁过期后能自动重算解锁。 */
+const asrLockedUntil = ref(0)
 /** auto_send 模式：识别完成后延迟发送的毫秒数（给用户看到结果的窗口，防乱序） */
 const AUTO_SEND_DELAY_MS = 800
 /** 能量监测启动缓冲期兜底值（毫秒）：未加载设置时用 100ms。
@@ -75,8 +76,9 @@ const AUTO_SEND_DELAY_MS = 800
 const ENERGY_WARMUP_MS = 100
 /** 角色语音（TTS）播放中（GameRolesStage 桌面/桌宠通过 setVoicePlaying 同步）：
  *  外放 TTS 会被麦克风捕获 → RMS 触发 → VAD 判定为人声 → 误识别 AI 自己的话。
- *  播放期间 ASR 整体禁用（canStartAsr 门控 + handle drop），播完才恢复。 */
-let voicePlaying = false
+ *  播放期间 ASR 整体禁用（canStartAsr 门控 + handle drop），播完才恢复。
+ *  ref 化：canStartMic 等 computed 依赖它，播完 setVoicePlaying(false) 自动解锁。 */
+const voicePlaying = ref(false)
 /** 输入框桥：GameDialog 注册，供 partial 实时写入 / 拼接基准读取 */
 let inputBridge: { getText: () => string; setText: (v: string) => void } | null = null
 /** 录音开始时的输入框内容快照（拼接语义的基准：partial 只追加在这之后） */
@@ -175,11 +177,13 @@ function canStartAsr(ignoreLock = false, forManual = false): boolean {
   // 11：语音输入总开关——只挡自动模式（auto 触发/自动监听）；手动 mic 录音不受限
   if (!forManual && !asrStore?.settings.voice_input_enabled) return false
   // 12：角色语音（TTS）播放中（外放 TTS 进麦克风 → 误识别 AI 自己的话）
-  if (voicePlaying) return false
-  // 10：识别结果短暂显示锁（fill_only 模式填入 inputMessage 到自动 send 之间的窗口期）。
+  if (voicePlaying.value) return false
+  // 10：识别结果短暂显示锁（fill_only 填入 inputMessage 到自动 send 的窗口期）。
   // ignoreLock=true 供 updateAsrAvailability 用：锁只挡"触发录音"，不挡"监测启停"——
   // 否则识别完成后锁一设监测就停、锁过期无人复活（触发后死锁）。
-  if (!ignoreLock && Date.now() < asrLockedUntil) return false
+  // forManual=true（手动 mic）跳过锁：显示锁防的是 auto RMS 自动触发覆盖识别结果，
+  // 手动点击是用户主动（fill_only 持续录入），不受锁限。
+  if (!ignoreLock && !forManual && Date.now() < asrLockedUntil.value) return false
   return true
 }
 
@@ -247,7 +251,7 @@ export function setMobileMenuOpen(open: boolean): void {
  *  TTS 播放开始 → 停能量监测 + 丢弃在飞 auto 录音（那是在录 AI 的声音）；
  *  播放结束 → 恢复监听。 */
 export function setVoicePlaying(playing: boolean): void {
-  voicePlaying = playing
+  voicePlaying.value = playing
   updateAsrAvailability()
 }
 
@@ -256,7 +260,7 @@ export function setVoicePlaying(playing: boolean): void {
  * 显示期间用户不能再次触发录音（避免 nextTick 期间又来一段覆盖识别结果）。
  */
 export function lockAsrForDisplay(ms: number): void {
-  asrLockedUntil = Date.now() + ms
+  asrLockedUntil.value = Date.now() + ms
   updateAsrAvailability()
 }
 
@@ -414,7 +418,7 @@ async function start(source: AsrSource) {
       status: gameStore?.currentStatus,
       command: gameStore?.command,
       loadingComplete: gameStore?.loadingComplete,
-      locked: Date.now() < asrLockedUntil,
+      locked: Date.now() < asrLockedUntil.value,
     })
     return
   }
@@ -569,7 +573,7 @@ function handle(text: string, source: AsrSource) {
   if (
     !gameStore ||
     gameStore.currentStatus !== 'input' ||
-    voicePlaying ||
+    voicePlaying.value ||
     !chatActive.value
   ) {
     console.log(
@@ -594,9 +598,10 @@ function handle(text: string, source: AsrSource) {
     return
   }
   const mode = asrStore?.settings.send_mode ?? 'fill_only'
-  // 拼接语义：识别结果追加到录音开始时的输入框内容（baseText）之后，不覆盖
-  // 已有输入（手动录音继续输入；流式 partial 已是 baseText+partial 同语义）。
-  const full = baseText + text
+  // 拼接只对手动录音（button 源）+ fill_only 生效：识别结果追加到录音开始时的
+  // 输入框内容（baseText）之后，持续录入不覆盖。auto 源与 auto_send 不拼接
+  // （auto_send 只发送识别内容本身，不做与已有内容的衔接）。
+  const full = source === 'button' && mode === 'fill_only' ? baseText + text : text
   if (mode === 'fill_only') {
     window.dispatchEvent(new CustomEvent('asr-text', { detail: full }))
   } else if (mode === 'auto_send') {
@@ -615,7 +620,7 @@ function handle(text: string, source: AsrSource) {
     })
     // 输入框显示完整结果（不清空——清空会导致"内容没显示就发送"）
     inputBridge?.setText(full)
-    asrLockedUntil = Date.now() + AUTO_SEND_DELAY_MS
+    asrLockedUntil.value = Date.now() + AUTO_SEND_DELAY_MS
     window.setTimeout(() => {
       void invoke('send_chat_message', { text: full, screenshotBase64: null })
     }, AUTO_SEND_DELAY_MS)
