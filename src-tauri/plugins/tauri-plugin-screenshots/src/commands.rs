@@ -29,7 +29,7 @@ pub struct ScreenshotableMonitor {
 /// - `Err(String)`: An error message string on failure.
 ///
 /// # Example
-/// ```
+/// ```text
 /// use tauri_plugin_screenshots::get_screenshotable_windows;
 ///
 /// let windows = get_screenshotable_windows().await.unwrap();
@@ -84,7 +84,7 @@ pub async fn get_screenshotable_windows() -> Result<Vec<ScreenshotableWindow>, S
 /// - `Err(String)`: An error message string on failure.
 ///
 /// # Example
-/// ```
+/// ```text
 /// use tauri_plugin_screenshots::get_screenshotable_monitors;
 ///
 /// let monitors = get_screenshotable_monitors().await.unwrap();
@@ -143,7 +143,7 @@ fn get_save_path<R: Runtime>(
 /// - `Err(String)`: An error message string on failure.
 ///
 /// # Example
-/// ```
+/// ```text
 /// use tauri_plugin_screenshots::get_window_screenshot;
 ///
 /// let path = get_window_screenshot(app_handle, 1).await.unwrap();
@@ -199,7 +199,7 @@ pub async fn get_window_screenshot<R: Runtime>(
 /// - `Err(String)`: An error message string on failure.
 ///
 /// # Example
-/// ```
+/// ```text
 /// use tauri_plugin_screenshots::get_monitor_screenshot;
 ///
 /// let path = get_monitor_screenshot(app_handle, 1).await.unwrap();
@@ -236,7 +236,7 @@ pub async fn get_monitor_screenshot<R: Runtime>(
 /// - `Err(String)`: An error message string on failure.
 ///
 /// # Example
-/// ```
+/// ```text
 /// use tauri_plugin_screenshots::remove_window_screenshot;
 ///
 /// remove_window_screenshot(app_handle, 1).await.unwrap();
@@ -262,7 +262,7 @@ pub async fn remove_window_screenshot<R: Runtime>(
 /// - `Err(String)`: An error message string on failure.
 ///
 /// # Example
-/// ```
+/// ```text
 /// use tauri_plugin_screenshots::remove_monitor_screenshot;
 ///
 /// remove_monitor_screenshot(app_handle, 1).await.unwrap();
@@ -284,10 +284,11 @@ pub async fn remove_monitor_screenshot<R: Runtime>(
 /// - `Err(String)`: An error message string on failure.
 ///
 /// # Example
-/// ```
+/// ```text
 /// use tauri_plugin_screenshots::clear_screenshots;
 ///
 /// clear_screenshots(app_handle).await.unwrap();
+/// ```
 #[command]
 pub async fn clear_screenshots<R: Runtime>(app_handle: AppHandle<R>) -> Result<(), String> {
     let save_dir = get_save_dir(app_handle)?;

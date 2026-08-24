@@ -3,13 +3,13 @@
 //! 旧版基于 WebSocket + `message_broker.publish(client_id, data)`。
 //! 现在走 Tauri 的 `Emitter::emit`，把结构化 payload 作为事件分发给前端。
 //!
-//! 通过 trait 解耦，便于测试和未来加入多目标（多窗口）分发。
+//! 通过 trait 解耦，便于未来加入多目标（多窗口）分发。
 
 use anyhow::Result;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-/// 前端事件发射器。实现方可以是真正的 AppHandle，也可以是测试 stub。
+/// 前端事件发射器由宿主 AppHandle 实现。
 
 /// 便捷函数：直接向 AppHandle 发 serde 可序列化 payload。业务层也可以绕过 trait。
 pub fn emit<T: Serialize + Clone>(app: &AppHandle, event: &str, payload: &T) -> Result<()> {
