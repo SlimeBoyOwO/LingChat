@@ -403,6 +403,7 @@ export default {
       defaultVariant: "Default Model Variant",
       editVariant: "Model Variant to Edit",
       defaultExpression: "Default Expression",
+      defaultExpressionHint: "Used only as a fallback when the current emotion has no expression mapping; it is not the expression for the Normal emotion.",
       focusAnchorX: "Gaze Origin X (0-1)",
       focusAnchorY: "Gaze Origin Y (0-1)",
       focusAnchorReset: "Use Model Canvas Center",

@@ -146,6 +146,9 @@
                   {{ name }}
                 </option>
               </select>
+              <span class="text-xs text-white/45">
+                {{ t('settings.characterInfo.live2d.defaultExpressionHint') }}
+              </span>
             </label>
             <div class="grid
               grid-cols-2

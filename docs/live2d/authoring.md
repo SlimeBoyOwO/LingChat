@@ -127,7 +127,7 @@ Place `lingchat-live2d.json` at the package root:
 | `default_variant` | Variant used when no outfit mapping applies. It must exist in `variants`. |
 | `variants` | Named Live2D rigs belonging to this character. |
 | `model` | Path to the variant's `.model3.json`, relative to the manifest. |
-| `default_expression` | Expression used when no emotion-specific expression applies. |
+| `default_expression` | Fallback expression used only when the current LingChat emotion has no entry in `expressions`. It does not define the expression for the `正常` (Normal) emotion; map that emotion explicitly when needed. |
 | `expressions` | LingChat emotion name to model3 expression `Name`. |
 | `motions` | LingChat emotion name to model3 motion group and zero-based index. |
 | `idle` | The exact motion used for automatic idle playback. |
@@ -142,8 +142,8 @@ If no manifest is included, LingChat scans all `.model3.json` files, creates var
 
 Import the package, open the character's **Live2D** settings, and select each variant separately.
 
-1. Choose the intended default expression.
-2. Bind each LingChat emotion to an expression and optional one-shot motion.
+1. Choose the fallback expression to use when an emotion has no explicit expression mapping. This is not automatically the `正常` (Normal) expression.
+2. Bind each LingChat emotion, including `正常` when required, to an expression and optional one-shot motion.
 3. Select an idle that keeps the character in the expected neutral state.
 4. Confirm `ParamEyeLOpen` and `ParamEyeROpen`, or enter the model's actual eye-open parameter IDs.
 5. Confirm the mouth parameter, usually `ParamMouthOpenY`.

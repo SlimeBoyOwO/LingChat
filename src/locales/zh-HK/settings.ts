@@ -403,6 +403,7 @@ export default {
       "defaultVariant": "預設模型變體",
       "editVariant": "而家編輯嘅模型變體",
       "defaultExpression": "預設表情",
+      "defaultExpressionHint": "只會喺目前情緒冇對應表情映射時作後備；佢唔等同於「正常」情緒嘅表情。",
       "focusAnchorX": "視線基點 X（0-1）",
       "focusAnchorY": "視線基點 Y（0-1）",
       "focusAnchorReset": "恢復使用模型畫布中心",

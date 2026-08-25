@@ -403,6 +403,7 @@ export default {
       defaultVariant: '默认模型变体',
       editVariant: '当前编辑的模型变体',
       defaultExpression: '默认表情',
+      defaultExpressionHint: '仅在当前情绪没有对应表情映射时作为后备；它不等同于“正常”情绪的表情。',
       focusAnchorX: '视线基点 X（0-1）',
       focusAnchorY: '视线基点 Y（0-1）',
       focusAnchorReset: '恢复使用模型画布中心',
