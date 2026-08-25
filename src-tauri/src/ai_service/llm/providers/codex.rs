@@ -267,6 +267,8 @@ impl CodexProvider {
             let mut finished_calls: Vec<ToolCall> = Vec::new();
             let mut usage: Option<LlmUsage> = None;
             let mut end_reason: Option<String> = None;
+            // 思考链累积：流末打到日志窗口（与 [Kimi-Code Thinking] 行为对齐）
+            let mut thinking_buffer = String::new();
             let mut byte_stream = resp.bytes_stream();
 
             'outer: while let Some(item) = byte_stream.next().await {
@@ -303,6 +305,7 @@ impl CodexProvider {
                         "response.reasoning_summary_text.delta"
                         | "response.reasoning_text.delta" => {
                             if let Some(delta) = event.get("delta").and_then(|d| d.as_str()) {
+                                thinking_buffer.push_str(delta);
                                 yield LlmChunk::Reasoning(delta.to_string());
                             }
                         }
@@ -386,6 +389,19 @@ impl CodexProvider {
                         _ => {}
                     }
                 }
+            }
+
+            // 流末日志：思考链汇总 + token 用量（对齐 [Kimi-Code Thinking] 的日志窗口行为）
+            if !thinking_buffer.is_empty() {
+                tracing::info!("[Codex Thinking] {}", thinking_buffer);
+            }
+            if let Some(u) = usage {
+                tracing::info!(
+                    "[Codex] usage: prompt={} completion={} cached={}",
+                    u.prompt_tokens,
+                    u.completion_tokens,
+                    u.cached_tokens
+                );
             }
 
             if !finished_calls.is_empty() {
