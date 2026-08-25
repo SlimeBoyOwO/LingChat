@@ -199,6 +199,8 @@ export default {
     apiKey: 'API Key',
     provider: '搜索提供商',
     providerCustom: '自定义端点',
+    providerCodex: 'OpenAI Codex（订阅免 Key）',
+    codexHint: '复用「大模型管理」中已登录的 Codex 订阅凭据联网搜索，无需填写 API Key',
     providerDeepSeek: 'DeepSeek Responses',
     customHint: '自定义端点需兼容 Kimi /search 协议（POST JSON，字段名为 text_query）',
     apiKeyPlaceholder: '填入自定义端点 API Key',

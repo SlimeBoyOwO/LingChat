@@ -200,6 +200,8 @@ export default {
     "apiKey": "API Key",
     "provider": "搜尋供應商",
     "providerCustom": "自訂端點",
+    "providerCodex": "OpenAI Codex（訂閱免 Key）",
+    "codexHint": "用「大模型管理」已登入嘅 Codex 訂閱憑證上網搜尋，唔使填 API Key",
     "providerDeepSeek": "DeepSeek Responses",
     "customHint": "自訂端點需要兼容 Kimi /search 協議（POST JSON，欄位名稱為 text_query）",
     "apiKeyPlaceholder": "填入自訂端點 API Key",

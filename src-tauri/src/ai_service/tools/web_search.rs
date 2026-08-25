@@ -165,13 +165,14 @@ impl WebSearchTool {
         out
     }
 
-    /// 独立搜索端点模式：按 provider 分发（kimi / bocha）。
+    /// 独立搜索端点模式：按 provider 分发（kimi / bocha / deepseek / tavily / codex / custom）。
     async fn execute_search_endpoint(
         &self,
         query: &str,
         cfg: &WebSearchSettings,
     ) -> Result<ToolResult, ToolError> {
-        if cfg.api_key.trim().is_empty() {
+        // codex 走已登录的订阅凭据（codex-auth.json），无需用户填写 API Key
+        if cfg.api_key.trim().is_empty() && cfg.provider != "codex" {
             return Err(ToolError::Execution(
                 "网页搜索未配置 API Key，请用户在「高级设置 → 工具配置」填写".into(),
             ));
@@ -180,6 +181,7 @@ impl WebSearchTool {
             "bocha" => self.execute_bocha_search(query, cfg).await,
             "deepseek" => self.execute_deepseek_search(query, cfg).await,
             "tavily" => self.execute_tavily_search(query, cfg).await,
+            "codex" => self.execute_codex_search(query, cfg).await,
             "custom" => self.execute_kimi_endpoint(query, cfg).await,
             _ => self.execute_kimi_endpoint(query, cfg).await,
         }
@@ -377,6 +379,133 @@ impl WebSearchTool {
         }))
     }
 
+    /// 独立端点模式 · OpenAI Codex 订阅联网搜索。
+    ///
+    /// 协议与 dsh-codex 的 standalone search 一致：
+    /// `POST https://chatgpt.com/backend-api/codex/alpha/search`，复用
+    /// `codex-auth.json` 的 OAuth 凭据（设备码登录、自动刷新），链路经
+    /// `utils::proxy` 自动探测代理。响应 `output` 为模型综合答案，
+    /// `results[]` 为 text_result（url/title/snippet）。
+    async fn execute_codex_search(
+        &self,
+        query: &str,
+        cfg: &WebSearchSettings,
+    ) -> Result<ToolResult, ToolError> {
+        use crate::ai_service::llm::codex_auth;
+        use crate::utils::proxy::build_proxied_client;
+
+        const SEARCH_URL: &str = "https://chatgpt.com/backend-api/codex/alpha/search";
+
+        let http = build_proxied_client(45)
+            .await
+            .map_err(|e| ToolError::Execution(format!("创建 Codex 搜索客户端失败: {e}")))?;
+        let cred = codex_auth::get_valid_credential(&http)
+            .await
+            .map_err(|e| ToolError::Execution(format!("Codex 凭据读取失败: {e}")))?
+            .ok_or_else(|| {
+                ToolError::Execution(
+                    "未登录 Codex：请先在「大模型管理」登录 ChatGPT 订阅，或改用其他搜索提供商".into(),
+                )
+            })?;
+
+        let model = if cfg.model.trim().is_empty() {
+            "gpt-5.6-sol"
+        } else {
+            cfg.model.trim()
+        };
+        let body = serde_json::json!({
+            "id": uuid::Uuid::new_v4().to_string(),
+            "model": model,
+            "input": [{
+                "type": "message",
+                "role": "user",
+                "content": [{ "type": "input_text", "text": query }],
+            }],
+            "commands": { "search_query": [{ "q": query }] },
+            "settings": {
+                "search_context_size": "medium",
+                "allowed_callers": ["direct"],
+                // live：实时联网（搜索工具的语义就是查最新资料）
+                "external_web_access": true,
+            },
+            "max_output_tokens": 10000,
+        });
+
+        let response = http
+            .post(SEARCH_URL)
+            .bearer_auth(&cred.access)
+            .header("chatgpt-account-id", &cred.account_id)
+            .header("originator", "lingchat")
+            .header(reqwest::header::ACCEPT, "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(classify_request_error)?;
+
+        let status = response.status();
+        if !status.is_success() {
+            return Err(ToolError::Execution(
+                http_error_message(status, response).await,
+            ));
+        }
+
+        let payload: Value = response
+            .json()
+            .await
+            .map_err(|e| ToolError::Execution(format!("Codex 搜索响应解析失败: {e}")))?;
+
+        let answer = payload
+            .get("output")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let rows = payload
+            .get("results")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        // 统一成 format_results 认识的字段（只收 text_result）
+        let results: Vec<Value> = rows
+            .iter()
+            .filter(|item| item.get("type").and_then(Value::as_str) == Some("text_result"))
+            .map(|item| {
+                let get = |key: &str| item.get(key).and_then(Value::as_str).unwrap_or("");
+                serde_json::json!({
+                    "title": get("title"),
+                    "url": get("url"),
+                    "snippet": get("snippet"),
+                })
+            })
+            .collect();
+
+        // 主答案（模型综合回答）+ 来源条目（hide 时省略并改为融入指示）
+        let mut text = String::new();
+        if !answer.is_empty() {
+            text.push_str(&answer);
+            text.push_str("\n\n");
+        }
+        if !cfg.hide_search_results {
+            text.push_str(&Self::format_results(query, &results, cfg.max_results.max(1), false));
+        } else {
+            text.push_str(
+                "以上是联网搜索到的信息。请把关键内容自然地融入你的回答，\
+                 绝对不要在回复中输出来源名称、网址、链接列表或原始搜索结果。\n",
+            );
+        }
+        truncate_output(&mut text);
+        if text.trim().is_empty() {
+            return Err(ToolError::Execution("Codex 搜索未返回有效结果".into()));
+        }
+
+        Ok(serde_json::json!({
+            "ok": true,
+            "query": query,
+            "result_count": results.len().min(cfg.max_results.max(1)),
+            "text": text,
+        }))
+    }
+
     /// DeepSeek Responses API 服务端联网搜索。
     ///
     /// 请求 `POST {base}/responses`，声明 `web_search` 工具并强制触发。
@@ -532,6 +661,9 @@ impl Tool for WebSearchTool {
     fn timeout_hint(&self) -> Option<Duration> {
         let settings = self.settings.get().web_search;
         Some(if settings.provider == "deepseek" {
+            DEEPSEEK_TIMEOUT
+        } else if settings.provider == "codex" {
+            // Codex 搜索 = 一轮模型生成 + 联网，与 DeepSeek 同级
             DEEPSEEK_TIMEOUT
         } else {
             SEARCH_TIMEOUT

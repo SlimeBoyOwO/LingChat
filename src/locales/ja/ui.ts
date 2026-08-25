@@ -199,6 +199,8 @@ export default {
     apiKey: 'API Key',
     provider: '検索プロバイダー',
     providerCustom: 'カスタム端点',
+    providerCodex: 'OpenAI Codex（サブスク・キー不要）',
+    codexHint: '「LLM プロバイダ」でログイン済みの Codex サブスクリプションで検索します。API Key の入力は不要です',
     providerDeepSeek: 'DeepSeek Responses',
     customHint: 'カスタム端点は Kimi /search プロトコル互換が必要（POST JSON のフィールド名は text_query）',
     apiKeyPlaceholder: 'カスタム端点の API Key を入力',

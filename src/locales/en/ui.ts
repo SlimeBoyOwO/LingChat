@@ -200,6 +200,8 @@ export default {
     apiKey: "API Key",
     provider: "Search Provider",
     providerCustom: "Custom Endpoint",
+    providerCodex: "OpenAI Codex (subscription, no key)",
+    codexHint: "Searches with the Codex subscription you signed into in LLM Providers — no API Key needed",
     providerDeepSeek: "DeepSeek Responses",
     customHint: 'Custom endpoints must support the Kimi /search protocol (POST JSON field: text_query)',
     apiKeyPlaceholder: "Enter the custom endpoint API Key",

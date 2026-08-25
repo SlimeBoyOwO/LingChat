@@ -228,25 +228,40 @@
               {{ $t('ui.toolCalls.providerDeepSeek') }}
             </option>
             <option value="tavily" class="bg-slate-800 text-white">Tavily</option>
+            <option value="codex" class="bg-slate-800 text-white">
+              {{ $t('ui.toolCalls.providerCodex') }}
+            </option>
             <option value="custom" class="bg-slate-800 text-white">
               {{ $t('ui.toolCalls.providerCustom') }}
             </option>
           </select>
 
+          <!-- Codex：复用已登录的订阅凭据，无需 API Key -->
+          <template v-if="form.web_search.provider === 'codex'">
+            <label class="inline-flex items-center font-medium text-brand mt-4">
+              {{ $t('ui.toolCalls.apiKey') }}
+            </label>
+            <p class="text-sm mt-2 mb-2 text-gray-300">
+              {{ $t('ui.toolCalls.codexHint') }}
+            </p>
+          </template>
+
           <!-- 独立端点模式下 kimi/bocha/deepseek/custom 后端都强制校验 API Key，始终显示输入框 -->
-          <label class="inline-flex items-center font-medium text-brand mt-4">
-            {{ $t('ui.toolCalls.apiKey') }}
-          </label>
-          <input
-            type="password"
-            v-model="form.web_search.api_key"
-            :placeholder="
-              form.web_search.provider === 'deepseek'
-                ? $t('ui.toolCalls.dsApiKeyPlaceholder')
-                : $t('ui.toolCalls.apiKeyPlaceholder')
-            "
-            class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-          />
+          <template v-else>
+            <label class="inline-flex items-center font-medium text-brand mt-4">
+              {{ $t('ui.toolCalls.apiKey') }}
+            </label>
+            <input
+              type="password"
+              v-model="form.web_search.api_key"
+              :placeholder="
+                form.web_search.provider === 'deepseek'
+                  ? $t('ui.toolCalls.dsApiKeyPlaceholder')
+                  : $t('ui.toolCalls.apiKeyPlaceholder')
+              "
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+            />
+          </template>
 
           <!-- DeepSeek Responses：可切换模型；结果数量由服务端决定，不展示条数设置 -->
           <template v-if="form.web_search.provider === 'deepseek'">
