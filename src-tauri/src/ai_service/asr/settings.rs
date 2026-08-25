@@ -73,7 +73,9 @@ impl AsrSettings {
             auto_listen: false,
             send_mode: SendMode::FillOnly,
             stream_enabled: false,
-            voice_input_enabled: true,
+            // 语音输入默认关闭：仅影响全新用户（无持久化数据时用 defaults）；
+            // 老用户 settings.json ASR_PREFS 的持久化值会覆盖此默认
+            voice_input_enabled: false,
             vad_silence_ms: 800,
             provider_configs,
         }

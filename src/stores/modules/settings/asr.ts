@@ -18,7 +18,9 @@ const DEFAULT_SETTINGS: AsrSettings = {
   auto_listen: false,
   send_mode: 'fill_only',
   stream_enabled: false,
-  voice_input_enabled: true,
+  // 默认关闭：仅兜底全新用户（无 localStorage 记录时）；后端 load 结果与
+  // persist 恢复值都会覆盖它
+  voice_input_enabled: false,
   vad_silence_ms: 800,
   energy_warmup_ms: 100,
   provider_configs: {},
