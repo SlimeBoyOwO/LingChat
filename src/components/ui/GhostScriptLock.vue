@@ -4,6 +4,14 @@
        把任一 .chr 放回标记目录后，轮询发现已解锁会自动撤掉。点窗口 X 走
        ghostQuitZoom 放大脸演出。 -->
   <div v-if="lock" class="ghost-lock-layer">
+    <img
+      v-if="bgOk"
+      class="ghost-lock-bg"
+      :src="bgSrc"
+      alt=""
+      draggable="false"
+      @error="bgOk = false"
+    />
     <div class="ghost-lock-scanlines"></div>
     <img
       v-if="imgOk"
@@ -44,6 +52,7 @@ const lock = computed(() => uiStore.ghostLock)
 const quitZoom = computed(() => uiStore.ghostQuitZoom)
 
 const imgOk = ref(true)
+const bgOk = ref(true)
 const musicRef = ref<HTMLAudioElement | null>(null)
 const zoomAudioRef = ref<HTMLAudioElement | null>(null)
 
@@ -51,6 +60,13 @@ const imgSrc = computed(() => {
   const dir = lock.value?.assetDir
   if (!dir) return ''
   return convertFileSrc(`${dir}/Pics/ghost-ql-bw.webp`)
+})
+
+// 黑白崩坏教室背景（垫在立绘后面，压暗只当氛围底）
+const bgSrc = computed(() => {
+  const dir = lock.value?.assetDir
+  if (!dir) return ''
+  return convertFileSrc(`${dir}/Pics/ghost-bg-bw.webp`)
 })
 
 const assetPath = (rel: string) => {
@@ -75,6 +91,7 @@ watch(
     clearInterval(pollTimer)
     if (value) {
       imgOk.value = true
+      bgOk.value = true
       // DDLC ghostmenu.ogg：幽灵菜单循环 BGM
       if (musicRef.value) {
         musicRef.value.src = assetPath('Musics/ghostmenu.ogg')
@@ -130,6 +147,17 @@ onBeforeUnmount(() => {
   );
   mix-blend-mode: overlay;
   animation: ghost-scan-drift 7s linear infinite;
+}
+
+/* 黑白崩坏教室背景：铺满全屏但压暗压灰，只当氛围底，不抢立绘 */
+.ghost-lock-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: grayscale(1) brightness(0.6) contrast(1.1);
+  opacity: 0.55;
 }
 
 .ghost-lock-sprite {
