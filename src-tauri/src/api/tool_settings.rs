@@ -123,7 +123,7 @@ pub async fn save_tool_settings(
 #[tauri::command]
 pub async fn test_web_search(app: tauri::AppHandle, query: String) -> Result<String, String> {
     let state = app.state::<AppState>();
-    let tool = WebSearchTool::new(state.tool_settings.clone());
+    let tool = WebSearchTool::new(state.tool_settings.clone(), app.clone());
     let context = ToolContext::new(["web_search".to_string()].into_iter().collect());
     let result = tool
         .execute(&context, serde_json::json!({ "query": query }))

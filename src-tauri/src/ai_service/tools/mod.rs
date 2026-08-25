@@ -94,10 +94,11 @@ pub(crate) fn atomic_replace(path: &Path, content: &[u8]) -> Result<(), String> 
 pub fn built_in_registry(
     role_names: impl IntoIterator<Item = (String, String)>,
     tool_settings: SharedToolSettings,
+    app: tauri::AppHandle,
 ) -> Result<ToolRegistry> {
     let registry = ToolRegistry::new();
     registry.register(Arc::new(CurrentTimeTool))?;
-    registry.register(Arc::new(WebSearchTool::new(tool_settings.clone())))?;
+    registry.register(Arc::new(WebSearchTool::new(tool_settings.clone(), app)))?;
     registry.register(Arc::new(GetAllSchedule))?;
     registry.register(Arc::new(AddTodo))?;
     registry.register(Arc::new(UpdateTodo))?;
