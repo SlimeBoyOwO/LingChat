@@ -160,16 +160,17 @@ onBeforeUnmount(() => {
   opacity: 0.55;
 }
 
-/* 立绘比例与自由对话一致：height 102%、贴底水平居中（GameRoleAvatar 的
-   h-[102%] + object-position center bottom 同款视觉效果） */
+/* 立绘比例与自由对话一致：图高 = h-[102%] × 角色 scale 1.45 ≈ 148% 屏高，
+   图顶贴屏顶附近，下半身自然裁出屏外（GameRoleAvatar scale 1.45 贴底
+   放大的同款特写效果）；jitter 基于 translateX(-50%) 居中 */
 .ghost-lock-sprite {
   position: absolute;
   left: 50%;
-  bottom: -1%;
-  height: 102%;
+  top: 5%;
+  height: 148%;
   max-width: 90vw;
   object-fit: contain;
-  object-position: center bottom;
+  object-position: center top;
   transform: translateX(-50%);
   filter: grayscale(1) contrast(1.15);
   animation:
