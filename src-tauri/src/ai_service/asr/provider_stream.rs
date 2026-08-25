@@ -25,13 +25,13 @@
 //! 整段文本经 oneshot 回传。
 
 use futures_util::{SinkExt, StreamExt};
-use serde_json::json;
 use serde_json::Value as JsonValue;
+use serde_json::json;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, oneshot};
+use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http;
-use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, warn};
 
 use super::error::AsrError;
@@ -106,7 +106,7 @@ fn parse_server_event(text: &str) -> Option<ServerEvent> {
                 text,
                 is_final,
             })
-        }
+        },
         "task-finished" => Some(ServerEvent::Finished),
         "task-failed" => {
             let header = v.get("header")?;
@@ -121,7 +121,7 @@ fn parse_server_event(text: &str) -> Option<ServerEvent> {
                 .unwrap_or("?")
                 .to_string();
             Some(ServerEvent::Error { code, message })
-        }
+        },
         _ => None,
     }
 }
@@ -370,9 +370,10 @@ mod tests {
 
     #[test]
     fn pcm_f32_to_i16_roundtrip() {
-        // 1.0 → 32767, -1.0 → -32768, 0.0 → 0（小端）
+        // 32767 缩放（±1.0 → ±32767，不取 32768——32768 as i16 会溢出 wrap
+        // 成 -32768，正负满幅不对称）。-1.0 → -32767 = 0x8001 小端 [01, 80]。
         let bytes = pcm_f32_to_i16(&[1.0, -1.0, 0.0]);
-        assert_eq!(bytes, vec![0xFF, 0x7F, 0x00, 0x80, 0x00, 0x00]);
+        assert_eq!(bytes, vec![0xFF, 0x7F, 0x01, 0x80, 0x00, 0x00]);
         // 超出范围被 clamp
         let clamped = pcm_f32_to_i16(&[2.0]);
         assert_eq!(clamped, vec![0xFF, 0x7F]);

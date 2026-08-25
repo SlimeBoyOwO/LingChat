@@ -132,7 +132,10 @@ impl VadSegmenter {
         } else if self.speech_active {
             // ── 静音帧（语音后）──
             let silence_start = *self.silence_start_frame.get_or_insert(frame);
-            let silence_frames = frame - silence_start;
+            // 已静音帧数（含当前帧）：第 1 个静音帧 = 静音 1 帧。
+            // 之前用 `frame - silence_start` 少算 1（第 N 个静音帧报 N-1），
+            // 触发点整体推迟 1 帧（800ms 设置实际 ~830ms 才切段）。
+            let silence_frames = frame - silence_start + 1;
 
             if frame == silence_start {
                 events.push(SegmentEvent::SilenceStart { frame });
@@ -195,9 +198,11 @@ mod tests {
         for _ in 0..26 {
             events.extend(seg.feed(0.1)); // 780ms 静音 → 无候选
         }
-        assert!(!events
-            .iter()
-            .any(|e| matches!(e, SegmentEvent::TurnCandidate { .. })));
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, SegmentEvent::TurnCandidate { .. }))
+        );
         events.extend(seg.feed(0.1)); // 第 27 帧静音 ≈ 810ms
         assert!(events.iter().any(|e| matches!(
             e,
@@ -220,9 +225,11 @@ mod tests {
         for _ in 0..9 {
             events.extend(seg.feed(0.1));
         }
-        assert!(!events
-            .iter()
-            .any(|e| matches!(e, SegmentEvent::TurnCandidate { .. })));
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, SegmentEvent::TurnCandidate { .. }))
+        );
         events.extend(seg.feed(0.1));
         assert!(events.iter().any(|e| matches!(
             e,
@@ -269,16 +276,20 @@ mod tests {
         for _ in 0..28 {
             events.extend(seg.feed(0.1)); // 840ms 静音 → 候选已触发
         }
-        assert!(events
-            .iter()
-            .any(|e| matches!(e, SegmentEvent::TurnCandidate { .. })));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, SegmentEvent::TurnCandidate { .. }))
+        );
         // 语音恢复
         events.extend(seg.feed(0.9));
         // 再静音 → 重新走候选流程
         events.extend(seg.feed(0.1));
-        assert!(!events
-            .iter()
-            .any(|e| matches!(e, SegmentEvent::TurnSealed { .. })));
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, SegmentEvent::TurnSealed { .. }))
+        );
         assert!(seg.speech_active);
     }
 
