@@ -241,6 +241,14 @@ pub struct ModifyCharacterPayload {
     /// 不覆盖角色当前情绪状态（DDLC 式立绘崩坏一闪）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flash: Option<bool>,
+    /// 立绘噪点侵蚀预设（DDLC n_rects_ghost 式）：`eyes` / `mouth` / `eyes_mouth`
+    /// 在角色脸部挂上每帧随机抖动的黑色矩形噪点团；"none" 或未设置时不动现状，
+    /// 显式写 "none" 清除。噪点常驻，直到剧本显式清除或恐怖残留清理兜底。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub noise: Option<String>,
+    /// 噪点淡入秒数（DDLC 用 8s 等待 + 12s easeout 慢侵蚀）；0/未设置 = 立即全显。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub noise_fade_in: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]

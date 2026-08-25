@@ -76,6 +76,9 @@ interface UIState {
   /** 立绘闪现（DDLC 式崩坏一闪）：null = 无演出；seq 递增保证同情绪也能重复触发 */
   spriteFlash: { roleId: number; emotion: string; duration: number; seq: number } | null
 
+  /** 立绘噪点侵蚀（DDLC n_rects_ghost 式）：null = 无演出；常驻到显式清除 */
+  spriteNoise: { roleId: number; noise: string; fadeInSec: number; seq: number } | null
+
   /** 恐怖剧本入口过渡阶段：'' 无 / 'freeze' 卡死 / 'static' 花屏 */
   horrorEntryPhase: '' | 'freeze' | 'static'
 
@@ -132,6 +135,8 @@ let hideTimer: number | null = null
 
 // 立绘闪现序号：每次触发递增，同情绪连闪也能触发组件 watch
 let spriteFlashSeq = 0
+// 立绘噪点侵蚀序号：同上，保证同预设重复触发也能被组件观察
+let spriteNoiseSeq = 0
 
 export const useUIStore = defineStore('ui', {
   state: (): UIState => ({
@@ -173,6 +178,9 @@ export const useUIStore = defineStore('ui', {
 
     // 立绘闪现演出初始状态
     spriteFlash: null,
+
+    // 立绘噪点侵蚀演出初始状态
+    spriteNoise: null,
 
     horrorEntryPhase: '',
 
@@ -298,6 +306,23 @@ export const useUIStore = defineStore('ui', {
       }
     },
     /**
+     * 立绘噪点侵蚀（DDLC n_rects_ghost 式）：在 roleId 脸部挂上每帧随机抖动的
+     * 黑色噪点团，fadeInSec 秒淡入后常驻；noise 传 'none'/空串 = 清除演出。
+     */
+    triggerSpriteNoise(roleId: number, noise: string, fadeInSec: number) {
+      if (!noise || noise === 'none' || noise === 'None') {
+        this.spriteNoise = null
+        return
+      }
+      spriteNoiseSeq += 1
+      this.spriteNoise = {
+        roleId,
+        noise,
+        fadeInSec: Math.max(0, fadeInSec),
+        seq: spriteNoiseSeq,
+      }
+    },
+    /**
      * 恐怖特效残留清理：当前特效包含恐怖向名称时重置为 'None'。
      * 剧本异常退出/中途返回/重启后都可能残留，在剧本结束、进入剧本、应用启动时调用。
      */
@@ -322,6 +347,7 @@ export const useUIStore = defineStore('ui', {
       }
       this.clearJumpscare()
       this.spriteFlash = null
+      this.spriteNoise = null
       // 恶魔音残留一并清理（剧本结束/进入/启动时都会走到这里）
       this.voiceRate = 1
       this.voicePitch = 0

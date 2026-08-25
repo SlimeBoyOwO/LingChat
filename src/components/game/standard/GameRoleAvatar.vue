@@ -29,6 +29,14 @@
         draggable="false"
       />
 
+      <!-- 立绘噪点侵蚀覆盖层（DDLC n_rects_ghost 式）：黑噪点团吃掉眼/嘴，常驻到剧本清除 -->
+      <SpriteNoiseOverlay
+        v-if="activeNoise"
+        :key="activeNoise.seq"
+        :noise="activeNoise.noise"
+        :fade-in-sec="activeNoise.fadeInSec"
+      />
+
       <!-- 气泡 -->
       <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
 
@@ -49,6 +57,7 @@ import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from '@/controllers/emotion/config
 import type { GameRole } from '@/stores/modules/game/state'
 import TouchAreas from './TouchAreas.vue'
 import ImageAcrossFade from '@/components/ui/ImageAcrossFade.vue'
+import SpriteNoiseOverlay from './SpriteNoiseOverlay.vue'
 import './avatar-animation.css'
 
 const props = defineProps<{
@@ -150,6 +159,12 @@ const bubbleStyles = computed(() => ({
 }))
 
 const targetAvatarUrl = ref('')
+
+// --- 立绘噪点侵蚀（DDLC n_rects_ghost 式）：常驻状态，直接按 roleId 过滤即可 ---
+const activeNoise = computed(() => {
+  const n = uiStore.spriteNoise
+  return n && n.roleId === role.value.roleId ? n : null
+})
 
 // --- 立绘闪现（崩坏一闪）覆盖层 ---
 const flashAvatarUrl = ref('')

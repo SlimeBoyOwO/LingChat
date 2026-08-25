@@ -28,6 +28,14 @@ export default class ModifyCharacterProcessor implements IEventProcessor {
         return
       }
 
+      // 噪点侵蚀演出（DDLC n_rects_ghost 式）：常驻到剧本显式 noise:none 清除；
+      // 与 emotion/action 可同拍叠加，所以处理后继续走常规分支
+      if (event.noise !== undefined) {
+        await gameStore.getOrCreateGameRole(event.characterId)
+        if (signal?.aborted) return
+        useUIStore().triggerSpriteNoise(event.characterId, event.noise, event.noiseFadeIn ?? 0)
+      }
+
       // 确保游戏初始化包含角色
       const role = await gameStore.getOrCreateGameRole(event.characterId)
       if (signal?.aborted) return

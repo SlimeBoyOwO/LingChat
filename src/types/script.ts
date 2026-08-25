@@ -110,6 +110,10 @@ export interface ScriptModifyCharacterEvent extends ScriptEvent {
   clothes?: string
   /** true 时为"闪现"演出：情绪立绘短暂展示 duration 秒后自动还原，不写回角色状态 */
   flash?: boolean
+  /** 立绘噪点侵蚀预设（DDLC n_rects_ghost 式）：'eyes' / 'mouth' / 'eyes_mouth'；'none' 清除 */
+  noise?: string
+  /** 噪点淡入秒数；0/未设置 = 立即全显 */
+  noiseFadeIn?: number
 }
 
 export interface ScriptInputEvent extends ScriptEvent {
