@@ -723,6 +723,17 @@ export default {
       "cleanErrorMessage": "清理TTS緩存失敗",
       "unknown": "未知"
     },
+    "codexQuota": {
+      "title": "Codex 額度",
+      "weekly": "每週額度",
+      "fiveHour": "5 小時額度",
+      "remaining": "剩餘 {percent}%",
+      "resetAt": "重設時間：{time}",
+      "notLoggedIn": "未登入 Codex",
+      "loginHint": "喺「高級設定 → 大模型管理」加入 OpenAI Codex 提供商並登入之後，呢度會顯示訂閱額度。",
+      "refresh": "刷新",
+      "loadFailed": "查詢失敗：{error}"
+    },
     "update": {
       "title": "版本更新",
       "appVersion": "程式版本",
@@ -886,6 +897,10 @@ export default {
       "effortMedium": "Medium（中）",
       "effortHigh": "High（高）",
       "effortMax": "Max（最強）",
+      "effortOff": "Off（關閉）",
+      "effortMinimal": "Minimal（最低）",
+      "effortXhigh": "Xhigh（超高）",
+      "providerCodex": "OpenAI Codex（ChatGPT 訂閱）",
       "apiKey": "API 密鑰",
       "baseUrl": "API 地址",
       "temperature": "Temperature（留空用預設）",
@@ -913,6 +928,20 @@ export default {
       "translateSwitched": "翻譯模型轉咗，已經生效！",
       "godAgentSwitched": "上帝Agent轉咗，已經生效！",
       "switchFailed": "切換失敗: {error}"
+    },
+    "codex": {
+      "account": "ChatGPT 訂閱帳號",
+      "loggedIn": "已登入",
+      "notLoggedIn": "未登入",
+      "enterCodeHint": "瀏覽器已經打開授權頁，請入下面嘅用戶碼完成登入：",
+      "waitingAuth": "等緊授權…請喺瀏覽器完成登入",
+      "loginSuccess": "登入成功！",
+      "loginFailed": "登入失敗: {error}",
+      "login": "登入 ChatGPT 訂閱",
+      "cancel": "取消登入",
+      "logout": "登出",
+      "fastMode": "Fast Mode（1.5× 速度）",
+      "fastModeHint": "回應更快，但額度用得都快啲"
     }
   },
   "tts": {

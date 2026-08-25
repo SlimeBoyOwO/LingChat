@@ -48,7 +48,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "ansi", "chron
 serde_yaml = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
-reqwest = { version = "0.13", features = ["json", "multipart", "query", "stream", "rustls", "system-proxy"], default-features = false }
+reqwest = { version = "0.13", features = ["json", "form", "multipart", "query", "stream", "rustls", "system-proxy"], default-features = false }
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
 webpki-roots = "0.26"
 futures-util = "0.3"

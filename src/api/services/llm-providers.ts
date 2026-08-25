@@ -11,6 +11,7 @@ export interface LlmProviderConfig {
   top_p: number | null
   enable_thinking: boolean
   reasoning_effort: string | null
+  fast_mode: boolean
 }
 
 export interface LlmProvidersResponse {

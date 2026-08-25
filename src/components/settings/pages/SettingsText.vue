@@ -310,6 +310,89 @@
         </div>
       </MenuItem>
 
+      <!-- ─── Codex 额度 ──────────────────────────────── -->
+      <MenuItem
+        :title="$t('settings.text.codexQuota.title')"
+        size="small"
+      >
+        <template #header>
+          <Gauge :size="20" />
+        </template>
+        <div class="space-y-2
+          w-full">
+          <template v-if="codexLoggedIn && codexDisplayRows.length > 0">
+            <div
+              v-for="row in codexDisplayRows"
+              :key="row.label"
+              class="space-y-1"
+            >
+              <div class="flex
+                items-center
+                justify-between
+                text-base">
+                <span class="text-gray-50">{{ row.label }}</span>
+                <span class="text-gray-50
+                  font-medium">
+                  {{ $t('settings.text.codexQuota.remaining', { percent: Math.round(row.window.remaining_percent) }) }}
+                </span>
+              </div>
+              <div class="w-full
+                bg-slate-700/50
+                rounded-full
+                h-2
+                overflow-hidden">
+                <div
+                  class="h-full
+                    bg-cyan-400
+                    rounded-full
+                    transition-all
+                    duration-300"
+                  :style="{ width: `${row.window.remaining_percent}%` }"
+                ></div>
+              </div>
+              <div
+                v-if="row.window.reset_at"
+                class="text-gray-50/70
+                  text-xs"
+              >
+                {{ $t('settings.text.codexQuota.resetAt', { time: formatResetAt(row.window.reset_at) }) }}
+              </div>
+            </div>
+          </template>
+          <div
+            v-else-if="!codexLoggedIn"
+            class="text-gray-50/70
+              text-xs"
+          >
+            {{ $t('settings.text.codexQuota.notLoggedIn') }}<br />
+            {{ $t('settings.text.codexQuota.loginHint') }}
+          </div>
+          <div
+            v-if="codexQuotaError"
+            class="text-red-300/90
+              text-xs"
+          >
+            {{ $t('settings.text.codexQuota.loadFailed', { error: codexQuotaError }) }}
+          </div>
+          <div class="flex
+            gap-3
+            pt-1">
+            <Button
+              type="big"
+              :disabled="codexQuotaLoading"
+              @click="refreshCodexQuota"
+            >
+              <RefreshCw
+                :size="16"
+                class="mr-1"
+                :class="{ 'animate-spin': codexQuotaLoading }"
+              />
+              {{ $t('settings.text.codexQuota.refresh') }}
+            </Button>
+          </div>
+        </div>
+      </MenuItem>
+
       <!-- ─── 版本更新 ──────────────────────────────── -->
       <MenuItem
         :title="$t('settings.text.update.title')"
@@ -534,7 +617,14 @@ import {
   BookOpen,
   Type,
   Import,
+  Gauge,
 } from 'lucide-vue-next'
+import {
+  codexAuthStatus,
+  codexGetQuota,
+  type CodexUsage,
+  type QuotaWindow,
+} from '@/api/services/codex'
 import { reactivateTTS, clearTtsCache } from '@/api/services/game-info'
 import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -568,6 +658,64 @@ const ttsOrphanFiles = ref(0)
 const ttsOrphanSize = ref('0 B')
 const lastCleanupInfo = ref<{ deleted: number; timestamp: number } | null>(null)
 let ttsCacheRefreshTimer: ReturnType<typeof setInterval> | null = null
+
+// ─── Codex 额度 ────────────────────────────────────────────────
+const codexLoggedIn = ref(false)
+const codexUsage = ref<CodexUsage | null>(null)
+const codexQuotaError = ref('')
+const codexQuotaLoading = ref(false)
+let codexQuotaTimer: ReturnType<typeof setInterval> | null = null
+
+interface CodexQuotaRow {
+  label: string
+  window: QuotaWindow
+}
+
+// 把主桶与额外桶（如 GPT-5.3-Codex-Spark）按窗口展平成显示行：
+// 按 window_seconds 归类（18000=5 小时窗，604800=7 天周窗），
+// 不认识的窗口长度也照样显示（后端文案里标注秒数）。
+const codexDisplayRows = computed<CodexQuotaRow[]>(() => {
+  const usage = codexUsage.value
+  if (!usage) return []
+  const rows: CodexQuotaRow[] = []
+  const pushWindow = (prefix: string, window: QuotaWindow | null) => {
+    if (!window) return
+    const suffix =
+      window.window_seconds === 18000
+        ? t('settings.text.codexQuota.fiveHour')
+        : window.window_seconds === 604800
+          ? t('settings.text.codexQuota.weekly')
+          : `${window.window_seconds}s`
+    rows.push({ label: prefix ? `${prefix} · ${suffix}` : suffix, window })
+  }
+  pushWindow('', usage.rate_limit.secondary)
+  pushWindow('', usage.rate_limit.primary)
+  for (const extra of usage.additional) {
+    pushWindow(extra.name, extra.quota.secondary)
+    pushWindow(extra.name, extra.quota.primary)
+  }
+  return rows
+})
+
+function formatResetAt(resetAt: number): string {
+  return new Date(resetAt * 1000).toLocaleString()
+}
+
+async function refreshCodexQuota() {
+  if (codexQuotaLoading.value) return
+  codexQuotaLoading.value = true
+  codexQuotaError.value = ''
+  try {
+    const status = await codexAuthStatus()
+    codexLoggedIn.value = status.logged_in
+    codexUsage.value = status.logged_in ? await codexGetQuota() : null
+  } catch (e: any) {
+    codexUsage.value = null
+    codexQuotaError.value = String(e?.message ?? e)
+  } finally {
+    codexQuotaLoading.value = false
+  }
+}
 
 // 判断是否在自由对话模式（没有运行剧本）
 const isFreeDialogMode = computed(() => gameStore.runningScript === null)
@@ -806,12 +954,21 @@ onMounted(() => {
   ttsCacheRefreshTimer = setInterval(() => {
     checkTtsCache()
   }, 30000)
+  // Codex 额度：进页面即查一次，之后每 60 秒轮询
+  refreshCodexQuota()
+  codexQuotaTimer = setInterval(() => {
+    refreshCodexQuota()
+  }, 60000)
 })
 
 onUnmounted(() => {
   if (ttsCacheRefreshTimer) {
     clearInterval(ttsCacheRefreshTimer)
     ttsCacheRefreshTimer = null
+  }
+  if (codexQuotaTimer) {
+    clearInterval(codexQuotaTimer)
+    codexQuotaTimer = null
   }
 })
 

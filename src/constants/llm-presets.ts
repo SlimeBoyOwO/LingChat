@@ -71,4 +71,11 @@ export const llmPresets: LlmPreset[] = [
     model: '',
     base_url: 'http://localhost:1234/v1',
   },
+  {
+    key: 'codex',
+    label: 'OpenAI Codex',
+    provider: 'codex',
+    model: 'gpt-5.6-sol',
+    base_url: '',
+  },
 ]
