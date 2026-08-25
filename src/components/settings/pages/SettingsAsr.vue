@@ -204,9 +204,11 @@
           <span class="font-medium">{{ t('settings.asr.streamMode') }}</span>
           <span class="block text-sm text-gray-300 mt-0.5">
             {{
-              providerSupportsStreaming
-                ? t('settings.asr.streamModeHint')
-                : t('settings.asr.streamNotSupported')
+              !providerSupportsStreaming
+                ? t('settings.asr.streamNotSupported')
+                : localSettings.active_provider === 'llama-asr'
+                  ? t('settings.asr.streamModeHintLocal')
+                  : t('settings.asr.streamModeHint')
             }}
           </span>
         </Toggle>

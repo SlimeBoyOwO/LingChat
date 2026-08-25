@@ -13,10 +13,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use base64::engine::general_purpose::STANDARD as BASE64_STD;
 use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64_STD;
 use serde::Serialize;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tracing::{debug, instrument, warn};
 
 use super::error::AsrError;
@@ -151,6 +151,19 @@ pub trait AsrProvider: Send + Sync {
     /// 是否支持流式协议（WebSocket 实时识别）。默认不支持。
     fn supports_streaming(&self) -> bool {
         false
+    }
+
+    /// 结果流式识别（SSE 类协议：音频整段上传、结果增量返回）。默认不支持。
+    ///
+    /// 与 WS 会话流式（`asr_start_streaming`/`stop_streaming`）独立：llama-asr
+    /// 走这里（provider_stream_llama.rs），qwen 走 WebSocket 会话路径。
+    /// 默认实现返回 [`AsrError::StreamingNotSupported`]。
+    async fn stream_recognize(
+        &self,
+        _app: tauri::AppHandle,
+        _wav_bytes: Vec<u8>,
+    ) -> Result<AsrResult, AsrError> {
+        Err(AsrError::StreamingNotSupported(self.id().into()))
     }
 }
 
@@ -295,7 +308,8 @@ impl AsrProvider for QwenAsrProvider {
 /// `{"output": {"output": {"text": "识别文本", "sentence": {...}}, "usage": {...}}}`
 /// 宽松解析：优先 `output.output.text` / `output.output.sentence.text`，
 /// 兜底 OpenAI 风格 `output.choices[0].message.content` 及 `text` 字段。
-fn parse_qwen_text(body: &str) -> Option<String> {    let value: JsonValue = serde_json::from_str(body).ok()?;
+fn parse_qwen_text(body: &str) -> Option<String> {
+    let value: JsonValue = serde_json::from_str(body).ok()?;
     // Fun-ASR-Realtime：output.output.text（sentence 内也有一份）
     if let Some(s) = value
         .get("output")
@@ -479,12 +493,11 @@ impl AsrProvider for LlamaAsrProvider {
         }
 
         let body_text = resp.text().await.map_err(map_reqwest_error)?;
-        let (text, language) = parse_llama_text(&body_text).ok_or_else(|| {
-            AsrError::ProviderApiError {
+        let (text, language) =
+            parse_llama_text(&body_text).ok_or_else(|| AsrError::ProviderApiError {
                 provider: Self::ID.into(),
                 message: format!("无法从响应中提取文本: {body_text}"),
-            }
-        })?;
+            })?;
 
         Ok(AsrResult {
             text,
@@ -493,13 +506,32 @@ impl AsrProvider for LlamaAsrProvider {
             provider_id: Self::ID.into(),
         })
     }
+    /// 结果流式识别：整段 WAV 上传 + SSE 增量 partial（`asr://stream_partial`
+    /// 事件）→ final。复用整句的端点/模型/热词选择逻辑。
+    #[instrument(skip(self, wav_bytes), fields(provider = Self::ID))]
+    async fn stream_recognize(
+        &self,
+        app: tauri::AppHandle,
+        wav_bytes: Vec<u8>,
+    ) -> Result<AsrResult, AsrError> {
+        super::provider_stream_llama::recognize_stream(
+            app,
+            &self.http,
+            &self.cred,
+            &self.effective_endpoint(),
+            &self.effective_model(),
+            wav_bytes,
+        )
+        .await
+    }
 }
 
 /// 解析 llama-server 转写响应文本。
 ///
 /// 实测格式：`{"text": "language <lang><asr_text><转写文本>"}`（无语音时
 /// `<lang>` 为 `None`、文本为空）。切 `<asr_text>`：后半是文本，前半是语言。
-fn parse_llama_text(body: &str) -> Option<(String, Option<String>)> {
+/// 供整句识别与 SSE 结果流式（provider_stream_llama.rs）共用。
+pub(crate) fn parse_llama_text(body: &str) -> Option<(String, Option<String>)> {
     let value: JsonValue = serde_json::from_str(body).ok()?;
     let text = value.get("text").and_then(|t| t.as_str())?;
     match text.split_once("<asr_text>") {
@@ -511,7 +543,7 @@ fn parse_llama_text(body: &str) -> Option<(String, Option<String>)> {
                 .filter(|s| !s.is_empty() && *s != "None")
                 .map(str::to_string);
             Some((content.to_string(), lang))
-        }
+        },
         None => Some((text.to_string(), None)),
     }
 }
@@ -714,7 +746,9 @@ async fn llama_models(
         .enumerate()
         .map(|(i, id)| ModelInfo {
             display_name: id.rsplit('/').next().unwrap_or(&id).to_string(),
-            supports_streaming: false,
+            // 结果流式（SSE）：音频整段上传、结果增量返回。与 qwen WS 真流式
+            // 语义不同，但前端流式开关可用（录音结束出 partial 而非边录边出）
+            supports_streaming: true,
             is_default: i == 0,
             id,
         })
@@ -735,7 +769,7 @@ pub async fn get_provider(
         LlamaAsrProvider::ID => Arc::new(LlamaAsrProvider::new(http.clone(), cred.clone())),
         other => {
             return Err(AsrError::ProviderNotFound(other.into()));
-        }
+        },
     };
     Ok(provider)
 }

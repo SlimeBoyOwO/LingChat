@@ -1093,6 +1093,7 @@ export default {
     },
     streamMode: 'ストリーム認識',
     streamModeHint: '話している間に認識テキストをリアルタイム表示',
+    streamModeHintLocal: '録音終了後にローカル認識へアップロードし、結果を段階的に表示（llama-server 結果ストリーム）',
     streamNotSupported: '選択中のモデルはストリーム認識に対応していません',
     provider: {
       title: '音声認識プロバイダー',

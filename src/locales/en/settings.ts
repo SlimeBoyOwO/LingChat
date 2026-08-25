@@ -1096,6 +1096,8 @@ export default {
     },
     streamMode: 'Streaming Recognition',
     streamModeHint: 'Shows recognized text in real time while speaking',
+    streamModeHintLocal:
+      'Uploads the recording after you finish speaking, then shows results progressively (llama-server result streaming)',
     streamNotSupported: 'The selected model does not support streaming recognition',
     provider: {
       title: 'Speech Recognition Provider',

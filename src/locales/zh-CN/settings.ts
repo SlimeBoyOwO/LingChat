@@ -1092,6 +1092,7 @@ export default {
     },
     streamMode: '流式识别',
     streamModeHint: '说话过程中实时显示识别文字',
+    streamModeHintLocal: '录音结束后上传本地识别，结果逐步显示（llama-server 结果流式）',
     streamNotSupported: '当前模型不支持流式识别',
     provider: {
       title: '识别服务商',

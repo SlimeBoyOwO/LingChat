@@ -84,6 +84,17 @@ export const asrRecognizeWav = (params: {
     languageHint: params.languageHint ?? null,
   })
 
+/** 结果流式识别（llama-asr SSE）：整段 WAV 上传 → partial 事件 → final。
+ *  与 WS 会话流式（asr_start_streaming 系列）独立。 */
+export const asrRecognizeWavStream = (params: {
+  providerId: string
+  wavBytes: number[]
+}) =>
+  invoke<AsrResult>('asr_recognize_wav_stream', {
+    providerId: params.providerId,
+    wavBytes: params.wavBytes,
+  })
+
 export const asrCancel = () => invoke<void>('asr_cancel')
 
 export const asrListProviders = () => invoke<ProviderInfo[]>('asr_list_providers')

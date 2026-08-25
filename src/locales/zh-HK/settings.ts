@@ -1091,6 +1091,7 @@ export default {
     },
     "streamMode": "串流識別",
     "streamModeHint": "講嘢期間實時顯示識別文字",
+    "streamModeHintLocal": "錄音結束後上傳本地識別，結果逐步顯示（llama-server 結果串流）",
     "streamNotSupported": "目前模型唔支援串流識別",
     "provider": {
       "title": "語音識別服務商",

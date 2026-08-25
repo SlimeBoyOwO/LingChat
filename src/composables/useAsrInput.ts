@@ -10,6 +10,7 @@ import {
   asrStartListening,
   asrStopListening,
   asrRecognizeWav,
+  asrRecognizeWavStream,
   asrCancel,
   asrVadProcessChunk,
   asrStartStreaming,
@@ -245,6 +246,12 @@ function isStreamEnabled(): boolean {
   return enabled
 }
 
+/** llama-asr 结果流式（SSE）：录音期间不建 WS 会话，stop 时整段上传收 partial。
+ *  与 qwen 的 WS 真流式（边录边发 PCM）分流——llama-server 无流式音频输入。 */
+function isLlamaStream(): boolean {
+  return asrStore?.settings.active_provider === 'llama-asr' && isStreamEnabled()
+}
+
 /** GameDialog 调用：同步移动端菜单展开状态（§1.5） */
 export function setMobileMenuOpen(open: boolean): void {
   mobileMenuOpen = open
@@ -436,8 +443,9 @@ async function start(source: AsrSource) {
   try {
     // 拼接基准：录音开始时的输入框内容（仅按钮源可拼接，auto 统一处理）
     baseText = inputBridge?.getText() ?? ''
-    // 流式：先建 WebSocket（互斥由后端 stream 检查 + start_listening 的 active 检查双层保证）
-    if (isStreamEnabled()) {
+    // 流式：先建 WebSocket（互斥由后端 stream 检查 + start_listening 的 active 检查双层保证）。
+    // llama-asr 结果流式不建 WS（stop 时整段上传），仅 qwen WS 真流式走这里
+    if (isStreamEnabled() && !isLlamaStream()) {
       await asrStartStreaming({
         providerId: asrStore?.settings.active_provider ?? 'openai-whisper',
         languageHint: null,
@@ -472,7 +480,7 @@ async function start(source: AsrSource) {
         }
         feedVad()
       }
-      if (isStreamEnabled()) {
+      if (isStreamEnabled() && !isLlamaStream()) {
         streamPending.push(...data)
         // 与 vadPending 同思路的上限保护（8192 块 ≈ 4 分钟音频）
         if (streamPending.length > 8192) {
@@ -506,9 +514,10 @@ function stop() {
   const captured = pcmBuffer
   teardownRecorder()
   void asrStopListening(source)
-  if (isStreamEnabled()) {
+  if (isStreamEnabled() && !isLlamaStream()) {
     void doStreamFinish(source)
   } else {
+    // 非流式 + llama 结果流式都走整句上传（后者命令不同，内部按 provider 分派）
     void doRecognize(source, captured)
   }
 }
@@ -529,7 +538,9 @@ async function doStreamFinish(source: AsrSource) {
   }
 }
 
-/** 把录音 PCM 合成 WAV 送识别，成功后 handle() */
+/** 把录音 PCM 合成 WAV 送识别，成功后 handle()。
+ *  llama-asr 结果流式（流式开关开启）时走 asr_recognize_wav_stream——
+ *  整段上传后由后端 SSE partial 事件刷输入框，本函数只等 final。 */
 async function doRecognize(source: AsrSource, captured: number[]) {
   try {
     // 裁剪首尾静音：录音含触发前的环境声 + VAD 停顿尾巴，只送语音段
@@ -544,11 +555,10 @@ async function doRecognize(source: AsrSource, captured: number[]) {
       }
       return
     }
-    const result = await asrRecognizeWav({
-      providerId: asrStore?.settings.active_provider ?? 'openai-whisper',
-      wavBytes: Array.from(wav),
-      languageHint: null,
-    })
+    const providerId = asrStore?.settings.active_provider ?? 'openai-whisper'
+    const result = isLlamaStream()
+      ? await asrRecognizeWavStream({ providerId, wavBytes: Array.from(wav) })
+      : await asrRecognizeWav({ providerId, wavBytes: Array.from(wav), languageHint: null })
     asrStore?.onResult(result)
     handle(result.text, source)
   } catch (err) {

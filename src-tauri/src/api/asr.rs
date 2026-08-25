@@ -12,11 +12,11 @@
 
 use tauri::AppHandle;
 
+use crate::AppState;
 use crate::ai_service::asr::error::AsrError;
-use crate::ai_service::asr::provider::{self, list_provider_info, AsrResult, ProviderInfo};
+use crate::ai_service::asr::provider::{self, AsrResult, ProviderInfo, list_provider_info};
 use crate::ai_service::asr::session::AsrSource;
 use crate::ai_service::asr::settings::{self, AsrSettings};
-use crate::AppState;
 
 fn parse_source(s: &str) -> Result<AsrSource, String> {
     AsrSource::from_str(s).ok_or_else(|| format!("invalid source: {s}"))
@@ -28,7 +28,7 @@ fn err_to_user(e: &AsrError) -> String {
     match e {
         AsrError::ProviderApiError { message, .. } => {
             format!("ASR_PROVIDER_FAILED|{message}")
-        }
+        },
         _ => e.i18n_code().to_string(),
     }
 }
@@ -160,12 +160,56 @@ pub async fn asr_recognize_wav(
         Ok(r) => {
             tracing::info!("[ASR] {provider_id} 识别结果: {}", r.text);
             Ok(r)
-        }
+        },
         Err(e) => {
             // 诊断：暴露 provider 失败的具体细节（之前仅前端 code，丢失 detail）
             tracing::error!("[ASR] {provider_id} 识别失败: {e}");
             Err(e.i18n_code().to_string())
-        }
+        },
+    }
+}
+
+/// 结果流式识别（llama-asr 的 SSE 路径）：整段 WAV 上传 → 增量 partial
+/// （`asr://stream_partial` 事件）→ 返回 final。
+///
+/// 与 WS 会话流式（asr_start_streaming / asr_stop_streaming）独立；qwen
+/// 调用会得到 StreamingNotSupported（trait 默认实现）。
+#[tauri::command]
+pub async fn asr_recognize_wav_stream(
+    provider_id: String,
+    wav_bytes: Vec<u8>,
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<AsrResult, String> {
+    let session_arc = state.asr_state.session.clone();
+    // 锁内只克隆 providers 注册表 + 取消令牌，立即释放锁
+    let (providers, cancel_token) = {
+        let guard = session_arc.lock().await;
+        let s = guard.as_ref().ok_or("ASR not initialized")?;
+        (s.providers.clone(), s.cancel_token.clone())
+    };
+    let http = build_http().map_err(|e| e.i18n_code().to_string())?;
+    let p = resolve_provider(&providers, &provider_id, &app, &http)
+        .await
+        .map_err(|e| e.i18n_code().to_string())?;
+    tracing::info!(
+        "[ASR] 流式识别发送音频到 {provider_id}: {} bytes",
+        wav_bytes.len()
+    );
+    let cancel_child = cancel_token.child_token();
+    let result = tokio::select! {
+        result = p.stream_recognize(app, wav_bytes) => result,
+        _ = cancel_child.cancelled() => Err(AsrError::Canceled),
+    };
+    match result {
+        Ok(r) => {
+            tracing::info!("[ASR] {provider_id} 流式识别结果: {}", r.text);
+            Ok(r)
+        },
+        Err(e) => {
+            tracing::error!("[ASR] {provider_id} 流式识别失败: {e}");
+            Err(e.i18n_code().to_string())
+        },
     }
 }
 
@@ -254,7 +298,7 @@ pub async fn asr_start_streaming(
             // 透传详情（WebSocket 连接失败的具体原因），前端 split('|') 展示
             AsrError::ProviderApiError { message, .. } => {
                 format!("ASR_PROVIDER_FAILED|{message}")
-            }
+            },
             _ => e.i18n_code().to_string(),
         })
 }
@@ -367,7 +411,7 @@ pub async fn asr_test_provider(
         Ok(r) => {
             tracing::info!("[ASR] 测试连接 {provider_id} 成功: {}", r.text);
             Ok(())
-        }
+        },
         Err(e) => {
             // 测试音频是 1 秒静音：部分 ASR（如 DashScope Fun-ASR）对静音
             // 直接返回 "ASR_RESPONSE_HAVE_NO_WORDS"。服务能响应这个错误
@@ -380,7 +424,7 @@ pub async fn asr_test_provider(
             }
             tracing::warn!("[ASR] 测试连接 {provider_id} 失败: {e}");
             Err(err_to_user(&e))
-        }
+        },
     }
 }
 
@@ -405,7 +449,7 @@ async fn rebuild_providers(
     match provider::get_provider(&s.active_provider, &cred.to_credentials(), &http).await {
         Ok(p) => {
             providers.insert(s.active_provider.clone(), p);
-        }
+        },
         Err(e) => {
             tracing::warn!(
                 "[ASR] rebuild provider {} failed ({}): {}",
@@ -413,7 +457,7 @@ async fn rebuild_providers(
                 e.i18n_code(),
                 e
             );
-        }
+        },
     }
     let session_arc = state.asr_state.session.clone();
     let mut guard = session_arc.lock().await;
