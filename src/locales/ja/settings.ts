@@ -1095,7 +1095,10 @@ export default {
     streamModeHint: '話している間に認識テキストをリアルタイム表示',
     streamNotSupported: '選択中のモデルはストリーム認識に対応していません',
     provider: {
-      title: '阿里雲音声認識',
+      title: '音声認識プロバイダー',
+      providerSelect: 'プロバイダー',
+      modelRefresh: 'モデルリストを更新',
+      modelListFailed: 'モデルリストの取得に失敗しました：{err}',
       test: '接続テスト',
       testing: '録音中…話してください（4秒）',
       testingStop: '停止して認識',

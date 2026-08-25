@@ -54,6 +54,8 @@ export interface AsrConfigField {
 export interface ProviderInfo {
   id: string
   display_name: string
+  /** 简短描述（设置页服务商选择旁展示） */
+  description?: string
   config_fields: AsrConfigField[]
   supports_streaming: boolean
 }

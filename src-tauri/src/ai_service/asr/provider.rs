@@ -96,13 +96,16 @@ pub struct ProviderInfo {
 // Provider 凭证（最小子集，不依赖 settings.rs）
 // ============================================================================
 
-/// provider 运行时凭证：仅 api_key + endpoint + model。
+/// provider 运行时凭证：api_key + endpoint + model + 热词。
 #[derive(Debug, Clone, Default)]
 pub struct ProviderCredentials {
     pub api_key: String,
     pub endpoint: String,
     /// 识别的模型名；空串 = provider 默认模型（如 qwen 的 fun-asr-realtime）。
     pub model: String,
+    /// 热词列表（llama-asr 的 `prompt` 偏置字段；qwen 忽略）。
+    /// 来源 `ProviderConfig.extra["hotwords"]`（逗号分隔，见 settings.rs）。
+    pub hotwords: Vec<String>,
 }
 
 impl ProviderCredentials {
@@ -292,8 +295,7 @@ impl AsrProvider for QwenAsrProvider {
 /// `{"output": {"output": {"text": "识别文本", "sentence": {...}}, "usage": {...}}}`
 /// 宽松解析：优先 `output.output.text` / `output.output.sentence.text`，
 /// 兜底 OpenAI 风格 `output.choices[0].message.content` 及 `text` 字段。
-fn parse_qwen_text(body: &str) -> Option<String> {
-    let value: JsonValue = serde_json::from_str(body).ok()?;
+fn parse_qwen_text(body: &str) -> Option<String> {    let value: JsonValue = serde_json::from_str(body).ok()?;
     // Fun-ASR-Realtime：output.output.text（sentence 内也有一份）
     if let Some(s) = value
         .get("output")
@@ -355,6 +357,194 @@ fn parse_qwen_text(body: &str) -> Option<String> {
 }
 
 // ============================================================================
+// Llama ASR (llama.cpp llama-server，本地 Qwen3-ASR)
+// ============================================================================
+
+/// 本地 llama-server（llama.cpp）Qwen3-ASR。
+///
+/// 协议（D:\asr-deploy\API接入文档.md 实测）：
+/// - 端点 `POST {endpoint}/v1/audio/transcriptions`（OpenAI 兼容 multipart）
+/// - 音频必须是 16kHz 单声道 WAV（前端 OfflineAudioContext 已产出同格式）
+/// - `model` 必须是 `/v1/models` 返回的全名（简写会 400 model not found）
+/// - 响应 `text` 格式 `language <lang><asr_text><文本>`，切 `<asr_text>` 取文本
+/// - 热词：multipart `prompt` 字段做上下文偏置（偏置非强制；热词接口保留，
+///   设置页暂不做输入 UI，来源 `ProviderConfig.extra["hotwords"]` 逗号分隔）
+/// - 流式：llama-server 走 SSE（HTTP），与现有 DashScope WebSocket 协议
+///   （provider_stream.rs）不同，v1 不接入——`supports_streaming=false`，
+///   前端模型级判定自动禁用流式开关，降级整句识别
+pub struct LlamaAsrProvider {
+    http: reqwest::Client,
+    cred: ProviderCredentials,
+}
+
+impl LlamaAsrProvider {
+    pub const ID: &'static str = "llama-asr";
+    pub const DISPLAY: &'static str = "本地 ASR（llama-server）";
+    pub const DEFAULT_ENDPOINT: &'static str = "http://127.0.0.1:8080";
+    pub const DEFAULT_MODEL: &'static str = "models/Qwen3-ASR-1.7B-Q8_0.gguf";
+
+    pub fn new(http: reqwest::Client, cred: ProviderCredentials) -> Self {
+        Self { http, cred }
+    }
+
+    /// 模型选择：配置非空用配置，否则默认 1.7B 全名。
+    fn effective_model(&self) -> String {
+        if self.cred.model.trim().is_empty() {
+            Self::DEFAULT_MODEL.to_string()
+        } else {
+            self.cred.model.trim().to_string()
+        }
+    }
+
+    /// 端点选择：配置非空且为 http(s) URL 时用配置，否则默认 `127.0.0.1:8080`。
+    ///
+    /// 与 qwen 同款校验——空 endpoint 会拼出相对 URL，reqwest 报 builder error
+    ///（设置页未填 endpoint 时配置为空串，必须回退默认）。
+    fn effective_endpoint(&self) -> String {
+        let e = self.cred.normalized_endpoint();
+        if e.is_empty() || !(e.starts_with("http://") || e.starts_with("https://")) {
+            Self::DEFAULT_ENDPOINT.to_string()
+        } else {
+            e
+        }
+    }
+}
+
+#[async_trait]
+impl AsrProvider for LlamaAsrProvider {
+    fn id(&self) -> &'static str {
+        Self::ID
+    }
+
+    fn display_name(&self) -> &'static str {
+        Self::DISPLAY
+    }
+
+    fn config_fields(&self) -> Vec<AsrConfigField> {
+        llama_asr_config_fields()
+    }
+
+    fn supports_streaming(&self) -> bool {
+        false
+    }
+
+    #[instrument(skip(self, wav_bytes), fields(provider = Self::ID))]
+    async fn recognize(
+        &self,
+        wav_bytes: Vec<u8>,
+        language_hint: Option<&str>,
+    ) -> Result<AsrResult, AsrError> {
+        // llama-server 转写不支持语言提示（模型自动判语言），忽略。
+        let _ = language_hint;
+        let endpoint = format!("{}/v1/audio/transcriptions", self.effective_endpoint());
+
+        let mut form = reqwest::multipart::Form::new()
+            .text("model", self.effective_model())
+            .text("response_format", "json")
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(wav_bytes)
+                    .file_name("audio.wav")
+                    .mime_str("audio/wav")
+                    .map_err(|e| AsrError::ProviderApiError {
+                        provider: Self::ID.into(),
+                        message: format!("构造 multipart 失败: {e}"),
+                    })?,
+            );
+        // 热词接口：extra["hotwords"] 非空时作为 prompt 上下文偏置传入
+        //（偏置非强制——提升特定词命中概率，不保证一定识别为热词）
+        if !self.cred.hotwords.is_empty() {
+            form = form.text("prompt", self.cred.hotwords.join(", "));
+        }
+
+        let mut req = self.http.post(&endpoint).multipart(form);
+        // api_key 可选：本地服务无鉴权时不发；带 --api-key 部署时用 Bearer
+        if self.cred.has_api_key() {
+            req = req.bearer_auth(&self.cred.api_key);
+        }
+        let resp = req.send().await.map_err(map_reqwest_error)?;
+
+        let status = resp.status();
+        if status == reqwest::StatusCode::REQUEST_TIMEOUT
+            || status == reqwest::StatusCode::GATEWAY_TIMEOUT
+        {
+            return Err(AsrError::ProviderTimeout(Self::ID.into()));
+        }
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(AsrError::ProviderApiError {
+                provider: Self::ID.into(),
+                message: format!("HTTP {status}: {body}"),
+            });
+        }
+
+        let body_text = resp.text().await.map_err(map_reqwest_error)?;
+        let (text, language) = parse_llama_text(&body_text).ok_or_else(|| {
+            AsrError::ProviderApiError {
+                provider: Self::ID.into(),
+                message: format!("无法从响应中提取文本: {body_text}"),
+            }
+        })?;
+
+        Ok(AsrResult {
+            text,
+            language,
+            confidence: None,
+            provider_id: Self::ID.into(),
+        })
+    }
+}
+
+/// 解析 llama-server 转写响应文本。
+///
+/// 实测格式：`{"text": "language <lang><asr_text><转写文本>"}`（无语音时
+/// `<lang>` 为 `None`、文本为空）。切 `<asr_text>`：后半是文本，前半是语言。
+fn parse_llama_text(body: &str) -> Option<(String, Option<String>)> {
+    let value: JsonValue = serde_json::from_str(body).ok()?;
+    let text = value.get("text").and_then(|t| t.as_str())?;
+    match text.split_once("<asr_text>") {
+        Some((lang_part, content)) => {
+            // `language Chinese` → Chinese；`language None` → None
+            let lang = lang_part
+                .strip_prefix("language")
+                .map(str::trim)
+                .filter(|s| !s.is_empty() && *s != "None")
+                .map(str::to_string);
+            Some((content.to_string(), lang))
+        }
+        None => Some((text.to_string(), None)),
+    }
+}
+
+/// 解析 llama-server `/v1/models` 响应，提取模型全名列表。
+///
+/// 兼容两种结构：`data[].id`（OpenAI 兼容）与 `models[].name`。
+fn parse_llama_models(body: &str) -> Vec<String> {
+    let value: JsonValue = match serde_json::from_str(body) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    let mut names = Vec::new();
+    if let Some(data) = value.get("data").and_then(|v| v.as_array()) {
+        for item in data {
+            if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
+                names.push(id.to_string());
+            }
+        }
+    }
+    if names.is_empty() {
+        if let Some(models) = value.get("models").and_then(|v| v.as_array()) {
+            for item in models {
+                if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
+                    names.push(name.to_string());
+                }
+            }
+        }
+    }
+    names
+}
+
+// ============================================================================
 // 工具函数
 // ============================================================================
 
@@ -397,25 +587,36 @@ pub fn default_http_client() -> reqwest::Client {
 // Provider 注册表
 // ============================================================================
 
-/// 列出所有 provider 的静态元数据（目前仅阿里云 qwen-asr）。
+/// 列出所有 provider 的静态元数据。
 pub fn list_provider_info() -> Vec<ProviderInfo> {
-    vec![ProviderInfo {
-        id: QwenAsrProvider::ID,
-        display_name: QwenAsrProvider::DISPLAY,
-        description: "阿里云 DashScope ASR（实时 / 非实时）",
-        default_endpoint: QwenAsrProvider::DEFAULT_ENDPOINT,
-        supports_streaming: true,
-        config_fields: qwen_asr_config_fields(),
-    }]
+    vec![
+        ProviderInfo {
+            id: QwenAsrProvider::ID,
+            display_name: QwenAsrProvider::DISPLAY,
+            description: "阿里云 DashScope ASR（实时 / 非实时）",
+            default_endpoint: QwenAsrProvider::DEFAULT_ENDPOINT,
+            supports_streaming: true,
+            config_fields: qwen_asr_config_fields(),
+        },
+        ProviderInfo {
+            id: LlamaAsrProvider::ID,
+            display_name: LlamaAsrProvider::DISPLAY,
+            description: "本地 llama-server Qwen3-ASR（整句识别）",
+            default_endpoint: LlamaAsrProvider::DEFAULT_ENDPOINT,
+            supports_streaming: false,
+            config_fields: llama_asr_config_fields(),
+        },
+    ]
 }
 
 /// 模型元数据（`asr_list_models` 返回给前端渲染下拉）。
 #[derive(Debug, Clone, Serialize)]
 pub struct ModelInfo {
-    /// 模型 id（写入 `provider_configs[id].model`）。
-    pub id: &'static str,
+    /// 模型 id（写入 `provider_configs[id].model`）。qwen 是协议名；
+    /// llama-asr 是 `/v1/models` 返回的动态全名（非静态，用 String）。
+    pub id: String,
     /// UI 显示名。
-    pub display_name: &'static str,
+    pub display_name: String,
     /// 是否支持流式协议（前端流式开关可用性的权威判定）。
     pub supports_streaming: bool,
     /// 是否默认模型（`provider_configs[id].model` 为空时生效）。
@@ -430,14 +631,14 @@ pub struct ModelInfo {
 pub fn qwen_models() -> Vec<ModelInfo> {
     vec![
         ModelInfo {
-            id: "fun-asr-realtime",
-            display_name: "Fun-ASR-Realtime（非实时）",
+            id: "fun-asr-realtime".into(),
+            display_name: "Fun-ASR-Realtime（非实时）".into(),
             supports_streaming: false,
             is_default: true,
         },
         ModelInfo {
-            id: "paraformer-realtime-v2",
-            display_name: "Paraformer-Realtime-V2",
+            id: "paraformer-realtime-v2".into(),
+            display_name: "Paraformer-Realtime-V2".into(),
             supports_streaming: true,
             is_default: false,
         },
@@ -452,13 +653,72 @@ pub fn qwen_is_streaming_model(model: &str) -> bool {
     matches!(model, "paraformer-realtime-v2")
 }
 
-/// 按 provider id 返回模型清单；未接入模型选择的 provider 返回空数组
-/// （前端据此隐藏模型下拉）。
-pub fn list_models(provider_id: &str) -> Vec<ModelInfo> {
+/// 按 provider id 返回模型清单。
+///
+/// qwen 返回静态清单；llama-asr 动态请求服务端 `/v1/models`（endpoint 取
+/// 当前设置，默认 `http://127.0.0.1:8080`；服务未启动/模型列表为空时返回
+/// `ProviderApiError`，前端展示错误并回退为模型文本输入）。未接入模型选择
+/// 的 provider 返回空数组（前端据此隐藏模型下拉）。
+pub async fn list_models(
+    provider_id: &str,
+    app: &tauri::AppHandle,
+    http: &reqwest::Client,
+) -> Result<Vec<ModelInfo>, AsrError> {
     match provider_id {
-        QwenAsrProvider::ID => qwen_models(),
-        _ => Vec::new(),
+        QwenAsrProvider::ID => Ok(qwen_models()),
+        LlamaAsrProvider::ID => llama_models(app, http).await,
+        _ => Ok(Vec::new()),
     }
+}
+
+/// 请求 llama-server `/v1/models`，映射为 ModelInfo 列表（llama-asr 全部非流式）。
+///
+/// 显示名取模型文件名的最后一段（`models/Qwen3-ASR-1.7B-Q8_0.gguf` →
+/// `Qwen3-ASR-1.7B-Q8_0.gguf`），id 保留全名（服务端按全名匹配模型）。
+async fn llama_models(
+    app: &tauri::AppHandle,
+    http: &reqwest::Client,
+) -> Result<Vec<ModelInfo>, AsrError> {
+    let settings = super::settings::load(app)?;
+    let cred = settings
+        .provider_configs
+        .get(LlamaAsrProvider::ID)
+        .cloned()
+        .unwrap_or_default();
+    let endpoint = if cred.endpoint.trim().is_empty() {
+        LlamaAsrProvider::DEFAULT_ENDPOINT.to_string()
+    } else {
+        cred.endpoint.trim_end_matches('/').to_string()
+    };
+    let url = format!("{endpoint}/v1/models");
+    debug!("[ASR] 拉取模型列表: {url}");
+    let resp = http.get(&url).send().await.map_err(map_reqwest_error)?;
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(AsrError::ProviderApiError {
+            provider: LlamaAsrProvider::ID.into(),
+            message: format!("HTTP {status}: {body}"),
+        });
+    }
+    let body_text = resp.text().await.map_err(map_reqwest_error)?;
+    let names = parse_llama_models(&body_text);
+    if names.is_empty() {
+        return Err(AsrError::ProviderApiError {
+            provider: LlamaAsrProvider::ID.into(),
+            message: "模型列表为空（/v1/models 未返回任何模型）".into(),
+        });
+    }
+    Ok(names
+        .into_iter()
+        .enumerate()
+        .map(|(i, id)| ModelInfo {
+            display_name: id.rsplit('/').next().unwrap_or(&id).to_string(),
+            supports_streaming: false,
+            is_default: i == 0,
+            id,
+        })
+        .collect())
 }
 
 /// 按 id 创建 provider 实例。
@@ -472,6 +732,7 @@ pub async fn get_provider(
     debug!("创建 ASR provider: {id}");
     let provider: Arc<dyn AsrProvider> = match id {
         QwenAsrProvider::ID => Arc::new(QwenAsrProvider::new(http.clone(), cred.clone())?),
+        LlamaAsrProvider::ID => Arc::new(LlamaAsrProvider::new(http.clone(), cred.clone())),
         other => {
             return Err(AsrError::ProviderNotFound(other.into()));
         }
@@ -502,6 +763,38 @@ fn qwen_asr_config_fields() -> Vec<AsrConfigField> {
             default_value: Some(QwenAsrProvider::DEFAULT_ENDPOINT),
             placeholder: Some("非实时 Fun-ASR-Realtime 端点"),
             hint: Some("默认 DashScope multimodal-generation；填自建代理时整段替换"),
+        },
+    ]
+}
+
+fn llama_asr_config_fields() -> Vec<AsrConfigField> {
+    vec![
+        AsrConfigField {
+            key: "endpoint",
+            label: "服务地址",
+            kind: ConfigFieldKind::Text,
+            required: false,
+            default_value: Some(LlamaAsrProvider::DEFAULT_ENDPOINT),
+            placeholder: Some("http://127.0.0.1:8080"),
+            hint: Some("llama-server 地址（Qwen3-ASR 本地部署）；局域网部署改 http://<IP>:8080"),
+        },
+        AsrConfigField {
+            key: "model",
+            label: "模型",
+            kind: ConfigFieldKind::Text,
+            required: false,
+            default_value: Some(LlamaAsrProvider::DEFAULT_MODEL),
+            placeholder: Some("models/Qwen3-ASR-1.7B-Q8_0.gguf"),
+            hint: Some("从上方模型列表选择，或用 /v1/models 查询服务端全名"),
+        },
+        AsrConfigField {
+            key: "api_key",
+            label: "API Key（可选）",
+            kind: ConfigFieldKind::Password,
+            required: false,
+            default_value: None,
+            placeholder: Some("本地服务无需填写"),
+            hint: Some("llama-server 带 --api-key 部署时填写，否则留空"),
         },
     ]
 }
@@ -544,6 +837,7 @@ mod tests {
             api_key: "k".into(),
             endpoint: "http://x.example.com/".into(),
             model: String::new(),
+            hotwords: Vec::new(),
         };
         assert_eq!(c.normalized_endpoint(), "http://x.example.com");
         assert!(c.has_api_key());
@@ -555,14 +849,114 @@ mod tests {
             api_key: "   ".into(),
             endpoint: "".into(),
             model: String::new(),
+            hotwords: Vec::new(),
         };
         assert!(!c.has_api_key());
     }
 
     #[test]
-    fn list_provider_info_only_qwen() {
+    fn list_provider_info_has_two_providers() {
         let info = list_provider_info();
-        assert_eq!(info.len(), 1);
-        assert_eq!(info[0].id, "qwen-asr");
+        assert_eq!(info.len(), 2);
+        assert!(info.iter().any(|p| p.id == "qwen-asr"));
+        assert!(info.iter().any(|p| p.id == "llama-asr"));
+    }
+
+    #[test]
+    fn llama_effective_endpoint_falls_back_when_empty() {
+        // 空 endpoint → 默认 127.0.0.1:8080（否则拼出相对 URL，reqwest builder error）
+        let p = LlamaAsrProvider::new(
+            default_http_client(),
+            ProviderCredentials {
+                endpoint: String::new(),
+                ..Default::default()
+            },
+        );
+        assert_eq!(p.effective_endpoint(), LlamaAsrProvider::DEFAULT_ENDPOINT);
+    }
+
+    #[test]
+    fn llama_effective_endpoint_rejects_non_http_scheme() {
+        // 缺 http:// 前缀（手填 127.0.0.1:8080）→ 回退默认
+        let p = LlamaAsrProvider::new(
+            default_http_client(),
+            ProviderCredentials {
+                endpoint: "127.0.0.1:8080".into(),
+                ..Default::default()
+            },
+        );
+        assert_eq!(p.effective_endpoint(), LlamaAsrProvider::DEFAULT_ENDPOINT);
+    }
+
+    #[test]
+    fn llama_effective_endpoint_keeps_valid_url_and_trims_slash() {
+        let p = LlamaAsrProvider::new(
+            default_http_client(),
+            ProviderCredentials {
+                endpoint: "http://192.168.1.5:9000/".into(),
+                ..Default::default()
+            },
+        );
+        assert_eq!(p.effective_endpoint(), "http://192.168.1.5:9000");
+    }
+
+    #[test]
+    fn parse_llama_text_splits_asr_text_marker() {
+        let body = r#"{"text":"language Chinese<asr_text>甚至出现交易几乎停滞的情况。"}"#;
+        let (text, lang) = parse_llama_text(body).expect("应解析成功");
+        assert_eq!(text, "甚至出现交易几乎停滞的情况。");
+        assert_eq!(lang.as_deref(), Some("Chinese"));
+    }
+
+    #[test]
+    fn parse_llama_text_none_language_is_empty() {
+        // 无语音：`language None<asr_text>` 空文本
+        let body = r#"{"text":"language None<asr_text>"}"#;
+        let (text, lang) = parse_llama_text(body).expect("应解析成功");
+        assert_eq!(text, "");
+        assert_eq!(lang, None);
+    }
+
+    #[test]
+    fn parse_llama_text_plain_text_fallback() {
+        // 无 <asr_text> 标记（协议异常兜底）：整体当文本
+        let body = r#"{"text":"你好"}"#;
+        let (text, lang) = parse_llama_text(body).expect("应解析成功");
+        assert_eq!(text, "你好");
+        assert_eq!(lang, None);
+    }
+
+    #[test]
+    fn parse_llama_text_garbage_returns_none() {
+        assert!(parse_llama_text("not json").is_none());
+        assert!(parse_llama_text(r#"{"foo": 1}"#).is_none());
+    }
+
+    #[test]
+    fn parse_llama_models_extracts_data_ids() {
+        let body = r#"{"data":[{"id":"models/Qwen3-ASR-1.7B-Q8_0.gguf"},{"id":"models/Qwen3-ASR-0.6B-Q8_0.gguf"}]}"#;
+        assert_eq!(
+            parse_llama_models(body),
+            vec![
+                "models/Qwen3-ASR-1.7B-Q8_0.gguf",
+                "models/Qwen3-ASR-0.6B-Q8_0.gguf"
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_llama_models_falls_back_to_models_names() {
+        // llama.cpp 某些版本返回 models[].name 而非 data[].id
+        let body = r#"{"models":[{"name":"models/Qwen3-ASR-1.7B-Q8_0.gguf"}]}"#;
+        assert_eq!(
+            parse_llama_models(body),
+            vec!["models/Qwen3-ASR-1.7B-Q8_0.gguf"]
+        );
+    }
+
+    #[test]
+    fn parse_llama_models_empty_or_garbage() {
+        assert!(parse_llama_models("not json").is_empty());
+        assert!(parse_llama_models(r#"{"data":[]}"#).is_empty());
     }
 }

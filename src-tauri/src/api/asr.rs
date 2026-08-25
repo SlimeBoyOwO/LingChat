@@ -302,8 +302,15 @@ pub async fn asr_list_providers() -> Vec<ProviderInfo> {
 }
 
 #[tauri::command]
-pub async fn asr_list_models(provider_id: String) -> Vec<provider::ModelInfo> {
-    provider::list_models(&provider_id)
+pub async fn asr_list_models(
+    provider_id: String,
+    app: AppHandle,
+) -> Result<Vec<provider::ModelInfo>, String> {
+    // llama-asr 需要发 HTTP 请求拉服务端模型列表（qwen 是静态清单，不走网络）
+    let http = build_http().map_err(|e| e.i18n_code().to_string())?;
+    provider::list_models(&provider_id, &app, &http)
+        .await
+        .map_err(|e| err_to_user(&e))
 }
 
 #[tauri::command]

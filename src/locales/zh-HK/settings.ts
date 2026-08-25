@@ -1093,7 +1093,10 @@ export default {
     "streamModeHint": "講嘢期間實時顯示識別文字",
     "streamNotSupported": "目前模型唔支援串流識別",
     "provider": {
-      "title": "阿里雲語音識別",
+      "title": "語音識別服務商",
+      "providerSelect": "服務商",
+      "modelRefresh": "重新載入模型列表",
+      "modelListFailed": "獲取模型列表失敗：{err}",
       "test": "測試連接",
       "testing": "正在錄音…請說話（4 秒）",
       "testingStop": "停止並識別",

@@ -1094,7 +1094,10 @@ export default {
     streamModeHint: '说话过程中实时显示识别文字',
     streamNotSupported: '当前模型不支持流式识别',
     provider: {
-      title: '阿里云语音识别',
+      title: '识别服务商',
+      providerSelect: '服务商',
+      modelRefresh: '刷新模型列表',
+      modelListFailed: '获取模型列表失败：{err}',
       test: '测试连接',
       testing: '正在录音…请说话（4 秒）',
       testingStop: '停止并识别',

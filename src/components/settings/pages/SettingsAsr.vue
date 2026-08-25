@@ -77,12 +77,24 @@
     <section class="mb-6">
       <div class="font-medium text-brand mb-3">{{ t('settings.asr.provider.title') }}</div>
 
+      <!-- 服务商选择：provider 由后端 list_provider_info 动态驱动 -->
+      <label class="block text-sm mb-1.5 font-medium">{{ t('settings.asr.providerSelect') }}</label>
+      <select
+        v-model="localSettings.active_provider"
+        class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200 mb-4"
+      >
+        <option v-for="p in asrStore.providers" :key="p.id" :value="p.id">
+          {{ p.display_name }}{{ p.description ? `（${p.description}）` : '' }}
+        </option>
+      </select>
+
         <div v-if="activeProviderInfo" class="space-y-3">
-        <!-- 模型预设：点击自动填入模型 + 接口地址（参考大模型管理的 Presets） -->
-        <div>
+        <!-- 模型预设（qwen）：点击自动填入模型 + 接口地址（参考大模型管理的 Presets）；
+             llama-asr 的模型来自服务端动态列表（下方模型下拉），无需预设 -->
+        <div v-if="visiblePresets.length > 0">
           <div class="flex flex-wrap gap-2">
             <button
-              v-for="preset in asrPresets"
+              v-for="preset in visiblePresets"
               :key="preset.model"
               type="button"
               class="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
@@ -109,8 +121,26 @@
             再索引（v-model 需要可写）。
             field.kind 与后端 ConfigFieldKind 对齐：text / password / number / boolean。
           -->
+          <!-- 模型下拉：provider 有动态模型清单（llama-asr 从服务端 /v1/models 拉取）
+               时优先下拉选择；拉取失败/无清单回退文本输入 -->
+          <div v-if="field.key === 'model' && asrStore.models.length > 0" class="flex gap-2">
+            <select
+              v-model="providerCfgRecord[field.key]"
+              class="flex-1 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+            >
+              <option v-for="m in asrStore.models" :key="m.id" :value="m.id">{{ m.display_name }}</option>
+            </select>
+            <button
+              type="button"
+              :title="t('settings.asr.modelRefresh')"
+              class="px-3 rounded-lg border border-white/15 bg-white/5 text-white/60 hover:text-white/80 hover:bg-white/10 transition-colors"
+              @click="refreshModels"
+            >
+              ↻
+            </button>
+          </div>
           <input
-            v-if="field.kind === 'password'"
+            v-else-if="field.kind === 'password'"
             type="password"
             v-model="providerCfgRecord[field.key]"
             class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
@@ -139,6 +169,12 @@
             :placeholder="field.placeholder"
             class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
           />
+          <p
+            v-if="field.key === 'model' && modelListError"
+            class="text-red-400 text-sm mt-1"
+          >
+            {{ modelListError }}
+          </p>
         </div>
         <div class="flex items-center gap-3">
           <button
@@ -215,25 +251,33 @@ const sendModeOptions = computed<{ value: SendMode; label: string }[]>(() => [
   { value: 'auto_send', label: t('settings.asr.sendMode.autoSend') },
 ])
 
-// ── 模型预设（与后端 qwen_models / provider.rs 端点保持一致） ──
+// ── 模型预设（与后端 qwen_models / provider.rs 端点保持一致；按 provider 归属） ──
 interface AsrPreset {
+  provider: string
   model: string
   label: string
   endpoint: string
 }
 const asrPresets: AsrPreset[] = [
   {
+    provider: 'qwen-asr',
     model: 'fun-asr-realtime',
     label: 'Fun-ASR-Realtime（非实时）',
     endpoint:
       'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
   },
   {
+    provider: 'qwen-asr',
     model: 'paraformer-realtime-v2',
     label: 'Paraformer-Realtime-V2（流式）',
     endpoint: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
   },
 ]
+
+/** 当前 provider 可见的预设（qwen 有协议预设；llama-asr 模型来自服务端动态列表，无预设） */
+const visiblePresets = computed(() =>
+  asrPresets.filter((p) => p.provider === localSettings.value.active_provider),
+)
 
 /** 应用模型预设：填 model + 预设 endpoint（用户手改的 endpoint 被覆盖，与 LLM 预设一致） */
 function applyAsrPreset(model: string) {
@@ -248,6 +292,25 @@ const activeProviderInfo = computed<ProviderInfo | undefined>(() =>
   asrStore.providers.find((p) => p.id === localSettings.value.active_provider),
 )
 
+/** 模型列表拉取失败信息（llama-asr 服务未启动等），显示在模型字段下方 */
+const modelListError = ref('')
+
+/** 拉取当前 provider 的模型清单；失败时清空列表并记录错误（llama-asr 回退文本输入） */
+async function loadModels(id: string) {
+  try {
+    asrStore.models = await asrListModels(id)
+    modelListError.value = ''
+  } catch (e) {
+    asrStore.models = []
+    modelListError.value = t('settings.asr.modelListFailed', { err: String(e) })
+  }
+}
+
+/** 手动刷新模型列表（llama-server 换模型/重启后重新拉取） */
+function refreshModels() {
+  void loadModels(localSettings.value.active_provider)
+}
+
 /** 当前生效模型：配置非空取配置，否则默认模型 */
 const activeModel = computed(() => {
   const id = localSettings.value.provider_configs[localSettings.value.active_provider]?.model ?? ''
@@ -260,9 +323,7 @@ watch(
   () => localSettings.value.active_provider,
   (id) => {
     ensureProviderConfig(id)
-    void asrListModels(id)
-      .then((list) => (asrStore.models = list))
-      .catch(() => (asrStore.models = []))
+    void loadModels(id)
   },
   { immediate: true },
 )
@@ -299,9 +360,19 @@ watch(
 
 // provider 切换 / 挂载时显式初始化缺失配置（不在渲染期突变 state）
 function ensureProviderConfig(id: string) {
-  if (!localSettings.value.provider_configs[id]) {
-    localSettings.value.provider_configs[id] = { api_key: '', endpoint: '', model: '', extra: {} }
-  }
+  const cfg =
+    localSettings.value.provider_configs[id] ?? { api_key: '', endpoint: '', model: '', extra: {} }
+  localSettings.value.provider_configs[id] = cfg
+  // 后端 default_value 兜底空字段（如 llama-asr 的 endpoint/model 默认值）：
+  // 用户不填也能开箱即用；已有值不覆盖（输入框渲染只用了 placeholder，
+  // 从未落过 default_value，这里补上——qwen 的默认 endpoint 同理受益）
+  const record = cfg as unknown as Record<string, string>
+  const info = asrStore.providers.find((p) => p.id === id)
+  info?.config_fields.forEach((f) => {
+    if (f.default_value && !record[f.key]) {
+      record[f.key] = f.default_value
+    }
+  })
 }
 watch(
   () => localSettings.value.active_provider,

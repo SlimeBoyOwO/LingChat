@@ -1098,7 +1098,10 @@ export default {
     streamModeHint: 'Shows recognized text in real time while speaking',
     streamNotSupported: 'The selected model does not support streaming recognition',
     provider: {
-      title: 'Alibaba Cloud ASR',
+      title: 'Speech Recognition Provider',
+      providerSelect: 'Provider',
+      modelRefresh: 'Refresh model list',
+      modelListFailed: 'Failed to load model list: {err}',
       test: 'Test connection',
       testing: 'Recording… please speak (4s)',
       testingStop: 'Stop & recognize',

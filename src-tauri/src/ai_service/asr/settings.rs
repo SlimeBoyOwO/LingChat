@@ -44,6 +44,20 @@ impl ProviderConfig {
             api_key: self.api_key.clone(),
             endpoint: self.endpoint.clone(),
             model: self.model.clone(),
+            // 热词接口（llama-asr 的 prompt 偏置）：从 extra["hotwords"] 读
+            // 逗号/分号/空白分隔的列表。设置页暂不做输入 UI（先不做热词输入），
+            // 此处保留接口——后续要加 UI 时只动前端，后端已就绪。
+            hotwords: self
+                .extra
+                .get("hotwords")
+                .map(|s| {
+                    s.split(|c: char| c == ',' || c == ';' || c.is_whitespace())
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default(),
         }
     }
 }
@@ -196,4 +210,41 @@ pub fn save(app: &AppHandle, s: &AsrSettings) -> Result<(), AsrError> {
         .save()
         .map_err(|e| AsrError::EngineLoadFailed(format!("store save: {e}")))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn to_credentials_parses_hotwords_from_extra() {
+        let cfg = ProviderConfig {
+            api_key: "k".into(),
+            endpoint: "http://127.0.0.1:8080".into(),
+            model: "models/Qwen3-ASR-1.7B-Q8_0.gguf".into(),
+            extra: [("hotwords".to_string(), "Quantinuum, Anthropic, 量子计算".to_string())]
+                .into_iter()
+                .collect(),
+        };
+        let cred = cfg.to_credentials();
+        assert_eq!(cred.hotwords, vec!["Quantinuum", "Anthropic", "量子计算"]);
+    }
+
+    #[test]
+    fn to_credentials_empty_hotwords_without_extra() {
+        let cfg = ProviderConfig::default();
+        assert!(cfg.to_credentials().hotwords.is_empty());
+    }
+
+    #[test]
+    fn to_credentials_tolerates_semicolon_and_whitespace() {
+        let cfg = ProviderConfig {
+            extra: [("hotwords".to_string(), "A;B  C, D\nE".to_string())]
+                .into_iter()
+                .collect(),
+            ..Default::default()
+        };
+        let cred = cfg.to_credentials();
+        assert_eq!(cred.hotwords, vec!["A", "B", "C", "D", "E"]);
+    }
 }
