@@ -123,7 +123,8 @@ const resetMemory = async (script: ScriptSummary) => {
 
 const selectScript = async (script: ScriptSummary) => {
   // 删角色文件彩蛋（DDLC ghost menu 对应物）：该剧本的 .chr 被玩家全部删掉后，
-  // 进入不再走正常流程——锁成黑白幽灵立绘，只剩重置按钮/放回文件两条出路。
+  // 进入不再走正常流程——锁成纯黑底 + 黑白幽灵立绘，没有任何出口按钮，
+  // 只有玩家自己放回 .chr（轮询自动解锁）或点窗口 X 放大脸退出两条路。
   // 实时查询而非读列表缓存：玩家可能刚在另一个窗口删完或放回文件。
   const ghostLock = await checkScriptGhostLock(script.script_name)
   if (ghostLock.locked && ghostLock.asset_dir) {

@@ -83,7 +83,7 @@ interface UIState {
   horrorEntryPhase: '' | 'freeze' | 'static'
 
   /** 删角色文件彩蛋（DDLC ghost menu 对应物）：.chr 被全删的剧本进入时
-   *  锁成黑白幽灵立绘，全界面只放出一个重置按钮；null = 无锁定 */
+   *  锁成纯黑底 + 黑白幽灵立绘，不给任何文字和按钮出口；null = 无锁定 */
   ghostLock: { scriptName: string; assetDir: string } | null
   /** 幽灵锁定中点窗口 X 的退出突脸（DDLC quit 放大脸）：true = 正在演出，随后退出 */
   ghostQuitZoom: boolean
@@ -305,11 +305,11 @@ export const useUIStore = defineStore('ui', {
       this.jumpscareSound = ''
       this.jumpscareUntil = 0
     },
-    /** 打开幽灵锁定（.chr 被全删的剧本入口）：全屏黑白立绘，只剩重置按钮 */
+    /** 打开幽灵锁定（.chr 被全删的剧本入口）：全屏纯黑底 + 黑白立绘，无任何 UI 出口 */
     openGhostLock(scriptName: string, assetDir: string) {
       this.ghostLock = { scriptName, assetDir }
     },
-    /** 解除幽灵锁定（重置完成/玩家放回 .chr 轮询发现已解锁） */
+    /** 解除幽灵锁定（玩家放回 .chr 后轮询发现已解锁） */
     closeGhostLock() {
       this.ghostLock = null
       this.ghostQuitZoom = false

@@ -1,7 +1,8 @@
 <template>
   <!-- 删角色文件彩蛋（DDLC ghost menu 对应物）：.chr 被全删的剧本进入时锁成
-       黑白幽灵立绘，盖住一切 UI，只放出「重置记忆」按钮；玩家放回任一 .chr
-       后轮询发现已解锁会自动撤掉。点窗口 X 走 ghostQuitZoom 放大脸演出。 -->
+       纯黑底 + 黑白幽灵立绘，盖住一切 UI，不给任何文字和出口按钮；玩家自己
+       把任一 .chr 放回标记目录后，轮询发现已解锁会自动撤掉。点窗口 X 走
+       ghostQuitZoom 放大脸演出。 -->
   <div v-if="lock" class="ghost-lock-layer">
     <div class="ghost-lock-scanlines"></div>
     <img
@@ -12,15 +13,6 @@
       draggable="false"
       @error="imgOk = false"
     />
-    <div class="ghost-lock-hint">{{ hintText }}</div>
-    <button
-      class="ghost-lock-reset"
-      type="button"
-      :disabled="resetting"
-      @click="onReset"
-    >
-      {{ resetting ? '· · ·' : $t('views.menu.resetMemory') }}
-    </button>
   </div>
 
   <!-- 锁定中点窗口 X：白底 + 立绘突然放大贴脸（DDLC quit: menu_art_m_ghost zoom 3.5），
@@ -36,9 +28,6 @@
     />
   </div>
 
-  <!-- 重置成功的白闪（盖住一切，一闪而过） -->
-  <div v-if="resetFlash" class="ghost-reset-flash"></div>
-
   <audio ref="musicRef" loop></audio>
   <audio ref="zoomAudioRef"></audio>
 </template>
@@ -47,7 +36,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useUIStore } from '../../stores/modules/ui/ui'
-import { checkScriptGhostLock, resetScriptState } from '../../api/services/script-info'
+import { checkScriptGhostLock } from '../../api/services/script-info'
 
 const uiStore = useUIStore()
 
@@ -55,16 +44,8 @@ const lock = computed(() => uiStore.ghostLock)
 const quitZoom = computed(() => uiStore.ghostQuitZoom)
 
 const imgOk = ref(true)
-const resetting = ref(false)
-const resetFlash = ref(false)
 const musicRef = ref<HTMLAudioElement | null>(null)
 const zoomAudioRef = ref<HTMLAudioElement | null>(null)
-
-// 乱码提示：正常短句与叠加符版本快速交替，模拟文本腐坏
-const HINT_NORMAL = '她不在这里'
-const HINT_CORRUPTED = '她̷不̸在̶这̵里̷'
-const hintText = ref(HINT_CORRUPTED)
-let hintTimer = 0
 
 const imgSrc = computed(() => {
   const dir = lock.value?.assetDir
@@ -92,7 +73,6 @@ watch(
   lock,
   (value) => {
     clearInterval(pollTimer)
-    clearInterval(hintTimer)
     if (value) {
       imgOk.value = true
       // DDLC ghostmenu.ogg：幽灵菜单循环 BGM
@@ -101,9 +81,6 @@ watch(
         musicRef.value.volume = 0.85
         musicRef.value.play().catch(() => {})
       }
-      hintTimer = window.setInterval(() => {
-        hintText.value = Math.random() < 0.72 ? HINT_CORRUPTED : HINT_NORMAL
-      }, 480)
       pollTimer = window.setInterval(pollUnlocked, 2000)
     } else if (musicRef.value) {
       musicRef.value.pause()
@@ -122,27 +99,8 @@ watch(quitZoom, (value) => {
   }
 })
 
-async function onReset() {
-  const current = lock.value
-  if (!current || resetting.value) return
-  resetting.value = true
-  try {
-    await resetScriptState(current.scriptName)
-    // 白闪一下再解锁：像画面被冲掉，回到正常的菜单
-    resetFlash.value = true
-    window.setTimeout(() => {
-      resetFlash.value = false
-      resetting.value = false
-      uiStore.closeGhostLock()
-    }, 320)
-  } catch {
-    resetting.value = false
-  }
-}
-
 onBeforeUnmount(() => {
   clearInterval(pollTimer)
-  clearInterval(hintTimer)
 })
 </script>
 
@@ -184,51 +142,13 @@ onBeforeUnmount(() => {
     ghost-sprite-flicker 9.3s steps(1, end) infinite;
 }
 
-.ghost-lock-hint {
-  margin-top: 18px;
-  color: rgba(228, 234, 238, 0.82);
-  font-size: clamp(18px, 2vw, 30px);
-  letter-spacing: 0.35em;
-  text-shadow:
-    -2px 0 rgba(255, 255, 255, 0.35),
-    2px 0 rgba(10, 10, 10, 0.9);
-  animation: ghost-hint-flicker 3.1s steps(1, end) infinite;
-}
-
-/* 唯一可操作的按钮：沿用主菜单白字阴影风格，但去掉一切彩色 */
-.ghost-lock-reset {
-  margin-top: 34px;
-  padding: 10px 34px;
-  background: transparent;
-  border: 1px solid rgba(228, 234, 238, 0.55);
-  color: rgba(228, 234, 238, 0.88);
-  font-family: 'Maoken_Assorted_Sans', -apple-system, BlinkMacSystemFont, 'Segoe_UI', Roboto,
-    'Helvetica_Neue', Arial, sans-serif;
-  font-size: clamp(18px, 1.8vw, 28px);
-  letter-spacing: 0.2em;
-  cursor: pointer;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
-  transition: background 0.25s ease, color 0.25s ease, transform 0.25s ease;
-}
-
-.ghost-lock-reset:hover:not(:disabled) {
-  background: rgba(228, 234, 238, 0.92);
-  color: #0a0b0c;
-  transform: translateY(-2px);
-}
-
-.ghost-lock-reset:disabled {
-  opacity: 0.5;
-  cursor: wait;
-}
-
 .ghost-quit-layer {
   position: fixed;
   inset: 0;
   z-index: 1000002;
   background: #fff;
   overflow: hidden;
-  /* 放大脸演出期间挡住一切点击（含下面的重置按钮），直到进程退出 */
+  /* 放大脸演出期间挡住一切点击，直到进程退出 */
   pointer-events: auto;
   cursor: wait;
 }
@@ -247,30 +167,12 @@ onBeforeUnmount(() => {
   animation: ghost-zoom-in 0.42s cubic-bezier(0.55, 0, 0.9, 0.4) forwards;
 }
 
-.ghost-reset-flash {
-  position: fixed;
-  inset: 0;
-  z-index: 1000001;
-  background: #fff;
-  pointer-events: none;
-  animation: ghost-flash-out 0.32s ease-out forwards;
-}
-
 @keyframes ghost-zoom-in {
   from {
     transform: translate(-50%, -50%) scale(0.9);
   }
   to {
     transform: translate(-50%, -50%) scale(4.2);
-  }
-}
-
-@keyframes ghost-flash-out {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
   }
 }
 
@@ -317,26 +219,8 @@ onBeforeUnmount(() => {
   }
 }
 
-@keyframes ghost-hint-flicker {
-  0%,
-  90%,
-  100% {
-    opacity: 0.82;
-  }
-  91% {
-    opacity: 0.2;
-  }
-  93% {
-    opacity: 0.82;
-  }
-  96% {
-    opacity: 0.45;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .ghost-lock-sprite,
-  .ghost-lock-hint,
   .ghost-lock-scanlines {
     animation: none !important;
   }
