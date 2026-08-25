@@ -18,8 +18,12 @@ The existing systems remain active. A static avatar is hidden only after a Live2
 
 | Path | Responsibility |
 | --- | --- |
-| `src/components/game/live2d/Live2DStage.vue` | Stage ownership, role synchronization, model lifecycle, layout, expressions, motions, gaze, and lip sync integration |
+| `src/components/game/live2d/Live2DStage.vue` | Stage ownership, role synchronization, model lifecycle, runtime-result ownership, layout, expressions, motions, gaze, and lip sync integration |
+| `src/components/game/live2d/live2d-stage-context.ts` | Stage-local, read-only ready/unavailable role results for avatar fallback rendering |
 | `src/components/game/live2d/live2d-runtime.ts` | Cubism Core and Pixi Live2D engine loading |
+| `src/components/game/standard/GameRoleAvatar.vue` | Role-intent dispatch plus shared avatar resolution, layout, animation, bubbles, touch, and effect audio |
+| `src/components/game/standard/StaticRolePresentation.vue` | Traditional static image transition and load completion contract |
+| `src/components/game/standard/Live2DRolePresentation.vue` | Stage-result consumption, static fallback visibility, and localized unavailable result |
 | `src/components/game/live2d/model-source.ts` | Safe model3 reference rewriting and configured idle projection |
 | `src/components/game/live2d/live2d-interaction.ts` | Pointer coordinate and gaze calculations |
 | `src/components/game/live2d/live2d-layout.ts` | Pure layout calculations shared with tests |
@@ -32,6 +36,10 @@ The existing systems remain active. A static avatar is hidden only after a Live2
 ## Render Stack
 
 Each mounted `GameRolesStage` creates at most one Pixi `Application`. All Live2D roles in that stage share it.
+
+`Live2DStage` owns model readiness and unavailability results. In standard mode, role DOM is rendered through its default slot. `GameRoleAvatar` uses only the presence of `role.live2d` to choose `Live2DRolePresentation` or `StaticRolePresentation`; the Live2D presentation consumes read-only results from the nearest stage context and reuses the static presentation for fallback. `GameRolesStage` must not copy model lifecycle results into its own state or choose a role's presentation from those results. Readiness only controls when the static fallback can be hidden.
+
+The context is local to one mounted stage. Do not turn it into a global store, event bus, role registry, or persistence mechanism.
 
 The intended visual order is:
 

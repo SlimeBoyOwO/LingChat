@@ -1,5 +1,6 @@
 <template>
   <div
+    v-bind="$attrs"
     ref="host"
     class="absolute
       inset-0
@@ -7,11 +8,12 @@
       overflow-hidden"
     aria-hidden="true"
   ></div>
+  <slot></slot>
 </template>
 
 <script setup lang="ts">
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, provide, readonly, ref, watch } from 'vue'
 
 import { getLive2dFilePath } from '@/api/services/character'
 import { EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
@@ -22,6 +24,7 @@ import {
   type Live2dVariant,
 } from '@/types/live2d'
 import { areEyesOpen, focusDirection, pointerToStagePoint } from './live2d-interaction'
+import { live2dStageContextKey } from './live2d-stage-context'
 import { calculatePetLayout } from './live2d-layout'
 import { trackMotionLifecycle } from './live2d-motion'
 import { loadLive2dRuntime, type Live2dRuntime } from './live2d-runtime'
@@ -31,6 +34,8 @@ import {
   type Live2dModelSource,
 } from './model-source'
 import { decodeVoiceForLipSync, sampleVoiceAmplitude, type DecodedVoice } from './useLive2dLipSync'
+
+defineOptions({ inheritAttrs: false })
 
 const props = defineProps<{
   roles: GameRole[]
@@ -73,15 +78,27 @@ let decodedVoice: DecodedVoice | null = null
 let decodeSequence = 0
 let resizeObserver: ResizeObserver | null = null
 let pointerPosition: { clientX: number; clientY: number } | null = null
+let pointerListenerAttached = false
 const models = new Map<number, RoleModel>()
 const failedRoleIds = new Set<number>()
+const readyRoleIds = ref<ReadonlySet<number>>(new Set())
+const unavailableRoleIds = ref<ReadonlySet<number>>(new Set())
+
+provide(live2dStageContextKey, {
+  readyRoleIds: readonly(readyRoleIds),
+  unavailableRoleIds: readonly(unavailableRoleIds),
+})
 
 function emitFailedRoles() {
-  emit('failedChange', [...failedRoleIds])
+  const roleIds = [...failedRoleIds]
+  unavailableRoleIds.value = new Set(roleIds)
+  emit('failedChange', roleIds)
 }
 
 function emitActiveRoles() {
-  emit('activeChange', [...models.keys()])
+  const roleIds = [...models.keys()]
+  readyRoleIds.value = new Set(roleIds)
+  emit('activeChange', roleIds)
 }
 
 function motionBindingEquals(
@@ -120,6 +137,21 @@ async function loadModelSource(roleId: number, modelFile: string) {
   return source
 }
 
+function destroyApplication() {
+  if (pointerListenerAttached) {
+    window.removeEventListener('pointermove', handlePointerMove)
+    pointerListenerAttached = false
+  }
+  resizeObserver?.disconnect()
+  resizeObserver = null
+  if (application) {
+    application.destroy({ removeView: true, releaseGlobalResources: false }, true)
+    application = null
+  }
+  pointerPosition = null
+  runtime = null
+}
+
 async function ensureApplication() {
   if (application || !host.value || disposed) return
   runtime = await loadLive2dRuntime()
@@ -148,6 +180,8 @@ async function ensureApplication() {
   })
   resizeObserver.observe(host.value)
   application = app
+  window.addEventListener('pointermove', handlePointerMove, { passive: true })
+  pointerListenerAttached = true
 }
 
 function findParameterIndex(entry: RoleModel, parameter: string): number {
@@ -328,11 +362,12 @@ async function loadRole(
       textureOptions: { lod: 'single-auto' },
     })
     pendingModel = model
+    const currentRole = props.roles.find((item) => item.roleId === role.roleId)
     if (
       disposed ||
       requestId !== requestSequenceFor(role.roleId) ||
-      variantNameFor(props.roles.find((item) => item.roleId === role.roleId) ?? role) !==
-        variantName
+      !currentRole ||
+      variantNameFor(currentRole) !== variantName
     ) {
       destroyModel(model)
       pendingModel = null
@@ -447,7 +482,10 @@ async function syncRoles() {
       destroyEntry(entry)
     }
   }
-  if (!liveRoles.length) return
+  if (!liveRoles.length) {
+    destroyApplication()
+    return
+  }
   await ensureApplication()
   for (const [index, role] of liveRoles.entries()) {
     const settings = role.live2d
@@ -520,29 +558,21 @@ watch(
 )
 
 watch(
-  () => props.voiceDataUrl,
-  async (url) => {
+  () => [props.voiceDataUrl, props.roles.some((role) => Boolean(role.live2d))] as const,
+  async ([url, hasLive2dRole]) => {
     const id = ++decodeSequence
     decodedVoice = null
+    if (!hasLive2dRole) return
     const decoded = await decodeVoiceForLipSync(url)
     if (id === decodeSequence) decodedVoice = decoded
   },
 )
 
-onMounted(() => {
-  window.addEventListener('pointermove', handlePointerMove, { passive: true })
-  queueSync()
-})
+onMounted(queueSync)
 onBeforeUnmount(() => {
-  window.removeEventListener('pointermove', handlePointerMove)
   disposed = true
   decodeSequence += 1
-  resizeObserver?.disconnect()
-  resizeObserver = null
   for (const entry of [...models.values()]) destroyEntry(entry)
-  if (application) {
-    application.destroy({ removeView: true, releaseGlobalResources: false }, true)
-    application = null
-  }
+  destroyApplication()
 })
 </script>

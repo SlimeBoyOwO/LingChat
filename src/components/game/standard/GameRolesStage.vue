@@ -2,25 +2,20 @@
   <div class="absolute w-full h-full overflow-hidden">
     <!-- 1. 所有 Live2D 角色共享一个场景级 Pixi Application -->
     <Live2DStage
-      v-if="hasLive2dRoles"
       class="z-2"
       :roles="gameStore.presentRolesList"
       mode="standard"
       :active-speaker-id="gameStore.currentInteractRoleId"
       :audio-element="mainAudio"
       :voice-data-url="voiceDataUrl"
-      @active-change="setLive2dReadyRoles"
-      @failed-change="setLive2dUnavailableRoles"
-    />
-
-    <!-- 2. 每个角色保留原有静态视觉、气泡和触摸层 -->
-    <RoleAvatar
-      v-for="role in gameStore.presentRolesList"
-      :key="role.roleId"
-      :role="role"
-      :live2d-ready="live2dReadyRoleIds.has(role.roleId)"
-      :live2d-unavailable="live2dUnavailableRoleIds.has(role.roleId)"
-    />
+    >
+      <!-- 2. 每个角色保留原有静态视觉、气泡和触摸层 -->
+      <RoleAvatar
+        v-for="role in gameStore.presentRolesList"
+        :key="role.roleId"
+        :role="role"
+      />
+    </Live2DStage>
 
     <!-- 3. 场景光照叠加层 -->
     <div
@@ -48,17 +43,6 @@ const emit = defineEmits(['audio-ended', 'audio-started'])
 
 const mainAudio = ref<HTMLAudioElement | null>(null)
 const voiceDataUrl = ref('')
-const live2dReadyRoleIds = ref(new Set<number>())
-const live2dUnavailableRoleIds = ref(new Set<number>())
-const hasLive2dRoles = computed(() => gameStore.presentRolesList.some((role) => Boolean(role.live2d)))
-
-const setLive2dReadyRoles = (roleIds: number[]) => {
-  live2dReadyRoleIds.value = new Set(roleIds)
-}
-
-const setLive2dUnavailableRoles = (roleIds: number[]) => {
-  live2dUnavailableRoleIds.value = new Set(roleIds)
-}
 
 const lightOverlayStyle = computed(() => {
   const l = gameStore.currentScene?.lighting

@@ -1,30 +1,23 @@
 <template>
-  <!-- 静态角色与 Live2D fallback 始终位于共享 Pixi 舞台下方。 -->
-  <Transition name="character-fade">
-    <div
-      class="absolute w-full h-full pointer-events-none origin-[center_0%] role-container-transition"
-      :style="staticLayerStyle"
-      @animationend="handleAnimationEnd"
-    >
-      <ImageAcrossFade
-        v-show="!role.live2d || !live2dReady"
-        ref="imageFadeRef"
-        class="absolute w-full h-[102%]"
-        :class="containerClasses"
-        :src="targetAvatarUrl"
-        :duration="300"
-        position="center bottom"
-        :object-fit="computedObjectFit"
-      />
-
-      <div
-        v-if="role.live2d && live2dUnavailable && !targetAvatarUrl"
-        class="absolute inset-0 flex items-center justify-center text-sm text-white/60"
-      >
-        {{ $t('game.avatar.live2dUnavailable') }}
-      </div>
-    </div>
-  </Transition>
+  <Live2DRolePresentation
+    v-if="role.live2d"
+    ref="presentationRef"
+    :role-id="role.roleId"
+    :src="targetAvatarUrl"
+    :layer-style="staticLayerStyle"
+    :animation-classes="containerClasses"
+    :object-fit="computedObjectFit"
+    @animation-end="handleAnimationEnd"
+  />
+  <StaticRolePresentation
+    v-else
+    ref="presentationRef"
+    :src="targetAvatarUrl"
+    :layer-style="staticLayerStyle"
+    :animation-classes="containerClasses"
+    :object-fit="computedObjectFit"
+    @animation-end="handleAnimationEnd"
+  />
 
   <!-- 原有气泡、触摸层和情绪音效位于共享 Pixi 舞台上方。 -->
   <TouchAreas v-if="gameStore.command === 'touch'" :body-parts="role.bodyPart" />
@@ -45,14 +38,13 @@ import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
 import type { GameRole } from '@/stores/modules/game/state'
+import Live2DRolePresentation from './Live2DRolePresentation.vue'
+import StaticRolePresentation from './StaticRolePresentation.vue'
 import TouchAreas from './TouchAreas.vue'
-import ImageAcrossFade from '@/components/ui/ImageAcrossFade.vue'
 import './avatar-animation.css'
 
 const props = defineProps<{
   role: GameRole
-  live2dReady: boolean
-  live2dUnavailable: boolean
 }>()
 
 const gameStore = useGameStore()
@@ -60,7 +52,11 @@ const uiStore = useUIStore()
 const { role } = toRefs(props)
 
 const bubbleAudio = ref<HTMLAudioElement | null>(null)
-const imageFadeRef = ref<InstanceType<typeof ImageAcrossFade> | null>(null)
+const presentationRef = ref<
+  | InstanceType<typeof Live2DRolePresentation>
+  | InstanceType<typeof StaticRolePresentation>
+  | null
+>(null)
 
 const activeAnimationClass = ref('normal')
 const isBubbleVisible = ref(false)
@@ -125,6 +121,8 @@ const roleLayerStyle = computed(() => {
     top: `${role.value.offsetY - narrowScreenYCompensation.value - wideScreenYCompensation.value}px`,
     transform: `translateX(-50%) scale(${role.value.scale})`,
     opacity: `${role.value.show ? 1 : 0}`,
+    transition:
+      'left 0.5s cubic-bezier(0.25, 0.8, 0.5, 1), top 0.3s ease, opacity 0.3s ease-in-out',
   }
   const filter = lightingFilter.value
   if (filter) {
@@ -202,8 +200,8 @@ watch(
     await nextTick()
 
     // 3. 等待子组件的图片加载 Promise 结束
-    if (imageFadeRef.value) {
-      await imageFadeRef.value.waitForLoad()
+    if (presentationRef.value) {
+      await presentationRef.value.waitForLoad()
     }
 
     // 检查是否仍然是最新的表情更新
@@ -302,26 +300,6 @@ const handleAnimationEnd = () => {
 </script>
 
 <style scoped>
-.role-container-transition {
-  transition:
-    left 0.5s cubic-bezier(0.25, 0.8, 0.5, 1),
-    top 0.3s ease,
-    opacity 0.3s ease-in-out;
-}
-
-/* --- 角色进场/退场动画 (Vue Transition 组件必需的样式) --- */
-.character-fade-enter-active,
-.character-fade-leave-active {
-  transition:
-    opacity 0.5s ease-in-out,
-    transform 0.5s ease-out;
-}
-
-.character-fade-enter-from,
-.character-fade-leave-to {
-  opacity: 0;
-}
-
 :deep(.touch-area) {
   pointer-events: auto;
 }
