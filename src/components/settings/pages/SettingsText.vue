@@ -310,8 +310,9 @@
         </div>
       </MenuItem>
 
-      <!-- ─── Codex 额度 ──────────────────────────────── -->
+      <!-- ─── Codex 额度（仅对话模型选择 Codex 提供商时显示） ──────────────── -->
       <MenuItem
+        v-if="showCodexQuota"
         :title="$t('settings.text.codexQuota.title')"
         size="small"
       >
@@ -594,6 +595,7 @@ import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useRoleArchiveStore } from '../../../stores/modules/ui/role-archive'
 import { useSettingsStore } from '../../../stores/modules/settings'
+import { useLlmProvidersStore } from '@/stores/modules/llm-providers'
 import { useGameStore } from '../../../stores/modules/game'
 import type { ConfigItem } from '@/api/services/config'
 import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
@@ -660,6 +662,10 @@ const lastCleanupInfo = ref<{ deleted: number; timestamp: number } | null>(null)
 let ttsCacheRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 // ─── Codex 额度 ────────────────────────────────────────────────
+// 只有「对话模型」选择了 Codex 提供商时才显示额度卡片并轮询；
+// 切换为其他模型后卡片即时隐藏、轮询停止。
+const llmProvidersStore = useLlmProvidersStore()
+const showCodexQuota = computed(() => llmProvidersStore.chatProvider?.provider === 'codex')
 const codexLoggedIn = ref(false)
 const codexUsage = ref<CodexUsage | null>(null)
 const codexQuotaError = ref('')
@@ -942,7 +948,7 @@ const handleClearHistory = async () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadConfig()
   checkTtsCache()
   loadLastTtsCleanup()
@@ -954,22 +960,47 @@ onMounted(() => {
   ttsCacheRefreshTimer = setInterval(() => {
     checkTtsCache()
   }, 30000)
-  // Codex 额度：进页面即查一次，之后每 60 秒轮询
-  refreshCodexQuota()
+  // Codex 额度卡片依赖对话模型的提供商类型，先确保模型列表已加载
+  if (!llmProvidersStore.loaded) {
+    await llmProvidersStore.load()
+  }
+  // Codex 额度：对话模型是 Codex 时才查，之后每 60 秒轮询
+  if (showCodexQuota.value) {
+    refreshCodexQuota()
+    startCodexQuotaPolling()
+  }
+})
+
+// 对话模型切到/切出 Codex 时，即时显隐卡片并启停轮询
+watch(showCodexQuota, (show) => {
+  if (show) {
+    refreshCodexQuota()
+    startCodexQuotaPolling()
+  } else {
+    stopCodexQuotaPolling()
+  }
+})
+
+function startCodexQuotaPolling() {
+  stopCodexQuotaPolling()
   codexQuotaTimer = setInterval(() => {
     refreshCodexQuota()
   }, 60000)
-})
+}
+
+function stopCodexQuotaPolling() {
+  if (codexQuotaTimer) {
+    clearInterval(codexQuotaTimer)
+    codexQuotaTimer = null
+  }
+}
 
 onUnmounted(() => {
   if (ttsCacheRefreshTimer) {
     clearInterval(ttsCacheRefreshTimer)
     ttsCacheRefreshTimer = null
   }
-  if (codexQuotaTimer) {
-    clearInterval(codexQuotaTimer)
-    codexQuotaTimer = null
-  }
+  stopCodexQuotaPolling()
 })
 
 function loadLastTtsCleanup() {
