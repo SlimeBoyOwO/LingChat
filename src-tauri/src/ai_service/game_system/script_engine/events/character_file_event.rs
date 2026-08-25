@@ -183,7 +183,7 @@ fn require_declared(script: &ScriptStatus, file: &str) -> Result<()> {
     Ok(())
 }
 
-fn namespace_from_path_key(path_key: &str) -> Result<PathBuf> {
+pub(crate) fn namespace_from_path_key(path_key: &str) -> Result<PathBuf> {
     let mut namespace = PathBuf::new();
     for component in Path::new(path_key).components() {
         match component {

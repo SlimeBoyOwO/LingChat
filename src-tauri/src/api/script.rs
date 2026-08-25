@@ -83,10 +83,37 @@ pub async fn list_scripts(app: AppHandle) -> Result<ScriptListResponse, String> 
 pub async fn get_script_menu_effect(app: AppHandle) -> Option<ScriptMenuEffectResponse> {
     let app_state = app.state::<AppState>();
     let service = app_state.ai_service.lock().await;
-    let state =
+    let Some(state) =
         crate::ai_service::game_system::script_engine::events::menu_effect_event::read_menu_effect(
             &service.data_dir,
+        )
+    else {
+        // 剧本没有显式设置菜单演出时，检查删角色文件彩蛋（DDLC ghost menu 的对应物）：
+        // 声明了 character_files 的剧本玩过之后，其 .chr 标记被全部删除 → ghost 主题；
+        // 玩家把 .chr 放回标记目录后，下次读取自动恢复正常。
+        let declared_keys: std::collections::HashSet<String> = service
+            .script_manager
+            .all_scripts
+            .values()
+            .filter(|script| {
+                script
+                    .settings
+                    .get("character_files")
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|files| !files.is_empty())
+            })
+            .map(|script| script.path_key())
+            .collect();
+        let owner = crate::ai_service::game_system::script_engine::events::menu_effect_event::ghost_owner_for_deleted_markers(
+            &service.data_dir,
+            &declared_keys,
         )?;
+        return Some(ScriptMenuEffectResponse {
+            theme: "ghost".to_string(),
+            message: None,
+            owner,
+        });
+    };
 
     // A DLC may also be removed manually while LingChat is closed. Never leave
     // an orphaned title skin behind when its owning script no longer exists.

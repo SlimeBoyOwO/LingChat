@@ -180,6 +180,47 @@ pub fn clear_menu_effect(data_dir: &Path) -> Result<bool> {
     }
 }
 
+/// 删角色文件彩蛋（DDLC ghost menu 的对应物）：剧本至少真正进过一次（有运行状态
+/// 记录）、声明了 character_files 管理，但其角色标记目录里一个 .chr 都不剩——
+/// 不管第几幕，主菜单变 ghost；玩家把 .chr 放回后下次读取自动恢复正常。
+///
+/// 目录本身不存在不算"删"——刚进剧本就退出、标记尚未创建的情形不能误伤；
+/// 只有"目录在、文件没了"才是玩家故意删文件的强信号。
+pub(crate) fn ghost_owner_for_deleted_markers(
+    data_dir: &Path,
+    declared_keys: &std::collections::HashSet<String>,
+) -> Option<String> {
+    for path_key in
+        crate::ai_service::game_system::script_engine::persistent_state::played_script_keys(
+            data_dir,
+        )
+    {
+        if !declared_keys.contains(&path_key) {
+            continue;
+        }
+        let Ok(namespace) = super::character_file_event::namespace_from_path_key(&path_key)
+        else {
+            continue;
+        };
+        let dir = super::character_file_event::external_characters_root(data_dir).join(namespace);
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        let chr_count = entries
+            .flatten()
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "chr"))
+            .count();
+        if chr_count == 0 {
+            tracing::info!(
+                "[MenuEffect] 剧本 '{}' 的角色标记被全部删除，主菜单切换为 ghost 主题",
+                path_key
+            );
+            return Some(path_key);
+        }
+    }
+    None
+}
+
 pub fn clear_menu_effect_for_owner(data_dir: &Path, owner: &str) -> Result<bool> {
     let Some(state) = read_menu_effect(data_dir) else {
         return Ok(false);

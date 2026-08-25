@@ -74,6 +74,14 @@ fn write_state(data_dir: &Path, state: &RuntimeState) -> Result<()> {
     super::dlc_transaction::sync_directory(data_dir).context("提交剧本运行状态目录项失败")
 }
 
+/// 有运行状态记录的剧本 path_key 列表（= 至少真正进入过一次的剧本）。
+/// 读取失败时返回空列表——删文件彩蛋宁可缺席，不可误判。
+pub(crate) fn played_script_keys(data_dir: &Path) -> Vec<String> {
+    read_state(data_dir)
+        .map(|state| state.scripts.keys().cloned().collect())
+        .unwrap_or_default()
+}
+
 fn selected_values(script: &ScriptStatus, keys: &[String]) -> Map<String, Value> {
     keys.iter()
         .filter_map(|key| {
