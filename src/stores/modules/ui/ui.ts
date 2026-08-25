@@ -82,6 +82,12 @@ interface UIState {
   /** 恐怖剧本入口过渡阶段：'' 无 / 'freeze' 卡死 / 'static' 花屏 */
   horrorEntryPhase: '' | 'freeze' | 'static'
 
+  /** 删角色文件彩蛋（DDLC ghost menu 对应物）：.chr 被全删的剧本进入时
+   *  锁成黑白幽灵立绘，全界面只放出一个重置按钮；null = 无锁定 */
+  ghostLock: { scriptName: string; assetDir: string } | null
+  /** 幽灵锁定中点窗口 X 的退出突脸（DDLC quit 放大脸）：true = 正在演出，随后退出 */
+  ghostQuitZoom: boolean
+
   /** BSOD 假异常窗口的 trace 行文本（剧本经 background_effect.text 自带；空串 = 用通用默认） */
   bsodText: string
   /** BSOD 彩蛋独白（background_effect.echo；空串 = 不显示独白） */
@@ -183,6 +189,10 @@ export const useUIStore = defineStore('ui', {
     spriteNoise: null,
 
     horrorEntryPhase: '',
+
+    // 幽灵锁定（删角色文件彩蛋）初始状态
+    ghostLock: null,
+    ghostQuitZoom: false,
 
     // BSOD 假异常窗口的剧本自带文本（空串 = 通用默认/无独白）
     bsodText: '',
@@ -294,6 +304,19 @@ export const useUIStore = defineStore('ui', {
       this.jumpscareImage = ''
       this.jumpscareSound = ''
       this.jumpscareUntil = 0
+    },
+    /** 打开幽灵锁定（.chr 被全删的剧本入口）：全屏黑白立绘，只剩重置按钮 */
+    openGhostLock(scriptName: string, assetDir: string) {
+      this.ghostLock = { scriptName, assetDir }
+    },
+    /** 解除幽灵锁定（重置完成/玩家放回 .chr 轮询发现已解锁） */
+    closeGhostLock() {
+      this.ghostLock = null
+      this.ghostQuitZoom = false
+    },
+    /** 幽灵锁定中点窗口 X：DDLC quit 式放大脸演出，演完由 App.vue 真正退出 */
+    triggerGhostQuitZoom() {
+      if (this.ghostLock) this.ghostQuitZoom = true
     },
     /** 立绘闪现：把 roleId 的立绘短暂替换为 emotion 版本，duration 秒后由组件自动还原 */
     triggerSpriteFlash(roleId: number, emotion: string, durationSec: number) {

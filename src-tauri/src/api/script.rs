@@ -54,6 +54,18 @@ pub struct ScriptMenuEffectResponse {
     pub owner: String,
 }
 
+/// 删角色文件彩蛋的"幽灵锁定"状态（DDLC ghost menu 的对应物）：
+/// 玩家把剧本声明的角色标记 .chr 全部删掉后，进入该剧本不再走正常流程，
+/// 而是锁成黑白幽灵立绘演出，只剩重置按钮可操作。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ScriptGhostLockResponse {
+    pub locked: bool,
+    /// 锁定中时为该剧本 Assets 目录的绝对路径，前端用 convertFileSrc 加载
+    /// 幽灵立绘/音效；未锁定为 None。不含文件名校验——素材缺失时前端静默降级。
+    pub asset_dir: Option<String>,
+}
+
 // ============================================================
 // Tauri commands
 // ============================================================
@@ -88,31 +100,7 @@ pub async fn get_script_menu_effect(app: AppHandle) -> Option<ScriptMenuEffectRe
             &service.data_dir,
         )
     else {
-        // 剧本没有显式设置菜单演出时，检查删角色文件彩蛋（DDLC ghost menu 的对应物）：
-        // 声明了 character_files 的剧本玩过之后，其 .chr 标记被全部删除 → ghost 主题；
-        // 玩家把 .chr 放回标记目录后，下次读取自动恢复正常。
-        let declared_keys: std::collections::HashSet<String> = service
-            .script_manager
-            .all_scripts
-            .values()
-            .filter(|script| {
-                script
-                    .settings
-                    .get("character_files")
-                    .and_then(serde_json::Value::as_array)
-                    .is_some_and(|files| !files.is_empty())
-            })
-            .map(|script| script.path_key())
-            .collect();
-        let owner = crate::ai_service::game_system::script_engine::events::menu_effect_event::ghost_owner_for_deleted_markers(
-            &service.data_dir,
-            &declared_keys,
-        )?;
-        return Some(ScriptMenuEffectResponse {
-            theme: "ghost".to_string(),
-            message: None,
-            owner,
-        });
+        return None;
     };
 
     // A DLC may also be removed manually while LingChat is closed. Never leave
@@ -136,6 +124,32 @@ pub async fn get_script_menu_effect(app: AppHandle) -> Option<ScriptMenuEffectRe
         message: state.message,
         owner: state.owner,
     })
+}
+
+/// 进入剧本前的幽灵锁定检查（DDLC ghost menu 的对应物）：玩家把该剧本声明的
+/// 角色标记 .chr 全部删除后返回 locked=true 并带上 Assets 目录；玩家放回任一
+/// .chr 或重置记忆（运行状态被清掉）后自动解锁。
+#[tauri::command]
+pub async fn check_script_ghost_lock(app: AppHandle, script_name: String) -> ScriptGhostLockResponse {
+    let app_state = app.state::<AppState>();
+    let service = app_state.ai_service.lock().await;
+    let not_locked = || ScriptGhostLockResponse {
+        locked: false,
+        asset_dir: None,
+    };
+    let Some(script) = service.script_manager.all_scripts.get(&script_name) else {
+        return not_locked();
+    };
+    if !crate::ai_service::game_system::script_engine::events::menu_effect_event::script_markers_wiped(
+        &service.data_dir,
+        script,
+    ) {
+        return not_locked();
+    }
+    ScriptGhostLockResponse {
+        locked: true,
+        asset_dir: Some(script.script_path.join("Assets").to_string_lossy().to_string()),
+    }
 }
 
 /// Display one auxiliary horror window only after the frontend event queue has

@@ -59,7 +59,7 @@
 import { computed, ref } from 'vue'
 import { StartItem, StartLine, StartList } from '../base'
 import { useRouter } from 'vue-router'
-import { type ScriptSummary, startScript, resetScriptState } from '@/api/services/script-info'
+import { type ScriptSummary, startScript, resetScriptState, checkScriptGhostLock } from '@/api/services/script-info'
 import { useGameStore } from '@/stores/modules/game'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
 import { useUIStore } from '@/stores/modules/ui/ui'
@@ -122,6 +122,15 @@ const resetMemory = async (script: ScriptSummary) => {
 }
 
 const selectScript = async (script: ScriptSummary) => {
+  // 删角色文件彩蛋（DDLC ghost menu 对应物）：该剧本的 .chr 被玩家全部删掉后，
+  // 进入不再走正常流程——锁成黑白幽灵立绘，只剩重置按钮/放回文件两条出路。
+  // 实时查询而非读列表缓存：玩家可能刚在另一个窗口删完或放回文件。
+  const ghostLock = await checkScriptGhostLock(script.script_name)
+  if (ghostLock.locked && ghostLock.asset_dir) {
+    uiStore.openGhostLock(script.script_name, ghostLock.asset_dir)
+    return
+  }
+
   // 带内容警告的剧本（如恐怖向）先弹确认，取消则不进入
   if (script.content_warning === 'horror') {
     const confirmed = await dialogStore.confirm(

@@ -713,6 +713,7 @@ pub fn run() {
             api::script::list_scripts,
             api::script::list_standalone_scripts,
             api::script::get_script_menu_effect,
+            api::script::check_script_ghost_lock,
             api::script::start_script,
             api::script::script_submit_input,
             api::script::script_submit_choice,
