@@ -1,6 +1,5 @@
 import { ref, computed, shallowRef, watch } from 'vue'
 import { useRoute, type RouteLocationNormalizedLoaded } from 'vue-router'
-import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 
 import { useUIStore } from '@/stores/modules/ui/ui'
@@ -22,6 +21,7 @@ import {
   type VadEvent,
 } from '@/api/services/asr'
 import { pcmToWavPcm16, trimSilencePcm } from '@/utils/asrAudio'
+import { parseAsrError } from '@/utils/asrError'
 
 /**
  * 统一 ASR 输入入口：两种触发源共用同一会话生命周期。
@@ -68,8 +68,13 @@ let mobileMenuOpen = false
 /** 短暂显示锁：识别后填入 inputMessage 到自动 send 之间的窗口期，期间 auto 触发禁用（§1.10）。
  *  ref 化（非普通变量）：canStartMic 等 computed 依赖它，锁过期后能自动重算解锁。 */
 const asrLockedUntil = ref(0)
-/** auto_send 模式：识别完成后延迟发送的毫秒数（给用户看到结果的窗口，防乱序） */
-const AUTO_SEND_DELAY_MS = 800
+/** auto_send 模式：识别完成后延迟发送的毫秒数（给用户看到结果的窗口，防乱序）。
+ *  导出供 GameDialog / ChatInput 的 asr-send 监听复用（同一延迟语义）。 */
+export const ASR_AUTO_SEND_DELAY_MS = 800
+/** 录音硬上限（samples）：1 分钟 @ 16kHz。达到后自动 stop()——
+ *  防止按钮长按/异常会话无限录音（VAD 端 max_segment_frames 同为 60s，两处对齐；
+ *  有界也顺带解决长时间录音时 pcmBuffer 的无限内存增长）。 */
+const MAX_RECORD_SAMPLES = 60 * 16000
 /** 能量监测启动缓冲期兜底值（毫秒）：未加载设置时用 100ms。
  *  实际值来自 asrStore.settings.energy_warmup_ms（设置页可自定义，
  *  0 = 无缓冲）。voicePlaying 门控已保证 TTS 播放期间完全不监听，
@@ -225,23 +230,21 @@ export function registerAsrInputBridge(b: {
   inputBridge = b
 }
 
-/** 流式是否生效：设置开关 + 当前生效模型的流式能力（模型级权威判定） */
+/** 流式是否生效：设置开关 + 当前生效模型的流式能力（模型级权威判定，
+ *  元数据全部来自后端 asr_list_models——前端不再维护硬编码集合） */
 function isStreamEnabled(): boolean {
   if (!asrStore?.settings.stream_enabled) return false
   const sel = asrStore.settings.provider_configs[asrStore.settings.active_provider]?.model ?? ''
   const model =
     asrStore.models.find((m) => m.id === sel) ??
     asrStore.models.find((m) => m.is_default)
-  // 静态兜底：models 清单可能未加载（load 失败 / 未打开设置页 / provider_configs
-  // 被 persist 排除）——此时不能用"找不到模型 = 不支持"静默降级非流式，否则
-  // 配置了流式模型却走整句识别（症状：说话时无 partial、识别完成才整句显示）。
-  // 静态集合与后端 provider.rs 的 qwen_is_streaming_model 保持一致。
-  const staticStreaming = new Set(['paraformer-realtime-v2'])
-  const enabled = model ? model.supports_streaming : staticStreaming.has(sel)
+  // 模型清单未加载（拉取失败等）时流式判定为 false → 走整句识别；
+  // 配置了流式模型却降级整句的代价是"无 partial"，后端能力不受影响
+  const enabled = model?.supports_streaming ?? false
   // 诊断：暴露流式判定的依据（模型清单是否命中、命中哪个模型）
   console.log(
     `[ASR] isStreamEnabled: stream=${asrStore.settings.stream_enabled}, ` +
-      `model=${sel || '(default)'}${model ? ` (${model.supports_streaming ? 'stream' : 'batch'})` : ' (static fallback)'} → ${enabled}`,
+      `model=${sel || '(default)'}${model ? ` (${model.supports_streaming ? 'stream' : 'batch'})` : ' (未加载)'} → ${enabled}`,
   )
   return enabled
 }
@@ -488,6 +491,12 @@ async function start(source: AsrSource) {
         }
         feedStream()
       }
+      // 录音硬上限（1 分钟）：达到自动停止。放回调末尾——stop() 会取走
+      // pcmBuffer 合成 WAV，此前的数据完整保留；VAD/流式块已在此前送完，
+      // 不再残留
+      if (pcmBuffer.length >= MAX_RECORD_SAMPLES) {
+        stop()
+      }
     }
     await asrStartListening(source)
   } catch (err: unknown) {
@@ -495,6 +504,9 @@ async function start(source: AsrSource) {
     console.warn('[ASR] start failed:', err)
     if (name === 'NotAllowedError' || name === 'NotReadableError') {
       asrStore?.setMicState('denied')
+      asrStore?.onError('ASR_MIC_DENIED')
+    } else {
+      asrStore?.onError(parseAsrError(err).code || String(err))
     }
     // 流式 WebSocket 可能已建立（getUserMedia / startListening 失败路径）：
     // 必须清理，否则后端句柄残留 → 下次启动 SessionBusy
@@ -526,10 +538,11 @@ function stop() {
 async function doStreamFinish(source: AsrSource) {
   try {
     const result = await asrStopStreaming()
-    asrStore?.onResult(result)
     handle(result.text, source)
   } catch (err) {
     console.error('[ASR/stream] 收尾失败:', err)
+    // 错误链路打通：设置页状态面板 + mic 按钮可感知识别失败（架构 A）
+    asrStore?.onError(parseAsrError(err).code || String(err))
     resetSession()
     if (source === 'auto') {
       autoTriggered = false
@@ -559,10 +572,11 @@ async function doRecognize(source: AsrSource, captured: number[]) {
     const result = isLlamaStream()
       ? await asrRecognizeWavStream({ providerId, wavBytes: Array.from(wav) })
       : await asrRecognizeWav({ providerId, wavBytes: Array.from(wav), languageHint: null })
-    asrStore?.onResult(result)
     handle(result.text, source)
   } catch (err) {
     console.error('[ASR] recognize failed:', err)
+    // 错误链路打通：设置页状态面板 + mic 按钮可感知识别失败（架构 A）
+    asrStore?.onError(parseAsrError(err).code || String(err))
     resetSession()
     if (source === 'auto') {
       autoTriggered = false
@@ -619,25 +633,16 @@ function handle(text: string, source: AsrSource) {
   if (mode === 'fill_only') {
     window.dispatchEvent(new CustomEvent('asr-text', { detail: full }))
   } else if (mode === 'auto_send') {
-    // 完整识别结果填入输入框显示（用户可看到完整内容，流式时 partial 已实时
-    // 填充、此处覆盖为 final 整句），800ms 后发送给 LLM；AI 回复时
-    // GameDialog 的 showCharacterLine watch 自动清空输入框（与手动发送一致）。
-    // 同时渲染 dialogHistory（历史记录可见，问题 3）。
-    // 不降级 queue：消息已渲染，flush 时 GameDialog.send() 会重复渲染；
-    // 直接 invoke 由后端 generation_lock 排队（AI 忙时同样正确，顺序保持）。
-    // 直接赋值 asrLockedUntil 而非 lockAsrForDisplay()：handle 执行时 phase 尚在
-    // 'recognizing'，lockAsrForDisplay → updateAsrAvailability 会误判丢弃会话（递归）。
-    gameStore?.appendGameMessage({
-      type: 'message',
-      displayName: gameStore.userName,
-      content: full,
-    })
-    // 输入框显示完整结果（不清空——清空会导致"内容没显示就发送"）
-    inputBridge?.setText(full)
-    asrLockedUntil.value = Date.now() + AUTO_SEND_DELAY_MS
-    window.setTimeout(() => {
-      void invoke('send_chat_message', { text: full, screenshotBase64: null })
-    }, AUTO_SEND_DELAY_MS)
+    // 事件驱动组件发送链路（GameDialog / ChatInput 监听 'asr-send'）：
+    // 组件负责 setText 显示完整结果 → ASR_AUTO_SEND_DELAY_MS 后走各自完整
+    // send()——复用剧本分支（runningScript → script_submit_input）、模型配置
+    // 检查与输入框清理，避免这里直接 invoke send_chat_message 绕过剧本引擎
+    // （剧本自由对话模式下消息会发进主 LLM 而非剧本引擎）。
+    // 显示锁直接赋值 asrLockedUntil 而非 lockAsrForDisplay()：handle 执行时
+    // phase 尚在 'recognizing'，lockAsrForDisplay → updateAsrAvailability
+    // 会误判丢弃会话（递归）。
+    window.dispatchEvent(new CustomEvent('asr-send', { detail: full }))
+    asrLockedUntil.value = Date.now() + ASR_AUTO_SEND_DELAY_MS
   }
   resetSession()
   // auto 模式本轮结束：复位触发标志 + 通过统一门控重新评估能量监测
@@ -680,7 +685,12 @@ function ensureInit() {
       `[ASR/stream] partial 事件: len=${String(e.payload).length}, phase=${phase.value}, ` +
         `bridge=${inputBridge ? 'ok' : 'null'}`,
     )
-    if (phase.value === 'recording' && typeof e.payload === 'string') {
+    // 写入条件：qwen WS 真流式在录音期间到达（phase=recording）；llama 结果
+    // 流式（SSE）在 stop() 之后到达（phase=recognizing）——必须放行，
+    // 否则 llama 的增量 partial 全部被丢弃（v2 流式功能失效）
+    const writeOk =
+      phase.value === 'recording' || (isLlamaStream() && phase.value === 'recognizing')
+    if (writeOk && typeof e.payload === 'string') {
       inputBridge?.setText(baseText + e.payload)
     }
   })

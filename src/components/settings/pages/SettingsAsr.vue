@@ -89,27 +89,6 @@
       </select>
 
         <div v-if="activeProviderInfo" class="space-y-3">
-        <!-- 模型预设（qwen）：点击自动填入模型 + 接口地址（参考大模型管理的 Presets）；
-             llama-asr 的模型来自服务端动态列表（下方模型下拉），无需预设 -->
-        <div v-if="visiblePresets.length > 0">
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="preset in visiblePresets"
-              :key="preset.model"
-              type="button"
-              class="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
-              :class="
-                providerCfgRecord.model === preset.model
-                  ? 'bg-brand/20 text-brand border-brand/40'
-                  : 'bg-white/5 text-white/60 border-white/15 hover:bg-white/10 hover:text-white/80 hover:border-white/25'
-              "
-              @click="applyAsrPreset(preset.model)"
-            >
-              {{ preset.label }}
-            </button>
-          </div>
-          <p class="block text-sm text-gray-300 mt-1.5">{{ t('settings.asr.provider.presetHint') }}</p>
-        </div>
         <div v-for="field in activeProviderInfo.config_fields" :key="field.key">
           <label class="block text-sm mb-1.5 font-medium">
             {{ field.label }}
@@ -234,6 +213,7 @@ import { Toggle } from '../../base'
 import { useAsrStore } from '@/stores/modules/settings/asr'
 import { asrListModels, asrRecognizeWav, asrGetStatus } from '@/api/services/asr'
 import { pcmToWavPcm16, trimSilencePcm } from '@/utils/asrAudio'
+import { parseAsrError } from '@/utils/asrError'
 import type { AsrSettings, SendMode, ProviderInfo } from '@/api/services/asr'
 
 const { t, te } = useI18n()
@@ -253,41 +233,19 @@ const sendModeOptions = computed<{ value: SendMode; label: string }[]>(() => [
   { value: 'auto_send', label: t('settings.asr.sendMode.autoSend') },
 ])
 
-// ── 模型预设（与后端 qwen_models / provider.rs 端点保持一致；按 provider 归属） ──
-interface AsrPreset {
-  provider: string
-  model: string
-  label: string
-  endpoint: string
-}
-const asrPresets: AsrPreset[] = [
-  {
-    provider: 'qwen-asr',
-    model: 'fun-asr-realtime',
-    label: 'Fun-ASR-Realtime（非实时）',
-    endpoint:
-      'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
-  },
-  {
-    provider: 'qwen-asr',
-    model: 'paraformer-realtime-v2',
-    label: 'Paraformer-Realtime-V2（流式）',
-    endpoint: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
-  },
-]
+// ── 模型预设：来自后端模型元数据（ModelInfo.endpoint，单一数据源）──
+// 选中模型时同步填入 model + 端点预设（用户手改的 endpoint 被覆盖，与 LLM 预设一致）；
+// llama-asr 的端点与模型无关（endpoint=None），只填 model。
 
-/** 当前 provider 可见的预设（qwen 有协议预设；llama-asr 模型来自服务端动态列表，无预设） */
-const visiblePresets = computed(() =>
-  asrPresets.filter((p) => p.provider === localSettings.value.active_provider),
-)
-
-/** 应用模型预设：填 model + 预设 endpoint（用户手改的 endpoint 被覆盖，与 LLM 预设一致） */
+/** 应用模型预设：填 model + 端点预设（来自后端模型元数据） */
 function applyAsrPreset(model: string) {
-  const preset = asrPresets.find((p) => p.model === model)
   const cfg = localSettings.value.provider_configs[localSettings.value.active_provider]
-  if (!cfg || !preset) return
-  cfg.model = preset.model
-  cfg.endpoint = preset.endpoint
+  const m = asrStore.models.find((x) => x.id === model)
+  if (!cfg || !m) return
+  cfg.model = m.id
+  if (m.endpoint) {
+    cfg.endpoint = m.endpoint
+  }
 }
 
 const activeProviderInfo = computed<ProviderInfo | undefined>(() =>
@@ -304,7 +262,10 @@ async function loadModels(id: string) {
     modelListError.value = ''
   } catch (e) {
     asrStore.models = []
-    modelListError.value = t('settings.asr.provider.modelListFailed', { err: String(e) })
+    const info = parseAsrError(e)
+    modelListError.value = t('settings.asr.provider.modelListFailed', {
+      err: info.detail ?? info.code,
+    })
   }
 }
 
@@ -391,9 +352,13 @@ const providerCfg = computed(() => {
 })
 const providerCfgRecord = computed(() => providerCfg.value as unknown as Record<string, string>)
 
-const statusText = computed(() =>
-  asrStore.lastError ? t('settings.asr.status.notReady') : t('settings.asr.status.ready'),
-)
+const statusText = computed(() => {
+  if (!asrStore.lastError) return t('settings.asr.status.ready')
+  // 有错误：显示错误摘要（i18n 文案 + 原始 code 兜底）
+  const errKey = `settings.asr.errors.${asrStore.lastError}`
+  const errText = te(errKey) ? t(errKey) : asrStore.lastError
+  return `${t('settings.asr.status.notReady')}（${errText}）`
+})
 const statusClass = computed(() => (asrStore.lastError ? 'text-red-400' : 'text-green-400'))
 
 const vadStateText = computed(() =>
@@ -481,12 +446,11 @@ async function testConnection() {
     await finishTestRecording()
   } catch (e: unknown) {
     // 录音初始化失败（权限等）或识别失败
-    const raw = String(e)
-    const [code, ...rest] = raw.split('|')
-    const key = `settings.asr.errors.${code}`
-    let text = te(key) ? t(key) : raw
-    if (rest.length > 0) {
-      text += `（${rest.join('|')}）`
+    const info = parseAsrError(e)
+    const key = `settings.asr.errors.${info.code}`
+    let text = te(key) ? t(key) : (info.code || String(e))
+    if (info.detail) {
+      text += `（${info.detail}）`
     }
     lastTestResult.value = { ok: false, text }
     cleanupTestRecording()
@@ -520,12 +484,11 @@ async function finishTestRecording() {
       }),
     }
   } catch (e: unknown) {
-    const raw = String(e)
-    const [code, ...rest] = raw.split('|')
-    const key = `settings.asr.errors.${code}`
-    let text = te(key) ? t(key) : raw
-    if (rest.length > 0) {
-      text += `（${rest.join('|')}）`
+    const info = parseAsrError(e)
+    const key = `settings.asr.errors.${info.code}`
+    let text = te(key) ? t(key) : (info.code || String(e))
+    if (info.detail) {
+      text += `（${info.detail}）`
     }
     lastTestResult.value = { ok: false, text }
   }

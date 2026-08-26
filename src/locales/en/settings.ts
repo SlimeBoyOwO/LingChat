@@ -1124,6 +1124,7 @@ export default {
       ASR_CANCELED: 'Recognition cancelled',
       ASR_MIC_DENIED: 'Microphone permission denied, enable it in system settings',
       ASR_MISSING_CREDENTIALS: 'Please fill in the API Key for this provider',
+      ASR_STREAMING_UNSUPPORTED: 'Streaming recognition is not supported by this model',
     },
   },
 }

@@ -41,7 +41,12 @@ import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useSettingsStore } from '@/stores/modules/settings'
 import { useLlmProvidersStore } from '@/stores/modules/llm-providers'
-import { useAsrInput, registerAsrInputBridge, lockAsrForDisplay } from '@/composables/useAsrInput'
+import {
+  useAsrInput,
+  registerAsrInputBridge,
+  lockAsrForDisplay,
+  ASR_AUTO_SEND_DELAY_MS,
+} from '@/composables/useAsrInput'
 import { useScreenshot } from '@/composables/useScreenshot'
 import { setInputHasText } from '@/composables/useCanDeliver'
 import { Forward } from 'lucide-vue-next'
@@ -70,6 +75,15 @@ function onAsrText(e: Event) {
   }
 }
 
+// auto_send：识别结果显示到输入框 → ASR_AUTO_SEND_DELAY_MS 后走 sendMessage()
+//（完整复用剧本分支/模型检查/输入框清理；显示锁已由 handle() 设置）
+function onAsrAutoSend(e: Event) {
+  const ce = e as CustomEvent<string>
+  if (typeof ce.detail !== 'string') return
+  messageText.value = ce.detail
+  window.setTimeout(() => sendMessage(), ASR_AUTO_SEND_DELAY_MS)
+}
+
 // 输入桥：流式 partial 实时写入（与桌面 GameDialog 一致；录音发起窗口的
 // phase 是窗口本地状态，partial 只写入发起方输入框）
 const asrInput = useAsrInput()
@@ -82,9 +96,11 @@ onMounted(() => {
     },
   })
   window.addEventListener('asr-text', onAsrText)
+  window.addEventListener('asr-send', onAsrAutoSend)
 })
 onUnmounted(() => {
   window.removeEventListener('asr-text', onAsrText)
+  window.removeEventListener('asr-send', onAsrAutoSend)
   destroyScreenshot()
 })
 

@@ -23,6 +23,8 @@ export interface ModelInfo {
   display_name: string
   supports_streaming: boolean
   is_default: boolean
+  /** 协议端点预设（选中该模型时同步填入 endpoint；None 用当前配置） */
+  endpoint?: string | null
 }
 
 export interface AsrSettings {

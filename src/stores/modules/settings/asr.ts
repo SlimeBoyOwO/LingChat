@@ -4,10 +4,7 @@ import {
   asrListModels,
   asrListProviders,
   asrSetSettings,
-  type AsrPhase,
-  type AsrResult,
   type AsrSettings,
-  type AsrSource,
   type ModelInfo,
   type ProviderInfo,
   type VadEvent,
@@ -29,9 +26,9 @@ const DEFAULT_SETTINGS: AsrSettings = {
 export const useAsrStore = defineStore('asr', {
   state: () => ({
     settings: { ...DEFAULT_SETTINGS } as AsrSettings,
-    phase: 'idle' as AsrPhase,
-    activeSource: null as AsrSource | null,
-    lastResult: null as AsrResult | null,
+    // 会话运行态（phase/activeSource）由 useAsrInput 模块级状态持有——
+    // 它与录音采集私有变量强绑定，放 store 会分裂为两份状态。
+    // store 只放跨组件 UI 需要的状态：micState / vadLoaded / lastError。
     lastError: null as string | null,
     vadEvent: null as VadEvent | null,
     providers: [] as ProviderInfo[],
@@ -42,10 +39,10 @@ export const useAsrStore = defineStore('asr', {
   actions: {
     async load() {
       try {
-        // 合并默认值：后端 settings.json 只含后端字段（如 vad_silence_ms），
-        // 纯前端参数（如 energy_warmup_ms）以 persist 恢复值为准（localStorage
-        // 权威），缺失时才用默认值兜底——保证设置框与 useAsrInput 读取总有值，
-        // 且用户改过的前端参数不被后端数据覆盖。
+        // 合并默认值：后端 settings.json 是权威（含 energy_warmup_ms 等全部
+        // 设置字段，schema 已统一）；persist 恢复值只作未加载前的占位，
+        // 后端数据 spread 在最后覆盖。localStorage 里旧的前端私有字段
+        // 不参与决策（除被 excludePaths 剔除的 provider_configs）。
         this.settings = { ...DEFAULT_SETTINGS, ...this.settings, ...(await asrGetSettings()) }
         this.providers = await asrListProviders()
         // 模型清单（按 active provider 拉取；provider 切换时由 SettingsAsr 重新拉）
@@ -72,9 +69,6 @@ export const useAsrStore = defineStore('asr', {
     onSpeechStarted() {
       this.micState = 'recording'
     },
-    onResult(r: AsrResult) {
-      this.lastResult = r
-    },
     onError(code: string) {
       this.lastError = code
     },
@@ -87,5 +81,11 @@ export const useAsrStore = defineStore('asr', {
   },
   // api_key 唯一真相在后端 settings.json（tauri_plugin_store），
   // 不从 localStorage 持久化 provider_configs，避免明文 key 双副本。
-  persist: { key: 'lingchat-asr', exclude: ['provider_configs'] },
+  // 注意：exclude 只滤顶层 key，provider_configs 嵌在 settings 里，
+  // 必须用 excludePaths 深度剔除（否则 api_key 明文落 localStorage）。
+  persist: {
+    key: 'lingchat-asr',
+    exclude: ['provider_configs'],
+    excludePaths: ['settings.provider_configs'],
+  },
 })

@@ -1117,7 +1117,8 @@ export default {
       ASR_SESSION_BUSY: "已有語音會話進行中",
       ASR_CANCELED: "識別已取消",
       ASR_MIC_DENIED: "麥克風權限被拒絕，請在系統設定中開啟",
-      ASR_MISSING_CREDENTIALS: "請先填寫該服務商的 API Key"
+      ASR_MISSING_CREDENTIALS: "請先填寫該服務商的 API Key",
+      ASR_STREAMING_UNSUPPORTED: "當前模型不支援串流識別"
     }
   }
 }

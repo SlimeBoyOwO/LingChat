@@ -1119,6 +1119,7 @@ export default {
       ASR_CANCELED: '识别已取消',
       ASR_MIC_DENIED: '麦克风权限被拒绝，请在系统设置中开启',
       ASR_MISSING_CREDENTIALS: '请先填写该服务商的 API Key',
+      ASR_STREAMING_UNSUPPORTED: '当前模型不支持流式识别',
     },
   },
 }

@@ -1120,6 +1120,7 @@ export default {
       ASR_CANCELED: '認識をキャンセルしました',
       ASR_MIC_DENIED: 'マイク権限が拒否されました。システム設定で有効にしてください',
       ASR_MISSING_CREDENTIALS: 'このプロバイダの API Key を入力してください',
+      ASR_STREAMING_UNSUPPORTED: '現在のモデルはストリーミング認識に対応していません',
     },
   },
 }
