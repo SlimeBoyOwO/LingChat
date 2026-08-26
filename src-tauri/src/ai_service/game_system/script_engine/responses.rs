@@ -301,6 +301,11 @@ pub struct ScriptEndPayload {
     /// reaching its end. The frontend must not credit the player with an
     /// adventure completion in that case.
     pub completed: bool,
+    /// 剧本声明 main_character 时，进剧本前的主角在此随队列事件交还给前端。
+    /// 必须走 script:end 载荷而不是即时 emit：后端跑完时前端往往还在消化积压
+    /// 事件，即时切角色会让立绘抢跑出现在尚未播完的空场景里。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restored_role_id: Option<i32>,
 }
 
 /// Voice shift：角色语音（TTS）播放倍率 + 音调偏移。rate <1 时因

@@ -878,7 +878,10 @@ impl ScriptManager {
                 gs.present_role_ids = present;
             }
             // 主角锁定恢复：声明 main_character 的剧本进入时切换的 (main, current)
-            // 角色必须还给自由对话，否则退出剧本后角色一直停在剧本主角上
+            // 角色必须还给自由对话，否则退出剧本后角色一直停在剧本主角上。
+            // 后端状态立即恢复；前端通知必须随 script:end 载荷走（见下方 emit），
+            // 不能即时 emit——后端跑完时前端还在消化积压事件，即时切角色会让
+            // 立绘抢跑出现在尚未播完的空场景里。
             if let Some((main, current)) = gs.script_start_role_ids.take() {
                 gs.main_role_id = main;
                 gs.current_role_id = current;
@@ -886,7 +889,6 @@ impl ScriptManager {
             }
         }
 
-        // 恢复了进剧本前的角色后，同步通知前端（锁外 emit，与切换时同一事件）
         if let Some(role_id) = restored_role_id {
             let role_name = {
                 let gs = ctx.game_status.lock().await;
@@ -895,15 +897,11 @@ impl ScriptManager {
                     .and_then(|r| r.display_name.clone())
                     .unwrap_or_else(|| format!("角色{}", role_id))
             };
-            let payload = serde_json::json!({
-                "type": "character_switch",
-                "roleId": role_id,
-                "characterName": role_name,
-            });
-            if let Err(e) = ctx.app.emit("character:switch", &payload) {
-                tracing::warn!("[ScriptManager] 剧本结束恢复角色 emit character:switch 失败: {e}");
-            }
-            tracing::info!("[ScriptManager] 主角已恢复为进剧本前角色: {} (id={})", role_name, role_id);
+            tracing::info!(
+                "[ScriptManager] 主角已恢复为进剧本前角色: {} (id={})，随 script:end 通知前端",
+                role_name,
+                role_id
+            );
         }
 
         // A normal backend run can finish long before the player consumes the
@@ -924,7 +922,14 @@ impl ScriptManager {
         // This releases the frontend from story mode. Normal runs publish only
         // after is_running is false. Editor preview deliberately keeps its
         // reservation until PreviewSession has restored shared GameStatus.
-        if let Err(error) = emit(ctx.app, SCRIPT_END, &ScriptEndPayload { completed }) {
+        if let Err(error) = emit(
+            ctx.app,
+            SCRIPT_END,
+            &ScriptEndPayload {
+                completed,
+                restored_role_id,
+            },
+        ) {
             // No frontend consumer will arrive to close deferred tickets/windows.
             crate::ai_service::game_system::script_engine::events::glitch_window_event::close_all_glitch_windows(
                 ctx.app,

@@ -135,6 +135,8 @@ export interface ScriptEndEvent extends ScriptEvent {
   type: 'script_end'
   /** false 表示剧本是因为出错被中止的，不应记为完成 */
   completed?: boolean
+  /** 剧本声明 main_character 时进剧本前的主角 id：随队列事件到达，前端据此交还角色 */
+  restoredRoleId?: number
 }
 
 /** 突脸惊吓事件：全屏图片闪现 + 音效 */
