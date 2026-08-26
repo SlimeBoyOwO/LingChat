@@ -261,7 +261,8 @@ impl CodexProvider {
         let resp = self.send_with_retry(&http, &cred, &body).await?;
 
         let stream = async_stream::try_stream! {
-            let mut buffer = String::new();
+            // 按字节累积：SSE 分隔符 \n\n 是 ASCII，切点必落在字符边界，整段解码才安全
+            let mut buffer: Vec<u8> = Vec::new();
             // 工具调用累积：item_id → (call_id, name, arguments 片段)
             let mut pending_calls: BTreeMap<String, (String, String, String)> = BTreeMap::new();
             let mut finished_calls: Vec<ToolCall> = Vec::new();
@@ -273,11 +274,11 @@ impl CodexProvider {
 
             'outer: while let Some(item) = byte_stream.next().await {
                 let bytes = item.context("读取 Codex 流失败")?;
-                buffer.push_str(&String::from_utf8_lossy(&bytes));
-                // SSE 事件以空行分隔
-                while let Some(pos) = buffer.find("\n\n") {
-                    let raw_event = buffer[..pos].to_string();
-                    buffer = buffer[pos + 2..].to_string();
+                buffer.extend_from_slice(&bytes);
+                // SSE 事件以空行分隔（字节层面定位分隔符，再对完整事件解码一次）
+                while let Some(pos) = find_subslice(&buffer, b"\n\n") {
+                    let raw_event = String::from_utf8_lossy(&buffer[..pos]).into_owned();
+                    buffer.drain(..pos + 2);
                     // 一个事件可能多行 data:，拼起来
                     let mut data = String::new();
                     for line in raw_event.lines() {
@@ -445,6 +446,21 @@ async fn backoff_sleep(attempt: usize, retry_after_ms: Option<u64>) {
     let jitter = (rand_f64() * 0.4 - 0.2) * capped as f64;
     let delay = (capped as f64 + jitter).max(200.0) as u64;
     tokio::time::sleep(Duration::from_millis(delay)).await;
+}
+
+/// 在字节序列中查找子序列首次出现的位置。
+///
+/// 用于在未解码的 SSE 缓冲区里定位事件分隔符。之所以按字节定位，
+/// 是因为 `bytes_stream()` 的分块边界落在任意字节偏移：若对每个分块单独
+/// `String::from_utf8_lossy`，跨分块的多字节字符（中文占 3 字节）会被拆成
+/// 两截、各自变成 U+FFFD；而 U+FFFD 在 JSON 字符串里是合法字符，
+/// 后续 `serde_json::from_str` 不报错，损坏会静默流向回复、历史与 TTS
+/// （与 Kimi-Code 的流式修复同款）。
+fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return None;
+    }
+    haystack.windows(needle.len()).position(|window| window == needle)
 }
 
 fn rand_f64() -> f64 {
