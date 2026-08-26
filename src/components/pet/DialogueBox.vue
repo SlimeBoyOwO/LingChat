@@ -30,7 +30,7 @@
 
       <div
         ref="textareaRef"
-        class="text-[calc(15px*var(--pet-ui-scale,1))] leading-snug font-medium overflow-y-auto whitespace-pre-line break-all [text-shadow:0_0_3px_rgba(0,0,0,0.9),0_1px_4px_rgba(0,0,0,0.5)]"
+        class="dialog-text-lock text-[calc(15px*var(--pet-ui-scale,1))] leading-snug font-medium overflow-y-auto whitespace-pre-line break-all pb-[0.4em] [text-shadow:0_0_3px_rgba(0,0,0,0.9),0_1px_4px_rgba(0,0,0,0.5)]"
         :style="{ maxHeight: `calc(var(--dialog-h) - 52px)` }"
       ></div>
     </div>
@@ -101,11 +101,31 @@ watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLin
     if (textareaRef.value) {
       textareaRef.value.innerHTML = ''
       charReveal.reset()
+      // 锁定最终高度：用离屏克隆同步测量完整文本渲染后的高度（受 maxHeight 钳制），
+      // 再把真实容器高度设为该值。打字期间盒子不再随逐字换行而跳动；
+      // 行与行之间的高度变化由 .dialog-text-lock 的 height 过渡平滑扩展/收缩。
+      const el = textareaRef.value
+      const clone = el.cloneNode(false) as HTMLDivElement
+      clone.style.position = 'fixed'
+      clone.style.left = '-9999px'
+      clone.style.top = '0'
+      clone.style.visibility = 'hidden'
+      clone.style.pointerEvents = 'none'
+      clone.style.height = 'auto'
+      clone.style.overflowY = 'visible'
+      clone.style.width = el.clientWidth + 'px'
+      el.parentElement?.appendChild(clone)
+      charReveal.renderInstant(clone, newLine)
+      const finalH = clone.offsetHeight
+      clone.remove()
+      charReveal.reset()
+      el.style.height = finalH + 'px'
     }
     startTyping(newLine, uiStore.typeWriterSpeed)
   } else if (newStatus === 'input') {
     stopTyping()
     currentDisplayedText.value = ''
+    if (textareaRef.value) textareaRef.value.style.height = ''
   }
 })
 
@@ -157,6 +177,11 @@ defineExpose({
 .emotion-slide-leave-to {
   transform: translateX(-100%);
   opacity: 0;
+}
+
+/* 打字期间高度锁定为最终高度；行切换时高度平滑扩展/收缩 */
+.dialog-text-lock {
+  transition: height 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 </style>
 
