@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use chrono::Local;
 use sea_orm::DatabaseConnection;
-use tauri::{Listener, Manager};
+use tauri::{Emitter, Listener, Manager};
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -583,6 +583,15 @@ pub fn run() {
 
                                 let logical_x = mouse_x / scale_factor;
                                 let logical_y = mouse_y / scale_factor;
+
+                                // 向桌宠前端广播全局鼠标位置：桌宠窗口非全屏，DOM
+                                // pointermove 在鼠标移出窗口后停发，Live2D 视线会冻结在
+                                // 最后一次窗口内位置。这里把窗口内逻辑坐标（即 webview
+                                // 视口坐标）发给前端驱动视线，与 DOM clientX/Y 同坐标系。
+                                let _ = window.emit(
+                                    "pet:cursor",
+                                    api::pet::CursorPosition { x: logical_x, y: logical_y },
+                                );
 
                                 let mut is_over_solid = false;
                                 if let Ok(rects) = rects_arc.lock() {

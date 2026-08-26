@@ -13,6 +13,7 @@
 
 <script setup lang="ts">
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { onBeforeUnmount, onMounted, provide, readonly, ref, watch } from 'vue'
 
 import { getLive2dFilePath } from '@/api/services/character'
@@ -50,6 +51,11 @@ const emit = defineEmits<{
   failedChange: [roleIds: number[]]
 }>()
 
+interface CursorPayload {
+  x: number
+  y: number
+}
+
 interface RoleModel {
   roleId: number
   variantName: string
@@ -78,7 +84,7 @@ let decodedVoice: DecodedVoice | null = null
 let decodeSequence = 0
 let resizeObserver: ResizeObserver | null = null
 let pointerPosition: { clientX: number; clientY: number } | null = null
-let pointerListenerAttached = false
+let cursorUnlisten: (() => void) | null = null
 const models = new Map<number, RoleModel>()
 const failedRoleIds = new Set<number>()
 const readyRoleIds = ref<ReadonlySet<number>>(new Set())
@@ -138,10 +144,6 @@ async function loadModelSource(roleId: number, modelFile: string) {
 }
 
 function destroyApplication() {
-  if (pointerListenerAttached) {
-    window.removeEventListener('pointermove', handlePointerMove)
-    pointerListenerAttached = false
-  }
   resizeObserver?.disconnect()
   resizeObserver = null
   if (application) {
@@ -180,8 +182,6 @@ async function ensureApplication() {
   })
   resizeObserver.observe(host.value)
   application = app
-  window.addEventListener('pointermove', handlePointerMove, { passive: true })
-  pointerListenerAttached = true
 }
 
 function findParameterIndex(entry: RoleModel, parameter: string): number {
@@ -195,7 +195,15 @@ function findParameterIndex(entry: RoleModel, parameter: string): number {
 function updateModelFocus(entry: RoleModel) {
   if (entry.focusFrozen) return
   const focusController = entry.model.internalModel.focusController
-  if (!entry.eyesOpen || !entry.model.visible || !pointerPosition || !host.value || !application) {
+  // 标准聊天模式：始终直视前方（不跟随鼠标）；仅桌宠模式用指针驱动视线
+  if (
+    props.mode !== 'pet' ||
+    !entry.eyesOpen ||
+    !entry.model.visible ||
+    !pointerPosition ||
+    !host.value ||
+    !application
+  ) {
     focusController.focus(0, 0)
     return
   }
@@ -568,9 +576,35 @@ watch(
   },
 )
 
-onMounted(queueSync)
+onMounted(() => {
+  // 桌宠模式：窗口非全屏，DOM pointermove 在鼠标移出窗口后停发，视线会冻结在
+  // 最后一次窗口内位置。除窗口内 DOM 监听外，还需订阅 Rust 侧全局鼠标轮询
+  // （每 50ms 上报窗口内逻辑坐标，即 webview 视口坐标，与 clientX/clientY 同源）。
+  if (props.mode === 'pet') {
+    window.addEventListener('pointermove', handlePointerMove, { passive: true })
+    void listen<CursorPayload>('pet:cursor', (event) => {
+      pointerPosition = { clientX: event.payload.x, clientY: event.payload.y }
+    })
+      .then((unlisten) => {
+        if (disposed) {
+          unlisten()
+          return
+        }
+        cursorUnlisten = unlisten
+      })
+      .catch(() => {
+        // 非 Tauri 环境或事件系统不可用时静默降级（DOM 监听仍覆盖窗口内移动）
+      })
+  }
+  queueSync()
+})
 onBeforeUnmount(() => {
   disposed = true
+  if (props.mode === 'pet') {
+    window.removeEventListener('pointermove', handlePointerMove)
+    cursorUnlisten?.()
+    cursorUnlisten = null
+  }
   decodeSequence += 1
   for (const entry of [...models.values()]) destroyEntry(entry)
   destroyApplication()
