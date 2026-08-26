@@ -324,6 +324,14 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     let state = app.state::<AppState>();
     let db = &state.db;
 
+    // 剧本运行期间锁定角色：切换会整体重置 GameStatus，直接拆掉正在运行的剧本
+    {
+        let service = state.ai_service.lock().await;
+        if service.game_status.lock().await.script_status.is_some() {
+            return Err("剧本运行中，角色已锁定，无法切换角色".to_string());
+        }
+    }
+
     let settings = RoleRepo::get_role_settings_by_id(db, &data_dir, character_id)
         .await
         .map_err(|e| format!("查询角色配置失败: {}", e))?

@@ -58,6 +58,11 @@ pub struct GameStatus {
     pub script_start_onstage_ids: Option<Vec<i32>>,
     pub script_start_present_ids: Option<HashSet<i32>>,
 
+    /// 正式剧本开始时的 `(main_role_id, current_role_id)` 快照。剧本声明
+    /// `main_character` 时进入会把主角切成声明角色并锁定；剧本结束据此恢复，
+    /// 否则自由对话会一直停留在剧本主角上。
+    pub script_start_role_ids: Option<(Option<i32>, Option<i32>)>,
+
     /// 当前激活的存档 ID（用于 MemoryBank 持久化/载入/自动压缩）
     pub active_save_id: Option<i32>,
 
@@ -98,6 +103,7 @@ impl GameStatus {
             script_start_line_len: None,
             script_start_onstage_ids: None,
             script_start_present_ids: None,
+            script_start_role_ids: None,
             active_save_id: None,
             preview_generation: 0,
             player_entered: false,

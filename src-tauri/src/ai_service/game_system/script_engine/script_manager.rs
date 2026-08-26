@@ -24,7 +24,8 @@ use crate::ai_service::types::{AdventureConfig, LineAttributeExt, LineBase, Scri
 use crate::db::entities::line::LineAttribute;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::utils::prompt::{sys_prompt_builder, PromptOptions};
+use crate::utils::prompt::{sys_prompt_builder, sys_prompt_builder_by_settings, PromptOptions};
+use tauri::Emitter;
 
 /// YAML structure for `story_config.yaml` top-level keys.
 #[derive(serde::Deserialize, Default)]
@@ -40,6 +41,8 @@ struct StoryConfigRaw {
     script_settings: Option<serde_json::Map<String, Value>>,
     #[serde(default)]
     content_warning: Option<String>,
+    #[serde(default)]
+    main_character: Option<String>,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -256,6 +259,10 @@ impl ScriptManager {
             recommand_start: raw.recommand_start.unwrap_or_default(),
             adventure,
             content_warning: raw.content_warning,
+            main_character: raw
+                .main_character
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
             running_client_id: None,
             current_chapter_key: String::new(),
             current_event_process: 0,
@@ -314,6 +321,7 @@ impl ScriptManager {
                     old.recommand_start = scanned.recommand_start;
                     old.adventure = scanned.adventure;
                     old.content_warning = scanned.content_warning;
+                    old.main_character = scanned.main_character;
                 }
                 None => {
                     self.all_scripts.insert(name, scanned);
@@ -490,7 +498,107 @@ impl ScriptManager {
         // Register script roles from characters/ subdirectory (if exists)
         Self::register_script_roles(script, ctx).await?;
 
+        // 剧本声明主角（main_character）时，进入即切换并锁定到该角色（仅正式游玩；
+        // 试玩由 PreviewSession 按自己的规则解析 MAIN 并整体还原）。
+        if !ctx.is_preview {
+            Self::bind_declared_main_character(script, ctx).await?;
+        }
+
         tracing::info!("[ScriptManager] 剧本 '{}' 初始化完成", script.name);
+        Ok(())
+    }
+
+    /// 把主角切成剧本 `main_character` 声明的角色（按资源目录名在角色库中查找，
+    /// 与编辑器试玩 `resolve_preview_main_role` 同一规则）。
+    ///
+    /// 原 `(main_role_id, current_role_id)` 拍进 `script_start_role_ids`，剧本结束
+    /// 由 `on_script_end_inner` 恢复；切换后剧本里的 MAIN、立绘覆盖与自由对话人设
+    /// 都以声明角色为准，不受进剧本前所聊角色影响。目标角色缺 SYSTEM 人设行时按
+    /// `character_switch` 的同一约定补一条，避免 free_dialogue 在无人设上下文中生成。
+    async fn bind_declared_main_character(
+        script: &ScriptStatus,
+        ctx: &mut ScriptContext<'_>,
+    ) -> Result<()> {
+        let Some(folder) = script.main_character.as_deref() else {
+            return Ok(());
+        };
+
+        let roles = RoleRepo::get_all_main_roles(ctx.db).await?;
+        let Some(role_id) = roles
+            .iter()
+            .find(|r| r.resource_folder.as_deref() == Some(folder))
+            .map(|r| r.id)
+        else {
+            return Err(anyhow!(
+                "剧本声明的主角目录「{}」不在角色库中（game_data/characters/{} 不存在或未注册）；\
+                 请确认角色存在，或修正 story_config.yaml 的 main_character",
+                folder,
+                folder
+            ));
+        };
+
+        let role_name = {
+            let mut gs = ctx.game_status.lock().await;
+            if gs.main_role_id == Some(role_id) {
+                // 当前主角已是声明角色：无需切换，也不拍快照（结束时不做恢复）
+                return Ok(());
+            }
+            gs.get_role(ctx.db, role_id).await?;
+            let loaded = gs
+                .role_manager
+                .get_loaded(role_id)
+                .ok_or_else(|| anyhow!("主角 {} 加载后不可用", role_id))?;
+            let name = loaded
+                .display_name
+                .clone()
+                .unwrap_or_else(|| folder.to_string());
+
+            let has_system_prompt = gs.line_list.iter().any(|line| {
+                matches!(line.attribute(), LineAttribute::System)
+                    && line.sender_role_id() == Some(role_id)
+            });
+            if !has_system_prompt {
+                let prompt = sys_prompt_builder_by_settings(
+                    &loaded.settings,
+                    PromptOptions {
+                        output_sec_lang: true,
+                        no_emotion_limit: true,
+                    },
+                );
+                gs.add_line(
+                    ctx.db,
+                    LineBase {
+                        content: prompt,
+                        attribute: LineAttributeExt(LineAttribute::System),
+                        sender_role_id: Some(role_id),
+                        display_name: Some(name.clone()),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+            }
+
+            gs.script_start_role_ids = Some((gs.main_role_id, gs.current_role_id));
+            gs.main_role_id = Some(role_id);
+            gs.current_role_id = Some(role_id);
+            name
+        };
+
+        // 通知前端当前对话角色已切换（与 character_switch 工具同一事件）
+        let payload = serde_json::json!({
+            "type": "character_switch",
+            "roleId": role_id,
+            "characterName": role_name,
+        });
+        if let Err(e) = ctx.app.emit("character:switch", &payload) {
+            tracing::warn!("[ScriptManager] emit character:switch 失败: {e}");
+        }
+        tracing::info!(
+            "[ScriptManager] 剧本 '{}' 主角已切换并锁定: {} (id={})",
+            script.name,
+            role_name,
+            role_id
+        );
         Ok(())
     }
 
@@ -750,6 +858,7 @@ impl ScriptManager {
         // 防提示词污染：正式剧本结束后，把剧本期间写入共享台词表的内容整段
         // 截掉，角色记忆按截断后的列表重建——剧本台词/旁白/自由对话轮次不会
         // 漏进自由对话的 LLM 上下文。试玩由 PreviewSession 还原，不走这里。
+        let mut restored_role_id: Option<i32> = None;
         if !ctx.is_preview {
             let mut gs = ctx.game_status.lock().await;
             if let Some(len) = gs.script_start_line_len.take() {
@@ -768,6 +877,33 @@ impl ScriptManager {
             if let Some(present) = gs.script_start_present_ids.take() {
                 gs.present_role_ids = present;
             }
+            // 主角锁定恢复：声明 main_character 的剧本进入时切换的 (main, current)
+            // 角色必须还给自由对话，否则退出剧本后角色一直停在剧本主角上
+            if let Some((main, current)) = gs.script_start_role_ids.take() {
+                gs.main_role_id = main;
+                gs.current_role_id = current;
+                restored_role_id = current;
+            }
+        }
+
+        // 恢复了进剧本前的角色后，同步通知前端（锁外 emit，与切换时同一事件）
+        if let Some(role_id) = restored_role_id {
+            let role_name = {
+                let gs = ctx.game_status.lock().await;
+                gs.role_manager
+                    .get_loaded(role_id)
+                    .and_then(|r| r.display_name.clone())
+                    .unwrap_or_else(|| format!("角色{}", role_id))
+            };
+            let payload = serde_json::json!({
+                "type": "character_switch",
+                "roleId": role_id,
+                "characterName": role_name,
+            });
+            if let Err(e) = ctx.app.emit("character:switch", &payload) {
+                tracing::warn!("[ScriptManager] 剧本结束恢复角色 emit character:switch 失败: {e}");
+            }
+            tracing::info!("[ScriptManager] 主角已恢复为进剧本前角色: {} (id={})", role_name, role_id);
         }
 
         // A normal backend run can finish long before the player consumes the

@@ -694,6 +694,7 @@ mod tests {
             recommand_start: String::new(),
             adventure: Default::default(),
             content_warning: Some("horror".to_string()),
+            main_character: None,
             running_client_id: None,
             current_chapter_key: String::new(),
             current_event_process: 0,
