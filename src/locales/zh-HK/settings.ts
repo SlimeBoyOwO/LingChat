@@ -693,6 +693,9 @@ export default {
       "title": "文字顯示速度",
       "label": "慢/快"
     },
+    "autoAdvance": {
+      "title": "自動推進延遲"
+    },
     "sample": {
       "title": "顯示文字樣本",
       "demo": "Ling Chat: 測試文字顯示速度"

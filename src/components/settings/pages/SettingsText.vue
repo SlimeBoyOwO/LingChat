@@ -109,6 +109,21 @@
         >
       </MenuItem>
 
+      <MenuItem :title="$t('settings.text.autoAdvance.title')">
+        <template #header>
+          <Timer :size="20" />
+        </template>
+        <Slider
+          v-model="autoAdvanceDelay"
+          :min="0"
+          :max="2000"
+          :step="100"
+        >
+          <template #left>{{ autoAdvanceDelay }}</template>
+          <template #right>ms</template>
+        </Slider>
+      </MenuItem>
+
       <MenuItem :title="$t('settings.text.sample.title')">
         <template #header>
           <ClipboardList :size="20" />
@@ -631,6 +646,7 @@ import {
   Type,
   Import,
   Gauge,
+  Timer,
 } from 'lucide-vue-next'
 import {
   codexAuthStatus,
@@ -1044,6 +1060,12 @@ const loadConfig = async () => {
 const textSpeed = computed({
   get: () => settingsStore.textSpeed,
   set: (val: number) => settingsStore.update('text.speed', val),
+})
+
+// 使用 settings store 的自动推进延迟（毫秒）
+const autoAdvanceDelay = computed({
+  get: () => settingsStore.autoAdvanceDelay,
+  set: (val: number) => settingsStore.update('text.autoAdvanceDelay', val),
 })
 
 // ─── 界面字体选择 ───────────────────────────────────────────

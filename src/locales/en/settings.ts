@@ -694,6 +694,9 @@ export default {
       title: "Text Display Speed",
       label: "Slow/Fast",
     },
+    autoAdvance: {
+      title: "Auto-Advance Delay",
+    },
     sample: {
       title: "Display Text Sample",
       demo: "Ling Chat: Testing text display speed",
