@@ -198,7 +198,7 @@ export default {
     enableWebSearch: "Enable the web search tool (let them look things up online)",
     useBuiltin: "Use model API built-in search (no API Key needed)",
     hideSearchResults: "Hide search results (no sources or URLs shown in their replies)",
-    builtinHint: "Search runs server-side on your current chat model API (must be Kimi/Moonshot) — it just uses your existing chat key, no separate signup needed",
+    builtinHint: "Search reuses the current chat model: Kimi/Moonshot use server-side built-in search, while Codex uses your signed-in ChatGPT subscription—no separate search key needed",
     apiKey: "API Key",
     provider: "Search Provider",
     providerCustom: "Custom Endpoint",

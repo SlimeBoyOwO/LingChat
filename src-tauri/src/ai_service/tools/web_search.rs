@@ -1,13 +1,11 @@
 //! 网页搜索工具，两种后端模式：
 //!
-//! 1. 模型 API 内置联网（默认，`use_builtin = true`）：复用用户已配置的聊天模型
-//!    API（Moonshot/Kimi 的 OpenAI 兼容端点），声明 `$web_search` 内置工具，
-//!    由服务端执行搜索。协议（见 platform.moonshot.cn/docs/guide/use-web-search）：
-//!    模型返回 tool_calls 后，客户端把参数原样回传为 tool 消息，服务端继续生成最终答案。
-//!    无需单独的搜索 API Key。
-//! 2. 独立搜索端点（`use_builtin = false`）：直接 POST 搜索端点，
-//!    需要单独的 API Key。支持 Kimi /search、BoCha、DeepSeek Responses API
-//!    （服务端内置 `web_search`）与自定义兼容端点。
+//! 1. 模型 API 内置联网（默认，`use_builtin = true`）：复用用户已配置的聊天模型。
+//!    Moonshot/Kimi 声明 `$web_search` 内置工具并回显 tool_calls；Codex 复用当前
+//!    聊天模型与 ChatGPT OAuth 凭据调用 `alpha/search`。无需单独的搜索 API Key。
+//! 2. 独立搜索端点（`use_builtin = false`）：直接 POST 搜索端点。
+//!    支持 Kimi /search、BoCha、DeepSeek Responses API、Tavily、Codex 订阅搜索
+//!    与自定义兼容端点；除 Codex 外需要单独的 API Key。
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -195,7 +193,7 @@ impl WebSearchTool {
             "bocha" => self.execute_bocha_search(query, cfg).await,
             "deepseek" => self.execute_deepseek_search(query, cfg).await,
             "tavily" => self.execute_tavily_search(query, cfg).await,
-            "codex" => self.execute_codex_search(query, cfg).await,
+            "codex" => self.execute_codex_search(query, cfg, None).await,
             "custom" => self.execute_kimi_endpoint(query, cfg).await,
             _ => self.execute_kimi_endpoint(query, cfg).await,
         }
@@ -404,6 +402,7 @@ impl WebSearchTool {
         &self,
         query: &str,
         cfg: &WebSearchSettings,
+        current_chat_model: Option<&str>,
     ) -> Result<ToolResult, ToolError> {
         use crate::ai_service::llm::codex_auth;
         use crate::utils::proxy::build_proxied_client;
@@ -418,15 +417,12 @@ impl WebSearchTool {
             .map_err(|e| ToolError::Execution(format!("Codex 凭据读取失败: {e}")))?
             .ok_or_else(|| {
                 ToolError::Execution(
-                    "未登录 Codex：请先在「大模型管理」登录 ChatGPT 订阅，或改用其他搜索提供商".into(),
+                    "未登录 Codex：请先在「大模型管理」登录 ChatGPT 订阅，或改用其他搜索提供商"
+                        .into(),
                 )
             })?;
 
-        let model = if cfg.model.trim().is_empty() {
-            "gpt-5.6-sol"
-        } else {
-            cfg.model.trim()
-        };
+        let model = codex_search_model(cfg.model.as_str(), current_chat_model);
         let body = serde_json::json!({
             "id": uuid::Uuid::new_v4().to_string(),
             "model": model,
@@ -500,7 +496,12 @@ impl WebSearchTool {
             text.push_str("\n\n");
         }
         if !cfg.hide_search_results {
-            text.push_str(&Self::format_results(query, &results, cfg.max_results.max(1), false));
+            text.push_str(&Self::format_results(
+                query,
+                &results,
+                cfg.max_results.max(1),
+                false,
+            ));
         } else {
             text.push_str(
                 "以上是联网搜索到的信息。请把关键内容自然地融入你的回答，\
@@ -669,6 +670,13 @@ impl WebSearchTool {
                 "未找到可用的聊天模型配置，请先在「通用 → 文本」设置里配置 LLM".into(),
             )
         })?;
+        if provider.provider.eq_ignore_ascii_case("codex") {
+            // Codex 没有 Moonshot 的 $web_search 协议；复用当前聊天模型和
+            // 已登录的 ChatGPT 订阅凭据，改走 Codex alpha/search。
+            return self
+                .execute_codex_search(query, cfg, Some(provider.model.as_str()))
+                .await;
+        }
         if provider.provider.eq_ignore_ascii_case("kimicode") {
             // kimicode（Anthropic 协议）不支持 $web_search 内置工具，
             // 但 api.kimi.com/coding 提供独立的 /v1/search 端点（Kimi Code CLI 同款），
@@ -901,4 +909,45 @@ impl Tool for WebSearchTool {
 
 fn bounded_query(query: &str) -> String {
     query.chars().take(MAX_QUERY_CHARS).collect()
+}
+
+/// Codex 内置联网优先跟随当前聊天模型；独立 Codex 搜索则允许手工配置，
+/// 但不能把与 DeepSeek 搜索共用字段的默认值误发给 Codex。
+fn codex_search_model(configured: &str, current_chat_model: Option<&str>) -> String {
+    if let Some(model) = current_chat_model
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+    {
+        return model.to_string();
+    }
+
+    let configured = configured.trim();
+    if configured.is_empty() || configured.to_ascii_lowercase().starts_with("deepseek") {
+        "gpt-5.6-sol".to_string()
+    } else {
+        configured.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::codex_search_model;
+
+    #[test]
+    fn codex_builtin_search_uses_current_chat_model() {
+        assert_eq!(
+            codex_search_model("deepseek-v4-flash", Some("gpt-5.4")),
+            "gpt-5.4"
+        );
+    }
+
+    #[test]
+    fn codex_endpoint_does_not_reuse_deepseek_default_model() {
+        assert_eq!(codex_search_model("deepseek-v4-flash", None), "gpt-5.6-sol");
+    }
+
+    #[test]
+    fn codex_endpoint_keeps_an_explicit_codex_model() {
+        assert_eq!(codex_search_model("gpt-5.6-terra", None), "gpt-5.6-terra");
+    }
 }

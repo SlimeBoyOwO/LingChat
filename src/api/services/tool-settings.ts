@@ -5,9 +5,9 @@ import { i18n } from '@/locales'
 /** 网页搜索工具配置（与后端 WebSearchSettings 对应，字段保持 snake_case）。 */
 export interface WebSearchSettings {
   enabled: boolean
-  /** true = 模型 API 内置联网（免 Key）；false = 独立搜索端点 + api_key */
+  /** true = 复用当前 Kimi/Moonshot/Codex 聊天模型联网；false = 独立搜索端点 */
   use_builtin: boolean
-  /** 独立端点模式的搜索提供商："kimi" | "bocha" | "deepseek"  | "tavily" | "custom"（仅 custom 用 base_url） */
+  /** 独立端点模式的搜索提供商："kimi" | "bocha" | "deepseek" | "tavily" | "codex" | "custom"（仅 custom 用 base_url） */
   provider: string
   /** DeepSeek Responses API 使用的模型（仅 provider = "deepseek" 时生效） */
   model: string

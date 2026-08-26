@@ -75,15 +75,16 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
 pub struct WebSearchSettings {
     /// 总开关：关闭时工具不下发给模型，执行也会被拒绝。
     pub enabled: bool,
-    /// 为 true 时使用「模型 API 内置联网」：复用聊天模型的 API（Moonshot/Kimi），
-    /// 由服务端执行 $web_search，无需单独的搜索 API Key；
-    /// 为 false 时使用独立搜索端点 + api_key。
+    /// 为 true 时使用「模型 API 内置联网」：Moonshot/Kimi 由服务端执行
+    /// $web_search，Codex 复用当前模型和 ChatGPT OAuth 调用 alpha/search；
+    /// 均无需单独的搜索 API Key。为 false 时使用独立搜索端点。
     pub use_builtin: bool,
     /// 独立端点模式的搜索服务提供商：
     /// "kimi"（Kimi Code 同款 /v1/search，body 为 text_query）
     /// "bocha"（BoCha 博查 https://api.bochaai.com/v1/web-search）
     /// "deepseek"（DeepSeek Responses API，服务端内置 web_search）
     /// "tavily"（Tavily https://api.tavily.com/search，body 为 query）
+    /// "codex"（ChatGPT 订阅 OAuth，Codex alpha/search，无需搜索 API Key）
     /// 仅在 use_builtin = false 时生效。
     pub provider: String,
     /// DeepSeek Responses API 使用的模型（仅 provider = "deepseek" 时生效）。

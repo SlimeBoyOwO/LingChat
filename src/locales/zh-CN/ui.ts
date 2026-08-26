@@ -197,7 +197,7 @@ export default {
     enableWebSearch: '启用网页搜索工具（让ta可以联网查资料）',
     useBuiltin: '使用模型 API 内置联网（免 API Key）',
     hideSearchResults: '隐藏搜索结果（ta 回答时不显示来源和网址）',
-    builtinHint: '搜索由当前聊天模型 API（需为 Kimi/Moonshot）在服务端执行，用现有的聊天 Key 即可，无需单独申请',
+    builtinHint: '搜索会复用当前聊天模型：Kimi/Moonshot 使用服务端内置联网，Codex 使用已登录的 ChatGPT 订阅，无需单独申请搜索 Key',
     apiKey: 'API Key',
     provider: '搜索提供商',
     providerCustom: '自定义端点',
