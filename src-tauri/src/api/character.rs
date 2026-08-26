@@ -12,6 +12,7 @@ use crate::config;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::system::open_folder;
+use crate::utils::yaml_file::write_json_as_yaml;
 use crate::AppState;
 
 use super::{characters_dir, data_dir, game_data_dir};
@@ -91,6 +92,7 @@ pub struct RoleInfoResponse {
     pub clothes: Option<Vec<HashMap<String, String>>>,
     pub clothes_name: String,
     pub body_part: Option<HashMap<String, JsonValue>>,
+    pub live2d: Option<crate::ai_service::types::Live2dSettings>,
     pub character_folder: String,
 }
 
@@ -329,7 +331,10 @@ pub async fn get_role_info(app: AppHandle, role_id: i32) -> Result<RoleInfoRespo
         .ok_or_else(|| format!("角色 {} 不存在", role_id))?;
 
     let folder = role.resource_folder.clone().unwrap_or_default();
-    let settings = read_character_settings(&folder);
+    let settings = RoleRepo::get_role_settings_by_id(db, &data_dir(), role_id)
+        .await
+        .map_err(|e| format!("读取角色配置失败: {e}"))?
+        .unwrap_or_else(|| read_character_settings(&folder));
 
     Ok(RoleInfoResponse {
         character_id: role.id,
@@ -347,6 +352,7 @@ pub async fn get_role_info(app: AppHandle, role_id: i32) -> Result<RoleInfoRespo
         clothes: settings.clothes,
         clothes_name: settings.clothes_name.unwrap_or_default(),
         body_part: settings.body_part,
+        live2d: settings.live2d,
         character_folder: folder,
     })
 }
@@ -603,14 +609,18 @@ pub async fn update_role_settings(
     }
 
     let yaml_path = base_path.join("settings.yml");
-    let yaml_str = serde_yaml::to_string(&save_data).map_err(|e| format!("序列化失败: {}", e))?;
-    fs::write(&yaml_path, yaml_str).map_err(|e| format!("保存失败: {}", e))?;
+    write_json_as_yaml(&yaml_path, &save_data).map_err(|e| format!("保存失败: {e}"))?;
 
     let runtime_updated = {
         let service = state.ai_service.lock().await;
         let mut gs = service.game_status.lock().await;
-        gs.role_manager
-            .update_role_voice_settings(role_id, &validated)
+        let voice_updated = gs
+            .role_manager
+            .update_role_voice_settings(role_id, &validated);
+        let live2d_updated = gs
+            .role_manager
+            .update_role_live2d_settings(role_id, &validated);
+        voice_updated || live2d_updated
     };
 
     tracing::info!(

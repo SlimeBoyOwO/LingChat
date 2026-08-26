@@ -524,6 +524,19 @@ impl GameRoleManager {
         true
     }
 
+    pub fn update_role_live2d_settings(
+        &mut self,
+        role_id: i32,
+        settings: &CharacterSettings,
+    ) -> bool {
+        let Some(role) = self.loaded_roles.get_mut(&role_id) else {
+            tracing::info!("角色 {} 尚未加载，Live2D 设置将在下次加载时生效", role_id);
+            return false;
+        };
+        role.settings.live2d = settings.live2d.clone();
+        true
+    }
+
     /// 更新已加载角色的语音语言并重新初始化其 VoiceMaker。
     pub fn update_role_voice_lang(&mut self, role_id: i32, lang: &str) {
         let Some(role) = self.loaded_roles.get_mut(&role_id) else {

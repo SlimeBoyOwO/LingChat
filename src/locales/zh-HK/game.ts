@@ -20,6 +20,9 @@ export default {
     "noModelTitle": "提提你",
     "noModelMessage": "仲未揀對話模型喎，笨蛋！去高級設定嗰度配置同揀返個模型就得㗎啦，切換之後自動生效㗎！"
   },
+  "avatar": {
+    "live2dUnavailable": "Live2D 暫時用唔到"
+  },
   "musicPlayer": {
     "previous": "上一首",
     "play": "播放",

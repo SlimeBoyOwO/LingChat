@@ -334,6 +334,7 @@ export default {
       "prompts": "提示詞",
       "visuals": "視覺效果",
       "clothes": "服裝",
+      "live2d": "Live2D",
       "pet": "桌寵",
       "voice": "語音設定"
     },
@@ -392,6 +393,23 @@ export default {
       "add": "新增服裝",
       "item": "服裝 #{index}",
       "empty": "而家冇服裝配置，撳\"新增服裝\"開一個"
+    },
+    "live2d": {
+      "importDirectory": "匯入模型資料夾",
+      "importZip": "匯入 ZIP",
+      "remove": "移除 Live2D 配置",
+      "loading": "讀取緊 Live2D 模型...",
+      "empty": "呢個角色未配置 Live2D。",
+      "defaultVariant": "預設模型變體",
+      "editVariant": "而家編輯嘅模型變體",
+      "defaultExpression": "預設表情",
+      "defaultExpressionHint": "只會喺目前情緒冇對應表情映射時作後備；佢唔等同於「正常」情緒嘅表情。",
+      "focusAnchorX": "視線基點 X（0-1）",
+      "focusAnchorY": "視線基點 Y（0-1）",
+      "focusAnchorReset": "恢復使用模型畫布中心",
+      "noExpression": "唔切換表情",
+      "noMotion": "唔播放動作",
+      "clothesMapping": "服裝同模型變體對應"
     },
     "footer": {
       "cancel": "取消",
