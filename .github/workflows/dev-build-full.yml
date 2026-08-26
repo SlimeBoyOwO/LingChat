@@ -44,6 +44,9 @@ jobs:
         with:
           lfs: false
 
+      - name: 拉取 LFS 应用资源 (public/src/assets/icons)
+        run: git lfs pull --include="public/**,src/assets/**,src-tauri/icons/**"
+
       - uses: pnpm/setup@v1
         with:
           runtime: node@26
