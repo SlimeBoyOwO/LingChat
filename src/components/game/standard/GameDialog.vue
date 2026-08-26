@@ -74,7 +74,8 @@
 
           <!-- 情绪标签 -->
           <div
-            class="mx-4
+            class="relative
+              mx-4
               shrink-0
               font-[inherit]
               text-xl
@@ -82,7 +83,13 @@
               text-[#ff77dd]
               text-shadow-[inherit]"
           >
-            <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
+            <Transition name="emotion-slide">
+              <div
+                id="character-emotion"
+                :key="uiStore.showCharacterEmotion"
+                class="inline-block"
+              >{{ uiStore.showCharacterEmotion }}</div>
+            </Transition>
           </div>
 
           <!-- 操作按钮组配置 -->
@@ -1035,5 +1042,28 @@ defineExpose({
     margin-top: 2px;
     border-top-width: 1px;
   }
+}
+
+/* 情绪标签切换：上一个情绪向左滑出，下一个情绪从右侧滑入（推挤效果） */
+.emotion-slide-enter-active,
+.emotion-slide-leave-active {
+  transition:
+    transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    opacity 0.3s ease;
+}
+/* 离开中的旧情绪脱离文档流，覆盖在新情绪上方向左滑出，
+ * 容器宽度由新情绪决定，避免标题栏按钮被临时撑开 */
+.emotion-slide-leave-active {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.emotion-slide-enter-from {
+  transform: translateX(100%);
+  opacity: 0;
+}
+.emotion-slide-leave-to {
+  transform: translateX(-100%);
+  opacity: 0;
 }
 </style>
