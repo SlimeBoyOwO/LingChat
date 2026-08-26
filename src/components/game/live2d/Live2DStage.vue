@@ -196,14 +196,15 @@ function updateModelFocus(entry: RoleModel) {
   if (entry.focusFrozen) return
   const focusController = entry.model.internalModel.focusController
   // 标准聊天模式：始终直视前方（不跟随鼠标）；仅桌宠模式用指针驱动视线
-  if (
-    props.mode !== 'pet' ||
-    !entry.eyesOpen ||
-    !entry.model.visible ||
-    !pointerPosition ||
-    !host.value ||
-    !application
-  ) {
+  if (props.mode !== 'pet') {
+    focusController.focus(0, 0)
+    return
+  }
+  // 眨眼/隐藏期间冻结视线目标：不重置回中。引擎的眨眼控制器会在
+  // beforeModelUpdate 之前把眼部参数写成闭眼值，此时若走回中分支，
+  // 弹簧插值会把瞳孔/头短暂拽向正中，表现为眨眼瞬间“瞬视中间”。
+  if (!entry.eyesOpen || !entry.model.visible) return
+  if (!pointerPosition || !host.value || !application) {
     focusController.focus(0, 0)
     return
   }

@@ -8,6 +8,8 @@ export class TypeWriter {
   private speed: number
   private generation: number
   private textBuffer: string
+  /** 本次 start() 的目标全文；finish() 补全时用，保证「跳过打字」能显示完整文本 */
+  private targetText: string
   private writeFn: ((element: HTMLElement, text: string) => void) | null
 
   private onFinishCallback: (() => void) | null
@@ -32,6 +34,7 @@ export class TypeWriter {
     this.speed = 50
     this.generation = 0
     this.textBuffer = ''
+    this.targetText = ''
     this.writeFn = writeFn || null
     this.onFinishCallback = null
     this.onTextUpdateCallback = onTextUpdateCallback || null
@@ -136,6 +139,7 @@ export class TypeWriter {
 
     this._status = 'typing'
     this.textBuffer = ''
+    this.targetText = text
 
     // Parse speed
     if (speed !== undefined) {
@@ -204,6 +208,21 @@ export class TypeWriter {
     this.stopTimer()
     this._status = 'completed'
     this.element.style.setProperty('border-right', 'none')
+    // 补全剩余字符：目标文本可能还没全部进入 textBuffer，只有这行能拿到全文。
+    // 未传 writeFn 时写 value（textarea/input），否则走 writeFn 增量渲染（批量→瞬时）。
+    const full = this.targetText || this.textBuffer
+    if (this.writeFn) {
+      this.writeFn(this.element, full)
+    } else if (
+      this.element instanceof HTMLInputElement ||
+      this.element instanceof HTMLTextAreaElement
+    ) {
+      this.element.value = full
+    }
+    this.textBuffer = full
+    if (this.onTextUpdateCallback) {
+      this.onTextUpdateCallback(full)
+    }
     if (this.onFinishCallback) {
       this.onFinishCallback()
     }
