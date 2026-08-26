@@ -8,6 +8,10 @@ pub(crate) mod factory;
 mod provider;
 pub mod provider_config;
 mod providers;
+pub mod codex;
+
+// 兼容别名：既有 `llm::codex_auth::...` 路径继续可用（模块化后为 codex::auth）
+pub use codex::auth as codex_auth;
 
 pub use factory::create_llm_client;
 pub use provider::{LlmModelInfo, LlmProvider, LlmResponseWithTools};
@@ -58,6 +62,8 @@ pub struct LlmConfig {
     pub enable_thinking: bool,
     /// 推理深度（如 "low" / "high" / "max"），由支持 reasoning 的模型使用（如 Kimi Code K3 系列）。
     pub reasoning_effort: Option<String>,
+    /// Codex Fast Mode（1.5× 速度，额度消耗更快）= Responses API 的 `service_tier: "priority"`。
+    pub fast_mode: bool,
 }
 
 impl LlmConfig {

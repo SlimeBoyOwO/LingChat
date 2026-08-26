@@ -36,6 +36,9 @@ pub struct LlmProviderConfig {
     /// 推理深度（如 "low" / "high" / "max"），由支持 reasoning 的模型使用（如 Kimi Code K3 系列）。
     #[serde(default)]
     pub reasoning_effort: Option<String>,
+    /// Codex Fast Mode（1.5× 速度，额度消耗更快）；仅 provider = codex 时有意义。
+    #[serde(default)]
+    pub fast_mode: bool,
 }
 
 impl LlmProviderConfig {
@@ -58,6 +61,7 @@ impl LlmProviderConfig {
             top_p: self.top_p,
             enable_thinking: self.enable_thinking,
             reasoning_effort: self.reasoning_effort.clone(),
+            fast_mode: self.fast_mode,
         }
     }
 }
@@ -292,6 +296,7 @@ pub fn migrate_if_needed(app: &AppHandle) {
             top_p: old_top_p,
             enable_thinking: old_thinking,
             reasoning_effort: None,
+            fast_mode: false,
         });
         chat_id = Some(id);
     }
@@ -326,6 +331,7 @@ pub fn migrate_if_needed(app: &AppHandle) {
                 top_p: None,
                 enable_thinking: false,
                 reasoning_effort: None,
+                fast_mode: false,
             });
             translate_id = Some(id);
         }
@@ -395,6 +401,7 @@ pub fn migrate_legacy_vision_keys(app: &AppHandle) {
         top_p: None,
         enable_thinking: false,
         reasoning_effort: None,
+        fast_mode: false,
     };
 
     let mut providers = load_providers(app);

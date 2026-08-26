@@ -379,6 +379,9 @@
                   <option value="kimicode" class="bg-gray-800 text-white">
                     Kimi Code (kimi-for-coding)
                   </option>
+                  <option value="codex" class="bg-gray-800 text-white">
+                    {{ $t('settings.llmProviders.form.providerCodex') }}
+                  </option>
                 </select>
                 <div
                   class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5"
@@ -401,7 +404,7 @@
             </div>
 
             <!-- Model -->
-            <div v-if="editing.provider !== 'kimicode'" class="flex flex-col gap-1">
+            <div v-if="!isOAuthProvider" class="flex flex-col gap-1">
               <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.modelName') }}</label>
               <input
                 v-model="editing.model"
@@ -455,7 +458,7 @@
                   v-else
                   v-model="editing.model"
                   type="text"
-                  placeholder="kimi-for-coding"
+                  :placeholder="editing.provider === 'codex' ? 'gpt-5.6-sol' : 'kimi-for-coding'"
                   class="flex-1 min-w-0 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors placeholder:text-white/20"
                 />
                 <button
@@ -514,8 +517,8 @@
               </div>
             </div>
 
-            <!-- API Key -->
-            <div class="flex flex-col gap-1">
+            <!-- API Key（Codex 走 OAuth 订阅登录，无需 API Key） -->
+            <div v-if="editing.provider !== 'codex'" class="flex flex-col gap-1">
               <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.apiKey') }}</label>
               <input
                 v-model="editing.api_key"
@@ -525,8 +528,75 @@
               />
             </div>
 
+            <!-- Codex 登录区：设备码授权 ChatGPT 订阅 -->
+            <div v-else class="flex flex-col gap-2 rounded-lg bg-white/5 border border-white/10 p-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.codex.account') }}</span>
+                <span v-if="codexStatus?.logged_in" class="text-xs text-green-400">
+                  ● {{ $t('settings.llmProviders.codex.loggedIn') }}
+                </span>
+                <span v-else class="text-xs text-white/40">{{ $t('settings.llmProviders.codex.notLoggedIn') }}</span>
+              </div>
+              <div v-if="codexStatus?.logged_in" class="text-xs text-white/50 break-all font-mono">
+                {{ codexStatus.account_id }}
+              </div>
+
+              <!-- 授权进行中：展示用户码 -->
+              <div v-if="codexLogin" class="flex flex-col gap-2 rounded bg-black/30 p-3">
+                <div class="text-xs text-white/60">{{ $t('settings.llmProviders.codex.enterCodeHint') }}</div>
+                <div class="text-center text-2xl tracking-[0.3em] font-mono text-brand select-all py-1">
+                  {{ codexLogin.user_code }}
+                </div>
+                <button
+                  type="button"
+                  class="text-xs text-brand underline underline-offset-2 break-all text-center"
+                  @click="openUrl(codexLogin!.verification_url)"
+                >
+                  {{ codexLogin.verification_url }}
+                </button>
+              </div>
+
+              <p
+                v-if="codexLoginMessage"
+                class="text-xs"
+                :class="codexLoginError ? 'text-red-400' : 'text-green-400'"
+              >
+                {{ codexLoginMessage }}
+              </p>
+
+              <div class="flex gap-2">
+                <template v-if="!codexStatus?.logged_in">
+                  <button
+                    v-if="!codexLogin"
+                    type="button"
+                    class="px-3 py-1.5 rounded-lg bg-brand/80 text-white text-xs hover:bg-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    :disabled="codexLoginBusy"
+                    @click="startCodexLogin"
+                  >
+                    {{ codexLoginBusy ? '···' : $t('settings.llmProviders.codex.login') }}
+                  </button>
+                  <button
+                    v-else
+                    type="button"
+                    class="px-3 py-1.5 rounded-lg bg-white/10 text-white/70 text-xs hover:bg-white/20 transition-colors"
+                    @click="cancelCodexLogin"
+                  >
+                    {{ $t('settings.llmProviders.codex.cancel') }}
+                  </button>
+                </template>
+                <button
+                  v-else
+                  type="button"
+                  class="px-3 py-1.5 rounded-lg bg-white/10 text-white/70 text-xs hover:bg-white/20 transition-colors"
+                  @click="doCodexLogout"
+                >
+                  {{ $t('settings.llmProviders.codex.logout') }}
+                </button>
+              </div>
+            </div>
+
             <!-- Base URL -->
-            <div v-if="editing.provider !== 'kimicode'" class="flex flex-col gap-1">
+            <div v-if="!isOAuthProvider" class="flex flex-col gap-1">
               <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.baseUrl') }}</label>
               <input
                 v-model="editing.base_url"
@@ -536,12 +606,31 @@
               />
             </div>
 
-            <!-- Hidden base_url for kimicode -->
+            <!-- Hidden base_url for OAuth providers -->
             <input
-              v-if="editing.provider === 'kimicode'"
+              v-if="isOAuthProvider"
               v-model="editing.base_url"
               type="hidden"
             />
+
+            <!-- Codex Fast Mode（1.5× 速度，额度消耗更快） -->
+            <div v-if="editing.provider === 'codex'" class="flex items-center justify-between rounded-lg bg-white/5 border border-white/10 px-3 py-2">
+              <div class="flex flex-col gap-0.5">
+                <span class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.codex.fastMode') }}</span>
+                <span class="text-[11px] text-white/35">{{ $t('settings.llmProviders.codex.fastModeHint') }}</span>
+              </div>
+              <button
+                type="button"
+                class="relative w-11 h-6 rounded-full transition-colors duration-200 shrink-0"
+                :class="editing.fast_mode ? 'bg-brand' : 'bg-white/15'"
+                @click="editing.fast_mode = !editing.fast_mode"
+              >
+                <span
+                  class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all duration-200"
+                  :class="editing.fast_mode ? 'left-[22px]' : 'left-0.5'"
+                ></span>
+              </button>
+            </div>
 
             <!-- Temperature -->
             <div class="flex flex-col gap-1">
@@ -658,7 +747,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, reactive, computed, watch } from 'vue'
 import { useLlmProvidersStore } from '@/stores/modules/llm-providers'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { invoke } from '@tauri-apps/api/core'
@@ -668,6 +757,15 @@ import {
   type LlmModelInfo,
   type LlmProviderConfig,
 } from '@/api/services/llm-providers'
+import {
+  codexAuthStatus,
+  codexStartLogin,
+  codexPollLogin,
+  codexLogout,
+  type CodexAuthStatus,
+  type DeviceLoginStart,
+} from '@/api/services/codex'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { useI18n } from 'vue-i18n'
 import { llmPresets as presets, type LlmPreset } from '@/constants/llm-presets'
 
@@ -684,6 +782,11 @@ function applyPreset(preset: LlmPreset) {
   lmstudioAutoFilled.value = false
   kimicodeAutoFilled.value = false
   resetModelList()
+  // Codex 预设：直接拉内置模型目录并刷新登录状态
+  if (preset.provider === 'codex') {
+    fetchProviderModels()
+    refreshCodexStatus()
+  }
 }
 // --------------------
 
@@ -697,6 +800,15 @@ const availableModels = ref<LlmModelInfo[]>([])
 const loadingModels = ref(false)
 const modelsMessage = ref('')
 const modelsError = ref(false)
+
+// ---- Codex（ChatGPT 订阅）登录状态 ----
+const codexStatus = ref<CodexAuthStatus | null>(null)
+// 登录流程进行中：非 null 时展示用户码与等待状态
+const codexLogin = ref<DeviceLoginStart | null>(null)
+const codexLoginMessage = ref('')
+const codexLoginError = ref(false)
+const codexLoginBusy = ref(false)
+let codexPollTimer: ReturnType<typeof setInterval> | null = null
 
 // Test state
 const testProvider = ref<LlmProviderConfig | null>(null)
@@ -717,6 +829,7 @@ function emptyProvider(): LlmProviderConfig {
     top_p: null,
     enable_thinking: false,
     reasoning_effort: null,
+    fast_mode: false,
   }
 }
 
@@ -725,11 +838,16 @@ function closePanel() {
   saveMessage.value = ''
 }
 
+// OAuth 订阅类提供商（Kimi Code / OpenAI Codex）：免填 base_url，模型走自动发现
+const isOAuthProvider = computed(
+  () => editing.provider === 'kimicode' || editing.provider === 'codex',
+)
+
 // 推理深度档位完全由模型声明的 think_efforts.valid_efforts 驱动（与 kimi-code 官方一致）：
 // 列表非空 → 显示选择器并按其渲染档位；为空（如 K2.7 思考常开、不可调档）→ 不显示。
 // 列表尚未加载时无法判断能力，先不显示（startEdit 会自动拉取列表）
 const reasoningEffortOptions = computed<string[]>(() => {
-  if (editing.provider !== 'kimicode') return []
+  if (!isOAuthProvider.value) return []
   const info = availableModels.value.find((m) => m.id === editing.model)
   return info?.think_efforts?.valid_efforts ?? []
 })
@@ -737,9 +855,12 @@ const showReasoningEffort = computed(() => reasoningEffortOptions.value.length >
 
 function effortLabel(effort: string): string {
   const labels: Record<string, string> = {
+    off: t('settings.llmProviders.form.effortOff'),
+    minimal: t('settings.llmProviders.form.effortMinimal'),
     low: t('settings.llmProviders.form.effortLow'),
     medium: t('settings.llmProviders.form.effortMedium'),
     high: t('settings.llmProviders.form.effortHigh'),
+    xhigh: t('settings.llmProviders.form.effortXhigh'),
     max: t('settings.llmProviders.form.effortMax'),
   }
   return labels[effort] ?? effort
@@ -749,7 +870,7 @@ function effortLabel(effort: string): string {
 // 已选档位不在新模型的档位列表中时同样清空（跟随新模型默认）。
 // 但 Kimi Code 模型列表尚未加载时无法判断能力，先保留已配置值，待列表返回后再决定
 watch([() => editing.provider, () => editing.model], () => {
-  if (editing.provider === 'kimicode' && availableModels.value.length === 0) return
+  if (isOAuthProvider.value && availableModels.value.length === 0) return
   const options = reasoningEffortOptions.value
   if (
     options.length === 0 ||
@@ -779,6 +900,13 @@ function onProviderChange() {
     editing.model = 'kimi-for-coding'
     editing.base_url = 'https://api.kimi.com/coding'
     kimicodeAutoFilled.value = true
+  } else if (editing.provider === 'codex') {
+    // Codex：OAuth 订阅，无需 key/base_url；模型走内置目录自动发现
+    editing.model = 'gpt-5.6-sol'
+    editing.base_url = ''
+    editing.api_key = ''
+    fetchProviderModels()
+    refreshCodexStatus()
   } else {
     // 仅清除由 LM Studio 自动填入的默认值，不误伤用户手写的相同值
     if (lmstudioAutoFilled.value) {
@@ -818,6 +946,11 @@ function startEdit(p: LlmProviderConfig) {
   // 以便按各模型的 supports_reasoning 能力显示推理深度选项
   if (editing.provider === 'kimicode' && editing.api_key.trim()) {
     fetchProviderModels()
+  }
+  // Codex 模型目录内置在 provider 中（无需密钥），直接拉取；同时刷新登录状态
+  if (editing.provider === 'codex') {
+    fetchProviderModels()
+    refreshCodexStatus()
   }
 }
 
@@ -963,8 +1096,99 @@ async function doTest() {
   }
 }
 
+// ---- Codex 设备码登录流程 ----
+async function refreshCodexStatus() {
+  try {
+    codexStatus.value = await codexAuthStatus()
+  } catch {
+    codexStatus.value = null
+  }
+}
+
+function stopCodexPolling() {
+  if (codexPollTimer) {
+    clearInterval(codexPollTimer)
+    codexPollTimer = null
+  }
+}
+
+async function startCodexLogin() {
+  if (codexLoginBusy.value) return
+  codexLoginBusy.value = true
+  codexLoginError.value = false
+  codexLoginMessage.value = ''
+  stopCodexPolling()
+  try {
+    const start = await codexStartLogin()
+    codexLogin.value = start
+    codexLoginMessage.value = t('settings.llmProviders.codex.waitingAuth')
+    // 自动打开浏览器到授权页
+    openUrl(start.verification_url).catch(() => {})
+    let interval = Math.max(2, start.interval) * 1000
+    const startPolling = (ms: number) => {
+      stopCodexPolling()
+      codexPollTimer = setInterval(async () => {
+        const login = codexLogin.value
+        if (!login) {
+          stopCodexPolling()
+          return
+        }
+        try {
+          const result = await codexPollLogin(login.device_auth_id, login.user_code)
+          if (result.status === 'slow_down') {
+            interval += 5000
+            startPolling(interval)
+          } else if (result.status === 'complete') {
+            stopCodexPolling()
+            codexLogin.value = null
+            codexLoginError.value = false
+            codexLoginMessage.value = t('settings.llmProviders.codex.loginSuccess')
+            await refreshCodexStatus()
+          }
+        } catch (e: any) {
+          stopCodexPolling()
+          codexLogin.value = null
+          codexLoginError.value = true
+          codexLoginMessage.value = t('settings.llmProviders.codex.loginFailed', {
+            error: String(e?.message ?? e),
+          })
+        }
+      }, ms)
+    }
+    startPolling(interval)
+  } catch (e: any) {
+    codexLoginError.value = true
+    codexLoginMessage.value = t('settings.llmProviders.codex.loginFailed', {
+      error: String(e?.message ?? e),
+    })
+  } finally {
+    codexLoginBusy.value = false
+  }
+}
+
+function cancelCodexLogin() {
+  stopCodexPolling()
+  codexLogin.value = null
+  codexLoginMessage.value = ''
+  codexLoginError.value = false
+}
+
+async function doCodexLogout() {
+  try {
+    await codexLogout()
+  } catch {
+    /* 本地文件清理失败可忽略 */
+  }
+  await refreshCodexStatus()
+}
+
 onMounted(async () => {
   await store.load()
+  refreshCodexStatus()
+})
+
+onUnmounted(() => {
+  stopCodexPolling()
 })
 </script>
 
