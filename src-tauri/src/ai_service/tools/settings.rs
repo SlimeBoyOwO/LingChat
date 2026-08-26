@@ -75,29 +75,24 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
 pub struct WebSearchSettings {
     /// 总开关：关闭时工具不下发给模型，执行也会被拒绝。
     pub enabled: bool,
-    /// 为 true 时使用「模型 API 内置联网」：复用聊天模型的 API（Moonshot/Kimi），
-    /// 由服务端执行 $web_search，无需单独的搜索 API Key；
-    /// 为 false 时使用独立搜索端点 + api_key。
-    pub use_builtin: bool,
-    /// 独立端点模式的搜索服务提供商：
+    /// 搜索服务提供商：
     /// "kimi"（Kimi Code 同款 /v1/search，body 为 text_query）
     /// "bocha"（BoCha 博查 https://api.bochaai.com/v1/web-search）
     /// "deepseek"（DeepSeek Responses API，服务端内置 web_search）
     /// "tavily"（Tavily https://api.tavily.com/search，body 为 query）
-    /// 仅在 use_builtin = false 时生效。
     pub provider: String,
     /// DeepSeek Responses API 使用的模型（仅 provider = "deepseek" 时生效）。
     #[serde(default = "default_deepseek_model")]
     pub model: String,
-    /// API Key（Bearer 认证，仅 use_builtin = false 时需要）。
+    /// API Key（Bearer 认证）。
     pub api_key: String,
-    /// 搜索端点（仅 use_builtin = false 时使用；deepseek 固定走官方端点，不读此字段）。
+    /// 搜索端点（deepseek 固定走官方端点，不读此字段；仅 custom 模式需要）。
     pub base_url: String,
     /// 是否通过本地 HTTP 代理（如 v2rayN）访问搜索端点。
     pub proxy_enabled: bool,
     /// 代理地址，v2rayN（sing-box）默认本地端口 10808。
     pub proxy_addr: String,
-    /// 返回给模型的最大结果条数（仅独立端点模式）。
+    /// 返回给模型的最大结果条数。
     pub max_results: usize,
     /// 为 true 时喂给模型的搜索结果不含网址/来源名，并指示模型
     /// 把信息自然融入回答，避免在对话中念出搜索结果列表。
@@ -113,7 +108,6 @@ impl Default for WebSearchSettings {
     fn default() -> Self {
         Self {
             enabled: false,
-            use_builtin: true,
             provider: "kimi".to_string(),
             model: "deepseek-v4-flash".to_string(),
             api_key: String::new(),
@@ -129,7 +123,7 @@ impl Default for WebSearchSettings {
 impl WebSearchSettings {
     /// 配置是否达到可下发给模型的就绪状态。
     pub fn is_ready(&self) -> bool {
-        self.enabled && (self.use_builtin || !self.api_key.trim().is_empty())
+        self.enabled && !self.api_key.trim().is_empty()
     }
 }
 
