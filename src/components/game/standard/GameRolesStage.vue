@@ -1,20 +1,30 @@
 <template>
   <div class="absolute w-full h-full overflow-hidden">
-    <!-- 1. 遍历渲染所有在场角色 -->
-    <RoleAvatar
-      v-for="(role, index) in gameStore.presentRolesList"
-      :key="role.roleId"
-      :role="role"
-    />
+    <!-- 1. 所有 Live2D 角色共享一个场景级 Pixi Application -->
+    <Live2DStage
+      class="z-2"
+      :roles="gameStore.presentRolesList"
+      mode="standard"
+      :active-speaker-id="gameStore.currentInteractRoleId"
+      :audio-element="mainAudio"
+      :voice-data-url="voiceDataUrl"
+    >
+      <!-- 2. 每个角色保留原有静态视觉、气泡和触摸层 -->
+      <RoleAvatar
+        v-for="role in gameStore.presentRolesList"
+        :key="role.roleId"
+        :role="role"
+      />
+    </Live2DStage>
 
-    <!-- 2. 场景光照叠加层 -->
+    <!-- 3. 场景光照叠加层 -->
     <div
       v-if="lightOverlayStyle"
       class="absolute inset-0 pointer-events-none z-10"
       :style="lightOverlayStyle as any"
     ></div>
 
-    <!-- 3. 全局主语音播放器 -->
+    <!-- 4. 全局主语音播放器 -->
     <audio ref="mainAudio" @ended="onAudioEnded"></audio>
   </div>
 </template>
@@ -25,12 +35,14 @@ import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { getVoiceAudio } from '@/api/services/game-info'
 import RoleAvatar from './GameRoleAvatar.vue'
+import Live2DStage from '../live2d/Live2DStage.vue'
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const emit = defineEmits(['audio-ended', 'audio-started'])
 
 const mainAudio = ref<HTMLAudioElement | null>(null)
+const voiceDataUrl = ref('')
 
 const lightOverlayStyle = computed(() => {
   const l = gameStore.currentScene?.lighting
@@ -49,6 +61,7 @@ watch(
 
     // 如果设置为 'None'，停止当前播放
     if (newAudio === 'None' || !newAudio) {
+      voiceDataUrl.value = ''
       mainAudio.value.pause()
       mainAudio.value.currentTime = 0
       return
@@ -57,6 +70,7 @@ watch(
     if (newAudio && newAudio !== 'None') {
       try {
         const dataUrl = await getVoiceAudio(newAudio)
+        voiceDataUrl.value = dataUrl
         mainAudio.value.src = dataUrl
         mainAudio.value.load()
         mainAudio.value.volume = uiStore.characterVolume / 100

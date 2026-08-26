@@ -404,6 +404,7 @@ pub fn run() {
             let tool_registry = Arc::new(ai_service::tools::built_in_registry(
                 role_names,
                 tool_settings.clone(),
+                app.handle().clone(),
             )?);
 
             // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）。
@@ -657,6 +658,9 @@ pub fn run() {
             api::character::update_role_settings,
             api::character::delete_character,
             api::character::open_characters_folder,
+            api::live2d::import_live2d,
+            api::live2d::get_live2d_file,
+            api::live2d::inspect_live2d,
             api::background::get_background_list,
             api::background::get_background_file,
             api::background::upload_background_image,
