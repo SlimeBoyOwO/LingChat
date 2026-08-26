@@ -78,7 +78,7 @@
       <div class="font-medium text-brand mb-3">{{ t('settings.asr.provider.title') }}</div>
 
       <!-- 服务商选择：provider 由后端 list_provider_info 动态驱动 -->
-      <label class="block text-sm mb-1.5 font-medium">{{ t('settings.asr.providerSelect') }}</label>
+      <label class="block text-sm mb-1.5 font-medium">{{ t('settings.asr.provider.providerSelect') }}</label>
       <select
         v-model="localSettings.active_provider"
         class="w-full px-3 py-2.5 border rounded-lg text-sm text-sky-400 bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200 mb-4"
@@ -132,7 +132,7 @@
             </select>
             <button
               type="button"
-              :title="t('settings.asr.modelRefresh')"
+              :title="t('settings.asr.provider.modelRefresh')"
               class="px-3 rounded-lg border border-white/15 bg-white/5 text-white/60 hover:text-white/80 hover:bg-white/10 transition-colors"
               @click="refreshModels"
             >
@@ -304,7 +304,7 @@ async function loadModels(id: string) {
     modelListError.value = ''
   } catch (e) {
     asrStore.models = []
-    modelListError.value = t('settings.asr.modelListFailed', { err: String(e) })
+    modelListError.value = t('settings.asr.provider.modelListFailed', { err: String(e) })
   }
 }
 
