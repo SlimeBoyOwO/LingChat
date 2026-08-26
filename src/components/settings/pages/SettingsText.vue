@@ -375,6 +375,17 @@
           >
             {{ $t('settings.text.codexQuota.loadFailed', { error: codexQuotaError }) }}
           </div>
+          <div
+            v-if="codexFastMode"
+            class="flex
+              items-center
+              gap-1
+              text-amber-300/90
+              text-xs"
+          >
+            <Zap :size="12" />
+            {{ $t('settings.text.codexQuota.fastModeHint') }}
+          </div>
           <div class="flex
             gap-3
             pt-1">
@@ -666,6 +677,8 @@ let ttsCacheRefreshTimer: ReturnType<typeof setInterval> | null = null
 // 切换为其他模型后卡片即时隐藏、轮询停止。
 const llmProvidersStore = useLlmProvidersStore()
 const showCodexQuota = computed(() => llmProvidersStore.chatProvider?.provider === 'codex')
+// Fast Mode（service_tier=priority）按 1.5 倍速度消耗额度，开启时在卡片上提示
+const codexFastMode = computed(() => llmProvidersStore.chatProvider?.fast_mode === true)
 const codexLoggedIn = ref(false)
 const codexUsage = ref<CodexUsage | null>(null)
 const codexQuotaError = ref('')

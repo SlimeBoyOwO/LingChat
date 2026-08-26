@@ -732,7 +732,8 @@ export default {
       "notLoggedIn": "未登入 Codex",
       "loginHint": "喺「高級設定 → 大模型管理」加入 OpenAI Codex 提供商並登入之後，呢度會顯示訂閱額度。",
       "refresh": "刷新",
-      "loadFailed": "查詢失敗：{error}"
+      "loadFailed": "查詢失敗：{error}",
+      "fastModeHint": "Fast Mode 已開啟：額度按 1.5 倍速度消耗"
     },
     "update": {
       "title": "版本更新",

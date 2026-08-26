@@ -732,6 +732,7 @@ export default {
       loginHint: '「詳細設定 → LLM プロバイダ」で OpenAI Codex を追加してログインすると、ここにサブスクリプションのクォータが表示されます。',
       refresh: '更新',
       loadFailed: '取得に失敗しました：{error}',
+      fastModeHint: 'Fast Mode が有効：クォータを 1.5 倍速で消費します',
     },
     update: {
       title: 'バージョン更新',

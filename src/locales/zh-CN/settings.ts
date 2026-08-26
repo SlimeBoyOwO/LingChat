@@ -733,6 +733,7 @@ export default {
       loginHint: '在「高级设置 → 大模型管理」添加 OpenAI Codex 提供商并登录后，这里会显示订阅额度。',
       refresh: '刷新',
       loadFailed: '查询失败：{error}',
+      fastModeHint: 'Fast Mode 已开启：额度按 1.5 倍速度消耗',
     },
     update: {
       title: '版本更新',

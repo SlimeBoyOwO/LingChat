@@ -734,6 +734,7 @@ export default {
       loginHint: "Add an OpenAI Codex provider in Advanced Settings → LLM Providers and sign in to see your subscription quota here.",
       refresh: "Refresh",
       loadFailed: "Query failed: {error}",
+      fastModeHint: "Fast Mode is on: quota drains 1.5× faster",
     },
     update: {
       title: "Version Update",
