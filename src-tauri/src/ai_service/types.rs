@@ -311,6 +311,17 @@ pub struct VoiceModel {
     pub gsv_voice_filename: Option<String>,
     pub gsv_gpt_model_name: Option<String>,
     pub gsv_sovits_model_name: Option<String>,
+    /// GSV 六情绪参考语音开关：开启后按情绪分类（吃惊/开心/恐惧/难过/生气/中立）
+    /// 实时切换参考音频与文本；关闭时保持原有 gsv_voice_* 行为。
+    #[serde(default)]
+    pub gsv_emo_enabled: Option<bool>,
+    /// 六分类参考文本（分类名 → 文本）
+    #[serde(default)]
+    pub gsv_emo_texts: Option<HashMap<String, String>>,
+    /// 六分类参考音频文件名（分类名 → 文件名，相对角色 voice/ 目录；
+    /// 留空时按分类名在 voice/ 下自动查找，复用立绘系统的命名约定）
+    #[serde(default)]
+    pub gsv_emo_voice_files: Option<HashMap<String, String>>,
     pub aivis_model_uuid: Option<String>,
     pub opentts_voice: Option<String>,
     pub fish_s2_voice: Option<String>,
