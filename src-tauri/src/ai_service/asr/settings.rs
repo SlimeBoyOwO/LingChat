@@ -72,6 +72,9 @@ pub struct AsrSettings {
     pub voice_input_enabled: bool,
     /// VAD 静音计时（毫秒）：停止说话后静音该时长才结束一轮录音（默认 800ms）。
     pub vad_silence_ms: u32,
+    /// 能量监测启动缓冲期（毫秒）：TTS 播完恢复监听后该时长内不触发录音
+    /// （默认 100，0=无缓冲）。历史上前端私有字段，schema 归后端统一存储。
+    pub energy_warmup_ms: u32,
     pub provider_configs: HashMap<String, ProviderConfig>,
 }
 
@@ -91,6 +94,7 @@ impl AsrSettings {
             // 老用户 settings.json ASR_PREFS 的持久化值会覆盖此默认
             voice_input_enabled: false,
             vad_silence_ms: 800,
+            energy_warmup_ms: 100,
             provider_configs,
         }
     }
@@ -116,6 +120,9 @@ pub struct AsrPrefs {
     // 同理：缺省为 0 会让老数据的 VAD 静音计时变成 0（一静音立即切段）。
     #[serde(default = "default_vad_silence_ms")]
     pub vad_silence_ms: u32,
+    // 同理：缺省为 0 会让老数据恢复后能量监测无缓冲（TTS 残响立即误触发）。
+    #[serde(default = "default_energy_warmup_ms")]
+    pub energy_warmup_ms: u32,
 }
 
 /// AsrPrefs 的 voice_input_enabled 兜底：默认开启。
@@ -128,6 +135,11 @@ fn default_vad_silence_ms() -> u32 {
     800
 }
 
+/// AsrPrefs 的 energy_warmup_ms 兜底：默认 100ms（与前端 DEFAULT_SETTINGS 一致）。
+fn default_energy_warmup_ms() -> u32 {
+    100
+}
+
 impl AsrPrefs {
     fn from_settings(s: &AsrSettings) -> Self {
         Self {
@@ -136,6 +148,7 @@ impl AsrPrefs {
             stream_enabled: s.stream_enabled,
             voice_input_enabled: s.voice_input_enabled,
             vad_silence_ms: s.vad_silence_ms,
+            energy_warmup_ms: s.energy_warmup_ms,
         }
     }
 
@@ -145,6 +158,7 @@ impl AsrPrefs {
         s.stream_enabled = self.stream_enabled;
         s.voice_input_enabled = self.voice_input_enabled;
         s.vad_silence_ms = self.vad_silence_ms;
+        s.energy_warmup_ms = self.energy_warmup_ms;
     }
 }
 

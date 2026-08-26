@@ -11,26 +11,42 @@
 //! - `asr_get_status`：查询运行时状态（VAD 是否就绪）
 
 use tauri::AppHandle;
+use tauri::Emitter;
 
 use crate::AppState;
 use crate::ai_service::asr::error::AsrError;
 use crate::ai_service::asr::provider::{self, AsrResult, ProviderInfo, list_provider_info};
-use crate::ai_service::asr::session::AsrSource;
+use crate::ai_service::asr::session::{AsrSession, AsrSource};
 use crate::ai_service::asr::settings::{self, AsrSettings};
 
 fn parse_source(s: &str) -> Result<AsrSource, String> {
     AsrSource::from_str(s).ok_or_else(|| format!("invalid source: {s}"))
 }
 
-/// 错误转前端可读字符串：i18n code（ProviderApiError 额外携带详情，格式 `CODE|detail`）。
-/// 前端 SettingsAsr.testConnection 拆分后展示。
+/// 错误转前端可读字符串：`{"code":"<i18n_code>","detail":"<详情>"}` JSON。
+/// 前端统一用 `utils/asrError.ts` 的 parseAsrError 解析（JSON.parse 失败回退
+/// 旧 `CODE|detail` 格式与原文）——ProviderApiError 的 detail 随 code 走，
+/// 用户能看到具体失败原因而非笼统 code。
 fn err_to_user(e: &AsrError) -> String {
-    match e {
-        AsrError::ProviderApiError { message, .. } => {
-            format!("ASR_PROVIDER_FAILED|{message}")
-        },
-        _ => e.i18n_code().to_string(),
-    }
+    let code = e.i18n_code();
+    let detail = match e {
+        AsrError::ProviderApiError { message, .. } => Some(message.clone()),
+        _ => None,
+    };
+    serde_json::json!({ "code": code, "detail": detail }).to_string()
+}
+
+/// 取 session Arc 引用：锁内只 clone Arc（微秒级），锁外调用长耗时方法——
+/// 避免 asr_stop_streaming 等 30s 等待期间阻塞其它 ASR 命令
+///（asr_recognize_wav 等已在网络调用前释放外层锁，此 helper 统一该模式）。
+async fn session_ref(
+    session_arc: &std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<AsrSession>>>>,
+) -> Result<std::sync::Arc<AsrSession>, String> {
+    let guard = session_arc.lock().await;
+    guard
+        .as_ref()
+        .cloned()
+        .ok_or_else(|| "ASR not initialized".to_string())
 }
 
 /// 新建带 30s 超时的 HTTP 客户端（provider 网络请求统一用它）。
@@ -80,9 +96,7 @@ pub async fn asr_start_listening(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let source = parse_source(&source)?;
-    let session_arc = state.asr_state.session.clone();
-    let guard = session_arc.lock().await;
-    let session = guard.as_ref().ok_or("ASR not initialized")?;
+    let session = session_ref(&state.asr_state.session).await?;
     session
         .start(source)
         .await
@@ -95,16 +109,13 @@ pub async fn asr_stop_listening(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let source = parse_source(&source)?;
-    let session_arc = state.asr_state.session.clone();
-    let guard = session_arc.lock().await;
-    if let Some(session) = guard.as_ref() {
-        session
-            .stop(source)
-            .await
-            .map_err(|e| e.i18n_code().to_string())
-    } else {
-        Ok(()) // 未初始化视为幂等停止
-    }
+    let Ok(session) = session_ref(&state.asr_state.session).await else {
+        return Ok(()); // 未初始化视为幂等停止
+    };
+    session
+        .stop(source)
+        .await
+        .map_err(|e| e.i18n_code().to_string())
 }
 
 #[tauri::command]
@@ -113,21 +124,18 @@ pub async fn asr_vad_process_chunk(
     pcm: Vec<f32>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    let session_arc = state.asr_state.session.clone();
-    let guard = session_arc.lock().await;
-    if let Some(session) = guard.as_ref() {
-        session
-            .vad_process_chunk(&app, pcm)
-            .await
-            .map_err(|e| e.i18n_code().to_string())
-    } else {
+    let Ok(session) = session_ref(&state.asr_state.session).await else {
         // 诊断：session 未初始化（VAD 模型加载失败等）时静默丢块会掩盖故障
         tracing::warn!(
             "[ASR/VAD] session 未初始化，丢弃 chunk ({} samples)",
             pcm.len()
         );
-        Ok(())
-    }
+        return Ok(());
+    };
+    session
+        .vad_process_chunk(&app, pcm)
+        .await
+        .map_err(|e| e.i18n_code().to_string())
 }
 
 #[tauri::command]
@@ -138,20 +146,16 @@ pub async fn asr_recognize_wav(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<AsrResult, String> {
-    let session_arc = state.asr_state.session.clone();
-    // 锁内只克隆 providers 注册表 + 取消令牌，立即释放锁：
-    // 网络调用（最长 30s）不占用 session 锁，避免阻塞 asr_set_settings 等并发命令。
-    let (providers, cancel_token) = {
-        let guard = session_arc.lock().await;
-        let s = guard.as_ref().ok_or("ASR not initialized")?;
-        (s.providers.clone(), s.cancel_token.clone())
-    };
+    let session = session_ref(&state.asr_state.session).await?;
+    // cancel_token 锁内克隆立即释放（微秒级），网络调用（最长 30s）不占锁
+    let cancel_child = session.cancel_token.lock().await.clone().child_token();
     let http = build_http().map_err(|e| e.i18n_code().to_string())?;
+    // providers 注册表锁内 clone（Arc 共享，廉价），锁外 resolve
+    let providers = session.providers.lock().await.clone();
     let p = resolve_provider(&providers, &provider_id, &app, &http)
         .await
         .map_err(|e| e.i18n_code().to_string())?;
     tracing::info!("[ASR] 发送音频到 {provider_id}: {} bytes", wav_bytes.len());
-    let cancel_child = cancel_token.child_token();
     let result = tokio::select! {
         result = p.recognize(wav_bytes, language_hint.as_deref()) => result,
         _ = cancel_child.cancelled() => Err(AsrError::Canceled),
@@ -162,9 +166,10 @@ pub async fn asr_recognize_wav(
             Ok(r)
         },
         Err(e) => {
-            // 诊断：暴露 provider 失败的具体细节（之前仅前端 code，丢失 detail）
+            // 诊断：暴露 provider 失败的具体细节
             tracing::error!("[ASR] {provider_id} 识别失败: {e}");
-            Err(e.i18n_code().to_string())
+            // err_to_user：i18n code + detail（前端 parseAsrError 解析展示）
+            Err(err_to_user(&e))
         },
     }
 }
@@ -181,14 +186,12 @@ pub async fn asr_recognize_wav_stream(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<AsrResult, String> {
-    let session_arc = state.asr_state.session.clone();
-    // 锁内只克隆 providers 注册表 + 取消令牌，立即释放锁
-    let (providers, cancel_token) = {
-        let guard = session_arc.lock().await;
-        let s = guard.as_ref().ok_or("ASR not initialized")?;
-        (s.providers.clone(), s.cancel_token.clone())
-    };
+    let session = session_ref(&state.asr_state.session).await?;
+    // cancel_token 锁内克隆立即释放（微秒级），网络调用（最长 30s）不占锁
+    let cancel_child = session.cancel_token.lock().await.clone().child_token();
     let http = build_http().map_err(|e| e.i18n_code().to_string())?;
+    // providers 注册表锁内 clone（Arc 共享，廉价），锁外 resolve
+    let providers = session.providers.lock().await.clone();
     let p = resolve_provider(&providers, &provider_id, &app, &http)
         .await
         .map_err(|e| e.i18n_code().to_string())?;
@@ -196,9 +199,14 @@ pub async fn asr_recognize_wav_stream(
         "[ASR] 流式识别发送音频到 {provider_id}: {} bytes",
         wav_bytes.len()
     );
-    let cancel_child = cancel_token.child_token();
+    // partial 事件统一由命令层发射（provider 只回传文本，展示与识别解耦）
+    let app_handle = app.clone();
+    let on_partial: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>> =
+        Some(std::sync::Arc::new(move |text: &str| {
+            let _ = app_handle.emit("asr://stream_partial", text.to_string());
+        }));
     let result = tokio::select! {
-        result = p.stream_recognize(app, wav_bytes) => result,
+        result = p.stream_recognize(wav_bytes, on_partial) => result,
         _ = cancel_child.cancelled() => Err(AsrError::Canceled),
     };
     match result {
@@ -208,7 +216,8 @@ pub async fn asr_recognize_wav_stream(
         },
         Err(e) => {
             tracing::error!("[ASR] {provider_id} 流式识别失败: {e}");
-            Err(e.i18n_code().to_string())
+            // err_to_user：i18n code + detail（前端 parseAsrError 解析展示）
+            Err(err_to_user(&e))
         },
     }
 }
@@ -241,12 +250,9 @@ async fn resolve_provider(
 
 #[tauri::command]
 pub async fn asr_cancel(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    let session_arc = state.asr_state.session.clone();
-    let guard = session_arc.lock().await;
-    if let Some(session) = guard.as_ref() {
-        session.cancel_stream().await;
-        session.cancel();
-    }
+    let session = session_ref(&state.asr_state.session).await?;
+    session.cancel_stream().await;
+    session.cancel().await;
     Ok(())
 }
 
@@ -257,12 +263,12 @@ pub async fn asr_start_streaming(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    let session_arc = state.asr_state.session.clone();
-    let guard = session_arc.lock().await;
-    let session = guard.as_ref().ok_or("ASR not initialized")?;
-    // 仅支持流式的 provider 可启动
+    let session = session_ref(&state.asr_state.session).await?;
+    // 仅支持流式的 provider 可启动（注册表锁内读，微秒级）
     let supports = session
         .providers
+        .lock()
+        .await
         .get(&provider_id)
         .map(|p| p.supports_streaming())
         .unwrap_or(false);
@@ -294,13 +300,7 @@ pub async fn asr_start_streaming(
             language_hint,
         )
         .await
-        .map_err(|e| match &e {
-            // 透传详情（WebSocket 连接失败的具体原因），前端 split('|') 展示
-            AsrError::ProviderApiError { message, .. } => {
-                format!("ASR_PROVIDER_FAILED|{message}")
-            },
-            _ => e.i18n_code().to_string(),
-        })
+        .map_err(|e| err_to_user(&e))
 }
 
 #[tauri::command]
@@ -308,9 +308,7 @@ pub async fn asr_stream_audio_chunk(
     pcm: Vec<f32>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    let session_arc = state.asr_state.session.clone();
-    let guard = session_arc.lock().await;
-    let session = guard.as_ref().ok_or("ASR not initialized")?;
+    let session = session_ref(&state.asr_state.session).await?;
     session
         .stream_audio_chunk(pcm)
         .await
@@ -319,9 +317,7 @@ pub async fn asr_stream_audio_chunk(
 
 #[tauri::command]
 pub async fn asr_stop_streaming(state: tauri::State<'_, AppState>) -> Result<AsrResult, String> {
-    let session_arc = state.asr_state.session.clone();
-    let guard = session_arc.lock().await;
-    let session = guard.as_ref().ok_or("ASR not initialized")?;
+    let session = session_ref(&state.asr_state.session).await?;
     session
         .stop_streaming()
         .await
@@ -332,11 +328,8 @@ pub async fn asr_stop_streaming(state: tauri::State<'_, AppState>) -> Result<Asr
 /// 不 cancel 非流式在飞识别（与 asr_cancel 的全局取消区分）。
 #[tauri::command]
 pub async fn asr_cancel_streaming(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    let session_arc = state.asr_state.session.clone();
-    let guard = session_arc.lock().await;
-    if let Some(session) = guard.as_ref() {
-        session.cancel_stream().await;
-    }
+    let session = session_ref(&state.asr_state.session).await?;
+    session.cancel_stream().await;
     Ok(())
 }
 
@@ -371,10 +364,9 @@ pub async fn asr_set_settings(
     settings::save(&app, &settings).map_err(|e| e.i18n_code().to_string())?;
     // 重建 provider registry（settings 改了 credentials 后立即生效）
     rebuild_providers(&state, &settings).await?;
-    // VAD 静音计时立即生效（下一轮录音按新配置切分）
-    let session_arc = state.asr_state.session.clone();
-    let guard = session_arc.lock().await;
-    if let Some(session) = guard.as_ref() {
+    // VAD 静音计时立即生效（下一轮录音按新配置切分）；
+    // session 未初始化（VAD 加载失败）时跳过——设置本身已保存成功
+    if let Ok(session) = session_ref(&state.asr_state.session).await {
         session
             .vad
             .set_silence_timeout_ms(settings.vad_silence_ms)
@@ -390,19 +382,16 @@ pub async fn asr_test_provider(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let silence_wav = synth_silence_wav(1.0);
-    let session_arc = state.asr_state.session.clone();
-    // 克隆 providers + cancel_token 后释放锁：测试网络请求（最长 30s）不阻塞其他命令
-    let (providers, cancel_token) = {
-        let guard = session_arc.lock().await;
-        let s = guard.as_ref().ok_or("ASR not initialized")?;
-        (s.providers.clone(), s.cancel_token.clone())
-    };
+    let session = session_ref(&state.asr_state.session).await?;
+    // cancel_token 锁内克隆立即释放（微秒级），网络请求（最长 30s）不占锁
+    let cancel_child = session.cancel_token.lock().await.clone().child_token();
     let http = build_http().map_err(|e| e.i18n_code().to_string())?;
+    // providers 注册表锁内 clone（Arc 共享，廉价），锁外 resolve
+    let providers = session.providers.lock().await.clone();
     let p = resolve_provider(&providers, &provider_id, &app, &http)
         .await
         .map_err(|e| err_to_user(&e))?;
     tracing::info!("[ASR] 测试连接: 发送静音探测到 {provider_id}");
-    let cancel_child = cancel_token.child_token();
     let result = tokio::select! {
         result = p.recognize(silence_wav, None) => result,
         _ = cancel_child.cancelled() => Err(AsrError::Canceled),
@@ -460,9 +449,9 @@ async fn rebuild_providers(
         },
     }
     let session_arc = state.asr_state.session.clone();
-    let mut guard = session_arc.lock().await;
-    if let Some(session) = guard.as_mut() {
-        session.providers = providers;
+    let guard = session_arc.lock().await;
+    if let Some(session) = guard.as_ref() {
+        *session.providers.lock().await = providers;
     }
     Ok(())
 }

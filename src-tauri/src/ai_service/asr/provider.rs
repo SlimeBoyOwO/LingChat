@@ -158,10 +158,14 @@ pub trait AsrProvider: Send + Sync {
     /// 与 WS 会话流式（`asr_start_streaming`/`stop_streaming`）独立：llama-asr
     /// 走这里（provider_stream_llama.rs），qwen 走 WebSocket 会话路径。
     /// 默认实现返回 [`AsrError::StreamingNotSupported`]。
+    ///
+    /// `on_partial`：增量文本回调（整段累积视图，每次整体替换）——由调用方
+    /// （session / 命令层）注入，provider 不直接依赖 Tauri 事件发射（展示
+    /// 与识别解耦，provider 可脱离 Tauri 环境测试）。
     async fn stream_recognize(
         &self,
-        _app: tauri::AppHandle,
-        _wav_bytes: Vec<u8>,
+        wav_bytes: Vec<u8>,
+        on_partial: Option<Arc<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>>,
     ) -> Result<AsrResult, AsrError> {
         Err(AsrError::StreamingNotSupported(self.id().into()))
     }
@@ -383,9 +387,10 @@ fn parse_qwen_text(body: &str) -> Option<String> {
 /// - 响应 `text` 格式 `language <lang><asr_text><文本>`，切 `<asr_text>` 取文本
 /// - 热词：multipart `prompt` 字段做上下文偏置（偏置非强制；热词接口保留，
 ///   设置页暂不做输入 UI，来源 `ProviderConfig.extra["hotwords"]` 逗号分隔）
-/// - 流式：llama-server 走 SSE（HTTP），与现有 DashScope WebSocket 协议
-///   （provider_stream.rs）不同，v1 不接入——`supports_streaming=false`，
-///   前端模型级判定自动禁用流式开关，降级整句识别
+/// - 流式：llama-server 走 SSE（HTTP，OpenAI 兼容语义——每条 data 是当前
+///   累积的完整转录）——结果流式经 `stream_recognize` 接入（provider_stream_llama.rs），
+///   partial 经 `asr://stream_partial` 事件实时 emit；音频仍整段上传
+///   （Qwen3-ASR 非因果 encoder，无流式音频输入）
 pub struct LlamaAsrProvider {
     http: reqwest::Client,
     cred: ProviderCredentials,
@@ -439,7 +444,9 @@ impl AsrProvider for LlamaAsrProvider {
     }
 
     fn supports_streaming(&self) -> bool {
-        false
+        // 结果流式（SSE）已接入（stream_recognize / provider_stream_llama.rs）；
+        // 与 llama_models() 的模型级 supports_streaming=true 保持一致
+        true
     }
 
     #[instrument(skip(self, wav_bytes), fields(provider = Self::ID))]
@@ -506,21 +513,21 @@ impl AsrProvider for LlamaAsrProvider {
             provider_id: Self::ID.into(),
         })
     }
-    /// 结果流式识别：整段 WAV 上传 + SSE 增量 partial（`asr://stream_partial`
-    /// 事件）→ final。复用整句的端点/模型/热词选择逻辑。
-    #[instrument(skip(self, wav_bytes), fields(provider = Self::ID))]
+    /// 结果流式识别：整段 WAV 上传 + SSE 增量 partial（`on_partial` 回调，
+    /// 事件发射由调用方负责）→ final。复用整句的端点/模型/热词选择逻辑。
+    #[instrument(skip(self, wav_bytes, on_partial), fields(provider = Self::ID))]
     async fn stream_recognize(
         &self,
-        app: tauri::AppHandle,
         wav_bytes: Vec<u8>,
+        on_partial: Option<Arc<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>>,
     ) -> Result<AsrResult, AsrError> {
         super::provider_stream_llama::recognize_stream(
-            app,
             &self.http,
             &self.cred,
             &self.effective_endpoint(),
             &self.effective_model(),
             wav_bytes,
+            on_partial,
         )
         .await
     }
@@ -653,6 +660,9 @@ pub struct ModelInfo {
     pub supports_streaming: bool,
     /// 是否默认模型（`provider_configs[id].model` 为空时生效）。
     pub is_default: bool,
+    /// 协议端点预设（选中该模型时同步填入 endpoint 配置；None = 无预设，
+    /// 用当前 endpoint 配置——llama-asr 的端点与模型无关）。
+    pub endpoint: Option<String>,
 }
 
 /// qwen（DashScope）语音识别模型静态清单。
@@ -667,12 +677,14 @@ pub fn qwen_models() -> Vec<ModelInfo> {
             display_name: "Fun-ASR-Realtime（非实时）".into(),
             supports_streaming: false,
             is_default: true,
+            endpoint: Some(QwenAsrProvider::DEFAULT_ENDPOINT.to_string()),
         },
         ModelInfo {
             id: "paraformer-realtime-v2".into(),
             display_name: "Paraformer-Realtime-V2".into(),
             supports_streaming: true,
             is_default: false,
+            endpoint: Some(super::provider_stream::WS_URL.to_string()),
         },
     ]
 }
@@ -750,6 +762,7 @@ async fn llama_models(
             // 语义不同，但前端流式开关可用（录音结束出 partial 而非边录边出）
             supports_streaming: true,
             is_default: i == 0,
+            endpoint: None,
             id,
         })
         .collect())

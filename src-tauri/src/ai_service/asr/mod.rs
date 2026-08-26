@@ -23,5 +23,7 @@ use tokio::sync::Mutex;
 pub struct AsrState {
     /// 当前活跃的 ASR 会话。`None` 表示未启动或 init 失败。
     /// 互斥：同一时刻最多一个 `AsrSource`（Button / Auto）。
-    pub session: Arc<Mutex<Option<crate::ai_service::asr::session::AsrSession>>>,
+    /// 存 `Arc<AsrSession>` 而非本体：命令侧锁内 clone 引用（微秒级）后
+    /// 锁外调用长耗时方法（30s 网络等待不阻塞其它 ASR 命令）。
+    pub session: Arc<Mutex<Option<Arc<crate::ai_service::asr::session::AsrSession>>>>,
 }

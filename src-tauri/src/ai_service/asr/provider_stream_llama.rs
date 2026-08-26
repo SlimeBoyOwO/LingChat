@@ -12,7 +12,7 @@
 
 use futures_util::StreamExt;
 use reqwest::multipart::Form;
-use tauri::{AppHandle, Emitter};
+use std::sync::Arc;
 use tracing::debug;
 
 use super::error::AsrError;
@@ -73,17 +73,18 @@ fn extract_lines(buf: &mut Vec<u8>) -> Vec<String> {
 
 /// 发起结果流式识别：整段 WAV multipart 上传 + SSE 增量 partial + 返回 final。
 ///
-/// - 每个 partial 以累积完整文本经 `asr://stream_partial` emit
-///   （`parse_llama_text` 切 `<asr_text>` 取文本，与整句识别同一解析）
+/// - 每个 partial 以累积完整文本经 `on_partial` 回调发射（`parse_llama_text`
+///   切 `<asr_text>` 取文本，与整句识别同一解析）——事件发射由调用方负责
+///   （session / 命令层注入回调），本模块不依赖 Tauri AppHandle
 /// - 热词接口复用：`cred.hotwords` 非空时带 `prompt` 字段
 /// - 无 `[DONE]` 正常断开时以最后一条 partial 为 final
 pub async fn recognize_stream(
-    app: AppHandle,
     http: &reqwest::Client,
     cred: &ProviderCredentials,
     endpoint: &str,
     model: &str,
     wav_bytes: Vec<u8>,
+    on_partial: Option<Arc<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>>,
 ) -> Result<AsrResult, AsrError> {
     let url = format!("{endpoint}/v1/audio/transcriptions");
     debug!("[ASR/llama-stream] 上传整段 WAV 流式转写: {url} (model={model})");
@@ -158,10 +159,12 @@ pub async fn recognize_stream(
                         if lang.is_some() {
                             final_lang = lang;
                         }
-                        // 空文本（无语音 `language None<asr_text>`）不 emit——
+                        // 空文本（无语音 `language None<asr_text>`）不回调——
                         // 空 partial 会清空输入框的语音追加块
                         if !text.is_empty() {
-                            let _ = app.emit("asr://stream_partial", final_text.clone());
+                            if let Some(cb) = &on_partial {
+                                cb(&final_text);
+                            }
                         }
                     }
                 },

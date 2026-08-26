@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde::Serialize;
+use tauri::Emitter;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
@@ -44,13 +45,20 @@ pub struct StreamHandle {
 /// - `active_source`：当前活跃的会话来源（None 表示无活跃会话）。
 /// - `cancel_token`：长生命周期取消令牌；cancel 不会立即停掉 in-flight 推理，
 ///   只让持续轮询的下游（如未来的持续触发逻辑）有机会退出。
+///   **Mutex 包裹的原因**：CancellationToken 是一次性的——cancel 后无法恢复，
+///   所有 child_token 永久触发 → 之后的识别全部立即返回 Canceled。
+///   `cancel()` 先 cancel 旧 token（在飞任务收到取消）再换新 token（后续会话
+///   不受影响），实现可重入取消。
 /// - `stream`：流式识别会话句柄（WebSocket 连接常驻后台 task）。
 /// - `lock`：互斥锁，保证 start/stop 序列原子化。
 pub struct AsrSession {
     pub vad: Arc<AsrVad>,
-    pub providers: HashMap<String, Arc<dyn AsrProvider>>,
+    /// provider 注册表。Mutex 包裹：命令侧持 Arc<AsrSession> 并发调用，
+    /// 设置页改配置时 rebuild_providers 需要原地替换（Arc::get_mut 在
+    /// 有并发引用时不可用）。
+    pub providers: Mutex<HashMap<String, Arc<dyn AsrProvider>>>,
     pub active_source: Mutex<Option<AsrSource>>,
-    pub cancel_token: CancellationToken,
+    pub cancel_token: Mutex<CancellationToken>,
     pub stream: Mutex<Option<StreamHandle>>,
     pub lock: Mutex<()>,
 }
@@ -59,9 +67,9 @@ impl AsrSession {
     pub fn new(vad: Arc<AsrVad>, providers: HashMap<String, Arc<dyn AsrProvider>>) -> Self {
         Self {
             vad,
-            providers,
+            providers: Mutex::new(providers),
             active_source: Mutex::new(None),
-            cancel_token: CancellationToken::new(),
+            cancel_token: Mutex::new(CancellationToken::new()),
             stream: Mutex::new(None),
             lock: Mutex::new(()),
         }
@@ -89,12 +97,22 @@ impl AsrSession {
         Ok(())
     }
 
-    /// 转发 30ms PCM 块到 VAD（session 未活跃也允许：前端可能误调）。
+    /// 转发 30ms PCM 块到 VAD。
+    ///
+    /// **活跃会话校验（双窗口防御）**：主窗口与桌宠窗口各自喂块，而 Silero
+    /// 隐状态只能服务一路流——非活跃窗口的块会污染活跃会话的端点判定。
+    /// 仅接受 `active_source == Auto` 的块（VAD 只服务 auto 模式）；
+    /// 无活跃会话时静默丢弃（前端 stop 后的残留块、未初始化窗口的块）。
     pub async fn vad_process_chunk(
         &self,
         app: &tauri::AppHandle,
         pcm: Vec<f32>,
     ) -> Result<(), AsrError> {
+        let active = self.active_source.lock().await;
+        if *active != Some(AsrSource::Auto) {
+            return Ok(()); // 非活跃会话的块：静默丢弃
+        }
+        drop(active);
         self.vad.process_chunk(app, &pcm).await.map(|_| ())
     }
 
@@ -107,7 +125,10 @@ impl AsrSession {
     ) -> Result<AsrResult, AsrError> {
         let provider = self
             .providers
+            .lock()
+            .await
             .get(&provider_id)
+            .cloned()
             .ok_or_else(|| AsrError::ProviderNotFound(provider_id.clone()))?;
         self.recognize_wav_with(provider.clone(), wav_bytes, language_hint.as_deref())
             .await
@@ -121,7 +142,9 @@ impl AsrSession {
         wav_bytes: Vec<u8>,
         language_hint: Option<&str>,
     ) -> Result<AsrResult, AsrError> {
-        let cancel_child = self.cancel_token.child_token();
+        // 锁内克隆当前令牌（CancellationToken 是 Arc 语义，clone 廉价），
+        // 锁外 select——cancel() 换新 token 不影响本次已克隆的引用
+        let cancel_child = self.cancel_token.lock().await.clone().child_token();
         tokio::select! {
             result = provider.recognize(wav_bytes, language_hint) => result,
             _ = cancel_child.cancelled() => Err(AsrError::Canceled),
@@ -132,8 +155,16 @@ impl AsrSession {
         *self.active_source.lock().await
     }
 
-    pub fn cancel(&self) {
-        self.cancel_token.cancel();
+    /// 取消所有在飞识别（可重入）。
+    ///
+    /// 一次性 token 的坑：`CancellationToken::cancel()` 后所有 child 永久触发，
+    /// 直接 `self.cancel_token.cancel()` 会让之后每次识别的 child_token 都立即
+    /// 触发 → 整个 ASR 永久返回 Canceled 直到重启。这里先 cancel 旧 token
+    /// （在飞任务收到取消），再换新 token（后续会话不受影响）。
+    pub async fn cancel(&self) {
+        let mut token = self.cancel_token.lock().await;
+        token.cancel();
+        *token = CancellationToken::new();
     }
 
     /// 启动流式会话。互斥只查 stream 自身（VAD/active_source 互斥由
@@ -153,9 +184,13 @@ impl AsrSession {
         if self.stream.lock().await.take().is_some() {
             tracing::warn!("[ASR/stream] 丢弃残留流式会话句柄");
         }
-        let tx =
-            provider_stream::start_streaming(app.clone(), endpoint, api_key, model, language_hint)
-                .await?;
+        // partial 事件统一由 session 层发射（provider 只回传文本，展示与识别解耦）
+        let app_handle = app.clone();
+        let on_partial = std::sync::Arc::new(move |text: &str| {
+            let _ = app_handle.emit("asr://stream_partial", text.to_string());
+        });
+        let tx = provider_stream::start_streaming(on_partial, endpoint, api_key, model, language_hint)
+            .await?;
         *self.stream.lock().await = Some(StreamHandle {
             provider_id: provider_id.to_string(),
             tx,
@@ -164,7 +199,16 @@ impl AsrSession {
     }
 
     /// 转发 PCM 块到流式连接（不持锁：写循环自身串行）。
+    ///
+    /// **活跃会话校验（双窗口防御）**：与 `vad_process_chunk` 同理——
+    /// WebSocket 帧属于发起会话的窗口，非活跃窗口的块静默丢弃
+    /// （窗口级隔离由 start 互斥保证，这里挡残留/误调的游离块）。
     pub async fn stream_audio_chunk(&self, pcm: Vec<f32>) -> Result<(), AsrError> {
+        let active = self.active_source.lock().await;
+        if active.is_none() {
+            return Ok(()); // 无活跃会话：静默丢弃
+        }
+        drop(active);
         let handle = self.stream.lock().await.clone();
         match handle {
             Some(h) => {

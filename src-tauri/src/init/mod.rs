@@ -209,7 +209,7 @@ pub async fn init_asr(
     let vad = AsrVad::load(app)?;
     // 应用持久化的 VAD 静音计时（设置页可自定义，默认 800ms）
     vad.set_silence_timeout_ms(cfg.vad_silence_ms).await;
-    let session = AsrSession::new(Arc::new(vad), providers);
+    let session = Arc::new(AsrSession::new(Arc::new(vad), providers));
     *asr_state.session.lock().await = Some(session);
 
     // 通知前端 VAD 模型就绪（设置页状态面板显示"已加载"）

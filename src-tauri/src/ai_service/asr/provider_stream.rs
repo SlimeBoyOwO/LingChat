@@ -27,7 +27,7 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value as JsonValue;
 use serde_json::json;
-use tauri::{AppHandle, Emitter};
+use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -36,7 +36,7 @@ use tracing::{debug, warn};
 
 use super::error::AsrError;
 
-const WS_URL: &str = "wss://dashscope.aliyuncs.com/api-ws/v1/inference";
+pub const WS_URL: &str = "wss://dashscope.aliyuncs.com/api-ws/v1/inference";
 
 /// 流式会话命令（由 session 侧转发）。
 pub enum StreamCommand {
@@ -176,10 +176,11 @@ fn build_finish_task_payload(task_id: &str) -> Vec<u8> {
 /// 建立 WebSocket 连接 + 发 run-task 事件 + spawn 读写分离 task。
 ///
 /// 返回命令通道发送端。连接与读写完全在后台 task，不占用调用方。
-/// partial 文本通过 `asr://stream_partial` 事件实时 emit（整段累积视图：
-/// 已定稿句 + 当前句 partial，前端整体替换输入框的语音追加块）。
+/// partial 文本经 `on_partial` 回调实时发射（整段累积视图：已定稿句 + 当前句
+/// partial，前端整体替换输入框的语音追加块）——事件发射由调用方
+/// （session 层）注入回调，本模块不依赖 Tauri AppHandle。
 pub async fn start_streaming(
-    app: AppHandle,
+    on_partial: Arc<dyn Fn(&str) + Send + Sync>,
     endpoint: String,
     api_key: String,
     model: String,
@@ -303,12 +304,12 @@ pub async fn start_streaming(
                                         // 句子定稿：并入 buffer，partial 显示完整定稿内容
                                         buffer.push_str(&text);
                                         current.clear();
-                                        let _ = app.emit("asr://stream_partial", buffer.clone());
+                                        on_partial(&buffer);
                                     } else {
                                         // 同一句 partial 整体更新
                                         current = text;
                                         let partial = format!("{buffer}{current}");
-                                        let _ = app.emit("asr://stream_partial", partial);
+                                        on_partial(&partial);
                                     }
                                 }
                                 Some(ServerEvent::Finished) => {
@@ -316,7 +317,7 @@ pub async fn start_streaming(
                                         let _ = r.send(Ok(StreamResult { text: buffer.clone() }));
                                     }
                                     if !aborted {
-                                        let _ = app.emit("asr://stream_partial", buffer.clone());
+                                        on_partial(&buffer);
                                     }
                                     break;
                                 }
