@@ -144,6 +144,7 @@ async fn run_shell_command_with_limits(
         process
     };
     #[cfg(not(windows))]
+    #[allow(unused_imports)]
     let mut process = {
         use std::os::unix::process::CommandExt;
 

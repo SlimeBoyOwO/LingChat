@@ -67,6 +67,22 @@ pub struct TtsConfig {
     /// TTS 语音语言（ja / zh / auto）
     #[serde(default = "default_voice_lang")]
     pub voice_lang: String,
+
+    /// Sherpa-ONNX 模型路径
+    #[serde(default)]
+    pub sherpa_onnx_model_path: Option<String>,
+    /// Sherpa-ONNX 模型类型
+    #[serde(default = "default_sherpa_onnx_model_type")]
+    pub sherpa_onnx_model_type: String,
+    /// Sherpa-ONNX 语言
+    #[serde(default = "default_sherpa_onnx_lang")]
+    pub sherpa_onnx_lang: String,
+    /// Sherpa-ONNX 音色
+    #[serde(default = "default_sherpa_onnx_voice")]
+    pub sherpa_onnx_voice: String,
+    /// Sherpa-ONNX 是否使用GPU
+    #[serde(default = "default_sherpa_onnx_use_gpu")]
+    pub sherpa_onnx_use_gpu: bool,
 }
 
 // ---- 默认值（单一真相源：serde + Default + from_store 均引用这些函数） ----
@@ -113,6 +129,18 @@ pub fn default_audio_format() -> String {
 pub fn default_voice_lang() -> String {
     "ja".into()
 }
+pub fn default_sherpa_onnx_model_type() -> String {
+    "vits".to_string()
+}
+pub fn default_sherpa_onnx_lang() -> String {
+    "zh".to_string()
+}
+pub fn default_sherpa_onnx_voice() -> String {
+    "female".to_string()
+}
+pub fn default_sherpa_onnx_use_gpu() -> bool {
+    false
+}
 
 // ========== Default 实现 ==========
 
@@ -135,6 +163,11 @@ impl Default for TtsConfig {
             opentts_voice: default_opentts_voice(),
             audio_format: default_audio_format(),
             voice_lang: default_voice_lang(),
+            sherpa_onnx_model_path: None,
+            sherpa_onnx_model_type: default_sherpa_onnx_model_type(),
+            sherpa_onnx_lang: default_sherpa_onnx_lang(),
+            sherpa_onnx_voice: default_sherpa_onnx_voice(),
+            sherpa_onnx_use_gpu: default_sherpa_onnx_use_gpu(),
         }
     }
 }
@@ -194,6 +227,21 @@ impl TtsConfig {
             opentts_voice: get_string(keys::OPENTTS_VOICE, &default_opentts_voice()),
             audio_format: get_string(keys::TTS_AUDIO_FORMAT, &default_audio_format()),
             voice_lang: get_string(keys::VOICE_LANG, &default_voice_lang()),
+            sherpa_onnx_model_path: {
+                let s = get_string(keys::SHERPA_ONNX_MODEL_PATH, "");
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s)
+                }
+            },
+            sherpa_onnx_model_type: get_string(keys::SHERPA_ONNX_MODEL_TYPE, &default_sherpa_onnx_model_type()),
+            sherpa_onnx_lang: get_string(keys::SHERPA_ONNX_LANG, &default_sherpa_onnx_lang()),
+            sherpa_onnx_voice: get_string(keys::SHERPA_ONNX_VOICE, &default_sherpa_onnx_voice()),
+            sherpa_onnx_use_gpu: {
+                let s = get_string(keys::SHERPA_ONNX_USE_GPU, "false");
+                s.parse().unwrap_or(default_sherpa_onnx_use_gpu())
+            },
         }
     }
 }

@@ -1,4 +1,3 @@
-import { convertFileSrc } from '@tauri-apps/api/core'
 import type { IEventProcessor } from '../event-processor'
 import type { ScriptSoundEvent } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
@@ -15,16 +14,7 @@ export default class SoundProcessor implements IEventProcessor {
 
     gameStore.currentStatus = 'presenting'
 
-    let url = 'None'
-
-    if (event.soundPath) {
-      try {
-        url = convertFileSrc(event.soundPath)
-      } catch {
-        url = 'None'
-      }
-    }
-
-    uiStore.currentSoundEffect = url
+    // 存储原始文件路径，由 GameBackground.vue 统一转换（与 music/ambient 同一约定）
+    uiStore.currentSoundEffect = event.soundPath || 'None'
   }
 }

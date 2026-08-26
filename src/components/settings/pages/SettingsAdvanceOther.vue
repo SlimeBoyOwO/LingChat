@@ -195,6 +195,7 @@ const reconnectStatus = reactive({
   colorClass: 'text-green-400',
 })
 let reconnectStatusTimer: ReturnType<typeof setTimeout> | null = null
+let navResizeObserver: ResizeObserver | null = null
 
 const emit = defineEmits<{
   'remove-more-menu-from-b': []
@@ -334,11 +335,11 @@ const updateIndicatorPosition = () => {
 const setupNavResizeObserver = () => {
   if (!navContainerRef.value) return
 
-  const resizeObserver = new ResizeObserver(() => {
+  navResizeObserver = new ResizeObserver(() => {
     updateIndicatorPosition()
   })
 
-  resizeObserver.observe(navContainerRef.value)
+  navResizeObserver.observe(navContainerRef.value)
 }
 
 // 监视 activeSelection 的变化，并在 DOM 更新后移动指示器
@@ -362,6 +363,10 @@ onMounted(async () => {
 onUnmounted(() => {
   if (reconnectStatusTimer) {
     clearTimeout(reconnectStatusTimer)
+  }
+  if (navResizeObserver) {
+    navResizeObserver.disconnect()
+    navResizeObserver = null
   }
 })
 

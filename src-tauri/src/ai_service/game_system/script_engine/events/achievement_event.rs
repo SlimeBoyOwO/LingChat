@@ -19,6 +19,7 @@ pub struct UnlockAchievementEvent {
     achievement_id: String,
     title: String,
     description: String,
+    #[allow(dead_code)]
     duration: Option<f64>,
 }
 

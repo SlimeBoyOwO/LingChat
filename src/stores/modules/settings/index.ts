@@ -220,6 +220,8 @@ export const useSettingsStore = defineStore('settings', {
         this.text = { ...DEFAULT_SETTINGS.text }
         this.audio = { ...DEFAULT_SETTINGS.audio }
         this.display = { ...DEFAULT_SETTINGS.display }
+        this.character = { ...DEFAULT_SETTINGS.character }
+        this.pet = { ...DEFAULT_SETTINGS.pet }
         this.shortcuts = { ...DEFAULT_SETTINGS.shortcuts }
       } else {
         const keys = path.split('.')

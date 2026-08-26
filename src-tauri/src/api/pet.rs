@@ -2,9 +2,10 @@ use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 #[cfg(desktop)]
 use tauri::LogicalSize;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 #[derive(Clone, Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct Rect {
     pub x: f64,
     pub y: f64,

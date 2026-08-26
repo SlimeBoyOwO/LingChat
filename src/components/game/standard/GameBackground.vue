@@ -94,6 +94,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { toPlayableMediaUrl } from '@/utils/mediaUrl'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useGameStore } from '../../../stores/modules/game'
 import ImageAcrossFade from '@/components/ui/ImageAcrossFade.vue'
@@ -122,12 +123,30 @@ const backgroundSrc = computed(() => {
   return convertFileSrc(bg)
 })
 
-// 统一转换入口：currentBackgroundMusic 存储原始路径，在此一次性转换
-const backgroundMusicSrc = computed(() => {
-  const src = uiStore.currentBackgroundMusic
-  if (!src || src === 'None') return 'None'
-  return convertFileSrc(src)
-})
+// 统一转换入口：currentBackgroundMusic 存原始路径，此处转可播放 URL（Android 走 blob，见 toPlayableMediaUrl）
+const backgroundMusicSrc = ref('None')
+let bgmLoadSeq = 0
+watch(
+  () => uiStore.currentBackgroundMusic,
+  async (src) => {
+    const seq = ++bgmLoadSeq
+    if (!src || src === 'None') {
+      backgroundMusicSrc.value = 'None'
+      return
+    }
+    try {
+      const url = await toPlayableMediaUrl(src)
+      // 竞态守卫：期间已切换过歌曲则丢弃过期结果
+      if (seq !== bgmLoadSeq) return
+      backgroundMusicSrc.value = url
+    } catch (e) {
+      if (seq !== bgmLoadSeq) return
+      console.warn('背景音乐加载失败:', src, e)
+      backgroundMusicSrc.value = 'None'
+    }
+  },
+  { immediate: true },
+)
 
 // 背景光照滤镜
 const bgLightingFilter = computed(() => {
@@ -189,17 +208,23 @@ const onStarfieldReady = (instance: any): void => {
 }
 
 // 只保留监听瞬时音效 (由于音效很短，不需要淡入淡出，保持原生调用)
+// currentSoundEffect 存原始路径（与 music/ambient 同一约定），在此统一转换
 watch(
   () => uiStore.currentSoundEffect,
-  (newAudioUrl: string | null | undefined) => {
-    if (soundEffectPlayer.value && newAudioUrl && newAudioUrl !== 'None') {
+  (rawPath: string | null | undefined) => {
+    if (soundEffectPlayer.value && rawPath && rawPath !== 'None') {
       // 重置 src 确保相同路径的重复事件也能触发播放
       soundEffectPlayer.value.pause()
       soundEffectPlayer.value.currentTime = 0
       soundEffectPlayer.value.src = ''
-      soundEffectPlayer.value.src = newAudioUrl
-      soundEffectPlayer.value.load()
-      soundEffectPlayer.value.play()
+      void toPlayableMediaUrl(rawPath)
+        .then((url) => {
+          if (!soundEffectPlayer.value) return
+          soundEffectPlayer.value.src = url
+          soundEffectPlayer.value.load()
+          soundEffectPlayer.value.play().catch(() => {})
+        })
+        .catch((e) => console.warn('音效加载失败:', rawPath, e))
     }
   },
 )
@@ -222,7 +247,18 @@ const displayTracks = ref<
 
 const effectiveVolume = (trackVolume: number) => (trackVolume / 100) * (uiStore.ambientVolume / 100)
 
-const srcOf = (d: { src: string }) => (d.src.startsWith('blob:') ? d.src : convertFileSrc(d.src))
+// 播放 URL 异步解析（Android 换 blob，见 toPlayableMediaUrl）
+const playableSrcMap = ref(new Map<string, string>())
+const resolvePlayableSrc = async (d: { id: string; src: string }) => {
+  try {
+    playableSrcMap.value.set(d.id, await toPlayableMediaUrl(d.src))
+  } catch (e) {
+    console.warn('环境音加载失败:', d.src, e)
+  }
+}
+
+const srcOf = (d: { src: string; id: string }) =>
+  playableSrcMap.value.get(d.id) ?? (d.src.startsWith('blob:') ? d.src : convertFileSrc(d.src))
 
 // 同步 store 轨道到 displayTracks：新增则挂载，移除则标记离场触发淡出
 watch(
@@ -233,7 +269,7 @@ watch(
     for (const t of newTracks) {
       const d = displayTracks.value.find((x) => x.id === t.id)
       if (!d) {
-        displayTracks.value.push({
+        const entry = {
           id: t.id,
           src: t.src,
           volume: effectiveVolume(t.volume),
@@ -241,7 +277,10 @@ watch(
           fade: t.fade ?? true,
           paused: t.paused ?? false,
           stopped: false,
-        })
+        }
+        displayTracks.value.push(entry)
+        // 先以 asset URL 挂载，异步换 blob（Android 上 asset 协议有 1MB 响应上限）
+        void resolvePlayableSrc(entry)
       } else if (!d.stopped) {
         d.src = t.src
         d.volume = effectiveVolume(t.volume)
@@ -275,6 +314,8 @@ watch(
 const onStoppedDone = (id: string) => {
   const idx = displayTracks.value.findIndex((x) => x.id === id)
   if (idx >= 0) displayTracks.value.splice(idx, 1)
+  // 同步清理已解析的播放 URL，避免残留
+  playableSrcMap.value.delete(id)
 }
 </script>
 

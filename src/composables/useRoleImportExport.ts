@@ -189,8 +189,7 @@ export function useRoleImportExport() {
       }
     }
     store.import.phase = 'cancelled'
-    store.import.message = '\u5df2\u53d6\u6d88'
-    clearTimers()
+    store.import.message = '已取消'
     clearTimers()
   }
 

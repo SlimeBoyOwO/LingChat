@@ -20,6 +20,7 @@ use crate::AppState;
 pub struct AIDialogueEvent {
     character: String,
     prompt: Option<String>,
+    #[allow(dead_code)]
     duration: Option<f64>,
 }
 

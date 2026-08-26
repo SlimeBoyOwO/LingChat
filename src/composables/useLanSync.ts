@@ -142,7 +142,7 @@ export function useLanSync() {
     try {
       const result = await invoke<PeerInfo[]>('lan_sync_scan_peers')
       peers.value = result
-      phase.value = result.length > 0 ? 'idle' : 'idle'
+      phase.value = 'idle'
       return result
     } catch (e) {
       phase.value = 'error'

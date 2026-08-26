@@ -7,7 +7,6 @@ ai_subtitle: 副标题
 body_part: null
 bubble_left: 25
 bubble_top: 5
-character_folder: 角色文件夹名
 
 # ★ 关键：剧本内唯一 id，剧本事件中用该 id 调用角色
 script_role_key: unique_role_key

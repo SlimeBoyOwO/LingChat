@@ -547,6 +547,126 @@ pub async fn select_clothes(
     }
 }
 
+// ========== 角色语音设置 ==========
+
+/// 获取角色的语音设置
+#[tauri::command]
+pub async fn get_character_voice_settings(
+    app: AppHandle,
+    role_id: i32,
+) -> Result<CharacterSettings, String> {
+    let state = app.state::<AppState>();
+    let db = &state.db;
+
+    let role = RoleRepo::get_role_by_id(db, role_id)
+        .await
+        .map_err(|e| format!("查询角色失败: {}", e))?
+        .ok_or_else(|| format!("角色 {} 不存在", role_id))?;
+
+    let folder = role
+        .resource_folder
+        .clone()
+        .ok_or_else(|| format!("角色 {} 资源不存在", role_id))?;
+
+    let base_path = match role.role_type {
+        RoleType::Main => characters_dir().join(&folder),
+        RoleType::Npc => {
+            let script_key = role
+                .script_key
+                .clone()
+                .ok_or_else(|| format!("角色 {} 缺少剧本关联", role_id))?;
+            game_data_dir()
+                .join("scripts")
+                .join(&script_key)
+                .join("characters")
+                .join(&folder)
+        }
+        RoleType::System | RoleType::User => {
+            return Err("系统角色不允许获取语音设置".to_string());
+        }
+    };
+
+    if !base_path.exists() {
+        return Err(format!("角色目录不存在: {:?}", base_path));
+    }
+
+    let settings = read_character_settings(&folder);
+    tracing::info!("获取角色 {} 语音设置成功", role_id);
+    Ok(settings)
+}
+
+/// 保存角色的语音设置
+#[tauri::command]
+pub async fn save_character_voice_settings(
+    app: AppHandle,
+    role_id: i32,
+    settings: CharacterSettings,
+) -> Result<serde_json::Value, String> {
+    let state = app.state::<AppState>();
+    let db = &state.db;
+
+    let role = RoleRepo::get_role_by_id(db, role_id)
+        .await
+        .map_err(|e| format!("查询角色失败: {}", e))?
+        .ok_or_else(|| format!("角色 {} 不存在", role_id))?;
+
+    let folder = role
+        .resource_folder
+        .clone()
+        .ok_or_else(|| format!("角色 {} 资源不存在", role_id))?;
+
+    let base_path = match role.role_type {
+        RoleType::Main => characters_dir().join(&folder),
+        RoleType::Npc => {
+            let script_key = role
+                .script_key
+                .clone()
+                .ok_or_else(|| format!("角色 {} 缺少剧本关联", role_id))?;
+            game_data_dir()
+                .join("scripts")
+                .join(&script_key)
+                .join("characters")
+                .join(&folder)
+        }
+        RoleType::System | RoleType::User => {
+            return Err("系统角色不允许保存语音设置".to_string());
+        }
+    };
+
+    if !base_path.exists() {
+        return Err(format!("角色目录不存在: {:?}", base_path));
+    }
+
+    // 确保设置有角色文件夹信息
+    let mut save_data = settings.clone();
+    save_data.character_folder = folder.clone();
+    save_data.resource_path = Some(base_path.to_string_lossy().into_owned());
+
+    let yaml_path = base_path.join("settings.yml");
+    let yaml_str = serde_yaml::to_string(&save_data).map_err(|e| format!("序列化失败: {}", e))?;
+    fs::write(&yaml_path, yaml_str).map_err(|e| format!("保存失败: {}", e))?;
+
+    let runtime_updated = {
+        let service = state.ai_service.lock().await;
+        let mut gs = service.game_status.lock().await;
+        gs.role_manager
+            .update_role_voice_settings(role_id, &save_data)
+    };
+
+    tracing::info!(
+        "角色 {} 语音设置已保存到 {:?}, runtime_updated={}",
+        role_id,
+        yaml_path,
+        runtime_updated
+    );
+
+    Ok(serde_json::json!({
+        "success": true,
+        "message": "语音设置已保存",
+        "runtime_updated": runtime_updated,
+    }))
+}
+
 #[tauri::command]
 pub async fn update_role_settings(
     app: AppHandle,
@@ -597,6 +717,7 @@ pub async fn update_role_settings(
     if let Some(obj) = save_data.as_object_mut() {
         obj.remove("character_id");
         obj.remove("resource_path");
+        obj.remove("character_folder");
         obj.remove("script_key");
         obj.remove("script_role_key");
     }
@@ -714,4 +835,119 @@ pub async fn delete_character(
     let _ = app.emit("role:list-updated", ());
 
     Ok(())
+}
+
+// ========== Sherpa-ONNX 模型管理 ==========
+
+#[tauri::command]
+#[allow(unused_variables)]
+pub async fn open_sherpa_onnx_model_manager(app: AppHandle) -> Result<serde_json::Value, String> {
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_dialog::DialogExt;
+
+        let folder = app
+            .dialog()
+            .file()
+            .set_title("选择 Sherpa-ONNX 模型目录")
+            .blocking_pick_folder();
+
+        match folder {
+            Some(path) => {
+                let path_buf = path.into_path().map_err(|e| format!("路径转换失败: {e}"))?;
+                let path_str = path_buf.to_string_lossy().to_string();
+                tracing::info!("用户选择模型目录: {path_str}");
+                Ok(serde_json::json!({
+                    "success": true,
+                    "path": path_str,
+                }))
+            }
+            None => Ok(serde_json::json!({
+                "success": false,
+                "message": "用户取消选择",
+            })),
+        }
+    }
+    #[cfg(not(desktop))]
+    {
+        let models_dir = data_dir().join("sherpa_onnx_models");
+        fs::create_dir_all(&models_dir).map_err(|e| format!("创建模型目录失败: {e}"))?;
+        Ok(serde_json::json!({
+            "success": true,
+            "path": models_dir.to_string_lossy(),
+        }))
+    }
+}
+
+#[tauri::command]
+pub async fn test_sherpa_onnx_voice(
+    _app: AppHandle,
+    text: String,
+    settings: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    use crate::ai_service::tts::adapters::sherpa_onnx::SherpaOnnxAdapter;
+    use crate::ai_service::tts::provider::TtsAdapter;
+    use crate::config::tts::TtsConfig;
+
+    let model_path = settings
+        .get("sherpa_onnx_model_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if model_path.is_empty() {
+        return Err("模型路径未设置".into());
+    }
+
+    let model_type = settings
+        .get("sherpa_onnx_model_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("vits")
+        .to_string();
+
+    let language = settings
+        .get("sherpa_onnx_lang")
+        .and_then(|v| v.as_str())
+        .unwrap_or("zh")
+        .to_string();
+
+    let voice = settings
+        .get("sherpa_onnx_voice")
+        .and_then(|v| v.as_str())
+        .unwrap_or("female")
+        .to_string();
+
+    let use_gpu = settings
+        .get("sherpa_onnx_use_gpu")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let speed = settings
+        .get("sherpa_onnx_speed")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(1.0) as f32;
+
+    let tts_config = TtsConfig::default();
+
+    let mut adapter =
+        SherpaOnnxAdapter::new(tts_config, model_path, model_type, language, voice, use_gpu)
+            .map_err(|e| format!("初始化失败: {e}"))?;
+
+    adapter.set_speed(speed);
+
+    let wav_data = adapter
+        .generate_voice(&text, "normal")
+        .await
+        .map_err(|e| format!("生成失败: {e}"))?;
+
+    let audio_id = uuid::Uuid::new_v4().to_string();
+    let audio_dir = data_dir().join("audio_cache");
+    fs::create_dir_all(&audio_dir).map_err(|e| format!("创建目录失败: {e}"))?;
+    let audio_path = audio_dir.join(format!("{audio_id}.wav"));
+    fs::write(&audio_path, &wav_data).map_err(|e| format!("保存音频失败: {e}"))?;
+
+    Ok(serde_json::json!({
+        "success": true,
+        "audio_path": audio_path.to_string_lossy(),
+    }))
 }

@@ -221,20 +221,6 @@ watch(
   },
 )
 
-const shouldAnimate = computed(() => {
-  // 当显示 ScriptListPanel 时禁用动画
-  console.log(
-    'store的detail是',
-    store.detail,
-    '是否为空',
-    store.detail === undefined || store.detail === null,
-  )
-  if (store.tab === 'flow' && store.detail) {
-    return false
-  }
-  return true
-})
-
 // ---- 快捷键表 ----
 const shortcutHelp = ref(false)
 
@@ -382,11 +368,11 @@ onMounted(async () => {
   await store.init()
 })
 
-onUnmounted(async () => {
+onUnmounted(() => {
   window.removeEventListener('keydown', onKey)
   // 兜底清理：正常情况下路由守卫已 await 完成清理（exitCleaned=true），
   // 这里只在守卫因异常未跑完时补一次，保证试玩停止且游戏会话还原
-  await cleanupBeforeExit()
+  cleanupBeforeExit()
   // 退出编辑器时关闭已打开的剧本——下次从主菜单进入时回到剧本列表
   store.closeScript()
 })

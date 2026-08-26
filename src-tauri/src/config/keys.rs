@@ -69,6 +69,13 @@ pub const OPENTTS_VOICE: &str = "tts.opentts_voice";
 pub const TTS_AUDIO_FORMAT: &str = "tts.audio_format";
 pub const VOICE_LANG: &str = "tts.voice_lang";
 
+// ========== TTS Sherpa-ONNX ==========
+pub const SHERPA_ONNX_MODEL_PATH: &str = "tts.sherpa_onnx_model_path";
+pub const SHERPA_ONNX_MODEL_TYPE: &str = "tts.sherpa_onnx_model_type";
+pub const SHERPA_ONNX_LANG: &str = "tts.sherpa_onnx_lang";
+pub const SHERPA_ONNX_VOICE: &str = "tts.sherpa_onnx_voice";
+pub const SHERPA_ONNX_USE_GPU: &str = "tts.sherpa_onnx_use_gpu";
+
 // ========== 主动对话系统 ==========
 pub const ENABLE_PROACTIVE_SYSTEM: &str = "ENABLE_PROACTIVE_SYSTEM";
 pub const MAX_PROACTIVE_TIMES: &str = "MAX_PROACTIVE_TIMES";
@@ -117,6 +124,8 @@ pub const LOG_ENABLE: &str = "log.enable";
 pub const LOG_RETENTION_DAYS: &str = "log.retention_days";
 /// 是否记录 LLM 请求体到文件（完整请求 JSON，默认关闭）
 pub const LOG_LLM_REQUEST_BODY: &str = "log.llm_request_body";
+/// 是否开启 genai SDK 的调试日志（请求/响应细节，默认关闭）
+pub const LOG_GENAI_DEBUG: &str = "log.genai_debug";
 
 // ========== 本地 TTS 推理设备 ==========
 /// 本地 TTS 推理硬件设备："cpu" | "gpu" | "npu" | "device:<id>"（Windows DirectML）

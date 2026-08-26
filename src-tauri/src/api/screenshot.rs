@@ -4,6 +4,7 @@ use tauri::{AppHandle, Emitter, Manager};
 #[cfg(desktop)]
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 
+#[cfg(not(target_os = "android"))]
 use crate::ai_service::screen_analyzer::capture_screen_raw_jpeg;
 
 /// 启动截图流程：捕获全屏 → 存储到临时状态 → 创建全屏覆盖窗口供用户框选。
@@ -22,6 +23,8 @@ pub async fn start_screenshot(app: AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
+    #[cfg(not(target_os = "android"))]
+    {
     // 如果已有覆盖窗口，先关闭
     if let Some(overlay) = app.get_webview_window("screenshot-overlay") {
         let _ = overlay.close();
@@ -69,6 +72,7 @@ pub async fn start_screenshot(app: AppHandle) -> Result<(), String> {
         tracing::info!("[Screenshot] Overlay window created, waiting for user selection.");
     }
     Ok(())
+    }
 }
 
 /// 覆盖窗口调用：获取之前存储的全屏截图 base64。

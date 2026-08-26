@@ -12,13 +12,22 @@
         :role-id="id"
         :role-name="name"
       />
-      <button
-        class="flex items-center justify-center rounded-full bg-black/5 p-1 text-white/60 transition-all hover:rotate-90 hover:bg-white/10 hover:text-white"
-        title="角色设置"
-        @click.stop="openSettingsModal"
-      >
-        <Settings :size="24" />
-      </button>
+      <div class="flex items-center gap-2">
+        <button
+          class="flex items-center justify-center rounded-full bg-black/5 p-1 text-white/60 transition-all hover:rotate-90 hover:bg-white/10 hover:text-white"
+          title="语音设置"
+          @click.stop="openVoiceSettings"
+        >
+          <Mic :size="20" />
+        </button>
+        <button
+          class="flex items-center justify-center rounded-full bg-black/5 p-1 text-white/60 transition-all hover:rotate-90 hover:bg-white/10 hover:text-white"
+          title="角色设置"
+          @click.stop="openSettingsModal"
+        >
+          <Settings :size="24" />
+        </button>
+      </div>
     </div>
 
     <div
@@ -210,6 +219,14 @@
     @close="closeSettingsModal"
     @saved="handleSettingsSaved"
   />
+
+  <CharacterVoiceSettingsModal
+    :visible="isVoiceSettingsVisible"
+    :character-id="id"
+    :initial-settings="voiceSettings"
+    @close="closeVoiceSettings"
+    @save="handleVoiceSettingsSaved"
+  />
 </template>
 
 <script setup lang="ts">
@@ -219,6 +236,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { Icon } from '../../base'
 import SettingsCharacterInfo from '@/components/settings/pages/SettingsCharacterInfo.vue'
 import RoleExportMenu from '@/components/ui/RoleExportMenu.vue'
+import CharacterVoiceSettingsModal from '@/components/ui/CharacterVoiceSettingsModal.vue'
 import {
   selectCharacter as selectCharacterApi,
   selectClothes as selectClothesApi,
@@ -226,7 +244,7 @@ import {
 import { useGameStore } from '@/stores/modules/game'
 import { applyWebInitData } from '@/stores/modules/game/actions'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
-import { Settings } from 'lucide-vue-next'
+import { Settings, Mic } from 'lucide-vue-next'
 import { Cat, Check } from 'lucide-vue-next'
 import type { Clothes } from '@/types'
 
@@ -254,6 +272,8 @@ const emit = defineEmits(['saved'])
 // 状态管理
 const isDetailVisible = ref(false)
 const isSettingsModalVisible = ref(false)
+const isVoiceSettingsVisible = ref(false)
+const voiceSettings = ref<any>(null)
 
 const { t } = useI18n()
 const gameStore = useGameStore()
@@ -337,7 +357,56 @@ const leaveScene = async () => {
 
 const openSettingsModal = () => (isSettingsModalVisible.value = true)
 const closeSettingsModal = () => (isSettingsModalVisible.value = false)
-const handleSettingsSaved = () => emit('saved')
+
+// 语音设置相关方法
+const openVoiceSettings = async () => {
+  try {
+    // 获取角色的当前语音设置
+    const settings = await invoke('get_character_voice_settings', { roleId: props.id })
+    voiceSettings.value = settings
+    isVoiceSettingsVisible.value = true
+  } catch (error) {
+    console.error('获取角色语音设置失败:', error)
+    // 使用默认设置
+    voiceSettings.value = {
+      tts_type: 'sbv2',
+      voice_lang: 'ja',
+      emotion: 'normal',
+      sherpa_onnx_model_name: '',
+      sherpa_onnx_model_path: '',
+      sherpa_onnx_model_type: 'vits',
+      sherpa_onnx_lang: 'zh',
+      sherpa_onnx_voice: 'female',
+      sherpa_onnx_use_gpu: false,
+      sherpa_onnx_speed: 1.0,
+      sherpa_onnx_pitch: 1.0,
+      sherpa_onnx_ref_audio_path: '',
+      sherpa_onnx_ref_text: '',
+      sbv2_speaker_id: '',
+      opentts_voice: ''
+    }
+    isVoiceSettingsVisible.value = true
+  }
+}
+
+const closeVoiceSettings = () => (isVoiceSettingsVisible.value = false)
+
+const handleSettingsSaved = () => {
+  emit('saved')
+}
+
+const handleVoiceSettingsSaved = async (settings: any) => {
+  try {
+    // 保存语音设置到后端
+    await invoke('save_character_voice_settings', {
+      roleId: props.id,
+      settings
+    })
+    emit('saved')
+  } catch (error) {
+    console.error('保存角色语音设置失败:', error)
+  }
+}
 </script>
 
 <style scoped>

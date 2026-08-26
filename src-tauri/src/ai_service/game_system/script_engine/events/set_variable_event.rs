@@ -18,6 +18,7 @@ use crate::ai_service::game_system::script_engine::utils::script_function::{
 
 pub struct SetVariableEvent {
     options: Vec<Value>,
+    #[allow(dead_code)]
     duration: Option<f64>,
 }
 

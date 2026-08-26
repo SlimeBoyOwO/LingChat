@@ -21,6 +21,7 @@ unsafe impl Send for SendHhook {}
 unsafe impl Sync for SendHhook {}
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 enum InputType {
     Key { is_game: bool },
     Click,

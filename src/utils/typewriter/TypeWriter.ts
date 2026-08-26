@@ -203,7 +203,9 @@ export class TypeWriter {
   public finish(): void {
     this.stopTimer()
     this._status = 'completed'
-    this.element.style.setProperty('border-right', 'none')
+    if (!(this.element instanceof HTMLInputElement) && !(this.element instanceof HTMLTextAreaElement)) {
+      this.element.style.setProperty('border-right', 'none')
+    }
     if (this.onFinishCallback) {
       this.onFinishCallback()
     }

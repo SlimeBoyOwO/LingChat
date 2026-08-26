@@ -15,6 +15,15 @@ pub struct Model {
     /// 消息文本（assistant 仅返回工具调用时可为空）。
     #[sea_orm(column_type = "Text", nullable)]
     pub content: Option<String>,
+    /// assistant 的思考链（thinking 模式开启时由 LLM 产出；只作展示，不喂回 LLM 上下文）。
+    #[sea_orm(column_type = "Text", nullable)]
+    pub reasoning: Option<String>,
+    /// 产生该消息那一轮 LLM 调用的输入 token 数（用量统计；未上报时为 NULL）。
+    pub prompt_tokens: Option<i64>,
+    /// 产生该消息那一轮 LLM 调用的输出 token 数（用量统计；未上报时为 NULL）。
+    pub completion_tokens: Option<i64>,
+    /// 输入中命中缓存（cache read）的 token 数（缓存命中统计；未上报时为 NULL）。
+    pub cached_tokens: Option<i64>,
     /// assistant 的工具调用数组（OpenAI 格式 JSON）。
     #[sea_orm(column_type = "Text", nullable)]
     pub tool_calls: Option<String>,

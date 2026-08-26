@@ -1,4 +1,4 @@
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { useUIStore } from '@/stores/modules/ui/ui'
@@ -49,6 +49,10 @@ export function useCanDeliver() {
 
   // 输入状态变化时重新计算
   _inputListeners.add(recompute)
+
+  onUnmounted(() => {
+    _inputListeners.delete(recompute)
+  })
 
   // 值翻转时通知后端
   watch(canDeliver, (val) => {

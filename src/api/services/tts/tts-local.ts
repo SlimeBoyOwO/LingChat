@@ -101,11 +101,6 @@ export interface TtsLocalImportResult {
   message: string
 }
 
-export interface ImportOptions {
-  voiceId?: string
-  assetId?: 'deberta' | 'deberta-tokenizer'
-}
-
 export function status(): Promise<TtsLocalStatus> {
   return invoke<TtsLocalStatus>('tts_local_status')
 }
@@ -146,17 +141,21 @@ export function listInstalled(): Promise<TtsLocalInstallSnapshot> {
 
 export function importFromPath(
   path: string,
-  options: ImportOptions = {},
+  voiceId?: string,
 ): Promise<TtsLocalImportResult> {
   return invoke<TtsLocalImportResult>('tts_local_import_from_path', {
     path,
-    voiceId: options.voiceId ?? null,
-    assetId: options.assetId ?? null,
+    voiceId: voiceId ?? null,
   })
 }
 
 export async function deleteVoice(voiceId: string): Promise<void> {
   await invoke('tts_local_delete_voice', { voiceId })
+}
+
+/** 删除 DeBERTa 共享模型（deberta.onnx + tokenizer.json），并卸载引擎 */
+export function deleteDeberta(): Promise<void> {
+  return invoke('tts_local_delete_deberta')
 }
 
 export function importStyleVectors(
@@ -176,4 +175,29 @@ export function synthesizePreview(params: {
   sdpRatio: number
 }): Promise<Uint8Array> {
   return invoke<Uint8Array>('tts_local_synthesize_preview', params)
+}
+
+// ── Sherpa-ONNX 模型管理 ──
+
+export interface SherpaOnnxModelRecord {
+  id: string
+  display_name: string
+  model_type: string
+  language: string
+  voice: string
+  size_bytes: number
+  path: string
+  installed: boolean
+}
+
+export function listSherpaModels(): Promise<SherpaOnnxModelRecord[]> {
+  return invoke<SherpaOnnxModelRecord[]>('tts_local_list_sherpa_models')
+}
+
+export function downloadSherpaModel(modelId: string): Promise<TtsLocalImportResult> {
+  return invoke<TtsLocalImportResult>('tts_local_download_sherpa_model', { modelId })
+}
+
+export function deleteSherpaModel(modelId: string): Promise<void> {
+  return invoke<void>('tts_local_delete_sherpa_model', { modelId })
 }

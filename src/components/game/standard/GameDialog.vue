@@ -797,6 +797,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener('contextmenu', handleDialogShow)
+  document.removeEventListener('contextmenu', handleRightClick)
   window.removeEventListener('resize', updateContainerWidth)
   if (unlistenScreenshot) unlistenScreenshot()
   if (unlistenCancelled) unlistenCancelled()

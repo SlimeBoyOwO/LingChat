@@ -1,6 +1,6 @@
 <template>
   <router-view />
-  <!-- 将光标特效 teleport 到 body，避免 #app 上的 CSS zoom 导致坐标偏移 -->
+  <!-- 将光标特效 teleport 到 body，避免 #app 上的整体缩放（transform: scale）导致坐标偏移 -->
   <Teleport to="body">
     <CursorEffects />
   </Teleport>

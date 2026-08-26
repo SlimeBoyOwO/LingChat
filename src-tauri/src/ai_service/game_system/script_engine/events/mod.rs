@@ -122,6 +122,7 @@ pub trait ScriptEvent: Send {
     /// 基础事件。`Some(n)`（n ≥ 0）表示事件展示后自动等待 n 秒再继续；
     /// `None` 表示没写，由前端按各事件类型的默认节奏处理（通常等玩家点击）。
     /// handler 在 `from_event_data` 里读取并返回。
+    #[allow(dead_code)]
     fn duration(&self) -> Option<f64> {
         None
     }

@@ -19,6 +19,12 @@ const nextId = () => `m-${Date.now()}-${++idCounter}`
 let activeAssistantId: string | null = null
 /** 当前 turn 的流式通道；turn 结束后置空。 */
 let channel: Channel<SkillAgentEvent> | null = null
+/**
+ * 本轮已结束标志：finish/finishWithError/cancel 后置 true，handleEvent 直接忽略
+ * 后续迟到事件（后端 abort 前已推入通道的 delta/status 等）。不解除 onmessage
+ * 是为了让迟到的 done/error 也走守卫而不是报未处理回调。
+ */
+let finished = false
 
 const safeParse = (s: string): Record<string, unknown> => {
   try {
@@ -45,6 +51,11 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
       state.skills.value = await api.listAgentSkills()
       state.defaultDirs.value = await api.getAgentDefaultDirs()
       state.conversations.value = await api.listAgentConversations()
+      // 流式进行中：面板重挂载（切标签页回来）时不能走 switchConversation——
+      // 它会 cancel 当前流，且 DB 里这一轮还没落库（后端轮结束时才写入），
+      // 重建 items 会丢掉已流出的思考/输出。这里保留进行中的 store 状态，
+      // 流式事件继续写入 items，面板直接渲染；流结束后自然落库，下次进入正常加载。
+      if (state.streaming.value && state.currentId.value != null) return
       if (state.conversations.value.length === 0) {
         await createConversation()
       } else {
@@ -70,6 +81,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     state.currentId.value = id
     const msgs = await api.getAgentMessages(id)
     state.items.value = rebuildItems(msgs)
+    restoreUsage(msgs)
     state.status.value = ''
     state.version.value++
   }
@@ -88,10 +100,40 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     }
   }
 
+  /** 重命名会话：写库后更新本地列表项标题。 */
+  async function renameConversation(id: number, title: string) {
+    const trimmed = title.trim()
+    if (!trimmed) return
+    await api.renameAgentConversation(id, trimmed)
+    const conv = state.conversations.value.find((c) => c.id === id)
+    if (conv) conv.title = trimmed
+  }
+
   async function clearConversation() {
     if (state.currentId.value == null) return
     await api.clearAgentConversation(state.currentId.value)
     state.items.value = []
+    state.totalTokens.value = 0
+    state.totalPromptTokens.value = 0
+    state.totalCompletionTokens.value = 0
+    state.totalCachedTokens.value = 0
+    state.lastUsage.value = null
+    state.version.value++
+  }
+
+  /**
+   * 回溯（撤回重发）：删除该消息及其后所有消息，把对话回退到该消息发送前。
+   * 正在生成时先停止；删除后重新加载历史以恢复 items 与用量统计。
+   */
+  async function rewindMessage(item: ChatItem) {
+    if (state.currentId.value == null) return
+    const dbId = Number(item.id.replace(/^p-/, ''))
+    if (Number.isNaN(dbId)) return
+    if (state.streaming.value) await cancel()
+    await api.rewindAgentMessages(state.currentId.value, dbId)
+    const msgs = await api.getAgentMessages(state.currentId.value)
+    state.items.value = rebuildItems(msgs)
+    restoreUsage(msgs)
     state.version.value++
   }
 
@@ -101,13 +143,14 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     const content = text.trim()
     if (!content || state.streaming.value || state.currentId.value == null) return
 
-    state.items.value.push({
+    const userItem: ChatItem = {
       id: nextId(),
       role: 'user',
       content,
       rounds: [],
       streaming: false,
-    })
+    }
+    state.items.value.push(userItem)
     activeAssistantId = nextId()
     state.items.value.push({
       id: activeAssistantId,
@@ -121,18 +164,26 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     state.sending.value = true
     state.status.value = '思考中…'
     state.version.value++
+    finished = false
 
     channel = new Channel<SkillAgentEvent>()
     channel.onmessage = (event: SkillAgentEvent) => handleEvent(event)
 
     try {
-      await api.startAgentChat(state.currentId.value, content, channel)
+      // 用后端返回的 DB id 覆盖本地临时 id，与历史消息统一为 `p-<id>` 格式，
+      // 回溯删除才能定位到这条新消息（后端在返回前已落库）。
+      const dbId = await api.startAgentChat(state.currentId.value, content, channel)
+      userItem.id = `p-${dbId}`
     } catch (err) {
       finishWithError(String(err))
     }
   }
 
   function handleEvent(event: SkillAgentEvent) {
+    // 本轮已结束（停止/完成/出错）后忽略迟到事件，防止停止后界面还在被写入。
+    // conversation_title 例外：它由后端后台任务在 Done 之后才推送（会话自动命名），
+    // 与流式内容无关，必须放行否则列表永远刷新不到新标题。
+    if (finished && event.type !== 'conversation_title') return
     const msg = currentAssistant()
     switch (event.type) {
       case 'status':
@@ -184,9 +235,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
         // 审批紧随对应 tool_call 到达：找最后一条该工具的 running run
         let run: ToolRun | undefined
         for (let i = msg.rounds.length - 1; i >= 0 && !run; i--) {
-          run = msg.rounds[i].toolRuns.find(
-            (r) => r.tool === event.tool && r.status === 'running',
-          )
+          run = msg.rounds[i].toolRuns.find((r) => r.tool === event.tool && r.status === 'running')
         }
         if (run) {
           run.status = 'pending'
@@ -208,11 +257,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
         const run = msg ? findRun(msg, event.call_id) : undefined
         if (run) {
           run.status =
-            !event.ok && event.output.includes('已拒绝')
-              ? 'denied'
-              : event.ok
-                ? 'done'
-                : 'error'
+            !event.ok && event.output.includes('已拒绝') ? 'denied' : event.ok ? 'done' : 'error'
           run.output = event.output
         }
         state.status.value = ''
@@ -221,6 +266,12 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
       case 'done':
         finish(activeAssistantId, event.final_text || undefined, event.usage ?? null)
         break
+      case 'conversation_title': {
+        // 后端首轮自动生成标题后推送，刷新侧栏列表；迟到事件已被 finished 守卫丢弃
+        const conv = state.conversations.value.find((c) => c.id === state.currentId.value)
+        if (conv) conv.title = event.title
+        break
+      }
       case 'error':
         finishWithError(event.message)
         break
@@ -240,11 +291,8 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     return undefined
   }
 
-  function finish(
-    assistantId: string | null,
-    finalText?: string,
-    usage?: TokenUsage | null,
-  ) {
+  function finish(assistantId: string | null, finalText?: string, usage?: TokenUsage | null) {
+    finished = true
     const msg = state.items.value.find((m) => m.id === assistantId)
     if (msg) {
       msg.streaming = false
@@ -257,6 +305,9 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     if (usage) {
       state.lastUsage.value = usage
       state.totalTokens.value += usage.total_tokens
+      state.totalPromptTokens.value += usage.prompt_tokens
+      state.totalCompletionTokens.value += usage.completion_tokens
+      state.totalCachedTokens.value += usage.cached_tokens
     }
     state.streaming.value = false
     state.sending.value = false
@@ -267,6 +318,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
   }
 
   function finishWithError(message: string) {
+    finished = true
     const msg = currentAssistant()
     if (msg) {
       msg.streaming = false
@@ -282,16 +334,21 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
 
   async function cancel() {
     if (!state.streaming.value) return
-    await api.stopAgentChat()
+    // 先置结束标志再请求停止：abort 前通道里已积压的迟到事件直接被守卫丢弃
+    finished = true
+    try {
+      await api.stopAgentChat()
+    } catch (err) {
+      // 停止请求失败不能阻塞前端收尾（界面必须立刻回到可发送状态）
+      console.warn('[Agent] 停止请求失败:', err)
+    }
     finish(activeAssistantId)
   }
 
   async function resolveApproval(requestId: string, allowed: boolean) {
     await api.resolveAgentApproval(requestId, allowed)
     const msg = currentAssistant()
-    const run = msg?.rounds
-      .flatMap((r) => r.toolRuns)
-      .find((r) => r.requestId === requestId)
+    const run = msg?.rounds.flatMap((r) => r.toolRuns).find((r) => r.requestId === requestId)
     if (run) {
       run.status = allowed ? 'running' : 'denied'
       if (!allowed) run.output = '已拒绝执行'
@@ -321,6 +378,38 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
 
   // ==================== 历史重建 ====================
 
+  /**
+   * 从历史消息恢复用量统计：DB 只落 prompt/completion/cached 三列（assistant 消息），
+   * 累计值按各列求和，「本轮」取最后一条有用量记录的消息。
+   * 旧库/旧消息无 token 列时为 null，保持 0/null 不显示。
+   */
+  function restoreUsage(msgs: PersistedMessage[]) {
+    let total = 0
+    let prompt = 0
+    let completion = 0
+    let cached = 0
+    let last: TokenUsage | null = null
+    for (const m of msgs) {
+      if (m.role === 'assistant' && m.promptTokens != null && m.completionTokens != null) {
+        prompt += m.promptTokens
+        completion += m.completionTokens
+        cached += m.cachedTokens ?? 0
+        total += m.promptTokens + m.completionTokens
+        last = {
+          prompt_tokens: m.promptTokens,
+          completion_tokens: m.completionTokens,
+          total_tokens: m.promptTokens + m.completionTokens,
+          cached_tokens: m.cachedTokens ?? 0,
+        }
+      }
+    }
+    state.totalTokens.value = total
+    state.totalPromptTokens.value = prompt
+    state.totalCompletionTokens.value = completion
+    state.totalCachedTokens.value = cached
+    state.lastUsage.value = last
+  }
+
   /** 把后端返回的消息重建成 UI 的 ChatItem（assistant 按 tool_calls 拆 round，tool 结果挂回对应 run）。 */
   function rebuildItems(msgs: PersistedMessage[]): ChatItem[] {
     const items: ChatItem[] = []
@@ -338,6 +427,8 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
       } else if (m.role === 'assistant') {
         const round: ChatRound = {
           content: m.content ?? '',
+          // 思考链已持久化；旧库数据为 null，按无思考链处理
+          reasoning: m.reasoning ?? undefined,
           toolRuns: (m.toolCalls ?? []).map((tc) => ({
             callId: tc.id,
             tool: tc.function.name,
@@ -374,10 +465,12 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     createConversation,
     switchConversation,
     deleteConversation,
+    renameConversation,
     clearConversation,
     sendMessage,
     cancel,
     resolveApproval,
+    rewindMessage,
     loadSettings,
     loadSkills,
     saveSettings,

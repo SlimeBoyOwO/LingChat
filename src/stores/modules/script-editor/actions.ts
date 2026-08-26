@@ -19,6 +19,8 @@ import type {
 import { i18n } from '@/locales'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
+import { useGameStore } from '@/stores/modules/game'
+import { useSettingsStore } from '@/stores/modules/settings'
 import { firstVisibleIndex } from '@/composables/useEventFolding'
 import { eventQueue } from '@/core/events/event-queue'
 import {
@@ -65,6 +67,120 @@ let savePending = false
 /** 请求代次，防止快速切换时先发的响应后到覆盖掉后发的 */
 let openSeq = 0
 let validateSeq = 0
+
+// ==================== 试玩：游戏态/场景态快照 ====================
+// 原实现位于 PreviewStage 组件内。因「搭新场」必须早于后端引擎启动
+// （editor_start_preview 的 invoke 内部就 spawn 并 emit 事件，见 preparePreviewState），
+// 快照与还原整体迁入本模块，由 startPreview / PreviewStage 分别调用。
+
+/** 试玩进出场会被引擎改写的 gameStore 字段（非响应式快照，还原原始引用）。 */
+function capturePreviewGameState() {
+  const gameStore = useGameStore()
+  return {
+    runningScript: gameStore.runningScript,
+    presentRoleIds: [...gameStore.presentRoleIds],
+    currentInteractRoleId: gameStore.currentInteractRoleId,
+    mainRoleId: gameStore.mainRoleId,
+    userName: gameStore.userName,
+    userSubtitle: gameStore.userSubtitle,
+    currentScene: gameStore.currentScene,
+    currentLine: gameStore.currentLine,
+    currentStatus: gameStore.currentStatus,
+    dialogHistory: [...gameStore.dialogHistory],
+    command: gameStore.command,
+    // 深拷贝每个角色对象（含嵌套的 clothes/bodyPart）：浅拷贝仍会共用嵌套对象，
+    // 试玩期间修改 clothes 等会污染快照
+    gameRoles: JSON.parse(JSON.stringify(gameStore.gameRoles)),
+    initialized: gameStore.initialized,
+  }
+}
+type PreviewGameSnapshot = ReturnType<typeof capturePreviewGameState>
+
+/**
+ * 试玩期间会被脚本事件（background/music/background_effect/present_pic/sound/ambient）
+ * 改写的「场景渲染态」。这些不在 gameStore，而在 uiStore + settingsStore：
+ * - 背景图、粒子特效存在 **settingsStore.display**（且 settingsStore 是 persist 的），
+ *   不还原会写进 localStorage、跨试玩/跨自由对话长期泄漏；
+ * - 其余（过渡时长、BGM 轨与速度、插图、音效、环境音轨）在 uiStore。
+ *
+ * 【还原断言】试玩结束必须把这一整族还原回试玩前快照，否则粒子特效不清空、
+ * BGM 不停、背景图/插图/音效串到自由对话或下一次试玩。新增任何会被脚本事件
+ * 改写的渲染态字段时，务必同步加进这里存/还。
+ */
+function capturePreviewSceneState() {
+  const uiStore = useUIStore()
+  const settingsStore = useSettingsStore()
+  return {
+    // settingsStore.display（持久化，必须还原）
+    background: settingsStore.display.currentBackground,
+    backgroundEffect: settingsStore.display.backgroundEffect,
+    // uiStore
+    backgroundTransition: uiStore.currentBackgroundTransition,
+    backgroundMusic: uiStore.currentBackgroundMusic,
+    bgMusicPlaybackRate: uiStore.bgMusicPlaybackRate,
+    presentPic: uiStore.currentPresentPic,
+    presentPicScale: uiStore.currentPresentPicScale,
+    // 角色标题/副标题：试玩期间脚本对话会把它们改成剧本 NPC 的名字，
+    // 不还原的话回自由对话仍显示错误的角色身份
+    showCharacterTitle: uiStore.showCharacterTitle,
+    showCharacterSubtitle: uiStore.showCharacterSubtitle,
+    // 台词/情绪/动作文本：dialogue-processor 试玩期间逐句改写，纯展示字段，还回原值
+    showCharacterLine: uiStore.showCharacterLine,
+    showCharacterEmotion: uiStore.showCharacterEmotion,
+    showCharacterMotionText: uiStore.showCharacterMotionText,
+    // currentSoundEffect 不存：它是「值变化即播放」的一次性触发型字段，还原成
+    // 试玩前的路径会误重播；试玩结束直接清成 'None'（见 restorePreviewSceneState）。
+    // currentAvatarAudio 同理（角色语音也是值变化即播），一并只清不存。
+    // 深拷贝：ambientTracks 元素是对象，浅拷贝会与试玩期间的操作互相串改
+    ambientTracks: uiStore.ambientTracks.map((t) => ({ ...t })),
+  }
+}
+type PreviewSceneSnapshot = ReturnType<typeof capturePreviewSceneState>
+
+let previewGameSnapshot: PreviewGameSnapshot | null = null
+let previewSceneSnapshot: PreviewSceneSnapshot | null = null
+
+function restorePreviewGameState(s: PreviewGameSnapshot) {
+  const gameStore = useGameStore()
+  gameStore.runningScript = s.runningScript
+  gameStore.presentRoleIds = s.presentRoleIds
+  gameStore.currentInteractRoleId = s.currentInteractRoleId
+  gameStore.mainRoleId = s.mainRoleId
+  gameStore.userName = s.userName
+  gameStore.userSubtitle = s.userSubtitle
+  gameStore.currentScene = s.currentScene
+  gameStore.currentLine = s.currentLine
+  gameStore.currentStatus = s.currentStatus
+  gameStore.dialogHistory = s.dialogHistory
+  gameStore.command = s.command
+  gameStore.gameRoles = s.gameRoles
+  gameStore.initialized = s.initialized
+}
+
+function restorePreviewSceneState(s: PreviewSceneSnapshot) {
+  const uiStore = useUIStore()
+  const settingsStore = useSettingsStore()
+  // settingsStore：直接写字段（与 setCurrentBackground/setBackgroundEffect 等价，还原走直写更直接）
+  settingsStore.display.currentBackground = s.background
+  settingsStore.display.backgroundEffect = s.backgroundEffect
+  // uiStore
+  uiStore.currentBackgroundTransition = s.backgroundTransition
+  uiStore.currentBackgroundMusic = s.backgroundMusic
+  uiStore.bgMusicPlaybackRate = s.bgMusicPlaybackRate
+  uiStore.currentPresentPic = s.presentPic
+  uiStore.currentPresentPicScale = s.presentPicScale
+  uiStore.showCharacterTitle = s.showCharacterTitle
+  uiStore.showCharacterSubtitle = s.showCharacterSubtitle
+  uiStore.showCharacterLine = s.showCharacterLine
+  uiStore.showCharacterEmotion = s.showCharacterEmotion
+  uiStore.showCharacterMotionText = s.showCharacterMotionText
+  // 音效是触发型字段，直接清成 'None'：GameBackground 的 watch 见 'None' 不会播放，
+  // 既不误重播试玩前的音效，也清掉试玩留下的脏路径
+  uiStore.currentSoundEffect = 'None'
+  // 角色语音同理：还原成试玩前的路径会误重播自由对话最后一句，直接清 'None'
+  uiStore.currentAvatarAudio = 'None'
+  uiStore.ambientTracks = s.ambientTracks
+}
 
 export const useEditorActions = (s: StateRefs, g: Getters) => {
   async function init() {
@@ -591,6 +707,60 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
   // ========================================================
 
   /**
+   * 试玩开场「搭新场」：备份当前游戏态/场景态 → 清空事件队列 → 清舞台 →
+   * 重建带初始 freeDialogueInfo 的 runningScript。
+   *
+   * 必须在 `api.startPreview`（引擎在 invoke 内部就 spawn 并开始 emit 事件）之前
+   * 完成，否则窗口期内到达的 script:free-dialogue（switch=true）等事件会因
+   * runningScript 尚不存在 / 队列随后被 clear 清空而被丢弃——自由对话的轮数/结束语
+   * 提示将永不显示，开头的 chapter-change/background/narration 也会丢。
+   * 与正式游玩「enterStoryMode 先建状态、startScript 再启引擎」的顺序对齐。
+   */
+  function preparePreviewState() {
+    const gameStore = useGameStore()
+    previewGameSnapshot = capturePreviewGameState()
+    previewSceneSnapshot = capturePreviewSceneState()
+    // 先清掉上一轮试玩可能残留在事件队列里的事件（如 show_character），
+    // 否则新试玩开始后它们还会被处理，把旧角色注入到当前舞台
+    eventQueue.clear()
+    // 从干净的舞台开始，而不是继承主界面此刻的立绘和台词。清空整个角色缓存以
+    // 确保多轮试玩之间不会残留前一回合剧本添加的角色对象和立绘状态
+    gameStore.presentRoleIds = []
+    gameStore.gameRoles = {}
+    gameStore.dialogHistory = []
+    gameStore.currentLine = ''
+    gameStore.currentStatus = 'presenting'
+    // 试玩需要 runningScript 非空：choice 处理器要求它存在才会显示选项（issue #4）。
+    // 不复用 enterStoryMode：它有 bgMusicMode 等 UI 副作用，这里只要一个最小标记。
+    gameStore.runningScript = {
+      scriptName: s.detail.value?.package.scriptName ?? '',
+      currentChapterName: '',
+      choices: [],
+      isRunning: true,
+      freeDialogueInfo: {
+        isFreeDialogue: false,
+        maxRounds: -1,
+        currentRound: 0,
+        endLine: '',
+      },
+    }
+  }
+
+  /** 还原试玩前的游戏态与场景渲染态（previewing=false 时由 PreviewStage 调用）。 */
+  function restorePreviewState() {
+    if (previewGameSnapshot) {
+      restorePreviewGameState(previewGameSnapshot)
+      previewGameSnapshot = null
+    }
+    // 还原场景渲染态：清掉试玩留下的背景图/粒子特效/BGM/插图/音效/环境音，
+    // 否则会跨试玩、跨自由对话泄漏（settingsStore.display 还是 persist 的）
+    if (previewSceneSnapshot) {
+      restorePreviewSceneState(previewSceneSnapshot)
+      previewSceneSnapshot = null
+    }
+  }
+
+  /**
    * 在编辑器内试玩。
    *
    * 保存不拦 error，试玩拦 —— 跑一个已知跑不通的剧本只会浪费作者时间。
@@ -626,12 +796,17 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       return false
     }
     try {
+      // 引擎在 invoke 内部就 spawn 并开始 emit——必须先于 invoke 搭好新场，
+      // 否则窗口期内到达的 free_dialogue 等事件会被丢弃（见 preparePreviewState）
+      preparePreviewState()
       const info = await api.startPreview(key, fromChapter)
       s.previewing.value = true
       s.previewGeneration.value = info.generation
       await refreshScripts()
       return true
     } catch (e) {
+      // invoke 失败：回滚已搭的新场，避免残留的试玩空场态泄漏到编辑器/主界面
+      restorePreviewState()
       notifyError(t('scriptEditor.notify.previewStartFailed'), e)
       return false
     }
@@ -967,6 +1142,8 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     runValidation,
     startPreview,
     stopPreview,
+    preparePreviewState,
+    restorePreviewState,
     uploadAsset,
     uploadEditorBg,
     uploadEditorBgData,

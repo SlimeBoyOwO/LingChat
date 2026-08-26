@@ -20,6 +20,7 @@ use crate::ai_service::tts::adapters::indextts::IndexTtsAdapter;
 use crate::ai_service::tts::adapters::opentts::OpenTtsAdapter;
 use crate::ai_service::tts::adapters::sbv2::Sbv2Adapter;
 use crate::ai_service::tts::adapters::sbv2api::Sbv2ApiAdapter;
+use crate::ai_service::tts::adapters::sherpa_onnx::{SherpaOnnxAdapter, load_reference_audio as sherpa_load_ref_audio};
 use crate::ai_service::tts::adapters::vits::VitsAdapter;
 use crate::ai_service::tts::local::adapter::LocalTtsAdapter;
 use crate::ai_service::tts::local::LocalTtsRuntime;
@@ -39,6 +40,7 @@ pub struct TtsAvailability {
     pub opentts: bool,
     pub fish_s2: bool,
     pub sbv2_local: bool,
+    pub sherpa_onnx: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -109,10 +111,11 @@ fn gsv_prompt_language(prompt_text: &str) -> &'static str {
 
 fn segment_text_for_lang<'a>(lang: &str, segment: &'a EmotionSegment) -> Option<&'a str> {
     match lang {
-        "ja" | "en" | "ko" if !segment.japanese_text.trim().is_empty() => {
+        // 译文统一存放在 japanese_text 字段（历史命名），ja/en/ko/es/ar 均优先取译文
+        "ja" | "en" | "ko" | "es" | "ar" if !segment.japanese_text.trim().is_empty() => {
             Some(&segment.japanese_text)
         }
-        "en" | "ko" => None,
+        "en" | "ko" | "es" | "ar" => None,
         "zh" if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
         _ if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
         _ if !segment.japanese_text.trim().is_empty() => Some(&segment.japanese_text),
@@ -193,6 +196,8 @@ impl VoiceMaker {
             non_empty(&cfg.fish_s2_voice) || !self.tts_config.fish_s2_voice.trim().is_empty();
         // Local SBV2 only needs a voice_id; engine readiness is checked later
         let sbv2_local = non_empty(&cfg.sbv2_local_voice_id);
+        // Sherpa-ONNX 可用性：需要模型名称和路径
+        let sherpa_onnx = non_empty(&cfg.sherpa_onnx_model_name) && non_empty(&cfg.sherpa_onnx_model_path);
 
         self.availability = TtsAvailability {
             sva,
@@ -204,6 +209,7 @@ impl VoiceMaker {
             opentts,
             fish_s2,
             sbv2_local,
+            sherpa_onnx,
         };
     }
 
@@ -418,15 +424,57 @@ impl VoiceMaker {
                 }
             }
             "indextts2" => {
-                // IndexTTS2 仅支持中/英文：角色若残留日语配置（旧版本可选），
-                // 兜底为中文，避免日语文本被直接送去合成。
-                if self.lang == "ja" {
-                    tracing::warn!("IndexTTS2 不支持日语，voice_lang 已从 ja 兜底为 zh");
-                    self.lang = "zh".to_string();
-                }
+                // IndexTTS 2.5 起官方支持中/英/日/西班牙/阿拉伯语，
+                // 不再对日语等语言做中文兜底，lang 直接透传给服务端。
                 self.provider.indextts = Some(Arc::new(IndexTtsAdapter::new(
                     self.tts_config.indextts_api_url.clone(),
+                    self.lang.clone(),
                 )));
+            }
+            "sherpa-onnx" if self.availability.sherpa_onnx => {
+                let model_path = cfg.sherpa_onnx_model_path.clone().unwrap_or_default();
+                let model_type = cfg.sherpa_onnx_model_type.clone().unwrap_or_else(|| {
+                    self.tts_config.sherpa_onnx_model_type.clone()
+                });
+                let language = cfg.sherpa_onnx_lang.clone().unwrap_or_else(|| {
+                    self.tts_config.sherpa_onnx_lang.clone()
+                });
+                let voice = cfg.sherpa_onnx_voice.clone().unwrap_or_else(|| {
+                    self.tts_config.sherpa_onnx_voice.clone()
+                });
+                let use_gpu = cfg.sherpa_onnx_use_gpu.unwrap_or(self.tts_config.sherpa_onnx_use_gpu);
+                
+                match SherpaOnnxAdapter::new(
+                    self.tts_config.clone(),
+                    model_path,
+                    model_type,
+                    language,
+                    voice,
+                    use_gpu,
+                ) {
+                    Ok(mut adapter) => {
+                        if let Some(ref_audio_path) = &cfg.sherpa_onnx_ref_audio_path {
+                            let path = std::path::Path::new(ref_audio_path);
+                            if path.exists() {
+                                match sherpa_load_ref_audio(path) {
+                                    Ok((samples, sample_rate)) => {
+                                        let ref_text = cfg.sherpa_onnx_ref_text.clone().unwrap_or_default();
+                                        adapter.set_reference_audio(samples, sample_rate, ref_text);
+                                        tracing::info!("Sherpa-ONNX 零样本克隆已加载参考音频: {}", ref_audio_path);
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!("加载 Sherpa-ONNX 参考音频失败: {e}");
+                                    }
+                                }
+                            }
+                        }
+                        self.provider.sherpa_onnx = Some(Arc::new(adapter));
+                    }
+                    Err(error) => {
+                        tracing::warn!("Sherpa-ONNX 初始化失败: {error}");
+                        self.provider.disable();
+                    }
+                }
             }
             _ => {
                 tracing::warn!("TTS 类型不可用或未初始化: {tts_type}");

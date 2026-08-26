@@ -9,24 +9,32 @@ const isCapturing = ref(false)
 let unlisten: (() => void) | null = null
 let unlistenCanceled: (() => void) | null = null
 let initCount = 0
+let pendingUnlisten: Promise<(() => void)> | null = null
+let pendingUnlistenCanceled: Promise<(() => void)> | null = null
 
 export function useScreenshot() {
   function init() {
     if (initCount++ > 0) return
-    listen<{ base64: string }>('screenshot:captured', (event) => {
+    const p1 = listen<{ base64: string }>('screenshot:captured', (event) => {
       screenshotBase64.value = event.payload.base64
       hasScreenshot.value = true
       isCapturing.value = false
     }).then((fn) => {
       unlisten = fn
+      pendingUnlisten = null
+      return fn
     })
+    pendingUnlisten = p1
 
-    listen('screenshot:cancelled', () => {  //监听截图取消事件
+    const p2 = listen('screenshot:cancelled', () => {
       hasScreenshot.value = false
       isCapturing.value = false
     }).then((fn) => {
       unlistenCanceled = fn
+      pendingUnlistenCanceled = null
+      return fn
     })
+    pendingUnlistenCanceled = p2
   }
 
   function destroy() {
@@ -34,11 +42,15 @@ export function useScreenshot() {
     if (unlisten) {
       unlisten()
       unlisten = null
+    } else if (pendingUnlisten) {
+      pendingUnlisten.then((fn) => fn())
     }
 
     if (unlistenCanceled) {
       unlistenCanceled()
       unlistenCanceled = null
+    } else if (pendingUnlistenCanceled) {
+      pendingUnlistenCanceled.then((fn) => fn())
     }
   }
 

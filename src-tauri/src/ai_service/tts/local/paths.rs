@@ -48,6 +48,10 @@ impl LocalTtsPaths {
         self.voices.join(voice_id)
     }
 
+    pub fn sherpa_onnx_models_dir(&self) -> PathBuf {
+        self.root.join("sherpa_onnx_models")
+    }
+
     pub fn style_vectors_path(&self, voice_id: &str) -> PathBuf {
         self.voices.join(voice_id).join("style_vectors.json")
     }

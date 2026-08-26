@@ -403,6 +403,14 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                                 .to_string(),
                         setting_type: "bool".to_string(),
                     },
+                    ConfigSetting {
+                        key: keys::LOG_GENAI_DEBUG.to_string(),
+                        value: read_setting(app, keys::LOG_GENAI_DEBUG, "false"),
+                        description:
+                            "LOG_GENAI_DEBUG — 开启 genai SDK 的调试日志（含请求/响应细节，保存后即时生效，默认关闭）"
+                                .to_string(),
+                        setting_type: "bool".to_string(),
+                    },
                 ],
             },
         );

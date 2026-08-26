@@ -182,6 +182,7 @@ const narrowViewLevel = ref<'menu' | 'content'>('menu')
 const scheduleRef = ref()
 const todoRef = ref()
 const calendarRef = ref()
+const proactiveRef = ref()
 const titleInfo = computed(() => {
   const currentView = uiStore.scheduleView
 

@@ -115,17 +115,6 @@
         <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.log') }}</p>
       </Button>
       <Button
-        ref="workshopBtn"
-        type="nav"
-        class="shrink-0"
-        icon="package"
-        @click="() => switchTab('workshop', 'workshopBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'workshop' }"
-      >
-        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.workshop') }}</p>
-      </Button>
-      <Button
-        v-if="!isAndroid()"
         ref="pluginsBtn"
         type="nav"
         class="shrink-0"
@@ -146,7 +135,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { Button } from '../base'
 import Icon from '../base/widget/Icon.vue'
@@ -178,11 +167,13 @@ const advanceBtn = ref<ButtonRef | null>(null)
 const updateBtn = ref<ButtonRef | null>(null)
 const adventureBtn = ref<ButtonRef | null>(null)
 const logBtn = ref<ButtonRef | null>(null)
-const workshopBtn = ref<ButtonRef | null>(null)
 const pluginsBtn = ref<ButtonRef | null>(null)
 
 // 设置可重设的值（使用 ref 存储，确保响应式或跨函数访问）
 const oldRefName = ref('textBtn')
+
+// ResizeObserver 引用，用于 onUnmounted 时断开
+let resizeObserver: ResizeObserver | null = null
 
 // 提取：根据 refName 获取按钮并移动指示器
 const handleIndicatorMove = (currentRefName: string) => {
@@ -199,7 +190,6 @@ const handleIndicatorMove = (currentRefName: string) => {
     updateBtn,
     adventureBtn,
     logBtn,
-    workshopBtn,
     pluginsBtn,
   }[currentRefName]
 
@@ -246,7 +236,7 @@ const setupResizeObserver = () => {
   if (!navContainer.value) {
     return
   }
-  const resizeObserver = new ResizeObserver((entries) => {
+  resizeObserver = new ResizeObserver((entries) => {
     // 尺寸变化时，重新初始化指示条位置（使用 currentSettingsTab 作为真实来源）
     initIndicator()
   })
@@ -297,9 +287,6 @@ const initIndicator = () => {
     case 'log':
       activeButton = logBtn.value
       break
-    case 'workshop':
-      activeButton = workshopBtn.value
-      break
     case 'plugins':
       activeButton = pluginsBtn.value
       break
@@ -316,6 +303,13 @@ const initIndicator = () => {
 onMounted(() => {
   initIndicator()
   setupResizeObserver()
+})
+
+onUnmounted(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
 })
 
 // 监听当前标签变化
@@ -356,15 +350,6 @@ defineExpose({
   addMoreMenu,
 })
 
-// 监听父组件转发的 B 组件事件（触发 A 组件自身逻辑）
-// 监听 B 组件的 add 事件，触发 A 组件的 addMoreMenu
-watch(
-  () => {
-    /* 可通过 props 传递状态，或直接监听 emit 事件 */
-  },
-  () => {},
-  { immediate: true },
-)
 </script>
 
 <style lang="css" scoped>

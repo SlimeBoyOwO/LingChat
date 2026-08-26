@@ -7,6 +7,7 @@ pub mod package;
 pub mod paths;
 pub mod registry;
 pub mod setup;
+pub mod sherpa_onnx_manager;
 
 mod download;
 mod saf_bridge;
@@ -309,19 +310,6 @@ pub async fn tts_local_list_installed(
 
 // -- helpers ----------------------------------------------------------------
 
-fn install_shared_asset(
-    paths: &LocalTtsPaths,
-    src: &Path,
-    asset_id: &str,
-) -> Result<PathBuf, String> {
-    let (target, _label) = match asset_id {
-        "deberta" => (paths.deberta_dir().join("deberta.onnx"), "DeBERTa model"),
-        "deberta-tokenizer" => (paths.deberta_dir().join("tokenizer.json"), "DeBERTa tokenizer"),
-        other => return Err(format!("unknown shared asset: {other}")),
-    };
-    crate::utils::fs::copy_with_parent(src, &target)
-}
-
 fn install_style_vectors_for(
     paths: &LocalTtsPaths,
     src: &Path,
@@ -377,34 +365,25 @@ pub async fn tts_local_import_from_path(
     state: State<'_, LocalTtsState>,
     path: String,
     voice_id: Option<String>,
-    asset_id: Option<String>,
 ) -> Result<ImportResult, String> {
     let (src, cleanup_after_import) =
         saf_bridge::prepare_file_import_source(&app, &path).await?;
 
     let result: std::result::Result<ImportResult, String> = async {
-        if let Some(asset_id) = asset_id {
-            let installed = install_shared_asset(&state.paths, &src, &asset_id)?;
-            let bytes = std::fs::metadata(&installed)
-                .map(|m| m.len())
-                .unwrap_or(0);
-            if state.paths.asset_present("deberta") {
-                let _ = state.engine.init(&state.paths).await;
-            }
-            let _ = app.emit("tts://install-complete", &asset_id);
-            return Ok(ImportResult {
-                asset_id: asset_id.clone(),
-                voice_id: None,
-                path: installed.to_string_lossy().into_owned(),
-                bytes,
-                message: "shared asset imported".into(),
-            });
-        }
-
         if !src.exists() {
             return Err(format!("path not found: {}", src.display()));
         }
         let inspected = package::inspect_package(&src)?;
+        // 角色语音只支持直接导入 .sbv2 / .onnx 原始模型文件，不再接受 zip/7z 压缩包
+        if matches!(
+            inspected.kind,
+            package::PackageKind::Zip | package::PackageKind::SevenZ
+        ) {
+            return Err(
+                "voice import does not support archives; import a .sbv2 or .onnx file directly"
+                    .into(),
+            );
+        }
         let voice_id = match voice_id {
             Some(v) => v,
             None => default_voice_id(&inspected, &src),
@@ -535,6 +514,31 @@ async fn download_single_asset(
                 message: "style vectors downloaded".into(),
             })
         }
+        registry::AssetKind::SherpaOnnx => {
+            let raw_dst = download_temp_path(entry, &state.paths.cache);
+            let bytes = download::download_asset(app, entry, &raw_dst, cancel).await?;
+            let model_dir = state.paths.sherpa_onnx_models_dir();
+            std::fs::create_dir_all(&model_dir)
+                .map_err(|e| format!("mkdir sherpa_onnx_models: {e}"))?;
+            let dest_dir = model_dir.join(&entry.id);
+            if dest_dir.exists() {
+                std::fs::remove_dir_all(&dest_dir)
+                    .map_err(|e| format!("remove existing model dir: {e}"))?;
+            }
+            std::fs::create_dir_all(&dest_dir)
+                .map_err(|e| format!("mkdir model dest: {e}"))?;
+            extract_archive(&raw_dst, &dest_dir)
+                .map_err(|e| format!("extract archive: {e}"))?;
+            let _ = tokio::fs::remove_file(&raw_dst).await;
+            let _ = app.emit("tts://sherpa-onnx-model-downloaded", &entry.id);
+            Ok(ImportResult {
+                asset_id: entry.id.clone(),
+                voice_id: None,
+                path: dest_dir.to_string_lossy().into_owned(),
+                bytes,
+                message: format!("{} downloaded", entry.display_name),
+            })
+        }
     }
 }
 
@@ -544,6 +548,125 @@ pub async fn tts_local_delete_voice(
     voice_id: String,
 ) -> Result<(), String> {
     model_manager::delete_voice(&state.paths, &voice_id)
+}
+
+/// 删除 DeBERTa 共享模型（deberta.onnx + tokenizer.json），并卸载引擎释放内存。
+/// 删除后可从模型下载目录重新下载。
+#[tauri::command]
+pub async fn tts_local_delete_deberta(
+    state: State<'_, LocalTtsState>,
+) -> Result<(), String> {
+    delete_deberta_asset(&state.paths)?;
+    state.engine.unload_all().await;
+    Ok(())
+}
+
+/// 移除 `assets/deberta` 目录（幂等：目录不存在时静默成功）。
+fn delete_deberta_asset(paths: &LocalTtsPaths) -> Result<(), String> {
+    let dir = paths.deberta_dir();
+    crate::utils::path::validate_path_in_base(&dir, &paths.assets)?;
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).map_err(|e| format!("remove_dir_all: {e}"))?;
+    }
+    Ok(())
+}
+
+/// 解压归档文件到目标目录（支持 tar.bz2、zip）。
+///
+/// 解压后如果 `dest` 内恰好只有一个子目录且无文件，则将该子目录的内容
+/// 上提一级，避免 k2-fsa 等源的 tar.bz2 包自带顶层目录导致路径嵌套。
+fn extract_archive(src: &Path, dest: &Path) -> Result<(), String> {
+    let ext = src
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let src_display = src.to_string_lossy().to_string();
+
+    match ext.as_str() {
+        "bz2" => {
+            let f = std::fs::File::open(&src_display)
+                .map_err(|e| format!("open tar.bz2: {e}"))?;
+            let dec = bzip2::read::BzDecoder::new(f);
+            let mut archive = tar::Archive::new(dec);
+            archive
+                .unpack(dest)
+                .map_err(|e| format!("untar bz2: {e}"))?;
+        }
+        "tar" => {
+            let f = std::fs::File::open(&src_display)
+                .map_err(|e| format!("open tar: {e}"))?;
+            let mut archive = tar::Archive::new(f);
+            archive
+                .unpack(dest)
+                .map_err(|e| format!("untar: {e}"))?;
+        }
+        "gz" => {
+            let f = std::fs::File::open(&src_display)
+                .map_err(|e| format!("open tar.gz: {e}"))?;
+            let dec = flate2::read::GzDecoder::new(f);
+            let mut archive = tar::Archive::new(dec);
+            archive
+                .unpack(dest)
+                .map_err(|e| format!("untar gz: {e}"))?;
+        }
+        "zip" => {
+            let f = std::fs::File::open(&src_display)
+                .map_err(|e| format!("open zip: {e}"))?;
+            let mut zip = zip::ZipArchive::new(f)
+                .map_err(|e| format!("open zip archive: {e}"))?;
+            zip.extract(dest)
+                .map_err(|e| format!("extract zip: {e}"))?;
+        }
+        other => {
+            return Err(format!("unsupported archive format: {other}"));
+        }
+    }
+
+    // Flatten: if dest contains exactly one subdirectory and zero files,
+    // move the subdirectory's contents up to dest.
+    flatten_single_subdir(dest)?;
+
+    Ok(())
+}
+
+/// 如果 `dir` 内恰好只有一个子目录且没有文件，则将子目录内容上提一级。
+/// k2-fsa/sherpa-onnx 的 tar.bz2 包内通常有一层顶层目录，
+/// 解压后形如 `dest/<model_name>/model.onnx`，需要展平为 `dest/model.onnx`。
+fn flatten_single_subdir(dir: &Path) -> Result<(), String> {
+    let entries: Vec<_> = std::fs::read_dir(dir)
+        .map_err(|e| format!("read_dir for flatten: {e}"))?
+        .filter_map(|e| e.ok())
+        .collect();
+
+    if entries.len() != 1 {
+        return Ok(());
+    }
+
+    let single = &entries[0];
+    if !single.path().is_dir() {
+        return Ok(());
+    }
+
+    let subdir = single.path();
+    let sub_entries: Vec<_> = std::fs::read_dir(&subdir)
+        .map_err(|e| format!("read subdir for flatten: {e}"))?
+        .filter_map(|e| e.ok())
+        .collect();
+
+    // Only flatten if the subdirectory contains at least one entry
+    if sub_entries.is_empty() {
+        return Ok(());
+    }
+
+    for entry in &sub_entries {
+        let dest = dir.join(entry.file_name());
+        std::fs::rename(entry.path(), &dest)
+            .map_err(|e| format!("flatten move {:?} -> {:?}: {e}", entry.path(), dest))?;
+    }
+    std::fs::remove_dir(&subdir)
+        .map_err(|e| format!("flatten remove empty subdir: {e}"))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -632,6 +755,105 @@ fn wav_response(bytes: Vec<u8>) -> Response {
 }
 
 // ---------------------------------------------------------------------------
+// Sherpa-ONNX model management commands
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct SherpaOnnxModelRecord {
+    pub id: String,
+    pub display_name: String,
+    pub model_type: String,
+    pub language: String,
+    pub voice: String,
+    pub size_bytes: u64,
+    pub path: String,
+    pub installed: bool,
+}
+
+/// 列出所有已下载的 Sherpa-ONNX 模型
+#[tauri::command]
+pub async fn tts_local_list_sherpa_models(
+    state: State<'_, LocalTtsState>,
+) -> Result<Vec<SherpaOnnxModelRecord>, String> {
+    let model_dir = state.paths.sherpa_onnx_models_dir();
+    let catalog = registry::all_assets();
+    let mut records: Vec<SherpaOnnxModelRecord> = Vec::new();
+
+    for entry in &catalog {
+        if entry.kind != registry::AssetKind::SherpaOnnx {
+            continue;
+        }
+        let model_path = model_dir.join(&entry.id);
+        let installed = model_path.exists();
+        let meta = entry.sherpa_meta.as_ref();
+        let size = if installed {
+            dir_size(&model_path).unwrap_or(0)
+        } else {
+            0
+        };
+        records.push(SherpaOnnxModelRecord {
+            id: entry.id.clone(),
+            display_name: entry.display_name.clone(),
+            model_type: meta.map(|m| m.model_type.clone()).unwrap_or_default(),
+            language: meta.map(|m| m.language.clone()).unwrap_or_default(),
+            voice: meta.map(|m| m.voice.clone()).unwrap_or_default(),
+            size_bytes: size,
+            path: model_path.to_string_lossy().into_owned(),
+            installed,
+        });
+    }
+
+    Ok(records)
+}
+
+/// 下载指定的 Sherpa-ONNX 模型（从 registry 目录）
+#[tauri::command]
+pub async fn tts_local_download_sherpa_model(
+    app: AppHandle,
+    state: State<'_, LocalTtsState>,
+    model_id: String,
+) -> Result<ImportResult, String> {
+    tts_local_download(app, state, model_id).await
+        .map(|results| results.into_iter().next().unwrap_or_else(|| ImportResult {
+            asset_id: String::new(),
+            voice_id: None,
+            path: String::new(),
+            bytes: 0,
+            message: "no result".into(),
+        }))
+}
+
+/// 删除指定的 Sherpa-ONNX 模型
+#[tauri::command]
+pub async fn tts_local_delete_sherpa_model(
+    state: State<'_, LocalTtsState>,
+    model_id: String,
+) -> Result<(), String> {
+    let model_dir = state.paths.sherpa_onnx_models_dir().join(&model_id);
+    crate::utils::path::validate_path_in_base(&model_dir, &state.paths.sherpa_onnx_models_dir())?;
+    if model_dir.exists() {
+        std::fs::remove_dir_all(&model_dir)
+            .map_err(|e| format!("remove sherpa model: {e}"))?;
+    }
+    Ok(())
+}
+
+/// 递归计算目录大小
+fn dir_size(path: &std::path::Path) -> std::io::Result<u64> {
+    let mut total = 0u64;
+    for entry in std::fs::read_dir(path)? {
+        let entry = entry?;
+        let meta = entry.metadata()?;
+        if meta.is_dir() {
+            total += dir_size(&entry.path())?;
+        } else {
+            total += meta.len();
+        }
+    }
+    Ok(total)
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -669,34 +891,6 @@ mod tests {
     }
 
     #[test]
-    fn shared_deberta_import_uses_expected_file_names() {
-        let temp = tempfile::tempdir().unwrap();
-        let paths = test_paths(temp.path());
-        let source = temp.path().join("downloaded.bin");
-        std::fs::write(&source, b"fixture").unwrap();
-
-        let model = install_shared_asset(&paths, &source, "deberta").unwrap();
-        assert_eq!(model, paths.deberta_dir().join("deberta.onnx"));
-        assert_eq!(std::fs::read(model).unwrap(), b"fixture");
-
-        let tokenizer =
-            install_shared_asset(&paths, &source, "deberta-tokenizer").unwrap();
-        assert_eq!(tokenizer, paths.deberta_dir().join("tokenizer.json"));
-        assert_eq!(std::fs::read(tokenizer).unwrap(), b"fixture");
-    }
-
-    #[test]
-    fn shared_asset_import_rejects_unknown_asset() {
-        let temp = tempfile::tempdir().unwrap();
-        let paths = test_paths(temp.path());
-        let source = temp.path().join("downloaded.bin");
-        std::fs::write(&source, b"fixture").unwrap();
-
-        let error = install_shared_asset(&paths, &source, "voice-model").unwrap_err();
-        assert!(error.contains("unknown shared asset"));
-    }
-
-    #[test]
     fn shared_asset_download_uses_individual_canonical_file_names() {
         assert_eq!(shared_asset_file_name("deberta").unwrap(), "deberta.onnx");
         assert_eq!(
@@ -704,6 +898,21 @@ mod tests {
             "tokenizer.json"
         );
         assert!(shared_asset_file_name("unknown").is_err());
+    }
+
+    #[test]
+    fn delete_deberta_removes_asset_dir_and_is_idempotent() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        std::fs::create_dir_all(paths.deberta_dir()).unwrap();
+        std::fs::write(paths.deberta_dir().join("deberta.onnx"), b"model").unwrap();
+        std::fs::write(paths.deberta_dir().join("tokenizer.json"), b"{}").unwrap();
+
+        delete_deberta_asset(&paths).unwrap();
+        assert!(!paths.deberta_dir().exists());
+
+        // 幂等：目录不存在时也不报错
+        delete_deberta_asset(&paths).unwrap();
     }
 
     #[test]

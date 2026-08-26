@@ -16,7 +16,7 @@ export const getters = {
   },
 
   currentInteractRole(state: GameState): GameRole | undefined {
-    if (state.currentInteractRoleId === null) return undefined
+    if (state.currentInteractRoleId == null || state.currentInteractRoleId < 0) return undefined
     return state.gameRoles[state.currentInteractRoleId]
   },
 

@@ -83,24 +83,13 @@ jobs:
         with:
           name: data-artifacts
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v1
         with:
-          version: latest
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: 'pnpm'
-      
-      - name: 设置 pnpm store 缓存
-        uses: actions/cache@v4
-        with:
-          path: ~/.pnpm-store
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          runtime: node@26
+          cache: true
 
       - name: 安装前端依赖
         run: |
-          pnpm i
           pnpm run init
 
       - name: 安装系统依赖 (仅 Linux)
@@ -112,14 +101,12 @@ jobs:
 
       - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable
-
+        
       - name: 设置 rust 缓存
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: |
-              ./src-tauri
-          cache-targets: true
-          shared-key: ${{ runner.os }}-${{ runner.arch }}-main-pnpm-tauri-build-${{ hashFiles('src-tauri/Cargo.lock') }}
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
 
       - name: 构建 Tauri 应用
         uses: tauri-apps/tauri-action@v1
@@ -128,7 +115,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          RUSTFLAGS: ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
+          RUSTFLAGS: |
+            ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
+            ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
+            ${{ runner.os == 'macOS' && '' || '' }}
         with:
           uploadWorkflowArtifacts: true
           workflowArtifactNamePattern: '${{ matrix.platform }}-build'

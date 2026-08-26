@@ -24,6 +24,7 @@ pub struct ChapterEndEvent {
     next_chapter: Option<String>,
     options: Vec<Value>,
     prompt: Option<String>,
+    #[allow(dead_code)]
     duration: Option<f64>,
 }
 
