@@ -46,26 +46,12 @@ pub fn emit_tts_cleanup(app: &AppHandle, deleted: u64, orphan_files: usize, orph
 
 /// 通知前端 AI 发生错误，同时重置前端状态为 input。
 pub fn emit_error(app: &AppHandle, err: &anyhow::Error) {
-    let msg = err.to_string();
-    let code = classify_error(&msg);
-    let err_payload = super::responses::ErrorResponse::new(code, &msg);
+    let info = crate::ai_service::llm::error::classify_llm_error(err);
+    tracing::error!(error_code = info.code, "AI 调用出错: {}", format!("{err:#}"));
+    let err_payload = super::responses::ErrorResponse::new(info.code, info.raw);
     let _ = app.emit(super::responses::event_names::AI_ERROR, &err_payload);
     let reset = super::responses::StatusResetResponse::new("input");
     let _ = app.emit(super::responses::event_names::STATUS_RESET, &reset);
-}
-
-/// 根据错误信息字符串，为前端分类错误类型。
-fn classify_error(msg: &str) -> &'static str {
-    let lc = msg.to_lowercase();
-    if msg.contains("401") || msg.contains("Api key is invalid") {
-        "401"
-    } else if msg.contains("404") {
-        "404"
-    } else if lc.contains("network") || msg.contains("网络") {
-        "network_error"
-    } else {
-        "default_error"
-    }
 }
 
 pub mod erased_payload {
