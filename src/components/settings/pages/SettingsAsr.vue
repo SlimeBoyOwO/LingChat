@@ -81,7 +81,7 @@
       <label class="block text-sm mb-1.5 font-medium">{{ t('settings.asr.providerSelect') }}</label>
       <select
         v-model="localSettings.active_provider"
-        class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200 mb-4"
+        class="w-full px-3 py-2.5 border rounded-lg text-sm text-sky-400 bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200 mb-4"
       >
         <option v-for="p in asrStore.providers" :key="p.id" :value="p.id">
           {{ p.display_name }}{{ p.description ? `（${p.description}）` : '' }}
@@ -126,7 +126,7 @@
           <div v-if="field.key === 'model' && asrStore.models.length > 0" class="flex gap-2">
             <select
               v-model="providerCfgRecord[field.key]"
-              class="flex-1 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+              class="flex-1 px-3 py-2.5 border rounded-lg text-sm text-sky-400 bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
             >
               <option v-for="m in asrStore.models" :key="m.id" :value="m.id">{{ m.display_name }}</option>
             </select>
