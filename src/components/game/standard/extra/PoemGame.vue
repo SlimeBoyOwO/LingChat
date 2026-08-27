@@ -120,7 +120,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import type { ScriptPoemWord } from '@/types/script'
 import { useGameStore } from '@/stores/modules/game'
@@ -223,6 +223,20 @@ function soundPathOf(name: string): string {
 }
 
 const sfxCache = new Map<string, HTMLAudioElement>()
+
+function releaseAudioElement(audio: HTMLAudioElement) {
+  audio.pause()
+  audio.removeAttribute('src')
+  audio.load()
+}
+
+function releasePoemMedia() {
+  for (const sfx of sfxCache.values()) releaseAudioElement(sfx)
+  sfxCache.clear()
+  if (audioRef.value) releaseAudioElement(audioRef.value)
+}
+
+const handleReleaseDlcMedia = () => releasePoemMedia()
 
 function playSfx(name: string) {
   const url = toAssetUrl(soundPathOf(name))
@@ -510,13 +524,8 @@ function resetGame() {
 
 watch(game, async (next) => {
   resetGame()
-  const audio = audioRef.value
   if (!next) {
-    if (audio) {
-      audio.pause()
-      audio.removeAttribute('src')
-      audio.load()
-    }
+    releasePoemMedia()
     return
   }
   await nextTick()
@@ -528,9 +537,14 @@ watch(game, async (next) => {
   }
 })
 
+onMounted(() => {
+  window.addEventListener('lingchat:release-dlc-media', handleReleaseDlcMedia)
+})
+
 onBeforeUnmount(() => {
+  window.removeEventListener('lingchat:release-dlc-media', handleReleaseDlcMedia)
   resetGame()
-  audioRef.value?.pause()
+  releasePoemMedia()
 })
 </script>
 

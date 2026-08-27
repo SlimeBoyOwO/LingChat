@@ -9,6 +9,7 @@ use std::fs;
 #[cfg(windows)]
 use std::os::windows::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,8 @@ const TRANSACTION_FILE: &str = "transaction.json";
 const INSTALL_FILE: &str = "install.json";
 const PACKAGE_DIR: &str = "package";
 const MAX_TRANSACTION_BYTES: u64 = 8 * 1024;
+const UNINSTALL_RENAME_RETRIES: usize = 10;
+const UNINSTALL_RENAME_RETRY_DELAY: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Serialize, Deserialize)]
 struct PendingUninstall {
@@ -247,6 +250,35 @@ fn save_uninstall_transaction(
     sync_directory(root)
 }
 
+fn rename_uninstall_with_retry(source: &Path, destination: &Path) -> std::io::Result<()> {
+    let mut last_error = None;
+    for attempt in 0..=UNINSTALL_RENAME_RETRIES {
+        match fs::rename(source, destination) {
+            Ok(()) => {
+                if attempt > 0 {
+                    tracing::info!(
+                        "[DLC] 资源句柄释放后，第 {} 次重试成功隔离卸载目录",
+                        attempt
+                    );
+                }
+                return Ok(());
+            }
+            Err(error)
+                if attempt < UNINSTALL_RENAME_RETRIES
+                    && matches!(
+                        error.kind(),
+                        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::WouldBlock
+                    ) =>
+            {
+                last_error = Some(error);
+                std::thread::sleep(UNINSTALL_RENAME_RETRY_DELAY);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| std::io::Error::other("DLC rename retry exhausted")))
+}
+
 /// Atomically move an installed DLC out of the scan tree. No persistent state
 /// is detached before this succeeds.
 pub(crate) fn stage_uninstall(data_dir: &Path, target: &Path, owner: &str) -> Result<PathBuf> {
@@ -283,14 +315,20 @@ pub(crate) fn stage_uninstall(data_dir: &Path, target: &Path, owner: &str) -> Re
     }
 
     let quarantine = transaction_dir.join(PACKAGE_DIR);
-    if let Err(error) = fs::rename(target, &quarantine) {
+    if let Err(error) = rename_uninstall_with_retry(target, &quarantine) {
         let _ = fs::remove_dir_all(&transaction_dir);
         let _ = sync_directory(&root);
+        let lock_hint = if error.kind() == std::io::ErrorKind::PermissionDenied {
+            "；DLC 的背景图、立绘或音频仍被 WebView/播放器占用，请退出剧情并停止相关媒体后重试"
+        } else {
+            ""
+        };
         return Err(error).with_context(|| {
             format!(
-                "把 DLC 原子移入隔离区失败: {} -> {}",
+                "把 DLC 原子移入隔离区失败: {} -> {}{}",
                 target.display(),
-                quarantine.display()
+                quarantine.display(),
+                lock_hint
             )
         });
     }
@@ -793,6 +831,40 @@ mod tests {
         assert!(!transaction.exists());
 
         let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn uninstall_rename_retries_until_a_media_handle_is_released() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let root = std::env::temp_dir().join(format!(
+            "lingchat-dlc-rename-retry-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        let source = root.join("source");
+        let destination = root.join("destination");
+        fs::create_dir_all(&source).unwrap();
+        let media = source.join("music.ogg");
+        fs::write(&media, b"audio").unwrap();
+
+        // FILE_SHARE_READ only: deliberately omit FILE_SHARE_DELETE like a media player lock.
+        let handle = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0x0000_0001)
+            .open(&media)
+            .unwrap();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(250));
+            drop(handle);
+        });
+
+        rename_uninstall_with_retry(&source, &destination).unwrap();
+        release.join().unwrap();
+        assert!(!source.exists());
+        assert!(destination.join("music.ogg").is_file());
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

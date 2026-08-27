@@ -118,7 +118,7 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
   },
 
   /** 标记退出剧情模式，回到自由对话模式 */
-  exitStoryMode(this: GameState) {
+  exitStoryMode(this: GameState, notifyBackend = true) {
     this.runningScript = null
     this.forceChoice = null
     this.poemGame = null
@@ -174,7 +174,9 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
     )
     // 后端剧本任务可能还阻塞在输入等待上：丢掉发送端让它走统一收尾，
     // 否则 is_running 卡死会导致「重置记忆」一直被拒、重进剧本起双任务
-    invoke('stop_script').catch((err) => console.warn('[Script] stop_script 失败（非致命）:', err))
+    if (notifyBackend) {
+      invoke('stop_script').catch((err) => console.warn('[Script] stop_script 失败（非致命）:', err))
+    }
   },
 
   // 设置当前场景（仅更新 store，不调用 API）

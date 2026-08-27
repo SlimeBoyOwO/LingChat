@@ -325,6 +325,28 @@ export function initializeTauriEventListeners() {
 
   // === Script events ===
 
+  listen<string>('script:prepare-uninstall', (event) => {
+    console.log('[Tauri] script:prepare-uninstall', event.payload)
+    // 先丢弃所有仍引用包内绝对路径的积压事件，再清掉当前媒体状态。
+    eventQueue.clear()
+    const gameStore = useGameStore()
+    const uiStore = useUIStore()
+    gameStore.forceChoice = null
+    gameStore.poemGame = null
+    // 后端此时已持有 DLC 生命周期 reservation，避免 exitStoryMode 再调用 stop_script
+    // 把 reservation 当成运行中剧本等待 3 秒；这里只做前端资源释放。
+    gameStore.exitStoryMode(false)
+    uiStore.currentBackgroundMusic = 'None'
+    uiStore.currentPresentPic = ''
+    uiStore.currentPresentPicScale = 1
+    uiStore.clearAmbientTracks()
+    uiStore.triggerSoundEffect('None')
+    uiStore.resetHorrorEffects()
+    window.dispatchEvent(
+      new CustomEvent('lingchat:release-dlc-media', { detail: { folderKey: event.payload } }),
+    )
+  })
+
   listen('script:narration', (event) => {
     eventQueue.addEvent(asEvent(event.payload, { type: 'narration', defaultDuration: -1 }))
   })

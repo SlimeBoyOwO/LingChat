@@ -17,7 +17,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useUIStore } from '../../../../stores/modules/ui/ui'
 
@@ -26,6 +26,19 @@ const uiStore = useUIStore()
 const visible = ref(false)
 const audioRef = ref<HTMLAudioElement | null>(null)
 let hideTimer = 0
+
+function releaseJumpscareMedia() {
+  clearTimeout(hideTimer)
+  visible.value = false
+  if (audioRef.value) {
+    audioRef.value.pause()
+    audioRef.value.removeAttribute('src')
+    audioRef.value.load()
+  }
+  uiStore.clearJumpscare()
+}
+
+const handleReleaseDlcMedia = () => releaseJumpscareMedia()
 
 const imgSrc = computed(() => {
   const p = uiStore.jumpscareImage
@@ -39,11 +52,7 @@ watch(
   (until) => {
     clearTimeout(hideTimer)
     if (!until || !uiStore.jumpscareImage) {
-      visible.value = false
-      if (audioRef.value) {
-        audioRef.value.pause()
-        audioRef.value.currentTime = 0
-      }
+      releaseJumpscareMedia()
       return
     }
 
@@ -57,19 +66,17 @@ watch(
     }
 
     const remain = until - Date.now()
-    hideTimer = window.setTimeout(() => {
-      visible.value = false
-      if (audioRef.value) {
-        audioRef.value.pause()
-        audioRef.value.currentTime = 0
-      }
-      uiStore.clearJumpscare()
-    }, Math.max(150, remain))
+    hideTimer = window.setTimeout(releaseJumpscareMedia, Math.max(150, remain))
   },
 )
 
+onMounted(() => {
+  window.addEventListener('lingchat:release-dlc-media', handleReleaseDlcMedia)
+})
+
 onBeforeUnmount(() => {
-  clearTimeout(hideTimer)
+  window.removeEventListener('lingchat:release-dlc-media', handleReleaseDlcMedia)
+  releaseJumpscareMedia()
 })
 </script>
 

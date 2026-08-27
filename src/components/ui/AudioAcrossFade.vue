@@ -56,8 +56,24 @@ const clearFade = () => {
   }
 }
 
-onBeforeUnmount(() => {
+const releaseAudio = (audio: HTMLAudioElement | null) => {
+  if (!audio) return
+  audio.pause()
+  audio.removeAttribute('src')
+  audio.load()
+}
+
+const releaseAllAudio = () => {
   clearFade()
+  releaseAudio(audio1.value)
+  releaseAudio(audio2.value)
+}
+
+const handleReleaseDlcMedia = () => releaseAllAudio()
+
+onBeforeUnmount(() => {
+  window.removeEventListener('lingchat:release-dlc-media', handleReleaseDlcMedia)
+  releaseAllAudio()
 })
 
 // 只派发当前主音频轨道的结束事件，忽略备用轨道的事件
@@ -95,8 +111,7 @@ const crossFadeTo = async (newUrl: string | null | undefined) => {
       if (currentAudio.volume > 0) {
         currentAudio.volume = Math.max(0, currentAudio.volume - step)
       } else {
-        currentAudio.pause()
-        currentAudio.src = '' // 释放资源
+        releaseAudio(currentAudio)
         clearFade()
       }
     }, FADE_INTERVAL)
@@ -144,7 +159,7 @@ const crossFadeTo = async (newUrl: string | null | undefined) => {
 
     // 完成交接
     if (currentDone && nextDone) {
-      currentAudio.pause()
+      releaseAudio(currentAudio)
       activeIndex = activeIndex === 1 ? 2 : 1 // 切换主轨道身份
       clearFade()
     }
@@ -153,6 +168,7 @@ const crossFadeTo = async (newUrl: string | null | undefined) => {
 
 // 初始化
 onMounted(() => {
+  window.addEventListener('lingchat:release-dlc-media', handleReleaseDlcMedia)
   if (props.src && props.src !== 'None' && audio1.value) {
     audio1.value.src = props.src
     audio1.value.volume = props.volume / 100

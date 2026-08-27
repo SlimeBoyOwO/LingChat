@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { checkScriptGhostLock } from '../../api/services/script-info'
@@ -76,6 +76,23 @@ const assetPath = (rel: string) => {
 
 // 玩家把 .chr 放回标记目录后自动解锁（无需重启/重进菜单）
 let pollTimer = 0
+
+function releaseAudio(audio: HTMLAudioElement | null) {
+  if (!audio) return
+  audio.pause()
+  audio.removeAttribute('src')
+  audio.load()
+}
+
+function releaseGhostMedia() {
+  clearInterval(pollTimer)
+  releaseAudio(musicRef.value)
+  releaseAudio(zoomAudioRef.value)
+  uiStore.closeGhostLock()
+}
+
+const handleReleaseDlcMedia = () => releaseGhostMedia()
+
 async function pollUnlocked() {
   const current = lock.value
   if (!current || uiStore.ghostQuitZoom) return
@@ -99,9 +116,9 @@ watch(
         musicRef.value.play().catch(() => {})
       }
       pollTimer = window.setInterval(pollUnlocked, 2000)
-    } else if (musicRef.value) {
-      musicRef.value.pause()
-      musicRef.value.currentTime = 0
+    } else {
+      releaseAudio(musicRef.value)
+      releaseAudio(zoomAudioRef.value)
     }
   },
   { immediate: true },
@@ -116,8 +133,13 @@ watch(quitZoom, (value) => {
   }
 })
 
+onMounted(() => {
+  window.addEventListener('lingchat:release-dlc-media', handleReleaseDlcMedia)
+})
+
 onBeforeUnmount(() => {
-  clearInterval(pollTimer)
+  window.removeEventListener('lingchat:release-dlc-media', handleReleaseDlcMedia)
+  releaseGhostMedia()
 })
 </script>
 
