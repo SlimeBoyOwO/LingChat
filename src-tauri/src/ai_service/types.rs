@@ -155,7 +155,12 @@ pub struct LineBase {
     pub content: String,
     pub original_emotion: Option<String>,
     pub predicted_emotion: Option<String>,
+    /// 第二语言/目标语言文本（历史字段）。
     pub tts_content: Option<String>,
+    /// 按有效 voice_lang 选定的 TTS 输入文本；旧存档没有该字段时为 None。
+    pub spoken_content: Option<String>,
+    /// 生成 spoken_content 时的有效 TTS 语言。
+    pub spoken_language: Option<String>,
     pub action_content: Option<String>,
     pub audio_file: Option<String>,
     /// 该轮生成的思考链（仅挂在每轮最后一条 assistant 行上）。

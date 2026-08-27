@@ -13,6 +13,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260807_000001_add_skill_agent_reasoning::Migration),
             Box::new(m20260814_000001_add_skill_agent_token_usage::Migration),
             Box::new(m20260815_000001_add_skill_agent_cached_tokens::Migration),
+            Box::new(m20260827_000001_add_line_spoken_content::Migration),
         ]
     }
 }
@@ -24,3 +25,4 @@ pub mod m20260803_000001_create_skill_agent_tables;
 pub mod m20260807_000001_add_skill_agent_reasoning;
 pub mod m20260814_000001_add_skill_agent_token_usage;
 pub mod m20260815_000001_add_skill_agent_cached_tokens;
+pub mod m20260827_000001_add_line_spoken_content;

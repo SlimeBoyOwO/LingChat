@@ -26,6 +26,12 @@ export interface CharacterSettings {
 }
 
 /// 前端用台词条目（对应 Rust GameLineInit）
+export interface GenerateLineVoiceResult {
+  fileName: string
+  spokenContent: string
+  spokenLanguage: string
+}
+
 export interface GameLineInit {
   content: string
   attribute: string
@@ -40,8 +46,12 @@ export interface GameLineInit {
   user_message_seq: number | null
   /** 该轮生成的思考链（仅每轮最后一条 assistant 行有值） */
   thinking: string | null
-  /** 该台词的第二语言（日语）译文，供日文界面显示 */
+  /** 该台词的第二语言/目标语言文本（历史字段） */
   tts_content: string | null
+  /** 按有效 voice_lang 选定的 TTS 输入文本；旧存档行为 null */
+  spoken_content: string | null
+  /** 生成 spoken_content 时的有效 TTS 语言 */
+  spoken_language: string | null
 }
 
 // 2. 定义完整的初始化数据接口 (对应 Rust WebInitData)

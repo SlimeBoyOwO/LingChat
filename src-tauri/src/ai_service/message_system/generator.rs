@@ -13,7 +13,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use sea_orm::DatabaseConnection;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::scene_store::SceneStore;
@@ -24,10 +24,11 @@ use crate::ai_service::message_system::processor::{
     EmotionSegment, MessageProcessor, UserMessageOutcome,
 };
 use crate::ai_service::message_system::producer::{SentenceItem, StreamProducer};
-use crate::ai_service::message_system::responses::{event_names, ReplyResponse};
+use crate::ai_service::message_system::responses::{ReplyResponse, event_names};
 use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::tools::tool_loop::stream_with_tool_loop;
 use crate::ai_service::translator::Translator;
+use crate::ai_service::tts::voice_maker::segment_text_for_lang;
 use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage};
 use crate::api::data_dir;
 use crate::db::entities::line::LineAttribute;
@@ -264,11 +265,7 @@ impl MessageGenerator {
         }
 
         match self
-            .run_pipeline(
-                context,
-                user_message.to_string(),
-                user_msg_seq,
-            )
+            .run_pipeline(context, user_message.to_string(), user_msg_seq)
             .await
         {
             Ok(acc) => {
@@ -276,14 +273,14 @@ impl MessageGenerator {
                     events::emit_thinking(&self.deps.app, false);
                 }
                 Ok(acc)
-            }
+            },
             Err(e) => {
                 events::emit_error(&self.deps.app, &e);
                 if !self.deps.suppress_thinking {
                     events::emit_thinking(&self.deps.app, false);
                 }
                 Err(e)
-            }
+            },
         }
     }
 
@@ -520,7 +517,7 @@ impl MessageGenerator {
                         Err(e) => {
                             tracing::error!("consumer {cid} 处理句子失败: {e}");
                             None
-                        }
+                        },
                     };
                     let _ = publish_tx.send((index, resp)).await;
                     if is_final {
@@ -558,9 +555,10 @@ impl MessageGenerator {
                 for msg in tool_msgs.iter().rev() {
                     let (attribute, content, tool_call) = match msg.role.as_str() {
                         "assistant" => {
-                            let tool_call = msg.tool_calls.as_ref().map(|calls| {
-                                serde_json::to_string(calls).unwrap_or_default()
-                            });
+                            let tool_call = msg
+                                .tool_calls
+                                .as_ref()
+                                .map(|calls| serde_json::to_string(calls).unwrap_or_default());
                             (LineAttribute::Assistant, msg.content.clone(), tool_call)
                         },
                         "tool" => (
@@ -569,7 +567,8 @@ impl MessageGenerator {
                                 "tool_call_id": msg.tool_call_id,
                                 "result": serde_json::from_str::<serde_json::Value>(&msg.content)
                                     .unwrap_or(serde_json::Value::String(msg.content.clone())),
-                            })).unwrap_or_default(),
+                            }))
+                            .unwrap_or_default(),
                             None,
                         ),
                         _ => continue,
@@ -665,13 +664,20 @@ pub(crate) async fn consume_sentence(
         return Ok(None);
     }
 
-    // 2. 富化：翻译 + 语音
-    enrich_segments(deps, &mut segments).await?;
+    // 2. 富化：翻译 + 语音，并取得首段选定的 TTS 文本与语言
+    let spoken_output = enrich_segments(deps, &mut segments).await?;
 
     // 3. 构建前端响应
-    let mut response =
-        build_reply_response(deps, &segments, user_message, is_final, user_message_seq, overrides)
-            .await?;
+    let mut response = build_reply_response(
+        deps,
+        &segments,
+        spoken_output,
+        user_message,
+        is_final,
+        user_message_seq,
+        overrides,
+    )
+    .await?;
 
     // 3.5 最终句：快照本轮思考链，挂载到响应与台词行（供历史对话展示思考过程）
     if is_final {
@@ -701,7 +707,7 @@ fn parse_segments(deps: &SentenceDeps, sentence: &str) -> Vec<EmotionSegment> {
 /// 返回当前 TTS 需要的目标翻译语言。
 fn tts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
     match (tts_type, voice_lang) {
-        ("gsv" | "opentts" | "sbv2" | "fishs2", "en") => Some("en"),
+        ("gsv" | "opentts" | "sbv2" | "sbv2api" | "fishs2", "en") => Some("en"),
         // IndexTTS 2.5 起官方支持中/英/日/西班牙/阿拉伯语：
         // voice_lang 为非中文目标语言时先翻译成对应语言再合成
         // （日语台词主模型已自带 japanese_text，无需在此强制重译）
@@ -713,40 +719,50 @@ fn tts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static
     }
 }
 
-/// 判断文本是否适合作为日语 TTS 输入。
+/// 判断文本是否有明确日语特征。
+///
+/// 仅有汉字无法区分中文与日文，不能据此跳过翻译；至少出现平/片假名才视为
+/// 可靠日语。纯汉字日语被再翻译一次只增加少量开销，但不会把中文送进日语 TTS。
 fn looks_like_japanese(text: &str) -> bool {
-    let has_kana = text
-        .chars()
-        .any(|c| matches!(c, '\u{3040}'..='\u{30ff}' | '\u{31f0}'..='\u{31ff}'));
-    let has_cjk = text
-        .chars()
-        .any(|c| matches!(c, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}'));
-    let has_ascii_letters = text.chars().any(|c| c.is_ascii_alphabetic());
-
-    has_kana || (has_cjk && !has_ascii_letters)
+    text.chars()
+        .any(|c| matches!(c, '\u{3040}'..='\u{30ff}' | '\u{31f0}'..='\u{31ff}'))
 }
 
-/// 切回日语后，检测并修复上一次英语模式残留的译文。
+/// 切回日语后，检测并修复中文 fallback 或上一次其他语言模式残留的译文。
 fn needs_japanese_translation(segments: &[EmotionSegment]) -> bool {
     segments.iter().any(|segment| {
-        !segment.following_text.trim().is_empty()
-            && !looks_like_japanese(segment.japanese_text.trim())
+        let main = segment.following_text.trim();
+        let secondary = segment.japanese_text.trim();
+        !main.is_empty() && (secondary.is_empty() || secondary == main || !looks_like_japanese(secondary))
     })
 }
 
-
 /// Step B: 翻译与语音生成。
-async fn enrich_segments(deps: &SentenceDeps, segments: &mut [EmotionSegment]) -> Result<()> {
+///
+/// 返回首段按有效 voice_lang 选定的 TTS 输入文本及其语言。显示层使用该值，
+/// 而不是根据 UI locale 猜测显示主台词还是第二语言；音频是否成功由 audio_file
+/// 单独表示，临时 TTS 故障也不会让四种界面语言显示出不同台词。
+async fn enrich_segments(
+    deps: &SentenceDeps,
+    segments: &mut [EmotionSegment],
+) -> Result<Option<(String, String)>> {
     let (voice_maker, tts_type, voice_lang) = {
         let gs = deps.game_status.lock().await;
         gs.current_role_id
             .and_then(|rid| {
                 gs.role_manager.get_loaded(rid).map(|role| {
-                    (
-                        role.voice_maker.clone(),
-                        role.settings.tts_type.clone().unwrap_or_default(),
-                        role.settings.voice_lang.clone().unwrap_or_default(),
-                    )
+                    let voice_maker = role.voice_maker.clone();
+                    // VoiceMaker 已应用“角色设置优先、全局设置兜底”，因此这里必须
+                    // 以它的实际配置为准，避免角色 voice_lang 为空时翻译与合成脱节。
+                    let tts_type = voice_maker
+                        .as_ref()
+                        .map(|vm| vm.tts_type().to_string())
+                        .unwrap_or_else(|| role.settings.tts_type.clone().unwrap_or_default());
+                    let voice_lang = voice_maker
+                        .as_ref()
+                        .map(|vm| vm.lang().to_string())
+                        .unwrap_or_else(|| role.settings.voice_lang.clone().unwrap_or_default());
+                    (voice_maker, tts_type, voice_lang)
                 })
             })
             .unwrap_or_default()
@@ -773,17 +789,25 @@ async fn enrich_segments(deps: &SentenceDeps, segments: &mut [EmotionSegment]) -
         }
     }
 
+    let spoken_output = voice_maker.as_ref().and_then(|vm| {
+        segments
+            .first()
+            .and_then(|segment| segment_text_for_lang(vm.lang(), segment))
+            .map(|text| (text.to_owned(), vm.lang().to_owned()))
+    });
+
     if let Some(vm) = voice_maker {
-        vm.generate_voice_files(segments).await;
+        let _generation_results = vm.generate_voice_files(segments).await;
     }
 
-    Ok(())
+    Ok(spoken_output)
 }
 
 /// Step C: 构建 ReplyResponse（含角色信息填充）。
 async fn build_reply_response(
     deps: &SentenceDeps,
     segments: &[EmotionSegment],
+    spoken_output: Option<(String, String)>,
     user_message: &str,
     is_final: bool,
     user_message_seq: Option<u32>,
@@ -824,6 +848,10 @@ async fn build_reply_response(
     } else {
         Some(first.japanese_text.clone())
     };
+    if let Some((text, language)) = spoken_output {
+        response.spoken_text = Some(text);
+        response.spoken_language = Some(language);
+    }
     response.motion_text = if first.motion_text.is_empty() {
         None
     } else {
@@ -843,7 +871,11 @@ async fn build_reply_response(
     response.is_final = is_final;
     response.user_message_seq = user_message_seq;
     // 试玩标记：前端据此丢弃中止后迟到的流式回复（非试玩为 None，不序列化）
-    response.preview_gen = if deps.is_preview { Some(deps.generation) } else { None };
+    response.preview_gen = if deps.is_preview {
+        Some(deps.generation)
+    } else {
+        None
+    };
 
     // 固定台词覆盖：dialogue 事件传入显示名/副标题/时长，生成路径全为默认值
     if let Some(dn) = &overrides.display_name {
@@ -879,6 +911,8 @@ async fn add_assistant_line(deps: &SentenceDeps, response: &ReplyResponse) -> Re
         original_emotion: Some(response.original_tag.clone()),
         predicted_emotion: Some(response.emotion.clone()),
         tts_content: response.tts_text.clone(),
+        spoken_content: response.spoken_text.clone(),
+        spoken_language: response.spoken_language.clone(),
         action_content: response.motion_text.clone(),
         audio_file: response.audio_file.clone(),
         thinking: response.thinking.clone(),
@@ -890,4 +924,30 @@ async fn add_assistant_line(deps: &SentenceDeps, response: &ReplyResponse) -> Re
     let mut gs = deps.game_status.lock().await;
     gs.add_line(&deps.db, line).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{needs_japanese_translation, tts_translation_language};
+    use crate::ai_service::message_system::processor::EmotionSegment;
+
+    fn segment(main: &str, secondary: &str) -> EmotionSegment {
+        EmotionSegment {
+            following_text: main.to_string(),
+            japanese_text: secondary.to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn sbv2api_english_uses_translation_pipeline() {
+        assert_eq!(tts_translation_language("sbv2api", "en"), Some("en"));
+    }
+
+    #[test]
+    fn pure_chinese_is_not_accepted_as_japanese_secondary_text() {
+        assert!(needs_japanese_translation(&[segment("早上好", "早上好")]));
+        assert!(needs_japanese_translation(&[segment("早上好", "祝你今天愉快")]));
+        assert!(!needs_japanese_translation(&[segment("早上好", "おはようございます")]));
+    }
 }

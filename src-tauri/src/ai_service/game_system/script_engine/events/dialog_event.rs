@@ -89,6 +89,8 @@ impl DialogueEvent {
             original_tag: String::new(),
             message: text.to_string(),
             tts_text: None,
+            spoken_text: None,
+            spoken_language: None,
             motion_text: None,
             audio_file: None,
             original_message: text.to_string(),

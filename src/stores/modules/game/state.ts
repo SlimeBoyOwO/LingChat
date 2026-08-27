@@ -16,8 +16,12 @@ export interface GameMessage {
   userMessageSeq?: number
   /** 该轮生成的思考链（仅每轮最后一条回复消息有值） */
   thinking?: string
-  /** 该台词的第二语言（日语）译文，日文界面下显示 */
+  /** 该台词的第二语言/目标语言文本（历史字段） */
   ttsText?: string
+  /** 按有效 voice_lang 选定的 TTS 输入文本；显示层应优先使用 */
+  spokenText?: string
+  /** 生成 spokenText 时的有效 TTS 语言 */
+  spokenLanguage?: string
   /** 台词关联的角色 ID（null = 无角色，如工具调用回填行；生成语音计数时跳过） */
   senderRoleId?: number | null
 }

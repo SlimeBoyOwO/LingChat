@@ -2,7 +2,7 @@ import type { IEventProcessor } from '../event-processor'
 import type { ScriptDialogueEvent } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
-import { isJaLocale, hkify } from '@/locales'
+import { hkify } from '@/locales'
 
 export default class DialogueProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {
@@ -26,8 +26,9 @@ export default class DialogueProcessor implements IEventProcessor {
     const displayName = event.displayName ? event.displayName : role.roleName
     const displaySubtitle = event.displaySubtitle ? event.displaySubtitle : role.roleSubTitle
 
-    // 日文界面且存在日语译文时显示日语译文；繁体（香港）界面下对话转繁体显示
-    const displayLine = hkify(isJaLocale() && event.ttsText ? event.ttsText : event.message || '')
+    // 后端会明确返回按有效 voice_lang 选定的 spokenText，界面语言不得覆盖它；
+    // 没有 TTS 选文的旧事件或无语音台词统一显示 canonical message。
+    const displayLine = hkify(event.spokenText || event.message || '')
     gameStore.currentLine = displayLine
     uiStore.showCharacterMotionText = event.motionText || ''
 
@@ -43,6 +44,8 @@ export default class DialogueProcessor implements IEventProcessor {
       userMessageSeq: event.userMessageSeq,
       thinking: event.thinking,
       ttsText: event.ttsText,
+      spokenText: event.spokenText,
+      spokenLanguage: event.spokenLanguage,
       senderRoleId: event.roleId,
     })
 

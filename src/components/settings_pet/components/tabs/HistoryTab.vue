@@ -201,8 +201,9 @@ import { useUIStore } from '../../../../stores/modules/ui/ui'
 import { getVoiceAudio } from '@/api/services/game-info'
 import { eventQueue } from '@/core/events/event-queue'
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { hkify } from '@/locales'
-import type { GameLineInit } from '@/api/services/game-info'
+import type { GameLineInit, GenerateLineVoiceResult } from '@/api/services/game-info'
 
 // --- Props ---
 defineProps<{
@@ -239,7 +240,7 @@ interface HistoryBlock {
 const gameStore = useGameStore()
 const dialogStore = useDialogStore()
 const uiStore = useUIStore()
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const audioRef = ref<HTMLAudioElement>()
 const contentRef = ref<HTMLDivElement>()
 
@@ -315,11 +316,10 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
           ? gameStore.userName || gameStore.mainRole?.roleName || t('pet.history.you')
           : t('pet.history.mysteryVoice'))
 
-    // 日文界面且存在日语译文时显示日语译文；繁体（香港）界面下转繁体显示
-    const segments =
-      locale.value === 'ja' && msg.ttsText
-        ? [{ type: 'dialogue' as const, text: msg.ttsText }]
-        : parseSegments(hkify(msg.content), hkify(msg.motionText), isNarration)
+    // 新记录显示按有效 voice_lang 选定的 TTS 文本；旧记录没有语言元数据，
+    // 统一回退 canonical content，绝不再由 UI locale 猜测。动作始终保留。
+    const displayText = msg.spokenText || msg.content
+    const segments = parseSegments(hkify(displayText), hkify(msg.motionText), isNarration)
 
     const entry: LineEntry = {
       segments,
@@ -419,6 +419,8 @@ async function handleBacktrack(messageSeq: number) {
           user_message_seq: l.user_message_seq,
           thinking: l.thinking ?? null,
           tts_content: l.tts_content ?? null,
+          spoken_content: l.spoken_content ?? null,
+          spoken_language: l.spoken_language ?? null,
         }),
       ),
     )
@@ -470,14 +472,25 @@ async function generateVoice(entry: LineEntry) {
   generatingVoiceKeys.value.add(key)
   try {
     const lineSeq = Number(key)
-    const fileName = await invoke<string>('generate_line_voice', {
+    const result = await invoke<GenerateLineVoiceResult>('generate_line_voice', {
       lineSeq,
     })
-    // 写回对应台词并自动播放（dialogHistory 响应式刷新，重进历史页仍显示播放按钮）
+    // 同时写回音频和实际 TTS 文本，当前页面无需等重启即可显示正确语言。
     suppressAutoScroll = true
     const msg = gameStore.dialogHistory[entry.absIndex]
-    if (msg) msg.audioFile = fileName
-    await playAudio(fileName)
+    if (msg) {
+      msg.audioFile = result.fileName
+      msg.spokenText = result.spokenContent
+      msg.spokenLanguage = result.spokenLanguage
+    }
+    // 桌宠设置是独立 WebView，主动回传主窗口，避免关闭再打开后被旧 store 覆盖。
+    await getCurrentWindow().emit('dialog-history-line-updated', {
+      absIndex: entry.absIndex,
+      audioFile: result.fileName,
+      spokenText: result.spokenContent,
+      spokenLanguage: result.spokenLanguage,
+    })
+    await playAudio(result.fileName)
     suppressAutoScroll = false
   } catch (error: any) {
     console.error('生成语音失败:', error)

@@ -26,6 +26,9 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     pub tts_content: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
+    pub spoken_content: Option<String>,
+    pub spoken_language: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
     pub action_content: Option<String>,
     pub audio_file: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]

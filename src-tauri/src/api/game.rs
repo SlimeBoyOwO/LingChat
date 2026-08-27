@@ -119,8 +119,12 @@ pub struct GameLineInit {
     pub user_message_seq: Option<u32>,
     /// 该轮生成的思考链（仅每轮最后一条 assistant 行有值）。
     pub thinking: Option<String>,
-    /// 该台词的第二语言（日语）译文，供日文界面显示；无译文时为 None。
+    /// 该台词的第二语言/目标语言文本（历史字段）。
     pub tts_content: Option<String>,
+    /// 按有效 voice_lang 选定的 TTS 输入文本；旧存档行为 None。
+    pub spoken_content: Option<String>,
+    /// 生成 spoken_content 时的有效 TTS 语言。
+    pub spoken_language: Option<String>,
 }
 
 // ========== Tauri 命令 ==========
@@ -468,6 +472,8 @@ pub(crate) async fn build_web_init_data(
                 user_message_seq: seq,
                 thinking: gl.base.thinking.clone(),
                 tts_content: gl.base.tts_content.clone(),
+                spoken_content: gl.base.spoken_content.clone(),
+                spoken_language: gl.base.spoken_language.clone(),
             })
             .collect();
 

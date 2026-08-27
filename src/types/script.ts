@@ -32,7 +32,12 @@ export interface ScriptDialogueEvent extends ScriptEvent {
   originalTag: string
   message: string
   motionText: string
+  /** 第二语言/目标语言文本（历史协议字段） */
   ttsText?: string
+  /** 按有效 voice_lang 选定的 TTS 输入文本 */
+  spokenText?: string
+  /** 生成 spokenText 时的有效 TTS 语言 */
+  spokenLanguage?: string
   audioFile?: string
   originalMessage: string
   displayName?: string

@@ -1,6 +1,7 @@
 use std::sync::OnceLock;
 
 use regex::Regex;
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::ai_service::message_system::events;
@@ -9,6 +10,7 @@ use crate::ai_service::message_system::generator::{
 };
 use crate::ai_service::message_system::processor::EmotionSegment;
 use crate::ai_service::tts::local::LocalTtsState;
+use crate::ai_service::tts::voice_maker::segment_text_for_lang;
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::api::game::{compute_user_message_seqs, GameLineInit};
 use crate::config::AppConfig;
@@ -318,6 +320,8 @@ pub async fn rollback_conversation(
             user_message_seq: seq,
             thinking: gl.base.thinking.clone(),
             tts_content: gl.base.tts_content.clone(),
+            spoken_content: gl.base.spoken_content.clone(),
+            spoken_language: gl.base.spoken_language.clone(),
         })
         .collect();
 
@@ -349,8 +353,19 @@ fn has_tts_countable_content(content: &str) -> bool {
 /// 语音生成复用该台词角色已构建的 `VoiceMaker`（未加载时从 DB 惰性注册，
 /// 保证重启后剧本 NPC 等角色也能正确对应），产物写入 `<data_dir>/voice/`
 /// 后回填 `audio_file`，存在活跃存档时同步到 DB，重启后仍可播放。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateLineVoiceResponse {
+    pub file_name: String,
+    pub spoken_content: String,
+    pub spoken_language: String,
+}
+
 #[tauri::command]
-pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String, String> {
+pub async fn generate_line_voice(
+    app: AppHandle,
+    line_seq: u32,
+) -> Result<GenerateLineVoiceResponse, String> {
     let state = app.state::<AppState>();
     let db = state.db.clone();
 
@@ -382,7 +397,7 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
     //    真实就绪状态（静默刷新，无 toast），而非刷新前的旧状态
     let _ = app.emit("tts://status-changed", ());
 
-    let file_name = {
+    let result = {
         let svc = state.ai_service.lock().await;
         let mut gs = svc.game_status.lock().await;
 
@@ -424,7 +439,8 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
             .action_content
             .clone()
             .unwrap_or_default();
-        let japanese_text = gs.line_list[idx].base.tts_content.clone().unwrap_or_default();
+        let stored_tts_content = gs.line_list[idx].base.tts_content.clone().unwrap_or_default();
+        let stored_spoken_language = gs.line_list[idx].base.spoken_language.clone();
         let predicted = gs.line_list[idx]
             .base
             .predicted_emotion
@@ -452,36 +468,74 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
         })?;
 
         // 4. 构造单个情绪片段并生成语音。
-        //    选文逻辑与实时生成一致（voice_maker.rs 的 segment_text_for_lang：
-        //    语音语言为 ja 且存在日语译文时朗读译文）。
-        //    存储的台词已剥离【情绪】标签（生成时提取过），无需二次解析。
+        //    只有存储语言与当前有效 voice_lang 一致时才能复用旧目标译文；旧行没有
+        //    语言元数据、或角色后来切换语言时，必须从 canonical content 重新翻译，
+        //    绝不能把旧日语/韩语静默送进当前英语等 TTS。
+        let effective_lang = voice_maker.lang().to_string();
+        let can_reuse_translation =
+            stored_spoken_language.as_deref() == Some(effective_lang.as_str());
         let mut seg = EmotionSegment {
             index: 0,
             original_tag,
             following_text: text,
             motion_text,
-            japanese_text,
+            japanese_text: if can_reuse_translation {
+                stored_tts_content
+            } else {
+                String::new()
+            },
             predicted,
             confidence: 1.0,
             voice_file: String::new(),
             character: None,
             role_id: Some(role_id),
         };
-        voice_maker.generate_voice_files(std::slice::from_mut(&mut seg)).await;
 
-        // 5. 校验产物并回填 audio_file（voice_maker 生成失败时只打日志不留文件）
-        let path = std::path::PathBuf::from(&seg.voice_file);
-        if seg.voice_file.is_empty() || !path.exists() {
+        if matches!(effective_lang.as_str(), "ja" | "en" | "ko" | "es" | "ar")
+            && seg.japanese_text.trim().is_empty()
+        {
+            let translated = state
+                .chat
+                .translator
+                .translate_segments_to(std::slice::from_mut(&mut seg), true, &effective_lang)
+                .await
+                .map_err(|e| format!("重新翻译台词失败: {e}"))?;
+            if !translated {
+                return Err(format!(
+                    "无法把历史台词翻译成当前 TTS 语言 {}，请检查翻译模型配置",
+                    effective_lang
+                ));
+            }
+        }
+
+        let spoken_content = segment_text_for_lang(&effective_lang, &seg)
+            .map(str::to_owned)
+            .ok_or_else(|| format!("当前 TTS 语言 {} 没有可朗读文本", effective_lang))?;
+        let generation_results = voice_maker
+            .generate_voice_files(std::slice::from_mut(&mut seg))
+            .await;
+
+        // 5. VoiceMaker 仅在 adapter 成功、临时产物非空并原子提交后返回 true。
+        if !generation_results.first().copied().unwrap_or(false) {
             return Err(
-                "语音生成失败：TTS 未启用或生成出错，请检查语音设置后再试".to_string(),
+                "语音生成失败：TTS 未启用、返回空音频或写入出错，请检查语音设置后再试"
+                    .to_string(),
             );
         }
+        let path = std::path::PathBuf::from(&seg.voice_file);
         let file_name = path
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .ok_or_else(|| "语音文件路径异常".to_string())?;
 
         gs.line_list[idx].base.audio_file = Some(file_name.clone());
+        gs.line_list[idx].base.tts_content = if seg.japanese_text.trim().is_empty() {
+            None
+        } else {
+            Some(seg.japanese_text.clone())
+        };
+        gs.line_list[idx].base.spoken_content = Some(spoken_content.clone());
+        gs.line_list[idx].base.spoken_language = Some(effective_lang.clone());
 
         // 6. 存在活跃存档时同步到 DB，保证重启后仍可播放
         if let Some(save_id) = gs.active_save_id {
@@ -490,12 +544,21 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
                 .map_err(|e| format!("同步存档失败: {}", e))?;
         }
 
-        file_name
+        GenerateLineVoiceResponse {
+            file_name,
+            spoken_content,
+            spoken_language: effective_lang,
+        }
     }; // 释放锁
 
-    tracing::info!("补生成语音完成: line_seq={}, file={}", line_seq, file_name);
+    tracing::info!(
+        "补生成语音完成: line_seq={}, file={}, lang={}",
+        line_seq,
+        result.file_name,
+        result.spoken_language
+    );
 
-    Ok(file_name)
+    Ok(result)
 }
 
 //拉起AI回复（无用户输入，直接触发对话）

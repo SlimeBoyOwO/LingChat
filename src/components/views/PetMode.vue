@@ -118,6 +118,7 @@ let scaleUnlisten: (() => void) | null = null
 let effectUnlisten: (() => void) | null = null
 let volumeUnlisten: (() => void) | null = null
 let dialogHistoryUnlisten: (() => void) | null = null
+let dialogHistoryLineUnlisten: (() => void) | null = null
 
 onMounted(async () => {
   const appWindow = getCurrentWindow()
@@ -152,6 +153,21 @@ onMounted(async () => {
     appWindow.emit('dialog-history-changed', {
       dialogHistory: JSON.parse(JSON.stringify(gameStore.dialogHistory)),
     })
+  })
+
+  // 接收独立设置窗口的单行补语音结果，保持主窗口 store 与数据库同步。
+  dialogHistoryLineUnlisten = await appWindow.listen<{
+    absIndex: number
+    audioFile: string
+    spokenText: string
+    spokenLanguage: string
+  }>('dialog-history-line-updated', (event) => {
+    const { absIndex, audioFile, spokenText, spokenLanguage } = event.payload
+    const msg = gameStore.dialogHistory[absIndex]
+    if (!msg) return
+    msg.audioFile = audioFile
+    msg.spokenText = spokenText
+    msg.spokenLanguage = spokenLanguage
   })
 
   // 设置透明背景的 body 属性样式（额外防护）
@@ -226,6 +242,7 @@ onUnmounted(() => {
   if (effectUnlisten) effectUnlisten()
   if (volumeUnlisten) volumeUnlisten()
   if (dialogHistoryUnlisten) dialogHistoryUnlisten()
+  if (dialogHistoryLineUnlisten) dialogHistoryLineUnlisten()
 
   if (hitTestInterval !== undefined) {
     window.clearInterval(hitTestInterval)
