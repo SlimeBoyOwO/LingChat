@@ -407,13 +407,14 @@ mod windows_impl {
         search.handles
     }
 
-    fn close_windows_by_marker(marker: &str) -> Vec<isize> {
-        let handles = matching_windows(marker);
-        for raw in &handles {
-            let hwnd = HWND(*raw as *mut core::ffi::c_void);
-            let _ = unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)) };
+    fn window_process_id(raw: isize) -> Option<u32> {
+        let hwnd = HWND(raw as *mut core::ffi::c_void);
+        if !unsafe { IsWindow(Some(hwnd)) }.as_bool() {
+            return None;
         }
-        handles
+        let mut process_id = 0u32;
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut process_id)) };
+        (process_id != 0).then_some(process_id)
     }
 
     fn tracked_window_title(raw: isize) -> Option<String> {
@@ -487,37 +488,52 @@ mod windows_impl {
             let popup_process_id = popup.child.id();
             let mut tracked_notepad_handles = Vec::new();
             let mut notepad_document_open = false;
+            let mut notepad_tracking_uncertain = false;
             if let Some(marker) = popup.window_marker.as_deref() {
-                // Notepad can take a moment to create its UUID-titled HWND. Close
-                // only that exact document window; never kill/reuse a Notepad process.
+                // Windows 11 Notepad may hand the document to a pre-existing shared process.
+                // Only close marker windows owned by the exact launcher PID; a marker in any
+                // other process is preserved so we never close the user's existing tabs.
+                let mut marker_seen = false;
                 for _ in 0..10 {
-                    tracked_notepad_handles = close_windows_by_marker(marker);
-                    if tracked_notepad_handles.is_empty() {
-                        // Windows 11 may title the new window simply “记事本”.
-                        // The exact child PID is still a safe ownership boundary.
-                        tracked_notepad_handles = process_windows(popup_process_id);
+                    let marker_handles = matching_windows(marker);
+                    if !marker_handles.is_empty() {
+                        marker_seen = true;
+                        for raw in marker_handles {
+                            if window_process_id(raw) == Some(popup_process_id) {
+                                let hwnd = HWND(raw as *mut core::ffi::c_void);
+                                let _ = unsafe {
+                                    PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0))
+                                };
+                                tracked_notepad_handles.push(raw);
+                            } else {
+                                notepad_document_open = true;
+                            }
+                        }
+                        break;
+                    }
+
+                    // Classic Notepad can keep the exact spawned PID without putting the
+                    // UUID in its title immediately; that PID remains a safe boundary.
+                    tracked_notepad_handles = process_windows(popup_process_id);
+                    if !tracked_notepad_handles.is_empty() {
                         for raw in &tracked_notepad_handles {
                             let hwnd = HWND(*raw as *mut core::ffi::c_void);
                             let _ =
                                 unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)) };
                         }
-                    }
-                    if !tracked_notepad_handles.is_empty() {
                         break;
                     }
                     std::thread::sleep(Duration::from_millis(50));
                 }
+                notepad_tracking_uncertain = !marker_seen && tracked_notepad_handles.is_empty();
                 if !tracked_notepad_handles.is_empty() {
                     std::thread::sleep(Duration::from_millis(160));
                     let marker_lower = marker.to_lowercase();
                     for raw in &tracked_notepad_handles {
                         if let Some(title) = tracked_window_title(*raw) {
                             if title.to_lowercase().contains(&marker_lower) {
-                                // The document or its save prompt still owns this HWND.
                                 notepad_document_open = true;
                             } else {
-                                // Windows 11 Notepad may replace the closed document with
-                                // a blank tab; close that same tracked window once more.
                                 let hwnd = HWND(*raw as *mut core::ffi::c_void);
                                 let _ = unsafe {
                                     PostMessageW(
@@ -562,7 +578,9 @@ mod windows_impl {
                 child_running = false;
             }
             let preserve_note = !popup.kill_process
-                && (notepad_document_open || (tracked_notepad_handles.is_empty() && child_running));
+                && (notepad_document_open
+                    || notepad_tracking_uncertain
+                    || (tracked_notepad_handles.is_empty() && child_running));
             if preserve_note {
                 tracing::warn!("[ScriptPopup] 记事本窗口仍在使用，保留其临时文件且不终止进程");
             } else {
@@ -621,23 +639,27 @@ mod windows_impl {
         }
     }
 
+    fn notepad_command(path: &std::path::Path) -> Command {
+        use std::os::windows::process::CommandExt;
+        let mut command = Command::new("notepad.exe");
+        // Windows 11 记事本没有文档化的 /newWindow 开关；部分版本会把它当成
+        // 第一个文件名并弹“文件名无效”。只传已存在的 UTF-8 临时文件路径。
+        command.arg(path).creation_flags(CREATE_NO_WINDOW);
+        command
+    }
+
     fn spawn_notepad(
         title: &str,
         lines: &[String],
         generation: u64,
     ) -> Result<(), String> {
-        use std::os::windows::process::CommandExt;
         let marker = format!("lingchat-note-{}", Uuid::new_v4());
         let path = std::env::temp_dir().join(format!("{marker}.txt"));
         let body = format!("{title}\r\n\r\n{}\r\n", lines.join("\r\n"));
         let mut encoded = vec![0xEF, 0xBB, 0xBF];
         encoded.extend_from_slice(body.as_bytes());
         fs::write(&path, encoded).map_err(|error| format!("写入临时记事本残页失败: {error}"))?;
-        let mut command = Command::new("notepad.exe");
-        command
-            .arg("/newWindow")
-            .arg(&path)
-            .creation_flags(CREATE_NO_WINDOW);
+        let mut command = notepad_command(&path);
         match command.spawn() {
             Ok(child) => {
                 register_process(child, vec![path], Some(marker), false, generation);
@@ -720,7 +742,7 @@ mod windows_impl {
 
     #[cfg(test)]
     mod tests {
-        use super::cmd_launch_line;
+        use super::{cmd_launch_line, notepad_command};
 
         #[test]
         fn blood_cmd_uses_red_background_without_powershell() {
@@ -744,6 +766,17 @@ mod windows_impl {
                 false,
             );
             assert!(command.contains("color 1F"));
+        }
+
+        #[test]
+        fn notepad_receives_only_the_existing_file_path() {
+            let path = std::path::Path::new(r"C:\Temp Folder\被撕掉的台词.txt");
+            let command = notepad_command(path);
+            let args: Vec<_> = command.get_args().collect();
+            assert_eq!(args, vec![path.as_os_str()]);
+            assert!(!args
+                .iter()
+                .any(|arg| arg.to_string_lossy().eq_ignore_ascii_case("/newWindow")));
         }
     }
 }
