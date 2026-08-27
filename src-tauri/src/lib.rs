@@ -116,7 +116,7 @@ pub struct InnerAppState {
     /// 主聊天 `delete_file` 工具的待审批删除请求（request_id → oneshot）。
     pub chat_file_delete_approvals: ai_service::skill_agent::ApprovalMap,
     /// 主聊天后台命令的并发槽位与任务 ID 分配器。
-    pub background_commands:
+    pub background_commands: 
         Arc<ai_service::tools::background_command::BackgroundCommandManager>,
     /// 剧本编辑器「试玩」当前在跑的后台任务句柄。
     ///
@@ -274,6 +274,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_screenshots::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_android_fs::init());
 
@@ -707,7 +708,9 @@ pub fn run() {
             api::chat::feed_image,
             api::chat::feed_text,
             api::screenshot::start_screenshot,
+            api::screenshot::capture_full_screenshot,
             api::screenshot::get_overlay_data,
+            api::screenshot::pick_image_from_desktop,
             api::screenshot::confirm_screenshot,
             api::screenshot::cancel_screenshot,
             api::save::list_saves,

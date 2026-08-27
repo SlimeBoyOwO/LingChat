@@ -15,6 +15,10 @@ edition = "2021"
 name = "ling_chat_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[profile.dev]
+strip = "debuginfo"    # 去掉调试符号，deps 体积直接砍半以上
+opt-level = 0          # 保持零优化，编译速度不变
+
 [features]
 # 移动端（Android/iOS）构建时必须启用：让 webview 从应用内嵌资产加载前端
 # （不走 devUrl）。桌面端不受影响。
@@ -89,6 +93,8 @@ tokio-util = { version = "0.7", features = ["io"] }
 
 # Skill Agent：命令输出在中文 Windows 上是 GBK，需要回退解码
 encoding_rs = "0.8"
+tauri-plugin-os = "2"
+rfd = "0.17.2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"

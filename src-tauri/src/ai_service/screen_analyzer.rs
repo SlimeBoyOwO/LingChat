@@ -8,6 +8,12 @@ use serde_json::Value;
 use std::time::Instant;
 use tauri::AppHandle;
 
+// 为macOS适配
+use std::process::Command;
+use std::fs;
+use std::env::temp_dir;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use crate::ai_service::llm::provider_config::{resolve_vision_provider, LlmProviderConfig};
 
 /// 构造预配置的 reqwest Client（TLS 见 crate::utils::tls::build_tls_config）。
@@ -268,7 +274,8 @@ fn encode_image_base64(bytes: &[u8], mime_type: &str) -> (String, String) {
 
 /// 捕获整个桌面并返回 JPEG 格式的字节。
 /// Windows: 使用 GDI (BitBlt + GetDIBits) 捕获，然后压缩为 1024x768 JPEG。
-/// 其他平台: 返回 None。
+/// macOS: 使用 `screencapture` 命令捕获，然后压缩为 1024x768 JPEG。
+/// Linux 及其他平台: 暂不支持，返回 None。
 pub fn capture_screen_as_jpeg() -> Option<Vec<u8>> {
     #[cfg(target_os = "windows")]
     {
@@ -342,7 +349,43 @@ pub fn capture_screen_as_jpeg() -> Option<Vec<u8>> {
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
+    // 为macOS适配
+    #[cfg(target_os = "macos")]
+    {
+        // 生成临时文件路径（避免并发冲突）
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_micros();
+        let temp_path = temp_dir().join(format!("screenshot_{}.jpg", timestamp));
+        let path_str = temp_path.to_str()?;
+
+        // 静默截屏（-x），输出 JPG
+        let output = Command::new("screencapture")
+            .args(["-x", "-t", "jpg", path_str])
+            .output();
+
+        if output.is_err() {
+            tracing::error!("screencapture 命令执行失败，请检查屏幕录制权限");
+            return None;
+        }
+
+        // 读取文件字节
+        let data = fs::read(&temp_path).ok()?;
+        // 删除临时文件
+        let _ = fs::remove_file(&temp_path);
+
+        // 缩放为 1024x768 (此处直接 resize，与 Windows 行为一致)
+        let img = image::load_from_memory(&data).ok()?;
+        // 注意：Windows 版本是固定 resize 到 1024x768，可能会拉伸，这里也照做
+        let resized = img.resize_exact(1024, 768, image::imageops::FilterType::Triangle);
+        let mut jpeg_bytes = Vec::new();
+        let mut cursor = std::io::Cursor::new(&mut jpeg_bytes);
+        let _ = resized.write_to(&mut cursor, image::ImageFormat::Jpeg);
+        Some(jpeg_bytes)
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         None
     }
@@ -422,7 +465,34 @@ pub fn capture_screen_raw_jpeg() -> Option<Vec<u8>> {
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
+    // 为macOS适配
+    #[cfg(target_os = "macos")]
+    {
+        // 与上面类似，但使用 PNG 中间格式并转换成 JPEG（全分辨率）
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_micros();
+        let temp_path = temp_dir().join(format!("screenshot_raw_{}.jpg", timestamp));
+        let path_str = temp_path.to_str()?;
+
+        let output = Command::new("screencapture")
+            .args(["-x", "-t", "jpg", path_str])  // 注意这里仍然指定 jpg
+            .output();
+
+        if output.is_err() {
+            tracing::error!("screencapture 命令执行失败，请检查屏幕录制权限");
+            return None;
+        }
+
+        let data = fs::read(&temp_path).ok()?;
+        let _ = fs::remove_file(&temp_path);
+
+        // 全分辨率，直接返回 JPEG 字节（无需缩放）
+        Some(data)
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         None
     }
