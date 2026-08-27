@@ -718,6 +718,8 @@ pub fn run() {
             api::save::update_save_title,
             api::save::save_screenshot,
             api::save::capture_main_window_screenshot,
+            api::settings_snapshot::capture_settings_snapshot,
+            api::settings_snapshot::cleanup_settings_snapshot,
             api::script::list_scripts,
             api::script::list_standalone_scripts,
             api::script::start_script,

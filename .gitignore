@@ -188,7 +188,9 @@ data/plugins/*
 .claude
 CLAUDE.md
 AGENTS.md
+.agents/
+CONTEXT.md
+docs/adr
 
 # 本地 APK build 路径
 prev-build-*/
-
