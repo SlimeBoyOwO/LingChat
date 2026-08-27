@@ -30,6 +30,14 @@ onBeforeUnmount(() => document.body.classList.remove(CLASS))
 
 <style>
 /* 非 scoped：作用于全局 UI。仅在 body.ling-ui-blood 下生效 */
+body.ling-ui-blood {
+  /* 对话分割线使用背景渐变而不是 color，必须通过继承变量一起切成血红色。 */
+  --ling-dialog-divider-base: rgba(184, 9, 26, 0.3);
+  --ling-dialog-divider-dim: rgba(214, 12, 34, 0.38);
+  --ling-dialog-divider-bright: rgba(255, 38, 62, 0.96);
+  --ling-dialog-divider-shadow: rgba(255, 18, 45, 0.55);
+}
+
 body.ling-ui-blood #app * {
   color: #b8091a !important;
   text-shadow:
