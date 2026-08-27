@@ -399,6 +399,9 @@ export function initializeTauriEventListeners() {
   // 实时删文件检查——玩家不等旧台词点完就该看到房间塌掉）
   listen('script:watch-jump', () => {
     eventQueue.clear()
+    const gameStore = useGameStore()
+    gameStore.forceChoice = null
+    gameStore.poemGame = null
     eventQueue.resume()
   })
 

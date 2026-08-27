@@ -10,7 +10,7 @@
       <button
         v-for="choice in gameStore.forceChoice.choices"
         :key="choice.text"
-        :disabled="choice.disabled || choice.text !== gameStore.forceChoice!.forced"
+        :disabled="submitting || choice.disabled || choice.text !== gameStore.forceChoice!.forced"
         :title="choice.disabled ? choice.reason || '该选项当前不可选' : ''"
         :class="[
           'relative w-full py-4 px-8 border rounded-full border-white/10 backdrop-blur-xl backdrop-saturate-150',
@@ -31,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch, nextTick } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useGameStore } from '@/stores/modules/game'
 import type { ScriptChoiceItem } from '@/types/script'
@@ -42,10 +42,15 @@ const overlayRef = ref<HTMLElement | null>(null)
 
 // 当前真实鼠标位置（由 mousemove 追踪；拖动期间会被我们不断改写）
 const realPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+type ScriptCursorPosition = { x: number; y: number }
 
 let timerId = 0
-let startedAt = 0
+let warpStopTimerId = 0
+let runGeneration = 0
+let activeRequestId = ''
+let warpActive = false
 let submitted = false
+let submitting = false
 let warpFailures = 0
 
 /**
@@ -69,106 +74,163 @@ function onMouseMove(e: MouseEvent) {
   realPos.y = e.clientY
 }
 
-const TICK_MS = 25 // 每帧拖动一步，约 40 步/秒
-const PULL_MS = 1800 // 1.8s 后完全被吸附（v2.7 加强：夺鼠标更凶）
+const TICK_MS = 1000 / 30 // DDLC RigMouse 原版：每秒 30 次
+const PULL_RATIO = 0.1 // (current * 9 + target) / 10
 const MAX_WARP_FAILURES = 5 // 连续失败这么多次就放弃拖动，留在原地等玩家自己点
 
-async function tick() {
+async function tick(generation: number) {
   const fc = gameStore.forceChoice
-  if (!fc || submitted) return
+  if (
+    generation !== runGeneration ||
+    !fc ||
+    fc.requestId !== activeRequestId ||
+    !warpActive ||
+    submitted
+  )
+    return
   const btn = forcedBtn()
   if (!btn) {
     // 按钮尚未渲染完成：重试而不是静默退出，避免拖动完全不发生
-    timerId = window.setTimeout(tick, TICK_MS)
+    timerId = window.setTimeout(() => tick(generation), TICK_MS)
     return
   }
-
-  const elapsed = performance.now() - startedAt
-  // 磁力曲线：前 0.4s 几乎正常，之后加速增强直至完全吸附
-  const pull = Math.max(0, Math.min(1, (elapsed - 400) / (PULL_MS - 400)))
 
   const rect = btn.getBoundingClientRect()
   const tx = rect.left + rect.width / 2
   const ty = rect.top + rect.height / 2
 
-  // 朝目标插值一步（步长随磁力变大），然后改写真实鼠标位置
-  const step = 0.06 + pull * 0.3
-  realPos.x += (tx - realPos.x) * step
-  realPos.y += (ty - realPos.y) * step
+  // DDLC 原版 RigMouse：每拍把真实指针与目标按 9:1 混合，玩家越挣扎越能感到
+  // 一股持续拉力，而不是第一帧突然瞬移到按钮上。
+  realPos.x = realPos.x * (1 - PULL_RATIO) + tx * PULL_RATIO
+  realPos.y = realPos.y * (1 - PULL_RATIO) + ty * PULL_RATIO
 
   try {
-    await invoke('warp_cursor', { x: realPos.x, y: realPos.y })
+    await invoke('warp_cursor', {
+      requestId: fc.requestId,
+      x: realPos.x,
+      y: realPos.y,
+    })
     warpFailures = 0
   } catch (e) {
     warpFailures += 1
     console.warn(`[ForceChoice] warp_cursor 失败(${warpFailures}/${MAX_WARP_FAILURES}):`, e)
     if (warpFailures >= MAX_WARP_FAILURES) {
       // 拖不动就放弃拖动、保持选项开着等玩家自己点——只有强制项可点，不会死锁
-      console.warn('[ForceChoice] warp_cursor 持续失败，退化为普通点击选择')
+      console.warn('[ForceChoice] warp_cursor 持续失败，停止牵引并保留 forced 手动点击')
+      stopWarp('warp-failed')
       return
     }
-    timerId = window.setTimeout(tick, TICK_MS)
+    timerId = window.setTimeout(() => tick(generation), TICK_MS)
     return
   }
 
-  const dist = Math.hypot(realPos.x - tx, realPos.y - ty)
-  if (pull >= 1 && dist < 4) {
-    // 完全吸附后把指针钉在按钮中心，但【不替玩家点击】——继续拖动循环，
-    // 玩家挣扎会被立刻拉回，直到玩家自己点下强制项（onChoiceClick）为止
-    realPos.x = tx
-    realPos.y = ty
-    invoke('warp_cursor', { x: tx, y: ty }).catch(() => {})
-  }
-
-  timerId = window.setTimeout(tick, TICK_MS)
+  if (generation !== runGeneration || !warpActive || submitted) return
+  timerId = window.setTimeout(() => tick(generation), TICK_MS)
 }
 
-/** warp 不可用/配置错误时的兜底：直接自动提交 forced，避免剧本卡死（仅用于 forced 配置无效的异常情况） */
-function finishFallback() {
-  const fc = gameStore.forceChoice
-  if (!fc || submitted) return
-  submitted = true
-  window.setTimeout(() => submit(fc.forced), 800)
+/**
+ * 只停止系统鼠标牵引，不替玩家点击，也不把指针恢复到旧位置。
+ * Esc、失焦、隐藏、5 秒时限、事件切换和卸载都走这一条幂等清理路径。
+ */
+function stopWarp(reason: string) {
+  if (!warpActive && !activeRequestId) return
+  const requestId = activeRequestId
+  activeRequestId = ''
+  warpActive = false
+  runGeneration += 1
+  clearTimeout(timerId)
+  clearTimeout(warpStopTimerId)
+  if (requestId) {
+    invoke('cancel_script_cursor_warp', { requestId }).catch((error) => {
+      console.warn(`[ForceChoice] 取消鼠标牵引失败(${reason}):`, error)
+    })
+  }
+}
+
+function onKeyDown(event: KeyboardEvent) {
+  if (event.key === 'Escape') stopWarp('escape')
+}
+
+function onWindowBlur() {
+  stopWarp('blur')
+}
+
+function onVisibilityChange() {
+  if (document.visibilityState !== 'visible') stopWarp('hidden')
 }
 
 /** 玩家自己点击：只有未被禁用的强制项会真正提交（其余按钮本就 disabled） */
-function onChoiceClick(choice: ScriptChoiceItem) {
+async function onChoiceClick(choice: ScriptChoiceItem) {
   const fc = gameStore.forceChoice
-  if (!fc || submitted) return
+  if (!fc || submitted || submitting) return
   if (choice.disabled || choice.text !== fc.forced) return
-  submitted = true
-  submit(choice.text)
-}
-
-function submit(choice: string) {
-  gameStore.appendGameMessage({
-    type: 'message',
-    displayName: gameStore.userName,
-    content: choice,
-  })
-  invoke('script_submit_choice', { choice })
-  gameStore.forceChoice = null
+  submitting = true
+  stopWarp('submit')
+  try {
+    await invoke('script_submit_choice', {
+      choice: choice.text,
+      requestId: fc.requestId,
+    })
+    submitted = true
+    gameStore.appendGameMessage({
+      type: 'message',
+      displayName: gameStore.userName,
+      content: choice.text,
+    })
+    if (gameStore.forceChoice?.requestId === fc.requestId) gameStore.forceChoice = null
+  } catch (error) {
+    console.error('[ForceChoice] 提交 forced 选项失败:', error)
+  } finally {
+    submitting = false
+  }
 }
 
 watch(
   () => gameStore.forceChoice,
   async (fc) => {
-    clearTimeout(timerId)
+    stopWarp('event-change')
+    activeRequestId = fc?.requestId ?? ''
     submitted = false
+    submitting = false
     warpFailures = 0
     if (!fc) return
     if (!fc.forced || !fc.choices.some((c) => c.text === fc.forced && !c.disabled)) {
-      // forced 配置无效（剧本 bug，正常流程不会走到）：兜底自动提交 forced 原文，避免死锁
-      finishFallback()
+      console.error('[ForceChoice] forced 配置无效，拒绝自动提交')
       return
     }
+
+    const generation = ++runGeneration
+    warpActive = true
     await nextTick()
-    startedAt = performance.now()
-    timerId = window.setTimeout(tick, TICK_MS)
+    try {
+      const position = await invoke<ScriptCursorPosition>('get_script_cursor_position', {
+        requestId: fc.requestId,
+      })
+      realPos.x = position.x
+      realPos.y = position.y
+    } catch (error) {
+      console.warn('[ForceChoice] 无法读取真实鼠标位置，退化为 forced 手动点击:', error)
+      stopWarp('position-unavailable')
+      return
+    }
+    if (generation !== runGeneration || !warpActive || submitted) return
+    warpStopTimerId = window.setTimeout(() => stopWarp('time-limit'), 5000)
+    timerId = window.setTimeout(() => tick(generation), TICK_MS)
   },
 )
 
-onBeforeUnmount(() => clearTimeout(timerId))
+onMounted(() => {
+  window.addEventListener('keydown', onKeyDown, true)
+  window.addEventListener('blur', onWindowBlur)
+  document.addEventListener('visibilitychange', onVisibilityChange)
+})
+
+onBeforeUnmount(() => {
+  stopWarp('unmount')
+  window.removeEventListener('keydown', onKeyDown, true)
+  window.removeEventListener('blur', onWindowBlur)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+})
 </script>
 
 <style scoped>

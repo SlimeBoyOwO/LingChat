@@ -730,7 +730,9 @@ pub fn run() {
             api::script::close_script_glitch_windows,
             api::script::reset_script_state,
             api::script::stop_script,
+            api::script::get_script_cursor_position,
             api::script::warp_cursor,
+            api::script::cancel_script_cursor_warp,
             // ── DLC 剧本包 ──
             api::dlc::list_dlcs,
             api::dlc::import_dlc,

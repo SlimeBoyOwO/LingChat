@@ -11,6 +11,7 @@ export default class ForceChoiceProcessor implements IEventProcessor {
     const gameStore = useGameStore()
 
     gameStore.forceChoice = {
+      requestId: event.requestId,
       choices: event.choices,
       forced: event.forced,
     }

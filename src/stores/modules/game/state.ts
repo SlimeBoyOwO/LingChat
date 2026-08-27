@@ -65,7 +65,7 @@ export interface GameRole {
 export interface GameState {
   runningScript: ScriptInfo | null
   /** 强制选择演出（DDLC 式鼠标拖拽）；非 null 时 ForceChoice 组件接管选择 */
-  forceChoice: { choices: ScriptChoiceItem[]; forced: string } | null
+  forceChoice: { requestId: string; choices: ScriptChoiceItem[]; forced: string } | null
   /** 选词写诗全屏互动；非 null 时 PoemGame 接管输入。 */
   poemGame: ScriptPoemGameEvent | null
 

@@ -1,6 +1,6 @@
 [package]
 name = "ling_chat"
-version = "0.5.2"
+version = "0.5.3"
 default-run = "ling_chat"
 description = "A Tauri App"
 authors = ["you"]

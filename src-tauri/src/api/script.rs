@@ -3,9 +3,9 @@
 //! Replaces Python's WebSocket-based script communication.
 //! Frontend calls these via `invoke()` instead of `/v1/chat/script/*` HTTP endpoints.
 
-use crate::ai_service::game_system::script_engine::events::ScriptContext;
-use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::AppState;
+use crate::ai_service::game_system::script_engine::ScriptManager;
+use crate::ai_service::game_system::script_engine::events::ScriptContext;
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
@@ -130,7 +130,10 @@ pub async fn get_script_menu_effect(app: AppHandle) -> Option<ScriptMenuEffectRe
 /// 角色标记 .chr 全部删除后返回 locked=true 并带上 Assets 目录；玩家放回任一
 /// .chr 或重置记忆（运行状态被清掉）后自动解锁。
 #[tauri::command]
-pub async fn check_script_ghost_lock(app: AppHandle, script_name: String) -> ScriptGhostLockResponse {
+pub async fn check_script_ghost_lock(
+    app: AppHandle,
+    script_name: String,
+) -> ScriptGhostLockResponse {
     let app_state = app.state::<AppState>();
     let service = app_state.ai_service.lock().await;
     let not_locked = || ScriptGhostLockResponse {
@@ -148,17 +151,20 @@ pub async fn check_script_ghost_lock(app: AppHandle, script_name: String) -> Scr
     }
     ScriptGhostLockResponse {
         locked: true,
-        asset_dir: Some(script.script_path.join("Assets").to_string_lossy().to_string()),
+        asset_dir: Some(
+            script
+                .script_path
+                .join("Assets")
+                .to_string_lossy()
+                .to_string(),
+        ),
     }
 }
 
 /// Display one auxiliary horror window only after the frontend event queue has
 /// reached its Rust-validated one-time ticket.
 #[tauri::command]
-pub async fn show_script_glitch_window(
-    app: AppHandle,
-    request_id: u64,
-) -> Result<(), String> {
+pub async fn show_script_glitch_window(app: AppHandle, request_id: u64) -> Result<(), String> {
     crate::ai_service::game_system::script_engine::events::glitch_window_event::show_pending_glitch_window(
         &app,
         request_id,
@@ -182,10 +188,7 @@ pub fn close_script_glitch_windows(app: AppHandle) {
 /// frontend queue beat, then open TaskDialog, Notepad, or real CMD without
 /// launching PowerShell/pwsh. Replayed/stale/free-form invokes are rejected.
 #[tauri::command]
-pub async fn spawn_script_console_window(
-    _app: AppHandle,
-    request_id: u64,
-) -> Result<(), String> {
+pub async fn spawn_script_console_window(_app: AppHandle, request_id: u64) -> Result<(), String> {
     super::script_popups::show_pending(request_id)
 }
 
@@ -290,7 +293,7 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
                     .await;
                 }
                 tracing::info!("[ScriptAPI] 剧本执行完成")
-            }
+            },
             Err(e) => tracing::error!("[ScriptAPI] 剧本执行错误: {}", e),
         }
     });
@@ -350,7 +353,7 @@ pub async fn reset_script_state(app: AppHandle, script_name: String) -> Result<b
                 return Err(format!(
                     "准备重置剧本记忆失败，已保留恢复事务供下次启动重试: {error:#}"
                 ));
-            }
+            },
         };
 
     let rollback_boundaries = || {
@@ -456,6 +459,7 @@ pub async fn stop_script(app: AppHandle) -> Result<(), String> {
         channels.input_tx = None;
         channels.choice_tx = None;
         channels.choice_allow_free = false;
+        channels.force_choice_guard = None;
         // 文件监视器一并停掉并丢弃未消费的跳转
         if let Some(task) = channels.watch_task.take() {
             task.abort();
@@ -475,6 +479,61 @@ pub async fn stop_script(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+async fn validate_force_choice_warp_ticket(
+    app: &AppHandle,
+    request_id: &str,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let mut channels = state.script_channels.lock().await;
+    let guard = channels
+        .force_choice_guard
+        .as_mut()
+        .ok_or("当前没有可牵引鼠标的 force_choice")?;
+    if guard.request_id != request_id {
+        return Err("force_choice 鼠标票据无效或已过期".to_string());
+    }
+    if !guard.warp_enabled {
+        return Err("force_choice 鼠标牵引已取消".to_string());
+    }
+    if std::time::Instant::now() > guard.warp_expires_at {
+        guard.warp_enabled = false;
+        return Err("force_choice 鼠标牵引已超过 5 秒安全时限".to_string());
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ScriptCursorPosition {
+    pub x: f64,
+    pub y: f64,
+}
+
+/// 读取系统指针在主窗口客户区内的逻辑坐标，作为 DDLC RigMouse 每次牵引的真实起点。
+/// 多显示器可出现负的屏幕坐标，因此先减客户区原点再除 DPI，最后限制在视口边界。
+#[tauri::command]
+pub async fn get_script_cursor_position(
+    window: tauri::WebviewWindow,
+    request_id: String,
+) -> Result<ScriptCursorPosition, String> {
+    if window.label() != "main" {
+        return Err("只有主窗口可以启动 force_choice 鼠标牵引".to_string());
+    }
+    validate_force_choice_warp_ticket(window.app_handle(), &request_id).await?;
+    if !window.is_focused().map_err(|e| e.to_string())? {
+        return Err("主窗口未聚焦，拒绝牵引系统鼠标".to_string());
+    }
+    let cursor = window.cursor_position().map_err(|e| e.to_string())?;
+    let origin = window.inner_position().map_err(|e| e.to_string())?;
+    let size = window.inner_size().map_err(|e| e.to_string())?;
+    let scale = window.scale_factor().map_err(|e| e.to_string())?;
+    let max_x = f64::from(size.width) / scale;
+    let max_y = f64::from(size.height) / scale;
+    Ok(ScriptCursorPosition {
+        x: ((cursor.x - f64::from(origin.x)) / scale).clamp(0.0, max_x),
+        y: ((cursor.y - f64::from(origin.y)) / scale).clamp(0.0, max_y),
+    })
+}
+
 /// 把系统鼠标指针拖动到窗口内的指定 CSS 坐标。
 ///
 /// 用于剧本的 `force_choice` 演出（DDLC 式强制拖动鼠标）。前端传视口 CSS 像素，
@@ -483,22 +542,41 @@ pub async fn stop_script(app: AppHandle) -> Result<(), String> {
 /// ClientToScreen（Windows）/加窗口原点（macOS、Linux）。之前叠加了一次
 /// inner_position，窗口非最大化时鼠标会被多拽出一段窗口偏移，方向看着就是歪的。
 #[tauri::command]
-pub async fn warp_cursor(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
+pub async fn warp_cursor(
+    window: tauri::WebviewWindow,
+    request_id: String,
+    x: f64,
+    y: f64,
+) -> Result<(), String> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     // 诊断计数：前几次调用写 INFO 日志，便于排查"拖动没生效/方向不对"类反馈
     static LOG_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-    let window = app.get_webview_window("main").ok_or("主窗口不存在")?;
+    if window.label() != "main" {
+        return Err("只有主窗口可以执行 force_choice 鼠标牵引".to_string());
+    }
+    validate_force_choice_warp_ticket(window.app_handle(), &request_id).await?;
+    if !x.is_finite() || !y.is_finite() {
+        return Err("鼠标目标坐标必须是有限数值".to_string());
+    }
+    if !window.is_focused().map_err(|e| e.to_string())? {
+        return Err("主窗口未聚焦，拒绝牵引系统鼠标".to_string());
+    }
     let scale = window.scale_factor().map_err(|e| e.to_string())?;
-    let px = (x * scale).round() as i32;
-    let py = (y * scale).round() as i32;
+    let size = window.inner_size().map_err(|e| e.to_string())?;
+    let max_x = f64::from(size.width) / scale;
+    let max_y = f64::from(size.height) / scale;
+    let bounded_x = x.clamp(0.0, max_x);
+    let bounded_y = y.clamp(0.0, max_y);
+    let px = (bounded_x * scale).round() as i32;
+    let py = (bounded_y * scale).round() as i32;
     let result = window
         .set_cursor_position(tauri::PhysicalPosition::new(px, py))
         .map_err(|e| e.to_string());
     let n = LOG_COUNT.fetch_add(1, Ordering::Relaxed);
     if n < 3 {
         tracing::info!(
-            "[warp_cursor] logical=({x:.0},{y:.0}) scale={scale} client=({px},{py}) ok={}",
+            "[warp_cursor] logical=({bounded_x:.0},{bounded_y:.0}) scale={scale} client=({px},{py}) ok={}",
             result.is_ok()
         );
     }
@@ -506,6 +584,27 @@ pub async fn warp_cursor(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
         tracing::warn!("[warp_cursor] 设置光标位置失败: {e}");
     }
     result
+}
+
+/// Esc、失焦、隐藏或 5 秒时限到达后只停止移动鼠标，不替玩家选择。
+#[tauri::command]
+pub async fn cancel_script_cursor_warp(
+    window: tauri::WebviewWindow,
+    request_id: String,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("只有主窗口可以取消 force_choice 鼠标牵引".to_string());
+    }
+    let state = window.state::<AppState>();
+    let mut channels = state.script_channels.lock().await;
+    let Some(guard) = channels.force_choice_guard.as_mut() else {
+        return Ok(());
+    };
+    if guard.request_id != request_id {
+        return Err("force_choice 鼠标票据无效或已过期".to_string());
+    }
+    guard.warp_enabled = false;
+    Ok(())
 }
 
 #[tauri::command]
@@ -539,15 +638,84 @@ pub async fn script_submit_input(app: AppHandle, input: String) -> Result<(), St
     Err("当前没有等待输入的脚本事件".to_string())
 }
 
+fn validate_force_choice_submission(
+    guard: Option<&crate::ai_service::game_system::script_engine::events::ForceChoiceGuard>,
+    choice: &str,
+    request_id: Option<&str>,
+) -> Result<(), String> {
+    if let Some(guard) = guard {
+        if request_id != Some(guard.request_id.as_str()) {
+            return Err("force_choice 提交票据无效".to_string());
+        }
+        if choice != guard.forced {
+            return Err("force_choice 只能提交 forced 选项".to_string());
+        }
+    } else if request_id.is_some() {
+        return Err("force_choice 已结束或票据已过期".to_string());
+    }
+    Ok(())
+}
+
 #[tauri::command]
-pub async fn script_submit_choice(app: AppHandle, choice: String) -> Result<(), String> {
+pub async fn script_submit_choice(
+    app: AppHandle,
+    choice: String,
+    request_id: Option<String>,
+) -> Result<(), String> {
     let state = app.state::<AppState>();
     let mut channels = state.script_channels.lock().await;
+    validate_force_choice_submission(
+        channels.force_choice_guard.as_ref(),
+        &choice,
+        request_id.as_deref(),
+    )?;
     if let Some(tx) = channels.choice_tx.take() {
         channels.choice_allow_free = false;
+        channels.force_choice_guard = None;
         let _ = tx.send(choice);
         Ok(())
     } else {
         Err("当前没有等待选择的脚本事件".to_string())
+    }
+}
+
+#[cfg(test)]
+mod force_choice_submission_tests {
+    use super::validate_force_choice_submission;
+    use crate::ai_service::game_system::script_engine::events::ForceChoiceGuard;
+
+    fn guard() -> ForceChoiceGuard {
+        ForceChoiceGuard {
+            request_id: "ticket-1".to_string(),
+            forced: "再陪她一会儿".to_string(),
+            warp_enabled: true,
+            warp_expires_at: std::time::Instant::now() + std::time::Duration::from_secs(5),
+        }
+    }
+
+    #[test]
+    fn ordinary_choices_do_not_need_a_ticket() {
+        assert!(validate_force_choice_submission(None, "普通选项", None).is_ok());
+    }
+
+    #[test]
+    fn stale_ticket_without_a_guard_is_rejected() {
+        assert!(validate_force_choice_submission(None, "普通选项", Some("old")).is_err());
+    }
+
+    #[test]
+    fn force_choice_rejects_wrong_ticket_or_wrong_text() {
+        let guard = guard();
+        assert!(validate_force_choice_submission(Some(&guard), &guard.forced, None).is_err());
+        assert!(validate_force_choice_submission(Some(&guard), "逃走", Some("ticket-1")).is_err());
+    }
+
+    #[test]
+    fn force_choice_accepts_only_matching_ticket_and_text() {
+        let guard = guard();
+        assert!(
+            validate_force_choice_submission(Some(&guard), &guard.forced, Some(&guard.request_id),)
+                .is_ok()
+        );
     }
 }

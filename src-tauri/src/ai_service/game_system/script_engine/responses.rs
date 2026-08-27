@@ -156,6 +156,8 @@ pub struct WatchJumpPayload {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ForceChoicePayload {
+    /// 绑定当前剧本运行与 force_choice 实例的一次性能力票据。
+    pub request_id: String,
     pub choices: Vec<ChoiceItem>,
     /// 必然被选中的选项文本（必须在 choices 里存在）
     pub forced: String,

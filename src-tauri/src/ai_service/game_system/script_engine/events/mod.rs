@@ -55,6 +55,16 @@ use crate::ai_service::llm::LlmClient;
 // 剧本共享通道（剧本运行期间的用户输入/选择）
 // ============================================================
 
+/// 当前 `force_choice` 的一次性能力票据：只允许对应主窗口在短时间内移动鼠标，
+/// 提交时后端还会强制核对 forced 文本，不能只依赖前端 disabled。
+#[derive(Clone, Debug)]
+pub struct ForceChoiceGuard {
+    pub request_id: String,
+    pub forced: String,
+    pub warp_enabled: bool,
+    pub warp_expires_at: std::time::Instant,
+}
+
 /// 剧本运行期间用于用户输入/选择的通道。
 /// 存为 `Arc<Mutex<>>`，使后台任务与 Tauri 命令都能访问，而不必持有 `AIService` 的锁。
 pub struct ScriptChannels {
@@ -66,6 +76,7 @@ pub struct ScriptChannels {
     /// `script_submit_input` 据此判断：当选项挂起时，输入框里打的字可以转投
     /// `choice_tx` 而不是被拒绝——否则选项永远无法解决，剧本永久阻塞。
     pub choice_allow_free: bool,
+    pub force_choice_guard: Option<ForceChoiceGuard>,
     /// 文件监视（watch_file）：目标 .chr 消失时要跳转的章节。
     /// 章节循环在事件之间/事件报错时检查它——监视器会同时丢弃挂起的输入通道，
     /// 让阻塞中的事件立刻以 Err 返回，从而及时让位给目标章节。
@@ -80,6 +91,7 @@ impl ScriptChannels {
             input_tx: None,
             choice_tx: None,
             choice_allow_free: false,
+            force_choice_guard: None,
             watch_jump: None,
             watch_task: None,
         }
@@ -320,7 +332,7 @@ pub fn evaluate_condition(condition: &str, vars: &serde_json::Map<String, Value>
 #[cfg(test)]
 mod tests {
     use super::evaluate_condition;
-    use serde_json::{json, Map, Value};
+    use serde_json::{Map, Value, json};
 
     fn vars(pairs: &[(&str, Value)]) -> Map<String, Value> {
         pairs

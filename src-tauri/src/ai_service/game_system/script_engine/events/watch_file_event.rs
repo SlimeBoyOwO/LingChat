@@ -9,12 +9,12 @@
 //! watched; the path is resolved with the same anti-traversal rules as
 //! `character_file`.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    character_file_event, register_event, ScriptContext, ScriptEvent,
+    ScriptContext, ScriptEvent, character_file_event, register_event,
 };
 
 const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
@@ -86,6 +86,7 @@ impl ScriptEvent for WatchFileEvent {
             channels.input_tx = None;
             channels.choice_tx = None;
             channels.choice_allow_free = false;
+            channels.force_choice_guard = None;
             return Ok(None);
         }
 
@@ -112,6 +113,7 @@ impl ScriptEvent for WatchFileEvent {
                     channels.input_tx = None;
                     channels.choice_tx = None;
                     channels.choice_allow_free = false;
+                    channels.force_choice_guard = None;
                 }
                 break;
             }

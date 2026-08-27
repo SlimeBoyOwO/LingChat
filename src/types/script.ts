@@ -173,6 +173,7 @@ export interface ScriptVoiceShiftEvent extends ScriptEvent {
 /** 强制选择事件：鼠标被拖向 forced 选项，最终只能提交它 */
 export interface ScriptForceChoiceEvent extends ScriptEvent {
   type: 'force_choice'
+  requestId: string
   choices: ScriptChoiceItem[]
   forced: string
 }

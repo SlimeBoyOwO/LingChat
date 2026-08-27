@@ -3,15 +3,16 @@
 //! 与 `choices` 共用同一条 oneshot 通道和选项匹配逻辑，区别只在 payload
 //! 多带一个 `forced` 字段：前端演出结束后只能提交这个选项的文本。
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    evaluate_condition, parse_duration, register_event, ScriptContext, ScriptEvent,
+    ForceChoiceGuard, ScriptContext, ScriptEvent, evaluate_condition, parse_duration,
+    register_event,
 };
 use crate::ai_service::game_system::script_engine::responses::{
-    event_names::SCRIPT_FORCE_CHOICE, ChoiceItem, ForceChoicePayload,
+    ChoiceItem, ForceChoicePayload, event_names::SCRIPT_FORCE_CHOICE,
 };
 use crate::ai_service::game_system::script_engine::utils::script_function;
 use crate::ai_service::message_system::events::emit;
@@ -45,13 +46,19 @@ impl ForceChoiceEvent {
 #[async_trait]
 impl ScriptEvent for ForceChoiceEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        let vars = ctx
-            .game_status
-            .lock()
-            .await
-            .script_status
-            .clone()
-            .map(|s| s.vars);
+        let (vars, cursor_warp_allowed) = {
+            let status = ctx.game_status.lock().await.script_status.clone();
+            let allowed = !ctx.is_preview
+                && status.as_ref().is_some_and(|script| {
+                    script.content_warning.as_deref() == Some("horror")
+                        && script
+                            .settings
+                            .get("allow_system_effects")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false)
+                });
+            (status.map(|script| script.vars), allowed)
+        };
 
         // 与 ChoiceEvent 一致：条件不满足的选项标记 disabled + lock_hint
         let choices: Vec<ChoiceItem> = self
@@ -78,33 +85,64 @@ impl ScriptEvent for ForceChoiceEvent {
             })
             .collect();
 
-        // forced 必须指向一个实际存在且未被锁定的选项，否则退化成普通 choices 行为：
-        // 前端看不到有效强制项时会放任玩家自选，避免剧本卡死。
+        // 强制项必须唯一、存在且未锁定；配置错误直接中止事件，绝不能让前端
+        // 自动提交一个不存在的文本，或悄悄退化后执行非预期分支。
         let forced = self.forced.clone();
-        if !forced.is_empty() && !choices.iter().any(|c| c.text == forced && !c.disabled) {
-            tracing::warn!(
-                "[ForceChoiceEvent] forced 选项 '{}' 不存在或被锁定，将不强制",
+        let forced_matches = choices
+            .iter()
+            .filter(|choice| choice.text == forced && !choice.disabled)
+            .count();
+        if forced.is_empty() || forced_matches != 1 {
+            return Err(anyhow!(
+                "force_choice.forced 必须唯一匹配一个未锁定选项: '{}'",
                 forced
-            );
+            ));
         }
+        let request_id = uuid::Uuid::new_v4().to_string();
 
         let rx = {
             let (tx, rx) = tokio::sync::oneshot::channel();
             let mut ch = ctx.channels.lock().await;
             ch.choice_tx = Some(tx);
             ch.choice_allow_free = false;
+            ch.force_choice_guard = Some(ForceChoiceGuard {
+                request_id: request_id.clone(),
+                forced: forced.clone(),
+                warp_enabled: cursor_warp_allowed,
+                warp_expires_at: std::time::Instant::now() + std::time::Duration::from_secs(5),
+            });
             rx
         };
 
         let payload = ForceChoicePayload {
+            request_id: request_id.clone(),
             choices,
-            forced,
+            forced: forced.clone(),
             duration: self.duration,
         };
-        let _ = emit(ctx.app, SCRIPT_FORCE_CHOICE, &payload);
+        if let Err(error) = emit(ctx.app, SCRIPT_FORCE_CHOICE, &payload) {
+            let mut channels = ctx.channels.lock().await;
+            channels.choice_tx = None;
+            channels.force_choice_guard = None;
+            return Err(anyhow!("发送 force_choice 事件失败: {error}"));
+        }
 
-        let user_choice = rx.await.map_err(|_| anyhow!("用户选择通道已关闭"))?;
-        ctx.channels.lock().await.choice_allow_free = false;
+        let choice_result = rx.await;
+        {
+            let mut channels = ctx.channels.lock().await;
+            channels.choice_allow_free = false;
+            if channels
+                .force_choice_guard
+                .as_ref()
+                .is_some_and(|guard| guard.request_id == request_id)
+            {
+                channels.force_choice_guard = None;
+            }
+        }
+        let user_choice = choice_result.map_err(|_| anyhow!("用户选择通道已关闭"))?;
+        if user_choice != forced {
+            return Err(anyhow!("force_choice 后端拒绝非 forced 选项"));
+        }
 
         tracing::info!("[ForceChoiceEvent] 用户选择(强制演出): {}", user_choice);
 
