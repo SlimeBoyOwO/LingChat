@@ -20,6 +20,8 @@ unsafe impl Send for SendHhook {}
 #[cfg(target_os = "windows")]
 unsafe impl Sync for SendHhook {}
 
+// 非 Windows 平台没有 Win32 钩子，这些变体只在 Windows 回调里构造，其余平台视为死代码。
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 #[derive(Clone, Debug)]
 enum InputType {
     Key { is_game: bool },

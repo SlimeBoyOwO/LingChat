@@ -226,7 +226,6 @@ impl MessageProcessor {
 
         while i < chars.len() {
             if chars[i] == '<' {
-                let start = i;
                 i += 1;
 
                 // 收集标签内容（直到遇到 '>' 或 '\n'）

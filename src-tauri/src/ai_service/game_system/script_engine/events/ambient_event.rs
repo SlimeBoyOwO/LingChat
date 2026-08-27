@@ -101,10 +101,6 @@ impl ScriptEvent for AmbientEvent {
     fn event_type() -> &'static str {
         "ambient"
     }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
-    }
 }
 
 pub fn register() {

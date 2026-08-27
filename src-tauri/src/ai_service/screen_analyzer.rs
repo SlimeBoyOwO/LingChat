@@ -350,6 +350,7 @@ pub fn capture_screen_as_jpeg() -> Option<Vec<u8>> {
 
 /// 捕获全分辨率桌面截图，不缩放。
 /// 用于截图覆盖层的精确像素映射（覆盖层需要 1:1 像素坐标）。
+#[cfg(desktop)]
 pub fn capture_screen_raw_jpeg() -> Option<Vec<u8>> {
     #[cfg(target_os = "windows")]
     {

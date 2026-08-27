@@ -70,10 +70,6 @@ impl ScriptEvent for MusicEvent {
     fn event_type() -> &'static str {
         "music"
     }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
-    }
 }
 
 pub fn register() {

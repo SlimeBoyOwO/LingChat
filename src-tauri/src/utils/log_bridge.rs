@@ -32,6 +32,7 @@ pub fn get_log_history() -> Vec<LogEntry> {
 
 /// 打开独立日志窗口；已存在时聚焦（仅桌面端，移动端为 no-op）。
 #[tauri::command]
+#[cfg_attr(not(desktop), allow(unused_variables))]
 pub async fn open_log_window(app: AppHandle) -> Result<(), String> {
     #[cfg(desktop)]
     {

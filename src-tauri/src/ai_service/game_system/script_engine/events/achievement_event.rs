@@ -12,14 +12,13 @@ use tauri::{Emitter, Manager};
 use crate::achievements::types::{Achievement, AchievementDef};
 use crate::AppState;
 use crate::ai_service::game_system::script_engine::events::{
-    parse_duration, register_event, ScriptContext, ScriptEvent,
+    register_event, ScriptContext, ScriptEvent,
 };
 
 pub struct UnlockAchievementEvent {
     achievement_id: String,
     title: String,
     description: String,
-    duration: Option<f64>,
 }
 
 impl UnlockAchievementEvent {
@@ -36,7 +35,6 @@ impl UnlockAchievementEvent {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string(),
-            duration: parse_duration(data),
         }
     }
 }
@@ -125,10 +123,6 @@ impl ScriptEvent for UnlockAchievementEvent {
 
     fn event_type() -> &'static str {
         "unlock_achievement"
-    }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
     }
 }
 

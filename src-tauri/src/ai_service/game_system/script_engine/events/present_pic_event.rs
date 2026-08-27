@@ -69,10 +69,6 @@ impl ScriptEvent for PresentPicEvent {
     fn event_type() -> &'static str {
         "present_pic"
     }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
-    }
 }
 
 pub fn register() {

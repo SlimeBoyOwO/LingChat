@@ -73,10 +73,6 @@ impl ScriptEvent for BackgroundEvent {
     fn event_type() -> &'static str {
         "background"
     }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
-    }
 }
 
 /// Register on module load

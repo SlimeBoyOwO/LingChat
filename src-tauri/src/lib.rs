@@ -16,7 +16,9 @@ use std::sync::Arc;
 
 use chrono::Local;
 use sea_orm::DatabaseConnection;
-use tauri::{Emitter, Listener, Manager};
+use tauri::{Listener, Manager};
+#[cfg(desktop)]
+use tauri::Emitter;
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;

@@ -117,14 +117,6 @@ pub trait ScriptEvent: Send {
     fn event_type() -> &'static str
     where
         Self: Sized;
-
-    /// 事件之间的间隔（秒）。对应 YAML 里的 `duration` 字段，所有事件继承自
-    /// 基础事件。`Some(n)`（n ≥ 0）表示事件展示后自动等待 n 秒再继续；
-    /// `None` 表示没写，由前端按各事件类型的默认节奏处理（通常等玩家点击）。
-    /// handler 在 `from_event_data` 里读取并返回。
-    fn duration(&self) -> Option<f64> {
-        None
-    }
 }
 
 // ============================================================
@@ -152,7 +144,7 @@ pub fn create_event(event_type: &str, event_data: Value) -> Option<Box<dyn Scrip
 }
 
 /// 从事件 YAML 里读取 `duration`（事件间隔秒数）。
-/// 各 handler 在 `from_event_data` 里调用，供 `ScriptEvent::duration()` 返回。
+/// 各 handler 在 `from_event_data` 里调用，随后写入给前端的展示 payload。
 /// 只接受数字；负数允许（由前端按「等玩家」处理），但 None 表示「没写」。
 pub fn parse_duration(data: &Value) -> Option<f64> {
     data.get("duration").and_then(|v| v.as_f64())

@@ -251,8 +251,8 @@ impl MemoryBuilder {
                 continue;
             }
 
-            let is_self_speaking = (line.sender_role_id() == Some(self.target_role_id)
-                && line.attribute() == &LineAttribute::Assistant);
+            let is_self_speaking = line.sender_role_id() == Some(self.target_role_id)
+                && line.attribute() == &LineAttribute::Assistant;
             if is_self_speaking {
                 if matches!(buffer_kind, Some(BufferKind::OtherBlock)) {
                     flush(&mut memory, &mut buffer, &mut buffer_kind, self);

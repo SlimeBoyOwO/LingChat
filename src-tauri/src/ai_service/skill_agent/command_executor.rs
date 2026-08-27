@@ -1,4 +1,5 @@
 //! Shell 命令执行、用户审批、超时与输出上限。
+#![cfg_attr(not(desktop), allow(dead_code))]
 
 use crate::ai_service::skill_agent::events::SkillAgentEvent;
 #[cfg(windows)]
@@ -313,8 +314,6 @@ async fn run_shell_command_with_limits(
     };
     #[cfg(not(windows))]
     let mut process = {
-        use std::os::unix::process::CommandExt;
-
         let mut process = tokio::process::Command::new("sh");
         process.arg("-c").arg(command).process_group(0);
         process

@@ -153,6 +153,7 @@ impl MessageGenerator {
 
     /// 把后台工具完成通知作为仅对 LLM 可见的临时 user context 触发新一轮回复。
     /// 通知不会写成玩家台词，避免界面和历史中出现伪造的用户消息。
+    #[cfg_attr(not(desktop), allow(dead_code))]
     pub async fn process_notification(&self, notification: String) -> Result<String> {
         let mut context = self.get_current_context().await?;
         if context.is_empty() {
