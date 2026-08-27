@@ -56,6 +56,10 @@ fn default_memory_promises_max_chars() -> u32 {
 pub const DEFAULT_LLM_TIMEOUT_SECS: u64 = 120;
 pub const MIN_LLM_TIMEOUT_SECS: u64 = 10;
 pub const MAX_LLM_TIMEOUT_SECS: u64 = 3600;
+pub const MIN_MEMORY_UPDATE_INTERVAL: u32 = 1;
+pub const MAX_MEMORY_UPDATE_INTERVAL: u32 = 10_000;
+pub const MAX_MEMORY_RECENT_WINDOW: u32 = 10_000;
+pub const MAX_MEMORY_SECTION_CHARS: u32 = 1_000_000;
 
 fn default_llm_timeout_secs() -> u64 {
     DEFAULT_LLM_TIMEOUT_SECS
@@ -158,6 +162,21 @@ fn get_u32(store: &Store<Wry>, key: &str, default: u32) -> u32 {
         .unwrap_or(default)
 }
 
+fn get_u32_in_range(
+    store: &Store<Wry>,
+    key: &str,
+    default: u32,
+    min: u32,
+    max: u32,
+) -> u32 {
+    store
+        .get(key)
+        .and_then(|value| value.as_u64())
+        .and_then(|value| u32::try_from(value).ok())
+        .filter(|value| (min..=max).contains(value))
+        .unwrap_or(default)
+}
+
 fn get_u64_in_range(store: &Store<Wry>, key: &str, default: u64, min: u64, max: u64) -> u64 {
     store
         .get(key)
@@ -208,35 +227,47 @@ impl AppConfig {
                 keys::USE_PERSISTENT_MEMORY,
                 default.use_persistent_memory,
             ),
-            memory_update_interval: get_u32(
+            memory_update_interval: get_u32_in_range(
                 &store,
                 keys::MEMORY_UPDATE_INTERVAL,
                 default.memory_update_interval,
+                MIN_MEMORY_UPDATE_INTERVAL,
+                MAX_MEMORY_UPDATE_INTERVAL,
             ),
-            memory_recent_window: get_u32(
+            memory_recent_window: get_u32_in_range(
                 &store,
                 keys::MEMORY_RECENT_WINDOW,
                 default.memory_recent_window,
+                0,
+                MAX_MEMORY_RECENT_WINDOW,
             ),
-            memory_short_term_max_chars: get_u32(
+            memory_short_term_max_chars: get_u32_in_range(
                 &store,
                 keys::MEMORY_SHORT_TERM_MAX_CHARS,
                 default.memory_short_term_max_chars,
+                0,
+                MAX_MEMORY_SECTION_CHARS,
             ),
-            memory_long_term_max_chars: get_u32(
+            memory_long_term_max_chars: get_u32_in_range(
                 &store,
                 keys::MEMORY_LONG_TERM_MAX_CHARS,
                 default.memory_long_term_max_chars,
+                0,
+                MAX_MEMORY_SECTION_CHARS,
             ),
-            memory_user_info_max_chars: get_u32(
+            memory_user_info_max_chars: get_u32_in_range(
                 &store,
                 keys::MEMORY_USER_INFO_MAX_CHARS,
                 default.memory_user_info_max_chars,
+                0,
+                MAX_MEMORY_SECTION_CHARS,
             ),
-            memory_promises_max_chars: get_u32(
+            memory_promises_max_chars: get_u32_in_range(
                 &store,
                 keys::MEMORY_PROMISES_MAX_CHARS,
                 default.memory_promises_max_chars,
+                0,
+                MAX_MEMORY_SECTION_CHARS,
             ),
             tts: TtsConfig::from_store(Some(&store)),
         })

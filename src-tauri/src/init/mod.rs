@@ -66,6 +66,16 @@ pub async fn initialize(
 
     // 提前加载配置 + 构建 LlmClient（AIService 的子成员 GameRoleManager 需要它）
     let app_config = AppConfig::load(&app.handle()).unwrap_or_default();
+    tracing::info!(
+        "MemoryBank 配置: enabled={}, update_interval={}, recent_window={}, limits=[{},{},{},{}]（记忆设置需重启生效）",
+        app_config.use_persistent_memory,
+        app_config.memory_update_interval,
+        app_config.memory_recent_window,
+        app_config.memory_short_term_max_chars,
+        app_config.memory_long_term_max_chars,
+        app_config.memory_user_info_max_chars,
+        app_config.memory_promises_max_chars,
+    );
 
     // 构建聊天主 LLM 槽位（支持运行时热切换）。
     // 槽位本身始终存在，未配置模型时内部值为 None。

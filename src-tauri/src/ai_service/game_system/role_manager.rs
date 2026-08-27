@@ -316,7 +316,7 @@ impl GameRoleManager {
                             s.sync_to_role(role);
                         }
                         s.check_and_trigger_auto_update(source_lines);
-                        let start = s.get_slice_start_index().await;
+                        let start = s.get_slice_start_index(source_lines).await;
                         let sys_text = s.get_system_memory_text().await;
                         let short = s.get_short_term_user_text().await;
                         (true, start, sys_text, short)
@@ -327,7 +327,7 @@ impl GameRoleManager {
             };
 
             // 阶段 3: 裁剪 + 构建角色记忆
-            let sliced: Vec<GameLine> = if slice_start > 0 && slice_start < source_lines.len() {
+            let sliced: Vec<GameLine> = if slice_start > 0 && slice_start <= source_lines.len() {
                 source_lines[slice_start..].to_vec()
             } else {
                 source_lines.to_vec()
@@ -365,6 +365,13 @@ impl GameRoleManager {
     }
 
     // ── MemoryBank 集成方法 ──
+
+    /// 台词历史即将重建；让所有进行中的摘要任务在提交时自动作废。
+    pub fn invalidate_memory_history(&self) {
+        for system in self.memory_bank_systems.values() {
+            system.invalidate_history();
+        }
+    }
 
     /// 惰性构造角色的 `PersistentMemorySystem`。
     ///
@@ -597,13 +604,13 @@ impl GameRoleManager {
     /// 将 MemoryBank 文本合并到 LLM 消息中。
     ///
     /// - `system_addendum`：合并到第一条 system 消息末尾
-    /// - `short_term_prefix`：保留参数（Python 版对应的 user 前缀合并已注释，此处同步）
+    /// - `short_term_prefix`：前置到第一条 user 消息；没有 user 时在 system 后插入
     ///
     /// 另会合并连续出现的多条 system 消息为一条。
     fn merge_memory_bank_into_context(
         memory: Vec<LlmMessage>,
         system_addendum: &str,
-        _short_term_prefix: &str,
+        short_term_prefix: &str,
     ) -> Vec<LlmMessage> {
         let mut out = memory;
 
@@ -619,6 +626,21 @@ impl GameRoleManager {
                 }
             } else {
                 out.push(LlmMessage::system(system_addendum));
+            }
+        }
+
+        if !short_term_prefix.trim().is_empty() {
+            let insert_at = out
+                .iter()
+                .position(|message| message.role != "system")
+                .unwrap_or(out.len());
+            if out.get(insert_at).is_some_and(|message| message.role == "user") {
+                let first_user = &mut out[insert_at];
+                if !first_user.content.contains(short_term_prefix) {
+                    first_user.content = format!("{}{}", short_term_prefix, first_user.content);
+                }
+            } else {
+                out.insert(insert_at, LlmMessage::user(short_term_prefix));
             }
         }
 
@@ -647,6 +669,99 @@ impl GameRoleManager {
     /// 提供给 memory_builder 之外的工具：把 `memory` 合并成 `[{role,content}, ...]` 的 serde 形式。
     pub fn memory_as_json(&self, role_id: i32) -> Option<Vec<LlmMessage>> {
         self.loaded_roles.get(&role_id).map(|r| r.memory.clone())
+    }
+}
+
+#[cfg(test)]
+mod memory_bank_context_tests {
+    use super::GameRoleManager;
+    use crate::ai_service::game_system::persistent_memory_system::{
+        MemorySectionLimits, PersistentMemorySystem,
+    };
+    use crate::ai_service::llm::LlmSlot;
+    use crate::ai_service::types::{GameMemoryBank, LlmMessage};
+    use crate::config::tts::TtsConfig;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    #[test]
+    fn invalidation_covers_systems_for_roles_no_longer_present_in_history() {
+        let llm: LlmSlot = Arc::new(RwLock::new(None));
+        let mut manager = GameRoleManager::new(
+            PathBuf::new(),
+            llm.clone(),
+            TtsConfig::default(),
+            None,
+            true,
+            250,
+            30,
+            MemorySectionLimits::default(),
+        );
+        for role_id in [1, 2] {
+            manager.memory_bank_systems.insert(
+                role_id,
+                PersistentMemorySystem::new(
+                    role_id,
+                    &GameMemoryBank::default(),
+                    llm.clone(),
+                    true,
+                    250,
+                    30,
+                    MemorySectionLimits::default(),
+                    "AI",
+                ),
+            );
+        }
+
+        manager.invalidate_memory_history();
+        assert!(manager
+            .memory_bank_systems
+            .values()
+            .all(|system| system.history_revision_for_test() == 1));
+    }
+
+    #[test]
+    fn short_term_summary_is_prepended_to_the_first_user_message_once() {
+        let output = GameRoleManager::merge_memory_bank_into_context(
+            vec![LlmMessage::system("persona"), LlmMessage::user("hello")],
+            "\nMEMORY\n",
+            "【近期回顾】summary\n\n",
+        );
+        assert_eq!(output[0].role, "system");
+        assert!(output[0].content.contains("MEMORY"));
+        assert_eq!(output[1].role, "user");
+        assert_eq!(output[1].content, "【近期回顾】summary\n\nhello");
+        assert_eq!(output[1].content.matches("【近期回顾】summary").count(), 1);
+    }
+
+    #[test]
+    fn short_term_summary_is_inserted_before_an_earlier_assistant_block() {
+        let output = GameRoleManager::merge_memory_bank_into_context(
+            vec![
+                LlmMessage::system("persona"),
+                LlmMessage::assistant("older assistant"),
+                LlmMessage::user("later user"),
+            ],
+            "",
+            "【近期回顾】summary\n\n",
+        );
+        assert_eq!(output[0].role, "system");
+        assert_eq!(output[1], LlmMessage::user("【近期回顾】summary\n\n"));
+        assert_eq!(output[2].role, "assistant");
+        assert_eq!(output[3].content, "later user");
+    }
+
+    #[test]
+    fn short_term_summary_is_inserted_when_no_user_message_exists() {
+        let output = GameRoleManager::merge_memory_bank_into_context(
+            vec![LlmMessage::system("persona"), LlmMessage::assistant("hello")],
+            "",
+            "【近期回顾】summary\n\n",
+        );
+        assert_eq!(output[0].role, "system");
+        assert_eq!(output[1], LlmMessage::user("【近期回顾】summary\n\n"));
+        assert_eq!(output[2].role, "assistant");
     }
 }
 
