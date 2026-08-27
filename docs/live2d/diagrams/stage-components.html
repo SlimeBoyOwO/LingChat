@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>标准视图 · Live2D + 静态角色：组件调用链与层叠顺序</title>
+<style>
+  :root {
+    --bg: #0f1720;
+    --panel: #16202c;
+    --panel-2: #1b2430;
+    --border: #2a3a4a;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --brand: #79d9ff;
+    --rust: #f4a261;
+    --vue: #34d399;
+    --db: #a78bfa;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --pink: #f472b6;
+    --danger: #f87171;
+  }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .wrap { max-width: 1360px; margin: 0 auto; }
+  svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 12.5px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  text { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>标准视图 · Live2D + 静态角色：组件调用链与层叠顺序</h1>
+  <p class="sub">PR #665 · 自 MainChat → GameRolesStage → Live2DStage 的调用链；红色数字 = 问题热区（见底部 ④ 图例，详析见 <a href="../stage-analysis.md" style="color:var(--brand)">stage-analysis.md</a>）</p>
+
+  <svg viewBox="0 0 1320 1440" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#79d9ff" />
+      </marker>
+      <marker id="arrowGray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#8b98a5" />
+      </marker>
+      <marker id="arrowVue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#34d399" />
+      </marker>
+      <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#f87171" />
+      </marker>
+    </defs>
+
+    <!-- ══════════ ① 组件调用链（左） ══════════ -->
+    <rect x="14" y="70" width="676" height="740" rx="14" fill="#111a26" stroke="#8b98a5" stroke-opacity="0.25" stroke-width="1.2" stroke-dasharray="6 5" />
+    <text x="40" y="94" font-size="15" font-weight="700" fill="#34d399">① 组件调用链 · 标准聊天视图</text>
+
+    <!-- 路由行 -->
+    <g>
+      <rect x="200" y="116" width="100" height="40" rx="9" fill="#16202c" stroke="#8b98a5" stroke-opacity="0.5" />
+      <text x="250" y="140" text-anchor="middle" font-size="12" font-weight="600" fill="#e6edf3">App.vue</text>
+    </g>
+    <g>
+      <rect x="320" y="116" width="100" height="40" rx="9" fill="#16202c" stroke="#8b98a5" stroke-opacity="0.4" stroke-dasharray="4 3" />
+      <text x="370" y="140" text-anchor="middle" font-size="11" font-weight="600" fill="#8b98a5">&lt;router-view&gt;</text>
+    </g>
+    <g>
+      <rect x="440" y="116" width="140" height="40" rx="9" fill="#16202c" stroke="#8b98a5" stroke-opacity="0.5" />
+      <text x="510" y="140" text-anchor="middle" font-size="11" font-weight="600" fill="#e6edf3">CompanionMode.vue</text>
+    </g>
+    <g stroke="#79d9ff" stroke-width="1.4" fill="none">
+      <path d="M300,136 L318,136" marker-end="url(#arrow)" />
+      <path d="M420,136 L438,136" marker-end="url(#arrow)" />
+    </g>
+    <path d="M510,156 L510,174" stroke="#79d9ff" stroke-width="1.6" fill="none" marker-end="url(#arrow)" />
+
+    <!-- MainChat 容器 -->
+    <rect x="40" y="180" width="640" height="600" rx="12" fill="#101c28" stroke="#34d399" stroke-opacity="0.4" stroke-width="1.4" stroke-dasharray="6 5" />
+    <text x="40" y="202" font-size="14" font-weight="700" fill="#e6edf3">MainChat.vue</text>
+    <text x="40" y="219" font-size="10" fill="#8b98a5">.main-box：absolute + overflow:hidden · 无 z-index → 不建层叠上下文</text>
+    <g>
+      <rect x="500" y="188" width="178" height="24" rx="6" fill="#1b2430" stroke="#8b98a5" stroke-opacity="0.5" />
+      <text x="589" y="204" text-anchor="middle" font-size="9" fill="#8b98a5">不建层叠上下文</text>
+    </g>
+
+    <!-- MainChat 同级子组件 -->
+    <g>
+      <rect x="60" y="234" width="200" height="64" rx="9" fill="#16202c" stroke="#f4a261" stroke-opacity="0.5" />
+      <text x="72" y="256" font-size="11" font-weight="600" fill="#e6edf3">GameBackground</text>
+      <text x="72" y="274" font-size="9.5" fill="#8b98a5">背景图 z:-2</text>
+      <text x="72" y="290" font-size="9.5" fill="#8b98a5">粒子 z:114514·isolate</text>
+    </g>
+    <g>
+      <rect x="310" y="234" width="180" height="64" rx="9" fill="#16202c" stroke="#34d399" stroke-opacity="0.5" />
+      <text x="322" y="256" font-size="11" font-weight="600" fill="#e6edf3">GameDialog</text>
+      <text x="322" y="274" font-size="9.5" fill="#8b98a5">relative z:2</text>
+      <text x="322" y="290" font-size="9.5" fill="#fbbf24">隐藏时 z:-1!</text>
+    </g>
+    <g>
+      <rect x="540" y="234" width="140" height="64" rx="9" fill="#16202c" stroke="#34d399" stroke-opacity="0.5" />
+      <text x="552" y="256" font-size="11" font-weight="600" fill="#e6edf3">GameExtraUI</text>
+      <text x="552" y="274" font-size="9.5" fill="#8b98a5">fixed z:999</text>
+    </g>
+    <g>
+      <rect x="540" y="320" width="140" height="52" rx="9" fill="#16202c" stroke="#34d399" stroke-opacity="0.5" />
+      <text x="552" y="342" font-size="10.5" font-weight="600" fill="#e6edf3">#menu-panel</text>
+      <text x="552" y="358" font-size="9.5" fill="#8b98a5">fixed z:1000</text>
+    </g>
+
+    <!-- GameRolesStage 容器 -->
+    <rect x="60" y="320" width="440" height="316" rx="10" fill="#0f1a26" stroke="#34d399" stroke-opacity="0.3" stroke-width="1.4" stroke-dasharray="6 5" />
+    <text x="60" y="342" font-size="12.5" font-weight="700" fill="#e6edf3">GameRolesStage.vue</text>
+    <text x="60" y="358" font-size="9.5" fill="#8b98a5">根 div：absolute w/h-full · z:auto → 不建层叠上下文</text>
+    <g>
+      <rect x="360" y="330" width="136" height="24" rx="6" fill="#1b2430" stroke="#8b98a5" stroke-opacity="0.5" />
+      <text x="428" y="346" text-anchor="middle" font-size="9" fill="#8b98a5">根不建层叠上下文</text>
+    </g>
+
+    <!-- Live2DStage（fragment 双根） -->
+    <rect x="80" y="372" width="400" height="118" rx="9" fill="#16202c" stroke="#79d9ff" stroke-opacity="0.8" />
+    <text x="80" y="392" font-size="12.5" font-weight="700" fill="#79d9ff">Live2DStage.vue</text>
+    <text x="80" y="408" font-size="9" fill="#8b98a5">fragment 根 ×2 · inheritAttrs:false</text>
+    <g>
+      <rect x="96" y="418" width="176" height="58" rx="7" fill="#1b2430" stroke="#79d9ff" stroke-opacity="0.5" />
+      <text x="108" y="436" font-size="10" font-weight="600" fill="#e6edf3">host div</text>
+      <text x="108" y="454" font-size="9" fill="#fbbf24">z:2 → 建层叠上下文</text>
+      <text x="108" y="470" font-size="9" fill="#8b98a5">Pixi canvas z:auto</text>
+    </g>
+    <g>
+      <rect x="286" y="418" width="176" height="58" rx="7" fill="#1b2430" stroke="#34d399" stroke-opacity="0.5" />
+      <text x="298" y="436" font-size="10" font-weight="600" fill="#e6edf3">slot（透传）</text>
+      <text x="298" y="454" font-size="9" fill="#8b98a5">v-for RoleAvatar ×N</text>
+      <text x="298" y="470" font-size="9" fill="#8b98a5">渲染于父作用域</text>
+    </g>
+    <g>
+      <rect x="80" y="506" width="176" height="48" rx="7" fill="#16202c" stroke="#fbbf24" stroke-opacity="0.6" />
+      <text x="92" y="528" font-size="9.5" fill="#e6edf3">light overlay</text>
+      <text x="92" y="546" font-size="9" fill="#8b98a5">absolute z:10 · mix-blend</text>
+    </g>
+    <g>
+      <rect x="286" y="506" width="176" height="48" rx="7" fill="#16202c" stroke="#8b98a5" stroke-opacity="0.6" />
+      <text x="298" y="528" font-size="9.5" fill="#e6edf3">&lt;audio ref=mainAudio&gt;</text>
+      <text x="298" y="546" font-size="9" fill="#8b98a5">voiceDataUrl · volume</text>
+    </g>
+
+    <!-- slot 连接线：跨容器边界，表示父作用域渲染 -->
+    <path d="M374,476 C374,570 250,570 250,656" stroke="#79d9ff" stroke-width="1.4" fill="none" marker-end="url(#arrow)" stroke-dasharray="5 4" />
+    <text x="255" y="612" font-size="9" fill="#79d9ff">slot 内容：RoleAvatar v-for</text>
+
+    <!-- GameRoleAvatar ×N 槽位框（三碎片） -->
+    <rect x="60" y="656" width="440" height="120" rx="9" fill="#16202c" stroke="#f4a261" stroke-opacity="0.5" />
+    <text x="60" y="676" font-size="11.5" font-weight="700" fill="#e6edf3">GameRoleAvatar ×N（slot 内容 = Live2DStage 的兄弟节点）</text>
+    <g>
+      <rect x="76" y="688" width="268" height="38" rx="6" fill="#1b2430" stroke="#f4a261" stroke-opacity="0.4" />
+      <text x="88" y="704" font-size="9.5" fill="#e6edf3">① 碎片1 · Live2D / Static Presentation</text>
+      <text x="88" y="720" font-size="9" fill="#8b98a5">→ StaticRolePresentation · z:1</text>
+    </g>
+    <g>
+      <rect x="356" y="688" width="128" height="38" rx="6" fill="#1b2430" stroke="#f4a261" stroke-opacity="0.4" />
+      <text x="368" y="704" font-size="9.5" fill="#e6edf3">② TouchAreas</text>
+      <text x="368" y="720" font-size="9" fill="#8b98a5">fixed z:2</text>
+    </g>
+    <g>
+      <rect x="76" y="732" width="268" height="38" rx="6" fill="#1b2430" stroke="#f4a261" stroke-opacity="0.4" />
+      <text x="88" y="748" font-size="9.5" fill="#e6edf3">③ 碎片3 · effects div + .bubble</text>
+      <text x="88" y="764" font-size="9" fill="#8b98a5">z:2 · .bubble z:2</text>
+    </g>
+
+    <!-- 问题徽标（左区） -->
+    <g>
+      <circle cx="480" cy="372" r="9" fill="#f87171" />
+      <text x="480" y="376" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">P3</text>
+    </g>
+    <g>
+      <circle cx="500" cy="656" r="9" fill="#f87171" />
+      <text x="500" y="660" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">P4</text>
+    </g>
+
+    <!-- ══════════ ② DOM 层叠顺序（右） ══════════ -->
+    <text x="740" y="94" font-size="14" font-weight="700" fill="#a78bfa">② DOM 层叠顺序（全部落在页面根层叠上下文内）</text>
+    <rect x="740" y="104" width="546" height="640" rx="11" fill="#0f1a26" stroke="#a78bfa" stroke-opacity="0.35" stroke-width="1.4" stroke-dasharray="6 5" />
+    <text x="740" y="126" font-size="10.5" fill="#8b98a5">根层叠上下文（html）· .main-box 与 GameRolesStage 根均不建上下文</text>
+
+    <!-- z 条柱 -->
+    <g>
+      <rect x="760" y="144" width="500" height="40" rx="6" fill="#16202c" stroke="#34d399" stroke-opacity="0.6" />
+      <text x="795" y="170" text-anchor="middle" font-size="12" font-weight="700" fill="#34d399">z:1000</text>
+      <text x="832" y="170" font-size="10.5" fill="#e6edf3">#menu-panel（fixed · MainChat）</text>
+    </g>
+    <g>
+      <rect x="760" y="192" width="500" height="40" rx="6" fill="#16202c" stroke="#34d399" stroke-opacity="0.6" />
+      <text x="795" y="218" text-anchor="middle" font-size="12" font-weight="700" fill="#34d399">z:999</text>
+      <text x="832" y="218" font-size="10.5" fill="#e6edf3">GameExtraUI（fixed）</text>
+    </g>
+    <g>
+      <rect x="760" y="240" width="500" height="40" rx="6" fill="#16202c" stroke="#fbbf24" stroke-opacity="0.6" />
+      <text x="795" y="266" text-anchor="middle" font-size="12" font-weight="700" fill="#fbbf24">z:10</text>
+      <text x="832" y="266" font-size="10.5" fill="#e6edf3">light overlay（GameRolesStage 整屏）</text>
+    </g>
+    <g>
+      <rect x="760" y="288" width="500" height="40" rx="6" fill="#16202c" stroke="#34d399" stroke-opacity="0.6" />
+      <text x="795" y="314" text-anchor="middle" font-size="12" font-weight="700" fill="#34d399">z:2</text>
+      <text x="832" y="314" font-size="10.5" fill="#e6edf3">GameDialog（relative · 后位兄弟，同 z 最上）</text>
+    </g>
+    <g>
+      <rect x="760" y="336" width="500" height="40" rx="6" fill="#16202c" stroke="#f4a261" stroke-opacity="0.6" />
+      <text x="795" y="362" text-anchor="middle" font-size="12" font-weight="700" fill="#f4a261">z:2</text>
+      <text x="832" y="362" font-size="10.5" fill="#e6edf3">气泡 / 特效层（RoleAvatar effectsLayerStyle）</text>
+    </g>
+    <g>
+      <rect x="760" y="384" width="500" height="40" rx="6" fill="#16202c" stroke="#f4a261" stroke-opacity="0.6" />
+      <text x="795" y="410" text-anchor="middle" font-size="12" font-weight="700" fill="#f4a261">z:2</text>
+      <text x="832" y="410" font-size="10.5" fill="#e6edf3">TouchAreas（fixed inset-0）</text>
+    </g>
+    <g>
+      <rect x="760" y="432" width="500" height="40" rx="6" fill="#16202c" stroke="#79d9ff" stroke-opacity="0.7" />
+      <text x="795" y="458" text-anchor="middle" font-size="12" font-weight="700" fill="#79d9ff">z:2</text>
+      <text x="832" y="458" font-size="10.5" fill="#e6edf3">Live2D host div（建上下文）→ canvas z:auto</text>
+      <text x="832" y="474" font-size="8.5" fill="#8b98a5">Pixi 内模型按 roles 数组序，无逐角色深度</text>
+    </g>
+    <g>
+      <rect x="760" y="480" width="500" height="40" rx="6" fill="#16202c" stroke="#f4a261" stroke-opacity="0.6" />
+      <text x="795" y="506" text-anchor="middle" font-size="12" font-weight="700" fill="#f4a261">z:1</text>
+      <text x="832" y="506" font-size="10.5" fill="#e6edf3">静态角色图（StaticRolePresentation layerStyle）</text>
+    </g>
+    <g>
+      <rect x="760" y="528" width="500" height="40" rx="6" fill="#16202c" stroke="#8b98a5" stroke-opacity="0.5" stroke-dasharray="4 3" />
+      <text x="795" y="554" text-anchor="middle" font-size="12" font-weight="700" fill="#8b98a5">z:0</text>
+      <text x="832" y="554" font-size="10.5" fill="#8b98a5">背景粒子（isolation:isolate 内 z:114514）</text>
+    </g>
+    <g>
+      <rect x="760" y="576" width="500" height="40" rx="6" fill="#16202c" stroke="#8b98a5" stroke-opacity="0.5" stroke-dasharray="4 3" />
+      <text x="795" y="602" text-anchor="middle" font-size="12" font-weight="700" fill="#8b98a5">z:-1</text>
+      <text x="832" y="602" font-size="10.5" fill="#8b98a5">GameDialog 隐藏态（z:-1!）</text>
+    </g>
+    <g>
+      <rect x="760" y="624" width="500" height="40" rx="6" fill="#16202c" stroke="#8b98a5" stroke-opacity="0.5" stroke-dasharray="4 3" />
+      <text x="795" y="650" text-anchor="middle" font-size="12" font-weight="700" fill="#8b98a5">z:-2</text>
+      <text x="832" y="650" font-size="10.5" fill="#8b98a5">背景图（.game-background）</text>
+    </g>
+
+    <!-- 热点标注（右区） -->
+    <!-- P6：光照 bar → 对话框 bar -->
+    <path d="M733,268 L733,296" stroke="#f87171" stroke-width="1.4" fill="none" stroke-dasharray="3 3" />
+    <g>
+      <circle cx="731" cy="282" r="9" fill="#f87171" />
+      <text x="731" y="286" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">P6</text>
+    </g>
+    <!-- P2：气泡条 -->
+    <g>
+      <circle cx="733" cy="356" r="9" fill="#f87171" />
+      <text x="733" y="360" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">P2</text>
+    </g>
+    <!-- P1：跨 Live2D(z:2) 与 静态(z:1) 两段 -->
+    <path d="M737,440 L737,512" stroke="#f87171" stroke-width="1.4" fill="none" marker-start="url(#arrowRed)" marker-end="url(#arrowRed)" />
+    <g>
+      <circle cx="731" cy="476" r="9" fill="#f87171" />
+      <text x="731" y="480" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">P1</text>
+    </g>
+    <!-- P7：隐藏态 bar -->
+    <g>
+      <circle cx="733" cy="596" r="9" fill="#f87171" />
+      <text x="733" y="600" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">P7</text>
+    </g>
+
+    <!-- ══════════ ③ 数据通道（右下） ══════════ -->
+    <rect x="740" y="760" width="546" height="300" rx="11" fill="#101c28" stroke="#f472b6" stroke-opacity="0.4" stroke-width="1.4" stroke-dasharray="6 5" />
+    <text x="740" y="784" font-size="12.5" font-weight="700" fill="#f472b6">③ 数据通道（props / emits / provide·inject）</text>
+    <g font-size="10" fill="#8b98a5">
+      <text x="768" y="814"><tspan font-weight="700" fill="#f472b6">MainChat ⇄ GameRolesStage</tspan>：@audio-started / @audio-ended（自动推进）· defineExpose(stopAudio)</text>
+      <text x="768" y="840"><tspan font-weight="700" fill="#f472b6">GameRolesStage → Live2DStage</tspan>：props roles / mode / active-speaker-id / audio-element / voice-data-url</text>
+      <text x="768" y="858"><tspan font-weight="700" fill="#f472b6">　Live2DStage ⇉</tspan>：emits activeChange(roleIds) / failedChange(roleIds)</text>
+      <text x="768" y="888"><tspan font-weight="700" fill="#f472b6">Live2DStage → slot 角色</tspan>：provide(live2dStageContextKey) = { readyRoleIds, unavailableRoleIds }</text>
+      <text x="768" y="906"><tspan font-weight="700" fill="#f472b6">　RoleAvatar → Live2DRolePresentation</tspan>：inject(live2dStageContextKey)</text>
+      <text x="768" y="930"><tspan font-weight="700" fill="#f472b6">GameRoleAvatar → presentation</tspan>：props src / layerStyle / animationClasses / objectFit</text>
+      <text x="768" y="948">　　· presentationRef.waitForLoad() · @animation-end</text>
+      <text x="768" y="976"><tspan font-weight="700" fill="#f472b6">Live2DRolePresentation → StaticRolePresentation</tspan>：prop visible = !ready · slot 兜底文案</text>
+    </g>
+    <g>
+      <circle cx="1268" cy="888" r="9" fill="#f87171" />
+      <text x="1268" y="892" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">P5</text>
+    </g>
+
+    <!-- ══════════ ④ 问题热区图例（通栏） ══════════ -->
+    <rect x="40" y="1080" width="1246" height="220" rx="11" fill="#101c28" stroke="#f87171" stroke-opacity="0.4" stroke-width="1.4" stroke-dasharray="6 5" />
+    <text x="60" y="1106" font-size="12.5" font-weight="700" fill="#f87171">④ 问题热区（红色数字 = 图中标注位置，详析见 stage-analysis.md）</text>
+    <g font-size="10" fill="#e6edf3">
+      <text x="60" y="1134"><tspan font-weight="700" fill="#f87171">P1</tspan>　混合 Live2D + 静态深度错乱：所有 Live2D 恒在静态图之上，无逐角色深度</text>
+      <text x="60" y="1168"><tspan font-weight="700" fill="#f87171">P2</tspan>　气泡盖模型靠 DOM 顺序巧合（z 同为 2）</text>
+      <text x="60" y="1202"><tspan font-weight="700" fill="#f87171">P3</tspan>　class="z-2" 转发到 host div 而非舞台根（fragment 陷阱）</text>
+      <text x="60" y="1236"><tspan font-weight="700" fill="#f87171">P4</tspan>　GameRoleAvatar 三碎片根 + roleLayerStyle 复制两份（漂移风险）</text>
+      <text x="680" y="1134"><tspan font-weight="700" fill="#f87171">P5</tspan>　provide/inject 反向 + Live2DRolePresentation 归属语义模糊</text>
+      <text x="680" y="1168"><tspan font-weight="700" fill="#f87171">P6</tspan>　光照 overlay z:10 盖住对话框文本</text>
+      <text x="680" y="1202"><tspan font-weight="700" fill="#f87171">P7</tspan>　隐藏对话框 z:-1 仍在背景(-2)之上</text>
+      <text x="680" y="1236"><tspan font-weight="700" fill="#f87171">P8</tspan>　（可选）桌宠 / 标准 GameRolesStage、GameRoleAvatar 重复</text>
+    </g>
+
+    <!-- ══════════ ⑤ 附注 · 桌宠 / 设置预览 ══════════ -->
+    <rect x="40" y="1316" width="1246" height="100" rx="11" fill="#101c28" stroke="#8b98a5" stroke-opacity="0.5" stroke-width="1.2" stroke-dasharray="6 5" />
+    <text x="60" y="1340" font-size="12" font-weight="700" fill="#8b98a5">附注 · 桌宠 / 设置预览挂载链</text>
+    <g font-size="9.5" fill="#8b98a5">
+      <text x="60" y="1364">桌宠 PetMode.vue → pet/GameRolesStage.vue（独立副本，见 P8）→ Live2DStage(mode='pet', class='z-11 rounded-full') + pet/GameRoleAvatar</text>
+      <text x="60" y="1380">　　（live2d-active / live2d-failed 经 props 传入，而非 provide/inject）</text>
+      <text x="60" y="1400">设置预览 Live2DSettings.vue 内嵌 Live2DStage(mode='standard'，无槽内容)；脚本编辑器试玩 PreviewStage.vue Teleport 至 #app → .main-box</text>
+      <text x="60" y="1416">　　→ 复用 standard 的 GameBackground / GameRolesStage / GameExtraUI / GameDialog（试玩遮罩 z-[9990]）</text>
+    </g>
+  </svg>
+
+  <div class="legend">
+    <span><i class="dot" style="background:#34d399"></i>Vue 组件</span>
+    <span><i class="dot" style="background:#79d9ff"></i>Live2D 层</span>
+    <span><i class="dot" style="background:#f4a261"></i>静态角色 / 气泡</span>
+    <span><i class="dot" style="background:#a78bfa"></i>z-index 层叠</span>
+    <span><i class="dot" style="background:#f472b6"></i>数据通道</span>
+    <span><i class="dot" style="background:#f87171"></i>问题热区</span>
+    <span><i class="dot" style="background:#8b98a5"></i>虚线 = 不建层叠上下文 / 隔离 / 附注</span>
+  </div>
+</div>
+</body>
+</html>

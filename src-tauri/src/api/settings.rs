@@ -11,6 +11,7 @@ use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::ai_service::god_agent::config::resolve_god_agent_provider;
+use crate::ai_service::llm::error::LlmErrorPayload;
 use crate::ai_service::llm::provider_config::{
     build_llm_client_from_provider, load_providers, load_role_assignment, resolve_chat_provider,
     resolve_translate_provider, save_providers, save_role_assignment, LlmProviderConfig,
@@ -226,9 +227,12 @@ pub async fn test_llm_provider(
     app: AppHandle,
     provider: LlmProviderConfig,
     message: String,
-) -> Result<String, String> {
+) -> Result<String, LlmErrorPayload> {
     let Some(client) = build_llm_client_from_provider(&app, &provider) else {
-        return Err("无法创建 LLM 客户端：请检查 API Key 和模型名称".to_string());
+        return Err(LlmErrorPayload::new(
+            "invalid_config",
+            "无法创建 LLM 客户端：请检查 API Key 和模型名称",
+        ));
     };
 
     let messages = vec![
@@ -241,22 +245,41 @@ pub async fn test_llm_provider(
     client
         .complete(&messages)
         .await
-        .map_err(|e| format!("测试请求失败: {e}"))
+        .map_err(|e| {
+            let info = crate::ai_service::llm::error::classify_llm_error(&e);
+            tracing::error!(
+                error_code = info.code,
+                "LLM 测试请求失败: {}",
+                format!("{e:#}")
+            );
+            info.into()
+        })
 }
 
 #[tauri::command]
 pub async fn list_llm_models(
     app: AppHandle,
     provider: LlmProviderConfig,
-) -> Result<Vec<LlmModelInfo>, String> {
+) -> Result<Vec<LlmModelInfo>, LlmErrorPayload> {
     let Some(client) = build_llm_client_from_provider(&app, &provider) else {
-        return Err("无法创建 LLM 客户端，请检查 API Key 和模型名称".to_string());
+        return Err(LlmErrorPayload::new(
+            "invalid_config",
+            "无法创建 LLM 客户端，请检查模型名称（API Key 可为空）",
+        ));
     };
 
     client
         .list_models()
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|e| {
+            let info = crate::ai_service::llm::error::classify_llm_error(&e);
+            tracing::error!(
+                error_code = info.code,
+                "LLM 拉取模型失败: {}",
+                format!("{e:#}")
+            );
+            info.into()
+        })
 }
 
 /// 设置「HDR 模式」开关（仅 Windows）。

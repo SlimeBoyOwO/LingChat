@@ -2,8 +2,7 @@
 //!
 //! 复用 skill_agent 的技能发现（`skills.rs`）、文件沙箱（`file_tools.rs`）与
 //! 命令执行（`command_executor.rs`），让主对话角色也能读技能、操作文件、跑命令。
-//! 文件工具默认锁定沙箱（`data/`），可通过工具配置「允许访问沙箱外路径」或
-//! 「助手设置」的允许任意路径放开。
+//! 文件工具默认锁定沙箱（`data/`），仅「完全访问」模式会放开任意路径。
 //! `execute_command` 默认每次都要用户在前端弹窗确认（`chat:command_approval`
 //! 事件 + `resolve_command_approval` 回调），可在工具配置开启免确认；
 //! `uac=true` 时以管理员权限运行（Windows 弹系统 UAC 框）；耗时任务可选择后台
@@ -18,7 +17,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::ai_service::skill_agent::command_executor::{self, ApprovalMap, ApprovalRequest};
 use crate::ai_service::skill_agent::config::SkillAgentConfig;
-use crate::ai_service::skill_agent::file_tools::{FileTools, MAX_GREP_RESULTS};
+use crate::ai_service::skill_agent::file_tools::{FileTools, MAX_GLOB_RESULTS, MAX_GREP_RESULTS};
 use crate::ai_service::skill_agent::skills;
 use crate::ai_service::types::ToolDefinition;
 use crate::AppState;
@@ -29,6 +28,7 @@ use super::settings::SharedToolSettings;
 
 const SKILL_TOOL_TIMEOUT: Duration = Duration::from_secs(5);
 const FILE_TOOL_TIMEOUT: Duration = Duration::from_secs(15);
+const FILE_MUTATION_TOOL_TIMEOUT: Duration = Duration::from_secs(135);
 const DELETE_FILE_TOOL_TIMEOUT: Duration = Duration::from_secs(135);
 
 /// 从工具上下文加载 skill agent 配置（沙箱目录 / 任意路径开关）。
@@ -41,7 +41,7 @@ fn load_config(context: &ToolContext) -> Result<SkillAgentConfig, ToolError> {
 fn file_tools(config: &SkillAgentConfig, settings: &SharedToolSettings) -> FileTools {
     FileTools {
         sandbox_dir: config.resolve_sandbox_dir(),
-        allow_any_path: config.allow_any_path || settings.get().file_ops_allow_any_path,
+        allow_any_path: settings.get().allows_any_path(),
     }
 }
 
@@ -246,6 +246,61 @@ macro_rules! file_tool {
     };
 }
 
+/// 带副作用的文件工具：逐次确认模式下先展示规范化目标路径，再执行修改。
+macro_rules! mutating_file_tool {
+    ($name:ident, $tool_name:literal, $desc:literal, $operation:literal, $schema:expr, $body:expr) => {
+        pub struct $name {
+            settings: SharedToolSettings,
+        }
+
+        impl $name {
+            pub fn new(settings: SharedToolSettings) -> Self {
+                Self { settings }
+            }
+        }
+
+        #[async_trait]
+        impl Tool for $name {
+            fn definition(&self) -> ToolDefinition {
+                ToolDefinition::new($tool_name, $desc, $schema)
+            }
+
+            fn timeout_hint(&self) -> Option<Duration> {
+                Some(FILE_MUTATION_TOOL_TIMEOUT)
+            }
+
+            async fn execute(
+                &self,
+                context: &ToolContext,
+                arguments: Value,
+            ) -> Result<ToolResult, ToolError> {
+                let app = context.require_app()?;
+                let config = SkillAgentConfig::load(&app);
+                let ft = file_tools(&config, &self.settings);
+                if self.settings.get().requires_file_change_approval() {
+                    let path = arg_str(&arguments, "path")?;
+                    let display_path = ft
+                        .sanitize(path)
+                        .map_err(|error| ToolError::Execution(error.to_string()))?
+                        .display()
+                        .to_string();
+                    let approvals = app.state::<AppState>().chat_file_change_approvals.clone();
+                    request_user_approval(
+                        &app,
+                        approvals,
+                        "chat:file_change_approval",
+                        json!({ "path": display_path, "operation": $operation }),
+                        "文件修改",
+                    )
+                    .await?;
+                }
+                let run: fn(&FileTools, &Value) -> Result<ToolResult, ToolError> = $body;
+                run_blocking(move || run(&ft, &arguments)).await
+            }
+        }
+    };
+}
+
 file_tool!(
     ListFiles,
     "list_files",
@@ -278,14 +333,27 @@ file_tool!(
     }),
     |ft: &FileTools, args: &Value| {
         let path = arg_str(args, "path")?;
+        let safe_path = ft
+            .sanitize(path)
+            .map_err(|error| ToolError::Execution(error.to_string()))?;
+        if super::read_media_file::is_supported_media_file(&safe_path) {
+            return Ok(json!({
+                "ok": false,
+                "error": {
+                    "code": "media_file",
+                    "message": "这是图片或视频文件，请改用 ReadMediaFile 识别媒体内容"
+                }
+            }));
+        }
         exec(ft.read_file(path))
     }
 );
 
-file_tool!(
+mutating_file_tool!(
     WriteFile,
     "write_file",
-    "向文件写入内容，自动创建父目录。默认覆盖整个文件；append=true 时追加。单次调用写完整内容；仅当一次写入因参数过长而失败（报错会附带 [诊断] 提示）后才用 append=true 分段补齐。",
+    "向文件写入内容，自动创建父目录。逐次确认模式会在写入前询问；默认覆盖整个文件，append=true 时追加。",
+    "write",
     json!({
         "type": "object",
         "properties": {
@@ -369,7 +437,7 @@ impl Tool for DeleteFile {
         .await
         .map_err(|error| ToolError::Execution(format!("删除目标检查异常: {error}")))??;
 
-        if !self.settings.get().file_delete_auto_approve {
+        if self.settings.get().requires_file_delete_approval() {
             let approvals = app.state::<AppState>().chat_file_delete_approvals.clone();
             request_user_approval(
                 &app,
@@ -385,10 +453,11 @@ impl Tool for DeleteFile {
     }
 }
 
-file_tool!(
+mutating_file_tool!(
     EditFile,
     "edit_file",
-    "精确替换文件中的文本：old_string 必须唯一匹配（除非 replace_all=true）。修改前先用 read_file 确认内容；替换失败会说明原因（无匹配/多处匹配）。",
+    "精确替换文件中的文本。逐次确认模式会在编辑前询问；old_string 必须唯一匹配（除非 replace_all=true）。",
+    "edit",
     json!({
         "type": "object",
         "properties": {
@@ -458,6 +527,80 @@ file_tool!(
             .map(|n| n.min(MAX_GREP_RESULTS as u64) as usize)
             .unwrap_or(50);
         exec(ft.grep_files(path, pattern, max_results))
+    }
+);
+
+file_tool!(
+    Glob,
+    "glob",
+    "按 glob 模式递归查找文件。支持 *、? 和 **（例如 **/*.py）；只读工具，无需审批。",
+    json!({
+        "type": "object",
+        "properties": {
+            "pattern": {"type": "string", "description": "glob 模式，例如 **/*.rs、src/**/*.vue"},
+            "path": {"type": "string", "description": "搜索根目录；默认文件沙箱根目录"},
+            "max_results": {"type": "integer", "description": "最多返回条数，默认 100，最大 100"}
+        },
+        "required": ["pattern"],
+        "additionalProperties": false
+    }),
+    |ft: &FileTools, args: &Value| {
+        let pattern = arg_str(args, "pattern")?;
+        let path = args.get("path").and_then(Value::as_str).unwrap_or(".");
+        let max_results = args
+            .get("max_results")
+            .and_then(Value::as_u64)
+            .map(|n| n.min(MAX_GLOB_RESULTS as u64) as usize)
+            .unwrap_or(MAX_GLOB_RESULTS);
+        exec(ft.glob_files(path, pattern, max_results))
+    }
+);
+
+file_tool!(
+    Grep,
+    "grep",
+    "用正则表达式递归搜索文本内容，支持 glob 文件过滤、忽略大小写及内容/文件名/计数输出；只读工具，无需审批。",
+    json!({
+        "type": "object",
+        "properties": {
+            "pattern": {"type": "string", "description": "Rust 正则表达式"},
+            "path": {"type": "string", "description": "搜索根目录；默认文件沙箱根目录"},
+            "glob": {"type": "string", "description": "可选文件 glob 过滤，例如 **/*.rs"},
+            "case_insensitive": {"type": "boolean", "description": "是否忽略大小写，默认 false"},
+            "output_mode": {"type": "string", "enum": ["content", "files_with_matches", "count"], "description": "输出匹配行、匹配文件名或每文件匹配数"},
+            "max_results": {"type": "integer", "description": "最多返回条数，默认 50，最大 100"}
+        },
+        "required": ["pattern"],
+        "additionalProperties": false
+    }),
+    |ft: &FileTools, args: &Value| {
+        let pattern = arg_str(args, "pattern")?;
+        let path = args.get("path").and_then(Value::as_str).unwrap_or(".");
+        let file_glob = args
+            .get("glob")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty());
+        let case_insensitive = args
+            .get("case_insensitive")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let output_mode = args
+            .get("output_mode")
+            .and_then(Value::as_str)
+            .unwrap_or("content");
+        let max_results = args
+            .get("max_results")
+            .and_then(Value::as_u64)
+            .map(|n| n.min(MAX_GREP_RESULTS as u64) as usize)
+            .unwrap_or(50);
+        exec(ft.grep(
+            path,
+            pattern,
+            file_glob,
+            case_insensitive,
+            output_mode,
+            max_results,
+        ))
     }
 );
 
@@ -545,9 +688,9 @@ impl Tool for ExecuteCommand {
                 "properties": {
                     "command": {"type": "string", "description": "要运行的 shell 命令"},
                     "cwd": {"type": "string", "description": "工作目录，绝对路径或相对于文件沙箱根目录。留空表示沙箱根目录。"},
-                    "uac": {"type": "boolean", "description": "true 时请求管理员权限运行（仅 Windows，弹 UAC 确认框）"},
+                    "uac": {"type": "boolean", "description": "true 时要求管理员权限运行；若 LingChat 已是管理员进程则直接复用，否则弹 Windows UAC"},
                     "timeout_seconds": {"type": "integer", "description": "命令最长运行秒数（前台默认 60/最大 300；后台默认 600/最大 3600；最小 1）"},
-                    "run_in_background": {"type": "boolean", "description": "true 时在后台运行并立即返回任务 ID；完成后会自动通知模型，无需轮询。不能与 uac=true 同时使用"},
+                    "run_in_background": {"type": "boolean", "description": "true 时在后台运行并立即返回任务 ID；完成后会自动通知模型。标准权限下不能与 uac=true 同用，管理员进程可直接继承权限"},
                     "description": {"type": "string", "description": "后台任务的简短说明；run_in_background=true 时必填"}
                 },
                 "required": ["command"],
@@ -587,9 +730,10 @@ impl Tool for ExecuteCommand {
                 "run_in_background=true 时必须提供非空 description".into(),
             ));
         }
-        if run_in_background && uac {
+        let process_elevated = command_executor::is_current_process_elevated();
+        if run_in_background && uac && !process_elevated {
             return Err(ToolError::InvalidArguments(
-                "后台命令不支持 uac=true；需要提权时请以前台方式执行".into(),
+                "标准权限下，后台命令不支持 uac=true；请先以前台方式提权，或将 LingChat 以管理员身份重启".into(),
             ));
         }
         let (default_timeout, max_timeout) = if run_in_background {
@@ -615,7 +759,7 @@ impl Tool for ExecuteCommand {
         let settings = self.settings.get();
         let is_delete_command = command_may_delete_files(command);
 
-        if is_delete_command && !settings.command_delete_auto_approve {
+        if is_delete_command && settings.requires_command_approval(true) {
             let approvals = app.state::<AppState>().chat_file_delete_approvals.clone();
             request_user_approval(
                 &app,
@@ -631,7 +775,7 @@ impl Tool for ExecuteCommand {
                 "删除命令",
             )
             .await?;
-        } else if !settings.command_auto_approve {
+        } else if !is_delete_command && settings.requires_command_approval(false) {
             let approvals = app.state::<AppState>().chat_command_approvals.clone();
             request_user_approval(
                 &app,
@@ -661,7 +805,9 @@ impl Tool for ExecuteCommand {
             .await;
         }
 
-        let result = if uac {
+        let use_elevated_launcher =
+            command_executor::needs_elevated_launcher(uac, process_elevated);
+        let result = if use_elevated_launcher {
             command_executor::run_shell_command_elevated_with_timeout(
                 &sandbox_dir,
                 command,
@@ -702,6 +848,8 @@ mod tests {
             Box::new(EditFile::new(settings.clone())),
             Box::new(SearchFiles::new(settings.clone())),
             Box::new(GrepFiles::new(settings.clone())),
+            Box::new(Glob::new(settings.clone())),
+            Box::new(Grep::new(settings.clone())),
             Box::new(ExecuteCommand::new(settings)),
         ];
 
@@ -718,6 +866,7 @@ mod tests {
             let expected_timeout = match definition.function.name.as_str() {
                 "list_skills" | "read_skill" => SKILL_TOOL_TIMEOUT,
                 "delete_file" => DELETE_FILE_TOOL_TIMEOUT,
+                "write_file" | "edit_file" => FILE_MUTATION_TOOL_TIMEOUT,
                 "execute_command" => Duration::from_secs(430),
                 _ => FILE_TOOL_TIMEOUT,
             };

@@ -207,7 +207,10 @@ pub fn parse_duration(data: &Value) -> Option<f64> {
 ///
 /// 支持 `&&`、`||`（`&&` 优先级更高）以及数字的 `>` / `<` / `>=` / `<=`。
 /// 仍不解析括号、任意算术表达式或字符串排序；复杂逻辑应拆成多个章节门。
-fn split_once_unquoted<'a>(input: &'a str, operator: &str) -> Option<(&'a str, &'a str)> {
+pub(crate) fn split_once_unquoted<'a>(
+    input: &'a str,
+    operator: &str,
+) -> Option<(&'a str, &'a str)> {
     let mut quote = None;
     let mut escaped = false;
     for (index, character) in input.char_indices() {

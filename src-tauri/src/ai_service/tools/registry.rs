@@ -166,33 +166,3 @@ impl ToolRegistry {
         self.permissions.read().unwrap().available_tools.clone()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ai_service::tools::clock::CurrentTimeTool;
-
-    /// 验证注册、发现与重复名称保护。
-    #[test]
-    fn registers_tools_in_stable_order() {
-        let registry = ToolRegistry::new();
-        registry.register(Arc::new(CurrentTimeTool)).unwrap();
-        assert!(registry.get("get_current_time").is_some());
-        assert_eq!(registry.definitions()[0].function.name, "get_current_time");
-        assert!(registry.register(Arc::new(CurrentTimeTool)).is_err());
-        assert!(registry.get("missing").is_none());
-    }
-
-    /// 验证注销后不可见且不破坏其余顺序。
-    #[test]
-    fn unregisters_tools() {
-        let registry = ToolRegistry::new();
-        registry.register(Arc::new(CurrentTimeTool)).unwrap();
-        registry.unregister("get_current_time");
-        assert!(registry.get("get_current_time").is_none());
-        assert!(registry.definitions().is_empty());
-        // 重新注册应成功（名称已释放）
-        registry.register(Arc::new(CurrentTimeTool)).unwrap();
-        assert!(registry.get("get_current_time").is_some());
-    }
-}

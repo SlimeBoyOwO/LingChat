@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 #[cfg(desktop)]
 use tauri::LogicalSize;
@@ -10,6 +10,14 @@ pub struct Rect {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+}
+
+/// 桌宠窗口内的鼠标位置（逻辑/CSS 像素），由 Rust 侧全局轮询循环计算并广播给前端。
+/// 坐标系与 DOM 的 clientX/clientY 一致（窗口非装饰时即 webview 视口坐标）。
+#[derive(Clone, Debug, Serialize)]
+pub struct CursorPosition {
+    pub x: f64,
+    pub y: f64,
 }
 
 pub struct HitTestState {

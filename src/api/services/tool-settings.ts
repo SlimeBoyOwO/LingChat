@@ -5,9 +5,7 @@ import { i18n } from '@/locales'
 /** 网页搜索工具配置（与后端 WebSearchSettings 对应，字段保持 snake_case）。 */
 export interface WebSearchSettings {
   enabled: boolean
-  /** true = 模型 API 内置联网（免 Key）；false = 独立搜索端点 + api_key */
-  use_builtin: boolean
-  /** 独立端点模式的搜索提供商："kimi" | "bocha" | "deepseek"  | "tavily" | "custom"（仅 custom 用 base_url） */
+  /** 搜索服务提供商："kimi" | "bocha" | "deepseek"  | "tavily" | "custom"（仅 custom 用 base_url） */
   provider: string
   /** DeepSeek Responses API 使用的模型（仅 provider = "deepseek" 时生效） */
   model: string
@@ -20,19 +18,32 @@ export interface WebSearchSettings {
   hide_search_results: boolean
 }
 
+/** ReadMediaFile 图片/视频识别配置。 */
+export interface MediaFileSettings {
+  image_enabled: boolean
+  video_enabled: boolean
+  max_file_mb: number
+  image_max_edge: number
+  jpeg_quality: number
+  max_output_tokens: number
+  default_prompt: string
+}
+
+export type ToolAccessMode = 'manual' | 'auto_approve' | 'full_access'
+
 export interface ToolSettings {
   web_search: WebSearchSettings
-  /** 分组开关：组名 → 是否启用（schedule/memory/character/scene/status/clock/skills/file_ops/command） */
+  media_file: MediaFileSettings
+  /** 分组开关：组名 → 是否启用（schedule/memory/character/scene/status/clock/skills/media/file_ops/command） */
   groups: Record<string, boolean>
-  /** 命令执行：免确认直接运行 shell（危险，默认关闭） */
-  command_auto_approve: boolean
-  /** 命令执行：检测到删除操作时免确认继续执行（危险，默认关闭） */
-  command_delete_auto_approve: boolean
-  /** 删除文件：免确认直接删除（危险，默认关闭） */
-  file_delete_auto_approve: boolean
-  /** 文件操作：允许访问沙箱（data/）之外的路径（默认关闭） */
-  file_ops_allow_any_path: boolean
+  /** 文件修改与命令执行的统一审批模式。 */
+  access_mode: ToolAccessMode
+  /** 主聊天单次回复可连续执行工具的最大轮数；每轮可能包含多个工具调用。 */
+  max_tool_rounds: number
 }
+
+/** 全局访问模式快照，供主界面的完全访问警告即时响应设置保存。 */
+export const currentToolAccessMode = ref<ToolAccessMode>('manual')
 
 /** 后端按当前设备、模型、角色权限计算出的真实工具可用状态。 */
 export interface ToolRuntimeInfo {
@@ -54,6 +65,7 @@ export const TOOL_GROUP_KEYS = [
   'status',
   'clock',
   'skills',
+  'media',
   'file_ops',
   'command',
 ] as const
@@ -251,16 +263,29 @@ export function clearToolCallRecords() {
   recentToolCalls.value = []
 }
 
-export function getToolSettings(): Promise<ToolSettings> {
-  return invoke<ToolSettings>('get_tool_settings')
+export async function getToolSettings(): Promise<ToolSettings> {
+  const settings = await invoke<ToolSettings>('get_tool_settings')
+  currentToolAccessMode.value = settings.access_mode ?? 'manual'
+  return settings
+}
+
+export async function saveToolSettings(settings: ToolSettings): Promise<void> {
+  await invoke<void>('save_tool_settings', { settings })
+  currentToolAccessMode.value = settings.access_mode
+}
+
+/** 当前 LingChat 进程是否已经由 Windows UAC 提升为管理员权限。 */
+export function getToolElevationStatus(): Promise<boolean> {
+  return invoke<boolean>('get_tool_elevation_status')
+}
+
+/** 经过正常 Windows UAC 确认后，以管理员权限启动新实例并退出当前实例。 */
+export function restartToolProcessAsAdmin(): Promise<void> {
+  return invoke<void>('restart_tool_process_as_admin')
 }
 
 export function getToolRuntimeInfo(): Promise<ToolRuntimeInfo> {
   return invoke<ToolRuntimeInfo>('get_tool_runtime_info')
-}
-
-export function saveToolSettings(settings: ToolSettings): Promise<void> {
-  return invoke<void>('save_tool_settings', { settings })
 }
 
 /** 直接执行一次网页搜索；失败时 Promise reject 携带后端错误信息。 */

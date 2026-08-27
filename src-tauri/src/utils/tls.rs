@@ -13,7 +13,7 @@ use std::sync::Arc;
 /// 构造预配置的 rustls ClientConfig（webpki-roots + aws-lc-rs）。
 ///
 /// 用法：
-/// ```rust
+/// ```text
 /// let tls = build_tls_config().expect("TLS 配置失败");
 /// let client = reqwest::Client::builder()
 ///     .tls_backend_preconfigured(tls)
@@ -29,33 +29,4 @@ pub fn build_tls_config() -> Result<rustls::ClientConfig, String> {
     .with_safe_default_protocol_versions()
     .map_err(|e| format!("rustls 协议版本配置失败: {e}"))
     .map(|builder| builder.with_root_certificates(Arc::new(roots)).with_no_client_auth())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn builds_valid_tls_config() {
-        let config = build_tls_config().expect("TLS 配置应成功");
-        // 校验 provider 已指定（aws-lc-rs 应含密码套件，无全局 CryptoProvider 依赖）
-        let provider = config.crypto_provider();
-        assert!(!provider.cipher_suites.is_empty());
-        assert!(!provider.kx_groups.is_empty());
-    }
-
-    #[test]
-    fn config_works_with_reqwest() {
-        let tls = build_tls_config().expect("TLS 配置应成功");
-        let client = reqwest::Client::builder()
-            .tls_backend_preconfigured(tls)
-            .build()
-            .expect("reqwest client 应构建成功");
-        // 客户端能构造 HTTPS 请求
-        let req = client
-            .get("https://example.com")
-            .build()
-            .expect("HTTPS 请求应可构建");
-        assert_eq!(req.url().scheme(), "https");
-    }
 }

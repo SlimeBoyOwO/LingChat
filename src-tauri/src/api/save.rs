@@ -242,31 +242,34 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         no_emotion_limit: app_config.no_emotion_limit_prompt,
     };
 
-    // 6. 导入设定并载入台词
+    // 6. 导入设定
     service
         .import_settings(settings.clone(), prompt_options)
         .await;
-    service
-        .load_lines(line_list, main_role_id, Some(save_id))
-        .await
-        .map_err(|e| format!("载入台词失败: {}", e))?;
 
-    // 7. 恢复 GameStatus 快照
-    let snapshot: GameStatusSnapshot = serde_json::from_str(&save_model.status).unwrap_or_default();
-    service.game_status.lock().await.apply_snapshot(&snapshot);
-
-    // 8. 恢复 MemoryBank
+    // 7. 先恢复 MemoryBank：若在 load_lines（内部 sync_memories 会触发压缩检查）之后再恢复，
+    //    后台全量重压会用旧库/旧指针把 DB 恢复的记忆库覆盖掉。
     let _ = service
         .restore_memory_banks(save_id)
         .await
         .map_err(|e| eprintln!("[SAVE_WARN] 恢复记忆库失败: {}", e));
 
-    // 9. 恢复剧本状态（若有）
+    // 8. 载入台词（sync_memories 用恢复后的正确指针，只压缩存档点之后的增量）
+    service
+        .load_lines(line_list, main_role_id, Some(save_id))
+        .await
+        .map_err(|e| format!("载入台词失败: {}", e))?;
+
+    // 9. 恢复 GameStatus 快照
+    let snapshot: GameStatusSnapshot = serde_json::from_str(&save_model.status).unwrap_or_default();
+    service.game_status.lock().await.apply_snapshot(&snapshot);
+
+    // 10. 恢复剧本状态（若有）
     if let Some(rs_id) = save_model.running_script_id {
         let _ = SaveRepo::get_running_script(db, rs_id).await;
     }
 
-    // 10. 返回前端初始化数据
+    // 11. 返回前端初始化数据
     build_web_init_data(&service, &app).await
 }
 

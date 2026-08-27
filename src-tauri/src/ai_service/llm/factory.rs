@@ -5,7 +5,7 @@ use reqwest::Client;
 
 use crate::utils::tls::build_tls_config;
 use super::provider::LlmProvider;
-use super::providers::{GenaiProvider, KimiCodeProvider};
+use super::providers::{CodexProvider, GenaiProvider, KimiCodeProvider};
 use super::{LlmClient, LlmConfig};
 
 /// 构建共享 reqwest Client。
@@ -34,6 +34,7 @@ pub fn create_llm_client(cfg: LlmConfig) -> Result<LlmClient> {
             Box::new(GenaiProvider::new(&cfg, http.clone())?)
         }
         "kimicode" => Box::new(KimiCodeProvider::from_config(&cfg)?),
+        "codex" => Box::new(CodexProvider::from_config(&cfg)?),
         // "webllm" 已废弃，原为 OpenAiProvider 别名，现统一用 "openai"
         other => return Err(anyhow!("不支持的 LLM 提供商: {other}")),
     };

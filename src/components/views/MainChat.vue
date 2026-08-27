@@ -2,6 +2,7 @@
   <div class="main-box" data-game-stage>
     <!-- 主界面始终渲染，加载动画期间在后台初始化 -->
     <FreeModeTools />
+    <FullAccessWarning />
     <GameBackground></GameBackground>
     <!-- <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />  -->
     <GameRolesStage
@@ -61,6 +62,7 @@ import FreeModeTools from '@/components/tools/FreeModeTools.vue'
 import ToolActivityStatus from '@/components/tools/ToolActivityStatus.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useGameStore } from '../../stores/modules/game'
+import { useSettingsStore } from '../../stores/modules/settings'
 import { GameBackground, GameRolesStage } from '../game/standard'
 import { GameDialog } from '../game/standard'
 import { Button } from '../base'
@@ -71,6 +73,7 @@ import GameExtraUI from '../game/standard/GameExtraUI.vue'
 import StageBlackout from '../game/standard/StageBlackout.vue'
 import ImageSourcePicker from '@/components/ui/ImageSourcePicker.vue'
 import { isAndroid } from '@/utils/platform'
+import FullAccessWarning from '@/components/tools/FullAccessWarning.vue'
 
 const LOADING_STORAGE_KEY = 'lingchat_loading_shown'
 
@@ -82,6 +85,7 @@ let loadingShownThisSession = false
 const router = useRouter()
 const uiStore = useUIStore()
 const gameStore = useGameStore()
+const settingsStore = useSettingsStore()
 
 // 首次加载过渡状态：仅当本次 session 未播放过且 localStorage 未标记时播放
 const showLoading = ref(!loadingShownThisSession && !localStorage.getItem(LOADING_STORAGE_KEY))
@@ -138,15 +142,13 @@ onMounted(() => {
 })
 
 /* 自动模式（AUTO）逻辑：事件驱动，非轮询
- * 当且仅当以下全部满足时，延迟 1 秒自动推进下一句：
+ * 当且仅当以下全部满足时，延迟 settingsStore.autoAdvanceDelay（默认 1000ms，可在设置→文字中调节）自动推进下一句：
  * 1. 自动模式开启
  * 2. 当前处于 responding 状态
  * 3. 当前台词打字机已结束
  * 4. 当前台词语音已播放完毕
  * 用户手动推进时取消当前调度。
  */
-const AUTO_ADVANCE_DELAY_MS = 1000
-
 const typingFinished = ref(true)
 const audioFinished = ref(true)
 let autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null
@@ -176,7 +178,7 @@ const scheduleAutoAdvance = () => {
       typingFinished.value = true
       audioFinished.value = true
     }
-  }, AUTO_ADVANCE_DELAY_MS)
+  }, settingsStore.autoAdvanceDelay)
 }
 
 // 音频开始播放

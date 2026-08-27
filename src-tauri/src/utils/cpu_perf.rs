@@ -561,7 +561,7 @@ mod imp {
         (freqs, total_cores)
     }
 
-    /// 根据核心频率拓扑数据划分性能等级（纯函数，方便单元测试）。
+    /// 根据核心频率拓扑数据划分性能等级。
     fn classify_by_topology(freqs_mhz: &[u64], total_cores: usize) -> PerfTier {
         if freqs_mhz.is_empty() || total_cores == 0 {
             return PerfTier::Low;

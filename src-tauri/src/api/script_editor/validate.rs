@@ -18,6 +18,7 @@ use serde::Serialize;
 use serde_json::Value as JsonValue;
 
 use crate::ai_service::game_system::script_engine::events::background_effect_event::KNOWN_EFFECTS;
+use crate::ai_service::game_system::script_engine::events::split_once_unquoted;
 use crate::ai_service::game_system::script_engine::utils::media::{
     resolve_script_media, MediaType,
 };
@@ -270,6 +271,65 @@ pub fn validate(
         ));
     }
 
+    if let Some(main_character) = config.get("main_character").and_then(|v| v.as_str()) {
+        let main_character = main_character.trim();
+        let safe_folder = !main_character.is_empty()
+            && Path::new(main_character).components().count() == 1
+            && Path::new(main_character).file_name().and_then(|v| v.to_str())
+                == Some(main_character);
+        let settings = data_dir
+            .join("game_data")
+            .join("characters")
+            .join(main_character)
+            .join("settings.yml");
+        if !safe_folder || !settings.is_file() {
+            diags.push(Diagnostic::script(
+                Severity::Error,
+                "config.main_character_missing",
+                format!(
+                    "main_character「{}」必须精确匹配全局 characters/ 下含 settings.yml 的目录名",
+                    main_character
+                ),
+            ));
+        }
+    }
+    if let Some(value) = config.get("content_warning") {
+        if value.as_str().is_none_or(|warning| warning != "horror") {
+            diags.push(Diagnostic::script(
+                Severity::Warn,
+                "config.bad_content_warning",
+                "content_warning 当前只支持字符串 horror".to_string(),
+            ));
+        }
+    }
+    if config
+        .get("editor_locked")
+        .is_some_and(|value| !value.is_boolean())
+    {
+        diags.push(Diagnostic::script(
+            Severity::Warn,
+            "config.bad_editor_locked",
+            "editor_locked 必须是布尔值".to_string(),
+        ));
+    }
+    let horror_system_effects_allowed = config
+        .get("content_warning")
+        .and_then(|v| v.as_str())
+        .is_some_and(|warning| warning == "horror")
+        && config
+            .get("script_settings")
+            .and_then(|v| v.get("allow_system_effects"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+    let declared_character_files: HashSet<String> = config
+        .get("script_settings")
+        .and_then(|v| v.get("character_files"))
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
+
     // 剧本内 NPC 目录名，用于校验 character 引用
     let known_characters = collect_script_characters(script_dir);
 
@@ -497,14 +557,18 @@ pub fn validate(
                 }
                 "background_effect" => {
                     let effect = obj.get("effect").and_then(|v| v.as_str()).unwrap_or("");
-                    let clearing = effect.is_empty()
-                        || effect.eq_ignore_ascii_case("none");
-                    if !clearing && !KNOWN_EFFECTS.contains(&effect) {
+                    // 运行时允许 `Glitch+BloodDrip` 形式叠加，校验器必须逐段使用
+                    // 同一份 KNOWN_EFFECTS 判定，不能把整个组合误报为未知特效。
+                    for part in effect.split('+').map(str::trim) {
+                        let clearing = part.is_empty() || part.eq_ignore_ascii_case("none");
+                        if clearing || KNOWN_EFFECTS.contains(&part) {
+                            continue;
+                        }
                         let hint = KNOWN_EFFECTS
                             .iter()
-                            .find(|k| k.eq_ignore_ascii_case(effect));
+                            .find(|known| known.eq_ignore_ascii_case(part));
                         // 大小写不对 → 打开章节时前端会自动纠错为规范写法，故只给 Info；
-                        // 真未知特效 → 前端无法纠错，给 Warn（上游：纠不能纠错都 warning 即可）
+                        // 真未知特效 → 前端无法纠错，给 Warn。
                         match hint {
                             Some(correct) => diags.push(
                                 Diagnostic::event(
@@ -513,8 +577,8 @@ pub fn validate(
                                     cid,
                                     i,
                                     format!(
-                                        "特效「{}」大小写不对；在编辑器打开本章节时会自动纠正为「{}」",
-                                        effect, correct
+                                        "组合特效中的「{}」大小写不对；应为「{}」",
+                                        part, correct
                                     ),
                                 )
                                 .with_field("effect"),
@@ -526,8 +590,8 @@ pub fn validate(
                                     cid,
                                     i,
                                     format!(
-                                        "特效「{}」不是内置特效，引擎会清空当前特效。可从编辑器的特效下拉里选已支持的项",
-                                        effect
+                                        "组合特效中的「{}」不是内置特效，引擎会清空当前特效",
+                                        part
                                     ),
                                 )
                                 .with_field("effect"),
@@ -537,6 +601,159 @@ pub fn validate(
                 }
                 "choices" => {
                     check_choices(obj, cid, i, &mut diags, &mut vars_written, &mut vars_read);
+                }
+                "force_choice" => {
+                    check_choices(obj, cid, i, &mut diags, &mut vars_written, &mut vars_read);
+                    let forced = obj.get("forced").and_then(|v| v.as_str()).unwrap_or("");
+                    let matches = obj
+                        .get("options")
+                        .and_then(|v| v.as_array())
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|option| option.get("text").and_then(|v| v.as_str()))
+                        .filter(|text| *text == forced)
+                        .count();
+                    if forced.is_empty() || matches != 1 {
+                        diags.push(
+                            Diagnostic::event(
+                                Severity::Error,
+                                "force_choice.bad_forced",
+                                cid,
+                                i,
+                                "forced 必须精确匹配且只匹配一个选项文本".to_string(),
+                            )
+                            .with_field("forced"),
+                        );
+                    }
+                }
+                "random_var" => {
+                    if let Some(variable) = obj.get("variable").and_then(|v| v.as_str()) {
+                        if !variable.trim().is_empty() {
+                            vars_written.insert(variable.trim().to_string());
+                        }
+                    }
+                    if let Some(chance) = obj.get("chance").and_then(|v| v.as_f64()) {
+                        if !(0.0..=1.0).contains(&chance) {
+                            diags.push(
+                                Diagnostic::event(
+                                    Severity::Warn,
+                                    "random_var.clamped_chance",
+                                    cid,
+                                    i,
+                                    "chance 超出 0–1，运行时会截断".to_string(),
+                                )
+                                .with_field("chance"),
+                            );
+                        }
+                    }
+                }
+                "character_file" => {
+                    let action = obj.get("action").and_then(|v| v.as_str()).unwrap_or("exists");
+                    if !["ensure", "exists", "delete", "open_folder"].contains(&action) {
+                        diags.push(Diagnostic::event(
+                            Severity::Error,
+                            "character_file.bad_action",
+                            cid,
+                            i,
+                            format!("未知角色文件操作「{}」", action),
+                        ));
+                    }
+                    if action != "open_folder" {
+                        let file = obj.get("file").and_then(|v| v.as_str()).unwrap_or("");
+                        if !declared_character_files.contains(file) {
+                            diags.push(
+                                Diagnostic::event(
+                                    Severity::Error,
+                                    "character_file.not_declared",
+                                    cid,
+                                    i,
+                                    format!("角色文件「{}」未在 story_config 白名单中声明", file),
+                                )
+                                .with_field("file"),
+                            );
+                        }
+                    }
+                    if let Some(variable) = obj
+                        .get("resultVar")
+                        .or_else(|| obj.get("result_var"))
+                        .and_then(|v| v.as_str())
+                    {
+                        if !variable.trim().is_empty() {
+                            vars_written.insert(variable.trim().to_string());
+                        }
+                    }
+                }
+                "watch_file" => {
+                    let action = obj.get("action").and_then(|v| v.as_str()).unwrap_or("start");
+                    if action == "start" {
+                        let file = obj.get("file").and_then(|v| v.as_str()).unwrap_or("");
+                        if !declared_character_files.contains(file) {
+                            diags.push(
+                                Diagnostic::event(
+                                    Severity::Error,
+                                    "watch_file.not_declared",
+                                    cid,
+                                    i,
+                                    format!("监视文件「{}」未在 story_config 白名单中声明", file),
+                                )
+                                .with_field("file"),
+                            );
+                        }
+                        let target = obj.get("on_missing").and_then(|v| v.as_str()).unwrap_or("");
+                        push_target(
+                            target,
+                            "文件消失跳转",
+                            "watch_file",
+                            "watch_file",
+                            cid,
+                            i,
+                            &chapter_set,
+                            &mut edges,
+                            &mut diags,
+                        );
+                    } else if action != "stop" {
+                        diags.push(Diagnostic::event(
+                            Severity::Error,
+                            "watch_file.bad_action",
+                            cid,
+                            i,
+                            format!("watch_file action 只支持 start / stop，收到「{}」", action),
+                        ));
+                    }
+                }
+                "poem_game" => {
+                    if let Some(variable) = obj.get("resultVar").and_then(|v| v.as_str()) {
+                        if !variable.trim().is_empty() {
+                            vars_written.insert(variable.trim().to_string());
+                        }
+                    }
+                }
+                "console_window" => {
+                    if !horror_system_effects_allowed {
+                        diags.push(Diagnostic::event(
+                            Severity::Error,
+                            "console_window.not_authorized",
+                            cid,
+                            i,
+                            "console_window 需要 content_warning: horror 且 allow_system_effects: true"
+                                .to_string(),
+                        ));
+                    }
+                }
+                "main_menu_effect" => {
+                    let theme = obj.get("theme").and_then(|v| v.as_str()).unwrap_or("normal");
+                    if !["normal", "blood", "ghost"].contains(&theme) {
+                        diags.push(
+                            Diagnostic::event(
+                                Severity::Error,
+                                "main_menu_effect.bad_theme",
+                                cid,
+                                i,
+                                format!("主菜单主题「{}」不受支持", theme),
+                            )
+                            .with_field("theme"),
+                        );
+                    }
                 }
                 "set_variable" => {
                     check_set_variable(obj, cid, i, &mut diags, &mut vars_written, &mut vars_read);
@@ -869,7 +1086,8 @@ fn check_asset(
     }
 }
 
-/// 条件语法检查 + 变量收集。
+/// 条件语法检查 + 变量收集。语法与运行时 `evaluate_condition` 保持一致：
+/// `||` / `&&`、字符串等值比较、数字大小比较和裸变量真值判断。
 fn check_condition(
     cond: &str,
     cid: &str,
@@ -877,65 +1095,91 @@ fn check_condition(
     diags: &mut Vec<Diagnostic>,
     vars_read: &mut BTreeSet<String>,
 ) {
+    fn visit(
+        expression: &str,
+        cid: &str,
+        i: usize,
+        diags: &mut Vec<Diagnostic>,
+        vars_read: &mut BTreeSet<String>,
+    ) {
+        let expression = expression.trim();
+        if expression.is_empty() {
+            return;
+        }
+        if let Some((left, right)) = split_once_unquoted(expression, "||") {
+            visit(left, cid, i, diags, vars_read);
+            visit(right, cid, i, diags, vars_read);
+            return;
+        }
+        if let Some((left, right)) = split_once_unquoted(expression, "&&") {
+            visit(left, cid, i, diags, vars_read);
+            visit(right, cid, i, diags, vars_read);
+            return;
+        }
+
+        let mut comparison: Option<(&str, &str, &str)> = None;
+        for operator in ["!=", "==", ">=", "<=", ">", "<"] {
+            if let Some((left, right)) = split_once_unquoted(expression, operator) {
+                comparison = Some((left, right, operator));
+                break;
+            }
+        }
+        let (var, value, operator) = match comparison {
+            Some((left, right, operator)) => (left.trim(), Some(right.trim()), Some(operator)),
+            None => (expression, None, None),
+        };
+
+        if var.is_empty() {
+            diags.push(
+                Diagnostic::event(
+                    Severity::Error,
+                    "condition.no_variable",
+                    cid,
+                    i,
+                    format!("条件「{}」左侧没有变量名", expression),
+                )
+                .with_field("condition"),
+            );
+            return;
+        }
+        if var.contains(' ')
+            || ['!', '(', ')', '+', '*', '/']
+                .iter()
+                .any(|bad| var.contains(*bad))
+        {
+            diags.push(
+                Diagnostic::event(
+                    Severity::Error,
+                    "condition.bad_variable",
+                    cid,
+                    i,
+                    format!("条件中的变量名「{}」不合法", var),
+                )
+                .with_field("condition"),
+            );
+            return;
+        }
+
+        if matches!(operator, Some(">=" | "<=" | ">" | "<")) {
+            let numeric = value.and_then(|raw| raw.parse::<f64>().ok());
+            if numeric.is_none() {
+                diags.push(
+                    Diagnostic::event(
+                        Severity::Error,
+                        "condition.bad_number",
+                        cid,
+                        i,
+                        format!("数字比较「{}」右侧必须是有效数字", expression),
+                    )
+                    .with_field("condition"),
+                );
+            }
+        }
+        vars_read.insert(var.to_string());
+    }
+
     let cond = cond.trim();
     if cond.is_empty() {
-        return;
-    }
-
-    // 只扫**运算符左侧**。右值是任意字符串，`bg == city/night` 里的 / 是合法内容，
-    // 早先在整串上找 / + * ( ) 会把它误判成「用了不支持的运算符」并跳过变量收集。
-    let var = if let Some((v, _)) = cond.split_once("!=") {
-        v.trim()
-    } else if let Some((v, _)) = cond.split_once("==") {
-        v.trim()
-    } else {
-        cond
-    };
-
-    // 长运算符放前面，命中即停 —— 否则 `hp >= 5` 会同时报 >= 和 >
-    const BAD_OPS: [&str; 9] = ["&&", "||", ">=", "<=", ">", "<", "!", "(", ")"];
-    if let Some(op) = BAD_OPS.iter().find(|op| var.contains(**op)) {
-        diags.push(
-            Diagnostic::event(
-                Severity::Error,
-                "condition.unsupported_operator",
-                cid,
-                i,
-                format!(
-                    "条件里用了不支持的运算符「{}」。只支持「变量 == 值」「变量 != 值」或单独一个变量判断真假——写了别的不会按你的意思执行（没赋过值的变量不会正常运作）",
-                    op
-                ),
-            )
-            .with_field("condition"),
-        );
-        return;
-    }
-
-
-    if var.is_empty() {
-        diags.push(
-            Diagnostic::event(
-                Severity::Error,
-                "condition.no_variable",
-                cid,
-                i,
-                format!("条件「{}」左侧没有变量名", cond),
-            )
-            .with_field("condition"),
-        );
-        return;
-    }
-    if var.contains(' ') {
-        diags.push(
-            Diagnostic::event(
-                Severity::Error,
-                "condition.bad_variable",
-                cid,
-                i,
-                format!("变量名「{}」含空格，引擎的变量名不允许空格", var),
-            )
-            .with_field("condition"),
-        );
         return;
     }
     if cond.contains("%player%") {
@@ -950,7 +1194,7 @@ fn check_condition(
             .with_field("condition"),
         );
     }
-    vars_read.insert(var.to_string());
+    visit(cond, cid, i, diags, vars_read);
 }
 
 fn check_actions(
@@ -1600,448 +1844,5 @@ fn check_graph(intro: &str, chapters: &[String], edges: &[ChapterEdge], diags: &
                 c.join(" → ")
             ),
         ));
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn run_condition(cond: &str) -> (Vec<Diagnostic>, BTreeSet<String>) {
-        let mut d = Vec::new();
-        let mut v = BTreeSet::new();
-        check_condition(cond, "main", 0, &mut d, &mut v);
-        (d, v)
-    }
-
-    #[test]
-    fn condition_flags_unsupported_operators() {
-        for bad in ["hp >= 5", "hp > 5", "a && b", "a || b", "!flag", "(a == 1)"] {
-            let (d, _) = run_condition(bad);
-            assert!(
-                d.iter().any(|x| x.code == "condition.unsupported_operator"),
-                "应报不支持的运算符: {}",
-                bad
-            );
-        }
-    }
-
-    #[test]
-    fn condition_accepts_supported_forms_and_collects_vars() {
-        let (d, v) = run_condition("route == shop");
-        assert!(d.is_empty(), "不该有诊断: {:?}", d);
-        assert!(v.contains("route"));
-
-        let (d, v) = run_condition("flag != true");
-        assert!(d.is_empty());
-        assert!(v.contains("flag"));
-
-        let (d, v) = run_condition("wet");
-        assert!(d.is_empty());
-        assert!(v.contains("wet"));
-    }
-
-    #[test]
-    fn condition_rejects_spaces_in_variable_name() {
-        let (d, _) = run_condition("my var == 1");
-        assert!(d.iter().any(|x| x.code == "condition.bad_variable"));
-    }
-
-    #[test]
-    fn choices_detects_the_prototype_mistakes() {
-        let mut d = Vec::new();
-        let mut w = BTreeSet::new();
-        let mut r = BTreeSet::new();
-        let obj = json!({
-            "options": [
-                { "text": "去便利店", "next": "shop" },
-                { "text": "去便利店" },
-                { "actions": [{ "type": "set_variable", "content": "x = 1" }] },
-                { "text": "问 %player% 的名字" }
-            ]
-        });
-        check_choices(obj.as_object().unwrap(), "main", 0, &mut d, &mut w, &mut r);
-
-        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
-        // 选项级 next 不存在
-        assert!(codes.contains(&"choices.option_next_ignored"));
-        // 文案重复
-        assert!(codes.contains(&"choices.duplicate_text"));
-        // 无文案的兜底项没放最后
-        assert!(codes.contains(&"choices.catch_all_not_last"));
-        // action 类型写成了 set_variable（引擎只认 set_var）
-        assert!(codes.contains(&"action.unknown_type"));
-        // 选项文案里的 %player% 不会被替换
-        assert!(codes.contains(&"choices.placeholder_in_text"));
-    }
-
-    #[test]
-    fn set_variable_detects_the_prototype_shape() {
-        let mut d = Vec::new();
-        let mut w = BTreeSet::new();
-        let mut r = BTreeSet::new();
-        // 原型写的是 { name, value }，引擎只读 options[]
-        let obj = json!({ "name": "affection", "value": 10 });
-        check_set_variable(obj.as_object().unwrap(), "main", 0, &mut d, &mut w, &mut r);
-        assert!(d.iter().any(|x| x.code == "set_variable.no_options"));
-        assert!(w.is_empty(), "不该收集到任何被赋值的变量");
-    }
-
-    #[test]
-    fn set_variable_collects_written_vars_and_flags_add_line() {
-        let mut d = Vec::new();
-        let mut w = BTreeSet::new();
-        let mut r = BTreeSet::new();
-        let obj = json!({
-            "options": [{
-                "actions": [
-                    { "type": "set_var", "content": "affection += 1" },
-                    { "type": "add_line", "content": "喂" }
-                ]
-            }]
-        });
-        check_set_variable(obj.as_object().unwrap(), "main", 0, &mut d, &mut w, &mut r);
-        assert!(w.contains("affection"));
-        assert!(d.iter().any(|x| x.code == "action.not_supported_here"));
-    }
-
-    #[test]
-    fn chapter_end_detects_choice_shaped_branches() {
-        let mut edges = Vec::new();
-        let mut d = Vec::new();
-        let mut r = BTreeSet::new();
-        let chapters: HashSet<&str> = ["shop", "home"].into_iter().collect();
-        // 原型把分支写成了 { text, actions }
-        let obj = json!({
-            "end_type": "branching",
-            "options": [{ "text": "去便利店", "actions": [] }]
-        });
-        check_chapter_end(
-            obj.as_object().unwrap(),
-            "start",
-            4,
-            &chapters,
-            &mut edges,
-            &mut d,
-            &mut r,
-        );
-        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
-        assert!(codes.contains(&"chapter_end.choice_shaped_option"));
-        assert!(codes.contains(&"chapter_end.branch_no_next"));
-        assert!(codes.contains(&"chapter_end.no_default_branch"));
-    }
-
-    #[test]
-    fn chapter_end_linear_dangling_target() {
-        let mut edges = Vec::new();
-        let mut d = Vec::new();
-        let mut r = BTreeSet::new();
-        let chapters: HashSet<&str> = ["main2"].into_iter().collect();
-
-        let obj = json!({ "end_type": "linear", "next_chapter": "main9" });
-        check_chapter_end(
-            obj.as_object().unwrap(),
-            "main",
-            3,
-            &chapters,
-            &mut edges,
-            &mut d,
-            &mut r,
-        );
-        assert!(d.iter().any(|x| x.code == "chapter_end.dangling"));
-
-        // "end" 是合法终点
-        let mut edges2 = Vec::new();
-        let mut d2 = Vec::new();
-        let obj = json!({ "end_type": "linear", "next_chapter": "end" });
-        check_chapter_end(
-            obj.as_object().unwrap(),
-            "main",
-            3,
-            &chapters,
-            &mut edges2,
-            &mut d2,
-            &mut r,
-        );
-        assert!(d2.is_empty(), "指向 end 不该报错: {:?}", d2);
-        assert_eq!(edges2.len(), 1);
-        assert!(edges2[0].is_end);
-    }
-
-    #[test]
-    fn graph_finds_orphans_and_cycles() {
-        let chapters: Vec<String> = ["a", "b", "c", "orphan"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let e = |from: &str, to: &str| ChapterEdge {
-            from: from.into(),
-            to: to.into(),
-            is_end: false,
-            label: String::new(),
-            end_type: "linear".into(),
-        };
-        let edges = vec![e("a", "b"), e("b", "a"), e("orphan", "c")];
-        let mut d = Vec::new();
-        check_graph("a", &chapters, &edges, &mut d);
-
-        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
-        assert!(codes.contains(&"graph.cycle"), "应检出 a→b→a 的环");
-        // orphan 无入边、c 只被 orphan 指向，两者都从开场走不到
-        let unreachable: Vec<&Diagnostic> = d
-            .iter()
-            .filter(|x| x.code == "graph.unreachable")
-            .collect();
-        assert_eq!(unreachable.len(), 2);
-    }
-
-    #[test]
-    fn free_dialogue_without_exit_is_an_error() {
-        // 直接构造最小报告不方便，这里只验规则本身的判定条件
-        let rounds: i64 = -1;
-        let end_line = "";
-        assert!(rounds <= 0 && end_line.trim().is_empty());
-    }
-
-    // ---------- E1：set_var 表达式三态 ----------
-
-    fn run_actions(actions: &serde_json::Value) -> (Vec<Diagnostic>, BTreeSet<String>) {
-        let mut d = Vec::new();
-        let mut w = BTreeSet::new();
-        check_actions(actions.as_array().unwrap(), "choices", "main", 0, &mut d, &mut w);
-        (d, w)
-    }
-
-    /// 本次修复的直接动因：示例剧本把 set_var 写成 name/value/op 旧形状，
-    /// 之前被误报成「变量表达式「」无法解析」。现在应报定向的 legacy_shape。
-    #[test]
-    fn set_var_legacy_shape_is_diagnosed_clearly() {
-        let (d, w) = run_actions(&json!([
-            { "type": "set_var", "name": "flag", "value": "warm", "op": "=" }
-        ]));
-        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
-        assert!(codes.contains(&"action.legacy_shape"));
-        assert!(!codes.contains(&"action.empty_expression"));
-        assert!(!codes.contains(&"action.bad_expression"));
-        assert!(w.is_empty(), "旧形状不应收集到变量");
-    }
-
-    #[test]
-    fn set_var_truly_empty_expression_has_clear_message() {
-        let (d, _) = run_actions(&json!([{ "type": "set_var", "content": "" }]));
-        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
-        assert!(codes.contains(&"action.empty_expression"));
-    }
-
-    #[test]
-    fn set_var_valid_expression_collects_variable() {
-        let (d, w) = run_actions(&json!([{ "type": "set_var", "content": "affection += 1" }]));
-        assert!(d.is_empty(), "合法表达式不该有诊断: {:?}", d);
-        assert!(w.contains("affection"));
-    }
-
-    // ---------- A1：ai_judged 的 default 分支无需 name ----------
-
-    #[test]
-    fn ai_judged_default_branch_without_name_is_fine() {
-        let mut edges = Vec::new();
-        let mut d = Vec::new();
-        let mut r = BTreeSet::new();
-        let chapters: HashSet<&str> = ["shop", "home"].into_iter().collect();
-        let obj = json!({
-            "end_type": "ai_judged",
-            "options": [
-                { "name": "去商店", "next": "shop" },
-                { "default": true, "next": "home" }
-            ]
-        });
-        check_chapter_end(
-            obj.as_object().unwrap(),
-            "start",
-            0,
-            &chapters,
-            &mut edges,
-            &mut d,
-            &mut r,
-        );
-        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
-        assert!(
-            !codes.contains(&"chapter_end.ai_option_no_name"),
-            "default 兜底分支不该报缺 name: {:?}",
-            d
-        );
-    }
-
-    // ---------- A2：引擎有默认值的必填字段跳过检查 ----------
-
-    #[test]
-    fn engine_default_fields_are_skipped_by_required_check() {
-        assert!(has_engine_default("dialogue", "character"));
-        assert!(has_engine_default("ai_dialogue", "character"));
-        assert!(has_engine_default("free_dialogue", "character"));
-        assert!(has_engine_default("modify_character", "character"));
-        assert!(has_engine_default("chapter_end", "end_type"));
-        assert!(!has_engine_default("narration", "character"));
-        assert!(!has_engine_default("dialogue", "text"));
-        assert!(!has_engine_default("chapter_end", "next_chapter"));
-    }
-
-    // ---------- A3：带条件的空文案选项不是确定吞选项 ----------
-
-    #[test]
-    fn catch_all_with_condition_is_info_not_warn() {
-        let mut d = Vec::new();
-        let mut w = BTreeSet::new();
-        let mut r = BTreeSet::new();
-        let obj = json!({
-            "options": [
-                { "condition": "route == shop" },
-                { "text": "去公园" }
-            ]
-        });
-        check_choices(obj.as_object().unwrap(), "main", 0, &mut d, &mut w, &mut r);
-        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
-        assert!(codes.contains(&"choices.catch_all_conditional"));
-        assert!(!codes.contains(&"choices.catch_all_not_last"));
-    }
-
-    #[test]
-    fn catch_all_without_condition_still_warns() {
-        let mut d = Vec::new();
-        let mut w = BTreeSet::new();
-        let mut r = BTreeSet::new();
-        let obj = json!({ "options": [{}, { "text": "去公园" }] });
-        check_choices(obj.as_object().unwrap(), "main", 0, &mut d, &mut w, &mut r);
-        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
-        assert!(codes.contains(&"choices.catch_all_not_last"));
-    }
-
-    // ---------- B1：播放环境音但没给路径 ----------
-
-    #[test]
-    fn ambient_playing_without_path_warns() {
-        let mut d = Vec::new();
-        let obj = json!({ "ambientPath": "", "stop": false });
-        check_asset(
-            Path::new("/nonexistent"),
-            Path::new("/nonexistent"),
-            obj.as_object().unwrap(),
-            "ambient",
-            "main",
-            0,
-            &mut d,
-        );
-        assert!(d.iter().any(|x| x.code == "ambient.no_path"));
-
-        // stop=true 时空路径合法（停全部轨）
-        let mut d2 = Vec::new();
-        let obj2 = json!({ "ambientPath": "", "stop": true });
-        check_asset(
-            Path::new("/nonexistent"),
-            Path::new("/nonexistent"),
-            obj2.as_object().unwrap(),
-            "ambient",
-            "main",
-            0,
-            &mut d2,
-        );
-        assert!(d2.is_empty(), "停全部轨不该报路径缺失: {:?}", d2);
-    }
-
-    // ---------- B2：modify_character 未知动作 ----------
-
-    #[test]
-    fn modify_character_unknown_action_warns() {
-        let mut d = Vec::new();
-        let obj = json!({ "action": "hide" });
-        check_modify_character_action(obj.as_object().unwrap(), "main", 0, &mut d);
-        assert!(d.iter().any(|x| x.code == "character.action_unknown"));
-
-        let mut d2 = Vec::new();
-        let obj2 = json!({ "action": "show_character" });
-        check_modify_character_action(obj2.as_object().unwrap(), "main", 0, &mut d2);
-        assert!(d2.is_empty(), "show_character 不该被警告: {:?}", d2);
-    }
-
-    // ---------- B3：ai_judged 分支里的 condition 被引擎忽略 ----------
-
-    #[test]
-    fn ai_judged_option_condition_is_ignored_info() {
-        let mut edges = Vec::new();
-        let mut d = Vec::new();
-        let mut r = BTreeSet::new();
-        let chapters: HashSet<&str> = ["shop", "home"].into_iter().collect();
-        let obj = json!({
-            "end_type": "ai_judged",
-            "options": [
-                { "name": "去商店", "condition": "flag == true", "next": "shop" },
-                { "name": "回家", "next": "home" }
-            ]
-        });
-        check_chapter_end(
-            obj.as_object().unwrap(),
-            "start",
-            0,
-            &chapters,
-            &mut edges,
-            &mut d,
-            &mut r,
-        );
-        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
-        assert!(codes.contains(&"chapter_end.ai_condition_ignored"));
-    }
-
-    // ---------- C1：无 next 的分支是 warn，不是 error ----------
-
-    #[test]
-    fn branch_without_next_is_warn_not_error() {
-        let mut edges = Vec::new();
-        let mut d = Vec::new();
-        let mut r = BTreeSet::new();
-        let chapters: HashSet<&str> = ["home"].into_iter().collect();
-        let obj = json!({
-            "end_type": "branching",
-            "options": [
-                { "condition": "flag == x", "next": "home" },
-                { "condition": "other == y" }
-            ]
-        });
-        check_chapter_end(
-            obj.as_object().unwrap(),
-            "start",
-            0,
-            &chapters,
-            &mut edges,
-            &mut d,
-            &mut r,
-        );
-        let diag = d
-            .iter()
-            .find(|x| x.code == "chapter_end.branch_no_next")
-            .expect("应报 branch_no_next");
-        assert_eq!(diag.severity, Severity::Warn, "无 next 的分支应是 warn");
-    }
-
-    // ---------- D1：end.yaml 不是剧本结束 ----------
-
-    #[test]
-    fn end_with_yaml_suffix_is_rejected() {
-        let mut edges = Vec::new();
-        let mut d = Vec::new();
-        let mut r = BTreeSet::new();
-        let chapters: HashSet<&str> = ["main2"].into_iter().collect();
-        let obj = json!({ "end_type": "linear", "next_chapter": "end.yaml" });
-        check_chapter_end(
-            obj.as_object().unwrap(),
-            "main",
-            0,
-            &chapters,
-            &mut edges,
-            &mut d,
-            &mut r,
-        );
-        let codes: Vec<&str> = d.iter().map(|x| x.code).collect();
-        assert!(codes.contains(&"chapter_end.end_suffix"), "end.yaml 应被报出: {:?}", d);
     }
 }

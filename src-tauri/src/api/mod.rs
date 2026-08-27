@@ -5,14 +5,14 @@ pub mod asset;
 pub mod background;
 pub mod character;
 pub mod chat;
+pub mod codex;
 pub mod dlc;
 pub mod font;
 pub mod game;
 pub mod locale;
+pub mod live2d;
 pub mod music;
 pub mod pet;
-// 插件命令由 RustPython 驱动，移动端（Android/iOS）不编译
-#[cfg(desktop)]
 pub mod plugins;
 pub mod save;
 pub mod scene;

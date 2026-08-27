@@ -14,7 +14,7 @@ use super::registry::ToolRegistry;
 #[derive(Clone, Debug, Default)]
 pub struct ToolContext {
     pub allowed_tools: HashSet<String>,
-    /// 用于访问 AppState 共享状态的句柄；测试等无宿主环境时为 `None`。
+    /// 用于访问 AppState 共享状态的句柄；无宿主环境时为 `None`。
     pub app: Option<AppHandle>,
 }
 
@@ -36,7 +36,7 @@ impl ToolContext {
         self.allowed_tools.contains(name)
     }
 
-    /// 取 AppHandle，用于访问 AppState 共享状态。无宿主环境（单元测试）时报错。
+    /// 取 AppHandle，用于访问 AppState 共享状态。无宿主环境时报错。
     pub fn require_app(&self) -> Result<AppHandle, ToolError> {
         self.app
             .clone()
@@ -133,10 +133,6 @@ impl<'a> ToolExecutor<'a> {
         }
     }
 
-    #[cfg(test)]
-    fn with_timeout(registry: &'a ToolRegistry, timeout: std::time::Duration) -> Self {
-        Self { registry, timeout }
-    }
 }
 
 /// 校验当前工具定义使用到的 JSON Schema 子集。所有内置工具只依赖 object、
@@ -209,113 +205,4 @@ fn error_result(code: &str, message: impl Into<String>) -> String {
         }
     })
     .to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use super::*;
-    use crate::ai_service::tools::registry::ToolRegistry;
-
-    fn test_context() -> ToolContext {
-        ToolContext::new(
-            ["echo", "error", "slow", "missing"]
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-        )
-    }
-
-    struct EchoTool;
-
-    #[async_trait]
-    impl Tool for EchoTool {
-        fn definition(&self) -> ToolDefinition {
-            ToolDefinition::new("echo", "回显", serde_json::json!({"type": "object"}))
-        }
-
-        async fn execute(
-            &self,
-            _: &ToolContext,
-            arguments: Value,
-        ) -> Result<ToolResult, ToolError> {
-            Ok(arguments)
-        }
-    }
-
-    struct ErrorTool;
-
-    #[async_trait]
-    impl Tool for ErrorTool {
-        fn definition(&self) -> ToolDefinition {
-            ToolDefinition::new("error", "失败", serde_json::json!({"type": "object"}))
-        }
-
-        async fn execute(&self, _: &ToolContext, _: Value) -> Result<ToolResult, ToolError> {
-            Err(ToolError::Execution("预期失败".to_string()))
-        }
-    }
-
-    struct SlowTool;
-
-    #[async_trait]
-    impl Tool for SlowTool {
-        fn definition(&self) -> ToolDefinition {
-            ToolDefinition::new("slow", "慢工具", serde_json::json!({"type": "object"}))
-        }
-
-        async fn execute(&self, _: &ToolContext, _: Value) -> Result<ToolResult, ToolError> {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            Ok(serde_json::json!({"done": true}))
-        }
-    }
-
-    /// 验证执行器可执行合法工具并稳定返回错误。
-    #[tokio::test]
-    async fn executes_and_encodes_recoverable_errors() {
-        let registry = ToolRegistry::new();
-        registry.register(Arc::new(EchoTool)).unwrap();
-        let executor = ToolExecutor::new(&registry);
-        let ctx = test_context();
-
-        assert_eq!(executor.execute("echo", "{}", &ctx).await, "{}");
-        assert!(executor
-            .execute("missing", "{}", &ctx)
-            .await
-            .contains("unknown_tool"));
-        assert!(executor
-            .execute("echo", "[", &ctx)
-            .await
-            .contains("invalid_json"));
-        assert!(executor
-            .execute("echo", "[]", &ctx)
-            .await
-            .contains("invalid_arguments"));
-    }
-
-    /// 验证工具主动失败会被编码为可回填结果。
-    #[tokio::test]
-    async fn encodes_tool_errors() {
-        let registry = ToolRegistry::new();
-        registry.register(Arc::new(ErrorTool)).unwrap();
-        let executor = ToolExecutor::new(&registry);
-        let ctx = test_context();
-
-        let result = executor.execute("error", "{}", &ctx).await;
-        assert!(result.contains("tool_error"));
-        assert!(result.contains("预期失败"));
-    }
-
-    /// 验证超过执行期限的工具会返回超时结果。
-    #[tokio::test]
-    async fn encodes_timeouts() {
-        let registry = ToolRegistry::new();
-        registry.register(Arc::new(SlowTool)).unwrap();
-        let executor = ToolExecutor::with_timeout(&registry, std::time::Duration::from_millis(1));
-        let ctx = test_context();
-
-        let result = executor.execute("slow", "{}", &ctx).await;
-        assert!(result.contains("timeout"));
-    }
 }

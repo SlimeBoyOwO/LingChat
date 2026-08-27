@@ -3,6 +3,7 @@
 use serde::Serialize;
 use tauri::Manager;
 
+use crate::ai_service::skill_agent::command_executor;
 use crate::ai_service::message_system::generator::GeneratorSource;
 use crate::ai_service::tools::executor::{Tool, ToolContext};
 use crate::ai_service::tools::permissions::CONFIG_FILE_NAME;
@@ -103,6 +104,7 @@ pub async fn save_tool_settings(
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
     let data_dir = super::data_dir();
+    settings.normalize();
     settings.apply_platform_constraints();
     settings.save(&data_dir).map_err(|e| e.to_string())?;
     state.tool_settings.update(settings.clone());
@@ -121,13 +123,42 @@ pub async fn save_tool_settings(
 #[tauri::command]
 pub async fn test_web_search(app: tauri::AppHandle, query: String) -> Result<String, String> {
     let state = app.state::<AppState>();
-    let tool = WebSearchTool::new(state.tool_settings.clone(), app.clone());
+    let tool = WebSearchTool::new(state.tool_settings.clone());
     let context = ToolContext::new(["web_search".to_string()].into_iter().collect());
     let result = tool
         .execute(&context, serde_json::json!({ "query": query }))
         .await
         .map_err(|e| e.to_string())?;
     Ok(result.to_string())
+}
+
+/// 返回当前 LingChat 进程是否已通过 Windows UAC 获得管理员令牌。
+#[tauri::command]
+pub fn get_tool_elevation_status() -> bool {
+    command_executor::is_current_process_elevated()
+}
+
+/// 使用 Windows 正常 RunAs 流程启动管理员实例；成功启动后退出当前标准权限实例。
+#[tauri::command]
+pub async fn restart_tool_process_as_admin(app: tauri::AppHandle) -> Result<(), String> {
+    if command_executor::is_current_process_elevated() {
+        return Ok(());
+    }
+    tokio::task::spawn_blocking(command_executor::launch_current_process_as_admin)
+        .await
+        .map_err(|error| format!("管理员重启任务异常: {error}"))?
+        .map_err(|error| error.to_string())?;
+    // 使用独立系统线程而不是 Tauri async runtime：`app.exit(0)` 会关闭窗口并触发
+    // 退出存档，但某些仍在运行的后台任务可能让进程继续残留。重启场景下必须保证
+    // 旧 PID 最终释放，否则已提权的辅助进程会一直等不到启动新实例的时机。
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        app.exit(0);
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        tracing::warn!("管理员重启时旧进程未在宽限期内退出，正在结束残留进程");
+        std::process::exit(0);
+    });
+    Ok(())
 }
 
 /// 主聊天 `execute_command` 的审批回调：前端弹窗后把用户决定送回等待中的工具。
@@ -152,6 +183,34 @@ pub async fn resolve_command_approval(
         None => {
             tracing::warn!("[approval] resolve_command_approval 未找到请求: request_id={request_id}");
             Err("审批请求不存在或已过期".into())
+        }
+    }
+}
+
+/// 主聊天文件写入/编辑审批回调。
+#[tauri::command]
+pub async fn resolve_file_change_approval(
+    app: tauri::AppHandle,
+    request_id: String,
+    approved: bool,
+) -> Result<(), String> {
+    tracing::info!("[approval] resolve_file_change_approval 收到回传: request_id={request_id} approved={approved}");
+    let state = app.state::<AppState>();
+    let request = state
+        .chat_file_change_approvals
+        .lock()
+        .await
+        .remove(&request_id);
+    match request {
+        Some(request) => {
+            let _ = request.tx.send(approved);
+            Ok(())
+        }
+        None => {
+            tracing::warn!(
+                "[approval] resolve_file_change_approval 未找到请求: request_id={request_id}"
+            );
+            Err("文件修改审批请求不存在或已过期".into())
         }
     }
 }

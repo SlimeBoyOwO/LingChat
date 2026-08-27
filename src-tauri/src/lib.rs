@@ -8,8 +8,6 @@ mod init;
 mod lan_sync;
 mod manifest;
 mod migration;
-// 插件系统由 RustPython 驱动，移动端（Android/iOS）构建时依赖不可用，整体排除
-#[cfg(desktop)]
 mod plugins;
 mod resource_sync;
 pub mod utils;
@@ -18,7 +16,7 @@ use std::sync::Arc;
 
 use chrono::Local;
 use sea_orm::DatabaseConnection;
-use tauri::{Listener, Manager};
+use tauri::{Emitter, Listener, Manager};
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -94,8 +92,7 @@ pub struct InnerAppState {
     pub tool_registry: Arc<ToolRegistry>,
     /// 聊天工具的用户配置（网页搜索 API Key、代理等），热更新共享句柄。
     pub tool_settings: ai_service::tools::settings::SharedToolSettings,
-    /// 插件管理器（扫描/启停/配置）。仅桌面端可用。
-    #[cfg(desktop)]
+    /// 插件管理器（扫描/启停/配置）。
     pub plugin_manager: Arc<plugins::PluginManager>,
     pub proactive_system:
         Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
@@ -114,6 +111,8 @@ pub struct InnerAppState {
     pub skill_agent: Arc<ai_service::skill_agent::SkillAgentState>,
     /// 主聊天 `execute_command` 工具的待审批命令请求（request_id → oneshot）。
     pub chat_command_approvals: ai_service::skill_agent::ApprovalMap,
+    /// 主聊天 `write_file` / `edit_file` 工具的待审批修改请求。
+    pub chat_file_change_approvals: ai_service::skill_agent::ApprovalMap,
     /// 主聊天 `delete_file` 工具的待审批删除请求（request_id → oneshot）。
     pub chat_file_delete_approvals: ai_service::skill_agent::ApprovalMap,
     /// 主聊天后台命令的并发槽位与任务 ID 分配器。
@@ -405,12 +404,9 @@ pub fn run() {
             let tool_registry = Arc::new(ai_service::tools::built_in_registry(
                 role_names,
                 tool_settings.clone(),
-                app.handle().clone(),
             )?);
 
             // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）。
-            // 移动端（Android/iOS）不编译插件系统，跳过此段。
-            #[cfg(desktop)]
             let plugin_manager = {
                 let data_dir = api::data_dir();
                 let plugins_root = data_dir.join("plugins");
@@ -498,7 +494,6 @@ pub fn run() {
                     generation_lock,
                     tool_registry,
                     tool_settings,
-                    #[cfg(desktop)]
                     plugin_manager,
                     proactive_system: Some(proactive),
                     achievement_manager,
@@ -508,6 +503,7 @@ pub fn run() {
                     god_agent,
                     skill_agent: Arc::new(ai_service::skill_agent::SkillAgentState::default()),
                     chat_command_approvals: Default::default(),
+                    chat_file_change_approvals: Default::default(),
                     chat_file_delete_approvals: Default::default(),
                     background_commands: Arc::new(
                         ai_service::tools::background_command::BackgroundCommandManager::default(),
@@ -587,6 +583,15 @@ pub fn run() {
                                 let logical_x = mouse_x / scale_factor;
                                 let logical_y = mouse_y / scale_factor;
 
+                                // 向桌宠前端广播全局鼠标位置：桌宠窗口非全屏，DOM
+                                // pointermove 在鼠标移出窗口后停发，Live2D 视线会冻结在
+                                // 最后一次窗口内位置。这里把窗口内逻辑坐标（即 webview
+                                // 视口坐标）发给前端驱动视线，与 DOM clientX/Y 同坐标系。
+                                let _ = window.emit(
+                                    "pet:cursor",
+                                    api::pet::CursorPosition { x: logical_x, y: logical_y },
+                                );
+
                                 let mut is_over_solid = false;
                                 if let Ok(rects) = rects_arc.lock() {
                                     for r in rects.iter() {
@@ -625,15 +630,10 @@ pub fn run() {
             utils::log_bridge::get_log_history,
             utils::log_bridge::open_log_window,
             utils::log_bridge::is_log_window_open,
-            #[cfg(desktop)]
             api::plugins::plugin_list,
-            #[cfg(desktop)]
             api::plugins::plugin_set_enabled,
-            #[cfg(desktop)]
             api::plugins::plugin_save_config,
-            #[cfg(desktop)]
             api::plugins::plugin_reload,
-            #[cfg(desktop)]
             api::plugins::plugin_delete,
             api::settings::get_settings_tree,
             api::settings::save_settings,
@@ -648,6 +648,11 @@ pub fn run() {
             api::settings::switch_llm,
             api::settings::test_llm_provider,
             api::settings::list_llm_models,
+            api::codex::codex_auth_status,
+            api::codex::codex_start_login,
+            api::codex::codex_poll_login,
+            api::codex::codex_logout,
+            api::codex::codex_get_quota,
             api::font::list_system_fonts,
             api::font::import_font,
             api::font::list_imported_fonts,
@@ -661,6 +666,9 @@ pub fn run() {
             api::character::update_role_settings,
             api::character::delete_character,
             api::character::open_characters_folder,
+            api::live2d::import_live2d,
+            api::live2d::get_live2d_file,
+            api::live2d::inspect_live2d,
             api::background::get_background_list,
             api::background::get_background_file,
             api::background::upload_background_image,
@@ -781,7 +789,10 @@ pub fn run() {
             api::tool_settings::get_tool_runtime_info,
             api::tool_settings::save_tool_settings,
             api::tool_settings::test_web_search,
+            api::tool_settings::get_tool_elevation_status,
+            api::tool_settings::restart_tool_process_as_admin,
             api::tool_settings::resolve_command_approval,
+            api::tool_settings::resolve_file_change_approval,
             api::tool_settings::resolve_file_delete_approval,
             api::achievement::get_achievement_list,
             api::achievement::unlock_achievement,

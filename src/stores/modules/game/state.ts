@@ -1,3 +1,4 @@
+import type { Live2dSettings } from '@/types/live2d'
 import type { SceneInfo } from '@/api/services/scene' // 导入场景类型
 import type { ScriptChoiceItem, ScriptPoemGameEvent } from '@/types/script'
 
@@ -57,6 +58,7 @@ export interface GameRole {
   clothes: object
   clothesName: string
   bodyPart: object
+  live2d?: Live2dSettings | null
   character_folder: string
 }
 

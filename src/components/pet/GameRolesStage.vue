@@ -60,11 +60,25 @@
         </button>
       </div>
 
+      <Live2DStage
+        v-if="singleRole?.live2d"
+        class="z-11 rounded-full"
+        :roles="singleRole ? [singleRole] : []"
+        mode="pet"
+        :active-speaker-id="gameStore.currentInteractRoleId"
+        :audio-element="mainAudio"
+        :voice-data-url="voiceDataUrl"
+        @active-change="setLive2dActiveRoles"
+        @failed-change="setLive2dFailedRoles"
+      />
+
       <!-- 角色头像 -->
       <RoleAvatar
         v-if="singleRole"
         :key="singleRole.roleId"
         :role="singleRole"
+        :live2d-active="live2dActiveRoleIds.has(singleRole.roleId)"
+        :live2d-failed="live2dFailedRoleIds.has(singleRole.roleId)"
         @avatar-click="emit('avatar-click')"
       />
     </div>
@@ -83,6 +97,7 @@ import { useSettingsStore } from '@/stores/modules/settings'
 import { useScreenshot } from '@/composables/useScreenshot'
 import { isAndroid } from '@/utils/platform'
 import RoleAvatar from './GameRoleAvatar.vue'
+import Live2DStage from '../game/live2d/Live2DStage.vue'
 import { Play, Pause, Settings, LogOut, Camera } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -100,6 +115,17 @@ const emit = defineEmits([
 ])
 
 const mainAudio = ref<HTMLAudioElement | null>(null)
+const voiceDataUrl = ref('')
+const live2dActiveRoleIds = ref(new Set<number>())
+const live2dFailedRoleIds = ref(new Set<number>())
+
+const setLive2dActiveRoles = (roleIds: number[]) => {
+  live2dActiveRoleIds.value = new Set(roleIds)
+}
+
+const setLive2dFailedRoles = (roleIds: number[]) => {
+  live2dFailedRoleIds.value = new Set(roleIds)
+}
 
 const singleRole = computed(() => {
   return gameStore.presentRolesList.length > 0 ? gameStore.presentRolesList[0] : null
@@ -140,6 +166,7 @@ watch(
     if (!mainAudio.value) return
 
     if (newAudio === 'None' || !newAudio) {
+      voiceDataUrl.value = ''
       mainAudio.value.pause()
       mainAudio.value.currentTime = 0
       return
@@ -147,6 +174,7 @@ watch(
 
     try {
       const dataUrl = await getVoiceAudio(newAudio)
+      voiceDataUrl.value = dataUrl
       mainAudio.value.src = dataUrl
       mainAudio.value.load()
       mainAudio.value.volume = uiStore.characterVolume / 100

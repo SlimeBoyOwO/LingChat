@@ -5,7 +5,9 @@ use anyhow::{anyhow, Result};
 use sea_orm::DatabaseConnection;
 
 use crate::ai_service::game_system::memory_builder::MemoryBuilder;
-use crate::ai_service::game_system::persistent_memory_system::PersistentMemorySystem;
+use crate::ai_service::game_system::persistent_memory_system::{
+    MemorySectionLimits, PersistentMemorySystem,
+};
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::tts::VoiceMaker;
@@ -37,6 +39,8 @@ pub struct GameRoleManager {
     memory_update_interval: u32,
     /// 摘要时保留的最近消息数（来自 `AppConfig::memory_recent_window`）。
     memory_recent_window: u32,
+    /// 各记忆段长度上限（来自 `AppConfig::memory_*_max_chars`），透传给压缩系统。
+    memory_limits: MemorySectionLimits,
     /// 角色服装覆盖（session store → register_role_by_id 时优先读取）
     clothes_overrides: HashMap<i32, String>,
 }
@@ -50,6 +54,7 @@ impl GameRoleManager {
         use_persistent_memory: bool,
         memory_update_interval: u32,
         memory_recent_window: u32,
+        memory_limits: MemorySectionLimits,
     ) -> Self {
         Self {
             loaded_roles: HashMap::new(),
@@ -61,6 +66,7 @@ impl GameRoleManager {
             use_persistent_memory,
             memory_update_interval,
             memory_recent_window,
+            memory_limits,
             clothes_overrides: HashMap::new(),
         }
     }
@@ -310,6 +316,7 @@ impl GameRoleManager {
                 mb_enabled,
                 self.memory_update_interval as usize,
                 self.memory_recent_window as usize,
+                self.memory_limits,
             );
 
             // 阶段 2: MemoryBank 启用时 — 同步后台结果 + 触发压缩 + 获取记忆文本
@@ -383,6 +390,7 @@ impl GameRoleManager {
         enabled: bool,
         update_interval: usize,
         recent_window: usize,
+        limits: MemorySectionLimits,
     ) {
         if self.memory_bank_systems.contains_key(&role_id) {
             return;
@@ -406,6 +414,7 @@ impl GameRoleManager {
                 enabled,
                 update_interval,
                 recent_window,
+                limits,
                 display_name,
             ),
         );
@@ -468,6 +477,7 @@ impl GameRoleManager {
                 enabled,
                 self.memory_update_interval as usize,
                 self.memory_recent_window as usize,
+                self.memory_limits,
             );
 
             // 若已有压缩系统且 DB 有数据，同步重置
@@ -524,6 +534,19 @@ impl GameRoleManager {
             role.settings.voice_lang.as_deref().unwrap_or(""),
             voice_maker_ready,
         );
+        true
+    }
+
+    pub fn update_role_live2d_settings(
+        &mut self,
+        role_id: i32,
+        settings: &CharacterSettings,
+    ) -> bool {
+        let Some(role) = self.loaded_roles.get_mut(&role_id) else {
+            tracing::info!("角色 {} 尚未加载，Live2D 设置将在下次加载时生效", role_id);
+            return false;
+        };
+        role.settings.live2d = settings.live2d.clone();
         true
     }
 

@@ -17,7 +17,7 @@
 //!
 //! # 调用示例
 //!
-//! ```ignore
+//! ```text
 //! use ling_chat::utils::archive::{compress, ArchiveFormat, extract_zip, resolve_target, ConflictPolicy};
 //! //!
 //! compress(src_dir, ArchiveFormat::Zip, &out_zip, &|ev| {

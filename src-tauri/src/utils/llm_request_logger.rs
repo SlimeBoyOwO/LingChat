@@ -7,8 +7,8 @@
 
 use std::fs;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use chrono::Local;
 
@@ -35,6 +35,28 @@ pub fn init(data_dir: &Path, enable: bool) {
     }
 }
 
+/// 将模型名等片段清洗成合法的文件名片段
+///
+/// 模型名可能包含路径分隔符（`/`、`\`）或其他 Windows 文件名非法字符，
+/// 直接拼进文件名会导致写入失败或落到不存在的子目录。
+fn sanitize_for_filename(s: &str) -> String {
+    let cleaned: String = s
+        .chars()
+        .map(|c| {
+            if c.is_control() || r#"\/:*?"<>|"#.contains(c) {
+                '-'
+            } else {
+                c
+            }
+        })
+        .collect();
+    if cleaned.is_empty() {
+        "-".to_string()
+    } else {
+        cleaned
+    }
+}
+
 /// 记录 LLM 请求体到文件
 ///
 /// 如果开关未开启或目录未初始化，直接返回。
@@ -46,7 +68,12 @@ pub fn log_request_body(provider_name: &str, body: &serde_json::Value) {
 
     let counter = REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
-    let filename = log_dir.join(format!("{}_{}_{:05}.json", timestamp, provider_name, counter));
+    let filename = log_dir.join(format!(
+        "{}_{}_{:05}.json",
+        timestamp,
+        sanitize_for_filename(provider_name),
+        counter
+    ));
 
     let formatted = serde_json::to_string_pretty(body).unwrap_or_default();
     if let Err(e) = fs::write(&filename, &formatted) {

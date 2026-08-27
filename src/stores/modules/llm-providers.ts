@@ -55,6 +55,7 @@ export const useLlmProvidersStore = defineStore('llm-providers', {
       top_p: null,
       enable_thinking: false,
       reasoning_effort: null,
+      fast_mode: false,
     }),
   },
   actions: {

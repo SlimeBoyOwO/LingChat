@@ -122,7 +122,7 @@ voice_models:
   sbv2_local_sdp_ratio: null
   sbv2_local_cloud_fallback_model: null
   sbv2_local_cloud_fallback_speaker_id: null
-tts_type: sbv2
+tts_type: localsbv2api
 voice_lang: ja
 thinking_message: 灵灵正在思考中...
 bubble_top: 5

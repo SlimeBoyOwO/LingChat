@@ -14,9 +14,11 @@ export default class ErrorProcessor implements IEventProcessor {
 
     console.log('处理错误事件:', event)
 
-    // 使用 error_code 查询对应的角色专属提示
+    // 使用 error_code 查询 i18n/角色提示；未知错误（other）附带原始错误便于排查
+    const errorCode = event.error_code || 'default_error'
     uiStore.showError({
-      errorCode: event.error_code || 'default_error',
+      errorCode,
+      message: errorCode === 'other' ? event.message || undefined : undefined,
     })
 
     // 重置游戏状态

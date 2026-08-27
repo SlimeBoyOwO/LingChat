@@ -3,10 +3,15 @@
 //! 对标 Python 版 `ling_chat/core/llm_providers/` 的工厂+ABC 模式。
 //! `LlmClient` 是薄包装，具体协议由 `LlmProvider` trait 实现处理。
 
+pub mod error;
 pub(crate) mod factory;
 mod provider;
 pub mod provider_config;
 mod providers;
+pub mod codex;
+
+// 兼容别名：既有 `llm::codex_auth::...` 路径继续可用（模块化后为 codex::auth）
+pub use codex::auth as codex_auth;
 
 pub use factory::create_llm_client;
 pub use provider::{LlmModelInfo, LlmProvider, LlmResponseWithTools};
@@ -57,11 +62,17 @@ pub struct LlmConfig {
     pub enable_thinking: bool,
     /// 推理深度（如 "low" / "high" / "max"），由支持 reasoning 的模型使用（如 Kimi Code K3 系列）。
     pub reasoning_effort: Option<String>,
+    /// Codex Fast Mode（1.5× 速度，额度消耗更快）= Responses API 的 `service_tier: "priority"`。
+    pub fast_mode: bool,
 }
 
 impl LlmConfig {
+    /// 判断配置是否可用于发起 LLM 请求。
+    ///
+    /// 允许 api_key 为空（本地模型 / 自托管 OpenAI 兼容服务无需密钥），
+    /// 只要求 model 非空。
     pub fn is_usable(&self) -> bool {
-        !self.api_key.is_empty() && !self.model.is_empty()
+        !self.model.is_empty()
     }
 }
 
@@ -129,7 +140,7 @@ impl LlmClient {
     /// 非流式：一次性取完整回复。
     pub async fn complete(&self, messages: &[LlmMessage]) -> Result<String> {
         if !self.cfg.is_usable() {
-            return Err(anyhow!("LLM 未配置 API key 或 model"));
+            return Err(anyhow!("LLM 未配置 model"));
         }
         self.provider.complete(&self.http, messages).await
     }
@@ -161,7 +172,7 @@ impl LlmClient {
         tools: Option<(&[ToolDefinition], Option<&str>)>,
     ) -> Result<ChunkStream> {
         if !self.cfg.is_usable() {
-            return Err(anyhow!("LLM 未配置 API key 或 model"));
+            return Err(anyhow!("LLM 未配置 model"));
         }
         let mut inner = match tools {
             Some((definitions, tool_choice)) => {
@@ -195,7 +206,7 @@ impl LlmClient {
         tool_choice: Option<&str>,
     ) -> Result<LlmResponseWithTools> {
         if !self.cfg.is_usable() {
-            return Err(anyhow!("LLM 未配置 API key 或 model"));
+            return Err(anyhow!("LLM 未配置 model"));
         }
         self.provider
             .complete_with_tools(&self.http, messages, tools, tool_choice)

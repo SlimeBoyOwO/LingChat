@@ -78,6 +78,9 @@ const readTools = new Set([
   'read_skill',
   'list_files',
   'read_file',
+  'ReadMediaFile',
+  'glob',
+  'grep',
   'memory_get_current',
   'memory_get_notes',
   'schedule_get_all',
@@ -114,7 +117,7 @@ const target = computed(() => {
   if (!current) return ''
   try {
     const args = JSON.parse(current.arguments) as Record<string, unknown>
-    const keys = ['search_files', 'grep_files', 'web_search'].includes(current.tool)
+    const keys = ['search_files', 'grep_files', 'glob', 'grep', 'web_search'].includes(current.tool)
       ? ['query', 'pattern', 'path']
       : current.tool === 'execute_command'
         ? ['description']
@@ -144,7 +147,7 @@ function runningKey(current: NonNullable<typeof activity.value>): string {
   if (tool === 'write_file') return 'writing'
   if (tool === 'edit_file') return 'editing'
   if (tool === 'delete_file') return 'deleting'
-  if (['web_search', 'search_files', 'grep_files'].includes(tool)) return 'searching'
+  if (['web_search', 'search_files', 'grep_files', 'glob', 'grep'].includes(tool)) return 'searching'
   if (tool === 'execute_command') {
     if (isBackgroundCommand(current)) return 'backgroundExecuting'
     return 'executing'

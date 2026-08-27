@@ -16,11 +16,6 @@ pub fn get_data_dir() -> &'static PathBuf {
         .expect("data_dir not initialized — call init_data_dir first")
 }
 
-/// 测试兜底：把 data_dir 初始化到临时目录（已初始化则忽略，OnceLock 二次 set 会 panic）。
-#[cfg(test)]
-pub fn init_data_dir_for_tests() {
-    let _ = DATA_DIR.set(std::env::temp_dir().join("lingchat_test_data"));
-}
 
 /// 解析 data 目录路径。
 ///

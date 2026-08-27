@@ -20,6 +20,9 @@ export default {
     noModelMessage:
       'まだ会話モデルを選んでないの？バカ！詳細設定でモデルを設定して選べばいいよ。切り替えは自動で反映されるからね！',
   },
+  avatar: {
+    live2dUnavailable: 'Live2D を利用できません',
+  },
   musicPlayer: {
     previous: '前の曲',
     play: '再生',

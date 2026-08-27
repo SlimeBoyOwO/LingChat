@@ -14,6 +14,14 @@ use serde::{Deserialize, Serialize};
 use super::permissions::ToolPermissionConfig;
 
 pub const SETTINGS_FILE_NAME: &str = "tool_settings.toml";
+pub const DEFAULT_TOOL_CALL_ROUND_LIMIT: u32 = 8;
+pub const MIN_TOOL_CALL_ROUND_LIMIT: u32 = 1;
+pub const MAX_TOOL_CALL_ROUND_LIMIT: u32 = 64;
+pub const DEFAULT_MEDIA_MAX_FILE_MB: u32 = 100;
+pub const MAX_MEDIA_MAX_FILE_MB: u32 = 100;
+pub const DEFAULT_MEDIA_IMAGE_MAX_EDGE: u32 = 2000;
+pub const DEFAULT_MEDIA_JPEG_QUALITY: u8 = 85;
+pub const DEFAULT_MEDIA_OUTPUT_TOKENS: u32 = 1024;
 
 /// 工具分组 → 组内工具注册名。
 /// 设置页按组开关，权限同步时组内工具一起放开/收回。
@@ -43,6 +51,7 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
     ("status", &["status_get_current", "status_get_scene"]),
     ("clock", &["get_current_time"]),
     ("skills", &["list_skills", "read_skill"]),
+    ("media", &["ReadMediaFile"]),
     (
         "file_ops",
         &[
@@ -53,6 +62,8 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
             "edit_file",
             "search_files",
             "grep_files",
+            "glob",
+            "grep",
         ],
     ),
     ("command", &["execute_command"]),
@@ -64,29 +75,24 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
 pub struct WebSearchSettings {
     /// 总开关：关闭时工具不下发给模型，执行也会被拒绝。
     pub enabled: bool,
-    /// 为 true 时使用「模型 API 内置联网」：复用聊天模型的 API（Moonshot/Kimi），
-    /// 由服务端执行 $web_search，无需单独的搜索 API Key；
-    /// 为 false 时使用独立搜索端点 + api_key。
-    pub use_builtin: bool,
-    /// 独立端点模式的搜索服务提供商：
+    /// 搜索服务提供商：
     /// "kimi"（Kimi Code 同款 /v1/search，body 为 text_query）
     /// "bocha"（BoCha 博查 https://api.bochaai.com/v1/web-search）
     /// "deepseek"（DeepSeek Responses API，服务端内置 web_search）
     /// "tavily"（Tavily https://api.tavily.com/search，body 为 query）
-    /// 仅在 use_builtin = false 时生效。
     pub provider: String,
     /// DeepSeek Responses API 使用的模型（仅 provider = "deepseek" 时生效）。
     #[serde(default = "default_deepseek_model")]
     pub model: String,
-    /// API Key（Bearer 认证，仅 use_builtin = false 时需要）。
+    /// API Key（Bearer 认证）。
     pub api_key: String,
-    /// 搜索端点（仅 use_builtin = false 时使用；deepseek 固定走官方端点，不读此字段）。
+    /// 搜索端点（deepseek 固定走官方端点，不读此字段；仅 custom 模式需要）。
     pub base_url: String,
     /// 是否通过本地 HTTP 代理（如 v2rayN）访问搜索端点。
     pub proxy_enabled: bool,
     /// 代理地址，v2rayN（sing-box）默认本地端口 10808。
     pub proxy_addr: String,
-    /// 返回给模型的最大结果条数（仅独立端点模式）。
+    /// 返回给模型的最大结果条数。
     pub max_results: usize,
     /// 为 true 时喂给模型的搜索结果不含网址/来源名，并指示模型
     /// 把信息自然融入回答，避免在对话中念出搜索结果列表。
@@ -102,7 +108,6 @@ impl Default for WebSearchSettings {
     fn default() -> Self {
         Self {
             enabled: false,
-            use_builtin: true,
             provider: "kimi".to_string(),
             model: "deepseek-v4-flash".to_string(),
             api_key: String::new(),
@@ -118,28 +123,158 @@ impl Default for WebSearchSettings {
 impl WebSearchSettings {
     /// 配置是否达到可下发给模型的就绪状态。
     pub fn is_ready(&self) -> bool {
-        self.enabled && (self.use_builtin || !self.api_key.trim().is_empty())
+        self.enabled && !self.api_key.trim().is_empty()
     }
 }
 
+/// 图片/视频识别工具配置。识别请求复用“大模型管理”中指定的视觉模型。
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default)]
+pub struct MediaFileSettings {
+    pub image_enabled: bool,
+    pub video_enabled: bool,
+    pub max_file_mb: u32,
+    pub image_max_edge: u32,
+    pub jpeg_quality: u8,
+    pub max_output_tokens: u32,
+    pub default_prompt: String,
+}
+
+impl Default for MediaFileSettings {
+    fn default() -> Self {
+        Self {
+            image_enabled: true,
+            video_enabled: true,
+            max_file_mb: DEFAULT_MEDIA_MAX_FILE_MB,
+            image_max_edge: DEFAULT_MEDIA_IMAGE_MAX_EDGE,
+            jpeg_quality: DEFAULT_MEDIA_JPEG_QUALITY,
+            max_output_tokens: DEFAULT_MEDIA_OUTPUT_TOKENS,
+            default_prompt: "请详细识别并描述这个媒体文件的内容；如果其中包含文字、界面、人物、物体、动作或时间顺序，请准确说明。".to_string(),
+        }
+    }
+}
+
+impl MediaFileSettings {
+    pub fn normalize(&mut self) {
+        self.max_file_mb = self.max_file_mb.clamp(1, MAX_MEDIA_MAX_FILE_MB);
+        self.image_max_edge = self.image_max_edge.clamp(512, 4096);
+        self.jpeg_quality = self.jpeg_quality.clamp(50, 95);
+        self.max_output_tokens = self.max_output_tokens.clamp(128, 4096);
+        if self.default_prompt.trim().is_empty() {
+            self.default_prompt = Self::default().default_prompt;
+        }
+    }
+}
+
+/// 主聊天工具的统一审批策略。只读工具始终可以直接运行。
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolAccessMode {
+    /// 写入、编辑、删除文件和执行命令前逐次询问。
+    #[default]
+    Manual,
+    /// 自动批准普通修改和命令；删除文件或删除命令仍需确认。
+    AutoApprove,
+    /// 不再询问，并允许文件工具访问沙箱外路径。
+    FullAccess,
+}
+
 /// 工具配置根。
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ToolSettings {
     pub web_search: WebSearchSettings,
+    pub media_file: MediaFileSettings,
     /// 分组开关：组名（见 `TOOL_GROUPS`）→ 是否启用，缺省关闭。
     pub groups: std::collections::HashMap<String, bool>,
-    /// 命令执行：免审批直接运行 shell（危险，仅在信任当前角色/模型时开启）。
+    /// 文件修改与命令执行使用的统一审批模式。
+    pub access_mode: ToolAccessMode,
+    /// 主聊天单次回复可连续执行工具的最大轮数；每轮可能包含多个工具调用。
+    pub max_tool_rounds: u32,
+    /// 以下四项仅用于读取旧版配置。保存后会迁移成 `access_mode`。
+    #[serde(default, skip_serializing)]
     pub command_auto_approve: bool,
-    /// 命令执行：识别到删除操作时免审批继续执行（危险；缺省 false）。
+    #[serde(default, skip_serializing)]
     pub command_delete_auto_approve: bool,
-    /// 删除文件：免审批直接删除（危险；缺省 false，旧配置升级后仍会弹窗）。
+    #[serde(default, skip_serializing)]
     pub file_delete_auto_approve: bool,
-    /// 文件操作：允许访问文件沙箱（默认 data/）之外的任意路径。
+    #[serde(default, skip_serializing)]
     pub file_ops_allow_any_path: bool,
+    /// 未保存过新模式的旧配置继续保持原审批行为，避免升级时静默扩大权限。
+    #[serde(skip)]
+    legacy_approval_behavior: bool,
+}
+
+impl Default for ToolSettings {
+    fn default() -> Self {
+        Self {
+            web_search: WebSearchSettings::default(),
+            media_file: MediaFileSettings::default(),
+            groups: std::collections::HashMap::new(),
+            access_mode: ToolAccessMode::default(),
+            max_tool_rounds: DEFAULT_TOOL_CALL_ROUND_LIMIT,
+            command_auto_approve: false,
+            command_delete_auto_approve: false,
+            file_delete_auto_approve: false,
+            file_ops_allow_any_path: false,
+            legacy_approval_behavior: false,
+        }
+    }
 }
 
 impl ToolSettings {
+    pub fn normalize(&mut self) {
+        self.media_file.normalize();
+        self.max_tool_rounds = self
+            .max_tool_rounds
+            .clamp(MIN_TOOL_CALL_ROUND_LIMIT, MAX_TOOL_CALL_ROUND_LIMIT);
+    }
+
+    pub fn tool_round_limit(&self) -> usize {
+        self.max_tool_rounds
+            .clamp(MIN_TOOL_CALL_ROUND_LIMIT, MAX_TOOL_CALL_ROUND_LIMIT) as usize
+    }
+
+    pub fn allows_any_path(&self) -> bool {
+        if cfg!(any(target_os = "android", target_os = "ios")) {
+            return false;
+        }
+        if self.legacy_approval_behavior {
+            self.file_ops_allow_any_path
+        } else {
+            self.access_mode == ToolAccessMode::FullAccess
+        }
+    }
+
+    pub fn requires_file_change_approval(&self) -> bool {
+        if self.legacy_approval_behavior {
+            return false;
+        }
+        self.access_mode == ToolAccessMode::Manual
+    }
+
+    pub fn requires_file_delete_approval(&self) -> bool {
+        if self.legacy_approval_behavior {
+            return !self.file_delete_auto_approve;
+        }
+        self.access_mode != ToolAccessMode::FullAccess
+    }
+
+    pub fn requires_command_approval(&self, may_delete_files: bool) -> bool {
+        if self.legacy_approval_behavior {
+            return if may_delete_files {
+                !self.command_delete_auto_approve
+            } else {
+                !self.command_auto_approve
+            };
+        }
+        match self.access_mode {
+            ToolAccessMode::Manual => true,
+            ToolAccessMode::AutoApprove => may_delete_files,
+            ToolAccessMode::FullAccess => false,
+        }
+    }
+
     /// 移动端没有可供应用稳定调用的桌面 shell，且 Android/iOS 的分区存储
     /// 不允许把“任意路径”理解为桌面文件系统访问。加载和保存时都收紧这些选项，
     /// 避免旧配置继续把不可执行的工具下发给模型。
@@ -178,6 +313,25 @@ impl ToolSettings {
                 .with_context(|| format!("读取工具配置失败: {}", path.display()))?;
             let mut settings: Self = toml::from_str(&text)
                 .with_context(|| format!("解析工具配置失败: {}", path.display()))?;
+            if !text.lines().any(|line| {
+                line.trim_start()
+                    .strip_prefix("access_mode")
+                    .is_some_and(|tail| tail.trim_start().starts_with('='))
+            }) {
+                settings.legacy_approval_behavior = true;
+                settings.access_mode = if settings.command_auto_approve
+                    && settings.command_delete_auto_approve
+                    && settings.file_delete_auto_approve
+                    && settings.file_ops_allow_any_path
+                {
+                    ToolAccessMode::FullAccess
+                } else if settings.command_auto_approve {
+                    ToolAccessMode::AutoApprove
+                } else {
+                    ToolAccessMode::Manual
+                };
+            }
+            settings.normalize();
             settings.apply_platform_constraints();
             return Ok(settings);
         }
@@ -190,7 +344,9 @@ impl ToolSettings {
     /// 原子写入 `data/tool_settings.toml`。
     pub fn save(&self, data_dir: &Path) -> Result<()> {
         let path = data_dir.join(SETTINGS_FILE_NAME);
-        let text = toml::to_string_pretty(self).context("序列化工具配置失败")?;
+        let mut normalized = self.clone();
+        normalized.normalize();
+        let text = toml::to_string_pretty(&normalized).context("序列化工具配置失败")?;
         super::atomic_replace(&path, text.as_bytes())
             .map_err(anyhow::Error::msg)
             .with_context(|| format!("保存工具配置失败: {}", path.display()))?;
@@ -228,9 +384,12 @@ mod tests {
 command_auto_approve = false
 file_ops_allow_any_path = false
 "#;
-        let settings: ToolSettings = toml::from_str(legacy).unwrap();
-        assert!(!settings.command_delete_auto_approve);
-        assert!(!settings.file_delete_auto_approve);
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(SETTINGS_FILE_NAME), legacy).unwrap();
+        let settings = ToolSettings::load_or_create(dir.path()).unwrap();
+        assert!(settings.requires_file_delete_approval());
+        assert!(settings.requires_command_approval(false));
+        assert!(!settings.requires_file_change_approval());
     }
 
     #[test]
@@ -238,10 +397,12 @@ file_ops_allow_any_path = false
         let dir = tempfile::tempdir().unwrap();
         let mut settings = ToolSettings::default();
         settings.save(dir.path()).unwrap();
-        settings.command_auto_approve = true;
+        settings.access_mode = ToolAccessMode::FullAccess;
         settings.save(dir.path()).unwrap();
 
         let loaded = ToolSettings::load_or_create(dir.path()).unwrap();
-        assert!(loaded.command_auto_approve);
+        assert_eq!(loaded.access_mode, ToolAccessMode::FullAccess);
+        assert!(loaded.allows_any_path());
+        assert!(!loaded.requires_file_delete_approval());
     }
 }

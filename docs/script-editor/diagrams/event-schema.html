@@ -15,7 +15,7 @@
 <body>
 <div class="wrap">
   <h1>事件 Schema —— UML 类图（单一真相源）</h1>
-  <p class="sub">schema.rs 由 Rust 导出，前端驱动表单、后端驱动校验。测试保证它与引擎注册的 16 种事件一一对应、一个不多一个不少。</p>
+  <p class="sub">schema.rs 由 Rust 导出，前端驱动表单、后端驱动校验；它必须与引擎注册的 16 种事件保持一致。</p>
 
   <svg viewBox="0 0 1240 880" xmlns="http://www.w3.org/2000/svg">
     <defs>
@@ -37,7 +37,7 @@
       <text x="34" y="240" font-size="10.5" fill="#e6edf3">condition_syntax: ConditionSyntax  —— 语法说明</text>
       <line x1="20" y1="252" x2="340" y2="252" stroke="#f4a261" stroke-opacity="0.4"/>
       <text x="34" y="272" font-size="10" fill="#8b98a5">+ build_schema() 静态构造</text>
-      <text x="34" y="290" font-size="10" fill="#8b98a5">测试：与引擎注册事件同步</text>
+      <text x="34" y="290" font-size="10" fill="#8b98a5">约束：与引擎注册事件同步</text>
     </g>
 
     <!-- ===== 事件类型枚举区 ===== -->
@@ -168,8 +168,8 @@
       <rect x="20" y="690" width="1200" height="120" rx="10" fill="#101c28" stroke="#4ade80" stroke-opacity="0.4" />
       <text x="40" y="716" font-size="12.5" font-weight="700" fill="#4ade80">为什么是「单一真相源」</text>
       <text x="40" y="740" font-size="11" fill="#e6edf3">同一份 schema 此前散落三处：Rust 16 个 handler、前端 types/script.ts 运行时类型、原型编辑器的 constants/events.ts，三者互不同步，直接导致原型产出的 set_variable / chapter_end 跑不通。</text>
-      <text x="40" y="764" font-size="11" fill="#e6edf3">现在由 Rust 导出、前端只负责渲染。改引擎时必须同步改 schema.rs —— 测试会强制：</text>
-      <text x="40" y="788" font-size="11" fill="#e6edf3">① schema 覆盖引擎注册的全部 16 种事件（多一个少一个都失败）　② 每个事件至少一个字段且键唯一　③ 素材字段必带 asset_kind　④ 特效下拉来自 KNOWN_EFFECTS　⑤ duration 以不可编辑形态出现　⑥ set_variable 只允许 set_var action</text>
+      <text x="40" y="764" font-size="11" fill="#e6edf3">现在由 Rust 导出、前端只负责渲染。改引擎时必须同步改 schema.rs，并维持：</text>
+      <text x="40" y="788" font-size="11" fill="#e6edf3">① schema 覆盖引擎注册的全部 16 种事件　② 每个事件至少一个字段且键唯一　③ 素材字段必带 asset_kind　④ 特效下拉来自 KNOWN_EFFECTS　⑤ duration 以不可编辑形态出现　⑥ set_variable 只允许 set_var action</text>
     </g>
   </svg>
 </div>

@@ -20,6 +20,9 @@ export default {
     noModelTitle: "Heads Up",
     noModelMessage: "You haven't picked a chat model yet, silly! Just go to Advanced Settings to configure and select one — it takes effect as soon as you switch!",
   },
+  avatar: {
+    live2dUnavailable: "Live2D unavailable",
+  },
   musicPlayer: {
     previous: "Previous",
     play: "Play",

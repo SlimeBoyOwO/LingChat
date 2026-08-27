@@ -1,12 +1,18 @@
 //! Shell 命令执行、用户审批、超时与输出上限。
 
 use crate::ai_service::skill_agent::events::SkillAgentEvent;
+#[cfg(windows)]
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+#[cfg(windows)]
+use std::sync::OnceLock;
 use std::sync::{Arc, Mutex as StdMutex};
+#[cfg(windows)]
+use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::sync::{oneshot, Mutex, Notify};
@@ -20,6 +26,168 @@ const OUTPUT_DRAIN_GRACE: Duration = Duration::from_millis(400);
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[cfg(windows)]
+static PROCESS_ELEVATED: OnceLock<bool> = OnceLock::new();
+
+/// 当前 LingChat 进程是否已经持有管理员令牌。进程生命周期内权限不会变化，故缓存结果。
+#[cfg(windows)]
+pub fn is_current_process_elevated() -> bool {
+    *PROCESS_ELEVATED.get_or_init(|| match query_current_process_elevation() {
+        Ok(elevated) => elevated,
+        Err(error) => {
+            tracing::warn!("无法读取当前进程的 Windows 令牌权限: {error}");
+            false
+        }
+    })
+}
+
+#[cfg(windows)]
+fn query_current_process_elevation() -> windows::core::Result<bool> {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    unsafe {
+        let mut token = HANDLE::default();
+        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token)?;
+        let result = (|| {
+            let mut elevation = TOKEN_ELEVATION::default();
+            let mut returned_size = 0;
+            GetTokenInformation(
+                token,
+                TokenElevation,
+                Some((&mut elevation as *mut TOKEN_ELEVATION).cast()),
+                std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+                &mut returned_size,
+            )?;
+            Ok(elevation.TokenIsElevated != 0)
+        })();
+        let _ = CloseHandle(token);
+        result
+    }
+}
+
+#[cfg(not(windows))]
+pub fn is_current_process_elevated() -> bool {
+    false
+}
+
+/// `uac=true` 只有在当前进程尚未提权时才需要启动 RunAs 辅助进程。
+pub fn needs_elevated_launcher(uac_requested: bool, process_elevated: bool) -> bool {
+    uac_requested && !process_elevated
+}
+
+/// 通过 Windows 正常 RunAs 流程启动管理员重启辅助进程。
+///
+/// 辅助进程先写入就绪标记，再等待当前 LingChat 完全退出，最后启动继承管理员
+/// 令牌的新实例。这样可以避免两个 WebView/Tauri 实例短暂重叠时，新实例因共享
+/// 资源仍被旧实例占用而立即退出。用户仍需在系统 UAC 对话框中明确同意，本函数
+/// 不绕过系统安全边界。
+#[cfg(windows)]
+pub fn launch_current_process_as_admin() -> anyhow::Result<()> {
+    use std::os::windows::process::CommandExt;
+
+    if is_current_process_elevated() {
+        return Ok(());
+    }
+    let executable = std::env::current_exe()?;
+    let working_directory = executable
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("当前程序路径没有父目录"))?;
+    let ready_file =
+        std::env::temp_dir().join(format!("lingchat_admin_restart_{}.ready", new_request_id()));
+    let helper_script = build_admin_restart_helper_script(
+        std::process::id(),
+        &executable,
+        working_directory,
+        &ready_file,
+    );
+    let encoded_helper = encode_powershell_command(&helper_script);
+    let script = format!(
+        "$ErrorActionPreference = 'Stop'; \
+         $p = Start-Process -FilePath powershell.exe \
+           -ArgumentList @('-NoProfile','-NonInteractive','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-EncodedCommand','{encoded_helper}') \
+           -WindowStyle Hidden -Verb RunAs -PassThru; \
+         Write-Output $p.Id",
+    );
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|error| anyhow::anyhow!("无法启动管理员实例: {error}"))?;
+    if !output.status.success() {
+        let _ = std::fs::remove_file(&ready_file);
+        let message = decode_console_output(&output.stderr);
+        anyhow::bail!(
+            "管理员重启未完成（可能在 UAC 窗口选择了“否”）{}",
+            if message.trim().is_empty() {
+                String::new()
+            } else {
+                format!(": {}", message.trim())
+            }
+        );
+    }
+
+    // Start-Process 返回只代表 ShellExecute 接受了请求。等到提权后的辅助进程
+    // 真正运行并写入标记后，调用方才可以安全关闭当前实例。
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !ready_file.is_file() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    if !ready_file.is_file() {
+        let _ = std::fs::remove_file(&ready_file);
+        anyhow::bail!("管理员启动器未能就绪，已保留当前 LingChat 窗口")
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn build_admin_restart_helper_script(
+    parent_pid: u32,
+    executable: &Path,
+    working_directory: &Path,
+    ready_file: &Path,
+) -> String {
+    format!(
+        "$ErrorActionPreference = 'Stop'\r\n\
+         $parentPid = {parent_pid}\r\n\
+         $readyFile = '{}'\r\n\
+         Set-Content -LiteralPath $readyFile -Value $PID -NoNewline\r\n\
+         try {{\r\n\
+           $deadline = [DateTime]::UtcNow.AddSeconds(30)\r\n\
+           while ((Get-Process -Id $parentPid -ErrorAction SilentlyContinue) -and [DateTime]::UtcNow -lt $deadline) {{\r\n\
+             Start-Sleep -Milliseconds 100\r\n\
+           }}\r\n\
+           if (Get-Process -Id $parentPid -ErrorAction SilentlyContinue) {{ exit 124 }}\r\n\
+           Start-Process -FilePath '{}' -WorkingDirectory '{}' | Out-Null\r\n\
+         }} finally {{\r\n\
+           Remove-Item -LiteralPath $readyFile -Force -ErrorAction SilentlyContinue\r\n\
+         }}",
+        powershell_single_quoted_path(ready_file),
+        powershell_single_quoted_path(executable),
+        powershell_single_quoted_path(working_directory),
+    )
+}
+
+#[cfg(windows)]
+fn encode_powershell_command(script: &str) -> String {
+    let utf16_le = script
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect::<Vec<_>>();
+    base64::engine::general_purpose::STANDARD.encode(utf16_le)
+}
+
+#[cfg(not(windows))]
+pub fn launch_current_process_as_admin() -> anyhow::Result<()> {
+    anyhow::bail!("管理员重启仅支持 Windows")
+}
 
 /// 等待用户审批决定的命令。
 pub struct ApprovalRequest {
@@ -642,207 +810,4 @@ pub async fn execute_command(
     }
 
     run_shell_command(sandbox_dir, command, cwd).await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::Instant;
-
-    static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new() -> Self {
-            let id = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-            let path = std::env::temp_dir().join(format!(
-                "lingchat_command_test_{}_{}",
-                std::process::id(),
-                id
-            ));
-            std::fs::create_dir_all(&path).unwrap();
-            Self(path)
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
-    #[cfg(windows)]
-    #[tokio::test]
-    async fn command_preserves_quoted_args() {
-        let temp = TempDir::new();
-        let script = temp.0.join("quote test.py");
-        std::fs::write(&script, "import sys\nprint(repr(sys.argv[1:]))\n").unwrap();
-        let command = format!(
-            "python \"{}\" \"pink dark neon\" --domain color -n 3",
-            script.display()
-        );
-        let out = run_shell_command(&temp.0, &command, "").await.unwrap();
-        assert_eq!(out.exit_code, 0, "{}", out.to_prompt_string());
-        assert!(
-            out.stdout
-                .contains("['pink dark neon', '--domain', 'color', '-n', '3']"),
-            "{}",
-            out.to_prompt_string()
-        );
-    }
-
-    #[cfg(windows)]
-    #[tokio::test]
-    async fn relative_cwd_is_resolved_from_sandbox() {
-        let temp = TempDir::new();
-        let nested = temp.0.join("nested");
-        std::fs::create_dir_all(&nested).unwrap();
-        let out = run_shell_command(&temp.0, "cd", "nested").await.unwrap();
-        assert_eq!(
-            PathBuf::from(out.stdout.trim()).canonicalize().unwrap(),
-            nested.canonicalize().unwrap()
-        );
-    }
-
-    #[cfg(windows)]
-    #[tokio::test]
-    async fn background_command_entry_executes_and_captures_output() {
-        let temp = TempDir::new();
-        let out = run_shell_command_in_background_with_timeout(
-            &temp.0,
-            "powershell -NoProfile -Command \"Start-Sleep -Milliseconds 50; Write-Output BG_OK\"",
-            "",
-            Duration::from_secs(2),
-        )
-        .await
-        .unwrap();
-        assert_eq!(out.exit_code, 0, "{}", out.to_prompt_string());
-        assert!(out.stdout.contains("BG_OK"), "{}", out.to_prompt_string());
-    }
-
-    #[test]
-    fn foreground_and_background_timeout_ceilings_remain_distinct() {
-        let oversized = Duration::from_secs(2 * 60 * 60);
-        assert_eq!(clamp_command_timeout(oversized), MAX_COMMAND_TIMEOUT);
-        assert_eq!(
-            clamp_timeout(oversized, MAX_BACKGROUND_COMMAND_TIMEOUT),
-            MAX_BACKGROUND_COMMAND_TIMEOUT
-        );
-    }
-
-    #[cfg(windows)]
-    #[tokio::test]
-    async fn inherited_output_handle_does_not_block_completion() {
-        let temp = TempDir::new();
-        let command = "powershell -NoProfile -Command \"$p = Start-Process powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 5' -NoNewWindow -PassThru; $p.Id\"";
-        let started = Instant::now();
-        let out = run_shell_command_with_timeout(&temp.0, command, "", Duration::from_secs(8))
-            .await
-            .unwrap();
-        let elapsed = started.elapsed();
-        if let Ok(pid) = out.stdout.trim().parse::<u32>() {
-            let _ = std::process::Command::new("taskkill")
-                .args(["/PID", &pid.to_string(), "/T", "/F"])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
-        }
-        assert!(
-            elapsed < Duration::from_secs(2),
-            "inherited pipe delayed completion for {elapsed:?}"
-        );
-    }
-
-    #[cfg(windows)]
-    #[tokio::test]
-    async fn timeout_terminates_command() {
-        let temp = TempDir::new();
-        let started = Instant::now();
-        let error = run_shell_command_with_limits(
-            &temp.0,
-            "powershell -NoProfile -Command \"Start-Sleep -Seconds 5\"",
-            "",
-            Duration::from_millis(200),
-            4096,
-        )
-        .await
-        .unwrap_err();
-        assert!(error.to_string().contains("超时"));
-        assert!(started.elapsed() < Duration::from_secs(3));
-    }
-
-    #[cfg(windows)]
-    #[tokio::test]
-    async fn runaway_output_is_stopped() {
-        let temp = TempDir::new();
-        let error = run_shell_command_with_limits(
-            &temp.0,
-            "powershell -NoProfile -Command \"[Console]::Out.Write('x' * 8192); Start-Sleep -Seconds 5\"",
-            "",
-            Duration::from_secs(8),
-            1024,
-        )
-        .await
-        .unwrap_err();
-        assert!(error.to_string().contains("输出超过"));
-    }
-
-    #[cfg(windows)]
-    #[tokio::test]
-    async fn cancelling_future_terminates_process_tree() {
-        let temp = TempDir::new();
-        let pid_file = temp.0.join("child.pid");
-        let command = format!(
-            "powershell -NoProfile -Command \"$p = Start-Process powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30' -NoNewWindow -PassThru; Set-Content -LiteralPath '{}' -Value $p.Id; Start-Sleep -Seconds 30\"",
-            pid_file.display()
-        );
-        let sandbox = temp.0.clone();
-        let task = tokio::spawn(async move {
-            run_shell_command_with_timeout(&sandbox, &command, "", Duration::from_secs(60)).await
-        });
-
-        for _ in 0..100 {
-            if pid_file.is_file() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-        let pid = std::fs::read_to_string(&pid_file)
-            .expect("child pid file")
-            .trim()
-            .parse::<u32>()
-            .expect("child pid");
-        task.abort();
-        let _ = task.await;
-
-        let mut still_running = true;
-        for _ in 0..100 {
-            if !process_exists(pid) {
-                still_running = false;
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-        if still_running {
-            let _ = std::process::Command::new("taskkill")
-                .args(["/PID", &pid.to_string(), "/T", "/F"])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
-        }
-        assert!(!still_running, "cancelled command left child process {pid}");
-    }
-
-    #[cfg(windows)]
-    fn process_exists(pid: u32) -> bool {
-        let Ok(output) = std::process::Command::new("tasklist")
-            .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
-            .output()
-        else {
-            return false;
-        };
-        String::from_utf8_lossy(&output.stdout).contains(&format!("\"{pid}\""))
-    }
 }

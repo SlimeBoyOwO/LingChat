@@ -334,6 +334,7 @@ export default {
       "prompts": "提示詞",
       "visuals": "視覺效果",
       "clothes": "服裝",
+      "live2d": "Live2D",
       "pet": "桌寵",
       "voice": "語音設定"
     },
@@ -392,6 +393,23 @@ export default {
       "add": "新增服裝",
       "item": "服裝 #{index}",
       "empty": "而家冇服裝配置，撳\"新增服裝\"開一個"
+    },
+    "live2d": {
+      "importDirectory": "匯入模型資料夾",
+      "importZip": "匯入 ZIP",
+      "remove": "移除 Live2D 配置",
+      "loading": "讀取緊 Live2D 模型...",
+      "empty": "呢個角色未配置 Live2D。",
+      "defaultVariant": "預設模型變體",
+      "editVariant": "而家編輯嘅模型變體",
+      "defaultExpression": "預設表情",
+      "defaultExpressionHint": "只會喺目前情緒冇對應表情映射時作後備；佢唔等同於「正常」情緒嘅表情。",
+      "focusAnchorX": "視線基點 X（0-1）",
+      "focusAnchorY": "視線基點 Y（0-1）",
+      "focusAnchorReset": "恢復使用模型畫布中心",
+      "noExpression": "唔切換表情",
+      "noMotion": "唔播放動作",
+      "clothesMapping": "服裝同模型變體對應"
     },
     "footer": {
       "cancel": "取消",
@@ -675,6 +693,9 @@ export default {
       "title": "文字顯示速度",
       "label": "慢/快"
     },
+    "autoAdvance": {
+      "title": "自動推進延遲"
+    },
     "sample": {
       "title": "顯示文字樣本",
       "demo": "Ling Chat: 測試文字顯示速度"
@@ -722,6 +743,18 @@ export default {
       "cleanErrorTitle": "清理失敗",
       "cleanErrorMessage": "清理TTS緩存失敗",
       "unknown": "未知"
+    },
+    "codexQuota": {
+      "title": "Codex 額度",
+      "weekly": "每週額度",
+      "fiveHour": "5 小時額度",
+      "remaining": "剩餘 {percent}%",
+      "resetAt": "重設時間：{time}",
+      "notLoggedIn": "未登入 Codex",
+      "loginHint": "喺「高級設定 → 大模型管理」加入 OpenAI Codex 提供商並登入之後，呢度會顯示訂閱額度。",
+      "refresh": "刷新",
+      "loadFailed": "查詢失敗：{error}",
+      "fastModeHint": "Fast Mode 已開啟：額度按 1.5 倍速度消耗"
     },
     "update": {
       "title": "版本更新",
@@ -886,6 +919,10 @@ export default {
       "effortMedium": "Medium（中）",
       "effortHigh": "High（高）",
       "effortMax": "Max（最強）",
+      "effortOff": "Off（關閉）",
+      "effortMinimal": "Minimal（最低）",
+      "effortXhigh": "Xhigh（超高）",
+      "providerCodex": "OpenAI Codex（ChatGPT 訂閱）",
       "apiKey": "API 密鑰",
       "baseUrl": "API 地址",
       "temperature": "Temperature（留空用預設）",
@@ -907,13 +944,26 @@ export default {
       "deleteFailed": "刪除失敗: {error}",
       "saveSuccess": "儲存成功！",
       "saveFailed": "儲存失敗: {error}",
-      "apiKeyRequired": "唔該先填 API 密鑰",
       "modelsFetched": "攞到 {count} 個可用模型",
       "fetchFailed": "攞唔到資料: {error}",
       "chatSwitched": "對話模型轉咗，已經生效！",
       "translateSwitched": "翻譯模型轉咗，已經生效！",
       "godAgentSwitched": "上帝Agent轉咗，已經生效！",
       "switchFailed": "切換失敗: {error}"
+    },
+    "codex": {
+      "account": "ChatGPT 訂閱帳號",
+      "loggedIn": "已登入",
+      "notLoggedIn": "未登入",
+      "enterCodeHint": "瀏覽器已經打開授權頁，請入下面嘅用戶碼完成登入：",
+      "waitingAuth": "等緊授權…請喺瀏覽器完成登入",
+      "loginSuccess": "登入成功！",
+      "loginFailed": "登入失敗: {error}",
+      "login": "登入 ChatGPT 訂閱",
+      "cancel": "取消登入",
+      "logout": "登出",
+      "fastMode": "Fast Mode（1.5× 速度）",
+      "fastModeHint": "回應更快，但額度用得都快啲"
     }
   },
   "tts": {

@@ -11,7 +11,9 @@ use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
 };
-use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
+use crate::ai_service::types::{
+    CharacterSettings, GameLine, LineAttributeExt, LineBase, Live2dSettings,
+};
 use crate::config::{self, AppConfig};
 use crate::db::entities::line;
 use crate::db::entities::line::LineAttribute;
@@ -70,6 +72,7 @@ pub struct CharacterSettingsInit {
     pub clothes: Option<Vec<HashMap<String, String>>>,
     pub clothes_name: String,
     pub body_part: Option<HashMap<String, serde_json::Value>>,
+    pub live2d: Option<Live2dSettings>,
     pub character_folder: String,
 }
 
@@ -93,6 +96,7 @@ impl From<&CharacterSettings> for CharacterSettingsInit {
             clothes: s.clothes.clone(),
             clothes_name: s.clothes_name.clone().unwrap_or_default(),
             body_part: s.body_part.clone(),
+            live2d: s.live2d.clone(),
             character_folder: s.character_folder.clone(),
         }
     }
