@@ -43,6 +43,7 @@
       :key="activeNoise.seq"
       :noise="activeNoise.noise"
       :fade-in-sec="activeNoise.fadeInSec"
+      :object-fit="computedObjectFit"
     />
 
     <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
