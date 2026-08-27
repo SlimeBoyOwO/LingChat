@@ -8,7 +8,7 @@
         v-for="(cluster, ci) in clusters"
         :key="ci"
         :ref="(el) => setClusterRef(el, ci)"
-        class="noise-cluster"
+        :class="['noise-cluster', `noise-cluster--${cluster.kind}`]"
         :style="{
           left: cluster.x + '%',
           top: cluster.y + '%',
@@ -31,12 +31,20 @@ import type { CSSProperties } from 'vue'
  * x/y = 团左上角；w/h = 团尺寸。矩形会围绕团中心轻微溢出，不能再把
  * x/y 当成抖动中心，否则整团会系统性向左上偏移。
  */
-const CLUSTER_LAYOUTS: Record<string, Array<{ x: number; y: number; w: number; h: number }>> = {
+type NoiseCluster = {
+  x: number
+  y: number
+  w: number
+  h: number
+  kind: 'eye' | 'mouth'
+}
+
+const CLUSTER_LAYOUTS: Record<string, NoiseCluster[]> = {
   eyes: [
-    { x: 40.8, y: 20.8, w: 7.2, h: 3.8 }, // 左眼
-    { x: 50.4, y: 20.8, w: 8.0, h: 3.8 }, // 右眼
+    { x: 40.8, y: 20.8, w: 7.2, h: 3.8, kind: 'eye' }, // 左眼
+    { x: 50.4, y: 20.8, w: 8.0, h: 3.8, kind: 'eye' }, // 右眼
   ],
-  mouth: [{ x: 47.2, y: 24.2, w: 5.8, h: 1.9 }],
+  mouth: [{ x: 47.2, y: 24.2, w: 5.8, h: 1.9, kind: 'mouth' }],
 }
 CLUSTER_LAYOUTS.eyes_mouth = [...CLUSTER_LAYOUTS.eyes, ...CLUSTER_LAYOUTS.mouth]
 
@@ -141,6 +149,20 @@ onBeforeUnmount(() => {
 .noise-cluster {
   position: absolute;
   overflow: visible;
+}
+
+/* 随机矩形负责抖动质感，但不能靠随机帧决定眼睛是否被盖住；双眼先铺一层
+   稍微外扩的纯黑眼眶，保证任何一帧都完全遮住虹膜，再让噪点块在上面跳动。 */
+.noise-cluster--eye::before {
+  content: '';
+  position: absolute;
+  inset: -8% -5%;
+  background: #000;
+  border-radius: 38% 44% 42% 36%;
+  box-shadow:
+    0 1px 2px rgba(120, 0, 0, 0.72),
+    3px 0 0 rgba(0, 0, 0, 0.92),
+    -2px 1px 0 rgba(0, 0, 0, 0.88);
 }
 
 .noise-rect {
