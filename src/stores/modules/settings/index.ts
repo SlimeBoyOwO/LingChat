@@ -2,12 +2,11 @@
  * 统一设置管理 Store
  * 集中管理所有用户偏好设置，自动持久化到 localStorage
  */
-import { setCurrentBackground } from '@/api/services/background'
-import { setSceneAwareness } from '@/api/services/scene'
 import { setHdrMode } from '@/api/services/config'
-import { defineStore } from 'pinia'
+import { setSceneAwareness } from '@/api/services/scene'
 import type { ShortcutAction, ShortcutBinding } from '@/utils/shortcuts'
 import { DEFAULT_SHORTCUTS, sanitizeShortcuts } from '@/utils/shortcuts'
+import { defineStore } from 'pinia'
 
 // 默认设置值
 export const DEFAULT_SETTINGS = {
