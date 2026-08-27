@@ -218,9 +218,9 @@ export default {
       features: {
         enable_time_sense: 'USE_TIME_SENSE — 启用时间感知（根据上下文时间添加系统提醒）',
         enable_emotion_classifier: 'ENABLE_EMOTION_CLASSIFIER — 启用情感分类器（ONNX 模型，用于自动标注对话 emotion）',
-        use_persistent_memory: 'USE_PERSISTENT_MEMORY — 开启后记忆会自动压缩，减少 token 消耗',
-        memory_update_interval: 'MEMORY_UPDATE_INTERVAL — 触发记忆摘要的新消息数（默认 250）',
-        memory_recent_window: 'MEMORY_RECENT_WINDOW — 摘要时保留的最近消息数（默认 30）',
+        use_persistent_memory: 'USE_PERSISTENT_MEMORY — 开启后记忆会自动压缩，保存后需重启生效',
+        memory_update_interval: 'MEMORY_UPDATE_INTERVAL — 触发摘要的可见台词数（1–10000，默认 250）',
+        memory_recent_window: 'MEMORY_RECENT_WINDOW — 压缩后保留的角色可见台词数（0–10000，默认 30）',
       },
       tts: {
         simple_vits_api_url: 'Simple-Vits-API 地址（VITS 适配器）',
@@ -710,7 +710,7 @@ export default {
     },
     memory: {
       title: '启用永久记忆',
-      desc: '开启后记忆将会自动压缩',
+      desc: '开启后记忆将自动压缩，保存后需重启 LingChat 生效',
     },
     voiceSound: {
       title: '语音音效开关',

@@ -148,6 +148,7 @@ impl AIService {
 
     pub async fn init_game_status(&mut self) -> Result<()> {
         let mut gs = self.game_status.lock().await;
+        gs.role_manager.invalidate_memory_history();
         gs.role_manager.reset_roles();
         gs.line_list.clear();
         gs.onstage_role_ids.clear();
@@ -202,6 +203,7 @@ impl AIService {
     ) -> Result<()> {
         {
             let mut gs = self.game_status.lock().await;
+            gs.role_manager.invalidate_memory_history();
             gs.line_list = lines;
             if let Some(sid) = save_id {
                 gs.active_save_id = Some(sid);
@@ -238,6 +240,7 @@ impl AIService {
     /// 轻量清理：只清空台词 + 主角短期记忆，NPC 记忆保留。
     pub async fn clear_lines(&mut self) -> Result<()> {
         let mut gs = self.game_status.lock().await;
+        gs.role_manager.invalidate_memory_history();
         gs.line_list.clear();
 
         let system_line = LineBase {

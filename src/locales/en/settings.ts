@@ -218,9 +218,9 @@ export default {
       features: {
         enable_time_sense: "USE_TIME_SENSE — Enable time awareness (adds system reminders based on contextual time)",
         enable_emotion_classifier: "ENABLE_EMOTION_CLASSIFIER — Enable the emotion classifier (ONNX model, auto-tags dialogue emotions)",
-        use_persistent_memory: "USE_PERSISTENT_MEMORY — When on, memory is auto-compressed to reduce token usage",
-        memory_update_interval: "MEMORY_UPDATE_INTERVAL — Number of new messages that triggers a memory summary (default 250)",
-        memory_recent_window: "MEMORY_RECENT_WINDOW — Number of recent messages kept when summarizing (default 30)",
+        use_persistent_memory: "USE_PERSISTENT_MEMORY — Auto-compress memory; restart after saving to apply",
+        memory_update_interval: "MEMORY_UPDATE_INTERVAL — Visible lines that trigger a summary (1–10000; default 250)",
+        memory_recent_window: "MEMORY_RECENT_WINDOW — Recent role-visible lines kept after compression (0–10000; default 30)",
       },
       tts: {
         simple_vits_api_url: "Simple-Vits-API address (VITS adapter)",
@@ -711,7 +711,7 @@ export default {
     },
     memory: {
       title: "Enable Persistent Memory",
-      desc: "When on, memory is automatically compressed",
+      desc: "When on, memory is automatically compressed; restart LingChat after saving to apply",
     },
     voiceSound: {
       title: "Voice Sound Effects",
