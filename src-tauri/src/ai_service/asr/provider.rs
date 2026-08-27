@@ -8,6 +8,32 @@
 //! - 错误统一返回 [`AsrError`]，不外泄 `reqwest::Error` / `serde_json::Error`。
 //! - 不引入新依赖（reqwest / serde / serde_json / async-trait / tracing / thiserror
 //!   / base64 都已在 Cargo.toml）。
+//!
+//! ============================================================================
+//! 扩展指南（新增 provider / 接入 OpenAI 兼容服务）
+//! ============================================================================
+//!
+//! 新增一个**专用协议** provider（3 步，参照 [`QwenAsrProvider`]）：
+//! 1. 实现 [`AsrProvider`] trait（recognize 必选；流式见下）
+//! 2. 写 `config_fields()`——设置页据此动态渲染输入框，前端零改动
+//! 3. 注册到 `list_provider_info()` 与 `get_provider()`
+//!
+//! 接入**OpenAI 兼容服务**（whisper.cpp / faster-whisper-server / Groq /
+//! 阿里云 DashScope compatible-mode 的 qwen-audio-asr 等）：
+//! - 协议是 `POST {endpoint}/v1/audio/transcriptions`（multipart：file/model/
+//!   可选 language/prompt）+ `GET /v1/models` 动态模型列表
+//! - 现成的可复用件：
+//!   - [`provider_stream_llama::recognize_stream`]——通用 SSE 结果流式客户端
+//!     （对 `<asr_text>` 标记自动检测，纯 OpenAI 文本也能解析；llama-asr 已在用）
+//!   - [`parse_llama_text`] / [`parse_llama_models`]——响应与模型列表解析
+//! - 泛化方案备忘（未实施，2026-08 评审预留）：
+//!   - 新增固定 id `openai-compatible` 的通用 struct（id 保持 `&'static str`，
+//!     trait 无需改；参照 LLM 侧 `lmstudio` 固定 id + 可配 endpoint 的先例）
+//!   - llama-asr 保留（默认端点/默认模型/热词有友好默认值，老配置不断），
+//!     与通用 struct 共享上述复用件
+//!   - 前端 `isLlamaStream()`（useAsrInput.ts）需改为覆盖 SSE 类 provider
+//!     的集合判定——llama-asr 与 openai-compatible 都是"整段上传 + SSE
+//!     partial"，必须同链路，新增第三个 SSE 类 provider 时同步扩展该判定
 
 use std::sync::Arc;
 use std::time::Duration;

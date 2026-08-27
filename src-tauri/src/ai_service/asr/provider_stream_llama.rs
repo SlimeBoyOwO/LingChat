@@ -1,14 +1,22 @@
-//! llama-server（llama.cpp）SSE 结果流式转写客户端（Qwen3-ASR 本地部署）。
+//! **通用 OpenAI 兼容 SSE 结果流式客户端**（llama-server 实测起步，名字带 llama 是历史遗留）。
+//!
+//! 协议：`POST {endpoint}/v1/audio/transcriptions` multipart 上传整段音频 +
+//! `stream=true` 让**识别结果**以 SSE 增量返回（OpenAI 兼容语义：每条 `data`
+//! 是当前累积的完整转录，非 delta）。
 //!
 //! 与 [`super::provider_stream`]（DashScope WebSocket 真流式）的本质区别：
 //! - **音频仍整段 multipart 上传**——llama-server 没有流式音频输入（Qwen3-ASR
-//!   是非因果 encoder，非增量架构），`stream=true` 只是让**识别结果**以 SSE
-//!   增量返回（OpenAI 兼容语义：每条 `data` 是当前累积的完整转录，非 delta）。
-//! - partial 经 `asr://stream_partial` 事件 emit（与 qwen WS 流式**同 key 同
-//!   语义**：整段累积视图，前端整体替换语音追加块）——前端共用监听零改动。
+//!   是非因果 encoder，非增量架构）
+//! - partial 经 `on_partial` 回调发射（与 qwen WS 流式**同 key 同语义**：
+//!   整段累积视图，前端整体替换语音追加块）——前端共用监听零改动。
+//!   回调由 session / 命令层注入（事件发射上移，本模块不依赖 Tauri AppHandle）
 //!
-//! 调用方：`LlamaAsrProvider::stream_recognize`（trait 默认方法之外的
-//! 结果流式入口；qwen 不走这里，走 WS 会话框架）。
+//! 复用范围：凡 OpenAI 兼容的转写服务（whisper.cpp / faster-whisper-server /
+//! Groq / DashScope compatible-mode qwen-audio-asr）都可直接复用本模块——
+//! [`super::provider::parse_llama_text`] 对 `<asr_text>` 标记自动检测
+//! （无标记的整体当文本），纯 OpenAI 文本响应无需改动。
+//!
+//! 调用方：`LlamaAsrProvider::stream_recognize`（trait 方法，见 provider.rs 扩展指南）。
 
 use futures_util::StreamExt;
 use reqwest::multipart::Form;

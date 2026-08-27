@@ -249,10 +249,16 @@ function isStreamEnabled(): boolean {
   return enabled
 }
 
-/** llama-asr 结果流式（SSE）：录音期间不建 WS 会话，stop 时整段上传收 partial。
- *  与 qwen 的 WS 真流式（边录边发 PCM）分流——llama-server 无流式音频输入。 */
+/** SSE 类结果流式 provider 判定（llama-asr 起步；名字带 llama 是历史遗留）。
+ *  语义：整段 WAV 上传 + SSE 增量 partial（stop 后到达），与 qwen WS 真流式
+ *  （边录边发 PCM）分流。
+ *
+ *  ⚠️ 扩展点：新增 SSE 类 provider（如未来的 openai-compatible 泛化入口，
+ *  见 provider.rs 扩展指南）必须同步加进此集合——llama-asr 与它同链路
+ *  （不建 WS 会话、stop 时整段上传、partial 在 recognizing 阶段放行）。 */
 function isLlamaStream(): boolean {
-  return asrStore?.settings.active_provider === 'llama-asr' && isStreamEnabled()
+  const sseProviders = ['llama-asr']
+  return sseProviders.includes(asrStore?.settings.active_provider ?? '') && isStreamEnabled()
 }
 
 /** GameDialog 调用：同步移动端菜单展开状态（§1.5） */
