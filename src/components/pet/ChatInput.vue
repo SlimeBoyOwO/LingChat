@@ -41,6 +41,12 @@ import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useSettingsStore } from '@/stores/modules/settings'
 import { useLlmProvidersStore } from '@/stores/modules/llm-providers'
+import {
+  useAsrInput,
+  registerAsrInputBridge,
+  lockAsrForDisplay,
+  ASR_AUTO_SEND_DELAY_MS,
+} from '@/composables/useAsrInput'
 import { useScreenshot } from '@/composables/useScreenshot'
 import { setInputHasText } from '@/composables/useCanDeliver'
 import { Forward } from 'lucide-vue-next'
@@ -58,8 +64,53 @@ const {
   clear: clearScreenshot,
 } = useScreenshot()
 
-onMounted(() => initScreenshot())
-onUnmounted(() => destroyScreenshot())
+// fill_only：识别完成整句填入（与桌面 onAsrText 一致）；400ms 显示锁防
+// auto RMS 识别完立即再触发覆盖刚填入的内容（手动不受锁限）
+const ASR_DISPLAY_MS = 400
+function onAsrText(e: Event) {
+  const ce = e as CustomEvent<string>
+  if (typeof ce.detail === 'string') {
+    messageText.value = ce.detail
+    lockAsrForDisplay(ASR_DISPLAY_MS)
+  }
+}
+
+// auto_send：识别结果显示到输入框 → ASR_AUTO_SEND_DELAY_MS 后走 sendMessage()
+//（完整复用剧本分支/模型检查/输入框清理；显示锁已由 handle() 设置）
+function onAsrAutoSend(e: Event) {
+  const ce = e as CustomEvent<string>
+  if (typeof ce.detail !== 'string') return
+  messageText.value = ce.detail
+  window.setTimeout(() => sendMessage(), ASR_AUTO_SEND_DELAY_MS)
+}
+
+// 输入桥：流式 partial 实时写入（与桌面 GameDialog 一致；录音发起窗口的
+// phase 是窗口本地状态，partial 只写入发起方输入框）
+const asrInput = useAsrInput()
+onMounted(() => {
+  initScreenshot()
+  registerAsrInputBridge({
+    getText: () => messageText.value,
+    setText: (v) => {
+      messageText.value = v
+    },
+  })
+  window.addEventListener('asr-text', onAsrText)
+  window.addEventListener('asr-send', onAsrAutoSend)
+})
+onUnmounted(() => {
+  window.removeEventListener('asr-text', onAsrText)
+  window.removeEventListener('asr-send', onAsrAutoSend)
+  destroyScreenshot()
+})
+
+// 与主对话窗口行为一致（GameDialog 同款 watch）：AI 回复（showCharacterLine
+// 非空 + responding）时清空输入框——auto_send 识别文本填入后随回复自动清空
+watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLine, newStatus]) => {
+  if (newLine && newLine !== '' && newStatus === 'responding') {
+    messageText.value = ''
+  }
+})
 
 const scale = computed(() => settingsStore.pet?.scale || 1.0)
 

@@ -6,6 +6,7 @@ export default {
     tools: "Tool Settings",
     other: "Other Advanced Settings",
     tts: "Local TTS",
+    asr: "Speech Recognition",
   },
   menu: {
     llmTitle: "LLM Management",
@@ -17,6 +18,9 @@ export default {
     ttsTitle: "Local TTS",
     ttsDesc: "Download and manage DeBERTa and character voice models to use the local TTS engine offline",
     ttsButton: "Enter Local TTS",
+    asrTitle: "Speech Recognition",
+    asrDesc: "Configure Alibaba Cloud ASR, send mode, and microphone auto-listen",
+    asrButton: "Open Speech Recognition",
     otherTitle: "Other Advanced Settings",
     otherDesc: "Tweak system environment settings, prompt templates, chat parameters, and more (takes effect after restart)",
     otherButton: "Open Other Advanced Settings",

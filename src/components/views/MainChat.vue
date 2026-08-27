@@ -91,6 +91,8 @@ function onLoadingComplete() {
   localStorage.setItem(LOADING_STORAGE_KEY, '1')
   // 加载动画结束，恢复事件队列消费
   eventQueue.resume()
+  // 通知 ASR：主界面加载完成，允许启动能量监测（§1.9）
+  gameStore.setLoadingComplete(true)
 }
 
 const goToPetMode = () => {

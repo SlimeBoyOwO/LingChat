@@ -34,6 +34,7 @@ import { computed, ref, watch } from 'vue'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { getVoiceAudio } from '@/api/services/game-info'
+import { setVoicePlaying } from '@/composables/useAsrInput'
 import RoleAvatar from './GameRoleAvatar.vue'
 import Live2DStage from '../live2d/Live2DStage.vue'
 
@@ -64,6 +65,7 @@ watch(
       voiceDataUrl.value = ''
       mainAudio.value.pause()
       mainAudio.value.currentTime = 0
+      setVoicePlaying(false)
       return
     }
 
@@ -74,8 +76,17 @@ watch(
         mainAudio.value.src = dataUrl
         mainAudio.value.load()
         mainAudio.value.volume = uiStore.characterVolume / 100
-        mainAudio.value.play().catch((e) => console.error('播放失败', e))
-        emit('audio-started')
+        // TTS 播放中 ASR 禁用（外放 TTS 进麦克风会误识别 AI 自己的话）
+        mainAudio.value
+          .play()
+          .then(() => {
+            setVoicePlaying(true)
+            emit('audio-started')
+          })
+          .catch((e) => {
+            console.error('播放失败', e)
+            setVoicePlaying(false)
+          })
       } catch (e) {
         console.error('获取语音文件失败:', e)
       }
@@ -91,6 +102,7 @@ watch(
 )
 
 const onAudioEnded = () => {
+  setVoicePlaying(false)
   emit('audio-ended')
 }
 
@@ -99,6 +111,7 @@ const stopAudio = () => {
   if (mainAudio.value) {
     mainAudio.value.pause()
     mainAudio.value.currentTime = 0
+    setVoicePlaying(false)
   }
 }
 

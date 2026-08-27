@@ -28,6 +28,21 @@
       </MenuItem>
     </div>
 
+    <!-- 语音识别 -->
+    <div class="cursor-pointer transition-all duration-300" @click="emit('navigate', 'asr')">
+      <MenuItem :title="$t('advance.menu.asrTitle')" size="large">
+        <template #header>
+          <Mic :size="20" />
+        </template>
+        <p class="text-white/50 text-sm leading-relaxed mb-3">
+          {{ $t('advance.menu.asrDesc') }}
+        </p>
+        <Button type="big" icon="mic" :icon_size="18">
+          {{ $t('advance.menu.asrButton') }}
+        </Button>
+      </MenuItem>
+    </div>
+
     <!-- 其他高级设置 -->
     <div class="cursor-pointer transition-all duration-300" @click="emit('navigate', 'other')">
       <MenuItem :title="$t('advance.menu.otherTitle')" size="large">
@@ -102,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { AudioLines, BookOpen, Cpu, SlidersHorizontal, Languages, Wrench } from 'lucide-vue-next'
+import { AudioLines, BookOpen, Cpu, Mic, SlidersHorizontal, Languages, Wrench } from 'lucide-vue-next'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useI18n } from 'vue-i18n'
 import { MenuItem } from '../../ui'
@@ -112,7 +127,7 @@ import { SUPPORTED_LOCALES, setLocale, type AppLocale } from '@/locales'
 const { locale } = useI18n()
 
 const emit = defineEmits<{
-  navigate: [tab: 'llm' | 'tts' | 'other' | 'tools']
+  navigate: [tab: 'llm' | 'tts' | 'asr' | 'other' | 'tools']
 }>()
 
 // 内置 TTS 官方教程（LingBlog）

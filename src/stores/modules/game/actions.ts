@@ -98,6 +98,11 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
     this.currentScene = scene
   },
 
+  /** 标记 LoadingTransition 启动动画已完成（§1.9 门控：动画期间不启动 ASR） */
+  setLoadingComplete(this: GameState, v: boolean) {
+    this.loadingComplete = v
+  },
+
   // 清除场景（更新 store，API 调用由组件负责）
   clearCurrentScene(this: GameState) {
     this.currentScene = null

@@ -15,8 +15,13 @@ fn main() {
     // 导致测试 exe 启动即 STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)。
     // 这里给链接器声明 common-controls v6 依赖，使测试 exe 激活 WinSxS 的 v6。
     // 对应用二进制无害：它自带的同名 manifest 会被合并去重。
-    #[cfg(target_os = "windows")]
-    println!(
-        "cargo:rustc-link-arg=/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'"
-    );
+    // 注意不能用 #[cfg(target_os)]——build.rs 以 host（Windows）编译，cfg 判断
+    // 的是 host；Windows 宿主交叉编译 Android 时会把 MSVC 专属参数传给 NDK
+    // clang（报 no such file: /MANIFESTDEPENDENCY:...）。用 CARGO_CFG_TARGET_OS
+    // 判断真正的链接 target。
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        println!(
+            "cargo:rustc-link-arg=/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'"
+        );
+    }
 }

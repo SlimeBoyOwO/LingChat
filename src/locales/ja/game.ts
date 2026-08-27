@@ -5,6 +5,8 @@ export default {
     history: '会話履歴',
     voiceInput: '音声入力',
     recordingStop: '録音中、クリックで停止',
+    asrAutoOff: '自動音声入力をオフ',
+    asrAutoResume: '自動音声入力を再開',
     screenshotAsk: 'スクリーンショットで質問',
     screenshotRetake: 'クリックで撮り直し、右クリックでキャンセル',
     closeDialog: '会話を閉じる',
@@ -13,8 +15,6 @@ export default {
     inputPlaceholder: 'ここにメッセージを入力...',
     waitingResponse: '応答を待っています...',
     thinkingDepth: '（{count} 文字の深い思考が完了）',
-    speechNotSupported: 'お使いのブラウザは音声入力に対応していません。最新版の Chrome または Edge をご利用ください。',
-    inputNotAllowed: '現在の状態では入力できません。しばらくしてからお試しください。',
     screenshotFailed: 'スクリーンショット機能の初期化に失敗しました。もう一度お試しください。',
     noModelTitle: 'ヒント',
     noModelMessage:
