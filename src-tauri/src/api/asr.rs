@@ -27,6 +27,10 @@ fn parse_source(s: &str) -> Result<AsrSource, String> {
 /// 前端统一用 `utils/asrError.ts` 的 parseAsrError 解析（JSON.parse 失败回退
 /// 旧 `CODE|detail` 格式与原文）——ProviderApiError 的 detail 随 code 走，
 /// 用户能看到具体失败原因而非笼统 code。
+///
+/// 所有 ASR command 的 `AsrError` 出口统一走此函数（不再直接回裸 i18n_code），
+/// 保证前后端错误契约一致；仅 `session_ref` / `parse_source` 这类非 AsrError
+/// 的基础设施错误仍以原文返回，前端按原文展示。
 fn err_to_user(e: &AsrError) -> String {
     let code = e.i18n_code();
     let detail = match e {
@@ -100,7 +104,7 @@ pub async fn asr_start_listening(
     session
         .start(source)
         .await
-        .map_err(|e| e.i18n_code().to_string())
+        .map_err(|e| err_to_user(&e))
 }
 
 #[tauri::command]
@@ -115,7 +119,7 @@ pub async fn asr_stop_listening(
     session
         .stop(source)
         .await
-        .map_err(|e| e.i18n_code().to_string())
+        .map_err(|e| err_to_user(&e))
 }
 
 #[tauri::command]
@@ -135,7 +139,7 @@ pub async fn asr_vad_process_chunk(
     session
         .vad_process_chunk(&app, pcm)
         .await
-        .map_err(|e| e.i18n_code().to_string())
+        .map_err(|e| err_to_user(&e))
 }
 
 #[tauri::command]
@@ -149,12 +153,12 @@ pub async fn asr_recognize_wav(
     let session = session_ref(&state.asr_state.session).await?;
     // cancel_token 锁内克隆立即释放（微秒级），网络调用（最长 30s）不占锁
     let cancel_child = session.cancel_token.lock().await.clone().child_token();
-    let http = build_http().map_err(|e| e.i18n_code().to_string())?;
+    let http = build_http().map_err(|e| err_to_user(&e))?;
     // providers 注册表锁内 clone（Arc 共享，廉价），锁外 resolve
     let providers = session.providers.lock().await.clone();
     let p = resolve_provider(&providers, &provider_id, &app, &http)
         .await
-        .map_err(|e| e.i18n_code().to_string())?;
+        .map_err(|e| err_to_user(&e))?;
     tracing::info!("[ASR] 发送音频到 {provider_id}: {} bytes", wav_bytes.len());
     let result = tokio::select! {
         result = p.recognize(wav_bytes, language_hint.as_deref()) => result,
@@ -189,12 +193,12 @@ pub async fn asr_recognize_wav_stream(
     let session = session_ref(&state.asr_state.session).await?;
     // cancel_token 锁内克隆立即释放（微秒级），网络调用（最长 30s）不占锁
     let cancel_child = session.cancel_token.lock().await.clone().child_token();
-    let http = build_http().map_err(|e| e.i18n_code().to_string())?;
+    let http = build_http().map_err(|e| err_to_user(&e))?;
     // providers 注册表锁内 clone（Arc 共享，廉价），锁外 resolve
     let providers = session.providers.lock().await.clone();
     let p = resolve_provider(&providers, &provider_id, &app, &http)
         .await
-        .map_err(|e| e.i18n_code().to_string())?;
+        .map_err(|e| err_to_user(&e))?;
     tracing::info!(
         "[ASR] 流式识别发送音频到 {provider_id}: {} bytes",
         wav_bytes.len()
@@ -273,11 +277,9 @@ pub async fn asr_start_streaming(
         .map(|p| p.supports_streaming())
         .unwrap_or(false);
     if !supports {
-        return Err(AsrError::StreamingNotSupported(provider_id)
-            .i18n_code()
-            .to_string());
+        return Err(err_to_user(&AsrError::StreamingNotSupported(provider_id)));
     }
-    let settings = settings::load(&app).map_err(|e| e.i18n_code().to_string())?;
+    let settings = settings::load(&app).map_err(|e| err_to_user(&e))?;
     let cred = settings
         .provider_configs
         .get(&provider_id)
@@ -312,7 +314,7 @@ pub async fn asr_stream_audio_chunk(
     session
         .stream_audio_chunk(pcm)
         .await
-        .map_err(|e| e.i18n_code().to_string())
+        .map_err(|e| err_to_user(&e))
 }
 
 #[tauri::command]
@@ -321,7 +323,7 @@ pub async fn asr_stop_streaming(state: tauri::State<'_, AppState>) -> Result<Asr
     session
         .stop_streaming()
         .await
-        .map_err(|e| e.i18n_code().to_string())
+        .map_err(|e| err_to_user(&e))
 }
 
 /// 丢弃流式会话（异常路径清理用）：只 take 流式句柄、断开连接，
@@ -344,7 +346,7 @@ pub async fn asr_list_models(
     app: AppHandle,
 ) -> Result<Vec<provider::ModelInfo>, String> {
     // llama-asr 需要发 HTTP 请求拉服务端模型列表（qwen 是静态清单，不走网络）
-    let http = build_http().map_err(|e| e.i18n_code().to_string())?;
+    let http = build_http().map_err(|e| err_to_user(&e))?;
     provider::list_models(&provider_id, &app, &http)
         .await
         .map_err(|e| err_to_user(&e))
@@ -352,7 +354,7 @@ pub async fn asr_list_models(
 
 #[tauri::command]
 pub async fn asr_get_settings(app: AppHandle) -> Result<AsrSettings, String> {
-    settings::load(&app).map_err(|e| e.i18n_code().to_string())
+    settings::load(&app).map_err(|e| err_to_user(&e))
 }
 
 #[tauri::command]
@@ -361,7 +363,7 @@ pub async fn asr_set_settings(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    settings::save(&app, &settings).map_err(|e| e.i18n_code().to_string())?;
+    settings::save(&app, &settings).map_err(|e| err_to_user(&e))?;
     // 重建 provider registry（settings 改了 credentials 后立即生效）
     rebuild_providers(&state, &settings).await?;
     // VAD 静音计时立即生效（下一轮录音按新配置切分）；
@@ -385,7 +387,7 @@ pub async fn asr_test_provider(
     let session = session_ref(&state.asr_state.session).await?;
     // cancel_token 锁内克隆立即释放（微秒级），网络请求（最长 30s）不占锁
     let cancel_child = session.cancel_token.lock().await.clone().child_token();
-    let http = build_http().map_err(|e| e.i18n_code().to_string())?;
+    let http = build_http().map_err(|e| err_to_user(&e))?;
     // providers 注册表锁内 clone（Arc 共享，廉价），锁外 resolve
     let providers = session.providers.lock().await.clone();
     let p = resolve_provider(&providers, &provider_id, &app, &http)
@@ -425,7 +427,7 @@ async fn rebuild_providers(
     state: &tauri::State<'_, AppState>,
     s: &AsrSettings,
 ) -> Result<(), String> {
-    let http = build_http().map_err(|e| e.i18n_code().to_string())?;
+    let http = build_http().map_err(|e| err_to_user(&e))?;
     let mut providers: std::collections::HashMap<
         String,
         std::sync::Arc<dyn provider::AsrProvider>,

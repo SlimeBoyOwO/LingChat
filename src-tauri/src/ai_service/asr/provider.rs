@@ -190,8 +190,8 @@ pub trait AsrProvider: Send + Sync {
     /// 与识别解耦，provider 可脱离 Tauri 环境测试）。
     async fn stream_recognize(
         &self,
-        wav_bytes: Vec<u8>,
-        on_partial: Option<Arc<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>>,
+        _wav_bytes: Vec<u8>,
+        _on_partial: Option<Arc<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>>,
     ) -> Result<AsrResult, AsrError> {
         Err(AsrError::StreamingNotSupported(self.id().into()))
     }
