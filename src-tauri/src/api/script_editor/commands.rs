@@ -1728,6 +1728,7 @@ async fn build_main_role_prompt(
             PromptOptions {
                 output_sec_lang: true,
                 no_emotion_limit: true,
+                text_effects: false,
             },
         ),
         name: settings.ai_name,

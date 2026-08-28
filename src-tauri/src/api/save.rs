@@ -235,6 +235,7 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     let prompt_options = PromptOptions {
         output_sec_lang: app_config.llm_output_sec_lang,
         no_emotion_limit: app_config.no_emotion_limit_prompt,
+        text_effects: app_config.text_effects,
     };
 
     // 6. 导入设定

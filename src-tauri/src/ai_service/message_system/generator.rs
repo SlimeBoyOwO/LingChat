@@ -30,6 +30,7 @@ use crate::ai_service::tools::tool_loop::stream_with_tool_loop;
 use crate::ai_service::translator::Translator;
 use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage};
 use crate::api::data_dir;
+use crate::config::app_config::AppConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
 
@@ -250,7 +251,14 @@ impl MessageGenerator {
             return Ok(Vec::new());
         };
         let role = gs.get_role(&self.deps.db, rid).await?;
-        Ok(role.memory.clone())
+        let mut context = role.memory.clone();
+        // 文字演出标签（issue #658）：请求期按最新配置注入，开关开启后下一次对话即生效，
+        // 无需重载角色/重启；已注入（含人设构建期拼接）则跳过，避免重复。
+        let text_effects = AppConfig::load(&self.deps.app)
+            .map(|c| c.text_effects)
+            .unwrap_or(false);
+        crate::utils::prompt::inject_text_effects_prompt(&mut context, text_effects);
+        Ok(context)
     }
 
     /// Step 3: 启动 LLM 流管道，统一处理 thinking emit 与错误分发。

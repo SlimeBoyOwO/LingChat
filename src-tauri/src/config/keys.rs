@@ -36,6 +36,8 @@ pub const TRANSLATE_ENABLE: &str = "translate.enable";
 // ========== 对话增强 ==========
 pub const ENABLE_TIME_SENSE: &str = "features.enable_time_sense";
 pub const ENABLE_EMOTION_CLASSIFIER: &str = "features.enable_emotion_classifier";
+/// 文字演出动画（LLM 标签驱动，issue #658）：开启后提示词告知 LLM 标签语法
+pub const TEXT_EFFECTS: &str = "text.text_effects";
 
 // ========== 功能开关（记忆系统） ==========
 pub const USE_PERSISTENT_MEMORY: &str = "features.use_persistent_memory";

@@ -168,6 +168,16 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         description: "ENABLE_EMOTION_CLASSIFIER — 启用情感分类器（ONNX 模型，用于自动标注对话 emotion）".to_string(),
                         setting_type: "bool".to_string(),
                     },
+                    ConfigSetting {
+                        key: keys::TEXT_EFFECTS.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::TEXT_EFFECTS,
+                            &app_defaults.text_effects.to_string(),
+                        ),
+                        description: "TEXT_EFFECTS — 文字演出动画：开启后 LLM 可用 <emphasis>/<shake>/<blur>/<float> 标签（支持 level 强度）为台词添加动画".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
                 ],
             },
         );

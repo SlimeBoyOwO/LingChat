@@ -113,6 +113,7 @@ impl Tool for CharacterSwitch {
         let prompt_options = PromptOptions {
             output_sec_lang: app_config.llm_output_sec_lang,
             no_emotion_limit: app_config.no_emotion_limit_prompt,
+            text_effects: app_config.text_effects,
         };
 
         let gs = game_status_handle(&app).await;
