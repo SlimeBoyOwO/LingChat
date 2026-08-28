@@ -554,4 +554,26 @@ mod effect_tag_protection_tests {
         assert!(protected2.contains("\u{0}FX_TAG_0\u{0}"));
         assert!(protected2.contains("<weather>"), "未知标签保持原样: {protected2}");
     }
+
+    /// 标签误入日语翻译块（LLM 格式错误时）：译文剔除标签、中文台词保留标签
+    #[test]
+    fn tags_inside_japanese_block_are_removed() {
+        let mp = MessageProcessor::new(
+            ProcessorOptions {
+                enable_translate: true,
+                ..Default::default()
+            },
+            None,
+        );
+        let input = "【认真】<emphasis>用户酱，你知道吗。</emphasis>每一次这样……\n<見ててね、<emphasis>一番の特技</emphasis>なんだから>";
+        let segs = mp.parse_and_classify_emotional_segments(input);
+        assert_eq!(segs.len(), 1);
+        let s = &segs[0];
+        assert_eq!(s.japanese_text, "見ててね、一番の特技なんだから", "译文剔除标签");
+        assert_eq!(
+            s.following_text,
+            "<emphasis>用户酱，你知道吗。</emphasis>每一次这样……",
+            "中文台词保留标签"
+        );
+    }
 }
