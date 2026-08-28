@@ -65,10 +65,6 @@ impl ScriptEvent for PlayerEvent {
     fn event_type() -> &'static str {
         "player"
     }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
-    }
 }
 
 pub fn register() {

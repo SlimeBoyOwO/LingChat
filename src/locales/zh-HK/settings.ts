@@ -218,9 +218,9 @@ export default {
       "features": {
         "enable_time_sense": "USE_TIME_SENSE — 啟用時間感知（按上下文時間加系統提醒）",
         "enable_emotion_classifier": "ENABLE_EMOTION_CLASSIFIER — 啟用情感分類器（ONNX 模型，用嚟自動標註對話嘅 emotion）",
-        "use_persistent_memory": "USE_PERSISTENT_MEMORY — 開咗之後記憶會自動壓縮，慳返 token",
-        "memory_update_interval": "MEMORY_UPDATE_INTERVAL — 觸發記憶摘要嘅新訊息數（預設 250）",
-        "memory_recent_window": "MEMORY_RECENT_WINDOW — 做摘要嗰陣保留嘅最近訊息數（預設 30）"
+        "use_persistent_memory": "USE_PERSISTENT_MEMORY — 自動壓縮記憶，儲存後要重啟先會生效",
+        "memory_update_interval": "MEMORY_UPDATE_INTERVAL — 觸發摘要嘅可見台詞數（1–10000，預設 250）",
+        "memory_recent_window": "MEMORY_RECENT_WINDOW — 壓縮後保留嘅角色可見台詞數（0–10000，預設 30）"
       },
       "tts": {
         "simple_vits_api_url": "Simple-Vits-API 地址（VITS 適配器）",
@@ -710,7 +710,7 @@ export default {
     },
     "memory": {
       "title": "啟用永久記憶",
-      "desc": "開咗之後記憶會自動壓縮"
+      "desc": "開咗之後記憶會自動壓縮，儲存後要重啟 LingChat 先會生效"
     },
     "voiceSound": {
       "title": "語音音效開關",
@@ -1061,4 +1061,64 @@ export default {
       "switchDisabled": "本地 TTS 已關閉，如需使用雲端 TTS，請將角色語音切換為「雲端」並重新啟動應用程式。",
       "saveSwitchFailed": "儲存本地 TTS 開關失敗：{error}"
     }
-  },}
+  },
+
+  "asr": {
+    "title": "語音識別",
+    "status": {
+      "ready": "已就緒",
+      "notReady": "未配置",
+      "mic": "麥克風",
+      "micIdle": "閒置",
+      "micActive": "使用中",
+      "micDenied": "權限被拒絕",
+      "vadLoaded": "VAD 模型",
+      "vadLoadedOk": "已載入",
+      "vadLoadedNo": "未載入"
+    },
+    "voiceInput": "語音輸入",
+    "voiceInputHint": "總開關：關閉後自動語音識別不可用，手動麥克風錄音保留",
+    "autoListen": "啟用自動語音識別",
+    "autoListenHint": "自動監聽麥克風，識別用戶說話後自動轉為文字",
+    "vadSilence": "靜音計時（毫秒）",
+    "vadSilenceHint": "停止講嘢後等待呢段時間先至結束錄音（預設 800ms，數字越大越唔容易被停頓切斷）",
+    "energyWarmup": "能量監測緩衝期（毫秒）",
+    "energyWarmupHint": "AI 講完嘢後等幾耐先恢復語音觸發（預設 100ms，設 0 即時觸發；若 AI 講完即刻有環境聲誤觸可以調大）",
+    "sendMode": {
+      "title": "識別完成後",
+      "fillOnly": "填入輸入框（推薦）",
+      "autoSend": "自動發送"
+    },
+    "streamMode": "串流識別",
+    "streamModeHint": "講嘢期間實時顯示識別文字",
+    "streamModeHintLocal": "錄音結束後上傳本地識別，結果逐步顯示（llama-server 結果串流）",
+    "streamNotSupported": "目前模型唔支援串流識別",
+    "provider": {
+      "title": "語音識別服務商",
+      "providerSelect": "服務商",
+      "modelRefresh": "重新載入模型列表",
+      "modelListFailed": "獲取模型列表失敗：{err}",
+      "test": "測試連接",
+      "testing": "正在錄音…請說話（4 秒）",
+      "testingStop": "停止並識別",
+      "testSuccess": "連接成功",
+      "testResult": "識別結果：{text}",
+      "testNoSpeech": "未識別到語音，請重試",
+      "testFailed": "連接失敗：{err}",
+      "presetHint": "選擇模型後自動填入接口地址（Endpoint），只需填寫 API Key"
+    },
+    errors: {
+      ASR_MODEL_MISSING: "VAD 模型未找到",
+      ASR_ENGINE_LOAD_FAILED: "識別引擎載入失敗",
+      ASR_PROVIDER_NOT_FOUND: "識別服務商未找到，請先配置",
+      ASR_PROVIDER_FAILED: "識別服務失敗，請稍後重試",
+      ASR_PROVIDER_TIMEOUT: "識別超時，請重試",
+      ASR_INVALID_AUDIO: "音訊數據無效",
+      ASR_SESSION_BUSY: "已有語音會話進行中",
+      ASR_CANCELED: "識別已取消",
+      ASR_MIC_DENIED: "麥克風權限被拒絕，請在系統設定中開啟",
+      ASR_MISSING_CREDENTIALS: "請先填寫該服務商的 API Key",
+      ASR_STREAMING_UNSUPPORTED: "當前模型不支援串流識別"
+    }
+  }
+}

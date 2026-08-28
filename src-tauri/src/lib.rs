@@ -16,13 +16,15 @@ use std::sync::Arc;
 
 use chrono::Local;
 use sea_orm::DatabaseConnection;
-use tauri::{Emitter, Listener, Manager};
+use tauri::{Listener, Manager};
+#[cfg(desktop)]
+use tauri::Emitter;
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-use ai_service::god_agent::config::resolve_god_agent_provider;
 use ai_service::god_agent::GodAgentCore;
+use ai_service::god_agent::config::resolve_god_agent_provider;
 use ai_service::llm::LlmSlot;
 use ai_service::message_system::processor::MessageProcessor;
 use ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
@@ -105,6 +107,8 @@ pub struct InnerAppState {
     /// 自动存档管理器。
     pub auto_save_manager:
         Arc<tokio::sync::Mutex<ai_service::game_system::auto_save::AutoSaveManager>>,
+    /// ASR 服务状态（详见 [`crate::ai_service::asr`]）。
+    pub asr_state: Arc<ai_service::asr::AsrState>,
     /// 上帝 Agent（多人对话编排器，可选）。
     pub god_agent: Option<Arc<GodAgentCore>>,
     /// Skill Agent（剧本编辑器 AI 助手）共享状态。
@@ -116,8 +120,7 @@ pub struct InnerAppState {
     /// 主聊天 `delete_file` 工具的待审批删除请求（request_id → oneshot）。
     pub chat_file_delete_approvals: ai_service::skill_agent::ApprovalMap,
     /// 主聊天后台命令的并发槽位与任务 ID 分配器。
-    pub background_commands:
-        Arc<ai_service::tools::background_command::BackgroundCommandManager>,
+    pub background_commands: Arc<ai_service::tools::background_command::BackgroundCommandManager>,
     /// 剧本编辑器「试玩」当前在跑的后台任务句柄。
     ///
     /// `editor_stop_preview` 会先唤醒被剧本阻塞的通道、把 `is_running` 置 false，
@@ -127,7 +130,8 @@ pub struct InnerAppState {
     pub preview_task: Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
     /// 试玩开始时拍下的会话快照，供收尾时一次性还原。`Option::take` 保证幂等：
     /// 任务自然结束先还原、`editor_stop_preview` 兜底再 take 一次为空即跳过。
-    pub pending_preview_restore: Arc<tokio::sync::Mutex<Option<api::script_editor::PreviewSession>>>,
+    pub pending_preview_restore:
+        Arc<tokio::sync::Mutex<Option<api::script_editor::PreviewSession>>>,
 }
 
 /// AppState 在 Tauri 中 manage 的状态句柄。
@@ -229,10 +233,15 @@ fn read_hdr_mode_enabled(identifier: &str) -> bool {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // TLS 兜底：rustls 依赖图同时启用 aws-lc-rs（本项目显式）与 ring
+    // （tokio-tungstenite rustls-tls-webpki-roots 引入）两个 crypto feature，
+    // 进程级默认 provider 无法自动确定 → 走默认 ClientConfig::builder() 的
+    // 路径（如 ASR 流式 WebSocket 握手）会 panic。显式安装 aws-lc-rs 为默认。
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     // 配置日志过滤器（genai 调试日志由 log.genai_debug 设置在 setup 阶段动态控制）。
     // reload::Layer 包装的 EnvFilter 作为全局过滤层，避免在多个 fmt layer 上 clone 的限制。
-    let (filter, reload_handle) =
-        tracing_subscriber::reload::Layer::new(build_log_filter(false));
+    let (filter, reload_handle) = tracing_subscriber::reload::Layer::new(build_log_filter(false));
 
     // 初始化日志系统
     tracing_subscriber::registry()
@@ -357,8 +366,7 @@ pub fn run() {
                     key: String,
                     value: Option<serde_json::Value>,
                 }
-                let Ok(payload) =
-                    serde_json::from_str::<StoreChangePayload>(event.payload())
+                let Ok(payload) = serde_json::from_str::<StoreChangePayload>(event.payload())
                 else {
                     return;
                 };
@@ -383,10 +391,10 @@ pub fn run() {
             )) {
                 Ok(stats) => {
                     tracing::info!("语音文件清理完成: 删除 {} 个文件", stats.deleted_count);
-                }
+                },
                 Err(e) => {
                     tracing::warn!("语音文件清理失败（非致命错误）: {e:#}");
-                }
+                },
             }
 
             // 创建脚本引擎通道
@@ -396,8 +404,9 @@ pub fn run() {
 
             // 创建生成锁
             let generation_lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
-            let role_names = rt
-                .block_on(db::managers::role_repo::RoleRepo::get_all_tool_role_names(&db))?;
+            let role_names = rt.block_on(
+                db::managers::role_repo::RoleRepo::get_all_tool_role_names(&db),
+            )?;
             let tool_settings = ai_service::tools::settings::SharedToolSettings::new(
                 ai_service::tools::settings::ToolSettings::load_or_create(&api::data_dir())?,
             );
@@ -500,6 +509,9 @@ pub fn run() {
                     screen_analyzer,
                     screenshot_capture,
                     auto_save_manager: auto_save_manager.clone(),
+                    asr_state: Arc::new(ai_service::asr::AsrState {
+                        session: Arc::new(tokio::sync::Mutex::new(None)),
+                    }),
                     god_agent,
                     skill_agent: Arc::new(ai_service::skill_agent::SkillAgentState::default()),
                     chat_command_approvals: Default::default(),
@@ -511,6 +523,15 @@ pub fn run() {
                     preview_task: Arc::new(tokio::sync::Mutex::new(None)),
                     pending_preview_restore: Arc::new(tokio::sync::Mutex::new(None)),
                 });
+            }
+
+            // ASR 初始化：VAD 模型 + provider registry。失败仅 warn 不阻塞主程序。
+            {
+                let state = app.state::<AppState>();
+                let asr_state = state.asr_state.clone();
+                if let Err(e) = rt.block_on(init::init_asr(app.handle(), &asr_state)) {
+                    tracing::warn!("[ASR] init_asr 失败，ASR 功能不可用: {e:#}");
+                }
             }
 
             // 延迟加载 DeBerta 直到应用主体挂载完成；
@@ -718,6 +739,8 @@ pub fn run() {
             api::save::update_save_title,
             api::save::save_screenshot,
             api::save::capture_main_window_screenshot,
+            api::settings_snapshot::capture_settings_snapshot,
+            api::settings_snapshot::cleanup_settings_snapshot,
             api::script::list_scripts,
             api::script::list_standalone_scripts,
             api::script::get_script_menu_effect,
@@ -841,6 +864,23 @@ pub fn run() {
             ai_service::tts::local::tts_local_get_device,
             ai_service::tts::local::tts_local_list_devices,
             ai_service::tts::local::tts_local_set_device,
+            // ASR 相关命令
+            api::asr::asr_start_listening,
+            api::asr::asr_stop_listening,
+            api::asr::asr_vad_process_chunk,
+            api::asr::asr_recognize_wav,
+            api::asr::asr_recognize_wav_stream,
+            api::asr::asr_cancel,
+            api::asr::asr_list_providers,
+            api::asr::asr_list_models,
+            api::asr::asr_get_settings,
+            api::asr::asr_set_settings,
+            api::asr::asr_get_status,
+            api::asr::asr_test_provider,
+            api::asr::asr_start_streaming,
+            api::asr::asr_stream_audio_chunk,
+            api::asr::asr_stop_streaming,
+            api::asr::asr_cancel_streaming,
             exit_app,
         ])
         .run(context)

@@ -218,9 +218,9 @@ export default {
       features: {
         enable_time_sense: "USE_TIME_SENSE — Enable time awareness (adds system reminders based on contextual time)",
         enable_emotion_classifier: "ENABLE_EMOTION_CLASSIFIER — Enable the emotion classifier (ONNX model, auto-tags dialogue emotions)",
-        use_persistent_memory: "USE_PERSISTENT_MEMORY — When on, memory is auto-compressed to reduce token usage",
-        memory_update_interval: "MEMORY_UPDATE_INTERVAL — Number of new messages that triggers a memory summary (default 250)",
-        memory_recent_window: "MEMORY_RECENT_WINDOW — Number of recent messages kept when summarizing (default 30)",
+        use_persistent_memory: "USE_PERSISTENT_MEMORY — Auto-compress memory; restart after saving to apply",
+        memory_update_interval: "MEMORY_UPDATE_INTERVAL — Visible lines that trigger a summary (1–10000; default 250)",
+        memory_recent_window: "MEMORY_RECENT_WINDOW — Recent role-visible lines kept after compression (0–10000; default 30)",
       },
       tts: {
         simple_vits_api_url: "Simple-Vits-API address (VITS adapter)",
@@ -711,7 +711,7 @@ export default {
     },
     memory: {
       title: "Enable Persistent Memory",
-      desc: "When on, memory is automatically compressed",
+      desc: "When on, memory is automatically compressed; restart LingChat after saving to apply",
     },
     voiceSound: {
       title: "Voice Sound Effects",
@@ -1063,4 +1063,68 @@ export default {
       switchDisabled: 'Local TTS disabled. To use cloud TTS, switch the character voice to "Cloud" and restart the app.',
       saveSwitchFailed: 'Failed to save local TTS switch: {error}',
     },
-  },}
+  },
+
+  asr: {
+    title: 'Speech Recognition',
+    status: {
+      ready: 'Ready',
+      notReady: 'Not configured',
+      mic: 'Microphone',
+      micIdle: 'Idle',
+      micActive: 'In use',
+      micDenied: 'Permission denied',
+      vadLoaded: 'VAD model',
+      vadLoadedOk: 'Loaded',
+      vadLoadedNo: 'Not loaded',
+    },
+    voiceInput: 'Voice input',
+    voiceInputHint:
+      'Master switch: when off, auto voice input is disabled; manual mic recording still works',
+    autoListen: 'Enable automatic speech recognition',
+    autoListenHint: 'Auto-listen to microphone and convert user speech to text',
+    vadSilence: 'Silence timeout (ms)',
+    vadSilenceHint:
+      'Wait this long after you stop speaking before ending the recording (default 800ms; higher values are less likely to cut off mid-sentence)',
+    energyWarmup: 'Energy monitor warm-up (ms)',
+    energyWarmupHint:
+      'How long to wait after AI finishes speaking before voice trigger re-arms (default 100ms; set 0 to re-arm instantly. Increase if ambient sound right after AI speech causes false triggers)',
+    sendMode: {
+      title: 'After recognition',
+      fillOnly: 'Fill input box (recommended)',
+      autoSend: 'Auto send',
+    },
+    streamMode: 'Streaming Recognition',
+    streamModeHint: 'Shows recognized text in real time while speaking',
+    streamModeHintLocal:
+      'Uploads the recording after you finish speaking, then shows results progressively (llama-server result streaming)',
+    streamNotSupported: 'The selected model does not support streaming recognition',
+    provider: {
+      title: 'Speech Recognition Provider',
+      providerSelect: 'Provider',
+      modelRefresh: 'Refresh model list',
+      modelListFailed: 'Failed to load model list: {err}',
+      test: 'Test connection',
+      testing: 'Recording… please speak (4s)',
+      testingStop: 'Stop & recognize',
+      testSuccess: 'Connected',
+      testResult: 'Recognized: {text}',
+      testNoSpeech: 'No speech detected, please retry',
+      testFailed: 'Failed: {err}',
+      presetHint: 'Selecting a model auto-fills the endpoint; only the API Key is required',
+    },
+    errors: {
+      ASR_MODEL_MISSING: 'VAD model not found',
+      ASR_ENGINE_LOAD_FAILED: 'Recognition engine failed to load',
+      ASR_PROVIDER_NOT_FOUND: 'Recognition provider not found, please configure it first',
+      ASR_PROVIDER_FAILED: 'Recognition service failed, please retry later',
+      ASR_PROVIDER_TIMEOUT: 'Recognition timed out, please retry',
+      ASR_INVALID_AUDIO: 'Invalid audio data',
+      ASR_SESSION_BUSY: 'A speech session is already in progress',
+      ASR_CANCELED: 'Recognition cancelled',
+      ASR_MIC_DENIED: 'Microphone permission denied, enable it in system settings',
+      ASR_MISSING_CREDENTIALS: 'Please fill in the API Key for this provider',
+      ASR_STREAMING_UNSUPPORTED: 'Streaming recognition is not supported by this model',
+    },
+  },
+}

@@ -186,10 +186,6 @@ impl ScriptEvent for ForceChoiceEvent {
     fn event_type() -> &'static str {
         "force_choice"
     }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
-    }
 }
 
 pub fn register() {

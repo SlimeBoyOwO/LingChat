@@ -606,6 +606,7 @@ file_tool!(
 
 /// 保守识别常见的文件删除命令。任意 shell/程序都可能间接删除文件，因此这里
 /// 优先避免漏报；误报只会多要求一次用户确认，不会改变命令内容。
+#[cfg_attr(not(desktop), allow(dead_code))]
 fn command_may_delete_files(command: &str) -> bool {
     let normalized = command.to_ascii_lowercase();
     let tokens = normalized
@@ -660,10 +661,12 @@ fn command_may_delete_files(command: &str) -> bool {
 }
 
 /// execute_command：在本机运行 shell 命令（默认需用户弹窗确认，可后台运行或 UAC 提权）。
+#[cfg_attr(not(desktop), allow(dead_code))]
 pub struct ExecuteCommand {
     settings: SharedToolSettings,
 }
 
+#[cfg_attr(not(desktop), allow(dead_code))]
 impl ExecuteCommand {
     pub fn new(settings: SharedToolSettings) -> Self {
         Self { settings }

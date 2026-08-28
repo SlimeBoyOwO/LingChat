@@ -1594,6 +1594,7 @@ impl PreviewSession {
         // 失败时把已拍快照套回去再报错：否则试玩启动失败也会把自由对话的
         // 在场角色/台词表留在被清空的状态。
         if let Err(e) = gs.get_role(db, main_id).await {
+            gs.role_manager.invalidate_memory_history();
             gs.line_list.truncate(saved.line_len);
             gs.apply_snapshot(&saved.scene);
             gs.onstage_role_ids = saved.onstage_role_ids.clone();
@@ -1667,6 +1668,7 @@ impl PreviewSession {
         // 立即过期，它们的迟到写入会被 add_assistant_line 的守卫丢弃，不再
         // 污染已还原的自由对话会话。
         gs.preview_generation = gs.preview_generation.wrapping_add(1);
+        gs.role_manager.invalidate_memory_history();
         gs.line_list.truncate(self.line_len);
         gs.apply_snapshot(&self.scene);
         gs.onstage_role_ids = self.onstage_role_ids;

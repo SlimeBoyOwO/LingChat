@@ -2,8 +2,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 #[cfg(desktop)]
 use tauri::LogicalSize;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
+#[cfg(desktop)]
+use tauri::Manager;
 
+// 桌宠点击穿透命中区（桌面端专属，移动端仅作为命令参数反序列化、不读取）。
+#[cfg_attr(not(desktop), allow(dead_code))]
 #[derive(Clone, Deserialize, Debug)]
 pub struct Rect {
     pub x: f64,
@@ -14,6 +18,7 @@ pub struct Rect {
 
 /// 桌宠窗口内的鼠标位置（逻辑/CSS 像素），由 Rust 侧全局轮询循环计算并广播给前端。
 /// 坐标系与 DOM 的 clientX/clientY 一致（窗口非装饰时即 webview 视口坐标）。
+#[cfg_attr(not(desktop), allow(dead_code))]
 #[derive(Clone, Debug, Serialize)]
 pub struct CursorPosition {
     pub x: f64,

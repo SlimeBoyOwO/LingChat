@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    parse_duration, register_event, ScriptContext, ScriptEvent,
+    register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::tools::atomic_replace;
 
@@ -35,7 +35,6 @@ pub struct ScriptMenuEffectState {
 pub struct MenuEffectEvent {
     theme: String,
     message: Option<String>,
-    duration: Option<f64>,
 }
 
 impl MenuEffectEvent {
@@ -52,11 +51,7 @@ impl MenuEffectEvent {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned);
-        Self {
-            theme,
-            message,
-            duration: parse_duration(data),
-        }
+        Self { theme, message }
     }
 }
 
@@ -290,10 +285,6 @@ impl ScriptEvent for MenuEffectEvent {
 
     fn event_type() -> &'static str {
         "main_menu_effect"
-    }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
     }
 }
 

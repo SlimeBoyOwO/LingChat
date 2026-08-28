@@ -11,13 +11,12 @@ use rand::Rng;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    parse_duration, register_event, ScriptContext, ScriptEvent,
+    register_event, ScriptContext, ScriptEvent,
 };
 
 pub struct RandomVarEvent {
     variable: String,
     chance: f64,
-    duration: Option<f64>,
 }
 
 impl RandomVarEvent {
@@ -43,11 +42,7 @@ impl RandomVarEvent {
             );
         }
 
-        Self {
-            variable,
-            chance,
-            duration: parse_duration(data),
-        }
+        Self { variable, chance }
     }
 }
 
@@ -81,10 +76,6 @@ impl ScriptEvent for RandomVarEvent {
 
     fn event_type() -> &'static str {
         "random_var"
-    }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
     }
 }
 

@@ -93,10 +93,6 @@ impl ScriptEvent for VoiceShiftEvent {
     fn event_type() -> &'static str {
         "voice_shift"
     }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
-    }
 }
 
 pub fn register() {

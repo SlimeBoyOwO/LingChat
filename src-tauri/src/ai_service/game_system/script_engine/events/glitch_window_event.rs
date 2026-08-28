@@ -371,10 +371,6 @@ impl ScriptEvent for GlitchWindowEvent {
     fn event_type() -> &'static str {
         "glitch_window"
     }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
-    }
 }
 
 pub fn register() {

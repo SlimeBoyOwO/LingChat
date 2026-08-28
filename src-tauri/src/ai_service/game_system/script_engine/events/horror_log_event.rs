@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    parse_duration, register_event, ScriptContext, ScriptEvent,
+    register_event, ScriptContext, ScriptEvent,
 };
 
 const MAX_LINES: i64 = 300;
@@ -22,7 +22,6 @@ const GLITCH_SHARDS: [&str; 8] = [
 pub struct HorrorLogEvent {
     text: String,
     lines: i64,
-    duration: Option<f64>,
 }
 
 impl HorrorLogEvent {
@@ -42,11 +41,7 @@ impl HorrorLogEvent {
                 MAX_LINES
             );
         }
-        Self {
-            text,
-            lines,
-            duration: parse_duration(data),
-        }
+        Self { text, lines }
     }
 }
 
@@ -63,10 +58,6 @@ impl ScriptEvent for HorrorLogEvent {
 
     fn event_type() -> &'static str {
         "horror_log"
-    }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
     }
 }
 

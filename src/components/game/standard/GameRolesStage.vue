@@ -34,6 +34,7 @@ import { computed, ref, watch } from 'vue'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { getVoiceAudio } from '@/api/services/game-info'
+import { setVoicePlaying } from '@/composables/useAsrInput'
 import RoleAvatar from './GameRoleAvatar.vue'
 import Live2DStage from '../live2d/Live2DStage.vue'
 
@@ -43,6 +44,7 @@ const emit = defineEmits(['audio-ended', 'audio-started'])
 
 const mainAudio = ref<HTMLAudioElement | null>(null)
 const voiceDataUrl = ref('')
+let voicePlaybackSeq = 0
 
 type PitchControllableAudio = HTMLAudioElement & {
   mozPreservesPitch?: boolean
@@ -94,9 +96,10 @@ const stopWebAudio = () => {
   gainNode = null
 }
 
-const playVoiceWithPitch = async (dataUrl: string, volume: number) => {
+const playVoiceWithPitch = async (dataUrl: string, volume: number, playbackSeq: number) => {
   stopWebAudio()
   const buf = await loadVoiceBuffer(dataUrl)
+  if (playbackSeq !== voicePlaybackSeq) return
   const ctx = getAudioCtx()
   if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
   const src = ctx.createBufferSource()
@@ -113,6 +116,7 @@ const playVoiceWithPitch = async (dataUrl: string, volume: number) => {
   }
   bufferSource = src
   gainNode = gain
+  setVoicePlaying(true)
   src.start()
   emit('audio-started')
 }
@@ -131,6 +135,7 @@ watch(
   () => uiStore.currentAvatarAudio,
   async (newAudio) => {
     if (!mainAudio.value) return
+    const playbackSeq = ++voicePlaybackSeq
 
     // 如果设置为 'None'，停止当前播放
     if (newAudio === 'None' || !newAudio) {
@@ -138,12 +143,14 @@ watch(
       mainAudio.value.pause()
       mainAudio.value.currentTime = 0
       stopWebAudio()
+      setVoicePlaying(false)
       return
     }
 
     if (newAudio && newAudio !== 'None') {
       try {
         const dataUrl = await getVoiceAudio(newAudio)
+        if (playbackSeq !== voicePlaybackSeq) return
         // 最新 Live2D 口型同步消费 voiceDataUrl；DLC 的 voice_shift 仍按需走 Web Audio。
         voiceDataUrl.value = dataUrl
         const volume = uiStore.characterVolume / 100
@@ -151,7 +158,7 @@ watch(
           // 纯降调模式：走 Web Audio detune（不变速），与 HTMLAudio 路径互斥
           mainAudio.value.pause()
           mainAudio.value.currentTime = 0
-          await playVoiceWithPitch(dataUrl, volume)
+          await playVoiceWithPitch(dataUrl, volume, playbackSeq)
           return
         }
         stopWebAudio()
@@ -160,10 +167,20 @@ watch(
         mainAudio.value.volume = volume
         // 剧本 voice_shift 恶魔音：降低播放倍率并关闭保音高。
         applyVoiceRate(mainAudio.value, uiStore.voiceRate)
-        mainAudio.value.play().catch((e) => console.error('播放失败', e))
-        emit('audio-started')
+        // TTS 播放中 ASR 禁用（外放 TTS 进麦克风会误识别 AI 自己的话）。
+        mainAudio.value
+          .play()
+          .then(() => {
+            setVoicePlaying(true)
+            emit('audio-started')
+          })
+          .catch((e) => {
+            console.error('播放失败', e)
+            setVoicePlaying(false)
+          })
       } catch (e) {
         console.error('获取语音文件失败:', e)
+        if (playbackSeq === voicePlaybackSeq) setVoicePlaying(false)
       }
     }
   },
@@ -195,14 +212,17 @@ watch(
 )
 
 const onAudioEnded = () => {
+  setVoicePlaying(false)
   emit('audio-ended')
 }
 
 // 暴露停止音频的方法给父组件
 const stopAudio = () => {
+  voicePlaybackSeq += 1
   if (mainAudio.value) {
     mainAudio.value.pause()
     mainAudio.value.currentTime = 0
+    setVoicePlaying(false)
   }
   stopWebAudio()
 }

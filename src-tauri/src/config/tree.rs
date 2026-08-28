@@ -176,7 +176,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
         feat_subs.insert(
             "记忆系统".to_string(),
             Subcategory {
-                description: "在这里设定你想要的永久记忆效果".to_string(),
+                description: "在这里设定永久记忆效果；本组设置保存后需重启 LingChat 才会应用到压缩引擎".to_string(),
                 settings: vec![
                     ConfigSetting {
                         key: keys::USE_PERSISTENT_MEMORY.to_string(),
@@ -197,7 +197,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             keys::MEMORY_UPDATE_INTERVAL,
                             &app_defaults.memory_update_interval.to_string(),
                         ),
-                        description: "MEMORY_UPDATE_INTERVAL — 触发记忆摘要的新消息数（默认 250）"
+                        description: "MEMORY_UPDATE_INTERVAL — 触发记忆摘要的可见台词数（1–10000，默认 250，重启生效）"
                             .to_string(),
                         setting_type: "text".to_string(),
                     },
@@ -208,7 +208,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             keys::MEMORY_RECENT_WINDOW,
                             &app_defaults.memory_recent_window.to_string(),
                         ),
-                        description: "MEMORY_RECENT_WINDOW — 摘要时保留的最近消息数（默认 30）"
+                        description: "MEMORY_RECENT_WINDOW — 压缩后保留的该角色最近可见台词数（0–10000，默认 30，重启生效）"
                             .to_string(),
                         setting_type: "text".to_string(),
                     },

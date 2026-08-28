@@ -1,6 +1,7 @@
 pub mod achievement;
 pub mod adventure;
 pub mod ambient;
+pub mod asr;
 pub mod asset;
 pub mod background;
 pub mod character;
@@ -23,6 +24,7 @@ pub(crate) mod script_popups;
 pub mod script_editor;
 pub mod settings;
 pub mod tool_settings;
+pub mod settings_snapshot;
 pub mod workshop;
 
 use std::path::PathBuf;

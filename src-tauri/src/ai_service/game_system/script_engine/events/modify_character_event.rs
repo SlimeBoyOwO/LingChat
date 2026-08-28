@@ -177,10 +177,6 @@ impl ScriptEvent for ModifyCharacterEvent {
     fn event_type() -> &'static str {
         "modify_character"
     }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
-    }
 }
 
 pub fn register() {

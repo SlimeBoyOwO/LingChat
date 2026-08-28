@@ -40,6 +40,8 @@ pub struct SkillAgentRunContext {
     pub conversation_id: i32,
     /// 流式事件推送通道。
     pub channel: tauri::ipc::Channel<SkillAgentEvent>,
+    /// 命令审批映射（桌面端命令审批流使用，移动端不可达）。
+    #[cfg_attr(not(desktop), allow(dead_code))]
     pub approvals: ApprovalMap,
     pub db: DatabaseConnection,
     pub llm: Arc<LlmClient>,

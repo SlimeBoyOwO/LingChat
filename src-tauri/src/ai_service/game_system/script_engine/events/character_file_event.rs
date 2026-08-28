@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    parse_duration, register_event, ScriptContext, ScriptEvent,
+    register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::types::ScriptStatus;
 use crate::utils::system::open_folder;
@@ -36,7 +36,6 @@ pub struct CharacterFileEvent {
     action: String,
     file: String,
     result_var: String,
-    duration: Option<f64>,
 }
 
 impl CharacterFileEvent {
@@ -61,7 +60,6 @@ impl CharacterFileEvent {
                 .unwrap_or("character_file_exists")
                 .trim()
                 .to_string(),
-            duration: parse_duration(data),
         }
     }
 }
@@ -623,10 +621,6 @@ impl ScriptEvent for CharacterFileEvent {
 
     fn event_type() -> &'static str {
         "character_file"
-    }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
     }
 }
 

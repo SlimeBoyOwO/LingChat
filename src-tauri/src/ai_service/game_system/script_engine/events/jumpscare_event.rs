@@ -85,11 +85,6 @@ impl ScriptEvent for JumpscareEvent {
     fn event_type() -> &'static str {
         "jumpscare"
     }
-
-    fn duration(&self) -> Option<f64> {
-        // 演出由前端按 payload.duration 自行收场，事件本身不占用剧本时间轴
-        None
-    }
 }
 
 pub fn register() {
