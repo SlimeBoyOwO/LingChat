@@ -15,7 +15,9 @@ export const DEFAULT_SETTINGS = {
     speed: 80, // 打字速度 (0-100)
     autoAdvanceDelay: 1000, // 自动模式自动推进延迟 (ms, 0-2000)
     animation: true, // 页面切换动画
-    inlineMotionText: false, // 内联动作文本（单次显示台词+灰字动作）
+    inlineMotionText: false, // 内联动作文本(单次显示台词+灰字动作)
+    fusedDialogue: false, // 台词融合:短句由打字机无缝连续展示
+    fusedThreshold: 100, // 融合阈值:单条/累积字数上限
     sedentaryReminder: false, // 久坐喝水提醒
     fontFamily: '', // 自定义界面字体名（为空走系统默认栈；初始菜单/加载页不受影响）
   },
@@ -71,6 +73,8 @@ export interface TextSettings {
   autoAdvanceDelay: number
   animation: boolean
   inlineMotionText: boolean
+  fusedDialogue: boolean
+  fusedThreshold: number
   sedentaryReminder: boolean
   fontFamily: string
 }

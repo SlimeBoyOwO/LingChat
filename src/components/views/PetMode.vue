@@ -51,7 +51,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
@@ -60,7 +60,7 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { useGameStore } from '@/stores/modules/game'
 import { useSettingsStore } from '@/stores/modules/settings'
 import { useUIStore } from '@/stores/modules/ui/ui'
-import { eventQueue } from '@/core/events/event-queue'
+import { useFusedStore } from '@/stores/modules/ui/fused'
 import { useFileDrop } from '../pet/useFileDrop'
 
 import PetNotification from '../pet/PetNotification.vue'
@@ -75,9 +75,10 @@ const router = useRouter()
 const gameStore = useGameStore()
 const settingsStore = useSettingsStore()
 const uiStore = useUIStore()
+const fusedStore = useFusedStore()
 
 const showChatInput = ref(false)
-const { isDragging , hasFile } = useFileDrop()
+const { isDragging } = useFileDrop()
 
 const avatarContainer = ref<HTMLElement | null>(null)
 const chatContainer = ref<HTMLElement | null>(null)
@@ -197,6 +198,11 @@ onMounted(async () => {
 
     invoke('update_solid_regions', { rects }).catch(console.error)
   }, 100)
+
+  // 融合:视图切换挂载后主动续打 pending(值未变时 watcher 不重触发,
+  // 但 store 里可能有跨视图存续的待打段)
+  await nextTick()
+  tryFusedContinue()
 })
 
 watch(
@@ -257,7 +263,11 @@ const handleMouseLeave = () => {
 
 const handleAvatarClick = () => {
   manualTriggerContinue()
-  eventQueue.continue()
+  // 对齐主聊推进语义:走 DialogueBox.continueDialog(内部统一落定/续打,
+  // 打字中先快进),
+  // 不再直接 eventQueue.continue()——否则融合中点击会绕过续打、
+  // 直接 resolve 跳到 input。
+  gameDialogRef.value?.continueDialog(true)
   resetInteraction()
 }
 
@@ -307,6 +317,16 @@ const resetInteraction = () => {
   }
 }
 
+/** 融合续打:媒体都完成且有待打段时,让 DialogueBox 消费 pending 下一段。
+ *  isTyping 直接读组件实例(同步,无 tick 延迟)。 */
+const tryFusedContinue = () => {
+  if (fusedStore.pendingCount === 0) return
+  if (gameDialogRef.value?.isTyping) return
+  if (!fusedStore.audioFinished) return
+  if (gameStore.currentStatus !== 'responding') return
+  gameDialogRef.value?.continueFused()
+}
+
 const tryAutoAdvance = () => {
   if (!uiStore.autoMode) return
   if (isContinueTriggered.value) return
@@ -328,11 +348,14 @@ const tryAutoAdvance = () => {
 
 const handleAudioStarted = () => {
   audioFinished.value = false
+  fusedStore.audioFinished = false
 }
 
 const handleAudioFinished = () => {
   audioFinished.value = true
+  fusedStore.audioFinished = true
   tryAutoAdvance()
+  tryFusedContinue()
 }
 
 watch(
@@ -340,8 +363,16 @@ watch(
   (typing) => {
     if (typing === false) {
       tryAutoAdvance()
+      tryFusedContinue()
     }
   },
+)
+
+// 关键:合并段到达 push pending 后主动尝试消费,否则无人触发
+// continueFused(卡死)
+watch(
+  () => fusedStore.pendingCount,
+  () => tryFusedContinue(),
 )
 
 const manualTriggerContinue = () => {

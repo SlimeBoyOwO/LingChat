@@ -704,6 +704,11 @@ export default {
       title: '内联动作文本',
       desc: '开启后动作文本将与台词同时显示，无需二次点击',
     },
+    fusedDialogue: {
+      title: '台词融合显示',
+      desc: '开启后短句由打字机无缝连续展示，无需逐条点击',
+      thresholdLabel: '融合阈值',
+    },
     sedentary: {
       title: '久坐喝水提醒',
       desc: '开启后每40分钟发送提醒一下久坐哦，只是健康小助手捏',

@@ -406,18 +406,17 @@ export function initializeTauriEventListeners() {
     const payload = event.payload as { type: string; roleId: number; characterName: string }
     console.log('[Tauri] character:switch', payload)
     const gameStore = useGameStore()
-    const uiStore = useUIStore()
     // 先确保角色数据已加载（立绘/名字都从这里取）
-    const role = await gameStore.getOrCreateGameRole(payload.roleId)
+    await gameStore.getOrCreateGameRole(payload.roleId)
     gameStore.currentInteractRoleId = payload.roleId
     // 新角色不在场时才替换舞台（多人场景下 God Agent 只会选在场角色，不进这分支）；
     // 用替换而非 push，避免标准模式舞台出现两个角色、桌宠不生效
     if (!gameStore.presentRoleIds.includes(payload.roleId)) {
       gameStore.presentRoleIds = [payload.roleId]
     }
-    // 同步主界面/桌宠标题（对话中名字由 currentInteractRole 驱动，已覆盖）
-    uiStore.showCharacterTitle = role.roleName
-    uiStore.showCharacterSubtitle = role.roleSubTitle
+    // 标题/副标题由 ai:reply 逐段驱动(与台词展示同步)——
+    // 此处不设置:switch 事件先于新角色首条 reply 到达,立即改标题会
+    // 让上一角色尚未展示完的台词顶着新角色名字(多角色融合时名字错乱)。
   })
 
   // === LLM 场景工具事件 ===

@@ -287,6 +287,7 @@
   import { useSettingsStore } from "../../../stores/modules/settings";
   import { useDialogStore } from "../../../stores/modules/ui/dialog";
   import { useUIStore } from "../../../stores/modules/ui/ui";
+  import { useFusedStore, type FusedSegment } from "../../../stores/modules/ui/fused";
   import { escapeHtml } from "../../../utils/escapeHtml";
   import { createCharRevealWriter } from "../../../utils/typewriter/charReveal";
   import {
@@ -305,6 +306,11 @@
   // 输入框内容变化 → 通知 can_deliver 追踪
   watch(inputMessage, (val) => setInputHasText(Boolean(val.trim())), { immediate: true });
   const isShowingMotionText = ref(false);
+
+  // 台词融合激活:开关开启且非剧本模式
+  const fusedActive = computed(
+    () => settingsStore.text.fusedDialogue && !gameStore.runningScript,
+  );
   const textareaRef = ref<HTMLTextAreaElement | null>(null);
   const inlineDisplayRef = ref<HTMLDivElement | null>(null);
   const gameStore = useGameStore();
@@ -312,6 +318,7 @@
   const dialogStore = useDialogStore();
   const settingsStore = useSettingsStore();
   const llmStore = useLlmProvidersStore();
+  const fusedStore = useFusedStore();
 
   // Dialog appearance managed by composable: useDialogAppearance
   const { isHidden, hide, dialogWrapperStyle, dialogTextColorValue, handleWheelHistory } =
@@ -397,7 +404,6 @@
     action();
     showMobileMenu.value = false;
   };
-  const currentDisplayedText = ref("");
 
   // 逐字符淡入+上浮渲染器。颜色规则：
   // 内联模式 → \n 前为台词白字、\n 后为动作灰字；标准模式 → 两段式动作阶段整段灰字。
@@ -419,6 +425,29 @@
     },
   });
 
+  // ── 台词融合:累积渲染状态 ──
+  // 布局(方案 C):对话区(白字)在上、动作区(灰字)在下,各区内部连续流动。
+  // 渲染结构: 对话区(静态段+当前段)在上;动作区(非空时 <br> 拼在其下)。
+  // 静态/当前段状态存 fused store(staticTextHtml/staticMotionHtml/curText/curMotion):
+  // 主聊↔桌宠视图切换时新组件从 store 恢复,回复不中断、内容不丢。
+
+  /** 单段对话 HTML(白字,段尾 0.8em 间距作段间视觉分隔,不插入额外字符) */
+  function fusedTextHtml(text: string): string {
+    return `<span style="color:#fff;margin-right:0.8em">${escapeHtml(text)}</span>`;
+  }
+
+  /** 单段动作 HTML(灰字,段尾 0.8em 间距) */
+  function fusedMotionHtml(motion: string): string {
+    return `<span class="motion-text-gray" style="margin-right:0.8em">${escapeHtml(motion)}</span>`;
+  }
+
+  /** 融合布局完整 HTML(方案 C):对话区(静态+当前段)在上,动作区(静态)在下。
+   *  writeFn 渲染与高度测量共用,保证锁高与实际显示一致。 */
+  function fusedRenderHtml(curText: string): string {
+    const motionZone = fusedStore.staticMotionHtml ? "<br>" + fusedStore.staticMotionHtml : "";
+    return fusedStore.staticTextHtml + fusedTextHtml(curText) + motionZone;
+  }
+
   // 清空回复显示区并重置渲染器增量状态（新台词 / 两段式动作阶段切换前调用）
   function resetResponseDisplay() {
     if (inlineDisplayRef.value) inlineDisplayRef.value.innerHTML = "";
@@ -427,7 +456,6 @@
 
   // 立即把当前台词写入显示元素（不经过打字动画；供挂载恢复使用）
   function renderLineInstant(line: string) {
-    currentDisplayedText.value = line;
     const text =
       settingsStore.text.inlineMotionText && uiStore.showCharacterMotionText
         ? line + "\n" + uiStore.showCharacterMotionText
@@ -436,13 +464,109 @@
   }
 
   // 回复显示区 TypeWriter（标准/内联模式共用；逐字符渲染由 charReveal 负责）
+  // 融合激活时 writeFn 分发到累积渲染(静态段 + 当前段),不走 charReveal 增量。
   const { startTyping, stopTyping, isTyping, finishTyping } = useTypeWriter(
     inlineDisplayRef,
-    (text) => {
-      currentDisplayedText.value = text;
-    },
-    charReveal.writeFn
+    undefined,
+    (el, text) => {
+      if (fusedActive.value) {
+        el.innerHTML = fusedRenderHtml(text);
+      } else {
+        charReveal.writeFn(el, text);
+      }
+    }
   );
+
+  /**
+   * 融合模式高度锁定:打字前用离屏 clone 渲染完整文本量出最终高度,
+   * 锁定容器高度 —— 换行帧容器高度不突变(安卓 WebView 上高度突变 +
+   * 每 tick 全量 innerHTML 重建同帧竞争会掉帧闪烁)。
+   * response-display 是 flex-1 item(flex-basis:0% 优先于 height),
+   * 需同时设 flex:0 0 auto 让 height 生效;max-h-[50vh] 钳制自然保留
+   * (clone 复制 class/style,超长文本量出钳制高度,内容滚动)。
+   */
+  function lockFusedHeight(curText: string) {
+    const el = inlineDisplayRef.value;
+    if (!el) return;
+    const clone = el.cloneNode(false) as HTMLDivElement;
+    clone.style.position = "fixed";
+    clone.style.left = "-9999px";
+    clone.style.top = "0";
+    clone.style.visibility = "hidden";
+    clone.style.pointerEvents = "none";
+    clone.style.height = "auto";
+    clone.style.overflowY = "visible";
+    clone.style.width = el.clientWidth + "px";
+    el.parentElement?.appendChild(clone);
+    clone.innerHTML = fusedRenderHtml(curText);
+    const finalH = clone.offsetHeight;
+    clone.remove();
+    el.style.flex = "0 0 auto";
+    el.style.height = finalH + "px";
+  }
+
+  /** 开始打一段融合台词(新台词首段或 pending 续打都走这里) */
+  function startFusedSegment(text: string, motion: string) {
+    fusedStore.curText = text;
+    fusedStore.curMotion = motion;
+    lockFusedHeight(text); // 打字前锁定最终高度,换行帧容器不跳动
+    startTyping(text, uiStore.typeWriterSpeed);
+  }
+
+  /** 段间呼吸延迟定时器(防重入:延迟期间不重复消费 pending) */
+  let fusedDelayTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 段间延迟中等待开打的段(卸载时归档放回队首,防视图切换丢段) */
+  let fusedDelayedSeg: FusedSegment | null = null;
+
+  /**
+   * 融合续打:消费 pending 队列下一段。
+   * 由 MainChat tryFusedContinue(媒体完成时)调用;当前段打完后归档为静态,
+   * 再打下一段。
+   * merge=false 的段(独立成句/新台词起点)先清空静态缓冲。
+   * 段间 200ms 呼吸:情绪/立绘/音频/打字统一延迟,保证切换同步。
+   */
+  function continueFused(): boolean {
+    if (!fusedActive.value) return false;
+    if (fusedDelayTimer) return true; // 延迟中,防重入
+    const seg = fusedStore.shiftPending();
+    if (!seg) return false;
+    // 捕获 pending 代数:角色切换 discardPending 后,延迟回调作废(不打旧角色段)
+    const epoch = fusedStore.pendingEpoch;
+    if (seg.merge) {
+      // 合并段:上一段完整展示,归档为静态(对话进对话区,动作进动作区,
+      // 段尾间距)
+      if (fusedStore.curText) {
+        fusedStore.staticTextHtml += fusedTextHtml(fusedStore.curText);
+        if (fusedStore.curMotion) {
+          fusedStore.staticMotionHtml += fusedMotionHtml(fusedStore.curMotion);
+        }
+        fusedStore.curText = "";
+        fusedStore.curMotion = "";
+      }
+    } else {
+      // 独立段:新台词起点,清空静态缓冲(上一台词已完整展示)
+      fusedStore.staticTextHtml = "";
+      fusedStore.staticMotionHtml = "";
+      fusedStore.curText = "";
+      fusedStore.curMotion = "";
+    }
+    // 200ms 段间呼吸:情绪/立绘 → 音频 → 打字,统一延迟同步切换
+    fusedDelayedSeg = seg; // 卸载归档依据:延迟中段不随旧组件销毁
+    fusedDelayTimer = setTimeout(() => {
+      fusedDelayTimer = null;
+      fusedDelayedSeg = null; // 已开打,不再延迟
+      if (epoch !== fusedStore.pendingEpoch) return; // 延迟中角色切换,丢弃本段
+      const role = gameStore.gameRoles[seg.roleId];
+      if (role) {
+        role.emotion = seg.emotion || "正常";
+        role.originalEmotion = seg.originalTag || "正常";
+        uiStore.showCharacterEmotion = role.originalEmotion;
+      }
+      if (seg.audioFile) uiStore.currentAvatarAudio = seg.audioFile;
+      startFusedSegment(seg.text, seg.motionText);
+    }, 200);
+    return true;
+  }
 
   const isSending = computed(() => gameStore.currentStatus === "thinking");
 
@@ -550,8 +674,22 @@
     ([newLine, newStatus]) => {
       if (newLine && newLine !== "" && newStatus === "responding") {
         inputMessage.value = "";
-        currentDisplayedText.value = "";
         isShowingMotionText.value = false;
+
+        if (fusedActive.value) {
+          // 融合模式:新台词首段(本轮首句/角色切换后首句)→ 清空渲染缓冲,开始打首段
+          // 清段间延迟定时器:角色切换后旧段的延迟立即让位,不等 200ms 到期
+          if (fusedDelayTimer) {
+            clearTimeout(fusedDelayTimer);
+            fusedDelayTimer = null;
+          }
+          fusedStore.staticTextHtml = "";
+          fusedStore.staticMotionHtml = "";
+          fusedStore.curText = "";
+          fusedStore.curMotion = "";
+          startFusedSegment(newLine, uiStore.showCharacterMotionText);
+          return;
+        }
 
         // 标准/内联模式统一渲染到回复 div（内联模式有动作文本时拼接换行+灰字）
         const text =
@@ -564,7 +702,17 @@
         stopTyping();
         isShowingMotionText.value = false;
         inputMessage.value = "";
-        currentDisplayedText.value = "";
+        // 聊天结束:清理融合状态(打字机/缓冲/队列/延迟定时器, reset 含渲染状态)
+        if (fusedDelayTimer) {
+          clearTimeout(fusedDelayTimer);
+          fusedDelayTimer = null;
+        }
+        if (inlineDisplayRef.value) {
+          inlineDisplayRef.value.innerHTML = "";
+          inlineDisplayRef.value.style.height = "";
+          inlineDisplayRef.value.style.flex = "";
+        }
+        fusedStore.reset();
       }
     }
   );
@@ -623,10 +771,24 @@
   let unlistenCancelled: (() => void) | null = null;
 
   onMounted(async () => {
-    // 模式切换重挂载：立即从 store 恢复当前台词（不重播打字动画）
+    // 模式切换重挂载:立即从 store 恢复当前台词(不重播打字动画)
     const restoreLine = uiStore.showCharacterLine;
-    if (restoreLine && restoreLine !== "" && gameStore.currentStatus === "responding") {
-      renderLineInstant(restoreLine);
+    if (gameStore.currentStatus === "responding") {
+      if (fusedActive.value) {
+        // 融合:从 fused store 还原完整累积状态(静态段 + 当前段),不重播打字。
+        // 主聊↔桌宠中途切换,已归档段存续在 store,这里整段重建;
+        // 当前段若在打字中则完整展示(恢复当前进度),pending 继续由 MainChat watcher 续打。
+        if (fusedStore.curText || fusedStore.staticTextHtml) {
+          lockFusedHeight(fusedStore.curText);
+          if (inlineDisplayRef.value) {
+            inlineDisplayRef.value.innerHTML = fusedRenderHtml(fusedStore.curText);
+          }
+        } else if (restoreLine && restoreLine !== "") {
+          startFusedSegment(restoreLine, uiStore.showCharacterMotionText);
+        }
+      } else if (restoreLine && restoreLine !== "") {
+        renderLineInstant(restoreLine);
+      }
     }
 
     document.addEventListener("contextmenu", handleDialogShow);
@@ -667,6 +829,14 @@
     window.removeEventListener("asr-send", onAsrAutoSend);
     if (unlistenScreenshot) unlistenScreenshot();
     if (unlistenCancelled) unlistenCancelled();
+    // 视图切换卸载:清段间延迟,防止回调去调已销毁组件的打字机;
+    // 延迟中(已 shift 未开打)的段放回队首,由新视图续打,不丢内容
+    if (fusedDelayTimer && fusedDelayedSeg) {
+      clearTimeout(fusedDelayTimer);
+      fusedDelayTimer = null;
+      fusedStore.restoreDeferred(fusedDelayedSeg);
+      fusedDelayedSeg = null;
+    }
   });
 
   async function startScreenshot() {
@@ -757,6 +927,30 @@
   }
 
   function continueDialog(isPlayerTrigger: boolean): boolean {
+    // 台词融合:用户点击 = 快进当前段(finish 打字 + 跳音频)。
+    // 不清空 pending:剩余段继续由媒体驱动逐段播放,点击只跳当前句;
+    // markInterrupted 让点击后新到达的段恢复逐句(不再合并)。
+    // pending 空时才落定队列(isFinal 等点击)。
+    if (fusedActive.value) {
+      if (isTyping.value) {
+        finishTyping();
+      }
+      // 真跳过当前音频:置空触发 GameRolesStage 暂停+重置;
+      // 置空不会触发 audio-ended,需手动同步 fused 媒体状态
+      uiStore.currentAvatarAudio = "None";
+      fusedStore.audioFinished = true;
+      fusedStore.markInterrupted(); // 点击 → 后续新到达段独立成句
+      // 还有待打段:立即消费下一段(媒体已强制完成),剩余照常播放
+      if (fusedStore.pendingCount > 0) {
+        continueFused();
+        return true;
+      }
+      // pending 空:轮到 isFinal 落定,继续队列
+      const needWait = eventQueue.continue();
+      if (!needWait && isPlayerTrigger) emit("player-continued");
+      return needWait;
+    }
+
     // 打字中：第一次点击跳过动画、显示完整文本（finish 已修复为补全剩余字符）
     if (isTyping.value) {
       finishTyping();
@@ -800,6 +994,7 @@
 
   defineExpose({
     continueDialog,
+    continueFused,
     isTyping,
   });
 </script>
@@ -808,6 +1003,13 @@
   /* AI 回复显示区：标准/内联模式共用；颜色由逐字符 span 内联样式控制 */
   .response-display {
     color: #9ca3af; /* fallback：极端情况下 div 直接显示文字时用灰色 */
+    /* 融合模式锁高后的高度变化（段切换重新测量）平滑过渡，不突变 */
+    transition: height 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
+  /* 融合模式下的动作文本灰字 span（writeFn 分发到累积渲染时使用） */
+  .motion-text-gray {
+    color: #9ca3af !important;
   }
 
   /* 分割线：青蓝色微光点缀，亮段沿线条从左向右流动。

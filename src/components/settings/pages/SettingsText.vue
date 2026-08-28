@@ -147,6 +147,57 @@
       </MenuItem>
 
       <MenuItem
+        :title="$t('settings.text.fusedDialogue.title')"
+        size="small"
+      >
+        <template #header>
+          <MessagesSquare :size="20" />
+        </template>
+        <div class="flex
+          items-center
+          gap-3
+          w-full">
+          <Toggle
+            :checked="settingsStore.text.fusedDialogue"
+            @change="toggleFusedDialogue"
+          >
+            {{ $t('settings.text.fusedDialogue.desc') }}
+          </Toggle>
+          <div
+            v-if="settingsStore.text.fusedDialogue"
+            class="flex
+              items-center
+              gap-2
+              ml-auto
+              text-sm
+              text-white/70"
+          >
+            <span class="whitespace-nowrap shrink-0">{{
+              $t('settings.text.fusedDialogue.thresholdLabel')
+            }}</span>
+            <input
+              v-model="fusedThreshold"
+              type="number"
+              min="10"
+              max="200"
+              class="w-20
+                bg-white/10
+                text-white
+                border
+                border-white/20
+                rounded-lg
+                px-2
+                py-1
+                text-center
+                outline-none
+                focus:border-(--accent-color)
+                transition-colors"
+            />
+          </div>
+        </div>
+      </MenuItem>
+
+      <MenuItem
         :title="$t('settings.text.sedentary.title')"
         size="small"
       >
@@ -645,6 +696,7 @@ import {
   BookOpen,
   Type,
   Import,
+  MessagesSquare,
   Gauge,
   Timer,
 } from 'lucide-vue-next'
@@ -1172,6 +1224,16 @@ const voiceSound = (data: boolean) => {
 const toggleInlineMotionText = (data: boolean) => {
   settingsStore.update('text.inlineMotionText', data)
 }
+
+const toggleFusedDialogue = (data: boolean) => {
+  settingsStore.update('text.fusedDialogue', data)
+}
+
+// 融合阈值(单条/累积字数上限)
+const fusedThreshold = computed({
+  get: () => settingsStore.text.fusedThreshold,
+  set: (val: number) => settingsStore.update('text.fusedThreshold', Math.max(10, Math.min(200, Number(val) || 100))),
+})
 
 const toggleSedentaryReminder = (data: boolean) => {
   settingsStore.update('text.sedentaryReminder', data)

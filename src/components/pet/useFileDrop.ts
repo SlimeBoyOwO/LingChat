@@ -23,7 +23,6 @@ async function readAsText(path: string): Promise<string | null> {
 
 export function useFileDrop() {
   const isDragging = ref(false)
-  const hasFile = ref(false)
   const ui = useUIStore()
   let unlisten: (() => void) | null = null
 
@@ -53,12 +52,10 @@ export function useFileDrop() {
 
       // 图片
       if (isImageFile(path)) {
-        hasFile.value = true
         try {
           await invoke('feed_image', { path })
           ui.showNotification({ type: 'success', title: '投喂成功！', duration: 2000, skipTipsCheck: true })
         } catch (e) {
-          hasFile.value = false
           console.error('投喂失败:', e)
         }
         return
@@ -71,12 +68,10 @@ export function useFileDrop() {
         return
       }
 
-      hasFile.value = true
       try {
         await invoke('feed_text', { text })
         ui.showNotification({ type: 'success', title: '文本投喂成功！', duration: 2000, skipTipsCheck: true })
       } catch (e) {
-        hasFile.value = false
         console.error('投喂失败:', e)
       }
     })
@@ -86,5 +81,5 @@ export function useFileDrop() {
     unlisten?.()
   })
 
-  return { isDragging, hasFile }
+  return { isDragging }
 }

@@ -52,7 +52,7 @@
   import FreeModeTools from "@/components/tools/FreeModeTools.vue";
   import ToolActivityStatus from "@/components/tools/ToolActivityStatus.vue";
   import { eventQueue } from "@/core/events/event-queue";
-  import { onMounted, ref, watch } from "vue";
+  import { nextTick, onMounted, ref, watch } from "vue";
   import { useRouter } from "vue-router";
   import { useGameStore } from "../../stores/modules/game";
   import { useUIStore } from "../../stores/modules/ui/ui";
@@ -65,6 +65,7 @@
   import { useHideForSnapshot } from "@/composables/useHideForSnapshot";
   import { useSettingsSnapshot } from "@/composables/useSettingsSnapshot";
   import { useSettingsStore } from "../../stores/modules/settings";
+  import { useFusedStore } from "../../stores/modules/ui/fused";
   import { isAndroid, isWindows } from "@/utils/platform";
   import GameExtraUI from "../game/standard/GameExtraUI.vue";
 
@@ -78,6 +79,7 @@
   const router = useRouter();
   const uiStore = useUIStore();
   const gameStore = useGameStore();
+  const fusedStore = useFusedStore();
   const settingsStore = useSettingsStore();
 
   // 首次加载过渡状态：仅当本次 session 未播放过且 localStorage 未标记时播放
@@ -174,6 +176,9 @@
     if (!gameStore.initialized) {
       runInitialization();
     }
+    // 融合:视图切换挂载后主动续打 pending(值未变时 watcher 不重触发,
+    // 但 store 里可能有跨视图存续的待打段)
+    nextTick().then(() => tryFusedContinue());
   });
 
   /* 自动模式（AUTO）逻辑：事件驱动，非轮询
@@ -188,6 +193,18 @@
   const typingFinished = ref(true);
   const audioFinished = ref(true);
   let autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** 融合续打:媒体都完成且有待打段时,让 GameDialog 打字机消费
+   *  pending 下一段。
+   *  isTyping 直接读组件实例(同步,无 tick 延迟)——
+   *  否则 push 发生时首段打字机刚启动、isTyping 尚未同步,会误消费覆盖首段。 */
+  const tryFusedContinue = () => {
+    if (fusedStore.pendingCount === 0) return;
+    if (gameDialogRef.value?.isTyping) return;
+    if (!fusedStore.audioFinished) return;
+    if (gameStore.currentStatus !== "responding") return;
+    gameDialogRef.value?.continueFused();
+  };
 
   const cancelAutoAdvance = () => {
     if (autoAdvanceTimer) {
@@ -220,13 +237,16 @@
   // 音频开始播放
   const handleAudioStarted = () => {
     audioFinished.value = false;
+    fusedStore.audioFinished = false;
     cancelAutoAdvance();
   };
 
   // 音频播放结束
   const handleAudioFinished = () => {
     audioFinished.value = true;
+    fusedStore.audioFinished = true;
     scheduleAutoAdvance();
+    tryFusedContinue();
   };
 
   // 用户手动推进
@@ -250,6 +270,7 @@
       if (status === "responding") {
         typingFinished.value = !(gameDialogRef.value?.isTyping ?? false);
         audioFinished.value = true; // 新台词初始无音频
+        fusedStore.audioFinished = true;
         scheduleAutoAdvance();
       } else {
         cancelAutoAdvance();
@@ -267,7 +288,20 @@
       } else {
         typingFinished.value = true;
         scheduleAutoAdvance();
+        tryFusedContinue();
       }
+    }
+  );
+
+  // 关键:合并段到达 push pending 后,主动尝试消费 ——
+  // 否则首段媒体已完成后无人触发 continueFused,pending 永不显示(卡死)。
+  // 用 nextTick 延迟:push 发生时首段打字机可能还没启动(isTyping 尚未同步),
+  // 立即消费会误判"媒体已完成"而覆盖首段(表现为没有融合段落)。
+  watch(
+    () => fusedStore.pendingCount,
+    async () => {
+      await nextTick();
+      tryFusedContinue();
     }
   );
 </script>
