@@ -126,7 +126,8 @@ impl WebSearchSettings {
     /// 配置是否达到可下发给模型的就绪状态。
     pub fn is_ready(&self) -> bool {
         self.enabled
-            && (matches!(self.provider.as_str(), "codex" | "kimi")
+            && (self.provider.eq_ignore_ascii_case("codex")
+                || self.provider.eq_ignore_ascii_case("kimi")
                 || !self.api_key.trim().is_empty())
     }
 }
