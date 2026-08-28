@@ -5,7 +5,7 @@ import { i18n } from '@/locales'
 /** 网页搜索工具配置（与后端 WebSearchSettings 对应，字段保持 snake_case）。 */
 export interface WebSearchSettings {
   enabled: boolean
-  /** 搜索服务提供商："kimi" | "bocha" | "deepseek"  | "tavily" | "custom"（仅 custom 用 base_url） */
+  /** 搜索服务提供商："kimi" | "bocha" | "deepseek" | "tavily" | "codex" | "custom"（仅 custom 用 base_url） */
   provider: string
   /** DeepSeek Responses API 使用的模型（仅 provider = "deepseek" 时生效） */
   model: string
