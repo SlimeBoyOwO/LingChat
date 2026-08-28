@@ -261,7 +261,7 @@ const micTitle = computed(() => {
 })
 // mic 按钮 enabled 条件（与 GameDialog 一致）：
 // - auto_listen 模式开 + 总开关开：功能开关可用
-// - 总开关关 → 退化为手动录音（canStartAsr 手动变体——总开关只挡自动，不锁手动；
+// - 总开关关 → 整体禁用（总开关是语音输入的总闸，手动 mic 一并关闭；
 //   显示锁只挡 auto 触发，手动不受限）
 const canStartMic = computed(
   () =>

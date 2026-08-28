@@ -1077,7 +1077,7 @@ export default {
       "vadLoadedNo": "未載入"
     },
     "voiceInput": "語音輸入",
-    "voiceInputHint": "總開關：關閉後自動語音識別不可用，手動麥克風錄音保留",
+    "voiceInputHint": "總開關：關閉後語音輸入整體不可用（自動與手動麥克風一併關閉）",
     "autoListen": "啟用自動語音識別",
     "autoListenHint": "自動監聽麥克風，識別用戶說話後自動轉為文字",
     "vadSilence": "靜音計時（毫秒）",

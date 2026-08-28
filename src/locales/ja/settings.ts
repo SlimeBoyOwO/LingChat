@@ -1077,7 +1077,7 @@ export default {
       vadLoadedNo: '未読込',
     },
     voiceInput: '音声入力',
-    voiceInputHint: 'マスタースイッチ：オフにすると自動音声認識が無効、手動マイク録音は引き続き使用可能',
+    voiceInputHint: 'マスタースイッチ：オフにすると音声入力がすべて無効（自動・手動マイクとも）',
     autoListen: '自動音声認識を有効化',
     autoListenHint: 'マイクを自動監視し、ユーザーの発話をテキストに変換',
     vadSilence: '無音タイムアウト（ms）',

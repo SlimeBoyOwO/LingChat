@@ -364,8 +364,7 @@
 
   // mic 按钮 enabled 条件（与 useAsrInput.canStartAsr 对齐）：
   // - auto_listen 模式开 + 总开关开：功能开关可用
-  // - 总开关关 → 退化为手动录音（canStartAsr forManual=true 跳过显示锁与总开关——
-  //   总开关只挡自动，不锁手动）
+  // - 总开关关 → 整体禁用（总开关是语音输入的总闸，手动 mic 一并关闭）
   const canStartMic = computed(
     () =>
       (autoListenOn.value && asrStore.settings.voice_input_enabled) ||

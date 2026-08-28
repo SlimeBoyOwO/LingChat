@@ -163,11 +163,11 @@ function discardRecording() {
 // 8.    runningScript && choices.length > 0（剧本选择分支）
 // 9.    loadingComplete === false（启动动画未完成）
 // 10.   显示锁未过期（识别结果填入后短暂禁止再触发；ignoreLock 供监测启停跳过）
-// 11.   语音输入总开关关（auto 触发被挡）
+// 11.   语音输入总开关关（自动与手动录音都被挡——总开关是整体语音输入开关）
 // 12.   TTS 播放中（外放语音会被误识别）
 // 任何一项满足即视为不可用。start() / startEnergyMonitor RMS 触发 / 按钮 enable 都查它。
-// forManual=true（手动 mic 录音）：跳过 10 显示锁与 11 总开关——总开关只挡自动模式、
-// 锁防的是 auto 触发覆盖识别结果（手动是用户主动，不受限）。
+// forManual=true（手动 mic 录音）：仅跳过 10 显示锁——锁防的是 auto 触发覆盖识别
+// 结果（手动是用户主动，不受锁限）；总开关一律生效。
 function canStartAsr(ignoreLock = false, forManual = false): boolean {
   if (!route || !uiStore || !gameStore) return false
   // 6 + 7：路由/抽屉门控（chatActive 已是这两项的合成；/chat 与 /pet 均可）
@@ -184,8 +184,8 @@ function canStartAsr(ignoreLock = false, forManual = false): boolean {
   const script = (gameStore as unknown as { runningScript?: { choices?: unknown[] } })
     .runningScript
   if (script && Array.isArray(script.choices) && script.choices.length > 0) return false
-  // 11：语音输入总开关——只挡自动模式（auto 触发/自动监听）；手动 mic 录音不受限
-  if (!forManual && !asrStore?.settings.voice_input_enabled) return false
+  // 11：语音输入总开关——整体语音输入开关（自动与手动都被挡）
+  if (!asrStore?.settings.voice_input_enabled) return false
   // 12：角色语音（TTS）播放中（外放 TTS 进麦克风 → 误识别 AI 自己的话）
   if (voicePlaying.value) return false
   // 10：识别结果短暂显示锁（fill_only 填入 inputMessage 到自动 send 的窗口期）。
@@ -429,7 +429,7 @@ function stopEnergyMonitor() {
 
 // ── 会话生命周期 ────────────────────────────────────────────
 async function start(source: AsrSource) {
-  // §1 全 12 项门控；手动模式（button）跳过显示锁与总开关（总开关只挡自动）
+  // §1 全 12 项门控；手动模式（button）跳过显示锁（总开关一律生效）
   if (!canStartAsr(false, source === 'button')) {
     // 诊断：静默拒绝会让按钮"按下无反应"，暴露拒绝原因
     console.log('[ASR] start 被门控拒绝', {

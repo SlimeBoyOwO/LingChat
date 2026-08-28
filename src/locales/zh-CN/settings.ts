@@ -1078,7 +1078,7 @@ export default {
       vadLoadedNo: '未加载',
     },
     voiceInput: '语音输入',
-    voiceInputHint: '总开关：关闭后自动语音识别不可用，手动麦克风录音保留',
+    voiceInputHint: '总开关：关闭后语音输入整体不可用（自动与手动麦克风一并关闭）',
     autoListen: '启用自动语音识别',
     autoListenHint: '自动监听麦克风，识别用户说话后自动转为文本',
     vadSilence: '静音计时（毫秒）',
