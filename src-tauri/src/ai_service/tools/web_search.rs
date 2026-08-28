@@ -111,6 +111,7 @@ impl WebSearchTool {
         cfg: &WebSearchSettings,
     ) -> Result<WebSearchSettings, ToolError> {
         let mut effective = cfg.clone();
+        effective.provider = effective.provider.trim().to_ascii_lowercase();
         if effective.provider == "kimi" && effective.api_key.trim().is_empty() {
             let app = context.require_app()?;
             let chat = resolve_chat_provider(&app).ok_or_else(|| {
@@ -118,7 +119,7 @@ impl WebSearchTool {
                     "Kimi 搜索未填写独立 API Key，且当前没有可复用的对话模型凭据".into(),
                 )
             })?;
-            if chat.provider != "kimicode" {
+            if !chat.provider.eq_ignore_ascii_case("kimicode") {
                 return Err(ToolError::Execution(
                     "Kimi 搜索未填写独立 API Key；请把当前对话模型切换为官方 Kimi Code，或在工具设置中填写 API Key".into(),
                 ));
@@ -218,8 +219,10 @@ impl WebSearchTool {
             "deepseek" => self.execute_deepseek_search(query, cfg).await,
             "tavily" => self.execute_tavily_search(query, cfg).await,
             "codex" => self.execute_codex_search(context, query, cfg).await,
-            "custom" => self.execute_kimi_endpoint(query, cfg).await,
-            _ => self.execute_kimi_endpoint(query, cfg).await,
+            "kimi" | "custom" => self.execute_kimi_endpoint(query, cfg).await,
+            provider => Err(ToolError::Execution(format!(
+                "不支持的网页搜索提供商: {provider}"
+            ))),
         }
     }
 
@@ -280,7 +283,6 @@ impl WebSearchTool {
             "query": query,
             "result_count": results.len().min(cfg.max_results.max(1)),
             "text": text,
-            "sources": results.into_iter().take(cfg.max_results.max(1)).collect::<Vec<_>>(),
         }))
     }
 
@@ -448,7 +450,7 @@ impl WebSearchTool {
             })?;
 
         let chat_provider = context.app.as_ref().and_then(resolve_chat_provider);
-        let model = codex_search_model(cfg.model.trim(), chat_provider.as_ref());
+        let model = codex_search_model(chat_provider.as_ref());
         let body = serde_json::json!({
             "id": uuid::Uuid::new_v4().to_string(),
             "model": model,
@@ -537,7 +539,6 @@ impl WebSearchTool {
             "query": query,
             "result_count": results.len().min(cfg.max_results.max(1)),
             "text": text,
-            "sources": results.into_iter().take(cfg.max_results.max(1)).collect::<Vec<_>>(),
         }))
     }
 
@@ -648,20 +649,19 @@ fn is_official_kimi_code_base_url(base_url: &str) -> bool {
     };
     url.scheme() == "https"
         && url.host_str() == Some("api.kimi.com")
+        && url.username().is_empty()
+        && url.password().is_none()
         && url.port_or_known_default() == Some(443)
         && (url.path().trim_end_matches('/') == "/coding" || url.path().starts_with("/coding/"))
 }
 
-fn codex_search_model(configured: &str, chat_provider: Option<&LlmProviderConfig>) -> String {
-    if let Some(chat) = chat_provider.filter(|provider| provider.provider == "codex") {
+fn codex_search_model(chat_provider: Option<&LlmProviderConfig>) -> String {
+    if let Some(chat) =
+        chat_provider.filter(|provider| provider.provider.eq_ignore_ascii_case("codex"))
+    {
         if !chat.model.trim().is_empty() {
             return chat.model.trim().to_string();
         }
-    }
-    let configured = configured.trim();
-    let lower = configured.to_ascii_lowercase();
-    if !configured.is_empty() && !lower.starts_with("deepseek") && !lower.starts_with("kimi") {
-        return configured.to_string();
     }
     "gpt-5.6-sol".to_string()
 }
@@ -803,16 +803,16 @@ mod tests {
     }
 
     #[test]
-    fn codex_search_uses_chat_model_and_rejects_cross_provider_default() {
+    fn codex_search_uses_only_the_active_codex_chat_model() {
         let chat = provider("codex", "gpt-5.3-codex");
+        assert_eq!(codex_search_model(Some(&chat)), "gpt-5.3-codex");
+        assert_eq!(codex_search_model(None), "gpt-5.6-sol");
         assert_eq!(
-            codex_search_model("deepseek-v4-flash", Some(&chat)),
-            "gpt-5.3-codex"
+            codex_search_model(Some(&provider("kimicode", "kimi-for-coding"))),
+            "gpt-5.6-sol"
         );
-        assert_eq!(codex_search_model("deepseek-v4-flash", None), "gpt-5.6-sol");
-        assert_eq!(codex_search_model("gpt-5.4", None), "gpt-5.4");
         assert_eq!(
-            codex_search_model("gpt-5.4", Some(&provider("kimicode", "kimi-for-coding"))),
+            codex_search_model(Some(&provider("CoDeX", "gpt-5.4"))),
             "gpt-5.4"
         );
     }
@@ -835,6 +835,36 @@ mod tests {
         assert!(!is_official_kimi_code_base_url(
             "https://api.kimi.com/other"
         ));
+        assert!(!is_official_kimi_code_base_url(
+            "https://user:password@api.kimi.com/coding"
+        ));
+    }
+
+    #[tokio::test]
+    async fn unknown_search_provider_fails_closed() {
+        let tool = WebSearchTool::new(SharedToolSettings::new(
+            crate::ai_service::tools::settings::ToolSettings::default(),
+        ));
+        let mut cfg = WebSearchSettings::default();
+        cfg.provider = "future-provider".into();
+        cfg.api_key = "must-not-be-forwarded".into();
+        let error = tool
+            .execute_search_endpoint(&ToolContext::default(), "query", &cfg)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("不支持的网页搜索提供商"));
+    }
+
+    #[test]
+    fn hidden_results_do_not_expose_urls() {
+        let results = vec![serde_json::json!({
+            "title": "A",
+            "url": "https://secret.test/path",
+            "snippet": "summary"
+        })];
+        let text = WebSearchTool::format_results("query", &results, 1, true);
+        assert!(!text.contains("secret.test"));
+        assert!(text.contains("绝对不要在回复中输出"));
     }
 
     #[test]
