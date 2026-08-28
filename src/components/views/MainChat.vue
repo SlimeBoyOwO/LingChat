@@ -52,6 +52,7 @@
   import FreeModeTools from "@/components/tools/FreeModeTools.vue";
   import ToolActivityStatus from "@/components/tools/ToolActivityStatus.vue";
   import { eventQueue } from "@/core/events/event-queue";
+  import { getEnvConfigByKey } from "@/api/services/config";
   import { onMounted, ref, watch } from "vue";
   import { useRouter } from "vue-router";
   import { useGameStore } from "../../stores/modules/game";
@@ -92,6 +93,18 @@
     // 通知 ASR：主界面加载完成，允许启动能量监测（§1.9）
     gameStore.setLoadingComplete(true);
   }
+
+  // 高级设置可关闭首次开屏动画（display.disable_splash_animation）。
+  // 关闭时直接进入完成态：跳过动画、恢复事件队列、放行 ASR。
+  getEnvConfigByKey("display.disable_splash_animation")
+    .then((setting) => {
+      if (setting.value === "true" && showLoading.value) {
+        onLoadingComplete();
+      }
+    })
+    .catch(() => {
+      // 读取失败（键不存在等）按默认行为播放开屏动画
+    });
 
   const goToPetMode = () => {
     router.push("/pet");

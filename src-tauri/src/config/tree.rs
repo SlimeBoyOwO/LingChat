@@ -264,6 +264,26 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             },
         );
 
+        // 界面与显示
+        feat_subs.insert(
+            "界面与显示".to_string(),
+            Subcategory {
+                description: "界面外观与启动行为等显示相关设置".to_string(),
+                settings: vec![ConfigSetting {
+                    key: keys::DISABLE_SPLASH_ANIMATION.to_string(),
+                    value: read_setting(
+                        app,
+                        keys::DISABLE_SPLASH_ANIMATION,
+                        &app_defaults.disable_splash_animation.to_string(),
+                    ),
+                    description:
+                        "DISABLE_SPLASH_ANIMATION — 关闭首次启动的开屏动画（猫爪加载动画）"
+                            .to_string(),
+                    setting_type: "bool".to_string(),
+                }],
+            },
+        );
+
         tree.insert(
             "功能设置".to_string(),
             Category {
