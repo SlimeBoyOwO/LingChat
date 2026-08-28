@@ -16,6 +16,7 @@ export const DEFAULT_SETTINGS = {
     autoAdvanceDelay: 1000, // 自动模式自动推进延迟 (ms, 0-2000)
     animation: true, // 页面切换动画
     inlineMotionText: false, // 内联动作文本（单次显示台词+灰字动作）
+    textEffects: false, // 文字演出动画（LLM 标签驱动：<emphasis>/<shake>/<blur>/<float>，issue #658）
     sedentaryReminder: false, // 久坐喝水提醒
     fontFamily: '', // 自定义界面字体名（为空走系统默认栈；初始菜单/加载页不受影响）
   },
@@ -71,6 +72,7 @@ export interface TextSettings {
   autoAdvanceDelay: number
   animation: boolean
   inlineMotionText: boolean
+  textEffects: boolean
   sedentaryReminder: boolean
   fontFamily: string
 }
