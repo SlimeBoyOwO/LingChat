@@ -111,7 +111,7 @@ const DIALOG_FORMAT_PROMPT_2_BODY: &str = indoc! {r#"
 /// 关闭时不告知 LLM，从源头避免输出裸标签。
 const TEXT_EFFECTS_MARKER_PROMPT: &str = indoc! {r#"
 
-    以下是可选的「文字演出标签」语法（仅在需要丰富演出时使用，不要每句话都用）：
+    以下是可选的「文字演出标签」语法（规范版本 v2；仅在需要丰富演出时使用，不要每句话都用）：
         <emphasis>文字</emphasis>       加重强调（如关键台词、情绪爆发）
         <shake>文字</shake>             抖动（如害怕、紧张、颤抖着说话）
         <blur>文字</blur>               模糊不清（如模糊的回忆、神志不清）
@@ -150,11 +150,13 @@ pub fn inject_text_effects_prompt(messages: &mut [LlmMessage], enabled: bool) {
     }
     for msg in messages.iter_mut() {
         if msg.role == "system" {
-            if !msg.content.contains("文字演出标签") {
+            // 去重基于「规范版本 vN」标记：旧版提示词（含早期文本但不含本版本标记）会被新版替换注入，
+            // 避免提示词内容更新后，旧会话因内容相同而永远吃不到新规范。
+            if !msg.content.contains("规范版本 v2") {
                 msg.content.push_str(TEXT_EFFECTS_MARKER_PROMPT);
-                tracing::info!("[Prompt] 请求期注入文字演出标签语法（text_effects 开启）");
+                tracing::info!("[Prompt] 请求期注入文字演出标签语法 v2（text_effects 开启）");
             } else {
-                tracing::info!("[Prompt] 文字演出标签语法已存在，跳过请求期注入");
+                tracing::info!("[Prompt] 文字演出标签语法 v2 已存在，跳过请求期注入");
             }
             return;
         }
