@@ -146,10 +146,13 @@ pub fn inject_text_effects_prompt(messages: &mut [LlmMessage], enabled: bool) {
             if !msg.content.contains("文字演出标签") {
                 msg.content.push_str(TEXT_EFFECTS_MARKER_PROMPT);
                 tracing::info!("[Prompt] 请求期注入文字演出标签语法（text_effects 开启）");
+            } else {
+                tracing::info!("[Prompt] 文字演出标签语法已存在，跳过请求期注入");
             }
             return;
         }
     }
+    tracing::warn!("[Prompt] 请求期注入失败：上下文中没有 system 消息");
 }
 
 const DEFAULT_EXAMPLE_CN: &str = indoc! {r#"
