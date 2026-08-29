@@ -255,6 +255,11 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         .await
         .map_err(|e| format!("载入台词失败: {}", e))?;
 
+    // 8.5 恢复 kimi 式上下文压缩摘要（cutoff 越界则自动作废）
+    let _ = crate::ai_service::game_system::context_compaction::load_summary_into_status(&app)
+        .await
+        .map_err(|e| tracing::warn!("[SAVE_WARN] 恢复上下文压缩摘要失败: {}", e));
+
     // 9. 恢复 GameStatus 快照
     let snapshot: GameStatusSnapshot = serde_json::from_str(&save_model.status).unwrap_or_default();
     service.game_status.lock().await.apply_snapshot(&snapshot);

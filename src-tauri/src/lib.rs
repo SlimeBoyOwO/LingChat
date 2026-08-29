@@ -674,6 +674,8 @@ pub fn run() {
             api::codex::codex_poll_login,
             api::codex::codex_logout,
             api::codex::codex_get_quota,
+            api::context::get_context_usage,
+            api::context::compact_context,
             api::font::list_system_fonts,
             api::font::import_font,
             api::font::list_imported_fonts,

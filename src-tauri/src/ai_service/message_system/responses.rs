@@ -30,6 +30,8 @@ pub mod event_names {
     pub const AI_TOOL_CALL_PROGRESS_END: &str = "ai:tool_call_progress_end";
     /// 强制将前端状态重置为 `input`。
     pub const STATUS_RESET: &str = "status:reset";
+    /// LLM 实测 token 用量（每轮生成结束携带 usage 时发出，供上下文用量卡片刷新）。
+    pub const AI_USAGE: &str = "ai:usage";
 }
 
 // ============================================================
@@ -129,6 +131,28 @@ impl ThinkingProgressResponse {
         Self {
             type_: "thinking_progress".to_string(),
             thinking_length,
+        }
+    }
+}
+
+/// LLM 实测用量（主对话流每轮结束后发出）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageResponse {
+    #[serde(rename = "type")]
+    pub type_: String,
+    /// 服务端实测 prompt tokens（本轮完整上下文）
+    pub prompt_tokens: u32,
+    /// 服务端实测 completion tokens
+    pub completion_tokens: u32,
+}
+
+impl UsageResponse {
+    pub fn new(prompt_tokens: u32, completion_tokens: u32) -> Self {
+        Self {
+            type_: "usage".to_string(),
+            prompt_tokens,
+            completion_tokens,
         }
     }
 }

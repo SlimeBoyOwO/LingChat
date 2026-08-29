@@ -481,8 +481,7 @@
 
             <!-- Reasoning effort（按模型能力显示） -->
             <div v-if="showReasoningEffort" class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.reasoningEffort') }}</label>
-              <div class="relative">
+              <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.reasoningEffort') }}</label>              <div class="relative">
                 <select
                   v-model="editing.reasoning_effort"
                   class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
@@ -515,6 +514,52 @@
                   </svg>
                 </div>
               </div>
+            </div>
+
+            <!-- 上下文窗口（tokens）：手动填写，或开「自动获取」隐藏输入、保存时用模型申报值填充 -->
+            <div class="flex flex-col gap-1">
+              <div class="flex items-center justify-between">
+                <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.contextWindow') }}</label>
+                <div class="flex items-center gap-2">
+                  <span class="text-[11px] text-white/35">{{ $t('settings.llmProviders.form.contextWindowAuto') }}</span>
+                  <button
+                    type="button"
+                    class="relative w-11 h-6 rounded-full transition-colors duration-200 shrink-0"
+                    :class="editing.context_window_auto ? 'bg-brand' : 'bg-white/15'"
+                    @click="editing.context_window_auto = !editing.context_window_auto"
+                  >
+                    <span
+                      class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all duration-200"
+                      :class="editing.context_window_auto ? 'left-[22px]' : 'left-0.5'"
+                    ></span>
+                  </button>
+                </div>
+              </div>
+              <input
+                v-if="!editing.context_window_auto"
+                v-model.number="editing.context_window"
+                type="number"
+                min="1024"
+                step="1024"
+                placeholder="128000"
+                class="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors placeholder:text-white/20"
+              />
+              <span class="text-[11px] text-white/35">
+                <template v-if="editing.context_window_auto">
+                  <template v-if="discoveredContextLength">
+                    {{ $t('settings.llmProviders.form.contextWindowAutoDiscovered', { n: discoveredContextLength }) }}
+                  </template>
+                  <template v-else>
+                    {{ $t('settings.llmProviders.form.contextWindowAutoUnavailable') }}
+                  </template>
+                </template>
+                <template v-else>
+                  {{ $t('settings.llmProviders.form.contextWindowHint') }}
+                  <template v-if="discoveredContextLength">
+                    {{ $t('settings.llmProviders.form.contextWindowDiscovered', { n: discoveredContextLength }) }}
+                  </template>
+                </template>
+              </span>
             </div>
 
             <!-- API Key（Codex 走 OAuth 订阅登录，无需 API Key） -->
@@ -830,6 +875,8 @@ function emptyProvider(): LlmProviderConfig {
     enable_thinking: false,
     reasoning_effort: null,
     fast_mode: false,
+    context_window: null,
+    context_window_auto: false,
   }
 }
 
@@ -852,6 +899,12 @@ const reasoningEffortOptions = computed<string[]>(() => {
   return info?.think_efforts?.valid_efforts ?? []
 })
 const showReasoningEffort = computed(() => reasoningEffortOptions.value.length > 0)
+
+// 模型发现返回的 context_length（若该模型申报了窗口大小），供上下文窗口输入框参考
+const discoveredContextLength = computed<number | null>(() => {
+  const info = availableModels.value.find((m) => m.id === editing.model)
+  return info?.context_length ?? null
+})
 
 function effortLabel(effort: string): string {
   const labels: Record<string, string> = {
@@ -976,7 +1029,14 @@ async function saveCurrent() {
   saveMessage.value = ''
   saveError.value = false
   try {
-    await store.saveProvider({ ...editing })
+    // v-model.number 清空输入框会得到 ''，后端 Option<u32> 只认数字或 null。
+    // 「自动获取」开启时用模型申报的 context_length 填充（未申报则回退 null=128k 估算）。
+    const contextWindow = editing.context_window_auto
+      ? discoveredContextLength.value
+      : typeof editing.context_window === 'number' && Number.isFinite(editing.context_window)
+        ? Math.max(1024, Math.round(editing.context_window))
+        : null
+    await store.saveProvider({ ...editing, context_window: contextWindow })
     saveMessage.value = t('settings.llmProviders.msg.saveSuccess')
     const saved = store.providers.find(
       (p) => p.label === editing.label && p.model === editing.model,

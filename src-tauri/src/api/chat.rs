@@ -39,6 +39,9 @@ pub async fn send_chat_message(
         .await
         .ok_or_else(|| "LLM 未配置，请在设置中配置 API Key 和模型".to_string())?;
 
+    // kimi 式自动压缩：用量 ≥ 模型窗口 85% 时先做总结式压缩再生成（失败静默跳过）
+    crate::ai_service::game_system::context_compaction::auto_compact_if_needed(&app).await;
+
     let concurrency = AppConfig::load(&app)
         .map(|c| c.consumers as usize)
         .unwrap_or(1)

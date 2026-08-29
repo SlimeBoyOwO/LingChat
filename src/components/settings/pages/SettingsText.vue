@@ -420,6 +420,76 @@
         </div>
       </MenuItem>
 
+      <!-- ─── 上下文用量（kimi 式窗口显示 + 总结式压缩） ──────────────── -->
+      <MenuItem
+        :title="$t('settings.text.contextUsage.title')"
+        size="small"
+      >
+        <template #header>
+          <AlignJustify :size="20" />
+        </template>
+        <div class="space-y-2
+          w-full">
+          <div class="flex
+            items-center
+            justify-between
+            text-base">
+            <span class="text-gray-50">{{ $t('settings.text.contextUsage.used') }}</span>
+            <span class="text-gray-50
+              font-medium">
+              {{ contextUsageText }}
+            </span>
+          </div>
+          <div class="w-full
+            bg-slate-700/50
+            rounded-full
+            h-2
+            overflow-hidden">
+            <div
+              class="h-full
+                rounded-full
+                transition-all
+                duration-300"
+              :class="contextUsageBarClass"
+              :style="{ width: `${contextUsageBarPercent}%` }"
+            ></div>
+          </div>
+          <div class="text-gray-50/70
+            text-xs">
+            {{ contextUsageStatusLine }}
+          </div>
+          <Toggle
+            :checked="autoCompact"
+            @change="toggleAutoCompact"
+          >
+            {{ $t('settings.text.contextUsage.autoCompactDesc') }}
+          </Toggle>
+          <div class="flex
+            gap-3
+            pt-1">
+            <Button
+              type="big"
+              :disabled="compactLoading || gameStore.currentStatus !== 'input'"
+              @click="runCompact"
+            >
+              <RefreshCw
+                :size="16"
+                class="mr-1"
+                :class="{ 'animate-spin': compactLoading }"
+              />
+              {{ $t('settings.text.contextUsage.compactNow') }}
+            </Button>
+            <Button
+              type="big"
+              :disabled="contextUsageLoading"
+              @click="refreshContextUsage"
+            >
+              {{ $t('settings.text.contextUsage.refresh') }}
+            </Button>
+          </div>
+        </div>
+      </MenuItem>
+
       <!-- ─── 版本更新 ──────────────────────────────── -->
       <MenuItem
         :title="$t('settings.text.update.title')"
@@ -654,6 +724,12 @@ import {
   type CodexUsage,
   type QuotaWindow,
 } from '@/api/services/codex'
+import {
+  getContextUsage,
+  compactContext,
+  type ContextUsageInfo,
+} from '@/api/services/context'
+import { listen } from '@tauri-apps/api/event'
 import { reactivateTTS, clearTtsCache } from '@/api/services/game-info'
 import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -749,6 +825,106 @@ async function refreshCodexQuota() {
     codexQuotaError.value = String(e?.message ?? e)
   } finally {
     codexQuotaLoading.value = false
+  }
+}
+
+// ─── 上下文用量（kimi 式） ─────────────────────────────────────
+// 口径：后端「API 实测锚点 + 本地估算增量」混合；每轮对话结束由 ai:usage 事件推新。
+const contextUsage = ref<ContextUsageInfo | null>(null)
+const contextUsageLoading = ref(false)
+const compactLoading = ref(false)
+const autoCompact = ref(true)
+let unlistenUsage: (() => void) | null = null
+
+// 1024 进制的 k/M 缩写（与 kimi-cli footer 的 168k/1M 同风格）
+function formatTokenCount(n: number): string {
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)}M`
+  if (n >= 1024) return `${Math.round(n / 1024)}k`
+  return `${n}`
+}
+
+const contextUsageText = computed(() => {
+  const u = contextUsage.value
+  if (!u) return '—'
+  return t('settings.text.contextUsage.usageLine', {
+    used: formatTokenCount(u.usedTokens),
+    window: formatTokenCount(u.windowTokens),
+    percent: u.percent,
+  })
+})
+
+const contextUsageBarPercent = computed(() => {
+  const u = contextUsage.value
+  if (!u) return 0
+  return Math.min(Math.max(u.percent, 0), 100)
+})
+
+const contextUsageBarClass = computed(() => {
+  const p = contextUsage.value?.percent ?? 0
+  if (p > 100) return 'bg-red-500'
+  if (p >= 85) return 'bg-amber-400'
+  return 'bg-cyan-400'
+})
+
+const contextUsageStatusLine = computed(() => {
+  const u = contextUsage.value
+  if (!u) return ''
+  return t('settings.text.contextUsage.statusLine', {
+    lines: u.lineCount,
+    source: u.hasMeasuredAnchor
+      ? t('settings.text.contextUsage.sourceMeasured')
+      : t('settings.text.contextUsage.sourceEstimated'),
+    compacted: u.compacted
+      ? t('settings.text.contextUsage.compactedYes', { upto: u.compactedUpto })
+      : t('settings.text.contextUsage.compactedNo'),
+  })
+})
+
+async function refreshContextUsage() {
+  if (contextUsageLoading.value) return
+  contextUsageLoading.value = true
+  try {
+    contextUsage.value = await getContextUsage()
+    autoCompact.value = contextUsage.value.autoCompact
+  } catch (e) {
+    console.error('获取上下文用量失败:', e)
+  } finally {
+    contextUsageLoading.value = false
+  }
+}
+
+async function runCompact() {
+  if (compactLoading.value) return
+  compactLoading.value = true
+  try {
+    const outcome = await compactContext()
+    uiStore.showNotification({
+      type: 'success',
+      title: t('settings.text.contextUsage.compactDone'),
+      message: outcome.message,
+      duration: 3000,
+      skipTipsCheck: true,
+    })
+    await refreshContextUsage()
+  } catch (e: any) {
+    uiStore.showNotification({
+      type: 'error',
+      title: t('settings.text.contextUsage.compactFailed'),
+      message: String(e?.message ?? e),
+      duration: 4000,
+      skipTipsCheck: true,
+    })
+  } finally {
+    compactLoading.value = false
+  }
+}
+
+async function toggleAutoCompact(checked: boolean) {
+  autoCompact.value = checked
+  try {
+    await saveEnvConfigSettings({ 'features.auto_compact': checked ? 'true' : 'false' })
+  } catch (e) {
+    console.error('保存自动压缩开关失败:', e)
   }
 }
 
@@ -998,6 +1174,12 @@ onMounted(async () => {
     refreshCodexQuota()
     startCodexQuotaPolling()
   }
+  // 上下文用量：挂载时拉取 + 订阅每轮生成后的实测用量事件
+  // （自动压缩开关不在设置树里，随 get_context_usage 返回同步）
+  refreshContextUsage()
+  unlistenUsage = await listen('ai:usage', () => {
+    refreshContextUsage()
+  })
 })
 
 // 对话模型切到/切出 Codex 时，即时显隐卡片并启停轮询
@@ -1030,6 +1212,8 @@ onUnmounted(() => {
     ttsCacheRefreshTimer = null
   }
   stopCodexQuotaPolling()
+  unlistenUsage?.()
+  unlistenUsage = null
 })
 
 function loadLastTtsCleanup() {

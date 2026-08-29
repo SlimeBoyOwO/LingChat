@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use futures_util::StreamExt;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::ai_service::llm::{ChunkStream, LlmChunk};
@@ -192,8 +192,26 @@ impl StreamProducer {
                 LlmChunk::ToolCallProgress { .. } => {
                     // 参数生成进度：不进正文，由 tool_loop 直接转发为前端事件
                 }
-                LlmChunk::StreamEnd { .. } => {
-                    // 终止信号：主对话流忽略（截断检测仅供剧本导师等工具闭环消费）。
+                LlmChunk::StreamEnd { usage, .. } => {
+                    // 终止信号：截断检测仅供剧本导师等工具闭环消费。
+                    // usage 写回 GameStatus 作为上下文用量锚点，并通知前端卡片刷新。
+                    if let Some(usage) = usage {
+                        let app = self.app.clone();
+                        tokio::spawn(async move {
+                            let state = app.state::<crate::AppState>();
+                            let service = state.ai_service.lock().await;
+                            let mut gs = service.game_status.lock().await;
+                            gs.last_prompt_tokens = Some(usage.prompt_tokens as u32);
+                            gs.last_usage_line_count = gs.line_list.len();
+                            drop(gs);
+                            drop(service);
+                            events::emit_usage(
+                                &app,
+                                usage.prompt_tokens as u32,
+                                usage.completion_tokens as u32,
+                            );
+                        });
+                    }
                 }
             }
         }

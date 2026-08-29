@@ -242,6 +242,11 @@ impl AIService {
         let mut gs = self.game_status.lock().await;
         gs.role_manager.invalidate_memory_history();
         gs.line_list.clear();
+        // 上下文压缩摘要随历史一起失效（内存态；库里的行由 cutoff 越界判定自动作废）
+        gs.context_summary = None;
+        gs.context_summary_cutoff = 0;
+        gs.last_prompt_tokens = None;
+        gs.last_usage_line_count = 0;
 
         let system_line = LineBase {
             content: self.ai_prompt.clone(),

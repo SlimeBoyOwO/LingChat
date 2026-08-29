@@ -1,4 +1,5 @@
 pub mod adventure_unlock;
+pub mod context_summary;
 pub mod line;
 pub mod line_perception;
 pub mod memory_bank;
