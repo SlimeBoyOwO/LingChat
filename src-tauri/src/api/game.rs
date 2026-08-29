@@ -574,22 +574,7 @@ pub(crate) async fn build_web_init_data(
             .find_by_id(sid)
             .ok()
             .flatten()
-            .map(|s| super::scene::SceneInfo {
-                id: s.id,
-                scene_name: s.name,
-                scene_description: s.description,
-                background: {
-                    let bg = super::scene::normalize_background(&s.background);
-                    if bg.is_empty() {
-                        None
-                    } else {
-                        Some(bg)
-                    }
-                },
-                lighting: s.lighting.clone(),
-                created_at: s.created_at,
-                updated_at: s.updated_at,
-            })
+            .map(|s| super::scene::model_to_info(&s))
     } else {
         None
     };

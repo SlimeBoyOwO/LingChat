@@ -299,7 +299,27 @@ export default {
     saveConfig: '保存',
     empty: '未找到插件。请将插件文件夹放入 data/plugins/ 目录',
     delete: '删除',
-    deleteConfirm: '确定要删除插件「{name}」吗？会删除插件目录，不可恢复',
+    deleteConfirm:
+      '将删除插件「{name}」本体，已保留的资源不受影响。可先在下方「携带资源」区保留需要的资源。',
+    resourcesTitle: '携带资源',
+    resourcesEmpty: '该插件未提供可识别的资源，或资源目录为空。',
+    resourceConflict: '冲突',
+    resourceConflictHint: '与现有游戏资源同名冲突，默认使用游戏版本。',
+    resourceHidden: '已隐藏',
+    resourceHide: '隐藏',
+    resourceRestore: '恢复',
+    resourceKeep: '保留',
+    resourceKeepHint: '复制到游戏目录，成为游戏自有资源（复制后插件版自动隐藏）。',
+    resourceKeepConfirm: '将把{kind}「{name}」复制到游戏目录成为游戏自有资源，插件版随后自动隐藏。',
+    disableCharactersConfirm:
+      '禁用插件「{name}」会将其携带的角色从列表中移除，并删除这些角色的全部存档与对话记忆（重新启用也不会恢复）。确定要禁用吗？',
+    resourceKinds: {
+      characters: '角色',
+      scripts: '剧本',
+      musics: '音乐',
+      backgrounds: '背景图',
+      ambients: '环境音',
+    },
   },
   adventurePanel: {
     header: {
@@ -430,6 +450,7 @@ export default {
       failTitle: '删除失败',
       systemProtected: '系统保护角色，无法删除',
       onstage: '该角色在场，请退场后删除',
+      pluginFromPlugin: '该角色来自插件，无法直接删除。请在「设置 · 插件」的资源区将其隐藏。',
     },
     messages: {
       realtimeUpdateFailed: '实时更新 {label} 失败，请检查控制台日志',
@@ -597,6 +618,7 @@ export default {
       tip: '提示',
       noDescriptionTip: '场景"{name}"暂无描述，选择后不会触发场景旁白',
       deleteConfirm: '确定要删除场景"{name}"吗？',
+      pluginNotDeletable: '这是插件提供的场景，无法在此删除。请到「设置 · 插件」的资源区隐藏或保留它。',
     },
     pagination: {
       first: '← 首页',

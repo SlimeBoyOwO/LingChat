@@ -1,11 +1,14 @@
 use std::fs;
 use std::io::Write;
 
+use tauri::{AppHandle, Manager};
+
+use crate::plugins::ResourceKind;
 use crate::utils::path::validate_path_in_base;
 use crate::utils::system::open_folder;
 use serde::{Deserialize, Serialize};
 
-use super::backgrounds_dir;
+use super::{backgrounds_dir, default_source, mtime_secs};
 
 // ========== 响应类型 ==========
 
@@ -15,56 +18,69 @@ pub struct BackgroundItemInfo {
     pub title: String,
     pub url: String,
     pub time: String,
+    /// 来源："game" 或提供该背景图的插件 id。
+    #[serde(default = "default_source")]
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_id: Option<String>,
 }
 
 // ========== Tauri 命令 ==========
 
 #[tauri::command]
-pub fn get_background_list() -> Result<Vec<BackgroundItemInfo>, String> {
+pub async fn get_background_list(app: AppHandle) -> Result<Vec<BackgroundItemInfo>, String> {
     let bg_dir = backgrounds_dir();
-
-    if !bg_dir.exists() {
-        return Ok(Vec::new());
-    }
 
     let allowed_extensions = ["png", "jpg", "jpeg", "webp", "bmp", "svg", "tif", "gif"];
 
     let mut items: Vec<BackgroundItemInfo> = Vec::new();
 
-    let entries = fs::read_dir(&bg_dir).map_err(|e| format!("读取背景目录失败: {}", e))?;
+    if bg_dir.exists() {
+        let entries = fs::read_dir(&bg_dir).map_err(|e| format!("读取背景目录失败: {}", e))?;
 
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+
+            let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+                continue;
+            };
+            if !allowed_extensions.contains(&ext.to_lowercase().as_str()) {
+                continue;
+            }
+
+            let title = path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+
+            items.push(BackgroundItemInfo {
+                title,
+                url: path.to_string_lossy().into_owned(),
+                time: mtime_secs(&path),
+                source: "game".to_string(),
+                plugin_id: None,
+            });
         }
+    }
 
-        let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
-            continue;
-        };
-        if !allowed_extensions.contains(&ext.to_lowercase().as_str()) {
-            continue;
-        }
-
-        let title = path
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_default();
-
-        let time = path
-            .metadata()
-            .ok()
-            .and_then(|m| m.modified().ok())
-            .map(|t| {
-                t.duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs_f64().to_string())
-                    .unwrap_or_else(|_| "0".to_string())
-            })
-            .unwrap_or_else(|| "0".to_string());
-
-        let url = path.to_string_lossy().into_owned();
-
-        items.push(BackgroundItemInfo { title, url, time });
+    // 合并插件背景图（已按游戏优先 + 插件间先注册者赢 + 隐藏过滤）
+    let plugin_entries = app
+        .state::<crate::AppState>()
+        .data()
+        .plugin_manager
+        .visible_file_entries(ResourceKind::Backgrounds)
+        .await;
+    for e in plugin_entries {
+        items.push(BackgroundItemInfo {
+            title: e.name,
+            url: e.path.to_string_lossy().into_owned(),
+            time: mtime_secs(&e.path),
+            source: e.plugin_id.clone(),
+            plugin_id: Some(e.plugin_id),
+        });
     }
 
     items.sort_by(|a, b| {
@@ -96,7 +112,8 @@ pub fn get_background_file(filename: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn upload_background_image(
+pub async fn upload_background_image(
+    app: AppHandle,
     file_name: String,
     file_data: Vec<u8>,
 ) -> Result<Vec<BackgroundItemInfo>, String> {
@@ -118,7 +135,7 @@ pub fn upload_background_image(
         .map_err(|e| format!("写入文件失败: {}", e))?;
     f.flush().map_err(|e| format!("刷新文件失败: {}", e))?;
 
-    get_background_list()
+    get_background_list(app).await
 }
 
 #[tauri::command]

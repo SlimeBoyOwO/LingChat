@@ -31,6 +31,9 @@ export interface SceneInfo {
   lighting: LightingParams | null
   created_at: string
   updated_at: string
+  /** 来源："game" 或提供该场景背景图的插件 id。 */
+  source?: string
+  plugin_id?: string | null
 }
 
 export interface CreateSceneRequest {

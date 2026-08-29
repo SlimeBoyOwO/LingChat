@@ -52,14 +52,20 @@
           ]"
           @click="handleSceneClick(scene)"
         >
-          <!-- 编辑按钮（右上角扳手） -->
+          <!-- 编辑按钮（右上角扳手）—— 插件场景只读，不提供编辑 -->
           <button
+            v-if="!scene.source || scene.source === 'game'"
             class="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-black/50 text-white/60 hover:text-white hover:bg-black/70 transition-all opacity-0 group-hover:opacity-100"
             @click.stop="handleWrenchClick(scene)"
             :title="$t('settings.background.scene.edit')"
           >
             <Wrench :size="16" />
           </button>
+          <PluginTag
+            v-if="scene.source && scene.source !== 'game'"
+            :source="scene.source"
+            class="absolute top-2 left-2 z-10"
+          />
 
           <!-- 背景预览 -->
           <div
@@ -431,6 +437,7 @@ import { getGpuInfo, redetectGpu, type GpuInfo } from '../../../api/services/gpu
 import { Image, PictureInPicture, Sparkles, Settings, Wand2, Wrench, Cpu } from 'lucide-vue-next'
 import SceneEditModal from '../scene/SceneEditModal.vue'
 import DialogAppearancePanel from '../dialog/DialogAppearancePanel.vue'
+import PluginTag from '@/components/ui/PluginTag.vue'
 import { useUserStore } from '../../../stores/modules/user/user'
 
 const gameStore = useGameStore()
@@ -614,6 +621,10 @@ const handleCreateScene = () => {
 
 const handleDeleteScene = async () => {
   if (!currentScene.value) return
+  if (currentScene.value.source && currentScene.value.source !== 'game') {
+    await dialogStore.alert(t('settings.background.scene.pluginNotDeletable'))
+    return
+  }
   if (!(await dialogStore.confirm(t('settings.background.scene.deleteConfirm', { name: currentScene.value.scene_name })))) return
 
   try {

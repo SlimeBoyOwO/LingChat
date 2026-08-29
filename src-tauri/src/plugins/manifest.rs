@@ -29,8 +29,8 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
     {
         anyhow::bail!("插件 id '{}' 只能包含字母、数字、下划线与连字符", manifest.id);
     }
-    if manifest.tools.is_empty() {
-        anyhow::bail!("插件 '{}' 未声明任何工具", manifest.id);
+    if manifest.tools.is_empty() && manifest.resources.is_empty() {
+        anyhow::bail!("插件 '{}' 未声明任何工具或资源", manifest.id);
     }
     for tool in &manifest.tools {
         if tool.name.is_empty() {

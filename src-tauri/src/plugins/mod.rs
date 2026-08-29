@@ -15,8 +15,10 @@ pub mod http_host;
 pub mod manager;
 pub mod manifest;
 pub mod python_backend;
+pub mod resources;
 pub mod tool;
 pub mod types;
 
 pub use manager::PluginManager;
-pub use types::PluginInfo;
+pub use resources::PluginResourceEntry;
+pub use types::{PluginInfo, ResourceKind};

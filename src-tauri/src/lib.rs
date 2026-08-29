@@ -534,6 +534,9 @@ pub fn run() {
                 }
             }
 
+            // 插件携带资源收敛：把启用插件的人物/剧本/背景图同步进 DB / 剧本引擎 / 场景表。
+            rt.block_on(api::plugins::refresh_plugin_content(app.handle()));
+
             // 延迟加载 DeBerta 直到应用主体挂载完成；
             // 如果在加载完成前有聊天请求到达，LocalTtsAdapter 的惰性引导仍然会运行，
             // 因此首次消息延迟是启动时加载的代价。
@@ -656,6 +659,10 @@ pub fn run() {
             api::plugins::plugin_save_config,
             api::plugins::plugin_reload,
             api::plugins::plugin_delete,
+            api::plugins::plugin_resources,
+            api::plugins::plugin_resource_hide,
+            api::plugins::plugin_resource_restore,
+            api::plugins::plugin_resource_keep,
             api::settings::get_settings_tree,
             api::settings::save_settings,
             api::settings::get_setting_by_key,

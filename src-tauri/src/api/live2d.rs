@@ -18,7 +18,7 @@ use crate::utils::archive::extract_zip;
 use crate::utils::yaml_file::write_json_as_yaml;
 use crate::AppState;
 
-use super::{characters_dir, game_data_dir};
+use super::game_data_dir;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -47,7 +47,7 @@ fn role_dir(
     script_key: Option<&str>,
 ) -> Result<PathBuf, String> {
     match role_type {
-        RoleType::Main => Ok(characters_dir().join(folder)),
+        RoleType::Main => Ok(super::resolve_character_dir(folder)),
         RoleType::Npc => script_key
             .map(|key| {
                 game_data_dir()

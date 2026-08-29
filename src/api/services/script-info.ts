@@ -19,6 +19,9 @@ export interface ScriptSummary {
   description?: string
   folder_key?: string
   intro_chapter?: string
+  /** 来源："game" 或提供该剧本的插件 id。 */
+  source?: string
+  plugin_id?: string | null
 }
 
 export interface ScriptInfo {

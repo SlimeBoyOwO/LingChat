@@ -157,11 +157,13 @@
             :class="{ 'bg-purple-500/20 text-purple-300': currentMusicName === music.name }"
           >
             <div
-              class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium pr-2"
+              class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium pr-2 flex items-center gap-2"
             >
-              {{ music.name }}
+              <span class="truncate">{{ music.name }}</span>
+              <PluginTag v-if="music.source && music.source !== 'game'" :source="music.source" />
             </div>
             <button
+              v-if="!music.source || music.source === 'game'"
               @click.stop="deleteMusic(music)"
               class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1.5 rounded-md bg-red-500/10 hover:bg-red-500/80 text-red-400 hover:text-white"
               :title="$t('settings.sound.common.delete')"
@@ -226,6 +228,7 @@
           >
             <Wind :size="13" class="text-teal-400/60 shrink-0" />
             <span class="flex-1 text-sm text-gray-200 truncate">{{ ambient.name }}</span>
+            <PluginTag v-if="ambient.source && ambient.source !== 'game'" :source="ambient.source" />
             <button
               @click="addFileToTrack(ambient)"
               class="opacity-70 hover:opacity-100 transition-opacity px-2 py-0.5 text-xs rounded bg-teal-500/20 hover:bg-teal-500/40 text-teal-300"
@@ -234,6 +237,7 @@
               {{ $t('settings.sound.ambient.play') }}
             </button>
             <button
+              v-if="!ambient.source || ambient.source === 'game'"
               @click.stop="removeAmbientFile(ambient)"
               class="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md bg-red-500/10 hover:bg-red-500/80 text-red-400 hover:text-white"
               :title="$t('settings.sound.common.delete')"
@@ -347,6 +351,7 @@ import { useI18n } from 'vue-i18n'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Button, Slider } from '../../base'
 import { MenuItem, MenuPage } from '../../ui'
+import PluginTag from '@/components/ui/PluginTag.vue'
 import { musicDialogFilters } from '@/utils/dialogFilters'
 import {
   musicDelete,
@@ -450,6 +455,8 @@ const backgroundAudioPlayer = ref<HTMLAudioElement | null>(null)
 interface MusicItem {
   name: string
   url: string
+  source?: string
+  plugin_id?: string | null
 }
 
 const musicList = ref<MusicItem[]>([])

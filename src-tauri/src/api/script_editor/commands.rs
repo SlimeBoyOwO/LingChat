@@ -1291,9 +1291,19 @@ pub async fn editor_rescan_scripts(app: AppHandle) -> Result<usize, String> {
     let data = service.data_dir.clone();
     let fresh = crate::ai_service::game_system::script_engine::ScriptManager::new(&data);
 
+    // 记下当前插件来源的剧本，供重扫后重新套用（插件剧本不在游戏扫描范围内）
+    let plugin_scripts: Vec<(String, std::path::PathBuf)> = service
+        .script_manager
+        .all_scripts
+        .values()
+        .filter_map(|s| s.plugin_id.clone().map(|p| (p, s.script_path.clone())))
+        .collect();
+
     let existing = &mut service.script_manager.all_scripts;
 
-    // 磁盘上已经没有的剧本要摘掉（改名 / 删除）
+    // 磁盘上已经没有的剧本要摘掉（改名 / 删除）。
+    // 这里不特殊处理 plugin 条目：所有插件剧本在循环后用 apply_plugin_scripts 统一重建，
+    // 而它会跳过与游戏剧本同名的插件条目 → 游戏优先，同名插件自动让位。
     existing.retain(|name, _| fresh.all_scripts.contains_key(name));
 
     for (name, scanned) in fresh.all_scripts {
@@ -1314,7 +1324,12 @@ pub async fn editor_rescan_scripts(app: AppHandle) -> Result<usize, String> {
         }
     }
 
-    let count = existing.len();
+    // 重新套用插件剧本：游戏同名优先，插件间按登记顺序去重
+    service
+        .script_manager
+        .apply_plugin_scripts(&plugin_scripts);
+
+    let count = service.script_manager.all_scripts.len();
     tracing::info!("[ScriptEditor] 重新扫描完成，共 {} 个剧本", count);
     Ok(count)
 }

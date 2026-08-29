@@ -266,6 +266,8 @@ const props = defineProps<{
   visible: boolean
   roleId: number | null
   title?: string
+  /** 来源："game" 或提供该角色的插件 id（插件角色不可直接删除）。 */
+  source?: string | null
 }>()
 
 const emit = defineEmits(['close', 'saved'])
@@ -299,6 +301,12 @@ const deleteState = computed(() => {
 // 单次 confirm，三件全删（DB + 存档 + 记忆 + 物理文件），避免二次 confirm 三态歧义
 const handleDelete = async () => {
   if (!props.roleId || deleteState.value.disabled) return
+
+  // 插件角色不可直接删除：提示去插件设置里隐藏
+  if (props.source && props.source !== 'game') {
+    await dialogStore.alert(t('settings.characterInfo.delete.pluginFromPlugin'))
+    return
+  }
 
   const confirmed = await dialogStore.confirm(
     t('settings.characterInfo.delete.confirmMessage', { title: props.title ?? t('settings.characterInfo.delete.button') }),
