@@ -10,7 +10,7 @@
 //! 摘要持久化在 `context_summary` 表（按 save_id 一行），重启/读档后依然生效。
 
 use anyhow::{anyhow, Result};
-use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
@@ -325,17 +325,17 @@ pub async fn auto_compact_if_needed(app: &AppHandle) {
 }
 
 /// 从存档载入摘要到 GameStatus（读档/启动时调用）。
-pub async fn load_summary_into_status(app: &AppHandle) -> Result<()> {
-    let state = app.state::<AppState>();
-    let svc = state.ai_service.lock().await;
-    let gs_arc = svc.game_status.clone();
-    let db = svc.db.clone();
-    drop(svc);
-
+///
+/// 调用方已持有 `ai_service` 锁（load_save 全程持有），本函数只接收
+/// 拆开的 db / game_status 句柄，绝不回锁 ai_service，避免死锁。
+pub async fn load_summary_into_status(
+    db: &DatabaseConnection,
+    gs_arc: &std::sync::Arc<tokio::sync::Mutex<GameStatus>>,
+) -> Result<()> {
     let save_id = gs_arc.lock().await.active_save_id;
     let Some(save_id) = save_id else { return Ok(()) };
 
-    let row = context_summary::Entity::find_by_id(save_id).one(&db).await?;
+    let row = context_summary::Entity::find_by_id(save_id).one(db).await?;
     let mut gs = gs_arc.lock().await;
     match row {
         Some(row) if row.cutoff_count > 0 && (row.cutoff_count as usize) <= gs.line_list.len() => {
