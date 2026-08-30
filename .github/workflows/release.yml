@@ -2,20 +2,20 @@ name: 打包发行版
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       data_version:
-        description: '数据版本号（整数）'
+        description: "数据版本号（整数）"
         required: false
-        default: '1'
+        default: "1"
       tag_name:
-        description: 'Release Tag 名称'
+        description: "Release Tag 名称"
         required: true
         type: string
-        default: 'v0.0.0'
+        default: "v0.0.0"
       is_prerelease:
-        description: '是否标记为预发布版本（仅新建时生效）'
+        description: "是否标记为预发布版本（仅新建时生效）"
         required: false
         type: boolean
         default: true
@@ -31,9 +31,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: 拉取 LFS 游戏资源 (仅 data/game_data/)
-        run: git lfs pull --include="data/game_data/**"
+        with:
+          lfs: true
 
       - uses: pnpm/setup@v1
         with:
@@ -72,16 +71,16 @@ jobs:
         include:
           - platform: windows-amd64
             os: windows-latest
-            target: ''
+            target: ""
           - platform: macos
             os: macos-latest
-            target: ''
+            target: ""
           - platform: linux-arm64
             os: ubuntu-latest
-            target: ''
+            target: ""
           - platform: linux-aarch64
             os: ubuntu-24.04-arm
-            target: ''
+            target: ""
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -112,7 +111,7 @@ jobs:
 
       - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable
-        
+
       - name: 设置 rust 缓存
         uses: swatinem/rust-cache@v2
         with:
@@ -132,7 +131,7 @@ jobs:
             ${{ runner.os == 'macOS' && '' || '' }}
         with:
           uploadWorkflowArtifacts: true
-          workflowArtifactNamePattern: '${{ matrix.platform }}-build'
+          workflowArtifactNamePattern: "${{ matrix.platform }}-build"
           args: ${{ matrix.target }}
 
   release:
@@ -150,7 +149,7 @@ jobs:
       # 下载各平台的构建产物
       - uses: actions/download-artifact@v4
         with:
-          pattern: '*-build'
+          pattern: "*-build"
           path: artifacts/builds
           merge-multiple: true
 
@@ -161,7 +160,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag_name }}
-          name: 'LingChat ${{ github.ref_name }}'
+          name: "LingChat ${{ github.ref_name }}"
           body: |
             ## 更新内容
 

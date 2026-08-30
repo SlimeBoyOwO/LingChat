@@ -4,17 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release Tag 名称'
+        description: "Release Tag 名称"
         required: true
         type: string
-        default: 'v0.0.0'
+        default: "v0.0.0"
       release_title:
-        description: 'Release 标题（仅新建时生效）'
+        description: "Release 标题（仅新建时生效）"
         required: false
         type: string
-        default: '开发版构建'
+        default: "开发版构建"
       is_prerelease:
-        description: '是否标记为预发布版本（仅新建时生效）'
+        description: "是否标记为预发布版本（仅新建时生效）"
         required: false
         type: boolean
         default: true
@@ -33,14 +33,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          lfs: true
 
       - uses: pnpm/setup@v1
         with:
           runtime: node@26
           cache: true
-
-      - name: 签出 lfs 文件
-        run: git lfs pull
 
       - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable
@@ -86,8 +84,8 @@ jobs:
 
       - uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
-          java-version: '21'
+          distribution: "zulu"
+          java-version: "21"
 
       - name: 生成图标
         run: |
