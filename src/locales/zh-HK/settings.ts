@@ -816,6 +816,19 @@ export default {
       "deleteFailed": "刪除環境音失敗",
       "uploadFailed": "部分或者全部環境音上傳失敗"
     },
+    "chatSound": {
+      "title": "聊天音效（打字聲）",
+      "importedFiles": "匯入咗嘅音效",
+      "fileCount": "{count} 個",
+      "empty": "暫時冇自訂音效，打字嗰陣用內置音效",
+      "hint": "自訂 AI 打字嗰陣逐字播嘅說話音效；加多幾個音效就會隨機播（好似 Deltarune 嘅角色講嘢聲咁），全部刪走就恢復內置音效",
+      "play": "試聽",
+      "add": "加音效",
+      "selectFilesFirst": "唔該先揀音效文件",
+      "confirmDelete": "確定要刪走音效《{name}》咩？",
+      "deleteFailed": "刪除聊天音效失敗",
+      "uploadFailed": "部分或者全部音效上傳失敗"
+    },
     "common": {
       "delete": "刪走",
       "selectedCount": "揀咗 {count} 個文件",

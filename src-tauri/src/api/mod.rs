@@ -2,6 +2,7 @@ pub mod achievement;
 pub mod adventure;
 pub mod ambient;
 pub mod asset;
+pub mod chat_sound;
 pub mod background;
 pub mod character;
 pub mod chat;
@@ -52,6 +53,10 @@ pub(crate) fn music_dir() -> PathBuf {
 
 pub(crate) fn ambient_dir() -> PathBuf {
     game_data_dir().join("ambients")
+}
+
+pub(crate) fn chat_sounds_dir() -> PathBuf {
+    game_data_dir().join("chat_sounds")
 }
 
 pub(crate) fn voice_dir() -> PathBuf {

@@ -1,4 +1,10 @@
 import { useUIStore } from '../../stores/modules/ui/ui'
+import {
+  BUILTIN_CHAT_SOUND_URLS,
+  ensureChatSoundsLoaded,
+  getChatSoundUrls,
+  getChatSoundVersion,
+} from '../chatSoundLibrary'
 
 export type TypeWriterStatus = 'idle' | 'typing' | 'completed'
 
@@ -16,7 +22,10 @@ export class TypeWriter {
   // Audio
   private audioContext: AudioContext | null
   private soundBuffers: AudioBuffer[]
-  private readonly soundUrls: string[]
+  /** 调用方显式指定的音源；未指定时使用自定义聊天音效库（回退内置音效） */
+  private readonly explicitSoundUrls: string[] | null
+  /** 上次加载音效时的音效库版本（版本变化时重新加载） */
+  private loadedSoundVersion: number
 
   // State
   private _status: TypeWriterStatus = 'idle'
@@ -37,7 +46,8 @@ export class TypeWriter {
     this.onTextUpdateCallback = onTextUpdateCallback || null
     this.audioContext = null
     this.soundBuffers = []
-    this.soundUrls = soundUrls ?? ['../audio_effects/对话.wav']
+    this.explicitSoundUrls = soundUrls ?? null
+    this.loadedSoundVersion = -1
   }
 
   /** Current typewriter state, queryable externally at any time. */
@@ -62,18 +72,36 @@ export class TypeWriter {
     }
   }
 
-  private async loadSounds(): Promise<void> {
-    if (!this.audioContext) return
-
-    try {
-      const promises = this.soundUrls.map(async (url) => {
+  /** 解码一组音源 URL；单个失败不影响其余音效（如用户上传了损坏文件） */
+  private async decodeUrls(urls: string[]): Promise<AudioBuffer[]> {
+    if (!this.audioContext) return []
+    const results = await Promise.allSettled(
+      urls.map(async (url) => {
         const response = await fetch(url)
         const arrayBuffer = await response.arrayBuffer()
         return this.audioContext!.decodeAudioData(arrayBuffer)
-      })
-      this.soundBuffers = await Promise.all(promises)
-    } catch (e) {
-      console.warn('音效加载失败:', e)
+      }),
+    )
+    return results
+      .filter((r): r is PromiseFulfilledResult<AudioBuffer> => r.status === 'fulfilled')
+      .map((r) => r.value)
+  }
+
+  private async loadSounds(): Promise<void> {
+    if (!this.audioContext) return
+
+    await ensureChatSoundsLoaded()
+    this.loadedSoundVersion = getChatSoundVersion()
+
+    const urls = this.explicitSoundUrls ?? getChatSoundUrls()
+    this.soundBuffers = await this.decodeUrls(urls)
+
+    // 自定义音效全部解码失败时回退内置音效，保证打字音效不会意外静音
+    if (this.soundBuffers.length === 0) {
+      this.soundBuffers = await this.decodeUrls(BUILTIN_CHAT_SOUND_URLS)
+    }
+    if (this.soundBuffers.length === 0) {
+      console.warn('音效加载失败: 未获得任何可用音源')
     }
   }
 
@@ -146,6 +174,9 @@ export class TypeWriter {
     const uiStore = useUIStore()
     if (uiStore.enableChatEffectSound && !this.audioContext) {
       this.initAudio()
+    } else if (this.audioContext && this.loadedSoundVersion !== getChatSoundVersion()) {
+      // 自定义聊天音效库有更新（上传/删除）时重新加载
+      this.loadSounds()
     }
 
     let i = 0
