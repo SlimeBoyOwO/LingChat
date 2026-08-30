@@ -32,4 +32,4 @@
 *.bat text eol=crlf working-tree-encoding=UTF-8
 *.cmd text eol=crlf working-tree-encoding=UTF-8
 *.ps1 text eol=crlf working-tree-encoding=UTF-8
-my_app_signed.apk filter=lfs diff=lfs merge=lfs -text
+

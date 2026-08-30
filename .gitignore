@@ -192,3 +192,12 @@ AGENTS.md
 # 本地 APK build 路径
 prev-build-*/
 
+#本地apk构建产物
+src-tauri/gen/android/app/build/*
+
+# 本地产物 / 归档 / 备份 / 机器相关配置（禁止上传）
+*.apk
+*.tar.gz
+*.tar.bz2
+*.bak
+local.properties
