@@ -343,6 +343,7 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     let prompt_options = PromptOptions {
         output_sec_lang: app_config.llm_output_sec_lang,
         no_emotion_limit: app_config.no_emotion_limit_prompt,
+        text_effects: app_config.text_effects,
     };
 
     // 3. 更新 AIService 状态
@@ -617,6 +618,7 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
     let prompt_options = PromptOptions {
         output_sec_lang: app_config.llm_output_sec_lang,
         no_emotion_limit: app_config.no_emotion_limit_prompt,
+        text_effects: app_config.text_effects,
     };
 
     // Phase 1: 加载角色 → 注入 System prompt（在 onstage_role 之前） → 上台 → 刷新记忆

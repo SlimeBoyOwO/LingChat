@@ -91,6 +91,9 @@ pub struct AppConfig {
     pub enable_time_sense: bool,
     #[serde(default = "default_enable_emotion_classifier")]
     pub enable_emotion_classifier: bool,
+    /// 文字演出动画（LLM 标签驱动，issue #658）：开启后提示词告知 LLM 标签语法
+    #[serde(default)]
+    pub text_effects: bool,
 
     // ---- 功能开关（记忆系统） ----
     #[serde(default = "default_true")]
@@ -131,6 +134,7 @@ impl Default for AppConfig {
             enable_translate: default_enable_translate(),
             enable_time_sense: default_enable_time_sense(),
             enable_emotion_classifier: default_enable_emotion_classifier(),
+            text_effects: false,
             use_persistent_memory: true,
             memory_update_interval: default_memory_update_interval(),
             memory_recent_window: default_memory_recent_window(),
@@ -231,6 +235,7 @@ impl AppConfig {
                 keys::ENABLE_EMOTION_CLASSIFIER,
                 default.enable_emotion_classifier,
             ),
+            text_effects: get_bool(&store, keys::TEXT_EFFECTS, default.text_effects),
             use_persistent_memory: get_bool(
                 &store,
                 keys::USE_PERSISTENT_MEMORY,

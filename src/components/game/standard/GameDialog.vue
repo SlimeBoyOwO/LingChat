@@ -290,6 +290,13 @@
   import { escapeHtml } from "../../../utils/escapeHtml";
   import { createCharRevealWriter } from "../../../utils/typewriter/charReveal";
   import {
+    stripTextEffects,
+    textEffectSegmentAt,
+    textEffectClass,
+    textEffectLevelStyle,
+    type TextEffectSegment,
+  } from "../../../utils/text-effects";
+  import {
     useAsrInput,
     setMobileMenuOpen,
     lockAsrForDisplay,
@@ -398,6 +405,22 @@
   };
   const currentDisplayedText = ref("");
 
+  // 文字演出标签（issue #658）：标签（<shake level="high"> 等）不显示，仅内容渲染动画。
+  // 每行台词在打字前用 stripTextEffects 一次性去标签并记录动画片段（对齐去标签后的文本），
+  // 渲染时按字符下标查片段；动作灰字部分（\n 后 / 两段式动作阶段）不应用动画。
+  let fxSegments: TextEffectSegment[] = [];
+  // 加重片段首字符的渲染时刻（performance.now），用于把同片段所有字符的动画相位对齐
+  let fxEmphStartAt = -1;
+  const prepareFxText = (raw: string): string => {
+    if (!settingsStore.text.textEffects) {
+      fxSegments = [];
+      return raw;
+    }
+    const stripped = stripTextEffects(raw);
+    fxSegments = stripped.segments;
+    return stripped.text;
+  };
+
   // 逐字符淡入+上浮渲染器。颜色规则：
   // 内联模式 → \n 前为台词白字、\n 后为动作灰字；标准模式 → 两段式动作阶段整段灰字。
   const charReveal = createCharRevealWriter({
@@ -405,8 +428,8 @@
       if (char === "\n") return "<br>";
       if (char === " ") return " ";
       let color = "#fff";
+      const newlineIndex = rawText.indexOf("\n");
       if (settingsStore.text.inlineMotionText) {
-        const newlineIndex = rawText.indexOf("\n");
         if (newlineIndex >= 0 && index > newlineIndex) color = "#9ca3af";
       } else if (isShowingMotionText.value) {
         color = "#9ca3af";
@@ -414,7 +437,33 @@
       const anim = animate
         ? ";animation:tw-char-rise .28s cubic-bezier(.22, 1, .36, 1) forwards"
         : "";
-      return `<span style="display:inline-block;color:${color}${anim}">${escapeHtml(char)}</span>`;
+      const inner = `<span style="display:inline-block;color:${color}${anim}">${escapeHtml(char)}</span>`;
+      // 文字演出动画：仅台词白字部分生效（\n 前且非两段式动作阶段）
+      const isActionPart =
+        (settingsStore.text.inlineMotionText && newlineIndex >= 0 && index > newlineIndex) ||
+        isShowingMotionText.value;
+      if (!isActionPart) {
+        const seg = textEffectSegmentAt(index, fxSegments);
+        if (seg) {
+          const fxClass = textEffectClass(seg.effect);
+          if (fxClass) {
+            // 加重（emphasis）整体放大呼吸：同片段所有字符共享同一相位。
+            // 逐字渲染时各字符创建时刻不同，用负 animation-delay 把相位对齐到片段首字符。
+            let delayStyle = "";
+            if (seg.effect === "emphasis") {
+              if (index === seg.start) fxEmphStartAt = performance.now();
+              if (fxEmphStartAt >= 0) {
+                const delaySec = (fxEmphStartAt - performance.now()) / 1000;
+                delayStyle = `;animation-delay:${delaySec.toFixed(3)}s`;
+              }
+            }
+            const levelStyle = textEffectLevelStyle(seg.effect, seg.level);
+            const style = `display:inline-block${levelStyle ? ";" + levelStyle : ""}${delayStyle}`;
+            return `<span class="${fxClass}" style="${style}">${inner}</span>`;
+          }
+        }
+      }
+      return inner;
     },
   });
 
@@ -426,11 +475,12 @@
 
   // 立即把当前台词写入显示元素（不经过打字动画；供挂载恢复使用）
   function renderLineInstant(line: string) {
-    currentDisplayedText.value = line;
-    const text =
+    const rawText =
       settingsStore.text.inlineMotionText && uiStore.showCharacterMotionText
         ? line + "\n" + uiStore.showCharacterMotionText
         : line;
+    const text = prepareFxText(rawText);
+    currentDisplayedText.value = text;
     if (inlineDisplayRef.value) charReveal.renderInstant(inlineDisplayRef.value, text);
   }
 
@@ -553,10 +603,11 @@
         isShowingMotionText.value = false;
 
         // 标准/内联模式统一渲染到回复 div（内联模式有动作文本时拼接换行+灰字）
-        const text =
+        const rawText =
           settingsStore.text.inlineMotionText && uiStore.showCharacterMotionText
             ? newLine + "\n" + uiStore.showCharacterMotionText
             : newLine;
+        const text = prepareFxText(rawText);
         resetResponseDisplay();
         startTyping(text, uiStore.typeWriterSpeed);
       } else if (newStatus === "input") {
@@ -773,7 +824,7 @@
       else if (uiStore.showCharacterMotionText) {
         isShowingMotionText.value = true;
         resetResponseDisplay();
-        startTyping(uiStore.showCharacterMotionText, uiStore.typeWriterSpeed);
+        startTyping(prepareFxText(uiStore.showCharacterMotionText), uiStore.typeWriterSpeed);
         return false; // don't advance event queue
       }
     } else {
@@ -986,6 +1037,74 @@
     to {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+
+  /* 文字演出动画（issue #658）。外层包裹 span 由 JS 动态生成，keyframes 必须全局。
+     外层只负责持续演出动画（transform/filter），内层逐字 span 负责颜色与淡入上浮，互不干扰。
+     强度由 level 注入的 CSS 变量控制（--fx-amp/--fx-dur/--fx-off/--fx-blur/--fx-scale），
+     缺省即 medium 档。 */
+  .tw-fx-emphasis,
+  .tw-fx-shake,
+  .tw-fx-blur,
+  .tw-fx-float {
+    display: inline-block;
+  }
+  /* 加重：加粗 + 持续放大呼吸（醒目强调；同片段字符由 JS 同步动画相位） */
+  .tw-fx-emphasis {
+    font-weight: 700;
+    animation: tw-fx-emphasis var(--fx-dur, 1.6s) ease-in-out infinite;
+  }
+  /* 抖动 */
+  .tw-fx-shake {
+    animation: tw-fx-shake var(--fx-dur, 0.45s) linear infinite;
+  }
+  /* 模糊：呼吸式模糊，营造"模糊不清" */
+  .tw-fx-blur {
+    animation: tw-fx-blur-breathe var(--fx-dur, 2.8s) ease-in-out infinite;
+  }
+  /* 飘动：轻微上下漂浮 */
+  .tw-fx-float {
+    animation: tw-fx-float var(--fx-dur, 2.4s) ease-in-out infinite;
+  }
+
+  @keyframes tw-fx-emphasis {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(var(--fx-scale, 1.12));
+    }
+  }
+  @keyframes tw-fx-shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    25% {
+      transform: translateX(calc(-1 * var(--fx-amp, 1.5px)));
+    }
+    75% {
+      transform: translateX(var(--fx-amp, 1.5px));
+    }
+  }
+  @keyframes tw-fx-blur-breathe {
+    0%,
+    100% {
+      filter: blur(calc(var(--fx-blur, 2.4px) / 2));
+    }
+    50% {
+      filter: blur(var(--fx-blur, 2.4px));
+    }
+  }
+  @keyframes tw-fx-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(var(--fx-off, -4px));
     }
   }
 </style>

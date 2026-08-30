@@ -70,6 +70,47 @@ fn strip_jp_action_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"<[^>]*>|（[^）]*）").expect("invalid regex"))
 }
 
+/// 演出标签（<shake level="high"> 等，issue #658）保护/还原。
+///
+/// 后端解析（日语翻译提取、strip_jp_action_re 剥除、情绪标签处理）会把 `<...>` 当日语通道，
+/// 必须先替换为占位符再解析、解析后按需还原：
+/// - 消息内容（following_text）：还原标签，前端解析渲染动画
+/// - TTS/译文（japanese_text）、动作文本（motion_text）：去掉标签，避免读出/显示标签文本
+const EFFECT_TAG_RE: &str = r"</?(?:emphasis|shake|blur|float)\b[^>]*>";
+
+fn protect_effect_tags(text: &str) -> (String, Vec<String>) {
+    let re = Regex::new(EFFECT_TAG_RE).expect("invalid effect tag regex");
+    let mut tags: Vec<String> = Vec::new();
+    let mut out = String::with_capacity(text.len());
+    let mut last = 0usize;
+    for cap in re.captures_iter(text) {
+        let m = cap.get(0).expect("match 0");
+        out.push_str(&text[last..m.start()]);
+        let ph = format!("\u{0}FX_TAG_{}\u{0}", tags.len());
+        tags.push(m.as_str().to_string());
+        out.push_str(&ph);
+        last = m.end();
+    }
+    out.push_str(&text[last..]);
+    (out, tags)
+}
+
+fn restore_effect_tags(protected: &str, tags: &[String]) -> String {
+    let mut out = protected.to_string();
+    for (i, tag) in tags.iter().enumerate() {
+        out = out.replace(&format!("\u{0}FX_TAG_{}\u{0}", i), tag);
+    }
+    out
+}
+
+fn remove_effect_tags(protected: &str, tags: &[String]) -> String {
+    let mut out = protected.to_string();
+    for i in 0..tags.len() {
+        out = out.replace(&format!("\u{0}FX_TAG_{}\u{0}", i), "");
+    }
+    out
+}
+
 /// MessageProcessor 配置。
 #[derive(Debug, Clone, Copy)]
 pub struct ProcessorOptions {
@@ -117,11 +158,13 @@ impl MessageProcessor {
 
         // 前处理：修复标签并清理非法内容
         let text = Self::preprocess_text(text);
+        // 演出标签保护：避免被误判为日语翻译 <...> 或被 strip_jp_action_re 剥除
+        let (protected, tags) = protect_effect_tags(&text);
 
         let re = emotion_re();
         let mut i = 0usize;
 
-        for cap in re.captures_iter(&text) {
+        for cap in re.captures_iter(&protected) {
             i += 1;
             let emotion_tag = cap.get(1).map(|m| m.as_str()).unwrap_or("");
             let following_raw = cap.get(2).map(|m| m.as_str()).unwrap_or("");
@@ -161,6 +204,11 @@ impl MessageProcessor {
             if cleaned_text.is_empty() && japanese_text.is_empty() && motion_text.is_empty() {
                 continue;
             }
+
+            // 还原演出标签：消息内容保留（前端解析渲染动画）；TTS/译文与动作文本去掉标签
+            let cleaned_text = restore_effect_tags(&cleaned_text, &tags);
+            let japanese_text = remove_effect_tags(&japanese_text, &tags);
+            let motion_text = remove_effect_tags(&motion_text, &tags);
 
             // 情绪分类器：有分类器走 ONNX，否则回退为原 tag。
             let (predicted, confidence) = match self.classifier.as_ref() {
@@ -355,10 +403,12 @@ pub fn fix_ai_generated_text(text: &str) -> String {
         .replace('＞', ">")
         .replace('《', "")
         .replace('》', "");
+    // 演出标签保护：避免被误判为日语翻译 <...> 或被剥除
+    let (protected, tags) = protect_effect_tags(&text);
     let re = emotion_re();
     let mut parts: Vec<String> = Vec::new();
     let mut has_any = false;
-    for cap in re.captures_iter(&text) {
+    for cap in re.captures_iter(&protected) {
         has_any = true;
         let emotion_tag = cap.get(1).map(|m| m.as_str()).unwrap_or("");
         let full_tag = format!("【{emotion_tag}】");
@@ -411,7 +461,119 @@ pub fn fix_ai_generated_text(text: &str) -> String {
     }
 
     if !has_any {
-        return text.to_string();
+        return restore_effect_tags(&protected, &tags);
     }
-    parts.concat()
+    restore_effect_tags(&parts.concat(), &tags)
+}
+
+#[cfg(test)]
+mod effect_tag_protection_tests {
+    use super::{
+        fix_ai_generated_text, protect_effect_tags, remove_effect_tags, restore_effect_tags,
+        MessageProcessor, ProcessorOptions,
+    };
+
+    /// 占位符形态：标签被替换为 NUL 包裹的标记，与任何解析正则（<...>、【】、（））都不冲突
+    #[test]
+    fn protect_restore_roundtrip_keeps_tags() {
+        let raw = "今天的你！真的<shake level=\"high\">很好看！</shake>";
+        let (protected, tags) = protect_effect_tags(raw);
+        assert_eq!(
+            protected,
+            "今天的你！真的\u{0}FX_TAG_0\u{0}很好看！\u{0}FX_TAG_1\u{0}"
+        );
+        assert_eq!(tags.len(), 2);
+        assert_eq!(restore_effect_tags(&protected, &tags), raw);
+    }
+
+    /// TTS/译文路径：标签占位符被剔除，避免读出标签文本
+    #[test]
+    fn remove_tags_for_tts_path() {
+        let raw = "今天的你！真的<shake level=\"high\">很好看！</shake>";
+        let (protected, tags) = protect_effect_tags(raw);
+        assert_eq!(remove_effect_tags(&protected, &tags), "今天的你！真的很好看！");
+    }
+
+    /// 消息内容路径：fix_ai_generated_text 后标签保留，前端才能解析渲染动画
+    #[test]
+    fn fix_ai_generated_text_preserves_effect_tags() {
+        let input = "【情动】今天的你！真的<shake level=\"high\">很好看！</shake>";
+        let out = fix_ai_generated_text(input);
+        assert!(out.contains("<shake level=\"high\">"), "开标签应保留: {out}");
+        assert!(out.contains("</shake>"), "闭标签应保留: {out}");
+    }
+
+    /// 中日双语模式：演出标签不应被误抓为日语翻译
+    #[test]
+    fn japanese_extraction_not_confused_by_effect_tags() {
+        let mp = MessageProcessor::new(
+            ProcessorOptions {
+                enable_translate: true,
+                ..Default::default()
+            },
+            None,
+        );
+        let input =
+            "【情动】今天的你！真的<shake level=\"high\">很好看！</shake><本当に綺麗だよ>";
+        let segs = mp.parse_and_classify_emotional_segments(input);
+        assert_eq!(segs.len(), 1);
+        let s = &segs[0];
+        assert_eq!(s.japanese_text, "本当に綺麗だよ", "译文不应被标签干扰");
+        assert_eq!(
+            s.following_text,
+            "今天的你！真的<shake level=\"high\">很好看！</shake>",
+            "消息内容应保留标签"
+        );
+    }
+
+    /// 中文模式：japanese_text 回退 cleaned_text，但 TTS 文本必须剔除标签
+    #[test]
+    fn cn_mode_tts_text_has_no_tags() {
+        let mp = MessageProcessor::new(ProcessorOptions::default(), None);
+        let input = "【情动】今天的你！真的<shake level=\"high\">很好看！</shake>";
+        let segs = mp.parse_and_classify_emotional_segments(input);
+        let s = &segs[0];
+        assert_eq!(
+            s.following_text,
+            "今天的你！真的<shake level=\"high\">很好看！</shake>"
+        );
+        assert_eq!(s.japanese_text, "今天的你！真的很好看！", "TTS 文本不含标签");
+    }
+
+    /// 未知标签不属于保护范围（保护只针对已知演出标签），不生成占位符
+    #[test]
+    fn unknown_tags_are_not_protected() {
+        let raw = "今天<weather>天气</weather>不错";
+        let (protected, tags) = protect_effect_tags(raw);
+        assert!(tags.is_empty(), "未知标签不应进入保护: {protected}");
+        assert_eq!(protected, raw);
+        // 已知标签与未知标签混排时，只保护已知的
+        let mixed = "真<shake>好</shake>看<weather>天</weather>";
+        let (protected2, tags2) = protect_effect_tags(mixed);
+        assert_eq!(tags2.len(), 2);
+        assert!(protected2.contains("\u{0}FX_TAG_0\u{0}"));
+        assert!(protected2.contains("<weather>"), "未知标签保持原样: {protected2}");
+    }
+
+    /// 标签误入日语翻译块（LLM 格式错误时）：译文剔除标签、中文台词保留标签
+    #[test]
+    fn tags_inside_japanese_block_are_removed() {
+        let mp = MessageProcessor::new(
+            ProcessorOptions {
+                enable_translate: true,
+                ..Default::default()
+            },
+            None,
+        );
+        let input = "【认真】<emphasis>用户酱，你知道吗。</emphasis>每一次这样……\n<見ててね、<emphasis>一番の特技</emphasis>なんだから>";
+        let segs = mp.parse_and_classify_emotional_segments(input);
+        assert_eq!(segs.len(), 1);
+        let s = &segs[0];
+        assert_eq!(s.japanese_text, "見ててね、一番の特技なんだから", "译文剔除标签");
+        assert_eq!(
+            s.following_text,
+            "<emphasis>用户酱，你知道吗。</emphasis>每一次这样……",
+            "中文台词保留标签"
+        );
+    }
 }

@@ -4,7 +4,7 @@
 
 use crate::ai_service::game_system::game_status::GameStatus;
 
-use crate::ai_service::types::CharacterSettings;
+use crate::ai_service::types::{CharacterSettings, LlmMessage};
 use indoc::indoc;
 
 // ============================================================
@@ -26,6 +26,8 @@ pub struct PromptOptions {
     pub output_sec_lang: bool,
     /// 不再限制模型输出的情绪（放开情绪列表）。对应旧版 `NO_EMOTION_LIMIT_PROMPT`。
     pub no_emotion_limit: bool,
+    /// 文字演出动画（issue #658）：开启后在提示词中告知 LLM 演出标签语法（<emphasis>/<shake>/<blur>/<float>，支持 level 强度）。
+    pub text_effects: bool,
 }
 
 const DIALOG_FORMAT_PROMPT_CN: &str = indoc! {r#"
@@ -104,6 +106,63 @@ const DIALOG_FORMAT_PROMPT_2_BODY: &str = indoc! {r#"
         5. 若察觉自己即将写出用户方的台词，立即停止输出，不要继续生成。
         6. 输出句子的数量最好不要超过5句,历史对话中若出现,超出该限定的句子那属于系统记录错误,请把错误内容无视掉
 "#};
+
+/// 文字演出标签语法说明（issue #658 文字动画）。仅在 `PromptOptions::text_effects` 开启时拼接，
+/// 关闭时不告知 LLM，从源头避免输出裸标签。
+const TEXT_EFFECTS_MARKER_PROMPT: &str = indoc! {r#"
+
+    以下是可选的「文字演出标签」语法（规范版本 v2；仅在需要丰富演出时使用，不要每句话都用）：
+        <emphasis>文字</emphasis>       加重强调（如关键台词、情绪爆发）
+        <shake>文字</shake>             抖动（如害怕、紧张、颤抖着说话）
+        <blur>文字</blur>               模糊不清（如模糊的回忆、神志不清）
+        <float>文字</float>             飘动（如回忆、梦境、飘忽的语气）
+        强度参数 level（可选）：low 轻微 / medium 默认 / high 强烈
+        示例：<shake level="high">很好看！</shake>
+    使用要求：
+        1. 标签可选，仅在情绪强烈或特殊演出时使用，每次回复最多 1~2 处。
+        2. 标签只能包裹词语或短句（1~30 字），不要包裹整句、整段。
+        3. 标签内的文字依然是你要说的台词，不要改变说话内容。
+        4. 动作部分（）中不要使用演出标签。
+        5. 台词末尾的 <日语翻译> 不是演出标签，不要混淆。
+        6. 双语模式：日语翻译必须保留 <> 包裹，且翻译内部不允许出现任何演出标签——标签只写在中文台词里，不要照抄进译文。
+    正确示例：
+        【慌张】别、别过来……<shake level="high">我的手</shake>在发抖……
+        <こ、こないで…私の手が震えてる…>
+        【情动】<blur>那些回忆</blur>模模糊糊的，好像一场梦。
+        <あの記憶はぼんやりして、まるで夢みたい…>
+        【调皮】<float>我才不告诉你呢</float>
+        <教えてあげないんだからね>
+        【认真】<emphasis>用户酱，你知道吗。</emphasis>每一次这样……
+        <ユーザーちゃん、知ってる？そのたびにこうしていると…>
+    错误示例：
+        【无语】今天<weather>天气</weather>不错。（<shake>这是动作</shake>）
+        【认真】<emphasis>用户酱，你知道吗。</emphasis>每一次这样……
+        <emphasis>ユーザーちゃん、知ってる？</emphasis>そのたびに…（译文里出现标签，错误）
+"#};
+
+/// 把「文字演出标签语法」注入到首条 system 消息（若尚未注入）。
+///
+/// 用于**请求期注入**：开关开启后下一次对话即生效，无需重载角色/重启。
+/// `enabled` 来自当前配置 `text.text_effects`；已注入（含人设构建期拼接）则跳过，避免重复。
+pub fn inject_text_effects_prompt(messages: &mut [LlmMessage], enabled: bool) {
+    if !enabled {
+        return;
+    }
+    for msg in messages.iter_mut() {
+        if msg.role == "system" {
+            // 去重基于「规范版本 vN」标记：旧版提示词（含早期文本但不含本版本标记）会被新版替换注入，
+            // 避免提示词内容更新后，旧会话因内容相同而永远吃不到新规范。
+            if !msg.content.contains("规范版本 v2") {
+                msg.content.push_str(TEXT_EFFECTS_MARKER_PROMPT);
+                tracing::info!("[Prompt] 请求期注入文字演出标签语法 v2（text_effects 开启）");
+            } else {
+                tracing::info!("[Prompt] 文字演出标签语法 v2 已存在，跳过请求期注入");
+            }
+            return;
+        }
+    }
+    tracing::warn!("[Prompt] 请求期注入失败：上下文中没有 system 消息");
+}
 
 const DEFAULT_EXAMPLE_CN: &str = indoc! {r#"
 
@@ -191,7 +250,7 @@ pub fn sys_prompt_builder(
     let example_jp = ai_prompt_example_old.filter(|s| !s.is_empty());
     let framing = build_framing_prefix_cn(user_name, character_name);
 
-    if !options.output_sec_lang {
+    let mut out = if !options.output_sec_lang {
         // 中文模式
         let example = match example_cn {
             Some(s) => format!("{}\n{}", EXAMPLE_CUSTOM, s),
@@ -237,7 +296,14 @@ pub fn sys_prompt_builder(
         out.push_str(emotion_head);
         out.push_str(DIALOG_FORMAT_PROMPT_2_BODY);
         out
+    };
+
+    // 文字演出动画（issue #658）：仅开启时告知 LLM 标签语法
+    if options.text_effects {
+        out.push_str(TEXT_EFFECTS_MARKER_PROMPT);
+        tracing::info!("[Prompt] 人设构建期已拼接文字演出标签语法（text_effects 开启）");
     }
+    out
 }
 
 /// 便捷包装：直接从 `CharacterSettings` 构建。

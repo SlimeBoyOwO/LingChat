@@ -421,6 +421,7 @@ impl ScriptManager {
             let prompt_options = PromptOptions {
                 output_sec_lang: true,
                 no_emotion_limit: true,
+                text_effects: false,
             };
             if !prompt.is_empty() {
                 let ai_prompt = sys_prompt_builder(

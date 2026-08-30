@@ -740,6 +740,10 @@ export default {
       title: '内联动作文本',
       desc: '开启后动作文本将与台词同时显示，无需二次点击',
     },
+    textEffects: {
+      title: '文字演出动画',
+      desc: '开启后支持台词文字动画：<emphasis>加重</emphasis>、<shake level="high">抖动</shake>、<blur>模糊</blur>、<float>飘动</float>（角色会用标签标注演出文字）',
+    },
     sedentary: {
       title: '久坐喝水提醒',
       desc: '开启后每40分钟发送提醒一下久坐哦，只是健康小助手捏',

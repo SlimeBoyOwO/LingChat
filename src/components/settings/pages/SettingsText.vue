@@ -147,6 +147,21 @@
       </MenuItem>
 
       <MenuItem
+        :title="$t('settings.text.textEffects.title')"
+        size="small"
+      >
+        <template #header>
+          <Sparkles :size="20" />
+        </template>
+        <Toggle
+          :checked="settingsStore.text.textEffects"
+          @change="toggleTextEffects"
+        >
+          {{ $t('settings.text.textEffects.desc') }}
+        </Toggle>
+      </MenuItem>
+
+      <MenuItem
         :title="$t('settings.text.sedentary.title')"
         size="small"
       >
@@ -647,6 +662,7 @@ import {
   Import,
   Gauge,
   Timer,
+  Sparkles,
 } from 'lucide-vue-next'
 import {
   codexAuthStatus,
@@ -1171,6 +1187,17 @@ const voiceSound = (data: boolean) => {
 
 const toggleInlineMotionText = (data: boolean) => {
   settingsStore.update('text.inlineMotionText', data)
+}
+
+const toggleTextEffects = async (data: boolean) => {
+  settingsStore.update('text.textEffects', data)
+  // 同步到后端配置树：开启后提示词才会告知 LLM 标签语法
+  // （提示词经请求期注入，开关下次对话即生效，无需重载角色）
+  try {
+    await saveEnvConfigSettings({ 'text.text_effects': String(data) })
+  } catch (e) {
+    console.warn('同步文字演出动画开关到后端失败:', e)
+  }
 }
 
 const toggleSedentaryReminder = (data: boolean) => {
