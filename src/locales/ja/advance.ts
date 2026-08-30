@@ -5,6 +5,7 @@ export default {
     tools: 'ツール設定',
     other: 'その他の詳細設定',
     tts: 'ローカル TTS',
+    sherpa: 'Sherpa-ONNX',
   },
   menu: {
     llmTitle: 'モデル管理',

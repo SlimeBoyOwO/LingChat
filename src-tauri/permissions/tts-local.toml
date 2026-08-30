@@ -67,3 +67,45 @@ identifier = "tts-local-import-style-vectors"
 description = "Import a style_vectors.json file into an existing voice directory (model.onnx form only)."
 commands.allow = ["tts_local_import_style_vectors"]
 commands.deny = []
+
+[[permission]]
+identifier = "tts-local-delete-deberta"
+description = "Delete the locally installed DeBERTa model."
+commands.allow = ["tts_local_delete_deberta"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-list-sherpa-models"
+description = "List all available Sherpa-ONNX models from the registry."
+commands.allow = ["tts_local_list_sherpa_models"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-download-sherpa-model"
+description = "Download a Sherpa-ONNX model from the registry."
+commands.allow = ["tts_local_download_sherpa_model"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-delete-sherpa-model"
+description = "Delete a downloaded Sherpa-ONNX model."
+commands.allow = ["tts_local_delete_sherpa_model"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-get-device"
+description = "Get the current TTS inference device."
+commands.allow = ["tts_local_get_device"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-list-devices"
+description = "List available TTS inference devices."
+commands.allow = ["tts_local_list_devices"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-set-device"
+description = "Switch the TTS inference device."
+commands.allow = ["tts_local_set_device"]
+commands.deny = []

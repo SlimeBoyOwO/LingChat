@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 #[cfg(desktop)]
-use tauri::LogicalSize;
+use tauri::{LogicalSize, Manager};
 use tauri::AppHandle;
 
 #[derive(Clone, Deserialize, Debug)]

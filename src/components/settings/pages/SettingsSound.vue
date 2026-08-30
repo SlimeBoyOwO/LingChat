@@ -351,7 +351,6 @@ import {
   musicDelete,
   musicGetAll,
   musicUpload,
-  setCurrentBackgroundMusic,
 } from '../../../api/services/music'
 import { ambientGetAll, ambientUpload, ambientDelete, type AmbientItem } from '../../../api/services/ambient'
 import { useUIStore } from '../../../stores/modules/ui/ui'
@@ -740,7 +739,6 @@ const deleteMusic = async (music: MusicItem) => {
 
     if (uiStore.currentBackgroundMusic === deletedMusicUrl) {
       uiStore.currentBackgroundMusic = 'None'
-      await setCurrentBackgroundMusic('None')
 
       if (backgroundAudioPlayer.value) {
         backgroundAudioPlayer.value.pause()

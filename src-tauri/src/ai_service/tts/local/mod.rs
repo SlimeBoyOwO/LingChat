@@ -14,6 +14,37 @@ mod saf_bridge;
 
 use std::sync::Arc;
 
+/// 懒加载的 HTTP 客户端，供 Sherpa-ONNX 多文件下载使用。
+fn download_client() -> &'static reqwest::Client {
+    use std::sync::OnceLock;
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        crate::utils::download::build_download_client().expect("build download client")
+    })
+}
+
+/// 构建向 Tauri 前端发射 `tts://download-progress` 的进度回调（供 Sherpa 下载复用）。
+type ProgressCb = std::sync::Arc<dyn Fn(crate::utils::download::DownloadProgress) + Send + Sync>;
+
+fn sherpa_progress_cb(
+    app: &AppHandle,
+    asset_id: &str,
+) -> ProgressCb {
+    let app = app.clone();
+    let asset_id = asset_id.to_string();
+    std::sync::Arc::new(move |p| {
+        let _ = app.emit(
+            "tts://download-progress",
+            download::DownloadProgress {
+                asset_id: asset_id.clone(),
+                bytes_done: p.bytes_done,
+                total_bytes: p.total_bytes,
+                percent: p.percent,
+            },
+        );
+    })
+}
+
 pub use engine::{LocalTtsEngine, SynthesizeRequest};
 pub use paths::LocalTtsPaths;
 
@@ -515,8 +546,6 @@ async fn download_single_asset(
             })
         }
         registry::AssetKind::SherpaOnnx => {
-            let raw_dst = download_temp_path(entry, &state.paths.cache);
-            let bytes = download::download_asset(app, entry, &raw_dst, cancel).await?;
             let model_dir = state.paths.sherpa_onnx_models_dir();
             std::fs::create_dir_all(&model_dir)
                 .map_err(|e| format!("mkdir sherpa_onnx_models: {e}"))?;
@@ -525,11 +554,75 @@ async fn download_single_asset(
                 std::fs::remove_dir_all(&dest_dir)
                     .map_err(|e| format!("remove existing model dir: {e}"))?;
             }
-            std::fs::create_dir_all(&dest_dir)
-                .map_err(|e| format!("mkdir model dest: {e}"))?;
-            extract_archive(&raw_dst, &dest_dir)
-                .map_err(|e| format!("extract archive: {e}"))?;
-            let _ = tokio::fs::remove_file(&raw_dst).await;
+
+            // 计划 A：ModelScope 整目录下载；计划 B：HF Mirror 逐文件下载；计划 C：GitHub tar.bz2 整包回退
+            let bytes = if let Some(mdir) = &entry.modelscope_dir {
+                match download_sherpa_modelscope_dir(app, entry, mdir, &dest_dir, cancel.clone())
+                    .await
+                {
+                    Ok(bytes) => bytes,
+                    Err(ms_err) => {
+                        tracing::warn!(
+                            "ModelScope download failed for {}: {ms_err}, trying GitHub fallback",
+                            entry.id
+                        );
+                        if dest_dir.exists() {
+                            let _ = std::fs::remove_dir_all(&dest_dir);
+                        }
+                        download_sherpa_github_fallback(
+                            app,
+                            entry,
+                            &dest_dir,
+                            &state.paths.cache,
+                            cancel.clone(),
+                        )
+                            .await
+                            .map_err(|gh_err| {
+                                format!(
+                                    "ModelScope failed: {ms_err}; GitHub fallback also failed: {gh_err}"
+                                )
+                            })?
+                    }
+                }
+            } else if !entry.hf_files.is_empty() {
+                match download_sherpa_hf_files(app, entry, &dest_dir, cancel.clone()).await {
+                    Ok(bytes) => bytes,
+                    Err(hf_err) => {
+                        tracing::warn!(
+                            "HF mirror download failed for {}: {hf_err}, trying GitHub fallback",
+                            entry.id
+                        );
+                        if dest_dir.exists() {
+                            let _ = std::fs::remove_dir_all(&dest_dir);
+                        }
+                        download_sherpa_github_fallback(
+                            app,
+                            entry,
+                            &dest_dir,
+                            &state.paths.cache,
+                            cancel.clone(),
+                        )
+                            .await
+                            .map_err(|gh_err| {
+                                format!(
+                                    "HF failed: {hf_err}; GitHub fallback also failed: {gh_err}"
+                                )
+                            })?
+                    }
+                }
+            } else {
+                // 无 hf_files 时走原有 tar.bz2 逻辑
+                let raw_dst = download_temp_path(entry, &state.paths.cache);
+                let bytes =
+                    download::download_asset(app, entry, &raw_dst, cancel.clone()).await?;
+                std::fs::create_dir_all(&dest_dir)
+                    .map_err(|e| format!("mkdir model dest: {e}"))?;
+                extract_archive(&raw_dst, &dest_dir)
+                    .map_err(|e| format!("extract archive: {e}"))?;
+                let _ = tokio::fs::remove_file(&raw_dst).await;
+                bytes
+            };
+
             let _ = app.emit("tts://sherpa-onnx-model-downloaded", &entry.id);
             Ok(ImportResult {
                 asset_id: entry.id.clone(),
@@ -628,6 +721,249 @@ fn extract_archive(src: &Path, dest: &Path) -> Result<(), String> {
     flatten_single_subdir(dest)?;
 
     Ok(())
+}
+
+/// 从 HF Mirror 逐文件下载 Sherpa-ONNX 模型到目标目录。
+/// 成功返回 Ok(总字节数)；任一文件失败则返回 Err，由调用方决定回退策略。
+async fn download_sherpa_hf_files(
+    app: &AppHandle,
+    entry: &registry::AssetEntry,
+    dest_dir: &Path,
+    cancel: Arc<CancellationToken>,
+) -> Result<u64, String> {
+    std::fs::create_dir_all(dest_dir)
+        .map_err(|e| format!("mkdir sherpa model dir: {e}"))?;
+
+    let client = download_client();
+    let on_progress = sherpa_progress_cb(app, &entry.id);
+    let mut total_bytes: u64 = 0;
+
+    for (rel_path, url) in &entry.hf_files {
+        let file_dest = dest_dir.join(rel_path);
+        if let Some(parent) = file_dest.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("mkdir for {rel_path}: {e}"))?;
+        }
+        let bytes = crate::utils::download::download_to_file(
+            client,
+            url,
+            &file_dest,
+            Some(cancel.clone()),
+            Some(on_progress.clone()),
+            0,
+        )
+        .await
+        .map_err(|e| format!("download {rel_path}: {e}"))?;
+        total_bytes += bytes;
+    }
+    Ok(total_bytes)
+}
+
+/// 将 `<repo>/<子目录>` 拆分为仓库与子目录。
+///
+/// ModelScope 仓库路径形如 `<org>/<name>`（如 `gomodels/sherpa`），因此整个
+/// `mdir`（如 `gomodels/sherpa/matcha-icefall-zh-baker`）按**最后一个** `/` 拆分，
+/// 而不是第一个——否则 `repo` 会变成 `gomodels`，API 与 resolve URL 全部 404。
+fn split_modelscope_dir(mdir: &str) -> Result<(&str, &str), String> {
+    mdir.rsplit_once('/')
+        .ok_or_else(|| format!("invalid modelscope_dir: {mdir}"))
+}
+
+/// 从 ModelScope 仓库按目录整目录下载 Sherpa-ONNX 模型到目标目录。
+///
+/// `mdir` 形如 `<repo>/<子目录>`（如 `gomodels/sherpa/matcha-icefall-zh-baker`）。
+/// 优先通过 ModelScope repo API 递归枚举目录内全部 blob，再逐一下载到 `dest_dir`，
+/// 保留相对路径（含 espeak-ng-data、dict 等嵌套目录）；API 不可用时回退到
+/// [`registry::static_subdir_files`] 内置清单，逻辑对调用方透明。成功返回总字节数。
+async fn download_sherpa_modelscope_dir(
+    app: &AppHandle,
+    entry: &registry::AssetEntry,
+    mdir: &str,
+    dest_dir: &Path,
+    cancel: Arc<CancellationToken>,
+) -> Result<u64, String> {
+    std::fs::create_dir_all(dest_dir)
+        .map_err(|e| format!("mkdir sherpa model dir: {e}"))?;
+
+    let (repo, subdir) = split_modelscope_dir(mdir)?;
+
+    let client = download_client();
+
+    // 1) 先试 ModelScope repo API 枚举目录（www → apex，部分网络会把 apex 域名
+    //    的 `/api/**` 路由劫持为 `404 page not found`）；2) 全挂时回退到内置
+    //    静态清单直接按文件名从 `www.modelscope.cn/models/.../resolve/master/` 拉取，
+    //    让下载仍然走 ModelScope 而不是直接掉回 GitHub。
+    let prefix = format!("{subdir}/");
+    let paths: Vec<String> = match fetch_modelscope_dir_paths(client, repo, &prefix).await {
+        Ok(list) if !list.is_empty() => list,
+        Ok(_) => {
+            return Err(format!("ModelScope 目录为空或不存在: {mdir}"));
+        }
+        Err(api_err) => match registry::static_subdir_files(&entry.id) {
+            Some(static_files) => {
+                tracing::warn!(
+                    "ModelScope repo API 不可用: {api_err}; 改用内置静态清单下载 {}（{} 个文件）",
+                    entry.id,
+                    static_files.len()
+                );
+                static_files
+                    .iter()
+                    .map(|rel| format!("{subdir}/{rel}"))
+                    .collect()
+            }
+            None => return Err(api_err),
+        },
+    };
+
+    let on_progress = sherpa_progress_cb(app, &entry.id);
+    let mut total_bytes: u64 = 0;
+    let mut count: usize = 0;
+
+    for path in &paths {
+        if cancel.is_cancelled() {
+            return Err("download cancelled".into());
+        }
+        let rel_path = &path[prefix.len()..];
+        let url = format!(
+            "https://www.modelscope.cn/models/{repo}/resolve/master/{}",
+            url_encode_path(path)
+        );
+        let bytes = crate::utils::download::download_to_file(
+            client,
+            &url,
+            &dest_dir.join(rel_path),
+            Some(cancel.clone()),
+            Some(on_progress.clone()),
+            0,
+        )
+        .await
+        .map_err(|e| format!("download {path}: {e}"))?;
+        total_bytes += bytes;
+        count += 1;
+    }
+
+    if count == 0 {
+        return Err(format!("ModelScope 目录为空或不存在: {mdir}"));
+    }
+    Ok(total_bytes)
+}
+
+/// 尝试通过 ModelScope repo API 列出仓库 `<子目录>/` 下全部 blob 的完整路径。
+///
+/// 先试 `www.` 域名再试 apex（部分网络环境下 apex 的 `/api/**` 路由会被劫持为
+/// `404 page not found`），全部失败时返回聚合错误。成功返回按仓库根的完整
+/// 文件路径列表（形如 `<subdir>/dict/user.dict.utf8`）。
+async fn fetch_modelscope_dir_paths(
+    client: &reqwest::Client,
+    repo: &str,
+    prefix: &str,
+) -> Result<Vec<String>, String> {
+    let mut api_errors = String::new();
+    for host in ["https://www.modelscope.cn", "https://modelscope.cn"] {
+        let api_url =
+            format!("{host}/api/v1/models/{repo}/repo/files?Revision=master&Recursive=true");
+        let list = match fetch_modelscope_file_list(client, &api_url).await {
+            Ok(list) => list,
+            Err(e) => {
+                api_errors.push_str(&format!("{host}: {e}; "));
+                continue;
+            }
+        };
+        let mut paths = Vec::new();
+        for item in &list {
+            if item["Type"].as_str() != Some("blob") {
+                continue;
+            }
+            let Some(path) = item["Path"].as_str() else {
+                continue;
+            };
+            if path.starts_with(prefix) && path.len() > prefix.len() {
+                paths.push(path.to_string());
+            }
+        }
+        return Ok(paths);
+    }
+    Err(format!("ModelScope repo API 全部失败: {api_errors}"))
+}
+
+/// 对 ModelScope 文件路径做 URL 百分号编码。
+///
+/// 仓库里个别文件名为带空格（如 `espeak-ng-data/voices/!v/Mr serious`），
+/// reqwest 不会自动编码空格，直接拼接 URL 会得到 404/400。
+/// 这里仅保留 RFC 3986 非保留字符（`A-Z a-z 0-9 - _ . ~`）和 `/`，其余一律编码。
+fn url_encode_path(path: &str) -> String {
+    let mut out = String::with_capacity(path.len() + 16);
+    for b in path.bytes() {
+        // 仅保留 RFC 3986 非保留字符和路径分隔符，其余一律百分号编码。
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+/// 请求一次 ModelScope repo 文件列表 API，成功返回 `Data.Files` 数组。
+async fn fetch_modelscope_file_list(
+    client: &reqwest::Client,
+    api_url: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    let resp = client
+        .get(api_url)
+        .send()
+        .await
+        .map_err(|e| format!("request: {e}"))?;
+    let status = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("read body: {e}"))?;
+    if !status.is_success() {
+        return Err(format!(
+            "HTTP {status}: {}",
+            text.chars().take(512).collect::<String>()
+        ));
+    }
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("parse response: {e}"))?;
+    json["Data"]["Files"]
+        .as_array()
+        .cloned()
+        .ok_or_else(|| format!("missing Data.Files field"))
+}
+
+/// 从 GitHub Releases 下载 tar.bz2 回退包并解压到目标目录。
+/// 临时归档文件放在 `cache` 目录（卸载/清理后不残留到 tts-local 根目录）。
+async fn download_sherpa_github_fallback(
+    app: &AppHandle,
+    entry: &registry::AssetEntry,
+    dest_dir: &Path,
+    cache: &Path,
+    cancel: Arc<CancellationToken>,
+) -> Result<u64, String> {
+    let fallback_url = entry
+        .github_fallback_url
+        .as_deref()
+        .ok_or("no fallback URL available")?;
+
+    let temp_path = cache.join(format!("{}.fallback.tar.bz2", entry.id));
+
+    let client = download_client();
+    let bytes = crate::utils::download::download_to_file(
+        client,
+        fallback_url,
+        &temp_path,
+        Some(cancel),
+        Some(sherpa_progress_cb(app, &entry.id)),
+        entry.size_bytes,
+    )
+    .await?;
+    extract_archive(&temp_path, dest_dir)
+        .map_err(|e| format!("extract fallback archive: {e}"))?;
+    let _ = tokio::fs::remove_file(&temp_path).await;
+    Ok(bytes)
 }
 
 /// 如果 `dir` 内恰好只有一个子目录且没有文件，则将子目录内容上提一级。
@@ -869,6 +1205,32 @@ mod tests {
             voices: root.join("models").join("tts-local").join("voices"),
             cache: root.join("cache"),
         }
+    }
+
+    #[test]
+    fn url_encode_path_encodes_spaces_and_specials_only() {
+        assert_eq!(
+            url_encode_path("matcha_tts_zh_en_20251010/espeak-ng-data/voices/!v/Mr serious"),
+            "matcha_tts_zh_en_20251010/espeak-ng-data/voices/%21v/Mr%20serious"
+        );
+        assert_eq!(
+            url_encode_path("a#b?c&d+e  f"),
+            "a%23b%3Fc%26d%2Be%20%20f"
+        );
+        assert_eq!(url_encode_path("plain/model.onnx"), "plain/model.onnx");
+    }
+
+    #[test]
+    fn split_modelscope_dir_keeps_org_in_repo() {
+        assert_eq!(
+            split_modelscope_dir("gomodels/sherpa/matcha-icefall-zh-baker").unwrap(),
+            ("gomodels/sherpa", "matcha-icefall-zh-baker")
+        );
+        assert_eq!(
+            split_modelscope_dir("lingchat-research-studio/DeBERTa.onnx").unwrap(),
+            ("lingchat-research-studio", "DeBERTa.onnx")
+        );
+        assert!(split_modelscope_dir("no-slash").is_err());
     }
 
     #[test]

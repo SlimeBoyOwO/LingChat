@@ -6,6 +6,7 @@ export default {
     tools: "Tool Settings",
     other: "Other Advanced Settings",
     tts: "Local TTS",
+    sherpa: "Sherpa-ONNX",
   },
   menu: {
     llmTitle: "LLM Management",

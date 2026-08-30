@@ -1,17 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
-import http from '../http'
-import type { Character, CharacterSelectParams } from '../../types'
+import type { Character } from '../../types'
 import type { WebInitData } from './game-info'
 import { i18n } from '@/locales'
-
-interface CharacterSelectResponse {
-  success: boolean
-  character: {
-    id: number
-    title: string
-    folder_name: string
-  }
-}
 
 export interface CharacterPageResult {
   items: Character[]
@@ -30,17 +20,6 @@ export const characterGetAll = async (
     return data as CharacterPageResult
   } catch (error: any) {
     throw new Error(typeof error === 'string' ? error : i18n.global.t('api.character.getListFailed'))
-  }
-}
-
-export const characterSelect = async (
-  params: CharacterSelectParams,
-): Promise<CharacterSelectResponse> => {
-  try {
-    const response = await http.post('/v1/chat/character/select_character', params)
-    return response
-  } catch (error: any) {
-    throw new Error(error.response?.data?.detail || i18n.global.t('api.character.selectFailed'))
   }
 }
 
@@ -100,24 +79,6 @@ export const updateRoleSettings = async (roleId: number, settings: any): Promise
   }
 }
 
-export interface CreateCharacterResponse {
-  success: boolean
-  data: {
-    character_id: number
-    title: string
-    resource_folder: string
-  }
-}
-
-export const createCharacter = async (formData: FormData): Promise<CreateCharacterResponse> => {
-  try {
-    const response = await http.post('/v1/chat/character/create', formData)
-    return response
-  } catch (error: any) {
-    throw new Error(error.response?.data?.detail || i18n.global.t('api.character.createFailed'))
-  }
-}
-
 export interface SelectClothesResponse {
   success: boolean
   message: string
@@ -166,5 +127,43 @@ export const deleteCharacter = async (
     })
   } catch (error: any) {
     throw new Error(typeof error === 'string' ? error : '删除角色失败')
+  }
+}
+
+export interface CreateCharacterResult {
+  success: boolean
+  character_id: number
+  title: string
+  resource_folder: string
+}
+
+export interface CreateCharacterParams {
+  resourceFolder: string
+  settings: Record<string, unknown>
+  avatarFileName: string
+  avatarData: Uint8Array
+  emotionImages: Array<{
+    emotion: string
+    fileName: string
+    data: Uint8Array
+  }>
+}
+
+/**
+ * 新建 main 角色（替代已被移除的旧 HTTP /v1/chat/character/create 接口）。
+ * 头像与情绪立绘以字节形式一并提交，由后端写盘并注册角色。
+ */
+export async function createCharacter(
+  params: CreateCharacterParams,
+): Promise<CreateCharacterResult> {
+  try {
+    const result = await invoke<CreateCharacterResult>('create_character', {
+      ...params,
+    })
+    return result
+  } catch (error: any) {
+    throw new Error(
+      typeof error === 'string' ? error : error?.message || '创建角色失败',
+    )
   }
 }

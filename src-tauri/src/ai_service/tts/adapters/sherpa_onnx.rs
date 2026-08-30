@@ -4,7 +4,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value as JsonValue};
-use sherpa_onnx::{GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsModelConfig, OfflineTtsVitsModelConfig};
+use sherpa_onnx::{
+    GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsKokoroModelConfig,
+    OfflineTtsMatchaModelConfig, OfflineTtsModelConfig, OfflineTtsVitsModelConfig,
+    OfflineTtsZipvoiceModelConfig,
+};
 
 use crate::ai_service::tts::provider::TtsAdapter;
 use crate::config::tts::TtsConfig;
@@ -37,14 +41,42 @@ impl SherpaOnnxAdapter {
             return Err(anyhow!("Sherpa-ONNX 模型目录不存在: {model_path}"));
         }
 
-        let tts = match model_type.as_str() {
-            "vits" | "fastspeech2" => Self::create_vits_tts(model_dir)?,
-            other => return Err(anyhow!("Sherpa-ONNX 不支持的模型类型: {other}")),
+        let provider = Self::provider_for(use_gpu);
+
+        // 按平台选择合适的执行提供方（GPU/专用加速）；不可用或失败时回退 CPU。
+        let create = |provider: Option<&str>| -> Result<OfflineTts> {
+            match model_type.as_str() {
+                "vits" | "fastspeech2" => Self::create_vits_tts(model_dir, provider),
+                "matcha" => Self::create_matcha_tts(model_dir, provider),
+                "kokoro" => Self::create_kokoro_tts(model_dir, &language, provider),
+                "zipvoice" => Self::create_zipvoice_tts(model_dir, provider),
+                other => return Err(anyhow!("Sherpa-ONNX 不支持的模型类型: {other}")),
+            }
+        };
+
+        let tts = match create(provider) {
+            Ok(tts) => {
+                if let Some(p) = provider {
+                    tracing::info!("Sherpa-ONNX 使用推理后端: {p}");
+                }
+                tts
+            }
+            Err(e) => match provider {
+                // GPU/专用后端初始化失败时静默回退到 CPU，保证可用性。
+                Some(_) => {
+                    tracing::warn!(
+                        "Sherpa-ONNX 后端初始化失败（{e}），回退到 CPU 推理"
+                    );
+                    create(None)?
+                }
+                None => return Err(e),
+            },
         };
 
         let sr = tts.sample_rate();
         tracing::info!(
-            "Sherpa-ONNX 初始化完成: model_type={model_type}, language={language}, sample_rate={sr}"
+            "Sherpa-ONNX 初始化完成: model_type={model_type}, language={language}, provider={:?}, sample_rate={sr}",
+            provider.unwrap_or("cpu")
         );
 
         Ok(Self {
@@ -62,6 +94,38 @@ impl SherpaOnnxAdapter {
         })
     }
 
+    /// 根据是否开启 GPU 加速与目标平台，选择 ONNX Runtime 执行提供方。
+    ///
+    /// 返回 `None` 表示使用 CPU。各平台：
+    /// - Android: `nnapi`（走设备 GPU/NPU）
+    /// - Windows: `dml`（DirectML，无需单独装 CUDA 工具链）
+    /// - macOS: `coreml`
+    /// - Linux x86_64: `cuda`（需 NVIDIA 驱动/运行时，不可用会自动回退 CPU）
+    /// - 其它: CPU
+    fn provider_for(use_gpu: bool) -> Option<&'static str> {
+        if !use_gpu {
+            return None;
+        }
+        #[cfg(target_os = "android")]
+        {
+            return Some("nnapi");
+        }
+        #[cfg(target_os = "windows")]
+        {
+            return Some("dml");
+        }
+        #[cfg(target_os = "macos")]
+        {
+            return Some("coreml");
+        }
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            return Some("cuda");
+        }
+        #[allow(unreachable_code)]
+        None
+    }
+
     pub fn set_reference_audio(&mut self, samples: Vec<f32>, sample_rate: i32, text: String) {
         self.reference_audio = Some(samples);
         self.reference_sample_rate = Some(sample_rate);
@@ -72,7 +136,7 @@ impl SherpaOnnxAdapter {
         self.speed = speed;
     }
 
-    fn create_vits_tts(model_dir: &Path) -> Result<OfflineTts> {
+    fn create_vits_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTts> {
         let model_file = find_file(model_dir, &["model.onnx", "tts-model.onnx", "sherpa-onnx-tts.onnx"])?;
         let tokens_file = find_file(model_dir, &["tokens.txt"])?;
 
@@ -93,6 +157,7 @@ impl SherpaOnnxAdapter {
         let config = OfflineTtsConfig {
             model: OfflineTtsModelConfig {
                 vits: vits_config,
+                provider: provider.map(|s| s.to_string()),
                 ..Default::default()
             },
             max_num_sentences: 2,
@@ -101,6 +166,131 @@ impl SherpaOnnxAdapter {
 
         OfflineTts::create(&config)
             .ok_or_else(|| anyhow!("Sherpa-ONNX VITS 模型加载失败，请检查模型文件是否完整"))
+    }
+
+    /// 返回包含 `espeak-ng-data` 子目录的父目录（即 data_dir 的取值）。
+    fn espeak_data_dir(model_dir: &Path) -> Option<PathBuf> {
+        find_dir_optional(model_dir, &["espeak-ng-data"])
+            .map(|p| p.parent().unwrap_or(model_dir).to_path_buf())
+    }
+
+    fn create_matcha_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTts> {
+        let acoustic_model =
+            find_file(model_dir, &["model.onnx", "model-steps-3.onnx", "model-steps-6.onnx"])?;
+        let tokens_file = find_file(model_dir, &["tokens.txt"])?;
+        let vocoder = find_file(
+            model_dir,
+            &[
+                "vocos-22khz-univ.onnx",
+                "vocos-16khz-univ.onnx",
+                "hifigan_v3.onnx",
+                "mb_melgan.onnx",
+                "vocoder.onnx",
+            ],
+        )?;
+
+        let matcha_config = OfflineTtsMatchaModelConfig {
+            acoustic_model: Some(acoustic_model.to_string_lossy().to_string()),
+            vocoder: Some(vocoder.to_string_lossy().to_string()),
+            lexicon: find_file_optional(model_dir, &["lexicon.txt"])
+                .map(|p| p.to_string_lossy().to_string()),
+            tokens: Some(tokens_file.to_string_lossy().to_string()),
+            data_dir: Self::espeak_data_dir(model_dir)
+                .map(|p| p.to_string_lossy().to_string()),
+            noise_scale: 0.667,
+            length_scale: 1.0,
+            dict_dir: find_dir_optional(model_dir, &["dict"])
+                .map(|p| p.to_string_lossy().to_string()),
+        };
+
+        let config = OfflineTtsConfig {
+            model: OfflineTtsModelConfig {
+                matcha: matcha_config,
+                provider: provider.map(|s| s.to_string()),
+                ..Default::default()
+            },
+            max_num_sentences: 2,
+            ..Default::default()
+        };
+
+        OfflineTts::create(&config)
+            .ok_or_else(|| anyhow!("Sherpa-ONNX Matcha 模型加载失败，请检查模型文件是否完整"))
+    }
+
+    fn create_kokoro_tts(
+        model_dir: &Path,
+        language: &str,
+        provider: Option<&str>,
+    ) -> Result<OfflineTts> {
+        let model = find_file(model_dir, &["model.onnx", "model.int8.onnx"])?;
+        let voices = find_file(model_dir, &["voices.bin"])?;
+        // kokoro-int8-multi-lang-v1_1 支持 auto/zh/en 等 lang；默认交给模型自动判断。
+        let lang = match language {
+            "zh" | "en" | "ja" => language.to_string(),
+            _ => "auto".to_string(),
+        };
+
+        let kokoro_config = OfflineTtsKokoroModelConfig {
+            model: Some(model.to_string_lossy().to_string()),
+            voices: Some(voices.to_string_lossy().to_string()),
+            tokens: find_file_optional(model_dir, &["tokens.txt"])
+                .map(|p| p.to_string_lossy().to_string()),
+            data_dir: Self::espeak_data_dir(model_dir)
+                .map(|p| p.to_string_lossy().to_string()),
+            length_scale: 1.0,
+            dict_dir: find_dir_optional(model_dir, &["dict"])
+                .map(|p| p.to_string_lossy().to_string()),
+            lexicon: None,
+            lang: Some(lang),
+        };
+
+        let config = OfflineTtsConfig {
+            model: OfflineTtsModelConfig {
+                kokoro: kokoro_config,
+                provider: provider.map(|s| s.to_string()),
+                ..Default::default()
+            },
+            max_num_sentences: 2,
+            ..Default::default()
+        };
+
+        OfflineTts::create(&config)
+            .ok_or_else(|| anyhow!("Sherpa-ONNX Kokoro 模型加载失败，请检查模型文件是否完整"))
+    }
+
+    fn create_zipvoice_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTts> {
+        let encoder = find_file(model_dir, &["text_encoder.onnx"])?;
+        let decoder = find_file(model_dir, &["fm_decoder.onnx"])?;
+        let vocoder = find_file(model_dir, &["vocos_24khz.onnx", "vocoder.onnx"])?;
+
+        let zipvoice_config = OfflineTtsZipvoiceModelConfig {
+            tokens: find_file_optional(model_dir, &["tokens.txt"])
+                .map(|p| p.to_string_lossy().to_string()),
+            encoder: Some(encoder.to_string_lossy().to_string()),
+            decoder: Some(decoder.to_string_lossy().to_string()),
+            vocoder: Some(vocoder.to_string_lossy().to_string()),
+            data_dir: Self::espeak_data_dir(model_dir)
+                .map(|p| p.to_string_lossy().to_string()),
+            lexicon: find_file_optional(model_dir, &["lexicon.txt"])
+                .map(|p| p.to_string_lossy().to_string()),
+            feat_scale: 10.0,
+            t_shift: 0.005,
+            target_rms: 0.25,
+            guidance_scale: 1.0,
+        };
+
+        let config = OfflineTtsConfig {
+            model: OfflineTtsModelConfig {
+                zipvoice: zipvoice_config,
+                provider: provider.map(|s| s.to_string()),
+                ..Default::default()
+            },
+            max_num_sentences: 2,
+            ..Default::default()
+        };
+
+        OfflineTts::create(&config)
+            .ok_or_else(|| anyhow!("Sherpa-ONNX ZipVoice 模型加载失败，请检查模型文件是否完整"))
     }
 }
 
@@ -281,4 +471,70 @@ fn find_wav_data_chunk(data: &[u8]) -> Option<usize> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_model_dir() -> String {
+        std::env::var("SHERPA_TEST_MODEL_DIR").unwrap_or_default()
+    }
+
+    /// 解析 WAV 字节并返回 (采样率, 单声道样本数)。
+    fn parse_wav(wav: &[u8]) -> (u32, usize) {
+        assert!(wav.len() >= 44, "WAV 太短");
+        assert_eq!(&wav[0..4], b"RIFF", "缺 RIFF 头");
+        assert_eq!(&wav[8..12], b"WAVE", "缺 WAVE");
+        let sample_rate = u32::from_le_bytes(wav[24..28].try_into().unwrap());
+        let bits = u16::from_le_bytes(wav[34..36].try_into().unwrap());
+        let data_start = find_wav_data_chunk(wav).expect("缺 data chunk");
+        let data_bytes = wav.len() - data_start;
+        (sample_rate, data_bytes / (bits as usize / 8))
+    }
+
+    /// 完整跑一遍 Matcha 语音合成（覆盖初始化 + generate_voice + WAV 编码），
+    /// 分别验证 CPU 与 GPU(此机无 NVIDIA -> CUDA 失败回退 CPU) 两条路径。
+    ///
+    /// 依赖真实模型，默认忽略；通过设置 `SHERPA_TEST_MODEL_DIR`（模型目录）
+    /// 并用 `-- --ignored` 显式运行。
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore = "需要真实 sherpa 模型目录（SHERPA_TEST_MODEL_DIR）"]
+    async fn full_matcha_synthesis() {
+        let model_dir = test_model_dir();
+        assert!(
+            !model_dir.is_empty() && Path::new(&model_dir).exists(),
+            "模型目录不存在，请设置 SHERPA_TEST_MODEL_DIR: {model_dir}"
+        );
+
+        for use_gpu in [false, true] {
+            let adapter = SherpaOnnxAdapter::new(
+                TtsConfig::default(),
+                model_dir.clone(),
+                "matcha".to_string(),
+                "zh".to_string(),
+                "female".to_string(),
+                use_gpu,
+            )
+            .unwrap_or_else(|e| panic!("use_gpu={use_gpu} 初始化失败: {e}"));
+
+            let wav = adapter
+                .generate_voice("你好，世界。这是一段语音合成测试。", "")
+                .await
+                .expect("生成失败");
+
+            let (sr, samples) = parse_wav(&wav);
+            assert_eq!(sr, 22050, "Matcha-zh 采样率应为 22050");
+            assert!(samples >= 5, "生成音频过短");
+
+            let data_start = find_wav_data_chunk(&wav).unwrap();
+            let pcm = &wav[data_start..];
+            let has_signal = pcm.chunks_exact(2).any(|c| {
+                let v = i16::from_le_bytes([c[0], c[1]]);
+                v.unsigned_abs() > 200
+            });
+            assert!(has_signal, "use_gpu={use_gpu} 生成音频疑似全静音");
+            eprintln!("use_gpu={use_gpu}: sr={sr}, 样本数={samples}, WAV-Ok");
+        }
+    }
 }

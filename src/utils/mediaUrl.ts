@@ -56,3 +56,31 @@ export async function toPlayableMediaUrl(path: string): Promise<string> {
   }
   return pending
 }
+
+// 当前正在播放的本地音频（test 试听等场景，同一页面建议共用，避免叠加）
+let currentAudio: HTMLAudioElement | null = null
+
+/**
+ * 播放本地媒体文件（返回的是后端生成的绝对/相对路径）。
+ * 桌面端与 Android 都走 toPlayableMediaUrl，Android 大文件场景由 blob 兜底。
+ */
+export async function playLocalAudio(path: string): Promise<HTMLAudioElement> {
+  stopCurrentAudio()
+  const url = await toPlayableMediaUrl(path)
+  const audio = new Audio(url)
+  currentAudio = audio
+  audio.play().catch((err) => {
+    console.error('播放本地音频失败:', err, path)
+  })
+  return audio
+}
+
+/** 停止并释放当前正在播放的本地音频 */
+export function stopCurrentAudio(): void {
+  if (currentAudio) {
+    currentAudio.pause()
+    currentAudio.currentTime = 0
+    currentAudio.src = ''
+    currentAudio = null
+  }
+}

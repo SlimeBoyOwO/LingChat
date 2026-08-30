@@ -171,5 +171,14 @@ commands.allow = [
   "plugin_save_config",
   "plugin_reload",
   "plugin_delete",
+  "get_character_voice_settings",
+  "save_character_voice_settings",
+  "open_sherpa_onnx_model_manager",
+  "test_sherpa_onnx_voice",
+  "get_gpu_info",
+  "redetect_gpu",
+  "generate_line_voice",
+  "editor_agent_rename_conversation",
+  "editor_agent_rewind",
 ]
 commands.deny = []

@@ -5,6 +5,7 @@ export default {
     tools: '工具配置',
     other: '其他高级设置',
     tts: '本地 TTS',
+    sherpa: 'Sherpa-ONNX',
   },
   menu: {
     llmTitle: '大模型管理',

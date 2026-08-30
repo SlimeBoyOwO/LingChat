@@ -951,3 +951,136 @@ pub async fn test_sherpa_onnx_voice(
         "audio_path": audio_path.to_string_lossy(),
     }))
 }
+
+/// 新角色创建时单个情绪立绘的上传数据。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmotionImageUpload {
+    /// 情绪名（后端协议字段，如 正常/高兴/伤心...）
+    pub emotion: String,
+    /// 原始文件名，用于推断扩展名
+    pub file_name: String,
+    /// 图片字节
+    pub data: Vec<u8>,
+}
+
+/// 从原始文件名推断小写扩展名；无扩展名返回 None。
+fn file_ext_of(file_name: &str) -> Option<String> {
+    let name = file_name.rsplit(['/', '\\']).next().unwrap_or(file_name);
+    let ext = name.split('.').last().unwrap_or("");
+    if ext.is_empty() || ext.len() > 5 {
+        return None;
+    }
+    Some(ext.to_lowercase())
+}
+
+/// 新建一个 main 角色：
+/// 1. 在 `characters/<resource_folder>/` 下创建 avatar 目录，写入头像与情绪立绘；
+/// 2. 写入 settings.yml；
+/// 3. 注册到数据库并同步运行时角色管理器。
+#[tauri::command]
+pub async fn create_character(
+    app: AppHandle,
+    resource_folder: String,
+    settings: CharacterSettings,
+    avatar_file_name: String,
+    avatar_data: Vec<u8>,
+    emotion_images: Vec<EmotionImageUpload>,
+) -> Result<serde_json::Value, String> {
+    let state = app.state::<AppState>();
+    let db = &state.db;
+
+    // ---- 参数校验 ----
+    let folder = resource_folder.trim();
+    if folder.is_empty() {
+        return Err("资源文件夹不能为空".into());
+    }
+    if folder.contains('/')
+        || folder.contains('\\')
+        || folder.contains("..")
+        || folder.starts_with('.')
+    {
+        return Err("资源文件夹不能包含路径分隔符或点号".into());
+    }
+    if avatar_data.is_empty() {
+        return Err("头像数据为空".into());
+    }
+
+    let base_path = characters_dir().join(folder);
+    if base_path.exists() {
+        return Err(format!("角色目录已存在: {folder}"));
+    }
+
+    let title = settings
+        .title
+        .clone()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| settings.ai_name.clone());
+
+    // ---- 创建目录并写入头像 ----
+    let avatar_dir = base_path.join("avatar");
+    fs::create_dir_all(&avatar_dir).map_err(|e| format!("创建角色目录失败: {e}"))?;
+
+    let avatar_ext = file_ext_of(&avatar_file_name).unwrap_or_else(|| "png".into());
+    let avatar_path = avatar_dir.join(format!("头像.{avatar_ext}"));
+    fs::write(&avatar_path, &avatar_data).map_err(|e| format!("写入头像失败: {e}"))?;
+
+    // ---- 写入情绪立绘（跳过空数据/非法情绪名）----
+    for img in &emotion_images {
+        let emotion = img.emotion.trim();
+        if img.data.is_empty()
+            || emotion.is_empty()
+            || emotion.contains('/')
+            || emotion.contains('\\')
+            || emotion.starts_with('.')
+        {
+            continue;
+        }
+        let ext = file_ext_of(&img.file_name).unwrap_or_else(|| "webp".into());
+        let dest = avatar_dir.join(format!("{emotion}.{ext}"));
+        fs::write(&dest, &img.data).map_err(|e| format!("写入情绪立绘 {emotion} 失败: {e}"))?;
+    }
+
+    // ---- settings.yml ----
+    let mut save_data = settings.clone();
+    save_data.character_folder = folder.to_string();
+    save_data.resource_path = Some(base_path.to_string_lossy().into_owned());
+    let yaml_str =
+        serde_yaml::to_string(&save_data).map_err(|e| format!("序列化设置失败: {e}"))?;
+    fs::write(base_path.join("settings.yml"), &yaml_str)
+        .map_err(|e| format!("保存设置失败: {e}"))?;
+
+    // ---- 注册数据库 ----
+    let role_id = RoleRepo::find_or_create_role(
+        db,
+        &title,
+        RoleType::Main,
+        None,
+        None,
+        Some(folder),
+    )
+    .await
+    .map_err(|e| format!("注册角色失败: {e}"))?;
+
+    // ---- 同步运行时角色管理器（未加载则下次加载生效）----
+    {
+        let service = state.ai_service.lock().await;
+        let mut gs = service.game_status.lock().await;
+        gs.role_manager
+            .update_role_voice_settings(role_id, &save_data);
+    }
+
+    tracing::info!(
+        "创建角色成功: {} (id={}, folder={})",
+        title,
+        role_id,
+        folder
+    );
+
+    Ok(serde_json::json!({
+        "success": true,
+        "character_id": role_id,
+        "title": title,
+        "resource_folder": folder,
+    }))
+}

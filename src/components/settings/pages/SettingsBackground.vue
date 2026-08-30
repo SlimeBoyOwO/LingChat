@@ -383,7 +383,6 @@ import type { BackgroundImageInfo } from '../../../types'
 import {
   getBackgroundImages,
   uploadBackgroundImage,
-  generateBackgroundImage,
   openBackgroundsFolder,
 } from '../../../api/services/background'
 import { unlockAchievement } from '../../../api/services/achievement'

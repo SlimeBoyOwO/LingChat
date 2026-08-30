@@ -2,7 +2,17 @@
   <MenuPage>
     <MenuItem :title="$t('settings.character.list.title')">
       <template #header>
-        <Rabbit :size="20" />
+        <div class="flex w-full items-center gap-2">
+          <Rabbit :size="20" />
+          <span class="font-medium">{{ $t('settings.character.list.title') }}</span>
+          <button
+            class="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg bg-cyan-400/90 px-3 text-sm font-medium text-slate-900 transition hover:bg-cyan-300 disabled:opacity-40"
+            @click="createVisible = true"
+          >
+            <Plus :size="14" />
+            {{ $t('settings.character.create.button') }}
+          </button>
+        </div>
       </template>
 
       <div class="grid gap-5 p-3.75 w-full grid-cols-1 md:grid-cols-2">
@@ -87,6 +97,12 @@
       <Button type="big" @click="openCreativeWeb">{{ $t('settings.character.workshop.enter') }}</Button>
     </MenuItem>
 
+    <SettingsCharacterCreate
+      :visible="createVisible"
+      @close="createVisible = false"
+      @created="handleCharacterCreated"
+    />
+
   </MenuPage>
 </template>
 
@@ -94,13 +110,14 @@
 import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { Birdhouse, FolderOpen, PackageOpen, Rabbit, RefreshCcw } from 'lucide-vue-next'
+import { Birdhouse, FolderOpen, PackageOpen, Plus, Rabbit, RefreshCcw } from 'lucide-vue-next'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { invoke } from '@tauri-apps/api/core'
 
 import CharacterCard from '../../ui/Menu/CharacterCard.vue'
 import { Button } from '../../base'
 import { MenuItem, MenuPage } from '../../ui'
+import SettingsCharacterCreate from './SettingsCharacterCreate.vue'
 import { characterGetAll } from '../../../api/services/character'
 import { useRoleImportExport } from '../../../composables/useRoleImportExport'
 import type { ConflictPolicy } from '../../../api/services/role-archive'
@@ -125,6 +142,7 @@ interface CharacterCardData {
 const characters = ref<CharacterCardData[]>([])
 const currentPage = ref(1)
 const totalPages = ref(1)
+const createVisible = ref(false)
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const router = useRouter()
@@ -220,6 +238,12 @@ const openCharacterFolder = async () => {
 }
 
 const handleSettingsSaved = () => {
+  refreshCharacters()
+}
+
+const handleCharacterCreated = () => {
+  createVisible.value = false
+  currentPage.value = 1
   refreshCharacters()
 }
 

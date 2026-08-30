@@ -221,7 +221,7 @@
   />
 
   <CharacterVoiceSettingsModal
-    :visible="isVoiceSettingsVisible"
+    v-if="isVoiceSettingsVisible"
     :character-id="id"
     :initial-settings="voiceSettings"
     @close="closeVoiceSettings"

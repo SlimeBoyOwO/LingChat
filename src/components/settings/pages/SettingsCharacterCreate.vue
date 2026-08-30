@@ -672,6 +672,10 @@ const submitCreate = async () => {
   creating.value = true
 
   try {
+    const readBytes = async (file: File): Promise<Uint8Array> => {
+      return new Uint8Array(await file.arrayBuffer())
+    }
+
     const settingsPayload = {
       ai_name: form.ai_name.trim(),
       ai_subtitle: form.ai_subtitle.trim(),
@@ -680,7 +684,8 @@ const submitCreate = async () => {
       title: form.title.trim(),
       info: form.info.trim(),
       scale: Number(form.scale),
-      offset: Number(form.offset),
+      offset_x: Number(form.offset),
+      offset_y: 0,
       bubble_top: Number(form.bubble_top),
       bubble_left: Number(form.bubble_left),
       thinking_message: form.thinking_message.trim() || '正在思考中...',
@@ -690,24 +695,35 @@ const submitCreate = async () => {
       system_prompt_example_old: form.system_prompt_example_old.trim() || null,
     }
 
-    const formData = new FormData()
-    formData.append('resource_folder', form.resource_folder.trim())
-    formData.append('settings_json', JSON.stringify(settingsPayload))
-    formData.append('avatar_file', avatarFile.value)
+    const emotionImages = await Promise.all(
+      EMOTION_SLOTS.map(async (emotion) => {
+        const emotionFile = emotionFiles[emotion]
+        if (!emotionFile) {
+          throw new Error(
+            t('settings.characterCreate.errors.missingEmotionFile', { name: emotionLabel(emotion) }),
+          )
+        }
+        return {
+          emotion,
+          fileName: emotionFile.name,
+          data: await readBytes(emotionFile),
+        }
+      }),
+    )
 
-    for (const emotion of EMOTION_SLOTS) {
-      const emotionFile = emotionFiles[emotion]
-      if (!emotionFile) {
-        throw new Error(
-          t('settings.characterCreate.errors.missingEmotionFile', { name: emotionLabel(emotion) }),
-        )
-      }
-      formData.append('emotion_names', emotion)
-      formData.append('emotion_files', emotionFile)
-    }
+    const result = await createCharacter({
+      resourceFolder: form.resource_folder.trim(),
+      settings: settingsPayload,
+      avatarFileName: avatarFile.value.name,
+      avatarData: await readBytes(avatarFile.value),
+      emotionImages,
+    })
 
-    const response = await createCharacter(formData)
-    emit('created', response.data)
+    emit('created', {
+      character_id: result.character_id,
+      title: result.title,
+      resource_folder: result.resource_folder,
+    })
     emit('close')
   } catch (error: any) {
     errorMessage.value = error?.message || t('settings.characterCreate.errors.createFailed')

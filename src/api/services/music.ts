@@ -1,5 +1,4 @@
 import { invoke } from '@tauri-apps/api/core'
-import http from '../http'
 import type { MusicTrack } from '../../types'
 
 export const musicGetAll = async (): Promise<MusicTrack[]> => {
@@ -26,10 +25,6 @@ export const musicDelete = async (url: string): Promise<void> => {
   } catch (error: any) {
     throw new Error(typeof error === 'string' ? error : error.message || 'Music delete failed')
   }
-}
-
-export const setCurrentBackgroundMusic = async (music: string): Promise<void> => {
-  await http.post('/v1/chat/back-music/select', { music })
 }
 
 /** 持久化背景音乐状态到 settings.json，下次启动时自动恢复 */
