@@ -7,6 +7,61 @@ import { useUIStore } from '../ui/ui'
 import { useSettingsStore } from '../settings'
 import type { SceneInfo } from '@/api/services/scene'
 import { invoke } from '@tauri-apps/api/core'
+import { resetScriptWindowTitle } from '@/utils/windowTitleCoordinator'
+
+function clearStoryInteractionState(state: GameState) {
+  state.runningScript = null
+  state.forceChoice = null
+  state.poemGame = null
+}
+
+function restoreStoryMedia(uiStore: ReturnType<typeof useUIStore>) {
+  if (uiStore.preScriptBgm !== null) {
+    uiStore.currentBackgroundMusic = uiStore.preScriptBgm
+    uiStore.preScriptBgm = null
+  }
+  if (uiStore.preScriptBgmMode !== null) {
+    uiStore.bgMusicMode = uiStore.preScriptBgmMode
+    uiStore.preScriptBgmMode = null
+  }
+  uiStore.bgmPersistBlocked = false
+  uiStore.clearAmbientTracks()
+  uiStore.triggerSoundEffect('None')
+  uiStore.bgMusicPlaybackRate = 1
+}
+
+function clearStoryEffects(uiStore: ReturnType<typeof useUIStore>) {
+  uiStore.resetHorrorEffects()
+  resetScriptWindowTitle()
+  uiStore.showPlayerHintLine = ''
+}
+
+function restoreStoryStage(state: GameState, uiStore: ReturnType<typeof useUIStore>) {
+  if (uiStore.preScriptBackground !== null) {
+    useSettingsStore().setCurrentBackground(uiStore.preScriptBackground)
+    uiStore.preScriptBackground = null
+  }
+  if (state.preScriptRoleIds !== null) {
+    state.presentRoleIds = state.preScriptRoleIds
+    state.preScriptRoleIds = null
+  }
+  for (const id of state.presentRoleIds) {
+    const role = state.gameRoles[id]
+    if (role) {
+      role.show = true
+      role.emotion = '正常'
+    }
+  }
+}
+
+function releaseStorySystemResources(notifyBackend: boolean) {
+  invoke('close_script_glitch_windows').catch((err) =>
+    console.warn('[Script] 关闭故障窗口失败（非致命）:', err),
+  )
+  if (notifyBackend) {
+    invoke('stop_script').catch((err) => console.warn('[Script] stop_script 失败（非致命）:', err))
+  }
+}
 
 export const actions = {
   appendGameMessage(this: GameState, message: GameMessage) {
@@ -77,10 +132,16 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
   },
 
   /** 标记进入剧情模式（用于控制UI显示：隐藏番茄钟/日程等） */
-  enterStoryMode(this: GameState, scriptName: string = 'unknown', contentWarning?: string) {
+  enterStoryMode(
+    this: GameState,
+    scriptName: string = 'unknown',
+    contentWarning?: string,
+    folderKey?: string,
+  ) {
     this.poemGame = null
     this.runningScript = {
       scriptName,
+      folderKey,
       currentChapterName: '',
       choices: [],
       isRunning: true,
@@ -117,66 +178,14 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
     uiStore.resetHorrorEffects()
   },
 
-  /** 标记退出剧情模式，回到自由对话模式 */
+  /** 标记退出剧情模式，回到自由对话模式；各子步骤均为幂等 helper。 */
   exitStoryMode(this: GameState, notifyBackend = true) {
-    this.runningScript = null
-    this.forceChoice = null
-    this.poemGame = null
-    // 恢复自由对话的 BGM 与循环模式并解除持久化屏蔽（恢复后的值会经 $subscribe 正常写盘）
     const uiStore = useUIStore()
-    if (uiStore.preScriptBgm !== null) {
-      uiStore.currentBackgroundMusic = uiStore.preScriptBgm
-      uiStore.preScriptBgm = null
-    }
-    if (uiStore.preScriptBgmMode !== null) {
-      uiStore.bgMusicMode = uiStore.preScriptBgmMode
-      uiStore.preScriptBgmMode = null
-    }
-    uiStore.bgmPersistBlocked = false
-
-    // —— 剧本残留清理：中途点「自由对话」退出时走不到 script:end 事件，
-    //    所有出剧本必须还原的状态都在这里兜底（自然结束时 script-end-processor
-    //    也会调到这里，幂等重复清理无害）——
-    // 恐怖特效/突脸/立绘闪现/恶魔音
-    uiStore.resetHorrorEffects()
-    // 剧本的输入提示（如「输入"继续"继续」）不得留在自由对话输入框
-    uiStore.showPlayerHintLine = ''
-    // 剧本挂起的环境音（rumble 等循环轨）和短音效立即停
-    uiStore.clearAmbientTracks()
-    uiStore.triggerSoundEffect('None')
-    // BGM 变速还原
-    uiStore.bgMusicPlaybackRate = 1
-    // 背景图还原成进剧本前的自由对话背景
-    if (uiStore.preScriptBackground !== null) {
-      useSettingsStore().setCurrentBackground(uiStore.preScriptBackground)
-      uiStore.preScriptBackground = null
-    }
-    // 立绘情绪还原：剧本末尾的「崩坏/伤心」等演出情绪不该带进自由对话
-    for (const id of this.presentRoleIds) {
-      const role = this.gameRoles[id]
-      if (role) role.emotion = '正常'
-    }
-    // 在场角色还原：剧本演出的 hide_character（角色消失）不得带走自由对话立绘
-    if (this.preScriptRoleIds !== null) {
-      this.presentRoleIds = this.preScriptRoleIds
-      this.preScriptRoleIds = null
-      for (const id of this.presentRoleIds) {
-        const role = this.gameRoles[id]
-        if (role) {
-          role.show = true
-          role.emotion = '正常'
-        }
-      }
-    }
-    // 原生故障窗口/尚未消费的一次性票据也必须在任意退出路径立即收掉。
-    invoke('close_script_glitch_windows').catch((err) =>
-      console.warn('[Script] 关闭故障窗口失败（非致命）:', err),
-    )
-    // 后端剧本任务可能还阻塞在输入等待上：丢掉发送端让它走统一收尾，
-    // 否则 is_running 卡死会导致「重置记忆」一直被拒、重进剧本起双任务
-    if (notifyBackend) {
-      invoke('stop_script').catch((err) => console.warn('[Script] stop_script 失败（非致命）:', err))
-    }
+    clearStoryInteractionState(this)
+    restoreStoryMedia(uiStore)
+    clearStoryEffects(uiStore)
+    restoreStoryStage(this, uiStore)
+    releaseStorySystemResources(notifyBackend)
   },
 
   // 设置当前场景（仅更新 store，不调用 API）

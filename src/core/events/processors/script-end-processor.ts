@@ -7,6 +7,7 @@ import { WebSocketMessageTypes } from '../../../types'
 import { useAdventureStore } from '@/stores/modules/adventure'
 import router from '@/router'
 import { eventQueue } from '../event-queue'
+import { resetScriptWindowTitle } from '@/utils/windowTitleCoordinator'
 
 export default class ScriptEndProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {
@@ -40,6 +41,9 @@ export default class ScriptEndProcessor implements IEventProcessor {
 
     const gameStore = useGameStore()
     const uiStore = useUIStore()
+    // 只有明确标记为 horror 的 DLC 使用 DDLC 式回标题；普通/旧剧本保持
+    // 既有的无缝返回自由对话语义。
+    const returnToMenu = gameStore.runningScript?.contentWarning === 'horror'
     gameStore.exitStoryMode()
 
     // 剧本声明 main_character 时，后端把进前主角随 script:end 载荷交还（不能即时
@@ -53,14 +57,13 @@ export default class ScriptEndProcessor implements IEventProcessor {
     }
 
     uiStore.showPlayerHintLine = ''
-    // 恐怖特效/突脸不得带出剧本外
+    // 恐怖特效/突脸/显式标题不得带出剧本外。
     uiStore.resetHorrorEffects()
+    resetScriptWindowTitle()
 
-    // 剧本自然结束：回主菜单收场（DDLC 式 full_restart 回标题），而不是无缝
-    // 落进自由对话——剧本的收场叙事（"你回到了剧本列表"）与自由对话界面不搭，
-    // 且玩家可能误以为剧本还在跑。玩家手动切自由对话的路径不经过这里，不受影响。
-    if (router.currentRoute.value.path === '/chat') {
-      await router.push('/')
+    // 恐怖 DLC 自然结束：DDLC 式 full_restart 回标题；普通剧本不改变既有结束行为。
+    if (returnToMenu && router.currentRoute.value.path === '/chat') {
+      await router.replace('/')
     }
   }
 }

@@ -20,6 +20,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useUIStore } from '../../../../stores/modules/ui/ui'
+import { isOwnedByStandaloneDlc, releaseFolderFromEvent } from '@/utils/dlcMediaOwnership'
 
 const uiStore = useUIStore()
 
@@ -38,7 +39,15 @@ function releaseJumpscareMedia() {
   uiStore.clearJumpscare()
 }
 
-const handleReleaseDlcMedia = () => releaseJumpscareMedia()
+const handleReleaseDlcMedia = (event: Event) => {
+  const folderKey = releaseFolderFromEvent(event)
+  if (
+    isOwnedByStandaloneDlc(uiStore.jumpscareImage, folderKey) ||
+    isOwnedByStandaloneDlc(uiStore.jumpscareSound, folderKey)
+  ) {
+    releaseJumpscareMedia()
+  }
+}
 
 const imgSrc = computed(() => {
   const p = uiStore.jumpscareImage

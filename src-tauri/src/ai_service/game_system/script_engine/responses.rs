@@ -33,6 +33,8 @@ pub mod event_names {
     pub const SCRIPT_GLITCH_WINDOW: &str = "script:glitch-window";
     pub const SCRIPT_CONSOLE_WINDOW: &str = "script:console-window";
     pub const SCRIPT_WATCH_JUMP: &str = "script:watch-jump";
+    pub const SCRIPT_WINDOW_TITLE: &str = "script:window-title";
+    pub const SCRIPT_WINDOW_TITLE_RESET: &str = "script:window-title-reset";
 }
 
 // ============================================================
@@ -128,6 +130,13 @@ pub struct WaitPayload {
     pub duration: f64,
 }
 
+/// 队列有序的显式窗口标题意图；空串表示恢复应用默认标题。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowTitlePayload {
+    pub title: String,
+}
+
 /// 已在 Rust 端完成安全校验的辅助故障窗口一次性票据。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -182,6 +191,7 @@ pub struct PoemWordPayload {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PoemGamePayload {
+    pub request_id: String,
     pub background_path: String,
     pub music_path: String,
     pub glitch_music_path: String,

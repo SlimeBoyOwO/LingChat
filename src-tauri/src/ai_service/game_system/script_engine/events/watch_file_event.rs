@@ -85,6 +85,7 @@ impl ScriptEvent for WatchFileEvent {
             channels.watch_jump = Some(self.on_missing.clone());
             channels.input_tx = None;
             channels.choice_tx = None;
+            channels.poem_tx = None;
             channels.choice_allow_free = false;
             channels.force_choice_guard = None;
             return Ok(None);

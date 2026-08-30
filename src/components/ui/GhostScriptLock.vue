@@ -45,6 +45,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { checkScriptGhostLock } from '../../api/services/script-info'
+import { isOwnedByStandaloneDlc, releaseFolderFromEvent } from '@/utils/dlcMediaOwnership'
 
 const uiStore = useUIStore()
 
@@ -91,7 +92,10 @@ function releaseGhostMedia() {
   uiStore.closeGhostLock()
 }
 
-const handleReleaseDlcMedia = () => releaseGhostMedia()
+const handleReleaseDlcMedia = (event: Event) => {
+  const folderKey = releaseFolderFromEvent(event)
+  if (isOwnedByStandaloneDlc(lock.value?.assetDir, folderKey)) releaseGhostMedia()
+}
 
 async function pollUnlocked() {
   const current = lock.value

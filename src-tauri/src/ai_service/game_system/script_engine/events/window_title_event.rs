@@ -8,14 +8,15 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
-use tauri::Manager;
 
 use crate::ai_service::game_system::script_engine::events::{
     register_event, ScriptContext, ScriptEvent,
 };
-
-/// 与 tauri.conf.json 的窗口 title 保持一致
-const DEFAULT_TITLE: &str = "LingChat";
+use crate::ai_service::game_system::script_engine::responses::{
+    event_names::{SCRIPT_WINDOW_TITLE, SCRIPT_WINDOW_TITLE_RESET},
+    WindowTitlePayload,
+};
+use crate::ai_service::message_system::events::emit;
 /// 乱码标题不需要很长；过长标题在某些平台会被截断甚至撑破任务栏预览
 const MAX_TITLE_CHARS: usize = 80;
 
@@ -37,29 +38,24 @@ impl WindowTitleEvent {
     }
 }
 
-/// 恢复默认窗口标题。剧本自然结束与手动停止都会经过这里。
+/// 通知前端唯一标题协调器清除所有剧本标题意图。
 pub fn restore_window_title(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        if let Err(error) = window.set_title(DEFAULT_TITLE) {
-            tracing::warn!("[WindowTitleEvent] 恢复窗口标题失败: {error}");
-        }
+    if let Err(error) = emit(app, SCRIPT_WINDOW_TITLE_RESET, &()) {
+        tracing::warn!("[WindowTitleEvent] 发送标题重置事件失败: {error:#}");
     }
 }
 
 #[async_trait]
 impl ScriptEvent for WindowTitleEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        let title = if self.title.is_empty() {
-            DEFAULT_TITLE
-        } else {
-            self.title.as_str()
-        };
-        if let Some(window) = ctx.app.get_webview_window("main") {
-            if let Err(error) = window.set_title(title) {
-                // 标题写不进去不该中断剧本
-                tracing::warn!("[WindowTitleEvent] 设置窗口标题失败: {error}");
-            }
-        }
+        // 进入前端 FIFO，才能与玩家实际看到的背景特效保持同一时间线。
+        emit(
+            ctx.app,
+            SCRIPT_WINDOW_TITLE,
+            &WindowTitlePayload {
+                title: self.title.clone(),
+            },
+        )?;
         Ok(None)
     }
 

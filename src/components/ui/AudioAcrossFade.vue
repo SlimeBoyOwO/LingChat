@@ -5,6 +5,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { isOwnedByStandaloneDlc, releaseFolderFromEvent } from '@/utils/dlcMediaOwnership'
 
 const props = withDefaults(
   defineProps<{
@@ -69,7 +70,14 @@ const releaseAllAudio = () => {
   releaseAudio(audio2.value)
 }
 
-const handleReleaseDlcMedia = () => releaseAllAudio()
+const handleReleaseDlcMedia = (event: Event) => {
+  const folderKey = releaseFolderFromEvent(event)
+  for (const audio of [audio1.value, audio2.value]) {
+    if (audio && isOwnedByStandaloneDlc(audio.currentSrc || audio.src, folderKey)) {
+      releaseAudio(audio)
+    }
+  }
+}
 
 onBeforeUnmount(() => {
   window.removeEventListener('lingchat:release-dlc-media', handleReleaseDlcMedia)

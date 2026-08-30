@@ -1,7 +1,10 @@
 //! Background effect event — sets `game_status.background_effect`.
 
+use std::sync::OnceLock;
+
 use anyhow::Result;
 use async_trait::async_trait;
+use serde::Deserialize;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
@@ -12,30 +15,26 @@ use crate::ai_service::game_system::script_engine::responses::{
 };
 use crate::ai_service::message_system::events::emit;
 
-/// Effect names the frontend actually renders.
-///
-/// `GameBackground.vue` compares with `===`, so these are **case sensitive**:
-/// `starfield` and `Starfield` both silently render nothing. Anything not in
-/// this list (including the conventional `None`) clears the current effect.
-pub const KNOWN_EFFECTS: [&str; 17] = [
-    "StarField",
-    "Rain",
-    "Sakura",
-    "Snow",
-    "Fireworks",
-    "Glitch",
-    "Shake",
-    "Flash",
-    "Blackout",
-    "Tear",
-    "Static",
-    "Invert",
-    "BloodDrip",
-    "Veins",
-    "BSOD",
-    "UiCorrupt",
-    "BloodUI",
-];
+#[derive(Deserialize)]
+struct EffectManifestEntry {
+    key: String,
+}
+
+static KNOWN_EFFECTS: OnceLock<Vec<String>> = OnceLock::new();
+
+/// Rust 与 Vue 共用 `shared/script-effects.json`，避免编辑器、校验器和渲染层名单漂移。
+pub fn known_effects() -> &'static [String] {
+    KNOWN_EFFECTS.get_or_init(|| {
+        serde_json::from_str::<Vec<EffectManifestEntry>>(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../shared/script-effects.json"
+        )))
+        .expect("shared/script-effects.json must be valid")
+        .into_iter()
+        .map(|entry| entry.key)
+        .collect()
+    })
+}
 
 /// Names that explicitly mean "no effect" and therefore must not be warned about.
 const CLEARING_EFFECTS: [&str; 3] = ["none", "None", ""];
@@ -60,12 +59,11 @@ impl BackgroundEffectEvent {
         // silent: two of the shipped scripts write `starfield` / `Starfield`
         // and get no particles at all with no diagnostic anywhere.
         // 支持 '+' 组合叠加（如 "Glitch+BloodDrip"），逐段校验
-        let all_known = effect
-            .split('+')
-            .map(|p| p.trim())
-            .all(|p| CLEARING_EFFECTS.contains(&p) || KNOWN_EFFECTS.contains(&p));
+        let all_known = effect.split('+').map(|p| p.trim()).all(|p| {
+            CLEARING_EFFECTS.contains(&p) || known_effects().iter().any(|known| known == p)
+        });
         if !all_known && !CLEARING_EFFECTS.contains(&effect.as_str()) {
-            let hint = KNOWN_EFFECTS
+            let hint = known_effects()
                 .iter()
                 .find(|k| k.eq_ignore_ascii_case(&effect));
             match hint {
@@ -77,7 +75,7 @@ impl BackgroundEffectEvent {
                 None => tracing::warn!(
                     "[BackgroundEffectEvent] 未知特效 '{}'，将清空当前特效；可用值: {:?}",
                     effect,
-                    KNOWN_EFFECTS
+                    known_effects()
                 ),
             }
         }
@@ -130,7 +128,7 @@ pub fn register() {
 
 #[cfg(test)]
 mod tests {
-    use super::{BackgroundEffectEvent, KNOWN_EFFECTS};
+    use super::{known_effects, BackgroundEffectEvent};
     use serde_json::json;
 
     /// The value must keep passing through untouched — PR1 only adds a warning,
@@ -150,15 +148,14 @@ mod tests {
     }
 
     #[test]
-    fn known_effect_list_matches_the_frontend() {
-        // Mirrors the `v-if` chain in src/components/game/standard/GameBackground.vue.
-        assert_eq!(
-            KNOWN_EFFECTS,
-            [
-                "StarField", "Rain", "Sakura", "Snow", "Fireworks", "Glitch", "Shake", "Flash",
-                "Blackout", "Tear", "Static", "Invert", "BloodDrip", "Veins", "BSOD", "UiCorrupt",
-                "BloodUI"
-            ]
-        );
+    fn shared_effect_manifest_has_unique_composable_keys() {
+        let effects = known_effects();
+        assert!(!effects.is_empty());
+        let unique: std::collections::HashSet<&str> =
+            effects.iter().map(String::as_str).collect();
+        assert_eq!(unique.len(), effects.len());
+        assert!(effects.iter().all(|key| !key.is_empty()));
+        assert!(effects.iter().all(|key| !key.contains('+')));
+        assert!(effects.iter().all(|key| !key.eq_ignore_ascii_case("none")));
     }
 }

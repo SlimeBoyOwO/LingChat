@@ -31,6 +31,8 @@ export interface FreeDialogueInfo {
 
 export interface ScriptInfo {
   scriptName: string
+  /** 安装目录键（DLC 卸载时用于资源所有权匹配）。 */
+  folderKey?: string
   currentChapterName: string
   choices: ScriptChoiceItem[]
   isRunning: boolean

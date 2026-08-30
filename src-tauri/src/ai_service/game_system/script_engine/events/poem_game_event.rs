@@ -14,9 +14,10 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 use serde::Deserialize;
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    register_event, PoemSubmissionChannel, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_POEM_GAME, PoemGamePayload, PoemWordPayload,
@@ -107,13 +108,13 @@ impl PoemGameEvent {
         };
 
         Self {
-            background_path: string_field(data, "backgroundPath", "深夜诗笺-半页.png"),
-            music_path: string_field(data, "musicPath", "4.ogg"),
-            glitch_music_path: string_field(data, "glitchMusicPath", "4g.ogg"),
-            warm_sticker_path: string_field(data, "warmStickerPath", "写诗Q版-她.png"),
-            script_sticker_path: string_field(data, "scriptStickerPath", "写诗Q版-剧本.png"),
-            void_sticker_path: string_field(data, "voidStickerPath", "写诗Q版-空白.png"),
-            word_list_path: string_field(data, "wordListPath", "poem_words.yaml"),
+            background_path: string_field(data, "backgroundPath", ""),
+            music_path: string_field(data, "musicPath", ""),
+            glitch_music_path: string_field(data, "glitchMusicPath", ""),
+            warm_sticker_path: string_field(data, "warmStickerPath", ""),
+            script_sticker_path: string_field(data, "scriptStickerPath", ""),
+            void_sticker_path: string_field(data, "voidStickerPath", ""),
+            word_list_path: string_field(data, "wordListPath", ""),
             result_var: string_field(data, "resultVar", "poem_tone"),
             rounds,
             force_glitch: data.get("glitch").and_then(Value::as_bool),
@@ -193,6 +194,24 @@ fn string_field(data: &Value, key: &str, default: &str) -> String {
 #[async_trait]
 impl ScriptEvent for PoemGameEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
+        let missing_paths: Vec<&str> = [
+            ("backgroundPath", self.background_path.as_str()),
+            ("musicPath", self.music_path.as_str()),
+            ("glitchMusicPath", self.glitch_music_path.as_str()),
+            ("warmStickerPath", self.warm_sticker_path.as_str()),
+            ("scriptStickerPath", self.script_sticker_path.as_str()),
+            ("voidStickerPath", self.void_sticker_path.as_str()),
+            ("wordListPath", self.word_list_path.as_str()),
+        ]
+        .into_iter()
+        .filter_map(|(key, value)| value.is_empty().then_some(key))
+        .collect();
+        if !missing_paths.is_empty() {
+            return Err(anyhow!(
+                "poem_game 缺少必填字段: {}",
+                missing_paths.join(", ")
+            ));
+        }
         if self.result_var.is_empty() {
             return Err(anyhow!("poem_game 的 resultVar 不能为空"));
         }
@@ -255,7 +274,9 @@ impl ScriptEvent for PoemGameEvent {
         )
         .ok_or_else(|| anyhow!("写诗 Q 版角色不存在: {}", self.void_sticker_path))?;
 
+        let request_id = Uuid::new_v4().to_string();
         let payload = PoemGamePayload {
+            request_id: request_id.clone(),
             background_path,
             music_path,
             glitch_music_path,
@@ -272,8 +293,7 @@ impl ScriptEvent for PoemGameEvent {
         let rx = {
             let (tx, rx) = tokio::sync::oneshot::channel();
             let mut channels = ctx.channels.lock().await;
-            channels.choice_tx = Some(tx);
-            channels.choice_allow_free = false;
+            channels.poem_tx = Some(PoemSubmissionChannel { request_id, tx });
             rx
         };
 

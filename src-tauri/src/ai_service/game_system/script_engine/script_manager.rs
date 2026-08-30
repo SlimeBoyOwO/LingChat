@@ -282,8 +282,8 @@ impl ScriptManager {
         for (plugin_id, dir) in plugin_scripts {
             match Self::read_script_config(dir) {
                 Ok(mut status) => {
-                    if self.all_scripts.contains_key(&status.name) {
-                        // 游戏同名 或 更早注册的插件同名 → 后到者让位
+                    if !self.script_name_claim_paths(&status.name).is_empty() {
+                        // 游戏重名禁用声明、正常游戏剧本或更早注册的插件同名 → 后到者让位。
                         continue;
                     }
                     status.plugin_id = Some(plugin_id.clone());
@@ -828,8 +828,11 @@ impl ScriptManager {
     ) -> Result<()> {
         tracing::info!("[ScriptManager] 剧本结束 (completed={})", completed);
 
-        // OS 窗口标题是纯内存演出，结束时无条件还原（乱码标题不能泄漏到主菜单）
-        super::events::window_title_event::restore_window_title(ctx.app);
+        // 正常完成必须等前端队列消费到 script:end 再重置标题；错误/停止路径
+        // 已作废旧队列，可立即通知唯一标题协调器清理。
+        if !completed {
+            super::events::window_title_event::restore_window_title(ctx.app);
+        }
 
         // 文件监视器同理：剧本结束必须停掉，否则它会盯着已结束的演出
         {
@@ -838,6 +841,11 @@ impl ScriptManager {
                 task.abort();
             }
             channels.watch_jump = None;
+            channels.input_tx = None;
+            channels.choice_tx = None;
+            channels.poem_tx = None;
+            channels.choice_allow_free = false;
+            channels.force_choice_guard = None;
         }
 
         // Extract data under one lock, then mutate under a second lock. The
@@ -887,6 +895,8 @@ impl ScriptManager {
         let mut restored_role_id: Option<i32> = None;
         if !ctx.is_preview {
             let mut gs = ctx.game_status.lock().await;
+            // 正式剧本退出也推进代次，拒绝剧本期间 LLM 的迟到写入与 emit。
+            gs.preview_generation = gs.preview_generation.wrapping_add(1);
             if let Some(len) = gs.script_start_line_len.take() {
                 if gs.line_list.len() > len {
                     gs.line_list.truncate(len);
@@ -1014,7 +1024,7 @@ impl ScriptManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_dlc_engine_compatible, version_triplet};
+    use super::{ensure_dlc_engine_compatible, version_triplet, ScriptManager};
 
     #[test]
     fn parses_engine_versions_for_dlc_gating() {
@@ -1045,5 +1055,37 @@ mod tests {
         assert!(ensure_dlc_engine_compatible(&dir).is_err());
 
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn plugin_cannot_fill_a_fail_closed_game_name_collision() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "lingchat-plugin-script-collision-{}-{unique}",
+            std::process::id()
+        ));
+        let standalone = root.join("game_data").join("scripts").join("standalone");
+        let plugin = root.join("plugin-script");
+        for dir in [standalone.join("first"), standalone.join("second"), plugin.clone()] {
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("story_config.yaml"),
+                "script_name: duplicated\nintro_chapter: main\n",
+            )
+            .unwrap();
+        }
+
+        let mut manager = ScriptManager::new(&root);
+        assert!(!manager.all_scripts.contains_key("duplicated"));
+        assert_eq!(manager.script_name_claim_paths("duplicated").len(), 2);
+
+        manager.apply_plugin_scripts(&[("plugin-a".to_string(), plugin)]);
+        assert!(!manager.all_scripts.contains_key("duplicated"));
+        assert_eq!(manager.script_name_claim_paths("duplicated").len(), 2);
+
+        let _ = std::fs::remove_dir_all(root);
     }
 }

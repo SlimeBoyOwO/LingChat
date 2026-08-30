@@ -4,6 +4,7 @@ import { useSettingsStore } from '../settings'
 import { saveBgmState } from '../../../api/services/music'
 import { saveAmbientState } from '../../../api/services/ambient'
 import { i18n } from '@/locales'
+import { HORROR_EFFECT_KEYS } from '@/components/game/standard/particles'
 
 // 通知类型
 export type NotificationType = 'error' | 'success' | 'info' | 'warning'
@@ -350,22 +351,8 @@ export const useUIStore = defineStore('ui', {
      * 剧本异常退出/中途返回/重启后都可能残留，在剧本结束、进入剧本、应用启动时调用。
      */
     resetHorrorEffects() {
-      const HORROR = [
-        'Glitch',
-        'Shake',
-        'Flash',
-        'Blackout',
-        'Tear',
-        'Static',
-        'Invert',
-        'BloodDrip',
-        'Veins',
-        'BSOD',
-        'UiCorrupt',
-        'BloodUI',
-      ]
       const current = useSettingsStore().display.backgroundEffect
-      if (HORROR.some((h) => current.includes(h))) {
+      if (HORROR_EFFECT_KEYS.some((effect) => current.split('+').includes(effect))) {
         useSettingsStore().setBackgroundEffect('None')
       }
       this.clearJumpscare()

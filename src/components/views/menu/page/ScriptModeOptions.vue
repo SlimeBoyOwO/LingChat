@@ -155,7 +155,7 @@ const selectScript = async (script: ScriptSummary) => {
   eventQueue.clear()
   // 先标记剧情模式再挂载 MainChat：初始化逻辑据此跳过自由对话入场问候，
   // 防止后台生成的寒暄在剧本开始后才插入队列并拖慢剧情。
-  gameStore.enterStoryMode(script.script_name, script.content_warning)
+  gameStore.enterStoryMode(script.script_name, script.content_warning, script.folder_key)
   try {
     await router.push('/chat')
     await startScript(script.script_name)

@@ -469,7 +469,7 @@ const handleNodeClick = async (adventure: AdventureInfo) => {
     try {
       uiStore.showSettings = false
       eventQueue.clear()
-      gameStore.enterStoryMode(adventure.adventure_folder)
+      gameStore.enterStoryMode(adventure.adventure_folder, undefined, adventure.adventure_folder)
       // MainChat remains mounted behind Settings, so clear()'s pause must be lifted here.
       eventQueue.resume()
       await adventureStore.startAdventure(adventure.adventure_folder)

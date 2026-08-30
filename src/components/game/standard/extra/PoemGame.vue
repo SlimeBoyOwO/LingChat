@@ -125,6 +125,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import type { ScriptPoemWord } from '@/types/script'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
+import { isOwnedByStandaloneDlc, releaseFolderFromEvent } from '@/utils/dlcMediaOwnership'
 
 type Tone = 'warm' | 'script' | 'void'
 
@@ -140,7 +141,14 @@ const currentTone = ref<Tone>('warm')
 const corrupted = ref(false)
 const finishing = ref(false)
 const submitError = ref(false)
-const pendingResult = ref<string | null>(null)
+interface PoemSubmission {
+  winner: 'warm' | 'script' | 'void'
+  glitch: boolean
+  warm: number
+  script: number
+  void: number
+}
+const pendingResult = ref<PoemSubmission | null>(null)
 const stalkerHopping = ref(false)
 const flash = ref(false)
 // 两枚贴纸拥有完全独立的随机待机时钟与位移状态，避免同帧同步弹跳。
@@ -236,7 +244,21 @@ function releasePoemMedia() {
   if (audioRef.value) releaseAudioElement(audioRef.value)
 }
 
-const handleReleaseDlcMedia = () => releasePoemMedia()
+const handleReleaseDlcMedia = (event: Event) => {
+  const folderKey = releaseFolderFromEvent(event)
+  const current = game.value
+  const media = current
+    ? [
+        current.backgroundPath,
+        current.musicPath,
+        current.glitchMusicPath,
+        current.warmStickerPath,
+        current.scriptStickerPath,
+        current.voidStickerPath,
+      ]
+    : []
+  if (media.some((path) => isOwnedByStandaloneDlc(path, folderKey))) releasePoemMedia()
+}
 
 function playSfx(name: string) {
   const url = toAssetUrl(soundPathOf(name))
@@ -417,13 +439,13 @@ async function finishPoem() {
   await fadeOut(2000)
 
   // 第一次结算后冻结结果；失败重试只能重发同一份数据，不能再次点击并二次计分。
-  pendingResult.value = JSON.stringify({
+  pendingResult.value = {
     winner: winner(),
     glitch: corrupted.value,
     warm: warmScore.value,
     script: scriptScore.value,
     void: voidScore.value,
-  })
+  }
   await submitPendingResult()
 }
 
@@ -433,7 +455,9 @@ async function submitPendingResult() {
   finishing.value = true
   submitError.value = false
   try {
-    await invoke('script_submit_choice', { choice: result })
+    const requestId = game.value?.requestId
+    if (!requestId) throw new Error('写诗互动缺少提交票据')
+    await invoke('script_submit_poem', { requestId, result })
     gameStore.poemGame = null
   } catch (error) {
     console.error('[PoemGame] 提交结果失败:', error)

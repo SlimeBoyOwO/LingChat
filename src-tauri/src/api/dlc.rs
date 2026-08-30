@@ -11,7 +11,6 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
@@ -473,7 +472,8 @@ pub async fn remove_dlc(app: AppHandle, folder_key: String) -> Result<(), String
     // 图片/音频句柄。Windows 不允许重命名仍被播放器占用的目录。
     app.emit("script:prepare-uninstall", folder_name.clone())
         .map_err(|error| format!("通知前端释放 DLC 资源失败: {error}"))?;
-    tokio::time::sleep(Duration::from_millis(1_300)).await;
+    #[cfg(target_os = "windows")]
+    tokio::time::sleep(std::time::Duration::from_millis(1_300)).await;
 
     // Cleanup ownership is derivable from the sanitized install path, so even
     // malformed or too-new story_config/dlc.json content cannot block removal.

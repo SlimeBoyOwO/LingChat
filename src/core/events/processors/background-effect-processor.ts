@@ -8,6 +8,7 @@ import { useSettingsStore } from '../../../stores/modules/settings'
 let effectFlashSeq = 0
 let activeTimer: number | null = null
 let detachAbort: (() => void) | null = null
+let stableEffect: string | null = null
 
 function detachCurrentAbort() {
   detachAbort?.()
@@ -42,7 +43,12 @@ export default class BackgroundEffectProcessor implements IEventProcessor {
       uiStore.bsodEcho = ''
     }
 
-    const previous = useSettingsStore().display.backgroundEffect
+    if (stableEffect === null) {
+      stableEffect = useSettingsStore().display.backgroundEffect || 'None'
+    }
+    const duration = event.duration
+    if (duration <= 0) stableEffect = event.effect || 'None'
+
     const mySeq = ++effectFlashSeq
     uiStore.setBackgroundEffect(event.effect)
 
@@ -54,15 +60,15 @@ export default class BackgroundEffectProcessor implements IEventProcessor {
           window.clearTimeout(activeTimer)
           activeTimer = null
         }
-        // Error/manual exit must remove the active horror layer immediately;
-        // restoring `previous` could resurrect an older timed horror effect.
+        // Error/manual exit must remove the active horror layer immediately and
+        // forget this run's stable baseline.
+        stableEffect = null
         uiStore.resetHorrorEffects()
       }
       signal.addEventListener('abort', onAbort, { once: true })
       detachAbort = () => signal.removeEventListener('abort', onAbort)
     }
 
-    const duration = event.duration
     if (duration > 0) {
       activeTimer = window.setTimeout(() => {
         activeTimer = null
@@ -70,7 +76,7 @@ export default class BackgroundEffectProcessor implements IEventProcessor {
         if (mySeq !== effectFlashSeq) return
         const current = useSettingsStore().display.backgroundEffect
         if (current === event.effect) {
-          uiStore.setBackgroundEffect(previous || 'None')
+          uiStore.setBackgroundEffect(stableEffect || 'None')
         }
       }, duration * 1000)
     }

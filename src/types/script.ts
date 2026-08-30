@@ -151,6 +151,12 @@ export interface ScriptWaitEvent extends ScriptEvent {
   type: 'wait'
 }
 
+/** 队列有序的显式窗口标题意图；空串恢复默认标题。 */
+export interface ScriptWindowTitleEvent extends ScriptEvent {
+  type: 'window_title'
+  title: string
+}
+
 /** Rust 已安全校验、等待在正确剧情位置显示的本地故障窗口票据。 */
 export interface ScriptGlitchWindowEvent extends ScriptEvent {
   type: 'glitch_window'
@@ -189,6 +195,7 @@ export interface ScriptPoemWord {
 /** 20 轮选词写诗互动；每轮包含 10 个词。 */
 export interface ScriptPoemGameEvent extends ScriptEvent {
   type: 'poem_game'
+  requestId: string
   backgroundPath: string
   musicPath: string
   glitchMusicPath: string
@@ -233,6 +240,7 @@ export type ScriptEventType =
   | ScriptFreeDialogueEvent
   | ScriptJumpscareEvent
   | ScriptWaitEvent
+  | ScriptWindowTitleEvent
   | ScriptGlitchWindowEvent
   | ScriptConsoleWindowEvent
   | ScriptVoiceShiftEvent

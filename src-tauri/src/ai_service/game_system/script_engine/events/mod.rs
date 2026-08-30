@@ -65,11 +65,19 @@ pub struct ForceChoiceGuard {
     pub warp_expires_at: std::time::Instant,
 }
 
+/// 绑定一次写诗互动的独立提交通道。
+pub struct PoemSubmissionChannel {
+    pub request_id: String,
+    pub tx: tokio::sync::oneshot::Sender<String>,
+}
+
 /// 剧本运行期间用于用户输入/选择的通道。
 /// 存为 `Arc<Mutex<>>`，使后台任务与 Tauri 命令都能访问，而不必持有 `AIService` 的锁。
 pub struct ScriptChannels {
     pub input_tx: Option<tokio::sync::oneshot::Sender<String>>,
     pub choice_tx: Option<tokio::sync::oneshot::Sender<String>>,
+    /// 写诗小游戏独立通道，不能与普通/强制 choice 互相消费。
+    pub poem_tx: Option<PoemSubmissionChannel>,
     /// 当前挂起的 `choices` 事件是否接受自由输入文本。
     ///
     /// 镜像正在执行的 [`choice_event::ChoiceEvent`] 的 `allow_free` 字段。
@@ -90,6 +98,7 @@ impl ScriptChannels {
         Self {
             input_tx: None,
             choice_tx: None,
+            poem_tx: None,
             choice_allow_free: false,
             force_choice_guard: None,
             watch_jump: None,
@@ -250,12 +259,12 @@ pub fn evaluate_condition(condition: &str, vars: &serde_json::Map<String, Value>
         return true;
     }
 
-    // 最低优先级：OR；随后是 AND。只拆引号之外的运算符，避免破坏
-    // 旧剧本里含 `||` / `&&` 字样的普通字符串值。
-    if let Some((left, right)) = split_once_unquoted(condition, "||") {
+    // 最低优先级：OR；随后是 AND。逻辑符必须两侧留空格；无空格的
+    // `a||b` / `a&&b` 继续作为旧剧本的普通字符串值参与 == / != 比较。
+    if let Some((left, right)) = split_once_unquoted(condition, " || ") {
         return evaluate_condition(left, vars) || evaluate_condition(right, vars);
     }
-    if let Some((left, right)) = split_once_unquoted(condition, "&&") {
+    if let Some((left, right)) = split_once_unquoted(condition, " && ") {
         return evaluate_condition(left, vars) && evaluate_condition(right, vars);
     }
 
@@ -405,5 +414,6 @@ mod tests {
         assert!(!evaluate_condition("act == 3 || hp < 2", &v));
         assert!(evaluate_condition("label == a>b", &v));
         assert!(evaluate_condition("pipes == \"a||b&&c\"", &v));
+        assert!(evaluate_condition("pipes == a||b&&c", &v));
     }
 }

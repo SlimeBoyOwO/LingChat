@@ -757,6 +757,7 @@ pub fn run() {
             api::script::start_script,
             api::script::script_submit_input,
             api::script::script_submit_choice,
+            api::script::script_submit_poem,
             api::script::show_script_glitch_window,
             api::script::spawn_script_console_window,
             api::script::close_script_glitch_windows,

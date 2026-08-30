@@ -15,12 +15,11 @@
 //! - **章节名**是每个剧本自己的，前端从已加载的章节列表填。
 //! - **素材文件名**同理，前端从素材索引填。
 //! - **角色**是 `MAIN` 加上该剧本 `characters/` 下的目录名。
-//! - **背景特效**由 Rust 拥有（`background_effect_event::KNOWN_EFFECTS`），
-//!   因为它对应前端组件是否存在，本文件直接引用那个常量。
+//! - **背景特效**来自前后端共用的 `shared/script-effects.json`。
 
 use serde::Serialize;
 
-use crate::ai_service::game_system::script_engine::events::background_effect_event::KNOWN_EFFECTS;
+use crate::ai_service::game_system::script_engine::events::background_effect_event::known_effects;
 
 /// 字段该用什么控件渲染。
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -215,7 +214,7 @@ fn emotion_field() -> FieldSpec {
 
 fn effect_options() -> Vec<String> {
     let mut v = vec!["None".to_string()];
-    v.extend(KNOWN_EFFECTS.iter().map(|s| s.to_string()));
+    v.extend(known_effects().iter().cloned());
     v
 }
 
@@ -488,13 +487,26 @@ pub fn build_schema() -> ScriptSchema {
             category: "交互",
             color: "#f472b6",
             fields: vec![
-                FieldSpec::new("backgroundPath", "写诗背景", FieldKind::Asset).asset("background"),
-                FieldSpec::new("musicPath", "正常音乐", FieldKind::Asset).asset("music"),
-                FieldSpec::new("glitchMusicPath", "崩坏音乐", FieldKind::Asset).asset("music"),
-                FieldSpec::new("warmStickerPath", "温暖角色贴纸", FieldKind::Asset).asset("pic"),
-                FieldSpec::new("scriptStickerPath", "剧本角色贴纸", FieldKind::Asset).asset("pic"),
-                FieldSpec::new("voidStickerPath", "空白角色贴纸", FieldKind::Asset).asset("pic"),
+                FieldSpec::new("backgroundPath", "写诗背景", FieldKind::Asset)
+                    .required()
+                    .asset("background"),
+                FieldSpec::new("musicPath", "正常音乐", FieldKind::Asset)
+                    .required()
+                    .asset("music"),
+                FieldSpec::new("glitchMusicPath", "崩坏音乐", FieldKind::Asset)
+                    .required()
+                    .asset("music"),
+                FieldSpec::new("warmStickerPath", "温暖角色贴纸", FieldKind::Asset)
+                    .required()
+                    .asset("pic"),
+                FieldSpec::new("scriptStickerPath", "剧本角色贴纸", FieldKind::Asset)
+                    .required()
+                    .asset("pic"),
+                FieldSpec::new("voidStickerPath", "空白角色贴纸", FieldKind::Asset)
+                    .required()
+                    .asset("pic"),
                 FieldSpec::new("wordListPath", "词库文件", FieldKind::Text)
+                    .required()
                     .placeholder("poem_words.yaml")
                     .hint("只能填写剧本根目录下的文件名"),
                 FieldSpec::new("resultVar", "结果变量", FieldKind::Text)
@@ -780,7 +792,7 @@ pub fn build_schema() -> ScriptSchema {
                 "var（真值判断）",
             ],
             unsupported: vec!["!", "括号", "算术"],
-            note: "== / != 按文字比较，大小比较要求右侧是数字；&& 优先于 || 递归组合。暂不支持括号、取反和算术表达式。",
+            note: "== / != 按文字比较，大小比较要求右侧是数字；逻辑符必须写成两侧带空格的 ` && ` / ` || `，且 && 优先于 ||。无空格的 a||b 可继续作为普通字符串值。暂不支持括号、取反和算术表达式。",
         },
     }
 }

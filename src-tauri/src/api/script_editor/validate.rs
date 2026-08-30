@@ -2,7 +2,7 @@
 //!
 //! 目标是把引擎里所有**静默失败**变成作者能看见的一条诊断。判定逻辑尽量
 //! 复用引擎自己的函数（`resolve_script_media` 查素材、`parse_variable_action`
-//! 解析表达式、`KNOWN_EFFECTS` 判特效），避免校验器和运行时各说一套。
+//! 解析表达式、共享特效 manifest 判特效），避免校验器和运行时各说一套。
 //!
 //! 诊断分三级：
 //! - `error` —— 一定会出问题（跑不通、跳不过去、素材缺失）
@@ -17,7 +17,7 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 
-use crate::ai_service::game_system::script_engine::events::background_effect_event::KNOWN_EFFECTS;
+use crate::ai_service::game_system::script_engine::events::background_effect_event::known_effects;
 use crate::ai_service::game_system::script_engine::events::split_once_unquoted;
 use crate::ai_service::game_system::script_engine::utils::media::{
     resolve_script_media, MediaType,
@@ -558,13 +558,13 @@ pub fn validate(
                 "background_effect" => {
                     let effect = obj.get("effect").and_then(|v| v.as_str()).unwrap_or("");
                     // 运行时允许 `Glitch+BloodDrip` 形式叠加，校验器必须逐段使用
-                    // 同一份 KNOWN_EFFECTS 判定，不能把整个组合误报为未知特效。
+                    // 同一份共享 manifest 判定，不能把整个组合误报为未知特效。
                     for part in effect.split('+').map(str::trim) {
                         let clearing = part.is_empty() || part.eq_ignore_ascii_case("none");
-                        if clearing || KNOWN_EFFECTS.contains(&part) {
+                        if clearing || known_effects().iter().any(|known| known == part) {
                             continue;
                         }
-                        let hint = KNOWN_EFFECTS
+                        let hint = known_effects()
                             .iter()
                             .find(|known| known.eq_ignore_ascii_case(part));
                         // 大小写不对 → 打开章节时前端会自动纠错为规范写法，故只给 Info；
@@ -1106,12 +1106,12 @@ fn check_condition(
         if expression.is_empty() {
             return;
         }
-        if let Some((left, right)) = split_once_unquoted(expression, "||") {
+        if let Some((left, right)) = split_once_unquoted(expression, " || ") {
             visit(left, cid, i, diags, vars_read);
             visit(right, cid, i, diags, vars_read);
             return;
         }
-        if let Some((left, right)) = split_once_unquoted(expression, "&&") {
+        if let Some((left, right)) = split_once_unquoted(expression, " && ") {
             visit(left, cid, i, diags, vars_read);
             visit(right, cid, i, diags, vars_read);
             return;

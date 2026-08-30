@@ -21,6 +21,8 @@ import { useDialogStore } from '../stores/modules/ui/dialog'
 import { useAsrStore } from '../stores/modules/settings/asr'
 import type { VadEvent } from '../api/services/asr'
 import type { SceneInfo } from './services/scene'
+import { resetScriptWindowTitle } from '@/utils/windowTitleCoordinator'
+import { isOwnedByStandaloneDlc } from '@/utils/dlcMediaOwnership'
 
 function asEvent(
   payload: unknown,
@@ -346,24 +348,40 @@ export function initializeTauriEventListeners() {
   // === Script events ===
 
   listen<string>('script:prepare-uninstall', (event) => {
-    console.log('[Tauri] script:prepare-uninstall', event.payload)
-    // 先丢弃所有仍引用包内绝对路径的积压事件，再清掉当前媒体状态。
-    eventQueue.clear()
+    const folderKey = event.payload
+    console.log('[Tauri] script:prepare-uninstall', folderKey)
     const gameStore = useGameStore()
     const uiStore = useUIStore()
-    gameStore.forceChoice = null
-    gameStore.poemGame = null
-    // 后端此时已持有 DLC 生命周期 reservation，避免 exitStoryMode 再调用 stop_script
-    // 把 reservation 当成运行中剧本等待 3 秒；这里只做前端资源释放。
-    gameStore.exitStoryMode(false)
-    uiStore.currentBackgroundMusic = 'None'
-    uiStore.currentPresentPic = ''
-    uiStore.currentPresentPicScale = 1
-    uiStore.clearAmbientTracks()
-    uiStore.triggerSoundEffect('None')
-    uiStore.resetHorrorEffects()
+    const targetIsActive = gameStore.runningScript?.folderKey === folderKey
+
+    // 只有目标 DLC 自己仍占用剧情队列时才结束剧情；卸载无关 DLC 绝不能
+    // 中断自由对话或另一个剧本。
+    if (targetIsActive) {
+      eventQueue.clear()
+      gameStore.forceChoice = null
+      gameStore.poemGame = null
+      // 后端已持有 DLC 生命周期 reservation，只做前端释放，不再 invoke stop_script。
+      gameStore.exitStoryMode(false)
+      uiStore.resetHorrorEffects()
+      resetScriptWindowTitle()
+    }
+
+    if (isOwnedByStandaloneDlc(uiStore.currentBackgroundMusic, folderKey)) {
+      uiStore.currentBackgroundMusic = 'None'
+    }
+    if (isOwnedByStandaloneDlc(uiStore.currentPresentPic, folderKey)) {
+      uiStore.currentPresentPic = ''
+      uiStore.currentPresentPicScale = 1
+    }
+    if (isOwnedByStandaloneDlc(uiStore.currentSoundEffect, folderKey)) {
+      uiStore.triggerSoundEffect('None')
+    }
+    uiStore.ambientTracks = uiStore.ambientTracks.filter(
+      (track) => !isOwnedByStandaloneDlc(track.src, folderKey),
+    )
+
     window.dispatchEvent(
-      new CustomEvent('lingchat:release-dlc-media', { detail: { folderKey: event.payload } }),
+      new CustomEvent('lingchat:release-dlc-media', { detail: { folderKey } }),
     )
   })
 
@@ -424,6 +442,15 @@ export function initializeTauriEventListeners() {
   // itself so horror beats hold for their authored duration on the visible UI.
   listen('script:wait', (event) => {
     eventQueue.addEvent(asEvent(event.payload, { type: 'wait', defaultDuration: 0 }))
+  })
+
+  listen('script:window-title', (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: 'window_title', defaultDuration: 0 }))
+  })
+
+  // 停止/异常路径已作废旧 FIFO，可立即清除显式标题与恐怖标题 claim。
+  listen('script:window-title-reset', () => {
+    resetScriptWindowTitle()
   })
 
   // The payload is only a one-time ticket validated by Rust. Its processor asks

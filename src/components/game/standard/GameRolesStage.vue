@@ -30,7 +30,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { getVoiceAudio } from '@/api/services/game-info'
@@ -66,7 +66,11 @@ const applyVoiceRate = (audio: HTMLAudioElement, rate: number) => {
 let audioCtx: AudioContext | null = null
 let bufferSource: AudioBufferSourceNode | null = null
 let gainNode: GainNode | null = null
-const audioBufferCache = new Map<string, AudioBuffer>()
+const MAX_AUDIO_BUFFER_CACHE_BYTES = 64 * 1024 * 1024
+const audioBufferCache = new Map<string, { buffer: AudioBuffer; bytes: number }>()
+const audioBufferLoads = new Map<string, Promise<AudioBuffer>>()
+let audioBufferCacheBytes = 0
+let audioCacheGeneration = 0
 
 const getAudioCtx = (): AudioContext => {
   if (!audioCtx) audioCtx = new AudioContext()
@@ -75,11 +79,39 @@ const getAudioCtx = (): AudioContext => {
 
 const loadVoiceBuffer = async (dataUrl: string): Promise<AudioBuffer> => {
   const cached = audioBufferCache.get(dataUrl)
-  if (cached) return cached
-  const resp = await fetch(dataUrl)
-  const buf = await getAudioCtx().decodeAudioData(await resp.arrayBuffer())
-  audioBufferCache.set(dataUrl, buf)
-  return buf
+  if (cached) {
+    // Map 插入顺序即 LRU 顺序；命中后移到末尾。
+    audioBufferCache.delete(dataUrl)
+    audioBufferCache.set(dataUrl, cached)
+    return cached.buffer
+  }
+  const loading = audioBufferLoads.get(dataUrl)
+  if (loading) return loading
+
+  const generation = audioCacheGeneration
+  const promise = (async () => {
+    const resp = await fetch(dataUrl)
+    const buffer = await getAudioCtx().decodeAudioData(await resp.arrayBuffer())
+    const bytes = buffer.length * buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT
+    if (generation === audioCacheGeneration && bytes <= MAX_AUDIO_BUFFER_CACHE_BYTES) {
+      while (audioBufferCacheBytes + bytes > MAX_AUDIO_BUFFER_CACHE_BYTES) {
+        const oldestKey = audioBufferCache.keys().next().value as string | undefined
+        if (!oldestKey) break
+        const oldest = audioBufferCache.get(oldestKey)
+        audioBufferCache.delete(oldestKey)
+        audioBufferCacheBytes -= oldest?.bytes ?? 0
+      }
+      audioBufferCache.set(dataUrl, { buffer, bytes })
+      audioBufferCacheBytes += bytes
+    }
+    return buffer
+  })()
+  audioBufferLoads.set(dataUrl, promise)
+  try {
+    return await promise
+  } finally {
+    if (audioBufferLoads.get(dataUrl) === promise) audioBufferLoads.delete(dataUrl)
+  }
 }
 
 const stopWebAudio = () => {
@@ -226,6 +258,19 @@ const stopAudio = () => {
   }
   stopWebAudio()
 }
+
+onBeforeUnmount(() => {
+  voicePlaybackSeq += 1
+  stopWebAudio()
+  setVoicePlaying(false)
+  audioCacheGeneration += 1
+  audioBufferLoads.clear()
+  audioBufferCache.clear()
+  audioBufferCacheBytes = 0
+  const ctx = audioCtx
+  audioCtx = null
+  if (ctx && ctx.state !== 'closed') void ctx.close().catch(() => {})
+})
 
 defineExpose({
   stopAudio,

@@ -689,6 +689,7 @@ mod tests {
             adventure: Default::default(),
             content_warning: Some("horror".to_string()),
             main_character: None,
+            plugin_id: None,
             running_client_id: None,
             current_chapter_key: String::new(),
             current_event_process: 0,

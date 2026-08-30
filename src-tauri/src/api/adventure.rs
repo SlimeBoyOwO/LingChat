@@ -215,6 +215,12 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
     let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
     let achievement_manager = state.achievement_manager.clone();
 
+    // 与正式独立剧本入口一致：CAS 成功后立即推进代次，阻止自由对话迟到写入。
+    {
+        let mut status = game_status.lock().await;
+        status.preview_generation = status.preview_generation.wrapping_add(1);
+    }
+
     tokio::spawn(async move {
         let mut ctx = ScriptContext {
             db: &db,
