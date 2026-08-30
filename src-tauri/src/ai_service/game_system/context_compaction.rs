@@ -9,17 +9,17 @@
 //!
 //! 摘要持久化在 `context_summary` 表（按 save_id 一行），重启/读档后依然生效。
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
+use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::llm::slot_snapshot;
 use crate::ai_service::types::{GameLine, LlmMessage};
 use crate::db::entities::context_summary;
 use crate::db::entities::line::LineAttribute;
-use crate::AppState;
 
 /// 模型未配置上下文窗口时的默认假设（128k）
 pub const DEFAULT_CONTEXT_WINDOW: u32 = 128_000;
@@ -80,7 +80,7 @@ pub fn effective_summary(status: &GameStatus) -> Option<(&str, usize)> {
     match (&status.context_summary, status.context_summary_cutoff) {
         (Some(summary), cutoff) if cutoff > 0 && cutoff <= status.line_list.len() => {
             Some((summary.as_str(), cutoff))
-        }
+        },
         _ => None,
     }
 }
@@ -240,7 +240,10 @@ pub async fn compact_now(app: &AppHandle, force: bool) -> Result<CompactOutcome>
             "{}\n\n【上次摘要】：\n{}\n\n【旧对话】：\n{}\n\n【前情摘要】（直接输出结果）：",
             COMPACT_PROMPT, prev, old_text
         ),
-        None => format!("{}\n\n【旧对话】：\n{}\n\n【前情摘要】（直接输出结果）：", COMPACT_PROMPT, old_text),
+        None => format!(
+            "{}\n\n【旧对话】：\n{}\n\n【前情摘要】（直接输出结果）：",
+            COMPACT_PROMPT, old_text
+        ),
     };
 
     let response = llm.complete(&[LlmMessage::user(prompt)]).await?;
@@ -284,11 +287,42 @@ pub async fn compact_now(app: &AppHandle, force: bool) -> Result<CompactOutcome>
         compacted_lines: cut,
         kept_lines: lines.len() - cut,
         used_tokens_after: used_after,
-        message: format!("已压缩 {} 条旧对话，保留最近 {} 条原文", cut, lines.len() - cut),
+        message: format!(
+            "已压缩 {} 条旧对话，保留最近 {} 条原文",
+            cut,
+            lines.len() - cut
+        ),
     })
 }
 
-/// 自动压缩检查：用量 ≥ 85% 窗口时同步压缩。每轮用户消息生成前调用。
+/// 自动压缩后台任务防重入：同一时间最多一个在跑。
+static AUTO_COMPACT_RUNNING: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// 在后台触发自动压缩（不阻塞发送链路）。
+///
+/// 发送消息时调用本函数即可：检查与压缩都在后台任务里做，当前这轮仍用
+/// 旧上下文生成，压缩结果从下一轮开始生效（与 kimi-cli 轮间压缩同语义）。
+/// 已有关闭配置、或已有压缩在跑时直接返回。
+pub fn spawn_auto_compact_if_needed(app: &AppHandle) {
+    if !crate::config::app_config::AppConfig::load(app)
+        .map(|c| c.auto_compact)
+        .unwrap_or(true)
+    {
+        return;
+    }
+    if AUTO_COMPACT_RUNNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        auto_compact_if_needed(&app).await;
+        AUTO_COMPACT_RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+}
+
+/// 自动压缩检查：用量 ≥ 85% 窗口时压缩。仅由后台任务调用，严禁
+/// 在发送链路同步 await（压缩含 LLM 调用，会卡住用户消息）。
 /// 失败只记日志不打断对话。
 pub async fn auto_compact_if_needed(app: &AppHandle) {
     if !crate::config::app_config::AppConfig::load(app)
@@ -313,14 +347,51 @@ pub async fn auto_compact_if_needed(app: &AppHandle) {
     if (used as f64) < window as f64 * AUTO_COMPACT_RATIO {
         return;
     }
-    tracing::info!("[ContextCompaction] 用量 {}/{} 超阈值，触发自动压缩", used, window);
+    tracing::info!(
+        "[ContextCompaction] 用量 {}/{} 超阈值，触发自动压缩",
+        used,
+        window
+    );
     match compact_now(app, true).await {
         Ok(outcome) => {
             if outcome.compacted_lines > 0 {
                 tracing::info!("[ContextCompaction] 自动压缩完成: {}", outcome.message);
             }
-        }
+        },
         Err(error) => tracing::warn!("[ContextCompaction] 自动压缩失败（下轮再试）: {error}"),
+    }
+}
+
+/// 回滚后内存态清理（纯逻辑，可单测）：锚点一律重置；cutoff 越界时
+/// 清除摘要与 cutoff。返回是否清除了摘要。
+fn reset_compaction_state_after_rollback(gs: &mut GameStatus) -> bool {
+    gs.last_prompt_tokens = None;
+    gs.last_usage_line_count = 0;
+    if gs.context_summary_cutoff > gs.line_list.len() {
+        gs.context_summary = None;
+        gs.context_summary_cutoff = 0;
+        return true;
+    }
+    false
+}
+
+/// 回滚截断后清理压缩状态。
+///
+/// cutoff 越界时旧摘要已失效（摘要覆盖了被截掉的台词分支），清空内存态并
+/// 删除 DB 行，避免对话重新增长后旧摘要"复活"、把已放弃分支的剧情注回上下文；
+/// 实测锚点来自被截掉的那轮生成，一律重置回退全量估算。
+/// 调用方需已持有 game_status 锁（传入可变引用）。
+pub async fn invalidate_summary_after_rollback(db: &DatabaseConnection, gs: &mut GameStatus) {
+    if !reset_compaction_state_after_rollback(gs) {
+        return;
+    }
+    if let Some(save_id) = gs.active_save_id {
+        if let Err(error) = context_summary::Entity::delete_by_id(save_id)
+            .exec(db)
+            .await
+        {
+            tracing::warn!("[ContextCompaction] 回滚后删除失效摘要失败: {error}");
+        }
     }
 }
 
@@ -333,7 +404,9 @@ pub async fn load_summary_into_status(
     gs_arc: &std::sync::Arc<tokio::sync::Mutex<GameStatus>>,
 ) -> Result<()> {
     let save_id = gs_arc.lock().await.active_save_id;
-    let Some(save_id) = save_id else { return Ok(()) };
+    let Some(save_id) = save_id else {
+        return Ok(());
+    };
 
     let row = context_summary::Entity::find_by_id(save_id).one(db).await?;
     let mut gs = gs_arc.lock().await;
@@ -341,11 +414,84 @@ pub async fn load_summary_into_status(
         Some(row) if row.cutoff_count > 0 && (row.cutoff_count as usize) <= gs.line_list.len() => {
             gs.context_summary = Some(row.summary);
             gs.context_summary_cutoff = row.cutoff_count as usize;
-        }
+        },
         _ => {
             gs.context_summary = None;
             gs.context_summary_cutoff = 0;
-        }
+        },
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reset_compaction_state_after_rollback;
+    use crate::ai_service::game_system::game_status::GameStatus;
+    use crate::ai_service::game_system::role_manager::GameRoleManager;
+    use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
+    use crate::ai_service::types::GameLine;
+    use crate::config::tts::TtsConfig;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    fn status_with_lines(n: usize) -> GameStatus {
+        let manager = GameRoleManager::new(
+            PathBuf::new(),
+            Arc::new(RwLock::new(None)),
+            TtsConfig::default(),
+            None,
+            true,
+            250,
+            30,
+            MemorySectionLimits::default(),
+        );
+        let mut gs = GameStatus::new(manager);
+        for _ in 0..n {
+            gs.line_list.push(GameLine::default());
+        }
+        gs
+    }
+
+    #[test]
+    fn rollback_past_cutoff_clears_summary_and_anchor() {
+        let mut gs = status_with_lines(10);
+        gs.context_summary = Some("旧摘要".to_string());
+        gs.context_summary_cutoff = 30; // 回滚后 len=10 < cutoff=30，摘要失效
+        gs.last_prompt_tokens = Some(12_345);
+        gs.last_usage_line_count = 40;
+
+        assert!(reset_compaction_state_after_rollback(&mut gs));
+        assert_eq!(gs.context_summary, None);
+        assert_eq!(gs.context_summary_cutoff, 0);
+        assert_eq!(gs.last_prompt_tokens, None);
+        assert_eq!(gs.last_usage_line_count, 0);
+    }
+
+    #[test]
+    fn rollback_above_cutoff_keeps_summary_but_resets_anchor() {
+        let mut gs = status_with_lines(50);
+        gs.context_summary = Some("仍有效摘要".to_string());
+        gs.context_summary_cutoff = 30; // len=50 >= cutoff=30，摘要覆盖的台词未被截断
+        gs.last_prompt_tokens = Some(12_345);
+        gs.last_usage_line_count = 45;
+
+        assert!(!reset_compaction_state_after_rollback(&mut gs));
+        assert_eq!(gs.context_summary.as_deref(), Some("仍有效摘要"));
+        assert_eq!(gs.context_summary_cutoff, 30);
+        // 锚点来自被截掉的那轮生成，一律重置
+        assert_eq!(gs.last_prompt_tokens, None);
+        assert_eq!(gs.last_usage_line_count, 0);
+    }
+
+    #[test]
+    fn rollback_without_summary_is_noop_but_resets_anchor() {
+        let mut gs = status_with_lines(5);
+        gs.last_prompt_tokens = Some(999);
+
+        assert!(!reset_compaction_state_after_rollback(&mut gs));
+        assert_eq!(gs.context_summary, None);
+        assert_eq!(gs.context_summary_cutoff, 0);
+        assert_eq!(gs.last_prompt_tokens, None);
+    }
 }
