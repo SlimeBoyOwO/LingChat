@@ -36,7 +36,7 @@ pub async fn plan_push(identity: &DeviceIdentity, peer: &PeerInfo) -> Result<Syn
     let remote_manifest = client::fetch_remote_manifest(peer).await?;
 
     let (files_to_transfer, files_to_delete) =
-        sync_manifest::diff_manifests(&remote_manifest, &local_manifest);
+        sync_manifest::diff_manifests(&remote_manifest, &local_manifest)?;
 
     let total_bytes: u64 = files_to_transfer.iter().map(|f| f.size).sum();
 
@@ -60,7 +60,7 @@ pub async fn plan_pull(identity: &DeviceIdentity, peer: &PeerInfo) -> Result<Syn
             .map_err(|e| format!("扫描本地文件失败: {e}"))?;
 
     let (files_to_transfer, files_to_delete) =
-        sync_manifest::diff_manifests(&local_manifest, &remote_manifest);
+        sync_manifest::diff_manifests(&local_manifest, &remote_manifest)?;
 
     let total_bytes: u64 = files_to_transfer.iter().map(|f| f.size).sum();
 
@@ -226,6 +226,13 @@ pub async fn execute_pull(
     app: &AppHandle,
     cancel: &AtomicBool,
 ) -> Result<SyncResult, String> {
+    for op in &plan.files_to_transfer {
+        sync_manifest::validate_manifest_path(&op.path)?;
+    }
+    for path in &plan.files_to_delete {
+        sync_manifest::validate_manifest_path(path)?;
+    }
+
     let data_dir = data_dir();
     let total = plan.files_to_transfer.len() as u64 + plan.files_to_delete.len() as u64;
     let mut current: u64 = 0;
