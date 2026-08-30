@@ -111,6 +111,18 @@ fn gsv_prompt_language(prompt_text: &str) -> &'static str {
     }
 }
 
+/// 优先朗读 `japanese_text` 译文的语音语言白名单。
+///
+/// 选文（`segment_text_for_lang`）与补生成语音（`api::chat::generate_line_voice`）
+/// 共用此判断，避免两处各写一份列表导致口径漂移。日语也在名单内：主模型通常
+/// 自带日语译文，无译文时由选文逻辑回退主台词。
+pub(crate) fn lang_prefers_translation(lang: &str) -> bool {
+    matches!(
+        lang,
+        "ja" | "en" | "ko" | "es" | "ar" | "de" | "fr" | "ru" | "pt"
+    )
+}
+
 /// 返回当前语音语言实际送入 TTS 的台词文本。
 ///
 /// `japanese_text` 是历史字段名，现用于保存 ja/en/ko/es/ar 等目标语言译文；
@@ -121,14 +133,12 @@ pub(crate) fn segment_text_for_lang<'a>(
     segment: &'a EmotionSegment,
 ) -> Option<&'a str> {
     match lang {
-        // 译文统一存放在 japanese_text 字段（历史命名），非中文语言均优先取译文；
-        // 无译文时 en/ko/es/ar/de/fr/ru/pt 跳过（不朗读错误语言）
-        "ja" | "en" | "ko" | "es" | "ar" | "de" | "fr" | "ru" | "pt"
-            if !segment.japanese_text.trim().is_empty() =>
-        {
+        // 译文统一存放在 japanese_text 字段（历史命名），白名单语言均优先取译文
+        l if lang_prefers_translation(l) && !segment.japanese_text.trim().is_empty() => {
             Some(&segment.japanese_text)
         },
-        "en" | "ko" | "es" | "ar" | "de" | "fr" | "ru" | "pt" => None,
+        // 无译文时除日语外不朗读错误语言；日语由下方 _ 臂回退主台词
+        l if lang_prefers_translation(l) && l != "ja" => None,
         "zh" if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
         _ if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
         _ if !segment.japanese_text.trim().is_empty() => Some(&segment.japanese_text),

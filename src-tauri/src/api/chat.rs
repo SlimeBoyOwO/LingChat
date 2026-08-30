@@ -4,20 +4,20 @@ use regex::Regex;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::AppState;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
 };
 use crate::ai_service::message_system::processor::EmotionSegment;
 use crate::ai_service::tts::local::LocalTtsState;
-use crate::ai_service::tts::voice_maker::segment_text_for_lang;
-use crate::ai_service::types::{LineAttributeExt, LineBase};
-use crate::api::game::{compute_user_message_seqs, GameLineInit};
+use crate::ai_service::tts::voice_maker::{lang_prefers_translation, segment_text_for_lang};
+use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase};
+use crate::api::game::{GameLineInit, compute_user_message_seqs};
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::prompt::PromptRole;
-use crate::AppState;
 
 #[tauri::command]
 pub async fn send_chat_message(
@@ -186,7 +186,7 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
                 None => {
                     tracing::warn!("没有当前绑定的角色。");
                     return Ok(());
-                }
+                },
             };
 
             let role = match gs.role_manager.get_loaded(current_id) {
@@ -194,7 +194,7 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
                 None => {
                     tracing::warn!("角色 ID {} 未加载。", current_id);
                     return Ok(());
-                }
+                },
             };
 
             tracing::info!(
@@ -206,7 +206,7 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
             for msg in &role.memory {
                 tracing::info!("[{}] {}", msg.role, msg.content);
             }
-        }
+        },
         "/查看台词" => {
             let state = app.state::<AppState>();
             let svc = state.ai_service.lock().await;
@@ -241,10 +241,10 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
 
                 tracing::info!("[{}] {} : {}{}{}{}", i, name, emotion, content, tts, action);
             }
-        }
+        },
         other if other.starts_with('/') => {
             tracing::warn!("未知调试指令: {}。可用指令: /查看记忆, /查看台词", other);
-        }
+        },
         _ => unreachable!(),
     }
     Ok(())
@@ -344,6 +344,27 @@ fn has_tts_countable_content(content: &str) -> bool {
     !re.replace_all(content, "").trim().is_empty()
 }
 
+/// 数「assistant 且有正文且关联角色」的行，返回第 line_seq 条在 line_list 中的下标。
+///
+/// 跳过 sender_role_id 为 None 的行（工具调用回填的 assistant 前缀行，实时对话时
+/// 前端不可见，重载后可见——若计入序号会造成前后端计数漂移）。定位与写回共用
+/// 本函数，保证生成前后的计数口径一致。
+fn find_tts_line_index(line_list: &[GameLine], line_seq: u32) -> Option<usize> {
+    let mut count = 0u32;
+    for (i, gl) in line_list.iter().enumerate() {
+        if matches!(gl.attribute(), LineAttribute::Assistant)
+            && gl.base.sender_role_id.is_some()
+            && has_tts_countable_content(&gl.base.content)
+        {
+            if count == line_seq {
+                return Some(i);
+            }
+            count += 1;
+        }
+    }
+    None
+}
+
 /// 为历史中某条 AI 台词补生成语音（「生成语音」按钮后端）。
 ///
 /// `line_seq` 为 0-based 的「AI 台词」全局序号：按 `line_list` 中
@@ -354,6 +375,10 @@ fn has_tts_countable_content(content: &str) -> bool {
 /// 语音生成复用该台词角色已构建的 `VoiceMaker`（未加载时从 DB 惰性注册，
 /// 保证重启后剧本 NPC 等角色也能正确对应），产物写入 `<data_dir>/voice/`
 /// 后回填 `audio_file`，存在活跃存档时同步到 DB，重启后仍可播放。
+///
+/// 锁纪律：重翻译（LLM）与语音合成（TTS）等网络请求一律在不持有
+/// `ai_service`/`game_status` 锁的情况下执行，仅取数与写回短暂持锁，
+/// 避免补生成期间卡死其他聊天、剧本推进等 AI 任务。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerateLineVoiceResponse {
@@ -398,34 +423,20 @@ pub async fn generate_line_voice(
     //    真实就绪状态（静默刷新，无 toast），而非刷新前的旧状态
     let _ = app.emit("tts://status-changed", ());
 
-    let result = {
+    // ===== 阶段一：持锁取数（只做内存读取与惰性注册，绝不发起网络请求） =====
+    let (role_id, mut seg, voice_maker, effective_lang) = {
         let svc = state.ai_service.lock().await;
         let mut gs = svc.game_status.lock().await;
 
-        // 1. 定位目标台词：数「assistant 且有正文且关联角色」的行，取第 line_seq 条。
-        //    跳过 sender_role_id 为 None 的行（工具调用回填的 assistant 前缀行，
-        //    实时对话时前端不可见，重载后可见——若计入序号会造成前后端计数漂移）。
-        let mut count = 0u32;
-        let mut target_idx: Option<usize> = None;
-        for (i, gl) in gs.line_list.iter().enumerate() {
-            if matches!(gl.attribute(), LineAttribute::Assistant)
-                && gl.base.sender_role_id.is_some()
-                && has_tts_countable_content(&gl.base.content)
-            {
-                if count == line_seq {
-                    target_idx = Some(i);
-                    break;
-                }
-                count += 1;
-            }
-        }
-        let idx = target_idx.ok_or_else(|| {
-            format!("未找到序号为 {} 的 AI 台词（共 {} 条）", line_seq, count)
-        })?;
+        // 1. 定位目标台词：数「assistant 且有正文且关联角色」的行，取第 line_seq 条
+        let idx = find_tts_line_index(&gs.line_list, line_seq)
+            .ok_or_else(|| format!("未找到序号为 {} 的 AI 台词", line_seq))?;
 
-        // 2. 先克隆台词数据（之后要对 gs 做可变借用）
-        let role_id = gs.line_list[idx].base.sender_role_id;
-        let role_id = role_id.ok_or_else(|| "该台词没有关联角色，无法生成语音".to_string())?;
+        // 2. 克隆台词数据（之后不再持有任何锁）
+        let role_id = gs.line_list[idx]
+            .base
+            .sender_role_id
+            .ok_or_else(|| "该台词没有关联角色，无法生成语音".to_string())?;
         let text = gs.line_list[idx].base.content.clone();
         if text.trim().is_empty() {
             return Err("该台词没有可朗读的文本".to_string());
@@ -440,7 +451,11 @@ pub async fn generate_line_voice(
             .action_content
             .clone()
             .unwrap_or_default();
-        let stored_tts_content = gs.line_list[idx].base.tts_content.clone().unwrap_or_default();
+        let stored_tts_content = gs.line_list[idx]
+            .base
+            .tts_content
+            .clone()
+            .unwrap_or_default();
         let stored_spoken_language = gs.line_list[idx].base.spoken_language.clone();
         let predicted = gs.line_list[idx]
             .base
@@ -464,18 +479,17 @@ pub async fn generate_line_voice(
                     .and_then(|r| r.voice_maker.clone())
             }
         };
-        let voice_maker = voice_maker.ok_or_else(|| {
-            format!("角色 {} 未配置 TTS，请在角色设置中启用语音", role_id)
-        })?;
+        let voice_maker = voice_maker
+            .ok_or_else(|| format!("角色 {} 未配置 TTS，请在角色设置中启用语音", role_id))?;
 
-        // 4. 构造单个情绪片段并生成语音。
+        // 4. 构造单个情绪片段。
         //    只有存储语言与当前有效 voice_lang 一致时才能复用旧目标译文；旧行没有
         //    语言元数据、或角色后来切换语言时，必须从 canonical content 重新翻译，
         //    绝不能把旧日语/韩语静默送进当前英语等 TTS。
         let effective_lang = voice_maker.lang().to_string();
         let can_reuse_translation =
             stored_spoken_language.as_deref() == Some(effective_lang.as_str());
-        let mut seg = EmotionSegment {
+        let seg = EmotionSegment {
             index: 0,
             original_tag,
             following_text: text,
@@ -492,42 +506,57 @@ pub async fn generate_line_voice(
             role_id: Some(role_id),
         };
 
-        if matches!(effective_lang.as_str(), "ja" | "en" | "ko" | "es" | "ar")
-            && seg.japanese_text.trim().is_empty()
-        {
-            let translated = state
-                .chat
-                .translator
-                .translate_segments_to(std::slice::from_mut(&mut seg), true, &effective_lang)
-                .await
-                .map_err(|e| format!("重新翻译台词失败: {e}"))?;
-            if !translated {
-                return Err(format!(
-                    "无法把历史台词翻译成当前 TTS 语言 {}，请检查翻译模型配置",
-                    effective_lang
-                ));
-            }
-        }
+        (role_id, seg, voice_maker, effective_lang)
+    }; // 立即释放 ai_service 与 game_status 锁
 
-        let spoken_content = segment_text_for_lang(&effective_lang, &seg)
-            .map(str::to_owned)
-            .ok_or_else(|| format!("当前 TTS 语言 {} 没有可朗读文本", effective_lang))?;
-        let generation_results = voice_maker
-            .generate_voice_files(std::slice::from_mut(&mut seg))
-            .await;
-
-        // 5. VoiceMaker 仅在 adapter 成功、临时产物非空并原子提交后返回 true。
-        if !generation_results.first().copied().unwrap_or(false) {
-            return Err(
-                "语音生成失败：TTS 未启用、返回空音频或写入出错，请检查语音设置后再试"
-                    .to_string(),
-            );
+    // ===== 阶段二：无锁网络请求（LLM 重翻译 + TTS 合成）。
+    // 这两步可能耗时数秒，持全局锁执行会把其他聊天对话、剧本推进等 AI 任务全部
+    // 卡死，因此必须在锁外进行；VoiceMaker 与台词数据均已在阶段一克隆出来。
+    if lang_prefers_translation(&effective_lang) && seg.japanese_text.trim().is_empty() {
+        let translated = state
+            .chat
+            .translator
+            .translate_segments_to(std::slice::from_mut(&mut seg), true, &effective_lang)
+            .await
+            .map_err(|e| format!("重新翻译台词失败: {e}"))?;
+        if !translated {
+            return Err(format!(
+                "无法把历史台词翻译成当前 TTS 语言 {}，请检查翻译模型配置",
+                effective_lang
+            ));
         }
-        let path = std::path::PathBuf::from(&seg.voice_file);
-        let file_name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .ok_or_else(|| "语音文件路径异常".to_string())?;
+    }
+
+    // 选文逻辑与实时生成一致（voice_maker.rs 的 segment_text_for_lang）；
+    // 存储的台词已剥离【情绪】标签（生成时提取过），无需二次解析
+    let spoken_content = segment_text_for_lang(&effective_lang, &seg)
+        .map(str::to_owned)
+        .ok_or_else(|| format!("当前 TTS 语言 {} 没有可朗读文本", effective_lang))?;
+    let generation_results = voice_maker
+        .generate_voice_files(std::slice::from_mut(&mut seg))
+        .await;
+
+    // 5. VoiceMaker 仅在 adapter 成功、临时产物非空并原子提交后返回 true。
+    if !generation_results.first().copied().unwrap_or(false) {
+        return Err(
+            "语音生成失败：TTS 未启用、返回空音频或写入出错，请检查语音设置后再试".to_string(),
+        );
+    }
+    let path = std::path::PathBuf::from(&seg.voice_file);
+    let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .ok_or_else(|| "语音文件路径异常".to_string())?;
+
+    // ===== 阶段三：重新持锁写回。
+    // 生成期间对话可能已变化（新回复/回滚/读档），按序号重定位并校验仍是同一行。
+    {
+        let svc = state.ai_service.lock().await;
+        let mut gs = svc.game_status.lock().await;
+
+        let idx = find_tts_line_index(&gs.line_list, line_seq)
+            .filter(|&i| gs.line_list[i].base.sender_role_id == Some(role_id))
+            .ok_or_else(|| "对话在语音生成期间已变化，请重试补生成".to_string())?;
 
         gs.line_list[idx].base.audio_file = Some(file_name.clone());
         gs.line_list[idx].base.tts_content = if seg.japanese_text.trim().is_empty() {
@@ -544,13 +573,13 @@ pub async fn generate_line_voice(
                 .await
                 .map_err(|e| format!("同步存档失败: {}", e))?;
         }
+    }
 
-        GenerateLineVoiceResponse {
-            file_name,
-            spoken_content,
-            spoken_language: effective_lang,
-        }
-    }; // 释放锁
+    let result = GenerateLineVoiceResponse {
+        file_name,
+        spoken_content,
+        spoken_language: effective_lang,
+    };
 
     tracing::info!(
         "补生成语音完成: line_seq={}, file={}, lang={}",
@@ -568,15 +597,28 @@ pub async fn trigger_ai_response(app: AppHandle) -> Result<(), String> {
     let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm)
         .await
         .ok_or_else(|| "LLM 未配置".to_string())?;
-    let concurrency = AppConfig::load(&app).map(|c| c.consumers as usize).unwrap_or(1).max(1);
-    let gs = { let svc = state.ai_service.lock().await; svc.game_status.clone() };
+    let concurrency = AppConfig::load(&app)
+        .map(|c| c.consumers as usize)
+        .unwrap_or(1)
+        .max(1);
+    let gs = {
+        let svc = state.ai_service.lock().await;
+        svc.game_status.clone()
+    };
     // 捕获当前试玩代号（自由对话恒等，行为不变）
     let preview_generation = gs.lock().await.preview_generation;
     let deps = GeneratorDeps {
         source: GeneratorSource::Proactive,
-        app: app.clone(), db: state.db.clone(), game_status: gs,
-        processor: state.chat.processor.clone(), translator: state.chat.translator.clone(),
-        llm, tool_registry: state.tool_registry.clone(), concurrency, god_agent: state.god_agent.clone(), suppress_thinking: false,
+        app: app.clone(),
+        db: state.db.clone(),
+        game_status: gs,
+        processor: state.chat.processor.clone(),
+        translator: state.chat.translator.clone(),
+        llm,
+        tool_registry: state.tool_registry.clone(),
+        concurrency,
+        god_agent: state.god_agent.clone(),
+        suppress_thinking: false,
         generation: preview_generation,
         is_preview: false,
     };
@@ -592,19 +634,19 @@ pub async fn trigger_ai_response(app: AppHandle) -> Result<(), String> {
 
 //处理图片投喂
 #[tauri::command]
-pub async fn feed_image(
-    app: AppHandle,
-    path: String,
-) -> Result<(), String> {
+pub async fn feed_image(app: AppHandle, path: String) -> Result<(), String> {
     let state = app.state::<AppState>();
     let (user_name, game_status) = {
         let svc = state.ai_service.lock().await;
         let gs = svc.game_status.lock().await;
-        (gs.player.user_name.clone(), svc.game_status.clone(),)
+        (gs.player.user_name.clone(), svc.game_status.clone())
     };
 
     tracing::info!("[FileFeed] 收到图片投喂");
-    let prompt = format!("用户（名字是\"{}\"）给你看了一张图片，请你用第三人称叙述把你看到的画面描述给其他AI让他理解用户的图片内容",user_name);
+    let prompt = format!(
+        "用户（名字是\"{}\"）给你看了一张图片，请你用第三人称叙述把你看到的画面描述给其他AI让他理解用户的图片内容",
+        user_name
+    );
 
     events::emit_thinking(&app, true);
     let analysis = {
@@ -635,23 +677,30 @@ pub async fn feed_image(
 }
 
 #[tauri::command]
-pub async fn feed_text(
-    app: AppHandle,
-    text: String,
-) -> Result<(), String> {
+pub async fn feed_text(app: AppHandle, text: String) -> Result<(), String> {
     let state = app.state::<AppState>();
     let (user_name, game_status, ai_name) = {
         let svc = state.ai_service.lock().await;
         let gs = svc.game_status.lock().await;
         let ai_name = gs
-            .current_role_id.and_then(|id| gs.role_manager.get_loaded(id)).and_then(|r| r.display_name.clone()).unwrap_or_else(|| "AI".to_string());
-        (gs.player.user_name.clone(), svc.game_status.clone(), ai_name)
+            .current_role_id
+            .and_then(|id| gs.role_manager.get_loaded(id))
+            .and_then(|r| r.display_name.clone())
+            .unwrap_or_else(|| "AI".to_string());
+        (
+            gs.player.user_name.clone(),
+            svc.game_status.clone(),
+            ai_name,
+        )
     };
 
     tracing::info!("[FileFeed] 收到文本投喂");
     // 截断过长文本，避免 token 爆炸
     let truncated: String = if text.chars().count() > 2000 {
-        text.chars().take(2000).chain("...(内容已截断)".chars()).collect()
+        text.chars()
+            .take(2000)
+            .chain("...(内容已截断)".chars())
+            .collect()
     } else {
         text
     };
