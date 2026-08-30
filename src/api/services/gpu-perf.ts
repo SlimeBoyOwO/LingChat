@@ -75,5 +75,49 @@ export async function redetectGpu(): Promise<GpuInfo> {
   return info
 }
 
+/**
+ * 读取 WebGL 实际渲染器字符串（反映 WebView2/Chromium 实际合成所用的 GPU）。
+ *
+ * 通过 `WEBGL_debug_renderer_info.UNMASKED_RENDERER_WEBGL` 拿到如
+ * "ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Laptop GPU Direct3D11 ... , D3D11)" 的字符串。
+ * 该值就是程序当前正在调用的 GPU。读取失败返回 null。
+ */
+function readWebGlRenderer(): string | null {
+  try {
+    const canvas = document.createElement('canvas')
+    const gl =
+      canvas.getContext('webgl') ||
+      (canvas.getContext('experimental-webgl') as WebGLRenderingContext | null)
+    if (!gl) return null
+    const debug = gl.getExtension('WEBGL_debug_renderer_info')
+    const renderer = debug
+      ? (gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) as string)
+      : (gl.getParameter(gl.RENDERER) as string)
+    return renderer ? String(renderer).trim() : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 获取「当前实际调用的 GPU」（通过 WebGL 渲染器字符串，交由后端 grade() 定级）。
+ *
+ * 与 getGpuInfo() 的「本机最高性能 GPU」不同：
+ * - getGpuInfo(): 硬件枚举后取最高（用于综合分级 / 自动画质配置）
+ * - getActiveGpu(): 反映程序当前真正在用的那张卡（设置页展示用）
+ */
+export async function getActiveGpu(): Promise<GpuInfo> {
+  const renderer = readWebGlRenderer()
+  if (!renderer) {
+    return {
+      name: '',
+      tier: 'Low',
+      is_applicable: false,
+      message: '无法读取 WebGL 渲染器',
+    }
+  }
+  return await invoke<GpuInfo>('grade_active_gpu', { renderer })
+}
+
 export { getTierLabel, getPerfTierColor, getSuggestedMaxFps }
 export type { PerfTier }

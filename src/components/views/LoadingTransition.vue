@@ -49,7 +49,7 @@
         class="absolute bottom-4 right-4 w-8 h-8 border-r-2 border-b-2 border-teal-500/30 pointer-events-none"
       ></div>
 
-      <!-- 浮动粒子（position:absolute 默认 top:0，translateY(100vh)→(-10vh) = 底部→顶部） -->
+      <!-- 浮动粒子（position:absolute 默认 top:0，translateY(100dvh)→(-10dvh) = 底部→顶部） -->
       <div
         v-for="p in particles"
         :key="p.id"
@@ -216,15 +216,15 @@
           </div>
 
           <div
-            class="w-[40vh] text-center text-sm font-mono text-cyan-400/70 transition-all duration-300"
+            class="w-[40dvh] text-center text-sm font-mono text-cyan-400/70 transition-all duration-300"
           >
             {{ currentStatusText }}
           </div>
 
           <!-- 进度条 -->
-          <div class="w-[60vh] flex items-center space-y-2 mt-4">
+          <div class="w-[60dvh] flex items-center space-y-2 mt-4">
             <div
-              class="w-[60vh] h-6 bg-slate-950/80 rounded-full border border-teal-500/20 p-0.5 relative overflow-hidden flex items-center"
+              class="w-[60dvh] h-6 bg-slate-950/80 rounded-full border border-teal-500/20 p-0.5 relative overflow-hidden flex items-center"
             >
               <div
                 class="h-full bg-gradient-to-r from-teal-500/80 to-cyan-400 rounded-full glow-cyan transition-all duration-100"
@@ -242,7 +242,7 @@
           </div>
 
           <div
-            class="w-[40vh] flex text-center justify-center gap-12 text-sm font-mono text-cyan-300/80"
+            class="w-[40dvh] flex text-center justify-center gap-12 text-sm font-mono text-cyan-300/80"
           >
             <span class="text-cyan-500/80">{{ randomTip }}</span>
           </div>
@@ -737,14 +737,14 @@ onUnmounted(() => {
 /* ===== 粒子上升 ===== */
 @keyframes particleUp {
   0% {
-    transform: translateY(100vh) scale(0.5);
+    transform: translateY(100dvh) scale(0.5);
     opacity: 0;
   }
   50% {
     opacity: 0.6;
   }
   100% {
-    transform: translateY(-10vh) scale(1.2);
+    transform: translateY(-10dvh) scale(1.2);
     opacity: 0;
   }
 }

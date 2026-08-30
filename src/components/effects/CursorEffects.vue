@@ -100,6 +100,7 @@ class MouseSpark {
   onMouseMove: (e: MouseEvent) => void = () => {}
   onMouseUp: (e: MouseEvent) => void = () => {}
   onResize: () => void = () => {}
+  resizeObserver: ResizeObserver | null = null
 
   bindHandlers() {
     const getPos = (e: MouseEvent) => ({ x: e.clientX, y: e.clientY })
@@ -178,6 +179,11 @@ class MouseSpark {
     window.addEventListener('mousemove', this.onMouseMove)
     window.addEventListener('mouseup', this.onMouseUp)
     window.addEventListener('resize', this.onResize)
+    // 容器尺寸变化（状态栏显隐/键盘/窗口化）时重算画布位图，防止拉伸错位
+    if (typeof ResizeObserver !== 'undefined' && this.mainCanvas.parentElement) {
+      this.resizeObserver = new ResizeObserver(() => this.resize())
+      this.resizeObserver.observe(this.mainCanvas.parentElement)
+    }
   }
 
   destroy() {
@@ -185,6 +191,8 @@ class MouseSpark {
     window.removeEventListener('mousemove', this.onMouseMove)
     window.removeEventListener('mouseup', this.onMouseUp)
     window.removeEventListener('resize', this.onResize)
+    this.resizeObserver?.disconnect()
+    this.resizeObserver = null
     if (this.animationId) {
       cancelAnimationFrame(this.animationId)
     }
@@ -203,8 +211,12 @@ class MouseSpark {
 
   resize() {
     const dpr = window.devicePixelRatio || 1
-    const cssWidth = Math.max(1, window.innerWidth)
-    const cssHeight = Math.max(1, window.innerHeight)
+    // 优先按容器自身盒子计算画布位图：重启时状态栏出现/键盘/台前调度改窗口等场景，
+    // 容器（inset:0 铺满视觉视口）与 window.innerWidth/Height 短期不一致时，
+    // 按窗口值算出的位图会被拉伸（特效偏移随 y 线性增大）——以容器为准则恒 1:1。
+    const el = this.mainCanvas.parentElement
+    const cssWidth = Math.max(1, el ? el.clientWidth : window.innerWidth)
+    const cssHeight = Math.max(1, el ? el.clientHeight : window.innerHeight)
     const w = Math.max(1, Math.floor(cssWidth * dpr))
     const h = Math.max(1, Math.floor(cssHeight * dpr))
 
@@ -753,10 +765,10 @@ onBeforeUnmount(() => {
 .cursor-effects-container {
   pointer-events: none;
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
+  /* 用 inset:0 铺满视觉视口：避免 100vw/100dvh 与 window.innerWidth/Height
+     在 iOS 键盘弹出/窗口化（iPad 台前调度）等场景出现坐标偏差，
+     保证波纹/轨迹与 clientX/clientY 严格同原点 */
+  inset: 0;
   z-index: 9999;
 }
 

@@ -1291,9 +1291,30 @@ pub async fn editor_rescan_scripts(app: AppHandle) -> Result<usize, String> {
     let data = service.data_dir.clone();
     let fresh = crate::ai_service::game_system::script_engine::ScriptManager::new(&data);
 
+    // 插件剧本不在 game_data/scripts 扫描根中，重扫前保存其来源并固定恢复顺序。
+    let mut plugin_scripts: Vec<(String, std::path::PathBuf)> = service
+        .script_manager
+        .all_scripts
+        .values()
+        .filter_map(|script| {
+            script
+                .plugin_id
+                .clone()
+                .map(|plugin_id| (plugin_id, script.script_path.clone()))
+        })
+        .collect();
+    plugin_scripts.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+
+    // 先摘掉插件条目，避免新出现的游戏/DLC 同名剧本继承旧 plugin_id。
+    service.script_manager.apply_plugin_scripts(&[]);
+
     // Catalog reconciliation updates both runnable scripts and fail-closed
     // duplicate claims, while preserving progress and the existing is_running Arc.
-    let count = service.script_manager.merge_scanned_catalog(fresh);
+    service.script_manager.merge_scanned_catalog(fresh);
+    service
+        .script_manager
+        .apply_plugin_scripts(&plugin_scripts);
+    let count = service.script_manager.all_scripts.len();
     tracing::info!("[ScriptEditor] 重新扫描完成，共 {} 个剧本", count);
     Ok(count)
 }
@@ -1973,6 +1994,9 @@ pub async fn editor_stop_preview(app: AppHandle) -> Result<(), String> {
         }
         if let Some(tx) = ch.input_tx.take() {
             let _ = tx.send(String::new());
+        }
+        if let Some(pending) = ch.poem_tx.take() {
+            let _ = pending.tx.send(String::new());
         }
         ch.choice_allow_free = false;
     }

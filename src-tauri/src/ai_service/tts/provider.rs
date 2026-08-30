@@ -10,6 +10,7 @@ use serde_json::Value as JsonValue;
 
 use super::adapters::aivis::AivisAdapter;
 use super::adapters::bv2::Bv2Adapter;
+use super::adapters::cosyvoice::CosyvoiceAdapter;
 use super::adapters::fish_s2::FishS2Adapter;
 use super::adapters::gsv::GsvAdapter;
 use super::adapters::indextts::IndexTtsAdapter;
@@ -62,6 +63,7 @@ pub struct TtsProvider {
     pub indextts: Option<Arc<IndexTtsAdapter>>,
     pub opentts: Option<Arc<OpenTtsAdapter>>,
     pub fish_s2: Option<Arc<FishS2Adapter>>,
+    pub cosyvoice: Option<Arc<CosyvoiceAdapter>>,
 }
 
 impl Default for TtsProvider {
@@ -81,6 +83,7 @@ impl Default for TtsProvider {
             indextts: None,
             opentts: None,
             fish_s2: None,
+            cosyvoice: None,
         }
     }
 }
@@ -102,6 +105,7 @@ impl std::fmt::Debug for TtsProvider {
             .field("indextts", &self.indextts.is_some())
             .field("opentts", &self.opentts.is_some())
             .field("fish_s2", &self.fish_s2.is_some())
+            .field("cosyvoice", &self.cosyvoice.is_some())
             .finish()
     }
 }
@@ -204,6 +208,10 @@ impl TtsProvider {
                 .fish_s2
                 .clone()
                 .ok_or_else(|| anyhow!("Fish S2 适配器未初始化"))?,
+            "cosyvoice" => self
+                .cosyvoice
+                .clone()
+                .ok_or_else(|| anyhow!("CosyVoice 适配器未初始化"))?,
             "" => {
                 // 旧版：未指定时优先 sbv2
                 if let Some(a) = self.sbv2.clone() {

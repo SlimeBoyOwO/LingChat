@@ -373,6 +373,10 @@ export default {
       "openttsVoiceLabel": "OpenTTS 音色標識",
       "fishS2": "Fish S2（本機 API）",
       "fishS2Voice": "Fish S2 音色標識",
+      "voiceCloneTts": "語音克隆TTS",
+      "cosyVoiceVoice": "雲端音色",
+      "noCloudVoice": "暫無雲端音色，請先到設定頁註冊",
+      "voiceDialect": "中文方言",
 
       "openttsVoice": "OpenTTS 音色標識"
     },
@@ -386,7 +390,30 @@ export default {
       "en": "英語",
       "ko": "韓語",
       "es": "西班牙語",
-      "ar": "阿拉伯語"
+      "ar": "阿拉伯語",
+      "de": "德語",
+      "fr": "法語",
+      "ru": "俄語",
+      "pt": "葡萄牙語"
+    },
+    "dialectOptions": {
+      "mandarin": "普通話",
+      "cantonese": "廣東話",
+      "dongbei": "東北話",
+      "gansu": "甘肅話",
+      "guizhou": "貴州話",
+      "henan": "河南話",
+      "hubei": "湖北話",
+      "jiangxi": "江西話",
+      "fujian": "閩南話",
+      "ningxia": "寧夏話",
+      "shanxi": "山西話",
+      "shaanxi": "陝西話",
+      "shandong": "山東話",
+      "shanghai": "上海話",
+      "sichuan": "四川話",
+      "tianjin": "天津話",
+      "yunnan": "雲南話"
     },
     "clothes": {
       "listTitle": "服裝列表",
@@ -629,7 +656,8 @@ export default {
       "title": "性能檢測",
       "detecting": "檢測緊硬件性能 …",
       "cpuName": "CPU 名稱：",
-      "gpuName": "GPU 名稱：",
+      "gpuName": "最高性能 GPU：",
+      "activeGpuName": "當前調用 GPU：",
       "combinedTier": "性能等級（取最低）：",
       "suggestedFps": "建議幀率：",
       "detectingShort": "檢測緊…",
@@ -967,7 +995,7 @@ export default {
     }
   },
   "tts": {
-    "title": "本地 TTS",
+    "title": "TTS 設置",
     "switch": {
       "label": "全域本地 TTS",
       "enabled": "已啟用",
@@ -1038,6 +1066,73 @@ export default {
       "generating": "生成中",
       "generate": "生成試聽"
     },
+    "cosyvoice": {
+      "title": "語音克隆 TTS",
+      "subtitle": "基於阿里雲百煉 CosyVoice，導入語音樣本克隆專屬音色",
+      "keyPlaceholder": "輸入 DASHSCOPE API Key",
+      "keyConfigured": "API Key 已配置",
+      "keyChange": "更換",
+      "keySave": "儲存",
+      "voicesLabel": "我的音色（{count}）",
+      "voicesEmpty": "未有音色，導入語音樣本建立第一個吧",
+      "voiceStatus": "狀態：{status}",
+      "statusOk": "可用",
+      "statusDeploying": "審核中…",
+      "statusUndeployed": "審核失敗",
+      "statusUnknown": "狀態未知",
+      "retryStatus": "重查狀態",
+      "previewVoice": "試聽",
+      "deleteVoice": "刪除音色",
+      "voiceNamePlaceholder": "音色名稱",
+      "voiceNameLabel": "音色名稱（必填）",
+      "languageLabel": "參考音頻語言（必選）",
+      "languages": {
+        "zh": "中文",
+        "en": "英語",
+        "ja": "日語",
+        "ko": "韓語",
+        "fr": "法語",
+        "de": "德語",
+        "ru": "俄語",
+        "pt": "葡萄牙語",
+        "th": "泰語",
+        "id": "印尼語",
+        "vi": "越南語"
+      },
+      "pickSample": "選擇語音樣本",
+
+      "register": "匯入並註冊音色",
+
+      "registering": "註冊中…",
+      "previewTitle": "試聽",
+      "previewSubtitle": "輸入內容並選擇已註冊嘅克隆音色",
+      "importTitle": "導入音色",
+      "importSubtitle": "上傳清晰人聲樣本，創建專屬克隆音色",
+      "importHint": "時長建議 10–20 秒，支援 wav / mp3，取樣率不低於 16kHz，所選參考音頻語言必須與實際音頻語言一致，單人清晰說話，無背景音樂或噪音",
+      "previewPlaceholder": "輸入試聽文字…",
+      "previewVoiceLabel": "音色",
+      "previewSelect": "選擇音色",
+      "generating": "生成中…",
+      "generate": "生成並播放",
+      "notices": {
+        "loadConfigFailed": "載入語音克隆配置失敗: {error}",
+        "keySaved": "CosyVoice API Key 已保存",
+        "keySaveFailed": "儲存 API Key 失敗: {error}",
+        "needNameAndSample": "請先輸入音色名稱並選擇語音樣本",
+        "voiceSubmitted": "音色已提交審核: {name}（{voiceId}），審核通過後即可使用",
+        "registerFailed": "音色註冊失敗: {error}",
+        "deleteConfirm": "確定刪除音色「{name}」嗎？雲端與本地記錄將一併移除。",
+        "deleteTitle": "刪除音色",
+        "deleteFailed": "刪除音色失敗: {error}",
+        "needPreviewText": "請輸入試聽文字",
+        "previewFailed": "試聽失敗: {error}"
+      },
+      "phases": {
+        "uploading": "上傳語音樣本中…",
+        "submitting": "提交復刻任務…",
+        "submitted": "已提交，等待審核…"
+      },
+    },
     "messages": {
       "readStatusFailed": "讀取本地 TTS 狀態失敗：{error}",
       "importFailed": "匯入失敗：{error}",
@@ -1059,7 +1154,9 @@ export default {
       "switchEnabled": "本地 TTS 已啟用。",
       "switchEnabledNotReady": "本地 TTS 已啟用，但引擎未就緒（缺少 DeBERTa 模型或分詞器，請先下載）。",
       "switchDisabled": "本地 TTS 已關閉，如需使用雲端 TTS，請將角色語音切換為「雲端」並重新啟動應用程式。",
-      "saveSwitchFailed": "儲存本地 TTS 開關失敗：{error}"
+      "saveSwitchFailed": "儲存本地 TTS 開關失敗：{error}",
+      "deviceSwitched": "推理設備已切換: {name}",
+      "deviceSwitchFailed": "切換推理設備失敗: {error}"
     }
   },
 
@@ -1077,7 +1174,7 @@ export default {
       "vadLoadedNo": "未載入"
     },
     "voiceInput": "語音輸入",
-    "voiceInputHint": "總開關：關閉後自動語音識別不可用，手動麥克風錄音保留",
+    "voiceInputHint": "總開關：關閉後語音輸入整體不可用（自動與手動麥克風一併關閉）",
     "autoListen": "啟用自動語音識別",
     "autoListenHint": "自動監聽麥克風，識別用戶說話後自動轉為文字",
     "vadSilence": "靜音計時（毫秒）",

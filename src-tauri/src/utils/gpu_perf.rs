@@ -497,3 +497,89 @@ pub fn redetect_gpu(state: State<'_, GpuDetectionCache>) -> Result<GpuInfo, Stri
     *guard = Some(info.clone());
     Ok(info)
 }
+
+// ────────────────────────────────────────
+// 当前实际调用的 GPU（WebGL 渲染器字符串）
+// ────────────────────────────────────────
+
+/// 从 WebGL `WEBGL_debug_renderer_info.UNMASKED_RENDERER_WEBGL` 渲染器字符串中，
+/// 解析出 GPU 厂商 `vendor_id` 与型号名 `name`。
+///
+/// 该字符串反映的是 Chromium/WebView2 实际合成（含 WebGL 渲染）所用的 GPU，
+/// 因此比「枚举所有硬件取最高」更能代表程序当前真正调用的卡。
+///
+/// 示例：
+/// - `ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Laptop GPU Direct3D11 vs_5_0 ps_5_0, D3D11)`
+/// - `ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)`
+/// - `ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) ...))`
+///
+/// 返回 `(vendor_id, gpu_name)`；识别不出厂商或为软件渲染时 `vendor_id = 0`。
+fn parse_renderer(renderer: &str) -> (u32, String) {
+    let lower = renderer.to_ascii_lowercase();
+
+    // 厂商 → vendor_id（按关键词判定；AMD 兼容 Radeon/ATI 老命名）
+    let vendor_id = if lower.contains("nvidia") {
+        0x10DE
+    } else if lower.contains("amd") || lower.contains("radeon") || lower.contains("ati") {
+        0x1002
+    } else if lower.contains("intel") {
+        0x8086
+    } else {
+        0
+    };
+
+    // 去掉 "ANGLE (" 前缀与尾部 ")"，取厂商认领之后的 GPU 名称段
+    let body = renderer
+        .trim()
+        .trim_start_matches("ANGLE")
+        .trim_start_matches('(')
+        .trim_end_matches(')')
+        .trim();
+    let name_part = if let Some(comma) = body.find(',') {
+        body[comma + 1..].trim()
+    } else {
+        body
+    };
+
+    // 在第一个后端描述关键字处截断（Direct3D / Vulkan / OpenGL / Metal / d3d 等）
+    let cut = ["direct3d", "vulkan", "opengl", "metal", "d3d11", "d3d12"]
+        .iter()
+        .filter_map(|kw| name_part.to_ascii_lowercase().find(kw).map(|i| i))
+        .min()
+        .unwrap_or(name_part.len());
+    let name = name_part[..cut].trim().to_string();
+
+    // SwiftShader 等软件渲染 → 视为不可用（vendor=0）
+    let name_lower = name.to_ascii_lowercase();
+    if name_lower.is_empty() || name_lower.contains("swiftshader") || name_lower.contains("software")
+    {
+        (0, name)
+    } else {
+        (vendor_id, name)
+    }
+}
+
+/// Tauri 命令：对前端上报的 WebGL 渲染器字符串定级，返回「当前实际调用的 GPU」。
+///
+/// 前端通过 `WEBGL_debug_renderer_info.UNMASKED_RENDERER_WEBGL` 读到渲染器字符串后传给这里，
+/// 复用与硬件枚举一致的 `grade()` 逻辑定级。仅展示用，不参与 `detect_gpu()` 的「取最高」。
+#[tauri::command]
+pub fn grade_active_gpu(renderer: String) -> Result<GpuInfo, String> {
+    let (vendor_id, name) = parse_renderer(&renderer);
+    let name = name.trim().to_string();
+    if vendor_id == 0 || name.is_empty() {
+        return Ok(GpuInfo {
+            name: String::new(),
+            tier: PerfTier::Low,
+            is_applicable: true,
+            message: Some("无法识别当前 WebGL 渲染 GPU".to_string()),
+        });
+    }
+    let tier = grade(vendor_id, 0, &name);
+    Ok(GpuInfo {
+        name,
+        tier,
+        is_applicable: true,
+        message: None,
+    })
+}

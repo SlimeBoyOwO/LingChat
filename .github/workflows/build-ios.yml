@@ -1,0 +1,76 @@
+name: iOS 无签名 IPA 构建
+
+on:
+  workflow_dispatch:
+    inputs:
+      compression:
+        description: 'data.7z 压缩等级（0-9）'
+        required: false
+        default: '9'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      # workflow_dispatch 的 compression 输入 → 脚本内 data.7z 压缩等级（默认 9）
+      IOS_BUNDLED_7Z_LEVEL: ${{ github.event.inputs.compression }}
+      # 其余构建环境（CI / pnpm_config_* / CARGO_PROFILE_RELEASE_*）由
+      # build-ios-unsigned.sh 内置设置（与本地流程单一事实来源）。
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: 拉取 LFS 资源
+        # checkout(lfs: false) 后手动拉取。必须覆盖全部 LFS 目录：
+        # - data/game_data/**：游戏数据（进 data.7z）
+        # - src-tauri/icons/**：应用图标
+        # - public/** + src/assets/**：前端静态资源（字体/背景插画/Tip 图标/音频），
+        #   漏拉会导致 vite 把 LFS 指针文本拷进 dist，App 内字体/背景/图标缺失
+        run: |
+          git lfs pull --include="data/game_data/**,src-tauri/icons/**,public/**,src/assets/**"
+
+      - uses: pnpm/setup@v1
+        with:
+          runtime: node@26
+          cache: true
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: 设置 rust 缓存
+        uses: swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          save-if: 'true'
+
+      - name: 安装 xcodegen
+        run: brew install xcodegen
+
+      - name: 初始化（图标 + 下载情绪模型）
+        run: |
+          pnpm install
+          pnpm run init
+
+      - name: 打包与构建无签名 IPA
+        # pnpm run ios:build = build-ios-unsigned.sh，内部依次执行：
+        #   configure-ios-project.sh（init 工程 + iPhone/iPad 兜底）
+        #   prepare-bundled-resources.mjs（data.7z → gen/apple/assets/data/）
+        #   pnpm tauri ios build --no-sign（含 beforeBuildCommand 前端构建）
+        # 脚本内部已设置 CI/pnpm_config_* 环境变量，与 job env 一致。
+        run: pnpm run ios:build
+
+      - name: 上传 IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: lingchat-ios-unsigned
+          path: |
+            src-tauri/gen/apple/build/**/*.ipa
+          retention-days: 7

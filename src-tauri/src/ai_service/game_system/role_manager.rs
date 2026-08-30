@@ -810,6 +810,7 @@ fn build_voice_maker(
     let mut vm = VoiceMaker::new(temp_dir, audio_format, tts_config.clone());
     vm.set_local_runtime(local_tts.cloned());
     vm.set_lang(&lang);
+    vm.set_voice_dialect(settings.voice_dialect.clone());
     if let Some(p) = resource_path {
         vm.set_character_path(Some(resolve_character_path(data_dir, p)));
     }

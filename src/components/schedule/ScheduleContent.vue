@@ -254,7 +254,7 @@ const goBackToParentView = () => {
 const containerClass = computed(() => {
   // settings：沿用原来的全屏设置页布局
   if (props.variant === 'settings') {
-    return 'h-[85vh] max-w-6xl md:w-[calc(100vw-4rem)] glass-panel bg-white/10 rounded-2xl'
+    return 'h-[85dvh] max-w-6xl md:w-[calc(100vw-4rem)] glass-panel bg-white/10 rounded-2xl'
   }
   // popup：由父级 modal 控制尺寸和样式，此处填满容器
   return 'w-full h-full'

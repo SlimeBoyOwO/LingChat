@@ -47,7 +47,7 @@
     >
       <div
         class="credits-scroll absolute top-0 left-0 w-full text-center flex flex-col items-center"
-        :class="[!isStarted ? 'translate-y-[100vh]' : '']"
+        :class="[!isStarted ? 'translate-y-[100dvh]' : '']"
       >
         <StarField ref="starfieldRef" />
 
@@ -140,10 +140,10 @@
 
           <!-- 特殊结尾 (还有...你) -->
           <div v-else-if="section.layout === 'special'" class="flex flex-col items-center mb-15">
-            <div class="h-[60vh]"></div>
+            <div class="h-[60dvh]"></div>
             <h2 class="text-[2.2em] text-[#00e5ff] font-light mb-2">{{ sectionTitle(section) }}</h2>
             <p class="text-[1em] text-white opacity-60 mb-20">{{ sectionSubtitle(section) }}</p>
-            <div class="h-[60vh]"></div>
+            <div class="h-[60dvh]"></div>
             <p class="text-[1.5em] leading-[1.8] font-light">{{ $t('views.credits.you') }}</p>
             <p class="text-[1em] opacity-80 leading-[1.8] font-light">
               {{ isEn ? section.items?.[0]?.name : section.items?.[0]?.enName }}
@@ -442,7 +442,7 @@ onBeforeUnmount(() => {
 
 @keyframes scrollAnimation {
   from {
-    transform: translateY(100vh);
+    transform: translateY(100dvh);
   }
   to {
     transform: translateY(-100%);

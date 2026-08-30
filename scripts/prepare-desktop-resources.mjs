@@ -34,6 +34,11 @@ if (existsSync(stagingDir)) {
 }
 mkdirSync(stagingDir, { recursive: true });
 
+// 移动端（android/ios）：默认资源全部走 data.7z（见 prepare-bundled-resources.mjs），
+// 桌面端 .official 资源不进入移动端包体。但仍需生成空占位目录与空 manifest，
+// 否则 tauri-cli 的 inject_resources 在移动端构建时因 bundle.resources 源缺失而报错。
+const isMobile = ['android', 'ios'].includes(process.env.TAURI_ENV_PLATFORM);
+
 // ─── 获取 git 跟踪的 data/ 文件 ─────────────────────────────
 
 let gitFiles = [];
@@ -87,19 +92,25 @@ console.log(`   game_data: ${gameDataFiles.length} 个文件`);
 // ─── 复制 game_data 文件 ────────────────────────────────────
 
 let gameDataCount = 0;
-for (const subPath of gameDataFiles) {
-  const src = join(projectRoot, "data", subPath);
-  // subPath 已经是 "game_data/backgrounds/白天.webp" 这种形式
-  const dst = join(stagingDir, subPath);
+if (isMobile) {
+  // 移动端：game_data 已打包进 data.7z，这里只创建空占位目录，
+  // 满足 tauri-cli inject_resources 对 bundle.resources 源路径的校验。
+  mkdirSync(join(stagingDir, "game_data"), { recursive: true });
+} else {
+  for (const subPath of gameDataFiles) {
+    const src = join(projectRoot, "data", subPath);
+    // subPath 已经是 "game_data/backgrounds/白天.webp" 这种形式
+    const dst = join(stagingDir, subPath);
 
-  if (!existsSync(src)) {
-    console.warn(`  ⚠ 文件不存在: ${subPath}`);
-    continue;
+    if (!existsSync(src)) {
+      console.warn(`  ⚠ 文件不存在: ${subPath}`);
+      continue;
+    }
+
+    mkdirSync(dirname(dst), { recursive: true });
+    copyFileSync(src, dst);
+    gameDataCount++;
   }
-
-  mkdirSync(dirname(dst), { recursive: true });
-  copyFileSync(src, dst);
-  gameDataCount++;
 }
 console.log(`✅ 已复制 ${gameDataCount} 个 game_data 文件`);
 
@@ -110,7 +121,7 @@ console.log(`✅ 已复制 ${gameDataCount} 个 game_data 文件`);
 // 移动端（android/ios）下 third_party 已打包在 data.zip 中，跳过以避免
 // bundle.resources 在 assets 中产生重复副本。
 
-const isMobile = ['android', 'ios'].includes(process.env.TAURI_ENV_PLATFORM);
+// isMobile 已在文件顶部定义（TAURI_ENV_PLATFORM 在 beforeBuildCommand 阶段可用）
 
 const thirdPartySrc = join(projectRoot, "data", "third_party");
 const thirdPartyDst = join(stagingDir, "third_party");

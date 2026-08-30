@@ -52,6 +52,9 @@ fn default_memory_user_info_max_chars() -> u32 {
 fn default_memory_promises_max_chars() -> u32 {
     800
 }
+fn default_disable_splash_animation() -> bool {
+    false
+}
 
 pub const DEFAULT_LLM_TIMEOUT_SECS: u64 = 120;
 pub const MIN_LLM_TIMEOUT_SECS: u64 = 10;
@@ -106,6 +109,11 @@ pub struct AppConfig {
     #[serde(default = "default_memory_promises_max_chars")]
     pub memory_promises_max_chars: u32,
 
+    // ---- 界面与显示 ----
+    /// 是否关闭首次启动的开屏动画（LoadingTransition）。
+    #[serde(default = "default_disable_splash_animation")]
+    pub disable_splash_animation: bool,
+
     /// TTS 引擎配置（适配器 URL、音频格式等）
     #[serde(default)]
     pub tts: TtsConfig,
@@ -130,6 +138,7 @@ impl Default for AppConfig {
             memory_long_term_max_chars: default_memory_long_term_max_chars(),
             memory_user_info_max_chars: default_memory_user_info_max_chars(),
             memory_promises_max_chars: default_memory_promises_max_chars(),
+            disable_splash_animation: default_disable_splash_animation(),
             tts: TtsConfig::default(),
         }
     }
@@ -268,6 +277,11 @@ impl AppConfig {
                 default.memory_promises_max_chars,
                 0,
                 MAX_MEMORY_SECTION_CHARS,
+            ),
+            disable_splash_animation: get_bool(
+                &store,
+                keys::DISABLE_SPLASH_ANIMATION,
+                default.disable_splash_animation,
             ),
             tts: TtsConfig::from_store(Some(&store)),
         })

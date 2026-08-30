@@ -1,11 +1,17 @@
 <template>
   <StartList>
     <StartLine v-for="(script, index) in currentPageScripts">
-      <StartItem
+      <StartItem class="menu-subitem"
         :key="script.script_name"
         @click="selectScript(script)"
       >
-        {{ script.script_name }}
+        <span class="inline-flex items-center gap-2">
+          <span>{{ script.script_name }}</span>
+          <PluginTag
+            v-if="script.source && script.source !== 'game'"
+            :source="script.source"
+          />
+        </span>
       </StartItem>
       <!-- 声明了跨局记忆变量（persistent_vars）的剧本提供一键重置，回到第一周目 -->
       <button
@@ -21,7 +27,7 @@
     </StartLine>
 
     <StartLine>
-      <StartItem
+      <StartItem class="menu-subitem"
         v-for="n in pageSize - currentPageScripts.length"
         :key="'placeholder-' + n"
         disabled="true"
@@ -31,19 +37,19 @@
     </StartLine>
     <!-- 分页控制 -->
     <StartLine>
-      <StartItem
+      <StartItem class="menu-subitem"
         @click="currentPage--"
         :disabled="currentPage === 1"
       >
         <
       </StartItem>
-      <StartItem
+      <StartItem class="menu-subitem"
         disabled="true"
         style="font-size: 28px"
       >
         {{ currentPage }} / {{ totalPages }}
       </StartItem>
-      <StartItem
+      <StartItem class="menu-subitem"
         @click="currentPage++"
         :disabled="currentPage === totalPages"
       >
@@ -58,6 +64,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { StartItem, StartLine, StartList } from '../base'
+import PluginTag from '@/components/ui/PluginTag.vue'
 import { useRouter } from 'vue-router'
 import { type ScriptSummary, startScript, resetScriptState, checkScriptGhostLock } from '@/api/services/script-info'
 import { useGameStore } from '@/stores/modules/game'

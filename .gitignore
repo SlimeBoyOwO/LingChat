@@ -98,6 +98,9 @@ src-tauri/gen/android/app/src/main/assets/
 src-tauri/gen/android/app/src/main/res/mipmap-*/ic_launcher*.png
 src-tauri/gen/android/app/src/main/res/mipmap-anydpi-v26/
 
+# iOS 工程与构建产物（本地 tauri ios dev/build 生成，CI 由 configure-ios-project.sh + tauri ios build 现生成）
+src-tauri/gen/apple/
+
 **/.cargo/**
 
 # ============================================================

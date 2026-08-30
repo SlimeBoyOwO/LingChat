@@ -34,7 +34,7 @@
             <div
               v-if="enabled"
               class="relative flex flex-col rounded-3xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]"
-              :class="uiStore.isNarrowScreen ? 'w-[95vw] h-[85vh]' : 'w-[80vw] h-[80vh] max-w-[1200px]'"
+              :class="uiStore.isNarrowScreen ? 'w-[95vw] h-[85dvh]' : 'w-[80vw] h-[80dvh] max-w-[1200px]'"
             >
               <!-- Header bar -->
               <div class="flex items-center justify-between shrink-0 px-5 py-3 bg-[#12121c]/90 backdrop-blur-xl border-b border-white/10">

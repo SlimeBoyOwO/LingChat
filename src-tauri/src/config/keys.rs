@@ -75,6 +75,11 @@ pub const OPENTTS_VOICE: &str = "tts.opentts_voice";
 pub const TTS_AUDIO_FORMAT: &str = "tts.audio_format";
 pub const VOICE_LANG: &str = "tts.voice_lang";
 
+// ========== TTS 云端语音克隆(CosyVoice) ==========
+pub const COSYVOICE_API_KEY: &str = "tts.cosyvoice_api_key";
+pub const COSYVOICE_MODELS: &str = "tts.cosyvoice_models";
+pub const COSYVOICE_VOICES: &str = "tts.cosyvoice_voices";
+
 // ========== 主动对话系统 ==========
 pub const ENABLE_PROACTIVE_SYSTEM: &str = "ENABLE_PROACTIVE_SYSTEM";
 pub const MAX_PROACTIVE_TIMES: &str = "MAX_PROACTIVE_TIMES";
@@ -134,3 +139,7 @@ pub const LOCAL_TTS_DEVICE: &str = "features.local_tts_device";
 /// 是否启用 HDR 模式：开启时不强制 WebView2 色彩配置（自动适配 HDR），关闭时强制线性 sRGB。
 #[cfg(target_os = "windows")]
 pub const HDR_MODE_ENABLED: &str = "display.hdr_mode_enabled";
+
+// ========== 界面与显示 ==========
+/// 是否关闭首次启动的开屏动画（LoadingTransition 猫爪加载动画）。
+pub const DISABLE_SPLASH_ANIMATION: &str = "display.disable_splash_animation";

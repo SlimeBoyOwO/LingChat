@@ -264,6 +264,26 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             },
         );
 
+        // 界面与显示
+        feat_subs.insert(
+            "界面与显示".to_string(),
+            Subcategory {
+                description: "界面外观与启动行为等显示相关设置".to_string(),
+                settings: vec![ConfigSetting {
+                    key: keys::DISABLE_SPLASH_ANIMATION.to_string(),
+                    value: read_setting(
+                        app,
+                        keys::DISABLE_SPLASH_ANIMATION,
+                        &app_defaults.disable_splash_animation.to_string(),
+                    ),
+                    description:
+                        "DISABLE_SPLASH_ANIMATION — 关闭首次启动的开屏动画（猫爪加载动画）"
+                            .to_string(),
+                    setting_type: "bool".to_string(),
+                }],
+            },
+        );
+
         tree.insert(
             "功能设置".to_string(),
             Category {
@@ -363,6 +383,24 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         key: keys::OPENTTS_VOICE.to_string(),
                         value: read_setting(app, keys::OPENTTS_VOICE, &tts_defaults.opentts_voice),
                         description: "OpenTTS voice / 音色标识".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::COSYVOICE_API_KEY.to_string(),
+                        value: read_setting(app, keys::COSYVOICE_API_KEY, ""),
+                        description: "CosyVoice 云 API 密钥（语音克隆）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::COSYVOICE_MODELS.to_string(),
+                        value: read_setting(app, keys::COSYVOICE_MODELS, ""),
+                        description: "CosyVoice 模型列表（JSON 数组）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::COSYVOICE_VOICES.to_string(),
+                        value: read_setting(app, keys::COSYVOICE_VOICES, ""),
+                        description: "CosyVoice 音色映射（JSON 数组）".to_string(),
                         setting_type: "text".to_string(),
                     },
                 ],

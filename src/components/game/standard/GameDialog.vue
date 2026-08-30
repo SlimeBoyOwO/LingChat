@@ -1,6 +1,6 @@
 <template>
   <div
-    class="relative z-2 flex w-full scrollbar-thin [scrollbar-color:var(--accent-color)_transparent]
+    class="game-dialog relative z-2 flex w-full scrollbar-thin [scrollbar-color:var(--accent-color)_transparent]
       justify-center p-3.75 transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)]
       before:pointer-events-none before:absolute before:-top-10 before:right-0 before:left-0
       before:h-10 before:bg-linear-to-b before:from-transparent before:via-[rgba(0,14,39,0.3)]
@@ -8,7 +8,7 @@
     :class="{
       [`z-[-1]! overflow-hidden opacity-0 duration-500! ease-linear before:opacity-0
       before:duration-1000!`]: isHidden,
-      'max-h-[40vh]': !uiStore.isNarrowScreen,
+      'max-h-[40dvh]': !uiStore.isNarrowScreen,
     }"
     :style="dialogWrapperStyle"
     @wheel="handleWheelHistory"
@@ -234,7 +234,7 @@
             v-show="currentStatus === 'responding'"
             ref="inlineDisplayRef"
             tabindex="0"
-            class="response-display my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none overflow-y-auto
+            class="response-display my-1.25 max-h-[50dvh] min-h-30 flex-1 resize-none overflow-y-auto
               border-none bg-transparent font-[inherit] text-xl font-bold break-all
               whitespace-pre-line outline-none text-shadow-[inherit]"
             :class="textareaMotionClass"
@@ -246,8 +246,8 @@
             v-show="currentStatus !== 'responding'"
             id="inputMessage"
             ref="textareaRef"
-            class="my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none border-none bg-transparent
-              font-[inherit] text-xl font-bold transition-all duration-300 outline-none
+            class="my-1.25 max-h-[50dvh] min-h-30 flex-1 resize-none border-none bg-transparent
+              font-[inherit] text-[max(1.25rem,16px)] font-bold transition-all duration-300 outline-none
               text-shadow-[inherit] placeholder:text-white/50 placeholder:shadow-none"
             :placeholder="placeholderText"
             v-model="inputMessage"
@@ -364,8 +364,7 @@
 
   // mic 按钮 enabled 条件（与 useAsrInput.canStartAsr 对齐）：
   // - auto_listen 模式开 + 总开关开：功能开关可用
-  // - 总开关关 → 退化为手动录音（canStartAsr forManual=true 跳过显示锁与总开关——
-  //   总开关只挡自动，不锁手动）
+  // - 总开关关 → 整体禁用（总开关是语音输入的总闸，手动 mic 一并关闭）
   const canStartMic = computed(
     () =>
       (autoListenOn.value && asrStore.settings.voice_input_enabled) ||
@@ -983,6 +982,11 @@
 </style>
 
 <style>
+  /* 底部 Home 指示器安全区：对话框本体铺到屏幕底（其半透明底盖住背景条带），
+     仅内容底部让出 env() 高度，输入框不被 Home 指示器遮挡（桌面/Android 桌面 env=0） */
+  .game-dialog {
+    padding-bottom: calc(15px + var(--safe-area-inset-bottom, 0px));
+  }
   /* 逐字符淡入+上浮动画。keyframes 必须全局：span 由 JS 动态生成，scoped 选择器无法命中 */
   @keyframes tw-char-rise {
     from {

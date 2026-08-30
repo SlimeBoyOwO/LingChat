@@ -127,7 +127,7 @@ const rowBinding = (a: ShortcutAction) => settings.shortcuts[a] as ShortcutBindi
       >
         <div
           class="w-[min(460px,92vw)]
-            max-h-[86vh]
+            max-h-[86dvh]
             overflow-y-auto
             border
             border-white/12.5

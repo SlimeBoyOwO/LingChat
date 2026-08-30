@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <div class="flex-1 h-[85vh] w-full bg-white/10 p-0 md:p-4 rounded-lg overflow-hidden flex flex-col">
+    <div class="flex-1 h-[85dvh] w-full bg-white/10 p-0 md:p-4 rounded-lg overflow-hidden flex flex-col">
       <!-- 顶部 Tab 切换栏：左 / 中 / 右 -->
       <div class="flex items-center justify-between mb-5 select-none shrink-0">
         <button

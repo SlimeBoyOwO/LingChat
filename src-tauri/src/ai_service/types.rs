@@ -321,6 +321,7 @@ pub struct VoiceModel {
     pub sbv2_local_sdp_ratio: Option<f32>,
     pub sbv2_local_cloud_fallback_model: Option<String>,
     pub sbv2_local_cloud_fallback_speaker_id: Option<String>,
+    pub cosyvoice_voice_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -463,6 +464,9 @@ pub struct CharacterSettings {
     pub tts_type: Option<String>,
     #[serde(default)]
     pub voice_lang: Option<String>,
+    /// 中文方言（仅 cosyvoice + voice_lang=zh 时生效；如"四川话"，空 = 普通话）
+    #[serde(default)]
+    pub voice_dialect: Option<String>,
 
     #[serde(default = "default_thinking_message")]
     pub thinking_message: String,
@@ -537,6 +541,7 @@ impl Default for CharacterSettings {
             voice_models: None,
             tts_type: None,
             voice_lang: None,
+            voice_dialect: None,
             thinking_message: default_thinking_message(),
             bubble_top: default_bubble_top(),
             bubble_left: default_bubble_left(),
@@ -660,6 +665,9 @@ pub struct ScriptStatus {
     pub current_event_process: i32,
 
     pub vars: serde_json::Map<String, serde_json::Value>,
+
+    /// 该剧本来自哪个插件（None = 游戏自有剧本）。用于列表来源角标与插件禁用时移除。
+    pub plugin_id: Option<String>,
 }
 
 impl ScriptStatus {

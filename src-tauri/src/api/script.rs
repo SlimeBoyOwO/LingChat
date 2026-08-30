@@ -25,6 +25,10 @@ pub struct ScriptSummary {
     /// 剧本是否声明了 persistent_vars（跨局记忆变量）。前端据此显示
     /// 「重置记忆」按钮——按能力声明而不是按剧本名/警告类型硬编码。
     pub has_persistent_vars: bool,
+    /// 来源："game" 或提供该剧本的插件 id。
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugin_id: Option<String>,
 }
 
 /// 从剧本 settings（story_config 的 script_settings 段）读 persistent_vars 声明。
@@ -33,6 +37,19 @@ fn has_persistent_vars(s: &crate::ai_service::types::ScriptStatus) -> bool {
         .get("persistent_vars")
         .and_then(|v| v.as_array())
         .is_some_and(|a| !a.is_empty())
+}
+
+fn summary_of(s: &crate::ai_service::types::ScriptStatus) -> ScriptSummary {
+    ScriptSummary {
+        script_name: s.name.clone(),
+        description: s.description.clone(),
+        folder_key: s.folder_key.clone(),
+        intro_chapter: s.intro_chapter.clone(),
+        content_warning: s.content_warning.clone(),
+        has_persistent_vars: has_persistent_vars(s),
+        source: s.plugin_id.clone().unwrap_or_else(|| "game".to_string()),
+        plugin_id: s.plugin_id.clone(),
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -78,14 +95,7 @@ pub async fn list_scripts(app: AppHandle) -> Result<ScriptListResponse, String> 
         .script_manager
         .all_scripts
         .values()
-        .map(|s| ScriptSummary {
-            script_name: s.name.clone(),
-            description: s.description.clone(),
-            folder_key: s.folder_key.clone(),
-            intro_chapter: s.intro_chapter.clone(),
-            content_warning: s.content_warning.clone(),
-            has_persistent_vars: has_persistent_vars(s),
-        })
+        .map(summary_of)
         .collect();
 
     Ok(ScriptListResponse { scripts })
@@ -201,14 +211,7 @@ pub async fn list_standalone_scripts(app: AppHandle) -> Result<ScriptListRespons
         .all_scripts
         .values()
         .filter(|s| !s.adventure.is_adventure)
-        .map(|s| ScriptSummary {
-            script_name: s.name.clone(),
-            description: s.description.clone(),
-            folder_key: s.folder_key.clone(),
-            intro_chapter: s.intro_chapter.clone(),
-            content_warning: s.content_warning.clone(),
-            has_persistent_vars: has_persistent_vars(s),
-        })
+        .map(summary_of)
         .collect();
 
     Ok(ScriptListResponse { scripts })
@@ -458,6 +461,7 @@ pub async fn stop_script(app: AppHandle) -> Result<(), String> {
         // 发送端一掉，阻塞中的 input/choices/free_dialogue 事件立刻收 Err
         channels.input_tx = None;
         channels.choice_tx = None;
+        channels.poem_tx = None;
         channels.choice_allow_free = false;
         channels.force_choice_guard = None;
         // 文件监视器一并停掉并丢弃未消费的跳转
@@ -677,6 +681,29 @@ pub async fn script_submit_choice(
     } else {
         Err("当前没有等待选择的脚本事件".to_string())
     }
+}
+
+#[tauri::command]
+pub async fn script_submit_poem(
+    app: AppHandle,
+    request_id: String,
+    result: serde_json::Value,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let mut channels = state.script_channels.lock().await;
+    let pending = channels
+        .poem_tx
+        .as_ref()
+        .ok_or("当前没有等待写诗结果的脚本事件")?;
+    if pending.request_id != request_id {
+        return Err("写诗提交票据无效或已过期".to_string());
+    }
+    let raw = serde_json::to_string(&result).map_err(|error| format!("写诗结果无效: {error}"))?;
+    let pending = channels.poem_tx.take().expect("poem_tx checked above");
+    pending
+        .tx
+        .send(raw)
+        .map_err(|_| "写诗互动已结束".to_string())
 }
 
 #[cfg(test)]

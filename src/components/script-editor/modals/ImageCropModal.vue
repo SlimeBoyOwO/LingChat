@@ -41,7 +41,7 @@
         </div>
 
         <div class="relative
-          max-h-[52vh]
+          max-h-[52dvh]
           min-h-[300px]
           overflow-hidden
           bg-black/70">

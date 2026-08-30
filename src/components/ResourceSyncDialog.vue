@@ -5,7 +5,7 @@
         v-if="visible && phase !== 'idle'"
         class="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm"
       >
-        <div class="w-[520px] max-h-[80vh] rounded-3xl bg-slate-800/90 shadow-2xl flex flex-col overflow-hidden">
+        <div class="w-[520px] max-h-[80dvh] rounded-3xl bg-slate-800/90 shadow-2xl flex flex-col overflow-hidden">
           <!-- 头部 -->
           <div class="px-6 pt-6 pb-4">
             <h2 class="text-xl font-semibold text-white">{{ dialogTitle }}</h2>
@@ -28,7 +28,7 @@
               </div>
 
               <!-- 文件树：按目录分组 -->
-              <div class="max-h-[50vh] overflow-y-auto space-y-1">
+              <div class="max-h-[50dvh] overflow-y-auto space-y-1">
                 <template v-for="group in fileGroups" :key="group.dir">
                   <!-- 目录头 -->
                   <div

@@ -25,7 +25,7 @@
         <LayoutList :size="20" />
       </template>
       <div class="flex flex-col">
-        <div class="h-[calc(100vh-22rem)] min-h-[300px] overflow-y-auto pr-1 pb-4">
+        <div class="h-[calc(100dvh-22rem)] min-h-[300px] overflow-y-auto pr-1 pb-4">
           <div v-if="loading" class="text-center text-[#888] p-8">{{ $t('settings.shared.loading') }}</div>
 
           <div v-else-if="error" class="text-center text-[#ff6b6b] p-8">{{ $t('settings.save.list.loadFailed', { error }) }}</div>
