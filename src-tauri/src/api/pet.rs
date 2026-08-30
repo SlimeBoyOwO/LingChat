@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use tauri::AppHandle;
 #[cfg(desktop)]
 use tauri::LogicalSize;
-use tauri::AppHandle;
 #[cfg(desktop)]
 use tauri::Manager;
 
@@ -100,6 +100,30 @@ fn restore_normal_geometry(window: &tauri::WebviewWindow) {
     }
 }
 
+/// macOS：把主窗口标题栏样式重新断言为 Overlay（titlebar 透明 + FullSizeContentView，
+/// 窗口圆角、红绿灯悬浮）。
+///
+/// 桌宠模式进出时 `set_decorations` 会异步重建 style mask（走主线程 GCD 队列），
+/// 丢掉 Overlay 依赖的 FullSizeContentView，窗口会变回「有标题栏 + 直角角」、
+/// 红绿灯被挤出画面；而 `set_title_bar_style` 是同步读当前 mask 再叠加，
+/// mask 未落地时调用会读到旧态。恢复流程要在 mask 落地后、几何恢复后各断言一次。
+#[cfg(target_os = "macos")]
+fn reassert_overlay_title_bar(window: &tauri::WebviewWindow) {
+    let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
+}
+
+/// macOS：等待 `set_decorations(true)` 异步重建的 style mask 落地，再断言 Overlay。
+///
+/// tao 的 mask 重建没有完成回调，只能固定退让 80ms——这个时延依赖 tao 的异步
+/// 实现细节，若上游改为同步应用 mask 可移除等待。仅在退出桌宠紧跟
+/// `set_decorations(true)` 之后调用一次；几何恢复（set_size/set_position）后
+/// 的最终断言直接用 `reassert_overlay_title_bar`，不要重复等待。
+#[cfg(target_os = "macos")]
+async fn wait_decoration_mask_then_reassert_overlay_title_bar(window: &tauri::WebviewWindow) {
+    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+    reassert_overlay_title_bar(window);
+}
+
 #[tauri::command]
 // scale/app_handle 只在桌面分支（cfg(desktop) 内调整窗口）使用，
 // 安卓/iOS 编译时视为未使用——用 cfg_attr 消除该平台上的警告
@@ -149,19 +173,11 @@ pub async fn set_pet_mode(
             let _ = window.set_always_on_top(false);
             let _ = window.set_resizable(true);
             let _ = window.set_decorations(true);
-            // macOS：`set_decorations(true)` 会异步地把 style mask 重建为
-            // `Closable|Miniaturizable|Resizable|Titled`（丢失 FullSizeContentView），
-            // 导致窗口变回「有标题栏 + 直角角」、红绿灯被挤出画面。
-            // 该 mask 更新走主线程 GCD 异步队列，而 `set_title_bar_style` 是同步读
-            // 当前 mask 再叠加——若马上执行会读到未更新的态，两种情况都会出错。
-            // 这里先让异步 mask 落地（短暂等待），再重新断言 Overlay 标题栏样式
-            // （重设 titlebar 透明 + FullSizeContentView，窗口恢复圆角）。
+            // macOS：set_decorations(true) 异步重建 style mask 会丢掉 Overlay 依赖的
+            // FullSizeContentView（窗口变回有标题栏 + 直角角），等 mask 落地后恢复，
+            // 场景与竞态细节见 wait_decoration_mask_then_reassert_overlay_title_bar。
             #[cfg(target_os = "macos")]
-            {
-                // 等待 set_decorations 的异步 mask 真正应用到窗口
-                tokio::time::sleep(std::time::Duration::from_millis(80)).await;
-                let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
-            }
+            wait_decoration_mask_then_reassert_overlay_title_bar(&window).await;
 
             // 恢复 1500×800 并居中，但任何情况下不超出当前显示器工作区。
             // 之前直接 set_size(LogicalSize 1500,800)：高 DPI / 小屏下逻辑尺寸
@@ -172,9 +188,7 @@ pub async fn set_pet_mode(
             // macOS：restore_normal_geometry 会 set_size/set_position，期间可能再次
             // 覆盖掩码，这里再断言一次 Overlay，确保最终仍保留 FullSizeContentView 圆角。
             #[cfg(target_os = "macos")]
-            {
-                let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
-            }
+            reassert_overlay_title_bar(&window);
             // Always restore cursor ignore to false
             let _ = window.set_ignore_cursor_events(false);
         }
