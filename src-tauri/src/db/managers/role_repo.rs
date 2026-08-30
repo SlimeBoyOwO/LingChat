@@ -307,7 +307,7 @@ pub async fn delete_main_role(
 
         let base = data_dir.join("game_data");
         let path: PathBuf = match role.role_type {
-            RoleType::Main => base.join("characters").join(&folder),
+            RoleType::Main => crate::api::resolve_character_dir_in(data_dir, &folder),
             RoleType::Npc => {
                 let Some(script_key) = role.script_key.clone() else {
                     return Ok(None);

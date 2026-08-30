@@ -1,11 +1,13 @@
 use std::fs;
 
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_store::StoreExt;
 
+use crate::plugins::ResourceKind;
 use crate::utils::path::validate_path_in_base;
 
-use super::ambient_dir;
+use super::{ambient_dir, default_source, mtime_secs};
 
 // ========== 响应类型 ==========
 
@@ -15,56 +17,69 @@ pub struct AmbientItemInfo {
     pub name: String,
     pub url: String,
     pub time: String,
+    /// 来源："game" 或提供该环境音的插件 id。
+    #[serde(default = "default_source")]
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_id: Option<String>,
 }
 
 // ========== Tauri 命令 ==========
 
 #[tauri::command]
-pub fn get_ambient_list() -> Result<Vec<AmbientItemInfo>, String> {
+pub async fn get_ambient_list(app: AppHandle) -> Result<Vec<AmbientItemInfo>, String> {
     let ambient_dir = ambient_dir();
-
-    if !ambient_dir.exists() {
-        return Ok(Vec::new());
-    }
 
     let allowed_extensions = ["mp3", "wav", "flac", "webm", "weba", "ogg", "oga"];
 
     let mut items: Vec<AmbientItemInfo> = Vec::new();
 
-    let entries = fs::read_dir(&ambient_dir).map_err(|e| format!("读取环境音目录失败: {}", e))?;
+    if ambient_dir.exists() {
+        let entries = fs::read_dir(&ambient_dir).map_err(|e| format!("读取环境音目录失败: {}", e))?;
 
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+
+            let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+                continue;
+            };
+            if !allowed_extensions.contains(&ext.to_lowercase().as_str()) {
+                continue;
+            }
+
+            let name = path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+
+            items.push(AmbientItemInfo {
+                name,
+                url: path.to_string_lossy().into_owned(),
+                time: mtime_secs(&path),
+                source: "game".to_string(),
+                plugin_id: None,
+            });
         }
+    }
 
-        let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
-            continue;
-        };
-        if !allowed_extensions.contains(&ext.to_lowercase().as_str()) {
-            continue;
-        }
-
-        let name = path
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_default();
-
-        let time = path
-            .metadata()
-            .ok()
-            .and_then(|m| m.modified().ok())
-            .map(|t| {
-                t.duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs_f64().to_string())
-                    .unwrap_or_else(|_| "0".to_string())
-            })
-            .unwrap_or_else(|| "0".to_string());
-
-        let url = path.to_string_lossy().into_owned();
-
-        items.push(AmbientItemInfo { name, url, time });
+    // 合并插件环境音
+    let plugin_entries = app
+        .state::<crate::AppState>()
+        .data()
+        .plugin_manager
+        .visible_file_entries(ResourceKind::Ambients)
+        .await;
+    for e in plugin_entries {
+        items.push(AmbientItemInfo {
+            name: e.name,
+            url: e.path.to_string_lossy().into_owned(),
+            time: mtime_secs(&e.path),
+            source: e.plugin_id.clone(),
+            plugin_id: Some(e.plugin_id),
+        });
     }
 
     items.sort_by(|a, b| {
@@ -145,7 +160,7 @@ pub async fn upload_ambient(
 /// 删除指定环境音文件
 /// url 参数可以是完整路径或纯文件名，统一从 ambient_dir 中删除
 #[tauri::command]
-pub fn delete_ambient(url: String) -> Result<Vec<AmbientItemInfo>, String> {
+pub async fn delete_ambient(app: AppHandle, url: String) -> Result<Vec<AmbientItemInfo>, String> {
     let base = ambient_dir();
 
     // 从路径中提取文件名，兼容完整路径和纯文件名
@@ -164,7 +179,7 @@ pub fn delete_ambient(url: String) -> Result<Vec<AmbientItemInfo>, String> {
 
     fs::remove_file(&file_path).map_err(|e| format!("删除环境音文件失败: {}", e))?;
 
-    get_ambient_list()
+    get_ambient_list(app).await
 }
 
 // ========== 会话状态持久化 ==========

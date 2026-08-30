@@ -13,6 +13,7 @@ use super::ResourceSyncResult;
 
 /// 首次全量播种：将 .official/game_data/* 复制到 data/game_data/，
 /// 以及 .official/data_manifest.json 复制到 data/data_manifest.json。
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn seed_full_from_official(data_dir: &Path, official_dir: &Path) -> anyhow::Result<()> {
     let game_data_src = official_dir.join("game_data");
     let game_data_dst = data_dir.join("game_data");
@@ -119,6 +120,7 @@ pub fn apply_selected_files(
 // ─── 辅助函数 ────────────────────────────────────────────────
 
 /// 递归复制目录内容。
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn copy_dir_recursive(src: &Path, dst: &Path) -> anyhow::Result<()> {
     if !dst.exists() {
         std::fs::create_dir_all(dst)?;

@@ -132,4 +132,9 @@ pub const LOCAL_TTS_DEVICE: &str = "features.local_tts_device";
 
 // ========== 显示（HDR 模式，仅 Windows） ==========
 /// 是否启用 HDR 模式：开启时不强制 WebView2 色彩配置（自动适配 HDR），关闭时强制线性 sRGB。
+#[cfg(target_os = "windows")]
 pub const HDR_MODE_ENABLED: &str = "display.hdr_mode_enabled";
+
+// ========== 界面与显示 ==========
+/// 是否关闭首次启动的开屏动画（LoadingTransition 猫爪加载动画）。
+pub const DISABLE_SPLASH_ANIMATION: &str = "display.disable_splash_animation";

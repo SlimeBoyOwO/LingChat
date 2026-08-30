@@ -654,6 +654,9 @@ pub struct ScriptStatus {
     pub current_event_process: i32,
 
     pub vars: serde_json::Map<String, serde_json::Value>,
+
+    /// 该剧本来自哪个插件（None = 游戏自有剧本）。用于列表来源角标与插件禁用时移除。
+    pub plugin_id: Option<String>,
 }
 
 impl ScriptStatus {

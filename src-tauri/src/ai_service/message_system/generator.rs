@@ -153,6 +153,7 @@ impl MessageGenerator {
 
     /// 把后台工具完成通知作为仅对 LLM 可见的临时 user context 触发新一轮回复。
     /// 通知不会写成玩家台词，避免界面和历史中出现伪造的用户消息。
+    #[cfg_attr(not(desktop), allow(dead_code))]
     pub async fn process_notification(&self, notification: String) -> Result<String> {
         let mut context = self.get_current_context().await?;
         if context.is_empty() {
@@ -293,6 +294,7 @@ impl MessageGenerator {
             return Ok(());
         };
         let mut gs = self.deps.game_status.lock().await;
+        gs.role_manager.invalidate_memory_history();
         if let Some(line) = gs.line_list.get_mut(idx) {
             line.base.content = ctx.processed.replace(temp, "");
         }
@@ -552,6 +554,7 @@ impl MessageGenerator {
             let mut gs = self.deps.game_status.lock().await;
             // 试玩代号守卫：试玩中止后丢弃迟到回填，与 add_assistant_line 行为一致
             if gs.preview_generation == self.deps.generation {
+                gs.role_manager.invalidate_memory_history();
                 let insert_pos = tool_insert_pos.min(gs.line_list.len());
                 let perceived: Vec<i32> = gs.present_role_ids.iter().copied().collect();
 

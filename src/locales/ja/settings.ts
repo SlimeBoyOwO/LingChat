@@ -217,9 +217,9 @@ export default {
       features: {
         enable_time_sense: 'USE_TIME_SENSE — 時間認識を有効化（コンテキストの時刻に応じてシステムリマインドを追加）',
         enable_emotion_classifier: 'ENABLE_EMOTION_CLASSIFIER — 感情分類器を有効化（ONNX モデル、会話 emotion の自動タグ付け）',
-        use_persistent_memory: 'USE_PERSISTENT_MEMORY — オンにすると記憶が自動圧縮されトークン消費を削減',
-        memory_update_interval: 'MEMORY_UPDATE_INTERVAL — 記憶要約を発動する新規メッセージ数（デフォルト 250）',
-        memory_recent_window: 'MEMORY_RECENT_WINDOW — 要約時に保持する直近メッセージ数（デフォルト 30）',
+        use_persistent_memory: 'USE_PERSISTENT_MEMORY — 記憶を自動圧縮します。保存後の再起動で反映されます',
+        memory_update_interval: 'MEMORY_UPDATE_INTERVAL — 要約を開始する可視台詞数（1–10000、既定 250）',
+        memory_recent_window: 'MEMORY_RECENT_WINDOW — 圧縮後に保持する役割可視台詞数（0–10000、既定 30）',
       },
       tts: {
         simple_vits_api_url: 'Simple-Vits-API アドレス（VITS アダプター）',
@@ -709,7 +709,7 @@ export default {
     },
     memory: {
       title: '永続メモリを有効化',
-      desc: '有効にすると、記憶は自動的に圧縮されます',
+      desc: '有効にすると記憶が自動圧縮されます。保存後に LingChat を再起動すると反映されます',
     },
     voiceSound: {
       title: '音声効果音スイッチ',

@@ -95,8 +95,8 @@ pub async fn get_tool_runtime_info(app: tauri::AppHandle) -> Result<ToolRuntimeI
 
 /// 保存工具配置：写盘 + 热更新 + 同步权限矩阵。
 ///
-/// 网页搜索「启用且配好 API Key」时，自动放开 default 角色组的
-/// `web_search` 权限（新建权限配置中 default 组默认全关）；关闭时收回。
+/// 网页搜索启用且凭据来源可用时，自动放开 default 角色组的 `web_search`
+/// 权限；Codex 使用 OAuth，Kimi 可在执行时复用当前官方 Kimi Code 对话凭据。
 #[tauri::command]
 pub async fn save_tool_settings(
     app: tauri::AppHandle,
@@ -124,7 +124,8 @@ pub async fn save_tool_settings(
 pub async fn test_web_search(app: tauri::AppHandle, query: String) -> Result<String, String> {
     let state = app.state::<AppState>();
     let tool = WebSearchTool::new(state.tool_settings.clone());
-    let context = ToolContext::new(["web_search".to_string()].into_iter().collect());
+    let context =
+        ToolContext::new(["web_search".to_string()].into_iter().collect()).with_app(app.clone());
     let result = tool
         .execute(&context, serde_json::json!({ "query": query }))
         .await

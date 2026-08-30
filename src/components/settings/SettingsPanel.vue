@@ -1,6 +1,35 @@
 <template>
-  <div class="blur-overlay" v-if="shouldShowOverlay" :style="{ opacity: overlayOpacity }"></div>
-  <div class="settings-panel flex flex-col h-full" v-show="uiStore.showSettings">
+  <!-- Windows 静态快照背景：blur 在图片自身，不再用 backdrop-filter 持续消耗 GPU -->
+  <div
+    v-if="isWindowsMode && shouldShowOverlay"
+    class="fixed inset-0 z-[999] overflow-hidden transition-opacity duration-300"
+    :style="{ opacity: overlayOpacity }"
+  >
+    <img
+      v-show="snapshotSrc && !snapshotFailed"
+      ref="snapshotImgRef"
+      :src="snapshotSrc ?? undefined"
+      class="w-full h-full object-cover blur-[8px] brightness-[0.85] scale-[1.02] block transition-opacity duration-300"
+      :class="imgReady ? 'opacity-100' : 'opacity-0'"
+      draggable="false"
+      alt=""
+      @load="onSnapshotLoad"
+      @error="onSnapshotError"
+    />
+    <div
+      class="absolute inset-0 transition-colors duration-300"
+      :class="snapshotFailed ? 'bg-black/72' : 'bg-black/35'"
+    ></div>
+  </div>
+  <div
+    v-else-if="shouldShowOverlay"
+    class="fixed inset-0 bg-black/70 backdrop-blur-[8px] z-[999] transition-opacity duration-300"
+    :style="{ opacity: overlayOpacity }"
+  ></div>
+  <div
+    class="fixed inset-0 z-[1000] bg-transparent text-[var(--text-primary,#fff)] flex flex-col h-full"
+    v-show="uiStore.showSettings"
+  >
     <div class="shrink-0 w-full">
       <SettingsNav ref="settingsNavRef" @remove-more-menu-from-a="onAddFromA" />
     </div>
@@ -43,36 +72,103 @@ import {
 } from './pages'
 import SettingsNav from './SettingsNav.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
-import { ref, watch, computed, type Component } from 'vue'
+import { ref, watch, computed, nextTick, type Component } from 'vue'
+import { isWindows } from '@/utils/platform'
+import { useSettingsSnapshot } from '@/composables/useSettingsSnapshot'
 
 const uiStore = useUIStore()
+const { snapshotSrc, snapshotFailed } = useSettingsSnapshot()
+const isWindowsMode = computed(() => isWindows())
+
+// 快照图就绪再淡入：避免 file:// 解码未完成时的闪白/半帧
+const imgReady = ref(false)
+const snapshotImgRef = ref<HTMLImageElement | null>(null)
+
+function onSnapshotLoad() {
+  imgReady.value = true
+}
+
+function onSnapshotError() {
+  imgReady.value = false
+  // 图片解码失败则走兜底深色遮罩
+  snapshotFailed.value = true
+}
+
+watch(snapshotSrc, (newVal) => {
+  if (!newVal || snapshotFailed.value) {
+    imgReady.value = false
+    return
+  }
+  imgReady.value = false
+  // 已缓存图片可能同步完成，nextTick 检查 complete 兜底
+  nextTick(() => {
+    const el = snapshotImgRef.value
+    if (el && el.complete && el.naturalWidth > 0) {
+      imgReady.value = true
+    }
+  })
+})
+
+watch(snapshotFailed, (failed) => {
+  if (failed) imgReady.value = false
+  else if (snapshotSrc.value) {
+    // 从失败恢复且已有图时，重新检查就绪
+    imgReady.value = false
+    nextTick(() => {
+      const el = snapshotImgRef.value
+      if (el && el.complete && el.naturalWidth > 0) imgReady.value = true
+    })
+  }
+})
 
 // 获取 A 组件和 B 组件的 Ref 实例
 const settingsNavRef = ref<InstanceType<typeof SettingsNav> | null>(null)
 const settingsAdvanceRef = ref<InstanceType<typeof SettingsAdvance> | null>(null)
 
-// 添加延迟状态
+// 添加延迟状态（带 session 守卫，避免快速开关时旧定时器影响新会话）
 const shouldShowOverlay = ref(false)
 const overlayOpacity = ref(0)
+let overlaySession = 0
+let showTimer: ReturnType<typeof setTimeout> | null = null
+let hideTimer: ReturnType<typeof setTimeout> | null = null
 
 watch(
   () => uiStore.showSettings,
   (newVal) => {
+    const mySession = ++overlaySession
+    if (showTimer) {
+      clearTimeout(showTimer)
+      showTimer = null
+    }
+    if (hideTimer) {
+      clearTimeout(hideTimer)
+      hideTimer = null
+    }
     if (newVal) {
       // 显示时：立即显示元素，然后延迟改变透明度
       shouldShowOverlay.value = true
-      setTimeout(() => {
+      showTimer = setTimeout(() => {
+        if (mySession !== overlaySession) return
         overlayOpacity.value = 1
       }, 10) // 使用很小的延迟确保浏览器有机会渲染
     } else {
       // 隐藏时：先改变透明度，然后延迟隐藏元素
       overlayOpacity.value = 0
-      setTimeout(() => {
+      hideTimer = setTimeout(() => {
+        if (mySession !== overlaySession) return
         shouldShowOverlay.value = false
-      }, 100) // 匹配你的动画持续时间
+      }, 300) // 与 CSS transition 0.3s 对齐，避免旧 hide 覆盖新 show
     }
   },
   { immediate: true },
+)
+
+// 关闭遮罩时重置就绪态，供下次打开复用（随外层 opacity 一起淡出，无需内层反向动画）
+watch(
+  () => shouldShowOverlay.value,
+  (show) => {
+    if (!show) imgReady.value = false
+  },
 )
 
 // ========== 手机端左右滑动切换标签 ==========
@@ -200,31 +296,6 @@ defineExpose({
 </script>
 
 <style scoped>
-.blur-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  z-index: 999;
-  transition: opacity 0.3s ease;
-  opacity: 0;
-}
-
-.settings-panel {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 1000;
-  background: transparent;
-  color: var(--text-primary, #fff);
-}
-
 .slide-left-enter-active,
 .slide-left-leave-active,
 .slide-right-enter-active,

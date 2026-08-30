@@ -184,6 +184,7 @@ export default {
       '功能选项': '功能选项',
       '对话增强': '对话增强',
       '记忆系统': '记忆系统',
+      '界面与显示': '界面与显示',
       '适配器 URL': '适配器 URL',
       '音频参数': '音频参数',
       'GitHub Token': 'GitHub Token',
@@ -197,6 +198,7 @@ export default {
       '功能选项': '翻译功能的开关与行为控制',
       '对话增强': '这里可以设置是否启用时间感知和情绪分类器功能',
       '记忆系统': '在这里设定你想要的永久记忆效果',
+      '界面与显示': '界面外观与启动行为等显示相关设置',
       '适配器 URL': '各个 TTS 后端的 API 地址，对应原环境变量 SIMPLE_VITS_API_URL / STYLE_BERT_VITS2_URL 等',
       '音频参数': 'TTS 音频输出格式与语言设置，对应原环境变量 TTS_AUDIO_FORMAT / VOICE_LANG',
       'GitHub Token': '配置 GitHub Personal Access Token 以获取准确的 Discussion upvote 热度排序（可选）',
@@ -218,9 +220,9 @@ export default {
       features: {
         enable_time_sense: 'USE_TIME_SENSE — 启用时间感知（根据上下文时间添加系统提醒）',
         enable_emotion_classifier: 'ENABLE_EMOTION_CLASSIFIER — 启用情感分类器（ONNX 模型，用于自动标注对话 emotion）',
-        use_persistent_memory: 'USE_PERSISTENT_MEMORY — 开启后记忆会自动压缩，减少 token 消耗',
-        memory_update_interval: 'MEMORY_UPDATE_INTERVAL — 触发记忆摘要的新消息数（默认 250）',
-        memory_recent_window: 'MEMORY_RECENT_WINDOW — 摘要时保留的最近消息数（默认 30）',
+        use_persistent_memory: 'USE_PERSISTENT_MEMORY — 开启后记忆会自动压缩，保存后需重启生效',
+        memory_update_interval: 'MEMORY_UPDATE_INTERVAL — 触发摘要的可见台词数（1–10000，默认 250）',
+        memory_recent_window: 'MEMORY_RECENT_WINDOW — 压缩后保留的角色可见台词数（0–10000，默认 30）',
       },
       tts: {
         simple_vits_api_url: 'Simple-Vits-API 地址（VITS 适配器）',
@@ -247,6 +249,9 @@ export default {
         retention_days: 'LOG_RETENTION_DAYS — 日志文件保留天数，超过的旧文件在启动时自动清理',
         llm_request_body: 'LOG_LLM_REQUEST_BODY — 记录每次 LLM 请求的完整请求体 JSON 到 data/log/llm/ 目录（默认关闭）',
         genai_debug: 'LOG_GENAI_DEBUG — 开启 genai SDK 的调试日志（含请求/响应细节，保存后即时生效，默认关闭）',
+      },
+      display: {
+        disable_splash_animation: 'DISABLE_SPLASH_ANIMATION — 关闭首次启动的开屏动画（猫爪加载动画）',
       },
       ENABLE_PROACTIVE_SYSTEM: 'ENABLE_PROACTIVE_SYSTEM — 是否启用主动对话系统',
       MAX_PROACTIVE_TIMES: 'MAX_PROACTIVE_TIMES — 在用户响应之前，能主动对话的次数',
@@ -294,7 +299,27 @@ export default {
     saveConfig: '保存',
     empty: '未找到插件。请将插件文件夹放入 data/plugins/ 目录',
     delete: '删除',
-    deleteConfirm: '确定要删除插件「{name}」吗？会删除插件目录，不可恢复',
+    deleteConfirm:
+      '将删除插件「{name}」本体，已保留的资源不受影响。可先在下方「携带资源」区保留需要的资源。',
+    resourcesTitle: '携带资源',
+    resourcesEmpty: '该插件未提供可识别的资源，或资源目录为空。',
+    resourceConflict: '冲突',
+    resourceConflictHint: '与现有游戏资源同名冲突，默认使用游戏版本。',
+    resourceHidden: '已隐藏',
+    resourceHide: '隐藏',
+    resourceRestore: '恢复',
+    resourceKeep: '保留',
+    resourceKeepHint: '复制到游戏目录，成为游戏自有资源（复制后插件版自动隐藏）。',
+    resourceKeepConfirm: '将把{kind}「{name}」复制到游戏目录成为游戏自有资源，插件版随后自动隐藏。',
+    disableCharactersConfirm:
+      '禁用插件「{name}」会将其携带的角色从列表中移除，并删除这些角色的全部存档与对话记忆（重新启用也不会恢复）。确定要禁用吗？',
+    resourceKinds: {
+      characters: '角色',
+      scripts: '剧本',
+      musics: '音乐',
+      backgrounds: '背景图',
+      ambients: '环境音',
+    },
   },
   adventurePanel: {
     header: {
@@ -425,6 +450,7 @@ export default {
       failTitle: '删除失败',
       systemProtected: '系统保护角色，无法删除',
       onstage: '该角色在场，请退场后删除',
+      pluginFromPlugin: '该角色来自插件，无法直接删除。请在「设置 · 插件」的资源区将其隐藏。',
     },
     messages: {
       realtimeUpdateFailed: '实时更新 {label} 失败，请检查控制台日志',
@@ -592,6 +618,7 @@ export default {
       tip: '提示',
       noDescriptionTip: '场景"{name}"暂无描述，选择后不会触发场景旁白',
       deleteConfirm: '确定要删除场景"{name}"吗？',
+      pluginNotDeletable: '这是插件提供的场景，无法在此删除。请到「设置 · 插件」的资源区隐藏或保留它。',
     },
     pagination: {
       first: '← 首页',
@@ -710,7 +737,7 @@ export default {
     },
     memory: {
       title: '启用永久记忆',
-      desc: '开启后记忆将会自动压缩',
+      desc: '开启后记忆将自动压缩，保存后需重启 LingChat 生效',
     },
     voiceSound: {
       title: '语音音效开关',
