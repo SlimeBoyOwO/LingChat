@@ -13,6 +13,7 @@ pub mod provider;
 pub mod voice_maker;
 
 // In-process SBV2 / Style-Bert-VITS2 local TTS engine (Task 1-10).
+pub mod cloud;
 pub mod local;
 
 pub use voice_maker::VoiceMaker;

@@ -2,19 +2,21 @@
   "Codegeex.RepoIndex": true,
   "editor.formatOnSave": true,
   "editor.defaultFormatter": "esbenp.prettier-vscode",
-  
+
   // 文件编码和换行符
   "files.encoding": "utf8",
   "files.eol": "\n",
   "files.autoGuessEncoding": false,
   "files.insertFinalNewline": true,
-  
+
   // 保存时自动修复
+  // 关闭 import 排序：prettier/pnpm format 不做 import 排序，开着会导致保存结果和 CLI 不一致。
+  // 如需恢复 import 排序，把 source.organizeImports 改回 "explicit"。
   "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": "explicit",
-    "source.organizeImports": "explicit"
+    "source.fixAll.eslint": "never",
+    "source.organizeImports": "never"
   },
-  
+
   "[vue]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
@@ -42,7 +44,7 @@
   "[toml]": {
     "editor.defaultFormatter": "tamasfe.even-better-toml"
   },
-  
+
   // i18n 配置
   "i18n-ally.localesPaths": ["src/locales"],
   "i18n-ally.pathMatcher": "{locale}/{namespace}.ts",
@@ -58,10 +60,12 @@
   "i18n-ally.enabledFrameworks": ["vue"],
   "i18n-ally.indent": 2,
   "i18n-ally.translate.fallbackToSourceLanguage": true,
-  
+
+  // 保存时复用项目本地 prettier（含 3 个插件），与 `pnpm format` 完全一致。
+  // 注意：requireConfig=true 时 configPath 会被忽略，故去掉 configPath，改用自动查找。
   "prettier.requireConfig": true,
+  "prettier.prettierPath": "./node_modules/prettier",
   "prettier.useEditorConfig": false,
-  "prettier.configPath": "./.prettierrc.json",
   "files.associations": {
     "*.env.*": "dotenv",
     ".prettierrc": "json"

@@ -50,11 +50,11 @@ gs.refresh_memories(&self.deps.db).await?;          // 关键：写台词表后�
 
 所以 `line` 表里同一轮工具调用长这样（按时间序）：
 
-| attribute | content | tool_call |
-|---|---|---|
-| `assistant` | 「好的，我来查一下现在几点。」 | `[{"id":"call_1","type":"function","function":{"name":"get_current_time","arguments":"{}"}}]` |
-| `tool` | `{"tool_call_id":"call_1","result":{"local_time":"2026-08-02T...","timezone":"local","unix_timestamp":...}}` | `NULL` |
-| `assistant` | 「现在是 2026-08-02 14:30。」 | `NULL`（最终回复，走 `add_assistant_line`） |
+| attribute   | content                                                                                                      | tool_call                                                                                     |
+| ----------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `assistant` | 「好的，我来查一下现在几点。」                                                                               | `[{"id":"call_1","type":"function","function":{"name":"get_current_time","arguments":"{}"}}]` |
+| `tool`      | `{"tool_call_id":"call_1","result":{"local_time":"2026-08-02T...","timezone":"local","unix_timestamp":...}}` | `NULL`                                                                                        |
+| `assistant` | 「现在是 2026-08-02 14:30。」                                                                                | `NULL`（最终回复，走 `add_assistant_line`）                                                   |
 
 要点：
 
@@ -156,11 +156,11 @@ if matches!(line.attribute(), LineAttribute::Tool) {
 
 ## 6. 与既有记忆体系的关系
 
-| 层 | 内容 | PR #523 的改动 |
-|---|---|---|
-| `role.memory` | 本轮会话的 LLM 上下文（`MemoryBuilder` 重建） | 新增工具行还原逻辑 |
-| 台词表 `line` 表 | 会话历史真相源（`save_repo` 持久化） | 新增 `tool_call` 列 + `Tool` 属性 |
-| `MemoryBank`（持久记忆摘要） | 长程记忆，LLM 上下文接入仍待完善 | 未改动 |
+| 层                           | 内容                                          | PR #523 的改动                    |
+| ---------------------------- | --------------------------------------------- | --------------------------------- |
+| `role.memory`                | 本轮会话的 LLM 上下文（`MemoryBuilder` 重建） | 新增工具行还原逻辑                |
+| 台词表 `line` 表             | 会话历史真相源（`save_repo` 持久化）          | 新增 `tool_call` 列 + `Tool` 属性 |
+| `MemoryBank`（持久记忆摘要） | 长程记忆，LLM 上下文接入仍待完善              | 未改动                            |
 
 工具历史目前**只进 `role.memory` 与台词表，不进 `MemoryBank` 摘要** —— 工具调用是短期上下文的一部分，不属于「该长期记住的角色设定」。这是刻意边界：若日后想让「某类工具结果」长期记住，应加在 `MemoryBank` 的摘要策略里，而不是塞台词表。
 

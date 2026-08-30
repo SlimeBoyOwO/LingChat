@@ -43,10 +43,7 @@ Open each `.model3.json` in a JSON-aware editor. Bindings use names and array in
       { "Name": "Happy", "File": "expressions/happy.exp3.json" }
     ],
     "Motions": {
-      "Idle": [
-        { "File": "motions/idle.motion3.json" },
-        { "File": "motions/sleep.motion3.json" }
-      ],
+      "Idle": [{ "File": "motions/idle.motion3.json" }, { "File": "motions/sleep.motion3.json" }],
       "Reactions": [
         { "File": "motions/wave.motion3.json" },
         { "File": "motions/angry.motion3.json" }
@@ -121,20 +118,20 @@ Place `lingchat-live2d.json` at the package root:
 
 ### Manifest Fields
 
-| Field | Meaning |
-| --- | --- |
-| `version` | Manifest protocol version. Currently `1`. |
-| `default_variant` | Variant used when no outfit mapping applies. It must exist in `variants`. |
-| `variants` | Named Live2D rigs belonging to this character. |
-| `model` | Path to the variant's `.model3.json`, relative to the manifest. |
+| Field                | Meaning                                                                                                                                                                                                    |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`            | Manifest protocol version. Currently `1`.                                                                                                                                                                  |
+| `default_variant`    | Variant used when no outfit mapping applies. It must exist in `variants`.                                                                                                                                  |
+| `variants`           | Named Live2D rigs belonging to this character.                                                                                                                                                             |
+| `model`              | Path to the variant's `.model3.json`, relative to the manifest.                                                                                                                                            |
 | `default_expression` | Fallback expression used only when the current LingChat emotion has no entry in `expressions`. It does not define the expression for the `正常` (Normal) emotion; map that emotion explicitly when needed. |
-| `expressions` | LingChat emotion name to model3 expression `Name`. |
-| `motions` | LingChat emotion name to model3 motion group and zero-based index. |
-| `idle` | The exact motion used for automatic idle playback. |
-| `eye_blink` | Cubism parameter IDs used to detect whether the eyes are open. |
-| `focus_anchor` | Optional gaze origin within drawable bounds; both values are in `0..1`. |
-| `lip_sync` | Mouth-open parameter and optional amplitude gain. |
-| `clothes_variants` | LingChat outfit name to variant name. Use `default` for the default outfit. |
+| `expressions`        | LingChat emotion name to model3 expression `Name`.                                                                                                                                                         |
+| `motions`            | LingChat emotion name to model3 motion group and zero-based index.                                                                                                                                         |
+| `idle`               | The exact motion used for automatic idle playback.                                                                                                                                                         |
+| `eye_blink`          | Cubism parameter IDs used to detect whether the eyes are open.                                                                                                                                             |
+| `focus_anchor`       | Optional gaze origin within drawable bounds; both values are in `0..1`.                                                                                                                                    |
+| `lip_sync`           | Mouth-open parameter and optional amplitude gain.                                                                                                                                                          |
+| `clothes_variants`   | LingChat outfit name to variant name. Use `default` for the default outfit.                                                                                                                                |
 
 If no manifest is included, LingChat scans all `.model3.json` files, creates variants, and suggests common expression and motion bindings. Review those suggestions in settings; keyword matching cannot understand the artistic intent of every motion.
 

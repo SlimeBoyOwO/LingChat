@@ -51,7 +51,6 @@
 - 从 `main` 或 `dev` 分支创建新的特性分支，例如 `feature/awesome-new-idea`。
 - 完成代码编写后，通过 **Pull Request (PR)** 提交到主仓库的对应分支。请使用 PR 模板，清晰描述你的改动。
 
-
 ## 💻代码开发
 
 ### 配置系统
@@ -65,24 +64,28 @@
 
 ### 克隆项目
 
-
 ```shell
 git clone https://github.com/SlimeBoyOwO/LingChat
 
 cd LingChat
 ```
+
 ### 编译调试
 
 如果您使用的是 Linux 系统可能需要安装如下包
+
 ```shell
 sudo pacman -S clang
 ```
+
 如果 node 没有下载 pnpm 您需要进行下载
+
 ```shell
 npm install -g pnpm
 ```
 
 下载外部资源
+
 ```shell
 pnpm install
 pnpm run init
@@ -101,8 +104,6 @@ pnpm run build
 pnpm run tauri dev
 ```
 
-
-
 ## ⚠️ 重中之重
 
 这一点至关重要，请在提出此类建议前仔细阅读。
@@ -118,7 +119,6 @@ pnpm run tauri dev
 3.  **证明方案的收益**：阐明你的方案将带来哪些**明确且可衡量**的收益（例如：性能提升 30%、代码维护成本降低 50% 等）。
 
 **简单来说：如果你想重构，请带着一份能说服所有人的、可以落地的完整计划书来。** 否则，这类 Issue 和 PR 将被直接关闭。包括开发交流群的禁言或飞机票。
-
 
 # 📝最后的话
 

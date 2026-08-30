@@ -95,16 +95,9 @@ pub async fn download_file(
         peer.port,
         urlencoding(remote_path)
     );
-    crate::utils::download::download_to_file(
-        &HTTP_CLIENT,
-        &url,
-        dest_path,
-        None,
-        None,
-        0,
-    )
-    .await
-    .map_err(|e| format!("[{}]: {e}", remote_path))?;
+    crate::utils::download::download_to_file(&HTTP_CLIENT, &url, dest_path, None, None, 0)
+        .await
+        .map_err(|e| format!("[{}]: {e}", remote_path))?;
 
     info!("已下载: {} -> {:?}", remote_path, dest_path);
     Ok(())
@@ -128,12 +121,12 @@ pub async fn upload_file(
         .await
         .map_err(|e| format!("打开本地文件失败 [{}]: {e}", remote_path))?;
 
-    let file_size = file
-        .metadata()
-        .await
-        .map(|m| m.len())
-        .unwrap_or(0);
-    info!("开始流式推送: {} ({:.1} MB)", remote_path, file_size as f64 / 1_048_576.0);
+    let file_size = file.metadata().await.map(|m| m.len()).unwrap_or(0);
+    info!(
+        "开始流式推送: {} ({:.1} MB)",
+        remote_path,
+        file_size as f64 / 1_048_576.0
+    );
 
     // 用 ReaderStream 将文件变为字节流，避免 std::fs::read 一次加载全部
     let stream = ReaderStream::new(file);
@@ -186,9 +179,7 @@ pub async fn push_delete(peer: &PeerInfo, remote_path: &str) -> Result<(), Strin
 }
 
 /// 从对端拉取全部数据库记录。
-pub async fn fetch_db_records(
-    peer: &PeerInfo,
-) -> Result<super::messages::DbRecords, String> {
+pub async fn fetch_db_records(peer: &PeerInfo) -> Result<super::messages::DbRecords, String> {
     let url = format!("http://{}:{}/db-records", peer.host, peer.port);
     info!("请求对端数据库记录: {}", url);
 
@@ -238,7 +229,10 @@ pub async fn push_db_records(
         + records.lines.len()
         + records.memory_banks.len()
         + records.line_perceptions.len();
-    info!("推送数据库记录到 {}:{} ({} 条)", peer.host, peer.port, total);
+    info!(
+        "推送数据库记录到 {}:{} ({} 条)",
+        peer.host, peer.port, total
+    );
 
     let client = &*HTTP_CLIENT;
 
@@ -269,10 +263,10 @@ fn urlencoding(s: &str) -> String {
         match byte {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' => {
                 result.push(byte as char);
-            }
+            },
             _ => {
                 result.push_str(&format!("%{:02X}", byte));
-            }
+            },
         }
     }
     result

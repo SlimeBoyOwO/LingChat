@@ -2,8 +2,21 @@ use std::path::{Path, PathBuf};
 
 /// 将角色资源路径解析为绝对路径。
 ///
-/// 相对路径统一放在 `data/game_data/characters` 下，绝对路径保持不变。
+/// 游戏自有角色：相对路径统一放在 `data/game_data/characters` 下，绝对路径保持不变。
+/// 插件角色：`resource_folder` 编码为 `plugin:<id>/<folder>`，解析到
+/// `data/plugins/<id>/characters/<folder>`（运行时直读，不复制）。
 pub fn resolve_character_path(data_dir: &Path, resource_path: &str) -> PathBuf {
+    if let Some(rest) = resource_path.strip_prefix("plugin:") {
+        if let Some((plugin_id, folder)) = rest.split_once('/') {
+            if !plugin_id.is_empty() && !folder.is_empty() {
+                return data_dir
+                    .join("plugins")
+                    .join(plugin_id)
+                    .join("characters")
+                    .join(folder);
+            }
+        }
+    }
     let path = PathBuf::from(resource_path);
     if path.is_absolute() {
         path
@@ -15,8 +28,7 @@ pub fn resolve_character_path(data_dir: &Path, resource_path: &str) -> PathBuf {
 /// 批量创建目录（幂等）。任一失败立即返回错误。
 pub fn ensure_dirs(dirs: &[&Path]) -> Result<(), String> {
     for d in dirs {
-        std::fs::create_dir_all(d)
-            .map_err(|e| format!("create_dir_all {}: {e}", d.display()))?;
+        std::fs::create_dir_all(d).map_err(|e| format!("create_dir_all {}: {e}", d.display()))?;
     }
     Ok(())
 }

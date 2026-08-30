@@ -7,23 +7,23 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::chapter::Chapter;
 use crate::ai_service::game_system::script_engine::events::ScriptContext;
 use crate::ai_service::game_system::script_engine::responses::{
-    event_names::SCRIPT_END, ScriptEndPayload,
+    ScriptEndPayload, event_names::SCRIPT_END,
 };
 use crate::ai_service::message_system::events::emit;
 use crate::ai_service::types::{AdventureConfig, LineAttributeExt, LineBase, ScriptStatus};
 use crate::db::entities::line::LineAttribute;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::utils::prompt::{sys_prompt_builder, PromptOptions};
+use crate::utils::prompt::{PromptOptions, sys_prompt_builder};
 
 /// YAML structure for `story_config.yaml` top-level keys.
 #[derive(serde::Deserialize, Default)]
@@ -129,10 +129,10 @@ impl ScriptManager {
             Ok(script_status) => {
                 let name = script_status.name.clone();
                 self.all_scripts.insert(name, script_status);
-            }
+            },
             Err(e) => {
                 tracing::warn!("[ScriptManager] 跳过无效剧本目录 {:?}: {}", script_path, e);
-            }
+            },
         }
     }
 
@@ -169,7 +169,33 @@ impl ScriptManager {
             current_chapter_key: String::new(),
             current_event_process: 0,
             vars: serde_json::Map::new(),
+            plugin_id: None,
         })
+    }
+
+    /// 用当前启用插件的剧本目录重建 `all_scripts` 中「插件来源」的部分。
+    ///
+    /// - 先移除所有 `plugin_id.is_some()` 的旧条目（插件禁用 / 隐藏 / 删除后清理）；
+    /// - 再按传入顺序（调用方保证按插件 id 升序 + 已做游戏/插件间冲突去重）插入，
+    ///   若 script_name 与游戏剧本同名则跳过（游戏优先）。
+    /// `plugin_scripts` 每项为 `(plugin_id, 剧本包目录)`。
+    pub fn apply_plugin_scripts(&mut self, plugin_scripts: &[(String, std::path::PathBuf)]) {
+        self.all_scripts.retain(|_, s| s.plugin_id.is_none());
+        for (plugin_id, dir) in plugin_scripts {
+            match Self::read_script_config(dir) {
+                Ok(mut status) => {
+                    if self.all_scripts.contains_key(&status.name) {
+                        // 游戏同名 或 更早注册的插件同名 → 后到者让位
+                        continue;
+                    }
+                    status.plugin_id = Some(plugin_id.clone());
+                    self.all_scripts.insert(status.name.clone(), status);
+                },
+                Err(e) => {
+                    tracing::warn!("[ScriptManager] 跳过无效插件剧本 {:?}: {}", dir, e);
+                },
+            }
+        }
     }
 
     // ============================================================
@@ -347,7 +373,7 @@ impl ScriptManager {
                         role_folder
                     );
                     continue;
-                }
+                },
             };
 
             // Check if role already exists in DB — same key that creation uses.

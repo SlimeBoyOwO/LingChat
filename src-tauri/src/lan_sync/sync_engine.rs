@@ -36,7 +36,7 @@ pub async fn plan_push(identity: &DeviceIdentity, peer: &PeerInfo) -> Result<Syn
     let remote_manifest = client::fetch_remote_manifest(peer).await?;
 
     let (files_to_transfer, files_to_delete) =
-        sync_manifest::diff_manifests(&remote_manifest, &local_manifest);
+        sync_manifest::diff_manifests(&remote_manifest, &local_manifest)?;
 
     let total_bytes: u64 = files_to_transfer.iter().map(|f| f.size).sum();
 
@@ -60,7 +60,7 @@ pub async fn plan_pull(identity: &DeviceIdentity, peer: &PeerInfo) -> Result<Syn
             .map_err(|e| format!("扫描本地文件失败: {e}"))?;
 
     let (files_to_transfer, files_to_delete) =
-        sync_manifest::diff_manifests(&local_manifest, &remote_manifest);
+        sync_manifest::diff_manifests(&local_manifest, &remote_manifest)?;
 
     let total_bytes: u64 = files_to_transfer.iter().map(|f| f.size).sum();
 
@@ -115,7 +115,11 @@ pub async fn execute_push(
     for op in &plan.files_to_transfer {
         if cancel.load(Ordering::SeqCst) {
             return Ok(cancelled_result(
-                "push", files_ok, deletes_ok, 0, bytes_transferred,
+                "push",
+                files_ok,
+                deletes_ok,
+                0,
+                bytes_transferred,
             ));
         }
 
@@ -141,19 +145,23 @@ pub async fn execute_push(
                 bytes_transferred += op.size;
                 files_ok += 1;
                 current += 1;
-            }
+            },
             Err(e) => {
                 error!("推送文件失败 [{}]: {}", op.path, e);
                 failed_count += 1;
                 current += 1;
-            }
+            },
         }
     }
 
     for path in &plan.files_to_delete {
         if cancel.load(Ordering::SeqCst) {
             return Ok(cancelled_result(
-                "push", files_ok, deletes_ok, 0, bytes_transferred,
+                "push",
+                files_ok,
+                deletes_ok,
+                0,
+                bytes_transferred,
             ));
         }
 
@@ -162,12 +170,12 @@ pub async fn execute_push(
                 info!("已通知对端删除: {}", path);
                 deletes_ok += 1;
                 current += 1;
-            }
+            },
             Err(e) => {
                 warn!("通知对端删除失败 [{}]: {}", path, e);
                 failed_count += 1;
                 current += 1;
-            }
+            },
         }
     }
 
@@ -189,25 +197,42 @@ pub async fn execute_push(
                 Ok(()) => {
                     db_synced = true;
                     info!("数据库记录推送完成");
-                }
+                },
                 Err(e) => {
                     warn!("推送数据库记录失败（非致命）: {e}");
-                }
+                },
             },
             Err(e) => {
                 warn!("导出数据库记录失败（非致命）: {e}");
-            }
+            },
         }
     }
 
     let elapsed = start.elapsed();
     let success = failed_count == 0;
-    let mut message = build_message(success, "push", files_ok, plan.files_to_transfer.len(), failed_count, bytes_transferred, elapsed.as_secs_f64());
+    let mut message = build_message(
+        success,
+        "push",
+        files_ok,
+        plan.files_to_transfer.len(),
+        failed_count,
+        bytes_transferred,
+        elapsed.as_secs_f64(),
+    );
     if db_synced {
         message.push_str("（含数据库同步）");
     }
 
-    emit_progress(app, "complete", current, total, 100, None, bytes_transferred, Some(message.clone()));
+    emit_progress(
+        app,
+        "complete",
+        current,
+        total,
+        100,
+        None,
+        bytes_transferred,
+        Some(message.clone()),
+    );
 
     Ok(SyncResult {
         success,
@@ -226,6 +251,13 @@ pub async fn execute_pull(
     app: &AppHandle,
     cancel: &AtomicBool,
 ) -> Result<SyncResult, String> {
+    for op in &plan.files_to_transfer {
+        sync_manifest::validate_manifest_path(&op.path)?;
+    }
+    for path in &plan.files_to_delete {
+        sync_manifest::validate_manifest_path(path)?;
+    }
+
     let data_dir = data_dir();
     let total = plan.files_to_transfer.len() as u64 + plan.files_to_delete.len() as u64;
     let mut current: u64 = 0;
@@ -263,7 +295,11 @@ pub async fn execute_pull(
     for op in &plan.files_to_transfer {
         if cancel.load(Ordering::SeqCst) {
             return Ok(cancelled_result(
-                "pull", files_ok, deletes_ok, files_staged, bytes_transferred,
+                "pull",
+                files_ok,
+                deletes_ok,
+                files_staged,
+                bytes_transferred,
             ));
         }
 
@@ -289,7 +325,7 @@ pub async fn execute_pull(
                 bytes_transferred += op.size;
                 files_ok += 1;
                 current += 1;
-            }
+            },
             Err(e) => {
                 // 尝试回退：如果文件已下载到 .tmp 但重命名失败（被锁定），则暂存
                 let tmp = tmp_path_for(&dest_path);
@@ -301,23 +337,27 @@ pub async fn execute_pull(
                             let _ = std::fs::remove_file(&tmp);
                             current += 1;
                             continue;
-                        }
+                        },
                         Err(se) => {
                             error!("暂存文件失败 [{}]: {}", op.path, se);
-                        }
+                        },
                     }
                 }
                 error!("下载文件失败 [{}]: {}", op.path, e);
                 failed_count += 1;
                 current += 1;
-            }
+            },
         }
     }
 
     for path in &plan.files_to_delete {
         if cancel.load(Ordering::SeqCst) {
             return Ok(cancelled_result(
-                "pull", files_ok, deletes_ok, files_staged, bytes_transferred,
+                "pull",
+                files_ok,
+                deletes_ok,
+                files_staged,
+                bytes_transferred,
             ));
         }
 
@@ -360,20 +400,28 @@ pub async fn execute_pull(
                 Ok(()) => {
                     db_staged = true;
                     info!("数据库记录已暂存，将在下次启动时导入");
-                }
+                },
                 Err(e) => {
                     warn!("暂存数据库记录失败（非致命）: {e}");
-                }
+                },
             },
             Err(e) => {
                 warn!("拉取数据库记录失败（非致命）: {e}");
-            }
+            },
         }
     }
 
     let elapsed = start.elapsed();
     let success = failed_count == 0;
-    let mut message = build_message(success, "pull", files_ok, plan.files_to_transfer.len(), failed_count, bytes_transferred, elapsed.as_secs_f64());
+    let mut message = build_message(
+        success,
+        "pull",
+        files_ok,
+        plan.files_to_transfer.len(),
+        failed_count,
+        bytes_transferred,
+        elapsed.as_secs_f64(),
+    );
     if files_staged > 0 {
         message.push_str(&format!(
             "；{} 个文件因被占用已暂存，重启后自动生效",
@@ -457,7 +505,11 @@ fn build_message(
     bytes_transferred: u64,
     elapsed_secs: f64,
 ) -> String {
-    let verb = if direction == "pull" { "拉取" } else { "推送" };
+    let verb = if direction == "pull" {
+        "拉取"
+    } else {
+        "推送"
+    };
     if success {
         format!(
             "{}完成：{} 个文件，{} 字节，耗时 {:.1}s",
@@ -466,10 +518,7 @@ fn build_message(
     } else {
         format!(
             "{}部分完成：{}/{} 个文件成功，{} 个失败",
-            verb,
-            files_ok,
-            total_files,
-            failed_count
+            verb, files_ok, total_files, failed_count
         )
     }
 }

@@ -12,15 +12,15 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::AppState;
 use crate::ai_service::skill_agent::command_executor::{self, ApprovalMap, ApprovalRequest};
 use crate::ai_service::skill_agent::config::SkillAgentConfig;
 use crate::ai_service::skill_agent::file_tools::{FileTools, MAX_GLOB_RESULTS, MAX_GREP_RESULTS};
 use crate::ai_service::skill_agent::skills;
 use crate::ai_service::types::ToolDefinition;
-use crate::AppState;
 
 use super::background_command;
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
@@ -110,7 +110,7 @@ async fn request_user_approval(
         Ok(Ok(true)) => {
             tracing::info!("[approval] 用户已批准: request_id={request_id}");
             Ok(())
-        }
+        },
         Ok(Ok(false)) => Err(ToolError::Execution(format!("{action}已被用户拒绝"))),
         Ok(Err(_)) => Err(ToolError::Execution(format!(
             "审批通道已关闭，{action}未执行"
@@ -479,7 +479,10 @@ mutating_file_tool!(
             .get("new_string")
             .and_then(Value::as_str)
             .ok_or_else(|| ToolError::InvalidArguments("缺少 new_string 参数".into()))?;
-        let replace_all = args.get("replace_all").and_then(Value::as_bool).unwrap_or(false);
+        let replace_all = args
+            .get("replace_all")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         exec(ft.edit_file(path, old_string, new_string, replace_all))
     }
 );

@@ -14,6 +14,7 @@ use futures_util::future::join_all;
 use crate::ai_service::message_system::processor::EmotionSegment;
 use crate::ai_service::tts::adapters::aivis::AivisAdapter;
 use crate::ai_service::tts::adapters::bv2::Bv2Adapter;
+use crate::ai_service::tts::adapters::cosyvoice::CosyvoiceAdapter;
 use crate::ai_service::tts::adapters::fish_s2::FishS2Adapter;
 use crate::ai_service::tts::adapters::gsv::GsvAdapter;
 use crate::ai_service::tts::adapters::indextts::IndexTtsAdapter;
@@ -21,8 +22,8 @@ use crate::ai_service::tts::adapters::opentts::OpenTtsAdapter;
 use crate::ai_service::tts::adapters::sbv2::Sbv2Adapter;
 use crate::ai_service::tts::adapters::sbv2api::Sbv2ApiAdapter;
 use crate::ai_service::tts::adapters::vits::VitsAdapter;
-use crate::ai_service::tts::local::adapter::LocalTtsAdapter;
 use crate::ai_service::tts::local::LocalTtsRuntime;
+use crate::ai_service::tts::local::adapter::LocalTtsAdapter;
 use crate::ai_service::tts::provider::TtsProvider;
 use crate::ai_service::types::VoiceModel;
 use crate::config::tts::TtsConfig;
@@ -39,6 +40,7 @@ pub struct TtsAvailability {
     pub opentts: bool,
     pub fish_s2: bool,
     pub sbv2_local: bool,
+    pub cosyvoice: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -46,6 +48,8 @@ pub struct VoiceMaker {
     provider: TtsProvider,
     tts_type: String,
     lang: String,
+    /// 中文方言（仅 cosyvoice + lang=zh 时生效；空 = 普通话）
+    voice_dialect: Option<String>,
     character_path: Option<PathBuf>,
     temp_dir: PathBuf,
     audio_format: String,
@@ -109,16 +113,27 @@ fn gsv_prompt_language(prompt_text: &str) -> &'static str {
 
 fn segment_text_for_lang<'a>(lang: &str, segment: &'a EmotionSegment) -> Option<&'a str> {
     match lang {
-        // 译文统一存放在 japanese_text 字段（历史命名），ja/en/ko/es/ar 均优先取译文
-        "ja" | "en" | "ko" | "es" | "ar" if !segment.japanese_text.trim().is_empty() => {
+        // 译文统一存放在 japanese_text 字段（历史命名），非中文语言均优先取译文；
+        // 无译文时 en/ko/es/ar/de/fr/ru/pt 跳过（不朗读错误语言）
+        "ja" | "en" | "ko" | "es" | "ar" | "de" | "fr" | "ru" | "pt"
+            if !segment.japanese_text.trim().is_empty() =>
+        {
             Some(&segment.japanese_text)
-        }
-        "en" | "ko" | "es" | "ar" => None,
+        },
+        "en" | "ko" | "es" | "ar" | "de" | "fr" | "ru" | "pt" => None,
         "zh" if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
         _ if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
         _ if !segment.japanese_text.trim().is_empty() => Some(&segment.japanese_text),
         _ => None,
     }
+}
+
+/// CosyVoice `language_hints` 官方支持范围（不含 es/ar，方言经 instruction 触发）。
+fn cosyvoice_supported_language(lang: &str) -> bool {
+    matches!(
+        lang,
+        "zh" | "en" | "ja" | "ko" | "fr" | "de" | "ru" | "pt" | "th" | "id" | "vi"
+    )
 }
 
 impl VoiceMaker {
@@ -129,6 +144,7 @@ impl VoiceMaker {
             provider,
             tts_type: String::new(),
             lang: "ja".into(),
+            voice_dialect: None,
             character_path: None,
             temp_dir,
             audio_format,
@@ -147,6 +163,11 @@ impl VoiceMaker {
 
     pub fn set_lang(&mut self, lang: impl Into<String>) {
         self.lang = lang.into();
+    }
+
+    /// 设置中文方言（仅 cosyvoice + lang=zh 时生效；空 = 普通话）。
+    pub fn set_voice_dialect(&mut self, dialect: Option<String>) {
+        self.voice_dialect = dialect;
     }
 
     pub fn set_character_path(&mut self, path: Option<PathBuf>) {
@@ -194,6 +215,8 @@ impl VoiceMaker {
             non_empty(&cfg.fish_s2_voice) || !self.tts_config.fish_s2_voice.trim().is_empty();
         // Local SBV2 only needs a voice_id; engine readiness is checked later
         let sbv2_local = non_empty(&cfg.sbv2_local_voice_id);
+        // CosyVoice 云端音色：角色选了 voice_id 即可用（Key 缺失在初始化时禁用）
+        let cosyvoice = non_empty(&cfg.cosyvoice_voice_id);
 
         self.availability = TtsAvailability {
             sva,
@@ -205,6 +228,7 @@ impl VoiceMaker {
             opentts,
             fish_s2,
             sbv2_local,
+            cosyvoice,
         };
     }
 
@@ -228,7 +252,7 @@ impl VoiceMaker {
                         "ja".into(),
                     )));
                 }
-            }
+            },
             "sbv2" if self.availability.sbv2 => {
                 let id = cfg
                     .sbv2_speaker_id
@@ -243,7 +267,7 @@ impl VoiceMaker {
                     self.audio_format.clone(),
                     &self.lang,
                 )));
-            }
+            },
             "sbv2api" if self.availability.sbv2api => {
                 let id = cfg
                     .sbv2api_speaker_id
@@ -256,7 +280,7 @@ impl VoiceMaker {
                     model_name,
                     id,
                 )));
-            }
+            },
             "localsbv2api" if self.availability.sbv2_local => {
                 self.provider.sbv2api = None;
                 self.local_cloud_fallback = match (
@@ -282,7 +306,7 @@ impl VoiceMaker {
                         );
                         self.provider.disable();
                         return Ok(());
-                    }
+                    },
                 };
                 let engine = runtime.engine;
                 let paths = runtime.paths;
@@ -300,7 +324,7 @@ impl VoiceMaker {
                     length_scale,
                     paths,
                 )));
-            }
+            },
             "sva-bv2" if self.availability.bv2 => {
                 let id = cfg
                     .bv2_speaker_id
@@ -313,12 +337,12 @@ impl VoiceMaker {
                     self.audio_format.clone(),
                     self.lang.clone(),
                 )));
-            }
+            },
             "gsv" if self.availability.gsv => {
                 let ref_audio_path = match (&self.character_path, &cfg.gsv_voice_filename) {
                     (Some(base), Some(name_)) if !name_.is_empty() => {
                         base.join("voice").join(name_).to_string_lossy().to_string()
-                    }
+                    },
                     _ => String::new(),
                 };
                 let prompt_text = cfg.gsv_voice_text.clone().unwrap_or_default();
@@ -331,7 +355,7 @@ impl VoiceMaker {
                     other => {
                         tracing::warn!("GPT-SoVITS 暂不支持语言 {other}，回退到中文");
                         "zh"
-                    }
+                    },
                 }
                 .to_string();
                 let adapter = GsvAdapter::new(
@@ -345,7 +369,7 @@ impl VoiceMaker {
                 );
                 self.provider.gsv = Some(Arc::new(adapter));
                 let _ = name;
-            }
+            },
             "aivis" if self.availability.aivis => {
                 let model_uuid = cfg.aivis_model_uuid.clone().unwrap_or_default();
                 match AivisAdapter::new(
@@ -360,9 +384,9 @@ impl VoiceMaker {
                     Err(e) => {
                         tracing::warn!("AIVIS 初始化失败: {e}");
                         self.provider.disable();
-                    }
+                    },
                 }
-            }
+            },
             "opentts" if self.availability.opentts => {
                 // 角色级 voice 优先；为空时回退到全局 TTS 配置的音色标识
                 let voice = if non_empty(&cfg.opentts_voice) {
@@ -397,10 +421,10 @@ impl VoiceMaker {
                         Err(e) => {
                             tracing::warn!("OpenTTS 初始化失败: {e}");
                             self.provider.disable();
-                        }
+                        },
                     }
                 }
-            }
+            },
             "fishs2" if self.availability.fish_s2 => {
                 // s2.cpp 固定返回 WAV；确保缓存文件扩展名与实际内容一致。
                 self.audio_format = "wav".to_string();
@@ -415,9 +439,47 @@ impl VoiceMaker {
                     Err(error) => {
                         tracing::warn!("Fish S2 初始化失败: {error}");
                         self.provider.disable();
-                    }
+                    },
                 }
-            }
+            },
+            "cosyvoice" if self.availability.cosyvoice => {
+                let api_key = self
+                    .tts_config
+                    .cosyvoice_api_key
+                    .clone()
+                    .unwrap_or_default();
+                if api_key.trim().is_empty() {
+                    tracing::warn!("CosyVoice API 密钥未设置,禁用 TTS");
+                    self.provider.disable();
+                } else {
+                    let voice_id = cfg.cosyvoice_voice_id.clone().unwrap_or_default();
+                    // 合成模型必须与注册音色时的模型一致：优先从音色记录解析，
+                    // 找不到（音色记录被清）回退全局默认模型
+                    let model = self
+                        .tts_config
+                        .cosyvoice_voices
+                        .iter()
+                        .find(|v| v.voice_id == voice_id)
+                        .map(|v| v.model.clone())
+                        .or_else(|| self.tts_config.cosyvoice_models.first().cloned())
+                        .unwrap_or_else(|| "cosyvoice-v3.5-flash".to_string());
+                    let mut adapter = CosyvoiceAdapter::new(api_key, model, voice_id);
+                    // 方言：仅中文生效，通过 instruction 指令触发（复刻音色需指令才输出方言）；
+                    // 其余语言：仅官方支持的语言才用 language_hints 指定合成目标语言
+                    // （es/ar 等不支持的值会触发云端报错，跳过即可）
+                    if self.lang == "zh" {
+                        if let Some(dialect) =
+                            self.voice_dialect.clone().filter(|d| !d.trim().is_empty())
+                        {
+                            tracing::info!("CosyVoice 方言模式: {dialect}");
+                            adapter = adapter.with_instruction(&format!("用{dialect}说话。"));
+                        }
+                    } else if cosyvoice_supported_language(&self.lang) {
+                        adapter = adapter.with_language_hints(&self.lang);
+                    }
+                    self.provider.cosyvoice = Some(Arc::new(adapter));
+                }
+            },
             "indextts2" => {
                 // IndexTTS 2.5 起官方支持中/英/日/西班牙/阿拉伯语，
                 // 不再对日语等语言做中文兜底，lang 直接透传给服务端。
@@ -425,10 +487,10 @@ impl VoiceMaker {
                     self.tts_config.indextts_api_url.clone(),
                     self.lang.clone(),
                 )));
-            }
+            },
             _ => {
                 tracing::warn!("TTS 类型不可用或未初始化: {tts_type}");
-            }
+            },
         }
 
         Ok(())

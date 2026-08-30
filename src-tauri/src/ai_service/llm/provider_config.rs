@@ -9,7 +9,7 @@ use serde_json::Value as JsonValue;
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
-use crate::ai_service::llm::{create_llm_client, LlmClient, LlmConfig};
+use crate::ai_service::llm::{LlmClient, LlmConfig, create_llm_client};
 use crate::config::app_config::AppConfig;
 use crate::config::{self, keys};
 
@@ -252,7 +252,7 @@ pub fn build_llm_client_from_provider(
         Err(e) => {
             tracing::error!("Failed to create LLM client for {}: {e}", cfg.label);
             None
-        }
+        },
     }
 }
 

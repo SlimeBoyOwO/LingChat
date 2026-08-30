@@ -62,7 +62,7 @@
 
 ```yaml
 - type: background
-  imagePath: '便利店.png' # Assets/Backgrounds 下的文件名
+  imagePath: "便利店.png" # Assets/Backgrounds 下的文件名
   transition: 0.5 # 可选，转场时间，默认 1.0
 ```
 
@@ -77,7 +77,7 @@
 
 ```yaml
 - type: music
-  musicPath: 'bgm.mp3' # Assets/Musics 下的文件名
+  musicPath: "bgm.mp3" # Assets/Musics 下的文件名
   duration: 0 # 可选
 ```
 
@@ -89,7 +89,7 @@
 
 ```yaml
 - type: sound
-  soundPath: 'smash1.wav' # Assets/Sounds 下的文件名
+  soundPath: "smash1.wav" # Assets/Sounds 下的文件名
   duration: 0
 ```
 
@@ -101,7 +101,7 @@
 
 ```yaml
 - type: ambient
-  ambientPath: '蝉鸣.mp3' # Assets/Ambients 下的文件名
+  ambientPath: "蝉鸣.mp3" # Assets/Ambients 下的文件名
   volume: 100 # 可选，音量 0-100，默认 100
   loop: true # 可选，循环，默认 true
   stop: false # 可选，是否停止，默认 false
@@ -120,7 +120,7 @@
 
 ```yaml
 - type: background_effect
-  effect: 'Sakura' # 特效类型，默认 "none"
+  effect: "Sakura" # 特效类型，默认 "none"
   duration: 3
 ```
 
@@ -133,7 +133,7 @@
 
 ```yaml
 - type: present_pic
-  imagePath: 'Q版动画.png' # Assets/Pics 下的文件名
+  imagePath: "Q版动画.png" # Assets/Pics 下的文件名
   scale: 1 # 可选，缩放，默认 1.0
   duration: 1
 ```
@@ -178,7 +178,7 @@
 
 ```yaml
 - type: input
-  hint: '尝试对着风雪打个招呼吧！' # 输入提示
+  hint: "尝试对着风雪打个招呼吧！" # 输入提示
 ```
 
 | 字段   | 必填 | 类型   | 默认值      | 说明           |
@@ -203,7 +203,7 @@
 ```yaml
 - type: choices
   options:
-    - text: '要不要一起吃红烧牛肉面！'
+    - text: "要不要一起吃红烧牛肉面！"
       actions:
         - type: add_line
           content: 要不要一起吃红烧牛肉面！
@@ -232,7 +232,7 @@
 
 # 修改变量（表达式写法；旧原型 name/value/op 会被校验器标记为 action.legacy_shape）
 - type: set_var
-  content: 'flag = true' # 表达式：变量 = 值 / 变量 += 值 / 变量 -= 值
+  content: "flag = true" # 表达式：变量 = 值 / 变量 += 值 / 变量 -= 值
 ```
 
 ### 14. free_dialogue — 自由对话（多轮）
@@ -270,7 +270,7 @@
     - condition: flag == true # 可选，执行条件
       actions:
         - type: set_var
-          content: 'money += 100' # 表达式：变量 = 值 / 变量 += 值 / 变量 -= 值
+          content: "money += 100" # 表达式：变量 = 值 / 变量 += 值 / 变量 -= 值
 ```
 
 | 字段                  | 必填 | 类型 | 默认值 | 说明                  |
@@ -297,18 +297,18 @@
 # ① linear：线性结束
 - type: chapter_end
   end_type: linear
-  next_chapter: 'end' # 或 next: 'end'；'end' 表示剧本结束
+  next_chapter: "end" # 或 next: 'end'；'end' 表示剧本结束
 
 # ② branching：按变量分支
 - type: chapter_end
   end_type: branching
   options:
     - condition: flag == true
-      next: 'good_end'
+      next: "good_end"
     - condition: flag == false
-      next: 'bad_end'
+      next: "bad_end"
     - default: true # 可选，兜底分支
-      next: 'normal_end'
+      next: "normal_end"
 
 # ③ ai_judged：AI 判定分支
 - type: chapter_end
@@ -316,11 +316,11 @@
   prompt: 根据当前剧情走向判断玩家会进入哪个结局
   options:
     - name: good # 分支名（AI 从中选择）
-      next: 'good_end'
+      next: "good_end"
     - name: bad
-      next: 'bad_end'
+      next: "bad_end"
     - default: true # 可选，兜底
-      next: 'normal_end'
+      next: "normal_end"
 ```
 
 | 字段                    | 必填      | 类型   | 默认值   | 说明                                           |
@@ -338,7 +338,7 @@
 
 ```yaml
 - type: unlock_achievement
-  achievement_id: 'summer_star' # 成就键名（唯一，英文标识）
+  achievement_id: "summer_star" # 成就键名（唯一，英文标识）
   title: 夏日之星 # 成就标题
   description: 在夏天的星空下许下愿望。 # 成就描述
 ```

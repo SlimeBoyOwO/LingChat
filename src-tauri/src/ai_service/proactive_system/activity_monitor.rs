@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
-    MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MBUTTONDOWN,
+    CallNextHookEx, GetMessageW, HHOOK, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, SetWindowsHookExW,
+    UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MBUTTONDOWN,
     WM_MOUSEMOVE, WM_RBUTTONDOWN, WM_SYSKEYDOWN,
 };
 
@@ -137,10 +137,10 @@ impl UserActivityMonitor {
                     if *is_game {
                         game_keys += 1;
                     }
-                }
+                },
                 InputType::Click => {
                     clicks += 1;
-                }
+                },
                 InputType::Move { x, y } => {
                     if let Some((lx, ly)) = running_last_pos {
                         let dx = (x - lx) as f64;
@@ -148,7 +148,7 @@ impl UserActivityMonitor {
                         mouse_distance += (dx * dx + dy * dy).sqrt();
                     }
                     running_last_pos = Some((*x, *y));
-                }
+                },
             }
         }
         inner.last_mouse_pos = running_last_pos;
@@ -161,7 +161,11 @@ impl UserActivityMonitor {
 
         tracing::info!(
             "[ActivityMonitor] Stats last 20s: Keys={}, GameKeys={}, Clicks={}, Distance={:.1}, GameRatio={:.2}",
-            keystrokes, game_keys, clicks, mouse_distance, game_ratio
+            keystrokes,
+            game_keys,
+            clicks,
+            mouse_distance,
+            game_ratio
         );
 
         // Classification Logic matching Python

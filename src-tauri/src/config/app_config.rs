@@ -175,13 +175,7 @@ fn get_u32(store: &Store<Wry>, key: &str, default: u32) -> u32 {
         .unwrap_or(default)
 }
 
-fn get_u32_in_range(
-    store: &Store<Wry>,
-    key: &str,
-    default: u32,
-    min: u32,
-    max: u32,
-) -> u32 {
+fn get_u32_in_range(store: &Store<Wry>, key: &str, default: u32, min: u32, max: u32) -> u32 {
     store
         .get(key)
         .and_then(|value| value.as_u64())

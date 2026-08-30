@@ -2,52 +2,50 @@
   <div class="message" :title="$t('pet.history.emotionTitle', { tag: emotionTag })">
     <span class="name">{{ name }}</span>
     <span class="symbol">:&nbsp</span>
-    <span class="content"
-      >{{ content }}{{ action_content ? ` (${action_content})` : "" }}</span
-    >
+    <span class="content">{{ content }}{{ action_content ? ` (${action_content})` : "" }}</span>
     <span class="symbol">&nbsp</span>
     <span class="icon"><Icon icon="volume" @click="$emit('click')" /></span>
   </div>
 </template>
 
 <script setup lang="ts">
-import Icon from "../../../base/widget/Icon.vue";
+  import Icon from "../../../base/widget/Icon.vue";
 
-defineProps({
-  name: {
-    type: String,
-    require: true,
-  },
-  content: {
-    type: String,
-    require: true,
-  },
-  action_content: {
-    type: String,
-    require: false,
-  },
-  emotionTag: {
-    type: String,
-    require: true,
-  },
-  emotionText: {
-    type: String,
-    require: true,
-  },
-});
+  defineProps({
+    name: {
+      type: String,
+      require: true,
+    },
+    content: {
+      type: String,
+      require: true,
+    },
+    action_content: {
+      type: String,
+      require: false,
+    },
+    emotionTag: {
+      type: String,
+      require: true,
+    },
+    emotionText: {
+      type: String,
+      require: true,
+    },
+  });
 
-const emit = defineEmits(["click"]);
+  const emit = defineEmits(["click"]);
 </script>
 <style scoped>
-span {
-  vertical-align: middle;
-}
+  span {
+    vertical-align: middle;
+  }
 
-.name {
-  font-weight: bold;
-}
+  .name {
+    font-weight: bold;
+  }
 
-.symbol {
-  font-weight: bold;
-}
+  .symbol {
+    font-weight: bold;
+  }
 </style>

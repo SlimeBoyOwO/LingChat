@@ -67,6 +67,28 @@ pub struct TtsConfig {
     /// TTS 语音语言（ja / zh / auto）
     #[serde(default = "default_voice_lang")]
     pub voice_lang: String,
+    /// CosyVoice 云 API 密钥（空 = 未配置）
+    #[serde(default)]
+    pub cosyvoice_api_key: Option<String>,
+    /// CosyVoice 模型列表（首个为默认模型；现由配置文件维护，无设置页入口）
+    #[serde(default = "default_cosyvoice_models")]
+    pub cosyvoice_models: Vec<String>,
+    /// 本地音色映射记录：云端 voice_id 乱码 → 用户命名等展示信息
+    #[serde(default)]
+    pub cosyvoice_voices: Vec<CosyVoiceRecord>,
+}
+
+/// CosyVoice 音色本地映射（voice_id 为云端生成；name 为用户命名，用于展示）。
+/// status 为审核状态缓存：注册时写入 "deploying"，轮询/自愈时更新为 "ok"/"undeployed"。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CosyVoiceRecord {
+    pub voice_id: String,
+    pub name: String,
+    pub model: String,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
 }
 
 // ---- 默认值（单一真相源：serde + Default + from_store 均引用这些函数） ----
@@ -113,6 +135,9 @@ pub fn default_audio_format() -> String {
 pub fn default_voice_lang() -> String {
     "ja".into()
 }
+pub fn default_cosyvoice_models() -> Vec<String> {
+    vec!["cosyvoice-v3.5-flash".to_string()]
+}
 
 // ========== Default 实现 ==========
 
@@ -135,6 +160,9 @@ impl Default for TtsConfig {
             opentts_voice: default_opentts_voice(),
             audio_format: default_audio_format(),
             voice_lang: default_voice_lang(),
+            cosyvoice_api_key: None,
+            cosyvoice_models: default_cosyvoice_models(),
+            cosyvoice_voices: Vec::new(),
         }
     }
 }
@@ -160,11 +188,23 @@ impl TtsConfig {
                 .unwrap_or_else(|| default.to_string())
         };
 
+        let get_array = |key: &str, default: Vec<String>| -> Vec<String> {
+            store
+                .and_then(|s| s.get(key))
+                .and_then(|v| match v {
+                    Value::Array(items) => Some(
+                        items
+                            .iter()
+                            .filter_map(|item| item.as_str().map(str::to_string))
+                            .collect(),
+                    ),
+                    _ => None,
+                })
+                .unwrap_or(default)
+        };
+
         Self {
-            simple_vits_api_url: get_string(
-                keys::SIMPLE_VITS_API_URL,
-                &default_simple_vits_url(),
-            ),
+            simple_vits_api_url: get_string(keys::SIMPLE_VITS_API_URL, &default_simple_vits_url()),
             bv2_api_url: get_string(keys::BV2_API_URL, &default_bv2_url()),
             gsv_api_url: get_string(keys::GSV_API_URL, &default_gsv_url()),
             sbv2_api_url: get_string(keys::SBV2_API_URL, &default_sbv2_url()),
@@ -172,11 +212,7 @@ impl TtsConfig {
             aivis_api_url: get_string(keys::AIVIS_API_URL, &default_aivis_url()),
             aivis_api_key: {
                 let s = get_string(keys::AIVIS_API_KEY, "");
-                if s.is_empty() {
-                    None
-                } else {
-                    Some(s)
-                }
+                if s.is_empty() { None } else { Some(s) }
             },
             indextts_api_url: get_string(keys::INDEXTTS_API_URL, &default_indextts_url()),
             fish_s2_api_url: get_string(keys::FISH_S2_API_URL, &default_fish_s2_url()),
@@ -184,16 +220,22 @@ impl TtsConfig {
             opentts_api_url: get_string(keys::OPENTTS_API_URL, &default_opentts_url()),
             opentts_api_key: {
                 let s = get_string(keys::OPENTTS_API_KEY, "");
-                if s.is_empty() {
-                    None
-                } else {
-                    Some(s)
-                }
+                if s.is_empty() { None } else { Some(s) }
             },
             opentts_model: get_string(keys::OPENTTS_MODEL, &default_opentts_model()),
             opentts_voice: get_string(keys::OPENTTS_VOICE, &default_opentts_voice()),
             audio_format: get_string(keys::TTS_AUDIO_FORMAT, &default_audio_format()),
             voice_lang: get_string(keys::VOICE_LANG, &default_voice_lang()),
+            cosyvoice_api_key: {
+                let s = get_string(keys::COSYVOICE_API_KEY, "");
+                if s.is_empty() { None } else { Some(s) }
+            },
+            cosyvoice_models: get_array(keys::COSYVOICE_MODELS, default_cosyvoice_models()),
+            cosyvoice_voices: {
+                let v = store.and_then(|s| s.get(keys::COSYVOICE_VOICES));
+                v.and_then(|value| serde_json::from_value::<Vec<CosyVoiceRecord>>(value).ok())
+                    .unwrap_or_default()
+            },
         }
     }
 }

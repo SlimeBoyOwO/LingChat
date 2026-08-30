@@ -1,6 +1,6 @@
 <template>
   <!-- 整个 UI 层的根容器 -->
-  <div class="fixed top-0 left-0 w-full h-full pointer-events-none z-999">
+  <div class="pointer-events-none fixed top-0 left-0 z-999 h-full w-full">
     <!-- 1. 章节名称显示区域 -->
     <ChapterNameDisplay />
 
@@ -22,10 +22,10 @@
 </template>
 
 <script setup lang="ts">
-import ChapterNameDisplay from './extra/ChapterNameDisplay.vue'
-import GameChoices from './extra/GameChoices.vue'
-import ScriptCompleteDisplay from './extra/ScriptCompleteDisplay.vue'
-import ScriptPicDisplay from './extra/ScriptPicDisplay.vue'
-import ScriptFreeDialogueDisplay from './extra/ScriptFreeDialogueDisplay.vue'
-import SoundEffectPanel from './extra/SoundEffectPanel.vue'
+  import ChapterNameDisplay from "./extra/ChapterNameDisplay.vue";
+  import GameChoices from "./extra/GameChoices.vue";
+  import ScriptCompleteDisplay from "./extra/ScriptCompleteDisplay.vue";
+  import ScriptPicDisplay from "./extra/ScriptPicDisplay.vue";
+  import ScriptFreeDialogueDisplay from "./extra/ScriptFreeDialogueDisplay.vue";
+  import SoundEffectPanel from "./extra/SoundEffectPanel.vue";
 </script>

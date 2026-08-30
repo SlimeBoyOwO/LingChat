@@ -1,14 +1,14 @@
 //! Modify character event — emotion, clothes, show/hide, perceive changes.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    parse_duration, register_event, ScriptContext, ScriptEvent,
+    ScriptContext, ScriptEvent, parse_duration, register_event,
 };
 use crate::ai_service::game_system::script_engine::responses::{
-    event_names::SCRIPT_MODIFY_CHARACTER, ModifyCharacterPayload,
+    ModifyCharacterPayload, event_names::SCRIPT_MODIFY_CHARACTER,
 };
 use crate::ai_service::game_system::script_engine::utils::script_function;
 use crate::ai_service::message_system::events::emit;
@@ -69,14 +69,20 @@ fn loose_bool(v: &Value) -> Option<bool> {
             } else if s.eq_ignore_ascii_case("false") {
                 Some(false)
             } else {
-                tracing::warn!("[ModifyCharacterEvent] 无法识别的 perceive 值: '{}'，已忽略", s);
+                tracing::warn!(
+                    "[ModifyCharacterEvent] 无法识别的 perceive 值: '{}'，已忽略",
+                    s
+                );
                 None
             }
-        }
+        },
         other => {
-            tracing::warn!("[ModifyCharacterEvent] perceive 应为布尔值，实际为: {}", other);
+            tracing::warn!(
+                "[ModifyCharacterEvent] perceive 应为布尔值，实际为: {}",
+                other
+            );
             None
-        }
+        },
     }
 }
 
@@ -109,11 +115,11 @@ impl ScriptEvent for ModifyCharacterEvent {
             match action.as_str() {
                 "show_character" => {
                     ctx.game_status.lock().await.onstage_role(role_id);
-                }
+                },
                 "hide_character" => {
                     ctx.game_status.lock().await.offstage_role(role_id);
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
 

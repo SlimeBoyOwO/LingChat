@@ -77,6 +77,11 @@ pub const OPENTTS_VOICE: &str = "tts.opentts_voice";
 pub const TTS_AUDIO_FORMAT: &str = "tts.audio_format";
 pub const VOICE_LANG: &str = "tts.voice_lang";
 
+// ========== TTS 云端语音克隆(CosyVoice) ==========
+pub const COSYVOICE_API_KEY: &str = "tts.cosyvoice_api_key";
+pub const COSYVOICE_MODELS: &str = "tts.cosyvoice_models";
+pub const COSYVOICE_VOICES: &str = "tts.cosyvoice_voices";
+
 // ========== 主动对话系统 ==========
 pub const ENABLE_PROACTIVE_SYSTEM: &str = "ENABLE_PROACTIVE_SYSTEM";
 pub const MAX_PROACTIVE_TIMES: &str = "MAX_PROACTIVE_TIMES";
@@ -140,3 +145,34 @@ pub const HDR_MODE_ENABLED: &str = "display.hdr_mode_enabled";
 // ========== 界面与显示 ==========
 /// 是否关闭首次启动的开屏动画（LoadingTransition 猫爪加载动画）。
 pub const DISABLE_SPLASH_ANIMATION: &str = "display.disable_splash_animation";
+// ========== 投屏（Screen Cast） ==========
+/// 是否启用投屏：启动时自动打开投屏窗口并开启串流服务。
+pub const CAST_ENABLED: &str = "cast.enabled";
+/// 投屏 MJPEG 服务端口。
+pub const CAST_PORT: &str = "cast.port";
+/// 串流帧率（1–30）。
+pub const CAST_FPS: &str = "cast.fps";
+/// JPEG 质量（1–100）。
+pub const CAST_QUALITY: &str = "cast.quality";
+/// 串流默认输出宽度（0 = 跟随投屏窗口当前尺寸）。
+pub const CAST_WIDTH: &str = "cast.width";
+/// 串流默认输出高度（0 = 跟随投屏窗口当前尺寸）。
+pub const CAST_HEIGHT: &str = "cast.height";
+/// vivid 色彩增强（复刻 cast_sender.py 的 --vivid：饱和度 ×1.4 + 对比度 ×1.15）。
+pub const CAST_VIVID: &str = "cast.vivid";
+/// 投屏角色缩放倍率（1.0 = 原始大小）。
+pub const CAST_CHAR_SCALE: &str = "cast.char_scale";
+/// 投屏角色水平偏移（像素，正值右移）。
+pub const CAST_CHAR_OFFSET_X: &str = "cast.char_offset_x";
+/// 投屏角色垂直偏移（像素，正值下移）。
+pub const CAST_CHAR_OFFSET_Y: &str = "cast.char_offset_y";
+/// 投屏对话框宽度百分比（GameDialog 内部容器宽度，100 = 无两侧留白）。
+pub const CAST_DIALOG_WIDTH: &str = "cast.dialog_width";
+/// 投屏对话框整体高度（占窗口高度百分比）。
+pub const CAST_DIALOG_HEIGHT: &str = "cast.dialog_height";
+/// 投屏对话框字体大小（px，默认 20 = 与主界面 text-xl 一致）。
+pub const CAST_DIALOG_FONT_SIZE: &str = "cast.dialog_font_size";
+/// 投屏对话框背景色透明度（0–100，默认 70 = 复刻主界面 dialogOpacity 0.7 的渐变）。
+pub const CAST_DIALOG_BG_OPACITY: &str = "cast.dialog_bg_opacity";
+/// 投屏隐藏对话框（默认 false）：开启后对话层整层 display:none，只保留背景与角色舞台。
+pub const CAST_DIALOG_HIDDEN: &str = "cast.dialog_hidden";

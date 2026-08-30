@@ -9,12 +9,12 @@
  * 桌面端路径、Android SAF content URI、convertFileSrc 生成的 URL 均可处理。
  */
 export function decodePathFileName(path: string): string {
-  const last = path.split(/[\\/]/).pop() || path
-  const withoutQuery = last.split('?')[0]
-  if (!/%[0-9A-Fa-f]{2}/.test(withoutQuery)) return withoutQuery
+  const last = path.split(/[\\/]/).pop() || path;
+  const withoutQuery = last.split("?")[0];
+  if (!/%[0-9A-Fa-f]{2}/.test(withoutQuery)) return withoutQuery;
   try {
-    return decodeURIComponent(withoutQuery)
+    return decodeURIComponent(withoutQuery);
   } catch {
-    return withoutQuery
+    return withoutQuery;
   }
 }

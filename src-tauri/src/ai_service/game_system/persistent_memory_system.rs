@@ -1,13 +1,13 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use anyhow::Result;
 
 use tokio::sync::Mutex;
 
 use crate::ai_service::game_system::memory_builder::MemoryBuilder;
-use crate::ai_service::llm::{slot_snapshot, LlmClient, LlmSlot};
+use crate::ai_service::llm::{LlmClient, LlmSlot, slot_snapshot};
 use crate::ai_service::types::{GameLine, GameMemoryBank, GameRole, LlmMessage};
 
 /// 压缩失败后的重试冷却时长。失败不推进指针，但为避免 LLM 故障期间每轮对话
@@ -477,7 +477,7 @@ impl PersistentMemorySystem {
                     );
                     record_failure();
                     return;
-                }
+                },
             };
 
             // 读取旧内容
@@ -674,8 +674,7 @@ fn line_visible_to_role(line: &GameLine, role_id: i32) -> bool {
 
     !matches!(line.attribute(), LineAttribute::System)
         && !line.content().trim().is_empty()
-        && (line.sender_role_id() == Some(role_id)
-            || line.perceived_role_ids.contains(&role_id))
+        && (line.sender_role_id() == Some(role_id) || line.perceived_role_ids.contains(&role_id))
 }
 
 fn now_str() -> String {

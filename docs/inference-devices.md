@@ -11,12 +11,12 @@ Windows 通过 DirectML + DXGI 枚举显卡；本特性为 **Linux 的 WebGPU �
 
 ## 2. 平台能力映射
 
-| 平台 | 推理后端 | 设备枚举方式 | 可选设备 |
-|---|---|---|---|
-| Windows | DirectML | DXGI（`CreateDXGIFactory1` → `EnumAdapters1`）| cpu / gpu / npu / device:\<id\> |
-| **Linux** | **WebGPU（Dawn→Vulkan）** | **Vulkan（`vkEnumeratePhysicalDevices`）** | **cpu / gpu / device:\<id\>** |
-| macOS | CoreML / WebGPU | 无枚举 | cpu（CoreML 自动启用）|
-| Android | CPU | 无枚举 | cpu |
+| 平台      | 推理后端                  | 设备枚举方式                                   | 可选设备                        |
+| --------- | ------------------------- | ---------------------------------------------- | ------------------------------- |
+| Windows   | DirectML                  | DXGI（`CreateDXGIFactory1` → `EnumAdapters1`） | cpu / gpu / npu / device:\<id\> |
+| **Linux** | **WebGPU（Dawn→Vulkan）** | **Vulkan（`vkEnumeratePhysicalDevices`）**     | **cpu / gpu / device:\<id\>**   |
+| macOS     | CoreML / WebGPU           | 无枚举                                         | cpu（CoreML 自动启用）          |
+| Android   | CPU                       | 无枚举                                         | cpu                             |
 
 ## 3. 原理：Vulkan 枚举与 deviceId 对齐
 
@@ -230,10 +230,10 @@ WebGPU EP 的 `deviceId` 选项是否被 ORT 采纳需真机双显卡复核—�
 
 ## 8. 相关代码位置
 
-| 内容 | 路径 |
-|---|---|
-| 枚举 / 解析 | `src-tauri/src/utils/device.rs` |
-| 后端命令 | `src-tauri/src/ai_service/tts/local/mod.rs`（`tts_local_list_devices` 等）|
-| EP 组装 | `src-tauri/patches/sbv2_core/src/model.rs`（`webgpu` 分支，`with_device_id`）|
-| 前端选择器 | `src/components/settings/pages/SettingsTts.vue` |
-| 依赖 | `src-tauri/Cargo.toml`（Windows target `windows` DXGI / Linux target `ash`）|
+| 内容        | 路径                                                                          |
+| ----------- | ----------------------------------------------------------------------------- |
+| 枚举 / 解析 | `src-tauri/src/utils/device.rs`                                               |
+| 后端命令    | `src-tauri/src/ai_service/tts/local/mod.rs`（`tts_local_list_devices` 等）    |
+| EP 组装     | `src-tauri/patches/sbv2_core/src/model.rs`（`webgpu` 分支，`with_device_id`） |
+| 前端选择器  | `src/components/settings/pages/SettingsTts.vue`                               |
+| 依赖        | `src-tauri/Cargo.toml`（Windows target `windows` DXGI / Linux target `ash`）  |

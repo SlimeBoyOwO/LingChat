@@ -1,7 +1,7 @@
-import { defineStore } from 'pinia'
-import { useEditorState } from './state'
-import { useEditorGetters } from './getters'
-import { useEditorActions } from './actions'
+import { defineStore } from "pinia";
+import { useEditorState } from "./state";
+import { useEditorGetters } from "./getters";
+import { useEditorActions } from "./actions";
 
 /**
  * 剧本编辑器 store（setup 风格）。
@@ -13,12 +13,12 @@ import { useEditorActions } from './actions'
  * 外部消费方 API 不变：store.schema / store.scriptKey / store.init() 等照常。
  */
 export const useScriptEditorStore = defineStore(
-  'script-editor',
+  "script-editor",
   () => {
-    const s = useEditorState()
-    const g = useEditorGetters(s)
-    const a = useEditorActions(s, g)
-    return { ...s, ...g, ...a }
+    const s = useEditorState();
+    const g = useEditorGetters(s);
+    const a = useEditorActions(s, g);
+    return { ...s, ...g, ...a };
   },
   {
     // 只持久化 UI 偏好。用白名单式的 exclude 很容易漏 —— 新增 state 字段会
@@ -26,30 +26,30 @@ export const useScriptEditorStore = defineStore(
     // 非偏好字段都显式列出来，新增字段时务必同步。
     // （persist 插件每次 mutation 都全量 JSON.stringify 且无防抖。）
     persist: {
-      key: 'lingchat-script-editor-ui',
+      key: "lingchat-script-editor-ui",
       exclude: [
-        'schema',
-        'scripts',
-        'loading',
-        'detail',
-        'globalAssets',
-        'chapter',
-        'selectedEvent',
-        'dirty',
-        'saving',
-        'lastSavedAt',
-        'undoStack',
-        'redoStack',
-        'report',
-        'previewing',
-        'previewGeneration',
-        'readiness',
-        'globalCharacters',
-        'assetFiles',
-        'bgVersion',
-        'globalBgFiles',
-        'propsExpanded',
+        "schema",
+        "scripts",
+        "loading",
+        "detail",
+        "globalAssets",
+        "chapter",
+        "selectedEvent",
+        "dirty",
+        "saving",
+        "lastSavedAt",
+        "undoStack",
+        "redoStack",
+        "report",
+        "previewing",
+        "previewGeneration",
+        "readiness",
+        "globalCharacters",
+        "assetFiles",
+        "bgVersion",
+        "globalBgFiles",
+        "propsExpanded",
       ],
     },
-  },
-)
+  }
+);

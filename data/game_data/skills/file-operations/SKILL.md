@@ -10,6 +10,7 @@ This skill teaches how to operate on local files using the built-in tools.
 ## When to Use
 
 Load this skill when:
+
 - Creating, reading, editing, or deleting files
 - Listing a directory's contents
 - Exploring the project structure

@@ -14,6 +14,7 @@ This skill shows how to structure procedural guidance for AI coding agents using
 ## When to Use
 
 Load this skill when:
+
 - Learning how skills work
 - Testing the OpenSkills loader
 - Understanding the SKILL.md format
@@ -57,5 +58,6 @@ Base directory: /path/to/my-first-skill
 ```
 
 Relative paths resolve from base directory:
+
 - `references/skill-format.md` → `/path/to/my-first-skill/references/skill-format.md`
 - `scripts/helper.sh` → `/path/to/my-first-skill/scripts/helper.sh`

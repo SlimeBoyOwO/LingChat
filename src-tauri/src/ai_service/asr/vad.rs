@@ -209,7 +209,7 @@ impl AsrVad {
                 SegmentEvent::SpeechStart { .. } => {
                     tracing::info!("[ASR/VAD] 录入开始 (SpeechStarted, prob={prob:.3})");
                     VadEvent::SpeechStarted
-                }
+                },
                 SegmentEvent::SilenceStart { .. } => VadEvent::SilenceStarted { silence_ms: 0 },
                 SegmentEvent::TurnCandidate { silence_frames, .. } => {
                     tracing::info!(
@@ -219,11 +219,11 @@ impl AsrVad {
                     VadEvent::TurnCandidate {
                         silence_ms: (*silence_frames * 30) as u32,
                     }
-                }
+                },
                 SegmentEvent::TurnSealed { .. } => {
                     tracing::info!("[ASR/VAD] 录入结束 (TurnSealed, 静音 1s 确认)");
                     VadEvent::TurnSealed
-                }
+                },
             };
             let name = match &vad_event {
                 VadEvent::SpeechStarted => "asr://speech_started",

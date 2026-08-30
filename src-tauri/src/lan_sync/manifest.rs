@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Component, Path};
 use std::time::UNIX_EPOCH;
 
 use sha2::{Digest, Sha256};
@@ -31,7 +31,13 @@ pub fn build_complete_manifest(
     let manifest_files = manifest.map(|m| &m.files);
     let data_version = manifest.map_or(0, |m| m.data_version);
 
-    scan_dir(data_dir, data_dir, manifest_files, &mut files, &mut runtime_files)?;
+    scan_dir(
+        data_dir,
+        data_dir,
+        manifest_files,
+        &mut files,
+        &mut runtime_files,
+    )?;
 
     Ok(CompleteManifest {
         device_id: device_id.to_string(),
@@ -117,7 +123,7 @@ fn scan_dir(
                 Err(e) => {
                     warn!("无法计算文件哈希 {:?}: {}", path, e);
                     continue; // 跳过无法读取的文件
-                }
+                },
             };
 
             runtime_files.insert(
@@ -150,7 +156,7 @@ fn compute_sha256(path: &Path) -> io::Result<String> {
 pub fn diff_manifests(
     local: &CompleteManifest,
     remote: &CompleteManifest,
-) -> (Vec<super::messages::SyncFileOp>, Vec<String>) {
+) -> Result<(Vec<super::messages::SyncFileOp>, Vec<String>), String> {
     let mut to_transfer = Vec::new();
     let mut to_delete = Vec::new();
 
@@ -169,6 +175,10 @@ pub fn diff_manifests(
         .map(|(k, v)| (k.as_str(), v))
         .collect();
 
+    for path in local_all.keys().chain(remote_all.keys()) {
+        validate_manifest_path(path)?;
+    }
+
     // 找出远端有而本地没有、或远端更新的文件
     for (path, remote_entry) in &remote_all {
         match local_all.get(path) {
@@ -179,7 +189,7 @@ pub fn diff_manifests(
                     size: remote_entry.size,
                     reason: "new".to_string(),
                 });
-            }
+            },
             Some(local_entry) => {
                 if local_entry.sha256 != remote_entry.sha256 {
                     // SHA-256 不同 → 比较时间戳
@@ -201,7 +211,7 @@ pub fn diff_manifests(
                     }
                 }
                 // SHA-256 相同 → 跳过
-            }
+            },
         }
     }
 
@@ -212,5 +222,57 @@ pub fn diff_manifests(
         }
     }
 
-    (to_transfer, to_delete)
+    Ok((to_transfer, to_delete))
+}
+
+/// Validate paths received from another device before they can reach filesystem operations.
+pub fn validate_manifest_path(path: &str) -> Result<(), String> {
+    if path.is_empty() || path.contains('\\') {
+        return Err(format!("远端清单包含非法路径: {path:?}"));
+    }
+
+    let path = Path::new(path);
+    if path.is_absolute()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                Component::Prefix(_)
+                    | Component::RootDir
+                    | Component::CurDir
+                    | Component::ParentDir
+            )
+        })
+    {
+        return Err(format!("远端清单包含非法路径: {path:?}"));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_manifest_path;
+
+    #[test]
+    fn accepts_normal_relative_manifest_paths() {
+        assert!(validate_manifest_path("game_data/characters/alice/settings.yml").is_ok());
+    }
+
+    #[test]
+    fn rejects_paths_that_can_escape_the_data_directory() {
+        for path in [
+            "",
+            ".",
+            "../outside.txt",
+            "game_data/../../outside.txt",
+            "/tmp/outside.txt",
+            r"C:\outside.txt",
+            r"game_data\..\outside.txt",
+        ] {
+            assert!(
+                validate_manifest_path(path).is_err(),
+                "path should be rejected: {path:?}"
+            );
+        }
+    }
 }

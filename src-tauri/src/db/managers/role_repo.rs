@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,
-    QueryFilter, QuerySelect, Set, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    EntityTrait, QueryFilter, QuerySelect, Set, Statement,
 };
 use tracing::warn;
 
@@ -156,99 +156,94 @@ impl RoleRepo {
         Self::SYSTEM_PROTECTED_ROLE_IDS.contains(&role_id)
     }
 
-/// 级联删除一个 main 角色及其全部关联数据。///
-/// 顺序：
-/// 1. 临时关闭外键约束（PRAGMA foreign_keys = OFF）
-/// 2. 找出所有 main_role_id = role_id 的存档
-/// 3. 清理这些存档的 running_script（FK running_script.save_id → save.id 会阻止 save 删除）
-/// 4. 逐个删除存档（级联清 line/line_perception）
-/// 5. 清该角色所有 memory_bank 行（跨存档兜底）
-/// 6. 防御性清 line_perception.role_id（其他存档里残留的感知记录，NOT NULL FK 不能置 NULL）
-/// 7. 清空 line.sender_role_id 指向此角色的所有台词 FK 引用（其他存档的台词可能引用此角色作 sender）
-/// 8. 防御性解绑 save.main_role_id（其他存档引用此角色的情况）
-/// 9. delete role by id
-/// 10. 重新打开外键约束（即使中途错误，也由 FkReEnableGuard 兜底）
-///
-/// 返回是否实际删除了行。
-///
-/// **为什么需要关闭 FK？**
-/// 角色的 FK 引用散布在 save/line/line_perception/memory_bank/running_script 等多个表，
-/// 任何一处漏清理都会触发 SQLite FK 约束失败。关闭 FK 让我们不再"打地鼠"，即使将来 schema
-/// 增加新引用也不会破坏删除流程。手工清理步骤保留是为了不留下孤儿行（line_perception
-/// 等 NOT NULL 字段不删会留垃圾，line.sender_role_id 保留归属更有用——所以这部分仍然置 NULL）。
-///
-/// 风险分析：删除角色是低频用户主动操作；即使 PRAGMA 重启用失败，进程重启后 SQLite 会
-/// 重新应用外键约束（PRAGMA 是 connection-level 的），不留持久影响。
-pub async fn delete_main_role(
-    db: &DatabaseConnection,
-    role_id: i32,
-) -> Result<bool> {
-    // 1. 关闭 FK 约束
-    disable_fk(db).await?;
-    // guard 保证即使中间 panic / 早返回，外键也会在最后被重新启用
-    let guard = FkReEnableGuard::new(db);
+    /// 级联删除一个 main 角色及其全部关联数据。///
+    /// 顺序：
+    /// 1. 临时关闭外键约束（PRAGMA foreign_keys = OFF）
+    /// 2. 找出所有 main_role_id = role_id 的存档
+    /// 3. 清理这些存档的 running_script（FK running_script.save_id → save.id 会阻止 save 删除）
+    /// 4. 逐个删除存档（级联清 line/line_perception）
+    /// 5. 清该角色所有 memory_bank 行（跨存档兜底）
+    /// 6. 防御性清 line_perception.role_id（其他存档里残留的感知记录，NOT NULL FK 不能置 NULL）
+    /// 7. 清空 line.sender_role_id 指向此角色的所有台词 FK 引用（其他存档的台词可能引用此角色作 sender）
+    /// 8. 防御性解绑 save.main_role_id（其他存档引用此角色的情况）
+    /// 9. delete role by id
+    /// 10. 重新打开外键约束（即使中途错误，也由 FkReEnableGuard 兜底）
+    ///
+    /// 返回是否实际删除了行。
+    ///
+    /// **为什么需要关闭 FK？**
+    /// 角色的 FK 引用散布在 save/line/line_perception/memory_bank/running_script 等多个表，
+    /// 任何一处漏清理都会触发 SQLite FK 约束失败。关闭 FK 让我们不再"打地鼠"，即使将来 schema
+    /// 增加新引用也不会破坏删除流程。手工清理步骤保留是为了不留下孤儿行（line_perception
+    /// 等 NOT NULL 字段不删会留垃圾，line.sender_role_id 保留归属更有用——所以这部分仍然置 NULL）。
+    ///
+    /// 风险分析：删除角色是低频用户主动操作；即使 PRAGMA 重启用失败，进程重启后 SQLite 会
+    /// 重新应用外键约束（PRAGMA 是 connection-level 的），不留持久影响。
+    pub async fn delete_main_role(db: &DatabaseConnection, role_id: i32) -> Result<bool> {
+        // 1. 关闭 FK 约束
+        disable_fk(db).await?;
+        // guard 保证即使中间 panic / 早返回，外键也会在最后被重新启用
+        let guard = FkReEnableGuard::new(db);
 
-    // 2. 找出引用此角色的所有存档
-    let saves_to_delete: Vec<i32> = save::Entity::find()
-        .select_only()
-        .column(save::Column::Id)
-        .filter(save::Column::MainRoleId.eq(role_id))
-        .into_tuple()
-        .all(db)
-        .await?;
+        // 2. 找出引用此角色的所有存档
+        let saves_to_delete: Vec<i32> = save::Entity::find()
+            .select_only()
+            .column(save::Column::Id)
+            .filter(save::Column::MainRoleId.eq(role_id))
+            .into_tuple()
+            .all(db)
+            .await?;
 
-    // 3. 清理这些存档的 running_script
-    if !saves_to_delete.is_empty() {
-        running_script::Entity::delete_many()
-            .filter(running_script::Column::SaveId.is_in(saves_to_delete.clone()))
+        // 3. 清理这些存档的 running_script
+        if !saves_to_delete.is_empty() {
+            running_script::Entity::delete_many()
+                .filter(running_script::Column::SaveId.is_in(saves_to_delete.clone()))
+                .exec(db)
+                .await?;
+        }
+
+        // 4. 逐个删除存档（级联清 line/line_perception）
+        for save_id in &saves_to_delete {
+            SaveRepo::delete_save(db, *save_id).await?;
+        }
+
+        // 5. 清该角色全部 memory_bank
+        MemoryRepo::delete_all_memories_by_role_id(db, role_id).await?;
+
+        // 6. 防御性清 line_perception（NOT NULL FK，必须删）
+        line_perception::Entity::delete_many()
+            .filter(line_perception::Column::RoleId.eq(role_id))
             .exec(db)
             .await?;
+
+        // 7. 清空 line.sender_role_id 指向此角色的引用（保留对话内容，仅失归属）
+        line::Entity::update_many()
+            .col_expr(line::Column::SenderRoleId, Expr::value(Option::<i32>::None))
+            .filter(line::Column::SenderRoleId.eq(role_id))
+            .exec(db)
+            .await?;
+
+        // 8. 防御性解绑其他存档的 main_role_id
+        save::Entity::update_many()
+            .col_expr(save::Column::MainRoleId, Expr::value(Option::<i32>::None))
+            .filter(save::Column::MainRoleId.eq(role_id))
+            .exec(db)
+            .await?;
+
+        // 9. 删 role 本身
+        let result = role::Entity::delete_by_id(role_id).exec(db).await?;
+        let rows_affected = result.rows_affected > 0;
+
+        // 10. 成功路径：显式重新启用 FK 并 disarm guard（避免重复 enable）
+        enable_fk(db).await?;
+        guard.disarm();
+
+        Ok(rows_affected)
     }
-
-    // 4. 逐个删除存档（级联清 line/line_perception）
-    for save_id in &saves_to_delete {
-        SaveRepo::delete_save(db, *save_id).await?;
-    }
-
-    // 5. 清该角色全部 memory_bank
-    MemoryRepo::delete_all_memories_by_role_id(db, role_id).await?;
-
-    // 6. 防御性清 line_perception（NOT NULL FK，必须删）
-    line_perception::Entity::delete_many()
-        .filter(line_perception::Column::RoleId.eq(role_id))
-        .exec(db)
-        .await?;
-
-    // 7. 清空 line.sender_role_id 指向此角色的引用（保留对话内容，仅失归属）
-    line::Entity::update_many()
-        .col_expr(line::Column::SenderRoleId, Expr::value(Option::<i32>::None))
-        .filter(line::Column::SenderRoleId.eq(role_id))
-        .exec(db)
-        .await?;
-
-    // 8. 防御性解绑其他存档的 main_role_id
-    save::Entity::update_many()
-        .col_expr(save::Column::MainRoleId, Expr::value(Option::<i32>::None))
-        .filter(save::Column::MainRoleId.eq(role_id))
-        .exec(db)
-        .await?;
-
-    // 9. 删 role 本身
-    let result = role::Entity::delete_by_id(role_id).exec(db).await?;
-    let rows_affected = result.rows_affected > 0;
-
-    // 10. 成功路径：显式重新启用 FK 并 disarm guard（避免重复 enable）
-    enable_fk(db).await?;
-    guard.disarm();
-
-    Ok(rows_affected)
-}
 
     /// 获取可调用工具的角色名称，返回 `(数据库名称, settings.yml 中的运行时名称)`。
     /// User 和 System 没有角色 settings，不能作为工具调用主体。
-    pub async fn get_all_tool_role_names(
-        db: &DatabaseConnection,
-    ) -> Result<Vec<(String, String)>> {
+    pub async fn get_all_tool_role_names(db: &DatabaseConnection) -> Result<Vec<(String, String)>> {
         let roles = role::Entity::find()
             .filter(role::Column::RoleType.is_in([RoleType::Main, RoleType::Npc]))
             .all(db)
@@ -257,7 +252,8 @@ pub async fn delete_main_role(
         let mut names = Vec::with_capacity(roles.len());
 
         for role in roles {
-            let Some(settings) = Self::get_role_settings_by_id(db, &data_dir, role.id).await? else {
+            let Some(settings) = Self::get_role_settings_by_id(db, &data_dir, role.id).await?
+            else {
                 tracing::warn!("跳过缺少角色设置的工具权限初始化: role_id={}", role.id);
                 continue;
             };
@@ -307,7 +303,7 @@ pub async fn delete_main_role(
 
         let base = data_dir.join("game_data");
         let path: PathBuf = match role.role_type {
-            RoleType::Main => base.join("characters").join(&folder),
+            RoleType::Main => crate::api::resolve_character_dir_in(data_dir, &folder),
             RoleType::Npc => {
                 let Some(script_key) = role.script_key.clone() else {
                     return Ok(None);
@@ -316,10 +312,10 @@ pub async fn delete_main_role(
                     .join(&script_key)
                     .join("characters")
                     .join(&folder)
-            }
+            },
             RoleType::System | RoleType::User => {
                 return Ok(None);
-            }
+            },
         };
 
         let yaml = path.join("settings.yml");

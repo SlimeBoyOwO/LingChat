@@ -1,15 +1,16 @@
 //! TTS 适配器 trait + 统一 Provider。
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 
 use super::adapters::aivis::AivisAdapter;
 use super::adapters::bv2::Bv2Adapter;
+use super::adapters::cosyvoice::CosyvoiceAdapter;
 use super::adapters::fish_s2::FishS2Adapter;
 use super::adapters::gsv::GsvAdapter;
 use super::adapters::indextts::IndexTtsAdapter;
@@ -62,6 +63,7 @@ pub struct TtsProvider {
     pub indextts: Option<Arc<IndexTtsAdapter>>,
     pub opentts: Option<Arc<OpenTtsAdapter>>,
     pub fish_s2: Option<Arc<FishS2Adapter>>,
+    pub cosyvoice: Option<Arc<CosyvoiceAdapter>>,
 }
 
 impl Default for TtsProvider {
@@ -81,6 +83,7 @@ impl Default for TtsProvider {
             indextts: None,
             opentts: None,
             fish_s2: None,
+            cosyvoice: None,
         }
     }
 }
@@ -102,6 +105,7 @@ impl std::fmt::Debug for TtsProvider {
             .field("indextts", &self.indextts.is_some())
             .field("opentts", &self.opentts.is_some())
             .field("fish_s2", &self.fish_s2.is_some())
+            .field("cosyvoice", &self.cosyvoice.is_some())
             .finish()
     }
 }
@@ -149,7 +153,7 @@ impl TtsProvider {
                 self.recovery_in_flight.store(false, Ordering::Release);
                 tracing::debug!("TTS 后台恢复探测跳过: {error}");
                 return;
-            }
+            },
         };
         let provider = self.clone();
         tokio::spawn(async move {
@@ -204,6 +208,10 @@ impl TtsProvider {
                 .fish_s2
                 .clone()
                 .ok_or_else(|| anyhow!("Fish S2 适配器未初始化"))?,
+            "cosyvoice" => self
+                .cosyvoice
+                .clone()
+                .ok_or_else(|| anyhow!("CosyVoice 适配器未初始化"))?,
             "" => {
                 // 旧版：未指定时优先 sbv2
                 if let Some(a) = self.sbv2.clone() {
@@ -212,7 +220,7 @@ impl TtsProvider {
                 } else {
                     return Err(anyhow!("没有可用的 TTS 适配器"));
                 }
-            }
+            },
             other => return Err(anyhow!("未知的 TTS 类型: {other}")),
         };
         Ok(adapter)
@@ -243,7 +251,7 @@ impl TtsProvider {
                 tokio::fs::write(file_path, &bytes).await?;
                 tracing::debug!("TTS 生成成功: {}", file_path.display());
                 Ok(())
-            }
+            },
             Err(e) => {
                 let failures = self.consecutive_failures.fetch_add(1, Ordering::AcqRel) + 1;
                 if failures >= MAX_CONSECUTIVE_FAILURES {
@@ -256,7 +264,7 @@ impl TtsProvider {
                     );
                 }
                 Err(e)
-            }
+            },
         }
     }
 }

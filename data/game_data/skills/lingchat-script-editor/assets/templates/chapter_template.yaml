@@ -11,7 +11,7 @@ events:
     duration: 1.5
 
   - type: background
-    imagePath: '背景图.png'       # 放 Assets/Backgrounds/
+    imagePath: "背景图.png" # 放 Assets/Backgrounds/
     transition: 0.5
 
   # ---- 旁白 ----
@@ -43,12 +43,12 @@ events:
 
   # ---- 玩家输入 ----
   - type: input
-    hint: '提示玩家输入什么内容'
+    hint: "提示玩家输入什么内容"
 
   # ---- 玩家选项 ----
   - type: choices
     options:
-      - text: '选项一'
+      - text: "选项一"
         actions:
           - type: add_line
             content: 选项一
@@ -68,4 +68,4 @@ events:
   # ---- 章节结束 ----
   - type: chapter_end
     end_type: linear
-    next_chapter: 'end'           # 'end' = 剧本结束；或写下一个章节名如 '02'
+    next_chapter: "end" # 'end' = 剧本结束；或写下一个章节名如 '02'

@@ -1,14 +1,14 @@
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
+use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatusSnapshot;
-use crate::api::game::build_web_init_data;
 use crate::api::game::WebInitData;
+use crate::api::game::build_web_init_data;
 use crate::config::AppConfig;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::prompt::PromptOptions;
-use crate::AppState;
 
 // ========== 响应类型 ==========
 

@@ -10,14 +10,14 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 use tauri_plugin_store::StoreExt;
 
-use crate::ai_service::skill_agent::config::{resolve_skill_agent_provider, SkillAgentConfig};
-use crate::ai_service::skill_agent::core::{run_chat, SkillAgentRunContext};
+use crate::AppState;
+use crate::ai_service::skill_agent::config::{SkillAgentConfig, resolve_skill_agent_provider};
+use crate::ai_service::skill_agent::core::{SkillAgentRunContext, run_chat};
 use crate::ai_service::skill_agent::events::SkillAgentEvent;
 use crate::ai_service::skill_agent::{db, skills};
 use crate::ai_service::types::LlmMessage;
 use crate::config::keys;
 use crate::db::entities::skill_agent_conversation;
-use crate::AppState;
 
 // ==================== DTO ====================
 
@@ -101,9 +101,7 @@ pub async fn editor_agent_get_settings(app: AppHandle) -> AgentSettings {
     let config = SkillAgentConfig::load(&app);
     AgentSettings {
         provider_id: config.provider_id,
-        sandbox_dir: config
-            .sandbox_dir
-            .map(|p| p.to_string_lossy().to_string()),
+        sandbox_dir: config.sandbox_dir.map(|p| p.to_string_lossy().to_string()),
         auto_approve_commands: config.auto_approve_commands,
         allow_any_path: config.allow_any_path,
         max_tool_rounds: config.max_tool_rounds,
@@ -152,9 +150,7 @@ pub async fn editor_agent_save_settings(
             .enable_thinking
             .map_or(serde_json::Value::Null, |v| serde_json::json!(v)),
     );
-    store
-        .save()
-        .map_err(|e| format!("保存设置失败: {}", e))?;
+    store.save().map_err(|e| format!("保存设置失败: {}", e))?;
     Ok(())
 }
 

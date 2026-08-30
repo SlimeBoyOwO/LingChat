@@ -294,7 +294,9 @@ mod tests {
     #[test]
     fn extract_lines_trims_crlf() {
         // CRLF 服务端：行尾 \r 被 trim（\n 前截断）
-        let mut buf = "data: {\"text\":\"language Chinese<asr_text>你好\"}\r\n".as_bytes().to_vec();
+        let mut buf = "data: {\"text\":\"language Chinese<asr_text>你好\"}\r\n"
+            .as_bytes()
+            .to_vec();
         let lines = extract_lines(&mut buf);
         assert_eq!(
             lines,

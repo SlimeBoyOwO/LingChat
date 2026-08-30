@@ -21,12 +21,12 @@
 
 ## 与上游 v2.2.0 的真实差异
 
-| 文件 | 差异 |
-|---|---|
-| `src/windows.rs` | **新增**。Win32 API 复刻 xcap 的窗口枚举与 GDI 截图链路，但去掉 PID 过滤，使自属窗口可枚举/可截图 |
+| 文件              | 差异                                                                                                                                                                                      |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/windows.rs`  | **新增**。Win32 API 复刻 xcap 的窗口枚举与 GDI 截图链路，但去掉 PID 过滤，使自属窗口可枚举/可截图                                                                                         |
 | `src/commands.rs` | Windows 下 `get_screenshotable_windows` 走 `windows::enumerate_all_windows()`；`get_window_screenshot` 在 xcap 找不到窗口时回退 `windows::capture_own_window(id)`；顺带统一了错误处理写法 |
-| `src/lib.rs` | 增加 `#[cfg(target_os = "windows")] pub mod windows;` |
-| `Cargo.toml` | 版本号 2.1.0→2.2.0；`xcap` 0.3→0.9.6；新增 `log` + Windows 专属 `windows`/`image`/`widestring`/`scopeguard` 依赖 |
+| `src/lib.rs`      | 增加 `#[cfg(target_os = "windows")] pub mod windows;`                                                                                                                                     |
+| `Cargo.toml`      | 版本号 2.1.0→2.2.0；`xcap` 0.3→0.9.6；新增 `log` + Windows 专属 `windows`/`image`/`widestring`/`scopeguard` 依赖                                                                          |
 
 `windows.rs` 的具体实现点（复刻自 xcap）：
 

@@ -55,7 +55,11 @@ pub fn emit_usage(app: &AppHandle, prompt_tokens: u32, completion_tokens: u32) {
 /// 通知前端 AI 发生错误，同时重置前端状态为 input。
 pub fn emit_error(app: &AppHandle, err: &anyhow::Error) {
     let info = crate::ai_service::llm::error::classify_llm_error(err);
-    tracing::error!(error_code = info.code, "AI 调用出错: {}", format!("{err:#}"));
+    tracing::error!(
+        error_code = info.code,
+        "AI 调用出错: {}",
+        format!("{err:#}")
+    );
     let err_payload = super::responses::ErrorResponse::new(info.code, info.raw);
     let _ = app.emit(super::responses::event_names::AI_ERROR, &err_payload);
     let reset = super::responses::StatusResetResponse::new("input");

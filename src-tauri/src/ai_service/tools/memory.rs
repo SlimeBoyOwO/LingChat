@@ -4,16 +4,16 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tauri::Manager;
 use uuid::Uuid;
 
+use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::types::ToolDefinition;
 use crate::api::character::read_character_settings;
 use crate::api::data_dir;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::AppState;
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::{atomic_replace, ensure_no_args, game_status_handle};
@@ -360,7 +360,7 @@ impl Tool for UpdateNote {
                     ));
                 }
                 Some(content.to_string())
-            }
+            },
             None => None,
         };
         let tags = parse_tags(obj.get("tags"), "memory_update_note")?;

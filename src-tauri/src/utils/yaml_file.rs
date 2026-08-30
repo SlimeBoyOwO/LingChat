@@ -22,8 +22,8 @@ pub fn read_yaml_as_json(path: &Path) -> Result<JsonValue, String> {
     let text = fs::read_to_string(path)
         .map_err(|e| format!("无法读取 {:?}: {}（文件必须是 UTF-8）", path, e))?;
 
-    let value: JsonValue = serde_yaml::from_str(&text)
-        .map_err(|e| format!("{:?} YAML 解析失败: {}", path, e))?;
+    let value: JsonValue =
+        serde_yaml::from_str(&text).map_err(|e| format!("{:?} YAML 解析失败: {}", path, e))?;
 
     Ok(match value {
         JsonValue::Null => JsonValue::Object(Map::new()),
@@ -33,8 +33,7 @@ pub fn read_yaml_as_json(path: &Path) -> Result<JsonValue, String> {
 
 /// 把 JSON 值按 YAML 写入，带备份与原子替换。
 pub fn write_json_as_yaml(path: &Path, value: &JsonValue) -> Result<(), String> {
-    let yaml = serde_yaml::to_string(value)
-        .map_err(|e| format!("序列化 YAML 失败: {}", e))?;
+    let yaml = serde_yaml::to_string(value).map_err(|e| format!("序列化 YAML 失败: {}", e))?;
     backup_if_exists(path)?;
     atomic_write(path, yaml.as_bytes())
 }
@@ -60,8 +59,7 @@ fn backup_if_exists(path: &Path) -> Result<(), String> {
     }
     let mut bak = path.as_os_str().to_os_string();
     bak.push(".bak");
-    fs::copy(path, Path::new(&bak))
-        .map_err(|e| format!("备份 {:?} 失败: {}", path, e))?;
+    fs::copy(path, Path::new(&bak)).map_err(|e| format!("备份 {:?} 失败: {}", path, e))?;
     Ok(())
 }
 
@@ -81,8 +79,8 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let tmp = dir.join(format!(".{}.tmp", file_name));
 
     {
-        let mut f = fs::File::create(&tmp)
-            .map_err(|e| format!("无法创建临时文件 {:?}: {}", tmp, e))?;
+        let mut f =
+            fs::File::create(&tmp).map_err(|e| format!("无法创建临时文件 {:?}: {}", tmp, e))?;
         f.write_all(bytes)
             .map_err(|e| format!("写入临时文件失败: {}", e))?;
         f.sync_all()

@@ -86,7 +86,7 @@ rustpython-derive = "0.5"
 
 
 # LAN Sync
-axum = { version = "0.7", features = ["tokio"] }
+axum = { version = "0.7", features = ["tokio", "ws"] }
 mdns-sd = "0.11"
 if-addrs = "0.13"
 tokio-util = { version = "0.7", features = ["io"] }

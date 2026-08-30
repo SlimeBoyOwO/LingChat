@@ -14,6 +14,8 @@ pub mod proactive;
 pub mod session;
 pub mod tree;
 pub mod tts;
+#[cfg(test)]
+pub mod tts_test;
 pub mod types;
 
 pub const STORE_FILE: &str = "settings.json";
@@ -24,7 +26,7 @@ use tauri::{AppHandle, Wry};
 use tauri_plugin_store::{Store, StoreExt};
 
 // 向后兼容：保持原有公开 API 路径不变
-pub use app_config::{get_setting_string, AppConfig};
+pub use app_config::{AppConfig, get_setting_string};
 pub use tree::build_config_tree;
 pub use types::{ConfigSetting, ConfigTree};
 

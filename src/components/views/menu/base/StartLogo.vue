@@ -2,22 +2,13 @@
   <img
     src="../../../../assets/images/LingChatLogo.png"
     alt="LingChatLogo"
-    class="absolute
-      top-0
-      drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)]
-      transition-transform
-      hover:scale-105
-      right-0
-      z-5
-      w-auto
-      cursor-pointer
-      duration-300
-      max-w-[40vw]
-      h-[16vw]"
+    class="absolute right-0 z-5 h-[16vw] w-auto max-w-[40vw] cursor-pointer
+      drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition-transform duration-300 hover:scale-105"
+    :style="{ top: 'var(--safe-area-inset-top, 0px)', right: 'var(--safe-area-inset-right, 0px)' }"
     v-bind="$attrs"
   />
 </template>
 
 <script setup lang="ts">
-defineOptions({ inheritAttrs: false })
+  defineOptions({ inheritAttrs: false });
 </script>

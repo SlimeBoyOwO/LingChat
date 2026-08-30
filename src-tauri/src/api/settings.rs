@@ -10,20 +10,20 @@ use serde_json::Value as JsonValue;
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
+use crate::AppState;
 use crate::ai_service::god_agent::config::resolve_god_agent_provider;
+use crate::ai_service::llm::LlmModelInfo;
 use crate::ai_service::llm::error::LlmErrorPayload;
 use crate::ai_service::llm::provider_config::{
-    build_llm_client_from_provider, load_providers, load_role_assignment, resolve_chat_provider,
-    resolve_translate_provider, save_providers, save_role_assignment, LlmProviderConfig,
-    LlmProvidersResponse,
+    LlmProviderConfig, LlmProvidersResponse, build_llm_client_from_provider, load_providers,
+    load_role_assignment, resolve_chat_provider, resolve_translate_provider, save_providers,
+    save_role_assignment,
 };
-use crate::ai_service::llm::LlmModelInfo;
 use crate::config::app_config::{
     MAX_LLM_TIMEOUT_SECS, MAX_MEMORY_RECENT_WINDOW, MAX_MEMORY_SECTION_CHARS,
     MAX_MEMORY_UPDATE_INTERVAL, MIN_LLM_TIMEOUT_SECS, MIN_MEMORY_UPDATE_INTERVAL,
 };
-use crate::config::{self, keys, ConfigSetting, ConfigTree};
-use crate::AppState;
+use crate::config::{self, ConfigSetting, ConfigTree, keys};
 
 // ========== Settings CRUD ==========
 
@@ -306,18 +306,15 @@ pub async fn test_llm_provider(
         crate::ai_service::types::LlmMessage::user(&message),
     ];
 
-    client
-        .complete(&messages)
-        .await
-        .map_err(|e| {
-            let info = crate::ai_service::llm::error::classify_llm_error(&e);
-            tracing::error!(
-                error_code = info.code,
-                "LLM 测试请求失败: {}",
-                format!("{e:#}")
-            );
-            info.into()
-        })
+    client.complete(&messages).await.map_err(|e| {
+        let info = crate::ai_service::llm::error::classify_llm_error(&e);
+        tracing::error!(
+            error_code = info.code,
+            "LLM 测试请求失败: {}",
+            format!("{e:#}")
+        );
+        info.into()
+    })
 }
 
 #[tauri::command]
@@ -332,18 +329,15 @@ pub async fn list_llm_models(
         ));
     };
 
-    client
-        .list_models()
-        .await
-        .map_err(|e| {
-            let info = crate::ai_service::llm::error::classify_llm_error(&e);
-            tracing::error!(
-                error_code = info.code,
-                "LLM 拉取模型失败: {}",
-                format!("{e:#}")
-            );
-            info.into()
-        })
+    client.list_models().await.map_err(|e| {
+        let info = crate::ai_service::llm::error::classify_llm_error(&e);
+        tracing::error!(
+            error_code = info.code,
+            "LLM 拉取模型失败: {}",
+            format!("{e:#}")
+        );
+        info.into()
+    })
 }
 
 /// 设置「HDR 模式」开关（仅 Windows）。
@@ -393,13 +387,6 @@ mod memory_setting_validation_tests {
             let values = BTreeMap::from([("memory".to_string(), raw.to_string())]);
             assert!(validate_u32_setting(&values, "memory", "memory", 1, 10_000).is_ok());
         }
-        assert!(validate_u32_setting(
-            &BTreeMap::new(),
-            "memory",
-            "memory",
-            1,
-            10_000,
-        )
-        .is_ok());
+        assert!(validate_u32_setting(&BTreeMap::new(), "memory", "memory", 1, 10_000,).is_ok());
     }
 }

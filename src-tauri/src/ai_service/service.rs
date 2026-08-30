@@ -16,7 +16,7 @@ use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
-use crate::utils::prompt::{sys_prompt_builder, PromptOptions};
+use crate::utils::prompt::{PromptOptions, sys_prompt_builder};
 
 /// AI 服务：承载 `GameStatus` 与会话级配置。
 ///

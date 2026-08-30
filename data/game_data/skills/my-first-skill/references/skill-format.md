@@ -6,8 +6,8 @@ Every SKILL.md must start with YAML frontmatter:
 
 ```yaml
 ---
-name: skill-name           # Required: hyphen-case identifier
-description: When to use   # Required: 1-2 sentences, third-person
+name: skill-name # Required: hyphen-case identifier
+description: When to use # Required: 1-2 sentences, third-person
 ---
 ```
 
@@ -16,11 +16,13 @@ description: When to use   # Required: 1-2 sentences, third-person
 After frontmatter, write instructions in **imperative/infinitive form**:
 
 **Good:**
+
 - "To accomplish X, execute Y"
 - "Load this skill when Z"
 - "See references/guide.md for details"
 
 **Avoid:**
+
 - "You should do X"
 - "If you need Y"
 - "When you want Z"
@@ -38,6 +40,7 @@ Skills load in three levels:
 ### references/
 
 Documentation loaded into context as needed:
+
 - API documentation
 - Database schemas
 - Detailed guides
@@ -45,12 +48,14 @@ Documentation loaded into context as needed:
 ### scripts/
 
 Executable code (Python/Bash/etc.):
+
 - Can be run without loading to context
 - Use for deterministic, repeatable tasks
 
 ### assets/
 
 Files used in output (not loaded to context):
+
 - Templates
 - Images
 - Boilerplate code

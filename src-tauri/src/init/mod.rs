@@ -12,13 +12,14 @@ use tauri::Emitter;
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
+use crate::ChatComponents;
 use crate::ai_service::emotion::EmotionClassifier;
 use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
+use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::llm::provider_config::{
     build_llm_client_from_provider, migrate_if_needed, migrate_legacy_vision_keys,
     resolve_chat_provider, resolve_translate_provider,
 };
-use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
 use crate::ai_service::service::{AIService, SharedAIService};
 use crate::ai_service::translator::Translator;
@@ -28,7 +29,6 @@ use crate::config::{self, AppConfig};
 use crate::db;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::prompt::PromptOptions;
-use crate::ChatComponents;
 
 pub async fn initialize(
     app: &App,
@@ -206,14 +206,14 @@ pub async fn init_asr(
         Ok(p) => {
             providers.insert(cfg.active_provider.clone(), p);
             tracing::info!("[ASR] provider {} 已构建", cfg.active_provider);
-        }
+        },
         Err(e) => {
             tracing::warn!(
                 "[ASR] provider {} 构建失败: {}",
                 cfg.active_provider,
                 e.i18n_code()
             );
-        }
+        },
     }
 
     let vad = AsrVad::load(app)?;
@@ -244,17 +244,17 @@ fn load_emotion_classifier(
             Ok(clf) => {
                 tracing::info!("情绪分类器加载成功: {}", dir.display());
                 return Some(Arc::new(clf));
-            }
+            },
             Err(e) => {
                 tracing::warn!(
                     "情绪分类器加载失败 ({}), 回退为禁用状态: {e}",
                     dir.display()
                 );
-            }
+            },
         },
         _ => {
             tracing::warn!("未找到情绪模型目录, 情绪分类器将禁用");
-        }
+        },
     }
 
     None

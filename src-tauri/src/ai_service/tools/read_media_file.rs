@@ -14,7 +14,7 @@ use image::codecs::jpeg::JpegEncoder;
 use image::imageops::FilterType;
 use image::{DynamicImage, GenericImageView, ImageBuffer, ImageReader, Rgb};
 use reqwest::Client;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::ai_service::llm::provider_config::resolve_vision_provider;
 use crate::ai_service::skill_agent::config::SkillAgentConfig;
@@ -181,16 +181,16 @@ impl Tool for ReadMediaFileTool {
         match media_kind {
             MediaKind::Image(_) if !media_settings.image_enabled => {
                 return Err(ToolError::Execution("工具设置已关闭图片识别".into()));
-            }
+            },
             MediaKind::Video(_) if !media_settings.video_enabled => {
                 return Err(ToolError::Execution("工具设置已关闭视频识别".into()));
-            }
+            },
             MediaKind::Video(_) if region.is_some() || full_resolution => {
                 return Err(ToolError::InvalidArguments(
                     "region 和 full_resolution 仅适用于图片".into(),
                 ));
-            }
-            _ => {}
+            },
+            _ => {},
         }
 
         let (media_bytes, mime, dimensions) = match media_kind {
@@ -208,7 +208,7 @@ impl Tool for ReadMediaFileTool {
                     "delivered_height": prepared.delivered_height,
                 });
                 (prepared.bytes, prepared.mime, dimensions)
-            }
+            },
             MediaKind::Video(mime) => (data, mime, Value::Null),
         };
 
@@ -513,7 +513,7 @@ fn vision_base_url(
             } else {
                 format!("{base}/v1")
             }
-        }
+        },
         "openai" if base.is_empty() => "https://api.openai.com/v1".to_string(),
         "deepseek" if base.is_empty() => "https://api.deepseek.com".to_string(),
         _ => base.to_string(),

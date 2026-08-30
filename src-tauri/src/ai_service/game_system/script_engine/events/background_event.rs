@@ -5,13 +5,13 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    parse_duration, register_event, ScriptContext, ScriptEvent,
+    ScriptContext, ScriptEvent, parse_duration, register_event,
 };
 use crate::ai_service::game_system::script_engine::responses::{
-    event_names::SCRIPT_BACKGROUND, BackgroundPayload,
+    BackgroundPayload, event_names::SCRIPT_BACKGROUND,
 };
 use crate::ai_service::game_system::script_engine::utils::media::{
-    resolve_script_media, MediaType,
+    MediaType, resolve_script_media,
 };
 use crate::ai_service::message_system::events::emit;
 

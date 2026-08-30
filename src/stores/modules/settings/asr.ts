@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+import { defineStore } from "pinia";
 import {
   asrGetSettings,
   asrListModels,
@@ -8,12 +8,12 @@ import {
   type ModelInfo,
   type ProviderInfo,
   type VadEvent,
-} from '@/api/services/asr'
+} from "@/api/services/asr";
 
 const DEFAULT_SETTINGS: AsrSettings = {
-  active_provider: 'qwen-asr',
+  active_provider: "qwen-asr",
   auto_listen: false,
-  send_mode: 'fill_only',
+  send_mode: "fill_only",
   stream_enabled: false,
   // 默认关闭：仅兜底全新用户（无 localStorage 记录时）；后端 load 结果与
   // persist 恢复值都会覆盖它
@@ -21,9 +21,9 @@ const DEFAULT_SETTINGS: AsrSettings = {
   vad_silence_ms: 800,
   energy_warmup_ms: 100,
   provider_configs: {},
-}
+};
 
-export const useAsrStore = defineStore('asr', {
+export const useAsrStore = defineStore("asr", {
   state: () => ({
     settings: { ...DEFAULT_SETTINGS } as AsrSettings,
     // 会话运行态（phase/activeSource）由 useAsrInput 模块级状态持有——
@@ -33,7 +33,7 @@ export const useAsrStore = defineStore('asr', {
     vadEvent: null as VadEvent | null,
     providers: [] as ProviderInfo[],
     models: [] as ModelInfo[],
-    micState: 'idle' as 'idle' | 'recording' | 'denied',
+    micState: "idle" as "idle" | "recording" | "denied",
     vadLoaded: false,
   }),
   actions: {
@@ -43,40 +43,40 @@ export const useAsrStore = defineStore('asr', {
         // 设置字段，schema 已统一）；persist 恢复值只作未加载前的占位，
         // 后端数据 spread 在最后覆盖。localStorage 里旧的前端私有字段
         // 不参与决策（除被 excludePaths 剔除的 provider_configs）。
-        this.settings = { ...DEFAULT_SETTINGS, ...this.settings, ...(await asrGetSettings()) }
-        this.providers = await asrListProviders()
+        this.settings = { ...DEFAULT_SETTINGS, ...this.settings, ...(await asrGetSettings()) };
+        this.providers = await asrListProviders();
         // 模型清单（按 active provider 拉取；provider 切换时由 SettingsAsr 重新拉）
-        this.models = await asrListModels(this.settings.active_provider).catch(() => [])
+        this.models = await asrListModels(this.settings.active_provider).catch(() => []);
       } catch (e) {
-        console.warn('[ASR] load failed:', e)
+        console.warn("[ASR] load failed:", e);
       }
     },
     async save(s: AsrSettings) {
       try {
-        await asrSetSettings(s)
-        this.settings = s
+        await asrSetSettings(s);
+        this.settings = s;
       } catch (e) {
-        console.warn('[ASR] save failed:', e)
-        throw e
+        console.warn("[ASR] save failed:", e);
+        throw e;
       }
     },
     onTurnCandidate(e: VadEvent) {
-      this.vadEvent = e
+      this.vadEvent = e;
     },
     onTurnSealed(e: VadEvent) {
-      this.vadEvent = e
+      this.vadEvent = e;
     },
     onSpeechStarted() {
-      this.micState = 'recording'
+      this.micState = "recording";
     },
     onError(code: string) {
-      this.lastError = code
+      this.lastError = code;
     },
-    setMicState(s: 'idle' | 'recording' | 'denied') {
-      this.micState = s
+    setMicState(s: "idle" | "recording" | "denied") {
+      this.micState = s;
     },
     setVadLoaded(v: boolean) {
-      this.vadLoaded = v
+      this.vadLoaded = v;
     },
   },
   // api_key 唯一真相在后端 settings.json（tauri_plugin_store），
@@ -84,8 +84,8 @@ export const useAsrStore = defineStore('asr', {
   // 注意：exclude 只滤顶层 key，provider_configs 嵌在 settings 里，
   // 必须用 excludePaths 深度剔除（否则 api_key 明文落 localStorage）。
   persist: {
-    key: 'lingchat-asr',
-    exclude: ['provider_configs'],
-    excludePaths: ['settings.provider_configs'],
+    key: "lingchat-asr",
+    exclude: ["provider_configs"],
+    excludePaths: ["settings.provider_configs"],
   },
-})
+});

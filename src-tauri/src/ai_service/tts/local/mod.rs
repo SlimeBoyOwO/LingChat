@@ -458,7 +458,7 @@ async fn download_single_asset(
                 bytes,
                 message: format!("{} downloaded", entry.id),
             })
-        }
+        },
         registry::AssetKind::Voice => {
             let raw_dst = download_temp_path(entry, &state.paths.cache);
             let bytes = download::download_asset(app, entry, &raw_dst, cancel).await?;
@@ -473,7 +473,7 @@ async fn download_single_asset(
                 bytes,
                 message: "voice downloaded".into(),
             })
-        }
+        },
         registry::AssetKind::StyleVectors => {
             let voice_id = entry
                 .voice_id
@@ -490,7 +490,7 @@ async fn download_single_asset(
                 bytes,
                 message: "style vectors downloaded".into(),
             })
-        }
+        },
     }
 }
 

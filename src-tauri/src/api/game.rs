@@ -6,6 +6,7 @@ use serde_json::Value as JsonValue;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
+use crate::AppState;
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
@@ -18,8 +19,7 @@ use crate::config::{self, AppConfig};
 use crate::db::entities::line;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::utils::prompt::{sys_prompt_builder_by_settings, PromptOptions, PromptRole};
-use crate::AppState;
+use crate::utils::prompt::{PromptOptions, PromptRole, sys_prompt_builder_by_settings};
 
 // ========== 响应类型 ==========
 
@@ -220,7 +220,7 @@ pub async fn clear_tts_cache(app: AppHandle) -> Result<serde_json::Value, String
                 Err(e) => {
                     tracing::warn!("删除 TTS 缓存文件失败 {:?}: {}", path, e);
                     failed += 1;
-                }
+                },
             }
         }
     }
@@ -574,22 +574,7 @@ pub(crate) async fn build_web_init_data(
             .find_by_id(sid)
             .ok()
             .flatten()
-            .map(|s| super::scene::SceneInfo {
-                id: s.id,
-                scene_name: s.name,
-                scene_description: s.description,
-                background: {
-                    let bg = super::scene::normalize_background(&s.background);
-                    if bg.is_empty() {
-                        None
-                    } else {
-                        Some(bg)
-                    }
-                },
-                lighting: s.lighting.clone(),
-                created_at: s.created_at,
-                updated_at: s.updated_at,
-            })
+            .map(|s| super::scene::model_to_info(&s))
     } else {
         None
     };
@@ -850,7 +835,7 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
             None => {
                 tracing::info!("[Entry] 没有当前角色，跳过问候");
                 return Ok(());
-            }
+            },
         };
 
         let ai_name = gs
