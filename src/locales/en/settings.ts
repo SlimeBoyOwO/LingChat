@@ -683,6 +683,11 @@ export default {
       title: "Voice Sound Effects",
       desc: "Enable dialogue sound effects when no VITS voice is available",
     },
+    autostart: {
+      title: "Launch at Startup",
+      desc: "Automatically start LingChat after login (desktop only)",
+      toggleFailed: "Failed to toggle launch at startup",
+    },
     engineDownload: {
       title: "Voice Inference Engine Download (SBV2)",
       cpuHint: "CPU inference uses SBV2-API. You need to change sbv2 to sbv2api in settings.yml; it can also be changed in the character settings",

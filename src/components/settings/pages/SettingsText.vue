@@ -178,6 +178,20 @@
         <Toggle @change="voiceSound">{{ $t('settings.text.voiceSound.desc') }}</Toggle>
       </MenuItem>
 
+      <!-- 开机自启动（issue #704）：状态跟随系统启动项，进页面时查询 -->
+      <MenuItem
+        v-if="autoStartSupported"
+        :title="$t('settings.text.autostart.title')"
+        size="small"
+      >
+        <template #header>
+          <Power :size="20" />
+        </template>
+        <Toggle :checked="autoStartEnabled" @change="toggleAutoStart">
+          {{ $t('settings.text.autostart.desc') }}
+        </Toggle>
+      </MenuItem>
+
       <MenuItem
         :title="$t('settings.text.engineDownload.title')"
         size="small"
@@ -533,10 +547,17 @@ import {
   BookOpen,
   Type,
   Import,
+  Power,
 } from 'lucide-vue-next'
 import { reactivateTTS, clearTtsCache } from '@/api/services/game-info'
 import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import {
+  enable as enableAutoStart,
+  disable as disableAutoStart,
+  isEnabled as isAutoStartEnabled,
+} from '@tauri-apps/plugin-autostart'
+import { isAndroid } from '@/utils/platform'
 import { useUpdater } from '@/composables/useUpdater'
 import { useLanSync } from '@/composables/useLanSync'
 import { getVersion } from '@tauri-apps/api/app'
@@ -796,6 +817,8 @@ onMounted(() => {
   loadConfig()
   checkTtsCache()
   loadLastTtsCleanup()
+  // 查询系统开机自启动状态
+  void loadAutoStartState()
   // 加载本机已装字体族列表（Rust 侧枚举，单次缓存）
   void loadSystemFonts()
   // 加载已导入字体列表
@@ -925,6 +948,37 @@ const textSpeedChange = (data: number) => {
 
 const voiceSound = (data: boolean) => {
   settingsStore.update('audio.chatEffectSound', data)
+}
+
+// ─── 开机自启动（issue #704，桌面端）──────────────────────
+// 开关状态由操作系统启动项（注册表/LaunchAgent/桌面文件）决定，
+// 不走 settingsStore，进入页面时查询一次
+const autoStartSupported = !isAndroid()
+const autoStartEnabled = ref(false)
+
+const loadAutoStartState = async () => {
+  if (!autoStartSupported) return
+  try {
+    autoStartEnabled.value = await isAutoStartEnabled()
+  } catch (error) {
+    console.warn('读取开机自启动状态失败:', error)
+  }
+}
+
+const toggleAutoStart = async (data: boolean) => {
+  try {
+    if (data) {
+      await enableAutoStart()
+    } else {
+      await disableAutoStart()
+    }
+    autoStartEnabled.value = await isAutoStartEnabled()
+  } catch (error: any) {
+    console.error('切换开机自启动失败:', error)
+    await dialogStore.alert(
+      typeof error === 'string' ? error : error.message || t('settings.text.autostart.toggleFailed'),
+    )
+  }
 }
 
 const toggleInlineMotionText = (data: boolean) => {

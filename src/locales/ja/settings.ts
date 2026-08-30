@@ -681,6 +681,11 @@ export default {
       title: '音声効果音スイッチ',
       desc: 'VITSなし時の会話効果音を有効にする',
     },
+    autostart: {
+      title: '自動起動',
+      desc: 'ログイン時に LingChat を自動で起動します（デスクトップのみ）',
+      toggleFailed: '自動起動の切り替えに失敗しました',
+    },
     engineDownload: {
       title: '音声推論エンジンのダウンロード（SBV2）',
       cpuHint: 'CPU推論にはSBV2-APIを使用します。settings.yml で sbv2 を sbv2api に変更してください。キャラクター設定も変更できます',

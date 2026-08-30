@@ -682,6 +682,11 @@ export default {
       "title": "語音音效開關",
       "desc": "啟用冇vits嗰陣嘅對話音效"
     },
+    "autostart": {
+      "title": "開機自動啟動",
+      "desc": "開機登入之後自動啟動 LingChat（桌面版先用到）",
+      "toggleFailed": "切換開機自動啟動失敗"
+    },
     "engineDownload": {
       "title": "語音推理引擎下載（SBV2）",
       "cpuHint": "CPU 推理用嘅係 SBV2-API，要喺 settings.yml 入面將 sbv2 改做 sbv2api，人物設定都改得",
