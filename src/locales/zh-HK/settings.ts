@@ -629,7 +629,8 @@ export default {
       "title": "性能檢測",
       "detecting": "檢測緊硬件性能 …",
       "cpuName": "CPU 名稱：",
-      "gpuName": "GPU 名稱：",
+      "gpuName": "最高性能 GPU：",
+      "activeGpuName": "當前調用 GPU：",
       "combinedTier": "性能等級（取最低）：",
       "suggestedFps": "建議幀率：",
       "detectingShort": "檢測緊…",
@@ -1077,7 +1078,7 @@ export default {
       "vadLoadedNo": "未載入"
     },
     "voiceInput": "語音輸入",
-    "voiceInputHint": "總開關：關閉後自動語音識別不可用，手動麥克風錄音保留",
+    "voiceInputHint": "總開關：關閉後語音輸入整體不可用（自動與手動麥克風一併關閉）",
     "autoListen": "啟用自動語音識別",
     "autoListenHint": "自動監聽麥克風，識別用戶說話後自動轉為文字",
     "vadSilence": "靜音計時（毫秒）",

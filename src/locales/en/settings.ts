@@ -630,7 +630,8 @@ export default {
       title: "Performance Check",
       detecting: "Checking hardware performance…",
       cpuName: "CPU Name: ",
-      gpuName: "GPU Name: ",
+      gpuName: "Best GPU: ",
+      activeGpuName: "Active GPU: ",
       combinedTier: "Performance Tier (lowest): ",
       suggestedFps: "Suggested FPS: ",
       detectingShort: "Checking…",
@@ -1080,7 +1081,7 @@ export default {
     },
     voiceInput: 'Voice input',
     voiceInputHint:
-      'Master switch: when off, auto voice input is disabled; manual mic recording still works',
+      'Master switch: when off, voice input is fully disabled (auto and manual mic)',
     autoListen: 'Enable automatic speech recognition',
     autoListenHint: 'Auto-listen to microphone and convert user speech to text',
     vadSilence: 'Silence timeout (ms)',

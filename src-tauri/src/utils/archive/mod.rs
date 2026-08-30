@@ -236,13 +236,18 @@ pub fn detect_format(path: &Path) -> Result<ArchiveFormat, ArchiveError> {
 
 mod compress;
 mod extract;
+mod import_state;
 mod resolve;
 mod safety;
+mod staging;
 
 pub use compress::compress;
 pub use extract::{extract_zip, extract_sevenz};
+pub use import_state::{ArchiveImportState, ImportTaskEntry};
+pub(crate) use import_state::{ImportingGuard, TaskRemoveGuard};
 pub use resolve::resolve_target;
 pub use safety::{check_entry_safety, sanitize_entry_name, safe_join};
+pub use staging::{copy_dir_recursive, list_content_entries, locate_extracted_root, relocate_dir};
 
 pub(super) fn map_sevenz_err(e: sevenz_rust2::Error) -> ArchiveError {
     match e {

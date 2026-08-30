@@ -210,17 +210,47 @@
         </p>
       </div>
     </MenuItem>
+
+    <PluginArchiveProgress />
+
+    <MenuItem :title="$t('settings.plugins.import.title')" size="small">
+      <template #header>
+        <PackageOpen :size="20" />
+      </template>
+      <div class="space-y-2">
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs text-white/60 font-medium">{{
+            $t('settings.plugins.import.conflictPolicy')
+          }}</label>
+          <select
+            v-model="conflictPolicy"
+            class="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-white text-sm outline-none transition-all duration-200"
+          >
+            <option value="overwrite">{{ $t('settings.plugins.import.policyOverwrite') }}</option>
+            <option value="abort">{{ $t('settings.plugins.import.policyAbort') }}</option>
+          </select>
+        </div>
+        <Button type="big" @click="handleImport">{{ $t('settings.plugins.import.button') }}</Button>
+        <p class="text-[11px] text-white/40 leading-relaxed">
+          {{ $t('settings.plugins.import.hint') }}
+        </p>
+      </div>
+    </MenuItem>
   </MenuPage>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue'
-import { ChevronDown } from 'lucide-vue-next'
+import { ChevronDown, PackageOpen } from 'lucide-vue-next'
 import { MenuPage, MenuItem } from '../../ui'
+import { Button } from '../../base'
 import Icon from '@/components/base/widget/Icon.vue'
 import { Toggle } from '@/components/base'
 import { i18n } from '@/locales'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
+import PluginArchiveProgress from '@/components/ui/PluginArchiveProgress.vue'
+import { usePluginImport } from '@/composables/usePluginImport'
+import type { PluginConflictPolicy } from '@/api/services/plugins'
 import {
   listPlugins,
   setPluginEnabled,
@@ -372,6 +402,23 @@ const removePlugin = async (plugin: PluginInfo) => {
   } catch (e) {
     error.value = String(e)
   }
+}
+
+// ===== 压缩包导入 =====
+
+const { store: importStore, pickAndImport } = usePluginImport()
+const conflictPolicy = ref<PluginConflictPolicy>('overwrite')
+
+const handleImport = async () => {
+  await pickAndImport(conflictPolicy.value)
+  const result = importStore.import.result as { plugin_id?: string } | null
+  // 覆盖导入会换掉整套资源文件，丢弃该插件的资源缓存，避免展开时显示旧条目。
+  if (result?.plugin_id) {
+    delete resourceMap[result.plugin_id]
+    delete formState[result.plugin_id]
+  }
+  // 导入对话框关闭后（成功、失败或取消）都重新拉一次列表。
+  await load()
 }
 
 onMounted(() => {

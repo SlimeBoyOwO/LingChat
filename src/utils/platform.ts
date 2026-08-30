@@ -18,9 +18,24 @@ export function isWindows(): boolean {
   return /windows/i.test(navigator.userAgent)
 }
 
+/** 是否 iOS（WKWebView UA 含 iPhone/iPad/iPod；现代 iPadOS 桌面版 UA 为
+ *  MacIntel + 多点触控）。用于「仅 iOS 生效」的安全区/键盘适配分支判断。 */
+export function isIOS(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return (
+    /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  )
+}
+
 /** 是否 macOS 桌面端（WebKit/WKWebView UA 含 "Macintosh"，且不含移动端指纹）。
  *  用于 macOS 无边框标题栏（Overlay）下的拖拽区/内边距适配。 */
 export function isMacOS(): boolean {
   if (typeof navigator === 'undefined') return false
   return /macintosh|mac OS/i.test(navigator.userAgent)
+}
+
+/** 是否移动端（Android / iOS）。App.vue 的键盘/安全区/滚动适配仅移动端挂载，桌面端不运行。 */
+export function isMobile(): boolean {
+  return isAndroid() || isIOS()
 }
