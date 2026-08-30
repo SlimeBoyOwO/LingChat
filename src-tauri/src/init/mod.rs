@@ -8,10 +8,12 @@ use std::sync::Arc;
 use anyhow::Result;
 use sea_orm::DatabaseConnection;
 use tauri::App;
+use tauri::Emitter;
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
 use crate::ai_service::emotion::EmotionClassifier;
+use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
 use crate::ai_service::llm::provider_config::{
     build_llm_client_from_provider, migrate_if_needed, migrate_legacy_vision_keys,
     resolve_chat_provider, resolve_translate_provider,
@@ -19,8 +21,8 @@ use crate::ai_service::llm::provider_config::{
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
 use crate::ai_service::service::{AIService, SharedAIService};
-use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::translator::Translator;
+use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::types::CharacterSettings;
 use crate::config::{self, AppConfig};
 use crate::db;
@@ -64,6 +66,16 @@ pub async fn initialize(
 
     // 提前加载配置 + 构建 LlmClient（AIService 的子成员 GameRoleManager 需要它）
     let app_config = AppConfig::load(&app.handle()).unwrap_or_default();
+    tracing::info!(
+        "MemoryBank 配置: enabled={}, update_interval={}, recent_window={}, limits=[{},{},{},{}]（记忆设置需重启生效）",
+        app_config.use_persistent_memory,
+        app_config.memory_update_interval,
+        app_config.memory_recent_window,
+        app_config.memory_short_term_max_chars,
+        app_config.memory_long_term_max_chars,
+        app_config.memory_user_info_max_chars,
+        app_config.memory_promises_max_chars,
+    );
 
     // 构建聊天主 LLM 槽位（支持运行时热切换）。
     // 槽位本身始终存在，未配置模型时内部值为 None。
@@ -83,6 +95,12 @@ pub async fn initialize(
         app_config.use_persistent_memory,
         app_config.memory_update_interval,
         app_config.memory_recent_window,
+        MemorySectionLimits {
+            short_term: app_config.memory_short_term_max_chars as usize,
+            long_term: app_config.memory_long_term_max_chars as usize,
+            user_info: app_config.memory_user_info_max_chars as usize,
+            promises: app_config.memory_promises_max_chars as usize,
+        },
     )
     .await;
 
@@ -101,10 +119,7 @@ pub async fn initialize(
         if let Ok(store) = app.store(config::STORE_FILE) {
             if let Some(cid) = character_id {
                 let key = config::session::last_clothes_key(cid);
-                if let Some(clothes) = store
-                    .get(&key)
-                    .and_then(|v| v.as_str().map(String::from))
-                {
+                if let Some(clothes) = store.get(&key).and_then(|v| v.as_str().map(String::from)) {
                     if !clothes.is_empty() {
                         overrides.insert(cid, clothes);
                     }
@@ -153,6 +168,65 @@ pub async fn initialize(
     };
 
     Ok((db, ai_service, chat))
+}
+
+/// ASR 服务初始化：加载 VAD 模型 + 构建 provider registry + 写入 AsrState。
+///
+/// 失败返回 Err，由调用方决定是否降级（v1:失败 → ASR 不可用但不阻塞主程序）。
+///
+/// 调用方需保证传入的 `asr_state` 是已经 manage 进 AppState 的那个 Arc；
+/// 本函数只 mutate 内部的 `session: Option<AsrSession>`，不会重建外层 Arc。
+pub async fn init_asr(
+    app: &tauri::AppHandle,
+    asr_state: &Arc<crate::ai_service::asr::AsrState>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::ai_service::asr::{provider, session::AsrSession, settings, vad::AsrVad};
+
+    tracing::info!("[ASR] init_asr 开始");
+    let cfg = settings::load(app)?;
+    // TLS 走统一的 webpki-roots 配置（Android 上 rustls-platform-verifier 未初始化会 panic）
+    let tls_config = crate::utils::tls::build_tls_config()?;
+    let http = reqwest::Client::builder()
+        .tls_backend_preconfigured(tls_config)
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    let mut providers: std::collections::HashMap<
+        String,
+        std::sync::Arc<dyn provider::AsrProvider>,
+    > = std::collections::HashMap::new();
+    // 只构建 active_provider：用户选哪个 STT 就启用哪个，未选的不初始化、
+    // 不报错（日志干净，registry 只含当前服务商）。
+    let cred = cfg
+        .provider_configs
+        .get(&cfg.active_provider)
+        .map(|c| c.to_credentials())
+        .unwrap_or_default();
+    match provider::get_provider(&cfg.active_provider, &cred, &http).await {
+        Ok(p) => {
+            providers.insert(cfg.active_provider.clone(), p);
+            tracing::info!("[ASR] provider {} 已构建", cfg.active_provider);
+        }
+        Err(e) => {
+            tracing::warn!(
+                "[ASR] provider {} 构建失败: {}",
+                cfg.active_provider,
+                e.i18n_code()
+            );
+        }
+    }
+
+    let vad = AsrVad::load(app)?;
+    // 应用持久化的 VAD 静音计时（设置页可自定义，默认 800ms）
+    vad.set_silence_timeout_ms(cfg.vad_silence_ms).await;
+    let session = Arc::new(AsrSession::new(Arc::new(vad), providers));
+    *asr_state.session.lock().await = Some(session);
+
+    // 通知前端 VAD 模型就绪（设置页状态面板显示"已加载"）
+    let _ = app.emit("asr://vad_ready", ());
+
+    tracing::info!("[ASR] init_asr 完成");
+    Ok(())
 }
 
 fn load_emotion_classifier(

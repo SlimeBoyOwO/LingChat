@@ -157,11 +157,13 @@
             :class="{ 'bg-purple-500/20 text-purple-300': currentMusicName === music.name }"
           >
             <div
-              class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium pr-2"
+              class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium pr-2 flex items-center gap-2"
             >
-              {{ music.name }}
+              <span class="truncate">{{ music.name }}</span>
+              <PluginTag v-if="music.source && music.source !== 'game'" :source="music.source" />
             </div>
             <button
+              v-if="!music.source || music.source === 'game'"
               @click.stop="deleteMusic(music)"
               class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1.5 rounded-md bg-red-500/10 hover:bg-red-500/80 text-red-400 hover:text-white"
               :title="$t('settings.sound.common.delete')"
@@ -226,6 +228,7 @@
           >
             <Wind :size="13" class="text-teal-400/60 shrink-0" />
             <span class="flex-1 text-sm text-gray-200 truncate">{{ ambient.name }}</span>
+            <PluginTag v-if="ambient.source && ambient.source !== 'game'" :source="ambient.source" />
             <button
               @click="addFileToTrack(ambient)"
               class="opacity-70 hover:opacity-100 transition-opacity px-2 py-0.5 text-xs rounded bg-teal-500/20 hover:bg-teal-500/40 text-teal-300"
@@ -234,6 +237,7 @@
               {{ $t('settings.sound.ambient.play') }}
             </button>
             <button
+              v-if="!ambient.source || ambient.source === 'game'"
               @click.stop="removeAmbientFile(ambient)"
               class="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md bg-red-500/10 hover:bg-red-500/80 text-red-400 hover:text-white"
               :title="$t('settings.sound.common.delete')"
@@ -347,14 +351,18 @@ import { useI18n } from 'vue-i18n'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Button, Slider } from '../../base'
 import { MenuItem, MenuPage } from '../../ui'
+import PluginTag from '@/components/ui/PluginTag.vue'
+import { musicDialogFilters } from '@/utils/dialogFilters'
 import {
   musicDelete,
   musicGetAll,
   musicUpload,
+  saveBgmState,
 } from '../../../api/services/music'
 import { ambientGetAll, ambientUpload, ambientDelete, type AmbientItem } from '../../../api/services/ambient'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
+import { useRoleArchiveStore } from '../../../stores/modules/ui/role-archive'
 import { useSettingsStore } from '../../../stores/modules/settings'
 import {
   currentDeviceId,
@@ -366,6 +374,7 @@ import {
   setDevice,
   supported as audioOutputSupported,
 } from '../../../utils/audioOutputManager'
+import { decodePathFileName } from '../../../utils/path'
 import {
   AudioLines,
   FlaskConical,
@@ -392,6 +401,7 @@ import {
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 const dialogStore = useDialogStore()
+const roleStore = useRoleArchiveStore()
 const { t } = useI18n()
 
 // 状态绑定
@@ -445,6 +455,8 @@ const backgroundAudioPlayer = ref<HTMLAudioElement | null>(null)
 interface MusicItem {
   name: string
   url: string
+  source?: string
+  plugin_id?: string | null
 }
 
 const musicList = ref<MusicItem[]>([])
@@ -572,7 +584,7 @@ const stopAllAmbient = () => {
 const triggerAmbientUpload = async () => {
   const selected = await openDialog({
     multiple: true,
-    filters: [{ name: 'Ambient', extensions: ['mp3', 'wav', 'flac', 'ogg', 'm4a'] }],
+    filters: musicDialogFilters(),
   })
   if (!selected) return
   selectedAmbientPaths.value = extractDialogPaths(selected)
@@ -596,19 +608,6 @@ const extractDialogPaths = (selected: unknown): string[] => {
     .filter((p: any) => typeof p === 'string' && p.length > 0)
 }
 
-/**
- * 从文件路径提取文件名，兼容 content:// URI（URL 编码）。
- * decodeURIComponent 遇到非法 % 序列会抛 URIError，这里兜底返回原值。
- */
-const decodePathFileName = (path: string): string => {
-  const last = path.split(/[\\/]/).pop() || path
-  try {
-    return decodeURIComponent(last).split('?')[0]
-  } catch {
-    return last.split('?')[0]
-  }
-}
-
 // 从服务端加载环境音列表
 const loadAmbientList = async () => {
   try {
@@ -624,7 +623,7 @@ const uploadAmbientFiles = async () => {
     await dialogStore.alert(t('settings.sound.ambient.selectFilesFirst'))
     return
   }
-  const allowedExts = ['.mp3', '.wav', '.flac', '.ogg', '.m4a']
+  const allowedExts = ['.mp3', '.wav', '.flac', '.ogg']
   try {
     // 串行上传（仅传源文件路径，Rust 侧复制）
     for (const path of selectedAmbientPaths.value) {
@@ -638,7 +637,11 @@ const uploadAmbientFiles = async () => {
     await loadAmbientList()
   } catch (error: any) {
     console.error('上传环境音失败:', error)
-    await dialogStore.alert(error.message || t('settings.sound.ambient.uploadFailed'))
+    const rawMsg = error.message || String(error)
+    const translated = rawMsg === 'MUSIC_INVALID_FORMAT'
+      ? t('ui.musicImport.errors.MUSIC_INVALID_FORMAT')
+      : rawMsg
+    await dialogStore.alert(translated || t('settings.sound.ambient.uploadFailed'))
   }
 }
 
@@ -739,6 +742,7 @@ const deleteMusic = async (music: MusicItem) => {
 
     if (uiStore.currentBackgroundMusic === deletedMusicUrl) {
       uiStore.currentBackgroundMusic = 'None'
+      await saveBgmState('None', true, uiStore.bgMusicMode)
 
       if (backgroundAudioPlayer.value) {
         backgroundAudioPlayer.value.pause()
@@ -761,26 +765,36 @@ const uploadMusic = async () => {
     return
   }
 
-  const allowedExts = ['.mp3', '.wav', '.flac', '.webm', '.weba', '.ogg', '.m4a']
-
   try {
-    // 串行上传（仅传源文件路径，Rust 侧复制）
+    // 串行上传（仅传源文件路径，Rust 侧复制 + magic 校验）
     for (const path of selectedPaths.value) {
       // content:// URI 文件名是 URL 编码的，解码后才是真实文件名
       const fileName = decodePathFileName(path)
-      const fileExt = fileName.slice(fileName.lastIndexOf('.')).toLowerCase()
-      if (!allowedExts.includes(fileExt)) {
-        throw new Error(t('settings.sound.common.unsupportedFormat', { name: fileName }))
+      const result = await musicUpload(path, fileName)
+      // 自动修正时弹顶部 amber notice
+      if (result.was_corrected) {
+        const originalExt = result.original_name.split('.').pop() || ''
+        roleStore.showCorrected({
+          title: t('ui.notice.autoCorrected.title'),
+          message: t('ui.notice.autoCorrected.music', {
+            original: result.original_name,
+            originalExt,
+            detected: result.detected_kind,
+            corrected: result.actual_name,
+          }),
+        })
       }
-      await musicUpload(path, fileName)
     }
 
     selectedPaths.value = []
     await loadMusicList()
-    // alert('音乐上传成功') // 可选提示
   } catch (error: any) {
     console.error('批量上传音乐出现问题:', error)
-    await dialogStore.alert(error.message || t('settings.sound.bgm.uploadFailed'))
+    const rawMsg = error.message || String(error)
+    const translated = rawMsg === 'MUSIC_INVALID_FORMAT'
+      ? t('ui.musicImport.errors.MUSIC_INVALID_FORMAT')
+      : rawMsg
+    await dialogStore.alert(translated || t('settings.sound.bgm.uploadFailed'))
   }
 }
 
@@ -827,9 +841,7 @@ const handleStop = () => {
 const triggerFileUpload = async () => {
   const selected = await openDialog({
     multiple: true,
-    filters: [
-      { name: 'Music', extensions: ['mp3', 'wav', 'flac', 'webm', 'weba', 'ogg', 'm4a'] },
-    ],
+    filters: musicDialogFilters(),
   })
   if (!selected) return
   selectedPaths.value = extractDialogPaths(selected)

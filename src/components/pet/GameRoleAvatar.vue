@@ -63,7 +63,14 @@
           @animationend="handleAnimationEnd"
         >
           <div class="w-full h-full origin-top" :style="avatarStyles">
+            <div
+              v-if="live2dFailed && !targetAvatarUrl"
+              class="flex h-full w-full items-center justify-center text-xs text-white/60"
+            >
+              {{ $t('game.avatar.live2dUnavailable') }}
+            </div>
             <ImageCrossFade
+              v-show="!live2dActive"
               ref="imageFadeRef"
               class="w-full h-full object-cover animate-breathing"
               :src="targetAvatarUrl"
@@ -102,7 +109,7 @@ import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from '@/controllers/emotion/config
 import { useUIStore } from '@/stores/modules/ui/ui'
 import './avatar-animation.css'
 
-const props = defineProps<{ role: GameRole }>()
+const props = defineProps<{ role: GameRole; live2dActive?: boolean; live2dFailed?: boolean }>()
 const { role } = toRefs(props)
 
 const emit = defineEmits(['avatar-click'])

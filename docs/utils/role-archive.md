@@ -124,8 +124,8 @@ idle─┤     └─► error ─► (dismiss)
 | 文件 | 职责 |
 |---|---|
 | `mod.rs` | 5 个 Tauri 命令、公开类型 `ImportResult` / `ExportResult`、再导出 |
-| `state.rs` | `RoleArchiveState`（`tasks: HashMap<task_id, ImportTaskEntry>` + `importing: AtomicBool`）、`ImportingGuard` / `TaskRemoveGuard` |
-| `import_pipeline.rs` | `do_import`、`write_temp_archive`、`prepare_import_source`、`locate_extracted_dir`、`sanitize_role_folder_name`、`copy_dir_recursive`、`find_role_id_by_folder`、`parse_format`、`parse_policy` |
+| `state.rs` | 再导出 `utils::archive` 的 `ArchiveImportState`（别名 `RoleArchiveState`）与两个 RAII 守卫；实体已上移，与插件导入共用同一份实例 |
+| `import_pipeline.rs` | `do_import`、`write_temp_archive`、`prepare_import_source`、`sanitize_role_folder_name`、`find_role_id_by_folder`、`parse_format`、`parse_policy` |
 | `export_pipeline.rs` | `compress_role_to_temp`、`sanitize_file_name` |
 
 ### 6.2 归档工具（`src-tauri/src/utils/archive/`）
@@ -137,6 +137,8 @@ idle─┤     └─► error ─► (dismiss)
 | `resolve.rs` | `resolve_target`（冲突策略 → 最终目标路径） |
 | `extract.rs` | `extract_zip` / `extract_sevenz`，消费 `CancellationToken` |
 | `compress.rs` | `compress`（zip / 7z 入口），跳过 macOS metadata |
+| `staging.rs` | 角色 / 插件导入共用：`list_content_entries`、`locate_extracted_root`（压缩包套一层文件夹的判定）、`relocate_dir`（rename 重试 + 递归复制回退） |
+| `import_state.rs` | `ArchiveImportState`（全局单实例并发锁 + `tasks`）、`ImportingGuard` / `TaskRemoveGuard`；角色与插件导入共用，故全局同时只有一个解压任务 |
 
 ## 7. 并发与取消
 

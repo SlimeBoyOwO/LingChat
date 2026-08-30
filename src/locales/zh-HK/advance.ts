@@ -6,6 +6,7 @@ export default {
     tools: '工具設定',
     other: '其他進階設定',
     tts: '本地 TTS',
+    asr: '語音識別',
   },
   menu: {
     llmTitle: '大模型管理',
@@ -17,6 +18,9 @@ export default {
     ttsTitle: '本地 TTS',
     ttsDesc: '下載並管理 DeBERTa 與人物語音模型，離線使用本地 TTS 引擎',
     ttsButton: '進入本地 TTS 介面',
+    asrTitle: '語音識別',
+    asrDesc: '設定阿里雲語音識別、發送方式同埋咪高峰監聽',
+    asrButton: '進入語音識別介面',
     otherTitle: '其他進階設定',
     otherDesc: '調整系統環境配置、提示詞模板、對話參數呢啲進階選項（重新開機之後先至生效）',
     otherButton: '入去其他進階設定界面',

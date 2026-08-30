@@ -115,33 +115,19 @@
                         {{ opt.label }}
                       </option>
                     </select>
-                    <div v-else-if="field.type === 'file'" class="flex items-center gap-2">
-                      <input
-                        :id="field.key"
-                        :value="fieldModel(field).value ?? ''"
-                        type="text"
-                        readonly
-                        :placeholder="field.placeholder || field.label"
-                        class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200 flex-1"
-                      />
-                      <button
-                        type="button"
-                        class="px-3 py-2 rounded-xl border border-white/10 bg-white/10 text-white text-xs cursor-pointer hover:bg-white/20 transition-colors whitespace-nowrap"
-                        @click="pickFile(field)"
-                      >
-                        {{ t('settings.characterInfo.fields.pickFile') }}
-                      </button>
-                      <button
-                        v-if="fieldModel(field).value"
-                        type="button"
-                        class="px-3 py-2 rounded-xl border border-red-400/30 bg-red-500/15 text-red-200 text-xs cursor-pointer hover:bg-red-500/30 transition-colors whitespace-nowrap"
-                        @click="clearFile(field)"
-                      >
-                        {{ t('settings.characterInfo.fields.clearFile') }}
-                      </button>
-                    </div>
                 </div>
               </div>
+
+              <Live2DSettings
+                v-if="activeTab === 'live2d' && props.roleId"
+                v-model="localSettings.live2d"
+                :role-id="props.roleId"
+                :character-folder="localSettings.character_folder || ''"
+                :clothes="clothesList"
+                :scale="Number(localSettings.scale) || 1"
+                :offset-x="Number(localSettings.offset_x) || 0"
+                :offset-y="Number(localSettings.offset_y) || 0"
+              />
 
               <!-- Clothes Tab (custom UI, outside data-driven block) -->
               <div v-if="activeTab === 'clothes'" class="space-y-4">
@@ -261,7 +247,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   deleteCharacter as deleteCharacterApi,
@@ -269,17 +255,19 @@ import {
   updateRoleSettings,
 } from '../../../api/services/character'
 import { Icon } from '../../base'
+import Live2DSettings from '../character/Live2DSettings.vue'
 import { isSystemProtectedRole } from '@/constants/character'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import * as TtsLocal from '../../../api/services/tts/tts-local'
-import { open as openDialog } from '@tauri-apps/plugin-dialog'
 
 const props = defineProps<{
   visible: boolean
   roleId: number | null
   title?: string
+  /** 来源："game" 或提供该角色的插件 id（插件角色不可直接删除）。 */
+  source?: string | null
 }>()
 
 const emit = defineEmits(['close', 'saved'])
@@ -294,7 +282,6 @@ const uiStore = useUIStore()
 const gameStore = useGameStore()
 const localSettings = ref<any>({})
 const installedVoices = ref<TtsLocal.VoiceRecord[]>([])
-const sherpaModels = ref<TtsLocal.SherpaOnnxModelRecord[]>([])
 
 // 删除按钮可用性：系统保护角色 / 在场角色不可删
 const deleteState = computed(() => {
@@ -314,6 +301,12 @@ const deleteState = computed(() => {
 // 单次 confirm，三件全删（DB + 存档 + 记忆 + 物理文件），避免二次 confirm 三态歧义
 const handleDelete = async () => {
   if (!props.roleId || deleteState.value.disabled) return
+
+  // 插件角色不可直接删除：提示去插件设置里隐藏
+  if (props.source && props.source !== 'game') {
+    await dialogStore.alert(t('settings.characterInfo.delete.pluginFromPlugin'))
+    return
+  }
 
   const confirmed = await dialogStore.confirm(
     t('settings.characterInfo.delete.confirmMessage', { title: props.title ?? t('settings.characterInfo.delete.button') }),
@@ -357,27 +350,12 @@ async function refreshLocalVoices(): Promise<void> {
   }
 }
 
-async function refreshSherpaModels(): Promise<void> {
-  try {
-    sherpaModels.value = await TtsLocal.listSherpaModels()
-    const current = localSettings.value?.sherpa_onnx_model_name
-    if (current) {
-      const found = sherpaModels.value.find((m) => m.id === current)
-      if (found && found.path && !localSettings.value.sherpa_onnx_model_path) {
-        localSettings.value.sherpa_onnx_model_path = found.path
-      }
-    }
-  } catch (error) {
-    console.warn('refreshSherpaModels failed', error)
-    sherpaModels.value = []
-  }
-}
-
 const tabs = computed(() => [
   { id: 'basic', label: t('settings.characterInfo.tabs.basic') },
   { id: 'prompts', label: t('settings.characterInfo.tabs.prompts') },
   { id: 'visuals', label: t('settings.characterInfo.tabs.visuals') },
   { id: 'clothes', label: t('settings.characterInfo.tabs.clothes') },
+  { id: 'live2d', label: t('settings.characterInfo.tabs.live2d') },
   { id: 'pet', label: t('settings.characterInfo.tabs.pet') },
   { id: 'voice', label: t('settings.characterInfo.tabs.voice') },
 ])
@@ -400,7 +378,7 @@ const voiceModelKeys = [
 
 // --- Schema Definition ---
 
-type FieldType = 'text' | 'number' | 'textarea' | 'select' | 'file'
+type FieldType = 'text' | 'number' | 'textarea' | 'select'
 
 interface FieldOption {
   label: string
@@ -421,12 +399,6 @@ interface FieldSchema {
   visibleIf?: (settings: any) => boolean
   isVoiceModel?: boolean
   realtime?: boolean
-  // When true, the string value "true"/"false" is coerced to a real boolean
-  // on write (and rendered as a select). Usable for Option<bool> fields.
-  boolean?: boolean
-  // For type === 'file': restrict the picker to this MIME-ish group.
-  // 'audio' | 'image' | 'any'
-  fileKind?: string
   // When set, the field reads/writes into localSettings.value[parent][key].
   // The parent object is auto-initialised to {} on first write if missing.
   parent?: string
@@ -483,7 +455,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
         { label: t('settings.characterInfo.fields.fishS2'), value: 'fishs2' },
         { label: t('settings.characterInfo.fields.localSbv2Api'), value: 'localsbv2api' },
         { label: 'indextts2', value: 'indextts2' },
-        { label: 'sherpa-onnx', value: 'sherpa-onnx' },
       ],
     },
 
@@ -704,105 +675,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       placeholder: t('settings.characterInfo.fields.openttsVoicePlaceholder'),
       visibleIf: (s) => s.tts_type === 'opentts',
     },
-
-    // --- Sherpa-ONNX ---
-    {
-      key: 'sherpa_onnx_model_name',
-      label: t('settings.characterInfo.fields.sherpaOnnxModelName'),
-      type: 'select',
-      realtime: true,
-      dynamicOptions: () =>
-        sherpaModels.value.length === 0
-          ? [{ label: t('settings.characterInfo.fields.noSherpaModel'), value: '' }]
-          : sherpaModels.value.map((m) => ({
-              label: m.installed
-                ? `${m.display_name} (${m.id})`
-                : `${m.display_name} (${m.id}) - ${t('settings.characterInfo.fields.notInstalled')}`,
-              value: m.id,
-            })),
-      visibleIf: (s) => s.tts_type === 'sherpa-onnx',
-    },
-    {
-      key: 'sherpa_onnx_model_path',
-      label: t('settings.characterInfo.fields.sherpaOnnxModelPath'),
-      type: 'text',
-      visibleIf: (s) => s.tts_type === 'sherpa-onnx',
-    },
-    {
-      key: 'sherpa_onnx_model_type',
-      label: t('settings.characterInfo.fields.sherpaOnnxModelType'),
-      type: 'select',
-      options: [
-        { label: 'VITS', value: 'vits' },
-        { label: 'FastSpeech2', value: 'fastspeech2' },
-        { label: 'Tortoise', value: 'tortoise' },
-        { label: 'Matcha-TTS', value: 'matcha' },
-      ],
-      visibleIf: (s) => s.tts_type === 'sherpa-onnx',
-    },
-    {
-      key: 'sherpa_onnx_voice',
-      label: t('settings.characterInfo.fields.sherpaOnnxVoice'),
-      type: 'select',
-      options: [
-        { label: t('settings.characterInfo.fields.sherpaOnnxVoicesFemale'), value: 'female' },
-        { label: t('settings.characterInfo.fields.sherpaOnnxVoicesMale'), value: 'male' },
-        { label: t('settings.characterInfo.fields.sherpaOnnxVoicesChild'), value: 'child' },
-        { label: t('settings.characterInfo.fields.sherpaOnnxVoicesElderly'), value: 'elderly' },
-      ],
-      visibleIf: (s) => s.tts_type === 'sherpa-onnx',
-    },
-    {
-      key: 'sherpa_onnx_lang',
-      label: t('settings.characterInfo.fields.sherpaOnnxLanguage'),
-      type: 'select',
-      options: [
-        { label: '中文', value: 'zh' },
-        { label: 'English', value: 'en' },
-        { label: '日本語', value: 'ja' },
-        { label: '한국어', value: 'ko' },
-      ],
-      visibleIf: (s) => s.tts_type === 'sherpa-onnx',
-    },
-    {
-      key: 'sherpa_onnx_use_gpu',
-      label: t('settings.characterInfo.fields.sherpaOnnxUseGpu'),
-      type: 'select',
-      boolean: true,
-      options: [
-        { label: t('settings.shared.no'), value: 'false' },
-        { label: t('settings.shared.yes'), value: 'true' },
-      ],
-      visibleIf: (s) => s.tts_type === 'sherpa-onnx',
-    },
-    {
-      key: 'sherpa_onnx_speed',
-      label: t('settings.characterInfo.fields.sherpaOnnxSpeed'),
-      type: 'number',
-      step: '0.1',
-      visibleIf: (s) => s.tts_type === 'sherpa-onnx',
-    },
-    {
-      key: 'sherpa_onnx_pitch',
-      label: t('settings.characterInfo.fields.sherpaOnnxPitch'),
-      type: 'number',
-      step: '0.1',
-      visibleIf: (s) => s.tts_type === 'sherpa-onnx',
-    },
-    {
-      key: 'sherpa_onnx_ref_audio_path',
-      label: t('settings.characterInfo.fields.sherpaOnnxRefAudio'),
-      type: 'file',
-      fileKind: 'audio',
-      visibleIf: (s) => s.tts_type === 'sherpa-onnx',
-    },
-    {
-      key: 'sherpa_onnx_ref_text',
-      label: t('settings.characterInfo.fields.sherpaOnnxRefText'),
-      type: 'text',
-      placeholder: t('settings.characterInfo.fields.sherpaOnnxRefTextPlaceholder'),
-      visibleIf: (s) => s.tts_type === 'sherpa-onnx',
-    },
   ],
 }))
 
@@ -854,10 +726,7 @@ const fieldModel = (field: FieldSchema) => {
       return target[field.key]
     },
     set: (val: any) => {
-      let coerced = field.type === "number" ? Number(val) : val
-      if (field.boolean) {
-        coerced = val === true || val === "true"
-      }
+      const coerced = field.type === "number" ? Number(val) : val
       let target: any
       if (field.parent) {
         if (!localSettings.value[field.parent] || typeof localSettings.value[field.parent] !== "object") {
@@ -932,26 +801,8 @@ watch(
 watch(
   () => [props.visible, activeTab.value, localSettings.value.tts_type],
   ([visible, tab, ttsType]) => {
-    if (visible && tab === 'voice') {
-      if (ttsType === 'localsbv2api') {
-        void refreshLocalVoices()
-      } else if (ttsType === 'sherpa-onnx') {
-        void refreshSherpaModels()
-      }
-    }
-  },
-)
-
-// 选中 Sherpa-ONNX 模型时自动回填模型路径（运行时依赖 model_name + model_path）
-watch(
-  () => localSettings.value?.sherpa_onnx_model_name,
-  (name) => {
-    if (!name) return
-    const found = sherpaModels.value.find((m) => m.id === name)
-    if (found && found.path) {
-      if (!localSettings.value.sherpa_onnx_model_path) {
-        localSettings.value.sherpa_onnx_model_path = found.path
-      }
+    if (visible && tab === 'voice' && ttsType === 'localsbv2api') {
+      void refreshLocalVoices()
     }
   },
 )
@@ -969,30 +820,6 @@ const clearRealtimeSaveTimer = () => {
 const handleClose = () => {
   clearRealtimeSaveTimer()
   emit('close')
-}
-
-const pickFile = async (field: FieldSchema) => {
-  if (!props.roleId) return
-  const isAudio = field.fileKind === 'audio'
-  try {
-    const selected = await openDialog({
-      multiple: false,
-      filters: isAudio
-        ? [{ name: 'Audio', extensions: ['wav', 'mp3', 'ogg', 'flac', 'm4a'] }]
-        : undefined,
-    })
-    if (selected) {
-      fieldModel(field).value = selected as string
-      if (field.realtime) handleFieldChange(field)
-    }
-  } catch (e) {
-    console.error(`选择 ${field.label} 失败:`, e)
-  }
-}
-
-const clearFile = (field: FieldSchema) => {
-  fieldModel(field).value = ''
-  if (field.realtime) handleFieldChange(field)
 }
 
 const handleFieldChange = (field: FieldSchema) => {
@@ -1020,6 +847,12 @@ const saveSettings = async () => {
   saving.value = true
   try {
     await updateRoleSettings(props.roleId, localSettings.value)
+    const runtimeRole = gameStore.gameRoles[props.roleId]
+    if (runtimeRole) {
+      runtimeRole.live2d = localSettings.value.live2d
+        ? structuredClone(toRaw(localSettings.value.live2d))
+        : null
+    }
     emit('saved')
     emit('close')
   } catch (e) {

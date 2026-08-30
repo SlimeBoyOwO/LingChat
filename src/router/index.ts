@@ -4,7 +4,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 // 为了性能，这里我们使用路由懒加载 (lazy-loading)
 // 这意味着 Credits.vue 组件只会在用户访问 /credit 路径时才会被加载
 const Credits = () => import('../components/views/Credits.vue')
-const CompanionMode = () => import('../components/views/CompanionMode.vue')
+const ComapionMode = () => import('../components/views/CompanionMode.vue')
 const MainMenu = () => import('../components/views/MainMenu.vue')
 const PetMode = () => import('../components/views/PetMode.vue')
 const Second = () => import('../components/views/Second.vue')
@@ -25,7 +25,7 @@ const routes = [
   {
     path: '/chat',
     name: 'LingChat',
-    component: CompanionMode,
+    component: ComapionMode,
   },
   {
     path: '/credit',

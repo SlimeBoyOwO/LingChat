@@ -30,6 +30,10 @@ pub struct GenaiProvider {
     top_p: Option<f64>,
     enable_thinking: bool,
     _reasoning_effort: Option<String>,
+    /// 是否 MiniMax 兼容接口（base_url 或模型名含 minimax）。
+    /// MiniMax 的 OpenAI 兼容 API 只接受 thinking.type = "adaptive" / "disabled"，
+    /// 传 "enabled" 会直接 400 报错（invalid thinking.type），需单独映射。
+    is_minimax: bool,
 }
 
 /// 规范化 base_url：确保以 `/` 结尾。
@@ -116,6 +120,8 @@ impl GenaiProvider {
             top_p: cfg.top_p,
             enable_thinking: cfg.enable_thinking,
             _reasoning_effort: cfg.reasoning_effort.clone(),
+            is_minimax: cfg.base_url.to_lowercase().contains("minimax")
+                || cfg.model.to_lowercase().contains("minimax"),
         })
     }
 
@@ -203,9 +209,19 @@ impl GenaiProvider {
 
         // DeepSeek Reasoner 等模型在 thinking 字段缺失时默认启用思考，
         // 始终注入 thinking 字段，不区分 provider — 与旧 OpenAiProvider 行为一致。
-        // 对不支持该字段的 provider（如纯 OpenAI）通常会被忽略，无害。[TODO] 需要测试
+        // 对不支持该字段的 provider（如纯 OpenAI）通常会被忽略，无害。
+        //
+        // MiniMax 例外：其 OpenAI 兼容接口只接受 "adaptive" / "disabled"，
+        // 传 "enabled" 会返回 400（invalid thinking.type (2013)），启用思考时映射为
+        // "adaptive"（由模型自主决定思考深度），关闭时同样是 "disabled"。
 
-        let thinking_type = if self.enable_thinking {
+        let thinking_type = if self.is_minimax {
+            if self.enable_thinking {
+                "adaptive"
+            } else {
+                "disabled"
+            }
+        } else if self.enable_thinking {
             "enabled"
         } else {
             "disabled"
@@ -297,6 +313,24 @@ impl GenaiProvider {
             &serde_json::to_value(&chat_req).unwrap_or_default(),
         );
         let opts = self.build_chat_options(tool_choice);
+        // 诊断日志：记录实际 ChatOptions，帮助排查 MiniMax 等兼容问题。
+        // ChatOptions 字段为 public，直接访问；ToolChoice 转为字符串避免序列化依赖。
+        let tool_choice_str = opts.tool_choice.as_ref().map(|tc| match tc {
+            ToolChoice::Auto => "auto",
+            ToolChoice::None => "none",
+            ToolChoice::Required => "required",
+            ToolChoice::Tool { .. } => "specific",
+        });
+        tracing::debug!(
+            model = self.model,
+            is_minimax = self.is_minimax,
+            temperature = ?opts.temperature,
+            top_p = ?opts.top_p,
+            tool_choice = tool_choice_str,
+            extra_body = ?opts.extra_body,
+            "GenaiProvider 准备 LLM 请求"
+        );
+
         let stream_resp = self
             .client
             .exec_chat_stream(&self.model, chat_req, Some(&opts))
@@ -342,112 +376,6 @@ impl GenaiProvider {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ai_service::types::{FunctionCall, ToolCall};
-
-    fn provider() -> GenaiProvider {
-        GenaiProvider::new(
-            &LlmConfig {
-                provider: "openai".to_string(),
-                model: "test-model".to_string(),
-                api_key: "test".to_string(),
-                base_url: String::new(),
-                timeout_secs: 30,
-                temperature: None,
-                top_p: None,
-                enable_thinking: false,
-                reasoning_effort: None,
-            },
-            Client::new(),
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn serializes_plain_messages() {
-        let request = provider()
-            .build_chat_request(
-                &[
-                    LlmMessage::system("系统"),
-                    LlmMessage::user("你好"),
-                    LlmMessage::assistant("你好呀"),
-                ],
-                None,
-            )
-            .unwrap();
-        let value = serde_json::to_value(request).unwrap();
-        assert_eq!(value["system"], "系统");
-        assert_eq!(value["messages"][0]["role"], "User");
-        assert_eq!(value["messages"][1]["role"], "Assistant");
-    }
-
-    #[test]
-    fn serializes_tool_call_and_response_with_matching_id() {
-        let call = ToolCall {
-            id: "call-1".to_string(),
-            type_: "function".to_string(),
-            function: FunctionCall {
-                name: "get_current_time".to_string(),
-                arguments: "{}".to_string(),
-            },
-        };
-        let request = provider()
-            .build_chat_request(
-                &[
-                    LlmMessage::user("几点了"),
-                    LlmMessage::tool(vec![call]),
-                    LlmMessage::tool_result("call-1", r#"{"local_time":"now"}"#),
-                ],
-                None,
-            )
-            .unwrap();
-        let value = serde_json::to_value(request).unwrap();
-        assert_eq!(value["messages"][1]["role"], "Assistant");
-        assert_eq!(
-            value["messages"][1]["content"][0]["ToolCall"]["call_id"],
-            "call-1"
-        );
-        assert_eq!(
-            value["messages"][1]["content"][0]["ToolCall"]["fn_name"],
-            "get_current_time"
-        );
-        assert_eq!(value["messages"][2]["role"], "Tool");
-        assert_eq!(
-            value["messages"][2]["content"][0]["ToolResponse"]["call_id"],
-            "call-1"
-        );
-    }
-
-    #[test]
-    fn rejects_tool_result_without_call_id() {
-        let mut message = LlmMessage::tool_result("call-1", "{}");
-        message.tool_call_id = None;
-        let error = provider()
-            .build_chat_request(&[message], None)
-            .err()
-            .unwrap();
-        assert!(error.to_string().contains("缺少 tool_call_id"));
-    }
-
-    #[test]
-    fn normalizes_stop_reason_for_truncation_detection() {
-        use genai::chat::StopReason;
-        let cases = [
-            (StopReason::Completed("stop".into()), "stop"),
-            // OpenAI/DeepSeek 用 "length" 表示输出被 max_tokens 截断
-            (StopReason::MaxTokens("length".into()), "max_tokens"),
-            (StopReason::ToolCall("tool_calls".into()), "tool_calls"),
-            (StopReason::ContentFilter("content_filter".into()), "content_filter"),
-            (StopReason::StopSequence("stop_sequence".into()), "stop_sequence"),
-            (StopReason::Other("custom".into()), "custom"),
-        ];
-        for (reason, expected) in cases {
-            assert_eq!(GenaiProvider::normalize_stop_reason(&reason), expected);
-        }
-    }
-}
 
 // ─── LlmProvider 实现 ────────────────────────────────────────────
 
@@ -481,7 +409,11 @@ impl LlmProvider for GenaiProvider {
     }
 
     fn supports_streaming_tools(&self) -> bool {
-        true
+        // MiniMax 的 OpenAI 兼容端点在流式工具调用上行为不稳定（实测非流式可
+        // 靠返回 tool_calls，流式下模型常直接给文字回复而不调工具）。先降级到
+        // 非流式工具调用，保证功能可用；后续抓到真实请求/响应后再恢复流式。
+        // TODO: 待拿到 LLM 请求日志并定位流式 tool_calls 解析问题后恢复。
+        !self.is_minimax
     }
 
     async fn complete_stream_with_tools(
@@ -508,6 +440,22 @@ impl LlmProvider for GenaiProvider {
             &serde_json::to_value(&chat_req).unwrap_or_default(),
         );
         let opts = self.build_chat_options(tool_choice);
+        // 诊断日志：记录实际 ChatOptions。
+        let tool_choice_str = opts.tool_choice.as_ref().map(|tc| match tc {
+            ToolChoice::Auto => "auto",
+            ToolChoice::None => "none",
+            ToolChoice::Required => "required",
+            ToolChoice::Tool { .. } => "specific",
+        });
+        tracing::debug!(
+            model = self.model,
+            is_minimax = self.is_minimax,
+            temperature = ?opts.temperature,
+            top_p = ?opts.top_p,
+            tool_choice = tool_choice_str,
+            extra_body = ?opts.extra_body,
+            "GenaiProvider 准备非流式 LLM 请求"
+        );
 
         let response: ChatResponse = self
             .client

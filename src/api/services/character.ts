@@ -1,7 +1,18 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Character } from '../../types'
+import http from '../http'
+import type { Character, CharacterSelectParams } from '../../types'
 import type { WebInitData } from './game-info'
+import type { Live2dImportResult, Live2dSettings } from '@/types/live2d'
 import { i18n } from '@/locales'
+
+interface CharacterSelectResponse {
+  success: boolean
+  character: {
+    id: number
+    title: string
+    folder_name: string
+  }
+}
 
 export interface CharacterPageResult {
   items: Character[]
@@ -20,6 +31,17 @@ export const characterGetAll = async (
     return data as CharacterPageResult
   } catch (error: any) {
     throw new Error(typeof error === 'string' ? error : i18n.global.t('api.character.getListFailed'))
+  }
+}
+
+export const characterSelect = async (
+  params: CharacterSelectParams,
+): Promise<CharacterSelectResponse> => {
+  try {
+    const response = await http.post('/v1/chat/character/select_character', params)
+    return response
+  } catch (error: any) {
+    throw new Error(error.response?.data?.detail || i18n.global.t('api.character.selectFailed'))
   }
 }
 
@@ -49,6 +71,7 @@ export interface RoleInfo {
   clothes: object
   clothes_name: string
   body_part: object
+  live2d?: Live2dSettings | null
   character_folder: string
 }
 
@@ -76,57 +99,6 @@ export const updateRoleSettings = async (roleId: number, settings: any): Promise
     return await invoke('update_role_settings', { roleId, settings })
   } catch (error: any) {
     throw new Error(typeof error === 'string' ? error : i18n.global.t('api.character.updateSettingsFailed'))
-  }
-}
-
-export interface SelectClothesResponse {
-  success: boolean
-  message: string
-}
-
-export const selectClothes = async (
-  roleId: number,
-  clothesName: string,
-): Promise<SelectClothesResponse> => {
-  try {
-    const data = await invoke('select_clothes', { roleId, clothesName })
-    console.log(data)
-    return data as SelectClothesResponse
-  } catch (error: any) {
-    throw new Error(typeof error === 'string' ? error : i18n.global.t('api.character.selectClothesFailed'))
-  }
-}
-
-/** 获取角色资源文件的绝对路径（供 convertFileSrc 使用） */
-export const getCharacterFilePath = async (filePath: string): Promise<string> => {
-  return invoke('get_character_file', { filePath })
-}
-
-export const getAvatarFile = async (
-  characterFolder: string,
-  clothesName: string,
-): Promise<string> => {
-  return invoke('get_avatar_file', { characterFolder, emotion: '头像', clothesName })
-}
-
-// ========== 角色删除 ==========
-
-/**
- * 删除一个 main 类型角色。
- * @param roleId 要删除的角色 ID
- * @param deleteResourceFolder 是否同时删除物理资源目录 game_data/characters/{folder}
- */
-export const deleteCharacter = async (
-  roleId: number,
-  deleteResourceFolder: boolean,
-): Promise<void> => {
-  try {
-    await invoke('delete_character', {
-      roleId,
-      deleteResourceFolder,
-    })
-  } catch (error: any) {
-    throw new Error(typeof error === 'string' ? error : '删除角色失败')
   }
 }
 
@@ -165,5 +137,72 @@ export async function createCharacter(
     throw new Error(
       typeof error === 'string' ? error : error?.message || '创建角色失败',
     )
+  }
+}
+
+export interface SelectClothesResponse {
+  success: boolean
+  message: string
+}
+
+export const selectClothes = async (
+  roleId: number,
+  clothesName: string,
+): Promise<SelectClothesResponse> => {
+  try {
+    const data = await invoke('select_clothes', { roleId, clothesName })
+    console.log(data)
+    return data as SelectClothesResponse
+  } catch (error: any) {
+    throw new Error(typeof error === 'string' ? error : i18n.global.t('api.character.selectClothesFailed'))
+  }
+}
+
+export const importLive2d = async (
+  roleId: number,
+  sourcePath: string,
+  sourceKind: 'directory' | 'zip',
+): Promise<Live2dImportResult> => {
+  return invoke<Live2dImportResult>('import_live2d', { roleId, sourcePath, sourceKind })
+}
+
+export const inspectLive2d = async (roleId: number): Promise<Live2dImportResult> => {
+  return invoke<Live2dImportResult>('inspect_live2d', { roleId })
+}
+
+export const getLive2dFilePath = async (roleId: number, filePath: string): Promise<string> => {
+  return invoke<string>('get_live2d_file', { roleId, filePath })
+}
+
+/** 获取角色资源文件的绝对路径（供 convertFileSrc 使用） */
+export const getCharacterFilePath = async (filePath: string): Promise<string> => {
+  return invoke('get_character_file', { filePath })
+}
+
+export const getAvatarFile = async (
+  characterFolder: string,
+  clothesName: string,
+): Promise<string> => {
+  return invoke('get_avatar_file', { characterFolder, emotion: '头像', clothesName })
+}
+
+// ========== 角色删除 ==========
+
+/**
+ * 删除一个 main 类型角色。
+ * @param roleId 要删除的角色 ID
+ * @param deleteResourceFolder 是否同时删除物理资源目录 game_data/characters/{folder}
+ */
+export const deleteCharacter = async (
+  roleId: number,
+  deleteResourceFolder: boolean,
+): Promise<void> => {
+  try {
+    await invoke('delete_character', {
+      roleId,
+      deleteResourceFolder,
+    })
+  } catch (error: any) {
+    throw new Error(typeof error === 'string' ? error : '删除角色失败')
   }
 }

@@ -7,8 +7,36 @@
 ```
 data/plugins/<id>/
 ├── manifest.toml   # 插件声明（必须）
-└── <脚本文件>.py    # 工具处理脚本（manifest 里声明）
+├── <脚本文件>.py    # 工具处理脚本（manifest 里声明）
+└── 资源子目录（可选）# 见「插件携带资源」：characters / scripts / musics / backgrounds / ambients
 ```
+
+## 打包与导入
+
+除了手工把目录放进 `data/plugins/<id>/`，也可以在 **设置 → 插件 → 从压缩包导入插件** 直接导入 `.zip` / `.7z`。压缩包只接受两种结构：
+
+```
+plugin.zip                  plugin.zip
+├── manifest.toml           └── my-plugin/     ← 只允许套这一层
+├── tavily.py                   ├── manifest.toml
+└── characters/...              ├── tavily.py
+    （形式 A：根即插件）          └── characters/...
+                                    （形式 B：套一层文件夹）
+```
+
+其余结构一律判为非法并中止导入（不落盘、不清空同名插件），例如：`manifest.toml` 埋在两层文件夹以下、压缩包内并列多个插件目录、根目录既有散落文件（`README.md` 之类）又套了一层插件文件夹。
+
+导入时的硬性校验：
+
+- 必须有 `manifest.toml`，且能被后端按现有 schema 解析（缺字段、多未知字段、TOML 语法错都算失败）
+- `id` 只允许字母、数字、`_`、`-`（它同时是**落地目录名**，见下）
+- `[[tools]]` 声明的每个 `script` 必须在包里真实存在
+- `resources` 声明了某类资源但对应子目录不存在 → **允许**（视作该插件这次没带这类资源）
+
+两点与角色导入不同的行为值得注意：
+
+1. **目录名取 `manifest.id`，不取压缩包文件名**。因为后端强制 `manifest.id == 目录名`，改名会让插件加载失败，所以同名冲突只有「覆盖」与「放弃」两种选择，没有自动改名。
+2. **导入后插件默认是关闭的**，需要在插件页手动开启（压缩包会跑沙箱脚本、也会往角色/剧本/场景里注入资源）。选「覆盖」时旧插件连同它的配置与启用状态一起被清除，等同于全新安装。
 
 ## manifest.toml
 
@@ -42,6 +70,39 @@ script = "tavily.py"
 # JSON Schema，必须是合法的 JSON 字符串，描述 LLM 需要的参数
 parameters = '{ "type":"object", "properties":{ "query":{"type":"string"}, "max_results":{"type":"integer","default":5} }, "required":["query"] }'
 ```
+
+## 插件携带资源（人物 / 剧本 / 音乐 / 背景图 / 环境音）
+
+除了工具，插件还可以携带内容资源，直接混入游戏对应列表并带「插件」来源角标。
+在 `manifest.toml` 顶层声明支持哪些资源类型（`resources` 数组，可省略；省略即纯工具插件）：
+
+```toml
+resources = ["characters", "scripts", "musics", "backgrounds", "ambients"]
+```
+
+资源目录与游戏目录**同名同构**，放在插件目录下，运行时**直读、不复制**：
+
+```
+data/plugins/<id>/
+├── characters/<角色文件夹>/{settings.yml, avatar/头像.webp, avatar/<情绪>.webp, ...}
+├── scripts/…               # 与 game_data/scripts 相同三种布局（character/ standalone/ 平铺）
+├── musics/*.mp3
+├── backgrounds/*.webp
+└── ambients/*.mp3
+```
+
+- 角色文件夹内部结构与 `game_data/characters/` 完全一致；剧本内部结构与 `game_data/scripts/` 一致
+  （资源只认剧本自己的 `Assets/`，插件根目录不参与全局兜底）。
+- 一个插件可以**没有工具、只有资源**（此时 `[[tools]]` 可整体省略）。
+
+### 冲突与玩家操作
+
+- **同名冲突**：插件资源与游戏现有资源同名（角色按文件夹名、剧本按 `script_name`、图/音按文件名）
+  → 默认使用游戏版，插件版隐藏，插件管理页标「冲突」。插件之间同名 → 先注册者（id 序）赢。
+- 玩家在「设置 · 插件」的资源区可对单条资源：**隐藏**（软删除，列表不再显示、文件保留）、**恢复**、
+  **保留**（复制到游戏目录成为游戏自有资源，复制后插件版自动隐藏）。
+- 删除插件只删插件本体，已「保留」到游戏目录的资源不受影响。
+- 插件人物会入库，可像普通角色一样完整对话、换装、加入场景；插件被禁用 / 删除时其角色自动从列表移除。
 
 ## 脚本结构
 

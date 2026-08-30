@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    evaluate_condition, parse_duration, register_event, ScriptContext, ScriptEvent,
+    evaluate_condition, register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::utils::script_function::match_ai_response_options;
 use crate::ai_service::llm::LlmClient;
@@ -24,8 +24,6 @@ pub struct ChapterEndEvent {
     next_chapter: Option<String>,
     options: Vec<Value>,
     prompt: Option<String>,
-    #[allow(dead_code)]
-    duration: Option<f64>,
 }
 
 impl ChapterEndEvent {
@@ -53,7 +51,6 @@ impl ChapterEndEvent {
                 .get("prompt")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
-            duration: parse_duration(data),
         }
     }
 }
@@ -133,10 +130,6 @@ impl ScriptEvent for ChapterEndEvent {
 
     fn event_type() -> &'static str {
         "chapter_end"
-    }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
     }
 }
 

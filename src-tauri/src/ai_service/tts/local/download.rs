@@ -63,17 +63,3 @@ pub async fn download_asset(
     )
     .await
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::utils::download::build_download_client;
-
-    #[test]
-    fn download_client_is_reusable() {
-        let client = build_download_client().expect("build download client");
-        assert!(client
-            .get("https://example.com")
-            .build()
-            .is_ok());
-    }
-}

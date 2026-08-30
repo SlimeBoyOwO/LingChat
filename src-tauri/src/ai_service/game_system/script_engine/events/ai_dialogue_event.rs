@@ -6,7 +6,7 @@ use serde_json::Value;
 use tauri::Manager;
 
 use crate::ai_service::game_system::script_engine::events::{
-    parse_duration, register_event, ScriptContext, ScriptEvent,
+    register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::utils::script_function;
 use crate::ai_service::message_system::generator::{
@@ -20,8 +20,6 @@ use crate::AppState;
 pub struct AIDialogueEvent {
     character: String,
     prompt: Option<String>,
-    #[allow(dead_code)]
-    duration: Option<f64>,
 }
 
 impl AIDialogueEvent {
@@ -36,7 +34,6 @@ impl AIDialogueEvent {
                 .get("prompt")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
-            duration: parse_duration(data),
         }
     }
 }
@@ -121,10 +118,6 @@ impl ScriptEvent for AIDialogueEvent {
 
     fn event_type() -> &'static str {
         "ai_dialogue"
-    }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
     }
 }
 

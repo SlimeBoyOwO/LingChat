@@ -47,12 +47,14 @@ const DEFAULT_PARALLAX_CONFIG: ParallaxConfig = {
 export function useParallaxAnimation(
   elements: ParallaxElements,
   config: Partial<ParallaxConfig> = {},
+  enabledRef?: Ref<boolean>,
 ) {
   // 合并默认配置
   const PARALLAX_CONFIG: ParallaxConfig = {
     ...DEFAULT_PARALLAX_CONFIG,
     ...config,
   }
+  const isEnabled = () => (enabledRef ? enabledRef.value : true)
 
   // 视差动画状态
   let targetOffsetX = 0
@@ -140,8 +142,8 @@ export function useParallaxAnimation(
    * - 页面不可见时暂停
    */
   function parallaxLoop() {
-    // 页面可见性检查
-    if (!isPageVisible) {
+    // 暂停态或页面不可见时停止
+    if (!isEnabled() || !isPageVisible) {
       isParallaxRunning = false
       parallaxRafId = null
       return
@@ -178,6 +180,7 @@ export function useParallaxAnimation(
    * 启动视差动画（如果尚未运行）
    */
   function startParallaxIfNeeded() {
+    if (!isEnabled()) return
     if (!isParallaxRunning && isPageVisible) {
       isParallaxRunning = true
       parallaxLoop()
@@ -200,6 +203,7 @@ export function useParallaxAnimation(
    * 节流的鼠标移动处理
    */
   function handleMouseMove(e: MouseEvent) {
+    if (!isEnabled()) return
     // 节流处理
     const now = performance.now()
     if (now - lastMouseMoveTime < PARALLAX_CONFIG.THROTTLE_DELAY) {
@@ -215,6 +219,7 @@ export function useParallaxAnimation(
   }
 
   function handleMouseLeave() {
+    if (!isEnabled()) return
     targetOffsetX = 0
     targetOffsetY = 0
     startParallaxIfNeeded()

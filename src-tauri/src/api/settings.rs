@@ -11,17 +11,42 @@ use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::ai_service::god_agent::config::resolve_god_agent_provider;
+use crate::ai_service::llm::error::LlmErrorPayload;
 use crate::ai_service::llm::provider_config::{
     build_llm_client_from_provider, load_providers, load_role_assignment, resolve_chat_provider,
     resolve_translate_provider, save_providers, save_role_assignment, LlmProviderConfig,
     LlmProvidersResponse,
 };
 use crate::ai_service::llm::LlmModelInfo;
-use crate::config::app_config::{MAX_LLM_TIMEOUT_SECS, MIN_LLM_TIMEOUT_SECS};
+use crate::config::app_config::{
+    MAX_LLM_TIMEOUT_SECS, MAX_MEMORY_RECENT_WINDOW, MAX_MEMORY_SECTION_CHARS,
+    MAX_MEMORY_UPDATE_INTERVAL, MIN_LLM_TIMEOUT_SECS, MIN_MEMORY_UPDATE_INTERVAL,
+};
 use crate::config::{self, keys, ConfigSetting, ConfigTree};
 use crate::AppState;
 
 // ========== Settings CRUD ==========
+
+fn validate_u32_setting(
+    values: &BTreeMap<String, String>,
+    key: &str,
+    label: &str,
+    min: u32,
+    max: u32,
+) -> Result<(), String> {
+    let Some(raw) = values.get(key) else {
+        return Ok(());
+    };
+    let value = raw
+        .parse::<u64>()
+        .ok()
+        .and_then(|number| u32::try_from(number).ok())
+        .ok_or_else(|| format!("{label} 必须是 0–{max} 范围内的整数"))?;
+    if !(min..=max).contains(&value) {
+        return Err(format!("{label} 必须在 {min}–{max} 之间"));
+    }
+    Ok(())
+}
 
 #[tauri::command]
 pub fn get_settings_tree(app: AppHandle) -> ConfigTree {
@@ -40,6 +65,42 @@ pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result
             ));
         }
     }
+
+    validate_u32_setting(
+        &values,
+        keys::MEMORY_UPDATE_INTERVAL,
+        "记忆压缩触发条数",
+        MIN_MEMORY_UPDATE_INTERVAL,
+        MAX_MEMORY_UPDATE_INTERVAL,
+    )?;
+    validate_u32_setting(
+        &values,
+        keys::MEMORY_RECENT_WINDOW,
+        "记忆最近窗口",
+        0,
+        MAX_MEMORY_RECENT_WINDOW,
+    )?;
+    for (key, label) in [
+        (keys::MEMORY_SHORT_TERM_MAX_CHARS, "短期记忆长度上限"),
+        (keys::MEMORY_LONG_TERM_MAX_CHARS, "长期记忆长度上限"),
+        (keys::MEMORY_USER_INFO_MAX_CHARS, "用户信息长度上限"),
+        (keys::MEMORY_PROMISES_MAX_CHARS, "约定长度上限"),
+    ] {
+        validate_u32_setting(&values, key, label, 0, MAX_MEMORY_SECTION_CHARS)?;
+    }
+
+    let memory_settings_changed = values.keys().any(|key| {
+        matches!(
+            key.as_str(),
+            keys::USE_PERSISTENT_MEMORY
+                | keys::MEMORY_UPDATE_INTERVAL
+                | keys::MEMORY_RECENT_WINDOW
+                | keys::MEMORY_SHORT_TERM_MAX_CHARS
+                | keys::MEMORY_LONG_TERM_MAX_CHARS
+                | keys::MEMORY_USER_INFO_MAX_CHARS
+                | keys::MEMORY_PROMISES_MAX_CHARS
+        )
+    });
 
     let store = config::settings_store(&app).map_err(|e| e.to_string())?;
 
@@ -64,7 +125,11 @@ pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result
 
     store.save().map_err(|e| e.to_string())?;
 
-    Ok("配置已成功保存并已生效！".to_string())
+    if memory_settings_changed {
+        Ok("配置已成功保存；记忆压缩相关设置将在重启 LingChat 后生效。".to_string())
+    } else {
+        Ok("配置已成功保存并已生效！".to_string())
+    }
 }
 
 #[tauri::command]
@@ -226,9 +291,12 @@ pub async fn test_llm_provider(
     app: AppHandle,
     provider: LlmProviderConfig,
     message: String,
-) -> Result<String, String> {
+) -> Result<String, LlmErrorPayload> {
     let Some(client) = build_llm_client_from_provider(&app, &provider) else {
-        return Err("无法创建 LLM 客户端：请检查 API Key 和模型名称".to_string());
+        return Err(LlmErrorPayload::new(
+            "invalid_config",
+            "无法创建 LLM 客户端：请检查 API Key 和模型名称",
+        ));
     };
 
     let messages = vec![
@@ -241,20 +309,97 @@ pub async fn test_llm_provider(
     client
         .complete(&messages)
         .await
-        .map_err(|e| format!("测试请求失败: {e}"))
+        .map_err(|e| {
+            let info = crate::ai_service::llm::error::classify_llm_error(&e);
+            tracing::error!(
+                error_code = info.code,
+                "LLM 测试请求失败: {}",
+                format!("{e:#}")
+            );
+            info.into()
+        })
 }
 
 #[tauri::command]
 pub async fn list_llm_models(
     app: AppHandle,
     provider: LlmProviderConfig,
-) -> Result<Vec<LlmModelInfo>, String> {
+) -> Result<Vec<LlmModelInfo>, LlmErrorPayload> {
     let Some(client) = build_llm_client_from_provider(&app, &provider) else {
-        return Err("无法创建 LLM 客户端，请检查 API Key 和模型名称".to_string());
+        return Err(LlmErrorPayload::new(
+            "invalid_config",
+            "无法创建 LLM 客户端，请检查模型名称（API Key 可为空）",
+        ));
     };
 
     client
         .list_models()
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|e| {
+            let info = crate::ai_service::llm::error::classify_llm_error(&e);
+            tracing::error!(
+                error_code = info.code,
+                "LLM 拉取模型失败: {}",
+                format!("{e:#}")
+            );
+            info.into()
+        })
+}
+
+/// 设置「HDR 模式」开关（仅 Windows）。
+///
+/// 持久化到 settings.json 的 `display.hdr_mode_enabled`，下次启动时由
+/// `lib.rs::read_hdr_mode_enabled` 读取，决定是否强制 WebView2 色彩配置：
+/// - 开启 → 不强制（WebView2 自动色彩管理，正确适配 HDR）
+/// - 关闭 → 强制 `--force-color-profile=scrgb-linear`（现状）
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn set_hdr_mode(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let store = crate::config::settings_store(&app).map_err(|e| e.to_string())?;
+    store.set(
+        crate::config::keys::HDR_MODE_ENABLED.to_string(),
+        serde_json::Value::Bool(enabled),
+    );
+    store.save().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod memory_setting_validation_tests {
+    use super::validate_u32_setting;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn rejects_overflow_negative_and_out_of_range_values() {
+        for raw in ["4294967296", "-1", "0"] {
+            let values = BTreeMap::from([("memory".to_string(), raw.to_string())]);
+            assert!(validate_u32_setting(&values, "memory", "memory", 1, 10_000).is_err());
+        }
+    }
+
+    #[test]
+    fn zero_min_accepts_zero_and_rejects_invalid_large_values() {
+        let zero = BTreeMap::from([("memory".to_string(), "0".to_string())]);
+        assert!(validate_u32_setting(&zero, "memory", "memory", 0, 10_000).is_ok());
+        for raw in ["10001", "18446744073709551615", "not-a-number"] {
+            let values = BTreeMap::from([("memory".to_string(), raw.to_string())]);
+            assert!(validate_u32_setting(&values, "memory", "memory", 0, 10_000).is_err());
+        }
+    }
+
+    #[test]
+    fn accepts_valid_boundaries_and_missing_values() {
+        for raw in ["1", "10000"] {
+            let values = BTreeMap::from([("memory".to_string(), raw.to_string())]);
+            assert!(validate_u32_setting(&values, "memory", "memory", 1, 10_000).is_ok());
+        }
+        assert!(validate_u32_setting(
+            &BTreeMap::new(),
+            "memory",
+            "memory",
+            1,
+            10_000,
+        )
+        .is_ok());
+    }
 }

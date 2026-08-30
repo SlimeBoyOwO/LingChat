@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 
 use crate::ai_service::config::AIServiceConfig;
 use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
 use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::ai_service::llm::LlmSlot;
@@ -57,6 +58,7 @@ impl AIService {
         use_persistent_memory: bool,
         memory_update_interval: u32,
         memory_recent_window: u32,
+        memory_limits: MemorySectionLimits,
     ) -> Self {
         // Initialize the event handler registry before any script is run
         crate::ai_service::game_system::script_engine::init_event_registry();
@@ -69,6 +71,7 @@ impl AIService {
             use_persistent_memory,
             memory_update_interval,
             memory_recent_window,
+            memory_limits,
         );
         let game_status = Arc::new(Mutex::new(GameStatus::new(role_manager)));
         let script_manager = ScriptManager::new(&data_dir);
@@ -145,6 +148,7 @@ impl AIService {
 
     pub async fn init_game_status(&mut self) -> Result<()> {
         let mut gs = self.game_status.lock().await;
+        gs.role_manager.invalidate_memory_history();
         gs.role_manager.reset_roles();
         gs.line_list.clear();
         gs.onstage_role_ids.clear();
@@ -199,6 +203,7 @@ impl AIService {
     ) -> Result<()> {
         {
             let mut gs = self.game_status.lock().await;
+            gs.role_manager.invalidate_memory_history();
             gs.line_list = lines;
             if let Some(sid) = save_id {
                 gs.active_save_id = Some(sid);
@@ -235,6 +240,7 @@ impl AIService {
     /// 轻量清理：只清空台词 + 主角短期记忆，NPC 记忆保留。
     pub async fn clear_lines(&mut self) -> Result<()> {
         let mut gs = self.game_status.lock().await;
+        gs.role_manager.invalidate_memory_history();
         gs.line_list.clear();
 
         let system_line = LineBase {

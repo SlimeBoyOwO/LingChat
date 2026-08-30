@@ -92,7 +92,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 
@@ -146,13 +146,6 @@ watch(
   },
   { immediate: true },
 )
-
-onUnmounted(() => {
-  if (animationTimeout) {
-    clearTimeout(animationTimeout)
-    animationTimeout = null
-  }
-})
 
 // === JS 生命周期钩子：实现丝滑的高斯模糊缩放淡入淡出 ===
 

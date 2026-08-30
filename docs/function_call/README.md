@@ -37,7 +37,7 @@ PR #523 的目标：
 | 文档 | 内容 |
 |---|---|
 | [architecture.md](architecture.md) | **实现思路**：tools 模块分层、核心类型、工具循环机制、LLM Provider 层的工具支持、接入点（`GeneratorSource` / `GeneratorDeps` / `run_pipeline`） |
-| [extension.md](extension.md) | **如何扩展新的工具函数**：`Tool` trait、实现步骤、注册、权限配置、错误与参数规范、测试 |
+| [extension.md](extension.md) | **如何扩展新的工具函数**：`Tool` trait、实现步骤、注册、权限配置、错误与参数规范 |
 | [permission.md](permission.md) | **工具权限管理**：「场景组 × 角色组」二维矩阵、`tool_permissions.toml`、默认配置、`allowed_tools` 计算逻辑 |
 | [memory.md](memory.md) | **记忆的存储与提取、AI 记忆构建**：台词表联合、`MemoryBuilder` 还原、`role.memory` 生命周期、完整闭环 |
 
@@ -51,7 +51,7 @@ PR #523 的目标：
 | [diagrams/tool-loop.html](diagrams/tool-loop.html) | 工具循环时序图：`stream_with_tool_loop` 的多轮「流式请求 → 工具调用 → 执行 → 回填」 |
 | [diagrams/permission.html](diagrams/permission.html) | 权限模型图：「场景组 × 角色组」矩阵、`tool_permissions.toml` 结构、`allowed_tools` 决策流程 |
 | [diagrams/memory.html](diagrams/memory.html) | 记忆构建数据流图：台词表 → MemoryBuilder → role.memory → LLM 上下文 → 写回台词表 |
-| [diagrams/extend.html](diagrams/extend.html) | 扩展新工具步骤流程图：实现 trait → 注册 → 配置权限 → 测试 |
+| [diagrams/extend.html](diagrams/extend.html) | 扩展新工具步骤流程图：实现 trait → 注册 → 配置权限 → 构建检查 |
 
 ## 关键代码位置
 

@@ -1,14 +1,16 @@
 import { invoke } from '@tauri-apps/api/core'
+import type { ArchiveImportResult, ArchiveFormat, ConflictPolicy } from './archive'
 
-export type ArchiveFormat = 'zip' | '7z'
-export type ConflictPolicy = 'rename' | 'skip' | 'overwrite'
+export type {
+  ArchiveFormat,
+  ConflictPolicy,
+  EntryEvent,
+  ImportStartedEvent,
+} from './archive'
 
-export interface ImportResult {
+export interface ImportResult extends ArchiveImportResult {
   role_id: number | null
   role_name: string
-  conflict_action: string
-  warnings: string[]
-  bytes_extracted: number
 }
 
 export interface ExportResult {
@@ -17,32 +19,17 @@ export interface ExportResult {
   size_bytes: number
 }
 
-// 后端 import_role / import_role_from_path 在生成 task_id 后立刻 emit 此事件，前端用来绑定取消按钮。
-export interface RoleImportStartedEvent {
-  task_id: string
-}
-
-export interface EntryEvent {
-  phase: 'started' | 'entry' | 'finished' | 'error'
-  index: number
-  total: number
-  name: string
-  bytes_done: number
-  bytes_total: number
-  bytes_entry: number
-}
-
 // 保留字节导入接口，供已经在内存中持有压缩包数据的调用方使用。
 export async function importRole(params: {
   bytes: number[] | Uint8Array
-  format: ArchiveFormat
+  format?: ArchiveFormat  // 可选；后端用 magic 裁决
   conflict: ConflictPolicy
   fileName?: string
 }): Promise<ImportResult> {
   const bytes = params.bytes instanceof Uint8Array ? Array.from(params.bytes) : params.bytes
   return invoke<ImportResult>('import_role', {
     bytes,
-    format: params.format,
+    format: params.format ?? null,
     conflict: params.conflict,
     fileName: params.fileName ?? null,
   })
@@ -51,13 +38,13 @@ export async function importRole(params: {
 // 推荐的导入接口：支持桌面文件路径和 Android SAF 内容 URI。
 export async function importRoleFromPath(params: {
   path: string
-  format: ArchiveFormat
+  format?: ArchiveFormat  // 可选；后端用 magic 裁决
   conflict: ConflictPolicy
   fileName?: string
 }): Promise<ImportResult> {
   return invoke<ImportResult>('import_role_from_path', {
     path: params.path,
-    format: params.format,
+    format: params.format ?? null,
     conflict: params.conflict,
     fileName: params.fileName ?? null,
   })

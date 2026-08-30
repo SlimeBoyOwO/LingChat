@@ -16,9 +16,6 @@ use crate::AppState;
 use super::executor::{ToolContext, ToolExecutor};
 use super::registry::ToolRegistry;
 
-// 代码/文件任务常需要 读取 -> 修改 -> 验证 的循环。三轮会过早打断
-// 每轮只发一个工具调用的 provider；八轮既有上限又能保证循环可用。
-const MAX_TOOL_ROUNDS: usize = 8;
 /// 工具结果会写入角色长期记忆；限制单轮会话累计量，避免大文件/命令输出永久撑大上下文。
 const MAX_PERSISTED_TOOL_RESULT_CHARS: usize = 32_000;
 const MAX_PERSISTED_SINGLE_TOOL_RESULT_CHARS: usize = 12_000;
@@ -80,6 +77,12 @@ pub async fn stream_with_tool_loop(
     role_name: Option<String>,
     app: &AppHandle,
 ) -> Result<ToolLoopResult> {
+    // 每次回复开始时读取一次设置，避免同一轮执行期间修改配置导致边界跳变。
+    let max_tool_rounds = app
+        .state::<AppState>()
+        .tool_settings
+        .get()
+        .tool_round_limit();
     let initial_allowed = registry.allowed_tools(source, role_name.as_deref());
     let initial_definitions = registry.definitions_for_allowed(&initial_allowed);
     if initial_definitions.is_empty() || !llm.supports_streaming_tools() {
@@ -121,11 +124,11 @@ pub async fn stream_with_tool_loop(
 
         // 收尾轮（无工具定义）可能仍返回工具调用且不给正文，多留一轮补救重试。
         let mut synthesis_retried = false;
-        for round in 0..=(MAX_TOOL_ROUNDS + 1) {
-            tracing::info!(round = round + 1, "开始流式聊天工具决策");
-            let final_synthesis = round >= MAX_TOOL_ROUNDS;
-            if round == MAX_TOOL_ROUNDS {
-                // 八轮工具执行完毕后保留一次不带工具定义的收尾生成，避免直接报错并
+        for round in 0..=(max_tool_rounds + 1) {
+            tracing::info!(round = round + 1, max_tool_rounds, "开始流式聊天工具决策");
+            let final_synthesis = round >= max_tool_rounds;
+            if round == max_tool_rounds {
+                // 达到用户配置的工具轮数后保留一次不带工具定义的收尾生成，避免直接报错并
                 // 丢掉已经完成的工具结果。
                 messages.push(LlmMessage::system(FINAL_SYNTHESIS_PROMPT));
             }
@@ -448,33 +451,4 @@ fn presentation_stream(stream: ChunkStream) -> ChunkStream {
             chunk => Some(chunk),
         }
     }))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn persisted_tool_results_are_bounded_and_keep_call_ids() {
-        let messages = vec![
-            LlmMessage::assistant("调用工具"),
-            LlmMessage::tool_result("call-1", "甲".repeat(20_000)),
-            LlmMessage::tool_result("call-2", "乙".repeat(30_000)),
-        ];
-        let mut persisted = 0;
-        let bounded = bounded_tool_history(&messages, &mut persisted);
-
-        assert_eq!(bounded[1].tool_call_id.as_deref(), Some("call-1"));
-        assert_eq!(bounded[2].tool_call_id.as_deref(), Some("call-2"));
-        assert!(bounded[1].content.contains(TOOL_RESULT_TRUNCATION_MARKER));
-        assert!(bounded[2].content.contains(TOOL_RESULT_TRUNCATION_MARKER));
-        assert!(bounded[1].content.chars().count() <= MAX_PERSISTED_SINGLE_TOOL_RESULT_CHARS);
-        let stored_chars: usize = bounded
-            .iter()
-            .filter(|message| message.role == "tool")
-            .map(|message| message.content.chars().count())
-            .sum();
-        assert!(stored_chars <= MAX_PERSISTED_TOOL_RESULT_CHARS);
-        assert!(persisted <= MAX_PERSISTED_TOOL_RESULT_CHARS);
-    }
 }

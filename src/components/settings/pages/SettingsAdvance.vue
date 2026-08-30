@@ -32,12 +32,12 @@
         </button>
         <button
           class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
-          :class="advanceTab === 'sherpa'
+          :class="advanceTab === 'asr'
             ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
             : 'text-white/60 hover:text-white/80'"
-          @click="advanceTab = 'sherpa'"
+          @click="advanceTab = 'asr'"
         >
-          {{ $t('advance.tabs.sherpa') }}
+          {{ $t('advance.tabs.asr') }}
         </button>
         <button
           class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
@@ -74,9 +74,9 @@
         <SettingsTts />
       </div>
 
-      <!-- ====== Sherpa-ONNX ====== -->
-      <div v-else-if="advanceTab === 'sherpa'" class="flex-1 min-h-0">
-        <SettingsSherpa />
+      <!-- ====== 语音识别 ====== -->
+      <div v-else-if="advanceTab === 'asr'" class="flex-1 min-h-0">
+        <SettingsAsr />
       </div>
 
       <!-- ====== 工具配置 ====== -->
@@ -101,7 +101,7 @@ import { MenuPage } from '../../ui'
 import SettingsLlmProviders from './SettingsLlmProviders.vue'
 import SettingsAdvanceMenu from './SettingsAdvanceMenu.vue'
 import SettingsTts from './SettingsTts.vue'
-import SettingsSherpa from './SettingsSherpa.vue'
+import SettingsAsr from './SettingsAsr.vue'
 import SettingsTools from './SettingsTools.vue'
 import SettingsAdvanceOther from './SettingsAdvanceOther.vue'
 import { useUIStore } from '@/stores/modules/ui/ui'

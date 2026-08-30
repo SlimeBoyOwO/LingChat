@@ -18,6 +18,8 @@ import {
   type ToolActivityEvent,
 } from './services/tool-settings'
 import { useDialogStore } from '../stores/modules/ui/dialog'
+import { useAsrStore } from '../stores/modules/settings/asr'
+import type { VadEvent } from '../api/services/asr'
 import type { SceneInfo } from './services/scene'
 
 function asEvent(
@@ -157,10 +159,7 @@ export function initializeTauriEventListeners() {
         command: payload.command,
         cwd: payload.cwd || i18n.global.t('ui.toolCalls.approvalDefaultCwd'),
       }) + (payload.uac ? `\n\n${i18n.global.t('ui.toolCalls.approvalUac')}` : '')
-    const approved = await dialogStore.confirm(
-      message,
-      i18n.global.t('ui.toolCalls.approvalTitle'),
-    )
+    const approved = await dialogStore.confirm(message, i18n.global.t('ui.toolCalls.approvalTitle'))
     try {
       await invoke('resolve_command_approval', { requestId: payload.request_id, approved })
     } catch (e) {
@@ -193,6 +192,31 @@ export function initializeTauriEventListeners() {
       })
     } catch (e) {
       console.warn('[Tauri] 回传删除命令审批结果失败（可能已超时）:', e)
+    }
+  })
+
+  // 逐次确认模式下，write_file / edit_file 在真正修改前显示目标路径。
+  mainWindow?.listen('chat:file_change_approval', async (event) => {
+    const payload = event.payload as {
+      request_id: string
+      path: string
+      operation: 'write' | 'edit'
+    }
+    const dialogStore = useDialogStore()
+    const approved = await dialogStore.confirm(
+      i18n.global.t('ui.toolCalls.fileChangeApprovalMessage', {
+        action: i18n.global.t(`ui.toolCalls.fileChangeActions.${payload.operation}`),
+        path: payload.path,
+      }),
+      i18n.global.t('ui.toolCalls.fileChangeApprovalTitle'),
+    )
+    try {
+      await invoke('resolve_file_change_approval', {
+        requestId: payload.request_id,
+        approved,
+      })
+    } catch (e) {
+      console.warn('[Tauri] 回传文件修改审批结果失败（可能已超时）:', e)
     }
   })
 
@@ -242,6 +266,27 @@ export function initializeTauriEventListeners() {
     } catch (e) {
       console.warn('[Tauri] 保存 tts:cleanup 状态到 localStorage 失败:', e)
     }
+  })
+
+  // === ASR events ===
+  // 注意：useAsrStore() 必须在回调内调用 —— initializeTauriEventListeners
+  // 在 app.use(pinia) 之前被 main.ts 调用，顶层调用 store 会抛
+  // "getActivePinia was called with no active Pinia"，导致 app.mount 不执行。
+  // 仅保留后端确实 emit 的事件：asr://result / asr://error 不存在（走 invoke 返回），
+  // useAsrInput 通过 store.vadEvent 订阅 turn 事件做业务处理（不重复 listen）。
+
+  listen<VadEvent>('asr://speech_started', () => {
+    useAsrStore().onSpeechStarted()
+  })
+  listen<VadEvent>('asr://turn_candidate', (event) => {
+    useAsrStore().onTurnCandidate(event.payload)
+  })
+  listen<VadEvent>('asr://turn_sealed', () => {
+    useAsrStore().onTurnSealed({ type: 'turn_sealed' })
+  })
+  // 后端 init_asr VAD 模型加载成功（设置页状态面板显示"已加载"）
+  listen('asr://vad_ready', () => {
+    useAsrStore().setVadLoaded(true)
   })
 
   // === Adventure events ===

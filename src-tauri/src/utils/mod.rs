@@ -9,6 +9,7 @@ pub mod llm_request_logger;
 pub mod log_bridge;
 pub mod path;
 pub mod prompt;
+pub mod proxy;
 pub mod script_paths;
 pub mod system;
 pub mod tls;

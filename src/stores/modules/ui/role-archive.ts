@@ -1,21 +1,13 @@
 import { defineStore } from 'pinia'
-import type { ImportResult, ConflictPolicy, ArchiveFormat } from '@/api/services/role-archive'
+import type { ArchiveFormat, ConflictPolicy } from '@/api/services/role-archive'
+import {
+  initialImportSlice,
+  type ArchiveImportSlice,
+  type ImportPhase,
+} from './archive-import'
 
-export type ImportPhase = 'idle' | 'running' | 'done' | 'error' | 'cancelled'
-
-export interface ImportState {
-  phase: ImportPhase
-  fileName: string
-  format: ArchiveFormat
-  conflict: ConflictPolicy
-  // 0-100, -1 = indeterminate
-  percent: number
-  message: string
-  result: ImportResult | null
-  error: string
-  startedAt: number
-  sizeBytes: number
-}
+export type { ImportPhase }
+export type ImportState = ArchiveImportSlice
 
 export interface ExportState {
   phase: ImportPhase
@@ -27,18 +19,14 @@ export interface ExportState {
   error: string
 }
 
-const initialImport = (): ImportState => ({
-  phase: 'idle',
-  fileName: '',
-  format: 'zip',
-  conflict: 'rename',
-  percent: -1,
-  message: '',
-  result: null,
-  error: '',
-  startedAt: 0,
-  sizeBytes: 0,
-})
+export type NoticePhase = 'idle' | 'active'
+
+export interface CorrectedNotice {
+  phase: NoticePhase
+  title: string
+  message: string
+  durationMs: number
+}
 
 const initialExport = (): ExportState => ({
   phase: 'idle',
@@ -50,18 +38,38 @@ const initialExport = (): ExportState => ({
   error: '',
 })
 
+const initialCorrected = (): CorrectedNotice => ({
+  phase: 'idle',
+  title: '',
+  message: '',
+  durationMs: 5000,
+})
+
+/** 角色压缩包导入/导出状态；导入分片与插件导入共用 `ArchiveImportSlice` 形状。 */
 export const useRoleArchiveStore = defineStore('role-archive', {
   state: () => ({
-    import: initialImport(),
+    import: initialImportSlice('rename') as ArchiveImportSlice,
     export: initialExport(),
+    corrected: initialCorrected(),
   }),
 
   actions: {
     resetImport() {
-      this.import = initialImport()
+      this.import = initialImportSlice('rename')
     },
     resetExport() {
       this.export = initialExport()
     },
+    showCorrected(payload: { title: string; message: string; durationMs?: number }) {
+      this.corrected.phase = 'active'
+      this.corrected.title = payload.title
+      this.corrected.message = payload.message
+      this.corrected.durationMs = payload.durationMs ?? 5000
+    },
+    dismissCorrected() {
+      this.corrected = initialCorrected()
+    },
   },
 })
+
+export type { ArchiveFormat, ConflictPolicy }

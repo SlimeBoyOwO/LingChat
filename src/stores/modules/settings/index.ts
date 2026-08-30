@@ -2,16 +2,18 @@
  * 统一设置管理 Store
  * 集中管理所有用户偏好设置，自动持久化到 localStorage
  */
+import { setHdrMode } from '@/api/services/config'
 import { setSceneAwareness } from '@/api/services/scene'
-import { defineStore } from 'pinia'
 import type { ShortcutAction, ShortcutBinding } from '@/utils/shortcuts'
 import { DEFAULT_SHORTCUTS, sanitizeShortcuts } from '@/utils/shortcuts'
+import { defineStore } from 'pinia'
 
 // 默认设置值
 export const DEFAULT_SETTINGS = {
   // 文本设置
   text: {
     speed: 80, // 打字速度 (0-100)
+    autoAdvanceDelay: 1000, // 自动模式自动推进延迟 (ms, 0-2000)
     animation: true, // 页面切换动画
     inlineMotionText: false, // 内联动作文本（单次显示台词+灰字动作）
     sedentaryReminder: false, // 久坐喝水提醒
@@ -38,6 +40,7 @@ export const DEFAULT_SETTINGS = {
     meteorFps: 30, // 流星动画帧率
     starsFps: 30, // 星星动画帧率
     sceneAwarenessEnabled: true, // 场景感知开关
+    hdrModeEnabled: false, // HDR 模式开关（仅 Windows）
     locale: 'zh-CN', // 界面显示语言（i18n，'zh-CN' / 'ja'）
     // 对话框外观（自定义）
     dialogBackgroundImage: '', // 自定义背景图 base64/dataURL；空字符串=无图
@@ -65,6 +68,7 @@ export const DEFAULT_SETTINGS = {
 // 设置状态类型
 export interface TextSettings {
   speed: number
+  autoAdvanceDelay: number
   animation: boolean
   inlineMotionText: boolean
   sedentaryReminder: boolean
@@ -89,6 +93,7 @@ export interface DisplaySettings {
   meteorFps: number
   starsFps: number
     sceneAwarenessEnabled: boolean
+    hdrModeEnabled: boolean
     locale: string
     // 对话框外观
     dialogBackgroundImage: string
@@ -144,6 +149,8 @@ export const useSettingsStore = defineStore('settings', {
 
     // 文字速度
     textSpeed: (state) => state.text.speed,
+    // 自动模式自动推进延迟 (ms)
+    autoAdvanceDelay: (state) => state.text.autoAdvanceDelay,
     // 对话音效开关
     chatEffectSound: (state) => state.audio.chatEffectSound,
     // 背景效果
@@ -156,6 +163,8 @@ export const useSettingsStore = defineStore('settings', {
     meteorFps: (state) => state.display.meteorFps,
     starsFps: (state) => state.display.starsFps,
     sceneAwarenessEnabled: (state) => state.display.sceneAwarenessEnabled,
+    // HDR 模式开关（仅 Windows）
+    hdrModeEnabled: (state) => state.display.hdrModeEnabled,
     // 界面显示语言（i18n）
     uiLocale: (state) => state.display.locale,
     // 对话框外观
@@ -219,8 +228,6 @@ export const useSettingsStore = defineStore('settings', {
         this.text = { ...DEFAULT_SETTINGS.text }
         this.audio = { ...DEFAULT_SETTINGS.audio }
         this.display = { ...DEFAULT_SETTINGS.display }
-        this.character = { ...DEFAULT_SETTINGS.character }
-        this.pet = { ...DEFAULT_SETTINGS.pet }
         this.shortcuts = { ...DEFAULT_SETTINGS.shortcuts }
       } else {
         const keys = path.split('.')
@@ -333,6 +340,12 @@ export const useSettingsStore = defineStore('settings', {
     setSceneAwarenessEnabled(enabled: boolean) {
       this.display.sceneAwarenessEnabled = enabled
       setSceneAwareness(enabled)
+    },
+
+    // 设置 HDR 模式开关（仅 Windows；同步到后端，重启后生效）
+    setHdrModeEnabled(enabled: boolean) {
+      this.display.hdrModeEnabled = enabled
+      setHdrMode(enabled)
     },
 
     // 设置界面显示语言（i18n）

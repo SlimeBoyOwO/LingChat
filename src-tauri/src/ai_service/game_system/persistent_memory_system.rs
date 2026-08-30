@@ -25,6 +25,7 @@ fn init_prompts() -> HashMap<String, String> {
         "2. 时态：使用陈述语气，客观记录事实。\n",
         "3. 输出：直接输出更新后的内容本身，不要包含任何解释。\n",
         "4. 逻辑：如果没有新信息需要更新，请原样保留【旧的记忆档案】的内容。\n",
+        "5. 内容完整性：如果【旧的记忆档案】中存在被截断或不完整的片段，请直接丢弃，不要保留或引用它们。\n",
     );
 
     let mut m = HashMap::new();
@@ -74,6 +75,43 @@ fn init_prompts() -> HashMap<String, String> {
     m
 }
 
+// ── 记忆段长度上限 ──
+
+/// 各记忆段的长度上限（字符数）。0 = 不截断。
+///
+/// 截断链路：
+/// - 运行时注入上下文按上限截断（仅影响本轮 LLM 可见内容，不影响存储）；
+/// - 压缩时把【旧内容】按上限截断后再喂给 LLM —— LLM 只能基于截断后的内容生成
+///   新记忆，因此超出上限的旧记忆片段会在本次压缩写回后被丢弃（此时会记录 warning
+///   日志）。如不希望丢失，请调大对应段上限或设为 0；
+/// - 压缩写回（LLM 输出的新内容）本身不截断。
+#[derive(Clone, Copy, Debug)]
+pub struct MemorySectionLimits {
+    pub short_term: usize,
+    pub long_term: usize,
+    pub user_info: usize,
+    pub promises: usize,
+}
+
+impl Default for MemorySectionLimits {
+    fn default() -> Self {
+        Self {
+            short_term: 500,
+            long_term: 2000,
+            user_info: 800,
+            promises: 800,
+        }
+    }
+}
+
+/// 按字符数安全截断（避免切破 UTF-8 多字节字符）。超限部分直接丢弃，无省略标记。
+fn truncate_to_chars(s: &str, max_chars: usize) -> String {
+    if max_chars == 0 || s.chars().count() <= max_chars {
+        return s.to_string();
+    }
+    s.chars().take(max_chars).collect()
+}
+
 // ── 结构体 ──
 
 /// 面向 0.4.0 新架构的"永久记忆（MemoryBank）+ 自动压缩"实现（运行时缓存版）。
@@ -97,6 +135,10 @@ pub struct PersistentMemorySystem {
     memory_bank: Arc<Mutex<GameMemoryBank>>,
     is_updating: Arc<AtomicBool>,
     has_pending: Arc<AtomicBool>,
+    /// 每次历史刷新都会递增；后台任务提交前必须仍匹配，避免撤回/读档后写入旧摘要。
+    history_revision: Arc<AtomicU64>,
+    /// 把历史失效与后台成功/失败提交放进同一同步边界，封闭最终 revision 检查的 TOCTOU。
+    commit_gate: Arc<std::sync::Mutex<()>>,
 
     /// 最近一次压缩失败的时间戳（unix 毫秒），0 = 无失败。用于重试冷却。
     last_failure_at_ms: Arc<AtomicU64>,
@@ -106,8 +148,69 @@ pub struct PersistentMemorySystem {
     pub enabled: bool,
     update_interval: usize,
     recent_window: usize,
+    /// 各记忆段注入/压缩时的长度上限（运行时注入截断 + 压缩喂入截断；
+    /// 压缩写回不截断，但超限旧片段会在压缩时被丢弃）。
+    section_limits: MemorySectionLimits,
 
     section_prompts: HashMap<String, String>,
+}
+
+/// 无论后台任务成功、显式失败还是 panic 展开，都解除 updating 锁。
+struct UpdatingGuard(Arc<AtomicBool>);
+
+impl Drop for UpdatingGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+fn record_failure_if_current(
+    commit_gate: &std::sync::Mutex<()>,
+    history_revision: &AtomicU64,
+    expected_revision: u64,
+    last_failure_at_ms: &AtomicU64,
+    fail_count: &AtomicU32,
+) -> bool {
+    let _gate = commit_gate
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if history_revision.load(Ordering::Acquire) != expected_revision {
+        return false;
+    }
+    last_failure_at_ms.store(current_time_ms(), Ordering::Release);
+    fail_count.fetch_add(1, Ordering::AcqRel);
+    true
+}
+
+#[allow(clippy::too_many_arguments)]
+fn commit_update_if_current(
+    commit_gate: &std::sync::Mutex<()>,
+    history_revision: &AtomicU64,
+    expected_revision: u64,
+    bank: &mut GameMemoryBank,
+    sections: [String; 4],
+    target_idx: i64,
+    last_failure_at_ms: &AtomicU64,
+    fail_count: &AtomicU32,
+    has_pending: &AtomicBool,
+) -> bool {
+    let _gate = commit_gate
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if history_revision.load(Ordering::Acquire) != expected_revision {
+        return false;
+    }
+    let [short_term, long_term, user_info, promises] = sections;
+    bank.data.short_term = short_term;
+    bank.data.long_term = long_term;
+    bank.data.user_info = user_info;
+    bank.data.promises = promises;
+    bank.meta.last_processed_global_idx = target_idx;
+    bank.meta.updated_at = now_str();
+    last_failure_at_ms.store(0, Ordering::Release);
+    fail_count.store(0, Ordering::Release);
+    has_pending.store(true, Ordering::Release);
+    true
 }
 
 impl PersistentMemorySystem {
@@ -118,6 +221,7 @@ impl PersistentMemorySystem {
         enabled: bool,
         update_interval: usize,
         recent_window: usize,
+        limits: MemorySectionLimits,
         display_name: &str,
     ) -> Self {
         Self {
@@ -127,11 +231,14 @@ impl PersistentMemorySystem {
             memory_bank: Arc::new(Mutex::new(initial_bank.clone())),
             is_updating: Arc::new(AtomicBool::new(false)),
             has_pending: Arc::new(AtomicBool::new(false)),
+            history_revision: Arc::new(AtomicU64::new(0)),
+            commit_gate: Arc::new(std::sync::Mutex::new(())),
             last_failure_at_ms: Arc::new(AtomicU64::new(0)),
             fail_count: Arc::new(AtomicU32::new(0)),
             enabled,
             update_interval,
             recent_window,
+            section_limits: limits,
             section_prompts: init_prompts(),
         }
     }
@@ -142,31 +249,74 @@ impl PersistentMemorySystem {
         self.enabled
     }
 
+    /// 在台词历史发生追加、撤回、清空或读档时使进行中的后台摘要立即过期。
+    pub fn invalidate_history(&self) {
+        let _gate = self
+            .commit_gate
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.history_revision.fetch_add(1, Ordering::AcqRel);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn history_revision_for_test(&self) -> u64 {
+        self.history_revision.load(Ordering::Acquire)
+    }
+
     /// 返回给调用方用于裁剪 line_list 的起点索引。
-    pub async fn get_slice_start_index(&self) -> usize {
+    ///
+    /// `recent_window` 的单位与触发阈值一致，都是“该角色可见、非 system 的台词”，
+    /// 而不是全局原始行数；0 表示压缩点之前一条也不保留。
+    pub async fn get_slice_start_index(&self, all_lines: &[GameLine]) -> usize {
         let bank = self.memory_bank.lock().await;
-        let idx = bank.meta.last_processed_global_idx;
-        (idx - self.recent_window as i64).max(0) as usize
+        let processed = bank
+            .meta
+            .last_processed_global_idx
+            .max(0)
+            .min(all_lines.len() as i64) as usize;
+        drop(bank);
+
+        if processed == 0 || self.recent_window == 0 {
+            return processed;
+        }
+
+        let mut start = processed;
+        let mut remaining = self.recent_window;
+        while start > 0 {
+            start -= 1;
+            if line_visible_to_role(&all_lines[start], self.role_id) {
+                remaining -= 1;
+                if remaining == 0 {
+                    break;
+                }
+            }
+        }
+        start
     }
 
     /// 长期记忆 / 用户画像 / 约定 文本（适合合并到 system 消息）。
+    /// 各段按 `section_limits` 截断后注入（存储不截断，仅运行时视图截断）。
     pub async fn get_system_memory_text(&self) -> String {
         let bank = self.memory_bank.lock().await;
+        let limits = self.section_limits;
         format!(
             "\n\n====== 记忆库 (Memory Bank) ======\n\
              【taの信息】：{}\n\
              【重要约定】：{}\n\
              【长期经历】：{}\n\
              =================================\n",
-            bank.data.user_info, bank.data.promises, bank.data.long_term,
+            truncate_to_chars(&bank.data.user_info, limits.user_info),
+            truncate_to_chars(&bank.data.promises, limits.promises),
+            truncate_to_chars(&bank.data.long_term, limits.long_term),
         )
     }
 
     /// 短期回顾文本（适合作为 user 消息前缀）。
+    /// 按 `section_limits.short_term` 截断后注入。
     pub async fn get_short_term_user_text(&self) -> String {
         let bank = self.memory_bank.lock().await;
-        let short = bank.data.short_term.trim();
-        if short.is_empty() {
+        let short = truncate_to_chars(bank.data.short_term.trim(), self.section_limits.short_term);
+        if short.is_empty() || short == "暂无近期对话摘要。" {
             String::new()
         } else {
             format!("【近期回顾】{}\n\n", short)
@@ -189,6 +339,7 @@ impl PersistentMemorySystem {
     /// 从 DB 加载后重置内部缓存（丢弃任何待处理的过期更新）。
     /// 同时清失败状态：指针仍停在 DB 中的旧位置，重试从新会话重新计时。
     pub async fn reset_from(&self, bank: &GameMemoryBank) {
+        self.invalidate_history();
         self.has_pending.store(false, Ordering::Release);
         self.last_failure_at_ms.store(0, Ordering::Release);
         self.fail_count.store(0, Ordering::Release);
@@ -204,6 +355,7 @@ impl PersistentMemorySystem {
         if !self.enabled {
             return;
         }
+        let history_revision = self.history_revision.load(Ordering::Acquire);
         if self.is_updating.load(Ordering::Acquire) {
             return;
         }
@@ -219,18 +371,26 @@ impl PersistentMemorySystem {
 
         let current_total = all_lines.len();
 
-        // 读取并校验指针
-        let last_idx = {
-            let bank_guard = match self.memory_bank.try_lock() {
+        // 读取并校验指针。越界（清空对话/读档后 line_list 变短）时**写回**重置，
+        // 否则指针残留旧值，get_slice_start_index 会一直返回过期大索引，
+        // 导致上下文窗口无限膨胀且每轮都从 index 0 重建整段上下文。
+        let (last_idx, pointer_corrected) = {
+            let mut bank_guard = match self.memory_bank.try_lock() {
                 Ok(g) => g,
                 Err(_) => return, // 后台任务正在写，跳过
             };
-            let mut idx = bank_guard.meta.last_processed_global_idx;
+            let idx = bank_guard.meta.last_processed_global_idx;
             if idx < 0 || idx as usize > current_total {
-                idx = 0;
+                bank_guard.meta.last_processed_global_idx = 0;
+                bank_guard.meta.updated_at = now_str();
+                (0, true)
+            } else {
+                (idx as usize, false)
             }
-            idx as usize
         };
+        if pointer_corrected {
+            self.has_pending.store(true, Ordering::Release);
+        }
 
         let new_lines = &all_lines[last_idx..current_total];
         let (chat_text, visible_count) = self.build_chat_text_and_count(new_lines);
@@ -245,6 +405,7 @@ impl PersistentMemorySystem {
             if let Ok(mut bank) = self.memory_bank.try_lock() {
                 bank.meta.last_processed_global_idx = target_idx;
                 bank.meta.updated_at = now_str();
+                self.has_pending.store(true, Ordering::Release);
             }
             return;
         }
@@ -256,29 +417,53 @@ impl PersistentMemorySystem {
             self.update_interval,
         );
 
-        self.is_updating.store(true, Ordering::Release);
-        self.spawn_background_update(chat_text, target_idx);
+        if self
+            .is_updating
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
+        }
+        self.spawn_background_update(chat_text, target_idx, history_revision);
     }
 
     // ── 内部方法 ──
 
-    fn spawn_background_update(&self, chat_text: String, target_idx: i64) {
+    fn spawn_background_update(
+        &self,
+        chat_text: String,
+        target_idx: i64,
+        expected_history_revision: u64,
+    ) {
         let llm_slot = self.llm.clone();
         let mb = self.memory_bank.clone();
         let prompts = self.section_prompts.clone();
         let is_updating = self.is_updating.clone();
         let has_pending = self.has_pending.clone();
+        let history_revision = self.history_revision.clone();
+        let commit_gate = self.commit_gate.clone();
         let last_failure_at_ms = self.last_failure_at_ms.clone();
         let fail_count = self.fail_count.clone();
         let role_id = self.role_id;
         let ai_name = self.ai_name.clone();
+        let limits = self.section_limits;
 
         tokio::spawn(async move {
-            // 记录一次失败并复位 is_updating。失败不推进指针 → 下轮对话重试同一批。
+            let _updating_guard = UpdatingGuard(is_updating.clone());
+            // 仅当前历史版本的失败才进入冷却；过期任务不能污染新会话的重试状态。
             let record_failure = || {
-                last_failure_at_ms.store(current_time_ms(), Ordering::Release);
-                fail_count.fetch_add(1, Ordering::AcqRel);
-                is_updating.store(false, Ordering::Release);
+                if !record_failure_if_current(
+                    &commit_gate,
+                    &history_revision,
+                    expected_history_revision,
+                    &last_failure_at_ms,
+                    &fail_count,
+                ) {
+                    tracing::info!(
+                        "MemoryBank: role_id={} 过期压缩请求失败，忽略其冷却状态",
+                        role_id
+                    );
+                }
             };
 
             // 从槽位读取当前 LLM 客户端快照（支持热切换后使用新模型）
@@ -306,6 +491,7 @@ impl PersistentMemorySystem {
                     &chat_text,
                     "short_term",
                     &old.short_term,
+                    limits.short_term,
                     &ai_name
                 ),
                 Self::update_section(
@@ -314,6 +500,7 @@ impl PersistentMemorySystem {
                     &chat_text,
                     "long_term",
                     &old.long_term,
+                    limits.long_term,
                     &ai_name
                 ),
                 Self::update_section(
@@ -322,6 +509,7 @@ impl PersistentMemorySystem {
                     &chat_text,
                     "user_info",
                     &old.user_info,
+                    limits.user_info,
                     &ai_name
                 ),
                 Self::update_section(
@@ -330,20 +518,17 @@ impl PersistentMemorySystem {
                     &chat_text,
                     "promises",
                     &old.promises,
+                    limits.promises,
                     &ai_name
                 ),
             );
 
             // 4 段必须全部成功才写回并推进指针；任一失败则整批重试。
             let results = [st, lt, ui, pr];
-            if let Some((key, err)) = results
-                .iter()
-                .enumerate()
-                .find_map(|(i, r)| match r {
-                    Err(e) => Some((["short_term", "long_term", "user_info", "promises"][i], e)),
-                    Ok(_) => None,
-                })
-            {
+            if let Some((key, err)) = results.iter().enumerate().find_map(|(i, r)| match r {
+                Err(e) => Some((["short_term", "long_term", "user_info", "promises"][i], e)),
+                Ok(_) => None,
+            }) {
                 let count = fail_count.load(Ordering::Acquire) + 1;
                 tracing::warn!(
                     "MemoryBank: role_id={} 分段压缩失败 (key={}): {}（第 {} 次失败，指针不移动，冷却后重试）",
@@ -356,22 +541,37 @@ impl PersistentMemorySystem {
                 return;
             }
 
-            // 全部成功：写回 + 推进指针 + 清失败状态
-            let [st, lt, ui, pr] = results;
-            {
-                let mut bank = mb.lock().await;
-                bank.data.short_term = st.unwrap();
-                bank.data.long_term = lt.unwrap();
-                bank.data.user_info = ui.unwrap();
-                bank.data.promises = pr.unwrap();
-                bank.meta.last_processed_global_idx = target_idx;
-                bank.meta.updated_at = now_str();
+            // 压缩期间若历史被追加、撤回、清空或读档，本批输入已经过期，绝不能写回。
+            if history_revision.load(Ordering::Acquire) != expected_history_revision {
+                tracing::info!(
+                    "MemoryBank: role_id={} 历史版本已变化，丢弃过期压缩结果（指针不移动）",
+                    role_id
+                );
+                return;
             }
 
-            last_failure_at_ms.store(0, Ordering::Release);
-            fail_count.store(0, Ordering::Release);
-            is_updating.store(false, Ordering::Release);
-            has_pending.store(true, Ordering::Release);
+            // 全部成功：在同一个提交门内复核版本、写回、推进指针并清失败状态。
+            let [st, lt, ui, pr] = results;
+            let sections = [st.unwrap(), lt.unwrap(), ui.unwrap(), pr.unwrap()];
+            let mut bank = mb.lock().await;
+            if !commit_update_if_current(
+                &commit_gate,
+                &history_revision,
+                expected_history_revision,
+                &mut bank,
+                sections,
+                target_idx,
+                &last_failure_at_ms,
+                &fail_count,
+                &has_pending,
+            ) {
+                tracing::info!(
+                    "MemoryBank: role_id={} 提交前历史版本已变化，丢弃过期压缩结果",
+                    role_id
+                );
+                return;
+            }
+            drop(bank);
             tracing::info!(
                 "MemoryBank: role_id={} 记忆库更新完成! 指针已移动至 {}",
                 role_id,
@@ -387,6 +587,7 @@ impl PersistentMemorySystem {
         chat_text: &str,
         key: &str,
         old_content: &str,
+        max_chars: usize,
         _ai_name: &str,
     ) -> Result<String> {
         let prompt_req = match prompts.get(key) {
@@ -394,9 +595,23 @@ impl PersistentMemorySystem {
             None => return Ok(old_content.to_string()), // 配置缺失不是失败，保留旧内容
         };
 
+        // 喂给压缩 LLM 前按上限截断旧内容。LLM 只能基于截断后的内容生成新记忆，
+        // 因此超出上限的旧记忆片段会在本次压缩写回后被丢弃（写回本身不截断）。
+        let original_count = old_content.chars().count();
+        let exceeds_limit = max_chars != 0 && original_count > max_chars;
+        let old = truncate_to_chars(old_content, max_chars);
+        if exceeds_limit {
+            tracing::warn!(
+                "MemoryBank: 记忆段 '{}' 旧内容超长 ({} 字符 > 上限 {} 字符)，超限尾部将被本次压缩丢弃；如不希望丢失请调大上限或设为 0",
+                key,
+                original_count,
+                max_chars
+            );
+        }
+
         let full_prompt = format!(
             "{}\n\n【旧内容】：\n{}\n\n【新增对话】：\n{}\n\n【新内容】(直接输出结果，不要废话)：",
-            prompt_req, old_content, chat_text,
+            prompt_req, old, chat_text,
         );
 
         let messages = vec![LlmMessage::user(full_prompt)];
@@ -417,20 +632,11 @@ impl PersistentMemorySystem {
     /// 1. 统计非 system 且该角色可见的台词数（visible_count）
     /// 2. 用 MemoryBuilder 构建该角色视角的 LLM 消息，转为纯文本
     fn build_chat_text_and_count(&self, lines: &[GameLine]) -> (String, usize) {
-        use crate::db::entities::line::LineAttribute;
-
         // 统计可见非 system 台词
-        let mut visible_count: usize = 0;
-        for line in lines {
-            if matches!(line.attribute(), LineAttribute::System) {
-                continue;
-            }
-            let visible = line.sender_role_id() == Some(self.role_id)
-                || line.perceived_role_ids.contains(&self.role_id);
-            if visible && !line.content().trim().is_empty() {
-                visible_count += 1;
-            }
-        }
+        let visible_count = lines
+            .iter()
+            .filter(|line| line_visible_to_role(line, self.role_id))
+            .count();
 
         if visible_count == 0 {
             return (String::new(), 0);
@@ -463,6 +669,15 @@ impl PersistentMemorySystem {
     }
 }
 
+fn line_visible_to_role(line: &GameLine, role_id: i32) -> bool {
+    use crate::db::entities::line::LineAttribute;
+
+    !matches!(line.attribute(), LineAttribute::System)
+        && !line.content().trim().is_empty()
+        && (line.sender_role_id() == Some(role_id)
+            || line.perceived_role_ids.contains(&role_id))
+}
+
 fn now_str() -> String {
     chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }
@@ -474,83 +689,172 @@ fn current_time_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai_service::types::LineBase;
+    use crate::ai_service::types::{LineAttributeExt, LineBase};
+    use crate::db::entities::line::LineAttribute;
+    use tokio::sync::RwLock;
 
-    /// 构造一条由指定角色发送的可见台词（默认 attribute 是 System，会被计数逻辑跳过）。
-    fn make_line(role_id: i32, content: &str) -> GameLine {
-        use crate::ai_service::types::LineAttributeExt;
-        use crate::db::entities::line::LineAttribute;
-
-        let mut base = LineBase::default();
-        base.sender_role_id = Some(role_id);
-        base.content = content.to_string();
-        base.attribute = LineAttributeExt(LineAttribute::User);
-        GameLine::from_base(base, Vec::new())
+    fn line(attribute: LineAttribute, sender: Option<i32>, perceived: Vec<i32>) -> GameLine {
+        GameLine::from_base(
+            LineBase {
+                content: "line".to_string(),
+                attribute: LineAttributeExt(attribute),
+                sender_role_id: sender,
+                ..Default::default()
+            },
+            perceived,
+        )
     }
 
-    /// 构造测试用实例：role_id=1，LLM 槽位为空（后台压缩必失败）。
-    fn make_sys(update_interval: usize) -> (PersistentMemorySystem, Arc<Mutex<GameMemoryBank>>) {
-        let bank = GameMemoryBank::default();
-        let slot: LlmSlot = Arc::new(tokio::sync::RwLock::new(None));
-        let sys =
-            PersistentMemorySystem::new(1, &bank, slot, true, update_interval, 2, "测试角色");
-        let mb = sys.memory_bank.clone();
-        (sys, mb)
+    fn system(recent_window: usize, processed: i64) -> PersistentMemorySystem {
+        let mut bank = GameMemoryBank::default();
+        bank.meta.last_processed_global_idx = processed;
+        let llm: LlmSlot = Arc::new(RwLock::new(None));
+        PersistentMemorySystem::new(
+            7,
+            &bank,
+            llm,
+            true,
+            250,
+            recent_window,
+            MemorySectionLimits::default(),
+            "AI",
+        )
     }
 
-    /// 轮询等待后台压缩任务结束（is_updating 复位），最多让出 1000 次。
-    async fn wait_for_idle(sys: &PersistentMemorySystem) {
-        for _ in 0..1000 {
-            if !sys.is_updating.load(Ordering::Acquire) {
-                return;
-            }
-            tokio::task::yield_now().await;
+    #[tokio::test]
+    async fn recent_window_counts_only_role_visible_non_system_lines() {
+        let lines = vec![
+            line(LineAttribute::System, Some(7), vec![7]),
+            line(LineAttribute::Assistant, Some(7), vec![]),
+            line(LineAttribute::Assistant, Some(8), vec![8]),
+            line(LineAttribute::User, Some(0), vec![7]),
+            line(LineAttribute::Assistant, Some(8), vec![8]),
+            line(LineAttribute::User, Some(0), vec![7]),
+        ];
+        let memory = system(2, 5);
+        assert_eq!(memory.get_slice_start_index(&lines).await, 1);
+    }
+
+    #[tokio::test]
+    async fn recent_window_falls_back_to_zero_when_visible_history_is_short() {
+        let mut empty = line(LineAttribute::User, Some(0), vec![7]);
+        empty.base.content = "   ".to_string();
+        let lines = vec![
+            line(LineAttribute::System, Some(7), vec![7]),
+            empty,
+            line(LineAttribute::Assistant, Some(7), vec![]),
+            line(LineAttribute::User, Some(0), vec![7]), // unprocessed boundary line
+        ];
+        let memory = system(5, 3);
+        assert_eq!(memory.get_slice_start_index(&lines).await, 0);
+    }
+
+    #[tokio::test]
+    async fn default_short_term_placeholder_is_not_injected() {
+        let memory = system(30, 0);
+        assert_eq!(memory.get_short_term_user_text().await, "");
+    }
+
+    #[tokio::test]
+    async fn zero_recent_window_starts_exactly_at_processed_boundary() {
+        let lines = vec![
+            line(LineAttribute::System, Some(7), vec![7]),
+            line(LineAttribute::Assistant, Some(7), vec![]),
+            line(LineAttribute::User, Some(0), vec![7]),
+        ];
+        let memory = system(0, lines.len() as i64);
+        assert_eq!(memory.get_slice_start_index(&lines).await, lines.len());
+    }
+
+    #[test]
+    fn invalidating_history_while_updating_advances_the_revision() {
+        let memory = system(30, 0);
+        memory.is_updating.store(true, Ordering::Release);
+        memory.invalidate_history();
+        memory.check_and_trigger_auto_update(&[]);
+        assert_eq!(memory.history_revision.load(Ordering::Acquire), 1);
+    }
+
+    #[test]
+    fn correcting_an_out_of_range_pointer_marks_it_pending() {
+        let memory = system(30, 999);
+        memory.check_and_trigger_auto_update(&[]);
+        assert!(memory.has_pending.load(Ordering::Acquire));
+        let bank = memory.memory_bank.try_lock().expect("memory bank unlocked");
+        assert_eq!(bank.meta.last_processed_global_idx, 0);
+    }
+
+    #[test]
+    fn stale_results_cannot_commit_or_pollute_failure_cooldown() {
+        let gate = std::sync::Mutex::new(());
+        let revision = AtomicU64::new(2);
+        let last_failure = AtomicU64::new(0);
+        let failures = AtomicU32::new(0);
+        let pending = AtomicBool::new(false);
+        let mut bank = GameMemoryBank::default();
+        let original = bank.clone();
+
+        assert!(!record_failure_if_current(
+            &gate,
+            &revision,
+            1,
+            &last_failure,
+            &failures,
+        ));
+        assert_eq!(last_failure.load(Ordering::Acquire), 0);
+        assert_eq!(failures.load(Ordering::Acquire), 0);
+
+        assert!(!commit_update_if_current(
+            &gate,
+            &revision,
+            1,
+            &mut bank,
+            ["st".into(), "lt".into(), "ui".into(), "pr".into()],
+            99,
+            &last_failure,
+            &failures,
+            &pending,
+        ));
+        assert_eq!(bank, original);
+        assert!(!pending.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn current_result_commits_all_sections_and_pointer_atomically() {
+        let gate = std::sync::Mutex::new(());
+        let revision = AtomicU64::new(3);
+        let last_failure = AtomicU64::new(42);
+        let failures = AtomicU32::new(2);
+        let pending = AtomicBool::new(false);
+        let mut bank = GameMemoryBank::default();
+
+        assert!(commit_update_if_current(
+            &gate,
+            &revision,
+            3,
+            &mut bank,
+            ["st".into(), "lt".into(), "ui".into(), "pr".into()],
+            12,
+            &last_failure,
+            &failures,
+            &pending,
+        ));
+        assert_eq!(bank.data.short_term, "st");
+        assert_eq!(bank.data.long_term, "lt");
+        assert_eq!(bank.data.user_info, "ui");
+        assert_eq!(bank.data.promises, "pr");
+        assert_eq!(bank.meta.last_processed_global_idx, 12);
+        assert_eq!(last_failure.load(Ordering::Acquire), 0);
+        assert_eq!(failures.load(Ordering::Acquire), 0);
+        assert!(pending.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn updating_guard_always_releases_the_flag() {
+        let flag = Arc::new(AtomicBool::new(true));
+        {
+            let _guard = UpdatingGuard(flag.clone());
         }
-        panic!("后台压缩任务未在预期时间内结束");
-    }
-
-    #[tokio::test]
-    async fn below_threshold_does_not_trigger() {
-        let (sys, _bank) = make_sys(10);
-        let lines = vec![make_line(1, "你好呀")];
-        sys.check_and_trigger_auto_update(&lines);
-        // 可见台词 1 条 < 阈值 10，不应触发，也不应移动指针
-        assert!(!sys.is_updating.load(Ordering::Acquire));
-        assert_eq!(sys.fail_count.load(Ordering::Acquire), 0);
-    }
-
-    #[tokio::test]
-    async fn reaching_threshold_triggers_background_compress() {
-        let (sys, _bank) = make_sys(1);
-        let lines = vec![make_line(1, "你好呀"), make_line(1, "今天天气真不错")];
-        sys.check_and_trigger_auto_update(&lines);
-        wait_for_idle(&sys).await;
-        // 空 LLM 槽位使压缩任务走失败路径：fail_count 递增证明任务确实被触发
-        assert_eq!(sys.fail_count.load(Ordering::Acquire), 1);
-    }
-
-    #[tokio::test]
-    async fn failure_keeps_pointer_and_records_cooldown() {
-        let (sys, bank) = make_sys(1);
-        let lines = vec![make_line(1, "你好呀"), make_line(1, "今天天气真不错")];
-        sys.check_and_trigger_auto_update(&lines);
-        wait_for_idle(&sys).await;
-        // 失败时指针不移动，供下轮对话重试同一批
-        assert_eq!(bank.lock().await.meta.last_processed_global_idx, 0);
-        // 冷却与失败计数均已记录
-        assert_ne!(sys.last_failure_at_ms.load(Ordering::Acquire), 0);
-        assert_eq!(sys.fail_count.load(Ordering::Acquire), 1);
-    }
-
-    #[tokio::test]
-    async fn cooldown_blocks_retry_after_failure() {
-        let (sys, _bank) = make_sys(1);
-        // 模拟 1 秒前刚失败：仍在 60s 冷却期内，不应再次触发
-        sys.last_failure_at_ms
-            .store(current_time_ms() - 1_000, Ordering::Release);
-        let lines = vec![make_line(1, "你好呀"), make_line(1, "今天天气真不错")];
-        sys.check_and_trigger_auto_update(&lines);
-        assert!(!sys.is_updating.load(Ordering::Acquire));
-        assert_eq!(sys.fail_count.load(Ordering::Acquire), 0);
+        assert!(!flag.load(Ordering::Acquire));
     }
 }

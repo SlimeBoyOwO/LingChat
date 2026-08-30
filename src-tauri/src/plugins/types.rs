@@ -66,6 +66,34 @@ fn default_timeout_ms() -> u64 {
     30_000
 }
 
+/// 插件可携带的资源类型（与 game_data 下同名子目录一一对应）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ResourceKind {
+    Characters,
+    Scripts,
+    Musics,
+    Backgrounds,
+    Ambients,
+}
+
+impl ResourceKind {
+    /// 插件内与游戏目录同名同构的子目录名。
+    pub fn subdir(&self) -> &'static str {
+        match self {
+            Self::Characters => "characters",
+            Self::Scripts => "scripts",
+            Self::Musics => "musics",
+            Self::Backgrounds => "backgrounds",
+            Self::Ambients => "ambients",
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        self.subdir()
+    }
+}
+
 /// 插件 manifest（manifest.toml）。
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -82,6 +110,9 @@ pub struct PluginManifest {
     pub env: Vec<EnvDecl>,
     #[serde(default)]
     pub tools: Vec<ToolSpec>,
+    /// 插件携带的资源类型声明（空 = 纯工具插件，向后兼容）。
+    #[serde(default)]
+    pub resources: Vec<ResourceKind>,
 }
 
 /// 插件运行期状态（含持久化开关与配置）。
@@ -90,6 +121,10 @@ pub struct PluginState {
     pub enabled: bool,
     #[serde(default)]
     pub config: HashMap<String, Value>,
+    /// 软删除标记：`"<kind>/<key>"`（如 `"characters/爱丽丝"`、`"backgrounds/夜晚.webp"`、
+    /// `"scripts/神秘の魔法药水"`）。被标记的插件资源对游戏隐藏，但不删除文件。
+    #[serde(default)]
+    pub hidden_resources: Vec<String>,
 }
 
 impl PluginState {
@@ -97,6 +132,7 @@ impl PluginState {
         Self {
             enabled: false,
             config: HashMap::new(),
+            hidden_resources: Vec::new(),
         }
     }
 }
@@ -124,6 +160,8 @@ pub struct PluginInfo {
     pub config_schema: Vec<ConfigFieldDecl>,
     pub env: Vec<EnvDecl>,
     pub tools: Vec<String>,
+    /// 该插件声明携带的资源类型（如 `["characters", "musics"]`）。
+    pub resources: Vec<String>,
     pub error: Option<String>,
 }
 
@@ -139,6 +177,12 @@ impl From<&PluginRecord> for PluginInfo {
             config_schema: record.manifest.config.clone(),
             env: record.manifest.env.clone(),
             tools: record.manifest.tools.iter().map(|t| t.name.clone()).collect(),
+            resources: record
+                .manifest
+                .resources
+                .iter()
+                .map(|k| k.as_str().to_string())
+                .collect(),
             error: record.error.clone(),
         }
     }

@@ -52,14 +52,20 @@
           ]"
           @click="handleSceneClick(scene)"
         >
-          <!-- 编辑按钮（右上角扳手） -->
+          <!-- 编辑按钮（右上角扳手）—— 插件场景只读，不提供编辑 -->
           <button
+            v-if="!scene.source || scene.source === 'game'"
             class="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-black/50 text-white/60 hover:text-white hover:bg-black/70 transition-all opacity-0 group-hover:opacity-100"
             @click.stop="handleWrenchClick(scene)"
             :title="$t('settings.background.scene.edit')"
           >
             <Wrench :size="16" />
           </button>
+          <PluginTag
+            v-if="scene.source && scene.source !== 'game'"
+            :source="scene.source"
+            class="absolute top-2 left-2 z-10"
+          />
 
           <!-- 背景预览 -->
           <div
@@ -190,6 +196,35 @@
         >
           {{ $t('settings.background.animation.sceneAwareness') }}
         </Toggle>
+      </div>
+    </MenuItem>
+
+    <!-- HDR 模式（仅 Windows：WebView2 强制色彩配置在 HDR 下会发灰/发暗） -->
+    <MenuItem
+      v-if="isWindows()"
+      :title="$t('settings.background.hdr.title')"
+      size="large"
+    >
+      <template #header>
+        <Settings :size="20" />
+      </template>
+      <div class="flex flex-col gap-3">
+        <Toggle
+          :checked="hdrModeEnabled"
+          @change="settingsStore.setHdrModeEnabled($event)"
+        >
+          {{ $t('settings.background.hdr.enable') }}
+        </Toggle>
+        <p class="text-xs text-yellow-400/70">
+          {{ $t('settings.background.hdr.restartHint') }}
+        </p>
+        <button
+          class="self-start px-4 py-2 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-sm font-medium transition-colors hover:bg-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="!hdrChanged"
+          @click="restartApp"
+        >
+          {{ $t('settings.background.hdr.restartBtn') }}
+        </button>
       </div>
     </MenuItem>
 
@@ -369,7 +404,8 @@ import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
-import { isAndroid } from '@/utils/platform'
+import { isAndroid, isWindows } from '@/utils/platform'
+import { relaunch } from '@tauri-apps/plugin-process'
 import {
   listScenes,
   createScene,
@@ -400,6 +436,7 @@ import { getGpuInfo, redetectGpu, type GpuInfo } from '../../../api/services/gpu
 import { Image, PictureInPicture, Sparkles, Settings, Wand2, Wrench, Cpu } from 'lucide-vue-next'
 import SceneEditModal from '../scene/SceneEditModal.vue'
 import DialogAppearancePanel from '../dialog/DialogAppearancePanel.vue'
+import PluginTag from '@/components/ui/PluginTag.vue'
 import { useUserStore } from '../../../stores/modules/user/user'
 
 const gameStore = useGameStore()
@@ -414,6 +451,23 @@ const mainMenuMeteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabl
 const globalMouseTrailEnabled = computed(() => settingsStore.globalMouseTrailEnabled)
 const clickAnimationEnabled = computed(() => settingsStore.clickAnimationEnabled)
 const sceneAwarenessEnabled = computed(() => settingsStore.sceneAwarenessEnabled)
+const hdrModeEnabled = computed(() => settingsStore.hdrModeEnabled)
+
+// 记录进入设置页时的初始值；开关改变后「立即重启」按钮才可用，改回原值则恢复置灰
+const initialHdrMode = ref(settingsStore.hdrModeEnabled)
+const hdrChanged = computed(() => settingsStore.hdrModeEnabled !== initialHdrMode.value)
+
+// 立即重启应用（HDR 模式等设置需重启后生效）
+async function restartApp() {
+  const ok = await dialogStore.confirm(t('settings.background.hdr.restartConfirm'))
+  if (!ok) return
+  try {
+    await relaunch()
+  } catch (e) {
+    console.error('重启失败:', e)
+    dialogStore.alert(t('settings.background.hdr.restartFailed'))
+  }
+}
 const meteorFps = computed({
   get: () => settingsStore.meteorFps,
   set: (value: number) => {
@@ -566,6 +620,10 @@ const handleCreateScene = () => {
 
 const handleDeleteScene = async () => {
   if (!currentScene.value) return
+  if (currentScene.value.source && currentScene.value.source !== 'game') {
+    await dialogStore.alert(t('settings.background.scene.pluginNotDeletable'))
+    return
+  }
   if (!(await dialogStore.confirm(t('settings.background.scene.deleteConfirm', { name: currentScene.value.scene_name })))) return
 
   try {

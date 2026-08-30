@@ -135,11 +135,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { Button } from '../base'
 import Icon from '../base/widget/Icon.vue'
-import { isAndroid } from '@/utils/platform'
 
 const props = defineProps<{}>()
 
@@ -171,9 +170,6 @@ const pluginsBtn = ref<ButtonRef | null>(null)
 
 // 设置可重设的值（使用 ref 存储，确保响应式或跨函数访问）
 const oldRefName = ref('textBtn')
-
-// ResizeObserver 引用，用于 onUnmounted 时断开
-let resizeObserver: ResizeObserver | null = null
 
 // 提取：根据 refName 获取按钮并移动指示器
 const handleIndicatorMove = (currentRefName: string) => {
@@ -236,7 +232,7 @@ const setupResizeObserver = () => {
   if (!navContainer.value) {
     return
   }
-  resizeObserver = new ResizeObserver((entries) => {
+  const resizeObserver = new ResizeObserver((entries) => {
     // 尺寸变化时，重新初始化指示条位置（使用 currentSettingsTab 作为真实来源）
     initIndicator()
   })
@@ -294,8 +290,18 @@ const initIndicator = () => {
 
   if (activeButton?.$el) {
     moveIndicator(activeButton.$el)
-    // 滑动/点击切换时激活项可能被滚出视野 → 滚回可视区（窄屏横向导航跟随）
-    activeButton.$el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+    // 滑动/点击切换时激活项可能被滚出视野 → 滚回可视区（窄屏横向导航跟随）。
+    // 注意：不能用 scrollIntoView —— transform 缩放下 #app 布局尺寸超过视口
+    // （calc(100vw/z)），body 成为可滚动容器，scrollIntoView 会连带滚动 body，
+    // 把 fixed 定位的设置面板（containing block 是 #app）滚出视口，导致
+    // 非 100% 缩放下设置页右侧/底部露出空白。这里只滚动 nav 容器本身。
+    const nav = navContainer.value
+    if (nav) {
+      const btn = activeButton.$el as HTMLElement
+      // offsetLeft 相对 nav（nav 为 relative 定位），把按钮水平居中到容器
+      const target = btn.offsetLeft - nav.clientWidth / 2 + btn.clientWidth / 2
+      nav.scrollTo({ left: target, behavior: 'smooth' })
+    }
   }
 }
 
@@ -303,13 +309,6 @@ const initIndicator = () => {
 onMounted(() => {
   initIndicator()
   setupResizeObserver()
-})
-
-onUnmounted(() => {
-  if (resizeObserver) {
-    resizeObserver.disconnect()
-    resizeObserver = null
-  }
 })
 
 // 监听当前标签变化
@@ -350,6 +349,15 @@ defineExpose({
   addMoreMenu,
 })
 
+// 监听父组件转发的 B 组件事件（触发 A 组件自身逻辑）
+// 监听 B 组件的 add 事件，触发 A 组件的 addMoreMenu
+watch(
+  () => {
+    /* 可通过 props 传递状态，或直接监听 emit 事件 */
+  },
+  () => {},
+  { immediate: true },
+)
 </script>
 
 <style lang="css" scoped>

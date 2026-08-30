@@ -10,6 +10,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
+use crate::ai_service::tts::local::saf_bridge::{prepare_file_import_source, ImportSource};
 use crate::db::entities::role::{Column, Entity as RoleEntity};
 use crate::utils::archive::{
     self, ArchiveError, ArchiveFormat, ConflictPolicy, EntryEvent, ExtractSummary,
@@ -20,23 +21,31 @@ use super::ImportResult;
 pub(super) async fn do_import(
     app: &AppHandle,
     tmp_path: &Path,
-    format: ArchiveFormat,
+    format: Option<ArchiveFormat>,
     policy: ConflictPolicy,
     cancel_token: Arc<CancellationToken>,
     file_name: Option<&str>,
 ) -> Result<ImportResult, String> {
-    // 1. 校验文件头魔数。
+    // 1. 校验文件头魔数。前端 hint 可选；以 magic 为准，hint 仅用于 debug 日志。
     let detected = archive::detect_format(tmp_path).map_err(|e| e.to_string())?;
-    if detected != format {
-        tracing::warn!("[RoleArchive] do_import 格式不匹配: 前端 {format:?}, 实际 {detected:?}");
-        return Err(format!(
-            "格式不匹配: 前端传 {format:?}, 实际 {detected:?}"
-        ));
-    }
+    let format = match format {
+        Some(hint) if hint == detected => detected,
+        Some(hint) => {
+            tracing::warn!(
+                "[RoleArchive] do_import 扩展名 hint={hint:?} 与 magic {detected:?} 不一致，采用 magic 结果"
+            );
+            detected
+        }
+        None => detected,
+    };
 
     // 2. 使用去除扩展名后的压缩包文件名作为角色文件夹名。
     let final_name = sanitize_role_folder_name(file_name, None);
-    tracing::info!("[RoleArchive] do_import 文件夹名: final_name={} (file_name={:?})", final_name, file_name);
+    tracing::info!(
+        "[RoleArchive] do_import 文件夹名: final_name={} (file_name={:?})",
+        final_name,
+        file_name
+    );
 
     // 3. 在角色目录下创建本次导入使用的临时暂存目录。
     let characters_root = crate::api::characters_dir();
@@ -66,10 +75,15 @@ pub(super) async fn do_import(
             let _ = app_emit.emit("role:import-progress", &evt);
         };
         match format {
-            ArchiveFormat::Zip => archive::extract_zip(&path_for_blocking, &target, &cancel_for_blocking, &on_entry),
-            ArchiveFormat::SevenZ => {
-                archive::extract_sevenz(&path_for_blocking, &target, &cancel_for_blocking, &on_entry)
+            ArchiveFormat::Zip => {
+                archive::extract_zip(&path_for_blocking, &target, &cancel_for_blocking, &on_entry)
             }
+            ArchiveFormat::SevenZ => archive::extract_sevenz(
+                &path_for_blocking,
+                &target,
+                &cancel_for_blocking,
+                &on_entry,
+            ),
         }
     })
     .await
@@ -99,8 +113,11 @@ pub(super) async fn do_import(
 
     // 5. 定位解压后的角色内容根目录。
     //    如果只有一个外层角色目录则进入该目录，否则直接使用暂存目录。
-    let extracted_dir = locate_extracted_dir(&staging_root).await;
-    tracing::info!("[RoleArchive] do_import extracted_dir={}", extracted_dir.display());
+    let extracted_dir = archive::locate_extracted_root(&staging_root).await;
+    tracing::info!(
+        "[RoleArchive] do_import extracted_dir={}",
+        extracted_dir.display()
+    );
 
     // 6. 根据同名冲突策略解析最终目标目录。
     let resolution = match archive::resolve_target(&characters_root, &final_name, policy) {
@@ -122,6 +139,7 @@ pub(super) async fn do_import(
                 conflict_action: "skipped".into(),
                 warnings: vec![],
                 bytes_extracted: 0,
+                format,
             });
         }
         Err(e) => {
@@ -142,7 +160,8 @@ pub(super) async fn do_import(
         if let Err(e) = tokio::fs::remove_dir_all(&resolution.target).await {
             tracing::error!(
                 "[RoleArchive] do_import overwrite 清空旧目录失败: target={}, err={}",
-                resolution.target.display(), e
+                resolution.target.display(),
+                e
             );
             cleanup_err(&staging_root_for_cleanup);
             return Err(format!(
@@ -152,12 +171,10 @@ pub(super) async fn do_import(
         }
     }
     if let Some(parent) = resolution.target.parent() {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|e| {
-                cleanup_err(&staging_root_for_cleanup);
-                format!("创建目标父目录: {e}")
-            })?;
+        tokio::fs::create_dir_all(parent).await.map_err(|e| {
+            cleanup_err(&staging_root_for_cleanup);
+            format!("创建目标父目录: {e}")
+        })?;
     }
 
     // 移动目录前再次检查取消状态；目标已确定，但尚未写入最终位置。
@@ -170,49 +187,16 @@ pub(super) async fn do_import(
     // 7. 把解压后的角色目录移动到最终目标位置。
     //    同一磁盘优先重命名；若因句柄占用或权限失败，则重试并回退到复制。
     let target_exists_before = resolution.target.exists();
-    let mut rename_err: Option<std::io::Error> = None;
-    for attempt in 1..=3 {
-        match tokio::fs::rename(&extracted_dir, &resolution.target).await {
-            Ok(()) => {
-                rename_err = None;
-                break;
-            }
-            Err(e) => {
-                rename_err = Some(e);
-                if attempt < 3 {
-                    tokio::time::sleep(std::time::Duration::from_millis(150 * attempt as u64)).await;
-                }
-            }
-        }
-    }
-    if let Some(rerr) = rename_err {
-        tracing::warn!(
-            "[RoleArchive] do_import rename 3次均失败: src={}, target={}, target_exists={}, err={}",
-            extracted_dir.display(), resolution.target.display(), target_exists_before, rerr
+    if let Err(e) = archive::relocate_dir(&extracted_dir, &resolution.target).await {
+        tracing::error!(
+            "[RoleArchive] do_import 移动失败: src={}, target={}, target_exists={}, err={}",
+            extracted_dir.display(),
+            resolution.target.display(),
+            target_exists_before,
+            e
         );
-        let src_c = extracted_dir.clone();
-        let dst_c = resolution.target.clone();
-        let copy_res = tokio::task::spawn_blocking(move || copy_dir_recursive(&src_c, &dst_c))
-            .await
-            .map_err(|je| {
-                cleanup_err(&staging_root_for_cleanup);
-                format!("移动角色目录失败: rename={rerr}, spawn={je}")
-            })?;
-        match copy_res {
-            Ok(()) => {
-                // 复制成功后删除源目录；暂存目录本身由后续统一清理。
-                if extracted_dir != staging_root {
-                    let _ = tokio::fs::remove_dir_all(&extracted_dir).await;
-                }
-                tracing::info!("[RoleArchive] do_import rename 失败后复制成功");
-            }
-            Err(cerr) => {
-                cleanup_err(&staging_root_for_cleanup);
-                return Err(format!(
-                    "移动角色目录失败 (rename: {rerr}; 复制回退: {cerr}). 可能目标正被其他进程占用."
-                ));
-            }
-        }
+        cleanup_err(&staging_root_for_cleanup);
+        return Err(e);
     }
     tracing::info!(
         "[RoleArchive] do_import 移动完成: {} -> {}",
@@ -232,9 +216,8 @@ pub(super) async fn do_import(
             settings_yml.display()
         );
         let _ = tokio::fs::remove_dir_all(&resolution.target).await;
-        return Err(format!(
-            "压缩包缺少 settings.yml (角色配置文件不可缺少). 请确保压缩包内含 settings.yml 后重试."
-        ));
+        // 返回 i18n 错误码，前端按 ui.archiveProgress.errors.<code> 查表翻译。
+        return Err("ARCHIVE_MISSING_SETTINGS_YML".into());
     }
 
     // 同步角色数据前进行最后一次取消检查。
@@ -251,7 +234,10 @@ pub(super) async fn do_import(
         // 同步失败时立即回滚已移入的角色目录（await 而不是 spawn），
         // 避免用户立刻重试同名导入时遇到尚未删除的旧目录。
         let target = resolution.target.clone();
-        tracing::error!("[RoleArchive] do_import sync failed, rolling back target={}", target.display());
+        tracing::error!(
+            "[RoleArchive] do_import sync failed, rolling back target={}",
+            target.display()
+        );
         let _ = tokio::fs::remove_dir_all(&target).await;
         return Err(format!("sync roles: {e}"));
     }
@@ -265,6 +251,7 @@ pub(super) async fn do_import(
         conflict_action: resolution.action.into(),
         warnings: summary.warnings,
         bytes_extracted: summary.bytes_extracted,
+        format,
     })
 }
 
@@ -284,7 +271,11 @@ pub(super) async fn write_temp_archive(app: &AppHandle, bytes: &[u8]) -> Result<
     tokio::fs::write(&tmp_path, bytes)
         .await
         .map_err(|e| format!("write temp archive: {e}"))?;
-    tracing::info!("[RoleArchive] write_temp_archive: {}B -> {}", bytes.len(), tmp_path.display());
+    tracing::info!(
+        "[RoleArchive] write_temp_archive: {}B -> {}",
+        bytes.len(),
+        tmp_path.display()
+    );
     Ok(tmp_path)
 }
 
@@ -292,67 +283,34 @@ pub(super) async fn write_temp_archive(app: &AppHandle, bytes: &[u8]) -> Result<
 /// - 如果路径以 `content://` 开头，则把 Android SAF 文件复制到缓存目录。
 /// - 否则按桌面端文件系统路径处理，不创建额外副本。
 ///
-/// 返回值中的布尔值表示导入完成后是否需要清理本地副本。
-pub(super) async fn prepare_import_source(app: &AppHandle, path: &str) -> Result<(PathBuf, bool), String> {
-    if path.starts_with("content://") {
-        use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
-        let cache_dir = app
-            .path()
-            .app_cache_dir()
-            .map_err(|e| format!("cache dir: {e}"))?;
-        let imports_root = cache_dir.join("imports");
-        tokio::fs::create_dir_all(&imports_root)
-            .await
-            .map_err(|e| format!("create imports dir: {e}"))?;
-
-        let tmp_id = uuid::Uuid::new_v4().to_string();
-        let local_path = imports_root.join(format!("import_saf_{tmp_id}.bin"));
-        let local_uri = FsUri::from_path(&local_path);
-        let src_uri = FsUri::from_uri(path.to_string());
-        tracing::info!(
-            "[RoleArchive] prepare_import_source SAF: src={}, local={}",
-            path,
-            local_path.display()
-        );
-
-        app.android_fs_async()
-            .copy(&src_uri, &local_uri)
-            .await
-            .map_err(|e| format!("SAF copy to local cache: {e}"))?;
-
-        Ok((local_path, true))
-    } else {
-        Ok((PathBuf::from(path), false))
-    }
+/// 返回 [`ImportSource`]：`path` 是本地可读路径，`cleanup_after_import` 指示调用方
+/// 是否需要在导入完成后清理本地副本，`display_name` 是用户面向的文件名
+/// （Android 上由 SAF 元数据提供；桌面端是路径的 basename）。
+/// 后端用它做 fallback：当传入的 `file_name` 看起来是 percent-encoded hex blob
+/// （content URI 的末段未经前端 decode 的痕迹）时优先采用它，保证角色文件夹名
+/// 是真实可读的名字，而不是 `%E6%A9%98...` 之类的 hex 串。
+pub(super) async fn prepare_import_source(
+    app: &AppHandle,
+    path: &str,
+) -> Result<ImportSource, String> {
+    prepare_file_import_source(app, path).await
 }
 
-/// 定位解压后的角色内容根目录:
-/// - 暂存目录只含一个子目录时，返回该角色目录，例如 `角色名/settings.yml`。
-/// - 否则表示内容直接位于压缩包根目录，返回暂存目录本身。
-/// 检查目录结构时忽略 `__MACOSX`、`._*` 和 `.DS_Store`。
-async fn locate_extracted_dir(staging: &Path) -> PathBuf {
-    let mut subdirs: Vec<PathBuf> = Vec::new();
-    let mut has_files = false;
-    if let Ok(mut entries) = tokio::fs::read_dir(staging).await {
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name == "__MACOSX" || name.starts_with("._") || name == ".DS_Store" {
-                continue;
-            }
-            match entry.file_type().await {
-                Ok(ft) if ft.is_dir() => subdirs.push(entry.path()),
-                Ok(ft) if ft.is_file() => has_files = true,
-                _ => {}
-            }
-        }
+/// 判断一个字符串是否像是 percent-encoded hex blob（Android content URI
+/// 末段的典型形态）。仅当传入的 `file_name` 命中此模式时才考虑替换。
+pub(super) fn looks_like_percent_encoded_blob(s: &str) -> bool {
+    if s.is_empty() || !s.is_ascii() {
+        return false;
     }
-    // 只有 1 个子目录且无文件 -> 返回该子目录 (有外层包裹)
-    if subdirs.len() == 1 && !has_files {
-        subdirs.into_iter().next().unwrap_or_else(|| staging.to_path_buf())
-    } else {
-        // 没有外层角色目录时，内容直接位于暂存目录根部。
-        staging.to_path_buf()
+    // 整段几乎都是 hex 字符 + 极少其他字符（点/下划线/连字符）。
+    let hex_count = s.chars().filter(|c| c.is_ascii_hexdigit()).count();
+    let total = s.chars().count();
+    if total < 8 || hex_count * 10 < total * 9 {
+        return false;
     }
+    s.split('.')
+        .next()
+        .is_some_and(|stem| stem.len() >= 6 && stem.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 /// 规范化角色文件夹名:
@@ -395,33 +353,6 @@ fn sanitize_role_folder_name(name: Option<&str>, fallback: Option<&str>) -> Stri
     format!("role_{ts}")
 }
 
-/// 递归复制目录，作为重命名失败时的回退方案。
-fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
-    if !dst.exists() {
-        std::fs::create_dir_all(dst)?;
-    }
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let from = entry.path();
-        let to = dst.join(entry.file_name());
-        let ft = entry.file_type()?;
-        if ft.is_dir() {
-            copy_dir_recursive(&from, &to)?;
-        } else if ft.is_file() {
-            std::fs::copy(&from, &to)?;
-        } else if ft.is_symlink() {
-            if let Ok(meta) = std::fs::metadata(&from) {
-                if meta.is_dir() {
-                    copy_dir_recursive(&from, &to)?;
-                } else {
-                    std::fs::copy(&from, &to)?;
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
 async fn find_role_id_by_folder(
     db: &DatabaseConnection,
     folder: &str,
@@ -439,6 +370,14 @@ pub(super) fn parse_format(s: &str) -> Result<ArchiveFormat, String> {
         "zip" => Ok(ArchiveFormat::Zip),
         "7z" => Ok(ArchiveFormat::SevenZ),
         _ => Err(format!("不支持的 format: {s}")),
+    }
+}
+
+/// Optional format parser: `None`/空字符串代表前端没传 hint，让后端用 magic 决定。
+pub(super) fn parse_format_opt(s: Option<&str>) -> Result<Option<ArchiveFormat>, String> {
+    match s {
+        None | Some("") | Some("auto") => Ok(None),
+        Some(v) => parse_format(v).map(Some),
     }
 }
 

@@ -40,6 +40,7 @@ pub enum SkillAgentEvent {
         error: Option<String>,
     },
     /// 命令需要用户审批。
+    #[cfg_attr(not(desktop), allow(dead_code))]
     PendingApproval {
         request_id: String,
         tool: String,

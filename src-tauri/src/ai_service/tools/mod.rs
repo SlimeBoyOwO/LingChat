@@ -4,6 +4,7 @@ pub mod clock;
 pub mod executor;
 pub mod memory;
 pub mod permissions;
+pub mod read_media_file;
 pub mod registry;
 pub mod scene;
 pub mod schedule;
@@ -30,12 +31,15 @@ use clock::CurrentTimeTool;
 use memory::{AddNote, DeleteNote, GetCurrentMemory, GetNotes, UpdateNote};
 use permissions::ToolPermissionConfig;
 use permissions::CONFIG_FILE_NAME;
+use read_media_file::ReadMediaFileTool;
 use registry::ToolRegistry;
 use scene::{SceneList, SceneSwitch};
 use schedule::{AddTodo, DeleteTodo, GetAllSchedule, UpdateTodo};
 use settings::SharedToolSettings;
+#[cfg(desktop)]
+use skill_files::ExecuteCommand;
 use skill_files::{
-    DeleteFile, EditFile, ExecuteCommand, GrepFiles, ListFiles, ListSkills, ReadFile, ReadSkill,
+    DeleteFile, EditFile, Glob, Grep, GrepFiles, ListFiles, ListSkills, ReadFile, ReadSkill,
     SearchFiles, WriteFile,
 };
 use status::{CurrentStatus, SceneStatus};
@@ -90,11 +94,10 @@ pub(crate) fn atomic_replace(path: &Path, content: &[u8]) -> Result<(), String> 
 pub fn built_in_registry(
     role_names: impl IntoIterator<Item = (String, String)>,
     tool_settings: SharedToolSettings,
-    app: tauri::AppHandle,
 ) -> Result<ToolRegistry> {
     let registry = ToolRegistry::new();
     registry.register(Arc::new(CurrentTimeTool))?;
-    registry.register(Arc::new(WebSearchTool::new(tool_settings.clone(), app)))?;
+    registry.register(Arc::new(WebSearchTool::new(tool_settings.clone())))?;
     registry.register(Arc::new(GetAllSchedule))?;
     registry.register(Arc::new(AddTodo))?;
     registry.register(Arc::new(UpdateTodo))?;
@@ -112,6 +115,7 @@ pub fn built_in_registry(
     registry.register(Arc::new(CharacterSwitch))?;
     registry.register(Arc::new(ListSkills))?;
     registry.register(Arc::new(ReadSkill))?;
+    registry.register(Arc::new(ReadMediaFileTool::new(tool_settings.clone())))?;
     registry.register(Arc::new(ListFiles::new(tool_settings.clone())))?;
     registry.register(Arc::new(ReadFile::new(tool_settings.clone())))?;
     registry.register(Arc::new(WriteFile::new(tool_settings.clone())))?;
@@ -119,6 +123,11 @@ pub fn built_in_registry(
     registry.register(Arc::new(EditFile::new(tool_settings.clone())))?;
     registry.register(Arc::new(SearchFiles::new(tool_settings.clone())))?;
     registry.register(Arc::new(GrepFiles::new(tool_settings.clone())))?;
+    registry.register(Arc::new(Glob::new(tool_settings.clone())))?;
+    registry.register(Arc::new(Grep::new(tool_settings.clone())))?;
+    // Android/iOS 没有稳定、可审批的桌面 shell 环境。移动端不注册命令工具，
+    // 避免模型选中 execute_command 后才得到系统级执行失败。
+    #[cfg(desktop)]
     registry.register(Arc::new(ExecuteCommand::new(tool_settings.clone())))?;
     let data_dir = crate::api::data_dir();
     let mut permissions = ToolPermissionConfig::load_or_create(

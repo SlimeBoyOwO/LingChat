@@ -1,3 +1,4 @@
+import type { Live2dSettings } from '@/types/live2d'
 import type { SceneInfo } from '@/api/services/scene' // 导入场景类型
 import type { ScriptChoiceItem } from '@/types/script'
 
@@ -55,6 +56,7 @@ export interface GameRole {
   clothes: object
   clothesName: string
   bodyPart: object
+  live2d?: Live2dSettings | null
   character_folder: string
 }
 
@@ -78,6 +80,8 @@ export interface GameState {
   command: string | null
 
   initialized: boolean
+  /** LoadingTransition 启动动画是否已完成（§1.9 门控：动画期间不启动 ASR） */
+  loadingComplete: boolean
   latestScreenshot: string | null
   /** 正在进行的截图 Promise，供 save handler 等待 */
   screenshotPending: Promise<string | null> | null
@@ -102,6 +106,7 @@ export const state: GameState = {
   command: null,
 
   initialized: false,
+  loadingComplete: false,
   latestScreenshot: null,
   screenshotPending: null,
 }

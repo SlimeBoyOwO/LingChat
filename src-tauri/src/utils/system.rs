@@ -1,4 +1,4 @@
-#[allow(unused_variables)]
+#[cfg_attr(not(desktop), allow(unused_variables))]
 pub fn open_folder(path: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {

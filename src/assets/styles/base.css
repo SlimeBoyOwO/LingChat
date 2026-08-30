@@ -16,6 +16,8 @@
   /* 动画配置 */
   --animate-blob: blob 7s infinite;
   --animate-fade-in-up: fadeInUp 0.8s ease-out forwards;
+  /* ASR 语音录入中：mic 图标蓝色呼吸（颜色深浅渐变脉动） */
+  --animate-asr-breathe: asr-breathe 1.6s ease-in-out infinite;
 }
 
 /* ─── 刘海屏安全区变量 ──────────────────────────────────── */
@@ -45,10 +47,31 @@
   }
 }
 
+/* ASR 录音中 mic 图标：蓝色深浅渐变呼吸（配合 animate-asr-breathe 工具类；
+   border-color 供桌宠按钮的边框同步呼吸） */
+@keyframes asr-breathe {
+  0%,
+  100% {
+    color: var(--color-blue-500);
+    border-color: color-mix(in srgb, var(--color-blue-500) 50%, transparent);
+  }
+  50% {
+    color: var(--color-blue-300);
+    border-color: color-mix(in srgb, var(--color-blue-300) 80%, transparent);
+  }
+}
+
 @layer base {
   html {
     font-family: var(--font-app), var(--font-sans);
     font-size: clamp(12px, min(2.5vw, 2.5vh), 16px) !important;
+    /* 应用为固定视口游戏 UI：禁止页面级滚动（所有滚动都在组件内部容器），
+       同时避免 transform 缩放下 body 溢出出现滚动条/被滚动（见 useZoom） */
+    overflow: hidden;
+  }
+
+  body {
+    overflow: hidden;
   }
 }
 

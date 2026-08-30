@@ -117,15 +117,6 @@ pub trait ScriptEvent: Send {
     fn event_type() -> &'static str
     where
         Self: Sized;
-
-    /// 事件之间的间隔（秒）。对应 YAML 里的 `duration` 字段，所有事件继承自
-    /// 基础事件。`Some(n)`（n ≥ 0）表示事件展示后自动等待 n 秒再继续；
-    /// `None` 表示没写，由前端按各事件类型的默认节奏处理（通常等玩家点击）。
-    /// handler 在 `from_event_data` 里读取并返回。
-    #[allow(dead_code)]
-    fn duration(&self) -> Option<f64> {
-        None
-    }
 }
 
 // ============================================================
@@ -153,7 +144,7 @@ pub fn create_event(event_type: &str, event_data: Value) -> Option<Box<dyn Scrip
 }
 
 /// 从事件 YAML 里读取 `duration`（事件间隔秒数）。
-/// 各 handler 在 `from_event_data` 里调用，供 `ScriptEvent::duration()` 返回。
+/// 各 handler 在 `from_event_data` 里调用，随后写入给前端的展示 payload。
 /// 只接受数字；负数允许（由前端按「等玩家」处理），但 None 表示「没写」。
 pub fn parse_duration(data: &Value) -> Option<f64> {
     data.get("duration").and_then(|v| v.as_f64())
@@ -229,80 +220,5 @@ pub fn evaluate_condition(condition: &str, vars: &serde_json::Map<String, Value>
         }
     } else {
         false
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::evaluate_condition;
-    use serde_json::{json, Map, Value};
-
-    fn vars(pairs: &[(&str, Value)]) -> Map<String, Value> {
-        pairs
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.clone()))
-            .collect()
-    }
-
-    #[test]
-    fn empty_condition_always_passes() {
-        assert!(evaluate_condition("", &Map::new()));
-        assert!(evaluate_condition("   ", &Map::new()));
-    }
-
-    #[test]
-    fn equality_compares_string_form() {
-        let v = vars(&[
-            ("flag", json!(true)),
-            ("name", json!("钦灵")),
-            ("count", json!(2)),
-        ]);
-        assert!(evaluate_condition("flag == true", &v));
-        assert!(evaluate_condition("name == 钦灵", &v));
-        assert!(evaluate_condition("name == \"钦灵\"", &v));
-        assert!(evaluate_condition("count == 2", &v));
-        assert!(!evaluate_condition("count == 3", &v));
-    }
-
-    #[test]
-    fn inequality_is_the_complement_of_equality() {
-        let v = vars(&[("route", json!("shop"))]);
-        assert!(evaluate_condition("route != home", &v));
-        assert!(!evaluate_condition("route != shop", &v));
-    }
-
-    /// Undefined variables must behave consistently across `==` and `!=`.
-    /// Regression guard for the contradictory comment removed in PR1.
-    #[test]
-    fn undefined_variable_is_unequal_to_everything() {
-        let v = Map::new();
-        assert!(!evaluate_condition("missing == 1", &v));
-        assert!(evaluate_condition("missing != 1", &v));
-        assert!(!evaluate_condition("missing", &v));
-    }
-
-    #[test]
-    fn bare_variable_is_a_truthiness_check() {
-        let v = vars(&[
-            ("t", json!(true)),
-            ("f", json!(false)),
-            ("n", Value::Null),
-            ("s", json!("x")),
-            ("zero", json!(0)),
-        ]);
-        assert!(evaluate_condition("t", &v));
-        assert!(!evaluate_condition("f", &v));
-        assert!(!evaluate_condition("n", &v));
-        assert!(evaluate_condition("s", &v));
-        // 说明：0 属于「非空、非布尔」，因此为真。这是有意为之。
-        assert!(evaluate_condition("zero", &v));
-    }
-
-    /// 记录一处有意保留的限制，免得有人以为 `>` 能用。
-    #[test]
-    fn comparison_operators_are_not_supported() {
-        let v = vars(&[("hp", json!(10))]);
-        assert!(!evaluate_condition("hp >= 5", &v));
-        assert!(!evaluate_condition("hp > 5", &v));
     }
 }

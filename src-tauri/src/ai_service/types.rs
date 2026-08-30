@@ -331,6 +331,104 @@ pub struct VoiceModel {
     pub sherpa_onnx_ref_text: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Live2dMotionBinding {
+    pub group: String,
+    pub index: usize,
+    #[serde(default, rename = "loop")]
+    pub loop_motion: bool,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Live2dParameterBinding {
+    pub parameter: String,
+    #[serde(default = "default_live2d_gain")]
+    pub gain: f64,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Live2dEyeBlinkBinding {
+    pub left: String,
+    pub right: String,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Live2dFocusAnchor {
+    pub x: f64,
+    pub y: f64,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+fn deserialize_live2d_focus_anchor<'de, D>(
+    deserializer: D,
+) -> Result<Option<Live2dFocusAnchor>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let anchor = Option::<Live2dFocusAnchor>::deserialize(deserializer)?;
+    if let Some(anchor) = &anchor {
+        if !anchor.x.is_finite()
+            || !anchor.y.is_finite()
+            || !(0.0..=1.0).contains(&anchor.x)
+            || !(0.0..=1.0).contains(&anchor.y)
+        {
+            return Err(serde::de::Error::custom(
+                "focus_anchor x/y must be finite values between 0 and 1",
+            ));
+        }
+    }
+    Ok(anchor)
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct Live2dVariant {
+    pub model: String,
+    #[serde(default)]
+    pub default_expression: Option<String>,
+    #[serde(default)]
+    pub expressions: HashMap<String, String>,
+    #[serde(default)]
+    pub motions: HashMap<String, Live2dMotionBinding>,
+    #[serde(default)]
+    pub idle: Option<Live2dMotionBinding>,
+    #[serde(default)]
+    pub eye_blink: Option<Live2dEyeBlinkBinding>,
+    #[serde(default, deserialize_with = "deserialize_live2d_focus_anchor")]
+    pub focus_anchor: Option<Live2dFocusAnchor>,
+    #[serde(default)]
+    pub lip_sync: Option<Live2dParameterBinding>,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Live2dSettings {
+    #[serde(default = "default_live2d_version")]
+    pub version: u32,
+    pub default_variant: String,
+    #[serde(default)]
+    pub variants: HashMap<String, Live2dVariant>,
+    #[serde(default)]
+    pub clothes_variants: HashMap<String, String>,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+fn default_live2d_version() -> u32 {
+    1
+}
+
+fn default_live2d_gain() -> f64 {
+    1.0
+}
+
 /// 角色设定模型，对应 Python `CharacterSettings`。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CharacterSettings {
@@ -410,6 +508,9 @@ pub struct CharacterSettings {
     pub system_prompt_example_old: Option<String>,
 
     #[serde(default)]
+    pub live2d: Option<Live2dSettings>,
+
+    #[serde(default)]
     pub character_folder: String,
     #[serde(default)]
     pub resource_path: Option<String>,
@@ -481,6 +582,7 @@ impl Default for CharacterSettings {
             system_prompt: None,
             system_prompt_example: None,
             system_prompt_example_old: None,
+            live2d: None,
             character_folder: String::new(),
             resource_path: None,
             script_role_key: None,
@@ -591,6 +693,9 @@ pub struct ScriptStatus {
     pub current_event_process: i32,
 
     pub vars: serde_json::Map<String, serde_json::Value>,
+
+    /// 该剧本来自哪个插件（None = 游戏自有剧本）。用于列表来源角标与插件禁用时移除。
+    pub plugin_id: Option<String>,
 }
 
 impl ScriptStatus {

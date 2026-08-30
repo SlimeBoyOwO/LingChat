@@ -36,11 +36,18 @@ pub struct LlmProviderConfig {
     /// 推理深度（如 "low" / "high" / "max"），由支持 reasoning 的模型使用（如 Kimi Code K3 系列）。
     #[serde(default)]
     pub reasoning_effort: Option<String>,
+    /// Codex Fast Mode（1.5× 速度，额度消耗更快）；仅 provider = codex 时有意义。
+    #[serde(default)]
+    pub fast_mode: bool,
 }
 
 impl LlmProviderConfig {
+    /// 判断该 provider 是否可用于发起 LLM 请求。
+    ///
+    /// 允许 api_key 为空（本地模型 / 自托管 OpenAI 兼容服务无需密钥），
+    /// 只要求 model 非空。
     pub fn is_usable(&self) -> bool {
-        !self.api_key.is_empty() && !self.model.is_empty()
+        !self.model.is_empty()
     }
 
     pub fn to_llm_config(&self, timeout_secs: u64) -> LlmConfig {
@@ -54,6 +61,7 @@ impl LlmProviderConfig {
             top_p: self.top_p,
             enable_thinking: self.enable_thinking,
             reasoning_effort: self.reasoning_effort.clone(),
+            fast_mode: self.fast_mode,
         }
     }
 }
@@ -273,7 +281,8 @@ pub fn migrate_if_needed(app: &AppHandle) {
     let mut chat_id: Option<String> = None;
 
     // Migrate main LLM
-    if !old_api_key.is_empty() && !old_model.is_empty() {
+    // 仅要求 model 非空；api_key 允许为空（本地/自托管模型无需密钥）
+    if !old_model.is_empty() {
         let id = uuid::Uuid::new_v4().to_string();
         let label = old_model.clone();
         providers.push(LlmProviderConfig {
@@ -287,6 +296,7 @@ pub fn migrate_if_needed(app: &AppHandle) {
             top_p: old_top_p,
             enable_thinking: old_thinking,
             reasoning_effort: None,
+            fast_mode: false,
         });
         chat_id = Some(id);
     }
@@ -298,7 +308,8 @@ pub fn migrate_if_needed(app: &AppHandle) {
     let trans_base_url = get_string_opt(&store, keys::TRANSLATE_BASE_URL).unwrap_or_default();
 
     let mut translate_id: Option<String> = None;
-    if !trans_api_key.is_empty() && !trans_model.is_empty() {
+    // 仅要求 model 非空；api_key 允许为空（本地/自托管模型无需密钥）
+    if !trans_model.is_empty() {
         // Check if translate config is different from chat
         let is_different = trans_provider
             != get_string_opt(&store, keys::LLM_PROVIDER).unwrap_or_default()
@@ -320,6 +331,7 @@ pub fn migrate_if_needed(app: &AppHandle) {
                 top_p: None,
                 enable_thinking: false,
                 reasoning_effort: None,
+                fast_mode: false,
             });
             translate_id = Some(id);
         }
@@ -357,7 +369,9 @@ pub fn migrate_legacy_vision_keys(app: &AppHandle) {
     };
 
     let api_key = get_string_opt(&store, keys::VD_API_KEY).unwrap_or_default();
-    if api_key.trim().is_empty() {
+    let model = get_string_opt(&store, keys::VD_MODEL).unwrap_or_default();
+    // 仅要求 model 非空；api_key 允许为空（本地/自托管模型无需密钥）
+    if model.trim().is_empty() {
         return;
     }
 
@@ -366,7 +380,6 @@ pub fn migrate_legacy_vision_keys(app: &AppHandle) {
         return;
     }
 
-    let model = get_string_opt(&store, keys::VD_MODEL).unwrap_or_default();
     let base_url = get_string_opt(&store, keys::VD_BASE_URL).unwrap_or_default();
 
     tracing::info!("Migrating legacy VD_* vision config into LLM provider list...");
@@ -388,6 +401,7 @@ pub fn migrate_legacy_vision_keys(app: &AppHandle) {
         top_p: None,
         enable_thinking: false,
         reasoning_effort: None,
+        fast_mode: false,
     };
 
     let mut providers = load_providers(app);

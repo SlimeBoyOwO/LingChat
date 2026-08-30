@@ -57,6 +57,7 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
         clothes: roleInfo.clothes,
         clothesName: roleInfo.clothes_name,
         bodyPart: roleInfo.body_part,
+        live2d: roleInfo.live2d,
         character_folder: roleInfo.character_folder,
         emotion: '正常',
         originalEmotion: '正常',
@@ -95,6 +96,11 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
   // 设置当前场景（仅更新 store，不调用 API）
   setCurrentScene(this: GameState, scene: SceneInfo | null) {
     this.currentScene = scene
+  },
+
+  /** 标记 LoadingTransition 启动动画已完成（§1.9 门控：动画期间不启动 ASR） */
+  setLoadingComplete(this: GameState, v: boolean) {
+    this.loadingComplete = v
   },
 
   // 清除场景（更新 store，API 调用由组件负责）
@@ -155,6 +161,7 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
       clothes: settings.clothes,
       clothesName: settings.clothes_name,
       bodyPart: settings.body_part,
+      live2d: settings.live2d,
       character_folder: settings.character_folder,
       emotion: '正常',
       originalEmotion: '正常',
@@ -180,6 +187,7 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
       clothes: characterInfo.clothes,
       clothesName: characterInfo.clothes_name,
       bodyPart: characterInfo.body_part,
+      live2d: characterInfo.live2d,
       character_folder: characterInfo.character_folder,
       emotion: '正常',
       originalEmotion: '正常',

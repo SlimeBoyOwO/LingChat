@@ -109,6 +109,21 @@
         >
       </MenuItem>
 
+      <MenuItem :title="$t('settings.text.autoAdvance.title')">
+        <template #header>
+          <Timer :size="20" />
+        </template>
+        <Slider
+          v-model="autoAdvanceDelay"
+          :min="0"
+          :max="2000"
+          :step="100"
+        >
+          <template #left>{{ autoAdvanceDelay }}</template>
+          <template #right>ms</template>
+        </Slider>
+      </MenuItem>
+
       <MenuItem :title="$t('settings.text.sample.title')">
         <template #header>
           <ClipboardList :size="20" />
@@ -305,6 +320,101 @@
                 class="mr-1"
               />
               {{ $t('settings.text.ttsCache.clean') }}
+            </Button>
+          </div>
+        </div>
+      </MenuItem>
+
+      <!-- ─── Codex 额度（仅对话模型选择 Codex 提供商时显示） ──────────────── -->
+      <MenuItem
+        v-if="showCodexQuota"
+        :title="$t('settings.text.codexQuota.title')"
+        size="small"
+      >
+        <template #header>
+          <Gauge :size="20" />
+        </template>
+        <div class="space-y-2
+          w-full">
+          <template v-if="codexLoggedIn && codexDisplayRows.length > 0">
+            <div
+              v-for="row in codexDisplayRows"
+              :key="row.label"
+              class="space-y-1"
+            >
+              <div class="flex
+                items-center
+                justify-between
+                text-base">
+                <span class="text-gray-50">{{ row.label }}</span>
+                <span class="text-gray-50
+                  font-medium">
+                  {{ $t('settings.text.codexQuota.remaining', { percent: Math.round(row.window.remaining_percent) }) }}
+                </span>
+              </div>
+              <div class="w-full
+                bg-slate-700/50
+                rounded-full
+                h-2
+                overflow-hidden">
+                <div
+                  class="h-full
+                    bg-cyan-400
+                    rounded-full
+                    transition-all
+                    duration-300"
+                  :style="{ width: `${row.window.remaining_percent}%` }"
+                ></div>
+              </div>
+              <div
+                v-if="row.window.reset_at"
+                class="text-gray-50/70
+                  text-xs"
+              >
+                {{ $t('settings.text.codexQuota.resetAt', { time: formatResetAt(row.window.reset_at) }) }}
+              </div>
+            </div>
+          </template>
+          <div
+            v-else-if="!codexLoggedIn"
+            class="text-gray-50/70
+              text-xs"
+          >
+            {{ $t('settings.text.codexQuota.notLoggedIn') }}<br />
+            {{ $t('settings.text.codexQuota.loginHint') }}
+          </div>
+          <div
+            v-if="codexQuotaError"
+            class="text-red-300/90
+              text-xs"
+          >
+            {{ $t('settings.text.codexQuota.loadFailed', { error: codexQuotaError }) }}
+          </div>
+          <div
+            v-if="codexFastMode"
+            class="flex
+              items-center
+              gap-1
+              text-amber-300/90
+              text-xs"
+          >
+            <Zap :size="12" />
+            {{ $t('settings.text.codexQuota.fastModeHint') }}
+          </div>
+          <div class="flex
+            gap-3
+            pt-1">
+            <Button
+              type="big"
+              :disabled="codexQuotaLoading"
+              @click="refreshCodexQuota"
+            >
+              <RefreshCw
+                :size="16"
+                class="mr-1"
+                :class="{ 'animate-spin': codexQuotaLoading }"
+              />
+              {{ $t('settings.text.codexQuota.refresh') }}
             </Button>
           </div>
         </div>
@@ -509,7 +619,9 @@ import { MenuPage, MenuItem } from '../../ui'
 import { Slider, Text, Toggle, Button } from '../../base'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
+import { useRoleArchiveStore } from '../../../stores/modules/ui/role-archive'
 import { useSettingsStore } from '../../../stores/modules/settings'
+import { useLlmProvidersStore } from '@/stores/modules/llm-providers'
 import { useGameStore } from '../../../stores/modules/game'
 import type { ConfigItem } from '@/api/services/config'
 import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
@@ -533,7 +645,15 @@ import {
   BookOpen,
   Type,
   Import,
+  Gauge,
+  Timer,
 } from 'lucide-vue-next'
+import {
+  codexAuthStatus,
+  codexGetQuota,
+  type CodexUsage,
+  type QuotaWindow,
+} from '@/api/services/codex'
 import { reactivateTTS, clearTtsCache } from '@/api/services/game-info'
 import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -556,6 +676,7 @@ import type { DialogView } from '@/types/lanSync'
 const router = useRouter()
 const { t } = useI18n()
 const uiStore = useUIStore()
+const roleStore = useRoleArchiveStore()
 const settingsStore = useSettingsStore()
 const gameStore = useGameStore()
 const dialogStore = useDialogStore()
@@ -566,6 +687,70 @@ const ttsOrphanFiles = ref(0)
 const ttsOrphanSize = ref('0 B')
 const lastCleanupInfo = ref<{ deleted: number; timestamp: number } | null>(null)
 let ttsCacheRefreshTimer: ReturnType<typeof setInterval> | null = null
+
+// ─── Codex 额度 ────────────────────────────────────────────────
+// 只有「对话模型」选择了 Codex 提供商时才显示额度卡片并轮询；
+// 切换为其他模型后卡片即时隐藏、轮询停止。
+const llmProvidersStore = useLlmProvidersStore()
+const showCodexQuota = computed(() => llmProvidersStore.chatProvider?.provider === 'codex')
+// Fast Mode（service_tier=priority）按 1.5 倍速度消耗额度，开启时在卡片上提示
+const codexFastMode = computed(() => llmProvidersStore.chatProvider?.fast_mode === true)
+const codexLoggedIn = ref(false)
+const codexUsage = ref<CodexUsage | null>(null)
+const codexQuotaError = ref('')
+const codexQuotaLoading = ref(false)
+let codexQuotaTimer: ReturnType<typeof setInterval> | null = null
+
+interface CodexQuotaRow {
+  label: string
+  window: QuotaWindow
+}
+
+// 把主桶与额外桶（如 GPT-5.3-Codex-Spark）按窗口展平成显示行：
+// 按 window_seconds 归类（18000=5 小时窗，604800=7 天周窗），
+// 不认识的窗口长度也照样显示（后端文案里标注秒数）。
+const codexDisplayRows = computed<CodexQuotaRow[]>(() => {
+  const usage = codexUsage.value
+  if (!usage) return []
+  const rows: CodexQuotaRow[] = []
+  const pushWindow = (prefix: string, window: QuotaWindow | null) => {
+    if (!window) return
+    const suffix =
+      window.window_seconds === 18000
+        ? t('settings.text.codexQuota.fiveHour')
+        : window.window_seconds === 604800
+          ? t('settings.text.codexQuota.weekly')
+          : `${window.window_seconds}s`
+    rows.push({ label: prefix ? `${prefix} · ${suffix}` : suffix, window })
+  }
+  pushWindow('', usage.rate_limit.secondary)
+  pushWindow('', usage.rate_limit.primary)
+  for (const extra of usage.additional) {
+    pushWindow(extra.name, extra.quota.secondary)
+    pushWindow(extra.name, extra.quota.primary)
+  }
+  return rows
+})
+
+function formatResetAt(resetAt: number): string {
+  return new Date(resetAt * 1000).toLocaleString()
+}
+
+async function refreshCodexQuota() {
+  if (codexQuotaLoading.value) return
+  codexQuotaLoading.value = true
+  codexQuotaError.value = ''
+  try {
+    const status = await codexAuthStatus()
+    codexLoggedIn.value = status.logged_in
+    codexUsage.value = status.logged_in ? await codexGetQuota() : null
+  } catch (e: any) {
+    codexUsage.value = null
+    codexQuotaError.value = String(e?.message ?? e)
+  } finally {
+    codexQuotaLoading.value = false
+  }
+}
 
 // 判断是否在自由对话模式（没有运行剧本）
 const isFreeDialogMode = computed(() => gameStore.runningScript === null)
@@ -792,7 +977,7 @@ const handleClearHistory = async () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadConfig()
   checkTtsCache()
   loadLastTtsCleanup()
@@ -804,13 +989,47 @@ onMounted(() => {
   ttsCacheRefreshTimer = setInterval(() => {
     checkTtsCache()
   }, 30000)
+  // Codex 额度卡片依赖对话模型的提供商类型，先确保模型列表已加载
+  if (!llmProvidersStore.loaded) {
+    await llmProvidersStore.load()
+  }
+  // Codex 额度：对话模型是 Codex 时才查，之后每 60 秒轮询
+  if (showCodexQuota.value) {
+    refreshCodexQuota()
+    startCodexQuotaPolling()
+  }
 })
+
+// 对话模型切到/切出 Codex 时，即时显隐卡片并启停轮询
+watch(showCodexQuota, (show) => {
+  if (show) {
+    refreshCodexQuota()
+    startCodexQuotaPolling()
+  } else {
+    stopCodexQuotaPolling()
+  }
+})
+
+function startCodexQuotaPolling() {
+  stopCodexQuotaPolling()
+  codexQuotaTimer = setInterval(() => {
+    refreshCodexQuota()
+  }, 60000)
+}
+
+function stopCodexQuotaPolling() {
+  if (codexQuotaTimer) {
+    clearInterval(codexQuotaTimer)
+    codexQuotaTimer = null
+  }
+}
 
 onUnmounted(() => {
   if (ttsCacheRefreshTimer) {
     clearInterval(ttsCacheRefreshTimer)
     ttsCacheRefreshTimer = null
   }
+  stopCodexQuotaPolling()
 })
 
 function loadLastTtsCleanup() {
@@ -841,6 +1060,12 @@ const loadConfig = async () => {
 const textSpeed = computed({
   get: () => settingsStore.textSpeed,
   set: (val: number) => settingsStore.update('text.speed', val),
+})
+
+// 使用 settings store 的自动推进延迟（毫秒）
+const autoAdvanceDelay = computed({
+  get: () => settingsStore.autoAdvanceDelay,
+  set: (val: number) => settingsStore.update('text.autoAdvanceDelay', val),
 })
 
 // ─── 界面字体选择 ───────────────────────────────────────────
@@ -885,7 +1110,7 @@ async function loadImportedFonts() {
 async function handleImportFont() {
   const selected = await openDialog({
     multiple: false,
-    filters: [{ name: '字体文件', extensions: ['ttf', 'woff2'] }],
+    filters: [{ name: '字体文件', extensions: ['ttf', 'otf', 'woff', 'woff2'] }],
   })
   if (!selected) return
 
@@ -893,22 +1118,39 @@ async function handleImportFont() {
   if (!filePath) return
 
   try {
-    const info = await importFont(filePath)
-    registerFontFace(info.name, info.file_path)
+    const result = await importFont(filePath)
+    registerFontFace(result.font_family, result.file_path)
     clearImportedFontsCache()
     await loadImportedFonts()
+    // 发生自动修正时弹顶部 amber notice 提示用户
+    if (result.was_corrected) {
+      const originalExt = result.original_name.split('.').pop() || ''
+      roleStore.showCorrected({
+        title: t('ui.notice.autoCorrected.title'),
+        message: t('ui.notice.autoCorrected.font', {
+          original: result.original_name,
+          originalExt,
+          detected: result.detected_kind,
+          corrected: result.actual_name,
+        }),
+      })
+    }
     uiStore.showNotification({
       type: 'success',
       title: '字体导入成功',
-      message: `字体 "${info.name}" 已导入`,
+      message: `字体 "${result.font_family}" 已导入`,
       duration: 3000,
       skipTipsCheck: true,
     })
   } catch (error: any) {
+    const rawMsg = typeof error === 'string' ? error : error?.message || String(error)
+    const translated = rawMsg === 'FONT_INVALID_FORMAT'
+      ? t('ui.fontImport.errors.FONT_INVALID_FORMAT')
+      : rawMsg
     uiStore.showNotification({
       type: 'error',
       title: '字体导入失败',
-      message: typeof error === 'string' ? error : error.message || '导入失败',
+      message: translated,
       duration: 3000,
       skipTipsCheck: true,
     })

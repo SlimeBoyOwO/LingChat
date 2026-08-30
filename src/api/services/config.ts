@@ -20,6 +20,14 @@ export async function saveEnvConfig(
   return invoke('save_settings', { values })
 }
 
+/**
+ * 设置 HDR 模式开关（仅 Windows）。
+ * 持久化到后端 settings.json，启动时由 Rust 侧读取并决定 WebView2 色彩配置，重启后生效。
+ */
+export async function setHdrMode(enabled: boolean): Promise<void> {
+  return invoke('set_hdr_mode', { enabled })
+}
+
 export const getEnvConfigByKey = async (key: string): Promise<ConfigItem> => {
   try {
     const data = await invoke('get_setting_by_key', { key })

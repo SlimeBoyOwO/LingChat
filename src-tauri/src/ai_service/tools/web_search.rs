@@ -1,14 +1,8 @@
-//! 网页搜索工具，两种后端模式：
-//!
-//! 1. 模型 API 内置联网（默认，`use_builtin = true`）：复用用户已配置的聊天模型
-//!    API（Moonshot/Kimi 的 OpenAI 兼容端点），声明 `$web_search` 内置工具，
-//!    由服务端执行搜索。协议（见 platform.moonshot.cn/docs/guide/use-web-search）：
-//!    模型返回 tool_calls 后，客户端把参数原样回传为 tool 消息，服务端继续生成最终答案。
-//!    无需单独的搜索 API Key。
-//! 2. 独立搜索端点（`use_builtin = false`）：直接 POST Moonshot `/search` 端点，
-//!    需要单独的 API Key。参考 kimi-code 的 WebSearch 设计（极简 query 参数、
-//!    纯文本结果、错误分类成模型可读文本）。
+//! 网页搜索工具：直接 POST 独立搜索端点（需要单独配置 API Key）。
+//! 支持 Kimi /search、BoCha、DeepSeek Responses API（服务端内置 `web_search`）、
+//! Tavily 与自定义兼容端点。
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -16,7 +10,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::Value;
 
-use crate::ai_service::llm::provider_config::resolve_chat_provider;
+use crate::ai_service::llm::provider_config::{LlmProviderConfig, resolve_chat_provider};
 use crate::ai_service::types::ToolDefinition;
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
@@ -24,25 +18,21 @@ use super::settings::{SharedToolSettings, WebSearchSettings};
 
 /// 独立端点模式的执行超时。
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(15);
-/// 内置联网模式的执行超时（服务端要跑一轮 LLM 生成 + 搜索，更慢）。
-const BUILTIN_TIMEOUT: Duration = Duration::from_secs(90);
+/// DeepSeek Responses API 执行超时（服务端需要跑一轮模型 + 搜索，更慢）。
+const DEEPSEEK_TIMEOUT: Duration = Duration::from_secs(45);
 /// 返回给模型的结果文本总量上限，避免把上下文塞爆。
 const MAX_OUTPUT_CHARS: usize = 20_000;
 /// 搜索词长度上限，避免异常参数放大请求体、日志与第三方计费。
 const MAX_QUERY_CHARS: usize = 500;
-/// 内置联网模式的最大 tool_calls 回显轮次。
-const MAX_BUILTIN_ROUNDS: usize = 3;
 
 /// 网页搜索内置工具。
 pub struct WebSearchTool {
     settings: SharedToolSettings,
-    /// 用于在内置联网模式下解析当前聊天模型配置。
-    app: tauri::AppHandle,
 }
 
 impl WebSearchTool {
-    pub fn new(settings: SharedToolSettings, app: tauri::AppHandle) -> Self {
-        Self { settings, app }
+    pub fn new(settings: SharedToolSettings) -> Self {
+        Self { settings }
     }
 
     fn tool_definition(cfg: &WebSearchSettings) -> ToolDefinition {
@@ -114,6 +104,46 @@ impl WebSearchTool {
             .map_err(|e| ToolError::Execution(format!("创建搜索 HTTP 客户端失败: {e}")))
     }
 
+    /// 解析执行时凭据。Codex 使用 OAuth；Kimi 可复用当前官方 Kimi Code
+    /// 对话模型凭据，与 Kimi Code CLI 的 host WebSearch + `/search` 闭环一致。
+    fn resolve_execution_settings(
+        context: &ToolContext,
+        cfg: &WebSearchSettings,
+    ) -> Result<WebSearchSettings, ToolError> {
+        let mut effective = cfg.clone();
+        effective.provider = effective.provider.trim().to_ascii_lowercase();
+        if effective.provider == "kimi" && effective.api_key.trim().is_empty() {
+            let app = context.require_app()?;
+            let chat = resolve_chat_provider(&app).ok_or_else(|| {
+                ToolError::Execution(
+                    "Kimi 搜索未填写独立 API Key，且当前没有可复用的对话模型凭据".into(),
+                )
+            })?;
+            if !chat.provider.eq_ignore_ascii_case("kimicode") {
+                return Err(ToolError::Execution(
+                    "Kimi 搜索未填写独立 API Key；请把当前对话模型切换为官方 Kimi Code，或在工具设置中填写 API Key".into(),
+                ));
+            }
+            if !is_official_kimi_code_base_url(&chat.base_url) {
+                return Err(ToolError::Execution(
+                    "为避免把对话凭据发送到不同服务，只有官方 api.kimi.com/coding 端点可复用 Kimi Code 凭据；自定义端点请单独填写 API Key".into(),
+                ));
+            }
+            if chat.api_key.trim().is_empty() {
+                return Err(ToolError::Execution(
+                    "当前 Kimi Code 对话模型没有可复用的 API Key".into(),
+                ));
+            }
+            effective.api_key = chat.api_key;
+        }
+        if effective.api_key.trim().is_empty() && effective.provider != "codex" {
+            return Err(ToolError::Execution(
+                "网页搜索未配置 API Key，请用户在「高级设置 → 工具配置」填写".into(),
+            ));
+        }
+        Ok(effective)
+    }
+
     /// 把搜索结果渲染成模型友好的纯文本（独立端点模式）。
     /// `hide = true` 时不输出网址/来源名，并改为指示模型自然融入回答，
     /// 避免模型在对话里念出搜索结果列表。
@@ -177,21 +207,22 @@ impl WebSearchTool {
         out
     }
 
-    /// 独立搜索端点模式：按 provider 分发（kimi / bocha）。
+    /// 独立搜索端点模式：按 provider 分发（kimi / bocha / deepseek / tavily / codex / custom）。
     async fn execute_search_endpoint(
         &self,
+        context: &ToolContext,
         query: &str,
         cfg: &WebSearchSettings,
     ) -> Result<ToolResult, ToolError> {
-        if cfg.api_key.trim().is_empty() {
-            return Err(ToolError::Execution(
-                "网页搜索未配置 API Key，请用户在「高级设置 → 工具配置」填写，或改用「模型 API 内置联网」模式".into(),
-            ));
-        }
         match cfg.provider.as_str() {
             "bocha" => self.execute_bocha_search(query, cfg).await,
-            "custom" => self.execute_kimi_endpoint(query, cfg).await,
-            _ => self.execute_kimi_endpoint(query, cfg).await,
+            "deepseek" => self.execute_deepseek_search(query, cfg).await,
+            "tavily" => self.execute_tavily_search(query, cfg).await,
+            "codex" => self.execute_codex_search(context, query, cfg).await,
+            "kimi" | "custom" => self.execute_kimi_endpoint(query, cfg).await,
+            provider => Err(ToolError::Execution(format!(
+                "不支持的网页搜索提供商: {provider}"
+            ))),
         }
     }
 
@@ -320,33 +351,25 @@ impl WebSearchTool {
         }))
     }
 
-    /// kimicode 模式的联网搜索：复用聊天配置里的 kimi key，
-    /// 客户端直连 `{base_url}/v1/search`（与 Kimi Code CLI 相同的通道）。
-    async fn execute_kimicode_search(
+    /// 独立端点模式 · Tavily（https://api.tavily.com/search）。
+    ///
+    /// Tavily 只认顶层的 `query` 字段。此前没有这个分支，选 Tavily 的配置会落进
+    /// 上面 match 的 Kimi 兜底、发出 `text_query`，Tavily 便返回 422（issue #630）。
+    /// 注意 `text_query` 是 Kimi 官方端点要求的格式，不能反过来去改那一侧。
+    async fn execute_tavily_search(
         &self,
         query: &str,
         cfg: &WebSearchSettings,
-        provider: &crate::ai_service::llm::provider_config::LlmProviderConfig,
     ) -> Result<ToolResult, ToolError> {
-        let base = provider.base_url.trim().trim_end_matches('/');
-        let base = if base.is_empty() {
-            "https://api.kimi.com/coding"
-        } else {
-            base
-        };
-        let endpoint = if base.ends_with("/v1") {
-            format!("{base}/search")
-        } else {
-            format!("{base}/v1/search")
-        };
-
+        let base_url = "https://api.tavily.com/search";
         let client = Self::build_client(cfg)?;
         let response = client
-            .post(&endpoint)
-            // coding 端点对 UA 有白名单，沿用 KimiCodeProvider 的伪装约定
-            .header(reqwest::header::USER_AGENT, "claude-code/2.0.0")
-            .bearer_auth(provider.api_key.trim())
-            .json(&serde_json::json!({ "text_query": query }))
+            .post(base_url)
+            .bearer_auth(cfg.api_key.trim())
+            .json(&serde_json::json!({
+                "query": query,
+                "max_results": cfg.max_results.max(1),
+            }))
             .send()
             .await
             .map_err(classify_request_error)?;
@@ -362,11 +385,24 @@ impl WebSearchTool {
             .json()
             .await
             .map_err(|e| ToolError::Execution(format!("搜索结果解析失败: {e}")))?;
-        let results = payload
-            .get("search_results")
+        let rows = payload
+            .get("results")
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
+        // 统一成 format_results 认识的字段：Tavily 的正文在 content，
+        // 没有站点名和日期，留空即可（format_results 会跳过空字段）。
+        let results: Vec<Value> = rows
+            .iter()
+            .map(|item| {
+                let get = |key: &str| item.get(key).and_then(Value::as_str).unwrap_or("");
+                serde_json::json!({
+                    "title": get("title"),
+                    "url": get("url"),
+                    "snippet": get("content"),
+                })
+            })
+            .collect();
 
         let text = Self::format_results(
             query,
@@ -382,132 +418,290 @@ impl WebSearchTool {
         }))
     }
 
-    /// 模型 API 内置联网模式：声明 `$web_search`，按协议回显 tool_calls 参数。
-    async fn execute_builtin(
+    /// 独立端点模式 · OpenAI Codex 订阅联网搜索。
+    ///
+    /// 协议与 dsh-codex 的 standalone search 一致：
+    /// `POST https://chatgpt.com/backend-api/codex/alpha/search`，复用
+    /// `codex-auth.json` 的 OAuth 凭据（设备码登录、自动刷新），链路经
+    /// `utils::proxy` 自动探测代理。响应 `output` 为模型综合答案，
+    /// `results[]` 为 text_result（url/title/snippet）。
+    async fn execute_codex_search(
+        &self,
+        context: &ToolContext,
+        query: &str,
+        cfg: &WebSearchSettings,
+    ) -> Result<ToolResult, ToolError> {
+        use crate::ai_service::llm::codex_auth;
+        use crate::utils::proxy::build_proxied_client;
+
+        const SEARCH_URL: &str = "https://chatgpt.com/backend-api/codex/alpha/search";
+
+        let http = build_proxied_client(45)
+            .await
+            .map_err(|e| ToolError::Execution(format!("创建 Codex 搜索客户端失败: {e}")))?;
+        let cred = codex_auth::get_valid_credential(&http)
+            .await
+            .map_err(|e| ToolError::Execution(format!("Codex 凭据读取失败: {e}")))?
+            .ok_or_else(|| {
+                ToolError::Execution(
+                    "未登录 Codex：请先在「大模型管理」登录 ChatGPT 订阅，或改用其他搜索提供商"
+                        .into(),
+                )
+            })?;
+
+        let chat_provider = context.app.as_ref().and_then(resolve_chat_provider);
+        let model = codex_search_model(chat_provider.as_ref());
+        let body = serde_json::json!({
+            "id": uuid::Uuid::new_v4().to_string(),
+            "model": model,
+            "input": [{
+                "type": "message",
+                "role": "user",
+                "content": [{ "type": "input_text", "text": query }],
+            }],
+            "commands": { "search_query": [{ "q": query }] },
+            "settings": {
+                "search_context_size": "medium",
+                "allowed_callers": ["direct"],
+                // live：实时联网（搜索工具的语义就是查最新资料）
+                "external_web_access": true,
+            },
+            "max_output_tokens": 10000,
+        });
+
+        let response = http
+            .post(SEARCH_URL)
+            .bearer_auth(&cred.access)
+            .header("chatgpt-account-id", &cred.account_id)
+            .header("originator", "lingchat")
+            .header(reqwest::header::ACCEPT, "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(classify_request_error)?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let message = if matches!(status.as_u16(), 401 | 403) {
+                format!(
+                    "Codex 搜索认证失败，请在「大模型管理」重新登录 ChatGPT 订阅（HTTP {status}）"
+                )
+            } else {
+                http_error_message(status, response).await
+            };
+            return Err(ToolError::Execution(message));
+        }
+
+        let payload: Value = response
+            .json()
+            .await
+            .map_err(|e| ToolError::Execution(format!("Codex 搜索响应解析失败: {e}")))?;
+
+        let answer = payload
+            .get("output")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let rows = payload
+            .get("results")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let results = normalize_codex_results(&rows);
+
+        // 主答案（模型综合回答）+ 来源条目（hide 时省略并改为融入指示）
+        let mut text = String::new();
+        if !answer.is_empty() {
+            text.push_str(&answer);
+            text.push_str("\n\n");
+        }
+        if !cfg.hide_search_results {
+            text.push_str(&Self::format_results(
+                query,
+                &results,
+                cfg.max_results.max(1),
+                false,
+            ));
+        } else {
+            text.push_str(
+                "以上是联网搜索到的信息。请把关键内容自然地融入你的回答，\
+                 绝对不要在回复中输出来源名称、网址、链接列表或原始搜索结果。\n",
+            );
+        }
+        truncate_output(&mut text);
+        if text.trim().is_empty() {
+            return Err(ToolError::Execution("Codex 搜索未返回有效结果".into()));
+        }
+
+        Ok(serde_json::json!({
+            "ok": true,
+            "query": query,
+            "result_count": results.len().min(cfg.max_results.max(1)),
+            "text": text,
+        }))
+    }
+
+    /// DeepSeek Responses API 服务端联网搜索。
+    ///
+    /// 请求 `POST {base}/responses`，声明 `web_search` 工具并强制触发。
+    /// 服务端会执行搜索并生成带引用的综合回答；这里解析 `output` 中的
+    /// `web_search_call` 与 `final_answer` 消息。
+    async fn execute_deepseek_search(
         &self,
         query: &str,
         cfg: &WebSearchSettings,
     ) -> Result<ToolResult, ToolError> {
-        let provider = resolve_chat_provider(&self.app).ok_or_else(|| {
-            ToolError::Execution(
-                "未找到可用的聊天模型配置，请先在「通用 → 文本」设置里配置 LLM".into(),
-            )
-        })?;
-        if provider.provider.eq_ignore_ascii_case("kimicode") {
-            // kimicode（Anthropic 协议）不支持 $web_search 内置工具，
-            // 但 api.kimi.com/coding 提供独立的 /v1/search 端点（Kimi Code CLI 同款），
-            // 复用聊天 Key 客户端直连即可。
-            return self.execute_kimicode_search(query, cfg, &provider).await;
-        }
-
-        let base = if provider.base_url.trim().is_empty() {
-            "https://api.moonshot.cn/v1".to_string()
+        // DeepSeek Responses API 固定使用官方端点（与 bocha/kimi 一致，不读 base_url 配置）
+        let endpoint = "https://api.deepseek.com/responses".to_string();
+        let model = if cfg.model.trim().is_empty() {
+            "deepseek-v4-flash"
         } else {
-            provider.base_url.trim().trim_end_matches('/').to_string()
+            cfg.model.trim()
         };
-        let endpoint = if base.ends_with("/chat/completions") {
-            base
+        // DeepSeek 的返回是模型生成的一段综合回答（内联引用），没有独立结构化条目，
+        // 因此用 instructions 控制是否保留来源/链接，而不是事后剥离文本。
+        let instructions = if cfg.hide_search_results {
+            "你是联网搜索助手。搜索后把关键内容自然地融入回答，绝对不要输出来源名称、网址或链接列表。"
         } else {
-            format!("{base}/chat/completions")
+            "你是联网搜索助手。搜索后请用简洁的中文总结搜索结果，保留关键事实与来源链接。"
         };
+        let body = serde_json::json!({
+            "model": model,
+            "instructions": instructions,
+            "input": query,
+            "tools": [ { "type": "web_search" } ],
+            "tool_choice": { "type": "web_search" },
+            "max_output_tokens": 4096,
+        });
 
         let client = Self::build_client(cfg)?;
-        let system_prompt = if cfg.hide_search_results {
-            "你是联网搜索助手。需要时使用 $web_search 工具获取信息，\
-             然后把关键内容自然地融入回答，绝对不要输出来源名称、网址或链接列表。"
-        } else {
-            "你是联网搜索助手。需要时使用 $web_search 工具获取信息，\
-             然后用简洁的中文总结搜索结果，保留关键事实与来源链接。"
-        };
-        let mut messages = serde_json::json!([
-            { "role": "system", "content": system_prompt },
-            { "role": "user", "content": query }
-        ]);
-        let tools = serde_json::json!([
-            { "type": "builtin_function", "function": { "name": "$web_search" } }
-        ]);
+        let response = client
+            .post(&endpoint)
+            .bearer_auth(cfg.api_key.trim())
+            .json(&body)
+            .send()
+            .await
+            .map_err(classify_request_error)?;
 
-        for round in 0..MAX_BUILTIN_ROUNDS {
-            let body = serde_json::json!({
-                "model": provider.model,
-                "messages": messages,
-                "tools": tools,
-                // kimi-k2 系列官方建议值；对其他模型无副作用
-                "temperature": 0.6,
-                "stream": false,
-            });
-            let response = client
-                .post(&endpoint)
-                .bearer_auth(provider.api_key.trim())
-                .json(&body)
-                .send()
-                .await
-                .map_err(classify_request_error)?;
-
-            let status = response.status();
-            if !status.is_success() {
-                return Err(ToolError::Execution(
-                    http_error_message(status, response).await,
-                ));
-            }
-
-            let payload: Value = response
-                .json()
-                .await
-                .map_err(|e| ToolError::Execution(format!("搜索响应解析失败: {e}")))?;
-            let Some(message) = payload
-                .get("choices")
-                .and_then(Value::as_array)
-                .and_then(|choices| choices.first())
-                .and_then(|choice| choice.get("message"))
-            else {
-                return Err(ToolError::Execution(
-                    "搜索响应缺少 choices[0].message".into(),
-                ));
-            };
-
-            let tool_calls = message.get("tool_calls").and_then(Value::as_array);
-            if let Some(calls) = tool_calls.filter(|c| !c.is_empty()) {
-                // $web_search 协议：服务端执行搜索，客户端只需把参数原样回传
-                tracing::info!(round = round + 1, "内置联网：回显 $web_search tool_calls");
-                let messages_arr = messages.as_array_mut().expect("messages 必须是数组");
-                messages_arr.push(message.clone());
-                for call in calls {
-                    let id = call.get("id").and_then(Value::as_str).unwrap_or_default();
-                    let arguments = call
-                        .pointer("/function/arguments")
-                        .and_then(Value::as_str)
-                        .unwrap_or("{}");
-                    messages_arr.push(serde_json::json!({
-                        "role": "tool",
-                        "tool_call_id": id,
-                        "content": arguments,
-                    }));
-                }
-                continue;
-            }
-
-            let mut content = message
-                .get("content")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .trim()
-                .to_string();
-            if content.is_empty() {
-                return Err(ToolError::Execution("搜索服务未返回有效内容".into()));
-            }
-            truncate_output(&mut content);
-            return Ok(serde_json::json!({
-                "ok": true,
-                "query": query,
-                "text": content,
-            }));
+        let status = response.status();
+        if !status.is_success() {
+            return Err(ToolError::Execution(
+                http_error_message(status, response).await,
+            ));
         }
 
-        Err(ToolError::Execution(format!(
-            "内置联网搜索超过 {MAX_BUILTIN_ROUNDS} 轮仍未返回结果"
-        )))
+        let payload: Value = response
+            .json()
+            .await
+            .map_err(|e| ToolError::Execution(format!("DeepSeek 搜索响应解析失败: {e}")))?;
+        let output = payload
+            .get("output")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+
+        let answer = extract_deepseek_answer(&output);
+        if answer.trim().is_empty() {
+            return Err(ToolError::Execution(
+                "DeepSeek 搜索未返回有效结果（可能没有触发 web_search）".into(),
+            ));
+        }
+        let mut text = answer.trim().to_string();
+        truncate_output(&mut text);
+
+        Ok(serde_json::json!({
+            "ok": true,
+            "query": query,
+            "result_count": deepseek_search_action_count(&output),
+            "text": text,
+        }))
     }
+}
+
+fn normalize_codex_results(rows: &[Value]) -> Vec<Value> {
+    let mut seen_urls = HashSet::new();
+    rows.iter()
+        .filter(|item| item.get("type").and_then(Value::as_str) == Some("text_result"))
+        .filter_map(|item| {
+            let get = |key: &str| item.get(key).and_then(Value::as_str).unwrap_or("");
+            let parsed = reqwest::Url::parse(get("url").trim()).ok()?;
+            if !matches!(parsed.scheme(), "http" | "https")
+                || !seen_urls.insert(parsed.as_str().to_string())
+            {
+                return None;
+            }
+            Some(serde_json::json!({
+                "title": get("title"),
+                "url": parsed.as_str(),
+                "snippet": get("snippet"),
+            }))
+        })
+        .collect()
+}
+
+fn is_official_kimi_code_base_url(base_url: &str) -> bool {
+    if base_url.trim().is_empty() {
+        return true;
+    }
+    let Ok(url) = reqwest::Url::parse(base_url.trim()) else {
+        return false;
+    };
+    url.scheme() == "https"
+        && url.host_str() == Some("api.kimi.com")
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.port_or_known_default() == Some(443)
+        && (url.path().trim_end_matches('/') == "/coding" || url.path().starts_with("/coding/"))
+}
+
+fn codex_search_model(chat_provider: Option<&LlmProviderConfig>) -> String {
+    if let Some(chat) =
+        chat_provider.filter(|provider| provider.provider.eq_ignore_ascii_case("codex"))
+    {
+        if !chat.model.trim().is_empty() {
+            return chat.model.trim().to_string();
+        }
+    }
+    "gpt-5.6-sol".to_string()
+}
+
+/// 从 DeepSeek Responses API 的 `output` 中提取最终回答文本。
+///
+/// 只取 `phase == "final_answer"` 的 message 的 `output_text` 内容，
+/// 跳过 commentary / reasoning 等非最终回答文本。
+fn extract_deepseek_answer(output: &[Value]) -> String {
+    let mut parts = Vec::new();
+    for item in output {
+        if item.get("type").and_then(Value::as_str) != Some("message") {
+            continue;
+        }
+        if item.get("phase").and_then(Value::as_str) != Some("final_answer") {
+            continue;
+        }
+        let Some(content) = item.get("content").and_then(Value::as_array) else {
+            continue;
+        };
+        for part in content {
+            if part.get("type").and_then(Value::as_str) != Some("output_text") {
+                continue;
+            }
+            if let Some(text) = part.get("text").and_then(Value::as_str) {
+                parts.push(text);
+            }
+        }
+    }
+    parts.join("")
+}
+
+/// 统计 DeepSeek Responses 响应中实际执行的搜索动作数量（用于测试/日志展示）。
+fn deepseek_search_action_count(output: &[Value]) -> usize {
+    output
+        .iter()
+        .filter(|item| item.get("type").and_then(Value::as_str) == Some("web_search_call"))
+        .filter_map(|item| item.get("action").and_then(Value::as_object))
+        .filter(|action| action.get("type").and_then(Value::as_str) == Some("search"))
+        .count()
 }
 
 /// 限制返回给模型的文本长度。
@@ -548,14 +742,22 @@ impl Tool for WebSearchTool {
     }
 
     fn timeout_hint(&self) -> Option<Duration> {
-        Some(if self.settings.get().web_search.use_builtin {
-            BUILTIN_TIMEOUT
+        let settings = self.settings.get().web_search;
+        Some(if settings.provider == "deepseek" {
+            DEEPSEEK_TIMEOUT
+        } else if settings.provider == "codex" {
+            // Codex 搜索 = 一轮模型生成 + 联网，与 DeepSeek 同级
+            DEEPSEEK_TIMEOUT
         } else {
             SEARCH_TIMEOUT
         })
     }
 
-    async fn execute(&self, _: &ToolContext, arguments: Value) -> Result<ToolResult, ToolError> {
+    async fn execute(
+        &self,
+        context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
         let cfg = self.settings.get().web_search;
         if !cfg.enabled {
             return Err(ToolError::Execution(
@@ -570,12 +772,9 @@ impl Tool for WebSearchTool {
             .filter(|q| !q.is_empty())
             .ok_or_else(|| ToolError::InvalidArguments("缺少必填参数 query".into()))?;
         let query = bounded_query(query);
+        let cfg = Self::resolve_execution_settings(context, &cfg)?;
 
-        if cfg.use_builtin {
-            self.execute_builtin(&query, &cfg).await
-        } else {
-            self.execute_search_endpoint(&query, &cfg).await
-        }
+        self.execute_search_endpoint(context, &query, &cfg).await
     }
 }
 
@@ -587,11 +786,99 @@ fn bounded_query(query: &str) -> String {
 mod tests {
     use super::*;
 
+    fn provider(kind: &str, model: &str) -> LlmProviderConfig {
+        LlmProviderConfig {
+            id: "test".into(),
+            label: "test".into(),
+            provider: kind.into(),
+            model: model.into(),
+            api_key: "secret".into(),
+            base_url: String::new(),
+            temperature: None,
+            top_p: None,
+            enable_thinking: false,
+            reasoning_effort: None,
+            fast_mode: false,
+        }
+    }
+
     #[test]
-    fn query_is_truncated_on_character_boundary() {
-        let query = "搜".repeat(MAX_QUERY_CHARS + 10);
-        let bounded = bounded_query(&query);
-        assert_eq!(bounded.chars().count(), MAX_QUERY_CHARS);
-        assert!(bounded.is_char_boundary(bounded.len()));
+    fn codex_search_uses_only_the_active_codex_chat_model() {
+        let chat = provider("codex", "gpt-5.3-codex");
+        assert_eq!(codex_search_model(Some(&chat)), "gpt-5.3-codex");
+        assert_eq!(codex_search_model(None), "gpt-5.6-sol");
+        assert_eq!(
+            codex_search_model(Some(&provider("kimicode", "kimi-for-coding"))),
+            "gpt-5.6-sol"
+        );
+        assert_eq!(
+            codex_search_model(Some(&provider("CoDeX", "gpt-5.4"))),
+            "gpt-5.4"
+        );
+    }
+
+    #[test]
+    fn kimi_chat_credential_reuse_is_restricted_to_official_origin() {
+        assert!(is_official_kimi_code_base_url(""));
+        assert!(is_official_kimi_code_base_url(
+            "https://api.kimi.com/coding"
+        ));
+        assert!(is_official_kimi_code_base_url(
+            "https://api.kimi.com/coding/v1"
+        ));
+        assert!(!is_official_kimi_code_base_url(
+            "http://api.kimi.com/coding"
+        ));
+        assert!(!is_official_kimi_code_base_url(
+            "https://api.kimi.com.evil.test/coding"
+        ));
+        assert!(!is_official_kimi_code_base_url(
+            "https://api.kimi.com/other"
+        ));
+        assert!(!is_official_kimi_code_base_url(
+            "https://user:password@api.kimi.com/coding"
+        ));
+    }
+
+    #[tokio::test]
+    async fn unknown_search_provider_fails_closed() {
+        let tool = WebSearchTool::new(SharedToolSettings::new(
+            crate::ai_service::tools::settings::ToolSettings::default(),
+        ));
+        let mut cfg = WebSearchSettings::default();
+        cfg.provider = "future-provider".into();
+        cfg.api_key = "must-not-be-forwarded".into();
+        let error = tool
+            .execute_search_endpoint(&ToolContext::default(), "query", &cfg)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("不支持的网页搜索提供商"));
+    }
+
+    #[test]
+    fn hidden_results_do_not_expose_urls() {
+        let results = vec![serde_json::json!({
+            "title": "A",
+            "url": "https://secret.test/path",
+            "snippet": "summary"
+        })];
+        let text = WebSearchTool::format_results("query", &results, 1, true);
+        assert!(!text.contains("secret.test"));
+        assert!(text.contains("绝对不要在回复中输出"));
+    }
+
+    #[test]
+    fn codex_results_keep_unique_http_sources_only() {
+        let rows = vec![
+            serde_json::json!({"type":"text_result","url":"https://a.test/x","title":"A","snippet":"one"}),
+            serde_json::json!({"type":"text_result","url":"https://a.test/x","title":"duplicate"}),
+            serde_json::json!({"type":"text_result","url":"javascript:alert(1)","title":"unsafe"}),
+            serde_json::json!({"type":"other","url":"https://b.test/"}),
+            serde_json::json!({"type":"text_result","url":"http://b.test/","title":"B"}),
+        ];
+        let results = normalize_codex_results(&rows);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0]["url"], "https://a.test/x");
+        assert_eq!(results[1]["url"], "http://b.test/");
     }
 }

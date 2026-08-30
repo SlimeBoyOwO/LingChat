@@ -285,6 +285,7 @@ pub async fn rollback_conversation(
             .ok_or_else(|| format!("未找到序号为 {} 的用户消息", message_seq))?;
 
         // truncate(idx) 移除 idx..len（含目标消息及之后所有内容）
+        gs.role_manager.invalidate_memory_history();
         gs.line_list.truncate(idx);
         gs.refresh_memories(&db)
             .await

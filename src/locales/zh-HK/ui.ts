@@ -60,7 +60,27 @@ export default {
     "defaultImportTitle": "角色壓縮檔",
     "defaultExportTitle": "角色匯出",
     "close": "關閉",
-    "cancel": "取消"
+    "cancel": "取消",
+    "errors": {
+      "ARCHIVE_MISSING_SETTINGS_YML": "壓縮包缺少 settings.yml\n這可能是舊版角色，請下載新版角色後匯入"
+    }
+  },
+  "fontImport": {
+    "errors": {
+      "FONT_INVALID_FORMAT": "不是合法的字體檔案（ttf/otf/woff/woff2），檔案已損壞或擴展名與內容不符"
+    }
+  },
+  "musicImport": {
+    "errors": {
+      "MUSIC_INVALID_FORMAT": "不是合法的音訊檔案（mp3/wav/flac/ogg），檔案已損壞或擴展名與內容不符"
+    }
+  },
+  "notice": {
+    "autoCorrected": {
+      "title": "已自動修正",
+      "font": "{original} 不是 {originalExt} 字體格式（偵測為 {detected}），已自動修正為 {corrected}",
+      "music": "{original} 不是 {originalExt} 音訊格式（偵測為 {detected}），已自動修正為 {corrected}"
+    }
   },
   "menuItem": {
     "defaultTitle": "預設標題"
@@ -113,16 +133,83 @@ export default {
     "subtitleDefault": "留低想佢提提你嘅嘢啦"
   },
   "toolCalls": {
+    "accessModeTitle": "工具存取權限",
+    "accessModeHint": "唯讀工具（Read / Glob / Grep / ReadMediaFile）會直接執行；呢度控制修改檔案同執行命令要唔要確認。",
+    "accessModeSelected": "目前",
+    "maxToolRoundsTitle": "工具調用輪數上限",
+    "maxToolRoundsHint": "限制主聊天單次回覆可連續執行工具嘅輪數；每輪可能包含多個工具調用。",
+    "maxToolRoundsUnit": "輪",
+    "maxToolRoundsRange": "範圍 {min}–{max} · 預設 {default}",
+    "accessModes": {
+      "manual": { "label": "逐次確認", "description": "寫入、編輯、刪除檔案同執行命令之前都會問你。" },
+      "auto_approve": { "label": "自動通過", "description": "普通寫入、編輯同命令會自動通過；刪除操作仍然會問。" },
+      "full_access": { "label": "完全存取", "description": "唔再詢問，可以讀寫電腦上任何路徑同執行命令。" }
+    },
+    "fullAccessConfirmTitle": "開啟完全存取？",
+    "fullAccessConfirmMessage": "開啟之後，模型可以唔經確認讀寫或刪除電腦上任何檔案，同埋執行本機命令。只好喺信任目前角色、模型同任務嗰陣使用。繼續嗎？",
+    "fullAccessSettingsWarning": "⚠ 完全存取會取消檔案同命令審批，亦會解除 data/ 沙箱限制。儲存後即時生效。",
+    "fullAccessTopWarning": "執行完全存取權限",
+    "adminModeTitle": "管理員執行狀態",
+    "adminModeChecking": "正在檢查目前程序權限…",
+    "adminModeElevated": "LingChat 已用管理員權限執行；uac=true 命令會直接沿用目前權限，唔會重複彈出 UAC。",
+    "adminModeStandard": "目前係標準權限；需要管理員權限嘅命令仍會顯示 Windows UAC。",
+    "adminModeRestart": "以管理員身份重新啟動",
+    "adminModeRestarting": "正在等候 Windows UAC…",
+    "adminModeHint": "Windows 會喺重新啟動時正常確認一次；之後執行嘅命令都會繼承管理員權限。",
+    "adminModeConfirmTitle": "以管理員身份重新啟動？",
+    "adminModeConfirmMessage": "Windows 將顯示一次正常嘅 UAC 確認。重新啟動後，完全存取模式執行嘅命令會繼承管理員權限。繼續嗎？",
+    "adminModeRestartFailed": "管理員重新啟動失敗：{message}",
+    "fileAccessByMode": {
+      "manual": "寫入、編輯同刪除之前會逐次詢問；路徑限制喺 data/ 沙箱內。",
+      "auto_approve": "普通寫入同編輯自動通過，刪除仍要確認；路徑限制喺沙箱內。",
+      "full_access": "⚠ 可以免確認讀寫或刪除任何路徑。"
+    },
+    "commandAccessByMode": {
+      "manual": "每條命令執行之前都會問。",
+      "auto_approve": "普通命令自動通過；偵測到刪除操作時仍會問。",
+      "full_access": "⚠ 所有命令（包括刪除命令）都可以免確認執行。"
+    },
+    "fileChangeApprovalTitle": "檔案修改請求",
+    "fileChangeApprovalMessage": "ta 想{action}以下檔案：\n\n{path}\n\n允許嗎？",
+    "fileChangeActions": { "write": "寫入", "edit": "編輯" },
+    "androidTitle": "Android 工具說明",
+    "androidSummary": "工具設定會按裝置分開儲存，唔會由 Windows 同步。請喺呢部手機開啟需要嘅工具並儲存；命令執行同桌面插件喺 Android 唔可用。",
+    "androidNoModel": "目前未有可用嘅聊天模型，請先設定模型、API Key 同模型名稱。",
+    "androidModelUnsupported": "目前聊天模型唔支援原生工具調用，請改用支援 function calling 嘅模型。",
+    "androidNoTools": "目前角色未啟用任何可用工具。可以逐項開啟，或者使用下方推薦設定。",
+    "androidReady": "目前角色有 {count} 個工具可用。儲存後新對話會使用最新設定。",
+    "androidEnableRecommended": "啟用 Android 可用工具（仍需儲存）",
+    "androidRecommendedStaged": "已揀選 Android 可用工具，請撳儲存令設定生效",
+    "androidFileScope": "Android 檔案工具只可以存取 LingChat 應用程式沙箱。相簿、下載資料夾等外部檔案請先用系統檔案選擇器匯入。",
+    "androidProxyHint": "Android 上嘅 127.0.0.1 係指手機本身，唔係 Windows 電腦；使用電腦代理時請填電腦嘅區域網絡地址。",
     "webSearchTitle": "網頁搜尋",
+    "mediaTitle": "圖片與影片識別",
+    "mediaHint": "ReadMediaFile 會讀取本機媒體，並交畀「模型管理」所選嘅視覺模型分析。路徑權限同檔案工具一致。",
+    "mediaEnable": "啟用 ReadMediaFile 工具",
+    "mediaVisionModelHint": "識別會使用「進階設定 → 模型管理 → 視覺模型」；未指定時會跟隨聊天模型。",
+    "mediaImages": "允許識別圖片（JPEG / PNG / WebP / GIF）",
+    "mediaVideos": "允許識別影片（MP4 / MOV / WebM / MKV / AVI / MPEG）",
+    "mediaMaxFileMb": "單個媒體檔案上限（MB）",
+    "mediaOutputTokens": "識別結果最大 Token",
+    "mediaImageMaxEdge": "圖片預設最長邊（像素）",
+    "mediaJpegQuality": "圖片壓縮品質（50–95）",
+    "mediaDefaultPrompt": "預設識別提示詞",
+    "mediaVideoCompatibility": "⚠ 影片會透過 OpenAI 相容嘅 video_url 傳送；實際支援情況視乎視覺模型供應商。",
     "enableWebSearch": "啟用網頁搜尋工具（等ta可以上網查資料）",
-    "useBuiltin": "使用模型 API 內建聯網（免 API Key）",
     "hideSearchResults": "隱藏搜尋結果（ta 回答嗰陣唔會顯示來源同網址）",
-    "builtinHint": "搜尋由目前嘅聊天模型 API（需要係 Kimi/Moonshot）喺服務端執行，用現有嘅聊天 Key 就得，唔使單獨申請",
     "apiKey": "API Key",
     "provider": "搜尋供應商",
     "providerCustom": "自訂端點",
+    "providerCodex": "OpenAI Codex（訂閱免 Key）",
+    "codexHint": "用「大模型管理」已登入嘅 Codex 訂閱憑證上網搜尋，唔使填 API Key",
+    "kimiHint": "API Key 可以留空：目前對話模型係官方 Kimi Code 時會安全重用佢嘅憑證；其他情況請另外填寫",
+    "providerDeepSeek": "DeepSeek Responses",
     "customHint": "自訂端點需要兼容 Kimi /search 協議（POST JSON，欄位名稱為 text_query）",
     "apiKeyPlaceholder": "填入自訂端點 API Key",
+    "kimiApiKeyPlaceholder": "可以留空重用目前 Kimi Code 憑證",
+    "dsApiKeyPlaceholder": "填入 DeepSeek API Key",
+    "dsModel": "DeepSeek 模型",
+    "dsHint": "透過 DeepSeek Responses API 嘅服務端 web_search 聯網；需要單獨填 DeepSeek API Key，結果由服務端生成綜合回答",
     "baseUrl": "搜尋服務地址",
     "proxyEnable": "透過代理存取搜尋服務（如 v2rayN）",
     "maxResults": "返回結果條數",
@@ -151,6 +238,7 @@ export default {
       "status": "狀態查詢",
       "clock": "目前時間",
       "skills": "技能庫",
+      "media": "媒體識別",
       "file_ops": "檔案操作",
       "command": "命令執行"
     },
@@ -164,7 +252,7 @@ export default {
     "commandDeleteApprovalTitle": "刪除命令確認",
     "commandDeleteApprovalMessage": "偵測到呢條命令可能會刪除檔案：\n\n{command}\n\n工作目錄：{cwd}\n\n刪除通常無法復原，允許執行嗎？",
     "commandHint": "每次執行前都會彈窗請你確認命令內容；uac 參數可要求管理員權限（Windows 彈 UAC 框）",
-    "commandWindowsOnly": "⚠ 命令執行僅 Windows 可用，當前平台無法運行 shell 命令",
+    "commandWindowsOnly": "⚠ 命令執行只限桌面端使用，Android 無法運行此工具",
     "commandAutoApprove": "免確認自動執行（ta 跑命令前唔再彈窗）",
     "commandAutoApproveHint": "⚠ 危險！開咗之後 ta 可以唔經你同意跑命令；識別到嘅刪除命令仍由下面獨立開關控制",
     "commandDeleteAutoApprove": "刪除命令免確認（偵測到刪除操作時唔再彈窗）",
@@ -181,6 +269,7 @@ export default {
       "status": "狀態查詢（目前狀態/場景狀態）",
       "clock": "目前時間（查詢裝置本地時間）",
       "skills": "技能庫（等ta讀取技能指令，學會新技能）",
+      "media": "媒體識別（用視覺模型讀取圖片同影片）",
       "file_ops": "檔案操作（沙箱內列/讀/寫/刪/改/搜檔案，限 data 目錄）",
       "command": "命令執行（等ta喺呢部機跑 shell 命令）"
     },
@@ -204,6 +293,7 @@ export default {
       "status_get_scene": "場景狀態",
       "list_skills": "列出技能",
       "read_skill": "讀取技能",
+      "ReadMediaFile": "識別媒體檔案",
       "list_files": "列出檔案",
       "read_file": "讀取檔案",
       "write_file": "寫入檔案",
@@ -211,6 +301,8 @@ export default {
       "edit_file": "編輯檔案",
       "search_files": "搜尋檔案",
       "grep_files": "搜尋內容",
+      "glob": "Glob 搜尋檔案",
+      "grep": "Grep 搜尋內容",
       "execute_command": "執行命令"
     }
   },

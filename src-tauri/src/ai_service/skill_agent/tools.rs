@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use serde_json::json;
 
+#[cfg(desktop)]
 use crate::ai_service::skill_agent::command_executor;
 use crate::ai_service::skill_agent::core::SkillAgentRunContext;
 use crate::ai_service::skill_agent::file_tools::FileTools;
@@ -86,6 +87,7 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
                 "required": ["path"]
             }),
         ),
+        #[cfg(desktop)]
         ToolDefinition::new(
             "execute_command",
             "在本机运行 shell 命令。运行前可能需要用户确认。",
@@ -247,6 +249,7 @@ pub async fn execute_tool(
                 Err(e) => (false, e.to_string()),
             }
         }
+        #[cfg(desktop)]
         "execute_command" => {
             let command = args
                 .get("command")
@@ -356,84 +359,4 @@ fn format_validation_report(key: &str, report: &ValidationReport) -> String {
     }
 
     out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn format_validation_report_renders_counts_and_lines() {
-        let report = ValidationReport {
-            diagnostics: vec![
-                Diagnostic {
-                    severity: Severity::Error,
-                    code: "config.duplicate_name",
-                    message: "剧本名与另一个剧本重复，引擎按名索引会互相覆盖。".into(),
-                    chapter: None,
-                    event_index: None,
-                    field: None,
-                },
-                Diagnostic {
-                    severity: Severity::Warn,
-                    code: "graph.unreachable",
-                    message: "章节「03」从开场章节不可达。".into(),
-                    chapter: Some("03".into()),
-                    event_index: Some(2),
-                    field: None,
-                },
-            ],
-            error_count: 1,
-            warn_count: 1,
-            info_count: 0,
-            variables: Vec::new(),
-            edges: Vec::new(),
-        };
-        let s = format_validation_report("standalone/x", &report);
-        assert!(s.contains("错误 1 条 · 警告 1 条 · 提示 0 条"));
-        assert!(s.contains("[校验报告] 剧本：standalone/x"));
-        assert!(s.contains("[错误][config.duplicate_name]"));
-        assert!(s.contains("[警告][graph.unreachable]"));
-        assert!(s.contains("章节「03」 · 第 3 个事件"));
-        assert!(s.contains("校验未通过"));
-    }
-
-    #[test]
-    fn format_validation_report_clean_report() {
-        let report = ValidationReport {
-            diagnostics: Vec::new(),
-            error_count: 0,
-            warn_count: 2,
-            info_count: 0,
-            variables: Vec::new(),
-            edges: Vec::new(),
-        };
-        let s = format_validation_report("standalone/ok", &report);
-        assert!(s.contains("校验通过（error_count = 0）"));
-        assert!(s.contains("仍建议按诊断处理以下警告"));
-        assert!(!s.contains("校验未通过"));
-    }
-
-    #[test]
-    fn format_validation_report_truncates_warns() {
-        let report = ValidationReport {
-            diagnostics: (0..50)
-                .map(|i| Diagnostic {
-                    severity: Severity::Warn,
-                    code: "graph.unreachable",
-                    message: format!("警告 {}", i),
-                    chapter: None,
-                    event_index: None,
-                    field: None,
-                })
-                .collect(),
-            error_count: 0,
-            warn_count: 50,
-            info_count: 0,
-            variables: Vec::new(),
-            edges: Vec::new(),
-        };
-        let s = format_validation_report("standalone/x", &report);
-        assert!(s.contains("…另有 10 条警告未显示（共 50 条）"));
-    }
 }

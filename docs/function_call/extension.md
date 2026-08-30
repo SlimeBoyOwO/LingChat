@@ -43,7 +43,7 @@ impl Tool for MyTool {
                     "limit": { "type": "integer", "default": 10 }
                 },
                 "required": ["keyword"],             // 必填参数
-                "additionalProperties": false        // 拒绝多余参数（clock.rs 的测试就验这个）
+                "additionalProperties": false        // 拒绝多余参数
             }),
         )
     }
@@ -149,21 +149,9 @@ roles = ["诺一"]
 
 - 入参 `arguments` 是**字符串化 JSON**，`ToolExecutor` 已帮你 `serde_json::from_str` 成 `Value`，并保证是 `Object`（否则直接 `invalid_arguments`）；
 - 你自己的 `execute` 仍要校验字段：类型不匹配、缺必填、超范围 —— 统一返回 `ToolError::InvalidArguments`，**不要 panic**；
-- 在 `definition().parameters` 里用 `additionalProperties: false` + 清晰的 `description`，让模型在源头就少传错参数（`clock.rs` 的测试专门验证了这一点）。
+- 在 `definition().parameters` 里用 `additionalProperties: false` + 清晰的 `description`，让模型在源头就少传错参数。
 
-## 7. 测试建议
-
-参考 `clock.rs` / `executor.rs` 自带的内嵌测试：
-
-- **definition 测试**：`additionalProperties` 是否为 `false`、工具名是否符合预期；
-- **execute 成功路径**：真实执行一次，断言返回 JSON 的字段；
-- **execute 失败路径**：传非法参数，断言返回 `ToolError::InvalidArguments`；
-- **executor 集成**：注册假工具后走 `ToolExecutor`，验证 `unknown_tool` / `invalid_json` / `timeout`（用 `ToolExecutor::with_timeout` 把超时调短）等稳定错误码；
-- **registry 测试**：重名注册返回 `DuplicateName`，`get` 找不到返回 `None`。
-
-工具执行可能引入外部依赖（网络 / 文件），测试里用「假数据工具」（如 `executor.rs` 测试里的 `EchoTool` / `SlowTool`）隔离，不要打真实外部服务。
-
-## 8. 常见问题
+## 7. 常见问题
 
 - **LLM 看不到我的工具** → 检查三处：① 注册了吗（`registry.definitions()` 有没有）；② Provider 支持流式工具吗（只有 genai 系走工具循环，Kimi Code 聊天路径不下发工具）；③ 权限里放行了吗（`allowed_tools` 非空，且 `definitions_for` 返回了它）。
 - **工具被调用了但没有结果写进对话** → 检查 `run_pipeline` 的 ③ 是否执行（`tool_messages` 非空才会落表）；工具结果行是 `LineAttribute::Tool`，玩家看不见是正常现象。

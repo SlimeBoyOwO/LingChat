@@ -35,6 +35,7 @@ import { useSedentaryReminder } from './composables/useSedentaryReminder'
 import { useUpdater } from './composables/useUpdater'
 import { useCanDeliver } from './composables/useCanDeliver'
 import { useZoom } from './composables/useZoom'
+import { useAsrInput } from './composables/useAsrInput'
 import { listSystemFonts, getImportedFonts, registerAllImportedFonts } from './api/services/font'
 
 // ─── 激活主动对话投放条件上报（仅在此处挂载一次） ────────────
@@ -74,6 +75,13 @@ const route = useRoute()
 
 // 仅主窗口挂载全局弹窗（通知/成就/对话确认），日志窗口等复用 App.vue 的窗口不弹
 const isMainWindow = getCurrentWindow().label === 'main'
+
+// ASR 全局初始化（仅主窗口一次）：auto_listen 能量监测门控 + 事件监听。
+// useAsrInput 状态是模块级单例，GameDialog / ChatInput（桌宠）的 mic 按钮
+// 与这里共享同一会话。
+if (isMainWindow) {
+  useAsrInput()
+}
 
 const handleKeyDown = async (event: KeyboardEvent) => {
   if (event.key === 'F11') {

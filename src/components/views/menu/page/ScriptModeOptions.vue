@@ -5,7 +5,13 @@
         :key="script.script_name"
         @click="selectScript(script)"
       >
-        {{ script.script_name }}
+        <span class="inline-flex items-center gap-2">
+          <span>{{ script.script_name }}</span>
+          <PluginTag
+            v-if="script.source && script.source !== 'game'"
+            :source="script.source"
+          />
+        </span>
       </StartItem>
     </StartLine>
 
@@ -47,6 +53,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { StartItem, StartLine, StartList } from '../base'
+import PluginTag from '@/components/ui/PluginTag.vue'
 import { useRouter } from 'vue-router'
 import { type ScriptSummary, startScript } from '@/api/services/script-info'
 import { useGameStore } from '@/stores/modules/game'
