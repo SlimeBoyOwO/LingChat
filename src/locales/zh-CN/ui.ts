@@ -57,11 +57,21 @@ export default {
     kindImport: '导入',
     kindExport: '导出',
     defaultImportTitle: '角色压缩包',
+    defaultPluginImportTitle: '插件压缩包',
     defaultExportTitle: '角色导出',
     close: '关闭',
     cancel: '取消',
     errors: {
       ARCHIVE_MISSING_SETTINGS_YML: '压缩包缺少 settings.yml\n这可能是旧版角色，请下载新版角色后导入',
+      // 插件压缩包导入；后端可能以「错误码|补充信息」的形式返回，补充信息附在下一行。
+      PLUGIN_MISSING_MANIFEST:
+        '压缩包里没有 manifest.toml，这不是一个插件包\n插件需要 manifest.toml 位于压缩包根目录，或只在唯一一层文件夹内',
+      PLUGIN_BAD_ARCHIVE_LAYOUT:
+        '插件包结构不支持：manifest.toml 只能位于压缩包根目录，或位于唯一的一层文件夹内\n请去掉外层的多余文件夹（或多个插件）后重试',
+      PLUGIN_INVALID_MANIFEST:
+        'manifest.toml 无法解析：缺少必填字段、存在未知字段，或 id 只允许字母、数字、下划线与连字符',
+      PLUGIN_MISSING_TOOL_SCRIPT: 'manifest 声明的工具脚本在压缩包里找不到',
+      PLUGIN_ALREADY_EXISTS: '同名插件已存在，如需替换请把导入方式改为「覆盖」',
     },
   },
   fontImport: {

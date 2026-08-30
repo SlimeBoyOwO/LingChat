@@ -663,6 +663,8 @@ pub fn run() {
             api::plugins::plugin_resource_hide,
             api::plugins::plugin_resource_restore,
             api::plugins::plugin_resource_keep,
+            api::plugins::import_plugin_from_path,
+            api::plugins::cancel_plugin_import,
             api::settings::get_settings_tree,
             api::settings::save_settings,
             api::settings::get_setting_by_key,

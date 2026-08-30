@@ -1,8 +1,6 @@
-import { onUnmounted } from 'vue'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
+import { save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { useRoleArchiveStore } from '@/stores/modules/ui/role-archive'
-import { decodePathFileName } from '@/utils/path'
+import { createArchiveImportController } from '@/composables/useArchiveImport'
 import {
   importRoleFromPath,
   exportRoleToPath,
@@ -12,196 +10,38 @@ import {
   type ConflictPolicy,
   type ImportResult,
   type ExportResult,
-  type EntryEvent,
-  type RoleImportStartedEvent,
 } from '@/api/services/role-archive'
 
-// 名称超过 28 个字符时从左侧截断，并添加省略号。
-function truncateName(name: string, max = 28): string {
-  if (name.length <= max) return name
-  return '\u2026' + name.slice(name.length - max + 1)
-}
-
-function detectFormat(fileName: string): ArchiveFormat | null {
-  const lower = fileName.toLowerCase()
-  if (lower.endsWith('.zip')) return 'zip'
-  if (lower.endsWith('.7z')) return '7z'
-  return null
-}
-
-function isAndroidContentUri(p: string): boolean {
-  return p.startsWith('content://')
-}
-
-// 模块级单例监听器：应用生命周期内只注册一次。
-let progressUnlisten: UnlistenFn | null = null
-let errorUnlisten: UnlistenFn | null = null
-let startedUnlisten: UnlistenFn | null = null
-let progressTimer: number | null = null
-let listenersInitialized = false
-// 当前正在进行的导入任务 id；cancel() 时传给后端以找到正确的取消令牌。
-// 后端有全局导入并发锁，所以同一时刻最多只有一个任务。
-let currentTaskId: string | null = null
-
-function clearTimers() {
-  if (progressTimer !== null) {
-    window.clearInterval(progressTimer)
-    progressTimer = null
-  }
-}
-
-async function ensureListeners() {
-  if (listenersInitialized) return
-  listenersInitialized = true
-  const store = useRoleArchiveStore()
-  progressUnlisten = await listen<EntryEvent>('role:import-progress', (event) => {
-    const evt = event.payload
-    if (evt.phase === 'entry') {
-      if (evt.bytes_total > 0) {
-        const pct = Math.min(90, Math.floor((evt.bytes_done / evt.bytes_total) * 90))
-        store.import.percent = pct
-      }
-      store.import.message = truncateName(evt.name)
-    } else if (evt.phase === 'finished') {
-      store.import.percent = 100
-    }
-  })
-  errorUnlisten = await listen<string>('role:import-error', (event) => {
-    store.import.phase = 'error'
-    store.import.error = event.payload || 'import failed'
-    clearTimers()
-  })
-  startedUnlisten = await listen<RoleImportStartedEvent>('role:import-started', (event) => {
-    // 后端刚生成 task_id 时立刻发送，前端存下来给 cancel() 用。
-    currentTaskId = event.payload?.task_id ?? null
-  })
-}
+// 导入流程（选文件 / 进度事件 / 取消 / 结果提示）由 useArchiveImport 的工厂承载，
+// 这里只绑定角色领域的三元组：事件前缀 + store + 后端命令。
+const archiveImport = createArchiveImportController({
+  eventPrefix: 'role',
+  errorEvent: 'role:import-error',
+  logTag: 'RoleArchive',
+  defaultConflict: 'rename',
+  getStore: useRoleArchiveStore,
+  invoke: (args) =>
+    importRoleFromPath({
+      path: args.path,
+      format: args.format,
+      conflict: (args.conflict as ConflictPolicy) ?? 'rename',
+      fileName: args.fileName,
+    }),
+  cancelTask: cancelRoleImport,
+  successMessage: (result) => `导入成功: ${(result as ImportResult).role_name}`,
+})
 
 export function useRoleImportExport() {
   const store = useRoleArchiveStore()
 
-  async function setupListeners() {
-    await ensureListeners()
-  }
-
-  // 使用基于耗时的指数曲线模拟进度，最高推进到 90%。
-  function startFakeProgress() {
-    store.import.percent = 0
-    const start = Date.now()
-    clearTimers()
-    progressTimer = window.setInterval(() => {
-      const elapsed = Date.now() - start
-      const pct = Math.min(90, Math.floor(90 * (1 - Math.exp(-elapsed / 3000))))
-      store.import.percent = pct
-      if (pct >= 90) {
-        store.import.message = '\u5b8c\u6210\u4e2d'
-      }
-    }, 200)
-  }
-
-  async function pickAndImport(conflict: ConflictPolicy = 'rename') {
-    console.log('[RoleArchive] pickAndImport \u5f00\u59cb, conflict=', conflict)
-    const selected = await openDialog({
-      multiple: false,
-      filters: [{ name: 'Archive', extensions: ['zip', '7z'] }],
-    })
-    if (!selected) {
-      console.log('[RoleArchive] pickAndImport \u7528\u6237\u53d6\u6d88\u9009\u62e9')
-      return
-    }
-    const filePath = typeof selected === 'string' ? selected : (selected as any).path
-    if (!filePath) return
-    // content:// URI \u672b\u6bb5\u662f URL \u7f16\u7801\u7684\uff08\u5982 `E6A998E585891784606515054.zip`\uff09\uff0c
-    // \u5fc5\u987b decode \u540e\u624d\u80fd\u5f97\u5230\u771f\u5b9e\u6587\u4ef6\u540d\uff08`\u8bfa\u4e00\u94a6\u7075.zip`\uff09\u3002
-    const fileName = decodePathFileName(filePath) || filePath
-    // \u6269\u5c55\u540d\u7f3a\u5931\u65f6\u4e0d\u518d\u786c\u62a5\u9519\uff1b\u540e\u7aef\u7528 magic \u51b3\u5b9a\u771f\u5b9e\u683c\u5f0f\u3002
-    const format: ArchiveFormat | undefined = detectFormat(fileName) ?? undefined
-    await runImport(filePath, fileName, format, conflict)
-  }
-
-  async function runImport(
-    filePath: string,
-    fileName: string,
-    format: ArchiveFormat | undefined,
-    conflict: ConflictPolicy,
-  ) {
-    store.resetImport()
-    store.import.phase = 'running'
-    store.import.fileName = truncateName(fileName)
-    // hint 可能为 undefined；用 'zip' 占位，等 result 返回后用真实格式覆盖。
-    store.import.format = format ?? 'zip'
-    store.import.conflict = conflict
-    store.import.startedAt = Date.now()
-    console.log(
-      '[RoleArchive] runImport \u5f00\u59cb: file=%s, format=%s, conflict=%s, androidUri=%s',
-      fileName, format, conflict, isAndroidContentUri(filePath),
-    )
-    store.import.percent = -1
-    // 每次 runImport 都先把 task_id 清空，等后端 emit role:import-started 后再回填。
-    currentTaskId = null
-    await setupListeners()
-
-    try {
-      console.log(
-        '[RoleArchive] backend path import: source=%s, androidSaf=%s',
-        filePath,
-        isAndroidContentUri(filePath),
-      )
-      startFakeProgress()
-      const result: ImportResult = await importRoleFromPath({
-        path: filePath,
-        format,
-        conflict,
-        fileName,
-      })
-
-      store.import.result = result
-      store.import.format = result.format  // 后端 magic 决定的真实格式
-      store.import.phase = 'done'
-      store.import.percent = 100
-      store.import.message = `\u5bfc\u5165\u6210\u529f: ${result.role_name}`
-      console.log(
-        '[RoleArchive] runImport \u5b8c\u6210: role_name=%s, role_id=%s, action=%s, bytes=%d',
-        result.role_name, result.role_id, result.conflict_action, result.bytes_extracted,
-      )
-      clearTimers()
-    } catch (e: any) {
-      console.error('[RoleArchive] runImport \u5931\u8d25:', e)
-      store.import.phase = 'error'
-      store.import.error = typeof e === 'string' ? e : e?.message || String(e)
-      clearTimers()
-    } finally {
-      currentTaskId = null
-      clearTimers()
-    }
-  }
-
-  async function cancel() {
-    console.log('[RoleArchive] cancel \u53d1\u9001\u53d6\u6d88\u8bf7\u6c42', { taskId: currentTaskId })
-    if (!currentTaskId) {
-      // 极端情况：用户在 task_id 还没回填时（或者根本没在导入）就点了取消。
-      console.warn('[RoleArchive] cancel 没有可用的 task_id，跳过后端调用')
-    } else {
-      try {
-        await cancelRoleImport(currentTaskId)
-      } catch (e) {
-        console.warn('[RoleArchive] cancel \u540e\u7aef\u8c03\u7528\u5931\u8d25:', e)
-      }
-    }
-    store.import.phase = 'cancelled'
-    store.import.message = '\u5df2\u53d6\u6d88'
-    clearTimers()
-    clearTimers()
-  }
-
   async function doExport(roleId: number, roleName: string, format: ArchiveFormat) {
-    console.log('[RoleArchive] doExport \u5f00\u59cb: roleId=%d, roleName=%s, format=%s', roleId, roleName, format)
+    console.log('[RoleArchive] doExport 开始: roleId=%d, roleName=%s, format=%s', roleId, roleName, format)
     store.resetExport()
     store.export.phase = 'running'
     store.export.roleName = roleName
     store.export.format = format
     store.export.percent = -1
-    store.export.message = '\u7b49\u5f85\u4fdd\u5b58\u4f4d\u7f6e...'
+    store.export.message = '等待保存位置...'
 
     // 提前生成建议文件名，规则与后端的名称清洗和时间戳逻辑保持一致。
     const safeName = (roleName || 'role').replace(/[\\/:*?"<>|]/g, '_').trim() || 'role'
@@ -215,13 +55,13 @@ export function useRoleImportExport() {
         filters: [{ name: format === '7z' ? '7Z' : 'ZIP', extensions: [format] }],
       })
       if (!savedPath) {
-        console.log('[RoleArchive] doExport \u7528\u6237\u53d6\u6d88\u4fdd\u5b58')
+        console.log('[RoleArchive] doExport 用户取消保存')
         store.export.phase = 'cancelled'
-        store.export.message = '\u5df2\u53d6\u6d88'
+        store.export.message = '已取消'
         return
       }
-      console.log('[RoleArchive] doExport \u7528\u6237\u9009\u62e9: %s, \u5f00\u59cb\u538b\u7f29+\u590d\u5236', savedPath)
-      store.export.message = '\u6b63\u5728\u538b\u7f29...'
+      console.log('[RoleArchive] doExport 用户选择: %s, 开始压缩+复制', savedPath)
+      store.export.message = '正在压缩...'
       store.export.percent = -1
 
       // 桌面端使用原生文件系统复制，Android SAF 由后端通过 android-fs 写入。
@@ -235,36 +75,38 @@ export function useRoleImportExport() {
       store.export.phase = 'done'
       store.export.savedPath = savedPath
       store.export.percent = 100
-      store.export.message = '\u5bfc\u51fa\u6210\u529f'
-      console.log('[RoleArchive] doExport \u5b8c\u6210: dest=%s, size=%dB (%dMB)', savedPath, res.size_bytes, Math.floor(res.size_bytes / 1024 / 1024))
+      store.export.message = '导出成功'
+      console.log('[RoleArchive] doExport 完成: dest=%s, size=%dB (%dMB)', savedPath, res.size_bytes, Math.floor(res.size_bytes / 1024 / 1024))
     } catch (e: any) {
-      console.error('[RoleArchive] doExport \u5931\u8d25:', e)
+      console.error('[RoleArchive] doExport 失败:', e)
       store.export.phase = 'error'
       store.export.error = typeof e === 'string' ? e : e?.message || String(e)
     }
   }
 
   async function rescan() {
-    console.log('[RoleArchive] rescan \u8c03\u7528')
+    console.log('[RoleArchive] rescan 调用')
     try {
       const ids = await rescanRoles()
-      console.log('[RoleArchive] rescan \u5b8c\u6210: %d \u4e2a\u89d2\u8272', ids.length)
+      console.log('[RoleArchive] rescan 完成: %d 个角色', ids.length)
       return ids
     } catch (e) {
-      console.error('[RoleArchive] rescan \u5931\u8d25:', e)
+      console.error('[RoleArchive] rescan 失败:', e)
       throw e
     }
   }
 
-  onUnmounted(() => {
-    clearTimers()
-  })
-
   return {
     store,
-    pickAndImport,
-    runImport,
-    cancel,
+    setupListeners: archiveImport.setupListeners,
+    pickAndImport: (conflict: ConflictPolicy = 'rename') => archiveImport.pickAndImport(conflict),
+    runImport: (
+      filePath: string,
+      fileName: string,
+      format: ArchiveFormat | undefined,
+      conflict: ConflictPolicy,
+    ) => archiveImport.runImport(filePath, fileName, format, conflict),
+    cancel: archiveImport.cancel,
     doExport,
     rescan,
   }

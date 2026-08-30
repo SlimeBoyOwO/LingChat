@@ -297,7 +297,7 @@ export default {
     envHint: '环境变量（从进程读取）：',
     envFromProcess: '来自进程环境',
     saveConfig: '保存',
-    empty: '未找到插件。请将插件文件夹放入 data/plugins/ 目录',
+    empty: '未找到插件。可将插件文件夹放入 data/plugins/ 目录，或用下方「从压缩包导入插件」',
     delete: '删除',
     deleteConfirm:
       '将删除插件「{name}」本体，已保留的资源不受影响。可先在下方「携带资源」区保留需要的资源。',
@@ -319,6 +319,14 @@ export default {
       musics: '音乐',
       backgrounds: '背景图',
       ambients: '环境音',
+    },
+    import: {
+      title: '从压缩包导入插件',
+      button: '选择 zip / 7z 并导入',
+      conflictPolicy: '同名插件处理方式',
+      policyOverwrite: '覆盖（同名插件的配置与启用状态会被清除）',
+      policyAbort: '放弃（同名则中止导入）',
+      hint: 'manifest.toml 需位于压缩包根目录，或只在唯一一层文件夹内；插件文件夹名以 manifest 的 id 为准。导入后插件默认关闭，请在上方手动开启。',
     },
   },
   adventurePanel: {

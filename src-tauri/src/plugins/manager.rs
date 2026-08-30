@@ -1,7 +1,7 @@
 //! 插件管理器：扫描目录、加载 manifest、启停插件、注册/注销工具、持久化状态。
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
@@ -47,6 +47,16 @@ impl PluginManager {
         manager
     }
 
+    /// 扫描根目录下的合法插件目录：是目录、非隐藏（`.` 开头为导入暂存区）、含 manifest.toml。
+    fn is_plugin_dir(path: &Path) -> bool {
+        path.is_dir()
+            && !path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with('.'))
+            && path.join("manifest.toml").exists()
+    }
+
     /// 重新扫描目录，重建记录；已启用插件的工具重新注册。
     /// 先同步集中状态文件（补存在、删不存在），再加载。
     pub fn reload(&self) {
@@ -65,11 +75,7 @@ impl PluginManager {
         };
         for entry in entries.flatten() {
             let dir = entry.path();
-            if !dir.is_dir() {
-                continue;
-            }
-            let manifest_path = dir.join("manifest.toml");
-            if !manifest_path.exists() {
+            if !Self::is_plugin_dir(&dir) {
                 continue;
             }
             let id = dir
@@ -292,7 +298,7 @@ impl PluginManager {
             .map(|entries| {
                 entries
                     .flatten()
-                    .filter(|e| e.path().is_dir() && e.path().join("manifest.toml").exists())
+                    .filter(|e| Self::is_plugin_dir(&e.path()))
                     .filter_map(|e| e.file_name().to_str().map(String::from))
                     .collect()
             })
