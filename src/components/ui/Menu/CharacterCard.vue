@@ -37,6 +37,7 @@
       <h4 class="text-md text-center font-bold tracking-wide text-white drop-shadow-md">
         {{ title }}
       </h4>
+      <PluginTag :source="source" />
     </div>
 
     <div class="flex h-full min-h-36 flex-1 flex-col justify-between pl-4">
@@ -105,7 +106,7 @@
       @click="closeDetailModal"
     >
       <div
-        class="relative flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/20 bg-slate-900/40 shadow-2xl backdrop-blur-2xl"
+        class="relative flex max-h-[85dvh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/20 bg-slate-900/40 shadow-2xl backdrop-blur-2xl"
         @click.stop
       >
         <div class="flex items-center gap-4 border-b border-white/10 bg-white/10 p-6">
@@ -207,6 +208,7 @@
     :visible="isSettingsModalVisible"
     :role-id="id"
     :title="name"
+    :source="source"
     @close="closeSettingsModal"
     @saved="handleSettingsSaved"
   />
@@ -219,6 +221,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { Icon } from '../../base'
 import SettingsCharacterInfo from '@/components/settings/pages/SettingsCharacterInfo.vue'
 import RoleExportMenu from '@/components/ui/RoleExportMenu.vue'
+import PluginTag from '@/components/ui/PluginTag.vue'
 import {
   selectCharacter as selectCharacterApi,
   selectClothes as selectClothesApi,
@@ -239,6 +242,8 @@ interface CharacterProps {
   info?: string
   clothes?: Clothes[]
   resourceFolder?: string
+  /** 来源："game" 或提供该角色的插件 id。 */
+  source?: string | null
 }
 
 const props = withDefaults(defineProps<CharacterProps>(), {

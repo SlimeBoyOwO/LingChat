@@ -5,6 +5,9 @@ import { i18n } from '@/locales'
 export interface AmbientItem {
   name: string
   url: string
+  /** 来源："game" 或提供该环境音的插件 id。 */
+  source?: string
+  plugin_id?: string | null
 }
 
 // ========== 环境音服务 ==========

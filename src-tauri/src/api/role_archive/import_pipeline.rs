@@ -113,7 +113,7 @@ pub(super) async fn do_import(
 
     // 5. 定位解压后的角色内容根目录。
     //    如果只有一个外层角色目录则进入该目录，否则直接使用暂存目录。
-    let extracted_dir = locate_extracted_dir(&staging_root).await;
+    let extracted_dir = archive::locate_extracted_root(&staging_root).await;
     tracing::info!(
         "[RoleArchive] do_import extracted_dir={}",
         extracted_dir.display()
@@ -187,53 +187,16 @@ pub(super) async fn do_import(
     // 7. 把解压后的角色目录移动到最终目标位置。
     //    同一磁盘优先重命名；若因句柄占用或权限失败，则重试并回退到复制。
     let target_exists_before = resolution.target.exists();
-    let mut rename_err: Option<std::io::Error> = None;
-    for attempt in 1..=3 {
-        match tokio::fs::rename(&extracted_dir, &resolution.target).await {
-            Ok(()) => {
-                rename_err = None;
-                break;
-            }
-            Err(e) => {
-                rename_err = Some(e);
-                if attempt < 3 {
-                    tokio::time::sleep(std::time::Duration::from_millis(150 * attempt as u64))
-                        .await;
-                }
-            }
-        }
-    }
-    if let Some(rerr) = rename_err {
-        tracing::warn!(
-            "[RoleArchive] do_import rename 3次均失败: src={}, target={}, target_exists={}, err={}",
+    if let Err(e) = archive::relocate_dir(&extracted_dir, &resolution.target).await {
+        tracing::error!(
+            "[RoleArchive] do_import 移动失败: src={}, target={}, target_exists={}, err={}",
             extracted_dir.display(),
             resolution.target.display(),
             target_exists_before,
-            rerr
+            e
         );
-        let src_c = extracted_dir.clone();
-        let dst_c = resolution.target.clone();
-        let copy_res = tokio::task::spawn_blocking(move || copy_dir_recursive(&src_c, &dst_c))
-            .await
-            .map_err(|je| {
-                cleanup_err(&staging_root_for_cleanup);
-                format!("移动角色目录失败: rename={rerr}, spawn={je}")
-            })?;
-        match copy_res {
-            Ok(()) => {
-                // 复制成功后删除源目录；暂存目录本身由后续统一清理。
-                if extracted_dir != staging_root {
-                    let _ = tokio::fs::remove_dir_all(&extracted_dir).await;
-                }
-                tracing::info!("[RoleArchive] do_import rename 失败后复制成功");
-            }
-            Err(cerr) => {
-                cleanup_err(&staging_root_for_cleanup);
-                return Err(format!(
-                    "移动角色目录失败 (rename: {rerr}; 复制回退: {cerr}). 可能目标正被其他进程占用."
-                ));
-            }
-        }
+        cleanup_err(&staging_root_for_cleanup);
+        return Err(e);
     }
     tracing::info!(
         "[RoleArchive] do_import 移动完成: {} -> {}",
@@ -350,38 +313,6 @@ pub(super) fn looks_like_percent_encoded_blob(s: &str) -> bool {
         .is_some_and(|stem| stem.len() >= 6 && stem.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
-/// 定位解压后的角色内容根目录:
-/// - 暂存目录只含一个子目录时，返回该角色目录，例如 `角色名/settings.yml`。
-/// - 否则表示内容直接位于压缩包根目录，返回暂存目录本身。
-/// 检查目录结构时忽略 `__MACOSX`、`._*` 和 `.DS_Store`。
-async fn locate_extracted_dir(staging: &Path) -> PathBuf {
-    let mut subdirs: Vec<PathBuf> = Vec::new();
-    let mut has_files = false;
-    if let Ok(mut entries) = tokio::fs::read_dir(staging).await {
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name == "__MACOSX" || name.starts_with("._") || name == ".DS_Store" {
-                continue;
-            }
-            match entry.file_type().await {
-                Ok(ft) if ft.is_dir() => subdirs.push(entry.path()),
-                Ok(ft) if ft.is_file() => has_files = true,
-                _ => {}
-            }
-        }
-    }
-    // 只有 1 个子目录且无文件 -> 返回该子目录 (有外层包裹)
-    if subdirs.len() == 1 && !has_files {
-        subdirs
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| staging.to_path_buf())
-    } else {
-        // 没有外层角色目录时，内容直接位于暂存目录根部。
-        staging.to_path_buf()
-    }
-}
-
 /// 规范化角色文件夹名:
 /// - 替换非法字符
 /// - 拒绝保留名称，例如 `avatar`、`__MACOSX` 和隐藏名称。
@@ -420,33 +351,6 @@ fn sanitize_role_folder_name(name: Option<&str>, fallback: Option<&str>) -> Stri
         .map(|d| d.as_millis())
         .unwrap_or(0);
     format!("role_{ts}")
-}
-
-/// 递归复制目录，作为重命名失败时的回退方案。
-fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
-    if !dst.exists() {
-        std::fs::create_dir_all(dst)?;
-    }
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let from = entry.path();
-        let to = dst.join(entry.file_name());
-        let ft = entry.file_type()?;
-        if ft.is_dir() {
-            copy_dir_recursive(&from, &to)?;
-        } else if ft.is_file() {
-            std::fs::copy(&from, &to)?;
-        } else if ft.is_symlink() {
-            if let Ok(meta) = std::fs::metadata(&from) {
-                if meta.is_dir() {
-                    copy_dir_recursive(&from, &to)?;
-                } else {
-                    std::fs::copy(&from, &to)?;
-                }
-            }
-        }
-    }
-    Ok(())
 }
 
 async fn find_role_id_by_folder(

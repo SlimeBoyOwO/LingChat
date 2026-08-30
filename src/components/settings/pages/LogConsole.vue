@@ -2,7 +2,7 @@
   <!-- 日志已弹出到独立窗口：显示占位提示 -->
   <div
     v-if="!standalone && popped"
-    class="flex-1 min-h-0 max-h-[70vh] flex flex-col items-center justify-center gap-3.5 border border-dashed border-white/20 rounded-xl bg-black/40 text-white/55 px-4 py-8"
+    class="flex-1 min-h-0 max-h-[70dvh] flex flex-col items-center justify-center gap-3.5 border border-dashed border-white/20 rounded-xl bg-black/40 text-white/55 px-4 py-8"
   >
     <PictureInPicture2 :size="36" />
     <div class="text-sm text-center leading-loose">{{ $t('settings.log.poppedOut') }}</div>
@@ -85,7 +85,7 @@
     <div
       ref="logContainer"
       class="scrollbar-thin flex-1 min-h-0 overflow-y-auto overflow-x-hidden rounded-xl px-3 py-3 bg-black/65 border border-white/10 backdrop-blur-md text-[13px] leading-[1.7] font-['Cascadia_Code','Fira_Code','JetBrains_Mono','Consolas',monospace]"
-      :class="standalone ? 'max-h-none' : 'max-h-[70vh]'"
+      :class="standalone ? 'max-h-none' : 'max-h-[70dvh]'"
       :style="{ scrollbarColor: 'var(--accent-color, #79d9ff) transparent' }"
       @scroll="handleScroll"
     >

@@ -13,10 +13,13 @@
     "android:prepare": "tauri android init && node scripts/generate-android-icons.mjs",
     "android:dev": "tauri android dev",
     "android:build": "node scripts/prepare-bundled-resources.mjs 9 && tauri android build --target aarch64",
+    "ios:init": "tauri ios init",
+    "ios:build": "bash scripts/build-ios-unsigned.sh",
     "format": "prettier --write . && cargo fmt --manifest-path src-tauri/Cargo.toml",
     "format:rs": "cargo fmt --manifest-path src-tauri/Cargo.toml",
     "format:frontend": "prettier --write \"src/**/*.{vue,js,ts,css,scss}\"",
-    "format:check": "prettier --check . && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check"
+    "format:check": "prettier --check . && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
+    "check:rs": "cargo check --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
     "7zip-min": "^3.0.1",

@@ -204,7 +204,7 @@
         >
           <div
             class="w-[min(560px,92vw)]
-              max-h-[80vh]
+              max-h-[80dvh]
               overflow-y-auto
               border
               border-white/12.5

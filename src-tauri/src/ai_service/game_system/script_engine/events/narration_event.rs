@@ -73,10 +73,6 @@ impl ScriptEvent for NarrationEvent {
     fn event_type() -> &'static str {
         "narration"
     }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
-    }
 }
 
 pub fn register() {

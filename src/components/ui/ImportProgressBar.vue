@@ -2,7 +2,7 @@
   <Teleport to="body">
     <!-- notice 卡片与 import/export 进度条独立，不进入同一个 <Transition>。 -->
     <div
-      v-if="store.corrected.phase === 'active'"
+      v-if="props.source !== 'plugin' && roleStore.corrected.phase === 'active'"
       class="notice fixed top-8 right-8 z-[10000] flex items-start gap-3 p-4 min-w-[320px] max-w-[420px] rounded-xl backdrop-blur-[20px]"
     >
       <div class="shrink-0 w-6 h-6 flex items-center justify-center text-amber-400">
@@ -17,8 +17,8 @@
         </svg>
       </div>
       <div class="flex-1 min-w-0">
-        <div class="text-amber-400 font-bold text-sm">{{ store.corrected.title }}</div>
-        <div class="text-gray-200 text-xs mt-1 whitespace-pre-line break-words">{{ store.corrected.message }}</div>
+        <div class="text-amber-400 font-bold text-sm">{{ roleStore.corrected.title }}</div>
+        <div class="text-gray-200 text-xs mt-1 whitespace-pre-line break-words">{{ roleStore.corrected.message }}</div>
       </div>
       <button
         class="shrink-0 text-white/60 hover:text-white text-lg leading-none"
@@ -129,17 +129,33 @@
 import { computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoleImportExport } from '@/composables/useRoleImportExport'
+import { usePluginImport } from '@/composables/usePluginImport'
+import type { ArchiveImportSlice } from '@/stores/modules/ui/archive-import'
+
+/**
+ * `source` 决定这条进度条绑哪一份导入状态：
+ * - `role`：角色档案导入/导出（含「已自动修正」notice），保持原行为
+ * - `plugin`：插件压缩包导入（后端以 manifest.id 落位，无导出、无 notice）
+ */
+const props = withDefaults(defineProps<{ source?: 'role' | 'plugin' }>(), { source: 'role' })
 
 const { t } = useI18n()
-const { store, cancel } = useRoleImportExport()
+const { store: roleStore, cancel: cancelRole } = useRoleImportExport()
+const { store: pluginStore, cancel: cancelPlugin } = usePluginImport()
 
 type Phase = 'idle' | 'running' | 'done' | 'error' | 'cancelled'
 
-const activeKey = computed<'import' | 'export'>(() =>
-  store.import.phase !== 'idle' ? 'import' : 'export',
-)
+const isPlugin = computed(() => props.source === 'plugin')
 
-const state = computed(() => (activeKey.value === 'import' ? store.import : store.export))
+const activeKey = computed<'import' | 'export'>(() => {
+  if (isPlugin.value) return 'import'
+  return roleStore.import.phase !== 'idle' ? 'import' : 'export'
+})
+
+const state = computed<ArchiveImportSlice | typeof roleStore.export>(() => {
+  if (isPlugin.value) return pluginStore.import
+  return activeKey.value === 'import' ? roleStore.import : roleStore.export
+})
 
 const visible = computed(() => state.value.phase !== 'idle')
 
@@ -154,19 +170,32 @@ const label = computed(() => {
 })
 
 const title = computed(() => {
-  if (activeKey.value === 'import') {
-    return store.import.fileName || t('ui.archiveProgress.defaultImportTitle')
+  if (isPlugin.value) {
+    return pluginStore.import.fileName || t('ui.archiveProgress.defaultPluginImportTitle')
   }
-  return store.export.roleName || t('ui.archiveProgress.defaultExportTitle')
+  if (activeKey.value === 'import') {
+    return roleStore.import.fileName || t('ui.archiveProgress.defaultImportTitle')
+  }
+  return roleStore.export.roleName || t('ui.archiveProgress.defaultExportTitle')
 })
+
+/**
+ * 后端错误可能是纯 i18n 错误码（`ARCHIVE_MISSING_SETTINGS_YML`），
+ * 也可能是「错误码|补充信息」（`PLUGIN_MISSING_TOOL_SCRIPT|weather.py`）。
+ * 查表翻译错误码，补充信息附在下一行；查不到则原样显示（兼容其它字符串错误）。
+ */
+function formatError(raw: string): string {
+  const [code, ...rest] = raw.split('|')
+  const detail = rest.join('|').trim()
+  const base = t(`ui.archiveProgress.errors.${code}`, code)
+  return detail ? `${base}\n${detail}` : base
+}
 
 const message = computed(() => {
   const s = state.value
   if (s.phase === 'error') {
     const raw = s.error || s.message
-    // 后端返回的 i18n 错误码（如 ARCHIVE_MISSING_SETTINGS_YML）优先查翻译表，
-    // 找不到则 fallback 到原文（兼容后端其他字符串错误）。
-    return t(`ui.archiveProgress.errors.${raw}`, raw)
+    return raw ? formatError(raw) : raw
   }
   return s.message
 })
@@ -205,12 +234,14 @@ function clearDismiss() {
     dismissTimer = null
   }
 }
+function resetActive() {
+  if (isPlugin.value) pluginStore.resetImport()
+  else if (activeKey.value === 'import') roleStore.resetImport()
+  else roleStore.resetExport()
+}
 function scheduleDismiss(ms: number) {
   clearDismiss()
-  dismissTimer = window.setTimeout(() => {
-    if (activeKey.value === 'import') store.resetImport()
-    else store.resetExport()
-  }, ms)
+  dismissTimer = window.setTimeout(resetActive, ms)
 }
 
 watch(
@@ -224,16 +255,16 @@ watch(
 )
 
 function onCancel() {
-  cancel()
+  if (isPlugin.value) cancelPlugin()
+  else cancelRole()
 }
 function dismiss() {
   clearDismiss()
-  if (activeKey.value === 'import') store.resetImport()
-  else store.resetExport()
+  resetActive()
 }
 
 function dismissCorrected() {
-  store.dismissCorrected()
+  roleStore.dismissCorrected()
 }
 
 let noticeTimer: number | null = null
@@ -246,15 +277,15 @@ function clearNoticeTimer() {
 function scheduleNoticeDismiss(ms: number) {
   clearNoticeTimer()
   noticeTimer = window.setTimeout(() => {
-    store.dismissCorrected()
+    roleStore.dismissCorrected()
   }, ms)
 }
 
 watch(
-  () => store.corrected.phase,
+  () => roleStore.corrected.phase,
   (phase) => {
     if (phase === 'active') {
-      scheduleNoticeDismiss(store.corrected.durationMs)
+      scheduleNoticeDismiss(roleStore.corrected.durationMs)
     } else {
       clearNoticeTimer()
     }

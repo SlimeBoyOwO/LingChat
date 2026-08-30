@@ -6,7 +6,7 @@
       @click="handleClose"
     >
       <div
-        class="w-full max-w-6xl h-[90vh] overflow-hidden rounded-3xl border border-white/20 bg-[radial-gradient(circle_at_10%_10%,rgba(251,191,36,0.12),transparent_35%),radial-gradient(circle_at_90%_20%,rgba(45,212,191,0.12),transparent_40%),linear-gradient(160deg,rgba(15,23,42,0.96),rgba(15,23,42,0.88))] text-white shadow-2xl"
+        class="w-full max-w-6xl h-[90dvh] overflow-hidden rounded-3xl border border-white/20 bg-[radial-gradient(circle_at_10%_10%,rgba(251,191,36,0.12),transparent_35%),radial-gradient(circle_at_90%_20%,rgba(45,212,191,0.12),transparent_40%),linear-gradient(160deg,rgba(15,23,42,0.96),rgba(15,23,42,0.88))] text-white shadow-2xl"
         @click.stop
       >
         <div class="h-full flex flex-col">

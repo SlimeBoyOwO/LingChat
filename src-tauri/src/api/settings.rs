@@ -18,11 +18,35 @@ use crate::ai_service::llm::provider_config::{
     LlmProvidersResponse,
 };
 use crate::ai_service::llm::LlmModelInfo;
-use crate::config::app_config::{MAX_LLM_TIMEOUT_SECS, MIN_LLM_TIMEOUT_SECS};
+use crate::config::app_config::{
+    MAX_LLM_TIMEOUT_SECS, MAX_MEMORY_RECENT_WINDOW, MAX_MEMORY_SECTION_CHARS,
+    MAX_MEMORY_UPDATE_INTERVAL, MIN_LLM_TIMEOUT_SECS, MIN_MEMORY_UPDATE_INTERVAL,
+};
 use crate::config::{self, keys, ConfigSetting, ConfigTree};
 use crate::AppState;
 
 // ========== Settings CRUD ==========
+
+fn validate_u32_setting(
+    values: &BTreeMap<String, String>,
+    key: &str,
+    label: &str,
+    min: u32,
+    max: u32,
+) -> Result<(), String> {
+    let Some(raw) = values.get(key) else {
+        return Ok(());
+    };
+    let value = raw
+        .parse::<u64>()
+        .ok()
+        .and_then(|number| u32::try_from(number).ok())
+        .ok_or_else(|| format!("{label} 必须是 0–{max} 范围内的整数"))?;
+    if !(min..=max).contains(&value) {
+        return Err(format!("{label} 必须在 {min}–{max} 之间"));
+    }
+    Ok(())
+}
 
 #[tauri::command]
 pub fn get_settings_tree(app: AppHandle) -> ConfigTree {
@@ -41,6 +65,42 @@ pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result
             ));
         }
     }
+
+    validate_u32_setting(
+        &values,
+        keys::MEMORY_UPDATE_INTERVAL,
+        "记忆压缩触发条数",
+        MIN_MEMORY_UPDATE_INTERVAL,
+        MAX_MEMORY_UPDATE_INTERVAL,
+    )?;
+    validate_u32_setting(
+        &values,
+        keys::MEMORY_RECENT_WINDOW,
+        "记忆最近窗口",
+        0,
+        MAX_MEMORY_RECENT_WINDOW,
+    )?;
+    for (key, label) in [
+        (keys::MEMORY_SHORT_TERM_MAX_CHARS, "短期记忆长度上限"),
+        (keys::MEMORY_LONG_TERM_MAX_CHARS, "长期记忆长度上限"),
+        (keys::MEMORY_USER_INFO_MAX_CHARS, "用户信息长度上限"),
+        (keys::MEMORY_PROMISES_MAX_CHARS, "约定长度上限"),
+    ] {
+        validate_u32_setting(&values, key, label, 0, MAX_MEMORY_SECTION_CHARS)?;
+    }
+
+    let memory_settings_changed = values.keys().any(|key| {
+        matches!(
+            key.as_str(),
+            keys::USE_PERSISTENT_MEMORY
+                | keys::MEMORY_UPDATE_INTERVAL
+                | keys::MEMORY_RECENT_WINDOW
+                | keys::MEMORY_SHORT_TERM_MAX_CHARS
+                | keys::MEMORY_LONG_TERM_MAX_CHARS
+                | keys::MEMORY_USER_INFO_MAX_CHARS
+                | keys::MEMORY_PROMISES_MAX_CHARS
+        )
+    });
 
     let store = config::settings_store(&app).map_err(|e| e.to_string())?;
 
@@ -65,7 +125,11 @@ pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result
 
     store.save().map_err(|e| e.to_string())?;
 
-    Ok("配置已成功保存并已生效！".to_string())
+    if memory_settings_changed {
+        Ok("配置已成功保存；记忆压缩相关设置将在重启 LingChat 后生效。".to_string())
+    } else {
+        Ok("配置已成功保存并已生效！".to_string())
+    }
 }
 
 #[tauri::command]
@@ -298,4 +362,44 @@ pub fn set_hdr_mode(app: AppHandle, enabled: bool) -> Result<(), String> {
     );
     store.save().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod memory_setting_validation_tests {
+    use super::validate_u32_setting;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn rejects_overflow_negative_and_out_of_range_values() {
+        for raw in ["4294967296", "-1", "0"] {
+            let values = BTreeMap::from([("memory".to_string(), raw.to_string())]);
+            assert!(validate_u32_setting(&values, "memory", "memory", 1, 10_000).is_err());
+        }
+    }
+
+    #[test]
+    fn zero_min_accepts_zero_and_rejects_invalid_large_values() {
+        let zero = BTreeMap::from([("memory".to_string(), "0".to_string())]);
+        assert!(validate_u32_setting(&zero, "memory", "memory", 0, 10_000).is_ok());
+        for raw in ["10001", "18446744073709551615", "not-a-number"] {
+            let values = BTreeMap::from([("memory".to_string(), raw.to_string())]);
+            assert!(validate_u32_setting(&values, "memory", "memory", 0, 10_000).is_err());
+        }
+    }
+
+    #[test]
+    fn accepts_valid_boundaries_and_missing_values() {
+        for raw in ["1", "10000"] {
+            let values = BTreeMap::from([("memory".to_string(), raw.to_string())]);
+            assert!(validate_u32_setting(&values, "memory", "memory", 1, 10_000).is_ok());
+        }
+        assert!(validate_u32_setting(
+            &BTreeMap::new(),
+            "memory",
+            "memory",
+            1,
+            10_000,
+        )
+        .is_ok());
+    }
 }

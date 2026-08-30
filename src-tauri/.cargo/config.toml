@@ -2,6 +2,13 @@
 debug = false
 strip = "debuginfo"
 
+[profile.release]
+lto = "thin"
+codegen-units = 16
+panic = "abort"
+strip = true
+opt-level = "z"
+
 [target.aarch64-linux-android]
 rustflags = [
     "-C",

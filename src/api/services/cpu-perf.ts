@@ -144,6 +144,36 @@ export function getCombinedTier(cpuTier: PerfTier, gpuTier: PerfTier | null): Pe
   return getTierRank(gpuTier) < getTierRank(cpuTier) ? gpuTier : cpuTier
 }
 
+/**
+ * 解析 GPU 分级：**当前实际调用的 GPU 优先**，失败/不适用则回退**本机最高性能 GPU**。
+ *
+ * - 优先级 1：WebGL 渲染器实测的「当前调用 GPU」（反映程序真正在用的卡，见 gpu-perf.ts 的 getActiveGpu）
+ * - 优先级 2：硬件枚举的「本机最高性能 GPU」（getGpuInfo，用于画质定级兜底）
+ *
+ * 两者都不可用（如 Android / ARM macOS）时返回 null，交由调用方仅按 CPU 分级。
+ */
+async function resolveGpuTier(): Promise<PerfTier | null> {
+  const { getActiveGpu, getGpuInfo } = await import('./gpu-perf')
+
+  // 优先级 1：当前实际调用的 GPU
+  try {
+    const active = await getActiveGpu()
+    if (active.is_applicable && active.name) return active.tier
+  } catch {
+    // 读取失败则回退
+  }
+
+  // 优先级 2：本机最高性能 GPU
+  try {
+    const gpu = await getGpuInfo()
+    if (gpu.is_applicable) return gpu.tier
+  } catch {
+    // 忽略，返回 null
+  }
+
+  return null
+}
+
 /** 推荐的特效开关（根据性能等级自动关闭高开销特效） */
 export interface RecommendedEffects {
   mainMenuStarsEnabled: boolean
@@ -168,17 +198,8 @@ export async function autoConfigurePerformance(): Promise<void> {
   try {
     const cpu = await getCpuInfo()
 
-    // GPU 分级（Android / ARM macOS 等平台不可用时仅按 CPU 配置）
-    let gpuTier: PerfTier | null = null
-    try {
-      const { getGpuInfo } = await import('./gpu-perf')
-      const gpu = await getGpuInfo()
-      if (gpu.is_applicable) {
-        gpuTier = gpu.tier
-      }
-    } catch {
-      // GPU 检测失败不阻塞自动配置
-    }
+    // GPU 分级：当前调用 GPU 优先，回退本机最高性能 GPU（均不可用时仅按 CPU 配置）
+    const gpuTier = await resolveGpuTier()
 
     // 综合等级取 CPU / GPU 中较低者
     const tier = getCombinedTier(cpu.tier, gpuTier)

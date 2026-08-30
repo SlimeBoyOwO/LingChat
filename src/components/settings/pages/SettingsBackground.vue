@@ -52,14 +52,20 @@
           ]"
           @click="handleSceneClick(scene)"
         >
-          <!-- 编辑按钮（右上角扳手） -->
+          <!-- 编辑按钮（右上角扳手）—— 插件场景只读，不提供编辑 -->
           <button
+            v-if="!scene.source || scene.source === 'game'"
             class="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-black/50 text-white/60 hover:text-white hover:bg-black/70 transition-all opacity-0 group-hover:opacity-100"
             @click.stop="handleWrenchClick(scene)"
             :title="$t('settings.background.scene.edit')"
           >
             <Wrench :size="16" />
           </button>
+          <PluginTag
+            v-if="scene.source && scene.source !== 'game'"
+            :source="scene.source"
+            class="absolute top-2 left-2 z-10"
+          />
 
           <!-- 背景预览 -->
           <div
@@ -332,6 +338,19 @@
             </span>
           </div>
 
+          <!-- 当前实际调用的 GPU（WebGL 渲染器，反映程序真正在用的卡） -->
+          <div v-if="activeGpu?.is_applicable && activeGpu.name" class="flex items-center gap-2">
+            <span class="text-white/50 text-xs font-medium min-w-16 shrink-0">{{ $t('settings.background.perf.activeGpuName') }}</span>
+            <span class="text-white/90 text-sm font-mono break-all flex-1">{{ activeGpu.name }}</span>
+            <span
+              class="px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0"
+              :class="tierBadgeClassFor(activeGpu.tier as PerfTier)"
+              :style="{ backgroundColor: getPerfTierColor(activeGpu.tier as PerfTier) + '99' }"
+            >
+              {{ getTierLabel(activeGpu.tier as PerfTier) }}
+            </span>
+          </div>
+
           <!-- 综合等级（取最低） -->
           <div class="flex items-center gap-2">
             <span class="text-white/50 text-xs font-medium min-w-16 shrink-0">{{ $t('settings.background.perf.combinedTier') }}</span>
@@ -427,10 +446,11 @@ import {
   type CpuInfo,
   type PerfTier,
 } from '../../../api/services/cpu-perf'
-import { getGpuInfo, redetectGpu, type GpuInfo } from '../../../api/services/gpu-perf'
+import { getGpuInfo, redetectGpu, getActiveGpu, type GpuInfo } from '../../../api/services/gpu-perf'
 import { Image, PictureInPicture, Sparkles, Settings, Wand2, Wrench, Cpu } from 'lucide-vue-next'
 import SceneEditModal from '../scene/SceneEditModal.vue'
 import DialogAppearancePanel from '../dialog/DialogAppearancePanel.vue'
+import PluginTag from '@/components/ui/PluginTag.vue'
 import { useUserStore } from '../../../stores/modules/user/user'
 
 const gameStore = useGameStore()
@@ -486,6 +506,7 @@ const uploadInput = ref<HTMLInputElement | null>(null)
 // ── 硬件性能检测（CPU + GPU） ──
 const cpuInfo = ref<CpuInfo | null>(null)
 const gpuInfo = ref<GpuInfo | null>(null)
+const activeGpu = ref<GpuInfo | null>(null)
 const perfLoading = ref(true)
 const perfError = ref<string | null>(null)
 
@@ -505,11 +526,16 @@ function tierBadgeClassFor(tier: PerfTier): string {
   }
 }
 
-/** 综合性能等级（取最低；GPU 分级不适用时仅按 CPU） */
+/** 综合性能等级（取最低；GPU 分级不适用时仅按 CPU）。GPU 取「当前调用」优先，回退「最高性能」。 */
 const combinedTier = computed<PerfTier | null>(() => {
   if (!cpuInfo.value) return null
   const cpuTier = cpuInfo.value.tier as PerfTier
-  const gpuTier = gpuInfo.value?.is_applicable ? (gpuInfo.value.tier as PerfTier) : null
+  const activeTier =
+    activeGpu.value?.is_applicable && activeGpu.value.name
+      ? (activeGpu.value.tier as PerfTier)
+      : null
+  const maxTier = gpuInfo.value?.is_applicable ? (gpuInfo.value.tier as PerfTier) : null
+  const gpuTier = activeTier ?? maxTier
   return getCombinedTier(cpuTier, gpuTier)
 })
 
@@ -614,6 +640,10 @@ const handleCreateScene = () => {
 
 const handleDeleteScene = async () => {
   if (!currentScene.value) return
+  if (currentScene.value.source && currentScene.value.source !== 'game') {
+    await dialogStore.alert(t('settings.background.scene.pluginNotDeletable'))
+    return
+  }
   if (!(await dialogStore.confirm(t('settings.background.scene.deleteConfirm', { name: currentScene.value.scene_name })))) return
 
   try {
@@ -691,9 +721,15 @@ async function fetchPerfInfo(): Promise<void> {
   perfLoading.value = true
   perfError.value = null
   try {
-    const [cpu, gpu] = await Promise.all([getCpuInfo(), getGpuInfo()])
+    // activeGpu 读取真实 WebGL 渲染器（反映当前实际调用的 GPU），失败不影响其余信息
+    const [cpu, gpu, active] = await Promise.all([
+      getCpuInfo(),
+      getGpuInfo(),
+      getActiveGpu().catch(() => null),
+    ])
     cpuInfo.value = cpu
     gpuInfo.value = gpu
+    activeGpu.value = active
   } catch (e: any) {
     perfError.value = e?.message || t('settings.background.perf.fetchFailed')
     console.error('获取硬件性能信息失败', e)
@@ -706,9 +742,14 @@ async function handleRedetectPerf(): Promise<void> {
   perfLoading.value = true
   perfError.value = null
   try {
-    const [cpu, gpu] = await Promise.all([redetectCpu(), redetectGpu()])
+    const [cpu, gpu, active] = await Promise.all([
+      redetectCpu(),
+      redetectGpu(),
+      getActiveGpu().catch(() => null),
+    ])
     cpuInfo.value = cpu
     gpuInfo.value = gpu
+    activeGpu.value = active
     uiStore.showSuccess({
       title: t('settings.background.perf.detectComplete'),
       message: t('settings.background.perf.tierMessage', {

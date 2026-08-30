@@ -16,6 +16,8 @@
   /* 动画配置 */
   --animate-blob: blob 7s infinite;
   --animate-fade-in-up: fadeInUp 0.8s ease-out forwards;
+  /* ASR 语音录入中：mic 图标蓝色呼吸（颜色深浅渐变脉动） */
+  --animate-asr-breathe: asr-breathe 1.6s ease-in-out infinite;
 }
 
 /* ─── 刘海屏安全区变量 ──────────────────────────────────── */
@@ -36,12 +38,32 @@
 .pt-safe-gap { padding-top: calc(8px + var(--safe-area-inset-top)); }
 .pb-safe-gap { padding-bottom: calc(8px + var(--safe-area-inset-bottom)); }
 
+/* 输入控件字号下限 16px：阻止 iOS 聚焦时对 <16px 输入框的自动缩放（页面放大一下） */
+input,
+textarea {
+  font-size: max(16px, 1em);
+}
+
 @keyframes spin {
   0% {
     transform: rotate(0deg);
   }
   100% {
     transform: rotate(360deg);
+  }
+}
+
+/* ASR 录音中 mic 图标：蓝色深浅渐变呼吸（配合 animate-asr-breathe 工具类；
+   border-color 供桌宠按钮的边框同步呼吸） */
+@keyframes asr-breathe {
+  0%,
+  100% {
+    color: var(--color-blue-500);
+    border-color: color-mix(in srgb, var(--color-blue-500) 50%, transparent);
+  }
+  50% {
+    color: var(--color-blue-300);
+    border-color: color-mix(in srgb, var(--color-blue-300) 80%, transparent);
   }
 }
 
@@ -56,6 +78,15 @@
 
   body {
     overflow: hidden;
+  }
+
+  /* 移动端禁用原生缩放手势（双指捏合 / 双击放大）：
+     viewport meta 的 user-scalable=no + maximum-scale=1 为主,
+     touch-action: manipulation 在组件索引里作为兜底再压掉一次双击缩放。
+     manipulation = 允许 pan/滚动（保留组件内容滚动），仅禁用双击缩放。 */
+  html,
+  body {
+    touch-action: manipulation;
   }
 }
 

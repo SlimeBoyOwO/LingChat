@@ -1,9 +1,9 @@
 <template>
-  <!-- 1. 上方提示动画 (带有两边渐变透明的背景，且位置上移至 top-20vh) -->
+  <!-- 1. 上方提示动画 (带有两边渐变透明的背景，且位置上移至 top-20dvh) -->
   <transition appear :css="false" @before-enter="beforeEnter" @enter="enter" @leave="leave">
     <div
       v-if="showAnimation"
-      class="fixed left-0 right-0 top-[20vh] flex justify-center pointer-events-none z-1000"
+      class="fixed left-0 right-0 top-[20dvh] flex justify-center pointer-events-none z-1000"
     >
       <!-- 中间实体、两端渐变淡出透明的遮罩背景层 -->
       <div

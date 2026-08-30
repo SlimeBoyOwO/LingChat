@@ -154,6 +154,7 @@ impl MessageGenerator {
 
     /// 把后台工具完成通知作为仅对 LLM 可见的临时 user context 触发新一轮回复。
     /// 通知不会写成玩家台词，避免界面和历史中出现伪造的用户消息。
+    #[cfg_attr(not(desktop), allow(dead_code))]
     pub async fn process_notification(&self, notification: String) -> Result<String> {
         let mut context = self.get_current_context().await?;
         if context.is_empty() {
@@ -290,6 +291,7 @@ impl MessageGenerator {
             return Ok(());
         };
         let mut gs = self.deps.game_status.lock().await;
+        gs.role_manager.invalidate_memory_history();
         if let Some(line) = gs.line_list.get_mut(idx) {
             line.base.content = ctx.processed.replace(temp, "");
         }
@@ -549,6 +551,7 @@ impl MessageGenerator {
             let mut gs = self.deps.game_status.lock().await;
             // 试玩代号守卫：试玩中止后丢弃迟到回填，与 add_assistant_line 行为一致
             if gs.preview_generation == self.deps.generation {
+                gs.role_manager.invalidate_memory_history();
                 let insert_pos = tool_insert_pos.min(gs.line_list.len());
                 let perceived: Vec<i32> = gs.present_role_ids.iter().copied().collect();
 
@@ -715,6 +718,15 @@ fn tts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static
         ("indextts2", "es") => Some("es"),
         ("indextts2", "ar") => Some("ar"),
         ("gsv" | "opentts", "ko") => Some("ko"),
+        // CosyVoice 多语言自动检测：voice_lang 为 en/ko/de/fr/ru/pt 时先翻译成目标语言
+        // 再合成，否则会朗读主模型默认附带的日文译文（japanese_text）；
+        // ja 例外——主模型已自带日文译文，无需重译
+        ("cosyvoice", "en") => Some("en"),
+        ("cosyvoice", "ko") => Some("ko"),
+        ("cosyvoice", "de") => Some("de"),
+        ("cosyvoice", "fr") => Some("fr"),
+        ("cosyvoice", "ru") => Some("ru"),
+        ("cosyvoice", "pt") => Some("pt"),
         _ => None,
     }
 }

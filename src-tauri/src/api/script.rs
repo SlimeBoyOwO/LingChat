@@ -20,6 +20,21 @@ pub struct ScriptSummary {
     pub description: String,
     pub folder_key: String,
     pub intro_chapter: String,
+    /// 来源："game" 或提供该剧本的插件 id。
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugin_id: Option<String>,
+}
+
+fn summary_of(s: &crate::ai_service::types::ScriptStatus) -> ScriptSummary {
+    ScriptSummary {
+        script_name: s.name.clone(),
+        description: s.description.clone(),
+        folder_key: s.folder_key.clone(),
+        intro_chapter: s.intro_chapter.clone(),
+        source: s.plugin_id.clone().unwrap_or_else(|| "game".to_string()),
+        plugin_id: s.plugin_id.clone(),
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -40,12 +55,7 @@ pub async fn list_scripts(app: AppHandle) -> Result<ScriptListResponse, String> 
         .script_manager
         .all_scripts
         .values()
-        .map(|s| ScriptSummary {
-            script_name: s.name.clone(),
-            description: s.description.clone(),
-            folder_key: s.folder_key.clone(),
-            intro_chapter: s.intro_chapter.clone(),
-        })
+        .map(summary_of)
         .collect();
 
     Ok(ScriptListResponse { scripts })
@@ -60,12 +70,7 @@ pub async fn list_standalone_scripts(app: AppHandle) -> Result<ScriptListRespons
         .all_scripts
         .values()
         .filter(|s| !s.adventure.is_adventure)
-        .map(|s| ScriptSummary {
-            script_name: s.name.clone(),
-            description: s.description.clone(),
-            folder_key: s.folder_key.clone(),
-            intro_chapter: s.intro_chapter.clone(),
-        })
+        .map(summary_of)
         .collect();
 
     Ok(ScriptListResponse { scripts })

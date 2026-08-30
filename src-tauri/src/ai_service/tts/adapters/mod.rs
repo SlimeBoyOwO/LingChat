@@ -13,6 +13,7 @@
 
 pub mod aivis;
 pub mod bv2;
+pub mod cosyvoice;
 pub mod fish_s2;
 pub mod gsv;
 pub mod indextts;

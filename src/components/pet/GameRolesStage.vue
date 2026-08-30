@@ -60,6 +60,31 @@
         </button>
       </div>
 
+<!-- 语音输入按钮（与桌面 GameDialog 同源：useAsrInput 共享会话） -->
+      <div
+        class="absolute top-37 -left-3.5 z-40 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300"
+      >
+        <button
+          type="button"
+          :title="micTitle"
+          :disabled="!canStartMic"
+          class="w-8 h-8 rounded-full bg-neutral-950/60 backdrop-blur-xl border border-white/10 text-white flex items-center justify-center hover:bg-cyan-500/80 hover:text-white hover:scale-110 shadow-[0_4px_12px_rgba(0,0,0,0.3)] transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+          :class="{
+            '!text-blue-400 !border-blue-400/50 !bg-blue-950/40 animate-asr-breathe':
+              asrInput.phase.value === 'recording',
+          }"
+          :style="
+            !asrInput.phase.value && autoListenOn && !autoListenActive
+              ? { color: 'var(--accent-color)', borderColor: 'var(--accent-color)' }
+              : {}
+          "
+          @click.stop="toggleRecording"
+        >
+          <component :is="micIcon" :size="16" />
+        </button>
+      </div>
+
+      <!-- Live2D 角色渲染（上游合并） -->
       <Live2DStage
         v-if="singleRole?.live2d"
         class="z-11 rounded-full"
@@ -95,10 +120,12 @@ import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useSettingsStore } from '@/stores/modules/settings'
 import { useScreenshot } from '@/composables/useScreenshot'
+import { useAsrStore } from '@/stores/modules/settings/asr'
+import { useAsrInput, setVoicePlaying } from '@/composables/useAsrInput'
 import { isAndroid } from '@/utils/platform'
 import RoleAvatar from './GameRoleAvatar.vue'
 import Live2DStage from '../game/live2d/Live2DStage.vue'
-import { Play, Pause, Settings, LogOut, Camera } from 'lucide-vue-next'
+import { Play, Pause, Settings, LogOut, Camera, Mic, MicOff } from 'lucide-vue-next'
 
 const { t } = useI18n()
 const gameStore = useGameStore()
@@ -169,6 +196,7 @@ watch(
       voiceDataUrl.value = ''
       mainAudio.value.pause()
       mainAudio.value.currentTime = 0
+      setVoicePlaying(false)
       return
     }
 
@@ -178,8 +206,17 @@ watch(
       mainAudio.value.src = dataUrl
       mainAudio.value.load()
       mainAudio.value.volume = uiStore.characterVolume / 100
-      mainAudio.value.play().catch((e) => console.error('播放失败', e))
-      emit('audio-started')
+      // TTS 播放中 ASR 禁用（外放 TTS 进麦克风会误识别 AI 自己的话）
+      mainAudio.value
+        .play()
+        .then(() => {
+          setVoicePlaying(true)
+          emit('audio-started')
+        })
+        .catch((e) => {
+          console.error('播放失败', e)
+          setVoicePlaying(false)
+        })
     } catch (e) {
       console.error('获取语音文件失败:', e)
     }
@@ -194,7 +231,58 @@ watch(
 )
 
 const onAudioEnded = () => {
+  setVoicePlaying(false)
   emit('audio-ended')
+}
+
+// --- 语音输入（与桌面 GameDialog 同源：useAsrInput 模块级单例共享会话） ---
+const asrInput = useAsrInput()
+const asrStore = useAsrStore()
+
+// 三层状态（与 GameDialog 一致）：auto_listen 模式开 + 总开关开 → mic = 功能开关；
+// 总开关关（自动模式已停）→ 退化为手动录音
+const autoListenOn = computed(() => asrStore.settings.auto_listen)
+const autoListenActive = computed(() => asrInput.autoListenActive.value)
+const micIcon = computed(() => {
+  if (autoListenOn.value && asrStore.settings.voice_input_enabled) {
+    return autoListenActive.value ? MicOff : Mic
+  }
+  return Mic
+})
+const micTitle = computed(() => {
+  if (autoListenOn.value && asrStore.settings.voice_input_enabled) {
+    return autoListenActive.value
+      ? t('game.dialog.asrAutoOff') // 监听中：暂停
+      : t('game.dialog.asrAutoResume') // 已暂停：恢复
+  }
+  return asrInput.phase.value === 'recording'
+    ? t('game.dialog.recordingStop')
+    : t('game.dialog.voiceInput')
+})
+// mic 按钮 enabled 条件（与 GameDialog 一致）：
+// - auto_listen 模式开 + 总开关开：功能开关可用
+// - 总开关关 → 整体禁用（总开关是语音输入的总闸，手动 mic 一并关闭；
+//   显示锁只挡 auto 触发，手动不受限）
+const canStartMic = computed(
+  () =>
+    (autoListenOn.value && asrStore.settings.voice_input_enabled) ||
+    asrInput.phase.value === 'recording' ||
+    asrInput.canStartAsr(false, true),
+)
+function toggleRecording() {
+  // auto_listen 模式开 + 总开关开：mic 按钮 = 切换功能开关（暂停/恢复监听），
+  // 不改模式设置；总开关关 → 走手动录音分支
+  if (autoListenOn.value && asrStore.settings.voice_input_enabled) {
+    asrInput.toggleAutoListenFunction()
+    return
+  }
+  if (asrInput.phase.value === 'idle') {
+    void asrInput.start('button').catch(() => {
+      /* 会话忙时静默忽略 */
+    })
+  } else if (asrInput.phase.value === 'recording') {
+    asrInput.stop()
+  }
 }
 
 // --- 按钮事件 ---

@@ -15,7 +15,7 @@ use crate::utils::system::open_folder;
 use crate::utils::yaml_file::write_json_as_yaml;
 use crate::AppState;
 
-use super::{characters_dir, data_dir, game_data_dir};
+use super::{characters_dir, data_dir, decode_plugin_folder, game_data_dir, resolve_character_dir};
 
 const LEGACY_VOICE_MODEL_FIELDS: &[&str] = &[
     "sva_speaker_id",
@@ -62,6 +62,10 @@ pub struct CharacterListItem {
     pub adventure_count: i32,
     pub total_adventures: i32,
     pub resource_folder: String,
+    /// 来源："game" 或提供该角色的插件 id。
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugin_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,7 +104,7 @@ pub struct RoleInfoResponse {
 
 /// 读取某个角色的 settings.yml，失败时返回默认值
 pub(crate) fn read_character_settings(resource_folder: &str) -> CharacterSettings {
-    let yaml_path = characters_dir().join(resource_folder).join("settings.yml");
+    let yaml_path = resolve_character_dir(resource_folder).join("settings.yml");
     if !yaml_path.exists() {
         tracing::warn!("角色设置文件不存在: {:?}", yaml_path);
         let mut s = CharacterSettings::default();
@@ -156,7 +160,7 @@ fn find_avatar_in_dir(dir: &PathBuf) -> Option<PathBuf> {
 fn scan_clothes(resource_folder: &str) -> Vec<ClothesItem> {
     let allowed_extensions = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
 
-    let avatar_dir = characters_dir().join(resource_folder).join("avatar");
+    let avatar_dir = resolve_character_dir(resource_folder).join("avatar");
     if !avatar_dir.exists() {
         return vec![ClothesItem {
             title: "默认".to_string(),
@@ -206,7 +210,7 @@ fn scan_clothes(resource_folder: &str) -> Vec<ClothesItem> {
 
 /// 获取角色默认头像的绝对路径
 fn default_avatar_path(resource_folder: &str) -> String {
-    let avatar_dir = characters_dir().join(resource_folder).join("avatar");
+    let avatar_dir = resolve_character_dir(resource_folder).join("avatar");
     for ext in &["png", "webp", "jpg", "jpeg", "gif", "bmp"] {
         let path = avatar_dir.join(format!("头像.{}", ext));
         if path.exists() {
@@ -297,6 +301,11 @@ pub async fn get_character_list(
             (total, unlocked)
         };
 
+        let (plugin_id, source) = match crate::api::decode_plugin_folder(&folder) {
+            Some((pid, _)) => (Some(pid.to_string()), pid.to_string()),
+            None => (None, "game".to_string()),
+        };
+
         items.push(CharacterListItem {
             character_id: role.id,
             title: role.name.clone(),
@@ -308,6 +317,8 @@ pub async fn get_character_list(
             adventure_count,
             total_adventures,
             resource_folder: folder,
+            source,
+            plugin_id,
         });
     }
 
@@ -459,8 +470,8 @@ pub fn get_avatar_file(
 
     let mut candidate_bases: Vec<PathBuf> = Vec::new();
 
-    // 1. 主角色: characters/{folder}/avatar
-    let main_avatar = characters_dir().join(&character_folder).join("avatar");
+    // 1. 主角色: characters/{folder}/avatar（插件角色解析到 plugins/<id>/characters/<folder>）
+    let main_avatar = resolve_character_dir(&character_folder).join("avatar");
     if main_avatar.exists() {
         candidate_bases.push(main_avatar);
     }
@@ -573,7 +584,7 @@ pub async fn update_role_settings(
         .ok_or_else(|| format!("角色 {} 资源不存在", role_id))?;
 
     let base_path = match role.role_type {
-        RoleType::Main => characters_dir().join(&folder),
+        RoleType::Main => resolve_character_dir(&folder),
         RoleType::Npc => {
             let script_key = role
                 .script_key
@@ -685,6 +696,13 @@ pub async fn delete_character(
         return Err("只能删除 main 类型的主角色".to_string());
     }
 
+    // ---- 3.5 插件角色不可直接删除（软删除由插件管理页 hide 流程处理） ----
+    if let Some(folder) = role.resource_folder.as_deref() {
+        if decode_plugin_folder(folder).is_some() {
+            return Err("该角色来自插件，请在「设置 · 插件」的资源区隐藏它".to_string());
+        }
+    }
+
     // ---- 4. 在场校验（后端权威） ----
     {
         let service = state.ai_service.lock().await;
@@ -698,7 +716,8 @@ pub async fn delete_character(
         }
     }
 
-    // ---- 5. 先删物理资源（可选） ----
+    // ---- 5. 先删物理资源（可选）----
+    // 插件角色已在 3.5 提前拦截，走到这里的都是游戏自有角色，可安全删目录。
     if delete_resource_folder {
         if let Some(folder) = &role.resource_folder {
             let base = characters_dir();

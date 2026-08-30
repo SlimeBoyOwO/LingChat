@@ -56,9 +56,9 @@ impl ScriptEvent for InputEvent {
         tracing::info!("[InputEvent] 收到用户输入: {}", user_input);
 
         // Add USER line — read fields under a single lock to avoid deadlock
-        let (user_name, main_role_id) = {
+        let user_name = {
             let gs = ctx.game_status.lock().await;
-            (gs.player.user_name.clone(), gs.main_role_id)
+            gs.player.user_name.clone()
         };
         let line = LineBase {
             content: user_input,
@@ -76,10 +76,6 @@ impl ScriptEvent for InputEvent {
 
     fn event_type() -> &'static str {
         "input"
-    }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
     }
 }
 

@@ -1,7 +1,7 @@
 <template>
   <button
     v-bind="$attrs"
-    class="bg-transparent
+    class="start-item bg-transparent
       text-white
       border-none
       mt-[15px]
@@ -10,6 +10,8 @@
       cursor-pointer
       text-justify
       whitespace-nowrap
+      max-[767px]:whitespace-normal
+      max-[767px]:text-left
       text-shadow-[0_2px_4px_rgba(0,0,0,0.3)]
       transition-all
       duration-300
@@ -35,3 +37,13 @@ defineOptions({ inheritAttrs: false })
 
 const isUltraWide = inject<{ value: boolean }>('isUltraWide', { value: false })
 </script>
+
+<style>
+/* 二级菜单（menu-subitem）：仅当窄屏内容超宽（如"剧情模式（在自由模式进入自由模式）"）
+   时缩小字号；一级菜单保持原字号（40px），不缩小、不拥挤。 */
+@media (max-width: 767px) {
+  .start-item.menu-subitem {
+    font-size: 32px;
+  }
+}
+</style>

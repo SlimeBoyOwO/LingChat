@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <div class="flex-1 h-[85vh] w-full bg-white/10 p-0 md:p-4 rounded-lg overflow-hidden flex flex-col">
+    <div class="flex-1 h-[85dvh] w-full bg-white/10 p-0 md:p-4 rounded-lg overflow-hidden flex flex-col">
       <!-- 顶部 Tab 切换栏：左 / 中 / 右 -->
       <div class="flex items-center justify-between mb-5 select-none shrink-0">
         <button
@@ -29,6 +29,15 @@
           @click="advanceTab = 'tts'"
         >
           {{ $t('advance.tabs.tts') }}
+        </button>
+        <button
+          class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
+          :class="advanceTab === 'asr'
+            ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+            : 'text-white/60 hover:text-white/80'"
+          @click="advanceTab = 'asr'"
+        >
+          {{ $t('advance.tabs.asr') }}
         </button>
         <button
           class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
@@ -65,6 +74,11 @@
         <SettingsTts />
       </div>
 
+      <!-- ====== 语音识别 ====== -->
+      <div v-else-if="advanceTab === 'asr'" class="flex-1 min-h-0">
+        <SettingsAsr />
+      </div>
+
       <!-- ====== 工具配置 ====== -->
       <div v-else-if="advanceTab === 'tools'" class="flex-1 min-h-0">
         <SettingsTools />
@@ -87,6 +101,7 @@ import { MenuPage } from '../../ui'
 import SettingsLlmProviders from './SettingsLlmProviders.vue'
 import SettingsAdvanceMenu from './SettingsAdvanceMenu.vue'
 import SettingsTts from './SettingsTts.vue'
+import SettingsAsr from './SettingsAsr.vue'
 import SettingsTools from './SettingsTools.vue'
 import SettingsAdvanceOther from './SettingsAdvanceOther.vue'
 import { useUIStore } from '@/stores/modules/ui/ui'

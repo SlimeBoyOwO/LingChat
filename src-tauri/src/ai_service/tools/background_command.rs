@@ -3,6 +3,7 @@
 //! 后台命令会立即返回任务 ID。进程退出时，受限的结果会广播给 UI，
 //! 并追加到一个仅模型可见的通知回合。这复刻了 Kimi Code 的分离式任务工作流，
 //! 且不会向对话历史里伪造玩家发言。
+#![cfg_attr(not(desktop), allow(dead_code))]
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};

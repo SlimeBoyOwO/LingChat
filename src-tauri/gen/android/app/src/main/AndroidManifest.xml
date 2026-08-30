@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 必须声明：WebView 的 onPermissionRequest 请求麦克风时捆绑请求
+         MODIFY_AUDIO_SETTINGS + RECORD_AUDIO，未声明的权限被系统直接拒绝
+         且不弹窗，导致整个请求被判失败（NotAllowedError: Permission denied）。
+         normal 权限，声明即授予，无需运行时请求。 -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- 音频设备名称授权（getUserMedia 解锁 enumerateDevices 的真实设备名）已移除：
-         音频输出设备切换仅桌面端可用，Android 上 audioOutputManager 直接跳过，无需麦克风权限 -->
+         音频输出设备切换仅桌面端可用，Android 上 audioOutputManager 直接跳过，无需麦克风权限。
+         RECORD_AUDIO 仍保留：WebView 申请麦克风时系统需要该权限声明（ASR 录音）。 -->
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />

@@ -6,7 +6,7 @@
   >
     <ImageAcrossFade
       ref="imageFadeRef"
-      class="h-[40vh] w-auto max-w-[80vw] max-h-[60vh] object-contain"
+      class="h-[40dvh] w-auto max-w-[80vw] max-h-[60dvh] object-contain"
       :style="{ transform: `scale(${uiStore.currentPresentPicScale || 1})` }"
       :src="uiStore.currentPresentPic"
       position="center center"

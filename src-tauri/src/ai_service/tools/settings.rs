@@ -76,10 +76,12 @@ pub struct WebSearchSettings {
     /// 总开关：关闭时工具不下发给模型，执行也会被拒绝。
     pub enabled: bool,
     /// 搜索服务提供商：
-    /// "kimi"（Kimi Code 同款 /v1/search，body 为 text_query）
+    /// "kimi"（Kimi Code 同款 /v1/search；API Key 为空时可复用当前官方 Kimi Code 对话凭据）
     /// "bocha"（BoCha 博查 https://api.bochaai.com/v1/web-search）
     /// "deepseek"（DeepSeek Responses API，服务端内置 web_search）
     /// "tavily"（Tavily https://api.tavily.com/search，body 为 query）
+    /// "codex"（ChatGPT Codex alpha/search，复用 Codex OAuth，无需 API Key）
+    /// "custom"（用户配置的 Kimi /search 兼容端点）
     pub provider: String,
     /// DeepSeek Responses API 使用的模型（仅 provider = "deepseek" 时生效）。
     #[serde(default = "default_deepseek_model")]
@@ -123,7 +125,10 @@ impl Default for WebSearchSettings {
 impl WebSearchSettings {
     /// 配置是否达到可下发给模型的就绪状态。
     pub fn is_ready(&self) -> bool {
-        self.enabled && !self.api_key.trim().is_empty()
+        self.enabled
+            && (self.provider.eq_ignore_ascii_case("codex")
+                || self.provider.eq_ignore_ascii_case("kimi")
+                || !self.api_key.trim().is_empty())
     }
 }
 
@@ -377,6 +382,28 @@ impl SharedToolSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn web_search_readiness_allows_provider_managed_credentials() {
+        let mut web = WebSearchSettings::default();
+        assert!(!web.is_ready());
+
+        web.enabled = true;
+        web.provider = "codex".into();
+        web.api_key.clear();
+        assert!(web.is_ready());
+
+        web.provider = "kimi".into();
+        assert!(web.is_ready());
+
+        web.provider = "tavily".into();
+        assert!(!web.is_ready());
+        web.api_key = "configured".into();
+        assert!(web.is_ready());
+
+        web.enabled = false;
+        assert!(!web.is_ready());
+    }
 
     #[test]
     fn legacy_settings_keep_delete_confirmation_enabled() {

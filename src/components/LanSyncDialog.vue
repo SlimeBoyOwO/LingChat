@@ -6,7 +6,7 @@
       @click="emit('close')"
     >
       <div
-        class="relative w-full max-w-lg max-h-[80vh] overflow-hidden rounded-3xl border border-white/20 bg-slate-900/40 backdrop-blur-2xl shadow-2xl flex flex-col"
+        class="relative w-full max-w-lg max-h-[80dvh] overflow-hidden rounded-3xl border border-white/20 bg-slate-900/40 backdrop-blur-2xl shadow-2xl flex flex-col"
         @click.stop
       >
         <!-- ─── 头部 ─── -->

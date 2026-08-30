@@ -14,6 +14,8 @@ pub mod proactive;
 pub mod session;
 pub mod tree;
 pub mod tts;
+#[cfg(test)]
+pub mod tts_test;
 pub mod types;
 
 pub const STORE_FILE: &str = "settings.json";

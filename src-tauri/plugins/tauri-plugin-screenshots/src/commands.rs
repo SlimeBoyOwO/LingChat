@@ -5,6 +5,9 @@ use std::{
 
 use serde::Serialize;
 use tauri::{command, AppHandle, Manager, Runtime};
+// xcap 不支持 iOS（桌面窗口/显示器截图在 iOS 无意义），
+// iOS 构建时不引入 xcap，各命令走文件末尾的「不支持」桩实现。
+#[cfg(not(target_os = "ios"))]
 use xcap::{Monitor, Window};
 
 #[derive(Debug, Serialize)]
@@ -35,6 +38,7 @@ pub struct ScreenshotableMonitor {
 /// let windows = get_screenshotable_windows().await.unwrap();
 /// println!("{:#?}", windows); // Vec<ScreenshotableWindow>
 /// ```
+#[cfg(not(target_os = "ios"))]
 #[command]
 pub async fn get_screenshotable_windows() -> Result<Vec<ScreenshotableWindow>, String> {
     // On Windows, use our custom enumeration that does NOT filter out
@@ -90,6 +94,7 @@ pub async fn get_screenshotable_windows() -> Result<Vec<ScreenshotableWindow>, S
 /// let monitors = get_screenshotable_monitors().await.unwrap();
 /// println!("{:#?}", monitors); // Vec<ScreenshotableMonitor>
 /// ```
+#[cfg(not(target_os = "ios"))]
 #[command]
 pub async fn get_screenshotable_monitors() -> Result<Vec<ScreenshotableMonitor>, String> {
     let monitors = Monitor::all().map_err(|err| err.to_string())?;
@@ -106,6 +111,7 @@ pub async fn get_screenshotable_monitors() -> Result<Vec<ScreenshotableMonitor>,
     Ok(screenshotable_monitors)
 }
 
+#[cfg(not(target_os = "ios"))]
 fn get_save_dir<R: Runtime>(app_handle: AppHandle<R>) -> Result<PathBuf, String> {
     let save_dir = app_handle
         .path()
@@ -116,6 +122,7 @@ fn get_save_dir<R: Runtime>(app_handle: AppHandle<R>) -> Result<PathBuf, String>
     Ok(save_dir)
 }
 
+#[cfg(not(target_os = "ios"))]
 fn get_save_path<R: Runtime>(
     app_handle: AppHandle<R>,
     id: u32,
@@ -149,6 +156,7 @@ fn get_save_path<R: Runtime>(
 /// let path = get_window_screenshot(app_handle, 1).await.unwrap();
 /// println!("{:?}", path); // xx/tauri-plugin-screenshots/window-1.png
 /// ```
+#[cfg(not(target_os = "ios"))]
 #[command]
 pub async fn get_window_screenshot<R: Runtime>(
     app_handle: AppHandle<R>,
@@ -205,6 +213,7 @@ pub async fn get_window_screenshot<R: Runtime>(
 /// let path = get_monitor_screenshot(app_handle, 1).await.unwrap();
 /// println!("{:?}", path); // xx/tauri-plugin-screenshots/monitor-1.png
 /// ```
+#[cfg(not(target_os = "ios"))]
 #[command]
 pub async fn get_monitor_screenshot<R: Runtime>(
     app_handle: AppHandle<R>,
@@ -241,6 +250,7 @@ pub async fn get_monitor_screenshot<R: Runtime>(
 ///
 /// remove_window_screenshot(app_handle, 1).await.unwrap();
 /// ```
+#[cfg(not(target_os = "ios"))]
 #[command]
 pub async fn remove_window_screenshot<R: Runtime>(
     app_handle: AppHandle<R>,
@@ -267,6 +277,7 @@ pub async fn remove_window_screenshot<R: Runtime>(
 ///
 /// remove_monitor_screenshot(app_handle, 1).await.unwrap();
 /// ```
+#[cfg(not(target_os = "ios"))]
 #[command]
 pub async fn remove_monitor_screenshot<R: Runtime>(
     app_handle: AppHandle<R>,
@@ -289,9 +300,71 @@ pub async fn remove_monitor_screenshot<R: Runtime>(
 ///
 /// clear_screenshots(app_handle).await.unwrap();
 /// ```
+#[cfg(not(target_os = "ios"))]
 #[command]
 pub async fn clear_screenshots<R: Runtime>(app_handle: AppHandle<R>) -> Result<(), String> {
     let save_dir = get_save_dir(app_handle)?;
 
     remove_dir_all(save_dir).map_err(|err| err.to_string())
+}
+
+// ─── iOS 桩实现 ──────────────────────────────────────────────
+//
+// iOS 上不实现桌面窗口/显示器截图（xcap 不支持 iOS 平台），
+// 所有命令返回「不支持」错误，保证 invoke_handler 注册一致、
+// capabilities 的 screenshots:default 权限可正常解析。
+// 前端在 iOS 上不会调用这些命令。
+
+#[cfg(target_os = "ios")]
+#[command]
+pub async fn get_screenshotable_windows() -> Result<Vec<ScreenshotableWindow>, String> {
+    Err("screenshots are not supported on iOS".to_string())
+}
+
+#[cfg(target_os = "ios")]
+#[command]
+pub async fn get_screenshotable_monitors() -> Result<Vec<ScreenshotableMonitor>, String> {
+    Err("screenshots are not supported on iOS".to_string())
+}
+
+#[cfg(target_os = "ios")]
+#[command]
+pub async fn get_window_screenshot<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    _id: u32,
+) -> Result<PathBuf, String> {
+    Err("screenshots are not supported on iOS".to_string())
+}
+
+#[cfg(target_os = "ios")]
+#[command]
+pub async fn get_monitor_screenshot<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    _id: u32,
+) -> Result<PathBuf, String> {
+    Err("screenshots are not supported on iOS".to_string())
+}
+
+#[cfg(target_os = "ios")]
+#[command]
+pub async fn remove_window_screenshot<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    _id: u32,
+) -> Result<(), String> {
+    Err("screenshots are not supported on iOS".to_string())
+}
+
+#[cfg(target_os = "ios")]
+#[command]
+pub async fn remove_monitor_screenshot<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    _id: u32,
+) -> Result<(), String> {
+    Err("screenshots are not supported on iOS".to_string())
+}
+
+#[cfg(target_os = "ios")]
+#[command]
+pub async fn clear_screenshots<R: Runtime>(_app_handle: AppHandle<R>) -> Result<(), String> {
+    Err("screenshots are not supported on iOS".to_string())
 }

@@ -84,6 +84,8 @@ export interface GameState {
   command: string | null
 
   initialized: boolean
+  /** LoadingTransition 启动动画是否已完成（§1.9 门控：动画期间不启动 ASR） */
+  loadingComplete: boolean
   latestScreenshot: string | null
   /** 正在进行的截图 Promise，供 save handler 等待 */
   screenshotPending: Promise<string | null> | null
@@ -108,6 +110,7 @@ export const state: GameState = {
   command: null,
 
   initialized: false,
+  loadingComplete: false,
   latestScreenshot: null,
   screenshotPending: null,
 }

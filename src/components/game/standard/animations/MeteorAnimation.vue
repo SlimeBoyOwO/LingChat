@@ -404,7 +404,7 @@ onUnmounted(() => {
 <style scoped>
 .meteor-wrapper {
   position: fixed;
-  /* 用 inset-0 代替 100vw×100vh：#app 上 transform: scale 缩放时，vw/vh 尺寸
+  /* 用 inset-0 代替 100vw×100dvh：#app 上 transform: scale 缩放时，vw/vh 尺寸
      会被放大导致溢出裁切，inset-0 相对缩放后的 #app 盒恒填满视口 */
   inset: 0;
   width: 100%;

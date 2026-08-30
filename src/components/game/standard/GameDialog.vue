@@ -1,6 +1,6 @@
 <template>
   <div
-    class="relative z-2 flex w-full scrollbar-thin [scrollbar-color:var(--accent-color)_transparent]
+    class="game-dialog relative z-2 flex w-full scrollbar-thin [scrollbar-color:var(--accent-color)_transparent]
       justify-center p-3.75 transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)]
       before:pointer-events-none before:absolute before:-top-10 before:right-0 before:left-0
       before:h-10 before:bg-linear-to-b before:from-transparent before:via-[rgba(0,14,39,0.3)]
@@ -8,7 +8,7 @@
     :class="{
       [`z-[-1]! overflow-hidden opacity-0 duration-500! ease-linear before:opacity-0
       before:duration-1000!`]: isHidden,
-      'max-h-[40vh]': !uiStore.isNarrowScreen,
+      'max-h-[40dvh]': !uiStore.isNarrowScreen,
     }"
     :style="dialogWrapperStyle"
     @wheel="handleWheelHistory"
@@ -86,16 +86,16 @@
                     @click="openHistory"
                   ></Button>
 
-                  <!-- 语音输入按钮 -->
+                  <!-- 语音输入按钮（auto_listen 开启时变为关闭开关） -->
                   <Button
                     type="nav"
-                    icon="mic"
-                    :title="
-                      isRecording ? $t('game.dialog.recordingStop') : $t('game.dialog.voiceInput')
-                    "
+                    :icon="micIcon"
+                    :title="micTitle"
                     :class="{
-                      'animate-pulse text-red-500': isRecording,
+                      [`animate-asr-breathe
+                      text-blue-500`]: asrInput.phase.value === 'recording',
                     }"
+                    :disabled="!canStartMic"
                     @click="toggleRecording"
                   ></Button>
 
@@ -181,13 +181,13 @@
               ></Button>
               <Button
                 type="nav"
-                icon="mic"
-                :title="
-                  isRecording ? $t('game.dialog.recordingStop') : $t('game.dialog.voiceInput')
-                "
+                :icon="micIcon"
+                :title="micTitle"
                 :class="{
-                  'animate-pulse text-red-500': isRecording,
+                  [`animate-asr-breathe
+                  text-blue-500`]: asrInput.phase.value === 'recording',
                 }"
+                :disabled="!canStartMic"
                 @click="onMobileMenuAction(toggleRecording)"
               ></Button>
               <div class="group relative inline-flex">
@@ -234,7 +234,7 @@
             v-show="currentStatus === 'responding'"
             ref="inlineDisplayRef"
             tabindex="0"
-            class="response-display my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none overflow-y-auto
+            class="response-display my-1.25 max-h-[50dvh] min-h-30 flex-1 resize-none overflow-y-auto
               border-none bg-transparent font-[inherit] text-xl font-bold break-all
               whitespace-pre-line outline-none text-shadow-[inherit]"
             :class="textareaMotionClass"
@@ -246,8 +246,8 @@
             v-show="currentStatus !== 'responding'"
             id="inputMessage"
             ref="textareaRef"
-            class="my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none border-none bg-transparent
-              font-[inherit] text-xl font-bold transition-all duration-300 outline-none
+            class="my-1.25 max-h-[50dvh] min-h-30 flex-1 resize-none border-none bg-transparent
+              font-[inherit] text-[max(1.25rem,16px)] font-bold transition-all duration-300 outline-none
               text-shadow-[inherit] placeholder:text-white/50 placeholder:shadow-none"
             :placeholder="placeholderText"
             v-model="inputMessage"
@@ -289,6 +289,15 @@
   import { useUIStore } from "../../../stores/modules/ui/ui";
   import { escapeHtml } from "../../../utils/escapeHtml";
   import { createCharRevealWriter } from "../../../utils/typewriter/charReveal";
+  import {
+    useAsrInput,
+    setMobileMenuOpen,
+    lockAsrForDisplay,
+    registerAsrInputBridge,
+    asrVoiceActive,
+    ASR_AUTO_SEND_DELAY_MS,
+  } from "../../../composables/useAsrInput";
+  import { useAsrStore } from "../../../stores/modules/settings/asr";
   import { Button } from "../../base";
 
   const inputMessage = ref("");
@@ -316,6 +325,8 @@
   // 移动端按钮折叠状态（但是基于长宽比判断）
   const isMobile = ref(uiStore.aspectRatio <= 1);
   const showMobileMenu = ref(false);
+  // 同步给 ASR 模块：移动端菜单展开时禁用语音输入（§1.5）
+  watch(showMobileMenu, (open) => setMobileMenuOpen(open));
 
   // 当前游戏状态（模板 v-show 判定回复显示区 / 输入框）
   const currentStatus = computed(() => gameStore.currentStatus);
@@ -325,10 +336,41 @@
     () => `${uiStore.showCharacterTitle}|${uiStore.showCharacterSubtitle}`,
   );
 
-  // 语音识别相关状态
-  const isRecording = ref(false);
-  const interimText = ref(""); // 新增：用于实时存储临时识别出来的文本
-  let speechRecognition: any = null;
+  // 语音输入：useAsrInput 统一两种触发源（mic 按钮 / 自动监听），
+  // 替换上游的 Web Speech API 实现（状态为模块级单例，GameRolesStage 等共享）
+  const asrInput = useAsrInput();
+  const asrStore = useAsrStore();
+
+  // auto_listen 模式开 + 总开关开：mic 按钮 = 功能开关（监听激活 → 暂停；暂停 → 恢复），
+  // 不改模式设置。总开关关（自动模式已停）→ 退化为手动录音。
+  const autoListenOn = computed(() => asrStore.settings.auto_listen);
+  const autoListenActive = computed(() => asrInput.autoListenActive.value);
+  const micIcon = computed(() => {
+    if (autoListenOn.value && asrStore.settings.voice_input_enabled) {
+      return autoListenActive.value ? "mic-off" : "mic";
+    }
+    return "mic";
+  });
+  const micTitle = computed(() => {
+    if (autoListenOn.value && asrStore.settings.voice_input_enabled) {
+      return autoListenActive.value
+        ? t("game.dialog.asrAutoOff") // 监听中：暂停
+        : t("game.dialog.asrAutoResume"); // 已暂停：恢复
+    }
+    return asrInput.phase.value === "recording"
+      ? t("game.dialog.recordingStop")
+      : t("game.dialog.voiceInput");
+  });
+
+  // mic 按钮 enabled 条件（与 useAsrInput.canStartAsr 对齐）：
+  // - auto_listen 模式开 + 总开关开：功能开关可用
+  // - 总开关关 → 整体禁用（总开关是语音输入的总闸，手动 mic 一并关闭）
+  const canStartMic = computed(
+    () =>
+      (autoListenOn.value && asrStore.settings.voice_input_enabled) ||
+      asrInput.phase.value === "recording" ||
+      asrInput.canStartAsr(false, true),
+  );
 
   // 截图相关状态
   const hasScreenshot = ref(false);
@@ -447,9 +489,9 @@
   };
 
   const placeholderText = computed(() => {
-    // 如果正在录音，优先展示实时的语音内容，如果没有内容则展示正在聆听
-    if (isRecording.value) {
-      return interimText.value || t("game.dialog.listening");
+    // 录音中：展示"正在聆听"（流式模式 partial 已实时写入输入框，此占位仅兜底非流式）
+    if (asrInput.phase.value === "recording") {
+      return t("game.dialog.listening");
     }
 
     switch (gameStore.currentStatus) {
@@ -474,7 +516,9 @@
     }
   });
 
-  const isInputEnabled = computed(() => gameStore.currentStatus === "input");
+  const isInputEnabled = computed(
+    () => gameStore.currentStatus === "input" && !asrVoiceActive.value,
+  );
 
   watch(
     () => gameStore.currentStatus,
@@ -532,82 +576,47 @@
     }
   });
 
-  // === 语音识别功能实现 ===
-  const initSpeechRecognition = () => {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.warn("当前浏览器不支持 Web Speech API，语音功能不可用");
-      return null;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = "zh-CN"; // 默认识别中文
-    // 修改：将 interimResults 设为 true 以获取中间结果
-    recognition.interimResults = true;
-    recognition.maxAlternatives = 1;
-
-    recognition.onstart = () => {
-      isRecording.value = true;
-      interimText.value = ""; // 开始录音时清空中间文本
-    };
-
-    recognition.onresult = (event: any) => {
-      let interim = "";
-      let final = "";
-
-      // 遍历所有结果，区分是最终结果还是正在识别的临时结果
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          final += event.results[i][0].transcript;
-        } else {
-          interim += event.results[i][0].transcript;
-        }
-      }
-
-      if (interim) {
-        // 如果有中间结果，更新到专门的变量供 placeholder 使用
-        interimText.value = interim;
-      }
-
-      if (final) {
-        // 识别完成，赋值并发送
-        interimText.value = "";
-        inputMessage.value = final;
-        send();
-      }
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error("语音识别出错:", event.error);
-      isRecording.value = false;
-      interimText.value = "";
-    };
-
-    recognition.onend = () => {
-      isRecording.value = false;
-      interimText.value = "";
-    };
-
-    return recognition;
-  };
-
-  const toggleRecording = async () => {
-    if (!speechRecognition) {
-      await dialogStore.alert(t("game.dialog.speechNotSupported"));
-      return;
-    }
-    if (isRecording.value) {
-      speechRecognition.stop();
-    } else {
-      // 如果不在允许输入的阶段，阻止录音
-      if (gameStore.currentStatus !== "input") {
-        await dialogStore.alert(t("game.dialog.inputNotAllowed"));
+  // === 语音输入 toggle（useAsrInput 接管生命周期，替换上游 Web Speech 实现） ===
+  async function toggleRecording() {
+    try {
+      // auto_listen 模式开 + 总开关开：mic 按钮 = 切换功能开关（暂停/恢复监听），
+      // 不改模式设置；总开关关 → 走手动录音分支
+      if (autoListenOn.value && asrStore.settings.voice_input_enabled) {
+        asrInput.toggleAutoListenFunction();
         return;
       }
-      speechRecognition.start();
+      if (asrInput.phase.value === "idle") {
+        await asrInput.start("button");
+      } else if (asrInput.phase.value === "recording") {
+        asrInput.stop();
+      }
+    } catch (err) {
+      console.warn("[ASR] toggle failed:", err);
     }
-  };
+  }
+
+  // 监听 asr-text 事件（useAsrInput fill_only 模式 dispatch）
+  // fill_only 语义：识别结果填入 inputMessage，由用户手动发送（Enter / 发送按钮）。
+  // 短暂显示锁仅防 auto_listen 立即再触发录音覆盖刚填入的内容（§1.10）。
+  const ASR_DISPLAY_MS = 400;
+  function onAsrText(e: Event) {
+    const ce = e as CustomEvent<string>;
+    if (typeof ce.detail === "string") {
+      inputMessage.value = ce.detail;
+      lockAsrForDisplay(ASR_DISPLAY_MS);
+    }
+  }
+
+  // 监听 asr-send 事件（useAsrInput auto_send 模式 dispatch）：
+  // 识别结果先显示到输入框，ASR_AUTO_SEND_DELAY_MS 后走 send()——
+  // 完整复用剧本分支（runningScript → script_submit_input）、模型配置检查与
+  // 输入框清理（显示锁已由 handle() 设置，这里不重复 lock）
+  function onAsrAutoSend(e: Event) {
+    const ce = e as CustomEvent<string>;
+    if (typeof ce.detail !== "string") return;
+    inputMessage.value = ce.detail;
+    window.setTimeout(() => send(), ASR_AUTO_SEND_DELAY_MS);
+  }
 
   let unlistenScreenshot: (() => void) | null = null;
   let unlistenCancelled: (() => void) | null = null;
@@ -620,8 +629,17 @@
     }
 
     document.addEventListener("contextmenu", handleDialogShow);
-    // 初始化语音识别对象
-    speechRecognition = initSpeechRecognition();
+    // 监听 asr-text 事件（fill_only 模式 dispatch）
+    window.addEventListener("asr-text", onAsrText);
+    // 监听 asr-send 事件（auto_send 模式 dispatch）
+    window.addEventListener("asr-send", onAsrAutoSend);
+    // 输入框桥：流式 partial 实时写入 + 拼接基准读取
+    registerAsrInputBridge({
+      getText: () => inputMessage.value,
+      setText: (v) => {
+        inputMessage.value = v;
+      },
+    });
     // 初始化容器宽度
     updateContainerWidth();
     // 监听窗口大小变化
@@ -644,6 +662,8 @@
   onUnmounted(() => {
     document.removeEventListener("contextmenu", handleDialogShow);
     window.removeEventListener("resize", updateContainerWidth);
+    window.removeEventListener("asr-text", onAsrText);
+    window.removeEventListener("asr-send", onAsrAutoSend);
     if (unlistenScreenshot) unlistenScreenshot();
     if (unlistenCancelled) unlistenCancelled();
   });
@@ -952,6 +972,11 @@
 </style>
 
 <style>
+  /* 底部 Home 指示器安全区：对话框本体铺到屏幕底（其半透明底盖住背景条带），
+     仅内容底部让出 env() 高度，输入框不被 Home 指示器遮挡（桌面/Android 桌面 env=0） */
+  .game-dialog {
+    padding-bottom: calc(15px + var(--safe-area-inset-bottom, 0px));
+  }
   /* 逐字符淡入+上浮动画。keyframes 必须全局：span 由 JS 动态生成，scoped 选择器无法命中 */
   @keyframes tw-char-rise {
     from {

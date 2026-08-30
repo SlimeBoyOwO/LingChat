@@ -1,5 +1,6 @@
 // 在 tauri 构建之前，将 git 追踪的 data/ 文件打包为 data.7z
-// 直接放入 Android 原生 assets 目录（src-tauri/gen/android/app/src/main/assets/data/）
+// - Android：直接放入原生 assets 目录（src-tauri/gen/android/app/src/main/assets/data/）
+// - iOS：放入 Xcode 工程资源目录（src-tauri/gen/apple/assets/data/，folder reference 打进 bundle）
 // .gitignore 决定哪些是默认资源、哪些是用户自定义内容。
 // third_party/ 作为例外始终包含（运行时需要的模型文件）。
 
@@ -26,8 +27,6 @@ console.log(`7z compression level: -mx=${level} (LZMA2)`);
 const buildDir = join(srcTauri, '.bundled_build');
 
 // Android assets 目标目录
-// iOS：尚未实现 iOS 构建支持，暂无 gen/ios/ 目录及 data.7z 部署流程
-// 若后续添加 iOS 构建，需在此处增加复制到 iOS bundle resources 的逻辑
 const androidAssetsDir = join(srcTauri, 'gen', 'android', 'app', 'src', 'main', 'assets', 'data');
 
 // 清理
@@ -103,6 +102,29 @@ if (existsSync(androidAssetsDir)) {
 mkdirSync(androidAssetsDir, { recursive: true });
 copyFileSync(archivePath, join(androidAssetsDir, 'data.7z'));
 console.log(`Copied data.7z to ${androidAssetsDir}`);
+
+// --- iOS：部署 data.7z 到 Xcode 工程资源目录 ---
+// gen/apple/assets/ 在 project.yml 中以 folder reference（type: folder）参与
+// resources build phase，构建时整体拷入 app bundle 根目录，
+// 因此 gen/apple/assets/data/data.7z → <bundle>/data/data.7z，
+// 与 Rust 侧 seed_via_fs_plugin 的读取路径 {resource_dir}/data/data.7z 一致。
+const iosGenApple = join(srcTauri, 'gen', 'apple');
+if (existsSync(iosGenApple)) {
+  const iosDataDir = join(iosGenApple, 'assets', 'data');
+  // 与 Android 分支一致：先清空再写入，避免旧构建残留
+  // （如曾误放入 gen/apple/assets/data/ 的 .official/third_party 真实文件）
+  // 被 folder reference 整体打进 iOS bundle，导致包体膨胀与资源重复。
+  if (existsSync(iosDataDir)) {
+    rmSync(iosDataDir, { recursive: true });
+  }
+  mkdirSync(iosDataDir, { recursive: true });
+  copyFileSync(archivePath, join(iosDataDir, 'data.7z'));
+  console.log(`Copied data.7z to ${iosDataDir}`);
+} else {
+  console.log(
+    '⚠ gen/apple 不存在，跳过 iOS data.7z 部署（请先在 macOS 上执行 pnpm ios:init 生成 Xcode 工程）'
+  );
+}
 
 // --- 清理临时目录 ---
 rmSync(buildDir, { recursive: true });

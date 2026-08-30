@@ -6,7 +6,7 @@
       @click="handleClose"
     >
       <div
-        class="bg-[linear-gradient(135deg,rgba(255,255,255,0.15)_0%,rgba(255,255,255,0.05)_100%)] backdrop-blur-[30px] backdrop-saturate-180 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.4),inset_0_0_1px_rgba(255,255,255,0.3)] border border-white/20 w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden text-white"
+        class="bg-[linear-gradient(135deg,rgba(255,255,255,0.15)_0%,rgba(255,255,255,0.05)_100%)] backdrop-blur-[30px] backdrop-saturate-180 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.4),inset_0_0_1px_rgba(255,255,255,0.3)] border border-white/20 w-full max-w-4xl h-[85dvh] flex flex-col overflow-hidden text-white"
         @click.stop
       >
         <!-- Header -->
@@ -261,11 +261,14 @@ import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import * as TtsLocal from '../../../api/services/tts/tts-local'
+import * as TtsCosyvoice from '../../../api/services/tts/tts-cosyvoice'
 
 const props = defineProps<{
   visible: boolean
   roleId: number | null
   title?: string
+  /** 来源："game" 或提供该角色的插件 id（插件角色不可直接删除）。 */
+  source?: string | null
 }>()
 
 const emit = defineEmits(['close', 'saved'])
@@ -280,6 +283,7 @@ const uiStore = useUIStore()
 const gameStore = useGameStore()
 const localSettings = ref<any>({})
 const installedVoices = ref<TtsLocal.VoiceRecord[]>([])
+const cloudVoices = ref<TtsCosyvoice.CosyVoiceView[]>([])
 
 // 删除按钮可用性：系统保护角色 / 在场角色不可删
 const deleteState = computed(() => {
@@ -299,6 +303,12 @@ const deleteState = computed(() => {
 // 单次 confirm，三件全删（DB + 存档 + 记忆 + 物理文件），避免二次 confirm 三态歧义
 const handleDelete = async () => {
   if (!props.roleId || deleteState.value.disabled) return
+
+  // 插件角色不可直接删除：提示去插件设置里隐藏
+  if (props.source && props.source !== 'game') {
+    await dialogStore.alert(t('settings.characterInfo.delete.pluginFromPlugin'))
+    return
+  }
 
   const confirmed = await dialogStore.confirm(
     t('settings.characterInfo.delete.confirmMessage', { title: props.title ?? t('settings.characterInfo.delete.button') }),
@@ -342,6 +352,15 @@ async function refreshLocalVoices(): Promise<void> {
   }
 }
 
+async function refreshCloudVoices(): Promise<void> {
+  try {
+    cloudVoices.value = await TtsCosyvoice.listVoices()
+  } catch (error) {
+    console.warn('refreshCloudVoices failed', error)
+    cloudVoices.value = []
+  }
+}
+
 const tabs = computed(() => [
   { id: 'basic', label: t('settings.characterInfo.tabs.basic') },
   { id: 'prompts', label: t('settings.characterInfo.tabs.prompts') },
@@ -366,6 +385,7 @@ const voiceModelKeys = [
   'aivis_model_uuid',
   'opentts_voice',
   'fish_s2_voice',
+  'cosyvoice_voice_id',
 ] as const
 
 // --- Schema Definition ---
@@ -447,6 +467,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
         { label: t('settings.characterInfo.fields.fishS2'), value: 'fishs2' },
         { label: t('settings.characterInfo.fields.localSbv2Api'), value: 'localsbv2api' },
         { label: 'indextts2', value: 'indextts2' },
+        { label: t('settings.characterInfo.fields.voiceCloneTts'), value: 'cosyvoice' },
       ],
     },
 
@@ -456,18 +477,41 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       type: 'select',
       realtime: true,
       options: [
-        // IndexTTS 2.5 起 indextts2 支持日/西班牙/阿拉伯等多语言，日语不再对其隐藏
-        { label: t('settings.characterInfo.voiceLangOptions.ja'), value: 'ja' },
+        // 顺序:中、英、日、德、法、俄、韩、葡(用户指定);es/ar 仅 indextts2 可见
         { label: t('settings.characterInfo.voiceLangOptions.zh'), value: 'zh' },
         {
           label: t('settings.characterInfo.voiceLangOptions.en'),
           value: 'en',
-          visibleIf: (s) => ['gsv', 'opentts', 'sbv2', 'sbv2api', 'indextts2', 'fishs2'].includes(s.tts_type),
+          visibleIf: (s) =>
+            ['gsv', 'opentts', 'sbv2', 'sbv2api', 'indextts2', 'fishs2', 'cosyvoice'].includes(
+              s.tts_type,
+            ),
+        },
+        { label: t('settings.characterInfo.voiceLangOptions.ja'), value: 'ja' },
+        {
+          label: t('settings.characterInfo.voiceLangOptions.de'),
+          value: 'de',
+          visibleIf: (s) => s.tts_type === 'cosyvoice',
+        },
+        {
+          label: t('settings.characterInfo.voiceLangOptions.fr'),
+          value: 'fr',
+          visibleIf: (s) => s.tts_type === 'cosyvoice',
+        },
+        {
+          label: t('settings.characterInfo.voiceLangOptions.ru'),
+          value: 'ru',
+          visibleIf: (s) => s.tts_type === 'cosyvoice',
         },
         {
           label: t('settings.characterInfo.voiceLangOptions.ko'),
           value: 'ko',
-          visibleIf: (s) => ['gsv', 'opentts'].includes(s.tts_type),
+          visibleIf: (s) => ['gsv', 'opentts', 'cosyvoice'].includes(s.tts_type),
+        },
+        {
+          label: t('settings.characterInfo.voiceLangOptions.pt'),
+          value: 'pt',
+          visibleIf: (s) => s.tts_type === 'cosyvoice',
         },
         {
           label: t('settings.characterInfo.voiceLangOptions.es'),
@@ -480,6 +524,36 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
           visibleIf: (s) => s.tts_type === 'indextts2',
         },
       ],
+    },
+
+    {
+      // 中文方言:仅语音克隆TTS + 中文时可选
+      // （v3.5-flash 官方支持的 16 种方言:普通话 + 广东/东北/甘肃/贵州/河南/湖北/江西/
+      //   闽南/宁夏/山西/陕西/山东/上海/四川/天津/云南）
+      key: 'voice_dialect',
+      label: t('settings.characterInfo.fields.voiceDialect'),
+      type: 'select',
+      realtime: true,
+      options: [
+        { label: t('settings.characterInfo.dialectOptions.mandarin'), value: '' },
+        { label: t('settings.characterInfo.dialectOptions.cantonese'), value: '广东话' },
+        { label: t('settings.characterInfo.dialectOptions.dongbei'), value: '东北话' },
+        { label: t('settings.characterInfo.dialectOptions.gansu'), value: '甘肃话' },
+        { label: t('settings.characterInfo.dialectOptions.guizhou'), value: '贵州话' },
+        { label: t('settings.characterInfo.dialectOptions.henan'), value: '河南话' },
+        { label: t('settings.characterInfo.dialectOptions.hubei'), value: '湖北话' },
+        { label: t('settings.characterInfo.dialectOptions.jiangxi'), value: '江西话' },
+        { label: t('settings.characterInfo.dialectOptions.fujian'), value: '闽南话' },
+        { label: t('settings.characterInfo.dialectOptions.ningxia'), value: '宁夏话' },
+        { label: t('settings.characterInfo.dialectOptions.shanxi'), value: '山西话' },
+        { label: t('settings.characterInfo.dialectOptions.shaanxi'), value: '陕西话' },
+        { label: t('settings.characterInfo.dialectOptions.shandong'), value: '山东话' },
+        { label: t('settings.characterInfo.dialectOptions.shanghai'), value: '上海话' },
+        { label: t('settings.characterInfo.dialectOptions.sichuan'), value: '四川话' },
+        { label: t('settings.characterInfo.dialectOptions.tianjin'), value: '天津话' },
+        { label: t('settings.characterInfo.dialectOptions.yunnan'), value: '云南话' },
+      ],
+      visibleIf: (s) => s.tts_type === 'cosyvoice' && s.voice_lang === 'zh',
     },
 
     {
@@ -591,6 +665,23 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       realtime: true,
       placeholder: t('settings.characterInfo.placeholders.fishS2Voice'),
       visibleIf: (s) => s.tts_type === 'fishs2',
+    },
+
+    // --- 云端语音克隆 (cosyvoice) ---
+    {
+      key: 'cosyvoice_voice_id',
+      parent: 'voice_models',
+      label: t('settings.characterInfo.fields.cosyVoiceVoice'),
+      type: 'select',
+      realtime: true,
+      dynamicOptions: () =>
+        cloudVoices.value.length === 0
+          ? [{ label: t('settings.characterInfo.fields.noCloudVoice'), value: '' }]
+          : cloudVoices.value.map((voice) => ({
+              label: voice.name ? `${voice.name} (${voice.voice_id})` : voice.voice_id,
+              value: voice.voice_id,
+            })),
+      visibleIf: (s) => s.tts_type === 'cosyvoice',
     },
 
     // --- Local SBV2 (localsbv2api) ---
@@ -793,8 +884,13 @@ watch(
 watch(
   () => [props.visible, activeTab.value, localSettings.value.tts_type],
   ([visible, tab, ttsType]) => {
-    if (visible && tab === 'voice' && ttsType === 'localsbv2api') {
-      void refreshLocalVoices()
+    if (visible && tab === 'voice') {
+      // 本地 TTS 音色:仅 localsbv2api 需要
+      if (ttsType === 'localsbv2api') {
+        void refreshLocalVoices()
+      }
+      // 云端音色:cosyvoice 下拉随时需要（与 tts_type 无关）
+      void refreshCloudVoices()
     }
   },
 )

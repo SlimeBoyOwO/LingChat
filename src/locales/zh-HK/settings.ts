@@ -218,9 +218,9 @@ export default {
       "features": {
         "enable_time_sense": "USE_TIME_SENSE — 啟用時間感知（按上下文時間加系統提醒）",
         "enable_emotion_classifier": "ENABLE_EMOTION_CLASSIFIER — 啟用情感分類器（ONNX 模型，用嚟自動標註對話嘅 emotion）",
-        "use_persistent_memory": "USE_PERSISTENT_MEMORY — 開咗之後記憶會自動壓縮，慳返 token",
-        "memory_update_interval": "MEMORY_UPDATE_INTERVAL — 觸發記憶摘要嘅新訊息數（預設 250）",
-        "memory_recent_window": "MEMORY_RECENT_WINDOW — 做摘要嗰陣保留嘅最近訊息數（預設 30）"
+        "use_persistent_memory": "USE_PERSISTENT_MEMORY — 自動壓縮記憶，儲存後要重啟先會生效",
+        "memory_update_interval": "MEMORY_UPDATE_INTERVAL — 觸發摘要嘅可見台詞數（1–10000，預設 250）",
+        "memory_recent_window": "MEMORY_RECENT_WINDOW — 壓縮後保留嘅角色可見台詞數（0–10000，預設 30）"
       },
       "tts": {
         "simple_vits_api_url": "Simple-Vits-API 地址（VITS 適配器）",
@@ -373,6 +373,10 @@ export default {
       "openttsVoiceLabel": "OpenTTS 音色標識",
       "fishS2": "Fish S2（本機 API）",
       "fishS2Voice": "Fish S2 音色標識",
+      "voiceCloneTts": "語音克隆TTS",
+      "cosyVoiceVoice": "雲端音色",
+      "noCloudVoice": "暫無雲端音色，請先到設定頁註冊",
+      "voiceDialect": "中文方言",
 
       "openttsVoice": "OpenTTS 音色標識"
     },
@@ -386,7 +390,30 @@ export default {
       "en": "英語",
       "ko": "韓語",
       "es": "西班牙語",
-      "ar": "阿拉伯語"
+      "ar": "阿拉伯語",
+      "de": "德語",
+      "fr": "法語",
+      "ru": "俄語",
+      "pt": "葡萄牙語"
+    },
+    "dialectOptions": {
+      "mandarin": "普通話",
+      "cantonese": "廣東話",
+      "dongbei": "東北話",
+      "gansu": "甘肅話",
+      "guizhou": "貴州話",
+      "henan": "河南話",
+      "hubei": "湖北話",
+      "jiangxi": "江西話",
+      "fujian": "閩南話",
+      "ningxia": "寧夏話",
+      "shanxi": "山西話",
+      "shaanxi": "陝西話",
+      "shandong": "山東話",
+      "shanghai": "上海話",
+      "sichuan": "四川話",
+      "tianjin": "天津話",
+      "yunnan": "雲南話"
     },
     "clothes": {
       "listTitle": "服裝列表",
@@ -629,7 +656,8 @@ export default {
       "title": "性能檢測",
       "detecting": "檢測緊硬件性能 …",
       "cpuName": "CPU 名稱：",
-      "gpuName": "GPU 名稱：",
+      "gpuName": "最高性能 GPU：",
+      "activeGpuName": "當前調用 GPU：",
       "combinedTier": "性能等級（取最低）：",
       "suggestedFps": "建議幀率：",
       "detectingShort": "檢測緊…",
@@ -710,7 +738,7 @@ export default {
     },
     "memory": {
       "title": "啟用永久記憶",
-      "desc": "開咗之後記憶會自動壓縮"
+      "desc": "開咗之後記憶會自動壓縮，儲存後要重啟 LingChat 先會生效"
     },
     "voiceSound": {
       "title": "語音音效開關",
@@ -967,7 +995,7 @@ export default {
     }
   },
   "tts": {
-    "title": "本地 TTS",
+    "title": "TTS 設置",
     "switch": {
       "label": "全域本地 TTS",
       "enabled": "已啟用",
@@ -1038,6 +1066,73 @@ export default {
       "generating": "生成中",
       "generate": "生成試聽"
     },
+    "cosyvoice": {
+      "title": "語音克隆 TTS",
+      "subtitle": "基於阿里雲百煉 CosyVoice，導入語音樣本克隆專屬音色",
+      "keyPlaceholder": "輸入 DASHSCOPE API Key",
+      "keyConfigured": "API Key 已配置",
+      "keyChange": "更換",
+      "keySave": "儲存",
+      "voicesLabel": "我的音色（{count}）",
+      "voicesEmpty": "未有音色，導入語音樣本建立第一個吧",
+      "voiceStatus": "狀態：{status}",
+      "statusOk": "可用",
+      "statusDeploying": "審核中…",
+      "statusUndeployed": "審核失敗",
+      "statusUnknown": "狀態未知",
+      "retryStatus": "重查狀態",
+      "previewVoice": "試聽",
+      "deleteVoice": "刪除音色",
+      "voiceNamePlaceholder": "音色名稱",
+      "voiceNameLabel": "音色名稱（必填）",
+      "languageLabel": "參考音頻語言（必選）",
+      "languages": {
+        "zh": "中文",
+        "en": "英語",
+        "ja": "日語",
+        "ko": "韓語",
+        "fr": "法語",
+        "de": "德語",
+        "ru": "俄語",
+        "pt": "葡萄牙語",
+        "th": "泰語",
+        "id": "印尼語",
+        "vi": "越南語"
+      },
+      "pickSample": "選擇語音樣本",
+
+      "register": "匯入並註冊音色",
+
+      "registering": "註冊中…",
+      "previewTitle": "試聽",
+      "previewSubtitle": "輸入內容並選擇已註冊嘅克隆音色",
+      "importTitle": "導入音色",
+      "importSubtitle": "上傳清晰人聲樣本，創建專屬克隆音色",
+      "importHint": "時長建議 10–20 秒，支援 wav / mp3，取樣率不低於 16kHz，所選參考音頻語言必須與實際音頻語言一致，單人清晰說話，無背景音樂或噪音",
+      "previewPlaceholder": "輸入試聽文字…",
+      "previewVoiceLabel": "音色",
+      "previewSelect": "選擇音色",
+      "generating": "生成中…",
+      "generate": "生成並播放",
+      "notices": {
+        "loadConfigFailed": "載入語音克隆配置失敗: {error}",
+        "keySaved": "CosyVoice API Key 已保存",
+        "keySaveFailed": "儲存 API Key 失敗: {error}",
+        "needNameAndSample": "請先輸入音色名稱並選擇語音樣本",
+        "voiceSubmitted": "音色已提交審核: {name}（{voiceId}），審核通過後即可使用",
+        "registerFailed": "音色註冊失敗: {error}",
+        "deleteConfirm": "確定刪除音色「{name}」嗎？雲端與本地記錄將一併移除。",
+        "deleteTitle": "刪除音色",
+        "deleteFailed": "刪除音色失敗: {error}",
+        "needPreviewText": "請輸入試聽文字",
+        "previewFailed": "試聽失敗: {error}"
+      },
+      "phases": {
+        "uploading": "上傳語音樣本中…",
+        "submitting": "提交復刻任務…",
+        "submitted": "已提交，等待審核…"
+      },
+    },
     "messages": {
       "readStatusFailed": "讀取本地 TTS 狀態失敗：{error}",
       "importFailed": "匯入失敗：{error}",
@@ -1059,6 +1154,68 @@ export default {
       "switchEnabled": "本地 TTS 已啟用。",
       "switchEnabledNotReady": "本地 TTS 已啟用，但引擎未就緒（缺少 DeBERTa 模型或分詞器，請先下載）。",
       "switchDisabled": "本地 TTS 已關閉，如需使用雲端 TTS，請將角色語音切換為「雲端」並重新啟動應用程式。",
-      "saveSwitchFailed": "儲存本地 TTS 開關失敗：{error}"
+      "saveSwitchFailed": "儲存本地 TTS 開關失敗：{error}",
+      "deviceSwitched": "推理設備已切換: {name}",
+      "deviceSwitchFailed": "切換推理設備失敗: {error}"
     }
-  },}
+  },
+
+  "asr": {
+    "title": "語音識別",
+    "status": {
+      "ready": "已就緒",
+      "notReady": "未配置",
+      "mic": "麥克風",
+      "micIdle": "閒置",
+      "micActive": "使用中",
+      "micDenied": "權限被拒絕",
+      "vadLoaded": "VAD 模型",
+      "vadLoadedOk": "已載入",
+      "vadLoadedNo": "未載入"
+    },
+    "voiceInput": "語音輸入",
+    "voiceInputHint": "總開關：關閉後語音輸入整體不可用（自動與手動麥克風一併關閉）",
+    "autoListen": "啟用自動語音識別",
+    "autoListenHint": "自動監聽麥克風，識別用戶說話後自動轉為文字",
+    "vadSilence": "靜音計時（毫秒）",
+    "vadSilenceHint": "停止講嘢後等待呢段時間先至結束錄音（預設 800ms，數字越大越唔容易被停頓切斷）",
+    "energyWarmup": "能量監測緩衝期（毫秒）",
+    "energyWarmupHint": "AI 講完嘢後等幾耐先恢復語音觸發（預設 100ms，設 0 即時觸發；若 AI 講完即刻有環境聲誤觸可以調大）",
+    "sendMode": {
+      "title": "識別完成後",
+      "fillOnly": "填入輸入框（推薦）",
+      "autoSend": "自動發送"
+    },
+    "streamMode": "串流識別",
+    "streamModeHint": "講嘢期間實時顯示識別文字",
+    "streamModeHintLocal": "錄音結束後上傳本地識別，結果逐步顯示（llama-server 結果串流）",
+    "streamNotSupported": "目前模型唔支援串流識別",
+    "provider": {
+      "title": "語音識別服務商",
+      "providerSelect": "服務商",
+      "modelRefresh": "重新載入模型列表",
+      "modelListFailed": "獲取模型列表失敗：{err}",
+      "test": "測試連接",
+      "testing": "正在錄音…請說話（4 秒）",
+      "testingStop": "停止並識別",
+      "testSuccess": "連接成功",
+      "testResult": "識別結果：{text}",
+      "testNoSpeech": "未識別到語音，請重試",
+      "testFailed": "連接失敗：{err}",
+      "presetHint": "選擇模型後自動填入接口地址（Endpoint），只需填寫 API Key"
+    },
+    errors: {
+      ASR_MODEL_MISSING: "VAD 模型未找到",
+      ASR_ENGINE_LOAD_FAILED: "識別引擎載入失敗",
+      ASR_PROVIDER_NOT_FOUND: "識別服務商未找到，請先配置",
+      ASR_PROVIDER_FAILED: "識別服務失敗，請稍後重試",
+      ASR_PROVIDER_TIMEOUT: "識別超時，請重試",
+      ASR_INVALID_AUDIO: "音訊數據無效",
+      ASR_SESSION_BUSY: "已有語音會話進行中",
+      ASR_CANCELED: "識別已取消",
+      ASR_MIC_DENIED: "麥克風權限被拒絕，請在系統設定中開啟",
+      ASR_MISSING_CREDENTIALS: "請先填寫該服務商的 API Key",
+      ASR_STREAMING_UNSUPPORTED: "當前模型不支援串流識別"
+    }
+  }
+}

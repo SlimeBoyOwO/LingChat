@@ -98,7 +98,7 @@ const confirmModal = async () => {
         <!-- 主弹窗 -->
         <div
           class="w-[min(440px,92vw)]
-            max-h-[86vh]
+            max-h-[86dvh]
             overflow-y-auto
             border
             border-white/12.5

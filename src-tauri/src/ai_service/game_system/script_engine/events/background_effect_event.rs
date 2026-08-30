@@ -82,10 +82,6 @@ impl ScriptEvent for BackgroundEffectEvent {
     fn event_type() -> &'static str {
         "background_effect"
     }
-
-    fn duration(&self) -> Option<f64> {
-        self.duration
-    }
 }
 
 pub fn register() {

@@ -4,7 +4,7 @@
       <template #header>
         <History :size="20" />
       </template>
-      <div class="flex flex-col h-full max-h-[75vh] min-h-0">
+      <div class="flex flex-col h-full max-h-[75dvh] min-h-0">
         <div v-if="dialogHistory.length === 0" class="flex flex-1 items-center justify-center">
           <div
             class="py-10 text-center text-2xl font-bold text-gray-100 [text-shadow:0_0_5px_rgba(255,255,255,0.5)]"
