@@ -4,24 +4,24 @@
 //! 与 Python 版 `DialogueEvent` 复用 `process_sentence` 对齐。解析失败 / 富化失败时回退纯文本，
 //! 保证固定台词不因管线问题丢失、不中断剧本。
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::Value;
 use tauri::Manager;
 
+use crate::AppState;
 use crate::ai_service::game_system::script_engine::events::{
-    parse_duration, register_event, ScriptContext, ScriptEvent,
+    ScriptContext, ScriptEvent, parse_duration, register_event,
 };
 use crate::ai_service::game_system::script_engine::utils::script_function;
 use crate::ai_service::message_system::events::emit;
 use crate::ai_service::message_system::generator::{
-    consume_sentence, ReplyOverrides, SentenceDeps,
+    ReplyOverrides, SentenceDeps, consume_sentence,
 };
 use crate::ai_service::message_system::responses::ReplyResponse;
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::replace_placeholder;
-use crate::AppState;
 
 pub struct DialogueEvent {
     character: String,
@@ -189,7 +189,7 @@ impl ScriptEvent for DialogueEvent {
             {
                 Ok(Some(resp)) => {
                     let _ = emit(ctx.app, "ai:reply", &resp);
-                }
+                },
                 Ok(None) => {
                     // 解析不到【情绪】分段：回退纯文本，保留已有纯文本剧本
                     tracing::warn!("dialogue 文本未解析到【情绪】分段，回退纯文本: {line}");
@@ -202,7 +202,7 @@ impl ScriptEvent for DialogueEvent {
                         &emotion,
                     )
                     .await?;
-                }
+                },
                 Err(e) => {
                     // 富化（翻译/TTS）失败不应中断剧本，回退纯文本
                     tracing::error!("consume_sentence 处理 dialogue 失败，回退纯文本: {e}");
@@ -215,7 +215,7 @@ impl ScriptEvent for DialogueEvent {
                         &emotion,
                     )
                     .await?;
-                }
+                },
             }
         }
 

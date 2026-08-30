@@ -2,17 +2,18 @@
 //!
 //! 发出 free_dialogue 开始/结束边界，每轮等待输入，并把 AI 生成委托给 MessageGenerator。
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::Value;
 use tauri::Manager;
 
+use crate::AppState;
 use crate::ai_service::game_system::script_engine::events::{
-    parse_duration, register_event, ScriptContext, ScriptEvent,
+    ScriptContext, ScriptEvent, parse_duration, register_event,
 };
 use crate::ai_service::game_system::script_engine::responses::{
-    event_names::{SCRIPT_FREE_DIALOGUE, SCRIPT_INPUT},
     FreeDialoguePayload, InputPayload,
+    event_names::{SCRIPT_FREE_DIALOGUE, SCRIPT_INPUT},
 };
 use crate::ai_service::game_system::script_engine::utils::script_function;
 use crate::ai_service::message_system::events::emit;
@@ -21,8 +22,7 @@ use crate::ai_service::message_system::generator::{
 };
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
-use crate::utils::prompt::{replace_placeholder, PromptRole};
-use crate::AppState;
+use crate::utils::prompt::{PromptRole, replace_placeholder};
 
 pub struct FreeDialogueEvent {
     character: String,

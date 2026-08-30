@@ -204,10 +204,7 @@ impl TtsConfig {
         };
 
         Self {
-            simple_vits_api_url: get_string(
-                keys::SIMPLE_VITS_API_URL,
-                &default_simple_vits_url(),
-            ),
+            simple_vits_api_url: get_string(keys::SIMPLE_VITS_API_URL, &default_simple_vits_url()),
             bv2_api_url: get_string(keys::BV2_API_URL, &default_bv2_url()),
             gsv_api_url: get_string(keys::GSV_API_URL, &default_gsv_url()),
             sbv2_api_url: get_string(keys::SBV2_API_URL, &default_sbv2_url()),
@@ -215,11 +212,7 @@ impl TtsConfig {
             aivis_api_url: get_string(keys::AIVIS_API_URL, &default_aivis_url()),
             aivis_api_key: {
                 let s = get_string(keys::AIVIS_API_KEY, "");
-                if s.is_empty() {
-                    None
-                } else {
-                    Some(s)
-                }
+                if s.is_empty() { None } else { Some(s) }
             },
             indextts_api_url: get_string(keys::INDEXTTS_API_URL, &default_indextts_url()),
             fish_s2_api_url: get_string(keys::FISH_S2_API_URL, &default_fish_s2_url()),
@@ -227,11 +220,7 @@ impl TtsConfig {
             opentts_api_url: get_string(keys::OPENTTS_API_URL, &default_opentts_url()),
             opentts_api_key: {
                 let s = get_string(keys::OPENTTS_API_KEY, "");
-                if s.is_empty() {
-                    None
-                } else {
-                    Some(s)
-                }
+                if s.is_empty() { None } else { Some(s) }
             },
             opentts_model: get_string(keys::OPENTTS_MODEL, &default_opentts_model()),
             opentts_voice: get_string(keys::OPENTTS_VOICE, &default_opentts_voice()),
@@ -239,11 +228,7 @@ impl TtsConfig {
             voice_lang: get_string(keys::VOICE_LANG, &default_voice_lang()),
             cosyvoice_api_key: {
                 let s = get_string(keys::COSYVOICE_API_KEY, "");
-                if s.is_empty() {
-                    None
-                } else {
-                    Some(s)
-                }
+                if s.is_empty() { None } else { Some(s) }
             },
             cosyvoice_models: get_array(keys::COSYVOICE_MODELS, default_cosyvoice_models()),
             cosyvoice_voices: {

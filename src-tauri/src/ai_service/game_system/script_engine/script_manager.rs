@@ -7,23 +7,23 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::chapter::Chapter;
 use crate::ai_service::game_system::script_engine::events::ScriptContext;
 use crate::ai_service::game_system::script_engine::responses::{
-    event_names::SCRIPT_END, ScriptEndPayload,
+    ScriptEndPayload, event_names::SCRIPT_END,
 };
 use crate::ai_service::message_system::events::emit;
 use crate::ai_service::types::{AdventureConfig, LineAttributeExt, LineBase, ScriptStatus};
 use crate::db::entities::line::LineAttribute;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::utils::prompt::{sys_prompt_builder, PromptOptions};
+use crate::utils::prompt::{PromptOptions, sys_prompt_builder};
 
 /// YAML structure for `story_config.yaml` top-level keys.
 #[derive(serde::Deserialize, Default)]
@@ -129,10 +129,10 @@ impl ScriptManager {
             Ok(script_status) => {
                 let name = script_status.name.clone();
                 self.all_scripts.insert(name, script_status);
-            }
+            },
             Err(e) => {
                 tracing::warn!("[ScriptManager] 跳过无效剧本目录 {:?}: {}", script_path, e);
-            }
+            },
         }
     }
 
@@ -190,10 +190,10 @@ impl ScriptManager {
                     }
                     status.plugin_id = Some(plugin_id.clone());
                     self.all_scripts.insert(status.name.clone(), status);
-                }
+                },
                 Err(e) => {
                     tracing::warn!("[ScriptManager] 跳过无效插件剧本 {:?}: {}", dir, e);
-                }
+                },
             }
         }
     }
@@ -373,7 +373,7 @@ impl ScriptManager {
                         role_folder
                     );
                     continue;
-                }
+                },
             };
 
             // Check if role already exists in DB — same key that creation uses.

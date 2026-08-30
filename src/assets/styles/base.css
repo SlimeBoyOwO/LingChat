@@ -1,14 +1,14 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 
 @theme {
   /* 字体配置 */
   --font-sans:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
   /* 用户自定义字体名（为空走 --font-sans 默认栈）；运行时由设置覆盖 */
-  --font-app: '';
+  --font-app: "";
 
   /* 颜色配置 */
   --color-brand: var(--accent-color);
@@ -30,13 +30,25 @@
 }
 
 /* ─── 安全区快捷工具类 ─────────────────────────────────── */
-.pt-safe { padding-top: var(--safe-area-inset-top); }
-.pb-safe { padding-bottom: var(--safe-area-inset-bottom); }
-.pl-safe { padding-left: var(--safe-area-inset-left); }
-.pr-safe { padding-right: var(--safe-area-inset-right); }
+.pt-safe {
+  padding-top: var(--safe-area-inset-top);
+}
+.pb-safe {
+  padding-bottom: var(--safe-area-inset-bottom);
+}
+.pl-safe {
+  padding-left: var(--safe-area-inset-left);
+}
+.pr-safe {
+  padding-right: var(--safe-area-inset-right);
+}
 /* 带 gap 的变体（给状态栏/Home Indicator 额外留 8px 呼吸空间） */
-.pt-safe-gap { padding-top: calc(8px + var(--safe-area-inset-top)); }
-.pb-safe-gap { padding-bottom: calc(8px + var(--safe-area-inset-bottom)); }
+.pt-safe-gap {
+  padding-top: calc(8px + var(--safe-area-inset-top));
+}
+.pb-safe-gap {
+  padding-bottom: calc(8px + var(--safe-area-inset-bottom));
+}
 
 /* 输入控件字号下限 16px：阻止 iOS 聚焦时对 <16px 输入框的自动缩放（页面放大一下） */
 input,
@@ -207,8 +219,7 @@ textarea {
   margin: 0.2em 0;
 }
 .markdown-body code {
-  font-family:
-    ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 4px;
   padding: 0.1em 0.35em;

@@ -1,81 +1,81 @@
-import { invoke } from '@tauri-apps/api/core'
-import type { Live2dSettings } from '@/types/live2d'
-import type { SceneInfo } from './scene'
+import { invoke } from "@tauri-apps/api/core";
+import type { Live2dSettings } from "@/types/live2d";
+import type { SceneInfo } from "./scene";
 
 // 1. 定义角色配置接口 (原先摊平的字段现在归属到这里)
 export interface CharacterSettings {
-  ai_name: string
-  ai_subtitle: string
-  user_name: string
-  user_subtitle: string
-  character_id: number | null
-  thinking_message: string
-  scale: number
-  offset_x: number
-  offset_y: number
-  scale_p: number
-  offset_x_p: number
-  offset_y_p: number
-  bubble_top: number
-  bubble_left: number
-  clothes: Record<string, any>
-  clothes_name: string
-  body_part: Record<string, any>
-  live2d?: Live2dSettings | null
-  character_folder: string
+  ai_name: string;
+  ai_subtitle: string;
+  user_name: string;
+  user_subtitle: string;
+  character_id: number | null;
+  thinking_message: string;
+  scale: number;
+  offset_x: number;
+  offset_y: number;
+  scale_p: number;
+  offset_x_p: number;
+  offset_y_p: number;
+  bubble_top: number;
+  bubble_left: number;
+  clothes: Record<string, any>;
+  clothes_name: string;
+  body_part: Record<string, any>;
+  live2d?: Live2dSettings | null;
+  character_folder: string;
 }
 
 /// 前端用台词条目（对应 Rust GameLineInit）
 export interface GenerateLineVoiceResult {
-  fileName: string
-  spokenContent: string
-  spokenLanguage: string
+  fileName: string;
+  spokenContent: string;
+  spokenLanguage: string;
 }
 
 export interface GameLineInit {
-  content: string
-  attribute: string
-  sender_role_id: number | null
-  display_name: string | null
-  original_emotion: string | null
-  predicted_emotion: string | null
-  action_content: string | null
-  audio_file: string | null
-  perceived_role_ids: number[]
+  content: string;
+  attribute: string;
+  sender_role_id: number | null;
+  display_name: string | null;
+  original_emotion: string | null;
+  predicted_emotion: string | null;
+  action_content: string | null;
+  audio_file: string | null;
+  perceived_role_ids: number[];
   /** 玩家消息序号（1-indexed），仅 sender_role_id == 0 的 user 行有值 */
-  user_message_seq: number | null
+  user_message_seq: number | null;
   /** 该轮生成的思考链（仅每轮最后一条 assistant 行有值） */
-  thinking: string | null
+  thinking: string | null;
   /** 该台词的第二语言/目标语言文本（历史字段） */
-  tts_content: string | null
+  tts_content: string | null;
   /** 按有效 voice_lang 选定的 TTS 输入文本；旧存档行为 null */
-  spoken_content: string | null
+  spoken_content: string | null;
   /** 生成 spoken_content 时的有效 TTS 语言 */
-  spoken_language: string | null
+  spoken_language: string | null;
 }
 
 // 2. 定义完整的初始化数据接口 (对应 Rust WebInitData)
 export interface WebInitData {
-  character_settings: CharacterSettings
-  current_interact_role_id: number | null
-  onstage_roles_ids: number[]
+  character_settings: CharacterSettings;
+  current_interact_role_id: number | null;
+  onstage_roles_ids: number[];
   /** 在场角色的完整设定（含主角与非主角），用于初始化 gameRoles / presentRoleIds */
-  onstage_roles: CharacterSettings[]
-  background: string
-  background_effect: string
-  background_music: string
-  current_scene_id: string | null
-  current_scene: SceneInfo | null
-  lines: GameLineInit[]
-  scene_awareness_enabled: boolean
+  onstage_roles: CharacterSettings[];
+  background: string;
+  background_effect: string;
+  background_music: string;
+  current_scene_id: string | null;
+  current_scene: SceneInfo | null;
+  lines: GameLineInit[];
+  scene_awareness_enabled: boolean;
   /** 上次会话的背景音乐曲目（session store 恢复） */
-  last_bgm_track?: string | null
+  last_bgm_track?: string | null;
   /** 上次会话背景音乐是否暂停 */
-  last_bgm_paused?: boolean | null
+  last_bgm_paused?: boolean | null;
   /** 上次会话背景音乐播放模式 */
-  last_bgm_mode?: string | null
+  last_bgm_mode?: string | null;
   /** 上次会话环境音轨道（JSON 字符串） */
-  last_ambient_tracks?: string | null
+  last_ambient_tracks?: string | null;
 }
 
 /**
@@ -83,39 +83,53 @@ export interface WebInitData {
  */
 export const getGameInfo = async (): Promise<WebInitData> => {
   try {
-    const data = await invoke<WebInitData>('init_game')
-    console.log('获取初始化信息成功:', data)
-    return data
+    const data = await invoke<WebInitData>("init_game");
+    console.log("获取初始化信息成功:", data);
+    return data;
   } catch (error: any) {
-    console.error('获取初始化信息错误:', typeof error === 'string' ? error : error.message)
-    throw error
+    console.error("获取初始化信息错误:", typeof error === "string" ? error : error.message);
+    throw error;
   }
-}
+};
 
 export const reactivateTTS = async (): Promise<void> => {
   try {
-    await invoke('reactivate_tts')
-    console.log('成功重启TTS服务')
+    await invoke("reactivate_tts");
+    console.log("成功重启TTS服务");
   } catch (error: any) {
-    console.error('TTS服务重启错误:', typeof error === 'string' ? error : error.message)
-    throw error
+    console.error("TTS服务重启错误:", typeof error === "string" ? error : error.message);
+    throw error;
   }
-}
+};
 
-export const clearTtsCache = async (): Promise<{ success: boolean; message: string; deleted: number; failed: number; orphan_files_before?: number; orphan_size_before?: number }> => {
+export const clearTtsCache = async (): Promise<{
+  success: boolean;
+  message: string;
+  deleted: number;
+  failed: number;
+  orphan_files_before?: number;
+  orphan_size_before?: number;
+}> => {
   try {
-    const result = await invoke<{ success: boolean; message: string; deleted: number; failed: number; orphan_files_before?: number; orphan_size_before?: number }>('clear_tts_cache')
-    console.log('清理TTS缓存成功:', result)
-    return result
+    const result = await invoke<{
+      success: boolean;
+      message: string;
+      deleted: number;
+      failed: number;
+      orphan_files_before?: number;
+      orphan_size_before?: number;
+    }>("clear_tts_cache");
+    console.log("清理TTS缓存成功:", result);
+    return result;
   } catch (error: any) {
-    console.error('清理TTS缓存错误:', typeof error === 'string' ? error : error.message)
-    throw error
+    console.error("清理TTS缓存错误:", typeof error === "string" ? error : error.message);
+    throw error;
   }
-}
+};
 
 /**
  * 获取 TTS 生成的语音文件，返回 base64 data URL
  */
 export const getVoiceAudio = async (fileName: string): Promise<string> => {
-  return await invoke<string>('get_voice_audio', { fileName })
-}
+  return await invoke<string>("get_voice_audio", { fileName });
+};

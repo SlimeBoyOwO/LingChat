@@ -13,17 +13,17 @@
         <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="close"></div>
 
         <!-- 模态框主体 -->
-        <div class="relative z-10 bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8">
+        <div class="relative z-10 w-full max-w-md rounded-[2.5rem] bg-white p-8 shadow-2xl">
           <!-- 标题栏 -->
-          <div class="flex justify-between items-center mb-6">
-            <h3 class="text-xl font-black text-slate-800 tracking-tight">
+          <div class="mb-6 flex items-center justify-between">
+            <h3 class="text-xl font-black tracking-tight text-slate-800">
               {{ title }}
             </h3>
             <button
               @click="close"
-              class="text-slate-400 hover:text-slate-600 transition-colors p-1"
+              class="p-1 text-slate-400 transition-colors hover:text-slate-600"
             >
-              <span class="text-2xl font-bold leading-none">&times;</span>
+              <span class="text-2xl leading-none font-bold">&times;</span>
             </button>
           </div>
 
@@ -36,9 +36,10 @@
           <div class="mt-8">
             <button
               @click="$emit('confirm')"
-              class="w-full py-4 bg-cyan-500 text-white font-black rounded-2xl shadow-lg hover:bg-cyan-600 active:scale-95 transition-all"
+              class="w-full rounded-2xl bg-cyan-500 py-4 font-black text-white shadow-lg
+                transition-all hover:bg-cyan-600 active:scale-95"
             >
-              {{ $t('ui.baseModal.confirmCreate') }}
+              {{ $t("ui.baseModal.confirmCreate") }}
             </button>
           </div>
         </div>
@@ -48,14 +49,14 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  show: boolean
-  title: string
-}>()
+  defineProps<{
+    show: boolean;
+    title: string;
+  }>();
 
-const emit = defineEmits(['close', 'confirm'])
+  const emit = defineEmits(["close", "confirm"]);
 
-const close = () => {
-  emit('close')
-}
+  const close = () => {
+    emit("close");
+  };
 </script>

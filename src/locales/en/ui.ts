@@ -45,7 +45,8 @@ export default {
     infoLabel: "Intro: ",
     outfits: "Available Outfits",
     noOutfits: "No outfits available yet",
-    confirmSwitch: "Switching characters will clear the current character's memory — don't forget to save first if you need it!",
+    confirmSwitch:
+      "Switching characters will clear the current character's memory — don't forget to save first if you need it!",
   },
   archiveProgress: {
     importing: "Importing",
@@ -62,24 +63,28 @@ export default {
     close: "Close",
     cancel: "Cancel",
     errors: {
-      ARCHIVE_MISSING_SETTINGS_YML: "Archive is missing settings.yml\nThis may be an older version role. Please download the new version and import it.",
+      ARCHIVE_MISSING_SETTINGS_YML:
+        "Archive is missing settings.yml\nThis may be an older version role. Please download the new version and import it.",
     },
   },
   fontImport: {
     errors: {
-      FONT_INVALID_FORMAT: "Not a valid font file (ttf/otf/woff/woff2). The file may be corrupted or the extension doesn't match its content.",
+      FONT_INVALID_FORMAT:
+        "Not a valid font file (ttf/otf/woff/woff2). The file may be corrupted or the extension doesn't match its content.",
     },
   },
   musicImport: {
     errors: {
-      MUSIC_INVALID_FORMAT: "Not a valid audio file (mp3/wav/flac/ogg). The file may be corrupted or the extension doesn't match its content.",
+      MUSIC_INVALID_FORMAT:
+        "Not a valid audio file (mp3/wav/flac/ogg). The file may be corrupted or the extension doesn't match its content.",
     },
   },
   notice: {
     autoCorrected: {
       title: "Auto-corrected",
       font: "{original} is not a {originalExt} font (detected {detected}), saved as {corrected}",
-      music: "{original} is not a {originalExt} audio file (detected {detected}), saved as {corrected}",
+      music:
+        "{original} is not a {originalExt} audio file (detected {detected}), saved as {corrected}",
     },
   },
   menuItem: {
@@ -117,14 +122,15 @@ export default {
     navCalendar: "Important Days",
     navProactive: "Proactive Chat",
     navToolCalls: "Tool Calls",
-    clockTip: "\"Whatever you add here, the one behind the screen can see it too!\"",
+    clockTip: '"Whatever you add here, the one behind the screen can see it too!"',
     create: "New",
     titleSchedule: "Ring-a-ling Reminder",
     subtitleSchedule: "They'll remind you when the time comes~",
     titleTodo: "TODO Notes",
     subtitleTodo: "Jot down the important stuff here — they'll give you random reminders!",
     titleProactive: "Proactive Chat Settings",
-    subtitleProactive: "Turn this off when you need focus or privacy (it only takes effect after clicking Save at the bottom)",
+    subtitleProactive:
+      "Turn this off when you need focus or privacy (it only takes effect after clicking Save at the bottom)",
     titleCalendar: "君の重要な日",
     subtitleCalendar: "Save your friends' birthdays for automatic reminders~",
     titleToolCalls: "Tool Calls",
@@ -134,34 +140,53 @@ export default {
   },
   toolCalls: {
     accessModeTitle: "Tool Access",
-    accessModeHint: "Read-only tools (Read / Glob / Grep / ReadMediaFile) run directly. This controls approvals for file changes and commands.",
+    accessModeHint:
+      "Read-only tools (Read / Glob / Grep / ReadMediaFile) run directly. This controls approvals for file changes and commands.",
     accessModeSelected: "Active",
     maxToolRoundsTitle: "Tool Call Round Limit",
-    maxToolRoundsHint: "Limits consecutive tool-execution rounds in one main-chat reply. One round can contain multiple tool calls.",
+    maxToolRoundsHint:
+      "Limits consecutive tool-execution rounds in one main-chat reply. One round can contain multiple tool calls.",
     maxToolRoundsUnit: "rounds",
     maxToolRoundsRange: "Range {min}–{max} · Default {default}",
     accessModes: {
-      manual: { label: "Ask Every Time", description: "Ask before writing, editing or deleting files and before running commands." },
-      auto_approve: { label: "Auto Approve", description: "Approve normal writes, edits and commands; still ask before destructive actions." },
-      full_access: { label: "Full Access", description: "Never ask; read or write any path on this computer and run commands." },
+      manual: {
+        label: "Ask Every Time",
+        description: "Ask before writing, editing or deleting files and before running commands.",
+      },
+      auto_approve: {
+        label: "Auto Approve",
+        description:
+          "Approve normal writes, edits and commands; still ask before destructive actions.",
+      },
+      full_access: {
+        label: "Full Access",
+        description: "Never ask; read or write any path on this computer and run commands.",
+      },
     },
     fullAccessConfirmTitle: "Enable Full Access?",
-    fullAccessConfirmMessage: "The model will be able to read, write or delete any file on this computer and run local commands without asking. Use this only with a trusted character, model and task. Continue?",
-    fullAccessSettingsWarning: "⚠ Full Access disables file and command approvals and removes the data/ sandbox restriction. It takes effect immediately after saving.",
+    fullAccessConfirmMessage:
+      "The model will be able to read, write or delete any file on this computer and run local commands without asking. Use this only with a trusted character, model and task. Continue?",
+    fullAccessSettingsWarning:
+      "⚠ Full Access disables file and command approvals and removes the data/ sandbox restriction. It takes effect immediately after saving.",
     fullAccessTopWarning: "Using Full Access",
     adminModeTitle: "Administrator Status",
     adminModeChecking: "Checking the current process privileges…",
-    adminModeElevated: "LingChat is running as administrator. Commands with uac=true reuse the current token without another UAC prompt.",
-    adminModeStandard: "LingChat is running with standard privileges. Commands that need administrator access still show Windows UAC.",
+    adminModeElevated:
+      "LingChat is running as administrator. Commands with uac=true reuse the current token without another UAC prompt.",
+    adminModeStandard:
+      "LingChat is running with standard privileges. Commands that need administrator access still show Windows UAC.",
     adminModeRestart: "Restart as Administrator",
     adminModeRestarting: "Waiting for Windows UAC…",
-    adminModeHint: "Windows asks once during restart. Commands launched afterward inherit the administrator token.",
+    adminModeHint:
+      "Windows asks once during restart. Commands launched afterward inherit the administrator token.",
     adminModeConfirmTitle: "Restart as Administrator?",
-    adminModeConfirmMessage: "Windows will show one normal UAC confirmation. After restart, commands run in Full Access mode inherit administrator privileges. Continue?",
+    adminModeConfirmMessage:
+      "Windows will show one normal UAC confirmation. After restart, commands run in Full Access mode inherit administrator privileges. Continue?",
     adminModeRestartFailed: "Administrator restart failed: {message}",
     fileAccessByMode: {
       manual: "Ask before writes, edits and deletions; paths stay inside the data/ sandbox.",
-      auto_approve: "Normal writes and edits are approved automatically; deletions still ask and paths stay sandboxed.",
+      auto_approve:
+        "Normal writes and edits are approved automatically; deletions still ask and paths stay sandboxed.",
       full_access: "⚠ Any path can be read, changed or deleted without confirmation.",
     },
     commandAccessByMode: {
@@ -173,20 +198,29 @@ export default {
     fileChangeApprovalMessage: "They want to {action} this file:\n\n{path}\n\nAllow it?",
     fileChangeActions: { write: "write", edit: "edit" },
     androidTitle: "Android tool notes",
-    androidSummary: "Tool settings are stored per device and are not synced from Windows. Enable the tools you need on this phone and save. Command execution and desktop plugins are unavailable on Android.",
-    androidNoModel: "No usable chat model is configured. Set the model, API key, and model name first.",
-    androidModelUnsupported: "The current chat model does not support native tool calls. Switch to a model with function calling support.",
-    androidNoTools: "No usable tools are enabled for the current character. Enable them individually or apply the recommended setup below.",
-    androidReady: "The current character can use {count} tools. New chats use the latest settings after you save.",
+    androidSummary:
+      "Tool settings are stored per device and are not synced from Windows. Enable the tools you need on this phone and save. Command execution and desktop plugins are unavailable on Android.",
+    androidNoModel:
+      "No usable chat model is configured. Set the model, API key, and model name first.",
+    androidModelUnsupported:
+      "The current chat model does not support native tool calls. Switch to a model with function calling support.",
+    androidNoTools:
+      "No usable tools are enabled for the current character. Enable them individually or apply the recommended setup below.",
+    androidReady:
+      "The current character can use {count} tools. New chats use the latest settings after you save.",
     androidEnableRecommended: "Enable Android tools (save required)",
     androidRecommendedStaged: "Android-compatible tools selected. Tap Save to apply them.",
-    androidFileScope: "Android file tools can only access LingChat's app sandbox. Import photos, downloads, and other external files through the system file picker first.",
-    androidProxyHint: "On Android, 127.0.0.1 means the phone itself, not your Windows PC. Use the PC's LAN address when connecting to a proxy running on the PC.",
+    androidFileScope:
+      "Android file tools can only access LingChat's app sandbox. Import photos, downloads, and other external files through the system file picker first.",
+    androidProxyHint:
+      "On Android, 127.0.0.1 means the phone itself, not your Windows PC. Use the PC's LAN address when connecting to a proxy running on the PC.",
     webSearchTitle: "Web Search",
     mediaTitle: "Image & Video Recognition",
-    mediaHint: "ReadMediaFile reads local media and sends it to the vision model selected in Model Management. It follows the same path permissions as file tools.",
+    mediaHint:
+      "ReadMediaFile reads local media and sends it to the vision model selected in Model Management. It follows the same path permissions as file tools.",
     mediaEnable: "Enable the ReadMediaFile tool",
-    mediaVisionModelHint: "Recognition uses Advanced Settings → Model Management → Vision Model. If none is selected, it follows the chat model.",
+    mediaVisionModelHint:
+      "Recognition uses Advanced Settings → Model Management → Vision Model. If none is selected, it follows the chat model.",
     mediaImages: "Allow images (JPEG / PNG / WebP / GIF)",
     mediaVideos: "Allow videos (MP4 / MOV / WebM / MKV / AVI / MPEG)",
     mediaMaxFileMb: "Maximum media file size (MB)",
@@ -194,22 +228,27 @@ export default {
     mediaImageMaxEdge: "Default image longest edge (pixels)",
     mediaJpegQuality: "Image compression quality (50–95)",
     mediaDefaultPrompt: "Default recognition prompt",
-    mediaVideoCompatibility: "⚠ Videos are sent as OpenAI-compatible video_url content. Actual support depends on the vision provider.",
+    mediaVideoCompatibility:
+      "⚠ Videos are sent as OpenAI-compatible video_url content. Actual support depends on the vision provider.",
     enableWebSearch: "Enable the web search tool (let them look things up online)",
     hideSearchResults: "Hide search results (no sources or URLs shown in their replies)",
     apiKey: "API Key",
     provider: "Search Provider",
     providerCustom: "Custom Endpoint",
     providerCodex: "OpenAI Codex (subscription, no key)",
-    codexHint: "Searches with the Codex subscription you signed into in LLM Providers — no API Key needed",
-    kimiHint: "The API Key may be left blank when the active chat provider is official Kimi Code; its credential is reused securely. Otherwise, enter a separate key.",
+    codexHint:
+      "Searches with the Codex subscription you signed into in LLM Providers — no API Key needed",
+    kimiHint:
+      "The API Key may be left blank when the active chat provider is official Kimi Code; its credential is reused securely. Otherwise, enter a separate key.",
     providerDeepSeek: "DeepSeek Responses",
-    customHint: 'Custom endpoints must support the Kimi /search protocol (POST JSON field: text_query)',
+    customHint:
+      "Custom endpoints must support the Kimi /search protocol (POST JSON field: text_query)",
     apiKeyPlaceholder: "Enter the custom endpoint API Key",
     kimiApiKeyPlaceholder: "Optional when reusing the active Kimi Code credential",
     dsApiKeyPlaceholder: "Enter your DeepSeek API Key",
     dsModel: "DeepSeek Model",
-    dsHint: "Uses DeepSeek's server-side web_search via the Responses API. Requires a separate DeepSeek API key; the answer is synthesized by DeepSeek.",
+    dsHint:
+      "Uses DeepSeek's server-side web_search via the Responses API. Requires a separate DeepSeek API key; the answer is synthesized by DeepSeek.",
     baseUrl: "Search Service URL",
     proxyEnable: "Access the search service via proxy (e.g. v2rayN)",
     maxResults: "Max Results",
@@ -223,7 +262,8 @@ export default {
     historyEmpty: "No tool calls yet — try chatting about something that needs looking up",
     callSuccess: "Tool Call Succeeded",
     callFailed: "Tool Call Failed",
-    settingsMovedHint: "Tool settings like web search have moved to \"Advanced Settings → Tool Settings\"",
+    settingsMovedHint:
+      'Tool settings like web search have moved to "Advanced Settings → Tool Settings"',
     goToSettings: "Open Tool Settings",
     clearHistory: "Clear History",
     detailArgs: "Arguments",
@@ -242,24 +282,36 @@ export default {
       file_ops: "File Operations",
       command: "Command",
     },
-    otherToolsHint: "Once enabled, they can use these tools on their own while chatting (applies after saving)",
-    fileOpsAllowAnyPath: "Allow access outside the sandbox (they can read/write files beyond data/)",
-    fileOpsAllowAnyPathHint: "⚠ They will be able to read and write any file on this PC. Only enable with characters/models you trust",
+    otherToolsHint:
+      "Once enabled, they can use these tools on their own while chatting (applies after saving)",
+    fileOpsAllowAnyPath:
+      "Allow access outside the sandbox (they can read/write files beyond data/)",
+    fileOpsAllowAnyPathHint:
+      "⚠ They will be able to read and write any file on this PC. Only enable with characters/models you trust",
     fileDeleteAutoApprove: "Delete files without confirmation (no popup for delete_file)",
-    fileDeleteAutoApproveHint: "⚠ Dangerous! They can permanently delete files without your consent",
+    fileDeleteAutoApproveHint:
+      "⚠ Dangerous! They can permanently delete files without your consent",
     fileDeleteApprovalTitle: "File Deletion Request",
-    fileDeleteApprovalMessage: "They want to delete the following file:\n\n{path}\n\nThis cannot be undone. Allow deletion?",
+    fileDeleteApprovalMessage:
+      "They want to delete the following file:\n\n{path}\n\nThis cannot be undone. Allow deletion?",
     commandDeleteApprovalTitle: "Confirm Deletion Command",
-    commandDeleteApprovalMessage: "This command may delete files:\n\n{command}\n\nWorking directory: {cwd}\n\nDeletion usually cannot be undone. Allow it to run?",
-    commandHint: "You will be asked to confirm each command in a popup; the uac parameter requests admin rights (Windows UAC prompt)",
-    commandWindowsOnly: "⚠ Command execution is available on desktop only and cannot run on Android",
+    commandDeleteApprovalMessage:
+      "This command may delete files:\n\n{command}\n\nWorking directory: {cwd}\n\nDeletion usually cannot be undone. Allow it to run?",
+    commandHint:
+      "You will be asked to confirm each command in a popup; the uac parameter requests admin rights (Windows UAC prompt)",
+    commandWindowsOnly:
+      "⚠ Command execution is available on desktop only and cannot run on Android",
     commandAutoApprove: "Run without confirmation (no popup before commands run)",
-    commandAutoApproveHint: "⚠ Dangerous! Commands can run without consent; detected delete commands remain controlled by the separate switch below",
+    commandAutoApproveHint:
+      "⚠ Dangerous! Commands can run without consent; detected delete commands remain controlled by the separate switch below",
     commandDeleteAutoApprove: "Run delete commands without confirmation",
-    commandDeleteAutoApproveHint: "⚠ Dangerous! Detected del, Remove-Item, rm, and similar delete commands can run without confirmation",
+    commandDeleteAutoApproveHint:
+      "⚠ Dangerous! Detected del, Remove-Item, rm, and similar delete commands can run without confirmation",
     approvalTitle: "Command Execution Request",
-    approvalMessage: "They want to run the following command on your PC:\n\n{command}\n\nWorking directory: {cwd}\n\nAllow it?",
-    approvalUac: "⚠ This command also requests administrator (UAC) rights; Windows will show a UAC prompt after approval",
+    approvalMessage:
+      "They want to run the following command on your PC:\n\n{command}\n\nWorking directory: {cwd}\n\nAllow it?",
+    approvalUac:
+      "⚠ This command also requests administrator (UAC) rights; Windows will show a UAC prompt after approval",
     approvalDefaultCwd: "(default sandbox)",
     groups: {
       schedule: "Schedule & To-dos (view, add, update, delete)",
@@ -454,4 +506,4 @@ export default {
     titleDone: "Sync Complete",
     titleFailed: "Sync Failed",
   },
-}
+};

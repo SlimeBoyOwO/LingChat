@@ -27,7 +27,10 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
     {
-        anyhow::bail!("插件 id '{}' 只能包含字母、数字、下划线与连字符", manifest.id);
+        anyhow::bail!(
+            "插件 id '{}' 只能包含字母、数字、下划线与连字符",
+            manifest.id
+        );
     }
     if manifest.tools.is_empty() && manifest.resources.is_empty() {
         anyhow::bail!("插件 '{}' 未声明任何工具或资源", manifest.id);
@@ -64,8 +67,12 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
             );
         }
         // parameters 必须是合法 JSON object（JSON Schema）。
-        let params: Value = serde_json::from_str(&tool.parameters)
-            .with_context(|| format!("插件 '{}' 工具 '{}' 的 parameters 不是合法 JSON", manifest.id, tool.name))?;
+        let params: Value = serde_json::from_str(&tool.parameters).with_context(|| {
+            format!(
+                "插件 '{}' 工具 '{}' 的 parameters 不是合法 JSON",
+                manifest.id, tool.name
+            )
+        })?;
         if !params.is_object() {
             anyhow::bail!(
                 "插件 '{}' 工具 '{}' 的 parameters 必须是 JSON object",

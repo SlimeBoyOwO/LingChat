@@ -7,21 +7,21 @@
 ## 最小配置（独立剧本）
 
 ```yaml
-script_name: '我的剧本名'
-intro_chapter: '01.yaml'
-description: '剧本描述'
+script_name: "我的剧本名"
+intro_chapter: "01.yaml"
+description: "剧本描述"
 ```
 
 ## 完整字段表
 
-| 字段 | 必填 | 类型 | 说明 |
-|------|------|------|------|
-| `script_name` | ✅ | string | 剧本名称，**必须与剧本文件夹名一致**（引擎校验） |
-| `intro_chapter` | ✅ | string | 入口章节，相对 `Chapters/` 的路径，如 `01.yaml`、`Intro/intro` |
-| `description` | 否 | string | 剧本描述 |
-| `recommand_start` | 否 | string | 推荐开始条件，用于提示玩家何时开启这个剧本最佳 |
-| `script_settings` | 否 | map | 剧本设置（引擎仅消费 `user_name` 玩家名、`user_subtitle` 玩家称号） |
-| `adventure` | 否 | map | 羁绊冒险配置（角色卡下剧本使用） |
+| 字段              | 必填 | 类型   | 说明                                                                |
+| ----------------- | ---- | ------ | ------------------------------------------------------------------- |
+| `script_name`     | ✅   | string | 剧本名称，**必须与剧本文件夹名一致**（引擎校验）                    |
+| `intro_chapter`   | ✅   | string | 入口章节，相对 `Chapters/` 的路径，如 `01.yaml`、`Intro/intro`      |
+| `description`     | 否   | string | 剧本描述                                                            |
+| `recommand_start` | 否   | string | 推荐开始条件，用于提示玩家何时开启这个剧本最佳                      |
+| `script_settings` | 否   | map    | 剧本设置（引擎仅消费 `user_name` 玩家名、`user_subtitle` 玩家称号） |
+| `adventure`       | 否   | map    | 羁绊冒险配置（角色卡下剧本使用）                                    |
 
 ## 羁绊冒险剧本（角色卡下）
 
@@ -67,23 +67,23 @@ adventure:
 
 ### `unlock_conditions` 条件类型表（源码 `adventures/trigger.rs` 精确映射）
 
-| `type` | 字段 | 说明 |
-|--------|------|------|
-| `chat_count` | `threshold: int` | 聊天消息数 ≥ threshold |
-| `time_range` | `start_hour: int`, `end_hour: int` | 当前小时在 [start, end) 内；start > end 时支持跨午夜（如 23-6） |
-| `adventure_completed` | `adventure_folder: string` | 指定冒险（folder_key）已全局完成 |
-| `achievement_unlocked` | `achievement_id: string` | 指定成就 id 已解锁 |
+| `type`                 | 字段                               | 说明                                                            |
+| ---------------------- | ---------------------------------- | --------------------------------------------------------------- |
+| `chat_count`           | `threshold: int`                   | 聊天消息数 ≥ threshold                                          |
+| `time_range`           | `start_hour: int`, `end_hour: int` | 当前小时在 [start, end) 内；start > end 时支持跨午夜（如 23-6） |
+| `adventure_completed`  | `adventure_folder: string`         | 指定冒险（folder_key）已全局完成                                |
+| `achievement_unlocked` | `achievement_id: string`           | 指定成就 id 已解锁                                              |
 
 条件为 AND 逻辑：所有条件都通过才解锁；`unlock_conditions` 为空数组/缺省 = 默认解锁。
 
 ### `completion_achievements` 成就定义字段（源码 `api/adventure.rs` 精确映射）
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | string | 成就唯一 id（必填，缺失则跳过该成就） |
-| `title` | string | 成就标题（必填） |
-| `description` | string | 成就描述（必填） |
-| `type` | string | 成就类型（必填），如 `adventure` |
+| 字段          | 类型   | 说明                                  |
+| ------------- | ------ | ------------------------------------- |
+| `id`          | string | 成就唯一 id（必填，缺失则跳过该成就） |
+| `title`       | string | 成就标题（必填）                      |
+| `description` | string | 成就描述（必填）                      |
+| `type`        | string | 成就类型（必填），如 `adventure`      |
 
 冒险通关后按顺序注册并解锁这些成就，同时触发连锁解锁检测（`adventure_completed` 条件依赖它）。
 
@@ -93,8 +93,8 @@ adventure:
 
 ```yaml
 script_settings:
-  user_name: "玩家名"        # 覆盖默认玩家名
-  user_subtitle: "玩家称号"  # 覆盖默认玩家称号
+  user_name: "玩家名" # 覆盖默认玩家名
+  user_subtitle: "玩家称号" # 覆盖默认玩家称号
 ```
 
 ## 官方剧本参照（最准确示例）

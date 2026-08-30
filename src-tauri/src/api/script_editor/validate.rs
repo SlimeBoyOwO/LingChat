@@ -19,13 +19,13 @@ use serde_json::Value as JsonValue;
 
 use crate::ai_service::game_system::script_engine::events::background_effect_event::KNOWN_EFFECTS;
 use crate::ai_service::game_system::script_engine::utils::media::{
-    resolve_script_media, MediaType,
+    MediaType, resolve_script_media,
 };
 use crate::ai_service::game_system::script_engine::utils::script_function::parse_variable_action;
 
-use crate::utils::yaml_file;
-use crate::utils::script_paths as paths;
 use super::schema::build_schema;
+use crate::utils::script_paths as paths;
+use crate::utils::yaml_file;
 
 /// 诊断级别。
 ///
@@ -78,12 +78,7 @@ impl Diagnostic {
             field: None,
         }
     }
-    fn chapter(
-        severity: Severity,
-        code: &'static str,
-        chapter: &str,
-        message: String,
-    ) -> Self {
+    fn chapter(severity: Severity, code: &'static str, chapter: &str, message: String) -> Self {
         Diagnostic {
             severity,
             code,
@@ -149,7 +144,11 @@ fn branch_label(opt: &serde_json::Map<String, JsonValue>, index: usize) -> Strin
             return n.trim().to_string();
         }
     }
-    if opt.get("default").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if opt
+        .get("default")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         return "默认".to_string();
     }
     format!("分支 {}", index + 1)
@@ -202,7 +201,7 @@ pub fn validate(
         Err(e) => {
             diags.push(Diagnostic::script(Severity::Error, "config.unreadable", e));
             return finish(diags, Vec::new(), Vec::new());
-        }
+        },
     };
 
     let folder_name = script_dir
@@ -290,23 +289,38 @@ pub fn validate(
         let file = match paths::resolve_chapter_file(script_dir, cid, true) {
             Ok(f) => f,
             Err(e) => {
-                diags.push(Diagnostic::chapter(Severity::Error, "chapter.unreadable", cid, e));
+                diags.push(Diagnostic::chapter(
+                    Severity::Error,
+                    "chapter.unreadable",
+                    cid,
+                    e,
+                ));
                 continue;
-            }
+            },
         };
         let raw = match yaml_file::read_yaml_as_json(&file) {
             Ok(v) => v,
             Err(e) => {
-                diags.push(Diagnostic::chapter(Severity::Error, "chapter.parse_failed", cid, e));
+                diags.push(Diagnostic::chapter(
+                    Severity::Error,
+                    "chapter.parse_failed",
+                    cid,
+                    e,
+                ));
                 continue;
-            }
+            },
         };
         let doc = match yaml_file::ChapterDoc::from_json(raw) {
             Ok(d) => d,
             Err(e) => {
-                diags.push(Diagnostic::chapter(Severity::Error, "chapter.bad_shape", cid, e));
+                diags.push(Diagnostic::chapter(
+                    Severity::Error,
+                    "chapter.bad_shape",
+                    cid,
+                    e,
+                ));
                 continue;
-            }
+            },
         };
 
         if doc.events.is_empty() {
@@ -333,7 +347,7 @@ pub fn validate(
                         "事件必须是键值映射".to_string(),
                     ));
                     continue;
-                }
+                },
             };
 
             let ty = match obj.get("type").and_then(|v| v.as_str()) {
@@ -347,7 +361,7 @@ pub fn validate(
                         "事件缺少 type 字段，运行到这里整个剧本会中断".to_string(),
                     ));
                     continue;
-                }
+                },
             };
 
             let fields = match field_index.get(ty) {
@@ -361,7 +375,7 @@ pub fn validate(
                         format!("未知事件类型「{}」，运行到这里整个剧本会中断", ty),
                     ));
                     continue;
-                }
+                },
             };
 
             // 成就事件的键名唯一性：内置成就与本剧本内都不能重名（重名会覆盖旧定义）
@@ -388,7 +402,10 @@ pub fn validate(
                                     "achievement.id_duplicated",
                                     cid,
                                     i,
-                                    format!("本剧本里已有成就「{}」，成就键名不能重复，请换个键名", id),
+                                    format!(
+                                        "本剧本里已有成就「{}」，成就键名不能重复，请换个键名",
+                                        id
+                                    ),
                                 )
                                 .with_field("achievement_id"),
                             );
@@ -453,10 +470,7 @@ pub fn validate(
                             "field.inert",
                             cid,
                             i,
-                            format!(
-                                "{} 引擎从不读取，写了不生效（保存时会原样保留）",
-                                f.key
-                            ),
+                            format!("{} 引擎从不读取，写了不生效（保存时会原样保留）", f.key),
                         )
                         .with_field(f.key),
                     );
@@ -469,11 +483,9 @@ pub fn validate(
             }
 
             // 逐类型细查
-             match ty {
+            match ty {
                 "background" | "present_pic" | "music" | "sound" | "ambient" => {
-                    check_asset(
-                        data_dir, script_dir, obj, ty, cid, i, &mut diags,
-                    );
+                    check_asset(data_dir, script_dir, obj, ty, cid, i, &mut diags);
                     // music 事件的播放速度：超范围会失真或被浏览器拒绝，提前告警
                     if ty == "music" {
                         if let Some(speed) = obj.get("playbackSpeed").and_then(|v| v.as_f64()) {
@@ -494,11 +506,10 @@ pub fn validate(
                             }
                         }
                     }
-                }
+                },
                 "background_effect" => {
                     let effect = obj.get("effect").and_then(|v| v.as_str()).unwrap_or("");
-                    let clearing = effect.is_empty()
-                        || effect.eq_ignore_ascii_case("none");
+                    let clearing = effect.is_empty() || effect.eq_ignore_ascii_case("none");
                     if !clearing && !KNOWN_EFFECTS.contains(&effect) {
                         let hint = KNOWN_EFFECTS
                             .iter()
@@ -534,16 +545,19 @@ pub fn validate(
                             ),
                         }
                     }
-                }
+                },
                 "choices" => {
                     check_choices(obj, cid, i, &mut diags, &mut vars_written, &mut vars_read);
-                }
+                },
                 "set_variable" => {
                     check_set_variable(obj, cid, i, &mut diags, &mut vars_written, &mut vars_read);
-                }
+                },
                 "free_dialogue" => {
                     let rounds = obj.get("max_rounds").and_then(|v| v.as_i64()).unwrap_or(-1);
-                    let end_line = obj.get("end_line").and_then(|v| v.as_str()).unwrap_or("结束");
+                    let end_line = obj
+                        .get("end_line")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("结束");
                     if rounds <= 0 && end_line.trim().is_empty() {
                         diags.push(Diagnostic::event(
                             Severity::Error,
@@ -553,7 +567,7 @@ pub fn validate(
                             "最大轮数不限且结束语为空，这段自由对话永远无法结束".to_string(),
                         ));
                     }
-                }
+                },
                 "chapter_end" => {
                     has_chapter_end = true;
                     if i != last_index {
@@ -568,15 +582,23 @@ pub fn validate(
                             ),
                         ));
                     }
-                    check_chapter_end(obj, cid, i, &chapter_set, &mut edges, &mut diags, &mut vars_read);
-                }
+                    check_chapter_end(
+                        obj,
+                        cid,
+                        i,
+                        &chapter_set,
+                        &mut edges,
+                        &mut diags,
+                        &mut vars_read,
+                    );
+                },
                 "modify_character" => {
                     // 引擎只识别 show_character / hide_character，其余动作静默忽略
                     // （modify_character_event.rs 的 `_ => {}`）。schema 的 select 已限定
                     // 编辑器选项，这里兜住手写 YAML / 旧数据写错的情况。
                     check_modify_character_action(obj, cid, i, &mut diags);
-                }
-                _ => {}
+                },
+                _ => {},
             }
 
             // character 引用
@@ -604,7 +626,8 @@ pub fn validate(
                 Severity::Error,
                 "chapter.no_end",
                 cid,
-                "章节缺少「章节结束」事件。引擎会把这当成整个剧本结束，而不是接着下一章".to_string(),
+                "章节缺少「章节结束」事件。引擎会把这当成整个剧本结束，而不是接着下一章"
+                    .to_string(),
             ));
         }
     }
@@ -650,9 +673,18 @@ fn finish(
             .then_with(|| a.event_index.cmp(&b.event_index))
     });
 
-    let error_count = diags.iter().filter(|d| d.severity == Severity::Error).count();
-    let warn_count = diags.iter().filter(|d| d.severity == Severity::Warn).count();
-    let info_count = diags.iter().filter(|d| d.severity == Severity::Info).count();
+    let error_count = diags
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .count();
+    let warn_count = diags
+        .iter()
+        .filter(|d| d.severity == Severity::Warn)
+        .count();
+    let info_count = diags
+        .iter()
+        .filter(|d| d.severity == Severity::Info)
+        .count();
     ValidationReport {
         diagnostics: diags,
         error_count,
@@ -675,7 +707,9 @@ fn has_engine_default(event_type: &str, field: &str) -> bool {
         ("modify_character", "character"),
         ("chapter_end", "end_type"),
     ];
-    DEFAULTS.iter().any(|(t, k)| *t == event_type && *k == field)
+    DEFAULTS
+        .iter()
+        .any(|(t, k)| *t == event_type && *k == field)
 }
 
 fn collect_script_characters(script_dir: &Path) -> HashSet<String> {
@@ -742,7 +776,10 @@ fn check_character_personas(
             .get("script_role_key")
             .and_then(|v| v.as_str())
             .map(|x| x.trim().to_string());
-        let has_role_key = role_key_raw.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
+        let has_role_key = role_key_raw
+            .as_ref()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
         if !has_role_key {
             diags.push(Diagnostic::script(
                 Severity::Warn,
@@ -911,7 +948,6 @@ fn check_condition(
         return;
     }
 
-
     if var.is_empty() {
         diags.push(
             Diagnostic::event(
@@ -981,7 +1017,8 @@ fn check_actions(
                     // 旧原型形状：只写了 name/value/op，没有 content 表达式。引擎只读
                     // content（parse_variable_action），缺它这段会被静默跳过、变量永远
                     // 写不进去。报「空表达式」会让作者困惑（他明明填了赋值），这里点名真正原因。
-                    if ao.contains_key("name") || ao.contains_key("value") || ao.contains_key("op") {
+                    if ao.contains_key("name") || ao.contains_key("value") || ao.contains_key("op")
+                    {
                         diags.push(Diagnostic::event(
                             Severity::Error,
                             "action.legacy_shape",
@@ -1015,7 +1052,7 @@ fn check_actions(
                         )),
                     }
                 }
-            }
+            },
             "add_line" => {
                 if event_type == "set_variable" {
                     diags.push(Diagnostic::event(
@@ -1035,7 +1072,7 @@ fn check_actions(
                         "add_line 的内容为空".to_string(),
                     ));
                 }
-            }
+            },
             other => diags.push(Diagnostic::event(
                 Severity::Warn,
                 "action.unknown_type",
@@ -1320,7 +1357,9 @@ fn check_chapter_end(
                 ));
             }
             match next.or(next_chapter) {
-                Some(t) => push_target(t, "下一章", "", end_type, cid, i, chapter_set, edges, diags),
+                Some(t) => {
+                    push_target(t, "下一章", "", end_type, cid, i, chapter_set, edges, diags)
+                },
                 None => diags.push(Diagnostic::event(
                     Severity::Warn,
                     "chapter_end.no_next",
@@ -1329,7 +1368,7 @@ fn check_chapter_end(
                     "linear 但没写下一章，运行时会直接结束整个剧本".to_string(),
                 )),
             }
-        }
+        },
         "branching" | "ai_judged" => {
             let options = obj.get("options").and_then(|v| v.as_array());
             let Some(options) = options else {
@@ -1368,11 +1407,7 @@ fn check_chapter_end(
                     ));
                 }
 
-                if oo
-                    .get("default")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-                {
+                if oo.get("default").and_then(|v| v.as_bool()).unwrap_or(false) {
                     has_default = true;
                 }
 
@@ -1405,7 +1440,8 @@ fn check_chapter_end(
                                     "chapter_end.ai_condition_ignored",
                                     cid,
                                     i,
-                                    "AI 判定分支不读 condition（按 name 匹配），这个条件会被忽略".to_string(),
+                                    "AI 判定分支不读 condition（按 name 匹配），这个条件会被忽略"
+                                        .to_string(),
                                 )
                                 .with_field("condition"),
                             );
@@ -1416,11 +1452,7 @@ fn check_chapter_end(
                     match oo.get("condition").and_then(|v| v.as_str()) {
                         Some(c) => check_condition(c, cid, i, diags, vars_read),
                         None => {
-                            if !oo
-                                .get("default")
-                                .and_then(|v| v.as_bool())
-                                .unwrap_or(false)
-                            {
+                            if !oo.get("default").and_then(|v| v.as_bool()).unwrap_or(false) {
                                 diags.push(Diagnostic::event(
                                     Severity::Warn,
                                     "chapter_end.branch_no_condition",
@@ -1432,7 +1464,7 @@ fn check_chapter_end(
                                     ),
                                 ));
                             }
-                        }
+                        },
                     }
                 }
 
@@ -1472,7 +1504,7 @@ fn check_chapter_end(
                     "没有设 default 兜底分支。所有条件都不满足时会直接结束整个剧本".to_string(),
                 ));
             }
-        }
+        },
         other => {
             diags.push(
                 Diagnostic::event(
@@ -1487,12 +1519,17 @@ fn check_chapter_end(
                 )
                 .with_field("end_type"),
             );
-        }
+        },
     }
 }
 
 /// 可达性、孤儿章节、环。
-fn check_graph(intro: &str, chapters: &[String], edges: &[ChapterEdge], diags: &mut Vec<Diagnostic>) {
+fn check_graph(
+    intro: &str,
+    chapters: &[String],
+    edges: &[ChapterEdge],
+    diags: &mut Vec<Diagnostic>,
+) {
     let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
     let mut inbound: HashMap<&str, usize> = HashMap::new();
     for c in chapters {
@@ -1534,7 +1571,12 @@ fn check_graph(intro: &str, chapters: &[String], edges: &[ChapterEdge], diags: &
         } else {
             format!("章节「{}」没有任何章节指向它，玩家永远走不到", c)
         };
-        diags.push(Diagnostic::chapter(Severity::Warn, "graph.unreachable", c, msg));
+        diags.push(Diagnostic::chapter(
+            Severity::Warn,
+            "graph.unreachable",
+            c,
+            msg,
+        ));
     }
 
     // 环检测（DFS 三色）
@@ -1544,10 +1586,8 @@ fn check_graph(intro: &str, chapters: &[String], edges: &[ChapterEdge], diags: &
         Gray,
         Black,
     }
-    let mut mark: HashMap<&str, Mark> = chapters
-        .iter()
-        .map(|c| (c.as_str(), Mark::White))
-        .collect();
+    let mut mark: HashMap<&str, Mark> =
+        chapters.iter().map(|c| (c.as_str(), Mark::White)).collect();
     let mut cycle: Option<Vec<String>> = None;
 
     fn dfs<'a>(
@@ -1574,8 +1614,8 @@ fn check_graph(intro: &str, chapters: &[String], edges: &[ChapterEdge], diags: &
                             c.push((*n).to_string());
                             *found = Some(c);
                         }
-                    }
-                    Mark::Black => {}
+                    },
+                    Mark::Black => {},
                 }
             }
         }

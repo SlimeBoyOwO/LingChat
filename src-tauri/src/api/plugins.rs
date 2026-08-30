@@ -9,12 +9,12 @@ use std::sync::Arc;
 use serde_json::Value as JsonValue;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::AppState;
 use crate::ai_service::game_system::scene_store::{Scene, SceneStore};
 use crate::api::encode_plugin_folder;
 use crate::init::role_sync::PluginRoleInput;
 use crate::plugins::{PluginInfo, PluginManager, PluginResourceEntry, ResourceKind};
 use crate::utils::archive::{self, ArchiveImportState, ConflictPolicy};
-use crate::AppState;
 
 fn manager(app: &AppHandle) -> Arc<PluginManager> {
     app.state::<AppState>().data().plugin_manager.clone()
@@ -134,14 +134,8 @@ pub async fn import_plugin_from_path(
         if !src.path.exists() {
             return Err(format!("文件不存在: {}", src.path.display()));
         }
-        crate::plugins::importer::do_import_plugin(
-            &app,
-            &src.path,
-            format,
-            policy,
-            cancel_token,
-        )
-        .await
+        crate::plugins::importer::do_import_plugin(&app, &src.path, format, policy, cancel_token)
+            .await
     }
     .await;
 
@@ -186,7 +180,9 @@ pub async fn plugin_resource_hide(
     plugin_id: String,
     key: String,
 ) -> Result<(), String> {
-    manager(&app).set_resource_hidden(&plugin_id, &key, true).await?;
+    manager(&app)
+        .set_resource_hidden(&plugin_id, &key, true)
+        .await?;
     refresh_plugin_content(&app).await;
     Ok(())
 }
@@ -198,7 +194,9 @@ pub async fn plugin_resource_restore(
     plugin_id: String,
     key: String,
 ) -> Result<(), String> {
-    manager(&app).set_resource_hidden(&plugin_id, &key, false).await?;
+    manager(&app)
+        .set_resource_hidden(&plugin_id, &key, false)
+        .await?;
     refresh_plugin_content(&app).await;
     Ok(())
 }
@@ -220,12 +218,11 @@ pub async fn plugin_resource_keep(
             crate::init::role_sync::sync_roles_from_folder(&state.db, &crate::api::data_dir())
                 .await
                 .map_err(|e| e.to_string())?;
-        }
+        },
         ResourceKind::Scripts => {
-            let _ =
-                crate::api::script_editor::editor_rescan_scripts(app.clone()).await;
-        }
-        _ => {}
+            let _ = crate::api::script_editor::editor_rescan_scripts(app.clone()).await;
+        },
+        _ => {},
     }
     Ok(())
 }
@@ -276,10 +273,8 @@ async fn sync_plugin_scripts_cmd(app: &AppHandle) {
         .plugin_manager
         .visible_file_entries(ResourceKind::Scripts)
         .await;
-    let plugin_scripts: Vec<(String, std::path::PathBuf)> = entries
-        .into_iter()
-        .map(|e| (e.plugin_id, e.path))
-        .collect();
+    let plugin_scripts: Vec<(String, std::path::PathBuf)> =
+        entries.into_iter().map(|e| (e.plugin_id, e.path)).collect();
     let mut service = state.ai_service.lock().await;
     service.script_manager.apply_plugin_scripts(&plugin_scripts);
 }

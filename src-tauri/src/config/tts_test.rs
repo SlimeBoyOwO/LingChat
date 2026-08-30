@@ -1,6 +1,6 @@
 //! TtsConfig 的 CosyVoice 配置序列化测试。
 
-use crate::config::tts::{default_cosyvoice_models, CosyVoiceRecord, TtsConfig};
+use crate::config::tts::{CosyVoiceRecord, TtsConfig, default_cosyvoice_models};
 
 #[test]
 fn cosyvoice_default_models() {
@@ -14,10 +14,7 @@ fn cosyvoice_default_models() {
 fn cosyvoice_config_serde_roundtrip() {
     let mut cfg = TtsConfig::default();
     cfg.cosyvoice_api_key = Some("sk-test".into());
-    cfg.cosyvoice_models = vec![
-        "cosyvoice-v3.5-flash".into(),
-        "cosyvoice-v3.5-plus".into(),
-    ];
+    cfg.cosyvoice_models = vec!["cosyvoice-v3.5-flash".into(), "cosyvoice-v3.5-plus".into()];
     cfg.cosyvoice_voices = vec![CosyVoiceRecord {
         voice_id: "cosyvoice-v3.5-flash-myvoice-abc".into(),
         name: "诺一".into(),

@@ -176,7 +176,12 @@ impl From<&PluginRecord> for PluginInfo {
             enabled: record.state.enabled,
             config_schema: record.manifest.config.clone(),
             env: record.manifest.env.clone(),
-            tools: record.manifest.tools.iter().map(|t| t.name.clone()).collect(),
+            tools: record
+                .manifest
+                .tools
+                .iter()
+                .map(|t| t.name.clone())
+                .collect(),
             resources: record
                 .manifest
                 .resources

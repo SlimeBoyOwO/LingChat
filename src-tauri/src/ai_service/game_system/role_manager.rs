@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use sea_orm::DatabaseConnection;
 
 use crate::ai_service::game_system::memory_builder::MemoryBuilder;
@@ -9,8 +9,8 @@ use crate::ai_service::game_system::persistent_memory_system::{
     MemorySectionLimits, PersistentMemorySystem,
 };
 use crate::ai_service::llm::LlmSlot;
-use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::tts::VoiceMaker;
+use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::types::{CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
@@ -320,7 +320,7 @@ impl GameRoleManager {
                         let sys_text = s.get_system_memory_text().await;
                         let short = s.get_short_term_user_text().await;
                         (true, start, sys_text, short)
-                    }
+                    },
                     Some(_) => (true, 0, String::new(), String::new()),
                     None => (false, 0, String::new(), String::new()),
                 }
@@ -634,7 +634,10 @@ impl GameRoleManager {
                 .iter()
                 .position(|message| message.role != "system")
                 .unwrap_or(out.len());
-            if out.get(insert_at).is_some_and(|message| message.role == "user") {
+            if out
+                .get(insert_at)
+                .is_some_and(|message| message.role == "user")
+            {
                 let first_user = &mut out[insert_at];
                 if !first_user.content.contains(short_term_prefix) {
                     first_user.content = format!("{}{}", short_term_prefix, first_user.content);
@@ -715,10 +718,12 @@ mod memory_bank_context_tests {
         }
 
         manager.invalidate_memory_history();
-        assert!(manager
-            .memory_bank_systems
-            .values()
-            .all(|system| system.history_revision_for_test() == 1));
+        assert!(
+            manager
+                .memory_bank_systems
+                .values()
+                .all(|system| system.history_revision_for_test() == 1)
+        );
     }
 
     #[test]
@@ -755,7 +760,10 @@ mod memory_bank_context_tests {
     #[test]
     fn short_term_summary_is_inserted_when_no_user_message_exists() {
         let output = GameRoleManager::merge_memory_bank_into_context(
-            vec![LlmMessage::system("persona"), LlmMessage::assistant("hello")],
+            vec![
+                LlmMessage::system("persona"),
+                LlmMessage::assistant("hello"),
+            ],
             "",
             "【近期回顾】summary\n\n",
         );
@@ -806,6 +814,6 @@ fn build_voice_maker(
         Err(e) => {
             tracing::warn!("VoiceMaker 初始化失败: {e}");
             None
-        }
+        },
     }
 }

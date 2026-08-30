@@ -4,11 +4,11 @@ LingChat supports Cubism 3, 4, and 5 models as an optional character visual laye
 
 ## Guides
 
-| Document | Audience | Contents |
-| --- | --- | --- |
-| [Character package tutorial](authoring.md) | Character authors and testers | Package layout, import manifest, variants, expression and motion bindings, gaze calibration, and troubleshooting |
-| [Development guide](development.md) | Contributors and maintainers | Runtime ownership, load and render lifecycle, motion tracking, layouts, resource cleanup, and validation |
-| [Live2D character overview](../utils/live2d.md) | Users | Import UI, manifest example, runtime behavior, and licensing |
+| Document                                        | Audience                      | Contents                                                                                                         |
+| ----------------------------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| [Character package tutorial](authoring.md)      | Character authors and testers | Package layout, import manifest, variants, expression and motion bindings, gaze calibration, and troubleshooting |
+| [Development guide](development.md)             | Contributors and maintainers  | Runtime ownership, load and render lifecycle, motion tracking, layouts, resource cleanup, and validation         |
+| [Live2D character overview](../utils/live2d.md) | Users                         | Import UI, manifest example, runtime behavior, and licensing                                                     |
 
 ## Important Boundaries
 

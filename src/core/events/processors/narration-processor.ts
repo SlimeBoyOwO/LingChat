@@ -1,35 +1,35 @@
-import type { IEventProcessor } from '../event-processor'
-import type { ScriptNarrationEvent } from '../../../types'
-import { useGameStore } from '../../../stores/modules/game'
-import { useUIStore } from '../../../stores/modules/ui/ui'
+import type { IEventProcessor } from "../event-processor";
+import type { ScriptNarrationEvent } from "../../../types";
+import { useGameStore } from "../../../stores/modules/game";
+import { useUIStore } from "../../../stores/modules/ui/ui";
 
 export default class NarrationProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {
-    return eventType === 'narration'
+    return eventType === "narration";
   }
 
   async processEvent(event: ScriptNarrationEvent): Promise<void> {
-    const gameStore = useGameStore()
-    const uiStore = useUIStore()
+    const gameStore = useGameStore();
+    const uiStore = useUIStore();
 
     // 更新游戏状态
-    gameStore.currentStatus = 'responding'
-    uiStore.showCharacterLine = event.text
+    gameStore.currentStatus = "responding";
+    uiStore.showCharacterLine = event.text;
 
     if (event.displayName) {
-      uiStore.showCharacterTitle = event.displayName
+      uiStore.showCharacterTitle = event.displayName;
     } else {
-      uiStore.showCharacterTitle = ''
+      uiStore.showCharacterTitle = "";
     }
-    uiStore.showCharacterSubtitle = ''
-    uiStore.showCharacterEmotion = ''
+    uiStore.showCharacterSubtitle = "";
+    uiStore.showCharacterEmotion = "";
 
     gameStore.appendGameMessage({
-      type: 'message',
-      displayName: '旁白',
+      type: "message",
+      displayName: "旁白",
       content: event.text,
-    })
+    });
 
-    console.log('叙事模式执行' + event.text)
+    console.log("叙事模式执行" + event.text);
   }
 }

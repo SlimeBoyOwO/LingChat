@@ -1,6 +1,6 @@
-import type { ApiConfig } from '../../types'
+import type { ApiConfig } from "../../types";
 
-const API_BASE = '/api/v1'
+const API_BASE = "/api/v1";
 
 export const API_CONFIG: ApiConfig = {
   VOICE: {
@@ -9,7 +9,7 @@ export const API_CONFIG: ApiConfig = {
 
   // 认证相关
   AUTH: `${API_BASE}/auth`,
-}
+};
 
 // 应用配置
 export const APP_CONFIG = {
@@ -31,9 +31,9 @@ export const APP_CONFIG = {
   STAR_FIELD: {
     STAR_COUNT: 100,
     SPEED: 0.5,
-    COLOR: '#ffffff',
+    COLOR: "#ffffff",
     SIZE: 1,
   },
-} as const
+} as const;
 
-export type AppConfig = typeof APP_CONFIG
+export type AppConfig = typeof APP_CONFIG;

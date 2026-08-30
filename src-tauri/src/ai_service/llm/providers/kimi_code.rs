@@ -4,11 +4,11 @@
 //! 固定 base_url 为 https://api.kimi.com/coding，默认模型 kimi-for-coding，
 //! 并强制携带 User-Agent: claude-code/0.1.0。
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, USER_AGENT};
 use reqwest::Client;
+use reqwest::header::{ACCEPT, HeaderMap, HeaderValue, USER_AGENT};
 use serde::{Deserialize, Serialize};
 
 use crate::ai_service::llm::provider::{
@@ -134,7 +134,7 @@ impl KimiCodeProvider {
                         system_text.push('\n');
                     }
                     system_text.push_str(&m.content);
-                }
+                },
                 "user" => conversation.push(AnthropicMessage {
                     role: "user".to_string(),
                     content: AnthropicMessageContent::Text(m.content.clone()),
@@ -166,7 +166,7 @@ impl KimiCodeProvider {
                         role: "assistant".to_string(),
                         content: AnthropicMessageContent::Blocks(blocks),
                     });
-                }
+                },
                 "assistant" => conversation.push(AnthropicMessage {
                     role: "assistant".to_string(),
                     content: AnthropicMessageContent::Text(m.content.clone()),
@@ -186,7 +186,7 @@ impl KimiCodeProvider {
                             },
                         ]),
                     });
-                }
+                },
                 _ => conversation.push(AnthropicMessage {
                     role: "user".to_string(),
                     content: AnthropicMessageContent::Text(m.content.clone()),
@@ -243,7 +243,7 @@ impl KimiCodeProvider {
                         effort: None,
                         name,
                     })
-                }
+                },
                 _ => None,
             });
 
@@ -735,7 +735,9 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || haystack.len() < needle.len() {
         return None;
     }
-    haystack.windows(needle.len()).position(|window| window == needle)
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 /// 把流式累积的工具块组装成 ToolCall 列表（按块 index 升序）。

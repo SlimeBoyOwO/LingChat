@@ -23,8 +23,7 @@ static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 
 fn client() -> &'static reqwest::Client {
     HTTP_CLIENT.get_or_init(|| {
-        factory::build_http_client(30)
-            .expect("构建插件 HTTP client 失败（rustls/webpki 配置错误）")
+        factory::build_http_client(30).expect("构建插件 HTTP client 失败（rustls/webpki 配置错误）")
     })
 }
 
@@ -55,20 +54,21 @@ pub(crate) fn value_to_pyobject(vm: &VirtualMachine, value: &serde_json::Value) 
             } else {
                 vm.ctx.new_float(n.as_f64().unwrap_or(0.0)).into()
             }
-        }
+        },
         serde_json::Value::String(s) => vm.ctx.new_str(s.clone()).into(),
         serde_json::Value::Array(items) => {
-            let list: PyListRef =
-                vm.ctx.new_list(items.iter().map(|i| value_to_pyobject(vm, i)).collect());
+            let list: PyListRef = vm
+                .ctx
+                .new_list(items.iter().map(|i| value_to_pyobject(vm, i)).collect());
             list.into()
-        }
+        },
         serde_json::Value::Object(map) => {
             let dict = vm.ctx.new_dict();
             for (k, v) in map {
                 let _ = dict.set_item(vm.ctx.intern_str(k.as_str()), value_to_pyobject(vm, v), vm);
             }
             dict.into()
-        }
+        },
     }
 }
 
@@ -116,19 +116,26 @@ fn apply_map_args(
 /// 插件脚本在 `spawn_blocking` 线程内执行，线程上无 tokio runtime，
 /// 用独立 runtime 的 `block_on` 阻塞等待，不会卡住 tokio runtime 主线程。
 fn send_and_to_py(req: reqwest::RequestBuilder, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
-    let json = runtime().block_on(async {
-        let resp = req.send().await.map_err(|e| format!("HTTP 请求失败: {e}"))?;
-        let status = resp.status();
-        let text = resp.text().await.map_err(|e| format!("读取响应失败: {e}"))?;
-        let parsed = serde_json::from_str::<serde_json::Value>(&text)
-            .unwrap_or_else(|_| serde_json::Value::String(text));
-        Ok::<_, String>(serde_json::json!({
-            "status": status.as_u16(),
-            "ok": status.is_success(),
-            "body": parsed,
-        }))
-    })
-    .unwrap_or_else(|e| serde_json::json!({ "ok": false, "error": e }));
+    let json = runtime()
+        .block_on(async {
+            let resp = req
+                .send()
+                .await
+                .map_err(|e| format!("HTTP 请求失败: {e}"))?;
+            let status = resp.status();
+            let text = resp
+                .text()
+                .await
+                .map_err(|e| format!("读取响应失败: {e}"))?;
+            let parsed = serde_json::from_str::<serde_json::Value>(&text)
+                .unwrap_or_else(|_| serde_json::Value::String(text));
+            Ok::<_, String>(serde_json::json!({
+                "status": status.as_u16(),
+                "ok": status.is_success(),
+                "body": parsed,
+            }))
+        })
+        .unwrap_or_else(|e| serde_json::json!({ "ok": false, "error": e }));
     Ok(value_to_pyobject(vm, &json))
 }
 
@@ -181,6 +188,8 @@ mod plugin_host {
 }
 
 /// 获取插件宿主模块定义（供解释器注入）。
-pub(crate) fn plugin_module_def(ctx: &rustpython_vm::Context) -> &'static rustpython_vm::builtins::PyModuleDef {
+pub(crate) fn plugin_module_def(
+    ctx: &rustpython_vm::Context,
+) -> &'static rustpython_vm::builtins::PyModuleDef {
     plugin_host::module_def(ctx)
 }

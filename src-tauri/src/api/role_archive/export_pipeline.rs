@@ -8,8 +8,6 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::utils::archive::{self, ArchiveFormat, EntryEvent};
 
-
-
 use crate::db::entities::role::Entity as RoleEntity;
 
 // ===== 导出命令 =====
@@ -21,7 +19,11 @@ pub(super) async fn compress_role_to_temp(
     format: ArchiveFormat,
 ) -> Result<(PathBuf, String, u64), String> {
     use sea_orm::EntityTrait;
-    tracing::info!("[RoleArchive] compress_role_to_temp 开始: role_id={}, format={:?}", role_id, format);
+    tracing::info!(
+        "[RoleArchive] compress_role_to_temp 开始: role_id={}, format={:?}",
+        role_id,
+        format
+    );
     let db = app.state::<crate::AppState>().db.clone();
 
     let role = RoleEntity::find_by_id(role_id)
@@ -87,7 +89,6 @@ pub(super) async fn compress_role_to_temp(
 
     Ok((out_path, suggested_name, metadata.len()))
 }
-
 
 fn sanitize_file_name(name: &str) -> String {
     let chars: String = name

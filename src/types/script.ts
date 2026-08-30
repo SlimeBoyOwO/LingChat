@@ -1,146 +1,146 @@
 export interface ScriptEvent {
-  type: string
-  duration: number
-  isFinal?: boolean
+  type: string;
+  duration: number;
+  isFinal?: boolean;
 }
 
 export interface ScriptChapterChangeEvent extends ScriptEvent {
-  type: 'chapter_change'
-  chapterName: string
+  type: "chapter_change";
+  chapterName: string;
 }
 
 export interface ScriptNarrationEvent extends ScriptEvent {
-  type: 'narration'
-  text: string
-  displayName?: string
-  sceneId?: string
+  type: "narration";
+  text: string;
+  displayName?: string;
+  sceneId?: string;
 }
 
 export interface ScriptPlayerEvent extends ScriptEvent {
-  type: 'player'
-  text: string
-  displayName?: string
-  displaySubtitle?: string
-  emotion?: string
+  type: "player";
+  text: string;
+  displayName?: string;
+  displaySubtitle?: string;
+  emotion?: string;
 }
 
 export interface ScriptDialogueEvent extends ScriptEvent {
-  type: 'reply'
-  character?: string
-  roleId: number
-  emotion: string
-  originalTag: string
-  message: string
-  motionText: string
+  type: "reply";
+  character?: string;
+  roleId: number;
+  emotion: string;
+  originalTag: string;
+  message: string;
+  motionText: string;
   /** 第二语言/目标语言文本（历史协议字段） */
-  ttsText?: string
+  ttsText?: string;
   /** 按有效 voice_lang 选定的 TTS 输入文本 */
-  spokenText?: string
+  spokenText?: string;
   /** 生成 spokenText 时的有效 TTS 语言 */
-  spokenLanguage?: string
-  audioFile?: string
-  originalMessage: string
-  displayName?: string
-  displaySubtitle?: string
+  spokenLanguage?: string;
+  audioFile?: string;
+  originalMessage: string;
+  displayName?: string;
+  displaySubtitle?: string;
   /** 触发此回复的用户消息序号（1-indexed） */
-  userMessageSeq?: number
+  userMessageSeq?: number;
   /** 本轮生成的思考链（仅最后一帧携带） */
-  thinking?: string
+  thinking?: string;
 }
 
 export interface ScriptThinkingEvent extends ScriptEvent {
-  type: 'thinking'
-  isThinking: boolean
+  type: "thinking";
+  isThinking: boolean;
 }
 
 export interface ScriptFreeDialogueEvent extends ScriptEvent {
-  type: 'free_dialogue'
-  switch: boolean
-  maxRounds: number
-  endLine: string
+  type: "free_dialogue";
+  switch: boolean;
+  maxRounds: number;
+  endLine: string;
 }
 
 export interface ScriptBackgroundEvent extends ScriptEvent {
-  type: 'background'
-  imagePath: string
-  transition: number
+  type: "background";
+  imagePath: string;
+  transition: number;
 }
 
 export interface ScriptPresentPicEvent extends ScriptEvent {
-  type: 'present_pic'
-  imagePath: string
-  scale: number
+  type: "present_pic";
+  imagePath: string;
+  scale: number;
 }
 
 export interface ScriptBackgroundEffectEvent extends ScriptEvent {
-  type: 'background_effect'
-  effect: string
+  type: "background_effect";
+  effect: string;
 }
 
 export interface ScriptSoundEvent extends ScriptEvent {
-  type: 'sound'
-  soundPath: string
+  type: "sound";
+  soundPath: string;
 }
 
 export interface ScriptMusicEvent extends ScriptEvent {
-  type: 'music'
-  musicPath: string
+  type: "music";
+  musicPath: string;
   /** 播放速度倍率（1.0 原速）；未设置时前端按 1.0 处理 */
-  playbackSpeed?: number
+  playbackSpeed?: number;
 }
 
 /** 环境音事件 —— 循环持续的场景音效，与 BGM 共存 */
 export interface ScriptAmbientEvent extends ScriptEvent {
-  type: 'ambient'
-  ambientPath: string
+  type: "ambient";
+  ambientPath: string;
   /** 单轨音量 0-100，默认 100 */
-  volume?: number
+  volume?: number;
   /** 是否循环，默认 true */
-  loop?: boolean
+  loop?: boolean;
   /** 是否停止（true 时淡出停止），默认 false */
-  stop?: boolean
+  stop?: boolean;
   /** 是否启用淡入淡出，默认 true */
-  fade?: boolean
+  fade?: boolean;
 }
 
 export interface ScriptModifyCharacterEvent extends ScriptEvent {
-  type: 'modify_character'
-  characterId: number
-  emotion?: string
-  action?: string
-  clothes?: string
+  type: "modify_character";
+  characterId: number;
+  emotion?: string;
+  action?: string;
+  clothes?: string;
 }
 
 export interface ScriptInputEvent extends ScriptEvent {
-  type: 'input'
-  hint: string
+  type: "input";
+  hint: string;
 }
 export interface ScriptChoiceEvent extends ScriptEvent {
-  type: 'choice'
-  choices: ScriptChoiceItem[]
-  allowFree: boolean
+  type: "choice";
+  choices: ScriptChoiceItem[];
+  allowFree: boolean;
 }
 /** 单个选项。disabled 表示条件不满足不可选，reason 是作者写的锁定提示 */
 export interface ScriptChoiceItem {
-  text: string
-  disabled: boolean
-  reason?: string
+  text: string;
+  disabled: boolean;
+  reason?: string;
 }
 export interface ScriptEndEvent extends ScriptEvent {
-  type: 'script_end'
+  type: "script_end";
   /** false 表示剧本是因为出错被中止的，不应记为完成 */
-  completed?: boolean
+  completed?: boolean;
 }
 
 export interface ScriptErrorEvent extends ScriptEvent {
-  type: 'error'
-  error_code?: string
-  message?: string
+  type: "error";
+  error_code?: string;
+  message?: string;
 }
 
 export interface ScriptStatusResetEvent extends ScriptEvent {
-  type: 'status_reset'
-  status?: string
+  type: "status_reset";
+  status?: string;
 }
 
 export type ScriptEventType =
@@ -161,4 +161,4 @@ export type ScriptEventType =
   | ScriptEndEvent
   | ScriptChoiceEvent
   | ScriptPresentPicEvent
-  | ScriptFreeDialogueEvent
+  | ScriptFreeDialogueEvent;

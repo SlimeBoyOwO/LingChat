@@ -25,50 +25,50 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { getVoiceAudio } from '../../../api/services/game-info'
-import type { GameMessage } from '../../../stores/modules/game/state'
-import DialogUser from './DialogUser.vue'
-import DialogCharacter from './DialogCharacter.vue'
+  import { ref } from "vue";
+  import { getVoiceAudio } from "../../../api/services/game-info";
+  import type { GameMessage } from "../../../stores/modules/game/state";
+  import DialogUser from "./DialogUser.vue";
+  import DialogCharacter from "./DialogCharacter.vue";
 
-const props = defineProps({
-  dialog: {
-    type: Array as () => GameMessage[],
-    require: true,
-  },
-})
+  const props = defineProps({
+    dialog: {
+      type: Array as () => GameMessage[],
+      require: true,
+    },
+  });
 
-const audio = ref<HTMLAudioElement | null>(null)
+  const audio = ref<HTMLAudioElement | null>(null);
 
-async function rephrase(audioFile: string | undefined) {
-  if (!audioFile || !audio.value) return
-  try {
-    const dataUrl = await getVoiceAudio(audioFile)
-    audio.value.src = dataUrl
-    audio.value.play()
-  } catch (e) {
-    console.error('获取语音文件失败:', e)
+  async function rephrase(audioFile: string | undefined) {
+    if (!audioFile || !audio.value) return;
+    try {
+      const dataUrl = await getVoiceAudio(audioFile);
+      audio.value.src = dataUrl;
+      audio.value.play();
+    } catch (e) {
+      console.error("获取语音文件失败:", e);
+    }
   }
-}
 </script>
 
 <style scoped>
-.message-item {
-  line-height: 1.2;
-  word-wrap: break-word;
-}
+  .message-item {
+    line-height: 1.2;
+    word-wrap: break-word;
+  }
 
-.play-message {
-  cursor: pointer;
-  display: inline-block; /* 让边框包裹内容 */
-}
-.character-reply {
-  cursor: help;
-  display: inline-block; /* 让边框包裹内容 */
-}
+  .play-message {
+    cursor: pointer;
+    display: inline-block; /* 让边框包裹内容 */
+  }
+  .character-reply {
+    cursor: help;
+    display: inline-block; /* 让边框包裹内容 */
+  }
 
-/* 为 isFinal 消息的间隔元素添加样式 */
-.final-spacer {
-  height: 1em; /* 高度约等于一个空行 */
-}
+  /* 为 isFinal 消息的间隔元素添加样式 */
+  .final-spacer {
+    height: 1em; /* 高度约等于一个空行 */
+  }
 </style>

@@ -22,8 +22,7 @@
   --nord-aurora-danger: #bf616a; /* Error/Danger color */
 
   /* Font & Spacing */
-  --font-family: "Segoe UI", "Microsoft YaHei", system-ui, -apple-system,
-    sans-serif;
+  --font-family: "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
   --border-radius-large: 12px;
   --border-radius-medium: 8px;
   --border-radius-small: 6px;
@@ -115,7 +114,8 @@ body {
   text-decoration: none;
   border-radius: var(--border-radius-medium);
   margin: 2px 0;
-  transition: background-color var(--transition-speed),
+  transition:
+    background-color var(--transition-speed),
     color var(--transition-speed);
   border-left: 4px solid transparent;
 }
@@ -196,7 +196,8 @@ body {
   color: var(--nord-snow-storm-text-brighter);
   font-size: 15px;
   font-family: var(--font-family);
-  transition: border-color var(--transition-speed),
+  transition:
+    border-color var(--transition-speed),
     background-color var(--transition-speed);
   outline: none;
 }

@@ -1,10 +1,10 @@
 //! TTS 适配器 trait + 统一 Provider。
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 
@@ -153,7 +153,7 @@ impl TtsProvider {
                 self.recovery_in_flight.store(false, Ordering::Release);
                 tracing::debug!("TTS 后台恢复探测跳过: {error}");
                 return;
-            }
+            },
         };
         let provider = self.clone();
         tokio::spawn(async move {
@@ -220,7 +220,7 @@ impl TtsProvider {
                 } else {
                     return Err(anyhow!("没有可用的 TTS 适配器"));
                 }
-            }
+            },
             other => return Err(anyhow!("未知的 TTS 类型: {other}")),
         };
         Ok(adapter)
@@ -251,7 +251,7 @@ impl TtsProvider {
                 tokio::fs::write(file_path, &bytes).await?;
                 tracing::debug!("TTS 生成成功: {}", file_path.display());
                 Ok(())
-            }
+            },
             Err(e) => {
                 let failures = self.consecutive_failures.fetch_add(1, Ordering::AcqRel) + 1;
                 if failures >= MAX_CONSECUTIVE_FAILURES {
@@ -264,7 +264,7 @@ impl TtsProvider {
                     );
                 }
                 Err(e)
-            }
+            },
         }
     }
 }

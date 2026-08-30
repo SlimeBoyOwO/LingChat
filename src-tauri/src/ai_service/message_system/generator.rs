@@ -745,7 +745,8 @@ fn needs_japanese_translation(segments: &[EmotionSegment]) -> bool {
     segments.iter().any(|segment| {
         let main = segment.following_text.trim();
         let secondary = segment.japanese_text.trim();
-        !main.is_empty() && (secondary.is_empty() || secondary == main || !looks_like_japanese(secondary))
+        !main.is_empty()
+            && (secondary.is_empty() || secondary == main || !looks_like_japanese(secondary))
     })
 }
 
@@ -959,7 +960,13 @@ mod tests {
     #[test]
     fn pure_chinese_is_not_accepted_as_japanese_secondary_text() {
         assert!(needs_japanese_translation(&[segment("早上好", "早上好")]));
-        assert!(needs_japanese_translation(&[segment("早上好", "祝你今天愉快")]));
-        assert!(!needs_japanese_translation(&[segment("早上好", "おはようございます")]));
+        assert!(needs_japanese_translation(&[segment(
+            "早上好",
+            "祝你今天愉快"
+        )]));
+        assert!(!needs_japanese_translation(&[segment(
+            "早上好",
+            "おはようございます"
+        )]));
     }
 }

@@ -16,22 +16,22 @@ The existing systems remain active. A static avatar is hidden only after a Live2
 
 ## Main Components
 
-| Path | Responsibility |
-| --- | --- |
-| `src/components/game/live2d/Live2DStage.vue` | Stage ownership, role synchronization, model lifecycle, runtime-result ownership, layout, expressions, motions, gaze, and lip sync integration |
-| `src/components/game/live2d/live2d-stage-context.ts` | Stage-local, read-only ready/unavailable role results for avatar fallback rendering |
-| `src/components/game/live2d/live2d-runtime.ts` | Cubism Core and Pixi Live2D engine loading |
-| `src/components/game/standard/GameRoleAvatar.vue` | Role-intent dispatch plus shared avatar resolution, layout, animation, bubbles, touch, and effect audio |
-| `src/components/game/standard/StaticRolePresentation.vue` | Traditional static image transition and load completion contract |
-| `src/components/game/standard/Live2DRolePresentation.vue` | Stage-result consumption, static fallback visibility, and localized unavailable result |
-| `src/components/game/live2d/model-source.ts` | Safe model3 reference rewriting and configured idle projection |
-| `src/components/game/live2d/live2d-interaction.ts` | Pointer coordinate and gaze calculations |
-| `src/components/game/live2d/live2d-layout.ts` | Pure layout calculations shared with tests |
-| `src/components/game/live2d/live2d-motion.ts` | Motion start/finish attribution through engine lifecycle events |
-| `src/components/game/live2d/useLive2dLipSync.ts` | Passive audio decoding and mouth amplitude sampling |
-| `src/components/settings/character/Live2DSettings.vue` | Import, variant editing, bindings, outfit mapping, and preview |
-| `src-tauri/src/api/live2d.rs` | Directory/ZIP import, inspection, validation, staging, rollback, and runtime refresh |
-| `src-tauri/src/ai_service/types.rs` | Serialized `settings.yml.live2d` contract |
+| Path                                                      | Responsibility                                                                                                                                 |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/components/game/live2d/Live2DStage.vue`              | Stage ownership, role synchronization, model lifecycle, runtime-result ownership, layout, expressions, motions, gaze, and lip sync integration |
+| `src/components/game/live2d/live2d-stage-context.ts`      | Stage-local, read-only ready/unavailable role results for avatar fallback rendering                                                            |
+| `src/components/game/live2d/live2d-runtime.ts`            | Cubism Core and Pixi Live2D engine loading                                                                                                     |
+| `src/components/game/standard/GameRoleAvatar.vue`         | Role-intent dispatch plus shared avatar resolution, layout, animation, bubbles, touch, and effect audio                                        |
+| `src/components/game/standard/StaticRolePresentation.vue` | Traditional static image transition and load completion contract                                                                               |
+| `src/components/game/standard/Live2DRolePresentation.vue` | Stage-result consumption, static fallback visibility, and localized unavailable result                                                         |
+| `src/components/game/live2d/model-source.ts`              | Safe model3 reference rewriting and configured idle projection                                                                                 |
+| `src/components/game/live2d/live2d-interaction.ts`        | Pointer coordinate and gaze calculations                                                                                                       |
+| `src/components/game/live2d/live2d-layout.ts`             | Pure layout calculations shared with tests                                                                                                     |
+| `src/components/game/live2d/live2d-motion.ts`             | Motion start/finish attribution through engine lifecycle events                                                                                |
+| `src/components/game/live2d/useLive2dLipSync.ts`          | Passive audio decoding and mouth amplitude sampling                                                                                            |
+| `src/components/settings/character/Live2DSettings.vue`    | Import, variant editing, bindings, outfit mapping, and preview                                                                                 |
+| `src-tauri/src/api/live2d.rs`                             | Directory/ZIP import, inspection, validation, staging, rollback, and runtime refresh                                                           |
+| `src-tauri/src/ai_service/types.rs`                       | Serialized `settings.yml.live2d` contract                                                                                                      |
 
 ## Render Stack
 
@@ -72,7 +72,7 @@ Pixi `Assets` can return shared `Texture` and `TextureSource` instances to the g
 When destroying a model:
 
 ```ts
-model.destroy({ children: true, texture: false, baseTexture: false })
+model.destroy({ children: true, texture: false, baseTexture: false });
 ```
 
 When destroying an application, preserve global resources. Destroying shared textures from one stage can make another stage's model disappear or produce upload errors after preview navigation.
@@ -164,13 +164,13 @@ Type checking, production builds, and browser probes cannot prove those native i
 
 ## Validation Matrix
 
-| Check | What it proves | What it does not prove |
-| --- | --- | --- |
-| `vue-tsc` | Frontend type correctness | Runtime model behavior |
-| `pnpm run build` | Production frontend bundling | Native host behavior |
-| Browser/WebGL probe | Cubism Core, engine, model assets, framebuffer rendering | Tauri protocol and desktop pet windows |
-| `pnpm tauri dev` | Real Tauri/WebView, asset protocol, and native window modes | Installer/update behavior |
-| Installed build | Packaging, resource sync, upgrades, normal identifier | Source-tree development behavior |
+| Check               | What it proves                                              | What it does not prove                 |
+| ------------------- | ----------------------------------------------------------- | -------------------------------------- |
+| `vue-tsc`           | Frontend type correctness                                   | Runtime model behavior                 |
+| `pnpm run build`    | Production frontend bundling                                | Native host behavior                   |
+| Browser/WebGL probe | Cubism Core, engine, model assets, framebuffer rendering    | Tauri protocol and desktop pet windows |
+| `pnpm tauri dev`    | Real Tauri/WebView, asset protocol, and native window modes | Installer/update behavior              |
+| Installed build     | Packaging, resource sync, upgrades, normal identifier       | Source-tree development behavior       |
 
 Before merging a change that affects lifecycle or rendering, verify at least:
 

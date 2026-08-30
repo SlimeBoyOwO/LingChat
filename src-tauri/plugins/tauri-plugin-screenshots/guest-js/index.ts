@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from '@tauri-apps/api/core';
 
 export interface ScreenshotableWindow {
   id: number;
@@ -13,13 +13,13 @@ export interface ScreenshotableMonitor {
 }
 
 export const COMMAND = {
-  GET_SCREENSHOTABLE_WINDOWS: "plugin:screenshots|get_screenshotable_windows",
-  GET_SCREENSHOTABLE_MONITORS: "plugin:screenshots|get_screenshotable_monitors",
-  GET_WINDOW_SCREENSHOT: "plugin:screenshots|get_window_screenshot",
-  GET_MONITOR_SCREENSHOT: "plugin:screenshots|get_monitor_screenshot",
-  REMOVE_WINDOW_SCREENSHOT: "plugin:screenshots|remove_window_screenshot",
-  REMOVE_MONITOR_SCREENSHOT: "plugin:screenshots|remove_monitor_screenshot",
-  CLEAR_SCREENSHOTS: "plugin:screenshots|clear_screenshots",
+  GET_SCREENSHOTABLE_WINDOWS: 'plugin:screenshots|get_screenshotable_windows',
+  GET_SCREENSHOTABLE_MONITORS: 'plugin:screenshots|get_screenshotable_monitors',
+  GET_WINDOW_SCREENSHOT: 'plugin:screenshots|get_window_screenshot',
+  GET_MONITOR_SCREENSHOT: 'plugin:screenshots|get_monitor_screenshot',
+  REMOVE_WINDOW_SCREENSHOT: 'plugin:screenshots|remove_window_screenshot',
+  REMOVE_MONITOR_SCREENSHOT: 'plugin:screenshots|remove_monitor_screenshot',
+  CLEAR_SCREENSHOTS: 'plugin:screenshots|clear_screenshots',
 };
 
 /**

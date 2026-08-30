@@ -5,6 +5,6 @@
 </template>
 
 <script setup lang="ts">
-import { MenuPage } from '../../ui'
-import ScheduleContent from '@/components/schedule/ScheduleContent.vue'
+  import { MenuPage } from "../../ui";
+  import ScheduleContent from "@/components/schedule/ScheduleContent.vue";
 </script>

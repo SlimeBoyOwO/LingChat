@@ -26,14 +26,7 @@ if (!version) {
   process.exit(1);
 }
 
-const bundleDir = join(
-  projectRoot,
-  "src-tauri",
-  "target",
-  "release",
-  "bundle",
-  "nsis",
-);
+const bundleDir = join(projectRoot, "src-tauri", "target", "release", "bundle", "nsis");
 
 // 查找安装包和签名文件
 const files = existsSync(bundleDir) ? readdirRecursive(bundleDir) : [];

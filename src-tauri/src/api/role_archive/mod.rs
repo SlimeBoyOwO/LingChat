@@ -119,7 +119,10 @@ pub async fn import_role(
     match &result {
         Ok(r) => tracing::info!(
             "[RoleArchive] import_role 完成: role_name={}, role_id={:?}, action={}, bytes_extracted={}",
-            r.role_name, r.role_id, r.conflict_action, r.bytes_extracted
+            r.role_name,
+            r.role_id,
+            r.conflict_action,
+            r.bytes_extracted
         ),
         Err(e) => tracing::error!("[RoleArchive] import_role 失败: {e}"),
     }
@@ -232,7 +235,7 @@ pub async fn import_role_from_path(
                 src.display_name
             );
             Some(src.display_name.clone())
-        }
+        },
         None => Some(src.display_name.clone()),
     };
 

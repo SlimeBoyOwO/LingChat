@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use tauri::AppHandle;
 
-use crate::achievements::types::Achievement;
 use crate::AppState;
+use crate::achievements::types::Achievement;
 
 #[tauri::command]
 pub async fn get_achievement_list(

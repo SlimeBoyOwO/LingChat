@@ -7,13 +7,13 @@ use serde_json::Value as JsonValue;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
+use crate::AppState;
 use crate::ai_service::types::CharacterSettings;
 use crate::config;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::system::open_folder;
 use crate::utils::yaml_file::write_json_as_yaml;
-use crate::AppState;
 
 use super::{characters_dir, data_dir, decode_plugin_folder, game_data_dir, resolve_character_dir};
 
@@ -116,20 +116,20 @@ pub(crate) fn read_character_settings(resource_folder: &str) -> CharacterSetting
             Ok(mut settings) => {
                 settings.character_folder = resource_folder.to_string();
                 settings
-            }
+            },
             Err(e) => {
                 tracing::error!("解析 {:?} 失败: {}", yaml_path, e);
                 let mut s = CharacterSettings::default();
                 s.character_folder = resource_folder.to_string();
                 s
-            }
+            },
         },
         Err(e) => {
             tracing::error!("读取 {:?} 失败: {}", yaml_path, e);
             let mut s = CharacterSettings::default();
             s.character_folder = resource_folder.to_string();
             s
-        }
+        },
     }
 }
 
@@ -435,7 +435,7 @@ fn script_package_dirs() -> Vec<PathBuf> {
                         }
                     }
                 }
-            }
+            },
             // scripts/standalone/<剧本>/ —— 再下钻一级
             "standalone" => {
                 if let Ok(scripts) = fs::read_dir(&path) {
@@ -445,7 +445,7 @@ fn script_package_dirs() -> Vec<PathBuf> {
                         }
                     }
                 }
-            }
+            },
             // scripts/<剧本>/ —— 兼容布局，目录本身就是剧本包
             _ => out.push(path),
         }
@@ -595,10 +595,10 @@ pub async fn update_role_settings(
                 .join(&script_key)
                 .join("characters")
                 .join(&folder)
-        }
+        },
         RoleType::System | RoleType::User => {
             return Err("系统角色不允许修改配置".to_string());
-        }
+        },
     };
 
     if !base_path.exists() {

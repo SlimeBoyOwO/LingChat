@@ -33,7 +33,12 @@ impl LocalTtsPaths {
             .app_cache_dir()
             .map_err(|e| format!("app_cache_dir: {e}"))?
             .join("tts-local-cache");
-        Ok(Self { root, assets, voices, cache })
+        Ok(Self {
+            root,
+            assets,
+            voices,
+            cache,
+        })
     }
 
     pub fn ensure(&self) -> std::result::Result<(), String> {
@@ -57,7 +62,7 @@ impl LocalTtsPaths {
             "deberta" => {
                 let d = self.deberta_dir();
                 d.join("deberta.onnx").exists() && d.join("tokenizer.json").exists()
-            }
+            },
             _ => false,
         }
     }

@@ -74,7 +74,7 @@ impl MemoryRepo {
                 active.info = Set(info.to_string());
                 active.role_id = Set(Some(role_id));
                 active.update(db).await.map_err(|e| anyhow!(e))
-            }
+            },
             None => {
                 let active = memory_bank::ActiveModel {
                     save_id: Set(save_id),
@@ -83,7 +83,7 @@ impl MemoryRepo {
                     ..Default::default()
                 };
                 active.insert(db).await.map_err(|e| anyhow!(e))
-            }
+            },
         }
     }
 

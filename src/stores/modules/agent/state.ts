@@ -3,54 +3,54 @@
  *
  * 对话与设置在 DB/后端持久化，前端只做会话内缓存，不进 localStorage。
  */
-import { ref } from 'vue'
+import { ref } from "vue";
 import type {
   AgentDefaultDirs,
   AgentSettings,
   ConversationInfo,
   SkillInfo,
-} from '@/api/services/agent'
+} from "@/api/services/agent";
 
 /** 工具调用状态机。 */
-export type ToolStatus = 'running' | 'pending' | 'done' | 'error' | 'denied'
+export type ToolStatus = "running" | "pending" | "done" | "error" | "denied";
 
 export interface ToolRun {
   /** 后端生成的 call id，用于匹配 tool_result。 */
-  callId: string
-  tool: string
-  args: Record<string, unknown>
-  status: ToolStatus
-  output?: string
-  requestId?: string
+  callId: string;
+  tool: string;
+  args: Record<string, unknown>;
+  status: ToolStatus;
+  output?: string;
+  requestId?: string;
   /** LLM 返回的原始参数 JSON（可能被截断/非法）。 */
-  rawArgs?: string
+  rawArgs?: string;
 }
 
 /** 一条 assistant 回复的片段：思考链 + 流式文本 + 随后的工具调用。 */
 export interface ChatRound {
   /** 回复正文（工具调用前的叙述也在这里）。 */
-  content: string
+  content: string;
   /** 思考链（thinking 模式开启时才有；已持久化，旧数据缺失时为空）。 */
-  reasoning?: string
-  toolRuns: ToolRun[]
+  reasoning?: string;
+  toolRuns: ToolRun[];
 }
 
 export interface ChatItem {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  rounds: ChatRound[]
-  streaming: boolean
-  status?: string
-  error?: string
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  rounds: ChatRound[];
+  streaming: boolean;
+  status?: string;
+  error?: string;
 }
 
 export interface TokenUsage {
-  prompt_tokens: number
-  completion_tokens: number
-  total_tokens: number
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
   /** 输入中命中缓存（cache read）的 token 数；未上报时为 0。 */
-  cached_tokens: number
+  cached_tokens: number;
 }
 
 export const emptySettings = (): AgentSettings => ({
@@ -61,29 +61,29 @@ export const emptySettings = (): AgentSettings => ({
   maxToolRounds: -1, // -1 = 无上限
   systemPrompt: null,
   enableThinking: null, // null = 跟随模型 provider 默认
-})
+});
 
 export function useAgentState() {
-  const conversations = ref<ConversationInfo[]>([])
-  const currentId = ref<number | null>(null)
-  const items = ref<ChatItem[]>([])
-  const streaming = ref(false)
-  const sending = ref(false)
-  const status = ref('')
+  const conversations = ref<ConversationInfo[]>([]);
+  const currentId = ref<number | null>(null);
+  const items = ref<ChatItem[]>([]);
+  const streaming = ref(false);
+  const sending = ref(false);
+  const status = ref("");
   /** 每次事件自增，供视图触发滚动。 */
-  const version = ref(0)
-  const lastUsage = ref<TokenUsage | null>(null)
-  const totalTokens = ref(0)
+  const version = ref(0);
+  const lastUsage = ref<TokenUsage | null>(null);
+  const totalTokens = ref(0);
   /** 累计输入 token（会话内累计，切会话从历史恢复，与 totalTokens 同语义）。 */
-  const totalPromptTokens = ref(0)
+  const totalPromptTokens = ref(0);
   /** 累计输出 token。 */
-  const totalCompletionTokens = ref(0)
+  const totalCompletionTokens = ref(0);
   /** 累计缓存命中 token（输入中命中 cache read 的部分）。 */
-  const totalCachedTokens = ref(0)
-  const settings = ref<AgentSettings>(emptySettings())
-  const skills = ref<SkillInfo[]>([])
-  const defaultDirs = ref<AgentDefaultDirs | null>(null)
-  const loading = ref(false)
+  const totalCachedTokens = ref(0);
+  const settings = ref<AgentSettings>(emptySettings());
+  const skills = ref<SkillInfo[]>([]);
+  const defaultDirs = ref<AgentDefaultDirs | null>(null);
+  const loading = ref(false);
 
   return {
     conversations,
@@ -102,5 +102,5 @@ export function useAgentState() {
     skills,
     defaultDirs,
     loading,
-  }
+  };
 }

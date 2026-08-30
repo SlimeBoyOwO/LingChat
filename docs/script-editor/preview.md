@@ -38,12 +38,12 @@ editor_start_preview
 
 所以现在的做法是：**进来时整体备份、按新会话搭好场子、走的时候整体还原**。试玩期间引擎爱怎么改怎么改，出去之后玩家的会话一个字节都没变。三层隔离分别解决三个层面的泄漏：
 
-| 层 | 解决什么 | 手段 |
-|---|---|---|
-| 后端会话快照 | `GameStatus` 被试玩改写 | `PreviewSession` 快照 / 还原 |
-| 代号守卫 | 中止任务的游离写入污染会话 | `preview_generation` 捕获 / 比对 |
+| 层                | 解决什么                         | 手段                                         |
+| ----------------- | -------------------------------- | -------------------------------------------- |
+| 后端会话快照      | `GameStatus` 被试玩改写          | `PreviewSession` 快照 / 还原                 |
+| 代号守卫          | 中止任务的游离写入污染会话       | `preview_generation` 捕获 / 比对             |
 | 前端双快照 + 队列 | 浏览器侧独立状态被改写、事件残留 | `PreviewStage` 存 / 还，`eventQueue.clear()` |
-| （路由守卫） | MainChat 挂载竞态 | `onBeforeRouteLeave` 阻塞等还原完成 |
+| （路由守卫）      | MainChat 挂载竞态                | `onBeforeRouteLeave` 阻塞等还原完成          |
 
 ## 3. 后端：`PreviewSession` 快照 / 还原
 
@@ -120,9 +120,9 @@ if gs.preview_generation != deps.generation {
 // 仅当「当前在试玩 且 代号与本轮一致」才收；
 // 不带该字段的是自由对话/正式剧本回复，永远放行。
 function isStalePreviewReply(payload) {
-  const gen = payload.previewGen
-  if (typeof gen !== 'number') return false
-  return !store.previewing || store.previewGeneration !== gen
+  const gen = payload.previewGen;
+  if (typeof gen !== "number") return false;
+  return !store.previewing || store.previewGeneration !== gen;
 }
 ```
 

@@ -2,17 +2,17 @@
 //!
 //! 替换原先手写 HTTP/SSE 的 OpenAiProvider 和 GeminiProvider。
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use genai::adapter::AdapterKind;
-use genai::chat::{
-    ChatMessage, ChatOptions, ChatRequest, ChatResponse, ChatStreamEvent,
-    StopReason, ToolCall as GenaiToolCall, ToolChoice, ToolResponse,
-};
-use genai::resolver::{AuthData, Endpoint};
 use genai::Client as GenaiClient;
 use genai::ServiceTarget;
+use genai::adapter::AdapterKind;
+use genai::chat::{
+    ChatMessage, ChatOptions, ChatRequest, ChatResponse, ChatStreamEvent, StopReason,
+    ToolCall as GenaiToolCall, ToolChoice, ToolResponse,
+};
+use genai::resolver::{AuthData, Endpoint};
 use reqwest::Client;
 
 use crate::ai_service::llm::provider::{LlmProvider, LlmResponseWithTools};
@@ -72,7 +72,7 @@ impl GenaiProvider {
                         t.endpoint = Endpoint::from_owned(base);
                         Ok(t)
                     });
-            }
+            },
             "openai" => {
                 let key = cfg.api_key.clone();
                 builder = builder
@@ -86,7 +86,7 @@ impl GenaiProvider {
                             Ok(t)
                         });
                 }
-            }
+            },
             "lmstudio" => {
                 builder = builder
                     .with_adapter_kind(AdapterKind::OpenAI)
@@ -94,7 +94,7 @@ impl GenaiProvider {
                         t.endpoint = Endpoint::from_owned("http://localhost:1234/v1/".to_string());
                         Ok(t)
                     });
-            }
+            },
             "gemini" => {
                 let key = cfg.api_key.clone();
                 builder = builder
@@ -108,7 +108,7 @@ impl GenaiProvider {
                             Ok(t)
                         });
                 }
-            }
+            },
             other => return Err(anyhow!("GenaiProvider 不支持的 provider: {other}")),
         }
 
@@ -142,7 +142,7 @@ impl GenaiProvider {
                         system_text.push('\n');
                     }
                     system_text.push_str(&msg.content);
-                }
+                },
                 "tool" => {
                     let call_id = msg
                         .tool_call_id
@@ -151,7 +151,7 @@ impl GenaiProvider {
                         .ok_or_else(|| anyhow!("tool 消息缺少 tool_call_id"))?;
                     genai_messages
                         .push(ChatMessage::from(ToolResponse::new(call_id, &msg.content)));
-                }
+                },
                 "assistant" if msg.tool_calls.is_some() => {
                     let calls = msg
                         .tool_calls
@@ -170,14 +170,14 @@ impl GenaiProvider {
                         })
                         .collect::<Result<Vec<_>>>()?;
                     genai_messages.push(ChatMessage::from(calls));
-                }
+                },
                 _ => {
                     let role = match msg.role.as_str() {
                         "assistant" => ChatMessage::assistant(&msg.content),
                         _ => ChatMessage::user(&msg.content),
                     };
                     genai_messages.push(role);
-                }
+                },
             }
         }
 
@@ -376,7 +376,6 @@ impl GenaiProvider {
     }
 }
 
-
 // ─── LlmProvider 实现 ────────────────────────────────────────────
 
 #[async_trait]
@@ -466,7 +465,9 @@ impl LlmProvider for GenaiProvider {
         // 先借用获取文本/用量，再消费获取 tool_calls。
         // 注意：ChatResponse.usage 是值而非 Option（未上报时字段全为 None）。
         let content = response.first_text().map(|s| s.to_string());
-        let usage = if response.usage.prompt_tokens.is_none() && response.usage.completion_tokens.is_none() {
+        let usage = if response.usage.prompt_tokens.is_none()
+            && response.usage.completion_tokens.is_none()
+        {
             None
         } else {
             Some(Self::convert_usage(&response.usage))

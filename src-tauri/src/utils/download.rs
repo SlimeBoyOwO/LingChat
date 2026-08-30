@@ -28,11 +28,19 @@ impl DownloadProgress {
         } else {
             0.0
         };
-        Self { bytes_done, total_bytes, percent }
+        Self {
+            bytes_done,
+            total_bytes,
+            percent,
+        }
     }
 
     fn finished(total_bytes: u64) -> Self {
-        Self { bytes_done: total_bytes, total_bytes, percent: 100.0 }
+        Self {
+            bytes_done: total_bytes,
+            total_bytes,
+            percent: 100.0,
+        }
     }
 }
 

@@ -1,10 +1,10 @@
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
-import VueDevTools from 'vite-plugin-vue-devtools'
-import path from 'path'
-import tailwindcss from '@tailwindcss/vite'
+import { defineConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
+import VueDevTools from "vite-plugin-vue-devtools";
+import path from "path";
+import tailwindcss from "@tailwindcss/vite";
 
-const host = process.env.TAURI_DEV_HOST
+const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
@@ -12,7 +12,7 @@ export default defineConfig(async () => ({
 
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      "@": path.resolve(__dirname, "./src"),
     },
   },
 
@@ -27,22 +27,20 @@ export default defineConfig(async () => ({
     host: host || false,
     hmr: host
       ? {
-          protocol: 'ws',
+          protocol: "ws",
           host,
           port: 1421,
         }
       : undefined,
     watch: {
       // 3. tell Vite to ignore watching some files
-      ignored: ['**/src-tauri/**', '**/.venv/**', '**/target/**', '**/data/**'],
+      ignored: ["**/src-tauri/**", "**/.venv/**", "**/target/**", "**/data/**"],
     },
   },
 
   // 依赖优化配置
   optimizeDeps: {
-    exclude: ['src-tauri/*'],
-    entries: [
-      'src/*'
-    ],
+    exclude: ["src-tauri/*"],
+    entries: ["src/*"],
   },
-}))
+}));

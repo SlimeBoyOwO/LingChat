@@ -88,8 +88,8 @@ pub async fn check_resource_sync() -> Result<ResourceSyncInfo, String> {
         });
     }
 
-    let official_manifest =
-        DataManifest::load(&official_manifest_path).map_err(|e| format!("读取官方清单失败: {e}"))?;
+    let official_manifest = DataManifest::load(&official_manifest_path)
+        .map_err(|e| format!("读取官方清单失败: {e}"))?;
 
     let local_manifest = if local_manifest_path.exists() {
         DataManifest::load(&local_manifest_path).unwrap_or(DataManifest {
@@ -186,10 +186,7 @@ pub async fn apply_resource_sync(
 ) -> Result<ResourceSyncResult, String> {
     // 防止并发
     {
-        let mut locked = state
-            .syncing
-            .lock()
-            .map_err(|e| format!("锁失败: {e}"))?;
+        let mut locked = state.syncing.lock().map_err(|e| format!("锁失败: {e}"))?;
         if *locked {
             return Err("已有同步进行中".to_string());
         }

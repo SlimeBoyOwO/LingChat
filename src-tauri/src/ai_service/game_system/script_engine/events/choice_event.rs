@@ -1,15 +1,15 @@
 //! 选项事件 —— 向用户展示分支选项，等待选择后，
 //! 对匹配的选项求值条件并执行其动作。
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    evaluate_condition, parse_duration, register_event, ScriptContext, ScriptEvent,
+    ScriptContext, ScriptEvent, evaluate_condition, parse_duration, register_event,
 };
 use crate::ai_service::game_system::script_engine::responses::{
-    event_names::SCRIPT_CHOICE, ChoiceItem, ChoicePayload,
+    ChoiceItem, ChoicePayload, event_names::SCRIPT_CHOICE,
 };
 use crate::ai_service::game_system::script_engine::utils::script_function;
 use crate::ai_service::message_system::events::emit;
