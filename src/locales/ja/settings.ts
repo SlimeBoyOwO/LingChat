@@ -681,6 +681,11 @@ export default {
       title: '音声効果音スイッチ',
       desc: 'VITSなし時の会話効果音を有効にする',
     },
+    autostart: {
+      title: '自動起動',
+      desc: 'ログイン時に LingChat を自動で起動します（デスクトップのみ）',
+      toggleFailed: '自動起動の切り替えに失敗しました',
+    },
     engineDownload: {
       title: '音声推論エンジンのダウンロード（SBV2）',
       cpuHint: 'CPU推論にはSBV2-APIを使用します。settings.yml で sbv2 を sbv2api に変更してください。キャラクター設定も変更できます',
@@ -814,6 +819,19 @@ export default {
       confirmDelete: '本当に環境音《{name}》を削除しますか？',
       deleteFailed: '環境音の削除に失敗しました',
       uploadFailed: '一部または全部の環境音のアップロードに失敗しました',
+    },
+    chatSound: {
+      title: 'チャット効果音（タイピング音）',
+      importedFiles: 'インポート済み効果音',
+      fileCount: '{count} 件',
+      empty: 'カスタム効果音はまだありません。タイピングには内蔵音が使われます',
+      hint: 'AI のテキストが一文字ずつ表示されるときの話し声をカスタマイズできます。複数追加するとランダムに再生されます（Deltarune のキャラボイスのような感じ）。全て削除すると内蔵音に戻ります',
+      play: '試聴',
+      add: '効果音を追加',
+      selectFilesFirst: '先に効果音ファイルを選択してください',
+      confirmDelete: '本当に効果音《{name}》を削除しますか？',
+      deleteFailed: 'チャット効果音の削除に失敗しました',
+      uploadFailed: '一部または全部の効果音のアップロードに失敗しました',
     },
     common: {
       delete: '削除',

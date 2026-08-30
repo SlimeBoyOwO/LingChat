@@ -13,6 +13,10 @@ export default {
     uploadFailed: '环境音上传失败',
     deleteFailed: '环境音删除失败',
   },
+  chatSound: {
+    uploadFailed: '聊天音效上传失败',
+    deleteFailed: '聊天音效删除失败',
+  },
   character: {
     getListFailed: '获取角色列表失败',
     selectFailed: '角色选择失败',

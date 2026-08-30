@@ -13,6 +13,10 @@ export default {
     uploadFailed: '環境音のアップロードに失敗しました',
     deleteFailed: '環境音の削除に失敗しました',
   },
+  chatSound: {
+    uploadFailed: 'チャット効果音のアップロードに失敗しました',
+    deleteFailed: 'チャット効果音の削除に失敗しました',
+  },
   character: {
     getListFailed: 'キャラクター一覧の取得に失敗しました',
     selectFailed: 'キャラクターの選択に失敗しました',

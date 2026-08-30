@@ -683,6 +683,11 @@ export default {
       title: "Voice Sound Effects",
       desc: "Enable dialogue sound effects when no VITS voice is available",
     },
+    autostart: {
+      title: "Launch at Startup",
+      desc: "Automatically start LingChat after login (desktop only)",
+      toggleFailed: "Failed to toggle launch at startup",
+    },
     engineDownload: {
       title: "Voice Inference Engine Download (SBV2)",
       cpuHint: "CPU inference uses SBV2-API. You need to change sbv2 to sbv2api in settings.yml; it can also be changed in the character settings",
@@ -816,6 +821,19 @@ export default {
       confirmDelete: "Are you sure you want to delete the ambient sound \"{name}\"?",
       deleteFailed: "Failed to delete ambient sound",
       uploadFailed: "Some or all ambient sounds failed to upload",
+    },
+    chatSound: {
+      title: "Chat Sound (Typing Voice)",
+      importedFiles: "Imported Sounds",
+      fileCount: "{count}",
+      empty: "No custom sounds yet — the built-in sound is used while typing",
+      hint: "Customize the per-character voice beeps played while the AI text types out. Multiple sounds are played at random (like Deltarune character voices); clear the list to restore the built-in sound",
+      play: "Preview",
+      add: "Add Sound",
+      selectFilesFirst: "Please select sound files first",
+      confirmDelete: "Are you sure you want to delete the sound \"{name}\"?",
+      deleteFailed: "Failed to delete chat sound",
+      uploadFailed: "Some or all sounds failed to upload",
     },
     common: {
       delete: "Delete",

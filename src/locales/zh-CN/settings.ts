@@ -682,6 +682,11 @@ export default {
       title: '语音音效开关',
       desc: '启用无vits时的对话音效',
     },
+    autostart: {
+      title: '开机自启动',
+      desc: '开机登录后自动启动 LingChat（桌面端可用）',
+      toggleFailed: '切换开机自启动失败',
+    },
     engineDownload: {
       title: '语音推理引擎下载（SBV2）',
       cpuHint: 'CPU 推理使用的是 SBV2-API，需要在 settings.yml 中把 sbv2 换成 sbv2api，人物设定也能改',
@@ -815,6 +820,19 @@ export default {
       confirmDelete: '确定要删除环境音《{name}》吗？',
       deleteFailed: '删除环境音失败',
       uploadFailed: '部分或全部环境音上传失败',
+    },
+    chatSound: {
+      title: '聊天音效（打字声）',
+      importedFiles: '已导入音效',
+      fileCount: '{count} 个',
+      empty: '暂无自定义音效，打字时使用内置音效',
+      hint: '自定义 AI 打字时逐字播放的说话音效；添加多个音效后将随机播放（类似 Deltarune 的角色说话声），清空后恢复内置音效',
+      play: '试听',
+      add: '添加音效',
+      selectFilesFirst: '请先选择音效文件',
+      confirmDelete: '确定要删除音效《{name}》吗？',
+      deleteFailed: '删除聊天音效失败',
+      uploadFailed: '部分或全部音效上传失败',
     },
     common: {
       delete: '删除',

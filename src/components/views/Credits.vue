@@ -102,7 +102,7 @@
               <div
                 v-for="(item, i) in section.items"
                 :key="i"
-                class="grid grid-cols-2 w-55 items-center"
+                class="grid grid-cols-2 min-w-55 items-center"
               >
                 <p class="text-[1.5em] leading-[1.8] font-light text-right pr-4 whitespace-nowrap">
                   {{ item.name }}
@@ -124,8 +124,9 @@
             <h2 class="text-[2.2em] text-[#00e5ff] font-light mb-2">{{ sectionTitle(section) }}</h2>
             <p class="text-[1em] text-white opacity-60 mb-6.25">{{ sectionSubtitle(section) }}</p>
             <div class="grid grid-cols-4 gap-y-6 gap-x-8 w-[80%] max-w-200 justify-items-center">
-              <div v-for="(item, i) in section.items" :key="i">
-                <p class="text-[1.5em] leading-[1.8] font-light whitespace-nowrap overflow-visible">
+              <div v-for="(item, i) in section.items" :key="i" class="max-w-full">
+                <!-- 允许长名换行（break-words），避免 nowrap 溢出列宽与相邻名字重叠 -->
+                <p class="text-[1.5em] leading-[1.8] font-light text-center break-words">
                   {{ item.name }}
                 </p>
               </div>

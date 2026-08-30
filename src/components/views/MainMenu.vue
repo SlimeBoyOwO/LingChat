@@ -28,18 +28,22 @@
 
     <!-- 人物图层（位于星星之上，菜单之下） -->
     <img
-      class="character-image"
+      class="character-image select-none"
       ref="charRef"
       src="../../assets/images/alona.png"
-      :alt="$t('views.mainMenu.characterAlt')" 
+      :alt="$t('views.mainMenu.characterAlt')"
+      draggable="false"
+      @contextmenu.prevent
     />
 
     <!-- 菜单容器，绑定鼠标移动和移出事件实现视差 -->
     <StartPage
       v-if="currentPage === 'mainMenu'"
       ref="containerRef"
+      class="select-none"
       @mousemove="handleMouseMove"
       @mouseleave="handleMouseLeave"
+      @contextmenu.prevent
     >
       <!-- 主菜单 -->
       <Transition name="slide-left">

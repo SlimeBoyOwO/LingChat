@@ -235,7 +235,12 @@ pub fn run() {
     #[cfg(desktop)]
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init());
+        .plugin(tauri_plugin_process::init())
+        // 开机自启动（issue #704）：macOS 用 LaunchAgent 方式注册
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ));
 
     builder
         .setup(|app| {
@@ -591,6 +596,9 @@ pub fn run() {
             api::ambient::upload_ambient,
             api::ambient::delete_ambient,
             api::ambient::save_ambient_state,
+            api::chat_sound::get_chat_sound_list,
+            api::chat_sound::upload_chat_sound,
+            api::chat_sound::delete_chat_sound,
             api::asset::get_asset_base64,
             api::asset::get_voice_audio,
             api::game::init_game,

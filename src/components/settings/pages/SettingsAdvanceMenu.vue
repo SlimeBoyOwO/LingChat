@@ -1,7 +1,7 @@
 <template>
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 p-2">
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 p-2 items-stretch">
     <!-- 大模型管理 -->
-    <div class="cursor-pointer transition-all duration-300" @click="emit('navigate', 'llm')">
+    <div class="cursor-pointer transition-all duration-300 h-full" @click="emit('navigate', 'llm')">
       <MenuItem :title="$t('advance.menu.llmTitle')" size="large">
         <template #header>
           <Cpu :size="20" />
@@ -9,14 +9,14 @@
         <p class="text-white/50 text-sm leading-relaxed mb-3">
           {{ $t('advance.menu.llmDesc') }}
         </p>
-        <Button type="big" icon="advance" :icon_size="18">
+        <Button type="big" icon="advance" :icon_size="18" class="mt-auto">
           {{ $t('advance.menu.llmButton') }}
         </Button>
       </MenuItem>
     </div>
 
     <!-- 本地 TTS -->
-    <div class="cursor-pointer transition-all duration-300" @click="emit('navigate', 'tts')">
+    <div class="cursor-pointer transition-all duration-300 h-full" @click="emit('navigate', 'tts')">
       <MenuItem :title="$t('advance.menu.ttsTitle')" size="large">
         <template #header>
           <AudioLines :size="20" />
@@ -24,12 +24,12 @@
         <p class="text-white/50 text-sm leading-relaxed mb-3">
           {{ $t('advance.menu.ttsDesc') }}
         </p>
-        <Button type="big" icon="mic" :icon_size="18"> {{ $t('advance.menu.ttsButton') }} </Button>
+        <Button type="big" icon="mic" :icon_size="18" class="mt-auto"> {{ $t('advance.menu.ttsButton') }} </Button>
       </MenuItem>
     </div>
 
     <!-- 其他高级设置 -->
-    <div class="cursor-pointer transition-all duration-300" @click="emit('navigate', 'other')">
+    <div class="cursor-pointer transition-all duration-300 h-full" @click="emit('navigate', 'other')">
       <MenuItem :title="$t('advance.menu.otherTitle')" size="large">
         <template #header>
           <SlidersHorizontal :size="20" />
@@ -37,14 +37,14 @@
         <p class="text-white/50 text-sm leading-relaxed mb-3">
           {{ $t('advance.menu.otherDesc') }}
         </p>
-        <Button type="big" icon="setting" :icon_size="18">
+        <Button type="big" icon="setting" :icon_size="18" class="mt-auto">
           {{ $t('advance.menu.otherButton') }}
         </Button>
       </MenuItem>
     </div>
 
     <!-- 工具配置 -->
-    <div class="cursor-pointer transition-all duration-300" @click="emit('navigate', 'tools')">
+    <div class="cursor-pointer transition-all duration-300 h-full" @click="emit('navigate', 'tools')">
       <MenuItem :title="$t('advance.menu.toolsTitle')" size="large">
         <template #header>
           <Wrench :size="20" />
@@ -52,14 +52,14 @@
         <p class="text-white/50 text-sm leading-relaxed mb-3">
           {{ $t('advance.menu.toolsDesc') }}
         </p>
-        <Button type="big" icon="setting" :icon_size="18">
+        <Button type="big" icon="setting" :icon_size="18" class="mt-auto">
           {{ $t('advance.menu.toolsButton') }}
         </Button>
       </MenuItem>
     </div>
 
     <!-- 界面语言 -->
-    <div class="transition-all duration-300">
+    <div class="transition-all duration-300 h-full">
       <MenuItem :title="$t('advance.menu.languageTitle')" size="large">
         <template #header>
           <Languages :size="20" />
@@ -69,7 +69,7 @@
         </p>
         <select
           :value="locale"
-          class="w-full cursor-pointer rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 transition-all duration-200 hover:border-white/30 hover:text-white focus:border-[rgba(121,217,255,0.6)] focus:outline-none"
+          class="mt-auto w-full cursor-pointer rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 transition-all duration-200 hover:border-white/30 hover:text-white focus:border-[rgba(121,217,255,0.6)] focus:outline-none"
           @change="setLocale(($event.target as HTMLSelectElement).value as AppLocale)"
         >
           <option
@@ -99,3 +99,21 @@ const emit = defineEmits<{
   navigate: [tab: 'llm' | 'tts' | 'other' | 'tools']
 }>()
 </script>
+
+<style scoped>
+/* 同一行卡片等高：MenuItem 撑满外层、内容纵向排布，
+   配合按钮上的 mt-auto 让各卡片按钮统一贴底对齐（issue #707 图 12） */
+:deep(.menu-item) {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+:deep(.menu-item > .content) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+</style>
+

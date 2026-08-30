@@ -52,14 +52,18 @@
   }
 }
 
-/* 滚动条样式 */
+/* 滚动条样式（轨道透明，避免深色轨道在圆角面板边缘露出黑色直角区域，issue #707 图 30） */
 ::-webkit-scrollbar {
   width: 8px; /* 垂直滚动条宽度 */
   height: 8px; /* 水平滚动条高度 */
 }
 
 ::-webkit-scrollbar-track {
-  background: #1e293b;
+  background: transparent;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
