@@ -17,3 +17,10 @@ export function isWindows(): boolean {
   if (typeof navigator === 'undefined') return false
   return /windows/i.test(navigator.userAgent)
 }
+
+/** 是否 macOS 桌面端（WebKit/WKWebView UA 含 "Macintosh"，且不含移动端指纹）。
+ *  用于 macOS 无边框标题栏（Overlay）下的拖拽区/内边距适配。 */
+export function isMacOS(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return /macintosh|mac OS/i.test(navigator.userAgent)
+}

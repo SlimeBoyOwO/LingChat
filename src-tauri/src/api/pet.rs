@@ -110,9 +110,28 @@ pub async fn set_pet_mode(
             let _ = window.set_always_on_top(false);
             let _ = window.set_resizable(true);
             let _ = window.set_decorations(true);
+            // macOS：`set_decorations(true)` 会异步地把 style mask 重建为
+            // `Closable|Miniaturizable|Resizable|Titled`（丢失 FullSizeContentView），
+            // 导致窗口变回「有标题栏 + 直角角」、红绿灯被挤出画面。
+            // 该 mask 更新走主线程 GCD 异步队列，而 `set_title_bar_style` 是同步读
+            // 当前 mask 再叠加——若马上执行会读到未更新的态，两种情况都会出错。
+            // 这里先让异步 mask 落地（短暂等待），再重新断言 Overlay 标题栏样式
+            // （重设 titlebar 透明 + FullSizeContentView，窗口恢复圆角），最后再
+            // re-assert 一次放在 resize 之后，确保最终掩码不被 resize 打乱。
+            #[cfg(target_os = "macos")]
+            {
+                // 等待 set_decorations 的异步 mask 真正应用到窗口
+                tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+                let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
+            }
             let _ = window.set_size(LogicalSize::new(1500, 800));
             // Center the window on screen so it doesn't expand from the pet's top-left corner
             let _ = window.center();
+            #[cfg(target_os = "macos")]
+            {
+                // resize/center 后再次断言，避免期间把 FullSizeContentView 丢掉
+                let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
+            }
             // Always restore cursor ignore to false
             let _ = window.set_ignore_cursor_events(false);
         }
