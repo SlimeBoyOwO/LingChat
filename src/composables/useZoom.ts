@@ -54,11 +54,21 @@ function toPercent(level: number): string {
   return `${Math.round(level * 100)}%`
 }
 
-/** 应用缩放到 DOM */
+/**
+ * 应用缩放到 DOM。
+ *
+ * 关键：CSS zoom 会连盒子的渲染尺寸一起缩放。#app 是 100vw×100vh，
+ * 若只设 zoom，缩放 <100% 时渲染区域小于窗口（透明窗口会露出桌面），
+ * >100% 时溢出窗口（边缘元素被裁掉，如主菜单的"退出游戏"）。
+ * 因此同时按 zoom 反向放大盒子尺寸（100vw/Z × Z = 100vw），
+ * 保证任意缩放级别下 UI 都恰好铺满整个窗口。
+ */
 function applyZoom(level: number): void {
   const app = document.getElementById('app')
   if (app) {
     app.style.zoom = level.toString()
+    app.style.width = `calc(100vw / ${level})`
+    app.style.height = `calc(100vh / ${level})`
   }
 }
 

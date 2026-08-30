@@ -2,6 +2,7 @@
   <img
     src="../../../../assets/images/LingChatLogo.png"
     alt="LingChatLogo"
+    draggable="false"
     class="absolute
       top-0
       drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)]
