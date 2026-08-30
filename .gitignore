@@ -201,3 +201,4 @@ src-tauri/gen/android/app/build/*
 *.tar.bz2
 *.bak
 local.properties
+a.tar
