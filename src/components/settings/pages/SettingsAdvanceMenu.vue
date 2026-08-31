@@ -79,6 +79,24 @@
       </MenuItem>
     </div>
 
+    <!-- 投屏设置 -->
+    <div
+      class="h-full cursor-pointer transition-all duration-300"
+      @click="emit('navigate', 'cast')"
+    >
+      <MenuItem :title="$t('advance.menu.castTitle')" size="large">
+        <template #header>
+          <Cast :size="20" />
+        </template>
+        <p class="mb-3 min-h-[68px] text-sm leading-relaxed text-white/50">
+          {{ $t("advance.menu.castDesc") }}
+        </p>
+        <Button type="big" icon="advance" :icon_size="18">
+          {{ $t("advance.menu.castButton") }}
+        </Button>
+      </MenuItem>
+    </div>
+
     <!-- 界面语言 -->
     <div class="h-full transition-all duration-300">
       <MenuItem :title="$t('advance.menu.languageTitle')" size="large">
@@ -128,6 +146,7 @@
   import {
     AudioLines,
     BookOpen,
+    Cast,
     Cpu,
     Mic,
     SlidersHorizontal,
@@ -143,7 +162,7 @@
   const { locale } = useI18n();
 
   const emit = defineEmits<{
-    navigate: [tab: "llm" | "tts" | "asr" | "other" | "tools"];
+    navigate: [tab: "llm" | "tts" | "asr" | "other" | "tools" | "cast"];
   }>();
 
   // 内置 TTS 官方教程（LingBlog）

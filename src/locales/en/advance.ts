@@ -7,6 +7,7 @@ export default {
     other: "Other Advanced Settings",
     tts: "TTS Settings",
     asr: "Speech Recognition",
+    cast: "Cast Settings",
   },
   menu: {
     llmTitle: "LLM Management",
@@ -33,5 +34,9 @@ export default {
     guideDesc:
       "View the built-in TTS tutorial (downloading models, importing voices, switching devices, etc.)",
     guideButton: "Open guide",
+    castTitle: "Cast Settings",
+    castDesc:
+      "Stream the game scene to LAN devices — configure the port, resolution, and picture tuning",
+    castButton: "Open Cast Settings",
   },
 };

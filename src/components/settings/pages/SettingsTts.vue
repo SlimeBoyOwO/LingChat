@@ -1,5 +1,8 @@
 <template>
-  <MenuPage>
+  <div
+    class="flex h-full min-h-0 w-full flex-wrap items-start gap-5 overflow-y-auto px-3 py-6
+      text-white text-shadow-2xs"
+  >
     <MenuItem :title="t('settings.tts.title')" size="large">
       <template #header>
         <AudioLines :size="20" class="text-cyan-300" />
@@ -742,7 +745,7 @@
         </section>
       </div>
     </MenuItem>
-  </MenuPage>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -770,7 +773,7 @@
     Volume2,
     Wand2,
   } from "lucide-vue-next";
-  import { MenuItem, MenuPage } from "@/components/ui";
+  import { MenuItem } from "@/components/ui";
   import { useDialogStore } from "@/stores/modules/ui/dialog";
   import { useUIStore } from "@/stores/modules/ui/ui";
   import * as TtsLocal from "@/api/services/tts/tts-local";

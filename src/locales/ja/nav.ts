@@ -10,5 +10,4 @@ export default {
   advance: "詳細設定",
   log: "ログ",
   plugins: "プラグイン",
-  cast: "投写",
 };

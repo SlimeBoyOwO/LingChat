@@ -6,6 +6,7 @@ export default {
     other: "その他の詳細設定",
     tts: "TTS 設定",
     asr: "音声認識",
+    cast: "投写設定",
   },
   menu: {
     llmTitle: "モデル管理",
@@ -31,5 +32,8 @@ export default {
     guideDesc:
       "内蔵 TTS の使い方（モデルのダウンロード、音声のインポート、デバイス切り替えなど）を確認",
     guideButton: "チュートリアルを開く",
+    castTitle: "投写設定",
+    castDesc: "ゲーム画面を LAN デバイスへ配信。ポート、解像度、画面の調整を設定します",
+    castButton: "投写設定画面へ",
   },
 };
