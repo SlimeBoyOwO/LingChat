@@ -7,6 +7,8 @@
     class="relative flex h-(--app-height) w-(--app-width) flex-col items-center justify-start
       overflow-hidden bg-transparent transition-none select-none"
   >
+    <!-- 隐藏番茄钟实例：保持计时与 AI 提醒跨路由持续运行 -->
+    <PomodoroPanel v-show="false" />
     <!-- DialogueBox 区域 -->
     <div
       class="flex w-full shrink-0 flex-col justify-end bg-transparent transition-none"
@@ -69,6 +71,7 @@
   import DragArea from "../pet/DragArea.vue";
   import GameRolesStage from "../pet/GameRolesStage.vue";
   import PetNotification from "../pet/PetNotification.vue";
+  import PomodoroPanel from "@/components/pomodoro/PomodoroPanel.vue";
   import { BASE_AVATAR_SIZE, CHAT_BASE_H, DIALOG_MAX_BASE } from "../pet/constants";
 
   const { t } = useI18n();
