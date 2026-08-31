@@ -433,11 +433,10 @@ import {
 import { ambientGetAll, ambientUpload, ambientDelete, type AmbientItem } from '../../../api/services/ambient'
 import {
   chatSoundDelete,
-  chatSoundGetAll,
   chatSoundUpload,
   type ChatSoundItem,
 } from '../../../api/services/chatSound'
-import { refreshChatSounds } from '../../../utils/chatSoundLibrary'
+import { getChatSoundItems, refreshChatSounds } from '../../../utils/chatSoundLibrary'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
@@ -769,14 +768,9 @@ const chatSoundTestPlayer = ref<HTMLAudioElement | null>(null)
 
 // 从服务端加载聊天音效列表并同步 TypeWriter 音效库
 const loadChatSoundList = async () => {
-  try {
-    chatSoundFileList.value = await chatSoundGetAll()
-  } catch (e) {
-    console.error('加载聊天音效列表失败:', e)
-  } finally {
-    // 无论成功与否都刷新音效库缓存（失败时回退内置音效）
-    refreshChatSounds().catch(() => {})
-  }
+  // 音效库统一拉取并缓存（唯一的列表查询入口），页面直接消费缓存
+  await refreshChatSounds()
+  chatSoundFileList.value = getChatSoundItems()
 }
 
 // 试听聊天音效
@@ -791,6 +785,7 @@ const playChatSound = (sound: ChatSoundItem) => {
 const triggerChatSoundUpload = async () => {
   const selected = await openDialog({
     multiple: true,
+    // 与后端 chat_sound.rs 的 allowed_extensions 保持一致
     filters: [{ name: 'ChatSound', extensions: ['mp3', 'wav', 'flac', 'ogg', 'm4a'] }],
   })
   if (!selected) return

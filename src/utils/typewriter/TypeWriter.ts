@@ -1,6 +1,7 @@
 import { useUIStore } from '../../stores/modules/ui/ui'
 import {
   BUILTIN_CHAT_SOUND_URLS,
+  decodeChatSound,
   ensureChatSoundsLoaded,
   getChatSoundUrls,
   getChatSoundVersion,
@@ -72,21 +73,6 @@ export class TypeWriter {
     }
   }
 
-  /** 解码一组音源 URL；单个失败不影响其余音效（如用户上传了损坏文件） */
-  private async decodeUrls(urls: string[]): Promise<AudioBuffer[]> {
-    if (!this.audioContext) return []
-    const results = await Promise.allSettled(
-      urls.map(async (url) => {
-        const response = await fetch(url)
-        const arrayBuffer = await response.arrayBuffer()
-        return this.audioContext!.decodeAudioData(arrayBuffer)
-      }),
-    )
-    return results
-      .filter((r): r is PromiseFulfilledResult<AudioBuffer> => r.status === 'fulfilled')
-      .map((r) => r.value)
-  }
-
   private async loadSounds(): Promise<void> {
     if (!this.audioContext) return
 
@@ -94,11 +80,27 @@ export class TypeWriter {
     this.loadedSoundVersion = getChatSoundVersion()
 
     const urls = this.explicitSoundUrls ?? getChatSoundUrls()
-    this.soundBuffers = await this.decodeUrls(urls)
+    // 串行渐进解码（解码缓存全局共享，见 chatSoundLibrary）：
+    // - 首个音效解码完成即可开始播放，大音效库下不会在第一句话集中解码
+    // - 主聊天/桌宠实例复用同一份解码结果，常驻内存不随实例数增长
+    // - 单个失败（如损坏文件）跳过，不影响其余音效
+    const buffers: AudioBuffer[] = []
+    this.soundBuffers = buffers
+    for (const url of urls) {
+      const buffer = await decodeChatSound(this.audioContext, url)
+      if (buffer) buffers.push(buffer)
+      // 加载期间音效库发生变化（上传/删除）时中止本轮，下一轮 start() 重新加载
+      if (this.explicitSoundUrls === null && this.loadedSoundVersion !== getChatSoundVersion()) {
+        return
+      }
+    }
 
     // 自定义音效全部解码失败时回退内置音效，保证打字音效不会意外静音
-    if (this.soundBuffers.length === 0) {
-      this.soundBuffers = await this.decodeUrls(BUILTIN_CHAT_SOUND_URLS)
+    if (buffers.length === 0) {
+      for (const url of BUILTIN_CHAT_SOUND_URLS) {
+        const buffer = await decodeChatSound(this.audioContext, url)
+        if (buffer) buffers.push(buffer)
+      }
     }
     if (this.soundBuffers.length === 0) {
       console.warn('音效加载失败: 未获得任何可用音源')

@@ -26,7 +26,9 @@ pub fn get_chat_sound_list() -> Result<Vec<ChatSoundItemInfo>, String> {
         return Ok(Vec::new());
     }
 
-    let allowed_extensions = ["mp3", "wav", "flac", "webm", "weba", "ogg", "m4a", "oga"];
+    // 与前端对话框过滤列表保持一致（SettingsSound.vue triggerChatSoundUpload），
+    // 双端白名单漂移会导致选不中的文件悄悄出现在列表里（或反之）
+    let allowed_extensions = ["mp3", "wav", "flac", "ogg", "m4a"];
 
     let mut items: Vec<ChatSoundItemInfo> = Vec::new();
 
