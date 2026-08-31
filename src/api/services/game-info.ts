@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Live2dSettings } from "@/types/live2d";
 import type { SceneInfo } from "./scene";
+import type { SpokenMetadata } from "@/types/script";
 
 // 1. 定义角色配置接口 (原先摊平的字段现在归属到这里)
 export interface CharacterSettings {
@@ -28,8 +29,7 @@ export interface CharacterSettings {
 /// 前端用台词条目（对应 Rust GameLineInit）
 export interface GenerateLineVoiceResult {
   fileName: string;
-  spokenContent: string;
-  spokenLanguage: string;
+  spoken: SpokenMetadata;
 }
 
 export interface GameLineInit {
@@ -48,10 +48,8 @@ export interface GameLineInit {
   thinking: string | null;
   /** 该台词的第二语言/目标语言文本（历史字段） */
   tts_content: string | null;
-  /** 按有效 voice_lang 选定的 TTS 输入文本；旧存档行为 null */
-  spoken_content: string | null;
-  /** 生成 spoken_content 时的有效 TTS 语言 */
-  spoken_language: string | null;
+  /** 可扩展的朗读元数据；当前键为 content / language */
+  spoken: SpokenMetadata;
 }
 
 // 2. 定义完整的初始化数据接口 (对应 Rust WebInitData)

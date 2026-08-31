@@ -56,6 +56,7 @@
   import { useGameStore } from "@/stores/modules/game";
   import { useSettingsStore } from "@/stores/modules/settings";
   import { useUIStore } from "@/stores/modules/ui/ui";
+  import type { SpokenMetadata } from "@/types/script";
   import { invoke } from "@tauri-apps/api/core";
   import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -160,15 +161,13 @@
     dialogHistoryLineUnlisten = await appWindow.listen<{
       absIndex: number;
       audioFile: string;
-      spokenText: string;
-      spokenLanguage: string;
+      spoken: SpokenMetadata;
     }>("dialog-history-line-updated", (event) => {
-      const { absIndex, audioFile, spokenText, spokenLanguage } = event.payload;
+      const { absIndex, audioFile, spoken } = event.payload;
       const msg = gameStore.dialogHistory[absIndex];
       if (!msg) return;
       msg.audioFile = audioFile;
-      msg.spokenText = spokenText;
-      msg.spokenLanguage = spokenLanguage;
+      msg.spoken = spoken;
     });
 
     // 设置透明背景的 body 属性样式（额外防护）

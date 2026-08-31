@@ -282,8 +282,7 @@ export function convertInitLines(lines: GameLineInit[]): GameMessage[] {
       userMessageSeq: line.user_message_seq ?? undefined,
       thinking: line.thinking || undefined,
       ttsText: line.tts_content || undefined,
-      spokenText: line.spoken_content || undefined,
-      spokenLanguage: line.spoken_language || undefined,
+      spoken: Object.keys(line.spoken).length > 0 ? line.spoken : undefined,
       senderRoleId: line.sender_role_id,
     };
   });

@@ -45,11 +45,7 @@ impl MigrationTrait for Migration {
                 .alter_table(
                     Table::alter()
                         .table(Line::Table)
-                        .add_column(
-                            ColumnDef::new(Line::SpokenLanguage)
-                                .string_len(32)
-                                .null(),
-                        )
+                        .add_column(ColumnDef::new(Line::SpokenLanguage).string_len(32).null())
                         .to_owned(),
                 )
                 .await?;

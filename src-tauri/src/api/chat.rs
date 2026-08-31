@@ -12,7 +12,9 @@ use crate::ai_service::message_system::generator::{
 use crate::ai_service::message_system::processor::EmotionSegment;
 use crate::ai_service::tts::local::LocalTtsState;
 use crate::ai_service::tts::voice_maker::{lang_prefers_translation, segment_text_for_lang};
-use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase};
+use crate::ai_service::types::{
+    GameLine, LineAttributeExt, LineBase, SPOKEN_LANGUAGE_KEY, SpokenMetadata, spoken_metadata,
+};
 use crate::api::game::{GameLineInit, compute_user_message_seqs};
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
@@ -321,8 +323,7 @@ pub async fn rollback_conversation(
             user_message_seq: seq,
             thinking: gl.base.thinking.clone(),
             tts_content: gl.base.tts_content.clone(),
-            spoken_content: gl.base.spoken_content.clone(),
-            spoken_language: gl.base.spoken_language.clone(),
+            spoken: gl.base.spoken.clone(),
         })
         .collect();
 
@@ -383,8 +384,7 @@ fn find_tts_line_index(line_list: &[GameLine], line_seq: u32) -> Option<usize> {
 #[serde(rename_all = "camelCase")]
 pub struct GenerateLineVoiceResponse {
     pub file_name: String,
-    pub spoken_content: String,
-    pub spoken_language: String,
+    pub spoken: SpokenMetadata,
 }
 
 #[tauri::command]
@@ -456,7 +456,11 @@ pub async fn generate_line_voice(
             .tts_content
             .clone()
             .unwrap_or_default();
-        let stored_spoken_language = gs.line_list[idx].base.spoken_language.clone();
+        let stored_spoken_language = gs.line_list[idx]
+            .base
+            .spoken
+            .get(SPOKEN_LANGUAGE_KEY)
+            .cloned();
         let predicted = gs.line_list[idx]
             .base
             .predicted_emotion
@@ -564,8 +568,8 @@ pub async fn generate_line_voice(
         } else {
             Some(seg.japanese_text.clone())
         };
-        gs.line_list[idx].base.spoken_content = Some(spoken_content.clone());
-        gs.line_list[idx].base.spoken_language = Some(effective_lang.clone());
+        gs.line_list[idx].base.spoken =
+            spoken_metadata(spoken_content.clone(), effective_lang.clone());
 
         // 6. 存在活跃存档时同步到 DB，保证重启后仍可播放
         if let Some(save_id) = gs.active_save_id {
@@ -577,15 +581,14 @@ pub async fn generate_line_voice(
 
     let result = GenerateLineVoiceResponse {
         file_name,
-        spoken_content,
-        spoken_language: effective_lang,
+        spoken: spoken_metadata(spoken_content, effective_lang.clone()),
     };
 
     tracing::info!(
         "补生成语音完成: line_seq={}, file={}, lang={}",
         line_seq,
         result.file_name,
-        result.spoken_language
+        effective_lang
     );
 
     Ok(result)

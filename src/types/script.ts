@@ -1,3 +1,5 @@
+export type SpokenMetadata = Record<string, string>;
+
 export interface ScriptEvent {
   type: string;
   duration: number;
@@ -34,10 +36,8 @@ export interface ScriptDialogueEvent extends ScriptEvent {
   motionText: string;
   /** 第二语言/目标语言文本（历史协议字段） */
   ttsText?: string;
-  /** 按有效 voice_lang 选定的 TTS 输入文本 */
-  spokenText?: string;
-  /** 生成 spokenText 时的有效 TTS 语言 */
-  spokenLanguage?: string;
+  /** 可扩展的朗读元数据；当前键为 content / language */
+  spoken?: SpokenMetadata;
   audioFile?: string;
   originalMessage: string;
   displayName?: string;

@@ -3,10 +3,23 @@ use chrono::Utc;
 use sea_orm::*;
 use std::collections::HashMap;
 
-use crate::ai_service::types::{GameLine, LineAttributeExt};
+use crate::ai_service::types::{GameLine, LineAttributeExt, SpokenMetadata};
 use crate::db::entities::{line, line_perception, memory_bank, running_script, save};
 
 pub struct SaveRepo;
+
+fn decode_spoken(raw: Option<&str>) -> SpokenMetadata {
+    raw.and_then(|value| serde_json::from_str(value).ok())
+        .unwrap_or_default()
+}
+
+fn encode_spoken(spoken: &SpokenMetadata) -> Option<String> {
+    if spoken.is_empty() {
+        None
+    } else {
+        serde_json::to_string(spoken).ok()
+    }
+}
 
 // ========== Save CRUD ==========
 
@@ -247,6 +260,7 @@ impl SaveRepo {
             .into_iter()
             .map(|db_line| {
                 let perceived = perception_map.get(&db_line.id).cloned().unwrap_or_default();
+                let spoken = decode_spoken(db_line.spoken.as_deref());
                 Ok(GameLine {
                     base: crate::ai_service::types::LineBase {
                         id: Some(db_line.id),
@@ -254,8 +268,7 @@ impl SaveRepo {
                         original_emotion: db_line.original_emotion,
                         predicted_emotion: db_line.predicted_emotion,
                         tts_content: db_line.tts_content,
-                        spoken_content: db_line.spoken_content,
-                        spoken_language: db_line.spoken_language,
+                        spoken,
                         action_content: db_line.action_content,
                         thinking: db_line.thinking,
                         audio_file: db_line.audio_file,
@@ -303,8 +316,7 @@ impl SaveRepo {
                         || db_line.sender_role_id != input_line.base.sender_role_id
                         || db_line.thinking != input_line.base.thinking
                         || db_line.tts_content != input_line.base.tts_content
-                        || db_line.spoken_content != input_line.base.spoken_content
-                        || db_line.spoken_language != input_line.base.spoken_language
+                        || decode_spoken(db_line.spoken.as_deref()) != input_line.base.spoken
                         || db_line.audio_file != input_line.base.audio_file
                         || db_line.action_content != input_line.base.action_content
                         || db_line.tool_call != input_line.base.tool_call
@@ -316,8 +328,7 @@ impl SaveRepo {
                         active.original_emotion = Set(input_line.base.original_emotion.clone());
                         active.predicted_emotion = Set(input_line.base.predicted_emotion.clone());
                         active.tts_content = Set(input_line.base.tts_content.clone());
-                        active.spoken_content = Set(input_line.base.spoken_content.clone());
-                        active.spoken_language = Set(input_line.base.spoken_language.clone());
+                        active.spoken = Set(encode_spoken(&input_line.base.spoken));
                         active.action_content = Set(input_line.base.action_content.clone());
                         active.audio_file = Set(input_line.base.audio_file.clone());
                         active.thinking = Set(input_line.base.thinking.clone());
@@ -341,8 +352,7 @@ impl SaveRepo {
                 if db_line.original_emotion != input_line.base.original_emotion
                     || db_line.predicted_emotion != input_line.base.predicted_emotion
                     || db_line.tts_content != input_line.base.tts_content
-                    || db_line.spoken_content != input_line.base.spoken_content
-                    || db_line.spoken_language != input_line.base.spoken_language
+                    || decode_spoken(db_line.spoken.as_deref()) != input_line.base.spoken
                     || db_line.audio_file != input_line.base.audio_file
                     || db_line.thinking != input_line.base.thinking
                     || db_line.display_name != input_line.base.display_name
@@ -351,8 +361,7 @@ impl SaveRepo {
                     active.original_emotion = Set(input_line.base.original_emotion.clone());
                     active.predicted_emotion = Set(input_line.base.predicted_emotion.clone());
                     active.tts_content = Set(input_line.base.tts_content.clone());
-                    active.spoken_content = Set(input_line.base.spoken_content.clone());
-                    active.spoken_language = Set(input_line.base.spoken_language.clone());
+                    active.spoken = Set(encode_spoken(&input_line.base.spoken));
                     active.audio_file = Set(input_line.base.audio_file.clone());
                     active.thinking = Set(input_line.base.thinking.clone());
                     active.display_name = Set(input_line.base.display_name.clone());
@@ -403,8 +412,7 @@ impl SaveRepo {
                     original_emotion: Set(input_line.base.original_emotion.clone()),
                     predicted_emotion: Set(input_line.base.predicted_emotion.clone()),
                     tts_content: Set(input_line.base.tts_content.clone()),
-                    spoken_content: Set(input_line.base.spoken_content.clone()),
-                    spoken_language: Set(input_line.base.spoken_language.clone()),
+                    spoken: Set(encode_spoken(&input_line.base.spoken)),
                     action_content: Set(input_line.base.action_content.clone()),
                     audio_file: Set(input_line.base.audio_file.clone()),
                     thinking: Set(input_line.base.thinking.clone()),

@@ -278,7 +278,7 @@
 
       // 新记录显示按有效 voice_lang 选定的 TTS 文本；旧记录没有语言元数据，
       // 统一回退 canonical content，绝不再由 UI locale 猜测。动作始终保留。
-      const displayText = msg.spokenText || msg.content;
+      const displayText = msg.spoken?.content || msg.content;
       const segments = parseSegments(hkify(displayText), hkify(msg.motionText), isNarration);
 
       const entry: LineEntry = {
@@ -378,8 +378,7 @@
             user_message_seq: l.user_message_seq,
             thinking: l.thinking ?? null,
             tts_content: l.tts_content ?? null,
-            spoken_content: l.spoken_content ?? null,
-            spoken_language: l.spoken_language ?? null,
+            spoken: l.spoken ?? {},
           })
         )
       );
@@ -439,8 +438,7 @@
       const msg = gameStore.dialogHistory[entry.absIndex];
       if (msg) {
         msg.audioFile = result.fileName;
-        msg.spokenText = result.spokenContent;
-        msg.spokenLanguage = result.spokenLanguage;
+        msg.spoken = result.spoken;
       }
       await playAudio(result.fileName);
       suppressAutoScroll = false;

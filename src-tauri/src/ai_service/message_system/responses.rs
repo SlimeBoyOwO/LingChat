@@ -5,6 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::ai_service::types::SpokenMetadata;
+
 // ============================================================
 // 事件名（供 events.rs 使用）
 // ============================================================
@@ -51,12 +53,9 @@ pub struct ReplyResponse {
     pub message: String,
     /// 第二语言/目标语言文本（历史协议字段，供兼容与补生成语音使用）。
     pub tts_text: Option<String>,
-    /// 按有效 voice_lang 选定的 TTS 输入文本；显示层应优先使用它。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub spoken_text: Option<String>,
-    /// 生成该文本时的有效 TTS 语言，供持久化与补生成语音校验。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub spoken_language: Option<String>,
+    /// 可扩展的朗读元数据；当前键为 content / language。
+    #[serde(default, skip_serializing_if = "SpokenMetadata::is_empty")]
+    pub spoken: SpokenMetadata,
     pub motion_text: Option<String>,
     pub audio_file: Option<String>,
     pub original_message: String,
@@ -87,8 +86,7 @@ impl ReplyResponse {
             original_tag: String::new(),
             message: String::new(),
             tts_text: None,
-            spoken_text: None,
-            spoken_language: None,
+            spoken: Default::default(),
             motion_text: None,
             audio_file: None,
             original_message: String::new(),

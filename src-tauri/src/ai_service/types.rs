@@ -149,6 +149,17 @@ impl LlmMessage {
 // 台词基础结构
 // ==========================================
 
+pub type SpokenMetadata = HashMap<String, String>;
+pub const SPOKEN_CONTENT_KEY: &str = "content";
+pub const SPOKEN_LANGUAGE_KEY: &str = "language";
+
+pub fn spoken_metadata(content: String, language: String) -> SpokenMetadata {
+    HashMap::from([
+        (SPOKEN_CONTENT_KEY.to_string(), content),
+        (SPOKEN_LANGUAGE_KEY.to_string(), language),
+    ])
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub struct LineBase {
     pub id: Option<i32>,
@@ -157,10 +168,9 @@ pub struct LineBase {
     pub predicted_emotion: Option<String>,
     /// 第二语言/目标语言文本（历史字段）。
     pub tts_content: Option<String>,
-    /// 按有效 voice_lang 选定的 TTS 输入文本；旧存档没有该字段时为 None。
-    pub spoken_content: Option<String>,
-    /// 生成 spoken_content 时的有效 TTS 语言。
-    pub spoken_language: Option<String>,
+    /// 可扩展的朗读元数据；当前键为 content / language，旧存档为空表。
+    #[serde(default)]
+    pub spoken: SpokenMetadata,
     pub action_content: Option<String>,
     pub audio_file: Option<String>,
     /// 该轮生成的思考链（仅挂在每轮最后一条 assistant 行上）。

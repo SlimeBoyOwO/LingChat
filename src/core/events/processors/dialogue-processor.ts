@@ -27,9 +27,9 @@ export default class DialogueProcessor implements IEventProcessor {
     const displayName = event.displayName ? event.displayName : role.roleName;
     const displaySubtitle = event.displaySubtitle ? event.displaySubtitle : role.roleSubTitle;
 
-    // 后端会明确返回按有效 voice_lang 选定的 spokenText，界面语言不得覆盖它；
+    // 后端会在 spoken 哈希表的 content 键返回实际 TTS 选文，界面语言不得覆盖它；
     // 没有 TTS 选文的旧事件或无语音台词统一显示 canonical message。
-    const displayLine = hkify(event.spokenText || event.message || "");
+    const displayLine = hkify(event.spoken?.content || event.message || "");
     gameStore.currentLine = displayLine;
     uiStore.showCharacterMotionText = event.motionText || "";
 
@@ -45,8 +45,7 @@ export default class DialogueProcessor implements IEventProcessor {
       userMessageSeq: event.userMessageSeq,
       thinking: event.thinking,
       ttsText: event.ttsText,
-      spokenText: event.spokenText,
-      spokenLanguage: event.spokenLanguage,
+      spoken: event.spoken,
       senderRoleId: event.roleId,
     });
 

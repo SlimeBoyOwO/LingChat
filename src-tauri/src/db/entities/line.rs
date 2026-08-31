@@ -25,9 +25,9 @@ pub struct Model {
     pub predicted_emotion: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
     pub tts_content: Option<String>,
+    /// JSON-serialized spoken metadata map (currently content / language).
     #[sea_orm(column_type = "Text", nullable)]
-    pub spoken_content: Option<String>,
-    pub spoken_language: Option<String>,
+    pub spoken: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
     pub action_content: Option<String>,
     pub audio_file: Option<String>,

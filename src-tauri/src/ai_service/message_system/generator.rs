@@ -29,7 +29,7 @@ use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::tools::tool_loop::stream_with_tool_loop;
 use crate::ai_service::translator::Translator;
 use crate::ai_service::tts::voice_maker::segment_text_for_lang;
-use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage};
+use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage, spoken_metadata};
 use crate::api::data_dir;
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
@@ -862,8 +862,7 @@ async fn build_reply_response(
         Some(first.japanese_text.clone())
     };
     if let Some((text, language)) = spoken_output {
-        response.spoken_text = Some(text);
-        response.spoken_language = Some(language);
+        response.spoken = spoken_metadata(text, language);
     }
     response.motion_text = if first.motion_text.is_empty() {
         None
@@ -924,8 +923,7 @@ async fn add_assistant_line(deps: &SentenceDeps, response: &ReplyResponse) -> Re
         original_emotion: Some(response.original_tag.clone()),
         predicted_emotion: Some(response.emotion.clone()),
         tts_content: response.tts_text.clone(),
-        spoken_content: response.spoken_text.clone(),
-        spoken_language: response.spoken_language.clone(),
+        spoken: response.spoken.clone(),
         action_content: response.motion_text.clone(),
         audio_file: response.audio_file.clone(),
         thinking: response.thinking.clone(),
