@@ -4,6 +4,20 @@
     :style="appStyleVars"
     class="relative flex h-(--app-height) w-(--app-width) flex-col items-center overflow-hidden bg-transparent transition-none select-none"
   >
+    <div
+      v-if="!uiStore.petReady"
+      class="absolute inset-0 z-50 flex cursor-move items-center justify-center bg-transparent"
+      @mousedown.left="appWindow.startDragging()"
+    >
+      <div
+        class="flex flex-col items-center gap-2 rounded-2xl border border-white/15 bg-black/50 px-5 py-4 text-white"
+      >
+        <span
+          class="size-6 animate-spin rounded-full border-2 border-white/30 border-t-white"
+        ></span>
+        <span class="text-xs">{{ t("views.petMode.loading") }}</span>
+      </div>
+    </div>
     <DragArea :isDragging="isDragging">
       <div
         ref="avatarContainer"
@@ -358,6 +372,7 @@ const unlisteners: (() => void)[] = [];
 let hitTestInterval: number | undefined;
 
 onMounted(async () => {
+  if (!uiStore.petBooting) uiStore.petReady = true;
   document.body.style.backgroundColor = "transparent";
   document.documentElement.style.backgroundColor = "transparent";
 

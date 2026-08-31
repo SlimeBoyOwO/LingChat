@@ -66,7 +66,8 @@ onUnmounted(() => {
 const scale = computed(() => settingsStore.pet?.scale || 1.0);
 
 // 状态判定与 input 可用性来自共享实现
-const { placeholderState, isInputEnabled } = useDialogStatus();
+const { placeholderState, isInputEnabled: dialogInputEnabled } = useDialogStatus();
+const isInputEnabled = computed(() => dialogInputEnabled.value && uiStore.petReady);
 
 // 占位符：状态判定共享，文案用桌宠自己的词条
 const placeholderText = computed(() => {

@@ -23,6 +23,7 @@ export default {
   },
   petMode: {
     settingsWindowTitle: "設置",
+    loading: "正在準備對話…",
   },
   credits: {
     escExit: "ESC 閃人",
