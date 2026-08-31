@@ -341,12 +341,19 @@ const closeModal = () => {
   border: 1px solid rgba(139, 92, 246, 0.2);
   border-radius: 12px;
   margin-bottom: 20px;
+  gap: 12px;
 }
 
 .sherpa-entry-info {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sherpa-entry-info > div {
+  min-width: 0;
 }
 
 .sherpa-entry-icon {
@@ -416,6 +423,26 @@ const closeModal = () => {
   .modal-content {
     width: 95%;
     margin: 10px;
+  }
+  .modal-body {
+    padding: 16px;
+  }
+  .modal-header {
+    padding: 16px;
+  }
+  .modal-footer {
+    padding: 16px;
+  }
+  .sherpa-entry {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .sherpa-entry .btn-sm {
+    width: 100%;
+    justify-content: center;
+  }
+  .sherpa-entry-desc {
+    white-space: normal;
   }
 }
 </style>

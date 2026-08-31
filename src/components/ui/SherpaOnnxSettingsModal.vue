@@ -454,7 +454,7 @@ const formatSize = (bytes: number): string => {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 1000;
+  z-index: 1100;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -861,6 +861,8 @@ const formatSize = (bytes: number): string => {
   gap: 6px;
   flex-shrink: 0;
   margin-left: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .ref-text-group {
@@ -882,8 +884,13 @@ const formatSize = (bytes: number): string => {
   gap: 8px;
 }
 
+.test-row .btn-primary {
+  flex-shrink: 0;
+}
+
 .test-input {
   flex: 1;
+  min-width: 0;
 }
 
 .test-hint {
@@ -1015,6 +1022,43 @@ const formatSize = (bytes: number): string => {
   }
   .ref-audio-actions {
     margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .ref-audio-actions .btn-secondary {
+    flex: 1;
+    justify-content: center;
+  }
+  .test-row {
+    flex-wrap: wrap;
+  }
+  .test-input {
+    flex: 1 1 100%;
+  }
+  .test-row .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-height: 700px) and (max-width: 520px) {
+  .modal-content {
+    max-height: 92dvh;
+  }
+  .model-list {
+    max-height: 140px;
+  }
+  .modal-header {
+    padding: 14px 16px;
+  }
+  .modal-body {
+    padding: 12px 16px;
+  }
+  .modal-footer {
+    padding: 10px 16px;
+  }
+  .config-section {
+    margin-bottom: 14px;
   }
 }
 </style>

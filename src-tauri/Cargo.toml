@@ -65,7 +65,7 @@ tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "download-binaries"] }
 ndarray = "0.17"
 
-sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["std"] }
+sbv2_core = { git = "https://github.com/shadow01a/sbv2-api/", default-features = false, features = ["std"] }
 once_cell = "1"
 base64 = "0.22"
 rand = "0.8"
@@ -77,6 +77,9 @@ sevenz-rust2 = "0.21"
 sha2 = "0.10"
 tempfile = "3"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+tar = "0.4"
+flate2 = "1"
+bzip2 = "0.5"
 
 # 插件系统：嵌入 RustPython 跑插件 Python 脚本（目前是一个受限沙箱）。
 # 桌面与移动端（Android/iOS）都编译，供安卓自测。
@@ -100,7 +103,9 @@ tauri-plugin-process = "2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["directml"] }
-sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["directml"] }
+# Windows 桌面使用静态链接，避免运行时缺少 DLL
+sherpa-onnx = { version = "=1.13.5", default-features = false, features = ["static"] }
+sbv2_core = { git = "https://github.com/shadow01a/sbv2-api/", default-features = false, features = ["directml"] }
 windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dxgi", "Win32_Security", "Win32_System_Threading"] }
 
 [target.'cfg(any(target_os = "linux", all(target_os = "macos", target_arch = "x86_64")))'.dependencies]
@@ -110,14 +115,19 @@ wgpu = "26"
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["webgpu"] }
-sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["webgpu"] }
+sbv2_core = { git = "https://github.com/shadow01a/sbv2-api/", default-features = false, features = ["webgpu"] }
 ash = { version = "0.38", default-features = false, features = ["loaded"] }
+sherpa-onnx = { version = "=1.13.5", default-features = false, features = ["static"] }
 
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["coreml"] }
-sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["coreml"] }
+sbv2_core = { git = "https://github.com/shadow01a/sbv2-api/", default-features = false, features = ["coreml"] }
+sherpa-onnx = { version = "=1.13.5", default-features = false, features = ["static"] }
 
+# Sherpa-ONNX: Android 只支持 shared 链接（.so），桌面使用 static 链接
+[target.'cfg(target_os = "android")'.dependencies]
+sherpa-onnx = { version = "=1.13.5", default-features = false, features = ["shared"] }
 
 # esaxx-rs 强制静态 CRT (/MT) 会在 Windows 下与 ort 等库冲突（LNK2038/LNK2005）。
 # 仓库已自带 patches/esaxx-rs（唯一改动：build.rs 去掉 .static_crt(true)，
@@ -125,4 +135,4 @@ sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", defau
 # 详见 patches/esaxx-rs/build.rs 的注释。
 [patch.crates-io]
 esaxx-rs = { path = "patches/esaxx-rs" }
-jpreprocess-naist-jdic = { git = "https://gh-proxy.org/github.com/shadow01a/jpreprocess", branch = "main" }
+jpreprocess-naist-jdic = { git = "https://github.com/shadow01a/jpreprocess", branch = "main" }
