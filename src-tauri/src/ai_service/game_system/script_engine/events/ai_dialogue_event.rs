@@ -1,12 +1,13 @@
 //! AI 对话事件 —— 设定角色，并通过 MessageGenerator 生成 AI 回复。
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::Value;
 use tauri::Manager;
 
+use crate::AppState;
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    ScriptContext, ScriptEvent, register_event,
 };
 use crate::ai_service::game_system::script_engine::utils::script_function;
 use crate::ai_service::message_system::generator::{
@@ -15,7 +16,6 @@ use crate::ai_service::message_system::generator::{
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
-use crate::AppState;
 
 pub struct AIDialogueEvent {
     character: String,
@@ -88,7 +88,7 @@ impl ScriptEvent for AIDialogueEvent {
                 return Err(anyhow!(
                     "尚未配置大模型，无法执行「AI 对话」事件，剧本终止。请先在设置里配置并选择模型。"
                 ));
-            }
+            },
         };
 
         let deps = GeneratorDeps {

@@ -1,42 +1,42 @@
 // 繁體中文（香港 · 粵語文體）语言包，由 zh-CN/api.ts（约 90 条） 翻譯維護
 export default {
-  "http": {
-    "requestFailed": "請求失敗",
-    "networkError": "網絡錯誤"
+  http: {
+    requestFailed: "請求失敗",
+    networkError: "網絡錯誤",
   },
-  "events": {
-    "autoSave": {
-      "title": "自動存檔",
-      "message": "已經喺 {time} 自動存咗檔"
-    }
+  events: {
+    autoSave: {
+      title: "自動存檔",
+      message: "已經喺 {time} 自動存咗檔",
+    },
   },
-  "ambient": {
-    "uploadFailed": "環境音上載失敗",
-    "deleteFailed": "環境音刪除失敗"
+  ambient: {
+    uploadFailed: "環境音上載失敗",
+    deleteFailed: "環境音刪除失敗",
   },
-  "character": {
-    "getListFailed": "攞角色列表失敗",
-    "selectFailed": "揀角色失敗",
-    "switchFailed": "轉角色失敗",
-    "getSettingsFailed": "攞角色設定失敗",
-    "updateSettingsFailed": "更新角色設定失敗",
-    "createFailed": "整角色失敗",
-    "selectClothesFailed": "揀衫失敗"
+  character: {
+    getListFailed: "攞角色列表失敗",
+    selectFailed: "揀角色失敗",
+    switchFailed: "轉角色失敗",
+    getSettingsFailed: "攞角色設定失敗",
+    updateSettingsFailed: "更新角色設定失敗",
+    createFailed: "整角色失敗",
+    selectClothesFailed: "揀衫失敗",
   },
-  "cpuPerf": {
-    "tier": {
-      "internet": "上網本",
-      "low": "低效能",
-      "medium": "中效能",
-      "high": "高效能"
-    }
+  cpuPerf: {
+    tier: {
+      internet: "上網本",
+      low: "低效能",
+      medium: "中效能",
+      high: "高效能",
+    },
   },
-  "websocket": {
-    "connectFailed": "連唔到伺服器",
-    "backendNotConnected": "後端服務仲未連接，請開咗後端服務先"
+  websocket: {
+    connectFailed: "連唔到伺服器",
+    backendNotConnected: "後端服務仲未連接，請開咗後端服務先",
   },
-  "easterEggs": {
-    "status": {
+  easterEggs: {
+    status: {
       "0": "校準緊量子貓爪頻率...",
       "1": "TCP 握爪緊，千祈唔好放手~",
       "2": "心靈連結建立緊，唔該耐心等吓...",
@@ -48,10 +48,10 @@ export default {
       "8": "喵喵喵，就嚟搞掂啦~",
       "9": "連接緊喵星伺服器...",
       "10": "激光筆定位校準搞掂！",
-      "11": "偵測到大量可愛粒子，收集緊..."
+      "11": "偵測到大量可愛粒子，收集緊...",
     },
-    "tips": {
-      "game": {
+    tips: {
+      game: {
         "0": "歡迎使用 LingChat 終端機 (*^▽^*)",
         "1": "LingChat 努力載入緊... 等一陣先啦",
         "2": "望進度條會變蠢㗎，唔准望！",
@@ -82,9 +82,9 @@ export default {
         "27": "創意工坊喺 Github 討論區度㗎，上載自己嘅創意啦！",
         "28": "如果有部分介面載入唔到，記得用國際網絡呀",
         "29": "通用設定介面有 LingChat 文檔可以睇㗎，你需要嘅所有知識都喺度！",
-        "30": "你可以喺 data/game_data/skills 加任何你想畀 AI 用嘅技能庫！"
+        "30": "你可以喺 data/game_data/skills 加任何你想畀 AI 用嘅技能庫！",
       },
-      "ads": {
+      ads: {
         "0": "幫LingChat撳個star喵，幫LingChat撳個star唔該喵",
         "1": "灌注欽靈喵，灌注欽靈唔該喵~",
         "2": "欽靈咁可愛，真係唔幫佢撳個star咩？",
@@ -92,9 +92,9 @@ export default {
         "4": "你有冇留意到致謝呀？呢個係社區嘅力量嚟㗎！",
         "5": "開發者唔夠人啦！歡迎想參與開發嘅人加入㗎！",
         "6": "LingChat 開源社區嘅每一個貢獻者都好辛苦㗎...",
-        "7": "LingChat 嘅 Star 數目超過咗 1000 啦！好耶！"
+        "7": "LingChat 嘅 Star 數目超過咗 1000 啦！好耶！",
       },
-      "dev": {
+      dev: {
         "0": "你知唔知呀？欽靈本人仲可愛過AI欽靈（仲要鹹濕啲）",
         "1": "其實風雪根本唔識寫代碼，佢只係瞓咗喺鍵盤上面，跟住啱啱好幫LingChat提交咗commit",
         "2": "影空而家畀欽靈催情緊，變得越嚟越鹹濕...",
@@ -124,9 +124,9 @@ export default {
         "26": "Yukito柏海同夢軒一齊整出你見到嘅咁靚嘅UI！",
         "27": "Matsuko 鍾意畀人榨奶... 狐狐澪愛睇❤",
         "28": "Flame 小姐靠住強勁嘅實力殺入咗管理組，斯國一呀",
-        "29": "Matsuko 喺欽靈嘅鞭策之下變成咗乖巧聰明嘅小助手~"
+        "29": "Matsuko 喺欽靈嘅鞭策之下變成咗乖巧聰明嘅小助手~",
       },
-      "tech": {
+      tech: {
         "0": "LingChat 嘅情緒推理係由大量數據集訓練嘅 BERT 模型實現",
         "1": "多人對話入面，會有個上帝 Agent 負責協調對話次序㗎",
         "2": "LingChat 嘅劇本模式依賴一個寫咗三日嘅 記憶構建器 演算法執行",
@@ -137,8 +137,8 @@ export default {
         "7": "永久記憶係自動非同步壓縮㗎，唔使擔心對話卡住嘅問題㗎",
         "8": "如果一個模型冇多模態，我哋就叫另一個模型支援佢！",
         "9": "LingChat 獨特嘅大模型輸出結構令佢嘅角色扮演更加靈活~",
-        "10": "多啲飲水，多啲睇報紙，少啲食零食，多啲瞓覺"
-      }
-    }
-  }
-}
+        "10": "多啲飲水，多啲睇報紙，少啲食零食，多啲瞓覺",
+      },
+    },
+  },
+};

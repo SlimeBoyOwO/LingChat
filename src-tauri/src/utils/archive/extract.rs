@@ -12,7 +12,7 @@ use std::path::Path;
 use tokio_util::sync::CancellationToken;
 
 use super::safety::{check_entry_safety, safe_join, sanitize_entry_name};
-use super::{map_sevenz_err, ArchiveError, EntryEvent, ExtractSummary};
+use super::{ArchiveError, EntryEvent, ExtractSummary, map_sevenz_err};
 
 // ===== 5. 解压 =====
 
@@ -74,7 +74,7 @@ pub fn extract_zip(
                 summary.skipped_macos_metadata += 1;
                 summary.warnings.push(msg);
                 continue;
-            }
+            },
             Err(e) => return Err(e),
         };
         let out_path = safe_join(dest_root, &cleaned)?;
@@ -170,13 +170,13 @@ pub fn extract_sevenz(
                 processed += 1;
                 entry_index += 1;
                 return Ok(true);
-            }
+            },
             Err(e) => {
                 return Err(sevenz_rust2::Error::Io(
                     std::io::Error::other(e.to_string()),
                     "".into(),
-                ))
-            }
+                ));
+            },
         };
         if let Err(e) = check_entry_safety(entry_index, compressed, uncompressed) {
             return Err(sevenz_rust2::Error::Io(
@@ -192,8 +192,8 @@ pub fn extract_sevenz(
                 return Err(sevenz_rust2::Error::Io(
                     std::io::Error::other(e.to_string()),
                     "".into(),
-                ))
-            }
+                ));
+            },
         };
 
         if entry.is_directory() {
@@ -254,7 +254,7 @@ pub fn extract_sevenz(
                 summary.skipped_macos_metadata += 1;
                 summary.warnings.push(msg);
                 continue;
-            }
+            },
             Err(_) => continue,
         };
         if let Err(e) = check_entry_safety(entry_index, 0, size) {

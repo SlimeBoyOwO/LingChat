@@ -9,8 +9,8 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures_util::StreamExt;
 use sea_orm::DatabaseConnection;
@@ -21,7 +21,9 @@ use crate::ai_service::skill_agent::command_executor::ApprovalMap;
 use crate::ai_service::skill_agent::config::SkillAgentConfig;
 use crate::ai_service::skill_agent::events::{SkillAgentEvent, Usage};
 use crate::ai_service::skill_agent::{db, skills, tools};
-use crate::ai_service::types::{parse_tool_args, FunctionCall, LlmMessage, ToolCall, ToolDefinition};
+use crate::ai_service::types::{
+    FunctionCall, LlmMessage, ToolCall, ToolDefinition, parse_tool_args,
+};
 
 /// 取消标志，跨 chat 运行共享。
 pub type CancelFlag = Arc<AtomicBool>;
@@ -77,7 +79,7 @@ fn build_script_block(sandbox_dir: &Path, script_key: Option<&str>) -> String {
                 rel.display(),
                 sandbox_dir.display()
             )
-        }
+        },
         Err(_) => String::new(), // 剧本缺失/失效 → 降级，不阻断对话
     }
 }
@@ -256,9 +258,11 @@ pub async fn run_chat(
             match stream_completion(&ctx, &messages, &defs, &cancelled).await {
                 Ok(r) => r,
                 Err(e) => {
-                    let _ = ctx.channel.send(SkillAgentEvent::Error { message: e.clone() });
+                    let _ = ctx
+                        .channel
+                        .send(SkillAgentEvent::Error { message: e.clone() });
                     return Err(e);
-                }
+                },
             };
         // 逐轮累加当轮用量（provider 未上报时为 None，跳过）
         if let Some(u) = &usage {
@@ -481,7 +485,7 @@ async fn generate_title(llm: &LlmClient, first_user_msg: &str, reply_summary: &s
                 if !t.is_empty() {
                     candidate = t.chars().take(20).collect();
                 }
-            }
+            },
             Err(e) => tracing::warn!("[SkillAgent] 自动生成会话标题失败，回退截取: {e}"),
         }
     }
@@ -504,7 +508,16 @@ async fn stream_completion(
     messages: &[LlmMessage],
     defs: &[ToolDefinition],
     cancelled: &CancelFlag,
-) -> Result<(String, String, Vec<AccumToolCall>, Option<String>, Option<Usage>), String> {
+) -> Result<
+    (
+        String,
+        String,
+        Vec<AccumToolCall>,
+        Option<String>,
+        Option<Usage>,
+    ),
+    String,
+> {
     let llm = &ctx.llm;
     let mut text_out = String::new();
     // 思考链单独累积：只展示不落 LLM 上下文（Reasoning chunk 不进 text_out）。
@@ -529,12 +542,14 @@ async fn stream_completion(
             match chunk {
                 LlmChunk::Content(c) => {
                     text_out.push_str(&c);
-                    let _ = ctx.channel.send(SkillAgentEvent::MessageDelta { content: c });
-                }
+                    let _ = ctx
+                        .channel
+                        .send(SkillAgentEvent::MessageDelta { content: c });
+                },
                 LlmChunk::Reasoning(r) => {
                     reasoning_out.push_str(&r);
                     let _ = ctx.channel.send(SkillAgentEvent::Reasoning { content: r });
-                }
+                },
                 LlmChunk::ToolCalls(calls) => {
                     for tc in calls {
                         let idx = tool_map.len();
@@ -548,8 +563,11 @@ async fn stream_completion(
                             },
                         );
                     }
-                }
-                LlmChunk::StreamEnd { reason, usage: end_usage } => {
+                },
+                LlmChunk::StreamEnd {
+                    reason,
+                    usage: end_usage,
+                } => {
                     finish_reason = reason;
                     // LlmUsage（LLM 层）→ Usage（skill_agent 事件层）字段同名直转
                     usage = end_usage.map(|u| Usage {
@@ -558,10 +576,10 @@ async fn stream_completion(
                         total_tokens: u.total_tokens,
                         cached_tokens: u.cached_tokens,
                     });
-                }
+                },
                 LlmChunk::ToolCallProgress { .. } => {
                     // 剧本编辑器的 agent 会话不需要参数生成进度提示
-                }
+                },
             }
         }
     } else {
@@ -578,7 +596,9 @@ async fn stream_completion(
         if let Some(c) = resp.content {
             if !c.is_empty() {
                 text_out.push_str(&c);
-                let _ = ctx.channel.send(SkillAgentEvent::MessageDelta { content: c });
+                let _ = ctx
+                    .channel
+                    .send(SkillAgentEvent::MessageDelta { content: c });
             }
         }
         if let Some(calls) = resp.tool_calls {

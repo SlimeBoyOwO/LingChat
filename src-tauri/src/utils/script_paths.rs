@@ -241,7 +241,7 @@ pub fn enumerate_script_keys() -> Vec<String> {
                         }
                     }
                 }
-            }
+            },
             "standalone" => {
                 if let Ok(level2) = std::fs::read_dir(e1.path()) {
                     for e2 in level2.flatten() {
@@ -258,12 +258,12 @@ pub fn enumerate_script_keys() -> Vec<String> {
                         keys.push(format!("standalone/{}", name2));
                     }
                 }
-            }
+            },
             _ => {
                 if e1.path().join("story_config.yaml").is_file() {
                     keys.push(name1);
                 }
-            }
+            },
         }
     }
 

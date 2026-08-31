@@ -1,13 +1,13 @@
 export interface MotionLifecycleState {
-  currentGroup?: string
-  currentIndex?: number
-  currentPriority: number
+  currentGroup?: string;
+  currentIndex?: number;
+  currentPriority: number;
 }
 
 export interface MotionLifecycleManager {
-  state: MotionLifecycleState
-  on(event: string, listener: (...args: any[]) => void): unknown
-  off(event: string, listener: (...args: any[]) => void): unknown
+  state: MotionLifecycleState;
+  on(event: string, listener: (...args: any[]) => void): unknown;
+  off(event: string, listener: (...args: any[]) => void): unknown;
 }
 
 export function trackMotionLifecycle(
@@ -15,16 +15,16 @@ export function trackMotionLifecycle(
   group: string,
   index: number,
   priority: number,
-  onFinish: () => void,
+  onFinish: () => void
 ): () => void {
-  let active = true
+  let active = true;
 
   const dispose = () => {
-    if (!active) return
-    active = false
-    manager.off('motionStart', handleStart)
-    manager.off('motionFinish', handleFinish)
-  }
+    if (!active) return;
+    active = false;
+    manager.off("motionStart", handleStart);
+    manager.off("motionFinish", handleFinish);
+  };
 
   const handleFinish = () => {
     if (
@@ -32,11 +32,11 @@ export function trackMotionLifecycle(
       manager.state.currentIndex !== index ||
       manager.state.currentPriority !== priority
     ) {
-      return
+      return;
     }
-    dispose()
-    onFinish()
-  }
+    dispose();
+    onFinish();
+  };
 
   const handleStart = (startedGroup: string, startedIndex: number) => {
     if (
@@ -44,12 +44,12 @@ export function trackMotionLifecycle(
       startedIndex !== index ||
       manager.state.currentPriority !== priority
     ) {
-      return
+      return;
     }
-    manager.off('motionStart', handleStart)
-    manager.on('motionFinish', handleFinish)
-  }
+    manager.off("motionStart", handleStart);
+    manager.on("motionFinish", handleFinish);
+  };
 
-  manager.on('motionStart', handleStart)
-  return dispose
+  manager.on("motionStart", handleStart);
+  return dispose;
 }

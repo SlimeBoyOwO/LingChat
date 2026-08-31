@@ -13,11 +13,7 @@
   "bracketSpacing": true,
   "arrowParens": "always",
   "proseWrap": "preserve",
-  "plugins": [
-    "prettier-plugin-tailwindcss",
-    "prettier-plugin-classnames",
-    "prettier-plugin-merge"
-  ],
+  "plugins": ["prettier-plugin-tailwindcss", "prettier-plugin-classnames", "prettier-plugin-merge"],
   "tailwindFunctions": ["clsx", "cn", "classNames", "classNamesBind"],
   "tailwindAttributes": ["class", "className", "ngClass", "class:list"],
   "customFunctions": ["clsx", "cn", "classNames", "classNamesBind"]

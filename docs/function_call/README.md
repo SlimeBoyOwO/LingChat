@@ -34,58 +34,58 @@ PR #523 的目标：
 
 ## 文档索引
 
-| 文档 | 内容 |
-|---|---|
+| 文档                               | 内容                                                                                                                                            |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | [architecture.md](architecture.md) | **实现思路**：tools 模块分层、核心类型、工具循环机制、LLM Provider 层的工具支持、接入点（`GeneratorSource` / `GeneratorDeps` / `run_pipeline`） |
-| [extension.md](extension.md) | **如何扩展新的工具函数**：`Tool` trait、实现步骤、注册、权限配置、错误与参数规范 |
-| [permission.md](permission.md) | **工具权限管理**：「场景组 × 角色组」二维矩阵、`tool_permissions.toml`、默认配置、`allowed_tools` 计算逻辑 |
-| [memory.md](memory.md) | **记忆的存储与提取、AI 记忆构建**：台词表联合、`MemoryBuilder` 还原、`role.memory` 生命周期、完整闭环 |
+| [extension.md](extension.md)       | **如何扩展新的工具函数**：`Tool` trait、实现步骤、注册、权限配置、错误与参数规范                                                                |
+| [permission.md](permission.md)     | **工具权限管理**：「场景组 × 角色组」二维矩阵、`tool_permissions.toml`、默认配置、`allowed_tools` 计算逻辑                                      |
+| [memory.md](memory.md)             | **记忆的存储与提取、AI 记忆构建**：台词表联合、`MemoryBuilder` 还原、`role.memory` 生命周期、完整闭环                                           |
 
 ## 图表（SVG + HTML）
 
 每张图为独立 HTML 文件，浏览器直接打开即可查看（内联 SVG，无需外部依赖）。
 
-| 图 | 说明 |
-|---|---|
-| [diagrams/architecture.html](diagrams/architecture.html) | 总体架构数据流图：生成管线 → 工具循环 → Provider → 执行器 → 台词表 → 记忆 → 下次生成 |
-| [diagrams/tool-loop.html](diagrams/tool-loop.html) | 工具循环时序图：`stream_with_tool_loop` 的多轮「流式请求 → 工具调用 → 执行 → 回填」 |
-| [diagrams/permission.html](diagrams/permission.html) | 权限模型图：「场景组 × 角色组」矩阵、`tool_permissions.toml` 结构、`allowed_tools` 决策流程 |
-| [diagrams/memory.html](diagrams/memory.html) | 记忆构建数据流图：台词表 → MemoryBuilder → role.memory → LLM 上下文 → 写回台词表 |
-| [diagrams/extend.html](diagrams/extend.html) | 扩展新工具步骤流程图：实现 trait → 注册 → 配置权限 → 构建检查 |
+| 图                                                       | 说明                                                                                        |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| [diagrams/architecture.html](diagrams/architecture.html) | 总体架构数据流图：生成管线 → 工具循环 → Provider → 执行器 → 台词表 → 记忆 → 下次生成        |
+| [diagrams/tool-loop.html](diagrams/tool-loop.html)       | 工具循环时序图：`stream_with_tool_loop` 的多轮「流式请求 → 工具调用 → 执行 → 回填」         |
+| [diagrams/permission.html](diagrams/permission.html)     | 权限模型图：「场景组 × 角色组」矩阵、`tool_permissions.toml` 结构、`allowed_tools` 决策流程 |
+| [diagrams/memory.html](diagrams/memory.html)             | 记忆构建数据流图：台词表 → MemoryBuilder → role.memory → LLM 上下文 → 写回台词表            |
+| [diagrams/extend.html](diagrams/extend.html)             | 扩展新工具步骤流程图：实现 trait → 注册 → 配置权限 → 构建检查                               |
 
 ## 关键代码位置
 
 **后端（`src-tauri/src/ai_service/`）**
 
-| 文件 | 职责 |
-|---|---|
-| `tools/mod.rs` | 模块入口；`built_in_registry()` 创建注册表 + 加载权限配置 + 初始化角色归属 |
-| `tools/registry.rs` | `ToolRegistry`：注册 / 查找 / 按权限裁剪工具定义 |
-| `tools/executor.rs` | `Tool` trait、`ToolContext`、`ToolExecutor`（权限校验 → 查找 → 解析 → 2s 超时 → 稳定错误编码） |
-| `tools/tool_loop.rs` | `stream_with_tool_loop`：流式工具闭环（最多 3 轮） |
-| `tools/permissions.rs` | `ToolPermissionConfig`：「场景组 × 角色组」权限矩阵、`tool_permissions.toml` 读写 |
-| `tools/clock.rs` | 内置示例工具 `CurrentTimeTool`（`get_current_time`） |
-| `llm/mod.rs` | `LlmChunk`（含 `ToolCalls`）、`LlmClient`（`complete_stream_with_tools` / `complete_with_tools`） |
-| `llm/provider.rs` | `LlmProvider` trait：三组工具方法，默认 fallback 行为 |
-| `llm/providers/genai_provider.rs` | genai（OpenAI 兼容）流式工具调用：`with_capture_tool_calls`、流结束时 yield `ToolCalls` |
-| `llm/providers/kimi_code.rs` | Kimi Code 非流式 `complete_with_tools`（Anthropic `tool_use` 格式，供 God Agent 用） |
-| `message_system/generator.rs` | `GeneratorSource` / `GeneratorDeps` / `run_pipeline`：调用工具循环、把 `tool_messages` 写入台词表 |
-| `game_system/memory_builder.rs` | `MemoryBuilder`：把工具行还原成 OpenAI 格式 `LlmMessage`（含旧版兼容） |
-| `game_system/role_manager.rs` | `sync_memories`：按台词表重建每个角色的 `role.memory` |
+| 文件                              | 职责                                                                                              |
+| --------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `tools/mod.rs`                    | 模块入口；`built_in_registry()` 创建注册表 + 加载权限配置 + 初始化角色归属                        |
+| `tools/registry.rs`               | `ToolRegistry`：注册 / 查找 / 按权限裁剪工具定义                                                  |
+| `tools/executor.rs`               | `Tool` trait、`ToolContext`、`ToolExecutor`（权限校验 → 查找 → 解析 → 2s 超时 → 稳定错误编码）    |
+| `tools/tool_loop.rs`              | `stream_with_tool_loop`：流式工具闭环（最多 3 轮）                                                |
+| `tools/permissions.rs`            | `ToolPermissionConfig`：「场景组 × 角色组」权限矩阵、`tool_permissions.toml` 读写                 |
+| `tools/clock.rs`                  | 内置示例工具 `CurrentTimeTool`（`get_current_time`）                                              |
+| `llm/mod.rs`                      | `LlmChunk`（含 `ToolCalls`）、`LlmClient`（`complete_stream_with_tools` / `complete_with_tools`） |
+| `llm/provider.rs`                 | `LlmProvider` trait：三组工具方法，默认 fallback 行为                                             |
+| `llm/providers/genai_provider.rs` | genai（OpenAI 兼容）流式工具调用：`with_capture_tool_calls`、流结束时 yield `ToolCalls`           |
+| `llm/providers/kimi_code.rs`      | Kimi Code 非流式 `complete_with_tools`（Anthropic `tool_use` 格式，供 God Agent 用）              |
+| `message_system/generator.rs`     | `GeneratorSource` / `GeneratorDeps` / `run_pipeline`：调用工具循环、把 `tool_messages` 写入台词表 |
+| `game_system/memory_builder.rs`   | `MemoryBuilder`：把工具行还原成 OpenAI 格式 `LlmMessage`（含旧版兼容）                            |
+| `game_system/role_manager.rs`     | `sync_memories`：按台词表重建每个角色的 `role.memory`                                             |
 
 **数据 / 配置**
 
-| 位置 | 说明 |
-|---|---|
-| `src-tauri/src/migration/m20260727_000002_add_line_tool_call.rs` | `line` 表加 `tool_call` TEXT 列 |
-| `src-tauri/src/db/entities/line.rs` | `LineAttribute::Tool` 变体、`Model.tool_call` |
-| `src-tauri/src/db/managers/save_repo.rs` | 存档读写同时持久化 `tool_call` |
-| `<data_dir>/tool_permissions.toml` | 权限配置文件（首次启动自动生成，原子写） |
+| 位置                                                             | 说明                                          |
+| ---------------------------------------------------------------- | --------------------------------------------- |
+| `src-tauri/src/migration/m20260727_000002_add_line_tool_call.rs` | `line` 表加 `tool_call` TEXT 列               |
+| `src-tauri/src/db/entities/line.rs`                              | `LineAttribute::Tool` 变体、`Model.tool_call` |
+| `src-tauri/src/db/managers/save_repo.rs`                         | 存档读写同时持久化 `tool_call`                |
+| `<data_dir>/tool_permissions.toml`                               | 权限配置文件（首次启动自动生成，原子写）      |
 
 **前端（`src/`）**
 
-| 文件 | 说明 |
-|---|---|
+| 文件                             | 说明                                                               |
+| -------------------------------- | ------------------------------------------------------------------ |
 | `stores/modules/game/actions.ts` | 展示历史时过滤 `attribute === 'tool'` 的行（工具过程对玩家不可见） |
 
 ## 工具调用闭环（速览）

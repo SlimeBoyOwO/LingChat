@@ -1,13 +1,13 @@
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tauri::{Emitter, Manager};
 
+use crate::AppState;
 use crate::ai_service::types::{LineAttributeExt, LineBase, ToolDefinition};
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::utils::prompt::{sys_prompt_builder_by_settings, PromptOptions};
-use crate::AppState;
+use crate::utils::prompt::{PromptOptions, sys_prompt_builder_by_settings};
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::{ensure_no_args, game_status_handle};
@@ -41,10 +41,12 @@ impl Tool for CharacterList {
         let roles = RoleRepo::get_all_main_roles(&state.db)
             .await
             .map_err(|e| ToolError::Execution(format!("查询角色列表失败: {e}")))?;
-        Ok(json!(roles
-            .iter()
-            .map(|r| json!({"id": r.id, "name": r.name}))
-            .collect::<Vec<_>>()))
+        Ok(json!(
+            roles
+                .iter()
+                .map(|r| json!({"id": r.id, "name": r.name}))
+                .collect::<Vec<_>>()
+        ))
     }
 }
 

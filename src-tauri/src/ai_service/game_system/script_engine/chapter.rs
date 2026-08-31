@@ -8,7 +8,7 @@ use serde_json::Value;
 use crate::ai_service::game_system::script_engine::events::ScriptContext;
 use crate::ai_service::game_system::script_engine::events_handler::EventsHandler;
 use crate::ai_service::game_system::script_engine::responses::{
-    event_names::SCRIPT_CHAPTER_CHANGE, ChapterChangePayload,
+    ChapterChangePayload, event_names::SCRIPT_CHAPTER_CHANGE,
 };
 use crate::ai_service::message_system::events::emit;
 use crate::ai_service::types::ScriptStatus;

@@ -44,12 +44,12 @@ voices/<voice_id>/model.sbv2
 
 平台路径规则：
 
-| 平台 | `data_root` |
-| --- | --- |
-| Windows 开发环境 | 项目的 `data` 目录 |
-| Windows 发布版 | 程序所在目录的 `data` 目录 |
-| Android | 应用外部专属数据目录 |
-| iOS | 应用沙箱内由主程序提供的目录 |
+| 平台             | `data_root`                  |
+| ---------------- | ---------------------------- |
+| Windows 开发环境 | 项目的 `data` 目录           |
+| Windows 发布版   | 程序所在目录的 `data` 目录   |
+| Android          | 应用外部专属数据目录         |
+| iOS              | 应用沙箱内由主程序提供的目录 |
 
 下载和导入过程的临时文件位于 Tauri `app_cache_dir/tts-local-cache`，不属于永久模型目录。
 
@@ -58,7 +58,7 @@ voices/<voice_id>/model.sbv2
 推荐通过现有 TypeScript 封装调用，不要在组件中重复手写命令名：
 
 ```ts
-import * as TtsLocal from '@/api/services/tts-local'
+import * as TtsLocal from "@/api/services/tts-local";
 ```
 
 Tauri 参数在 Rust 中使用 `snake_case`，前端 `invoke` 参数使用 `camelCase`。例如 Rust 参数 `voice_id` 在前端传为 `voiceId`。
@@ -67,10 +67,10 @@ Tauri 参数在 Rust 中使用 `snake_case`，前端 `invoke` 参数使用 `came
 
 ```ts
 try {
-  const state = await TtsLocal.status()
-  console.log(state)
+  const state = await TtsLocal.status();
+  console.log(state);
 } catch (error) {
-  console.error('读取本地 TTS 状态失败', error)
+  console.error("读取本地 TTS 状态失败", error);
 }
 ```
 
@@ -80,17 +80,17 @@ try {
 
 ```ts
 interface TtsLocalStatus {
-  ready: boolean
-  deberta_installed: boolean
-  installed_voice_count: number
+  ready: boolean;
+  deberta_installed: boolean;
+  installed_voice_count: number;
 }
 ```
 
-| 字段 | 含义 |
-| --- | --- |
-| `ready` | DeBERTa Holder 是否已经初始化到内存 |
-| `deberta_installed` | `deberta.onnx` 和 `tokenizer.json` 是否同时存在 |
-| `installed_voice_count` | 检测到的语音目录数量 |
+| 字段                    | 含义                                            |
+| ----------------------- | ----------------------------------------------- |
+| `ready`                 | DeBERTa Holder 是否已经初始化到内存             |
+| `deberta_installed`     | `deberta.onnx` 和 `tokenizer.json` 是否同时存在 |
+| `installed_voice_count` | 检测到的语音目录数量                            |
 
 `deberta_installed: true` 不等于 `ready: true`。程序可能仍在后台初始化，或者初始化模型时发生错误。
 
@@ -98,13 +98,13 @@ interface TtsLocalStatus {
 
 ```ts
 interface AssetRecord {
-  asset_id: string
-  kind: string
-  size_bytes: number
-  path: string
-  language: string | null
-  display_name: string | null
-  source: string | null
+  asset_id: string;
+  kind: string;
+  size_bytes: number;
+  path: string;
+  language: string | null;
+  display_name: string | null;
+  source: string | null;
 }
 ```
 
@@ -114,14 +114,14 @@ interface AssetRecord {
 
 ```ts
 interface VoiceRecord {
-  voice_id: string
-  kind: 'onnx' | 'sbv2' | string
-  size_bytes: number
-  path: string
-  language: string | null
-  display_name: string | null
-  source: string | null
-  has_style_vectors: boolean
+  voice_id: string;
+  kind: "onnx" | "sbv2" | string;
+  size_bytes: number;
+  path: string;
+  language: string | null;
+  display_name: string | null;
+  source: string | null;
+  has_style_vectors: boolean;
 }
 ```
 
@@ -131,11 +131,11 @@ interface VoiceRecord {
 
 ```ts
 interface TtsLocalImportResult {
-  asset_id: string
-  voice_id: string | null
-  path: string
-  bytes: number
-  message: string
+  asset_id: string;
+  voice_id: string | null;
+  path: string;
+  bytes: number;
+  message: string;
 }
 ```
 
@@ -145,10 +145,10 @@ interface TtsLocalImportResult {
 
 ```ts
 interface DownloadProgress {
-  asset_id: string
-  bytes_done: number
-  total_bytes: number
-  percent: number
+  asset_id: string;
+  bytes_done: number;
+  total_bytes: number;
+  percent: number;
 }
 ```
 
@@ -163,13 +163,13 @@ interface DownloadProgress {
 封装：
 
 ```ts
-const state = await TtsLocal.status()
+const state = await TtsLocal.status();
 ```
 
 原始调用：
 
 ```ts
-const state = await invoke<TtsLocalStatus>('tts_local_status')
+const state = await invoke<TtsLocalStatus>("tts_local_status");
 ```
 
 返回 `TtsLocalStatus`。
@@ -179,21 +179,21 @@ const state = await invoke<TtsLocalStatus>('tts_local_status')
 命令：`tts_local_list_catalog`
 
 ```ts
-const catalog = await invoke<AssetEntry[]>('tts_local_list_catalog')
+const catalog = await invoke<AssetEntry[]>("tts_local_list_catalog");
 ```
 
 后端返回内置下载目录，包括共享资产、语音模型和风格向量。`AssetEntry` 结构如下：
 
 ```ts
 interface AssetEntry {
-  id: string
-  kind: 'bert' | 'voice' | 'style_vectors'
-  display_name: string
-  language: string
-  size_bytes: number
-  download_url: string
-  source: string
-  voice_id?: string
+  id: string;
+  kind: "bert" | "voice" | "style_vectors";
+  display_name: string;
+  language: string;
+  size_bytes: number;
+  download_url: string;
+  source: string;
+  voice_id?: string;
 }
 ```
 
@@ -204,10 +204,10 @@ interface AssetEntry {
 命令：`tts_local_list_installed`
 
 ```ts
-const snapshot = await TtsLocal.listInstalled()
+const snapshot = await TtsLocal.listInstalled();
 
 for (const voice of snapshot.voices) {
-  console.log(voice.voice_id, voice.kind, voice.has_style_vectors)
+  console.log(voice.voice_id, voice.kind, voice.has_style_vectors);
 }
 ```
 
@@ -215,8 +215,8 @@ for (const voice of snapshot.voices) {
 
 ```ts
 interface TtsLocalInstallSnapshot {
-  assets: AssetRecord[]
-  voices: VoiceRecord[]
+  assets: AssetRecord[];
+  voices: VoiceRecord[];
 }
 ```
 
@@ -241,7 +241,7 @@ TtsLocal.importFromPath(
 导入 DeBERTa：
 
 ```ts
-await TtsLocal.importFromPath(selectedPath, { assetId: 'deberta' })
+await TtsLocal.importFromPath(selectedPath, { assetId: "deberta" });
 ```
 
 目标文件固定为：
@@ -254,8 +254,8 @@ assets/deberta/deberta.onnx
 
 ```ts
 await TtsLocal.importFromPath(selectedPath, {
-  assetId: 'deberta-tokenizer',
-})
+  assetId: "deberta-tokenizer",
+});
 ```
 
 目标文件固定为：
@@ -267,7 +267,7 @@ assets/deberta/tokenizer.json
 导入语音模型：
 
 ```ts
-await TtsLocal.importFromPath(selectedPath, { voiceId: 'ling-v2' })
+await TtsLocal.importFromPath(selectedPath, { voiceId: "ling-v2" });
 ```
 
 不传 `voiceId` 时，后端根据源文件名生成 ID：转为小写，将非 ASCII 字母、数字、`-`、`_` 的字符替换为 `-`。无法生成有效名称时使用 `voice`。
@@ -281,17 +281,17 @@ await TtsLocal.importFromPath(selectedPath, { voiceId: 'ling-v2' })
 命令：`tts_local_download`
 
 ```ts
-const result = await TtsLocal.download('ling-v2')
+const result = await TtsLocal.download("ling-v2");
 ```
 
 `assetId` 必须存在于后端模型目录中。当前目录 ID 包括：
 
-| ID | 类型 | 安装目标 |
-| --- | --- | --- |
-| `deberta` | `bert` | `assets/deberta/deberta.onnx` |
-| `deberta-tokenizer` | `bert` | `assets/deberta/tokenizer.json` |
-| `ling-v2` | `voice` | `voices/ling-v2/model.onnx` |
-| `ling-v2-style` | `style_vectors` | `voices/ling-v2/style_vectors.json` |
+| ID                  | 类型            | 安装目标                            |
+| ------------------- | --------------- | ----------------------------------- |
+| `deberta`           | `bert`          | `assets/deberta/deberta.onnx`       |
+| `deberta-tokenizer` | `bert`          | `assets/deberta/tokenizer.json`     |
+| `ling-v2`           | `voice`         | `voices/ling-v2/model.onnx`         |
+| `ling-v2-style`     | `style_vectors` | `voices/ling-v2/style_vectors.json` |
 
 下载器支持重定向，超时为 600 秒，并发送 `User-Agent: LingChat/0.4.6`。下载期间会先写 `.part` 临时文件，成功后再改名。当前不执行哈希校验。
 
@@ -302,7 +302,7 @@ const result = await TtsLocal.download('ling-v2')
 命令：`tts_local_delete_voice`
 
 ```ts
-await TtsLocal.deleteVoice('ling-v2')
+await TtsLocal.deleteVoice("ling-v2");
 ```
 
 删除整个 `voices/<voice_id>` 目录。删除不存在的语音视为成功。
@@ -320,16 +320,16 @@ await TtsLocal.deleteVoice('ling-v2')
 命令：`tts_local_import_style_vectors`
 
 ```ts
-await TtsLocal.importStyleVectors('ling-v2', selectedJsonPath)
+await TtsLocal.importStyleVectors("ling-v2", selectedJsonPath);
 ```
 
 直接调用 Tauri IPC 时也统一使用 `voiceId`，不要传 Rust 内部参数名 `voice_id`：
 
 ```ts
-await invoke('tts_local_import_style_vectors', {
-  voiceId: 'ling-v2',
+await invoke("tts_local_import_style_vectors", {
+  voiceId: "ling-v2",
   path: selectedJsonPath,
-})
+});
 ```
 
 前置条件：
@@ -353,27 +353,27 @@ voices/<voice_id>/style_vectors.json
 
 ```ts
 const bytes = await TtsLocal.synthesizePreview({
-  text: 'こんにちは。',
-  voiceId: 'ling-v2',
+  text: "こんにちは。",
+  voiceId: "ling-v2",
   lengthScale: 1.0,
   sdpRatio: 0.0,
-})
+});
 
-const wav = new Blob([new Uint8Array(bytes)], { type: 'audio/wav' })
-const url = URL.createObjectURL(wav)
-const audio = new Audio(url)
-await audio.play()
-audio.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true })
+const wav = new Blob([new Uint8Array(bytes)], { type: "audio/wav" });
+const url = URL.createObjectURL(wav);
+const audio = new Audio(url);
+await audio.play();
+audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
 ```
 
 参数：
 
-| 参数 | 类型 | 含义 |
-| --- | --- | --- |
-| `text` | `string` | 待合成文本 |
-| `voiceId` | `string` | 已安装语音 ID |
+| 参数          | 类型     | 含义                     |
+| ------------- | -------- | ------------------------ |
+| `text`        | `string` | 待合成文本               |
+| `voiceId`     | `string` | 已安装语音 ID            |
 | `lengthScale` | `number` | 时长缩放，值越大语速越慢 |
-| `sdpRatio` | `number` | SDP 噪声比例 |
+| `sdpRatio`    | `number` | SDP 噪声比例             |
 
 试听接口当前固定：
 
@@ -391,16 +391,16 @@ audio.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true })
 命令：`tts_local_get_enabled`、`tts_local_set_enabled`
 
 ```ts
-const state = await TtsLocal.getEnabled()
-const updated = await TtsLocal.setEnabled(true)
+const state = await TtsLocal.getEnabled();
+const updated = await TtsLocal.setEnabled(true);
 ```
 
 两条命令均返回：
 
 ```ts
 interface LocalTtsSwitchStatus {
-  configured_enabled: boolean
-  effective_enabled: boolean
+  configured_enabled: boolean;
+  effective_enabled: boolean;
 }
 ```
 
@@ -416,27 +416,21 @@ interface LocalTtsSwitchStatus {
 
 ```ts
 const unsubscribe = TtsLocal.onDownloadProgress((progress) => {
-  console.log(
-    progress.asset_id,
-    progress.bytes_done,
-    progress.total_bytes,
-    progress.percent,
-  )
-})
+  console.log(progress.asset_id, progress.bytes_done, progress.total_bytes, progress.percent);
+});
 
 // 组件销毁时解除订阅
-unsubscribe()
+unsubscribe();
 ```
 
 也可以直接监听：
 
 ```ts
-import { listen } from '@tauri-apps/api/event'
+import { listen } from "@tauri-apps/api/event";
 
-const unlisten = await listen<DownloadProgress>(
-  'tts://download-progress',
-  ({ payload }) => console.log(payload),
-)
+const unlisten = await listen<DownloadProgress>("tts://download-progress", ({ payload }) =>
+  console.log(payload)
+);
 ```
 
 ### 6.2 `tts://install-complete`
@@ -444,9 +438,9 @@ const unlisten = await listen<DownloadProgress>(
 本地导入成功后发送。payload 为字符串：共享资产 ID 或语音 ID。
 
 ```ts
-const unlisten = await listen<string>('tts://install-complete', ({ payload }) => {
-  console.log('安装完成', payload)
-})
+const unlisten = await listen<string>("tts://install-complete", ({ payload }) => {
+  console.log("安装完成", payload);
+});
 ```
 
 ### 6.3 `tts://download-complete`
@@ -454,9 +448,9 @@ const unlisten = await listen<string>('tts://install-complete', ({ payload }) =>
 下载命令退出时发送，payload 为请求的 `assetId`。
 
 ```ts
-const unlisten = await listen<string>('tts://download-complete', ({ payload }) => {
-  console.log('下载流程结束', payload)
-})
+const unlisten = await listen<string>("tts://download-complete", ({ payload }) => {
+  console.log("下载流程结束", payload);
+});
 ```
 
 注意：当前该事件在下载成功和失败后都会发送，因此它表示“流程结束”，不能作为成功依据。下载是否成功应以 `TtsLocal.download()` Promise 的 resolve/reject 为准。
@@ -466,9 +460,9 @@ const unlisten = await listen<string>('tts://download-complete', ({ payload }) =
 应用启动后的后台 DeBERTa 预加载成功时发送，payload 为空：
 
 ```ts
-const unlisten = await listen('tts://engine-ready', () => {
-  console.log('本地 TTS 引擎已就绪')
-})
+const unlisten = await listen("tts://engine-ready", () => {
+  console.log("本地 TTS 引擎已就绪");
+});
 ```
 
 该事件只覆盖启动后台预加载。运行时导入 DeBERTa 后初始化成功，目前不会发送此事件；需要调用 `status()` 复查 `ready`。
@@ -487,20 +481,20 @@ voice_models:
   sbv2_local_length_scale: 1.0
   sbv2_local_sdp_ratio: 0.0
   sbv2_local_cloud_fallback_model: Ling v2
-  sbv2_local_cloud_fallback_speaker_id: '0'
+  sbv2_local_cloud_fallback_speaker_id: "0"
 ```
 
 字段说明：
 
-| 字段 | 默认值 | 含义 |
-| --- | --- | --- |
-| `sbv2_local_voice_id` | 无 | 必填，映射到 `voices/<voice_id>` |
-| `sbv2_local_speaker_id` | `0` | 说话人 ID |
-| `sbv2_local_style_id` | `0` | 风格 ID |
-| `sbv2_local_length_scale` | `1.0` | 时长缩放，越大越慢 |
-| `sbv2_local_sdp_ratio` | `0.0` | SDP 噪声比例 |
-| `sbv2_local_cloud_fallback_model` | 无 | 全局关闭本地 TTS 时使用的云端 SBV2 API 模型，可留空 |
-| `sbv2_local_cloud_fallback_speaker_id` | 无 | 云端备用模型的说话人 ID，可留空 |
+| 字段                                   | 默认值 | 含义                                                |
+| -------------------------------------- | ------ | --------------------------------------------------- |
+| `sbv2_local_voice_id`                  | 无     | 必填，映射到 `voices/<voice_id>`                    |
+| `sbv2_local_speaker_id`                | `0`    | 说话人 ID                                           |
+| `sbv2_local_style_id`                  | `0`    | 风格 ID                                             |
+| `sbv2_local_length_scale`              | `1.0`  | 时长缩放，越大越慢                                  |
+| `sbv2_local_sdp_ratio`                 | `0.0`  | SDP 噪声比例                                        |
+| `sbv2_local_cloud_fallback_model`      | 无     | 全局关闭本地 TTS 时使用的云端 SBV2 API 模型，可留空 |
+| `sbv2_local_cloud_fallback_speaker_id` | 无     | 云端备用模型的说话人 ID，可留空                     |
 
 角色正式调用与试听独立：试听参数不会写回角色设置。角色设置保存后，已加载角色的 `VoiceMaker` 会重新构建并使用新的模型及参数。
 

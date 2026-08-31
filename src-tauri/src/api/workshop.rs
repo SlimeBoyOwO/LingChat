@@ -404,7 +404,7 @@ pub async fn fetch_discussions(app: AppHandle) -> Result<Vec<Discussion>, String
                     // GraphQL 失败时降级到 REST
                     tracing::warn!("GraphQL 请求失败，降级到 REST API: {}", e);
                     fetch_via_rest().await.map(|d| (d, false))
-                }
+                },
             }
         } else {
             fetch_via_rest().await.map(|d| (d, false))
@@ -419,7 +419,7 @@ pub async fn fetch_discussions(app: AppHandle) -> Result<Vec<Discussion>, String
                 *cache = Some((discussions.clone(), std::time::Instant::now(), is_graphql));
             }
             Ok(discussions)
-        }
+        },
         Err(e) => Err(e),
     }
 }

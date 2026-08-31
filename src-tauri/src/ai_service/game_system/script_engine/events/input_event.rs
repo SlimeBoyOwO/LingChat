@@ -1,14 +1,14 @@
 //! Input event — prompts the user for text input, waits, then adds as USER line.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    parse_duration, register_event, ScriptContext, ScriptEvent,
+    ScriptContext, ScriptEvent, parse_duration, register_event,
 };
 use crate::ai_service::game_system::script_engine::responses::{
-    event_names::SCRIPT_INPUT, InputPayload,
+    InputPayload, event_names::SCRIPT_INPUT,
 };
 use crate::ai_service::message_system::events::emit;
 use crate::ai_service::types::{LineAttributeExt, LineBase};

@@ -15,7 +15,7 @@ body,
 }
 
 body {
-  font-family: 'TanukiMagic', '方正喵呜', 'Segoe UI', sans-serif;
+  font-family: "TanukiMagic", "方正喵呜", "Segoe UI", sans-serif;
   color: white;
   /* height: 100vh; */ /* 此元素与第10行的第12行冲突 */
   overflow: hidden;
@@ -89,7 +89,7 @@ canvas {
 
 /* 顶部渐变透明效果 */
 .chatbox-box::before {
-  content: '';
+  content: "";
   position: absolute;
   top: -40px;
   left: 0;
@@ -213,7 +213,7 @@ input,
 textarea,
 button,
 select {
-  font-family: 'TanukiMagic', '方正喵呜', 'Segoe UI', sans-serif;
+  font-family: "TanukiMagic", "方正喵呜", "Segoe UI", sans-serif;
   color: white;
 }
 

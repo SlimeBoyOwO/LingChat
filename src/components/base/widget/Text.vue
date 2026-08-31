@@ -6,98 +6,98 @@
 </template>
 
 <script setup lang="ts">
-// 导入外部模块
-import { useSlots, ref, watch, onMounted, onUnmounted } from 'vue'
+  // 导入外部模块
+  import { useSlots, ref, watch, onMounted, onUnmounted } from "vue";
 
-// 定义组件属性
-const props = defineProps({
-  speed: {
-    type: Number,
-    default: 0,
-  },
-})
+  // 定义组件属性
+  const props = defineProps({
+    speed: {
+      type: Number,
+      default: 0,
+    },
+  });
 
-// 定义动态变量
-const text = ref()
+  // 定义动态变量
+  const text = ref();
 
-// 获取插槽内容（slot 默认内容是静态文本字符串）
-const sampleText = (useSlots().default?.()[0]?.children ?? '') as string
+  // 获取插槽内容（slot 默认内容是静态文本字符串）
+  const sampleText = (useSlots().default?.()[0]?.children ?? "") as string;
 
-// 处理组件行为
+  // 处理组件行为
 
-// 初始化时触发打字机效果
-onMounted(() => {
-  typewriter(props.speed)
-})
+  // 初始化时触发打字机效果
+  onMounted(() => {
+    typewriter(props.speed);
+  });
 
-// 侦测speed的变化重置打字机
-watch(
-  () => props.speed,
-  () => typewriter(props.speed),
-)
+  // 侦测speed的变化重置打字机
+  watch(
+    () => props.speed,
+    () => typewriter(props.speed)
+  );
 
-let typingInterval: ReturnType<typeof setInterval> | null = null
-let restartTimer: ReturnType<typeof setTimeout> | null = null
+  let typingInterval: ReturnType<typeof setInterval> | null = null;
+  let restartTimer: ReturnType<typeof setTimeout> | null = null;
 
-const typewriter = (speed: number) => {
-  if (typingInterval) clearInterval(typingInterval)
-  if (restartTimer) clearTimeout(restartTimer)
-  text.value = ''
-  let i = 0
-  const maxDelay = 200
-  const minDelay = 10
-  const delay = maxDelay - ((speed - 1) / 99) * (maxDelay - minDelay)
-  typingInterval = setInterval(() => {
-    if (i < sampleText.length) {
-      text.value += sampleText.charAt(i)
-      i++
-    } else {
-      if (typingInterval) clearInterval(typingInterval)
-      typingInterval = null
-      // 打字结束后1秒自动重新显示打字效果
-      restartTimer = setTimeout(() => {
-        typewriter(props.speed)
-      }, 1000)
+  const typewriter = (speed: number) => {
+    if (typingInterval) clearInterval(typingInterval);
+    if (restartTimer) clearTimeout(restartTimer);
+    text.value = "";
+    let i = 0;
+    const maxDelay = 200;
+    const minDelay = 10;
+    const delay = maxDelay - ((speed - 1) / 99) * (maxDelay - minDelay);
+    typingInterval = setInterval(() => {
+      if (i < sampleText.length) {
+        text.value += sampleText.charAt(i);
+        i++;
+      } else {
+        if (typingInterval) clearInterval(typingInterval);
+        typingInterval = null;
+        // 打字结束后1秒自动重新显示打字效果
+        restartTimer = setTimeout(() => {
+          typewriter(props.speed);
+        }, 1000);
+      }
+    }, delay);
+  };
+
+  onUnmounted(() => {
+    if (typingInterval) {
+      clearInterval(typingInterval);
+      typingInterval = null;
     }
-  }, delay)
-}
-
-onUnmounted(() => {
-  if (typingInterval) {
-    clearInterval(typingInterval)
-    typingInterval = null
-  }
-  if (restartTimer) {
-    clearTimeout(restartTimer)
-    restartTimer = null
-  }
-})
+    if (restartTimer) {
+      clearTimeout(restartTimer);
+      restartTimer = null;
+    }
+  });
 </script>
 
 <style scoped>
-div {
-  color: #ffffff;
-  min-height: 2.5em;
-  padding: 15px 20px;
-  border-radius: 12px;
-  backdrop-filter: blur(10px);
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.2);
-  font-family: 'Courier New', Courier, monospace;
-}
+  div {
+    color: #ffffff;
+    min-height: 2.5em;
+    padding: 15px 20px;
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.2);
+    font-family: "Courier New", Courier, monospace;
+  }
 
-p {
-  display: inline;
-}
+  p {
+    display: inline;
+  }
 
-span {
-  width: 3px;
-  height: 1.2em;
-  margin-left: 4px;
-  display: inline-block;
-  vertical-align: text-bottom;
-  background-color: var(--accent-color);
-  animation: cursor-blink 0.8s infinite;
-}
+  span {
+    width: 3px;
+    height: 1.2em;
+    margin-left: 4px;
+    display: inline-block;
+    vertical-align: text-bottom;
+    background-color: var(--accent-color);
+    animation: cursor-blink 0.8s infinite;
+  }
 </style>

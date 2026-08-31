@@ -20,8 +20,8 @@ pub use core::CancelFlag;
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 /// 确保技能库目录存在（兜底；技能内容随 `data/game_data` 初始化）。
 pub fn ensure_skills_dir(data_dir: &Path) -> std::io::Result<()> {

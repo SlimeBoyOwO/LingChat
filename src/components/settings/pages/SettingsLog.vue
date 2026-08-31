@@ -11,7 +11,7 @@
 </template>
 
 <script setup lang="ts">
-import { MenuPage, MenuItem } from '../../ui'
-import { ScrollText } from 'lucide-vue-next'
-import LogConsole from './LogConsole.vue'
+  import { MenuPage, MenuItem } from "../../ui";
+  import { ScrollText } from "lucide-vue-next";
+  import LogConsole from "./LogConsole.vue";
 </script>

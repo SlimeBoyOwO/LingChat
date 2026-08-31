@@ -142,7 +142,10 @@ impl StrategyDispatcher {
 
         tracing::info!(
             "[StrategyDispatcher] Selected proactive mode: {} (weights: TODO={:.1}, TOPIC={:.1}, SCREEN={:.1})",
-            selected_mode, todo_w, topic_w, screen_w
+            selected_mode,
+            todo_w,
+            topic_w,
+            screen_w
         );
 
         match selected_mode {
@@ -155,7 +158,7 @@ impl StrategyDispatcher {
                     return Some((self.get_topic_prompt(game_status), IntentType::Topic));
                 }
                 None
-            }
+            },
             "SCREEN" => {
                 if let Some(prompt) = self.get_screen_prompt(game_status).await {
                     return Some((prompt, IntentType::Screen));
@@ -165,7 +168,7 @@ impl StrategyDispatcher {
                     return Some((self.get_topic_prompt(game_status), IntentType::Topic));
                 }
                 None
-            }
+            },
             _ => Some((self.get_topic_prompt(game_status), IntentType::Topic)),
         }
     }

@@ -55,7 +55,7 @@ pub fn list_system_fonts() -> Result<Vec<FontFamilyInfo>, String> {
 
     use windows::Win32::Foundation::LPARAM;
     use windows::Win32::Graphics::Gdi::{
-        EnumFontFamiliesExW, GetDC, ReleaseDC, DEFAULT_CHARSET, LOGFONTW, TEXTMETRICW,
+        DEFAULT_CHARSET, EnumFontFamiliesExW, GetDC, LOGFONTW, ReleaseDC, TEXTMETRICW,
     };
 
     // 枚举回调：把每个字体族的 lfFaceName 收集到 Rc<RefCell<Vec<String>>>，并去重。
@@ -156,7 +156,7 @@ pub async fn import_font(app: tauri::AppHandle, path: String) -> Result<UploadFo
                     ("application/font-woff", "woff2") => ("woff2", "woff2"),
                     _ => return Err("FONT_INVALID_FORMAT".into()),
                 }
-            }
+            },
             _ => return Err("FONT_INVALID_FORMAT".into()),
         };
 

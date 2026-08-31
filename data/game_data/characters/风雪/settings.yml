@@ -217,13 +217,13 @@ user_name: 钦灵
 user_subtitle: LingChat Studio
 voice_models:
   aivis_model_uuid: 44f93196-7485-45af-9616-f33adee71846
-  bv2_speaker_id: ''
+  bv2_speaker_id: ""
   gsv_gpt_model_name: null
   gsv_sovits_model_name: null
-  gsv_voice_filename: ''
-  gsv_voice_text: ''
+  gsv_voice_filename: ""
+  gsv_voice_text: ""
   sbv2_name: Fusetsu_v1.5
-  sbv2_speaker_id: '0'
+  sbv2_speaker_id: "0"
   sbv2api_name: Ling v2
-  sbv2api_speaker_id: '0'
-  sva_speaker_id: ''
+  sbv2api_speaker_id: "0"
+  sva_speaker_id: ""

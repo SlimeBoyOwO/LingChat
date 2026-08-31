@@ -4,11 +4,11 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tokio::sync::{Mutex, OnceCell};
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 use crate::ai_service::tts::adapters::http_client;
 use crate::ai_service::tts::provider::TtsAdapter;
@@ -150,13 +150,13 @@ impl TtsAdapter for GsvAdapter {
                     tracing::warn!("GPT-SoVITS request failed, retrying once: {error}");
                     retry_error = Some(error);
                     sleep(Duration::from_millis(500)).await;
-                }
+                },
                 Err(error) => {
                     return Err(anyhow!(
                         "GPT-SoVITS request failed after retry: {error}; first error: {}",
                         retry_error.expect("retry error must exist")
                     ));
-                }
+                },
             }
         };
         if !resp.status().is_success() {

@@ -98,6 +98,9 @@ src-tauri/gen/android/app/src/main/assets/
 src-tauri/gen/android/app/src/main/res/mipmap-*/ic_launcher*.png
 src-tauri/gen/android/app/src/main/res/mipmap-anydpi-v26/
 
+# iOS 工程与构建产物（本地 tauri ios dev/build 生成，CI 由 configure-ios-project.sh + tauri ios build 现生成）
+src-tauri/gen/apple/
+
 **/.cargo/**
 
 # ============================================================
@@ -192,13 +195,3 @@ AGENTS.md
 # 本地 APK build 路径
 prev-build-*/
 
-#本地apk构建产物
-src-tauri/gen/android/app/build/*
-
-# 本地产物 / 归档 / 备份 / 机器相关配置（禁止上传）
-*.apk
-*.tar.gz
-*.tar.bz2
-*.bak
-local.properties
-a.tar

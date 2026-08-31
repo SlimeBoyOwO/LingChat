@@ -6,29 +6,29 @@
  *
  * 在 App.vue 中调用一次以激活全局定时器。
  */
-import { watch, onUnmounted } from 'vue'
+import { watch, onUnmounted } from "vue";
 import {
   sendNotification,
   isPermissionGranted,
   requestPermission,
-} from '@tauri-apps/plugin-notification'
-import { useSettingsStore } from '@/stores/modules/settings'
-import { i18n } from '@/locales'
+} from "@tauri-apps/plugin-notification";
+import { useSettingsStore } from "@/stores/modules/settings";
+import { i18n } from "@/locales";
 
-const REMINDER_INTERVAL_MS = 40 * 60 * 1000 // 40 分钟
-const APP_ICON_PATH = '/pictures/icons/icon.ico'
-const AUDIO_PATH = '/audio_effects/生气.wav'
+const REMINDER_INTERVAL_MS = 40 * 60 * 1000; // 40 分钟
+const APP_ICON_PATH = "/pictures/icons/icon.ico";
+const AUDIO_PATH = "/audio_effects/生气.wav";
 
-let timerId: ReturnType<typeof setInterval> | null = null
+let timerId: ReturnType<typeof setInterval> | null = null;
 
 /** 播放提醒音效 */
 function playReminderSound(): void {
   try {
-    const audio = new Audio(AUDIO_PATH)
-    audio.volume = 0.8
+    const audio = new Audio(AUDIO_PATH);
+    audio.volume = 0.8;
     audio.play().catch(() => {
       // 静默忽略自动播放策略限制
-    })
+    });
   } catch {
     // 静默忽略音频播放失败
   }
@@ -37,42 +37,42 @@ function playReminderSound(): void {
 /** 发送久坐提醒系统通知 */
 async function showReminderNotification(): Promise<void> {
   try {
-    let granted = await isPermissionGranted()
+    let granted = await isPermissionGranted();
     if (!granted) {
-      const result = await requestPermission()
-      granted = result === 'granted'
+      const result = await requestPermission();
+      granted = result === "granted";
     }
 
     if (!granted) {
-      console.warn('[SedentaryReminder] 通知权限未授予，跳过本次提醒')
-      return
+      console.warn("[SedentaryReminder] 通知权限未授予，跳过本次提醒");
+      return;
     }
 
-    playReminderSound()
+    playReminderSound();
 
     await sendNotification({
-      title: i18n.global.t('stores.sedentaryReminder.notificationTitle'),
-      body: i18n.global.t('stores.sedentaryReminder.notificationBody'),
+      title: i18n.global.t("stores.sedentaryReminder.notificationTitle"),
+      body: i18n.global.t("stores.sedentaryReminder.notificationBody"),
       icon: APP_ICON_PATH,
-    })
+    });
   } catch (e) {
-    console.error('[SedentaryReminder] 发送通知失败:', e)
+    console.error("[SedentaryReminder] 发送通知失败:", e);
   }
 }
 
 /** 启动定时器（先停止已有的，避免重复） */
 function startTimer(): void {
-  stopTimer()
-  timerId = setInterval(showReminderNotification, REMINDER_INTERVAL_MS)
-  console.log('[SedentaryReminder] 定时器已启动（间隔 40 分钟）')
+  stopTimer();
+  timerId = setInterval(showReminderNotification, REMINDER_INTERVAL_MS);
+  console.log("[SedentaryReminder] 定时器已启动（间隔 40 分钟）");
 }
 
 /** 停止定时器 */
 function stopTimer(): void {
   if (timerId !== null) {
-    clearInterval(timerId)
-    timerId = null
-    console.log('[SedentaryReminder] 定时器已停止')
+    clearInterval(timerId);
+    timerId = null;
+    console.log("[SedentaryReminder] 定时器已停止");
   }
 }
 
@@ -82,21 +82,21 @@ function stopTimer(): void {
  * 应在 App.vue 等始终挂载的组件中调用。
  */
 export function useSedentaryReminder(): void {
-  const settingsStore = useSettingsStore()
+  const settingsStore = useSettingsStore();
 
   watch(
     () => settingsStore.text.sedentaryReminder,
     (enabled) => {
       if (enabled) {
-        startTimer()
+        startTimer();
       } else {
-        stopTimer()
+        stopTimer();
       }
     },
-    { immediate: true },
-  )
+    { immediate: true }
+  );
 
   onUnmounted(() => {
-    stopTimer()
-  })
+    stopTimer();
+  });
 }

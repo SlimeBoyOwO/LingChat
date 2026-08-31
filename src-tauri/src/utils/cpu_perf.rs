@@ -120,11 +120,7 @@ mod x86_impl {
         let s = String::from_utf8_lossy(&buf)
             .trim_end_matches(|c: char| c.is_ascii_whitespace() || c == '\0')
             .to_string();
-        if s.is_empty() {
-            None
-        } else {
-            Some(s)
-        }
+        if s.is_empty() { None } else { Some(s) }
     }
 
     /// 检查是否为 Intel CPU
@@ -138,7 +134,7 @@ mod x86_impl {
         let (_, ebx, ecx, edx) = cpuid(0, 0);
         ebx == 0x68747541 && edx == 0x69746e65 && ecx == 0x444d4163
     }
-    
+
     /// AMD:提取 Ryzen 等级（3/5/7/9）
     fn extract_ryzen_level(brand: &str) -> Option<u32> {
         if brand.contains("Ryzen 9") {
@@ -157,10 +153,7 @@ mod x86_impl {
     /// 找到品牌字符串中的 Ryzen 型号单词（如 "7840U", "4650G", "8845HS"）
     fn find_ryzen_model_word(brand: &str) -> Option<&str> {
         for word in brand.split_whitespace() {
-            let digit_count = word
-                .chars()
-                .take_while(|c| c.is_ascii_digit())
-                .count();
+            let digit_count = word.chars().take_while(|c| c.is_ascii_digit()).count();
 
             if digit_count == 4 {
                 return Some(word);
@@ -180,10 +173,7 @@ mod x86_impl {
     fn extract_ryzen_suffix(brand: &str) -> &'static str {
         // 从型号单词中提取字母后缀（主要路径）
         if let Some(word) = find_ryzen_model_word(brand) {
-            let suffix: String = word
-                .chars()
-                .skip_while(|c| c.is_ascii_digit())
-                .collect();
+            let suffix: String = word.chars().skip_while(|c| c.is_ascii_digit()).collect();
 
             return match suffix.as_str() {
                 "HX" => "HX",
@@ -236,8 +226,7 @@ mod x86_impl {
             return PerfTier::Internet;
         }
 
-        if brand.contains("Athlon II") || brand.contains("Athlon") || brand.contains("Phenom")
-        {
+        if brand.contains("Athlon II") || brand.contains("Athlon") || brand.contains("Phenom") {
             return PerfTier::Low;
         }
 
@@ -255,8 +244,7 @@ mod x86_impl {
             return PerfTier::Low;
         }
 
-        if brand.contains("A8-") || brand.contains("A10-") || brand.contains("A12-")
-        {
+        if brand.contains("A8-") || brand.contains("A10-") || brand.contains("A12-") {
             return PerfTier::Medium;
         }
 
@@ -279,7 +267,7 @@ mod x86_impl {
                 } else {
                     PerfTier::High
                 }
-            }
+            },
 
             5 => {
                 // U 后缀优先处理（含 AMD 官方特殊型号映射，必须在 series >= 6 之前）
@@ -292,10 +280,8 @@ mod x86_impl {
                     match model {
                         7520 | 7320 => return PerfTier::Medium,
                         7530 | 7730 => return PerfTier::Medium,
-                        7535 | 7735 | 7640 | 7840 | 8840 | 8845 => {
-                            return PerfTier::High
-                        }
-                        _ => {}
+                        7535 | 7735 | 7640 | 7840 | 8840 | 8845 => return PerfTier::High,
+                        _ => {},
                     }
 
                     return PerfTier::Medium;
@@ -305,8 +291,7 @@ mod x86_impl {
                     return PerfTier::High;
                 }
 
-                if suffix == "H" || suffix == "HS" || suffix == "HX" || suffix == "X"
-                {
+                if suffix == "H" || suffix == "HS" || suffix == "HX" || suffix == "X" {
                     return PerfTier::High;
                 }
 
@@ -315,20 +300,19 @@ mod x86_impl {
                 } else {
                     PerfTier::High
                 }
-            }
+            },
 
             3 => {
                 if series >= 6 {
                     return PerfTier::Medium;
                 }
 
-                if suffix == "H" || suffix == "HS" || suffix == "HX" || suffix == "X"
-                {
+                if suffix == "H" || suffix == "HS" || suffix == "HX" || suffix == "X" {
                     return PerfTier::Medium;
                 }
 
                 PerfTier::Low
-            }
+            },
 
             _ => PerfTier::Medium,
         }
@@ -447,7 +431,7 @@ mod x86_impl {
 
         if !is_intel() {
             if is_amd() {
-            let tier = classify_amd_brand(&brand);    
+                let tier = classify_amd_brand(&brand);
                 return CpuInfo {
                     brand,
                     tier,
@@ -472,7 +456,6 @@ mod x86_impl {
             unknown_message: None,
         }
     }
-
 }
 
 // ────────────────────────────────────────
@@ -575,8 +558,7 @@ mod imp {
 
         if max_freq_mhz >= HIGH_FREQ_THRESHOLD_MHZ && big_core_count >= HIGH_BIG_CORE_MIN {
             PerfTier::High
-        } else if max_freq_mhz >= MEDIUM_FREQ_THRESHOLD_MHZ
-            && total_cores >= MEDIUM_TOTAL_CORES_MIN
+        } else if max_freq_mhz >= MEDIUM_FREQ_THRESHOLD_MHZ && total_cores >= MEDIUM_TOTAL_CORES_MIN
         {
             PerfTier::Medium
         } else {
@@ -611,7 +593,12 @@ mod imp {
             None
         };
 
-        CpuInfo {brand,tier,is_unknown,unknown_message,}
+        CpuInfo {
+            brand,
+            tier,
+            is_unknown,
+            unknown_message,
+        }
     }
 }
 

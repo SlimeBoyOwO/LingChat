@@ -40,20 +40,18 @@ pub async fn open_log_window(app: AppHandle) -> Result<(), String> {
 
         if let Some(win) = app.get_webview_window("log") {
             let _ = win.unminimize();
-            win.set_focus().map_err(|e| format!("聚焦日志窗口失败: {}", e))?;
+            win.set_focus()
+                .map_err(|e| format!("聚焦日志窗口失败: {}", e))?;
             return Ok(());
         }
 
-        let win = WebviewWindowBuilder::new(
-            &app,
-            "log",
-            WebviewUrl::App("index.html?window=log".into()),
-        )
-        .title("日志")
-        .inner_size(960.0, 640.0)
-        .min_inner_size(480.0, 320.0)
-        .build()
-        .map_err(|e| format!("创建日志窗口失败: {}", e))?;
+        let win =
+            WebviewWindowBuilder::new(&app, "log", WebviewUrl::App("index.html?window=log".into()))
+                .title("日志")
+                .inner_size(960.0, 640.0)
+                .min_inner_size(480.0, 320.0)
+                .build()
+                .map_err(|e| format!("创建日志窗口失败: {}", e))?;
 
         // 广播窗口状态，供设置页切换“已弹出”占位提示
         let app_for_event = app.clone();

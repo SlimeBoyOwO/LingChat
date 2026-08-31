@@ -26,7 +26,7 @@ pub async fn list_content_entries(dir: &Path) -> (Vec<PathBuf>, bool) {
             match entry.file_type().await {
                 Ok(ft) if ft.is_dir() => subdirs.push(entry.path()),
                 Ok(ft) if ft.is_file() => has_files = true,
-                _ => {}
+                _ => {},
             }
         }
     }
@@ -59,9 +59,10 @@ pub async fn relocate_dir(src: &Path, dst: &Path) -> Result<(), String> {
             Err(e) => {
                 last_err = Some(e);
                 if attempt < 3 {
-                    tokio::time::sleep(std::time::Duration::from_millis(150 * attempt as u64)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(150 * attempt as u64))
+                        .await;
                 }
-            }
+            },
         }
     }
     let rerr = last_err.map(|e| e.to_string()).unwrap_or_default();

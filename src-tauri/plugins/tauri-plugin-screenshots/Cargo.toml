@@ -15,8 +15,12 @@ links = "tauri-plugin-screenshots"
 tauri = { version = "2" }
 serde = "1"
 thiserror = "2"
-xcap = "0.9.6"
 log = "0.4"
+
+# xcap 不支持 iOS（无 #[cfg(target_os = "ios")] 平台实现），
+# iOS 构建时排除 xcap，命令降级为「不支持」桩（见 src/commands.rs）。
+[target.'cfg(not(target_os = "ios"))'.dependencies]
+xcap = "0.9.6"
 
 
 [target.'cfg(target_os = "windows")'.dependencies]

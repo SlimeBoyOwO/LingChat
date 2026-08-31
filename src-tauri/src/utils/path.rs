@@ -28,8 +28,7 @@ pub fn resolve_character_path(data_dir: &Path, resource_path: &str) -> PathBuf {
 /// 批量创建目录（幂等）。任一失败立即返回错误。
 pub fn ensure_dirs(dirs: &[&Path]) -> Result<(), String> {
     for d in dirs {
-        std::fs::create_dir_all(d)
-            .map_err(|e| format!("create_dir_all {}: {e}", d.display()))?;
+        std::fs::create_dir_all(d).map_err(|e| format!("create_dir_all {}: {e}", d.display()))?;
     }
     Ok(())
 }

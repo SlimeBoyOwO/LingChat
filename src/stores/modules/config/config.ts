@@ -1,28 +1,28 @@
-import { defineStore } from 'pinia'
-import type { StructuredConfig } from '../../../api/services/config'
-import { fetchEnvConfig, saveEnvConfig } from '../../../api/services/config'
+import { defineStore } from "pinia";
+import type { StructuredConfig } from "../../../api/services/config";
+import { fetchEnvConfig, saveEnvConfig } from "../../../api/services/config";
 
-type FlatConfig = Record<string, string>
+type FlatConfig = Record<string, string>;
 
 function flattenStructuredConfig(structured: StructuredConfig): FlatConfig {
-  const flat: FlatConfig = {}
+  const flat: FlatConfig = {};
   for (const categoryName of Object.keys(structured || {})) {
-    const category = structured[categoryName]
-    const subcategories = category?.subcategories || {}
+    const category = structured[categoryName];
+    const subcategories = category?.subcategories || {};
     for (const subName of Object.keys(subcategories)) {
-      const sub = subcategories[subName]
-      const settings = sub?.settings || []
+      const sub = subcategories[subName];
+      const settings = sub?.settings || [];
       for (const setting of settings) {
         if (setting?.key != null && setting?.value != null) {
-          flat[String(setting.key)] = String(setting.value)
+          flat[String(setting.key)] = String(setting.value);
         }
       }
     }
   }
-  return flat
+  return flat;
 }
 
-export const useConfigStore = defineStore('config', {
+export const useConfigStore = defineStore("config", {
   state: () => ({
     structured: {} as StructuredConfig,
     flat: {} as FlatConfig,
@@ -36,21 +36,21 @@ export const useConfigStore = defineStore('config', {
   },
   actions: {
     applyStructured(structured: StructuredConfig) {
-      this.structured = structured
-      this.flat = flattenStructuredConfig(structured)
-      this.loaded = true
+      this.structured = structured;
+      this.flat = flattenStructuredConfig(structured);
+      this.loaded = true;
     },
     applyFlat(updates: FlatConfig) {
-      this.flat = { ...this.flat, ...updates }
+      this.flat = { ...this.flat, ...updates };
     },
     async loadFromServer() {
-      const structured = await fetchEnvConfig()
-      this.applyStructured(structured)
+      const structured = await fetchEnvConfig();
+      this.applyStructured(structured);
     },
     async saveValues(values: FlatConfig) {
-      const res = await saveEnvConfig(values)
-      this.applyFlat(values)
-      return res
+      const res = await saveEnvConfig(values);
+      this.applyFlat(values);
+      return res;
     },
   },
-})
+});

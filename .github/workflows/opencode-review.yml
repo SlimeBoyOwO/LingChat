@@ -33,4 +33,4 @@ jobs:
         with:
           model: opencode/deepseek-v4-flash-free
           use_github_token: true
-          prompt: ${{ vars.OPENCODE_PROMPT }} 
+          prompt: ${{ vars.OPENCODE_PROMPT }}

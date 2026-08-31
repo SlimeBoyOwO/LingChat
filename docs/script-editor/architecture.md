@@ -22,13 +22,13 @@ PR #540 在 `src-tauri/src/api/script_editor/` 下新增了完整的后端模块
 
 **分层职责：**
 
-| 模块 | 职责 |
-|---|---|
-| `paths` | 剧本 key ⇄ 磁盘路径、三种布局枚举、路径穿越防护、名称合法性 |
-| `io` | YAML ⇄ JSON、原子写、`.bak` 备份、章节文档归一 |
-| `schema` | 16 种事件及其全部字段的**单一真相源**，导出给前端驱动表单 |
-| `validate` | 校验器：把引擎里的静默失败变成作者能看见的诊断 |
-| `commands` | Tauri 命令层 |
+| 模块       | 职责                                                        |
+| ---------- | ----------------------------------------------------------- |
+| `paths`    | 剧本 key ⇄ 磁盘路径、三种布局枚举、路径穿越防护、名称合法性 |
+| `io`       | YAML ⇄ JSON、原子写、`.bak` 备份、章节文档归一              |
+| `schema`   | 16 种事件及其全部字段的**单一真相源**，导出给前端驱动表单   |
+| `validate` | 校验器：把引擎里的静默失败变成作者能看见的诊断              |
+| `commands` | Tauri 命令层                                                |
 
 ## 2. 设计约束（三条核心）
 
@@ -50,11 +50,11 @@ PR #540 在 `src-tauri/src/api/script_editor/` 下新增了完整的后端模块
 
 引擎接受三种剧本包布局，编辑器用「剧本 key」指代一个剧本包 —— 即相对 `scripts/` 的路径，统一用 `/` 作分隔符：
 
-| 布局 | 路径 | 段数 | 用途 |
-|---|---|---|---|
-| `character` | `scripts/character/<角色>/<剧本>/` | 3 | 羁绊冒险（两层） |
-| `standalone` | `scripts/standalone/<剧本>/` | 2 | 独立剧本 |
-| `flat` | `scripts/<剧本>/` | 1 | 兼容布局 |
+| 布局         | 路径                               | 段数 | 用途             |
+| ------------ | ---------------------------------- | ---- | ---------------- |
+| `character`  | `scripts/character/<角色>/<剧本>/` | 3    | 羁绊冒险（两层） |
+| `standalone` | `scripts/standalone/<剧本>/`       | 2    | 独立剧本         |
+| `flat`       | `scripts/<剧本>/`                  | 1    | 兼容布局         |
 
 示例 key：`character/诺一钦灵/想出去玩啦`、`standalone/我的剧本`。
 
@@ -89,13 +89,13 @@ ScriptSchema
 
 **词表的归属（不是所有取值都由 Rust 拥有）：**
 
-| 取值 | 归属 | 说明 |
-|---|---|---|
+| 取值         | 归属                                     | 说明                        |
+| ------------ | ---------------------------------------- | --------------------------- |
 | 情绪 emotion | 前端 `src/controllers/emotion/config.ts` | 决定情绪 → 立绘文件名的映射 |
-| 章节名 | 前端从已加载的章节列表填 | 每个剧本自己的 |
-| 素材文件名 | 前端从素材索引填 | 剧本内 + 全局 |
-| 角色 | `MAIN` + 剧本 `characters/` 下的目录名 | 由后端枚举 |
-| 背景特效 | Rust（`KNOWN_EFFECTS` 常量） | 对应前端组件是否存在 |
+| 章节名       | 前端从已加载的章节列表填                 | 每个剧本自己的              |
+| 素材文件名   | 前端从素材索引填                         | 剧本内 + 全局               |
+| 角色         | `MAIN` + 剧本 `characters/` 下的目录名   | 由后端枚举                  |
+| 背景特效     | Rust（`KNOWN_EFFECTS` 常量）             | 对应前端组件是否存在        |
 
 **字段控件 `FieldKind`：** `text / textarea / number / bool / select / character / emotion / chapter / asset / choice_options / branch_options / var_options / deprecated`。其中 `deprecated` 只展示不可编辑（如遗留字段 `duration` —— 引擎从不读取，但保存时原样保留，不丢数据）。
 
@@ -112,35 +112,35 @@ ScriptSchema
 
 **读：**
 
-| 命令 | 返回 |
-|---|---|
-| `editor_get_schema` | `ScriptSchema` |
-| `editor_list_scripts` | `Vec<ScriptPackage>`（含 `loaded_by_engine` 标记） |
-| `editor_read_script` | `ScriptDetail`（package + story_config + chapters + assets + characters） |
-| `editor_read_chapter` | `ChapterContent`（events + extra） |
-| `editor_validate_script` | `ValidationReport` |
-| `editor_list_global_assets` | `AssetIndex`（sound 返回空 —— 全局没有音效目录） |
-| `editor_list_asset_files` | `AssetFileIndex`（带绝对路径与体积，供预览） |
-| `editor_list_global_characters` | `Vec<GlobalCharacter>`（标出已导入） |
-| `editor_preview_readiness` | `PreviewReadiness`（试玩可行性） |
+| 命令                            | 返回                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------- |
+| `editor_get_schema`             | `ScriptSchema`                                                            |
+| `editor_list_scripts`           | `Vec<ScriptPackage>`（含 `loaded_by_engine` 标记）                        |
+| `editor_read_script`            | `ScriptDetail`（package + story_config + chapters + assets + characters） |
+| `editor_read_chapter`           | `ChapterContent`（events + extra）                                        |
+| `editor_validate_script`        | `ValidationReport`                                                        |
+| `editor_list_global_assets`     | `AssetIndex`（sound 返回空 —— 全局没有音效目录）                          |
+| `editor_list_asset_files`       | `AssetFileIndex`（带绝对路径与体积，供预览）                              |
+| `editor_list_global_characters` | `Vec<GlobalCharacter>`（标出已导入）                                      |
+| `editor_preview_readiness`      | `PreviewReadiness`（试玩可行性）                                          |
 
 **写：**
 
-| 命令 | 说明 |
-|---|---|
-| `editor_write_chapter` | 整章 `{name, events, extra}` 落盘 |
-| `editor_write_story_config` | 改写 config（警告会丢注释） |
-| `editor_create_chapter` | 逐段过 `sanitize_folder_name`；新章节自带一条 `chapter_end`，否则一保存就报「缺少章节结束」 |
-| `editor_delete_chapter` | 删除章节文件 |
-| `editor_create_script` | 建目录骨架 + config + 开场章节；`characters` 小写（原型建的大写 `Characters`，Linux/Android 上断裂） |
-| `editor_delete_script` / `editor_delete_character` | 删除整包 / 角色目录 |
-| `editor_upload_asset` | **只收源文件路径**，Rust 自己 `fs::copy`；不用 `plugin-fs` 读字节（不在 scope 内会被拒，64MB 图转数组 IPC 会 OOM） |
-| `editor_delete_asset` | 删除素材文件 |
-| `editor_create_character` | 显式写 `script_role_key`（缺了它引擎每次启动都新建重复角色） |
-| `editor_import_global_character` | **复制 settings.yml 而不是直接引用**：引擎解析 `character:` 只在剧本自己的 `characters/` 里找，全局角色库不在那条路径上；立绘默认不复制（引擎查找顺序本来就先命中全局同名目录） |
-| `editor_rescan_scripts` | 增量 merge，不整体替换（见下） |
-| `editor_start_preview` / `editor_stop_preview` | 试玩（见 [preview.md](preview.md)） |
-| `editor_open_script_folder` | 在系统文件管理器打开剧本目录 |
+| 命令                                               | 说明                                                                                                                                                                            |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `editor_write_chapter`                             | 整章 `{name, events, extra}` 落盘                                                                                                                                               |
+| `editor_write_story_config`                        | 改写 config（警告会丢注释）                                                                                                                                                     |
+| `editor_create_chapter`                            | 逐段过 `sanitize_folder_name`；新章节自带一条 `chapter_end`，否则一保存就报「缺少章节结束」                                                                                     |
+| `editor_delete_chapter`                            | 删除章节文件                                                                                                                                                                    |
+| `editor_create_script`                             | 建目录骨架 + config + 开场章节；`characters` 小写（原型建的大写 `Characters`，Linux/Android 上断裂）                                                                            |
+| `editor_delete_script` / `editor_delete_character` | 删除整包 / 角色目录                                                                                                                                                             |
+| `editor_upload_asset`                              | **只收源文件路径**，Rust 自己 `fs::copy`；不用 `plugin-fs` 读字节（不在 scope 内会被拒，64MB 图转数组 IPC 会 OOM）                                                              |
+| `editor_delete_asset`                              | 删除素材文件                                                                                                                                                                    |
+| `editor_create_character`                          | 显式写 `script_role_key`（缺了它引擎每次启动都新建重复角色）                                                                                                                    |
+| `editor_import_global_character`                   | **复制 settings.yml 而不是直接引用**：引擎解析 `character:` 只在剧本自己的 `characters/` 里找，全局角色库不在那条路径上；立绘默认不复制（引擎查找顺序本来就先命中全局同名目录） |
+| `editor_rescan_scripts`                            | 增量 merge，不整体替换（见下）                                                                                                                                                  |
+| `editor_start_preview` / `editor_stop_preview`     | 试玩（见 [preview.md](preview.md)）                                                                                                                                             |
+| `editor_open_script_folder`                        | 在系统文件管理器打开剧本目录                                                                                                                                                    |
 
 ### 为什么 `rescan` 是增量 merge 而不是整体替换
 

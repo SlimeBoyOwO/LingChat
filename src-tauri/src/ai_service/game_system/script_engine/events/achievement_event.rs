@@ -4,15 +4,15 @@
 //! （成就描述）：每次执行都按这三项**动态注册**一个成就再解锁——不依赖系统里
 //! 是否已存在同名成就，作者可以完全自建。已解锁的成就不会重复广播。
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::Value;
 use tauri::{Emitter, Manager};
 
-use crate::achievements::types::{Achievement, AchievementDef};
 use crate::AppState;
+use crate::achievements::types::{Achievement, AchievementDef};
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    ScriptContext, ScriptEvent, register_event,
 };
 
 pub struct UnlockAchievementEvent {
@@ -29,7 +29,11 @@ impl UnlockAchievementEvent {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string(),
-            title: data.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            title: data
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             description: data
                 .get("description")
                 .and_then(|v| v.as_str())

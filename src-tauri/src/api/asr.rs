@@ -101,10 +101,7 @@ pub async fn asr_start_listening(
 ) -> Result<(), String> {
     let source = parse_source(&source)?;
     let session = session_ref(&state.asr_state.session).await?;
-    session
-        .start(source)
-        .await
-        .map_err(|e| err_to_user(&e))
+    session.start(source).await.map_err(|e| err_to_user(&e))
 }
 
 #[tauri::command]
@@ -116,10 +113,7 @@ pub async fn asr_stop_listening(
     let Ok(session) = session_ref(&state.asr_state.session).await else {
         return Ok(()); // 未初始化视为幂等停止
     };
-    session
-        .stop(source)
-        .await
-        .map_err(|e| err_to_user(&e))
+    session.stop(source).await.map_err(|e| err_to_user(&e))
 }
 
 #[tauri::command]
@@ -320,10 +314,7 @@ pub async fn asr_stream_audio_chunk(
 #[tauri::command]
 pub async fn asr_stop_streaming(state: tauri::State<'_, AppState>) -> Result<AsrResult, String> {
     let session = session_ref(&state.asr_state.session).await?;
-    session
-        .stop_streaming()
-        .await
-        .map_err(|e| err_to_user(&e))
+    session.stop_streaming().await.map_err(|e| err_to_user(&e))
 }
 
 /// 丢弃流式会话（异常路径清理用）：只 take 流式句柄、断开连接，

@@ -1,15 +1,15 @@
-import common from './common'
-import nav from './nav'
-import advance from './advance'
-import settings from './settings'
-import game from './game'
-import views from './views'
-import pet from './pet'
-import stores from './stores'
-import ui from './ui'
-import api from './api'
-import scriptEditor from './scriptEditor'
-import misc from './misc'
+import common from "./common";
+import nav from "./nav";
+import advance from "./advance";
+import settings from "./settings";
+import game from "./game";
+import views from "./views";
+import pet from "./pet";
+import stores from "./stores";
+import ui from "./ui";
+import api from "./api";
+import scriptEditor from "./scriptEditor";
+import misc from "./misc";
 
 export default {
   common,
@@ -24,4 +24,4 @@ export default {
   api,
   scriptEditor,
   misc,
-}
+};

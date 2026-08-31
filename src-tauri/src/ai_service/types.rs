@@ -321,14 +321,7 @@ pub struct VoiceModel {
     pub sbv2_local_sdp_ratio: Option<f32>,
     pub sbv2_local_cloud_fallback_model: Option<String>,
     pub sbv2_local_cloud_fallback_speaker_id: Option<String>,
-    pub sherpa_onnx_model_name: Option<String>,
-    pub sherpa_onnx_model_path: Option<String>,
-    pub sherpa_onnx_model_type: Option<String>,
-    pub sherpa_onnx_lang: Option<String>,
-    pub sherpa_onnx_voice: Option<String>,
-    pub sherpa_onnx_use_gpu: Option<bool>,
-    pub sherpa_onnx_ref_audio_path: Option<String>,
-    pub sherpa_onnx_ref_text: Option<String>,
+    pub cosyvoice_voice_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -471,27 +464,9 @@ pub struct CharacterSettings {
     pub tts_type: Option<String>,
     #[serde(default)]
     pub voice_lang: Option<String>,
-    // Sherpa-ONNX 配置
+    /// 中文方言（仅 cosyvoice + voice_lang=zh 时生效；如"四川话"，空 = 普通话）
     #[serde(default)]
-    pub sherpa_onnx_model_name: Option<String>,
-    #[serde(default)]
-    pub sherpa_onnx_model_path: Option<String>,
-    #[serde(default)]
-    pub sherpa_onnx_model_type: Option<String>,
-    #[serde(default)]
-    pub sherpa_onnx_lang: Option<String>,
-    #[serde(default)]
-    pub sherpa_onnx_voice: Option<String>,
-    #[serde(default)]
-    pub sherpa_onnx_use_gpu: Option<bool>,
-    #[serde(default)]
-    pub sherpa_onnx_speed: Option<f64>,
-    #[serde(default)]
-    pub sherpa_onnx_pitch: Option<f64>,
-    #[serde(default)]
-    pub sherpa_onnx_ref_audio_path: Option<String>,
-    #[serde(default)]
-    pub sherpa_onnx_ref_text: Option<String>,
+    pub voice_dialect: Option<String>,
 
     #[serde(default = "default_thinking_message")]
     pub thinking_message: String,
@@ -566,16 +541,7 @@ impl Default for CharacterSettings {
             voice_models: None,
             tts_type: None,
             voice_lang: None,
-            sherpa_onnx_model_name: None,
-            sherpa_onnx_model_path: None,
-            sherpa_onnx_model_type: None,
-            sherpa_onnx_lang: None,
-            sherpa_onnx_voice: None,
-            sherpa_onnx_use_gpu: None,
-            sherpa_onnx_speed: None,
-            sherpa_onnx_pitch: None,
-            sherpa_onnx_ref_audio_path: None,
-            sherpa_onnx_ref_text: None,
+            voice_dialect: None,
             thinking_message: default_thinking_message(),
             bubble_top: default_bubble_top(),
             bubble_left: default_bubble_left(),

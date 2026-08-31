@@ -3,13 +3,13 @@
 use serde::Serialize;
 use tauri::Manager;
 
-use crate::ai_service::skill_agent::command_executor;
+use crate::AppState;
 use crate::ai_service::message_system::generator::GeneratorSource;
+use crate::ai_service::skill_agent::command_executor;
 use crate::ai_service::tools::executor::{Tool, ToolContext};
 use crate::ai_service::tools::permissions::CONFIG_FILE_NAME;
 use crate::ai_service::tools::settings::ToolSettings;
 use crate::ai_service::tools::web_search::WebSearchTool;
-use crate::AppState;
 
 /// 读取当前工具配置。
 #[tauri::command]
@@ -169,7 +169,9 @@ pub async fn resolve_command_approval(
     request_id: String,
     approved: bool,
 ) -> Result<(), String> {
-    tracing::info!("[approval] resolve_command_approval 收到回传: request_id={request_id} approved={approved}");
+    tracing::info!(
+        "[approval] resolve_command_approval 收到回传: request_id={request_id} approved={approved}"
+    );
     let state = app.state::<AppState>();
     let request = state
         .chat_command_approvals
@@ -180,11 +182,13 @@ pub async fn resolve_command_approval(
         Some(request) => {
             let _ = request.tx.send(approved);
             Ok(())
-        }
+        },
         None => {
-            tracing::warn!("[approval] resolve_command_approval 未找到请求: request_id={request_id}");
+            tracing::warn!(
+                "[approval] resolve_command_approval 未找到请求: request_id={request_id}"
+            );
             Err("审批请求不存在或已过期".into())
-        }
+        },
     }
 }
 
@@ -195,7 +199,9 @@ pub async fn resolve_file_change_approval(
     request_id: String,
     approved: bool,
 ) -> Result<(), String> {
-    tracing::info!("[approval] resolve_file_change_approval 收到回传: request_id={request_id} approved={approved}");
+    tracing::info!(
+        "[approval] resolve_file_change_approval 收到回传: request_id={request_id} approved={approved}"
+    );
     let state = app.state::<AppState>();
     let request = state
         .chat_file_change_approvals
@@ -206,13 +212,13 @@ pub async fn resolve_file_change_approval(
         Some(request) => {
             let _ = request.tx.send(approved);
             Ok(())
-        }
+        },
         None => {
             tracing::warn!(
                 "[approval] resolve_file_change_approval 未找到请求: request_id={request_id}"
             );
             Err("文件修改审批请求不存在或已过期".into())
-        }
+        },
     }
 }
 
@@ -223,7 +229,9 @@ pub async fn resolve_file_delete_approval(
     request_id: String,
     approved: bool,
 ) -> Result<(), String> {
-    tracing::info!("[approval] resolve_file_delete_approval 收到回传: request_id={request_id} approved={approved}");
+    tracing::info!(
+        "[approval] resolve_file_delete_approval 收到回传: request_id={request_id} approved={approved}"
+    );
     let state = app.state::<AppState>();
     let request = state
         .chat_file_delete_approvals
@@ -234,10 +242,12 @@ pub async fn resolve_file_delete_approval(
         Some(request) => {
             let _ = request.tx.send(approved);
             Ok(())
-        }
+        },
         None => {
-            tracing::warn!("[approval] resolve_file_delete_approval 未找到请求: request_id={request_id}");
+            tracing::warn!(
+                "[approval] resolve_file_delete_approval 未找到请求: request_id={request_id}"
+            );
             Err("删除审批请求不存在或已过期".into())
-        }
+        },
     }
 }

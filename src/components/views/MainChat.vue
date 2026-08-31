@@ -49,11 +49,12 @@
 </template>
 
 <script setup lang="ts">
+  import { getEnvConfigByKey } from "@/api/services/config";
   import FreeModeTools from "@/components/tools/FreeModeTools.vue";
   import ToolActivityStatus from "@/components/tools/ToolActivityStatus.vue";
+  import { dialogueMerge } from "@/core/events/dialogue-merge";
   import { eventQueue } from "@/core/events/event-queue";
-  import { getEnvConfigByKey } from "@/api/services/config";
-  import { onMounted, ref, watch } from "vue";
+  import { onMounted, onUnmounted, ref, watch } from "vue";
   import { useRouter } from "vue-router";
   import { useGameStore } from "../../stores/modules/game";
   import { useUIStore } from "../../stores/modules/ui/ui";
@@ -63,10 +64,8 @@
 
   import FullAccessWarning from "@/components/tools/FullAccessWarning.vue";
   import ImageSourcePicker from "@/components/ui/ImageSourcePicker.vue";
-  import { useHideForSnapshot } from "@/composables/useHideForSnapshot";
-  import { useSettingsSnapshot } from "@/composables/useSettingsSnapshot";
-  import { useSettingsStore } from "../../stores/modules/settings";
   import { isAndroid, isWindows } from "@/utils/platform";
+  import { useSettingsStore } from "../../stores/modules/settings";
   import GameExtraUI from "../game/standard/GameExtraUI.vue";
 
   const LOADING_STORAGE_KEY = "lingchat_loading_shown";
@@ -112,8 +111,6 @@
 
   const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null);
   const menuPanelRef = ref<HTMLElement | null>(null);
-  const settingsSnapshot = useSettingsSnapshot();
-  const { hide: hideForSnapshot, restore: restoreForSnapshot } = useHideForSnapshot();
   let settingsSnapshotSession: number | null = null;
 
   const openSettings = async () => {
@@ -123,44 +120,22 @@
     if (isWindows()) {
       const el = menuPanelRef.value;
       (async () => {
-        let capturePromise: Promise<string | null> | null = null;
         try {
-          await hideForSnapshot(el);
-          capturePromise = settingsSnapshot.capture();
           uiStore.toggleSettings(true);
           uiStore.setSettingsTab("text");
-          const result = await capturePromise;
-          if (result) settingsSnapshotSession = settingsSnapshot.snapshotSessionId.value || null;
         } catch (e) {
           console.warn("[MainChat] settings snapshot failed:", e);
           // 失败也需打开设置，避免阻塞
           uiStore.toggleSettings(true);
           uiStore.setSettingsTab("text");
         } finally {
-          restoreForSnapshot(el);
         }
-        if (capturePromise) capturePromise.catch(() => restoreForSnapshot(el));
       })();
       return;
     }
     uiStore.toggleSettings(true);
     uiStore.setSettingsTab("text");
   };
-
-  // 关闭设置后释放 Windows 静态背景临时资源
-  watch(
-    () => uiStore.showSettings,
-    (show) => {
-      if (!show && isWindows() && settingsSnapshotSession !== null) {
-        const sid = settingsSnapshotSession;
-        settingsSnapshotSession = null;
-        settingsSnapshot.release(sid).catch(() => {});
-      } else if (!show && isWindows() && settingsSnapshot.snapshotSrc.value) {
-        // 兜底：MainMenu 未释放时由游戏侧释放
-        settingsSnapshot.release().catch(() => {});
-      }
-    }
-  );
 
   const switchAutoMode = () => {
     uiStore.autoMode = !uiStore.autoMode;
@@ -189,70 +164,98 @@
     }
   });
 
-  /* 自动模式（AUTO）逻辑：事件驱动，非轮询
-   * 当且仅当以下全部满足时，延迟 settingsStore.autoAdvanceDelay（默认 1000ms，可在设置→文字中调节）自动推进下一句：
-   * 1. 自动模式开启
-   * 2. 当前处于 responding 状态
-   * 3. 当前台词打字机已结束
-   * 4. 当前台词语音已播放完毕
-   * 用户手动推进时取消当前调度。
-   */
+  // 卸载时清掉音频播放状态与自动推进定时器：避免返回后首条回复被当成「续打合并」
+  onUnmounted(() => {
+    dialogueMerge.isAudioPlaying = false;
+    cancelAdvance();
+  });
 
+  /* 自动推进调度（AUTO 自动模式 + 台词合并共用一条管道；事件驱动，非轮询）
+   * 优先级：台词合并（armed）严格优先于 AUTO 自动推进——
+   *   - armed 时只调度 merge 续打（延迟 mergeLineDelay），AUTO 定时器根本不启动，
+   *     因此 autoAdvanceDelay 无论调多小（甚至 < mergeLineDelay）都不会抢跑 merge。
+   *   - 未 armed 且 AUTO 开启：延迟 autoAdvanceDelay 自动推进下一句。
+   * 调度条件（满足才推进）：
+   *   1. 当前处于 responding 状态
+   *   2. 当前台词打字机已结束
+   *   3. 当前台词语音已播放完毕
+   * 触发点：打字结束、音频结束、进入 responding、AUTO 开关变化、合并武装变化。
+   */
   const typingFinished = ref(true);
   const audioFinished = ref(true);
-  let autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
+  let advanceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const cancelAutoAdvance = () => {
-    if (autoAdvanceTimer) {
-      clearTimeout(autoAdvanceTimer);
-      autoAdvanceTimer = null;
+  const cancelAdvance = () => {
+    if (advanceTimer) {
+      clearTimeout(advanceTimer);
+      advanceTimer = null;
     }
   };
 
-  const scheduleAutoAdvance = () => {
-    cancelAutoAdvance();
+  const scheduleAdvance = () => {
+    cancelAdvance();
 
-    if (!uiStore.autoMode) return;
     if (gameStore.currentStatus !== "responding") return;
-    if (!typingFinished.value || !audioFinished.value) return;
+    // 实时检查打字机状态（typingFinished 可能还没被打字 watch 同步，微任务顺序不定，
+    // 例如 GameDialog 刚消费 armed 开始续打的瞬间，armed watch 先于打字 watch 触发）
+    if (gameDialogRef.value?.isTyping || !typingFinished.value || !audioFinished.value) return;
 
-    autoAdvanceTimer = setTimeout(() => {
-      autoAdvanceTimer = null;
-      if (!uiStore.autoMode || gameStore.currentStatus !== "responding") return;
-      if (!typingFinished.value || !audioFinished.value) return;
+    if (dialogueMerge.armed) {
+      // 合并续打优先：延迟 mergeLineDelay 后推进队列 → GameDialog 对队头短句走追加路径。
+      // armed 由 GameDialog 追加路径消费（保持 true 直到它读到）；队头不是目标则放弃。
+      advanceTimer = setTimeout(() => {
+        advanceTimer = null;
+        // 延迟窗口内可能已被用户手动推进 / 状态变化，重查条件
+        if (!dialogueMerge.armed || gameStore.currentStatus !== "responding") return;
+        const next = eventQueue.peek();
+        if (next?.type === "reply" && next.roleId === dialogueMerge.armedRoleId) {
+          gameDialogRef.value?.continueDialog(false);
+        } else {
+          // 防御：队头不是被合并的那条（被其他事件挡路），放弃合并
+          dialogueMerge.armed = false;
+        }
+      }, settingsStore.text.mergeLineDelay);
+    } else if (uiStore.autoMode) {
+      advanceTimer = setTimeout(() => {
+        advanceTimer = null;
+        if (!uiStore.autoMode || gameStore.currentStatus !== "responding") return;
+        if (!typingFinished.value || !audioFinished.value) return;
 
-      const needWait = gameDialogRef.value?.continueDialog(false) ?? true;
-      if (!needWait) {
-        // 推进后重置状态，等待下一条台词的打字/语音事件
-        typingFinished.value = true;
-        audioFinished.value = true;
-      }
-    }, settingsStore.autoAdvanceDelay);
+        const needWait = gameDialogRef.value?.continueDialog(false) ?? true;
+        if (!needWait) {
+          // 推进后重置状态，等待下一条台词的打字/语音事件
+          typingFinished.value = true;
+          audioFinished.value = true;
+        }
+      }, settingsStore.autoAdvanceDelay);
+    }
   };
 
-  // 音频开始播放
+  // 音频开始播放：推进挂起，等音频结束
   const handleAudioStarted = () => {
     audioFinished.value = false;
-    cancelAutoAdvance();
+    dialogueMerge.isAudioPlaying = true;
+    cancelAdvance();
   };
 
-  // 音频播放结束
+  // 音频播放结束：可推进（armed 则合并续打，否则 AUTO）
   const handleAudioFinished = () => {
     audioFinished.value = true;
-    scheduleAutoAdvance();
+    dialogueMerge.isAudioPlaying = false;
+    scheduleAdvance();
   };
 
-  // 用户手动推进
+  // 用户手动推进：取消当前调度
   const manualTriggerContinue = () => {
-    cancelAutoAdvance();
+    cancelAdvance();
   };
 
   // 监听自动模式开关
   watch(
     () => uiStore.autoMode,
     (enabled) => {
-      if (enabled) scheduleAutoAdvance();
-      else cancelAutoAdvance();
+      if (enabled) scheduleAdvance();
+      else cancelAdvance();
     }
   );
 
@@ -263,9 +266,9 @@
       if (status === "responding") {
         typingFinished.value = !(gameDialogRef.value?.isTyping ?? false);
         audioFinished.value = true; // 新台词初始无音频
-        scheduleAutoAdvance();
+        scheduleAdvance();
       } else {
-        cancelAutoAdvance();
+        cancelAdvance();
       }
     }
   );
@@ -276,12 +279,19 @@
     (typing) => {
       if (typing) {
         typingFinished.value = false;
-        cancelAutoAdvance();
+        cancelAdvance();
       } else {
         typingFinished.value = true;
-        scheduleAutoAdvance();
+        scheduleAdvance();
       }
     }
+  );
+
+  // 监听合并武装变化：i+1 到达武装 / 被消费时重新调度——armed 时 merge 优先（AUTO 不启动），
+  // 武装消费后（GameDialog 追加开始，isTyping 变 true）自动回落 AUTO / 取消。
+  watch(
+    () => dialogueMerge.armed,
+    () => scheduleAdvance()
   );
 </script>
 

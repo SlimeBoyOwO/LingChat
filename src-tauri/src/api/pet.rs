@@ -1,15 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use tauri::AppHandle;
 #[cfg(desktop)]
 use tauri::LogicalSize;
-use tauri::AppHandle;
 #[cfg(desktop)]
 use tauri::Manager;
 
 // 桌宠点击穿透命中区（桌面端专属，移动端仅作为命令参数反序列化、不读取）。
 #[cfg_attr(not(desktop), allow(dead_code))]
 #[derive(Clone, Deserialize, Debug)]
-#[allow(dead_code)]
 pub struct Rect {
     pub x: f64,
     pub y: f64,

@@ -5,27 +5,27 @@
 </template>
 
 <script setup lang="ts">
-const props = defineProps({
-  name: {
-    type: String,
-    require: true,
-  },
-  content: {
-    type: String,
-    require: true,
-  },
-})
+  const props = defineProps({
+    name: {
+      type: String,
+      require: true,
+    },
+    content: {
+      type: String,
+      require: true,
+    },
+  });
 </script>
 <style scoped>
-span {
-  vertical-align: middle;
-}
+  span {
+    vertical-align: middle;
+  }
 
-.name {
-  font-weight: bold;
-}
+  .name {
+    font-weight: bold;
+  }
 
-.symbol {
-  font-weight: bold;
-}
+  .symbol {
+    font-weight: bold;
+  }
 </style>

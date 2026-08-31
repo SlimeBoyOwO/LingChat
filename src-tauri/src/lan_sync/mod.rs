@@ -25,8 +25,8 @@ pub mod sync_engine;
 
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
 
 use tauri::{AppHandle, Emitter, State};
 use tracing::{info, warn};
@@ -121,7 +121,7 @@ fn get_device_identity(state: &LanSyncState) -> Result<DeviceIdentity, String> {
                         .map_err(|e| format!("锁失败: {e}"))?;
                     *guard = Some(id.clone());
                     return Ok(id);
-                }
+                },
                 Err(e) => warn!("设备身份文件损坏，将重新生成: {e}"),
             },
             Err(e) => warn!("无法读取设备身份文件，将重新生成: {e}"),
@@ -368,7 +368,7 @@ pub async fn lan_sync_execute_push(
     match &result {
         Ok(r) => {
             let _ = app.emit("lan-sync-complete", r);
-        }
+        },
         Err(e) => {
             let _ = app.emit(
                 "lan-sync-complete",
@@ -382,7 +382,7 @@ pub async fn lan_sync_execute_push(
                     message: e.clone(),
                 },
             );
-        }
+        },
     }
 
     // 清空计划
@@ -427,7 +427,7 @@ pub async fn lan_sync_execute_pull(
     match &result {
         Ok(r) => {
             let _ = app.emit("lan-sync-complete", r);
-        }
+        },
         Err(e) => {
             let _ = app.emit(
                 "lan-sync-complete",
@@ -441,7 +441,7 @@ pub async fn lan_sync_execute_pull(
                     message: e.clone(),
                 },
             );
-        }
+        },
     }
 
     // 清空计划

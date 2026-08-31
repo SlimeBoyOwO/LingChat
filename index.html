@@ -3,7 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- user-scalable=no + maximum-scale=1.0：锁定移动端视口，禁用 WebView 原生
+         双指捏合 & 双击放大（这是 WebView 原生缩放手势，与 useZoom 的 Ctrl+滚轮
+         全局 UI 缩放是两回事，后者仅桌面端生效）。interactive-widget=resizes-content
+         保留用于 iOS 键盘让位，viewport-fit=cover 保留用于安全区。 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content, maximum-scale=1.0, user-scalable=no" />
     <title>Tauri + Vue + Typescript App</title>
     <!-- 小屏根字号缩放（min(vw,vh) 横竖屏均覆盖，!important 防止构建产物覆盖） -->
     <style></style>

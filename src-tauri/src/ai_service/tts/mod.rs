@@ -8,11 +8,12 @@
 //! 所有 adapter 使用全局共享的 `reqwest::Client`（连接池复用）。
 //! 写音频文件到磁盘的目录由 `set_temp_dir` 决定，默认 `<data>/voice/`。
 
-pub mod adapters;
+mod adapters;
 pub mod provider;
 pub mod voice_maker;
 
 // In-process SBV2 / Style-Bert-VITS2 local TTS engine (Task 1-10).
+pub mod cloud;
 pub mod local;
 
 pub use voice_maker::VoiceMaker;

@@ -38,7 +38,7 @@ events:
   # 玩家选项
   - type: choices
     options:
-      - text: '要不要一起吃红烧牛肉面！'
+      - text: "要不要一起吃红烧牛肉面！"
         actions:
           - type: add_line
             content: 要不要一起吃红烧牛肉面！
@@ -51,11 +51,11 @@ events:
   # AI 生成台词
   - type: ai_dialogue
     character: MAIN
-    prompt: '虽然是个斯文的美少女，但是她泡面却喜欢重口的呢，希望%player%能挑个好的'
+    prompt: "虽然是个斯文的美少女，但是她泡面却喜欢重口的呢，希望%player%能挑个好的"
 
   # 玩家自由输入
   - type: input
-    hint: '于是你打算买什么口味的泡面呢？'
+    hint: "于是你打算买什么口味的泡面呢？"
 
   - type: ai_dialogue
     character: MAIN
@@ -70,4 +70,4 @@ events:
   # 剧本结束
   - type: chapter_end
     end_type: linear
-    next_chapter: 'end'
+    next_chapter: "end"

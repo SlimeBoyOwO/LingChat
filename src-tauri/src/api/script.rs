@@ -3,9 +3,9 @@
 //! Replaces Python's WebSocket-based script communication.
 //! Frontend calls these via `invoke()` instead of `/v1/chat/script/*` HTTP endpoints.
 
-use crate::ai_service::game_system::script_engine::events::ScriptContext;
-use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::AppState;
+use crate::ai_service::game_system::script_engine::ScriptManager;
+use crate::ai_service::game_system::script_engine::events::ScriptContext;
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
@@ -132,7 +132,7 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
                     .await;
                 }
                 tracing::info!("[ScriptAPI] 剧本执行完成")
-            }
+            },
             Err(e) => tracing::error!("[ScriptAPI] 剧本执行错误: {}", e),
         }
     });

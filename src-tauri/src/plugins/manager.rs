@@ -86,7 +86,7 @@ impl PluginManager {
             let mut record = self.load_record(&dir, &id, &states);
             if record.state.enabled && record.error.is_none() {
                 match self.register_tools(&record) {
-                    Ok(()) => {}
+                    Ok(()) => {},
                     Err(e) => record.error = Some(e),
                 }
             }
@@ -112,17 +112,20 @@ impl PluginManager {
             Err(e) => {
                 record.error = Some(format!("读取 manifest.toml 失败: {e}"));
                 return record;
-            }
+            },
         };
         let parsed = match manifest::parse(&text) {
             Ok(m) => m,
             Err(e) => {
                 record.error = Some(e.to_string());
                 return record;
-            }
+            },
         };
         if parsed.id != id {
-            record.error = Some(format!("manifest.id '{}' 与目录名 '{id}' 不一致", parsed.id));
+            record.error = Some(format!(
+                "manifest.id '{}' 与目录名 '{id}' 不一致",
+                parsed.id
+            ));
             return record;
         }
         record.manifest = parsed;
@@ -143,17 +146,27 @@ impl PluginManager {
                         self.registry.unregister(name);
                     }
                     return Err(format!("{e}（已回滚 {} 个已注册工具）", registered.len()));
-                }
+                },
             }
         }
-        let names: Vec<String> = record.manifest.tools.iter().map(|t| t.name.clone()).collect();
+        let names: Vec<String> = record
+            .manifest
+            .tools
+            .iter()
+            .map(|t| t.name.clone())
+            .collect();
         self.registry.add_available_tools(&names);
         Ok(())
     }
 
     /// 注销插件的所有工具，并同步移除 available_tools 展示列表。
     fn unregister_tools(&self, record: &PluginRecord) {
-        let names: Vec<String> = record.manifest.tools.iter().map(|t| t.name.clone()).collect();
+        let names: Vec<String> = record
+            .manifest
+            .tools
+            .iter()
+            .map(|t| t.name.clone())
+            .collect();
         for name in &names {
             self.registry.unregister(name);
         }
@@ -174,10 +187,7 @@ impl PluginManager {
     pub fn plugin_run_env(
         &self,
         id: &str,
-    ) -> (
-        HashMap<String, serde_json::Value>,
-        HashMap<String, String>,
-    ) {
+    ) -> (HashMap<String, serde_json::Value>, HashMap<String, String>) {
         let records = self.records.blocking_lock();
         let Some(record) = records.get(id) else {
             return (HashMap::new(), HashMap::new());
@@ -383,13 +393,13 @@ impl PluginManager {
             ResourceKind::Scripts => resources::game_script_names(&self.data_dir),
             ResourceKind::Backgrounds => {
                 resources::game_file_names(&self.game_data_dir().join("backgrounds"), false)
-            }
+            },
             ResourceKind::Musics => {
                 resources::game_file_names(&self.game_data_dir().join("musics"), true)
-            }
+            },
             ResourceKind::Ambients => {
                 resources::game_file_names(&self.game_data_dir().join("ambients"), true)
-            }
+            },
         }
     }
 
@@ -419,10 +429,7 @@ impl PluginManager {
 
     /// 某插件的全部资源条目（供插件管理页资源区），带 conflict / hidden 标记。
     /// 插件间冲突：同类同 key 被更小 id 的插件占据（且未被隐藏）时，本条目标 conflict。
-    pub async fn plugin_resources(
-        &self,
-        id: &str,
-    ) -> Result<Vec<PluginResourceEntry>, String> {
+    pub async fn plugin_resources(&self, id: &str) -> Result<Vec<PluginResourceEntry>, String> {
         let record = {
             let records = self.records.lock().await;
             records
@@ -436,7 +443,9 @@ impl PluginManager {
             // 每个 key 的第一个「未隐藏未冲突」条目的插件为赢家
             let mut winner: HashMap<String, String> = HashMap::new();
             for e in all.iter().filter(|e| !e.hidden && !e.conflict) {
-                winner.entry(e.key.clone()).or_insert_with(|| e.plugin_id.clone());
+                winner
+                    .entry(e.key.clone())
+                    .or_insert_with(|| e.plugin_id.clone());
             }
             // 直接扫目标插件自己的目录（无论启用与否），否则禁用插件的资源区恒为空，
             // 玩家没法在删除前「保留」已禁用插件的资源。
@@ -483,8 +492,8 @@ impl PluginManager {
     /// 「保留」某插件资源：复制到游戏对应目录，成功后自动隐藏插件版。
     /// 返回资源类型，供调用方决定触发哪种重扫（角色 / 剧本）。
     pub async fn keep_resource(&self, id: &str, mark: &str) -> Result<ResourceKind, String> {
-        let (kind, key) = resources::split_hidden_mark(mark)
-            .ok_or_else(|| format!("无效的资源标记: {mark}"))?;
+        let (kind, key) =
+            resources::split_hidden_mark(mark).ok_or_else(|| format!("无效的资源标记: {mark}"))?;
         let record = {
             let records = self.records.lock().await;
             records
@@ -505,7 +514,7 @@ impl PluginManager {
                     return Err("游戏目录已存在同名角色".to_string());
                 }
                 resources::copy_dir_all(&entry.path, &dest).map_err(|e| e.to_string())?;
-            }
+            },
             ResourceKind::Scripts => {
                 let folder = entry
                     .path
@@ -517,10 +526,8 @@ impl PluginManager {
                     return Err("游戏目录已存在同名剧本".to_string());
                 }
                 resources::copy_dir_all(&entry.path, &dest).map_err(|e| e.to_string())?;
-            }
-            ResourceKind::Musics
-            | ResourceKind::Backgrounds
-            | ResourceKind::Ambients => {
+            },
+            ResourceKind::Musics | ResourceKind::Backgrounds | ResourceKind::Ambients => {
                 let dest = game.join(kind.subdir()).join(key);
                 if dest.exists() {
                     return Err("游戏目录已存在同名文件".to_string());
@@ -528,9 +535,8 @@ impl PluginManager {
                 if let Some(parent) = dest.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }
-                std::fs::copy(&entry.path, &dest)
-                    .map_err(|e| format!("复制文件失败: {e}"))?;
-            }
+                std::fs::copy(&entry.path, &dest).map_err(|e| format!("复制文件失败: {e}"))?;
+            },
         }
 
         self.set_resource_hidden(id, mark, true).await?;
@@ -538,10 +544,7 @@ impl PluginManager {
     }
 
     /// 供启用插件目录列表（角色同步扫描用）：返回 (plugin_id, characters 目录, 隐藏标记集)。
-    pub async fn kind_roots(
-        &self,
-        kind: ResourceKind,
-    ) -> Vec<(String, PathBuf, Vec<String>)> {
+    pub async fn kind_roots(&self, kind: ResourceKind) -> Vec<(String, PathBuf, Vec<String>)> {
         self.records_for(kind)
             .await
             .into_iter()
@@ -568,7 +571,9 @@ fn coerce_config_value(kind: &ConfigKind, value: &serde_json::Value) -> Option<s
         },
         ConfigKind::Number => match value {
             serde_json::Value::Number(_) => Some(value.clone()),
-            serde_json::Value::String(s) => s.trim().parse::<f64>().ok().map(|f| serde_json::json!(f)),
+            serde_json::Value::String(s) => {
+                s.trim().parse::<f64>().ok().map(|f| serde_json::json!(f))
+            },
             _ => None,
         },
         ConfigKind::Boolean => match value {

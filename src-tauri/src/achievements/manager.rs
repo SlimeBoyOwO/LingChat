@@ -6,8 +6,8 @@ use crate::achievements::types::{Achievement, AchievementDef, AchievementState};
 
 // ========== 默认成就定义 ==========
 
-static DEFAULT_ACHIEVEMENTS: LazyLock<HashMap<&'static str, AchievementDef>> =
-    LazyLock::new(|| {
+static DEFAULT_ACHIEVEMENTS: LazyLock<HashMap<&'static str, AchievementDef>> = LazyLock::new(
+    || {
         HashMap::from([
             (
                 "first_chat",
@@ -75,7 +75,8 @@ static DEFAULT_ACHIEVEMENTS: LazyLock<HashMap<&'static str, AchievementDef>> =
                 },
             ),
         ])
-    });
+    },
+);
 
 // ========== AchievementManager ==========
 

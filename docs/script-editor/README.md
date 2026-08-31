@@ -30,49 +30,49 @@ PR #540 的目标：
 
 ## 文档索引
 
-| 文档 | 内容 |
-|---|---|
-| [architecture.md](architecture.md) | **实现方式**：模块分层、设计约束、命令清单、三种磁盘布局、schema 单一真相源、原子写与路径安全 |
-| [editor.md](editor.md) | **编辑器逻辑**：schema 驱动表单、编辑操作与撤销栈、防抖自动保存、事件折叠、章节流程图、素材 / 角色管理 |
-| [preview.md](preview.md) | **预览（试玩）逻辑**：内嵌真渲染层、后端会话快照 / 还原、`preview_generation` 孤儿写入守卫、前端迟到事件丢弃、路由守卫清理 |
-| [validation.md](validation.md) | **自动错误检测机制**：校验流水线、三级诊断、事件级 / 章节图 / 变量分析、稳定诊断码 |
+| 文档                               | 内容                                                                                                                       |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| [architecture.md](architecture.md) | **实现方式**：模块分层、设计约束、命令清单、三种磁盘布局、schema 单一真相源、原子写与路径安全                              |
+| [editor.md](editor.md)             | **编辑器逻辑**：schema 驱动表单、编辑操作与撤销栈、防抖自动保存、事件折叠、章节流程图、素材 / 角色管理                     |
+| [preview.md](preview.md)           | **预览（试玩）逻辑**：内嵌真渲染层、后端会话快照 / 还原、`preview_generation` 孤儿写入守卫、前端迟到事件丢弃、路由守卫清理 |
+| [validation.md](validation.md)     | **自动错误检测机制**：校验流水线、三级诊断、事件级 / 章节图 / 变量分析、稳定诊断码                                         |
 
 ## 图表（SVG + HTML）
 
 每张图为独立 HTML 文件，浏览器直接打开即可查看（内联 SVG，无需外部依赖）。
 
-| 图 | 说明 |
-|---|---|
-| [diagrams/architecture.html](diagrams/architecture.html) | 总体架构数据流图：前端三层 → Tauri IPC → 后端命令层 → 四个子模块 → 磁盘 / 引擎 |
-| [diagrams/editor-flow.html](diagrams/editor-flow.html) | 编辑流程数据流图：编辑操作 → 撤销栈 → 防抖自动保存 → 原子写；同步触发校验 → 诊断回填 |
-| [diagrams/event-schema.html](diagrams/event-schema.html) | 事件 Schema UML 类图：ScriptSchema / EventSpec / FieldSpec / FieldKind / ActionSpec |
-| [diagrams/preview-isolation.html](diagrams/preview-isolation.html) | 试玩隔离时序图：启动快照 → 试玩运行 → 中止还原 → 迟到事件丢弃 → 路由守卫 |
-| [diagrams/preview-class.html](diagrams/preview-class.html) | 试玩与会话隔离 UML 类图：PreviewSession / GameStatus / GeneratorDeps / ReplyResponse |
-| [diagrams/validation-flow.html](diagrams/validation-flow.html) | 校验流程图：story_config → 逐章节 → 逐事件 → 章节图 / 变量 → 报告 |
+| 图                                                                 | 说明                                                                                 |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| [diagrams/architecture.html](diagrams/architecture.html)           | 总体架构数据流图：前端三层 → Tauri IPC → 后端命令层 → 四个子模块 → 磁盘 / 引擎       |
+| [diagrams/editor-flow.html](diagrams/editor-flow.html)             | 编辑流程数据流图：编辑操作 → 撤销栈 → 防抖自动保存 → 原子写；同步触发校验 → 诊断回填 |
+| [diagrams/event-schema.html](diagrams/event-schema.html)           | 事件 Schema UML 类图：ScriptSchema / EventSpec / FieldSpec / FieldKind / ActionSpec  |
+| [diagrams/preview-isolation.html](diagrams/preview-isolation.html) | 试玩隔离时序图：启动快照 → 试玩运行 → 中止还原 → 迟到事件丢弃 → 路由守卫             |
+| [diagrams/preview-class.html](diagrams/preview-class.html)         | 试玩与会话隔离 UML 类图：PreviewSession / GameStatus / GeneratorDeps / ReplyResponse |
+| [diagrams/validation-flow.html](diagrams/validation-flow.html)     | 校验流程图：story_config → 逐章节 → 逐事件 → 章节图 / 变量 → 报告                    |
 
 ## 关键代码位置
 
 **后端（`src-tauri/`）**
 
-| 文件 | 职责 |
-|---|---|
-| `src/api/script_editor/mod.rs` | 模块入口与分层说明 |
-| `src/api/script_editor/schema.rs` | 16 种事件字段的单一真相源，导出给前端 |
-| `src/api/script_editor/paths.rs` | 剧本 key ⇄ 磁盘路径、三种布局、穿越防护、名称合法性 |
-| `src/api/script_editor/io.rs` | YAML ⇄ JSON、原子写、`.bak` 备份、章节文档归一 |
-| `src/api/script_editor/validate.rs` | 校验器：把引擎静默失败变成诊断 |
-| `src/api/script_editor/commands.rs` | Tauri 命令层（`editor_*` 前缀） |
+| 文件                                | 职责                                                |
+| ----------------------------------- | --------------------------------------------------- |
+| `src/api/script_editor/mod.rs`      | 模块入口与分层说明                                  |
+| `src/api/script_editor/schema.rs`   | 16 种事件字段的单一真相源，导出给前端               |
+| `src/api/script_editor/paths.rs`    | 剧本 key ⇄ 磁盘路径、三种布局、穿越防护、名称合法性 |
+| `src/api/script_editor/io.rs`       | YAML ⇄ JSON、原子写、`.bak` 备份、章节文档归一      |
+| `src/api/script_editor/validate.rs` | 校验器：把引擎静默失败变成诊断                      |
+| `src/api/script_editor/commands.rs` | Tauri 命令层（`editor_*` 前缀）                     |
 
 **前端（`src/`）**
 
-| 文件 | 职责 |
-|---|---|
-| `api/services/script-editor.ts` | 纯 invoke 封装 + 类型 |
-| `stores/modules/script-editor/{state,getters,actions,index}.ts` | setup 风格 Pinia store |
-| `components/views/ScriptEditor.vue` | 主视图（五个页签 / 试玩 / 弹窗 / 快捷键） |
-| `components/script-editor/*.vue` | ChapterFlow / ChapterTimeline / EventPropertyPanel / FieldRow / CompositeField / EventRow / PreviewStage |
-| `composables/useEventFolding.ts` | 转场与 AI 互动轮次的折叠逻辑 |
-| `api/tauri-events.ts` | `isStalePreviewReply` 迟到事件丢弃 |
+| 文件                                                            | 职责                                                                                                     |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `api/services/script-editor.ts`                                 | 纯 invoke 封装 + 类型                                                                                    |
+| `stores/modules/script-editor/{state,getters,actions,index}.ts` | setup 风格 Pinia store                                                                                   |
+| `components/views/ScriptEditor.vue`                             | 主视图（五个页签 / 试玩 / 弹窗 / 快捷键）                                                                |
+| `components/script-editor/*.vue`                                | ChapterFlow / ChapterTimeline / EventPropertyPanel / FieldRow / CompositeField / EventRow / PreviewStage |
+| `composables/useEventFolding.ts`                                | 转场与 AI 互动轮次的折叠逻辑                                                                             |
+| `api/tauri-events.ts`                                           | `isStalePreviewReply` 迟到事件丢弃                                                                       |
 
 ## 试玩与会话隔离要点（速览）
 

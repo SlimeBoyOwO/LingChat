@@ -63,13 +63,13 @@ roles = []                          # initialize_characters 会把未归组角�
 
 ## 3. 默认语义
 
-| 来源（GeneratorSource） | 场景组 | 结果 |
-|---|---|---|
-| `UserChat` 玩家发消息 | `scene_admin`（all_tools） | 可用全部工具（只要角色组放行） |
-| `Proactive` 主动对话 | `scene_normal`（显式列表） | 可用列表内的工具 |
-| `ScriptFreeDialogue` 剧本自由对话 | `scene_normal` | 同上 |
-| `ScriptAiDialogue` 剧本 AI 对话 | `scene_default`（disabled） | **无任何工具** |
-| `EntryGreeting` 入场问候 | `scene_default`（disabled） | **无任何工具** |
+| 来源（GeneratorSource）           | 场景组                      | 结果                           |
+| --------------------------------- | --------------------------- | ------------------------------ |
+| `UserChat` 玩家发消息             | `scene_admin`（all_tools）  | 可用全部工具（只要角色组放行） |
+| `Proactive` 主动对话              | `scene_normal`（显式列表）  | 可用列表内的工具               |
+| `ScriptFreeDialogue` 剧本自由对话 | `scene_normal`              | 同上                           |
+| `ScriptAiDialogue` 剧本 AI 对话   | `scene_default`（disabled） | **无任何工具**                 |
+| `EntryGreeting` 入场问候          | `scene_default`（disabled） | **无任何工具**                 |
 
 角色侧默认：
 

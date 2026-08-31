@@ -4,7 +4,6 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.get
-import java.io.File
 
 const val TASK_GROUP = "rust"
 
@@ -79,55 +78,6 @@ open class RustPlugin : Plugin<Project> {
                     tasks["merge$targetArchCapitalized${profileCapitalized}JniLibFolders"].dependsOn(
                         targetBuildTask
                     )
-                }
-
-                // After Rust build, copy extra shared libraries (sherpa-onnx, onnxruntime)
-                // into jniLibs so they are bundled in the APK. The Tauri CLI only copies
-                // the main cdylib and libc++_shared.so; transitive shared deps are missed.
-                val cargoTargetDir = File(project.projectDir, "${config.rootDirRel}/target")
-                val jniLibsBase = File(project.projectDir, "app/src/main/jniLibs")
-
-                val extraSoNames = listOf(
-                    "libsherpa-onnx-c-api.so",
-                    "libsherpa-onnx-cxx-api.so",
-                    "libsherpa-onnx-jni.so",
-                    "libonnxruntime.so",
-                )
-
-                for (targetPair in targetsList.withIndex()) {
-                    val targetRustName = targetPair.value
-                    val targetArch = archList[targetPair.index]
-                    val abiName = defaultAbiList[targetPair.index]
-                    val targetArchCapitalized = targetArch.replaceFirstChar { it.uppercase() }
-
-                    val copyTask = tasks.maybeCreate(
-                        "copyExtraLibs$targetArchCapitalized$profileCapitalized",
-                        DefaultTask::class.java
-                    ).apply {
-                        group = TASK_GROUP
-                        description = "Copy extra shared libs for $targetArch into jniLibs"
-                        doLast {
-                            val jniLibsDir = File(jniLibsBase, abiName)
-                            jniLibsDir.mkdirs()
-                            val releaseDir = File(cargoTargetDir, "$targetRustName/release")
-                            for (soName in extraSoNames) {
-                                val src = File(releaseDir, soName)
-                                if (src.exists()) {
-                                    val dst = File(jniLibsDir, soName)
-                                    src.copyTo(dst, overwrite = true)
-                                    logger.lifecycle("Copied $soName to jniLibs/$abiName/")
-                                }
-                            }
-                        }
-                    }
-
-                    val targetBuildTask = tasks.findByName(
-                        "rustBuild$targetArchCapitalized$profileCapitalized"
-                    )
-                    if (targetBuildTask != null) {
-                        copyTask.dependsOn(targetBuildTask)
-                        tasks["merge$targetArchCapitalized${profileCapitalized}JniLibFolders"].dependsOn(copyTask)
-                    }
                 }
             }
         }

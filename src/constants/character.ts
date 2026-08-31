@@ -9,8 +9,8 @@
  * - 1: 默认 main 角色（启动兜底）
  * - 2: 预留系统角色位
  */
-export const SYSTEM_PROTECTED_ROLE_IDS: readonly number[] = [0, 1, 2] as const
+export const SYSTEM_PROTECTED_ROLE_IDS: readonly number[] = [0, 1, 2] as const;
 
 /** 检查给定的角色 ID 是否为系统保护角色（禁止删除）。 */
 export const isSystemProtectedRole = (roleId: number): boolean =>
-  SYSTEM_PROTECTED_ROLE_IDS.includes(roleId)
+  SYSTEM_PROTECTED_ROLE_IDS.includes(roleId);

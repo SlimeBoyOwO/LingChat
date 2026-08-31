@@ -11,7 +11,7 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
-use super::{map_sevenz_err, ArchiveError, ArchiveFormat, EntryEvent};
+use super::{ArchiveError, ArchiveFormat, EntryEvent, map_sevenz_err};
 
 pub fn compress(
     src_dir: &Path,
@@ -49,8 +49,8 @@ fn compress_zip(
     out: &Path,
     on_entry: &dyn Fn(EntryEvent),
 ) -> Result<(), ArchiveError> {
-    use zip::write::SimpleFileOptions;
     use zip::CompressionMethod;
+    use zip::write::SimpleFileOptions;
 
     let file = File::create(out)?;
     let mut zip = zip::ZipWriter::new(file);
@@ -71,7 +71,9 @@ fn compress_zip(
     for (i, path) in files.iter().enumerate() {
         let rel = path.strip_prefix(src_dir).unwrap_or(path);
         let name = rel.to_string_lossy().replace('\\', "/");
-        if name.starts_with("._") || name.contains("/._") || name == ".DS_Store"
+        if name.starts_with("._")
+            || name.contains("/._")
+            || name == ".DS_Store"
             || name.ends_with("/.DS_Store")
         {
             continue;
@@ -132,7 +134,9 @@ fn compress_sevenz(
     for (i, path) in files.iter().enumerate() {
         let rel = path.strip_prefix(src_dir).unwrap_or(path);
         let name = rel.to_string_lossy().replace("\\", "/");
-        if name.starts_with("._") || name.contains("/._") || name == ".DS_Store"
+        if name.starts_with("._")
+            || name.contains("/._")
+            || name == ".DS_Store"
             || name.ends_with("/.DS_Store")
         {
             continue;

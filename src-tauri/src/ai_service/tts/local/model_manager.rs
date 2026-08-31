@@ -7,7 +7,7 @@ use super::paths::LocalTtsPaths;
 #[derive(Debug, Clone, Serialize)]
 pub struct VoiceRecord {
     pub voice_id: String,
-    pub kind: String,        // "sbv2" | "onnx"
+    pub kind: String, // "sbv2" | "onnx"
     pub size_bytes: u64,
     pub path: String,
     pub language: Option<String>,
@@ -19,7 +19,7 @@ pub struct VoiceRecord {
 #[derive(Debug, Clone, Serialize)]
 pub struct AssetRecord {
     pub asset_id: String,
-    pub kind: String,        // "bert"
+    pub kind: String, // "bert"
     pub size_bytes: u64,
     pub path: String,
     pub language: Option<String>,
@@ -27,16 +27,12 @@ pub struct AssetRecord {
     pub source: Option<String>,
 }
 
-pub fn list_voices(
-    paths: &LocalTtsPaths,
-) -> std::result::Result<Vec<VoiceRecord>, String> {
+pub fn list_voices(paths: &LocalTtsPaths) -> std::result::Result<Vec<VoiceRecord>, String> {
     let mut out = vec![];
     if !paths.voices.exists() {
         return Ok(out);
     }
-    for entry in std::fs::read_dir(&paths.voices)
-        .map_err(|e| format!("read_dir: {e}"))?
-    {
+    for entry in std::fs::read_dir(&paths.voices).map_err(|e| format!("read_dir: {e}"))? {
         let entry = entry.map_err(|e| format!("entry: {e}"))?;
         let path = entry.path();
         if !path.is_dir() {
@@ -70,9 +66,7 @@ pub fn list_voices(
     Ok(out)
 }
 
-pub fn list_assets(
-    paths: &LocalTtsPaths,
-) -> std::result::Result<Vec<AssetRecord>, String> {
+pub fn list_assets(paths: &LocalTtsPaths) -> std::result::Result<Vec<AssetRecord>, String> {
     let mut out = vec![];
     let dir = paths.deberta_dir();
     if dir.exists() {
@@ -95,10 +89,7 @@ pub fn list_assets(
     Ok(out)
 }
 
-pub fn delete_voice(
-    paths: &LocalTtsPaths,
-    voice_id: &str,
-) -> std::result::Result<(), String> {
+pub fn delete_voice(paths: &LocalTtsPaths, voice_id: &str) -> std::result::Result<(), String> {
     validate_voice_id(voice_id)?;
     let p = paths.voice_dir(voice_id);
     if !p.exists() {

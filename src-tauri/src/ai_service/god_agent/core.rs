@@ -1,11 +1,11 @@
 //! 上帝 Agent 核心：决策逻辑、prompt 构建、发言者选择。
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::god_agent::config::GodAgentConfig;
 use crate::ai_service::god_agent::tools;
-use crate::ai_service::llm::{slot_snapshot, LlmSlot};
+use crate::ai_service::llm::{LlmSlot, slot_snapshot};
 use crate::ai_service::types::{GameLine, LlmMessage};
 
 // ============================================================
@@ -114,8 +114,11 @@ impl GodAgentCore {
                     .get_loaded(rid)
                     .and_then(|r| r.display_name.clone())
                     .unwrap_or_else(|| format!("角色{}", rid));
-                format!("当前发言者是「{}」(role_id={})，刚刚说完话。请判断：\n- 如果对话应该继续（比如另一个角色有强烈反应或话题未完），选择下一个发言的 NPC\n- 如果应该交还给玩家，选择 role_id=0\n", name, rid)
-            }
+                format!(
+                    "当前发言者是「{}」(role_id={})，刚刚说完话。请判断：\n- 如果对话应该继续（比如另一个角色有强烈反应或话题未完），选择下一个发言的 NPC\n- 如果应该交还给玩家，选择 role_id=0\n",
+                    name, rid
+                )
+            },
             None => String::new(),
         };
 
@@ -127,9 +130,7 @@ impl GodAgentCore {
              {}\n\
              {}\n\
              请调用 select_next_speaker 工具来选择下一个发言者。",
-            role_info_block,
-            dialog_block,
-            current_hint,
+            role_info_block, dialog_block, current_hint,
         );
 
         vec![LlmMessage::system(system_prompt)]
@@ -166,13 +167,14 @@ impl GodAgentCore {
         let messages = self.build_decision_prompt(&lines, &npc_ids, current_speaker, gs);
 
         let tools = vec![tools::select_next_speaker_tool()];
-        let llm = slot_snapshot(&self.llm).await
+        let llm = slot_snapshot(&self.llm)
+            .await
             .ok_or_else(|| anyhow!("上帝Agent LLM 未配置"))?;
-        
+
         let response = llm
             .complete_with_tools(&messages, &tools, Some("auto"))
             .await
-            .map_err(|e| anyhow!("LLM 调用失败: {}", e))?;  // 增加具体错误
+            .map_err(|e| anyhow!("LLM 调用失败: {}", e))?; // 增加具体错误
 
         // 更详细的错误信息
         if let Some(ref tool_calls) = response.tool_calls {
@@ -183,15 +185,15 @@ impl GodAgentCore {
                     }
                     tracing::warn!("上帝Agent 选择了不在场的角色 {}，忽略", result.0);
                     return Err(anyhow!(
-                        "上帝Agent 选择了不在场的角色 {}，在场角色: {:?}", 
-                        result.0, 
+                        "上帝Agent 选择了不在场的角色 {}，在场角色: {:?}",
+                        result.0,
                         gs.present_role_ids
                     ));
                 }
                 // 解析失败
                 return Err(anyhow!(
-                    "解析 tool_call 失败: {:?}, available roles: {:?}", 
-                    tc, 
+                    "解析 tool_call 失败: {:?}, available roles: {:?}",
+                    tc,
                     npc_ids
                 ));
             }
@@ -200,14 +202,15 @@ impl GodAgentCore {
         }
 
         // LLM 没有返回 tool_calls
-        let content_info = response.content
+        let content_info = response
+            .content
             .as_ref()
             .map(|c| format!("，返回文本: {}", c))
             .unwrap_or_default();
-        
+
         Err(anyhow!(
-            "上帝Agent 未调用工具{}，可用角色: {:?}", 
-            content_info, 
+            "上帝Agent 未调用工具{}，可用角色: {:?}",
+            content_info,
             npc_ids
         ))
     }

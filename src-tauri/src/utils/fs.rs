@@ -10,6 +10,7 @@ pub fn copy_with_parent(src: &Path, dst: &Path) -> Result<PathBuf, String> {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("create_dir_all {}: {e}", parent.display()))?;
     }
-    std::fs::copy(src, dst).map_err(|e| format!("copy {} -> {}: {e}", src.display(), dst.display()))?;
+    std::fs::copy(src, dst)
+        .map_err(|e| format!("copy {} -> {}: {e}", src.display(), dst.display()))?;
     Ok(dst.to_path_buf())
 }

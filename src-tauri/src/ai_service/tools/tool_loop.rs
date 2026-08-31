@@ -1,17 +1,17 @@
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use futures_util::StreamExt;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Mutex;
 
+use crate::AppState;
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmClient};
 use crate::ai_service::message_system::generator::GeneratorSource;
 use crate::ai_service::message_system::responses::event_names;
 use crate::ai_service::types::LlmMessage;
-use crate::AppState;
 
 use super::executor::{ToolContext, ToolExecutor};
 use super::registry::ToolRegistry;
@@ -447,7 +447,7 @@ fn presentation_stream(stream: ChunkStream) -> ChunkStream {
             Ok(LlmChunk::ToolCalls(calls)) => {
                 tracing::warn!(count = calls.len(), "非工具调用回复流包含工具调用，已丢弃");
                 None
-            }
+            },
             chunk => Some(chunk),
         }
     }))

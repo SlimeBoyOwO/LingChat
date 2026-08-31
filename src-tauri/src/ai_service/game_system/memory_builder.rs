@@ -91,7 +91,7 @@ impl MemoryBuilder {
                     if !full.trim().is_empty() {
                         memory.push(LlmMessage::assistant(full));
                     }
-                }
+                },
                 Some(BufferKind::OtherBlock) => {
                     // 从末尾向前找连续的 user 行，切分 context / active_user
                     let mut split_index = buffer.len();
@@ -144,8 +144,8 @@ impl MemoryBuilder {
                             parts.concat()
                         };
                     memory.push(LlmMessage::user(final_content));
-                }
-                None => {}
+                },
+                None => {},
             }
             buffer.clear();
             *buffer_kind = None;

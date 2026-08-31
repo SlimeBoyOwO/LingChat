@@ -2,17 +2,17 @@ name: 构建开发版（全量测试）
 
 on:
   push:
-    branches: ['dev', 'dev/**']
+    branches: ["dev", "dev/**"]
     paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.vscode/**'
+      - "**.md"
+      - "docs/**"
+      - ".vscode/**"
   pull_request:
-    branches: ['dev', 'dev/**']
+    branches: ["dev", "dev/**"]
     paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.vscode/**'
+      - "**.md"
+      - "docs/**"
+      - ".vscode/**"
   workflow_dispatch:
 
 jobs:
@@ -38,7 +38,7 @@ jobs:
             os: ubuntu-24.04-arm
             artifact-name: lingchat-dev-linux-aarch64
             artifact-path: src-tauri/target/release/ling_chat
-    
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -90,7 +90,7 @@ jobs:
             libwayland-dev \
             libdbus-1-dev \
             mold
-          
+
       - name: 创建占位文件和初始化
         shell: bash
         run: |

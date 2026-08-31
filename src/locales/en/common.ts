@@ -9,4 +9,4 @@ export default {
   loading: "Loading…",
   exitTitle: "Exit Confirmation",
   exitMessage: "Are you sure you want to exit the app?",
-}
+};

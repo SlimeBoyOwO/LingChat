@@ -10,17 +10,16 @@
 //! - [`fish_s2`] — Fish Audio S2 / s2.cpp (`/generate`)
 //! - [`opentts`] — OpenAI TTS API (`/v1/audio/speech`)
 //! - [`indextts`] — IndexTTS2 presets (`/voice/indextts/presets`)
-//! - [`sherpa_onnx`] — Sherpa-ONNX 本地 TTS 引擎
 
 pub mod aivis;
 pub mod bv2;
+pub mod cosyvoice;
 pub mod fish_s2;
 pub mod gsv;
 pub mod indextts;
 pub mod opentts;
 pub mod sbv2;
 pub mod sbv2api;
-pub mod sherpa_onnx;
 pub mod vits;
 
 use once_cell::sync::Lazy;
@@ -39,11 +38,15 @@ pub(crate) fn http_client() -> &'static Client {
             .tls_backend_preconfigured(tls_config);
 
         // 兼容 Python openai/httpx 行为：读取 HTTP_PROXY / HTTPS_PROXY 环境变量
-        if let Ok(proxy_url) = std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy")) {
+        if let Ok(proxy_url) =
+            std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy"))
+        {
             if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
                 builder = builder.proxy(proxy);
             }
-        } else if let Ok(proxy_url) = std::env::var("HTTP_PROXY").or_else(|_| std::env::var("http_proxy")) {
+        } else if let Ok(proxy_url) =
+            std::env::var("HTTP_PROXY").or_else(|_| std::env::var("http_proxy"))
+        {
             if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
                 builder = builder.proxy(proxy);
             }

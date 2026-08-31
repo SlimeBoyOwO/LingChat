@@ -23,14 +23,14 @@ use serde_json::Value;
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
 
-use crate::ai_service::game_system::game_status::GameStatus;
 use crate::AppState;
+use crate::ai_service::game_system::game_status::GameStatus;
 
 use character::{CharacterList, CharacterSwitch};
 use clock::CurrentTimeTool;
 use memory::{AddNote, DeleteNote, GetCurrentMemory, GetNotes, UpdateNote};
-use permissions::ToolPermissionConfig;
 use permissions::CONFIG_FILE_NAME;
+use permissions::ToolPermissionConfig;
 use read_media_file::ReadMediaFileTool;
 use registry::ToolRegistry;
 use scene::{SceneList, SceneSwitch};

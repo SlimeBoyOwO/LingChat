@@ -8,26 +8,26 @@
  */
 
 export interface AsrErrorInfo {
-  code: string
-  detail?: string
+  code: string;
+  detail?: string;
 }
 
 export function parseAsrError(raw: unknown): AsrErrorInfo {
-  if (typeof raw !== 'string' || !raw) return { code: String(raw ?? '') }
+  if (typeof raw !== "string" || !raw) return { code: String(raw ?? "") };
   // 新格式：JSON 错误对象
   try {
-    const parsed = JSON.parse(raw) as { code?: unknown; detail?: unknown }
-    if (parsed && typeof parsed.code === 'string') {
+    const parsed = JSON.parse(raw) as { code?: unknown; detail?: unknown };
+    if (parsed && typeof parsed.code === "string") {
       return {
         code: parsed.code,
-        detail: typeof parsed.detail === 'string' ? parsed.detail : undefined,
-      }
+        detail: typeof parsed.detail === "string" ? parsed.detail : undefined,
+      };
     }
   } catch {
     /* 非 JSON——回退旧格式 */
   }
   // 旧格式：`CODE|detail`（detail 可能含 |，取首段为 code）
-  const idx = raw.indexOf('|')
-  if (idx > 0) return { code: raw.slice(0, idx), detail: raw.slice(idx + 1) || undefined }
-  return { code: raw }
+  const idx = raw.indexOf("|");
+  if (idx > 0) return { code: raw.slice(0, idx), detail: raw.slice(idx + 1) || undefined };
+  return { code: raw };
 }

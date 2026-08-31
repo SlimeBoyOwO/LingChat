@@ -108,7 +108,9 @@ pub enum ArchiveError {
     TooManyEntries(usize),
     /// 单条目解压后/压缩前比例 > [`MAX_COMPRESSION_RATIO`]。
     /// 字段 `actual` 为解压后字节、`compressed` 为压缩字节，供 UI 展示。
-    #[error("压缩比超限 (解压/压缩 > {MAX_COMPRESSION_RATIO}): 解压 {actual} 字节, 压缩 {compressed} 字节")]
+    #[error(
+        "压缩比超限 (解压/压缩 > {MAX_COMPRESSION_RATIO}): 解压 {actual} 字节, 压缩 {compressed} 字节"
+    )]
     CompressionRatio { actual: u64, compressed: u64 },
     /// `zip` crate 上游错误（解压损坏、不支持的方法等）。
     #[error("zip 错误: {0}")]
@@ -136,7 +138,7 @@ impl From<zip::result::ZipError> for ArchiveError {
         match e {
             zip::result::ZipError::UnsupportedArchive(msg) if msg.contains("encrypted") => {
                 Self::PasswordProtected
-            }
+            },
             _ => Self::Zip(e.to_string()),
         }
     }
@@ -218,7 +220,10 @@ pub fn detect_format(path: &Path) -> Result<ArchiveFormat, ArchiveError> {
     let mut buf = [0u8; 6];
     let n = f.read(&mut buf)?;
     if n < 4 {
-        return Err(ArchiveError::UnsupportedFormat(format!("文件过小 ({} 字节)", n)));
+        return Err(ArchiveError::UnsupportedFormat(format!(
+            "文件过小 ({} 字节)",
+            n
+        )));
     }
     if buf[..4] == ZIP_MAGIC || buf[..4] == ZIP_EMPTY_MAGIC {
         return Ok(ArchiveFormat::Zip);
@@ -242,11 +247,11 @@ mod safety;
 mod staging;
 
 pub use compress::compress;
-pub use extract::{extract_zip, extract_sevenz};
+pub use extract::{extract_sevenz, extract_zip};
 pub use import_state::{ArchiveImportState, ImportTaskEntry};
 pub(crate) use import_state::{ImportingGuard, TaskRemoveGuard};
 pub use resolve::resolve_target;
-pub use safety::{check_entry_safety, sanitize_entry_name, safe_join};
+pub use safety::{check_entry_safety, safe_join, sanitize_entry_name};
 pub use staging::{copy_dir_recursive, list_content_entries, locate_extracted_root, relocate_dir};
 
 pub(super) fn map_sevenz_err(e: sevenz_rust2::Error) -> ArchiveError {
