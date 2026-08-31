@@ -14,6 +14,10 @@ export default {
     uploadFailed: "Failed to upload ambient sound",
     deleteFailed: "Failed to delete ambient sound",
   },
+  chatSound: {
+    uploadFailed: "Failed to upload chat sound",
+    deleteFailed: "Failed to delete chat sound",
+  },
   character: {
     getListFailed: "Failed to load character list",
     selectFailed: "Failed to select character",

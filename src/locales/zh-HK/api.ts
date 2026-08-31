@@ -14,6 +14,10 @@ export default {
     "uploadFailed": "環境音上載失敗",
     "deleteFailed": "環境音刪除失敗"
   },
+  "chatSound": {
+    "uploadFailed": "聊天音效上載失敗",
+    "deleteFailed": "聊天音效刪除失敗"
+  },
   "character": {
     "getListFailed": "攞角色列表失敗",
     "selectFailed": "揀角色失敗",

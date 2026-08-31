@@ -95,6 +95,81 @@
       </div>
     </MenuItem>
 
+    <!-- 自定义聊天音效（打字声）管理 -->
+    <MenuItem :title="$t('settings.sound.chatSound.title')">
+      <template #header>
+        <AudioWaveform :size="20" class="text-amber-300" />
+      </template>
+
+      <p class="text-xs text-gray-400 leading-snug mb-2">
+        {{ $t('settings.sound.chatSound.hint') }}
+      </p>
+
+      <!-- 音效文件库 -->
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs text-gray-400">{{ $t('settings.sound.chatSound.importedFiles') }}</span>
+        <span class="text-xs text-gray-500">{{ $t('settings.sound.chatSound.fileCount', { count: chatSoundFileList.length }) }}</span>
+      </div>
+      <div
+        class="border border-white/10 rounded-xl bg-black/20 backdrop-blur-sm overflow-hidden flex flex-col"
+      >
+        <div v-if="chatSoundFileList.length === 0" class="text-center text-gray-400 py-4 text-sm">
+          {{ $t('settings.sound.chatSound.empty') }}
+        </div>
+        <div v-else class="max-h-32 overflow-y-auto p-1.5 space-y-1 custom-scrollbar">
+          <div
+            v-for="sound in chatSoundFileList"
+            :key="sound.url"
+            class="group flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all duration-200"
+          >
+            <AudioWaveform :size="13" class="text-amber-300/60 shrink-0" />
+            <span class="flex-1 text-sm text-gray-200 truncate">{{ sound.name }}</span>
+            <button
+              @click="playChatSound(sound)"
+              class="opacity-70 hover:opacity-100 transition-opacity px-2 py-0.5 text-xs rounded bg-amber-500/20 hover:bg-amber-500/40 text-amber-300"
+              :title="$t('settings.sound.chatSound.play')"
+            >
+              {{ $t('settings.sound.chatSound.play') }}
+            </button>
+            <button
+              @click.stop="removeChatSound(sound)"
+              class="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md bg-red-500/10 hover:bg-red-500/80 text-red-400 hover:text-white"
+              :title="$t('settings.sound.common.delete')"
+            >
+              <Trash2 :size="14" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 上传聊天音效 -->
+      <div class="mt-2 flex items-center gap-3">
+        <Button
+          type="big"
+          @click="triggerChatSoundUpload"
+          class="flex-1 flex justify-center items-center gap-2"
+        >
+          <UploadCloud :size="16" /> {{ $t('settings.sound.chatSound.add') }}
+        </Button>
+        <div class="flex-1 flex items-center justify-between gap-2">
+          <span class="text-xs text-gray-400 truncate w-24" v-if="selectedChatSoundPaths.length > 0">
+            {{ $t('settings.sound.common.selectedCount', { count: selectedChatSoundPaths.length }) }}
+          </span>
+          <span class="text-xs text-gray-500 truncate w-24" v-else>{{ $t('settings.sound.common.noSelection') }}</span>
+
+          <Button
+            type="big"
+            @click="uploadChatSounds"
+            :disabled="selectedChatSoundPaths.length === 0"
+            class="flex-1"
+            :class="{ 'opacity-50 cursor-not-allowed': selectedChatSoundPaths.length === 0 }"
+          >
+            {{ $t('settings.sound.common.confirmUpload') }}
+          </Button>
+        </div>
+      </div>
+    </MenuItem>
+
     <!-- 背景音乐设置部分 -->
     <MenuItem :title="$t('settings.sound.bgm.title')">
       <template #header>
@@ -338,6 +413,7 @@
     <audio ref="characterTestPlayer"></audio>
     <audio ref="bubbleTestPlayer"></audio>
     <audio ref="achievementTestPlayer"></audio>
+    <audio ref="chatSoundTestPlayer"></audio>
   </MenuPage>
 </template>
 
@@ -345,6 +421,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { Button, Slider } from '../../base'
 import { MenuItem, MenuPage } from '../../ui'
 import {
@@ -354,6 +431,12 @@ import {
   setCurrentBackgroundMusic,
 } from '../../../api/services/music'
 import { ambientGetAll, ambientUpload, ambientDelete, type AmbientItem } from '../../../api/services/ambient'
+import {
+  chatSoundDelete,
+  chatSoundUpload,
+  type ChatSoundItem,
+} from '../../../api/services/chatSound'
+import { getChatSoundItems, refreshChatSounds } from '../../../utils/chatSoundLibrary'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
@@ -369,6 +452,7 @@ import {
 } from '../../../utils/audioOutputManager'
 import {
   AudioLines,
+  AudioWaveform,
   FlaskConical,
   MessageCircle,
   MicVocal,
@@ -677,6 +761,72 @@ const getTrackDisplayName = (track: { name?: string; src: string }): string => {
   return inferTrackName(track.src)
 }
 
+// ========== 自定义聊天音效（打字声）管理 ==========
+const chatSoundFileList = ref<ChatSoundItem[]>([])
+const selectedChatSoundPaths = ref<string[]>([])
+const chatSoundTestPlayer = ref<HTMLAudioElement | null>(null)
+
+// 从服务端加载聊天音效列表并同步 TypeWriter 音效库
+const loadChatSoundList = async () => {
+  // 音效库统一拉取并缓存（唯一的列表查询入口），页面直接消费缓存
+  await refreshChatSounds()
+  chatSoundFileList.value = getChatSoundItems()
+}
+
+// 试听聊天音效
+const playChatSound = (sound: ChatSoundItem) => {
+  if (!chatSoundTestPlayer.value) return
+  chatSoundTestPlayer.value.src = convertFileSrc(sound.url)
+  chatSoundTestPlayer.value.volume = bubbleVolume.value / 100
+  chatSoundTestPlayer.value.play().catch((e) => console.error('试听聊天音效失败:', e))
+}
+
+// 触发聊天音效文件选择
+const triggerChatSoundUpload = async () => {
+  const selected = await openDialog({
+    multiple: true,
+    // 与后端 chat_sound.rs 的 allowed_extensions 保持一致
+    filters: [{ name: 'ChatSound', extensions: ['mp3', 'wav', 'flac', 'ogg', 'm4a'] }],
+  })
+  if (!selected) return
+  selectedChatSoundPaths.value = extractDialogPaths(selected)
+}
+
+// 确认上传已选聊天音效文件到服务端
+const uploadChatSounds = async () => {
+  if (selectedChatSoundPaths.value.length === 0) {
+    await dialogStore.alert(t('settings.sound.chatSound.selectFilesFirst'))
+    return
+  }
+  const allowedExts = ['.mp3', '.wav', '.flac', '.ogg', '.m4a']
+  try {
+    // 串行上传（仅传源文件路径，Rust 侧复制）
+    for (const path of selectedChatSoundPaths.value) {
+      const fileName = decodePathFileName(path)
+      const fileExt = fileName.slice(fileName.lastIndexOf('.')).toLowerCase()
+      if (!allowedExts.includes(fileExt)) throw new Error(t('settings.sound.common.unsupportedFormat', { name: fileName }))
+      await chatSoundUpload(path, fileName)
+    }
+    selectedChatSoundPaths.value = []
+    await loadChatSoundList()
+  } catch (error: any) {
+    console.error('上传聊天音效失败:', error)
+    await dialogStore.alert(error.message || t('settings.sound.chatSound.uploadFailed'))
+  }
+}
+
+// 从服务端删除聊天音效文件
+const removeChatSound = async (sound: ChatSoundItem) => {
+  if (!await dialogStore.confirm(t('settings.sound.chatSound.confirmDelete', { name: sound.name }))) return
+  try {
+    await chatSoundDelete(sound.url)
+    await loadChatSoundList()
+  } catch (error: any) {
+    console.error('删除聊天音效失败:', error)
+    await dialogStore.alert(t('settings.sound.chatSound.deleteFailed'))
+  }
+}
+
 watch(
   () => settingsStore.backgroundVolume,
   (newVolume) => {
@@ -840,6 +990,7 @@ const triggerFileUpload = async () => {
 onMounted(async () => {
   await loadMusicList()
   await loadAmbientList()
+  await loadChatSoundList()
 
   // 初始化音量
   if (characterTestPlayer.value) characterTestPlayer.value.volume = characterVolume.value / 100
