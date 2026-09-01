@@ -361,6 +361,9 @@ export function handleResult(text: string, source: AsrSource) {
     return;
   }
   const mode = runtime.asrStore?.settings.send_mode ?? "fill_only";
+  // 识别结果有效到达 = 识别服务真正在工作：清除此前残留的错误，
+  // 设置页状态面板转绿（失败只写不清会让"接上服务后仍红"）
+  runtime.asrStore?.clearError();
   // 拼接只对手动录音（button 源）+ fill_only 生效：识别结果追加到录音开始时的
   // 输入框内容（baseText）之后，持续录入不覆盖。auto 源与 auto_send 不拼接
   // （auto_send 只发送识别内容本身，不做与已有内容的衔接）。
