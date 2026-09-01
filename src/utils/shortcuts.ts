@@ -60,7 +60,7 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, ShortcutBinding> = {
   expandProps: { key: "e", ctrl: true },
 };
 
-const isDirKey = (key: string) => key === "arrowup" || key === "arrowdown";
+export const isDirKey = (key: string) => key === "arrowup" || key === "arrowdown";
 
 /** 绑定是否匹配事件：修饰键严格比对，方向键成对，'?' 由 Shift+/ 产生 */
 export const bindingMatches = (b: ShortcutBinding, e: KeyboardEvent): boolean => {

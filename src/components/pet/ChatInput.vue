@@ -53,6 +53,7 @@
     registerAsrInputBridge,
     lockAsrForDisplay,
     ASR_AUTO_SEND_DELAY_MS,
+    asrVoiceActive,
   } from "@/composables/useAsrInput";
   import { useScreenshot } from "@/composables/useScreenshot";
   import { setInputHasText } from "@/composables/useCanDeliver";
@@ -83,12 +84,17 @@
   }
 
   // auto_send：识别结果显示到输入框 → ASR_AUTO_SEND_DELAY_MS 后走 sendMessage()
-  //（完整复用剧本分支/模型检查/输入框清理；显示锁已由 handle() 设置）
+  //（完整复用剧本分支/模型检查/输入框清理；显示锁已由 handle() 设置）。
+  // 发送后 emit asr-auto-sent：PetMode 据此收起输入框（内容已交给 LLM，无需
+  // 再展示；fill_only 不发该事件——识别结果要留在输入框等用户手动发送）
   function onAsrAutoSend(e: Event) {
     const ce = e as CustomEvent<string>;
     if (typeof ce.detail !== "string") return;
     messageText.value = ce.detail;
-    window.setTimeout(() => sendMessage(), ASR_AUTO_SEND_DELAY_MS);
+    window.setTimeout(() => {
+      sendMessage();
+      emit("asr-auto-sent");
+    }, ASR_AUTO_SEND_DELAY_MS);
   }
 
   // 输入桥：流式 partial 实时写入（与桌面 GameDialog 一致；录音发起窗口的
@@ -168,7 +174,10 @@
     }
   );
 
-  const isInputEnabled = computed(() => gameStore.currentStatus === "input");
+  // 录音期间输入框只读（与桌面 GameDialog 一致）：击键声会混入麦克风采样送识别
+  const isInputEnabled = computed(
+    () => gameStore.currentStatus === "input" && !asrVoiceActive.value
+  );
 
   const props = defineProps({
     visible: {
@@ -177,7 +186,7 @@
     },
   });
 
-  const emit = defineEmits(["message-sent"]);
+  const emit = defineEmits(["message-sent", "asr-auto-sent"]);
 
   const messageText = ref("");
   // 输入框内容变化 → 通知 can_deliver 追踪

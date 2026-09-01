@@ -11,6 +11,8 @@ pub mod provider_stream;
 pub mod provider_stream_llama;
 pub mod session;
 pub mod settings;
+#[cfg(desktop)]
+pub mod global_hotkey;
 pub mod vad;
 pub mod vad_segmenter;
 

@@ -37,6 +37,10 @@ export interface AsrSettings {
   vad_silence_ms: number;
   /** 能量监测启动缓冲期（毫秒）：TTS 播完恢复监听后该时长内不触发录音（默认 100，0=无缓冲） */
   energy_warmup_ms: number;
+  /** 语音输入快捷键（ShortcutBinding JSON 字符串，默认 {"key":"f8"}） */
+  ptt_key: string;
+  /** 失去焦点快捷键可用（全局快捷键）：窗口不在前台时快捷键仍可用（默认关） */
+  ptt_global: boolean;
   provider_configs: Record<string, ProviderConfig>;
 }
 
@@ -107,6 +111,8 @@ export const asrGetSettings = () => invoke<AsrSettings>("asr_get_settings");
 export interface AsrStatus {
   /** VAD 模型是否加载成功（session 存在 = init_asr 完成） */
   vad_loaded: boolean;
+  /** 全局快捷键注册是否健康（ptt_global=true 且实际已注册） */
+  ptt_global_ok: boolean;
 }
 
 export const asrGetStatus = () => invoke<AsrStatus>("asr_get_status");

@@ -20,6 +20,10 @@ const DEFAULT_SETTINGS: AsrSettings = {
   voice_input_enabled: false,
   vad_silence_ms: 800,
   energy_warmup_ms: 100,
+  // 与后端 default_ptt_key 一致：默认裸 F8（ShortcutBinding JSON 格式）
+  ptt_key: '{"key":"f8"}',
+  // 与后端一致：全局快捷键默认关（OS 级抢占，不默认开启）
+  ptt_global: false,
   provider_configs: {},
 };
 

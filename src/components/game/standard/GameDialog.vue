@@ -827,6 +827,11 @@
   onUnmounted(() => {
     // 卸载时清掉打字状态：避免返回主界面后首条回复被当成「续打合并」
     dialogueMerge.isTyping = false;
+    // 武装状态同样清掉：桌宠（/pet）下 addEvent 仍可能置 armed（AUTO +
+    // isWaitingForUser），而桌宠不消费——切回 /chat 时残留会让新回复走
+    // 追加路径瞬时渲染（无打字动画）。mergedLength 一并复位（累计基准丢失）
+    dialogueMerge.armed = false;
+    dialogueMerge.mergedLength = 0;
     // 动作打字机停止并释放（否则 setTimeout 循环可能继续跑）
     motionWriter?.destroy();
     motionWriter = null;

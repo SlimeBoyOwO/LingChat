@@ -2,6 +2,8 @@ import { listen } from "@tauri-apps/api/event";
 import { computed, ref, shallowRef, watch } from "vue";
 import { useRoute, type RouteLocationNormalizedLoaded } from "vue-router";
 
+import { bindingMatches, isDirKey, isValidBinding, type ShortcutBinding } from "@/utils/shortcuts";
+import { isAndroid } from "@/utils/platform";
 import {
   asrCancel,
   asrCancelStreaming,
@@ -74,6 +76,25 @@ export const ASR_AUTO_SEND_DELAY_MS = 800;
  *  防止按钮长按/异常会话无限录音（VAD 端 max_segment_frames 同为 60s，两处对齐；
  *  有界也顺带解决长时间录音时 pcmBuffer 的无限内存增长）。 */
 const MAX_RECORD_SAMPLES = 60 * 16000;
+/** 解析持久化的快捷键绑定；非法 JSON / 缺字段回退默认裸键。
+ *  每次按键实时解析（毫秒级），改动设置立即生效，无需缓存失效机制。 */
+function resolvePttBinding(): ShortcutBinding {
+  const raw = asrStore?.settings.ptt_key;
+  if (raw) {
+    try {
+      const b = JSON.parse(raw);
+      // Enter 不可作 PTT 快捷键（聊天发送键误触发）；捕获层已拒绝，
+      // 这里兜底手改 settings.json 的 {"key":"Enter"}（大小写均挡，不放进
+      // 共享 isValidBinding——剧本编辑器允许裸 Enter 自定义绑定）
+      if (isValidBinding(b) && b.key.toLowerCase() !== "enter") return b;
+    } catch {
+      /* 落空走默认 */
+    }
+  }
+  return { key: "f8" };
+}
+/** 单击/长按判定阈值（毫秒）：keyup 在阈值内松开 = 单击（toggle 保持录音），超过 = 长按（结束识别） */
+const PTT_TAP_THRESHOLD_MS = 250;
 /** 能量监测启动缓冲期兜底值（毫秒）：未加载设置时用 100ms。
  *  实际值来自 asrStore.settings.energy_warmup_ms（设置页可自定义，
  *  0 = 无缓冲）。voicePlaying 门控已保证 TTS 播放期间完全不监听，
@@ -93,6 +114,11 @@ export const asrVoiceActive = ref(false);
 /** 功能开关（运行态）：auto_listen 模式开启时由 mic/快捷键切换——监听激活/暂停。
  *  不持久化、不改 auto_listen 模式设置。 */
 const autoListenActive = ref(false);
+/** PTT 手势状态机：none=未按；pending=录音中待判定（阈值内计时）；held=长按（keyup 结束）；
+ *  toggle-held=单击（录音保持，再按 keydown 结束）。纯事件驱动，无需响应式。 */
+let pttState: "none" | "pending" | "held" | "toggle-held" = "none";
+/** pending 的单击/长按判定计时器 */
+let pttTapTimer: number | undefined;
 /** 惰性依赖（首次 useAsrInput() 调用时初始化） */
 let route: RouteLocationNormalizedLoaded | null = null;
 let uiStore: ReturnType<typeof useUIStore> | null = null;
@@ -130,6 +156,10 @@ function resetSession() {
   phase.value = "idle";
   asrVoiceActive.value = false;
   activeSource.value = null;
+  // PTT 手势状态随会话复位：任何 teardown 路径（discard/handle/识别错误/start 失败）
+  // 都不残留 toggle-held，避免后续快捷键/blur 把 PTT 手势误判到 mic 按钮的会话上
+  clearPttTapTimer();
+  pttState = "none";
 }
 
 /**
@@ -239,6 +269,11 @@ function isStreamEnabled(): boolean {
   // 模型清单未加载（拉取失败等）时流式判定为 false → 走整句识别；
   // 配置了流式模型却降级整句的代价是"无 partial"，后端能力不受影响
   const enabled = model?.supports_streaming ?? false;
+  // 诊断：暴露流式判定的依据（模型清单是否命中、命中哪个模型）
+  console.log(
+    `[ASR] isStreamEnabled: stream=${asrStore.settings.stream_enabled}, ` +
+      `model=${sel || "(default)"}${model ? ` (${model.supports_streaming ? "stream" : "batch"})` : " (未加载)"} → ${enabled}`
+  );
   return enabled;
 }
 
@@ -291,6 +326,129 @@ function toggleAutoListenFunction() {
     autoListenActive.value = true;
   }
   updateAsrAvailability();
+}
+
+// ── 按住说话(PTT)快捷键 v2：auto_listen 模式关 = 长按 PTT / 单击 toggle 双语义；
+// 模式开 = 快捷键专职切换自动监听启用开关（只动运行态，不碰模式设置）。
+// 窗口内生效（/chat 与 /pet，路由门控在 chatActive）；ptt_global 开启时退位给全局
+// 快捷键事件（任意应用前台可用，blur 不丢录音——释放事件由全局回调保证到达）。
+// 复用 button 手动语义（fill_only 拼接、跳过显示锁；总开关一律生效）
+function clearPttTapTimer() {
+  if (pttTapTimer !== undefined) {
+    window.clearTimeout(pttTapTimer);
+    pttTapTimer = undefined;
+  }
+}
+
+/** PTT 按下统一入口（窗口内 keydown 与全局快捷键共用）：
+ *  门控（总开关/路由/AI 生成/TTS 播放等）+ 状态机推进。 */
+function pttDown() {
+  // 总开关门控（用户需求：两种行为都只能在语音输入总开关开启后生效）
+  if (!asrStore?.settings.voice_input_enabled) return;
+  // 行为 2：auto_listen 模式开 → 快捷键专职切换启用开关（toggleAutoListenFunction 只动运行态）。
+  // 与行为 1 一致：仅聊天上下文（/chat 与 /pet，抽屉未开）生效——主菜单等路由
+  // 翻转 autoListenActive 会在进聊天后未经交互启动自动监听
+  if (asrStore?.settings.auto_listen) {
+    if (!chatActive.value) return;
+    toggleAutoListenFunction();
+    return;
+  }
+  // 行为 1：模式关 → 长按 PTT / 单击 toggle 双语义
+  // 再次点击关闭：toggle-held（单击保持录音）中按下即结束；
+  // 若录音已被外部 discard（AI 进 thinking 等），直接重新开始
+  if (pttState === "toggle-held") {
+    pttState = "none";
+    if (phase.value === "recording" && activeSource.value === "button") {
+      stop();
+      return;
+    }
+    // 会话已不在：继续走下方启动流程（不 return）
+  }
+  // 按住中（pending/held）或 mic 按钮/auto 会话进行中：不打断
+  if (pttState !== "none" || phase.value !== "idle") return;
+  // 门控（手动语义）：路由非 /chat+/pet、抽屉开、AI 生成中、TTS 播放中等 → 静默拒绝
+  if (!chatActive.value || !canStartAsr(false, true)) return;
+  // 立即开始录音（不丢首字）；250ms 内松开由 keyup 判定为单击，否则 keyup 时按长按结束
+  pttState = "pending";
+  void start("button").catch((err) => {
+    // start 门控拒绝是静默 return 不 throw；只有 getUserMedia 等失败才走这里
+    clearPttTapTimer();
+    pttState = "none";
+    console.warn("[ASR] PTT start failed:", err);
+  });
+  pttTapTimer = window.setTimeout(() => {
+    // 超过阈值仍未松开 = 长按（keyup 时结束识别）
+    if (pttState === "pending") pttState = "held";
+  }, PTT_TAP_THRESHOLD_MS);
+}
+
+/** PTT 松开统一入口（窗口内 keyup 与全局快捷键共用）：按按住时长分派
+ *  pending→单击判定（toggle 保持 / 外部 discard 复位）、held→长按结束。 */
+function pttUp() {
+  if (pttState === "pending") {
+    clearPttTapTimer();
+    if (phase.value === "recording" && activeSource.value === "button") {
+      // 单击：松开不结束，录音保持（toggle），下次按下再结束
+      pttState = "toggle-held";
+    } else {
+      // 外部已 discard（AI 进入 thinking、抽屉打开等）：复位，不残留
+      pttState = "none";
+    }
+    return;
+  }
+  if (pttState === "held") {
+    pttState = "none";
+    if (phase.value === "recording" && activeSource.value === "button") {
+      // 长按结束：停止 → 识别 → 按 send_mode 处理
+      stop();
+    }
+    return;
+  }
+  if (pttState === "toggle-held") {
+    // 正常保持录音中 keyup 无操作；被外部 discard 后复位
+    if (phase.value !== "recording" || activeSource.value !== "button") {
+      pttState = "none";
+    }
+    return;
+  }
+}
+
+function handlePttKeyDown(e: KeyboardEvent) {
+  // 全局模式开启：窗口内监听退位，由全局事件驱动（单一输入源，防双触发——
+  // OS 全局快捷键在应用聚焦时也触发，双源必打架）
+  if (asrStore?.settings.ptt_global) return;
+  if (!bindingMatches(resolvePttBinding(), e) || e.repeat) return;
+  pttDown();
+}
+
+function handlePttKeyUp(e: KeyboardEvent) {
+  // 同 handlePttKeyDown：全局模式退位
+  if (asrStore?.settings.ptt_global) return;
+  // 主键比对（松开瞬间修饰键状态不可靠）；大小写不敏感——KeyboardEvent.key
+  // 对功能键返回大写，且 binding.key 可能被手改为大写（v1 硬编码 PTT_KEY='F8'
+  // 大写），故双侧归一——与 bindingMatches 的归一约定一致，避免 keydown 匹配
+  // 而 keyup 不匹配导致录音挂起。方向键成对匹配（与 keydown 的 isDirKey 语义
+  // 一致，避免绑定方向键后 keydown 配对触发、keyup 只比主键导致录音无法结束）
+  const binding = resolvePttBinding();
+  const k = e.key.toLowerCase();
+  const bk = binding.key.toLowerCase();
+  const isDir = isDirKey(bk);
+  if (isDir ? k !== "arrowup" && k !== "arrowdown" : k !== bk) return;
+  pttUp();
+}
+
+function handleWindowBlur() {
+  // 全局模式：失焦是常态（这正是功能场景），释放事件由全局快捷键回调保证
+  // 到达（GetAsyncKeyState 轮询与焦点无关），不能丢弃录音
+  if (asrStore?.settings.ptt_global) return;
+  if (pttState === "none") return;
+  clearPttTapTimer();
+  pttState = "none";
+  if (phase.value === "recording" && activeSource.value === "button") {
+    // 失焦后 keyup 收不到：丢弃录音（不识别，避免把环境声送去识别），防录音卡死
+    console.log("[ASR] PTT 窗口失焦，丢弃录音");
+    discardRecording();
+  }
 }
 
 // ── VAD 流（auto 模式）：每 512 samples（30ms @ 16k）喂后端 ──
@@ -393,6 +551,7 @@ function startEnergyMonitor() {
             energyMon.raf = requestAnimationFrame(tick);
             return;
           }
+          console.log(`[ASR] energy trigger: rms=${rms.toFixed(3)} > 0.08, start('auto')`);
           autoTriggered = true;
           void start("auto").catch((err) => {
             console.warn("[ASR] start(auto) failed, reset autoTriggered:", err);
@@ -460,6 +619,20 @@ async function start(source: AsrSource) {
         noiseSuppression: true,
       },
     });
+    // 竞态防护：await 挂起期间会话可能已被 stop()/discardRecording() 结束
+    // （PTT 快速松开、mic 双击）——phase 已非 recording，不能继续建链，
+    // 否则产生无法停止的孤儿录音（麦克风常开、pcmBuffer 无限增长）
+    if (phase.value !== "recording") {
+      stream.getTracks().forEach((t) => t.stop());
+      // 流式会话：仅当会话已被丢弃（phase 已 idle——blur/discard/resetSession 路径）
+      // 才需要 cancel 兜底——recognizing 时 stop() 已由 doStreamFinish 负责 WS 关闭，
+      // 再 cancel 会同源双关产生 Canceled 噪音
+      if (phase.value !== "recognizing") {
+        void asrCancelStreaming();
+      }
+      stream = null;
+      return;
+    }
     audioCtx = new AudioContext({ sampleRate: 16000 });
     const src = audioCtx.createMediaStreamSource(stream);
     processor = audioCtx.createScriptProcessor(1024, 1, 1);
@@ -523,7 +696,9 @@ function stop() {
   // 先拿走 PCM 再拆录音链路（teardownRecorder 会清空 pcmBuffer）
   const captured = pcmBuffer;
   teardownRecorder();
-  void asrStopListening(source);
+  void asrStopListening(source).catch(() => {
+    /* 后端无 active 会话时的 Canceled 语义良性，静默 */
+  });
   if (isStreamEnabled() && !isLlamaStream()) {
     void doStreamFinish(source);
   } else {
@@ -596,12 +771,22 @@ function handle(text: string, source: AsrSource) {
   // voicePlaying：手动模式点击继续后 TTS 还在播，在飞识别（误录的 AI 语音）
   // 返回时同样丢弃。!chatActive：识别期间已切界面/打开设置抽屉 → 结果丢弃
   // （用户方案：没说完不发送，回来点 mic 重新启用）。
+  // runningScript.choices：录音期间剧本引擎弹出选择分支（status 仍 input）→
+  // 结果丢弃，否则 auto_send 的 script_submit_input 会被后端拒绝（与 canStartAsr
+  // 第 8 项同一判定，这里补的是"在飞期间才弹出"的窗口期）。
+  const script = (gameStore as unknown as { runningScript?: { choices?: unknown[] } })
+    ?.runningScript;
   if (
     !gameStore ||
     gameStore.currentStatus !== "input" ||
     voicePlaying.value ||
-    !chatActive.value
+    !chatActive.value ||
+    (script && Array.isArray(script.choices) && script.choices.length > 0)
   ) {
+    console.log(
+      `[ASR] handle drop: status=${gameStore?.currentStatus}, chatActive=${chatActive.value}, ` +
+        `choices=${script?.choices?.length ?? 0}, text="${text.slice(0, 30)}"`
+    );
     resetSession();
     if (source === "auto") {
       autoTriggered = false;
@@ -676,6 +861,10 @@ function ensureInit() {
   // 流式 partial：实时写入输入框（整体替换语音追加块，不触碰 baseText 之前的内容）
   listen("asr://stream_partial", (e) => {
     // 诊断：暴露 partial 是否到达前端、写入条件（phase/inputBridge）是否满足
+    console.log(
+      `[ASR/stream] partial 事件: len=${String(e.payload).length}, phase=${phase.value}, ` +
+        `bridge=${inputBridge ? "ok" : "null"}`
+    );
     // 写入条件：qwen WS 真流式在录音期间到达（phase=recording）；llama 结果
     // 流式（SSE）在 stop() 之后到达（phase=recognizing）——必须放行，
     // 否则 llama 的增量 partial 全部被丢弃（v2 流式功能失效）
@@ -686,11 +875,34 @@ function ensureInit() {
     }
   });
 
+  // 按住说话(PTT)：keydown/keyup 开始/结束录音；blur 兜底（失焦丢 keyup）。
+  // ensureInit 仅主窗口执行一次（App.vue isMainWindow 分支 + GameDialog/ChatInput 共享），
+  // /chat 与 /pet 路由自动覆盖。安卓端不做快捷键：蓝牙键盘的 keydown 同样会
+  // 到达 webview（注释"无物理键盘"不成立），显式不注册监听；全局快捷键
+  // 后端已 #[cfg(desktop)] 不编译，两侧都干净
+  if (!isAndroid()) {
+    window.addEventListener("keydown", handlePttKeyDown);
+    window.addEventListener("keyup", handlePttKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
+  }
+
+  // 全局快捷键（失去焦点可用）：插件已匹配键位（后端 asr:ptt-global 仅在注册成功后
+  // 才有事件），按下/释放直接驱动状态机；总开关/路由/AI 生成等门控由 pttDown/pttUp
+  // 内既有检查把关（与窗口内完全一致）。移动端后端不注册该事件源，天然不触发
+  listen<{ state: "pressed" | "released" }>("asr:ptt-global", (e) => {
+    if (e.payload.state === "pressed") {
+      pttDown();
+    } else {
+      pttUp();
+    }
+  });
+
   // 路由/抽屉变化（§1.6/7）：通过统一 gate 同步录音/能量监测
   // immediate:true 让首次进入 /chat（或刚初始化）时立刻同步 energy monitor 状态
   watch(
     chatActive,
     (active) => {
+      console.log(`[ASR] chatActive -> ${active}`);
       if (!active) {
         // 切界面（路由离开 /chat+/pet / 设置抽屉打开）= 等同 mic 关闭：
         // 暂停 auto 监听（回来需点 mic 重新启用），在飞识别结果由
@@ -716,6 +928,7 @@ function ensureInit() {
   watch(
     () => asrStore?.settings.voice_input_enabled,
     (enabled) => {
+      console.log(`[ASR] voice_input_enabled -> ${enabled}`);
       updateAsrAvailability();
     },
     { immediate: true }
@@ -724,6 +937,7 @@ function ensureInit() {
   watch(
     () => gameStore?.command,
     (cmd) => {
+      console.log(`[ASR] command -> ${cmd}`);
       updateAsrAvailability();
     },
     { immediate: true }
@@ -732,6 +946,7 @@ function ensureInit() {
   watch(
     () => gameStore?.currentStatus,
     (status) => {
+      console.log(`[ASR] currentStatus -> ${status}`);
       updateAsrAvailability();
     },
     { immediate: true }
@@ -742,6 +957,7 @@ function ensureInit() {
       (gameStore as unknown as { runningScript?: { choices?: unknown[] } })?.runningScript?.choices
         ?.length ?? 0,
     (n) => {
+      console.log(`[ASR] runningScript.choices.length -> ${n}`);
       updateAsrAvailability();
     },
     { immediate: true }
@@ -750,6 +966,7 @@ function ensureInit() {
   watch(
     () => gameStore?.loadingComplete,
     (done) => {
+      console.log(`[ASR] loadingComplete -> ${done}`);
       updateAsrAvailability();
     },
     { immediate: true }

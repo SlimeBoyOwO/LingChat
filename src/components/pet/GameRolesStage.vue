@@ -127,7 +127,7 @@
       />
     </div>
 
-    <audio ref="mainAudio" @ended="onAudioEnded"></audio>
+    <audio ref="mainAudio" @ended="onAudioEnded" @error="onAudioEnded"></audio>
   </div>
 </template>
 
@@ -203,7 +203,12 @@
   });
 
   onMounted(() => initScreenshot());
-  onUnmounted(() => destroyScreenshot());
+  // 路由切换（/chat ↔ /pet）销毁 audio 元素 → 播放被浏览器终止，ended 不触发：
+  // 必须主动复位 voicePlaying，否则 ASR 第 12 项门控（TTS 播放中禁用）永久卡死
+  onUnmounted(() => {
+    setVoicePlaying(false);
+    destroyScreenshot();
+  });
 
   // --- 音频 ---
   watch(
@@ -216,6 +221,7 @@
         mainAudio.value.pause();
         mainAudio.value.currentTime = 0;
         setVoicePlaying(false);
+        emit("audio-ended");
         return;
       }
 

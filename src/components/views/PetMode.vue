@@ -46,7 +46,12 @@
       class="flex w-full shrink-0 items-start justify-center bg-transparent transition-none"
       :style="{ height: 'var(--chat-h)' }"
     >
-      <ChatInput ref="ChatInputRef" :visible="showChatInput" @message-sent="handleMessageSent" />
+      <ChatInput
+        ref="ChatInputRef"
+        :visible="showChatInput"
+        @message-sent="handleMessageSent"
+        @asr-auto-sent="handleAsrAutoSent"
+      />
     </div>
   </div>
 </template>
@@ -63,6 +68,7 @@
   import { useI18n } from "vue-i18n";
   import { useRouter } from "vue-router";
   import { useFileDrop } from "../pet/useFileDrop";
+  import { useAsrInput } from "@/composables/useAsrInput";
 
   import ChatInput from "../pet/ChatInput.vue";
   import DialogueBox from "../pet/DialogueBox.vue";
@@ -122,6 +128,12 @@
 
   onMounted(async () => {
     const appWindow = getCurrentWindow();
+
+    // 识别结果填入输入框（fill_only 的 asr-text / auto_send 的 asr-send）→ 展开：
+    // 录音中鼠标可能已移出（输入框已收起），此时才展开由 isTyping 保持显示；
+    // auto_send 路径 800ms 后由 asr-auto-sent 收起，展示窗口完整
+    window.addEventListener("asr-text", handleAsrFilled);
+    window.addEventListener("asr-send", handleAsrFilled);
 
     scaleUnlisten = await appWindow.listen<{ scale: number }>("pet-scale-changed", (event) => {
       const scale = Number(event.payload?.scale);
@@ -231,6 +243,8 @@
     if (hitTestInterval !== undefined) {
       window.clearInterval(hitTestInterval);
     }
+    window.removeEventListener("asr-text", handleAsrFilled);
+    window.removeEventListener("asr-send", handleAsrFilled);
   });
 
   const handleMessageSent = (message: string) => {
@@ -239,6 +253,26 @@
       displayName: gameStore.userName,
       content: message,
     });
+  };
+
+  const asrInput = useAsrInput();
+  // 语音快捷键（PTT）/mic 触发录音 → 展开输入框：桌宠鼠标离开即收起输入框
+  // （handleMouseLeave），用户用全局快捷键在别的应用前台说话时看不到识别
+  // 结果——录音开始即展开，fill_only 填入后由 isTyping 保持显示。
+  // auto 源不展开：自动监听常开，不应每次说话都弹出输入框（幂等：mic 按钮
+  // 点击时鼠标必在桌宠上，输入框本就已展开）
+  watch([asrInput.phase, asrInput.activeSource], ([p, s]) => {
+    if (p === "recording" && s === "button") showChatInput.value = true;
+  });
+  // auto_send 语音发送完成（ChatInput 已清空输入框）→ 收起输入框：
+  // 内容已交给 LLM 无需再展示；fill_only 不发此事件，识别结果留在输入框
+  const handleAsrAutoSent = () => {
+    showChatInput.value = false;
+  };
+  // 识别结果填入（onMounted 注册 asr-text/asr-send 监听）：鼠标移出后输入框
+  // 已收起时重新展开，让用户看到识别内容
+  const handleAsrFilled = () => {
+    showChatInput.value = true;
   };
 
   const handleMouseEnter = () => {

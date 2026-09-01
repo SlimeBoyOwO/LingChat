@@ -291,7 +291,25 @@ pub fn run() {
     #[cfg(desktop)]
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init());
+        .plugin(tauri_plugin_process::init())
+        .plugin({
+            use ai_service::asr::global_hotkey::PttGlobalEvent;
+            use tauri_plugin_global_shortcut::ShortcutState;
+
+            // with_handler：对任意已注册的快捷键统一转发（插件事件分发自带
+            // 已注册表查询，本功能只注册一个 PTT 键，无需按键分发；事件由
+            // 设置页保存 / 启动恢复注册触发）。
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    let state = match event.state() {
+                        ShortcutState::Pressed => "pressed",
+                        ShortcutState::Released => "released",
+                    };
+                    // main 是唯一运行 useAsrInput 的窗口（设置/日志窗口无 ASR）
+                    let _ = app.emit_to("main", "asr:ptt-global", PttGlobalEvent { state });
+                })
+                .build()
+        });
 
     builder
         .setup(move |app| {
@@ -311,6 +329,9 @@ pub fn run() {
             app.manage(utils::gpu_perf::GpuDetectionCache::new());
             app.manage(api::role_archive::RoleArchiveState::default());
 
+            #[cfg(desktop)]
+            app.manage(ai_service::asr::global_hotkey::GlobalHotkeyState::default());
+
             // Android 修复：Tauri 在 setup 闭包执行前已创建 webview 窗口，前端 invoke
             // 命令会在 IPC runtime worker 上立即 dispatch；如果 AppState 还没 manage
             // 就会 panic "state() called before manage()"。所以 setup 一开始就 manage
@@ -321,6 +342,23 @@ pub fn run() {
             let local_tts = ai_service::tts::local::setup::bootstrap(app)?;
             let (db, ai_service, chat) =
                 rt.block_on(init::initialize(app, Some(local_tts.runtime.clone())))?;
+
+            // 语音快捷键全局注册（失去焦点可用）：启动时按持久化设置恢复注册
+            // （失败仅 warn——注册失败不影响启动，用户打开设置页保存一次设置
+            // 即可重试；按键事件转发见上方插件的 with_handler 回调）。
+            #[cfg(desktop)]
+            {
+                use ai_service::asr::global_hotkey;
+
+                match ai_service::asr::settings::load(app.handle()) {
+                    Ok(s) => {
+                        if let Err(e) = global_hotkey::sync(app.handle(), &s) {
+                            tracing::warn!("[ASR] 全局快捷键初始注册失败（非致命）: {e}");
+                        }
+                    },
+                    Err(e) => tracing::warn!("[ASR] 启动加载 ASR 设置失败: {e}"),
+                }
+            }
 
             // 初始化文件日志（从设置读取开关和保留天数）
             {

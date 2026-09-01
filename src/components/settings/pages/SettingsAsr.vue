@@ -19,6 +19,53 @@
       </Toggle>
     </section>
 
+    <!-- 语音快捷键（按住说话 / 单击 toggle / auto_listen 模式开时切换自动监听）。
+         安卓端不做快捷键：无 OS 级全局快捷键（后端 cfg(desktop) 不编译），
+         前端 keydown 监听也未注册（蓝牙键盘会触发）——设置项整体隐藏 -->
+    <section v-if="!isAndroid()" class="mb-6">
+      <div class="mb-1.5 flex items-center justify-between">
+        <label class="text-sm font-medium">{{ t("settings.asr.pttKey") }}</label>
+        <button
+          type="button"
+          class="hover:text-brand text-xs text-gray-300 transition-colors"
+          @click="resetPttKey"
+        >
+          {{ t("settings.asr.pttKeyReset") }}
+        </button>
+      </div>
+      <button
+        type="button"
+        :class="[
+          'w-full rounded-lg border px-3 py-2.5 text-left text-sm transition-all duration-200',
+          capturingPtt
+            ? 'border-brand/60 text-brand bg-brand/10'
+            : 'hover:border-brand/40 border-white/10 bg-white/10 text-white',
+        ]"
+        @click="startPttCapture"
+      >
+        {{ capturingPtt ? t("settings.asr.pttKeyCapture") : formatBinding(pttBinding) }}
+      </button>
+      <p class="mt-1.5 block text-sm text-gray-300">{{ t("settings.asr.pttKeyHint") }}</p>
+      <p v-if="pttCaptureInvalid" class="mt-1 block text-sm text-red-400">
+        {{ t("settings.asr.pttKeyInvalid") }}
+      </p>
+      <!-- 失去焦点快捷键可用（全局注册）：任意应用前台按快捷键均可触发语音输入 -->
+      <div class="mt-4 border-t border-white/10 pt-4">
+        <Toggle
+          :checked="localSettings.ptt_global"
+          @change="(v: boolean) => (localSettings.ptt_global = v)"
+        >
+          <span class="font-medium">{{ t("settings.asr.pttGlobal") }}</span>
+          <span class="mt-0.5 block text-sm text-gray-300">{{
+            t("settings.asr.pttGlobalHint")
+          }}</span>
+        </Toggle>
+        <p v-if="pttGlobalError" class="mt-1 block text-sm text-red-400">
+          {{ pttGlobalError }}
+        </p>
+      </div>
+    </section>
+
     <!-- 自动语音识别开关 -->
     <section class="mb-6">
       <Toggle
@@ -234,11 +281,21 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, computed, onMounted, watch } from "vue";
+  import { ref, computed, onMounted, onUnmounted, watch } from "vue";
   import { useI18n } from "vue-i18n";
+
+  import {
+    captureFromEvent,
+    formatBinding,
+    isValidBinding,
+    type ShortcutBinding,
+  } from "@/utils/shortcuts";
+  import { listen } from "@tauri-apps/api/event";
+  import { isAndroid } from "@/utils/platform";
 
   import { Toggle } from "../../base";
   import { useAsrStore } from "@/stores/modules/settings/asr";
+  import { useUIStore } from "@/stores/modules/ui/ui";
   import { asrListModels, asrRecognizeWav, asrGetStatus } from "@/api/services/asr";
   import { pcmToWavPcm16, trimSilencePcm } from "@/utils/asrAudio";
   import { parseAsrError } from "@/utils/asrError";
@@ -246,11 +303,115 @@
 
   const { t, te } = useI18n();
   const asrStore = useAsrStore();
+  const uiStore = useUIStore();
 
   // 深拷贝表单副本（不能用 structuredClone —— Pinia reactive Proxy 会抛
   // DataCloneError，导致 setup 崩溃整页空白；JSON 序列化无此问题）
   const localSettings = ref<AsrSettings>(JSON.parse(JSON.stringify(asrStore.settings)));
   const lastTestResult = ref<{ ok: boolean; text: string } | null>(null);
+
+  /** 当前生效的快捷键绑定：解析 localSettings.ptt_key，非法回退裸 F8 */
+  const pttBinding = computed<ShortcutBinding>(() => {
+    try {
+      const raw = localSettings.value.ptt_key;
+      if (raw) {
+        const b = JSON.parse(raw);
+        if (isValidBinding(b)) return b;
+      }
+    } catch {
+      /* 落空走默认 */
+    }
+    return { key: "f8" };
+  });
+
+  const capturingPtt = ref(false);
+  const pttCaptureInvalid = ref(false);
+  let pttCaptureKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+
+  function handlePttCaptureBlur() {
+    // 失焦时退出捕获：避免 Alt+Tab 后捕获模式残留拦截按键
+    endPttCapture();
+  }
+
+  function startPttCapture() {
+    // 重入保护：捕获中再次点击（双击）不再重复注册监听器
+    if (capturingPtt.value) return;
+    capturingPtt.value = true;
+    pttCaptureInvalid.value = false;
+    window.addEventListener("blur", handlePttCaptureBlur);
+    pttCaptureKeyHandler = (e: KeyboardEvent) => {
+      // 捕获期间阻止默认行为（功能键系统行为等）
+      e.preventDefault();
+      e.stopPropagation();
+      const result = captureFromEvent(e);
+      if (result.kind === "ignore") return; // 纯修饰键，继续等待组合
+      if (result.kind === "cancel") {
+        endPttCapture();
+        return;
+      }
+      let binding: ShortcutBinding;
+      if (result.kind === "blocked") {
+        // 无修饰的字母/数字/空格：PTT 允许单键绑定（用户不强制组合键）。
+        // captureFromEvent 的 blocked 是为剧本编辑器打字冲突准备的，
+        // 这里直接构造无修饰绑定；聊天输入时同时触发由提示语说明、用户自担
+        binding = { key: e.key.toLowerCase() };
+      } else {
+        binding = result.binding;
+      }
+      // PTT 专用键位校验：仅 Enter 拒绝（聊天发送键，绑定后发消息误触发录音）
+      if (binding.key === "enter") {
+        pttCaptureInvalid.value = true;
+        return;
+      }
+      // 写入 localSettings，现有 debounce watch 自动保存
+      localSettings.value.ptt_key = JSON.stringify(binding);
+      endPttCapture();
+    };
+    window.addEventListener("keydown", pttCaptureKeyHandler, true);
+  }
+
+  function endPttCapture() {
+    capturingPtt.value = false;
+    pttCaptureInvalid.value = false;
+    window.removeEventListener("blur", handlePttCaptureBlur);
+    if (pttCaptureKeyHandler) {
+      window.removeEventListener("keydown", pttCaptureKeyHandler, true);
+      pttCaptureKeyHandler = null;
+    }
+  }
+
+  function resetPttKey() {
+    endPttCapture();
+    localSettings.value.ptt_key = '{"key":"f8"}';
+  }
+
+  /** 全局快捷键注册失败提示（后端 asr:ptt-global-status 仅在失败时 emit；开关不自动回退） */
+  const pttGlobalError = ref("");
+  let unlistenGlobalStatus: (() => void) | null = null;
+  onMounted(async () => {
+    unlistenGlobalStatus = await listen<{ ok: boolean; reason: string }>(
+      "asr:ptt-global-status",
+      (e) => {
+        if (!e.payload.ok) {
+          pttGlobalError.value = t("settings.asr.pttGlobalError", { reason: e.payload.reason });
+        }
+      }
+    );
+  });
+
+  onUnmounted(() => {
+    unlistenGlobalStatus?.();
+    endPttCapture();
+  });
+
+  // 设置抽屉用 v-show 隐藏（KeepAlive 不触发 onUnmounted）——抽屉关闭时主动
+  // 退出捕获，防止 window 监听器残留导致聊天打字被吞并静默改写快捷键
+  watch(
+    () => uiStore.showSettings,
+    (open) => {
+      if (!open) endPttCapture();
+    }
+  );
 
   let saveTimer: number | null = null;
   /** 初始化完成标记：onMounted 赋值后置 true，跳过一次初始化触发的保存 */
@@ -406,7 +567,14 @@
     // 查询式获取 VAD 状态：asr://vad_ready 事件在启动早期发射，前端监听器注册
     // 晚于事件会丢失（Tauri 事件不缓存历史）——以查询结果为准，无竞态
     asrGetStatus()
-      .then((s) => asrStore.setVadLoaded(s.vad_loaded))
+      .then((s) => {
+        asrStore.setVadLoaded(s.vad_loaded);
+        // 查询式全局注册状态：开关开但实际未注册（键被占用/重启后注册失败等）→ 红字提示。
+        // asr:ptt-global-status 事件不缓存，打开设置页晚于失败时刻会错过
+        if (localSettings.value.ptt_global && !s.ptt_global_ok) {
+          pttGlobalError.value = t("settings.asr.pttGlobalNotRegistered");
+        }
+      })
       .catch((e) => console.warn("[ASR] 查询状态失败:", e));
   });
 
@@ -418,6 +586,9 @@
       // flush:'sync' 保证回调同步执行：onMounted 赋值时 initialized 仍是 false 被跳过，
       // 置位后用户的实际修改才走保存。
       if (!initialized) return;
+      // 用户改动设置：旧注册失败提示不再相关，清除（保存后若仍失败，
+      // asr:ptt-global-status 事件会重新显示新原因——后端仅在失败时 emit）
+      pttGlobalError.value = "";
       if (saveTimer !== null) clearTimeout(saveTimer);
       saveTimer = window.setTimeout(() => {
         void asrStore.save(s).catch((e) => console.warn("[ASR] autosave failed:", e));

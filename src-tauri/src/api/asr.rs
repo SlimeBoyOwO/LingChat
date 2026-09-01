@@ -18,6 +18,8 @@ use crate::ai_service::asr::error::AsrError;
 use crate::ai_service::asr::provider::{self, AsrResult, ProviderInfo, list_provider_info};
 use crate::ai_service::asr::session::{AsrSession, AsrSource};
 use crate::ai_service::asr::settings::{self, AsrSettings};
+#[cfg(desktop)]
+use crate::ai_service::asr::global_hotkey;
 
 fn parse_source(s: &str) -> Result<AsrSource, String> {
     AsrSource::from_str(s).ok_or_else(|| format!("invalid source: {s}"))
@@ -365,6 +367,22 @@ pub async fn asr_set_settings(
             .set_silence_timeout_ms(settings.vad_silence_ms)
             .await;
     }
+    // 全局快捷键同步（仅桌面）：开关开 → 注册 ptt_key 映射的组合串，关 → 注销。
+    // 注册失败（键被占用/插件不支持）：保存本身已成功，返回 Err 供前端日志 +
+    // emit 状态事件给设置页红字提示（设计决策：开关保持开启，不自动回退）。
+    #[cfg(desktop)]
+    if let Err(e) = global_hotkey::sync(&app, &settings) {
+        tracing::warn!("[ASR] 全局快捷键注册失败: {e}");
+        let _ = app.emit_to(
+            "main",
+            "asr:ptt-global-status",
+            global_hotkey::PttGlobalStatus {
+                ok: false,
+                reason: e.clone(),
+            },
+        );
+        return Err(e);
+    }
     Ok(())
 }
 
@@ -455,6 +473,9 @@ pub struct AsrStatus {
     /// VAD 模型是否加载成功。session 存在 = init_asr 完成 = AsrVad::load 成功
     /// （模型加载失败会直接中断 init_asr，session 保持 None）。
     pub vad_loaded: bool,
+    /// 全局快捷键注册是否健康（ptt_global=true 且实际已注册）。设置页启动查询用——
+    /// asr:ptt-global-status 事件不缓存，打开晚于失败时刻会错过。
+    pub ptt_global_ok: bool,
 }
 
 /// 查询 ASR 运行时状态。
@@ -462,9 +483,21 @@ pub struct AsrStatus {
 /// 设置页状态面板用。`asr://vad_ready` 事件在启动早期 emit，前端监听器注册
 /// 晚于事件会丢失（Tauri 事件不缓存历史）——查询式获取无竞态。
 #[tauri::command]
-pub async fn asr_get_status(state: tauri::State<'_, AppState>) -> Result<AsrStatus, String> {
+pub async fn asr_get_status(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<AsrStatus, String> {
     let guard = state.asr_state.session.lock().await;
+    // 全局快捷键健康检查（仅桌面）：开关开且实际注册成功才算 ok。
+    // 注册失败（键被占用等）时设置页据此显示红字提示
+    #[cfg(desktop)]
+    let ptt_global_ok = settings::load(&app)
+        .map(|s| global_hotkey::is_healthy(&app, &s))
+        .unwrap_or(false);
+    #[cfg(not(desktop))]
+    let ptt_global_ok = false;
     Ok(AsrStatus {
         vad_loaded: guard.as_ref().is_some(),
+        ptt_global_ok,
     })
 }

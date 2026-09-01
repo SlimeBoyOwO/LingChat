@@ -1195,6 +1195,17 @@ export default {
 
   asr: {
     title: "語音識別",
+    pttKey: "語音快捷鍵",
+    pttKeyHint:
+      "按住說話，單擊切換錄音；開啟自動語音識別時切換自動監聽。可綁定單鍵（聊天輸入時會同時觸發，建議使用功能鍵或組合鍵）",
+    pttKeyCapture: "按下新快捷鍵…（Esc 取消）",
+    pttKeyInvalid: "該鍵位不可綁定：Enter 用於發送消息",
+    pttKeyReset: "恢復默認",
+    pttGlobal: "失去焦點快捷鍵可用",
+    pttGlobalHint:
+      "視窗不在前台時快捷鍵仍可用（全域快捷鍵）。綁定字母/數字等單鍵會攔截其他應用嘅該鍵輸入，請自行評估",
+    pttGlobalError: "全域快捷鍵註冊失敗：{reason}",
+    pttGlobalNotRegistered: "當前鍵位可能被其他應用佔用，全域快捷鍵未生效",
     status: {
       ready: "已就緒",
       notReady: "未配置",
