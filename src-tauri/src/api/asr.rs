@@ -392,6 +392,18 @@ pub async fn asr_set_settings(
                 reason: String::new(),
             },
         );
+    } else {
+        // 注销成功（ptt_global=false）也复位前端 pttGlobalOk：此前残留 true
+        // 会让 blur 兜底误退位（keydown 退位条件虽已含设置值，彻底闭环防
+        // 残留状态误导后续判别）
+        let _ = app.emit_to(
+            "main",
+            "asr:ptt-global-status",
+            global_hotkey::PttGlobalStatus {
+                ok: false,
+                reason: String::new(),
+            },
+        );
     }
     Ok(())
 }
