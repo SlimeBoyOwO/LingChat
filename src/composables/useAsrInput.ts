@@ -4,6 +4,7 @@ import { useRoute, type RouteLocationNormalizedLoaded } from "vue-router";
 
 import { bindingMatches, isDirKey, isValidBinding, type ShortcutBinding } from "@/utils/shortcuts";
 import { isAndroid } from "@/utils/platform";
+import { isPttActive, pttKeyDown, pttKeyUp, resetPtt } from "./asrPtt";
 import {
   asrCancel,
   asrCancelStreaming,
@@ -94,8 +95,6 @@ function resolvePttBinding(): ShortcutBinding {
   }
   return { key: "f8" };
 }
-/** 单击/长按判定阈值（毫秒）：keyup 在阈值内松开 = 单击（toggle 保持录音），超过 = 长按（结束识别） */
-const PTT_TAP_THRESHOLD_MS = 250;
 /** 能量监测启动缓冲期兜底值（毫秒）：未加载设置时用 100ms。
  *  实际值来自 asrStore.settings.energy_warmup_ms（设置页可自定义，
  *  0 = 无缓冲）。voicePlaying 门控已保证 TTS 播放期间完全不监听，
@@ -115,15 +114,14 @@ export const asrVoiceActive = ref(false);
 /** 功能开关（运行态）：auto_listen 模式开启时由 mic/快捷键切换——监听激活/暂停。
  *  不持久化、不改 auto_listen 模式设置。 */
 const autoListenActive = ref(false);
-/** PTT 手势状态机：none=未按；pending=录音中待判定（阈值内计时）；held=长按（keyup 结束）；
- *  toggle-held=单击（录音保持，再按 keydown 结束）。纯事件驱动，无需响应式。 */
-let pttState: "none" | "pending" | "held" | "toggle-held" = "none";
-/** pending 的单击/长按判定计时器 */
-let pttTapTimer: number | undefined;
 /** 全局快捷键实际注册状态（审查中危 1）：asr:ptt-global-status 事件 / asrGetStatus
  *  查询驱动。退位判断用它而非设置值——注册失败（键被占用）时窗口内监听继续工作，
  *  避免"设置开但全局没注册 + 窗口内退位"的双重失效（重启后 PTT 完全静默） */
 let pttGlobalOk = true;
+/** 是否已收到过状态事件（审查 P2 时序防护）：启动时 asrGetStatus 异步返回的是
+ *  旧状态，若期间收到保存成功事件（ok:true），查询后到会错误覆盖——查询结果
+ *  仅在从未收到事件时生效（事件总是更新的） */
+let pttStatusEventSeen = false;
 /** 惰性依赖（首次 useAsrInput() 调用时初始化） */
 let route: RouteLocationNormalizedLoaded | null = null;
 let uiStore: ReturnType<typeof useUIStore> | null = null;
@@ -163,8 +161,7 @@ function resetSession() {
   activeSource.value = null;
   // PTT 手势状态随会话复位：任何 teardown 路径（discard/handle/识别错误/start 失败）
   // 都不残留 toggle-held，避免后续快捷键/blur 把 PTT 手势误判到 mic 按钮的会话上
-  clearPttTapTimer();
-  pttState = "none";
+  resetPtt();
 }
 
 /**
@@ -337,13 +334,8 @@ function toggleAutoListenFunction() {
 // 模式开 = 快捷键专职切换自动监听启用开关（只动运行态，不碰模式设置）。
 // 窗口内生效（/chat 与 /pet，路由门控在 chatActive）；ptt_global 开启时退位给全局
 // 快捷键事件（任意应用前台可用，blur 不丢录音——释放事件由全局回调保证到达）。
-// 复用 button 手动语义（fill_only 拼接、跳过显示锁；总开关一律生效）
-function clearPttTapTimer() {
-  if (pttTapTimer !== undefined) {
-    window.clearTimeout(pttTapTimer);
-    pttTapTimer = undefined;
-  }
-}
+// 复用 button 手动语义（fill_only 拼接、跳过显示锁；总开关一律生效）。
+// 手势状态机判定在 asrPtt（纯逻辑可单测），此处只做门控与动作执行。
 
 /** PTT 按下统一入口（窗口内 keydown 与全局快捷键共用）：
  *  门控（总开关/路由/AI 生成/TTS 播放等）+ 状态机推进。 */
@@ -359,62 +351,38 @@ function pttDown() {
     return;
   }
   // 行为 1：模式关 → 长按 PTT / 单击 toggle 双语义
-  // 再次点击关闭：toggle-held（单击保持录音）中按下即结束；
-  // 若录音已被外部 discard（AI 进 thinking 等），直接重新开始
-  if (pttState === "toggle-held") {
-    pttState = "none";
-    if (phase.value === "recording" && activeSource.value === "button") {
-      stop();
+  const sessionActive = phase.value === "recording" && activeSource.value === "button";
+  const sessionBusy = phase.value !== "idle";
+  const cmd = pttKeyDown(sessionActive, sessionBusy);
+  if (cmd.kind === "stop") {
+    // toggle-held（单击保持录音）中按下即结束
+    stop();
+    return;
+  }
+  if (cmd.kind === "start" || cmd.kind === "restart") {
+    // 门控（手动语义）：路由非 /chat+/pet、抽屉开、AI 生成中、TTS 播放中等 → 静默拒绝；
+    // restart = toggle-held 中按下但会话已被外部 discard（AI 进 thinking 等）→ 一次按键重启
+    if (!chatActive.value || !canStartAsr(false, true)) {
+      // 门控拒绝：状态机复位（不残留 pending），后续 keyup 落空无害
+      resetPtt();
       return;
     }
-    // 会话已不在：继续走下方启动流程（不 return）
+    // 立即开始录音（不丢首字）；250ms 内松开由 keyup 判定为单击，否则 keyup 时按长按结束
+    void start("button").catch((err) => {
+      // start 门控拒绝是静默 return 不 throw；只有 getUserMedia 等失败才走这里
+      resetPtt();
+      console.warn("[ASR] PTT start failed:", err);
+    });
   }
-  // 按住中（pending/held）或 mic 按钮/auto 会话进行中：不打断
-  if (pttState !== "none" || phase.value !== "idle") return;
-  // 门控（手动语义）：路由非 /chat+/pet、抽屉开、AI 生成中、TTS 播放中等 → 静默拒绝
-  if (!chatActive.value || !canStartAsr(false, true)) return;
-  // 立即开始录音（不丢首字）；250ms 内松开由 keyup 判定为单击，否则 keyup 时按长按结束
-  pttState = "pending";
-  void start("button").catch((err) => {
-    // start 门控拒绝是静默 return 不 throw；只有 getUserMedia 等失败才走这里
-    clearPttTapTimer();
-    pttState = "none";
-    console.warn("[ASR] PTT start failed:", err);
-  });
-  pttTapTimer = window.setTimeout(() => {
-    // 超过阈值仍未松开 = 长按（keyup 时结束识别）
-    if (pttState === "pending") pttState = "held";
-  }, PTT_TAP_THRESHOLD_MS);
 }
 
-/** PTT 松开统一入口（窗口内 keyup 与全局快捷键共用）：按按住时长分派
- *  pending→单击判定（toggle 保持 / 外部 discard 复位）、held→长按结束。 */
+/** PTT 松开统一入口（窗口内 keyup 与全局快捷键共用）：手势判定在 asrPtt，
+ *  这里只执行动作（长按结束 = 停止 → 识别 → 按 send_mode 处理）。 */
 function pttUp() {
-  if (pttState === "pending") {
-    clearPttTapTimer();
-    if (phase.value === "recording" && activeSource.value === "button") {
-      // 单击：松开不结束，录音保持（toggle），下次按下再结束
-      pttState = "toggle-held";
-    } else {
-      // 外部已 discard（AI 进入 thinking、抽屉打开等）：复位，不残留
-      pttState = "none";
-    }
-    return;
-  }
-  if (pttState === "held") {
-    pttState = "none";
-    if (phase.value === "recording" && activeSource.value === "button") {
-      // 长按结束：停止 → 识别 → 按 send_mode 处理
-      stop();
-    }
-    return;
-  }
-  if (pttState === "toggle-held") {
-    // 正常保持录音中 keyup 无操作；被外部 discard 后复位
-    if (phase.value !== "recording" || activeSource.value !== "button") {
-      pttState = "none";
-    }
-    return;
+  const sessionActive = phase.value === "recording" && activeSource.value === "button";
+  const cmd = pttKeyUp(sessionActive);
+  if (cmd.kind === "stop") {
+    stop();
   }
 }
 
@@ -445,12 +413,12 @@ function handlePttKeyUp(e: KeyboardEvent) {
 }
 
 function handleWindowBlur() {
-  // 全局模式：失焦是常态（这正是功能场景），释放事件由全局快捷键回调保证
-  // 到达（GetAsyncKeyState 轮询与焦点无关），不能丢弃录音
-  if (asrStore?.settings.ptt_global) return;
-  if (pttState === "none") return;
-  clearPttTapTimer();
-  pttState = "none";
+  // 全局模式注册成功：失焦是常态（这正是功能场景），释放事件由全局快捷键回调
+  // 保证到达（GetAsyncKeyState 轮询与焦点无关），不能丢弃录音。
+  // 注册失败（pttGlobalOk=false）时无全局回调 → 与窗口内模式一致走 blur 兜底
+  if (asrStore?.settings.ptt_global && pttGlobalOk) return;
+  if (!isPttActive()) return;
+  resetPtt();
   if (phase.value === "recording" && activeSource.value === "button") {
     // 失焦后 keyup 收不到：丢弃录音（不识别，避免把环境声送去识别），防录音卡死
     console.log("[ASR] PTT 窗口失焦，丢弃录音");
@@ -949,13 +917,15 @@ function ensureInit() {
   // 全局注册状态：失败事件（后端仅失败时 emit）→ pttGlobalOk=false → 窗口内监听
   // 兜底；设置保存成功时后端 emit ok:true 复位（审查中危 1）
   listen<{ ok: boolean; reason: string }>("asr:ptt-global-status", (e) => {
+    pttStatusEventSeen = true;
     pttGlobalOk = e.payload.ok;
   });
   // 启动时查询式初始化：重启后注册失败（启动 sync 失败只 warn 不 emit 事件）→
-  // pttGlobalOk=false → 窗口内监听兜底，不再"双重失效"静默
+  // pttGlobalOk=false → 窗口内监听兜底，不再"双重失效"静默。
+  // 仅当从未收到事件时生效（P2 时序防护：查询可能返回旧状态，不能覆盖事件）
   asrGetStatus()
     .then((s) => {
-      pttGlobalOk = s.ptt_global_ok;
+      if (!pttStatusEventSeen) pttGlobalOk = !!s.ptt_global_ok;
     })
     .catch(() => {
       /* 查询失败保持默认 true，退位判断保守 */
