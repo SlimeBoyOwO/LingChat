@@ -4,12 +4,11 @@
  * 三手势：长按（≥250ms 松开 = 说一段结束识别）、单击（<250ms 松开 = toggle
  * 保持录音，再按一次结束）、再次按下（toggle-held 中且会话已被外部丢弃 = 一次
  * 按键重启录音）。与录音链路完全解耦：本模块只做状态转移与手势判定，返回
- * 指令（PttCommand），动作（start/stop/discard）由 useAsrInput 执行。
+ * 指令（PttCommand），动作（start/stop/discard）由 ptt.ts 执行。
  *
- * 设计动机（学科审查 P1）：状态机转移矩阵是最值得单测的逻辑——此前埋在
- * useAsrInput 的 pttDown/pttUp 里不可测，抽离为纯函数后可用 fake timers
- * 穷举验证。本项目前端暂无测试基建，结构已就位，测试框架引入时本模块
- * 无任何 DOM/Vue 依赖，可直接测。
+ * 设计动机：状态机转移矩阵是最值得单测的逻辑——抽离为纯函数后可用 fake
+ * timers 穷举验证。本项目前端暂无测试基建，结构已就位，测试框架引入时
+ * 本模块无任何 DOM/Vue 依赖，可直接测。
  *
  * 状态语义：
  * - none：未按
@@ -23,7 +22,7 @@ export type PttState = "none" | "pending" | "held" | "toggle-held";
  *  超过 = 长按（结束识别） */
 export const PTT_TAP_THRESHOLD_MS = 250;
 
-/** 状态机指令：useAsrInput 据此执行副作用（录音启动/结束/重启） */
+/** 状态机指令：ptt.ts 据此执行副作用（录音启动/结束/重启） */
 export type PttCommand =
   | { kind: "start" }
   | { kind: "stop" } /** toggle-held 中按下但会话已被外部 discard：一次按键重启录音 */
@@ -43,11 +42,6 @@ function clearTapTimer(): void {
 /** 当前手势状态（只读判定用） */
 export function getPttState(): PttState {
   return state;
-}
-
-/** 是否处于任一活跃手势（非 none）——handleWindowBlur 判断"按键在按着" */
-export function isPttActive(): boolean {
-  return state !== "none";
 }
 
 /** 复位：清计时器 + 回 none。会话 teardown/blur/门控拒绝路径统一调用，

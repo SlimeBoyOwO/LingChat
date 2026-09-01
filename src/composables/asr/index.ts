@@ -4,19 +4,17 @@ import { useRoute } from "vue-router";
 
 import { asrLog } from "./log";
 import { canStartAsr, chatActive, isLlamaStream } from "./gates";
-import { writePartial, registerAsrInputBridge } from "./input-bridge";
+import { writePartial } from "./input-bridge";
 import {
   onVadTurnEnd,
   start,
   stop,
-  discardRecording,
-  handle,
   updateAsrAvailability,
   toggleAutoListenFunction,
 } from "./session";
 import { handlePttKeyDown, handlePttKeyUp, handleWindowBlur, pttDown, pttUp } from "./ptt";
-import { ASR_AUTO_SEND_DELAY_MS, useAsrAutoSend } from "./auto-send";
-export { ASR_AUTO_SEND_DELAY_MS, useAsrAutoSend };
+export { ASR_AUTO_SEND_DELAY_MS, useAsrAutoSend } from "./auto-send";
+export { registerAsrInputBridge } from "./input-bridge";
 import {
   activeSource,
   asrLockedUntil,
@@ -26,8 +24,8 @@ import {
   runtime,
   voicePlaying,
 } from "./state";
-export { asrVoiceActive, registerAsrInputBridge };
-import { asrCancel, asrGetStatus, type VadEvent } from "@/api/services/asr";
+export { asrVoiceActive } from "./state";
+import { asrGetStatus, type VadEvent } from "@/api/services/asr";
 import { useGameStore } from "@/stores/modules/game";
 import { useAsrStore } from "@/stores/modules/settings/asr";
 import { useUIStore } from "@/stores/modules/ui/ui";
@@ -154,14 +152,14 @@ function ensureInit() {
   });
 
   // 全局注册状态：失败事件（后端仅失败时 emit）→ pttGlobalOk=false → 窗口内监听
-  // 兜底；设置保存成功时后端 emit ok:true 复位（审查中危 1）
+  // 兜底；设置保存成功时后端 emit ok:true 复位
   listen<{ ok: boolean; reason: string }>("asr:ptt-global-status", (e) => {
     runtime.pttStatusEventSeen = true;
     runtime.pttGlobalOk = e.payload.ok;
   });
   // 启动时查询式初始化：重启后注册失败（启动 sync 失败只 warn 不 emit 事件）→
   // pttGlobalOk=false → 窗口内监听兜底，不再"双重失效"静默。
-  // 仅当从未收到事件时生效（P2 时序防护：查询可能返回旧状态，不能覆盖事件）
+  // 仅当从未收到事件时生效（时序防护：查询可能返回旧状态，不能覆盖事件）
   asrGetStatus()
     .then((s) => {
       if (!runtime.pttStatusEventSeen) runtime.pttGlobalOk = !!s.ptt_global_ok;
@@ -251,12 +249,8 @@ export function useAsrInput() {
   return {
     phase,
     activeSource,
-    chatActive,
     start,
     stop,
-    discardRecording,
-    handle,
-    cancel: () => asrCancel(),
     canStartAsr,
     autoListenActive,
     toggleAutoListenFunction,

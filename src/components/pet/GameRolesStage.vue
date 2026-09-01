@@ -93,7 +93,7 @@
               asrInput.phase.value === 'recording',
           }"
           :style="
-            !asrInput.phase.value && autoListenOn && !autoListenActive
+            asrInput.phase.value === 'idle' && autoListenOn && !autoListenActive
               ? { color: 'var(--accent-color)', borderColor: 'var(--accent-color)' }
               : {}
           "
@@ -302,7 +302,7 @@
     () =>
       (autoListenOn.value && asrStore.settings.voice_input_enabled) ||
       asrInput.phase.value === "recording" ||
-      (asrInput.phase.value !== "recognizing" && asrInput.canStartAsr(false, true))
+      (asrInput.phase.value !== "recognizing" && asrInput.canStartAsr({ forManual: true }))
   );
   function toggleRecording() {
     // auto_listen 模式开 + 总开关开：mic 按钮 = 切换功能开关（暂停/恢复监听），

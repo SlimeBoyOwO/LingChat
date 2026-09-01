@@ -44,12 +44,13 @@ export function pttDown() {
   if (cmd.kind === "start" || cmd.kind === "restart") {
     // 门控（手动语义）：路由非 /chat+/pet、抽屉开、AI 生成中、TTS 播放中等 → 静默拒绝；
     // restart = toggle-held 中按下但会话已被外部 discard（AI 进 thinking 等）→ 一次按键重启
-    if (!chatActive.value || !canStartAsr(false, true)) {
+    if (!chatActive.value || !canStartAsr({ forManual: true })) {
       // 门控拒绝：状态机复位（不残留 pending），后续 keyup 落空无害
       resetPtt();
       return;
     }
-    // 立即开始录音（不丢首字）；250ms 内松开由 keyup 判定为单击，否则 keyup 时按长按结束
+    // 立即开始录音（不丢首字）；PTT_TAP_THRESHOLD_MS 内松开由 keyup 判定为
+    // 单击，否则 keyup 时按长按结束
     void start("button").catch((err) => {
       // start 门控拒绝是静默 return 不 throw；只有 getUserMedia 等失败才走这里
       resetPtt();
@@ -72,14 +73,14 @@ export function handlePttKeyDown(e: KeyboardEvent) {
   // 全局模式开启且实际已注册：窗口内监听退位，由全局事件驱动（单一输入源，
   // 防双触发——OS 全局快捷键在应用聚焦时也触发，双源必打架）。
   // 注册失败（pttGlobalOk=false，键被占用/启动 sync 失败）时不退位：全局没生效，
-  // 窗口内监听兜底（审查中危 1：防"设置开但全局没注册 + 窗口内退位"双重失效）
+  // 窗口内监听兜底（防"设置开但全局没注册 + 窗口内退位"双重失效）
   if (runtime.asrStore?.settings.ptt_global && runtime.pttGlobalOk) return;
   if (!bindingMatches(resolvePttBinding(), e) || e.repeat) return;
   pttDown();
 }
 
 export function handlePttKeyUp(e: KeyboardEvent) {
-  // 注意：keyup 不做全局模式退位（审查 M-1）——keydown 早退防的是双触发
+  // 注意：keyup 不做全局模式退位——keydown 早退防的是双触发
   // （双 toggle），keyup 无此必要：状态机对重复 keyup 幂等（第二次落 none
   // 无副作用）。而 pttGlobalOk 的 false→true 翻转可以发生在一次按键的
   // down 与 up 之间（注册失败时窗口内监听 → 期间一次成功保存 emit ok:true），
@@ -113,7 +114,7 @@ export function handleWindowBlur() {
   if (phase.value === "recording" && activeSource.value === "button") {
     if (!held) {
       // toggle-held（单击保持）：按键早已松开，不存在丢失的 keyup——仅复位
-      // 按键态，保留录音（审查 M-2：此前任意失焦即丢弃，tap-to-toggle 是
+      // 按键态，保留录音（此前任意失焦即丢弃，tap-to-toggle 是
       // 最常见手势，点窗口内其它区域就静默丢话）。失焦期间按键停止不可达，
       // 但有 60s 硬上限 + 回焦后 PTT 可停 + mic 按钮可停三条逃生路径
       asrLog().info("PTT toggle-held 窗口失焦，保留录音");

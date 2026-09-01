@@ -49,7 +49,6 @@
   import { useSettingsStore } from "@/stores/modules/settings";
   import { useLlmProvidersStore } from "@/stores/modules/llm-providers";
   import {
-    useAsrInput,
     registerAsrInputBridge,
     lockAsrForDisplay,
     asrVoiceActive,
@@ -107,12 +106,12 @@
     asrAutoSend.arm(ce.detail);
   }
 
-  // 输入桥：流式 partial 实时写入（与桌面 GameDialog 一致；录音发起窗口的
-  // phase 是窗口本地状态，partial 只写入发起方输入框）
-  const asrInput = useAsrInput();
+  // 输入桥：流式 partial 实时写入（与桌面 GameDialog 一致；partial 只写入
+  // 发起方输入框）。注册返回注销函数，卸载时解除（防桥指向已卸载组件）
+  let unregisterInputBridge: (() => void) | null = null;
   onMounted(() => {
     initScreenshot();
-    registerAsrInputBridge({
+    unregisterInputBridge = registerAsrInputBridge({
       getText: () => messageText.value,
       setText: (v) => {
         messageText.value = v;
@@ -124,6 +123,7 @@
   onUnmounted(() => {
     window.removeEventListener("asr-text", onAsrText);
     window.removeEventListener("asr-send", onAsrAutoSend);
+    unregisterInputBridge?.();
     // auto_send 发送窗口未触发就离开 → useAsrAutoSend 卸载自动取消（消息留输入框）
     destroyScreenshot();
   });

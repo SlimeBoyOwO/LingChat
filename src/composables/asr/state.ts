@@ -1,9 +1,22 @@
 import { ref, shallowRef } from "vue";
 import type { RouteLocationNormalizedLoaded } from "vue-router";
 import type { AsrSource } from "@/api/services/asr";
-import { useGameStore } from "@/stores/modules/game";
-import { useAsrStore } from "@/stores/modules/settings/asr";
-import { useUIStore } from "@/stores/modules/ui/ui";
+import type { useGameStore } from "@/stores/modules/game";
+import type { useAsrStore } from "@/stores/modules/settings/asr";
+import type { useUIStore } from "@/stores/modules/ui/ui";
+
+/** 输入框读写桥（GameDialog / ChatInput 注册，供 partial 写入 / 拼接基准读取） */
+export interface AsrInputBridge {
+  getText: () => string;
+  setText: (v: string) => void;
+}
+
+/** 能量监测句柄（raf 循环 + 独立采集流，stop 时统一回收） */
+export interface EnergyMonitorHandle {
+  ctx: AudioContext;
+  raf: number;
+  stream: MediaStream;
+}
 
 // ── 模块级单例状态 ──────────────────────────────────────────
 // 状态全部在模块级（非函数内）：App.vue 的初始化实例与 GameDialog /
@@ -28,13 +41,13 @@ export const runtime = {
   stream: null as MediaStream | null,
   audioCtx: null as AudioContext | null,
   processor: null as ScriptProcessorNode | null,
-  energyMon: null as { ctx: AudioContext; raf: number; stream: MediaStream } | null,
+  energyMon: null as EnergyMonitorHandle | null,
   /** auto 触发去重：能量触发后不再重复触发，直到本轮会话结束 */
   autoTriggered: false,
   /** 移动端菜单展开状态（GameDialog 在 watch 中同步，§1.5 判定） */
   mobileMenuOpen: false,
   /** 输入框桥：GameDialog 注册，供 partial 实时写入 / 拼接基准读取 */
-  inputBridge: null as { getText: () => string; setText: (v: string) => void } | null,
+  inputBridge: null as AsrInputBridge | null,
   /** 录音开始时的输入框内容快照（拼接语义的基准：partial 只追加在这之后） */
   baseText: "",
   /** 全局快捷键实际注册状态（审查中危 1）：asr:ptt-global-status 事件 / asrGetStatus
@@ -69,7 +82,8 @@ export const ENERGY_WARMUP_MS = 100;
  *  播放期间 ASR 整体禁用（canStartAsr 门控 + handle drop），播完才恢复。
  *  ref 化：canStartMic 等 computed 依赖它，播完 setVoicePlaying(false) 自动解锁。 */
 export const voicePlaying = ref(false);
-/** 语音会话进行中（GameDialog 据此 readonly 输入框，语音期间禁止手动输入） */
+/** 语音会话进行中（GameDialog 据此 readonly 输入框，语音期间禁止手动输入）。
+ *  前缀 asr 用于与同模块的 voicePlaying（TTS 播放中）在组件顶层导入时消歧。 */
 export const asrVoiceActive = ref(false);
 /** 功能开关（运行态）：auto_listen 模式开启时由 mic/快捷键切换——监听激活/暂停。
  *  不持久化、不改 auto_listen 模式设置。 */

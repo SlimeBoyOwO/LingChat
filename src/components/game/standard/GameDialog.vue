@@ -381,7 +381,7 @@
     () =>
       (autoListenOn.value && asrStore.settings.voice_input_enabled) ||
       asrInput.phase.value === "recording" ||
-      (asrInput.phase.value !== "recognizing" && asrInput.canStartAsr(false, true))
+      (asrInput.phase.value !== "recognizing" && asrInput.canStartAsr({ forManual: true }))
   );
 
   // 截图相关状态
@@ -403,10 +403,11 @@
     uiStore.setSettingsTab("background");
   };
 
-  // 移动端菜单操作：执行动作后自动收起菜单
+  // 移动端菜单操作：先收起菜单再执行动作——菜单展开状态是 ASR 门控第 5 项，
+  // 先执行会让菜单里的 mic 手动录音被自身门控挡住（静默无效）
   const onMobileMenuAction = (action: () => void) => {
-    action();
     showMobileMenu.value = false;
+    action();
   };
   const currentDisplayedText = ref("");
   const dialogueLineRef = ref<HTMLDivElement | null>(null);
@@ -797,6 +798,8 @@
 
   let unlistenScreenshot: (() => void) | null = null;
   let unlistenCancelled: (() => void) | null = null;
+  /** 输入框桥注销函数（onMounted 注册，onUnmounted 解除） */
+  let unregisterInputBridge: (() => void) | null = null;
 
   onMounted(async () => {
     // 模式切换重挂载：立即从 store 恢复当前台词（不重播打字动画）
@@ -810,8 +813,9 @@
     window.addEventListener("asr-text", onAsrText);
     // 监听 asr-send 事件（auto_send 模式 dispatch）
     window.addEventListener("asr-send", onAsrAutoSend);
-    // 输入框桥：流式 partial 实时写入 + 拼接基准读取
-    registerAsrInputBridge({
+    // 输入框桥：流式 partial 实时写入 + 拼接基准读取。
+    // 注册返回注销函数，卸载时解除（防桥指向已卸载组件）
+    unregisterInputBridge = registerAsrInputBridge({
       getText: () => inputMessage.value,
       setText: (v) => {
         inputMessage.value = v;
@@ -853,6 +857,7 @@
     window.removeEventListener("resize", updateContainerWidth);
     window.removeEventListener("asr-text", onAsrText);
     window.removeEventListener("asr-send", onAsrAutoSend);
+    unregisterInputBridge?.();
     if (unlistenScreenshot) unlistenScreenshot();
     if (unlistenCancelled) unlistenCancelled();
   });

@@ -13,7 +13,8 @@ export const chatActive = computed(() => {
 });
 
 // ── ASR 可用性门控（§1 全 12 项） ──────────────────────────────
-// 综合判定当前能否启动 ASR 录音（所有禁用条件取 OR）：
+// 综合判定当前能否启动 ASR 录音（所有禁用条件取 OR）。编号表仅罗列全部
+// 条件，与代码执行顺序无关：
 // 1-3. currentStatus ∈ {thinking, responding, presenting}
 // 4.    command === 'touch'（触摸模式）
 // 5.    showMobileMenu === true（移动端菜单展开）
@@ -26,8 +27,10 @@ export const chatActive = computed(() => {
 // 12.   TTS 播放中（外放语音会被误识别）
 // 任何一项满足即视为不可用。start() / startEnergyMonitor RMS 触发 / 按钮 enable 都查它。
 // forManual=true（手动 mic 录音）：仅跳过 10 显示锁——锁防的是 auto 触发覆盖识别
-// 结果（手动是用户主动，不受锁限）；总开关一律生效。
-export function canStartAsr(ignoreLock = false, forManual = false): boolean {
+// 结果（手动是用户主动，不受锁限）；总开关一律生效。ignoreLock=true（监测启停用）：
+// 锁只挡"触发录音"，不挡"监测启停"——否则识别完成后锁一设监测就停、锁过期无人复活。
+export function canStartAsr(opts: { ignoreLock?: boolean; forManual?: boolean } = {}): boolean {
+  const { ignoreLock = false, forManual = false } = opts;
   if (!runtime.route || !runtime.uiStore || !runtime.gameStore) return false;
   // 6 + 7：路由/抽屉门控（chatActive 已是这两项的合成；/chat 与 /pet 均可）
   if (
@@ -68,7 +71,7 @@ let lastStreamEnabled: boolean | null = null;
  *  元数据全部来自后端 asr_list_models——前端不再维护硬编码集合） */
 export function isStreamEnabled(): boolean {
   if (!runtime.asrStore?.settings.stream_enabled) {
-    // 审查 L2：early-return 也同步缓存——否则关→开的切换不打日志
+    // early-return 也同步缓存——否则关→开的切换不打日志
     // （cache 残留 true，重开后判定相等被跳过），排查"partial 为何不来"会误判
     lastStreamEnabled = false;
     return false;

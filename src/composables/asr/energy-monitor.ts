@@ -6,9 +6,9 @@ import { asrLog } from "./log";
 /** getUserMedia 挂起标记：resolve 前再次 startEnergyMonitor 直接拒绝（防并发双建链
  *  → 被覆盖实例的 ctx/stream 永不关闭，麦克风常亮 + AudioContext 泄漏） */
 let energyMonPending = false;
-/** 监测代标记：stopEnergyMonitor 递增，迟到的 getUserMedia resolve 据此丢弃（H2） */
+/** 监测代标记：stopEnergyMonitor 递增，迟到的 getUserMedia resolve 据此丢弃 */
 let energyMonGeneration = 0;
-/** auto 触发失败冷却：权限拒绝/设备错误后 N ms 内不重试（防 RMS 每帧重试刷屏，M1） */
+/** auto 触发失败冷却：权限拒绝/设备错误后 N ms 内不重试（防 RMS 每帧重试刷屏） */
 let autoRetryCooldownUntil = 0;
 /** auto 会话启动回调：由 session.ts 模块加载时注入（模块化防循环——
  *  energy-monitor 不反向依赖 session） */
@@ -21,9 +21,12 @@ export function setAutoStartHandler(fn: (source: "auto") => Promise<unknown>): v
 
 export function startEnergyMonitor() {
   if (runtime.energyMon || energyMonPending) return;
-  // §1 全 12 项 + auto_listen 设置：任何一项不满足则不开
+  // §1 全 12 项 + auto_listen 设置：任何一项不满足则不开。
+  // 显示锁例外（ignoreLock）：与 updateAsrAvailability 的启停契约一致——
+  // 锁只挡"触发录音"（tick 内的 RMS 触发点仍查锁），不挡"监测启停"，
+  // 否则识别完成设锁后监测一停、锁过期无人复活，auto_listen 永久死锁
   if (!runtime.asrStore?.settings.auto_listen) return;
-  if (!canStartAsr()) return;
+  if (!canStartAsr({ ignoreLock: true })) return;
   asrLog().info("startEnergyMonitor 启动 (auto_listen=on, canStartAsr=true)");
   energyMonPending = true;
   const gen = energyMonGeneration;
