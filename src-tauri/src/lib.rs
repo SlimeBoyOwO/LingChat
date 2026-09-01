@@ -293,14 +293,21 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin({
-            use ai_service::asr::global_hotkey::PttGlobalEvent;
+            use ai_service::asr::global_hotkey::{self, PttGlobalEvent};
             use tauri_plugin_global_shortcut::ShortcutState;
 
             // with_handler：对任意已注册的快捷键统一转发（插件事件分发自带
             // 已注册表查询，本功能只注册一个 PTT 键，无需按键分发；事件由
-            // 设置页保存 / 启动恢复注册触发）。
+            // 设置页保存 / 启动恢复注册触发）。handler 内按 HotKey 相等判别
+            // 是否为 PTT 键（global_hotkey::is_ptt_shortcut，PR 审查——字符串
+            // 比较不可靠：注册串与 HotKey 规范化输出格式不一致；后续引入其它
+            // 全局快捷键时各自比对，互不误触发）。
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(|app, shortcut, event| {
+                    // 非 PTT 键的事件直接丢弃（扩展性，PR 审查）
+                    if !global_hotkey::is_ptt_shortcut(app, shortcut) {
+                        return;
+                    }
                     let state = match event.state() {
                         ShortcutState::Pressed => "pressed",
                         ShortcutState::Released => "released",

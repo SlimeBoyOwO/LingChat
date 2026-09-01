@@ -52,9 +52,9 @@
     useAsrInput,
     registerAsrInputBridge,
     lockAsrForDisplay,
-    ASR_AUTO_SEND_DELAY_MS,
     asrVoiceActive,
   } from "@/composables/useAsrInput";
+  import { useAsrAutoSend } from "@/composables/useAsrAutoSend";
   import { useScreenshot } from "@/composables/useScreenshot";
   import { setInputHasText } from "@/composables/useCanDeliver";
   import { Forward } from "lucide-vue-next";
@@ -87,23 +87,24 @@
   //（完整复用剧本分支/模型检查/输入框清理；显示锁已由 handle() 设置）。
   // 发送后 emit asr-auto-sent：PetMode 据此收起输入框（内容已交给 LLM，无需
   // 再展示；fill_only 不发该事件——识别结果要留在输入框等用户手动发送）
-  // auto_send 发送窗口句柄：onUnmounted 清理，防离开桌宠后 timer 仍触发发送
-  let asrAutoSendTimer: number | undefined;
+  // auto_send 发送窗口：useAsrAutoSend 统一管理（连续识别先清旧 timer、卸载
+  // 自动取消，防离开桌宠后 timer 仍触发发送——审查统一）
+  const asrAutoSend = useAsrAutoSend((detail) => {
+    // 发送时刻复查（审查 H1/M3）：用户编辑了输入框（非空且不等于识别结果）→
+    // 尊重编辑不发送；被清空（AI 回复开始等）→ 重填识别结果再发，语音内容不丢。
+    // 内容比对同时天然防重复：800ms 窗口内第二次识别时旧 timer 已被清除，
+    // 只有最新一次真正发送
+    if (messageText.value === "") messageText.value = detail;
+    if (messageText.value === detail) {
+      sendMessage();
+      emit("asr-auto-sent");
+    }
+  });
   function onAsrAutoSend(e: Event) {
     const ce = e as CustomEvent<string>;
     if (typeof ce.detail !== "string") return;
     messageText.value = ce.detail;
-    asrAutoSendTimer = window.setTimeout(() => {
-      // 发送时刻复查（审查 H1/M3）：用户编辑了输入框（非空且不等于识别结果）→
-      // 尊重编辑不发送；被清空（AI 回复开始等）→ 重填识别结果再发，语音内容不丢。
-      // 内容比对同时天然防重复：800ms 窗口内第二次识别填入新内容后，前一个
-      // timer 读到不等直接放弃，只有最新一次真正发送
-      if (messageText.value === "") messageText.value = ce.detail;
-      if (messageText.value === ce.detail) {
-        sendMessage();
-        emit("asr-auto-sent");
-      }
-    }, ASR_AUTO_SEND_DELAY_MS);
+    asrAutoSend.arm(ce.detail);
   }
 
   // 输入桥：流式 partial 实时写入（与桌面 GameDialog 一致；录音发起窗口的
@@ -123,8 +124,7 @@
   onUnmounted(() => {
     window.removeEventListener("asr-text", onAsrText);
     window.removeEventListener("asr-send", onAsrAutoSend);
-    // auto_send 发送窗口未触发就离开 → 取消（消息留输入框，用户手动决定）
-    if (asrAutoSendTimer !== undefined) window.clearTimeout(asrAutoSendTimer);
+    // auto_send 发送窗口未触发就离开 → useAsrAutoSend 卸载自动取消（消息留输入框）
     destroyScreenshot();
   });
 

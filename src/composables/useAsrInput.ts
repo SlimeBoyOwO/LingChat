@@ -2,7 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { computed, ref, shallowRef, watch } from "vue";
 import { useRoute, type RouteLocationNormalizedLoaded } from "vue-router";
 
-import { bindingMatches, isDirKey, isValidBinding, type ShortcutBinding } from "@/utils/shortcuts";
+import { bindingMatches, isDirKey, parsePttBinding, type ShortcutBinding } from "@/utils/shortcuts";
 import { isAndroid } from "@/utils/platform";
 import { isPttActive, pttKeyDown, pttKeyUp, resetPtt } from "./asrPtt";
 import {
@@ -79,21 +79,10 @@ export const ASR_AUTO_SEND_DELAY_MS = 800;
  *  有界也顺带解决长时间录音时 pcmBuffer 的无限内存增长）。 */
 const MAX_RECORD_SAMPLES = 60 * 16000;
 /** 解析持久化的快捷键绑定；非法 JSON / 缺字段回退默认裸键。
- *  每次按键实时解析（毫秒级），改动设置立即生效，无需缓存失效机制。 */
+ *  每次按键实时解析（毫秒级），改动设置立即生效，无需缓存失效机制。
+ *  解析策略统一走 utils/shortcuts 的 parsePttBinding（设置页显示同款）。 */
 function resolvePttBinding(): ShortcutBinding {
-  const raw = asrStore?.settings.ptt_key;
-  if (raw) {
-    try {
-      const b = JSON.parse(raw);
-      // Enter 不可作 PTT 快捷键（聊天发送键误触发）；捕获层已拒绝，
-      // 这里兜底手改 settings.json 的 {"key":"Enter"}（大小写均挡，不放进
-      // 共享 isValidBinding——剧本编辑器允许裸 Enter 自定义绑定）
-      if (isValidBinding(b) && b.key.toLowerCase() !== "enter") return b;
-    } catch {
-      /* 落空走默认 */
-    }
-  }
-  return { key: "f8" };
+  return parsePttBinding(asrStore?.settings.ptt_key) ?? { key: "f8" };
 }
 /** 能量监测启动缓冲期兜底值（毫秒）：未加载设置时用 100ms。
  *  实际值来自 asrStore.settings.energy_warmup_ms（设置页可自定义，
@@ -261,6 +250,10 @@ export function registerAsrInputBridge(b: {
   inputBridge = b;
 }
 
+/** 流式判定缓存（降频诊断）：isStreamEnabled 在录音数据路径每个音频块都会
+ *  被调用（30+/s），固定打印会刷屏——只在判定结果变化时输出 */
+let lastStreamEnabled: boolean | null = null;
+
 /** 流式是否生效：设置开关 + 当前生效模型的流式能力（模型级权威判定，
  *  元数据全部来自后端 asr_list_models——前端不再维护硬编码集合） */
 function isStreamEnabled(): boolean {
@@ -271,11 +264,14 @@ function isStreamEnabled(): boolean {
   // 模型清单未加载（拉取失败等）时流式判定为 false → 走整句识别；
   // 配置了流式模型却降级整句的代价是"无 partial"，后端能力不受影响
   const enabled = model?.supports_streaming ?? false;
-  // 诊断：暴露流式判定的依据（模型清单是否命中、命中哪个模型）
-  console.log(
-    `[ASR] isStreamEnabled: stream=${asrStore.settings.stream_enabled}, ` +
-      `model=${sel || "(default)"}${model ? ` (${model.supports_streaming ? "stream" : "batch"})` : " (未加载)"} → ${enabled}`
-  );
+  // 诊断（审查降频）：判定变化时暴露依据（模型清单是否命中、命中哪个模型）
+  if (enabled !== lastStreamEnabled) {
+    lastStreamEnabled = enabled;
+    console.log(
+      `[ASR] isStreamEnabled: stream=${asrStore.settings.stream_enabled}, ` +
+        `model=${sel || "(default)"}${model ? ` (${model.supports_streaming ? "stream" : "batch"})` : " (未加载)"} → ${enabled}`
+    );
+  }
   return enabled;
 }
 

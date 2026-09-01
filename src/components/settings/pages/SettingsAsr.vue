@@ -287,7 +287,7 @@
   import {
     captureFromEvent,
     formatBinding,
-    isValidBinding,
+    parsePttBinding,
     type ShortcutBinding,
   } from "@/utils/shortcuts";
   import { listen } from "@tauri-apps/api/event";
@@ -310,19 +310,11 @@
   const localSettings = ref<AsrSettings>(JSON.parse(JSON.stringify(asrStore.settings)));
   const lastTestResult = ref<{ ok: boolean; text: string } | null>(null);
 
-  /** 当前生效的快捷键绑定：解析 localSettings.ptt_key，非法回退裸 F8 */
-  const pttBinding = computed<ShortcutBinding>(() => {
-    try {
-      const raw = localSettings.value.ptt_key;
-      if (raw) {
-        const b = JSON.parse(raw);
-        if (isValidBinding(b)) return b;
-      }
-    } catch {
-      /* 落空走默认 */
-    }
-    return { key: "f8" };
-  });
+  /** 当前生效的快捷键绑定：解析策略统一走 parsePttBinding（与 useAsrInput
+   *  运行判定同款；Enter / 非法 JSON 回退裸 F8，显示与实际行为一致） */
+  const pttBinding = computed<ShortcutBinding>(
+    () => parsePttBinding(localSettings.value.ptt_key) ?? { key: "f8" }
+  );
 
   const capturingPtt = ref(false);
   const pttCaptureInvalid = ref(false);

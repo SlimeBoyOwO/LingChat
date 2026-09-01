@@ -5,20 +5,25 @@
 //! （`mod.rs` 中 `#[cfg(desktop)]` 声明），移动端不编译本模块。
 //!
 //! 生命周期：`asr_set_settings` 保存后与启动加载设置后调用 [`sync`]；
-//! 幂等（记录当前注册串，未变则跳过）。注册失败（键被占用/插件不支持）
+//! 幂等（记录当前注册的 HotKey，未变则跳过）。注册失败（键被占用/插件不支持）
 //! 返回 Err → 上层 emit `asr:ptt-global-status` 给设置页提示，开关保持开启。
+//!
+//! 事件判别：插件 `with_handler` 收到任意已注册快捷键的按键事件，本模块提供
+//! [`is_ptt_shortcut`] 按 HotKey 相等判定（不用字符串——注册串与 HotKey
+//! 规范化输出格式不一致），保证后续新增其它全局快捷键时互不误触发。
 
 use std::sync::Mutex;
 
 use tauri::{AppHandle, Manager};
-use tauri_plugin_global_shortcut::GlobalShortcutExt;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use super::settings::AsrSettings;
 
-/// 当前已注册的快捷键串（幂等判断）：None=未注册，Some=注册中的组合串。
+/// 当前已注册的快捷键（幂等判断 + handler 判别）：None=未注册，Some=注册中的
+/// HotKey（mods+key 值相等即视为同一组合，见 `HotKey: PartialEq`）。
 #[derive(Default)]
 pub struct GlobalHotkeyState {
-    registered: Mutex<Option<String>>,
+    registered: Mutex<Option<Shortcut>>,
 }
 
 /// 全局快捷键按键事件（emit 到 main 窗口，前端 useAsrInput 监听驱动状态机）。
@@ -36,12 +41,12 @@ pub struct PttGlobalStatus {
 }
 
 /// 按当前设置同步全局快捷键注册状态（幂等）：
-/// ptt_global 开 → 注册 `ptt_key` 映射的组合串；关 → 注销。
+/// ptt_global 开 → 注册 `ptt_key` 映射的 HotKey；关 → 注销。
 /// 注册失败（键被占用/插件不支持该键）返回 Err，内部状态保持"未注册"。
 pub fn sync(app: &AppHandle, settings: &AsrSettings) -> Result<(), String> {
     let state = app.state::<GlobalHotkeyState>();
     let want = if settings.ptt_global {
-        binding_to_hotkey_str(&settings.ptt_key)
+        binding_to_hotkey_str(&settings.ptt_key).and_then(|combo| combo.parse::<Shortcut>().ok())
     } else {
         None
     };
@@ -53,17 +58,17 @@ pub fn sync(app: &AppHandle, settings: &AsrSettings) -> Result<(), String> {
     }
     let mut registered = state.registered.lock().unwrap();
     if *registered == want {
-        return Ok(()); // 幂等：注册串未变，跳过（避免每次 settings 保存都重复 register）
+        return Ok(()); // 幂等：HotKey 相等（同 mods+key），跳过（避免每次 settings 保存都重复 register）
     }
     if let Some(prev) = registered.take() {
         // 旧键注销失败静默：可能从未真正注册成功（如启动时失败），unregister 幂等无害
-        let _ = app.global_shortcut().unregister(prev.as_str());
+        let _ = app.global_shortcut().unregister(prev);
     }
-    if let Some(combo) = &want {
+    if let Some(hotkey) = &want {
         app.global_shortcut()
-            .register(combo.as_str())
-            .map_err(|e| format!("全局快捷键注册失败 ({combo}): {e}"))?;
-        *registered = Some(combo.clone());
+            .register(*hotkey)
+            .map_err(|e| format!("全局快捷键注册失败 ({hotkey}): {e}"))?;
+        *registered = Some(*hotkey);
     }
     Ok(())
 }
@@ -72,7 +77,7 @@ pub fn sync(app: &AppHandle, settings: &AsrSettings) -> Result<(), String> {
 /// 开关关或绑定不可映射 → false；开关开且已按当前绑定注册 → true。
 pub fn is_healthy(app: &AppHandle, settings: &AsrSettings) -> bool {
     let want = if settings.ptt_global {
-        binding_to_hotkey_str(&settings.ptt_key)
+        binding_to_hotkey_str(&settings.ptt_key).and_then(|combo| combo.parse::<Shortcut>().ok())
     } else {
         None
     };
@@ -85,9 +90,22 @@ pub fn is_healthy(app: &AppHandle, settings: &AsrSettings) -> bool {
     want.is_some() && registered == want
 }
 
+/// handler 判别：该快捷键是否为当前注册的 PTT 键（扩展性，PR 审查）。
+/// 按 HotKey 值比较而非字符串（注册串与 HotKey 规范化输出格式不一致）；
+/// 后续引入其它全局快捷键时各自比对，互不误触发。
+pub fn is_ptt_shortcut(app: &AppHandle, shortcut: &Shortcut) -> bool {
+    app.state::<GlobalHotkeyState>()
+        .registered
+        .lock()
+        .unwrap()
+        .as_ref()
+        .is_some_and(|r| *r == *shortcut)
+}
+
 /// ShortcutBinding JSON → 插件快捷键字符串（"F8" / "Ctrl+F8"）。
-/// JSON 非法/缺 key → None（解析不出则不注册，保守——与前端 resolvePttBinding
-/// 回退默认 F8 不同，这里宁可不注册也不猜）；Enter → None（与前端一致拒绝）。
+/// 解析策略与前端统一（utils/shortcuts.ts 的 parsePttBinding）：JSON 非法/
+/// 缺 key → None（解析不出则不注册，保守——与前端回退默认 F8 不同，
+/// 这里宁可不注册也不猜）；Enter → None（与前端一致拒绝，聊天发送键）。
 /// 符号键等插件不识别时返回大写原样，由注册失败路径提示用户。
 fn binding_to_hotkey_str(raw: &str) -> Option<String> {
     let v: serde_json::Value = serde_json::from_str(raw).ok()?;
