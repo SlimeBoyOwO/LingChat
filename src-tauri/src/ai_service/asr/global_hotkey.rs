@@ -76,7 +76,12 @@ pub fn is_healthy(app: &AppHandle, settings: &AsrSettings) -> bool {
     } else {
         None
     };
-    let registered = app.state::<GlobalHotkeyState>().registered.lock().unwrap().clone();
+    let registered = app
+        .state::<GlobalHotkeyState>()
+        .registered
+        .lock()
+        .unwrap()
+        .clone();
     want.is_some() && registered == want
 }
 
@@ -138,7 +143,10 @@ mod tests {
 
     #[test]
     fn maps_bare_f8_default() {
-        assert_eq!(binding_to_hotkey_str(r#"{"key":"f8"}"#).as_deref(), Some("F8"));
+        assert_eq!(
+            binding_to_hotkey_str(r#"{"key":"f8"}"#).as_deref(),
+            Some("F8")
+        );
     }
 
     #[test]
@@ -159,7 +167,10 @@ mod tests {
 
     #[test]
     fn maps_space_and_arrow() {
-        assert_eq!(binding_to_hotkey_str(r#"{"key":" "}"#).as_deref(), Some("Space"));
+        assert_eq!(
+            binding_to_hotkey_str(r#"{"key":" "}"#).as_deref(),
+            Some("Space")
+        );
         assert_eq!(
             binding_to_hotkey_str(r#"{"key":"arrowup"}"#).as_deref(),
             Some("ArrowUp")

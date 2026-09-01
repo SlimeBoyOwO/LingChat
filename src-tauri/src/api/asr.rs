@@ -15,11 +15,11 @@ use tauri::Emitter;
 
 use crate::AppState;
 use crate::ai_service::asr::error::AsrError;
+#[cfg(desktop)]
+use crate::ai_service::asr::global_hotkey;
 use crate::ai_service::asr::provider::{self, AsrResult, ProviderInfo, list_provider_info};
 use crate::ai_service::asr::session::{AsrSession, AsrSource};
 use crate::ai_service::asr::settings::{self, AsrSettings};
-#[cfg(desktop)]
-use crate::ai_service::asr::global_hotkey;
 
 fn parse_source(s: &str) -> Result<AsrSource, String> {
     AsrSource::from_str(s).ok_or_else(|| format!("invalid source: {s}"))

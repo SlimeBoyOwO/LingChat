@@ -6,13 +6,13 @@
 //! 配置由 [`settings`] 通过 tauri_plugin_store 持久化。
 
 pub mod error;
+#[cfg(desktop)]
+pub mod global_hotkey;
 pub mod provider;
 pub mod provider_stream;
 pub mod provider_stream_llama;
 pub mod session;
 pub mod settings;
-#[cfg(desktop)]
-pub mod global_hotkey;
 pub mod vad;
 pub mod vad_segmenter;
 
