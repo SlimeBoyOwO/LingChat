@@ -53,8 +53,8 @@
     registerAsrInputBridge,
     lockAsrForDisplay,
     asrVoiceActive,
-  } from "@/composables/useAsrInput";
-  import { useAsrAutoSend } from "@/composables/useAsrAutoSend";
+    useAsrAutoSend,
+  } from "@/composables/asr";
   import { useScreenshot } from "@/composables/useScreenshot";
   import { setInputHasText } from "@/composables/useCanDeliver";
   import { Forward } from "lucide-vue-next";

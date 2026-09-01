@@ -30,7 +30,11 @@ export const chatActive = computed(() => {
 export function canStartAsr(ignoreLock = false, forManual = false): boolean {
   if (!runtime.route || !runtime.uiStore || !runtime.gameStore) return false;
   // 6 + 7：路由/抽屉门控（chatActive 已是这两项的合成；/chat 与 /pet 均可）
-  if ((runtime.route.path !== "/chat" && runtime.route.path !== "/pet") || runtime.uiStore.showSettings) return false;
+  if (
+    (runtime.route.path !== "/chat" && runtime.route.path !== "/pet") ||
+    runtime.uiStore.showSettings
+  )
+    return false;
   // 9：LoadingTransition 启动动画未完成（§1.9）
   if (!runtime.gameStore.loadingComplete) return false;
   // 1-3：核心对话状态
@@ -69,9 +73,12 @@ export function isStreamEnabled(): boolean {
     lastStreamEnabled = false;
     return false;
   }
-  const sel = runtime.asrStore.settings.provider_configs[runtime.asrStore.settings.active_provider]?.model ?? "";
+  const sel =
+    runtime.asrStore.settings.provider_configs[runtime.asrStore.settings.active_provider]?.model ??
+    "";
   const model =
-    runtime.asrStore.models.find((m) => m.id === sel) ?? runtime.asrStore.models.find((m) => m.is_default);
+    runtime.asrStore.models.find((m) => m.id === sel) ??
+    runtime.asrStore.models.find((m) => m.is_default);
   // 模型清单未加载（拉取失败等）时流式判定为 false → 走整句识别；
   // 配置了流式模型却降级整句的代价是"无 partial"，后端能力不受影响
   const enabled = model?.supports_streaming ?? false;
@@ -95,5 +102,7 @@ export function isStreamEnabled(): boolean {
  *  （不建 WS 会话、stop 时整段上传、partial 在 recognizing 阶段放行）。 */
 export function isLlamaStream(): boolean {
   const sseProviders = ["llama-asr"];
-  return sseProviders.includes(runtime.asrStore?.settings.active_provider ?? "") && isStreamEnabled();
+  return (
+    sseProviders.includes(runtime.asrStore?.settings.active_provider ?? "") && isStreamEnabled()
+  );
 }

@@ -68,7 +68,7 @@
   import { useI18n } from "vue-i18n";
   import { useRouter } from "vue-router";
   import { useFileDrop } from "../pet/useFileDrop";
-  import { useAsrInput } from "@/composables/useAsrInput";
+  import { useAsrInput } from "@/composables/asr";
 
   import ChatInput from "../pet/ChatInput.vue";
   import DialogueBox from "../pet/DialogueBox.vue";

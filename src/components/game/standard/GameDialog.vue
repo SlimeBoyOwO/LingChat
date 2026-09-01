@@ -292,9 +292,9 @@
     lockAsrForDisplay,
     registerAsrInputBridge,
     setMobileMenuOpen,
+    useAsrAutoSend,
     useAsrInput,
-  } from "../../../composables/useAsrInput";
-  import { useAsrAutoSend } from "../../../composables/useAsrAutoSend";
+  } from "../../../composables/asr";
   import { setInputHasText } from "../../../composables/useCanDeliver";
   import { useDialogAppearance } from "../../../composables/useDialogAppearance";
   import { dialogueMerge } from "../../../core/events/dialogue-merge";

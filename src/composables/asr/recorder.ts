@@ -16,7 +16,7 @@ export function teardownRecorder() {
   runtime.stream = null;
   runtime.pcmBuffer = [];
   runtime.vadPending = [];
-  streamPending = [];
+  runtime.streamPending = [];
   vadSentFrames = 0;
   if (runtime.asrStore) runtime.asrStore.setMicState("idle");
 }
@@ -51,12 +51,11 @@ export function feedVad() {
 
 // ── 流式识别音频流（stream 模式）：与 VAD 同节奏喂后端 WebSocket ──
 // 与 feedVad 相同串行单飞：invoke 不保证顺序，WebSocket 帧必须保序。
-let streamPending: number[] = [];
 let streamSending = false;
 export function feedStream() {
   if (!runtime.asrStore || phase.value !== "recording") return;
-  if (streamSending || streamPending.length < 512) return;
-  const block = streamPending.splice(0, 512);
+  if (streamSending || runtime.streamPending.length < 512) return;
+  const block = runtime.streamPending.splice(0, 512);
   streamSending = true;
   asrStreamAudioChunk(block)
     .catch((e) => asrLog("[ASR/stream]").warn("发送音频块失败:", e))

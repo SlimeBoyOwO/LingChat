@@ -36,7 +36,7 @@
   import { useUpdater } from "./composables/useUpdater";
   import { useCanDeliver } from "./composables/useCanDeliver";
   import { useZoom } from "./composables/useZoom";
-  import { useAsrInput } from "./composables/useAsrInput";
+  import { useAsrInput } from "./composables/asr";
   import { listSystemFonts, getImportedFonts, registerAllImportedFonts } from "./api/services/font";
   import { isMobile } from "./utils/platform";
 

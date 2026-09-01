@@ -38,7 +38,7 @@
   import { useGameStore } from "@/stores/modules/game";
   import { useUIStore } from "@/stores/modules/ui/ui";
   import { getVoiceAudio } from "@/api/services/game-info";
-  import { setVoicePlaying } from "@/composables/useAsrInput";
+  import { setVoicePlaying } from "@/composables/asr";
   import RoleAvatar from "./GameRoleAvatar.vue";
   import Live2DStage from "../live2d/Live2DStage.vue";
 

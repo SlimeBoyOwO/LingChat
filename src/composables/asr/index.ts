@@ -5,14 +5,16 @@ import { useRoute } from "vue-router";
 import { asrLog } from "./log";
 import { canStartAsr, chatActive, isLlamaStream } from "./gates";
 import { writePartial, registerAsrInputBridge } from "./input-bridge";
-import { onVadTurnEnd, start, stop, discardRecording, handle, updateAsrAvailability, toggleAutoListenFunction } from "./session";
 import {
-  handlePttKeyDown,
-  handlePttKeyUp,
-  handleWindowBlur,
-  pttDown,
-  pttUp,
-} from "./ptt";
+  onVadTurnEnd,
+  start,
+  stop,
+  discardRecording,
+  handle,
+  updateAsrAvailability,
+  toggleAutoListenFunction,
+} from "./session";
+import { handlePttKeyDown, handlePttKeyUp, handleWindowBlur, pttDown, pttUp } from "./ptt";
 import { ASR_AUTO_SEND_DELAY_MS, useAsrAutoSend } from "./auto-send";
 export { ASR_AUTO_SEND_DELAY_MS, useAsrAutoSend };
 import {
@@ -225,8 +227,8 @@ function ensureInit() {
   // 剧本选择分支（§1.8）
   watch(
     () =>
-      (runtime.gameStore as unknown as { runningScript?: { choices?: unknown[] } })
-        ?.runningScript?.choices?.length ?? 0,
+      (runtime.gameStore as unknown as { runningScript?: { choices?: unknown[] } })?.runningScript
+        ?.choices?.length ?? 0,
     (n) => {
       asrLog().info(`runningScript.choices.length -> ${n}`);
       updateAsrAvailability();

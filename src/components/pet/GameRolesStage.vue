@@ -140,7 +140,7 @@
   import { useSettingsStore } from "@/stores/modules/settings";
   import { useScreenshot } from "@/composables/useScreenshot";
   import { useAsrStore } from "@/stores/modules/settings/asr";
-  import { useAsrInput, setVoicePlaying } from "@/composables/useAsrInput";
+  import { useAsrInput, setVoicePlaying } from "@/composables/asr";
   import { isAndroid } from "@/utils/platform";
   import RoleAvatar from "./GameRoleAvatar.vue";
   import Live2DStage from "../game/live2d/Live2DStage.vue";
