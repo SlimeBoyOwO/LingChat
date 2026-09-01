@@ -225,6 +225,10 @@
         return;
       }
 
+      // 前置门控（审查 M4）：watch 触发即占位 voicePlaying——getVoiceAudio
+      // 网络等待（100-500ms）与 play() 微任务延迟期间 ASR 不得启动，否则
+      // TTS 已出声但 voicePlaying 未置位 → 误录 AI 自己的话。失败路径回退
+      setVoicePlaying(true);
       try {
         const dataUrl = await getVoiceAudio(newAudio);
         voiceDataUrl.value = dataUrl;
@@ -235,15 +239,19 @@
         mainAudio.value
           .play()
           .then(() => {
-            setVoicePlaying(true);
             emit("audio-started");
           })
           .catch((e) => {
             console.error("播放失败", e);
             setVoicePlaying(false);
+            // 播放失败 = 本句无音频可播：通知 audio 结束，否则 audioFinished
+            // 卡 false → AUTO 自动推进永久阻塞（与 'None' 分支同因）
+            emit("audio-ended");
           });
       } catch (e) {
         console.error("获取语音文件失败:", e);
+        setVoicePlaying(false);
+        emit("audio-ended");
       }
     }
   );
@@ -288,11 +296,13 @@
   // - auto_listen 模式开 + 总开关开：功能开关可用
   // - 总开关关 → 整体禁用（总开关是语音输入的总闸，手动 mic 一并关闭；
   //   显示锁只挡 auto 触发，手动不受限）
+  // recognizing（识别在飞）时手动分支禁用：点击无分支可走（审查 M5），
+  // 避免"按下无反应"；功能开关分支不受影响（recognizing 中仍可暂停监听）
   const canStartMic = computed(
     () =>
       (autoListenOn.value && asrStore.settings.voice_input_enabled) ||
       asrInput.phase.value === "recording" ||
-      asrInput.canStartAsr(false, true)
+      (asrInput.phase.value !== "recognizing" && asrInput.canStartAsr(false, true))
   );
   function toggleRecording() {
     // auto_listen 模式开 + 总开关开：mic 按钮 = 切换功能开关（暂停/恢复监听），

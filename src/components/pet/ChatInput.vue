@@ -87,13 +87,22 @@
   //（完整复用剧本分支/模型检查/输入框清理；显示锁已由 handle() 设置）。
   // 发送后 emit asr-auto-sent：PetMode 据此收起输入框（内容已交给 LLM，无需
   // 再展示；fill_only 不发该事件——识别结果要留在输入框等用户手动发送）
+  // auto_send 发送窗口句柄：onUnmounted 清理，防离开桌宠后 timer 仍触发发送
+  let asrAutoSendTimer: number | undefined;
   function onAsrAutoSend(e: Event) {
     const ce = e as CustomEvent<string>;
     if (typeof ce.detail !== "string") return;
     messageText.value = ce.detail;
-    window.setTimeout(() => {
-      sendMessage();
-      emit("asr-auto-sent");
+    asrAutoSendTimer = window.setTimeout(() => {
+      // 发送时刻复查（审查 H1/M3）：用户编辑了输入框（非空且不等于识别结果）→
+      // 尊重编辑不发送；被清空（AI 回复开始等）→ 重填识别结果再发，语音内容不丢。
+      // 内容比对同时天然防重复：800ms 窗口内第二次识别填入新内容后，前一个
+      // timer 读到不等直接放弃，只有最新一次真正发送
+      if (messageText.value === "") messageText.value = ce.detail;
+      if (messageText.value === ce.detail) {
+        sendMessage();
+        emit("asr-auto-sent");
+      }
     }, ASR_AUTO_SEND_DELAY_MS);
   }
 
@@ -114,6 +123,8 @@
   onUnmounted(() => {
     window.removeEventListener("asr-text", onAsrText);
     window.removeEventListener("asr-send", onAsrAutoSend);
+    // auto_send 发送窗口未触发就离开 → 取消（消息留输入框，用户手动决定）
+    if (asrAutoSendTimer !== undefined) window.clearTimeout(asrAutoSendTimer);
     destroyScreenshot();
   });
 

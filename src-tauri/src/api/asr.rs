@@ -368,8 +368,10 @@ pub async fn asr_set_settings(
             .await;
     }
     // 全局快捷键同步（仅桌面）：开关开 → 注册 ptt_key 映射的组合串，关 → 注销。
-    // 注册失败（键被占用/插件不支持）：保存本身已成功，返回 Err 供前端日志 +
-    // emit 状态事件给设置页红字提示（设计决策：开关保持开启，不自动回退）。
+    // 注册失败（键被占用/插件不支持）：保存本身已成功，**不返回 Err**——返回 Err
+    // 会让前端 store 不提交（与落盘文件分叉），且错误可见性已由 emit 状态事件
+    // 承担（设置页红字提示，审查中危 2）。成功也 emit ok:true 供前端复位
+    // pttGlobalOk（窗口内退位判断用实际注册状态，防重启后注册失败的双重失效）。
     #[cfg(desktop)]
     if let Err(e) = global_hotkey::sync(&app, &settings) {
         tracing::warn!("[ASR] 全局快捷键注册失败: {e}");
@@ -381,7 +383,15 @@ pub async fn asr_set_settings(
                 reason: e.clone(),
             },
         );
-        return Err(e);
+    } else if settings.ptt_global {
+        let _ = app.emit_to(
+            "main",
+            "asr:ptt-global-status",
+            global_hotkey::PttGlobalStatus {
+                ok: true,
+                reason: String::new(),
+            },
+        );
     }
     Ok(())
 }

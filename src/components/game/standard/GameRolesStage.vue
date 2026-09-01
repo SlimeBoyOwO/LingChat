@@ -90,6 +90,10 @@
       }
 
       if (newAudio && newAudio !== "None") {
+        // 前置门控（审查 M4）：watch 触发即占位 voicePlaying——getVoiceAudio
+        // 网络等待（100-500ms）与 play() 微任务延迟期间 ASR 不得启动，否则
+        // TTS 已出声但 voicePlaying 未置位 → 误录 AI 自己的话。失败路径回退
+        setVoicePlaying(true);
         try {
           const dataUrl = await getVoiceAudio(newAudio);
           voiceDataUrl.value = dataUrl;
@@ -100,15 +104,19 @@
           mainAudio.value
             .play()
             .then(() => {
-              setVoicePlaying(true);
               emit("audio-started");
             })
             .catch((e) => {
               console.error("播放失败", e);
               setVoicePlaying(false);
+              // 播放失败 = 本句无音频可播：通知 audio 结束，否则 audioFinished
+              // 卡 false → AUTO 自动推进永久阻塞（与 'None' 分支同因）
+              emit("audio-ended");
             });
         } catch (e) {
           console.error("获取语音文件失败:", e);
+          setVoicePlaying(false);
+          emit("audio-ended");
         }
       }
     }

@@ -7,6 +7,7 @@ import { isAndroid } from "@/utils/platform";
 import {
   asrCancel,
   asrCancelStreaming,
+  asrGetStatus,
   asrRecognizeWav,
   asrRecognizeWavStream,
   asrStartListening,
@@ -119,6 +120,10 @@ const autoListenActive = ref(false);
 let pttState: "none" | "pending" | "held" | "toggle-held" = "none";
 /** pending 的单击/长按判定计时器 */
 let pttTapTimer: number | undefined;
+/** 全局快捷键实际注册状态（审查中危 1）：asr:ptt-global-status 事件 / asrGetStatus
+ *  查询驱动。退位判断用它而非设置值——注册失败（键被占用）时窗口内监听继续工作，
+ *  避免"设置开但全局没注册 + 窗口内退位"的双重失效（重启后 PTT 完全静默） */
+let pttGlobalOk = true;
 /** 惰性依赖（首次 useAsrInput() 调用时初始化） */
 let route: RouteLocationNormalizedLoaded | null = null;
 let uiStore: ReturnType<typeof useUIStore> | null = null;
@@ -414,16 +419,18 @@ function pttUp() {
 }
 
 function handlePttKeyDown(e: KeyboardEvent) {
-  // 全局模式开启：窗口内监听退位，由全局事件驱动（单一输入源，防双触发——
-  // OS 全局快捷键在应用聚焦时也触发，双源必打架）
-  if (asrStore?.settings.ptt_global) return;
+  // 全局模式开启且实际已注册：窗口内监听退位，由全局事件驱动（单一输入源，
+  // 防双触发——OS 全局快捷键在应用聚焦时也触发，双源必打架）。
+  // 注册失败（pttGlobalOk=false，键被占用/启动 sync 失败）时不退位：全局没生效，
+  // 窗口内监听兜底（审查中危 1：防"设置开但全局没注册 + 窗口内退位"双重失效）
+  if (asrStore?.settings.ptt_global && pttGlobalOk) return;
   if (!bindingMatches(resolvePttBinding(), e) || e.repeat) return;
   pttDown();
 }
 
 function handlePttKeyUp(e: KeyboardEvent) {
   // 同 handlePttKeyDown：全局模式退位
-  if (asrStore?.settings.ptt_global) return;
+  if (asrStore?.settings.ptt_global && pttGlobalOk) return;
   // 主键比对（松开瞬间修饰键状态不可靠）；大小写不敏感——KeyboardEvent.key
   // 对功能键返回大写，且 binding.key 可能被手改为大写（v1 硬编码 PTT_KEY='F8'
   // 大写），故双侧归一——与 bindingMatches 的归一约定一致，避免 keydown 匹配
@@ -506,16 +513,33 @@ async function onVadTurnEnd() {
 }
 
 // ── 能量监测（auto_listen 常开，RMS 超阈值触发 auto 会话） ──
+/** getUserMedia 挂起标记：resolve 前再次 startEnergyMonitor 直接拒绝（防并发双建链
+ *  → 被覆盖实例的 ctx/stream 永不关闭，麦克风常亮 + AudioContext 泄漏） */
+let energyMonPending = false;
+/** 监测代标记：stopEnergyMonitor 递增，迟到的 getUserMedia resolve 据此丢弃（H2） */
+let energyMonGeneration = 0;
+/** auto 触发失败冷却：权限拒绝/设备错误后 N ms 内不重试（防 RMS 每帧重试刷屏，M1） */
+let autoRetryCooldownUntil = 0;
 function startEnergyMonitor() {
-  if (energyMon) return;
+  if (energyMon || energyMonPending) return;
   // §1 全 12 项 + auto_listen 设置：任何一项不满足则不开
   if (!asrStore?.settings.auto_listen) return;
   if (!canStartAsr()) return;
   console.log("[ASR] startEnergyMonitor 启动 (auto_listen=on, canStartAsr=true)");
+  energyMonPending = true;
+  const gen = energyMonGeneration;
   navigator.mediaDevices
     .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
     .then((s) => {
-      if (!asrStore?.settings.auto_listen || !chatActive.value) {
+      energyMonPending = false;
+      // 挂起期间被 stop（TTS/切界面等，gen 已变）或完整门控失效（含 TTS 播放中
+      // 的 voicePlaying）→ 关闭新流丢弃，不建监测（H2：TTS 播放期麦克风不得打开）
+      if (
+        gen !== energyMonGeneration ||
+        !asrStore?.settings.auto_listen ||
+        !chatActive.value ||
+        !canStartAsr()
+      ) {
         console.log("[ASR] startEnergyMonitor 启动后条件失效，关闭 stream");
         s.getTracks().forEach((t) => t.stop());
         return;
@@ -540,6 +564,11 @@ function startEnergyMonitor() {
           energyMon.raf = requestAnimationFrame(tick);
           return;
         }
+        // 触发失败冷却中：跳过本帧（M1：权限拒绝后不每帧重试刷屏）
+        if (Date.now() < autoRetryCooldownUntil) {
+          energyMon.raf = requestAnimationFrame(tick);
+          return;
+        }
         analyser.getByteFrequencyData(buf);
         // RMS 归一化：byte 0-255 → 0-1，阈值 0.08 约等于明显人声能量
         let sum = 0;
@@ -556,6 +585,8 @@ function startEnergyMonitor() {
           void start("auto").catch((err) => {
             console.warn("[ASR] start(auto) failed, reset autoTriggered:", err);
             autoTriggered = false;
+            // 权限拒绝/设备错误：冷却 5s 再重试（否则 RMS 每帧触发 → onError 刷屏）
+            autoRetryCooldownUntil = Date.now() + 5000;
           });
           return;
         }
@@ -565,12 +596,15 @@ function startEnergyMonitor() {
       console.log("[ASR] startEnergyMonitor 已建立 analyser, tick loop 开始");
     })
     .catch((err) => {
+      energyMonPending = false;
       console.warn("[ASR] startEnergyMonitor getUserMedia 失败:", err);
       /* mic 不可用：能量监测静默降级 */
     });
 }
 
 function stopEnergyMonitor() {
+  // 递增代标记：挂起中的 getUserMedia resolve 后检测到代不符 → 关闭新流丢弃
+  energyMonGeneration++;
   if (!energyMon) return;
   cancelAnimationFrame(energyMon.raf);
   void energyMon.ctx.close().catch(() => {});
@@ -670,6 +704,13 @@ async function start(source: AsrSource) {
       }
     };
     await asrStartListening(source);
+    // 竞态兜底（审查 H3）：await 挂起期间会话已被 stop()/discardRecording() 结束
+    // （PTT 快速长按松开、mic 连点）——若后端先处理 stop（active=None）再处理本
+    // start，active_source 会残留 Some(source)，后续所有会话 SessionBusy 永久卡死
+    // 且前端无恢复路径。asrStopListening 幂等（无 active 会话时 Canceled 静默）
+    if (phase.value !== "recording") {
+      void asrStopListening(source).catch(() => {});
+    }
   } catch (err: unknown) {
     const name = (err as { name?: string }).name;
     console.warn("[ASR] start failed:", err);
@@ -682,6 +723,8 @@ async function start(source: AsrSource) {
     // 流式 WebSocket 可能已建立（getUserMedia / startListening 失败路径）：
     // 必须清理，否则后端句柄残留 → 下次启动 SessionBusy
     void asrCancelStreaming();
+    // 后端 active_source 同样兜底清除（H3：start 在途被打断可能已置位）
+    void asrStopListening(source).catch(() => {});
     resetSession();
     throw err;
   }
@@ -859,12 +902,18 @@ function ensureInit() {
   );
 
   // 流式 partial：实时写入输入框（整体替换语音追加块，不触碰 baseText 之前的内容）
+  // 诊断降频（审查：partial 每块到达即打会刷屏）：前 10 条 + 此后每 33 条 1 条
+  //（≈每秒 1 条，与 feedVad 日志同节奏）
+  let partialLogCount = 0;
   listen("asr://stream_partial", (e) => {
-    // 诊断：暴露 partial 是否到达前端、写入条件（phase/inputBridge）是否满足
-    console.log(
-      `[ASR/stream] partial 事件: len=${String(e.payload).length}, phase=${phase.value}, ` +
-        `bridge=${inputBridge ? "ok" : "null"}`
-    );
+    if (partialLogCount < 10 || partialLogCount % 33 === 0) {
+      // 诊断：暴露 partial 是否到达前端、写入条件（phase/inputBridge）是否满足
+      console.log(
+        `[ASR/stream] partial 事件: len=${String(e.payload).length}, phase=${phase.value}, ` +
+          `bridge=${inputBridge ? "ok" : "null"}`
+      );
+    }
+    partialLogCount++;
     // 写入条件：qwen WS 真流式在录音期间到达（phase=recording）；llama 结果
     // 流式（SSE）在 stop() 之后到达（phase=recognizing）——必须放行，
     // 否则 llama 的增量 partial 全部被丢弃（v2 流式功能失效）
@@ -896,6 +945,21 @@ function ensureInit() {
       pttUp();
     }
   });
+
+  // 全局注册状态：失败事件（后端仅失败时 emit）→ pttGlobalOk=false → 窗口内监听
+  // 兜底；设置保存成功时后端 emit ok:true 复位（审查中危 1）
+  listen<{ ok: boolean; reason: string }>("asr:ptt-global-status", (e) => {
+    pttGlobalOk = e.payload.ok;
+  });
+  // 启动时查询式初始化：重启后注册失败（启动 sync 失败只 warn 不 emit 事件）→
+  // pttGlobalOk=false → 窗口内监听兜底，不再"双重失效"静默
+  asrGetStatus()
+    .then((s) => {
+      pttGlobalOk = s.ptt_global_ok;
+    })
+    .catch(() => {
+      /* 查询失败保持默认 true，退位判断保守 */
+    });
 
   // 路由/抽屉变化（§1.6/7）：通过统一 gate 同步录音/能量监测
   // immediate:true 让首次进入 /chat（或刚初始化）时立刻同步 energy monitor 状态

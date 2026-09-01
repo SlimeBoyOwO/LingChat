@@ -375,11 +375,13 @@
   // mic 按钮 enabled 条件（与 useAsrInput.canStartAsr 对齐）：
   // - auto_listen 模式开 + 总开关开：功能开关可用
   // - 总开关关 → 整体禁用（总开关是语音输入的总闸，手动 mic 一并关闭）
+  // - recognizing（识别在飞）：手动分支禁用——点击无任何分支可走（审查 M5），
+  //   避免"按下无反应"；功能开关分支不受影响（recognizing 中仍可暂停监听）
   const canStartMic = computed(
     () =>
       (autoListenOn.value && asrStore.settings.voice_input_enabled) ||
       asrInput.phase.value === "recording" ||
-      asrInput.canStartAsr(false, true)
+      (asrInput.phase.value !== "recognizing" && asrInput.canStartAsr(false, true))
   );
 
   // 截图相关状态
@@ -776,11 +778,20 @@
   // 识别结果先显示到输入框，ASR_AUTO_SEND_DELAY_MS 后走 send()——
   // 完整复用剧本分支（runningScript → script_submit_input）、模型配置检查与
   // 输入框清理（显示锁已由 handle() 设置，这里不重复 lock）
+  // auto_send 发送窗口句柄：onUnmounted 清理，防离开聊天页后 timer 仍触发发送
+  let asrAutoSendTimer: number | undefined;
   function onAsrAutoSend(e: Event) {
     const ce = e as CustomEvent<string>;
     if (typeof ce.detail !== "string") return;
     inputMessage.value = ce.detail;
-    window.setTimeout(() => send(), ASR_AUTO_SEND_DELAY_MS);
+    asrAutoSendTimer = window.setTimeout(() => {
+      // 发送时刻复查（审查 H1/M3）：用户编辑了输入框（非空且不等于识别结果）→
+      // 尊重编辑不发送；被清空（AI 回复开始等）→ 重填识别结果再发，语音内容不丢。
+      // 内容比对同时天然防重复：800ms 窗口内第二次识别填入新内容后，前一个
+      // timer 读到不等直接放弃，只有最新一次真正发送
+      if (inputMessage.value === "") inputMessage.value = ce.detail;
+      if (inputMessage.value === ce.detail) send();
+    }, ASR_AUTO_SEND_DELAY_MS);
   }
 
   let unlistenScreenshot: (() => void) | null = null;
@@ -832,6 +843,8 @@
     // 追加路径瞬时渲染（无打字动画）。mergedLength 一并复位（累计基准丢失）
     dialogueMerge.armed = false;
     dialogueMerge.mergedLength = 0;
+    // auto_send 发送窗口未触发就离开聊天页 → 取消（消息留输入框，用户手动决定）
+    if (asrAutoSendTimer !== undefined) window.clearTimeout(asrAutoSendTimer);
     // 动作打字机停止并释放（否则 setTimeout 循环可能继续跑）
     motionWriter?.destroy();
     motionWriter = null;
