@@ -9,21 +9,26 @@
 //! 返回 Err → 上层 emit `asr:ptt-global-status` 给设置页提示，开关保持开启。
 //!
 //! 事件判别：插件 `with_handler` 收到任意已注册快捷键的按键事件，本模块提供
-//! [`is_ptt_shortcut`] 按 HotKey 相等判定（不用字符串——注册串与 HotKey
+//! [`is_ptt_shortcut`] 按 HotKey id 判定（不用字符串——注册串与 HotKey
 //! 规范化输出格式不一致），保证后续新增其它全局快捷键时互不误触发。
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use super::settings::AsrSettings;
 
-/// 当前已注册的快捷键（幂等判断 + handler 判别）：None=未注册，Some=注册中的
-/// HotKey（mods+key 值相等即视为同一组合，见 `HotKey: PartialEq`）。
+/// 已注册快捷键的完整状态：`registered` 供幂等判断 / unregister（低频路径：
+/// sync 设置保存、健康检查查询）；`registered_id` 供事件 handler 无锁判别
+/// （见 [`is_ptt_shortcut`]——事件路径与 sync 的 Mutex 构成 ABBA 死锁）。
 #[derive(Default)]
 pub struct GlobalHotkeyState {
     registered: Mutex<Option<Shortcut>>,
+    /// 已注册 HotKey 的 id（`(mods.bits() << 16) | key`，对 (mods, key) 双射）；
+    /// 0 = 未注册（合法注册的 HotKey id 不可能为 0：能解析出的 Code 不含 0）。
+    registered_id: AtomicU32,
 }
 
 /// 全局快捷键按键事件（emit 到 main 窗口，前端 useAsrInput 监听驱动状态机）。
@@ -46,16 +51,25 @@ pub struct PttGlobalStatus {
 pub fn sync(app: &AppHandle, settings: &AsrSettings) -> Result<(), String> {
     let state = app.state::<GlobalHotkeyState>();
     let want = if settings.ptt_global {
-        binding_to_hotkey_str(&settings.ptt_key).and_then(|combo| combo.parse::<Shortcut>().ok())
+        match binding_to_hotkey_str(&settings.ptt_key) {
+            Some(combo) => match combo.parse::<Shortcut>() {
+                Ok(h) => Some(h),
+                // 审查 L1：组合串解析不出（插件不认的键，如捕获的 "?" / IME 键）——
+                // 与"Enter/非法 JSON"区分，错误提示各自准确
+                Err(e) => {
+                    return Err(format!(
+                        "全局快捷键绑定 {combo} 无法注册（插件不支持该键）: {e}"
+                    ));
+                },
+            },
+            // 开关开但绑定不可映射（手改 settings.json 的 Enter/非法 JSON）：视为注册失败，
+            // 走上层错误路径（asr_set_settings emit 状态提示 / 启动路径 warn）——
+            // 开关显示开启与实际注册脱节必须可见，不能静默
+            None => return Err("当前快捷键无法全局注册（Enter 或非法绑定）".into()),
+        }
     } else {
         None
     };
-    // 开关开但绑定不可映射（手改 settings.json 的 Enter/非法 JSON）：视为注册失败，
-    // 走上层错误路径（asr_set_settings emit 状态提示 / 启动路径 warn）——
-    // 开关显示开启与实际注册脱节必须可见，不能静默
-    if settings.ptt_global && want.is_none() {
-        return Err("当前快捷键无法全局注册（Enter 或非法绑定）".into());
-    }
     let mut registered = state.registered.lock().unwrap();
     if *registered == want {
         return Ok(()); // 幂等：HotKey 相等（同 mods+key），跳过（避免每次 settings 保存都重复 register）
@@ -63,12 +77,15 @@ pub fn sync(app: &AppHandle, settings: &AsrSettings) -> Result<(), String> {
     if let Some(prev) = registered.take() {
         // 旧键注销失败静默：可能从未真正注册成功（如启动时失败），unregister 幂等无害
         let _ = app.global_shortcut().unregister(prev);
+        // 先归零再注册：注册失败（返回 Err）时 handler 也不会把旧 id 误判为 PTT
+        state.registered_id.store(0, Ordering::Relaxed);
     }
     if let Some(hotkey) = &want {
         app.global_shortcut()
             .register(*hotkey)
             .map_err(|e| format!("全局快捷键注册失败 ({hotkey}): {e}"))?;
         *registered = Some(*hotkey);
+        state.registered_id.store(hotkey.id(), Ordering::Relaxed);
     }
     Ok(())
 }
@@ -91,15 +108,19 @@ pub fn is_healthy(app: &AppHandle, settings: &AsrSettings) -> bool {
 }
 
 /// handler 判别：该快捷键是否为当前注册的 PTT 键（扩展性，PR 审查）。
-/// 按 HotKey 值比较而非字符串（注册串与 HotKey 规范化输出格式不一致）；
-/// 后续引入其它全局快捷键时各自比对，互不误触发。
+/// 按 HotKey id 比较而非字符串（注册串与 HotKey 规范化输出格式不一致）。
+///
+/// 必须无锁（审查 H1 死锁）：sync 持 `registered` Mutex 期间调用插件 API
+/// （register/unregister 经 run_main_thread 阻塞等主线程），事件线程再锁会构成
+/// ABBA 环——主线程持插件 shortcuts_ 等 registered，worker 持 registered 等
+/// 主线程 → 应用永久冻结。AtomicU32 与 Mutex 内的写入同源（sync 内顺序更新），
+/// Relaxed 即可。
 pub fn is_ptt_shortcut(app: &AppHandle, shortcut: &Shortcut) -> bool {
-    app.state::<GlobalHotkeyState>()
-        .registered
-        .lock()
-        .unwrap()
-        .as_ref()
-        .is_some_and(|r| *r == *shortcut)
+    let id = app
+        .state::<GlobalHotkeyState>()
+        .registered_id
+        .load(Ordering::Relaxed);
+    id != 0 && id == shortcut.id()
 }
 
 /// ShortcutBinding JSON → 插件快捷键字符串（"F8" / "Ctrl+F8"）。

@@ -4,7 +4,7 @@ import { useRoute, type RouteLocationNormalizedLoaded } from "vue-router";
 
 import { bindingMatches, isDirKey, parsePttBinding, type ShortcutBinding } from "@/utils/shortcuts";
 import { isAndroid } from "@/utils/platform";
-import { isPttActive, pttKeyDown, pttKeyUp, resetPtt } from "./asrPtt";
+import { getPttState, pttKeyDown, pttKeyUp, resetPtt } from "./asrPtt";
 import {
   asrCancel,
   asrCancelStreaming,
@@ -257,7 +257,12 @@ let lastStreamEnabled: boolean | null = null;
 /** 流式是否生效：设置开关 + 当前生效模型的流式能力（模型级权威判定，
  *  元数据全部来自后端 asr_list_models——前端不再维护硬编码集合） */
 function isStreamEnabled(): boolean {
-  if (!asrStore?.settings.stream_enabled) return false;
+  if (!asrStore?.settings.stream_enabled) {
+    // 审查 L2：early-return 也同步缓存——否则关→开的切换不打日志
+    // （cache 残留 true，重开后判定相等被跳过），排查"partial 为何不来"会误判
+    lastStreamEnabled = false;
+    return false;
+  }
   const sel = asrStore.settings.provider_configs[asrStore.settings.active_provider]?.model ?? "";
   const model =
     asrStore.models.find((m) => m.id === sel) ?? asrStore.models.find((m) => m.is_default);
@@ -393,8 +398,13 @@ function handlePttKeyDown(e: KeyboardEvent) {
 }
 
 function handlePttKeyUp(e: KeyboardEvent) {
-  // 同 handlePttKeyDown：全局模式退位
-  if (asrStore?.settings.ptt_global && pttGlobalOk) return;
+  // 注意：keyup 不做全局模式退位（审查 M-1）——keydown 早退防的是双触发
+  // （双 toggle），keyup 无此必要：状态机对重复 keyup 幂等（第二次落 none
+  // 无副作用）。而 pttGlobalOk 的 false→true 翻转可以发生在一次按键的
+  // down 与 up 之间（注册失败时窗口内监听 → 期间一次成功保存 emit ok:true），
+  // 若 keyup 也早退会吞掉松开事件 → 状态机滞留 held、录音只能等 60s 硬上限
+  // 并整段识别发送。窗口内 keyup 与全局 released 双到达时同样安全：
+  // 第一次 held→stop，第二次 none 无动作。
   // 主键比对（松开瞬间修饰键状态不可靠）；大小写不敏感——KeyboardEvent.key
   // 对功能键返回大写，且 binding.key 可能被手改为大写（v1 硬编码 PTT_KEY='F8'
   // 大写），故双侧归一——与 bindingMatches 的归一约定一致，避免 keydown 匹配
@@ -413,10 +423,21 @@ function handleWindowBlur() {
   // 保证到达（GetAsyncKeyState 轮询与焦点无关），不能丢弃录音。
   // 注册失败（pttGlobalOk=false）时无全局回调 → 与窗口内模式一致走 blur 兜底
   if (asrStore?.settings.ptt_global && pttGlobalOk) return;
-  if (!isPttActive()) return;
+  const pttState = getPttState();
+  if (pttState === "none") return;
+  // 按住中（pending/held）失焦：keyup 收不到，丢弃录音（不识别，避免把环境声
+  // 送去识别），防录音卡死——blur 兜底语义只对"按键物理按下中"成立
+  const held = pttState === "pending" || pttState === "held";
   resetPtt();
   if (phase.value === "recording" && activeSource.value === "button") {
-    // 失焦后 keyup 收不到：丢弃录音（不识别，避免把环境声送去识别），防录音卡死
+    if (!held) {
+      // toggle-held（单击保持）：按键早已松开，不存在丢失的 keyup——仅复位
+      // 按键态，保留录音（审查 M-2：此前任意失焦即丢弃，tap-to-toggle 是
+      // 最常见手势，点窗口内其它区域就静默丢话）。失焦期间按键停止不可达，
+      // 但有 60s 硬上限 + 回焦后 PTT 可停 + mic 按钮可停三条逃生路径
+      console.log("[ASR] PTT toggle-held 窗口失焦，保留录音");
+      return;
+    }
     console.log("[ASR] PTT 窗口失焦，丢弃录音");
     discardRecording();
   }
