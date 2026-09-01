@@ -5,6 +5,8 @@ import { useRoute, type RouteLocationNormalizedLoaded } from "vue-router";
 import { bindingMatches, isDirKey, parsePttBinding, type ShortcutBinding } from "@/utils/shortcuts";
 import { isAndroid } from "@/utils/platform";
 import { getPttState, pttKeyDown, pttKeyUp, resetPtt } from "./asrPtt";
+import { ASR_AUTO_SEND_DELAY_MS } from "./asr/auto-send";
+export { ASR_AUTO_SEND_DELAY_MS };
 import {
   asrCancel,
   asrCancelStreaming,
@@ -71,9 +73,6 @@ let mobileMenuOpen = false;
 /** 短暂显示锁：识别后填入 inputMessage 到自动 send 之间的窗口期，期间 auto 触发禁用（§1.10）。
  *  ref 化（非普通变量）：canStartMic 等 computed 依赖它，锁过期后能自动重算解锁。 */
 const asrLockedUntil = ref(0);
-/** auto_send 模式：识别完成后延迟发送的毫秒数（给用户看到结果的窗口，防乱序）。
- *  导出供 GameDialog / ChatInput 的 asr-send 监听复用（同一延迟语义）。 */
-export const ASR_AUTO_SEND_DELAY_MS = 800;
 /** 录音硬上限（samples）：1 分钟 @ 16kHz。达到后自动 stop()——
  *  防止按钮长按/异常会话无限录音（VAD 端 max_segment_frames 同为 60s，两处对齐；
  *  有界也顺带解决长时间录音时 pcmBuffer 的无限内存增长）。 */

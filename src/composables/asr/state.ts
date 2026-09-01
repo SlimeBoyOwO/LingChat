@@ -1,0 +1,62 @@
+import { ref, shallowRef } from "vue";
+import type { RouteLocationNormalizedLoaded } from "vue-router";
+import type { AsrSource } from "@/api/services/asr";
+import { useGameStore } from "@/stores/modules/game";
+import { useAsrStore } from "@/stores/modules/settings/asr";
+import { useUIStore } from "@/stores/modules/ui/ui";
+
+// ── 模块级单例状态 ──────────────────────────────────────────
+export const phase = ref<"idle" | "recording" | "recognizing">("idle");
+export const activeSource = shallowRef<AsrSource | null>(null);
+
+/** 本次录音累积的 f32 PCM（16kHz mono） */
+export let pcmBuffer: number[] = [];
+/** 待喂 VAD 的积累块（凑满 512 samples = 30ms 才发） */
+export let vadPending: number[] = [];
+export let stream: MediaStream | null = null;
+export let audioCtx: AudioContext | null = null;
+export let processor: ScriptProcessorNode | null = null;
+export let energyMon: { ctx: AudioContext; raf: number; stream: MediaStream } | null = null;
+/** auto 触发去重：能量触发后不再重复触发，直到本轮会话结束 */
+export let autoTriggered = false;
+/** 移动端菜单展开状态（GameDialog 在 watch 中同步，§1.5 判定） */
+export let mobileMenuOpen = false;
+/** 短暂显示锁：识别后填入 inputMessage 到自动 send 之间的窗口期，期间 auto 触发禁用（§1.10）。
+ *  ref 化（非普通变量）：canStartMic 等 computed 依赖它，锁过期后能自动重算解锁。 */
+export const asrLockedUntil = ref(0);
+/** 录音硬上限（samples）：1 分钟 @ 16kHz。达到后自动 stop()——
+ *  防止按钮长按/异常会话无限录音（VAD 端 max_segment_frames 同为 60s，两处对齐；
+ *  有界也顺带解决长时间录音时 pcmBuffer 的无限内存增长）。 */
+export const MAX_RECORD_SAMPLES = 60 * 16000;
+/** 能量监测启动缓冲期兜底值（毫秒）：未加载设置时用 100ms。
+ *  实际值来自 asrStore.settings.energy_warmup_ms（设置页可自定义，
+ *  0 = 无缓冲）。voicePlaying 门控已保证 TTS 播放期间完全不监听，
+ *  此缓冲期只兜底播放结束瞬间的残响尾巴。 */
+export const ENERGY_WARMUP_MS = 100;
+/** 角色语音（TTS）播放中（GameRolesStage 桌面/桌宠通过 setVoicePlaying 同步）：
+ *  外放 TTS 会被麦克风捕获 → RMS 触发 → VAD 判定为人声 → 误识别 AI 自己的话。
+ *  播放期间 ASR 整体禁用（canStartAsr 门控 + handle drop），播完才恢复。
+ *  ref 化：canStartMic 等 computed 依赖它，播完 setVoicePlaying(false) 自动解锁。 */
+export const voicePlaying = ref(false);
+/** 输入框桥：GameDialog 注册，供 partial 实时写入 / 拼接基准读取 */
+export let inputBridge: { getText: () => string; setText: (v: string) => void } | null = null;
+/** 录音开始时的输入框内容快照（拼接语义的基准：partial 只追加在这之后） */
+export let baseText = "";
+/** 语音会话进行中（GameDialog 据此 readonly 输入框，语音期间禁止手动输入） */
+export const asrVoiceActive = ref(false);
+/** 功能开关（运行态）：auto_listen 模式开启时由 mic/快捷键切换——监听激活/暂停。
+ *  不持久化、不改 auto_listen 模式设置。 */
+export const autoListenActive = ref(false);
+/** 全局快捷键实际注册状态（审查中危 1）：asr:ptt-global-status 事件 / asrGetStatus
+ *  查询驱动。退位判断用它而非设置值——注册失败（键被占用）时窗口内监听继续工作，
+ *  避免"设置开但全局没注册 + 窗口内退位"的双重失效（重启后 PTT 完全静默） */
+export let pttGlobalOk = true;
+/** 是否已收到过状态事件（审查 P2 时序防护）：启动时 asrGetStatus 异步返回的是
+ *  旧状态，若期间收到保存成功事件（ok:true），查询后到会错误覆盖——查询结果
+ *  仅在从未收到事件时生效（事件总是更新的） */
+export let pttStatusEventSeen = false;
+/** 惰性依赖（首次 useAsrInput() 调用时初始化） */
+export let route: RouteLocationNormalizedLoaded | null = null;
+export let uiStore: ReturnType<typeof useUIStore> | null = null;
+export let asrStore: ReturnType<typeof useAsrStore> | null = null;
+export let gameStore: ReturnType<typeof useGameStore> | null = null;
