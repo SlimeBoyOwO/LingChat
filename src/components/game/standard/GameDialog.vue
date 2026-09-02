@@ -782,11 +782,11 @@
   // auto_send 发送窗口：useAsrAutoSend 统一管理（连续识别先清旧 timer、卸载
   // 自动取消，防离开聊天页后 timer 仍触发发送——审查统一）
   const asrAutoSend = useAsrAutoSend((detail) => {
-    // 发送时刻复查（审查 H1/M3）：用户编辑了输入框（非空且不等于识别结果）→
-    // 尊重编辑不发送；被清空（AI 回复开始等）→ 重填识别结果再发，语音内容不丢。
-    // 内容比对同时天然防重复：800ms 窗口内第二次识别时旧 timer 已被清除，
-    // 只有最新一次真正发送
-    if (inputMessage.value === "") inputMessage.value = detail;
+    // 发送时刻复查（审查 F-5）：仅当输入框仍是识别结果原文时才发送——
+    // 用户编辑过（非空且 ≠ detail）→ 尊重编辑不发送；被清空 → 只可能是
+    // 用户已手动发送或手动清空（800ms 内 AI 不可能回复清空输入框），
+    // 不再重填——否则同一句语音会被手动 + 定时器双发（重复消息污染对话）。
+    // 内容比对同时防重复：窗口内第二次识别时旧 timer 已被清除，只发最新一次
     if (inputMessage.value === detail) send();
   });
   function onAsrAutoSend(e: Event) {

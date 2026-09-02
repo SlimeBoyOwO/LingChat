@@ -107,20 +107,26 @@ export function handleWindowBlur() {
   if (runtime.asrStore?.settings.ptt_global && runtime.pttGlobalOk) return;
   const pttState = getPttState();
   if (pttState === "none") return;
-  // 按住中（pending/held）失焦：keyup 收不到，丢弃录音（不识别，避免把环境声
-  // 送去识别），防录音卡死——blur 兜底语义只对"按键物理按下中"成立
-  const held = pttState === "pending" || pttState === "held";
-  resetPtt();
   if (phase.value === "recording" && activeSource.value === "button") {
-    if (!held) {
-      // toggle-held（单击保持）：按键早已松开，不存在丢失的 keyup——仅复位
-      // 按键态，保留录音（此前任意失焦即丢弃，tap-to-toggle 是
-      // 最常见手势，点窗口内其它区域就静默丢话）。失焦期间按键停止不可达，
-      // 但有 60s 硬上限 + 回焦后 PTT 可停 + mic 按钮可停三条逃生路径
-      asrLog().info("PTT toggle-held 窗口失焦，保留录音");
+    if (pttState === "pending" || pttState === "held") {
+      // 按住中（pending/held）失焦：keyup 收不到，丢弃录音（不识别，避免把
+      // 环境声送去识别），防录音卡死——blur 兜底语义只对"按键物理按下中"成立
+      resetPtt();
+      asrLog().info("PTT 窗口失焦，丢弃录音");
+      discardRecording();
       return;
     }
-    asrLog().info("PTT 窗口失焦，丢弃录音");
-    discardRecording();
+    // toggle-held（单击保持）：按键早已松开，不存在丢失的 keyup——保留录音且
+    // **保留 toggle-held 状态**（审查 P-3：先前无条件 resetPtt 清掉状态后，
+    // 回焦按键被 sessionBusy 挡死，录音只能等 60s 硬上限才停）。回焦后按键
+    // state 仍是 toggle-held → pttKeyDown 走 stop 分支正常停止；期间会话被
+    // 外部 discard（AI 进 thinking 等）则由 resetSession 的 resetPtt 归位。
+    // 失焦期间按键停止不可达，但有 60s 硬上限 + 回焦 PTT 可停 + mic 按钮可停
+    // 三条逃生路径
+    asrLog().info("PTT toggle-held 窗口失焦，保留录音");
+    return;
   }
+  // 会话已不在录音中（toggle-held 被外部 discard / 门控翻转 / recognizing）：
+  // 按键态无承载会话，复位不残留
+  resetPtt();
 }

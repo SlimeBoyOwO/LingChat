@@ -26,8 +26,11 @@ use super::settings::AsrSettings;
 #[derive(Default)]
 pub struct GlobalHotkeyState {
     registered: Mutex<Option<Shortcut>>,
-    /// 已注册 HotKey 的 id（`(mods.bits() << 16) | key`，对 (mods, key) 双射）；
-    /// 0 = 未注册（合法注册的 HotKey id 不可能为 0：能解析出的 Code 不含 0）。
+    /// 已注册 HotKey 的 id + 1（`(mods.bits() << 16) | key + 1`，对 (mods, key)
+    /// 双射且与 0 无碰撞）；0 = 未注册。**必须 +1 偏移**：keyboard-types 的
+    /// Code 枚举无显式判别值，Backquote 是第一个变体判别值为 0——裸 id 方案
+    /// 下绑 `` ` `` 键会 store 0（= "未注册"哨兵），事件全部被丢弃且无任何
+    /// 报错提示（审查 P-2）。
     registered_id: AtomicU32,
 }
 
@@ -85,7 +88,10 @@ pub fn sync(app: &AppHandle, settings: &AsrSettings) -> Result<(), String> {
             .register(*hotkey)
             .map_err(|e| format!("全局快捷键注册失败 ({hotkey}): {e}"))?;
         *registered = Some(*hotkey);
-        state.registered_id.store(hotkey.id(), Ordering::Relaxed);
+        // +1 偏移存储：真实 id 可能是 0（Backquote 键），0 是"未注册"哨兵（审查 P-2）
+        state
+            .registered_id
+            .store(hotkey.id() + 1, Ordering::Relaxed);
     }
     Ok(())
 }
@@ -116,11 +122,13 @@ pub fn is_healthy(app: &AppHandle, settings: &AsrSettings) -> bool {
 /// 主线程 → 应用永久冻结。AtomicU32 与 Mutex 内的写入同源（sync 内顺序更新），
 /// Relaxed 即可。
 pub fn is_ptt_shortcut(app: &AppHandle, shortcut: &Shortcut) -> bool {
-    let id = app
+    let stored = app
         .state::<GlobalHotkeyState>()
         .registered_id
         .load(Ordering::Relaxed);
-    id != 0 && id == shortcut.id()
+    // stored = 真实 id + 1（0 = 未注册哨兵），见字段注释（审查 P-2：
+    // Backquote 键真实 id 为 0，不能拿 0 当哨兵直接比较）
+    stored != 0 && stored - 1 == shortcut.id()
 }
 
 /// ShortcutBinding JSON → 插件快捷键字符串（"F8" / "Ctrl+F8"）。
