@@ -289,13 +289,13 @@
   import { useI18n } from "vue-i18n";
   import { useTypeWriter } from "../../../composables/ui/useTypeWriter";
   import {
-    ASR_AUTO_SEND_DELAY_MS,
     asrVoiceActive,
     lockAsrForDisplay,
     registerAsrInputBridge,
     setMobileMenuOpen,
+    useAsrAutoSend,
     useAsrInput,
-  } from "../../../composables/useAsrInput";
+  } from "../../../composables/asr";
   import { setInputHasText } from "../../../composables/useCanDeliver";
   import { useDialogAppearance } from "../../../composables/useDialogAppearance";
   import { dialogueMerge } from "../../../core/events/dialogue-merge";
@@ -376,11 +376,13 @@
   // mic 按钮 enabled 条件（与 useAsrInput.canStartAsr 对齐）：
   // - auto_listen 模式开 + 总开关开：功能开关可用
   // - 总开关关 → 整体禁用（总开关是语音输入的总闸，手动 mic 一并关闭）
+  // - recognizing（识别在飞）：手动分支禁用——点击无任何分支可走（审查 M5），
+  //   避免"按下无反应"；功能开关分支不受影响（recognizing 中仍可暂停监听）
   const canStartMic = computed(
     () =>
       (autoListenOn.value && asrStore.settings.voice_input_enabled) ||
       asrInput.phase.value === "recording" ||
-      asrInput.canStartAsr(false, true)
+      (asrInput.phase.value !== "recognizing" && asrInput.canStartAsr({ forManual: true }))
   );
 
   // 截图相关状态
@@ -402,10 +404,11 @@
     uiStore.setSettingsTab("background");
   };
 
-  // 移动端菜单操作：执行动作后自动收起菜单
+  // 移动端菜单操作：先收起菜单再执行动作——菜单展开状态是 ASR 门控第 5 项，
+  // 先执行会让菜单里的 mic 手动录音被自身门控挡住（静默无效）
   const onMobileMenuAction = (action: () => void) => {
-    action();
     showMobileMenu.value = false;
+    action();
   };
   const currentDisplayedText = ref("");
   const dialogueLineRef = ref<HTMLDivElement | null>(null);
@@ -777,15 +780,27 @@
   // 识别结果先显示到输入框，ASR_AUTO_SEND_DELAY_MS 后走 send()——
   // 完整复用剧本分支（runningScript → script_submit_input）、模型配置检查与
   // 输入框清理（显示锁已由 handle() 设置，这里不重复 lock）
+  // auto_send 发送窗口：useAsrAutoSend 统一管理（连续识别先清旧 timer、卸载
+  // 自动取消，防离开聊天页后 timer 仍触发发送——审查统一）
+  const asrAutoSend = useAsrAutoSend((detail) => {
+    // 发送时刻复查（审查 F-5）：仅当输入框仍是识别结果原文时才发送——
+    // 用户编辑过（非空且 ≠ detail）→ 尊重编辑不发送；被清空 → 只可能是
+    // 用户已手动发送或手动清空（800ms 内 AI 不可能回复清空输入框），
+    // 不再重填——否则同一句语音会被手动 + 定时器双发（重复消息污染对话）。
+    // 内容比对同时防重复：窗口内第二次识别时旧 timer 已被清除，只发最新一次
+    if (inputMessage.value === detail) send();
+  });
   function onAsrAutoSend(e: Event) {
     const ce = e as CustomEvent<string>;
     if (typeof ce.detail !== "string") return;
     inputMessage.value = ce.detail;
-    window.setTimeout(() => send(), ASR_AUTO_SEND_DELAY_MS);
+    asrAutoSend.arm(ce.detail);
   }
 
   let unlistenScreenshot: (() => void) | null = null;
   let unlistenCancelled: (() => void) | null = null;
+  /** 输入框桥注销函数（onMounted 注册，onUnmounted 解除） */
+  let unregisterInputBridge: (() => void) | null = null;
 
   onMounted(async () => {
     // 模式切换重挂载：立即从 store 恢复当前台词（不重播打字动画）
@@ -799,8 +814,9 @@
     window.addEventListener("asr-text", onAsrText);
     // 监听 asr-send 事件（auto_send 模式 dispatch）
     window.addEventListener("asr-send", onAsrAutoSend);
-    // 输入框桥：流式 partial 实时写入 + 拼接基准读取
-    registerAsrInputBridge({
+    // 输入框桥：流式 partial 实时写入 + 拼接基准读取。
+    // 注册返回注销函数，卸载时解除（防桥指向已卸载组件）
+    unregisterInputBridge = registerAsrInputBridge({
       getText: () => inputMessage.value,
       setText: (v) => {
         inputMessage.value = v;
@@ -828,6 +844,13 @@
   onUnmounted(() => {
     // 卸载时清掉打字状态：避免返回主界面后首条回复被当成「续打合并」
     dialogueMerge.isTyping = false;
+    // 武装状态同样清掉：桌宠（/pet）下 addEvent 仍可能置 armed（AUTO +
+    // isWaitingForUser），而桌宠不消费——切回 /chat 时残留会让新回复走
+    // 追加路径瞬时渲染（无打字动画）。mergedLength 一并复位（累计基准丢失）
+    dialogueMerge.armed = false;
+    dialogueMerge.mergedLength = 0;
+    // auto_send 发送窗口未触发就离开聊天页 → useAsrAutoSend 卸载自动取消
+    // （消息留输入框，用户手动决定）
     // 动作打字机停止并释放（否则 setTimeout 循环可能继续跑）
     motionWriter?.destroy();
     motionWriter = null;
@@ -835,6 +858,7 @@
     window.removeEventListener("resize", updateContainerWidth);
     window.removeEventListener("asr-text", onAsrText);
     window.removeEventListener("asr-send", onAsrAutoSend);
+    unregisterInputBridge?.();
     if (unlistenScreenshot) unlistenScreenshot();
     if (unlistenCancelled) unlistenCancelled();
   });

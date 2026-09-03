@@ -1238,6 +1238,17 @@ export default {
 
   asr: {
     title: "Speech Recognition",
+    pttKey: "Voice Hotkey",
+    pttKeyHint:
+      "Hold to talk, tap to toggle recording; toggles auto-listen when auto voice recognition is on. Single keys work (typing in chat will also trigger them — function keys or combos recommended)",
+    pttKeyCapture: "Press new hotkey… (Esc to cancel)",
+    pttKeyInvalid: "This key cannot be bound: Enter is used to send messages",
+    pttKeyReset: "Reset to default",
+    pttGlobal: "Hotkey works when unfocused",
+    pttGlobalHint:
+      "Hotkey stays active when the window is not in focus (global shortcut). Binding bare letter/digit keys will intercept that key in other apps — use at your own risk",
+    pttGlobalError: "Global hotkey registration failed: {reason}",
+    pttGlobalNotRegistered: "The key may be taken by another app — the global hotkey is not active",
     status: {
       ready: "Ready",
       notReady: "Not configured",

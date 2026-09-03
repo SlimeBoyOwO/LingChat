@@ -1234,6 +1234,17 @@ export default {
 
   asr: {
     title: "语音识别",
+    pttKey: "语音快捷键",
+    pttKeyHint:
+      "按住说话，单击切换录音；开启自动语音识别时切换自动监听。可绑定单键（聊天输入时会同时触发，建议使用功能键或组合键）",
+    pttKeyCapture: "按下新快捷键…（Esc 取消）",
+    pttKeyInvalid: "该键位不可绑定：Enter 用于发送消息",
+    pttKeyReset: "恢复默认",
+    pttGlobal: "失去焦点快捷键可用",
+    pttGlobalHint:
+      "窗口不在前台时快捷键仍可用（全局快捷键）。绑定字母/数字等单键会拦截其它应用的该键输入，请自行评估",
+    pttGlobalError: "全局快捷键注册失败：{reason}",
+    pttGlobalNotRegistered: "当前键位可能被其它应用占用，全局快捷键未生效",
     status: {
       ready: "已就绪",
       notReady: "未配置",

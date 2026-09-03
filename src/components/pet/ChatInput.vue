@@ -49,11 +49,11 @@
   import { useSettingsStore } from "@/stores/modules/settings";
   import { useLlmProvidersStore } from "@/stores/modules/llm-providers";
   import {
-    useAsrInput,
     registerAsrInputBridge,
     lockAsrForDisplay,
-    ASR_AUTO_SEND_DELAY_MS,
-  } from "@/composables/useAsrInput";
+    asrVoiceActive,
+    useAsrAutoSend,
+  } from "@/composables/asr";
   import { useScreenshot } from "@/composables/useScreenshot";
   import { setInputHasText } from "@/composables/useCanDeliver";
   import { Forward } from "lucide-vue-next";
@@ -83,20 +83,35 @@
   }
 
   // auto_send：识别结果显示到输入框 → ASR_AUTO_SEND_DELAY_MS 后走 sendMessage()
-  //（完整复用剧本分支/模型检查/输入框清理；显示锁已由 handle() 设置）
+  //（完整复用剧本分支/模型检查/输入框清理；显示锁已由 handle() 设置）。
+  // 发送后 emit asr-auto-sent：PetMode 据此收起输入框（内容已交给 LLM，无需
+  // 再展示；fill_only 不发该事件——识别结果要留在输入框等用户手动发送）
+  // auto_send 发送窗口：useAsrAutoSend 统一管理（连续识别先清旧 timer、卸载
+  // 自动取消，防离开桌宠后 timer 仍触发发送——审查统一）
+  const asrAutoSend = useAsrAutoSend((detail) => {
+    // 发送时刻复查（审查 F-5）：仅当输入框仍是识别结果原文时才发送——
+    // 用户编辑过（非空且 ≠ detail）→ 尊重编辑不发送；被清空 → 只可能是
+    // 用户已手动发送或手动清空（800ms 内 AI 不可能回复清空输入框），
+    // 不再重填——否则同一句语音会被手动 + 定时器双发（重复消息污染对话）。
+    // 内容比对同时防重复：窗口内第二次识别时旧 timer 已被清除，只发最新一次
+    if (messageText.value === detail) {
+      sendMessage();
+      emit("asr-auto-sent");
+    }
+  });
   function onAsrAutoSend(e: Event) {
     const ce = e as CustomEvent<string>;
     if (typeof ce.detail !== "string") return;
     messageText.value = ce.detail;
-    window.setTimeout(() => sendMessage(), ASR_AUTO_SEND_DELAY_MS);
+    asrAutoSend.arm(ce.detail);
   }
 
-  // 输入桥：流式 partial 实时写入（与桌面 GameDialog 一致；录音发起窗口的
-  // phase 是窗口本地状态，partial 只写入发起方输入框）
-  const asrInput = useAsrInput();
+  // 输入桥：流式 partial 实时写入（与桌面 GameDialog 一致；partial 只写入
+  // 发起方输入框）。注册返回注销函数，卸载时解除（防桥指向已卸载组件）
+  let unregisterInputBridge: (() => void) | null = null;
   onMounted(() => {
     initScreenshot();
-    registerAsrInputBridge({
+    unregisterInputBridge = registerAsrInputBridge({
       getText: () => messageText.value,
       setText: (v) => {
         messageText.value = v;
@@ -108,6 +123,8 @@
   onUnmounted(() => {
     window.removeEventListener("asr-text", onAsrText);
     window.removeEventListener("asr-send", onAsrAutoSend);
+    unregisterInputBridge?.();
+    // auto_send 发送窗口未触发就离开 → useAsrAutoSend 卸载自动取消（消息留输入框）
     destroyScreenshot();
   });
 
@@ -168,7 +185,10 @@
     }
   );
 
-  const isInputEnabled = computed(() => gameStore.currentStatus === "input");
+  // 录音期间输入框只读（与桌面 GameDialog 一致）：击键声会混入麦克风采样送识别
+  const isInputEnabled = computed(
+    () => gameStore.currentStatus === "input" && !asrVoiceActive.value
+  );
 
   const props = defineProps({
     visible: {
@@ -177,7 +197,7 @@
     },
   });
 
-  const emit = defineEmits(["message-sent"]);
+  const emit = defineEmits(["message-sent", "asr-auto-sent"]);
 
   const messageText = ref("");
   // 输入框内容变化 → 通知 can_deliver 追踪

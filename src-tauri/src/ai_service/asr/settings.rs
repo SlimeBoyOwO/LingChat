@@ -75,6 +75,12 @@ pub struct AsrSettings {
     /// 能量监测启动缓冲期（毫秒）：TTS 播完恢复监听后该时长内不触发录音
     /// （默认 100，0=无缓冲）。历史上前端私有字段，schema 归后端统一存储。
     pub energy_warmup_ms: u32,
+    /// 语音输入快捷键（按住说话 PTT / 单击 toggle / auto_listen 模式开时切换自动监听）。
+    /// 存储 ShortcutBinding 序列化 JSON（如 {"key":"f8"} / {"key":"f8","ctrl":true}），默认裸 F8。
+    pub ptt_key: String,
+    /// 失去焦点快捷键可用（全局快捷键）：开启后窗口不在前台时语音快捷键仍可用。
+    /// 仅桌面端注册 OS 级全局快捷键；默认关（全局注册是 OS 级抢占）。
+    pub ptt_global: bool,
     pub provider_configs: HashMap<String, ProviderConfig>,
 }
 
@@ -95,6 +101,9 @@ impl AsrSettings {
             voice_input_enabled: false,
             vad_silence_ms: 800,
             energy_warmup_ms: 100,
+            ptt_key: default_ptt_key(),
+            // 全局快捷键默认关：OS 级抢占，仅用户显式开启
+            ptt_global: false,
             provider_configs,
         }
     }
@@ -123,6 +132,15 @@ pub struct AsrPrefs {
     // 同理：缺省为 0 会让老数据恢复后能量监测无缓冲（TTS 残响立即误触发）。
     #[serde(default = "default_energy_warmup_ms")]
     pub energy_warmup_ms: u32,
+    // PTT 快捷键：新字段缺省必须给显式默认（serde default 函数），
+    // 否则旧持久化数据反序列化后 ptt_key 为空串 → 前端解析失败虽会回退 F8，
+    // 但显式默认让默认值唯一真相在后端
+    #[serde(default = "default_ptt_key")]
+    pub ptt_key: String,
+    // 失去焦点快捷键可用：默认关——全局注册会拦截系统级按键，默认开启风险不可接受。
+    // bool 缺省 false 即正确，无需 default 函数（与 voice_input_enabled 的 true 兜底相反）。
+    #[serde(default)]
+    pub ptt_global: bool,
 }
 
 /// AsrPrefs 的 voice_input_enabled 兜底：默认开启。
@@ -140,6 +158,11 @@ fn default_energy_warmup_ms() -> u32 {
     100
 }
 
+/// AsrPrefs 的 ptt_key 兜底：默认裸 F8（ShortcutBinding JSON 格式，与前端 DEFAULT_SETTINGS 一致）。
+fn default_ptt_key() -> String {
+    "{\"key\":\"f8\"}".into()
+}
+
 impl AsrPrefs {
     fn from_settings(s: &AsrSettings) -> Self {
         Self {
@@ -149,6 +172,8 @@ impl AsrPrefs {
             voice_input_enabled: s.voice_input_enabled,
             vad_silence_ms: s.vad_silence_ms,
             energy_warmup_ms: s.energy_warmup_ms,
+            ptt_key: s.ptt_key.clone(),
+            ptt_global: s.ptt_global,
         }
     }
 
@@ -159,6 +184,8 @@ impl AsrPrefs {
         s.voice_input_enabled = self.voice_input_enabled;
         s.vad_silence_ms = self.vad_silence_ms;
         s.energy_warmup_ms = self.energy_warmup_ms;
+        s.ptt_key = self.ptt_key.clone();
+        s.ptt_global = self.ptt_global;
     }
 }
 
