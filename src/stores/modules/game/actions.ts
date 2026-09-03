@@ -5,8 +5,10 @@ import type { GameLineInit, WebInitData } from "../../../api/services/game-info"
 import { getRoleInfo } from "../../../api/services/character";
 import { useUIStore } from "../ui/ui";
 import { useSettingsStore } from "../settings";
+import { useUserStore } from "../user/user";
 import type { SceneInfo } from "@/api/services/scene";
 import { invoke } from "@tauri-apps/api/core";
+import { unwrapPromptRole } from "@/utils/messageKind";
 
 export const actions = {
   appendGameMessage(this: GameState, message: GameMessage) {
@@ -20,10 +22,31 @@ export const actions = {
     this.dialogHistory = messages;
   },
 
+  /** 同步玩家身份展示字段（改名/改设定事件到达时调用） */
+  applyPlayerProfile(this: GameState, name: string, subtitle: string) {
+    this.userName = name;
+    this.userSubtitle = subtitle;
+  },
+
   async initializeGame(this: GameState) {
     try {
       const gameInfo = await getGameInfo();
       applyWebInitData(this, gameInfo);
+      // 加载全局玩家档案到 user store（解耦玩家与 AI 设定）
+      const userStore = useUserStore();
+      if (gameInfo.player_profile) {
+        userStore.playerProfile = {
+          user_name: gameInfo.player_profile.user_name || "玩家",
+          user_subtitle: gameInfo.player_profile.user_subtitle || "",
+          user_prompt: gameInfo.player_profile.user_prompt || "",
+          info: gameInfo.player_profile.info || "",
+          system_prompt_example: gameInfo.player_profile.system_prompt_example || "",
+        };
+        userStore.profileLoaded = true;
+      } else {
+        // fallback：后端旧版本没有 player_profile，尝试从 API 拉取
+        await userStore.loadPlayerProfile();
+      }
       // 通知后端玩家已入场，触发 AI 问候（不等 LoadingTransition，fire-and-forget）
       invoke("notify_player_entry").catch((err) =>
         console.warn("[Entry] 问候触发失败（非致命）:", err)
@@ -202,8 +225,9 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
 
   const uiStore = useUIStore();
   const settingsStore = useSettingsStore();
-  state.userName = characterInfo.user_name;
-  state.userSubtitle = characterInfo.user_subtitle;
+  // 玩家身份：优先从 player_profile 读取（解耦），fallback 到 character_settings 兼容旧数据
+  state.userName = gameInfo.player_profile?.user_name ?? characterInfo.user_name;
+  state.userSubtitle = gameInfo.player_profile?.user_subtitle ?? characterInfo.user_subtitle;
 
   uiStore.showCharacterTitle = characterInfo.ai_name;
   uiStore.showCharacterSubtitle = characterInfo.ai_subtitle;
@@ -258,7 +282,11 @@ export function convertInitLines(lines: GameLineInit[]): GameMessage[] {
   const filtered = lines.filter((line) => line.attribute !== "system" && line.attribute !== "tool");
 
   return filtered.map((line, index, array) => {
-    const filteredContent = line.content.replace(/\{[\s\S]*?\}/g, "").trim();
+    // `{旁白: ...}` 包裹需要把正文解析出来展示；普通正文沿用原有去大括号规则
+    const promptRole = unwrapPromptRole(line.content);
+    const filteredContent = promptRole.wrapped
+      ? promptRole.text
+      : line.content.replace(/\{[\s\S]*?\}/g, "").trim();
 
     const isLast = index === array.length - 1;
     const nextLine = isLast ? null : array[index + 1];
@@ -269,8 +297,24 @@ export function convertInitLines(lines: GameLineInit[]): GameMessage[] {
       }
     }
 
+    // 后端把旁白提示也存成 User 行：display_name 为旁白，或原文是 `{旁白: ...}`
+    // 包裹时，语义分类为 narrator；其余 User 行才是 player。
+    const isNarratorUser =
+      line.attribute === "user" &&
+      (line.display_name === "旁白" || (promptRole.wrapped && promptRole.role === "旁白"));
+
     return {
       type: (line.attribute === "user" ? "message" : "reply") as "message" | "reply",
+      messageType:
+        line.attribute === "user"
+          ? isNarratorUser
+            ? ("narrator" as const)
+            : ("player" as const)
+          : line.attribute === "assistant"
+            ? ("ai" as const)
+            : line.attribute === "system"
+              ? ("system" as const)
+              : undefined,
       displayName: line.display_name || "",
       content: filteredContent,
       emotion: line.predicted_emotion || undefined,

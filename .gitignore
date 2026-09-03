@@ -195,3 +195,6 @@ AGENTS.md
 # 本地 APK build 路径
 prev-build-*/
 
+
+# 本地 SSH 密钥（勿入库）
+.devssh/

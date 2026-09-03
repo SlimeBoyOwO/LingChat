@@ -18,6 +18,7 @@ type FieldKind =
   | "bool"
   | "select"
   | "character"
+  | "player_persona"
   | "emotion"
   | "chapter"
   | "asset"

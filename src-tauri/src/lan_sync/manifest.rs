@@ -72,13 +72,23 @@ fn scan_dir(
             continue;
         }
 
+        // 相对路径统一在这里计算一次，目录与文件分支共用。
+        let rel = path
+            .strip_prefix(base)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        // game_data/player/（旧版玩家档案目录）不参与 LAN 同步：
+        // 1. 隐私——玩家名字/设定不应在设备之间自动广播；
+        // 2. 玩家档案现为纯 DB 存储，该目录只可能是旧版残留；继续精确排除，
+        //    避免旧设备端没有该目录时 diff 把本机残留文件列入 to_delete 并误删。
+        if rel == "game_data/player" || rel.starts_with("game_data/player/") {
+            continue;
+        }
+
         if path.is_dir() {
             // 排除 third_party/ 整个目录
-            let rel = path
-                .strip_prefix(base)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
             if rel == "third_party" || rel.starts_with("third_party/") {
                 continue;
             }
@@ -88,12 +98,6 @@ fn scan_dir(
             }
             scan_dir(base, &path, manifest_files, files, runtime_files)?;
         } else if path.is_file() {
-            let rel = path
-                .strip_prefix(base)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
-
             let modified_at = path
                 .metadata()
                 .ok()

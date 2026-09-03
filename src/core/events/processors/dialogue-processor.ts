@@ -34,6 +34,7 @@ export default class DialogueProcessor implements IEventProcessor {
 
     gameStore.appendGameMessage({
       type: "reply",
+      messageType: "ai",
       displayName: displayName,
       content: event.message,
       emotion: event.emotion,

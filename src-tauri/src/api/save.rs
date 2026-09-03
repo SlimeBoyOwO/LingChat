@@ -251,7 +251,7 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
 
     // 8. 载入台词（sync_memories 用恢复后的正确指针，只压缩存档点之后的增量）
     service
-        .load_lines(line_list, main_role_id, Some(save_id))
+        .load_lines(line_list, main_role_id, Some(save_id), prompt_options)
         .await
         .map_err(|e| format!("载入台词失败: {}", e))?;
 

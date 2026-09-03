@@ -25,6 +25,46 @@ export default {
     backtrackFailed: "Rewind failed: {error}",
     emotionTitle: "Emotion: {tag}",
   },
+  playerProfile: {
+    userName: "Player Name",
+    title: "Player Identity Card",
+    userSubtitle: "Player Subtitle",
+    userNamePlaceholder: "Enter player name",
+    userSubtitlePlaceholder: "Enter player subtitle",
+    activeProfile: "Current Persona",
+    switchProfile: "Switch",
+    createProfile: "New Persona",
+    deleteProfile: "Delete Persona",
+    confirmDelete: "Delete this persona?",
+    profileIdHint:
+      "An ID is generated automatically from the name — stable and reusable as persona_id in scripts.",
+    profileNameRequired: "Please enter a name for the new persona.",
+    cannotDeleteActive: "The active persona cannot be deleted. Switch to another persona first.",
+    profileNamePlaceholder: "Player name",
+    userPrompt: "Persona / Setting",
+    userPromptPlaceholder:
+      "e.g. Her name is Ali, gentle but a bit sharp-tongued, likes baking and cats.",
+    userPromptHint:
+      "Tell the AI who you are (identity/personality/preferences) so it can respond more fittingly.",
+    playerInfo: "Bio / One-line Persona",
+    playerInfoPlaceholder: "Introduce yourself in one line, e.g. An adventurer programmer.",
+    promptExample: "Speaking-style Example",
+    promptExamplePlaceholder:
+      "Optional: give the AI some examples of your speaking style to help it mimic your tone naturally.",
+    noInfo: "No bio yet",
+    edit: "Edit",
+    cancel: "Cancel",
+    saving: "Saving...",
+    modalTitle: "Edit Player Identity Card",
+    modalSubtitle:
+      "Reuses the AI character card editing experience, but keeps only player-identity settings",
+    save: "Save Player Profile",
+    saved: "Player profile saved",
+    tabs: {
+      basic: "Basic",
+      prompts: "Settings",
+    },
+  },
   achievement: {
     title: "Achievements (Experimental)",
     rare: "Rare",
@@ -75,7 +115,7 @@ export default {
   },
   character: {
     list: {
-      title: "Character List (switching characters starts a brand-new conversation)",
+      title: "AI Character List (switching characters starts a brand-new conversation)",
       noDesc: "No character description yet",
     },
     openFolder: {
@@ -298,6 +338,10 @@ export default {
         "ENABLE_SCHEDULE_REMINDER — Enable schedule reminders with popup time announcements",
       ENABLE_IMPORTANT_DAY_REMINDER:
         "ENABLE_IMPORTANT_DAY_REMINDER — Enable heartwarming reminders for holidays and special days",
+      display: {
+        disable_splash_animation:
+          "DISABLE_SPLASH_ANIMATION — Disable the first-launch splash animation (cat paw loading animation)",
+      },
     },
   },
   workshop: {
@@ -382,8 +426,6 @@ export default {
     fields: {
       aiName: "AI Name",
       aiSubtitle: "AI Subtitle",
-      userName: "User Name",
-      userSubtitle: "User Subtitle",
       title: "Character Title",
       info: "Character Bio",
       systemPrompt: "System Prompt",
@@ -520,8 +562,6 @@ export default {
       aiNamePlaceholder: "Name used in conversations",
       aiSubtitle: "AI Subtitle",
       aiSubtitlePlaceholder: "e.g. Night Watcher / School Idol",
-      userName: "User Name",
-      userSubtitle: "User Subtitle",
       info: "Character Bio",
       infoPlaceholder: "Optional: shown in the character introduction",
     },

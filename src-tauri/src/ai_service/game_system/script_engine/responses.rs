@@ -25,6 +25,7 @@ pub mod event_names {
     pub const SCRIPT_CHOICE: &str = "script:choice";
     pub const SCRIPT_END: &str = "script:end";
     pub const SCRIPT_FREE_DIALOGUE: &str = "script:free-dialogue";
+    pub const SCRIPT_PLAYER_IDENTITY: &str = "script:player-identity";
 }
 
 // ============================================================
@@ -191,4 +192,14 @@ pub struct ScriptEndPayload {
     /// reaching its end. The frontend must not credit the player with an
     /// adventure completion in that case.
     pub completed: bool,
+}
+
+/// `set_player_identity` 应用/还原后广播的身份快照。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerIdentityPayload {
+    pub user_name: String,
+    pub user_subtitle: String,
+    pub user_prompt: String,
+    pub scope: String,
 }

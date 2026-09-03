@@ -24,6 +24,41 @@ export default {
     backtrackFailed: "回溯失敗：{error}",
     emotionTitle: "情感: {tag}",
   },
+  playerProfile: {
+    title: "玩家身份卡",
+    userName: "玩家名稱",
+    userNamePlaceholder: "輸入玩家名稱",
+    userSubtitle: "玩家副標題",
+    userSubtitlePlaceholder: "輸入玩家副標題",
+    activeProfile: "目前人設",
+    switchProfile: "切換",
+    createProfile: "新做人設",
+    deleteProfile: "刪除人設",
+    confirmDelete: "確認刪除該人設？",
+    profileIdHint: "人設卡 ID 會按暱稱自動生成，穩定可讀，可直接用作劇本 persona_id。",
+    profileNameRequired: "請輸入新人設嘅暱稱",
+    cannotDeleteActive: "唔可以刪除當前啟用中人設，請先切換到其他人設",
+    profileNamePlaceholder: "玩家名稱",
+    userPrompt: "人格/設定",
+    userPromptPlaceholder: "例如：佢叫阿黎，性格溫柔但有點毒舌，鍾意烘焙同貓。",
+    userPromptHint: "話畀 AI 知屏幕對面嘅你係咩人（身份/性格/喜好等），可以幫 AI 更貼合你咁回應。",
+    playerInfo: "簡介 / 一句話人設",
+    playerInfoPlaceholder: "一句話介紹你自己，例如：一位鍾意冒險嘅程序員。",
+    promptExample: "說話風格示例",
+    promptExamplePlaceholder: "可選：畀 AI 啲你說話風格嘅參考示例，幫佢更自然咁模仿你嘅語氣。",
+    noInfo: "暫未填寫簡介",
+    edit: "編輯",
+    cancel: "取消",
+    saving: "保存中...",
+    modalTitle: "編輯玩家身份卡",
+    modalSubtitle: "複用 AI 角色卡嘅編輯體驗，但只保留玩家身份相關設置",
+    save: "保存玩家檔案",
+    saved: "玩家檔案已保存",
+    tabs: {
+      basic: "基礎",
+      prompts: "設定",
+    },
+  },
   achievement: {
     title: "成就列表（實驗）",
     rare: "稀有",
@@ -65,7 +100,7 @@ export default {
   },
   character: {
     list: {
-      title: "角色列表（切換角色會開始全新嘅對話）",
+      title: "AI 角色列表（切換角色會開始全新嘅對話）",
       noDesc: "冇角色描述",
     },
     openFolder: {
@@ -185,6 +220,7 @@ export default {
       功能选项: "功能選項",
       对话增强: "對話增強",
       记忆系统: "記憶系統",
+      界面与显示: "介面同顯示",
       "适配器 URL": "適配器 URL",
       音频参数: "音頻參數",
       "GitHub Token": "GitHub Token",
@@ -198,6 +234,7 @@ export default {
       功能选项: "翻譯功能嘅開關同行為控制",
       对话增强: "呢度可以設定開唔開時間感知同情緒分類器功能",
       记忆系统: "喺度設定你想要嘅永久記憶效果",
+      界面与显示: "介面外觀同啟動行為等顯示相關設定",
       "适配器 URL":
         "各個 TTS 後端嘅 API 地址，對應原環境變數 SIMPLE_VITS_API_URL / STYLE_BERT_VITS2_URL 等",
       音频参数: "TTS 音頻輸出格式同語言設定，對應原環境變數 TTS_AUDIO_FORMAT / VOICE_LANG",
@@ -270,6 +307,10 @@ export default {
       ENABLE_SCHEDULE_REMINDER: "ENABLE_SCHEDULE_REMINDER — 啟用強日程報時彈窗提醒",
       ENABLE_IMPORTANT_DAY_REMINDER:
         "ENABLE_IMPORTANT_DAY_REMINDER — 啟用重要節日同特別日子嘅暖心提醒",
+      display: {
+        disable_splash_animation:
+          "DISABLE_SPLASH_ANIMATION — 關閉首次啟動嘅開屏動畫（貓爪加載動畫）",
+      },
     },
   },
   workshop: {

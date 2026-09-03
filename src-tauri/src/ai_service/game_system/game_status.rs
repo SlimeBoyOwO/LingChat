@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::types::{
-    GameLine, GameRole, LineAttributeExt, LineBase, Player, ScriptStatus,
+    GameLine, GameRole, IdentityScope, LineAttributeExt, LineBase, Player, ScriptStatus,
 };
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
@@ -16,6 +16,14 @@ use crate::utils::prompt::PromptRole;
 /// 存储所有运行时共享的游戏状态。
 pub struct GameStatus {
     pub player: Player,
+
+    /// 剧本切换玩家身份时的原始身份快照栈。
+    ///
+    /// 栈语义：每次 chapter/script 作用域切换前把「当前身份 + 生效 scope」压栈，
+    /// chapter_end 只弹出栈顶连续的 chapter 快照，on_script_end 弹出全部
+    /// chapter/script 快照；试玩预览中 permanent 会降级为 script 入栈，
+    /// 这样试玩结束时 PreviewSession 的整场还原能兜底。
+    pub player_identity_override: Vec<(Player, IdentityScope)>,
 
     /// 台词列表，用于记忆构建和历史记忆
     pub line_list: Vec<GameLine>,
@@ -68,6 +76,7 @@ impl GameStatus {
     pub fn new(role_manager: GameRoleManager) -> Self {
         Self {
             player: Player::default(),
+            player_identity_override: Vec::new(),
             line_list: Vec::new(),
             role_manager,
             current_role_id: None,
@@ -109,8 +118,11 @@ impl GameStatus {
     }
 
     pub async fn refresh_memories(&mut self, db: &DatabaseConnection) -> Result<()> {
+        // 先把玩家名 clone 出来，避免把 &self.player 借给 sync_memories 的同时
+        // 又可变借用 role_manager。
+        let player_name = self.player.user_name.clone();
         self.role_manager
-            .sync_memories(db, &self.line_list, None)
+            .sync_memories(db, &self.line_list, None, &player_name)
             .await
     }
 

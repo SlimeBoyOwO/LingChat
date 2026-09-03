@@ -6,6 +6,7 @@ import type { ScriptEventType } from "../types";
 import { useAdventureStore } from "../stores/modules/adventure";
 import { useUIStore } from "../stores/modules/ui/ui";
 import { useGameStore } from "../stores/modules/game";
+import { useUserStore } from "../stores/modules/user/user";
 import { i18n } from "@/locales";
 import { useScriptEditorStore } from "../stores/modules/script-editor";
 import {
@@ -249,6 +250,39 @@ export function initializeTauriEventListeners() {
     eventQueue.addEvent(asEvent(event.payload, { type: "status_reset", defaultDuration: 0 }));
   });
 
+  // === 玩家档案同步 ===
+  // 后端保存玩家档案后广播此事件，供主窗口/设置窗口同步展示字段。
+  listen("player-profile-updated", (event) => {
+    const payload = event.payload as {
+      user_name?: string;
+      user_subtitle?: string;
+      user_prompt?: string;
+      info?: string;
+      system_prompt_example?: string;
+      active_profile_id?: string;
+    };
+    console.log("[Tauri] player-profile-updated", payload);
+    const userStore = useUserStore();
+    // 轻量事件（set_active_player_card 只带 active_profile_id，create/delete 带空）
+    // 只更新激活人设 id，不重置游戏展示字段 —— 否则切人设/建卡会把 gameStore.userName
+    // 与 userStore.playerProfile 打成默认「玩家」。
+    if (typeof payload.active_profile_id === "string") {
+      userStore.activeProfileId = payload.active_profile_id;
+    }
+    // 完整保存（set_player_profile / set_active_player_card 成功带上 user_name）才整体覆盖。
+    if (typeof payload.user_name !== "string") return;
+    const gameStore = useGameStore();
+    gameStore.applyPlayerProfile(payload.user_name || "玩家", payload.user_subtitle || "");
+    userStore.playerProfile = {
+      user_name: payload.user_name || "玩家",
+      user_subtitle: payload.user_subtitle || "",
+      user_prompt: payload.user_prompt || "",
+      info: payload.info || "",
+      system_prompt_example: payload.system_prompt_example || "",
+    };
+    userStore.profileLoaded = true;
+  });
+
   listen("tts:cleanup", (event) => {
     const payload = event.payload as {
       deleted?: number;
@@ -401,6 +435,29 @@ export function initializeTauriEventListeners() {
 
   listen("script:free-dialogue", (event) => {
     eventQueue.addEvent(asEvent(event.payload, { type: "free_dialogue", defaultDuration: 0 }));
+  });
+
+  // 剧本内玩家身份切换：所有 scope 都同步游戏展示字段；
+  // 只有 permanent 才真正写入全局档案，因此也只在该 scope 下同步 userStore。
+  listen("script:player-identity", (event) => {
+    const payload = event.payload as {
+      userName: string;
+      userSubtitle: string;
+      userPrompt: string;
+      scope: string;
+    };
+    console.log("[Tauri] script:player-identity", payload);
+    useGameStore().applyPlayerProfile(payload.userName || "玩家", payload.userSubtitle || "");
+    if (payload.scope === "permanent") {
+      const userStore = useUserStore();
+      userStore.playerProfile = {
+        ...userStore.playerProfile,
+        user_name: payload.userName || "玩家",
+        user_subtitle: payload.userSubtitle || "",
+        user_prompt: payload.userPrompt || "",
+      };
+      // profileLoaded 保持现状：档案其余字段（info 等）没有变化，不必标记重新加载
+    }
   });
 
   // === God Agent multi-dialogue event ===

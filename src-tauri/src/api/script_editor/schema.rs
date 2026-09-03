@@ -1,6 +1,6 @@
-//! 事件 schema —— 16 种事件及其全部字段的**单一真相源**。
+//! 事件 schema —— 18 种事件及其全部字段的**单一真相源**。
 //!
-//! 在这之前，同一份 schema 散落在三处：Rust 的 16 个 handler、前端
+//! 在这之前，同一份 schema 散落在三处：Rust 的 handler、前端
 //! `src/types/script.ts` 的运行时 payload 类型、原型编辑器的 `constants/events.ts`。
 //! 三者互不同步，直接导致原型产出的 `set_variable` / `chapter_end` 跑不通。
 //!
@@ -38,6 +38,8 @@ pub enum FieldKind {
     Select,
     /// 角色引用：MAIN + 剧本内 NPC，选项由前端填
     Character,
+    /// 玩家人设卡引用：选项由前端从用户人设列表填，值是该人设卡 id（目录名）
+    PlayerPersona,
     /// 情绪：选项由前端的情绪表填
     Emotion,
     /// 章节引用：选项由前端从章节列表填，额外带一个「剧本结束」
@@ -157,7 +159,7 @@ pub struct EventSpec {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptSchema {
-    /// 16 种事件
+    /// 18 种事件
     pub events: Vec<EventSpec>,
     /// 所有事件共有的字段（触发条件 / 事件间隔）
     pub common_fields: Vec<FieldSpec>,
@@ -326,6 +328,31 @@ pub fn build_schema() -> ScriptSchema {
             fields: vec![FieldSpec::new("options", "赋值组", FieldKind::VarOptions)
                 .required()
                 .hint("每组可带条件；与 choices 不同，这里所有满足条件的组都会执行")],
+        },
+        EventSpec {
+            type_key: "set_player_identity",
+            label: "切换玩家身份",
+            category: "流程",
+            color: "#f59e0b",
+            fields: vec![
+                FieldSpec::new("user_name", "玩家名", FieldKind::Text)
+                    .placeholder("（不填则保持当前）")
+                    .hint("剧本内临时切换叙事/对话视角。留空表示只改副标题或 prompt"),
+                FieldSpec::new("user_subtitle", "玩家副标题", FieldKind::Text)
+                    .placeholder("（不填则保持当前）"),
+                FieldSpec::new("user_prompt", "玩家提示词", FieldKind::Textarea)
+                    .hint("额外注入玩家侧的系统提示词"),
+                FieldSpec::new("persona_id", "基底人设", FieldKind::PlayerPersona)
+                    .hint("以某张玩家人设卡为基底再叠加下面的覆盖（chapter/script 时生效；permanent 时忽略）。留空用当前激活人设"),
+                FieldSpec::new("scope", "作用域", FieldKind::Select)
+                    .options(["chapter", "script", "permanent"])
+                    .option_labels([
+                        "chapter（本章节结束还原）",
+                        "script（剧本结束还原）",
+                        "permanent（永久生效）",
+                    ])
+                    .default_desc("chapter"),
+            ],
         },
         EventSpec {
             type_key: "chapter_end",
@@ -561,5 +588,99 @@ pub fn build_schema() -> ScriptSchema {
             unsupported: vec![">", "<", ">=", "<=", "&&", "||", "!", "括号", "算术"],
             note: "比较是按文字逐个比对的。没赋过值的变量不会正常运作，先用「设置变量」给它赋个值再比较。注意「大于/小于」这类比较不支持：写 hp >= 5 不会报错，但会被当成一个名叫 \"hp >= 5\" 的变量去查，结果不会正常运作。",
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai_service::game_system::script_engine::{
+        events::registered_event_types, init_event_registry,
+    };
+    use std::collections::HashSet;
+
+    /// 引擎注册表与编辑器 schema 单一真相源必须同步：
+    /// 任一侧新增/移除事件类型，这个测试都会失败，逼着两边一起改。
+    #[test]
+    fn schema_event_types_match_engine_registry() {
+        // 注册表是静态 LazyLock 容器，重复注册只是覆盖同一批工厂，幂等安全；
+        // 测试独立于启动流程，因此这里先显式注册一遍。
+        init_event_registry();
+
+        let schema = build_schema();
+        let in_schema: HashSet<&'static str> = schema.events.iter().map(|e| e.type_key).collect();
+        let in_engine: HashSet<&'static str> =
+            registered_event_types().into_iter().collect();
+
+        assert_eq!(in_schema, in_engine, "schema 事件集合与引擎注册表不一致");
+        // 锁定当前事件总数：一旦变化，除同步 schema/注册表外，还需同步各处注释与文档计数。
+        assert_eq!(schema.events.len(), 18, "事件总数已变化，请同步注释与文档");
+    }
+
+    #[test]
+    fn every_event_has_at_least_one_field_and_unique_keys() {
+        for e in build_schema().events {
+            assert!(!e.fields.is_empty(), "{} 没有字段", e.type_key);
+            let mut seen = HashSet::new();
+            for f in &e.fields {
+                assert!(
+                    seen.insert(f.key),
+                    "{} 的字段 {} 重复了",
+                    e.type_key,
+                    f.key
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn asset_fields_declare_their_kind() {
+        for e in build_schema().events {
+            for f in &e.fields {
+                if matches!(f.kind, FieldKind::Asset) {
+                    assert!(
+                        f.asset_kind.is_some(),
+                        "{}.{} 是素材字段但没声明 asset_kind",
+                        e.type_key,
+                        f.key
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn effect_options_come_from_the_engine_constant() {
+        let schema = build_schema();
+        let effect = schema
+            .events
+            .iter()
+            .find(|e| e.type_key == "background_effect")
+            .unwrap();
+        let field = &effect.fields[0];
+        // None + 全部合法特效
+        assert_eq!(field.options.len(), KNOWN_EFFECTS.len() + 1);
+        for k in KNOWN_EFFECTS {
+            assert!(
+                field.options.iter().any(|o| o.as_str() == k),
+                "缺少特效 {}",
+                k
+            );
+        }
+    }
+
+    /// option_labels 若提供，长度必须与 options 一致，否则前端会错位显示
+    #[test]
+    fn option_labels_match_options_length() {
+        for e in build_schema().events {
+            for f in &e.fields {
+                assert!(
+                    f.option_labels.is_empty() || f.option_labels.len() == f.options.len(),
+                    "{}.{} 的 option_labels 长度与 options 不一致",
+                    e.type_key,
+                    f.key
+                );
+            }
+        }
     }
 }

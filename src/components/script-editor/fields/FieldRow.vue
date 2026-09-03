@@ -190,6 +190,7 @@
     particleLabelOf,
   } from "@/locales/schema-i18n";
   import { useScriptEditorStore } from "@/stores/modules/script-editor";
+  import { useUserStore } from "@/stores/modules/user/user";
   import type {
     AssetKind,
     AssetScope,
@@ -212,6 +213,7 @@
   const emit = defineEmits<{ (e: "update", value: unknown): void }>();
 
   const store = useScriptEditorStore();
+  const userStore = useUserStore();
 
   const asText = computed(() => {
     const v = props.value;
@@ -255,7 +257,7 @@
   );
 
   const isSelectLike = computed(() =>
-    ["select", "character", "emotion", "chapter"].includes(props.field.kind)
+    ["select", "character", "emotion", "chapter", "player_persona"].includes(props.field.kind)
   );
 
   const isComposite = computed(() =>
@@ -268,6 +270,7 @@
    * - character→ MAIN + 剧本内 NPC
    * - emotion  → **前端**的情绪表（它决定情绪到立绘文件名的映射，归前端所有）
    * - chapter  → 当前剧本的章节列表 + 「剧本结束」
+   * - player_persona → 用户的人设卡列表（值=card_id，label=显示名）
    */
   const selectOptions = computed<{ value: string; label: string }[]>(() => {
     switch (props.field.kind) {
@@ -288,6 +291,12 @@
         return Object.keys(EMOTION_CONFIG_EMO).map((o) => ({ value: o, label: emotionLabelOf(o) }));
       case "chapter":
         return store.chapterOptions;
+      case "player_persona":
+        // 玩家人设卡列表由 user store 提供；值是人设卡 id（目录名），label 用显示名。
+        return userStore.playerProfiles.map((p) => ({
+          value: p.card_id,
+          label: p.active ? `${p.user_name} ★` : p.user_name,
+        }));
       default:
         return [];
     }

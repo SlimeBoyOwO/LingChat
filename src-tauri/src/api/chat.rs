@@ -273,7 +273,7 @@ pub async fn rollback_conversation(
             .line_list
             .iter()
             .position(|line| {
-                if line.base.sender_role_id == Some(0)
+                if line.base.sender_role_id == Some(crate::ai_service::types::PLAYER_ROLE_ID)
                     && matches!(line.attribute(), LineAttribute::User)
                 {
                     count += 1;

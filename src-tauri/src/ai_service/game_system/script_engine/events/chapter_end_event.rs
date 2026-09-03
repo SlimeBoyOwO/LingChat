@@ -11,6 +11,7 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::Value;
 
+use crate::ai_service::game_system::player_profile_sync::restore_player_identity_for_chapter;
 use crate::ai_service::game_system::script_engine::events::{
     ScriptContext, ScriptEvent, evaluate_condition, register_event,
 };
@@ -125,6 +126,11 @@ impl ScriptEvent for ChapterEndEvent {
             self.end_type,
             next
         );
+
+        // 章节结束：弹出栈顶连续的 chapter 快照（set_player_identity 的
+        // chapter 作用域到期）；script 作用域留给 on_script_end 处理。
+        restore_player_identity_for_chapter(ctx).await?;
+
         Ok(Some(next))
     }
 
@@ -151,7 +157,10 @@ impl ChapterEndEvent {
         let conv_text = {
             let mut gs = ctx.game_status.lock().await;
             gs.refresh_memories(ctx.db).await?;
-            let rid = gs.current_role_id.or(gs.main_role_id).unwrap_or(0);
+            let rid = gs
+                .current_role_id
+                .or(gs.main_role_id)
+                .unwrap_or(crate::ai_service::types::PLAYER_ROLE_ID);
             if rid != 0 {
                 if let Ok(role) = gs.get_role(ctx.db, rid).await {
                     let memory = role.memory.clone();

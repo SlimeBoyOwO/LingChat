@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 use crate::ai_service::config::AIServiceConfig;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
+use crate::ai_service::game_system::player_profile_sync::rebuild_system_lines;
 use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::ai_service::llm::LlmSlot;
@@ -38,6 +39,9 @@ pub struct AIService {
     pub ai_subtitle: Option<String>,
     pub user_name: String,
     pub user_subtitle: Option<String>,
+    /// 玩家设定块（简介/人格/示例，全局 player_profile 纯 DB 驱动）。
+    /// 解耦玩家与 AI 后，把它注入系统提示词，让 AI 了解屏幕对面用户的身份与性格。
+    pub player_prompt: String,
     pub ai_prompt: String,
     pub ai_prompt_example: Option<String>,
     pub ai_prompt_example_old: Option<String>,
@@ -86,6 +90,7 @@ impl AIService {
             ai_subtitle: None,
             user_name: String::new(),
             user_subtitle: None,
+            player_prompt: String::new(),
             ai_prompt: String::new(),
             ai_prompt_example: None,
             ai_prompt_example_old: None,
@@ -100,6 +105,9 @@ impl AIService {
     /// `prompt_options` 控制对话格式提示（日语开关、情绪放开）。
     /// 调用方（通常是 Tauri command）从 AppConfig 读取后传入。
     /// 钦灵：TODO，这一段代码是老函数，新版已经不是单一人物，而是多个人物，这部分代码之后需要清理。
+    ///
+    /// 解耦玩家与 AI：玩家身份不再从 CharacterSettings 中读取，
+    /// 而是从全局 player_profile（纯 DB）加载（fallback 到 CharacterSettings 以兼容旧数据）。
     pub async fn import_settings(
         &mut self,
         settings: CharacterSettings,
@@ -112,12 +120,43 @@ impl AIService {
         self.character_id = settings.character_id;
         self.ai_name = settings.ai_name.clone();
         self.ai_subtitle = settings.ai_subtitle.clone();
-        self.user_name = settings.user_name.clone();
-        self.user_subtitle = settings.user_subtitle.clone();
         let base_prompt = settings.system_prompt.clone().unwrap_or(default_prompt);
         self.ai_prompt_example = settings.system_prompt_example.clone();
         self.ai_prompt_example_old = settings.system_prompt_example_old.clone();
         self.clothes_name = settings.clothes_name.clone(); // TODO: 这个是冗余的，之后可以去掉
+
+        // 玩家身份从全局 player_profile（纯 DB）加载（解耦：不再从角色 settings.yml 读取）
+        // 读取整个档案，并把「设定块」（简介/人格/示例）合并注入系统提示词。
+        // 表为空时，自动从旧角色卡迁移 user_name/user_subtitle 播种默认人设卡。
+        let (user_name, user_subtitle, player_prompt) = {
+            match crate::db::managers::player_profile_repo::PlayerProfileRepo::ensure_profile(
+                &self.db,
+                Some(&settings),
+            )
+            .await
+            {
+                Ok(profile) => {
+                    let uname = profile.user_name.clone();
+                    let usub = profile.user_subtitle.clone().unwrap_or_default();
+                    let uprompt = profile.to_prompt_fragment();
+                    (uname, usub, uprompt)
+                }
+                Err(e) => {
+                    tracing::warn!("读取玩家档案失败，回退到角色设置: {e}");
+                    // 回退到旧行为：从 CharacterSettings 读（兼容老版本数据）
+                    (
+                        settings.user_name.clone(),
+                        settings.user_subtitle.clone().unwrap_or_default(),
+                        String::new(),
+                    )
+                }
+            }
+        };
+
+        self.user_name = user_name.clone();
+        self.user_subtitle = if user_subtitle.is_empty() { None } else { Some(user_subtitle.clone()) };
+        // 玩家设定块（简介/人格/示例）也存到 AIService，供后续注入系统提示词
+        self.player_prompt = player_prompt.clone();
 
         self.ai_prompt = sys_prompt_builder(
             &self.user_name,
@@ -126,12 +165,14 @@ impl AIService {
             self.ai_prompt_example.as_deref(),
             self.ai_prompt_example_old.as_deref(),
             prompt_options,
+            &player_prompt,
         );
 
         {
             let mut gs = self.game_status.lock().await;
             gs.player.user_name = self.user_name.clone();
             gs.player.user_subtitle = self.user_subtitle.clone().unwrap_or_default();
+            gs.player.user_prompt = player_prompt;
         }
 
         self.settings = Some(settings);
@@ -195,21 +236,28 @@ impl AIService {
     }
 
     /// 载入存档台词并恢复 MemoryBank。
+    ///
+    /// `prompt_options` 用于在记忆刷新前按当前玩家档案重建 System 人设行，
+    /// 保证旧档里的旧名字/旧设定不会先进入角色记忆。
     pub async fn load_lines(
         &mut self,
         lines: Vec<GameLine>,
         main_role_id: i32,
         save_id: Option<i32>,
+        prompt_options: PromptOptions,
     ) -> Result<()> {
         {
             let mut gs = self.game_status.lock().await;
-            gs.role_manager.invalidate_memory_history();
             gs.line_list = lines;
             if let Some(sid) = save_id {
                 gs.active_save_id = Some(sid);
             }
-            gs.refresh_memories(&self.db).await?;
+            // 先加载主角设置，再整体重建旧档里的 System 行；旧 System 行不会被
+            // 后续 sync_memories 写进角色记忆。
             let _ = gs.get_role(&self.db, main_role_id).await?;
+            rebuild_system_lines(&self.db, &self.data_dir, &mut gs, prompt_options).await?;
+            gs.role_manager.invalidate_memory_history();
+            gs.refresh_memories(&self.db).await?;
             gs.current_role_id = Some(main_role_id);
             gs.main_role_id = Some(main_role_id);
         }
@@ -229,11 +277,17 @@ impl AIService {
 
     /// 从 DB 恢复所有 MemoryBank 到对应已加载角色，并惰性创建压缩系统。
     pub async fn restore_memory_banks(&mut self, save_id: i32) -> Result<()> {
+        // 玩家名用于永久记忆压缩时格式化旧 User 行；先取快照再二次加锁，
+        // 避免 tokio::Mutex 不可重入。
+        let player_name = {
+            let gs = self.game_status.lock().await;
+            gs.player.user_name.clone()
+        };
         self.game_status
             .lock()
             .await
             .role_manager
-            .load_memory_banks_from_db(&self.db, save_id, None)
+            .load_memory_banks_from_db(&self.db, save_id, None, &player_name)
             .await
     }
 

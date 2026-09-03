@@ -296,7 +296,7 @@ pub async fn handle_actions(
                     content,
                     attribute: LineAttributeExt(LineAttribute::User),
                     display_name: Some(game_status.player.user_name.clone()),
-                    sender_role_id: Some(0),
+                    sender_role_id: Some(crate::ai_service::types::PLAYER_ROLE_ID),
                     ..Default::default()
                 };
                 game_status.add_line(db, line).await?;

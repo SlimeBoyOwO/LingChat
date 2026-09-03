@@ -4,6 +4,8 @@ import type { ScriptChoiceItem } from "@/types/script";
 
 export interface GameMessage {
   type: "message" | "reply";
+  /** 消息语义类型（解耦玩家与 AI 设定后新增，用于精确区分消息来源） */
+  messageType?: "player" | "narrator" | "ai" | "system";
   displayName: string;
   content: string;
   emotion?: string;

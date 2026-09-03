@@ -125,6 +125,7 @@
     // 1. 触发游戏引擎选择分支的逻辑
     gameStore.appendGameMessage({
       type: "message",
+      messageType: "player",
       displayName: gameStore.userName,
       content: choice,
     });

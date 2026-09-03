@@ -16,8 +16,9 @@ use tauri::{AppHandle, Manager};
 
 use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
-use crate::ai_service::types::ScriptStatus;
+use crate::ai_service::types::{GameLine, IdentityScope, Player, ScriptStatus};
 use crate::api::{data_dir, game_data_dir};
+use crate::db::managers::player_profile_repo::PlayerProfileRepo;
 use crate::db::managers::role_repo::RoleRepo;
 
 use sea_orm::DatabaseConnection;
@@ -1517,22 +1518,26 @@ pub async fn editor_start_preview(
 /// 所以现在的做法是：**进来时整体备份、按新会话搭好场子、走的时候整体还原**。
 /// 试玩期间引擎爱怎么改怎么改，出去之后玩家的会话一个字节都没变。
 pub struct PreviewSession {
-    /// 试玩开始时台词表的长度。引擎只往后追加，截回这个长度即可
-    line_len: usize,
+    /// 试玩开始前台词表的完整快照。试玩期间剧本会追加台词、甚至重建 System
+    /// 行，只记长度无法还原被修改的行，因此整表 clone 并在 restore 时整体覆盖。
+    lines_prefix: Vec<GameLine>,
     /// 本场试玩的会话代号（GameStatus.preview_generation 递增后的值）。
     /// 还原时再次递增，让上一场游离生成任务捕获的旧代号立即过期。
     generation: u64,
     /// `to_snapshot()` 覆盖的场景状态：背景 / 音乐 / 特效 / 在场角色 / 全局变量 …
     scene: crate::ai_service::game_system::game_status::GameStatusSnapshot,
-    /// 快照没覆盖的三个字段
+    /// 快照没覆盖的字段：主角色 / 当前角色 / 剧本状态。
     main_role_id: Option<i32>,
     current_role_id: Option<i32>,
     script_status: Option<Box<ScriptStatus>>,
-    /// 玩家名。begin 会按绑定角色卡覆盖它，必须单独存还原（scene 快照不含 player）
-    user_name: String,
-    /// 玩家副标题。试玩期间剧本 settings 里可能覆盖它，还原时一并回退，
-    /// 否则不同角色的副标题会混搭到自由对话
-    user_subtitle: String,
+    /// 玩家完整身份（含 user_prompt）。试玩里 permanent 会降级为 script 并改
+    /// gs.player，结束必须整体还原，不能只还原名字。
+    player: Player,
+    /// 身份切换快照栈：试玩期间 set_player_identity 会往里压栈，还原时整体覆盖，
+    /// 防止 chapter/script 快照残留到真实会话。
+    player_identity_override: Vec<(Player, IdentityScope)>,
+    /// 试玩可能通过 present_pic 事件换立绘；scene 快照不含它，单独备份还原。
+    present_pic: String,
 }
 
 impl PreviewSession {
@@ -1545,34 +1550,41 @@ impl PreviewSession {
         // 先确定 MAIN 是谁 —— 定不下来就别开场，免得作者对着不动的画面猜
         let main_id = resolve_preview_main_role(db, game_status, script).await?;
 
+        // 试玩开场使用全局玩家档案（纯 DB）；读不到用默认值，不阻断试玩。
+        // 先读出来再锁 GameStatus，避免在持锁期间做 DB 查询。
+        let profile = PlayerProfileRepo::get_profile(db).await.unwrap_or_default();
+        let player_prompt = profile.to_prompt_fragment();
+
         let mut gs = game_status.lock().await;
         // 递增试玩代号：本场次的生成管线捕获新代号；上一场被中止后仍在排空的
         // 游离流式任务持有旧代号，此后写入会被 add_assistant_line 的守卫丢弃。
         gs.preview_generation = gs.preview_generation.wrapping_add(1);
         let generation = gs.preview_generation;
         let saved = PreviewSession {
-            line_len: gs.line_list.len(),
+            lines_prefix: gs.line_list.clone(),
             generation,
             scene: gs.to_snapshot(),
             main_role_id: gs.main_role_id,
             current_role_id: gs.current_role_id,
             script_status: gs.script_status.clone().map(Box::new),
-            user_name: gs.player.user_name.clone(),
-            user_subtitle: gs.player.user_subtitle.clone(),
+            player: gs.player.clone(),
+            player_identity_override: gs.player_identity_override.clone(),
+            present_pic: gs.present_pic.clone(),
         };
 
         // ---- 按「刚进游戏」的样子搭场次，对齐 init_game_status 的三件事 ----
-        // 失败时把已拍快照套回去再报错：否则试玩启动失败也会把自由对话的
+        // 失败时把已拍快照整体套回去再报错：否则试玩启动失败也会把自由对话的
         // 在场角色/台词表留在被清空的状态。
         if let Err(e) = gs.get_role(db, main_id).await {
             gs.role_manager.invalidate_memory_history();
-            gs.line_list.truncate(saved.line_len);
+            gs.line_list = saved.lines_prefix;
             gs.apply_snapshot(&saved.scene);
             gs.main_role_id = saved.main_role_id;
             gs.current_role_id = saved.current_role_id;
             gs.script_status = saved.script_status.map(|b| *b);
-            gs.player.user_name = saved.user_name.clone();
-            gs.player.user_subtitle = saved.user_subtitle.clone();
+            gs.player = saved.player;
+            gs.player_identity_override = saved.player_identity_override;
+            gs.present_pic = saved.present_pic;
             return Err(format!("载入主角失败: {}", e));
         }
         gs.main_role_id = Some(main_id);
@@ -1582,12 +1594,20 @@ impl PreviewSession {
         gs.present_role_ids.clear();
         gs.onstage_role_ids.clear();
         gs.onstage_role(main_id); // 不做这步立绘不会出现
-        // 玩家名（绑定角色卡里的 settings.user_name）。缺了它 %player% 替换为空、
-        // 前端玩家气泡也会显示空名（issue #8）。读不到就保持原值，不阻断试玩。
-        let uname = user_name_of(db, main_id).await;
-        if !uname.is_empty() {
-            gs.player.user_name = uname;
-        }
+        // 用全局玩家档案整体覆盖试玩身份（含 user_prompt），并清空身份快照栈：
+        // 试玩期间 set_player_identity 会从干净的全局身份开始压栈。
+        gs.player = Player {
+            card_id: PlayerProfileRepo::active_persona_id(db)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!("读取激活人设失败，试玩身份回落 default: {e}");
+                    "default".to_string()
+                }),
+            user_name: profile.user_name.clone(),
+            user_subtitle: profile.user_subtitle.clone().unwrap_or_default(),
+            user_prompt: player_prompt,
+        };
+        gs.player_identity_override.clear();
 
         // 人设 SYSTEM 台词。缺了它 role_manager 会警告「人设丢失」，
         // 而且 AI 对话会在没有人设的上下文里生成。
@@ -1625,14 +1645,17 @@ impl PreviewSession {
         // 污染已还原的自由对话会话。
         gs.preview_generation = gs.preview_generation.wrapping_add(1);
         gs.role_manager.invalidate_memory_history();
-        gs.line_list.truncate(self.line_len);
+        // 整体还原试玩前快照：台词表里可能有重建过的 System 行、玩家身份里
+        // 可能有试玩压栈的 override，立绘也可能被 present_pic 换过。
+        gs.line_list = self.lines_prefix;
         gs.apply_snapshot(&self.scene);
         gs.main_role_id = self.main_role_id;
         gs.current_role_id = self.current_role_id;
         gs.script_status = self.script_status.map(|b| *b);
-        gs.player.user_name = self.user_name;
-        gs.player.user_subtitle = self.user_subtitle;
-        // 台词表变短了，角色记忆要按新的列表重建，否则里面还留着试玩的内容
+        gs.player = self.player;
+        gs.player_identity_override = self.player_identity_override;
+        gs.present_pic = self.present_pic;
+        // 台词表已还原，角色记忆要按恢复后的列表重建，否则里面还留着试玩的内容
         if let Err(e) = gs.refresh_memories(db).await {
             tracing::warn!("[ScriptEditor] 还原后刷新记忆失败: {}", e);
         }
@@ -1726,16 +1749,25 @@ async fn build_main_role_prompt(
             role_id
         );
     }
-    // 用 by_settings 版本而不是自己拼参数：它会一并带上 settings.user_name，
-    // 与正式游玩走的是同一条构建路径
+    // 用 by_settings 版本而不是自己拼参数：它会一并带上玩家名，
+    // 与正式游玩走的是同一条构建路径（玩家名从全局 player_profile 纯 DB 读取）
     Some(MainRolePrompt {
-        text: sys_prompt_builder_by_settings(
-            &settings,
-            PromptOptions {
-                output_sec_lang: true,
-                no_emotion_limit: true,
-            },
-        ),
+        text: {
+            let profile = crate::db::managers::player_profile_repo::PlayerProfileRepo::get_profile(db)
+                .await
+                .unwrap_or_default();
+            let player_name = profile.user_name.clone();
+            let player_prompt = profile.to_prompt_fragment();
+            sys_prompt_builder_by_settings(
+                &settings,
+                Some(&player_name),
+                PromptOptions {
+                    output_sec_lang: true,
+                    no_emotion_limit: true,
+                },
+                &player_prompt,
+            )
+        },
         name: settings.ai_name,
     })
 }
@@ -1799,17 +1831,14 @@ async fn role_name_of(db: &DatabaseConnection, id: i32) -> Option<String> {
     Some(role.name)
 }
 
-/// 角色卡里写的玩家名（settings.user_name）。查不到或为空返回空串 ——
+/// 玩家名。解耦玩家与 AI：不再从角色卡 settings.yml 读取，
+/// 而是从全局 player_profile（纯 DB）读取。查不到或为空返回空串 ——
 /// 试玩用它显示玩家身份、替换 %player%，缺了只是显示空，不该阻断试玩（issue #8）。
-async fn user_name_of(db: &DatabaseConnection, id: i32) -> String {
-    RoleRepo::get_role_settings_by_id(db, &data_dir(), id)
+async fn user_name_of(db: &DatabaseConnection, _id: i32) -> String {
+    use crate::db::managers::player_profile_repo::PlayerProfileRepo;
+    PlayerProfileRepo::get_profile(db)
         .await
-        .ok()
-        .flatten()
-        .and_then(|s| {
-            let n = s.user_name.trim().to_string();
-            if n.is_empty() { None } else { Some(n) }
-        })
+        .map(|p| p.user_name)
         .unwrap_or_default()
 }
 

@@ -21,6 +21,7 @@ import { useUIStore } from "@/stores/modules/ui/ui";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
 import { useGameStore } from "@/stores/modules/game";
 import { useSettingsStore } from "@/stores/modules/settings";
+import { useUserStore } from "@/stores/modules/user/user";
 import { firstVisibleIndex } from "@/composables/useEventFolding";
 import { eventQueue } from "@/core/events/event-queue";
 import {
@@ -184,6 +185,14 @@ function restorePreviewSceneState(s: PreviewSceneSnapshot) {
 
 export const useEditorActions = (s: StateRefs, g: Getters) => {
   async function init() {
+    // 用户可能直接打开剧本编辑器（不先进主聊天页）：此时全局玩家档案还没加载，
+    // 先补一次；loadPlayerProfile 内部已捕获失败并 console.warn，不会阻断编辑器。
+    const userStore = useUserStore();
+    if (!userStore.profileLoaded) {
+      await userStore.loadPlayerProfile();
+    }
+    // 人设卡下拉（set_player_identity 的 persona_id）需要人设列表；失败不阻断编辑器。
+    await userStore.loadPlayerProfiles();
     if (!s.schema.value) {
       try {
         s.schema.value = await api.getSchema();

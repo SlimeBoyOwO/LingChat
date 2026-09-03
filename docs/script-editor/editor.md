@@ -21,7 +21,7 @@
 **表单不是手写的** —— 全部由 Rust 导出的 schema 驱动：
 
 - `getters.eventSpecs`：`type_key → EventSpec` 映射；
-- **插入事件面板**按 `schema.events[].category` 分组，16 种事件全列出；
+- **插入事件面板**按 `schema.events[].category` 分组，18 种事件全列出；
 - `blankEvent(typeKey)` 按字段生成骨架：
   - `choice_options` → `[{ text: '', actions: [] }]`
   - `var_options` → `[{ actions: [{ type: 'set_var', content: '' }] }]`

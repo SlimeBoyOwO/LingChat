@@ -23,6 +23,45 @@ export default {
     backtrackFailed: "巻き戻しに失敗しました：{error}",
     emotionTitle: "感情: {tag}",
   },
+  playerProfile: {
+    userName: "プレイヤー名",
+    title: "プレイヤー身分カード",
+    userSubtitle: "プレイヤーサブタイトル",
+    userNamePlaceholder: "プレイヤー名を入力",
+    userSubtitlePlaceholder: "プレイヤーサブタイトルを入力",
+    activeProfile: "現在のペルソナ",
+    switchProfile: "切り替え",
+    createProfile: "新規ペルソナ",
+    deleteProfile: "ペルソナを削除",
+    confirmDelete: "このペルソナを削除しますか？",
+    profileIdHint:
+      "ID は名前から自動生成されます（安定しており、脚本の persona_id にそのまま使えます）。",
+    profileNameRequired: "新しいペルソナの名前を入力してください。",
+    cannotDeleteActive:
+      "現在アクティブなペルソナは削除できません。先に他のペルソナへ切り替えてください。",
+    profileNamePlaceholder: "プレイヤー名",
+    userPrompt: "人格・設定",
+    userPromptPlaceholder: "例：彼女の名前はアリ、優しいが少し毒舌で、お菓子作りと猫が好き。",
+    userPromptHint: "AIに画面の向こうのあなたがどんな人かを伝えます。",
+    playerInfo: "紹介・一言キャラ",
+    playerInfoPlaceholder: "一言で自己紹介。例：冒険好きなプログラマー。",
+    promptExample: "話し方の例",
+    promptExamplePlaceholder:
+      "任意：あなたの話し方の参考例をAIに渡すと、より自然に口調を真似られます。",
+    noInfo: "紹介文はまだありません",
+    edit: "編集",
+    cancel: "キャンセル",
+    saving: "保存中...",
+    modalTitle: "プレイヤー身分カードを編集",
+    modalSubtitle:
+      "AIキャラクターカードの編集体験を流用しつつ、プレイヤー身分に関わる設定のみ残します",
+    save: "プレイヤープロフィールを保存",
+    saved: "プレイヤープロフィールを保存しました",
+    tabs: {
+      basic: "基本",
+      prompts: "設定",
+    },
+  },
   achievement: {
     title: "実績一覧（実験的）",
     rare: "レア",
@@ -64,7 +103,7 @@ export default {
   },
   character: {
     list: {
-      title: "キャラクター一覧（切り替えると新しい会話が始まります）",
+      title: "AIキャラクター一覧（切り替えると新しい会話が始まります）",
       noDesc: "キャラクターの説明なし",
     },
     openFolder: {
@@ -278,6 +317,10 @@ export default {
         "ENABLE_SCHEDULE_REMINDER — 強制スケジュール時報ポップアップを有効化",
       ENABLE_IMPORTANT_DAY_REMINDER:
         "ENABLE_IMPORTANT_DAY_REMINDER — 重要な記念日・特別な日の心温まるリマインドを有効化",
+      display: {
+        disable_splash_animation:
+          "DISABLE_SPLASH_ANIMATION — 起動時のスプラッシュアニメーション（猫の爪ローディングアニメ）を無効にする",
+      },
     },
   },
   workshop: {
@@ -363,8 +406,6 @@ export default {
     fields: {
       aiName: "AI 名",
       aiSubtitle: "AI サブタイトル",
-      userName: "ユーザー名",
-      userSubtitle: "ユーザーサブタイトル",
       title: "キャラクタータイトル",
       info: "キャラクター紹介",
       systemPrompt: "システムプロンプト",
@@ -502,8 +543,6 @@ export default {
       aiNamePlaceholder: "キャラクターの会話名",
       aiSubtitle: "AI サブタイトル",
       aiSubtitlePlaceholder: "例: 夜の番人 / スクールアイドル",
-      userName: "ユーザー名",
-      userSubtitle: "ユーザーサブタイトル",
       info: "キャラクター紹介",
       infoPlaceholder: "任意：キャラクター紹介の表示に使用",
     },

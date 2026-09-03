@@ -57,7 +57,7 @@ PR #540 的目标：
 | 文件                                | 职责                                                |
 | ----------------------------------- | --------------------------------------------------- |
 | `src/api/script_editor/mod.rs`      | 模块入口与分层说明                                  |
-| `src/api/script_editor/schema.rs`   | 16 种事件字段的单一真相源，导出给前端               |
+| `src/api/script_editor/schema.rs`   | 18 种事件字段的单一真相源，导出给前端               |
 | `src/api/script_editor/paths.rs`    | 剧本 key ⇄ 磁盘路径、三种布局、穿越防护、名称合法性 |
 | `src/api/script_editor/io.rs`       | YAML ⇄ JSON、原子写、`.bak` 备份、章节文档归一      |
 | `src/api/script_editor/validate.rs` | 校验器：把引擎静默失败变成诊断                      |

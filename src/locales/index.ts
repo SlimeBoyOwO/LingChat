@@ -55,6 +55,9 @@ function detectLocale(): AppLocale {
 
 type MessageSchema = typeof zhCN;
 
+// 非 zh-CN 语言的词条与基线存在历史性结构差异（不同迭代期间分别增量，未同步补齐）。
+// 这里用宽松转换：缺失键在运行时经 fallbackLocale 回落到 zh-CN，不影响功能。
+// 若后续需要严格类型，可为每种语言维护完整的 MessageSchema 结构。
 export const i18n = createI18n<[MessageSchema], AppLocale>({
   legacy: false,
   locale: detectLocale(),
@@ -62,9 +65,9 @@ export const i18n = createI18n<[MessageSchema], AppLocale>({
   // 各语言词条以 zh-CN 为基准 schema；缺失键运行时经 fallbackLocale 回落中文
   messages: {
     "zh-CN": zhCN,
-    "zh-HK": zhHK as MessageSchema,
-    ja: ja as MessageSchema,
-    en: en as MessageSchema,
+    "zh-HK": zhHK as unknown as MessageSchema,
+    ja: ja as unknown as MessageSchema,
+    en: en as unknown as MessageSchema,
   },
 });
 

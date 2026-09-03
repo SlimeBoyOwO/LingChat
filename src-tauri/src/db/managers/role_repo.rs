@@ -146,10 +146,14 @@ impl RoleRepo {
     }
 
     /// 系统保护的角色 ID 集合，禁止删除。
-    /// - 0: User 角色（玩家本体）
+    /// - 0: User 角色（玩家本体，`PLAYER_ROLE_ID`）
     /// - 1: 默认 main 角色（启动兜底）
     /// - 2: 预留系统角色位
-    pub const SYSTEM_PROTECTED_ROLE_IDS: &'static [i32] = &[0, 1, 2];
+    pub const SYSTEM_PROTECTED_ROLE_IDS: &'static [i32] = &[
+        crate::ai_service::types::PLAYER_ROLE_ID,
+        1,
+        2,
+    ];
 
     /// 检查给定角色 ID 是否为系统保护角色。
     pub fn is_system_protected_role(role_id: i32) -> bool {

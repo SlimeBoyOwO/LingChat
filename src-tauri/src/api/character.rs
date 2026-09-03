@@ -605,9 +605,36 @@ pub async fn update_role_settings(
         return Err(format!("角色目录不存在: {:?}", base_path));
     }
 
+    // 保留原始 incoming JSON：下面需要按"键是否显式存在"来决定旧版玩家字段的去留，
+    // 而 CharacterSettings 反序列化会给缺失键补 serde 默认值，无法据此判断显式性。
+    let incoming = settings.clone();
     let mut validated: CharacterSettings =
         serde_json::from_value(settings).map_err(|e| format!("配置验证失败: {}", e))?;
     remove_legacy_voice_model_fields(&mut validated);
+
+    let yaml_path = base_path.join("settings.yml");
+
+    // 降级兼容：旧版把玩家身份（user_name/user_subtitle/user_prompt）写在 AI 角色卡里。
+    // 解耦后新档案不再把玩家字段写回角色卡，但如果用户仍在旧客户端/旧界面里编辑角色，
+    // 需要保留这些键，避免旧字段被静默丢失，也避免把 serde 默认值写进新卡。
+    let legacy_player_keys = ["user_name", "user_subtitle", "user_prompt"];
+    let old_yaml: Option<serde_yaml::Value> = if yaml_path.exists() {
+        match fs::read_to_string(&yaml_path) {
+            Ok(content) => match serde_yaml::from_str(&content) {
+                Ok(value) => Some(value),
+                Err(e) => {
+                    tracing::warn!("解析角色原始 settings.yml 失败，旧玩家字段将不参与写回: {:?}, {e}", yaml_path);
+                    None
+                }
+            },
+            Err(e) => {
+                tracing::warn!("读取角色原始 settings.yml 失败，旧玩家字段将不参与写回: {:?}, {e}", yaml_path);
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     let mut save_data =
         serde_json::to_value(&validated).map_err(|e| format!("配置规范化失败: {}", e))?;
@@ -617,9 +644,32 @@ pub async fn update_role_settings(
         obj.remove("character_folder");
         obj.remove("script_key");
         obj.remove("script_role_key");
+
+        // 先移除 CharacterSettings 序列化出来的玩家字段默认值，再按下面的规则写回：
+        // 1. 本次 incoming JSON 显式含该键 → 写 incoming 的值（兼容旧版客户端编辑）；
+        // 2. 否则旧 settings.yml 原本有该键 → 原样写回，用户不编辑时旧字段不丢；
+        // 3. 否则不写，防止把 serde 默认值（如 user_name未设定）写进新角色卡。
+        obj.remove("user_name");
+        obj.remove("user_subtitle");
+        obj.remove("user_prompt");
+        for key in legacy_player_keys {
+            if let Some(value) = incoming.get(key) {
+                obj.insert(key.to_string(), value.clone());
+                continue;
+            }
+            if let Some(old_value) = old_yaml.as_ref().and_then(|v| v.get(key)) {
+                match serde_json::to_value(old_value) {
+                    Ok(value) => {
+                        obj.insert(key.to_string(), value);
+                    }
+                    Err(e) => {
+                        tracing::warn!("转换角色卡旧玩家字段 {key} 失败，本次保存将跳过该字段: {e}");
+                    }
+                }
+            }
+        }
     }
 
-    let yaml_path = base_path.join("settings.yml");
     write_json_as_yaml(&yaml_path, &save_data).map_err(|e| format!("保存失败: {e}"))?;
 
     let runtime_updated = {

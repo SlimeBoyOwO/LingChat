@@ -1,9 +1,14 @@
-use crate::ai_service::types::{GameLine, LineBase, LlmMessage};
+use crate::ai_service::types::{GameLine, LineBase, LlmMessage, PLAYER_ROLE_ID};
 use crate::db::entities::line::LineAttribute;
 
 /// 将 `GameLine` 序列构建成目标角色的 LLM 消息列表。
+///
+/// `player_name` 用于读档后重放旧台词时：历史 User 行里可能记录着旧玩家名，
+/// 展示层不改历史，但 LLM 上下文里统一用当前玩家档案名，避免旧名回涌。
 pub struct MemoryBuilder {
     pub target_role_id: i32,
+    /// 当前玩家档案名（仅影响 LLM 上下文格式化，不改历史行）。
+    player_name: String,
 }
 
 enum BufferKind {
@@ -12,8 +17,11 @@ enum BufferKind {
 }
 
 impl MemoryBuilder {
-    pub fn new(target_role_id: i32) -> Self {
-        Self { target_role_id }
+    pub fn new(target_role_id: i32, player_name: String) -> Self {
+        Self {
+            target_role_id,
+            player_name,
+        }
     }
 
     fn is_target(&self, line: &GameLine) -> bool {
@@ -52,9 +60,21 @@ impl MemoryBuilder {
         s
     }
 
+    /// 判断是否应使用当前玩家档案名替代行内旧 display_name 的 User 行。
+    /// 旁白/系统不替换：它们是叙事者，不是玩家发言。
+    fn use_current_player_name(&self, line: &LineBase) -> bool {
+        matches!(line.attribute.0, LineAttribute::User)
+            && line.sender_role_id == Some(PLAYER_ROLE_ID)
+            && !matches!(line.display_name.as_deref(), Some("旁白" | "系统"))
+    }
+
     /// [修改点 1]：格式化为 context 行：过滤掉情绪和TTS，仅保留 "名称: 内容(动作)"
     fn format_context_line(&self, line: &LineBase) -> String {
-        let name = line.display_name.as_deref().unwrap_or("未知");
+        let name: &str = if self.use_current_player_name(line) {
+            &self.player_name
+        } else {
+            line.display_name.as_deref().unwrap_or("未知")
+        };
         let mut s = match name {
             "旁白" | "系统" => line.content.clone(),
             _ => format!("{}: {}", name, line.content),
@@ -125,7 +145,12 @@ impl MemoryBuilder {
                         let user_text: Vec<String> = active_user_lines
                             .iter()
                             .map(|l| {
-                                let name = l.base.display_name.as_deref().unwrap_or("未知");
+                                // 与 context 行一致：玩家 User 行用当前档案名，旁白/系统保持原样。
+                                let name: &str = if this.use_current_player_name(&l.base) {
+                                    &this.player_name
+                                } else {
+                                    l.base.display_name.as_deref().unwrap_or("未知")
+                                };
                                 let s = match name {
                                     "旁白" | "系统" => l.base.content.clone(),
                                     _ => format!("{}: {}", name, l.base.content),

@@ -16,3 +16,5 @@ export { default as SettingsTts } from "./SettingsTts.vue";
 export { default as SettingsAsr } from "./SettingsAsr.vue";
 export { default as SettingsPlugins } from "./SettingsPlugins.vue";
 export { default as SettingsCast } from "./SettingsCast.vue";
+export { default as PlayerIdentityCard } from "./PlayerIdentityCard.vue";
+export { default as PlayerProfileModal } from "./PlayerProfileModal.vue";

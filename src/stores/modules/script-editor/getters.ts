@@ -16,6 +16,7 @@ import type {
   ScriptCharacter,
 } from "@/api/services/script-editor";
 import { emptyAssets, useEditorState } from "./state";
+import { useUserStore } from "../user/user";
 
 type StateRefs = ReturnType<typeof useEditorState>;
 
@@ -83,6 +84,13 @@ export const useEditorGetters = (s: StateRefs) => {
     const scriptUserName = (ss?.script_settings as Record<string, unknown> | undefined)?.user_name;
     if (typeof scriptUserName === "string" && scriptUserName.trim()) {
       return scriptUserName.trim();
+    }
+    // 解耦玩家与 AI：剧本未覆盖时，用全局玩家档案名（user store 已由初始化加载）。
+    // 只有真正完成加载才采用档案：未加载时可能只是默认值「玩家」，继续走下方字面
+    // 回退；加载成功后即使真实档案名就叫「玩家」，也按档案值处理。
+    const userStore = useUserStore();
+    if (userStore.profileLoaded && userStore.playerProfile?.user_name) {
+      return userStore.playerProfile.user_name;
     }
     return i18n.global.t("scriptEditor.fieldRow.mainRole");
   });

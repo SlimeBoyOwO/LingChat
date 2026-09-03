@@ -98,6 +98,7 @@ export default {
       choices: "Choices",
       input: "Wait for input",
       setVariable: "Set variable",
+      setPlayerIdentity: "Set player identity",
       chapterEnd: "Chapter end",
       modifyCharacter: "Adjust character",
       background: "Background",
@@ -138,6 +139,11 @@ export default {
       nextChapter: "Next chapter",
       branchOptions: "Branches",
       aiJudgePrompt: "AI judgment prompt",
+      userName: "Player name",
+      userSubtitle: "Player subtitle",
+      userPrompt: "Player prompt",
+      personaId: "Base persona",
+      scope: "Scope",
       nextLegacy: "Next chapter (legacy field)",
       action: "Action",
       clothes: "Outfit",
@@ -210,6 +216,11 @@ export default {
         "The English identifier for this achievement; it must not collide with built-in achievements or other achievements in this script (the validator will warn)",
       achievementTitle: "The achievement name shown to players in the achievement list",
       achievementDesc: "The completion-condition description shown to players",
+      userName:
+        "Temporarily switches the narrative/dialogue perspective within the script. Leave empty to change only the subtitle or prompt",
+      userPrompt: "Extra system prompt injected on the player side",
+      personaId:
+        "Use this player persona card as the base, then overlay the overrides below (applies for chapter/script; ignored for permanent). Leave empty for the active persona",
       condition: "When set, this event only runs if the condition is met; empty always triggers",
       duration:
         "After the event is shown, waits N seconds before continuing, as a cooldown between events; empty or negative waits for the player to click",
@@ -223,6 +234,8 @@ export default {
     placeholder: {
       narrationDisplayName: "Narrator",
       playerDisplayName: "(follows player name)",
+      userName: "(leave empty to keep current)",
+      userSubtitle: "(leave empty to keep current)",
       freeDialogueHint: "Free dialogue...",
       endLine: "End",
       inputHint: "Please type...",
@@ -234,6 +247,9 @@ export default {
     option: {
       showCharacter: "Show character",
       hideCharacter: "Hide character",
+      scopeChapter: "Chapter",
+      scopeScript: "Script",
+      scopePermanent: "Permanent",
       endTypeLinear: "Jump directly",
       endTypeBranching: "Branch by condition",
       endTypeAiJudged: "Ask AI to judge",
@@ -254,6 +270,9 @@ export default {
     },
   },
   characters: {
+    playerSection: "Player Profile",
+    playerHint:
+      "Default player identity when running the script (can be temporarily overridden by 'Set Player Identity' events)",
     menuTitle: "Script characters",
     empty: "No script characters yet \u2014 create one below or import from the global library",
     noLocalAvatar:

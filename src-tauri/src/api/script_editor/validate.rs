@@ -552,6 +552,62 @@ pub fn validate(
                 "set_variable" => {
                     check_set_variable(obj, cid, i, &mut diags, &mut vars_written, &mut vars_read);
                 },
+                "set_player_identity" => {
+                    // scope 缺省为 chapter（与引擎一致）；一旦写了就必须是三个合法值之一，
+                    // 否则引擎会告警回退 chapter —— 作者应当看到明确错误而不是静默生效。
+                    if let Some(scope_value) = obj.get("scope").filter(|v| !v.is_null()) {
+                        let scope = scope_value.as_str().unwrap_or("");
+                        if !matches!(scope.trim(), "chapter" | "script" | "permanent") {
+                            let shown = match scope_value {
+                                JsonValue::String(s) => s.clone(),
+                                other => other.to_string(),
+                            };
+                            diags.push(
+                                Diagnostic::event(
+                                    Severity::Error,
+                                    "field.invalid_scope",
+                                    cid,
+                                    i,
+                                    format!(
+                                        "第 {} 个事件（set_player_identity）的 scope「{}」无效，只能是 chapter / script / permanent；引擎会回退为 chapter",
+                                        i + 1,
+                                        shown
+                                    ),
+                                )
+                                .with_field("scope"),
+                            );
+                        }
+                    }
+                    // persona_id 只在 chapter/script 作用域下生效；permanent 时引擎忽略它
+                    // （脚本不自动新建人设，permanent 只更新当前激活人设），作者应提前看到提示。
+                    if let Some(pid) = obj
+                        .get("persona_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                    {
+                        let scope = obj
+                            .get("scope")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("chapter");
+                        if scope.trim() == "permanent" {
+                            diags.push(
+                                Diagnostic::event(
+                                    Severity::Warn,
+                                    "field.persona_id_ignored_permanent",
+                                    cid,
+                                    i,
+                                    format!(
+                                        "第 {} 个事件（set_player_identity）指定了 persona_id「{}」，但 scope 为 permanent，此刻人设卡不会生效（permanent 只更新当前激活人设）",
+                                        i + 1,
+                                        pid
+                                    ),
+                                )
+                                .with_field("persona_id"),
+                            );
+                        }
+                    }
+                },
                 "free_dialogue" => {
                     let rounds = obj.get("max_rounds").and_then(|v| v.as_i64()).unwrap_or(-1);
                     let end_line = obj

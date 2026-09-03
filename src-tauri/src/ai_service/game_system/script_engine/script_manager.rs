@@ -13,13 +13,18 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::{Context, Result, anyhow};
 use serde_json::Value;
 
+use crate::ai_service::game_system::player_profile_sync::{
+    apply_player_identity, restore_player_identity_for_script_end,
+};
 use crate::ai_service::game_system::script_engine::chapter::Chapter;
 use crate::ai_service::game_system::script_engine::events::ScriptContext;
 use crate::ai_service::game_system::script_engine::responses::{
     ScriptEndPayload, event_names::SCRIPT_END,
 };
 use crate::ai_service::message_system::events::emit;
-use crate::ai_service::types::{AdventureConfig, LineAttributeExt, LineBase, ScriptStatus};
+use crate::ai_service::types::{
+    AdventureConfig, IdentityScope, LineAttributeExt, LineBase, ScriptStatus,
+};
 use crate::db::entities::line::LineAttribute;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
@@ -289,18 +294,31 @@ impl ScriptManager {
         // Set script_status on GameStatus
         ctx.game_status.lock().await.script_status = Some(script.clone());
 
-        // Load player info from script settings
-        if let Some(user_name) = script.settings.get("user_name").and_then(|v| v.as_str()) {
-            if !user_name.is_empty() {
-                ctx.game_status.lock().await.player.user_name = user_name.to_string();
-            }
-        }
-        if let Some(user_subtitle) = script
+        // 从剧本 settings 应用玩家身份覆盖。统一走 apply_player_identity：
+        // 旧逻辑直接改 gs.player 不压快照，on_script_end 也就无法可靠还原。
+        // 两个字段都没有时不调用，避免产生无意义的身份事件与记忆重建。
+        let script_user_name = script
+            .settings
+            .get("user_name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        let script_user_subtitle = script
             .settings
             .get("user_subtitle")
             .and_then(|v| v.as_str())
-        {
-            ctx.game_status.lock().await.player.user_subtitle = user_subtitle.to_string();
+            .map(|s| s.to_string());
+        if script_user_name.is_some() || script_user_subtitle.is_some() {
+            apply_player_identity(
+                ctx,
+                None, // persona_id：脚本设置只覆盖字段，不指定人设卡
+                script_user_name,
+                script_user_subtitle,
+                None,
+                IdentityScope::Script,
+            )
+            .await?;
         }
 
         // Register script roles from characters/ subdirectory (if exists)
@@ -423,13 +441,20 @@ impl ScriptManager {
                 no_emotion_limit: true,
             };
             if !prompt.is_empty() {
+                // 只加一次锁取出玩家信息并在独立作用域内立即释放，
+                // 避免在 sys_prompt_builder 参数求值中对同一个 tokio::Mutex 连续加锁导致死锁。
+                let (user_name, user_prompt) = {
+                    let guard = ctx.game_status.lock().await;
+                    (guard.player.user_name.clone(), guard.player.user_prompt.clone())
+                };
                 let ai_prompt = sys_prompt_builder(
-                    &ctx.game_status.lock().await.player.user_name,
+                    &user_name,
                     &settings.ai_name,
                     &prompt,
                     settings.system_prompt_example.as_deref(),
                     settings.system_prompt_example_old.as_deref(),
                     prompt_options,
+                    &user_prompt,
                 );
                 let sys_line = LineBase {
                     content: ai_prompt,
@@ -545,6 +570,13 @@ impl ScriptManager {
                 }
             }
             gs.script_status = None;
+        }
+
+        // 还原剧本切换过的玩家身份（弹出全部 chapter/script 快照，作用域到期）。
+        // 还原失败只记录错误：is_running 与剧本状态清理必须继续，否则运行标记
+        // 会卡在 true，前端无法再开启下一场剧本。
+        if let Err(e) = restore_player_identity_for_script_end(ctx).await {
+            tracing::error!("[ScriptManager] 还原玩家身份失败: {e:#}");
         }
 
         is_running.store(false, Ordering::SeqCst);

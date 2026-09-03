@@ -18,10 +18,24 @@ use crate::ai_service::types::{
 use crate::config::{self, AppConfig};
 use crate::db::entities::line;
 use crate::db::entities::line::LineAttribute;
+use crate::db::managers::player_profile_repo::PlayerProfileRepo;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::prompt::{PromptOptions, PromptRole, sys_prompt_builder_by_settings};
 
 // ========== 响应类型 ==========
+
+/// 玩家档案初始化数据（对应前端 `PlayerProfile` 接口）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct PlayerProfileInit {
+    pub user_name: String,
+    pub user_subtitle: String,
+    pub user_prompt: String,
+    /// 简介 / 一句话人设
+    pub info: String,
+    /// 说话风格示例
+    pub system_prompt_example: String,
+}
 
 /// 对应前端 `WebInitData`（`src/api/services/game-info.ts`）
 #[derive(Debug, Clone, Serialize)]
@@ -49,6 +63,8 @@ pub struct WebInitData {
     pub last_bgm_mode: Option<String>,
     /// 上次环境音轨道（JSON 字符串，前端解析）
     pub last_ambient_tracks: Option<String>,
+    /// 全局玩家档案（解耦玩家与 AI 设定）
+    pub player_profile: PlayerProfileInit,
 }
 
 /// 精简的角色设定，匹配前端 `CharacterSettings` 接口
@@ -409,13 +425,21 @@ pub async fn clear_conversation(app: AppHandle) -> Result<WebInitData, String> {
 }
 
 /// 为台词列表计算玩家消息序号（1-indexed）。
-/// 玩家消息由 `sender_role_id == Some(0) && attribute == User` 标识。
+///
+/// 玩家消息由 `sender_role_id == Some(0) && attribute == User` 标识，但旁白
+/// 也以 User 行存储（display_name 为「旁白」，或原文以 `{旁白` 开头），
+/// 它们不是玩家发言，必须排除，否则玩家消息回溯会串号。
 pub fn compute_user_message_seqs(line_list: &[GameLine]) -> Vec<Option<u32>> {
     let mut count = 0u32;
     line_list
         .iter()
         .map(|gl| {
-            if gl.base.sender_role_id == Some(0) && matches!(gl.attribute(), LineAttribute::User) {
+            let is_player = gl.base.sender_role_id
+                == Some(crate::ai_service::types::PLAYER_ROLE_ID)
+                && matches!(gl.attribute(), LineAttribute::User);
+            let is_narrator = gl.base.display_name.as_deref() == Some("旁白")
+                || gl.base.content.trim_start().starts_with("{旁白");
+            if is_player && !is_narrator {
                 count += 1;
                 Some(count)
             } else {
@@ -579,6 +603,30 @@ pub(crate) async fn build_web_init_data(
         None
     };
 
+    // 加载全局玩家档案（解耦玩家与 AI 设定，纯 DB 存储）
+    // 表为空时自动从当前 AIService 的角色设置播种默认人设卡。
+    let player_profile = {
+        match PlayerProfileRepo::ensure_profile(&service.db, service.settings.as_ref()).await {
+            Ok(profile) => PlayerProfileInit {
+                user_name: profile.user_name.clone(),
+                user_subtitle: profile.user_subtitle.unwrap_or_default(),
+                user_prompt: profile.user_prompt.unwrap_or_default(),
+                info: profile.info.unwrap_or_default(),
+                system_prompt_example: profile.system_prompt_example.unwrap_or_default(),
+            },
+            Err(e) => {
+                tracing::warn!("读取玩家档案失败: {e}");
+                PlayerProfileInit {
+                    user_name: "玩家".to_string(),
+                    user_subtitle: String::new(),
+                    user_prompt: String::new(),
+                    info: String::new(),
+                    system_prompt_example: String::new(),
+                }
+            }
+        }
+    };
+
     let result = WebInitData {
         character_settings,
         current_interact_role_id: current_role_id,
@@ -595,6 +643,7 @@ pub(crate) async fn build_web_init_data(
         last_bgm_paused,
         last_bgm_mode,
         last_ambient_tracks,
+        player_profile,
     };
     Ok(result)
 }
@@ -605,7 +654,7 @@ pub(crate) async fn build_web_init_data(
 
 #[tauri::command]
 pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue, String> {
-    if role_id == 0 {
+    if role_id == crate::ai_service::types::PLAYER_ROLE_ID {
         return Err("无法添加玩家角色 (role_id=0)".to_string());
     }
 
@@ -649,8 +698,15 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
             .clone()
             .unwrap_or_else(|| format!("角色{}", role_id));
 
-        // 构建角色的 system prompt
-        let system_prompt = sys_prompt_builder_by_settings(&role.settings, prompt_options);
+        // 构建角色的 system prompt（玩家名/设定块从全局 player_profile 读取，解耦玩家与 AI）
+        let player_name = gs.player.user_name.clone();
+        let player_prompt = gs.player.user_prompt.clone();
+        let system_prompt = sys_prompt_builder_by_settings(
+            &role.settings,
+            Some(&player_name),
+            prompt_options,
+            &player_prompt,
+        );
 
         // ★ 注入 System 行必须在 onstage_role 之前。
         //    仅当台词表中不存在本角色的 System 行时才添加（避免退出后重入时重复）。
@@ -712,7 +768,7 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
 
 #[tauri::command]
 pub async fn remove_role_from_scene(app: AppHandle, role_id: i32) -> Result<JsonValue, String> {
-    if role_id == 0 {
+    if role_id == crate::ai_service::types::PLAYER_ROLE_ID {
         return Err("无法移除玩家角色 (role_id=0)".to_string());
     }
 

@@ -45,6 +45,16 @@ export interface GameLineInit {
 }
 
 // 2. 定义完整的初始化数据接口 (对应 Rust WebInitData)
+export interface PlayerProfile {
+  user_name: string;
+  user_subtitle: string;
+  user_prompt: string;
+  /** 简介 / 一句话人设 */
+  info: string;
+  /** 说话风格示例 */
+  system_prompt_example: string;
+}
+
 export interface WebInitData {
   character_settings: CharacterSettings;
   current_interact_role_id: number | null;
@@ -66,6 +76,8 @@ export interface WebInitData {
   last_bgm_mode?: string | null;
   /** 上次会话环境音轨道（JSON 字符串） */
   last_ambient_tracks?: string | null;
+  /** 全局玩家档案（解耦玩家与 AI 设定） */
+  player_profile?: PlayerProfile;
 }
 
 /**

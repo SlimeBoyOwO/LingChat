@@ -20,6 +20,7 @@ pub mod music_event;
 pub mod narration_event;
 pub mod player_event;
 pub mod present_pic_event;
+pub mod set_player_identity_event;
 pub mod set_variable_event;
 pub mod sound_event;
 
@@ -141,6 +142,19 @@ pub fn register_event(event_type: &'static str, factory: EventFactory) {
 pub fn create_event(event_type: &str, event_data: Value) -> Option<Box<dyn ScriptEvent>> {
     let registry = REGISTRY.read().expect("event registry poisoned");
     registry.get(event_type).map(|f| f(event_data))
+}
+
+/// 返回注册表中全部事件类型（排序去重）。
+///
+/// 供编辑器 schema 的测试动态核对「引擎注册表 ↔ schema 单一真相源」：
+/// 两边任一侧新增/移除事件，测试都会失败，倒逼同步修改，避免再出现
+/// 注释、schema、注册表三处计数各说各话。
+pub fn registered_event_types() -> Vec<&'static str> {
+    let registry = REGISTRY.read().expect("event registry poisoned");
+    let mut keys: Vec<&'static str> = registry.keys().copied().collect();
+    keys.sort_unstable();
+    keys.dedup();
+    keys
 }
 
 /// 从事件 YAML 里读取 `duration`（事件间隔秒数）。

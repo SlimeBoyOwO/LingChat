@@ -27,12 +27,25 @@
                 class="py-1"
                 :class="{ 'mt-0 border-t border-white/10 pt-3': !item.isNarration && i > 0 }"
               >
-                <div v-if="!item.isNarration" class="mb-1 flex items-center justify-between">
-                  <span class="text-[17px] font-semibold text-[#79d9ff]">
-                    {{ item.displayName }}
+                <div v-if="item.kind !== 'narrator'" class="mb-1 flex items-center justify-between">
+                  <span class="flex items-center gap-2">
+                    <span class="text-[17px] font-semibold text-[#79d9ff]">
+                      {{ item.displayName }}
+                    </span>
+                    <span
+                      v-if="item.kind === 'player'"
+                      class="rounded-full bg-[rgba(121,217,255,0.12)] px-2 py-0.5 text-xs
+                        font-medium text-[#79d9ff]"
+                    >
+                      {{ $t("settings.history.you") }}
+                    </span>
                   </span>
                   <button
-                    v-if="typeof item.userMessageSeq === 'number' && !gameStore.runningScript"
+                    v-if="
+                      item.kind === 'player' &&
+                      typeof item.userMessageSeq === 'number' &&
+                      !gameStore.runningScript
+                    "
                     class="shrink-0 cursor-pointer rounded border border-white/10 bg-transparent
                       px-2 py-0.5 text-xs text-white/40 transition-all duration-200
                       hover:border-red-400/50 hover:bg-red-500/20 hover:text-white"
@@ -167,6 +180,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { hkify } from "@/locales";
   import type { GameLineInit } from "@/api/services/game-info";
+  import { messageKindOf, type MessageKind } from "@/utils/messageKind";
 
   interface Segment {
     type: "dialogue" | "action";
@@ -186,6 +200,8 @@
 
   interface HistoryBlock {
     displayName: string;
+    /** 语义分类：玩家 / AI / 旁白（历史列表不渲染 system） */
+    kind: MessageKind;
     isNarration: boolean;
     lines: LineEntry[];
     userMessageSeq?: number;
@@ -204,7 +220,6 @@
   let suppressAutoScroll = false;
 
   const dialogHistory = computed<GameMessage[]>(() => gameStore.dialogHistory);
-  const narrationNames = new Set(["", "旁白", "系统", "Narrator", "System"]);
   const ACTION_RE = /（[^）]*）/;
 
   // 每页显示的台词数量
@@ -267,12 +282,16 @@
       const absIndex = pageStart + pageIndex;
       if (!msg.content || msg.content.trim() === "") continue;
 
-      const isNarration = narrationNames.has(msg.displayName || "");
+      const kind = messageKindOf(msg);
+      // system 仅作为类型保留，不进入历史渲染
+      if (!kind) continue;
+
+      const isNarration = kind === "narrator";
 
       const name = isNarration
-        ? ""
+        ? msg.displayName || ""
         : msg.displayName ||
-          (msg.type === "message"
+          (kind === "player"
             ? gameStore.userName || gameStore.mainRole?.roleName || t("settings.history.you")
             : t("settings.history.mysteryVoice"));
 
@@ -292,7 +311,7 @@
       };
 
       const last = blocks.length > 0 ? blocks[blocks.length - 1] : null;
-      if (last && last.displayName === name && last.isNarration === isNarration) {
+      if (last && last.kind === kind && last.displayName === name) {
         if (typeof entry.userMessageSeq === "number" && last.userMessageSeq === undefined) {
           last.userMessageSeq = entry.userMessageSeq;
         }
@@ -303,6 +322,7 @@
       } else {
         blocks.push({
           displayName: name,
+          kind,
           isNarration,
           lines: [entry],
           userMessageSeq: entry.userMessageSeq,

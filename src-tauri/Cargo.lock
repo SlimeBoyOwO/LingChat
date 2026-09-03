@@ -3701,7 +3701,7 @@ dependencies = [
 [[package]]
 name = "jpreprocess-core"
 version = "0.13.2"
-source = "git+https://gh-proxy.org/github.com/shadow01a/jpreprocess?branch=main#39f5b0d2c08d7e656ba2f5c353cc63f3cb17ce1e"
+source = "git+https://github.com/shadow01a/jpreprocess?branch=main#39f5b0d2c08d7e656ba2f5c353cc63f3cb17ce1e"
 dependencies = [
  "aho-corasick",
  "bincode",
@@ -3739,7 +3739,7 @@ dependencies = [
 [[package]]
 name = "jpreprocess-dictionary"
 version = "0.13.2"
-source = "git+https://gh-proxy.org/github.com/shadow01a/jpreprocess?branch=main#39f5b0d2c08d7e656ba2f5c353cc63f3cb17ce1e"
+source = "git+https://github.com/shadow01a/jpreprocess?branch=main#39f5b0d2c08d7e656ba2f5c353cc63f3cb17ce1e"
 dependencies = [
  "anyhow",
  "bincode",
@@ -3749,7 +3749,7 @@ dependencies = [
  "encoding_rs",
  "encoding_rs_io",
  "glob",
- "jpreprocess-core 0.13.2 (git+https://gh-proxy.org/github.com/shadow01a/jpreprocess?branch=main)",
+ "jpreprocess-core 0.13.2 (git+https://github.com/shadow01a/jpreprocess?branch=main)",
  "lindera",
  "lindera-dictionary",
  "log",
@@ -3773,11 +3773,11 @@ dependencies = [
 [[package]]
 name = "jpreprocess-naist-jdic"
 version = "0.13.2"
-source = "git+https://gh-proxy.org/github.com/shadow01a/jpreprocess?branch=main#39f5b0d2c08d7e656ba2f5c353cc63f3cb17ce1e"
+source = "git+https://github.com/shadow01a/jpreprocess?branch=main#39f5b0d2c08d7e656ba2f5c353cc63f3cb17ce1e"
 dependencies = [
  "bincode",
  "flate2",
- "jpreprocess-dictionary 0.13.2 (git+https://gh-proxy.org/github.com/shadow01a/jpreprocess?branch=main)",
+ "jpreprocess-dictionary 0.13.2 (git+https://github.com/shadow01a/jpreprocess?branch=main)",
  "lindera-dictionary",
  "md5",
  "reqwest 0.12.28",
@@ -7158,7 +7158,7 @@ dependencies = [
 [[package]]
 name = "sbv2_core"
 version = "0.2.0"
-source = "git+https://gh-proxy.org/github.com/shadow01a/sbv2-api/#ffb0b591e55d82091c4db210772c069859be99e9"
+source = "git+https://github.com/shadow01a/sbv2-api/#ffb0b591e55d82091c4db210772c069859be99e9"
 dependencies = [
  "anyhow",
  "dirs",

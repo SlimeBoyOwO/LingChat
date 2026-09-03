@@ -26,6 +26,7 @@ export default class NarrationProcessor implements IEventProcessor {
 
     gameStore.appendGameMessage({
       type: "message",
+      messageType: "narrator",
       displayName: "旁白",
       content: event.text,
     });

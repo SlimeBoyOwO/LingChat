@@ -188,7 +188,7 @@ impl MessageGenerator {
             content: main.clone(),
             attribute: LineAttributeExt(LineAttribute::User),
             display_name: Some(user_name),
-            sender_role_id: Some(0),
+            sender_role_id: Some(crate::ai_service::types::PLAYER_ROLE_ID),
             ..Default::default()
         };
         gs.add_line(&self.deps.db, line).await?;
@@ -197,7 +197,7 @@ impl MessageGenerator {
             gs.line_list
                 .iter()
                 .filter(|l| {
-                    l.base.sender_role_id == Some(0) && matches!(l.attribute(), LineAttribute::User)
+                    l.base.sender_role_id == Some(crate::ai_service::types::PLAYER_ROLE_ID) && matches!(l.attribute(), LineAttribute::User)
                 })
                 .count() as u32,
         );
@@ -322,7 +322,7 @@ impl MessageGenerator {
             god.decide_next_speaker(&gs, current_speaker).await?
         };
 
-        if selected_role_id == 0 {
+        if selected_role_id == crate::ai_service::types::PLAYER_ROLE_ID {
             return Ok(()); // 选择玩家，保持现状
         }
 
@@ -379,7 +379,7 @@ impl MessageGenerator {
             god.decide_next_speaker(&gs, current_speaker).await?
         };
 
-        if selected_role_id == 0 {
+        if selected_role_id == crate::ai_service::types::PLAYER_ROLE_ID {
             // 交还玩家
             return Ok((false, 0));
         }

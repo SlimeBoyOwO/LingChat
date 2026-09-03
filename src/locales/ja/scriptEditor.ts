@@ -95,6 +95,7 @@ export default {
       choices: "選択肢",
       input: "入力待ち",
       setVariable: "変数の設定",
+      setPlayerIdentity: "プレイヤー身分の切り替え",
       chapterEnd: "章の終了",
       modifyCharacter: "キャラクターの調整",
       background: "背景",
@@ -135,6 +136,11 @@ export default {
       nextChapter: "次の章",
       branchOptions: "分岐",
       aiJudgePrompt: "AI 判定のプロンプト",
+      userName: "プレイヤー名",
+      userSubtitle: "プレイヤーのサブタイトル",
+      userPrompt: "プレイヤー用プロンプト",
+      personaId: "基底ペルソナ",
+      scope: "有効範囲",
       nextLegacy: "次の章（旧フィールド）",
       action: "動作",
       clothes: "衣装",
@@ -206,6 +212,11 @@ export default {
         "この実績に付ける英語の識別子です。内蔵実績やこのシナリオの他の実績と同名にしないでください（検証器が警告します）",
       achievementTitle: "実績リストでプレイヤーに表示される実績の名前です",
       achievementDesc: "達成条件の説明です。プレイヤーに表示されます",
+      userName:
+        "シナリオ内で一時的にプレイヤー身分を切り替えます。空欄の場合はサブタイトルまたはプロンプトのみ変更します",
+      userPrompt: "プレイヤー側のシステムプロンプトを追加で注入します",
+      personaId:
+        "このペルソナカードを基底にして、さらに下の上書きを重ねます（chapter/script で有効、permanent では無視）。空欄なら現在の有効ペルソナを使います",
       condition:
         "条件を設定すると、条件を満たした場合のみこのイベントが実行されます。空欄なら必ず発動します",
       duration:
@@ -220,6 +231,8 @@ export default {
     placeholder: {
       narrationDisplayName: "ナレーション",
       playerDisplayName: "（プレイヤー名に従う）",
+      userName: "（空欄なら現在のまま）",
+      userSubtitle: "（空欄なら現在のまま）",
       freeDialogueHint: "自由会話...",
       endLine: "終了",
       inputHint: "入力してください...",
@@ -231,6 +244,9 @@ export default {
     option: {
       showCharacter: "キャラクターを表示",
       hideCharacter: "キャラクターを非表示",
+      scopeChapter: "チャプター",
+      scopeScript: "シナリオ",
+      scopePermanent: "永続",
       endTypeLinear: "直接ジャンプ",
       endTypeBranching: "条件分岐",
       endTypeAiJudged: "AI に判定させる",
@@ -251,6 +267,9 @@ export default {
     },
   },
   characters: {
+    playerSection: "プレイヤープロフィール",
+    playerHint:
+      "スクリプト実行時のプレイヤー識別名（スクリプト内の「プレイヤー識別切替」イベントで上書き可能）",
     menuTitle: "シナリオ内キャラクター",
     empty:
       "まだシナリオ内キャラクターがいません。下の新規作成か、グローバルキャラクターライブラリからのインポートで追加できます",

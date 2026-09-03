@@ -262,6 +262,7 @@ impl GameRoleManager {
         db: &DatabaseConnection,
         lines: &[GameLine],
         recent_n: Option<usize>,
+        player_name: &str,
     ) -> Result<()> {
         let source_lines: &[GameLine] = match recent_n {
             Some(n) if n < lines.len() => &lines[lines.len() - n..],
@@ -271,8 +272,8 @@ impl GameRoleManager {
         let mut involved_ids: HashSet<i32> = HashSet::new();
         for line in source_lines {
             if let Some(sid) = line.sender_role_id() {
-                // 跳过 id 为 0 的角色（ 0 代表的是玩家，不参与记忆同步）
-                if sid != 0 {
+                // 跳过 id 为 0 的角色（PLAYER_ROLE_ID 代表玩家，不参与记忆同步）
+                if sid != crate::ai_service::types::PLAYER_ROLE_ID {
                     involved_ids.insert(sid);
                 }
             }
@@ -300,6 +301,7 @@ impl GameRoleManager {
                 rid,
                 &bank_clone,
                 &display_name,
+                player_name,
                 mb_enabled,
                 self.memory_update_interval as usize,
                 self.memory_recent_window as usize,
@@ -344,7 +346,9 @@ impl GameRoleManager {
                 }
             }
 
-            let built = MemoryBuilder::new(rid).build(&final_sliced);
+            // 读档重放旧台词时，User 行的 display_name 可能是旧玩家名；
+            // LLM 上下文统一用当前玩家档案名（展示层/历史行不改）。
+            let built = MemoryBuilder::new(rid, player_name.to_string()).build(&final_sliced);
 
             // 阶段 4: 写入角色记忆
             if let Some(role) = self.loaded_roles.get_mut(&rid) {
@@ -375,12 +379,14 @@ impl GameRoleManager {
 
     /// 惰性构造角色的 `PersistentMemorySystem`。
     ///
+    /// `player_name` 用于永久记忆压缩时把旧玩家 User 行按当前档案名格式化。
     /// 调用方保证在 `enabled=true` 时槽位内已就绪 LLM（构造函数注入）。
     fn ensure_memory_bank_system(
         &mut self,
         role_id: i32,
         bank: &GameMemoryBank,
         display_name: &str,
+        player_name: &str,
         enabled: bool,
         update_interval: usize,
         recent_window: usize,
@@ -410,16 +416,19 @@ impl GameRoleManager {
                 recent_window,
                 limits,
                 display_name,
+                player_name,
             ),
         );
     }
 
     /// 从 DB 加载 MemoryBank 到运行时缓存。应在 "载入存档" 时调用。
+    /// `player_name` 用于后续永久记忆压缩时按当前玩家档案名格式化旧 User 行。
     pub async fn load_memory_banks_from_db(
         &mut self,
         db: &DatabaseConnection,
         save_id: i32,
         role_ids: Option<&[i32]>,
+        player_name: &str,
     ) -> Result<()> {
         let memories = MemoryRepo::get_memories(db, save_id, None).await?;
 
@@ -468,6 +477,7 @@ impl GameRoleManager {
                 rid,
                 &bank,
                 &display_name,
+                player_name,
                 enabled,
                 self.memory_update_interval as usize,
                 self.memory_recent_window as usize,

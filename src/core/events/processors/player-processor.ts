@@ -22,6 +22,7 @@ export default class PlayerProcessor implements IEventProcessor {
 
     gameStore.appendGameMessage({
       type: "message",
+      messageType: "player",
       displayName: displayName,
       content: event.text,
     });

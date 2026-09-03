@@ -128,6 +128,8 @@ pub struct PersistentMemorySystem {
     #[allow(dead_code)]
     role_id: i32,
     ai_name: String,
+    /// 当前玩家档案名：压缩旧台词时，玩家 User 行统一按此名格式化。
+    player_name: String,
 
     /// LLM 槽位（支持运行时热切换）。
     llm: LlmSlot,
@@ -223,10 +225,12 @@ impl PersistentMemorySystem {
         recent_window: usize,
         limits: MemorySectionLimits,
         display_name: &str,
+        player_name: &str,
     ) -> Self {
         Self {
             role_id,
             ai_name: display_name.to_string(),
+            player_name: player_name.to_string(),
             llm,
             memory_bank: Arc::new(Mutex::new(initial_bank.clone())),
             is_updating: Arc::new(AtomicBool::new(false)),
@@ -642,8 +646,9 @@ impl PersistentMemorySystem {
             return (String::new(), 0);
         }
 
-        // 用 MemoryBuilder 构建角色视角上下文
-        let builder = MemoryBuilder::new(self.role_id);
+        // 用 MemoryBuilder 构建角色视角上下文；玩家 User 行使用当前档案名，
+        // 避免把旧档里的旧玩家名带进压缩摘要。
+        let builder = MemoryBuilder::new(self.role_id, self.player_name.clone());
         let built = builder.build(lines);
 
         let mut chunks: Vec<String> = Vec::new();
@@ -709,6 +714,8 @@ mod tests {
         bank.meta.last_processed_global_idx = processed;
         let llm: LlmSlot = Arc::new(RwLock::new(None));
         PersistentMemorySystem::new(
+            // 测试里没有真实玩家档案，用默认名占位
+
             7,
             &bank,
             llm,
@@ -717,6 +724,7 @@ mod tests {
             recent_window,
             MemorySectionLimits::default(),
             "AI",
+            "玩家",
         )
     }
 

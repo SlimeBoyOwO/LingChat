@@ -611,11 +611,56 @@ impl std::hash::Hash for GameRole {
 // Player
 // ==========================================
 
+/// 玩家的虚拟角色 ID（不占 DB 真实角色行）。
+/// 所有玩家消息的 `sender_role_id` 都用此常量，替代魔法数字 0。
+pub const PLAYER_ROLE_ID: i32 = 0;
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Player {
+    /// 当前生效的玩家人设卡 id（如「default」「勇者」）。空串表示未绑定具体人设卡。
+    #[serde(default)]
+    pub card_id: String,
     pub user_name: String,
     pub user_subtitle: String,
     pub user_prompt: String,
+}
+
+/// 剧本内玩家身份切换的作用域。
+///
+/// - `chapter`：章节结束（chapter_end）时还原；
+/// - `script`：整个剧本结束（on_script_end）时还原；
+/// - `permanent`：持久化到全局玩家档案，永久生效。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IdentityScope {
+    Chapter,
+    Script,
+    Permanent,
+}
+
+impl IdentityScope {
+    /// 序列化/日志/事件 payload 使用的小写蛇形名。
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Chapter => "chapter",
+            Self::Script => "script",
+            Self::Permanent => "permanent",
+        }
+    }
+
+    /// 从剧本 YAML 的 `scope` 字符串解析。未知值告警后回退到 chapter，
+    /// 保证旧剧本里随手写错的 scope 不会把身份改乱。
+    pub fn parse(raw: &str) -> Self {
+        match raw.trim() {
+            "chapter" => Self::Chapter,
+            "script" => Self::Script,
+            "permanent" => Self::Permanent,
+            other => {
+                tracing::warn!("未知的 set_player_identity scope: '{}'，已回退为 chapter", other);
+                Self::Chapter
+            }
+        }
+    }
 }
 
 // ==========================================

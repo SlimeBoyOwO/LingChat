@@ -1,4 +1,5 @@
 import type { ScriptEventData } from "@/api/services/script-editor";
+import { i18n } from "@/locales";
 
 /**
  * 把真实语料里高频复现的固定套路折叠成一行。
@@ -192,6 +193,24 @@ export function eventSummary(
         )
         .filter(Boolean)
         .join("；");
+    }
+    case "set_player_identity": {
+      // 空 user_name 表示保持当前身份（与事件 schema 的空值语义一致）；
+      // scope 缺省为 chapter，显示名走 schema 的 option 词条（四语翻译）。
+      const name = s("user_name") || "保持当前";
+      const personaId = typeof e.persona_id === "string" && e.persona_id ? `[${e.persona_id}]` : "";
+      const rawScope = s("scope") || "chapter";
+      const scopeKeys: Record<string, string> = {
+        chapter: "scopeChapter",
+        script: "scopeScript",
+        permanent: "scopePermanent",
+      };
+      const scopeKey = scopeKeys[rawScope];
+      const scopeLabel =
+        scopeKey && i18n.global.te(`scriptEditor.schema.option.${scopeKey}`)
+          ? i18n.global.t(`scriptEditor.schema.option.${scopeKey}`)
+          : rawScope;
+      return `${name}${personaId} → ${scopeLabel}`;
     }
     case "chapter_end": {
       const et = s("end_type") || "linear";

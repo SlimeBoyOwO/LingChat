@@ -54,7 +54,7 @@ impl ScriptEvent for PlayerEvent {
             content: self.text.clone(),
             attribute: LineAttributeExt(LineAttribute::User),
             display_name: Some(display_name),
-            sender_role_id: Some(0),
+            sender_role_id: Some(crate::ai_service::types::PLAYER_ROLE_ID),
             ..Default::default()
         };
         ctx.game_status.lock().await.add_line(ctx.db, line).await?;
