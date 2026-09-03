@@ -160,6 +160,18 @@ export default {
       reconnecting: "正在重新连接…",
       forceReconnect: "强制重新连接 TTS",
     },
+    autostart: {
+      title: "系统自启动",
+      desc: "开启后，LingChat 会写入系统开机自启动项，随开机自动启动。上方「启动即桌宠」决定开机后是否直接进入桌宠模式；外部 TTS 模式还可配置启动脚本，开机自动拉起语音服务。",
+      enable: "开启系统自启",
+      disable: "关闭系统自启",
+      status: "当前系统自启状态：{status}",
+      on: "已开启",
+      off: "未开启",
+      defaultRole: "默认启动角色",
+      noRole: "（沿用上次角色）",
+      roleHint: "选择后会自动保存，开机将默认加载该角色。",
+    },
     saveButton: "保存",
     loadFailed: "加载失败",
     loadFailedDesc: "无法加载配置或配置为空。",
@@ -178,6 +190,7 @@ export default {
       创意工坊: "创意工坊",
       日志配置: "日志配置",
       主动对话配置: "主动对话配置",
+      启动项: "启动项",
     },
     subcategories: {
       高级选项: "高级选项",
@@ -192,6 +205,8 @@ export default {
       基础开关: "基础开关",
       视觉感知设置: "视觉感知设置",
       感知与话题配置: "感知与话题配置",
+      开机自启动: "开机自启动",
+      启动设置: "启动设置",
     },
     subcategoryDescs: {
       高级选项: "调优 AI 对话行为的高级参数",
@@ -208,6 +223,8 @@ export default {
       基础开关: "主动对话功能的核心开关与触发频率设置",
       视觉感知设置: "主动对话时的桌面视觉感知开关与触发权重，视觉模型在大模型管理中配置",
       感知与话题配置: "日程、TODO与随机对话的权重及开关配置",
+      开机自启动: "开机后自动启动 LingChat",
+      启动设置: "控制 LingChat 的启动方式与默认行为",
     },
     fields: {
       llm: {
@@ -258,6 +275,21 @@ export default {
           "LOG_LLM_REQUEST_BODY — 记录每次 LLM 请求的完整请求体 JSON 到 data/log/llm/ 目录（默认关闭）",
         genai_debug:
           "LOG_GENAI_DEBUG — 开启 genai SDK 的调试日志（含请求/响应细节，保存后即时生效，默认关闭）",
+      },
+      autostart: {
+        enabled: "开启后，LingChat 将写入系统开机自启动项，随开机自动启动（仅桌面端）",
+        boot_as_pet: "以桌宠模式启动：开启后，开机自启动时以桌宠模式进入（仅 Windows 可用）",
+        pet_role_id: "开机自启动默认加载的角色 ID（留空则沿用上次游玩的角色）",
+        tts_launcher_bat:
+          "外部 TTS 模式的启动脚本（.bat）路径，用于启动时拉起自托管语音服务；内置本地 TTS 引擎可留空",
+      },
+      startup: {
+        pet_mode:
+          "以桌宠模式启动：开启后，手动点击 exe 启动时直接进入桌宠模式（与「开机自启动」里的桌宠开关相互独立，仅 Windows 可用）",
+        auto_play: "默认自动播放对话：开启后，在对话场景会默认开启自动播放对话开关（全局生效）",
+        auto_start_tts:
+          "启动时自动开启 API 服务：开启后，无论以桌宠还是正常启动，都会自动拉起并刷新外部 TTS 服务（需配置下方启动脚本）",
+        greeting: "入场问候：开启后，角色会主动先发出问候",
       },
       display: {
         disable_splash_animation:

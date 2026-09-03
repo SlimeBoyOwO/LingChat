@@ -125,6 +125,12 @@ pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result
 
     store.save().map_err(|e| e.to_string())?;
 
+    // autostart.enabled：保存配置后同步到系统开机自启动项（仅 Windows 有实际效果）
+    if let Some(value) = values.get(keys::AUTOSTART_ENABLED) {
+        let enabled = value == "true";
+        crate::api::autostart::set_system_autostart(&app, enabled)?;
+    }
+
     if memory_settings_changed {
         Ok("配置已成功保存；记忆压缩相关设置将在重启 LingChat 后生效。".to_string())
     } else {
@@ -148,9 +154,14 @@ pub fn get_setting_by_key(app: AppHandle, key: String) -> Result<ConfigSetting, 
 }
 
 #[tauri::command]
-pub fn select_file(app: AppHandle) -> Result<Option<String>, String> {
-    let file = app.dialog().file().blocking_pick_file();
-    Ok(file.map(|f| f.to_string()))
+pub async fn select_file(app: AppHandle) -> Result<Option<String>, String> {
+    // 用异步 pick_file 而非 blocking_pick_file：后者在 Tauri 同步命令的工作线程里
+    // 会阻塞，且 Windows 文件对话框需要 UI 线程，容易卡死/拿不到结果。
+    let (tx, rx) = tokio::sync::oneshot::channel::<Option<String>>();
+    app.dialog().file().pick_file(move |path| {
+        let _ = tx.send(path.map(|p| p.to_string()));
+    });
+    rx.await.map_err(|e| format!("文件选择失败: {e}"))
 }
 
 // ========== LLM Multi-Provider Management ==========

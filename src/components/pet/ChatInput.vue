@@ -168,7 +168,7 @@
     }
   );
 
-  const isInputEnabled = computed(() => gameStore.currentStatus === "input");
+  const isInputEnabled = computed(() => gameStore.currentStatus === "input" && uiStore.petReady);
 
   const props = defineProps({
     visible: {
@@ -187,19 +187,23 @@
   const isTyping = () => messageText.value.trim() != "" || isCompsing.value;
   defineExpose({ isTyping });
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     const text = messageText.value.trim();
     if (!text) return;
 
-    // 检查对话模型是否已选择
+    // 检查对话模型是否已选择。桌宠刚开机时 provider store 可能还未加载完，
+    // 先尝试加载一次，避免误拦截真实消息导致“角色看不到我输入的内容”。
     if (!llmStore.chatProviderId) {
-      uiStore.showNotification({
-        type: "warning",
-        title: t("views.pet.chatInput.noModelTitle"),
-        message: t("views.pet.chatInput.noModelMessage"),
-        skipTipsCheck: true,
-      });
-      return;
+      await llmStore.load();
+      if (!llmStore.chatProviderId) {
+        uiStore.showNotification({
+          type: "warning",
+          title: t("views.pet.chatInput.noModelTitle"),
+          message: t("views.pet.chatInput.noModelMessage"),
+          skipTipsCheck: true,
+        });
+        return;
+      }
     }
 
     if (gameStore.runningScript) {

@@ -128,6 +128,71 @@
             </p>
           </section>
 
+          <!-- 开机自启动控制（仅「启动项 → 开机自启动」子分类显示） -->
+          <section
+            v-if="
+              isWindows() &&
+              activeSelection.category === '启动项' &&
+              activeSelection.subcategory === '开机自启动'
+            "
+            class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
+          >
+            <h3 class="mb-1 text-base font-semibold text-white">
+              {{ $t("settings.advanceOther.autostart.title") }}
+            </h3>
+            <p class="mb-3 text-sm leading-6 text-white/65">
+              {{ $t("settings.advanceOther.autostart.desc") }}
+            </p>
+
+            <div class="mb-4 flex items-center gap-3">
+              <Button type="big" :disabled="togglingAutostart" @click="toggleAutostart">
+                {{
+                  systemEnabled
+                    ? $t("settings.advanceOther.autostart.disable")
+                    : $t("settings.advanceOther.autostart.enable")
+                }}
+              </Button>
+              <span class="text-sm" :class="systemEnabled ? 'text-green-400' : 'text-white/50'">
+                {{
+                  $t("settings.advanceOther.autostart.status", {
+                    status: systemEnabled
+                      ? $t("settings.advanceOther.autostart.on")
+                      : $t("settings.advanceOther.autostart.off"),
+                  })
+                }}
+              </span>
+            </div>
+
+            <div class="flex flex-col gap-2">
+              <label class="text-sm text-white/80">{{
+                $t("settings.advanceOther.autostart.defaultRole")
+              }}</label>
+              <select
+                v-model="selectedRoleId"
+                @change="applySelectedRole"
+                class="focus:border-brand focus:ring-brand/20 rounded-lg border border-white/10
+                  bg-white/10 px-3 py-2.5 text-sm text-white transition-all duration-200
+                  focus:ring-2 focus:outline-none"
+              >
+                <option value="" class="bg-black/60">
+                  {{ $t("settings.advanceOther.autostart.noRole") }}
+                </option>
+                <option
+                  v-for="c in characters"
+                  :key="c.character_id"
+                  :value="c.character_id"
+                  class="bg-black/60"
+                >
+                  {{ c.title }}
+                </option>
+              </select>
+            </div>
+
+            <p class="mt-3 text-xs text-white/45">
+              {{ $t("settings.advanceOther.autostart.roleHint") }}
+            </p>
+          </section>
+
           <!-- 保存操作区域 -->
           <div
             class="bg-brand inline-flex min-w-30 cursor-pointer flex-col gap-2 rounded-lg
@@ -167,9 +232,16 @@
   import { useUIStore } from "@/stores/modules/ui/ui";
   import SettingItem from "@/components/base/items/SettingItem.vue";
   import { Button } from "@/components/base";
-  import { getEnvConfigSettings, saveEnvConfigSettings } from "@/api/services/config";
+  import {
+    getEnvConfigSettings,
+    saveEnvConfigSettings,
+    getAutostartStatus,
+    setAutostartEnabled,
+  } from "@/api/services/config";
   import { reactivateTTS } from "@/api/services/game-info";
+  import { characterGetAll } from "@/api/services/character";
   import { switchLlm } from "@/api/services/llm-providers";
+  import { isWindows } from "@/utils/platform";
   import { RefreshCw } from "lucide-vue-next";
 
   // --- 响应式状态定义 ---
@@ -213,6 +285,13 @@
     colorClass: "text-green-400",
   });
   let reconnectStatusTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // --- 开机自启动控制状态 ---
+  const systemEnabled = ref(false);
+  const togglingAutostart = ref(false);
+  const characters = ref<{ character_id: string; title: string }[]>([]);
+  const selectedRoleId = ref<string>("");
+  let autostartLoaded = false;
 
   const emit = defineEmits<{
     "remove-more-menu-from-b": [];
@@ -305,10 +384,59 @@
     }
   };
 
+  // --- 开机自启动面板逻辑 ---
+  const loadAutostartPanel = async () => {
+    if (autostartLoaded) return;
+    autostartLoaded = true;
+    try {
+      const status = await getAutostartStatus();
+      systemEnabled.value = status.system_enabled;
+      const chars = await characterGetAll(1, 100);
+      characters.value = chars.items.map((c) => ({
+        character_id: String(c.character_id),
+        title: c.title,
+      }));
+      selectedRoleId.value = status.pet_role_id;
+    } catch (error) {
+      console.error("[Autostart] 载入开机自启状态失败:", error);
+    }
+  };
+
+  const applySelectedRole = async () => {
+    try {
+      await saveEnvConfigSettings({ "autostart.pet_role_id": selectedRoleId.value });
+    } catch (error) {
+      console.error("[Autostart] 保存默认启动角色失败:", error);
+    }
+  };
+
+  const toggleAutostart = async () => {
+    if (togglingAutostart.value) return;
+    togglingAutostart.value = true;
+    const target = !systemEnabled.value;
+    try {
+      await setAutostartEnabled(target);
+      systemEnabled.value = target;
+    } catch (error) {
+      console.error("[Autostart] 切换开机自启失败:", error);
+    } finally {
+      try {
+        const status = await getAutostartStatus();
+        systemEnabled.value = status.system_enabled;
+      } catch (error) {
+        console.error("[Autostart] 重新读取系统自启状态失败:", error);
+      }
+      togglingAutostart.value = false;
+    }
+  };
+
   const loadConfig = async (selectFirst = true) => {
     isLoading.value = true;
     try {
       configData.value = await getEnvConfigSettings();
+      if (!isWindows()) {
+        delete configData.value["启动项"]?.subcategories?.["开机自启动"];
+      }
 
       if (selectFirst && Object.keys(configData.value).length > 0) {
         const firstCategory = Object.keys(configData.value)[0];
@@ -369,6 +497,9 @@
     async () => {
       await nextTick();
       updateIndicatorPosition();
+      if (activeSelection.category === "启动项" && activeSelection.subcategory === "开机自启动") {
+        void loadAutostartPanel();
+      }
     },
     { deep: true }
   );

@@ -50,13 +50,13 @@
       <input
         type="text"
         :id="setting.key"
-        v-model="setting.value"
+        v-model="localValue"
         class="shadow-glass focus:border-brand focus:ring-brand/20 flex-1 rounded-lg border
           border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl
           backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
       />
       <button
-        @click="selectFile(setting)"
+        @click="selectFile"
         type="button"
         class="bg-brand rounded-lg px-4 py-2.5 whitespace-nowrap text-white transition-colors
           duration-200 hover:bg-[#0056b3]"
@@ -134,11 +134,13 @@
     emit("update:value", newValue);
   };
 
-  const selectFile = async (setting: { key: string; value: string }) => {
+  const selectFile = async () => {
     try {
       const path = await invoke<string | null>("select_file");
       if (path) {
-        setting.value = path;
+        // 通过 localValue 触发 watch → emit 'update:value' 回传父组件，
+        // 让父组件写回原始配置对象（而不是改 localizedSetting 复制出的新对象）
+        localValue.value = path;
       }
     } catch (error: any) {
       console.error("文件选择失败:", error);

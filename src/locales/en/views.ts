@@ -25,6 +25,7 @@ export default {
   },
   petMode: {
     settingsWindowTitle: "Settings",
+    loading: "Preparing dialogue…",
   },
   credits: {
     escExit: "ESC to exit",

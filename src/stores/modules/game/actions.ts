@@ -2,7 +2,7 @@
 import type { GameState, GameMessage, GameRole } from "./state";
 import { getGameInfo } from "../../../api/services/game-info";
 import type { GameLineInit, WebInitData } from "../../../api/services/game-info";
-import { getRoleInfo } from "../../../api/services/character";
+import { getRoleInfo, selectCharacter } from "../../../api/services/character";
 import { useUIStore } from "../ui/ui";
 import { useSettingsStore } from "../settings";
 import type { SceneInfo } from "@/api/services/scene";
@@ -33,6 +33,23 @@ export const actions = {
       console.error("初始化游戏信息失败:", error);
       throw error;
     }
+  },
+
+  /**
+   * 启动即桌宠：只加载默认角色（或沿用上次角色）。
+   * 事件队列恢复与入场问候都不在此触发，而是由 App.vue 在正确的顺序里完成：
+   * 「加载角色 → API 就绪 + 刷新 TTS → 再触发入场问候（生成语音）→ loading 结束 → 播放」。
+   * @param roleId 开机自启动默认角色 ID；>0 时切换并加载，否则沿用上次游玩的角色。
+   */
+  async bootAsPet(this: GameState, roleId?: number) {
+    let gameInfo: WebInitData;
+    if (roleId && roleId > 0) {
+      gameInfo = await selectCharacter(roleId);
+    } else {
+      gameInfo = await getGameInfo();
+    }
+    applyWebInitData(this, gameInfo);
+    return gameInfo;
   },
 
   async getOrCreateGameRole(this: GameState, role_id: number): Promise<GameRole> {

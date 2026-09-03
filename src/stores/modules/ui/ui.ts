@@ -51,6 +51,11 @@ interface UIState {
   currentAvatarAudio: string;
   autoMode: boolean;
 
+  /** 桌宠是否已就绪（就绪前禁止对话、显示 loading） */
+  petReady: boolean;
+  /** 桌宠是否正在启动准备中（由启动流程控制，用于区分开机自启 vs 手动切桌宠） */
+  petBooting: boolean;
+
   // 环境音轨道列表（多轨并行，最多8轨）
   ambientTracks: Array<{
     id: string; // 唯一标识（基于时间戳+随机数）
@@ -119,6 +124,10 @@ export const useUIStore = defineStore("ui", {
     currentSoundEffect: "None",
     currentAvatarAudio: "None",
     autoMode: false,
+
+    // 桌宠就绪状态：petBooting=true 表示正在准备（loading），petReady=true 才允许对话
+    petReady: false,
+    petBooting: false,
 
     // 环境音轨道列表初始值
     ambientTracks: [],

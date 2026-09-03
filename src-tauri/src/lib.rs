@@ -288,7 +288,12 @@ pub fn run() {
     #[cfg(desktop)]
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init());
+        .plugin(tauri_plugin_process::init())
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .args(["--autostart"])
+                .build(),
+        );
 
     builder
         .setup(move |app| {
@@ -896,6 +901,9 @@ pub fn run() {
             ai_service::tts::local::tts_local_get_device,
             ai_service::tts::local::tts_local_list_devices,
             ai_service::tts::local::tts_local_set_device,
+            api::autostart::autostart_status,
+            api::autostart::autostart_set_enabled,
+            api::autostart::autostart_boot_apply,
             // ASR 相关命令
             api::asr::asr_start_listening,
             api::asr::asr_stop_listening,
