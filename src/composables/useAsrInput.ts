@@ -306,9 +306,9 @@ function feedVad() {
   const block = vadPending.splice(0, 512);
   vadSending = true;
   // 诊断日志：前 10 块 + 每秒 1 条（33 块），确认 VAD 流在走
-  if (vadSentFrames < 10 || vadSentFrames % 33 === 0) {
-    console.log(`[ASR/VAD] feedVad #${vadSentFrames} 发送 ${block.length} samples`);
-  }
+  // if (vadSentFrames < 10 || vadSentFrames % 33 === 0) {
+  //   console.log(`[ASR/VAD] feedVad #${vadSentFrames} 发送 ${block.length} samples`);
+  // }
   vadSentFrames++;
   asrVadProcessChunk(block)
     .catch((e) => {

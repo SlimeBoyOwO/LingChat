@@ -238,6 +238,7 @@
               overflow-y-auto border-none bg-transparent font-[inherit] text-xl font-bold break-all
               whitespace-pre-line outline-none text-shadow-[inherit]"
             @keydown.enter.exact.prevent="sendOrContinue"
+            @click="sendOrContinue"
           >
             <!-- 台词区：白字（内联模式台词 / 标准模式正文） -->
             <div ref="dialogueLineRef" class="whitespace-pre-line text-white"></div>
@@ -483,8 +484,18 @@
     const next = eventQueue.peek();
     if (!next || next.type !== "reply") return;
     if (next.roleId !== gameStore.currentInteractRoleId) return;
-    if (dialogueMerge.mergedLength + next.message.length > settingsStore.text.mergeLineThreshold)
+    if (dialogueMerge.mergedLength + next.message.length > settingsStore.text.mergeLineThreshold) {
+      // console.log(
+      //   "原来的台词长度是:",
+      //   dialogueMerge.mergedLength,
+      //   "新台词长度是:",
+      //   next.message.length,
+      //   "超过阈值",
+      //   settingsStore.text.mergeLineThreshold,
+      //   "，不合并"
+      // );
       return;
+    }
 
     dialogueMerge.armed = true;
     dialogueMerge.armedRoleId = next.roleId;

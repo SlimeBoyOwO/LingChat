@@ -261,9 +261,6 @@ pub fn run() {
     let context = tauri::generate_context!();
 
     // Windows：设置 WebView2 颜色配置文件（强制使用线性 sRGB）。
-    // 用户开启「HDR 模式」时跳过强制，改用 WebView2 自动色彩管理，
-    // 避免 HDR 显示器下整体发灰/发暗。环境变量须在 WebView2 环境创建
-    // （Builder::build() 之前）设置，因此在此处直接解析 settings.json。
     #[cfg(target_os = "windows")]
     {
         if !read_hdr_mode_enabled(&context.config().identifier) {

@@ -11,5 +11,4 @@ export default {
   advance: "Advanced Settings",
   log: "Logs",
   plugins: "Plugins",
-  cast: "Cast",
 };

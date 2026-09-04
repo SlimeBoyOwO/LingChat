@@ -1,5 +1,8 @@
 <template>
-  <MenuPage>
+  <div
+    class="flex h-full min-h-0 w-full flex-wrap items-start gap-5 overflow-y-auto px-3 py-6
+      text-white text-shadow-2xs"
+  >
     <!-- 总开关（决定应用启动时是否自动开启投屏） -->
     <MenuItem :title="$t('settings.cast.enable')" size="small">
       <template #header>
@@ -235,7 +238,7 @@
       </template>
       <p v-else class="text-sm text-white/60">{{ $t("settings.cast.notRunning") }}</p>
     </MenuItem>
-  </MenuPage>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -257,7 +260,7 @@
   import { computed, onActivated, onMounted, onUnmounted, ref } from "vue";
   import { useI18n } from "vue-i18n";
   import { Button, Slider, Toggle } from "../../base";
-  import { MenuItem, MenuPage } from "../../ui";
+  import { MenuItem } from "../../ui";
 
   interface CastStatus {
     enabled: boolean;

@@ -427,8 +427,8 @@ pub async fn load_summary_into_status(
 mod tests {
     use super::reset_compaction_state_after_rollback;
     use crate::ai_service::game_system::game_status::GameStatus;
-    use crate::ai_service::game_system::role_manager::GameRoleManager;
     use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
+    use crate::ai_service::game_system::role_manager::GameRoleManager;
     use crate::ai_service::types::GameLine;
     use crate::config::tts::TtsConfig;
     use std::path::PathBuf;
@@ -436,8 +436,16 @@ mod tests {
     use tokio::sync::RwLock;
 
     fn status_with_lines(n: usize) -> GameStatus {
+        // 测试不触碰 DB，但新签名要求一个 DatabaseConnection；用内存 sqlite 占位
+        let db = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(sea_orm::Database::connect("sqlite::memory:"))
+            .unwrap();
         let manager = GameRoleManager::new(
             PathBuf::new(),
+            db,
             Arc::new(RwLock::new(None)),
             TtsConfig::default(),
             None,

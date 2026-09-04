@@ -7,6 +7,7 @@ export default {
     other: "其他進階設定",
     tts: "TTS 設置",
     asr: "語音識別",
+    cast: "投屏設置",
   },
   menu: {
     llmTitle: "大模型管理",
@@ -30,5 +31,8 @@ export default {
     guideTitle: "內置 TTS 教程",
     guideDesc: "查看內置 TTS 使用教程（下載模型、匯入語音、切換裝置等）",
     guideButton: "打開教程頁面",
+    castTitle: "投屏設置",
+    castDesc: "將遊戲畫面串流到區域網設備，配置端口、解像度同畫面調校",
+    castButton: "入去投屏設置界面",
   },
 };

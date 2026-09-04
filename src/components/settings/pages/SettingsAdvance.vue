@@ -64,6 +64,17 @@
         <button
           class="rounded-md px-4 py-1.5 text-sm font-medium transition-all duration-200"
           :class="
+            advanceTab === 'cast'
+              ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+              : 'text-white/60 hover:text-white/80'
+          "
+          @click="advanceTab = 'cast'"
+        >
+          {{ $t("advance.tabs.cast") }}
+        </button>
+        <button
+          class="rounded-md px-4 py-1.5 text-sm font-medium transition-all duration-200"
+          :class="
             advanceTab === 'other'
               ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
               : 'text-white/60 hover:text-white/80'
@@ -99,6 +110,11 @@
         <SettingsTools />
       </div>
 
+      <!-- ====== 投影配置 ====== -->
+      <div v-else-if="advanceTab === 'cast'" class="min-h-0 flex-1">
+        <SettingsCast />
+      </div>
+
       <!-- ====== 其他高级设置 ====== -->
       <div v-else class="min-h-0 flex-1">
         <SettingsAdvanceOther
@@ -120,6 +136,7 @@
   import SettingsTools from "./SettingsTools.vue";
   import SettingsAdvanceOther from "./SettingsAdvanceOther.vue";
   import { useUIStore } from "@/stores/modules/ui/ui";
+  import SettingsCast from "./SettingsCast.vue";
 
   const uiStore = useUIStore();
 

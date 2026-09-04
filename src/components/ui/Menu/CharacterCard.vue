@@ -171,7 +171,10 @@
               <span class="h-4 w-1 rounded-full bg-indigo-500"></span>
               {{ $t("ui.characterCard.outfits") }}
             </h3>
-            <div v-if="clothes?.length" class="flex snap-x gap-4 overflow-x-auto pb-2">
+            <div
+              v-if="clothes?.length"
+              class="clothes-scroll flex snap-x gap-4 overflow-x-auto pb-2"
+            >
               <div
                 v-for="cloth in clothes"
                 :key="cloth.title"
@@ -367,5 +370,27 @@
   .overflow-x-auto::-webkit-scrollbar,
   .overflow-y-auto::-webkit-scrollbar {
     display: none;
+  }
+
+  /* 服装横向列表保留可见滚动条，方便拖动查看后续服装。 */
+  .clothes-scroll {
+    padding-bottom: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(129, 140, 248, 0.55) rgba(255, 255, 255, 0.06);
+  }
+  .clothes-scroll::-webkit-scrollbar {
+    display: block;
+    height: 8px;
+  }
+  .clothes-scroll::-webkit-scrollbar-track {
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .clothes-scroll::-webkit-scrollbar-thumb {
+    border-radius: 20px;
+    background-color: rgba(129, 140, 248, 0.55);
+  }
+  .clothes-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(129, 140, 248, 0.8);
   }
 </style>

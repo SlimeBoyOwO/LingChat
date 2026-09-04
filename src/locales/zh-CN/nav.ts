@@ -10,5 +10,4 @@ export default {
   advance: "高级设置",
   log: "日志",
   plugins: "插件",
-  cast: "投屏",
 };
