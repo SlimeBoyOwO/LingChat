@@ -301,6 +301,7 @@ async fn sync_plugin_scenes_cmd(app: &AppHandle) {
             description: String::new(),
             background: e.path.to_string_lossy().into_owned(),
             lighting: None,
+            category: "插件".to_string(),
             created_at: String::new(),
             updated_at: String::new(),
             plugin_id: Some(e.plugin_id.clone()),

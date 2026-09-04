@@ -28,6 +28,8 @@ export interface SceneInfo {
   scene_name: string;
   scene_description: string;
   background: string | null;
+  /** 场景所属子分类（背景子文件夹名；根目录为「根目录」） */
+  category: string;
   lighting: LightingParams | null;
   created_at: string;
   updated_at: string;
@@ -67,10 +69,24 @@ export async function deleteScene(id: string): Promise<void> {
   return invoke("delete_scene", { id });
 }
 
+/** 一键清除空白场景：删除背景已不存在的场景，返回删除数量 */
+export async function clearEmptyScenes(): Promise<number> {
+  const data = await invoke<number>("clear_empty_scenes");
+  return data ?? 0;
+}
+
 export async function selectScene(sceneId: string | null): Promise<void> {
   return invoke("select_scene", { sceneId });
 }
 
 export async function setSceneAwareness(enabled: boolean): Promise<void> {
   return invoke("set_scene_awareness", { enabled });
+}
+
+/**
+ * 把场景的背景图片移动到指定子分类（子文件夹）下，并更新场景的分类。
+ * `category` 传「根目录」表示移回背景根目录。
+ */
+export async function moveSceneToCategory(id: string, category: string): Promise<SceneInfo> {
+  return invoke<SceneInfo>("move_scene_to_category", { id, category });
 }
