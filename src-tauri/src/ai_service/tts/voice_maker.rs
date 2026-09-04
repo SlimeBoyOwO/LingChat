@@ -123,6 +123,45 @@ fn find_voice_file(dir: &Path, stem: &str) -> Option<PathBuf> {
     None
 }
 
+/// 解析单个六情绪分类的完整参考配置：(音频路径, 文本, 文本语言)。
+///
+/// 文本与音频都齐全才返回 `Some` —— `check_tts_availability` 与
+/// `set_tts_settings` 共用本函数，保证“判定可用”与“合成可用”的条件一致。
+/// 音频支持三种写法：相对角色 voice/ 目录的文件名、绝对路径、
+/// 留空时按分类名在 voice/ 下自动查找（复用立绘系统的命名约定）。
+fn resolve_gsv_category(
+    cfg: &VoiceModel,
+    voice_dir: Option<&Path>,
+    cat: &str,
+) -> Option<(String, String, String)> {
+    let text = cfg
+        .gsv_emo_texts
+        .as_ref()
+        .and_then(|m| m.get(cat))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())?;
+    let file_name = cfg
+        .gsv_emo_voice_files
+        .as_ref()
+        .and_then(|m| m.get(cat))
+        .map(|s| s.trim())
+        .unwrap_or("");
+    let voice_dir = voice_dir?;
+    let audio = if file_name.is_empty() {
+        find_voice_file(voice_dir, cat)
+    } else {
+        let p = Path::new(file_name);
+        let full = if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            voice_dir.join(p)
+        };
+        full.is_file().then_some(full)
+    }?;
+    let lang = gsv_prompt_language(&text).to_string();
+    Some((audio.to_string_lossy().into_owned(), text, lang))
+}
+
 fn segment_text_for_lang<'a>(lang: &str, segment: &'a EmotionSegment) -> Option<&'a str> {
     match lang {
         // 译文统一存放在 japanese_text 字段（历史命名），非中文语言均优先取译文；
@@ -216,20 +255,13 @@ impl VoiceMaker {
         let sbv2 = non_empty(&cfg.sbv2_speaker_id) && non_empty(&cfg.sbv2_name);
         let bv2 = non_empty(&cfg.bv2_speaker_id);
         let sbv2api = non_empty(&cfg.sbv2api_name) && non_empty(&cfg.sbv2api_speaker_id);
-        // 六情绪开关开启后，任一分类填了参考文本或音频文件即可用；
-        // 缺省分类在合成时回退到默认 gsv_voice_* 配置。
+        // 六情绪开关开启后，至少一个分类的参考文本与音频文件都齐全才算可用，
+        // 与合成时构建 emo_prompts 的条件保持一致，避免“判定可用但合成报错”。
         let gsv = if cfg.gsv_emo_enabled.unwrap_or(false) {
-            let any_text = cfg
-                .gsv_emo_texts
-                .as_ref()
-                .map(|m| m.values().any(|v| !v.trim().is_empty()))
-                .unwrap_or(false);
-            let any_file = cfg
-                .gsv_emo_voice_files
-                .as_ref()
-                .map(|m| m.values().any(|v| !v.trim().is_empty()))
-                .unwrap_or(false);
-            any_text || any_file
+            let voice_dir = self.character_path.as_deref().map(|p| p.join("voice"));
+            GSV_EMO_CATEGORIES
+                .iter()
+                .any(|cat| resolve_gsv_category(cfg, voice_dir.as_deref(), cat).is_some())
         } else {
             (non_empty(&cfg.gsv_voice_filename) && non_empty(&cfg.gsv_voice_text))
                 || (non_empty(&cfg.gsv_gpt_model_name) && non_empty(&cfg.gsv_sovits_model_name))
@@ -393,45 +425,16 @@ impl VoiceMaker {
                     if let Some(base) = &self.character_path {
                         let voice_dir = base.join("voice");
                         for cat in GSV_EMO_CATEGORIES {
-                            let text = cfg
-                                .gsv_emo_texts
-                                .as_ref()
-                                .and_then(|m| m.get(cat))
-                                .map(|s| s.trim().to_string())
-                                .unwrap_or_default();
-                            let file_name = cfg
-                                .gsv_emo_voice_files
-                                .as_ref()
-                                .and_then(|m| m.get(cat))
-                                .map(|s| s.trim())
-                                .unwrap_or("");
-                            // 兼容两种写法：相对角色 voice/ 目录的文件名，或绝对路径
-                            let audio = if file_name.is_empty() {
-                                find_voice_file(&voice_dir, cat)
-                            } else {
-                                let p = Path::new(file_name);
-                                let full = if p.is_absolute() {
-                                    p.to_path_buf()
-                                } else {
-                                    voice_dir.join(p)
-                                };
-                                full.is_file().then_some(full)
-                            };
-                            if text.is_empty() || audio.is_none() {
-                                tracing::warn!(
-                                    "GSV 六情绪分类 {cat} 缺少参考文本或语音文件，合成时将回退默认配置"
-                                );
-                                continue;
+                            match resolve_gsv_category(cfg, Some(&voice_dir), cat) {
+                                Some((path, text, lang)) => {
+                                    emo_prompts.insert(cat.to_string(), (path, text, lang));
+                                }
+                                None => {
+                                    tracing::warn!(
+                                        "GSV 六情绪分类 {cat} 缺少参考文本或语音文件，合成时将回退默认配置"
+                                    );
+                                }
                             }
-                            let lang = gsv_prompt_language(&text).to_string();
-                            emo_prompts.insert(
-                                cat.to_string(),
-                                (
-                                    audio.unwrap().to_string_lossy().into_owned(),
-                                    text,
-                                    lang,
-                                ),
-                            );
                         }
                     }
                 }
