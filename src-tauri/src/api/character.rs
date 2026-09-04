@@ -78,6 +78,43 @@ pub struct CharacterPageResult {
     pub total_pages: i32,
 }
 
+const CHARACTER_FAVORITES_FILE: &str = "favorites.json";
+
+fn character_favorites_path() -> PathBuf {
+    characters_dir().join(CHARACTER_FAVORITES_FILE)
+}
+
+#[tauri::command]
+pub fn get_character_favorites() -> Result<Vec<i32>, String> {
+    let path = character_favorites_path();
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let content = fs::read_to_string(&path).map_err(|e| format!("读取角色收藏失败: {e}"))?;
+    let mut ids: Vec<i32> =
+        serde_json::from_str(&content).map_err(|e| format!("解析角色收藏失败: {e}"))?;
+    ids.retain(|id| *id > 0);
+    ids.dedup();
+    Ok(ids)
+}
+
+#[tauri::command]
+pub fn save_character_favorites(character_ids: Vec<i32>) -> Result<(), String> {
+    let path = character_favorites_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建角色目录失败: {e}"))?;
+    }
+    let mut ids = Vec::with_capacity(character_ids.len());
+    for id in character_ids {
+        if id > 0 && !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    let content =
+        serde_json::to_string_pretty(&ids).map_err(|e| format!("序列化角色收藏失败: {e}"))?;
+    fs::write(&path, content).map_err(|e| format!("保存角色收藏失败: {e}"))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct RoleInfoResponse {
