@@ -463,6 +463,16 @@ export default {
       item: "服裝 #{index}",
       empty: '而家冇服裝配置，撳"新增服裝"開一個',
     },
+    gsvEmo: {
+      title: "GSV 情緒參考語音",
+      description: "開啟後按情緒分類（吃驚/開心/恐懼/難過/生氣/中立）即時切換參考語音與文本；關閉時使用上面的 gsv_voice_filename / gsv_voice_text。",
+      enable: "已開啟",
+      disable: "已關閉",
+      voiceFile: "參考語音檔案",
+      voiceFilePlaceholder: "填寫 GSV 伺服器可存取嘅音頻路徑（如 /refs/開心.wav）",
+      text: "參考文本",
+      textPlaceholder: "參考音頻對應的文本內容",
+    },
     touch: {
       hint: "喺立繪上面畫出可以摸嘅範圍，每個部位配一句發畀 AI 嘅話。每件服裝各自一套範圍。淨係對靜態立繪有效，Live2D 角色嘅可摸範圍由模型配置決定。",
       open: "編輯觸摸區域",
