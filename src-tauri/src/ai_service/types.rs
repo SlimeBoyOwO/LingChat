@@ -341,8 +341,8 @@ pub struct VoiceModel {
     /// 六分类参考文本（分类名 → 文本）
     #[serde(default)]
     pub gsv_emo_texts: Option<HashMap<String, String>>,
-    /// 六分类参考音频文件名（分类名 → 文件名，相对角色 voice/ 目录；
-    /// 留空时按分类名在 voice/ 下自动查找，复用立绘系统的命名约定）
+    /// 六分类参考音频路径（分类名 → 路径，原样透传给 GPT-SoVITS 服务端，
+    /// 由其自身文件系统解析，不做本地目录拼接）
     #[serde(default)]
     pub gsv_emo_voice_files: Option<HashMap<String, String>>,
     pub aivis_model_uuid: Option<String>,
