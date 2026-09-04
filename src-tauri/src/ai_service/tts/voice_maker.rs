@@ -5,6 +5,7 @@
 //! - 基于当前 `tts_type` 初始化对应 adapter
 //! - `generate_voice_files(segments)`：并发为每段生成音频到磁盘
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
@@ -16,7 +17,7 @@ use crate::ai_service::tts::adapters::aivis::AivisAdapter;
 use crate::ai_service::tts::adapters::bv2::Bv2Adapter;
 use crate::ai_service::tts::adapters::cosyvoice::CosyvoiceAdapter;
 use crate::ai_service::tts::adapters::fish_s2::FishS2Adapter;
-use crate::ai_service::tts::adapters::gsv::GsvAdapter;
+use crate::ai_service::tts::adapters::gsv::{GsvAdapter, GSV_EMO_CATEGORIES};
 use crate::ai_service::tts::adapters::indextts::IndexTtsAdapter;
 use crate::ai_service::tts::adapters::opentts::OpenTtsAdapter;
 use crate::ai_service::tts::adapters::sbv2::Sbv2Adapter;
@@ -109,6 +110,56 @@ fn gsv_prompt_language(prompt_text: &str) -> &'static str {
     } else {
         "zh"
     }
+}
+
+/// 在参考语音目录按分类名（文件 stem）查找音频，复用立绘系统的命名约定。
+fn find_voice_file(dir: &Path, stem: &str) -> Option<PathBuf> {
+    for ext in ["wav", "mp3", "flac", "ogg"] {
+        let path = dir.join(format!("{stem}.{ext}"));
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+/// 解析单个六情绪分类的完整参考配置：(音频路径, 文本, 文本语言)。
+///
+/// 文本与音频都齐全才返回 `Some` —— `check_tts_availability` 与
+/// `set_tts_settings` 共用本函数，保证“判定可用”与“合成可用”的条件一致。
+/// 音频支持三种写法：相对角色 voice/ 目录的文件名、绝对路径、
+/// 留空时按分类名在 voice/ 下自动查找（复用立绘系统的命名约定）。
+fn resolve_gsv_category(
+    cfg: &VoiceModel,
+    voice_dir: Option<&Path>,
+    cat: &str,
+) -> Option<(String, String, String)> {
+    let text = cfg
+        .gsv_emo_texts
+        .as_ref()
+        .and_then(|m| m.get(cat))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())?;
+    let file_name = cfg
+        .gsv_emo_voice_files
+        .as_ref()
+        .and_then(|m| m.get(cat))
+        .map(|s| s.trim())
+        .unwrap_or("");
+    let voice_dir = voice_dir?;
+    let audio = if file_name.is_empty() {
+        find_voice_file(voice_dir, cat)
+    } else {
+        let p = Path::new(file_name);
+        let full = if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            voice_dir.join(p)
+        };
+        full.is_file().then_some(full)
+    }?;
+    let lang = gsv_prompt_language(&text).to_string();
+    Some((audio.to_string_lossy().into_owned(), text, lang))
 }
 
 fn segment_text_for_lang<'a>(lang: &str, segment: &'a EmotionSegment) -> Option<&'a str> {
@@ -204,8 +255,17 @@ impl VoiceMaker {
         let sbv2 = non_empty(&cfg.sbv2_speaker_id) && non_empty(&cfg.sbv2_name);
         let bv2 = non_empty(&cfg.bv2_speaker_id);
         let sbv2api = non_empty(&cfg.sbv2api_name) && non_empty(&cfg.sbv2api_speaker_id);
-        let gsv = (non_empty(&cfg.gsv_voice_filename) && non_empty(&cfg.gsv_voice_text))
-            || (non_empty(&cfg.gsv_gpt_model_name) && non_empty(&cfg.gsv_sovits_model_name));
+        // 六情绪开关开启后，至少一个分类的参考文本与音频文件都齐全才算可用，
+        // 与合成时构建 emo_prompts 的条件保持一致，避免“判定可用但合成报错”。
+        let gsv = if cfg.gsv_emo_enabled.unwrap_or(false) {
+            let voice_dir = self.character_path.as_deref().map(|p| p.join("voice"));
+            GSV_EMO_CATEGORIES
+                .iter()
+                .any(|cat| resolve_gsv_category(cfg, voice_dir.as_deref(), cat).is_some())
+        } else {
+            (non_empty(&cfg.gsv_voice_filename) && non_empty(&cfg.gsv_voice_text))
+                || (non_empty(&cfg.gsv_gpt_model_name) && non_empty(&cfg.gsv_sovits_model_name))
+        };
         let aivis = non_empty(&cfg.aivis_model_uuid);
         // OpenTTS 可用性：角色级 voice 优先，全局 TTS 配置兜底，任一非空即可用
         let opentts =
@@ -358,6 +418,26 @@ impl VoiceMaker {
                     },
                 }
                 .to_string();
+                // 六情绪参考语音：开启后按分类构造 (音频路径, 文本, 文本语言) 表，
+                // 合成时由 adapter 按当前片段情绪分类实时选择；缺省分类回退默认配置。
+                let mut emo_prompts = HashMap::new();
+                if cfg.gsv_emo_enabled.unwrap_or(false) {
+                    if let Some(base) = &self.character_path {
+                        let voice_dir = base.join("voice");
+                        for cat in GSV_EMO_CATEGORIES {
+                            match resolve_gsv_category(cfg, Some(&voice_dir), cat) {
+                                Some((path, text, lang)) => {
+                                    emo_prompts.insert(cat.to_string(), (path, text, lang));
+                                }
+                                None => {
+                                    tracing::warn!(
+                                        "GSV 六情绪分类 {cat} 缺少参考文本或语音文件，合成时将回退默认配置"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
                 let adapter = GsvAdapter::new(
                     self.tts_config.gsv_api_url.clone(),
                     ref_audio_path,
@@ -366,6 +446,7 @@ impl VoiceMaker {
                     voice_lang,
                     cfg.gsv_gpt_model_name.clone(),
                     cfg.gsv_sovits_model_name.clone(),
+                    emo_prompts,
                 );
                 self.provider.gsv = Some(Arc::new(adapter));
                 let _ = name;

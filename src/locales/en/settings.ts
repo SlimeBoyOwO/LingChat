@@ -462,6 +462,16 @@ export default {
       item: "Outfit #{index}",
       empty: 'No outfits configured yet. Click "Add Outfit" to create one',
     },
+    gsvEmo: {
+      title: "GSV Emotion Reference Voice",
+      description: "When enabled, switches the reference audio & text in real time by emotion category (surprised / happy / fearful / sad / angry / neutral); when disabled, the gsv_voice_filename / gsv_voice_text above are used.",
+      enable: "Enabled",
+      disable: "Disabled",
+      voiceFile: "Reference voice file",
+      voiceFilePlaceholder: "e.g. 开心.wav; leave empty to auto-find voice/开心.*",
+      text: "Reference text",
+      textPlaceholder: "Text spoken in the reference audio",
+    },
     live2d: {
       importDirectory: "Import Model Folder",
       importZip: "Import ZIP",
