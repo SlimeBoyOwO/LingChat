@@ -4,9 +4,9 @@
   "version": "0.5.1",
   "identifier": "com.noiq.ling-chat",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "node scripts/ensure-onnxruntime.mjs && pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "node scripts/prepare-desktop-resources.mjs && pnpm build",
+    "beforeBuildCommand": "node scripts/ensure-onnxruntime.mjs && node scripts/prepare-desktop-resources.mjs && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {

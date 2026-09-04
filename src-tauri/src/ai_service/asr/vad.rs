@@ -70,6 +70,13 @@ impl AsrVad {
     /// 从 bundled 路径加载 Silero VAD 模型。
     /// 失败时返回 Err，由调用方决定是否降级为手动模式。
     pub fn load(app: &AppHandle) -> Result<Self, AsrError> {
+        // ONNX Runtime 不可用（onnxruntime.dll 缺失）时直接降级，绝不创建 Session
+        // （ort 在 dll 缺失时首次创建 Session 会 panic，导致应用崩溃）。
+        if !crate::utils::onnx::onnx_available() {
+            return Err(AsrError::EngineLoadFailed(
+                "ONNX Runtime 不可用（onnxruntime.dll 缺失），VAD 降级".into(),
+            ));
+        }
         let model_path = resolve_vad_model_path(app)?;
         tracing::info!("[ASR/VAD] loading model from {}", model_path.display());
         let session = Session::builder()

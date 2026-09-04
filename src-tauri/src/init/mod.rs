@@ -213,7 +213,14 @@ pub async fn init_asr(
         },
     }
 
-    let vad = AsrVad::load(app)?;
+    let vad = match AsrVad::load(app) {
+        Ok(vad) => vad,
+        Err(e) => {
+            // dll 缺失/加载失败：降级（ASR 不可用），绝不让启动失败
+            tracing::warn!("[ASR] VAD 加载失败，ASR 本次启动降级为不可用: {e}");
+            return Ok(());
+        }
+    };
     // 应用持久化的 VAD 静音计时（设置页可自定义，默认 800ms）
     vad.set_silence_timeout_ms(cfg.vad_silence_ms).await;
     let session = Arc::new(AsrSession::new(Arc::new(vad), providers));
