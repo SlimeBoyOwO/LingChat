@@ -7,9 +7,9 @@
 //! - mDNS daemon 线程随 `Announcer` 生命周期创建和销毁
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Duration;
 
 use mdns_sd::ServiceDaemon;
@@ -19,8 +19,8 @@ use tokio::sync::Notify;
 use tracing::{debug, info, warn};
 
 use super::messages::{
-    DeviceIdentity, DiscoveryMessage, PeerInfo, MDNS_SERVICE_TYPE, TXT_DATA_VERSION,
-    TXT_DEVICE_ID, TXT_DEVICE_NAME, TXT_FILE_COUNT, TXT_INSTANCE_ID, UDP_DISCOVERY_PORT,
+    DeviceIdentity, DiscoveryMessage, MDNS_SERVICE_TYPE, PeerInfo, TXT_DATA_VERSION, TXT_DEVICE_ID,
+    TXT_DEVICE_NAME, TXT_FILE_COUNT, TXT_INSTANCE_ID, UDP_DISCOVERY_PORT,
 };
 
 // ─── Announcer（宣告自己存在）─────────────────────────────────
@@ -66,7 +66,11 @@ impl Announcer {
             mdns_name, UDP_DISCOVERY_PORT
         );
 
-        Ok(Self { daemon, udp_shutdown, stopped: AtomicBool::new(false) })
+        Ok(Self {
+            daemon,
+            udp_shutdown,
+            stopped: AtomicBool::new(false),
+        })
     }
 
     /// 停止宣告（UDP 监听器 + mDNS daemon 干净关闭）。幂等。
@@ -81,7 +85,7 @@ impl Announcer {
                 // receiver 会在 daemon 线程退出时收到 Shutdown 状态，
                 // 不等待以免阻塞，daemon 线程会在几百毫秒内自行退出。
                 debug!("mDNS daemon shutdown 命令已发送");
-            }
+            },
             Err(e) => warn!("mDNS daemon shutdown 发送失败: {e}"),
         }
     }
@@ -174,9 +178,12 @@ async fn start_udp_listener(
     let socket = match UdpSocket::bind(&bind_addr).await {
         Ok(s) => s,
         Err(e) => {
-            warn!("无法绑定 UDP 端口 {} (可能被另一实例占用): {}。将仅使用 mDNS 发现。", UDP_DISCOVERY_PORT, e);
+            warn!(
+                "无法绑定 UDP 端口 {} (可能被另一实例占用): {}。将仅使用 mDNS 发现。",
+                UDP_DISCOVERY_PORT, e
+            );
             return Ok(shutdown);
-        }
+        },
     };
 
     let _ = socket.set_broadcast(true);
@@ -322,7 +329,7 @@ async fn browse_mdns(
                             });
                         }
                     }
-                }
+                },
                 Err(_) => break,
             }
         }
@@ -342,7 +349,7 @@ async fn browse_mdns(
                         debug!("mDNS 浏览已干净关闭");
                         break;
                     }
-                }
+                },
                 Err(_) => break,
             }
         }
@@ -374,8 +381,7 @@ async fn send_udp_broadcast(my_instance_id: &str) -> Result<Vec<PeerInfo>, Strin
         file_count: 0,
     };
 
-    let json =
-        serde_json::to_vec(&discover_msg).map_err(|e| format!("序列化失败: {e}"))?;
+    let json = serde_json::to_vec(&discover_msg).map_err(|e| format!("序列化失败: {e}"))?;
 
     let broadcast_addr = format!("255.255.255.255:{}", UDP_DISCOVERY_PORT);
     socket
@@ -409,11 +415,11 @@ async fn send_udp_broadcast(my_instance_id: &str) -> Result<Vec<PeerInfo>, Strin
                         });
                     }
                 }
-            }
+            },
             Ok(Err(e)) => {
                 debug!("UDP 接收错误: {}", e);
                 break;
-            }
+            },
             Err(_) => break, // 超时
         }
     }
@@ -428,9 +434,8 @@ async fn send_udp_broadcast(my_instance_id: &str) -> Result<Vec<PeerInfo>, Strin
 /// - 排除虚拟网卡 / 特殊网段（Hyper-V、WSL、VPN、Docker 等）
 /// - 优先返回常见局域网地址（192.168.x.x / 10.x.x.x / 172.16-31.x.x）
 /// - 其余非排除地址排在末尾
-fn get_local_ips() -> Result<Vec<String>, String> {
-    let ifaces =
-        if_addrs::get_if_addrs().map_err(|e| format!("获取网卡列表失败: {e}"))?;
+pub fn get_local_ips() -> Result<Vec<String>, String> {
+    let ifaces = if_addrs::get_if_addrs().map_err(|e| format!("获取网卡列表失败: {e}"))?;
 
     let mut lan: Vec<String> = Vec::new(); // 标准局域网地址
     let mut other: Vec<String> = Vec::new(); // 其余非排除地址
@@ -446,13 +451,13 @@ fn get_local_ips() -> Result<Vec<String>, String> {
 
         match octets {
             // 排除不可路由 / 虚拟网段
-            [0, ..] => continue,                    // 0.0.0.0/8 当前网络
-            [127, ..] => continue,                  // loopback（已过滤，防御性保留）
-            [169, 254, ..] => continue,             // APIPA 链路本地
-            [100, 64..=127, ..] => continue,        // 100.64.0.0/10 CGNAT
-            [198, 18..=19, ..] => continue,         // 198.18.0.0/15 RFC 2544 基准测试
-            [224..=239, ..] => continue,            // 组播
-            [240..=255, ..] => continue,            // E 类 / 广播
+            [0, ..] => continue,             // 0.0.0.0/8 当前网络
+            [127, ..] => continue,           // loopback（已过滤，防御性保留）
+            [169, 254, ..] => continue,      // APIPA 链路本地
+            [100, 64..=127, ..] => continue, // 100.64.0.0/10 CGNAT
+            [198, 18..=19, ..] => continue,  // 198.18.0.0/15 RFC 2544 基准测试
+            [224..=239, ..] => continue,     // 组播
+            [240..=255, ..] => continue,     // E 类 / 广播
 
             // 优先：标准私有局域网
             [192, 168, ..] => lan.push(ip.to_string()),

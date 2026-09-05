@@ -49,8 +49,7 @@ pub fn get_locale_messages(locale: String, seed_content: String) -> Result<Strin
     let existing_version = locale_version_of(&existing);
     if let Some(seed_version) = seed_version {
         if existing_version.as_deref() != Some(seed_version.as_str()) {
-            std::fs::write(&path, &seed_content)
-                .map_err(|e| format!("更新语言文件失败: {e}"))?;
+            std::fs::write(&path, &seed_content).map_err(|e| format!("更新语言文件失败: {e}"))?;
             tracing::info!(
                 "内置词条版本变化（{} → {}），已重新播种 {}",
                 existing_version.as_deref().unwrap_or("无版本标记"),

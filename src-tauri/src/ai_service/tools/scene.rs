@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tauri::Emitter;
 use tauri_plugin_store::StoreExt;
 
@@ -38,15 +38,17 @@ impl Tool for SceneList {
         let scenes = store
             .load_all()
             .map_err(|e| ToolError::Execution(format!("加载场景失败: {e}")))?;
-        Ok(json!(scenes
-            .iter()
-            .map(|s| json!({
-                "id": s.id,
-                "name": s.name,
-                "description": s.description,
-                "background": s.background,
-            }))
-            .collect::<Vec<_>>()))
+        Ok(json!(
+            scenes
+                .iter()
+                .map(|s| json!({
+                    "id": s.id,
+                    "name": s.name,
+                    "description": s.description,
+                    "background": s.background,
+                }))
+                .collect::<Vec<_>>()
+        ))
     }
 }
 

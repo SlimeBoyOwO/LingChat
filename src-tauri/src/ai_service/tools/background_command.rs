@@ -6,21 +6,21 @@
 #![cfg_attr(not(desktop), allow(dead_code))]
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tauri::{AppHandle, Manager};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
+use crate::AppState;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
 };
 use crate::ai_service::skill_agent::command_executor::{self, CommandOutput};
 use crate::config::AppConfig;
-use crate::AppState;
 
 use super::executor::{ToolError, ToolResult};
 use super::tool_loop::{emit_tool_activity_event, emit_tool_call_event};
@@ -182,7 +182,7 @@ fn completion_payload(
                 },
                 "truncated": truncated,
             })
-        }
+        },
         None => {
             let raw_error = error
                 .map(ToString::to_string)
@@ -198,7 +198,7 @@ fn completion_payload(
                 "error": {"message": message},
                 "truncated": truncated,
             })
-        }
+        },
     }
 }
 

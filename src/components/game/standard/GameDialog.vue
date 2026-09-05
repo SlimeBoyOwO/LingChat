@@ -1,10 +1,11 @@
 <template>
   <div
-    class="game-dialog relative z-2 flex w-full scrollbar-thin [scrollbar-color:var(--accent-color)_transparent]
-      justify-center p-3.75 transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)]
-      before:pointer-events-none before:absolute before:-top-10 before:right-0 before:left-0
-      before:h-10 before:bg-linear-to-b before:from-transparent before:via-[rgba(0,14,39,0.3)]
-      before:to-[rgba(0,14,39,0.6)] before:content-['']"
+    class="game-dialog relative z-2 flex w-full scrollbar-thin
+      [scrollbar-color:var(--accent-color)_transparent] justify-center p-3.75 transition-all
+      duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] before:pointer-events-none
+      before:absolute before:-top-10 before:right-0 before:left-0 before:h-10 before:bg-linear-to-b
+      before:from-transparent before:via-[rgba(0,14,39,0.3)] before:to-[rgba(0,14,39,0.6)]
+      before:content-['']"
     :class="{
       [`z-[-1]! overflow-hidden opacity-0 duration-500! ease-linear before:opacity-0
       before:duration-1000!`]: isHidden,
@@ -92,8 +93,7 @@
                     :icon="micIcon"
                     :title="micTitle"
                     :class="{
-                      [`animate-asr-breathe
-                      text-blue-500`]: asrInput.phase.value === 'recording',
+                      'animate-asr-breathe text-blue-500': asrInput.phase.value === 'recording',
                     }"
                     :disabled="!canStartMic"
                     @click="toggleRecording"
@@ -184,8 +184,7 @@
                 :icon="micIcon"
                 :title="micTitle"
                 :class="{
-                  [`animate-asr-breathe
-                  text-blue-500`]: asrInput.phase.value === 'recording',
+                  'animate-asr-breathe text-blue-500': asrInput.phase.value === 'recording',
                 }"
                 :disabled="!canStartMic"
                 @click="onMobileMenuAction(toggleRecording)"
@@ -229,17 +228,27 @@
             text-xl font-bold whitespace-pre-line text-white transition-all duration-300
             outline-none"
         >
-          <!-- AI 回复显示区（仅回应状态可见；标准/内联模式共用，逐字符淡入+上浮） -->
+          <!-- AI 回复显示区（仅回应状态可见；标准/内联模式共用，逐字符淡入+上浮）。
+               两子容器：台词区白字 + 动作区灰字，颜色由容器决定，字符只负责动画 span -->
           <div
             v-show="currentStatus === 'responding'"
             ref="inlineDisplayRef"
             tabindex="0"
-            class="response-display my-1.25 max-h-[50dvh] min-h-30 flex-1 resize-none overflow-y-auto
-              border-none bg-transparent font-[inherit] text-xl font-bold break-all
+            class="response-display my-1.25 max-h-[50dvh] min-h-30 flex-1 resize-none
+              overflow-y-auto border-none bg-transparent font-[inherit] text-xl font-bold break-all
               whitespace-pre-line outline-none text-shadow-[inherit]"
-            :class="textareaMotionClass"
             @keydown.enter.exact.prevent="sendOrContinue"
-          ></div>
+            @click="sendOrContinue"
+          >
+            <!-- 台词区：白字（内联模式台词 / 标准模式正文） -->
+            <div ref="dialogueLineRef" class="whitespace-pre-line text-white"></div>
+            <!-- 动作区：灰字；标准模式两段式动作阶段为斜体小字 -->
+            <div
+              ref="motionLineRef"
+              class="whitespace-pre-line text-[#9ca3af]"
+              :class="{ 'text-base italic': isShowingMotionText }"
+            ></div>
+          </div>
 
           <!-- 输入框 textarea（非回应状态：思考/输入/展示阶段） -->
           <textarea
@@ -247,8 +256,8 @@
             id="inputMessage"
             ref="textareaRef"
             class="my-1.25 max-h-[50dvh] min-h-30 flex-1 resize-none border-none bg-transparent
-              font-[inherit] text-[max(1.25rem,16px)] font-bold transition-all duration-300 outline-none
-              text-shadow-[inherit] placeholder:text-white/50 placeholder:shadow-none"
+              font-[inherit] text-[max(1.25rem,16px)] font-bold transition-all duration-300
+              outline-none text-shadow-[inherit] placeholder:text-white/50 placeholder:shadow-none"
             :placeholder="placeholderText"
             v-model="inputMessage"
             @keydown.enter.exact.prevent="sendOrContinue"
@@ -279,25 +288,27 @@
   import { computed, onMounted, onUnmounted, ref, watch } from "vue";
   import { useI18n } from "vue-i18n";
   import { useTypeWriter } from "../../../composables/ui/useTypeWriter";
+  import {
+    ASR_AUTO_SEND_DELAY_MS,
+    asrVoiceActive,
+    lockAsrForDisplay,
+    registerAsrInputBridge,
+    setMobileMenuOpen,
+    useAsrInput,
+  } from "../../../composables/useAsrInput";
   import { setInputHasText } from "../../../composables/useCanDeliver";
   import { useDialogAppearance } from "../../../composables/useDialogAppearance";
+  import { dialogueMerge } from "../../../core/events/dialogue-merge";
   import { eventQueue } from "../../../core/events/event-queue";
   import { useGameStore } from "../../../stores/modules/game";
   import { useLlmProvidersStore } from "../../../stores/modules/llm-providers";
   import { useSettingsStore } from "../../../stores/modules/settings";
+  import { useAsrStore } from "../../../stores/modules/settings/asr";
   import { useDialogStore } from "../../../stores/modules/ui/dialog";
   import { useUIStore } from "../../../stores/modules/ui/ui";
   import { escapeHtml } from "../../../utils/escapeHtml";
   import { createCharRevealWriter } from "../../../utils/typewriter/charReveal";
-  import {
-    useAsrInput,
-    setMobileMenuOpen,
-    lockAsrForDisplay,
-    registerAsrInputBridge,
-    asrVoiceActive,
-    ASR_AUTO_SEND_DELAY_MS,
-  } from "../../../composables/useAsrInput";
-  import { useAsrStore } from "../../../stores/modules/settings/asr";
+  import { TypeWriter } from "../../../utils/typewriter/TypeWriter";
   import { Button } from "../../base";
 
   const inputMessage = ref("");
@@ -333,7 +344,7 @@
 
   // 标题栏（角色名 + 副标题）切换 key：任一变化时整体一起滑出/滑入
   const titleSubtitleKey = computed(
-    () => `${uiStore.showCharacterTitle}|${uiStore.showCharacterSubtitle}`,
+    () => `${uiStore.showCharacterTitle}|${uiStore.showCharacterSubtitle}`
   );
 
   // 语音输入：useAsrInput 统一两种触发源（mic 按钮 / 自动监听），
@@ -369,7 +380,7 @@
     () =>
       (autoListenOn.value && asrStore.settings.voice_input_enabled) ||
       asrInput.phase.value === "recording" ||
-      asrInput.canStartAsr(false, true),
+      asrInput.canStartAsr(false, true)
   );
 
   // 截图相关状态
@@ -397,45 +408,164 @@
     showMobileMenu.value = false;
   };
   const currentDisplayedText = ref("");
+  const dialogueLineRef = ref<HTMLDivElement | null>(null);
+  const motionLineRef = ref<HTMLDivElement | null>(null);
 
-  // 逐字符淡入+上浮渲染器。颜色规则：
-  // 内联模式 → \n 前为台词白字、\n 后为动作灰字；标准模式 → 两段式动作阶段整段灰字。
-  const charReveal = createCharRevealWriter({
-    charHtml: (char, index, rawText, animate) => {
+  // 台词合并显示的分段模型（唯一事实来源）：台词/动作按序排列，颜色由容器 CSS 决定
+  // （台词区白、动作区灰），普通台词自带换行不再干扰分色。
+  type DisplaySegment = { kind: "dialogue" | "motion"; text: string };
+  let segments: DisplaySegment[] = [];
+
+  // 把一句台词构造成分段：内联模式台词+动作两段都进，标准模式只进台词段
+  // （动作由两段式单独处理，见 continueDialog）。
+  function buildSegments(line: string): DisplaySegment[] {
+    const segs: DisplaySegment[] = [{ kind: "dialogue", text: line }];
+    if (settingsStore.text.inlineMotionText && uiStore.showCharacterMotionText) {
+      segs.push({ kind: "motion", text: uiStore.showCharacterMotionText });
+    }
+    return segs;
+  }
+
+  // charReveal 只负责「打字内容」：内联模式=台词段（动作段由独立动作打字机负责）；
+  // 标准模式=全部段（动作由 continueDialog Phase 2 走 charReveal 打字）。台词段间空格已在 append 时烙进段文本。
+  function typedText(segs: DisplaySegment[] = segments): string {
+    if (settingsStore.text.inlineMotionText) {
+      return segs
+        .filter((s) => s.kind === "dialogue")
+        .map((s) => s.text)
+        .join("");
+    }
+    return segs.map((s) => s.text).join("");
+  }
+
+  // 动作区第二打字机（仅内联模式）：动作文本独立逐字打字，保留打字机效果。
+  // 单独一个 TypeWriter + charReveal，不混进台词打字机流——replace 模式「旧动作被
+  // 清掉」使文本非单调变化，单流 charReveal 的 prev 前缀去重无法处理。append 用
+  // append() 接续（| 分隔），replace 用 stop + start 清空重打。
+  // soundUrls=[] 避免动作打字重复播对话音效。
+  const motionReveal = createCharRevealWriter({
+    charHtml: (char, _index, _rawText, animate) => {
       if (char === "\n") return "<br>";
       if (char === " ") return " ";
-      let color = "#fff";
-      if (settingsStore.text.inlineMotionText) {
-        const newlineIndex = rawText.indexOf("\n");
-        if (newlineIndex >= 0 && index > newlineIndex) color = "#9ca3af";
-      } else if (isShowingMotionText.value) {
-        color = "#9ca3af";
-      }
       const anim = animate
         ? ";animation:tw-char-rise .28s cubic-bezier(.22, 1, .36, 1) forwards"
         : "";
-      return `<span style="display:inline-block;color:${color}${anim}">${escapeHtml(char)}</span>`;
+      return `<span style="display:inline-block${anim}">${escapeHtml(char)}</span>`;
+    },
+  });
+  let motionWriter: TypeWriter | null = null;
+  function ensureMotionWriter(): TypeWriter | null {
+    if (!motionLineRef.value) return null;
+    if (!motionWriter) {
+      // 动作打字完成无需额外处理（不参与合并判定，台词 isTyping 已覆盖）
+      motionWriter = new TypeWriter(motionLineRef.value, undefined, [], motionReveal.writeFn);
+    }
+    return motionWriter;
+  }
+  function startMotionTyping(text: string, speed?: number) {
+    ensureMotionWriter()?.start(text, speed);
+  }
+  function appendMotionTyping(text: string) {
+    ensureMotionWriter()?.append(text);
+  }
+  function stopMotionTyping() {
+    motionWriter?.stop();
+    motionWriter?.clear();
+  }
+
+  // 链式合并：刚追加的这行（appendedLine，仅聊天文本）若仍够短、且队头下一条是
+  // 同角色短句回复，就继续武装——使 MainChat 在这行展示完成后自动推进下一条也走
+  // 追加路径。解决快速连发时 i+2/i+3 在 i+1 处理前就入队、被 addEvent 的队列守卫
+  // 挡住、导致最多只融合两句的问题。
+  function rearmNextMerge(appendedLine: string) {
+    if (!settingsStore.text.inlineMotionText || settingsStore.text.mergeLineThreshold <= 0) {
+      return;
+    }
+    const next = eventQueue.peek();
+    if (!next || next.type !== "reply") return;
+    if (next.roleId !== gameStore.currentInteractRoleId) return;
+    if (dialogueMerge.mergedLength + next.message.length > settingsStore.text.mergeLineThreshold) {
+      // console.log(
+      //   "原来的台词长度是:",
+      //   dialogueMerge.mergedLength,
+      //   "新台词长度是:",
+      //   next.message.length,
+      //   "超过阈值",
+      //   settingsStore.text.mergeLineThreshold,
+      //   "，不合并"
+      // );
+      return;
+    }
+
+    dialogueMerge.armed = true;
+    dialogueMerge.armedRoleId = next.roleId;
+  }
+
+  // 逐字符淡入+上浮渲染器。颜色不再由字符决定，改由 route 把字符插到对应容器；
+  // append 续打时下标在整个累积文本上连续，route 按全局下标累计偏移定位。
+  const charReveal = createCharRevealWriter({
+    charHtml: (char, _index, _rawText, animate) => {
+      if (char === "\n") return "<br>";
+      if (char === " ") return " ";
+      const anim = animate
+        ? ";animation:tw-char-rise .28s cubic-bezier(.22, 1, .36, 1) forwards"
+        : "";
+      return `<span style="display:inline-block${anim}">${escapeHtml(char)}</span>`;
+    },
+    route: (index) => {
+      // 内联模式：打字内容只含台词段，一律进台词区；动作区由独立动作打字机负责
+      if (settingsStore.text.inlineMotionText) return dialogueLineRef.value;
+      let offset = 0;
+      for (const seg of segments) {
+        if (index < offset + seg.text.length) {
+          return seg.kind === "motion" ? motionLineRef.value : dialogueLineRef.value;
+        }
+        offset += seg.text.length;
+      }
+      return dialogueLineRef.value;
+    },
+    // 清空子容器内容、保留容器结构——清外层会把子容器节点销毁，模板 ref 指向
+    // 脱离文档的旧节点，之后字符全插进不可见处。
+    // 内联模式动作区由独立动作打字机管理，这里只清台词区（台词 typewriter 首个
+    // tick 也会触发一次 clear，若清动作区会把动作打字机刚渲染的内容抹掉）；
+    // 标准模式动作区走 charReveal 打字，仍需清空（continueDialog Phase 2 前）。
+    clear: () => {
+      if (dialogueLineRef.value) dialogueLineRef.value.innerHTML = "";
+      if (!settingsStore.text.inlineMotionText && motionLineRef.value) {
+        motionLineRef.value.innerHTML = "";
+      }
     },
   });
 
   // 清空回复显示区并重置渲染器增量状态（新台词 / 两段式动作阶段切换前调用）
   function resetResponseDisplay() {
-    if (inlineDisplayRef.value) inlineDisplayRef.value.innerHTML = "";
-    charReveal.reset();
+    if (inlineDisplayRef.value) charReveal.clear(inlineDisplayRef.value);
+    // 内联模式动作区由动作打字机管理：一并停止清空（标准模式动作走 charReveal，上面的 clear 已清掉）
+    if (settingsStore.text.inlineMotionText) stopMotionTyping();
   }
 
   // 立即把当前台词写入显示元素（不经过打字动画；供挂载恢复使用）
   function renderLineInstant(line: string) {
     currentDisplayedText.value = line;
-    const text =
-      settingsStore.text.inlineMotionText && uiStore.showCharacterMotionText
-        ? line + "\n" + uiStore.showCharacterMotionText
-        : line;
-    if (inlineDisplayRef.value) charReveal.renderInstant(inlineDisplayRef.value, text);
+    segments = buildSegments(line);
+    if (inlineDisplayRef.value) {
+      charReveal.renderInstant(inlineDisplayRef.value, typedText());
+      // 内联模式动作区瞬时恢复（重挂载不打字）
+      if (settingsStore.text.inlineMotionText) {
+        stopMotionTyping();
+        const motionText = uiStore.showCharacterMotionText;
+        if (motionText && motionLineRef.value) {
+          motionReveal.renderInstant(motionLineRef.value, motionText);
+        } else if (motionLineRef.value) {
+          motionLineRef.value.innerHTML = "";
+        }
+      }
+    }
   }
 
-  // 回复显示区 TypeWriter（标准/内联模式共用；逐字符渲染由 charReveal 负责）
-  const { startTyping, stopTyping, isTyping, finishTyping } = useTypeWriter(
+  // 回复显示区 TypeWriter（标准/内联模式共用；逐字符渲染由 charReveal 负责；
+  // appendTyping 用于台词合并续打）
+  const { startTyping, stopTyping, isTyping, finishTyping, appendTyping } = useTypeWriter(
     inlineDisplayRef,
     (text) => {
       currentDisplayedText.value = text;
@@ -444,12 +574,6 @@
   );
 
   const isSending = computed(() => gameStore.currentStatus === "thinking");
-
-  // 标准模式两段式动作文本样式（颜色由逐字符 span 控制，这里只负责斜体与字号）
-  const textareaMotionClass = computed(() => {
-    if (!isShowingMotionText.value) return {};
-    return { "italic text-base": true };
-  });
 
   const emit = defineEmits(["player-continued", "dialog-proceed"]);
 
@@ -517,12 +641,14 @@
   });
 
   const isInputEnabled = computed(
-    () => gameStore.currentStatus === "input" && !asrVoiceActive.value,
+    () => gameStore.currentStatus === "input" && !asrVoiceActive.value
   );
 
   watch(
     () => gameStore.currentStatus,
     (newStatus) => {
+      // 离开回应状态（input/presenting/error 等）→ 取消未消费的合并武装
+      if (newStatus !== "responding") dialogueMerge.armed = false;
       console.log("游戏状态变为 :", newStatus);
       if (newStatus === "thinking") {
         const currentInteractRole = gameStore.currentInteractRole;
@@ -550,23 +676,73 @@
       if (newLine && newLine !== "" && newStatus === "responding") {
         inputMessage.value = "";
         currentDisplayedText.value = "";
-        isShowingMotionText.value = false;
 
-        // 标准/内联模式统一渲染到回复 div（内联模式有动作文本时拼接换行+灰字）
-        const text =
-          settingsStore.text.inlineMotionText && uiStore.showCharacterMotionText
-            ? newLine + "\n" + uiStore.showCharacterMotionText
-            : newLine;
-        resetResponseDisplay();
-        startTyping(text, uiStore.typeWriterSpeed);
+        // 合并续打：i+1 到达时 event-queue 已武装（i 仍打字/播音频），MainChat 在 i
+        // 展示完成后自动推进队列，这里对 i+1 走追加路径——不重置显示区、续打新增文本。
+        // 同一容器里已有内容时，新段前加空格隔离，避免两句黏在一起。
+        if (dialogueMerge.armed) {
+          dialogueMerge.armed = false;
+          const newSegs: DisplaySegment[] = [];
+          const appendMerged = (kind: DisplaySegment["kind"], text: string, separator: string) => {
+            const hasPrior = segments.some((s) => s.kind === kind);
+            newSegs.push({ kind, text: hasPrior ? separator + text : text });
+          };
+          appendMerged("dialogue", newLine, " ");
+          // 动作段记账 + 动作区续打（独立于台词打字机）。hadPriorMotion 必须在
+          // segments.push 之前算——push 后新动作段已在 segments 里，会误判成已有前序动作。
+          const hadPriorMotion = settingsStore.text.inlineMotionText
+            ? segments.some((s) => s.kind === "motion")
+            : false;
+          if (settingsStore.text.inlineMotionText) {
+            const motionText = uiStore.showCharacterMotionText;
+            if (settingsStore.text.mergeMotionMode === "replace") {
+              // 独立显示模式：清掉旧动作段，只保留本次动作（无动作则动作区清空）
+              segments = segments.filter((s) => s.kind !== "motion");
+              if (motionText) newSegs.push({ kind: "motion", text: motionText });
+              // 清空旧动作并重打本次动作（无动作则清空动作区）
+              stopMotionTyping();
+              if (motionText) startMotionTyping(motionText, uiStore.typeWriterSpeed);
+            } else if (motionText) {
+              // 接在后面显示：动作段之间用 | 分隔，动作区接续打字
+              appendMerged("motion", motionText, " | ");
+              if (hadPriorMotion) appendMotionTyping(" | " + motionText);
+              else startMotionTyping(motionText, uiStore.typeWriterSpeed);
+            }
+          }
+          segments.push(...newSegs);
+          appendTyping(typedText(newSegs));
+          // 链式合并：刚追加的这行若仍满足合并条件、且队头下一条也是同角色短句，
+          // 继续武装，让 MainChat 在本行展示完成后再次自动续打下一条——突破只融合两句的限制。
+          dialogueMerge.mergedLength += newLine.length;
+          rearmNextMerge(newLine);
+        } else {
+          // 全新台词：重置显示区 + 从 0 打字（台词与动作区并行逐字打字）
+          isShowingMotionText.value = false;
+          segments = buildSegments(newLine);
+          dialogueMerge.mergedLength = newLine.length;
+          resetResponseDisplay();
+          startTyping(typedText(), uiStore.typeWriterSpeed);
+          if (settingsStore.text.inlineMotionText && uiStore.showCharacterMotionText) {
+            startMotionTyping(uiStore.showCharacterMotionText, uiStore.typeWriterSpeed);
+          }
+          rearmNextMerge(newLine);
+        }
       } else if (newStatus === "input") {
         stopTyping();
+        stopMotionTyping();
+        dialogueMerge.mergedLength = 0;
         isShowingMotionText.value = false;
         inputMessage.value = "";
         currentDisplayedText.value = "";
+        segments = [];
       }
     }
   );
+
+  // 同步打字状态给合并判定（event-queue.addEvent 在 i+1 到达时读取）
+  watch(isTyping, (t) => {
+    dialogueMerge.isTyping = t;
+  });
 
   // 回复 div 可见时自动聚焦，确保 Enter 键能推进对话（textarea 隐藏后这是唯一 Enter 入口）
   watch(currentStatus, (status) => {
@@ -665,6 +841,11 @@
   });
 
   onUnmounted(() => {
+    // 卸载时清掉打字状态：避免返回主界面后首条回复被当成「续打合并」
+    dialogueMerge.isTyping = false;
+    // 动作打字机停止并释放（否则 setTimeout 循环可能继续跑）
+    motionWriter?.destroy();
+    motionWriter = null;
     document.removeEventListener("contextmenu", handleDialogShow);
     window.removeEventListener("resize", updateContainerWidth);
     window.removeEventListener("asr-text", onAsrText);
@@ -783,6 +964,7 @@
       else if (uiStore.showCharacterMotionText) {
         isShowingMotionText.value = true;
         resetResponseDisplay();
+        segments = [{ kind: "motion", text: uiStore.showCharacterMotionText }];
         startTyping(uiStore.showCharacterMotionText, uiStore.typeWriterSpeed);
         return false; // don't advance event queue
       }
@@ -814,9 +996,10 @@
 </script>
 
 <style scoped>
-  /* AI 回复显示区：标准/内联模式共用；颜色由逐字符 span 内联样式控制 */
+  /* AI 回复显示区：标准/内联模式共用。颜色由两个子容器决定
+     （台词区白、动作区灰），这里的灰色仅作 fallback */
   .response-display {
-    color: #9ca3af; /* fallback：极端情况下 div 直接显示文字时用灰色 */
+    color: #9ca3af;
   }
 
   /* 分割线：青蓝色微光点缀，亮段沿线条从左向右流动。

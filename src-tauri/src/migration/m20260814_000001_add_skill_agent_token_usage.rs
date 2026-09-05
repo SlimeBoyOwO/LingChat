@@ -15,7 +15,10 @@ impl MigrationTrait for Migration {
         // 防御性预检：SQLite 的 ADD COLUMN 没有 IF NOT EXISTS 语法，先查
         // pragma_table_info 确认列不存在再执行，防 seaql_migrations 记录
         // 异常（如被手动清空）导致重复执行时报「duplicate column」。
-        for (column, kind) in [("prompt_tokens", "prompt_tokens"), ("completion_tokens", "completion_tokens")] {
+        for (column, kind) in [
+            ("prompt_tokens", "prompt_tokens"),
+            ("completion_tokens", "completion_tokens"),
+        ] {
             let rows = manager
                 .get_connection()
                 .query_all(Statement::from_string(

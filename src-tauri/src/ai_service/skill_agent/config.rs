@@ -5,10 +5,10 @@ use std::path::PathBuf;
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
-use crate::ai_service::llm::provider_config::{
-    build_llm_client_from_provider, load_providers, load_role_assignment, LlmProviderConfig,
-};
 use crate::ai_service::llm::LlmClient;
+use crate::ai_service::llm::provider_config::{
+    LlmProviderConfig, build_llm_client_from_provider, load_providers, load_role_assignment,
+};
 use crate::api::{data_dir, game_data_dir};
 use crate::config::{self, keys};
 
@@ -86,9 +86,7 @@ impl SkillAgentConfig {
 
     /// 解析后的沙箱根目录（默认 `data/`）。
     pub fn resolve_sandbox_dir(&self) -> PathBuf {
-        self.sandbox_dir
-            .clone()
-            .unwrap_or_else(data_dir)
+        self.sandbox_dir.clone().unwrap_or_else(data_dir)
     }
 
     /// 技能库目录（固定为 `data/game_data/skills`）。

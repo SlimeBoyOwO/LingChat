@@ -151,7 +151,9 @@ input[type="checkbox"],
 #qinlingtest,
 #kuosan-preview-img {
   /* 允许圣光效果的过渡效果 */
-  transition: filter 0.3s ease-in-out, transform 0.3s ease-in-out !important;
+  transition:
+    filter 0.3s ease-in-out,
+    transform 0.3s ease-in-out !important;
   max-width: 100%;
   height: auto;
 }

@@ -17,54 +17,54 @@
 </template>
 
 <script>
-export default {
-  name: 'GlassInput',
+  export default {
+    name: "GlassInput",
 
-  inheritAttrs: false,
+    inheritAttrs: false,
 
-  props: {
-    modelValue: {
-      type: String,
-      default: '',
+    props: {
+      modelValue: {
+        type: String,
+        default: "",
+      },
     },
-  },
 
-  emits: ['update:modelValue'],
-}
+    emits: ["update:modelValue"],
+  };
 </script>
 
 <style scoped>
-.form-group {
-  width: 100%;
-}
+  .form-group {
+    width: 100%;
+  }
 
-.form-group .form-control {
-  width: 100%;
-  padding: 10px 12px;
-  resize: vertical;
+  .form-group .form-control {
+    width: 100%;
+    padding: 10px 12px;
+    resize: vertical;
 
-  color: #fff;
-  font-size: 15px;
-  font-family: inherit;
+    color: #fff;
+    font-size: 15px;
+    font-family: inherit;
 
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
 
-  border: 1px solid rgba(255, 255, 255, 0.125);
-  border-radius: 8px;
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.1),
-    inset 0 1px 1px rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.125);
+    border-radius: 8px;
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.1),
+      inset 0 1px 1px rgba(255, 255, 255, 0.1);
 
-  transition:
-    border-color 0.2s,
-    box-shadow 0.2s;
-}
+    transition:
+      border-color 0.2s,
+      box-shadow 0.2s;
+  }
 
-.form-group .form-control:focus {
-  outline: none;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
-}
+  .form-group .form-control:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
+  }
 </style>

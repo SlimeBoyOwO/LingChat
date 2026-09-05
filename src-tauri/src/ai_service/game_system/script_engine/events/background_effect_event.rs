@@ -8,10 +8,10 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    parse_duration, register_event, ScriptContext, ScriptEvent,
+    ScriptContext, ScriptEvent, parse_duration, register_event,
 };
 use crate::ai_service::game_system::script_engine::responses::{
-    event_names::SCRIPT_BACKGROUND_EFFECT, BackgroundEffectPayload,
+    BackgroundEffectPayload, event_names::SCRIPT_BACKGROUND_EFFECT,
 };
 use crate::ai_service::message_system::events::emit;
 

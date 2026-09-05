@@ -467,19 +467,19 @@ fn glob_pattern_regex(pattern: &str) -> anyhow::Result<regex::Regex> {
                     expression.push_str(".*");
                     index += 2;
                 }
-            }
+            },
             '*' => {
                 expression.push_str("[^/]*");
                 index += 1;
-            }
+            },
             '?' => {
                 expression.push_str("[^/]");
                 index += 1;
-            }
+            },
             character => {
                 expression.push_str(&regex::escape(&character.to_string()));
                 index += 1;
-            }
+            },
         }
     }
     expression.push('$');
@@ -512,7 +512,7 @@ fn canonicalize_allow_missing(path: &Path) -> anyhow::Result<PathBuf> {
                     .rev()
                     .fold(base, |path, component| path.join(component));
                 return Ok(lexical_normalize(&resolved));
-            }
+            },
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 let Some(component) = ancestor.file_name().map(OsString::from) else {
                     return Err(error.into());
@@ -521,7 +521,7 @@ fn canonicalize_allow_missing(path: &Path) -> anyhow::Result<PathBuf> {
                 if !ancestor.pop() {
                     return Err(error.into());
                 }
-            }
+            },
             Err(error) => return Err(error.into()),
         }
     }
@@ -533,10 +533,10 @@ fn lexical_normalize(path: &Path) -> PathBuf {
         match component {
             Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
             Component::RootDir => normalized.push(component.as_os_str()),
-            Component::CurDir => {}
+            Component::CurDir => {},
             Component::ParentDir => {
                 let _ = normalized.pop();
-            }
+            },
             Component::Normal(part) => normalized.push(part),
         }
     }

@@ -1,17 +1,17 @@
 <template>
-  <div class="w-full h-full flex flex-col bg-gray-900/50 rounded-lg p-4">
+  <div class="flex h-full w-full flex-col rounded-lg bg-gray-900/50 p-4">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-4 pb-3 border-b border-gray-700">
-      <h3 class="text-lg font-bold text-white">{{ $t('settings.adventurePanel.header.title') }}</h3>
+    <div class="mb-4 flex items-center justify-between border-b border-gray-700 pb-3">
+      <h3 class="text-lg font-bold text-white">{{ $t("settings.adventurePanel.header.title") }}</h3>
       <span class="text-sm text-gray-400">{{ completedCount }} / {{ totalCount }}</span>
     </div>
 
     <!-- Loading State -->
     <div v-if="loading" class="flex flex-col items-center justify-center py-12 text-gray-400">
       <div
-        class="w-8 h-8 border-4 border-brand border-t-transparent rounded-full animate-spin mb-2"
+        class="border-brand mb-2 h-8 w-8 animate-spin rounded-full border-4 border-t-transparent"
       ></div>
-      <p>{{ $t('settings.shared.loading') }}</p>
+      <p>{{ $t("settings.shared.loading") }}</p>
     </div>
 
     <!-- Empty State -->
@@ -19,22 +19,23 @@
       v-else-if="adventures.length === 0"
       class="flex flex-col items-center justify-center py-12 text-gray-400"
     >
-      <p>{{ $t('settings.adventurePanel.empty.noAdventures') }}</p>
+      <p>{{ $t("settings.adventurePanel.empty.noAdventures") }}</p>
     </div>
 
     <!-- Adventure Graph -->
-    <div v-else class="relative flex-1 flex flex-col overflow-hidden">
+    <div v-else class="relative flex flex-1 flex-col overflow-hidden">
       <!-- Zoom Controls -->
       <div
-        class="absolute top-2 right-2 z-20 flex items-center gap-2 bg-gray-800/80 rounded-lg p-2"
+        class="absolute top-2 right-2 z-20 flex items-center gap-2 rounded-lg bg-gray-800/80 p-2"
       >
         <button
           @click="zoomIn"
-          class="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+          class="flex h-8 w-8 items-center justify-center rounded bg-gray-700 text-white
+            transition-colors hover:bg-gray-600"
           :title="$t('settings.adventurePanel.zoom.zoomIn')"
         >
           <svg
-            class="w-5 h-5"
+            class="h-5 w-5"
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
             fill="currentColor"
@@ -42,16 +43,17 @@
             <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
           </svg>
         </button>
-        <span class="text-sm text-white font-mono w-12 text-center"
+        <span class="w-12 text-center font-mono text-sm text-white"
           >{{ Math.round(zoomLevel * 100) }}%</span
         >
         <button
           @click="zoomOut"
-          class="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+          class="flex h-8 w-8 items-center justify-center rounded bg-gray-700 text-white
+            transition-colors hover:bg-gray-600"
           :title="$t('settings.adventurePanel.zoom.zoomOut')"
         >
           <svg
-            class="w-5 h-5"
+            class="h-5 w-5"
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
             fill="currentColor"
@@ -61,11 +63,12 @@
         </button>
         <button
           @click="resetZoom"
-          class="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+          class="flex h-8 w-8 items-center justify-center rounded bg-gray-700 text-white
+            transition-colors hover:bg-gray-600"
           :title="$t('settings.adventurePanel.zoom.reset')"
         >
           <svg
-            class="w-5 h-5"
+            class="h-5 w-5"
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
             fill="currentColor"
@@ -78,14 +81,14 @@
       </div>
 
       <!-- Graph Container -->
-      <div ref="graphWrapper" class="flex-1 overflow-auto relative">
+      <div ref="graphWrapper" class="relative flex-1 overflow-auto">
         <div
           class="relative origin-top-left transition-transform duration-200 ease-out"
           :style="graphContainerStyle"
         >
           <!-- SVG Connection Layer -->
           <svg
-            class="absolute top-0 left-0 pointer-events-none z-0"
+            class="pointer-events-none absolute top-0 left-0 z-0"
             :width="graphWidth"
             :height="graphHeight"
           >
@@ -142,33 +145,34 @@
             <div
               v-for="adventure in adventures"
               :key="adventure.adventure_folder"
-              class="absolute flex items-center gap-2 p-2 rounded-xl cursor-pointer transition-all duration-200 border-2"
+              class="absolute flex cursor-pointer items-center gap-2 rounded-xl border-2 p-2
+                transition-all duration-200"
               :class="getNodeClass(adventure)"
               :style="getNodeStyle(adventure.adventure_folder)"
               @click="handleNodeClick(adventure)"
             >
               <!-- Icon -->
               <div
-                class="w-14 h-14 flex items-center justify-center rounded-full shrink-0"
+                class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full"
                 :class="getIconClass(adventure.status)"
               >
                 <Book></Book>
               </div>
 
               <!-- Content -->
-              <div class="flex-1 min-w-0">
-                <div class="text-base font-semibold text-white mb-1">{{ adventure.name }}</div>
-                <div class="text-sm text-gray-400 line-clamp-2">{{ adventure.description }}</div>
+              <div class="min-w-0 flex-1">
+                <div class="mb-1 text-base font-semibold text-white">{{ adventure.name }}</div>
+                <div class="line-clamp-2 text-sm text-gray-400">{{ adventure.description }}</div>
                 <div
                   v-if="adventure.status === 'locked'"
-                  class="flex items-center gap-1 mt-2 text-xs text-gray-500"
+                  class="mt-2 flex items-center gap-1 text-xs text-gray-500"
                 >
                   <span>🔒</span>
                   <span>{{ getUnlockHint(adventure) }}</span>
                 </div>
-                <div v-else class="flex items-center gap-1 mt-2 text-xs text-gray-500">
+                <div v-else class="mt-2 flex items-center gap-1 text-xs text-gray-500">
                   <div v-if="adventure.recommand_start">
-                    <span>💡{{ $t('settings.adventurePanel.node.recommendStart') }}</span>
+                    <span>💡{{ $t("settings.adventurePanel.node.recommendStart") }}</span>
                     <span>{{ adventure.recommand_start }}</span>
                   </div>
                 </div>
@@ -177,7 +181,7 @@
               <!-- Status Badge -->
               <div class="shrink-0">
                 <span
-                  class="px-3 py-1.5 rounded-full text-xs font-medium"
+                  class="rounded-full px-3 py-1.5 text-xs font-medium"
                   :class="getBadgeClass(adventure.status)"
                 >
                   {{ getStatusText(adventure.status) }}
@@ -192,299 +196,301 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { useAdventureStore } from '@/stores/modules/adventure'
-import type { AdventureInfo } from '@/api/services/adventure'
-import { useGameStore } from '@/stores/modules/game'
-import { useUIStore } from '@/stores/modules/ui/ui'
-import { Book } from 'lucide-vue-next'
-import { eventQueue } from '@/core/events/event-queue'
+  import { computed, onMounted, ref, watch } from "vue";
+  import { useI18n } from "vue-i18n";
+  import { useAdventureStore } from "@/stores/modules/adventure";
+  import type { AdventureInfo } from "@/api/services/adventure";
+  import { useGameStore } from "@/stores/modules/game";
+  import { useUIStore } from "@/stores/modules/ui/ui";
+  import { Book } from "lucide-vue-next";
+  import { eventQueue } from "@/core/events/event-queue";
 
-interface Props {
-  characterFolder: string
-}
-
-interface Connection {
-  from: string
-  to: string
-  path: string
-  lineClass: string
-  markerEnd: string
-}
-
-const gameStore = useGameStore()
-const uiStore = useUIStore()
-const { t } = useI18n()
-
-const props = defineProps<Props>()
-const adventureStore = useAdventureStore()
-
-const loading = computed(() => adventureStore.loading)
-const adventures = computed(() => adventureStore.sortedAdventures)
-const completedCount = computed(() => adventureStore.completedCount)
-const totalCount = computed(() => adventures.value.length)
-
-// 缩放相关
-const zoomLevel = ref(1)
-const minZoom = 0.5
-const maxZoom = 2
-const zoomStep = 0.1
-
-const zoomIn = () => (zoomLevel.value = Math.min(maxZoom, zoomLevel.value + zoomStep))
-const zoomOut = () => (zoomLevel.value = Math.max(minZoom, zoomLevel.value - zoomStep))
-const resetZoom = () => (zoomLevel.value = 1)
-
-const graphContainerStyle = computed(() => ({
-  transform: `scale(${zoomLevel.value})`,
-  width: `${graphWidth.value}px`,
-  height: `${graphHeight.value}px`,
-}))
-
-// 布局常量
-const COLUMN_WIDTH = 480
-const NODE_WIDTH = 380
-const NODE_HEIGHT = 180
-const NODE_GAP = 24
-const PADDING_X = 40
-const PADDING_Y = 40
-
-// 列分配算法
-const adventureColumns = computed(() => {
-  const columns: AdventureInfo[][] = []
-  const assigned = new Map<string, number>()
-  const sorted = [...adventures.value].sort((a, b) => a.order - b.order)
-
-  for (const adv of sorted) {
-    const prereq = adv.unlock_conditions?.find((c) => c.type === 'adventure_completed')
-
-    let columnIndex = 0
-    if (prereq?.adventure_folder) {
-      const prereqColumn = assigned.get(prereq.adventure_folder)
-      if (prereqColumn !== undefined) {
-        columnIndex = prereqColumn + 1
-      }
-    }
-
-    while (columns.length <= columnIndex) {
-      columns.push([])
-    }
-
-    columns[columnIndex]!.push(adv)
-    assigned.set(adv.adventure_folder, columnIndex)
+  interface Props {
+    characterFolder: string;
   }
-  return columns
-})
 
-const graphWidth = computed(() => {
-  const columnCount = adventureColumns.value.length
-  return Math.max(800, PADDING_X * 2 + columnCount * COLUMN_WIDTH + NODE_WIDTH - COLUMN_WIDTH)
-})
-
-const graphHeight = computed(() => {
-  let maxNodesInColumn = 1
-  for (const column of adventureColumns.value) {
-    maxNodesInColumn = Math.max(maxNodesInColumn, column.length)
+  interface Connection {
+    from: string;
+    to: string;
+    path: string;
+    lineClass: string;
+    markerEnd: string;
   }
-  const maxColumnHeight = maxNodesInColumn * NODE_HEIGHT + (maxNodesInColumn - 1) * NODE_GAP
-  return Math.max(500, PADDING_Y * 2 + maxColumnHeight)
-})
 
-const nodeLayouts = computed(() => {
-  const layouts = new Map<string, { x: number; y: number; width: number; height: number }>()
+  const gameStore = useGameStore();
+  const uiStore = useUIStore();
+  const { t } = useI18n();
 
-  adventureColumns.value.forEach((column, colIndex) => {
-    const nodeCount = column.length
-    const totalColumnHeight = nodeCount * NODE_HEIGHT + (nodeCount - 1) * NODE_GAP
-    const startY = (graphHeight.value - totalColumnHeight) / 2
+  const props = defineProps<Props>();
+  const adventureStore = useAdventureStore();
 
-    column.forEach((adv, rowIndex) => {
-      layouts.set(adv.adventure_folder, {
-        x: PADDING_X + colIndex * COLUMN_WIDTH,
-        y: startY + rowIndex * (NODE_HEIGHT + NODE_GAP),
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
-      })
-    })
-  })
+  const loading = computed(() => adventureStore.loading);
+  const adventures = computed(() => adventureStore.sortedAdventures);
+  const completedCount = computed(() => adventureStore.completedCount);
+  const totalCount = computed(() => adventures.value.length);
 
-  return layouts
-})
+  // 缩放相关
+  const zoomLevel = ref(1);
+  const minZoom = 0.5;
+  const maxZoom = 2;
+  const zoomStep = 0.1;
 
-// 提供给模板的独立节点样式
-const getNodeStyle = (folder: string) => {
-  const layout = nodeLayouts.value.get(folder)
-  if (!layout) return { display: 'none' }
-  return {
-    left: `${layout.x}px`,
-    top: `${layout.y}px`,
-    width: `${layout.width}px`,
-    height: `${layout.height}px`,
-  }
-}
+  const zoomIn = () => (zoomLevel.value = Math.min(maxZoom, zoomLevel.value + zoomStep));
+  const zoomOut = () => (zoomLevel.value = Math.max(minZoom, zoomLevel.value - zoomStep));
+  const resetZoom = () => (zoomLevel.value = 1);
 
-const connections = computed<Connection[]>(() => {
-  const result: Connection[] = []
+  const graphContainerStyle = computed(() => ({
+    transform: `scale(${zoomLevel.value})`,
+    width: `${graphWidth.value}px`,
+    height: `${graphHeight.value}px`,
+  }));
 
-  adventures.value.forEach((toAdv) => {
-    const prereq = toAdv.unlock_conditions?.find((c) => c.type === 'adventure_completed')
+  // 布局常量
+  const COLUMN_WIDTH = 480;
+  const NODE_WIDTH = 380;
+  const NODE_HEIGHT = 180;
+  const NODE_GAP = 24;
+  const PADDING_X = 40;
+  const PADDING_Y = 40;
 
-    if (prereq?.adventure_folder) {
-      const fromAdv = adventures.value.find((a) => a.adventure_folder === prereq.adventure_folder)
-      if (!fromAdv) return
+  // 列分配算法
+  const adventureColumns = computed(() => {
+    const columns: AdventureInfo[][] = [];
+    const assigned = new Map<string, number>();
+    const sorted = [...adventures.value].sort((a, b) => a.order - b.order);
 
-      // 直接从字典中取位置，精准无误
-      const fromPos = nodeLayouts.value.get(fromAdv.adventure_folder)
-      const toPos = nodeLayouts.value.get(toAdv.adventure_folder)
+    for (const adv of sorted) {
+      const prereq = adv.unlock_conditions?.find((c) => c.type === "adventure_completed");
 
-      if (!fromPos || !toPos) return
-
-      // 计算连接点
-      const fromX = fromPos.x + fromPos.width
-      const fromY = fromPos.y + fromPos.height / 2
-      const toX = toPos.x
-      const toY = toPos.y + toPos.height / 2
-
-      // 贝塞尔曲线控制点（稍微增大 offset 让曲线更平滑）
-      const controlOffset = Math.max(40, Math.abs(toX - fromX) * 0.4)
-      const path = `M ${fromX} ${fromY} C ${fromX + controlOffset} ${fromY}, ${toX - controlOffset} ${toY}, ${toX - 4} ${toY}`
-
-      let lineClass = 'stroke-gray-600 stroke-2 fill-none stroke-dasharray-5'
-      let markerEnd = 'url(#arrow-locked)'
-
-      if (toAdv.status === 'completed') {
-        lineClass = 'stroke-green-400 stroke-[2.5] fill-none'
-        markerEnd = 'url(#arrow-completed)'
-      } else if (toAdv.status !== 'locked') {
-        lineClass = 'stroke-brand stroke-[2.5] fill-none'
-        markerEnd = 'url(#arrow-unlocked)'
+      let columnIndex = 0;
+      if (prereq?.adventure_folder) {
+        const prereqColumn = assigned.get(prereq.adventure_folder);
+        if (prereqColumn !== undefined) {
+          columnIndex = prereqColumn + 1;
+        }
       }
 
-      result.push({
-        from: fromAdv.adventure_folder,
-        to: toAdv.adventure_folder,
-        path,
-        lineClass,
-        markerEnd,
-      })
+      while (columns.length <= columnIndex) {
+        columns.push([]);
+      }
+
+      columns[columnIndex]!.push(adv);
+      assigned.set(adv.adventure_folder, columnIndex);
     }
-  })
+    return columns;
+  });
 
-  return result
-})
+  const graphWidth = computed(() => {
+    const columnCount = adventureColumns.value.length;
+    return Math.max(800, PADDING_X * 2 + columnCount * COLUMN_WIDTH + NODE_WIDTH - COLUMN_WIDTH);
+  });
 
-onMounted(async () => {
-  await fetchAdventures()
-})
-
-watch(
-  () => props.characterFolder,
-  async (newFolder) => {
-    if (newFolder) {
-      await fetchAdventures()
+  const graphHeight = computed(() => {
+    let maxNodesInColumn = 1;
+    for (const column of adventureColumns.value) {
+      maxNodesInColumn = Math.max(maxNodesInColumn, column.length);
     }
-  },
-)
+    const maxColumnHeight = maxNodesInColumn * NODE_HEIGHT + (maxNodesInColumn - 1) * NODE_GAP;
+    return Math.max(500, PADDING_Y * 2 + maxColumnHeight);
+  });
 
-async function fetchAdventures() {
-  try {
-    await adventureStore.fetchCharacterAdventures(props.characterFolder)
-  } catch (error) {
-    console.error('[AdventurePanel] Failed to fetch adventures:', error)
-  }
-}
+  const nodeLayouts = computed(() => {
+    const layouts = new Map<string, { x: number; y: number; width: number; height: number }>();
 
-// CSS 和逻辑处理保持你的原始逻辑
-const getNodeClass = (adventure: AdventureInfo) => {
-  const baseClass = 'bg-gray-800/50 border-gray-700 hover:bg-gray-800/80'
-  switch (adventure.status) {
-    case 'completed':
-      return `${baseClass} border-green-500/50 bg-green-900/20 hover:bg-green-900/30 hover:shadow-lg hover:shadow-green-500/20`
-    case 'unlocked':
-    case 'in_progress':
-      return `${baseClass} border-brand/50 bg-brand/20 hover:bg-brand/30 hover:shadow-lg hover:shadow-brand/20`
-    case 'locked':
-      return 'bg-gray-800/30 border-gray-700/50 opacity-60 cursor-not-allowed'
-    default:
-      return baseClass
-  }
-}
+    adventureColumns.value.forEach((column, colIndex) => {
+      const nodeCount = column.length;
+      const totalColumnHeight = nodeCount * NODE_HEIGHT + (nodeCount - 1) * NODE_GAP;
+      const startY = (graphHeight.value - totalColumnHeight) / 2;
 
-const getIconClass = (status: string) => {
-  switch (status) {
-    case 'completed':
-      return 'bg-green-500/20 text-green-400'
-    case 'locked':
-      return 'bg-gray-700/50 text-gray-500'
-    default:
-      return 'bg-brand/20 text-brand'
-  }
-}
+      column.forEach((adv, rowIndex) => {
+        layouts.set(adv.adventure_folder, {
+          x: PADDING_X + colIndex * COLUMN_WIDTH,
+          y: startY + rowIndex * (NODE_HEIGHT + NODE_GAP),
+          width: NODE_WIDTH,
+          height: NODE_HEIGHT,
+        });
+      });
+    });
 
-const getBadgeClass = (status: string) => {
-  switch (status) {
-    case 'completed':
-      return 'bg-green-500/20 text-green-400'
-    case 'in_progress':
-      return 'bg-blue-500/20 text-blue-400'
-    case 'unlocked':
-      return 'bg-brand/20 text-brand'
-    default:
-      return 'bg-gray-700/50 text-gray-500'
-  }
-}
+    return layouts;
+  });
 
-const getStatusText = (status: string) => {
-  switch (status) {
-    case 'completed':
-      return t('settings.adventurePanel.status.completed')
-    case 'in_progress':
-      return t('settings.adventurePanel.status.inProgress')
-    case 'unlocked':
-      return t('settings.adventurePanel.status.unlocked')
-    default:
-      return t('settings.adventurePanel.status.locked')
-  }
-}
+  // 提供给模板的独立节点样式
+  const getNodeStyle = (folder: string) => {
+    const layout = nodeLayouts.value.get(folder);
+    if (!layout) return { display: "none" };
+    return {
+      left: `${layout.x}px`,
+      top: `${layout.y}px`,
+      width: `${layout.width}px`,
+      height: `${layout.height}px`,
+    };
+  };
 
-const getUnlockHint = (adventure: AdventureInfo): string => {
-  if (!adventure.unlock_conditions || adventure.unlock_conditions.length === 0)
-    return t('settings.adventurePanel.unlock.autoUnlock')
-  const hints: string[] = []
-  for (const cond of adventure.unlock_conditions) {
-    if (cond.type === 'chat_count')
-      hints.push(t('settings.adventurePanel.unlock.chatCount', { count: cond.threshold }))
-    else if (cond.type === 'time_range') hints.push(`${cond.start_hour}:00-${cond.end_hour}:00`)
-    else if (cond.type === 'adventure_completed')
-      hints.push(t('settings.adventurePanel.unlock.prereqAdventure'))
-    else if (cond.type === 'achievement_unlocked')
-      hints.push(t('settings.adventurePanel.unlock.achievement'))
-  }
-  return hints.join(' · ')
-}
+  const connections = computed<Connection[]>(() => {
+    const result: Connection[] = [];
 
-const handleNodeClick = async (adventure: AdventureInfo) => {
-  if (adventure.status === 'locked' || adventure.status === 'completed') return
-  if (adventure.status === 'unlocked') {
+    adventures.value.forEach((toAdv) => {
+      const prereq = toAdv.unlock_conditions?.find((c) => c.type === "adventure_completed");
+
+      if (prereq?.adventure_folder) {
+        const fromAdv = adventures.value.find(
+          (a) => a.adventure_folder === prereq.adventure_folder
+        );
+        if (!fromAdv) return;
+
+        // 直接从字典中取位置，精准无误
+        const fromPos = nodeLayouts.value.get(fromAdv.adventure_folder);
+        const toPos = nodeLayouts.value.get(toAdv.adventure_folder);
+
+        if (!fromPos || !toPos) return;
+
+        // 计算连接点
+        const fromX = fromPos.x + fromPos.width;
+        const fromY = fromPos.y + fromPos.height / 2;
+        const toX = toPos.x;
+        const toY = toPos.y + toPos.height / 2;
+
+        // 贝塞尔曲线控制点（稍微增大 offset 让曲线更平滑）
+        const controlOffset = Math.max(40, Math.abs(toX - fromX) * 0.4);
+        const path = `M ${fromX} ${fromY} C ${fromX + controlOffset} ${fromY}, ${toX - controlOffset} ${toY}, ${toX - 4} ${toY}`;
+
+        let lineClass = "stroke-gray-600 stroke-2 fill-none stroke-dasharray-5";
+        let markerEnd = "url(#arrow-locked)";
+
+        if (toAdv.status === "completed") {
+          lineClass = "stroke-green-400 stroke-[2.5] fill-none";
+          markerEnd = "url(#arrow-completed)";
+        } else if (toAdv.status !== "locked") {
+          lineClass = "stroke-brand stroke-[2.5] fill-none";
+          markerEnd = "url(#arrow-unlocked)";
+        }
+
+        result.push({
+          from: fromAdv.adventure_folder,
+          to: toAdv.adventure_folder,
+          path,
+          lineClass,
+          markerEnd,
+        });
+      }
+    });
+
+    return result;
+  });
+
+  onMounted(async () => {
+    await fetchAdventures();
+  });
+
+  watch(
+    () => props.characterFolder,
+    async (newFolder) => {
+      if (newFolder) {
+        await fetchAdventures();
+      }
+    }
+  );
+
+  async function fetchAdventures() {
     try {
-      uiStore.showSettings = false
-      eventQueue.clear()
-      gameStore.enterStoryMode(adventure.adventure_folder, undefined, adventure.adventure_folder)
-      // MainChat remains mounted behind Settings, so clear()'s pause must be lifted here.
-      eventQueue.resume()
-      await adventureStore.startAdventure(adventure.adventure_folder)
+      await adventureStore.fetchCharacterAdventures(props.characterFolder);
     } catch (error) {
-      eventQueue.clear()
-      gameStore.exitStoryMode()
-      eventQueue.resume()
-      console.error('启动冒险失败:', error)
+      console.error("[AdventurePanel] Failed to fetch adventures:", error);
     }
   }
-}
+
+  // CSS 和逻辑处理保持你的原始逻辑
+  const getNodeClass = (adventure: AdventureInfo) => {
+    const baseClass = "bg-gray-800/50 border-gray-700 hover:bg-gray-800/80";
+    switch (adventure.status) {
+      case "completed":
+        return `${baseClass} border-green-500/50 bg-green-900/20 hover:bg-green-900/30 hover:shadow-lg hover:shadow-green-500/20`;
+      case "unlocked":
+      case "in_progress":
+        return `${baseClass} border-brand/50 bg-brand/20 hover:bg-brand/30 hover:shadow-lg hover:shadow-brand/20`;
+      case "locked":
+        return "bg-gray-800/30 border-gray-700/50 opacity-60 cursor-not-allowed";
+      default:
+        return baseClass;
+    }
+  };
+
+  const getIconClass = (status: string) => {
+    switch (status) {
+      case "completed":
+        return "bg-green-500/20 text-green-400";
+      case "locked":
+        return "bg-gray-700/50 text-gray-500";
+      default:
+        return "bg-brand/20 text-brand";
+    }
+  };
+
+  const getBadgeClass = (status: string) => {
+    switch (status) {
+      case "completed":
+        return "bg-green-500/20 text-green-400";
+      case "in_progress":
+        return "bg-blue-500/20 text-blue-400";
+      case "unlocked":
+        return "bg-brand/20 text-brand";
+      default:
+        return "bg-gray-700/50 text-gray-500";
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case "completed":
+        return t("settings.adventurePanel.status.completed");
+      case "in_progress":
+        return t("settings.adventurePanel.status.inProgress");
+      case "unlocked":
+        return t("settings.adventurePanel.status.unlocked");
+      default:
+        return t("settings.adventurePanel.status.locked");
+    }
+  };
+
+  const getUnlockHint = (adventure: AdventureInfo): string => {
+    if (!adventure.unlock_conditions || adventure.unlock_conditions.length === 0)
+      return t("settings.adventurePanel.unlock.autoUnlock");
+    const hints: string[] = [];
+    for (const cond of adventure.unlock_conditions) {
+      if (cond.type === "chat_count")
+        hints.push(t("settings.adventurePanel.unlock.chatCount", { count: cond.threshold }));
+      else if (cond.type === "time_range") hints.push(`${cond.start_hour}:00-${cond.end_hour}:00`);
+      else if (cond.type === "adventure_completed")
+        hints.push(t("settings.adventurePanel.unlock.prereqAdventure"));
+      else if (cond.type === "achievement_unlocked")
+        hints.push(t("settings.adventurePanel.unlock.achievement"));
+    }
+    return hints.join(" · ");
+  };
+
+  const handleNodeClick = async (adventure: AdventureInfo) => {
+    if (adventure.status === "locked" || adventure.status === "completed") return;
+    if (adventure.status === "unlocked") {
+      try {
+        uiStore.showSettings = false;
+        eventQueue.clear();
+        gameStore.enterStoryMode(adventure.adventure_folder, undefined, adventure.adventure_folder);
+        // MainChat remains mounted behind Settings, so clear()'s pause must be lifted here.
+        eventQueue.resume();
+        await adventureStore.startAdventure(adventure.adventure_folder);
+      } catch (error) {
+        eventQueue.clear();
+        gameStore.exitStoryMode();
+        eventQueue.resume();
+        console.error("启动冒险失败:", error);
+      }
+    }
+  };
 </script>
 
 <style scoped>
-.stroke-dasharray-5 {
-  stroke-dasharray: 5, 5;
-}
+  .stroke-dasharray-5 {
+    stroke-dasharray: 5, 5;
+  }
 </style>

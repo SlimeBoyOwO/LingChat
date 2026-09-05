@@ -8,7 +8,7 @@ use serde_json::Value;
 use std::time::Instant;
 use tauri::AppHandle;
 
-use crate::ai_service::llm::provider_config::{resolve_vision_provider, LlmProviderConfig};
+use crate::ai_service::llm::provider_config::{LlmProviderConfig, resolve_vision_provider};
 
 /// 构造预配置的 reqwest Client（TLS 见 crate::utils::tls::build_tls_config）。
 fn build_vlm_client() -> Client {
@@ -85,7 +85,7 @@ fn vision_base_url(provider: &LlmProviderConfig) -> String {
             } else {
                 format!("{base}/v1")
             }
-        }
+        },
         "openai" if base.is_empty() => "https://api.openai.com/v1".to_string(),
         "deepseek" if base.is_empty() => "https://api.deepseek.com".to_string(),
         _ => base.to_string(),
@@ -129,7 +129,9 @@ impl ScreenAnalyzer {
     /// 这是策略分发器和主动对话系统的主要入口。
     pub async fn analyze_screen(&mut self, prompt: &str) -> Option<String> {
         if self.config.vd_model.is_empty() {
-            tracing::warn!("[ScreenAnalyzer] Vision provider model is not configured, skipping screenshot analysis.");
+            tracing::warn!(
+                "[ScreenAnalyzer] Vision provider model is not configured, skipping screenshot analysis."
+            );
             return None;
         }
 
@@ -143,7 +145,9 @@ impl ScreenAnalyzer {
     /// 供脚本事件、文件分析等外部调用方使用。
     pub async fn analyze_image(&mut self, image_bytes: &[u8], prompt: &str) -> Option<String> {
         if self.config.vd_model.is_empty() {
-            tracing::warn!("[ScreenAnalyzer] Vision provider model is not configured, skipping image analysis.");
+            tracing::warn!(
+                "[ScreenAnalyzer] Vision provider model is not configured, skipping image analysis."
+            );
             return None;
         }
 
@@ -154,7 +158,9 @@ impl ScreenAnalyzer {
     /// 分析本地图片文件路径。
     pub async fn analyze_image_file(&mut self, image_path: &str, prompt: &str) -> Option<String> {
         if self.config.vd_model.is_empty() {
-            tracing::warn!("[ScreenAnalyzer] Vision provider model is not configured, skipping image file analysis.");
+            tracing::warn!(
+                "[ScreenAnalyzer] Vision provider model is not configured, skipping image file analysis."
+            );
             return None;
         }
 
@@ -245,10 +251,10 @@ impl ScreenAnalyzer {
                         err_text
                     );
                 }
-            }
+            },
             Err(e) => {
                 tracing::error!("[ScreenAnalyzer] Failed to send request to VLM: {:?}", e);
-            }
+            },
         }
 
         self.last_report = AnalysisReport {
@@ -273,8 +279,8 @@ pub fn capture_screen_as_jpeg() -> Option<Vec<u8>> {
     #[cfg(target_os = "windows")]
     {
         use windows::Win32::Graphics::Gdi::{
-            BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
-            GetDIBits, ReleaseDC, SelectObject, BITMAPINFOHEADER, DIB_RGB_COLORS, SRCCOPY,
+            BITMAPINFOHEADER, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DIB_RGB_COLORS,
+            DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC, SRCCOPY, SelectObject,
         };
         use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
 
@@ -355,8 +361,8 @@ pub fn capture_screen_raw_jpeg() -> Option<Vec<u8>> {
     #[cfg(target_os = "windows")]
     {
         use windows::Win32::Graphics::Gdi::{
-            BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
-            GetDIBits, ReleaseDC, SelectObject, BITMAPINFOHEADER, DIB_RGB_COLORS, SRCCOPY,
+            BITMAPINFOHEADER, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DIB_RGB_COLORS,
+            DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC, SRCCOPY, SelectObject,
         };
         use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
 

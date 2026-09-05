@@ -1,175 +1,175 @@
 // stores/ui.ts
-import { defineStore } from 'pinia'
-import { useSettingsStore } from '../settings'
-import { saveBgmState } from '../../../api/services/music'
-import { saveAmbientState } from '../../../api/services/ambient'
-import { i18n } from '@/locales'
-import { HORROR_EFFECT_KEYS } from '@/components/game/standard/particles'
+import { defineStore } from "pinia";
+import { useSettingsStore } from "../settings";
+import { saveBgmState } from "../../../api/services/music";
+import { saveAmbientState } from "../../../api/services/ambient";
+import { i18n } from "@/locales";
+import { HORROR_EFFECT_KEYS } from "@/components/game/standard/particles";
 
 // 通知类型
-export type NotificationType = 'error' | 'success' | 'info' | 'warning'
+export type NotificationType = "error" | "success" | "info" | "warning";
 export type ScheduleViewType =
-  | 'schedule_groups'
-  | 'schedule_details'
-  | 'todo_groups'
-  | 'todo_detail'
-  | 'calendar'
+  | "schedule_groups"
+  | "schedule_details"
+  | "todo_groups"
+  | "todo_detail"
+  | "calendar";
 
 // 通知状态接口
 interface NotificationState {
-  isVisible: boolean
-  type: NotificationType
-  title: string
-  message: string
-  avatarUrl: string
-  duration: number
+  isVisible: boolean;
+  type: NotificationType;
+  title: string;
+  message: string;
+  avatarUrl: string;
+  duration: number;
 }
 
 interface UIState {
-  showCharacterTitle: string
-  showCharacterSubtitle: string
-  showCharacterEmotion: string
-  showCharacterLine: string
-  showCharacterMotionText: string
-  showPlayerHintLine: string
-  showCharacterThinkLine: string
-  showSettings: boolean
-  currentSettingsTab: string
+  showCharacterTitle: string;
+  showCharacterSubtitle: string;
+  showCharacterEmotion: string;
+  showCharacterLine: string;
+  showCharacterMotionText: string;
+  showPlayerHintLine: string;
+  showCharacterThinkLine: string;
+  showSettings: boolean;
+  currentSettingsTab: string;
   /** 高级设置内的子标签（menu / llm / tts / other / tools） */
-  advanceTab: string
+  advanceTab: string;
 
-  currentBackgroundTransition: number
-  currentPresentPic: string
-  currentPresentPicScale: number
-  currentBackgroundMusic: string
-  bgMusicMode: 'loop-list' | 'loop-single' | 'random'
-  bgMusicPaused: boolean
-  bgMusicStoped: boolean
+  currentBackgroundTransition: number;
+  currentPresentPic: string;
+  currentPresentPicScale: number;
+  currentBackgroundMusic: string;
+  bgMusicMode: "loop-list" | "loop-single" | "random";
+  bgMusicPaused: boolean;
+  bgMusicStoped: boolean;
   /** 背景音乐播放速度倍率（1.0 原速），由剧本 music 事件的 playbackSpeed 设置 */
-  bgMusicPlaybackRate: number
+  bgMusicPlaybackRate: number;
 
-  currentSoundEffect: string
+  currentSoundEffect: string;
   /** 每次音效事件递增，确保相同路径也触发重播。 */
-  soundEffectSeq: number
-  currentAvatarAudio: string
+  soundEffectSeq: number;
+  currentAvatarAudio: string;
   /** 角色语音（TTS）播放倍率，由剧本 voice_shift 事件设置；<1 降调=恶魔音，1.0 正常 */
-  voiceRate: number
+  voiceRate: number;
   /** 角色语音纯音调偏移（半音数，负数=低沉），由剧本 voice_shift 事件设置；0 正常。
    *  经 Web Audio detune 实现，不改变语速，可与 voiceRate 叠加 */
-  voicePitch: number
+  voicePitch: number;
   /** 进入剧本前的自由对话 BGM（会话级，退出剧本时恢复；null = 不在剧本中） */
-  preScriptBgm: string | null
+  preScriptBgm: string | null;
   /** 进入剧本前的 BGM 循环模式（同上，随 preScriptBgm 一起恢复） */
-  preScriptBgmMode: 'loop-list' | 'loop-single' | 'random' | null
+  preScriptBgmMode: "loop-list" | "loop-single" | "random" | null;
   /** 进入剧本前的自由对话背景图（剧本换的背景不得带出剧本外） */
-  preScriptBackground: string | null
+  preScriptBackground: string | null;
   /** true 时 BGM 状态变化不写入 session（剧本运行期间屏蔽，防剧本 BGM 泄漏到下次启动） */
-  bgmPersistBlocked: boolean
-  autoMode: boolean
+  bgmPersistBlocked: boolean;
+  autoMode: boolean;
 
   /** 突脸惊吓：图片路径（空串 = 无演出） */
-  jumpscareImage: string
+  jumpscareImage: string;
   /** 突脸音效路径（由 Jumpscare 组件自行播放） */
-  jumpscareSound: string
+  jumpscareSound: string;
   /** 突脸收场时间戳（ms, Date.now() 基准），到点组件自行隐藏 */
-  jumpscareUntil: number
+  jumpscareUntil: number;
 
   /** 立绘闪现（DDLC 式崩坏一闪）：null = 无演出；seq 递增保证同情绪也能重复触发 */
-  spriteFlash: { roleId: number; emotion: string; duration: number; seq: number } | null
+  spriteFlash: { roleId: number; emotion: string; duration: number; seq: number } | null;
 
   /** 立绘噪点侵蚀（DDLC n_rects_ghost 式）：null = 无演出；常驻到显式清除 */
-  spriteNoise: { roleId: number; noise: string; fadeInSec: number; seq: number } | null
+  spriteNoise: { roleId: number; noise: string; fadeInSec: number; seq: number } | null;
 
   /** 恐怖剧本入口过渡阶段：'' 无 / 'freeze' 卡死 / 'static' 花屏 */
-  horrorEntryPhase: '' | 'freeze' | 'static'
+  horrorEntryPhase: "" | "freeze" | "static";
 
   /** 删角色文件彩蛋（DDLC ghost menu 对应物）：.chr 被全删的剧本进入时
    *  锁成纯黑底 + 黑白幽灵立绘，不给任何文字和按钮出口；null = 无锁定 */
-  ghostLock: { scriptName: string; assetDir: string } | null
+  ghostLock: { scriptName: string; assetDir: string } | null;
   /** 幽灵锁定中点窗口 X 的退出突脸（DDLC quit 放大脸）：true = 正在演出，随后退出 */
-  ghostQuitZoom: boolean
+  ghostQuitZoom: boolean;
 
   /** BSOD 假异常窗口的 trace 行文本（剧本经 background_effect.text 自带；空串 = 用通用默认） */
-  bsodText: string
+  bsodText: string;
   /** BSOD 彩蛋独白（background_effect.echo；空串 = 不显示独白） */
-  bsodEcho: string
+  bsodEcho: string;
 
   /** DLC 变更信号：导入/卸载后 +1，主菜单等监听它刷新剧本列表与 DLC 提示 */
-  dlcRefreshToken: number
+  dlcRefreshToken: number;
 
   // 环境音轨道列表（多轨并行，最多8轨）
   ambientTracks: Array<{
-    id: string         // 唯一标识（基于时间戳+随机数）
-    src: string        // 音频文件URL
-    name?: string      // 显示名称（可选，回退到从路径推断）
-    volume: number     // 单轨音量 0-100
-    loop: boolean      // 是否循环
-    paused?: boolean   // 是否暂停
-    fade?: boolean     // 是否启用淡入淡出
-  }>
+    id: string; // 唯一标识（基于时间戳+随机数）
+    src: string; // 音频文件URL
+    name?: string; // 显示名称（可选，回退到从路径推断）
+    volume: number; // 单轨音量 0-100
+    loop: boolean; // 是否循环
+    paused?: boolean; // 是否暂停
+    fade?: boolean; // 是否启用淡入淡出
+  }>;
 
   // 视口响应式追踪（全局唯一 resize 监听，组件直接读值）
-  viewportWidth: number
-  viewportHeight: number
+  viewportWidth: number;
+  viewportHeight: number;
 
   // 刘海屏安全区（px，由 CSS env() 或原生注入的变量提供）
-  safeAreaInsetTop: number
-  safeAreaInsetBottom: number
-  safeAreaInsetLeft: number
-  safeAreaInsetRight: number
+  safeAreaInsetTop: number;
+  safeAreaInsetBottom: number;
+  safeAreaInsetLeft: number;
+  safeAreaInsetRight: number;
 
   // Schedule 相关状态
-  scheduleView: string
+  scheduleView: string;
 
   // Notification 相关状态
-  notification: NotificationState
-  tipsMap: Record<string, { title: string; message: string }>
-  tipsAvailable: boolean
+  notification: NotificationState;
+  tipsMap: Record<string, { title: string; message: string }>;
+  tipsAvailable: boolean;
 
   // 背景音乐结束时间戳，用于触发音乐切换
-  _musicEndTime: number
+  _musicEndTime: number;
 }
 
 // 默认 avatar
-const DEFAULT_AVATAR = '/characters/诺一钦灵/头像.png'
+const DEFAULT_AVATAR = "/characters/诺一钦灵/头像.png";
 
 // 防抖相关
-const notificationDebounceMap = new Map<string, number>()
-const DEBOUNCE_MS_NETWORK = 10000 // "未注明的错误" 10秒
-const DEBOUNCE_MS_DEFAULT = 3000 // 其他 3秒
+const notificationDebounceMap = new Map<string, number>();
+const DEBOUNCE_MS_NETWORK = 10000; // "未注明的错误" 10秒
+const DEBOUNCE_MS_DEFAULT = 3000; // 其他 3秒
 
-let hideTimer: number | null = null
+let hideTimer: number | null = null;
 
 // 立绘闪现序号：每次触发递增，同情绪连闪也能触发组件 watch
-let spriteFlashSeq = 0
+let spriteFlashSeq = 0;
 // 立绘噪点侵蚀序号：同上，保证同预设重复触发也能被组件观察
-let spriteNoiseSeq = 0
+let spriteNoiseSeq = 0;
 
-export const useUIStore = defineStore('ui', {
+export const useUIStore = defineStore("ui", {
   state: (): UIState => ({
-    showCharacterTitle: 'Lovely You',
-    showCharacterSubtitle: 'Bilibili',
-    showCharacterEmotion: '',
-    showCharacterLine: '',
-    showCharacterMotionText: '',
-    showPlayerHintLine: '',
-    showCharacterThinkLine: 'Ling Ling Thinking...',
+    showCharacterTitle: "Lovely You",
+    showCharacterSubtitle: "Bilibili",
+    showCharacterEmotion: "",
+    showCharacterLine: "",
+    showCharacterMotionText: "",
+    showPlayerHintLine: "",
+    showCharacterThinkLine: "Ling Ling Thinking...",
     showSettings: false,
-    currentSettingsTab: 'text',
-    advanceTab: 'menu',
+    currentSettingsTab: "text",
+    advanceTab: "menu",
     currentBackgroundTransition: 300,
-    currentPresentPic: '',
+    currentPresentPic: "",
     currentPresentPicScale: 1,
 
-    currentBackgroundMusic: 'None',
-    bgMusicMode: 'loop-single',
+    currentBackgroundMusic: "None",
+    bgMusicMode: "loop-single",
     bgMusicPaused: false,
     bgMusicStoped: false,
     bgMusicPlaybackRate: 1,
 
-    currentSoundEffect: 'None',
+    currentSoundEffect: "None",
     soundEffectSeq: 0,
-    currentAvatarAudio: 'None',
+    currentAvatarAudio: "None",
     voiceRate: 1,
     voicePitch: 0,
     preScriptBgm: null,
@@ -179,8 +179,8 @@ export const useUIStore = defineStore('ui', {
     autoMode: false,
 
     // 突脸惊吓演出初始状态
-    jumpscareImage: '',
-    jumpscareSound: '',
+    jumpscareImage: "",
+    jumpscareSound: "",
     jumpscareUntil: 0,
 
     // 立绘闪现演出初始状态
@@ -189,15 +189,15 @@ export const useUIStore = defineStore('ui', {
     // 立绘噪点侵蚀演出初始状态
     spriteNoise: null,
 
-    horrorEntryPhase: '',
+    horrorEntryPhase: "",
 
     // 幽灵锁定（删角色文件彩蛋）初始状态
     ghostLock: null,
     ghostQuitZoom: false,
 
     // BSOD 假异常窗口的剧本自带文本（空串 = 通用默认/无独白）
-    bsodText: '',
-    bsodEcho: '',
+    bsodText: "",
+    bsodEcho: "",
 
     dlcRefreshToken: 0,
 
@@ -215,14 +215,14 @@ export const useUIStore = defineStore('ui', {
     safeAreaInsetRight: 0,
 
     // Schedule 相关状态
-    scheduleView: 'schedule_groups',
+    scheduleView: "schedule_groups",
 
     // Notification 初始状态
     notification: {
       isVisible: false,
-      type: 'info',
-      title: '',
-      message: '',
+      type: "info",
+      title: "",
+      message: "",
       avatarUrl: DEFAULT_AVATAR,
       duration: 3000,
     },
@@ -235,135 +235,135 @@ export const useUIStore = defineStore('ui', {
 
   getters: {
     currentBackground(): string {
-      return useSettingsStore().currentBackground
+      return useSettingsStore().currentBackground;
     },
     // 从 settings store 获取设置值（向后兼容）
     typeWriterSpeed(): number {
-      return useSettingsStore().textSpeed
+      return useSettingsStore().textSpeed;
     },
     enableChatEffectSound(): boolean {
-      return useSettingsStore().chatEffectSound
+      return useSettingsStore().chatEffectSound;
     },
     currentBackgroundEffect(): string {
-      return useSettingsStore().backgroundEffect
+      return useSettingsStore().backgroundEffect;
     },
     characterVolume(): number {
-      return useSettingsStore().characterVolume
+      return useSettingsStore().characterVolume;
     },
     backgroundVolume(): number {
-      return useSettingsStore().backgroundVolume
+      return useSettingsStore().backgroundVolume;
     },
     bubbleVolume(): number {
-      return useSettingsStore().bubbleVolume
+      return useSettingsStore().bubbleVolume;
     },
     achievementVolume(): number {
-      return useSettingsStore().achievementVolume
+      return useSettingsStore().achievementVolume;
     },
     // 从 settings store 获取全局环境音音量
     ambientVolume(): number {
-      return useSettingsStore().ambientVolume
+      return useSettingsStore().ambientVolume;
     },
     // 角色文件夹（从 settings store 获取）
     currentCharacterFolder(): string {
-      return useSettingsStore().characterFolder
+      return useSettingsStore().characterFolder;
     },
     // 视口宽高比
     aspectRatio(): number {
-      return this.viewportWidth / this.viewportHeight
+      return this.viewportWidth / this.viewportHeight;
     },
     // 窄屏判断（竖屏 / 移动端）
     isNarrowScreen(): boolean {
-      return this.aspectRatio < 1.0
+      return this.aspectRatio < 1.0;
     },
     // 小屏/低分辨率判断（手机横竖屏、小窗口均覆盖）
     isSmallScreen(): boolean {
-      return Math.min(this.viewportWidth, this.viewportHeight) < 500
+      return Math.min(this.viewportWidth, this.viewportHeight) < 500;
     },
   },
 
   actions: {
     setCurrentBackground(background: string) {
-      useSettingsStore().setCurrentBackground(background)
+      useSettingsStore().setCurrentBackground(background);
     },
     // 设置背景效果（写入 settings store）
     setBackgroundEffect(effect: string) {
-      useSettingsStore().setBackgroundEffect(effect)
+      useSettingsStore().setBackgroundEffect(effect);
     },
     /** 触发一次短音效；序号让同一路径连续事件也可观察。 */
     triggerSoundEffect(path: string) {
-      this.currentSoundEffect = path || 'None'
-      this.soundEffectSeq += 1
+      this.currentSoundEffect = path || "None";
+      this.soundEffectSeq += 1;
     },
     /** 触发突脸惊吓：图片全屏闪现 durationSec 秒，自带音效 */
     triggerJumpscare(image: string, sound: string, durationSec: number) {
-      this.jumpscareImage = image
-      this.jumpscareSound = sound
-      this.jumpscareUntil = Date.now() + Math.max(0.15, durationSec) * 1000
+      this.jumpscareImage = image;
+      this.jumpscareSound = sound;
+      this.jumpscareUntil = Date.now() + Math.max(0.15, durationSec) * 1000;
     },
     /** 立即收场（组件卸载或剧本结束时兜底调用） */
     clearJumpscare() {
-      this.jumpscareImage = ''
-      this.jumpscareSound = ''
-      this.jumpscareUntil = 0
+      this.jumpscareImage = "";
+      this.jumpscareSound = "";
+      this.jumpscareUntil = 0;
     },
     /** 打开幽灵锁定（.chr 被全删的剧本入口）：全屏纯黑底 + 黑白立绘，无任何 UI 出口 */
     openGhostLock(scriptName: string, assetDir: string) {
-      this.ghostLock = { scriptName, assetDir }
+      this.ghostLock = { scriptName, assetDir };
     },
     /** 解除幽灵锁定（玩家放回 .chr 后轮询发现已解锁） */
     closeGhostLock() {
-      this.ghostLock = null
-      this.ghostQuitZoom = false
+      this.ghostLock = null;
+      this.ghostQuitZoom = false;
     },
     /** 幽灵锁定中点窗口 X：DDLC quit 式放大脸演出，演完由 App.vue 真正退出 */
     triggerGhostQuitZoom() {
-      if (this.ghostLock) this.ghostQuitZoom = true
+      if (this.ghostLock) this.ghostQuitZoom = true;
     },
     /** 立绘闪现：把 roleId 的立绘短暂替换为 emotion 版本，duration 秒后由组件自动还原 */
     triggerSpriteFlash(roleId: number, emotion: string, durationSec: number) {
-      spriteFlashSeq += 1
+      spriteFlashSeq += 1;
       this.spriteFlash = {
         roleId,
         emotion,
         duration: Math.max(0.12, durationSec),
         seq: spriteFlashSeq,
-      }
+      };
     },
     /**
      * 立绘噪点侵蚀（DDLC n_rects_ghost 式）：在 roleId 脸部挂上每帧随机抖动的
      * 黑色噪点团，fadeInSec 秒淡入后常驻；noise 传 'none'/空串 = 清除演出。
      */
     triggerSpriteNoise(roleId: number, noise: string, fadeInSec: number) {
-      if (!noise || noise === 'none' || noise === 'None') {
-        this.spriteNoise = null
-        return
+      if (!noise || noise === "none" || noise === "None") {
+        this.spriteNoise = null;
+        return;
       }
-      spriteNoiseSeq += 1
+      spriteNoiseSeq += 1;
       this.spriteNoise = {
         roleId,
         noise,
         fadeInSec: Math.max(0, fadeInSec),
         seq: spriteNoiseSeq,
-      }
+      };
     },
     /**
      * 恐怖特效残留清理：当前特效包含恐怖向名称时重置为 'None'。
      * 剧本异常退出/中途返回/重启后都可能残留，在剧本结束、进入剧本、应用启动时调用。
      */
     resetHorrorEffects() {
-      const current = useSettingsStore().display.backgroundEffect
-      if (HORROR_EFFECT_KEYS.some((effect) => current.split('+').includes(effect))) {
-        useSettingsStore().setBackgroundEffect('None')
+      const current = useSettingsStore().display.backgroundEffect;
+      if (HORROR_EFFECT_KEYS.some((effect) => current.split("+").includes(effect))) {
+        useSettingsStore().setBackgroundEffect("None");
       }
-      this.clearJumpscare()
-      this.spriteFlash = null
-      this.spriteNoise = null
+      this.clearJumpscare();
+      this.spriteFlash = null;
+      this.spriteNoise = null;
       // 恶魔音残留一并清理（剧本结束/进入/启动时都会走到这里）
-      this.voiceRate = 1
-      this.voicePitch = 0
+      this.voiceRate = 1;
+      this.voicePitch = 0;
       // BSOD 的剧本自带文本一并清掉，回到通用默认
-      this.bsodText = ''
-      this.bsodEcho = ''
+      this.bsodText = "";
+      this.bsodEcho = "";
     },
     /**
      * 恐怖剧本入口过渡：卡死 1.1s → 花屏 0.8s，结束后 resolve。
@@ -371,26 +371,26 @@ export const useUIStore = defineStore('ui', {
      */
     beginHorrorEntry(): Promise<void> {
       return new Promise((resolve) => {
-        this.horrorEntryPhase = 'freeze'
+        this.horrorEntryPhase = "freeze";
         setTimeout(() => {
-          this.horrorEntryPhase = 'static'
-        }, 1100)
+          this.horrorEntryPhase = "static";
+        }, 1100);
         setTimeout(() => {
-          this.horrorEntryPhase = ''
-          resolve()
-        }, 1900)
-      })
+          this.horrorEntryPhase = "";
+          resolve();
+        }, 1900);
+      });
     },
     // 设置对话音效开关（写入 settings store）
     setEnableChatEffectSound(enabled: boolean) {
-      useSettingsStore().setChatEffectSound(enabled)
+      useSettingsStore().setChatEffectSound(enabled);
     },
 
     toggleSettings(show: boolean) {
-      this.showSettings = show
+      this.showSettings = show;
     },
     setSettingsTab(tab: string) {
-      this.currentSettingsTab = tab
+      this.currentSettingsTab = tab;
     },
 
     // ========== Notification Actions ==========
@@ -400,16 +400,16 @@ export const useUIStore = defineStore('ui', {
      */
     async loadCharacterTips(folderName: string): Promise<boolean> {
       // 清空之前的提示
-      this.tipsMap = {}
-      this.tipsAvailable = false
+      this.tipsMap = {};
+      this.tipsAvailable = false;
 
       // 保存到 settings store（自动持久化）
-      useSettingsStore().setCharacterFolder(folderName)
+      useSettingsStore().setCharacterFolder(folderName);
 
       // 尝试加载指定角色的 tips
-      await this._loadTipsFromFolder(folderName)
+      await this._loadTipsFromFolder(folderName);
 
-      return this.tipsAvailable
+      return this.tipsAvailable;
     },
 
     /**
@@ -417,43 +417,43 @@ export const useUIStore = defineStore('ui', {
      */
     async _loadTipsFromFolder(folderName: string): Promise<boolean> {
       try {
-        const response = await fetch(`/characters/${folderName}/tips.txt`)
+        const response = await fetch(`/characters/${folderName}/tips.txt`);
 
         if (!response.ok) {
-          console.log(`⚠️ 角色 ${folderName} 没有 tips.txt`)
-          return false
+          console.log(`⚠️ 角色 ${folderName} 没有 tips.txt`);
+          return false;
         }
 
-        const text = await response.text()
-        const newTipsMap: Record<string, { title: string; message: string }> = {}
+        const text = await response.text();
+        const newTipsMap: Record<string, { title: string; message: string }> = {};
 
         // 解析 txt 格式：代码 = 标题 | 内容
-        text.split('\n').forEach((line) => {
-          line = line.trim()
-          if (!line || line.startsWith('#')) return
+        text.split("\n").forEach((line) => {
+          line = line.trim();
+          if (!line || line.startsWith("#")) return;
 
-          const [code, content] = line.split('=').map((s) => s.trim())
+          const [code, content] = line.split("=").map((s) => s.trim());
           if (code && content) {
-            const [title, message] = content.split('|').map((s) => s.trim())
+            const [title, message] = content.split("|").map((s) => s.trim());
             if (title && message) {
-              newTipsMap[code] = { title, message }
+              newTipsMap[code] = { title, message };
             }
           }
-        })
+        });
 
         // 只有有内容才算加载成功
         if (Object.keys(newTipsMap).length === 0) {
-          console.log(`⚠️ 角色 ${folderName} 的 tips.txt 为空`)
-          return false
+          console.log(`⚠️ 角色 ${folderName} 的 tips.txt 为空`);
+          return false;
         }
 
-        this.tipsMap = newTipsMap
-        this.tipsAvailable = true
-        console.log(`✅ 已加载角色 ${folderName} 的提示:`, this.tipsMap)
-        return true
+        this.tipsMap = newTipsMap;
+        this.tipsAvailable = true;
+        console.log(`✅ 已加载角色 ${folderName} 的提示:`, this.tipsMap);
+        return true;
       } catch (error) {
-        console.log(`⚠️ 加载角色 ${folderName} 的提示失败:`, error)
-        return false
+        console.log(`⚠️ 加载角色 ${folderName} 的提示失败:`, error);
+        return false;
       }
     },
 
@@ -461,47 +461,47 @@ export const useUIStore = defineStore('ui', {
      * 显示通知（通用方法）
      */
     showNotification(options: {
-      type?: NotificationType
-      title?: string
-      message?: string
-      avatarUrl?: string
-      duration?: number
-      skipTipsCheck?: boolean // 跳过 tips 检查（用于网络错误等必须显示的通知）
+      type?: NotificationType;
+      title?: string;
+      message?: string;
+      avatarUrl?: string;
+      duration?: number;
+      skipTipsCheck?: boolean; // 跳过 tips 检查（用于网络错误等必须显示的通知）
     }) {
       const {
-        type = 'info',
-        title = '',
-        message = '',
+        type = "info",
+        title = "",
+        message = "",
         avatarUrl,
         duration = 3000,
         skipTipsCheck = false,
-      } = options
+      } = options;
 
       // 如果当前角色没有配置 tips.txt，且没有跳过检查，则不显示弹窗
       if (!this.tipsAvailable && !skipTipsCheck) {
-        console.log('跳过弹窗：当前角色没有配置 tips.txt')
-        return
+        console.log("跳过弹窗：当前角色没有配置 tips.txt");
+        return;
       }
 
-      const now = Date.now()
-      const notificationKey = `${title}:${message}`
+      const now = Date.now();
+      const notificationKey = `${title}:${message}`;
 
       // 判断是否为"未注明的错误"，使用更长的防抖时间
-      const isDefaultError = title === '未注明的错误'
-      const debounceMs = isDefaultError ? DEBOUNCE_MS_NETWORK : DEBOUNCE_MS_DEFAULT
+      const isDefaultError = title === "未注明的错误";
+      const debounceMs = isDefaultError ? DEBOUNCE_MS_NETWORK : DEBOUNCE_MS_DEFAULT;
 
       // 防抖检查
-      const lastTime = notificationDebounceMap.get(notificationKey) || 0
+      const lastTime = notificationDebounceMap.get(notificationKey) || 0;
       if (now - lastTime < debounceMs) {
-        console.log(`跳过重复通知：${title}（${debounceMs / 1000}秒内已显示过）`)
-        return
+        console.log(`跳过重复通知：${title}（${debounceMs / 1000}秒内已显示过）`);
+        return;
       }
 
-      notificationDebounceMap.set(notificationKey, now)
+      notificationDebounceMap.set(notificationKey, now);
 
       // 清除之前的定时器
       if (hideTimer) {
-        clearTimeout(hideTimer)
+        clearTimeout(hideTimer);
       }
 
       // 更新通知状态
@@ -512,13 +512,13 @@ export const useUIStore = defineStore('ui', {
         message,
         avatarUrl: avatarUrl || `/characters/${this.currentCharacterFolder}/头像.png`,
         duration,
-      }
+      };
 
       // 自动隐藏
       if (duration > 0) {
         hideTimer = window.setTimeout(() => {
-          this.hideNotification()
-        }, duration)
+          this.hideNotification();
+        }, duration);
       }
     },
 
@@ -526,10 +526,10 @@ export const useUIStore = defineStore('ui', {
      * 隐藏通知
      */
     hideNotification() {
-      this.notification.isVisible = false
+      this.notification.isVisible = false;
       if (hideTimer) {
-        clearTimeout(hideTimer)
-        hideTimer = null
+        clearTimeout(hideTimer);
+        hideTimer = null;
       }
     },
 
@@ -537,124 +537,126 @@ export const useUIStore = defineStore('ui', {
      * 显示错误通知（支持错误代码自动翻译）
      */
     showError(options: {
-      errorCode?: string
-      statusCode?: number
-      title?: string
-      message?: string
-      avatarUrl?: string
-      duration?: number
+      errorCode?: string;
+      statusCode?: number;
+      title?: string;
+      message?: string;
+      avatarUrl?: string;
+      duration?: number;
     }) {
-      const { errorCode, statusCode, title, message, avatarUrl, duration = 3000 } = options
+      const { errorCode, statusCode, title, message, avatarUrl, duration = 3000 } = options;
 
-      let finalTitle = title || i18n.global.t('stores.notification.errorTitle')
-      let finalMessage = message || i18n.global.t('stores.notification.unknownError')
+      let finalTitle = title || i18n.global.t("stores.notification.errorTitle");
+      let finalMessage = message || i18n.global.t("stores.notification.unknownError");
 
       // 优先使用错误代码查询
       if (errorCode) {
         // LLM 错误的内置 i18n 文案（stores.llmErrors.*），优先于角色 tips
         const llmMsg = i18n.global.te(`stores.llmErrors.${errorCode}`)
           ? i18n.global.t(`stores.llmErrors.${errorCode}`)
-          : ''
+          : "";
         const tip = this.tipsMap[errorCode] ||
-          this.tipsMap['default_error'] || {
-            title: i18n.global.t('stores.notification.errorTitle'),
-            message: i18n.global.t('stores.notification.unknownError'),
-          }
+          this.tipsMap["default_error"] || {
+            title: i18n.global.t("stores.notification.errorTitle"),
+            message: i18n.global.t("stores.notification.unknownError"),
+          };
         // 显式 message / 内置 LLM i18n 文案 → 标题用通用「错误」，避免「未注明的错误」
-        finalTitle = title || (message || llmMsg ? i18n.global.t('stores.notification.errorTitle') : tip.title)
-        finalMessage = message || llmMsg || tip.message
+        finalTitle =
+          title ||
+          (message || llmMsg ? i18n.global.t("stores.notification.errorTitle") : tip.title);
+        finalMessage = message || llmMsg || tip.message;
       }
       // 其次使用 HTTP 状态码
       else if (statusCode) {
-        const code = statusCode.toString()
-        const httpCode = code + '_http'
-        const tip = this.tipsMap[httpCode] || this.tipsMap[code]
+        const code = statusCode.toString();
+        const httpCode = code + "_http";
+        const tip = this.tipsMap[httpCode] || this.tipsMap[code];
         if (tip) {
-          finalTitle = title || tip.title
-          finalMessage = message || tip.message
+          finalTitle = title || tip.title;
+          finalMessage = message || tip.message;
         }
       }
 
       // 网络错误必须显示，不受 tips 配置限制
-      const isNetworkError = errorCode === 'network_error'
+      const isNetworkError = errorCode === "network_error";
 
       this.showNotification({
-        type: 'error',
+        type: "error",
         title: finalTitle,
         message: finalMessage,
         avatarUrl,
         duration,
         skipTipsCheck: isNetworkError,
-      })
+      });
     },
 
     /**
      * 显示成功通知
      */
     showSuccess(options: {
-      title?: string
-      message?: string
-      avatarUrl?: string
-      duration?: number
+      title?: string;
+      message?: string;
+      avatarUrl?: string;
+      duration?: number;
     }) {
-      this.showNotification({ ...options, type: 'success' })
+      this.showNotification({ ...options, type: "success" });
     },
 
     /**
      * 显示信息通知
      */
     showInfo(options: { title?: string; message?: string; avatarUrl?: string; duration?: number }) {
-      this.showNotification({ ...options, type: 'info' })
+      this.showNotification({ ...options, type: "info" });
     },
 
     /**
      * 显示警告通知
      */
     showWarning(options: {
-      title?: string
-      message?: string
-      avatarUrl?: string
-      duration?: number
+      title?: string;
+      message?: string;
+      avatarUrl?: string;
+      duration?: number;
     }) {
-      this.showNotification({ ...options, type: 'warning' })
+      this.showNotification({ ...options, type: "warning" });
     },
 
     /**
      * 获取角色切换提示
      */
-    getSwitchTip(type: 'success' | 'fail') {
-      const key = type === 'success' ? 'switch_success' : 'switch_fail'
+    getSwitchTip(type: "success" | "fail") {
+      const key = type === "success" ? "switch_success" : "switch_fail";
       return (
         this.tipsMap[key] || {
           title:
-            type === 'success'
-              ? i18n.global.t('stores.notification.switchSuccessTitle')
-              : i18n.global.t('stores.notification.switchFailTitle'),
+            type === "success"
+              ? i18n.global.t("stores.notification.switchSuccessTitle")
+              : i18n.global.t("stores.notification.switchFailTitle"),
           message:
-            type === 'success'
-              ? i18n.global.t('stores.notification.switchSuccessMessage')
-              : i18n.global.t('stores.notification.switchFailMessage'),
+            type === "success"
+              ? i18n.global.t("stores.notification.switchSuccessMessage")
+              : i18n.global.t("stores.notification.switchFailMessage"),
         }
-      )
+      );
     },
 
     /**
      * 获取角色刷新提示
      */
-    getRefreshTip(type: 'success' | 'fail') {
-      const key = type === 'success' ? 'refresh_success' : 'refresh_fail'
+    getRefreshTip(type: "success" | "fail") {
+      const key = type === "success" ? "refresh_success" : "refresh_fail";
       return (
         this.tipsMap[key] || {
           title:
-            type === 'success'
-              ? i18n.global.t('stores.notification.refreshSuccessTitle')
-              : i18n.global.t('stores.notification.refreshFailTitle'),
+            type === "success"
+              ? i18n.global.t("stores.notification.refreshSuccessTitle")
+              : i18n.global.t("stores.notification.refreshFailTitle"),
           message:
-            type === 'success'
-              ? i18n.global.t('stores.notification.refreshSuccessMessage')
-              : i18n.global.t('stores.notification.refreshFailMessage'),
+            type === "success"
+              ? i18n.global.t("stores.notification.refreshSuccessMessage")
+              : i18n.global.t("stores.notification.refreshFailMessage"),
         }
-      )
+      );
     },
 
     /**
@@ -664,7 +666,7 @@ export const useUIStore = defineStore('ui', {
     handleBackgroundMusicEnd() {
       // 触发一个内部状态变化，让SettingsSound组件能够监听到
       // 使用时间戳确保每次都能触发watch
-      this._musicEndTime = Date.now()
+      this._musicEndTime = Date.now();
     },
 
     // ========== 环境音轨道管理 ==========
@@ -673,47 +675,59 @@ export const useUIStore = defineStore('ui', {
      * 添加环境音轨道
      * 如果已存在相同 src 的轨道则替换，超出上限时移除最早的
      */
-    addAmbientTrack(track: { src: string; volume: number; loop: boolean; name?: string; paused?: boolean; fade?: boolean }) {
-      const MAX_AMBIENT_TRACKS = 8
+    addAmbientTrack(track: {
+      src: string;
+      volume: number;
+      loop: boolean;
+      name?: string;
+      paused?: boolean;
+      fade?: boolean;
+    }) {
+      const MAX_AMBIENT_TRACKS = 8;
       // 提取文件名用于去重（剧本 Assets 和手动导入可能路径不同但文件相同）
       const getFileName = (src: string) => {
-        const parts = src.replace(/\\/g, '/').split('/')
-        return parts.pop() || src
-      }
-      const newFileName = getFileName(track.src)
+        const parts = src.replace(/\\/g, "/").split("/");
+        return parts.pop() || src;
+      };
+      const newFileName = getFileName(track.src);
       // 按完整路径或文件名去重，剧本指令优先覆盖手动导入
-      this.ambientTracks = this.ambientTracks.filter(t =>
-        t.src !== track.src && getFileName(t.src) !== newFileName
-      )
+      this.ambientTracks = this.ambientTracks.filter(
+        (t) => t.src !== track.src && getFileName(t.src) !== newFileName
+      );
       // 超出上限时移除最早的
       if (this.ambientTracks.length >= MAX_AMBIENT_TRACKS) {
-        this.ambientTracks.shift()
+        this.ambientTracks.shift();
       }
-      const id = `ambient_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-      this.ambientTracks.push({ id, ...track, paused: track.paused ?? false, fade: track.fade ?? true })
+      const id = `ambient_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      this.ambientTracks.push({
+        id,
+        ...track,
+        paused: track.paused ?? false,
+        fade: track.fade ?? true,
+      });
     },
 
     /**
      * 更新指定环境音轨道的音量
      */
     updateAmbientTrackVolume(id: string, volume: number) {
-      const track = this.ambientTracks.find(t => t.id === id)
-      if (track) track.volume = volume
+      const track = this.ambientTracks.find((t) => t.id === id);
+      if (track) track.volume = volume;
     },
 
     /**
      * 切换环境音轨道暂停状态
      */
     toggleAmbientTrackPause(id: string) {
-      const track = this.ambientTracks.find(t => t.id === id)
-      if (track) track.paused = !track.paused
+      const track = this.ambientTracks.find((t) => t.id === id);
+      if (track) track.paused = !track.paused;
     },
 
     /**
      * 移除指定环境音轨道（通过ID）
      */
     removeAmbientTrack(id: string) {
-      this.ambientTracks = this.ambientTracks.filter(t => t.id !== id)
+      this.ambientTracks = this.ambientTracks.filter((t) => t.id !== id);
     },
 
     /**
@@ -724,10 +738,10 @@ export const useUIStore = defineStore('ui', {
       if (targetSrc) {
         // 按文件名匹配清除指定轨道
         this.ambientTracks = this.ambientTracks.filter(
-          t => !t.src.endsWith(targetSrc) && !t.src.includes(targetSrc)
-        )
+          (t) => !t.src.endsWith(targetSrc) && !t.src.includes(targetSrc)
+        );
       } else {
-        this.ambientTracks = []
+        this.ambientTracks = [];
       }
     },
 
@@ -736,72 +750,72 @@ export const useUIStore = defineStore('ui', {
     /** 持久化 BGM 状态（防抖 500ms），由 $subscribe 自动触发 */
     persistBgmState() {
       // 剧本运行期间不持久化：剧本 BGM 不得写进 session（防泄漏到下次启动）
-      if (this.bgmPersistBlocked) return
-      if (bgmSaveTimer) clearTimeout(bgmSaveTimer)
+      if (this.bgmPersistBlocked) return;
+      if (bgmSaveTimer) clearTimeout(bgmSaveTimer);
       bgmSaveTimer = setTimeout(() => {
-        saveBgmState(this.currentBackgroundMusic, this.bgMusicPaused, this.bgMusicMode)
-      }, 500)
+        saveBgmState(this.currentBackgroundMusic, this.bgMusicPaused, this.bgMusicMode);
+      }, 500);
     },
 
     /** 持久化环境音轨道（防抖 500ms），由 $subscribe 自动触发 */
     persistAmbientState() {
       // 剧本运行期间不持久化：剧本的恐怖环境音（rumble 等）不得写进 session
-      if (this.bgmPersistBlocked) return
-      if (ambientSaveTimer) clearTimeout(ambientSaveTimer)
+      if (this.bgmPersistBlocked) return;
+      if (ambientSaveTimer) clearTimeout(ambientSaveTimer);
       ambientSaveTimer = setTimeout(() => {
-        saveAmbientState(JSON.stringify(this.ambientTracks))
-      }, 500)
+        saveAmbientState(JSON.stringify(this.ambientTracks));
+      }, 500);
     },
   },
-})
+});
 
 // 标记是否已初始化
-let initialized = false
+let initialized = false;
 
 // 防抖定时器（模块级，避免污染 store state）
-let bgmSaveTimer: ReturnType<typeof setTimeout> | null = null
-let ambientSaveTimer: ReturnType<typeof setTimeout> | null = null
+let bgmSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let ambientSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 // 初始化函数：在首次使用时调用
 export function initUIStore() {
-  if (initialized) return
-  initialized = true
+  if (initialized) return;
+  initialized = true;
 
-  const store = useUIStore()
+  const store = useUIStore();
 
   // 启动时清掉上次会话残留的恐怖特效（设置是持久化的，血色 UI 不能带进新会话）
-  store.resetHorrorEffects()
+  store.resetHorrorEffects();
 
   // 从 CSS 变量同步安全区值（由 Android 原生 / iOS env() 注入）
   function syncSafeArea() {
-    const style = getComputedStyle(document.documentElement)
-    const parsePx = (val: string) => Math.round(parseFloat(val) || 0)
-    store.safeAreaInsetTop = parsePx(style.getPropertyValue('--safe-area-inset-top'))
-    store.safeAreaInsetBottom = parsePx(style.getPropertyValue('--safe-area-inset-bottom'))
-    store.safeAreaInsetLeft = parsePx(style.getPropertyValue('--safe-area-inset-left'))
-    store.safeAreaInsetRight = parsePx(style.getPropertyValue('--safe-area-inset-right'))
+    const style = getComputedStyle(document.documentElement);
+    const parsePx = (val: string) => Math.round(parseFloat(val) || 0);
+    store.safeAreaInsetTop = parsePx(style.getPropertyValue("--safe-area-inset-top"));
+    store.safeAreaInsetBottom = parsePx(style.getPropertyValue("--safe-area-inset-bottom"));
+    store.safeAreaInsetLeft = parsePx(style.getPropertyValue("--safe-area-inset-left"));
+    store.safeAreaInsetRight = parsePx(style.getPropertyValue("--safe-area-inset-right"));
   }
-  syncSafeArea()
+  syncSafeArea();
 
   // 全局唯一 resize 监听：更新视口尺寸供所有组件复用
-  window.addEventListener('resize', () => {
-    store.viewportWidth = window.innerWidth
-    store.viewportHeight = window.innerHeight
-    syncSafeArea()
-  })
+  window.addEventListener("resize", () => {
+    store.viewportWidth = window.innerWidth;
+    store.viewportHeight = window.innerHeight;
+    syncSafeArea();
+  });
 
-  const settingsStore = useSettingsStore()
+  const settingsStore = useSettingsStore();
   // 使用 getter 获取角色文件夹
-  store.loadCharacterTips(store.currentCharacterFolder)
+  store.loadCharacterTips(store.currentCharacterFolder);
 
   // 订阅 BGM / 环境音状态变更，自动持久化到 settings.json。
   // 注意：Pinia 的 mutation.events 仅在 Vue DevTools 激活时填充，
   // 所以不能依赖它来判断变更。这里直接用前后值比较，每次 mutation
   // 都检查，实际写盘由 500ms 防抖控制。
-  let prevBgmTrack = store.currentBackgroundMusic
-  let prevBgmPaused = store.bgMusicPaused
-  let prevBgmMode = store.bgMusicMode
-  let prevAmbientJson = JSON.stringify(store.ambientTracks)
+  let prevBgmTrack = store.currentBackgroundMusic;
+  let prevBgmPaused = store.bgMusicPaused;
+  let prevBgmMode = store.bgMusicMode;
+  let prevAmbientJson = JSON.stringify(store.ambientTracks);
 
   store.$subscribe((_mutation, state) => {
     if (
@@ -809,15 +823,15 @@ export function initUIStore() {
       state.bgMusicPaused !== prevBgmPaused ||
       state.bgMusicMode !== prevBgmMode
     ) {
-      store.persistBgmState()
-      prevBgmTrack = state.currentBackgroundMusic
-      prevBgmPaused = state.bgMusicPaused
-      prevBgmMode = state.bgMusicMode
+      store.persistBgmState();
+      prevBgmTrack = state.currentBackgroundMusic;
+      prevBgmPaused = state.bgMusicPaused;
+      prevBgmMode = state.bgMusicMode;
     }
-    const curAmbientJson = JSON.stringify(state.ambientTracks)
+    const curAmbientJson = JSON.stringify(state.ambientTracks);
     if (curAmbientJson !== prevAmbientJson) {
-      store.persistAmbientState()
-      prevAmbientJson = curAmbientJson
+      store.persistAmbientState();
+      prevAmbientJson = curAmbientJson;
     }
-  })
+  });
 }

@@ -7,7 +7,6 @@ use std::path::Path;
 
 use super::{ArchiveError, ConflictPolicy, TargetResolution};
 
-
 /// 根据冲突策略解析最终目标目录。
 ///
 /// # 行为
@@ -62,6 +61,6 @@ pub fn resolve_target(
                 final_name: name,
                 action: "renamed",
             })
-        }
+        },
     }
 }

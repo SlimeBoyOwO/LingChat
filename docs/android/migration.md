@@ -174,13 +174,13 @@ Tauri v2 的 `asset://` 协议在 Android 上使用 Android 系统的 `AssetMana
 
 ### 尝试过的方案
 
-| 方案 | 结果 |
-|------|------|
-| `bundle.resources` + 逐文件 `app.fs().read()` | ❌ 中文路径失败 |
-| 同上 + URI 百分号编码 | ❌ AssetManager 不解码 |
-| `include_bytes!` / `include_dir!` | ❌ 用户拒绝嵌入二进制 |
-| `tauri-plugin-fs` 读单个 ASCII 文件 | ✅ 可行！ |
-| zip 打包 + 单文件读取 | ✅ 可行！ |
+| 方案                                          | 结果                   |
+| --------------------------------------------- | ---------------------- |
+| `bundle.resources` + 逐文件 `app.fs().read()` | ❌ 中文路径失败        |
+| 同上 + URI 百分号编码                         | ❌ AssetManager 不解码 |
+| `include_bytes!` / `include_dir!`             | ❌ 用户拒绝嵌入二进制  |
+| `tauri-plugin-fs` 读单个 ASCII 文件           | ✅ 可行！              |
+| zip 打包 + 单文件读取                         | ✅ 可行！              |
 
 ### 当前 zip 方案
 
@@ -223,15 +223,15 @@ pnpm tauri android dev --target aarch64
 
 ## 关键配置文件
 
-| 文件 | 作用 |
-|------|------|
-| `scripts/prepare-bundled-resources.mjs` | pretuari 脚本，创建 data.zip |
-| `src-tauri/src/init/static_copy.rs` | 运行时解压 data.zip、data_dir 解析 |
-| `src-tauri/src/init/mod.rs` | 初始化入口，调用 seed_data_dir() |
-| `src-tauri/tauri.conf.json` | assetProtocol 已启用，bundle.resources 已移除 |
-| `src-tauri/capabilities/default.json` | fs:default + $RESOURCE/** scope |
-| `src-tauri/Cargo.toml` | tauri-plugin-fs、zip = "2" |
-| `.gitignore` | src-tauri/gen/ 已忽略 |
+| 文件                                    | 作用                                          |
+| --------------------------------------- | --------------------------------------------- |
+| `scripts/prepare-bundled-resources.mjs` | pretuari 脚本，创建 data.zip                  |
+| `src-tauri/src/init/static_copy.rs`     | 运行时解压 data.zip、data_dir 解析            |
+| `src-tauri/src/init/mod.rs`             | 初始化入口，调用 seed_data_dir()              |
+| `src-tauri/tauri.conf.json`             | assetProtocol 已启用，bundle.resources 已移除 |
+| `src-tauri/capabilities/default.json`   | fs:default + $RESOURCE/\*\* scope             |
+| `src-tauri/Cargo.toml`                  | tauri-plugin-fs、zip = "2"                    |
+| `.gitignore`                            | src-tauri/gen/ 已忽略                         |
 
 ## 相关 PR
 

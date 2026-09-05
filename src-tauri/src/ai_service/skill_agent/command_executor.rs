@@ -8,15 +8,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 #[cfg(windows)]
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 #[cfg(windows)]
 use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt};
-use tokio::sync::{oneshot, Mutex, Notify};
+use tokio::sync::{Mutex, Notify, oneshot};
 
 pub const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
 pub const MAX_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
@@ -39,7 +39,7 @@ pub fn is_current_process_elevated() -> bool {
         Err(error) => {
             tracing::warn!("无法读取当前进程的 Windows 令牌权限: {error}");
             false
-        }
+        },
     })
 }
 
@@ -47,7 +47,7 @@ pub fn is_current_process_elevated() -> bool {
 fn query_current_process_elevation() -> windows::core::Result<bool> {
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
     use windows::Win32::Security::{
-        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+        GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation,
     };
     use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
@@ -624,7 +624,7 @@ pub async fn run_shell_command_elevated_with_timeout(
                 "提权命令在 {} 秒内未结束；已发送取消信号并尝试终止已启动的提权进程。",
                 timeout.as_secs()
             )
-        }
+        },
     };
 
     let stdout = read_limited_output(&temp.stdout)?;
@@ -725,7 +725,7 @@ async fn cancel_elevated_process(guard_path: &Path, pid_path: &Path) {
         .creation_flags(CREATE_NO_WINDOW)
         .kill_on_drop(true);
     match tokio::time::timeout(Duration::from_secs(5), taskkill.status()).await {
-        Ok(Ok(status)) if status.success() => {}
+        Ok(Ok(status)) if status.success() => {},
         // watchdog 可能已经终止了进程；因此非零的兜底结果仅作诊断，
         // 不视为第二次面向用户的失败。
         Ok(Ok(status)) => tracing::debug!(pid, ?status, "提权 watchdog 已接管或兜底终止失败"),

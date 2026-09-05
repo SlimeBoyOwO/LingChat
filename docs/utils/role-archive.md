@@ -64,23 +64,23 @@
 
 注册位置：`src-tauri/src/lib.rs:488-493`，由 `RoleArchiveState` 注入。
 
-| 命令 | 入口 | 说明 |
-|---|---|---|
-| `import_role` | `mod.rs:43` | 接受 `bytes: Vec<u8>`。保留给已把压缩包读进内存的旧调用方使用，**不推荐**新代码使用。 |
-| `import_role_from_path` | `mod.rs:138` | **推荐入口**。`path` 接受桌面文件路径或 Android `content://` URI。 |
-| `cancel_role_import` | `mod.rs:109` | 必传 `taskId`；后端从 `state.tasks` 摘掉对应 entry 并触发 `CancellationToken`。 |
-| `export_role` | `mod.rs:234` | 压缩到 cache 返回 `{ temp_path, suggested_name, size_bytes }`，由前端自行落地。 |
-| `export_role_to_path` | `mod.rs:249` | 压缩并直接写入 `destPath`；跨端统一（桌面原生 copy / Android android-fs）。**推荐入口**。 |
-| `rescan_roles` | `mod.rs:332` | 重扫 `data/game_data/characters/` 并 emit `role:list-updated`。 |
+| 命令                    | 入口         | 说明                                                                                      |
+| ----------------------- | ------------ | ----------------------------------------------------------------------------------------- |
+| `import_role`           | `mod.rs:43`  | 接受 `bytes: Vec<u8>`。保留给已把压缩包读进内存的旧调用方使用，**不推荐**新代码使用。     |
+| `import_role_from_path` | `mod.rs:138` | **推荐入口**。`path` 接受桌面文件路径或 Android `content://` URI。                        |
+| `cancel_role_import`    | `mod.rs:109` | 必传 `taskId`；后端从 `state.tasks` 摘掉对应 entry 并触发 `CancellationToken`。           |
+| `export_role`           | `mod.rs:234` | 压缩到 cache 返回 `{ temp_path, suggested_name, size_bytes }`，由前端自行落地。           |
+| `export_role_to_path`   | `mod.rs:249` | 压缩并直接写入 `destPath`；跨端统一（桌面原生 copy / Android android-fs）。**推荐入口**。 |
+| `rescan_roles`          | `mod.rs:332` | 重扫 `data/game_data/characters/` 并 emit `role:list-updated`。                           |
 
 ## 4. 事件
 
-| 事件 | 触发时机 | Payload | 订阅方 |
-|---|---|---|---|
-| `role:import-started` | 后端分配 `task_id` 后立即 | `RoleImportStartedEvent { task_id }` | `useRoleImportExport` 缓存到 `currentTaskId` |
-| `role:import-progress` | 每写入一个 entry（throttled 50ms / 100 entry） | `EntryEvent` | `ImportProgressBar` |
-| `role:import-error` | 流程失败 | `string` | `useRoleImportExport` |
-| `role:list-updated` | `import_role` / `rescan_roles` 成功 | `()` | 角色列表 store |
+| 事件                   | 触发时机                                       | Payload                              | 订阅方                                       |
+| ---------------------- | ---------------------------------------------- | ------------------------------------ | -------------------------------------------- |
+| `role:import-started`  | 后端分配 `task_id` 后立即                      | `RoleImportStartedEvent { task_id }` | `useRoleImportExport` 缓存到 `currentTaskId` |
+| `role:import-progress` | 每写入一个 entry（throttled 50ms / 100 entry） | `EntryEvent`                         | `ImportProgressBar`                          |
+| `role:import-error`    | 流程失败                                       | `string`                             | `useRoleImportExport`                        |
+| `role:list-updated`    | `import_role` / `rescan_roles` 成功            | `()`                                 | 角色列表 store                               |
 
 ## 5. 前端架构
 
@@ -121,24 +121,24 @@ idle─┤     └─► error ─► (dismiss)
 
 ### 6.1 模块拆分（`src-tauri/src/api/role_archive/`）
 
-| 文件 | 职责 |
-|---|---|
-| `mod.rs` | 5 个 Tauri 命令、公开类型 `ImportResult` / `ExportResult`、再导出 |
-| `state.rs` | 再导出 `utils::archive` 的 `ArchiveImportState`（别名 `RoleArchiveState`）与两个 RAII 守卫；实体已上移，与插件导入共用同一份实例 |
+| 文件                 | 职责                                                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mod.rs`             | 5 个 Tauri 命令、公开类型 `ImportResult` / `ExportResult`、再导出                                                                                 |
+| `state.rs`           | 再导出 `utils::archive` 的 `ArchiveImportState`（别名 `RoleArchiveState`）与两个 RAII 守卫；实体已上移，与插件导入共用同一份实例                  |
 | `import_pipeline.rs` | `do_import`、`write_temp_archive`、`prepare_import_source`、`sanitize_role_folder_name`、`find_role_id_by_folder`、`parse_format`、`parse_policy` |
-| `export_pipeline.rs` | `compress_role_to_temp`、`sanitize_file_name` |
+| `export_pipeline.rs` | `compress_role_to_temp`、`sanitize_file_name`                                                                                                     |
 
 ### 6.2 归档工具（`src-tauri/src/utils/archive/`）
 
-| 文件 | 职责 |
-|---|---|
-| `mod.rs` | 公共类型 `ArchiveFormat` / `ConflictPolicy` / `ArchiveError` / `EntryEvent` / `ExtractSummary` / `TargetResolution`、公开 API 再导出 |
-| `safety.rs` | `check_entry_safety`（条数 + 压缩比）、`sanitize_entry_name`、`safe_join`（防 zip-slip） |
-| `resolve.rs` | `resolve_target`（冲突策略 → 最终目标路径） |
-| `extract.rs` | `extract_zip` / `extract_sevenz`，消费 `CancellationToken` |
-| `compress.rs` | `compress`（zip / 7z 入口），跳过 macOS metadata |
-| `staging.rs` | 角色 / 插件导入共用：`list_content_entries`、`locate_extracted_root`（压缩包套一层文件夹的判定）、`relocate_dir`（rename 重试 + 递归复制回退） |
-| `import_state.rs` | `ArchiveImportState`（全局单实例并发锁 + `tasks`）、`ImportingGuard` / `TaskRemoveGuard`；角色与插件导入共用，故全局同时只有一个解压任务 |
+| 文件              | 职责                                                                                                                                           |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mod.rs`          | 公共类型 `ArchiveFormat` / `ConflictPolicy` / `ArchiveError` / `EntryEvent` / `ExtractSummary` / `TargetResolution`、公开 API 再导出           |
+| `safety.rs`       | `check_entry_safety`（条数 + 压缩比）、`sanitize_entry_name`、`safe_join`（防 zip-slip）                                                       |
+| `resolve.rs`      | `resolve_target`（冲突策略 → 最终目标路径）                                                                                                    |
+| `extract.rs`      | `extract_zip` / `extract_sevenz`，消费 `CancellationToken`                                                                                     |
+| `compress.rs`     | `compress`（zip / 7z 入口），跳过 macOS metadata                                                                                               |
+| `staging.rs`      | 角色 / 插件导入共用：`list_content_entries`、`locate_extracted_root`（压缩包套一层文件夹的判定）、`relocate_dir`（rename 重试 + 递归复制回退） |
+| `import_state.rs` | `ArchiveImportState`（全局单实例并发锁 + `tasks`）、`ImportingGuard` / `TaskRemoveGuard`；角色与插件导入共用，故全局同时只有一个解压任务       |
 
 ## 7. 并发与取消
 
@@ -150,15 +150,15 @@ idle─┤     └─► error ─► (dismiss)
 
 ## 8. 安全策略
 
-| 风险 | 防御位置 | 行为 |
-|---|---|---|
-| zip-slip（`../`、绝对路径、Windows UNC） | `sanitize_entry_name` + `safe_join` | 拒绝写入，抛 `PathTraversal` |
-| macOS metadata（`__MACOSX/`、`._*`、`.DS_Store`） | `sanitize_entry_name` | 跳过 entry，记 warning |
-| 单归档条目过多 | `check_entry_safety` | `> MAX_ENTRY_COUNT (1000)` 抛 `TooManyEntries` |
-| 单条解压炸弹（已解压 / 压缩 > 100） | `check_entry_safety` | 抛 `CompressionRatio` |
-| 加密压缩包 | `ArchiveError::PasswordProtected` | 提示用户先在外部解密 |
-| 控制字符文件名 | `sanitize_role_folder_name` | 替换非法字符为 `_`，保留字母数字 + `-` + `.` |
-| 冲突目录 | `resolve_target` + `ConflictPolicy` | `skip` / `rename` / `overwrite` 三策略 |
+| 风险                                              | 防御位置                            | 行为                                           |
+| ------------------------------------------------- | ----------------------------------- | ---------------------------------------------- |
+| zip-slip（`../`、绝对路径、Windows UNC）          | `sanitize_entry_name` + `safe_join` | 拒绝写入，抛 `PathTraversal`                   |
+| macOS metadata（`__MACOSX/`、`._*`、`.DS_Store`） | `sanitize_entry_name`               | 跳过 entry，记 warning                         |
+| 单归档条目过多                                    | `check_entry_safety`                | `> MAX_ENTRY_COUNT (1000)` 抛 `TooManyEntries` |
+| 单条解压炸弹（已解压 / 压缩 > 100）               | `check_entry_safety`                | 抛 `CompressionRatio`                          |
+| 加密压缩包                                        | `ArchiveError::PasswordProtected`   | 提示用户先在外部解密                           |
+| 控制字符文件名                                    | `sanitize_role_folder_name`         | 替换非法字符为 `_`，保留字母数字 + `-` + `.`   |
+| 冲突目录                                          | `resolve_target` + `ConflictPolicy` | `skip` / `rename` / `overwrite` 三策略         |
 
 ## 9. 错误处理
 
@@ -179,22 +179,22 @@ Tauri 命令层把所有错误转成 `String`，前端通过 `invoke` 的 `Promi
 
 ## 10. 关键代码位置
 
-| 文件 | 用途 |
-|---|---|
-| `src-tauri/src/api/role_archive/mod.rs` | 5 个 Tauri 命令 + 类型 |
-| `src-tauri/src/api/role_archive/state.rs` | 全局状态与守卫 |
-| `src-tauri/src/api/role_archive/import_pipeline.rs` | 导入流水线 |
-| `src-tauri/src/api/role_archive/export_pipeline.rs` | 导出流水线 |
-| `src-tauri/src/utils/archive/mod.rs` | 公共类型与 API |
-| `src-tauri/src/utils/archive/safety.rs` | 路径与压缩比安全 |
-| `src-tauri/src/utils/archive/extract.rs` | zip / 7z 解压 |
-| `src-tauri/src/utils/archive/compress.rs` | zip / 7z 压缩 |
-| `src-tauri/src/utils/archive/resolve.rs` | 冲突策略 |
-| `src/composables/useRoleImportExport.ts` | 前端调度 |
-| `src/stores/modules/ui/role-archive.ts` | 进度状态 store |
-| `src/components/ui/ImportProgressBar.vue` | 进度条 UI |
-| `src/components/ui/RoleArchiveProgress.vue` | 进度条挂载点 |
-| `src/api/services/role-archive.ts` | invoke 封装 |
+| 文件                                                | 用途                   |
+| --------------------------------------------------- | ---------------------- |
+| `src-tauri/src/api/role_archive/mod.rs`             | 5 个 Tauri 命令 + 类型 |
+| `src-tauri/src/api/role_archive/state.rs`           | 全局状态与守卫         |
+| `src-tauri/src/api/role_archive/import_pipeline.rs` | 导入流水线             |
+| `src-tauri/src/api/role_archive/export_pipeline.rs` | 导出流水线             |
+| `src-tauri/src/utils/archive/mod.rs`                | 公共类型与 API         |
+| `src-tauri/src/utils/archive/safety.rs`             | 路径与压缩比安全       |
+| `src-tauri/src/utils/archive/extract.rs`            | zip / 7z 解压          |
+| `src-tauri/src/utils/archive/compress.rs`           | zip / 7z 压缩          |
+| `src-tauri/src/utils/archive/resolve.rs`            | 冲突策略               |
+| `src/composables/useRoleImportExport.ts`            | 前端调度               |
+| `src/stores/modules/ui/role-archive.ts`             | 进度状态 store         |
+| `src/components/ui/ImportProgressBar.vue`           | 进度条 UI              |
+| `src/components/ui/RoleArchiveProgress.vue`         | 进度条挂载点           |
+| `src/api/services/role-archive.ts`                  | invoke 封装            |
 
 ## 11. 已知约束
 

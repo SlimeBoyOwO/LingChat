@@ -3,12 +3,12 @@
 //! 对标 Python 版 `ling_chat/core/llm_providers/` 的工厂+ABC 模式。
 //! `LlmClient` 是薄包装，具体协议由 `LlmProvider` trait 实现处理。
 
+pub mod codex;
 pub mod error;
 pub(crate) mod factory;
 mod provider;
 pub mod provider_config;
 mod providers;
-pub mod codex;
 
 // 兼容别名：既有 `llm::codex_auth::...` 路径继续可用（模块化后为 codex::auth）
 pub use codex::auth as codex_auth;
@@ -20,7 +20,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use futures_util::{Stream, StreamExt};
 use reqwest::Client;
 use tokio::sync::RwLock;
@@ -179,7 +179,7 @@ impl LlmClient {
                 self.provider
                     .complete_stream_with_tools(&self.http, messages, definitions, tool_choice)
                     .await?
-            }
+            },
             None => self.provider.complete_stream(&self.http, messages).await?,
         };
         let timeout_secs = self.cfg.timeout_secs;

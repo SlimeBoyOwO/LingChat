@@ -14,20 +14,20 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as JsonValue};
 use tauri::{AppHandle, Manager};
 
+use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::types::ScriptStatus;
 use crate::api::{data_dir, game_data_dir};
 use crate::db::managers::role_repo::RoleRepo;
-use crate::AppState;
 
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::utils::yaml_file::{self, ChapterDoc};
-use crate::utils::script_paths::{self as paths, ScriptLayout};
-use super::schema::{build_schema, ScriptSchema};
+use super::schema::{ScriptSchema, build_schema};
 use super::validate::{self, ValidationReport};
+use crate::utils::script_paths::{self as paths, ScriptLayout};
+use crate::utils::yaml_file::{self, ChapterDoc};
 
 // ============================================================
 // 返回类型
@@ -331,8 +331,8 @@ fn read_characters(script_dir: &Path) -> Vec<ScriptCharacter> {
         // game_data/characters/<folder>/avatar/。引擎运行时也是这个顺序（issue #9）。
         let global_avatar_dir = crate::api::characters_dir().join(&folder).join("avatar");
         let global_avatar = first_avatar_image(&global_avatar_dir).is_some();
-        let preview_image = first_avatar_image(&avatar)
-            .or_else(|| first_avatar_image(&global_avatar_dir));
+        let preview_image =
+            first_avatar_image(&avatar).or_else(|| first_avatar_image(&global_avatar_dir));
 
         out.push(ScriptCharacter {
             folder,
@@ -622,8 +622,7 @@ pub async fn editor_create_script(
         let raw = req.intro_chapter.trim();
         let v = if raw.is_empty() { "main" } else { raw };
         for seg in v.split('/') {
-            paths::sanitize_folder_name(seg)
-                .map_err(|e| format!("开场章节名无效: {}", e))?;
+            paths::sanitize_folder_name(seg).map_err(|e| format!("开场章节名无效: {}", e))?;
         }
         v.to_string()
     };
@@ -1096,10 +1095,7 @@ pub fn editor_create_character(
         JsonValue::String(system_prompt.trim().to_string()),
     );
 
-    yaml_file::write_json_as_yaml(
-        &char_dir.join("settings.yml"),
-        &JsonValue::Object(settings),
-    )?;
+    yaml_file::write_json_as_yaml(&char_dir.join("settings.yml"), &JsonValue::Object(settings))?;
 
     // 刚创建的角色 avatar 目录是空的；全局同名角色若有立绘，仍按引擎回退顺序标出来
     let global_avatar_dir = crate::api::characters_dir().join(&folder).join("avatar");
@@ -1234,8 +1230,8 @@ pub fn editor_import_global_character(
     std::fs::create_dir_all(&dest).map_err(|e| format!("创建角色目录失败: {}", e))?;
 
     // 不直接 copy 文件：要补写 script_role_key，并摘掉只对全局角色有意义的字段
-    let raw = std::fs::read_to_string(&src_settings)
-        .map_err(|e| format!("读取角色设定失败: {}", e))?;
+    let raw =
+        std::fs::read_to_string(&src_settings).map_err(|e| format!("读取角色设定失败: {}", e))?;
     let mut settings: JsonValue =
         serde_yaml::from_str(&raw).map_err(|e| format!("角色设定不是合法 YAML: {}", e))?;
     let obj = settings
@@ -1311,9 +1307,7 @@ pub async fn editor_rescan_scripts(app: AppHandle) -> Result<usize, String> {
     // Catalog reconciliation updates both runnable scripts and fail-closed
     // duplicate claims, while preserving progress and the existing is_running Arc.
     service.script_manager.merge_scanned_catalog(fresh);
-    service
-        .script_manager
-        .apply_plugin_scripts(&plugin_scripts);
+    service.script_manager.apply_plugin_scripts(&plugin_scripts);
     let count = service.script_manager.all_scripts.len();
     tracing::info!("[ScriptEditor] 重新扫描完成，共 {} 个剧本", count);
     Ok(count)
@@ -1404,9 +1398,7 @@ pub async fn editor_start_preview(
         // 直接拒绝启动，并把双方路径打出来让作者看到。
         // 双方都 canonicalize 后再比——Windows 上 canonicalize 会给路径加 \\?\ 前缀，
         // 而 script.script_path 存在 HashMap 里时不带这个前缀，简单字符串比对会误报。
-        let resolved_dir = dir
-            .canonicalize()
-            .unwrap_or_else(|_| dir.clone());
+        let resolved_dir = dir.canonicalize().unwrap_or_else(|_| dir.clone());
         let resolved_script = script
             .script_path
             .canonicalize()
@@ -1460,7 +1452,7 @@ pub async fn editor_start_preview(
         Err(error) => {
             is_running.store(false, std::sync::atomic::Ordering::SeqCst);
             return Err(error);
-        }
+        },
     };
     // 提前取出本轮代号返回给前端（session 随后整体移入 AppState 托管）
     let generation = session.generation;
@@ -1658,7 +1650,10 @@ impl PreviewSession {
                 tracing::warn!("[ScriptEditor] 写入试玩人设台词失败: {}", e);
             }
         } else {
-            tracing::warn!("[ScriptEditor] 主角 {} 读不到人设，试玩将缺少人设上下文", main_id);
+            tracing::warn!(
+                "[ScriptEditor] 主角 {} 读不到人设，试玩将缺少人设上下文",
+                main_id
+            );
         }
 
         Ok(saved)
@@ -1667,20 +1662,19 @@ impl PreviewSession {
     /// 尽力还原，任何一步失败都只记日志 —— 收尾阶段再抛错没有接收方，
     /// 而且半途放弃只会让残留更多。
     async fn restore(self, db: &DatabaseConnection, game_status: &Arc<Mutex<GameStatus>>) {
-        let deleted_preview_roles =
-            match RoleRepo::delete_preview_created_script_roles(
-                db,
-                &self.script_key,
-                &self.existing_script_role_ids,
-            )
-            .await
-            {
-                Ok(ids) => ids,
-                Err(error) => {
-                    tracing::warn!("[ScriptEditor] 清理试玩临时角色行失败: {error:#}");
-                    Vec::new()
-                }
-            };
+        let deleted_preview_roles = match RoleRepo::delete_preview_created_script_roles(
+            db,
+            &self.script_key,
+            &self.existing_script_role_ids,
+        )
+        .await
+        {
+            Ok(ids) => ids,
+            Err(error) => {
+                tracing::warn!("[ScriptEditor] 清理试玩临时角色行失败: {error:#}");
+                Vec::new()
+            },
+        };
         let mut gs = game_status.lock().await;
         for role_id in deleted_preview_roles {
             gs.role_manager.remove_preview_role(role_id);
@@ -1779,7 +1773,7 @@ async fn build_main_role_prompt(
     data_dir: &Path,
     role_id: i32,
 ) -> Option<MainRolePrompt> {
-    use crate::utils::prompt::{sys_prompt_builder_by_settings, PromptOptions};
+    use crate::utils::prompt::{PromptOptions, sys_prompt_builder_by_settings};
 
     let settings = RoleRepo::get_role_settings_by_id(db, data_dir, role_id)
         .await
@@ -1840,7 +1834,11 @@ async fn role_name_of(db: &DatabaseConnection, id: i32) -> Option<String> {
         Some(script_key) => paths::resolve_script_dir(script_key)
             .ok()
             .map(|d| d.join("characters").join(folder).join("settings.yml")),
-        None => Some(crate::api::characters_dir().join(folder).join("settings.yml")),
+        None => Some(
+            crate::api::characters_dir()
+                .join(folder)
+                .join("settings.yml"),
+        ),
     };
 
     if let Some(path) = settings_path {

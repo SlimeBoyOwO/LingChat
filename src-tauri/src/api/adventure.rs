@@ -8,11 +8,11 @@ use std::sync::atomic::Ordering;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::AppState;
 use crate::adventures::manager::AdventureManager;
 use crate::adventures::trigger::{self, UnlockedAdventureInfo};
-use crate::ai_service::game_system::script_engine::events::ScriptContext;
 use crate::ai_service::game_system::script_engine::ScriptManager;
-use crate::AppState;
+use crate::ai_service::game_system::script_engine::events::ScriptContext;
 
 // ============================================================
 // Response types
@@ -250,7 +250,7 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
                     .await;
                 }
                 tracing::info!("[AdventureAPI] 冒险执行完成")
-            }
+            },
             Err(e) => tracing::error!("[AdventureAPI] 冒险执行错误: {}", e),
         }
     });

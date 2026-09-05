@@ -112,7 +112,7 @@ impl AutoSaveManager {
             None => {
                 // line_list is empty — nothing to save
                 return Ok(());
-            }
+            },
         };
 
         // 2. Skip if unchanged since last save

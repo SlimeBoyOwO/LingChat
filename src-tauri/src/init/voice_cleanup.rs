@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use sea_orm::*;
 use tauri::AppHandle;
 
@@ -105,7 +105,12 @@ async fn count_orphan_voice_files(referenced: &HashSet<String>) -> Result<(usize
         .await
         .map_err(|e| anyhow!("遍历语音目录时出错: {e}"))?
     {
-        if !entry.file_type().await.map_err(|e| anyhow!("获取文件类型失败: {e}"))?.is_file() {
+        if !entry
+            .file_type()
+            .await
+            .map_err(|e| anyhow!("获取文件类型失败: {e}"))?
+            .is_file()
+        {
             continue;
         }
         let name = entry.file_name().to_string_lossy().to_string();

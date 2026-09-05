@@ -3,8 +3,8 @@
 // `crate::utils::archive` module for safety (zip-bomb protection, path
 // sanitization, cancellation).
 
-use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 use super::paths::LocalTtsPaths;
 
@@ -84,19 +84,14 @@ pub fn inspect_package(path: &Path) -> std::result::Result<InspectedPackage, Str
     })
 }
 
-fn scan_archive_for_model(
-    path: &Path,
-    kind: PackageKind,
-) -> std::result::Result<String, String> {
+fn scan_archive_for_model(path: &Path, kind: PackageKind) -> std::result::Result<String, String> {
     let found = match kind {
         PackageKind::Zip => {
             let f = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
-            let mut zip =
-                zip::ZipArchive::new(f).map_err(|e| format!("zip: {e}"))?;
+            let mut zip = zip::ZipArchive::new(f).map_err(|e| format!("zip: {e}"))?;
             let mut found: Option<String> = None;
             for i in 0..zip.len() {
-                let entry =
-                    zip.by_index(i).map_err(|e| format!("zip entry: {e}"))?;
+                let entry = zip.by_index(i).map_err(|e| format!("zip entry: {e}"))?;
                 let n = entry.name().to_lowercase();
                 if n.ends_with(".sbv2") || n.ends_with(".onnx") {
                     found = Some(entry.name().to_string());
@@ -104,14 +99,11 @@ fn scan_archive_for_model(
                 }
             }
             found
-        }
+        },
         PackageKind::SevenZ => {
             let f = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
-            let archive = sevenz_rust2::ArchiveReader::new(
-                f,
-                sevenz_rust2::Password::empty(),
-            )
-            .map_err(|e| format!("7z: {e}"))?;
+            let archive = sevenz_rust2::ArchiveReader::new(f, sevenz_rust2::Password::empty())
+                .map_err(|e| format!("7z: {e}"))?;
             let mut found: Option<String> = None;
             for entry in archive.archive().files.iter() {
                 let n = entry.name().to_lowercase();
@@ -121,7 +113,7 @@ fn scan_archive_for_model(
                 }
             }
             found
-        }
+        },
         _ => return Err("not an archive".into()),
     };
     found.ok_or_else(|| "archive does not contain a .sbv2 or .onnx file".to_string())
@@ -147,22 +139,18 @@ pub fn install_inspected(
             let src_buf = src.to_path_buf();
             let dst_buf = dst.clone();
             let kind = inspected.kind;
-            let result: Result<crate::utils::archive::ExtractSummary, crate::utils::archive::ArchiveError> =
-                tokio::task::block_in_place(|| match kind {
-                    PackageKind::Zip => crate::utils::archive::extract_zip(
-                        &src_buf,
-                        &dst_buf,
-                        &token,
-                        &|_| {},
-                    ),
-                    PackageKind::SevenZ => crate::utils::archive::extract_sevenz(
-                        &src_buf,
-                        &dst_buf,
-                        &token,
-                        &|_| {},
-                    ),
-                    _ => unreachable!(),
-                });
+            let result: Result<
+                crate::utils::archive::ExtractSummary,
+                crate::utils::archive::ArchiveError,
+            > = tokio::task::block_in_place(|| match kind {
+                PackageKind::Zip => {
+                    crate::utils::archive::extract_zip(&src_buf, &dst_buf, &token, &|_| {})
+                },
+                PackageKind::SevenZ => {
+                    crate::utils::archive::extract_sevenz(&src_buf, &dst_buf, &token, &|_| {})
+                },
+                _ => unreachable!(),
+            });
             result.map_err(|e| format!("extract: {e}"))?;
             for candidate in ["model.sbv2", "model.onnx"] {
                 let p = dst.join(candidate);
@@ -171,7 +159,7 @@ pub fn install_inspected(
                 }
             }
             Err("extracted archive does not contain model.sbv2 or model.onnx".into())
-        }
+        },
         PackageKind::Unknown => Err("unknown package format".into()),
     }
 }

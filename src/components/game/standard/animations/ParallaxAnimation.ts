@@ -1,24 +1,24 @@
-import { onUnmounted, ref, type Ref } from 'vue'
+import { onUnmounted, ref, type Ref } from "vue";
 
 /* ================== 视差倾斜 & 平移效果 ================== */
 export interface ParallaxConfig {
-  MAX_ANGLE: number
-  VERTICAL_SCALE: number
-  CHAR_MAX_SHIFT: number
-  BG_MAX_SHIFT: number
-  STARS_MAX_SHIFT: number
-  DAMPING: number
-  IDLE_THRESHOLD: number
+  MAX_ANGLE: number;
+  VERTICAL_SCALE: number;
+  CHAR_MAX_SHIFT: number;
+  BG_MAX_SHIFT: number;
+  STARS_MAX_SHIFT: number;
+  DAMPING: number;
+  IDLE_THRESHOLD: number;
   // 新增性能配置
-  THROTTLE_DELAY: number
-  USE_WILL_CHANGE: boolean
-  USE_TRANSFORM_3D: boolean
+  THROTTLE_DELAY: number;
+  USE_WILL_CHANGE: boolean;
+  USE_TRANSFORM_3D: boolean;
 }
 
 export interface ParallaxElements {
-  charRef: Ref<HTMLElement | null>
-  bgRef: Ref<HTMLElement | null>
-  starsLayerRef: Ref<HTMLElement | null>
+  charRef: Ref<HTMLElement | null>;
+  bgRef: Ref<HTMLElement | null>;
+  starsLayerRef: Ref<HTMLElement | null>;
 }
 
 /**
@@ -36,7 +36,7 @@ const DEFAULT_PARALLAX_CONFIG: ParallaxConfig = {
   THROTTLE_DELAY: 16, // ~60fps 节流延迟
   USE_WILL_CHANGE: true, // 启用 will-change 优化
   USE_TRANSFORM_3D: true, // 使用 3D transform 触发硬件加速
-}
+};
 
 /**
  * 视差动画 Hook
@@ -47,24 +47,24 @@ const DEFAULT_PARALLAX_CONFIG: ParallaxConfig = {
 export function useParallaxAnimation(
   elements: ParallaxElements,
   config: Partial<ParallaxConfig> = {},
-  enabledRef?: Ref<boolean>,
+  enabledRef?: Ref<boolean>
 ) {
   // 合并默认配置
   const PARALLAX_CONFIG: ParallaxConfig = {
     ...DEFAULT_PARALLAX_CONFIG,
     ...config,
-  }
-  const isEnabled = () => (enabledRef ? enabledRef.value : true)
+  };
+  const isEnabled = () => (enabledRef ? enabledRef.value : true);
 
   // 视差动画状态
-  let targetOffsetX = 0
-  let targetOffsetY = 0
-  let currentOffsetX = 0
-  let currentOffsetY = 0
-  let parallaxRafId: number | null = null
-  let isParallaxRunning = false
-  let lastMouseMoveTime = 0
-  let isPageVisible = true
+  let targetOffsetX = 0;
+  let targetOffsetY = 0;
+  let currentOffsetX = 0;
+  let currentOffsetY = 0;
+  let parallaxRafId: number | null = null;
+  let isParallaxRunning = false;
+  let lastMouseMoveTime = 0;
+  let isPageVisible = true;
 
   /**
    * 设置元素性能优化属性
@@ -74,22 +74,22 @@ export function useParallaxAnimation(
       elements.charRef.value,
       elements.bgRef.value,
       elements.starsLayerRef.value,
-    ]
+    ];
 
     elementsToOptimize.forEach((element) => {
-      if (!element) return
+      if (!element) return;
 
       // 启用 will-change 优化
       if (PARALLAX_CONFIG.USE_WILL_CHANGE) {
-        element.style.willChange = 'transform'
+        element.style.willChange = "transform";
       }
 
       // 设置 3D transform 触发硬件加速
       if (PARALLAX_CONFIG.USE_TRANSFORM_3D) {
-        element.style.transformStyle = 'preserve-3d'
-        element.style.backfaceVisibility = 'hidden'
+        element.style.transformStyle = "preserve-3d";
+        element.style.backfaceVisibility = "hidden";
       }
-    })
+    });
   }
 
   /**
@@ -100,37 +100,37 @@ export function useParallaxAnimation(
       elements.charRef.value,
       elements.bgRef.value,
       elements.starsLayerRef.value,
-    ]
+    ];
 
     elementsToOptimize.forEach((element) => {
-      if (!element) return
+      if (!element) return;
 
       // 清理 will-change
       if (PARALLAX_CONFIG.USE_WILL_CHANGE) {
-        element.style.willChange = 'auto'
+        element.style.willChange = "auto";
       }
-    })
+    });
   }
 
   /**
    * 高性能视差变换应用
    */
   function applyParallaxTransforms(offsetX: number, offsetY: number) {
-    const charShift = -offsetX * PARALLAX_CONFIG.CHAR_MAX_SHIFT
-    const bgShift = -offsetX * PARALLAX_CONFIG.BG_MAX_SHIFT
-    const starsShift = -offsetX * PARALLAX_CONFIG.STARS_MAX_SHIFT
+    const charShift = -offsetX * PARALLAX_CONFIG.CHAR_MAX_SHIFT;
+    const bgShift = -offsetX * PARALLAX_CONFIG.BG_MAX_SHIFT;
+    const starsShift = -offsetX * PARALLAX_CONFIG.STARS_MAX_SHIFT;
 
     // 使用 3D transform 触发硬件加速
-    const transform3D = PARALLAX_CONFIG.USE_TRANSFORM_3D ? ' translateZ(0)' : ''
+    const transform3D = PARALLAX_CONFIG.USE_TRANSFORM_3D ? " translateZ(0)" : "";
 
     if (elements.charRef.value) {
-      elements.charRef.value.style.transform = `translate(-50%, -50%) translateX(${charShift}px)${transform3D}`
+      elements.charRef.value.style.transform = `translate(-50%, -50%) translateX(${charShift}px)${transform3D}`;
     }
     if (elements.bgRef.value) {
-      elements.bgRef.value.style.transform = `translateX(${bgShift}px)${transform3D}`
+      elements.bgRef.value.style.transform = `translateX(${bgShift}px)${transform3D}`;
     }
     if (elements.starsLayerRef.value) {
-      elements.starsLayerRef.value.style.transform = `translateX(${starsShift}px)${transform3D}`
+      elements.starsLayerRef.value.style.transform = `translateX(${starsShift}px)${transform3D}`;
     }
   }
 
@@ -144,46 +144,46 @@ export function useParallaxAnimation(
   function parallaxLoop() {
     // 暂停态或页面不可见时停止
     if (!isEnabled() || !isPageVisible) {
-      isParallaxRunning = false
-      parallaxRafId = null
-      return
+      isParallaxRunning = false;
+      parallaxRafId = null;
+      return;
     }
 
-    const deltaX = targetOffsetX - currentOffsetX
-    const deltaY = targetOffsetY - currentOffsetY
+    const deltaX = targetOffsetX - currentOffsetX;
+    const deltaY = targetOffsetY - currentOffsetY;
 
     // 检查是否已经收敛到目标值
     const hasConverged =
       Math.abs(deltaX) < PARALLAX_CONFIG.IDLE_THRESHOLD &&
-      Math.abs(deltaY) < PARALLAX_CONFIG.IDLE_THRESHOLD
+      Math.abs(deltaY) < PARALLAX_CONFIG.IDLE_THRESHOLD;
 
     if (hasConverged) {
       // 动画已收敛到目标值，直接对齐并停止循环
-      currentOffsetX = targetOffsetX
-      currentOffsetY = targetOffsetY
-      applyParallaxTransforms(currentOffsetX, currentOffsetY)
-      isParallaxRunning = false
-      parallaxRafId = null
-      return
+      currentOffsetX = targetOffsetX;
+      currentOffsetY = targetOffsetY;
+      applyParallaxTransforms(currentOffsetX, currentOffsetY);
+      isParallaxRunning = false;
+      parallaxRafId = null;
+      return;
     }
 
     // 应用阻尼插值
-    currentOffsetX += deltaX * PARALLAX_CONFIG.DAMPING
-    currentOffsetY += deltaY * PARALLAX_CONFIG.DAMPING
+    currentOffsetX += deltaX * PARALLAX_CONFIG.DAMPING;
+    currentOffsetY += deltaY * PARALLAX_CONFIG.DAMPING;
 
-    applyParallaxTransforms(currentOffsetX, currentOffsetY)
+    applyParallaxTransforms(currentOffsetX, currentOffsetY);
 
-    parallaxRafId = requestAnimationFrame(parallaxLoop)
+    parallaxRafId = requestAnimationFrame(parallaxLoop);
   }
 
   /**
    * 启动视差动画（如果尚未运行）
    */
   function startParallaxIfNeeded() {
-    if (!isEnabled()) return
+    if (!isEnabled()) return;
     if (!isParallaxRunning && isPageVisible) {
-      isParallaxRunning = true
-      parallaxLoop()
+      isParallaxRunning = true;
+      parallaxLoop();
     }
   }
 
@@ -191,11 +191,11 @@ export function useParallaxAnimation(
    * 处理页面可见性变化
    */
   function handleVisibilityChange() {
-    isPageVisible = !document.hidden
+    isPageVisible = !document.hidden;
     if (!isPageVisible && parallaxRafId) {
-      cancelAnimationFrame(parallaxRafId)
-      parallaxRafId = null
-      isParallaxRunning = false
+      cancelAnimationFrame(parallaxRafId);
+      parallaxRafId = null;
+      isParallaxRunning = false;
     }
   }
 
@@ -203,53 +203,53 @@ export function useParallaxAnimation(
    * 节流的鼠标移动处理
    */
   function handleMouseMove(e: MouseEvent) {
-    if (!isEnabled()) return
+    if (!isEnabled()) return;
     // 节流处理
-    const now = performance.now()
+    const now = performance.now();
     if (now - lastMouseMoveTime < PARALLAX_CONFIG.THROTTLE_DELAY) {
-      return
+      return;
     }
-    lastMouseMoveTime = now
+    lastMouseMoveTime = now;
 
-    const centerX = window.innerWidth / 2
-    const centerY = window.innerHeight / 2
-    targetOffsetX = (e.clientX - centerX) / centerX
-    targetOffsetY = (e.clientY - centerY) / centerY
-    startParallaxIfNeeded()
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+    targetOffsetX = (e.clientX - centerX) / centerX;
+    targetOffsetY = (e.clientY - centerY) / centerY;
+    startParallaxIfNeeded();
   }
 
   function handleMouseLeave() {
-    if (!isEnabled()) return
-    targetOffsetX = 0
-    targetOffsetY = 0
-    startParallaxIfNeeded()
+    if (!isEnabled()) return;
+    targetOffsetX = 0;
+    targetOffsetY = 0;
+    startParallaxIfNeeded();
   }
 
   // 初始化性能优化
-  setupPerformanceOptimizations()
+  setupPerformanceOptimizations();
 
   // 监听页面可见性变化
-  document.addEventListener('visibilitychange', handleVisibilityChange)
+  document.addEventListener("visibilitychange", handleVisibilityChange);
 
   // 组件卸载时清理
   onUnmounted(() => {
     if (parallaxRafId) {
-      cancelAnimationFrame(parallaxRafId)
-      parallaxRafId = null
+      cancelAnimationFrame(parallaxRafId);
+      parallaxRafId = null;
     }
-    isParallaxRunning = false
+    isParallaxRunning = false;
 
     // 清理性能优化
-    cleanupPerformanceOptimizations()
+    cleanupPerformanceOptimizations();
 
     // 移除事件监听
-    document.removeEventListener('visibilitychange', handleVisibilityChange)
-  })
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+  });
 
   return {
     handleMouseMove,
     handleMouseLeave,
-  }
+  };
 }
 
-export type ParallaxAnimationReturn = ReturnType<typeof useParallaxAnimation>
+export type ParallaxAnimationReturn = ReturnType<typeof useParallaxAnimation>;

@@ -42,6 +42,7 @@ pnpm tauri ios dev "iPhone 17 Pro"             # 设备名可换成任意可用�
 ```
 
 注意：
+
 - **`tauri ios dev` 前必须先有 `gen/apple/assets/data/data.7z`**（`prepare-bundled-resources.mjs` 生成），
   否则首启播种失败，setup 报错后在 `did_finish_launching` 内触发不可 unwind 的 panic（SIGABRT）。
 - 不要给该命令设置相对路径的 `CARGO_TARGET_DIR`（如 `src-tauri/target`）：cargo 会把它解析到
@@ -113,10 +114,10 @@ Assets.car/签名的重编码。**注意**：本地工作区如有未提交的 `
 
 ### 3. 资源文件怎么进包
 
-| 内容 | 机制 | 落点 |
-|---|---|---|
-| 游戏数据 + 模型 | `prepare-bundled-resources.mjs` 打包 `data.7z` → `gen/apple/assets/data/data.7z` | `<bundle>/assets/data/data.7z`（folder reference 保留 `assets/` 目录名），首启解压到 Documents |
-| 桌面 `.official` 资源 | `prepare-desktop-resources.mjs` 在移动端（`TAURI_ENV_PLATFORM=ios/android`）**只生成空占位** | 不进包（避免与 data.7z 重复） |
+| 内容                  | 机制                                                                                         | 落点                                                                                           |
+| --------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 游戏数据 + 模型       | `prepare-bundled-resources.mjs` 打包 `data.7z` → `gen/apple/assets/data/data.7z`             | `<bundle>/assets/data/data.7z`（folder reference 保留 `assets/` 目录名），首启解压到 Documents |
+| 桌面 `.official` 资源 | `prepare-desktop-resources.mjs` 在移动端（`TAURI_ENV_PLATFORM=ios/android`）**只生成空占位** | 不进包（避免与 data.7z 重复）                                                                  |
 
 `gen/apple/assets/` 在 project.yml 中是 folder reference（`type: folder`），构建时**连同目录名**拷入
 bundle（`assets/data/data.7z` → `<bundle>/assets/data/data.7z`）。
@@ -124,6 +125,7 @@ Rust 侧 `seed_via_fs_plugin` 的 iOS 读取路径为 `{resource_dir}/data/data.
 iOS 上 tauri 的 `resource_dir()` 返回的**就是** bundle 内的 `assets/` 目录
 （`<bundle>/assets/`，即 folder reference 的落点），不要再拼一层 `assets/`。
 Android 同样是 `{resource_dir}/data/data.7z`（APK 的 resource_dir 即 assets 根）。
+
 > 实测记录：曾写成 `{resource_dir}/assets/data/data.7z`，在 iOS 上解析为
 > `<bundle>/assets/assets/data/data.7z` 导致首启播种失败、setup 报错并触发
 > `did_finish_launching` 内不可 unwind 的 panic（SIGABRT）。CI 只打包不运行，
@@ -190,6 +192,7 @@ macOS runner 实测复现；错误信息中变量名后出现 U+FFFD，文件本
 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` → `xcodebuild exit 65`。
 
 要点：
+
 - `CI=true` 与 `pnpm_config_verify_deps_before_run` / `pnpm_config_confirm_modules_purge`
   环境变量（pnpm 11 只认 `pnpm_config_*`/`PNPM_CONFIG_*` 前缀，不认 `PNPM_*`；
   `.npmrc` 里的这两个键会被 pnpm 11 的 `isNpmrcReadableKey` 过滤）实测都无法阻止；
@@ -252,4 +255,3 @@ version (15.1) than being linked (14.0)`。当前仅警告、构建不受影响�
      由 `configure-ios-project.sh` 归一化；
   3. `build-ios-unsigned.sh` 内置 `CI=true` + `pnpm_config_*` 环境变量，本地直跑
      不再因 pnpm 11 无 TTY 依赖校验中止（此前只有 CI 步骤设置，本地脚本缺失）。
-

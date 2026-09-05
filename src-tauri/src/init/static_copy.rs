@@ -16,7 +16,6 @@ pub fn get_data_dir() -> &'static PathBuf {
         .expect("data_dir not initialized — call init_data_dir first")
 }
 
-
 /// 解析 data 目录路径。
 ///
 /// 优先级：

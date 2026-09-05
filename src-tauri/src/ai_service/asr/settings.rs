@@ -175,7 +175,7 @@ pub fn load(app: &AppHandle) -> Result<AsrSettings, AsrError> {
                 for (k, v) in map {
                     s.provider_configs.insert(k, v);
                 }
-            }
+            },
             Err(e) => tracing::warn!("[ASR] ASR_PROVIDERS malformed: {e}"),
         }
     }
@@ -236,9 +236,12 @@ mod tests {
             api_key: "k".into(),
             endpoint: "http://127.0.0.1:8080".into(),
             model: "models/Qwen3-ASR-1.7B-Q8_0.gguf".into(),
-            extra: [("hotwords".to_string(), "Quantinuum, Anthropic, 量子计算".to_string())]
-                .into_iter()
-                .collect(),
+            extra: [(
+                "hotwords".to_string(),
+                "Quantinuum, Anthropic, 量子计算".to_string(),
+            )]
+            .into_iter()
+            .collect(),
         };
         let cred = cfg.to_credentials();
         assert_eq!(cred.hotwords, vec!["Quantinuum", "Anthropic", "量子计算"]);

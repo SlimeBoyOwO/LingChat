@@ -1,12 +1,12 @@
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use reqwest::Client;
 
-use crate::utils::tls::build_tls_config;
 use super::provider::LlmProvider;
 use super::providers::{CodexProvider, GenaiProvider, KimiCodeProvider};
 use super::{LlmClient, LlmConfig};
+use crate::utils::tls::build_tls_config;
 
 /// 构建共享 reqwest Client。
 ///
@@ -32,7 +32,7 @@ pub fn create_llm_client(cfg: LlmConfig) -> Result<LlmClient> {
     let provider: Box<dyn LlmProvider> = match cfg.provider.to_lowercase().as_str() {
         "deepseek" | "openai" | "lmstudio" | "gemini" => {
             Box::new(GenaiProvider::new(&cfg, http.clone())?)
-        }
+        },
         "kimicode" => Box::new(KimiCodeProvider::from_config(&cfg)?),
         "codex" => Box::new(CodexProvider::from_config(&cfg)?),
         // "webllm" 已废弃，原为 OpenAiProvider 别名，现统一用 "openai"

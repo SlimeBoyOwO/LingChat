@@ -1,39 +1,40 @@
-import type { IEventProcessor } from '../event-processor'
-import type { ScriptDialogueEvent } from '../../../types'
-import { useGameStore } from '../../../stores/modules/game'
-import { useUIStore } from '../../../stores/modules/ui/ui'
-import { isJaLocale, hkify } from '@/locales'
+import { invoke } from "@tauri-apps/api/core";
+import type { IEventProcessor } from "../event-processor";
+import type { ScriptDialogueEvent } from "../../../types";
+import { useGameStore } from "../../../stores/modules/game";
+import { useUIStore } from "../../../stores/modules/ui/ui";
+import { isJaLocale, hkify } from "@/locales";
 
 export default class DialogueProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {
-    return eventType === 'reply'
+    return eventType === "reply";
   }
 
   async processEvent(event: ScriptDialogueEvent, signal?: AbortSignal): Promise<void> {
-    const gameStore = useGameStore()
-    const uiStore = useUIStore()
+    const gameStore = useGameStore();
+    const uiStore = useUIStore();
 
     // 更新游戏状态显示对话
-    gameStore.currentStatus = 'responding'
+    gameStore.currentStatus = "responding";
 
     // 针对剧本模式，获取角色
-    const role = await gameStore.getOrCreateGameRole(event.roleId)
-    if (signal?.aborted) return
+    const role = await gameStore.getOrCreateGameRole(event.roleId);
+    if (signal?.aborted) return;
     if (!role) {
-      console.warn('角色修改的角色似乎并没有被初始化')
-      return
+      console.warn("角色修改的角色似乎并没有被初始化");
+      return;
     }
 
-    const displayName = event.displayName ? event.displayName : role.roleName
-    const displaySubtitle = event.displaySubtitle ? event.displaySubtitle : role.roleSubTitle
+    const displayName = event.displayName ? event.displayName : role.roleName;
+    const displaySubtitle = event.displaySubtitle ? event.displaySubtitle : role.roleSubTitle;
 
     // 日文界面且存在日语译文时显示日语译文；繁体（香港）界面下对话转繁体显示
-    const displayLine = hkify(isJaLocale() && event.ttsText ? event.ttsText : event.message || '')
-    gameStore.currentLine = displayLine
-    uiStore.showCharacterMotionText = event.motionText || ''
+    const displayLine = hkify(isJaLocale() && event.ttsText ? event.ttsText : event.message || "");
+    gameStore.currentLine = displayLine;
+    uiStore.showCharacterMotionText = event.motionText || "";
 
     gameStore.appendGameMessage({
-      type: 'reply',
+      type: "reply",
       displayName: displayName,
       content: event.message,
       emotion: event.emotion,
@@ -45,28 +46,33 @@ export default class DialogueProcessor implements IEventProcessor {
       thinking: event.thinking,
       ttsText: event.ttsText,
       senderRoleId: event.roleId,
-    })
+    });
 
     // 回溯更新最近一条没有序号标记的用户消息（前端发送消息时尚未拿到序号）
-    if (typeof event.userMessageSeq === 'number') {
-      const history = gameStore.dialogHistory
+    if (typeof event.userMessageSeq === "number") {
+      const history = gameStore.dialogHistory;
       for (let i = history.length - 1; i >= 0; i--) {
-        if (history[i].type === 'message' && history[i].userMessageSeq === undefined) {
-          history[i].userMessageSeq = event.userMessageSeq
-          break
+        if (history[i].type === "message" && history[i].userMessageSeq === undefined) {
+          history[i].userMessageSeq = event.userMessageSeq;
+          break;
         }
       }
     }
 
-    uiStore.showCharacterLine = gameStore.currentLine // TODO: 这部分逻辑之后整合
-    role.emotion = event.emotion || '正常'
-    role.originalEmotion = event.originalTag || '正常'
-    gameStore.currentInteractRoleId = role.roleId
-    uiStore.currentAvatarAudio = event.audioFile || 'None'
-    uiStore.showCharacterEmotion = role.originalEmotion
+    uiStore.showCharacterLine = gameStore.currentLine; // TODO: 这部分逻辑之后整合
+    role.emotion = event.emotion || "正常";
+    role.originalEmotion = event.originalTag || "正常";
+    gameStore.currentInteractRoleId = role.roleId;
+    uiStore.currentAvatarAudio = event.audioFile || "None";
+    // 前端触发对话/播放回复音频时，把该句语音广播给投屏客户端（远端设备同步播放）。
+    // 仅主窗口处理 ai:reply 事件，这里每句回复恰好执行一次；投屏服务未运行时命令内 no-op。
+    if (event.audioFile) {
+      invoke("cast_play_voice", { audioFile: event.audioFile }).catch(() => {});
+    }
+    uiStore.showCharacterEmotion = role.originalEmotion;
 
-    uiStore.showCharacterTitle = displayName
-    uiStore.showCharacterSubtitle = displaySubtitle
+    uiStore.showCharacterTitle = displayName;
+    uiStore.showCharacterSubtitle = displaySubtitle;
     // gameStore.currentCharacter = event.character;
 
     // 对话总是等待用户继续，所以这里不需要做任何等待

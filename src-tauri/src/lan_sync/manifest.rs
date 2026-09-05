@@ -31,7 +31,13 @@ pub fn build_complete_manifest(
     let manifest_files = manifest.map(|m| &m.files);
     let data_version = manifest.map_or(0, |m| m.data_version);
 
-    scan_dir(data_dir, data_dir, manifest_files, &mut files, &mut runtime_files)?;
+    scan_dir(
+        data_dir,
+        data_dir,
+        manifest_files,
+        &mut files,
+        &mut runtime_files,
+    )?;
 
     Ok(CompleteManifest {
         device_id: device_id.to_string(),
@@ -117,7 +123,7 @@ fn scan_dir(
                 Err(e) => {
                     warn!("无法计算文件哈希 {:?}: {}", path, e);
                     continue; // 跳过无法读取的文件
-                }
+                },
             };
 
             runtime_files.insert(
@@ -183,7 +189,7 @@ pub fn diff_manifests(
                     size: remote_entry.size,
                     reason: "new".to_string(),
                 });
-            }
+            },
             Some(local_entry) => {
                 if local_entry.sha256 != remote_entry.sha256 {
                     // SHA-256 不同 → 比较时间戳
@@ -205,7 +211,7 @@ pub fn diff_manifests(
                     }
                 }
                 // SHA-256 相同 → 跳过
-            }
+            },
         }
     }
 

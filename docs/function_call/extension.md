@@ -131,10 +131,10 @@ roles = ["诺一"]
 
 **工具执行失败不能 `panic` / 不能向上抛 `anyhow`** —— `ToolExecutor` 只认识 `ToolError`，其他错误会走 `tool_error` 兜底。正确姿势：
 
-| 情况 | 做法 |
-|---|---|
-| 参数不合法 | `return Err(ToolError::InvalidArguments("说明".into()))` |
-| 执行逻辑失败 | `return Err(ToolError::Execution("说明".into()))` |
+| 情况                        | 做法                                                        |
+| --------------------------- | ----------------------------------------------------------- |
+| 参数不合法                  | `return Err(ToolError::InvalidArguments("说明".into()))`    |
+| 执行逻辑失败                | `return Err(ToolError::Execution("说明".into()))`           |
 | 需要让 LLM 看到的结构化失败 | 返回一个 `{ok:false, reason:...}` 的 JSON 结果（`Ok` 分支） |
 
 所有失败都会被 `ToolExecutor` 统一编码成：

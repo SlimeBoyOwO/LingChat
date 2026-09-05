@@ -8,15 +8,17 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use rustpython_vm::{
-    AsObject, Interpreter, PyObjectRef, PyResult, VirtualMachine, compiler::Mode, py_serde,
+    AsObject, Interpreter, PyObjectRef, PyResult, VirtualMachine,
     builtins::{PyBaseExceptionRef, PyDictRef},
+    compiler::Mode,
+    py_serde,
 };
 use tauri::{AppHandle, Manager};
 
 use serde_json::Value;
 
-use crate::ai_service::tools::executor::ToolContext;
 use crate::AppState;
+use crate::ai_service::tools::executor::ToolContext;
 
 use super::http_host;
 use super::types::PluginManifest;
@@ -47,16 +49,18 @@ fn exc_message(vm: &VirtualMachine, e: &PyBaseExceptionRef) -> String {
 fn build_interpreter() -> Interpreter {
     rustpython_vm::Interpreter::builder(rustpython_vm::Settings::default())
         .add_frozen_modules(rustpython_pylib::FROZEN_STDLIB)
-        .add_native_module(http_host::plugin_module_def(&rustpython_vm::Context::genesis()))
+        .add_native_module(http_host::plugin_module_def(
+            &rustpython_vm::Context::genesis(),
+        ))
         .build()
 }
 
 /// 把危险模块在 `sys.modules` 中置为 `None`，使后续 `import` 直接抛 ImportError。
 fn block_dangerous_imports(vm: &VirtualMachine) -> PyResult<()> {
     let sys_modules = vm.sys_module.get_attr("modules", vm)?;
-    let sys_modules: PyDictRef = sys_modules.downcast().map_err(|_| {
-        vm.new_runtime_error("sys.modules 不是 dict")
-    })?;
+    let sys_modules: PyDictRef = sys_modules
+        .downcast()
+        .map_err(|_| vm.new_runtime_error("sys.modules 不是 dict"))?;
     for name in BLOCKED_MODULES {
         sys_modules.set_item(vm.ctx.intern_str(*name), vm.ctx.none(), vm)?;
     }
@@ -73,8 +77,16 @@ fn build_ctx(
     app: AppHandle,
 ) -> PyResult<PyObjectRef> {
     let ctx = vm.ctx.new_dict();
-    ctx.set_item(vm.ctx.intern_str("tool_name"), vm.ctx.new_str(tool_name).into(), vm)?;
-    ctx.set_item(vm.ctx.intern_str("args"), http_host::value_to_pyobject(vm, args), vm)?;
+    ctx.set_item(
+        vm.ctx.intern_str("tool_name"),
+        vm.ctx.new_str(tool_name).into(),
+        vm,
+    )?;
+    ctx.set_item(
+        vm.ctx.intern_str("args"),
+        http_host::value_to_pyobject(vm, args),
+        vm,
+    )?;
     ctx.set_item(
         vm.ctx.intern_str("config"),
         http_host::value_to_pyobject(vm, &serde_json::to_value(config).unwrap_or(Value::Null)),
@@ -83,7 +95,11 @@ fn build_ctx(
     // ctx.env 是 dict：白名单环境变量查询，脚本用 ctx.env.get("KEY")
     let env_dict = vm.ctx.new_dict();
     for (k, v) in env {
-        env_dict.set_item(vm.ctx.intern_str(k.as_str()), vm.ctx.new_str(v.clone()).into(), vm)?;
+        env_dict.set_item(
+            vm.ctx.intern_str(k.as_str()),
+            vm.ctx.new_str(v.clone()).into(),
+            vm,
+        )?;
     }
     ctx.set_item(vm.ctx.intern_str("env"), env_dict.into(), vm)?;
     // call_tool：让插件脚本调用任意已注册工具（内置或插件），返回其 JSON 结果
@@ -110,7 +126,9 @@ fn make_call_tool(vm: &VirtualMachine, app: AppHandle) -> PyResult<PyObjectRef> 
             let allowed: std::collections::HashSet<String> =
                 std::iter::once(name.clone()).collect();
             let context = ToolContext::new(allowed).with_app(app_for_fn.clone());
-            let timeout = tool.timeout_hint().unwrap_or(std::time::Duration::from_secs(2));
+            let timeout = tool
+                .timeout_hint()
+                .unwrap_or(std::time::Duration::from_secs(2));
             let result = http_host::runtime().block_on(async {
                 tokio::time::timeout(timeout, tool.execute(&context, args_value)).await
             });
@@ -129,9 +147,7 @@ pub(crate) fn collect_env(manifest: &PluginManifest) -> HashMap<String, String> 
     manifest
         .env
         .iter()
-        .filter_map(|decl| {
-            std::env::var(&decl.key).ok().map(|v| (decl.key.clone(), v))
-        })
+        .filter_map(|decl| std::env::var(&decl.key).ok().map(|v| (decl.key.clone(), v)))
         .collect()
 }
 
@@ -146,8 +162,7 @@ pub(crate) fn run_plugin_script(
     env: &HashMap<String, String>,
     app: AppHandle,
 ) -> Result<Value, String> {
-    let script = std::fs::read_to_string(script_path)
-        .map_err(|e| format!("读取脚本失败: {e}"))?;
+    let script = std::fs::read_to_string(script_path).map_err(|e| format!("读取脚本失败: {e}"))?;
     let interpreter = build_interpreter();
     interpreter.enter(|vm| {
         let scope = vm.new_scope_with_builtins();
@@ -160,8 +175,8 @@ pub(crate) fn run_plugin_script(
         // 顶层定义执行完毕后，拦截危险模块，再调用 run()
         block_dangerous_imports(vm).map_err(|e| exc_message(vm, &e))?;
 
-        let ctx = build_ctx(vm, tool_name, args, config, env, app)
-            .map_err(|e| exc_message(vm, &e))?;
+        let ctx =
+            build_ctx(vm, tool_name, args, config, env, app).map_err(|e| exc_message(vm, &e))?;
         let run_func = scope
             .globals
             .get_item("run", vm)

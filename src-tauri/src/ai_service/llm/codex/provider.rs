@@ -15,12 +15,12 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
 use reqwest::Client;
-use serde_json::{json, Value};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue, USER_AGENT};
+use serde_json::{Value, json};
 
 use crate::ai_service::llm::codex_auth::{self, CodexCredential};
 use crate::ai_service::llm::provider::{
@@ -85,10 +85,16 @@ impl CodexProvider {
             HeaderValue::from_str(&cred.account_id).context("Codex account_id 含非法字符")?,
         );
         headers.insert("originator", HeaderValue::from_static("lingchat"));
-        headers.insert("OpenAI-Beta", HeaderValue::from_static("responses=experimental"));
+        headers.insert(
+            "OpenAI-Beta",
+            HeaderValue::from_static("responses=experimental"),
+        );
         headers.insert(ACCEPT, HeaderValue::from_static("text/event-stream"));
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        headers.insert(USER_AGENT, HeaderValue::from_static("lingchat/0.5 (Windows)"));
+        headers.insert(
+            USER_AGENT,
+            HeaderValue::from_static("lingchat/0.5 (Windows)"),
+        );
         Ok(headers)
     }
 
@@ -119,7 +125,7 @@ impl CodexProvider {
                         instructions.push_str("\n\n");
                     }
                     instructions.push_str(&m.content);
-                }
+                },
                 "assistant" => {
                     if !m.content.is_empty() {
                         input.push(json!({
@@ -138,21 +144,21 @@ impl CodexProvider {
                             }));
                         }
                     }
-                }
+                },
                 "tool" => {
                     input.push(json!({
                         "type": "function_call_output",
                         "call_id": m.tool_call_id.clone().unwrap_or_default(),
                         "output": m.content,
                     }));
-                }
+                },
                 _ => {
                     input.push(json!({
                         "type": "message",
                         "role": "user",
                         "content": [{ "type": "input_text", "text": m.content }],
                     }));
-                }
+                },
             }
         }
 
@@ -201,7 +207,12 @@ impl CodexProvider {
 
     /// 发送请求（带 429/5xx 重试，最多 5 次，backoff 1s 起步封顶 30s）。
     /// 只在「流尚未产出任何内容」的建立阶段重试。
-    async fn send_with_retry(&self, http: &Client, cred: &CodexCredential, body: &Value) -> Result<reqwest::Response> {
+    async fn send_with_retry(
+        &self,
+        http: &Client,
+        cred: &CodexCredential,
+        body: &Value,
+    ) -> Result<reqwest::Response> {
         let headers = self.headers(cred)?;
         let mut last_error = String::new();
         for attempt in 0..=MAX_RETRIES {
@@ -220,7 +231,7 @@ impl CodexProvider {
                         continue;
                     }
                     return Err(anyhow!(last_error));
-                }
+                },
             };
             let status = resp.status();
             if status.is_success() {
@@ -242,7 +253,9 @@ impl CodexProvider {
             }
             // 401/403：提示重新登录
             if status.as_u16() == 401 || status.as_u16() == 403 {
-                return Err(anyhow!("Codex 登录状态失效（{status}），请重新登录: {text}"));
+                return Err(anyhow!(
+                    "Codex 登录状态失效（{status}），请重新登录: {text}"
+                ));
             }
             return Err(anyhow!(last_error));
         }
@@ -432,7 +445,7 @@ impl CodexProvider {
                 LlmChunk::Content(text) => content.push_str(&text),
                 LlmChunk::ToolCalls(list) => calls.extend(list),
                 LlmChunk::StreamEnd { usage: u, .. } => usage = u,
-                _ => {}
+                _ => {},
             }
         }
         Ok((content, calls, usage))
@@ -460,7 +473,9 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || haystack.len() < needle.len() {
         return None;
     }
-    haystack.windows(needle.len()).position(|window| window == needle)
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 fn rand_f64() -> f64 {
@@ -510,7 +525,11 @@ impl LlmProvider for CodexProvider {
             context_length: Some(context),
             supports_reasoning: true,
             supports_thinking_type: None,
-            think_efforts: if extended { extended_efforts() } else { standard_efforts() },
+            think_efforts: if extended {
+                extended_efforts()
+            } else {
+                standard_efforts()
+            },
         };
         Ok(vec![
             model("gpt-5.3-codex-spark", "GPT-5.3 Codex Spark", 128000, false),
@@ -528,7 +547,11 @@ impl LlmProvider for CodexProvider {
         Ok(content)
     }
 
-    async fn complete_stream(&self, _http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream> {
+    async fn complete_stream(
+        &self,
+        _http: &Client,
+        messages: &[LlmMessage],
+    ) -> Result<ChunkStream> {
         self.open_stream(messages, None, None).await
     }
 
@@ -555,7 +578,11 @@ impl LlmProvider for CodexProvider {
     ) -> Result<LlmResponseWithTools> {
         let (content, calls, usage) = self.collect(messages, Some(tools), tool_choice).await?;
         Ok(LlmResponseWithTools {
-            content: if content.is_empty() { None } else { Some(content) },
+            content: if content.is_empty() {
+                None
+            } else {
+                Some(content)
+            },
             tool_calls: if calls.is_empty() { None } else { Some(calls) },
             usage,
         })

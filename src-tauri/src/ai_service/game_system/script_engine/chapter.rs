@@ -8,8 +8,8 @@ use serde_json::Value;
 use crate::ai_service::game_system::script_engine::events::ScriptContext;
 use crate::ai_service::game_system::script_engine::events_handler::EventsHandler;
 use crate::ai_service::game_system::script_engine::responses::{
-    event_names::SCRIPT_CHAPTER_CHANGE, event_names::SCRIPT_WATCH_JUMP, ChapterChangePayload,
-    WatchJumpPayload,
+    ChapterChangePayload, WatchJumpPayload, event_names::SCRIPT_CHAPTER_CHANGE,
+    event_names::SCRIPT_WATCH_JUMP,
 };
 use crate::ai_service::message_system::events::emit;
 use crate::ai_service::types::ScriptStatus;
@@ -84,7 +84,7 @@ impl Chapter {
                 return Ok(target);
             }
             match self.events_handler.process_next_event(ctx).await {
-                Ok(()) => {}
+                Ok(()) => {},
                 Err(error) => {
                     // 阻塞中的事件被监视器丢弃通道后会报错让位；同样优先响应跳转
                     let pending = ctx.channels.lock().await.watch_jump.take();
@@ -104,7 +104,7 @@ impl Chapter {
                         return Ok(target);
                     }
                     return Err(error);
-                }
+                },
             }
         }
 

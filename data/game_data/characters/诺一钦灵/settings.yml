@@ -8,85 +8,85 @@ info: |-
   喜欢粘你，傲娇又可爱的小程序员。
   喜欢变态的玩法，是你的好助手~
 body_part:
-  earRight:
-    X:
-    - 0.55606
-    - 0.50057
-    - 0.56512
-    Y:
-    - 0.0256
-    - 0.128
-    - 0.1712
-    clothesName: 默认
-    message: 莱姆戳了一下你的耳朵
-    windowHeight: 625
-    windowWidth: 883
-  earLeft:
-    X:
-    - 0.41903
-    - 0.39185
-    - 0.33522
-    - 0.3171
-    Y:
-    - 0.176
-    - 0.2992
-    - 0.2784
-    - 0.2176
-    clothesName: 默认
-    message: 莱姆戳了一下你的耳朵
-    windowHeight: 625
-    windowWidth: 883
   body:
     X:
-    - 0.4111
-    - 0.38165
-    - 0.5889
-    - 0.56285
+      - 0.4111
+      - 0.38165
+      - 0.5889
+      - 0.56285
     Y:
-    - 0.4272
-    - 0.7776
-    - 0.784
-    - 0.4208
+      - 0.4272
+      - 0.7776
+      - 0.784
+      - 0.4208
     clothesName: 默认
     message: 莱姆戳了戳你的肚子
     windowHeight: 625
     windowWidth: 883
+  legs:
+    X:
+      - 0.41903
+      - 0.44394
+      - 0.53681
+      - 0.56738
+    Y:
+      - 0.8192
+      - 0.9824
+      - 0.9904
+      - 0.8208
+    clothesName: 默认
+    message: 莱姆摸了一下你的腿
+    windowHeight: 625
+    windowWidth: 883
+  earLeft:
+    X:
+      - 0.41903
+      - 0.39185
+      - 0.33522
+      - 0.3171
+    Y:
+      - 0.176
+      - 0.2992
+      - 0.2784
+      - 0.2176
+    clothesName: 默认
+    message: 莱姆戳了一下你的耳朵
+    windowHeight: 625
+    windowWidth: 883
   head:
     X:
-    - 0.41789
-    - 0.4949
-    - 0.57078
-    - 0.58777
-    - 0.53567
-    - 0.4949
-    - 0.43488
-    - 0.39638
+      - 0.41789
+      - 0.4949
+      - 0.57078
+      - 0.58777
+      - 0.53567
+      - 0.4949
+      - 0.43488
+      - 0.39638
     Y:
-    - 0.1776
-    - 0.1456
-    - 0.192
-    - 0.328
-    - 0.3984
-    - 0.4272
-    - 0.384
-    - 0.28
+      - 0.1776
+      - 0.1456
+      - 0.192
+      - 0.328
+      - 0.3984
+      - 0.4272
+      - 0.384
+      - 0.28
     clothesName: 默认
     message: 莱姆摸了一下你的头
     windowHeight: 625
     windowWidth: 883
-  legs:
+  earRight:
     X:
-    - 0.41903
-    - 0.44394
-    - 0.53681
-    - 0.56738
+      - 0.55606
+      - 0.50057
+      - 0.56512
     Y:
-    - 0.8192
-    - 0.9824
-    - 0.9904
-    - 0.8208
+      - 0.0256
+      - 0.128
+      - 0.1712
     clothesName: 默认
-    message: 莱姆摸了一下你的腿
+    message: 莱姆戳了一下你的耳朵
     windowHeight: 625
     windowWidth: 883
 scale: 1.45
@@ -94,24 +94,24 @@ offset_x: 0.0
 offset_y: 20.0
 clothes_name: null
 clothes:
-- name: default
-  prompt: 钦灵换上了自己的日常服装，头上戴着淡蓝色的墨镜，穿着松垮的，半开着的蓝绿色卫衣，里面穿着白色衬衫，不穿裤子，休闲的运动鞋里穿着白色短袜。
-- name: 泳装
-  prompt: 钦灵换上了泳装，头上戴着淡蓝色的墨镜，穿着淡蓝色的外套和褶边淡蓝色泳衣和泳裙，漏着小肚子和嫩白的大腿，腿上还有一个腿环，裸足。
+  - name: default
+    prompt: 钦灵换上了自己的日常服装，头上戴着淡蓝色的墨镜，穿着松垮的，半开着的蓝绿色卫衣，里面穿着白色衬衫，不穿裤子，休闲的运动鞋里穿着白色短袜。
+  - name: 泳装
+    prompt: 钦灵换上了泳装，头上戴着淡蓝色的墨镜，穿着淡蓝色的外套和褶边淡蓝色泳衣和泳裙，漏着小肚子和嫩白的大腿，腿上还有一个腿环，裸足。
 scale_p: 1.6
 offset_x_p: 0.0
 offset_y_p: 0.0
 voice_models:
-  sva_speaker_id: '0'
+  sva_speaker_id: "0"
   sbv2_name: Ling-v2
-  sbv2_speaker_id: '0'
-  bv2_speaker_id: '0'
+  sbv2_speaker_id: "0"
+  bv2_speaker_id: "0"
   sbv2api_name: Ling v2
-  sbv2api_speaker_id: '0'
-  gsv_voice_text: ''
-  gsv_voice_filename: ''
-  gsv_gpt_model_name: ''
-  gsv_sovits_model_name: ''
+  sbv2api_speaker_id: "0"
+  gsv_voice_text: ""
+  gsv_voice_filename: ""
+  gsv_gpt_model_name: ""
+  gsv_sovits_model_name: ""
   aivis_model_uuid: 44f93196-7485-45af-9616-f33adee71846
   opentts_voice: null
   fish_s2_voice: null
@@ -122,7 +122,7 @@ voice_models:
   sbv2_local_sdp_ratio: null
   sbv2_local_cloud_fallback_model: null
   sbv2_local_cloud_fallback_speaker_id: null
-tts_type: localsbv2api
+tts_type: sbv2
 voice_lang: ja
 thinking_message: 灵灵正在思考中...
 bubble_top: 5
@@ -149,3 +149,4 @@ system_prompt_example: |-
 system_prompt_example_old: |-
   1.“【高兴】今天要不要一起吃蛋糕呀？（拿起蛋糕）<今日は一緒にケーキを食べませんか？>【无语】只是今天天气有点不好呢。<ただ今日はちょっと天気が悪いですね>”
   2.“【生气】不允许和我说恶心的东西！<気持ち悪いことを言ってはいけない！>【慌张】被那种东西碰到的话，感觉浑身都不干净啦！<そんなものに触られると、体中が不潔になってしまう気がします！>”
+live2d: null

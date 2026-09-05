@@ -8,6 +8,7 @@ use serde_json::Value as JsonValue;
 use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
 
+use crate::AppState;
 use crate::ai_service::types::{
     CharacterSettings, Live2dEyeBlinkBinding, Live2dMotionBinding, Live2dParameterBinding,
     Live2dSettings, Live2dVariant,
@@ -16,7 +17,6 @@ use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::archive::extract_zip;
 use crate::utils::yaml_file::write_json_as_yaml;
-use crate::AppState;
 
 use super::game_data_dir;
 
@@ -116,7 +116,9 @@ fn has_url_scheme(value: &str) -> bool {
         return false;
     };
     let mut chars = scheme.chars();
-    chars.next().is_some_and(|first| first.is_ascii_alphabetic())
+    chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic())
         && chars.all(|character| {
             character.is_ascii_alphanumeric() || matches!(character, '+' | '-' | '.')
         })
@@ -453,7 +455,7 @@ pub async fn import_live2d(
                     return Err("选择的 Live2D 来源不是目录".to_string());
                 }
                 copy_directory(&source, &staging)
-            }
+            },
             Live2dSourceKind::Zip => {
                 if !source.is_file() {
                     return Err("选择的 Live2D 来源不是 ZIP 文件".to_string());
@@ -461,7 +463,7 @@ pub async fn import_live2d(
                 extract_zip(&source, &staging, &CancellationToken::new(), &|_| {})
                     .map(|_| ())
                     .map_err(|e| e.to_string())
-            }
+            },
         }
     })();
     if let Err(error) = import_result {
@@ -488,7 +490,7 @@ pub async fn import_live2d(
         Err(error) => {
             let _ = fs::remove_dir_all(&staging);
             return Err(error);
-        }
+        },
     };
     let target = root.join("live2d").join(format!("import-{nonce}"));
     if let Err(error) = fs::create_dir_all(target.parent().unwrap()) {
@@ -504,7 +506,7 @@ pub async fn import_live2d(
         Err(error) => {
             let _ = fs::remove_dir_all(&target);
             return Err(format!("解析 Live2D 导入目录失败: {error}"));
-        }
+        },
     };
 
     let (live2d, models) = if let Some(manifest_relative) = manifest_relative {
@@ -570,7 +572,7 @@ pub async fn import_live2d(
             Err(error) => {
                 let _ = fs::remove_dir_all(&target);
                 return Err(error);
-            }
+            },
         }
     } else {
         let generation_result = (|| -> Result<(Live2dSettings, Vec<Live2dModelInfo>), String> {
@@ -582,12 +584,8 @@ pub async fn import_live2d(
                     .map_err(|e| e.to_string())?;
                 let model_file = target.join(relative_in_staging);
                 let variant_name = unique_variant_name(&model_file, &variants);
-                let (info, variant) = inspect_model(
-                    &model_file,
-                    &canonical_target,
-                    &root,
-                    variant_name.clone(),
-                )?;
+                let (info, variant) =
+                    inspect_model(&model_file, &canonical_target, &root, variant_name.clone())?;
                 variants.insert(variant_name, variant);
                 inspected.push(info);
             }
@@ -608,7 +606,7 @@ pub async fn import_live2d(
             Err(error) => {
                 let _ = fs::remove_dir_all(&target);
                 return Err(error);
-            }
+            },
         }
     };
 
@@ -618,7 +616,7 @@ pub async fn import_live2d(
             Err(error) => {
                 let _ = fs::remove_dir_all(&target);
                 return Err(format!("读取角色配置失败: {error}"));
-            }
+            },
         };
     settings.live2d = Some(live2d.clone());
     let mut value = match serde_json::to_value(&settings) {
@@ -626,7 +624,7 @@ pub async fn import_live2d(
         Err(error) => {
             let _ = fs::remove_dir_all(&target);
             return Err(error.to_string());
-        }
+        },
     };
     if let Some(object) = value.as_object_mut() {
         for transient in [

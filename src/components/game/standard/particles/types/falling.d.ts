@@ -1,31 +1,31 @@
-import type { Ref } from 'vue'
+import type { Ref } from "vue";
 
 /**
  * Base interface for falling particle properties
  */
 export interface FallingParticle {
   /** Unique identifier for the particle (auto-generated) */
-  id?: string
+  id?: string;
   /** Size of the particle in pixels */
-  size: number
+  size: number;
   /** Horizontal position (left) in pixels */
-  left: number
+  left: number;
   /** Vertical position (top) in pixels */
-  top: number
+  top: number;
   /** Opacity value (0-1) */
-  opacity: number
+  opacity: number;
   /** Animation duration in seconds */
-  duration: number
+  duration: number;
   /** Animation delay in seconds */
-  delay: number
+  delay: number;
   /** Horizontal movement range in pixels */
-  horizontalMovement: number
+  horizontalMovement: number;
   /** Dynamically created stylesheet element (managed by hook) */
-  styleSheet?: HTMLStyleElement
+  styleSheet?: HTMLStyleElement;
   /** Content character (like snowflake) */
-  content?: string
+  content?: string;
   /** Hue value for color */
-  hue?: number
+  hue?: number;
 }
 
 /**
@@ -33,25 +33,25 @@ export interface FallingParticle {
  */
 export interface FallingParticleConfig {
   /** Minimum size of particles in pixels */
-  minSize: number
+  minSize: number;
   /** Maximum size of particles in pixels */
-  maxSize: number
+  maxSize: number;
   /** Minimum animation duration in seconds */
-  minDuration: number
+  minDuration: number;
   /** Maximum animation duration in seconds */
-  maxDuration: number
+  maxDuration: number;
   /** Maximum animation delay in seconds */
-  maxDelay: number
+  maxDelay: number;
   /** Minimum opacity value */
-  minOpacity: number
+  minOpacity: number;
   /** Maximum opacity value */
-  maxOpacity: number
+  maxOpacity: number;
   /** Horizontal movement range (+/- pixels) */
-  horizontalRange: number
+  horizontalRange: number;
   /** Initial top position offset */
-  initialTopOffset: number
+  initialTopOffset: number;
   /** Whether particles should start at random Y positions across the screen */
-  randomStartY?: boolean
+  randomStartY?: boolean;
 }
 
 /**
@@ -59,36 +59,36 @@ export interface FallingParticleConfig {
  */
 export interface UseFallingParticleOptions<T extends FallingParticle> {
   /** Configuration for particle generation */
-  config: FallingParticleConfig
+  config: FallingParticleConfig;
   /** Base count of particles (multiplied by intensity) */
-  baseCount: number
+  baseCount: number;
   /** Factory function to create a custom particle */
-  createParticle: (id: string, config: FallingParticleConfig) => T
+  createParticle: (id: string, config: FallingParticleConfig) => T;
   /** Factory function to generate keyframe animation CSS */
-  generateKeyframes: (particle: T, maxHeight: number) => string
+  generateKeyframes: (particle: T, maxHeight: number) => string;
 }
 
 /**
  * Keyframe rotation configuration
  */
 export interface RotationConfig {
-  startRotation: number
-  rotationRanges: Array<{ min: number; max: number }>
+  startRotation: number;
+  rotationRanges: Array<{ min: number; max: number }>;
 }
 
 /**
  * Keyframe opacity configuration
  */
 export interface OpacityConfig {
-  keyframes: number[]
+  keyframes: number[];
 }
 
 /**
  * Keyframe configuration for falling animations
  */
 export interface KeyframeConfig {
-  rotation: RotationConfig
-  opacity: OpacityConfig
+  rotation: RotationConfig;
+  opacity: OpacityConfig;
 }
 
 /**
@@ -96,9 +96,9 @@ export interface KeyframeConfig {
  */
 export interface ParticleCustomization {
   /** Content character (for snowflakes) */
-  content?: string
+  content?: string;
   /** Hue value for color (for petals) */
-  hue?: number
+  hue?: number;
 }
 
 /**
@@ -106,17 +106,17 @@ export interface ParticleCustomization {
  */
 export interface UseFallingParticleReturn<T extends FallingParticle> {
   /** Reactive array of particles */
-  particles: Ref<T[]>
+  particles: Ref<T[]>;
   /** Current maximum height */
-  maxHeight: Ref<number>
+  maxHeight: Ref<number>;
   /** Create particles */
-  createParticles: (count: number) => void
+  createParticles: (count: number) => void;
   /** Remove all particles */
-  removeAllParticles: () => void
+  removeAllParticles: () => void;
   /** Recreate all particles */
-  recreateParticles: () => void
+  recreateParticles: () => void;
   /** Update max height from container */
-  setMaxHeight: () => void
+  setMaxHeight: () => void;
   /** Current particle count based on intensity */
-  particleCount: Ref<number>
+  particleCount: Ref<number>;
 }

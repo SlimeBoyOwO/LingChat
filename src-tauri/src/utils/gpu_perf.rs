@@ -196,11 +196,7 @@ fn grade_nvidia_gtx(name: &str) -> PerfTier {
         1000.. => true,
         _ => false,
     };
-    if high {
-        PerfTier::High
-    } else {
-        PerfTier::Low
-    }
+    if high { PerfTier::High } else { PerfTier::Low }
 }
 
 /// NVIDIA 专业卡 device_id → 等级 硬编码表。
@@ -237,8 +233,8 @@ fn grade_amd_by_device_id(device_id: u32) -> Option<PerfTier> {
         0x68E9 => Some(PerfTier::Low), // Cedar "ATI FirePro (FireGL) Graphics Adapter"（2010 低端，名字规则会误判 HIGH）
 
         // --- 远古移动 / 嵌入式弱卡：名字前缀是 M / RG，名字规则会误判为现代卡 ---
-        0x946A => Some(PerfTier::Low),          // FirePro M7750 (RV770)
-        0x94A3 => Some(PerfTier::Low),          // FirePro M7740 (RV740)
+        0x946A => Some(PerfTier::Low), // FirePro M7750 (RV770)
+        0x94A3 => Some(PerfTier::Low), // FirePro M7740 (RV740)
         0x9555 | 0x9557 => Some(PerfTier::Low), // FirePro RG220 (RV711)
         _ => None,
     }
@@ -274,7 +270,11 @@ fn grade_amd_by_name(n: &str) -> Option<PerfTier> {
         if let Some(v) = rest.strip_prefix('v') {
             let digits: String = v.chars().take_while(|c| c.is_ascii_digit()).collect();
             if let Ok(num) = digits.parse::<u32>() {
-                return Some(if num >= 6000 { PerfTier::High } else { PerfTier::Low });
+                return Some(if num >= 6000 {
+                    PerfTier::High
+                } else {
+                    PerfTier::Low
+                });
             }
             return Some(PerfTier::Low);
         }
@@ -295,7 +295,11 @@ fn grade_amd_by_name(n: &str) -> Option<PerfTier> {
         let rest = &n[pos + "firestream".len()..];
         let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
         if let Ok(num) = digits.parse::<u32>() {
-            return Some(if num >= 9300 { PerfTier::High } else { PerfTier::Low });
+            return Some(if num >= 9300 {
+                PerfTier::High
+            } else {
+                PerfTier::Low
+            });
         }
         return Some(PerfTier::High);
     }
@@ -343,7 +347,7 @@ fn grade(vendor_id: u32, device_id: u32, name: &str) -> PerfTier {
                 return grade_nvidia_gtx(&n);
             }
             PerfTier::Low // GeForce GT / 老系列 / 未识别
-        }
+        },
         0x1002 => {
             // AMD / ATI：硬件 ID 表优先（防魔改驱动骗名字）
             if let Some(t) = grade_amd_by_device_id(device_id) {
@@ -384,7 +388,7 @@ fn grade(vendor_id: u32, device_id: u32, name: &str) -> PerfTier {
                 return PerfTier::Medium;
             }
             PerfTier::Low
-        }
+        },
         0x8086 => {
             // Intel
             if n.contains("arc") {
@@ -394,7 +398,7 @@ fn grade(vendor_id: u32, device_id: u32, name: &str) -> PerfTier {
                 return PerfTier::Medium;
             }
             PerfTier::Low // HD Graphics / GMA 老核显
-        }
+        },
         _ => PerfTier::Low,
     }
 }
@@ -551,7 +555,9 @@ fn parse_renderer(renderer: &str) -> (u32, String) {
 
     // SwiftShader 等软件渲染 → 视为不可用（vendor=0）
     let name_lower = name.to_ascii_lowercase();
-    if name_lower.is_empty() || name_lower.contains("swiftshader") || name_lower.contains("software")
+    if name_lower.is_empty()
+        || name_lower.contains("swiftshader")
+        || name_lower.contains("software")
     {
         (0, name)
     } else {

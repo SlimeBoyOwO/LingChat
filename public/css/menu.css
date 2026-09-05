@@ -829,7 +829,8 @@ button#clear-history.show {
   background-image: var(--current-bg, none);
   background-size: cover;
   background-position: center;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3),
+  box-shadow:
+    0 8px 16px rgba(0, 0, 0, 0.3),
     inset 0 0 30px rgba(255, 255, 255, 0.1);
   position: fixed;
   bottom: 20px;

@@ -1,16 +1,16 @@
 <template>
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 p-2">
+  <div class="grid grid-cols-1 gap-5 p-2 md:grid-cols-2 lg:grid-cols-3">
     <!-- 大模型管理 -->
     <div class="h-full cursor-pointer transition-all duration-300" @click="emit('navigate', 'llm')">
       <MenuItem :title="$t('advance.menu.llmTitle')" size="large">
         <template #header>
           <Cpu :size="20" />
         </template>
-        <p class="min-h-[68px] text-white/50 text-sm leading-relaxed mb-3">
-          {{ $t('advance.menu.llmDesc') }}
+        <p class="mb-3 min-h-[68px] text-sm leading-relaxed text-white/50">
+          {{ $t("advance.menu.llmDesc") }}
         </p>
         <Button type="big" icon="advance" :icon_size="18">
-          {{ $t('advance.menu.llmButton') }}
+          {{ $t("advance.menu.llmButton") }}
         </Button>
       </MenuItem>
     </div>
@@ -21,10 +21,10 @@
         <template #header>
           <AudioLines :size="20" />
         </template>
-        <p class="min-h-[68px] text-white/50 text-sm leading-relaxed mb-3">
-          {{ $t('advance.menu.ttsDesc') }}
+        <p class="mb-3 min-h-[68px] text-sm leading-relaxed text-white/50">
+          {{ $t("advance.menu.ttsDesc") }}
         </p>
-        <Button type="big" icon="mic" :icon_size="18"> {{ $t('advance.menu.ttsButton') }} </Button>
+        <Button type="big" icon="mic" :icon_size="18"> {{ $t("advance.menu.ttsButton") }} </Button>
       </MenuItem>
     </div>
 
@@ -34,41 +34,47 @@
         <template #header>
           <Mic :size="20" />
         </template>
-        <p class="min-h-[68px] text-white/50 text-sm leading-relaxed mb-3">
-          {{ $t('advance.menu.asrDesc') }}
+        <p class="mb-3 min-h-[68px] text-sm leading-relaxed text-white/50">
+          {{ $t("advance.menu.asrDesc") }}
         </p>
         <Button type="big" icon="mic" :icon_size="18">
-          {{ $t('advance.menu.asrButton') }}
+          {{ $t("advance.menu.asrButton") }}
         </Button>
       </MenuItem>
     </div>
 
     <!-- 其他高级设置 -->
-    <div class="h-full cursor-pointer transition-all duration-300" @click="emit('navigate', 'other')">
+    <div
+      class="h-full cursor-pointer transition-all duration-300"
+      @click="emit('navigate', 'other')"
+    >
       <MenuItem :title="$t('advance.menu.otherTitle')" size="large">
         <template #header>
           <SlidersHorizontal :size="20" />
         </template>
-        <p class="min-h-[68px] text-white/50 text-sm leading-relaxed mb-3">
-          {{ $t('advance.menu.otherDesc') }}
+        <p class="mb-3 min-h-[68px] text-sm leading-relaxed text-white/50">
+          {{ $t("advance.menu.otherDesc") }}
         </p>
         <Button type="big" icon="setting" :icon_size="18">
-          {{ $t('advance.menu.otherButton') }}
+          {{ $t("advance.menu.otherButton") }}
         </Button>
       </MenuItem>
     </div>
 
     <!-- 工具配置 -->
-    <div class="h-full cursor-pointer transition-all duration-300" @click="emit('navigate', 'tools')">
+    <div
+      class="h-full cursor-pointer transition-all duration-300"
+      @click="emit('navigate', 'tools')"
+    >
       <MenuItem :title="$t('advance.menu.toolsTitle')" size="large">
         <template #header>
           <Wrench :size="20" />
         </template>
-        <p class="min-h-[68px] text-white/50 text-sm leading-relaxed mb-3">
-          {{ $t('advance.menu.toolsDesc') }}
+        <p class="mb-3 min-h-[68px] text-sm leading-relaxed text-white/50">
+          {{ $t("advance.menu.toolsDesc") }}
         </p>
         <Button type="big" icon="setting" :icon_size="18">
-          {{ $t('advance.menu.toolsButton') }}
+          {{ $t("advance.menu.toolsButton") }}
         </Button>
       </MenuItem>
     </div>
@@ -79,11 +85,29 @@
         <template #header>
           <Package :size="20" />
         </template>
-        <p class="text-white/50 text-sm leading-relaxed mb-3">
-          {{ $t('advance.menu.dlcDesc') }}
+        <p class="mb-3 text-sm leading-relaxed text-white/50">
+          {{ $t("advance.menu.dlcDesc") }}
         </p>
         <Button type="big" icon="advance" :icon_size="18">
-          {{ $t('advance.menu.dlcButton') }}
+          {{ $t("advance.menu.dlcButton") }}
+        </Button>
+      </MenuItem>
+    </div>
+
+    <!-- 投屏设置 -->
+    <div
+      class="h-full cursor-pointer transition-all duration-300"
+      @click="emit('navigate', 'cast')"
+    >
+      <MenuItem :title="$t('advance.menu.castTitle')" size="large">
+        <template #header>
+          <Cast :size="20" />
+        </template>
+        <p class="mb-3 min-h-[68px] text-sm leading-relaxed text-white/50">
+          {{ $t("advance.menu.castDesc") }}
+        </p>
+        <Button type="big" icon="advance" :icon_size="18">
+          {{ $t("advance.menu.castButton") }}
         </Button>
       </MenuItem>
     </div>
@@ -94,12 +118,14 @@
         <template #header>
           <Languages :size="20" />
         </template>
-        <p class="min-h-[68px] text-white/50 text-sm leading-relaxed mb-3">
-          {{ $t('advance.menu.languageDesc') }}
+        <p class="mb-3 min-h-[68px] text-sm leading-relaxed text-white/50">
+          {{ $t("advance.menu.languageDesc") }}
         </p>
         <select
           :value="locale"
-          class="w-full cursor-pointer rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 transition-all duration-200 hover:border-white/30 hover:text-white focus:border-[rgba(121,217,255,0.6)] focus:outline-none"
+          class="w-full cursor-pointer rounded-lg border border-white/10 bg-white/5 px-3 py-2
+            text-sm text-white/80 transition-all duration-200 hover:border-white/30 hover:text-white
+            focus:border-[rgba(121,217,255,0.6)] focus:outline-none"
           @change="setLocale(($event.target as HTMLSelectElement).value as AppLocale)"
         >
           <option
@@ -120,11 +146,11 @@
         <template #header>
           <BookOpen :size="20" />
         </template>
-        <p class="min-h-[68px] text-white/50 text-sm leading-relaxed mb-3">
-          {{ $t('advance.menu.guideDesc') }}
+        <p class="mb-3 min-h-[68px] text-sm leading-relaxed text-white/50">
+          {{ $t("advance.menu.guideDesc") }}
         </p>
         <Button type="big" icon="advance" :icon_size="18">
-          {{ $t('advance.menu.guideButton') }}
+          {{ $t("advance.menu.guideButton") }}
         </Button>
       </MenuItem>
     </div>
@@ -132,51 +158,53 @@
 </template>
 
 <script setup lang="ts">
-import {
-  AudioLines,
-  BookOpen,
-  Cpu,
-  Languages,
-  Mic,
-  Package,
-  SlidersHorizontal,
-  Wrench,
-} from 'lucide-vue-next'
-import { openUrl } from '@tauri-apps/plugin-opener'
-import { useI18n } from 'vue-i18n'
-import { MenuItem } from '../../ui'
-import { Button } from '../../base'
-import { SUPPORTED_LOCALES, setLocale, type AppLocale } from '@/locales'
+  import {
+    AudioLines,
+    BookOpen,
+    Cast,
+    Cpu,
+    Languages,
+    Mic,
+    Package,
+    SlidersHorizontal,
+    Wrench,
+  } from "lucide-vue-next";
+  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { useI18n } from "vue-i18n";
+  import { MenuItem } from "../../ui";
+  import { Button } from "../../base";
+  import { SUPPORTED_LOCALES, setLocale, type AppLocale } from "@/locales";
 
-const { locale } = useI18n()
+  const { locale } = useI18n();
 
-const emit = defineEmits<{
-  navigate: [tab: 'llm' | 'tts' | 'asr' | 'other' | 'tools' | 'dlc']
-}>()
+  const emit = defineEmits<{
+    navigate: [tab: "llm" | "tts" | "asr" | "other" | "tools" | "dlc" | "cast"];
+  }>();
 
-// 内置 TTS 官方教程（LingBlog）
-const TTS_GUIDE_URL = 'https://slimeboyowo.github.io/LingBlog/blog/projects/ling-chat/develop/tts_guide'
+  // 内置 TTS 官方教程（LingBlog）
+  const TTS_GUIDE_URL =
+    "https://slimeboyowo.github.io/LingBlog/blog/projects/ling-chat/develop/tts_guide";
 
-const openGuide = () => {
-  void openUrl(TTS_GUIDE_URL)
-}
+  const openGuide = () => {
+    void openUrl(TTS_GUIDE_URL);
+  };
 </script>
 
 <style scoped>
-/* 统一卡片尺寸:菜单卡片等高(撑满 grid 行)、描述区对齐、按钮贴底 */
-:deep(.menu-item) {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
+  /* 统一卡片尺寸:菜单卡片等高(撑满 grid 行)、描述区对齐、按钮贴底 */
+  :deep(.menu-item) {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
 
-:deep(.menu-item .content) {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
+  :deep(.menu-item .content) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
 
-:deep(.menu-item .content > :last-child) {
-  margin-top: auto;
-}
+  :deep(.menu-item .content > :last-child) {
+    margin-top: auto;
+  }
 </style>

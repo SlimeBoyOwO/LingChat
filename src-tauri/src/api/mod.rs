@@ -10,8 +10,8 @@ pub mod codex;
 pub mod dlc;
 pub mod font;
 pub mod game;
-pub mod locale;
 pub mod live2d;
+pub mod locale;
 pub mod music;
 pub mod pet;
 pub mod plugins;
@@ -24,13 +24,12 @@ pub(crate) mod script_popups;
 pub mod script_editor;
 pub mod settings;
 pub mod tool_settings;
-pub mod settings_snapshot;
 pub mod workshop;
 
 use std::path::PathBuf;
 
-use tauri::Manager;
 use crate::AppState;
+use tauri::Manager;
 
 // ========== 共享辅助函数 ==========
 
@@ -95,10 +94,7 @@ pub fn resolve_character_dir(resource_folder: &str) -> PathBuf {
 
 /// `resolve_character_dir` 的显式 base 版本（供已持有 data_dir 的调用方使用，如 role_repo）。
 /// 复用底层 `utils::path::resolve_character_path`（其内部已处理 `plugin:` 编码前缀）。
-pub fn resolve_character_dir_in(
-    base_data_dir: &std::path::Path,
-    resource_folder: &str,
-) -> PathBuf {
+pub fn resolve_character_dir_in(base_data_dir: &std::path::Path, resource_folder: &str) -> PathBuf {
     crate::utils::path::resolve_character_path(base_data_dir, resource_folder)
 }
 
@@ -121,7 +117,6 @@ pub(crate) fn voice_dir() -> PathBuf {
 pub(crate) fn fonts_dir() -> PathBuf {
     data_dir().join("fonts")
 }
-
 
 // ========== 主动对话系统指令 ==========
 

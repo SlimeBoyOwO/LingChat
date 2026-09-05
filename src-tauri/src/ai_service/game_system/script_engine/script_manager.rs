@@ -7,24 +7,24 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::chapter::Chapter;
 use crate::ai_service::game_system::script_engine::events::ScriptContext;
 use crate::ai_service::game_system::script_engine::persistent_state;
 use crate::ai_service::game_system::script_engine::responses::{
-    event_names::SCRIPT_END, ScriptEndPayload,
+    ScriptEndPayload, event_names::SCRIPT_END,
 };
 use crate::ai_service::message_system::events::emit;
 use crate::ai_service::types::{AdventureConfig, LineAttributeExt, LineBase, ScriptStatus};
 use crate::db::entities::line::LineAttribute;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::utils::prompt::{sys_prompt_builder, sys_prompt_builder_by_settings, PromptOptions};
+use crate::utils::prompt::{PromptOptions, sys_prompt_builder, sys_prompt_builder_by_settings};
 use tauri::Emitter;
 
 /// YAML structure for `story_config.yaml` top-level keys.
@@ -198,7 +198,7 @@ impl ScriptManager {
                 Ok(status) => claims.entry(status.name.clone()).or_default().push(status),
                 Err(error) => {
                     tracing::warn!("[ScriptManager] 跳过无效剧本目录 {:?}: {}", path, error)
-                }
+                },
             }
         }
         for (name, mut statuses) in claims {
@@ -288,10 +288,10 @@ impl ScriptManager {
                     }
                     status.plugin_id = Some(plugin_id.clone());
                     self.all_scripts.insert(status.name.clone(), status);
-                }
+                },
                 Err(e) => {
                     tracing::warn!("[ScriptManager] 跳过无效插件剧本 {:?}: {}", dir, e);
-                }
+                },
             }
         }
     }
@@ -348,10 +348,10 @@ impl ScriptManager {
                     old.adventure = scanned.adventure;
                     old.content_warning = scanned.content_warning;
                     old.main_character = scanned.main_character;
-                }
+                },
                 None => {
                     self.all_scripts.insert(name, scanned);
-                }
+                },
             }
         }
         self.duplicate_name_claims = fresh_duplicates;
@@ -399,7 +399,7 @@ impl ScriptManager {
                     Ok(status) => {
                         self.all_scripts.insert(name.clone(), status);
                         tracing::info!("[ScriptManager] 重名冲突解除，启用剧本: {}", name);
-                    }
+                    },
                     Err(error) => tracing::warn!(
                         "[ScriptManager] 重名冲突解除后仍无法加载 {:?}: {}",
                         remaining_path,
@@ -691,7 +691,7 @@ impl ScriptManager {
                         role_folder
                     );
                     continue;
-                }
+                },
             };
 
             // Upsert by the namespaced script/role keys. Existing rows are
@@ -971,7 +971,9 @@ impl ScriptManager {
                 ctx.app,
             );
             crate::api::script_popups::close_all();
-            tracing::error!("[ScriptManager] script:end 发送失败，已执行原生窗口回退清理: {error:#}");
+            tracing::error!(
+                "[ScriptManager] script:end 发送失败，已执行原生窗口回退清理: {error:#}"
+            );
         }
 
         tracing::info!("[ScriptManager] 剧本状态已清除");
@@ -1024,7 +1026,7 @@ impl ScriptManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_dlc_engine_compatible, version_triplet, ScriptManager};
+    use super::{ScriptManager, ensure_dlc_engine_compatible, version_triplet};
 
     #[test]
     fn parses_engine_versions_for_dlc_gating() {
@@ -1069,7 +1071,11 @@ mod tests {
         ));
         let standalone = root.join("game_data").join("scripts").join("standalone");
         let plugin = root.join("plugin-script");
-        for dir in [standalone.join("first"), standalone.join("second"), plugin.clone()] {
+        for dir in [
+            standalone.join("first"),
+            standalone.join("second"),
+            plugin.clone(),
+        ] {
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(
                 dir.join("story_config.yaml"),

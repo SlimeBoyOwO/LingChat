@@ -1,10 +1,6 @@
 <template>
   <!-- 背景图 + 背景光照滤镜 -->
-  <div
-    v-if="backgroundSrc"
-    class="absolute inset-0"
-    :style="bgLightingFilter"
-  >
+  <div v-if="backgroundSrc" class="absolute inset-0" :style="bgLightingFilter">
     <ImageAcrossFade
       ref="imageFadeRef"
       class="game-background"
@@ -94,247 +90,248 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
-import { convertFileSrc } from '@tauri-apps/api/core'
-import { toPlayableMediaUrl } from '@/utils/mediaUrl'
-import { useUIStore } from '../../../stores/modules/ui/ui'
-import { useGameStore } from '../../../stores/modules/game'
-import ImageAcrossFade from '@/components/ui/ImageAcrossFade.vue'
-import AudioAcrossFade from '@/components/ui/AudioAcrossFade.vue'
-import AmbientLoopPlayer from '@/components/ui/AmbientLoopPlayer.vue'
-import StarField from './particles/StarField.vue'
-import Rain from './particles/Rain.vue'
-import Sakura from './particles/Sakura.vue'
-import Snow from './particles/Snow.vue'
-import Fireworks from './particles/Fireworks.vue'
+  import { ref, watch, computed } from "vue";
+  import { convertFileSrc } from "@tauri-apps/api/core";
+  import { toPlayableMediaUrl } from "@/utils/mediaUrl";
+  import { useUIStore } from "../../../stores/modules/ui/ui";
+  import { useGameStore } from "../../../stores/modules/game";
+  import ImageAcrossFade from "@/components/ui/ImageAcrossFade.vue";
+  import AudioAcrossFade from "@/components/ui/AudioAcrossFade.vue";
+  import AmbientLoopPlayer from "@/components/ui/AmbientLoopPlayer.vue";
+  import StarField from "./particles/StarField.vue";
+  import Rain from "./particles/Rain.vue";
+  import Sakura from "./particles/Sakura.vue";
+  import Snow from "./particles/Snow.vue";
+  import Fireworks from "./particles/Fireworks.vue";
 
-const uiStore = useUIStore()
-const gameStore = useGameStore()
+  const uiStore = useUIStore();
+  const gameStore = useGameStore();
 
-const backgroundSrc = computed(() => {
-  const bg = uiStore.currentBackground
-  if (
-    !bg ||
-    bg.startsWith('http://') ||
-    bg.startsWith('https://') ||
-    bg.startsWith('@/') ||
-    bg.startsWith('data:')
-  ) {
-    return bg || ''
-  }
-  return convertFileSrc(bg)
-})
-
-// 统一转换入口：currentBackgroundMusic 存原始路径，此处转可播放 URL（Android 走 blob，见 toPlayableMediaUrl）
-const backgroundMusicSrc = ref('None')
-let bgmLoadSeq = 0
-watch(
-  () => uiStore.currentBackgroundMusic,
-  async (src) => {
-    const seq = ++bgmLoadSeq
-    if (!src || src === 'None') {
-      backgroundMusicSrc.value = 'None'
-      return
+  const backgroundSrc = computed(() => {
+    const bg = uiStore.currentBackground;
+    if (
+      !bg ||
+      bg.startsWith("http://") ||
+      bg.startsWith("https://") ||
+      bg.startsWith("@/") ||
+      bg.startsWith("data:")
+    ) {
+      return bg || "";
     }
+    return convertFileSrc(bg);
+  });
+
+  // 统一转换入口：currentBackgroundMusic 存原始路径，此处转可播放 URL（Android 走 blob，见 toPlayableMediaUrl）
+  const backgroundMusicSrc = ref("None");
+  let bgmLoadSeq = 0;
+  watch(
+    () => uiStore.currentBackgroundMusic,
+    async (src) => {
+      const seq = ++bgmLoadSeq;
+      if (!src || src === "None") {
+        backgroundMusicSrc.value = "None";
+        return;
+      }
+      try {
+        const url = await toPlayableMediaUrl(src);
+        // 竞态守卫：期间已切换过歌曲则丢弃过期结果
+        if (seq !== bgmLoadSeq) return;
+        backgroundMusicSrc.value = url;
+      } catch (e) {
+        if (seq !== bgmLoadSeq) return;
+        console.warn("背景音乐加载失败:", src, e);
+        backgroundMusicSrc.value = "None";
+      }
+    },
+    { immediate: true }
+  );
+
+  // 背景光照滤镜
+  const bgLightingFilter = computed(() => {
+    const c = gameStore.currentScene?.lighting?.background;
+    if (!c) return undefined;
+    const parts: string[] = [];
+    if (c.brightness !== 1.0) parts.push(`brightness(${c.brightness})`);
+    if (c.contrast !== 1.0) parts.push(`contrast(${c.contrast})`);
+    if (c.saturation !== 1.0) parts.push(`saturate(${c.saturation})`);
+    if (c.glow_radius > 0) parts.push(`drop-shadow(0 0 ${c.glow_radius}px ${c.glow_color})`);
+    if (c.sepia > 0) parts.push(`sepia(${c.sepia})`);
+    return parts.length > 0 ? { filter: parts.join(" ") } : undefined;
+  });
+
+  // 背景光照叠加层（仅当 target 为 background 或 both 时启用）
+  const bgOverlayStyle = computed(() => {
+    const l = gameStore.currentScene?.lighting;
+    if (!l?.overlay_enabled) return undefined;
+    if (l.overlay_target !== "background" && l.overlay_target !== "both") return undefined;
+    const blend = l.blend_mode !== "normal" ? l.blend_mode : "overlay";
+    return {
+      background: `radial-gradient(circle at ${l.light_x}% ${l.light_y}%, ${l.overlay_color1} 0%, ${l.overlay_color2} ${l.overlay_radius}%)`,
+      mixBlendMode: blend,
+      opacity: l.overlay_opacity,
+    };
+  });
+
+  // 背景效果 z-index 应该比其他组件高，否则会被覆盖
+  const BACKGROUND_ZINDEX = 114514;
+
+  // 仅保留不需要淡入淡出的短效音效
+  const soundEffectPlayer = ref<HTMLAudioElement | null>(null);
+
+  // 星空效果控制
+  const starfieldEnabled = ref<boolean>(true);
+  const starCount = ref<number>(200);
+  const scrollSpeed = ref<number>(0.4);
+  const starColors = ref<string[]>([
+    "rgb(173, 216, 230)",
+    "rgb(176, 224, 230)",
+    "rgb(241, 141, 252)",
+    "rgb(176, 230, 224)",
+    "rgb(173, 230, 216)",
+  ]);
+
+  // 其他特效参数控制
+  const rainEnabled = ref<boolean>(true);
+
+  const rainIntensity = ref<number>(1);
+  const snowIntensity = ref<number>(1.5);
+
+  const handleTrackEnd = (): void => {
+    uiStore.handleBackgroundMusicEnd();
+  };
+
+  // 星空就绪回调
+  const onStarfieldReady = (instance: any): void => {
+    console.debug("Starfield ready", instance);
+  };
+
+  // 只保留监听瞬时音效 (由于音效很短，不需要淡入淡出，保持原生调用)
+  // seq 使相同路径也可重播；requestId 防止较慢的旧 URL 解析反过来截断新音效。
+  let soundEffectRequestId = 0;
+  watch(
+    () => [uiStore.currentSoundEffect, uiStore.soundEffectSeq] as const,
+    ([rawPath]) => {
+      const requestId = ++soundEffectRequestId;
+      const player = soundEffectPlayer.value;
+      if (!player) return;
+      player.pause();
+      player.currentTime = 0;
+      player.src = "";
+      if (!rawPath || rawPath === "None") return;
+
+      void toPlayableMediaUrl(rawPath)
+        .then((url) => {
+          if (requestId !== soundEffectRequestId || !soundEffectPlayer.value) return;
+          soundEffectPlayer.value.src = url;
+          soundEffectPlayer.value.load();
+          soundEffectPlayer.value.play().catch(() => {});
+        })
+        .catch((e) => {
+          if (requestId === soundEffectRequestId) console.warn("音效加载失败:", rawPath, e);
+        });
+    }
+  );
+
+  // !!! 在此处：因为把背景音乐交给了 AudioCrossFade 组件，所以原先的大段背景音乐逻辑全被彻底删除。
+
+  // ========== 环境音多轨管理 ==========
+  // 显示用轨道镜像：保留淡出期间的"离场"轨道，避免直接卸载造成点击
+  const displayTracks = ref<
+    Array<{
+      id: string;
+      src: string;
+      volume: number; // 0-1 有效音量
+      loop: boolean;
+      fade: boolean;
+      paused: boolean;
+      stopped: boolean;
+    }>
+  >([]);
+
+  const effectiveVolume = (trackVolume: number) =>
+    (trackVolume / 100) * (uiStore.ambientVolume / 100);
+
+  // 播放 URL 异步解析（Android 换 blob，见 toPlayableMediaUrl）
+  const playableSrcMap = ref(new Map<string, string>());
+  const resolvePlayableSrc = async (d: { id: string; src: string }) => {
     try {
-      const url = await toPlayableMediaUrl(src)
-      // 竞态守卫：期间已切换过歌曲则丢弃过期结果
-      if (seq !== bgmLoadSeq) return
-      backgroundMusicSrc.value = url
+      playableSrcMap.value.set(d.id, await toPlayableMediaUrl(d.src));
     } catch (e) {
-      if (seq !== bgmLoadSeq) return
-      console.warn('背景音乐加载失败:', src, e)
-      backgroundMusicSrc.value = 'None'
+      console.warn("环境音加载失败:", d.src, e);
     }
-  },
-  { immediate: true },
-)
+  };
 
-// 背景光照滤镜
-const bgLightingFilter = computed(() => {
-  const c = gameStore.currentScene?.lighting?.background
-  if (!c) return undefined
-  const parts: string[] = []
-  if (c.brightness !== 1.0) parts.push(`brightness(${c.brightness})`)
-  if (c.contrast !== 1.0) parts.push(`contrast(${c.contrast})`)
-  if (c.saturation !== 1.0) parts.push(`saturate(${c.saturation})`)
-  if (c.glow_radius > 0) parts.push(`drop-shadow(0 0 ${c.glow_radius}px ${c.glow_color})`)
-  if (c.sepia > 0) parts.push(`sepia(${c.sepia})`)
-  return parts.length > 0 ? { filter: parts.join(' ') } : undefined
-})
+  const srcOf = (d: { src: string; id: string }) =>
+    playableSrcMap.value.get(d.id) ?? (d.src.startsWith("blob:") ? d.src : convertFileSrc(d.src));
 
-// 背景光照叠加层（仅当 target 为 background 或 both 时启用）
-const bgOverlayStyle = computed(() => {
-  const l = gameStore.currentScene?.lighting
-  if (!l?.overlay_enabled) return undefined
-  if (l.overlay_target !== 'background' && l.overlay_target !== 'both') return undefined
-  const blend = l.blend_mode !== 'normal' ? l.blend_mode : 'overlay'
-  return {
-    background: `radial-gradient(circle at ${l.light_x}% ${l.light_y}%, ${l.overlay_color1} 0%, ${l.overlay_color2} ${l.overlay_radius}%)`,
-    mixBlendMode: blend,
-    opacity: l.overlay_opacity,
-  }
-})
-
-// 背景效果 z-index 应该比其他组件高，否则会被覆盖
-const BACKGROUND_ZINDEX = 114514
-
-// 仅保留不需要淡入淡出的短效音效
-const soundEffectPlayer = ref<HTMLAudioElement | null>(null)
-
-// 星空效果控制
-const starfieldEnabled = ref<boolean>(true)
-const starCount = ref<number>(200)
-const scrollSpeed = ref<number>(0.4)
-const starColors = ref<string[]>([
-  'rgb(173, 216, 230)',
-  'rgb(176, 224, 230)',
-  'rgb(241, 141, 252)',
-  'rgb(176, 230, 224)',
-  'rgb(173, 230, 216)',
-])
-
-// 其他特效参数控制
-const rainEnabled = ref<boolean>(true)
-
-const rainIntensity = ref<number>(1)
-const snowIntensity = ref<number>(1.5)
-
-const handleTrackEnd = (): void => {
-  uiStore.handleBackgroundMusicEnd()
-}
-
-// 星空就绪回调
-const onStarfieldReady = (instance: any): void => {
-  console.debug('Starfield ready', instance)
-}
-
-// 只保留监听瞬时音效 (由于音效很短，不需要淡入淡出，保持原生调用)
-// seq 使相同路径也可重播；requestId 防止较慢的旧 URL 解析反过来截断新音效。
-let soundEffectRequestId = 0
-watch(
-  () => [uiStore.currentSoundEffect, uiStore.soundEffectSeq] as const,
-  ([rawPath]) => {
-    const requestId = ++soundEffectRequestId
-    const player = soundEffectPlayer.value
-    if (!player) return
-    player.pause()
-    player.currentTime = 0
-    player.src = ''
-    if (!rawPath || rawPath === 'None') return
-
-    void toPlayableMediaUrl(rawPath)
-      .then((url) => {
-        if (requestId !== soundEffectRequestId || !soundEffectPlayer.value) return
-        soundEffectPlayer.value.src = url
-        soundEffectPlayer.value.load()
-        soundEffectPlayer.value.play().catch(() => {})
-      })
-      .catch((e) => {
-        if (requestId === soundEffectRequestId) console.warn('音效加载失败:', rawPath, e)
-      })
-  },
-)
-
-// !!! 在此处：因为把背景音乐交给了 AudioCrossFade 组件，所以原先的大段背景音乐逻辑全被彻底删除。
-
-// ========== 环境音多轨管理 ==========
-// 显示用轨道镜像：保留淡出期间的"离场"轨道，避免直接卸载造成点击
-const displayTracks = ref<
-  Array<{
-    id: string
-    src: string
-    volume: number // 0-1 有效音量
-    loop: boolean
-    fade: boolean
-    paused: boolean
-    stopped: boolean
-  }>
->([])
-
-const effectiveVolume = (trackVolume: number) => (trackVolume / 100) * (uiStore.ambientVolume / 100)
-
-// 播放 URL 异步解析（Android 换 blob，见 toPlayableMediaUrl）
-const playableSrcMap = ref(new Map<string, string>())
-const resolvePlayableSrc = async (d: { id: string; src: string }) => {
-  try {
-    playableSrcMap.value.set(d.id, await toPlayableMediaUrl(d.src))
-  } catch (e) {
-    console.warn('环境音加载失败:', d.src, e)
-  }
-}
-
-const srcOf = (d: { src: string; id: string }) =>
-  playableSrcMap.value.get(d.id) ?? (d.src.startsWith('blob:') ? d.src : convertFileSrc(d.src))
-
-// 同步 store 轨道到 displayTracks：新增则挂载，移除则标记离场触发淡出
-watch(
-  () => uiStore.ambientTracks,
-  (newTracks) => {
-    const storeIds = new Set(newTracks.map((t) => t.id))
-    // 新增或同步已有（非离场）
-    for (const t of newTracks) {
-      const d = displayTracks.value.find((x) => x.id === t.id)
-      if (!d) {
-        const entry = {
-          id: t.id,
-          src: t.src,
-          volume: effectiveVolume(t.volume),
-          loop: t.loop,
-          fade: t.fade ?? true,
-          paused: t.paused ?? false,
-          stopped: false,
+  // 同步 store 轨道到 displayTracks：新增则挂载，移除则标记离场触发淡出
+  watch(
+    () => uiStore.ambientTracks,
+    (newTracks) => {
+      const storeIds = new Set(newTracks.map((t) => t.id));
+      // 新增或同步已有（非离场）
+      for (const t of newTracks) {
+        const d = displayTracks.value.find((x) => x.id === t.id);
+        if (!d) {
+          const entry = {
+            id: t.id,
+            src: t.src,
+            volume: effectiveVolume(t.volume),
+            loop: t.loop,
+            fade: t.fade ?? true,
+            paused: t.paused ?? false,
+            stopped: false,
+          };
+          displayTracks.value.push(entry);
+          // 先以 asset URL 挂载，异步换 blob（Android 上 asset 协议有 1MB 响应上限）
+          void resolvePlayableSrc(entry);
+        } else if (!d.stopped) {
+          d.src = t.src;
+          d.volume = effectiveVolume(t.volume);
+          d.loop = t.loop;
+          d.fade = t.fade ?? true;
+          d.paused = t.paused ?? false;
         }
-        displayTracks.value.push(entry)
-        // 先以 asset URL 挂载，异步换 blob（Android 上 asset 协议有 1MB 响应上限）
-        void resolvePlayableSrc(entry)
-      } else if (!d.stopped) {
-        d.src = t.src
-        d.volume = effectiveVolume(t.volume)
-        d.loop = t.loop
-        d.fade = t.fade ?? true
-        d.paused = t.paused ?? false
+      }
+      // store 中已移除的标记离场，由组件淡出后回调清理
+      for (const d of displayTracks.value) {
+        if (!storeIds.has(d.id) && !d.stopped) d.stopped = true;
+      }
+    },
+    { deep: true }
+  );
+
+  // 全局环境音音量变化时，刷新所有非离场轨道音量
+  watch(
+    () => uiStore.ambientVolume,
+    (newVol) => {
+      if (newVol == null) return;
+      for (const d of displayTracks.value) {
+        if (d.stopped) continue;
+        const t = uiStore.ambientTracks.find((x) => x.id === d.id);
+        if (t) d.volume = (t.volume / 100) * (newVol / 100);
       }
     }
-    // store 中已移除的标记离场，由组件淡出后回调清理
-    for (const d of displayTracks.value) {
-      if (!storeIds.has(d.id) && !d.stopped) d.stopped = true
-    }
-  },
-  { deep: true },
-)
+  );
 
-// 全局环境音音量变化时，刷新所有非离场轨道音量
-watch(
-  () => uiStore.ambientVolume,
-  (newVol) => {
-    if (newVol == null) return
-    for (const d of displayTracks.value) {
-      if (d.stopped) continue
-      const t = uiStore.ambientTracks.find((x) => x.id === d.id)
-      if (t) d.volume = (t.volume / 100) * (newVol / 100)
-    }
-  },
-)
-
-// 组件淡出完成回调：从 displayTracks 移除并卸载
-const onStoppedDone = (id: string) => {
-  const idx = displayTracks.value.findIndex((x) => x.id === id)
-  if (idx >= 0) displayTracks.value.splice(idx, 1)
-  // 同步清理已解析的播放 URL，避免残留
-  playableSrcMap.value.delete(id)
-}
+  // 组件淡出完成回调：从 displayTracks 移除并卸载
+  const onStoppedDone = (id: string) => {
+    const idx = displayTracks.value.findIndex((x) => x.id === id);
+    if (idx >= 0) displayTracks.value.splice(idx, 1);
+    // 同步清理已解析的播放 URL，避免残留
+    playableSrcMap.value.delete(id);
+  };
 </script>
 
 <style scoped>
-.game-background {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  background-size: cover;
-  background-position: center center;
-  background-attachment: fixed;
-  background-repeat: no-repeat;
-  z-index: -2;
-}
+  .game-background {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    z-index: -2;
+  }
 </style>

@@ -1,127 +1,127 @@
-import { ref } from 'vue'
-import { check } from '@tauri-apps/plugin-updater'
-import { relaunch } from '@tauri-apps/plugin-process'
-import { invoke } from '@tauri-apps/api/core'
-import { i18n } from '@/locales'
+import { ref } from "vue";
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { invoke } from "@tauri-apps/api/core";
+import { i18n } from "@/locales";
 
 // ─── 类型定义 ────────────────────────────────────────────────
 
 export interface ResourceSyncInfo {
-  available: boolean
-  newVersion: number
-  currentVersion: number
-  filesToAdd: SyncFileEntry[]
-  filesToModify: SyncFileEntry[]
-  totalSize: number
+  available: boolean;
+  newVersion: number;
+  currentVersion: number;
+  filesToAdd: SyncFileEntry[];
+  filesToModify: SyncFileEntry[];
+  totalSize: number;
 }
 
 export interface SyncFileEntry {
-  path: string
-  sha256: string
-  size: number
-  changeType: 'add' | 'modify'
+  path: string;
+  sha256: string;
+  size: number;
+  changeType: "add" | "modify";
 }
 
 export interface ResourceSyncResult {
-  success: boolean
-  filesSynced: number
-  message: string
+  success: boolean;
+  filesSynced: number;
+  message: string;
 }
 
 export type UpdatePhase =
-  | 'idle'
-  | 'checking'
-  | 'app-update-available'
-  | 'downloading'
-  | 'complete'
-  | 'error'
+  | "idle"
+  | "checking"
+  | "app-update-available"
+  | "downloading"
+  | "complete"
+  | "error";
 
 // ─── 共享状态 ────────────────────────────────────────────────
 
-const phase = ref<UpdatePhase>('idle')
-const appVersion = ref('')
-const appReleaseNotes = ref('')
-const errorMessage = ref('')
-const downloadProgress = ref(0) // 0-100
+const phase = ref<UpdatePhase>("idle");
+const appVersion = ref("");
+const appReleaseNotes = ref("");
+const errorMessage = ref("");
+const downloadProgress = ref(0); // 0-100
 
 // 资源同步独立状态
-const resourceSyncInfo = ref<ResourceSyncInfo | null>(null)
-const resourceSyncPhase = ref<'idle' | 'review' | 'syncing' | 'complete' | 'error'>('idle')
-const resourceSyncError = ref('')
+const resourceSyncInfo = ref<ResourceSyncInfo | null>(null);
+const resourceSyncPhase = ref<"idle" | "review" | "syncing" | "complete" | "error">("idle");
+const resourceSyncError = ref("");
 
 // ─── 导出 composable ─────────────────────────────────────────
 
 export function useUpdater() {
   /** 检查 app 更新，返回是否有可用更新 */
   async function checkForUpdates(): Promise<boolean> {
-    phase.value = 'checking'
-    errorMessage.value = ''
+    phase.value = "checking";
+    errorMessage.value = "";
 
     try {
-      const update = await check()
+      const update = await check();
       if (update?.available) {
-        appVersion.value = update.version ?? ''
-        appReleaseNotes.value = update.body ?? ''
-        phase.value = 'app-update-available'
-        return true
+        appVersion.value = update.version ?? "";
+        appReleaseNotes.value = update.body ?? "";
+        phase.value = "app-update-available";
+        return true;
       }
       // 无更新
-      phase.value = 'idle'
-      return false
+      phase.value = "idle";
+      return false;
     } catch (e) {
-      const msg = String(e)
-      console.error('[Updater] App update check failed:', msg)
-      phase.value = 'error'
+      const msg = String(e);
+      console.error("[Updater] App update check failed:", msg);
+      phase.value = "error";
       // 提取有意义的部分（去掉冗长的 URL 和底层错误堆栈）
-      if (msg.includes('error sending request')) {
-        errorMessage.value = i18n.global.t('stores.updater.networkError')
+      if (msg.includes("error sending request")) {
+        errorMessage.value = i18n.global.t("stores.updater.networkError");
       } else {
-        errorMessage.value = msg.length > 200 ? msg.slice(0, 200) : msg
+        errorMessage.value = msg.length > 200 ? msg.slice(0, 200) : msg;
       }
-      return false
+      return false;
     }
   }
 
   /** 安装 app 更新并重启（带进度追踪） */
   async function installAppUpdate(): Promise<void> {
     try {
-      const update = await check()
+      const update = await check();
       if (!update?.available) {
-        errorMessage.value = i18n.global.t('stores.updater.noUpdateAvailable')
-        phase.value = 'error'
-        return
+        errorMessage.value = i18n.global.t("stores.updater.noUpdateAvailable");
+        phase.value = "error";
+        return;
       }
 
-      phase.value = 'downloading'
-      downloadProgress.value = 0
+      phase.value = "downloading";
+      downloadProgress.value = 0;
 
-      let contentLength: number | undefined
-      let downloaded = 0
+      let contentLength: number | undefined;
+      let downloaded = 0;
 
       await update.downloadAndInstall((event) => {
-        if (event.event === 'Started') {
-          contentLength = event.data.contentLength
-        } else if (event.event === 'Progress') {
-          downloaded += event.data.chunkLength
+        if (event.event === "Started") {
+          contentLength = event.data.contentLength;
+        } else if (event.event === "Progress") {
+          downloaded += event.data.chunkLength;
           if (contentLength) {
-            downloadProgress.value = Math.round((downloaded / contentLength) * 100)
+            downloadProgress.value = Math.round((downloaded / contentLength) * 100);
           }
         }
-      })
+      });
 
-      phase.value = 'complete'
-      await relaunch()
+      phase.value = "complete";
+      await relaunch();
     } catch (e) {
-      console.error('[Updater] App update install failed:', e)
-      phase.value = 'error'
-      errorMessage.value = String(e)
+      console.error("[Updater] App update install failed:", e);
+      phase.value = "error";
+      errorMessage.value = String(e);
     }
   }
 
   /** 重置状态 */
   function reset() {
-    phase.value = 'idle'
-    errorMessage.value = ''
+    phase.value = "idle";
+    errorMessage.value = "";
   }
 
   // ─── 资源同步 ──────────────────────────────────────────────
@@ -129,53 +129,53 @@ export function useUpdater() {
   /** 检查数据资源更新（对比 .official manifest） */
   async function checkResourceSync(): Promise<boolean> {
     try {
-      const info = await invoke<ResourceSyncInfo>('check_resource_sync')
-      resourceSyncInfo.value = info
+      const info = await invoke<ResourceSyncInfo>("check_resource_sync");
+      resourceSyncInfo.value = info;
       if (info.available) {
-        resourceSyncPhase.value = 'review'
-        return true
+        resourceSyncPhase.value = "review";
+        return true;
       }
-      return false
+      return false;
     } catch (e) {
-      resourceSyncPhase.value = 'error'
-      resourceSyncError.value = String(e)
-      return false
+      resourceSyncPhase.value = "error";
+      resourceSyncError.value = String(e);
+      return false;
     }
   }
 
   /** 应用选中的资源文件同步 */
   async function applyResourceSync(selectedFiles: string[]): Promise<void> {
-    resourceSyncPhase.value = 'syncing'
+    resourceSyncPhase.value = "syncing";
     try {
-      const result = await invoke<ResourceSyncResult>('apply_resource_sync', {
+      const result = await invoke<ResourceSyncResult>("apply_resource_sync", {
         selectedFiles,
-      })
+      });
       if (result.success) {
-        resourceSyncPhase.value = 'complete'
+        resourceSyncPhase.value = "complete";
       } else {
-        resourceSyncPhase.value = 'error'
-        resourceSyncError.value = result.message
+        resourceSyncPhase.value = "error";
+        resourceSyncError.value = result.message;
       }
     } catch (e) {
-      resourceSyncPhase.value = 'error'
-      resourceSyncError.value = String(e)
+      resourceSyncPhase.value = "error";
+      resourceSyncError.value = String(e);
     }
   }
 
   /** 获取本地数据版本号 */
   async function getDataVersion(): Promise<number> {
     try {
-      return await invoke<number>('get_data_version')
+      return await invoke<number>("get_data_version");
     } catch {
-      return 0
+      return 0;
     }
   }
 
   /** 重置资源同步状态 */
   function resetResourceSync() {
-    resourceSyncInfo.value = null
-    resourceSyncPhase.value = 'idle'
-    resourceSyncError.value = ''
+    resourceSyncInfo.value = null;
+    resourceSyncPhase.value = "idle";
+    resourceSyncError.value = "";
   }
 
   return {
@@ -196,5 +196,5 @@ export function useUpdater() {
     applyResourceSync,
     getDataVersion,
     resetResourceSync,
-  }
+  };
 }

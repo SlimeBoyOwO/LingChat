@@ -12,14 +12,17 @@
     "tauri": "tauri",
     "android:prepare": "tauri android init && node scripts/generate-android-icons.mjs",
     "android:dev": "tauri android dev",
-    "android:build": "node scripts/prepare-bundled-resources.mjs 9 && tauri android build --target aarch64",
+    "android:build": "node scripts/prepare-bundled-resources.mjs 9 && tauri android build --target aarch64 --apk",
+    "android:check": "cargo ndk check --manifest-path src-tauri/Cargo.toml --target aarch64-linux-android",
+    "android:devbuild": "node scripts/prepare-bundled-resources.mjs 5 && tauri android build -d -t aarch64 --apk",
     "ios:init": "tauri ios init",
     "ios:build": "bash scripts/build-ios-unsigned.sh",
     "format": "prettier --write . && cargo fmt --manifest-path src-tauri/Cargo.toml",
     "format:rs": "cargo fmt --manifest-path src-tauri/Cargo.toml",
     "format:frontend": "prettier --write \"src/**/*.{vue,js,ts,css,scss}\"",
     "format:check": "prettier --check . && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
-    "check:rs": "cargo check --manifest-path src-tauri/Cargo.toml"
+    "check:rs": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "prepare": "husky"
   },
   "dependencies": {
     "7zip-min": "^3.0.1",
@@ -49,6 +52,8 @@
     "@tauri-apps/cli": "^2",
     "@types/node": "^25.7.0",
     "@vitejs/plugin-vue": "^5.2.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.4.1",
     "prettier": "^3.8.3",
     "prettier-plugin-classnames": "^0.10.3",
     "prettier-plugin-merge": "^0.10.1",
@@ -58,5 +63,13 @@
     "vite": "^6.0.3",
     "vite-plugin-vue-devtools": "^8.1.2",
     "vue-tsc": "^2.1.10"
+  },
+  "lint-staged": {
+    "*.{js,ts,jsx,tsx,vue,html,css,scss,json,md}": [
+      "prettier --write"
+    ],
+    "*.rs": [
+      "cargo fmt --manifest-path src-tauri/Cargo.toml"
+    ]
   }
 }

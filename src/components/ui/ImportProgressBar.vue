@@ -3,66 +3,94 @@
     <!-- notice 卡片与 import/export 进度条独立，不进入同一个 <Transition>。 -->
     <div
       v-if="props.source !== 'plugin' && roleStore.corrected.phase === 'active'"
-      class="notice fixed top-8 right-8 z-[10000] flex items-start gap-3 p-4 min-w-[320px] max-w-[420px] rounded-xl backdrop-blur-[20px]"
+      class="notice fixed top-8 right-8 z-[10000] flex max-w-[420px] min-w-[320px] items-start gap-3
+        rounded-xl p-4 backdrop-blur-[20px]"
     >
-      <div class="shrink-0 w-6 h-6 flex items-center justify-center text-amber-400">
+      <div class="flex h-6 w-6 shrink-0 items-center justify-center text-amber-400">
         <svg
-          xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-          class="w-6 h-6"
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="h-6 w-6"
         >
-          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          <path
+            d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+          />
           <line x1="12" y1="9" x2="12" y2="13" />
           <line x1="12" y1="17" x2="12.01" y2="17" />
         </svg>
       </div>
-      <div class="flex-1 min-w-0">
-        <div class="text-amber-400 font-bold text-sm">{{ roleStore.corrected.title }}</div>
-        <div class="text-gray-200 text-xs mt-1 whitespace-pre-line break-words">{{ roleStore.corrected.message }}</div>
+      <div class="min-w-0 flex-1">
+        <div class="text-sm font-bold text-amber-400">{{ roleStore.corrected.title }}</div>
+        <div class="mt-1 text-xs break-words whitespace-pre-line text-gray-200">
+          {{ roleStore.corrected.message }}
+        </div>
       </div>
       <button
-        class="shrink-0 text-white/60 hover:text-white text-lg leading-none"
+        class="shrink-0 text-lg leading-none text-white/60 hover:text-white"
         @click="dismissCorrected"
-      >×</button>
+      >
+        ×
+      </button>
     </div>
 
     <Transition name="slide-up">
       <div
         v-if="visible"
         :data-phase="state.phase"
-        class="bar fixed bottom-[calc(32px+var(--safe-area-inset-bottom))] right-8 z-[9999] flex items-center gap-4 p-4 min-w-[340px] max-w-[440px] overflow-hidden rounded-xl backdrop-blur-[20px]"
+        class="bar fixed right-8 bottom-[calc(32px+var(--safe-area-inset-bottom))] z-[9999] flex
+          max-w-[440px] min-w-[340px] items-center gap-4 overflow-hidden rounded-xl p-4
+          backdrop-blur-[20px]"
       >
         <div
           v-if="state.phase !== 'cancelled'"
-          class="glow absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] -z-10 blur-[20px]"
+          class="glow absolute top-1/2 left-1/2 -z-10 h-[150%] w-[150%] -translate-x-1/2
+            -translate-y-1/2 blur-[20px]"
           :style="glowStyle"
         ></div>
 
-        <div
-          class="icon-wrap shrink-0 w-12 h-12 rounded-lg flex items-center justify-center"
-        >
+        <div class="icon-wrap flex h-12 w-12 shrink-0 items-center justify-center rounded-lg">
           <svg
             v-if="state.phase === 'running'"
-            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-            class="w-7 h-7 animate-spin"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="h-7 w-7 animate-spin"
           >
             <path d="M21 12a9 9 0 1 1-6.219-8.56" />
           </svg>
           <svg
             v-else-if="state.phase === 'done'"
-            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-            class="w-7 h-7"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="h-7 w-7"
           >
             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
             <polyline points="22 4 12 14.01 9 11.01" />
           </svg>
           <svg
             v-else-if="state.phase === 'error'"
-            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-            class="w-7 h-7"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="h-7 w-7"
           >
             <circle cx="12" cy="12" r="10" />
             <line x1="12" y1="8" x2="12" y2="12" />
@@ -70,9 +98,14 @@
           </svg>
           <svg
             v-else
-            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-            class="w-7 h-7"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="h-7 w-7"
           >
             <circle cx="12" cy="12" r="10" />
             <line x1="15" y1="9" x2="9" y2="15" />
@@ -80,321 +113,354 @@
           </svg>
         </div>
 
-        <div class="flex flex-col justify-center gap-0.5 flex-1 min-w-0">
+        <div class="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
           <div class="flex items-center justify-between gap-2">
             <span class="label-text text-xs font-bold tracking-wider">{{ label }}</span>
             <span
               v-if="state.phase === 'running' && state.percent >= 0"
               class="text-xs font-bold text-white/70"
-            >{{ state.percent }}%</span>
+              >{{ state.percent }}%</span
+            >
           </div>
-          <div class="text-white font-bold text-sm leading-tight truncate">{{ title }}</div>
+          <div class="truncate text-sm leading-tight font-bold text-white">{{ title }}</div>
           <div
             v-if="message"
-            class="text-gray-300 text-xs leading-tight break-all whitespace-pre-line"
-          >{{ message }}</div>
+            class="text-xs leading-tight break-all whitespace-pre-line text-gray-300"
+          >
+            {{ message }}
+          </div>
 
           <div
             v-if="state.phase === 'running'"
-            class="mt-2 w-full h-1 rounded-full bg-white/10 overflow-hidden"
+            class="mt-2 h-1 w-full overflow-hidden rounded-full bg-white/10"
           >
-            <div
-              class="fill h-full rounded-full"
-              :style="barStyle"
-            ></div>
+            <div class="fill h-full rounded-full" :style="barStyle"></div>
           </div>
 
-          <div
-            v-if="state.phase === 'error'"
-            class="mt-2 flex gap-2"
-          >
+          <div v-if="state.phase === 'error'" class="mt-2 flex gap-2">
             <button
-              class="btn-close px-3 py-1 rounded-md text-xs font-medium cursor-pointer text-white"
+              class="btn-close cursor-pointer rounded-md px-3 py-1 text-xs font-medium text-white"
               @click="dismiss"
-            >{{ $t('ui.archiveProgress.close') }}</button>
+            >
+              {{ $t("ui.archiveProgress.close") }}
+            </button>
           </div>
         </div>
 
         <button
           v-if="state.phase === 'running'"
-          class="btn-cancel shrink-0 self-start px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer text-white/80"
+          class="btn-cancel shrink-0 cursor-pointer self-start rounded-md px-3 py-1.5 text-xs
+            font-medium text-white/80"
           @click="onCancel"
-        >{{ $t('ui.archiveProgress.cancel') }}</button>
+        >
+          {{ $t("ui.archiveProgress.cancel") }}
+        </button>
       </div>
     </Transition>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onUnmounted } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { useRoleImportExport } from '@/composables/useRoleImportExport'
-import { usePluginImport } from '@/composables/usePluginImport'
-import type { ArchiveImportSlice } from '@/stores/modules/ui/archive-import'
+  import { computed, watch, onUnmounted } from "vue";
+  import { useI18n } from "vue-i18n";
+  import { useRoleImportExport } from "@/composables/useRoleImportExport";
+  import { usePluginImport } from "@/composables/usePluginImport";
+  import type { ArchiveImportSlice } from "@/stores/modules/ui/archive-import";
 
-/**
- * `source` 决定这条进度条绑哪一份导入状态：
- * - `role`：角色档案导入/导出（含「已自动修正」notice），保持原行为
- * - `plugin`：插件压缩包导入（后端以 manifest.id 落位，无导出、无 notice）
- */
-const props = withDefaults(defineProps<{ source?: 'role' | 'plugin' }>(), { source: 'role' })
+  /**
+   * `source` 决定这条进度条绑哪一份导入状态：
+   * - `role`：角色档案导入/导出（含「已自动修正」notice），保持原行为
+   * - `plugin`：插件压缩包导入（后端以 manifest.id 落位，无导出、无 notice）
+   */
+  const props = withDefaults(defineProps<{ source?: "role" | "plugin" }>(), { source: "role" });
 
-const { t } = useI18n()
-const { store: roleStore, cancel: cancelRole } = useRoleImportExport()
-const { store: pluginStore, cancel: cancelPlugin } = usePluginImport()
+  const { t } = useI18n();
+  const { store: roleStore, cancel: cancelRole } = useRoleImportExport();
+  const { store: pluginStore, cancel: cancelPlugin } = usePluginImport();
 
-type Phase = 'idle' | 'running' | 'done' | 'error' | 'cancelled'
+  type Phase = "idle" | "running" | "done" | "error" | "cancelled";
 
-const isPlugin = computed(() => props.source === 'plugin')
+  const isPlugin = computed(() => props.source === "plugin");
 
-const activeKey = computed<'import' | 'export'>(() => {
-  if (isPlugin.value) return 'import'
-  return roleStore.import.phase !== 'idle' ? 'import' : 'export'
-})
+  const activeKey = computed<"import" | "export">(() => {
+    if (isPlugin.value) return "import";
+    return roleStore.import.phase !== "idle" ? "import" : "export";
+  });
 
-const state = computed<ArchiveImportSlice | typeof roleStore.export>(() => {
-  if (isPlugin.value) return pluginStore.import
-  return activeKey.value === 'import' ? roleStore.import : roleStore.export
-})
+  const state = computed<ArchiveImportSlice | typeof roleStore.export>(() => {
+    if (isPlugin.value) return pluginStore.import;
+    return activeKey.value === "import" ? roleStore.import : roleStore.export;
+  });
 
-const visible = computed(() => state.value.phase !== 'idle')
+  const visible = computed(() => state.value.phase !== "idle");
 
-const label = computed(() => {
-  const p = state.value.phase
-  const isImport = activeKey.value === 'import'
-  if (p === 'running') return isImport ? t('ui.archiveProgress.importing') : t('ui.archiveProgress.exporting')
-  if (p === 'done') return isImport ? t('ui.archiveProgress.importSuccess') : t('ui.archiveProgress.exportSuccess')
-  if (p === 'error') return isImport ? t('ui.archiveProgress.importFailed') : t('ui.archiveProgress.exportFailed')
-  if (p === 'cancelled') return t('ui.archiveProgress.cancelled')
-  return isImport ? t('ui.archiveProgress.kindImport') : t('ui.archiveProgress.kindExport')
-})
+  const label = computed(() => {
+    const p = state.value.phase;
+    const isImport = activeKey.value === "import";
+    if (p === "running")
+      return isImport ? t("ui.archiveProgress.importing") : t("ui.archiveProgress.exporting");
+    if (p === "done")
+      return isImport
+        ? t("ui.archiveProgress.importSuccess")
+        : t("ui.archiveProgress.exportSuccess");
+    if (p === "error")
+      return isImport ? t("ui.archiveProgress.importFailed") : t("ui.archiveProgress.exportFailed");
+    if (p === "cancelled") return t("ui.archiveProgress.cancelled");
+    return isImport ? t("ui.archiveProgress.kindImport") : t("ui.archiveProgress.kindExport");
+  });
 
-const title = computed(() => {
-  if (isPlugin.value) {
-    return pluginStore.import.fileName || t('ui.archiveProgress.defaultPluginImportTitle')
-  }
-  if (activeKey.value === 'import') {
-    return roleStore.import.fileName || t('ui.archiveProgress.defaultImportTitle')
-  }
-  return roleStore.export.roleName || t('ui.archiveProgress.defaultExportTitle')
-})
-
-/**
- * 后端错误可能是纯 i18n 错误码（`ARCHIVE_MISSING_SETTINGS_YML`），
- * 也可能是「错误码|补充信息」（`PLUGIN_MISSING_TOOL_SCRIPT|weather.py`）。
- * 查表翻译错误码，补充信息附在下一行；查不到则原样显示（兼容其它字符串错误）。
- */
-function formatError(raw: string): string {
-  const [code, ...rest] = raw.split('|')
-  const detail = rest.join('|').trim()
-  const base = t(`ui.archiveProgress.errors.${code}`, code)
-  return detail ? `${base}\n${detail}` : base
-}
-
-const message = computed(() => {
-  const s = state.value
-  if (s.phase === 'error') {
-    const raw = s.error || s.message
-    return raw ? formatError(raw) : raw
-  }
-  return s.message
-})
-
-// 阶段配色：4 个状态切换主容器的描边、阴影与子元素颜色。
-// running 变体统一用 #79d9ff（rgb 121,217,255），与原 border/box-shadow 颜色一致，
-// 之前散落的 cyan-300 (#67e8f9) 在本次 inline 化时统一为同一个色源。
-const GLOW_COLORS: Record<Phase, string> = {
-  idle: '',
-  running: 'rgba(121, 217, 255, 0.1)',
-  done: 'rgba(74, 222, 128, 0.12)',
-  error: 'rgba(248, 113, 113, 0.12)',
-  cancelled: '',
-}
-
-const glowStyle = computed(() => {
-  const color = GLOW_COLORS[state.value.phase]
-  if (!color) return {}
-  return {
-    background: `radial-gradient(circle, ${color} 0%, transparent 60%)`,
-  }
-})
-
-const barStyle = computed(() => {
-  const pct = state.value.percent
-  if (pct < 0) {
-    return { width: '100%', animation: 'archive-shimmer 1.2s ease-in-out infinite' }
-  }
-  return { width: `${pct}%`, transition: 'width 0.3s ease' }
-})
-
-let dismissTimer: number | null = null
-function clearDismiss() {
-  if (dismissTimer !== null) {
-    window.clearTimeout(dismissTimer)
-    dismissTimer = null
-  }
-}
-function resetActive() {
-  if (isPlugin.value) pluginStore.resetImport()
-  else if (activeKey.value === 'import') roleStore.resetImport()
-  else roleStore.resetExport()
-}
-function scheduleDismiss(ms: number) {
-  clearDismiss()
-  dismissTimer = window.setTimeout(resetActive, ms)
-}
-
-watch(
-  () => state.value.phase,
-  (phase) => {
-    if (phase === 'done') scheduleDismiss(3000)
-    else if (phase === 'cancelled') scheduleDismiss(2500)
-    else if (phase === 'error') scheduleDismiss(10000)
-    else clearDismiss()
-  },
-)
-
-function onCancel() {
-  if (isPlugin.value) cancelPlugin()
-  else cancelRole()
-}
-function dismiss() {
-  clearDismiss()
-  resetActive()
-}
-
-function dismissCorrected() {
-  roleStore.dismissCorrected()
-}
-
-let noticeTimer: number | null = null
-function clearNoticeTimer() {
-  if (noticeTimer !== null) {
-    window.clearTimeout(noticeTimer)
-    noticeTimer = null
-  }
-}
-function scheduleNoticeDismiss(ms: number) {
-  clearNoticeTimer()
-  noticeTimer = window.setTimeout(() => {
-    roleStore.dismissCorrected()
-  }, ms)
-}
-
-watch(
-  () => roleStore.corrected.phase,
-  (phase) => {
-    if (phase === 'active') {
-      scheduleNoticeDismiss(roleStore.corrected.durationMs)
-    } else {
-      clearNoticeTimer()
+  const title = computed(() => {
+    if (isPlugin.value) {
+      return pluginStore.import.fileName || t("ui.archiveProgress.defaultPluginImportTitle");
     }
-  },
-)
+    if (activeKey.value === "import") {
+      return roleStore.import.fileName || t("ui.archiveProgress.defaultImportTitle");
+    }
+    return roleStore.export.roleName || t("ui.archiveProgress.defaultExportTitle");
+  });
 
-onUnmounted(() => {
-  clearDismiss()
-  clearNoticeTimer()
-})
+  /**
+   * 后端错误可能是纯 i18n 错误码（`ARCHIVE_MISSING_SETTINGS_YML`），
+   * 也可能是「错误码|补充信息」（`PLUGIN_MISSING_TOOL_SCRIPT|weather.py`）。
+   * 查表翻译错误码，补充信息附在下一行；查不到则原样显示（兼容其它字符串错误）。
+   */
+  function formatError(raw: string): string {
+    const [code, ...rest] = raw.split("|");
+    const detail = rest.join("|").trim();
+    const base = t(`ui.archiveProgress.errors.${code}`, code);
+    return detail ? `${base}\n${detail}` : base;
+  }
+
+  const message = computed(() => {
+    const s = state.value;
+    if (s.phase === "error") {
+      const raw = s.error || s.message;
+      return raw ? formatError(raw) : raw;
+    }
+    return s.message;
+  });
+
+  // 阶段配色：4 个状态切换主容器的描边、阴影与子元素颜色。
+  // running 变体统一用 #79d9ff（rgb 121,217,255），与原 border/box-shadow 颜色一致，
+  // 之前散落的 cyan-300 (#67e8f9) 在本次 inline 化时统一为同一个色源。
+  const GLOW_COLORS: Record<Phase, string> = {
+    idle: "",
+    running: "rgba(121, 217, 255, 0.1)",
+    done: "rgba(74, 222, 128, 0.12)",
+    error: "rgba(248, 113, 113, 0.12)",
+    cancelled: "",
+  };
+
+  const glowStyle = computed(() => {
+    const color = GLOW_COLORS[state.value.phase];
+    if (!color) return {};
+    return {
+      background: `radial-gradient(circle, ${color} 0%, transparent 60%)`,
+    };
+  });
+
+  const barStyle = computed(() => {
+    const pct = state.value.percent;
+    if (pct < 0) {
+      return { width: "100%", animation: "archive-shimmer 1.2s ease-in-out infinite" };
+    }
+    return { width: `${pct}%`, transition: "width 0.3s ease" };
+  });
+
+  let dismissTimer: number | null = null;
+  function clearDismiss() {
+    if (dismissTimer !== null) {
+      window.clearTimeout(dismissTimer);
+      dismissTimer = null;
+    }
+  }
+  function resetActive() {
+    if (isPlugin.value) pluginStore.resetImport();
+    else if (activeKey.value === "import") roleStore.resetImport();
+    else roleStore.resetExport();
+  }
+  function scheduleDismiss(ms: number) {
+    clearDismiss();
+    dismissTimer = window.setTimeout(resetActive, ms);
+  }
+
+  watch(
+    () => state.value.phase,
+    (phase) => {
+      if (phase === "done") scheduleDismiss(3000);
+      else if (phase === "cancelled") scheduleDismiss(2500);
+      else if (phase === "error") scheduleDismiss(10000);
+      else clearDismiss();
+    }
+  );
+
+  function onCancel() {
+    if (isPlugin.value) cancelPlugin();
+    else cancelRole();
+  }
+  function dismiss() {
+    clearDismiss();
+    resetActive();
+  }
+
+  function dismissCorrected() {
+    roleStore.dismissCorrected();
+  }
+
+  let noticeTimer: number | null = null;
+  function clearNoticeTimer() {
+    if (noticeTimer !== null) {
+      window.clearTimeout(noticeTimer);
+      noticeTimer = null;
+    }
+  }
+  function scheduleNoticeDismiss(ms: number) {
+    clearNoticeTimer();
+    noticeTimer = window.setTimeout(() => {
+      roleStore.dismissCorrected();
+    }, ms);
+  }
+
+  watch(
+    () => roleStore.corrected.phase,
+    (phase) => {
+      if (phase === "active") {
+        scheduleNoticeDismiss(roleStore.corrected.durationMs);
+      } else {
+        clearNoticeTimer();
+      }
+    }
+  );
+
+  onUnmounted(() => {
+    clearDismiss();
+    clearNoticeTimer();
+  });
 </script>
 
 <style>
-/* Vue scoped 会给 @keyframes 追加 hash 后缀，把 shimmer 改成 archive-shimmer-xxxxx。
+  /* Vue scoped 会给 @keyframes 追加 hash 后缀，把 shimmer 改成 archive-shimmer-xxxxx。
    ImportProgressBar.vue:163 的 inline style 引用的是原始名 archive-shimmer，
    因此 shimmer 动画从不会触发。这里把 keyframe 放到非 scoped 块，
    名字保持不变，让 inline animation 能匹配上。*/
-@keyframes archive-shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
+  @keyframes archive-shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
 </style>
 
 <style scoped>
-/* 仅保留 Tailwind 无法表达的两条动画：进度条 indeterminate shimmer + Toast 进出 */
+  /* 仅保留 Tailwind 无法表达的两条动画：进度条 indeterminate shimmer + Toast 进出 */
 
-.slide-up-enter-active,
-.slide-up-leave-active {
-  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-.slide-up-enter-from,
-.slide-up-leave-to {
-  transform: translateY(80px) scale(0.9);
-  opacity: 0;
-}
+  .slide-up-enter-active,
+  .slide-up-leave-active {
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  .slide-up-enter-from,
+  .slide-up-leave-to {
+    transform: translateY(80px) scale(0.9);
+    opacity: 0;
+  }
 
-/* 阶段配色：4 个状态切换主容器的描边、阴影与子元素颜色。
+  /* 阶段配色：4 个状态切换主容器的描边、阴影与子元素颜色。
    running 变体统一用 #79d9ff（rgb 121,217,255），与原 border/box-shadow 颜色一致，
    之前散落的 cyan-300 (#67e8f9) 在本次 inline 化时统一为同一个色源。
    全部使用静态选择器（[data-phase="..."] + 语义 class），避免 Tailwind JIT 
    扫描不到动态拼接的 class。*/
 
-.bar {
-  background: rgba(15, 15, 15, 0.55);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
+  .bar {
+    background: rgba(15, 15, 15, 0.55);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
 
-.notice {
-  background: rgba(15, 15, 15, 0.85);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(251, 191, 36, 0.15);
-  border: 1px solid rgba(251, 191, 36, 0.3);
-}
+  .notice {
+    background: rgba(15, 15, 15, 0.85);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.6),
+      inset 0 0 15px rgba(251, 191, 36, 0.15);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+  }
 
-[data-phase="running"].bar {
-  border-color: rgba(121, 217, 255, 0.25);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(121, 217, 255, 0.12);
-}
-[data-phase="running"] .icon-wrap {
-  color: #79d9ff;
-  background: rgba(121, 217, 255, 0.1);
-}
-[data-phase="running"] .label-text { color: #79d9ff; }
-[data-phase="running"] .fill { background: #79d9ff; }
+  [data-phase="running"].bar {
+    border-color: rgba(121, 217, 255, 0.25);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.6),
+      inset 0 0 15px rgba(121, 217, 255, 0.12);
+  }
+  [data-phase="running"] .icon-wrap {
+    color: #79d9ff;
+    background: rgba(121, 217, 255, 0.1);
+  }
+  [data-phase="running"] .label-text {
+    color: #79d9ff;
+  }
+  [data-phase="running"] .fill {
+    background: #79d9ff;
+  }
 
-[data-phase="done"].bar {
-  border-color: rgba(74, 222, 128, 0.25);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(74, 222, 128, 0.12);
-}
-[data-phase="done"] .icon-wrap {
-  color: #4ade80;
-  background: rgba(74, 222, 128, 0.1);
-}
-[data-phase="done"] .label-text { color: #4ade80; }
-[data-phase="done"] .fill { background: #4ade80; }
+  [data-phase="done"].bar {
+    border-color: rgba(74, 222, 128, 0.25);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.6),
+      inset 0 0 15px rgba(74, 222, 128, 0.12);
+  }
+  [data-phase="done"] .icon-wrap {
+    color: #4ade80;
+    background: rgba(74, 222, 128, 0.1);
+  }
+  [data-phase="done"] .label-text {
+    color: #4ade80;
+  }
+  [data-phase="done"] .fill {
+    background: #4ade80;
+  }
 
-[data-phase="error"].bar {
-  border-color: rgba(248, 113, 113, 0.3);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(248, 113, 113, 0.15);
-}
-[data-phase="error"] .icon-wrap {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.12);
-}
-[data-phase="error"] .label-text { color: #f87171; }
+  [data-phase="error"].bar {
+    border-color: rgba(248, 113, 113, 0.3);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.6),
+      inset 0 0 15px rgba(248, 113, 113, 0.15);
+  }
+  [data-phase="error"] .icon-wrap {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.12);
+  }
+  [data-phase="error"] .label-text {
+    color: #f87171;
+  }
 
-[data-phase="cancelled"].bar {
-  border-color: rgba(156, 163, 175, 0.25);
-}
-[data-phase="cancelled"] .icon-wrap {
-  color: #9ca3af;
-  background: rgba(156, 163, 175, 0.1);
-}
-[data-phase="cancelled"] .label-text { color: #9ca3af; }
+  [data-phase="cancelled"].bar {
+    border-color: rgba(156, 163, 175, 0.25);
+  }
+  [data-phase="cancelled"] .icon-wrap {
+    color: #9ca3af;
+    background: rgba(156, 163, 175, 0.1);
+  }
+  [data-phase="cancelled"] .label-text {
+    color: #9ca3af;
+  }
 
-.btn-close {
-  background: rgba(255, 255, 255, 0.1);
-  transition: background-color 0.2s;
-}
-.btn-close:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
+  .btn-close {
+    background: rgba(255, 255, 255, 0.1);
+    transition: background-color 0.2s;
+  }
+  .btn-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
 
-.btn-cancel {
-  background: rgba(255, 255, 255, 0.1);
-  transition: background-color 0.2s, color 0.2s;
-}
-.btn-cancel:hover {
-  background: rgba(239, 68, 68, 0.3);
-  color: #ffffff;
-}
+  .btn-cancel {
+    background: rgba(255, 255, 255, 0.1);
+    transition:
+      background-color 0.2s,
+      color 0.2s;
+  }
+  .btn-cancel:hover {
+    background: rgba(239, 68, 68, 0.3);
+    color: #ffffff;
+  }
 </style>

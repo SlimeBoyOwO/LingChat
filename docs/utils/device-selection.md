@@ -8,13 +8,13 @@
 
 ## 能力概览
 
-| 函数 | 作用 | 平台 |
-|------|------|------|
-| `parse_device(str)` | 解析设备字符串 → `InferenceDevice` | 全平台 |
-| `device_to_string(InferenceDevice)` | 序列化设备为配置字符串 | 全平台 |
-| `list_devices()` | 枚举 DirectML GPU 列表 | Windows（其他平台空） |
-| `read_configured_device(app, key)` | 从 settings.json 读持久化设备 | 全平台 |
-| `read_settings_string(app, key)` | 读任意 settings.json 字符串配置 | 全平台 |
+| 函数                                | 作用                               | 平台                  |
+| ----------------------------------- | ---------------------------------- | --------------------- |
+| `parse_device(str)`                 | 解析设备字符串 → `InferenceDevice` | 全平台                |
+| `device_to_string(InferenceDevice)` | 序列化设备为配置字符串             | 全平台                |
+| `list_devices()`                    | 枚举 DirectML GPU 列表             | Windows（其他平台空） |
+| `read_configured_device(app, key)`  | 从 settings.json 读持久化设备      | 全平台                |
+| `read_settings_string(app, key)`    | 读任意 settings.json 字符串配置    | 全平台                |
 
 ## 类型
 

@@ -65,7 +65,7 @@ pub async fn do_import_plugin(
                 "[PluginImport] 扩展名 hint={hint:?} 与 magic {detected:?} 不一致，采用 magic 结果"
             );
             detected
-        }
+        },
         None => detected,
     };
 
@@ -99,7 +99,7 @@ pub async fn do_import_plugin(
         match format {
             ArchiveFormat::Zip => {
                 archive::extract_zip(&path_for_blocking, &target, &cancel_for_blocking, &on_entry)
-            }
+            },
             ArchiveFormat::SevenZ => archive::extract_sevenz(
                 &path_for_blocking,
                 &target,
@@ -133,7 +133,7 @@ pub async fn do_import_plugin(
                 LayoutError::MissingManifest => "PLUGIN_MISSING_MANIFEST".into(),
                 LayoutError::BadLayout => "PLUGIN_BAD_ARCHIVE_LAYOUT".into(),
             });
-        }
+        },
     };
 
     // 5. 解析并校验 manifest。格式错误、未知字段、id 非法字符都归到同一个错误码。
@@ -143,7 +143,7 @@ pub async fn do_import_plugin(
             tracing::error!("[PluginImport] manifest 校验失败: {e}");
             cleanup(&staging_for_cleanup);
             return Err("PLUGIN_INVALID_MANIFEST".into());
-        }
+        },
     };
     // id 已由 manifest::validate 限定为 [A-Za-z0-9_-]，可直接作为目录名，无穿越风险。
     let plugin_id = manifest.id.clone();
@@ -167,11 +167,11 @@ pub async fn do_import_plugin(
         Err(ArchiveError::AlreadyExists(name)) => {
             cleanup(&staging_for_cleanup);
             return Err(format!("PLUGIN_ALREADY_EXISTS|{name}"));
-        }
+        },
         Err(e) => {
             cleanup(&staging_for_cleanup);
             return Err(e.to_string());
-        }
+        },
     };
 
     // 8. 覆盖：先经 manager.delete_plugin 注销工具并删除旧目录与状态条目。
@@ -179,7 +179,7 @@ pub async fn do_import_plugin(
     if resolution.action == "overwritten" {
         let manager = app.state::<crate::AppState>().data().plugin_manager.clone();
         match manager.delete_plugin(&plugin_id).await {
-            Ok(()) => {}
+            Ok(()) => {},
             // 目标目录存在但 manager 里没有对应记录（例如手工丢进去、manifest 损坏的
             // 残留目录），退化为直接删目录。
             Err(e) => {
@@ -191,7 +191,7 @@ pub async fn do_import_plugin(
                         resolution.target.display()
                     ));
                 }
-            }
+            },
         }
     }
 

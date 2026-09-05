@@ -38,11 +38,15 @@ pub(crate) fn http_client() -> &'static Client {
             .tls_backend_preconfigured(tls_config);
 
         // 兼容 Python openai/httpx 行为：读取 HTTP_PROXY / HTTPS_PROXY 环境变量
-        if let Ok(proxy_url) = std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy")) {
+        if let Ok(proxy_url) =
+            std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy"))
+        {
             if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
                 builder = builder.proxy(proxy);
             }
-        } else if let Ok(proxy_url) = std::env::var("HTTP_PROXY").or_else(|_| std::env::var("http_proxy")) {
+        } else if let Ok(proxy_url) =
+            std::env::var("HTTP_PROXY").or_else(|_| std::env::var("http_proxy"))
+        {
             if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
                 builder = builder.proxy(proxy);
             }

@@ -1,4 +1,4 @@
-import type { FallingParticleConfig, KeyframeConfig } from '../types/falling'
+import type { FallingParticleConfig, KeyframeConfig } from "../types/falling";
 
 const sakuraConfig: FallingParticleConfig = {
   minSize: 10,
@@ -11,13 +11,13 @@ const sakuraConfig: FallingParticleConfig = {
   horizontalRange: 50,
   initialTopOffset: -30,
   randomStartY: true,
-}
+};
 
 const sakuraSettings = {
   baseCount: 25,
   hueMin: 320,
   hueMax: 330,
-}
+};
 
 const sakuraKeyframeConfig: KeyframeConfig = {
   rotation: {
@@ -32,10 +32,10 @@ const sakuraKeyframeConfig: KeyframeConfig = {
   opacity: {
     keyframes: [1, 0.9, 0.7, 0.5, 0],
   },
-}
+};
 
 export const sakura = {
   config: sakuraConfig,
   settings: sakuraSettings,
   keyframes: sakuraKeyframeConfig,
-}
+};

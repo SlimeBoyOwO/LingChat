@@ -189,8 +189,9 @@ impl AsrSession {
         let on_partial = std::sync::Arc::new(move |text: &str| {
             let _ = app_handle.emit("asr://stream_partial", text.to_string());
         });
-        let tx = provider_stream::start_streaming(on_partial, endpoint, api_key, model, language_hint)
-            .await?;
+        let tx =
+            provider_stream::start_streaming(on_partial, endpoint, api_key, model, language_hint)
+                .await?;
         *self.stream.lock().await = Some(StreamHandle {
             provider_id: provider_id.to_string(),
             tx,
@@ -214,7 +215,7 @@ impl AsrSession {
             Some(h) => {
                 h.tx.send(StreamCommand::Audio(pcm))
                     .map_err(|_| AsrError::Canceled)
-            }
+            },
             None => Err(AsrError::EngineLoadFailed("流式会话未启动".into())),
         }
     }

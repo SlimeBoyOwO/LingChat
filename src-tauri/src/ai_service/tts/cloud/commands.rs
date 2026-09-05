@@ -119,7 +119,9 @@ pub async fn cosyvoice_create_voice(
             })
             .await
             .map_err(|e| e.to_string())?;
-        upsert_voice_record(&app, &record).await.map_err(|e| e.to_string())?;
+        upsert_voice_record(&app, &record)
+            .await
+            .map_err(|e| e.to_string())?;
         Ok(record)
     }
     .await;

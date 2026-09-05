@@ -4,243 +4,243 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
-import { isOwnedByStandaloneDlc, releaseFolderFromEvent } from '@/utils/dlcMediaOwnership'
+  import { ref, watch, onMounted, onBeforeUnmount } from "vue";
+  import { isOwnedByStandaloneDlc, releaseFolderFromEvent } from "@/utils/dlcMediaOwnership";
 
-const props = withDefaults(
-  defineProps<{
-    src?: string | null
-    volume?: number // 0-100 音量
-    paused?: boolean
-    stopped?: boolean
-    duration?: number // 淡入淡出时长 (毫秒)
-    loop?: boolean // 是否循环播放
-    rate?: number // 播放速度倍率（1.0 原速），由剧本 music 事件的 playbackSpeed 控制
-  }>(),
-  {
-    src: '',
-    volume: 100,
-    paused: false,
-    stopped: false,
-    duration: 800,
-    loop: false,
-    rate: 1,
-  },
-)
-
-const emit = defineEmits<{
-  (e: 'ended'): void
-}>()
-
-const audio1 = ref<HTMLAudioElement | null>(null)
-const audio2 = ref<HTMLAudioElement | null>(null)
-
-/** 设置播放速度。HTML audio.playbackRate 可随时改、立即生效；非法值兜底为 1 */
-const applyRate = (el: HTMLAudioElement | null) => {
-  if (!el) return
-  const r = props.rate
-  // 恐怖剧本的慢速 BGM 需要随速度一起降调，不能让 WebView 自动保持原音高。
-  el.preservesPitch = false
-  ;(el as HTMLAudioElement & { mozPreservesPitch?: boolean }).mozPreservesPitch = false
-  ;(el as HTMLAudioElement & { webkitPreservesPitch?: boolean }).webkitPreservesPitch = false
-  el.playbackRate = typeof r === 'number' && r > 0 ? r : 1
-}
-
-let activeIndex = 1 // 1 或 2，表示当前主音频
-let fadeIntervalId: ReturnType<typeof setInterval> | null = null
-const FADE_INTERVAL = 50
-
-const clearFade = () => {
-  if (fadeIntervalId !== null) {
-    clearInterval(fadeIntervalId)
-    fadeIntervalId = null
-  }
-}
-
-const releaseAudio = (audio: HTMLAudioElement | null) => {
-  if (!audio) return
-  audio.pause()
-  audio.removeAttribute('src')
-  audio.load()
-}
-
-const releaseAllAudio = () => {
-  clearFade()
-  releaseAudio(audio1.value)
-  releaseAudio(audio2.value)
-}
-
-const handleReleaseDlcMedia = (event: Event) => {
-  const folderKey = releaseFolderFromEvent(event)
-  for (const audio of [audio1.value, audio2.value]) {
-    if (audio && isOwnedByStandaloneDlc(audio.currentSrc || audio.src, folderKey)) {
-      releaseAudio(audio)
+  const props = withDefaults(
+    defineProps<{
+      src?: string | null;
+      volume?: number; // 0-100 音量
+      paused?: boolean;
+      stopped?: boolean;
+      duration?: number; // 淡入淡出时长 (毫秒)
+      loop?: boolean; // 是否循环播放
+      rate?: number; // 播放速度倍率（1.0 原速），由剧本 music 事件的 playbackSpeed 控制
+    }>(),
+    {
+      src: "",
+      volume: 100,
+      paused: false,
+      stopped: false,
+      duration: 800,
+      loop: false,
+      rate: 1,
     }
-  }
-}
+  );
 
-onBeforeUnmount(() => {
-  window.removeEventListener('lingchat:release-dlc-media', handleReleaseDlcMedia)
-  releaseAllAudio()
-})
+  const emit = defineEmits<{
+    (e: "ended"): void;
+  }>();
 
-// 只派发当前主音频轨道的结束事件，忽略备用轨道的事件
-const handleEnded = (index: number) => {
-  if (index === activeIndex) {
-    if (props.loop) {
-      // 循环播放：重置当前音频并重新播放
-      const activeAudio = activeIndex === 1 ? audio1.value : audio2.value
-      if (activeAudio) {
-        activeAudio.currentTime = 0
-        if (!props.paused && !props.stopped) {
-          activeAudio.play().catch((e) => console.warn('循环播放失败:', e))
+  const audio1 = ref<HTMLAudioElement | null>(null);
+  const audio2 = ref<HTMLAudioElement | null>(null);
+
+  /** 设置播放速度。HTML audio.playbackRate 可随时改、立即生效；非法值兜底为 1 */
+  const applyRate = (el: HTMLAudioElement | null) => {
+    if (!el) return;
+    const r = props.rate;
+    // 恐怖剧本的慢速 BGM 需要随速度一起降调，不能让 WebView 自动保持原音高。
+    el.preservesPitch = false;
+    (el as HTMLAudioElement & { mozPreservesPitch?: boolean }).mozPreservesPitch = false;
+    (el as HTMLAudioElement & { webkitPreservesPitch?: boolean }).webkitPreservesPitch = false;
+    el.playbackRate = typeof r === "number" && r > 0 ? r : 1;
+  };
+
+  let activeIndex = 1; // 1 或 2，表示当前主音频
+  let fadeIntervalId: ReturnType<typeof setInterval> | null = null;
+  const FADE_INTERVAL = 50;
+
+  const clearFade = () => {
+    if (fadeIntervalId !== null) {
+      clearInterval(fadeIntervalId);
+      fadeIntervalId = null;
+    }
+  };
+
+  const releaseAudio = (audio: HTMLAudioElement | null) => {
+    if (!audio) return;
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
+  };
+
+  const releaseAllAudio = () => {
+    clearFade();
+    releaseAudio(audio1.value);
+    releaseAudio(audio2.value);
+  };
+
+  const handleReleaseDlcMedia = (event: Event) => {
+    const folderKey = releaseFolderFromEvent(event);
+    for (const audio of [audio1.value, audio2.value]) {
+      if (audio && isOwnedByStandaloneDlc(audio.currentSrc || audio.src, folderKey)) {
+        releaseAudio(audio);
+      }
+    }
+  };
+
+  onBeforeUnmount(() => {
+    window.removeEventListener("lingchat:release-dlc-media", handleReleaseDlcMedia);
+    releaseAllAudio();
+  });
+
+  // 只派发当前主音频轨道的结束事件，忽略备用轨道的事件
+  const handleEnded = (index: number) => {
+    if (index === activeIndex) {
+      if (props.loop) {
+        // 循环播放：重置当前音频并重新播放
+        const activeAudio = activeIndex === 1 ? audio1.value : audio2.value;
+        if (activeAudio) {
+          activeAudio.currentTime = 0;
+          if (!props.paused && !props.stopped) {
+            activeAudio.play().catch((e) => console.warn("循环播放失败:", e));
+          }
+        }
+      } else {
+        emit("ended");
+      }
+    }
+  };
+
+  const crossFadeTo = async (newUrl: string | null | undefined) => {
+    clearFade(); // 立即停止前一次可能未完成的淡入淡出
+
+    const currentAudio = activeIndex === 1 ? audio1.value : audio2.value;
+    const nextAudio = activeIndex === 1 ? audio2.value : audio1.value;
+
+    if (!currentAudio || !nextAudio) return;
+
+    const currentTargetVolume = props.volume / 100;
+    const step = currentTargetVolume / (props.duration / FADE_INTERVAL);
+
+    // 1. 如果没有新的 URL (相当于仅仅是停止播放并淡出)
+    if (!newUrl || newUrl === "None") {
+      fadeIntervalId = setInterval(() => {
+        if (currentAudio.volume > 0) {
+          currentAudio.volume = Math.max(0, currentAudio.volume - step);
+        } else {
+          releaseAudio(currentAudio);
+          clearFade();
+        }
+      }, FADE_INTERVAL);
+      return;
+    }
+
+    // 2. 交叉淡入淡出新 URL
+    nextAudio.src = newUrl;
+    nextAudio.load();
+    nextAudio.volume = Math.min(0.1, props.volume / 100);
+    applyRate(nextAudio); // 新轨道沿用当前播放速度
+
+    // 只要没有被手动暂停或停止，就尝试播放备用轨道
+    if (!props.paused && !props.stopped) {
+      try {
+        await nextAudio.play();
+      } catch (err) {
+        console.warn("由于浏览器策略，背景音乐自动播放被拦截:", err);
+        // 即使被拦截，也继续走淡入逻辑，等到有了用户交互它就会自动出声
+      }
+    }
+
+    fadeIntervalId = setInterval(() => {
+      let currentDone = false;
+      let nextDone = false;
+      const targetVol = props.volume / 100;
+      // 动态步长，应对用户在渐变过程中拖动音量条
+      const dynStep = targetVol / (props.duration / FADE_INTERVAL);
+
+      // 旧音乐淡出
+      if (currentAudio.volume > 0) {
+        currentAudio.volume = Math.max(0, currentAudio.volume - dynStep);
+      } else {
+        currentDone = true;
+      }
+
+      if (currentDone) {
+        // 新音乐淡入
+        if (nextAudio.volume < targetVol) {
+          nextAudio.volume = Math.min(targetVol, nextAudio.volume + dynStep);
+        } else {
+          nextDone = true;
         }
       }
-    } else {
-      emit('ended')
-    }
-  }
-}
 
-const crossFadeTo = async (newUrl: string | null | undefined) => {
-  clearFade() // 立即停止前一次可能未完成的淡入淡出
-
-  const currentAudio = activeIndex === 1 ? audio1.value : audio2.value
-  const nextAudio = activeIndex === 1 ? audio2.value : audio1.value
-
-  if (!currentAudio || !nextAudio) return
-
-  const currentTargetVolume = props.volume / 100
-  const step = currentTargetVolume / (props.duration / FADE_INTERVAL)
-
-  // 1. 如果没有新的 URL (相当于仅仅是停止播放并淡出)
-  if (!newUrl || newUrl === 'None') {
-    fadeIntervalId = setInterval(() => {
-      if (currentAudio.volume > 0) {
-        currentAudio.volume = Math.max(0, currentAudio.volume - step)
-      } else {
-        releaseAudio(currentAudio)
-        clearFade()
+      // 完成交接
+      if (currentDone && nextDone) {
+        releaseAudio(currentAudio);
+        activeIndex = activeIndex === 1 ? 2 : 1; // 切换主轨道身份
+        clearFade();
       }
-    }, FADE_INTERVAL)
-    return
-  }
+    }, FADE_INTERVAL);
+  };
 
-  // 2. 交叉淡入淡出新 URL
-  nextAudio.src = newUrl
-  nextAudio.load()
-  nextAudio.volume = Math.min(0.1, props.volume / 100)
-  applyRate(nextAudio) // 新轨道沿用当前播放速度
-
-  // 只要没有被手动暂停或停止，就尝试播放备用轨道
-  if (!props.paused && !props.stopped) {
-    try {
-      await nextAudio.play()
-    } catch (err) {
-      console.warn('由于浏览器策略，背景音乐自动播放被拦截:', err)
-      // 即使被拦截，也继续走淡入逻辑，等到有了用户交互它就会自动出声
-    }
-  }
-
-  fadeIntervalId = setInterval(() => {
-    let currentDone = false
-    let nextDone = false
-    const targetVol = props.volume / 100
-    // 动态步长，应对用户在渐变过程中拖动音量条
-    const dynStep = targetVol / (props.duration / FADE_INTERVAL)
-
-    // 旧音乐淡出
-    if (currentAudio.volume > 0) {
-      currentAudio.volume = Math.max(0, currentAudio.volume - dynStep)
-    } else {
-      currentDone = true
-    }
-
-    if (currentDone) {
-      // 新音乐淡入
-      if (nextAudio.volume < targetVol) {
-        nextAudio.volume = Math.min(targetVol, nextAudio.volume + dynStep)
-      } else {
-        nextDone = true
+  // 初始化
+  onMounted(() => {
+    window.addEventListener("lingchat:release-dlc-media", handleReleaseDlcMedia);
+    if (props.src && props.src !== "None" && audio1.value) {
+      audio1.value.src = props.src;
+      audio1.value.volume = props.volume / 100;
+      applyRate(audio1.value);
+      if (!props.paused && !props.stopped) {
+        audio1.value.play().catch((e) => console.warn("初始化播放失败:", e));
       }
     }
+  });
 
-    // 完成交接
-    if (currentDone && nextDone) {
-      releaseAudio(currentAudio)
-      activeIndex = activeIndex === 1 ? 2 : 1 // 切换主轨道身份
-      clearFade()
+  // 监听 URL 变化触发交叉淡入淡出
+  watch(
+    () => props.src,
+    (newUrl) => {
+      crossFadeTo(newUrl);
     }
-  }, FADE_INTERVAL)
-}
+  );
 
-// 初始化
-onMounted(() => {
-  window.addEventListener('lingchat:release-dlc-media', handleReleaseDlcMedia)
-  if (props.src && props.src !== 'None' && audio1.value) {
-    audio1.value.src = props.src
-    audio1.value.volume = props.volume / 100
-    applyRate(audio1.value)
-    if (!props.paused && !props.stopped) {
-      audio1.value.play().catch((e) => console.warn('初始化播放失败:', e))
+  // 监听音量变化
+  watch(
+    () => props.volume,
+    (newVol) => {
+      if (fadeIntervalId === null) {
+        const activeAudio = activeIndex === 1 ? audio1.value : audio2.value;
+        if (activeAudio) activeAudio.volume = newVol / 100;
+      }
     }
-  }
-})
+  );
 
-// 监听 URL 变化触发交叉淡入淡出
-watch(
-  () => props.src,
-  (newUrl) => {
-    crossFadeTo(newUrl)
-  },
-)
-
-// 监听音量变化
-watch(
-  () => props.volume,
-  (newVol) => {
-    if (fadeIntervalId === null) {
-      const activeAudio = activeIndex === 1 ? audio1.value : audio2.value
-      if (activeAudio) activeAudio.volume = newVol / 100
+  // 监听播放速度变化（剧本可在运行中调速）
+  watch(
+    () => props.rate,
+    () => {
+      const activeAudio = activeIndex === 1 ? audio1.value : audio2.value;
+      applyRate(activeAudio);
     }
-  },
-)
+  );
 
-// 监听播放速度变化（剧本可在运行中调速）
-watch(
-  () => props.rate,
-  () => {
-    const activeAudio = activeIndex === 1 ? audio1.value : audio2.value
-    applyRate(activeAudio)
-  },
-)
-
-// 监听暂停
-watch(
-  () => props.paused,
-  (isPaused) => {
-    const activeAudio = activeIndex === 1 ? audio1.value : audio2.value
-    if (!activeAudio) return
-    if (isPaused) {
-      activeAudio.pause()
-    } else if (!props.stopped && activeAudio.src) {
-      activeAudio.play().catch(() => {})
+  // 监听暂停
+  watch(
+    () => props.paused,
+    (isPaused) => {
+      const activeAudio = activeIndex === 1 ? audio1.value : audio2.value;
+      if (!activeAudio) return;
+      if (isPaused) {
+        activeAudio.pause();
+      } else if (!props.stopped && activeAudio.src) {
+        activeAudio.play().catch(() => {});
+      }
     }
-  },
-)
+  );
 
-// 监听停止
-watch(
-  () => props.stopped,
-  (isStopped) => {
-    const activeAudio = activeIndex === 1 ? audio1.value : audio2.value
-    if (!activeAudio) return
-    if (isStopped) {
-      activeAudio.pause()
-      activeAudio.currentTime = 0
-    } else if (!props.paused && activeAudio.src) {
-      activeAudio.play().catch(() => {})
+  // 监听停止
+  watch(
+    () => props.stopped,
+    (isStopped) => {
+      const activeAudio = activeIndex === 1 ? audio1.value : audio2.value;
+      if (!activeAudio) return;
+      if (isStopped) {
+        activeAudio.pause();
+        activeAudio.currentTime = 0;
+      } else if (!props.paused && activeAudio.src) {
+        activeAudio.play().catch(() => {});
+      }
     }
-  },
-)
+  );
 </script>

@@ -103,7 +103,7 @@ export default {
         5: "Meow? Meow~ Meow!",
         6: "uwa has a loli voice, just so you know",
         7: "An apple for seven mao? Delicious, yay!",
-        8: "\"Dabing-Jidan\" sounds delicious just from the name — AstroBot has him too!",
+        8: '"Dabing-Jidan" sounds delicious just from the name — AstroBot has him too!',
         9: "Meowbenmeow is studying drawing hard so she can become the project's overworked art slave...",
         10: "Qichen, the naughtiest one in the dev group, is currently running wild in the user group with his panties showing",
         11: "Qinling is hard at work rewriting the component code Youmengdangran left behind >A<",
@@ -141,4 +141,4 @@ export default {
       },
     },
   },
-}
+};

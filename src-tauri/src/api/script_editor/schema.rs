@@ -208,8 +208,7 @@ fn character_field() -> FieldSpec {
 }
 
 fn emotion_field() -> FieldSpec {
-    FieldSpec::new("emotion", "情绪", FieldKind::Emotion)
-        .hint("表外的值会回落成「正常」")
+    FieldSpec::new("emotion", "情绪", FieldKind::Emotion).hint("表外的值会回落成「正常」")
 }
 
 fn effect_options() -> Vec<String> {
@@ -754,9 +753,11 @@ pub fn build_schema() -> ScriptSchema {
         UnlockConditionSpec {
             type_key: "adventure_completed",
             label: "已完成某个羁绊冒险",
-            fields: vec![FieldSpec::new("adventure_folder", "剧本目录名", FieldKind::Text)
-                .required()
-                .hint("填目标剧本的目录名（不是显示名）")],
+            fields: vec![
+                FieldSpec::new("adventure_folder", "剧本目录名", FieldKind::Text)
+                    .required()
+                    .hint("填目标剧本的目录名（不是显示名）"),
+            ],
         },
         UnlockConditionSpec {
             type_key: "achievement_unlocked",

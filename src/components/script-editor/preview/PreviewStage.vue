@@ -11,14 +11,7 @@
       enter-from-class="opacity-0"
       leave-to-class="opacity-0"
     >
-      <div
-        v-if="store.previewing"
-        class="fixed
-          inset-0
-          z-[9990]
-          overflow-hidden
-          bg-black"
-      >
+      <div v-if="store.previewing" class="fixed inset-0 z-[9990] overflow-hidden bg-black">
         <!--
           `main-box` 是 MainChat 里的全局类（那个 <style> 没有 scoped），这里直接
           复用而不是另写一套。它是 `flex-direction: column; justify-content: flex-end`，
@@ -39,57 +32,28 @@
 
         <!-- 预览专属的顶栏，明确「这是试玩」而不是真在玩 -->
         <div
-          class="absolute
-            inset-x-0
-            top-0
-            z-[10000]
-            flex
-            items-center
-            gap-3
-            bg-[linear-gradient(180deg,rgba(0,0,0,0.55),transparent)]
-            px-4
-            py-2"
+          class="absolute inset-x-0 top-0 z-[10000] flex items-center gap-3
+            bg-[linear-gradient(180deg,rgba(0,0,0,0.55),transparent)] px-4 py-2"
         >
           <span
-            class="rounded-full
-              border
-              border-[rgba(121,217,255,0.5)]
-              bg-[rgba(121,217,255,0.15)]
-              px-2.5
-              py-0.5
-              text-[0.72rem]
-              font-semibold
-              text-[var(--accent-color)]"
-            >{{ t('scriptEditor.previewStage.playing') }}</span
+            class="rounded-full border border-[rgba(121,217,255,0.5)] bg-[rgba(121,217,255,0.15)]
+              px-2.5 py-0.5 text-[0.72rem] font-semibold text-[var(--accent-color)]"
+            >{{ t("scriptEditor.previewStage.playing") }}</span
           >
-          <span class="text-[0.78rem]
-            text-white
-            [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]">{{
+          <span class="text-[0.78rem] text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]">{{
             label
           }}</span>
-          <span class="text-[0.7rem]
-            text-white/[0.6]
-            [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]">{{
-            t('scriptEditor.previewStage.debugNotice')
+          <span class="text-[0.7rem] text-white/[0.6] [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]">{{
+            t("scriptEditor.previewStage.debugNotice")
           }}</span>
           <button
-            class="ml-auto
-              rounded-lg
-              border
-              border-[rgba(248,113,113,0.45)]
-              bg-[rgba(248,113,113,0.16)]
-              px-[14px]
-              py-[5px]
-              text-[0.76rem]
-              text-[#fca5a5]
-              backdrop-blur-[8px]
-              transition-all
-              hover:text-white
-              hover:bg-[rgba(248,113,113,0.32)]"
+            class="ml-auto rounded-lg border border-[rgba(248,113,113,0.45)]
+              bg-[rgba(248,113,113,0.16)] px-[14px] py-[5px] text-[0.76rem] text-[#fca5a5]
+              backdrop-blur-[8px] transition-all hover:bg-[rgba(248,113,113,0.32)] hover:text-white"
             title="Esc"
             @click="store.stopPreview()"
           >
-            {{ t('scriptEditor.previewStage.stop') }}
+            {{ t("scriptEditor.previewStage.stop") }}
           </button>
         </div>
       </div>
@@ -98,84 +62,84 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { GameBackground, GameDialog, GameRolesStage } from '@/components/game/standard'
-import GameExtraUI from '@/components/game/standard/GameExtraUI.vue'
-import StageBlackout from '@/components/game/standard/StageBlackout.vue'
-import { eventQueue } from '@/core/events/event-queue'
-import { useScriptEditorStore } from '@/stores/modules/script-editor'
-import { useGameStore } from '@/stores/modules/game'
+  import { computed, watch } from "vue";
+  import { useI18n } from "vue-i18n";
+  import { GameBackground, GameDialog, GameRolesStage } from "@/components/game/standard";
+  import GameExtraUI from "@/components/game/standard/GameExtraUI.vue";
+  import StageBlackout from "@/components/game/standard/StageBlackout.vue";
+  import { eventQueue } from "@/core/events/event-queue";
+  import { useScriptEditorStore } from "@/stores/modules/script-editor";
+  import { useGameStore } from "@/stores/modules/game";
 
-const { t } = useI18n()
-const store = useScriptEditorStore()
-const gameStore = useGameStore()
+  const { t } = useI18n();
+  const store = useScriptEditorStore();
+  const gameStore = useGameStore();
 
-const props = defineProps<{ fromChapter?: string }>()
+  const props = defineProps<{ fromChapter?: string }>();
 
-const label = computed(() => {
-  const parts = [store.detail?.package.scriptName ?? '']
-  if (props.fromChapter)
-    parts.push(t('scriptEditor.previewStage.fromChapter', { chapter: props.fromChapter }))
-  // 把 MAIN 解析成了谁直接写出来 —— 羁绊剧本里演错人是最难自己看出来的一类问题
-  const who = store.readiness?.mainRoleName
-  if (who) parts.push(`MAIN = ${who}`)
-  return parts.filter(Boolean).join(' · ')
-})
+  const label = computed(() => {
+    const parts = [store.detail?.package.scriptName ?? ""];
+    if (props.fromChapter)
+      parts.push(t("scriptEditor.previewStage.fromChapter", { chapter: props.fromChapter }));
+    // 把 MAIN 解析成了谁直接写出来 —— 羁绊剧本里演错人是最难自己看出来的一类问题
+    const who = store.readiness?.mainRoleName;
+    if (who) parts.push(`MAIN = ${who}`);
+    return parts.filter(Boolean).join(" · ");
+  });
 
-/**
- * 试玩进出场的状态备份/还原已迁入 script-editor store（capturePreviewGameState /
- * capturePreviewSceneState / restorePreviewState）：
- *
- * - 后端已经把 `GameStatus` 整个备份还原了（见 `PreviewSession`），但前端这份是
- *   独立的一套状态：立绘在场名单、对话历史、剧情模式标记都只存在于浏览器里，
- *   引擎 emit 的事件经 eventQueue 直接改它。不管的话，退出编辑器回自由对话，
- *   看到的还是试玩留下的立绘和台词 —— 包括「AI 已关闭」那几条占位。
- * - 场景渲染态（背景/BGM/特效等）在 uiStore + settingsStore（persist），不还原
- *   会跨试玩长期泄漏。
- * - 搭新场必须早于 `editor_start_preview` invoke（引擎在其中就 spawn 并 emit，
- *   晚于 invoke 的清场会丢 free_dialogue 等开头事件），所以由 startPreview 在
- *   invoke 前调用 store.preparePreviewState()；本组件只在退出时还原。
- */
+  /**
+   * 试玩进出场的状态备份/还原已迁入 script-editor store（capturePreviewGameState /
+   * capturePreviewSceneState / restorePreviewState）：
+   *
+   * - 后端已经把 `GameStatus` 整个备份还原了（见 `PreviewSession`），但前端这份是
+   *   独立的一套状态：立绘在场名单、对话历史、剧情模式标记都只存在于浏览器里，
+   *   引擎 emit 的事件经 eventQueue 直接改它。不管的话，退出编辑器回自由对话，
+   *   看到的还是试玩留下的立绘和台词 —— 包括「AI 已关闭」那几条占位。
+   * - 场景渲染态（背景/BGM/特效等）在 uiStore + settingsStore（persist），不还原
+   *   会跨试玩长期泄漏。
+   * - 搭新场必须早于 `editor_start_preview` invoke（引擎在其中就 spawn 并 emit，
+   *   晚于 invoke 的清场会丢 free_dialogue 等开头事件），所以由 startPreview 在
+   *   invoke 前调用 store.preparePreviewState()；本组件只在退出时还原。
+   */
 
-/**
- * eventQueue 初始是 paused 的 —— 正式游玩里由 LoadingTransition 完成时 resume。
- * 编辑器没有那道转场，所以在预览打开时自己放行；关闭时 clear()，它会同时
- * 清空队列并把 paused 置回 true，免得残留事件泄漏到下一次试玩。
- */
-watch(
-  () => store.previewing,
-  async (on) => {
-    if (on) {
-      // 搭场（快照/清队/清舞台/建 runningScript）已在 startPreview 中完成
+  /**
+   * eventQueue 初始是 paused 的 —— 正式游玩里由 LoadingTransition 完成时 resume。
+   * 编辑器没有那道转场，所以在预览打开时自己放行；关闭时 clear()，它会同时
+   * 清空队列并把 paused 置回 true，免得残留事件泄漏到下一次试玩。
+   */
+  watch(
+    () => store.previewing,
+    async (on) => {
+      if (on) {
+        // 搭场（快照/清队/清舞台/建 runningScript）已在 startPreview 中完成
 
-      // 注入主角身份：羁绊剧本的 MAIN 来自绑定角色卡。不设的话玩家气泡空名、
-      // 立绘也不会出现（issue #8）。readiness 已在试玩前算好 mainRoleId / userName。
-      const r = store.readiness
-      if (r?.mainRoleId != null) {
-        const id = r.mainRoleId
-        gameStore.mainRoleId = id
-        gameStore.currentInteractRoleId = id
-        gameStore.presentRoleIds = [id]
-        if (r.userName) gameStore.userName = r.userName
-        // 试玩中玩家副标题用玩家名作兜底，避免 player 事件的 displaySubtitle 为空时字幕丢失；
-        // 玩家名也为空时用「玩家」保底，保证字幕栏始终有内容
-        gameStore.userSubtitle =
-          r.userName || gameStore.userSubtitle || t('scriptEditor.previewStage.player')
-        // 预载主角的立绘/名字到 gameRoles，否则第一句台词前画面是空的
-        try {
-          await gameStore.getOrCreateGameRole(id)
-        } catch (e) {
-          console.warn('[ScriptEditor] 预载主角立绘失败:', e)
+        // 注入主角身份：羁绊剧本的 MAIN 来自绑定角色卡。不设的话玩家气泡空名、
+        // 立绘也不会出现（issue #8）。readiness 已在试玩前算好 mainRoleId / userName。
+        const r = store.readiness;
+        if (r?.mainRoleId != null) {
+          const id = r.mainRoleId;
+          gameStore.mainRoleId = id;
+          gameStore.currentInteractRoleId = id;
+          gameStore.presentRoleIds = [id];
+          if (r.userName) gameStore.userName = r.userName;
+          // 试玩中玩家副标题用玩家名作兜底，避免 player 事件的 displaySubtitle 为空时字幕丢失；
+          // 玩家名也为空时用「玩家」保底，保证字幕栏始终有内容
+          gameStore.userSubtitle =
+            r.userName || gameStore.userSubtitle || t("scriptEditor.previewStage.player");
+          // 预载主角的立绘/名字到 gameRoles，否则第一句台词前画面是空的
+          try {
+            await gameStore.getOrCreateGameRole(id);
+          } catch (e) {
+            console.warn("[ScriptEditor] 预载主角立绘失败:", e);
+          }
         }
-      }
 
-      eventQueue.resume()
-    } else {
-      // clear() 内部会把 paused 置回 true，所以不需要另外 pause
-      eventQueue.clear()
-      store.restorePreviewState()
+        eventQueue.resume();
+      } else {
+        // clear() 内部会把 paused 置回 true，所以不需要另外 pause
+        eventQueue.clear();
+        store.restorePreviewState();
+      }
     }
-  },
-)
+  );
 </script>
