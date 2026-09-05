@@ -129,6 +129,10 @@
     // 只有玩家自己放回 .chr（轮询自动解锁）或点窗口 X 放大脸退出两条路。
     // 实时查询而非读列表缓存：玩家可能刚在另一个窗口删完或放回文件。
     const ghostLock = await checkScriptGhostLock(script.script_name);
+    if (ghostLock.entry_error) {
+      await dialogStore.alert(ghostLock.entry_error, "剧本加载失败");
+      return;
+    }
     if (ghostLock.locked && ghostLock.asset_dir) {
       uiStore.openGhostLock(script.script_name, ghostLock.asset_dir);
       return;
@@ -156,7 +160,8 @@
       await startScript(script.script_name);
     } catch (error) {
       gameStore.exitStoryMode();
-      throw error;
+      await router.push("/");
+      await dialogStore.alert(String(error), "剧本加载失败");
     }
   };
 

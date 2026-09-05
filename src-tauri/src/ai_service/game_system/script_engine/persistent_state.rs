@@ -82,6 +82,47 @@ pub(crate) fn played_script_keys(data_dir: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Opt-in story ending gate. Reads one owner's saved boolean without advancing
+/// playthroughs, writing state or changing character files. Reset removes it.
+pub(crate) fn entry_error(
+    data_dir: &Path,
+    owner: &str,
+    settings: &Map<String, Value>,
+) -> Result<Option<String>> {
+    let Some(config) = settings.get("entry_error").and_then(Value::as_object) else {
+        return Ok(None);
+    };
+    let Some(variable) = config.get("variable").and_then(Value::as_str) else {
+        return Ok(None);
+    };
+    let declared = settings
+        .get("persistent_vars")
+        .and_then(Value::as_array)
+        .is_some_and(|keys| keys.iter().any(|key| key.as_str() == Some(variable)));
+    if !declared || variable.is_empty() {
+        return Ok(None);
+    }
+    let Some(message) = config.get("message").and_then(Value::as_str).map(str::trim) else {
+        return Ok(None);
+    };
+    if message.is_empty()
+        || message.chars().count() > 512
+        || message
+            .chars()
+            .any(|c| c.is_control() && !matches!(c, '\n' | '\t'))
+    {
+        return Ok(None);
+    }
+    let state = read_state(data_dir)?;
+    let locked = state
+        .scripts
+        .get(owner)
+        .and_then(|values| values.get(variable))
+        .and_then(Value::as_bool)
+        == Some(true);
+    Ok(locked.then(|| message.to_string()))
+}
+
 fn selected_values(script: &ScriptStatus, keys: &[String]) -> Map<String, Value> {
     keys.iter()
         .filter_map(|key| {
@@ -108,7 +149,7 @@ pub fn prepare_playthrough(script: &ScriptStatus, data_dir: &Path) -> ScriptStat
         Err(error) => {
             tracing::warn!("[ScriptState] {}；本次按首次进入运行且不覆盖原文件", error);
             None
-        }
+        },
     };
 
     if let Some(saved) = state
@@ -217,6 +258,92 @@ pub fn reset_playthrough(data_dir: &Path, path_key: &str) -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn entry_error_is_opt_in_owner_scoped_read_only_and_resettable() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "lingchat-entry-error-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let owner = "standalone/seventh";
+        let mut settings = serde_json::json!({
+            "persistent_vars": ["act4_done", "playthrough"],
+            "entry_error": {"variable": "act4_done", "message": "SCRIPT_CORRUPTED"}
+        })
+        .as_object()
+        .unwrap()
+        .clone();
+        assert_eq!(entry_error(&dir, owner, &settings).unwrap(), None);
+        assert!(!state_path(&dir).exists());
+        let mut state = RuntimeState::default();
+        state.scripts.insert(
+            owner.to_string(),
+            serde_json::json!({
+                "act4_done": true, "playthrough": 4
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        );
+        write_state(&dir, &state).unwrap();
+        let before = fs::read(state_path(&dir)).unwrap();
+        assert_eq!(
+            entry_error(&dir, owner, &settings).unwrap().as_deref(),
+            Some("SCRIPT_CORRUPTED")
+        );
+        assert_eq!(
+            entry_error(&dir, "standalone/other", &settings).unwrap(),
+            None
+        );
+        assert_eq!(before, fs::read(state_path(&dir)).unwrap());
+        assert_eq!(entry_error(&dir, owner, &Map::new()).unwrap(), None);
+        settings.insert(
+            "persistent_vars".to_string(),
+            serde_json::json!(["playthrough"]),
+        );
+        assert_eq!(entry_error(&dir, owner, &settings).unwrap(), None);
+        settings.insert(
+            "persistent_vars".to_string(),
+            serde_json::json!(["act4_done"]),
+        );
+        for value in [
+            Value::Bool(false),
+            Value::String("true".into()),
+            Value::Null,
+        ] {
+            state
+                .scripts
+                .get_mut(owner)
+                .unwrap()
+                .insert("act4_done".into(), value);
+            write_state(&dir, &state).unwrap();
+            assert_eq!(entry_error(&dir, owner, &settings).unwrap(), None);
+        }
+        state
+            .scripts
+            .get_mut(owner)
+            .unwrap()
+            .insert("act4_done".into(), Value::Bool(true));
+        write_state(&dir, &state).unwrap();
+        let valid_config = settings["entry_error"].clone();
+        for message in ["x".repeat(513), "bad\0message".into(), " ".into()] {
+            settings["entry_error"]["message"] = Value::String(message);
+            assert_eq!(entry_error(&dir, owner, &settings).unwrap(), None);
+        }
+        settings.insert("entry_error".into(), valid_config);
+        assert!(reset_playthrough(&dir, owner).unwrap());
+        assert_eq!(entry_error(&dir, owner, &settings).unwrap(), None);
+        fs::write(state_path(&dir), b"invalid JSON").unwrap();
+        assert!(entry_error(&dir, owner, &settings).is_err());
+        assert_eq!(fs::read(state_path(&dir)).unwrap(), b"invalid JSON");
+        fs::remove_file(state_path(&dir)).unwrap();
+        fs::remove_dir(dir).unwrap();
+    }
 
     #[test]
     fn detached_state_can_be_restored_after_failed_uninstall() {

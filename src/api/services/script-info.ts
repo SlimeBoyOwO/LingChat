@@ -88,6 +88,8 @@ export const resetScriptState = async (scriptName: string): Promise<boolean> => 
 
 export interface ScriptGhostLock {
   locked: boolean;
+  /** 剧情结束后的进入错误，重置该剧本记忆后解除。 */
+  entry_error?: string;
   /** 锁定中时为该剧本 Assets 目录绝对路径（convertFileSrc 加载素材用） */
   asset_dir?: string;
 }

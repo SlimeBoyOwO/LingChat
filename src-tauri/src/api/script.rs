@@ -78,6 +78,9 @@ pub struct ScriptMenuEffectResponse {
 #[serde(rename_all = "snake_case")]
 pub struct ScriptGhostLockResponse {
     pub locked: bool,
+    /// Optional story-authored terminal error; checked before any entry effects.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entry_error: Option<String>,
     /// 锁定中时为该剧本 Assets 目录的绝对路径，前端用 convertFileSrc 加载
     /// 幽灵立绘/音效；未锁定为 None。不含文件名校验——素材缺失时前端静默降级。
     pub asset_dir: Option<String>,
@@ -148,11 +151,25 @@ pub async fn check_script_ghost_lock(
     let service = app_state.ai_service.lock().await;
     let not_locked = || ScriptGhostLockResponse {
         locked: false,
+        entry_error: None,
         asset_dir: None,
     };
     let Some(script) = service.script_manager.all_scripts.get(&script_name) else {
         return not_locked();
     };
+    let entry_error = crate::ai_service::game_system::script_engine::persistent_state::entry_error(
+        &service.data_dir,
+        &script.path_key(),
+        &script.settings,
+    )
+    .unwrap_or_else(|error| Some(format!("无法读取剧本运行状态: {error}")));
+    if entry_error.is_some() {
+        return ScriptGhostLockResponse {
+            locked: false,
+            entry_error,
+            asset_dir: None,
+        };
+    }
     if !crate::ai_service::game_system::script_engine::events::menu_effect_event::script_markers_wiped(
         &service.data_dir,
         script,
@@ -161,6 +178,7 @@ pub async fn check_script_ghost_lock(
     }
     ScriptGhostLockResponse {
         locked: true,
+        entry_error: None,
         asset_dir: Some(
             script
                 .script_path
@@ -238,6 +256,18 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
             .get(&script_name)
             .ok_or_else(|| format!("剧本不存在: '{}'", script_name))?
             .clone();
+        // Enforce again for direct IPC callers and state changes after preflight.
+        // Reject before reserving a run, switching characters or opening windows.
+        if let Some(error) =
+            crate::ai_service::game_system::script_engine::persistent_state::entry_error(
+                &data_dir,
+                &script.path_key(),
+                &script.settings,
+            )
+            .map_err(|error| format!("无法读取剧本运行状态: {error}"))?
+        {
+            return Err(error);
+        }
         let game_status = service.game_status.clone();
         let config = service.config.clone();
         let is_running = service.script_manager.is_running.clone();
