@@ -17,19 +17,43 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use futures_util::StreamExt;
 use tauri::AppHandle;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, oneshot};
 
-use crate::ai_service::llm::{ChunkStream, LlmChunk};
+use crate::ai_service::llm::LlmChunk;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::processor::fix_ai_generated_text;
 
-/// 一个完整情绪段的投递项：(句子文本, 有序索引, 是否为最后一项)
-pub type SentenceItem = (String, usize, bool);
+/// Internal message-system stream protocol. Provider chunks remain unchanged;
+/// the tool loop adds `BeforeTools` only to establish an ordered presentation
+/// fence before a tool can perform side effects.
+pub enum PresentationChunk {
+    Chunk(LlmChunk),
+    BeforeTools(oneshot::Sender<bool>),
+}
+
+pub type PresentationStream =
+    std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<PresentationChunk>> + Send>>;
+
+/// Ordered work handed from producer to consumers. A fence consumes an index
+/// too, so the publisher can acknowledge it only after every preceding reply
+/// (including failed/None consumer results) has been handled.
+pub enum SentenceItem {
+    Reply(String, usize, bool),
+    BeforeTools {
+        index: usize,
+        ack: oneshot::Sender<bool>,
+    },
+}
+
+pub struct ProducerOutput {
+    pub accumulated: String,
+    pub sent_final: bool,
+}
 
 pub struct StreamProducer {
-    llm_stream: ChunkStream,
+    llm_stream: PresentationStream,
     tx: mpsc::Sender<SentenceItem>,
-    app: AppHandle,
+    app: Option<AppHandle>,
     /// 与 consumer 共享的思考链缓冲：本轮生成的完整思考文本。
     thinking_buf: Arc<Mutex<String>>,
     /// 工具闭环执行过工具后，暂存最后一条有效句子，直到能确定真正的收尾句。
@@ -38,7 +62,7 @@ pub struct StreamProducer {
 
 impl StreamProducer {
     pub fn new(
-        llm_stream: ChunkStream,
+        llm_stream: PresentationStream,
         tx: mpsc::Sender<SentenceItem>,
         app: AppHandle,
         thinking_buf: Arc<Mutex<String>>,
@@ -47,14 +71,29 @@ impl StreamProducer {
         Self {
             llm_stream,
             tx,
-            app,
+            app: Some(app),
             thinking_buf,
             tool_calls_seen,
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn without_app(
+        llm_stream: PresentationStream,
+        tx: mpsc::Sender<SentenceItem>,
+        tool_calls_seen: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            llm_stream,
+            tx,
+            app: None,
+            thinking_buf: Arc::new(Mutex::new(String::new())),
+            tool_calls_seen,
+        }
+    }
+
     /// 消耗整个 LLM 流；返回原始 accumulated_response（未拆分）。
-    pub async fn run(mut self) -> Result<String> {
+    pub async fn run(mut self) -> Result<ProducerOutput> {
         let mut accumulated = String::new();
         let mut realtime_buffer = String::new();
         let mut last_display = Instant::now();
@@ -68,11 +107,11 @@ impl StreamProducer {
         // 工具闭环开始后保留最后一条有效句子，流结束时再决定它是否为最终句。
         // 普通聊天没有工具调用，仍按原路径立即投递，不增加流式显示延迟。
         let mut pending_sentence: Option<String> = None;
+        let mut sent_final = false;
 
         while let Some(item) = self.llm_stream.next().await {
-            let chunk = item?;
-            match chunk {
-                LlmChunk::Content(text) => {
+            match item? {
+                PresentationChunk::Chunk(LlmChunk::Content(text)) => {
                     buffer.push_str(&text);
                     accumulated.push_str(&text);
                     realtime_buffer.push_str(&text);
@@ -169,7 +208,7 @@ impl StreamProducer {
                         }
                     }
                 },
-                LlmChunk::Reasoning(text) => {
+                PresentationChunk::Chunk(LlmChunk::Reasoning(text)) => {
                     // 思考链内容：累积进共享缓冲（供 consumer 挂载到台词行），
                     // 并实时统计字数通知前端，但不加入正式回复。
                     if !text.is_empty() {
@@ -183,17 +222,41 @@ impl StreamProducer {
                         }
                         let thinking_length = buf.chars().count();
                         drop(buf);
-                        events::emit_thinking_progress(&self.app, thinking_length);
+                        if let Some(app) = &self.app {
+                            events::emit_thinking_progress(app, thinking_length);
+                        }
                     }
                 },
-                LlmChunk::ToolCalls(_) => {
+                PresentationChunk::Chunk(LlmChunk::ToolCalls(_)) => {
                     return Err(anyhow::anyhow!("工具调用片段不应进入正式回复流"));
                 },
-                LlmChunk::ToolCallProgress { .. } => {
+                PresentationChunk::Chunk(LlmChunk::ToolCallProgress { .. }) => {
                     // 参数生成进度：不进正文，由 tool_loop 直接转发为前端事件
                 },
-                LlmChunk::StreamEnd { .. } => {
+                PresentationChunk::Chunk(LlmChunk::StreamEnd { .. }) => {
                     // 终止信号：主对话流忽略（截断检测仅供剧本导师等工具闭环消费）。
+                },
+                PresentationChunk::BeforeTools(ack) => {
+                    // A provider round can end immediately after a preamble,
+                    // before a following emotion tag would normally dispatch
+                    // it. Flush all pending display text as non-final through
+                    // the normal consumers, then insert an ordered publisher
+                    // fence. Never wait for UI/user acknowledgement here.
+                    if let Some(pending) = pending_sentence.take() {
+                        Self::send_sentence(&self.tx, pending, &mut sentence_index, false).await?;
+                    }
+                    let preamble = fix_ai_generated_text(&format!("{sentence}{buffer}"));
+                    sentence.clear();
+                    buffer.clear();
+                    if !preamble.is_empty() && !Self::is_duplicate(&mut seen_sentences, &preamble) {
+                        Self::send_sentence(&self.tx, preamble, &mut sentence_index, false).await?;
+                    }
+                    let index = sentence_index;
+                    sentence_index += 1;
+                    self.tx
+                        .send(SentenceItem::BeforeTools { index, ack })
+                        .await
+                        .map_err(|_| anyhow::anyhow!("sentence channel closed"))?;
                 },
             }
         }
@@ -221,25 +284,32 @@ impl StreamProducer {
                 if let Some(pending) = pending_sentence.take() {
                     tracing::info!("[dedupe] 丢弃末尾复读句子: {:.40}", final_content);
                     Self::send_sentence(&self.tx, pending, &mut sentence_index, true).await?;
+                    sent_final = true;
                 } else {
-                    // 理论上工具闭环启用暂存后不会走到这里；保留完成信号优先，
-                    // 避免异常格式导致前端永远停在等待状态。
-                    tracing::warn!("末尾句子重复但没有可提升为最终句的暂存内容");
-                    Self::send_sentence(&self.tx, final_content, &mut sentence_index, true).await?;
+                    // The preamble was already published before a tool. Do
+                    // not replay it as a fabricated result; the caller reports
+                    // missing final content through its normal error path.
+                    tracing::warn!("工具后仅返回已发布的重复内容，没有最终正文");
                 }
             } else if !final_content.is_empty() {
                 if let Some(pending) = pending_sentence.take() {
                     Self::send_sentence(&self.tx, pending, &mut sentence_index, false).await?;
                 }
                 Self::send_sentence(&self.tx, final_content, &mut sentence_index, true).await?;
+                sent_final = true;
             } else if let Some(pending) = pending_sentence.take() {
                 Self::send_sentence(&self.tx, pending, &mut sentence_index, true).await?;
+                sent_final = true;
             }
         } else if let Some(pending) = pending_sentence.take() {
             Self::send_sentence(&self.tx, pending, &mut sentence_index, true).await?;
+            sent_final = true;
         }
 
-        Ok(accumulated)
+        Ok(ProducerOutput {
+            accumulated,
+            sent_final,
+        })
     }
 
     async fn dispatch_sentence(
@@ -276,7 +346,7 @@ impl StreamProducer {
     ) -> Result<()> {
         let idx = *sentence_index;
         *sentence_index += 1;
-        tx.send((sentence, idx, is_final))
+        tx.send(SentenceItem::Reply(sentence, idx, is_final))
             .await
             .map_err(|_| anyhow::anyhow!("sentence channel closed"))?;
         Ok(())

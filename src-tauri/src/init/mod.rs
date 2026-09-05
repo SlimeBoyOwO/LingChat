@@ -14,12 +14,12 @@ use tokio::sync::Mutex;
 
 use crate::ChatComponents;
 use crate::ai_service::emotion::EmotionClassifier;
-use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::llm::provider_config::{
     build_llm_client_from_provider, migrate_if_needed, migrate_legacy_vision_keys,
     resolve_chat_provider, resolve_translate_provider,
 };
+use crate::ai_service::memory::MemorySectionLimits;
 use crate::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
 use crate::ai_service::service::{AIService, SharedAIService};
 use crate::ai_service::translator::Translator;

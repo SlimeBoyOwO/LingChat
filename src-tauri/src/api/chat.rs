@@ -4,6 +4,7 @@ use regex::Regex;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::AppState;
+use crate::ai_service::game_system::game_status::HistorySession;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
@@ -34,6 +35,22 @@ pub async fn send_chat_message(
     }
 
     let state = app.state::<AppState>();
+    let game_status = {
+        let svc = state.ai_service.lock().await;
+        svc.game_status.clone()
+    };
+
+    // Capture the exact canonical-history identity before any setup or
+    // screenshot-analysis await. A preview enter+restore changes generation
+    // even though mode ends Normal again, so mode alone is insufficient.
+    let (user_name, request_session) = {
+        let gs = game_status.lock().await;
+        let session = gs.history_session();
+        if session.is_preview {
+            return Err("试玩期间不能发送正式聊天消息".to_string());
+        }
+        (gs.player.user_name.clone(), session)
+    };
 
     let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm)
         .await
@@ -44,14 +61,13 @@ pub async fn send_chat_message(
         .unwrap_or(1)
         .max(1);
 
-    let game_status = {
-        let svc = state.ai_service.lock().await;
-        svc.game_status.clone()
-    };
-
-    let user_name = game_status.lock().await.player.user_name.clone();
-    // 捕获当前试玩代号（自由对话恒等，行为不变）
-    let preview_generation = game_status.lock().await.preview_generation;
+    if !game_status
+        .lock()
+        .await
+        .is_history_session_current(request_session)
+    {
+        return Err("聊天准备期间对话会话已切换，已丢弃本次请求".to_string());
+    }
 
     // 发送思考事件
     events::emit_thinking(&app, true);
@@ -71,17 +87,22 @@ pub async fn send_chat_message(
 
             if let Some(narration) = analysis {
                 let mut gs = game_status.lock().await;
-                gs.add_line(
-                    &state.db,
-                    LineBase {
-                        content: PromptRole::Narrator.build_prompt(&narration),
-                        attribute: LineAttributeExt(LineAttribute::User),
-                        display_name: Some("旁白".to_string()),
-                        ..Default::default()
-                    },
-                )
-                .await
-                .map_err(|e| format!("添加旁白台词失败: {}", e))?;
+                let accepted = gs
+                    .append_line_if_current(
+                        &state.db,
+                        request_session,
+                        LineBase {
+                            content: PromptRole::Narrator.build_prompt(&narration),
+                            attribute: LineAttributeExt(LineAttribute::User),
+                            display_name: Some("旁白".to_string()),
+                            ..Default::default()
+                        },
+                    )
+                    .await
+                    .map_err(|e| format!("添加旁白台词失败: {}", e))?;
+                if !accepted {
+                    return Err("截图分析期间对话会话已切换，已丢弃本次请求".to_string());
+                }
                 tracing::info!("[Chat] Screenshot analysis narration added to game_status.");
             }
         }
@@ -99,8 +120,7 @@ pub async fn send_chat_message(
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: false,
-        generation: preview_generation,
-        is_preview: false,
+        session: request_session,
     };
 
     // Notify proactive system of user input
@@ -257,49 +277,20 @@ pub async fn rollback_conversation(
     message_seq: u32,
 ) -> Result<Vec<GameLineInit>, String> {
     let state = app.state::<AppState>();
-    let db = state.db.clone();
-
     // 串行化：等待正在进行的消息生成完成再截断
     let gen_lock = state.generation_lock.clone();
     let _lock = gen_lock.lock().await;
 
-    let remaining = {
-        let svc = state.ai_service.lock().await;
-        let mut gs = svc.game_status.lock().await;
-
-        // 按序号定位第 N 条玩家消息（1-indexed）
-        let mut count = 0u32;
-        let idx = gs
-            .line_list
-            .iter()
-            .position(|line| {
-                if line.base.sender_role_id == Some(0)
-                    && matches!(line.attribute(), LineAttribute::User)
-                {
-                    count += 1;
-                    count == message_seq
-                } else {
-                    false
-                }
-            })
-            .ok_or_else(|| format!("未找到序号为 {} 的用户消息", message_seq))?;
-
-        // truncate(idx) 移除 idx..len（含目标消息及之后所有内容）
-        gs.role_manager.invalidate_memory_history();
-        gs.line_list.truncate(idx);
-        gs.refresh_memories(&db)
-            .await
-            .map_err(|e| format!("刷新记忆失败: {}", e))?;
-
-        // 若存在活跃存档，同步截断到 DB
-        if let Some(save_id) = gs.active_save_id {
-            SaveRepo::sync_lines(&db, save_id, &gs.line_list)
-                .await
-                .map_err(|e| format!("同步存档失败: {}", e))?;
-        }
-
-        gs.line_list.clone()
-    }; // 释放锁
+    // The service facade releases GameStatus before it captures and writes the
+    // immutable active-save snapshot. Saving lines alone would resurrect an old
+    // MemoryBank after crash/reload, so do not duplicate that partial path here.
+    let remaining = state
+        .ai_service
+        .lock()
+        .await
+        .rollback_conversation(message_seq)
+        .await
+        .map_err(|e| format!("回溯会话失败: {}", e))?;
 
     // 转换为前端格式（带序号）
     let seqs = compute_user_message_seqs(&remaining);
@@ -358,6 +349,16 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
     // 串行化：等待正在进行的消息生成完成，避免与生成流程争抢 TTS
     let gen_lock = state.generation_lock.clone();
     let _lock = gen_lock.lock().await;
+    // Voice generation mutates a line and may directly sync it to the active
+    // formal save. Keep the common gate for the whole operation so preview
+    // cannot begin after a stale check but before that sync.
+    let _formal_gate = {
+        let service = state.ai_service.lock().await;
+        service
+            .acquire_formal_session_gate()
+            .await
+            .map_err(|error| error.to_string())?
+    };
 
     // ===== 预热（先于生成，保证配好 TTS 后第一次点击就能成功） =====
     // 1. 本地 TTS 引擎：未就绪且 DeBERTa 已安装时初始化（秒级 ONNX 加载，
@@ -486,7 +487,8 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
 
         gs.line_list[idx].base.audio_file = Some(file_name.clone());
 
-        // 6. 存在活跃存档时同步到 DB，保证重启后仍可播放
+        // 6. The command owns the common formal-session gate from entry until
+        // here, so this direct sync cannot race PreviewSession::begin.
         if let Some(save_id) = gs.active_save_id {
             SaveRepo::sync_lines(&db, save_id, &gs.line_list)
                 .await
@@ -501,8 +503,44 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
     Ok(file_name)
 }
 
-//拉起AI回复（无用户输入，直接触发对话）
+/// Capture a new formal request's canonical-history identity. Async chains
+/// that already captured an identity must call `trigger_ai_response_for_session`
+/// instead, never recapture here after their await boundary.
+async fn capture_formal_history_session(
+    game_status: &std::sync::Arc<
+        tokio::sync::Mutex<crate::ai_service::game_system::game_status::GameStatus>,
+    >,
+) -> Result<HistorySession, String> {
+    let status = game_status.lock().await;
+    let session = status.history_session();
+    if session.is_preview {
+        return Err("试玩期间不能触发正式 AI 回复".to_string());
+    }
+    Ok(session)
+}
+
+// 拉起新的 AI 回复请求（无用户输入，直接触发对话）。 This is the only
+// entry point permitted to capture a fresh HistorySession identity.
 pub async fn trigger_ai_response(app: AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let game_status = {
+        let svc = state.ai_service.lock().await;
+        svc.game_status.clone()
+    };
+    let request_session = capture_formal_history_session(&game_status).await?;
+    trigger_ai_response_for_session(app, game_status, request_session).await
+}
+
+/// Continue an existing formal request with its original canonical-history
+/// identity. The identity is rechecked after all setup awaits and before any
+/// generator task can be admitted; this function must not recapture it.
+async fn trigger_ai_response_for_session(
+    app: AppHandle,
+    game_status: std::sync::Arc<
+        tokio::sync::Mutex<crate::ai_service::game_system::game_status::GameStatus>,
+    >,
+    request_session: HistorySession,
+) -> Result<(), String> {
     let state = app.state::<AppState>();
     let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm)
         .await
@@ -511,17 +549,20 @@ pub async fn trigger_ai_response(app: AppHandle) -> Result<(), String> {
         .map(|c| c.consumers as usize)
         .unwrap_or(1)
         .max(1);
-    let gs = {
-        let svc = state.ai_service.lock().await;
-        svc.game_status.clone()
-    };
-    // 捕获当前试玩代号（自由对话恒等，行为不变）
-    let preview_generation = gs.lock().await.preview_generation;
+    // `slot_snapshot` awaits. Check the captured identity atomically under the
+    // same GameStatus mutex before launching an LLM/tool/memory pipeline.
+    if !game_status
+        .lock()
+        .await
+        .is_history_session_current(request_session)
+    {
+        return Err("对话会话已切换，已丢弃本次请求".to_string());
+    }
     let deps = GeneratorDeps {
         source: GeneratorSource::Proactive,
         app: app.clone(),
         db: state.db.clone(),
-        game_status: gs,
+        game_status,
         processor: state.chat.processor.clone(),
         translator: state.chat.translator.clone(),
         llm,
@@ -529,8 +570,7 @@ pub async fn trigger_ai_response(app: AppHandle) -> Result<(), String> {
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: false,
-        generation: preview_generation,
-        is_preview: false,
+        session: request_session,
     };
     let gen_lock = state.generation_lock.clone();
     tokio::spawn(async move {
@@ -546,10 +586,17 @@ pub async fn trigger_ai_response(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn feed_image(app: AppHandle, path: String) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let (user_name, game_status) = {
+    let game_status = {
         let svc = state.ai_service.lock().await;
-        let gs = svc.game_status.lock().await;
-        (gs.player.user_name.clone(), svc.game_status.clone())
+        svc.game_status.clone()
+    };
+    let (user_name, request_session) = {
+        let gs = game_status.lock().await;
+        let request_session = gs.history_session();
+        if request_session.is_preview {
+            return Err("试玩期间不能投喂正式图片".to_string());
+        }
+        (gs.player.user_name.clone(), request_session)
     };
 
     tracing::info!("[FileFeed] 收到图片投喂");
@@ -564,10 +611,23 @@ pub async fn feed_image(app: AppHandle, path: String) -> Result<(), String> {
         sa.analyze_image_file(&path, &prompt).await
     };
 
-    if let Some(narration) = analysis {
-        let mut gs = game_status.lock().await;
-        gs.add_line(
+    // The analysis may return no narration, but it was still an await
+    // boundary. Recheck the original identity atomically before deciding
+    // whether to append or start any downstream work.
+    let mut gs = game_status.lock().await;
+    if !gs.is_history_session_current(request_session) {
+        events::emit_thinking(&app, false);
+        return Err("图片分析期间对话会话已切换，已丢弃本次请求".to_string());
+    }
+    let Some(narration) = analysis else {
+        events::emit_thinking(&app, false);
+        tracing::warn!("[FileFeed] 图片分析未返回内容，终止本次投喂请求");
+        return Ok(());
+    };
+    let accepted = gs
+        .append_line_if_current(
             &state.db,
+            request_session,
             LineBase {
                 content: PromptRole::Narrator.build_prompt(&narration),
                 attribute: LineAttributeExt(LineAttribute::User),
@@ -577,31 +637,36 @@ pub async fn feed_image(app: AppHandle, path: String) -> Result<(), String> {
         )
         .await
         .map_err(|e| format!("添加旁白台词失败: {}", e))?;
-        tracing::info!("[FileFeed] 图片分析已注入上下文: {}", path);
+    if !accepted {
+        events::emit_thinking(&app, false);
+        return Err("图片分析期间对话会话已切换，已丢弃本次请求".to_string());
     }
+    drop(gs);
+    tracing::info!("[FileFeed] 图片分析已注入上下文: {}", path);
 
     events::emit_thinking(&app, false);
-    let _ = trigger_ai_response(app).await;
-
-    Ok(())
+    trigger_ai_response_for_session(app, game_status, request_session).await
 }
 
 #[tauri::command]
 pub async fn feed_text(app: AppHandle, text: String) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let (user_name, game_status, ai_name) = {
+    let game_status = {
         let svc = state.ai_service.lock().await;
-        let gs = svc.game_status.lock().await;
+        svc.game_status.clone()
+    };
+    let (user_name, request_session, ai_name) = {
+        let gs = game_status.lock().await;
+        let request_session = gs.history_session();
+        if request_session.is_preview {
+            return Err("试玩期间不能投喂正式文本".to_string());
+        }
         let ai_name = gs
             .current_role_id
             .and_then(|id| gs.role_manager.get_loaded(id))
             .and_then(|r| r.display_name.clone())
             .unwrap_or_else(|| "AI".to_string());
-        (
-            gs.player.user_name.clone(),
-            svc.game_status.clone(),
-            ai_name,
-        )
+        (gs.player.user_name.clone(), request_session, ai_name)
     };
 
     tracing::info!("[FileFeed] 收到文本投喂");
@@ -621,20 +686,24 @@ pub async fn feed_text(app: AppHandle, text: String) -> Result<(), String> {
     );
 
     let mut gs = game_status.lock().await;
-    gs.add_line(
-        &state.db,
-        LineBase {
-            content: PromptRole::Narrator.build_prompt(&prompt),
-            attribute: LineAttributeExt(LineAttribute::User),
-            display_name: Some("旁白".to_string()),
-            ..Default::default()
-        },
-    )
-    .await
-    .map_err(|e| format!("添加投喂文本台词失败: {}", e))?;
+    let accepted = gs
+        .append_line_if_current(
+            &state.db,
+            request_session,
+            LineBase {
+                content: PromptRole::Narrator.build_prompt(&prompt),
+                attribute: LineAttributeExt(LineAttribute::User),
+                display_name: Some("旁白".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| format!("添加投喂文本台词失败: {}", e))?;
+    if !accepted {
+        return Err("文本投喂期间对话会话已切换，已丢弃本次请求".to_string());
+    }
+    drop(gs);
     tracing::info!("[FileFeed] 文本投喂已注入上下文, 长度: {}", truncated.len());
 
-    let _ = trigger_ai_response(app).await;
-
-    Ok(())
+    trigger_ai_response_for_session(app, game_status, request_session).await
 }

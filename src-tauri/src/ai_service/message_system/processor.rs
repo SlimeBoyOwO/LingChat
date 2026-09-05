@@ -313,10 +313,9 @@ impl MessageProcessor {
         if !user_instruction_part.is_empty() {
             system_parts.push(user_instruction_part.clone());
         }
-        if !temp_instruction_part.is_empty() {
-            system_parts.push(temp_instruction_part.clone());
-        }
-
+        // Temporary instructions are returned separately and injected only into
+        // the current LLM context by MessageGenerator. They must not enter the
+        // canonical line history or MemoryBank compression input.
         if !system_parts.is_empty() {
             let prefix = if sys_flag { "系统提醒: " } else { "" };
             processed_message.push_str(&format!("\n{{{}{}}}", prefix, system_parts.join(" ")));

@@ -1,0 +1,7 @@
+{
+  "scenario": "panic-compression",
+  "role_id": 7,
+  "line_count": 4,
+  "update_interval": 1,
+  "panic_section": "promises"
+}

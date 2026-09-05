@@ -9,6 +9,7 @@ import { useGameStore } from "../stores/modules/game";
 import { i18n } from "@/locales";
 import { useScriptEditorStore } from "../stores/modules/script-editor";
 import {
+  afterToolPresentation,
   clearToolCallPreparing,
   handleToolActivity,
   handleToolCallProgress,
@@ -24,7 +25,7 @@ import type { SceneInfo } from "./services/scene";
 
 function asEvent(
   payload: unknown,
-  defaults: { type: string; defaultDuration: number; isFinal?: boolean }
+  defaults: { type: string; defaultDuration: number; isFinal?: boolean },
 ): ScriptEventType {
   const p = payload as Record<string, unknown>;
   // 优先用引擎从 YAML 读到的 duration；没写才用各事件类型的默认值。
@@ -61,8 +62,13 @@ export function initializeTauriEventListeners() {
 
   listen("ai:reply", (event) => {
     const payload = event.payload as Record<string, unknown>;
-    // 试玩中止后迟到的流式回复：直接丢弃，不放进事件队列
-    if (isStalePreviewReply(payload)) return;
+    // 试玩中止后迟到的流式回复：直接丢弃，不放进事件队列。
+    // Release a pending tool-activity presentation frontier as cancelled so
+    // stale preview activity is never resurrected later.
+    if (isStalePreviewReply(payload)) {
+      eventQueue.discardReplyPresentation();
+      return;
+    }
     console.log("[Tauri] ai:reply", event.payload);
     eventQueue.addEvent(asEvent(payload, { type: "reply", defaultDuration: -1 }));
   });
@@ -112,6 +118,7 @@ export function initializeTauriEventListeners() {
   // 工具调用结果：记入「工具调用」页面历史 + 左上角弹通知
   listen("ai:tool_call", (event) => {
     const payload = event.payload as {
+      call_id?: string;
       tool: string;
       ok: boolean;
       summary: string;
@@ -119,29 +126,31 @@ export function initializeTauriEventListeners() {
       arguments: string;
       result: string;
     };
-    pushToolCallRecord({
-      ...payload,
-      time: new Date().toLocaleTimeString(),
+    afterToolPresentation(payload.call_id, () => {
+      pushToolCallRecord({
+        ...payload,
+        time: new Date().toLocaleTimeString(),
+      });
+      const toolLabel = toolDisplayName(payload.tool);
+      const uiStore = useUIStore();
+      if (payload.ok) {
+        uiStore.showNotification({
+          type: "success",
+          title: i18n.global.t("ui.toolCalls.callSuccess"),
+          message: `${toolLabel}：${payload.summary}`,
+          duration: 3000,
+          skipTipsCheck: true,
+        });
+      } else {
+        uiStore.showNotification({
+          type: "warning",
+          title: i18n.global.t("ui.toolCalls.callFailed"),
+          message: payload.error || toolLabel,
+          duration: 4000,
+          skipTipsCheck: true,
+        });
+      }
     });
-    const toolLabel = toolDisplayName(payload.tool);
-    const uiStore = useUIStore();
-    if (payload.ok) {
-      uiStore.showNotification({
-        type: "success",
-        title: i18n.global.t("ui.toolCalls.callSuccess"),
-        message: `${toolLabel}：${payload.summary}`,
-        duration: 3000,
-        skipTipsCheck: true,
-      });
-    } else {
-      uiStore.showNotification({
-        type: "warning",
-        title: i18n.global.t("ui.toolCalls.callFailed"),
-        message: payload.error || toolLabel,
-        duration: 4000,
-        skipTipsCheck: true,
-      });
-    }
   });
 
   // 审批框只在主窗口挂载；独立日志窗口等不能消费审批事件。
@@ -161,7 +170,7 @@ export function initializeTauriEventListeners() {
       }) + (payload.uac ? `\n\n${i18n.global.t("ui.toolCalls.approvalUac")}` : "");
     const approved = await dialogStore.confirm(
       message,
-      i18n.global.t("ui.toolCalls.approvalTitle")
+      i18n.global.t("ui.toolCalls.approvalTitle"),
     );
     try {
       await invoke("resolve_command_approval", { requestId: payload.request_id, approved });
@@ -186,7 +195,7 @@ export function initializeTauriEventListeners() {
       }) + (payload.uac ? `\n\n${i18n.global.t("ui.toolCalls.approvalUac")}` : "");
     const approved = await dialogStore.confirm(
       message,
-      i18n.global.t("ui.toolCalls.commandDeleteApprovalTitle")
+      i18n.global.t("ui.toolCalls.commandDeleteApprovalTitle"),
     );
     try {
       await invoke("resolve_file_delete_approval", {
@@ -211,7 +220,7 @@ export function initializeTauriEventListeners() {
         action: i18n.global.t(`ui.toolCalls.fileChangeActions.${payload.operation}`),
         path: payload.path,
       }),
-      i18n.global.t("ui.toolCalls.fileChangeApprovalTitle")
+      i18n.global.t("ui.toolCalls.fileChangeApprovalTitle"),
     );
     try {
       await invoke("resolve_file_change_approval", {
@@ -232,7 +241,7 @@ export function initializeTauriEventListeners() {
     const dialogStore = useDialogStore();
     const approved = await dialogStore.confirm(
       i18n.global.t("ui.toolCalls.fileDeleteApprovalMessage", { path: payload.path }),
-      i18n.global.t("ui.toolCalls.fileDeleteApprovalTitle")
+      i18n.global.t("ui.toolCalls.fileDeleteApprovalTitle"),
     );
     try {
       await invoke("resolve_file_delete_approval", {
@@ -264,7 +273,7 @@ export function initializeTauriEventListeners() {
           orphanFiles: payload.orphanFiles ?? 0,
           orphanSize: payload.orphanSize ?? 0,
           timestamp: Date.now(),
-        })
+        }),
       );
     } catch (e) {
       console.warn("[Tauri] 保存 tts:cleanup 状态到 localStorage 失败:", e);
@@ -395,7 +404,7 @@ export function initializeTauriEventListeners() {
   listen("script:end", (event) => {
     console.log("[Tauri] script:end", event.payload);
     eventQueue.addEvent(
-      asEvent(event.payload, { type: "script_end", defaultDuration: 0, isFinal: true })
+      asEvent(event.payload, { type: "script_end", defaultDuration: 0, isFinal: true }),
     );
   });
 
@@ -435,7 +444,7 @@ export function initializeTauriEventListeners() {
   });
 
   console.log(
-    "[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 13 script events + character:switch + scene:switch)"
+    "[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 13 script events + character:switch + scene:switch)",
   );
 }
 
@@ -481,6 +490,6 @@ export function initializeCastWindowListeners() {
   });
 
   console.log(
-    "[Tauri] Cast window listeners initialized (scene:switch + character:switch + cast:mic:recognized)"
+    "[Tauri] Cast window listeners initialized (scene:switch + character:switch + cast:mic:recognized)",
   );
 }

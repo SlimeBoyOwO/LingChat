@@ -1517,13 +1517,19 @@ pub async fn editor_start_preview(
 /// 所以现在的做法是：**进来时整体备份、按新会话搭好场子、走的时候整体还原**。
 /// 试玩期间引擎爱怎么改怎么改，出去之后玩家的会话一个字节都没变。
 pub struct PreviewSession {
-    /// 试玩开始时台词表的长度。引擎只往后追加，截回这个长度即可
-    line_len: usize,
+    /// Exact canonical history from before preview. Preview gets a distinct
+    /// empty history rather than appending to this one, and restoration writes
+    /// these lines back unchanged even if an event inserted/reordered lines.
+    lines: Vec<crate::ai_service::types::GameLine>,
     /// 本场试玩的会话代号（GameStatus.preview_generation 递增后的值）。
     /// 还原时再次递增，让上一场游离生成任务捕获的旧代号立即过期。
     generation: u64,
     /// `to_snapshot()` 覆盖的场景状态：背景 / 音乐 / 特效 / 在场角色 / 全局变量 …
     scene: crate::ai_service::game_system::game_status::GameStatusSnapshot,
+    /// Role/resource identities that existed before preview. This intentionally
+    /// records only identities, not cloned `GameRole` or MemoryBank data: those
+    /// formal objects must retain their original runtime/bank/revision.
+    formal_role_resource_ids: HashSet<i32>,
     /// 快照没覆盖的三个字段
     main_role_id: Option<i32>,
     current_role_id: Option<i32>,
@@ -1536,7 +1542,7 @@ pub struct PreviewSession {
 }
 
 impl PreviewSession {
-    async fn begin(
+    pub(crate) async fn begin(
         db: &DatabaseConnection,
         data_dir: &Path,
         game_status: &Arc<Mutex<GameStatus>>,
@@ -1545,15 +1551,25 @@ impl PreviewSession {
         // 先确定 MAIN 是谁 —— 定不下来就别开场，免得作者对着不动的画面猜
         let main_id = resolve_preview_main_role(db, game_status, script).await?;
 
+        // Serialize entering preview against every formal save/load/delete.
+        // Acquire this async gate before GameStatus; no ordinary synchronous
+        // runtime lock is held across awaits or DB/file work.
+        let preview_gate = game_status.lock().await.preview_session_gate();
+        let _preview_gate = preview_gate.lock_owned().await;
         let mut gs = game_status.lock().await;
+        // Preview never starts permanent-memory compression. This transition
+        // invalidates any admitted normal-session job before publishing Preview
+        // mode, so no preview history mutation can commit to the formal bank.
+        gs.role_manager.set_memory_preview(true);
         // 递增试玩代号：本场次的生成管线捕获新代号；上一场被中止后仍在排空的
         // 游离流式任务持有旧代号，此后写入会被 add_assistant_line 的守卫丢弃。
         gs.preview_generation = gs.preview_generation.wrapping_add(1);
         let generation = gs.preview_generation;
         let saved = PreviewSession {
-            line_len: gs.line_list.len(),
+            lines: gs.line_list.clone(),
             generation,
             scene: gs.to_snapshot(),
+            formal_role_resource_ids: gs.role_manager.role_resource_ids(),
             main_role_id: gs.main_role_id,
             current_role_id: gs.current_role_id,
             script_status: gs.script_status.clone().map(Box::new),
@@ -1565,15 +1581,19 @@ impl PreviewSession {
         // 失败时把已拍快照套回去再报错：否则试玩启动失败也会把自由对话的
         // 在场角色/台词表留在被清空的状态。
         if let Err(e) = gs.get_role(db, main_id).await {
-            gs.role_manager.invalidate_memory_history();
-            gs.line_list.truncate(saved.line_len);
-            gs.apply_snapshot(&saved.scene);
-            gs.main_role_id = saved.main_role_id;
-            gs.current_role_id = saved.current_role_id;
-            gs.script_status = saved.script_status.map(|b| *b);
-            gs.player.user_name = saved.user_name.clone();
-            gs.player.user_subtitle = saved.user_subtitle.clone();
+            let detached = Self::rollback_failed_begin(&mut gs, db, &saved).await;
+            drop(gs);
+            Self::recycle_detached_role_runtimes(detached).await;
             return Err(format!("载入主角失败: {}", e));
+        }
+        // Replace—not truncate—the canonical history. A clean preview context
+        // must not inherit the player's old dialogue, and every loaded role was
+        // rebuilt above through the Preview-mode Restore path.
+        if let Err(e) = gs.replace_preview_history(db, Vec::new()).await {
+            let detached = Self::rollback_failed_begin(&mut gs, db, &saved).await;
+            drop(gs);
+            Self::recycle_detached_role_runtimes(detached).await;
+            return Err(format!("初始化试玩历史失败: {e}"));
         }
         gs.main_role_id = Some(main_id);
         gs.current_role_id = Some(main_id);
@@ -1584,7 +1604,7 @@ impl PreviewSession {
         gs.onstage_role(main_id); // 不做这步立绘不会出现
         // 玩家名（绑定角色卡里的 settings.user_name）。缺了它 %player% 替换为空、
         // 前端玩家气泡也会显示空名（issue #8）。读不到就保持原值，不阻断试玩。
-        let uname = user_name_of(db, main_id).await;
+        let uname = user_name_of(db, data_dir, main_id).await;
         if !uname.is_empty() {
             gs.player.user_name = uname;
         }
@@ -1616,26 +1636,73 @@ impl PreviewSession {
         Ok(saved)
     }
 
+    /// Undo a partially entered preview. This deliberately follows the normal
+    /// restore order: restore canonical history while still in Preview mode,
+    /// restore scene/script references, then detach preview-only role resources
+    /// and join their owned memory tasks. Thus neither a temporary role's
+    /// default runtime nor a dangling scene reference can reach a formal save.
+    async fn rollback_failed_begin(
+        gs: &mut GameStatus,
+        db: &DatabaseConnection,
+        saved: &PreviewSession,
+    ) -> Vec<crate::ai_service::memory::PersistentMemorySystem> {
+        if let Err(err) = gs.restore_preview_history(db, saved.lines.clone()).await {
+            tracing::warn!("[ScriptEditor] 试玩启动失败后还原历史失败: {err}");
+        }
+        gs.apply_snapshot(&saved.scene);
+        gs.main_role_id = saved.main_role_id;
+        gs.current_role_id = saved.current_role_id;
+        gs.script_status = saved.script_status.clone().map(|script| *script);
+        gs.player.user_name = saved.user_name.clone();
+        gs.player.user_subtitle = saved.user_subtitle.clone();
+        // Detach synchronously while GameStatus is protected. Joining a
+        // Running compaction here used to await while this lock was held; its
+        // completion path needs RoleMemoryState and could deadlock shutdown.
+        gs.role_manager
+            .detach_role_resources(&saved.formal_role_resource_ids)
+    }
+
+    async fn recycle_detached_role_runtimes(
+        runtimes: Vec<crate::ai_service::memory::PersistentMemorySystem>,
+    ) {
+        for runtime in runtimes {
+            runtime.abort_and_wait().await;
+        }
+    }
+
     /// 尽力还原，任何一步失败都只记日志 —— 收尾阶段再抛错没有接收方，
     /// 而且半途放弃只会让残留更多。
-    async fn restore(self, db: &DatabaseConnection, game_status: &Arc<Mutex<GameStatus>>) {
+    pub(crate) async fn restore(
+        self,
+        db: &DatabaseConnection,
+        game_status: &Arc<Mutex<GameStatus>>,
+    ) {
+        // Exiting preview shares the same gate as formal side effects. A save
+        // that began first is allowed to finish against its immutable normal
+        // snapshot; one that begins after this transition sees Normal mode.
+        let preview_gate = game_status.lock().await.preview_session_gate();
+        let _preview_gate = preview_gate.lock_owned().await;
         let mut gs = game_status.lock().await;
         // 递增试玩代号：让上一场被中止后仍在排空的游离流式任务捕获的旧代号
         // 立即过期，它们的迟到写入会被 add_assistant_line 的守卫丢弃，不再
         // 污染已还原的自由对话会话。
         gs.preview_generation = gs.preview_generation.wrapping_add(1);
-        gs.role_manager.invalidate_memory_history();
-        gs.line_list.truncate(self.line_len);
+        if let Err(e) = gs.restore_preview_history(db, self.lines).await {
+            tracing::warn!("[ScriptEditor] 还原试玩历史时重建记忆失败: {}", e);
+        }
         gs.apply_snapshot(&self.scene);
         gs.main_role_id = self.main_role_id;
         gs.current_role_id = self.current_role_id;
         gs.script_status = self.script_status.map(|b| *b);
         gs.player.user_name = self.user_name;
         gs.player.user_subtitle = self.user_subtitle;
-        // 台词表变短了，角色记忆要按新的列表重建，否则里面还留着试玩的内容
-        if let Err(e) = gs.refresh_memories(db).await {
-            tracing::warn!("[ScriptEditor] 还原后刷新记忆失败: {}", e);
-        }
+        // Take temporary runtime owners synchronously. No synchronous
+        // RoleMemoryState or GameStatus lock survives the abort/join below.
+        let detached = gs
+            .role_manager
+            .detach_role_resources(&self.formal_role_resource_ids);
+        drop(gs);
+        Self::recycle_detached_role_runtimes(detached).await;
     }
 }
 
@@ -1801,8 +1868,8 @@ async fn role_name_of(db: &DatabaseConnection, id: i32) -> Option<String> {
 
 /// 角色卡里写的玩家名（settings.user_name）。查不到或为空返回空串 ——
 /// 试玩用它显示玩家身份、替换 %player%，缺了只是显示空，不该阻断试玩（issue #8）。
-async fn user_name_of(db: &DatabaseConnection, id: i32) -> String {
-    RoleRepo::get_role_settings_by_id(db, &data_dir(), id)
+async fn user_name_of(db: &DatabaseConnection, data_dir: &Path, id: i32) -> String {
+    RoleRepo::get_role_settings_by_id(db, data_dir, id)
         .await
         .ok()
         .flatten()
@@ -1858,7 +1925,7 @@ pub async fn editor_preview_readiness(
                 ok: true,
                 main_role_name: role_name_of(&db, id).await,
                 main_role_id: Some(id),
-                user_name: user_name_of(&db, id).await,
+                user_name: user_name_of(&db, &data_dir(), id).await,
                 bound_character_folder: bound,
                 reason: None,
             },
@@ -1882,7 +1949,7 @@ pub async fn editor_preview_readiness(
             ok: true,
             main_role_name: role_name_of(&db, id).await,
             main_role_id: Some(id),
-            user_name: user_name_of(&db, id).await,
+            user_name: user_name_of(&db, &data_dir(), id).await,
             bound_character_folder: bound,
             reason: None,
         }),

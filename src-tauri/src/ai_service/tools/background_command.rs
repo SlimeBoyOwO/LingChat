@@ -16,6 +16,7 @@ use tauri::{AppHandle, Manager};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::AppState;
+use crate::ai_service::game_system::game_status::HistorySession;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
 };
@@ -80,9 +81,9 @@ pub async fn start_background_command(
         let service = state.ai_service.lock().await;
         service.game_status.clone()
     };
-    let (expected_generation, expected_save_id) = {
+    let (expected_session, expected_save_id) = {
         let status = game_status.lock().await;
-        (status.preview_generation, status.active_save_id)
+        (status.history_session(), status.active_save_id)
     };
 
     let activity_arguments = json!({
@@ -98,6 +99,7 @@ pub async fn start_background_command(
         &activity_arguments,
         "started",
         None,
+        false,
     );
 
     let spawned_task_id = task_id.clone();
@@ -132,6 +134,7 @@ pub async fn start_background_command(
             &activity_arguments,
             "finished",
             Some(succeeded),
+            false,
         );
 
         // 在等待当前模型生成结束之前，先释放命令槽位。
@@ -139,7 +142,7 @@ pub async fn start_background_command(
 
         let notification = model_notification(&command, &cwd, &completion);
         if let Err(error) =
-            notify_model(app, notification, expected_generation, expected_save_id).await
+            notify_model(app, notification, expected_session, expected_save_id).await
         {
             tracing::warn!(
                 task_id = spawned_task_id,
@@ -217,7 +220,7 @@ fn model_notification(command: &str, cwd: &str, completion: &Value) -> String {
 async fn notify_model(
     app: AppHandle,
     notification: String,
-    expected_generation: u64,
+    expected_session: HistorySession,
     expected_save_id: Option<i32>,
 ) -> anyhow::Result<()> {
     let generation_lock = app.state::<AppState>().generation_lock.clone();
@@ -231,11 +234,11 @@ async fn notify_model(
         let service = state.ai_service.lock().await;
         service.game_status.clone()
     };
-    let (current_generation, current_save_id) = {
+    if {
         let status = game_status.lock().await;
-        (status.preview_generation, status.active_save_id)
-    };
-    if current_generation != expected_generation || current_save_id != expected_save_id {
+        !status.is_history_session_current(expected_session)
+            || status.active_save_id != expected_save_id
+    } {
         anyhow::bail!("对话上下文已切换，跳过过期后台通知");
     }
     let concurrency = AppConfig::load(&app)
@@ -254,8 +257,7 @@ async fn notify_model(
         concurrency,
         god_agent: None,
         suppress_thinking: false,
-        generation: expected_generation,
-        is_preview: false,
+        session: expected_session,
     });
     generator.process_notification(notification).await?;
     Ok(())

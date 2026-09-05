@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")]
+#[serde(rename_all = "lowercase")]
 pub enum LineAttribute {
     #[sea_orm(string_value = "user")]
     User,

@@ -573,7 +573,6 @@ pub struct GameRole {
     pub resource_path: Option<String>,
     pub prompt: Option<String>,
     pub current_clothes: String,
-    pub memory_bank: GameMemoryBank,
     pub voice_maker: Option<crate::ai_service::tts::VoiceMaker>,
 }
 

@@ -4,7 +4,7 @@ use sea_orm::*;
 use std::collections::HashMap;
 
 use crate::ai_service::types::{GameLine, LineAttributeExt};
-use crate::db::entities::{line, line_perception, memory_bank, running_script, save};
+use crate::db::entities::{line, line_perception, running_script, save};
 
 pub struct SaveRepo;
 
@@ -415,59 +415,6 @@ impl SaveRepo {
     }
 }
 
-// ========== Memory Bank ==========
-
-impl SaveRepo {
-    #[allow(dead_code)]
-    pub async fn upsert_memory_bank(
-        db: &DatabaseConnection,
-        save_id: i32,
-        role_id: Option<i32>,
-        info_json: &str,
-    ) -> Result<()> {
-        // Delete existing for this (save_id, role_id) pair
-        let mut delete =
-            memory_bank::Entity::delete_many().filter(memory_bank::Column::SaveId.eq(save_id));
-        if let Some(rid) = role_id {
-            delete = delete.filter(memory_bank::Column::RoleId.eq(rid));
-        } else {
-            delete = delete.filter(memory_bank::Column::RoleId.is_null());
-        }
-        delete.exec(db).await.map_err(|e| anyhow!("{e}"))?;
-
-        // Insert new
-        let active = memory_bank::ActiveModel {
-            info: Set(info_json.to_string()),
-            save_id: Set(save_id),
-            role_id: Set(role_id),
-            ..Default::default()
-        };
-        active.insert(db).await.map_err(|e| anyhow!("{e}"))?;
-        Ok(())
-    }
-
-    #[allow(dead_code)]
-    pub async fn get_memory_banks(
-        db: &DatabaseConnection,
-        save_id: i32,
-    ) -> Result<Vec<memory_bank::Model>> {
-        memory_bank::Entity::find()
-            .filter(memory_bank::Column::SaveId.eq(save_id))
-            .all(db)
-            .await
-            .map_err(|e| anyhow!("{e}"))
-    }
-
-    pub async fn delete_memory_banks_by_save(db: &DatabaseConnection, save_id: i32) -> Result<()> {
-        memory_bank::Entity::delete_many()
-            .filter(memory_bank::Column::SaveId.eq(save_id))
-            .exec(db)
-            .await
-            .map_err(|e| anyhow!("{e}"))?;
-        Ok(())
-    }
-}
-
 // ========== Running Script ==========
 
 impl SaveRepo {
@@ -528,8 +475,18 @@ impl SaveRepo {
         Ok(inserted.id)
     }
 
-    pub async fn delete_running_script(db: &DatabaseConnection, script_id: i32) -> Result<()> {
-        running_script::Entity::delete_by_id(script_id)
+    /// Clear the complete running-script snapshot for one save.
+    ///
+    /// The save link is cleared before deleting rows so a failed/missing legacy
+    /// row cannot leave `running_script_id` pointing at stale state. Deleting
+    /// by `save_id` also removes legacy duplicate rows without changing schema.
+    pub async fn clear_running_script_for_save(
+        db: &DatabaseConnection,
+        save_id: i32,
+    ) -> Result<()> {
+        Self::update_save_running_script(db, save_id, None).await?;
+        running_script::Entity::delete_many()
+            .filter(running_script::Column::SaveId.eq(save_id))
             .exec(db)
             .await
             .map_err(|e| anyhow!("{e}"))?;

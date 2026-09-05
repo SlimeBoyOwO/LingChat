@@ -1,0 +1,8 @@
+{
+  "scenario": "append-during-update",
+  "role_id": 7,
+  "line_count": 4,
+  "update_interval": 1,
+  "delay_ms": 15,
+  "append_during_update": true
+}

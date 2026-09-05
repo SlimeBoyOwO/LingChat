@@ -13,6 +13,10 @@ mod plugins;
 mod resource_sync;
 pub mod utils;
 
+#[cfg(feature = "memory-test-api")]
+#[path = "../../test/memory/mod.rs"]
+pub mod memory_test_api;
+
 use std::sync::Arc;
 
 use chrono::Local;

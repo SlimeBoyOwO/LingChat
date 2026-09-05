@@ -1,0 +1,8 @@
+{
+  "scenario": "stale-on-rollback",
+  "role_id": 7,
+  "line_count": 4,
+  "update_interval": 1,
+  "delay_ms": 20,
+  "rollback_during_update": true
+}

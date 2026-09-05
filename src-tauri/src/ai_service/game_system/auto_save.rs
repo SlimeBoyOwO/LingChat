@@ -8,12 +8,64 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, WebviewWindow};
 use tokio::sync::Mutex;
 
-use crate::ai_service::service::SharedAIService;
+use crate::ai_service::service::{SessionSnapshot, SharedAIService};
 use crate::db::managers::save_repo::SaveRepo;
 
 const AUTO_SAVE_PREFIX: &str = "自动存档";
 const AUTO_SAVE_INTERVAL_SECS: u64 = 300; // 5 minutes
 const EXIT_SAVE_TIMEOUT_SECS: u64 = 5;
+
+/// Runtime state used to decide whether the target auto-save slot is current.
+/// Role revisions are sorted by `role_id` by `GameRoleManager` before hashing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AutoSaveFingerprint {
+    line_hash: u64,
+    memory_revisions: Vec<(i32, u64)>,
+}
+
+fn fingerprint_requires_save(
+    last_save_id: Option<i32>,
+    last: Option<&AutoSaveFingerprint>,
+    save_id: i32,
+    current: &AutoSaveFingerprint,
+) -> bool {
+    last_save_id != Some(save_id) || last != Some(current)
+}
+
+fn successful_fingerprint(line_hash: u64, revisions: Vec<(i32, u64)>) -> AutoSaveFingerprint {
+    AutoSaveFingerprint {
+        line_hash,
+        memory_revisions: revisions,
+    }
+}
+
+/// Derive the auto-save decision from exactly the immutable snapshot that will
+/// be persisted. The preview/formal-session gate is held by the caller.
+fn snapshot_with_fingerprint(
+    snapshot: SessionSnapshot,
+) -> Option<(AutoSaveFingerprint, SessionSnapshot)> {
+    // 初始化时 line_list 自带一条 system 台词（角色人设），
+    // 只有大于 1 条时才说明有实际对话发生，才需要自动存档。
+    if snapshot.lines.len() <= 1 {
+        return None;
+    }
+
+    let mut hasher = DefaultHasher::new();
+    for line in &snapshot.lines {
+        line.base.content.hash(&mut hasher);
+        line.base.sender_role_id.hash(&mut hasher);
+        line.base.attribute.as_str().hash(&mut hasher);
+    }
+    let fingerprint = AutoSaveFingerprint {
+        line_hash: hasher.finish(),
+        memory_revisions: snapshot
+            .memory_banks
+            .iter()
+            .map(|(role_id, _, revision)| (*role_id, *revision))
+            .collect(),
+    };
+    Some((fingerprint, snapshot))
+}
 
 /// Payload emitted to frontend after each successful auto-save.
 #[derive(Debug, Clone, Serialize)]
@@ -24,22 +76,30 @@ struct AutoSaveEventPayload {
 }
 
 pub struct AutoSaveManager {
-    app: AppHandle,
+    app: Option<AppHandle>,
     db: DatabaseConnection,
     ai_service: SharedAIService,
-    /// Hash of line_list at the moment of the last successful auto-save.
-    last_saved_hash: Option<u64>,
+    /// Snapshot fingerprint at the moment of the last successful auto-save.
+    last_saved_fingerprint: Option<AutoSaveFingerprint>,
+    /// Save slot to which `last_saved_fingerprint` was written. Fingerprints are
+    /// slot-local: the same runtime state in another save must not be skipped.
+    last_saved_save_id: Option<i32>,
     /// Resolved auto-save slot ID (lazily found or created on first save).
     auto_save_id: Option<i32>,
 }
 
+#[cfg(all(test, feature = "memory-test-api"))]
+#[path = "../../../../test/memory/tests/auto_save.rs"]
+mod tests;
+
 impl AutoSaveManager {
     pub fn new(app: AppHandle, db: DatabaseConnection, ai_service: SharedAIService) -> Self {
         Self {
-            app,
+            app: Some(app),
             db,
             ai_service,
-            last_saved_hash: None,
+            last_saved_fingerprint: None,
+            last_saved_save_id: None,
             auto_save_id: None,
         }
     }
@@ -104,120 +164,118 @@ impl AutoSaveManager {
 
     /// Perform a save if line_list is non-empty and has changed since last save.
     async fn perform_save(&mut self) -> Result<(), String> {
-        // 1. Compute current hash (returns None if line_list is empty)
-        let current_hash = self.compute_line_hash().await;
-
-        let current_hash = match current_hash {
-            Some(h) => h,
-            None => {
-                // line_list is empty — nothing to save
+        // Acquire the same gate used by PreviewSession before inspecting
+        // history, creating/updating the auto-save slot, or writing it. This
+        // makes preview start and AutoSave linearizable instead of relying on
+        // a stale preliminary mode check.
+        let (formal_gate, current_fingerprint, session_snapshot) = {
+            let service = self.ai_service.lock().await;
+            let formal_gate = match service.acquire_formal_session_gate().await {
+                Ok(gate) => gate,
+                Err(_) => {
+                    tracing::debug!("[AutoSave] 跳过试玩期间的正式自动存档");
+                    return Ok(());
+                },
+            };
+            let snapshot = service.capture_guarded_session_snapshot().await;
+            let Some((fingerprint, snapshot)) = snapshot_with_fingerprint(snapshot) else {
                 return Ok(());
-            },
+            };
+            (formal_gate, fingerprint, snapshot)
         };
 
-        // 2. Skip if unchanged since last save
-        if self.last_saved_hash == Some(current_hash) {
+        // 2. Find or create the auto-save slot before deciding whether to skip.
+        // This keeps the success marker explicitly scoped to that slot.
+        let save_id = self.find_or_create_slot().await?;
+
+        // 3. A completed memory compression changes this fingerprint even when
+        // line_list is unchanged, so it cannot be skipped.
+        if !fingerprint_requires_save(
+            self.last_saved_save_id,
+            self.last_saved_fingerprint.as_ref(),
+            save_id,
+            &current_fingerprint,
+        ) {
             return Ok(());
         }
 
-        // 3. Find or create the auto-save slot
-        let save_id = self.find_or_create_slot().await?;
+        // 4. Persist precisely the immutable snapshot used for this decision.
+        // The service releases GameStatus before DB I/O, so a concurrent memory
+        // commit becomes a distinct next snapshot rather than changing this one.
+        let saved_memory_revisions = {
+            let mut service = self.ai_service.lock().await;
+            service
+                .persist_captured_formal_session(save_id, &session_snapshot)
+                .await
+                .map_err(|e| format!("保存会话失败: {}", e))?
+        };
 
-        // 4. Perform the actual save
-        let mut service = self.ai_service.lock().await;
-        let lines = service.game_status.lock().await.line_list.clone();
-
-        // 4a. Sync lines (smart diff)
-        SaveRepo::sync_lines(&self.db, save_id, &lines)
-            .await
-            .map_err(|e| format!("同步台词失败: {}", e))?;
-
-        // 4b. Set active save
-        service.game_status.lock().await.active_save_id = Some(save_id);
-
-        // 4c. Write GameStatus snapshot
-        let snapshot = service.game_status.lock().await.to_snapshot();
-        let snapshot_json =
-            serde_json::to_string(&snapshot).map_err(|e| format!("序列化状态失败: {}", e))?;
-        SaveRepo::update_save_status(&self.db, save_id, &snapshot_json)
-            .await
-            .map_err(|e| format!("保存状态失败: {}", e))?;
-
-        // 4d. Persist memory banks
-        service
-            .persist_memory_banks(save_id)
-            .await
-            .map_err(|e| format!("保存记忆库失败: {}", e))?;
-
-        // 4e. Persist script state (if running)
-        if let Some(ref script_status) = service.game_status.lock().await.script_status {
-            let vars_json = serde_json::to_string(&script_status.vars).unwrap_or_default();
-            let _ = SaveRepo::upsert_running_script(
-                &self.db,
-                save_id,
-                &script_status.folder_key,
-                &vars_json,
-                &script_status.current_chapter_key,
-                script_status.current_event_process,
-            )
-            .await
-            .map_err(|e| {
-                tracing::warn!("[AutoSave] 保存剧本状态失败: {}", e);
-            });
-        }
-
-        drop(service);
-
-        // 5. Update tracking state
-        self.last_saved_hash = Some(current_hash);
+        // 5. Update tracking state only after every required write above succeeds.
+        // Replace memory revisions with the revisions captured by the successful
+        // DB write; this is the exact snapshot represented by this save slot.
+        let saved_fingerprint =
+            successful_fingerprint(current_fingerprint.line_hash, saved_memory_revisions);
+        self.last_saved_fingerprint = Some(saved_fingerprint);
+        self.last_saved_save_id = Some(save_id);
 
         // 6. Emit event to frontend
         let now = Local::now();
         let title = format!("{} {}", AUTO_SAVE_PREFIX, now.format("%Y-%m-%d %H:%M:%S"));
         let timestamp = now.format("%H:%M:%S").to_string();
 
-        let _ = self.app.emit(
-            "save:auto-saved",
-            AutoSaveEventPayload {
-                save_id,
-                title,
-                timestamp,
-            },
-        );
+        if let Some(app) = &self.app {
+            let _ = app.emit(
+                "save:auto-saved",
+                AutoSaveEventPayload {
+                    save_id,
+                    title,
+                    timestamp,
+                },
+            );
+        }
 
         tracing::info!("[AutoSave] 自动存档完成 save_id={}", save_id);
+        drop(formal_gate);
         Ok(())
+    }
+
+    #[cfg(feature = "memory-test-api")]
+    pub fn for_test(db: DatabaseConnection, ai_service: SharedAIService) -> Self {
+        Self {
+            app: None,
+            db,
+            ai_service,
+            last_saved_fingerprint: None,
+            last_saved_save_id: None,
+            auto_save_id: None,
+        }
+    }
+
+    #[cfg(feature = "memory-test-api")]
+    pub async fn perform_test_save(&mut self) -> Result<(), String> {
+        self.perform_save().await
+    }
+
+    #[cfg(feature = "memory-test-api")]
+    pub fn test_saved_revision(&self) -> Option<Vec<(i32, u64)>> {
+        self.last_saved_fingerprint
+            .as_ref()
+            .map(|fingerprint| fingerprint.memory_revisions.clone())
     }
 
     /// Exit save: force a save regardless of change detection.
     async fn perform_exit_save(&mut self) -> Result<(), String> {
         // Reset hash to force save even if nothing changed
-        self.last_saved_hash = None;
+        self.invalidate_saved_fingerprint();
         self.perform_save().await
     }
 
     // ========== Helpers ==========
 
-    /// Compute a hash of the current line_list contents.
-    /// Returns `None` if the list is empty (nothing to save).
-    async fn compute_line_hash(&self) -> Option<u64> {
-        let service = self.ai_service.lock().await;
-        let lines = &service.game_status.lock().await.line_list;
-
-        // 初始化时 line_list 自带一条 system 台词（角色人设），
-        // 只有大于 1 条时才说明有实际对话发生，才需要自动存档。
-        if lines.len() <= 1 {
-            return None;
-        }
-
-        let mut hasher = DefaultHasher::new();
-        for line in lines {
-            line.base.content.hash(&mut hasher);
-            line.base.sender_role_id.hash(&mut hasher);
-            line.base.attribute.as_str().hash(&mut hasher);
-        }
-
-        Some(hasher.finish())
+    /// Clear the target-slot success marker, for example after loading a save.
+    pub fn invalidate_saved_fingerprint(&mut self) {
+        self.last_saved_fingerprint = None;
+        self.last_saved_save_id = None;
     }
 
     /// Find the existing auto-save slot by title prefix, or create a new one.

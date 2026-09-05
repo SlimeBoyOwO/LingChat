@@ -136,78 +136,85 @@ impl GodAgentCore {
         vec![LlmMessage::system(system_prompt)]
     }
 
-    pub async fn decide_next_speaker(
+    /// Capture an immutable director prompt while the caller holds
+    /// `GameStatus`; the network call must run only after that mutex is gone.
+    pub fn decision_snapshot(
         &self,
         gs: &GameStatus,
         current_speaker: Option<i32>,
-    ) -> Result<(i32, String)> {
+    ) -> (Vec<LlmMessage>, Vec<i32>) {
         let npc_ids: Vec<i32> = gs
             .present_role_ids
             .iter()
             .filter(|&&id| id != 0)
             .copied()
             .collect();
-
         if npc_ids.len() <= 1 {
-            return Ok((npc_ids.first().copied().unwrap_or(0), "single_npc".into()));
+            return (Vec::new(), npc_ids);
         }
-
-        let window = self.config.recent_window;
         let lines: Vec<GameLine> = gs
             .line_list
             .iter()
             .rev()
-            .take(window)
+            .take(self.config.recent_window)
             .cloned()
             .collect::<Vec<_>>()
             .into_iter()
             .rev()
             .collect();
+        (
+            self.build_decision_prompt(&lines, &npc_ids, current_speaker, gs),
+            npc_ids,
+        )
+    }
 
-        let messages = self.build_decision_prompt(&lines, &npc_ids, current_speaker, gs);
+    /// Resolve a previously captured director prompt without accessing
+    /// `GameStatus`, so its LLM await cannot retain that mutex.
+    pub async fn decide_next_speaker(
+        &self,
+        messages: Vec<LlmMessage>,
+        npc_ids: Vec<i32>,
+    ) -> Result<(i32, String)> {
+        if npc_ids.len() <= 1 {
+            return Ok((npc_ids.first().copied().unwrap_or(0), "single_npc".into()));
+        }
 
         let tools = vec![tools::select_next_speaker_tool()];
         let llm = slot_snapshot(&self.llm)
             .await
             .ok_or_else(|| anyhow!("上帝Agent LLM 未配置"))?;
-
         let response = llm
             .complete_with_tools(&messages, &tools, Some("auto"))
             .await
-            .map_err(|e| anyhow!("LLM 调用失败: {}", e))?; // 增加具体错误
+            .map_err(|e| anyhow!("LLM 调用失败: {}", e))?;
 
-        // 更详细的错误信息
         if let Some(ref tool_calls) = response.tool_calls {
             if let Some(tc) = tool_calls.first() {
                 if let Some(result) = tools::parse_speaker_selection(tc) {
-                    if result.0 == 0 || gs.present_role_ids.contains(&result.0) {
+                    if result.0 == 0 || npc_ids.contains(&result.0) {
                         return Ok(result);
                     }
                     tracing::warn!("上帝Agent 选择了不在场的角色 {}，忽略", result.0);
                     return Err(anyhow!(
                         "上帝Agent 选择了不在场的角色 {}，在场角色: {:?}",
                         result.0,
-                        gs.present_role_ids
+                        npc_ids
                     ));
                 }
-                // 解析失败
                 return Err(anyhow!(
                     "解析 tool_call 失败: {:?}, available roles: {:?}",
                     tc,
                     npc_ids
                 ));
             }
-            // tool_calls 不为空但第一个元素不存在（理论上不可能）
             return Err(anyhow!("tool_calls 为空数组"));
         }
 
-        // LLM 没有返回 tool_calls
         let content_info = response
             .content
             .as_ref()
             .map(|c| format!("，返回文本: {}", c))
             .unwrap_or_default();
-
         Err(anyhow!(
             "上帝Agent 未调用工具{}，可用角色: {:?}",
             content_info,

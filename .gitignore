@@ -71,6 +71,7 @@ dist/
 dist_old_*/
 dist-windows/
 target/
+test/artifacts/
 
 ling_chat/static/frontend/
 # Tauri auto-generated files

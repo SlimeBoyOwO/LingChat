@@ -6,6 +6,7 @@ use serde_json::Value;
 use tauri::Manager;
 
 use crate::AppState;
+use crate::ai_service::game_system::game_status::HistorySession;
 use crate::ai_service::game_system::script_engine::events::{
     ScriptContext, ScriptEvent, register_event,
 };
@@ -41,13 +42,19 @@ impl AIDialogueEvent {
 #[async_trait]
 impl ScriptEvent for AIDialogueEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        let script_status = ctx
-            .game_status
-            .lock()
-            .await
-            .script_status
-            .clone()
-            .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
+        // Capture the whole canonical-history identity at this event's first
+        // relevant await. Do not later combine a newly read generation with
+        // `ctx.is_preview`: Preview enter+restore can otherwise tear mode and
+        // generation while role/LLM setup is in flight.
+        let (script_status, request_session): (_, HistorySession) = {
+            let gs = ctx.game_status.lock().await;
+            (
+                gs.script_status
+                    .clone()
+                    .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?,
+                gs.history_session(),
+            )
+        };
 
         let role_id = {
             let mut gs = ctx.game_status.lock().await;
@@ -56,8 +63,16 @@ impl ScriptEvent for AIDialogueEvent {
             role.role_id.ok_or_else(|| anyhow!("角色 ID 未设置"))?
         };
 
-        // 设为当前角色
-        ctx.game_status.lock().await.current_role_id = Some(role_id);
+        // Set the role only while this event still owns the captured session;
+        // a stale event must not update script state or start any downstream
+        // generator/tool/marker/save work.
+        {
+            let mut gs = ctx.game_status.lock().await;
+            if !gs.is_history_session_current(request_session) {
+                return Err(anyhow!("AI 对话期间历史会话已切换，已丢弃本次事件"));
+            }
+            gs.current_role_id = Some(role_id);
+        }
 
         tracing::info!("[AIDialogueEvent] 开始执行");
 
@@ -70,11 +85,13 @@ impl ScriptEvent for AIDialogueEvent {
                 display_name: Some("旁白".to_string()),
                 ..Default::default()
             };
-            ctx.game_status
-                .lock()
-                .await
-                .add_line(ctx.db, sys_line)
-                .await?;
+            let mut gs = ctx.game_status.lock().await;
+            if !gs
+                .append_line_if_current(ctx.db, request_session, sys_line)
+                .await?
+            {
+                return Err(anyhow!("AI 对话期间历史会话已切换，已丢弃本次事件"));
+            }
         }
 
         // 委托 MessageGenerator 生成回复
@@ -91,6 +108,17 @@ impl ScriptEvent for AIDialogueEvent {
             },
         };
 
+        // `slot_snapshot` awaits. Atomically recheck the original identity
+        // before constructing/admitting the generator pipeline.
+        if !ctx
+            .game_status
+            .lock()
+            .await
+            .is_history_session_current(request_session)
+        {
+            return Err(anyhow!("AI 对话期间历史会话已切换，已丢弃本次事件"));
+        }
+
         let deps = GeneratorDeps {
             source: GeneratorSource::ScriptAiDialogue,
             app: ctx.app.clone(),
@@ -103,9 +131,7 @@ impl ScriptEvent for AIDialogueEvent {
             concurrency: 1,
             god_agent: None,
             suppress_thinking: false,
-            // 捕获当前试玩代号：中止后游离任务再写会被 add_assistant_line 的守卫丢弃
-            generation: ctx.game_status.lock().await.preview_generation,
-            is_preview: ctx.is_preview,
+            session: request_session,
         };
 
         let generator = MessageGenerator::new(deps);

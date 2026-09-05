@@ -19,6 +19,13 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # 移动端（Android/iOS）构建时必须启用：让 webview 从应用内嵌资产加载前端
 # （不走 devUrl）。桌面端不受影响。
 custom-protocol = ["tauri/custom-protocol"]
+# Offline, feature-gated memory validation binary. Never enabled in production builds.
+memory-test-api = []
+
+[[bin]]
+name = "memory-test-api"
+path = "../test/memory/main.rs"
+required-features = ["memory-test-api"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -125,6 +132,10 @@ tokio-util = { version = "0.7", features = ["io"] }
 
 # Skill Agent：命令输出在中文 Windows 上是 GBK，需要回退解码
 encoding_rs = "0.8"
+
+[dev-dependencies]
+# Used only by feature-gated local API tests; production has no extra runtime coupling.
+tower = "0.5"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"

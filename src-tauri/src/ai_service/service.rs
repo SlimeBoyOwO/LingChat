@@ -8,14 +8,18 @@ use tokio::sync::Mutex;
 
 use crate::ai_service::config::AIServiceConfig;
 use crate::ai_service::game_system::game_status::GameStatus;
-use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
 use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::ai_service::llm::LlmSlot;
+use crate::ai_service::memory::{MemoryConfig, MemorySectionLimits};
 use crate::ai_service::tts::local::LocalTtsRuntime;
-use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
+use crate::ai_service::types::{
+    CharacterSettings, GameLine, GameMemoryBank, LineAttributeExt, LineBase, ScriptStatus,
+};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
+use crate::db::managers::memory_repo::MemoryRepo;
+use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::prompt::{PromptOptions, sys_prompt_builder};
 
 /// AI 服务：承载 `GameStatus` 与会话级配置。
@@ -25,6 +29,20 @@ use crate::utils::prompt::{PromptOptions, sys_prompt_builder};
 /// reset_lines / clear_lines / set_active_save_id。
 /// 消息生成（MessageGenerator）、主动对话（ProactiveSystem）、剧本引擎（ScriptManager）
 /// 等子系统按计划稍后补。
+/// Immutable session state captured before any save I/O starts.
+///
+/// The snapshot deliberately does not include a save id: persistence belongs to
+/// the caller's target slot, while this data can safely be written to manual or
+/// auto-save slots without sharing dirty state between them.
+#[derive(Clone)]
+pub struct SessionSnapshot {
+    pub lines: Vec<GameLine>,
+    pub main_role_id: Option<i32>,
+    pub status: crate::ai_service::game_system::game_status::GameStatusSnapshot,
+    pub memory_banks: Vec<(i32, GameMemoryBank, u64)>,
+    pub running_script: Option<ScriptStatus>,
+}
+
 pub struct AIService {
     pub db: DatabaseConnection,
     pub data_dir: PathBuf,
@@ -68,10 +86,12 @@ impl AIService {
             llm,
             tts_config,
             local_tts,
-            use_persistent_memory,
-            memory_update_interval,
-            memory_recent_window,
-            memory_limits,
+            MemoryConfig {
+                enabled: use_persistent_memory,
+                update_interval: memory_update_interval as usize,
+                recent_window: memory_recent_window as usize,
+                limits: memory_limits,
+            },
         );
         let game_status = Arc::new(Mutex::new(GameStatus::new(role_manager)));
         let script_manager = ScriptManager::new(&data_dir);
@@ -148,7 +168,9 @@ impl AIService {
 
     pub async fn init_game_status(&mut self) -> Result<()> {
         let mut gs = self.game_status.lock().await;
-        gs.role_manager.invalidate_memory_history();
+        // Reset drops all role runtimes; join owned jobs first so a detached
+        // remote compaction cannot outlive this session reset.
+        gs.role_manager.abort_memory_updates().await;
         gs.role_manager.reset_roles();
         gs.line_list.clear();
         gs.onstage_role_ids.clear();
@@ -203,12 +225,18 @@ impl AIService {
     ) -> Result<()> {
         {
             let mut gs = self.game_status.lock().await;
+            // The bank was restored for this save immediately before loading
+            // lines. Invalidate any in-flight job, but retain the restored bank
+            // and its processed pointer; this replacement is not a destructive
+            // rewrite of an already loaded save.
             gs.role_manager.invalidate_memory_history();
             gs.line_list = lines;
             if let Some(sid) = save_id {
                 gs.active_save_id = Some(sid);
             }
-            gs.refresh_memories(&self.db).await?;
+            // `restore_memory_banks` installed this save's immutable bank just
+            // before lines were replaced. Rebuild contexts without resetting it.
+            gs.rebuild_memories_after_restore(&self.db).await?;
             let _ = gs.get_role(&self.db, main_role_id).await?;
             gs.current_role_id = Some(main_role_id);
             gs.main_role_id = Some(main_role_id);
@@ -216,14 +244,117 @@ impl AIService {
         Ok(())
     }
 
-    /// 将当前所有已加载角色的 `GameMemoryBank` 持久化到 DB。
-    /// 委托给 `GameRoleManager` 以确保后台压缩结果先同步再写入。
-    pub async fn persist_memory_banks(&mut self, save_id: i32) -> Result<()> {
+    /// Whether the shared status currently hosts an editor preview rather than
+    /// the canonical player session. This is diagnostic-only; persistence must
+    /// use `capture_formal_session_snapshot` so the answer cannot become stale.
+    pub async fn is_preview_session(&self) -> bool {
         self.game_status
             .lock()
             .await
             .role_manager
-            .persist_memory_banks_to_db(&self.db, save_id, None)
+            .is_memory_preview()
+    }
+
+    /// Acquire the common preview/formal-operation gate. The returned guard
+    /// must stay alive through every DB/file effect. Preview transitions acquire
+    /// the same gate before changing mode, so either a formal operation finishes
+    /// first or preview starts first and the operation has zero side effects.
+    ///
+    /// The async gate is independent of `RoleMemoryState`; no synchronous lock
+    /// is held across `.await`, and callers acquire it before GameStatus.
+    pub async fn acquire_formal_session_gate(&self) -> Result<tokio::sync::OwnedMutexGuard<()>> {
+        let gate = self.game_status.lock().await.preview_session_gate();
+        let guard = gate.lock_owned().await;
+        if self
+            .game_status
+            .lock()
+            .await
+            .role_manager
+            .is_memory_preview()
+        {
+            anyhow::bail!("试玩期间不能保存正式会话");
+        }
+        Ok(guard)
+    }
+
+    /// Capture the immutable snapshot while a caller holds the formal-session
+    /// gate from `acquire_formal_session_gate`.
+    pub(crate) async fn capture_guarded_session_snapshot(&self) -> SessionSnapshot {
+        let status = self.game_status.lock().await;
+        SessionSnapshot {
+            lines: status.line_list.clone(),
+            main_role_id: status.main_role_id,
+            status: status.to_snapshot(),
+            memory_banks: status.role_manager.memory_bank_snapshots(),
+            running_script: status.script_status.clone(),
+        }
+    }
+
+    /// Acquire the common gate and capture an immutable formal-session snapshot.
+    pub async fn capture_formal_session_snapshot(
+        &self,
+    ) -> Result<(tokio::sync::OwnedMutexGuard<()>, SessionSnapshot)> {
+        let guard = self.acquire_formal_session_gate().await?;
+        let snapshot = self.capture_guarded_session_snapshot().await;
+        Ok((guard, snapshot))
+    }
+
+    /// Persist a previously captured immutable snapshot to one save slot.
+    ///
+    /// Callers must retain the guard returned by
+    /// `capture_formal_session_snapshot` through this method. This retains the
+    /// repository ordering and partial-write behavior of the existing system;
+    /// a transaction is intentionally not introduced here.
+    pub(crate) async fn write_session_snapshot(
+        &mut self,
+        save_id: i32,
+        snapshot: &SessionSnapshot,
+    ) -> Result<Vec<(i32, u64)>> {
+        SaveRepo::sync_lines(&self.db, save_id, &snapshot.lines).await?;
+        SaveRepo::update_save_main_role(&self.db, save_id, snapshot.main_role_id).await?;
+        SaveRepo::update_save_status(&self.db, save_id, &serde_json::to_string(&snapshot.status)?)
+            .await?;
+
+        let mut revisions = Vec::with_capacity(snapshot.memory_banks.len());
+        for (role_id, bank, revision) in &snapshot.memory_banks {
+            MemoryRepo::upsert_for_save_role(&self.db, save_id, *role_id, bank).await?;
+            revisions.push((*role_id, *revision));
+        }
+
+        if let Some(script) = &snapshot.running_script {
+            SaveRepo::upsert_running_script(
+                &self.db,
+                save_id,
+                &script.folder_key,
+                &serde_json::to_string(&script.vars)?,
+                &script.current_chapter_key,
+                script.current_event_process,
+            )
+            .await?;
+        } else {
+            // A snapshot is authoritative: retaining an old running script when
+            // the runtime has none would resurrect a completed/stopped script
+            // on the next load. The repository clears both the link and row.
+            SaveRepo::clear_running_script_for_save(&self.db, save_id).await?;
+        }
+        Ok(revisions)
+    }
+
+    /// Capture and write the current session, then mark the target as active
+    /// only after the snapshot's required writes succeeded.
+    pub(crate) async fn persist_captured_formal_session(
+        &mut self,
+        save_id: i32,
+        snapshot: &SessionSnapshot,
+    ) -> Result<Vec<(i32, u64)>> {
+        let revisions = self.write_session_snapshot(save_id, snapshot).await?;
+        self.game_status.lock().await.active_save_id = Some(save_id);
+        Ok(revisions)
+    }
+
+    pub async fn save_current_session(&mut self, save_id: i32) -> Result<Vec<(i32, u64)>> {
+        let (_formal_gate, snapshot) = self.capture_formal_session_snapshot().await?;
+        self.persist_captured_formal_session(save_id, &snapshot)
             .await
     }
 
@@ -237,11 +368,48 @@ impl AIService {
             .await
     }
 
+    /// Roll back through the canonical history API and, when a save is active,
+    /// write the complete immutable session snapshot. This is shared by the
+    /// Tauri command and feature-gated regression tests so lines and
+    /// MemoryBank cannot diverge after a crash/reload.
+    pub async fn rollback_conversation(&mut self, message_seq: u32) -> Result<Vec<GameLine>> {
+        // Admission must precede the first history/memory mutation, even when
+        // no save is active. Retain the permit through snapshot persistence so
+        // Preview cannot turn a partially applied rollback into a rejected save.
+        let _formal_gate = self.acquire_formal_session_gate().await?;
+        let active_save_id = {
+            let mut gs = self.game_status.lock().await;
+            let mut count = 0_u32;
+            let idx = gs
+                .line_list
+                .iter()
+                .position(|line| {
+                    if line.base.sender_role_id == Some(0)
+                        && matches!(line.attribute(), LineAttribute::User)
+                    {
+                        count += 1;
+                        count == message_seq
+                    } else {
+                        false
+                    }
+                })
+                .ok_or_else(|| anyhow::anyhow!("未找到序号为 {} 的用户消息", message_seq))?;
+            gs.truncate_lines(&self.db, idx).await?;
+            gs.active_save_id
+        };
+        if let Some(save_id) = active_save_id {
+            // Already admitted: do not reacquire the non-reentrant session gate.
+            let snapshot = self.capture_guarded_session_snapshot().await;
+            self.persist_captured_formal_session(save_id, &snapshot)
+                .await?;
+        }
+        Ok(self.game_status.lock().await.line_list.clone())
+    }
+
     /// 轻量清理：只清空台词 + 主角短期记忆，NPC 记忆保留。
     pub async fn clear_lines(&mut self) -> Result<()> {
         let mut gs = self.game_status.lock().await;
-        gs.role_manager.invalidate_memory_history();
-        gs.line_list.clear();
+        gs.truncate_lines(&self.db, 0).await?;
 
         let system_line = LineBase {
             content: self.ai_prompt.clone(),

@@ -8,6 +8,7 @@ use serde_json::Value;
 use tauri::Manager;
 
 use crate::AppState;
+use crate::ai_service::game_system::game_status::{GameStatus, HistorySession};
 use crate::ai_service::game_system::script_engine::events::{
     ScriptContext, ScriptEvent, parse_duration, register_event,
 };
@@ -32,6 +33,40 @@ pub struct FreeDialogueEvent {
     dialog_prompt: String,
     end_prompt: String,
     duration: Option<f64>,
+}
+
+fn stale_history_session_error() -> anyhow::Error {
+    anyhow!("自由对话期间历史会话已切换，已丢弃本次事件")
+}
+
+async fn ensure_history_session_current(
+    game_status: &std::sync::Arc<tokio::sync::Mutex<GameStatus>>,
+    request_session: HistorySession,
+) -> Result<()> {
+    game_status
+        .lock()
+        .await
+        .is_history_session_current(request_session)
+        .then_some(())
+        .ok_or_else(stale_history_session_error)
+}
+
+async fn append_free_dialogue_line_if_current(
+    game_status: &std::sync::Arc<tokio::sync::Mutex<GameStatus>>,
+    db: &sea_orm::DatabaseConnection,
+    request_session: HistorySession,
+    line: LineBase,
+) -> Result<()> {
+    if game_status
+        .lock()
+        .await
+        .append_line_if_current(db, request_session, line)
+        .await?
+    {
+        Ok(())
+    } else {
+        Err(stale_history_session_error())
+    }
 }
 
 impl FreeDialogueEvent {
@@ -82,14 +117,19 @@ impl FreeDialogueEvent {
 #[async_trait]
 impl ScriptEvent for FreeDialogueEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        // ---- 角色设置 ----
-        let script_status = ctx
-            .game_status
-            .lock()
-            .await
-            .script_status
-            .clone()
-            .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
+        // Capture the complete canonical-history identity at this event's
+        // first await. Every later await (role, LLM, input setup/input wait)
+        // must retain this one identity; never combine a newer generation with
+        // the old event's preview mode.
+        let (script_status, request_session): (_, HistorySession) = {
+            let gs = ctx.game_status.lock().await;
+            (
+                gs.script_status
+                    .clone()
+                    .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?,
+                gs.history_session(),
+            )
+        };
 
         let role_id = {
             let mut gs = ctx.game_status.lock().await;
@@ -98,17 +138,15 @@ impl ScriptEvent for FreeDialogueEvent {
             role.role_id.ok_or_else(|| anyhow!("角色 ID 未设置"))?
         };
 
-        // 设为当前角色
-        ctx.game_status.lock().await.current_role_id = Some(role_id);
-
-        // ---- 发送自由对话开始事件 ----
-        let start_payload = FreeDialoguePayload {
-            switch: true,
-            max_rounds: self.max_rounds,
-            end_line: self.end_line.clone(),
-            duration: self.duration,
-        };
-        let _ = emit(ctx.app, SCRIPT_FREE_DIALOGUE, &start_payload);
+        // Role lookup awaited. A stale event must not mutate script state or
+        // announce/start any downstream work.
+        {
+            let mut gs = ctx.game_status.lock().await;
+            if !gs.is_history_session_current(request_session) {
+                return Err(anyhow!("自由对话期间历史会话已切换，已丢弃本次事件"));
+            }
+            gs.current_role_id = Some(role_id);
+        }
 
         // ---- 构建 MessageGenerator（复用以提高性能） ----
         // LLM 未配置则直接终止剧本：自由对话需要 AI 判断何时收尾，没有 LLM 会
@@ -117,6 +155,7 @@ impl ScriptEvent for FreeDialogueEvent {
         let generator = {
             let state = ctx.app.state::<AppState>();
             let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
+            ensure_history_session_current(&ctx.game_status, request_session).await?;
             let llm = llm.ok_or_else(|| {
                 anyhow!("尚未配置大模型，无法执行「自由对话」事件，剧本终止。请先在设置里配置并选择模型。")
             })?;
@@ -132,9 +171,7 @@ impl ScriptEvent for FreeDialogueEvent {
                 concurrency: 1,
                 god_agent: None,
                 suppress_thinking: false,
-                // 试玩中跑的自由对话也属于试玩场次：捕获当前代号，迟到写入会被守卫丢弃
-                generation: ctx.game_status.lock().await.preview_generation,
-                is_preview: ctx.is_preview,
+                session: request_session,
             };
             MessageGenerator::new(deps)
         };
@@ -144,6 +181,17 @@ impl ScriptEvent for FreeDialogueEvent {
         let dialog_prompt = replace_placeholder(&self.dialog_prompt, &game_status_guard);
         let end_prompt = replace_placeholder(&self.end_prompt, &game_status_guard);
         drop(game_status_guard); // 尽早释放锁
+        ensure_history_session_current(&ctx.game_status, request_session).await?;
+
+        // The event becomes externally visible only after all asynchronous
+        // setup has retained the captured session.
+        let start_payload = FreeDialoguePayload {
+            switch: true,
+            max_rounds: self.max_rounds,
+            end_line: self.end_line.clone(),
+            duration: self.duration,
+        };
+        let _ = emit(ctx.app, SCRIPT_FREE_DIALOGUE, &start_payload);
 
         // ---- 主循环（支持无限轮次） ----
         let mut rounds: i32 = 0;
@@ -172,6 +220,14 @@ impl ScriptEvent for FreeDialogueEvent {
                 ch.input_tx = Some(tx);
                 rx
             };
+            // Channel setup awaited. If Preview changed while it was pending,
+            // do not publish an input request or leave this old event alive.
+            if let Err(error) =
+                ensure_history_session_current(&ctx.game_status, request_session).await
+            {
+                ctx.channels.lock().await.input_tx = None;
+                return Err(error);
+            }
             let payload = InputPayload {
                 hint: self.hint.clone(),
                 duration: self.duration,
@@ -181,18 +237,17 @@ impl ScriptEvent for FreeDialogueEvent {
             let user_input = rx.await.map_err(|_| anyhow!("用户输入通道已关闭"))?;
 
             // ---- 添加用户输入台词先 ----
-            {
-                let mut gs = ctx.game_status.lock().await;
-                let line = crate::ai_service::types::LineBase {
-                    content: user_input.clone(),
-                    attribute: LineAttributeExt(LineAttribute::User),
-                    display_name: Some(gs.player.user_name.clone()),
-                    // 玩家台词一律标 sender_role_id=0（玩家），与 handle_user_message 对齐
-                    sender_role_id: Some(0),
-                    ..Default::default()
-                };
-                gs.add_line(ctx.db, line).await?;
-            }
+            let player_name = ctx.game_status.lock().await.player.user_name.clone();
+            let line = crate::ai_service::types::LineBase {
+                content: user_input.clone(),
+                attribute: LineAttributeExt(LineAttribute::User),
+                display_name: Some(player_name),
+                // 玩家台词一律标 sender_role_id=0（玩家），与 handle_user_message 对齐
+                sender_role_id: Some(0),
+                ..Default::default()
+            };
+            append_free_dialogue_line_if_current(&ctx.game_status, ctx.db, request_session, line)
+                .await?;
 
             // ---- 检查结束词（子串匹配） ----
             if !self.end_line.is_empty() && user_input.contains(&self.end_line) {
@@ -215,20 +270,28 @@ impl ScriptEvent for FreeDialogueEvent {
                     display_name: Some("旁白".to_string()),
                     ..Default::default()
                 };
-                ctx.game_status
-                    .lock()
-                    .await
-                    .add_line(ctx.db, sys_line)
-                    .await?;
+                append_free_dialogue_line_if_current(
+                    &ctx.game_status,
+                    ctx.db,
+                    request_session,
+                    sys_line,
+                )
+                .await?;
             }
 
             // ---- 调用 AI 生成回复 ----
             generator.process_message(None).await?;
+            ensure_history_session_current(&ctx.game_status, request_session).await?;
 
             if is_last_round {
                 break;
             }
         }
+
+        // The final generator await may have raced a Preview transition; do
+        // not emit a completion marker for an event whose canonical session is
+        // no longer current.
+        ensure_history_session_current(&ctx.game_status, request_session).await?;
 
         // ---- 发送自由对话结束事件 ----
         let end_payload = FreeDialoguePayload {
@@ -251,4 +314,111 @@ pub fn register() {
     register_event(FreeDialogueEvent::event_type(), |data| {
         Box::new(FreeDialogueEvent::from_event_data(&data))
     });
+}
+
+#[cfg(all(test, feature = "memory-test-api"))]
+mod tests {
+    use super::*;
+    use crate::ai_service::game_system::role_manager::GameRoleManager;
+    use crate::ai_service::memory::{MemoryConfig, MemorySectionLimits};
+    use crate::config::tts::TtsConfig;
+    use crate::memory_test_api::temp_db::TemporaryDatabase;
+    use std::sync::Arc;
+
+    fn status_for_test(db: &TemporaryDatabase) -> GameStatus {
+        GameStatus::new(GameRoleManager::new(
+            db.directory.path().to_path_buf(),
+            Arc::new(tokio::sync::RwLock::new(None)),
+            TtsConfig::default(),
+            None,
+            MemoryConfig {
+                enabled: false,
+                update_interval: 1,
+                recent_window: 0,
+                limits: MemorySectionLimits::default(),
+            },
+        ))
+    }
+
+    fn user_line(content: &str) -> LineBase {
+        LineBase {
+            content: content.into(),
+            attribute: LineAttributeExt(LineAttribute::User),
+            sender_role_id: Some(0),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn preview_round_trip_rejects_free_dialogue_setup_and_later_round_writes() {
+        let db = TemporaryDatabase::open().await.unwrap();
+        let game_status = Arc::new(tokio::sync::Mutex::new(status_for_test(&db)));
+        let stale_session = game_status.lock().await.history_session();
+
+        // This models Preview entering and restoring while get_role, LLM slot
+        // setup, or a generator round is awaiting. The original free-dialogue
+        // event must neither admit a generator/tool nor write its player or
+        // plot lines into restored canonical history.
+        {
+            let mut status = game_status.lock().await;
+            status.role_manager.set_memory_preview(true);
+            status.preview_generation = status.preview_generation.wrapping_add(1);
+            status.role_manager.set_memory_preview(false);
+            status.preview_generation = status.preview_generation.wrapping_add(1);
+        }
+        assert!(
+            ensure_history_session_current(&game_status, stale_session)
+                .await
+                .is_err()
+        );
+        assert!(
+            GameStatus::admit_tool_execution_if_current(&game_status, stale_session)
+                .await
+                .is_none()
+        );
+        assert!(
+            append_free_dialogue_line_if_current(
+                &game_status,
+                &db.connection,
+                stale_session,
+                user_line("stale player input"),
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            append_free_dialogue_line_if_current(
+                &game_status,
+                &db.connection,
+                stale_session,
+                user_line("stale plot prompt"),
+            )
+            .await
+            .is_err()
+        );
+        assert!(game_status.lock().await.line_list.is_empty());
+
+        // A fresh, coherent session retains ordinary generator/tool admission
+        // and conditional canonical writes.
+        let current_session = game_status.lock().await.history_session();
+        assert!(
+            ensure_history_session_current(&game_status, current_session)
+                .await
+                .is_ok()
+        );
+        assert!(
+            GameStatus::admit_tool_execution_if_current(&game_status, current_session)
+                .await
+                .is_some()
+        );
+        append_free_dialogue_line_if_current(
+            &game_status,
+            &db.connection,
+            current_session,
+            user_line("current player input"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(game_status.lock().await.line_list.len(), 1);
+    }
 }

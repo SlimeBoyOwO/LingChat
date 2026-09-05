@@ -1,15 +1,18 @@
 use std::collections::HashSet;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{Result, anyhow};
 use futures_util::StreamExt;
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, oneshot};
 
 use crate::AppState;
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmClient};
 use crate::ai_service::message_system::generator::GeneratorSource;
+use crate::ai_service::message_system::producer::{PresentationChunk, PresentationStream};
 use crate::ai_service::message_system::responses::event_names;
 use crate::ai_service::types::LlmMessage;
 
@@ -33,11 +36,53 @@ const TOOL_USE_POLICY_PROMPT: &str = "你可以调用本请求随附的工具。
 pub type ToolMessageSink = Arc<Mutex<Vec<LlmMessage>>>;
 
 pub struct ToolLoopResult {
-    pub stream: ChunkStream,
+    pub stream: PresentationStream,
     pub tool_messages: ToolMessageSink,
     /// 工具闭环是否真的执行过工具。生产者据此只在工具场景暂存最后一段，
     /// 让重复的收尾段可以被丢弃，同时仍把最后一条有效回复标为完成。
     pub tool_calls_seen: Arc<AtomicBool>,
+}
+
+/// Narrow cancellation/admission surface supplied by the message generator.
+///
+/// `tool_loop` deliberately knows neither `GameStatus` nor preview internals.
+/// The pre-LLM callback rejects an obsolete request before each model call. The
+/// tool callback additionally returns the caller-owned preview/formal gate;
+/// holding that permit through `ToolExecutor::execute` linearizes irreversible
+/// tool effects against Preview transitions without holding GameStatus itself.
+type SessionFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
+
+#[derive(Clone)]
+pub struct HistorySessionControl {
+    is_current: Arc<dyn Fn() -> SessionFuture<bool> + Send + Sync>,
+    admit_tool_execution:
+        Arc<dyn Fn() -> SessionFuture<Option<tokio::sync::OwnedMutexGuard<()>>> + Send + Sync>,
+}
+
+impl HistorySessionControl {
+    pub fn new<Check, CheckFuture, Admit, AdmitFuture>(
+        is_current: Check,
+        admit_tool_execution: Admit,
+    ) -> Self
+    where
+        Check: Fn() -> CheckFuture + Send + Sync + 'static,
+        CheckFuture: Future<Output = bool> + Send + 'static,
+        Admit: Fn() -> AdmitFuture + Send + Sync + 'static,
+        AdmitFuture: Future<Output = Option<tokio::sync::OwnedMutexGuard<()>>> + Send + 'static,
+    {
+        Self {
+            is_current: Arc::new(move || Box::pin(is_current())),
+            admit_tool_execution: Arc::new(move || Box::pin(admit_tool_execution())),
+        }
+    }
+
+    async fn is_current(&self) -> bool {
+        (self.is_current)().await
+    }
+
+    async fn admit_tool_execution(&self) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+        (self.admit_tool_execution)().await
+    }
 }
 
 /// 保证工具参数进度在正常结束、流错误和上游取消时都会被清理。
@@ -76,6 +121,7 @@ pub async fn stream_with_tool_loop(
     source: GeneratorSource,
     role_name: Option<String>,
     app: &AppHandle,
+    session: HistorySessionControl,
 ) -> Result<ToolLoopResult> {
     // 每次回复开始时读取一次设置，避免同一轮执行期间修改配置导致边界跳变。
     let max_tool_rounds = app
@@ -86,6 +132,12 @@ pub async fn stream_with_tool_loop(
     let initial_allowed = registry.allowed_tools(source, role_name.as_deref());
     let initial_definitions = registry.definitions_for_allowed(&initial_allowed);
     if initial_definitions.is_empty() || !llm.supports_streaming_tools() {
+        // This branch invokes its single LLM request before returning the
+        // stream, so this must be immediately before that call rather than a
+        // stale setup-time check.
+        if !session.is_current().await {
+            return Err(anyhow!("聊天会话已切换，已取消 LLM/工具闭环"));
+        }
         if !initial_definitions.is_empty() {
             tracing::info!("当前 LLM Provider 不支持原生流式工具调用，跳过普通聊天工具闭环");
         }
@@ -125,6 +177,13 @@ pub async fn stream_with_tool_loop(
         // 收尾轮（无工具定义）可能仍返回工具调用且不给正文，多留一轮补救重试。
         let mut synthesis_retried = false;
         for round in 0..=(max_tool_rounds + 1) {
+            // A prior tool result may have been accepted, then Preview may
+            // have switched before this follow-up LLM call. Never start that
+            // next call for the replaced canonical history.
+            if !session.is_current().await {
+                tracing::info!(round = round + 1, "聊天会话已切换，停止工具闭环");
+                return;
+            }
             tracing::info!(round = round + 1, max_tool_rounds, "开始流式聊天工具决策");
             let final_synthesis = round >= max_tool_rounds;
             if round == max_tool_rounds {
@@ -160,17 +219,24 @@ pub async fn stream_with_tool_loop(
                     LlmChunk::Content(text) => {
                         round_text.push_str(&text);
                         // 实时透传，保持下游流式体验
-                        yield LlmChunk::Content(text);
+                        yield PresentationChunk::Chunk(LlmChunk::Content(text));
                     }
                     // Thinking 等其它 chunk 也一起实时透传
                     other => {
-                        yield other;
+                        yield PresentationChunk::Chunk(other);
                     }
                 }
             }
 
             // 正常路径立即结束进度；流错误或消费方提前取消时由 Drop 自动兜底。
             drop(progress_end_guard);
+
+            // The stream itself is an await boundary. Reject an obsolete
+            // response before preparing tools or a follow-up LLM round.
+            if !session.is_current().await {
+                tracing::info!(round = round + 1, "LLM 返回后会话已切换，停止工具闭环");
+                return;
+            }
 
             if tool_calls.is_empty() {
                 // 本轮没有工具调用，工具闭环结束
@@ -192,7 +258,6 @@ pub async fn stream_with_tool_loop(
                 return;
             }
 
-            tool_calls_seen_in_stream.store(true, Ordering::Release);
             let calls = tool_calls;
 
             let mut ids = HashSet::new();
@@ -205,6 +270,21 @@ pub async fn stream_with_tool_loop(
                 }
             }
 
+            // The producer may still be holding this round's preamble until
+            // a later emotion tag or EOF. Fence it through the normal
+            // consumer/publisher path before touching the session permit or
+            // emitting any tool activity. Cancellation is fail-closed: no
+            // acknowledgement means no side effect.
+            let (fence_tx, fence_rx) = oneshot::channel();
+            yield PresentationChunk::BeforeTools(fence_tx);
+            let reply_expected = match fence_rx.await {
+                Ok(reply_expected) => reply_expected,
+                Err(_) => {
+                    tracing::info!("工具前导台词发布栅栏已取消，停止工具闭环");
+                    return;
+                },
+            };
+
             // 本轮的内容文本 + tool_calls 一起存入助理消息
             let assistant_message = LlmMessage {
                 role: "assistant".to_string(),
@@ -216,6 +296,15 @@ pub async fn stream_with_tool_loop(
             let context = ToolContext::new(allowed).with_app(app.clone());
             let mut character_switched = false;
             for call in calls {
+                // Acquiring the shared permit both checks the captured
+                // HistorySession and keeps Preview from entering until this
+                // one executor call has completed. GameStatus is never held
+                // across this await or the tool's own awaits.
+                let Some(_tool_permit) = session.admit_tool_execution().await else {
+                    tracing::info!(tool = call.function.name, call_id = call.id, "工具执行前会话已切换，停止工具闭环");
+                    return;
+                };
+                tool_calls_seen_in_stream.store(true, Ordering::Release);
                 tracing::info!(tool = call.function.name, call_id = call.id, "执行聊天工具");
                 emit_tool_activity_event(
                     &app,
@@ -224,6 +313,7 @@ pub async fn stream_with_tool_loop(
                     &call.function.arguments,
                     "started",
                     None,
+                    reply_expected,
                 );
                 let result = executor
                     .execute(&call.function.name, &call.function.arguments, &context)
@@ -242,6 +332,7 @@ pub async fn stream_with_tool_loop(
                     &call.function.arguments,
                     "finished",
                     Some(succeeded),
+                    false,
                 );
                 if call.function.name == "character_switch" && succeeded {
                     character_switched = true;
@@ -251,6 +342,7 @@ pub async fn stream_with_tool_loop(
             }
 
             if character_switched {
+
                 // character_switch 已为目标角色注入 SYSTEM 并刷新记忆。这里必须切换
                 // LLM 上下文本身，否则同一请求的最终回复仍会沿用旧角色人设。
                 let (refreshed, refreshed_name) = current_role_context(&app).await?;
@@ -356,6 +448,7 @@ pub(crate) fn emit_tool_activity_event(
     arguments: &str,
     phase: &str,
     ok: Option<bool>,
+    wait_for_reply: bool,
 ) {
     let arguments_detail: String = arguments.chars().take(1000).collect();
     let payload = serde_json::json!({
@@ -364,6 +457,7 @@ pub(crate) fn emit_tool_activity_event(
         "phase": phase,
         "ok": ok,
         "arguments": arguments_detail,
+        "wait_for_reply": wait_for_reply,
     });
     if let Err(error) = app.emit(event_names::AI_TOOL_ACTIVITY, &payload) {
         tracing::warn!("emit ai:tool_activity 失败: {error}");
@@ -441,14 +535,15 @@ pub(crate) fn emit_tool_call_event(
     ok
 }
 
-fn presentation_stream(stream: ChunkStream) -> ChunkStream {
+fn presentation_stream(stream: ChunkStream) -> PresentationStream {
     Box::pin(stream.filter_map(|chunk| async move {
         match chunk {
             Ok(LlmChunk::ToolCalls(calls)) => {
                 tracing::warn!(count = calls.len(), "非工具调用回复流包含工具调用，已丢弃");
                 None
             },
-            chunk => Some(chunk),
+            Ok(chunk) => Some(Ok(PresentationChunk::Chunk(chunk))),
+            Err(error) => Some(Err(error)),
         }
     }))
 }

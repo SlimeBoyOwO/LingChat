@@ -1,0 +1,9 @@
+{
+  "scenario": "basic-compression",
+  "role_id": 7,
+  "display_name": "Test AI",
+  "line_count": 4,
+  "update_interval": 1,
+  "recent_window": 0,
+  "initial_bank": {"schema_version": 1, "meta": {"last_processed_global_idx": 0, "updated_at": ""}, "data": {"short_term": "暂无近期对话摘要。", "long_term": "暂无长期关键经历。", "user_info": "暂无用户特征记录。", "promises": "暂无未完成的约定。"}}
+}

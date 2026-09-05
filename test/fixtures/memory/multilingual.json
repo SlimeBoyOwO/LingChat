@@ -1,0 +1,9 @@
+{
+  "scenario": "basic-compression",
+  "role_id": 7,
+  "display_name": "测试角色",
+  "lines": [{"content":"风雪说：你好，世界 🌏","attribute":"user","sender_role_id":0,"perceived_role_ids":[7]}],
+  "line_count": 1,
+  "update_interval": 1,
+  "section_limits": {"short_term": 32, "long_term": 32, "user_info": 32, "promises": 32}
+}

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ref } from "vue";
 import { i18n } from "@/locales";
+import { eventQueue } from "../../core/events/event-queue";
 
 /** 网页搜索工具配置（与后端 WebSearchSettings 对应，字段保持 snake_case）。 */
 export interface WebSearchSettings {
@@ -96,6 +97,8 @@ export interface ToolActivityEvent {
   phase: "started" | "finished";
   ok?: boolean | null;
   arguments: string;
+  /** Backend publisher crossed a real preamble reply before this start. */
+  wait_for_reply?: boolean;
 }
 
 export interface ToolActivityState {
@@ -130,6 +133,22 @@ const activeToolCalls = new Map<string, ToolActivityState>();
 const watchdogTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let sequence = 0;
 let finishedClearTimer: ReturnType<typeof setTimeout> | null = null;
+// Per-call UI-only frontiers ensure a quick tool result cannot overtake its
+// delayed started state. `false` means the reply was cleared/stale/error, so
+// neither notification is resurrected.
+type DeferredToolActivity = {
+  frontier: Promise<boolean>;
+  actions: Array<() => void>;
+};
+const presentationFrontiers = new Map<string, DeferredToolActivity>();
+const cancelledPresentationCalls = new Set<string>();
+function cancelPresentationCall(callId: string) {
+  cancelledPresentationCalls.add(callId);
+  // Keep cancellation tombstones bounded across long conversations.
+  if (cancelledPresentationCalls.size > 128) {
+    cancelledPresentationCalls.delete(cancelledPresentationCalls.values().next().value!);
+  }
+}
 
 function clearFinishedTimer() {
   if (finishedClearTimer !== null) {
@@ -190,9 +209,33 @@ function showFinished(activity: ToolActivityState, ok: boolean) {
 export function handleToolActivity(event: ToolActivityEvent) {
   if (!event.call_id?.trim() || !event.tool?.trim()) return;
 
+  if (event.phase !== "started" && cancelledPresentationCalls.has(event.call_id)) return;
   if (event.phase === "started") {
-    // 参数已合并完整、进入执行阶段：清掉「正在生成」进度提示
+    cancelledPresentationCalls.delete(event.call_id);
+    // Parameter generation has finished regardless of whether UI activity is
+    // deferred. The optional wait is presentation-only and never reaches the
+    // backend/tool executor.
     clearToolCallPreparing();
+    if (event.wait_for_reply) {
+      const frontier = eventQueue.waitForLatestReplyPresentation();
+      const deferred: DeferredToolActivity = {
+        frontier,
+        actions: [() => handleToolActivity({ ...event, wait_for_reply: false })],
+      };
+      presentationFrontiers.set(event.call_id, deferred);
+      void frontier.then((presented) => {
+        // `clear`/error removes this exact entry. Do not resurrect an activity
+        // for a stale preview or a cancelled reply frontier.
+        if (presentationFrontiers.get(event.call_id) !== deferred) return;
+        presentationFrontiers.delete(event.call_id);
+        if (presented) {
+          for (const action of deferred.actions) action();
+        } else {
+          cancelPresentationCall(event.call_id);
+        }
+      });
+      return;
+    }
     clearFinishedTimer();
     clearWatchdog(event.call_id);
     const activity: ToolActivityState = {
@@ -212,8 +255,16 @@ export function handleToolActivity(event: ToolActivityEvent) {
         activeToolCalls.delete(event.call_id);
         watchdogTimers.delete(event.call_id);
         showFinished(stale, false);
-      }, ACTIVE_WATCHDOG_MS)
+      }, ACTIVE_WATCHDOG_MS),
     );
+    return;
+  }
+
+  const deferred = presentationFrontiers.get(event.call_id);
+  if (deferred) {
+    // Keep result notifications behind the same UI frontier; a fast tool may
+    // finish before its delayed started notification has become visible.
+    deferred.actions.push(() => handleToolActivity(event));
     return;
   }
 
@@ -229,9 +280,19 @@ export function handleToolActivity(event: ToolActivityEvent) {
   showFinished(activity, event.ok !== false);
 }
 
+/** Result notifications share their call's preamble frontier, not a newer reply. */
+export function afterToolPresentation(callId: string | undefined, action: () => void) {
+  if (callId && cancelledPresentationCalls.has(callId)) return;
+  const deferred = callId ? presentationFrontiers.get(callId) : undefined;
+  if (deferred) deferred.actions.push(action);
+  else action();
+}
+
 /** AI 请求异常结束时清理前台调用；已脱离当前生成的后台命令继续保留。 */
 export function interruptToolActivities() {
   clearToolCallPreparing();
+  for (const callId of presentationFrontiers.keys()) cancelPresentationCall(callId);
+  presentationFrontiers.clear();
   const visible = currentToolActivity.value;
   for (const [callId, activity] of [...activeToolCalls.entries()]) {
     if (isBackgroundCommand(activity)) continue;

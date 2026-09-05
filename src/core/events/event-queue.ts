@@ -9,10 +9,43 @@ export class EventQueue {
   private queue: ScriptEventType[] = [];
   private isProcessing = false;
   private paused = true;
+  private generation = 0;
   private currentEvent: ScriptEventType | null = null;
   private currentResolve: (() => void) | null = null;
+  // Resolves when a reply processor has installed text into the visible UI,
+  // not when the user has read/clicked through it. Tool activity uses this
+  // local frontier only; backend never waits for it.
+  private latestReplyPresentation: Promise<boolean> = Promise.resolve(false);
+  private replyPresentations = new Map<ScriptEventType, (presented: boolean) => void>();
+
+  /** Wait only until the most recently queued reply begins presentation. */
+  waitForLatestReplyPresentation(): Promise<boolean> {
+    return this.latestReplyPresentation;
+  }
+
+  /** A dropped preview reply must not borrow another session's frontier. */
+  discardReplyPresentation() {
+    this.latestReplyPresentation = Promise.resolve(false);
+  }
+
+  private cancelReplyPresentations() {
+    for (const resolve of this.replyPresentations.values()) resolve(false);
+    this.replyPresentations.clear();
+    this.latestReplyPresentation = Promise.resolve(false);
+  }
 
   addEvent(event: ScriptEventType) {
+    if (event.type === "reply") {
+      // Capture the last queued reply at tool-event arrival, but settle each
+      // reply independently: a later suffix must not cancel its preamble, and
+      // an earlier sentence must not acknowledge a later one.
+      this.latestReplyPresentation = new Promise((resolve) => {
+        this.replyPresentations.set(event, resolve);
+      });
+    }
+    if (event.type === "error" || event.type === "status_reset") {
+      this.cancelReplyPresentations();
+    }
     if ((event.type === "error" || event.type === "status_reset") && this.currentResolve) {
       this.currentResolve();
       this.currentResolve = null;
@@ -56,9 +89,10 @@ export class EventQueue {
   }
 
   private async processQueue() {
+    const generation = this.generation;
     this.isProcessing = true;
     try {
-      while (this.queue.length > 0) {
+      while (generation === this.generation && this.queue.length > 0) {
         const event = this.queue.shift();
         if (event) {
           // 如果当前事件是thinking类型，且队列后面还有别的事件，则跳过
@@ -67,24 +101,36 @@ export class EventQueue {
           }
           this.currentEvent = event;
           try {
-            await this.processSingleEvent(event);
+            await this.processSingleEvent(event, generation);
           } catch (error) {
+            if (generation !== this.generation) return;
             console.error("处理事件失败:", error, event);
+            this.cancelReplyPresentations();
             this.resetToInputState();
           }
         }
       }
     } finally {
-      this.isProcessing = false;
-      if (this.currentEvent?.isFinal) {
-        this.resetToInputState();
+      // A cleared generation must not reset a newer consumer's state.
+      if (generation === this.generation) {
+        this.isProcessing = false;
+        if (this.currentEvent?.isFinal) {
+          this.resetToInputState();
+        }
       }
     }
   }
 
-  private async processSingleEvent(event: ScriptEventType): Promise<void> {
-    // 处理事件并等待完成
+  private async processSingleEvent(event: ScriptEventType, generation: number): Promise<void> {
+    // A reply is considered presented once its processor has set text/state;
+    // do this before duration/user waiting so tool activity never waits for a
+    // click or audio completion.
     await eventProcessorManager.processEvent(event);
+    if (generation !== this.generation) return;
+    if (event.type === "reply") {
+      this.replyPresentations.get(event)?.(true);
+      this.replyPresentations.delete(event);
+    }
 
     // 如果事件需要等待用户继续，就等待
     if (this.shouldWaitForUser(event)) {
@@ -138,6 +184,9 @@ export class EventQueue {
   }
 
   clear() {
+    this.generation += 1;
+    this.currentResolve?.();
+    this.cancelReplyPresentations();
     this.queue = [];
     this.isProcessing = false;
     this.paused = true;

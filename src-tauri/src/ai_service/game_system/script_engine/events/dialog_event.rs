@@ -7,9 +7,12 @@
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::Value;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use tauri::Manager;
 
 use crate::AppState;
+use crate::ai_service::game_system::game_status::HistorySession;
 use crate::ai_service::game_system::script_engine::events::{
     ScriptContext, ScriptEvent, parse_duration, register_event,
 };
@@ -71,14 +74,29 @@ impl DialogueEvent {
         display_name: &str,
         display_subtitle: &str,
         emotion: &str,
+        session: HistorySession,
     ) -> Result<()> {
-        // 试玩中该事件同样 emit ai:reply：带上当前试玩代号，前端据此丢弃
-        // 试玩中止后迟到的固定台词（与 ai_dialogue 的 preview_gen 语义一致）
-        let preview_gen = if ctx.is_preview {
-            Some(ctx.game_status.lock().await.preview_generation)
-        } else {
-            None
+        // Write before emitting, using the same captured identity as sentence
+        // enrichment. A fallback must not re-capture mode/generation after its
+        // await and publish a reply for restored canonical history.
+        let line = LineBase {
+            content: text.to_string(),
+            attribute: LineAttributeExt(LineAttribute::Assistant),
+            sender_role_id: Some(role_id),
+            display_name: Some(display_name.to_string()),
+            original_emotion: Some(emotion.to_string()),
+            ..Default::default()
         };
+        if !ctx
+            .game_status
+            .lock()
+            .await
+            .append_line_if_current(ctx.db, session, line)
+            .await?
+        {
+            return Err(anyhow!("固定台词期间历史会话已切换，已丢弃本次事件"));
+        }
+
         let payload = ReplyResponse {
             type_: "reply".to_string(),
             duration: self.duration.unwrap_or(-1.0),
@@ -96,20 +114,9 @@ impl DialogueEvent {
             display_subtitle: Some(display_subtitle.to_string()),
             user_message_seq: None,
             thinking: None,
-            preview_gen,
+            preview_gen: session.is_preview.then_some(session.generation),
         };
         let _ = emit(ctx.app, "ai:reply", &payload);
-
-        // Add ASSISTANT line
-        let line = LineBase {
-            content: text.to_string(),
-            attribute: LineAttributeExt(LineAttribute::Assistant),
-            sender_role_id: Some(role_id),
-            display_name: Some(display_name.to_string()),
-            original_emotion: Some(emotion.to_string()),
-            ..Default::default()
-        };
-        ctx.game_status.lock().await.add_line(ctx.db, line).await?;
         Ok(())
     }
 }
@@ -117,13 +124,15 @@ impl DialogueEvent {
 #[async_trait]
 impl ScriptEvent for DialogueEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        let script_status = ctx
-            .game_status
-            .lock()
-            .await
-            .script_status
-            .clone()
-            .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
+        let (script_status, request_session) = {
+            let gs = ctx.game_status.lock().await;
+            (
+                gs.script_status
+                    .clone()
+                    .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?,
+                gs.history_session(),
+            )
+        };
 
         let (role_id, role_display_name) = {
             let mut gs = ctx.game_status.lock().await;
@@ -134,8 +143,15 @@ impl ScriptEvent for DialogueEvent {
             (id, dn)
         };
 
-        // 设为当前角色：consume_sentence 据此读取角色信息与 TTS 配置
-        ctx.game_status.lock().await.current_role_id = Some(role_id);
+        // 设为当前角色：consume_sentence 据此读取角色信息与 TTS 配置。
+        // Role lookup may await, so the original session must still be current.
+        {
+            let mut gs = ctx.game_status.lock().await;
+            if !gs.is_history_session_current(request_session) {
+                return Err(anyhow!("固定台词期间历史会话已切换，已丢弃本次事件"));
+            }
+            gs.current_role_id = Some(role_id);
+        }
 
         // Get display info
         let display_name = self
@@ -154,9 +170,8 @@ impl ScriptEvent for DialogueEvent {
                 translator: state.chat.translator.clone(),
                 game_status: ctx.game_status.clone(),
                 db: ctx.db.clone(),
-                // 捕获当前试玩代号：中止后游离写入会被 add_assistant_line 的守卫丢弃
-                generation: ctx.game_status.lock().await.preview_generation,
-                is_preview: ctx.is_preview,
+                session: request_session,
+                stale: Arc::new(AtomicBool::new(false)),
             }
         };
         let overrides = ReplyOverrides {
@@ -198,6 +213,7 @@ impl ScriptEvent for DialogueEvent {
                         &display_name,
                         &display_subtitle,
                         &emotion,
+                        request_session,
                     )
                     .await?;
                 },
@@ -211,6 +227,7 @@ impl ScriptEvent for DialogueEvent {
                         &display_name,
                         &display_subtitle,
                         &emotion,
+                        request_session,
                     )
                     .await?;
                 },

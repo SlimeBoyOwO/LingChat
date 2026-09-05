@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
@@ -6,6 +8,7 @@ use crate::ai_service::game_system::game_status::GameStatusSnapshot;
 use crate::api::game::WebInitData;
 use crate::api::game::build_web_init_data;
 use crate::config::AppConfig;
+use crate::db::managers::memory_repo::MemoryRepo;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::prompt::PromptOptions;
@@ -44,11 +47,77 @@ fn format_datetime(dt: &chrono::NaiveDateTime) -> String {
 }
 
 async fn save_screenshot_file(save_id: i32, source_path: &str) -> Result<(), String> {
-    let screenshots_dir = super::data_dir().join("screenshots");
-    std::fs::create_dir_all(&screenshots_dir).map_err(|e| e.to_string())?;
+    save_screenshot_to_dir(save_id, source_path, &super::data_dir().join("screenshots"))
+}
+
+fn save_screenshot_to_dir(
+    save_id: i32,
+    source_path: &str,
+    screenshots_dir: &Path,
+) -> Result<(), String> {
+    std::fs::create_dir_all(screenshots_dir).map_err(|e| e.to_string())?;
     let dest_path = screenshots_dir.join(format!("{}.png", save_id));
     std::fs::copy(source_path, &dest_path)
         .map_err(|e| format!("复制截图文件失败: {} → {:?}: {}", source_path, dest_path, e))?;
+    Ok(())
+}
+
+/// Production save creation orchestration, factored so the preview boundary is
+/// regression-tested together with its DB-row and screenshot side effects.
+pub(crate) async fn create_save_for_session(
+    db: &sea_orm::DatabaseConnection,
+    service: &mut crate::ai_service::service::AIService,
+    title: &str,
+    screenshot_path: Option<&str>,
+    screenshots_dir: &Path,
+) -> Result<i32, String> {
+    // Retain this guard until both the row/file effects and immutable session
+    // write complete. A preview transition therefore cannot slip between a
+    // preliminary check and the first formal side effect.
+    let _formal_gate = service
+        .acquire_formal_session_gate()
+        .await
+        .map_err(|error| error.to_string())?;
+    let save_id = SaveRepo::create_save(db, title)
+        .await
+        .map_err(|e| format!("创建存档失败: {}", e))?
+        .id;
+    if let Some(path) = screenshot_path {
+        let _ = save_screenshot_to_dir(save_id, path, screenshots_dir);
+    }
+    let snapshot = service.capture_guarded_session_snapshot().await;
+    service
+        .persist_captured_formal_session(save_id, &snapshot)
+        .await
+        .map_err(|e| format!("保存会话失败: {}", e))?;
+    Ok(save_id)
+}
+
+/// Production update orchestration; preview is rejected before existence
+/// checks, screenshot copying, or any session persistence.
+pub(crate) async fn update_save_for_session(
+    db: &sea_orm::DatabaseConnection,
+    service: &mut crate::ai_service::service::AIService,
+    save_id: i32,
+    screenshot_path: Option<&str>,
+    screenshots_dir: &Path,
+) -> Result<(), String> {
+    let _formal_gate = service
+        .acquire_formal_session_gate()
+        .await
+        .map_err(|error| error.to_string())?;
+    SaveRepo::get_save_by_id(db, save_id)
+        .await
+        .map_err(|e| format!("查询存档失败: {}", e))?
+        .ok_or_else(|| format!("存档 {} 不存在", save_id))?;
+    if let Some(path) = screenshot_path {
+        let _ = save_screenshot_to_dir(save_id, path, screenshots_dir);
+    }
+    let snapshot = service.capture_guarded_session_snapshot().await;
+    service
+        .persist_captured_formal_session(save_id, &snapshot)
+        .await
+        .map_err(|e| format!("保存会话失败: {}", e))?;
     Ok(())
 }
 
@@ -129,66 +198,15 @@ pub async fn create_save(
 ) -> Result<CreateSaveResponse, String> {
     let state = app.state::<AppState>();
     let db = &state.db;
-
     let mut service = state.ai_service.lock().await;
-    let lines = service.game_status.lock().await.line_list.clone();
-
-    // 1. 创建 save 行
-    let save_model = SaveRepo::create_save(db, &title)
-        .await
-        .map_err(|e| format!("创建存档失败: {}", e))?;
-    let save_id = save_model.id;
-
-    // 复制截图到 screenshots 目录
-    if let Some(ref path) = screenshot_path {
-        let _ = save_screenshot_file(save_id, path).await;
-    }
-
-    // 2. 同步台词
-    if !lines.is_empty() {
-        SaveRepo::sync_lines(db, save_id, &lines)
-            .await
-            .map_err(|e| format!("同步台词失败: {}", e))?;
-    }
-
-    // 3. 设置主角
-    if let Some(main_id) = service.game_status.lock().await.main_role_id {
-        SaveRepo::update_save_main_role(db, save_id, Some(main_id))
-            .await
-            .map_err(|e| format!("设置主角失败: {}", e))?;
-    }
-
-    // 4. 写入 GameStatus 快照
-    let snapshot = service.game_status.lock().await.to_snapshot();
-    let snapshot_json =
-        serde_json::to_string(&snapshot).map_err(|e| format!("序列化状态失败: {}", e))?;
-    SaveRepo::update_save_status(db, save_id, &snapshot_json)
-        .await
-        .map_err(|e| format!("保存状态失败: {}", e))?;
-
-    // 5. 标记当前活跃存档
-    service.game_status.lock().await.active_save_id = Some(save_id);
-
-    // 6. 持久化 MemoryBank
-    service
-        .persist_memory_banks(save_id)
-        .await
-        .map_err(|e| format!("保存记忆库失败: {}", e))?;
-
-    // 7. 持久化剧本状态（若有）
-    if let Some(ref script_status) = service.game_status.lock().await.script_status {
-        let vars_json = serde_json::to_string(&script_status.vars).unwrap_or_default();
-        let _ = SaveRepo::upsert_running_script(
-            db,
-            save_id,
-            &script_status.folder_key,
-            &vars_json,
-            &script_status.current_chapter_key,
-            script_status.current_event_process,
-        )
-        .await
-        .map_err(|e| eprintln!("[SAVE_WARN] create_save: 保存剧本状态失败: {}", e));
-    }
+    let save_id = create_save_for_session(
+        db,
+        &mut service,
+        &title,
+        screenshot_path.as_deref(),
+        &super::data_dir().join("screenshots"),
+    )
+    .await?;
 
     Ok(CreateSaveResponse {
         save_id,
@@ -202,6 +220,12 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     let db = &state.db;
 
     let mut service = state.ai_service.lock().await;
+    // Loading replaces runtime history/banks and imports settings; reject it
+    // before any DB/runtime/import side effect while a preview owns GameStatus.
+    let _formal_gate = service
+        .acquire_formal_session_gate()
+        .await
+        .map_err(|error| error.to_string())?;
 
     // 1. 获取存档
     let save_model = SaveRepo::get_save_by_id(db, save_id)
@@ -244,10 +268,10 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
 
     // 7. 先恢复 MemoryBank：若在 load_lines（内部 sync_memories 会触发压缩检查）之后再恢复，
     //    后台全量重压会用旧库/旧指针把 DB 恢复的记忆库覆盖掉。
-    let _ = service
+    service
         .restore_memory_banks(save_id)
         .await
-        .map_err(|e| eprintln!("[SAVE_WARN] 恢复记忆库失败: {}", e));
+        .map_err(|e| format!("恢复记忆库失败: {}", e))?;
 
     // 8. 载入台词（sync_memories 用恢复后的正确指针，只压缩存档点之后的增量）
     service
@@ -276,60 +300,15 @@ pub async fn update_save(
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
     let db = &state.db;
-
     let mut service = state.ai_service.lock().await;
-
-    // 1. 校验存档存在
-    SaveRepo::get_save_by_id(db, save_id)
-        .await
-        .map_err(|e| format!("查询存档失败: {}", e))?
-        .ok_or_else(|| format!("存档 {} 不存在", save_id))?;
-
-    // 复制截图到 screenshots 目录
-    if let Some(ref path) = screenshot_path {
-        let _ = save_screenshot_file(save_id, path).await;
-    }
-
-    let lines = service.game_status.lock().await.line_list.clone();
-
-    // 2. 同步台词（智能 diff）
-    SaveRepo::sync_lines(db, save_id, &lines)
-        .await
-        .map_err(|e| format!("同步台词失败: {}", e))?;
-
-    // 3. 标记活跃存档
-    service.game_status.lock().await.active_save_id = Some(save_id);
-
-    // 4. 更新 GameStatus 快照
-    let snapshot = service.game_status.lock().await.to_snapshot();
-    let snapshot_json =
-        serde_json::to_string(&snapshot).map_err(|e| format!("序列化状态失败: {}", e))?;
-    SaveRepo::update_save_status(db, save_id, &snapshot_json)
-        .await
-        .map_err(|e| format!("保存状态失败: {}", e))?;
-
-    // 5. 持久化 MemoryBank
-    service
-        .persist_memory_banks(save_id)
-        .await
-        .map_err(|e| format!("保存记忆库失败: {}", e))?;
-
-    // 6. 持久化剧本状态
-    if let Some(ref script_status) = service.game_status.lock().await.script_status {
-        let vars_json = serde_json::to_string(&script_status.vars).unwrap_or_default();
-        let _ = SaveRepo::upsert_running_script(
-            db,
-            save_id,
-            &script_status.folder_key,
-            &vars_json,
-            &script_status.current_chapter_key,
-            script_status.current_event_process,
-        )
-        .await
-        .map_err(|e| eprintln!("[SAVE_WARN] update_save: 保存剧本状态失败: {}", e));
-    }
-
-    Ok(())
+    update_save_for_session(
+        db,
+        &mut service,
+        save_id,
+        screenshot_path.as_deref(),
+        &super::data_dir().join("screenshots"),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -338,25 +317,28 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
     let db = &state.db;
 
     let service = state.ai_service.lock().await;
+    let _formal_gate = service
+        .acquire_formal_session_gate()
+        .await
+        .map_err(|error| error.to_string())?;
 
     // 1. 删除 MemoryBank
-    SaveRepo::delete_memory_banks_by_save(db, save_id)
+    MemoryRepo::delete_for_save(db, save_id)
         .await
         .map_err(|e| format!("删除记忆库失败: {}", e))?;
 
-    // 2. 删除 running_script 关联（若有）
-    if let Ok(Some(save_model)) = SaveRepo::get_save_by_id(db, save_id).await {
-        if let Some(rs_id) = save_model.running_script_id {
-            let _ = SaveRepo::delete_running_script(db, rs_id).await;
-        }
-    }
+    // 2. Delete every legacy running-script row for this save. Do not discard
+    // repository errors: partial cleanup must be observable to the caller.
+    SaveRepo::clear_running_script_for_save(db, save_id)
+        .await
+        .map_err(|e| format!("删除运行剧本失败: {}", e))?;
 
-    // 删除关联的截图文件
+    // 删除关联的截图文件；a file-system failure is likewise not safe to hide.
     let screenshot_path = super::data_dir()
         .join("screenshots")
         .join(format!("{}.png", save_id));
     if screenshot_path.exists() {
-        let _ = std::fs::remove_file(screenshot_path);
+        std::fs::remove_file(&screenshot_path).map_err(|e| format!("删除存档截图失败: {}", e))?;
     }
 
     // 3. 删除存档（级联删除关联的 line / line_perception）
@@ -380,6 +362,11 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
 pub async fn update_save_title(app: AppHandle, save_id: i32, title: String) -> Result<(), String> {
     let state = app.state::<AppState>();
     let db = &state.db;
+    let service = state.ai_service.lock().await;
+    let _formal_gate = service
+        .acquire_formal_session_gate()
+        .await
+        .map_err(|error| error.to_string())?;
     SaveRepo::update_save_title(db, save_id, &title)
         .await
         .map_err(|e| format!("修改存档名称失败: {}", e))?;
@@ -387,7 +374,17 @@ pub async fn update_save_title(app: AppHandle, save_id: i32, title: String) -> R
 }
 
 #[tauri::command]
-pub async fn save_screenshot(save_id: i32, screenshot_path: String) -> Result<(), String> {
+pub async fn save_screenshot(
+    app: AppHandle,
+    save_id: i32,
+    screenshot_path: String,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let service = state.ai_service.lock().await;
+    let _formal_gate = service
+        .acquire_formal_session_gate()
+        .await
+        .map_err(|error| error.to_string())?;
     save_screenshot_file(save_id, &screenshot_path).await
 }
 

@@ -4,11 +4,10 @@ use std::path::{Path, PathBuf};
 use anyhow::{Result, anyhow};
 use sea_orm::DatabaseConnection;
 
+use crate::ai_service::game_system::game_status::HistoryChange;
 use crate::ai_service::game_system::memory_builder::MemoryBuilder;
-use crate::ai_service::game_system::persistent_memory_system::{
-    MemorySectionLimits, PersistentMemorySystem,
-};
 use crate::ai_service::llm::LlmSlot;
+use crate::ai_service::memory::{MemoryConfig, MemoryCoordinator, MemoryMode};
 use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::types::{CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage};
@@ -26,21 +25,14 @@ pub struct GameRoleManager {
     /// LLM 客户端槽位（支持运行时热切换）。MemoryBank 压缩引擎依赖此字段。
     /// 槽位本身始终存在，内部值为 None 时表示尚未配置模型。
     llm: LlmSlot,
-    /// 每个角色的 MemoryBank 后台压缩引擎（惰性构造）。
-    memory_bank_systems: HashMap<i32, PersistentMemorySystem>,
+    /// Permanent-memory runtime collection. Save/context always read immutable
+    /// coordinator snapshots; GameRole no longer stores a second bank copy.
+    memory: MemoryCoordinator,
     /// TTS 引擎配置（适配器 URL、音频格式等）。
     tts_config: TtsConfig,
     /// 本地 TTS 共享运行时（进程内引擎 + 路径 + 全局开关）。
     /// 转发给每个 VoiceMaker，使 `sbv2_local` 适配器可以惰性引导。
     local_tts: Option<LocalTtsRuntime>,
-    /// 全局永久记忆开关（来自 `AppConfig::use_persistent_memory`）。
-    use_persistent_memory: bool,
-    /// 触发记忆摘要的新消息数（来自 `AppConfig::memory_update_interval`）。
-    memory_update_interval: u32,
-    /// 摘要时保留的最近消息数（来自 `AppConfig::memory_recent_window`）。
-    memory_recent_window: u32,
-    /// 各记忆段长度上限（来自 `AppConfig::memory_*_max_chars`），透传给压缩系统。
-    memory_limits: MemorySectionLimits,
     /// 角色服装覆盖（session store → register_role_by_id 时优先读取）
     clothes_overrides: HashMap<i32, String>,
 }
@@ -51,22 +43,15 @@ impl GameRoleManager {
         llm: LlmSlot,
         tts_config: TtsConfig,
         local_tts: Option<LocalTtsRuntime>,
-        use_persistent_memory: bool,
-        memory_update_interval: u32,
-        memory_recent_window: u32,
-        memory_limits: MemorySectionLimits,
+        memory_config: MemoryConfig,
     ) -> Self {
         Self {
             loaded_roles: HashMap::new(),
             data_dir,
             llm,
-            memory_bank_systems: HashMap::new(),
+            memory: MemoryCoordinator::new(memory_config),
             tts_config,
             local_tts,
-            use_persistent_memory,
-            memory_update_interval,
-            memory_recent_window,
-            memory_limits,
             clothes_overrides: HashMap::new(),
         }
     }
@@ -89,6 +74,21 @@ impl GameRoleManager {
         if !self.loaded_roles.contains_key(&role_id) {
             self.register_role_by_id(db, role_id).await?;
         }
+        // Every loaded role receives a runtime owner even when permanent
+        // compression is disabled or no LLM is currently configured. Disabled
+        // runtimes simply never trigger; the runtime remains the only bank
+        // source and restores replace its default snapshot directly.
+        let display_name = self
+            .loaded_roles
+            .get(&role_id)
+            .and_then(|role| role.display_name.clone())
+            .unwrap_or_else(|| "AI".to_string());
+        self.memory.ensure(
+            role_id,
+            &GameMemoryBank::default(),
+            &display_name,
+            self.llm.clone(),
+        );
         Ok(self.loaded_roles.get_mut(&role_id).expect("角色刚刚插入"))
     }
 
@@ -103,7 +103,7 @@ impl GameRoleManager {
     /// 返回指定角色记忆库的"系统记忆文本"（ta的信息 / 约定 / 长期经历）。
     /// 记忆系统未启用或角色未加载时返回空字符串。供 memory.get_current 工具调用。
     pub async fn get_role_memory_text(&self, role_id: i32) -> String {
-        match self.memory_bank_systems.get(&role_id) {
+        match self.memory.runtime(role_id) {
             Some(sys) if sys.is_enabled() => sys.get_system_memory_text().await,
             _ => String::new(),
         }
@@ -111,7 +111,48 @@ impl GameRoleManager {
 
     pub fn reset_roles(&mut self) {
         self.loaded_roles.clear();
-        self.memory_bank_systems.clear();
+        self.memory.clear();
+    }
+
+    /// Drop roles and permanent-memory runtimes that were introduced by a
+    /// temporary resource scope (currently editor preview). The retained IDs
+    /// are captured before the scope begins, so their existing `GameRole`,
+    /// VoiceMaker and MemoryBank runtime objects are never replaced or reset.
+    ///
+    /// Scene/script references must be restored before this call. Runtime
+    /// entries are detached before their owned compaction tasks are aborted,
+    /// which prevents a discarded default bank from being observed by a later
+    /// formal snapshot while still joining the task without holding a lock.
+    /// Synchronously remove temporary roles/runtimes and return detached
+    /// runtime owners. The caller must abort/join these only after it has
+    /// released GameStatus (and therefore RoleManager); see PreviewSession.
+    pub(crate) fn detach_role_resources(
+        &mut self,
+        retained_role_ids: &HashSet<i32>,
+    ) -> Vec<crate::ai_service::memory::PersistentMemorySystem> {
+        self.loaded_roles
+            .retain(|role_id, _| retained_role_ids.contains(role_id));
+        self.memory.detach_not_in(retained_role_ids)
+    }
+
+    /// Cleanup helper for callers that do not hold a broader async state lock.
+    /// PreviewSession must use `detach_role_resources` and recycle outside its
+    /// GameStatus critical section.
+    pub async fn retain_role_resources(&mut self, retained_role_ids: &HashSet<i32>) {
+        for runtime in self.detach_role_resources(retained_role_ids) {
+            runtime.abort_and_wait().await;
+        }
+    }
+
+    /// Identity set for the complete formal role resource scope. Usually the
+    /// two collections are identical, but retaining their union makes cleanup
+    /// robust if an earlier failure created only a role or only a runtime.
+    pub fn role_resource_ids(&self) -> HashSet<i32> {
+        self.loaded_roles
+            .keys()
+            .copied()
+            .chain(self.memory.runtime_role_ids())
+            .collect()
     }
 
     pub fn clear_role_memory(&mut self, role_id: i32) {
@@ -251,23 +292,28 @@ impl GameRoleManager {
         self.get_role(db, role.id).await
     }
 
-    /// 根据台词同步角色的状态和记忆。
+    /// Synchronize role contexts for one explicit canonical-history change.
     ///
-    /// 若用户开启了永久记忆（`use_persistent_memory`），则会：
-    /// 1. 检查是否触发后台压缩
-    /// 2. 裁剪上下文窗口（避免无限膨胀）
-    /// 3. 将 MemoryBank 文本合并到 system / user 消息中
+    /// `Append` is intentionally scoped to roles visible in the appended suffix;
+    /// `Rewrite`/`ReplaceAll` invalidate affected runtime jobs and rebuild every
+    /// loaded role so a removed role cannot retain stale short-term context.
+    /// `Preview` is an explicit context-only history change: it is selected at
+    /// the GameStatus boundary for every mutation while preview mode is active.
     pub async fn sync_memories(
         &mut self,
         db: &DatabaseConnection,
         lines: &[GameLine],
-        recent_n: Option<usize>,
+        change: HistoryChange,
     ) -> Result<()> {
-        let source_lines: &[GameLine] = match recent_n {
-            Some(n) if n < lines.len() => &lines[lines.len() - n..],
-            _ => lines,
+        if let Some(from_idx) = change.rewrite_from() {
+            self.rewrite_memory_history(from_idx).await;
+        }
+
+        let source_lines: &[GameLine] = match change.append_from() {
+            Some(from_idx) => &lines[from_idx.min(lines.len())..],
+            None => lines,
         };
-        // 收集涉及到的角色 ID
+        // Collect roles visible in the current update scope.
         let mut involved_ids: HashSet<i32> = HashSet::new();
         for line in source_lines {
             if let Some(sid) = line.sender_role_id() {
@@ -281,42 +327,46 @@ impl GameRoleManager {
             }
         }
 
+        if change.rewrite_from().is_some()
+            || matches!(change, HistoryChange::Preview | HistoryChange::Restore)
+        {
+            // Rebuild every loaded role after a rewrite or matching restore.
+            // Roles no longer visible still receive an empty current-history
+            // build instead of retaining their previous conversation context.
+            involved_ids.extend(self.loaded_roles.keys().copied());
+        }
+
         for rid in involved_ids {
             // 保证角色已加载
             let _ = self.get_role(db, rid).await?;
 
-            // 阶段 1: 提取角色数据后释放借用，再惰性构造 MemoryBank 系统
-            let (display_name, bank_clone, mb_enabled) = {
-                let role = self.loaded_roles.get(&rid).expect("角色刚刚加载");
-                let name = role
-                    .display_name
-                    .clone()
-                    .unwrap_or_else(|| "AI".to_string());
-                let bank = role.memory_bank.clone();
-                let enabled = self.use_persistent_memory;
-                (name, bank, enabled)
-            };
-            self.ensure_memory_bank_system(
+            // Stage 1: role loading owns persona resources; the coordinator
+            // independently owns the permanent bank from this point on.
+            let display_name = self
+                .loaded_roles
+                .get(&rid)
+                .and_then(|role| role.display_name.clone())
+                .unwrap_or_else(|| "AI".to_string());
+            self.memory.ensure(
                 rid,
-                &bank_clone,
+                &GameMemoryBank::default(),
                 &display_name,
-                mb_enabled,
-                self.memory_update_interval as usize,
-                self.memory_recent_window as usize,
-                self.memory_limits,
+                self.llm.clone(),
             );
+            let mb_enabled = self.memory.config().enabled;
 
             // 阶段 2: MemoryBank 启用时 — 同步后台结果 + 触发压缩 + 获取记忆文本
             let (mb_exists, slice_start, system_addendum, short_term_prefix) = {
-                let sys = self.memory_bank_systems.get(&rid);
+                let sys = self.memory.runtime(rid);
                 match sys {
                     Some(s) if s.is_enabled() => {
-                        // 非阻塞同步后台压缩结果
-                        if let Some(role) = self.loaded_roles.get_mut(&rid) {
-                            s.sync_to_role(role);
+                        if !self.memory.is_preview() {
+                            // Compression always sees canonical global history;
+                            // an Append suffix is only an optimization for the
+                            // affected-role set, never a replacement history.
+                            s.check_and_trigger_auto_update(lines);
                         }
-                        s.check_and_trigger_auto_update(source_lines);
-                        let start = s.get_slice_start_index(source_lines).await;
+                        let start = s.get_slice_start_index(lines).await;
                         let sys_text = s.get_system_memory_text().await;
                         let short = s.get_short_term_user_text().await;
                         (true, start, sys_text, short)
@@ -327,17 +377,17 @@ impl GameRoleManager {
             };
 
             // 阶段 3: 裁剪 + 构建角色记忆
-            let sliced: Vec<GameLine> = if slice_start > 0 && slice_start <= source_lines.len() {
-                source_lines[slice_start..].to_vec()
+            let sliced: Vec<GameLine> = if slice_start > 0 && slice_start <= lines.len() {
+                lines[slice_start..].to_vec()
             } else {
-                source_lines.to_vec()
+                lines.to_vec()
             };
 
             // 确保人设 SYSTEM 提示存在
             let has_prompt = Self::find_first_system_prompt(&sliced, rid).is_some();
             let mut final_sliced = sliced;
             if !has_prompt {
-                if let Some(sp) = Self::find_first_system_prompt(source_lines, rid) {
+                if let Some(sp) = Self::find_first_system_prompt(lines, rid) {
                     final_sliced.insert(0, sp.clone());
                 } else {
                     tracing::warn!("role_id={} 没有找到 SYSTEM 属性的台词，可能人设丢失", rid);
@@ -366,52 +416,60 @@ impl GameRoleManager {
 
     // ── MemoryBank 集成方法 ──
 
+    /// Enter or leave preview permanent-memory mode.
+    ///
+    /// Entering first invalidates every normal-session job, then publishes
+    /// Preview mode. Thus a completion either commits before this transition
+    /// begins or observes the new epoch and is discarded; preview mutations
+    /// cannot commit into the formal bank. Callers must not separately
+    /// invalidate history for the normal preview-entry path.
+    pub fn set_memory_preview(&mut self, preview: bool) {
+        if preview && !self.memory.is_preview() {
+            self.invalidate_memory_history();
+        }
+        self.memory.set_mode(if preview {
+            MemoryMode::Preview
+        } else {
+            MemoryMode::Normal
+        });
+    }
+
+    pub fn is_memory_preview(&self) -> bool {
+        self.memory.is_preview()
+    }
+
     /// 台词历史即将重建；让所有进行中的摘要任务在提交时自动作废。
     pub fn invalidate_memory_history(&self) {
-        for system in self.memory_bank_systems.values() {
+        for system in self.memory.runtimes() {
             system.invalidate_history();
         }
     }
 
-    /// 惰性构造角色的 `PersistentMemorySystem`。
-    ///
-    /// 调用方保证在 `enabled=true` 时槽位内已就绪 LLM（构造函数注入）。
-    fn ensure_memory_bank_system(
-        &mut self,
-        role_id: i32,
-        bank: &GameMemoryBank,
-        display_name: &str,
-        enabled: bool,
-        update_interval: usize,
-        recent_window: usize,
-        limits: MemorySectionLimits,
-    ) {
-        if self.memory_bank_systems.contains_key(&role_id) {
-            return;
-        }
-        // 仅在 enabled 但 LLM 槽位为空时告警（正常启动流程不应到达）
-        if self.llm.try_read().map(|g| g.is_none()).unwrap_or(true) {
-            if enabled {
-                tracing::warn!(
-                    "MemoryBank: role_id={} 永久记忆已开启但 LLM 槽位为空",
-                    role_id
-                );
+    /// Wait for every loaded role's owned memory task to finish.
+    pub async fn wait_memory_updates(&self, timeout: std::time::Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        for system in self.memory.runtimes() {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if !system.wait_until_idle(remaining).await {
+                return false;
             }
-            return;
         }
-        self.memory_bank_systems.insert(
-            role_id,
-            PersistentMemorySystem::new(
-                role_id,
-                bank,
-                self.llm.clone(),
-                enabled,
-                update_interval,
-                recent_window,
-                limits,
-                display_name,
-            ),
-        );
+        true
+    }
+
+    /// Cancel and join every loaded role's owned memory task.
+    pub async fn abort_memory_updates(&self) {
+        for system in self.memory.runtimes() {
+            system.abort_and_wait().await;
+        }
+    }
+
+    /// Apply a history rewrite to every loaded memory runtime. Rewrites before
+    /// an already processed prefix reset that bank; appends must not call this.
+    pub async fn rewrite_memory_history(&self, from_idx: usize) {
+        for system in self.memory.runtimes() {
+            system.rewrite_from(from_idx).await;
+        }
     }
 
     /// 从 DB 加载 MemoryBank 到运行时缓存。应在 "载入存档" 时调用。
@@ -421,66 +479,45 @@ impl GameRoleManager {
         save_id: i32,
         role_ids: Option<&[i32]>,
     ) -> Result<()> {
-        let memories = MemoryRepo::get_memories(db, save_id, None).await?;
+        // MemoryRepo owns compatibility selection and JSON decoding. A malformed
+        // newest row returns a contextual error; malformed superseded rows do not.
+        let mut banks = MemoryRepo::load_for_save(db, save_id).await?;
 
-        // 每个 role 取最新（id 最大）的记录
-        let mut best: HashMap<i32, (i32, serde_json::Value)> = HashMap::new();
-        for m in &memories {
-            let Some(rid) = m.role_id else { continue };
-            let mid = m.id;
-            if !best.contains_key(&rid) || mid > best[&rid].0 {
-                best.insert(
-                    rid,
-                    (mid, serde_json::from_str(&m.info).unwrap_or_default()),
-                );
-            }
-        }
-
-        let target_ids: Vec<i32> = match role_ids {
+        // 未指定角色时，当前会话中的角色也必须纳入目标集合；否则新存档缺少
+        // 某角色时旧 bank 会泄漏到新会话。
+        let mut target_ids: Vec<i32> = match role_ids {
             Some(ids) => ids.to_vec(),
-            None => best.keys().copied().collect(),
+            None => self
+                .loaded_roles
+                .keys()
+                .chain(banks.keys())
+                .copied()
+                .collect(),
         };
+        target_ids.sort_unstable();
+        target_ids.dedup();
 
         for rid in target_ids {
+            let bank = banks.remove(&rid).unwrap_or_default();
             let _ = self.get_role(db, rid).await?;
 
-            // 更新 role.memory_bank（DB → 内存）
-            if let Some((_, info)) = best.get(&rid) {
-                if let Ok(mb) = serde_json::from_value::<GameMemoryBank>(info.clone()) {
-                    if let Some(role) = self.loaded_roles.get_mut(&rid) {
-                        role.memory_bank = mb.clone();
-                    }
-                }
+            // Missing DB rows reset the unique runtime to default instead of
+            // retaining a previous save's bank. Short-term context is rebuilt
+            // from current history after the load.
+            if let Some(role) = self.loaded_roles.get_mut(&rid) {
+                role.memory.clear();
             }
 
-            // 提取数据（释放借用后传递给 ensure）
-            let (bank, display_name, enabled) = {
-                let role = self.loaded_roles.get(&rid).expect("角色刚刚加载");
-                (
-                    role.memory_bank.clone(),
-                    role.display_name
-                        .clone()
-                        .unwrap_or_else(|| "AI".to_string()),
-                    self.use_persistent_memory,
-                )
-            };
-            self.ensure_memory_bank_system(
-                rid,
-                &bank,
-                &display_name,
-                enabled,
-                self.memory_update_interval as usize,
-                self.memory_recent_window as usize,
-                self.memory_limits,
-            );
+            let display_name = self
+                .loaded_roles
+                .get(&rid)
+                .and_then(|role| role.display_name.clone())
+                .unwrap_or_else(|| "AI".to_string());
+            self.memory
+                .ensure(rid, &bank, &display_name, self.llm.clone());
 
-            // 若已有压缩系统且 DB 有数据，同步重置
-            if let Some((_, info)) = best.get(&rid) {
-                if let Ok(mb) = serde_json::from_value::<GameMemoryBank>(info.clone()) {
-                    if let Some(sys) = self.memory_bank_systems.get(&rid) {
-                        sys.reset_from(&mb).await;
-                    }
-                }
+            if let Some(sys) = self.memory.runtime(rid) {
+                sys.reset_from(&bank).await;
             }
         }
         Ok(())
@@ -572,33 +609,55 @@ impl GameRoleManager {
         vm.update_lang_and_refresh(&voice_cfg, &tts_type, &name, lang);
     }
 
-    pub async fn persist_memory_banks_to_db(
-        &mut self,
-        db: &DatabaseConnection,
-        save_id: i32,
-        role_ids: Option<&[i32]>,
-    ) -> Result<()> {
-        // 先同步所有压缩系统的最新状态
-        for rid in self.loaded_roles.keys().copied().collect::<Vec<_>>() {
-            if let Some(sys) = self.memory_bank_systems.get(&rid) {
-                if let Some(role) = self.loaded_roles.get_mut(&rid) {
-                    sys.sync_to_role(role);
-                }
-            }
+    /// Read one role's memory runtime snapshot.
+    pub fn memory_snapshot(
+        &self,
+        role_id: i32,
+    ) -> Option<crate::ai_service::memory::MemorySnapshot> {
+        let system = self.memory.runtime(role_id)?;
+        Some(system.snapshot())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn memory_runtime_for_test(
+        &self,
+        role_id: i32,
+    ) -> Option<&crate::ai_service::memory::PersistentMemorySystem> {
+        self.memory.runtime(role_id)
+    }
+
+    pub async fn memory_system_text(&self, role_id: i32) -> String {
+        match self.memory.runtime(role_id) {
+            Some(system) => system.get_system_memory_text().await,
+            None => String::new(),
         }
+    }
 
-        let target_ids: Vec<i32> = match role_ids {
-            Some(ids) => ids.to_vec(),
-            None => self.loaded_roles.keys().copied().collect(),
-        };
+    pub async fn memory_short_term_text(&self, role_id: i32) -> String {
+        match self.memory.runtime(role_id) {
+            Some(system) => system.get_short_term_user_text().await,
+            None => String::new(),
+        }
+    }
 
+    /// Capture all loaded banks once, in stable role order, for a save session.
+    pub fn memory_bank_snapshots(&self) -> Vec<(i32, GameMemoryBank, u64)> {
+        let mut target_ids: Vec<i32> = self.loaded_roles.keys().copied().collect();
+        target_ids.sort_unstable();
+        target_ids.dedup();
+        let mut snapshots = Vec::with_capacity(target_ids.len());
         for rid in target_ids {
-            if let Some(role) = self.loaded_roles.get(&rid) {
-                let info = serde_json::to_string(&role.memory_bank)?;
-                MemoryRepo::upsert_memory(db, save_id, rid, &info, None).await?;
+            if let Some(sys) = self.memory.runtime(rid) {
+                let snapshot = sys.snapshot();
+                snapshots.push((rid, snapshot.bank, snapshot.revision));
+            } else {
+                // This can only occur for a manually injected test role that
+                // has not yet crossed the manager facade. Production loading
+                // always calls get_role(), which installs its runtime first.
+                tracing::warn!("MemoryBank: loaded role {} has no runtime", rid);
             }
         }
-        Ok(())
+        snapshots
     }
 
     /// 将 MemoryBank 文本合并到 LLM 消息中。
@@ -678,10 +737,8 @@ impl GameRoleManager {
 #[cfg(test)]
 mod memory_bank_context_tests {
     use super::GameRoleManager;
-    use crate::ai_service::game_system::persistent_memory_system::{
-        MemorySectionLimits, PersistentMemorySystem,
-    };
     use crate::ai_service::llm::LlmSlot;
+    use crate::ai_service::memory::{MemoryConfig, MemorySectionLimits, PersistentMemorySystem};
     use crate::ai_service::types::{GameMemoryBank, LlmMessage};
     use crate::config::tts::TtsConfig;
     use std::path::PathBuf;
@@ -696,13 +753,15 @@ mod memory_bank_context_tests {
             llm.clone(),
             TtsConfig::default(),
             None,
-            true,
-            250,
-            30,
-            MemorySectionLimits::default(),
+            MemoryConfig {
+                enabled: true,
+                update_interval: 250,
+                recent_window: 30,
+                limits: MemorySectionLimits::default(),
+            },
         );
         for role_id in [1, 2] {
-            manager.memory_bank_systems.insert(
+            manager.memory.insert_for_test(
                 role_id,
                 PersistentMemorySystem::new(
                     role_id,
@@ -720,8 +779,8 @@ mod memory_bank_context_tests {
         manager.invalidate_memory_history();
         assert!(
             manager
-                .memory_bank_systems
-                .values()
+                .memory
+                .runtimes()
                 .all(|system| system.history_revision_for_test() == 1)
         );
     }
@@ -730,13 +789,22 @@ mod memory_bank_context_tests {
     fn short_term_summary_is_prepended_to_the_first_user_message_once() {
         let output = GameRoleManager::merge_memory_bank_into_context(
             vec![LlmMessage::system("persona"), LlmMessage::user("hello")],
-            "\nMEMORY\n",
-            "【近期回顾】summary\n\n",
+            "
+MEMORY
+",
+            "【近期回顾】summary
+
+",
         );
         assert_eq!(output[0].role, "system");
         assert!(output[0].content.contains("MEMORY"));
         assert_eq!(output[1].role, "user");
-        assert_eq!(output[1].content, "【近期回顾】summary\n\nhello");
+        assert_eq!(
+            output[1].content,
+            "【近期回顾】summary
+
+hello"
+        );
         assert_eq!(output[1].content.matches("【近期回顾】summary").count(), 1);
     }
 
@@ -749,10 +817,19 @@ mod memory_bank_context_tests {
                 LlmMessage::user("later user"),
             ],
             "",
-            "【近期回顾】summary\n\n",
+            "【近期回顾】summary
+
+",
         );
         assert_eq!(output[0].role, "system");
-        assert_eq!(output[1], LlmMessage::user("【近期回顾】summary\n\n"));
+        assert_eq!(
+            output[1],
+            LlmMessage::user(
+                "【近期回顾】summary
+
+"
+            )
+        );
         assert_eq!(output[2].role, "assistant");
         assert_eq!(output[3].content, "later user");
     }
@@ -765,10 +842,19 @@ mod memory_bank_context_tests {
                 LlmMessage::assistant("hello"),
             ],
             "",
-            "【近期回顾】summary\n\n",
+            "【近期回顾】summary
+
+",
         );
         assert_eq!(output[0].role, "system");
-        assert_eq!(output[1], LlmMessage::user("【近期回顾】summary\n\n"));
+        assert_eq!(
+            output[1],
+            LlmMessage::user(
+                "【近期回顾】summary
+
+"
+            )
+        );
         assert_eq!(output[2].role, "assistant");
     }
 }

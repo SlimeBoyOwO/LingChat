@@ -1,32 +1,17 @@
 use anyhow::anyhow;
 use sea_orm::*;
 
+use crate::ai_service::types::GameMemoryBank;
 use crate::db::entities::memory_bank;
 
-/// MemoryBank 仓库 — 对标 Python `MemoryManager`。
+/// MemoryBank 的唯一数据库适配器。
 ///
-/// 与 `SaveRepo` 中的简易 MemoryBank 方法互补：`SaveRepo` 提供存档流程中
-/// 的批量 upsert/get/delete；`MemoryRepo` 提供更完整的单条 CRUD 和按角色粒度的操作。
+/// 生产调用必须按 `(save_id, role_id)` 读写；不公开裸 row id 或原始 JSON
+/// 写入口，避免绕过 MemoryBank 的类型和归属边界。
 pub struct MemoryRepo;
 
 impl MemoryRepo {
-    #[allow(dead_code)]
-    pub async fn add_memory(
-        db: &DatabaseConnection,
-        save_id: i32,
-        info: &str,
-        role_id: Option<i32>,
-    ) -> Result<memory_bank::Model, anyhow::Error> {
-        let active = memory_bank::ActiveModel {
-            save_id: Set(save_id),
-            info: Set(info.to_string()),
-            role_id: Set(role_id),
-            ..Default::default()
-        };
-        active.insert(db).await.map_err(|e| anyhow!(e))
-    }
-
-    pub async fn get_memories(
+    pub(crate) async fn get_memories(
         db: &DatabaseConnection,
         save_id: i32,
         role_id: Option<i32>,
@@ -38,7 +23,7 @@ impl MemoryRepo {
         stmt.all(db).await.map_err(|e| anyhow!(e))
     }
 
-    pub async fn get_latest_memory(
+    pub(crate) async fn get_latest_memory(
         db: &DatabaseConnection,
         save_id: i32,
         role_id: i32,
@@ -52,23 +37,72 @@ impl MemoryRepo {
             .map_err(|e| anyhow!(e))
     }
 
-    pub async fn upsert_memory(
+    /// Load the newest compatible row for every role in a save. JSON is decoded
+    /// only after choosing the maximum row id, so a malformed superseded row
+    /// cannot shadow a newer valid MemoryBank.
+    pub(crate) async fn load_for_save(
+        db: &DatabaseConnection,
+        save_id: i32,
+    ) -> Result<std::collections::HashMap<i32, GameMemoryBank>, anyhow::Error> {
+        let rows = Self::get_memories(db, save_id, None).await?;
+        let mut newest: std::collections::HashMap<i32, memory_bank::Model> =
+            std::collections::HashMap::new();
+        for row in rows {
+            let Some(role_id) = row.role_id else { continue };
+            if newest
+                .get(&role_id)
+                .is_none_or(|current| row.id > current.id)
+            {
+                newest.insert(role_id, row);
+            }
+        }
+
+        let mut banks = std::collections::HashMap::with_capacity(newest.len());
+        for (role_id, row) in newest {
+            let bank = serde_json::from_str(&row.info).map_err(|error| {
+                anyhow!(
+                    "MemoryBank 数据损坏: save_id={}, role_id={}, memory_bank.id={}, error={}",
+                    save_id,
+                    role_id,
+                    row.id,
+                    error
+                )
+            })?;
+            banks.insert(role_id, bank);
+        }
+        Ok(banks)
+    }
+
+    /// Serialize and write one immutable runtime snapshot. This is the sole
+    /// production MemoryBank write API; callers never pass a row id.
+    pub(crate) async fn upsert_for_save_role(
+        db: &DatabaseConnection,
+        save_id: i32,
+        role_id: i32,
+        bank: &GameMemoryBank,
+    ) -> Result<(), anyhow::Error> {
+        let info = serde_json::to_string(bank).map_err(|error| {
+            anyhow!(
+                "MemoryBank 序列化失败: save_id={}, role_id={}, error={}",
+                save_id,
+                role_id,
+                error
+            )
+        })?;
+        Self::upsert_serialized_for_save_role(db, save_id, role_id, &info)
+            .await
+            .map(|_| ())
+    }
+
+    /// Private serialization boundary used only after typed input has been
+    /// produced by `upsert_for_save_role`.
+    async fn upsert_serialized_for_save_role(
         db: &DatabaseConnection,
         save_id: i32,
         role_id: i32,
         info: &str,
-        memory_id: Option<i32>,
     ) -> Result<memory_bank::Model, anyhow::Error> {
-        let existing: Option<memory_bank::Model> = if let Some(mid) = memory_id {
-            memory_bank::Entity::find_by_id(mid)
-                .one(db)
-                .await
-                .map_err(|e| anyhow!(e))?
-        } else {
-            Self::get_latest_memory(db, save_id, role_id).await?
-        };
-
-        match existing {
+        match Self::get_latest_memory(db, save_id, role_id).await? {
             Some(model) => {
                 let mut active: memory_bank::ActiveModel = model.into();
                 active.info = Set(info.to_string());
@@ -87,66 +121,10 @@ impl MemoryRepo {
         }
     }
 
-    #[allow(dead_code)]
-    pub async fn update_memory(
-        db: &DatabaseConnection,
-        memory_id: i32,
-        new_info: Option<&str>,
-        new_role_id: Option<i32>,
-    ) -> Result<Option<memory_bank::Model>, anyhow::Error> {
-        let model = memory_bank::Entity::find_by_id(memory_id)
-            .one(db)
-            .await
-            .map_err(|e| anyhow!(e))?;
-        let Some(model) = model else {
-            return Ok(None);
-        };
-        let mut active: memory_bank::ActiveModel = model.into();
-        if let Some(info) = new_info {
-            active.info = Set(info.to_string());
-        }
-        if let Some(rid) = new_role_id {
-            active.role_id = Set(Some(rid));
-        }
-        let updated = active.update(db).await.map_err(|e| anyhow!(e))?;
-        Ok(Some(updated))
-    }
-
-    #[allow(dead_code)]
-    pub async fn delete_memory(
-        db: &DatabaseConnection,
-        memory_id: i32,
-    ) -> Result<bool, anyhow::Error> {
-        let result = memory_bank::Entity::delete_by_id(memory_id)
-            .exec(db)
-            .await
-            .map_err(|e| anyhow!(e))?;
-        Ok(result.rows_affected > 0)
-    }
-
-    /// 按存档+角色批量删除。若 role_id 为 None 则不执行（安全检查，对标 Python）。
-    #[allow(dead_code)]
-    pub async fn delete_memories_by_role(
-        db: &DatabaseConnection,
-        save_id: i32,
-        role_id: Option<i32>,
-    ) -> Result<u64, anyhow::Error> {
-        let Some(rid) = role_id else {
-            return Ok(0);
-        };
-        let result = memory_bank::Entity::delete_many()
-            .filter(memory_bank::Column::SaveId.eq(save_id))
-            .filter(memory_bank::Column::RoleId.eq(rid))
-            .exec(db)
-            .await
-            .map_err(|e| anyhow!(e))?;
-        Ok(result.rows_affected)
-    }
-
     /// 按 role_id 删除所有存档下的相关记忆（不限 save_id）。
     /// 用于删除整个角色时的兜底清理，应对已被 save.main_role_id 解绑的孤儿记忆行。
     #[allow(dead_code)]
-    pub async fn delete_all_memories_by_role_id(
+    pub(crate) async fn delete_all_memories_by_role_id(
         db: &DatabaseConnection,
         role_id: i32,
     ) -> Result<u64, anyhow::Error> {
@@ -158,8 +136,7 @@ impl MemoryRepo {
         Ok(result.rows_affected)
     }
 
-    #[allow(dead_code)]
-    pub async fn delete_memories_by_save(
+    pub(crate) async fn delete_for_save(
         db: &DatabaseConnection,
         save_id: i32,
     ) -> Result<u64, anyhow::Error> {

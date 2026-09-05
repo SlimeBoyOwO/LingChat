@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::AppState;
+use crate::ai_service::game_system::game_status::HistorySession;
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
@@ -820,15 +821,24 @@ pub async fn remove_role_from_scene(app: AppHandle, role_id: i32) -> Result<Json
 pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
 
+    // Capture the request identity before the first canonical write. The
+    // greeting and its downstream generator are one request: Preview must not
+    // replace the history between them and let this producer rejoin later.
+    let game_status = {
+        let svc = state.ai_service.lock().await;
+        svc.game_status.clone()
+    };
+    let request_session: HistorySession;
+
     // Phase 1: 去重 & 添加旁白台词
     {
-        let svc = state.ai_service.lock().await;
-        let mut gs = svc.game_status.lock().await;
+        let mut gs = game_status.lock().await;
 
         if gs.player_entered {
             return Ok(());
         }
         gs.player_entered = true;
+        request_session = gs.history_session();
 
         let current_role_id = match gs.current_role_id {
             Some(id) => id,
@@ -863,17 +873,22 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
         let greeting_with_time = format!("{}，{}", greeting, time_info);
 
         let prompt = PromptRole::Narrator.build_prompt(&greeting_with_time);
-        gs.add_line(
-            &state.db,
-            LineBase {
-                content: prompt,
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some("旁白".to_string()),
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| format!("添加入场问候台词失败: {}", e))?;
+        if !gs
+            .append_line_if_current(
+                &state.db,
+                request_session,
+                LineBase {
+                    content: prompt,
+                    attribute: LineAttributeExt(LineAttribute::User),
+                    display_name: Some("旁白".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| format!("添加入场问候台词失败: {}", e))?
+        {
+            return Err("入场问候期间对话会话已切换，已丢弃本次请求".to_string());
+        }
 
         tracing::info!("[Entry] 已添加问候台词: {}", greeting);
     } // 释放锁
@@ -886,12 +901,15 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
         .map(|c| c.consumers as usize)
         .unwrap_or(1)
         .max(1);
-    let game_status = {
-        let svc = state.ai_service.lock().await;
-        svc.game_status.clone()
-    };
-    // 捕获当前试玩代号（自由对话恒等，行为不变）
-    let preview_generation = game_status.lock().await.preview_generation;
+    // `slot_snapshot` and config loading may await. Recheck the original
+    // identity before admitting a generator/tool/memory/save pipeline.
+    if !game_status
+        .lock()
+        .await
+        .is_history_session_current(request_session)
+    {
+        return Err("入场问候期间对话会话已切换，已丢弃本次请求".to_string());
+    }
 
     let deps = GeneratorDeps {
         source: GeneratorSource::EntryGreeting,
@@ -905,8 +923,7 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: true,
-        generation: preview_generation,
-        is_preview: false,
+        session: request_session,
     };
 
     let generator = MessageGenerator::new(deps);
