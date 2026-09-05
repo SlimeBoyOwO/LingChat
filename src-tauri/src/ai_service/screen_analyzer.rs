@@ -272,6 +272,115 @@ fn encode_image_base64(bytes: &[u8], mime_type: &str) -> (String, String) {
     (b64, mime_type.to_string())
 }
 
+/// 原生识图发送给对话模型的图片处理参数。
+/// 默认**不压缩、原图直发**；`enabled` 为 true 时才做缩放 + JPEG 压缩。
+#[derive(Clone, Copy, Debug)]
+pub struct NativeImageCompress {
+    /// 是否开启压缩。false = 原图直发（保留原始格式与分辨率）。
+    pub enabled: bool,
+    /// 压缩时图片最大边长（像素），超宽图等比缩放。
+    pub max_edge: u32,
+    /// 压缩时 JPEG 编码质量（0-100）。
+    pub jpeg_quality: u8,
+}
+
+impl Default for NativeImageCompress {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_edge: 2048,
+            jpeg_quality: 85,
+        }
+    }
+}
+
+/// 把任意图片字节转换为适合原生多模态识图的 `data:image/...;base64,...` data URL。
+///
+/// - 解码失败 / 超限返回 `None`（调用方自然回退到旁白转述）。
+/// - `compress.enabled == false` 时**原图直发**：不解码重现压缩，仅识别格式并
+///   按原始字节编码 base64，保留原分辨率与清晰度（用户默认偏好）。
+/// - `compress.enabled == true` 时统一转 JPEG 并等比缩放到 `max_edge`，透明通道
+///   压到白底：既减小 base64 体积（token/缓存占用），也避免 WebP/PNG 在某些
+///   OpenAI 兼容视觉端点上的兼容问题。
+/// - **仅用于当轮请求**，不写入长期记忆（配合 `GeneratorDeps::transient_image`）。
+pub fn image_bytes_to_native_data_url(
+    image_bytes: &[u8],
+    compress: NativeImageCompress,
+) -> Option<String> {
+    use image::imageops::FilterType;
+    use image::{DynamicImage, GenericImageView, ImageReader};
+
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(16_384);
+    limits.max_image_height = Some(16_384);
+
+    // `ImageReader::limits` 就地修改接收者并返回 `()`，不能链式接 `.decode()`，
+    // 因此先构造 reader、设置限制、再单独调用 decode（与 read_media_file.rs 一致）。
+    // 注意：`decode` 会消费 reader（`self`），原图直发路径要用格式推断 MIME，
+    // 所以必须在 decode 之前先取回 `format()`。
+    let mut reader = ImageReader::new(std::io::Cursor::new(image_bytes))
+        .with_guessed_format()
+        .ok()?;
+    reader.limits(limits);
+    let detected_format = reader.format();
+    let img = reader.decode().ok()?;
+
+    let (w, h) = img.dimensions();
+    if w == 0 || h == 0 {
+        return None;
+    }
+
+    // ─── 原图直发：不缩放不重编码，保留原始格式字节 ───
+    if !compress.enabled {
+        // 根据识别出的真实格式推断 MIME；未知格式统一按 png 兜底。
+        let mime = match detected_format {
+            Some(image::ImageFormat::Jpeg) => "jpeg",
+            Some(image::ImageFormat::WebP) => "webp",
+            Some(_) | None => "png",
+        };
+        let b64 = base64::Engine::encode(&base64::prelude::BASE64_STANDARD, image_bytes);
+        return Some(format!("data:image/{mime};base64,{b64}"));
+    }
+
+    // ─── 压缩路径：等比缩放到 max_edge，转 JPEG ───
+    let max_edge = compress.max_edge.max(1);
+    let resized = if w.max(h) > max_edge {
+        img.resize(max_edge, max_edge, FilterType::Lanczos3)
+    } else {
+        img
+    };
+
+    // 透明通道压白，避免半透明图转 JPEG 后出现黑底/花边
+    let rgb = flatten_on_white(&resized);
+
+    let mut out = std::io::Cursor::new(Vec::new());
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, compress.jpeg_quality)
+        .encode_image(&DynamicImage::ImageRgb8(rgb))
+        .ok()?;
+    let bytes = out.into_inner();
+
+    let b64 = base64::Engine::encode(&base64::prelude::BASE64_STANDARD, &bytes);
+    Some(format!("data:image/jpeg;base64,{b64}"))
+}
+
+/// 将 RGBA 图像压到白色背景上返回 RGB，供 JPEG 编码前去除透明通道。
+fn flatten_on_white(image: &image::DynamicImage) -> image::ImageBuffer<image::Rgb<u8>, Vec<u8>> {
+    let rgba = image.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let mut out = image::ImageBuffer::new(w, h);
+    for (x, y, px) in rgba.enumerate_pixels() {
+        let [r, g, b, a] = px.0;
+        // 线性加权：alpha=255 → 原色，alpha=0 → 白
+        let blend = |c: u8| -> u8 {
+            let c = c as u32;
+            let a = a as u32;
+            ((c * a + 255 * (255 - a)) / 255) as u8
+        };
+        out.put_pixel(x, y, image::Rgb([blend(r), blend(g), blend(b)]));
+    }
+    out
+}
+
 /// 捕获整个桌面并返回 JPEG 格式的字节。
 /// Windows: 使用 GDI (BitBlt + GetDIBits) 捕获，然后压缩为 1024x768 JPEG。
 /// 其他平台: 返回 None。

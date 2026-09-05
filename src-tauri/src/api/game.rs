@@ -894,6 +894,7 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
         suppress_thinking: true,
         generation: preview_generation,
         is_preview: false,
+        transient_image: None,
     };
 
     let generator = MessageGenerator::new(deps);

@@ -125,6 +125,19 @@ pub struct PendingIntent {
     /// 已格式化的系统旁白（PromptRole::System.build_prompt 的结果）
     pub prompt: String,
     pub intent_type: IntentType,
+    /// 延迟投放时携带的当轮多模态图片 data URL（仅屏幕感知原生识图路径使用；
+    /// 仅本次请求可见、不写记忆，与 `GeneratorDeps::transient_image` 一致）。
+    pub transient_image: Option<String>,
     /// 生成时间，用于 TTL 过期判断
     pub triggered_at: Instant,
+}
+
+/// 主动对话生成的 Prompt 结果，可能携带一张当轮直接发送的多模态图片。
+#[derive(Clone, Debug)]
+pub struct ProactivePrompt {
+    /// 已生成的原始 prompt 文本（尚未经 PromptRole::System 包装）。
+    pub raw_prompt: String,
+    pub intent_type: IntentType,
+    /// 屏幕感知（偷看桌面）启用原生识图时的截图 data URL；仅当轮请求可见、不写记忆。
+    pub transient_image: Option<String>,
 }

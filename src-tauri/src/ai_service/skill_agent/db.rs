@@ -193,5 +193,6 @@ pub fn message_to_llm(m: &skill_agent_message::Model) -> LlmMessage {
             .as_ref()
             .and_then(|s| serde_json::from_str(s).ok()),
         tool_call_id: m.tool_call_id.clone(),
+        image_data_url: None,
     }
 }

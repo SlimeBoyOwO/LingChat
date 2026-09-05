@@ -31,7 +31,7 @@ use delivery_evaluator::DeliveryEvaluator;
 use interest_manager::InterestManager;
 use schedule_manager::ScheduleManager;
 use strategy_dispatcher::StrategyDispatcher;
-use types::{IntentType, PendingIntent, UserScheduleSettings};
+use types::{IntentType, PendingIntent, ProactivePrompt, UserScheduleSettings};
 use visual_monitor::VisualMonitor;
 
 pub struct ProactiveSystem {
@@ -230,7 +230,11 @@ impl ProactiveSystem {
     /// 已侵入 game_status 的副作用（add_line），调用者需确保：
     /// - generation_lock 未被持有
     /// - prompt 已完整生成（含截图分析结果）
-    async fn deliver(&mut self, prompt: String) -> anyhow::Result<()> {
+    async fn deliver(
+        &mut self,
+        prompt: String,
+        transient_image: Option<String>,
+    ) -> anyhow::Result<()> {
         tracing::info!("[ProactiveSystem] Delivering proactive dialogue...");
 
         let _lock = self.generation_lock.lock().await;
@@ -260,6 +264,8 @@ impl ProactiveSystem {
                 // 捕获当前试玩代号（自由对话恒等，行为不变）
                 generation: preview_generation,
                 is_preview: false,
+                // 屏幕感知原生识图时，把截图当轮直发给对话模型（不写记忆，省上下文/缓存）
+                transient_image,
             };
             MessageGenerator::new(deps)
         };
@@ -337,7 +343,7 @@ impl ProactiveSystem {
                     waited.as_secs(),
                     self.pending_intents.len()
                 );
-                self.deliver(intent.prompt).await?;
+                self.deliver(intent.prompt, intent.transient_image).await?;
                 return Ok(true);
             }
         }
@@ -393,12 +399,13 @@ impl ProactiveSystem {
                     tracing::info!(
                         "[ProactiveSystem] Alarm triggered, evaluate passed, delivering"
                     );
-                    sys.deliver(formatted).await?;
+                    sys.deliver(formatted, None).await?;
                 } else {
                     tracing::info!("[ProactiveSystem] Alarm triggered, evaluate failed, stashing");
                     sys.pending_intents.push(PendingIntent {
                         prompt: formatted,
                         intent_type: IntentType::Alarm,
+                        transient_image: None,
                         triggered_at: std::time::Instant::now(),
                     });
                 }
@@ -433,10 +440,15 @@ impl ProactiveSystem {
             let svc = sys.ai_service.lock().await;
             let gs = svc.game_status.lock().await;
             sys.strategy_dispatcher
-                .get_proactive_prompt(&gs, &settings_snap, &perception, &sys.config)
+                .get_proactive_prompt(&sys.app, &gs, &settings_snap, &perception, &sys.config)
                 .await
         };
-        let Some((raw_prompt, intent_type)) = prompt_result else {
+        let Some(ProactivePrompt {
+            raw_prompt,
+            intent_type,
+            transient_image,
+        }) = prompt_result
+        else {
             events::emit_thinking(&sys.app, false);
             return Ok(());
         };
@@ -451,7 +463,7 @@ impl ProactiveSystem {
                 intent_type
             );
             let formatted = PromptRole::System.build_prompt(&raw_prompt);
-            sys.deliver(formatted).await?;
+            sys.deliver(formatted, transient_image).await?;
         } else {
             let formatted = PromptRole::System.build_prompt(&raw_prompt);
             tracing::info!(
@@ -463,6 +475,7 @@ impl ProactiveSystem {
             sys.pending_intents.push(PendingIntent {
                 prompt: formatted,
                 intent_type,
+                transient_image,
                 triggered_at: std::time::Instant::now(),
             });
             events::emit_thinking(&sys.app, false);

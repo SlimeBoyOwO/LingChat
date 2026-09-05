@@ -1,9 +1,13 @@
 use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::llm::provider_config::resolve_chat_provider;
 use crate::ai_service::proactive_system::config::ProactiveConfig;
 use crate::ai_service::proactive_system::types::{
-    IntentType, PerceptionResult, UserScheduleSettings, UserState,
+    IntentType, PerceptionResult, ProactivePrompt, UserScheduleSettings, UserState,
 };
-use crate::ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
+use crate::ai_service::screen_analyzer::{
+    NativeImageCompress, ScreenAnalyzer, ScreenAnalyzerConfig, capture_screen_as_jpeg,
+    image_bytes_to_native_data_url,
+};
 use chrono::Local;
 use rand::Rng;
 use tokio::sync::Mutex;
@@ -33,11 +37,12 @@ impl StrategyDispatcher {
     /// 优先顺序: ImportantDay (每天仅一次) > Todo > Screen Observation > Topic
     pub async fn get_proactive_prompt(
         &self,
+        app: &tauri::AppHandle,
         game_status: &GameStatus,
         settings: &UserScheduleSettings,
         perception: &PerceptionResult,
         config: &ProactiveConfig,
-    ) -> Option<(String, IntentType)> {
+    ) -> Option<ProactivePrompt> {
         let now = Local::now();
         let today_str = now.format("%m-%d").to_string();
 
@@ -63,13 +68,14 @@ impl StrategyDispatcher {
                                 "[StrategyDispatcher] Triggered important day reminder: {}",
                                 day.title
                             );
-                            return Some((
-                                format!(
+                            return Some(ProactivePrompt {
+                                raw_prompt: format!(
                                     "{{今天是特殊的一天：{}，{}。可以和{}聊聊哦}}",
                                     day.title, desc, char_name
                                 ),
-                                IntentType::ImportantDay,
-                            ));
+                                intent_type: IntentType::ImportantDay,
+                                transient_image: None,
+                            });
                         }
                     }
                 }
@@ -151,25 +157,41 @@ impl StrategyDispatcher {
         match selected_mode {
             "TODO" => {
                 if let Some(prompt) = self.get_todo_prompt(game_status, settings) {
-                    return Some((prompt, IntentType::Todo));
+                    return Some(ProactivePrompt {
+                        raw_prompt: prompt,
+                        intent_type: IntentType::Todo,
+                        transient_image: None,
+                    });
                 }
                 // 没有 Todo 时降级到 TOPIC
                 if config.enable_topic_creator {
-                    return Some((self.get_topic_prompt(game_status), IntentType::Topic));
+                    return Some(ProactivePrompt {
+                        raw_prompt: self.get_topic_prompt(game_status),
+                        intent_type: IntentType::Topic,
+                        transient_image: None,
+                    });
                 }
                 None
             },
             "SCREEN" => {
-                if let Some(prompt) = self.get_screen_prompt(game_status).await {
-                    return Some((prompt, IntentType::Screen));
+                if let Some(pp) = self.get_screen_prompt(app, game_status).await {
+                    return Some(pp);
                 }
                 // SCREEN 抓取失败或接口失败时降级到 TOPIC
                 if config.enable_topic_creator {
-                    return Some((self.get_topic_prompt(game_status), IntentType::Topic));
+                    return Some(ProactivePrompt {
+                        raw_prompt: self.get_topic_prompt(game_status),
+                        intent_type: IntentType::Topic,
+                        transient_image: None,
+                    });
                 }
                 None
             },
-            _ => Some((self.get_topic_prompt(game_status), IntentType::Topic)),
+            _ => Some(ProactivePrompt {
+                raw_prompt: self.get_topic_prompt(game_status),
+                intent_type: IntentType::Topic,
+                transient_image: None,
+            }),
         }
     }
 
@@ -204,15 +226,12 @@ impl StrategyDispatcher {
         ))
     }
 
-    async fn get_screen_prompt(&self, game_status: &GameStatus) -> Option<String> {
+    async fn get_screen_prompt(
+        &self,
+        app: &tauri::AppHandle,
+        game_status: &GameStatus,
+    ) -> Option<ProactivePrompt> {
         let analyze_prompt = "你是一个图像信息转述者，你将需要把你看到的画面描述给另一个AI让他理解用户的图片内容。用户开放了那个AI的自主窥屏功能，请获取桌面画面中的重点内容，用200字描述主体部分即可。如果你看到一个聊天窗口，有角色的立绘和对话框，不要描述这部分，只描述桌面上的其他内容。因为那部分是玩家与AI的聊天窗口。";
-
-        let analysis = self
-            .screen_analyzer
-            .lock()
-            .await
-            .analyze_screen(analyze_prompt)
-            .await?;
 
         let user_name = &game_status.player.user_name;
         let ai_name = game_status
@@ -221,10 +240,46 @@ impl StrategyDispatcher {
             .and_then(|role| role.display_name.clone())
             .unwrap_or_else(|| "你".to_string());
 
-        Some(format!(
-            "{{ {} 偷看了一眼 {} 的电脑桌面: {} }}",
-            ai_name, user_name, analysis
-        ))
+        // 对话模型是否启用原生多模态识图：是则直接把桌面截图当轮直发（不转述），
+        // 否则回退到「旁白转述」路径（VLM 先把画面转成文本）。
+        let native_vision = resolve_chat_provider(app)
+            .map(|p| p.support_vision && p.is_genai_multimodal_capable())
+            .unwrap_or(false);
+        let native_compress = resolve_chat_provider(app)
+            .map(|p| p.native_image_compress())
+            .unwrap_or(NativeImageCompress::default());
+
+        // ─── 原生识图路径：截屏 → 压缩/原图 → 当轮直发图片 ───
+        if native_vision {
+            let jpeg_bytes = capture_screen_as_jpeg()?;
+            let transient_image = image_bytes_to_native_data_url(&jpeg_bytes, native_compress)?;
+            let raw_prompt = format!("{{ {} 偷看了一眼 {} 的电脑桌面，请你结合桌面截图内容与 {} 自然地聊两句。 }}", ai_name, user_name, user_name);
+            tracing::info!(
+                "[StrategyDispatcher] 主动偷看走原生识图: 截图当轮直发对话模型（不写记忆）。"
+            );
+            return Some(ProactivePrompt {
+                raw_prompt,
+                intent_type: IntentType::Screen,
+                transient_image: Some(transient_image),
+            });
+        }
+
+        // ─── 旁白转述路径（未启用原生识图）：VLM 先把截图转成文本描述 ───
+        let analysis = self
+            .screen_analyzer
+            .lock()
+            .await
+            .analyze_screen(analyze_prompt)
+            .await?;
+
+        Some(ProactivePrompt {
+            raw_prompt: format!(
+                "{{ {} 偷看了一眼 {} 的电脑桌面: {} }}",
+                ai_name, user_name, analysis
+            ),
+            intent_type: IntentType::Screen,
+            transient_image: None,
+        })
     }
 
     fn get_topic_prompt(&self, game_status: &GameStatus) -> String {

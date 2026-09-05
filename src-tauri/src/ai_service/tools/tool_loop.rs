@@ -211,6 +211,7 @@ pub async fn stream_with_tool_loop(
                 content: round_text,
                 tool_calls: Some(calls.clone()),
                 tool_call_id: None,
+                image_data_url: None,
             };
             let mut round_messages = vec![assistant_message];
             let context = ToolContext::new(allowed).with_app(app.clone());

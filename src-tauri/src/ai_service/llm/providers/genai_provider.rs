@@ -9,8 +9,8 @@ use genai::Client as GenaiClient;
 use genai::ServiceTarget;
 use genai::adapter::AdapterKind;
 use genai::chat::{
-    ChatMessage, ChatOptions, ChatRequest, ChatResponse, ChatStreamEvent, StopReason,
-    ToolCall as GenaiToolCall, ToolChoice, ToolResponse,
+    ChatMessage, ChatOptions, ChatRequest, ChatResponse, ChatStreamEvent, ContentPart,
+    MessageContent, StopReason, ToolCall as GenaiToolCall, ToolChoice, ToolResponse,
 };
 use genai::resolver::{AuthData, Endpoint};
 use reqwest::Client;
@@ -49,6 +49,22 @@ fn normalize_base_url(raw: &str) -> String {
         return raw.to_string();
     }
     format!("{trimmed}/")
+}
+
+/// 从 `data:image/<type>;base64,<data>` 的 data URL 前缀解析 MIME 类型，
+/// 供 genai 的 Binary content part 使用（`is_image()` 依赖 `image/` 前缀）。
+fn infer_image_mime(data_url: &str) -> String {
+    let lower = data_url.trim();
+    if let Some(rest) = lower.strip_prefix("data:") {
+        if let Some(semi) = rest.find(';') {
+            let mime = rest[..semi].to_string();
+            if !mime.is_empty() {
+                return mime;
+            }
+        }
+    }
+    // 兜底：无法解析时按通用 JPEG 处理（OpenAI 兼容端点通常忽略具体子类型）
+    "image/jpeg".to_string()
 }
 
 impl GenaiProvider {
@@ -174,7 +190,24 @@ impl GenaiProvider {
                 _ => {
                     let role = match msg.role.as_str() {
                         "assistant" => ChatMessage::assistant(&msg.content),
-                        _ => ChatMessage::user(&msg.content),
+                        _ => {
+                            // 原生多模态：当该用户消息携带图片时，把文本与图片拼成
+                            // 多 part 内容（OpenAI 兼容 image_url / Gemini inline_data）。
+                            if let Some(data_url) = msg.image_data_url.as_deref() {
+                                let mut content = MessageContent::from_parts(Vec::new());
+                                if !msg.content.is_empty() {
+                                    content.push(ContentPart::Text(msg.content.clone()));
+                                }
+                                content.push(ContentPart::from_binary_url(
+                                    infer_image_mime(data_url),
+                                    data_url.to_string(),
+                                    None,
+                                ));
+                                ChatMessage::user(content)
+                            } else {
+                                ChatMessage::user(&msg.content)
+                            }
+                        },
                     };
                     genai_messages.push(role);
                 },

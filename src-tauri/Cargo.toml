@@ -97,6 +97,7 @@ indoc = "2"
 image = { version = "0.25", default-features = false, features = [
     "png",
     "jpeg",
+    "webp",
 ] }
 infer = "0.19"
 sevenz-rust2 = "0.21"

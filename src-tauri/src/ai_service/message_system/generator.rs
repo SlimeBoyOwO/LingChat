@@ -69,6 +69,10 @@ pub struct GeneratorDeps {
     /// 是否运行在编辑器试玩中。为 true 时回复带 `preview_gen` 标记，
     /// 前端据此丢弃中止后迟到的流式回复。
     pub is_preview: bool,
+    /// 当轮附带的多模态图片（`data:image/...;base64,...` data URL）。
+    /// 由「该模型支持原生识图」的对话路径设置：图片仅拼接进**当轮** LLM 上下文，
+    /// 不写入角色记忆，从源头控制上下文/缓存占用。
+    pub transient_image: Option<String>,
 }
 
 /// `process_message` 各步骤间传递的用户消息上下文。
@@ -430,6 +434,24 @@ impl MessageGenerator {
                 .await?
                 .display_name
                 .clone()
+        };
+        // 原生多模态识图：把当轮图片作为一条独立的用户消息拼进 LLM 上下文，
+        // 仅本次请求可见，不回写记忆。放在末尾（紧跟最新用户输入之后的视觉提示），
+        // 让模型把图片与最近的用户语境关联起来。
+        let context = if let Some(image) = self.deps.transient_image.clone() {
+            let mut ctx = context;
+            let gs_guard = self.deps.game_status.lock().await;
+            let user_name = gs_guard.player.user_name.clone();
+            drop(gs_guard);
+            let marker = if user_message.trim().is_empty() {
+                format!("（用户「{}」发来一张图片，请查看图片内容。）", user_name)
+            } else {
+                format!("【图片】用户「{}」发来一张图片，请结合图片内容回复。", user_name)
+            };
+            ctx.push(LlmMessage::user_with_image(marker, image));
+            ctx
+        } else {
+            context
         };
         let tool_loop_result = stream_with_tool_loop(
             &self.deps.llm,

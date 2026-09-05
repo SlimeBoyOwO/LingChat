@@ -195,6 +195,7 @@ impl MemoryBuilder {
                             content: line.base.content.clone(),
                             tool_calls: Some(tool_calls),
                             tool_call_id: None,
+                            image_data_url: None,
                         });
                         continue;
                     }
@@ -217,6 +218,7 @@ impl MemoryBuilder {
                             content: text.to_string(),
                             tool_calls: Some(tool_calls),
                             tool_call_id: None,
+                            image_data_url: None,
                         });
                         continue;
                     }
@@ -243,6 +245,7 @@ impl MemoryBuilder {
                     content: result,
                     tool_calls: None,
                     tool_call_id,
+                    image_data_url: None,
                 });
                 continue;
             }

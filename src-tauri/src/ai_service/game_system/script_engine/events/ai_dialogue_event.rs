@@ -106,6 +106,7 @@ impl ScriptEvent for AIDialogueEvent {
             // 捕获当前试玩代号：中止后游离任务再写会被 add_assistant_line 的守卫丢弃
             generation: ctx.game_status.lock().await.preview_generation,
             is_preview: ctx.is_preview,
+            transient_image: None,
         };
 
         let generator = MessageGenerator::new(deps);

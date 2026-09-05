@@ -39,6 +39,29 @@ pub struct LlmProviderConfig {
     /// Codex Fast Mode（1.5× 速度，额度消耗更快）；仅 provider = codex 时有意义。
     #[serde(default)]
     pub fast_mode: bool,
+    /// 是否支持原生多模态识图（支持把图片直接发给该模型而不用旁白转述）。
+    /// 需要该 provider 的协议能承载图片内容（OpenAI 兼容 image_url / Gemini 多模态）。
+    #[serde(default)]
+    pub support_vision: bool,
+    /// 原生识图时是否压缩图片（默认 false：原图直发）。
+    /// 开启后可进一步用 `vision_max_edge`/`vision_jpeg_quality` 控制压缩强度，
+    /// 以节省多模态输入的 token 与上下文缓存占用。
+    #[serde(default)]
+    pub vision_compress: bool,
+    /// 压缩时图片最大边长（像素），超宽图等比缩放。默认 2048。
+    #[serde(default = "default_vision_max_edge")]
+    pub vision_max_edge: u32,
+    /// 压缩时 JPEG 编码质量（0-100）。默认 85。
+    #[serde(default = "default_vision_jpeg_quality")]
+    pub vision_jpeg_quality: u8,
+}
+
+/// 压缩设置默认值（防旧配置反序列化时字段缺失）。
+fn default_vision_max_edge() -> u32 {
+    2048
+}
+fn default_vision_jpeg_quality() -> u8 {
+    85
 }
 
 impl LlmProviderConfig {
@@ -48,6 +71,35 @@ impl LlmProviderConfig {
     /// 只要求 model 非空。
     pub fn is_usable(&self) -> bool {
         !self.model.is_empty()
+    }
+
+    /// 判断该 provider 是否走 genai 的 OpenAI 兼容 / Gemini 多模态路径，从而
+    /// 能原生承载图片内容。kimi_code / codex 有独立 provider 实现，暂不支持
+    /// 在对话消息里直接注入图片，仍需走旁白转述。
+    pub fn is_genai_multimodal_capable(&self) -> bool {
+        matches!(
+            self.provider.to_lowercase().as_str(),
+            "openai" | "deepseek" | "lmstudio" | "gemini"
+        )
+    }
+
+    /// 解析原生识图的图片压缩参数。
+    ///
+    /// 关闭压缩时返回「原图直发」配置；开启时返回用户指定的边长上限与 JPEG 质量
+    /// （并做边界钳制，防止手滑填出非法值）。
+    pub fn native_image_compress(&self) -> crate::ai_service::screen_analyzer::NativeImageCompress {
+        let max_edge = self.vision_max_edge.clamp(64, 8192);
+        // 质量只保留 1-100 的合法区间；0 视为未设置，用默认 85
+        let quality = if (1..=100).contains(&self.vision_jpeg_quality) {
+            self.vision_jpeg_quality
+        } else {
+            85
+        };
+        crate::ai_service::screen_analyzer::NativeImageCompress {
+            enabled: self.vision_compress,
+            max_edge,
+            jpeg_quality: quality,
+        }
     }
 
     pub fn to_llm_config(&self, timeout_secs: u64) -> LlmConfig {
@@ -62,6 +114,7 @@ impl LlmProviderConfig {
             enable_thinking: self.enable_thinking,
             reasoning_effort: self.reasoning_effort.clone(),
             fast_mode: self.fast_mode,
+            support_vision: self.support_vision,
         }
     }
 }
@@ -297,6 +350,10 @@ pub fn migrate_if_needed(app: &AppHandle) {
             enable_thinking: old_thinking,
             reasoning_effort: None,
             fast_mode: false,
+            support_vision: false,
+            vision_compress: false,
+            vision_max_edge: 2048,
+            vision_jpeg_quality: 85,
         });
         chat_id = Some(id);
     }
@@ -332,6 +389,10 @@ pub fn migrate_if_needed(app: &AppHandle) {
                 enable_thinking: false,
                 reasoning_effort: None,
                 fast_mode: false,
+                support_vision: false,
+                vision_compress: false,
+                vision_max_edge: 2048,
+                vision_jpeg_quality: 85,
             });
             translate_id = Some(id);
         }
@@ -402,6 +463,10 @@ pub fn migrate_legacy_vision_keys(app: &AppHandle) {
         enable_thinking: false,
         reasoning_effort: None,
         fast_mode: false,
+        support_vision: false,
+        vision_compress: false,
+        vision_max_edge: 2048,
+        vision_jpeg_quality: 85,
     };
 
     let mut providers = load_providers(app);
