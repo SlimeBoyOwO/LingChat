@@ -130,6 +130,16 @@
       >
         <p class="hidden whitespace-nowrap xl:block">{{ $t("nav.plugins") }}</p>
       </Button>
+      <Button
+        ref="dataBtn"
+        type="nav"
+        class="shrink-0"
+        icon="database"
+        @click="() => switchTab('data', 'dataBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'data' }"
+      >
+        <p class="hidden whitespace-nowrap xl:block">{{ $t("nav.data") }}</p>
+      </Button>
     </nav>
     <Icon
       icon="close"
@@ -176,6 +186,7 @@
   const adventureBtn = ref<ButtonRef | null>(null);
   const logBtn = ref<ButtonRef | null>(null);
   const pluginsBtn = ref<ButtonRef | null>(null);
+  const dataBtn = ref<ButtonRef | null>(null);
 
   // 设置可重设的值（使用 ref 存储，确保响应式或跨函数访问）
   const oldRefName = ref("textBtn");
@@ -196,6 +207,7 @@
       adventureBtn,
       logBtn,
       pluginsBtn,
+      dataBtn,
     }[currentRefName];
 
     if (buttonRef?.value?.$el) {
@@ -294,6 +306,9 @@
         break;
       case "plugins":
         activeButton = pluginsBtn.value;
+        break;
+      case "data":
+        activeButton = dataBtn.value;
         break;
     }
 
