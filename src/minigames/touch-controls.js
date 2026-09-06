@@ -1,3 +1,11 @@
+/** iPadOS can identify as a Mac; real desktop Macs do not expose multitouch screens. */
+export function usesMobileControls(nav = navigator) {
+  return (
+    /Android|iPhone|iPad|iPod/i.test(nav.userAgent) ||
+    (nav.platform === "MacIntel" && nav.maxTouchPoints > 1)
+  );
+}
+
 /** Independent pointer sources allow chords and moving, jumping and firing together. */
 export function bindTouchControls(root, { selector, enabled, press, release, signal, slide = [] }) {
   const buttons = [...root.querySelectorAll(selector)];

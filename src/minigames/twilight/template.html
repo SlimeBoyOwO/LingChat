@@ -6,14 +6,22 @@
   <div class="loading" id="loading">正在载入场景…</div>
 
   <div class="title-card" id="title-card" hidden>
-    <div class="scene-title"><h1>暮色节拍</h1><span>灯下回声</span></div>
+    <div class="scene-title">
+      <h1>暮色节拍</h1>
+      <div class="song-picker" role="group" aria-label="选择曲目">
+        <button id="song-prev" type="button" aria-label="上一首曲目">‹</button>
+        <strong id="song-title" aria-live="polite">灯下回声</strong>
+        <button id="song-next" type="button" aria-label="下一首曲目">›</button>
+      </div>
+      <p id="song-details" class="song-details"></p>
+    </div>
     <nav class="scene-menu" aria-label="音游菜单">
       <button class="menu-item" id="start" type="button">开始演奏</button>
       <button class="menu-item" id="demo" type="button">观赏演示</button>
       <button class="menu-item" id="settings-toggle" type="button" aria-expanded="false">调校</button>
       <button class="menu-item" id="back-to-games" type="button">返回</button>
     </nav>
-    <p class="scene-hint"><b id="play-hint">D / F / J / K · 点按或长按</b> <span>112 BPM · 约 72 秒</span></p>
+    <p class="scene-hint"><b id="play-hint">D / F / J / K · 点按或长按</b> <span id="track-summary">112 BPM · 约 72 秒</span></p>
   </div>
 
   <div class="live-tools" id="live-tools" hidden>
@@ -44,6 +52,7 @@
   <div class="modal-scrim" id="result-screen" hidden>
     <section class="modal result" role="dialog" aria-modal="true" aria-labelledby="result-title">
       <p class="eyebrow" id="result-eyebrow">演奏完成</p>
+      <p class="result-song" id="result-song"></p>
       <h2 id="result-title">最后一盏灯，为你亮着</h2>
       <div class="result-grade" id="result-grade">A</div>
       <p id="result-copy"></p>
@@ -63,6 +72,7 @@
       <label>输入偏移 <output id="offset-value">0 ms</output><input id="offset" type="range" min="-200" max="200" step="5" value="0"><small>总是按晚了可向正值调整。</small></label>
       <label>下落时间 <output id="speed-value">1.8 s</output><input id="speed" type="range" min="1.1" max="2.6" step="0.1" value="1.8"><small>只改变视觉速度，不改变音乐。</small></label>
       <label class="check-setting"><input id="horror" type="checkbox"><span>异常演出<small>后段色彩错位、角色残影，尾声进入剧情错误。</small></span></label>
+      <label class="check-setting"><input id="beat-effects" type="checkbox" checked><span>节拍特效<small>霓虹光束、打击扩散和连击效果，跟随系统减少动态效果设置。</small></span></label>
       <button id="settings-close" class="menu-item" type="button">返回</button>
     </section>
   </div>

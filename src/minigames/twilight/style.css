@@ -98,6 +98,52 @@
   letter-spacing: 0.35em;
   color: #ffebd8;
 }
+.song-picker {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 250px;
+  margin-top: 18px;
+}
+.song-picker button {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  padding: 0;
+  border: 1px solid #ffe3cd66;
+  background: #241a3844;
+  font:
+    32px/1 Consolas,
+    monospace;
+}
+.song-picker button:disabled {
+  opacity: 0.4;
+}
+.song-picker strong {
+  font-size: clamp(20px, 2vw, 30px);
+  letter-spacing: 0.12em;
+}
+.song-details {
+  margin: 10px 0 0;
+  font:
+    12px/1.6 "Microsoft YaHei",
+    sans-serif;
+  color: #ffe4d6;
+}
+.result-song {
+  font:
+    12px/1.6 "Microsoft YaHei",
+    sans-serif;
+  color: #b7dfe6;
+}
+.cadence-root[data-song="neon-overdrive"] .scene-background {
+  filter: saturate(1.25) hue-rotate(285deg) brightness(0.7);
+}
+.cadence-root[data-song="neon-overdrive"] .scene-shade {
+  background: linear-gradient(140deg, #22296130, #3d145866);
+}
 .scene-menu {
   position: absolute;
   left: 6.5%;
@@ -230,6 +276,9 @@ input:focus-visible {
   background: linear-gradient(transparent, #fff0c326);
 }
 .cadence-root:not([data-state="playing"]) .touch-keys {
+  display: none;
+}
+.cadence-root[data-touch="false"] .touch-keys {
   display: none;
 }
 .modal-scrim {
@@ -577,5 +626,38 @@ input:focus-visible {
   button,
   .scene-shade {
     transition: none !important;
+  }
+}
+.cadence-root[data-layout="portrait"] .scene-title {
+  top: 5%;
+  left: 7%;
+  right: 7%;
+  text-align: left;
+}
+.cadence-root[data-layout="portrait"] .scene-title h1 {
+  font-size: 36px;
+}
+.cadence-root[data-layout="portrait"] .song-picker {
+  margin-top: 10px;
+  min-width: 0;
+}
+.cadence-root[data-layout="portrait"] .song-details {
+  font-size: 11px;
+}
+.cadence-root[data-layout="portrait"] .scene-menu {
+  top: 40%;
+  transform: none;
+  gap: 4px;
+}
+.cadence-root[data-layout="portrait"] .scene-hint {
+  bottom: 3%;
+  font-size: 10px;
+}
+@media (max-height: 550px) {
+  .song-picker {
+    margin-top: 10px;
+  }
+  .song-details {
+    font-size: 10px;
   }
 }

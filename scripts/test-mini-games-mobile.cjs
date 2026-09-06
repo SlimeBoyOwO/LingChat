@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { chromium, webkit } = require("playwright");
+const { chromium, webkit, devices } = require("playwright");
 const base = process.env.TEST_ORIGIN || "http://127.0.0.1:1438";
 const out = process.env.TEST_OUTPUT || path.resolve(".test-output/mobile");
 fs.mkdirSync(out, { recursive: true });
@@ -131,6 +131,7 @@ async function run(engine) {
   });
   try {
     const context = await browser.newContext({
+      userAgent: devices[engine === "webkit" ? "iPhone 13" : "Pixel 7"].userAgent,
       viewport: sizes[0],
       isMobile: true,
       hasTouch: true,

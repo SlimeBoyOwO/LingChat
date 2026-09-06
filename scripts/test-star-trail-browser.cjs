@@ -137,14 +137,10 @@ fs.mkdirSync(out, { recursive: true });
   assert.equal((await snapshot()).player.hp, 5);
   assert((await snapshot()).player.x < 80);
   await page.setViewportSize({ width: 800, height: 450 });
-  const right = page.locator('[data-action="right"]');
-  const rightBox = await right.boundingBox();
-  await page.mouse.move(rightBox.x + 20, rightBox.y + 20);
-  await page.mouse.down();
-  const touchX = (await snapshot()).player.x;
-  await page.waitForTimeout(250);
-  await page.mouse.up();
-  assert((await snapshot()).player.x > touchX + 20);
+  assert(
+    await page.locator("#trail-touch").isHidden(),
+    "narrow desktop windows do not show phone controls"
+  );
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   await page.waitForFunction(() => window.__trailController.snapshot().mode === "paused");
   await page.locator("#trail-title-return").click();
@@ -175,7 +171,7 @@ fs.mkdirSync(out, { recursive: true });
       "pause and audio suspension",
       "volume",
       "death and retry",
-      "pointer controls",
+      "desktop hides phone controls",
       "blur pause",
       "route audio cleanup",
       "abort and initialization cleanup",

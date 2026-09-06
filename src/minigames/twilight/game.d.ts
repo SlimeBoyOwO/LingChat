@@ -1,6 +1,8 @@
 export interface RhythmResult {
   status: "completed" | "interrupted";
   demo: boolean;
+  songId: string;
+  songTitle: string;
   accuracy: number;
   score: number;
   maxCombo: number;
@@ -16,6 +18,12 @@ export interface RhythmController {
   snapshot(): {
     state: string;
     demo?: boolean;
+    songId?: string;
+    songTitle?: string;
+    noteCount?: number;
+    section?: string;
+    effectCount?: number;
+    renderingAudio?: boolean;
     time?: number;
     result?: RhythmResult;
     held?: number[];

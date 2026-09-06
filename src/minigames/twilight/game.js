@@ -1,5 +1,5 @@
-import { bindTouchControls } from "../touch-controls.js";
-import * as music from "./music.js";
+import { bindTouchControls, usesMobileControls } from "../touch-controls.js";
+import { SONGS } from "./songs.js";
 import { Judge } from "./core.js";
 import backgroundUrl from "../../assets/minigames/twilight/shrine-dusk.png";
 import pose0Url from "../../assets/minigames/twilight/qinling-0.png";
@@ -20,6 +20,13 @@ export async function mountRhythm(root, options) {
   let portrait = false,
     touchLayout = false,
     touchControls;
+  let music = SONGS[0];
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  let beatEffects = true,
+    renderWorker = null,
+    cancelRender = null,
+    demoActions = [],
+    demoIndex = 0;
   const colors = ["#f2acb5", "#f7d39a", "#9fd0d4", "#c6b5ea"];
   const keys = ["KeyD", "KeyF", "KeyJ", "KeyK"];
   const lifetime = new AbortController();
@@ -38,6 +45,7 @@ export async function mountRhythm(root, options) {
     resizeObserver?.disconnect();
     lifetime.abort();
     stopSource();
+    cancelRender?.();
     clearInputs();
     judge?.pause();
     state = "destroyed";
@@ -83,12 +91,14 @@ export async function mountRhythm(root, options) {
     offset = Math.max(-200, Math.min(200, Number.isFinite(saved.offset) ? saved.offset : 0));
     approach = Math.max(1.1, Math.min(2.6, Number.isFinite(saved.approach) ? saved.approach : 1.8));
     horror = saved.horror === true;
+    beatEffects = saved.beatEffects !== false;
+    music = SONGS.find((song) => song.id === saved.songId) ?? SONGS[0];
   } catch (_) {}
   function saveSettings() {
     try {
       localStorage.setItem(
         "twilight-cadence-settings",
-        JSON.stringify({ volume, offset, approach, horror })
+        JSON.stringify({ volume, offset, approach, horror, beatEffects, songId: music.id })
       );
     } catch (_) {}
   }
@@ -146,13 +156,34 @@ export async function mountRhythm(root, options) {
       });
     }
     await audio.resume();
+    if (destroyed) return;
     if (!gain) {
       gain = audio.createGain();
       gain.connect(audio.destination);
     }
     gain.gain.value = volume;
     if (!buffer) {
-      const pcm = music.renderPcm();
+      const pcm = await new Promise((resolve, reject) => {
+        const worker = new Worker(new URL("./music-worker.js", import.meta.url), {
+          type: "module",
+        });
+        renderWorker = worker;
+        const finish = (error, pcm) => {
+          worker.terminate();
+          if (renderWorker === worker) {
+            renderWorker = null;
+            cancelRender = null;
+          }
+          if (error) reject(error);
+          else resolve(pcm);
+        };
+        cancelRender = () => finish(new DOMException("Game closed", "AbortError"));
+        worker.onmessage = ({ data }) =>
+          finish(data.error ? new Error(data.error) : null, data.pcm);
+        worker.onerror = () => finish(new Error("曲目合成失败，请重试"));
+        worker.postMessage({ songId: music.id, sampleRate: 22050 });
+      });
+      if (destroyed) return;
       buffer = audio.createBuffer(1, pcm.length, 22050);
       buffer.copyToChannel(pcm, 0);
     }
@@ -170,11 +201,24 @@ export async function mountRhythm(root, options) {
       ? "演示成绩不会记作玩家成绩"
       : "跟着音乐，按下 D / F / J / K";
   }
+  function resetDemoActions(notes) {
+    demoActions = notes
+      .filter((note) => note.state !== "done")
+      .flatMap((note) => [
+        { at: note.at, lane: note.lane, down: true },
+        { at: note.end ?? note.at + 0.02, lane: note.lane, down: false },
+      ])
+      .sort((a, b) => a.at - b.at || Number(a.down) - Number(b.down));
+    demoIndex = 0;
+  }
   async function startGame(watchOnly = false) {
     const generation = ++songGeneration;
     state = "preparing";
     $("start").disabled = true;
+    $("start").textContent = "准备节拍…";
     $("demo").disabled = true;
+    $("song-prev").disabled = true;
+    $("song-next").disabled = true;
     $("footer-status").textContent = "正在准备节拍…";
     try {
       await readyAudio();
@@ -183,7 +227,9 @@ export async function mountRhythm(root, options) {
       runHorror = horror;
       seek = 0;
       lastResult = null;
-      judge = new Judge(music.makeChart());
+      const chart = music.makeChart();
+      judge = new Judge(chart);
+      resetDemoActions(chart);
       clearInputs();
       effects.length = 0;
       particles.length = 0;
@@ -209,7 +255,10 @@ export async function mountRhythm(root, options) {
       console.error(error);
     } finally {
       $("start").disabled = false;
+      $("start").textContent = "开始演奏";
       $("demo").disabled = false;
+      $("song-prev").disabled = false;
+      $("song-next").disabled = false;
     }
   }
   function pauseGame() {
@@ -261,6 +310,8 @@ export async function mountRhythm(root, options) {
     clearInputs();
     lastResult = judge.result(runHorror ? "interrupted" : "completed");
     lastResult.demo = demo;
+    lastResult.songId = music.id;
+    lastResult.songTitle = music.title;
     show("result-screen", true);
     show("live-tools", false);
     $("horror").disabled = false;
@@ -274,7 +325,12 @@ export async function mountRhythm(root, options) {
           : acc >= 0.7
             ? "B"
             : "C";
-    $("result-title").textContent = runHorror ? "最后一拍，没有返回" : "最后一盏灯，为你亮着";
+    $("result-title").textContent = runHorror
+      ? "最后一拍，没有返回"
+      : music.neon
+        ? "霓虹熄灭，节拍仍在"
+        : "最后一盏灯，为你亮着";
+    $("result-song").textContent = `${music.title} · ${music.difficulty} · ${music.noteCount} 音符`;
     $("result-eyebrow").textContent = runHorror
       ? "SCENE_INDEX_MISSING"
       : demo
@@ -397,6 +453,8 @@ export async function mountRhythm(root, options) {
     $("speed").value = approach;
     $("speed-value").textContent = approach.toFixed(1) + " s";
     $("horror").checked = horror;
+    $("beat-effects").checked = beatEffects;
+    scene.dataset.effects = String(beatEffects && !reducedMotion.matches);
   }
   $("volume").oninput = (e) => {
     volume = Number(e.target.value) / 100;
@@ -418,6 +476,44 @@ export async function mountRhythm(root, options) {
     horror = e.target.checked;
     saveSettings();
   };
+  $("beat-effects").onchange = (event) => {
+    beatEffects = event.target.checked;
+    if (!beatEffects) {
+      effects.length = 0;
+      particles.length = 0;
+    }
+    controls();
+    saveSettings();
+  };
+  on(reducedMotion, "change", controls);
+  function selectSong(direction = 0) {
+    if (!["loading", "idle"].includes(state)) return;
+    const next = SONGS[(SONGS.indexOf(music) + direction + SONGS.length) % SONGS.length];
+    if (next !== music) {
+      music = next;
+      buffer = null;
+    }
+    scene.dataset.song = music.id;
+    $("song-title").textContent = music.title;
+    const description = `${music.difficulty} · ${music.bpm} BPM · ${Math.round(music.duration)} 秒 · ${music.noteCount} 音符`;
+    $("song-details").textContent = description;
+    $("track-summary").textContent = `${music.style} · ${music.noteCount} 音符`;
+    $("footer-status").textContent = `${music.title} · ${description}`;
+    colors.splice(
+      0,
+      4,
+      ...(music.neon
+        ? ["#67e9ff", "#adacff", "#ff88ca", "#ffe29b"]
+        : ["#f2acb5", "#f7d39a", "#9fd0d4", "#c6b5ea"])
+    );
+    root
+      .querySelectorAll("[data-lane]")
+      .forEach((button, lane) => button.style.setProperty("--lane-color", colors[lane]));
+    if (direction) saveSettings();
+  }
+  $("song-prev").onclick = () => selectSong(-1);
+  $("song-next").onclick = () => selectSong(1);
+  selectSong();
   controls();
   function text(value, x, y, size = 12, color = "#f9e8d0", align = "left", weight = "normal") {
     ctx.font = `${weight} ${size}px "Cascadia Code","Microsoft YaHei",sans-serif`;
@@ -435,9 +531,11 @@ export async function mountRhythm(root, options) {
     const img = images["pose" + frame];
     if (!img) return;
     const bounce =
-      state === "playing"
+      state === "playing" && beatEffects && !reducedMotion.matches
         ? -Math.pow(Math.max(0, Math.sin((t / music.beat) * Math.PI)), 5) * 7
-        : Math.sin(now / 440) * 2;
+        : beatEffects && !reducedMotion.matches
+          ? Math.sin(now / 440) * 2
+          : 0;
     const idle = ["idle", "loading", "preparing"].includes(state);
     const x = portrait ? (idle ? W * 0.56 : W - 147) : idle ? 392 : 248,
       y = portrait ? (idle ? H * 0.61 : 105) : 282;
@@ -494,8 +592,7 @@ export async function mountRhythm(root, options) {
         rect(x + 1, TRACK.top, lw - 2, LINE - TRACK.top, colors[lane]);
         ctx.globalAlpha = 1;
       }
-      if (!touchLayout && !portrait)
-        text("DFJK"[lane], x + lw / 2, LINE + 35, 16, colors[lane], "center");
+      if (!touchLayout) text("DFJK"[lane], x + lw / 2, LINE + 35, 16, colors[lane], "center");
       rect(x + 10, LINE - 2, lw - 20, 4, colors[lane]);
     }
     rect(TRACK.x + TRACK.w, TRACK.top, 1, TRACK.bottom - TRACK.top, "#cfb0c424");
@@ -542,16 +639,112 @@ export async function mountRhythm(root, options) {
         poseIndex = event.lane < 2 ? 1 : 2;
         poseUntil = now + 240;
         laneFlash[event.lane] = now;
-        for (let i = 0; i < 9; i++)
-          particles.push({
-            x: TRACK.x + ((event.lane + 0.5) * TRACK.w) / 4,
-            y: LINE,
-            dx: Math.cos(i * 2.4) * (1 + (i % 3)),
-            dy: -1 - (i % 4),
+        if (beatEffects && !reducedMotion.matches)
+          for (let i = 0; i < 9; i++)
+            particles.push({
+              x: TRACK.x + ((event.lane + 0.5) * TRACK.w) / 4,
+              y: LINE,
+              dx: Math.cos(i * 2.4) * (1 + (i % 3)),
+              dy: -1 - (i % 4),
+              life: 1,
+              color: colors[event.lane],
+            });
+        if (music.neon && beatEffects && !reducedMotion.matches) {
+          effects.push({
+            lane: event.lane,
             life: 1,
-            color: colors[event.lane],
+            combo:
+              event.combo > 0 && event.combo % 50 === 0 && event.grade !== "hold" ? event.combo : 0,
           });
+        }
       }
+    }
+    if (particles.length > 240) particles.splice(0, particles.length - 240);
+    if (effects.length > 32) effects.splice(0, effects.length - 32);
+  }
+  function drawNeon(t, idle) {
+    if (!music.neon) return;
+    const section = music.sectionAt(t),
+      moving = beatEffects && !reducedMotion.matches;
+    const pulse =
+      moving && !idle ? Math.pow((Math.cos((t / music.beat) * Math.PI * 2) + 1) / 2, 3) : 0.1;
+    const energy = idle ? 0.25 : section.energy;
+    ctx.save();
+    ctx.globalAlpha = 0.12 + pulse * energy * 0.14;
+    ctx.strokeStyle = "#59d7ff";
+    ctx.lineWidth = 2;
+    const horizon = H * 0.78;
+    for (let i = -4; i <= 4; i++) {
+      ctx.beginPath();
+      ctx.moveTo(W * 0.5, horizon);
+      ctx.lineTo(W * 0.5 + i * W * 0.22, H);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 5; i++) {
+      const progress = (i + (moving ? (Math.max(0, t) / music.beat) % 1 : 0)) / 5;
+      const y = horizon + progress * progress * (H - horizon);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+    const beam = ctx.createLinearGradient(0, H, 0, H * 0.15);
+    beam.addColorStop(0, "#8d61ff");
+    beam.addColorStop(1, "#72e5ff00");
+    ctx.fillStyle = beam;
+    for (let side = 0; side < 2; side++) {
+      const origin = side ? W : 0,
+        swing = moving ? Math.sin(t * 0.9 + side * 2) * W * 0.08 : 0;
+      ctx.beginPath();
+      ctx.moveTo(origin, H);
+      ctx.lineTo(W * (side ? 0.85 : 0.15) + swing, 0);
+      ctx.lineTo(W * (side ? 0.94 : 0.06) + swing, 0);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 0.3 + energy * 0.25;
+    for (let i = 0; i < 16; i++) {
+      const value = moving ? (Math.sin(t * 7 + i * 1.8) + 1) / 2 : 0.25;
+      const height = 5 + value * energy * 25;
+      rect(12 + (i * (W - 24)) / 16, H - height - 4, (W - 24) / 16 - 5, height, colors[i % 4]);
+    }
+    ctx.restore();
+  }
+  function drawHitEffects(dt) {
+    for (let i = effects.length - 1; i >= 0; i--) {
+      const effect = effects[i];
+      if (state === "playing") effect.life -= dt * 0.035;
+      if (effect.life <= 0) {
+        effects.splice(i, 1);
+        continue;
+      }
+      if (!beatEffects || reducedMotion.matches) continue;
+      ctx.save();
+      ctx.globalAlpha = effect.life * 0.75;
+      ctx.strokeStyle = colors[effect.lane];
+      ctx.lineWidth = 2;
+      const x = TRACK.x + ((effect.lane + 0.5) * TRACK.w) / 4;
+      ctx.beginPath();
+      ctx.ellipse(
+        x,
+        LINE,
+        (1 - effect.life) * 44 + 6,
+        (1 - effect.life) * 18 + 4,
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.stroke();
+      if (effect.combo)
+        text(
+          `${effect.combo} CHAIN`,
+          portrait ? W / 2 : TRACK.x / 2,
+          portrait ? TRACK.top - 12 : 190,
+          21,
+          "#82edff",
+          "center",
+          "bold"
+        );
+      ctx.restore();
     }
   }
   function frame(now) {
@@ -559,17 +752,17 @@ export async function mountRhythm(root, options) {
     previousFrame = now;
     if (state === "countdown" && now >= countdownUntil) {
       judge.resume(resumeAt - offset / 1000);
+      if (demo) resetDemoActions(judge.notes);
       playFrom(resumeAt);
     }
     const t = songTime(),
       jt = t - offset / 1000;
     if (state === "playing") {
       if (demo)
-        for (const note of judge.notes) {
-          if (note.state === "pending" && jt >= note.at) {
-            judge.press(note.lane, note.at);
-            if (note.end == null) judge.release(note.lane, note.at);
-          } else if (note.state === "holding" && jt >= note.end) judge.release(note.lane, note.end);
+        while (demoIndex < demoActions.length && demoActions[demoIndex].at <= jt) {
+          const action = demoActions[demoIndex++];
+          if (action.down) judge.press(action.lane, action.at);
+          else judge.release(action.lane, action.at);
         }
       judge.update(jt);
       feedbackEvents(now);
@@ -582,12 +775,12 @@ export async function mountRhythm(root, options) {
     const corrupt =
       runHorror && !idle ? Math.max(0, Math.min(0.85, (t - music.beat * 68) / 28)) : 0;
     $("scene-corruption").style.opacity = String(corrupt * 0.55);
-    if (corrupt) {
+    if (corrupt && beatEffects && !reducedMotion.matches) {
       if (Math.sin(now / 640) > 0.86)
         for (let i = 0; i < 5; i++) rect(0, 100 + i * 75, W, 2 + i, "#ef839124");
     }
     for (const petal of petals) {
-      if (state !== "paused" && state !== "countdown") {
+      if (state !== "paused" && state !== "countdown" && beatEffects && !reducedMotion.matches) {
         petal.x += petal.speed * dt;
         petal.y += 0.1 * dt;
         if (petal.x > W) petal.x = -5;
@@ -601,8 +794,10 @@ export async function mountRhythm(root, options) {
         corrupt > 0.5 ? "#bd364c99" : "#f9bcb6aa"
       );
     }
+    drawNeon(t, idle);
     drawCharacter(now, Math.max(0, t), corrupt);
     if (!idle) drawTracks(t, now, false);
+    drawHitEffects(dt);
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
       if (state === "playing") {
@@ -624,11 +819,12 @@ export async function mountRhythm(root, options) {
       const hudWidth = portrait ? W - 50 : TRACK.x - 33;
       rect(25, 20, hudWidth, 2, "#eecbc132");
       rect(25, 20, hudWidth * Math.min(1, t / music.duration), 2, "#f1c997");
-      text("灯下回声", 29, 49, 13);
-      text("112 BPM  /  " + (demo ? "AUTO PLAY" : "4 KEYS"), 29, 68, 9, "#e0b9c3");
+      text(music.title, 29, 49, 13);
+      text(`${music.bpm} BPM  /  ` + (demo ? "AUTO PLAY" : music.difficulty), 29, 68, 9, "#e0b9c3");
       text(String(result.score).padStart(7, "0"), 29, 108, 27, "#fae2ba");
       const liveAccuracy = judge.resolved ? judge.points / judge.resolved : 1;
       text((liveAccuracy * 100).toFixed(1) + "%", 30, 129, 11, "#e4c3c5");
+      if (music.neon) text(music.sectionAt(t).name, 30, 151, 10, "#83eaff");
       if (judge.combo > 1) {
         text(
           judge.combo,
@@ -688,7 +884,7 @@ export async function mountRhythm(root, options) {
   $("back-to-games").onclick = exitToGames;
   $("exit-paused").onclick = exitToGames;
   let previousOrientation;
-  const coarsePointer = matchMedia("(any-pointer: coarse)");
+  const mobileControls = usesMobileControls();
   const syncPlayfield = () => {
     const bounds = canvas.getBoundingClientRect();
     if (!bounds.width || !bounds.height) return;
@@ -696,7 +892,7 @@ export async function mountRhythm(root, options) {
     if (previousOrientation !== undefined && previousOrientation !== nextOrientation) pauseGame();
     previousOrientation = nextOrientation;
     portrait = bounds.width / bounds.height < 1.15;
-    touchLayout = coarsePointer.matches;
+    touchLayout = mobileControls;
     scene.dataset.layout = portrait ? "portrait" : "landscape";
     scene.dataset.touch = String(touchLayout);
     W = portrait ? 480 : 960;
@@ -725,7 +921,6 @@ export async function mountRhythm(root, options) {
   };
   resizeObserver = new ResizeObserver(syncPlayfield);
   resizeObserver.observe(canvas);
-  on(coarsePointer, "change", syncPlayfield);
   syncPlayfield();
   if (options.signal.aborted) {
     destroy();
@@ -755,6 +950,12 @@ export async function mountRhythm(root, options) {
     snapshot: () => ({
       state,
       demo,
+      songId: music.id,
+      songTitle: music.title,
+      noteCount: music.noteCount,
+      section: music.neon ? music.sectionAt(songTime()).name : undefined,
+      effectCount: effects.length,
+      renderingAudio: !!renderWorker,
       time: songTime(),
       result: lastResult ?? judge?.result(),
       held: judge ? [...judge.held] : [],

@@ -272,6 +272,9 @@ input:focus-visible {
 .touch-controls button.active {
   background: #94ddcfa0;
 }
+.star-trail[data-touch="false"] .touch-controls {
+  display: none;
+}
 @media (pointer: fine) and (min-width: 900px) {
   .touch-controls {
     opacity: 0.2;

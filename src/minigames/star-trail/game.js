@@ -1,4 +1,4 @@
-import { bindTouchControls } from "../touch-controls.js";
+import { bindTouchControls, usesMobileControls } from "../touch-controls.js";
 import { Adventure, STEP } from "./core.js";
 import { TrailAudio } from "./audio.js";
 import { ARMOR_TIERS } from "./levels.js";
@@ -242,7 +242,7 @@ export function mountStarTrail(root, options) {
     show("boss", game.boss.active && game.boss.hp > 0 && mode === "playing");
     const hint =
       mode === "playing"
-        ? game.interactionHint().replace(/空格/g, coarsePointer.matches ? "射击键" : "空格")
+        ? game.interactionHint().replace(/空格/g, mobileControls ? "射击键" : "空格")
         : "";
     if ($("interaction").textContent !== hint) $("interaction").textContent = hint;
     show("interaction", !!hint && !game.nearShop());
@@ -350,7 +350,7 @@ export function mountStarTrail(root, options) {
     frameId = requestAnimationFrame(frame);
   }
   let previousOrientation;
-  const coarsePointer = matchMedia("(any-pointer: coarse)");
+  const mobileControls = usesMobileControls();
   const resize = () => {
     const bounds = canvas.getBoundingClientRect();
     if (!bounds.width || !bounds.height) return;
@@ -358,21 +358,20 @@ export function mountStarTrail(root, options) {
     if (previousOrientation !== undefined && previousOrientation !== portrait) pause();
     previousOrientation = portrait;
     scene.dataset.layout = portrait ? "portrait" : "landscape";
-    scene.dataset.touch = String(coarsePointer.matches);
+    scene.dataset.touch = String(mobileControls);
     // Keep enough world visible to plan a jump even on a narrow portrait phone.
     width = Math.max(480, Math.round((360 * bounds.width) / bounds.height));
     canvas.width = width;
     canvas.height = Math.round((width * bounds.height) / bounds.width);
     worldTop = Math.max(0, Math.round((canvas.height - 360) * 0.48));
     ctx.imageSmoothingEnabled = false;
-    $("title-hint").textContent = coarsePointer.matches
+    $("title-hint").textContent = mobileControls
       ? "左手移动 · 右手跳跃与射击 · 支持同时按住"
       : "A / D 移动　 W / ↑ 跳跃　 空格射击";
-    $("world-shop").textContent = coarsePointer.matches ? "进入星灯商店" : "E · 进入星灯商店";
+    $("world-shop").textContent = mobileControls ? "进入星灯商店" : "E · 进入星灯商店";
   };
   const observer = new ResizeObserver(resize);
   observer.observe(canvas);
-  on(coarsePointer, "change", resize);
   resize();
   on(window, "keydown", (event) => {
     if (event.code === "Escape") {
