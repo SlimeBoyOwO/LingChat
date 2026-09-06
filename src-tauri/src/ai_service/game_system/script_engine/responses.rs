@@ -25,6 +25,16 @@ pub mod event_names {
     pub const SCRIPT_CHOICE: &str = "script:choice";
     pub const SCRIPT_END: &str = "script:end";
     pub const SCRIPT_FREE_DIALOGUE: &str = "script:free-dialogue";
+    pub const SCRIPT_JUMPSCARE: &str = "script:jumpscare";
+    pub const SCRIPT_FORCE_CHOICE: &str = "script:force-choice";
+    pub const SCRIPT_POEM_GAME: &str = "script:poem-game";
+    pub const SCRIPT_VOICE_SHIFT: &str = "script:voice-shift";
+    pub const SCRIPT_WAIT: &str = "script:wait";
+    pub const SCRIPT_GLITCH_WINDOW: &str = "script:glitch-window";
+    pub const SCRIPT_CONSOLE_WINDOW: &str = "script:console-window";
+    pub const SCRIPT_WATCH_JUMP: &str = "script:watch-jump";
+    pub const SCRIPT_WINDOW_TITLE: &str = "script:window-title";
+    pub const SCRIPT_WINDOW_TITLE_RESET: &str = "script:window-title-reset";
 }
 
 // ============================================================
@@ -74,6 +84,13 @@ pub struct BackgroundEffectPayload {
     pub effect: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    /// 可选的演出文本（目前仅 BSOD 假异常窗口使用：trace 行内容）。
+    /// 由剧本自带，引擎组件不再硬编码任何具体剧本的彩蛋文本。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// 可选的 BSOD 彩蛋独白（延迟淡入的小字），缺省不显示。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub echo: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -93,6 +110,99 @@ pub struct SoundPayload {
     pub sound_path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+}
+
+/// 突脸惊吓：全屏图片闪现 + 音效。图片为空串表示解析失败（前端应跳过）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JumpscarePayload {
+    pub image_path: String,
+    /// 可选音效；空串表示无
+    pub sound_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+/// 显式时间轴停顿。必须进入前端事件队列，才能相对玩家点击后的真实画面计时。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WaitPayload {
+    pub duration: f64,
+}
+
+/// 队列有序的显式窗口标题意图；空串表示恢复应用默认标题。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowTitlePayload {
+    pub title: String,
+}
+
+/// 已在 Rust 端完成安全校验的辅助故障窗口一次性票据。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GlitchWindowTicketPayload {
+    pub request_id: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+/// 真实系统窗口的一次性票据：完整内容仅保存在 Rust，前端无法自由构造、
+/// 重放或跨剧本运行消费。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConsoleWindowTicketPayload {
+    pub request_id: u64,
+}
+
+/// 文件监视跳转：前端收到后应立刻清掉被中断章节的积压事件，让崩坏章节即时上演。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WatchJumpPayload {
+    pub target: String,
+}
+
+/// 强制选择：前端用"鼠标被拖向 forced 选项"的演出，最终只能提交 forced。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForceChoicePayload {
+    /// 绑定当前剧本运行与 force_choice 实例的一次性能力票据。
+    pub request_id: String,
+    pub choices: Vec<ChoiceItem>,
+    /// 必然被选中的选项文本（必须在 choices 里存在）
+    pub forced: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+/// 选词写诗小游戏中的一个候选词。三个分值只用于客户端即时反馈，
+/// 最终结果会回传并由后端再次校验范围。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoemWordPayload {
+    pub text: String,
+    pub warm_points: i64,
+    pub script_points: i64,
+    pub void_points: i64,
+    #[serde(default)]
+    pub glitch: bool,
+}
+
+/// DDLC 式选词写诗互动，但使用本剧本原创的「她 / 剧本 / 空白」三种倾向。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoemGamePayload {
+    pub request_id: String,
+    pub background_path: String,
+    pub music_path: String,
+    pub glitch_music_path: String,
+    pub warm_sticker_path: String,
+    pub script_sticker_path: String,
+    pub void_sticker_path: String,
+    /// Explicit presentation mode; the client must not infer an act from playthrough.
+    pub mode: String,
+    pub rounds: Vec<Vec<PoemWordPayload>>,
+    pub normal_loop_start: f64,
+    pub glitch_loop_start: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -139,6 +249,18 @@ pub struct ModifyCharacterPayload {
     pub clothes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    /// true 时本次情绪切换是"闪现"演出：前端展示 `duration` 秒后自动还原，
+    /// 不覆盖角色当前情绪状态（DDLC 式立绘崩坏一闪）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flash: Option<bool>,
+    /// 立绘噪点侵蚀预设（DDLC n_rects_ghost 式）：`eyes` / `mouth` / `eyes_mouth`
+    /// 在角色脸部挂上每帧随机抖动的黑色矩形噪点团；"none" 或未设置时不动现状，
+    /// 显式写 "none" 清除。噪点常驻，直到剧本显式清除或恐怖残留清理兜底。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub noise: Option<String>,
+    /// 噪点淡入秒数（DDLC 用 8s 等待 + 12s easeout 慢侵蚀）；0/未设置 = 立即全显。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub noise_fade_in: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -191,4 +313,21 @@ pub struct ScriptEndPayload {
     /// reaching its end. The frontend must not credit the player with an
     /// adventure completion in that case.
     pub completed: bool,
+    /// 剧本声明 main_character 时，进剧本前的主角在此随队列事件交还给前端。
+    /// 必须走 script:end 载荷而不是即时 emit：后端跑完时前端往往还在消化积压
+    /// 事件，即时切角色会让立绘抢跑出现在尚未播完的空场景里。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restored_role_id: Option<i32>,
+}
+
+/// Voice shift：角色语音（TTS）播放倍率 + 音调偏移。rate <1 时因
+/// preservesPitch=false 同时降调；pitch 为纯音调偏移（半音数，负数=低沉，
+/// 由前端 Web Audio detune 实现，不改变语速），两者可叠加。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoiceShiftPayload {
+    pub rate: f64,
+    pub pitch: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }

@@ -46,6 +46,7 @@ export default {
     noOutfits: "利用可能な衣装はありません",
     confirmSwitch:
       "キャラクターを切り替えると、現在のキャラクターの記憶はクリアされます。必要な場合は忘れずにセーブしてくださいね",
+    switchFailed: "キャラ切替に失敗しました：{error}",
   },
   archiveProgress: {
     importing: "インポート中",

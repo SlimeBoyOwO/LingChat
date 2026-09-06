@@ -202,6 +202,11 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
 
     let mut service = state.ai_service.lock().await;
 
+    // 剧本运行期间锁定存档：读档会整体重置 GameStatus，直接拆掉正在运行的剧本
+    if service.game_status.lock().await.script_status.is_some() {
+        return Err("剧本运行中，角色已锁定，无法读取存档".to_string());
+    }
+
     // 1. 获取存档
     let save_model = SaveRepo::get_save_by_id(db, save_id)
         .await

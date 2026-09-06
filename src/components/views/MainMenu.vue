@@ -1,29 +1,40 @@
 <template>
-  <div class="relative h-full w-full overflow-hidden" :class="panelClass">
+  <div
+    class="main-menu-page relative h-full w-full overflow-hidden"
+    :class="[panelClass, menuThemeClass, { 'main-menu-page--effects-suspended': transientSuspend }]"
+  >
     <MainChat v-if="currentPage === 'gameMainView'" />
     <Settings v-else-if="currentPage === 'settings'" />
     <Save v-else-if="currentPage === 'save'" />
 
     <!-- 背景层（最底层） -->
     <div
-      class="absolute top-0 left-[-10%] z-[-2] h-full w-[120%]
+      class="video-background absolute top-0 left-[-10%] z-[-2] h-full w-[120%]
         bg-[url('../../assets/images/background2.png')] bg-cover bg-center will-change-transform"
       ref="bgRef"
     ></div>
 
-    <!-- 流星层（SVG动画）— 临时暂停不污染持久偏好 -->
-    <MeteorAnimation :meteors-enabled="effectiveMeteorsEnabled" :meteor-fps="meteorFps" />
+    <!-- 剧本可持久化的预设式标题异常层：只渲染纯文本/CSS，不接受 HTML 或资源路径。 -->
+    <div v-if="menuEffect.theme !== 'normal'" class="script-menu-effect" aria-hidden="true">
+      <div class="script-menu-effect__scanlines"></div>
+      <div v-if="menuEffect.message" class="script-menu-effect__message">
+        {{ menuEffect.message }}
+      </div>
+    </div>
+
+    <!-- 流星层（SVG动画）— 设置快照或恐怖主题期间临时暂停 -->
+    <MeteorAnimation :meteors-enabled="visualMeteorsEnabled" :meteor-fps="meteorFps" />
 
     <!-- 星星粒子层（位于背景和人物之间） -->
     <StarAnimation
-      :stars-enabled="effectiveStarsEnabled"
+      :stars-enabled="visualStarsEnabled"
       :stars-layer-ref="starsLayerRef"
       :stars-fps="starsFps"
     />
 
     <!-- 人物图层（位于星星之上，菜单之下） -->
     <img
-      class="pointer-events-none absolute top-1/2 left-1/2 z-3 max-h-full max-w-full
+      class="character-image pointer-events-none absolute top-1/2 left-1/2 z-3 max-h-full max-w-full
         transform-[translate(-50%,-50%)] will-change-transform"
       ref="charRef"
       src="../../assets/images/alona.png"
@@ -65,6 +76,7 @@
         <ScriptModeOptions
           v-if="menuState === 'scriptMode'"
           @back="showGameModeMenu"
+          @script-state-reset="fetchScriptMenuEffect"
           :scripts="scripts"
         />
       </Transition>
@@ -78,13 +90,19 @@
         />
       </Transition>
 
-      <StartLogo @click="goToGithub" />
+      <StartLogo :corrupted="menuEffect.theme !== 'normal'" @click="goToGithub" />
     </StartPage>
+
+    <!-- DLC 识别提示（右下角小字；有已识别 DLC 时才显示） -->
+    <div v-if="currentPage === 'mainMenu' && dlcNames.length > 0" class="dlc-hint">
+      {{ $t("views.mainMenu.dlcRecognized", { names: dlcNames.join("、") }) }}
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
   import type { WebInitData } from "@/api/services/game-info";
+  import { listDlcs } from "@/api/services/dlc";
   import { getScriptList, type ScriptSummary } from "@/api/services/script-info";
   import { invoke } from "@tauri-apps/api/core";
   import { computed, onMounted, ref, watch } from "vue";
@@ -117,14 +135,31 @@
   const menuState = ref<"main" | "gameMode" | "scriptMode" | "workshop">("main");
   const scripts = ref<ScriptSummary[]>([]);
   const loadingScripts = ref(false);
+  // 已识别的 DLC 剧本包名（主菜单右下角提示用）
+  const dlcNames = ref<string[]>([]);
+  type ScriptMenuTheme = "normal" | "blood" | "ghost";
+  interface ScriptMenuEffect {
+    theme: ScriptMenuTheme;
+    message?: string;
+    /** 特效归属剧本的 path_key（如 standalone/第七个测试剧本） */
+    owner?: string;
+  }
+  const menuEffect = ref<ScriptMenuEffect>({ theme: "normal" });
   const starsEnabled = computed(() => settingsStore.mainMenuStarsEnabled);
   const meteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled);
+  const menuThemeClass = computed(() => `main-menu-page--${menuEffect.value.theme}`);
   const meteorFps = computed(() => settingsStore.meteorFps);
   const starsFps = computed(() => settingsStore.starsFps);
 
   const transientSuspend = ref(false);
   const effectiveStarsEnabled = computed(() => starsEnabled.value && !transientSuspend.value);
   const effectiveMeteorsEnabled = computed(() => meteorsEnabled.value && !transientSuspend.value);
+  const visualStarsEnabled = computed(
+    () => effectiveStarsEnabled.value && menuEffect.value.theme === "normal"
+  );
+  const visualMeteorsEnabled = computed(
+    () => effectiveMeteorsEnabled.value && menuEffect.value.theme === "normal"
+  );
   const parallaxEnabled = computed(() => !transientSuspend.value);
   const panelClass = computed(() => {
     if (currentPage.value === "mainMenu") return "";
@@ -260,6 +295,39 @@
     }
   }
 
+  // DLC 识别提示：读取已安装的 DLC 剧本包（失败静默，只是个小字提示）
+  async function fetchDlcs() {
+    try {
+      dlcNames.value = (await listDlcs()).map((dlc) => dlc.name);
+    } catch {
+      dlcNames.value = [];
+    }
+  }
+
+  async function fetchScriptMenuEffect() {
+    try {
+      const effect = await invoke<ScriptMenuEffect | null>("get_script_menu_effect");
+      if (effect && ["blood", "ghost"].includes(effect.theme)) {
+        menuEffect.value = effect;
+      } else {
+        menuEffect.value = { theme: "normal" };
+      }
+    } catch {
+      // Invalid/missing state must always fail open to the ordinary accessible menu.
+      menuEffect.value = { theme: "normal" };
+    }
+  }
+
+  // DLC 管理页导入/卸载后，剧本列表与提示一并刷新
+  watch(
+    () => uiStore.dlcRefreshToken,
+    () => {
+      fetchScripts();
+      fetchDlcs();
+      fetchScriptMenuEffect();
+    }
+  );
+
   onMounted(() => {
     const initializeMenu = async () => {
       // 性能提示只显示一次
@@ -277,6 +345,8 @@
       }
 
       fetchScripts();
+      fetchDlcs();
+      fetchScriptMenuEffect();
     };
 
     initializeMenu();
@@ -308,6 +378,21 @@
     position: absolute;
   }
 
+  /* DLC 识别提示：右下角半透明黄小字，不挡菜单 */
+  .dlc-hint {
+    position: absolute;
+    right: 14px;
+    bottom: 30px;
+    z-index: 5;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    color: rgba(255, 214, 90, 0.78);
+    text-shadow:
+      0 1px 4px rgba(0, 0, 0, 0.7),
+      0 0 2px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+  }
+
   .slide-left-enter-from,
   .slide-left-leave-to {
     transform: translateX(-120%);
@@ -318,5 +403,198 @@
   .slide-right-leave-to {
     transform: translateX(120%);
     opacity: 0;
+  }
+
+  /* ========== 背景层 ========== */
+  .video-background {
+    position: absolute;
+    top: 0;
+    left: -10%;
+    width: 120%;
+    height: 100%;
+    background-image: url("../../assets/images/background2.png");
+    background-size: cover;
+    background-position: center;
+    z-index: -2;
+    /* 移除 transition */
+    will-change: transform;
+  }
+
+  /* ========== 人物图层 ========== */
+  .character-image {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 100%;
+    max-height: 100%;
+    z-index: 3;
+    pointer-events: none;
+    /* 移除 transition */
+    will-change: transform;
+  }
+
+  /* ========== 剧本驱动的标题异常预设 ========== */
+  .script-menu-effect {
+    position: absolute;
+    inset: 0;
+    z-index: 7;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .script-menu-effect::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 50% 55%, transparent 0 28%, rgba(20, 0, 0, 0.44) 80%),
+      repeating-linear-gradient(90deg, transparent 0 43px, rgba(255, 255, 255, 0.018) 44px 45px);
+    mix-blend-mode: multiply;
+  }
+
+  .script-menu-effect__scanlines {
+    position: absolute;
+    inset: -12%;
+    opacity: 0.3;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent 0 2px,
+      rgba(0, 0, 0, 0.45) 3px,
+      rgba(255, 255, 255, 0.025) 4px
+    );
+    animation: menu-scan 7s linear infinite;
+  }
+
+  .script-menu-effect__message {
+    position: absolute;
+    top: 18px;
+    left: 20px;
+    max-width: min(620px, 70vw);
+    color: rgba(255, 214, 214, 0.92);
+    font:
+      600 13px/1.45 Consolas,
+      "Cascadia Mono",
+      monospace;
+    letter-spacing: 0.12em;
+    white-space: pre-wrap;
+    text-shadow:
+      -2px 0 rgba(255, 0, 0, 0.75),
+      2px 0 rgba(0, 180, 255, 0.55),
+      0 0 8px rgba(255, 0, 0, 0.8);
+    animation: menu-message-glitch 2.8s steps(1, end) infinite;
+  }
+
+  .main-menu-page--blood {
+    background: #090000;
+  }
+
+  .main-menu-page--blood .video-background {
+    filter: grayscale(0.76) sepia(0.86) hue-rotate(315deg) saturate(3.4) brightness(0.46)
+      contrast(1.45);
+  }
+
+  .main-menu-page--blood .character-image {
+    opacity: 0.68;
+    filter: grayscale(0.8) sepia(0.9) hue-rotate(315deg) saturate(2.5) contrast(1.45)
+      drop-shadow(8px 0 0 rgba(150, 0, 0, 0.22));
+  }
+
+  .main-menu-page--blood .script-menu-effect {
+    background:
+      linear-gradient(110deg, rgba(75, 0, 0, 0.34), transparent 42%),
+      radial-gradient(circle at 50% 50%, transparent 20%, rgba(95, 0, 0, 0.4));
+  }
+
+  .main-menu-page--blood :deep(.start-item) {
+    color: #ffd8d8 !important;
+    text-shadow:
+      2px 0 rgba(120, 0, 0, 0.8),
+      -1px 0 rgba(0, 110, 130, 0.65) !important;
+  }
+
+  .main-menu-page--ghost {
+    background: #090b0d;
+  }
+
+  .main-menu-page--ghost .video-background {
+    filter: grayscale(1) brightness(0.42) contrast(1.35);
+  }
+
+  .main-menu-page--ghost .character-image {
+    opacity: 0.2;
+    filter: grayscale(1) contrast(1.5) blur(0.5px);
+    animation: ghost-character 5.5s steps(1, end) infinite;
+  }
+
+  .main-menu-page--ghost .script-menu-effect {
+    background: radial-gradient(circle at 50% 45%, transparent 20%, rgba(220, 230, 235, 0.11));
+  }
+
+  .main-menu-page--ghost .script-menu-effect__message {
+    color: rgba(225, 235, 238, 0.84);
+    text-shadow:
+      -2px 0 rgba(255, 255, 255, 0.5),
+      2px 0 rgba(20, 20, 20, 0.9);
+  }
+
+  @keyframes menu-scan {
+    from {
+      transform: translateY(-8%);
+    }
+    to {
+      transform: translateY(8%);
+    }
+  }
+
+  @keyframes menu-message-glitch {
+    0%,
+    90%,
+    100% {
+      transform: translate(0);
+      opacity: 0.92;
+    }
+    91% {
+      transform: translate(-3px, 1px);
+      opacity: 0.55;
+    }
+    93% {
+      transform: translate(4px, -1px);
+      opacity: 1;
+    }
+    95% {
+      transform: translate(0);
+    }
+  }
+
+  @keyframes ghost-character {
+    0%,
+    86%,
+    100% {
+      transform: translate(-50%, -50%);
+    }
+    87% {
+      transform: translate(calc(-50% - 5px), -50%);
+    }
+    89% {
+      transform: translate(calc(-50% + 7px), calc(-50% + 2px));
+    }
+    91% {
+      transform: translate(-50%, -50%);
+    }
+  }
+
+  .main-menu-page--effects-suspended .script-menu-effect__scanlines,
+  .main-menu-page--effects-suspended .script-menu-effect__message,
+  .main-menu-page--effects-suspended.main-menu-page--ghost .character-image {
+    animation-play-state: paused;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .script-menu-effect__scanlines,
+    .script-menu-effect__message,
+    .main-menu-page--ghost .character-image {
+      animation: none !important;
+    }
   }
 </style>

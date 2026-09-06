@@ -14,7 +14,7 @@ export default class SoundProcessor implements IEventProcessor {
 
     gameStore.currentStatus = "presenting";
 
-    // 存储原始文件路径，由 GameBackground.vue 统一转换（与 music/ambient 同一约定）
-    uiStore.currentSoundEffect = event.soundPath || "None";
+    // 存储原始文件路径并递增播放序号；相同故障音连续出现也必须重播。
+    uiStore.triggerSoundEffect(event.soundPath || "None");
   }
 }

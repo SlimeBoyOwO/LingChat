@@ -1,6 +1,6 @@
 [package]
 name = "ling_chat"
-version = "0.5.1"
+version = "0.5.3"
 default-run = "ling_chat"
 description = "AI Galgame Engine"
 authors = ["LingChat Team"]
@@ -33,7 +33,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-store = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
-tauri-plugin-notification = "2"
+tauri-plugin-notification = "2.4"
 tauri-plugin-screenshots = { path = "plugins/tauri-plugin-screenshots" }
 tauri-plugin-android-fs = "28"
 serde = { version = "1", features = ["derive"] }
@@ -138,6 +138,8 @@ sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", defau
     "directml",
 ] }
 windows = { version = "0.62.2", features = [
+    "Win32_UI_Controls",
+    "Win32_Storage_FileSystem",
     "Win32_UI_WindowsAndMessaging",
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

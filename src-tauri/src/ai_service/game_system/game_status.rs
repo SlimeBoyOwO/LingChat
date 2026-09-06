@@ -46,14 +46,30 @@ pub struct GameStatus {
 
     pub script_status: Option<ScriptStatus>,
 
+    /// 正式剧本（非试玩）开始时 `line_list` 的长度快照。剧本运行期间写入的
+    /// 台词/旁白/自由对话轮次都进共享 `line_list`，若不清除会漏进自由对话的
+    /// LLM 上下文（提示词污染）。`on_script_end` 据此截断并重建角色记忆，
+    /// 对齐编辑器试玩 PreviewSession 的隔离策略。
+    pub script_start_line_len: Option<usize>,
+
+    /// 正式剧本开始时的舞台状态快照（上场/在场角色集合）。剧本演出里的
+    /// `hide_character`（结局"角色消失"）会把角色从舞台上拿掉；若不在剧本
+    /// 结束时恢复，自由对话的立绘就再也显示不出来。
+    pub script_start_onstage_ids: Option<Vec<i32>>,
+    pub script_start_present_ids: Option<HashSet<i32>>,
+
+    /// 正式剧本开始时的 `(main_role_id, current_role_id)` 快照。剧本声明
+    /// `main_character` 时进入会把主角切成声明角色并锁定；剧本结束据此恢复，
+    /// 否则自由对话会一直停留在剧本主角上。
+    pub script_start_role_ids: Option<(Option<i32>, Option<i32>)>,
+
     /// 当前激活的存档 ID（用于 MemoryBank 持久化/载入/自动压缩）
     pub active_save_id: Option<i32>,
 
-    /// 试玩会话代号。每次试玩「进来备份 / 走时还原」都会递增；
-    /// 消息生成管线在写入台词前比对捕获值与当前值，不一致即视为已过期
-    /// （试玩任务被中止后，游离的流式任务可能仍在写）——直接丢弃，保证
-    /// 试玩内容不会漏进已还原的自由对话会话。自由对话本身不递增，恒等比对，
-    /// 行为不受影响。
+    /// 消息生成会话代号。编辑器试玩切换及正式剧本启动都会递增；生成管线在
+    /// 前端 emit 与最终写入前比对捕获值，不一致即丢弃游离任务，既防试玩内容
+    /// 漏回自由对话，也防迟到的入场问候/自由聊天混进正式剧本。普通自由对话
+    /// 不主动递增，恒等比对，行为不受影响。
     pub preview_generation: u64,
 
     /// 标记玩家是否已在本会话中入场（内存标记，重启重置）。
@@ -84,6 +100,10 @@ impl GameStatus {
             completed_scripts: HashSet::new(),
             last_dialog_time: None,
             script_status: None,
+            script_start_line_len: None,
+            script_start_onstage_ids: None,
+            script_start_present_ids: None,
+            script_start_role_ids: None,
             active_save_id: None,
             preview_generation: 0,
             player_entered: false,

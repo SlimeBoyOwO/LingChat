@@ -74,6 +74,19 @@ impl GameRoleManager {
         }
     }
 
+    /// Evict cached role data so current database/resource settings are reloaded.
+    /// Session clothing overrides deliberately survive a normal metadata refresh.
+    pub fn evict_role(&mut self, role_id: i32) {
+        self.loaded_roles.remove(&role_id);
+        self.memory_bank_systems.remove(&role_id);
+    }
+
+    /// Drop every trace of a role row created only by editor preview.
+    pub fn remove_preview_role(&mut self, role_id: i32) {
+        self.evict_role(role_id);
+        self.clothes_overrides.remove(&role_id);
+    }
+
     /// 设置角色服装覆盖（来自 session store，优先于 settings.yml 的默认值）。
     pub fn set_clothes_overrides(&mut self, overrides: HashMap<i32, String>) {
         self.clothes_overrides = overrides;

@@ -7,6 +7,61 @@ import { useUIStore } from "../ui/ui";
 import { useSettingsStore } from "../settings";
 import type { SceneInfo } from "@/api/services/scene";
 import { invoke } from "@tauri-apps/api/core";
+import { resetScriptWindowTitle } from "@/utils/windowTitleCoordinator";
+
+function clearStoryInteractionState(state: GameState) {
+  state.runningScript = null;
+  state.forceChoice = null;
+  state.poemGame = null;
+}
+
+function restoreStoryMedia(uiStore: ReturnType<typeof useUIStore>) {
+  if (uiStore.preScriptBgm !== null) {
+    uiStore.currentBackgroundMusic = uiStore.preScriptBgm;
+    uiStore.preScriptBgm = null;
+  }
+  if (uiStore.preScriptBgmMode !== null) {
+    uiStore.bgMusicMode = uiStore.preScriptBgmMode;
+    uiStore.preScriptBgmMode = null;
+  }
+  uiStore.bgmPersistBlocked = false;
+  uiStore.clearAmbientTracks();
+  uiStore.triggerSoundEffect("None");
+  uiStore.bgMusicPlaybackRate = 1;
+}
+
+function clearStoryEffects(uiStore: ReturnType<typeof useUIStore>) {
+  uiStore.resetHorrorEffects();
+  resetScriptWindowTitle();
+  uiStore.showPlayerHintLine = "";
+}
+
+function restoreStoryStage(state: GameState, uiStore: ReturnType<typeof useUIStore>) {
+  if (uiStore.preScriptBackground !== null) {
+    useSettingsStore().setCurrentBackground(uiStore.preScriptBackground);
+    uiStore.preScriptBackground = null;
+  }
+  if (state.preScriptRoleIds !== null) {
+    state.presentRoleIds = state.preScriptRoleIds;
+    state.preScriptRoleIds = null;
+  }
+  for (const id of state.presentRoleIds) {
+    const role = state.gameRoles[id];
+    if (role) {
+      role.show = true;
+      role.emotion = "正常";
+    }
+  }
+}
+
+function releaseStorySystemResources(notifyBackend: boolean) {
+  invoke("close_script_glitch_windows").catch((err) =>
+    console.warn("[Script] 关闭故障窗口失败（非致命）:", err)
+  );
+  if (notifyBackend) {
+    invoke("stop_script").catch((err) => console.warn("[Script] stop_script 失败（非致命）:", err));
+  }
+}
 
 export const actions = {
   appendGameMessage(this: GameState, message: GameMessage) {
@@ -24,10 +79,16 @@ export const actions = {
     try {
       const gameInfo = await getGameInfo();
       applyWebInitData(this, gameInfo);
-      // 通知后端玩家已入场，触发 AI 问候（不等 LoadingTransition，fire-and-forget）
-      invoke("notify_player_entry").catch((err) =>
-        console.warn("[Entry] 问候触发失败（非致命）:", err)
-      );
+      // 剧本入口会先标记 runningScript 再挂载聊天页。initializeGame 的
+      // backend snapshot 仍可能带回自由对话角色，所以必须在事件队列 resume
+      // 之前再次清台；随后 authored show_character 事件会按顺序重建舞台。
+      if (this.runningScript) {
+        this.presentRoleIds = [];
+      } else {
+        invoke("notify_player_entry").catch((err) =>
+          console.warn("[Entry] 问候触发失败（非致命）:", err)
+        );
+      }
       return gameInfo;
     } catch (error) {
       console.error("初始化游戏信息失败:", error);
@@ -71,9 +132,16 @@ export const actions = {
   },
 
   /** 标记进入剧情模式（用于控制UI显示：隐藏番茄钟/日程等） */
-  enterStoryMode(this: GameState, scriptName: string = "unknown") {
+  enterStoryMode(
+    this: GameState,
+    scriptName: string = "unknown",
+    contentWarning?: string,
+    folderKey?: string
+  ) {
+    this.poemGame = null;
     this.runningScript = {
       scriptName,
+      folderKey,
       currentChapterName: "",
       choices: [],
       isRunning: true,
@@ -83,14 +151,41 @@ export const actions = {
         currentRound: 0,
         endLine: "",
       },
+      contentWarning,
     };
     const uiStore = useUIStore();
+    // 剧本 BGM 隔离：保存自由对话的 BGM 与循环模式（已在剧本中则保留最早的值），
+    // 并阻止剧本期间的 BGM 变化被持久化到 session（防泄漏到下次启动）
+    if (uiStore.preScriptBgm === null) {
+      uiStore.preScriptBgm = uiStore.currentBackgroundMusic;
+      uiStore.preScriptBgmMode = uiStore.bgMusicMode;
+    }
+    // 背景图同理：剧本换的崩坏背景不得残留到自由对话
+    if (uiStore.preScriptBackground === null) {
+      uiStore.preScriptBackground = useSettingsStore().display.currentBackground;
+    }
+    // 在场角色快照：剧本演出的 hide_character（结局"角色消失"）会改写
+    // presentRoleIds，退出时必须恢复，否则自由对话立绘消失
+    if (this.preScriptRoleIds === null) {
+      this.preScriptRoleIds = [...this.presentRoleIds];
+    }
+    // Every story run owns a deterministic stage. Free-dialogue characters must
+    // not leak into missing/empty scenes; the snapshot is restored on exit.
+    this.presentRoleIds = [];
+    uiStore.bgmPersistBlocked = true;
     uiStore.bgMusicMode = "loop-single";
+    // 进入新剧本前清掉可能残留的恐怖特效（上次异常退出/重启等情况）
+    uiStore.resetHorrorEffects();
   },
 
-  /** 标记退出剧情模式，回到自由对话模式 */
-  exitStoryMode(this: GameState) {
-    this.runningScript = null;
+  /** 标记退出剧情模式，回到自由对话模式；各子步骤均为幂等 helper。 */
+  exitStoryMode(this: GameState, notifyBackend = true) {
+    const uiStore = useUIStore();
+    clearStoryInteractionState(this);
+    restoreStoryMedia(uiStore);
+    clearStoryEffects(uiStore);
+    restoreStoryStage(this, uiStore);
+    releaseStorySystemResources(notifyBackend);
   },
 
   // 设置当前场景（仅更新 store，不调用 API）

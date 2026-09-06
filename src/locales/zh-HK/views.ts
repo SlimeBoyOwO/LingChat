@@ -20,6 +20,7 @@ export default {
     continueFailMessage: "未建立存檔或者系統出咗問題",
     scriptListFailed: "攞劇本列表失敗：請確認後端已經啟動咗",
     perfTip: "如果你覺得喺呢個頁面好卡，可以去 通用設置 度閂咗星星粒子或者流星動畫。",
+    dlcRecognized: "已識別 DLC：{names}",
   },
   petMode: {
     settingsWindowTitle: "設置",
@@ -58,6 +59,19 @@ export default {
     cloudWorkshop: "雲·創意工坊",
     miniGame: "小遊戲（開發緊）",
     back: "返回",
+    resetMemoryTitle: "重置記憶",
+    resetMemory: "重置記憶",
+    resetMemoryDone2: "已重置",
+    resetMemoryMessage:
+      "將清除《{name}》嘅全部記憶（周目進度），恢復該劇本已聲明嘅安全劇情檔案並清除佢嘅主選單效果；下次進入會由第一週目重新開始。\n\n確定要重置嗎？",
+    resetMemoryDone: "記憶已清除。佢已經唔記得你喇。",
+    resetMemoryEmpty: "呢個劇本仲未有任何記憶。",
+    resetMemoryFailed: "重置失敗，請遲啲再試。",
+  },
+  contentWarning: {
+    horrorTitle: "⚠ 內容警告",
+    horrorMessage:
+      "本劇本包含恐怖、驚嚇同心理不適元素，以及強烈嘅畫面崩壞演出，建議 16 歲或以上玩家遊玩。\n部分恐怖劇本亦會建立受限嘅本機故障視窗、喺主視窗聚焦時短暫牽引系統滑鼠（按 Esc 可即時停止），並喺應用程式 data 目錄旁邊嘅 characters 子目錄寫入自身無害嘅 .chr 劇情標記；唔會自動點擊、執行外部指令或改動真實角色檔案。\n如果遊玩期間感到不適，請立即退出。\n\n確定要繼續嗎？",
   },
   pet: {
     chatInput: {

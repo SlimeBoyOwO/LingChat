@@ -61,22 +61,8 @@ impl ScriptEvent for UnlockAchievementEvent {
         // 试玩是临时会话：不写玩家存档，但模拟一次解锁广播——作者在编辑器里
         // 就能看到成就事件的效果（toast 照常弹出；成就页仍显示未解锁，不结算）。
         if ctx.is_preview {
-            {
-                let mut mgr = state.achievement_manager.lock().await;
-                mgr.register_achievement(
-                    id.to_string(),
-                    AchievementDef {
-                        title: title.to_string(),
-                        description: description.to_string(),
-                        ach_type: "adventure".into(),
-                        target_progress: 1,
-                        hidden: false,
-                        img_url: None,
-                        audio_url: None,
-                        duration: None,
-                    },
-                );
-            }
+            // Emit a preview-only toast without registering the definition in
+            // the shared achievement manager; closing preview leaves no entry.
             let simulated = Achievement {
                 id: id.to_string(),
                 title: title.to_string(),

@@ -8,7 +8,8 @@ use serde_json::Value;
 use crate::ai_service::game_system::script_engine::events::ScriptContext;
 use crate::ai_service::game_system::script_engine::events_handler::EventsHandler;
 use crate::ai_service::game_system::script_engine::responses::{
-    ChapterChangePayload, event_names::SCRIPT_CHAPTER_CHANGE,
+    ChapterChangePayload, WatchJumpPayload, event_names::SCRIPT_CHAPTER_CHANGE,
+    event_names::SCRIPT_WATCH_JUMP,
 };
 use crate::ai_service::message_system::events::emit;
 use crate::ai_service::types::ScriptStatus;
@@ -62,7 +63,49 @@ impl Chapter {
 
         // Execute events one by one
         while !self.events_handler.is_finished() {
-            self.events_handler.process_next_event(ctx).await?;
+            // watch_file 优先：目标 .chr 消失时立刻让位给崩坏章节（DDLC Act3 的
+            // 实时 monika.chr 检查），不等当前章节播完。
+            let pending = ctx.channels.lock().await.watch_jump.take();
+            if let Some(target) = pending {
+                tracing::info!(
+                    "[ScriptEngine] 文件监视触发：章节 '{}' 中断 → 跳转 '{}'",
+                    self.chapter_name,
+                    target
+                );
+                // 前端可能还堆着被中断章节的积压事件：先清队列再开崩坏章，
+                // 否则玩家要点完旧台词才能看到崩坏，实时性就丢了。
+                let _ = emit(
+                    ctx.app,
+                    SCRIPT_WATCH_JUMP,
+                    &WatchJumpPayload {
+                        target: target.clone(),
+                    },
+                );
+                return Ok(target);
+            }
+            match self.events_handler.process_next_event(ctx).await {
+                Ok(()) => {},
+                Err(error) => {
+                    // 阻塞中的事件被监视器丢弃通道后会报错让位；同样优先响应跳转
+                    let pending = ctx.channels.lock().await.watch_jump.take();
+                    if let Some(target) = pending {
+                        tracing::info!(
+                            "[ScriptEngine] 文件监视触发（事件中）：章节 '{}' 中断 → 跳转 '{}'",
+                            self.chapter_name,
+                            target
+                        );
+                        let _ = emit(
+                            ctx.app,
+                            SCRIPT_WATCH_JUMP,
+                            &WatchJumpPayload {
+                                target: target.clone(),
+                            },
+                        );
+                        return Ok(target);
+                    }
+                    return Err(error);
+                },
+            }
         }
 
         let result = self.events_handler.get_chapter_result();

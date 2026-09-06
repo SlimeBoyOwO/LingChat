@@ -95,6 +95,17 @@ impl Tool for CharacterSwitch {
         let app = context.require_app()?;
         let state = app.state::<AppState>();
 
+        // 剧本运行期间锁定角色：声明了 main_character 的剧本进入时已切到指定主角，
+        // 运行中切换会拆掉 MAIN 绑定与剧本上下文
+        {
+            let gs = game_status_handle(&app).await;
+            if gs.lock().await.script_status.is_some() {
+                return Err(ToolError::Execution(
+                    "剧本运行中，角色已锁定，无法切换角色".into(),
+                ));
+            }
+        }
+
         // 校验角色存在并取出名称（否则静默切到不存在的 id，前端无感知）
         let roles = RoleRepo::get_all_main_roles(&state.db)
             .await

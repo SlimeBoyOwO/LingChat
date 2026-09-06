@@ -1,0 +1,19 @@
+[
+  { "key": "StarField", "label": "星空", "layer": "background", "horror": false },
+  { "key": "Rain", "label": "雨", "layer": "background", "horror": false },
+  { "key": "Sakura", "label": "樱花", "layer": "background", "horror": false },
+  { "key": "Snow", "label": "雪", "layer": "background", "horror": false },
+  { "key": "Fireworks", "label": "烟花", "layer": "background", "horror": false },
+  { "key": "Glitch", "label": "画面故障", "layer": "horror", "horror": true },
+  { "key": "Shake", "label": "画面震动", "layer": "horror", "horror": true },
+  { "key": "Flash", "label": "红色闪光", "layer": "horror", "horror": true },
+  { "key": "Blackout", "label": "舞台熄灯", "layer": "horror", "horror": true },
+  { "key": "Tear", "label": "画面撕裂", "layer": "horror", "horror": true },
+  { "key": "Static", "label": "电视雪花", "layer": "horror", "horror": true },
+  { "key": "Invert", "label": "颜色反转", "layer": "horror", "horror": true },
+  { "key": "BloodDrip", "label": "血滴", "layer": "horror", "horror": true },
+  { "key": "Veins", "label": "血管", "layer": "horror", "horror": true },
+  { "key": "BSOD", "label": "蓝屏", "layer": "horror", "horror": true },
+  { "key": "UiCorrupt", "label": "界面损坏", "layer": "horror", "horror": true },
+  { "key": "BloodUI", "label": "血色界面", "layer": "horror", "horror": true }
+]

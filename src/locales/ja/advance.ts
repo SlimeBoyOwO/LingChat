@@ -7,6 +7,7 @@ export default {
     tts: "TTS 設定",
     asr: "音声認識",
     cast: "投写設定",
+    dlc: "DLC 管理",
   },
   menu: {
     llmTitle: "モデル管理",
@@ -35,5 +36,20 @@ export default {
     castTitle: "投写設定",
     castDesc: "ゲーム画面を LAN デバイスへ配信。ポート、解像度、画面の調整を設定します",
     castButton: "投写設定画面へ",
+    dlcTitle: "DLC 管理",
+    dlcDesc:
+      "DLC シナリオパック（zip）の認識・インポート・削除。インストール後すぐシナリオリストに表示",
+    dlcButton: "DLC 管理画面へ",
+  },
+  dlc: {
+    notice:
+      "DLC はサードパーティ製のシナリオパックで内容は未審査です。ホラー・驚かせる演出・不快な内容が含まれる場合があります。信頼できる配布元のパックのみインストールしてください。",
+    add: "DLC パックを追加（zip）",
+    importing: "インポート中……",
+    empty:
+      "認識済みの DLC はまだありません。上のボタンから DLC の zip を選んでインストールしてください。",
+    remove: "削除",
+    removeConfirm: "「{name}」を削除しますか？全ファイルが削除されます。",
+    warningHorror: "⚠ ホラー",
   },
 };

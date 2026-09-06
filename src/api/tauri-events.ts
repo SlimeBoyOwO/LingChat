@@ -21,6 +21,8 @@ import { useDialogStore } from "../stores/modules/ui/dialog";
 import { useAsrStore } from "../stores/modules/settings/asr";
 import type { VadEvent } from "../api/services/asr";
 import type { SceneInfo } from "./services/scene";
+import { resetScriptWindowTitle } from "@/utils/windowTitleCoordinator";
+import { isOwnedByStandaloneDlc } from "@/utils/dlcMediaOwnership";
 
 function asEvent(
   payload: unknown,
@@ -107,6 +109,11 @@ export function initializeTauriEventListeners() {
   // 一轮 LLM 流结束：清除「正在生成」进度提示（工具被忽略的收尾轮不会再有执行事件）
   listen("ai:tool_call_progress_end", () => {
     clearToolCallPreparing();
+  });
+
+  // 语音变调必须与目标对白使用同一 FIFO；直接改 store 会在玩家仍读旧台词时提前生效并重置。
+  listen("script:voice-shift", (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: "voice_shift", defaultDuration: 0 }));
   });
 
   // 工具调用结果：记入「工具调用」页面历史 + 左上角弹通知
@@ -343,6 +350,42 @@ export function initializeTauriEventListeners() {
 
   // === Script events ===
 
+  listen<string>("script:prepare-uninstall", (event) => {
+    const folderKey = event.payload;
+    console.log("[Tauri] script:prepare-uninstall", folderKey);
+    const gameStore = useGameStore();
+    const uiStore = useUIStore();
+    const targetIsActive = gameStore.runningScript?.folderKey === folderKey;
+
+    // 只有目标 DLC 自己仍占用剧情队列时才结束剧情；卸载无关 DLC 绝不能
+    // 中断自由对话或另一个剧本。
+    if (targetIsActive) {
+      eventQueue.clear();
+      gameStore.forceChoice = null;
+      gameStore.poemGame = null;
+      // 后端已持有 DLC 生命周期 reservation，只做前端释放，不再 invoke stop_script。
+      gameStore.exitStoryMode(false);
+      uiStore.resetHorrorEffects();
+      resetScriptWindowTitle();
+    }
+
+    if (isOwnedByStandaloneDlc(uiStore.currentBackgroundMusic, folderKey)) {
+      uiStore.currentBackgroundMusic = "None";
+    }
+    if (isOwnedByStandaloneDlc(uiStore.currentPresentPic, folderKey)) {
+      uiStore.currentPresentPic = "";
+      uiStore.currentPresentPicScale = 1;
+    }
+    if (isOwnedByStandaloneDlc(uiStore.currentSoundEffect, folderKey)) {
+      uiStore.triggerSoundEffect("None");
+    }
+    uiStore.ambientTracks = uiStore.ambientTracks.filter(
+      (track) => !isOwnedByStandaloneDlc(track.src, folderKey)
+    );
+
+    window.dispatchEvent(new CustomEvent("lingchat:release-dlc-media", { detail: { folderKey } }));
+  });
+
   listen("script:narration", (event) => {
     eventQueue.addEvent(asEvent(event.payload, { type: "narration", defaultDuration: -1 }));
   });
@@ -390,6 +433,54 @@ export function initializeTauriEventListeners() {
 
   listen("script:choice", (event) => {
     eventQueue.addEvent(asEvent(event.payload, { type: "choice", defaultDuration: 0 }));
+  });
+
+  listen("script:jumpscare", (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: "jumpscare", defaultDuration: 0.6 }));
+  });
+
+  // Rust-side sleep runs ahead while the player reads dialogue; queue the wait
+  // itself so horror beats hold for their authored duration on the visible UI.
+  listen("script:wait", (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: "wait", defaultDuration: 0 }));
+  });
+
+  listen("script:window-title", (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: "window_title", defaultDuration: 0 }));
+  });
+
+  // 停止/异常路径已作废旧 FIFO，可立即清除显式标题与恐怖标题 claim。
+  listen("script:window-title-reset", () => {
+    resetScriptWindowTitle();
+  });
+
+  // The payload is only a one-time ticket validated by Rust. Its processor asks
+  // Rust to create the bounded local window at this exact queue position.
+  listen("script:glitch-window", (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: "glitch_window", defaultDuration: 0 }));
+  });
+
+  // 原生系统窗口：前端推进到该拍时才拉起 TaskDialog、Notepad 或真实 CMD（无 PowerShell 宿主）
+  listen("script:console-window", (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: "console_window", defaultDuration: 0 }));
+  });
+
+  // 文件监视跳转：被中断章节的积压事件立刻作废，崩坏章节即时上演（DDLC Act3 的
+  // 实时删文件检查——玩家不等旧台词点完就该看到房间塌掉）
+  listen("script:watch-jump", () => {
+    eventQueue.clear();
+    const gameStore = useGameStore();
+    gameStore.forceChoice = null;
+    gameStore.poemGame = null;
+    eventQueue.resume();
+  });
+
+  listen("script:force-choice", (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: "force_choice", defaultDuration: 0 }));
+  });
+
+  listen("script:poem-game", (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: "poem_game", defaultDuration: 0 }));
   });
 
   listen("script:end", (event) => {

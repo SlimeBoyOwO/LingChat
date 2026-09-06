@@ -1,5 +1,5 @@
 <template>
-  <div class="main-box">
+  <div class="main-box" data-game-stage>
     <!-- 主界面始终渲染，加载动画期间在后台初始化 -->
     <FreeModeTools />
     <FullAccessWarning />
@@ -10,6 +10,7 @@
       @audio-ended="handleAudioFinished"
       @audio-started="handleAudioStarted"
     />
+    <StageBlackout />
     <GameDialog ref="gameDialogRef" @player-continued="manualTriggerContinue" />
 
     <!-- 原有的菜单按钮 -->
@@ -25,10 +26,13 @@
         <h3 class="hidden xl:block">{{ $t("views.mainChat.auto") }}</h3>
       </Button>
       <!-- 桌宠模式依赖 Windows 透明置顶窗口与 hit-test（lib.rs 为 cfg(windows)），Android 不可用 -->
+      <!-- 剧本运行期间锁定：她不允许你逃去桌宠 -->
       <Button
         v-if="!isAndroid()"
         type="nav"
         icon="character"
+        :disabled="petLocked"
+        :title="petLocked ? '锁死了。从打开的那一刻起就锁死了。' : ''"
         @click="goToPetMode"
         v-show="uiStore.showSettings !== true"
       >
@@ -51,22 +55,22 @@
 <script setup lang="ts">
   import { getEnvConfigByKey } from "@/api/services/config";
   import FreeModeTools from "@/components/tools/FreeModeTools.vue";
+  import FullAccessWarning from "@/components/tools/FullAccessWarning.vue";
   import ToolActivityStatus from "@/components/tools/ToolActivityStatus.vue";
+  import ImageSourcePicker from "@/components/ui/ImageSourcePicker.vue";
   import { dialogueMerge } from "@/core/events/dialogue-merge";
   import { eventQueue } from "@/core/events/event-queue";
-  import { onMounted, onUnmounted, ref, watch } from "vue";
+  import { computed, onMounted, onUnmounted, ref, watch } from "vue";
   import { useRouter } from "vue-router";
   import { useGameStore } from "../../stores/modules/game";
+  import { useSettingsStore } from "../../stores/modules/settings";
   import { useUIStore } from "../../stores/modules/ui/ui";
   import { Button } from "../base";
   import { GameBackground, GameDialog, GameRolesStage } from "../game/standard";
-  import LoadingTransition from "./LoadingTransition.vue";
-
-  import FullAccessWarning from "@/components/tools/FullAccessWarning.vue";
-  import ImageSourcePicker from "@/components/ui/ImageSourcePicker.vue";
-  import { isAndroid, isWindows } from "@/utils/platform";
-  import { useSettingsStore } from "../../stores/modules/settings";
   import GameExtraUI from "../game/standard/GameExtraUI.vue";
+  import StageBlackout from "../game/standard/StageBlackout.vue";
+  import LoadingTransition from "./LoadingTransition.vue";
+  import { isAndroid, isWindows } from "@/utils/platform";
 
   const LOADING_STORAGE_KEY = "lingchat_loading_shown";
 
@@ -108,6 +112,9 @@
   const goToPetMode = () => {
     router.push("/pet");
   };
+
+  /** 恐怖剧本运行期间锁定桌宠入口（她不允许你逃去桌宠；正常剧本不受影响） */
+  const petLocked = computed(() => gameStore.runningScript?.contentWarning === "horror");
 
   const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null);
   const menuPanelRef = ref<HTMLElement | null>(null);
