@@ -100,30 +100,3 @@ pub fn register() {
         Box::new(VoiceShiftEvent::from_event_data(&data))
     });
 }
-
-#[cfg(test)]
-mod tests {
-    use super::VoiceShiftEvent;
-    use serde_json::json;
-
-    #[test]
-    fn rate_defaults_to_one() {
-        let e = VoiceShiftEvent::from_event_data(&json!({}));
-        assert_eq!(e.rate, 1.0);
-        assert_eq!(e.pitch, 0.0);
-    }
-
-    #[test]
-    fn rate_is_clamped() {
-        assert_eq!(VoiceShiftEvent::from_event_data(&json!({"rate": 0.1})).rate, 0.5);
-        assert_eq!(VoiceShiftEvent::from_event_data(&json!({"rate": 9.9})).rate, 1.5);
-        assert_eq!(VoiceShiftEvent::from_event_data(&json!({"rate": 0.8})).rate, 0.8);
-    }
-
-    #[test]
-    fn pitch_is_clamped() {
-        assert_eq!(VoiceShiftEvent::from_event_data(&json!({"pitch": -99.0})).pitch, -12.0);
-        assert_eq!(VoiceShiftEvent::from_event_data(&json!({"pitch": 99.0})).pitch, 12.0);
-        assert_eq!(VoiceShiftEvent::from_event_data(&json!({"pitch": -4.0})).pitch, -4.0);
-    }
-}

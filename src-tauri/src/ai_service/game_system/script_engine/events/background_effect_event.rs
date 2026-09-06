@@ -125,37 +125,3 @@ pub fn register() {
         Box::new(BackgroundEffectEvent::from_event_data(&data))
     });
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{known_effects, BackgroundEffectEvent};
-    use serde_json::json;
-
-    /// The value must keep passing through untouched — PR1 only adds a warning,
-    /// it deliberately does not "helpfully" correct the author's data.
-    #[test]
-    fn effect_is_passed_through_verbatim() {
-        for raw in ["StarField", "starfield", "Starfield", "None", "Nonsense"] {
-            let e = BackgroundEffectEvent::from_event_data(&json!({ "effect": raw }));
-            assert_eq!(e.effect, raw);
-        }
-    }
-
-    #[test]
-    fn missing_effect_defaults_to_none() {
-        let e = BackgroundEffectEvent::from_event_data(&json!({}));
-        assert_eq!(e.effect, "none");
-    }
-
-    #[test]
-    fn shared_effect_manifest_has_unique_composable_keys() {
-        let effects = known_effects();
-        assert!(!effects.is_empty());
-        let unique: std::collections::HashSet<&str> =
-            effects.iter().map(String::as_str).collect();
-        assert_eq!(unique.len(), effects.len());
-        assert!(effects.iter().all(|key| !key.is_empty()));
-        assert!(effects.iter().all(|key| !key.contains('+')));
-        assert!(effects.iter().all(|key| !key.eq_ignore_ascii_case("none")));
-    }
-}

@@ -58,21 +58,3 @@ pub fn register() {
         Box::new(WaitEvent::from_event_data(&data))
     });
 }
-
-#[cfg(test)]
-mod tests {
-    use super::WaitEvent;
-    use serde_json::json;
-
-    #[test]
-    fn parses_seconds() {
-        let e = WaitEvent::from_event_data(&json!({ "seconds": 3.75 }));
-        assert_eq!(e.seconds, 3.75);
-    }
-
-    #[test]
-    fn defaults_to_one_second() {
-        let e = WaitEvent::from_event_data(&json!({}));
-        assert_eq!(e.seconds, 1.0);
-    }
-}

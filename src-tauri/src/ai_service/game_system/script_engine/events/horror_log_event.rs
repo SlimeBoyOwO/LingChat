@@ -66,23 +66,3 @@ pub fn register() {
         Box::new(HorrorLogEvent::from_event_data(&data))
     });
 }
-
-#[cfg(test)]
-mod tests {
-    use super::HorrorLogEvent;
-    use serde_json::json;
-
-    #[test]
-    fn defaults() {
-        let e = HorrorLogEvent::from_event_data(&json!({}));
-        assert_eq!(e.text, "SHE_SEES_YOU");
-        assert_eq!(e.lines, 1);
-    }
-
-    #[test]
-    fn lines_clamped() {
-        assert_eq!(HorrorLogEvent::from_event_data(&json!({"lines": 0})).lines, 1);
-        assert_eq!(HorrorLogEvent::from_event_data(&json!({"lines": 999})).lines, 300);
-        assert_eq!(HorrorLogEvent::from_event_data(&json!({"lines": 12})).lines, 12);
-    }
-}

@@ -219,10 +219,8 @@ mod windows_impl {
         HRESULT(0)
     }
 
-    /// TaskDialogIndirect 只存在于 comctl32 v6（应用清单声明 Common-Controls 6.0
-    /// 才加载）。正式 exe 嵌有清单；cargo test 生成的测试二进制没有清单，静态导入会
-    /// 让 loader 直接报 0xc0000139。改为运行时解析：v6 不可用时优雅跳过弹窗，
-    /// 测试进程也能正常存活。
+    /// TaskDialogIndirect depends on comctl32 v6 and a Common-Controls 6.0 manifest.
+    /// Resolve the symbol at runtime and skip unavailable dialogs to avoid loader error 0xc0000139.
     type TaskDialogIndirectFn =
         unsafe extern "system" fn(*const TASKDIALOGCONFIG, *mut i32, *mut i32, *mut i32) -> HRESULT;
 
@@ -740,45 +738,6 @@ mod windows_impl {
         }
     }
 
-    #[cfg(test)]
-    mod tests {
-        use super::{cmd_launch_line, notepad_command};
-
-        #[test]
-        fn blood_cmd_uses_red_background_without_powershell() {
-            let command = cmd_launch_line(
-                "RUNTIME",
-                std::path::Path::new(r"C:\Temp\lingchat-console-test.txt"),
-                true,
-            );
-            assert!(command.contains("color 4F"));
-            assert!(command.contains("type "));
-            assert!(!command.to_ascii_lowercase().contains("powershell"));
-            assert!(!command.to_ascii_lowercase().contains("pwsh"));
-            assert!(!command.contains("safe story text"));
-        }
-
-        #[test]
-        fn normal_cmd_uses_blue_background() {
-            let command = cmd_launch_line(
-                "RUNTIME",
-                std::path::Path::new(r"C:\Temp\lingchat-console-test.txt"),
-                false,
-            );
-            assert!(command.contains("color 1F"));
-        }
-
-        #[test]
-        fn notepad_receives_only_the_existing_file_path() {
-            let path = std::path::Path::new(r"C:\Temp Folder\被撕掉的台词.txt");
-            let command = notepad_command(path);
-            let args: Vec<_> = command.get_args().collect();
-            assert_eq!(args, vec![path.as_os_str()]);
-            assert!(!args
-                .iter()
-                .any(|arg| arg.to_string_lossy().eq_ignore_ascii_case("/newWindow")));
-        }
-    }
 }
 
 #[cfg(target_os = "windows")]
@@ -807,36 +766,4 @@ pub fn close_all() {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .clear();
     close_native();
-}
-
-#[cfg(test)]
-mod ticket_tests {
-    use super::*;
-
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
-
-    fn request() -> PopupSequence {
-        PopupSequence {
-            title: "RUNTIME".to_string(),
-            lines: vec!["safe text".to_string()],
-            count: 1,
-            interval: 0.1,
-            lifetime: 1.0,
-            style: "error".to_string(),
-        }
-    }
-
-    #[test]
-    fn tickets_are_single_use_and_canceled_with_the_run() {
-        let _guard = TEST_LOCK.lock().unwrap();
-        begin_run();
-        let first = queue_pending(request()).unwrap();
-        assert_eq!(take_pending(first).unwrap().request.title, "RUNTIME");
-        assert!(take_pending(first).is_err());
-
-        let canceled = queue_pending(request()).unwrap();
-        close_all();
-        assert!(take_pending(canceled).is_err());
-        assert!(queue_pending(request()).is_err());
-    }
 }

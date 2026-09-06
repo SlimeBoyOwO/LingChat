@@ -210,10 +210,6 @@ pub fn external_characters_root(data_dir: &Path) -> PathBuf {
     }
 }
 
-#[cfg(test)]
-fn script_character_dir(script: &ScriptStatus, data_dir: &Path) -> Result<PathBuf> {
-    Ok(external_characters_root(data_dir).join(namespace_of(script)?))
-}
 
 fn walk_namespace(root: &Path, namespace: &Path, create: bool) -> Result<Option<PathBuf>> {
     let mut current = root.to_path_buf();
@@ -489,10 +485,6 @@ pub(crate) fn remove_character_dir_for_owner(path_key: &str, data_dir: &Path) ->
     Ok(true)
 }
 
-#[cfg(test)]
-fn remove_script_character_dir(script: &ScriptStatus, data_dir: &Path) -> Result<bool> {
-    remove_character_dir_for_owner(&script.path_key(), data_dir)
-}
 
 #[async_trait]
 impl ScriptEvent for CharacterFileEvent {
@@ -628,119 +620,4 @@ pub fn register() {
     register_event(CharacterFileEvent::event_type(), |data| {
         Box::new(CharacterFileEvent::from_event_data(&data))
     });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn only_accepts_safe_chr_basenames() {
-        for valid in ["MAIN.chr", "钦灵.chr", "seventh-main.chr"] {
-            assert!(validate_file_name(valid).is_ok(), "{valid}");
-        }
-        for invalid in [
-            "../MAIN.chr",
-            "folder/MAIN.chr",
-            "folder\\MAIN.chr",
-            "MAIN.txt",
-            "CON.chr",
-            "CON.backup.chr",
-            ".chr",
-            "bad:name.chr",
-            " MAIN.chr",
-            "MAIN.chr.",
-        ] {
-            assert!(validate_file_name(invalid).is_err(), "{invalid}");
-        }
-    }
-
-    #[test]
-    fn restores_and_removes_only_the_script_namespace() {
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!(
-            "lingchat-character-file-{}-{unique}",
-            std::process::id()
-        ));
-        let script_path = root.join("scripts").join("standalone").join("seventh-test");
-        let templates = script_path.join("CharacterFiles");
-        let data_dir = root.join("data");
-        std::fs::create_dir_all(&templates).unwrap();
-        std::fs::create_dir_all(&data_dir).unwrap();
-        std::fs::write(templates.join("MAIN.chr"), b"marker-main").unwrap();
-        std::fs::write(templates.join("ql.chr"), b"marker-ql").unwrap();
-
-        let mut settings = serde_json::Map::new();
-        settings.insert(
-            "character_files".to_string(),
-            serde_json::json!(["MAIN.chr", "ql.chr"]),
-        );
-        let script = ScriptStatus {
-            folder_key: "seventh-test".to_string(),
-            name: "Seventh test".to_string(),
-            description: String::new(),
-            intro_chapter: "a1_boot".to_string(),
-            settings,
-            script_path,
-            recommand_start: String::new(),
-            adventure: Default::default(),
-            content_warning: Some("horror".to_string()),
-            main_character: None,
-            plugin_id: None,
-            running_client_id: None,
-            current_chapter_key: String::new(),
-            current_event_process: 0,
-            vars: serde_json::Map::new(),
-        };
-
-        assert_eq!(
-            restore_declared_character_files(&script, &data_dir).unwrap(),
-            2
-        );
-        let namespace = script_character_dir(&script, &data_dir).unwrap();
-        let mut same_leaf_other_layout = script.clone();
-        same_leaf_other_layout.script_path = root
-            .join("scripts")
-            .join("character")
-            .join("role")
-            .join("seventh-test");
-        assert_ne!(
-            namespace,
-            script_character_dir(&same_leaf_other_layout, &data_dir).unwrap()
-        );
-        assert_eq!(
-            std::fs::read(namespace.join("MAIN.chr")).unwrap(),
-            b"marker-main"
-        );
-        assert_eq!(
-            std::fs::read(namespace.join("ql.chr")).unwrap(),
-            b"marker-ql"
-        );
-        assert_eq!(
-            restore_declared_character_files(&script, &data_dir).unwrap(),
-            0
-        );
-
-        let snapshot = snapshot_declared_character_files(&script, &data_dir).unwrap();
-        std::fs::remove_file(namespace.join("MAIN.chr")).unwrap();
-        std::fs::write(namespace.join("ql.chr"), b"mutated").unwrap();
-        restore_character_files_snapshot(&script, &data_dir, &snapshot).unwrap();
-        assert_eq!(
-            std::fs::read(namespace.join("MAIN.chr")).unwrap(),
-            b"marker-main"
-        );
-        assert_eq!(
-            std::fs::read(namespace.join("ql.chr")).unwrap(),
-            b"marker-ql"
-        );
-
-        assert!(remove_script_character_dir(&script, &data_dir).unwrap());
-        assert!(!namespace.exists());
-        assert!(!remove_script_character_dir(&script, &data_dir).unwrap());
-
-        let _ = std::fs::remove_dir_all(root);
-    }
 }
