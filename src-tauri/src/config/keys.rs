@@ -39,6 +39,8 @@ pub const ENABLE_EMOTION_CLASSIFIER: &str = "features.enable_emotion_classifier"
 
 // ========== 功能开关（记忆系统） ==========
 pub const USE_PERSISTENT_MEMORY: &str = "features.use_persistent_memory";
+/// 上下文用量达窗口 85% 时自动总结式压缩（kimi 式）
+pub const AUTO_COMPACT: &str = "features.auto_compact";
 pub const MEMORY_UPDATE_INTERVAL: &str = "features.memory_update_interval";
 pub const MEMORY_RECENT_WINDOW: &str = "features.memory_recent_window";
 

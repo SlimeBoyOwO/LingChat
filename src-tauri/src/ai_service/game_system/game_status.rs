@@ -62,6 +62,15 @@ pub struct GameStatus {
 
     /// 场景感知开关（关闭后切换场景不再触发旁白）
     pub scene_awareness_enabled: bool,
+
+    /// 最近一次 LLM 请求实测的 prompt tokens（上下文用量锚点，含本轮输出前的完整上下文）
+    pub last_prompt_tokens: Option<u32>,
+    /// 锚点抓取时的 `line_list` 长度；之后新增的台词用本地估算补入用量
+    pub last_usage_line_count: usize,
+    /// kimi 式上下文压缩摘要（交接笔记）；有效时替代 cutoff 之前的旧台词进入 LLM 上下文
+    pub context_summary: Option<String>,
+    /// 摘要覆盖到的 `line_list` 条数。读档/清历史后 line_list 变短即作废
+    pub context_summary_cutoff: usize,
 }
 
 impl GameStatus {
@@ -88,6 +97,10 @@ impl GameStatus {
             preview_generation: 0,
             player_entered: false,
             scene_awareness_enabled: true,
+            last_prompt_tokens: None,
+            last_usage_line_count: 0,
+            context_summary: None,
+            context_summary_cutoff: 0,
         }
     }
 
@@ -109,8 +122,18 @@ impl GameStatus {
     }
 
     pub async fn refresh_memories(&mut self, db: &DatabaseConnection) -> Result<()> {
+        // kimi 式上下文压缩摘要（有效才传入；cutoff 越界=读档/清历史后作废）。
+        // 先拷贝出所有权，避免 &self 摘要与 &mut self.role_manager 的借用冲突。
+        let compaction: Option<(String, usize)> =
+            crate::ai_service::game_system::context_compaction::effective_summary(self)
+                .map(|(s, c)| (s.to_string(), c));
         self.role_manager
-            .sync_memories(db, &self.line_list, None)
+            .sync_memories(
+                db,
+                &self.line_list,
+                None,
+                compaction.as_ref().map(|(s, c)| (s.as_str(), *c)),
+            )
             .await
     }
 

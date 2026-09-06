@@ -799,6 +799,8 @@ mod tests {
             enable_thinking: false,
             reasoning_effort: None,
             fast_mode: false,
+            context_window: None,
+            context_window_auto: false,
         }
     }
 

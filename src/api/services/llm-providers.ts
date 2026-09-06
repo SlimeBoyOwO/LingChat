@@ -12,6 +12,10 @@ export interface LlmProviderConfig {
   enable_thinking: boolean;
   reasoning_effort: string | null;
   fast_mode: boolean;
+  /** 上下文窗口（tokens）；空 = 按 128k 估算 */
+  context_window: number | null;
+  /** 自动获取上下文窗口：开启后隐藏手动填写，保存时用模型申报值填充 */
+  context_window_auto: boolean;
 }
 
 export interface LlmProvidersResponse {

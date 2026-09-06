@@ -95,6 +95,9 @@ pub struct AppConfig {
     // ---- 功能开关（记忆系统） ----
     #[serde(default = "default_true")]
     pub use_persistent_memory: bool,
+    /// 上下文用量达到模型窗口 85% 时自动做总结式压缩（kimi 式，独立于永久记忆）
+    #[serde(default = "default_true")]
+    pub auto_compact: bool,
     #[serde(default = "default_memory_update_interval")]
     pub memory_update_interval: u32,
     #[serde(default = "default_memory_recent_window")]
@@ -132,6 +135,7 @@ impl Default for AppConfig {
             enable_time_sense: default_enable_time_sense(),
             enable_emotion_classifier: default_enable_emotion_classifier(),
             use_persistent_memory: true,
+            auto_compact: true,
             memory_update_interval: default_memory_update_interval(),
             memory_recent_window: default_memory_recent_window(),
             memory_short_term_max_chars: default_memory_short_term_max_chars(),
@@ -230,6 +234,7 @@ impl AppConfig {
                 keys::USE_PERSISTENT_MEMORY,
                 default.use_persistent_memory,
             ),
+            auto_compact: get_bool(&store, keys::AUTO_COMPACT, default.auto_compact),
             memory_update_interval: get_u32_in_range(
                 &store,
                 keys::MEMORY_UPDATE_INTERVAL,

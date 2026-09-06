@@ -181,6 +181,11 @@ impl AIService {
         gs.onstage_role_ids.clear();
         gs.present_role_ids.clear();
         gs.player_entered = false;
+        // 上下文压缩摘要随历史一起失效（内存态；库里的行由 cutoff 越界判定自动作废）
+        gs.context_summary = None;
+        gs.context_summary_cutoff = 0;
+        gs.last_prompt_tokens = None;
+        gs.last_usage_line_count = 0;
     }
 
     pub async fn set_active_save_id(&mut self, save_id: Option<i32>) {
