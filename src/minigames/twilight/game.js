@@ -50,6 +50,8 @@ export async function mountRhythm(root, options) {
     cancelRender?.();
     clearInputs();
     judge?.pause();
+    gain?.disconnect();
+    analyser?.disconnect();
     state = "destroyed";
     if (audio && audio.state !== "closed") void audio.close();
   }
@@ -58,7 +60,11 @@ export async function mountRhythm(root, options) {
     audio = null,
     buffer = null,
     source = null,
-    gain = null;
+    gain = null,
+    analyser = null;
+  const waveSamples = new Float32Array(2048),
+    wavePoints = new Float32Array(193);
+  let waveLevel = 0;
   let startWhen = 0,
     seek = 0,
     demo = false,
@@ -149,6 +155,9 @@ export async function mountRhythm(root, options) {
       source.disconnect();
       source = null;
     }
+    waveSamples.fill(0);
+    wavePoints.fill(0);
+    waveLevel = 0;
   }
   async function readyAudio() {
     if (!audio) {
@@ -162,7 +171,10 @@ export async function mountRhythm(root, options) {
     if (destroyed) return;
     if (!gain) {
       gain = audio.createGain();
-      gain.connect(audio.destination);
+      analyser = audio.createAnalyser();
+      analyser.fftSize = waveSamples.length;
+      gain.connect(analyser);
+      analyser.connect(audio.destination);
     }
     gain.gain.value = volume;
     if (!buffer) {
@@ -705,12 +717,82 @@ export async function mountRhythm(root, options) {
       ctx.lineTo(W * (side ? 0.94 : 0.06) + swing, 0);
       ctx.fill();
     }
-    ctx.globalAlpha = 0.3 + energy * 0.25;
-    for (let i = 0; i < 16; i++) {
-      const value = moving ? (Math.sin(t * 7 + i * 1.8) + 1) / 2 : 0.25;
-      const height = 5 + value * energy * 25;
-      rect(12 + (i * (W - 24)) / 16, H - height - 4, (W - 24) / 16 - 5, height, colors[i % 4]);
+    ctx.restore();
+    drawAudioWaveform(moving);
+  }
+  function drawAudioWaveform(moving) {
+    const live =
+      moving &&
+      state === "playing" &&
+      source &&
+      audio?.state === "running" &&
+      audio.currentTime >= startWhen &&
+      volume > 0;
+    if (live && analyser) {
+      // Read the actual post-volume output, including the playing song and hit sounds.
+      analyser.getFloatTimeDomainData(waveSamples);
+      let energy = 0;
+      for (const sample of waveSamples) energy += sample * sample;
+      const level = Math.min(1, Math.sqrt(energy / waveSamples.length) * 7);
+      waveLevel += (level - waveLevel) * (level > waveLevel ? 0.65 : 0.18);
+      // Align the trace with a rising zero crossing to reduce horizontal jitter.
+      let start = 0;
+      for (let i = 1; i < 256; i++) {
+        if (waveSamples[i - 1] <= 0 && waveSamples[i] > 0) {
+          start = i;
+          break;
+        }
+      }
+      const stride = (waveSamples.length - 256) / (wavePoints.length - 1);
+      for (let i = 0; i < wavePoints.length; i++) {
+        const from = start + Math.floor(i * stride);
+        let sample = 0;
+        // A short local average keeps high harmonics readable at the canvas resolution.
+        for (let j = 0; j < 4; j++)
+          sample += waveSamples[Math.min(from + j, waveSamples.length - 1)];
+        wavePoints[i] = Math.max(-1, Math.min(1, (sample / 4) * 7.2));
+      }
+    } else {
+      wavePoints.fill(0);
+      waveLevel = 0;
     }
+    const left = 18,
+      width = W - left * 2,
+      center = H - (touchLayout ? 7 : 26),
+      amplitude = touchLayout ? 4 : 21;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    const light = ctx.createLinearGradient(left, 0, W - left, 0);
+    light.addColorStop(0, "#66e7ff00");
+    light.addColorStop(0.18, "#67e9ff");
+    light.addColorStop(0.5, "#b4a2ff");
+    light.addColorStop(0.82, "#ff8dcf");
+    light.addColorStop(1, "#ff8dcf00");
+    ctx.strokeStyle = light;
+    ctx.beginPath();
+    for (let i = 0; i < wavePoints.length; i++) {
+      const fraction = i / (wavePoints.length - 1),
+        taper = Math.sin(fraction * Math.PI) ** 0.45,
+        x = left + fraction * width,
+        y = center - wavePoints[i] * amplitude * taper;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    // Broad colored halo, inner glow and a fine luminous core share the same audio trace.
+    ctx.globalAlpha = 0.08 + waveLevel * 0.12;
+    ctx.lineWidth = 10;
+    ctx.shadowColor = "#9585ff";
+    ctx.shadowBlur = 15;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 0.16 + waveLevel * 0.3;
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.globalAlpha = 0.38 + waveLevel * 0.5;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
     ctx.restore();
   }
   function drawHitEffects(dt) {
