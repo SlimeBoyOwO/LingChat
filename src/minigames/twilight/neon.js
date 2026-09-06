@@ -15,7 +15,7 @@ export function sectionAt(time) {
   return [...sections].reverse().find((section) => bar >= section.bar) ?? sections[0];
 }
 
-export function makeScore() {
+function makeScore() {
   const events = [];
   const tone = (at, length, midi, gain, voice = "lead") =>
     events.push({ at, length, midi, gain, voice });

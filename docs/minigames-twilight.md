@@ -19,7 +19,7 @@
 
 《霓虹过载》包含 64 组双押和 14 个长按，分为起拍、上升段、第一段 Drop、间奏和最终 Drop。八分音符交替、十六分音符连打与长按穿插随编曲变化，避免长按未结束时在同一轨道安排新音符。鼓组、切分低音、轻微叠音的合成器与铃音均由代码生成，无外部采样。
 
-两首曲目以 A 自然小调的 Am–F–C–G 为和声骨架，旋律按各和弦分别编写，重拍落在和弦音上，弱拍用调内经过音连接。`harmony.js` 保存明确的 MIDI 音高与和弦转位；`makeScore()` 生成的同一音符事件表用于 PCM 合成和音高检查。曲末落回 Am，主旋律保留准确的基频，叠音振荡器降低音量与失谐幅度。编配参考 [Open Music Theory 的三和弦章节](https://viva.pressbooks.pub/openmusictheory/chapter/triads/)；旋律与合成器为项目原创，没有复制外部 MIDI 或录音。
+两首曲目以 A 自然小调的 Am–F–C–G 为和声骨架，旋律按各和弦分别编写，重拍落在和弦音上，弱拍用调内经过音连接。`harmony.js` 保存明确的 MIDI 音高与和弦转位；内部编曲函数生成音符事件表，再用于 PCM 合成。曲末落回 Am，主旋律保留准确的基频，叠音振荡器降低音量与失谐幅度。编配参考 [Open Music Theory 的三和弦章节](https://viva.pressbooks.pub/openmusictheory/chapter/triads/)；旋律与合成器为项目原创，没有复制外部 MIDI 或录音。
 
 新曲使用紫蓝霓虹配色、节拍光束、透视地面网格、灯带、打击扩散和每 50 连击的提示。特效绘制与音符判定分开，粒子和扩散数量有上限；「调校 → 节拍特效」可关闭动态效果，也跟随系统减少动态效果设置。
 
@@ -46,16 +46,5 @@
 每次挂载都有独立 AbortController。返回列表、路由切换、初始化途中退出及页面关闭都会停止音源、关闭 AudioContext、清除按键和触摸状态、移除事件监听并取消动画帧。再次进入创建新的会话，不复用上次时钟或得分。
 
 小游戏暂停音乐与谱面，继续前准备三拍；未完成的长按可在恢复点重新接住。观赏演示显式标记 DEMO，不冒充玩家成绩。异常模式尾声返回 `interrupted`，可以重试或返回。
-
-## 检查
-
-- `node scripts/test-twilight-core.mjs`：判定窗口、长按、重复输入、暂停续接、整谱全命中及全漏击。
-- `scripts/mini-games-smoke.html`：仅开发检查使用，挂载真实 Vue 菜单、列表和音游组件。
-- `scripts/test-mini-games-browser.cjs`：检查主菜单与小游戏共用背景、页面跳转、不同窗口比例下铺满且无滚动、场景内调校、素材、按键、暂停、音频及监听清理、反复进入、加载途中退出、窄屏和返回主菜单。需要 Playwright，可通过 `CHROME_PATH` 指定已有浏览器，通过 `TEST_URL` 指定 Vite 检查页。
-- 发布验证使用完整 `pnpm tauri build --no-bundle`。
-- `node scripts/test-twilight-neon.mjs`：608 音符全连/全漏、长按间隔、双押、音频 PCM 与桌面/移动端识别；可用 `TEST_OUTPUT` 输出完整 WAV 与检测报告。
-- `scripts/test-twilight-songs.cjs`：选曲与正确音频缓冲、Worker 清理、完整高密度演示、间奏暂停续接、特效开关、减少动态效果、手机选曲及桌面隐藏手机按键。
-- `node scripts/test-twilight-harmony.mjs`：A440 基准、两曲实际音符事件的调内音、旋律重拍与和弦匹配、Am 收尾、无削波和静音尾端；`TEST_OUTPUT` 可输出两首完整 WAV。
-- `scripts/test-twilight-idle.cjs`：桌面与 iPhone 比例下的六帧播放、固定脚底、肩胸呼吸幅度、减少动态效果与卸载清理；`TEST_RECORD=true` 可录制实际场景预览。
 
 此版本接入的是主程序小游戏入口。供 DLC 剧情调用的 `rhythm_game` 事件及结果变量写回属于后续扩展，没有把未实现的剧本事件暴露给作者。

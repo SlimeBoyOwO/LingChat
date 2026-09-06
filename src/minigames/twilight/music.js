@@ -3,7 +3,7 @@ import { progression, studyPhrases, frequency } from "./harmony.js";
 const bpm = 112,
   beat = 60 / bpm,
   duration = 132 * beat + 1.2;
-export function makeScore() {
+function makeScore() {
   const events = [];
   const tone = (at, length, midi, gain, voice = "pulse") =>
     events.push({ at, length, midi, gain, voice });

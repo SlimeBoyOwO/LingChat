@@ -482,20 +482,5 @@ export function mountStarTrail(root, options) {
   options.signal.addEventListener("abort", destroy, { once: true, signal: lifetime.signal });
   if (options.signal.aborted) destroy();
   else frameId = requestAnimationFrame(frame);
-  return {
-    destroy,
-    snapshot: () => ({
-      mode: game.mode,
-      level: game.levelIndex,
-      player: { ...game.player },
-      bossHP: game.boss.hp,
-      score: game.score,
-      crystals: game.crystals,
-      wallet: game.wallet,
-      armorLevel: game.armorLevel,
-      interaction: game.interactionHint(),
-      audioState: audio.context?.state,
-      time: game.time,
-    }),
-  };
+  return { destroy };
 }

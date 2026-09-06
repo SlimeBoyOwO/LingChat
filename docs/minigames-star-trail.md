@@ -45,13 +45,3 @@ Boss 半血后强化攻击。击败 Boss 后前往右侧终点星灯进入下一
 - `StarTrail.vue`：懒加载路由组件，在主窗口中挂载游戏并在离开时销毁会话。
 
 音频在玩家开始游戏后创建。失焦或窗口隐藏自动暂停；退出和组件卸载时关闭音频、断开 ResizeObserver、取消动画帧并移除输入监听。玩法不依赖外部服务或剧情状态。
-
-## 验证
-
-- `node scripts/test-star-trail-core.mjs`：运动、大小跳、补跳与输入缓冲、射击、踩怪、受伤无敌、检查点、收集持久性、暂停、三张地图可通行性、三个 Boss 攻击及完整关卡推进。
-- `node scripts/test-star-trail-items.mjs`：满血/受伤拾取、道具位置、补给箱、弹簧、强化计时、护盾和护甲抵挡、商店扣费及装备保留。
-- `scripts/test-star-trail-shop.cjs`：商店与装备界面、购买效果、禁用原因、护甲 HUD、嵌套菜单返回、窄屏布局及退出清理。
-- `scripts/test-star-trail-browser.cjs`：真实主程序菜单与路由、全窗口布局、键盘与指针输入、死亡重试、音量、暂停/失焦及退出清理。通过 `TEST_ORIGIN` 指定 Vite 地址、`CHROME_PATH` 指定 Chromium 路径。
-- `scripts/star-trail-smoke.html`：仅开发使用的控制器检查入口。
-- `scripts/test-mini-games-mobile.cjs`：Chromium 与 WebKit 的触摸布局、安全区、横竖屏、输入取消、音频中断与路由检查；详见 [移动端适配](minigames-mobile.md)。
-- `scripts/test-star-trail-audio.cjs`：使用 OfflineAudioContext 实际渲染三关与 Boss 编曲，验证 PCM 有限值、最大音量下的峰值余量、非静音输出和发声节点释放，同时输出 WAV 试听片段。

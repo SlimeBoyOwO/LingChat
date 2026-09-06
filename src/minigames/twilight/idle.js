@@ -1,5 +1,5 @@
 // Generated poses use a shared ground anchor; changes in hair/ear height never move the feet.
-export const idleFrames = [
+const idleFrames = [
   { bounds: [148, 25, 312, 427], footX: 303 },
   { bounds: [615, 20, 312, 430], footX: 768.5 },
   { bounds: [1080, 20, 315, 430], footX: 1235 },

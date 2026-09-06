@@ -936,7 +936,7 @@ export async function mountRhythm(root, options) {
   syncPlayfield();
   if (options.signal.aborted) {
     destroy();
-    return { destroy, snapshot: () => ({ state }) };
+    return { destroy };
   }
   animationFrame = requestAnimationFrame(frame);
   try {
@@ -958,21 +958,5 @@ export async function mountRhythm(root, options) {
     }
   }
   on(window, "pagehide", pauseGame);
-  return {
-    destroy,
-    snapshot: () => ({
-      state,
-      demo,
-      songId: music.id,
-      songTitle: music.title,
-      noteCount: music.noteCount,
-      section: music.neon ? music.sectionAt(songTime()).name : undefined,
-      effectCount: effects.length,
-      renderingAudio: !!renderWorker,
-      time: songTime(),
-      result: lastResult ?? judge?.result(),
-      held: judge ? [...judge.held] : [],
-      audioState: audio?.state,
-    }),
-  };
+  return { destroy };
 }

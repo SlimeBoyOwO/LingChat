@@ -15,20 +15,6 @@ export interface RhythmResult {
 
 export interface RhythmController {
   destroy(): void;
-  snapshot(): {
-    state: string;
-    demo?: boolean;
-    songId?: string;
-    songTitle?: string;
-    noteCount?: number;
-    section?: string;
-    effectCount?: number;
-    renderingAudio?: boolean;
-    time?: number;
-    result?: RhythmResult;
-    held?: number[];
-    audioState?: AudioContextState;
-  };
 }
 
 export function mountRhythm(
