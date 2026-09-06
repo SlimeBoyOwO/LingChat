@@ -44,6 +44,7 @@ export class EventQueue {
         dialogueMerge.mergedLength + event.message.length <= settings.text.mergeLineThreshold &&
         !this.queue.some((e) => e.type !== "thinking")
       ) {
+        // console.log("初始台词 第二句 融合允许");
         dialogueMerge.armed = true;
         dialogueMerge.armedRoleId = event.roleId;
       }

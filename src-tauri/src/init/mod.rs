@@ -111,7 +111,6 @@ pub async fn initialize(
         output_sec_lang: app_config.llm_output_sec_lang,
         no_emotion_limit: app_config.no_emotion_limit_prompt,
     };
-    ai_service.import_settings(settings, prompt_options).await;
 
     // 从 session store 读取各角色的上次服装，注入 GameRoleManager
     {
@@ -129,13 +128,11 @@ pub async fn initialize(
         ai_service.set_clothes_overrides(overrides).await;
     }
 
-    ai_service.init_game_status().await?;
+    ai_service
+        .init_game_status(character_id, prompt_options)
+        .await?;
 
-    tracing::info!(
-        "AIService 初始化完成: character_id={:?}, ai_name={}",
-        ai_service.character_id,
-        ai_service.ai_name,
-    );
+    tracing::info!("AIService 初始化完成");
 
     let ai_service: SharedAIService = Arc::new(Mutex::new(ai_service));
 

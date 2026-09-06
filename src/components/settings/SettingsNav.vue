@@ -1,7 +1,7 @@
 <template>
   <div
     class="relative flex h-full w-full items-center justify-between px-5"
-    :class="isIOS() ? 'pt-safe pb-2' : 'py-2'"
+    :class="isMobile() ? 'pt-safe pb-2' : 'py-2'"
   >
     <img src="@/assets/images/LingChatLogo.png" alt="Logo" class="ml-5 hidden w-20 xl:block" />
     <nav
@@ -145,7 +145,7 @@
 <script setup lang="ts">
   import { ref, onMounted, watch } from "vue";
   import { useUIStore } from "../../stores/modules/ui/ui";
-  import { isIOS } from "../../utils/platform";
+  import { isMobile } from "../../utils/platform";
   import { Button } from "../base";
   import Icon from "../base/widget/Icon.vue";
 

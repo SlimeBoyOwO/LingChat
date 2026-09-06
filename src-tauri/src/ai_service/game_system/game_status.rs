@@ -101,7 +101,6 @@ impl GameStatus {
 
     /// 追加台词，记录当前在场者为感知列表，并刷新相关角色的记忆。
     pub async fn add_line(&mut self, db: &DatabaseConnection, line: LineBase) -> Result<()> {
-        self.role_manager.invalidate_memory_history();
         let perceived: Vec<i32> = self.present_role_ids.iter().copied().collect();
         let game_line = GameLine::from_base(line, perceived);
         self.line_list.push(game_line);

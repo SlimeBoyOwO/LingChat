@@ -19,30 +19,14 @@ use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::{PromptOptions, sys_prompt_builder};
 
 /// AI 服务：承载 `GameStatus` 与会话级配置。
-///
-/// 本轮仅实现 Python 版 `AIService` 中与状态管理相关的部分：
-/// import_settings / init_game_status / get_lines / load_lines /
-/// reset_lines / clear_lines / set_active_save_id。
-/// 消息生成（MessageGenerator）、主动对话（ProactiveSystem）、剧本引擎（ScriptManager）
-/// 等子系统按计划稍后补。
 pub struct AIService {
     pub db: DatabaseConnection,
     pub data_dir: PathBuf,
     pub game_status: Arc<Mutex<GameStatus>>,
     pub config: AIServiceConfig,
 
-    // —— 从 CharacterSettings 导入的快照字段（Python 版的 self.ai_prompt 等） ——
-    pub character_path: Option<String>,
-    pub character_id: Option<i32>,
-    pub ai_name: String,
-    pub ai_subtitle: Option<String>,
-    pub user_name: String,
-    pub user_subtitle: Option<String>,
-    pub ai_prompt: String,
-    pub ai_prompt_example: Option<String>,
-    pub ai_prompt_example_old: Option<String>,
-    pub clothes_name: Option<String>,
-    pub settings: Option<CharacterSettings>,
+    pub init_character_id: Option<i32>, // 注释：这个是用于标记游戏状态初始化角色的
+    pub prompt_options: Option<PromptOptions>, // 记录角色提示词构成方式选项
 
     /// Script/story mode engine: discovers and runs scripts.
     pub script_manager: ScriptManager,
@@ -65,6 +49,7 @@ impl AIService {
 
         let role_manager = GameRoleManager::new(
             data_dir.clone(),
+            db.clone(),
             llm,
             tts_config,
             local_tts,
@@ -80,73 +65,115 @@ impl AIService {
             data_dir,
             game_status,
             config: AIServiceConfig::default(),
-            character_path: None,
-            character_id: None,
-            ai_name: String::new(),
-            ai_subtitle: None,
-            user_name: String::new(),
-            user_subtitle: None,
-            ai_prompt: String::new(),
-            ai_prompt_example: None,
-            ai_prompt_example_old: None,
-            clothes_name: None,
-            settings: None,
+            init_character_id: None,
+            prompt_options: None,
             script_manager,
         }
     }
 
-    /// 从 `CharacterSettings` 导入快照字段，并初始化 player 信息。
-    ///
-    /// `prompt_options` 控制对话格式提示（日语开关、情绪放开）。
-    /// 调用方（通常是 Tauri command）从 AppConfig 读取后传入。
-    /// 钦灵：TODO，这一段代码是老函数，新版已经不是单一人物，而是多个人物，这部分代码之后需要清理。
-    pub async fn import_settings(
-        &mut self,
-        settings: CharacterSettings,
-        prompt_options: PromptOptions,
-    ) {
-        let default_prompt =
-            "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息".to_string();
-
-        self.character_path = settings.resource_path.clone();
-        self.character_id = settings.character_id;
-        self.ai_name = settings.ai_name.clone();
-        self.ai_subtitle = settings.ai_subtitle.clone();
-        self.user_name = settings.user_name.clone();
-        self.user_subtitle = settings.user_subtitle.clone();
-        let base_prompt = settings.system_prompt.clone().unwrap_or(default_prompt);
-        self.ai_prompt_example = settings.system_prompt_example.clone();
-        self.ai_prompt_example_old = settings.system_prompt_example_old.clone();
-        self.clothes_name = settings.clothes_name.clone(); // TODO: 这个是冗余的，之后可以去掉
-
-        self.ai_prompt = sys_prompt_builder(
-            &self.user_name,
-            &self.ai_name,
-            &base_prompt,
-            self.ai_prompt_example.as_deref(),
-            self.ai_prompt_example_old.as_deref(),
-            prompt_options,
-        );
-
-        {
-            let mut gs = self.game_status.lock().await;
-            gs.player.user_name = self.user_name.clone();
-            gs.player.user_subtitle = self.user_subtitle.clone().unwrap_or_default();
-        }
-
-        self.settings = Some(settings);
-    }
-
-    /// 初始化 `GameStatus`：清空台词列表，写入首条 system 人设，
-    /// 并把导入的角色设为主角 + 上台。
-    /// 注入角色服装覆盖（session store → GameRoleManager）。
-    /// 必须在 `init_game_status()` 之前调用。
     pub async fn set_clothes_overrides(&mut self, overrides: HashMap<i32, String>) {
         let mut gs = self.game_status.lock().await;
         gs.role_manager.set_clothes_overrides(overrides);
     }
 
-    pub async fn init_game_status(&mut self) -> Result<()> {
+    pub async fn init_game_intro_character(
+        &mut self,
+        character_id: Option<i32>,
+        prompt_options: PromptOptions,
+    ) -> Result<()> {
+        self.init_character_id = character_id;
+        self.prompt_options = Some(prompt_options);
+
+        let default_prompt =
+            "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息".to_string();
+
+        let cid = match character_id {
+            Some(v) => v,
+            None => {
+                tracing::error!("初始化游戏主角失败，未指定角色ID。");
+                return Ok(());
+            },
+        };
+
+        tracing::info!("正在初始化的角色id是: {:?}", cid);
+
+        let mut gs = self.game_status.lock().await;
+
+        let settings = gs
+            .role_manager
+            .get_role(&self.db, cid)
+            .await?
+            .settings
+            .clone();
+
+        let ai_prompt = sys_prompt_builder(
+            &settings.user_name.clone(),
+            &settings.ai_name.clone(),
+            &settings.system_prompt.clone().unwrap_or(default_prompt),
+            settings.system_prompt_example.clone().as_deref(),
+            settings.system_prompt_example_old.clone().as_deref(),
+            prompt_options,
+        );
+        gs.player.user_name = settings.user_name.clone();
+        gs.player.user_subtitle = settings.user_subtitle.clone().unwrap_or_default();
+
+        // 此处是初始角色被注册的地方
+        let _ = gs.get_role(&self.db, cid).await?;
+        gs.current_role_id = Some(cid);
+        gs.onstage_role(cid);
+        gs.main_role_id = Some(cid);
+
+        // 若恢复的服装不是默认服装，生成换装旁白
+        let clothes = gs
+            .role_manager
+            .get_loaded(cid)
+            .map(|r| r.current_clothes.clone())
+            .unwrap_or_default();
+        tracing::info!("外部获取的当前服装是: {:?}", clothes);
+        if clothes != "default" && !clothes.is_empty() {
+            // 不是你个傻逼 AI 角色服装已经换过了你再他妈比较那台词表能变吗我草你的？，已修复
+            let _ = gs
+                .add_character_clothes_change_line(&self.db, cid, &clothes)
+                .await;
+        }
+
+        let system_line = LineBase {
+            content: ai_prompt.clone(),
+            attribute: LineAttributeExt(LineAttribute::System),
+            sender_role_id: Some(cid),
+            display_name: Some(settings.ai_name.clone()),
+            ..Default::default()
+        };
+        gs.add_line(&self.db, system_line).await?;
+
+        Ok(())
+    }
+
+    pub async fn init_game_status(
+        &mut self,
+        cid: Option<i32>,
+        prompt_options: PromptOptions,
+    ) -> Result<()> {
+        self.clear_game_status().await;
+        self.init_game_intro_character(cid, prompt_options).await?;
+        Ok(())
+    }
+
+    pub async fn reset_game_status(&mut self) -> Result<()> {
+        self.clear_game_status().await;
+        let prompt_options = match self.prompt_options {
+            None => PromptOptions {
+                output_sec_lang: true,
+                no_emotion_limit: true,
+            },
+            Some(p) => p,
+        };
+        self.init_game_intro_character(self.init_character_id, prompt_options)
+            .await?;
+        Ok(())
+    }
+
+    async fn clear_game_status(&mut self) {
         let mut gs = self.game_status.lock().await;
         gs.role_manager.invalidate_memory_history();
         gs.role_manager.reset_roles();
@@ -154,40 +181,6 @@ impl AIService {
         gs.onstage_role_ids.clear();
         gs.present_role_ids.clear();
         gs.player_entered = false;
-
-        let system_line = LineBase {
-            content: self.ai_prompt.clone(),
-            attribute: LineAttributeExt(LineAttribute::System),
-            sender_role_id: self.character_id,
-            display_name: Some(self.ai_name.clone()),
-            ..Default::default()
-        };
-        gs.add_line(&self.db, system_line).await?;
-
-        if let Some(cid) = self.character_id {
-            // 此处是初始角色被注册的地方
-            let _ = gs.get_role(&self.db, cid).await?;
-            gs.current_role_id = Some(cid);
-            gs.onstage_role(cid);
-            gs.main_role_id = Some(cid);
-
-            // 若恢复的服装不是默认服装，生成换装旁白
-            let clothes = gs
-                .role_manager
-                .get_loaded(cid)
-                .map(|r| r.current_clothes.clone())
-                .unwrap_or_default();
-            tracing::info!("外部获取的当前服装是: {:?}", clothes);
-            if clothes != "default" && !clothes.is_empty() {
-                // 不是你个傻逼 AI 角色服装已经换过了你再他妈比较那台词表能变吗我草你的？，已修复
-                let _ = gs
-                    .add_character_clothes_change_line(&self.db, cid, &clothes)
-                    .await;
-            }
-        } else {
-            tracing::error!("初始化游戏主角失败，未指定角色ID。");
-        }
-        Ok(())
     }
 
     pub async fn set_active_save_id(&mut self, save_id: Option<i32>) {
@@ -237,30 +230,17 @@ impl AIService {
             .await
     }
 
-    /// 轻量清理：只清空台词 + 主角短期记忆，NPC 记忆保留。
-    pub async fn clear_lines(&mut self) -> Result<()> {
-        let mut gs = self.game_status.lock().await;
-        gs.role_manager.invalidate_memory_history();
-        gs.line_list.clear();
-
-        let system_line = LineBase {
-            content: self.ai_prompt.clone(),
-            attribute: LineAttributeExt(LineAttribute::System),
-            sender_role_id: self.character_id,
-            display_name: Some(self.ai_name.clone()),
-            ..Default::default()
-        };
-        gs.add_line(&self.db, system_line).await?;
-
-        if let Some(mid) = gs.main_role_id {
-            gs.role_manager.clear_role_memory(mid);
-        }
-        tracing::info!("对话历史已清除（仅主角记忆）");
-        Ok(())
-    }
-
-    pub async fn reset_lines(&mut self) -> Result<()> {
-        self.init_game_status().await
+    /// 辅助函数，用于快速获取人物的设定
+    pub async fn get_role_settings_by_id(&self, role_id: i32) -> Result<CharacterSettings> {
+        Ok(self
+            .game_status
+            .lock()
+            .await
+            .role_manager
+            .get_role(&self.db, role_id)
+            .await?
+            .settings
+            .clone())
     }
 }
 
