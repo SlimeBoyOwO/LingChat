@@ -97,6 +97,13 @@ export class TrailAudio {
     const at = this.context.currentTime;
     if (type === "shoot") this.tone(at, 83, 0.065, 0.045, "square", -16);
     else if (type === "jump") this.tone(at, 61, 0.14, 0.08, "triangle", 17);
+    else if (type === "spring") this.tone(at, 48, 0.3, 0.12, "triangle", 30);
+    else if (type === "crate") this.tone(at, 43, 0.12, 0.13, "square", -18);
+    else if (type === "armor-hit" || type === "shield-break") {
+      this.tone(at, 88, 0.14, 0.1, "triangle", -19);
+      this.tone(at, 69, 0.12, 0.07, "square");
+    } else if (["shield", "rapid", "magnet"].includes(type))
+      [72, 79, 84].forEach((note, i) => this.tone(at + i * 0.06, note, 0.17, 0.08, "triangle"));
     else if (type === "coin" || type === "heal") {
       this.tone(at, 88, 0.07, 0.12, "triangle");
       this.tone(at + 0.065, 95, 0.14, 0.09, "triangle");

@@ -1,9 +1,11 @@
-import { LEVELS, makeLevel } from "./levels.js";
+import { ARMOR_TIERS, LEVELS, makeLevel } from "./levels.js";
 
 export const STEP = 1 / 120;
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 export const overlaps = (a, b) =>
   a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+const touchesPickup = (player, pickup) =>
+  overlaps(player, { x: pickup.x - 3, y: pickup.y - 3, w: pickup.w + 6, h: pickup.h + 6 });
 
 /** Deterministic simulation; the renderer and audio consume events without owning game state. */
 export class Adventure {
@@ -13,6 +15,8 @@ export class Adventure {
     this.time = 0;
     this.score = 0;
     this.crystals = 0;
+    this.wallet = 0;
+    this.armorLevel = 0;
     this.deaths = 0;
     this.events = [];
     this.visited = new Set();
@@ -33,6 +37,9 @@ export class Adventure {
     }
     this.level.coins = this.level.coins.filter((coin) => !this.visited.has(coin.id));
     this.level.heals = this.level.heals.filter((heal) => !this.visited.has(heal.id));
+    this.level.crates.forEach((crate) => {
+      if (crate.reward === "heal" && this.visited.has(crate.id)) crate.opened = true;
+    });
     this.player = {
       x: retry && this.checkpoint ? this.level.checkpoint : 65,
       y: 270,
@@ -47,6 +54,11 @@ export class Adventure {
       coyote: 0,
       jumpBuffer: 0,
       shot: 0,
+      shield: 0,
+      armor: ARMOR_TIERS[this.armorLevel].capacity,
+      rapid: 0,
+      magnet: 0,
+      springBoost: 0,
     };
     this.bullets = [];
     this.threats = [];
@@ -74,6 +86,8 @@ export class Adventure {
   start() {
     this.score = 0;
     this.crystals = 0;
+    this.wallet = 0;
+    this.armorLevel = 0;
     this.deaths = 0;
     this.time = 0;
     this.events.length = 0;
@@ -103,8 +117,9 @@ export class Adventure {
     if (this.mode === "paused") this.mode = "playing";
   }
   move(body, dt) {
+    const solids = [...this.level.solids, ...this.level.crates.filter((crate) => !crate.opened)];
     body.x += body.vx * dt;
-    for (const solid of this.level.solids)
+    for (const solid of solids)
       if (solid.floor && overlaps(body, solid)) {
         if (body.vx > 0) body.x = solid.x - body.w;
         else if (body.vx < 0) body.x = solid.x + solid.w;
@@ -113,11 +128,15 @@ export class Adventure {
     body.grounded = false;
     const previousBottom = body.y + body.h;
     body.y += body.vy * dt;
-    for (const solid of this.level.solids)
+    for (const solid of solids)
       if (
         overlaps(body, solid) &&
         (solid.floor || (body.vy > 0 && previousBottom <= solid.y + 0.1))
       ) {
+        if (solid.crate && body === this.player && body.vy < 0) {
+          this.openCrate(solid);
+          continue;
+        }
         if (body.vy > 0) {
           body.y = solid.y - body.h;
           body.grounded = true;
@@ -128,13 +147,116 @@ export class Adventure {
   hurt(amount = 1) {
     const p = this.player;
     if (p.invincible > 0 || this.mode !== "playing") return;
-    p.hp = Math.max(0, p.hp - amount);
+    if (p.shield > 0) {
+      p.shield--;
+      p.invincible = 0.75;
+      this.emit("shield-break");
+      return;
+    }
+    const absorbed = Math.min(p.armor, amount);
+    p.armor -= absorbed;
+    p.hp = Math.max(0, p.hp - (amount - absorbed));
     p.invincible = 1.25;
-    this.emit("hurt");
+    this.emit(absorbed === amount ? "armor-hit" : "hurt");
     if (!p.hp) {
       this.mode = "dead";
       this.emit("dead");
     }
+  }
+  openCrate(crate) {
+    if (crate.opened) return;
+    crate.opened = true;
+    this.emit("crate", crate.x, crate.y);
+    const pickup = { id: crate.id, x: crate.x + 4, y: crate.y - 18, w: 16, h: 16 };
+    if (crate.reward === "heal") {
+      if (!this.visited.has(crate.id)) this.level.heals.push(pickup);
+    } else this.level.powers.push({ ...pickup, kind: crate.reward });
+  }
+  interactionHint() {
+    const p = this.player,
+      nearby = (item) =>
+        Math.hypot(item.x + item.w / 2 - p.x - p.w / 2, item.y + item.h / 2 - p.y - p.h / 2) < 76;
+    if (this.level.crates.some((crate) => !crate.opened && nearby(crate)))
+      return "补给箱 · 空格射击或从下方顶开";
+    if (this.level.heals.some((heal) => !heal.taken && nearby(heal)))
+      return p.hp === 5 ? "药瓶 · 满血拾取奖励 50 分" : "药瓶 · 恢复 2 格生命";
+    const power = this.level.powers.find((item) => !item.taken && nearby(item));
+    if (power)
+      return {
+        shield: "护盾 · 抵挡一次伤害，最多储存两次",
+        rapid: "连射核心 · 强化射击 12 秒",
+        magnet: "磁力星 · 自动吸引附近星晶 10 秒",
+      }[power.kind];
+    if (this.level.springs.some(nearby)) return "弹簧 · 踩上去高高跃起";
+    return "";
+  }
+  nearShop() {
+    const s = this.level.shop,
+      p = this.player;
+    return Math.hypot(s.x + s.w / 2 - p.x - p.w / 2, s.y + s.h / 2 - p.y - p.h / 2) < 90;
+  }
+  shopItems() {
+    const p = this.player,
+      next = ARMOR_TIERS[this.armorLevel + 1],
+      capacity = ARMOR_TIERS[this.armorLevel].capacity;
+    return [
+      {
+        id: "heal",
+        name: "暖光药瓶",
+        detail: "恢复 2 格生命",
+        cost: 4,
+        blocked: p.hp >= 5 ? "生命已满" : "",
+      },
+      {
+        id: "repair",
+        name: "修复护甲",
+        detail: `护甲恢复至 ${capacity} 点`,
+        cost: 5,
+        blocked: p.armor >= capacity ? "护甲完好" : "",
+      },
+      {
+        id: "upgrade",
+        name: next?.name || "辉光护甲",
+        detail: next ? `装备升级至 ${next.capacity} 点护甲并修复` : "已达最高等级",
+        cost: next?.cost || 0,
+        blocked: next ? "" : "已满级",
+      },
+      {
+        id: "shield",
+        name: "星光护盾",
+        detail: "抵挡一次攻击，最多储存两次",
+        cost: 6,
+        blocked: p.shield >= 2 ? "护盾已满" : "",
+      },
+      { id: "rapid", name: "连射核心", detail: "强化射速 12 秒", cost: 6, blocked: "" },
+      { id: "magnet", name: "磁力星", detail: "吸引附近星晶 10 秒", cost: 5, blocked: "" },
+    ].map((item) => ({
+      ...item,
+      reason:
+        item.blocked || (this.wallet < item.cost ? `还差 ${item.cost - this.wallet} 星晶` : ""),
+      available: !item.blocked && this.wallet >= item.cost,
+    }));
+  }
+  buy(id) {
+    if (this.mode !== "paused") return { ok: false, message: "请先暂停游戏" };
+    const item = this.shopItems().find((entry) => entry.id === id);
+    if (!item) return { ok: false, message: "未知商品" };
+    if (!item.available) return { ok: false, message: item.reason };
+    this.wallet -= item.cost;
+    if (id === "heal") this.player.hp = Math.min(5, this.player.hp + 2);
+    else if (id === "repair") this.player.armor = ARMOR_TIERS[this.armorLevel].capacity;
+    else if (id === "upgrade") {
+      this.armorLevel++;
+      this.player.armor = ARMOR_TIERS[this.armorLevel].capacity;
+    } else if (id === "shield") this.player.shield++;
+    else if (id === "rapid") this.player.rapid = 12;
+    else if (id === "magnet") this.player.magnet = 10;
+    this.emit("purchase");
+    return {
+      ok: true,
+      message:
+        id === "upgrade" ? `已装备${ARMOR_TIERS[this.armorLevel].name}` : `${item.name}已生效`,
+    };
   }
   fireEnemy(x, y, vx, vy, kind = "orb") {
     this.threats.push({
@@ -153,11 +275,14 @@ export class Adventure {
     this.time += dt;
     const p = this.player;
     p.invincible = Math.max(0, p.invincible - dt);
+    p.rapid = Math.max(0, p.rapid - dt);
+    p.magnet = Math.max(0, p.magnet - dt);
+    p.springBoost = Math.max(0, p.springBoost - dt);
     p.shot -= dt;
     p.coyote = p.grounded ? 0.11 : Math.max(0, p.coyote - dt);
     p.jumpBuffer = Math.max(0, p.jumpBuffer - dt);
     if (input.jump && !this.previousJump) p.jumpBuffer = 0.13;
-    if (!input.jump && this.previousJump && p.vy < -145) p.vy *= 0.48;
+    if (!input.jump && this.previousJump && p.vy < -145 && p.springBoost <= 0) p.vy *= 0.48;
     this.previousJump = !!input.jump;
     const axis = Number(!!input.right) - Number(!!input.left);
     const target = axis * 190;
@@ -171,7 +296,7 @@ export class Adventure {
       this.emit("jump");
     }
     if (input.fire && p.shot <= 0) {
-      p.shot = 0.19;
+      p.shot = p.rapid > 0 ? 0.11 : 0.19;
       this.bullets.push({
         x: p.x + (p.face > 0 ? p.w : -10),
         y: p.y + 12,
@@ -179,12 +304,26 @@ export class Adventure {
         h: 5,
         vx: p.face * 570,
         life: 1.05,
+        powered: p.rapid > 0,
       });
       this.emit("shoot", p.x + p.w / 2, p.y + 14);
     }
     p.vy = Math.min(600, p.vy + 1080 * dt);
     const oldBottom = p.y + p.h;
     this.move(p, dt);
+    for (const spring of this.level.springs) {
+      spring.cooldown = Math.max(0, spring.cooldown - dt);
+      if (spring.cooldown <= 0 && p.vy >= 0 && overlaps(p, spring)) {
+        p.y = spring.y - p.h;
+        p.vy = -640;
+        p.grounded = false;
+        p.coyote = 0;
+        p.jumpBuffer = 0;
+        p.springBoost = 0.3;
+        spring.cooldown = 0.4;
+        this.emit("spring", spring.x, spring.y);
+      }
+    }
     p.x = clamp(
       p.x,
       this.boss.active && this.boss.hp > 0 ? this.level.arena : 0,
@@ -201,20 +340,43 @@ export class Adventure {
       p.hp = 5;
       this.emit("checkpoint", this.level.checkpoint, 270);
     }
-    for (const coin of this.level.coins)
-      if (!coin.taken && overlaps(p, coin)) {
+    for (const coin of this.level.coins) {
+      if (coin.taken) continue;
+      if (p.magnet > 0) {
+        const dx = p.x + p.w / 2 - coin.x - coin.w / 2,
+          dy = p.y + p.h / 2 - coin.y - coin.h / 2;
+        const distance = Math.hypot(dx, dy);
+        if (distance > 1 && distance < 130) {
+          const pull = Math.min(distance, dt * 230);
+          coin.x += (dx / distance) * pull;
+          coin.y += (dy / distance) * pull;
+        }
+      }
+      if (touchesPickup(p, coin)) {
         coin.taken = true;
         this.visited.add(coin.id);
         this.crystals++;
+        this.wallet++;
         this.score += 25;
         this.emit("coin", coin.x, coin.y);
       }
+    }
     for (const heal of this.level.heals)
-      if (!heal.taken && p.hp < 5 && overlaps(p, heal)) {
+      if (!heal.taken && touchesPickup(p, heal)) {
         heal.taken = true;
         this.visited.add(heal.id);
+        const recovered = Math.min(2, 5 - p.hp);
         p.hp = Math.min(5, p.hp + 2);
-        this.emit("heal", heal.x, heal.y);
+        if (!recovered) this.score += 50;
+        this.emit("heal", heal.x, heal.y, recovered);
+      }
+    for (const power of this.level.powers)
+      if (!power.taken && touchesPickup(p, power)) {
+        power.taken = true;
+        if (power.kind === "shield") p.shield = Math.min(2, p.shield + 1);
+        else if (power.kind === "rapid") p.rapid = 12;
+        else if (power.kind === "magnet") p.magnet = 10;
+        this.emit(power.kind, power.x, power.y);
       }
     for (const enemy of this.level.enemies) {
       if (enemy.hp <= 0 || Math.abs(enemy.x - p.x) > 680) continue;
@@ -264,6 +426,12 @@ export class Adventure {
       bullet.life -= dt;
       if (this.level.solids.some((solid) => overlaps(bullet, solid))) bullet.life = 0;
       if (bullet.life <= 0) continue;
+      const crate = this.level.crates.find((item) => !item.opened && overlaps(bullet, item));
+      if (crate) {
+        this.openCrate(crate);
+        bullet.life = 0;
+        continue;
+      }
       const enemy = this.level.enemies.find((e) => e.hp > 0 && overlaps(bullet, e));
       if (enemy) {
         enemy.hp--;

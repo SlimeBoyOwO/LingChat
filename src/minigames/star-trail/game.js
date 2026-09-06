@@ -1,5 +1,6 @@
 import { Adventure, STEP } from "./core.js";
 import { TrailAudio } from "./audio.js";
+import { ARMOR_TIERS } from "./levels.js";
 import { drawWorld, background, hero } from "./render.js";
 
 export function mountStarTrail(root, options) {
@@ -51,6 +52,65 @@ export function mountStarTrail(root, options) {
     announcement = seconds;
     show("announcement", true);
   };
+  let shopReturnToGear = false;
+  function renderShop(message = "") {
+    $("wallet").textContent = `星晶 ${game.wallet}`;
+    $("shop-items").innerHTML = game
+      .shopItems()
+      .map(
+        (item) =>
+          `<button class="shop-item" data-buy="${item.id}" ${item.available ? "" : "disabled"}><span><strong>${item.name}</strong><small>${item.detail}</small></span><span class="shop-price">${item.cost} ✦<small>${item.reason || "购买"}</small></span></button>`
+      )
+      .join("");
+    $("shop-message").textContent = message;
+  }
+  function renderGear() {
+    const tier = ARMOR_TIERS[game.armorLevel];
+    $("gear-name").textContent = tier.name;
+    $("gear-value").textContent =
+      `当前护甲 ${game.player.armor} / ${tier.capacity}　星晶 ${game.wallet}`;
+    $("gear-bar").innerHTML = Array.from(
+      { length: tier.capacity },
+      (_, i) => `<span class="armor-cell${i < game.player.armor ? " full" : ""}"></span>`
+    ).join("");
+    $("gear-tiers").innerHTML = ARMOR_TIERS.map(
+      (entry, i) =>
+        `<div class="${i === game.armorLevel ? "equipped" : ""}"><strong>${entry.name}</strong><span>${entry.capacity} 点防护 · ${i === game.armorLevel ? "已装备" : i < game.armorLevel ? "已解锁" : `${entry.cost} 星晶`}</span></div>`
+    ).join("");
+  }
+  function openShop(fromGear = false) {
+    if (game.mode === "playing") pause();
+    if (game.mode !== "paused") return;
+    shopReturnToGear = fromGear;
+    show("overlay", false);
+    show("gear-screen", false);
+    show("shop-screen", true);
+    renderShop();
+    $("shop-close").focus();
+  }
+  function closeShop() {
+    show("shop-screen", false);
+    if (shopReturnToGear) openGear();
+    else {
+      show("overlay", true);
+      $("primary").focus();
+    }
+    shopReturnToGear = false;
+  }
+  function openGear() {
+    if (game.mode === "playing") pause();
+    if (game.mode !== "paused") return;
+    show("overlay", false);
+    show("shop-screen", false);
+    show("gear-screen", true);
+    renderGear();
+    $("gear-close").focus();
+  }
+  function closeGear() {
+    show("gear-screen", false);
+    show("overlay", true);
+    $("primary").focus();
+  }
   function start() {
     clearInput();
     game.start();
@@ -97,7 +157,16 @@ export function mountStarTrail(root, options) {
       show("title", mode === "title");
       show("hud", mode !== "title");
       show("touch", mode === "playing");
-      show("overlay", ["paused", "dead", "cleared", "won"].includes(mode));
+      show(
+        "overlay",
+        ["paused", "dead", "cleared", "won"].includes(mode) &&
+          $("shop-screen").hidden &&
+          $("gear-screen").hidden
+      );
+      if (mode !== "paused") {
+        show("shop-screen", false);
+        show("gear-screen", false);
+      }
       if (mode !== "playing") clearInput();
       if (["dead", "cleared", "won"].includes(mode)) audio.pause();
       if (mode === "paused") {
@@ -118,9 +187,18 @@ export function mountStarTrail(root, options) {
         $("primary").textContent = mode === "won" ? "再次远征" : "前往下一关";
       }
       show("retry", mode === "paused");
-      if (["paused", "dead", "cleared", "won"].includes(mode)) $("primary").focus();
+      show("shop-open", mode === "paused");
+      show("gear-open", mode === "paused");
+      if (
+        ["paused", "dead", "cleared", "won"].includes(mode) &&
+        $("shop-screen").hidden &&
+        $("gear-screen").hidden
+      )
+        $("primary").focus();
     }
-    const hud = `${game.levelIndex}/${game.player.hp}/${game.score}/${game.crystals}/${game.boss.hp}`;
+    const p = game.player,
+      tier = ARMOR_TIERS[game.armorLevel];
+    const hud = `${game.levelIndex}/${p.hp}/${game.score}/${game.wallet}/${game.boss.hp}/${p.armor}/${game.armorLevel}/${p.shield}/${Math.ceil(p.rapid)}/${Math.ceil(p.magnet)}`;
     if (lastHUD !== hud) {
       lastHUD = hud;
       $("stage").textContent = `0${game.levelIndex + 1} / 03　${game.level.name}`;
@@ -130,12 +208,32 @@ export function mountStarTrail(root, options) {
       ).join("");
       $("hearts").setAttribute("aria-label", `生命 ${game.player.hp} / 5`);
       $("score").textContent =
-        `✦ ${String(game.crystals).padStart(2, "0")}　${String(game.score).padStart(6, "0")}`;
+        `✦ ${String(game.wallet).padStart(2, "0")}　${String(game.score).padStart(6, "0")}`;
+      $("armor-label").textContent = `护甲 ${p.armor}/${tier.capacity}`;
+      $("armor-bar").innerHTML = Array.from(
+        { length: tier.capacity },
+        (_, i) => `<span class="armor-cell${i < p.armor ? " full" : ""}"></span>`
+      ).join("");
+      $("armor-bar").setAttribute("aria-valuemax", String(tier.capacity));
+      $("armor-bar").setAttribute("aria-valuenow", String(p.armor));
+      const buffs = [
+        p.shield > 0 ? `护盾 ×${p.shield}` : "",
+        p.rapid > 0 ? `连射 ${Math.ceil(p.rapid)}s` : "",
+        p.magnet > 0 ? `磁力 ${Math.ceil(p.magnet)}s` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      $("buffs").textContent = buffs;
+      show("buffs", !!buffs);
       $("boss-name").textContent =
         game.level.bossName + (game.boss.hp <= game.boss.maxHP / 2 ? " · 狂暴" : "");
       $("boss-health").style.transform = `scaleX(${Math.max(0, game.boss.hp / game.boss.maxHP)})`;
     }
     show("boss", game.boss.active && game.boss.hp > 0 && mode === "playing");
+    const hint = mode === "playing" ? game.interactionHint() : "";
+    if ($("interaction").textContent !== hint) $("interaction").textContent = hint;
+    show("interaction", !!hint && !game.nearShop());
+    show("world-shop", mode === "playing" && game.nearShop());
   }
   function effects(dt) {
     for (const event of game.takeEvents()) {
@@ -148,9 +246,30 @@ export function mountStarTrail(root, options) {
         notify("守卫已击败 · 前往右侧终点星灯", 4);
       }
       if (event.type === "checkpoint") notify("检查点已点亮 · 生命已恢复");
+      if (event.type === "heal")
+        notify(event.value > 0 ? `生命恢复 +${event.value}` : "满血奖励 +50 分", 1.6);
+      if (event.type === "shield") notify(`护盾已就绪 · 可抵挡 ${game.player.shield} 次攻击`, 1.8);
+      if (event.type === "rapid") notify("连射核心 · 强化射击 12 秒", 1.8);
+      if (event.type === "magnet") notify("磁力星 · 吸引星晶 10 秒", 1.8);
+      if (event.type === "crate") notify("补给箱已打开 · 靠近拾取道具", 1.4);
       audio.effect(event.type);
       if (
-        ["coin", "hit", "burst", "boss-down", "heal", "checkpoint", "slam"].includes(event.type)
+        [
+          "coin",
+          "hit",
+          "burst",
+          "boss-down",
+          "heal",
+          "checkpoint",
+          "slam",
+          "crate",
+          "spring",
+          "shield",
+          "rapid",
+          "magnet",
+          "armor-hit",
+          "shield-break",
+        ].includes(event.type)
       ) {
         const count = event.type === "boss-down" ? 44 : event.type === "burst" ? 15 : 7;
         for (let i = 0; i < count; i++) {
@@ -226,11 +345,16 @@ export function mountStarTrail(root, options) {
   on(window, "keydown", (event) => {
     if (event.code === "Escape") {
       event.preventDefault();
-      if (!$("help-screen").hidden) {
+      if (!$("shop-screen").hidden) closeShop();
+      else if (!$("gear-screen").hidden) closeGear();
+      else if (!$("help-screen").hidden) {
         show("help-screen", false);
         $("help").focus();
       } else if (game.mode === "paused") resume();
       else pause();
+    } else if (event.code === "KeyE" && game.mode === "playing" && game.nearShop()) {
+      event.preventDefault();
+      openShop();
     } else if (
       keyActions[event.code] &&
       game.mode === "playing" &&
@@ -267,6 +391,23 @@ export function mountStarTrail(root, options) {
     start();
   });
   on($("pause"), "click", pause);
+  on($("shop-open"), "click", () => openShop());
+  on($("world-shop"), "click", () => openShop());
+  on($("gear-open"), "click", openGear);
+  on($("armor-open"), "click", openGear);
+  on($("shop-close"), "click", closeShop);
+  on($("gear-close"), "click", closeGear);
+  on($("gear-shop"), "click", () => openShop(true));
+  on($("shop-items"), "click", (event) => {
+    const button = event.target.closest("[data-buy]");
+    if (!button || button.disabled) return;
+    const id = button.dataset.buy,
+      result = game.buy(id);
+    renderShop(result.message);
+    renderGear();
+    const next = $("shop-items").querySelector(`[data-buy="${id}"]`);
+    (next && !next.disabled ? next : $("shop-close")).focus();
+  });
   on($("exit"), "click", exit);
   on($("overlay-exit"), "click", exit);
   on($("help"), "click", () => {
@@ -321,6 +462,9 @@ export function mountStarTrail(root, options) {
       bossHP: game.boss.hp,
       score: game.score,
       crystals: game.crystals,
+      wallet: game.wallet,
+      armorLevel: game.armorLevel,
+      interaction: game.interactionHint(),
       audioState: audio.context?.state,
       time: game.time,
     }),

@@ -3,10 +3,22 @@ export interface StarTrailController {
   snapshot(): {
     mode: string;
     level: number;
-    player: { x: number; y: number; hp: number; grounded: boolean };
+    player: {
+      x: number;
+      y: number;
+      hp: number;
+      grounded: boolean;
+      armor: number;
+      shield: number;
+      rapid: number;
+      magnet: number;
+    };
     bossHP: number;
     score: number;
     crystals: number;
+    wallet: number;
+    armorLevel: number;
+    interaction: string;
     time: number;
     audioState?: AudioContextState;
   };

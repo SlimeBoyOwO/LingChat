@@ -348,3 +348,299 @@ input:focus-visible {
     transition: none;
   }
 }
+
+#trail-armor-open {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  pointer-events: auto;
+  text-align: left;
+  font:
+    11px "Microsoft YaHei",
+    sans-serif;
+  text-shadow: inherit;
+  color: #c4f5ed;
+}
+#trail-armor-bar,
+.gear-bar {
+  display: flex;
+  gap: 3px;
+  width: 90px;
+}
+.armor-cell {
+  flex: 1;
+  min-width: 8px;
+  height: 8px;
+  background: #29485dbb;
+  border: 1px solid #a8d2d388;
+}
+.armor-cell.full {
+  background: #9ce8e2;
+  border-color: #d2fff0;
+}
+#trail-buffs {
+  font:
+    11px "Microsoft YaHei",
+    sans-serif;
+  color: #e3d3ff;
+}
+.interaction-hint {
+  position: absolute;
+  bottom: 15%;
+  left: 15%;
+  right: 15%;
+  margin: 0;
+  text-align: center;
+  pointer-events: none;
+  color: #fdf4cf;
+  font:
+    clamp(11px, 1.2vw, 16px) "Microsoft YaHei",
+    sans-serif;
+  text-shadow: 0 2px 5px #163347;
+}
+.world-shop {
+  pointer-events: auto;
+  padding: 10px;
+  color: #bcffe9;
+}
+.shop-screen,
+.gear-screen {
+  z-index: 12;
+}
+.shop-panel,
+.gear-panel {
+  width: min(860px, 88%);
+  max-height: 94%;
+}
+.shop-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+}
+.shop-panel h2,
+.gear-panel h2 {
+  margin: 0 0 16px;
+  font-size: clamp(26px, 3.7vw, 48px);
+  letter-spacing: 0.08em;
+}
+#trail-wallet {
+  font:
+    18px Consolas,
+    "Microsoft YaHei",
+    monospace;
+  color: #ffe1a1;
+  white-space: nowrap;
+}
+.shop-note,
+.shop-message {
+  font:
+    12px/1.8 "Microsoft YaHei",
+    sans-serif;
+  color: #c6dce2;
+  margin: 0 0 15px;
+}
+.shop-items {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 26px;
+}
+.shop-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 4px;
+  border-bottom: 1px solid #8db6bd44;
+  text-align: left;
+}
+.shop-item strong {
+  display: block;
+  font-size: clamp(19px, 2vw, 27px);
+  letter-spacing: 0.04em;
+}
+.shop-item small {
+  display: block;
+  margin-top: 7px;
+  font:
+    11px/1.5 "Microsoft YaHei",
+    sans-serif;
+  color: #b8d6de;
+}
+.shop-price {
+  min-width: 65px;
+  text-align: right;
+  white-space: nowrap;
+  font:
+    16px Consolas,
+    "Microsoft YaHei",
+    monospace;
+  color: #ffe2a9;
+}
+.shop-item:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.shop-item:disabled .shop-price small {
+  color: #e4b8ba;
+}
+.shop-item:hover:not(:disabled) {
+  color: #b8ffe9;
+}
+.shop-message {
+  min-height: 22px;
+  color: #baffdf;
+  margin-top: 15px;
+}
+#trail-shop-close,
+.gear-actions .menu-item {
+  font-size: clamp(22px, 2.5vw, 33px);
+}
+.gear-layout {
+  display: flex;
+  align-items: center;
+  gap: 34px;
+  margin: 20px 0;
+}
+.armor-emblem {
+  flex: 0 0 90px;
+  width: 90px;
+  height: 108px;
+  background: #9adace;
+  border: 8px solid #d6f5da;
+  clip-path: polygon(0 0, 100% 0, 100% 60%, 70% 88%, 50% 100%, 30% 88%, 0 60%);
+  box-shadow: inset 0 0 0 8px #376679;
+}
+.gear-layout h3 {
+  margin: 0 0 10px;
+  font-size: 28px;
+}
+.gear-layout p {
+  margin: 8px 0;
+  font:
+    12px/1.8 "Microsoft YaHei",
+    sans-serif;
+  color: #c7dde4;
+}
+.gear-bar {
+  width: min(240px, 50vw);
+  margin: 14px 0;
+}
+.gear-bar .armor-cell {
+  height: 14px;
+}
+.gear-tiers {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin: 20px 0;
+}
+.gear-tiers > div {
+  padding: 12px 0;
+  color: #97a9bb;
+  border-top: 2px solid #69829766;
+}
+.gear-tiers .equipped {
+  color: #bcffeb;
+  border-color: #a4eed9;
+}
+.gear-tiers strong {
+  display: block;
+  font-size: 21px;
+}
+.gear-tiers span {
+  display: block;
+  margin-top: 8px;
+  font:
+    11px "Microsoft YaHei",
+    sans-serif;
+}
+.gear-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 25px;
+}
+@media (max-height: 550px) {
+  .shop-panel h2,
+  .gear-panel h2 {
+    font-size: 26px;
+    margin-bottom: 7px;
+  }
+  .shop-note {
+    font-size: 10px;
+    margin-bottom: 7px;
+  }
+  .shop-item {
+    padding: 7px 2px;
+  }
+  .shop-item strong {
+    font-size: 20px;
+  }
+  .shop-item small {
+    margin-top: 3px;
+    font-size: 10px;
+  }
+  .shop-message {
+    margin: 8px 0 3px;
+  }
+  .shop-items {
+    gap: 5px 25px;
+  }
+  .gear-layout {
+    margin: 8px 0;
+    gap: 20px;
+  }
+  .armor-emblem {
+    flex-basis: 65px;
+    width: 65px;
+    height: 78px;
+  }
+  .gear-layout h3 {
+    font-size: 23px;
+  }
+  .gear-layout p {
+    margin: 4px 0;
+    font-size: 11px;
+  }
+  .gear-tiers {
+    margin: 8px 0;
+  }
+  .gear-tiers > div {
+    padding: 7px 0;
+  }
+  .gear-tiers strong {
+    font-size: 18px;
+  }
+  .gear-actions .menu-item {
+    font-size: 23px;
+  }
+  #trail-buffs {
+    font-size: 9px;
+  }
+}
+@media (max-width: 600px) and (min-height: 551px) {
+  .shop-items {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .shop-item {
+    padding: 11px 2px;
+  }
+  .gear-layout {
+    gap: 18px;
+  }
+  .armor-emblem {
+    flex-basis: 65px;
+    width: 65px;
+    height: 78px;
+  }
+  .gear-tiers {
+    gap: 8px;
+  }
+  .gear-tiers strong {
+    font-size: 17px;
+  }
+  .gear-tiers span {
+    font-size: 10px;
+  }
+}

@@ -91,7 +91,7 @@ for (let level = 0; level < 3; level++) {
         !terrain.level.solids.some((s) => overlaps(ahead, s)) ||
         terrain.level.solids.some((s) => overlaps(wall, s));
     else if (p.vy >= 0) jumping = false;
-    terrain.step(STEP, { right: true, jump: jumping });
+    terrain.step(STEP, { right: true, jump: jumping, fire: true });
   }
   assert.equal(
     terrain.mode,

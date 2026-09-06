@@ -255,6 +255,42 @@ export function drawWorld(ctx, game, time, width, particles = []) {
     }
   }
   // Trail signs, a persistent checkpoint lantern and the exit beacon.
+  for (const spring of level.springs) {
+    const compressed = spring.cooldown > 0.2 ? 5 : 0;
+    r(spring.x, spring.y + 10, 26, 4, "#33465f");
+    r(spring.x + 3, spring.y + 3 + compressed, 20, 3, "#e6dcac");
+    r(spring.x + 6, spring.y + 6 + compressed / 2, 14, 3, "#799ead");
+    r(spring.x - 1, spring.y + compressed, 28, 4, "#efb57d");
+    r(spring.x + 11, spring.y - 9, 4, 6, "#fff4b3");
+    r(spring.x + 8, spring.y - 6, 10, 2, "#fff4b3");
+  }
+  for (const crate of level.crates) {
+    if (crate.opened) {
+      r(crate.x, crate.y + 20, 6, 4, "#846453");
+      r(crate.x + 18, crate.y + 19, 6, 5, "#846453");
+      continue;
+    }
+    r(crate.x, crate.y, 24, 24, "#543e52");
+    r(crate.x + 2, crate.y + 2, 20, 20, "#d99d6d");
+    r(crate.x + 3, crate.y + 3, 18, 3, "#ffe0a0");
+    r(crate.x + 3, crate.y + 18, 18, 3, "#9e6c58");
+    r(crate.x + 4, crate.y + 4, 3, 16, "#b98462");
+    r(crate.x + 17, crate.y + 4, 3, 16, "#b98462");
+    star(ctx, crate.x + 12, crate.y + 12, 4, "#fff0af");
+  }
+  const shop = level.shop;
+  r(shop.x + 4, shop.y + 8, 4, 42, "#405a6e");
+  r(shop.x + 54, shop.y + 8, 4, 42, "#405a6e");
+  r(shop.x, shop.y + 8, 62, 7, "#77d3c6");
+  r(shop.x + 5, shop.y + 2, 52, 8, "#b7eedb");
+  for (let i = 0; i < 6; i++) r(shop.x + i * 10, shop.y + 8, 6, 7, "#faf0b1");
+  r(shop.x + 3, shop.y + 37, 56, 13, "#846052");
+  r(shop.x + 1, shop.y + 36, 60, 4, "#e1b980");
+  r(shop.x + 22, shop.y + 22, 19, 14, "#d4e6e2");
+  r(shop.x + 25, shop.y + 18, 14, 7, "#5c94ac");
+  r(shop.x + 27, shop.y + 27, 3, 3, "#3c4d65");
+  r(shop.x + 35, shop.y + 27, 3, 3, "#3c4d65");
+  star(ctx, shop.x + 13, shop.y + 29, 4, "#ffda91");
   r(185, 265, 3, 35, "#446778");
   r(174, 258, 32, 14, level.land[2]);
   r(181, 264, 16, 2, "#ffe2a1");
@@ -278,6 +314,28 @@ export function drawWorld(ctx, game, time, width, particles = []) {
       r(heal.x + 5, y + 3, 5, 8, "#71c6a0");
       r(heal.x + 3, y + 6, 9, 3, "#71c6a0");
     }
+  for (const power of level.powers)
+    if (!power.taken) {
+      const x = power.x,
+        y = power.y + Math.sin(time * 3 + power.x) * 2;
+      r(x, y, 16, 16, "#30475e");
+      if (power.kind === "shield") {
+        r(x + 2, y + 2, 12, 9, "#a9f3e9");
+        r(x + 4, y + 11, 8, 3, "#70c7d0");
+        r(x + 6, y + 14, 4, 2, "#70c7d0");
+        r(x + 6, y + 4, 4, 7, "#efffee");
+      } else if (power.kind === "rapid") {
+        r(x + 8, y + 1, 5, 5, "#ffe298");
+        r(x + 5, y + 6, 8, 4, "#ffcc75");
+        r(x + 4, y + 10, 5, 5, "#ffe298");
+      } else {
+        r(x + 3, y + 3, 4, 10, "#d5b7f5");
+        r(x + 10, y + 3, 4, 10, "#d5b7f5");
+        r(x + 6, y + 11, 5, 4, "#b193da");
+        r(x + 3, y + 2, 4, 3, "#fff0b3");
+        r(x + 10, y + 2, 4, 3, "#fff0b3");
+      }
+    }
   if (game.boss.active && game.boss.hp > 0) {
     for (let y = 155; y < 300; y += 12) r(level.arena, y, 4, 7, "#fcb59c99");
   }
@@ -292,7 +350,13 @@ export function drawWorld(ctx, game, time, width, particles = []) {
   drawBoss(ctx, game.boss, level);
   for (const bullet of game.bullets) {
     r(bullet.x - Math.sign(bullet.vx) * 8, bullet.y + 1, 16, 3, "#9be8e566");
-    r(bullet.x, bullet.y, bullet.w, bullet.h, "#fff1ad");
+    r(
+      bullet.x,
+      bullet.y,
+      bullet.w + (bullet.powered ? 3 : 0),
+      bullet.h,
+      bullet.powered ? "#98fff0" : "#fff1ad"
+    );
   }
   for (const threat of game.threats) {
     if (threat.kind === "wave") {
@@ -306,6 +370,23 @@ export function drawWorld(ctx, game, time, width, particles = []) {
     ctx.globalAlpha = 1;
     star(ctx, warning.x + 5, 285, 8, "#fff0bc");
   }
+  if (p.shield > 0) {
+    ctx.globalAlpha = 0.55 + Math.sin(time * 4) * 0.15;
+    r(p.x - 8, p.y - 8, 34, 2, "#a4fff2");
+    r(p.x - 12, p.y - 4, 2, 38, "#a4fff2");
+    r(p.x + 29, p.y - 4, 2, 38, "#a4fff2");
+    r(p.x - 8, p.y + 37, 34, 2, "#a4fff2");
+    ctx.globalAlpha = 1;
+  }
+  if (p.magnet > 0)
+    for (let i = 0; i < 4; i++)
+      star(
+        ctx,
+        p.x + 9 + Math.cos(time * 2 + (i * Math.PI) / 2) * 25,
+        p.y + 12 + Math.sin(time * 2 + (i * Math.PI) / 2) * 25,
+        2,
+        "#dfc0fc"
+      );
   if (p.invincible <= 0 || Math.floor(time * 15) % 2 === 0)
     hero(ctx, p.x, p.y, p.face, time, Math.abs(p.vx) > 15 && p.grounded, p.shot > 0.13);
   for (const particle of particles) {

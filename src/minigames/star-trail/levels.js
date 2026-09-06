@@ -1,4 +1,9 @@
 // All positions use the same 360-pixel-high world. No external assets are loaded.
+export const ARMOR_TIERS = [
+  { name: "旅人护甲", capacity: 2, cost: 0 },
+  { name: "巡星护甲", capacity: 4, cost: 10 },
+  { name: "辉光护甲", capacity: 6, cost: 18 },
+];
 export const LEVELS = [
   {
     name: "青苔海岸",
@@ -37,6 +42,14 @@ export const LEVELS = [
     checkpoint: 1670,
     arena: 2530,
     bossHP: 24,
+    springs: [245, 1650],
+    crates: [
+      [205, "shield"],
+      [505, "rapid", true],
+      [1130, "magnet"],
+      [1840, "heal"],
+      [2390, "rapid"],
+    ],
   },
   {
     name: "落日机坊",
@@ -78,6 +91,14 @@ export const LEVELS = [
     checkpoint: 1570,
     arena: 2690,
     bossHP: 32,
+    springs: [210, 1430, 2380],
+    crates: [
+      [180, "shield"],
+      [925, "rapid", true],
+      [1500, "magnet"],
+      [2150, "heal"],
+      [2610, "rapid"],
+    ],
   },
   {
     name: "星月高塔",
@@ -119,6 +140,14 @@ export const LEVELS = [
     checkpoint: 1630,
     arena: 2810,
     bossHP: 40,
+    springs: [250, 1490, 2260],
+    crates: [
+      [180, "shield"],
+      [950, "rapid", true],
+      [1520, "magnet"],
+      [2240, "heal"],
+      [2720, "shield"],
+    ],
   },
 ];
 
@@ -129,6 +158,12 @@ export function makeLevel(index) {
     ...source.platforms.map(([x, y, w]) => ({ x, y, w, h: 14, floor: false })),
   ];
   const coins = [];
+  const surfaceAt = (x, w) =>
+    Math.min(
+      ...solids
+        .filter((solid) => solid.x <= x && solid.x + solid.w >= x + w)
+        .map((solid) => solid.y)
+    );
   source.platforms.forEach(([x, y, w], platform) => {
     for (let i = 0; i < 3; i++)
       coins.push({ id: `p${platform}-${i}`, x: x + (w * (i + 1)) / 4, y: y - 22, w: 10, h: 12 });
@@ -142,9 +177,49 @@ export function makeLevel(index) {
     solids,
     coins,
     heals: [
-      { id: "heal-a", x: 1070, y: 211, w: 14, h: 14 },
-      { id: "heal-b", x: source.checkpoint + 120, y: 276, w: 14, h: 14 },
+      { id: "heal-a", x: 1070, y: surfaceAt(1070, 14) - 20, w: 14, h: 14 },
+      {
+        id: "heal-b",
+        x: source.checkpoint + 120,
+        y: surfaceAt(source.checkpoint + 120, 14) - 20,
+        w: 14,
+        h: 14,
+      },
     ],
+    springs: source.springs.map((x) => ({
+      x,
+      y: surfaceAt(x, 26) - 12,
+      w: 26,
+      h: 12,
+      cooldown: 0,
+    })),
+    crates: source.crates.map(([x, reward, floating], id) => ({
+      id: `crate-${id}`,
+      reward,
+      x,
+      y: surfaceAt(x, 24) - (floating ? 64 : 24),
+      w: 24,
+      h: 24,
+      floor: true,
+      crate: true,
+      opened: false,
+    })),
+    powers: [
+      {
+        id: "arena-shield",
+        kind: "shield",
+        x: source.arena - 105,
+        y: surfaceAt(source.arena - 105, 16) - 20,
+        w: 16,
+        h: 16,
+      },
+    ],
+    shop: {
+      x: source.checkpoint - 60,
+      y: surfaceAt(source.checkpoint - 60, 62) - 50,
+      w: 62,
+      h: 50,
+    },
     enemies: source.enemies.map(([x, kind], id) => ({
       id,
       kind,

@@ -10,11 +10,13 @@
     <p class="title-hint">A / D 移动　 W / ↑ 跳跃　 空格射击</p>
   </div>
   <div class="hud" id="trail-hud" hidden>
-    <div class="hud-left"><span id="trail-stage"></span><div id="trail-hearts" aria-label="生命"></div><span id="trail-score"></span></div>
+    <div class="hud-left"><span id="trail-stage"></span><div id="trail-hearts" aria-label="生命"></div><button id="trail-armor-open" aria-label="查看护甲装备"><span id="trail-armor-label"></span><span id="trail-armor-bar" role="meter" aria-label="护甲值" aria-valuemin="0"></span></button><span id="trail-score"></span><span id="trail-buffs" hidden></span></div>
     <button id="trail-pause" aria-label="暂停游戏">暂停</button>
   </div>
   <div class="boss-hud" id="trail-boss" hidden><span id="trail-boss-name"></span><div class="boss-track"><div id="trail-boss-health"></div></div></div>
   <p class="announcement" id="trail-announcement" hidden aria-live="polite"></p>
+  <p class="interaction-hint" id="trail-interaction" hidden></p>
+  <button class="interaction-hint world-shop" id="trail-world-shop" hidden>E · 进入星灯商店</button>
   <div class="touch-controls" id="trail-touch" hidden>
     <div><button data-action="left" aria-label="向左移动">◀</button><button data-action="right" aria-label="向右移动">▶</button></div>
     <div><button data-action="jump" aria-label="跳跃">跳</button><button data-action="fire" aria-label="射击">射</button></div>
@@ -25,17 +27,37 @@
       <div class="overlay-actions">
         <button id="trail-primary" class="menu-item">继续远征</button>
         <button id="trail-retry" class="menu-item">从检查点重试</button>
+        <button id="trail-shop-open" class="menu-item">星灯商店</button>
+        <button id="trail-gear-open" class="menu-item">护甲装备</button>
         <button id="trail-title-return" class="menu-item">返回标题</button>
         <button id="trail-overlay-exit" class="menu-item">退出小游戏</button>
       </div>
       <label class="music-volume">音乐与音效 <input id="trail-volume" aria-label="音乐与音效音量" type="range" min="0" max="100" value="35"><output id="trail-volume-value">35%</output></label>
     </section>
   </div>
+  <div class="scrim shop-screen" id="trail-shop-screen" hidden>
+    <section class="shop-panel" role="dialog" aria-modal="true" aria-labelledby="trail-shop-title">
+      <div class="shop-heading"><h2 id="trail-shop-title">星灯商店</h2><span id="trail-wallet"></span></div>
+      <p class="shop-note">星晶可购买补给；护甲升级保留到本次远征结束，临时强化仅当前关卡有效。</p>
+      <div id="trail-shop-items" class="shop-items"></div>
+      <p id="trail-shop-message" class="shop-message" aria-live="polite"></p>
+      <button id="trail-shop-close" class="menu-item">返回</button>
+    </section>
+  </div>
+  <div class="scrim gear-screen" id="trail-gear-screen" hidden>
+    <section class="gear-panel" role="dialog" aria-modal="true" aria-labelledby="trail-gear-title">
+      <h2 id="trail-gear-title">护甲装备</h2>
+      <div class="gear-layout"><div class="armor-emblem" aria-hidden="true"></div><div><h3 id="trail-gear-name"></h3><p id="trail-gear-value"></p><div id="trail-gear-bar" class="gear-bar"></div><p>护甲先于生命承受伤害。<br>临时护盾会优先抵挡一次攻击。</p></div></div>
+      <div id="trail-gear-tiers" class="gear-tiers"></div>
+      <p class="shop-note">升级保留于本次远征；重试会修复护甲，临时强化会重置。</p>
+      <div class="gear-actions"><button id="trail-gear-shop" class="menu-item">修复与升级</button><button id="trail-gear-close" class="menu-item">返回</button></div>
+    </section>
+  </div>
   <div class="scrim help" id="trail-help-screen" hidden>
     <section class="overlay-menu" role="dialog" aria-modal="true" aria-labelledby="trail-help-title">
       <h2 id="trail-help-title">操作说明</h2>
       <p>A / D 或 ← / → 移动<br>W / ↑ / Z 跳跃，松开可降低跳跃高度<br>空格连续射击，Esc 暂停</p>
-      <p>跳到敌人头顶可以踩击；收集星晶增加得分。<br>绿色药瓶恢复生命，点亮路边星灯可记录检查点。<br>Boss 攻击前会闪烁蓄力；击败守卫后抵达终点星灯。</p>
+      <p>跳到敌人头顶可以踩击；收集星晶可在商店消费。<br>绿色药瓶恢复生命，满血拾取奖励 50 分。<br>空格射击或从下方顶开补给箱，踩弹簧可以高跳。<br>护盾抵挡攻击，连射核心提升射速，磁力星吸引星晶。<br>暂停菜单或星灯商店附近按 E 可购物；点击护甲条查看装备。<br>点亮检查点后可重试，击败 Boss 后抵达右侧终点。</p>
       <button id="trail-help-close" class="menu-item">返回</button>
     </section>
   </div>
