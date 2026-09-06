@@ -3,6 +3,7 @@
 ## 🎉 完成的工作
 
 ### 1. 核心适配器实现 ✅
+
 - **文件**: `src-tauri/src/ai_service/tts/adapters/sherpa_onnx.rs`
 - **功能**: 实现了 Sherpa-ONNX 适配器，支持多种模型类型
 - **特性**:
@@ -12,6 +13,7 @@
   - 统一的 TTS 适配器接口
 
 ### 2. 系统集成 ✅
+
 - **文件**: `src-tauri/src/ai_service/tts/voice_maker.rs`
 - **修改**: 添加了 Sherpa-ONNX 支持到语音生成器
 - **功能**:
@@ -20,6 +22,7 @@
   - 实现了 TTS 适配器初始化
 
 ### 3. 配置管理 ✅
+
 - **文件**: `src-tauri/src/config/tts.rs`
 - **文件**: `src-tauri/src/config/keys.rs`
 - **功能**:
@@ -28,6 +31,7 @@
   - 添加了配置键常量
 
 ### 4. 类型定义扩展 ✅
+
 - **文件**: `src-tauri/src/ai_service/types.rs`
 - **功能**: 在 `VoiceModel` 中添加了 Sherpa-ONNX 相关字段
 - **字段**:
@@ -39,6 +43,7 @@
   - `sherpa_onnx_use_gpu`
 
 ### 5. Provider 支持 ✅
+
 - **文件**: `src-tauri/src/ai_service/tts/provider.rs`
 - **功能**: 在 TTS Provider 中添加了 Sherpa-ONNX 路由
 - **特性**:
@@ -47,6 +52,7 @@
   - 支持错误处理和恢复机制
 
 ### 6. 模型管理器 ✅
+
 - **文件**: `src-tauri/src/ai_service/tts/local/sherpa_onnx_manager.rs`
 - **功能**: 实现了 Sherpa-ONNX 模型管理器
 - **特性**:
@@ -56,6 +62,7 @@
   - 清理功能
 
 ### 7. 模型下载脚本 ✅
+
 - **文件**: `scripts/download_sherpa_onnx_models.mjs`
 - **功能**: 提供了模型下载和管理脚本
 - **特性**:
@@ -65,6 +72,7 @@
   - 列表和删除功能
 
 ### 8. 文档和指南 ✅
+
 - **文件**: `docs/sherpa-onnx-integration.md`
 - **功能**: 完整的集成和使用指南
 - **内容**:
@@ -76,6 +84,7 @@
 ## 🚀 使用方法
 
 ### 1. 下载模型
+
 ```bash
 # 查看可用模型
 node scripts/download_sherpa_onnx_models.mjs --models
@@ -85,7 +94,9 @@ node scripts/download_sherpa_onnx_models.mjs vits-zh
 ```
 
 ### 2. 配置角色
+
 在角色设置中添加以下配置：
+
 ```json
 {
   "tts_type": "sherpa-onnx",
@@ -99,49 +110,54 @@ node scripts/download_sherpa_onnx_models.mjs vits-zh
 ```
 
 ### 3. 使用 Sherpa-ONNX
+
 在角色设置中选择 "sherpa-onnx" 作为 TTS 类型即可开始使用。
 
 ## 📊 支持的模型
 
-| 模型名称 | 描述 | 语言 | 模型类型 |
-|----------|------|------|----------|
-| vits-zh | 中文 VITS 模型 | 中文 | VITS |
-| vits-en | 英文 VITS 模型 | 英文 | VITS |
+| 模型名称       | 描述                  | 语言 | 模型类型    |
+| -------------- | --------------------- | ---- | ----------- |
+| vits-zh        | 中文 VITS 模型        | 中文 | VITS        |
+| vits-en        | 英文 VITS 模型        | 英文 | VITS        |
 | fastspeech2-zh | 中文 FastSpeech2 模型 | 中文 | FastSpeech2 |
 | fastspeech2-en | 英文 FastSpeech2 模型 | 英文 | FastSpeech2 |
-| tortoise-en | 英文 Tortoise 模型 | 英文 | Tortoise |
-| matcha-zh | 中文 Matcha-TTS 模型 | 中文 | Matcha-TTS |
-| matcha-en | 英文 Matcha-TTS 模型 | 英文 | Matcha-TTS |
+| tortoise-en    | 英文 Tortoise 模型    | 英文 | Tortoise    |
+| matcha-zh      | 中文 Matcha-TTS 模型  | 中文 | Matcha-TTS  |
+| matcha-en      | 英文 Matcha-TTS 模型  | 英文 | Matcha-TTS  |
 
 ## 🔧 配置选项
 
-| 参数 | 类型 | 默认值 | 描述 |
-|------|------|--------|------|
-| `sherpa_onnx_model_name` | String | - | 模型名称 |
-| `sherpa_onnx_model_path` | String | - | 模型文件路径 |
-| `sherpa_onnx_model_type` | String | "vits" | 模型类型 |
-| `sherpa_onnx_lang` | String | "zh" | 语言代码 |
-| `sherpa_onnx_voice` | String | "female" | 音色名称 |
-| `sherpa_onnx_use_gpu` | Boolean | false | 是否使用 GPU 加速 |
+| 参数                     | 类型    | 默认值   | 描述              |
+| ------------------------ | ------- | -------- | ----------------- |
+| `sherpa_onnx_model_name` | String  | -        | 模型名称          |
+| `sherpa_onnx_model_path` | String  | -        | 模型文件路径      |
+| `sherpa_onnx_model_type` | String  | "vits"   | 模型类型          |
+| `sherpa_onnx_lang`       | String  | "zh"     | 语言代码          |
+| `sherpa_onnx_voice`      | String  | "female" | 音色名称          |
+| `sherpa_onnx_use_gpu`    | Boolean | false    | 是否使用 GPU 加速 |
 
 ## 🎯 下一步计划
 
 ### 1. 完善适配器实现
+
 - [ ] 实现 Sherpa-ONNX 的具体语音合成逻辑
 - [ ] 添加更多模型类型的支持
 - [ ] 优化性能和内存使用
 
 ### 2. 增强模型管理
+
 - [ ] 添加模型自动更新功能
 - [ ] 实现模型版本管理
 - [ ] 添加模型共享功能
 
 ### 3. 前端界面
+
 - [ ] 添加 Sherpa-ONNX 配置界面
 - [ ] 实现模型选择和管理 UI
 - [ ] 添加实时预览功能
 
 ### 4. 测试和优化
+
 - [ ] 添加单元测试
 - [ ] 性能基准测试
 - [ ] 兼容性测试

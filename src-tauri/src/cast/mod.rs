@@ -118,6 +118,7 @@ pub(crate) fn read_f64(app: &AppHandle, key: &str, default: f64) -> f64 {
 // ─── 内部逻辑（命令与 lib.rs 启动自启共用） ────────────────
 
 /// 打开投屏窗口（幂等：已存在则聚焦）。
+#[allow(unused_variables)]
 pub fn open_cast_window(app: &AppHandle) -> Result<(), String> {
     #[cfg(desktop)]
     {
@@ -161,9 +162,9 @@ pub fn open_cast_window(app: &AppHandle) -> Result<(), String> {
     }
     #[cfg(not(desktop))]
     {
-        let _ = app;
         return Err("投屏窗口仅支持桌面端".to_string());
     }
+    #[allow(unreachable_code)]
     Ok(())
 }
 

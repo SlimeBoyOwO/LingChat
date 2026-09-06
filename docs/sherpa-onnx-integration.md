@@ -62,45 +62,53 @@ node scripts/download_sherpa_onnx_models.mjs --list
 ## 支持的模型
 
 ### VITS 模型
+
 - **vits-zh**: 中文 VITS 模型（基于 AIShell3 数据集）
 - **vits-en**: 英文 VITS 模型（基于 LJSpeech 数据集）
 
 ### FastSpeech2 模型
+
 - **fastspeech2-zh**: 中文 FastSpeech2 模型
 - **fastspeech2-en**: 英文 FastSpeech2 模型
 
 ### Tortoise 模型
+
 - **tortoise-en**: 英文 Tortoise 模型（高质量语音合成）
 
 ### Matcha-TTS 模型
+
 - **matcha-zh**: 中文 Matcha-TTS 模型
 - **matcha-en**: 英文 Matcha-TTS 模型
 
 ## 配置选项
 
 ### 基础配置
-| 参数 | 类型 | 默认值 | 描述 |
-|------|------|--------|------|
-| `sherpa_onnx_model_name` | String | - | 模型名称 |
-| `sherpa_onnx_model_path` | String | - | 模型文件路径 |
-| `sherpa_onnx_model_type` | String | "vits" | 模型类型 |
-| `sherpa_onnx_lang` | String | "zh" | 语言代码 |
-| `sherpa_onnx_voice` | String | "female" | 音色名称 |
-| `sherpa_onnx_use_gpu` | Boolean | false | 是否使用 GPU 加速 |
+
+| 参数                     | 类型    | 默认值   | 描述              |
+| ------------------------ | ------- | -------- | ----------------- |
+| `sherpa_onnx_model_name` | String  | -        | 模型名称          |
+| `sherpa_onnx_model_path` | String  | -        | 模型文件路径      |
+| `sherpa_onnx_model_type` | String  | "vits"   | 模型类型          |
+| `sherpa_onnx_lang`       | String  | "zh"     | 语言代码          |
+| `sherpa_onnx_voice`      | String  | "female" | 音色名称          |
+| `sherpa_onnx_use_gpu`    | Boolean | false    | 是否使用 GPU 加速 |
 
 ### 模型特定参数
 
 #### VITS 模型
+
 - `speed`: 语速（默认：1.0）
 - `noise_scale`: 噪声尺度（默认：0.667）
 - `noise_scale_w`: 噪声尺度 W（默认：0.8）
 
 #### FastSpeech2 模型
+
 - `duration_scale`: 时长缩放（默认：1.0）
 - `energy_scale`: 能量缩放（默认：1.0）
 - `pitch_scale`: 音高缩放（默认：1.0）
 
 #### Tortoise 模型
+
 - `temperature`: 温度参数（默认：0.8）
 - `diffusion_temperature`: 扩散温度（默认：1.0）
 
@@ -129,7 +137,7 @@ node scripts/download_sherpa_onnx_models.mjs --list
 ```json
 {
   "sherpa_onnx_use_gpu": true,
-  "sherpa_onnx_device": "cuda"  // 或 "directml" (Windows)
+  "sherpa_onnx_device": "cuda" // 或 "directml" (Windows)
 }
 ```
 
@@ -137,7 +145,7 @@ node scripts/download_sherpa_onnx_models.mjs --list
 
 ```javascript
 // 批量下载多个模型
-const models = ['vits-zh', 'fastspeech2-en', 'tortoise-en'];
+const models = ["vits-zh", "fastspeech2-en", "tortoise-en"];
 for (const model of models) {
   await exec(`node scripts/download_sherpa_onnx_models.mjs ${model}`);
 }

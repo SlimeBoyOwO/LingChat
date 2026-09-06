@@ -56,3 +56,40 @@ export async function toPlayableMediaUrl(path: string): Promise<string> {
   }
   return pending;
 }
+
+// ---------------------------------------------------------------------------
+// 简易本地音频播放（如 Sherpa-ONNX 试听）
+// ---------------------------------------------------------------------------
+
+let currentAudio: HTMLAudioElement | null = null;
+
+/** 播放一段本地音频文件路径，返回元素。同一时刻仅保留一个（新的覆盖旧的）。 */
+export async function playLocalAudio(path: string): Promise<HTMLAudioElement> {
+  stopCurrentAudio();
+  const url = await toPlayableMediaUrl(path);
+  const audio = new Audio(url);
+  currentAudio = audio;
+  audio.onended = () => {
+    if (currentAudio === audio) currentAudio = null;
+  };
+  audio.onerror = () => {
+    if (currentAudio === audio) currentAudio = null;
+  };
+  audio.play().catch(() => {
+    if (currentAudio === audio) currentAudio = null;
+  });
+  return audio;
+}
+
+/** 停止当前正在播放的本地音频。 */
+export function stopCurrentAudio(): void {
+  if (currentAudio) {
+    const el = currentAudio;
+    currentAudio = null;
+    try {
+      el.pause();
+    } catch {
+      /* 忽略 */
+    }
+  }
+}

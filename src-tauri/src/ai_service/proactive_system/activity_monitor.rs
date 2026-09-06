@@ -5,10 +5,12 @@ use std::time::{Duration, Instant};
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 #[cfg(target_os = "windows")]
+use windows::Win32::System::Threading::GetCurrentThreadId;
+#[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetMessageW, HHOOK, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, SetWindowsHookExW,
-    UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MBUTTONDOWN,
-    WM_MOUSEMOVE, WM_RBUTTONDOWN, WM_SYSKEYDOWN,
+    CallNextHookEx, GetMessageW, HHOOK, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, PostThreadMessageW,
+    SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_LBUTTONDOWN,
+    WM_MBUTTONDOWN, WM_MOUSEMOVE, WM_QUIT, WM_RBUTTONDOWN, WM_SYSKEYDOWN,
 };
 
 #[cfg(target_os = "windows")]
@@ -46,6 +48,10 @@ pub struct UserActivityMonitor {
     _kbd_hook: Option<SendHhook>,
     #[cfg(target_os = "windows")]
     _ms_hook: Option<SendHhook>,
+    #[cfg(target_os = "windows")]
+    pump_thread: Option<std::thread::JoinHandle<()>>,
+    #[cfg(target_os = "windows")]
+    pump_thread_id_rx: Option<std::sync::mpsc::Receiver<u32>>,
 }
 
 // Win32 hooks require a static/global callback, so we use a OnceLock to access the active monitor's inner state.
@@ -66,6 +72,8 @@ impl UserActivityMonitor {
                 inner,
                 _kbd_hook: None,
                 _ms_hook: None,
+                pump_thread: None,
+                pump_thread_id_rx: None,
             };
             monitor.start_monitoring();
             monitor
@@ -79,6 +87,11 @@ impl UserActivityMonitor {
 
     #[cfg(target_os = "windows")]
     fn start_monitoring(&mut self) {
+        if self.pump_thread.is_some() {
+            // 已有消息泵线程在运行，避免重复泄漏线程
+            return;
+        }
+
         let kbd_hook = unsafe {
             SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_callback), None, 0)
                 .ok()
@@ -104,15 +117,25 @@ impl UserActivityMonitor {
         self._kbd_hook = kbd_hook;
         self._ms_hook = ms_hook;
 
-        // Spawn a Win32 message pump thread to receive hook events
-        std::thread::spawn(|| {
-            unsafe {
-                let mut msg = MSG::default();
-                while GetMessageW(&mut msg, None, 0, 0).as_bool() {
-                    // Just pump messages
+        // 消息泵线程：收到 WM_QUIT 时 GetMessageW 返回 0，循环退出（可被 Drop 终止）。
+        let (tx, rx) = std::sync::mpsc::channel::<u32>();
+        let handle = std::thread::Builder::new()
+            .name("activity-monitor-pump".into())
+            .spawn(move || {
+                unsafe {
+                    // GetMessageW 会隐式创建本线程的消息队列；先把线程 id 回传，
+                    // 供 Drop 时 PostThreadMessageW(WM_QUIT) 唤醒退出。
+                    let tid = GetCurrentThreadId();
+                    let _ = tx.send(tid);
+                    let mut msg = MSG::default();
+                    while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                        // Just pump messages
+                    }
                 }
-            }
-        });
+            })
+            .expect("spawn activity monitor pump thread");
+        self.pump_thread = Some(handle);
+        self.pump_thread_id_rx = Some(rx);
     }
 
     /// 清理 20 秒之前的旧事件并计算统计信息。
@@ -288,6 +311,17 @@ impl Drop for UserActivityMonitor {
             if let Some(hook) = self._ms_hook {
                 let _ = UnhookWindowsHookEx(hook.0);
             }
+        }
+        // 终止消息泵线程：发送 WM_QUIT 唤醒 GetMessageW 返回 0，并等待线程结束。
+        let tid = self.pump_thread_id_rx.take().and_then(|rx| rx.recv().ok());
+        self.pump_thread_id_rx = None;
+        if let Some(tid) = tid {
+            unsafe {
+                let _ = PostThreadMessageW(tid, WM_QUIT, WPARAM(0), LPARAM(0));
+            }
+        }
+        if let Some(handle) = self.pump_thread.take() {
+            let _ = handle.join();
         }
     }
 }

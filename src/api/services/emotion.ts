@@ -1,14 +1,14 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from "@tauri-apps/api/core";
 
 /**
  * 情绪分析引擎统一为单个 ONNX 模型（sherpa-onnx DeBERTa 19 分类）。
  * 旧版 Python 后端的 "9d" 引擎与 "关闭" 选项已随后端移除。
  */
-export type EmotionModelType = 'onnx'
+export type EmotionModelType = "onnx";
 
 export interface EmotionModelInfo {
-  current: EmotionModelType
-  available: EmotionModelType[]
+  current: EmotionModelType;
+  available: EmotionModelType[];
 }
 
 /**
@@ -16,13 +16,13 @@ export interface EmotionModelInfo {
  */
 export async function getEmotionModelType(): Promise<EmotionModelType> {
   try {
-    await invoke('get_setting_by_key', {
-      key: 'features.emotion_model_type',
-    })
+    await invoke("get_setting_by_key", {
+      key: "features.emotion_model_type",
+    });
   } catch {
     // 设置键不存在时忽略
   }
-  return 'onnx'
+  return "onnx";
 }
 
 export const EMOTION_MODEL_LABELS: Record<
@@ -30,7 +30,7 @@ export const EMOTION_MODEL_LABELS: Record<
   { label: string; description: string }
 > = {
   onnx: {
-    label: '经典 ONNX 模型',
-    description: '基于 BERT 的 19 分类情绪模型',
+    label: "经典 ONNX 模型",
+    description: "基于 BERT 的 19 分类情绪模型",
   },
-}
+};

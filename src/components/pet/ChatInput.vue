@@ -84,19 +84,22 @@
 
   // auto_send：识别结果显示到输入框 → ASR_AUTO_SEND_DELAY_MS 后走 sendMessage()
   //（完整复用剧本分支/模型检查/输入框清理；显示锁已由 handle() 设置）
+  let asrSendTimer: number | null = null;
   function onAsrAutoSend(e: Event) {
     const ce = e as CustomEvent<string>;
     if (typeof ce.detail !== "string") return;
     messageText.value = ce.detail;
-    window.setTimeout(() => sendMessage(), ASR_AUTO_SEND_DELAY_MS);
+    if (asrSendTimer !== null) window.clearTimeout(asrSendTimer);
+    asrSendTimer = window.setTimeout(() => sendMessage(), ASR_AUTO_SEND_DELAY_MS);
   }
 
   // 输入桥：流式 partial 实时写入（与桌面 GameDialog 一致；录音发起窗口的
   // phase 是窗口本地状态，partial 只写入发起方输入框）
   const asrInput = useAsrInput();
+  let unregisterAsrBridge: (() => void) | null = null;
   onMounted(() => {
     initScreenshot();
-    registerAsrInputBridge({
+    unregisterAsrBridge = registerAsrInputBridge({
       getText: () => messageText.value,
       setText: (v) => {
         messageText.value = v;
@@ -106,6 +109,8 @@
     window.addEventListener("asr-send", onAsrAutoSend);
   });
   onUnmounted(() => {
+    if (asrSendTimer !== null) window.clearTimeout(asrSendTimer);
+    unregisterAsrBridge?.();
     window.removeEventListener("asr-text", onAsrText);
     window.removeEventListener("asr-send", onAsrAutoSend);
     destroyScreenshot();
@@ -203,14 +208,25 @@
     }
 
     if (gameStore.runningScript) {
-      invoke("script_submit_input", { input: text }).catch((error) => {
-        console.error("发送脚本输入失败:", error);
-        gameStore.currentStatus = "input";
-      });
-      gameStore.runningScript.choices = [];
-      if (gameStore.runningScript.freeDialogueInfo.isFreeDialogue) {
-        gameStore.runningScript.freeDialogueInfo.currentRound++;
-      }
+      const script = gameStore.runningScript;
+      const wasChoice = script.choices.length > 0;
+      invoke("script_submit_input", { input: text })
+        .then(() => {
+          script.choices = [];
+          if (script.freeDialogueInfo.isFreeDialogue) {
+            script.freeDialogueInfo.currentRound++;
+          }
+        })
+        .catch((error) => {
+          console.error("发送脚本输入失败:", error);
+          gameStore.currentStatus = "input";
+          uiStore.showNotification({
+            type: "warning",
+            title: wasChoice ? "请点击一个选项" : "当前无法输入",
+            message: String(error),
+            skipTipsCheck: true,
+          });
+        });
     } else {
       invoke("send_chat_message", { text, screenshotBase64: screenshotBase64.value }).catch(
         (error) => {

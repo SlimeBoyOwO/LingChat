@@ -4,16 +4,24 @@ use std::sync::OnceLock;
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// 初始化 data 目录缓存（必须在 App 启动时调用一次）。
+/// 重复调用安全：仅保留首次设置的值。
 pub fn init_data_dir(app: &tauri::AppHandle) {
     let dir = resolve_data_dir(app);
-    DATA_DIR.set(dir).expect("data_dir already initialized");
+    let _ = DATA_DIR.set(dir);
 }
 
-/// 获取已缓存的 data 目录（必须先调用 `init_data_dir`）。
+/// 获取已缓存的 data 目录（未显式初始化时按 exe 位置兜底推导，避免 panic）。
 pub fn get_data_dir() -> &'static PathBuf {
-    DATA_DIR
-        .get()
-        .expect("data_dir not initialized — call init_data_dir first")
+    DATA_DIR.get_or_init(|| {
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+        let path = exe_dir
+            .map(|d| d.join("data"))
+            .unwrap_or_else(|| PathBuf::from("data"));
+        tracing::warn!("data_dir 在 init_data_dir 前被访问，兜底使用 {path:?}");
+        path
+    })
 }
 
 /// 解析 data 目录路径。

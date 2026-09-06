@@ -70,14 +70,14 @@ impl Default for LanSyncState {
     }
 }
 
-/// 获取当前实例标识（只读）。
-fn get_instance_id(state: &LanSyncState) -> String {
+/// 获取当前实例标识（只读）。服务未启动（instance_id 未设置）时返回 Err 而非 panic。
+fn get_instance_id(state: &LanSyncState) -> Result<String, String> {
     state
         .instance_id
         .lock()
-        .unwrap()
+        .map_err(|e| format!("锁失败: {e}"))?
         .clone()
-        .expect("instance_id 应在服务启动时已设置")
+        .ok_or_else(|| "LAN 同步服务尚未启动".to_string())
 }
 
 /// 生成新的实例标识（每次启动服务时调用）。
@@ -265,7 +265,7 @@ pub async fn lan_sync_scan_peers(
     app: AppHandle,
     state: State<'_, LanSyncState>,
 ) -> Result<Vec<PeerInfo>, String> {
-    let instance_id = get_instance_id(&state);
+    let instance_id = get_instance_id(&state)?;
 
     // 从 Announcer 获取共享的 daemon（clone 后释放锁）
     let daemon = {

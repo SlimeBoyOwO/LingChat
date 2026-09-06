@@ -74,7 +74,10 @@ impl ScriptEvent for ChapterEndEvent {
                 .unwrap_or_else(|| "end".to_string()),
             "branching" => {
                 let gs = ctx.game_status.lock().await;
-                let script_status = gs.script_status.as_ref().unwrap(); // safe: checked above
+                let script_status = gs
+                    .script_status
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
                 let mut result = "end".to_string();
                 for opt in &self.options {
                     let condition = opt.get("condition").and_then(|v| v.as_str()).unwrap_or("");

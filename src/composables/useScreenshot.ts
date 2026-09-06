@@ -9,29 +9,45 @@ const isCapturing = ref(false);
 let unlisten: (() => void) | null = null;
 let unlistenCanceled: (() => void) | null = null;
 let initCount = 0;
+let disposed = false;
 
 export function useScreenshot() {
   function init() {
     if (initCount++ > 0) return;
+    disposed = false;
     listen<{ base64: string }>("screenshot:captured", (event) => {
       screenshotBase64.value = event.payload.base64;
       hasScreenshot.value = true;
       isCapturing.value = false;
-    }).then((fn) => {
-      unlisten = fn;
-    });
+    })
+      .then((fn) => {
+        // listen resolve 前组件已 destroy：立即反注册，避免残留监听
+        if (disposed) {
+          fn();
+          return;
+        }
+        unlisten = fn;
+      })
+      .catch((e) => console.error("监听截图完成事件失败:", e));
 
     listen("screenshot:cancelled", () => {
       //监听截图取消事件
       hasScreenshot.value = false;
       isCapturing.value = false;
-    }).then((fn) => {
-      unlistenCanceled = fn;
-    });
+    })
+      .then((fn) => {
+        if (disposed) {
+          fn();
+          return;
+        }
+        unlistenCanceled = fn;
+      })
+      .catch((e) => console.error("监听截图取消事件失败:", e));
   }
 
   function destroy() {
     if (--initCount > 0) return;
+    disposed = true;
     if (unlisten) {
       unlisten();
       unlisten = null;

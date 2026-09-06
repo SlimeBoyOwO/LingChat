@@ -295,7 +295,7 @@
   // 处理退出：两个条件都满足时调用 Rust exit_app
   function tryExit() {
     if (saveCompleted && userConfirmedExit) {
-      invoke("exit_app");
+      invoke("exit_app").catch((e) => console.error("退出应用失败:", e));
     }
   }
 

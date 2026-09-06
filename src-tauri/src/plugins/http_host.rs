@@ -21,20 +21,42 @@ static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 /// reqwest 是异步 client，需要 tokio reactor，这里用独立多线程 runtime 驱动。
 static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 
-fn client() -> &'static reqwest::Client {
-    HTTP_CLIENT.get_or_init(|| {
-        factory::build_http_client(30).expect("构建插件 HTTP client 失败（rustls/webpki 配置错误）")
-    })
+/// 懒初始化共享 reqwest Client。初始化失败时返回 None（而非 panic），
+/// 由调用方把错误转成 Python dict 反馈给插件脚本。
+fn client() -> Option<&'static reqwest::Client> {
+    if let Some(c) = HTTP_CLIENT.get() {
+        return Some(c);
+    }
+    match factory::build_http_client(30) {
+        Ok(c) => {
+            let _ = HTTP_CLIENT.set(c);
+            HTTP_CLIENT.get()
+        },
+        Err(e) => {
+            tracing::error!("构建插件 HTTP client 失败（rustls/webpki 配置错误）: {e}");
+            None
+        },
+    }
 }
 
-pub(crate) fn runtime() -> &'static tokio::runtime::Runtime {
-    RUNTIME.get_or_init(|| {
-        tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .worker_threads(2)
-            .build()
-            .expect("构建插件 HTTP runtime 失败")
-    })
+pub(crate) fn runtime() -> Option<&'static tokio::runtime::Runtime> {
+    if let Some(rt) = RUNTIME.get() {
+        return Some(rt);
+    }
+    match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .worker_threads(2)
+        .build()
+    {
+        Ok(rt) => {
+            let _ = RUNTIME.set(rt);
+            RUNTIME.get()
+        },
+        Err(e) => {
+            tracing::error!("构建插件 HTTP runtime 失败: {e}");
+            None
+        },
+    }
 }
 
 /// 把 Python 对象转成 serde_json::Value（用于解析 kwargs 里的 headers/body）。
@@ -116,7 +138,11 @@ fn apply_map_args(
 /// 插件脚本在 `spawn_blocking` 线程内执行，线程上无 tokio runtime，
 /// 用独立 runtime 的 `block_on` 阻塞等待，不会卡住 tokio runtime 主线程。
 fn send_and_to_py(req: reqwest::RequestBuilder, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
-    let json = runtime()
+    let Some(rt) = runtime() else {
+        let json = serde_json::json!({ "ok": false, "error": "插件 HTTP runtime 初始化失败" });
+        return Ok(value_to_pyobject(vm, &json));
+    };
+    let json = rt
         .block_on(async {
             let resp = req
                 .send()
@@ -155,7 +181,11 @@ mod plugin_host {
     ) -> PyResult<PyObjectRef> {
         let kwargs = super::kwargs_map(kwargs);
         let timeout = super::kw_timeout(vm, &kwargs);
-        let req = super::client()
+        let Some(client) = super::client() else {
+            let json = serde_json::json!({ "ok": false, "error": "插件 HTTP client 初始化失败" });
+            return Ok(super::value_to_pyobject(vm, &json));
+        };
+        let req = client
             .get(&url)
             .timeout(std::time::Duration::from_millis(timeout));
         let req = super::apply_map_args(req, vm, &kwargs, "headers");
@@ -174,7 +204,11 @@ mod plugin_host {
     ) -> PyResult<PyObjectRef> {
         let kwargs = super::kwargs_map(kwargs);
         let timeout = super::kw_timeout(vm, &kwargs);
-        let req = super::client()
+        let Some(client) = super::client() else {
+            let json = serde_json::json!({ "ok": false, "error": "插件 HTTP client 初始化失败" });
+            return Ok(super::value_to_pyobject(vm, &json));
+        };
+        let req = client
             .post(&url)
             .timeout(std::time::Duration::from_millis(timeout));
         let req = super::apply_map_args(req, vm, &kwargs, "headers");

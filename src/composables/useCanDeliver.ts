@@ -16,6 +16,7 @@ const CHAT_ROUTES = ["LingChat", "PetMode"];
 // ===== 全局输入状态（由 GameDialog / ChatInput 组件上报） =====
 let _inputHasText = false;
 const _inputListeners = new Set<() => void>();
+let _subscriptionRegistered = false;
 
 /** 各输入组件在 watch 中调用此函数来更新输入状态 */
 export function setInputHasText(val: boolean) {
@@ -40,8 +41,11 @@ export function useCanDeliver() {
   watch(() => router.currentRoute.value.name, recompute, { immediate: true });
   watch(() => uiStore.showSettings, recompute);
 
-  // 输入状态变化时重新计算
-  _inputListeners.add(recompute);
+  // 输入状态变化时重新计算（模块级单例：只注册一次，避免重复累积）
+  if (!_subscriptionRegistered) {
+    _inputListeners.add(recompute);
+    _subscriptionRegistered = true;
+  }
 
   // 值翻转时通知后端
   watch(canDeliver, (val) => {

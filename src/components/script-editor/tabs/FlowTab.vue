@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { computed, ref, watch } from "vue";
+  import { computed, onUnmounted, ref, watch } from "vue";
   import { useI18n } from "vue-i18n";
   import { Icon, Toggle } from "@/components/base";
   import { MenuPage, MenuItem } from "@/components/ui";
@@ -50,12 +50,30 @@
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      activeGripMove = null;
+      activeGripUp = null;
       // 没有进入拖拽就是单击 → 切换展开/折叠
       if (!gripDragging) store.propsExpanded = !store.propsExpanded;
     };
+    activeGripMove = onMove;
+    activeGripUp = onUp;
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   };
+
+  // 卸载时若拖拽仍在进行（pointerup 在窗口外/组件提前卸载），清理残留监听
+  let activeGripMove: ((ev: PointerEvent) => void) | null = null;
+  let activeGripUp: (() => void) | null = null;
+  onUnmounted(() => {
+    if (activeGripMove) {
+      window.removeEventListener("pointermove", activeGripMove);
+      activeGripMove = null;
+    }
+    if (activeGripUp) {
+      window.removeEventListener("pointerup", activeGripUp);
+      activeGripUp = null;
+    }
+  });
 
   /** 退出章节编辑时自动收起属性栏 */
   watch(

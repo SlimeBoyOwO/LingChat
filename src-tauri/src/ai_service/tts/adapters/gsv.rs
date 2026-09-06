@@ -152,9 +152,12 @@ impl TtsAdapter for GsvAdapter {
                     sleep(Duration::from_millis(500)).await;
                 },
                 Err(error) => {
+                    let first_error = retry_error
+                        .as_ref()
+                        .map(ToString::to_string)
+                        .unwrap_or_else(|| "未知".to_string());
                     return Err(anyhow!(
-                        "GPT-SoVITS request failed after retry: {error}; first error: {}",
-                        retry_error.expect("retry error must exist")
+                        "GPT-SoVITS request failed after retry: {error}; first error: {first_error}"
                     ));
                 },
             }

@@ -269,7 +269,10 @@ impl SherpaOnnxAdapter {
             encoder: Some(encoder.to_string_lossy().to_string()),
             decoder: Some(decoder.to_string_lossy().to_string()),
             vocoder: Some(vocoder.to_string_lossy().to_string()),
-            data_dir: Self::espeak_data_dir(model_dir)
+            // ZipVoice 的 data-dir 必须是直接包含 phontab/phondata/phonindex 的目录
+            //（与 Matcha/espeak 的 espeak-ng-data 父目录层级不同）。部分模型把
+            // 这些语音库文件放到 espeak-ng-data/ 下，因此需按 phontab 实际所在目录解析。
+            data_dir: zipvoice_data_dir(model_dir)
                 .map(|p| p.to_string_lossy().to_string()),
             lexicon: find_file_optional(model_dir, &["lexicon.txt"])
                 .map(|p| p.to_string_lossy().to_string()),
@@ -382,6 +385,20 @@ fn find_dir_optional(dir: &Path, candidates: &[&str]) -> Option<PathBuf> {
         .find(|p| p.is_dir())
 }
 
+/// 定位 ZipVoice 数据目录：该目录需直接包含 phontab/phondata/phonindex。
+/// 优先匹配目录本身或其 `espeak-ng-data` 子目录，其次匹配模型目录。
+fn zipvoice_data_dir(model_dir: &Path) -> Option<PathBuf> {
+    if model_dir.join("phontab").exists() {
+        return Some(model_dir.to_path_buf());
+    }
+    if find_dir_optional(model_dir, &["espeak-ng-data"])
+        .is_some_and(|p| p.join("phontab").exists())
+    {
+        return find_dir_optional(model_dir, &["espeak-ng-data"]);
+    }
+    None
+}
+
 fn f32_to_wav(samples: &[f32], sample_rate: i32) -> Vec<u8> {
     let num_samples = samples.len();
     let data_size = num_samples * 2;
@@ -420,9 +437,19 @@ pub fn load_reference_audio(path: &Path) -> Result<(Vec<f32>, i32)> {
     let data = std::fs::read(path)
         .map_err(|e| anyhow!("无法读取参考音频文件 {}: {}", path.display(), e))?;
 
-    let channels = u16::from_le_bytes(data[22..24].try_into().unwrap_or([1, 0])) as u32;
-    let sample_rate = i32::from_le_bytes(data[24..28].try_into().unwrap_or([0; 4]));
-    let bits_per_sample = u16::from_le_bytes(data[34..36].try_into().unwrap_or([16, 0]));
+    // 最小 WAV 头：44 字节（RIFF/WAVE/fmt/data 头）。低于此长度的输入直接报错，
+    // 避免下方切片越界 panic。
+    if data.len() < 44 {
+        return Err(anyhow!(
+            "WAV 文件过短（{} 字节，至少需要 44 字节）: {}",
+            data.len(),
+            path.display()
+        ));
+    }
+
+    let channels = u16::from_le_bytes(data[22..24].try_into().unwrap()) as u32;
+    let sample_rate = i32::from_le_bytes(data[24..28].try_into().unwrap());
+    let bits_per_sample = u16::from_le_bytes(data[34..36].try_into().unwrap());
 
     let data_offset = find_wav_data_chunk(&data).ok_or_else(|| anyhow!("WAV 文件中未找到 data 块: {}", path.display()))?;
 
@@ -491,6 +518,78 @@ mod tests {
         let data_start = find_wav_data_chunk(wav).expect("缺 data chunk");
         let data_bytes = wav.len() - data_start;
         (sample_rate, data_bytes / (bits as usize / 8))
+    }
+
+    /// ZipVoice 零样本语音克隆：加载参考音频 → 设置 → 合成 → 验证非静音。
+    ///
+    /// 依赖真实模型和参考音频，默认忽略；通过设置 `SHERPA_TEST_MODEL_DIR`（模型目录）
+    /// 并用 `-- --ignored` 显式运行。
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore = "需要 zipvoice 模型目录（SHERPA_TEST_MODEL_DIR）"]
+    async fn zipvoice_clone_with_reference() {
+        let model_dir = test_model_dir();
+        assert!(
+            !model_dir.is_empty() && Path::new(&model_dir).exists(),
+            "模型目录不存在，请设置 SHERPA_TEST_MODEL_DIR: {model_dir}"
+        );
+
+        let ref_path = std::env::var("SHERPA_TEST_REF_AUDIO").unwrap_or_else(|_| {
+            "/tmp/baizi_ref.wav".to_string()
+        });
+        assert!(
+            Path::new(&ref_path).exists(),
+            "参考音频不存在: {ref_path}"
+        );
+
+        // 加载参考音频
+        let (samples, sample_rate) = load_reference_audio(Path::new(&ref_path))
+            .expect("加载参考音频失败");
+        eprintln!(
+            "参考音频: sr={}, samples={} ({:.2}s)",
+            sample_rate,
+            samples.len(),
+            samples.len() as f64 / sample_rate as f64
+        );
+
+        // 初始化 adapter
+        let adapter = SherpaOnnxAdapter::new(
+            TtsConfig::default(),
+            model_dir,
+            "zipvoice".to_string(),
+            "zh".to_string(),
+            "female".to_string(),
+            false,
+        )
+        .expect("初始化 Sherpa-ONNX 失败");
+
+        // 设置参考音频
+        let mut adapter = adapter;
+        adapter.set_reference_audio(samples, sample_rate, "你好，我是白子。".to_string());
+        adapter.set_speed(1.0);
+
+        // 合成
+        let text = "老师好，今天也请多指教了。";
+        eprintln!("合成文本: {text}");
+        let wav = adapter
+            .generate_voice(text, "")
+            .await
+            .expect("合成失败");
+
+        let (sr, num_samples) = parse_wav(&wav);
+        eprintln!("输出: sr={sr}, 样本数={num_samples}, WAV-Ok");
+
+        // 验证音频非静音
+        let data_start = find_wav_data_chunk(&wav).unwrap();
+        let pcm = &wav[data_start..];
+        let has_signal = pcm
+            .chunks_exact(2)
+            .any(|c| i16::from_le_bytes([c[0], c[1]]).unsigned_abs() > 200);
+        assert!(has_signal, "生成音频疑似全静音");
+
+        // 保存输出
+        let out = std::env::temp_dir().join("sherpa_clone_output.wav");
+        std::fs::write(&out, &wav).expect("写入输出失败");
+        eprintln!("输出文件: {}", out.display());
     }
 
     /// 完整跑一遍 Matcha 语音合成（覆盖初始化 + generate_voice + WAV 编码），

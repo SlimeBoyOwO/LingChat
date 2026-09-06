@@ -245,7 +245,7 @@ import {
   listSherpaModels,
   downloadSherpaModel,
   deleteSherpaModel,
-  onDownloadProgress,
+  onSherpaDownloadProgress,
   type SherpaOnnxModelRecord,
 } from '@/api/services/tts/tts-local'
 import { playLocalAudio, stopCurrentAudio } from '@/utils/mediaUrl'
@@ -282,7 +282,7 @@ const refAudioName = computed(() => {
 
 onMounted(() => {
   loadModels()
-  progressUnlisten = onDownloadProgress((progress) => {
+  progressUnlisten = onSherpaDownloadProgress((progress) => {
     progressByModel.value = {
       ...progressByModel.value,
       [progress.asset_id]: progress.percent,

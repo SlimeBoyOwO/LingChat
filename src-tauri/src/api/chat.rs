@@ -150,6 +150,7 @@ pub async fn send_chat_message(
                 &gs,
                 &adventures,
             )
+            .await
             .unwrap_or_default()
         };
         for info in &newly_unlocked {

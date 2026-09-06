@@ -89,7 +89,9 @@ impl GameRoleManager {
         if !self.loaded_roles.contains_key(&role_id) {
             self.register_role_by_id(db, role_id).await?;
         }
-        Ok(self.loaded_roles.get_mut(&role_id).expect("角色刚刚插入"))
+        self.loaded_roles
+            .get_mut(&role_id)
+            .ok_or_else(|| anyhow!("角色 {role_id} 注册后仍未被加载"))
     }
 
     pub fn get_loaded(&self, role_id: i32) -> Option<&GameRole> {
@@ -287,7 +289,9 @@ impl GameRoleManager {
 
             // 阶段 1: 提取角色数据后释放借用，再惰性构造 MemoryBank 系统
             let (display_name, bank_clone, mb_enabled) = {
-                let role = self.loaded_roles.get(&rid).expect("角色刚刚加载");
+                let Some(role) = self.loaded_roles.get(&rid) else {
+                    return Err(anyhow!("角色 {rid} 已注册但未被加载"));
+                };
                 let name = role
                     .display_name
                     .clone()
@@ -455,7 +459,9 @@ impl GameRoleManager {
 
             // 提取数据（释放借用后传递给 ensure）
             let (bank, display_name, enabled) = {
-                let role = self.loaded_roles.get(&rid).expect("角色刚刚加载");
+                let Some(role) = self.loaded_roles.get(&rid) else {
+                    return Err(anyhow!("角色 {rid} 已注册但未被加载"));
+                };
                 (
                     role.memory_bank.clone(),
                     role.display_name
@@ -512,10 +518,13 @@ impl GameRoleManager {
         );
         let voice_maker_ready = voice_maker.is_some();
 
-        let role = self
-            .loaded_roles
-            .get_mut(&role_id)
-            .expect("更新 TTS 设置时已加载的角色消失了");
+        let role = match self.loaded_roles.get_mut(&role_id) {
+            Some(role) => role,
+            None => {
+                tracing::warn!("更新 TTS 设置时角色 {} 已卸载", role_id);
+                return false;
+            },
+        };
         role.settings.tts_type = settings.tts_type.clone();
         role.settings.voice_lang = settings.voice_lang.clone();
         role.settings.voice_models = settings.voice_models.clone();

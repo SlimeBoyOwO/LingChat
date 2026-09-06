@@ -2,13 +2,13 @@ name: 打包发行版
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       data_version:
-        description: '数据版本号（整数）'
+        description: "数据版本号（整数）"
         required: false
-        default: '1'
+        default: "1"
 
 env:
   DATA_VERSION: ${{ github.event.inputs.data_version || github.run_number }}
@@ -61,7 +61,7 @@ jobs:
         include:
           - platform: linux-arm64
             os: ubuntu-latest
-            target: ''
+            target: ""
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -81,8 +81,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'pnpm'
-      
+          cache: "pnpm"
+
       - name: 设置 pnpm store 缓存
         uses: actions/cache@v4
         with:
@@ -108,7 +108,7 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: |
-              ./src-tauri
+            ./src-tauri
           cache-targets: true
           shared-key: ${{ runner.os }}-${{ runner.arch }}-main-pnpm-tauri-build-${{ hashFiles('src-tauri/Cargo.lock') }}
 
@@ -122,7 +122,7 @@ jobs:
           RUSTFLAGS: ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
         with:
           uploadWorkflowArtifacts: true
-          workflowArtifactNamePattern: '${{ matrix.platform }}-build'
+          workflowArtifactNamePattern: "${{ matrix.platform }}-build"
           args: ${{ matrix.target }}
 
   release:
@@ -140,7 +140,7 @@ jobs:
       # 下载各平台的构建产物
       - uses: actions/download-artifact@v4
         with:
-          pattern: '*-build'
+          pattern: "*-build"
           path: artifacts/builds
           merge-multiple: true
 
@@ -151,7 +151,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: 'LingChat ${{ github.ref_name }}'
+          name: "LingChat ${{ github.ref_name }}"
           body: |
             ## 更新内容
 

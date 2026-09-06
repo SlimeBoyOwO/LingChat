@@ -5,17 +5,15 @@
 //! 传递整包字节，并且不设置压缩包的绝对大小限制。
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tokio_util::sync::CancellationToken;
 
 mod export_pipeline;
 mod import_pipeline;
 mod state;
 
-pub use state::{ImportTaskEntry, RoleArchiveState};
+pub use state::RoleArchiveState;
 
 use crate::utils::archive::ArchiveFormat;
 
@@ -82,14 +80,7 @@ pub async fn import_role(
 
     // 为每个导入任务分配独立的取消令牌。
     let task_id = uuid::Uuid::new_v4().to_string();
-    let cancel_token = Arc::new(CancellationToken::new());
-    state.tasks.lock().unwrap().insert(
-        task_id.clone(),
-        ImportTaskEntry {
-            cancel_token: cancel_token.clone(),
-            saf_cache_path: std::sync::Mutex::new(None),
-        },
-    );
+    let cancel_token = state.register_task(&task_id);
     let _remove_guard = TaskRemoveGuard {
         state: &state,
         task_id: &task_id,
@@ -133,8 +124,6 @@ pub async fn import_role(
 }
 
 /// 取消正在进行的导入。
-
-/// 取消正在进行的导入。
 #[tauri::command]
 pub async fn cancel_role_import(
     task_id: String,
@@ -144,21 +133,10 @@ pub async fn cancel_role_import(
         "[RoleArchive] cancel_role_import 收到取消: task_id={}",
         task_id
     );
-    let entry = state.tasks.lock().unwrap().remove(&task_id);
-    if let Some(entry) = entry {
-        entry.cancel_token.cancel();
-        // 取消时立即清理 SAF 缓存，不等待 `do_import` 执行结束。
-        let cached_path = entry.saf_cache_path.lock().unwrap().take();
-        if let Some(path) = cached_path {
-            tracing::info!("[RoleArchive] cancel 清理 SAF 缓存: {}", path.display());
-            let _ = tokio::fs::remove_file(&path).await;
-        }
-    } else {
-        tracing::warn!(
-            "[RoleArchive] cancel_role_import 未找到 task_id={}",
-            task_id
-        );
-    }
+    // 收敛到状态层的 cancel_task：取任务、cancel 令牌、清理 SAF 缓存副本
+    // 一次性幂等完成（RAII 守卫与 do_import 尾清理双重兜底），
+    // 避免在此手动锁 map / 锁 cache 路径造成取消与完成的竞态。
+    state.cancel_task(&task_id);
     Ok(())
 }
 
@@ -198,12 +176,7 @@ pub async fn import_role_from_path(
 
     // 为每个导入任务分配独立的取消令牌。
     let task_id = uuid::Uuid::new_v4().to_string();
-    let cancel_token = Arc::new(CancellationToken::new());
-    let entry = ImportTaskEntry {
-        cancel_token: cancel_token.clone(),
-        saf_cache_path: std::sync::Mutex::new(None),
-    };
-    state.tasks.lock().unwrap().insert(task_id.clone(), entry);
+    let cancel_token = state.register_task(&task_id);
     let _remove_guard = TaskRemoveGuard {
         state: &state,
         task_id: &task_id,
@@ -219,9 +192,7 @@ pub async fn import_role_from_path(
 
     // SAF 源文件复制完成后记录缓存路径，便于取消任务时立即清理。
     if src.cleanup_after_import {
-        if let Some(entry) = state.tasks.lock().unwrap().get_mut(&task_id) {
-            *entry.saf_cache_path.lock().unwrap() = Some(src.path.clone());
-        }
+        state.set_saf_cache(&task_id, src.path.clone());
     }
 
     // 文件名兜底：前端传来的 `file_name` 可能是 URI 末段未经 decode 的

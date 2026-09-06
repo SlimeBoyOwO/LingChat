@@ -129,7 +129,10 @@ fn make_call_tool(vm: &VirtualMachine, app: AppHandle) -> PyResult<PyObjectRef> 
             let timeout = tool
                 .timeout_hint()
                 .unwrap_or(std::time::Duration::from_secs(2));
-            let result = http_host::runtime().block_on(async {
+            let Some(rt) = http_host::runtime() else {
+                return Err(vm.new_value_error("插件 HTTP runtime 初始化失败"));
+            };
+            let result = rt.block_on(async {
                 tokio::time::timeout(timeout, tool.execute(&context, args_value)).await
             });
             match result {

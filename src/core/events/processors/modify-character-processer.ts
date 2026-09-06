@@ -32,6 +32,9 @@ export default class ModifyCharacterProcessor implements IEventProcessor {
             role.show = false;
             if (delay > 0) {
               setTimeout(() => {
+                // 延迟期内角色被重新 show_character（show=true 且已重新入队）时，
+                // 跳过移除，避免陈旧闭包把重新出现的角色误隐藏。
+                if (role.show) return;
                 gameStore.presentRoleIds = gameStore.presentRoleIds.filter(
                   (id) => id !== event.characterId
                 );

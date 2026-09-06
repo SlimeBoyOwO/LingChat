@@ -203,7 +203,12 @@ export function useLanSync() {
   function openDialog() {
     dialogVisible.value = true;
     reset();
-    startServer().then(() => scanPeers());
+    startServer()
+      .then(() => scanPeers())
+      .catch((e) => {
+        phase.value = "error";
+        errorMessage.value = String(e);
+      });
   }
 
   /** 重启应用（桌面端），应用暂存的同步文件 */

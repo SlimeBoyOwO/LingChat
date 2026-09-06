@@ -86,6 +86,7 @@ const ENERGY_WARMUP_MS = 100;
 const voicePlaying = ref(false);
 /** 输入框桥：GameDialog 注册，供 partial 实时写入 / 拼接基准读取 */
 let inputBridge: { getText: () => string; setText: (v: string) => void } | null = null;
+let inputBridgeId = 0;
 /** 录音开始时的输入框内容快照（拼接语义的基准：partial 只追加在这之后） */
 let baseText = "";
 /** 语音会话进行中（GameDialog 据此 readonly 输入框，语音期间禁止手动输入） */
@@ -221,12 +222,20 @@ function updateAsrAvailability(): void {
   }
 }
 
-/** GameDialog 调用：注册输入框读写桥（partial 写入 / 拼接基准） */
+/** GameDialog 调用：注册输入框读写桥（partial 写入 / 拼接基准）。
+ *  返回 unregister：组件卸载时调用，避免 bridge 悬挂指向已卸载组件；带 token
+ *  防竞态（若其他组件已注册新 bridge，则不误删新 bridge）。 */
 export function registerAsrInputBridge(b: {
   getText: () => string;
   setText: (v: string) => void;
-}): void {
+}): () => void {
+  const id = ++inputBridgeId;
   inputBridge = b;
+  return () => {
+    if (id === inputBridgeId) {
+      inputBridge = null;
+    }
+  };
 }
 
 /** 流式是否生效：设置开关 + 当前生效模型的流式能力（模型级权威判定，
