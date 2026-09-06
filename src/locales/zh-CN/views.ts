@@ -1,5 +1,6 @@
 export default {
   miniGames: {
+    starTrailTitle: "星灯远征",
     title: "小游戏",
     twilightTitle: "暮色节拍",
     twilightDescription: "在黄昏神社，和钦灵一起接住最后一拍。",

@@ -1,5 +1,6 @@
 export default {
   miniGames: {
+    starTrailTitle: "星灯の冒険",
     title: "ミニゲーム",
     twilightTitle: "暮色のリズム",
     twilightDescription: "夕暮れの神社で、欽霊と最後の一拍まで。",

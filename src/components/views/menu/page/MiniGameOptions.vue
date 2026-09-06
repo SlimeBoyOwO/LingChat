@@ -6,6 +6,11 @@
       }}</StartItem>
     </StartLine>
     <StartLine>
+      <StartItem class="menu-subitem" @click="router.push('/mini-games/star-trail')">{{
+        $t("views.miniGames.starTrailTitle")
+      }}</StartItem>
+    </StartLine>
+    <StartLine>
       <StartItem class="menu-subitem" @click="emit('back')">{{ $t("views.menu.back") }}</StartItem>
     </StartLine>
   </StartList>

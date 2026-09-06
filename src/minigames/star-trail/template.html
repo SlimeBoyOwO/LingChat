@@ -1,0 +1,43 @@
+<div class="star-trail" data-mode="title">
+  <canvas id="trail-canvas" width="640" height="360" aria-label="星灯远征，横版跳跃射击游戏"></canvas>
+  <div class="title-screen" id="trail-title">
+    <div class="game-title"><h1>星灯远征</h1><p>青苔海岸 · 落日机坊 · 星月高塔</p></div>
+    <nav class="scene-menu" aria-label="星灯远征菜单">
+      <button id="trail-start" class="menu-item">开始远征</button>
+      <button id="trail-help" class="menu-item">操作说明</button>
+      <button id="trail-exit" class="menu-item">返回</button>
+    </nav>
+    <p class="title-hint">A / D 移动　 W / ↑ 跳跃　 空格射击</p>
+  </div>
+  <div class="hud" id="trail-hud" hidden>
+    <div class="hud-left"><span id="trail-stage"></span><div id="trail-hearts" aria-label="生命"></div><span id="trail-score"></span></div>
+    <button id="trail-pause" aria-label="暂停游戏">暂停</button>
+  </div>
+  <div class="boss-hud" id="trail-boss" hidden><span id="trail-boss-name"></span><div class="boss-track"><div id="trail-boss-health"></div></div></div>
+  <p class="announcement" id="trail-announcement" hidden aria-live="polite"></p>
+  <div class="touch-controls" id="trail-touch" hidden>
+    <div><button data-action="left" aria-label="向左移动">◀</button><button data-action="right" aria-label="向右移动">▶</button></div>
+    <div><button data-action="jump" aria-label="跳跃">跳</button><button data-action="fire" aria-label="射击">射</button></div>
+  </div>
+  <div class="scrim" id="trail-overlay" hidden>
+    <section class="overlay-menu" role="dialog" aria-modal="true" aria-labelledby="trail-overlay-title">
+      <h2 id="trail-overlay-title">暂停</h2><p id="trail-overlay-copy"></p>
+      <div class="overlay-actions">
+        <button id="trail-primary" class="menu-item">继续远征</button>
+        <button id="trail-retry" class="menu-item">从检查点重试</button>
+        <button id="trail-title-return" class="menu-item">返回标题</button>
+        <button id="trail-overlay-exit" class="menu-item">退出小游戏</button>
+      </div>
+      <label class="music-volume">音乐与音效 <input id="trail-volume" aria-label="音乐与音效音量" type="range" min="0" max="100" value="35"><output id="trail-volume-value">35%</output></label>
+    </section>
+  </div>
+  <div class="scrim help" id="trail-help-screen" hidden>
+    <section class="overlay-menu" role="dialog" aria-modal="true" aria-labelledby="trail-help-title">
+      <h2 id="trail-help-title">操作说明</h2>
+      <p>A / D 或 ← / → 移动<br>W / ↑ / Z 跳跃，松开可降低跳跃高度<br>空格连续射击，Esc 暂停</p>
+      <p>跳到敌人头顶可以踩击；收集星晶增加得分。<br>绿色药瓶恢复生命，点亮路边星灯可记录检查点。<br>Boss 攻击前会闪烁蓄力；击败守卫后抵达终点星灯。</p>
+      <button id="trail-help-close" class="menu-item">返回</button>
+    </section>
+  </div>
+  <span id="trail-status" class="sr-only" aria-live="polite"></span>
+</div>

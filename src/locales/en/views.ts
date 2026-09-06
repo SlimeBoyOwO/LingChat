@@ -1,6 +1,7 @@
 // English language pack, maintained from zh-CN/views.ts（约 44 条）
 export default {
   miniGames: {
+    starTrailTitle: "Star Trail",
     title: "Mini Games",
     twilightTitle: "Twilight Cadence",
     twilightDescription: "Catch the last beat with Qinling in a shrine at dusk.",

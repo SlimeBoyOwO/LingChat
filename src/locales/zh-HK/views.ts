@@ -1,6 +1,7 @@
 // 繁體中文（香港 · 粵語文體）语言包，由 zh-CN/views.ts（约 44 条） 翻譯維護
 export default {
   miniGames: {
+    starTrailTitle: "星燈遠征",
     title: "小遊戲",
     twilightTitle: "暮色節拍",
     twilightDescription: "喺黃昏神社，同欽靈一齊接住最後一拍。",

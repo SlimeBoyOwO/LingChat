@@ -1,0 +1,350 @@
+:host {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: #fff8e5;
+  font-family: "Maoken_Assorted_Sans", "Maoken Assorted Sans", "Microsoft YaHei", sans-serif;
+}
+* {
+  box-sizing: border-box;
+}
+[hidden] {
+  display: none !important;
+}
+.star-trail {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #173f64;
+  isolation: isolate;
+}
+#trail-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 0;
+  background: none;
+  -webkit-tap-highlight-color: transparent;
+}
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid #ffedab;
+  outline-offset: 5px;
+}
+.title-screen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #16354c66, transparent 70%);
+}
+.game-title {
+  position: absolute;
+  right: 6%;
+  top: 10%;
+  text-align: right;
+  text-shadow: 0 4px 7px #17394d88;
+}
+.game-title h1 {
+  margin: 0;
+  font-size: clamp(36px, 6vw, 86px);
+  letter-spacing: 0.1em;
+}
+.game-title p {
+  font:
+    clamp(10px, 1.1vw, 16px) "Microsoft YaHei",
+    sans-serif;
+  letter-spacing: 0.12em;
+  margin-top: 16px;
+}
+.scene-menu {
+  position: absolute;
+  top: 45%;
+  left: 6.5%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: clamp(12px, 3vh, 27px);
+}
+.menu-item {
+  font-size: clamp(25px, 3.8vw, 58px);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  padding: 5px;
+  line-height: 1.25;
+  text-shadow: 0 3px 5px #17374e88;
+  transition:
+    transform 0.16s,
+    color 0.16s;
+}
+.menu-item:hover {
+  transform: translate(-3px, -3px);
+  color: #ffedb4;
+}
+.title-hint {
+  position: absolute;
+  left: 7%;
+  bottom: 4%;
+  margin: 0;
+  font:
+    clamp(10px, 1vw, 14px) "Microsoft YaHei",
+    sans-serif;
+  text-shadow: 0 2px 3px #17374e;
+}
+.hud {
+  position: absolute;
+  inset: 4% 4% auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  pointer-events: none;
+  text-shadow: 0 2px 3px #20394c;
+}
+.hud-left {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+#trail-stage {
+  font-size: clamp(14px, 1.8vw, 25px);
+  letter-spacing: 0.08em;
+}
+#trail-hearts {
+  display: flex;
+  gap: 6px;
+  filter: drop-shadow(0 2px #304563);
+}
+.heart {
+  width: 16px;
+  height: 14px;
+  background: #f8a9b2;
+  clip-path: polygon(
+    0 14%,
+    14% 0,
+    36% 0,
+    50% 18%,
+    64% 0,
+    86% 0,
+    100% 14%,
+    100% 50%,
+    50% 100%,
+    0 50%
+  );
+}
+.heart.empty {
+  background: #44607b;
+}
+#trail-score {
+  font:
+    clamp(11px, 1.2vw, 16px) Consolas,
+    "Microsoft YaHei",
+    monospace;
+  color: #ffebbb;
+}
+#trail-pause {
+  font-size: clamp(20px, 2vw, 30px);
+  pointer-events: auto;
+  padding: 8px;
+  text-shadow: inherit;
+}
+.boss-hud {
+  position: absolute;
+  top: 5%;
+  left: 32%;
+  width: 36%;
+  text-align: center;
+  text-shadow: 0 2px #2a2d51;
+}
+.boss-hud > span {
+  font-size: clamp(13px, 1.6vw, 22px);
+}
+.boss-track {
+  height: 10px;
+  margin-top: 10px;
+  padding: 2px;
+  background: #252849bb;
+}
+#trail-boss-health {
+  height: 100%;
+  background: #f7a1b3;
+  transform-origin: left;
+}
+.announcement {
+  position: absolute;
+  top: 29%;
+  left: 10%;
+  right: 10%;
+  margin: 0;
+  text-align: center;
+  pointer-events: none;
+  font-size: clamp(17px, 2vw, 27px);
+  text-shadow: 0 3px 6px #14314e;
+}
+.scrim {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #142137cc;
+  backdrop-filter: blur(5px);
+  z-index: 8;
+}
+.overlay-menu {
+  width: min(700px, 86%);
+  max-height: 94%;
+}
+.overlay-menu h2 {
+  font-size: clamp(26px, 4vw, 54px);
+  margin: 0 0 15px;
+  letter-spacing: 0.08em;
+}
+.overlay-menu p {
+  font:
+    clamp(12px, 1.3vw, 17px)/1.9 "Microsoft YaHei",
+    sans-serif;
+  color: #cce5ea;
+  margin: 0 0 20px;
+}
+.overlay-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.overlay-actions .menu-item,
+.help .menu-item {
+  font-size: clamp(23px, 3vw, 40px);
+}
+.music-volume {
+  margin-top: 25px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font:
+    12px "Microsoft YaHei",
+    sans-serif;
+  color: #c7d5da;
+}
+.music-volume input {
+  width: min(180px, 35vw);
+  accent-color: #e4d4ac;
+}
+.touch-controls {
+  position: absolute;
+  inset: auto 4% 4%;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.touch-controls > div {
+  display: flex;
+  gap: 12px;
+}
+.touch-controls button {
+  width: clamp(42px, 5.2vw, 68px);
+  height: clamp(42px, 5.2vw, 68px);
+  background: #20374c55;
+  border: 2px solid #daf8f077;
+  font-size: 23px;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+}
+.touch-controls button.active {
+  background: #94ddcfa0;
+}
+@media (pointer: fine) and (min-width: 900px) {
+  .touch-controls {
+    opacity: 0.2;
+  }
+  .touch-controls:hover {
+    opacity: 0.9;
+  }
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+@media (max-height: 550px) {
+  .game-title {
+    top: 6%;
+  }
+  .game-title h1 {
+    font-size: 38px;
+  }
+  .scene-menu {
+    top: 38%;
+    gap: 6px;
+  }
+  .menu-item {
+    font-size: 27px;
+  }
+  .overlay-menu h2 {
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
+  .overlay-menu p {
+    font-size: 11px;
+    margin-bottom: 8px;
+  }
+  .overlay-actions {
+    gap: 3px;
+  }
+  .overlay-actions .menu-item {
+    font-size: 23px;
+  }
+  .music-volume {
+    margin-top: 12px;
+  }
+  .hud {
+    top: 3%;
+  }
+  #trail-hearts {
+    gap: 4px;
+  }
+  .heart {
+    width: 12px;
+    height: 11px;
+  }
+}
+@media (max-width: 600px) and (min-height: 551px) {
+  .game-title {
+    top: 12%;
+  }
+  .game-title h1 {
+    font-size: 39px;
+  }
+  .game-title p {
+    font-size: 10px;
+  }
+  .scene-menu {
+    top: 37%;
+  }
+  .boss-hud {
+    top: 17%;
+    left: 20%;
+    width: 60%;
+  }
+  .title-hint {
+    bottom: 6%;
+    font-size: 10px;
+  }
+  .announcement {
+    top: 25%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu-item {
+    transition: none;
+  }
+}

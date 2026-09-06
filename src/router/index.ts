@@ -18,11 +18,13 @@ const WorkshopPage = () => import("../components/views/WorkshopPage.vue");
 
 const MiniGames = () => import("../components/views/MiniGames.vue");
 const TwilightRhythm = () => import("../components/views/TwilightRhythm.vue");
+const StarTrail = () => import("../components/views/StarTrail.vue");
 
 // 1. 定义路由表
 const routes = [
   { path: "/mini-games", name: "MiniGames", component: MiniGames },
   { path: "/mini-games/twilight", name: "TwilightRhythm", component: TwilightRhythm },
+  { path: "/mini-games/star-trail", name: "StarTrail", component: StarTrail },
   {
     path: "/",
     name: "MainMenu",
