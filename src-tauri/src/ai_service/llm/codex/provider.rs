@@ -23,9 +23,7 @@ use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValu
 use serde_json::{Value, json};
 
 use crate::ai_service::llm::codex_auth::{self, CodexCredential};
-use crate::ai_service::llm::provider::{
-    LlmModelInfo, LlmProvider, LlmResponseWithTools, ThinkEffortsInfo,
-};
+use crate::ai_service::llm::provider::{LlmModelInfo, LlmProvider, LlmResponseWithTools};
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig, LlmUsage};
 use crate::ai_service::types::{FunctionCall, LlmMessage, ToolCall, ToolDefinition};
 use crate::utils::proxy::build_proxied_client;
@@ -490,56 +488,8 @@ fn rand_f64() -> f64 {
 #[async_trait]
 impl LlmProvider for CodexProvider {
     async fn list_models(&self, _http: &Client) -> Result<Vec<LlmModelInfo>> {
-        // 内置目录（与 dsh-codex/pi-ai 的 openai-codex.json 同步）：
-        // 5.3/5.4/5.5 系档位 off~xhigh；5.6 系追加 max。
-        let standard_efforts = || {
-            Some(ThinkEffortsInfo {
-                valid_efforts: vec![
-                    "off".into(),
-                    "minimal".into(),
-                    "low".into(),
-                    "medium".into(),
-                    "high".into(),
-                    "xhigh".into(),
-                ],
-                default_effort: None,
-            })
-        };
-        let extended_efforts = || {
-            Some(ThinkEffortsInfo {
-                valid_efforts: vec![
-                    "off".into(),
-                    "minimal".into(),
-                    "low".into(),
-                    "medium".into(),
-                    "high".into(),
-                    "xhigh".into(),
-                    "max".into(),
-                ],
-                default_effort: None,
-            })
-        };
-        let model = |id: &str, name: &str, context: u64, extended: bool| LlmModelInfo {
-            id: id.to_string(),
-            display_name: Some(name.to_string()),
-            context_length: Some(context),
-            supports_reasoning: true,
-            supports_thinking_type: None,
-            think_efforts: if extended {
-                extended_efforts()
-            } else {
-                standard_efforts()
-            },
-        };
-        Ok(vec![
-            model("gpt-5.3-codex-spark", "GPT-5.3 Codex Spark", 128000, false),
-            model("gpt-5.4", "GPT-5.4", 272000, false),
-            model("gpt-5.4-mini", "GPT-5.4 mini", 272000, false),
-            model("gpt-5.5", "GPT-5.5", 272000, false),
-            model("gpt-5.6-luna", "GPT-5.6 Luna", 272000, true),
-            model("gpt-5.6-sol", "GPT-5.6 Sol", 272000, true),
-            model("gpt-5.6-terra", "GPT-5.6 Terra", 272000, true),
-        ])
+        let (http, cred) = self.client_and_token().await?;
+        super::models::fetch_models(&http, self.headers(&cred)?).await
     }
 
     async fn complete(&self, _http: &Client, messages: &[LlmMessage]) -> Result<String> {
