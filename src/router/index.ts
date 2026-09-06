@@ -16,13 +16,8 @@ const ScriptEditor = () => import("../components/views/ScriptEditor.vue");
 // 云端创意工坊（主菜单「创意工坊」二级菜单进入，原设置页 workshop 标签迁移）
 const WorkshopPage = () => import("../components/views/WorkshopPage.vue");
 
-const MiniGames = () => import("../components/views/MiniGames.vue");
-const TwilightRhythm = () => import("../components/views/TwilightRhythm.vue");
-
 // 1. 定义路由表
 const routes = [
-  { path: "/mini-games", name: "MiniGames", component: MiniGames },
-  { path: "/mini-games/twilight", name: "TwilightRhythm", component: TwilightRhythm },
   {
     path: "/",
     name: "MainMenu",

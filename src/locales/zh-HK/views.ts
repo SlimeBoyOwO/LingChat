@@ -1,15 +1,5 @@
 // 繁體中文（香港 · 粵語文體）语言包，由 zh-CN/views.ts（约 44 条） 翻譯維護
 export default {
-  miniGames: {
-    title: "小遊戲",
-    twilightTitle: "暮色節拍",
-    twilightDescription: "喺黃昏神社，同欽靈一齊接住最後一拍。",
-    twilightMeta: "四鍵音遊 · 原創音樂 · 約 72 秒",
-    play: "開始演奏",
-    back: "返回主選單",
-    intro: "揀一款小遊戲，休息一下。",
-  },
-
   loader: {
     preparing: "你嘅小可愛準備緊",
   },
@@ -67,7 +57,7 @@ export default {
     storyMode: "劇情模式",
     scriptEditor: "創意工坊",
     cloudWorkshop: "雲·創意工坊",
-    miniGame: "小遊戲",
+    miniGame: "小遊戲（開發緊）",
     back: "返回",
     resetMemoryTitle: "重置記憶",
     resetMemory: "重置記憶",

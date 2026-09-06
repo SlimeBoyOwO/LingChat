@@ -1,15 +1,5 @@
 // English language pack, maintained from zh-CN/views.ts（约 44 条）
 export default {
-  miniGames: {
-    title: "Mini Games",
-    twilightTitle: "Twilight Cadence",
-    twilightDescription: "Catch the last beat with Qinling in a shrine at dusk.",
-    twilightMeta: "4 keys · Original music · About 72 seconds",
-    play: "Play",
-    back: "Back to main menu",
-    intro: "Pick a little game and take a break.",
-  },
-
   loader: {
     preparing: "Your little cutie is getting ready",
   },
@@ -69,7 +59,7 @@ export default {
     storyMode: "Story Mode",
     scriptEditor: "Workshop",
     cloudWorkshop: "Cloud Workshop",
-    miniGame: "Mini Games",
+    miniGame: "Mini Games (In Development)",
     back: "Back",
     resetMemoryTitle: "Reset Memory",
     resetMemory: "Reset Memory",

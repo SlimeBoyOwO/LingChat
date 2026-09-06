@@ -1,14 +1,4 @@
 export default {
-  miniGames: {
-    title: "ミニゲーム",
-    twilightTitle: "暮色のリズム",
-    twilightDescription: "夕暮れの神社で、欽霊と最後の一拍まで。",
-    twilightMeta: "4キー · オリジナル曲 · 約72秒",
-    play: "プレイ",
-    back: "メインメニューへ",
-    intro: "ミニゲームでひと休み。",
-  },
-
   loader: {
     preparing: "きみのかわいい子が準備中だよ",
   },
@@ -68,7 +58,7 @@ export default {
     storyMode: "ストーリーモード",
     scriptEditor: "クリエイティブ工房",
     cloudWorkshop: "クラウド工房",
-    miniGame: "ミニゲーム",
+    miniGame: "ミニゲーム（開発中）",
     back: "戻る",
     resetMemoryTitle: "記憶をリセット",
     resetMemory: "記憶をリセット",

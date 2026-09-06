@@ -1,14 +1,4 @@
 export default {
-  miniGames: {
-    title: "小游戏",
-    twilightTitle: "暮色节拍",
-    twilightDescription: "在黄昏神社，和钦灵一起接住最后一拍。",
-    twilightMeta: "四键音游 · 原创音乐 · 约 72 秒",
-    play: "开始演奏",
-    back: "返回主菜单",
-    intro: "挑一款小游戏，休息一下。",
-  },
-
   loader: {
     preparing: "你的小可爱正在准备中",
   },
@@ -66,7 +56,7 @@ export default {
     storyMode: "剧情模式",
     scriptEditor: "创意工坊",
     cloudWorkshop: "云·创意工坊",
-    miniGame: "小游戏",
+    miniGame: "小游戏（开发中）",
     back: "返回",
     resetMemoryTitle: "重置记忆",
     resetMemory: "重置记忆",
