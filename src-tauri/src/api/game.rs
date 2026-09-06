@@ -13,7 +13,7 @@ use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
 };
 use crate::ai_service::types::{
-    CharacterSettings, GameLine, LineAttributeExt, LineBase, Live2dSettings,
+    CharacterSettings, GameLine, LineAttributeExt, LineBase, Live2dSettings, SpokenMetadata,
 };
 use crate::config::{self, AppConfig};
 use crate::db::entities::line;
@@ -118,8 +118,10 @@ pub struct GameLineInit {
     pub user_message_seq: Option<u32>,
     /// 该轮生成的思考链（仅每轮最后一条 assistant 行有值）。
     pub thinking: Option<String>,
-    /// 该台词的第二语言（日语）译文，供日文界面显示；无译文时为 None。
+    /// 该台词的第二语言/目标语言文本（历史字段）。
     pub tts_content: Option<String>,
+    /// 可扩展的朗读元数据；当前键为 content / language。
+    pub spoken: SpokenMetadata,
 }
 
 // ========== Tauri 命令 ==========
@@ -455,6 +457,7 @@ pub(crate) async fn build_web_init_data(
                 user_message_seq: seq,
                 thinking: gl.base.thinking.clone(),
                 tts_content: gl.base.tts_content.clone(),
+                spoken: gl.base.spoken.clone(),
             })
             .collect();
 

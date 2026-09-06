@@ -56,6 +56,7 @@
   import { useGameStore } from "@/stores/modules/game";
   import { useSettingsStore } from "@/stores/modules/settings";
   import { useUIStore } from "@/stores/modules/ui/ui";
+  import type { SpokenMetadata } from "@/types/script";
   import { invoke } from "@tauri-apps/api/core";
   import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -119,6 +120,7 @@
   let effectUnlisten: (() => void) | null = null;
   let volumeUnlisten: (() => void) | null = null;
   let dialogHistoryUnlisten: (() => void) | null = null;
+  let dialogHistoryLineUnlisten: (() => void) | null = null;
 
   onMounted(async () => {
     const appWindow = getCurrentWindow();
@@ -153,6 +155,19 @@
       appWindow.emit("dialog-history-changed", {
         dialogHistory: JSON.parse(JSON.stringify(gameStore.dialogHistory)),
       });
+    });
+
+    // 接收独立设置窗口的单行补语音结果，保持主窗口 store 与数据库同步。
+    dialogHistoryLineUnlisten = await appWindow.listen<{
+      absIndex: number;
+      audioFile: string;
+      spoken: SpokenMetadata;
+    }>("dialog-history-line-updated", (event) => {
+      const { absIndex, audioFile, spoken } = event.payload;
+      const msg = gameStore.dialogHistory[absIndex];
+      if (!msg) return;
+      msg.audioFile = audioFile;
+      msg.spoken = spoken;
     });
 
     // 设置透明背景的 body 属性样式（额外防护）
@@ -227,6 +242,7 @@
     if (effectUnlisten) effectUnlisten();
     if (volumeUnlisten) volumeUnlisten();
     if (dialogHistoryUnlisten) dialogHistoryUnlisten();
+    if (dialogHistoryLineUnlisten) dialogHistoryLineUnlisten();
 
     if (hitTestInterval !== undefined) {
       window.clearInterval(hitTestInterval);

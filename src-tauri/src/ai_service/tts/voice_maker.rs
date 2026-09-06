@@ -111,21 +111,58 @@ fn gsv_prompt_language(prompt_text: &str) -> &'static str {
     }
 }
 
-fn segment_text_for_lang<'a>(lang: &str, segment: &'a EmotionSegment) -> Option<&'a str> {
-    match lang {
-        // 译文统一存放在 japanese_text 字段（历史命名），非中文语言均优先取译文；
-        // 无译文时 en/ko/es/ar/de/fr/ru/pt 跳过（不朗读错误语言）
+/// 优先朗读 `japanese_text` 译文的语音语言白名单。
+///
+/// 选文（`segment_text_for_lang`）与补生成语音（`api::chat::generate_line_voice`）
+/// 共用此判断，避免两处各写一份列表导致口径漂移。日语也在名单内：主模型通常
+/// 自带日语译文，无译文时由选文逻辑回退主台词。
+pub(crate) fn lang_prefers_translation(lang: &str) -> bool {
+    matches!(
+        lang,
         "ja" | "en" | "ko" | "es" | "ar" | "de" | "fr" | "ru" | "pt"
-            if !segment.japanese_text.trim().is_empty() =>
-        {
+    )
+}
+
+/// 返回当前语音语言实际送入 TTS 的台词文本。
+///
+/// `japanese_text` 是历史字段名，现用于保存 ja/en/ko/es/ar 等目标语言译文；
+/// 中文与自动模式始终优先朗读主台词。消息生成器也复用本函数，确保界面显示
+/// 的台词与 TTS 真正朗读的文本完全一致。
+pub(crate) fn segment_text_for_lang<'a>(
+    lang: &str,
+    segment: &'a EmotionSegment,
+) -> Option<&'a str> {
+    match lang {
+        // 译文统一存放在 japanese_text 字段（历史命名），白名单语言均优先取译文
+        l if lang_prefers_translation(l) && !segment.japanese_text.trim().is_empty() => {
             Some(&segment.japanese_text)
         },
-        "en" | "ko" | "es" | "ar" | "de" | "fr" | "ru" | "pt" => None,
+        // 无译文时除日语外不朗读错误语言；日语由下方 _ 臂回退主台词
+        l if lang_prefers_translation(l) && l != "ja" => None,
         "zh" if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
         _ if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
         _ if !segment.japanese_text.trim().is_empty() => Some(&segment.japanese_text),
         _ => None,
     }
+}
+
+/// 生成保持原扩展名的临时路径（`foo.wav` → `foo.part.wav`），避免 adapter
+/// 因扩展名改变而选择错误编码器；成功校验后再原子重命名到最终文件。
+fn partial_audio_path(path: &Path) -> PathBuf {
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy())
+        .unwrap_or_default();
+    let extension = path
+        .extension()
+        .map(|s| s.to_string_lossy())
+        .unwrap_or_default();
+    let file_name = if extension.is_empty() {
+        format!("{stem}.part")
+    } else {
+        format!("{stem}.part.{extension}")
+    };
+    path.with_file_name(file_name)
 }
 
 /// CosyVoice `language_hints` 官方支持范围（不含 es/ar，方言经 instruction 触发）。
@@ -176,6 +213,14 @@ impl VoiceMaker {
 
     pub fn tts_type(&self) -> &str {
         &self.tts_type
+    }
+
+    /// 当前 VoiceMaker 实际使用的语音语言。
+    ///
+    /// 该值已经应用角色设置优先、全局 TTS 设置兜底规则，是翻译、合成与显示
+    /// 应共同使用的权威语言来源。
+    pub fn lang(&self) -> &str {
+        &self.lang
     }
 
     pub fn availability(&self) -> TtsAvailability {
@@ -513,9 +558,14 @@ impl VoiceMaker {
         }
     }
 
-    pub async fn generate_voice_files(&self, segments: &mut [EmotionSegment]) {
+    /// 为每个片段生成语音，返回与 `segments` 对齐的成功标记。
+    ///
+    /// adapter 先写入保持原扩展名的临时文件；仅当调用成功且文件非空时才原子
+    /// 重命名为最终文件。失败会清理临时/残缺产物并清空对应 `voice_file`。
+    pub async fn generate_voice_files(&self, segments: &mut [EmotionSegment]) -> Vec<bool> {
+        let mut successes = vec![false; segments.len()];
         if self.tts_type.is_empty() {
-            return;
+            return successes;
         }
         if !self.provider.is_enabled() {
             if let Some(text) = segments
@@ -528,9 +578,12 @@ impl VoiceMaker {
                     String::new(),
                 );
             }
-            return;
+            return successes;
         }
-        tokio::fs::create_dir_all(&self.temp_dir).await.ok();
+        if let Err(e) = tokio::fs::create_dir_all(&self.temp_dir).await {
+            tracing::error!("创建 TTS 输出目录失败: {e}");
+            return successes;
+        }
 
         let use_cloud_fallback = self.tts_type == "localsbv2api"
             && self
@@ -549,7 +602,7 @@ impl VoiceMaker {
         };
 
         let mut futs = Vec::new();
-        for seg in segments.iter_mut() {
+        for (position, seg) in segments.iter().enumerate() {
             let Some(text) = segment_text_for_lang(&self.lang, seg).map(str::to_owned) else {
                 continue;
             };
@@ -568,7 +621,7 @@ impl VoiceMaker {
                 seg.voice_file.clone()
             };
             let file_path = self.temp_dir.join(&file_name);
-            seg.voice_file = file_path.to_string_lossy().to_string();
+            let partial_path = partial_audio_path(&file_path);
 
             let mut provider = self.provider.clone();
             let tts_type = if use_cloud_fallback {
@@ -585,16 +638,44 @@ impl VoiceMaker {
             };
             let index = seg.index;
             futs.push(async move {
-                if let Err(e) = provider
-                    .generate_voice(&text, &file_path, &tts_type, &emo)
-                    .await
-                {
-                    tracing::error!("片段 {index} 语音生成失败: {e}");
+                let _ = tokio::fs::remove_file(&partial_path).await;
+                let generated = provider
+                    .generate_voice(&text, &partial_path, &tts_type, &emo)
+                    .await;
+                let mut ok = match generated {
+                    Ok(()) => tokio::fs::metadata(&partial_path)
+                        .await
+                        .map(|metadata| metadata.len() > 0)
+                        .unwrap_or(false),
+                    Err(e) => {
+                        tracing::error!("片段 {index} 语音生成失败: {e}");
+                        false
+                    },
+                };
+
+                if ok {
+                    let _ = tokio::fs::remove_file(&file_path).await;
+                    if let Err(e) = tokio::fs::rename(&partial_path, &file_path).await {
+                        tracing::error!("片段 {index} 提交语音文件失败: {e}");
+                        ok = false;
+                    }
                 }
+                if !ok {
+                    let _ = tokio::fs::remove_file(&partial_path).await;
+                    let _ = tokio::fs::remove_file(&file_path).await;
+                }
+                (position, file_path, ok)
             });
         }
-        if !futs.is_empty() {
-            join_all(futs).await;
+
+        for (position, file_path, ok) in join_all(futs).await {
+            successes[position] = ok;
+            if ok {
+                segments[position].voice_file = file_path.to_string_lossy().to_string();
+            } else {
+                segments[position].voice_file.clear();
+            }
         }
+        successes
     }
 }
