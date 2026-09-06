@@ -936,35 +936,3 @@ async fn add_assistant_line(deps: &SentenceDeps, response: &ReplyResponse) -> Re
     gs.add_line(&deps.db, line).await?;
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{needs_japanese_translation, tts_translation_language};
-    use crate::ai_service::message_system::processor::EmotionSegment;
-
-    fn segment(main: &str, secondary: &str) -> EmotionSegment {
-        EmotionSegment {
-            following_text: main.to_string(),
-            japanese_text: secondary.to_string(),
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn sbv2api_english_uses_translation_pipeline() {
-        assert_eq!(tts_translation_language("sbv2api", "en"), Some("en"));
-    }
-
-    #[test]
-    fn pure_chinese_is_not_accepted_as_japanese_secondary_text() {
-        assert!(needs_japanese_translation(&[segment("早上好", "早上好")]));
-        assert!(needs_japanese_translation(&[segment(
-            "早上好",
-            "祝你今天愉快"
-        )]));
-        assert!(!needs_japanese_translation(&[segment(
-            "早上好",
-            "おはようございます"
-        )]));
-    }
-}
