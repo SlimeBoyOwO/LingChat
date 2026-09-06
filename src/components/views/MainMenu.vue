@@ -92,6 +92,7 @@
   import { useRouter } from "vue-router";
   import { useGameStore } from "../../stores/modules/game";
   import { applyWebInitData } from "../../stores/modules/game/actions";
+  import { eventQueue } from "../../core/events/event-queue";
   import { useSettingsStore } from "../../stores/modules/settings";
   import { useUIStore } from "../../stores/modules/ui/ui";
   import MeteorAnimation from "../game/standard/animations/MeteorAnimation.vue";
@@ -180,6 +181,9 @@
       const gameInfo = await invoke<WebInitData>("load_save", { saveId: saves[0].id });
       const gameStore = useGameStore();
       applyWebInitData(gameStore.$state, gameInfo);
+      // 继续游戏后丢弃残留事件队列（防止上次会话未消费的回复串进新会话，issue #796）
+      eventQueue.clear();
+      eventQueue.resume();
       router.push("/chat");
     } catch (error) {
       console.error("继续游戏失败:", error);

@@ -348,6 +348,18 @@ impl SaveRepo {
             break;
         }
 
+        // 安全网：输入与 DB 链在首行即分歧（diverge=0）且双方都非空时，
+        // 说明输入不是"同一段对话的演进"（正常续写/回溯/语音回填首行都会匹配），
+        // 而是把另一段对话（如跨角色残留、错位回溯）误当成当前存档内容——
+        // 若继续会让下面 diverge.. 删除把整个存档历史抹空。拒绝覆盖以保护存档。
+        if diverge == 0 && !db_lines.is_empty() && !input_lines.is_empty() {
+            return Err(anyhow!(
+                "sync_lines 安全保护：输入与存档无共同锚点，拒绝全量覆盖（save_id={save_id}，db_lines={}，input_lines={}）",
+                db_lines.len(),
+                input_lines.len()
+            ));
+        }
+
         // Keep line rows, perceptions, and the save tail pointer consistent if
         // the process is interrupted or any individual write fails.
         let txn = db.begin().await.map_err(|e| anyhow!("{e}"))?;
