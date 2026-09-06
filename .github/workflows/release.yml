@@ -75,7 +75,7 @@ jobs:
           - platform: macos
             os: macos-latest
             target: ""
-          - platform: linux-arm64
+          - platform: linux-amd64
             os: ubuntu-latest
             target: ""
           - platform: linux-aarch64
@@ -118,7 +118,9 @@ jobs:
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/dev' }}
 
+      # 其它平台：tauri-action 直接构建
       - name: 构建 Tauri 应用
+        if: matrix.platform != 'linux-amd64'
         uses: tauri-apps/tauri-action@v1
         continue-on-error: true
         env:
@@ -130,9 +132,43 @@ jobs:
             ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
             ${{ runner.os == 'macOS' && '' || '' }}
         with:
-          uploadWorkflowArtifacts: true
-          workflowArtifactNamePattern: "${{ matrix.platform }}-build"
+          # 不用 tauri-action 内置的 uploadWorkflowArtifacts：
+          # 它会对每个 bundle 循环 create artifact，若名字不含 [bundle] 会重复 create 同名 → 409，
+          # 导致后续产物（AppImage / .sig 等）丢失。改由下方独立 step 一次性上传整个 bundle 目录。
           args: ${{ matrix.target }}
+
+      # linux-amd64 特例：ort `webgpu` feature 链接 libwebgpu_dawn.so（Dawn dylib，无法静态链接）。
+      # 该库随 ort download-binaries 下载，cargo build 后由 ort `copy-dylibs` symlink 到 target/release。
+      # linuxdeploy 打包 AppImage 时必须在库路径解析到它，否则报 `Could not find dependency: libwebgpu_dawn.so`。
+      # 这里先 cargo build，把 dawn.so 复制到系统库路径，再 tauri build（增量）让 linuxdeploy 找到它。
+      - name: 构建 Tauri 应用（linux-amd64：放置 libwebgpu_dawn.so）
+        if: matrix.platform == 'linux-amd64'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          cd src-tauri
+          cargo build --release
+          DAWN=$(find target/release -name "libwebgpu_dawn.so" 2>/dev/null | head -1)
+          if [ -z "$DAWN" ]; then
+            echo "!! 未找到 libwebgpu_dawn.so（检查 ort webgpu feature）"
+          else
+            sudo cp -L "$DAWN" /usr/lib/x86_64-linux-gnu/libwebgpu_dawn.so
+            sudo ldconfig
+            echo "已放置 /usr/lib/x86_64-linux-gnu/libwebgpu_dawn.so"
+          fi
+          cd ..
+          pnpm tauri build
+
+      - name: 上传构建产物（bundle 全量）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-build
+          path: src-tauri/target/release/bundle/**
+          if-no-files-found: warn
 
   release:
     needs: [generate-data, build]
