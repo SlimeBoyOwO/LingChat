@@ -21,6 +21,9 @@ export async function mountRhythm(root, options) {
   const lifetime = new AbortController();
   let destroyed = false,
     animationFrame = 0;
+  let resizeObserver = null;
+  const scene = root.querySelector(".cadence-root");
+  $("scene-background").src = backgroundUrl;
   const on = (target, name, callback) =>
     target.addEventListener(name, callback, { signal: lifetime.signal });
   function destroy() {
@@ -28,6 +31,7 @@ export async function mountRhythm(root, options) {
     destroyed = true;
     songGeneration++;
     cancelAnimationFrame(animationFrame);
+    resizeObserver?.disconnect();
     lifetime.abort();
     stopSource();
     clearInputs();
@@ -175,6 +179,8 @@ export async function mountRhythm(root, options) {
       effects.length = 0;
       particles.length = 0;
       feedback = null;
+      show("settings", false);
+      $("settings-toggle").setAttribute("aria-expanded", "false");
       show("title-card", false);
       show("pause-screen", false);
       show("result-screen", false);
@@ -228,6 +234,8 @@ export async function mountRhythm(root, options) {
     judge = null;
     clearInputs();
     effects.length = 0;
+    show("settings", false);
+    $("settings-toggle").setAttribute("aria-expanded", "false");
     show("title-card", true);
     show("pause-screen", false);
     show("result-screen", false);
@@ -261,8 +269,8 @@ export async function mountRhythm(root, options) {
     $("result-eyebrow").textContent = runHorror
       ? "SCENE_INDEX_MISSING"
       : demo
-        ? "WATCH MODE · NO PLAYER RECORD"
-        : "THE LAST LANTERN";
+        ? "观赏演示 · 不记录玩家成绩"
+        : "演奏完成";
     $("result-copy").textContent = demo
       ? "自动演示已结束，试着亲手接住下一次节拍。"
       : runHorror
@@ -317,7 +325,8 @@ export async function mountRhythm(root, options) {
   on(window, "keydown", (event) => {
     if (event.code === "Escape") {
       event.preventDefault();
-      if (state === "paused") resumeGame();
+      if (!$("settings").hidden) closeSettings();
+      else if (state === "paused") resumeGame();
       else pauseGame();
       return;
     }
@@ -365,11 +374,20 @@ export async function mountRhythm(root, options) {
   $("restart-paused").onclick = () => startGame(demo);
   $("leave").onclick = backToTitle;
   $("result-leave").onclick = backToTitle;
-  $("settings-toggle").onclick = () => {
-    const visible = $("settings").hidden;
-    show("settings", visible);
-    $("settings-toggle").setAttribute("aria-expanded", String(visible));
-  };
+  function openSettings() {
+    if (state === "playing" || state === "countdown") pauseGame();
+    show("settings", true);
+    $("settings-toggle").setAttribute("aria-expanded", "true");
+    $("settings-close").focus();
+  }
+  function closeSettings() {
+    show("settings", false);
+    $("settings-toggle").setAttribute("aria-expanded", "false");
+    (state === "paused" ? $("resume") : $("settings-toggle")).focus();
+  }
+  $("settings-toggle").onclick = openSettings;
+  $("pause-settings").onclick = openSettings;
+  $("settings-close").onclick = closeSettings;
   function controls() {
     $("volume").value = Math.round(volume * 100);
     $("volume-value").textContent = Math.round(volume * 100) + "%";
@@ -546,21 +564,12 @@ export async function mountRhythm(root, options) {
     }
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, W, H);
-    if (images.bg) ctx.drawImage(images.bg, 0, 0, W, H);
-    else rect(0, 0, W, H, "#33283b");
     const idle = state === "idle" || state === "loading" || state === "preparing";
-    if (idle) {
-      const dark = ctx.createLinearGradient(0, 0, W, 0);
-      dark.addColorStop(0, "#231326d6");
-      dark.addColorStop(0.47, "#2914275c");
-      dark.addColorStop(1, "#21152718");
-      ctx.fillStyle = dark;
-      ctx.fillRect(0, 0, W, H);
-    } else rect(0, 0, W, H, "#23152b26");
+    if (scene.dataset.state !== state) scene.dataset.state = state;
     const corrupt =
       runHorror && !idle ? Math.max(0, Math.min(0.85, (t - music.beat * 68) / 28)) : 0;
+    $("scene-corruption").style.opacity = String(corrupt * 0.55);
     if (corrupt) {
-      rect(0, 0, W, H, `rgba(91,0,36,${corrupt * 0.55})`);
       if (Math.sin(now / 640) > 0.86)
         for (let i = 0; i < 5; i++) rect(0, 100 + i * 75, W, 2 + i, "#ef839124");
     }
@@ -580,7 +589,7 @@ export async function mountRhythm(root, options) {
       );
     }
     drawCharacter(now, Math.max(0, t), corrupt);
-    drawTracks(t, now, idle);
+    if (!idle) drawTracks(t, now, false);
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
       if (state === "playing") {
@@ -642,10 +651,21 @@ export async function mountRhythm(root, options) {
     if (!destroyed) animationFrame = requestAnimationFrame(frame);
   }
   options.signal.addEventListener("abort", destroy, { once: true, signal: lifetime.signal });
-  $("back-to-games").onclick = () => {
+  const exitToGames = () => {
     destroy();
     options.onExit();
   };
+  $("back-to-games").onclick = exitToGames;
+  $("exit-paused").onclick = exitToGames;
+  const syncPlayfield = () => {
+    const bounds = canvas.getBoundingClientRect();
+    const scale = Math.min(bounds.width / W, bounds.height / H);
+    $("touch-keys").style.width = `${W * scale}px`;
+    $("touch-keys").style.height = `${H * scale}px`;
+  };
+  resizeObserver = new ResizeObserver(syncPlayfield);
+  resizeObserver.observe(root.host);
+  syncPlayfield();
   if (options.signal.aborted) {
     destroy();
     return { destroy, snapshot: () => ({ state }) };

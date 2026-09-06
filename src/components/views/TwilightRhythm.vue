@@ -1,5 +1,5 @@
 <template>
-  <div ref="host" class="twilight-rhythm-page overflow-auto" data-scrollable></div>
+  <div ref="host" class="twilight-rhythm-page"></div>
 </template>
 
 <script setup lang="ts">
@@ -42,6 +42,7 @@
     width: 100%;
     height: 100%;
     min-height: 0;
+    overflow: hidden;
     background: #1b1721;
   }
 </style>

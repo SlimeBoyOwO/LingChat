@@ -13,7 +13,7 @@
     </StartLine>
 
     <StartLine>
-      <StartItem class="menu-subitem" @click="router.push('/mini-games')">{{
+      <StartItem class="menu-subitem" @click="emit('open-mini-games')">{{
         $t("views.menu.miniGame")
       }}</StartItem>
     </StartLine>
@@ -33,6 +33,7 @@
   const emit = defineEmits<{
     (e: "back"): void;
     (e: "open-scripts"): void;
+    (e: "open-mini-games"): void;
   }>();
 
   const router = useRouter();
