@@ -237,6 +237,7 @@
   } from "@/api/services/character";
   import { useGameStore } from "@/stores/modules/game";
   import { applyWebInitData } from "@/stores/modules/game/actions";
+  import { eventQueue } from "@/core/events/event-queue";
   import { useDialogStore } from "@/stores/modules/ui/dialog";
   import { Settings } from "lucide-vue-next";
   import { Cat, Check } from "lucide-vue-next";
@@ -288,6 +289,9 @@
     try {
       const data = await selectCharacterApi(props.id);
       applyWebInitData(gameStore.$state, data);
+      // 切换角色后丢弃旧角色残留事件队列（防止未说完的回复串进新角色对话，issue #796）
+      eventQueue.clear();
+      eventQueue.resume();
     } catch (error) {
       console.error("切换角色失败:", error);
     }

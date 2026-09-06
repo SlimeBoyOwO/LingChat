@@ -691,6 +691,16 @@ pub(crate) async fn consume_sentence(
     // 4. 写入 GameStatus
     add_assistant_line(deps, &response).await?;
 
+    // 会话代号复核（与 add_assistant_line 内守卫一致）：若本句写入已被丢弃，
+    // 说明读档/切角色/清对话已切换会话（旧流式任务游离），前端也已切到新会话——
+    // 这里返回 None，不再把这条过期回复发布给前端（防旧角色台词串进新对话展示）。
+    {
+        let gs = deps.game_status.lock().await;
+        if gs.preview_generation != deps.generation {
+            return Ok(None);
+        }
+    }
+
     Ok(Some(response))
 }
 
