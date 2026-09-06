@@ -319,9 +319,6 @@ impl SaveRepo {
                         || db_line.tts_content != input_line.base.tts_content
                         || db_line.audio_file != input_line.base.audio_file
                         || db_line.thinking != input_line.base.thinking
-                        || db_line.tts_content != input_line.base.tts_content
-                        || decode_spoken(db_line.spoken.as_deref()) != input_line.base.spoken
-                        || db_line.audio_file != input_line.base.audio_file
                         || db_line.action_content != input_line.base.action_content
                         || db_line.display_name != input_line.base.display_name
                         || db_line.tool_call != input_line.base.tool_call
@@ -333,7 +330,6 @@ impl SaveRepo {
                         active.original_emotion = Set(input_line.base.original_emotion.clone());
                         active.predicted_emotion = Set(input_line.base.predicted_emotion.clone());
                         active.tts_content = Set(input_line.base.tts_content.clone());
-                        active.spoken = Set(encode_spoken(&input_line.base.spoken));
                         active.action_content = Set(input_line.base.action_content.clone());
                         active.audio_file = Set(input_line.base.audio_file.clone());
                         active.thinking = Set(input_line.base.thinking.clone());
@@ -358,26 +354,7 @@ impl SaveRepo {
                 && db_line.tool_call == input_line.base.tool_call
                 && db_line.save_id == save_id
             {
-                // input_line 的 id 可能尚未回填；弱匹配确认是同一逻辑行后，仍需同步
-                // 后生成的音频、TTS 显示文本、思考链等可变元数据。
-                if db_line.original_emotion != input_line.base.original_emotion
-                    || db_line.predicted_emotion != input_line.base.predicted_emotion
-                    || db_line.tts_content != input_line.base.tts_content
-                    || decode_spoken(db_line.spoken.as_deref()) != input_line.base.spoken
-                    || db_line.audio_file != input_line.base.audio_file
-                    || db_line.thinking != input_line.base.thinking
-                    || db_line.display_name != input_line.base.display_name
-                {
-                    let mut active: line::ActiveModel = db_line.clone().into();
-                    active.original_emotion = Set(input_line.base.original_emotion.clone());
-                    active.predicted_emotion = Set(input_line.base.predicted_emotion.clone());
-                    active.tts_content = Set(input_line.base.tts_content.clone());
-                    active.spoken = Set(encode_spoken(&input_line.base.spoken));
-                    active.audio_file = Set(input_line.base.audio_file.clone());
-                    active.thinking = Set(input_line.base.thinking.clone());
-                    active.display_name = Set(input_line.base.display_name.clone());
-                    active.update(db).await.map_err(|e| anyhow!("{e}"))?;
-                }
+                // Same logical line; defer metadata updates to the transaction below.
                 continue;
             }
 
@@ -408,23 +385,23 @@ impl SaveRepo {
                 .map_err(|e| anyhow!("{e}"))?;
         }
 
-        // Updates for matching IDs belong to the same transaction as the
-        // divergence replacement below.
+        // Rows before divergence include ID and field matches. Persist their
+        // changed metadata in the same transaction as divergence replacement.
         for i in 0..diverge {
             let db_line = &db_lines[i];
             let input_line = &input_lines[i];
-            if input_line.base.id == Some(db_line.id)
-                && (db_line.content != input_line.base.content
-                    || db_line.attribute != input_line.base.attribute.0
-                    || db_line.sender_role_id != input_line.base.sender_role_id
-                    || db_line.original_emotion != input_line.base.original_emotion
-                    || db_line.predicted_emotion != input_line.base.predicted_emotion
-                    || db_line.tts_content != input_line.base.tts_content
-                    || db_line.audio_file != input_line.base.audio_file
-                    || db_line.thinking != input_line.base.thinking
-                    || db_line.action_content != input_line.base.action_content
-                    || db_line.display_name != input_line.base.display_name
-                    || db_line.tool_call != input_line.base.tool_call)
+            if db_line.content != input_line.base.content
+                || db_line.attribute != input_line.base.attribute.0
+                || db_line.sender_role_id != input_line.base.sender_role_id
+                || db_line.original_emotion != input_line.base.original_emotion
+                || db_line.predicted_emotion != input_line.base.predicted_emotion
+                || db_line.tts_content != input_line.base.tts_content
+                || decode_spoken(db_line.spoken.as_deref()) != input_line.base.spoken
+                || db_line.audio_file != input_line.base.audio_file
+                || db_line.thinking != input_line.base.thinking
+                || db_line.action_content != input_line.base.action_content
+                || db_line.display_name != input_line.base.display_name
+                || db_line.tool_call != input_line.base.tool_call
             {
                 let mut active: line::ActiveModel = db_line.clone().into();
                 active.content = Set(input_line.base.content.clone());
@@ -433,6 +410,7 @@ impl SaveRepo {
                 active.original_emotion = Set(input_line.base.original_emotion.clone());
                 active.predicted_emotion = Set(input_line.base.predicted_emotion.clone());
                 active.tts_content = Set(input_line.base.tts_content.clone());
+                active.spoken = Set(encode_spoken(&input_line.base.spoken));
                 active.action_content = Set(input_line.base.action_content.clone());
                 active.audio_file = Set(input_line.base.audio_file.clone());
                 active.thinking = Set(input_line.base.thinking.clone());
