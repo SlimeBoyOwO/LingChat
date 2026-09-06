@@ -7,7 +7,7 @@
       <button id="trail-help" class="menu-item">操作说明</button>
       <button id="trail-exit" class="menu-item">返回</button>
     </nav>
-    <p class="title-hint">A / D 移动　 W / ↑ 跳跃　 空格射击</p>
+    <p class="title-hint" id="trail-title-hint">A / D 移动　 W / ↑ 跳跃　 空格射击</p>
   </div>
   <div class="hud" id="trail-hud" hidden>
     <div class="hud-left"><span id="trail-stage"></span><div id="trail-hearts" aria-label="生命"></div><button id="trail-armor-open" aria-label="查看护甲装备"><span id="trail-armor-label"></span><span id="trail-armor-bar" role="meter" aria-label="护甲值" aria-valuemin="0"></span></button><span id="trail-score"></span><span id="trail-buffs" hidden></span></div>
@@ -56,8 +56,9 @@
   <div class="scrim help" id="trail-help-screen" hidden>
     <section class="overlay-menu" role="dialog" aria-modal="true" aria-labelledby="trail-help-title">
       <h2 id="trail-help-title">操作说明</h2>
-      <p>A / D 或 ← / → 移动<br>W / ↑ / Z 跳跃，松开可降低跳跃高度<br>空格连续射击，Esc 暂停</p>
-      <p>跳到敌人头顶可以踩击；收集星晶可在商店消费。<br>绿色药瓶恢复生命，满血拾取奖励 50 分。<br>空格射击或从下方顶开补给箱，踩弹簧可以高跳。<br>护盾抵挡攻击，连射核心提升射速，磁力星吸引星晶。<br>暂停菜单或星灯商店附近按 E 可购物；点击护甲条查看装备。<br>点亮检查点后可重试，击败 Boss 后抵达右侧终点。</p>
+      <p class="touch-help">触摸左下方方向键移动，可滑动换向；右下方跳跃与射击可同时按住。<br>松开跳跃键可降低跳跃高度，按住射击键可连续射击。<br>点击暂停购物，点击护甲条查看装备；旋转屏幕后点击继续。</p>
+      <p class="keyboard-help">A / D 或 ← / → 移动<br>W / ↑ / Z 跳跃，松开可降低跳跃高度<br>空格连续射击，Esc 暂停</p>
+      <p>跳到敌人头顶可以踩击；收集星晶可在商店消费。<br>绿色药瓶恢复生命，满血拾取奖励 50 分。<br>射击或从下方顶开补给箱，踩弹簧可以高跳。<br>护盾抵挡攻击，连射核心提升射速，磁力星吸引星晶。<br>暂停菜单或点击星灯商店提示可购物（键盘 E）；点击护甲条查看装备。<br>点亮检查点后可重试，击败 Boss 后抵达右侧终点。</p>
       <button id="trail-help-close" class="menu-item">返回</button>
     </section>
   </div>

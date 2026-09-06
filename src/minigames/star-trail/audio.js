@@ -1,13 +1,10 @@
+import { bgmTheme, scheduleBgmStep } from "./bgm.js";
 const frequency = (midi) => 440 * 2 ** ((midi - 69) / 12);
-const melodies = [
-  [76, 79, 83, 79, 81, 79, 76, 74, 72, 76, 79, 76, 74, 72, 71, 74],
-  [69, 72, 76, 79, 76, 72, 74, 71, 67, 71, 74, 77, 76, 74, 72, 71],
-  [81, 76, 79, 83, 81, 79, 76, 74, 72, 76, 79, 84, 83, 79, 76, 79],
-];
 
 /** A short look-ahead sequencer. Scheduled voices are stopped on pause and disposed on exit. */
 export class TrailAudio {
-  constructor() {
+  constructor(onInterrupted = () => {}) {
+    this.onInterrupted = onInterrupted;
     this.context = null;
     this.voices = new Set();
     this.volume = 0.35;
@@ -21,10 +18,33 @@ export class TrailAudio {
   async start(level, boss = false, generation) {
     if (this.destroyed) return;
     if (!this.context) {
-      this.context = new AudioContext();
+      const Context = window.AudioContext || window.webkitAudioContext;
+      this.context = new Context();
+      this.context.onstatechange = () => {
+        if (this.playing && ["interrupted", "suspended"].includes(this.context.state))
+          this.onInterrupted();
+      };
       this.gain = this.context.createGain();
       this.gain.gain.value = this.volume;
-      this.gain.connect(this.context.destination);
+      this.compressor = this.context.createDynamicsCompressor();
+      this.compressor.threshold.value = -12;
+      this.compressor.knee.value = 12;
+      this.compressor.ratio.value = 4;
+      this.gain.connect(this.compressor);
+      this.compressor.connect(this.context.destination);
+      this.musicBus = this.context.createGain();
+      this.musicBus.connect(this.gain);
+      this.noiseBuffer = this.context.createBuffer(
+        1,
+        this.context.sampleRate / 2,
+        this.context.sampleRate
+      );
+      const samples = this.noiseBuffer.getChannelData(0);
+      let seed = 137;
+      for (let i = 0; i < samples.length; i++) {
+        seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+        samples[i] = seed / 2147483648;
+      }
     }
     try {
       await this.context.resume();
@@ -50,24 +70,63 @@ export class TrailAudio {
     if (this.gain && !this.destroyed)
       this.gain.gain.setTargetAtTime(volume, this.context.currentTime, 0.02);
   }
-  tone(at, midi, duration, gain, shape = "square", slide = 0) {
+  tone(at, midi, duration, gain, shape = "square", slide = 0, options = {}) {
     if (!this.context || this.destroyed || this.context.state !== "running") return;
     const oscillator = this.context.createOscillator(),
       envelope = this.context.createGain();
     oscillator.type = shape;
+    oscillator.detune.value = options.detune || 0;
     oscillator.frequency.setValueAtTime(frequency(midi), at);
     if (slide)
       oscillator.frequency.exponentialRampToValueAtTime(frequency(midi + slide), at + duration);
     envelope.gain.setValueAtTime(0, at);
-    envelope.gain.linearRampToValueAtTime(gain, at + 0.006);
+    envelope.gain.linearRampToValueAtTime(gain, at + (options.attack || 0.006));
     envelope.gain.exponentialRampToValueAtTime(0.0001, at + duration);
-    oscillator.connect(envelope);
-    envelope.connect(this.gain);
-    const voice = { oscillator, envelope };
+    let filter;
+    if (options.cutoff) {
+      filter = this.context.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(options.cutoff, at);
+      filter.frequency.exponentialRampToValueAtTime(options.cutoff * 0.45, at + duration);
+      oscillator.connect(filter);
+      filter.connect(envelope);
+    } else oscillator.connect(envelope);
+    envelope.connect(options.music ? this.musicBus : this.gain);
+    const voice = { oscillator, envelope, filter };
     this.voices.add(voice);
     oscillator.onended = () => {
       oscillator.disconnect();
       envelope.disconnect();
+      filter?.disconnect();
+      this.voices.delete(voice);
+    };
+    oscillator.start(at);
+    oscillator.stop(at + duration + 0.01);
+  }
+  duck(at, duration) {
+    this.musicBus.gain.setValueAtTime(0.3, at);
+    this.musicBus.gain.linearRampToValueAtTime(1, at + duration);
+  }
+  noise(at, duration, volume, cutoff) {
+    if (!this.context || this.context.state !== "running" || this.destroyed) return;
+    const oscillator = this.context.createBufferSource(),
+      envelope = this.context.createGain(),
+      filter = this.context.createBiquadFilter();
+    oscillator.buffer = this.noiseBuffer;
+    filter.type = "highpass";
+    filter.frequency.value = cutoff;
+    envelope.gain.setValueAtTime(0, at);
+    envelope.gain.linearRampToValueAtTime(volume, at + 0.002);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, at + duration);
+    oscillator.connect(filter);
+    filter.connect(envelope);
+    envelope.connect(this.gain);
+    const voice = { oscillator, envelope, filter };
+    this.voices.add(voice);
+    oscillator.onended = () => {
+      oscillator.disconnect();
+      envelope.disconnect();
+      filter.disconnect();
       this.voices.delete(voice);
     };
     oscillator.start(at);
@@ -77,18 +136,10 @@ export class TrailAudio {
     if (!this.playing || !this.context || this.context.state !== "running" || this.destroyed)
       return;
     const now = this.context.currentTime,
-      step = 60 / (this.boss ? 152 : [118, 130, 112][this.level]) / 2;
+      step = 60 / bgmTheme(this.level, this.boss).bpm / 4;
     if (this.next < now) this.next = now + 0.03;
     while (this.next < now + 0.13) {
-      const beat = this.beat++,
-        chord = [0, -5, -3, -7][Math.floor(beat / 8) % 4];
-      const note = this.boss
-        ? [69, 72, 70, 76, 69, 77, 76, 72][beat % 8]
-        : melodies[this.level][beat % 16];
-      this.tone(this.next, note + chord, step * 0.7, 0.085, "square");
-      if (beat % 2 === 0) this.tone(this.next, 45 + chord, step * 1.45, 0.18, "triangle");
-      if (beat % 4 === 0) this.tone(this.next, 42, 0.12, 0.2, "sine", -22);
-      else if (beat % 2 === 1) this.tone(this.next, 101, 0.025, 0.028, "square", -13);
+      scheduleBgmStep(this, this.beat++, this.next, this.level, this.boss);
       this.next += step;
     }
   }
@@ -114,6 +165,10 @@ export class TrailAudio {
       [72, 76, 79, 84].forEach((note, i) => this.tone(at + i * 0.1, note, 0.22, 0.11, "triangle"));
   }
   stopVoices() {
+    if (this.musicBus) {
+      this.musicBus.gain.cancelScheduledValues(this.context.currentTime);
+      this.musicBus.gain.value = 1;
+    }
     for (const voice of [...this.voices]) {
       try {
         voice.oscillator.stop();
@@ -135,6 +190,7 @@ export class TrailAudio {
   }
   destroy() {
     this.destroyed = true;
+    if (this.context) this.context.onstatechange = null;
     this.pause();
     if (this.context && this.context.state !== "closed") void this.context.close().catch(() => {});
   }

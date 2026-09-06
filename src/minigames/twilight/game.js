@@ -1,3 +1,4 @@
+import { bindTouchControls } from "../touch-controls.js";
 import * as music from "./music.js";
 import { Judge } from "./core.js";
 import backgroundUrl from "../../assets/minigames/twilight/shrine-dusk.png";
@@ -12,10 +13,13 @@ export async function mountRhythm(root, options) {
   const $ = (id) => root.querySelector("#" + id);
   const canvas = $("game"),
     ctx = canvas.getContext("2d");
-  const W = 960,
+  let W = 960,
     H = 540,
     LINE = 449,
     TRACK = { x: 548, w: 348, top: 77, bottom: 500 };
+  let portrait = false,
+    touchLayout = false,
+    touchControls;
   const colors = ["#f2acb5", "#f7d39a", "#9fd0d4", "#c6b5ea"];
   const keys = ["KeyD", "KeyF", "KeyJ", "KeyK"];
   const lifetime = new AbortController();
@@ -60,8 +64,7 @@ export async function mountRhythm(root, options) {
   let poseIndex = 0,
     poseUntil = 0,
     feedback = null,
-    feedbackUntil = 0,
-    pointerLanes = new Map();
+    feedbackUntil = 0;
   let runHorror = false;
   const inputSources = Array.from({ length: 4 }, () => new Set());
   const particles = [],
@@ -121,7 +124,7 @@ export async function mountRhythm(root, options) {
   }
   function clearInputs() {
     for (const set of inputSources) set.clear();
-    pointerLanes.clear();
+    touchControls?.clear();
     root.querySelectorAll("[data-lane]").forEach((button) => button.classList.remove("active"));
   }
   function stopSource() {
@@ -135,7 +138,13 @@ export async function mountRhythm(root, options) {
     }
   }
   async function readyAudio() {
-    audio ??= new AudioContext({ latencyHint: "interactive" });
+    if (!audio) {
+      const Context = window.AudioContext || window.webkitAudioContext;
+      audio = new Context({ latencyHint: "interactive" });
+      on(audio, "statechange", () => {
+        if (audio.state === "interrupted" || audio.state === "suspended") pauseGame();
+      });
+    }
     await audio.resume();
     if (!gain) {
       gain = audio.createGain();
@@ -350,21 +359,12 @@ export async function mountRhythm(root, options) {
   on(document, "visibilitychange", () => {
     if (document.hidden) pauseGame();
   });
-  root.querySelectorAll("[data-lane]").forEach((button) => {
-    const lane = Number(button.dataset.lane);
-    on(button, "pointerdown", (event) => {
-      event.preventDefault();
-      button.setPointerCapture(event.pointerId);
-      pointerLanes.set(event.pointerId, lane);
-      press(lane, "pointer-" + event.pointerId);
-    });
-    for (const name of ["pointerup", "pointercancel", "lostpointercapture"])
-      on(button, name, (event) => {
-        if (pointerLanes.get(event.pointerId) === lane) {
-          pointerLanes.delete(event.pointerId);
-          release(lane, "pointer-" + event.pointerId);
-        }
-      });
+  touchControls = bindTouchControls(root, {
+    selector: "[data-lane]",
+    enabled: () => state === "playing" && !demo,
+    press,
+    release,
+    signal: lifetime.signal,
   });
   $("start").onclick = () => startGame(false);
   $("demo").onclick = () => startGame(true);
@@ -378,7 +378,8 @@ export async function mountRhythm(root, options) {
     if (state === "playing" || state === "countdown") pauseGame();
     show("settings", true);
     $("settings-toggle").setAttribute("aria-expanded", "true");
-    $("settings-close").focus();
+    $("settings-close").focus({ preventScroll: true });
+    root.querySelector(".settings-panel").scrollTop = 0;
   }
   function closeSettings() {
     show("settings", false);
@@ -437,11 +438,21 @@ export async function mountRhythm(root, options) {
       state === "playing"
         ? -Math.pow(Math.max(0, Math.sin((t / music.beat) * Math.PI)), 5) * 7
         : Math.sin(now / 440) * 2;
-    const x = state === "idle" || state === "loading" ? 392 : 248,
-      y = 282 + bounce;
+    const idle = ["idle", "loading", "preparing"].includes(state);
+    const x = portrait ? (idle ? W * 0.56 : W - 147) : idle ? 392 : 248,
+      y = portrait ? (idle ? H * 0.61 : 105) : 282;
+    ctx.save();
+    if (portrait || touchLayout) {
+      const size = portrait && !idle ? 0.62 : touchLayout && !portrait ? 0.78 : 1;
+      const targetY = portrait ? y : H - 210;
+      ctx.translate(x, targetY);
+      ctx.scale(size, size);
+      ctx.translate(-x, -y);
+    }
+    ctx.translate(0, bounce);
     ctx.fillStyle = "#2d16385c";
     ctx.beginPath();
-    ctx.ellipse(x + 74, 461, 49, 7, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + 74, y + 179, 49, 7, 0, 0, Math.PI * 2);
     ctx.fill();
     if (corrupt > 0.35) {
       ctx.globalAlpha = 0.35;
@@ -451,7 +462,7 @@ export async function mountRhythm(root, options) {
       ctx.globalAlpha = 1;
     }
     ctx.drawImage(img, x, y, 156, 187);
-    if (state === "playing") {
+    if (state === "playing" && !portrait) {
       const phrase =
         corrupt > 0.55
           ? "你的下一拍，谁在替你按？"
@@ -463,6 +474,7 @@ export async function mountRhythm(root, options) {
       rect(x + 71, y - 4, 10, 5, "#2d213bea");
       text(phrase, x + 77, y - 14, 10, "#f4d4c5", "center");
     }
+    ctx.restore();
   }
   function drawTracks(t, now, idle) {
     const lw = TRACK.w / 4;
@@ -482,7 +494,8 @@ export async function mountRhythm(root, options) {
         rect(x + 1, TRACK.top, lw - 2, LINE - TRACK.top, colors[lane]);
         ctx.globalAlpha = 1;
       }
-      text("DFJK"[lane], x + lw / 2, 484, 16, colors[lane], "center");
+      if (!touchLayout && !portrait)
+        text("DFJK"[lane], x + lw / 2, LINE + 35, 16, colors[lane], "center");
       rect(x + 10, LINE - 2, lw - 20, 4, colors[lane]);
     }
     rect(TRACK.x + TRACK.w, TRACK.top, 1, TRACK.bottom - TRACK.top, "#cfb0c424");
@@ -608,23 +621,38 @@ export async function mountRhythm(root, options) {
     }
     if (!idle && judge) {
       const result = judge.result();
-      rect(25, 20, 515, 2, "#eecbc132");
-      rect(25, 20, 515 * Math.min(1, t / music.duration), 2, "#f1c997");
+      const hudWidth = portrait ? W - 50 : TRACK.x - 33;
+      rect(25, 20, hudWidth, 2, "#eecbc132");
+      rect(25, 20, hudWidth * Math.min(1, t / music.duration), 2, "#f1c997");
       text("灯下回声", 29, 49, 13);
       text("112 BPM  /  " + (demo ? "AUTO PLAY" : "4 KEYS"), 29, 68, 9, "#e0b9c3");
       text(String(result.score).padStart(7, "0"), 29, 108, 27, "#fae2ba");
       const liveAccuracy = judge.resolved ? judge.points / judge.resolved : 1;
       text((liveAccuracy * 100).toFixed(1) + "%", 30, 129, 11, "#e4c3c5");
       if (judge.combo > 1) {
-        text(judge.combo, TRACK.x + TRACK.w / 2, 213, 39, "#fbe4c2", "center");
-        text("COMBO", TRACK.x + TRACK.w / 2, 235, 9, "#ebc3bd", "center");
+        text(
+          judge.combo,
+          TRACK.x + TRACK.w / 2,
+          TRACK.top + (LINE - TRACK.top) * 0.34,
+          39,
+          "#fbe4c2",
+          "center"
+        );
+        text(
+          "COMBO",
+          TRACK.x + TRACK.w / 2,
+          TRACK.top + (LINE - TRACK.top) * 0.34 + 22,
+          9,
+          "#ebc3bd",
+          "center"
+        );
       }
       if (feedback && now < feedbackUntil) {
         const labels = { perfect: "PERFECT", good: "GOOD", ok: "OK", miss: "MISS", hold: "HOLD" };
         text(
           labels[feedback.grade],
           TRACK.x + TRACK.w / 2,
-          379,
+          LINE - 64,
           17,
           feedback.grade === "miss" ? "#e48b98" : "#ffe3aa",
           "center"
@@ -633,8 +661,8 @@ export async function mountRhythm(root, options) {
       const time = Math.max(0, music.duration - t);
       text(
         `${Math.floor(time / 60)}:${String(Math.floor(time % 60)).padStart(2, "0")}`,
-        514,
-        47,
+        portrait ? W - 28 : TRACK.x - 33,
+        portrait ? 136 : 47,
         11,
         "#edd0c9",
         "right"
@@ -645,8 +673,10 @@ export async function mountRhythm(root, options) {
         state === "countdown"
           ? Math.ceil((countdownUntil - now) / (music.beat * 1000))
           : Math.max(1, 4 - Math.floor(Math.max(0, t) / music.beat));
-      rect(641, 225, 165, 86, "#241a33c9");
-      text(count, 724, 283, 46, "#ffe6b7", "center");
+      const cx = TRACK.x + TRACK.w / 2,
+        cy = TRACK.top + (LINE - TRACK.top) * 0.5;
+      rect(cx - 82, cy - 45, 165, 86, "#241a33c9");
+      text(count, cx, cy + 13, 46, "#ffe6b7", "center");
     }
     if (!destroyed) animationFrame = requestAnimationFrame(frame);
   }
@@ -657,14 +687,45 @@ export async function mountRhythm(root, options) {
   };
   $("back-to-games").onclick = exitToGames;
   $("exit-paused").onclick = exitToGames;
+  let previousOrientation;
+  const coarsePointer = matchMedia("(any-pointer: coarse)");
   const syncPlayfield = () => {
     const bounds = canvas.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return;
+    const nextOrientation = bounds.width < bounds.height;
+    if (previousOrientation !== undefined && previousOrientation !== nextOrientation) pauseGame();
+    previousOrientation = nextOrientation;
+    portrait = bounds.width / bounds.height < 1.15;
+    touchLayout = coarsePointer.matches;
+    scene.dataset.layout = portrait ? "portrait" : "landscape";
+    scene.dataset.touch = String(touchLayout);
+    W = portrait ? 480 : 960;
+    H = portrait || touchLayout ? Math.round((W * bounds.height) / bounds.width) : 540;
+    LINE = H - (portrait ? 100 : touchLayout ? Math.max(100, (56 * W) / bounds.width + 22) : 91);
+    TRACK = portrait
+      ? { x: 24, w: W - 48, top: Math.min(240, H * 0.29), bottom: H - 12 }
+      : touchLayout
+        ? { x: 420, w: 516, top: 77, bottom: H - 12 }
+        : { x: 548, w: 348, top: 77, bottom: 500 };
+    canvas.width = W;
+    canvas.height = H;
     const scale = Math.min(bounds.width / W, bounds.height / H);
-    $("touch-keys").style.width = `${W * scale}px`;
-    $("touch-keys").style.height = `${H * scale}px`;
+    const pads = $("touch-keys");
+    pads.style.width = `${W * scale}px`;
+    pads.style.height = `${H * scale}px`;
+    root.querySelectorAll("[data-lane]").forEach((button, lane) => {
+      button.style.left = `${((TRACK.x + (lane * TRACK.w) / 4) / W) * 100}%`;
+      button.style.width = `${(TRACK.w / 4 / W) * 100}%`;
+      button.style.top = `${((LINE + (portrait || touchLayout ? 10 : -30)) / H) * 100}%`;
+      button.style.height = `${((portrait || touchLayout ? H - LINE - 22 : 95) / H) * 100}%`;
+    });
+    $("play-hint").textContent = touchLayout
+      ? "点按下方四键 · 长条按住直到尾端 · 支持多指同按"
+      : "D / F / J / K · 点按或长按";
   };
   resizeObserver = new ResizeObserver(syncPlayfield);
-  resizeObserver.observe(root.host);
+  resizeObserver.observe(canvas);
+  on(coarsePointer, "change", syncPlayfield);
   syncPlayfield();
   if (options.signal.aborted) {
     destroy();
@@ -688,7 +749,7 @@ export async function mountRhythm(root, options) {
       console.error(error);
     }
   }
-  on(window, "pagehide", destroy);
+  on(window, "pagehide", pauseGame);
   return {
     destroy,
     snapshot: () => ({

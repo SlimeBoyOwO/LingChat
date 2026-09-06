@@ -1,3 +1,4 @@
+import { bindTouchControls } from "../touch-controls.js";
 import { Adventure, STEP } from "./core.js";
 import { TrailAudio } from "./audio.js";
 import { ARMOR_TIERS } from "./levels.js";
@@ -9,9 +10,10 @@ export function mountStarTrail(root, options) {
     ctx = canvas.getContext("2d"),
     scene = root.querySelector(".star-trail");
   const game = new Adventure(),
-    audio = new TrailAudio(),
+    audio = new TrailAudio(() => pause()),
     lifetime = new AbortController();
   const keys = new Set(),
+    pendingActions = new Set(),
     pointers = new Map(),
     particles = [];
   const keyActions = {
@@ -31,7 +33,9 @@ export function mountStarTrail(root, options) {
     lastMode = "",
     lastHUD = "",
     width = 640,
-    announcement = 0;
+    announcement = 0,
+    worldTop = 0,
+    touchControls;
   const show = (id, visible) => {
     $(id).hidden = !visible;
   };
@@ -39,11 +43,15 @@ export function mountStarTrail(root, options) {
     target.addEventListener(name, handler, { signal: lifetime.signal });
   const clearInput = () => {
     keys.clear();
+    pendingActions.clear();
     pointers.clear();
+    touchControls?.clear();
     root.querySelectorAll("[data-action]").forEach((button) => button.classList.remove("active"));
   };
   const input = () => {
-    const active = [...keys].map((key) => keyActions[key]).concat([...pointers.values()]);
+    const active = [...keys]
+      .map((key) => keyActions[key])
+      .concat([...pointers.values()], [...pendingActions]);
     return Object.fromEntries(active.map((action) => [action, true]));
   };
   const notify = (message, seconds = 2.4) => {
@@ -86,7 +94,8 @@ export function mountStarTrail(root, options) {
     show("gear-screen", false);
     show("shop-screen", true);
     renderShop();
-    $("shop-close").focus();
+    $("shop-close").focus({ preventScroll: true });
+    root.querySelector(".shop-panel").scrollTop = 0;
   }
   function closeShop() {
     show("shop-screen", false);
@@ -104,7 +113,8 @@ export function mountStarTrail(root, options) {
     show("shop-screen", false);
     show("gear-screen", true);
     renderGear();
-    $("gear-close").focus();
+    $("gear-close").focus({ preventScroll: true });
+    root.querySelector(".gear-panel").scrollTop = 0;
   }
   function closeGear() {
     show("gear-screen", false);
@@ -230,7 +240,10 @@ export function mountStarTrail(root, options) {
       $("boss-health").style.transform = `scaleX(${Math.max(0, game.boss.hp / game.boss.maxHP)})`;
     }
     show("boss", game.boss.active && game.boss.hp > 0 && mode === "playing");
-    const hint = mode === "playing" ? game.interactionHint() : "";
+    const hint =
+      mode === "playing"
+        ? game.interactionHint().replace(/空格/g, coarsePointer.matches ? "射击键" : "空格")
+        : "";
     if ($("interaction").textContent !== hint) $("interaction").textContent = hint;
     show("interaction", !!hint && !game.nearShop());
     show("world-shop", mode === "playing" && game.nearShop());
@@ -304,9 +317,10 @@ export function mountStarTrail(root, options) {
     previous = now;
     if (game.mode === "playing") {
       accumulator += dt;
-      const controls = input();
       while (accumulator >= STEP) {
-        game.step(STEP, controls);
+        // Preserve a quick tap that starts and ends between two animation frames.
+        game.step(STEP, input());
+        pendingActions.clear();
         accumulator -= STEP;
       }
       announcement -= dt;
@@ -319,28 +333,46 @@ export function mountStarTrail(root, options) {
     effects(dt);
     audio.tick();
     updateUI();
+    ctx.save();
+    ctx.translate(0, worldTop);
+    const framing = { top: worldTop, height: canvas.height };
     if (game.mode === "title") {
-      background(ctx, game.level, 80, now / 1000, width);
+      background(ctx, game.level, 80, now / 1000, width, framing);
       ctx.fillStyle = game.level.land[2];
-      ctx.fillRect(0, 310, width, 50);
+      ctx.fillRect(0, 310, width, canvas.height - worldTop - 310);
       ctx.fillStyle = game.level.land[0];
       ctx.fillRect(0, 310, width, 4);
       ctx.fillStyle = game.level.land[1];
       ctx.fillRect(0, 314, width, 9);
       hero(ctx, width * 0.72, 272, -1, now / 1000, false, false, 2);
-    } else drawWorld(ctx, game, game.time, width, particles);
+    } else drawWorld(ctx, game, game.time, width, particles, framing);
+    ctx.restore();
     frameId = requestAnimationFrame(frame);
   }
+  let previousOrientation;
+  const coarsePointer = matchMedia("(any-pointer: coarse)");
   const resize = () => {
-    const bounds = root.host.getBoundingClientRect();
-    // Match the client aspect ratio so generated pixels stay square in every window.
-    width = Math.max(120, Math.round((360 * bounds.width) / Math.max(1, bounds.height)));
+    const bounds = canvas.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return;
+    const portrait = bounds.width < bounds.height;
+    if (previousOrientation !== undefined && previousOrientation !== portrait) pause();
+    previousOrientation = portrait;
+    scene.dataset.layout = portrait ? "portrait" : "landscape";
+    scene.dataset.touch = String(coarsePointer.matches);
+    // Keep enough world visible to plan a jump even on a narrow portrait phone.
+    width = Math.max(480, Math.round((360 * bounds.width) / bounds.height));
     canvas.width = width;
-    canvas.height = 360;
+    canvas.height = Math.round((width * bounds.height) / bounds.width);
+    worldTop = Math.max(0, Math.round((canvas.height - 360) * 0.48));
     ctx.imageSmoothingEnabled = false;
+    $("title-hint").textContent = coarsePointer.matches
+      ? "左手移动 · 右手跳跃与射击 · 支持同时按住"
+      : "A / D 移动　 W / ↑ 跳跃　 空格射击";
+    $("world-shop").textContent = coarsePointer.matches ? "进入星灯商店" : "E · 进入星灯商店";
   };
   const observer = new ResizeObserver(resize);
-  observer.observe(root.host);
+  observer.observe(canvas);
+  on(coarsePointer, "change", resize);
   resize();
   on(window, "keydown", (event) => {
     if (event.code === "Escape") {
@@ -361,30 +393,27 @@ export function mountStarTrail(root, options) {
       event.composedPath()[0]?.tagName !== "INPUT"
     ) {
       event.preventDefault();
+      if (!keys.has(event.code) && ["jump", "fire"].includes(keyActions[event.code]))
+        pendingActions.add(keyActions[event.code]);
       keys.add(event.code);
     }
   });
   on(window, "keyup", (event) => keys.delete(event.code));
   on(window, "blur", pause);
+  on(window, "pagehide", pause);
   on(document, "visibilitychange", () => {
     if (document.hidden) pause();
   });
-  root.querySelectorAll("[data-action]").forEach((button) => {
-    on(button, "pointerdown", (event) => {
-      if (game.mode !== "playing") return;
-      event.preventDefault();
-      button.setPointerCapture(event.pointerId);
-      pointers.set(event.pointerId, button.dataset.action);
-      button.classList.add("active");
-    });
-    const release = (event) => {
-      pointers.delete(event.pointerId);
-      if (![...pointers.values()].includes(button.dataset.action))
-        button.classList.remove("active");
-    };
-    on(button, "pointerup", release);
-    on(button, "pointercancel", release);
-    on(button, "lostpointercapture", release);
+  touchControls = bindTouchControls(root, {
+    selector: "[data-action]",
+    enabled: () => game.mode === "playing",
+    press: (action, origin) => {
+      pointers.set(origin, action);
+      if (action === "jump" || action === "fire") pendingActions.add(action);
+    },
+    release: (_action, origin) => pointers.delete(origin),
+    slide: ["left", "right"],
+    signal: lifetime.signal,
   });
   on($("start"), "click", () => {
     $("start").blur();
@@ -412,7 +441,8 @@ export function mountStarTrail(root, options) {
   on($("overlay-exit"), "click", exit);
   on($("help"), "click", () => {
     show("help-screen", true);
-    $("help-close").focus();
+    $("help-close").focus({ preventScroll: true });
+    $("help-screen").querySelector(".overlay-menu").scrollTop = 0;
   });
   on($("help-close"), "click", () => {
     show("help-screen", false);

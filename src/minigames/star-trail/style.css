@@ -1,4 +1,8 @@
 :host {
+  --edge-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --edge-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --edge-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --edge-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
   display: block;
   width: 100%;
   height: 100%;
@@ -13,6 +17,10 @@
   display: none !important;
 }
 .star-trail {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
   position: relative;
   width: 100%;
   height: 100%;
@@ -28,6 +36,7 @@
   image-rendering: pixelated;
 }
 button {
+  touch-action: manipulation;
   font: inherit;
   color: inherit;
   cursor: pointer;
@@ -42,7 +51,7 @@ input:focus-visible {
 }
 .title-screen {
   position: absolute;
-  inset: 0;
+  inset: var(--edge-top) var(--edge-right) var(--edge-bottom) var(--edge-left);
   background: linear-gradient(90deg, #16354c66, transparent 70%);
 }
 .game-title {
@@ -100,7 +109,7 @@ input:focus-visible {
 }
 .hud {
   position: absolute;
-  inset: 4% 4% auto;
+  inset: calc(var(--edge-top) + 4%) calc(var(--edge-right) + 4%) auto calc(var(--edge-left) + 4%);
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -156,7 +165,7 @@ input:focus-visible {
 }
 .boss-hud {
   position: absolute;
-  top: 5%;
+  top: calc(var(--edge-top) + 5%);
   left: 32%;
   width: 36%;
   text-align: center;
@@ -188,6 +197,9 @@ input:focus-visible {
   text-shadow: 0 3px 6px #14314e;
 }
 .scrim {
+  padding: calc(var(--edge-top) + 12px) calc(var(--edge-right) + 12px)
+    calc(var(--edge-bottom) + 12px) calc(var(--edge-left) + 12px);
+  min-height: 0;
   position: absolute;
   inset: 0;
   display: grid;
@@ -198,7 +210,7 @@ input:focus-visible {
 }
 .overlay-menu {
   width: min(700px, 86%);
-  max-height: 94%;
+  max-height: 100%;
 }
 .overlay-menu h2 {
   font-size: clamp(26px, 4vw, 54px);
@@ -238,7 +250,7 @@ input:focus-visible {
 }
 .touch-controls {
   position: absolute;
-  inset: auto 4% 4%;
+  inset: auto calc(var(--edge-right) + 4%) calc(var(--edge-bottom) + 4%) calc(var(--edge-left) + 4%);
   display: flex;
   justify-content: space-between;
   pointer-events: none;
@@ -307,7 +319,7 @@ input:focus-visible {
     margin-top: 12px;
   }
   .hud {
-    top: 3%;
+    top: calc(var(--edge-top) + 3%);
   }
   #trail-hearts {
     gap: 4px;
@@ -331,7 +343,7 @@ input:focus-visible {
     top: 37%;
   }
   .boss-hud {
-    top: 17%;
+    top: calc(var(--edge-top) + 150px);
     left: 20%;
     width: 60%;
   }
@@ -411,7 +423,16 @@ input:focus-visible {
 .shop-panel,
 .gear-panel {
   width: min(860px, 88%);
-  max-height: 94%;
+  max-height: 100%;
+}
+.overlay-menu,
+.shop-panel,
+.gear-panel {
+  overflow-y: auto;
+  padding: 8px;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 .shop-heading {
   display: flex;
@@ -642,5 +663,119 @@ input:focus-visible {
   }
   .gear-tiers span {
     font-size: 10px;
+  }
+}
+
+.touch-help {
+  display: none;
+}
+@media (any-pointer: coarse) {
+  .menu-item,
+  #trail-pause,
+  #trail-armor-open,
+  .world-shop {
+    min-height: 48px;
+  }
+  .menu-item:hover {
+    transform: none;
+  }
+  .touch-help {
+    display: block;
+  }
+  .keyboard-help {
+    display: none;
+  }
+  .music-volume input {
+    height: 32px;
+    touch-action: pan-x;
+  }
+  .touch-controls {
+    opacity: 1;
+  }
+  .touch-controls button {
+    width: clamp(56px, 8vw, 80px);
+    height: clamp(56px, 8vw, 80px);
+    background: #183548b8;
+  }
+  .touch-controls > div {
+    gap: 10px;
+  }
+  .touch-controls button[data-action="fire"] {
+    border-color: #ffdd9b;
+    color: #ffdd9b;
+  }
+  .touch-controls button[data-action="jump"] {
+    border-color: #bdf6de;
+    color: #bdf6de;
+  }
+  .touch-controls button.active {
+    background: #69cbbdcc;
+  }
+  .interaction-hint {
+    bottom: calc(var(--edge-bottom) + 100px);
+    left: calc(var(--edge-left) + 8%);
+    right: calc(var(--edge-right) + 8%);
+  }
+  .hud-left {
+    gap: 3px;
+  }
+  #trail-armor-open {
+    margin-top: -5px;
+    margin-bottom: -5px;
+  }
+}
+@media (any-pointer: coarse) and (max-height: 550px) {
+  .overlay-menu {
+    width: min(740px, 96%);
+  }
+  .overlay-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 20px;
+  }
+  .music-volume {
+    margin-top: 6px;
+  }
+  .shop-panel,
+  .gear-panel {
+    width: min(860px, 96%);
+  }
+}
+.star-trail[data-layout="portrait"] .touch-controls {
+  bottom: calc(var(--edge-bottom) + 30px);
+}
+.star-trail[data-layout="portrait"] .touch-controls::before {
+  content: "";
+  position: absolute;
+  inset: -30px -10vw -70px;
+  z-index: -1;
+  background: linear-gradient(transparent, #102b49aa);
+  pointer-events: none;
+}
+.star-trail[data-layout="portrait"] .game-title {
+  top: 8%;
+}
+.star-trail[data-layout="portrait"] .scene-menu {
+  top: 32%;
+}
+@media (max-width: 360px) {
+  .touch-controls {
+    left: calc(var(--edge-left) + 12px);
+    right: calc(var(--edge-right) + 12px);
+  }
+  .touch-controls > div {
+    gap: 6px;
+  }
+  .shop-heading {
+    flex-wrap: wrap;
+    gap: 0;
+    margin-bottom: 10px;
+  }
+  .gear-tiers {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .gear-layout {
+    flex-wrap: wrap;
   }
 }

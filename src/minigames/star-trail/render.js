@@ -70,20 +70,20 @@ function cloud(ctx, x, y, color, size = 1) {
   pixel(ctx, x + 27 * size, y + 4 * size, 13 * size, 13 * size, color);
 }
 
-export function background(ctx, level, camera, time, width) {
+export function background(ctx, level, camera, time, width, framing = { top: 0, height: 360 }) {
   const r = (x, y, w, h, c) => pixel(ctx, x, y, w, h, c);
-  const gradient = ctx.createLinearGradient(0, 0, 0, 310);
+  const gradient = ctx.createLinearGradient(0, -framing.top, 0, 310);
   gradient.addColorStop(0, level.sky[0]);
   gradient.addColorStop(1, level.sky[1]);
   ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, 360);
+  ctx.fillRect(0, -framing.top, width, framing.height);
   const night = level.theme === "night",
     factory = level.theme === "factory";
   for (let i = 0; i < 55; i++) {
     const x =
       (((noise(i + 14) * (width + 40) - camera * 0.045) % (width + 40)) + width + 40) %
       (width + 40);
-    const y = noise(i + 59) * 195;
+    const y = -framing.top + noise(i + 59) * (195 + framing.top);
     r(x, y, i % 9 === 0 ? 2 : 1, 1, night ? "#e8d8ffaa" : "#fff5d144");
   }
   const sunX = width * 0.79 - camera * 0.015;
@@ -116,7 +116,13 @@ export function background(ctx, level, camera, time, width) {
         : factory
           ? ["#714c69", "#895167", "#6a445d"]
           : ["#41899a", "#387c88", "#2c6776"];
-      r(x, bottom - h, stride + 1, h + 90, colors[layer]);
+      r(
+        x,
+        bottom - h,
+        stride + 1,
+        h + 90 + Math.max(0, framing.height - framing.top - 360),
+        colors[layer]
+      );
       if (factory) {
         r(x + 7, bottom - h - 12, 9, 14, colors[layer]);
         for (let wy = bottom - h + 15; wy < bottom; wy += 18)
@@ -226,17 +232,19 @@ function drawBoss(ctx, boss, level) {
   if (warning) star(ctx, b.x + 32, b.y - 24, 5, "#fff0ad");
 }
 
-export function drawWorld(ctx, game, time, width, particles = []) {
+export function drawWorld(ctx, game, time, width, particles = [], framing) {
   const { level, player: p } = game,
     camera = Math.round(game.camera);
   ctx.imageSmoothingEnabled = false;
-  background(ctx, level, camera, time, width);
+  background(ctx, level, camera, time, width, framing);
   ctx.save();
   ctx.translate(-camera, 0);
   const r = (x, y, w, h, c) => pixel(ctx, x, y, w, h, c);
   for (const solid of level.solids) {
     if (solid.x > camera + width + 30 || solid.x + solid.w < camera - 30) continue;
-    r(solid.x, solid.y, solid.w, solid.h, level.land[2]);
+    const depth =
+      solid.floor && framing ? Math.max(solid.h, framing.height - framing.top - solid.y) : solid.h;
+    r(solid.x, solid.y, solid.w, depth, level.land[2]);
     r(solid.x, solid.y, solid.w, 5, level.land[0]);
     r(solid.x, solid.y + 5, solid.w, solid.floor ? 14 : 7, level.land[1]);
     const left = Math.max(solid.x, Math.floor(camera / 16) * 16);
@@ -245,6 +253,9 @@ export function drawWorld(ctx, game, time, width, particles = []) {
       if (solid.floor) {
         r(x + 4, solid.y + 24, 8, 4, level.land[1]);
         r(x + 11, solid.y + 45, 4, 7, level.land[1]);
+        for (let y = 78; y < depth; y += 32) {
+          if (noise(x + y) > 0.55) r(x + 3, solid.y + y, 5, 3, level.land[1]);
+        }
         if (level.theme === "coast" && noise(x) > 0.4) {
           r(x + 2, solid.y - 6, 2, 7, "#9bda92");
           r(x, solid.y - 3, 6, 2, "#9bda92");

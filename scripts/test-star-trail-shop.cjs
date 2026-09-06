@@ -100,6 +100,8 @@ fs.mkdirSync(out, { recursive: true });
     await page.waitForTimeout(150);
     assert((await state()).player.magnet < 10);
     await page.setViewportSize({ width: 1500, height: 800 });
+    await page.waitForFunction(() => window.__trailController.snapshot().mode === "paused");
+    await page.locator("#trail-primary").click();
     await page.screenshot({ path: path.join(out, "armor-hud.png") });
     await page.keyboard.press("Escape");
     await page.locator("#trail-shop-open").click();

@@ -1,4 +1,8 @@
 :host {
+  --edge-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --edge-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --edge-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --edge-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
   display: block;
   width: 100%;
   height: 100%;
@@ -16,6 +20,10 @@
   display: none !important;
 }
 .cadence-root {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
   position: relative;
   width: 100%;
   height: 100%;
@@ -56,9 +64,9 @@
 }
 #game {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  inset: var(--edge-top) var(--edge-right) var(--edge-bottom) var(--edge-left);
+  width: calc(100% - var(--edge-left) - var(--edge-right));
+  height: calc(100% - var(--edge-top) - var(--edge-bottom));
   object-fit: contain;
   image-rendering: pixelated;
   z-index: 3;
@@ -66,7 +74,7 @@
 }
 .title-card {
   position: absolute;
-  inset: 0;
+  inset: var(--edge-top) var(--edge-right) var(--edge-bottom) var(--edge-left);
   z-index: 5;
   pointer-events: none;
 }
@@ -102,6 +110,7 @@
   pointer-events: auto;
 }
 button {
+  touch-action: manipulation;
   font: inherit;
   color: inherit;
   cursor: pointer;
@@ -153,10 +162,13 @@ input:focus-visible {
   margin-left: 25px;
   color: #e5d1c7;
 }
+.scene-hint b {
+  font-weight: normal;
+}
 .live-tools {
   position: absolute;
-  top: 3%;
-  right: 4%;
+  top: calc(var(--edge-top) + 3%);
+  right: calc(var(--edge-right) + 4%);
   z-index: 6;
   display: flex;
   align-items: center;
@@ -179,23 +191,40 @@ input:focus-visible {
 }
 .touch-keys {
   position: absolute;
-  left: 50%;
-  top: 50%;
+  left: calc(50% + (var(--edge-left) - var(--edge-right)) / 2);
+  top: calc(50% + (var(--edge-top) - var(--edge-bottom)) / 2);
   transform: translate(-50%, -50%);
   z-index: 4;
   pointer-events: none;
 }
 .touch-keys button {
   position: absolute;
-  left: calc((548 + var(--lane) * 87) / 960 * 100%);
-  top: 77.6%;
-  width: 9.0625%;
-  height: 17.6%;
   background: transparent;
   border: 0;
   touch-action: none;
   user-select: none;
   pointer-events: auto;
+}
+.touch-keys button span {
+  display: none;
+}
+.cadence-root:is([data-touch="true"], [data-layout="portrait"]) .touch-keys button {
+  border: 4px solid transparent;
+  background: linear-gradient(#392a48cc, #261e38ee) padding-box;
+  box-shadow:
+    inset 0 3px var(--lane-color),
+    inset 0 -3px #120e2399;
+  color: var(--lane-color);
+  font:
+    bold 20px Consolas,
+    monospace;
+}
+.cadence-root:is([data-touch="true"], [data-layout="portrait"]) .touch-keys button span {
+  display: block;
+}
+.cadence-root:is([data-touch="true"], [data-layout="portrait"]) .touch-keys button.active {
+  background: var(--lane-color) padding-box;
+  color: #251932;
 }
 .touch-keys button.active {
   background: linear-gradient(transparent, #fff0c326);
@@ -204,6 +233,9 @@ input:focus-visible {
   display: none;
 }
 .modal-scrim {
+  padding: calc(var(--edge-top) + 12px) calc(var(--edge-right) + 12px)
+    calc(var(--edge-bottom) + 12px) calc(var(--edge-left) + 12px);
+  min-height: 0;
   position: absolute;
   inset: 0;
   z-index: 10;
@@ -214,7 +246,12 @@ input:focus-visible {
 }
 .modal {
   width: min(760px, 86%);
-  max-height: 94%;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  padding: 8px;
   color: #fff5e6;
 }
 .modal h2 {
@@ -477,8 +514,8 @@ input:focus-visible {
     margin: 10px 0 0;
   }
   .live-tools {
-    top: 3%;
-    right: 5%;
+    top: calc(var(--edge-top) + 3%);
+    right: calc(var(--edge-right) + 5%);
     gap: 9px;
   }
   .live-tools span {
@@ -486,6 +523,54 @@ input:focus-visible {
   }
   .result-actions {
     gap: 20px;
+  }
+}
+.cadence-root[data-layout="portrait"] .live-tools {
+  top: calc(var(--edge-top) + 30px);
+}
+@media (any-pointer: coarse) {
+  .menu-item,
+  .live-tools button {
+    min-height: 48px;
+  }
+  .menu-item:hover:not(:disabled) {
+    transform: none;
+  }
+  .scene-menu {
+    gap: 4px;
+  }
+  .settings-panel input[type="range"] {
+    height: 32px;
+    margin: 4px 0;
+    touch-action: pan-x;
+  }
+  .check-setting {
+    min-height: 48px;
+  }
+  .check-setting input {
+    min-width: 24px;
+    min-height: 24px;
+  }
+  .scene-hint {
+    max-width: 86%;
+    line-height: 1.7;
+  }
+}
+@media (any-pointer: coarse) and (max-height: 550px) {
+  .pause-menu {
+    width: min(720px, 96%);
+    max-width: 96%;
+  }
+  .modal-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 18px;
+  }
+  .pause-hint {
+    margin-top: 8px;
+  }
+  .settings-panel {
+    width: min(760px, 96%);
   }
 }
 @media (prefers-reduced-motion: reduce) {

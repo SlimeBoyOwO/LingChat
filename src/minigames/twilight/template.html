@@ -2,7 +2,7 @@
   <img id="scene-background" class="scene-background" alt="" draggable="false" />
   <div class="scene-shade" aria-hidden="true"></div>
   <div id="scene-corruption" class="scene-corruption" aria-hidden="true"></div>
-  <canvas id="game" width="960" height="540" aria-label="四键音游，使用 D F J K 点按或长按"></canvas>
+  <canvas id="game" width="960" height="540" aria-label="四键音游，触摸下方四键或使用 D F J K 点按或长按"></canvas>
   <div class="loading" id="loading">正在载入场景…</div>
 
   <div class="title-card" id="title-card" hidden>
@@ -13,7 +13,7 @@
       <button class="menu-item" id="settings-toggle" type="button" aria-expanded="false">调校</button>
       <button class="menu-item" id="back-to-games" type="button">返回</button>
     </nav>
-    <p class="scene-hint">D / F / J / K · 点按或长按 <span>112 BPM · 约 72 秒</span></p>
+    <p class="scene-hint"><b id="play-hint">D / F / J / K · 点按或长按</b> <span>112 BPM · 约 72 秒</span></p>
   </div>
 
   <div class="live-tools" id="live-tools" hidden>
@@ -21,10 +21,10 @@
     <button id="pause" type="button" aria-label="暂停游戏">暂停</button>
   </div>
   <div class="touch-keys" id="touch-keys" aria-label="轨道触摸按键">
-    <button data-lane="0" style="--lane:0" aria-label="轨道 D"></button>
-    <button data-lane="1" style="--lane:1" aria-label="轨道 F"></button>
-    <button data-lane="2" style="--lane:2" aria-label="轨道 J"></button>
-    <button data-lane="3" style="--lane:3" aria-label="轨道 K"></button>
+    <button data-lane="0" style="--lane:0;--lane-color:#f2acb5" aria-label="轨道 D"><span>D</span></button>
+    <button data-lane="1" style="--lane:1;--lane-color:#f7d39a" aria-label="轨道 F"><span>F</span></button>
+    <button data-lane="2" style="--lane:2;--lane-color:#9fd0d4" aria-label="轨道 J"><span>J</span></button>
+    <button data-lane="3" style="--lane:3;--lane-color:#c6b5ea" aria-label="轨道 K"><span>K</span></button>
   </div>
 
   <div class="modal-scrim" id="pause-screen" hidden>
