@@ -13,7 +13,9 @@
     </StartLine>
 
     <StartLine>
-      <StartItem class="menu-subitem" disabled="true">{{ $t("views.menu.miniGame") }}</StartItem>
+      <StartItem class="menu-subitem" @click="router.push('/mini-games')">{{
+        $t("views.menu.miniGame")
+      }}</StartItem>
     </StartLine>
 
     <StartLine>
