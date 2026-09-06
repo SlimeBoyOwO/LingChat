@@ -1,11 +1,13 @@
 import { bindTouchControls, usesMobileControls } from "../touch-controls.js";
 import { SONGS } from "./songs.js";
 import { Judge } from "./core.js";
+import { drawIdle, idleFrameAt, breathAt } from "./idle.js";
 import backgroundUrl from "../../assets/minigames/twilight/shrine-dusk.png";
 import pose0Url from "../../assets/minigames/twilight/qinling-0.png";
 import pose1Url from "../../assets/minigames/twilight/qinling-1.png";
 import pose2Url from "../../assets/minigames/twilight/qinling-2.png";
 import pose3Url from "../../assets/minigames/twilight/qinling-3.png";
+import idleUrl from "../../assets/minigames/twilight/qinling-idle.png";
 
 /** Mount the bundled game inside an isolated UI root; all resources belong to this mount. */
 export async function mountRhythm(root, options) {
@@ -73,6 +75,7 @@ export async function mountRhythm(root, options) {
     poseUntil = 0,
     feedback = null,
     feedbackUntil = 0;
+  let idleElapsed = 0;
   let runHorror = false;
   const inputSources = Array.from({ length: 4 }, () => new Set());
   const particles = [],
@@ -525,17 +528,16 @@ export async function mountRhythm(root, options) {
     ctx.fillStyle = color;
     ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
   }
-  function drawCharacter(now, t, corrupt) {
+  function drawCharacter(now, corrupt) {
     let frame = now < poseUntil ? poseIndex : 0;
     if (judge && judge.combo > 0 && judge.combo % 16 === 0 && now < feedbackUntil) frame = 3;
-    const img = images["pose" + frame];
+    const animated = frame === 0 && images.idle;
+    const img = animated || images["pose" + frame];
     if (!img) return;
-    const bounce =
-      state === "playing" && beatEffects && !reducedMotion.matches
-        ? -Math.pow(Math.max(0, Math.sin((t / music.beat) * Math.PI)), 5) * 7
-        : beatEffects && !reducedMotion.matches
-          ? Math.sin(now / 440) * 2
-          : 0;
+    const idleFrame = beatEffects && !reducedMotion.matches ? idleFrameAt(idleElapsed) : 0;
+    const breath = beatEffects && !reducedMotion.matches ? breathAt(idleElapsed) : 0;
+    const drawPose = () =>
+      animated ? drawIdle(ctx, img, idleFrame, x, y, breath) : ctx.drawImage(img, x, y, 156, 187);
     const idle = ["idle", "loading", "preparing"].includes(state);
     const x = portrait ? (idle ? W * 0.56 : W - 147) : idle ? 392 : 248,
       y = portrait ? (idle ? H * 0.61 : 105) : 282;
@@ -547,7 +549,6 @@ export async function mountRhythm(root, options) {
       ctx.scale(size, size);
       ctx.translate(-x, -y);
     }
-    ctx.translate(0, bounce);
     ctx.fillStyle = "#2d16385c";
     ctx.beginPath();
     ctx.ellipse(x + 74, y + 179, 49, 7, 0, 0, Math.PI * 2);
@@ -555,11 +556,14 @@ export async function mountRhythm(root, options) {
     if (corrupt > 0.35) {
       ctx.globalAlpha = 0.35;
       ctx.filter = "sepia(1) saturate(7) hue-rotate(310deg)";
-      ctx.drawImage(img, x + Math.sin(now / 180) * 10, y - 2, 156, 187);
+      ctx.save();
+      ctx.translate(Math.sin(now / 180) * 10, -2);
+      drawPose();
+      ctx.restore();
       ctx.filter = "none";
       ctx.globalAlpha = 1;
     }
-    ctx.drawImage(img, x, y, 156, 187);
+    drawPose();
     if (state === "playing" && !portrait) {
       const phrase =
         corrupt > 0.55
@@ -749,6 +753,14 @@ export async function mountRhythm(root, options) {
   }
   function frame(now) {
     const dt = Math.min(2, (now - previousFrame) / 16.667);
+    if (
+      state !== "paused" &&
+      state !== "countdown" &&
+      !document.hidden &&
+      beatEffects &&
+      !reducedMotion.matches
+    )
+      idleElapsed += dt * 16.667;
     previousFrame = now;
     if (state === "countdown" && now >= countdownUntil) {
       judge.resume(resumeAt - offset / 1000);
@@ -795,7 +807,7 @@ export async function mountRhythm(root, options) {
       );
     }
     drawNeon(t, idle);
-    drawCharacter(now, Math.max(0, t), corrupt);
+    drawCharacter(now, corrupt);
     if (!idle) drawTracks(t, now, false);
     drawHitEffects(dt);
     for (let i = particles.length - 1; i >= 0; i--) {
@@ -930,6 +942,7 @@ export async function mountRhythm(root, options) {
   try {
     await Promise.all([
       loadImage("bg", backgroundUrl),
+      loadImage("idle", idleUrl),
       ...[pose0Url, pose1Url, pose2Url, pose3Url].map((url, i) => loadImage("pose" + i, url)),
     ]);
     if (!destroyed) {

@@ -1,21 +1,43 @@
 // Original, deterministic study: a 32-bar A-minor chiptune at 112 BPM.
+import { progression, studyPhrases, frequency } from "./harmony.js";
 const bpm = 112,
   beat = 60 / bpm,
   duration = 132 * beat + 1.2;
-const progression = [
-  [45, 57, 60, 64],
-  [41, 53, 57, 60],
-  [48, 55, 60, 64],
-  [43, 55, 59, 62],
-];
-const melody = [76, 72, 69, 72, 74, 72, 69, 67, 69, 72, 76, 79, 76, 72, 74, 71];
-const freq = (midi) => 440 * 2 ** ((midi - 69) / 12);
+export function makeScore() {
+  const events = [];
+  const tone = (at, length, midi, gain, voice = "pulse") =>
+    events.push({ at, length, midi, gain, voice });
+  const drum = (at, kind, gain = 1) => events.push({ at, kind, gain });
+  for (let i = 0; i < 4; i++) tone(i * beat, 0.07, i === 3 ? 88 : 81, 0.13);
+  for (let bar = 0; bar < 32; bar++) {
+    const chordIndex = Math.floor(bar / 2) % 4,
+      chord = progression[chordIndex];
+    for (let b = 0; b < 4; b++) {
+      const at = (4 + bar * 4 + b) * beat;
+      drum(at, b % 2 ? "hat" : "kick");
+      drum(at + beat / 2, "hat");
+      tone(at, beat * 0.75, chord.bass, 0.18, "bass");
+      tone(at, beat * 0.42, chord.notes[b % 3], 0.095);
+      tone(at + beat / 2, beat * 0.42, chord.notes[(b + 1) % 3], 0.075);
+      const m = studyPhrases[chordIndex][(bar % 2) * 4 + b];
+      tone(at, beat * (b === 3 ? 0.9 : 0.65), m, 0.12);
+      if (bar >= 8 && bar % 4 === 3 && b === 2)
+        tone(at + beat / 2, beat * 0.4, studyPhrases[chordIndex][7], 0.075);
+    }
+  }
+  const ending = 132 * beat;
+  tone(ending, 0.9, 45, 0.14, "bass");
+  for (const midi of progression[0].notes) tone(ending, 0.9, midi, 0.055);
+  tone(ending, 1, 69, 0.11);
+  return events;
+}
+
 function renderPcm(sampleRate = 22050) {
   const data = new Float32Array(Math.ceil(duration * sampleRate));
   function tone(at, length, midi, gain, type = "pulse") {
     const start = Math.round(at * sampleRate),
       size = Math.ceil(length * sampleRate),
-      f = freq(midi);
+      f = frequency(midi);
     for (let i = 0; i < size && start + i < data.length; i++) {
       const t = i / sampleRate,
         phase = t * f;
@@ -45,20 +67,9 @@ function renderPcm(sampleRate = 22050) {
         v * Math.exp(-t * (kind === "kick" ? 26 : 60)) * (kind === "kick" ? 0.28 : 0.055);
     }
   }
-  for (let i = 0; i < 4; i++) tone(i * beat, 0.07, i === 3 ? 88 : 81, 0.13);
-  for (let bar = 0; bar < 32; bar++) {
-    const chord = progression[Math.floor(bar / 2) % 4];
-    for (let b = 0; b < 4; b++) {
-      const at = (4 + bar * 4 + b) * beat;
-      drum(at, b % 2 ? "hat" : "kick");
-      drum(at + beat / 2, "hat");
-      tone(at, beat * 0.75, chord[0], 0.18, "bass");
-      tone(at, beat * 0.42, chord[1 + (b % 3)], 0.095);
-      tone(at + beat / 2, beat * 0.42, chord[1 + ((b + 1) % 3)], 0.075);
-      const m = melody[(bar * 4 + b) % melody.length] + (bar >= 24 ? 12 : 0);
-      tone(at, beat * (b === 3 ? 0.9 : 0.65), m, 0.12);
-      if (bar >= 8 && bar % 4 === 3 && b === 2) tone(at + beat / 2, beat * 0.4, m - 2, 0.09);
-    }
+  for (const event of makeScore()) {
+    if (event.kind) drum(event.at, event.kind, event.gain);
+    else tone(event.at, event.length, event.midi, event.gain, event.voice);
   }
   let peak = 0;
   for (const v of data) peak = Math.max(peak, Math.abs(v));

@@ -1,6 +1,6 @@
 # 暮色节拍美术生成提示词
 
-背景和角色使用内置 image_gen 生成。主程序使用的文件位于 `src/assets/minigames/twilight/`。角色参考项目已有的钦灵 Q 版图；原始输出、去背景脚本和完整帧表保留在本次独立原型中，主程序只打包整理后的四张透明帧。
+背景和角色使用内置 image_gen 生成。主程序使用的文件位于 `src/assets/minigames/twilight/`。角色参考项目已有的钦灵 Q 版图；四张原有动作帧保留，`qinling-idle.png` 提供六帧待机动作。
 
 ## 背景提示词
 
@@ -23,3 +23,16 @@ Genuinely transparent RGBA background across the entire sheet outside the four c
 ## 音乐
 
 《灯下回声》是本任务通过 music.js 编写的原创程序合成练习曲，112 BPM，A 小调，32 小节，前置四拍准备。音频导出脚本保留在原型中，未使用外部录音或采样。
+
+## 待机动作提示词
+
+内置 image_gen 编辑模式，以 `qinling-0.png` 为角色参考生成六帧；清理棋盘背景后保存为 1536×1024 RGBA 图集 `qinling-idle.png`。`idle.js` 记录各帧边界与脚底锚点，绘制时按相同尺度定位，避免头发高度差引起站位漂移。
+
+```text
+Use case: identity-preserve. Asset type: pixel-art idle animation sprite sheet for a LingChat minigame.
+Input image 1 is the exact existing character identity and art style reference. Create ONE coherent six-frame idle animation sheet, exact 3 columns by 2 rows, row-major chronological frames. White wolf-eared girl Qinling, long white hair, cyan eyes, teal oversized hoodie, small blue sneakers, fluffy white tail on viewer right, blue sunglasses on head. Preserve the supplied face, outfit, head/body proportions, colors, pixel clusters and front-facing stance with both hands held together in front.
+Frame 1 relaxed open eyes; frame 2 gentle inhalation with slightly lifted shoulders and subtly swaying tail; frame 3 peak gentle inhale, tiny ear twitch, eyes open; frame 4 half-closed eyelids; frame 5 fully closed eyes for a blink; frame 6 eyes open, shoulders relaxed, tail returning. Keep movement very subtle, no bouncing, no jumping, no foot movement or leg changes. All SIX frames must use IDENTICAL shoe pixels and IDENTICAL grounded foot coordinates within their equal cells. Identical head size and body scale. Only torso breathing, hair tips, tail, ears and eyelids animate. A usable game animation, not six redesigns.
+Crisp low-resolution 16-bit pixel art with hard nearest-neighbor edges, no blur. Each character fully inside its equal cell with generous transparent padding. Absolutely genuine RGBA transparency outside the six sprites; no painted checkerboard, no gray squares, no white or black matte, no shadows or floor, no labels, no grid lines, no text, no borders. Frame 1 should match the reference especially closely.
+```
+
+生成帧负责眨眼、耳朵与尾巴的细小变化。呼吸另外使用 4.4 秒周期：1.6 秒吸气、2.4 秒呼气、0.4 秒休息，最大抬肩 2 个画布像素。只拉伸衣服所在的躯干区，头部随肩膀移动，腿部和脚底固定。最近邻采样保留像素边缘；暂停、后台、关闭节拍特效或系统减少动态效果时停止呼吸。
