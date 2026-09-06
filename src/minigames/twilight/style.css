@@ -1,0 +1,496 @@
+:host {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color-scheme: dark;
+  --cream: #fff5e6;
+  --muted: #e1d4ce;
+  font-family:
+    "Maoken_Assorted_Sans", "Maoken Assorted Sans", var(--font-app, "Microsoft YaHei"), sans-serif;
+}
+* {
+  box-sizing: border-box;
+}
+[hidden] {
+  display: none !important;
+}
+.cadence-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  isolation: isolate;
+  background: #302237;
+  color: var(--cream);
+}
+.scene-background {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+  z-index: 0;
+  pointer-events: none;
+}
+.scene-shade {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: #21142c22;
+  pointer-events: none;
+  transition: background 0.25s;
+}
+.cadence-root[data-state="idle"] .scene-shade,
+.cadence-root[data-state="preparing"] .scene-shade {
+  background: linear-gradient(90deg, #24132c80 0%, #24132c18 53%, #24132c22 100%);
+}
+.scene-corruption {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: #5b0024;
+  opacity: 0;
+  pointer-events: none;
+}
+#game {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  z-index: 3;
+  pointer-events: none;
+}
+.title-card {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.scene-title {
+  position: absolute;
+  right: 7%;
+  top: 10%;
+  text-align: right;
+  text-shadow: 0 4px 8px #251b39a0;
+}
+.scene-title h1 {
+  font-size: clamp(34px, 5.5vw, 80px);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin: 0;
+}
+.scene-title > span {
+  display: block;
+  font-size: clamp(13px, 1.4vw, 20px);
+  margin-top: 12px;
+  letter-spacing: 0.35em;
+  color: #ffebd8;
+}
+.scene-menu {
+  position: absolute;
+  left: 6.5%;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: clamp(8px, 2.2vh, 23px);
+  pointer-events: auto;
+}
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.menu-item {
+  display: block;
+  border: 0;
+  background: transparent;
+  padding: 5px;
+  text-align: left;
+  font-size: clamp(28px, 3.7vw, 58px);
+  line-height: 1.25;
+  letter-spacing: 0.08em;
+  color: white;
+  font-weight: 700;
+  text-shadow: 0 3px 5px #21152b90;
+  transition:
+    transform 0.18s,
+    color 0.18s;
+}
+.menu-item:hover:not(:disabled) {
+  transform: translate(-3px, -4px);
+  color: #fff6c9;
+  text-shadow: 0 3px 10px #261b32b0;
+}
+.menu-item:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid #fff0c4;
+  outline-offset: 6px;
+}
+.scene-hint {
+  position: absolute;
+  left: 7%;
+  bottom: 4%;
+  margin: 0;
+  font:
+    clamp(10px, 1vw, 15px) "Microsoft YaHei",
+    sans-serif;
+  color: #fff1dc;
+  letter-spacing: 0.06em;
+  text-shadow: 0 2px 5px #190d29;
+}
+.scene-hint span {
+  margin-left: 25px;
+  color: #e5d1c7;
+}
+.live-tools {
+  position: absolute;
+  top: 3%;
+  right: 4%;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  text-shadow: 0 2px 5px #21142c;
+}
+.live-tools span {
+  font:
+    12px "Microsoft YaHei",
+    sans-serif;
+  color: #ffe3d0;
+}
+.live-tools button {
+  border: 0;
+  background: none;
+  font-size: clamp(18px, 2.3vw, 30px);
+  font-weight: 700;
+  padding: 8px;
+  text-shadow: inherit;
+}
+.touch-keys {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  pointer-events: none;
+}
+.touch-keys button {
+  position: absolute;
+  left: calc((548 + var(--lane) * 87) / 960 * 100%);
+  top: 77.6%;
+  width: 9.0625%;
+  height: 17.6%;
+  background: transparent;
+  border: 0;
+  touch-action: none;
+  user-select: none;
+  pointer-events: auto;
+}
+.touch-keys button.active {
+  background: linear-gradient(transparent, #fff0c326);
+}
+.cadence-root:not([data-state="playing"]) .touch-keys {
+  display: none;
+}
+.modal-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  background: #1a1028ba;
+  backdrop-filter: blur(5px);
+}
+.modal {
+  width: min(760px, 86%);
+  max-height: 94%;
+  color: #fff5e6;
+}
+.modal h2 {
+  font-size: clamp(28px, 4vw, 54px);
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  text-shadow: 0 3px 6px #21142c;
+  margin: 0 0 25px;
+}
+.pause-menu {
+  width: max-content;
+  max-width: 86%;
+}
+.pause-menu h2 {
+  color: #c9b7c9;
+  font-size: clamp(18px, 2vw, 27px);
+  margin-bottom: 22px;
+}
+.modal-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+.modal-actions .menu-item {
+  font-size: clamp(23px, 3.2vw, 44px);
+}
+.pause-hint {
+  font:
+    12px "Microsoft YaHei",
+    sans-serif;
+  color: #d1becf;
+  margin: 26px 0 0;
+}
+.result {
+  text-align: center;
+}
+.result h2 {
+  font-size: clamp(23px, 3vw, 40px);
+  margin-bottom: 14px;
+}
+.eyebrow {
+  font:
+    12px "Microsoft YaHei",
+    sans-serif;
+  letter-spacing: 3px;
+  color: #d3b6cb;
+  margin: 0 0 16px;
+}
+.result-grade {
+  font:
+    bold clamp(58px, 9vw, 120px) Consolas,
+    monospace;
+  color: #ffe3ae;
+  line-height: 1.1;
+  text-shadow: 5px 5px #80485b;
+}
+.result #result-copy {
+  font:
+    clamp(11px, 1.3vw, 15px)/1.8 "Microsoft YaHei",
+    sans-serif;
+  color: #e2cbd7;
+}
+.result-stats {
+  display: flex;
+  justify-content: center;
+  gap: clamp(25px, 6vw, 85px);
+  margin: 24px 0;
+}
+.result-stats strong {
+  display: block;
+  font:
+    clamp(20px, 3vw, 35px) Consolas,
+    monospace;
+}
+.result-stats span {
+  display: block;
+  font:
+    12px "Microsoft YaHei",
+    sans-serif;
+  color: #ccb7c9;
+  margin-top: 8px;
+}
+.result-actions {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  margin-top: 25px;
+}
+.result-actions .menu-item {
+  font-size: clamp(20px, 2.5vw, 32px);
+}
+.settings-scrim {
+  z-index: 15;
+}
+.settings-panel {
+  width: min(550px, 84%);
+}
+.settings-panel h2 {
+  font-size: clamp(25px, 3.3vw, 42px);
+  margin-bottom: 28px;
+}
+.settings-panel > label {
+  display: block;
+  font:
+    14px "Microsoft YaHei",
+    sans-serif;
+  letter-spacing: 1px;
+  margin: 0 0 20px;
+  color: #f5e8ed;
+}
+.settings-panel output {
+  float: right;
+  color: #ffe2b7;
+  font:
+    13px Consolas,
+    monospace;
+}
+.settings-panel input[type="range"] {
+  display: block;
+  width: 100%;
+  margin: 12px 0;
+  accent-color: #edd2b6;
+}
+.settings-panel small {
+  display: block;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #c2aec0;
+  letter-spacing: 0;
+}
+.settings-panel .check-setting {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.check-setting input {
+  accent-color: #e4c9b6;
+  margin: 3px 0;
+}
+.check-setting small {
+  margin-top: 6px;
+}
+#settings-close {
+  font-size: clamp(22px, 2.8vw, 34px);
+  margin-top: 23px;
+}
+.loading {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: #241d32;
+  color: #dfc5d4;
+  font-size: 20px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@media (max-height: 550px) {
+  .scene-menu {
+    gap: 5px;
+  }
+  .menu-item {
+    font-size: clamp(22px, 4.5vh, 36px);
+  }
+  .scene-title {
+    top: 6%;
+  }
+  .scene-title h1 {
+    font-size: 36px;
+  }
+  .scene-hint {
+    font-size: 10px;
+  }
+  .modal h2 {
+    margin-bottom: 12px;
+  }
+  .modal-actions {
+    gap: 5px;
+  }
+  .modal-actions .menu-item {
+    font-size: 24px;
+  }
+  .pause-hint {
+    margin-top: 12px;
+  }
+  .settings-panel {
+    width: min(760px, 86%);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 30px;
+  }
+  .settings-panel h2 {
+    grid-column: 1/-1;
+    margin-bottom: 15px;
+  }
+  .settings-panel > label {
+    font-size: 12px;
+    margin-bottom: 9px;
+  }
+  .settings-panel input[type="range"] {
+    margin: 8px 0;
+  }
+  .settings-panel small {
+    font-size: 9px;
+  }
+  #settings-close {
+    margin-top: 2px;
+    font-size: 24px;
+  }
+  .result-grade {
+    font-size: 52px;
+  }
+  .result-stats {
+    margin: 12px 0;
+  }
+  .result-actions {
+    margin-top: 12px;
+  }
+  .eyebrow {
+    margin-bottom: 8px;
+  }
+}
+@media (max-width: 600px) and (min-height: 551px) {
+  .scene-title {
+    top: 7%;
+    right: 7%;
+  }
+  .scene-title h1 {
+    font-size: 36px;
+  }
+  .scene-title > span {
+    font-size: 12px;
+  }
+  .scene-menu {
+    left: 7%;
+    top: 30%;
+    gap: 12px;
+  }
+  .menu-item {
+    font-size: 28px;
+  }
+  .scene-hint {
+    left: 7%;
+    bottom: 5%;
+    font-size: 10px;
+  }
+  .scene-hint span {
+    display: block;
+    margin: 10px 0 0;
+  }
+  .live-tools {
+    top: 3%;
+    right: 5%;
+    gap: 9px;
+  }
+  .live-tools span {
+    font-size: 9px;
+  }
+  .result-actions {
+    gap: 20px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  button,
+  .scene-shade {
+    transition: none !important;
+  }
+}
