@@ -171,6 +171,99 @@ input:focus-visible {
   text-align: center;
   text-shadow: 0 2px #2a2d51;
 }
+.boss-hud[data-sealed="true"] #trail-boss-health {
+  background: #91dfe7;
+}
+#trail-endurance {
+  display: block;
+  margin-top: 7px;
+  font:
+    12px/1.5 "Microsoft YaHei",
+    sans-serif;
+  color: #c5fff0;
+}
+.endurance-track {
+  margin-top: 5px;
+  height: 4px;
+  background: #a7c9dd33;
+}
+#trail-endurance-progress {
+  height: 100%;
+  background: #c5fff0;
+  transform-origin: left;
+}
+.level-screen {
+  z-index: 14;
+}
+.level-panel {
+  width: min(850px, 94%);
+}
+.level-list {
+  margin: 12px 0 14px;
+  display: grid;
+  gap: 2px;
+}
+.level-choice {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  text-align: left;
+  padding: 8px 8px;
+  border-bottom: 1px solid #8bb5c533;
+  min-height: 60px;
+}
+.level-number {
+  color: #a4dddc;
+  font:
+    19px Consolas,
+    monospace;
+}
+.level-choice strong {
+  font-size: clamp(21px, 2.1vw, 26px);
+  letter-spacing: 0.08em;
+}
+.level-choice small {
+  display: block;
+  color: #bfd5e3;
+  font:
+    11px/1.6 "Microsoft YaHei",
+    sans-serif;
+  margin-top: 4px;
+}
+.level-choice > span:last-child {
+  margin-left: auto;
+  color: #eed9a6;
+}
+.level-choice:hover,
+.level-choice[aria-current="true"] {
+  color: #d2ffe8;
+  background: #91cbcf12;
+}
+#trail-level-close {
+  font-size: clamp(23px, 3vw, 36px);
+}
+@media (max-height: 550px) and (min-width: 600px) {
+  .level-list {
+    grid-template-columns: 1fr 1fr;
+    gap: 0 22px;
+    margin: 6px 0;
+  }
+  .level-choice {
+    gap: 12px;
+    padding: 7px 4px;
+    min-height: 48px;
+  }
+  .level-choice strong {
+    font-size: 20px;
+  }
+  .level-choice small {
+    font-size: 10px;
+    margin-top: 1px;
+  }
+  #trail-endurance {
+    font-size: 10px;
+  }
+}
 .boss-hud > span {
   font-size: clamp(13px, 1.6vw, 22px);
 }
@@ -760,6 +853,10 @@ input:focus-visible {
 }
 .star-trail[data-layout="portrait"] .scene-menu {
   top: 32%;
+}
+.star-trail[data-layout="portrait"][data-endurance="true"] .announcement {
+  top: calc(var(--edge-top) + 245px);
+  font-size: 16px;
 }
 @media (max-width: 360px) {
   .touch-controls {

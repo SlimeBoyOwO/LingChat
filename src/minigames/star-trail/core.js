@@ -18,6 +18,7 @@ export class Adventure {
     this.wallet = 0;
     this.armorLevel = 0;
     this.deaths = 0;
+    this.practice = false;
     this.events = [];
     this.visited = new Set();
     this.loadLevel(0);
@@ -31,6 +32,7 @@ export class Adventure {
   loadLevel(index, retry = false) {
     this.levelIndex = index;
     this.level = makeLevel(index);
+    this.levelTime = 0;
     if (!retry) {
       this.visited.clear();
       this.checkpoint = false;
@@ -78,22 +80,44 @@ export class Adventure {
       vx: 0,
       flash: 0,
       attack: 0,
+      enduranceRemaining: this.level.enduranceSeconds ?? 0,
+      stage: 0,
+      shieldFlash: 0,
+      aimX: 0,
+      aimY: 0,
       grounded: false,
     };
     this.previousJump = false;
     this.camera = Math.max(0, this.player.x - 110);
   }
-  start() {
+  start(index = 0, practice = index !== 0) {
+    if (!Number.isInteger(index) || !LEVELS[index]) return false;
     this.score = 0;
     this.crystals = 0;
-    this.wallet = 0;
-    this.armorLevel = 0;
+    this.wallet = LEVELS[index].loadout?.wallet ?? 0;
+    this.armorLevel = LEVELS[index].loadout?.armor ?? 0;
     this.deaths = 0;
     this.time = 0;
     this.events.length = 0;
-    this.loadLevel(0);
+    this.practice = practice;
+    this.loadLevel(index);
     this.mode = "playing";
     this.emit("start");
+    return true;
+  }
+  jumpTo(index) {
+    if (
+      !["paused", "dead", "cleared", "won"].includes(this.mode) ||
+      !Number.isInteger(index) ||
+      !LEVELS[index]
+    )
+      return false;
+    this.practice = true;
+    this.events.length = 0;
+    this.loadLevel(index);
+    this.mode = "playing";
+    this.emit("start");
+    return true;
   }
   retry() {
     this.deaths++;
@@ -102,7 +126,7 @@ export class Adventure {
     this.emit("retry");
   }
   next() {
-    if (this.mode !== "cleared") return;
+    if (this.mode !== "cleared" || this.levelIndex >= LEVELS.length - 1) return;
     this.loadLevel(this.levelIndex + 1);
     this.mode = "playing";
     this.emit("start");
@@ -259,6 +283,7 @@ export class Adventure {
     };
   }
   fireEnemy(x, y, vx, vy, kind = "orb") {
+    if (this.threats.length >= 96) return;
     this.threats.push({
       x,
       y,
@@ -273,6 +298,7 @@ export class Adventure {
   step(dt, input = {}) {
     if (this.mode !== "playing") return;
     this.time += dt;
+    this.levelTime += dt;
     const p = this.player;
     p.invincible = Math.max(0, p.invincible - dt);
     p.rapid = Math.max(0, p.rapid - dt);
@@ -335,6 +361,13 @@ export class Adventure {
       this.emit("dead");
       return;
     }
+    for (const hazard of this.level.hazards) {
+      const clock = (this.levelTime + hazard.offset) % hazard.period;
+      hazard.warning = clock >= hazard.period - 2 && clock < hazard.period - 1;
+      hazard.active = clock >= hazard.period - 1;
+      if (hazard.active && overlaps(p, hazard)) this.hurt();
+    }
+    if (this.mode !== "playing") return;
     if (!this.checkpoint && p.x >= this.level.checkpoint) {
       this.checkpoint = true;
       p.hp = 5;
@@ -395,7 +428,7 @@ export class Adventure {
           };
           if (!this.level.solids.some((solid) => overlaps(ahead, solid))) enemy.face *= -1;
         }
-        enemy.vx = enemy.face * 39;
+        enemy.vx = enemy.face * 39 * (this.level.pressure ?? 1);
         enemy.vy = Math.min(500, enemy.vy + 1080 * dt);
         this.move(enemy, dt);
         if (!enemy.vx) enemy.face *= -1;
@@ -404,8 +437,14 @@ export class Adventure {
         const dx = p.x - enemy.x,
           dy = p.y + 10 - enemy.y,
           length = Math.hypot(dx, dy) || 1;
-        this.fireEnemy(enemy.x + 10, enemy.y + 8, (dx / length) * 125, (dy / length) * 125);
-        enemy.cooldown = enemy.kind === "turret" ? 1.8 : 2.5;
+        const pressure = this.level.pressure ?? 1;
+        this.fireEnemy(
+          enemy.x + 10,
+          enemy.y + 8,
+          (dx / length) * 125 * pressure,
+          (dy / length) * 125 * pressure
+        );
+        enemy.cooldown = (enemy.kind === "turret" ? 1.8 : 2.5) / pressure;
       }
       if (overlaps(p, enemy)) {
         if (p.vy > 0 && oldBottom <= enemy.y + 9) {
@@ -442,6 +481,11 @@ export class Adventure {
           this.emit("burst", enemy.x, enemy.y);
         }
       } else if (this.boss.active && this.boss.hp > 0 && overlaps(bullet, this.boss)) {
+        if (this.boss.enduranceRemaining > 0) {
+          bullet.life = 0;
+          this.boss.shieldFlash = 0.1;
+          continue;
+        }
         this.boss.hp--;
         this.boss.flash = 0.09;
         bullet.life = 0;
@@ -449,7 +493,7 @@ export class Adventure {
         if (this.boss.hp <= 0) {
           this.threats.length = 0;
           this.warnings.length = 0;
-          this.score += 1000;
+          this.score += this.level.enduranceSeconds ? 3000 : 1000;
           p.hp = 5;
           this.emit("boss-down", this.boss.x, this.boss.y);
         }
@@ -488,15 +532,19 @@ export class Adventure {
     b.time += dt;
     b.timer -= dt;
     b.flash = Math.max(0, b.flash - dt);
+    b.shieldFlash = Math.max(0, b.shieldFlash - dt);
     const rage = b.hp <= b.maxHP / 2;
-    if (this.levelIndex === 0) {
+    const pressure = this.level.pressure ?? 1;
+    if (this.level.bossType === "endurance") {
+      this.updateEndurance(dt);
+    } else if (this.level.bossType === "leaper") {
       if (b.phase === "rest" && b.timer <= 0) {
         b.phase = "charge";
         b.timer = 0.75;
       } else if (b.phase === "charge" && b.timer <= 0) {
         b.phase = "leap";
         b.vy = -365;
-        b.vx = Math.sign(p.x - b.x) * (rage ? 180 : 130);
+        b.vx = Math.sign(p.x - b.x) * (rage ? 180 : 130) * pressure;
       }
       if (b.phase === "leap") {
         b.vy += 800 * dt;
@@ -504,26 +552,30 @@ export class Adventure {
         b.x = clamp(b.x, this.level.arena + 8, this.level.width - 80);
         if (b.grounded) {
           b.phase = "rest";
-          b.timer = rage ? 0.65 : 1.2;
+          b.timer = (rage ? 0.65 : 1.2) / pressure;
           b.vx = 0;
           this.fireEnemy(b.x, 285, -155, 0, "wave");
           this.fireEnemy(b.x + b.w, 285, 155, 0, "wave");
+          if (pressure > 1) {
+            const target = clamp(p.x, this.level.arena + 10, this.level.width - 40);
+            this.warnings.push({ x: target, timer: 1, fired: false });
+          }
           this.emit("slam", b.x, 300);
         }
       }
-    } else if (this.levelIndex === 1) {
+    } else if (this.level.bossType === "charger") {
       if (b.phase === "rest" && b.timer <= 0) {
         b.phase = "charge";
         b.timer = 0.7;
       } else if (b.phase === "charge" && b.timer <= 0) {
         b.attack++;
         b.phase = "rest";
-        b.timer = rage ? 0.8 : 1.3;
+        b.timer = (rage ? 0.8 : 1.3) / pressure;
         const face = Math.sign(p.x - b.x) || -1;
         for (const vy of rage ? [-95, -40, 15, 70] : [-65, 0, 65])
-          this.fireEnemy(b.x + 28, b.y + 28, face * 165, vy);
+          this.fireEnemy(b.x + 28, b.y + 28, face * 165 * pressure, vy);
         if (b.attack % 2 === 0) {
-          b.vx = face * 185;
+          b.vx = face * 185 * pressure;
           b.phase = "dash";
           b.timer = 0.9;
         }
@@ -543,16 +595,16 @@ export class Adventure {
         b.timer = 0.8;
       } else if (b.phase === "charge" && b.timer <= 0) {
         b.phase = "rest";
-        b.timer = rage ? 1 : 1.65;
+        b.timer = (rage ? 1 : 1.65) / pressure;
         const dx = p.x - b.x,
           dy = p.y - b.y,
           angle = Math.atan2(dy, dx);
-        for (const spread of [-0.3, 0, 0.3])
+        for (const spread of pressure > 1 && rage ? [-0.45, -0.22, 0, 0.22, 0.45] : [-0.3, 0, 0.3])
           this.fireEnemy(
             b.x + 25,
             b.y + 35,
-            Math.cos(angle + spread) * 150,
-            Math.sin(angle + spread) * 150,
+            Math.cos(angle + spread) * 150 * pressure,
+            Math.sin(angle + spread) * 150 * pressure,
             "star"
           );
         this.warnings.push({ x: p.x, timer: 0.9, fired: false });
@@ -566,5 +618,85 @@ export class Adventure {
       }
     }
     if (overlaps(p, b)) this.hurt();
+  }
+  updateEndurance(dt) {
+    const b = this.boss,
+      p = this.player,
+      level = this.level;
+    const wasShielded = b.enduranceRemaining > 0;
+    b.enduranceRemaining = Math.max(0, b.enduranceRemaining - dt);
+    if (b.enduranceRemaining < 0.000001) b.enduranceRemaining = 0;
+    const stage =
+      b.enduranceRemaining === 0
+        ? 3
+        : Math.min(2, Math.floor((level.enduranceSeconds - b.enduranceRemaining) / 30));
+    if (stage !== b.stage) {
+      b.stage = stage;
+      b.phase = "rest";
+      b.timer = 2;
+      b.safeUntil = 0;
+      this.threats.length = 0;
+      this.warnings.length = 0;
+      if (stage < 3) {
+        this.level.heals.push({
+          id: `endurance-${stage}`,
+          x: level.arena + 120 + stage * 90,
+          y: 276,
+          w: 14,
+          h: 14,
+        });
+        this.emit("endurance-phase", b.x, b.y, stage);
+      }
+    }
+    if (wasShielded && b.enduranceRemaining === 0) this.emit("core-open", b.x, b.y);
+    b.x = level.width - 290 + Math.sin(b.time * 0.6) * 105;
+    b.y = 200 + Math.sin(b.time * 1.1) * 27;
+    if (b.phase === "rest" && b.timer <= 0) {
+      b.phase = "charge";
+      b.timer = 0.85;
+      b.aimX = p.x + p.w / 2;
+      b.aimY = p.y + p.h / 2;
+      b.attack++;
+      if (b.attack % 3 === 0) {
+        // A clearly marked gap stays fixed throughout the warning and the falling stars.
+        const left = level.arena + 28,
+          span = level.width - 65 - left;
+        const safe = b.attack % 2 ? 1 : 4;
+        for (let lane = 0; lane < 6; lane++) {
+          if (Math.abs(lane - safe) <= (b.stage === 0 ? 1 : 0)) continue;
+          this.warnings.push({ x: left + (lane * span) / 5, timer: 1.2, fired: false });
+        }
+        b.safeX = left + (safe * span) / 5;
+        b.safeUntil = b.time + 2.6;
+      }
+    } else if (b.phase === "charge" && b.timer <= 0) {
+      b.phase = "rest";
+      b.timer = b.stage === 0 ? 1.45 : b.stage === 1 ? 1.15 : 0.95;
+      if (b.attack % 3 === 1) {
+        const angle = Math.atan2(b.aimY - b.y - 32, b.aimX - b.x - 32);
+        const spreads = b.stage < 2 ? [-0.28, 0, 0.28] : [-0.42, -0.21, 0, 0.21, 0.42];
+        for (const spread of spreads)
+          this.fireEnemy(
+            b.x + 32,
+            b.y + 32,
+            Math.cos(angle + spread) * 155,
+            Math.sin(angle + spread) * 155,
+            "star"
+          );
+      } else if (b.attack % 3 === 2) {
+        const fromLeft = b.attack % 2 === 0;
+        this.fireEnemy(
+          fromLeft ? level.arena : level.width - 30,
+          285,
+          fromLeft ? 175 : -175,
+          0,
+          "wave"
+        );
+        if (b.stage >= 1) {
+          this.warnings.push({ x: b.aimX - 5, timer: 1.15, fired: false });
+        }
+      }
+      this.emit("boss-shot", b.x, b.y);
+    }
   }
 }

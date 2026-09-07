@@ -161,7 +161,7 @@ export class TrailAudio {
     } else if (type === "hurt") this.tone(at, 46, 0.22, 0.14, "sawtooth", -12);
     else if (type === "burst" || type === "slam") this.tone(at, 39, 0.22, 0.18, "triangle", -24);
     else if (type === "hit") this.tone(at, 67, 0.035, 0.045, "square", -9);
-    else if (type === "checkpoint" || type === "boss-down")
+    else if (["checkpoint", "boss-down", "endurance-phase", "core-open"].includes(type))
       [72, 76, 79, 84].forEach((note, i) => this.tone(at + i * 0.1, note, 0.22, 0.11, "triangle"));
   }
   stopVoices() {

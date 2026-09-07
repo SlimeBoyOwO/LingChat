@@ -1,7 +1,7 @@
 import { bindTouchControls, usesMobileControls } from "../touch-controls.js";
 import { Adventure, STEP } from "./core.js";
 import { TrailAudio } from "./audio.js";
-import { ARMOR_TIERS } from "./levels.js";
+import { ARMOR_TIERS, LEVELS } from "./levels.js";
 import { drawWorld, background, hero } from "./render.js";
 
 export function mountStarTrail(root, options) {
@@ -121,12 +121,38 @@ export function mountStarTrail(root, options) {
     show("overlay", true);
     $("primary").focus();
   }
-  function start() {
+  function start(index = 0, practice = false) {
     clearInput();
-    game.start();
+    game.start(index, practice);
     particles.length = 0;
-    audio.play(0, false);
-    notify(`01  ${game.level.name}`);
+    audio.play(index, false);
+    notify(
+      `${String(index + 1).padStart(2, "0")}  ${game.level.name}${practice ? " · 关卡练习" : ""}`
+    );
+  }
+  function openLevels() {
+    if (game.mode === "playing") pause();
+    if (!["title", "paused", "dead", "cleared", "won"].includes(game.mode)) return;
+    show("overlay", false);
+    show("level-screen", true);
+    $("level-note").textContent =
+      game.mode === "title"
+        ? "全部关卡可直接练习，使用该关推荐的起始护甲和星晶。完整远征请从标题选择开始远征。"
+        : "跳关后保留装备、星晶与得分，恢复生命和护甲，清空当前关卡进度；本次远征标记为练习。";
+    $("level-list").innerHTML = LEVELS.map(
+      (level, index) =>
+        `<button class="level-choice" data-level="${index}"${index === game.levelIndex ? ' aria-current="true"' : ""}><span class="level-number">${String(index + 1).padStart(2, "0")}</span><span><strong>${level.name}</strong><small>${level.difficulty ?? "基础远征"} · ${level.bossName}</small></span><span aria-hidden="true">›</span></button>`
+    ).join("");
+    $("level-close").focus({ preventScroll: true });
+    $("level-screen").querySelector(".level-panel").scrollTop = 0;
+  }
+  function closeLevels() {
+    show("level-screen", false);
+    if (game.mode === "title") $("level-open").focus();
+    else {
+      show("overlay", true);
+      $("skip-open").focus();
+    }
   }
   function resume() {
     clearInput();
@@ -154,6 +180,9 @@ export function mountStarTrail(root, options) {
     announcement = 0;
     show("announcement", false);
     show("help-screen", false);
+    show("level-screen", false);
+    show("shop-screen", false);
+    show("gear-screen", false);
   }
   function exit() {
     destroy();
@@ -171,7 +200,8 @@ export function mountStarTrail(root, options) {
         "overlay",
         ["paused", "dead", "cleared", "won"].includes(mode) &&
           $("shop-screen").hidden &&
-          $("gear-screen").hidden
+          $("gear-screen").hidden &&
+          $("level-screen").hidden
       );
       if (mode !== "paused") {
         show("shop-screen", false);
@@ -191,9 +221,13 @@ export function mountStarTrail(root, options) {
         $("primary").textContent = "重新出发";
       } else if (mode === "cleared" || mode === "won") {
         $("overlay-title").textContent =
-          mode === "won" ? "群星，再次亮起" : `${game.level.name} · 已点亮`;
+          mode === "won"
+            ? game.practice
+              ? "练习路线完成"
+              : "群星，再次亮起"
+            : `${game.level.name} · 已点亮`;
         $("overlay-copy").textContent =
-          `星晶 ${game.crystals}　 得分 ${String(game.score).padStart(6, "0")}　 重试 ${game.deaths} 次`;
+          `${game.practice ? "关卡练习　" : ""}星晶 ${game.crystals}　 得分 ${String(game.score).padStart(6, "0")}　 重试 ${game.deaths} 次`;
         $("primary").textContent = mode === "won" ? "再次远征" : "前往下一关";
       }
       show("retry", mode === "paused");
@@ -202,16 +236,18 @@ export function mountStarTrail(root, options) {
       if (
         ["paused", "dead", "cleared", "won"].includes(mode) &&
         $("shop-screen").hidden &&
-        $("gear-screen").hidden
+        $("gear-screen").hidden &&
+        $("level-screen").hidden
       )
         $("primary").focus();
     }
     const p = game.player,
       tier = ARMOR_TIERS[game.armorLevel];
-    const hud = `${game.levelIndex}/${p.hp}/${game.score}/${game.wallet}/${game.boss.hp}/${p.armor}/${game.armorLevel}/${p.shield}/${Math.ceil(p.rapid)}/${Math.ceil(p.magnet)}`;
+    const hud = `${game.levelIndex}/${p.hp}/${game.score}/${game.wallet}/${game.boss.hp}/${p.armor}/${game.armorLevel}/${p.shield}/${Math.ceil(p.rapid)}/${Math.ceil(p.magnet)}/${Math.ceil(game.boss.enduranceRemaining)}/${game.practice}`;
     if (lastHUD !== hud) {
       lastHUD = hud;
-      $("stage").textContent = `0${game.levelIndex + 1} / 03　${game.level.name}`;
+      $("stage").textContent =
+        `${String(game.levelIndex + 1).padStart(2, "0")} / ${String(LEVELS.length).padStart(2, "0")}　${game.level.name}${game.practice ? " · 练习" : ""}`;
       $("hearts").innerHTML = Array.from(
         { length: 5 },
         (_, i) => `<span class="heart${i < game.player.hp ? "" : " empty"}"></span>`
@@ -235,9 +271,23 @@ export function mountStarTrail(root, options) {
         .join(" · ");
       $("buffs").textContent = buffs;
       show("buffs", !!buffs);
-      $("boss-name").textContent =
-        game.level.bossName + (game.boss.hp <= game.boss.maxHP / 2 ? " · 狂暴" : "");
+      const endurance = game.level.bossType === "endurance";
+      const sealed = game.boss.enduranceRemaining > 0;
+      scene.dataset.endurance = String(endurance);
+      $("boss-name").textContent = endurance
+        ? `${game.level.bossName} · ${sealed ? ["星潮", "交织", "极夜"][game.boss.stage] : "核心暴露"}`
+        : game.level.bossName + (game.boss.hp <= game.boss.maxHP / 2 ? " · 狂暴" : "");
       $("boss-health").style.transform = `scaleX(${Math.max(0, game.boss.hp / game.boss.maxHP)})`;
+      $("boss").dataset.sealed = String(sealed);
+      $("endurance").textContent = sealed
+        ? `护盾将在 ${Math.ceil(game.boss.enduranceRemaining)} 秒后解除 · 躲避星潮`
+        : endurance
+          ? "护盾已破 · 射击击破核心"
+          : "";
+      show("endurance", endurance);
+      $("endurance-progress").style.transform =
+        `scaleX(${endurance ? game.boss.enduranceRemaining / game.level.enduranceSeconds : 0})`;
+      show("endurance-track", endurance && sealed);
     }
     show("boss", game.boss.active && game.boss.hp > 0 && mode === "playing");
     const hint =
@@ -252,13 +302,21 @@ export function mountStarTrail(root, options) {
     for (const event of game.takeEvents()) {
       if (event.type === "boss") {
         audio.setTheme(game.levelIndex, true);
-        notify(`${game.level.bossName}　出现了`, 2.2);
+        notify(
+          game.level.enduranceSeconds
+            ? "耐久 90 秒 · 等待护盾解除"
+            : `${game.level.bossName}　出现了`,
+          3
+        );
       }
       if (event.type === "boss-down") {
         audio.setTheme(game.levelIndex, false);
         notify("守卫已击败 · 前往右侧终点星灯", 4);
       }
       if (event.type === "checkpoint") notify("检查点已点亮 · 生命已恢复");
+      if (event.type === "endurance-phase")
+        notify(`${["", "第二阶段 · 交织", "第三阶段 · 极夜"][event.value]}　补给已落在场中`, 3);
+      if (event.type === "core-open") notify("核心护盾崩解 · 现在可以射击！", 4);
       if (event.type === "heal")
         notify(event.value > 0 ? `生命恢复 +${event.value}` : "满血奖励 +50 分", 1.6);
       if (event.type === "shield") notify(`护盾已就绪 · 可抵挡 ${game.player.shield} 次攻击`, 1.8);
@@ -376,7 +434,9 @@ export function mountStarTrail(root, options) {
   on(window, "keydown", (event) => {
     if (event.code === "Escape") {
       event.preventDefault();
-      if (!$("shop-screen").hidden) closeShop();
+      if (event.repeat) return;
+      if (!$("level-screen").hidden) closeLevels();
+      else if (!$("shop-screen").hidden) closeShop();
       else if (!$("gear-screen").hidden) closeGear();
       else if (!$("help-screen").hidden) {
         show("help-screen", false);
@@ -419,6 +479,25 @@ export function mountStarTrail(root, options) {
     start();
   });
   on($("pause"), "click", pause);
+  on($("level-open"), "click", openLevels);
+  on($("skip-open"), "click", openLevels);
+  on($("level-close"), "click", closeLevels);
+  on($("level-list"), "click", (event) => {
+    const button = event.target.closest("[data-level]");
+    if (!button) return;
+    const index = Number(button.dataset.level);
+    if (!Number.isInteger(index) || !LEVELS[index]) return;
+    clearInput();
+    if (game.mode === "title") start(index, true);
+    else {
+      if (!game.jumpTo(index)) return;
+      particles.length = 0;
+      audio.play(index, false);
+      notify(`${String(index + 1).padStart(2, "0")}  ${game.level.name} · 关卡练习`);
+    }
+    show("level-screen", false);
+    button.blur();
+  });
   on($("shop-open"), "click", () => openShop());
   on($("world-shop"), "click", () => openShop());
   on($("gear-open"), "click", openGear);

@@ -77,8 +77,9 @@ export function background(ctx, level, camera, time, width, framing = { top: 0, 
   gradient.addColorStop(1, level.sky[1]);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, -framing.top, width, framing.height);
-  const night = level.theme === "night",
-    factory = level.theme === "factory";
+  const night = ["night", "eclipse"].includes(level.theme),
+    factory = ["factory", "storm", "ember"].includes(level.theme),
+    frost = level.theme === "frost";
   for (let i = 0; i < 55; i++) {
     const x =
       (((noise(i + 14) * (width + 40) - camera * 0.045) % (width + 40)) + width + 40) %
@@ -111,11 +112,15 @@ export function background(ctx, level, camera, time, width, framing = { top: 0, 
         ? 45 + noise(i + layer * 43) * (75 + layer * 12)
         : 45 + Math.sin(i * 0.16 + layer) * 34 + Math.sin(i * 0.044 + 2) * 42;
       const bottom = 263 + layer * 17;
-      const colors = night
-        ? ["#34365e", "#46406c", "#514777"]
-        : factory
-          ? ["#714c69", "#895167", "#6a445d"]
-          : ["#41899a", "#387c88", "#2c6776"];
+      const colors = frost
+        ? ["#829bbf", "#5e7f9f", "#425e7f"]
+        : level.theme === "storm"
+          ? ["#56567f", "#45456d", "#303c5f"]
+          : night
+            ? ["#34365e", "#46406c", "#514777"]
+            : factory
+              ? ["#714c69", "#895167", "#6a445d"]
+              : ["#41899a", "#387c88", "#2c6776"];
       r(
         x,
         bottom - h,
@@ -123,12 +128,19 @@ export function background(ctx, level, camera, time, width, framing = { top: 0, 
         h + 90 + Math.max(0, framing.height - framing.top - 360),
         colors[layer]
       );
+      if (frost) r(x, bottom - h, stride + 1, 4, "#d4eaf2aa");
       if (factory) {
         r(x + 7, bottom - h - 12, 9, 14, colors[layer]);
         for (let wy = bottom - h + 15; wy < bottom; wy += 18)
           for (let wx = 10; wx < stride - 8; wx += 17)
             if (noise(i + wx + wy) > 0.45) r(x + wx, wy, 5, 7, "#ffca8266");
       }
+    }
+  }
+  if (level.theme === "eclipse") {
+    for (let i = 0; i < 20; i++) {
+      const angle = (i * Math.PI) / 10 + time * 0.08;
+      r(sunX + Math.cos(angle) * 46, 68 + Math.sin(angle) * 31, 4, 3, "#afdfef77");
     }
   }
   if (!factory) {
@@ -184,11 +196,25 @@ function drawBoss(ctx, boss, level) {
   if (b.hp <= 0) return;
   const r = (x, y, w, h, color) => pixel(ctx, b.x + x, b.y + y, w, h, b.flash ? "#fff8dd" : color);
   const warning = b.phase === "charge";
-  if (level.theme === "coast") {
+  if (level.bossType === "endurance") {
+    const sealed = b.enduranceRemaining > 0;
+    r(8, 8, 48, 48, "#292543");
+    r(13, 3, 38, 58, "#776095");
+    r(3, 13, 58, 38, "#776095");
+    r(13, 13, 38, 38, sealed ? "#284960" : "#8d405d");
+    r(20, 20, 24, 24, sealed ? "#72ced9" : "#ffb5a6");
+    star(ctx, b.x + 32, b.y + 32, warning ? 12 : 9, sealed ? "#cafff0" : "#fff1b7");
+    for (let i = 0; i < 12; i++) {
+      const angle = (i * Math.PI) / 6 + b.time * 0.65;
+      const x = b.x + 32 + Math.cos(angle) * (sealed ? 48 : 40);
+      const y = b.y + 32 + Math.sin(angle) * (sealed ? 48 : 40);
+      star(ctx, x, y, sealed ? 3 : 2, b.shieldFlash ? "#ffffff" : sealed ? "#9de9ee" : "#edafcf");
+    }
+  } else if (level.bossType === "leaper") {
     r(2, 22, 62, 41, "#233f53");
-    r(7, 12, 51, 44, "#73c78e");
-    r(0, 34, 64, 20, "#45977a");
-    r(3, 5, 60, 17, "#386f66");
+    r(7, 12, 51, 44, level.theme === "storm" ? "#9da8de" : "#73c78e");
+    r(0, 34, 64, 20, level.theme === "storm" ? "#6576ad" : "#45977a");
+    r(3, 5, 60, 17, level.theme === "storm" ? "#56678c" : "#386f66");
     r(12, -3, 9, 21, "#ffd580");
     r(28, -9, 11, 27, "#ffe9a4");
     r(47, -3, 9, 21, "#ffd580");
@@ -197,10 +223,10 @@ function drawBoss(ctx, boss, level) {
     r(27, 41, 12, 6, "#214759");
     r(6, 56, 19, 8, "#273c51");
     r(44, 56, 19, 8, "#273c51");
-  } else if (level.theme === "factory") {
+  } else if (level.bossType === "charger") {
     r(10, 8, 48, 43, "#33334c");
-    r(13, 10, 42, 37, "#b97065");
-    r(16, 13, 36, 7, "#f5b786");
+    r(13, 10, 42, 37, level.theme === "frost" ? "#81b5cf" : "#b97065");
+    r(16, 13, 36, 7, level.theme === "frost" ? "#d6faff" : "#f5b786");
     r(23, 23, 23, 19, warning ? "#fff4a8" : "#f68a66");
     r(29, 27, 12, 10, "#ffd394");
     r(-8, 17, 18, 31, "#654455");
@@ -213,9 +239,13 @@ function drawBoss(ctx, boss, level) {
     r(40, 59, 22, 5, "#c59b96");
     r(22, -4, 6, 13, "#e4a77f");
     r(44, -4, 6, 13, "#e4a77f");
+    if (level.theme === "frost") {
+      r(-12, 23, 8, 40, "#c6f6ff");
+      r(68, 23, 8, 40, "#c6f6ff");
+    }
   } else {
     r(7, 5, 51, 46, "#242749");
-    r(11, 8, 43, 41, "#8f82c8");
+    r(11, 8, 43, 41, level.theme === "ember" ? "#cf857d" : "#8f82c8");
     r(17, 13, 31, 31, "#3e386a");
     r(6, -9, 9, 26, "#cdc5ef");
     r(51, -9, 9, 26, "#cdc5ef");
@@ -228,6 +258,12 @@ function drawBoss(ctx, boss, level) {
     r(62, 27, 14, 24, "#756ca8");
     r(17, 51, 11, 12, "#b0a5d7");
     r(40, 51, 11, 12, "#b0a5d7");
+    if (level.theme === "ember") {
+      for (let i = 0; i < 4; i++) {
+        r(-22 + i * 6, 5 + i * 5, 12, 10, "#efb28f");
+        r(74 - i * 6, 5 + i * 5, 12, 10, "#efb28f");
+      }
+    }
   }
   if (warning) star(ctx, b.x + 32, b.y - 24, 5, "#fff0ad");
 }
@@ -262,6 +298,25 @@ export function drawWorld(ctx, game, time, width, particles = [], framing) {
         }
       } else {
         r(x + 5, solid.y + 12, 3, 5, level.land[2]);
+      }
+    }
+  }
+  for (const hazard of level.hazards) {
+    if (hazard.x > camera + width || hazard.x + hazard.w < camera) continue;
+    const color =
+      hazard.kind === "electric" ? "#d4c5ff" : hazard.kind === "frost" ? "#b8f2ff" : "#ffd09a";
+    r(hazard.x - 3, 295, hazard.w + 6, 5, "#334357");
+    r(hazard.x, 295, hazard.w, 2, color);
+    if (hazard.warning || hazard.active) {
+      ctx.globalAlpha = hazard.active ? 0.78 : 0.15;
+      r(hazard.x, hazard.y, hazard.w, hazard.h, color);
+      ctx.globalAlpha = 1;
+      if (hazard.active) {
+        for (let x = hazard.x + 3; x < hazard.x + hazard.w; x += 9)
+          r(x, hazard.y + ((Math.floor(time * 8) + Math.round(x)) % 12), 3, hazard.h - 12, color);
+      } else {
+        for (let x = hazard.x + 4; x < hazard.x + hazard.w; x += 12) r(x, hazard.y, 6, 3, color);
+        star(ctx, hazard.x + hazard.w / 2, hazard.y - 10, 3, "#fff1b8");
       }
     }
   }
@@ -359,6 +414,41 @@ export function drawWorld(ctx, game, time, width, particles = [], framing) {
     if (enemy.hp > 0 && enemy.x > camera - 60 && enemy.x < camera + width + 60)
       drawEnemy(ctx, enemy, p, time);
   drawBoss(ctx, game.boss, level);
+  if (
+    game.boss.active &&
+    game.boss.hp > 0 &&
+    (game.boss.x > camera + width || game.boss.x + game.boss.w < camera)
+  ) {
+    const direction = game.boss.x > camera + width ? 1 : -1;
+    const edge = camera + (direction > 0 ? width - 22 : 22);
+    star(ctx, edge, 193, 4, level.accent);
+    for (let i = 0; i < 3; i++) {
+      r(edge + direction * (7 + i * 2), 190 + i, 2, 6 - i * 2, level.accent);
+    }
+  }
+  if (game.boss.active && level.bossType === "endurance" && game.boss.hp > 0) {
+    const b = game.boss;
+    if (b.phase === "charge" && b.attack % 3 === 1) {
+      ctx.save();
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = "#f0cc9c";
+      ctx.setLineDash([6, 7]);
+      ctx.beginPath();
+      ctx.moveTo(b.x + 32, b.y + 32);
+      ctx.lineTo(b.aimX, b.aimY);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (b.safeUntil > b.time) {
+      r(b.safeX - 24, 293, 48, 3, "#baffdf");
+      r(b.safeX - 24, 281, 3, 12, "#baffdf");
+      r(b.safeX + 21, 281, 3, 12, "#baffdf");
+    }
+    if (b.phase === "charge" && b.attack % 3 === 2) {
+      const fromLeft = b.attack % 2 === 0;
+      star(ctx, fromLeft ? level.arena + 15 : level.width - 20, 282, 7, "#fff1ad");
+    }
+  }
   for (const bullet of game.bullets) {
     r(bullet.x - Math.sign(bullet.vx) * 8, bullet.y + 1, 16, 3, "#9be8e566");
     r(

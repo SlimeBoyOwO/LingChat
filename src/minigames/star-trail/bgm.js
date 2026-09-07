@@ -19,10 +19,41 @@ export const BGM_THEMES = [
     thirds: [4, 4, 3, 3],
     lead: [23, 19, 16, 14, 12, 16, 19, 24],
   },
+  {
+    bpm: 154,
+    roots: [53, 55, 52, 57],
+    thirds: [4, 4, 3, 3],
+    lead: [24, 19, 16, 23, 19, 14, 16, 12],
+  },
+  {
+    bpm: 160,
+    roots: [50, 52, 49, 54],
+    thirds: [4, 4, 3, 3],
+    lead: [12, 19, 24, 23, 16, 19, 14, 24],
+  },
+  {
+    bpm: 166,
+    roots: [57, 53, 60, 55],
+    thirds: [3, 4, 4, 4],
+    lead: [19, 24, 23, 16, 19, 14, 12, 19],
+  },
+  {
+    bpm: 150,
+    roots: [57, 53, 60, 55],
+    thirds: [3, 4, 4, 4],
+    lead: [12, 19, 23, 24, 23, 19, 16, 12],
+  },
 ];
 export function bgmTheme(level, boss) {
-  const theme = BGM_THEMES[level];
-  return boss ? { ...theme, bpm: 164, roots: [57, 53, 60, 55], thirds: [3, 4, 4, 4] } : theme;
+  const theme = BGM_THEMES[level] ?? BGM_THEMES[0];
+  return boss
+    ? {
+        ...theme,
+        bpm: level === 6 ? 174 : level >= 3 ? 168 : 164,
+        roots: [57, 53, 60, 55],
+        thirds: [3, 4, 4, 4],
+      }
+    : theme;
 }
 
 export function scheduleBgmStep(audio, tick, at, level, boss) {
