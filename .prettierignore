@@ -4,3 +4,5 @@ dist-ssr
 *.log
 coverage
 *.html
+# Generated MIDI event data; keep the compact representation.
+src/assets/minigames/twilight/flandre-score.json

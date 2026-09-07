@@ -122,8 +122,13 @@
   opacity: 0.4;
 }
 .song-picker strong {
+  min-width: 0;
   font-size: clamp(20px, 2vw, 30px);
   letter-spacing: 0.12em;
+}
+.cadence-root[data-song="flandre-scarlet"] .song-picker strong {
+  font-size: clamp(17px, 1.7vw, 25px);
+  letter-spacing: 0.03em;
 }
 .song-details {
   margin: 10px 0 0;
@@ -143,6 +148,12 @@
 }
 .cadence-root[data-song="neon-overdrive"] .scene-shade {
   background: linear-gradient(140deg, #22296130, #3d145866);
+}
+.cadence-root[data-song="flandre-scarlet"] .scene-background {
+  filter: saturate(1.1) hue-rotate(320deg) brightness(0.72);
+}
+.cadence-root[data-song="flandre-scarlet"] .scene-shade {
+  background: linear-gradient(140deg, #40154022, #610e3466);
 }
 .scene-menu {
   position: absolute;

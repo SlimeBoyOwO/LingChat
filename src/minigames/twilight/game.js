@@ -71,6 +71,7 @@ export async function mountRhythm(root, options) {
     lastResult = null,
     songGeneration = 0;
   let countdownUntil = 0,
+    countdownBeat = music.beat,
     resumeAt = 0,
     previousFrame = performance.now();
   let volume = 0.55,
@@ -297,7 +298,8 @@ export async function mountRhythm(root, options) {
     show("pause-screen", false);
     state = "countdown";
     resumeAt = seek;
-    countdownUntil = performance.now() + 3 * music.beat * 1000;
+    countdownBeat = music.beatAt?.(seek) ?? music.beat;
+    countdownUntil = performance.now() + 3 * countdownBeat * 1000;
   }
   function backToTitle() {
     songGeneration++;
@@ -510,7 +512,7 @@ export async function mountRhythm(root, options) {
     }
     scene.dataset.song = music.id;
     $("song-title").textContent = music.title;
-    const description = `${music.difficulty} · ${music.bpm} BPM · ${Math.round(music.duration)} 秒 · ${music.noteCount} 音符`;
+    const description = `${music.difficulty} · ${music.bpmLabel ?? music.bpm} BPM · ${Math.round(music.duration)} 秒 · ${music.noteCount} 音符`;
     $("song-details").textContent = description;
     $("track-summary").textContent = `${music.style} · ${music.noteCount} 音符`;
     $("footer-status").textContent = `${music.title} · ${description}`;
@@ -681,9 +683,9 @@ export async function mountRhythm(root, options) {
   function drawNeon(t, idle) {
     if (!music.neon) return;
     const section = music.sectionAt(t),
-      moving = beatEffects && !reducedMotion.matches;
-    const pulse =
-      moving && !idle ? Math.pow((Math.cos((t / music.beat) * Math.PI * 2) + 1) / 2, 3) : 0.1;
+      moving = beatEffects && !reducedMotion.matches,
+      songBeat = music.beatPosition?.(t) ?? t / music.beat;
+    const pulse = moving && !idle ? Math.pow((Math.cos(songBeat * Math.PI * 2) + 1) / 2, 3) : 0.1;
     const energy = idle ? 0.25 : section.energy;
     ctx.save();
     ctx.globalAlpha = 0.12 + pulse * energy * 0.14;
@@ -697,7 +699,7 @@ export async function mountRhythm(root, options) {
       ctx.stroke();
     }
     for (let i = 0; i < 5; i++) {
-      const progress = (i + (moving ? (Math.max(0, t) / music.beat) % 1 : 0)) / 5;
+      const progress = (i + (moving ? Math.max(0, songBeat) % 1 : 0)) / 5;
       const y = horizon + progress * progress * (H - horizon);
       ctx.beginPath();
       ctx.moveTo(0, y);
@@ -914,7 +916,13 @@ export async function mountRhythm(root, options) {
       rect(25, 20, hudWidth, 2, "#eecbc132");
       rect(25, 20, hudWidth * Math.min(1, t / music.duration), 2, "#f1c997");
       text(music.title, 29, 49, 13);
-      text(`${music.bpm} BPM  /  ` + (demo ? "AUTO PLAY" : music.difficulty), 29, 68, 9, "#e0b9c3");
+      text(
+        `${music.bpmAt?.(t) ?? music.bpm} BPM  /  ` + (demo ? "AUTO PLAY" : music.difficulty),
+        29,
+        68,
+        9,
+        "#e0b9c3"
+      );
       text(String(result.score).padStart(7, "0"), 29, 108, 27, "#fae2ba");
       const liveAccuracy = judge.resolved ? judge.points / judge.resolved : 1;
       text((liveAccuracy * 100).toFixed(1) + "%", 30, 129, 11, "#e4c3c5");
@@ -961,7 +969,7 @@ export async function mountRhythm(root, options) {
     if (state === "countdown" || (state === "playing" && t < music.beat * 4)) {
       const count =
         state === "countdown"
-          ? Math.ceil((countdownUntil - now) / (music.beat * 1000))
+          ? Math.ceil((countdownUntil - now) / (countdownBeat * 1000))
           : Math.max(1, 4 - Math.floor(Math.max(0, t) / music.beat));
       const cx = TRACK.x + TRACK.w / 2,
         cy = TRACK.top + (LINE - TRACK.top) * 0.5;
