@@ -1,5 +1,5 @@
-// A single extracted melody with independently arranged triads and bass.
-import score from "../../assets/minigames/twilight/flandre-score.json";
+// U.N. Owen piano reference by DMBN: higher melody, separate inner harmony and bass.
+import score from "../../assets/minigames/twilight/un-owen-score.json";
 import { frequency } from "./harmony.js";
 
 const segments = [];
@@ -42,16 +42,19 @@ export function beatPosition(time) {
   return 4 + segment.tick / score.ppq + (time - countIn - segment.seconds) / segment.beat;
 }
 const sections = [
-  { bar: 0, name: "SCARLET INTRO", energy: 0.35 },
-  { bar: 8, name: "CRYSTAL WINGS", energy: 0.65 },
-  { bar: 40, name: "SCARLET STORM", energy: 1 },
-  { bar: 72, name: "MIDNIGHT", energy: 0.65 },
-  { bar: 112, name: "FINAL SPELL", energy: 1 },
-  { bar: 168, name: "RITARDANDO", energy: 0.25 },
+  { tick: 0, name: "SCARLET INTRO", energy: 0.35 },
+  { tick: 38400, name: "U.N. OWEN", energy: 0.65 },
+  { tick: 69120, name: "CRYSTAL WINGS", energy: 1 },
+  { tick: 138240, name: "MIDNIGHT", energy: 0.65 },
+  { tick: 176640, name: "SCARLET STORM", energy: 1 },
+  { tick: 240000, name: "FINAL SPELL", energy: 1 },
+  { tick: 301440, name: "RITARDANDO", energy: 0.25 },
 ];
 export function sectionAt(time) {
-  const bar = (beatPosition(time) - 4) / 4;
-  return [...sections].reverse().find((section) => bar >= section.bar) ?? sections[0];
+  return (
+    [...sections].reverse().find((section) => time >= countIn + secondsAt(section.tick)) ??
+    sections[0]
+  );
 }
 
 export function renderPcm(sampleRate = 22050) {
@@ -101,45 +104,13 @@ export function renderPcm(sampleRate = 22050) {
     const at = secondsAt(tick);
     tone(countIn + at, secondsAt(tick + ticks) - at, midi, velocity, 0.24);
   }
-  let previousVoicing = [50, 57, 62];
-  for (const [tick, ticks, root, quality] of score.harmony) {
-    const intervals = [
-      [0, 4, 7],
-      [0, 3, 7],
-      [0, 3, 6],
-    ][quality];
-    const voicings = intervals
-      .reduce(
-        (list, interval) => {
-          const low = 48 + ((root + interval) % 12),
-            choices = low + 12 <= 64 ? [low, low + 12] : [low];
-          return list.flatMap((notes) => choices.map((pitch) => [...notes, pitch]));
-        },
-        [[]]
-      )
-      .map((notes) => notes.sort((a, b) => a - b));
-    const motion = (notes) =>
-      notes.reduce((sum, pitch, i) => sum + Math.abs(pitch - previousVoicing[i]), 0);
-    voicings.sort((a, b) => motion(a) - motion(b));
-    previousVoicing = voicings[0];
-    for (let pulse = tick; pulse < tick + ticks; pulse += score.ppq * 2) {
-      const at = secondsAt(pulse),
-        end = Math.min(tick + ticks, pulse + score.ppq * 1.6);
-      for (const midi of previousVoicing)
-        tone(countIn + at, secondsAt(end) - at, midi, 80, 0.055, "chord");
-      for (let b = 0; b < 2 && pulse + b * score.ppq < tick + ticks; b++) {
-        const bassTick = pulse + b * score.ppq,
-          bassAt = secondsAt(bassTick),
-          bassEnd = Math.min(tick + ticks, bassTick + score.ppq * 0.6);
-        tone(
-          countIn + bassAt,
-          secondsAt(bassEnd) - bassAt,
-          36 + root + (b ? intervals[2] : 0),
-          85,
-          0.085,
-          "bass"
-        );
-      }
+  for (const [voice, notes, gain] of [
+    ["chord", score.harmony, 0.055],
+    ["bass", score.bass, 0.085],
+  ]) {
+    for (const [tick, ticks, midi, velocity] of notes) {
+      const at = secondsAt(tick);
+      tone(countIn + at, secondsAt(tick + ticks) - at, midi, velocity, gain, voice);
     }
   }
   let peak = 0;
@@ -153,9 +124,13 @@ export function renderPcm(sampleRate = 22050) {
 }
 
 export function makeChart() {
-  const accents = new Set(
-    score.harmony.filter(([tick]) => tick % (score.ppq * 4) === 0).map(([tick]) => tick)
-  );
+  const bars = new Set();
+  for (const [index, [start, numerator, denominator]] of score.meters.entries()) {
+    const end = score.meters[index + 1]?.[0] ?? score.endTick;
+    for (let tick = start; tick < end; tick += (score.ppq * numerator * 4) / denominator)
+      bars.add(tick);
+  }
+  const accents = new Set(score.bass.filter(([tick]) => bars.has(tick)).map(([tick]) => tick));
   const notes = [],
     lastEnd = [-10, -10, -10, -10];
   let previousPitch = 69,

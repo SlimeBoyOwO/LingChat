@@ -22,9 +22,10 @@ export const SONGS = [
   {
     ...flandre,
     id: "flandre-scarlet",
-    title: "真っ黒フランドール S",
+    title: "U.N.オーエンは彼女なのか？",
     difficulty: "进阶 7",
     style: "TOUHOU / MELODY",
+    credit: "东方Project 二次创作 · 原曲 ZUN · 钢琴谱 DMBN / 東方ピアノEasyモード",
     neon: true,
   },
 ].map((song) => ({ ...song, noteCount: song.makeChart().length }));

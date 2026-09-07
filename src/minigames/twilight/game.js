@@ -514,6 +514,8 @@ export async function mountRhythm(root, options) {
     $("song-title").textContent = music.title;
     const description = `${music.difficulty} · ${music.bpmLabel ?? music.bpm} BPM · ${Math.round(music.duration)} 秒 · ${music.noteCount} 音符`;
     $("song-details").textContent = description;
+    $("song-credit").textContent = music.credit ?? "";
+    $("song-credit").hidden = !music.credit;
     $("track-summary").textContent = `${music.style} · ${music.noteCount} 音符`;
     $("footer-status").textContent = `${music.title} · ${description}`;
     colors.splice(
