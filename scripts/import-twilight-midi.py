@@ -54,12 +54,13 @@ def convert(source):
     for notes in groups.values():
         notes.sort(key=lambda n: n[2], reverse=True)
         tick, length, pitch, velocity = notes[0]
-        melody.append([tick - start_tick, length, pitch + 12, velocity])
+        # Raise the melody one octave, then lower the whole arrangement by one tone.
+        melody.append([tick - start_tick, length, pitch + 10, velocity])
         for tick, length, pitch, velocity in notes[1:]:
-            harmony.append([tick - start_tick, length, pitch - 12, velocity])
+            harmony.append([tick - start_tick, length, pitch - 14, velocity])
     for current, following in zip(melody, melody[1:]):
         current[1] = min(current[1], following[0] - current[0])
-    bass = [[tick - start_tick, length, pitch, velocity] for tick, length, pitch, velocity in tracks[1]]
+    bass = [[tick - start_tick, length, pitch - 2, velocity] for tick, length, pitch, velocity in tracks[1]]
 
     def timeline(events):
         initial = events[max(tick for tick in events if tick <= start_tick)]
@@ -73,7 +74,7 @@ def convert(source):
         "sourceUrl": "https://easypianoscore.jp/sheetList.php?titleid=kouma",
         "downloadUrl": "https://easypianoscore.jp/download.php?musicName=un&musicLevel=normal&ext=zip&inst=",
         "termsUrl": "https://easypianoscore.jp/kenri.html",
-        "arrangement": "Normal piano reference; melody +12, inner harmony -12, original bass; bounded release instead of pedal",
+        "arrangement": "Normal piano reference; octave-separated voices, then global -2 semitones: melody +10, harmony -14, bass -2; bounded release instead of pedal",
         "ppq": midi.ticks_per_beat,
         "trimmedTicks": start_tick,
         "endTick": end_tick - start_tick,
