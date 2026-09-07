@@ -39,6 +39,13 @@ pub struct LlmProviderConfig {
     /// Codex Fast Mode（1.5× 速度，额度消耗更快）；仅 provider = codex 时有意义。
     #[serde(default)]
     pub fast_mode: bool,
+    /// 上下文窗口大小（tokens）。未设置时按 128k 估算用量；用于上下文用量显示与自动压缩。
+    #[serde(default)]
+    pub context_window: Option<u32>,
+    /// 自动获取上下文窗口：开启后隐藏手动填写，保存时用模型申报的 context_length 填充。
+    /// 后端仍只读 context_window（由前端落值），本字段仅作 UI 状态持久化。
+    #[serde(default)]
+    pub context_window_auto: bool,
 }
 
 impl LlmProviderConfig {
@@ -297,6 +304,8 @@ pub fn migrate_if_needed(app: &AppHandle) {
             enable_thinking: old_thinking,
             reasoning_effort: None,
             fast_mode: false,
+            context_window: None,
+            context_window_auto: false,
         });
         chat_id = Some(id);
     }
@@ -332,6 +341,8 @@ pub fn migrate_if_needed(app: &AppHandle) {
                 enable_thinking: false,
                 reasoning_effort: None,
                 fast_mode: false,
+                context_window: None,
+                context_window_auto: false,
             });
             translate_id = Some(id);
         }
@@ -402,6 +413,8 @@ pub fn migrate_legacy_vision_keys(app: &AppHandle) {
         enable_thinking: false,
         reasoning_effort: None,
         fast_mode: false,
+        context_window: None,
+        context_window_auto: false,
     };
 
     let mut providers = load_providers(app);

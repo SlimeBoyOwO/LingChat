@@ -44,6 +44,14 @@ pub fn emit_tts_cleanup(app: &AppHandle, deleted: u64, orphan_files: usize, orph
     }
 }
 
+/// 通知前端本轮 LLM 实测 token 用量（用于上下文用量卡片）。
+pub fn emit_usage(app: &AppHandle, prompt_tokens: u32, completion_tokens: u32) {
+    let payload = super::responses::UsageResponse::new(prompt_tokens, completion_tokens);
+    if let Err(e) = app.emit(super::responses::event_names::AI_USAGE, &payload) {
+        tracing::warn!("emit ai:usage 失败: {e}");
+    }
+}
+
 /// 通知前端 AI 发生错误，同时重置前端状态为 input。
 pub fn emit_error(app: &AppHandle, err: &anyhow::Error) {
     let info = crate::ai_service::llm::error::classify_llm_error(err);

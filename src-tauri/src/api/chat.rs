@@ -39,6 +39,10 @@ pub async fn send_chat_message(
         .await
         .ok_or_else(|| "LLM 未配置，请在设置中配置 API Key 和模型".to_string())?;
 
+    // kimi 式自动压缩：后台异步检查与压缩（含 LLM 调用，同步 await 会卡住
+    // 本条消息），压缩结果从下一轮生成开始生效（失败静默跳过）
+    crate::ai_service::game_system::context_compaction::spawn_auto_compact_if_needed(&app);
+
     let concurrency = AppConfig::load(&app)
         .map(|c| c.consumers as usize)
         .unwrap_or(1)
@@ -287,6 +291,12 @@ pub async fn rollback_conversation(
         // truncate(idx) 移除 idx..len（含目标消息及之后所有内容）
         gs.role_manager.invalidate_memory_history();
         gs.line_list.truncate(idx);
+        // 截断后清理压缩状态：cutoff 越界的旧摘要连内存带 DB 一并清除，
+        // 防止对话重新增长后旧摘要"复活"污染新分支
+        crate::ai_service::game_system::context_compaction::invalidate_summary_after_rollback(
+            &db, &mut gs,
+        )
+        .await;
         gs.refresh_memories(&db)
             .await
             .map_err(|e| format!("刷新记忆失败: {}", e))?;

@@ -1,4 +1,5 @@
 pub mod auto_save;
+pub mod context_compaction;
 pub mod game_status;
 pub mod memory_builder;
 pub mod persistent_memory_system;

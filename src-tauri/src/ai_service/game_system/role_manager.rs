@@ -260,11 +260,15 @@ impl GameRoleManager {
     /// 1. 检查是否触发后台压缩
     /// 2. 裁剪上下文窗口（避免无限膨胀）
     /// 3. 将 MemoryBank 文本合并到 system / user 消息中
+    ///
+    /// `compaction`：kimi 式上下文压缩的 (摘要, cutoff 条数)。cutoff 比 MemoryBank
+    /// 的裁剪指针更靠后时以 cutoff 为准；摘要作为独立小节合并进第一条 system 消息。
     pub async fn sync_memories(
         &mut self,
         db: &DatabaseConnection,
         lines: &[GameLine],
         recent_n: Option<usize>,
+        compaction: Option<(&str, usize)>,
     ) -> Result<()> {
         let source_lines: &[GameLine] = match recent_n {
             Some(n) if n < lines.len() => &lines[lines.len() - n..],
@@ -330,11 +334,19 @@ impl GameRoleManager {
             };
 
             // 阶段 3: 裁剪 + 构建角色记忆
-            let sliced: Vec<GameLine> = if slice_start > 0 && slice_start <= source_lines.len() {
-                source_lines[slice_start..].to_vec()
-            } else {
-                source_lines.to_vec()
-            };
+            // kimi 式上下文压缩的 cutoff 与 MemoryBank 指针取更靠后者（两者可叠加）
+            let mut effective_slice_start = slice_start;
+            if let Some((_, cutoff)) = compaction {
+                if cutoff > effective_slice_start && cutoff <= source_lines.len() {
+                    effective_slice_start = cutoff;
+                }
+            }
+            let sliced: Vec<GameLine> =
+                if effective_slice_start > 0 && effective_slice_start <= source_lines.len() {
+                    source_lines[effective_slice_start..].to_vec()
+                } else {
+                    source_lines.to_vec()
+                };
 
             // 确保人设 SYSTEM 提示存在
             let has_prompt = Self::find_first_system_prompt(&sliced, rid).is_some();
@@ -352,7 +364,7 @@ impl GameRoleManager {
             // 阶段 4: 写入角色记忆
             if let Some(role) = self.loaded_roles.get_mut(&rid) {
                 let use_mb = mb_exists && mb_enabled && !system_addendum.is_empty();
-                role.memory = if use_mb {
+                let mut memory = if use_mb {
                     Self::merge_memory_bank_into_context(
                         built,
                         &system_addendum,
@@ -361,6 +373,15 @@ impl GameRoleManager {
                 } else {
                     built
                 };
+                // kimi 式上下文压缩摘要：作为独立小节并入首条 system 消息
+                if let Some((summary, cutoff)) = compaction {
+                    if cutoff > 0 && cutoff <= source_lines.len() && !summary.trim().is_empty() {
+                        let block =
+                            format!("\n\n【前情摘要】（更早的对话已压缩为以下摘要，续接时请以此为准）\n{summary}");
+                        memory = Self::merge_memory_bank_into_context(memory, &block, "");
+                    }
+                }
+                role.memory = memory;
             }
         }
 
