@@ -33,7 +33,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-store = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
-tauri-plugin-notification = "2"
+tauri-plugin-notification = "2.4.0"
 tauri-plugin-screenshots = { path = "plugins/tauri-plugin-screenshots" }
 tauri-plugin-android-fs = "28"
 serde = { version = "1", features = ["derive"] }

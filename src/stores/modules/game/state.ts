@@ -1,6 +1,6 @@
 import type { Live2dSettings } from "@/types/live2d";
 import type { SceneInfo } from "@/api/services/scene"; // 导入场景类型
-import type { ScriptChoiceItem } from "@/types/script";
+import type { ScriptChoiceItem, SpokenMetadata } from "@/types/script";
 
 export interface GameMessage {
   type: "message" | "reply";
@@ -16,8 +16,10 @@ export interface GameMessage {
   userMessageSeq?: number;
   /** 该轮生成的思考链（仅每轮最后一条回复消息有值） */
   thinking?: string;
-  /** 该台词的第二语言（日语）译文，日文界面下显示 */
+  /** 该台词的第二语言/目标语言文本（历史字段） */
   ttsText?: string;
+  /** 可扩展的朗读元数据；当前键为 content / language */
+  spoken?: SpokenMetadata;
   /** 台词关联的角色 ID（null = 无角色，如工具调用回填行；生成语音计数时跳过） */
   senderRoleId?: number | null;
 }

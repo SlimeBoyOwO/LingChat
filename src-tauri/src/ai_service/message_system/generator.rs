@@ -28,7 +28,8 @@ use crate::ai_service::message_system::responses::{ReplyResponse, event_names};
 use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::tools::tool_loop::stream_with_tool_loop;
 use crate::ai_service::translator::Translator;
-use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage};
+use crate::ai_service::tts::voice_maker::segment_text_for_lang;
+use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage, spoken_metadata};
 use crate::api::data_dir;
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
@@ -666,13 +667,14 @@ pub(crate) async fn consume_sentence(
         return Ok(None);
     }
 
-    // 2. 富化：翻译 + 语音
-    enrich_segments(deps, &mut segments).await?;
+    // 2. 富化：翻译 + 语音，并取得首段选定的 TTS 文本与语言
+    let spoken_output = enrich_segments(deps, &mut segments).await?;
 
     // 3. 构建前端响应
     let mut response = build_reply_response(
         deps,
         &segments,
+        spoken_output,
         user_message,
         is_final,
         user_message_seq,
@@ -708,7 +710,7 @@ fn parse_segments(deps: &SentenceDeps, sentence: &str) -> Vec<EmotionSegment> {
 /// 返回当前 TTS 需要的目标翻译语言。
 fn tts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
     match (tts_type, voice_lang) {
-        ("gsv" | "opentts" | "sbv2" | "fishs2", "en") => Some("en"),
+        ("gsv" | "opentts" | "sbv2" | "sbv2api" | "fishs2", "en") => Some("en"),
         // IndexTTS 2.5 起官方支持中/英/日/西班牙/阿拉伯语：
         // voice_lang 为非中文目标语言时先翻译成对应语言再合成
         // （日语台词主模型已自带 japanese_text，无需在此强制重译）
@@ -729,39 +731,51 @@ fn tts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static
     }
 }
 
-/// 判断文本是否适合作为日语 TTS 输入。
+/// 判断文本是否有明确日语特征。
+///
+/// 仅有汉字无法区分中文与日文，不能据此跳过翻译；至少出现平/片假名才视为
+/// 可靠日语。纯汉字日语被再翻译一次只增加少量开销，但不会把中文送进日语 TTS。
 fn looks_like_japanese(text: &str) -> bool {
-    let has_kana = text
-        .chars()
-        .any(|c| matches!(c, '\u{3040}'..='\u{30ff}' | '\u{31f0}'..='\u{31ff}'));
-    let has_cjk = text
-        .chars()
-        .any(|c| matches!(c, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}'));
-    let has_ascii_letters = text.chars().any(|c| c.is_ascii_alphabetic());
-
-    has_kana || (has_cjk && !has_ascii_letters)
+    text.chars()
+        .any(|c| matches!(c, '\u{3040}'..='\u{30ff}' | '\u{31f0}'..='\u{31ff}'))
 }
 
-/// 切回日语后，检测并修复上一次英语模式残留的译文。
+/// 切回日语后，检测并修复中文 fallback 或上一次其他语言模式残留的译文。
 fn needs_japanese_translation(segments: &[EmotionSegment]) -> bool {
     segments.iter().any(|segment| {
-        !segment.following_text.trim().is_empty()
-            && !looks_like_japanese(segment.japanese_text.trim())
+        let main = segment.following_text.trim();
+        let secondary = segment.japanese_text.trim();
+        !main.is_empty()
+            && (secondary.is_empty() || secondary == main || !looks_like_japanese(secondary))
     })
 }
 
 /// Step B: 翻译与语音生成。
-async fn enrich_segments(deps: &SentenceDeps, segments: &mut [EmotionSegment]) -> Result<()> {
+///
+/// 返回首段按有效 voice_lang 选定的 TTS 输入文本及其语言。显示层使用该值，
+/// 而不是根据 UI locale 猜测显示主台词还是第二语言；音频是否成功由 audio_file
+/// 单独表示，临时 TTS 故障也不会让四种界面语言显示出不同台词。
+async fn enrich_segments(
+    deps: &SentenceDeps,
+    segments: &mut [EmotionSegment],
+) -> Result<Option<(String, String)>> {
     let (voice_maker, tts_type, voice_lang) = {
         let gs = deps.game_status.lock().await;
         gs.current_role_id
             .and_then(|rid| {
                 gs.role_manager.get_loaded(rid).map(|role| {
-                    (
-                        role.voice_maker.clone(),
-                        role.settings.tts_type.clone().unwrap_or_default(),
-                        role.settings.voice_lang.clone().unwrap_or_default(),
-                    )
+                    let voice_maker = role.voice_maker.clone();
+                    // VoiceMaker 已应用“角色设置优先、全局设置兜底”，因此这里必须
+                    // 以它的实际配置为准，避免角色 voice_lang 为空时翻译与合成脱节。
+                    let tts_type = voice_maker
+                        .as_ref()
+                        .map(|vm| vm.tts_type().to_string())
+                        .unwrap_or_else(|| role.settings.tts_type.clone().unwrap_or_default());
+                    let voice_lang = voice_maker
+                        .as_ref()
+                        .map(|vm| vm.lang().to_string())
+                        .unwrap_or_else(|| role.settings.voice_lang.clone().unwrap_or_default());
+                    (voice_maker, tts_type, voice_lang)
                 })
             })
             .unwrap_or_default()
@@ -788,17 +802,25 @@ async fn enrich_segments(deps: &SentenceDeps, segments: &mut [EmotionSegment]) -
         }
     }
 
+    let spoken_output = voice_maker.as_ref().and_then(|vm| {
+        segments
+            .first()
+            .and_then(|segment| segment_text_for_lang(vm.lang(), segment))
+            .map(|text| (text.to_owned(), vm.lang().to_owned()))
+    });
+
     if let Some(vm) = voice_maker {
-        vm.generate_voice_files(segments).await;
+        let _generation_results = vm.generate_voice_files(segments).await;
     }
 
-    Ok(())
+    Ok(spoken_output)
 }
 
 /// Step C: 构建 ReplyResponse（含角色信息填充）。
 async fn build_reply_response(
     deps: &SentenceDeps,
     segments: &[EmotionSegment],
+    spoken_output: Option<(String, String)>,
     user_message: &str,
     is_final: bool,
     user_message_seq: Option<u32>,
@@ -839,6 +861,9 @@ async fn build_reply_response(
     } else {
         Some(first.japanese_text.clone())
     };
+    if let Some((text, language)) = spoken_output {
+        response.spoken = spoken_metadata(text, language);
+    }
     response.motion_text = if first.motion_text.is_empty() {
         None
     } else {
@@ -898,6 +923,7 @@ async fn add_assistant_line(deps: &SentenceDeps, response: &ReplyResponse) -> Re
         original_emotion: Some(response.original_tag.clone()),
         predicted_emotion: Some(response.emotion.clone()),
         tts_content: response.tts_text.clone(),
+        spoken: response.spoken.clone(),
         action_content: response.motion_text.clone(),
         audio_file: response.audio_file.clone(),
         thinking: response.thinking.clone(),
