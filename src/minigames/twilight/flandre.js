@@ -1,4 +1,4 @@
-// U.N. Owen piano reference by DMBN: higher melody, separate inner harmony and bass.
+// U.N. Owen piano reference by DMBN: original melody, inner harmony and bass registers.
 import score from "../../assets/minigames/twilight/un-owen-score.json";
 import { frequency } from "./harmony.js";
 
