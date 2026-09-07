@@ -23,8 +23,8 @@ export const SONGS = [
     ...flandre,
     id: "flandre-scarlet",
     title: "真っ黒フランドール S",
-    difficulty: "极限 12",
-    style: "TOUHOU / MIDI",
+    difficulty: "进阶 7",
+    style: "TOUHOU / MELODY",
     neon: true,
   },
 ].map((song) => ({ ...song, noteCount: song.makeChart().length }));

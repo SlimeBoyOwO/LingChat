@@ -1,4 +1,4 @@
-// Bundled piano MIDI arrangement. Keep source pitches, velocities and tempo changes.
+// A single extracted melody with independently arranged triads and bass.
 import score from "../../assets/minigames/twilight/flandre-score.json";
 import { frequency } from "./harmony.js";
 
@@ -56,32 +56,30 @@ export function sectionAt(time) {
 
 export function renderPcm(sampleRate = 22050) {
   const data = new Float32Array(Math.ceil(duration * sampleRate));
-  // One band-limited wavetable per pitch: dense MIDI stays practical on mobile workers.
+  // Each part has a stable pitch and a soft timbre; no layered octaves or pitch detuning.
   const tables = new Map(),
     tableSize = 2048;
-  function tone(at, length, midi, velocity, gain) {
-    const f = frequency(midi);
-    if (!tables.has(midi)) {
+  function tone(at, length, midi, velocity, gain, voice = "lead") {
+    const f = frequency(midi),
+      key = `${voice}:${midi}`,
+      harmonics = voice === "lead" ? [1, 0.18, 0.04] : [1, 0.1, 0.02];
+    if (!tables.has(key)) {
       const table = new Float32Array(tableSize + 1);
       for (let i = 0; i <= tableSize; i++) {
-        for (const [harmonic, level] of [
-          [1, 1],
-          [2, 0.3],
-          [3, 0.12],
-          [4, 0.04],
-        ]) {
+        for (const [index, level] of harmonics.entries()) {
+          const harmonic = index + 1;
           if (f * harmonic < sampleRate * 0.45)
             table[i] += Math.sin((i / tableSize) * Math.PI * 2 * harmonic) * level;
         }
       }
-      tables.set(midi, table);
+      tables.set(key, table);
     }
-    const table = tables.get(midi),
+    const table = tables.get(key),
       start = Math.round(at * sampleRate),
-      release = 0.18,
+      release = voice === "bass" ? 0.055 : 0.09,
       size = Math.ceil((length + release) * sampleRate),
       step = (f / sampleRate) * tableSize,
-      decayStep = Math.exp(-(1.3 + f / 2200) / sampleRate),
+      decayStep = Math.exp(-(voice === "bass" ? 3 : 0.8 + f / 3000) / sampleRate),
       amplitude = gain * (velocity / 127) ** 1.4;
     let phase = 0,
       decay = 1;
@@ -90,57 +88,82 @@ export function renderPcm(sampleRate = 22050) {
         index = Math.floor(phase),
         fraction = phase - index,
         wave = table[index] + (table[index + 1] - table[index]) * fraction,
-        envelope = Math.min(1, t / 0.004) * Math.max(0, 1 - Math.max(0, t - length) / release);
+        envelope =
+          Math.min(1, t / (voice === "chord" ? 0.025 : 0.008)) *
+          Math.max(0, 1 - Math.max(0, t - length) / release);
       data[start + i] += wave * envelope * decay * amplitude;
       phase = (phase + step) % tableSize;
       decay *= decayStep;
     }
   }
   for (let i = 0; i < 4; i++) tone(i * beat, 0.04, i === 3 ? 88 : 81, 90, 0.1);
-  for (const track of score.tracks) {
-    const gain = track.name.startsWith("Main Melody")
-      ? 0.13
-      : track.name.startsWith("Base")
-        ? 0.065
-        : track.name.startsWith("Chord")
-          ? 0.055
-          : 0.035;
-    for (const [tick, ticks, midi, velocity] of track.notes) {
-      const at = secondsAt(tick);
-      tone(countIn + at, secondsAt(tick + ticks) - at, midi, velocity, gain);
+  for (const [tick, ticks, midi, velocity] of score.melody) {
+    const at = secondsAt(tick);
+    tone(countIn + at, secondsAt(tick + ticks) - at, midi, velocity, 0.24);
+  }
+  let previousVoicing = [50, 57, 62];
+  for (const [tick, ticks, root, quality] of score.harmony) {
+    const intervals = [
+      [0, 4, 7],
+      [0, 3, 7],
+      [0, 3, 6],
+    ][quality];
+    const voicings = intervals
+      .reduce(
+        (list, interval) => {
+          const low = 48 + ((root + interval) % 12),
+            choices = low + 12 <= 64 ? [low, low + 12] : [low];
+          return list.flatMap((notes) => choices.map((pitch) => [...notes, pitch]));
+        },
+        [[]]
+      )
+      .map((notes) => notes.sort((a, b) => a - b));
+    const motion = (notes) =>
+      notes.reduce((sum, pitch, i) => sum + Math.abs(pitch - previousVoicing[i]), 0);
+    voicings.sort((a, b) => motion(a) - motion(b));
+    previousVoicing = voicings[0];
+    for (let pulse = tick; pulse < tick + ticks; pulse += score.ppq * 2) {
+      const at = secondsAt(pulse),
+        end = Math.min(tick + ticks, pulse + score.ppq * 1.6);
+      for (const midi of previousVoicing)
+        tone(countIn + at, secondsAt(end) - at, midi, 80, 0.055, "chord");
+      for (let b = 0; b < 2 && pulse + b * score.ppq < tick + ticks; b++) {
+        const bassTick = pulse + b * score.ppq,
+          bassAt = secondsAt(bassTick),
+          bassEnd = Math.min(tick + ticks, bassTick + score.ppq * 0.6);
+        tone(
+          countIn + bassAt,
+          secondsAt(bassEnd) - bassAt,
+          36 + root + (b ? intervals[2] : 0),
+          85,
+          0.085,
+          "bass"
+        );
+      }
     }
   }
   let peak = 0;
   for (let i = 0; i < data.length; i++) {
-    data[i] = Math.tanh(data[i] * 1.35) * Math.min(1, (duration - i / sampleRate) / 0.5);
+    data[i] *= Math.min(1, (duration - i / sampleRate) / 0.5);
     peak = Math.max(peak, Math.abs(data[i]));
   }
-  const scale = 0.86 / Math.max(0.86, peak);
+  const scale = 0.82 / Math.max(0.2, peak);
   for (let i = 0; i < data.length; i++) data[i] *= scale;
   return data;
 }
 
 export function makeChart() {
-  const groups = new Map();
-  for (const [part, track] of score.tracks.entries()) {
-    if (!track.name.startsWith("Main Melody")) continue;
-    for (const [tick, length, pitch, velocity] of track.notes) {
-      // Merge voices landing on the same sixteenth, retaining the primary voice's exact onset.
-      const grid = Math.round(tick / (score.ppq / 4));
-      if (!groups.has(grid)) groups.set(grid, []);
-      groups.get(grid).push({ tick, length, pitch, velocity, part });
-    }
-  }
+  const accents = new Set(
+    score.harmony.filter(([tick]) => tick % (score.ppq * 4) === 0).map(([tick]) => tick)
+  );
   const notes = [],
     lastEnd = [-10, -10, -10, -10];
   let previousPitch = 69,
     previousLane = 1;
-  for (const [grid, voices] of [...groups].sort((a, b) => a[0] - b[0])) {
-    voices.sort((a, b) => a.part - b.part || b.pitch - a.pitch);
-    const lead = voices[0],
-      at = countIn + secondsAt(lead.tick),
-      chord = grid % 4 === 0 && new Set(voices.map((v) => v.pitch)).size >= 3;
-    const direction = Math.sign(lead.pitch - previousPitch),
+  for (const [tick, length, pitch] of score.melody) {
+    const at = countIn + secondsAt(tick),
+      chord = accents.has(tick);
+    const direction = Math.sign(pitch - previousPitch),
       preferred = (previousLane + (direction || 2) + 4) % 4;
     for (let hand = 0; hand < (chord ? 2 : 1); hand++) {
       const lane = [0, 1, 2, 3]
@@ -148,14 +171,14 @@ export function makeChart() {
         .find((candidate) => at - lastEnd[candidate] >= 0.17);
       if (lane === undefined) continue;
       const note = { at, lane };
-      if (hand === 0 && lead.length >= score.ppq * 1.5) {
-        note.end = countIn + secondsAt(lead.tick + Math.min(lead.length, score.ppq * 2));
+      if (hand === 0 && length >= score.ppq * 1.5) {
+        note.end = countIn + secondsAt(tick + Math.min(length, score.ppq * 4));
       }
       lastEnd[lane] = note.end ?? at;
       notes.push(note);
       if (hand === 0) previousLane = lane;
     }
-    previousPitch = lead.pitch;
+    previousPitch = pitch;
   }
   return notes.sort((a, b) => a.at - b.at || a.lane - b.lane);
 }
