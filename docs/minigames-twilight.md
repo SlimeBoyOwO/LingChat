@@ -56,4 +56,16 @@
 
 小游戏暂停音乐与谱面，继续前准备三拍；未完成的长按可在恢复点重新接住。观赏演示显式标记 DEMO，不冒充玩家成绩。异常模式尾声返回 `interrupted`，可以重试或返回。
 
+## 判定与演奏反馈
+
+判定使用音频输出时钟，键盘与触摸输入按事件发生时的时间戳换算到歌曲时间；兼容以 Unix 时间为起点的旧式事件时间戳。每次开始或恢复播放都会更新输入起点，丢弃上一轮遗留的事件。手动演奏的自动漏击与长按尾端结算延后 50 ms，给排队中的输入一个短暂处理机会，实际判定窗口仍为 Perfect ±55 ms、Good ±100 ms、Ok ±150 ms。这个缓冲不能消除长时间卡顿或设备本身的音频延迟，输入偏移仍可手动调校。
+
+长按原始起点不会被暂停改写，恢复时使用独立的续接时间，续接不重复统计按键偏差。提前接住长按时头部继续下落到判定线，尾端按剩余时间缩短；长按一直按住会自动完成，提前松手超过 55 ms 时最高为 Good，超过 100 ms 则为 Miss，每条长按仍只计一个音符。演示不应用玩家输入偏移。
+
+手动演奏 HUD 增加早晚偏差条，显示最近 24 次有效按下的位置，并在八秒内淡出；命中提示显示「偏早 / 偏晚」及毫秒数。结算列出平均偏差、偏差的标准差（波动）与样本数，只统计成功接住的单点或长按头，漏击、长按尾、暂停续接和观赏演示不计入。
+
+打击光晕按判定等级着色，反馈集中在判定线附近；长按有持续发光与沿剩余条身移动的流光。粒子、扩散、角色反馈和按键闪光在返回曲目、重试和结算时清理；暂停会冻结演出时钟，关闭动态效果或系统减少动态效果时停止粒子、流光和花瓣飘动。Esc 忽略键盘自动重复事件，避免按住时连续切换暂停。
+
+设计参考 osu!lazer 的 [长按头与条身处理](https://github.com/ppy/osu/blob/86435af79d459ed694d1df841ef83fe0825463d3/osu.Game.Rulesets.Mania/Objects/Drawables/DrawableHoldNote.cs)、[长按尾部判定](https://github.com/ppy/osu/blob/86435af79d459ed694d1df841ef83fe0825463d3/osu.Game.Rulesets.Mania/Objects/Drawables/DrawableHoldNoteTail.cs)、[局部命中光效](https://github.com/ppy/osu/blob/86435af79d459ed694d1df841ef83fe0825463d3/osu.Game.Rulesets.Mania/Skinning/Argon/ArgonHitExplosion.cs)和[游戏时钟](https://github.com/ppy/osu/blob/86435af79d459ed694d1df841ef83fe0825463d3/osu.Game/Screens/Play/GameplayClockContainer.cs)。此处为独立的 JavaScript / Canvas 实现，保留小游戏自身的一音符一判定规则；没有移植 osu! 引擎、素材或其完整评分规则。音频时间戳换算依据 [Web Audio getOutputTimestamp](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/getOutputTimestamp)。
+
 此版本接入的是主程序小游戏入口。供 DLC 剧情调用的 `rhythm_game` 事件及结果变量写回属于后续扩展，没有把未实现的剧本事件暴露给作者。

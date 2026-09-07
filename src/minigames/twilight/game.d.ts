@@ -11,6 +11,9 @@ export interface RhythmResult {
   ok: number;
   miss: number;
   totalNotes: number;
+  timingSamples: number;
+  meanErrorMs: number | null;
+  timingDeviationMs: number | null;
 }
 
 export interface RhythmController {

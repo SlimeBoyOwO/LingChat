@@ -12,11 +12,11 @@ export function bindTouchControls(root, { selector, enabled, press, release, sig
   const pointers = new Map();
   const on = (target, type, handler) => target.addEventListener(type, handler, { signal });
   const key = (button) => button.dataset.action ?? Number(button.dataset.lane);
-  const end = (id) => {
+  const end = (id, event) => {
     const held = pointers.get(id);
     if (!held) return;
     pointers.delete(id);
-    release(key(held.button), `pointer-${id}`);
+    release(key(held.button), `pointer-${id}`, event);
     if (![...pointers.values()].some((entry) => entry.button === held.button))
       held.button.classList.remove("active");
     if (held.capture.hasPointerCapture(id)) held.capture.releasePointerCapture(id);
@@ -29,7 +29,7 @@ export function bindTouchControls(root, { selector, enabled, press, release, sig
       button.setPointerCapture(event.pointerId);
       pointers.set(event.pointerId, { button, capture: button });
       button.classList.add("active");
-      press(key(button), `pointer-${event.pointerId}`);
+      press(key(button), `pointer-${event.pointerId}`, event);
     });
     // A thumb may slide between the two direction keys without being lifted.
     on(button, "pointermove", (event) => {
@@ -48,14 +48,14 @@ export function bindTouchControls(root, { selector, enabled, press, release, sig
       if (!next || next === held.button) return;
       const old = held.button;
       held.button = next;
-      release(key(old), `pointer-${event.pointerId}`);
+      release(key(old), `pointer-${event.pointerId}`, event);
       if (![...pointers.values()].some((entry) => entry.button === old))
         old.classList.remove("active");
       next.classList.add("active");
-      press(key(next), `pointer-${event.pointerId}`);
+      press(key(next), `pointer-${event.pointerId}`, event);
     });
     for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
-      on(button, type, (event) => end(event.pointerId));
+      on(button, type, (event) => end(event.pointerId, event));
   }
   const clear = () => {
     for (const id of [...pointers.keys()]) end(id);

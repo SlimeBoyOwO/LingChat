@@ -62,6 +62,7 @@
         <div><strong id="result-combo">0</strong><span>最大连击</span></div>
         <div><strong id="result-miss">0</strong><span>漏击</span></div>
       </div>
+      <p class="result-timing" id="result-timing"></p>
       <div class="result-actions"><button class="menu-item" id="retry" type="button">再演奏一次</button><button class="menu-item" id="result-leave" type="button">返回曲目</button></div>
     </section>
   </div>
@@ -73,7 +74,7 @@
       <label>输入偏移 <output id="offset-value">0 ms</output><input id="offset" type="range" min="-200" max="200" step="5" value="0"><small>总是按晚了可向正值调整。</small></label>
       <label>下落时间 <output id="speed-value">1.8 s</output><input id="speed" type="range" min="1.1" max="2.6" step="0.1" value="1.8"><small>只改变视觉速度，不改变音乐。</small></label>
       <label class="check-setting"><input id="horror" type="checkbox"><span>异常演出<small>后段色彩错位、角色残影，尾声进入剧情错误。</small></span></label>
-      <label class="check-setting"><input id="beat-effects" type="checkbox" checked><span>节拍特效<small>霓虹光束、打击扩散和连击效果，跟随系统减少动态效果设置。</small></span></label>
+      <label class="check-setting"><input id="beat-effects" type="checkbox" checked><span>节拍特效<small>打击光晕、长按流光与节拍灯光，跟随系统减少动态效果设置。</small></span></label>
       <button id="settings-close" class="menu-item" type="button">返回</button>
     </section>
   </div>

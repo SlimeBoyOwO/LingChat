@@ -405,6 +405,13 @@ input:focus-visible {
   color: #ccb7c9;
   margin-top: 8px;
 }
+.result-timing {
+  margin: 14px 0;
+  color: #c9ddd9;
+  font-size: 13px;
+  line-height: 1.7;
+  text-wrap: balance;
+}
 .result-actions {
   display: flex;
   justify-content: center;

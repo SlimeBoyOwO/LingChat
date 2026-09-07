@@ -1,6 +1,7 @@
 import { bindTouchControls, usesMobileControls } from "../touch-controls.js";
 import { SONGS } from "./songs.js";
-import { Judge } from "./core.js";
+import { Judge, WINDOWS } from "./core.js";
+import { inputPerformanceTime } from "./timing.js";
 import { drawIdle, idleFrameAt, breathAt } from "./idle.js";
 import backgroundUrl from "../../assets/minigames/twilight/shrine-dusk.png";
 import pose0Url from "../../assets/minigames/twilight/qinling-0.png";
@@ -30,6 +31,13 @@ export async function mountRhythm(root, options) {
     demoActions = [],
     demoIndex = 0;
   const colors = ["#f2acb5", "#f7d39a", "#9fd0d4", "#c6b5ea"];
+  const gradeColors = {
+    perfect: "#ffe3aa",
+    good: "#85edce",
+    ok: "#aebeff",
+    miss: "#ff8298",
+    hold: "#d1faff",
+  };
   const keys = ["KeyD", "KeyF", "KeyJ", "KeyK"];
   const lifetime = new AbortController();
   let destroyed = false,
@@ -47,6 +55,7 @@ export async function mountRhythm(root, options) {
     resizeObserver?.disconnect();
     lifetime.abort();
     stopSource();
+    clearFeedback();
     cancelRender?.();
     clearInputs();
     judge?.pause();
@@ -66,6 +75,7 @@ export async function mountRhythm(root, options) {
     wavePoints = new Float32Array(193);
   let waveLevel = 0;
   let startWhen = 0,
+    inputEpoch = 0,
     seek = 0,
     demo = false,
     lastResult = null,
@@ -82,12 +92,15 @@ export async function mountRhythm(root, options) {
     poseUntil = 0,
     feedback = null,
     feedbackUntil = 0;
-  let idleElapsed = 0;
+  let idleElapsed = 0,
+    visualTime = 0;
   let runHorror = false;
   const inputSources = Array.from({ length: 4 }, () => new Set());
   const particles = [],
     effects = [],
-    laneFlash = [0, 0, 0, 0];
+    timingMarks = [],
+    laneFlash = [-Infinity, -Infinity, -Infinity, -Infinity],
+    laneGrades = ["hold", "hold", "hold", "hold"];
   const petals = Array.from({ length: 30 }, (_, i) => ({
     x: (i * 179) % W,
     y: (i * 79) % H,
@@ -139,8 +152,19 @@ export async function mountRhythm(root, options) {
     if (state !== "playing") return seek;
     return Math.max(-0.2, outputClock() - startWhen + seek);
   }
-  function judgedTime() {
-    return songTime() - offset / 1000;
+  function judgedTime(event) {
+    const now = performance.now();
+    const stamp = inputPerformanceTime(event, now);
+    if (stamp < inputEpoch) return null;
+    return songTime() - (demo ? 0 : offset / 1000) - (now - stamp) / 1000;
+  }
+  function clearFeedback() {
+    particles.length = 0;
+    effects.length = 0;
+    timingMarks.length = 0;
+    laneFlash.fill(-Infinity);
+    feedback = null;
+    poseUntil = 0;
   }
   function clearInputs() {
     for (const set of inputSources) set.clear();
@@ -212,6 +236,7 @@ export async function mountRhythm(root, options) {
     source.buffer = buffer;
     source.connect(gain);
     source.start(startWhen, at);
+    inputEpoch = performance.now();
     state = "playing";
     $("footer-status").textContent = demo
       ? "演示成绩不会记作玩家成绩"
@@ -221,7 +246,7 @@ export async function mountRhythm(root, options) {
     demoActions = notes
       .filter((note) => note.state !== "done")
       .flatMap((note) => [
-        { at: note.at, lane: note.lane, down: true },
+        { at: note.resumeAt ?? note.at, lane: note.lane, down: true },
         { at: note.end ?? note.at + 0.02, lane: note.lane, down: false },
       ])
       .sort((a, b) => a.at - b.at || Number(a.down) - Number(b.down));
@@ -244,12 +269,10 @@ export async function mountRhythm(root, options) {
       seek = 0;
       lastResult = null;
       const chart = music.makeChart();
-      judge = new Judge(chart);
+      judge = new Judge(chart, { inputGrace: watchOnly ? 0 : 0.05, recordTiming: !watchOnly });
       resetDemoActions(chart);
       clearInputs();
-      effects.length = 0;
-      particles.length = 0;
-      feedback = null;
+      clearFeedback();
       show("settings", false);
       $("settings-toggle").setAttribute("aria-expanded", "false");
       show("title-card", false);
@@ -308,7 +331,7 @@ export async function mountRhythm(root, options) {
     seek = 0;
     judge = null;
     clearInputs();
-    effects.length = 0;
+    clearFeedback();
     show("settings", false);
     $("settings-toggle").setAttribute("aria-expanded", "false");
     show("title-card", true);
@@ -326,6 +349,7 @@ export async function mountRhythm(root, options) {
     seek = music.duration;
     clearInputs();
     lastResult = judge.result(runHorror ? "interrupted" : "completed");
+    clearFeedback();
     lastResult.demo = demo;
     lastResult.songId = music.id;
     lastResult.songTitle = music.title;
@@ -363,6 +387,11 @@ export async function mountRhythm(root, options) {
     $("result-accuracy").textContent = (acc * 100).toFixed(1) + "%";
     $("result-combo").textContent = lastResult.maxCombo;
     $("result-miss").textContent = lastResult.miss;
+    $("result-timing").textContent = demo
+      ? "观赏演示不统计按键偏差"
+      : lastResult.timingSamples
+        ? `平均${timingLabel(lastResult.meanErrorMs)} · 波动 ${lastResult.timingDeviationMs.toFixed(1)} ms · ${lastResult.timingSamples} 次有效按键`
+        : "暂无有效按键偏差";
     $("footer-status").textContent = demo ? "演示结束 · 不计入玩家成绩" : "演奏结束";
     // Local event only. A future Tauri adapter can translate this result into script variables.
     options.onResult?.({ ...lastResult });
@@ -384,29 +413,35 @@ export async function mountRhythm(root, options) {
       amp.disconnect();
     };
   }
-  function press(lane, origin) {
+  function press(lane, origin, event) {
     if (state !== "playing" || demo) return;
+    const time = judgedTime(event);
+    if (time == null) return;
     const sources = inputSources[lane];
     if (sources.has(origin)) return;
     const wasHeld = sources.size > 0;
     sources.add(origin);
     root.querySelector(`[data-lane="${lane}"]`).classList.add("active");
     if (wasHeld) return;
-    judge.press(lane, judgedTime());
-    laneFlash[lane] = performance.now();
+    judge.press(lane, time);
+    laneFlash[lane] = visualTime;
+    laneGrades[lane] = "hold";
     hitsound(lane);
     poseIndex = lane < 2 ? 1 : 2;
-    poseUntil = performance.now() + 230;
+    poseUntil = visualTime + 230;
   }
-  function release(lane, origin) {
+  function release(lane, origin, event) {
+    const time = judgedTime(event);
+    if (time == null || !inputSources[lane].has(origin)) return;
     inputSources[lane].delete(origin);
     if (inputSources[lane].size) return;
     root.querySelector(`[data-lane="${lane}"]`).classList.remove("active");
-    if (state === "playing" && !demo) judge.release(lane, judgedTime());
+    if (state === "playing" && !demo) judge.release(lane, time);
   }
   on(window, "keydown", (event) => {
     if (event.code === "Escape") {
       event.preventDefault();
+      if (event.repeat) return;
       if (!$("settings").hidden) closeSettings();
       else if (state === "paused") resumeGame();
       else pauseGame();
@@ -421,12 +456,12 @@ export async function mountRhythm(root, options) {
     const lane = keys.indexOf(event.code);
     if (lane >= 0 && state === "playing") {
       event.preventDefault();
-      if (!event.repeat) press(lane, event.code);
+      if (!event.repeat) press(lane, event.code, event);
     }
   });
   on(window, "keyup", (event) => {
     const lane = keys.indexOf(event.code);
-    if (lane >= 0) release(lane, event.code);
+    if (lane >= 0) release(lane, event.code, event);
   });
   on(window, "blur", pauseGame);
   on(document, "visibilitychange", () => {
@@ -472,6 +507,11 @@ export async function mountRhythm(root, options) {
     $("horror").checked = horror;
     $("beat-effects").checked = beatEffects;
     scene.dataset.effects = String(beatEffects && !reducedMotion.matches);
+    if (!beatEffects || reducedMotion.matches) {
+      effects.length = 0;
+      particles.length = 0;
+      laneFlash.fill(-Infinity);
+    }
   }
   $("volume").oninput = (e) => {
     volume = Number(e.target.value) / 100;
@@ -495,10 +535,6 @@ export async function mountRhythm(root, options) {
   };
   $("beat-effects").onchange = (event) => {
     beatEffects = event.target.checked;
-    if (!beatEffects) {
-      effects.length = 0;
-      particles.length = 0;
-    }
     controls();
     saveSettings();
   };
@@ -569,7 +605,7 @@ export async function mountRhythm(root, options) {
     ctx.beginPath();
     ctx.ellipse(x + 74, y + 179, 49, 7, 0, 0, Math.PI * 2);
     ctx.fill();
-    if (corrupt > 0.35) {
+    if (corrupt > 0.35 && beatEffects && !reducedMotion.matches) {
       ctx.globalAlpha = 0.35;
       ctx.filter = "sepia(1) saturate(7) hue-rotate(310deg)";
       ctx.save();
@@ -607,9 +643,13 @@ export async function mountRhythm(root, options) {
       const x = TRACK.x + lane * lw;
       rect(x, TRACK.top, 1, TRACK.bottom - TRACK.top, "#cfb0c424");
       const strength = Math.max(0, 1 - (now - laneFlash[lane]) / 180);
-      if (strength > 0) {
-        ctx.globalAlpha = strength * 0.27;
-        rect(x + 1, TRACK.top, lw - 2, LINE - TRACK.top, colors[lane]);
+      if (strength > 0 && beatEffects && !reducedMotion.matches) {
+        const glow = ctx.createLinearGradient(0, LINE - 100, 0, LINE);
+        glow.addColorStop(0, gradeColors[laneGrades[lane]] + "00");
+        glow.addColorStop(1, gradeColors[laneGrades[lane]]);
+        ctx.globalAlpha = strength * 0.4;
+        ctx.fillStyle = glow;
+        ctx.fillRect(x + 1, LINE - 100, lw - 2, 100);
         ctx.globalAlpha = 1;
       }
       if (!touchLayout) text("DFJK"[lane], x + lw / 2, LINE + 35, 16, colors[lane], "center");
@@ -628,19 +668,46 @@ export async function mountRhythm(root, options) {
     const baseTime = idle ? 0.12 : t;
     for (const note of notes) {
       if (note.state === "done") continue;
-      const y = LINE - ((note.at - baseTime) / approach) * (LINE - TRACK.top);
+      const originalY = LINE - ((note.at - baseTime) / approach) * (LINE - TRACK.top);
+      const y = note.resumeAt != null ? Math.min(originalY, LINE) : originalY;
       if (y < TRACK.top - 12 || (y > LINE + 120 && note.end == null)) continue;
       const x = TRACK.x + note.lane * lw + 12,
         width = lw - 24;
       if (note.end != null) {
         const tail = LINE - ((note.end - baseTime) / approach) * (LINE - TRACK.top);
-        const head = note.state === "holding" ? LINE : y;
-        ctx.globalAlpha = note.state === "holding" ? 0.75 : 0.42;
+        const holding = note.state === "holding";
+        const head = holding ? Math.min(y, LINE) : y;
+        const moving = holding && beatEffects && !reducedMotion.matches;
+        ctx.globalAlpha = holding ? 0.75 : 0.42;
         rect(x + 20, tail, width - 40, Math.max(0, head - tail), colors[note.lane]);
         ctx.globalAlpha = 1;
         rect(x + 17, tail, width - 34, 4, colors[note.lane]);
-        if (note.state === "holding") {
-          rect(x, LINE - 6, width, 12, "#fff2cb");
+        if (holding) {
+          if (moving) {
+            ctx.save();
+            ctx.globalCompositeOperation = "lighter";
+            ctx.globalAlpha = 0.22 + Math.sin(now / 110) * 0.06;
+            ctx.shadowColor = colors[note.lane];
+            ctx.shadowBlur = 14;
+            rect(
+              x + 14,
+              Math.max(TRACK.top, tail),
+              width - 28,
+              Math.max(0, head - Math.max(TRACK.top, tail)),
+              colors[note.lane]
+            );
+            ctx.shadowBlur = 0;
+            ctx.globalAlpha = 0.65;
+            // Light travels up the remaining body; the original note geometry stays intact.
+            const span = Math.max(0, head - Math.max(TRACK.top, tail));
+            if (span > 4) {
+              const lightY = head - ((now % 420) / 420) * span;
+              rect(x + 20, lightY - 2, width - 40, 3, "#f0fcff");
+            }
+            ctx.restore();
+          }
+          rect(x, head - 6, width, 12, "#e8fcff");
+          rect(x + 3, head - 3, width - 6, 3, colors[note.lane]);
           continue;
         }
       }
@@ -655,10 +722,15 @@ export async function mountRhythm(root, options) {
     for (const event of judge?.events.splice(0) ?? []) {
       feedback = event;
       feedbackUntil = now + 530;
+      if (!demo && event.error != null) {
+        timingMarks.push({ error: event.error, born: now });
+        if (timingMarks.length > 24) timingMarks.shift();
+      }
+      laneFlash[event.lane] = now;
+      laneGrades[event.lane] = event.grade;
       if (event.grade !== "miss") {
         poseIndex = event.lane < 2 ? 1 : 2;
         poseUntil = now + 240;
-        laneFlash[event.lane] = now;
         if (beatEffects && !reducedMotion.matches)
           for (let i = 0; i < 9; i++)
             particles.push({
@@ -667,14 +739,17 @@ export async function mountRhythm(root, options) {
               dx: Math.cos(i * 2.4) * (1 + (i % 3)),
               dy: -1 - (i % 4),
               life: 1,
-              color: colors[event.lane],
+              color: i % 3 === 0 ? gradeColors[event.grade] : colors[event.lane],
             });
-        if (music.neon && beatEffects && !reducedMotion.matches) {
+        if (beatEffects && !reducedMotion.matches) {
           effects.push({
             lane: event.lane,
+            grade: event.grade,
             life: 1,
             combo:
-              event.combo > 0 && event.combo % 50 === 0 && event.grade !== "hold" ? event.combo : 0,
+              music.neon && event.combo > 0 && event.combo % 50 === 0 && event.grade !== "hold"
+                ? event.combo
+                : 0,
           });
         }
       }
@@ -810,7 +885,7 @@ export async function mountRhythm(root, options) {
       if (!beatEffects || reducedMotion.matches) continue;
       ctx.save();
       ctx.globalAlpha = effect.life * 0.75;
-      ctx.strokeStyle = colors[effect.lane];
+      ctx.strokeStyle = gradeColors[effect.grade];
       ctx.lineWidth = 2;
       const x = TRACK.x + ((effect.lane + 0.5) * TRACK.w) / 4;
       ctx.beginPath();
@@ -828,7 +903,7 @@ export async function mountRhythm(root, options) {
         text(
           `${effect.combo} CHAIN`,
           portrait ? W / 2 : TRACK.x / 2,
-          portrait ? TRACK.top - 12 : 190,
+          portrait ? TRACK.top - 12 : 225,
           21,
           "#82edff",
           "center",
@@ -837,8 +912,37 @@ export async function mountRhythm(root, options) {
       ctx.restore();
     }
   }
+  function timingLabel(milliseconds) {
+    return Math.abs(milliseconds) < 0.5
+      ? "正拍"
+      : `${milliseconds < 0 ? "偏早" : "偏晚"} ${Math.abs(milliseconds).toFixed(1)} ms`;
+  }
+  function drawTiming(now) {
+    if (demo) return;
+    const x = 30,
+      y = 178,
+      width = portrait ? 168 : 190;
+    const center = x + width / 2;
+    const extent = (window) => (width * window) / (WINDOWS.hit * 2);
+    rect(x, y - 3, width, 6, "#aebeff40");
+    rect(center - extent(WINDOWS.good), y - 3, extent(WINDOWS.good) * 2, 6, "#85edce66");
+    rect(center - extent(WINDOWS.perfect), y - 3, extent(WINDOWS.perfect) * 2, 6, "#ffe3aa88");
+    rect(center, y - 6, 1, 12, "#fff5e5");
+    for (const mark of timingMarks) {
+      const age = now - mark.born;
+      if (age > 8000) continue;
+      ctx.globalAlpha = 0.2 + 0.8 * (1 - age / 8000);
+      const position = center + ((mark.error / WINDOWS.hit) * width) / 2;
+      rect(position, y - 7, 2, 14, mark.error < 0 ? "#82eaff" : "#ffacd5");
+    }
+    ctx.globalAlpha = 1;
+    text("早", x, y + 21, 9, "#82eaff");
+    text("按键偏差", center, y + 21, 9, "#ead5d2", "center");
+    text("晚", x + width, y + 21, 9, "#ffacd5", "right");
+  }
   function frame(now) {
-    const dt = Math.min(2, (now - previousFrame) / 16.667);
+    const dt = Math.max(0, Math.min(100, now - previousFrame)) / 16.667;
+    if (state !== "paused" && state !== "countdown" && !document.hidden) visualTime += dt * 16.667;
     if (
       state !== "paused" &&
       state !== "countdown" &&
@@ -849,12 +953,12 @@ export async function mountRhythm(root, options) {
       idleElapsed += dt * 16.667;
     previousFrame = now;
     if (state === "countdown" && now >= countdownUntil) {
-      judge.resume(resumeAt - offset / 1000);
+      judge.resume(resumeAt - (demo ? 0 : offset / 1000));
       if (demo) resetDemoActions(judge.notes);
       playFrom(resumeAt);
     }
     const t = songTime(),
-      jt = t - offset / 1000;
+      jt = t - (demo ? 0 : offset / 1000);
     if (state === "playing") {
       if (demo)
         while (demoIndex < demoActions.length && demoActions[demoIndex].at <= jt) {
@@ -863,7 +967,7 @@ export async function mountRhythm(root, options) {
           else judge.release(action.lane, action.at);
         }
       judge.update(jt);
-      feedbackEvents(now);
+      feedbackEvents(visualTime);
       if (t >= music.duration) finishGame();
     }
     ctx.imageSmoothingEnabled = false;
@@ -874,7 +978,7 @@ export async function mountRhythm(root, options) {
       runHorror && !idle ? Math.max(0, Math.min(0.85, (t - music.beat * 68) / 28)) : 0;
     $("scene-corruption").style.opacity = String(corrupt * 0.55);
     if (corrupt && beatEffects && !reducedMotion.matches) {
-      if (Math.sin(now / 640) > 0.86)
+      if (Math.sin(visualTime / 640) > 0.86)
         for (let i = 0; i < 5; i++) rect(0, 100 + i * 75, W, 2 + i, "#ef839124");
     }
     for (const petal of petals) {
@@ -886,15 +990,15 @@ export async function mountRhythm(root, options) {
       }
       rect(
         petal.x,
-        petal.y + Math.sin(now / 1200 + petal.phase) * 7,
+        petal.y + Math.sin(idleElapsed / 1200 + petal.phase) * 7,
         3,
         2,
         corrupt > 0.5 ? "#bd364c99" : "#f9bcb6aa"
       );
     }
     drawNeon(t, idle);
-    drawCharacter(now, corrupt);
-    if (!idle) drawTracks(t, now, false);
+    drawCharacter(visualTime, corrupt);
+    if (!idle) drawTracks(t, visualTime, false);
     drawHitEffects(dt);
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
@@ -929,6 +1033,7 @@ export async function mountRhythm(root, options) {
       const liveAccuracy = judge.resolved ? judge.points / judge.resolved : 1;
       text((liveAccuracy * 100).toFixed(1) + "%", 30, 129, 11, "#e4c3c5");
       if (music.neon) text(music.sectionAt(t).name, 30, 151, 10, "#83eaff");
+      drawTiming(visualTime);
       if (judge.combo > 1) {
         text(
           judge.combo,
@@ -947,16 +1052,25 @@ export async function mountRhythm(root, options) {
           "center"
         );
       }
-      if (feedback && now < feedbackUntil) {
+      if (feedback && visualTime < feedbackUntil) {
         const labels = { perfect: "PERFECT", good: "GOOD", ok: "OK", miss: "MISS", hold: "HOLD" };
         text(
           labels[feedback.grade],
           TRACK.x + TRACK.w / 2,
           LINE - 64,
           17,
-          feedback.grade === "miss" ? "#e48b98" : "#ffe3aa",
+          gradeColors[feedback.grade],
           "center"
         );
+        if (!demo && feedback.error != null)
+          text(
+            timingLabel(feedback.error * 1000),
+            TRACK.x + TRACK.w / 2,
+            LINE - 44,
+            10,
+            feedback.error < 0 ? "#82eaff" : "#ffacd5",
+            "center"
+          );
       }
       const time = Math.max(0, music.duration - t);
       text(
