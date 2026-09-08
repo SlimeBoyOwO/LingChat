@@ -93,3 +93,66 @@ export async function getSemanticMemoryStatus(): Promise<SemanticMemoryStatus> {
   const data = await invoke('get_semantic_memory_status')
   return data as SemanticMemoryStatus
 }
+
+// ---------- 语义记忆可视化管理 ----------
+
+export interface SemanticMemoryRole {
+  id: number
+  name: string
+  roleType: string
+  isCurrent: boolean
+}
+
+export interface SemanticMemoryItem {
+  id: string
+  text: string
+  tags: string[]
+  createdAt: string
+}
+
+export interface SemanticMemoryWriteResult {
+  ok: boolean
+  id: string | null
+  outcome: string
+}
+
+export async function listSemanticMemoryRoles(): Promise<SemanticMemoryRole[]> {
+  const data = await invoke('list_semantic_memory_roles')
+  return data as SemanticMemoryRole[]
+}
+
+export async function listSemanticMemories(roleId: number): Promise<SemanticMemoryItem[]> {
+  const data = await invoke('list_semantic_memories', { roleId })
+  return data as SemanticMemoryItem[]
+}
+
+export async function addSemanticMemory(
+  roleId: number,
+  content: string,
+  tags: string[],
+): Promise<SemanticMemoryWriteResult> {
+  return invoke('add_semantic_memory', {
+    roleId,
+    content,
+    tags,
+  }) as Promise<SemanticMemoryWriteResult>
+}
+
+export async function updateSemanticMemory(
+  roleId: number,
+  id: string,
+  content: string,
+): Promise<SemanticMemoryWriteResult> {
+  return invoke('update_semantic_memory', {
+    roleId,
+    id,
+    content,
+  }) as Promise<SemanticMemoryWriteResult>
+}
+
+export async function deleteSemanticMemory(
+  roleId: number,
+  id: string,
+): Promise<SemanticMemoryWriteResult> {
+  return invoke('delete_semantic_memory', { roleId, id }) as Promise<SemanticMemoryWriteResult>
+}

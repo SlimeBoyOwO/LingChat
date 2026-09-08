@@ -38,6 +38,17 @@ pub enum AddOutcome {
     Duplicate,
 }
 
+/// 更新结果。
+#[derive(Debug, Clone)]
+pub enum UpdateOutcome {
+    /// 已更新。
+    Updated,
+    /// 对应 id 不存在。
+    NotFound,
+    /// 修改后的文本与其它既有记忆重复。
+    Duplicate,
+}
+
 /// 检索命中。
 #[derive(Debug, Clone)]
 pub struct Hit {
@@ -212,6 +223,54 @@ impl SemanticMemory {
     /// 按文本删除（兜底）。返回是否实际删除。
     pub async fn delete_by_text(&self, role_id: i32, text: &str) -> Result<bool, String> {
         self.store.delete_by_text(role_id, text).await
+    }
+
+    /// 更新一条语义记忆的文本（自动重新编码向量 + 去重，排除自身）。
+    pub async fn update(
+        &self,
+        role_id: i32,
+        id: &str,
+        text: &str,
+    ) -> Result<UpdateOutcome, String> {
+        if text.trim().chars().count() < MIN_CHARS {
+            return Err("语义记忆内容过短".to_string());
+        }
+        let Some(embedding) = self.embedding.as_ref() else {
+            let msg = "语义记忆未就绪：缺少嵌入引擎".to_string();
+            self.record_error(&msg);
+            return Err(msg);
+        };
+        let existing = self.store.fetch_role(role_id).await?;
+        if !existing.iter().any(|m| m.id == id) {
+            return Ok(UpdateOutcome::NotFound);
+        }
+        let Some(mut encoded) = embedding.embed_passages(&[text.to_string()]).await else {
+            let msg = "语义记忆编码失败：嵌入模型不可用".to_string();
+            self.record_error(&msg);
+            return Err(msg);
+        };
+        let vector = std::mem::take(&mut encoded[0].vector);
+
+        // 去重时排除自身，仅与其它既有记忆比较
+        if existing
+            .iter()
+            .filter(|m| m.id != id)
+            .any(|m| cosine(&m.vector, &vector) >= DUP_THRESHOLD)
+        {
+            return Ok(UpdateOutcome::Duplicate);
+        }
+
+        let ts = Utc::now().to_rfc3339();
+        if self
+            .store
+            .update(role_id, id, text.trim(), vector.len(), &vector, &ts)
+            .await?
+        {
+            tracing::info!("[semantic_memory] role_id={} 更新语义记忆 id={}", role_id, id);
+            Ok(UpdateOutcome::Updated)
+        } else {
+            Ok(UpdateOutcome::NotFound)
+        }
     }
 
     /// 列出某个角色的全部记忆（不含向量）。

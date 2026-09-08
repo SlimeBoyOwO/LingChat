@@ -176,6 +176,41 @@ export default {
       "labelYes": "係",
       "labelNo": "唔係"
     },
+    "semanticMemoryStatus": {
+      "title": "語義記憶運行狀態",
+      "desc": "獨立於普通記憶庫（MemoryBank）與筆記嘅專屬語義記憶，由 AI 通過 semantic_mem_* 工具寫入 SQLite 向量庫，每輪對話自動召回相關片段注入上下文。需要先啟用「記憶嵌入」提供模型編碼。",
+      "enabled": "啟用狀態",
+      "opened": "向量庫已打開",
+      "embeddingReady": "嵌入引擎就緒",
+      "count": "記憶條數",
+      "dbPath": "向量庫檔案",
+      "loading": "載入緊…",
+      "refresh": "更新狀態",
+      "needEmbedding": "提示：語義記憶依賴嵌入模型，請先喺「記憶嵌入」確認模型已經就緒。"
+    },
+    "semanticMemoryManage": {
+      "title": "語義記憶管理",
+      "desc": "手動查看同管理角色儲存喺語義記憶庫嘅內容（同 AI 用 semantic_mem_* 工具寫入嘅係同一份數據），支援查詢、新增、編輯同刪除。",
+      "role": "角色",
+      "currentRole": "當前對話",
+      "noneRole": "暫時冇可用角色",
+      "addTitle": "新增記憶",
+      "editTitle": "編輯記憶",
+      "contentPlaceholder": "輸入要記住嘅內容…",
+      "tagsPlaceholder": "標籤（用逗號分隔，可選），例如：設定, 背景, 重要事項",
+      "add": "加入",
+      "save": "儲存修改",
+      "cancelEdit": "取消編輯",
+      "loading": "載入緊…",
+      "empty": "該角色暫冇語義記憶",
+      "emptyTags": "冇標籤",
+      "edit": "編輯",
+      "delete": "刪除",
+      "deleteConfirm": "確定刪除呢條語義記憶嗎？",
+      "added": "已加入",
+      "updated": "已儲存修改",
+      "loadFailed": "載入失敗：{error}"
+    },
     "saveButton": "儲存",
     "loadFailed": "載入失敗",
     "loadFailedDesc": "載入唔到配置，或者配置係空嘅。",
@@ -194,7 +229,8 @@ export default {
       "创意工坊": "創意工坊",
       "日志配置": "日誌配置",
       "主动对话配置": "主動對話配置",
-      "记忆嵌入": "記憶嵌入"
+      "记忆嵌入": "記憶嵌入",
+      "语义记忆": "語義記憶"
     },
     "subcategories": {
       "高级选项": "高級選項",

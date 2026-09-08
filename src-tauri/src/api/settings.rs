@@ -19,11 +19,13 @@ use crate::ai_service::llm::provider_config::{
     LlmProvidersResponse,
 };
 use crate::ai_service::llm::LlmModelInfo;
+use crate::ai_service::semantic_memory::{AddOutcome, SemanticMemory, UpdateOutcome};
 use crate::config::app_config::{
     MAX_LLM_TIMEOUT_SECS, MAX_MEMORY_RECENT_WINDOW, MAX_MEMORY_SECTION_CHARS,
     MAX_MEMORY_UPDATE_INTERVAL, MIN_LLM_TIMEOUT_SECS, MIN_MEMORY_UPDATE_INTERVAL,
 };
 use crate::config::{self, keys, ConfigSetting, ConfigTree};
+use crate::db::managers::role_repo::RoleRepo;
 use crate::AppState;
 
 // ========== Settings CRUD ==========
@@ -284,6 +286,161 @@ pub async fn get_semantic_memory_status(app: AppHandle) -> Result<SemanticMemory
     snap.count = sm.count().await;
     snap.error = sm.last_error();
     Ok(snap)
+}
+
+// ---------- 语义记忆可视化管理 ----------
+
+/// 角色下拉项（供前端选择要管理的角色）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticMemoryRole {
+    pub id: i32,
+    pub name: String,
+    pub role_type: String,
+    /// 是否为当前对话角色（下拉默认选中）。
+    pub is_current: bool,
+}
+
+/// 一条语义记忆的展示数据（不含向量）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticMemoryItemDto {
+    pub id: String,
+    pub text: String,
+    pub tags: Vec<String>,
+    pub created_at: String,
+}
+
+/// 写操作结果。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticMemoryWriteResult {
+    pub ok: bool,
+    pub id: Option<String>,
+    pub outcome: String,
+}
+
+/// 取语义记忆管理器句柄（clone 出 Arc 后立即释放锁）。未启用时返回可读错误。
+async fn semantic_memory_handle(app: &AppHandle) -> Result<Arc<SemanticMemory>, String> {
+    let state = app.state::<AppState>();
+    let sm = {
+        let service = state.ai_service.lock().await;
+        service.semantic_memory.clone()
+    };
+    sm.ok_or_else(|| {
+        "语义记忆未启用（请在「高级设置 → 语义记忆」中开启；需重启生效）".to_string()
+    })
+}
+
+/// 列出全部 main 角色供前端下拉选择（附当前对话角色标记）。
+#[tauri::command]
+pub async fn list_semantic_memory_roles(app: AppHandle) -> Result<Vec<SemanticMemoryRole>, String> {
+    let state = app.state::<AppState>();
+    let roles = RoleRepo::get_all_main_roles(&state.data().db)
+        .await
+        .map_err(|e| format!("读取角色列表失败: {e}"))?;
+    let current_role_id = {
+        let service = state.ai_service.lock().await;
+        let gs = service.game_status.lock().await;
+        gs.current_role_id
+    };
+    Ok(roles
+        .into_iter()
+        .map(|r| SemanticMemoryRole {
+            id: r.id,
+            name: r.name,
+            role_type: format!("{:?}", r.role_type),
+            is_current: Some(r.id) == current_role_id,
+        })
+        .collect())
+}
+
+/// 列出指定角色的全部语义记忆（含 id / 文本 / 标签 / 保存时间）。
+#[tauri::command]
+pub async fn list_semantic_memories(
+    app: AppHandle,
+    role_id: i32,
+) -> Result<Vec<SemanticMemoryItemDto>, String> {
+    let sm = semantic_memory_handle(&app).await?;
+    let items = sm.list(role_id).await.map_err(|e| e.to_string())?;
+    Ok(items
+        .into_iter()
+        .map(|i| SemanticMemoryItemDto {
+            id: i.id,
+            text: i.text,
+            tags: i.tags,
+            created_at: i.created_at,
+        })
+        .collect())
+}
+
+/// 向指定角色新增一条语义记忆（自动嵌入向量 + 去重）。
+#[tauri::command]
+pub async fn add_semantic_memory(
+    app: AppHandle,
+    role_id: i32,
+    content: String,
+    tags: Vec<String>,
+) -> Result<SemanticMemoryWriteResult, String> {
+    let sm = semantic_memory_handle(&app).await?;
+    match sm
+        .add(role_id, &content, &tags)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        AddOutcome::Added(id) => Ok(SemanticMemoryWriteResult {
+            ok: true,
+            id: Some(id),
+            outcome: "added".into(),
+        }),
+        AddOutcome::Duplicate => Err("这条内容与已有语义记忆重复，未保存".to_string()),
+    }
+}
+
+/// 更新指定角色的一条语义记忆（重新编码向量 + 去重，排除自身）。
+#[tauri::command]
+pub async fn update_semantic_memory(
+    app: AppHandle,
+    role_id: i32,
+    id: String,
+    content: String,
+) -> Result<SemanticMemoryWriteResult, String> {
+    let sm = semantic_memory_handle(&app).await?;
+    match sm
+        .update(role_id, &id, &content)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        UpdateOutcome::Updated => Ok(SemanticMemoryWriteResult {
+            ok: true,
+            id: Some(id),
+            outcome: "updated".into(),
+        }),
+        UpdateOutcome::NotFound => Err(format!("语义记忆 {id} 不存在")),
+        UpdateOutcome::Duplicate => Err("修改后的内容与已有语义记忆重复，未保存".to_string()),
+    }
+}
+
+/// 删除指定角色的一条语义记忆。
+#[tauri::command]
+pub async fn delete_semantic_memory(
+    app: AppHandle,
+    role_id: i32,
+    id: String,
+) -> Result<SemanticMemoryWriteResult, String> {
+    let sm = semantic_memory_handle(&app).await?;
+    match sm
+        .delete(role_id, &id)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        true => Ok(SemanticMemoryWriteResult {
+            ok: true,
+            id: Some(id),
+            outcome: "deleted".into(),
+        }),
+        false => Err(format!("语义记忆 {id} 不存在")),
+    }
 }
 
 // ========== LLM Multi-Provider Management ==========

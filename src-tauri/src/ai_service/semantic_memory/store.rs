@@ -130,6 +130,32 @@ impl Store {
         Ok(result.rows_affected() > 0)
     }
 
+    /// 更新一条记忆的文本与向量（重新编码后调用）。返回是否实际更新。
+    pub async fn update(
+        &self,
+        role_id: i32,
+        id: &str,
+        text: &str,
+        dim: usize,
+        vector: &[f32],
+        ts: &str,
+    ) -> Result<bool, String> {
+        let result = sqlx::query(
+            "UPDATE semantic_memory SET text = ?, dim = ?, vector = ?, updated_at = ?
+             WHERE role_id = ? AND id = ?",
+        )
+        .bind(text)
+        .bind(dim as i64)
+        .bind(encode_vector(vector))
+        .bind(ts)
+        .bind(role_id)
+        .bind(id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| format!("更新语义记忆失败: {e}"))?;
+        Ok(result.rows_affected() > 0)
+    }
+
     /// 按文本删除某个角色的记忆（AI 未持有 id 时的兜底）。返回是否实际删除。
     pub async fn delete_by_text(&self, role_id: i32, text: &str) -> Result<bool, String> {
         let result = sqlx::query("DELETE FROM semantic_memory WHERE role_id = ? AND text = ?")

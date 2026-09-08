@@ -54,7 +54,7 @@
 - **使用限制**：新工具默认未授权，需先在「工具管理」页批准 `semantic_mem_*`。
 
 在应用内「高级设置 → 语义记忆」分类可查看运行状态（向量库位置 / 是否就绪 /
-记忆条数）并配置开关与 top_k。
+记忆条数）、配置开关与 top_k，并直接做**可视化管理**（见下节）。
 
 ## 模型选择（多语言 · 越小越好）
 
@@ -122,6 +122,26 @@ bash scripts/embedding/setup.sh
 
 也可以在应用内「高级设置 → 记忆嵌入」分类中直接配置（对应
 `src-tauri/src/config/tree.rs` 的配置树），保存后重启生效。
+
+## 可视化记忆管理（高级设置）
+
+「高级设置 → 语义记忆」分类提供与 AI 工具共享同一份数据的可视化管理面板：
+
+- **角色选择**：下拉列出全部 main 角色，自动选中当前对话角色。
+- **查询**：列出所选角色的全部语义记忆（id / 文本 / 标签 / 保存时间）。
+- **新增 / 编辑**：文本自动嵌入向量并做语义去重（修改时排除自身 id）；
+  编辑后重新编码向量。
+- **删除**：带确认，按 id 删除。
+
+命令（`src-tauri/src/api/settings.rs`，均已注册至 `lib.rs`）：
+
+| 命令 | 说明 |
+| ---- | ---- |
+| `list_semantic_memory_roles` | 全部 main 角色（含当前对话标记） |
+| `list_semantic_memories(role_id)` | 指定角色的全部语义记忆 |
+| `add_semantic_memory(role_id, content, tags)` | 新增（自动去重） |
+| `update_semantic_memory(role_id, id, content)` | 修改文本（重新编码） |
+| `delete_semantic_memory(role_id, id)` | 删除 |
 
 ## 打包分发（自带模型，无 Python）
 
