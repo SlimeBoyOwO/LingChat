@@ -455,6 +455,90 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
         );
     }
 
+    // ===== 记忆嵌入 =====
+    {
+        let mut embed_subs = BTreeMap::new();
+
+        embed_subs.insert(
+            "基础配置".to_string(),
+            Subcategory {
+                description: "记忆语义检索与去重依赖的本地嵌入模型（Rust 原生 ONNX 推理，见 docs/embedding-memory.md）。需要 model_dir 指向含 model.onnx + tokenizer.json 的目录，漏配时功能自动禁用".to_string(),
+                settings: vec![
+                    ConfigSetting {
+                        key: keys::EMBEDDING_ENABLED.to_string(),
+                        value: read_setting(app, keys::EMBEDDING_ENABLED, "false"),
+                        description: "是否启用记忆嵌入（语义检索 + 手动笔记去重）".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::EMBEDDING_MODEL_DIR.to_string(),
+                        value: read_setting(app, keys::EMBEDDING_MODEL_DIR, ""),
+                        description: "嵌入模型目录（默认 data/third_party/embedding/；打包版自动回退资源目录内置模型；相对路径基于数据目录解析）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::EMBEDDING_BACKEND.to_string(),
+                        value: read_setting(app, keys::EMBEDDING_BACKEND, "auto"),
+                        description: "后端：auto / onnx（Rust 侧一致；st 需 torch，不再支持）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::EMBEDDING_QUERY_PREFIX.to_string(),
+                        value: read_setting(app, keys::EMBEDDING_QUERY_PREFIX, ""),
+                        description: "查询文本前缀（仅 E5 系等需前缀的模型用；本内置模型无需，建议留空）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::EMBEDDING_PASSAGE_PREFIX.to_string(),
+                        value: read_setting(app, keys::EMBEDDING_PASSAGE_PREFIX, ""),
+                        description: "语料/记忆片段文本前缀（同上，留空即可）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                ],
+            },
+        );
+
+        tree.insert(
+            "记忆嵌入".to_string(),
+            Category {
+                subcategories: embed_subs,
+            },
+        );
+    }
+
+    // ===== 语义记忆 =====
+    {
+        let mut sem_subs = BTreeMap::new();
+
+        sem_subs.insert(
+            "基础配置".to_string(),
+            Subcategory {
+                description: "独立于普通记忆库（MemoryBank）与笔记的专属语义记忆。由 AI 通过 semantic_mem_* 工具写入 SQLite 向量库（data/game_data/semantic_memory.db），每轮对话自动召回相关片段注入上下文。需要先启用「记忆嵌入」提供模型编码".to_string(),
+                settings: vec![
+                    ConfigSetting {
+                        key: keys::SEMANTIC_MEMORY_ENABLED.to_string(),
+                        value: read_setting(app, keys::SEMANTIC_MEMORY_ENABLED, "false"),
+                        description: "是否启用独立语义记忆（向量库 + 自动召回）".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::SEMANTIC_MEMORY_TOP_K.to_string(),
+                        value: read_setting(app, keys::SEMANTIC_MEMORY_TOP_K, "4"),
+                        description: "每轮对话自动注入上下文的最多召回条数（1–20，默认 4）".to_string(),
+                        setting_type: "number".to_string(),
+                    },
+                ],
+            },
+        );
+
+        tree.insert(
+            "语义记忆".to_string(),
+            Category {
+                subcategories: sem_subs,
+            },
+        );
+    }
+
     // ===== 日志配置 =====
     // 注意：日志默认值不在 AppConfig 中，由 lib.rs 直接读取，因此此处使用字面量。
     {

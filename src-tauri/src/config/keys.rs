@@ -48,6 +48,18 @@ pub const MEMORY_LONG_TERM_MAX_CHARS: &str = "features.memory_long_term_max_char
 pub const MEMORY_USER_INFO_MAX_CHARS: &str = "features.memory_user_info_max_chars";
 pub const MEMORY_PROMISES_MAX_CHARS: &str = "features.memory_promises_max_chars";
 
+// ========== 记忆嵌入（embedding） ==========
+pub const EMBEDDING_ENABLED: &str = "embedding.enabled";
+pub const EMBEDDING_PYTHON: &str = "embedding.python";
+pub const EMBEDDING_MODEL_DIR: &str = "embedding.model_dir";
+pub const EMBEDDING_BACKEND: &str = "embedding.backend";
+pub const EMBEDDING_QUERY_PREFIX: &str = "embedding.query_prefix";
+pub const EMBEDDING_PASSAGE_PREFIX: &str = "embedding.passage_prefix";
+
+// ========== 独立语义记忆（semantic_memory） ==========
+pub const SEMANTIC_MEMORY_ENABLED: &str = "semantic_memory.enabled";
+pub const SEMANTIC_MEMORY_TOP_K: &str = "semantic_memory.top_k";
+
 // ========== TTS 本地引擎 ==========
 pub const ENABLE_LOCAL_TTS: &str = "features.enable_local_tts";
 

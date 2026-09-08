@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use sea_orm::DatabaseConnection;
@@ -8,7 +9,9 @@ use crate::ai_service::game_system::memory_builder::MemoryBuilder;
 use crate::ai_service::game_system::persistent_memory_system::{
     MemorySectionLimits, PersistentMemorySystem,
 };
+use crate::ai_service::embedding::{EmbeddingManager, MemoryIndex};
 use crate::ai_service::llm::LlmSlot;
+use crate::ai_service::semantic_memory::SemanticMemory;
 use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::types::{CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage};
@@ -43,9 +46,14 @@ pub struct GameRoleManager {
     memory_limits: MemorySectionLimits,
     /// 角色服装覆盖（session store → register_role_by_id 时优先读取）
     clothes_overrides: HashMap<i32, String>,
+    /// 记忆语义索引（嵌入检索 + 去重）。未配置时为空索引（嵌入功能禁用）。
+    memory_index: MemoryIndex,
+    /// 独立语义记忆（向量库）。与 MemoryBank/笔记解耦，未启用时为 `None`。
+    semantic_memory: Option<Arc<SemanticMemory>>,
 }
 
 impl GameRoleManager {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         data_dir: PathBuf,
         llm: LlmSlot,
@@ -55,7 +63,15 @@ impl GameRoleManager {
         memory_update_interval: u32,
         memory_recent_window: u32,
         memory_limits: MemorySectionLimits,
+        embedding: Option<Arc<EmbeddingManager>>,
+        semantic_memory: Option<Arc<SemanticMemory>>,
     ) -> Self {
+        let memory_index = MemoryIndex::new(embedding.unwrap_or_else(|| {
+            Arc::new(EmbeddingManager::new(crate::ai_service::embedding::EmbeddingConfig {
+                model_dir: PathBuf::new(),
+                ..crate::ai_service::embedding::EmbeddingConfig::default()
+            }))
+        }));
         Self {
             loaded_roles: HashMap::new(),
             data_dir,
@@ -68,7 +84,19 @@ impl GameRoleManager {
             memory_recent_window,
             memory_limits,
             clothes_overrides: HashMap::new(),
+            memory_index,
+            semantic_memory,
         }
+    }
+
+    /// 访问记忆语义索引（供检索/去重）。
+    pub fn memory_index(&self) -> &MemoryIndex {
+        &self.memory_index
+    }
+
+    /// 访问独立语义记忆（供 `semantic_mem_*` 工具与召回注入）。未启用时为 `None`。
+    pub fn semantic_memory(&self) -> Option<&Arc<SemanticMemory>> {
+        self.semantic_memory.as_ref()
     }
 
     /// 设置角色服装覆盖（来自 session store，优先于 settings.yml 的默认值）。
@@ -306,8 +334,11 @@ impl GameRoleManager {
                 self.memory_limits,
             );
 
-            // 阶段 2: MemoryBank 启用时 — 同步后台结果 + 触发压缩 + 获取记忆文本
-            let (mb_exists, slice_start, system_addendum, short_term_prefix) = {
+            // 阶段 2: 语义召回独立于 MemoryBank，先构建（从独立向量库按话题召回）。
+            let recall_text = self.build_semantic_recall(rid, source_lines).await;
+
+            // 阶段 2b: MemoryBank 启用时 — 同步后台结果 + 触发压缩 + 获取记忆文本
+            let (slice_start, bank_text, short_term_prefix) = {
                 let sys = self.memory_bank_systems.get(&rid);
                 match sys {
                     Some(s) if s.is_enabled() => {
@@ -319,11 +350,19 @@ impl GameRoleManager {
                         let start = s.get_slice_start_index(source_lines).await;
                         let sys_text = s.get_system_memory_text().await;
                         let short = s.get_short_term_user_text().await;
-                        (true, start, sys_text, short)
+                        (start, sys_text, short)
                     }
-                    Some(_) => (true, 0, String::new(), String::new()),
-                    None => (false, 0, String::new(), String::new()),
+                    Some(_) => (0, String::new(), String::new()),
+                    None => (0, String::new(), String::new()),
                 }
+            };
+            // 语义召回结果并入注入文本，与记忆库解耦（即使 MemoryBank 关闭也注入）。
+            let system_addendum = if recall_text.is_empty() {
+                bank_text
+            } else if bank_text.trim().is_empty() {
+                recall_text
+            } else {
+                format!("{bank_text}\n{recall_text}")
             };
 
             // 阶段 3: 裁剪 + 构建角色记忆
@@ -348,7 +387,8 @@ impl GameRoleManager {
 
             // 阶段 4: 写入角色记忆
             if let Some(role) = self.loaded_roles.get_mut(&rid) {
-                let use_mb = mb_exists && mb_enabled && !system_addendum.is_empty();
+                // 只要有注入内容（记忆库文本或语义召回）就合并；语义召回不依赖 MemoryBank。
+                let use_mb = !system_addendum.is_empty();
                 role.memory = if use_mb {
                     Self::merge_memory_bank_into_context(
                         built,
@@ -365,6 +405,36 @@ impl GameRoleManager {
     }
 
     // ── MemoryBank 集成方法 ──
+
+    /// 基于独立语义记忆的召回，返回格式化文本（空串表示语义记忆未启用或无命中）。
+    ///
+    /// 内容来自该角色专属的向量库（由 `semantic_mem_add` 写入），与 MemoryBank/
+    /// 笔记解耦；查询为最近一段用户台词。返回的文本会并入注入 LLM 的下文末尾。
+    async fn build_semantic_recall(&self, role_id: i32, source_lines: &[GameLine]) -> String {
+        let Some(semantic_memory) = self.semantic_memory.as_ref() else {
+            return String::new();
+        };
+        if !semantic_memory.embedding_ready() {
+            return String::new();
+        }
+        // 查询文本：取最近可见的用户台词（TA 说了什么 → 需要回忆什么）。
+        let query = build_recall_query(source_lines, role_id);
+        if query.trim().is_empty() {
+            return String::new();
+        }
+        let hits = semantic_memory.search(role_id, &query, None).await;
+        let text = SemanticMemory::format_hits(&hits);
+        if text.is_empty() {
+            return String::new();
+        }
+        tracing::debug!(
+            "semantic_memory: role_id={} 语义召回 {} 条 (query_len={})",
+            role_id,
+            hits.len(),
+            query.len()
+        );
+        format!("\n{}", text)
+    }
 
     /// 台词历史即将重建；让所有进行中的摘要任务在提交时自动作废。
     pub fn invalidate_memory_history(&self) {
@@ -697,6 +767,8 @@ mod memory_bank_context_tests {
             250,
             30,
             MemorySectionLimits::default(),
+            None,
+            None,
         );
         for role_id in [1, 2] {
             manager.memory_bank_systems.insert(
@@ -763,6 +835,24 @@ mod memory_bank_context_tests {
         assert_eq!(output[1], LlmMessage::user("【近期回顾】summary\n\n"));
         assert_eq!(output[2].role, "assistant");
     }
+}
+
+/// 语义召回查询文本：取该角色最近可见的非 system 台词，作为检索当前话题的 query。
+fn build_recall_query(lines: &[GameLine], role_id: i32) -> String {
+    let mut parts: Vec<String> = lines
+        .iter()
+        .filter(|l| {
+            !matches!(l.attribute(), LineAttribute::System)
+                && !l.content().trim().is_empty()
+                && (l.sender_role_id() == Some(role_id)
+                    || l.perceived_role_ids.contains(&role_id))
+        })
+        .rev()
+        .take(4)
+        .map(|l| l.content().trim().to_string())
+        .collect();
+    parts.reverse();
+    parts.join(" ")
 }
 
 /// 根据 `CharacterSettings.tts_type` 与 `voice_models` 构造角色的 `VoiceMaker`。

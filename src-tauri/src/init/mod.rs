@@ -9,10 +9,12 @@ use anyhow::Result;
 use sea_orm::DatabaseConnection;
 use tauri::App;
 use tauri::Emitter;
+use tauri::Manager;
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
 use crate::ai_service::emotion::EmotionClassifier;
+use crate::ai_service::embedding::EmbeddingManager;
 use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
 use crate::ai_service::llm::provider_config::{
     build_llm_client_from_provider, migrate_if_needed, migrate_legacy_vision_keys,
@@ -85,7 +87,64 @@ pub async fn initialize(
             .map(Arc::new),
     ));
 
+    // 记忆嵌入：根据配置构建 EmbeddingManager（未配置/模型缺失时不启用）。
+    let embedding = if app_config.embedding.enabled {
+        // Rust 侧以 ONNX Runtime 直接推理；打包后模型随 data/third_party 分发，
+        // model_dir 未配置时由 to_service_config 回退到资源目录内置模型。
+        let resource_dir = app.path().resource_dir().ok();
+        let cfg = app_config.embedding.to_service_config(&data_dir, resource_dir.as_deref());
+        if cfg.enabled() {
+            tracing::info!(
+                "[embedding] 启用记忆嵌入: model={}",
+                cfg.model_dir.display()
+            );
+            Some(Arc::new(EmbeddingManager::new(cfg)))
+        } else {
+            tracing::warn!(
+                "[embedding] 嵌入已开启但模型未就绪，禁用: model={}",
+                cfg.model_dir.display()
+            );
+            None
+        }
+    } else {
+        tracing::info!("[embedding] 记忆嵌入未启用");
+        None
+    };
+
     // AIService 内部的 GameRoleManager 共享同一个聊天 LLM 槽位
+    // 独立语义记忆：用户开启时打开专属向量库（与普通记忆库解耦）。
+    // 嵌入引擎未就绪（embedding 未开启/模型缺失）时仍可打开库做列表/删除，
+    // 但编码/检索不可用——前端状态面板会提示需要先启用"记忆嵌入"。
+    let semantic_memory = match app_config.semantic_memory.enabled {
+        true => {
+            let db_path = data_dir.join("game_data").join("semantic_memory.db");
+            let top_k = app_config.semantic_memory.top_k as usize;
+            match crate::ai_service::semantic_memory::SemanticMemory::open(
+                &db_path,
+                embedding.clone(),
+                top_k,
+            )
+            .await
+            {
+                Ok(sm) => {
+                    tracing::info!(
+                        "[semantic_memory] 已启用，向量库: {}",
+                        db_path.display()
+                    );
+                    Some(Arc::new(sm))
+                }
+                Err(e) => {
+                    tracing::warn!("[semantic_memory] 向量库打开失败，禁用: {e}");
+                    None
+                }
+            }
+        }
+        false => {
+            tracing::info!("[semantic_memory] 未启用");
+            None
+        }
+    };
+
     let mut ai_service = AIService::new(
         db.clone(),
         data_dir.clone(),
@@ -101,6 +160,8 @@ pub async fn initialize(
             user_info: app_config.memory_user_info_max_chars as usize,
             promises: app_config.memory_promises_max_chars as usize,
         },
+        embedding,
+        semantic_memory,
     )
     .await;
 

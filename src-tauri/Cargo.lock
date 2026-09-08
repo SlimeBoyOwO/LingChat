@@ -4281,6 +4281,7 @@ dependencies = [
  "serde_yaml",
  "sevenz-rust2",
  "sha2 0.10.9",
+ "sqlx",
  "tauri",
  "tauri-build",
  "tauri-plugin-android-fs",

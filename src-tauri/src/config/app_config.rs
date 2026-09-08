@@ -13,6 +13,8 @@ use tauri_plugin_store::{Store, StoreExt};
 
 use super::keys;
 use super::tts::TtsConfig;
+use super::embedding::EmbeddingConfig;
+use super::semantic_memory::SemanticMemoryConfig;
 
 // ========== Serde 默认值函数 ==========
 
@@ -117,6 +119,14 @@ pub struct AppConfig {
     /// TTS 引擎配置（适配器 URL、音频格式等）
     #[serde(default)]
     pub tts: TtsConfig,
+
+    /// 记忆嵌入配置（Rust 原生 ONNX 推理，中文小模型）。
+    #[serde(default)]
+    pub embedding: EmbeddingConfig,
+
+    /// 独立语义记忆配置（专属向量库 + semantic_mem_* 工具）。
+    #[serde(default)]
+    pub semantic_memory: SemanticMemoryConfig,
 }
 
 // ========== Default 实现（单一真相源） ==========
@@ -140,6 +150,8 @@ impl Default for AppConfig {
             memory_promises_max_chars: default_memory_promises_max_chars(),
             disable_splash_animation: default_disable_splash_animation(),
             tts: TtsConfig::default(),
+            embedding: EmbeddingConfig::default(),
+            semantic_memory: SemanticMemoryConfig::default(),
         }
     }
 }
@@ -284,6 +296,8 @@ impl AppConfig {
                 default.disable_splash_animation,
             ),
             tts: TtsConfig::from_store(Some(&store)),
+            embedding: EmbeddingConfig::from_store(Some(&store)),
+            semantic_memory: SemanticMemoryConfig::from_store(Some(&store)),
         })
     }
 }

@@ -9,8 +9,10 @@
 //! - `tree`：build_config_tree()（前端"高级设置"页面数据源）
 
 pub mod app_config;
+pub mod embedding;
 pub mod keys;
 pub mod proactive;
+pub mod semantic_memory;
 pub mod session;
 pub mod tree;
 pub mod tts;

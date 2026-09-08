@@ -59,3 +59,37 @@ export const saveEnvConfigSettings = async (
     throw error
   }
 }
+
+// 记忆嵌入运行状态（高级设置 → 记忆嵌入 界面诊断展示）
+export interface EmbeddingStatus {
+  enabled: boolean
+  configured: boolean
+  ready: boolean
+  dim: number | null
+  model: string | null
+  modelDir: string
+  backend: string
+  defaultModelDir: string
+  error: string | null
+  indexLen: number
+}
+
+export async function getEmbeddingStatus(): Promise<EmbeddingStatus> {
+  const data = await invoke('get_embedding_status')
+  return data as EmbeddingStatus
+}
+
+// 独立语义记忆运行状态（高级设置 → 语义记忆 界面诊断展示）
+export interface SemanticMemoryStatus {
+  enabled: boolean
+  opened: boolean
+  embeddingReady: boolean
+  dbPath: string
+  count: number
+  error: string | null
+}
+
+export async function getSemanticMemoryStatus(): Promise<SemanticMemoryStatus> {
+  const data = await invoke('get_semantic_memory_status')
+  return data as SemanticMemoryStatus
+}

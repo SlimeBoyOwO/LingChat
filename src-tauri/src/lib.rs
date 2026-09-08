@@ -668,6 +668,8 @@ pub fn run() {
             api::settings::get_settings_tree,
             api::settings::save_settings,
             api::settings::get_setting_by_key,
+            api::settings::get_embedding_status,
+            api::settings::get_semantic_memory_status,
             api::settings::select_file,
             api::settings::list_llm_providers,
             api::settings::save_llm_provider,

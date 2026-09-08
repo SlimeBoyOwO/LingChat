@@ -41,6 +41,8 @@ serde_json = { version = "1", features = ["preserve_order"] }
 toml = "0.8"
 sea-orm = { version = "1", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros", "with-chrono"] }
 sea-orm-migration = "1"
+# 独立语义记忆的向量库（SQLite 持久化）；与 sea-orm 复用同一套 libsqlite3-sys
+sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio-rustls"] }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 tracing = "0.1"

@@ -160,6 +160,22 @@ export default {
       "reconnecting": "重新連緊線…",
       "forceReconnect": "強制重新連接 TTS"
     },
+    "embeddingStatus": {
+      "title": "記憶嵌入運行狀態",
+      "desc": "記憶嵌入由 Python 子進程承載。未配置、模型缺失或者子進程啟動失敗時，語義檢索同去重會自動停用，唔會影響正常對話。",
+      "enabled": "啟用狀態",
+      "ready": "服務就緒",
+      "configured": "配置齊備",
+      "dim": "向量維度",
+      "model": "模型",
+      "indexLen": "索引片段數",
+      "loading": "載入緊…",
+      "refresh": "更新狀態",
+      "labelOn": "已啟用",
+      "labelOff": "未啟用",
+      "labelYes": "係",
+      "labelNo": "唔係"
+    },
     "saveButton": "儲存",
     "loadFailed": "載入失敗",
     "loadFailedDesc": "載入唔到配置，或者配置係空嘅。",
@@ -177,7 +193,8 @@ export default {
       "TTS 配置": "TTS 配置",
       "创意工坊": "創意工坊",
       "日志配置": "日誌配置",
-      "主动对话配置": "主動對話配置"
+      "主动对话配置": "主動對話配置",
+      "记忆嵌入": "記憶嵌入"
     },
     "subcategories": {
       "高级选项": "高級選項",
@@ -241,6 +258,11 @@ export default {
       },
       "workshop": {
         "github_token": "填你嘅 GitHub Token（唔使任何權限，淨係用嚟調用 GraphQL API）。留空就用 REST API，攞唔到獨立 upvote 數（會用 👍 表情數代替）。Token 創建地址：https://github.com/settings/tokens"
+      },
+      "embedding": {
+        "enabled": "使唔使啟用記憶嵌入（語義檢索 + 手動筆記去重）",
+        "model_dir": "嵌入模型目錄（留空預設 data/third_party/embedding/，打包版會退回資源目錄內置模型，相對路徑會按數據目錄解析）",
+        "backend": "後端：auto / onnx（Rust 側一致，st 要 torch 唔再支援）"
       },
       "log": {
         "enable": "LOG_ENABLE — 使唔使將運行日誌寫入文件（喺 data/log/app/ 目錄）",

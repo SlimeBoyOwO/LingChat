@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use serde_json::Value as JsonValue;
 use tauri::AppHandle;
+use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::ai_service::god_agent::config::resolve_god_agent_provider;
@@ -147,10 +148,142 @@ pub fn get_setting_by_key(app: AppHandle, key: String) -> Result<ConfigSetting, 
     Err(format!("Key '{}' not found", key))
 }
 
+// ========== 记忆嵌入（Embedding） ==========
+
+/// 记忆嵌入运行状态快照（供「高级设置 → 记忆嵌入」界面展示诊断）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmbeddingStatusSnapshot {
+    /// 用户在设置里是否开启 `embedding.enabled`。
+    pub enabled: bool,
+    /// 模型目录是否齐备（service 层可直接启用）。
+    pub configured: bool,
+    /// 模型是否已加载（真正就绪）。
+    pub ready: bool,
+    /// 向量维度（就绪后才有）。
+    pub dim: Option<usize>,
+    /// 加载的模型名（就绪后才有）。
+    pub model: Option<String>,
+    /// 实际解析后的模型目录。
+    pub model_dir: String,
+    /// 后端选择：auto / onnx / st。
+    pub backend: String,
+    /// `embedding.model_dir` 留空时使用的默认模型目录。
+    pub default_model_dir: String,
+    /// 最近一次启动/请求失败诊断。
+    pub error: Option<String>,
+    /// 当前语义索引中的片段数（记忆库 + 笔记）。
+    pub index_len: usize,
+}
+
+/// 查询记忆嵌入状态。只读诊断，不会在未配置时启动子进程。
+#[tauri::command]
+pub async fn get_embedding_status(app: AppHandle) -> Result<EmbeddingStatusSnapshot, String> {
+    let cfg = {
+        let store = config::settings_store(&app).map_err(|e| e.to_string())?;
+        crate::config::embedding::EmbeddingConfig::from_store(Some(&store))
+    };
+    let data_dir = crate::api::data_dir();
+    let default_model_dir = data_dir.join("third_party").join("embedding");
+    let resource_dir = app.path().resource_dir().ok();
+    let service_cfg = cfg.to_service_config(&data_dir, resource_dir.as_deref());
+
+    let mut snap = EmbeddingStatusSnapshot {
+        enabled: cfg.enabled,
+        configured: service_cfg.enabled(),
+        ready: false,
+        dim: None,
+        model: None,
+        model_dir: service_cfg.model_dir.display().to_string(),
+        backend: cfg.backend,
+        default_model_dir: default_model_dir.display().to_string(),
+        error: None,
+        index_len: 0,
+    };
+    if !(snap.enabled && snap.configured) {
+        return Ok(snap);
+    }
+
+    // 从 GameRoleManager 取出管理器句柄并读取当前索引规模（锁内只做快速读取）。
+    let state = app.state::<AppState>();
+    let (manager, index_len) = {
+        let ai_service = state.ai_service.lock().await;
+        let gs = ai_service.game_status.lock().await;
+        let idx = gs.role_manager.memory_index();
+        (idx.manager_arc(), idx.len().await)
+    };
+    snap.index_len = index_len;
+
+    snap.ready = manager.ensure_started().await;
+    if !snap.ready {
+        snap.error = manager.last_error();
+        return Ok(snap);
+    }
+    snap.error = manager.last_error();
+    snap.dim = manager.dim().await;
+    snap.model = manager.model_name().await;
+    Ok(snap)
+}
+
 #[tauri::command]
 pub fn select_file(app: AppHandle) -> Result<Option<String>, String> {
     let file = app.dialog().file().blocking_pick_file();
     Ok(file.map(|f| f.to_string()))
+}
+
+// ========== 独立语义记忆（Semantic Memory） ==========
+
+/// 独立语义记忆运行状态快照（供「高级设置 → 语义记忆」界面展示诊断）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticMemoryStatusSnapshot {
+    /// 用户是否开启 `semantic_memory.enabled`。
+    pub enabled: bool,
+    /// 向量库是否已打开（语义记忆系统是否初始化）。
+    pub opened: bool,
+    /// 嵌入引擎是否就绪（编码/检索可用）。
+    pub embedding_ready: bool,
+    /// 向量库文件路径。
+    pub db_path: String,
+    /// 当前保存的语义记忆总数（跨角色）。
+    pub count: usize,
+    /// 最近一次操作失败诊断。
+    pub error: Option<String>,
+}
+
+/// 查询独立语义记忆状态。只读诊断。
+#[tauri::command]
+pub async fn get_semantic_memory_status(app: AppHandle) -> Result<SemanticMemoryStatusSnapshot, String> {
+    let cfg = {
+        let store = config::settings_store(&app).map_err(|e| e.to_string())?;
+        crate::config::semantic_memory::SemanticMemoryConfig::from_store(Some(&store))
+    };
+    let data_dir = crate::api::data_dir();
+    let default_db = data_dir.join("game_data").join("semantic_memory.db");
+
+    let mut snap = SemanticMemoryStatusSnapshot {
+        enabled: cfg.enabled,
+        opened: false,
+        embedding_ready: false,
+        db_path: default_db.display().to_string(),
+        count: 0,
+        error: None,
+    };
+
+    let state = app.state::<AppState>();
+    let semantic_memory_arc = {
+        let ai_service = state.ai_service.lock().await;
+        ai_service.semantic_memory.clone()
+    };
+    let Some(sm) = semantic_memory_arc else {
+        return Ok(snap);
+    };
+
+    snap.opened = true;
+    snap.embedding_ready = sm.embedding_ready();
+    snap.count = sm.count().await;
+    snap.error = sm.last_error();
+    Ok(snap)
 }
 
 // ========== LLM Multi-Provider Management ==========
