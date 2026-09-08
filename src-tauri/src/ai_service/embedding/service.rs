@@ -332,12 +332,17 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
 }
 
 /// 截断超长文本。仅在超长时分配，短文本零拷贝复用原切片。
+/// 按字符边界截断（`&text[..20000]` 在 CJK 多字节文本上会在非字符边界 panic）。
 fn sanitize(text: &str) -> &str {
-    if text.len() > 20000 {
-        &text[..20000]
-    } else {
-        text
+    if text.len() <= 20000 {
+        return text;
     }
+    // 取不超过 20000 字节处最近的字符边界。
+    let mut end = 20000;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
 }
 
 /// 截断为用于日志诊断的短文本（限制长度 + 单行提示）。
