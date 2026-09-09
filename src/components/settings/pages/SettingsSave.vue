@@ -185,6 +185,7 @@
   import { Input } from "../../base";
   import { useGameStore } from "../../../stores/modules/game";
   import { applyWebInitData } from "../../../stores/modules/game/actions";
+  import { eventQueue } from "../../../core/events/event-queue";
   import { useUIStore } from "../../../stores/modules/ui/ui";
   import { useDialogStore } from "../../../stores/modules/ui/dialog";
   import { invoke, convertFileSrc } from "@tauri-apps/api/core";
@@ -334,6 +335,9 @@
     try {
       const gameInfo = await invoke<WebInitData>("load_save", { saveId });
       applyWebInitData(gameStore.$state, gameInfo);
+      // 读档后丢弃旧会话残留事件队列（防止旧角色未说完的回复串进新存档对话，issue #796）
+      eventQueue.clear();
+      eventQueue.resume();
       uiStore.showSuccess({
         title: t("settings.save.msg.loadSuccessTitle"),
         message: t("settings.save.msg.loadSuccessMsg"),
