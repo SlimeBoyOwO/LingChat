@@ -19,12 +19,46 @@ export interface UploadMusicResult {
   was_corrected: boolean;
 }
 
-export const musicUpload = async (path: string, fileName: string): Promise<UploadMusicResult> => {
+export const musicUpload = async (
+  path: string,
+  fileName: string,
+  category?: string
+): Promise<UploadMusicResult> => {
   try {
-    return await invoke<UploadMusicResult>("upload_music", { path, fileName });
+    return await invoke<UploadMusicResult>("upload_music", { path, fileName, category });
   } catch (error: any) {
     throw new Error(typeof error === "string" ? error : error.message || "Music upload failed");
   }
+};
+
+/** 列出所有音乐子分类（子文件夹名），供分类选项卡使用 */
+export const musicListCategories = async (): Promise<string[]> => {
+  try {
+    const data = await invoke<string[]>("list_music_categories");
+    return data || [];
+  } catch (error: any) {
+    console.error(
+      "Failed to list music categories:",
+      typeof error === "string" ? error : error.message
+    );
+    return [];
+  }
+};
+
+/** 新建一个音乐子分类（子文件夹） */
+export const musicCreateCategory = async (name: string): Promise<void> => {
+  await invoke("create_music_category", { name });
+};
+
+/** 删除一个音乐子分类，返回受影响数量 */
+export const musicDeleteCategory = async (name: string, mode = "move"): Promise<number> => {
+  const data = await invoke<number>("delete_music_category", { name, mode });
+  return data ?? 0;
+};
+
+/** 打开音乐所在文件夹 */
+export const openMusicFolder = async (): Promise<void> => {
+  await invoke("open_music_folder");
 };
 
 export const musicDelete = async (url: string): Promise<void> => {

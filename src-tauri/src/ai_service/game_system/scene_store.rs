@@ -225,12 +225,20 @@ pub struct Scene {
     pub background: String,
     #[serde(default)]
     pub lighting: Option<LightingParams>,
+    /// 场景所属子分类（背景子文件夹名；根目录为“根目录”）。
+    /// 显式存储，避免依赖「背景文件名 → 递归查找路径 → 与背景列表 url 匹配」的推断链失效。
+    #[serde(default = "default_scene_category")]
+    pub category: String,
     pub created_at: String,
     pub updated_at: String,
     /// 该场景来自哪个插件（None = 游戏自有 / 用户上传场景）。
     /// 插件背景图自动注册为场景时写入，用于启停 / 隐藏时同步增删。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plugin_id: Option<String>,
+}
+
+fn default_scene_category() -> String {
+    "根目录".to_string()
 }
 
 /// JSON 文件存储，路径为 `<data_dir>/game_data/scenes.json`
