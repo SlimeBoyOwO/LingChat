@@ -163,9 +163,13 @@
     startScript as startScriptApi,
   } from "@/api/services/script-info";
   import type { ScriptSummary } from "@/api/services/script-info";
+  import { useDialogStore } from "@/stores/modules/ui/dialog";
+  import { i18n } from "@/locales";
+  import { eventQueue } from "@/core/events/event-queue";
 
   const gameStore = useGameStore();
   const uiStore = useUIStore();
+  const dialogStore = useDialogStore();
   const router = useRouter();
   // 独立剧本相关状态
   const standaloneScripts = ref<ScriptSummary[]>([]);
@@ -202,11 +206,30 @@
 
   // 开始游玩独立剧本
   const startStandaloneScript = async (script: ScriptSummary) => {
+    // 带内容警告的剧本（如恐怖向）先弹确认，取消则不启动
+    if (script.content_warning === "horror") {
+      const confirmed = await dialogStore.confirm(
+        i18n.global.t("views.contentWarning.horrorMessage"),
+        i18n.global.t("views.contentWarning.horrorTitle")
+      );
+      if (!confirmed) return;
+
+      // 确认后先"卡死 → 花屏"再启动（恐怖演出的一部分）
+      await uiStore.beginHorrorEntry();
+    }
+
+    eventQueue.clear();
+    gameStore.enterStoryMode(script.script_name, script.content_warning, script.folder_key);
+    uiStore.showSettings = false;
     try {
+      await router.push("/chat");
+      // MainChat 可能已挂载在设置层后方；clear() 后无论是否发生路由切换都要恢复 FIFO。
+      eventQueue.resume();
       await startScriptApi(script.script_name);
-      // 可选：关闭设置面板，开始剧本
-      uiStore.showSettings = false;
     } catch (error) {
+      eventQueue.clear();
+      gameStore.exitStoryMode(false);
+      eventQueue.resume();
       console.error("启动独立剧本失败:", error);
     }
   };

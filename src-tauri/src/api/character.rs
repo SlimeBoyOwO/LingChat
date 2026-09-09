@@ -102,11 +102,15 @@ pub struct RoleInfoResponse {
 
 // ========== 辅助函数 ==========
 
-/// 读取某个角色的 settings.yml，失败时返回默认值
+/// 读取全局角色的 settings.yml，失败时返回默认值。
+///
+/// 剧本 NPC 不能按目录叶名称在所有 DLC 中扫描，否则两个剧本使用同名
+/// `character_folder` 时会读到另一个剧本的缩放和偏移。NPC 必须通过
+/// `RoleRepo::get_role_settings_by_id` 使用 role.script_key 精确解析。
 pub(crate) fn read_character_settings(resource_folder: &str) -> CharacterSettings {
     let yaml_path = resolve_character_dir(resource_folder).join("settings.yml");
     if !yaml_path.exists() {
-        tracing::warn!("角色设置文件不存在: {:?}", yaml_path);
+        tracing::warn!("全局角色设置文件不存在: {:?}", yaml_path);
         let mut s = CharacterSettings::default();
         s.character_folder = resource_folder.to_string();
         return s;
@@ -342,10 +346,21 @@ pub async fn get_role_info(app: AppHandle, role_id: i32) -> Result<RoleInfoRespo
         .ok_or_else(|| format!("角色 {} 不存在", role_id))?;
 
     let folder = role.resource_folder.clone().unwrap_or_default();
-    let settings = RoleRepo::get_role_settings_by_id(db, &data_dir(), role_id)
+    // 使用 role_id → script_key 精确读取 NPC 自己 DLC 内的 settings.yml。
+    // Main 角色仍保留旧目录回退；NPC 绝不能只按 resource_folder 回退，
+    // 否则不同 DLC 的同名角色会串配置。
+    let settings = match RoleRepo::get_role_settings_by_id(db, &data_dir(), role_id)
         .await
         .map_err(|e| format!("读取角色配置失败: {e}"))?
-        .unwrap_or_else(|| read_character_settings(&folder));
+    {
+        Some(settings) => settings,
+        None => match role.role_type {
+            RoleType::Main => read_character_settings(&folder),
+            RoleType::Npc | RoleType::System | RoleType::User => {
+                return Err(format!("角色 {role_id} 的配置不可用"));
+            },
+        },
+    };
 
     Ok(RoleInfoResponse {
         character_id: role.id,

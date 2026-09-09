@@ -334,6 +334,10 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     // 3. 更新 AIService 状态
     {
         let mut service = state.ai_service.lock().await;
+        // Keep the script guard and role switch under the same service lock.
+        if service.game_status.lock().await.script_status.is_some() {
+            return Err("剧本运行中，角色已锁定，无法切换角色".to_string());
+        }
         service
             .init_game_status(Some(character_id), prompt_options)
             .await

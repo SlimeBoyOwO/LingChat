@@ -1,0 +1,56 @@
+<template>
+  <!-- 恐怖特效层：挂在 GameExtraUI（游戏 UI 最顶层），压过角色立绘与对话框 -->
+  <!-- 支持 '+' 组合叠加，如 effect: 'Glitch+BloodDrip+BloodUI' -->
+  <div class="pointer-events-none absolute inset-0" style="isolation: isolate">
+    <Glitch v-if="active.has('Glitch')" :enabled="true" />
+    <Shake v-if="active.has('Shake')" :enabled="true" />
+    <Flash v-if="active.has('Flash')" :enabled="true" mode="red" />
+    <Tear v-if="active.has('Tear')" :enabled="true" />
+    <Static v-if="active.has('Static')" :enabled="true" />
+    <Invert v-if="active.has('Invert')" :enabled="true" />
+    <BloodDrip v-if="active.has('BloodDrip')" :enabled="true" />
+    <Veins v-if="active.has('Veins')" :enabled="true" />
+    <Bsod v-if="active.has('BSOD')" :enabled="true" />
+    <UiCorrupt v-if="active.has('UiCorrupt')" />
+    <UiBlood v-if="active.has('BloodUI')" />
+  </div>
+
+  <!-- 突脸惊吓层：最顶层，压过一切 -->
+  <Jumpscare />
+</template>
+
+<script setup lang="ts">
+import { computed, onBeforeUnmount, watch } from 'vue'
+import { useUIStore } from '../../../stores/modules/ui/ui'
+import { setHorrorWindowTitleActive } from '@/utils/windowTitleCoordinator'
+import Glitch from './particles/Glitch.vue'
+import Shake from './particles/Shake.vue'
+import Flash from './particles/Flash.vue'
+import Tear from './particles/Tear.vue'
+import Static from './particles/Static.vue'
+import Invert from './particles/Invert.vue'
+import BloodDrip from './particles/BloodDrip.vue'
+import Veins from './particles/Veins.vue'
+import Bsod from './particles/Bsod.vue'
+import UiCorrupt from './particles/UiCorrupt.vue'
+import UiBlood from './particles/UiBlood.vue'
+import Jumpscare from './particles/Jumpscare.vue'
+
+const uiStore = useUIStore()
+
+/** 当前生效的特效集合；'none'/空串 = 清空 */
+const active = computed<Set<string>>(() => {
+  const raw = uiStore.currentBackgroundEffect
+  if (!raw || raw === 'none' || raw === 'None') return new Set()
+  return new Set(raw.split('+').map((s) => s.trim()).filter(Boolean))
+})
+
+// DDLC 式窗口标题崩坏必须跟随玩家实际看到的前端队列节奏；唯一 coordinator
+// 负责与显式 window_title 意图仲裁，特效释放后会恢复显式标题。
+watch(active, (set) => setHorrorWindowTitleActive(set.size > 0), { immediate: true })
+
+onBeforeUnmount(() => {
+  setHorrorWindowTitleActive(false)
+})
+</script>
+

@@ -203,6 +203,7 @@
   import { useGameStore } from "@/stores/modules/game";
   import { useUIStore } from "@/stores/modules/ui/ui";
   import { Book } from "lucide-vue-next";
+  import { eventQueue } from "@/core/events/event-queue";
 
   interface Props {
     characterFolder: string;
@@ -473,9 +474,15 @@
     if (adventure.status === "unlocked") {
       try {
         uiStore.showSettings = false;
-        gameStore.enterStoryMode(adventure.adventure_folder);
+        eventQueue.clear();
+        gameStore.enterStoryMode(adventure.adventure_folder, undefined, adventure.adventure_folder);
+        // MainChat remains mounted behind Settings, so clear()'s pause must be lifted here.
+        eventQueue.resume();
         await adventureStore.startAdventure(adventure.adventure_folder);
       } catch (error) {
+        eventQueue.clear();
+        gameStore.exitStoryMode();
+        eventQueue.resume();
         console.error("启动冒险失败:", error);
       }
     }

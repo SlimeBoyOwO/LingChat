@@ -7,6 +7,7 @@ export default {
     tts: "TTS 设置",
     asr: "语音识别",
     cast: "投屏设置",
+    dlc: "DLC 管理",
   },
   menu: {
     llmTitle: "大模型管理",
@@ -33,5 +34,18 @@ export default {
     castTitle: "投屏设置",
     castDesc: "将游戏画面串流到局域网设备，配置端口、分辨率与画面调参",
     castButton: "进入投屏设置界面",
+    dlcTitle: "DLC 管理",
+    dlcDesc: "识别、导入或移除 DLC 剧本包（zip），安装后立即出现在剧本列表",
+    dlcButton: "进入 DLC 管理界面",
+  },
+  dlc: {
+    notice:
+      "DLC 是第三方剧本包，内容未经审核，可能包含恐怖、惊吓或令人不适的演出。请只安装来自可信来源的 DLC 包。",
+    add: "添加 DLC 包（zip）",
+    importing: "正在导入……",
+    empty: "暂无已识别的 DLC。点上方按钮选择一个 DLC 压缩包即可安装。",
+    remove: "卸载",
+    removeConfirm: "确定卸载「{name}」吗？将删除其全部文件。",
+    warningHorror: "⚠ 恐怖/惊吓",
   },
 };

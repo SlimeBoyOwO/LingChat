@@ -5,6 +5,7 @@
 
 <script setup lang="ts">
   import { ref, watch, onMounted, onBeforeUnmount } from "vue";
+  import { isOwnedByStandaloneDlc, releaseFolderFromEvent } from "@/utils/dlcMediaOwnership";
 
   const props = withDefaults(
     defineProps<{
@@ -38,6 +39,10 @@
   const applyRate = (el: HTMLAudioElement | null) => {
     if (!el) return;
     const r = props.rate;
+    // 恐怖剧本的慢速 BGM 需要随速度一起降调，不能让 WebView 自动保持原音高。
+    el.preservesPitch = false;
+    (el as HTMLAudioElement & { mozPreservesPitch?: boolean }).mozPreservesPitch = false;
+    (el as HTMLAudioElement & { webkitPreservesPitch?: boolean }).webkitPreservesPitch = false;
     el.playbackRate = typeof r === "number" && r > 0 ? r : 1;
   };
 
@@ -52,8 +57,31 @@
     }
   };
 
-  onBeforeUnmount(() => {
+  const releaseAudio = (audio: HTMLAudioElement | null) => {
+    if (!audio) return;
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
+  };
+
+  const releaseAllAudio = () => {
     clearFade();
+    releaseAudio(audio1.value);
+    releaseAudio(audio2.value);
+  };
+
+  const handleReleaseDlcMedia = (event: Event) => {
+    const folderKey = releaseFolderFromEvent(event);
+    for (const audio of [audio1.value, audio2.value]) {
+      if (audio && isOwnedByStandaloneDlc(audio.currentSrc || audio.src, folderKey)) {
+        releaseAudio(audio);
+      }
+    }
+  };
+
+  onBeforeUnmount(() => {
+    window.removeEventListener("lingchat:release-dlc-media", handleReleaseDlcMedia);
+    releaseAllAudio();
   });
 
   // 只派发当前主音频轨道的结束事件，忽略备用轨道的事件
@@ -91,8 +119,7 @@
         if (currentAudio.volume > 0) {
           currentAudio.volume = Math.max(0, currentAudio.volume - step);
         } else {
-          currentAudio.pause();
-          currentAudio.src = ""; // 释放资源
+          releaseAudio(currentAudio);
           clearFade();
         }
       }, FADE_INTERVAL);
@@ -140,7 +167,7 @@
 
       // 完成交接
       if (currentDone && nextDone) {
-        currentAudio.pause();
+        releaseAudio(currentAudio);
         activeIndex = activeIndex === 1 ? 2 : 1; // 切换主轨道身份
         clearFade();
       }
@@ -149,6 +176,7 @@
 
   // 初始化
   onMounted(() => {
+    window.addEventListener("lingchat:release-dlc-media", handleReleaseDlcMedia);
     if (props.src && props.src !== "None" && audio1.value) {
       audio1.value.src = props.src;
       audio1.value.volume = props.volume / 100;

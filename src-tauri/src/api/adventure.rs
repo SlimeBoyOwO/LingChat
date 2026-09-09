@@ -192,8 +192,21 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
         let game_status = service.game_status.clone();
         let config = service.config.clone();
         let is_running = service.script_manager.is_running.clone();
+        is_running
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            )
+            .map_err(|_| "已有剧本正在运行或 DLC 管理操作尚未完成".to_string())?;
         (script, game_status, config, is_running)
     };
+    // Capture fresh auxiliary/system-window ownership immediately after reserving the run.
+    crate::api::script_popups::begin_run();
+    let glitch_window_generation = crate::ai_service::game_system::script_engine::events::glitch_window_event::begin_glitch_window_run(
+        &app,
+    );
 
     let ai_service = state.ai_service.clone();
     let channels = state.script_channels.clone();
@@ -201,6 +214,12 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
     let data_dir = state.ai_service.lock().await.data_dir.clone();
     let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
     let achievement_manager = state.achievement_manager.clone();
+
+    // 与正式独立剧本入口一致：CAS 成功后立即推进代次，阻止自由对话迟到写入。
+    {
+        let mut status = game_status.lock().await;
+        status.preview_generation = status.preview_generation.wrapping_add(1);
+    }
 
     tokio::spawn(async move {
         let mut ctx = ScriptContext {
@@ -212,6 +231,7 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
             llm: llm.as_ref(),
             channels,
             is_preview: false,
+            glitch_window_generation,
         };
 
         match ScriptManager::execute_script(&script, &mut ctx, &is_running).await {

@@ -653,6 +653,12 @@ pub struct ScriptStatus {
 
     pub recommand_start: String,
     pub adventure: AdventureConfig,
+    /// `story_config.yaml` 的内容警告标记（如 "horror"），前端据此在进入前弹确认框。
+    pub content_warning: Option<String>,
+    /// `story_config.yaml` 声明的主角资源目录名（如 "DeepSeek"）。声明后正式游玩
+    /// 进入即自动把主角切换为该角色并在剧本期间锁定角色切换，结束后恢复原角色；
+    /// 未声明则沿用当前存档主角（历史行为）。
+    pub main_character: Option<String>,
     pub running_client_id: Option<String>,
 
     pub current_chapter_key: String,

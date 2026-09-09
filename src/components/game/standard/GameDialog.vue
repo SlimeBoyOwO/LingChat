@@ -787,11 +787,16 @@
   // 识别结果先显示到输入框，ASR_AUTO_SEND_DELAY_MS 后走 send()——
   // 完整复用剧本分支（runningScript → script_submit_input）、模型配置检查与
   // 输入框清理（显示锁已由 handle() 设置，这里不重复 lock）
+  let asrAutoSendTimer: number | null = null;
   function onAsrAutoSend(e: Event) {
     const ce = e as CustomEvent<string>;
     if (typeof ce.detail !== "string") return;
     inputMessage.value = ce.detail;
-    window.setTimeout(() => send(), ASR_AUTO_SEND_DELAY_MS);
+    if (asrAutoSendTimer !== null) window.clearTimeout(asrAutoSendTimer);
+    asrAutoSendTimer = window.setTimeout(() => {
+      asrAutoSendTimer = null;
+      void send();
+    }, ASR_AUTO_SEND_DELAY_MS);
   }
 
   let unlistenScreenshot: (() => void) | null = null;
@@ -845,6 +850,11 @@
     window.removeEventListener("resize", updateContainerWidth);
     window.removeEventListener("asr-text", onAsrText);
     window.removeEventListener("asr-send", onAsrAutoSend);
+    if (asrAutoSendTimer !== null) {
+      window.clearTimeout(asrAutoSendTimer);
+      asrAutoSendTimer = null;
+    }
+    setMobileMenuOpen(false);
     if (unlistenScreenshot) unlistenScreenshot();
     if (unlistenCancelled) unlistenCancelled();
   });
@@ -999,19 +1009,19 @@
   .dialog-divider-glow {
     height: 1px;
     border-radius: 9999px;
-    background-color: rgba(34, 211, 238, 0.12);
+    background-color: var(--ling-dialog-divider-base, rgba(34, 211, 238, 0.12));
     background-image: linear-gradient(
       90deg,
       transparent 0%,
-      rgba(34, 211, 238, 0.12) 30%,
-      rgba(34, 211, 238, 0.55) 50%,
-      rgba(34, 211, 238, 0.12) 70%,
+      var(--ling-dialog-divider-dim, rgba(34, 211, 238, 0.12)) 30%,
+      var(--ling-dialog-divider-bright, rgba(34, 211, 238, 0.55)) 50%,
+      var(--ling-dialog-divider-dim, rgba(34, 211, 238, 0.12)) 70%,
       transparent 100%
     );
     background-size: 30% 100%;
     background-repeat: no-repeat;
     background-position: -30% 0;
-    box-shadow: 0 0 2px rgba(110, 187, 199, 0.01);
+    box-shadow: 0 0 2px var(--ling-dialog-divider-shadow, rgba(110, 187, 199, 0.01));
     animation: dialog-divider-flow 3s linear infinite;
   }
   @keyframes dialog-divider-flow {
