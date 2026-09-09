@@ -15,7 +15,6 @@ use crate::ai_service::tts::adapters::sherpa_onnx::SherpaOnnxAdapter;
 use crate::ai_service::tts::adapters::sherpa_onnx::load_reference_audio as load_ref_audio;
 use crate::ai_service::tts::local::sherpa_onnx_manager::{SherpaOnnxManager, SherpaOnnxModelInfo};
 use crate::ai_service::tts::provider::TtsAdapter;
-use crate::config::tts::TtsConfig;
 
 /// 前端模型记录。
 #[derive(Debug, Clone, Serialize)]
@@ -48,7 +47,9 @@ pub fn init(data_dir: &PathBuf) -> SherpaModelsState {
 }
 
 /// 获取当前管理器（懒解析数据目录，若尚未初始化则就地创建）。
-async fn get_manager(state: &State<'_, SherpaModelsState>) -> Result<Arc<SherpaOnnxManager>, String> {
+async fn get_manager(
+    state: &State<'_, SherpaModelsState>,
+) -> Result<Arc<SherpaOnnxManager>, String> {
     let mut guard = state.manager.write().await;
     if guard.is_none() {
         let mgr = Arc::new(SherpaOnnxManager::new(
@@ -83,10 +84,15 @@ pub async fn sherpa_list_models(
     state: State<'_, SherpaModelsState>,
 ) -> Result<Vec<SherpaModelRecord>, String> {
     let mgr = get_manager(&state).await?;
-    mgr.initialize().await.map_err(|e| format!("扫描模型失败: {e}"))?;
+    mgr.initialize()
+        .await
+        .map_err(|e| format!("扫描模型失败: {e}"))?;
     let models = mgr.get_models().await;
-    let mut installed: std::collections::HashMap<String, SherpaModelRecord> =
-        models.iter().map(record_from).map(|r| (r.id.clone(), r)).collect();
+    let mut installed: std::collections::HashMap<String, SherpaModelRecord> = models
+        .iter()
+        .map(record_from)
+        .map(|r| (r.id.clone(), r))
+        .collect();
 
     let mut records = sherpa_catalog();
     // 未安装的清单模型：拉取仓库大小（用于展示“模型大小”）
@@ -96,8 +102,10 @@ pub async fn sherpa_list_models(
         let dir_for_size = rec.id.clone();
         size_tasks.push(async move { (dir, repo_dir_total_bytes(&dir_for_size).await) });
     }
-    let sizes: std::collections::HashMap<String, u64> =
-        futures_util::future::join_all(size_tasks).await.into_iter().collect();
+    let sizes: std::collections::HashMap<String, u64> = futures_util::future::join_all(size_tasks)
+        .await
+        .into_iter()
+        .collect();
 
     for rec in records.iter_mut() {
         if let Some(inst) = installed.remove(&rec.id) {
@@ -138,8 +146,7 @@ pub async fn sherpa_delete_model(
 // Sherpa 模型清单（下载源 github/gomodels/sherpa，含全部 TTS 模型）
 // ---------------------------------------------------------------------------
 
-const SHERPA_REPO_FILES_API: &str =
-    "https://www.modelscope.cn/api/v1/models/gomodels/sherpa/repo/files?Revision=master&Recursive=true";
+const SHERPA_REPO_FILES_API: &str = "https://www.modelscope.cn/api/v1/models/gomodels/sherpa/repo/files?Revision=master&Recursive=true";
 
 const SHERPA_FILE_DL: &str = "https://www.modelscope.cn/models/gomodels/sherpa/resolve/master";
 
@@ -232,24 +239,24 @@ async fn fetch_repo_files(dir: &str) -> Result<Vec<RepoFile>, String> {
     if !resp.status().is_success() {
         return Err(format!("模型清单 HTTP {}", resp.status()));
     }
-    let body = resp.text().await.map_err(|e| format!("读取清单失败: {e}"))?;
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取清单失败: {e}"))?;
     let value: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
     let prefix = format!("{}/", dir);
     let mut out = Vec::new();
-    if let Some(files) = value
-        .pointer("/Data/Files")
-        .and_then(|f| f.as_array())
-    {
+    if let Some(files) = value.pointer("/Data/Files").and_then(|f| f.as_array()) {
         for f in files {
-            let path = f
-                .get("Path")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
+            let path = f.get("Path").and_then(|v| v.as_str()).unwrap_or_default();
             if !path.starts_with(&prefix) {
                 continue;
             }
             // 只要文件（is_lfs 或无 Type=tree）；Size==0 且 Name 无拓展名的可能是空占位，忽略
-            let is_tree = f.get("Type").map(|v| v.as_str() == Some("tree")).unwrap_or(false);
+            let is_tree = f
+                .get("Type")
+                .map(|v| v.as_str() == Some("tree"))
+                .unwrap_or(false);
             if is_tree {
                 continue;
             }
@@ -365,22 +372,15 @@ async fn run_download(
             if let Some(parent) = dest.parent() {
                 let _ = tokio::fs::create_dir_all(parent).await;
             }
-            let url = format!(
-                "{SHERPA_FILE_DL}/{dir_owned}/{}",
-                f.rel.replace(' ', "%20")
-            );
-            let result = crate::utils::download::download_to_file(
-                &client,
-                &url,
-                &dest,
-                None,
-                None,
-                f.size,
-            )
-            .await;
+            let url = format!("{SHERPA_FILE_DL}/{dir_owned}/{}", f.rel.replace(' ', "%20"));
+            let result =
+                crate::utils::download::download_to_file(&client, &url, &dest, None, None, f.size)
+                    .await;
             done_for_file.fetch_add(f.size, std::sync::atomic::Ordering::Relaxed);
             let done_now = done_for_file.load(std::sync::atomic::Ordering::Relaxed);
-            let percent = (done_now as f64 / total_f * 100.0).round().clamp(0.0, 100.0);
+            let percent = (done_now as f64 / total_f * 100.0)
+                .round()
+                .clamp(0.0, 100.0);
             let _ = app_progress.emit(
                 "tts://sherpa-download-progress",
                 serde_json::json!({
@@ -442,7 +442,10 @@ async fn copy_dir_tree(src: &std::path::Path, dst: &std::path::Path) -> Result<(
     for path in items {
         let file_name = path.file_name().unwrap_or_default();
         let dest = dst.join(file_name);
-        let is_dir = tokio::fs::metadata(&path).await.map(|m| m.is_dir()).unwrap_or(false);
+        let is_dir = tokio::fs::metadata(&path)
+            .await
+            .map(|m| m.is_dir())
+            .unwrap_or(false);
         if is_dir {
             Box::pin(copy_dir_tree(&path, &dest)).await?;
         } else {
@@ -506,7 +509,9 @@ pub async fn test_sherpa_onnx_voice(
         .unwrap_or_else(|| "female".to_string());
     let use_gpu = settings.sherpa_onnx_use_gpu.unwrap_or(false);
 
-    let tts_config = TtsConfig::default();
+    let tts_config = crate::config::app_config::AppConfig::load(&app)
+        .unwrap_or_default()
+        .tts;
 
     let mut adapter = SherpaOnnxAdapter::new(
         tts_config,
@@ -520,8 +525,14 @@ pub async fn test_sherpa_onnx_voice(
 
     // 参考音频
     if let (Some(ref_path), Some(ref_text)) = (
-        settings.sherpa_onnx_ref_audio_path.clone().filter(|s| !s.trim().is_empty()),
-        settings.sherpa_onnx_ref_text.clone().filter(|s| !s.trim().is_empty()),
+        settings
+            .sherpa_onnx_ref_audio_path
+            .clone()
+            .filter(|s| !s.trim().is_empty()),
+        settings
+            .sherpa_onnx_ref_text
+            .clone()
+            .filter(|s| !s.trim().is_empty()),
     ) {
         let p = PathBuf::from(&ref_path);
         if let Ok((samples, sr)) = load_ref_audio(&p) {
@@ -543,10 +554,13 @@ pub async fn test_sherpa_onnx_voice(
         .app_cache_dir()
         .map_err(|e| format!("无法解析缓存目录: {e}"))?
         .join("tts")
-        .join(format!("sherpa_preview_{}.wav", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0)));
+        .join(format!(
+            "sherpa_preview_{}.wav",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        ));
     if let Some(parent) = out_path.parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }

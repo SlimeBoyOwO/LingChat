@@ -24,7 +24,7 @@ export function useHideForSnapshot() {
     await nextTick();
     // 双 rAF 确保重绘完成再截，避免高刷屏抢拍
     await new Promise<void>((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     );
   }
 

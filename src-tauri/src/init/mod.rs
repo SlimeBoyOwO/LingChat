@@ -285,7 +285,7 @@ async fn load_default_character(
             app.handle().store(config::STORE_FILE).map_err(|e| {
                 anyhow::anyhow!("settings store 打开失败: primary={first_err}, fallback={e}")
             })?
-        }
+        },
     };
     if let Some(last_id) = store
         .get(config::session::LAST_CHARACTER_ID)

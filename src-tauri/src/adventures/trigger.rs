@@ -34,7 +34,9 @@ pub async fn check_all_adventures(
         let folder = &adv.folder_key;
 
         // Skip if already unlocked
-        let already_unlocked = AdventureManager::is_unlocked(db, folder).await.unwrap_or(false);
+        let already_unlocked = AdventureManager::is_unlocked(db, folder)
+            .await
+            .unwrap_or(false);
         if already_unlocked {
             continue;
         }
@@ -43,12 +45,8 @@ pub async fn check_all_adventures(
         let conditions = &adv.adventure.unlock_conditions;
         if conditions.is_empty() {
             // No conditions: default-unlock
-            AdventureManager::unlock_adventure(
-                db,
-                folder,
-                &adv.adventure.bound_character_folder,
-            )
-            .await?;
+            AdventureManager::unlock_adventure(db, folder, &adv.adventure.bound_character_folder)
+                .await?;
             newly_unlocked.push(UnlockedAdventureInfo {
                 adventure_folder: folder.clone(),
                 name: adv.name.clone(),
@@ -68,12 +66,8 @@ pub async fn check_all_adventures(
         }
 
         if all_passed {
-            AdventureManager::unlock_adventure(
-                db,
-                folder,
-                &adv.adventure.bound_character_folder,
-            )
-            .await?;
+            AdventureManager::unlock_adventure(db, folder, &adv.adventure.bound_character_folder)
+                .await?;
             newly_unlocked.push(UnlockedAdventureInfo {
                 adventure_folder: folder.clone(),
                 name: adv.name.clone(),

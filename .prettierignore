@@ -4,3 +4,12 @@ dist-ssr
 *.log
 coverage
 *.html
+
+# Rust / Tauri 构建产物（prettier 不应格式化生成代码）
+src-tauri/target
+src-tauri/gen
+src-tauri/.bundled_build
+src-tauri/.bundled_resources
+
+# 第三方模型 / 二进制资源（可能含损坏或超大文件，跳过）
+data/third_party

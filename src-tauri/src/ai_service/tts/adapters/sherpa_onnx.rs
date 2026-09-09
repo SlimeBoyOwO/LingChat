@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use sherpa_onnx::{
     GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsKokoroModelConfig,
     OfflineTtsMatchaModelConfig, OfflineTtsModelConfig, OfflineTtsVitsModelConfig,
@@ -60,15 +60,13 @@ impl SherpaOnnxAdapter {
                     tracing::info!("Sherpa-ONNX 使用推理后端: {p}");
                 }
                 tts
-            }
+            },
             Err(e) => match provider {
                 // GPU/专用后端初始化失败时静默回退到 CPU，保证可用性。
                 Some(_) => {
-                    tracing::warn!(
-                        "Sherpa-ONNX 后端初始化失败（{e}），回退到 CPU 推理"
-                    );
+                    tracing::warn!("Sherpa-ONNX 后端初始化失败（{e}），回退到 CPU 推理");
                     create(None)?
-                }
+                },
                 None => return Err(e),
             },
         };
@@ -137,7 +135,10 @@ impl SherpaOnnxAdapter {
     }
 
     fn create_vits_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTts> {
-        let model_file = find_file(model_dir, &["model.onnx", "tts-model.onnx", "sherpa-onnx-tts.onnx"])?;
+        let model_file = find_file(
+            model_dir,
+            &["model.onnx", "tts-model.onnx", "sherpa-onnx-tts.onnx"],
+        )?;
         let tokens_file = find_file(model_dir, &["tokens.txt"])?;
 
         let vits_config = OfflineTtsVitsModelConfig {
@@ -168,15 +169,16 @@ impl SherpaOnnxAdapter {
             .ok_or_else(|| anyhow!("Sherpa-ONNX VITS 模型加载失败，请检查模型文件是否完整"))
     }
 
-    /// 返回包含 `espeak-ng-data` 子目录的父目录（即 data_dir 的取值）。
+    /// 返回 `espeak-ng-data` 目录路径（即 data_dir 的取值）。
     fn espeak_data_dir(model_dir: &Path) -> Option<PathBuf> {
         find_dir_optional(model_dir, &["espeak-ng-data"])
-            .map(|p| p.parent().unwrap_or(model_dir).to_path_buf())
     }
 
     fn create_matcha_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTts> {
-        let acoustic_model =
-            find_file(model_dir, &["model.onnx", "model-steps-3.onnx", "model-steps-6.onnx"])?;
+        let acoustic_model = find_file(
+            model_dir,
+            &["model.onnx", "model-steps-3.onnx", "model-steps-6.onnx"],
+        )?;
         let tokens_file = find_file(model_dir, &["tokens.txt"])?;
         let vocoder = find_file(
             model_dir,
@@ -195,8 +197,7 @@ impl SherpaOnnxAdapter {
             lexicon: find_file_optional(model_dir, &["lexicon.txt"])
                 .map(|p| p.to_string_lossy().to_string()),
             tokens: Some(tokens_file.to_string_lossy().to_string()),
-            data_dir: Self::espeak_data_dir(model_dir)
-                .map(|p| p.to_string_lossy().to_string()),
+            data_dir: Self::espeak_data_dir(model_dir).map(|p| p.to_string_lossy().to_string()),
             noise_scale: 0.667,
             length_scale: 1.0,
             dict_dir: find_dir_optional(model_dir, &["dict"])
@@ -235,8 +236,7 @@ impl SherpaOnnxAdapter {
             voices: Some(voices.to_string_lossy().to_string()),
             tokens: find_file_optional(model_dir, &["tokens.txt"])
                 .map(|p| p.to_string_lossy().to_string()),
-            data_dir: Self::espeak_data_dir(model_dir)
-                .map(|p| p.to_string_lossy().to_string()),
+            data_dir: Self::espeak_data_dir(model_dir).map(|p| p.to_string_lossy().to_string()),
             length_scale: 1.0,
             dict_dir: find_dir_optional(model_dir, &["dict"])
                 .map(|p| p.to_string_lossy().to_string()),
@@ -272,8 +272,7 @@ impl SherpaOnnxAdapter {
             // ZipVoice 的 data-dir 必须是直接包含 phontab/phondata/phonindex 的目录
             //（与 Matcha/espeak 的 espeak-ng-data 父目录层级不同）。部分模型把
             // 这些语音库文件放到 espeak-ng-data/ 下，因此需按 phontab 实际所在目录解析。
-            data_dir: zipvoice_data_dir(model_dir)
-                .map(|p| p.to_string_lossy().to_string()),
+            data_dir: zipvoice_data_dir(model_dir).map(|p| p.to_string_lossy().to_string()),
             lexicon: find_file_optional(model_dir, &["lexicon.txt"])
                 .map(|p| p.to_string_lossy().to_string()),
             feat_scale: 10.0,
@@ -337,7 +336,10 @@ impl TtsAdapter for SherpaOnnxAdapter {
         params.insert("use_gpu".into(), json!(self.use_gpu));
         params.insert("speed".into(), json!(self.speed));
         params.insert("sid".into(), json!(self.sid));
-        params.insert("has_reference_audio".into(), json!(self.reference_audio.is_some()));
+        params.insert(
+            "has_reference_audio".into(),
+            json!(self.reference_audio.is_some()),
+        );
         params
     }
 }
@@ -391,8 +393,7 @@ fn zipvoice_data_dir(model_dir: &Path) -> Option<PathBuf> {
     if model_dir.join("phontab").exists() {
         return Some(model_dir.to_path_buf());
     }
-    if find_dir_optional(model_dir, &["espeak-ng-data"])
-        .is_some_and(|p| p.join("phontab").exists())
+    if find_dir_optional(model_dir, &["espeak-ng-data"]).is_some_and(|p| p.join("phontab").exists())
     {
         return find_dir_optional(model_dir, &["espeak-ng-data"]);
     }
@@ -434,6 +435,20 @@ fn f32_to_wav(samples: &[f32], sample_rate: i32) -> Vec<u8> {
 }
 
 pub fn load_reference_audio(path: &Path) -> Result<(Vec<f32>, i32)> {
+    // 仅支持 WAV 格式（sherpa-onnx 零样本克隆要求 WAV 输入）
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if ext != "wav" {
+        return Err(anyhow!(
+            "参考音频仅支持 WAV 格式，当前文件格式: {} ({}). 请转换为 WAV 后重试",
+            ext,
+            path.display()
+        ));
+    }
+
     let data = std::fs::read(path)
         .map_err(|e| anyhow!("无法读取参考音频文件 {}: {}", path.display(), e))?;
 
@@ -451,7 +466,8 @@ pub fn load_reference_audio(path: &Path) -> Result<(Vec<f32>, i32)> {
     let sample_rate = i32::from_le_bytes(data[24..28].try_into().unwrap());
     let bits_per_sample = u16::from_le_bytes(data[34..36].try_into().unwrap());
 
-    let data_offset = find_wav_data_chunk(&data).ok_or_else(|| anyhow!("WAV 文件中未找到 data 块: {}", path.display()))?;
+    let data_offset = find_wav_data_chunk(&data)
+        .ok_or_else(|| anyhow!("WAV 文件中未找到 data 块: {}", path.display()))?;
 
     let samples = match bits_per_sample {
         16 => {
@@ -459,18 +475,24 @@ pub fn load_reference_audio(path: &Path) -> Result<(Vec<f32>, i32)> {
             raw.chunks_exact(2)
                 .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0)
                 .collect::<Vec<_>>()
-        }
+        },
         32 => {
             let raw = &data[data_offset..];
             raw.chunks_exact(4)
                 .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f32 / 2147483648.0)
                 .collect::<Vec<_>>()
-        }
-        _ => return Err(anyhow!("不支持的 WAV 位深度: {} (仅支持 16/32)", bits_per_sample)),
+        },
+        _ => {
+            return Err(anyhow!(
+                "不支持的 WAV 位深度: {} (仅支持 16/32)",
+                bits_per_sample
+            ));
+        },
     };
 
     let mono_samples = if channels > 1 {
-        samples.chunks(channels as usize)
+        samples
+            .chunks(channels as usize)
             .map(|frame| frame.iter().sum::<f32>() / channels as f32)
             .collect()
     } else {
@@ -533,17 +555,13 @@ mod tests {
             "模型目录不存在，请设置 SHERPA_TEST_MODEL_DIR: {model_dir}"
         );
 
-        let ref_path = std::env::var("SHERPA_TEST_REF_AUDIO").unwrap_or_else(|_| {
-            "/tmp/baizi_ref.wav".to_string()
-        });
-        assert!(
-            Path::new(&ref_path).exists(),
-            "参考音频不存在: {ref_path}"
-        );
+        let ref_path = std::env::var("SHERPA_TEST_REF_AUDIO")
+            .unwrap_or_else(|_| "/tmp/baizi_ref.wav".to_string());
+        assert!(Path::new(&ref_path).exists(), "参考音频不存在: {ref_path}");
 
         // 加载参考音频
-        let (samples, sample_rate) = load_reference_audio(Path::new(&ref_path))
-            .expect("加载参考音频失败");
+        let (samples, sample_rate) =
+            load_reference_audio(Path::new(&ref_path)).expect("加载参考音频失败");
         eprintln!(
             "参考音频: sr={}, samples={} ({:.2}s)",
             sample_rate,
@@ -570,10 +588,7 @@ mod tests {
         // 合成
         let text = "老师好，今天也请多指教了。";
         eprintln!("合成文本: {text}");
-        let wav = adapter
-            .generate_voice(text, "")
-            .await
-            .expect("合成失败");
+        let wav = adapter.generate_voice(text, "").await.expect("合成失败");
 
         let (sr, num_samples) = parse_wav(&wav);
         eprintln!("输出: sr={sr}, 样本数={num_samples}, WAV-Ok");

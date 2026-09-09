@@ -19,9 +19,9 @@ use crate::ai_service::tts::adapters::fish_s2::FishS2Adapter;
 use crate::ai_service::tts::adapters::gsv::GsvAdapter;
 use crate::ai_service::tts::adapters::indextts::IndexTtsAdapter;
 use crate::ai_service::tts::adapters::opentts::OpenTtsAdapter;
-use crate::ai_service::tts::adapters::sherpa_onnx::SherpaOnnxAdapter;
 use crate::ai_service::tts::adapters::sbv2::Sbv2Adapter;
 use crate::ai_service::tts::adapters::sbv2api::Sbv2ApiAdapter;
+use crate::ai_service::tts::adapters::sherpa_onnx::SherpaOnnxAdapter;
 use crate::ai_service::tts::adapters::vits::VitsAdapter;
 use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::tts::local::adapter::LocalTtsAdapter;
@@ -544,9 +544,12 @@ impl VoiceMaker {
                             cfg.sherpa_onnx_ref_audio_path
                                 .clone()
                                 .filter(|s| !s.trim().is_empty()),
-                            cfg.sherpa_onnx_ref_text.clone().filter(|s| !s.trim().is_empty()),
+                            cfg.sherpa_onnx_ref_text
+                                .clone()
+                                .filter(|s| !s.trim().is_empty()),
                         ) {
-                            let resolved = resolve_character_rel_path(&self.character_path, &ref_path);
+                            let resolved =
+                                resolve_character_rel_path(&self.character_path, &ref_path);
                             match crate::ai_service::tts::adapters::sherpa_onnx::load_reference_audio(
                                 &resolved,
                             ) {

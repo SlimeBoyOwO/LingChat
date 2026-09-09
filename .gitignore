@@ -20,7 +20,7 @@ keystore.properties
 .env
 .env.*
 !.env.example
-
+src-tauri/.bundled_build/
 # ============================================================
 #      IDE 和编辑器配置 (IDE & Editor Configuration)
 # ============================================================
