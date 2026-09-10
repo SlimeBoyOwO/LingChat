@@ -140,6 +140,24 @@ pub const LOCAL_TTS_DEVICE: &str = "features.local_tts_device";
 #[cfg(target_os = "windows")]
 pub const HDR_MODE_ENABLED: &str = "display.hdr_mode_enabled";
 
+// ========== 开机自启动（角色桌宠 + TTS 联动） ==========
+/// 是否开启「开机自启动」—— 写入系统自启动项后随开机启动 LingChat。
+pub const AUTOSTART_ENABLED: &str = "autostart.enabled";
+/// 自启动后是否直接进入「桌宠模式」而非主聊天窗口。
+pub const AUTOSTART_BOOT_AS_PET: &str = "autostart.boot_as_pet";
+/// 开机自启动默认加载的角色 ID（为空则沿用上次角色）。
+pub const AUTOSTART_PET_ROLE_ID: &str = "autostart.pet_role_id";
+/// 用于拉起外部 TTS 服务的启动脚本（.bat）路径；内置本地 TTS 引擎且无需拉起脚本时可留空。
+pub const AUTOSTART_TTS_LAUNCHER_BAT: &str = "autostart.tts_launcher_bat";
+/// 手动点击 exe 启动时是否直接进入「桌宠模式」（与开机自启的桌宠选项相互独立）。
+pub const STARTUP_PET_MODE: &str = "startup.pet_mode";
+/// 对话场景默认开启「自动播放对话」（全局设置：无论开机自启、手动启动、主菜单或桌宠均生效）。
+pub const STARTUP_AUTO_PLAY: &str = "startup.auto_play";
+/// 进入桌宠时是否发出「入场问候」（角色主动问候；默认关闭，便于排查“角色不理会玩家消息”）。
+pub const STARTUP_GREETING: &str = "startup.greeting";
+/// 启动时自动拉起/刷新外部 TTS API 服务（全局设置：无论桌宠还是正常启动均生效）。
+pub const STARTUP_AUTO_START_TTS: &str = "startup.auto_start_tts";
+
 // ========== 界面与显示 ==========
 /// 是否关闭首次启动的开屏动画（LoadingTransition 猫爪加载动画）。
 pub const DISABLE_SPLASH_ANIMATION: &str = "display.disable_splash_animation";

@@ -24,6 +24,7 @@ export default {
   },
   petMode: {
     settingsWindowTitle: "設定",
+    loading: "会話を準備しています…",
   },
   credits: {
     escExit: "ESC で終了",

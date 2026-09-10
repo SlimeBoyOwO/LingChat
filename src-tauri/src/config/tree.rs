@@ -662,5 +662,80 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
         );
     }
 
+    // ===== 启动项（开机自启动） =====
+    {
+        let mut startup_subs = BTreeMap::new();
+
+        startup_subs.insert(
+            "开机自启动".to_string(),
+            Subcategory {
+                description: "开机后自动启动 LingChat".to_string(),
+                settings: vec![ConfigSetting {
+                    key: keys::AUTOSTART_BOOT_AS_PET.to_string(),
+                    value: read_setting(app, keys::AUTOSTART_BOOT_AS_PET, "false"),
+                    description: "开启桌宠：开机自启动时以桌宠模式进入（仅 Windows 可用）"
+                        .to_string(),
+                    setting_type: "bool".to_string(),
+                }],
+            },
+        );
+
+        startup_subs.insert(
+            "启动设置".to_string(),
+            Subcategory {
+                description: "控制 LingChat 的启动方式与默认行为".to_string(),
+                settings: vec![
+                    ConfigSetting {
+                        key: keys::STARTUP_PET_MODE.to_string(),
+                        value: read_setting(app, keys::STARTUP_PET_MODE, "false"),
+                        description:
+                            "以桌宠模式启动：开启后，手动点击 exe 启动时直接进入桌宠模式（与「开机自启动」里的桌宠开关相互独立，仅 Windows 可用）"
+                                .to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::STARTUP_AUTO_PLAY.to_string(),
+                        value: read_setting(app, keys::STARTUP_AUTO_PLAY, "false"),
+                        description:
+                            "默认自动播放对话：开启后，在对话场景会默认开启自动播放对话开关（全局生效）"
+                                .to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::STARTUP_AUTO_START_TTS.to_string(),
+                        value: read_setting(app, keys::STARTUP_AUTO_START_TTS, "false"),
+                        description:
+                            "启动时自动开启 API 服务：开启后，无论以桌宠还是正常启动，都会自动拉起并刷新外部 TTS 服务（需配置下方启动脚本）"
+                                .to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::AUTOSTART_TTS_LAUNCHER_BAT.to_string(),
+                        value: read_setting(app, keys::AUTOSTART_TTS_LAUNCHER_BAT, ""),
+                        description:
+                            "外部 TTS 模式的启动脚本（.bat）路径，用于启动时拉起自托管语音服务；内置本地 TTS 引擎可留空"
+                                .to_string(),
+                        setting_type: "path".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::STARTUP_GREETING.to_string(),
+                        value: read_setting(app, keys::STARTUP_GREETING, "false"),
+                        description:
+                            "入场问候：开启后，角色会主动先发出问候"
+                                .to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                ],
+            },
+        );
+
+        tree.insert(
+            "启动项".to_string(),
+            Category {
+                subcategories: startup_subs,
+            },
+        );
+    }
+
     tree
 }

@@ -813,6 +813,8 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
         let mut gs = svc.game_status.lock().await;
 
         if gs.player_entered {
+            // 已问候过，通知前端无需再等待问候完成
+            let _ = app.emit("entry:greeting-done", ());
             return Ok(());
         }
         gs.player_entered = true;
@@ -821,6 +823,7 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
             Some(id) => id,
             None => {
                 tracing::info!("[Entry] 没有当前角色，跳过问候");
+                let _ = app.emit("entry:greeting-done", ());
                 return Ok(());
             },
         };
@@ -899,12 +902,15 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
     let generator = MessageGenerator::new(deps);
     let gen_lock = state.generation_lock.clone();
 
+    let app_for_emit = app.clone();
     tokio::spawn(async move {
         let _lock = gen_lock.lock().await;
         match generator.process_message(None).await {
             Ok(acc) => tracing::info!("[Entry] 入场问候生成完成，长度: {}", acc.len()),
             Err(e) => tracing::error!("[Entry] 入场问候生成失败: {:#}", e),
         }
+        // 通知前端：入场问候已处理完成（供桌宠 loading 等待问候结束）
+        let _ = app_for_emit.emit("entry:greeting-done", ());
     });
 
     Ok(())

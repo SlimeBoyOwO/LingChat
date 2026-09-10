@@ -16,17 +16,20 @@
 
 <script setup lang="ts">
   import { onMounted, onUnmounted, watch } from "vue";
-  import { useRoute } from "vue-router";
+  import { useRoute, useRouter } from "vue-router";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { listen } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
+
+  import { getAutostartStatus } from "./api/services/config";
+  import { useGameStore } from "./stores/modules/game";
+  import { eventQueue } from "./core/events/event-queue";
   import CursorEffects from "./components/effects/CursorEffects.vue";
   import Notification from "./components/ui/Notification.vue";
   import AchievementToast from "./components/ui/AchievementToast.vue";
   import AdventureUnlockNotify from "./components/ui/AdventureUnlockNotify.vue";
   import AppDialog from "./components/ui/AppDialog.vue";
   import { initUIStore, useUIStore } from "./stores/modules/ui/ui";
-  import { useGameStore } from "./stores/modules/game";
   import { i18n } from "./locales";
   import { useSettingsStore } from "./stores/modules/settings";
   import { useLlmProvidersStore } from "./stores/modules/llm-providers";
@@ -53,7 +56,47 @@
   // 把设置中的自定义字体名同步到 <html> 的 --font-app；
   // 为空时 base.css 中的回退栈 --font-sans 生效。初始菜单 / 加载页因自带
   // 显式 font-family 不会继承此变量，自动保持原有字体。
+  const uiStore = useUIStore();
+  const gameStore = useGameStore();
   const settingsStore = useSettingsStore();
+
+  // 先注册完成事件，再触发「入场问候」，避免后端快速完成时漏掉事件。
+  async function waitEntryGreetingDone(trigger: () => Promise<unknown>) {
+    let settled = false;
+    let resolveDone!: () => void;
+    let unlisten: (() => void) | null = null;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const done = new Promise<void>((resolve) => {
+      resolveDone = resolve;
+    });
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      unlisten?.();
+      unlisten = null;
+      resolveDone();
+    };
+
+    const registeredUnlisten = await listen("entry:greeting-done", finish).catch((err) => {
+      console.warn("[Entry] 完成事件监听注册失败（非致命）:", err);
+      return null;
+    });
+    if (settled) registeredUnlisten?.();
+    else unlisten = registeredUnlisten;
+    timeout = setTimeout(finish, 15000);
+
+    try {
+      void trigger();
+      if (!registeredUnlisten) finish();
+      await done;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      unlisten?.();
+      unlisten = null;
+    }
+  }
+
   function applyFont(font?: string) {
     // 留空 → 软件默认（base.css 的 --font-sans 原版字体栈）
     document.documentElement.style.setProperty("--font-app", font ? `'${font}'` : "");
@@ -106,8 +149,6 @@
   // 角色）经 Rust 中继 cast_emit_mirror 存储并广播 cast:mirror，投屏窗口直接
   // 应用——主窗口显示什么，投屏就显示什么。只在主窗口上报：投屏窗口自己也
   // 会改 showCharacterLine（应用镜像时），绝不能把投屏的状态回写给主窗口。
-  const uiStore = useUIStore();
-  const gameStore = useGameStore();
   // 只主窗口上报镜像：投屏窗口应用镜像时也会改 showCharacterLine / 背景，
   // 绝不能把投屏窗口的状态回写给主窗口造成环路。
   function sendMirror() {
@@ -143,6 +184,7 @@
   // ─── 键盘处理 ────────────────────────────────────────────────
 
   const route = useRoute();
+  const router = useRouter();
 
   // ─── 移动端键盘适配（Android / iOS）─────────────────────────
   // 键盘弹出时把可见高度并入 --safe-area-inset-bottom（存在 .pb-safe/pb-safe-gap、
@@ -302,6 +344,90 @@
   onMounted(async () => {
     // 初始化 UI Store（加载角色 tips）
     initUIStore();
+    const llmStore = useLlmProvidersStore();
+
+    // ─── 开机自启动 · 启动即桌宠 ─────────────────────────────
+    // 只在「系统开机自启」触发（带 --autostart 参数）且开启 boot_as_pet 时才进入桌宠；
+    // 手动双击 exe 不带 --autostart，一律走主菜单。
+    if (isMainWindow) {
+      try {
+        const auto = await getAutostartStatus();
+        // 全局：无论开机自启 / 手动启动、主菜单 / 桌宠，开启后都在对话场景默认开启自动播放
+        if (auto.auto_play) uiStore.autoMode = true;
+        // 是否以桌宠进入：开机自启且开启桌宠，或（手动启动且开启“以桌宠模式启动”）
+        const wantPet =
+          (auto.launched_by_autostart && auto.boot_as_pet) ||
+          (!auto.launched_by_autostart && auto.startup_pet_mode);
+        if (wantPet) {
+          const petRoleId = Number(auto.pet_role_id) || 0;
+          // 进入桌宠前标记「准备中」：在前端 LLM、TTS 服务与入场问候就绪前禁止对话
+          uiStore.petReady = false;
+          uiStore.petBooting = true;
+          let petBootSucceeded = false;
+          try {
+            // 开机自启动直接进入桌宠：先把主窗口切到「置顶桌宠」状态，
+            // 避免 loading 圆盘被其他窗口覆盖；随后 PetMode onMounted 会按配置 scale 再调一次。
+            await invoke("set_pet_mode", {
+              enable: true,
+              scale: settingsStore.pet.scale || 1.0,
+            }).catch((err) => {
+              console.warn("[Autostart] 提前进入桌宠置顶状态失败（非致命）:", err);
+            });
+            // 1) 只加载默认角色（不触发问候，避免语音生成时 API 未就绪）
+            await gameStore.bootAsPet(petRoleId > 0 ? petRoleId : undefined);
+            const roleId =
+              gameStore.mainRoleId > 0 ? gameStore.mainRoleId : petRoleId > 0 ? petRoleId : null;
+            if (auto.auto_play) uiStore.autoMode = true;
+            router.push("/pet");
+
+            // 2) 先让前端 LLM 与外部 TTS 服务就绪（拉起 bat + 探测 + 刷新 TTS）
+            //    仅在开启「自动开启 API 服务」时拉起；内置/未配置/未开启时立即就绪
+            const ttsReady = auto.auto_start_tts
+              ? invoke("autostart_boot_apply", { roleId }).catch(() => {})
+              : Promise.resolve();
+            await Promise.all([llmStore.load().catch(() => {}), ttsReady]);
+
+            // 3) API 就绪、TTS 刷新完成后，再触发「入场问候」，保证语音合成时服务已可用
+            if (auto.startup_greeting) {
+              await waitEntryGreetingDone(() =>
+                invoke("notify_player_entry").catch((err) => {
+                  console.warn("[Entry] 问候触发失败（非致命）:", err);
+                })
+              );
+            }
+
+            // 4) 保证 loading 至少展示一段时间（给刷新/落盘留缓冲）
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            petBootSucceeded = true;
+          } catch (e) {
+            console.error("[Autostart] 启动即桌宠初始化失败:", e);
+            // 窗口已经可能切换为无边框、不可缩放的桌宠形态。
+            // 初始化失败时必须尽力恢复普通窗口，避免用户失去拖拽、缩放和关闭能力。
+            await invoke("update_solid_regions", { rects: [] }).catch((cleanupError) => {
+              console.warn("[Autostart] 清理桌宠点击区域失败:", cleanupError);
+            });
+            await invoke("set_pet_mode", { enable: false }).catch((cleanupError) => {
+              console.error("[Autostart] 恢复普通窗口失败:", cleanupError);
+            });
+            await router.replace("/chat").catch((cleanupError) => {
+              console.error("[Autostart] 返回普通界面失败:", cleanupError);
+            });
+          } finally {
+            // 5) 无论成功或回滚都恢复队列；失败时不能把桌宠误标记为已就绪。
+            eventQueue.resume();
+            uiStore.petReady = petBootSucceeded;
+            uiStore.petBooting = false;
+          }
+        } else if (auto.auto_start_tts) {
+          // 正常启动（非桌宠）：也按全局开关自动拉起/刷新外部 TTS API 服务
+          invoke("autostart_boot_apply", { roleId: null }).catch((e) =>
+            console.warn("[Autostart] 正常启动拉起 TTS 失败（非致命）:", e)
+          );
+        }
+      } catch (e) {
+        console.error("[Autostart] 启动即桌宠初始化失败:", e);
+      }
+    }
 
     // 启动时自动弹出独立日志窗口（仅主窗口触发，开关在日志页设置）
     if (
@@ -312,7 +438,6 @@
     }
 
     // 预加载 LLM 提供商配置，避免主界面因 store 未加载而误判未选择模型
-    const llmStore = useLlmProvidersStore();
     llmStore.load().catch((e) => console.error("加载 LLM 提供商失败:", e));
 
     // 供成就系统控制台测试用，在 window 对象中注册一些方法
