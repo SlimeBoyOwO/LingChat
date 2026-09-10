@@ -43,6 +43,21 @@
       </MenuItem>
     </div>
 
+    <!-- 记忆嵌入 -->
+    <div class="h-full cursor-pointer transition-all duration-300" @click="emit('navigate', 'embedding')">
+      <MenuItem :title="$t('advance.menu.embeddingTitle')" size="large">
+        <template #header>
+          <BrainCircuit :size="20" />
+        </template>
+        <p class="min-h-[68px] text-white/50 text-sm leading-relaxed mb-3">
+          {{ $t('advance.menu.embeddingDesc') }}
+        </p>
+        <Button type="big" icon="setting" :icon_size="18">
+          {{ $t('advance.menu.embeddingButton') }}
+        </Button>
+      </MenuItem>
+    </div>
+
     <!-- 其他高级设置 -->
     <div class="h-full cursor-pointer transition-all duration-300" @click="emit('navigate', 'other')">
       <MenuItem :title="$t('advance.menu.otherTitle')" size="large">
@@ -117,7 +132,7 @@
 </template>
 
 <script setup lang="ts">
-import { AudioLines, BookOpen, Cpu, Mic, SlidersHorizontal, Languages, Wrench } from 'lucide-vue-next'
+import { AudioLines, BookOpen, BrainCircuit, Cpu, Mic, SlidersHorizontal, Languages, Wrench } from 'lucide-vue-next'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useI18n } from 'vue-i18n'
 import { MenuItem } from '../../ui'
@@ -127,7 +142,7 @@ import { SUPPORTED_LOCALES, setLocale, type AppLocale } from '@/locales'
 const { locale } = useI18n()
 
 const emit = defineEmits<{
-  navigate: [tab: 'llm' | 'tts' | 'asr' | 'other' | 'tools']
+  navigate: [tab: 'llm' | 'tts' | 'asr' | 'embedding' | 'other' | 'tools']
 }>()
 
 // 内置 TTS 官方教程（LingBlog）

@@ -64,8 +64,10 @@ async-trait = "0.1"
 # 实时 ASR 用官方 /api-ws/v1/inference 端点（标准 GET 升级 + Bearer）；
 # rustls-tls-webpki-roots 与项目 reqwest 的 TLS 栈一致
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
-ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "download-binaries"] }
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "half", "download-binaries"] }
 ndarray = "0.17"
+# embedding 服务读取 fp16 导出模型输出时需要把 f16 转 f32（与 ort 的 half feature 同源）
+half = "2"
 
 sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["std"] }
 once_cell = "1"

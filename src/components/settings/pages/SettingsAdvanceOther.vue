@@ -114,72 +114,6 @@
             </p>
           </section>
 
-          <!-- 记忆嵌入运行状态 -->
-          <section
-            v-if="activeSelection.category === '记忆嵌入'"
-            class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
-          >
-            <h3 class="mb-1 text-base font-semibold text-white">
-              {{ $t('settings.advanceOther.embeddingStatus.title') }}
-            </h3>
-            <p class="mb-3 text-sm leading-6 text-white/65">
-              {{ $t('settings.advanceOther.embeddingStatus.desc') }}
-            </p>
-
-            <div class="space-y-1.5 text-sm">
-              <div class="flex items-center gap-2">
-                <span class="text-white/70">{{ $t('settings.advanceOther.embeddingStatus.enabled') }}</span>
-                <span :class="getEnabledClass(embeddingStatus?.enabled)">
-                  {{ getEnabledText(embeddingStatus?.enabled) }}
-                </span>
-                <span
-                  v-if="!embeddingStatus"
-                  class="text-white/40 text-xs"
-                >{{ $t('settings.advanceOther.embeddingStatus.loading') }}</span>
-              </div>
-              <div
-                v-if="embeddingStatus"
-                class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm"
-              >
-                <div class="flex items-center gap-2">
-                  <span class="text-white/70">{{ $t('settings.advanceOther.embeddingStatus.ready') }}</span>
-                  <span :class="embeddingStatus.ready ? 'text-green-400' : 'text-yellow-400'">
-                    {{ yesNoLabel(embeddingStatus.ready) }}
-                  </span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <span class="text-white/70">{{ $t('settings.advanceOther.embeddingStatus.configured') }}</span>
-                  <span :class="embeddingStatus.configured ? 'text-green-400' : 'text-red-400'">
-                    {{ yesNoLabel(embeddingStatus.configured) }}
-                  </span>
-                </div>
-                <div v-if="embeddingStatus.dim" class="flex items-center gap-2">
-                  <span class="text-white/70">{{ $t('settings.advanceOther.embeddingStatus.dim') }}</span>
-                  <span class="text-white">{{ embeddingStatus.dim }}</span>
-                </div>
-                <div v-if="embeddingStatus.model" class="flex items-center gap-2">
-                  <span class="text-white/70">{{ $t('settings.advanceOther.embeddingStatus.model') }}</span>
-                  <span class="text-white break-all">{{ embeddingStatus.model }}</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <span class="text-white/70">{{ $t('settings.advanceOther.embeddingStatus.indexLen') }}</span>
-                  <span class="text-white">{{ embeddingStatus.indexLen }}</span>
-                </div>
-              </div>
-              <p
-                v-if="embeddingStatus && !embeddingStatus.ready && embeddingStatus.error"
-                class="mt-2 text-sm text-red-400 break-all"
-              >
-                {{ embeddingStatus.error }}
-              </p>
-            </div>
-
-            <Button type="big" :disabled="isLoadingEmbedding" class="mt-3" @click="loadEmbeddingStatus">
-              <RefreshCw :size="18" :class="{ 'animate-spin': isLoadingEmbedding }" />
-              {{ $t('settings.advanceOther.embeddingStatus.refresh') }}
-            </Button>
-          </section>
-
           <!-- 独立语义记忆运行状态 -->
           <section
             v-if="activeSelection.category === '语义记忆'"
@@ -381,7 +315,7 @@ import { useI18n } from 'vue-i18n'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import SettingItem from '@/components/base/items/SettingItem.vue'
 import { Button } from '@/components/base'
-import { getEnvConfigSettings, saveEnvConfigSettings, getEmbeddingStatus, type EmbeddingStatus, getSemanticMemoryStatus, type SemanticMemoryStatus, listSemanticMemoryRoles, type SemanticMemoryRole, listSemanticMemories, type SemanticMemoryItem, addSemanticMemory, updateSemanticMemory, deleteSemanticMemory } from '@/api/services/config'
+import { getEnvConfigSettings, saveEnvConfigSettings, getSemanticMemoryStatus, type SemanticMemoryStatus, listSemanticMemoryRoles, type SemanticMemoryRole, listSemanticMemories, type SemanticMemoryItem, addSemanticMemory, updateSemanticMemory, deleteSemanticMemory } from '@/api/services/config'
 import { reactivateTTS } from '@/api/services/game-info'
 import { switchLlm } from '@/api/services/llm-providers'
 import { RefreshCw } from 'lucide-vue-next'
@@ -426,10 +360,6 @@ const reconnectStatus = reactive({
 })
 let reconnectStatusTimer: ReturnType<typeof setTimeout> | null = null
 
-// --- 记忆嵌入状态 ---
-const isLoadingEmbedding = ref(false)
-const embeddingStatus = ref<EmbeddingStatus | null>(null)
-
 // --- 独立语义记忆状态 ---
 const isLoadingSemanticMemory = ref(false)
 const semanticMemoryStatus = ref<SemanticMemoryStatus | null>(null)
@@ -456,18 +386,6 @@ const yesNoLabel = (value: boolean) =>
   value
     ? t('settings.advanceOther.embeddingStatus.labelYes')
     : t('settings.advanceOther.embeddingStatus.labelNo')
-
-const loadEmbeddingStatus = async () => {
-  isLoadingEmbedding.value = true
-  try {
-    embeddingStatus.value = await getEmbeddingStatus()
-  } catch (error) {
-    console.error('加载记忆嵌入状态失败:', error)
-    embeddingStatus.value = null
-  } finally {
-    isLoadingEmbedding.value = false
-  }
-}
 
 const loadSemanticMemoryStatus = async () => {
   isLoadingSemanticMemory.value = true
@@ -671,6 +589,9 @@ const loadConfig = async (selectFirst = true) => {
   try {
     configData.value = await getEnvConfigSettings()
 
+    // 「记忆嵌入」已独立成高级设置子标签（SettingsEmbedding），这里不再重复展示
+    delete configData.value['记忆嵌入']
+
     if (selectFirst && Object.keys(configData.value).length > 0) {
       const firstCategory = Object.keys(configData.value)[0]
       if (firstCategory) {
@@ -728,10 +649,6 @@ watch(
   async () => {
     await nextTick()
     updateIndicatorPosition()
-    // 进入「记忆嵌入」分类时自动拉取运行状态
-    if (activeSelection.category === '记忆嵌入') {
-      loadEmbeddingStatus()
-    }
     // 进入「语义记忆」分类时自动拉取运行状态与管理数据
     if (activeSelection.category === '语义记忆') {
       loadSemanticMemoryStatus()

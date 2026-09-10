@@ -43,14 +43,23 @@ impl EmbeddingConfig {
 
     fn has_model_files(&self, dir: &Path) -> bool {
         // 量化模型（体积小、优先）或原始 float32 模型任一存在即可。
+        // 仅查文件名会误判"0 字节 / 下载中断的空文件"，这里要求非空，让损坏
+        // 模型尽早显露为"未就绪"，而不是等首次 encode 才炸。
         let onnx_ok = ["model_quantized.onnx", "model_int8.onnx", "model.onnx"]
             .iter()
-            .any(|name| dir.join(name).exists());
+            .any(|name| non_empty_file(&dir.join(name)));
         if !onnx_ok {
             return false;
         }
-        dir.join("tokenizer.json").exists() || dir.join("vocab.txt").exists()
+        non_empty_file(&dir.join("tokenizer.json")) || non_empty_file(&dir.join("vocab.txt"))
     }
+}
+
+/// 仅当路径存在且非空才认为文件有效。
+fn non_empty_file(path: &Path) -> bool {
+    std::fs::metadata(path)
+        .map(|m| m.len() > 0)
+        .unwrap_or(false)
 }
 
 struct Runtime {
@@ -85,22 +94,23 @@ impl EmbeddingManager {
     }
 
     pub async fn is_ready(&self) -> bool {
-        self.runtime.lock().unwrap().is_some()
+        self.runtime.lock().unwrap_or_else(|e| e.into_inner()).is_some()
     }
 
     pub async fn dim(&self) -> Option<usize> {
-        self.runtime.lock().unwrap().as_ref().map(|r| r.dim)
+        self.runtime.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|r| r.dim)
     }
 
     pub async fn model_name(&self) -> Option<String> {
-        self.runtime.lock()
-            .unwrap()
+        self.runtime
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
             .as_ref()
             .map(|r| r.model_name.clone())
     }
 
     pub fn last_error(&self) -> Option<String> {
-        self.last_error.lock().unwrap().clone()
+        self.last_error.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     pub fn configured(&self) -> bool {
@@ -116,7 +126,7 @@ impl EmbeddingManager {
         if !self.cfg.enabled() {
             return false;
         }
-        let mut guard = self.runtime.lock().unwrap();
+        let mut guard = self.runtime.lock().unwrap_or_else(|e| e.into_inner());
         if guard.is_some() {
             return true;
         }
@@ -127,7 +137,7 @@ impl EmbeddingManager {
             }
             Err(e) => {
                 let msg = format!("{e:#}");
-                *self.last_error.lock().unwrap() = Some(msg.clone());
+                *self.last_error.lock().unwrap_or_else(|e| e.into_inner()) = Some(msg.clone());
                 tracing::warn!("[embedding] 加载失败（状态查询触发）: {msg}");
                 false
             }
@@ -163,13 +173,13 @@ impl EmbeddingManager {
         if !self.cfg.enabled() {
             return None;
         }
-        let mut guard = self.runtime.lock().unwrap();
+        let mut guard = self.runtime.lock().unwrap_or_else(|e| e.into_inner());
         if guard.is_none() {
             match self.load() {
                 Ok(rt) => *guard = Some(rt),
                 Err(e) => {
                     let msg = format!("{e:#}");
-                    *self.last_error.lock().unwrap() = Some(msg.clone());
+                    *self.last_error.lock().unwrap_or_else(|e| e.into_inner()) = Some(msg.clone());
                     tracing::warn!("[embedding] 加载失败，嵌入功能禁用: {msg}");
                     return None;
                 }
@@ -191,7 +201,7 @@ impl EmbeddingManager {
                 Ok(vec) => results.push(vec),
                 Err(e) => {
                     let msg = format!("{e:#}");
-                    *self.last_error.lock().unwrap() = Some(msg.clone());
+                    *self.last_error.lock().unwrap_or_else(|e| e.into_inner()) = Some(msg.clone());
                     tracing::warn!("[embedding] encode 失败: {msg}");
                     return None;
                 }
@@ -373,24 +383,57 @@ fn run_session(session: &mut Session, tok: &Tokenized, zero_ttype: &mut Vec<i64>
 
     let input_names: Vec<String> = session.inputs().iter().map(|o| o.name().to_string()).collect();
 
-    // 按 session inputs 顺序：通常 [input_ids, attention_mask, token_type_ids]
-    // 若模型无 token_type_ids（2 个输入）则只提供前两个。
-    let outputs = match input_names.len() {
-        2 => session.run(ort::inputs![
-            input_names[0].as_str() => ids_tensor,
-            input_names[1].as_str() => mask_tensor,
-        ]).context("ONNX 推理失败（2 inputs）")?,
-        _ => session.run(ort::inputs![
-            input_names[0].as_str() => ids_tensor,
-            input_names[1].as_str() => mask_tensor,
-            input_names[2].as_str() => ttype_tensor,
-        ]).context("ONNX 推理失败")?,
+    // 按名字识别核心输入（大小写无关），找不到时按位置兜底。
+    // 不按 input_names.len() 猜输入个数：旧实现里 `_` 分支写死 `input_names[2]`，
+    // 输入数 != 2/3 的模型会越界 panic（且 panic 时正持有 runtime 锁，连锁中毒）。
+    let find = |needle: &str, fallback: usize| -> Option<&str> {
+        input_names
+            .iter()
+            .find(|n| n.to_lowercase().contains(needle))
+            .or_else(|| input_names.get(fallback))
+            .map(|s| s.as_str())
+    };
+    let ids_name = find("input_ids", 0).ok_or_else(|| anyhow!("模型缺少 input_ids 输入"))?;
+    let mask_name = find("attention_mask", 1)
+        .ok_or_else(|| anyhow!("模型缺少 attention_mask 输入"))?;
+    if ids_name == mask_name {
+        return Err(anyhow!(
+            "模型输入名异常: input_ids 与 attention_mask 解析到了同一个输入 '{ids_name}'"
+        ));
+    }
+
+    // token_type_ids：模型有第三个输入时提供（按名字识别，位置兜底）。
+    let outputs = match find("token_type", 2) {
+        Some(ttype_name) => session
+            .run(ort::inputs![
+                ids_name => ids_tensor,
+                mask_name => mask_tensor,
+                ttype_name => ttype_tensor,
+            ])
+            .context("ONNX 推理失败")?,
+        None => session
+            .run(ort::inputs![
+                ids_name => ids_tensor,
+                mask_name => mask_tensor,
+            ])
+            .context("ONNX 推理失败")?,
     };
 
-    // 输出 last_hidden_state [1, seq, dim]
-    let arr = outputs[0]
+    // 输出 last_hidden_state [1, seq, dim]。按名字选取该输出（缺省回退第一个），
+    // 并容忍 f16（GPU 导出的 fp16 模型）：直接按 f32 取会在编译期不匹配时报错。
+    let out_idx = outputs
+        .iter()
+        .position(|o| o.0.to_lowercase().contains("last_hidden"))
+        .unwrap_or(0);
+    let arr = outputs[out_idx]
         .try_extract_array::<f32>()
-        .context("输出张量类型不是 f32")?;
+        .map(|a| a.to_owned())
+        .or_else(|_| {
+            outputs[out_idx]
+                .try_extract_array::<half::f16>()
+                .map(|a| a.map(|x| x.to_f32()))
+        })
+        .context("输出张量不是 f32/f16")?;
     let slice = arr.as_slice().ok_or_else(|| anyhow!("输出张量非连续布局"))?;
     // shape 是 [1, n, dim]
     let dim = slice.len() / (n as usize);
