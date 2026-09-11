@@ -86,7 +86,11 @@ pub fn sanitize_entry_name(raw: &str) -> Result<String, ArchiveError> {
         return Err(ArchiveError::PathTraversal(format!("Unix 绝对路径: {raw}")));
     }
     let bytes = raw.as_bytes();
-    if bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && (bytes[2] == b'\\' || bytes[2] == b'/') {
+    if bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+    {
         return Err(ArchiveError::PathTraversal(format!("Windows 盘符: {raw}")));
     }
     if raw.starts_with("\\\\") {
@@ -101,7 +105,9 @@ pub fn sanitize_entry_name(raw: &str) -> Result<String, ArchiveError> {
         })
         .collect();
     if cleaned.split(['/', '\\']).any(|s| s == "..") {
-        return Err(ArchiveError::PathTraversal(format!("清洗后仍含 ..: {cleaned}")));
+        return Err(ArchiveError::PathTraversal(format!(
+            "清洗后仍含 ..: {cleaned}"
+        )));
     }
     Ok(cleaned)
 }

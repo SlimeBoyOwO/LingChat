@@ -27,7 +27,11 @@ impl MigrationTrait for Migration {
                 .alter_table(
                     Table::alter()
                         .table(SkillAgentMessage::Table)
-                        .add_column(ColumnDef::new(SkillAgentMessage::CachedTokens).integer().null())
+                        .add_column(
+                            ColumnDef::new(SkillAgentMessage::CachedTokens)
+                                .integer()
+                                .null(),
+                        )
                         .to_owned(),
                 )
                 .await?;

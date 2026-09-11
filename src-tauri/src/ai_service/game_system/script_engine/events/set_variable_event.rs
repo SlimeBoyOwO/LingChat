@@ -5,12 +5,12 @@
 //! making it silently non-functional. This Rust version correctly implements
 //! the `ScriptEvent::execute()` trait method.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    ScriptContext, ScriptEvent, register_event,
 };
 use crate::ai_service::game_system::script_engine::utils::script_function::{
     apply_variable_action, parse_variable_action,

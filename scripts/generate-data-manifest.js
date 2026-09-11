@@ -40,12 +40,12 @@ const DATA_DIR = join(ROOT, "data");
 
 /** 相对于 data/ 额外排除的路径前缀（即使 git 跟踪也跳过——比如 .gitkeep 占位文件） */
 const EXTRA_EXCLUDE_PREFIXES = [
-  "game_database",          // SQLite 数据库（运行时数据）
-  "screenshots/",           // 截图（用户数据）
-  "voice/",                 // TTS 语音（用户数据）
-  "third_party/",           // 模型文件（由 installer 直接管理，不走 .official seed）
-  ".trash/",                // 软删除回收站
-  ".gitkeep",               // 占位文件
+  "game_database", // SQLite 数据库（运行时数据）
+  "screenshots/", // 截图（用户数据）
+  "voice/", // TTS 语音（用户数据）
+  "third_party/", // 模型文件（由 installer 直接管理，不走 .official seed）
+  ".trash/", // 软删除回收站
+  ".gitkeep", // 占位文件
 ];
 
 // ─── 主流程 ──────────────────────────────────────────────────
@@ -129,7 +129,7 @@ for (const subPath of sortedPaths) {
 
 writeFileSync(outputPath, JSON.stringify(manifest, null, 2), "utf-8");
 console.log(
-  `✅ 已生成 ${outputPath} (data_version=${dataVersion}, ${Object.keys(manifest.files).length} 个文件)`,
+  `✅ 已生成 ${outputPath} (data_version=${dataVersion}, ${Object.keys(manifest.files).length} 个文件)`
 );
 
 const totalSize = Object.values(manifest.files).reduce((sum, f) => sum + f.size, 0);

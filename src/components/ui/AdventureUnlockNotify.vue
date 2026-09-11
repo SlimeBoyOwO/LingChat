@@ -2,7 +2,8 @@
   <Transition name="slide-up">
     <div
       v-if="visible && currentAdventure"
-      class="fixed bottom-[calc(32px+var(--safe-area-inset-bottom))] right-8 z-9999 flex items-center gap-4 p-4 min-w-[320px] max-w-100 overflow-hidden rounded-xl"
+      class="fixed right-8 bottom-[calc(32px+var(--safe-area-inset-bottom))] z-9999 flex max-w-100
+        min-w-[320px] items-center gap-4 overflow-hidden rounded-xl p-4"
       style="
         background: rgba(15, 15, 15, 0.5);
         backdrop-filter: blur(20px);
@@ -12,7 +13,7 @@
     >
       <!-- 光晕效果 -->
       <div
-        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] -z-10"
+        class="absolute top-1/2 left-1/2 -z-10 h-[150%] w-[150%] -translate-x-1/2 -translate-y-1/2"
         style="
           background: radial-gradient(circle, rgba(147, 51, 234, 0.15) 0%, transparent 60%);
           filter: blur(20px);
@@ -21,7 +22,7 @@
 
       <!-- 图标 -->
       <div
-        class="shrink-0 w-12 h-12 rounded-lg flex items-center justify-center text-purple-400"
+        class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-purple-400"
         style="background: rgba(147, 51, 234, 0.1); border: 1px solid rgba(147, 51, 234, 0.2)"
       >
         <svg
@@ -30,7 +31,7 @@
           fill="none"
           stroke="currentColor"
           stroke-width="2"
-          class="w-8 h-8"
+          class="h-8 w-8"
         >
           <path d="M12 2L2 7l10 5 10-5-10-5z" />
           <path d="M2 17l10 5 10-5" />
@@ -39,18 +40,20 @@
       </div>
 
       <!-- 内容 -->
-      <div class="flex flex-col justify-center gap-0.5 flex-1">
-        <div class="text-purple-400 text-xs font-bold tracking-wider">{{ $t('ui.adventureUnlock.label') }}</div>
-        <div class="text-white font-bold text-sm leading-tight">
+      <div class="flex flex-1 flex-col justify-center gap-0.5">
+        <div class="text-xs font-bold tracking-wider text-purple-400">
+          {{ $t("ui.adventureUnlock.label") }}
+        </div>
+        <div class="text-sm leading-tight font-bold text-white">
           {{ currentAdventure.name }}
         </div>
-        <div class="text-gray-300 text-xs leading-tight">
+        <div class="text-xs leading-tight text-gray-300">
           {{ currentAdventure.description }}
         </div>
       </div>
 
       <!-- 进度条容器 -->
-      <div class="absolute bottom-0 left-0 w-full h-0.5 bg-gray-800/50">
+      <div class="absolute bottom-0 left-0 h-0.5 w-full bg-gray-800/50">
         <div
           class="h-full w-full origin-left"
           style="
@@ -65,60 +68,60 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { useAdventureStore } from '@/stores/modules/adventure'
-import type { UnlockedAdventure } from '@/api/services/adventure'
+  import { ref, watch } from "vue";
+  import { useAdventureStore } from "@/stores/modules/adventure";
+  import type { UnlockedAdventure } from "@/api/services/adventure";
 
-const adventureStore = useAdventureStore()
-const visible = ref(false)
-const currentAdventure = ref<UnlockedAdventure | null>(null)
+  const adventureStore = useAdventureStore();
+  const visible = ref(false);
+  const currentAdventure = ref<UnlockedAdventure | null>(null);
 
-let timer: number | null = null
+  let timer: number | null = null;
 
-const showNotification = (adventure: UnlockedAdventure) => {
-  currentAdventure.value = adventure
-  visible.value = true
+  const showNotification = (adventure: UnlockedAdventure) => {
+    currentAdventure.value = adventure;
+    visible.value = true;
 
-  if (timer) clearTimeout(timer)
-  timer = window.setTimeout(() => {
-    visible.value = false
-    currentAdventure.value = null
-  }, 3000)
-}
+    if (timer) clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      visible.value = false;
+      currentAdventure.value = null;
+    }, 3000);
+  };
 
-watch(
-  () => adventureStore.unlockNotifications.length,
-  (count) => {
-    if (count > 0 && !visible.value) {
-      const adventure = adventureStore.popUnlockNotification()
-      if (adventure) {
-        showNotification(adventure)
+  watch(
+    () => adventureStore.unlockNotifications.length,
+    (count) => {
+      if (count > 0 && !visible.value) {
+        const adventure = adventureStore.popUnlockNotification();
+        if (adventure) {
+          showNotification(adventure);
+        }
       }
-    }
-  },
-  { immediate: true },
-)
+    },
+    { immediate: true }
+  );
 </script>
 
 <style scoped>
-/* 保留必要的动画和过渡效果 */
-@keyframes progress {
-  0% {
-    transform: scaleX(1);
+  /* 保留必要的动画和过渡效果 */
+  @keyframes progress {
+    0% {
+      transform: scaleX(1);
+    }
+    100% {
+      transform: scaleX(0);
+    }
   }
-  100% {
-    transform: scaleX(0);
+
+  .slide-up-enter-active,
+  .slide-up-leave-active {
+    transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   }
-}
 
-.slide-up-enter-active,
-.slide-up-leave-active {
-  transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-.slide-up-enter-from,
-.slide-up-leave-to {
-  transform: translateY(100px) scale(0.9);
-  opacity: 0;
-}
+  .slide-up-enter-from,
+  .slide-up-leave-to {
+    transform: translateY(100px) scale(0.9);
+    opacity: 0;
+  }
 </style>

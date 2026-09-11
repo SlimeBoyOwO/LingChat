@@ -2,7 +2,7 @@
 //!
 //! 目前仅包含 `select_next_speaker` 工具。后续扩展更多工具时在此注册。
 
-use crate::ai_service::types::{parse_tool_args, ToolCall, ToolDefinition};
+use crate::ai_service::types::{ToolCall, ToolDefinition, parse_tool_args};
 
 // ============================================================
 // 工具定义

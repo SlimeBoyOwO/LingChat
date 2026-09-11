@@ -1,4 +1,4 @@
-import type { Drop } from '../config/rain'
+import type { Drop } from "../config/rain";
 
 export function useRain() {
   function createDrop(W: number, H: number, intensity: number = 1): Drop {
@@ -7,10 +7,10 @@ export function useRain() {
       y: Math.random() * H - 100,
       speed: 6 + Math.random() * 8 * intensity,
       length: Math.random() * 5 * intensity + 20,
-    }
+    };
   }
 
   return {
     createDrop,
-  }
+  };
 }

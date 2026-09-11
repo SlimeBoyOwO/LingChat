@@ -14,11 +14,11 @@
 
 诊断分三级：
 
-| 级别 | 含义 | 例子 |
-|---|---|---|
+| 级别    | 含义                                       | 例子                               |
+| ------- | ------------------------------------------ | ---------------------------------- |
 | `error` | 一定会出问题（跑不通、跳不过去、素材缺失） | 必填字段缺失、悬空跳转、素材找不到 |
-| `warn` | 很可能不是作者的意图 | 写了不生效的字段、孤儿章节、循环 |
-| `info` | 提示性的 | 遗留字段、可疑但合法的写法 |
+| `warn`  | 很可能不是作者的意图                       | 写了不生效的字段、孤儿章节、循环   |
+| `info`  | 提示性的                                   | 遗留字段、可疑但合法的写法         |
 
 **保存时不拦，只在「试玩 / 导出」时拦 error。**
 
@@ -79,17 +79,17 @@ ValidationReport
 
 ### 结构 / 通用
 
-| 诊断码 | 级别 | 触发 |
-|---|---|---|
-| `event.not_a_map` | error | 事件不是键值映射 |
-| `event.missing_type` | error | 缺 `type` 字段 |
-| `event.unknown_type` | error | 未知事件类型，运行到这里整个剧本中断 |
-| `field.required_missing` | error | 缺必填字段 |
-| `field.unknown` | warn | 未知字段（很可能是拼错），会被静默忽略 |
-| `field.inert` | info | 遗留字段（`duration` 等 `enabled == false` 的通用字段），引擎从不读取 |
-| `condition.unsupported_operator` | error | 用了 `&& || >= <= > < ! ( )`（长运算符优先匹配） |
-| `condition.no_variable` / `condition.bad_variable` | error | 条件左侧没有变量名 / 变量名含空格 |
-| `condition.placeholder_not_replaced` | warn | condition 里的 `%player%` 不会被替换 |
+| 诊断码                                             | 级别  | 触发                                                                  |
+| -------------------------------------------------- | ----- | --------------------------------------------------------------------- | --- | ------------------------------------ |
+| `event.not_a_map`                                  | error | 事件不是键值映射                                                      |
+| `event.missing_type`                               | error | 缺 `type` 字段                                                        |
+| `event.unknown_type`                               | error | 未知事件类型，运行到这里整个剧本中断                                  |
+| `field.required_missing`                           | error | 缺必填字段                                                            |
+| `field.unknown`                                    | warn  | 未知字段（很可能是拼错），会被静默忽略                                |
+| `field.inert`                                      | info  | 遗留字段（`duration` 等 `enabled == false` 的通用字段），引擎从不读取 |
+| `condition.unsupported_operator`                   | error | 用了 `&&                                                              |     | >= <= > < ! ( )`（长运算符优先匹配） |
+| `condition.no_variable` / `condition.bad_variable` | error | 条件左侧没有变量名 / 变量名含空格                                     |
+| `condition.placeholder_not_replaced`               | warn  | condition 里的 `%player%` 不会被替换                                  |
 
 条件检查有个细节：**只扫运算符左侧**。右值是任意字符串，`bg == city/night` 里的 `/` 是合法内容 —— 早先在整串上找 `/ * ( )` 会把它误判成「用了不支持的运算符」并跳过变量收集。只支持 `var == 值` / `var != 值` / 裸变量真值三种写法；比较是**字符串比较**，未定义变量 `==` 恒假、`!=` 恒真。
 
@@ -97,52 +97,52 @@ ValidationReport
 
 **素材类** `background / present_pic / music / sound / ambient`：
 
-| 诊断码 | 级别 | 触发 |
-|---|---|---|
-| `asset.missing` | error | `resolve_script_media` 找不到素材（运行时只静默清空画面/声音） |
-| `music.bad_speed` | warn | 播放速度 ≤0 或 >4（>2 通常失真） |
+| 诊断码            | 级别  | 触发                                                           |
+| ----------------- | ----- | -------------------------------------------------------------- |
+| `asset.missing`   | error | `resolve_script_media` 找不到素材（运行时只静默清空画面/声音） |
+| `music.bad_speed` | warn  | 播放速度 ≤0 或 >4（>2 通常失真）                               |
 
 `ambient` 有个刻意例外：`stop: true` 或路径为空时跳过路径解析（留空表示「停掉全部轨道」，标成必填会让这种正常用法被误判）。
 
 **`background_effect`：**
 
-| 诊断码 | 级别 | 触发 |
-|---|---|---|
-| `effect.case` | info | 大小写不对（前端打开章节时自动纠正，故只给 Info） |
-| `effect.unknown` | warn | 不是内置特效（前端无法纠正），引擎会清空当前特效 |
+| 诊断码           | 级别 | 触发                                              |
+| ---------------- | ---- | ------------------------------------------------- |
+| `effect.case`    | info | 大小写不对（前端打开章节时自动纠正，故只给 Info） |
+| `effect.unknown` | warn | 不是内置特效（前端无法纠正），引擎会清空当前特效  |
 
 **`choices`：**
 
-| 诊断码 | 级别 | 触发 |
-|---|---|---|
-| `choices.empty` | error | 选项列表为空 |
-| `choices.option_not_a_map` | error | 选项不是键值映射 |
-| `choices.catch_all_not_last` | warn | 无文案的兜底项没放最后（会吞掉后面的选项） |
-| `choices.duplicate_text` | warn | 文案重复，后一个永远选不到 |
-| `choices.placeholder_in_text` | warn | 文案里有 `%player%`（引擎只替换顶层字段） |
+| 诊断码                        | 级别  | 触发                                                          |
+| ----------------------------- | ----- | ------------------------------------------------------------- |
+| `choices.empty`               | error | 选项列表为空                                                  |
+| `choices.option_not_a_map`    | error | 选项不是键值映射                                              |
+| `choices.catch_all_not_last`  | warn  | 无文案的兜底项没放最后（会吞掉后面的选项）                    |
+| `choices.duplicate_text`      | warn  | 文案重复，后一个永远选不到                                    |
+| `choices.placeholder_in_text` | warn  | 文案里有 `%player%`（引擎只替换顶层字段）                     |
 | `choices.option_next_ignored` | error | 选项写了 `next`（choices 不支持选项级跳转，该字段被完全忽略） |
 
 `set_variable` / `chapter_end` 的事件，其 `options[].actions` 还会过 `check_actions`：
 
-| 诊断码 | 级别 | 触发 |
-|---|---|---|
-| `action.not_a_map` | error | action 不是键值映射 |
-| `action.bad_expression` | error | `set_var` 表达式无法解析（只支持 `= += -=` 三个运算符） |
-| `action.not_supported_here` | warn | 在 `set_variable` 里写了 `add_line`（该事件只处理 set_var） |
-| `action.empty_content` | warn | `add_line` 内容为空 |
-| `action.unknown_type` | warn | 未知动作类型 |
+| 诊断码                      | 级别  | 触发                                                        |
+| --------------------------- | ----- | ----------------------------------------------------------- |
+| `action.not_a_map`          | error | action 不是键值映射                                         |
+| `action.bad_expression`     | error | `set_var` 表达式无法解析（只支持 `= += -=` 三个运算符）     |
+| `action.not_supported_here` | warn  | 在 `set_variable` 里写了 `add_line`（该事件只处理 set_var） |
+| `action.empty_content`      | warn  | `add_line` 内容为空                                         |
+| `action.unknown_type`       | warn  | 未知动作类型                                                |
 
 **`set_variable`：**
 
-| 诊断码 | 级别 | 触发 |
-|---|---|---|
+| 诊断码                    | 级别  | 触发                                                                             |
+| ------------------------- | ----- | -------------------------------------------------------------------------------- |
 | `set_variable.no_options` | error | 缺 options（**检测原型形状**：原型写的是 `{name, value}`，引擎只读 `options[]`） |
-| `set_variable.empty` | warn | 赋值组为空，事件什么都不做 |
+| `set_variable.empty`      | warn  | 赋值组为空，事件什么都不做                                                       |
 
 **`free_dialogue`：**
 
-| 诊断码 | 级别 | 触发 |
-|---|---|---|
+| 诊断码                  | 级别  | 触发                                               |
+| ----------------------- | ----- | -------------------------------------------------- |
 | `free_dialogue.no_exit` | error | `max_rounds ≤ 0` 且 `end_line` 为空 → 永远无法结束 |
 
 **`chapter_end`：** 见下。整章还要求**必须有一条 `chapter_end`**：没有 → `chapter.no_end · error`（引擎会把这当成整个剧本结束，而不是接着下一章）。
@@ -151,11 +151,11 @@ ValidationReport
 
 用收集到的 `ChapterEdge` 建图，做三类分析：
 
-| 诊断码 | 级别 | 说明 |
-|---|---|---|
-| `graph.unreachable` | warn | 孤儿章节：从开场章节 DFS 走不到（分「有入边但从开场不可达」与「无任何入边」两种文案） |
-| `graph.cycle` | warn | 章节之间存在循环（DFS 三色法找环，输出环路径）。**引擎没有循环检测**，玩家可能被困在里面出不来 |
-| `chapter_end.dangling` | error | 跳转目标章节不存在（在 `push_target` 里报，同时产出边） |
+| 诊断码                 | 级别  | 说明                                                                                           |
+| ---------------------- | ----- | ---------------------------------------------------------------------------------------------- |
+| `graph.unreachable`    | warn  | 孤儿章节：从开场章节 DFS 走不到（分「有入边但从开场不可达」与「无任何入边」两种文案）          |
+| `graph.cycle`          | warn  | 章节之间存在循环（DFS 三色法找环，输出环路径）。**引擎没有循环检测**，玩家可能被困在里面出不来 |
+| `chapter_end.dangling` | error | 跳转目标章节不存在（在 `push_target` 里报，同时产出边）                                        |
 
 `chapter_end` 的专项检查较细：
 
@@ -172,10 +172,10 @@ ValidationReport
 - `vars_written` —— 被赋值过（来自 `set_variable` / `choices` 的 `set_var` action，用 `parse_variable_action` 解析出变量名）；
 - `vars_read` —— 在条件里出现过（来自 `condition` 字段）。
 
-| 诊断码 | 级别 | 触发 |
-|---|---|---|
-| `variable.never_set` | warn | 条件里用到但整个剧本都没赋值。没赋值用「等于」比较恒不成立、「不等于」恒成立 |
-| `variable.never_read` | info | 被赋值但从未在任何条件里使用 |
+| 诊断码                | 级别 | 触发                                                                         |
+| --------------------- | ---- | ---------------------------------------------------------------------------- |
+| `variable.never_set`  | warn | 条件里用到但整个剧本都没赋值。没赋值用「等于」比较恒不成立、「不等于」恒成立 |
+| `variable.never_read` | info | 被赋值但从未在任何条件里使用                                                 |
 
 变量全集（`vars_written ∪ vars_read`）随报告返回，供编辑器做**变量面板**。
 

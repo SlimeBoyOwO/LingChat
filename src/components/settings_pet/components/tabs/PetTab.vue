@@ -1,34 +1,35 @@
 <template>
-  <article class="w-full flex-1 flex flex-col">
+  <article class="flex w-full flex-1 flex-col">
     <header
       class="mb-6 flex items-end justify-between border-b-2 pb-2 transition-colors"
       :class="isDarkMode ? 'border-slate-700' : 'border-slate-100'"
     >
       <div>
         <h2
-          class="text-xl font-black tracking-wide mb-1 flex items-center gap-2 transition-colors"
+          class="mb-1 flex items-center gap-2 text-xl font-black tracking-wide transition-colors"
           :class="isDarkMode ? 'text-slate-100' : 'text-slate-800'"
         >
-          {{ $t('pet.petTab.title') }}
+          {{ $t("pet.petTab.title") }}
         </h2>
         <p
           class="text-xs font-medium transition-colors"
           :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'"
         >
-          {{ $t('pet.petTab.desc') }}
+          {{ $t("pet.petTab.desc") }}
         </p>
       </div>
       <span
-        class="text-4xl font-bold italic select-none font-mono transition-colors"
+        class="font-mono text-4xl font-bold italic transition-colors select-none"
         :class="isDarkMode ? 'text-slate-700' : 'text-sky-100'"
         >01</span
       >
     </header>
 
-    <div class="grid grid-cols-2 gap-4 mt-4">
+    <div class="mt-4 grid grid-cols-2 gap-4">
       <div
         @click="selectMode('normal')"
-        class="rounded-xl border p-5 shadow-sm relative overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 min-h-35 flex flex-col"
+        class="relative flex min-h-35 cursor-pointer flex-col overflow-hidden rounded-xl border p-5
+          shadow-sm transition-all duration-300 hover:-translate-y-1"
         :class="[
           isDarkMode
             ? 'border-slate-700 hover:border-sky-500 hover:bg-slate-800'
@@ -42,29 +43,30 @@
               : 'bg-white',
         ]"
       >
-        <div class="flex items-center gap-3 mb-2">
+        <div class="mb-2 flex items-center gap-3">
           <div
             :class="[
-              'p-2 rounded-lg transition-colors',
+              'rounded-lg p-2 transition-colors',
               currentMode === 'normal' || !isDarkMode
                 ? 'bg-sky-100/10 text-sky-500'
                 : 'bg-slate-800 text-slate-400',
             ]"
           >
-            <MessageSquare class="w-5 h-5" />
+            <MessageSquare class="h-5 w-5" />
           </div>
-          <h3 class="font-bold text-lg" :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'">
-            {{ $t('pet.petTab.modeNormal') }}
+          <h3 class="text-lg font-bold" :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'">
+            {{ $t("pet.petTab.modeNormal") }}
           </h3>
         </div>
         <p class="text-xs" :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'">
-          {{ $t('pet.petTab.modeNormalDesc') }}
+          {{ $t("pet.petTab.modeNormalDesc") }}
         </p>
       </div>
 
       <div
         @click="selectMode('game')"
-        class="rounded-xl border p-5 shadow-sm relative overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 min-h-35 flex flex-col"
+        class="relative flex min-h-35 cursor-pointer flex-col overflow-hidden rounded-xl border p-5
+          shadow-sm transition-all duration-300 hover:-translate-y-1"
         :class="[
           isDarkMode
             ? 'border-slate-700 hover:border-violet-500 hover:bg-slate-800'
@@ -78,57 +80,60 @@
               : 'bg-white',
         ]"
       >
-        <div class="flex items-center gap-3 mb-2">
+        <div class="mb-2 flex items-center gap-3">
           <div
             :class="[
-              'p-2 rounded-lg transition-colors',
+              'rounded-lg p-2 transition-colors',
               currentMode === 'game' || !isDarkMode
                 ? 'bg-violet-100/10 text-violet-500'
                 : 'bg-slate-800 text-slate-400',
             ]"
           >
-            <Gamepad2 class="w-5 h-5" />
+            <Gamepad2 class="h-5 w-5" />
           </div>
-          <h3 class="font-bold text-lg" :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'">
-            {{ $t('pet.petTab.modeGame') }}
+          <h3 class="text-lg font-bold" :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'">
+            {{ $t("pet.petTab.modeGame") }}
           </h3>
         </div>
         <p class="text-xs" :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'">
-          {{ $t('pet.petTab.modeGameDesc') }}
+          {{ $t("pet.petTab.modeGameDesc") }}
         </p>
       </div>
     </div>
 
     <div
-      class="rounded-xl border mt-4 p-6 shadow-sm relative overflow-hidden group transition-colors duration-300"
-      :class="isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200'"
+      class="group relative mt-4 overflow-hidden rounded-xl border p-6 shadow-sm transition-colors
+        duration-300"
+      :class="isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white'"
     >
       <Ruler
-        class="absolute -bottom-4 -right-4 w-32 h-32 opacity-50 -rotate-12 transition-all duration-300 group-hover:scale-110"
+        class="absolute -right-4 -bottom-4 h-32 w-32 -rotate-12 opacity-50 transition-all
+          duration-300 group-hover:scale-110"
         :class="isDarkMode ? 'text-slate-700' : 'text-slate-50'"
       />
 
       <div class="relative z-10">
         <h3
-          class="font-bold text-lg mb-4 flex items-center gap-2"
+          class="mb-4 flex items-center gap-2 text-lg font-bold"
           :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'"
         >
-          <Volume2 class="w-5 h-5 text-sky-500" />
-          {{ $t('pet.petTab.scaleTitle') }}
+          <Volume2 class="h-5 w-5 text-sky-500" />
+          {{ $t("pet.petTab.scaleTitle") }}
         </h3>
-        <div class="flex items-end gap-3 mb-6">
-          <div class="text-4xl font-bold text-sky-500 tracking-tighter">
+        <div class="mb-6 flex items-end gap-3">
+          <div class="text-4xl font-bold tracking-tighter text-sky-500">
             {{ percentLabel }}
           </div>
           <div
-            class="text-[10px] font-mono font-bold mb-1.5 px-2 py-0.5 rounded uppercase transition-colors"
+            class="mb-1.5 rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase
+              transition-colors"
             :class="isDarkMode ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-500'"
           >
             CURRENT SCALE
           </div>
         </div>
 
-        <div class="mt-8 mb-6 relative">
+        <div class="relative mt-8 mb-6">
           <input
             type="range"
             :min="PET_SCALE_MIN"
@@ -139,12 +144,13 @@
             class="custom-slider"
           />
           <div
-            class="flex justify-between text-[11px] mt-4 font-mono font-bold transition-colors"
+            class="mt-4 flex justify-between font-mono text-[11px] font-bold transition-colors"
             :class="isDarkMode ? 'text-slate-500' : 'text-slate-400'"
           >
             <span>MIN {{ PET_SCALE_MIN * 100 }}%</span>
             <span
-              class="text-sky-500 relative pl-2 before:content-[''] before:absolute before:left-0 before:top-1.5 before:w-1 before:h-1 before:bg-sky-400 before:rounded-full"
+              class="relative pl-2 text-sky-500 before:absolute before:top-1.5 before:left-0
+                before:h-1 before:w-1 before:rounded-full before:bg-sky-400 before:content-['']"
               >DEF 100%</span
             >
             <span>MAX {{ PET_SCALE_MAX * 100 }}%</span>
@@ -152,37 +158,41 @@
         </div>
 
         <div
-          class="flex justify-end pt-4 border-t mt-6 transition-colors"
+          class="mt-6 flex justify-end border-t pt-4 transition-colors"
           :class="isDarkMode ? 'border-slate-700' : 'border-slate-100/80'"
         >
           <button
             type="button"
             @click="$emit('resetScale')"
-            class="px-5 py-2 bg-sky-500 text-white font-bold text-[13px] rounded-lg transition-all hover:bg-sky-400 active:scale-95 flex items-center gap-2 shadow-[0_4px_12px_rgba(56,189,248,0.25)] hover:shadow-[0_6px_16px_rgba(56,189,248,0.35)]"
+            class="flex items-center gap-2 rounded-lg bg-sky-500 px-5 py-2 text-[13px] font-bold
+              text-white shadow-[0_4px_12px_rgba(56,189,248,0.25)] transition-all hover:bg-sky-400
+              hover:shadow-[0_6px_16px_rgba(56,189,248,0.35)] active:scale-95"
           >
-            <RotateCcw class="w-4 h-4" />
-            {{ $t('pet.petTab.scaleReset') }}
+            <RotateCcw class="h-4 w-4" />
+            {{ $t("pet.petTab.scaleReset") }}
           </button>
         </div>
       </div>
     </div>
 
     <div
-      class="rounded-xl border p-6 shadow-sm relative overflow-hidden group transition-colors duration-300 mt-4"
-      :class="isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200'"
+      class="group relative mt-4 overflow-hidden rounded-xl border p-6 shadow-sm transition-colors
+        duration-300"
+      :class="isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white'"
     >
       <Sparkles
-        class="absolute -bottom-4 -right-4 w-32 h-32 opacity-10 -rotate-12 transition-all duration-300 group-hover:scale-110"
+        class="absolute -right-4 -bottom-4 h-32 w-32 -rotate-12 opacity-10 transition-all
+          duration-300 group-hover:scale-110"
         :class="isDarkMode ? 'text-slate-700' : 'text-slate-300'"
       />
 
       <div class="relative z-10">
         <h3
-          class="font-bold text-lg mb-4 flex items-center gap-2"
+          class="mb-4 flex items-center gap-2 text-lg font-bold"
           :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'"
         >
-          <Sparkles class="w-5 h-5 text-sky-500" />
-          {{ $t('pet.petTab.particleTitle') }}
+          <Sparkles class="h-5 w-5 text-sky-500" />
+          {{ $t("pet.petTab.particleTitle") }}
         </h3>
 
         <div class="flex gap-3">
@@ -190,18 +200,21 @@
             v-for="opt in particleOptions"
             :key="opt.value"
             @click="selectParticle(opt.value)"
-            class="flex-1 py-2 px-4 rounded-lg border font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2"
+            class="flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm
+              font-medium transition-all duration-200"
             :class="[
               currentParticle === opt.value
                 ? isDarkMode
-                  ? 'bg-sky-500/20 border-sky-500 text-sky-400'
-                  : 'bg-sky-500 text-white border-sky-500 shadow-md'
+                  ? 'border-sky-500 bg-sky-500/20 text-sky-400'
+                  : 'border-sky-500 bg-sky-500 text-white shadow-md'
                 : isDarkMode
-                  ? 'bg-transparent border-slate-600 text-slate-400 hover:border-slate-500 hover:text-slate-300'
-                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-100',
+                  ? `border-slate-600 bg-transparent text-slate-400 hover:border-slate-500
+                    hover:text-slate-300`
+                  : `border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300
+                    hover:bg-slate-100`,
             ]"
           >
-            <component :is="opt.icon" class="w-4 h-4" v-if="opt.icon" />
+            <component :is="opt.icon" class="h-4 w-4" v-if="opt.icon" />
             {{ opt.label }}
           </button>
         </div>
@@ -209,35 +222,38 @@
     </div>
 
     <div
-      class="rounded-xl border mt-4 p-6 shadow-sm relative overflow-hidden group transition-colors duration-300"
-      :class="isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200'"
+      class="group relative mt-4 overflow-hidden rounded-xl border p-6 shadow-sm transition-colors
+        duration-300"
+      :class="isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white'"
     >
       <Volume2
-        class="absolute -bottom-4 -right-4 w-32 h-32 opacity-10 -rotate-12 transition-all duration-300 group-hover:scale-110"
+        class="absolute -right-4 -bottom-4 h-32 w-32 -rotate-12 opacity-10 transition-all
+          duration-300 group-hover:scale-110"
         :class="isDarkMode ? 'text-slate-700' : 'text-slate-200'"
       />
 
       <div class="relative z-10">
         <h3
-          class="font-bold text-lg mb-4 flex items-center gap-2"
+          class="mb-4 flex items-center gap-2 text-lg font-bold"
           :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'"
         >
-          <Volume2 class="w-5 h-5 text-sky-500" />
-          {{ $t('pet.petTab.volumeTitle') }}
+          <Volume2 class="h-5 w-5 text-sky-500" />
+          {{ $t("pet.petTab.volumeTitle") }}
         </h3>
-        <div class="flex items-end gap-3 mb-6">
-          <div class="text-4xl font-bold text-sky-500 tracking-tighter">
+        <div class="mb-6 flex items-end gap-3">
+          <div class="text-4xl font-bold tracking-tighter text-sky-500">
             {{ volumeLabel }}
           </div>
           <div
-            class="text-[10px] font-mono font-bold mb-1.5 px-2 py-0.5 rounded uppercase transition-colors"
+            class="mb-1.5 rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase
+              transition-colors"
             :class="isDarkMode ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-500'"
           >
             PET VOLUME
           </div>
         </div>
 
-        <div class="mt-8 mb-6 relative">
+        <div class="relative mt-8 mb-6">
           <input
             type="range"
             min="0"
@@ -248,12 +264,13 @@
             class="custom-slider"
           />
           <div
-            class="flex justify-between text-[11px] mt-4 font-mono font-bold transition-colors"
+            class="mt-4 flex justify-between font-mono text-[11px] font-bold transition-colors"
             :class="isDarkMode ? 'text-slate-500' : 'text-slate-400'"
           >
             <span>MIN 0%</span>
             <span
-              class="text-sky-500 relative pl-2 before:content-[''] before:absolute before:left-0 before:top-1.5 before:w-1 before:h-1 before:bg-sky-400 before:rounded-full"
+              class="relative pl-2 text-sky-500 before:absolute before:top-1.5 before:left-0
+                before:h-1 before:w-1 before:rounded-full before:bg-sky-400 before:content-['']"
               >DEF 50%</span
             >
             <span>MAX 100%</span>
@@ -261,16 +278,18 @@
         </div>
 
         <div
-          class="flex justify-end pt-4 border-t mt-6 transition-colors"
+          class="mt-6 flex justify-end border-t pt-4 transition-colors"
           :class="isDarkMode ? 'border-slate-700' : 'border-slate-100/80'"
         >
           <button
             type="button"
             @click="$emit('resetVolume')"
-            class="px-5 py-2 bg-sky-500 text-white font-bold text-[13px] rounded-lg transition-all hover:bg-sky-400 active:scale-95 flex items-center gap-2 shadow-[0_4px_12px_rgba(56,189,248,0.25)] hover:shadow-[0_6px_16px_rgba(56,189,248,0.35)]"
+            class="flex items-center gap-2 rounded-lg bg-sky-500 px-5 py-2 text-[13px] font-bold
+              text-white shadow-[0_4px_12px_rgba(56,189,248,0.25)] transition-all hover:bg-sky-400
+              hover:shadow-[0_6px_16px_rgba(56,189,248,0.35)] active:scale-95"
           >
-            <RotateCcw class="w-4 h-4" />
-            {{ $t('pet.petTab.volumeReset') }}
+            <RotateCcw class="h-4 w-4" />
+            {{ $t("pet.petTab.volumeReset") }}
           </button>
         </div>
       </div>
@@ -279,140 +298,140 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useI18n } from 'vue-i18n'
-import {
-  Ruler,
-  RotateCcw,
-  MessageSquare,
-  Gamepad2,
-  Sparkles,
-  Ban,
-  Stars,
-  Sun,
-  Volume2,
-} from 'lucide-vue-next'
-import { useUIStore } from '../../../../stores/modules/ui/ui'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+  import { ref, computed } from "vue";
+  import { useI18n } from "vue-i18n";
+  import {
+    Ruler,
+    RotateCcw,
+    MessageSquare,
+    Gamepad2,
+    Sparkles,
+    Ban,
+    Stars,
+    Sun,
+    Volume2,
+  } from "lucide-vue-next";
+  import { useUIStore } from "../../../../stores/modules/ui/ui";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
 
-const props = defineProps<{
-  isDarkMode: boolean
-  petScale: number
-  petVolume: number
-  PET_SCALE_MIN: number
-  PET_SCALE_MAX: number
-}>()
+  const props = defineProps<{
+    isDarkMode: boolean;
+    petScale: number;
+    petVolume: number;
+    PET_SCALE_MIN: number;
+    PET_SCALE_MAX: number;
+  }>();
 
-const emit = defineEmits<{
-  updateScale: [value: number]
-  resetScale: []
-  updateVolume: [value: number]
-  resetVolume: []
-}>()
+  const emit = defineEmits<{
+    updateScale: [value: number];
+    resetScale: [];
+    updateVolume: [value: number];
+    resetVolume: [];
+  }>();
 
-const uiStore = useUIStore()
-const { t } = useI18n()
+  const uiStore = useUIStore();
+  const { t } = useI18n();
 
-const currentMode = ref('normal')
-const selectMode = (mode: string) => {
-  currentMode.value = mode
-  // 空函数，留作后续逻辑实现
-}
+  const currentMode = ref("normal");
+  const selectMode = (mode: string) => {
+    currentMode.value = mode;
+    // 空函数，留作后续逻辑实现
+  };
 
-const currentParticle = computed(() => uiStore.currentBackgroundEffect)
+  const currentParticle = computed(() => uiStore.currentBackgroundEffect);
 
-const particleOptions = computed(() => [
-  { label: t('pet.petTab.particleNone'), value: 'None', icon: Ban },
-  { label: t('pet.petTab.particleStarField'), value: 'StarField', icon: Stars },
-  { label: t('pet.petTab.particleBA'), value: 'BA', icon: Sun },
-])
+  const particleOptions = computed(() => [
+    { label: t("pet.petTab.particleNone"), value: "None", icon: Ban },
+    { label: t("pet.petTab.particleStarField"), value: "StarField", icon: Stars },
+    { label: t("pet.petTab.particleBA"), value: "BA", icon: Sun },
+  ]);
 
-const selectParticle = async (value: string) => {
-  uiStore.setBackgroundEffect(value)
-  const appWindow = getCurrentWindow()
-  await appWindow.emit('background-effect-changed', { effect: value })
-}
+  const selectParticle = async (value: string) => {
+    uiStore.setBackgroundEffect(value);
+    const appWindow = getCurrentWindow();
+    await appWindow.emit("background-effect-changed", { effect: value });
+  };
 
-const percentLabel = computed(() => {
-  return `${Math.round(props.petScale * 100)}%`
-})
+  const percentLabel = computed(() => {
+    return `${Math.round(props.petScale * 100)}%`;
+  });
 
-const volumeLabel = computed(() => {
-  return `${Math.round(props.petVolume)}%`
-})
+  const volumeLabel = computed(() => {
+    return `${Math.round(props.petVolume)}%`;
+  });
 
-const onScaleInput = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  emit('updateScale', Number(target.value))
-}
+  const onScaleInput = (event: Event) => {
+    const target = event.target as HTMLInputElement;
+    emit("updateScale", Number(target.value));
+  };
 
-const onVolumeInput = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  emit('updateVolume', Number(target.value))
-}
+  const onVolumeInput = (event: Event) => {
+    const target = event.target as HTMLInputElement;
+    emit("updateVolume", Number(target.value));
+  };
 </script>
 
 <style scoped>
-/* 自定义滑块轨道与手柄 (BA 科技感风格) */
-.custom-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  background: transparent;
-  outline: none;
-}
+  /* 自定义滑块轨道与手柄 (BA 科技感风格) */
+  .custom-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    background: transparent;
+    outline: none;
+  }
 
-.custom-slider::-webkit-slider-runnable-track {
-  width: 100%;
-  height: 6px;
-  cursor: pointer;
-  background-color: #e2e8f0; /* slate-200 */
-  border-radius: 9999px;
-  transition: background-color 0.2s;
-}
+  .custom-slider::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 6px;
+    cursor: pointer;
+    background-color: #e2e8f0; /* slate-200 */
+    border-radius: 9999px;
+    transition: background-color 0.2s;
+  }
 
-.dark .custom-slider::-webkit-slider-runnable-track {
-  background-color: #334155; /* slate-700 */
-}
+  .dark .custom-slider::-webkit-slider-runnable-track {
+    background-color: #334155; /* slate-700 */
+  }
 
-.custom-slider:hover::-webkit-slider-runnable-track {
-  background-color: #cbd5e1; /* slate-300 */
-}
+  .custom-slider:hover::-webkit-slider-runnable-track {
+    background-color: #cbd5e1; /* slate-300 */
+  }
 
-.dark .custom-slider:hover::-webkit-slider-runnable-track {
-  background-color: #475569; /* slate-600 */
-}
+  .dark .custom-slider:hover::-webkit-slider-runnable-track {
+    background-color: #475569; /* slate-600 */
+  }
 
-.custom-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  height: 20px;
-  width: 12px;
-  border-radius: 4px;
-  background-color: #ffffff;
-  border: 3px solid #38bdf8; /* sky-400 */
-  cursor: pointer;
-  margin-top: -7px;
-  box-shadow: 0 2px 6px rgba(56, 189, 248, 0.4);
-  transition:
-    transform 0.1s ease,
-    box-shadow 0.1s ease,
-    background-color 0.3s ease;
-}
+  .custom-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 20px;
+    width: 12px;
+    border-radius: 4px;
+    background-color: #ffffff;
+    border: 3px solid #38bdf8; /* sky-400 */
+    cursor: pointer;
+    margin-top: -7px;
+    box-shadow: 0 2px 6px rgba(56, 189, 248, 0.4);
+    transition:
+      transform 0.1s ease,
+      box-shadow 0.1s ease,
+      background-color 0.3s ease;
+  }
 
-.dark .custom-slider::-webkit-slider-thumb {
-  background-color: #0f172a; /* slate-900 */
-  border: 3px solid #0ea5e9; /* sky-500 */
-  box-shadow: 0 2px 6px rgba(14, 165, 233, 0.4);
-}
+  .dark .custom-slider::-webkit-slider-thumb {
+    background-color: #0f172a; /* slate-900 */
+    border: 3px solid #0ea5e9; /* sky-500 */
+    box-shadow: 0 2px 6px rgba(14, 165, 233, 0.4);
+  }
 
-.custom-slider::-webkit-slider-thumb:active {
-  transform: scale(0.85);
-  box-shadow: 0 1px 3px rgba(56, 189, 248, 0.5);
-  border-color: #0ea5e9; /* sky-500 */
-}
+  .custom-slider::-webkit-slider-thumb:active {
+    transform: scale(0.85);
+    box-shadow: 0 1px 3px rgba(56, 189, 248, 0.5);
+    border-color: #0ea5e9; /* sky-500 */
+  }
 
-.dark .custom-slider::-webkit-slider-thumb:active {
-  border-color: #38bdf8; /* sky-400 */
-}
+  .dark .custom-slider::-webkit-slider-thumb:active {
+    border-color: #38bdf8; /* sky-400 */
+  }
 </style>

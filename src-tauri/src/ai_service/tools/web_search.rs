@@ -555,7 +555,7 @@ impl WebSearchTool {
         // DeepSeek Responses API 固定使用官方端点（与 bocha/kimi 一致，不读 base_url 配置）
         let endpoint = "https://api.deepseek.com/responses".to_string();
         let model = if cfg.model.trim().is_empty() {
-            "deepseek-v4-flash"
+            "deepseek-flash"
         } else {
             cfg.model.trim()
         };

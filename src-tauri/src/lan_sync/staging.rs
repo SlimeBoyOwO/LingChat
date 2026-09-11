@@ -20,8 +20,7 @@ pub fn staging_dir(data_dir: &Path) -> PathBuf {
 /// 下次启动时由 [`apply_staged_files`] 自动应用。
 pub fn stage_file(data_dir: &Path, relative_path: &str, tmp_path: &Path) -> Result<(), String> {
     let staging = staging_dir(data_dir);
-    std::fs::create_dir_all(&staging)
-        .map_err(|e| format!("创建暂存目录失败: {e}"))?;
+    std::fs::create_dir_all(&staging).map_err(|e| format!("创建暂存目录失败: {e}"))?;
 
     // 在暂存目录中保持相对路径（如 game_database.db）
     let dest = staging.join(relative_path);
@@ -52,7 +51,7 @@ pub fn apply_staged_files(data_dir: &Path) -> u64 {
         Err(e) => {
             warn!("应用暂存文件出错: {}", e);
             0
-        }
+        },
     };
 
     // 清理暂存目录（如果 db_records.json 仍在则保留，由 apply_staged_db_records 处理）
@@ -70,8 +69,7 @@ pub fn apply_staged_files(data_dir: &Path) -> u64 {
 /// 递归应用暂存目录中的文件到目标基准目录。
 fn apply_dir(staging: &Path, target_base: &Path) -> Result<u64, String> {
     let mut count = 0;
-    for entry in
-        std::fs::read_dir(staging).map_err(|e| format!("读取暂存目录失败: {}", e))?
+    for entry in std::fs::read_dir(staging).map_err(|e| format!("读取暂存目录失败: {}", e))?
     {
         let entry = entry.map_err(|e| format!("读取暂存条目失败: {}", e))?;
         let path = entry.path();
@@ -88,9 +86,8 @@ fn apply_dir(staging: &Path, target_base: &Path) -> Result<u64, String> {
         } else {
             let target = target_base.join(&name);
             if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| {
-                    format!("创建目标目录失败 [{}]: {}", target.display(), e)
-                })?;
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("创建目标目录失败 [{}]: {}", target.display(), e))?;
             }
             // 直接重命名（此时应用刚启动，文件未被锁定）
             std::fs::rename(&path, &target)

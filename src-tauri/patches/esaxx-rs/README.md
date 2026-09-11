@@ -4,9 +4,8 @@
 
 This code implements a fast suffix tree / suffix array.
 
-This code is taken from ![sentencepiece](https://github.com/google/sentencepiece) 
+This code is taken from ![sentencepiece](https://github.com/google/sentencepiece)
 and to be used by ![hugging face](https://github.com/huggingface/tokenizers/).
-
 
 Small wrapper around sentencepiece's esaxx suffix array C++ library.
 Usage

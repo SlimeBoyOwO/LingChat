@@ -2,8 +2,8 @@
 // ONNX is CPU-bound and `ort::Session` is `!Send + !Sync`; the holder is
 // taken out of the async Mutex, used on the blocking pool, then put back.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use sbv2_core::model::InferenceDevice;
 use sbv2_core::tts::{SynthesizeOptions, TTSModelHolder};

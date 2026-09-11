@@ -46,16 +46,20 @@ pub async fn sync_plugin_roles(
                     ..Default::default()
                 };
                 let inserted = new_role.insert(db).await?;
-                tracing::info!("Created plugin role: {} ({})", inserted.name, input.encoded_folder);
+                tracing::info!(
+                    "Created plugin role: {} ({})",
+                    inserted.name,
+                    input.encoded_folder
+                );
                 created_ids.push(inserted.id);
-            }
+            },
             Some(model) => {
                 if model.name != input.title {
                     let mut active: role::ActiveModel = model.into();
                     active.name = Set(input.title.clone());
                     active.update(db).await?;
                 }
-            }
+            },
         }
     }
 
@@ -119,7 +123,7 @@ pub async fn sync_roles_from_folder(db: &DatabaseConnection, data_dir: &Path) ->
             Err(e) => {
                 tracing::warn!("Failed to load {:?}: {}", settings_path, e);
                 continue;
-            }
+            },
         };
 
         let existing = role::Entity::find()
@@ -139,7 +143,7 @@ pub async fn sync_roles_from_folder(db: &DatabaseConnection, data_dir: &Path) ->
                 let inserted = new_role.insert(db).await?;
                 tracing::info!("Created role: {} ({})", inserted.name, folder_name);
                 created_ids.push(inserted.id);
-            }
+            },
             Some(model) => {
                 if model.name != title {
                     let id = model.id;
@@ -148,7 +152,7 @@ pub async fn sync_roles_from_folder(db: &DatabaseConnection, data_dir: &Path) ->
                     active.update(db).await?;
                     tracing::info!("Updated role #{} name for {}", id, folder_name);
                 }
-            }
+            },
         }
     }
 

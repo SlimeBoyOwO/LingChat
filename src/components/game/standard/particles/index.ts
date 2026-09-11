@@ -12,27 +12,27 @@
  */
 export interface ParticleEffect {
   /** 写进 YAML 的值，与 GameBackground 的 v-if 分支、引擎的 KNOWN_EFFECTS 对应 */
-  key: string
+  key: string;
   /** 编辑器下拉里给作者看的中文名 */
-  label: string
+  label: string;
 }
 
 export const PARTICLE_EFFECTS: ParticleEffect[] = [
-  { key: 'StarField', label: '星空' },
-  { key: 'Rain', label: '雨' },
-  { key: 'Sakura', label: '樱花' },
-  { key: 'Snow', label: '雪' },
-  { key: 'Fireworks', label: '烟花' },
-]
+  { key: "StarField", label: "星空" },
+  { key: "Rain", label: "雨" },
+  { key: "Sakura", label: "樱花" },
+  { key: "Snow", label: "雪" },
+  { key: "Fireworks", label: "烟花" },
+];
 
 /**
  * 给编辑器下拉用的选项：首项「无特效」对应引擎的清空值 None，
  * 其余为各粒子。返回 { value, label } 以便下拉显示中文、写入英文 key。
  */
 export const particleEffectOptions = (): { value: string; label: string }[] => [
-  { value: 'None', label: '无特效' },
+  { value: "None", label: "无特效" },
   ...PARTICLE_EFFECTS.map((p) => ({ value: p.key, label: p.label })),
-]
+];
 
 /**
  * 大小写自动纠错：把任意写法（starfield/STARFIELD…）映射到注册表里的规范 key
@@ -44,10 +44,8 @@ export const particleEffectOptions = (): { value: string; label: string }[] => [
  * - 未命中任何已知粒子：返回 null（交给 validate/runtime 的 warn，不强行改写）。
  */
 export const canonicalEffectKey = (value: string): string | null => {
-  const v = value.trim()
-  if (!v) return 'None'
-  if (v.toLowerCase() === 'none') return 'None'
-  return (
-    PARTICLE_EFFECTS.find((p) => p.key.toLowerCase() === v.toLowerCase())?.key ?? null
-  )
-}
+  const v = value.trim();
+  if (!v) return "None";
+  if (v.toLowerCase() === "none") return "None";
+  return PARTICLE_EFFECTS.find((p) => p.key.toLowerCase() === v.toLowerCase())?.key ?? null;
+};

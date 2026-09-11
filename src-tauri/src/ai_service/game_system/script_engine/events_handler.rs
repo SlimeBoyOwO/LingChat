@@ -3,11 +3,11 @@
 //! Replaces Python `EventsHandler` — iterates through a YAML event list,
 //! dispatches each event to the registered handler, and collects chapter-end results.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde_json::Value;
 
 use crate::ai_service::game_system::game_status::GameStatus;
-use crate::ai_service::game_system::script_engine::events::{create_event, ScriptContext};
+use crate::ai_service::game_system::script_engine::events::{ScriptContext, create_event};
 use crate::ai_service::game_system::script_engine::utils::script_function::replace_placeholder;
 
 /// Processes a chapter's event list sequentially.

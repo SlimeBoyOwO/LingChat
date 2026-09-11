@@ -167,7 +167,7 @@ impl MessageProcessor {
                 Some(clf) => {
                     let p = clf.predict(emotion_tag, None);
                     (p.label, p.confidence as f64)
-                }
+                },
                 None => (emotion_tag.to_string(), 1.0),
             };
 
@@ -204,14 +204,10 @@ impl MessageProcessor {
         processed = curly_re.replace_all(&processed, "").to_string();
 
         // 1. 统一括号风格（不转换书名号，书名号单独处理）
-        processed = processed
-            .replace('＜', "<")
-            .replace('＞', ">");
+        processed = processed.replace('＜', "<").replace('＞', ">");
 
         // 移除书名号《》（保留内容，避免被误识别为日文标签）
-        processed = processed
-            .replace('《', "")
-            .replace('》', "");
+        processed = processed.replace('《', "").replace('》', "");
 
         // 2. 修复未闭合标签（不使用正则前瞻）
         processed = Self::fix_unclosed_tags(&processed);

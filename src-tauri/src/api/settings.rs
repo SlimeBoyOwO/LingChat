@@ -11,22 +11,22 @@ use tauri::AppHandle;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
+use crate::AppState;
 use crate::ai_service::god_agent::config::resolve_god_agent_provider;
+use crate::ai_service::llm::LlmModelInfo;
 use crate::ai_service::llm::error::LlmErrorPayload;
 use crate::ai_service::llm::provider_config::{
-    build_llm_client_from_provider, load_providers, load_role_assignment, resolve_chat_provider,
-    resolve_translate_provider, save_providers, save_role_assignment, LlmProviderConfig,
-    LlmProvidersResponse,
+    LlmProviderConfig, LlmProvidersResponse, build_llm_client_from_provider, load_providers,
+    load_role_assignment, resolve_chat_provider, resolve_translate_provider, save_providers,
+    save_role_assignment,
 };
-use crate::ai_service::llm::LlmModelInfo;
 use crate::ai_service::semantic_memory::{AddOutcome, SemanticMemory, UpdateOutcome};
 use crate::config::app_config::{
     MAX_LLM_TIMEOUT_SECS, MAX_MEMORY_RECENT_WINDOW, MAX_MEMORY_SECTION_CHARS,
     MAX_MEMORY_UPDATE_INTERVAL, MIN_LLM_TIMEOUT_SECS, MIN_MEMORY_UPDATE_INTERVAL,
 };
-use crate::config::{self, keys, ConfigSetting, ConfigTree};
+use crate::config::{self, ConfigSetting, ConfigTree, keys};
 use crate::db::managers::role_repo::RoleRepo;
-use crate::AppState;
 
 // ========== Settings CRUD ==========
 
@@ -255,7 +255,9 @@ pub struct SemanticMemoryStatusSnapshot {
 
 /// 查询独立语义记忆状态。只读诊断。
 #[tauri::command]
-pub async fn get_semantic_memory_status(app: AppHandle) -> Result<SemanticMemoryStatusSnapshot, String> {
+pub async fn get_semantic_memory_status(
+    app: AppHandle,
+) -> Result<SemanticMemoryStatusSnapshot, String> {
     let cfg = {
         let store = config::settings_store(&app).map_err(|e| e.to_string())?;
         crate::config::semantic_memory::SemanticMemoryConfig::from_store(Some(&store))
@@ -327,9 +329,7 @@ async fn semantic_memory_handle(app: &AppHandle) -> Result<Arc<SemanticMemory>, 
         let service = state.ai_service.lock().await;
         service.semantic_memory.clone()
     };
-    sm.ok_or_else(|| {
-        "语义记忆未启用（请在「高级设置 → 语义记忆」中开启；需重启生效）".to_string()
-    })
+    sm.ok_or_else(|| "语义记忆未启用（请在「高级设置 → 语义记忆」中开启；需重启生效）".to_string())
 }
 
 /// 列出全部 main 角色供前端下拉选择（附当前对话角色标记）。
@@ -429,11 +429,7 @@ pub async fn delete_semantic_memory(
     id: String,
 ) -> Result<SemanticMemoryWriteResult, String> {
     let sm = semantic_memory_handle(&app).await?;
-    match sm
-        .delete(role_id, &id)
-        .await
-        .map_err(|e| e.to_string())?
-    {
+    match sm.delete(role_id, &id).await.map_err(|e| e.to_string())? {
         true => Ok(SemanticMemoryWriteResult {
             ok: true,
             id: Some(id),
@@ -596,18 +592,15 @@ pub async fn test_llm_provider(
         crate::ai_service::types::LlmMessage::user(&message),
     ];
 
-    client
-        .complete(&messages)
-        .await
-        .map_err(|e| {
-            let info = crate::ai_service::llm::error::classify_llm_error(&e);
-            tracing::error!(
-                error_code = info.code,
-                "LLM 测试请求失败: {}",
-                format!("{e:#}")
-            );
-            info.into()
-        })
+    client.complete(&messages).await.map_err(|e| {
+        let info = crate::ai_service::llm::error::classify_llm_error(&e);
+        tracing::error!(
+            error_code = info.code,
+            "LLM 测试请求失败: {}",
+            format!("{e:#}")
+        );
+        info.into()
+    })
 }
 
 #[tauri::command]
@@ -622,18 +615,15 @@ pub async fn list_llm_models(
         ));
     };
 
-    client
-        .list_models()
-        .await
-        .map_err(|e| {
-            let info = crate::ai_service::llm::error::classify_llm_error(&e);
-            tracing::error!(
-                error_code = info.code,
-                "LLM 拉取模型失败: {}",
-                format!("{e:#}")
-            );
-            info.into()
-        })
+    client.list_models().await.map_err(|e| {
+        let info = crate::ai_service::llm::error::classify_llm_error(&e);
+        tracing::error!(
+            error_code = info.code,
+            "LLM 拉取模型失败: {}",
+            format!("{e:#}")
+        );
+        info.into()
+    })
 }
 
 /// 设置「HDR 模式」开关（仅 Windows）。
@@ -683,13 +673,6 @@ mod memory_setting_validation_tests {
             let values = BTreeMap::from([("memory".to_string(), raw.to_string())]);
             assert!(validate_u32_setting(&values, "memory", "memory", 1, 10_000).is_ok());
         }
-        assert!(validate_u32_setting(
-            &BTreeMap::new(),
-            "memory",
-            "memory",
-            1,
-            10_000,
-        )
-        .is_ok());
+        assert!(validate_u32_setting(&BTreeMap::new(), "memory", "memory", 1, 10_000,).is_ok());
     }
 }

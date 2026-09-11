@@ -4,17 +4,17 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tauri::Manager;
 use uuid::Uuid;
 
+use crate::AppState;
 use crate::ai_service::embedding::FragmentSource;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::types::ToolDefinition;
 use crate::api::character::read_character_settings;
 use crate::api::data_dir;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::AppState;
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::{atomic_replace, ensure_no_args, game_status_handle};
@@ -392,7 +392,7 @@ impl Tool for UpdateNote {
                     ));
                 }
                 Some(content.to_string())
-            }
+            },
             None => None,
         };
         let tags = parse_tags(obj.get("tags"), "memory_update_note")?;
@@ -472,7 +472,8 @@ impl Tool for SearchMemory {
         let idx = gs.role_manager.memory_index();
         if !idx.enabled() {
             return Err(ToolError::Execution(
-                "记忆嵌入未启用（需要配置 embedding.model_dir，指向含 model.onnx 的模型目录）".into(),
+                "记忆嵌入未启用（需要配置 embedding.model_dir，指向含 model.onnx 的模型目录）"
+                    .into(),
             ));
         }
         let hits = idx.search(&query, Some(5)).await;
@@ -528,10 +529,7 @@ impl Tool for DeleteNote {
 
         let role_name = current_role_name_for_write(context).await?;
         let mut notes = load_role_notes(&role_name).map_err(ToolError::Execution)?;
-        let deleted_text = notes
-            .iter()
-            .find(|n| n.id == id)
-            .map(|n| n.content.clone());
+        let deleted_text = notes.iter().find(|n| n.id == id).map(|n| n.content.clone());
         let before = notes.len();
         notes.retain(|n| n.id != id);
         if notes.len() == before {

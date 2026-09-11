@@ -10,12 +10,12 @@
 use std::path::PathBuf;
 
 use axum::{
+    Router,
     body::Body,
     extract::{DefaultBodyLimit, Query, State as AxumState},
     http::StatusCode,
     response::{IntoResponse, Json, Response},
     routing::{get, post},
-    Router,
 };
 use futures_util::StreamExt;
 use serde::Deserialize;
@@ -53,10 +53,7 @@ struct FileQuery {
 // ─── 公开 API ────────────────────────────────────────────────
 
 /// 启动 axum HTTP 服务，绑定随机端口，返回实际端口号。
-pub async fn start_server(
-    app: tauri::AppHandle,
-    identity: &DeviceIdentity,
-) -> Result<u16, String> {
+pub async fn start_server(app: tauri::AppHandle, identity: &DeviceIdentity) -> Result<u16, String> {
     let state = ServerState {
         device_id: identity.device_id.clone(),
         data_dir: data_dir(),
@@ -87,9 +84,7 @@ pub async fn start_server(
 
     // 存储关闭信号
     {
-        let mut guard = SHUTDOWN_TX
-            .lock()
-            .map_err(|e| format!("锁失败: {e}"))?;
+        let mut guard = SHUTDOWN_TX.lock().map_err(|e| format!("锁失败: {e}"))?;
         *guard = Some(tx);
     }
 
@@ -111,9 +106,7 @@ pub async fn start_server(
 /// 停止 axum HTTP 服务。
 pub async fn stop_server() -> Result<(), String> {
     let tx = {
-        let mut guard = SHUTDOWN_TX
-            .lock()
-            .map_err(|e| format!("锁失败: {e}"))?;
+        let mut guard = SHUTDOWN_TX.lock().map_err(|e| format!("锁失败: {e}"))?;
         guard.take()
     };
 
@@ -200,11 +193,7 @@ async fn file_handler(
         .await
         .map_err(|e| AppError(StatusCode::NOT_FOUND, format!("无法打开文件: {e}")))?;
 
-    let size = file
-        .metadata()
-        .await
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let size = file.metadata().await.map(|m| m.len()).unwrap_or(0);
 
     let stream = ReaderStream::new(file);
     let body = Body::from_stream(stream);
@@ -213,7 +202,12 @@ async fn file_handler(
         .header("Content-Type", "application/octet-stream")
         .header("Content-Length", size.to_string())
         .body(body)
-        .map_err(|e| AppError(StatusCode::INTERNAL_SERVER_ERROR, format!("构建响应失败: {e}")))?;
+        .map_err(|e| {
+            AppError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("构建响应失败: {e}"),
+            )
+        })?;
 
     Ok(response)
 }
@@ -248,26 +242,43 @@ async fn push_file_handler(
     ));
 
     // 流式写入 + 边写边算 SHA-256
-    let mut dest = tokio::fs::File::create(&tmp_path)
-        .await
-        .map_err(|e| AppError(StatusCode::INTERNAL_SERVER_ERROR, format!("创建临时文件失败: {e}")))?;
+    let mut dest = tokio::fs::File::create(&tmp_path).await.map_err(|e| {
+        AppError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("创建临时文件失败: {e}"),
+        )
+    })?;
 
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     let mut stream = body.into_data_stream();
     while let Some(chunk) = stream.next().await {
-        let chunk =
-            chunk.map_err(|e| AppError(StatusCode::INTERNAL_SERVER_ERROR, format!("接收数据失败: {e}")))?;
+        let chunk = chunk.map_err(|e| {
+            AppError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("接收数据失败: {e}"),
+            )
+        })?;
         tokio::io::AsyncWriteExt::write_all(&mut dest, &chunk)
             .await
-            .map_err(|e| AppError(StatusCode::INTERNAL_SERVER_ERROR, format!("写入临时文件失败: {e}")))?;
+            .map_err(|e| {
+                AppError(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("写入临时文件失败: {e}"),
+                )
+            })?;
         hasher.update(&chunk);
     }
 
     // 确保数据落盘
     tokio::io::AsyncWriteExt::flush(&mut dest)
         .await
-        .map_err(|e| AppError(StatusCode::INTERNAL_SERVER_ERROR, format!("flush 失败: {e}")))?;
+        .map_err(|e| {
+            AppError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("flush 失败: {e}"),
+            )
+        })?;
     drop(dest);
 
     let sha256 = format!("{:x}", hasher.finalize());
@@ -282,13 +293,16 @@ async fn push_file_handler(
                     "staged": true,
                     "sha256": sha256,
                 })));
-            }
+            },
             Err(se) => {
                 return Err(AppError(
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("重命名失败且暂存失败: {} (rename: {}, stage: {})", query.path, e, se),
+                    format!(
+                        "重命名失败且暂存失败: {} (rename: {}, stage: {})",
+                        query.path, e, se
+                    ),
                 ));
-            }
+            },
         }
     }
 

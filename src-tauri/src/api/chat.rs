@@ -3,6 +3,7 @@ use std::sync::OnceLock;
 use regex::Regex;
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::AppState;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
@@ -10,12 +11,11 @@ use crate::ai_service::message_system::generator::{
 use crate::ai_service::message_system::processor::EmotionSegment;
 use crate::ai_service::tts::local::LocalTtsState;
 use crate::ai_service::types::{LineAttributeExt, LineBase};
-use crate::api::game::{compute_user_message_seqs, GameLineInit};
+use crate::api::game::{GameLineInit, compute_user_message_seqs};
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::prompt::PromptRole;
-use crate::AppState;
 
 #[tauri::command]
 pub async fn send_chat_message(
@@ -184,7 +184,7 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
                 None => {
                     tracing::warn!("没有当前绑定的角色。");
                     return Ok(());
-                }
+                },
             };
 
             let role = match gs.role_manager.get_loaded(current_id) {
@@ -192,7 +192,7 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
                 None => {
                     tracing::warn!("角色 ID {} 未加载。", current_id);
                     return Ok(());
-                }
+                },
             };
 
             tracing::info!(
@@ -204,7 +204,7 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
             for msg in &role.memory {
                 tracing::info!("[{}] {}", msg.role, msg.content);
             }
-        }
+        },
         "/查看台词" => {
             let state = app.state::<AppState>();
             let svc = state.ai_service.lock().await;
@@ -239,10 +239,10 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
 
                 tracing::info!("[{}] {} : {}{}{}{}", i, name, emotion, content, tts, action);
             }
-        }
+        },
         other if other.starts_with('/') => {
             tracing::warn!("未知调试指令: {}。可用指令: /查看记忆, /查看台词", other);
-        }
+        },
         _ => unreachable!(),
     }
     Ok(())
@@ -404,9 +404,8 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
                 count += 1;
             }
         }
-        let idx = target_idx.ok_or_else(|| {
-            format!("未找到序号为 {} 的 AI 台词（共 {} 条）", line_seq, count)
-        })?;
+        let idx = target_idx
+            .ok_or_else(|| format!("未找到序号为 {} 的 AI 台词（共 {} 条）", line_seq, count))?;
 
         // 2. 先克隆台词数据（之后要对 gs 做可变借用）
         let role_id = gs.line_list[idx].base.sender_role_id;
@@ -425,7 +424,11 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
             .action_content
             .clone()
             .unwrap_or_default();
-        let japanese_text = gs.line_list[idx].base.tts_content.clone().unwrap_or_default();
+        let japanese_text = gs.line_list[idx]
+            .base
+            .tts_content
+            .clone()
+            .unwrap_or_default();
         let predicted = gs.line_list[idx]
             .base
             .predicted_emotion
@@ -448,9 +451,8 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
                     .and_then(|r| r.voice_maker.clone())
             }
         };
-        let voice_maker = voice_maker.ok_or_else(|| {
-            format!("角色 {} 未配置 TTS，请在角色设置中启用语音", role_id)
-        })?;
+        let voice_maker = voice_maker
+            .ok_or_else(|| format!("角色 {} 未配置 TTS，请在角色设置中启用语音", role_id))?;
 
         // 4. 构造单个情绪片段并生成语音。
         //    选文逻辑与实时生成一致（voice_maker.rs 的 segment_text_for_lang：
@@ -468,14 +470,14 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
             character: None,
             role_id: Some(role_id),
         };
-        voice_maker.generate_voice_files(std::slice::from_mut(&mut seg)).await;
+        voice_maker
+            .generate_voice_files(std::slice::from_mut(&mut seg))
+            .await;
 
         // 5. 校验产物并回填 audio_file（voice_maker 生成失败时只打日志不留文件）
         let path = std::path::PathBuf::from(&seg.voice_file);
         if seg.voice_file.is_empty() || !path.exists() {
-            return Err(
-                "语音生成失败：TTS 未启用或生成出错，请检查语音设置后再试".to_string(),
-            );
+            return Err("语音生成失败：TTS 未启用或生成出错，请检查语音设置后再试".to_string());
         }
         let file_name = path
             .file_name()
@@ -505,15 +507,28 @@ pub async fn trigger_ai_response(app: AppHandle) -> Result<(), String> {
     let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm)
         .await
         .ok_or_else(|| "LLM 未配置".to_string())?;
-    let concurrency = AppConfig::load(&app).map(|c| c.consumers as usize).unwrap_or(1).max(1);
-    let gs = { let svc = state.ai_service.lock().await; svc.game_status.clone() };
+    let concurrency = AppConfig::load(&app)
+        .map(|c| c.consumers as usize)
+        .unwrap_or(1)
+        .max(1);
+    let gs = {
+        let svc = state.ai_service.lock().await;
+        svc.game_status.clone()
+    };
     // 捕获当前试玩代号（自由对话恒等，行为不变）
     let preview_generation = gs.lock().await.preview_generation;
     let deps = GeneratorDeps {
         source: GeneratorSource::Proactive,
-        app: app.clone(), db: state.db.clone(), game_status: gs,
-        processor: state.chat.processor.clone(), translator: state.chat.translator.clone(),
-        llm, tool_registry: state.tool_registry.clone(), concurrency, god_agent: state.god_agent.clone(), suppress_thinking: false,
+        app: app.clone(),
+        db: state.db.clone(),
+        game_status: gs,
+        processor: state.chat.processor.clone(),
+        translator: state.chat.translator.clone(),
+        llm,
+        tool_registry: state.tool_registry.clone(),
+        concurrency,
+        god_agent: state.god_agent.clone(),
+        suppress_thinking: false,
         generation: preview_generation,
         is_preview: false,
     };
@@ -529,19 +544,19 @@ pub async fn trigger_ai_response(app: AppHandle) -> Result<(), String> {
 
 //处理图片投喂
 #[tauri::command]
-pub async fn feed_image(
-    app: AppHandle,
-    path: String,
-) -> Result<(), String> {
+pub async fn feed_image(app: AppHandle, path: String) -> Result<(), String> {
     let state = app.state::<AppState>();
     let (user_name, game_status) = {
         let svc = state.ai_service.lock().await;
         let gs = svc.game_status.lock().await;
-        (gs.player.user_name.clone(), svc.game_status.clone(),)
+        (gs.player.user_name.clone(), svc.game_status.clone())
     };
 
     tracing::info!("[FileFeed] 收到图片投喂");
-    let prompt = format!("用户（名字是\"{}\"）给你看了一张图片，请你用第三人称叙述把你看到的画面描述给其他AI让他理解用户的图片内容",user_name);
+    let prompt = format!(
+        "用户（名字是\"{}\"）给你看了一张图片，请你用第三人称叙述把你看到的画面描述给其他AI让他理解用户的图片内容",
+        user_name
+    );
 
     events::emit_thinking(&app, true);
     let analysis = {
@@ -572,23 +587,30 @@ pub async fn feed_image(
 }
 
 #[tauri::command]
-pub async fn feed_text(
-    app: AppHandle,
-    text: String,
-) -> Result<(), String> {
+pub async fn feed_text(app: AppHandle, text: String) -> Result<(), String> {
     let state = app.state::<AppState>();
     let (user_name, game_status, ai_name) = {
         let svc = state.ai_service.lock().await;
         let gs = svc.game_status.lock().await;
         let ai_name = gs
-            .current_role_id.and_then(|id| gs.role_manager.get_loaded(id)).and_then(|r| r.display_name.clone()).unwrap_or_else(|| "AI".to_string());
-        (gs.player.user_name.clone(), svc.game_status.clone(), ai_name)
+            .current_role_id
+            .and_then(|id| gs.role_manager.get_loaded(id))
+            .and_then(|r| r.display_name.clone())
+            .unwrap_or_else(|| "AI".to_string());
+        (
+            gs.player.user_name.clone(),
+            svc.game_status.clone(),
+            ai_name,
+        )
     };
 
     tracing::info!("[FileFeed] 收到文本投喂");
     // 截断过长文本，避免 token 爆炸
     let truncated: String = if text.chars().count() > 2000 {
-        text.chars().take(2000).chain("...(内容已截断)".chars()).collect()
+        text.chars()
+            .take(2000)
+            .chain("...(内容已截断)".chars())
+            .collect()
     } else {
         text
     };

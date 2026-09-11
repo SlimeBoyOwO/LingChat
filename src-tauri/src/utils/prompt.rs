@@ -282,13 +282,13 @@ impl PromptRole {
         match self {
             PromptRole::System => {
                 format!("{{旁白: （系统提示：{}）}}", prompt)
-            }
+            },
             PromptRole::Narrator => {
                 format!("{{旁白: {}}}", prompt)
-            }
+            },
             PromptRole::Plot => {
                 format!("{{旁白: （接下来的剧情演绎提示：{}）}}", prompt)
-            }
+            },
         }
     }
 }

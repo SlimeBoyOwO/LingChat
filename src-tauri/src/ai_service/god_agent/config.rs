@@ -3,10 +3,10 @@
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
+use crate::ai_service::llm::LlmClient;
 use crate::ai_service::llm::provider_config::{
     build_llm_client_from_provider, load_providers, load_role_assignment,
 };
-use crate::ai_service::llm::LlmClient;
 use crate::config::{self, keys};
 
 // ============================================================

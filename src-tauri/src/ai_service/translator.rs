@@ -11,7 +11,7 @@
 
 use anyhow::Result;
 
-use crate::ai_service::llm::{slot_snapshot, LlmSlot};
+use crate::ai_service::llm::{LlmSlot, slot_snapshot};
 use crate::ai_service::message_system::processor::EmotionSegment;
 use crate::ai_service::types::LlmMessage;
 

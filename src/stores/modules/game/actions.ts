@@ -1,46 +1,46 @@
 // actions.ts
-import type { GameState, GameMessage, GameRole } from './state'
-import { getGameInfo } from '../../../api/services/game-info'
-import type { GameLineInit, WebInitData } from '../../../api/services/game-info'
-import { getRoleInfo } from '../../../api/services/character'
-import { useUIStore } from '../ui/ui'
-import { useSettingsStore } from '../settings'
-import type { SceneInfo } from '@/api/services/scene'
-import { invoke } from '@tauri-apps/api/core'
+import type { GameState, GameMessage, GameRole } from "./state";
+import { getGameInfo } from "../../../api/services/game-info";
+import type { GameLineInit, WebInitData } from "../../../api/services/game-info";
+import { getRoleInfo } from "../../../api/services/character";
+import { useUIStore } from "../ui/ui";
+import { useSettingsStore } from "../settings";
+import type { SceneInfo } from "@/api/services/scene";
+import { invoke } from "@tauri-apps/api/core";
 
 export const actions = {
   appendGameMessage(this: GameState, message: GameMessage) {
     this.dialogHistory.push({
       ...message,
       timestamp: Date.now(),
-    })
+    });
   },
 
-setGameMessages(this: GameState, messages: GameMessage[]) {
-    this.dialogHistory = messages
+  setGameMessages(this: GameState, messages: GameMessage[]) {
+    this.dialogHistory = messages;
   },
 
   async initializeGame(this: GameState) {
     try {
-      const gameInfo = await getGameInfo()
-      applyWebInitData(this, gameInfo)
+      const gameInfo = await getGameInfo();
+      applyWebInitData(this, gameInfo);
       // 通知后端玩家已入场，触发 AI 问候（不等 LoadingTransition，fire-and-forget）
-      invoke('notify_player_entry').catch((err) =>
-        console.warn('[Entry] 问候触发失败（非致命）:', err),
-      )
-      return gameInfo
+      invoke("notify_player_entry").catch((err) =>
+        console.warn("[Entry] 问候触发失败（非致命）:", err)
+      );
+      return gameInfo;
     } catch (error) {
-      console.error('初始化游戏信息失败:', error)
-      throw error
+      console.error("初始化游戏信息失败:", error);
+      throw error;
     }
   },
 
   async getOrCreateGameRole(this: GameState, role_id: number): Promise<GameRole> {
     if (this.gameRoles[role_id]) {
-      return this.gameRoles[role_id]
+      return this.gameRoles[role_id];
     }
     try {
-      const roleInfo = await getRoleInfo(role_id)
+      const roleInfo = await getRoleInfo(role_id);
       this.gameRoles[role_id] = {
         roleId: roleInfo.character_id,
         roleName: roleInfo.ai_name,
@@ -59,92 +59,92 @@ setGameMessages(this: GameState, messages: GameMessage[]) {
         bodyPart: roleInfo.body_part,
         live2d: roleInfo.live2d,
         character_folder: roleInfo.character_folder,
-        emotion: '正常',
-        originalEmotion: '正常',
+        emotion: "正常",
+        originalEmotion: "正常",
         show: true,
-      }
-      return this.gameRoles[role_id]
+      };
+      return this.gameRoles[role_id];
     } catch (error) {
-      console.error('游戏角色信息获取失败:', error)
-      throw error
+      console.error("游戏角色信息获取失败:", error);
+      throw error;
     }
   },
 
   /** 标记进入剧情模式（用于控制UI显示：隐藏番茄钟/日程等） */
-  enterStoryMode(this: GameState, scriptName: string = 'unknown') {
+  enterStoryMode(this: GameState, scriptName: string = "unknown") {
     this.runningScript = {
       scriptName,
-      currentChapterName: '',
+      currentChapterName: "",
       choices: [],
       isRunning: true,
       freeDialogueInfo: {
         isFreeDialogue: false,
         maxRounds: -1,
         currentRound: 0,
-        endLine: '',
+        endLine: "",
       },
-    }
-    const uiStore = useUIStore()
-    uiStore.bgMusicMode = 'loop-single'
+    };
+    const uiStore = useUIStore();
+    uiStore.bgMusicMode = "loop-single";
   },
 
   /** 标记退出剧情模式，回到自由对话模式 */
   exitStoryMode(this: GameState) {
-    this.runningScript = null
+    this.runningScript = null;
   },
 
   // 设置当前场景（仅更新 store，不调用 API）
   setCurrentScene(this: GameState, scene: SceneInfo | null) {
-    this.currentScene = scene
+    this.currentScene = scene;
   },
 
   /** 标记 LoadingTransition 启动动画已完成（§1.9 门控：动画期间不启动 ASR） */
   setLoadingComplete(this: GameState, v: boolean) {
-    this.loadingComplete = v
+    this.loadingComplete = v;
   },
 
   // 清除场景（更新 store，API 调用由组件负责）
   clearCurrentScene(this: GameState) {
-    this.currentScene = null
+    this.currentScene = null;
   },
 
   /** 截图主窗口（1 次 IPC，0 次窗口枚举）。若已有截图进行中则复用同一个 Promise。 */
   async captureScreenshot(this: GameState): Promise<string | null> {
     // 已有截图进行中 → 复用
-    if (this.screenshotPending) return this.screenshotPending
+    if (this.screenshotPending) return this.screenshotPending;
 
     this.screenshotPending = (async () => {
       try {
-        const filePath = await invoke<string>('capture_main_window_screenshot')
+        const filePath = await invoke<string>("capture_main_window_screenshot");
         if (!filePath) {
-          console.warn('[Screenshot] capture_main_window_screenshot returned empty path')
-          return null
+          console.warn("[Screenshot] capture_main_window_screenshot returned empty path");
+          return null;
         }
-        console.log('[Screenshot] Captured:', filePath)
-        this.latestScreenshot = filePath
-        return filePath
+        console.log("[Screenshot] Captured:", filePath);
+        this.latestScreenshot = filePath;
+        return filePath;
       } catch (err) {
-        console.error('[Screenshot] Capture failed:', err)
-        return null
+        console.error("[Screenshot] Capture failed:", err);
+        return null;
       } finally {
-        this.screenshotPending = null
+        this.screenshotPending = null;
       }
-    })()
+    })();
 
-    return this.screenshotPending
+    return this.screenshotPending;
   },
-}
+};
 
 /** 将 WebInitData 写入 GameState（init / 角色切换共用） */
 export function applyWebInitData(state: GameState, gameInfo: WebInitData): void {
-  const characterInfo = gameInfo.character_settings
-  const charId = characterInfo.character_id ?? 0
+  const characterInfo = gameInfo.character_settings;
+  const charId = characterInfo.character_id ?? 0;
 
   // 从 onstage_roles 填充 gameRoles（含主角 + 所有在场角色）
-  state.gameRoles = {}
+  state.gameRoles = {};
   for (const settings of gameInfo.onstage_roles) {
-    const rid = settings.character_id ?? 0
-    if (rid === 0) continue
+    const rid = settings.character_id ?? 0;
+    if (rid === 0) continue;
     state.gameRoles[rid] = {
       roleId: rid,
       roleName: settings.ai_name,
@@ -163,10 +163,10 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
       bodyPart: settings.body_part,
       live2d: settings.live2d,
       character_folder: settings.character_folder,
-      emotion: '正常',
-      originalEmotion: '正常',
+      emotion: "正常",
+      originalEmotion: "正常",
       show: true,
-    }
+    };
   }
 
   // fallback：若 onstage_roles 中未包含主角（如旧版存档），从 character_settings 补充
@@ -189,90 +189,89 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
       bodyPart: characterInfo.body_part,
       live2d: characterInfo.live2d,
       character_folder: characterInfo.character_folder,
-      emotion: '正常',
-      originalEmotion: '正常',
+      emotion: "正常",
+      originalEmotion: "正常",
       show: true,
-    }
+    };
   }
 
-  state.presentRoleIds = gameInfo.onstage_roles_ids.length > 0
-    ? [...gameInfo.onstage_roles_ids]
-    : [charId]
-  state.mainRoleId = charId
-  state.currentInteractRoleId = gameInfo.current_interact_role_id ?? charId
+  state.presentRoleIds =
+    gameInfo.onstage_roles_ids.length > 0 ? [...gameInfo.onstage_roles_ids] : [charId];
+  state.mainRoleId = charId;
+  state.currentInteractRoleId = gameInfo.current_interact_role_id ?? charId;
 
-  const uiStore = useUIStore()
-  const settingsStore = useSettingsStore()
-  state.userName = characterInfo.user_name
-  state.userSubtitle = characterInfo.user_subtitle
+  const uiStore = useUIStore();
+  const settingsStore = useSettingsStore();
+  state.userName = characterInfo.user_name;
+  state.userSubtitle = characterInfo.user_subtitle;
 
-  uiStore.showCharacterTitle = characterInfo.ai_name
-  uiStore.showCharacterSubtitle = characterInfo.ai_subtitle
+  uiStore.showCharacterTitle = characterInfo.ai_name;
+  uiStore.showCharacterSubtitle = characterInfo.ai_subtitle;
 
-  if (gameInfo.background !== '') uiStore.setCurrentBackground(gameInfo.background)
-  if (gameInfo.background_effect !== '') uiStore.setBackgroundEffect(gameInfo.background_effect)
+  if (gameInfo.background !== "") uiStore.setCurrentBackground(gameInfo.background);
+  if (gameInfo.background_effect !== "") uiStore.setBackgroundEffect(gameInfo.background_effect);
 
   // 恢复背景音乐：用户上次手动选择优先于场景/剧本设定
-  if (gameInfo.last_bgm_track && gameInfo.last_bgm_track !== 'None') {
-    uiStore.currentBackgroundMusic = gameInfo.last_bgm_track
-  } else if (gameInfo.background_music !== '') {
-    uiStore.currentBackgroundMusic = gameInfo.background_music
+  if (gameInfo.last_bgm_track && gameInfo.last_bgm_track !== "None") {
+    uiStore.currentBackgroundMusic = gameInfo.last_bgm_track;
+  } else if (gameInfo.background_music !== "") {
+    uiStore.currentBackgroundMusic = gameInfo.background_music;
   }
   if (gameInfo.last_bgm_paused != null) {
-    uiStore.bgMusicPaused = gameInfo.last_bgm_paused
+    uiStore.bgMusicPaused = gameInfo.last_bgm_paused;
   }
   if (gameInfo.last_bgm_mode) {
-    uiStore.bgMusicMode = gameInfo.last_bgm_mode as 'loop-single' | 'loop-list' | 'random'
+    uiStore.bgMusicMode = gameInfo.last_bgm_mode as "loop-single" | "loop-list" | "random";
   }
 
   // 恢复环境音轨道（标记为暂停，避免启动时自动播放）
   if (gameInfo.last_ambient_tracks) {
     try {
-      const tracks = JSON.parse(gameInfo.last_ambient_tracks)
+      const tracks = JSON.parse(gameInfo.last_ambient_tracks);
       if (Array.isArray(tracks) && tracks.length > 0) {
-        uiStore.ambientTracks = tracks.map((t: any) => ({ ...t, paused: true }))
+        uiStore.ambientTracks = tracks.map((t: any) => ({ ...t, paused: true }));
       }
     } catch (e) {
-      console.warn('解析环境音轨道数据失败:', e)
+      console.warn("解析环境音轨道数据失败:", e);
     }
   }
 
   // 同步场景感知开关
-  settingsStore.setSceneAwarenessEnabled(gameInfo.scene_awareness_enabled)
+  settingsStore.setSceneAwarenessEnabled(gameInfo.scene_awareness_enabled);
 
   // 恢复场景状态
   if (gameInfo.current_scene) {
-    state.currentScene = gameInfo.current_scene
+    state.currentScene = gameInfo.current_scene;
   }
 
   if (gameInfo.lines && gameInfo.lines.length > 0) {
-    state.dialogHistory = convertInitLines(gameInfo.lines)
+    state.dialogHistory = convertInitLines(gameInfo.lines);
   } else {
-    state.dialogHistory = []
+    state.dialogHistory = [];
   }
 
-  state.initialized = true
+  state.initialized = true;
 }
 
 /** 将 Rust GameLineInit 转换为前端 GameMessage 列表 */
 export function convertInitLines(lines: GameLineInit[]): GameMessage[] {
-  const filtered = lines.filter((line) => line.attribute !== 'system' && line.attribute !== 'tool')
+  const filtered = lines.filter((line) => line.attribute !== "system" && line.attribute !== "tool");
 
   return filtered.map((line, index, array) => {
-    const filteredContent = line.content.replace(/\{[\s\S]*?\}/g, '').trim()
+    const filteredContent = line.content.replace(/\{[\s\S]*?\}/g, "").trim();
 
-    const isLast = index === array.length - 1
-    const nextLine = isLast ? null : array[index + 1]
-    let isFinal = false
-    if (line.attribute === 'assistant') {
-      if (isLast || nextLine?.attribute === 'user') {
-        isFinal = true
+    const isLast = index === array.length - 1;
+    const nextLine = isLast ? null : array[index + 1];
+    let isFinal = false;
+    if (line.attribute === "assistant") {
+      if (isLast || nextLine?.attribute === "user") {
+        isFinal = true;
       }
     }
 
     return {
-      type: (line.attribute === 'user' ? 'message' : 'reply') as 'message' | 'reply',
-      displayName: line.display_name || '',
+      type: (line.attribute === "user" ? "message" : "reply") as "message" | "reply",
+      displayName: line.display_name || "",
       content: filteredContent,
       emotion: line.predicted_emotion || undefined,
       audioFile: line.audio_file || undefined,
@@ -284,6 +283,6 @@ export function convertInitLines(lines: GameLineInit[]): GameMessage[] {
       thinking: line.thinking || undefined,
       ttsText: line.tts_content || undefined,
       senderRoleId: line.sender_role_id,
-    }
-  })
+    };
+  });
 }

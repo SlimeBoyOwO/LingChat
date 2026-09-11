@@ -105,7 +105,7 @@ fn evaluate_condition(
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0) as usize;
             game_status.chat_message_count() >= threshold
-        }
+        },
 
         "time_range" => {
             let start = condition
@@ -124,7 +124,7 @@ fn evaluate_condition(
             } else {
                 hour >= start || hour < end
             }
-        }
+        },
 
         "adventure_completed" => {
             let prereq = condition
@@ -139,7 +139,7 @@ fn evaluate_condition(
                 rt.block_on(AdventureManager::is_globally_completed(db, prereq))
             })
             .unwrap_or(false)
-        }
+        },
 
         "achievement_unlocked" => {
             let ach_id = condition
@@ -150,11 +150,11 @@ fn evaluate_condition(
                 return false;
             }
             achievement_mgr.is_unlocked(ach_id)
-        }
+        },
 
         _ => {
             tracing::warn!("未知的冒险解锁条件类型: {}", cond_type);
             false
-        }
+        },
     }
 }

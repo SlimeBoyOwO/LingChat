@@ -4,18 +4,27 @@
 // .gitignore 决定哪些是默认资源、哪些是用户自定义内容。
 // third_party/ 作为例外始终包含（运行时需要的模型文件）。
 
-import { cmd } from '7zip-min';
-import { existsSync, mkdirSync, copyFileSync, rmSync, readdirSync, statSync, readFileSync, writeFileSync } from 'fs';
-import { createHash } from 'crypto';
-import { join, dirname, sep } from 'path';
-import { fileURLToPath } from 'url';
+import { cmd } from "7zip-min";
+import {
+  existsSync,
+  mkdirSync,
+  copyFileSync,
+  rmSync,
+  readdirSync,
+  statSync,
+  readFileSync,
+  writeFileSync,
+} from "fs";
+import { createHash } from "crypto";
+import { join, dirname, sep } from "path";
+import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = join(__dirname, '..');
-const srcTauri = join(projectRoot, 'src-tauri');
+const projectRoot = join(__dirname, "..");
+const srcTauri = join(projectRoot, "src-tauri");
 
 // 读取压缩等级（从命令行参数传入）
-const level = parseInt(process.argv[2] || '5');
+const level = parseInt(process.argv[2] || "5");
 if (level < 0 || level > 9 || isNaN(level)) {
   console.error(`Invalid compression level: ${level}. Must be 0-9.`);
   process.exit(1);
@@ -24,10 +33,10 @@ if (level < 0 || level > 9 || isNaN(level)) {
 console.log(`7z compression level: -mx=${level} (LZMA2)`);
 
 // 临时构建目录
-const buildDir = join(srcTauri, '.bundled_build');
+const buildDir = join(srcTauri, ".bundled_build");
 
 // Android assets 目标目录
-const androidAssetsDir = join(srcTauri, 'gen', 'android', 'app', 'src', 'main', 'assets', 'data');
+const androidAssetsDir = join(srcTauri, "gen", "android", "app", "src", "main", "assets", "data");
 
 // 清理
 if (existsSync(buildDir)) {
@@ -38,23 +47,23 @@ mkdirSync(buildDir, { recursive: true });
 // --- 复制 git 追踪的 data/ 文件 ---
 let count = 0;
 try {
-  const { execSync } = await import('child_process');
-  const output = execSync('git ls-files -z data/', {
+  const { execSync } = await import("child_process");
+  const output = execSync("git ls-files -z data/", {
     cwd: projectRoot,
-    encoding: 'buffer',
+    encoding: "buffer",
     env: { ...process.env, GIT_CONFIG_PARAMETERS: "'core.quotepath=false'" },
   });
 
-  const files = output.toString('utf8').split('\0').filter(Boolean);
+  const files = output.toString("utf8").split("\0").filter(Boolean);
   for (const relative of files) {
     const src = join(projectRoot, relative);
     // 跳过 model.onnx.data (391MB 训练数据)
-    if (relative.includes('model.onnx.data')) {
+    if (relative.includes("model.onnx.data")) {
       console.log(`  Skipping ${relative}`);
       continue;
     }
     // 去掉 data/ 前缀
-    const rel = relative.replace(/^data[\\/]/, '');
+    const rel = relative.replace(/^data[\\/]/, "");
     const dst = join(buildDir, rel);
     mkdirSync(dirname(dst), { recursive: true });
     copyFileSync(src, dst);
@@ -62,35 +71,35 @@ try {
   }
   console.log(`Bundled ${count} git-tracked files from data/`);
 } catch (e) {
-  console.warn('git ls-files failed, skipping data bundle:', e.message);
+  console.warn("git ls-files failed, skipping data bundle:", e.message);
 }
 
 // --- 例外：始终包含 data/third_party/ ---
-const thirdParty = join(projectRoot, 'data', 'third_party');
+const thirdParty = join(projectRoot, "data", "third_party");
 if (existsSync(thirdParty)) {
-  copyDirRecursive(thirdParty, join(buildDir, 'third_party'));
-  console.log('Bundled data/third_party/ (exception)');
+  copyDirRecursive(thirdParty, join(buildDir, "third_party"));
+  console.log("Bundled data/third_party/ (exception)");
 }
 
 // --- 生成 data_manifest.json（文件清单 + SHA256） ---
 {
   const manifest = { data_version: 1, files: {} };
-  walkDir(buildDir, '', manifest);
-  const manifestPath = join(buildDir, 'data_manifest.json');
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+  walkDir(buildDir, "", manifest);
+  const manifestPath = join(buildDir, "data_manifest.json");
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
   console.log(`Generated data_manifest.json with ${Object.keys(manifest.files).length} entries`);
 }
 
 // --- 打包为 data.7z（使用 7zip-min，自动携带平台 7z 二进制） ---
-const archivePath = join(buildDir, 'data.7z');
+const archivePath = join(buildDir, "data.7z");
 try {
   const origDir = process.cwd();
   process.chdir(buildDir);
-  await cmd(['a', `-mx=${level}`, '-m0=LZMA2', 'data.7z', '.']);
+  await cmd(["a", `-mx=${level}`, "-m0=LZMA2", "data.7z", "."]);
   process.chdir(origDir);
-  console.log('Created data.7z');
+  console.log("Created data.7z");
 } catch (e) {
-  console.error('Failed to create data.7z:', e.message);
+  console.error("Failed to create data.7z:", e.message);
   process.exit(1);
 }
 
@@ -100,7 +109,7 @@ if (existsSync(androidAssetsDir)) {
   rmSync(androidAssetsDir, { recursive: true });
 }
 mkdirSync(androidAssetsDir, { recursive: true });
-copyFileSync(archivePath, join(androidAssetsDir, 'data.7z'));
+copyFileSync(archivePath, join(androidAssetsDir, "data.7z"));
 console.log(`Copied data.7z to ${androidAssetsDir}`);
 
 // --- iOS：部署 data.7z 到 Xcode 工程资源目录 ---
@@ -108,9 +117,9 @@ console.log(`Copied data.7z to ${androidAssetsDir}`);
 // resources build phase，构建时整体拷入 app bundle 根目录，
 // 因此 gen/apple/assets/data/data.7z → <bundle>/data/data.7z，
 // 与 Rust 侧 seed_via_fs_plugin 的读取路径 {resource_dir}/data/data.7z 一致。
-const iosGenApple = join(srcTauri, 'gen', 'apple');
+const iosGenApple = join(srcTauri, "gen", "apple");
 if (existsSync(iosGenApple)) {
-  const iosDataDir = join(iosGenApple, 'assets', 'data');
+  const iosDataDir = join(iosGenApple, "assets", "data");
   // 与 Android 分支一致：先清空再写入，避免旧构建残留
   // （如曾误放入 gen/apple/assets/data/ 的 .official/third_party 真实文件）
   // 被 folder reference 整体打进 iOS bundle，导致包体膨胀与资源重复。
@@ -118,17 +127,17 @@ if (existsSync(iosGenApple)) {
     rmSync(iosDataDir, { recursive: true });
   }
   mkdirSync(iosDataDir, { recursive: true });
-  copyFileSync(archivePath, join(iosDataDir, 'data.7z'));
+  copyFileSync(archivePath, join(iosDataDir, "data.7z"));
   console.log(`Copied data.7z to ${iosDataDir}`);
 } else {
   console.log(
-    '⚠ gen/apple 不存在，跳过 iOS data.7z 部署（请先在 macOS 上执行 pnpm ios:init 生成 Xcode 工程）'
+    "⚠ gen/apple 不存在，跳过 iOS data.7z 部署（请先在 macOS 上执行 pnpm ios:init 生成 Xcode 工程）"
   );
 }
 
 // --- 清理临时目录 ---
 rmSync(buildDir, { recursive: true });
-console.log('Cleaned up build directory');
+console.log("Cleaned up build directory");
 
 // --- 辅助函数 ---
 
@@ -154,9 +163,9 @@ function walkDir(base, relDir, manifest) {
       walkDir(base, relPath, manifest);
     } else {
       // 不在清单中列 data.7z 自身
-      if (relPath === 'data.7z') continue;
+      if (relPath === "data.7z") continue;
       const content = readFileSync(fullPath);
-      const sha256 = createHash('sha256').update(content).digest('hex');
+      const sha256 = createHash("sha256").update(content).digest("hex");
       manifest.files[relPath] = { sha256, size: content.length };
     }
   }

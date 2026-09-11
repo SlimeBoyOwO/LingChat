@@ -1,9 +1,9 @@
 <template>
-  <div class="flex flex-col h-dvh p-3 box-border bg-[#1a1b1e]">
+  <div class="box-border flex h-dvh flex-col bg-[#1a1b1e] p-3">
     <LogConsole standalone />
   </div>
 </template>
 
 <script setup lang="ts">
-import LogConsole from '../settings/pages/LogConsole.vue'
+  import LogConsole from "../settings/pages/LogConsole.vue";
 </script>

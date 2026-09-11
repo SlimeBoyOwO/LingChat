@@ -22,11 +22,17 @@ use std::sync::Arc;
 /// ```
 pub fn build_tls_config() -> Result<rustls::ClientConfig, String> {
     let mut roots = rustls::RootCertStore::empty();
-    roots.roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    roots
+        .roots
+        .extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     rustls::ClientConfig::builder_with_provider(Arc::new(
         rustls::crypto::aws_lc_rs::default_provider(),
     ))
     .with_safe_default_protocol_versions()
     .map_err(|e| format!("rustls 协议版本配置失败: {e}"))
-    .map(|builder| builder.with_root_certificates(Arc::new(roots)).with_no_client_auth())
+    .map(|builder| {
+        builder
+            .with_root_certificates(Arc::new(roots))
+            .with_no_client_auth()
+    })
 }

@@ -7,11 +7,11 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use reqwest::multipart::Form;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tokio::sync::Mutex;
 
 use crate::ai_service::tts::adapters::http_client;
@@ -57,7 +57,7 @@ fn normalize_emotion(emo: &str) -> Option<&'static str> {
     match emo.trim().to_ascii_lowercase().as_str() {
         "happy" | "happiness" | "joy" | "joyful" | "\u{9ad8}\u{5174}" | "\u{5f00}\u{5fc3}" => {
             Some("happy")
-        }
+        },
         "excited" | "excitement" | "\u{5174}\u{594b}" => Some("excited"),
         "sad" | "sadness" | "depressed" | "\u{60b2}\u{4f24}" | "\u{4f24}\u{5fc3}" => Some("sad"),
         "angry" | "anger" | "\u{751f}\u{6c14}" => Some("angry"),
@@ -71,7 +71,7 @@ fn normalize_emotion(emo: &str) -> Option<&'static str> {
         "worried" | "\u{62c5}\u{5fc3}" => Some("worried"),
         "embarrassed" | "\u{5c34}\u{5c2c}" | "\u{96be}\u{4e3a}\u{60c5}" | "\u{7f9e}\u{803b}" => {
             Some("embarrassed")
-        }
+        },
         "confident" | "\u{81ea}\u{4fe1}" => Some("confident"),
         "shy" | "\u{5bb3}\u{7f9e}" => Some("shy"),
         "serious" | "\u{8ba4}\u{771f}" | "\u{6b63}\u{7ecf}" => Some("serious"),

@@ -6,9 +6,9 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tauri::Manager;
 
+use crate::AppState;
 use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
 use crate::ai_service::types::ToolDefinition;
-use crate::AppState;
 
 use super::python_backend;
 use super::types::ToolSpec;
@@ -34,7 +34,6 @@ impl PluginTool {
             spec,
         }
     }
-
 }
 
 #[async_trait]

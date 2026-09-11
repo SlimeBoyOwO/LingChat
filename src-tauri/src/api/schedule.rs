@@ -1,5 +1,5 @@
-use crate::ai_service::proactive_system::types::UserScheduleSettings;
 use crate::AppState;
+use crate::ai_service::proactive_system::types::UserScheduleSettings;
 use tauri::{AppHandle, Manager};
 
 #[tauri::command]

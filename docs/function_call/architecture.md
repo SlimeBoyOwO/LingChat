@@ -30,14 +30,14 @@ LLM 层       LlmClient → LlmProvider
 
 **各文件职责：**
 
-| 文件 | 职责 |
-|---|---|
-| `tools/mod.rs` | 模块入口；`built_in_registry()`：注册内置工具 → 加载/创建权限配置 → 把角色初始化进 `default` 角色组 |
-| `tools/registry.rs` | `ToolRegistry`：`register`（重名拒绝）/ `get` / `definitions` / `definitions_for_allowed` / `definitions_for` / `allowed_tools` |
-| `tools/executor.rs` | `Tool` trait、`ToolContext`、`ToolExecutor` |
-| `tools/tool_loop.rs` | `stream_with_tool_loop` 工具闭环 |
-| `tools/permissions.rs` | `ToolPermissionConfig` 权限矩阵 |
-| `tools/clock.rs` | 内置示例工具 `get_current_time` |
+| 文件                   | 职责                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `tools/mod.rs`         | 模块入口；`built_in_registry()`：注册内置工具 → 加载/创建权限配置 → 把角色初始化进 `default` 角色组                             |
+| `tools/registry.rs`    | `ToolRegistry`：`register`（重名拒绝）/ `get` / `definitions` / `definitions_for_allowed` / `definitions_for` / `allowed_tools` |
+| `tools/executor.rs`    | `Tool` trait、`ToolContext`、`ToolExecutor`                                                                                     |
+| `tools/tool_loop.rs`   | `stream_with_tool_loop` 工具闭环                                                                                                |
+| `tools/permissions.rs` | `ToolPermissionConfig` 权限矩阵                                                                                                 |
+| `tools/clock.rs`       | 内置示例工具 `get_current_time`                                                                                                 |
 
 ## 2. 核心类型（types.rs / executor.rs）
 
@@ -207,10 +207,10 @@ async fn complete_with_tools(&self, http, messages, tools, tool_choice)
 
 ### 当前两个 Provider 的差异
 
-| Provider | 流式工具 | 说明 |
-|---|---|---|
+| Provider         | 流式工具                               | 说明                                                                                                                                                                          |
+| ---------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `genai_provider` | ✅ `supports_streaming_tools() = true` | `build_chat_options` 里 `with_capture_tool_calls(true)`，流结束后 `end.captured_into_tool_calls()` → `yield LlmChunk::ToolCalls`；`tool_choice` 映射 `auto / none / required` |
-| `kimi_code` | ❌（默认 false） | 聊天路径不参与工具循环；实现非流式 `complete_with_tools`，按 Anthropic `tool_use` / `tool_result` 块格式收发，**专供 God Agent** 决定「下一句话谁说」 |
+| `kimi_code`      | ❌（默认 false）                       | 聊天路径不参与工具循环；实现非流式 `complete_with_tools`，按 Anthropic `tool_use` / `tool_result` 块格式收发，**专供 God Agent** 决定「下一句话谁说」                         |
 
 > 也就是说：**聊天 / 剧本 / 主动对话的工具循环只在 genai 系 Provider 下生效**；Kimi Code 虽不能流式工具，但其 God Agent 的非流式工具早已独立工作。
 
@@ -236,13 +236,13 @@ pub struct GeneratorDeps {
 
 每个触发点构造 deps 时各填各的 source：
 
-| 触发点 | 文件 | source |
-|---|---|---|
-| 玩家发消息 | `api/chat.rs:86` | `UserChat` |
-| 主动对话 | `api/chat.rs:339` / `proactive_system/mod.rs:247` | `Proactive` |
-| 剧本 AI 对话事件 | `script_engine/events/ai_dialogue_event.rs:95` | `ScriptAiDialogue` |
+| 触发点           | 文件                                              | source               |
+| ---------------- | ------------------------------------------------- | -------------------- |
+| 玩家发消息       | `api/chat.rs:86`                                  | `UserChat`           |
+| 主动对话         | `api/chat.rs:339` / `proactive_system/mod.rs:247` | `Proactive`          |
+| 剧本 AI 对话事件 | `script_engine/events/ai_dialogue_event.rs:95`    | `ScriptAiDialogue`   |
 | 剧本自由对话事件 | `script_engine/events/free_dialogue_event.rs:121` | `ScriptFreeDialogue` |
-| 入场问候 | `api/game.rs:908` | `EntryGreeting` |
+| 入场问候         | `api/game.rs:908`                                 | `EntryGreeting`      |
 
 （`4cc9b1b0 fix：补全入场问候工具注册` 就是给入场问候补上 `tool_registry` 的提交 —— 该触发点早期漏传导致编译失败。）
 
@@ -294,12 +294,12 @@ async fn run_pipeline(&self, context: Vec<LlmMessage>, ...) -> Result<String> {
 
 PR #523 引入的是「通用聊天工具」路径；God Agent 的「选说话人」是**另一条独立的专用路径**：
 
-| | 通用聊天工具（PR #523） | God Agent 选说话人（既有） |
-|---|---|---|
-| 注册 | `ToolRegistry` | God Agent 私有 `tools::select_next_speaker_tool()` |
-| 入口 | `complete_stream_with_tools`（流式循环） | `complete_with_tools`（非流式单次） |
-| 权限 | 「场景组 × 角色组」矩阵 | 无（硬编码） |
-| 结果去向 | 台词表 + 记忆 | 仅用于选说话者，不进台词表 |
+|          | 通用聊天工具（PR #523）                  | God Agent 选说话人（既有）                         |
+| -------- | ---------------------------------------- | -------------------------------------------------- |
+| 注册     | `ToolRegistry`                           | God Agent 私有 `tools::select_next_speaker_tool()` |
+| 入口     | `complete_stream_with_tools`（流式循环） | `complete_with_tools`（非流式单次）                |
+| 权限     | 「场景组 × 角色组」矩阵                  | 无（硬编码）                                       |
+| 结果去向 | 台词表 + 记忆                            | 仅用于选说话者，不进台词表                         |
 
 ## 10. 设计取舍
 

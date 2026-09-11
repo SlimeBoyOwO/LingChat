@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use ort::{session::Session, value::Tensor};
 
 const MAX_SEQ_LEN: usize = 128;
@@ -181,7 +181,7 @@ impl EmotionClassifier {
             Err(e) => {
                 tracing::error!("无法获取 session 锁: {e}");
                 return EmotionPrediction::passthrough(text, false);
-            }
+            },
         };
 
         match self.run_inference(&mut session, text, threshold) {
@@ -189,7 +189,7 @@ impl EmotionClassifier {
             Err(e) => {
                 tracing::error!("情绪预测错误: {e}");
                 EmotionPrediction::passthrough(text, false)
-            }
+            },
         }
     }
 

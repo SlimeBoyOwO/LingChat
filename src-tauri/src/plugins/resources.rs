@@ -12,10 +12,8 @@ use serde::Serialize;
 
 use super::types::{PluginRecord, ResourceKind};
 
-pub const IMAGE_EXTENSIONS: [&str; 8] =
-    ["png", "jpg", "jpeg", "webp", "bmp", "svg", "tif", "gif"];
-pub const AUDIO_EXTENSIONS: [&str; 7] =
-    ["mp3", "wav", "flac", "webm", "weba", "ogg", "oga"];
+pub const IMAGE_EXTENSIONS: [&str; 8] = ["png", "jpg", "jpeg", "webp", "bmp", "svg", "tif", "gif"];
+pub const AUDIO_EXTENSIONS: [&str; 7] = ["mp3", "wav", "flac", "webm", "weba", "ogg", "oga"];
 
 /// 单条插件资源条目（前端资源管理列表 & 各内容列表合并共用）。
 #[derive(Debug, Clone, Serialize)]
@@ -178,9 +176,8 @@ fn scan_media_files(root: &Path, kind: ResourceKind, audio: bool) -> Vec<PluginR
 fn scan_scripts(root: &Path) -> Vec<PluginResourceEntry> {
     let mut out = Vec::new();
     for dir in script_package_dirs(root) {
-        match crate::ai_service::game_system::script_engine::ScriptManager::read_script_config(
-            &dir,
-        ) {
+        match crate::ai_service::game_system::script_engine::ScriptManager::read_script_config(&dir)
+        {
             Ok(status) => out.push(PluginResourceEntry {
                 kind: ResourceKind::Scripts,
                 key: status.name.clone(),
@@ -192,7 +189,7 @@ fn scan_scripts(root: &Path) -> Vec<PluginResourceEntry> {
             }),
             Err(e) => {
                 tracing::warn!("[PluginResources] 跳过无效剧本目录 {:?}: {}", dir, e);
-            }
+            },
         }
     }
     out.sort_by(|a, b| a.key.cmp(&b.key));
@@ -227,7 +224,7 @@ pub fn script_package_dirs(scripts_root: &Path) -> Vec<PathBuf> {
                         }
                     }
                 }
-            }
+            },
             "standalone" => {
                 if let Ok(scripts) = fs::read_dir(&path) {
                     for s in scripts.flatten() {
@@ -236,12 +233,12 @@ pub fn script_package_dirs(scripts_root: &Path) -> Vec<PathBuf> {
                         }
                     }
                 }
-            }
+            },
             _ => {
                 if path.join("story_config.yaml").exists() {
                     out.push(path);
                 }
-            }
+            },
         }
     }
     out
@@ -292,16 +289,14 @@ pub fn game_file_names(dir: &Path, audio: bool) -> HashSet<String> {
 
 /// 递归复制目录（保留结构）。
 pub fn copy_dir_all(source: &Path, target: &Path) -> anyhow::Result<()> {
-    fs::create_dir_all(target)
-        .map_err(|e| anyhow::anyhow!("创建目录 {:?} 失败: {e}", target))?;
+    fs::create_dir_all(target).map_err(|e| anyhow::anyhow!("创建目录 {:?} 失败: {e}", target))?;
     for entry in fs::read_dir(source)?.flatten() {
         let dest = target.join(entry.file_name());
         if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
             copy_dir_all(&entry.path(), &dest)?;
         } else {
-            fs::copy(entry.path(), &dest).map_err(|e| {
-                anyhow::anyhow!("复制 {:?} 失败: {e}", entry.path())
-            })?;
+            fs::copy(entry.path(), &dest)
+                .map_err(|e| anyhow::anyhow!("复制 {:?} 失败: {e}", entry.path()))?;
         }
     }
     Ok(())

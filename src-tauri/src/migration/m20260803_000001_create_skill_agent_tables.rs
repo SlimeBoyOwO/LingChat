@@ -21,8 +21,16 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(SkillAgentConversation::Title).string_len(255))
                     .col(ColumnDef::new(SkillAgentConversation::ScriptKey).string_len(255))
-                    .col(ColumnDef::new(SkillAgentConversation::CreatedAt).date_time().not_null())
-                    .col(ColumnDef::new(SkillAgentConversation::UpdatedAt).date_time().not_null())
+                    .col(
+                        ColumnDef::new(SkillAgentConversation::CreatedAt)
+                            .date_time()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SkillAgentConversation::UpdatedAt)
+                            .date_time()
+                            .not_null(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -40,12 +48,24 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(SkillAgentMessage::ConversationId).integer().not_null())
-                    .col(ColumnDef::new(SkillAgentMessage::Role).string_len(32).not_null())
+                    .col(
+                        ColumnDef::new(SkillAgentMessage::ConversationId)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SkillAgentMessage::Role)
+                            .string_len(32)
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(SkillAgentMessage::Content).text())
                     .col(ColumnDef::new(SkillAgentMessage::ToolCalls).text())
                     .col(ColumnDef::new(SkillAgentMessage::ToolCallId).string_len(255))
-                    .col(ColumnDef::new(SkillAgentMessage::CreatedAt).date_time().not_null())
+                    .col(
+                        ColumnDef::new(SkillAgentMessage::CreatedAt)
+                            .date_time()
+                            .not_null(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -70,7 +90,11 @@ impl MigrationTrait for Migration {
             .drop_table(Table::drop().table(SkillAgentMessage::Table).to_owned())
             .await?;
         manager
-            .drop_table(Table::drop().table(SkillAgentConversation::Table).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(SkillAgentConversation::Table)
+                    .to_owned(),
+            )
             .await?;
         Ok(())
     }

@@ -11,7 +11,7 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 use super::engine::LocalTtsEngine;
 use super::{
-    load_configured_enabled, LocalTtsPaths, LocalTtsRuntime, LocalTtsState, LocalTtsSwitch,
+    LocalTtsPaths, LocalTtsRuntime, LocalTtsState, LocalTtsSwitch, load_configured_enabled,
 };
 
 /// 本地 TTS 启动装配产物。`runtime` 注入主服务，`engine/paths/switch`
@@ -47,7 +47,7 @@ pub fn bootstrap(app: &App) -> Result<LocalTtsBootstrap, String> {
                 .kind(MessageDialogKind::Error)
                 .show(|_| {});
             false
-        }
+        },
     };
 
     let state = LocalTtsState::new(tts_paths);
@@ -115,19 +115,19 @@ pub fn spawn_preload(app: &AppHandle, local: &LocalTtsBootstrap) {
             Ok(Ok(())) => {
                 tracing::info!(target: "tts_local", "deberta preloaded in background");
                 let _ = preload.emit("tts://engine-ready", ());
-            }
+            },
             Ok(Err(e)) => {
                 tracing::warn!(
                     target: "tts_local",
                     "deberta preload failed (first synthesize will retry): {e}"
                 );
-            }
+            },
             Err(_) => {
                 tracing::warn!(
                     target: "tts_local",
                     "deberta preload timed out after 15 seconds (first synthesize will retry)"
                 );
-            }
+            },
         }
     });
 }

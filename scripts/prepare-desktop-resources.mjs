@@ -13,7 +13,17 @@
 
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, copyFileSync, rmSync, renameSync, readdirSync, statSync, writeFileSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  copyFileSync,
+  rmSync,
+  renameSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+  readFileSync,
+} from "node:fs";
 import { join, dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,7 +39,7 @@ if (existsSync(stagingDir)) {
     rmSync(stagingDir, { recursive: true });
   } catch {
     // safe-delete may block bulk deletion; rename old dir as fallback
-    renameSync(stagingDir, stagingDir + '_old_' + Date.now());
+    renameSync(stagingDir, stagingDir + "_old_" + Date.now());
   }
 }
 mkdirSync(stagingDir, { recursive: true });
@@ -37,7 +47,7 @@ mkdirSync(stagingDir, { recursive: true });
 // 移动端（android/ios）：默认资源全部走 data.7z（见 prepare-bundled-resources.mjs），
 // 桌面端 .official 资源不进入移动端包体。但仍需生成空占位目录与空 manifest，
 // 否则 tauri-cli 的 inject_resources 在移动端构建时因 bundle.resources 源缺失而报错。
-const isMobile = ['android', 'ios'].includes(process.env.TAURI_ENV_PLATFORM);
+const isMobile = ["android", "ios"].includes(process.env.TAURI_ENV_PLATFORM);
 
 // ─── 获取 git 跟踪的 data/ 文件 ─────────────────────────────
 
@@ -182,7 +192,7 @@ manifest.files = sortedFiles;
 const manifestPath = join(stagingDir, "data_manifest.json");
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
 console.log(
-  `📄 已生成 data_manifest.json (data_version=${dataVersion}, ${Object.keys(manifest.files).length} 个文件)`,
+  `📄 已生成 data_manifest.json (data_version=${dataVersion}, ${Object.keys(manifest.files).length} 个文件)`
 );
 
 // 同时写入项目根目录（供 generate-data-manifest 兼容）

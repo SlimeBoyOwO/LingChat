@@ -1,6 +1,9 @@
 [profile.dev]
-debug = false
+debug = 1
 strip = "debuginfo"
+split-debuginfo = "unpacked"
+lto = false
+opt-level = 0
 
 [profile.release]
 lto = "thin"

@@ -35,7 +35,8 @@ pub async fn get_ambient_list(app: AppHandle) -> Result<Vec<AmbientItemInfo>, St
     let mut items: Vec<AmbientItemInfo> = Vec::new();
 
     if ambient_dir.exists() {
-        let entries = fs::read_dir(&ambient_dir).map_err(|e| format!("读取环境音目录失败: {}", e))?;
+        let entries =
+            fs::read_dir(&ambient_dir).map_err(|e| format!("读取环境音目录失败: {}", e))?;
 
         for entry in entries.flatten() {
             let path = entry.path();

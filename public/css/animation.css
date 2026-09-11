@@ -63,7 +63,9 @@
 
 /* 菜单内容切换动画 */
 .menu-body {
-  transition: opacity 0.3s ease, visibility 0.3s ease;
+  transition:
+    opacity 0.3s ease,
+    visibility 0.3s ease;
 }
 
 .menu-body.show {

@@ -1,31 +1,31 @@
-import { convertFileSrc } from '@tauri-apps/api/core'
-import type { IEventProcessor } from '../event-processor'
-import { WebSocketMessageTypes, type ScriptPresentPicEvent } from '../../../types'
-import { useGameStore } from '../../../stores/modules/game'
-import { useUIStore } from '../../../stores/modules/ui/ui'
+import { convertFileSrc } from "@tauri-apps/api/core";
+import type { IEventProcessor } from "../event-processor";
+import { WebSocketMessageTypes, type ScriptPresentPicEvent } from "../../../types";
+import { useGameStore } from "../../../stores/modules/game";
+import { useUIStore } from "../../../stores/modules/ui/ui";
 
 export default class PresentPicProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {
-    return eventType === WebSocketMessageTypes.SCRIPT_PRESENT_PIC
+    return eventType === WebSocketMessageTypes.SCRIPT_PRESENT_PIC;
   }
 
   async processEvent(event: ScriptPresentPicEvent): Promise<void> {
-    const gameStore = useGameStore()
-    const uiStore = useUIStore()
+    const gameStore = useGameStore();
+    const uiStore = useUIStore();
 
-    gameStore.currentStatus = 'presenting'
+    gameStore.currentStatus = "presenting";
 
-    let url = ''
+    let url = "";
 
     if (event.imagePath) {
       try {
-        url = convertFileSrc(event.imagePath)
+        url = convertFileSrc(event.imagePath);
       } catch {
-        url = ''
+        url = "";
       }
     }
 
-    uiStore.currentPresentPic = url
-    uiStore.currentPresentPicScale = event.scale
+    uiStore.currentPresentPic = url;
+    uiStore.currentPresentPicScale = event.scale;
   }
 }

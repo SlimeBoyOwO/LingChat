@@ -84,16 +84,13 @@ pub fn apply_selected_files(
             std::fs::create_dir_all(parent)?;
         }
 
-        std::fs::copy(&src, &tmp)
-            .map_err(|e| anyhow::anyhow!("复制 {} 失败: {}", path, e))?;
+        std::fs::copy(&src, &tmp).map_err(|e| anyhow::anyhow!("复制 {} 失败: {}", path, e))?;
         std::fs::rename(&tmp, &dst)
             .map_err(|e| anyhow::anyhow!("原子写入 {} 失败: {}", path, e))?;
 
         // 更新本地 manifest 条目
         if let Some(entry) = official_manifest.files.get(path) {
-            local_manifest
-                .files
-                .insert(path.clone(), entry.clone());
+            local_manifest.files.insert(path.clone(), entry.clone());
         }
 
         synced += 1;

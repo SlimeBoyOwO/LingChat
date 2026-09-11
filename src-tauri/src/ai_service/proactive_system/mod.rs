@@ -14,6 +14,7 @@ use tauri::AppHandle;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 
+use crate::ChatComponents;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
@@ -23,7 +24,6 @@ use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
-use crate::ChatComponents;
 
 use activity_monitor::UserActivityMonitor;
 use config::ProactiveConfig;
@@ -182,17 +182,17 @@ impl ProactiveSystem {
                     Ok(parsed) => {
                         let mut settings_lock = self.settings.write().await;
                         *settings_lock = parsed;
-                    }
+                    },
                     Err(e) => {
                         tracing::error!(
                             "[ProactiveSystem] Failed to parse schedules.json: {:?}",
                             e
                         );
-                    }
+                    },
                 },
                 Err(e) => {
                     tracing::error!("[ProactiveSystem] Failed to read schedules.json: {:?}", e);
-                }
+                },
             }
         } else {
             tracing::warn!(

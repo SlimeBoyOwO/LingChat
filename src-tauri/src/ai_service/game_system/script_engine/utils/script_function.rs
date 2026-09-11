@@ -2,7 +2,7 @@
 //!
 //! Replaces Python `ScriptFunction` static methods and parts of `Function` YAML/string utilities.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use rand::Rng;
 use regex::Regex;
 use sea_orm::DatabaseConnection;
@@ -300,7 +300,7 @@ pub async fn handle_actions(
                     ..Default::default()
                 };
                 game_status.add_line(db, line).await?;
-            }
+            },
             "set_var" => {
                 let content = action.get("content").and_then(|v| v.as_str()).unwrap_or("");
                 if let Ok((op, var_name, value)) = parse_variable_action(content) {
@@ -308,10 +308,10 @@ pub async fn handle_actions(
                     let result = apply_variable_action(op, current.as_ref(), value);
                     script_status.set_variable(var_name, result);
                 }
-            }
+            },
             other => {
                 tracing::warn!("未知的选项动作类型: {}", other);
-            }
+            },
         }
     }
     Ok(())

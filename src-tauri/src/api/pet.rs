@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use tauri::AppHandle;
 #[cfg(desktop)]
 use tauri::LogicalSize;
-use tauri::AppHandle;
 #[cfg(desktop)]
 use tauri::Manager;
 

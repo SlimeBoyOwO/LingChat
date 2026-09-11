@@ -10,14 +10,14 @@
 //! - Python 里还会调用一个 `num_end > 0 && buffer[num_end]=='】'` 的数字拆分分支，
 //!   用于拦截 `【1】` 之类非情绪 tag 的起始符；这里等价处理（仍按 `【...】` 捕获）。
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use futures_util::StreamExt;
 use tauri::AppHandle;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 
 use crate::ai_service::llm::{ChunkStream, LlmChunk};
 use crate::ai_service::message_system::events;
@@ -168,7 +168,7 @@ impl StreamProducer {
                             }
                         }
                     }
-                }
+                },
                 LlmChunk::Reasoning(text) => {
                     // 思考链内容：累积进共享缓冲（供 consumer 挂载到台词行），
                     // 并实时统计字数通知前端，但不加入正式回复。
@@ -185,16 +185,16 @@ impl StreamProducer {
                         drop(buf);
                         events::emit_thinking_progress(&self.app, thinking_length);
                     }
-                }
+                },
                 LlmChunk::ToolCalls(_) => {
                     return Err(anyhow::anyhow!("工具调用片段不应进入正式回复流"));
-                }
+                },
                 LlmChunk::ToolCallProgress { .. } => {
                     // 参数生成进度：不进正文，由 tool_loop 直接转发为前端事件
-                }
+                },
                 LlmChunk::StreamEnd { .. } => {
                     // 终止信号：主对话流忽略（截断检测仅供剧本导师等工具闭环消费）。
-                }
+                },
             }
         }
 

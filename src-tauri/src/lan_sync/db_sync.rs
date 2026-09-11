@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DatabaseBackend, EntityTrait, Statement,
+    ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, EntityTrait, Statement,
     TransactionTrait,
 };
 use serde_json::Value;
@@ -85,11 +85,8 @@ pub async fn export_all_records(data_dir: &Path) -> Result<DbRecords, String> {
         export_table::<running_script::Entity, running_script::Model>(&db, "running_script")
             .await?;
     let adventure_unlocks =
-        export_table::<adventure_unlock::Entity, adventure_unlock::Model>(
-            &db,
-            "adventure_unlock",
-        )
-        .await?;
+        export_table::<adventure_unlock::Entity, adventure_unlock::Model>(&db, "adventure_unlock")
+            .await?;
     let lines = export_table::<line::Entity, line::Model>(&db, "line").await?;
     let memory_banks =
         export_table::<memory_bank::Entity, memory_bank::Model>(&db, "memory_bank").await?;
@@ -131,8 +128,7 @@ where
 
     rows.into_iter()
         .map(|model| {
-            serde_json::to_value(&model)
-                .map_err(|e| format!("序列化表 {} 的行失败: {e}", name))
+            serde_json::to_value(&model).map_err(|e| format!("序列化表 {} 的行失败: {e}", name))
         })
         .collect()
 }
@@ -153,12 +149,11 @@ fn read_device_id(data_dir: &Path) -> Option<String> {
 /// 将数据库记录暂存到 `.lan_sync_staging/db_records.json`。
 pub fn stage_db_records(data_dir: &Path, records: &DbRecords) -> Result<(), String> {
     let staging = staging_dir(data_dir);
-    std::fs::create_dir_all(&staging)
-        .map_err(|e| format!("创建暂存目录失败: {e}"))?;
+    std::fs::create_dir_all(&staging).map_err(|e| format!("创建暂存目录失败: {e}"))?;
 
     let path = staging.join(DB_RECORDS_FILE);
-    let json = serde_json::to_string_pretty(records)
-        .map_err(|e| format!("序列化 DB 记录失败: {e}"))?;
+    let json =
+        serde_json::to_string_pretty(records).map_err(|e| format!("序列化 DB 记录失败: {e}"))?;
     std::fs::write(&path, json).map_err(|e| format!("写入暂存 DB 记录失败: {e}"))?;
 
     info!("数据库记录已暂存: {:?}", path);
@@ -177,12 +172,12 @@ pub fn load_staged_db_records(data_dir: &Path) -> Option<DbRecords> {
             Err(e) => {
                 warn!("解析暂存 DB 记录失败: {e}");
                 None
-            }
+            },
         },
         Err(e) => {
             warn!("读取暂存 DB 记录失败: {e}");
             None
-        }
+        },
     }
 }
 
@@ -208,10 +203,7 @@ pub async fn apply_staged_db_records(
     info!("开始导入数据库记录 (来源: {})...", src_id);
 
     // 在事务中执行全部操作
-    let txn = db
-        .begin()
-        .await
-        .map_err(|e| format!("开始事务失败: {e}"))?;
+    let txn = db.begin().await.map_err(|e| format!("开始事务失败: {e}"))?;
 
     // 禁用外键检查
     txn.execute(Statement::from_string(
@@ -277,10 +269,6 @@ fn truncate_str(s: &str, max: usize) -> &str {
     if len <= max {
         s
     } else {
-        &s[..s
-            .char_indices()
-            .nth(max)
-            .map(|(i, _)| i)
-            .unwrap_or(s.len())]
+        &s[..s.char_indices().nth(max).map(|(i, _)| i).unwrap_or(s.len())]
     }
 }

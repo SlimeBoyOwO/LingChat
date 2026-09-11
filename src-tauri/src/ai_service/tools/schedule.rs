@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::fs;
 
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tauri::{AppHandle, Manager};
 
+use crate::AppState;
 use crate::ai_service::proactive_system::types::{TodoGroup, TodoItem, UserScheduleSettings};
 use crate::ai_service::types::ToolDefinition;
 use crate::api::data_dir;
-use crate::AppState;
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::{atomic_replace, ensure_no_args};

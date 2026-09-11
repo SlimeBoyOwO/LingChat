@@ -12,7 +12,7 @@
 
 use std::path::PathBuf;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use base64::Engine;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -81,11 +81,15 @@ fn now_ms() -> i64 {
 
 /// 从 access_token 的 JWT payload 提取 `chatgpt_account_id`（不验签，仅解析）。
 fn extract_account_id(access: &str) -> Result<String> {
-    let payload = access.split('.').nth(1).context("access_token 不是有效 JWT")?;
+    let payload = access
+        .split('.')
+        .nth(1)
+        .context("access_token 不是有效 JWT")?;
     let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(payload)
         .context("JWT payload base64 解码失败")?;
-    let json: serde_json::Value = serde_json::from_slice(&decoded).context("JWT payload 非 JSON")?;
+    let json: serde_json::Value =
+        serde_json::from_slice(&decoded).context("JWT payload 非 JSON")?;
     json.get("https://api.openai.com/auth")
         .and_then(|v| v.get("chatgpt_account_id"))
         .and_then(|v| v.as_str())
@@ -211,8 +215,14 @@ pub async fn poll_device_login(
         .context("轮询设备授权失败")?;
     let status = resp.status();
     if status.is_success() {
-        let device_token: DeviceTokenResponse = resp.json().await.context("设备令牌响应解析失败")?;
-        let token = exchange_code(http, &device_token.authorization_code, &device_token.code_verifier).await?;
+        let device_token: DeviceTokenResponse =
+            resp.json().await.context("设备令牌响应解析失败")?;
+        let token = exchange_code(
+            http,
+            &device_token.authorization_code,
+            &device_token.code_verifier,
+        )
+        .await?;
         let cred = token_to_credential(token)?;
         save_credential(&cred)?;
         return Ok(PollOutcome::Complete(cred));

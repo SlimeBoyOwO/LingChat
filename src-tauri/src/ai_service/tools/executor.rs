@@ -109,7 +109,7 @@ impl<'a> ToolExecutor<'a> {
             Err(error) => {
                 tracing::warn!(tool = name, "工具参数 JSON 解析失败: {error}");
                 return error_result("invalid_json", format!("工具参数不是合法 JSON: {error}"));
-            }
+            },
         };
         let definition = tool.definition();
         if let Err(error) = validate_value(name, &definition.function.parameters, &arguments) {
@@ -125,14 +125,13 @@ impl<'a> ToolExecutor<'a> {
             Ok(Err(error)) => {
                 tracing::warn!(tool = name, "工具执行失败: {error}");
                 error_result("tool_error", error.to_string())
-            }
+            },
             Err(_) => {
                 tracing::warn!(tool = name, "工具执行超时");
                 error_result("timeout", "工具执行超时")
-            }
+            },
         }
     }
-
 }
 
 /// 校验当前工具定义使用到的 JSON Schema 子集。所有内置工具只依赖 object、
@@ -169,7 +168,7 @@ fn validate_value(path: &str, schema: &Value, value: &Value) -> Result<(), Strin
                     validate_value(&format!("{path}.{key}"), child_schema, child)?;
                 }
             }
-        }
+        },
         "array" => {
             let array = value
                 .as_array()
@@ -179,7 +178,7 @@ fn validate_value(path: &str, schema: &Value, value: &Value) -> Result<(), Strin
                     validate_value(&format!("{path}[{index}]"), item_schema, item)?;
                 }
             }
-        }
+        },
         "string" if !value.is_string() => return Err(format!("{path} 必须是 string")),
         "integer"
             if !value
@@ -187,10 +186,10 @@ fn validate_value(path: &str, schema: &Value, value: &Value) -> Result<(), Strin
                 .is_some_and(|number| number.is_i64() || number.is_u64()) =>
         {
             return Err(format!("{path} 必须是 integer"));
-        }
+        },
         "number" if !value.is_number() => return Err(format!("{path} 必须是 number")),
         "boolean" if !value.is_boolean() => return Err(format!("{path} 必须是 boolean")),
-        _ => {}
+        _ => {},
     }
     Ok(())
 }

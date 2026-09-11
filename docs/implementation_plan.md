@@ -6,6 +6,7 @@
 > **目标**: 游戏资源通过 Tauri `bundle.resources` 打入安装包，安装到 `data/.official/`。首次启动全量 seed → 删除 `.official/`。App 更新后 `.official/` 重新出现 → 用户在设置页查看差异并选择性同步 → 删除 `.official/`。删除基于网络下载的 `data_update` 模块，统一为单层更新体系。
 >
 > **原则**:
+>
 > - 只有 exe + data/，不引入额外顶层目录
 > - 不影响 Android 版本
 > - 不影响 LAN Sync 功能
@@ -49,6 +50,7 @@ data/                                    ← resolve_data_dir() 返回这里
 ```
 
 **关键点**:
+
 - `.official/` 是隐藏目录（`.` 前缀），用户日常不感知
 - `third_party/` 直接释放到 `data/third_party/`，不走种子机制（installer 直接管理，更新时直接覆盖）
 - `data/` 下其他内容（`game_data/`、`data_manifest.json`）**在首次 seed 后才出现**
@@ -98,12 +100,12 @@ git ls-files data/                    首次安装:
   ↓                                    installer → data/.official/game_data/
 generate-data-manifest.js              installer → data/third_party/
   ↓                                               data/.official/data_manifest.json
-data_manifest.json                     
+data_manifest.json
   ↓                                    首次启动:
 tauri build (bundle.resources)           seed: .official/ → data/game_data/
   ↓                                               .official/ → data/data_manifest.json
 NSIS installer (含 .official/ +          delete .official/
-              third_party/)              
+              third_party/)
                                        更新后:
                                          installer → 覆盖 exe
                                          installer → 重新创建 .official/
@@ -203,12 +205,12 @@ fn seed_data_dir(app: &AppHandle) -> Result<()> {
 
 `DataManifest` 和 `FileEntry` 目前定义在 `data_update::manifest.rs` 中。该模块要被删除，但类型被以下模块依赖：
 
-| 使用方 | 文件 |
-|---|---|
-| `lan_sync::manifest` | diff + CompleteManifest 构建 |
-| `lan_sync::server` | /manifest 端点 |
-| `lan_sync::messages` | CompleteManifest 序列化 |
-| `resource_sync::sync` (新) | 比对 + 复制 |
+| 使用方                     | 文件                         |
+| -------------------------- | ---------------------------- |
+| `lan_sync::manifest`       | diff + CompleteManifest 构建 |
+| `lan_sync::server`         | /manifest 端点               |
+| `lan_sync::messages`       | CompleteManifest 序列化      |
+| `resource_sync::sync` (新) | 比对 + 复制                  |
 
 ### 3.2 方案
 
@@ -251,16 +253,19 @@ src-tauri/src/lan_sync/           ← 修改：更新 use 路径
    - 从 `data_update::sync.rs` 移入 `compute_sha256()`
 
 2. **修改** `src-tauri/src/lib.rs`:
+
    ```rust
    mod manifest;
    ```
 
 3. **修改** `src-tauri/src/lan_sync/` 所有引用:
+
    ```
    use crate::data_update::manifest::*  →  use crate::manifest::*
    ```
 
 4. **修改** `src-tauri/src/data_update/manifest.rs`:
+
    ```rust
    // 改为 re-export，过渡期向后兼容
    pub use crate::manifest::*;
@@ -280,29 +285,30 @@ src-tauri/src/lan_sync/           ← 修改：更新 use 路径
   },
   "bundle": {
     "active": true,
-    "targets": "nsis",    // 仅 NSIS per-user（移除 msi）
+    "targets": "nsis", // 仅 NSIS per-user（移除 msi）
     "icon": ["icons/icon.ico"],
     "createUpdaterArtifacts": true,
     "resources": {
-      "data/game_data/":              "data/.official/game_data/",
-      "data/third_party/":            "data/third_party/",
-      "data/data_manifest.json":      "data/.official/data_manifest.json"
-    }
-  }
+      "data/game_data/": "data/.official/game_data/",
+      "data/third_party/": "data/third_party/",
+      "data/data_manifest.json": "data/.official/data_manifest.json",
+    },
+  },
 }
 ```
 
 **映射说明**:
 
-| 源路径（项目） | 目标路径（安装目录下） | 说明 |
-|---|---|---|
-| `data/game_data/` | `data/.official/game_data/` | 默认资源，隐藏目录 |
-| `data/third_party/` | `data/third_party/` | 模型文件，直接替换 |
-| `data/data_manifest.json` | `data/.official/data_manifest.json` | 版本清单 |
+| 源路径（项目）            | 目标路径（安装目录下）              | 说明               |
+| ------------------------- | ----------------------------------- | ------------------ |
+| `data/game_data/`         | `data/.official/game_data/`         | 默认资源，隐藏目录 |
+| `data/third_party/`       | `data/third_party/`                 | 模型文件，直接替换 |
+| `data/data_manifest.json` | `data/.official/data_manifest.json` | 版本清单           |
 
 #### 2.2 generate-data-manifest.js
 
 修改：
+
 - 读取 `process.env.DATA_VERSION`（CI 注入 `github.run_number`），默认 `1`
 - **新增排除** `third_party/`（不进入 desktop manifest，因为由 installer 直接管理）
 - 输出路径由 `--output` 参数控制
@@ -311,6 +317,7 @@ src-tauri/src/lan_sync/           ← 修改：更新 use 路径
 #### 2.3 capabilities/default.json
 
 确认已有权限：
+
 ```json
 "updater:default",
 "updater:allow-check",
@@ -659,12 +666,12 @@ resource_sync::apply_resource_sync,
 
 **Props**:
 
-| Prop | 类型 | 说明 |
-|---|---|---|
-| `visible` | `boolean` | 控制显示 |
-| `syncInfo` | `ResourceSyncInfo \| null` | 差异信息 |
-| `phase` | `'review' \| 'syncing' \| 'complete' \| 'error'` | 阶段 |
-| `errorMessage` | `string` | 错误信息 |
+| Prop           | 类型                                             | 说明     |
+| -------------- | ------------------------------------------------ | -------- |
+| `visible`      | `boolean`                                        | 控制显示 |
+| `syncInfo`     | `ResourceSyncInfo \| null`                       | 差异信息 |
+| `phase`        | `'review' \| 'syncing' \| 'complete' \| 'error'` | 阶段     |
+| `errorMessage` | `string`                                         | 错误信息 |
 
 **Emits**: `close`, `apply(selectedFiles: string[])`
 
@@ -693,6 +700,7 @@ resource_sync::apply_resource_sync,
 ```
 
 **功能要点**:
+
 - 按目录分组展示，目录有父级 checkbox（全选/全不选该目录）
 - 每行文件: checkbox + 路径 + 变更标签（绿色"新增"/琥珀色"修改"）+ 文件大小
 - 顶部统计栏实时更新
@@ -702,70 +710,73 @@ resource_sync::apply_resource_sync,
 #### 5.2 修改 `useUpdater.ts`
 
 **移除**:
+
 - `dataInfo` / `dataProgress` refs
 - `applyDataUpdate()` 方法
 - `data-update-progress` / `data-update-complete` 事件监听
 - `checkForUpdates()` 中的数据更新检查分支
 
 **新增**:
+
 ```typescript
 // 资源同步相关
-const resourceSyncInfo = ref<ResourceSyncInfo | null>(null)
-const resourceSyncPhase = ref<'idle' | 'review' | 'syncing' | 'complete' | 'error'>('idle')
-const resourceSyncError = ref('')
+const resourceSyncInfo = ref<ResourceSyncInfo | null>(null);
+const resourceSyncPhase = ref<"idle" | "review" | "syncing" | "complete" | "error">("idle");
+const resourceSyncError = ref("");
 
 async function checkResourceSync(): Promise<boolean> {
-  const info = await invoke<ResourceSyncInfo>('check_resource_sync')
-  resourceSyncInfo.value = info
+  const info = await invoke<ResourceSyncInfo>("check_resource_sync");
+  resourceSyncInfo.value = info;
   if (info.available) {
-    resourceSyncPhase.value = 'review'
-    return true
+    resourceSyncPhase.value = "review";
+    return true;
   }
-  return false
+  return false;
 }
 
 async function applyResourceSync(selectedFiles: string[]): Promise<void> {
-  resourceSyncPhase.value = 'syncing'
+  resourceSyncPhase.value = "syncing";
   try {
-    const result = await invoke<ResourceSyncResult>('apply_resource_sync', {
+    const result = await invoke<ResourceSyncResult>("apply_resource_sync", {
       selectedFiles,
-    })
+    });
     if (result.success) {
-      resourceSyncPhase.value = 'complete'
+      resourceSyncPhase.value = "complete";
     } else {
-      resourceSyncPhase.value = 'error'
-      resourceSyncError.value = result.message
+      resourceSyncPhase.value = "error";
+      resourceSyncError.value = result.message;
     }
   } catch (e) {
-    resourceSyncPhase.value = 'error'
-    resourceSyncError.value = String(e)
+    resourceSyncPhase.value = "error";
+    resourceSyncError.value = String(e);
   }
 }
 
 function resetResourceSync() {
-  resourceSyncInfo.value = null
-  resourceSyncPhase.value = 'idle'
-  resourceSyncError.value = ''
+  resourceSyncInfo.value = null;
+  resourceSyncPhase.value = "idle";
+  resourceSyncError.value = "";
 }
 ```
 
 **简化 `checkForUpdates()`**:
+
 ```typescript
 async function checkForUpdates(): Promise<boolean> {
-  phase.value = 'checking'
+  phase.value = "checking";
   try {
-    const update = await check()
+    const update = await check();
     if (update) {
-      appVersion.value = update.version
-      appReleaseNotes.value = update.body || ''
-      phase.value = 'app-update-available'
-      return true
+      appVersion.value = update.version;
+      appReleaseNotes.value = update.body || "";
+      phase.value = "app-update-available";
+      return true;
     }
   } catch (e) {
-    console.debug('[Updater] check skipped:', String(e).slice(0, 80))
+    console.debug("[Updater] check skipped:", String(e).slice(0, 80));
   }
-  phase.value = 'idle'
-  return false
+  phase.value = "idle";
+  return false;
 }
 ```
 
@@ -812,18 +823,19 @@ fn get_data_version() -> Result<u64, String> {
 #### 5.4 修改 `App.vue`
 
 **简化启动检查**:
+
 ```typescript
 async function checkUpdatesOnStartup() {
   setTimeout(async () => {
     try {
-      const hasUpdate = await updater.checkForUpdates()
+      const hasUpdate = await updater.checkForUpdates();
       if (hasUpdate) {
-        showUpdateDialog.value = true
+        showUpdateDialog.value = true;
       }
     } catch {
       // 静默失败
     }
-  }, 3000)
+  }, 3000);
 }
 ```
 
@@ -843,13 +855,14 @@ async function checkUpdatesOnStartup() {
 **文件**: `.github/workflows/release.yml`
 
 **变更**:
+
 1. 移除 `generate-data` job
 2. 移除各构建 job 中 `needs: generate-data` 和 `Download data-artifacts` 步骤
 3. 确保 `checkout` 步骤包含:
    ```yaml
    - uses: actions/checkout@v4
      with:
-       lfs: true   # 拉取 LFS 资源文件
+       lfs: true # 拉取 LFS 资源文件
    ```
 4. 设置 `DATA_VERSION` 环境变量（传递给 `beforeBuildCommand` 中的脚本）:
    ```yaml
@@ -868,6 +881,7 @@ async function checkUpdatesOnStartup() {
 ### Step 8: 移除 `generate-data-manifest.js` 的冗余
 
 `scripts/generate-data-manifest.js` 保留，但：
+
 - 它同时也是 `beforeBuildCommand` 的一部分（`pnpm tauri build` 自动调用）
 - Android 有自己的 `prepare-bundled-resources.mjs`
 
@@ -879,46 +893,46 @@ async function checkUpdatesOnStartup() {
 
 ### 5.1 新建文件
 
-| 文件 | 说明 |
-|---|---|
-| `src-tauri/src/manifest/mod.rs` | 公共 manifest 类型、diff、load/save、compute_sha256 |
-| `src-tauri/src/resource_sync/mod.rs` | Tauri commands + ResourceSyncState |
-| `src-tauri/src/resource_sync/sync.rs` | seed_full_from_official + apply_selected_files |
-| `src/components/ResourceSyncDialog.vue` | 数据同步差异查看 Modal |
+| 文件                                    | 说明                                                |
+| --------------------------------------- | --------------------------------------------------- |
+| `src-tauri/src/manifest/mod.rs`         | 公共 manifest 类型、diff、load/save、compute_sha256 |
+| `src-tauri/src/resource_sync/mod.rs`    | Tauri commands + ResourceSyncState                  |
+| `src-tauri/src/resource_sync/sync.rs`   | seed_full_from_official + apply_selected_files      |
+| `src/components/ResourceSyncDialog.vue` | 数据同步差异查看 Modal                              |
 
 ### 5.2 修改文件
 
-| 文件 | 变更 |
-|---|---|
-| `src-tauri/src/lib.rs` | +`mod manifest` +`mod resource_sync` -`mod data_update`; 注册新命令和状态 |
-| `src-tauri/tauri.conf.json` | +`bundle.resources`; 改 `targets: "nsis"`; 改 `beforeBuildCommand` |
-| `src-tauri/src/lan_sync/manifest.rs` | `use data_update::manifest` → `use crate::manifest` |
-| `src-tauri/src/lan_sync/server.rs` | 同上 |
-| `src-tauri/src/lan_sync/messages.rs` | 同上 |
-| `src-tauri/src/init/static_copy.rs` | `seed_data_dir()` 桌面端：首次全量 seed + 删除 .official |
-| `scripts/generate-data-manifest.js` | +`DATA_VERSION` 环境变量; +排除 `third_party/` |
-| `src/composables/useUpdater.ts` | -数据更新逻辑; +`checkResourceSync` / `applyResourceSync`; 简化 `checkForUpdates` |
-| `src/components/settings/pages/SettingsText.vue` | 更新"版本更新"区域: 程序版本 + 数据版本 + 两个按钮 |
-| `src/App.vue` | 简化启动检查（仅 app 更新） |
-| `.github/workflows/release.yml` | -`generate-data` job; -`data-artifacts`; +`DATA_VERSION` env; +`lfs: true` |
-| `src-tauri/Cargo.toml` | 版本号适时更新 |
+| 文件                                             | 变更                                                                              |
+| ------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `src-tauri/src/lib.rs`                           | +`mod manifest` +`mod resource_sync` -`mod data_update`; 注册新命令和状态         |
+| `src-tauri/tauri.conf.json`                      | +`bundle.resources`; 改 `targets: "nsis"`; 改 `beforeBuildCommand`                |
+| `src-tauri/src/lan_sync/manifest.rs`             | `use data_update::manifest` → `use crate::manifest`                               |
+| `src-tauri/src/lan_sync/server.rs`               | 同上                                                                              |
+| `src-tauri/src/lan_sync/messages.rs`             | 同上                                                                              |
+| `src-tauri/src/init/static_copy.rs`              | `seed_data_dir()` 桌面端：首次全量 seed + 删除 .official                          |
+| `scripts/generate-data-manifest.js`              | +`DATA_VERSION` 环境变量; +排除 `third_party/`                                    |
+| `src/composables/useUpdater.ts`                  | -数据更新逻辑; +`checkResourceSync` / `applyResourceSync`; 简化 `checkForUpdates` |
+| `src/components/settings/pages/SettingsText.vue` | 更新"版本更新"区域: 程序版本 + 数据版本 + 两个按钮                                |
+| `src/App.vue`                                    | 简化启动检查（仅 app 更新）                                                       |
+| `.github/workflows/release.yml`                  | -`generate-data` job; -`data-artifacts`; +`DATA_VERSION` env; +`lfs: true`        |
+| `src-tauri/Cargo.toml`                           | 版本号适时更新                                                                    |
 
 ### 5.3 删除文件
 
-| 文件 | 说明 |
-|---|---|
-| `src-tauri/src/data_update/mod.rs` | 旧的 HTTP 更新命令 |
+| 文件                                    | 说明                         |
+| --------------------------------------- | ---------------------------- |
+| `src-tauri/src/data_update/mod.rs`      | 旧的 HTTP 更新命令           |
 | `src-tauri/src/data_update/manifest.rs` | 类型已移至 `crate::manifest` |
-| `src-tauri/src/data_update/sync.rs` | HTTP 下载 + zip 解压 |
+| `src-tauri/src/data_update/sync.rs`     | HTTP 下载 + zip 解压         |
 
 ### 5.4 不受影响
 
-| 文件 | 说明 |
-|---|---|
-| `src-tauri/src/lan_sync/` (其他文件) | 仅 use 路径变更 |
+| 文件                                    | 说明             |
+| --------------------------------------- | ---------------- |
+| `src-tauri/src/lan_sync/` (其他文件)    | 仅 use 路径变更  |
 | `scripts/prepare-bundled-resources.mjs` | Android 构建脚本 |
-| `src-tauri/src/api/` | 无变更 |
-| `docs/android/migration.md` | 无变更 |
+| `src-tauri/src/api/`                    | 无变更           |
+| `docs/android/migration.md`             | 无变更           |
 
 ---
 

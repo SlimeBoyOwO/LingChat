@@ -11,10 +11,10 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Wry};
 use tauri_plugin_store::{Store, StoreExt};
 
-use super::keys;
-use super::tts::TtsConfig;
 use super::embedding::EmbeddingConfig;
+use super::keys;
 use super::semantic_memory::SemanticMemoryConfig;
+use super::tts::TtsConfig;
 
 // ========== Serde 默认值函数 ==========
 
@@ -183,13 +183,7 @@ fn get_u32(store: &Store<Wry>, key: &str, default: u32) -> u32 {
         .unwrap_or(default)
 }
 
-fn get_u32_in_range(
-    store: &Store<Wry>,
-    key: &str,
-    default: u32,
-    min: u32,
-    max: u32,
-) -> u32 {
+fn get_u32_in_range(store: &Store<Wry>, key: &str, default: u32, min: u32, max: u32) -> u32 {
     store
         .get(key)
         .and_then(|value| value.as_u64())

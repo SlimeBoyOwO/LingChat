@@ -18,15 +18,15 @@ App.vue → <router-view> → CompanionMode.vue → MainChat.vue
 
 `.main-box` 为 `position:absolute; width/height:100%; overflow:hidden`，**无 z-index → 不建层叠上下文**，因此所有子级 z-index 直接解析到页面根层叠上下文。
 
-| 渲染顺序 | 组件 | 定位 | z-index |
-| --- | --- | --- | --- |
-| 1 | FreeModeTools | — | auto |
-| 2 | GameBackground | absolute | 背景图 `-2`，粒子 `0`（isolate 内 `114514`） |
-| 3 | **GameRolesStage** | absolute | 内部见下 |
-| 4 | GameDialog | relative | `2`（隐藏态 `-1!`） |
-| 5 | #menu-panel | fixed | `1000` |
-| 6 | GameExtraUI | fixed | `999` |
-| 7 | ImageSourcePicker / LoadingTransition | — | 全局覆盖 |
+| 渲染顺序 | 组件                                  | 定位     | z-index                                      |
+| -------- | ------------------------------------- | -------- | -------------------------------------------- |
+| 1        | FreeModeTools                         | —        | auto                                         |
+| 2        | GameBackground                        | absolute | 背景图 `-2`，粒子 `0`（isolate 内 `114514`） |
+| 3        | **GameRolesStage**                    | absolute | 内部见下                                     |
+| 4        | GameDialog                            | relative | `2`（隐藏态 `-1!`）                          |
+| 5        | #menu-panel                           | fixed    | `1000`                                       |
+| 6        | GameExtraUI                           | fixed    | `999`                                        |
+| 7        | ImageSourcePicker / LoadingTransition | —        | 全局覆盖                                     |
 
 ### 3. GameRolesStage
 
@@ -57,13 +57,13 @@ App.vue → <router-view> → CompanionMode.vue → MainChat.vue
 
 ### 6. 层叠上下文小结
 
-| 元素 | 是否建上下文 | 说明 |
-| --- | --- | --- |
-| `.main-box`（MainChat） | 否 | 无 z-index / transform / filter |
-| GameRolesStage 根 | 否 | absolute + z:auto |
-| Live2DStage host div | **是** | `z-index:2`，canvas 被困在 z:2 |
-| GameBackground 粒子包装 | **是** | `isolation:isolate`，内层 z:114514 不逸出 |
-| GameBackground 带 filter 的包装 div | **是** | 见"附注 ②" |
+| 元素                                | 是否建上下文 | 说明                                      |
+| ----------------------------------- | ------------ | ----------------------------------------- |
+| `.main-box`（MainChat）             | 否           | 无 z-index / transform / filter           |
+| GameRolesStage 根                   | 否           | absolute + z:auto                         |
+| Live2DStage host div                | **是**       | `z-index:2`，canvas 被困在 z:2            |
+| GameBackground 粒子包装             | **是**       | `isolation:isolate`，内层 z:114514 不逸出 |
+| GameBackground 带 filter 的包装 div | **是**       | 见"附注 ②"                                |
 
 ## 二、问题清单
 
@@ -133,16 +133,16 @@ App.vue → <router-view> → CompanionMode.vue → MainChat.vue
 
 ## 三、修复优先级汇总
 
-| 编号 | 标题 | 影响面 | 成本 | 优先级 |
-| --- | --- | --- | --- | --- |
-| P1 | 混合 Live2D + 静态深度错乱 | 视觉正确性 | 中 | 高 |
-| P2 | 气泡盖模型靠 DOM 顺序巧合 | 稳定性 | 低 | 高 |
-| P3 | `z-2` 转发陷阱（fragment） | 隐性崩塌 | 低 | 高 |
-| P6 | 光照 overlay 盖住对话框 | 视觉正确性 | 低 | 中 |
-| P4 | 三碎片根 + 样式重复两份 | 可维护性 / 动画一致 | 中 | 中 |
-| P5 | 归属语义倒置（provide/inject 反向） | 可维护性 | 中 | 中 |
-| P7 | 隐藏对话框 `z-1` 高于背景 | 轻微 | 低 | 低 |
-| P8 | 桌宠 / 标准组件重复 | 可维护性 | 高 | 低 |
+| 编号 | 标题                                | 影响面              | 成本 | 优先级 |
+| ---- | ----------------------------------- | ------------------- | ---- | ------ |
+| P1   | 混合 Live2D + 静态深度错乱          | 视觉正确性          | 中   | 高     |
+| P2   | 气泡盖模型靠 DOM 顺序巧合           | 稳定性              | 低   | 高     |
+| P3   | `z-2` 转发陷阱（fragment）          | 隐性崩塌            | 低   | 高     |
+| P6   | 光照 overlay 盖住对话框             | 视觉正确性          | 低   | 中     |
+| P4   | 三碎片根 + 样式重复两份             | 可维护性 / 动画一致 | 中   | 中     |
+| P5   | 归属语义倒置（provide/inject 反向） | 可维护性            | 中   | 中     |
+| P7   | 隐藏对话框 `z-1` 高于背景           | 轻微                | 低   | 低     |
+| P8   | 桌宠 / 标准组件重复                 | 可维护性            | 高   | 低     |
 
 **一句话修复**：P1/P2/P3 本质是"层叠刻度缺失 + 依赖 DOM 顺序 + fragment 落点错误"三件事，建议一次统一：给 Live2D 与静态共用一个 z 刻度（`10 + sceneZ`）、气泡层显式 +1、Live2DStage 用 `props.zIndex`。
 

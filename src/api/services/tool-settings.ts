@@ -1,294 +1,294 @@
-import { invoke } from '@tauri-apps/api/core'
-import { ref } from 'vue'
-import { i18n } from '@/locales'
+import { invoke } from "@tauri-apps/api/core";
+import { ref } from "vue";
+import { i18n } from "@/locales";
 
 /** 网页搜索工具配置（与后端 WebSearchSettings 对应，字段保持 snake_case）。 */
 export interface WebSearchSettings {
-  enabled: boolean
+  enabled: boolean;
   /** 搜索服务提供商："kimi" | "bocha" | "deepseek" | "tavily" | "codex" | "custom"（仅 custom 用 base_url） */
-  provider: string
+  provider: string;
   /** DeepSeek Responses API 使用的模型（仅 provider = "deepseek" 时生效） */
-  model: string
-  api_key: string
-  base_url: string
-  proxy_enabled: boolean
-  proxy_addr: string
-  max_results: number
+  model: string;
+  api_key: string;
+  base_url: string;
+  proxy_enabled: boolean;
+  proxy_addr: string;
+  max_results: number;
   /** true = 搜索结果不带来源/网址，模型回答中不显示原始搜索结果 */
-  hide_search_results: boolean
+  hide_search_results: boolean;
 }
 
 /** ReadMediaFile 图片/视频识别配置。 */
 export interface MediaFileSettings {
-  image_enabled: boolean
-  video_enabled: boolean
-  max_file_mb: number
-  image_max_edge: number
-  jpeg_quality: number
-  max_output_tokens: number
-  default_prompt: string
+  image_enabled: boolean;
+  video_enabled: boolean;
+  max_file_mb: number;
+  image_max_edge: number;
+  jpeg_quality: number;
+  max_output_tokens: number;
+  default_prompt: string;
 }
 
-export type ToolAccessMode = 'manual' | 'auto_approve' | 'full_access'
+export type ToolAccessMode = "manual" | "auto_approve" | "full_access";
 
 export interface ToolSettings {
-  web_search: WebSearchSettings
-  media_file: MediaFileSettings
+  web_search: WebSearchSettings;
+  media_file: MediaFileSettings;
   /** 分组开关：组名 → 是否启用（schedule/memory/character/scene/status/clock/skills/media/file_ops/command） */
-  groups: Record<string, boolean>
+  groups: Record<string, boolean>;
   /** 文件修改与命令执行的统一审批模式。 */
-  access_mode: ToolAccessMode
+  access_mode: ToolAccessMode;
   /** 主聊天单次回复可连续执行工具的最大轮数；每轮可能包含多个工具调用。 */
-  max_tool_rounds: number
+  max_tool_rounds: number;
 }
 
 /** 全局访问模式快照，供主界面的完全访问警告即时响应设置保存。 */
-export const currentToolAccessMode = ref<ToolAccessMode>('manual')
+export const currentToolAccessMode = ref<ToolAccessMode>("manual");
 
 /** 后端按当前设备、模型、角色权限计算出的真实工具可用状态。 */
 export interface ToolRuntimeInfo {
-  platform: string
-  modelConfigured: boolean
-  nativeToolCallsSupported: boolean
-  commandAvailable: boolean
-  fileOpsAppSandboxOnly: boolean
-  registeredToolCount: number
-  allowedTools: string[]
+  platform: string;
+  modelConfigured: boolean;
+  nativeToolCallsSupported: boolean;
+  commandAvailable: boolean;
+  fileOpsAppSandboxOnly: boolean;
+  registeredToolCount: number;
+  allowedTools: string[];
 }
 
 /** 「其他工具」分组（与后端 TOOL_GROUPS 对齐；web_search 有独立设置区） */
 export const TOOL_GROUP_KEYS = [
-  'schedule',
-  'memory',
-  'character',
-  'scene',
-  'status',
-  'clock',
-  'skills',
-  'media',
-  'file_ops',
-  'command',
-] as const
+  "schedule",
+  "memory",
+  "character",
+  "scene",
+  "status",
+  "clock",
+  "skills",
+  "media",
+  "file_ops",
+  "command",
+] as const;
 
 /** 工具的界面友好名（通知与调用记录用），查不到翻译时回退原始名。 */
 export function toolDisplayName(tool: string): string {
-  const key = `ui.toolCalls.tools.${tool}`
-  return i18n.global.te(key) ? i18n.global.t(key) : tool
+  const key = `ui.toolCalls.tools.${tool}`;
+  return i18n.global.te(key) ? i18n.global.t(key) : tool;
 }
 
 /** 后端 `ai:tool_call` 事件的载荷 + 前端补充的时间戳。 */
 export interface ToolCallRecord {
-  call_id?: string
-  tool: string
-  ok: boolean
-  summary: string
-  error: string | null
+  call_id?: string;
+  tool: string;
+  ok: boolean;
+  summary: string;
+  error: string | null;
   /** 调用参数（截断至 1000 字符），用于展开详情 */
-  arguments: string
+  arguments: string;
   /** 工具返回结果（截断至 1000 字符），用于展开详情 */
-  result: string
-  time: string
+  result: string;
+  time: string;
 }
 
 export interface ToolActivityEvent {
-  call_id: string
-  tool: string
-  phase: 'started' | 'finished'
-  ok?: boolean | null
-  arguments: string
+  call_id: string;
+  tool: string;
+  phase: "started" | "finished";
+  ok?: boolean | null;
+  arguments: string;
 }
 
 export interface ToolActivityState {
-  callId: string
-  tool: string
-  arguments: string
-  status: 'running' | 'success' | 'failure'
-  sequence: number
+  callId: string;
+  tool: string;
+  arguments: string;
+  status: "running" | "success" | "failure";
+  sequence: number;
 }
 
 /** 顶栏正在显示的工具活动；结束状态短暂停留后自动淡出。 */
-export const currentToolActivity = ref<ToolActivityState | null>(null)
+export const currentToolActivity = ref<ToolActivityState | null>(null);
 
 /** 工具调用参数的流式生成进度（顶栏「正在生成…N 字」实时提示）。 */
-export const toolCallPreparing = ref<{ tool: string; chars: number } | null>(null)
+export const toolCallPreparing = ref<{ tool: string; chars: number } | null>(null);
 
 /** 接收后端参数生成进度事件（工具块开始与每个参数增量都会触发）。 */
 export function handleToolCallProgress(payload: { tool: string; chars: number }) {
-  if (!payload.tool?.trim()) return
-  toolCallPreparing.value = { tool: payload.tool, chars: payload.chars }
+  if (!payload.tool?.trim()) return;
+  toolCallPreparing.value = { tool: payload.tool, chars: payload.chars };
 }
 
 /** 清除「正在生成」进度提示（一轮 LLM 流结束 / 工具进入执行阶段 / 异常中断时调用）。 */
 export function clearToolCallPreparing() {
-  toolCallPreparing.value = null
+  toolCallPreparing.value = null;
 }
 
 // 后台命令最长运行 60 分钟，再留 5 分钟给事件投递与系统休眠恢复。
-const ACTIVE_WATCHDOG_MS = 65 * 60 * 1000
-const FINISHED_VISIBLE_MS = 2200
-const activeToolCalls = new Map<string, ToolActivityState>()
-const watchdogTimers = new Map<string, ReturnType<typeof setTimeout>>()
-let sequence = 0
-let finishedClearTimer: ReturnType<typeof setTimeout> | null = null
+const ACTIVE_WATCHDOG_MS = 65 * 60 * 1000;
+const FINISHED_VISIBLE_MS = 2200;
+const activeToolCalls = new Map<string, ToolActivityState>();
+const watchdogTimers = new Map<string, ReturnType<typeof setTimeout>>();
+let sequence = 0;
+let finishedClearTimer: ReturnType<typeof setTimeout> | null = null;
 
 function clearFinishedTimer() {
   if (finishedClearTimer !== null) {
-    clearTimeout(finishedClearTimer)
-    finishedClearTimer = null
+    clearTimeout(finishedClearTimer);
+    finishedClearTimer = null;
   }
 }
 
 function clearWatchdog(callId: string) {
-  const timer = watchdogTimers.get(callId)
-  if (timer !== undefined) clearTimeout(timer)
-  watchdogTimers.delete(callId)
+  const timer = watchdogTimers.get(callId);
+  if (timer !== undefined) clearTimeout(timer);
+  watchdogTimers.delete(callId);
 }
 
 function latestActiveTool(): ToolActivityState | null {
-  let latest: ToolActivityState | null = null
+  let latest: ToolActivityState | null = null;
   for (const activity of activeToolCalls.values()) {
-    if (latest === null || activity.sequence > latest.sequence) latest = activity
+    if (latest === null || activity.sequence > latest.sequence) latest = activity;
   }
-  return latest
+  return latest;
 }
 
 function isBackgroundCommand(activity: ToolActivityState): boolean {
-  if (activity.tool !== 'execute_command') return false
+  if (activity.tool !== "execute_command") return false;
   try {
-    const args = JSON.parse(activity.arguments) as Record<string, unknown>
-    return args.run_in_background === true
+    const args = JSON.parse(activity.arguments) as Record<string, unknown>;
+    return args.run_in_background === true;
   } catch {
-    return false
+    return false;
   }
 }
 
 function showFinished(activity: ToolActivityState, ok: boolean) {
-  const next = latestActiveTool()
+  const next = latestActiveTool();
   if (next) {
-    currentToolActivity.value = next
-    return
+    currentToolActivity.value = next;
+    return;
   }
 
   const finished: ToolActivityState = {
     ...activity,
-    status: ok ? 'success' : 'failure',
-  }
-  currentToolActivity.value = finished
-  clearFinishedTimer()
+    status: ok ? "success" : "failure",
+  };
+  currentToolActivity.value = finished;
+  clearFinishedTimer();
   finishedClearTimer = setTimeout(() => {
     if (
       currentToolActivity.value?.callId === finished.callId &&
-      currentToolActivity.value.status !== 'running'
+      currentToolActivity.value.status !== "running"
     ) {
-      currentToolActivity.value = null
+      currentToolActivity.value = null;
     }
-    finishedClearTimer = null
-  }, FINISHED_VISIBLE_MS)
+    finishedClearTimer = null;
+  }, FINISHED_VISIBLE_MS);
 }
 
 /** 接收后端生命周期事件，并正确处理连续/重叠的工具调用。 */
 export function handleToolActivity(event: ToolActivityEvent) {
-  if (!event.call_id?.trim() || !event.tool?.trim()) return
+  if (!event.call_id?.trim() || !event.tool?.trim()) return;
 
-  if (event.phase === 'started') {
+  if (event.phase === "started") {
     // 参数已合并完整、进入执行阶段：清掉「正在生成」进度提示
-    clearToolCallPreparing()
-    clearFinishedTimer()
-    clearWatchdog(event.call_id)
+    clearToolCallPreparing();
+    clearFinishedTimer();
+    clearWatchdog(event.call_id);
     const activity: ToolActivityState = {
       callId: event.call_id,
       tool: event.tool,
-      arguments: event.arguments || '{}',
-      status: 'running',
+      arguments: event.arguments || "{}",
+      status: "running",
       sequence: ++sequence,
-    }
-    activeToolCalls.set(event.call_id, activity)
-    currentToolActivity.value = activity
+    };
+    activeToolCalls.set(event.call_id, activity);
+    currentToolActivity.value = activity;
     watchdogTimers.set(
       event.call_id,
       setTimeout(() => {
-        const stale = activeToolCalls.get(event.call_id)
-        if (!stale || stale.sequence !== activity.sequence) return
-        activeToolCalls.delete(event.call_id)
-        watchdogTimers.delete(event.call_id)
-        showFinished(stale, false)
-      }, ACTIVE_WATCHDOG_MS),
-    )
-    return
+        const stale = activeToolCalls.get(event.call_id);
+        if (!stale || stale.sequence !== activity.sequence) return;
+        activeToolCalls.delete(event.call_id);
+        watchdogTimers.delete(event.call_id);
+        showFinished(stale, false);
+      }, ACTIVE_WATCHDOG_MS)
+    );
+    return;
   }
 
   const activity = activeToolCalls.get(event.call_id) ?? {
     callId: event.call_id,
     tool: event.tool,
-    arguments: event.arguments || '{}',
-    status: 'running' as const,
+    arguments: event.arguments || "{}",
+    status: "running" as const,
     sequence: ++sequence,
-  }
-  clearWatchdog(event.call_id)
-  activeToolCalls.delete(event.call_id)
-  showFinished(activity, event.ok !== false)
+  };
+  clearWatchdog(event.call_id);
+  activeToolCalls.delete(event.call_id);
+  showFinished(activity, event.ok !== false);
 }
 
 /** AI 请求异常结束时清理前台调用；已脱离当前生成的后台命令继续保留。 */
 export function interruptToolActivities() {
-  clearToolCallPreparing()
-  const visible = currentToolActivity.value
+  clearToolCallPreparing();
+  const visible = currentToolActivity.value;
   for (const [callId, activity] of [...activeToolCalls.entries()]) {
-    if (isBackgroundCommand(activity)) continue
-    clearWatchdog(callId)
-    activeToolCalls.delete(callId)
+    if (isBackgroundCommand(activity)) continue;
+    clearWatchdog(callId);
+    activeToolCalls.delete(callId);
   }
-  const background = latestActiveTool()
+  const background = latestActiveTool();
   if (background) {
-    currentToolActivity.value = background
-  } else if (visible?.status === 'running' && !isBackgroundCommand(visible)) {
-    showFinished(visible, false)
+    currentToolActivity.value = background;
+  } else if (visible?.status === "running" && !isBackgroundCommand(visible)) {
+    showFinished(visible, false);
   }
 }
 
-const MAX_HISTORY = 50
+const MAX_HISTORY = 50;
 
 /** 最近的工具调用记录（内存态，最新在前），供「工具调用」页面展示。 */
-export const recentToolCalls = ref<ToolCallRecord[]>([])
+export const recentToolCalls = ref<ToolCallRecord[]>([]);
 
 export function pushToolCallRecord(record: ToolCallRecord) {
-  recentToolCalls.value.unshift(record)
+  recentToolCalls.value.unshift(record);
   if (recentToolCalls.value.length > MAX_HISTORY) {
-    recentToolCalls.value.length = MAX_HISTORY
+    recentToolCalls.value.length = MAX_HISTORY;
   }
 }
 
 /** 清空工具调用记录。 */
 export function clearToolCallRecords() {
-  recentToolCalls.value = []
+  recentToolCalls.value = [];
 }
 
 export async function getToolSettings(): Promise<ToolSettings> {
-  const settings = await invoke<ToolSettings>('get_tool_settings')
-  currentToolAccessMode.value = settings.access_mode ?? 'manual'
-  return settings
+  const settings = await invoke<ToolSettings>("get_tool_settings");
+  currentToolAccessMode.value = settings.access_mode ?? "manual";
+  return settings;
 }
 
 export async function saveToolSettings(settings: ToolSettings): Promise<void> {
-  await invoke<void>('save_tool_settings', { settings })
-  currentToolAccessMode.value = settings.access_mode
+  await invoke<void>("save_tool_settings", { settings });
+  currentToolAccessMode.value = settings.access_mode;
 }
 
 /** 当前 LingChat 进程是否已经由 Windows UAC 提升为管理员权限。 */
 export function getToolElevationStatus(): Promise<boolean> {
-  return invoke<boolean>('get_tool_elevation_status')
+  return invoke<boolean>("get_tool_elevation_status");
 }
 
 /** 经过正常 Windows UAC 确认后，以管理员权限启动新实例并退出当前实例。 */
 export function restartToolProcessAsAdmin(): Promise<void> {
-  return invoke<void>('restart_tool_process_as_admin')
+  return invoke<void>("restart_tool_process_as_admin");
 }
 
 export function getToolRuntimeInfo(): Promise<ToolRuntimeInfo> {
-  return invoke<ToolRuntimeInfo>('get_tool_runtime_info')
+  return invoke<ToolRuntimeInfo>("get_tool_runtime_info");
 }
 
 /** 直接执行一次网页搜索；失败时 Promise reject 携带后端错误信息。 */
 export function testWebSearch(query: string): Promise<string> {
-  return invoke<string>('test_web_search', { query })
+  return invoke<string>("test_web_search", { query });
 }

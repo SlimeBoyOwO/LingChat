@@ -10,7 +10,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
-use crate::ai_service::tts::local::saf_bridge::{prepare_file_import_source, ImportSource};
+use crate::ai_service::tts::local::saf_bridge::{ImportSource, prepare_file_import_source};
 use crate::db::entities::role::{Column, Entity as RoleEntity};
 use crate::utils::archive::{
     self, ArchiveError, ArchiveFormat, ConflictPolicy, EntryEvent, ExtractSummary,
@@ -35,7 +35,7 @@ pub(super) async fn do_import(
                 "[RoleArchive] do_import 扩展名 hint={hint:?} 与 magic {detected:?} 不一致，采用 magic 结果"
             );
             detected
-        }
+        },
         None => detected,
     };
 
@@ -77,7 +77,7 @@ pub(super) async fn do_import(
         match format {
             ArchiveFormat::Zip => {
                 archive::extract_zip(&path_for_blocking, &target, &cancel_for_blocking, &on_entry)
-            }
+            },
             ArchiveFormat::SevenZ => archive::extract_sevenz(
                 &path_for_blocking,
                 &target,
@@ -129,7 +129,7 @@ pub(super) async fn do_import(
                 r.final_name
             );
             r
-        }
+        },
         Err(ArchiveError::AlreadyExists(name)) => {
             tracing::info!("[RoleArchive] do_import Skip 跳过已存在: {}", name);
             cleanup_err(&staging_root_for_cleanup);
@@ -141,11 +141,11 @@ pub(super) async fn do_import(
                 bytes_extracted: 0,
                 format,
             });
-        }
+        },
         Err(e) => {
             cleanup_err(&staging_root_for_cleanup);
             return Err(e.to_string());
-        }
+        },
     };
 
     // 解析目标目录后再次检查取消状态，处理用户在解压期间发出的取消请求。

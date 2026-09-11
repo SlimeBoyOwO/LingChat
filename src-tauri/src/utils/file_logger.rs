@@ -6,8 +6,8 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::Local;
 use tracing_subscriber::fmt::MakeWriter;
@@ -105,7 +105,11 @@ pub fn cleanup_old_logs(retention_days: u32) {
             }
         }
         if deleted > 0 {
-            tracing::info!("已清理 {} 个过期日志文件（超过 {} 天）", deleted, retention_days);
+            tracing::info!(
+                "已清理 {} 个过期日志文件（超过 {} 天）",
+                deleted,
+                retention_days
+            );
         }
     }
 }
