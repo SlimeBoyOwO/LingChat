@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
-use super::service::{cosine, EmbeddingManager};
+use super::service::{EmbeddingManager, cosine};
 
 /// 跳过检索/去重的零碎文本阈值（低于此长度不建索引，避免噪音）。
 const MIN_INDEX_CHARS: usize = 2;
@@ -112,7 +112,10 @@ impl MemoryIndex {
             .filter(|(t, _)| t.chars().count() >= self.min_chars)
             .cloned()
             .collect();
-        let encoded = self.manager.embed_passages(&usable.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>()).await;
+        let encoded = self
+            .manager
+            .embed_passages(&usable.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>())
+            .await;
         let Some(embedded) = encoded else {
             return false;
         };
@@ -150,7 +153,10 @@ impl MemoryIndex {
                 continue;
             }
             // 去重：与已有片段相似度 ≥ 阈值则跳过
-            if guard.iter().any(|f| cosine(&f.vector, &emb.vector) >= DUP_THRESHOLD) {
+            if guard
+                .iter()
+                .any(|f| cosine(&f.vector, &emb.vector) >= DUP_THRESHOLD)
+            {
                 continue;
             }
             guard.push(Fragment {
@@ -267,7 +273,11 @@ impl MemoryIndex {
                 score: cosine(qv, &f.vector),
             })
             .collect();
-        scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         scored.truncate(k);
         scored
     }
@@ -366,22 +376,20 @@ mod tests {
     async fn disabled_index_replace_is_noop() {
         let idx = MemoryIndex::default();
         // 未配置嵌入：replace 无法编码 → 返回 false 且索引为空
-        assert!(!idx
-            .replace(
-                &FragmentSource::Note("ai".into()),
-                "旧笔记",
-                "新笔记",
-            )
-            .await);
+        assert!(
+            !idx.replace(&FragmentSource::Note("ai".into()), "旧笔记", "新笔记",)
+                .await
+        );
         assert_eq!(idx.len().await, 0);
     }
 
     #[tokio::test]
     async fn disabled_index_remove_is_noop() {
         let idx = MemoryIndex::default();
-        assert!(!idx
-            .remove(&FragmentSource::Note("ai".into()), "不存在的笔记")
-            .await);
+        assert!(
+            !idx.remove(&FragmentSource::Note("ai".into()), "不存在的笔记")
+                .await
+        );
     }
 
     #[tokio::test]

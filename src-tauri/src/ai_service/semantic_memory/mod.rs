@@ -13,8 +13,8 @@ use std::sync::Arc;
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::ai_service::embedding::service::cosine;
 use crate::ai_service::embedding::EmbeddingManager;
+use crate::ai_service::embedding::service::cosine;
 
 use self::store::Store;
 
@@ -151,7 +151,15 @@ impl SemanticMemory {
         let ts = Utc::now().to_rfc3339();
         let tags_json = serde_json::to_string(tags).unwrap_or_else(|_| "[]".to_string());
         self.store
-            .insert(&id, role_id, text.trim(), vector.len(), &vector, &tags_json, &ts)
+            .insert(
+                &id,
+                role_id,
+                text.trim(),
+                vector.len(),
+                &vector,
+                &tags_json,
+                &ts,
+            )
             .await?;
         tracing::info!(
             "[semantic_memory] role_id={} 新增语义记忆 id={} len={}",
@@ -163,12 +171,7 @@ impl SemanticMemory {
     }
 
     /// 语义检索：给定查询，返回按余弦降序排列的记忆。嵌入不可用时返回空列表。
-    pub async fn search(
-        &self,
-        role_id: i32,
-        query: &str,
-        top_k: Option<usize>,
-    ) -> Vec<Hit> {
+    pub async fn search(&self, role_id: i32, query: &str, top_k: Option<usize>) -> Vec<Hit> {
         if query.trim().is_empty() {
             return Vec::new();
         }
@@ -196,7 +199,11 @@ impl SemanticMemory {
                 score: cosine(&qv, &m.vector),
             })
             .collect();
-        scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         scored.truncate(k);
         scored
     }
@@ -266,7 +273,11 @@ impl SemanticMemory {
             .update(role_id, id, text.trim(), vector.len(), &vector, &ts)
             .await?
         {
-            tracing::info!("[semantic_memory] role_id={} 更新语义记忆 id={}", role_id, id);
+            tracing::info!(
+                "[semantic_memory] role_id={} 更新语义记忆 id={}",
+                role_id,
+                id
+            );
             Ok(UpdateOutcome::Updated)
         } else {
             Ok(UpdateOutcome::NotFound)

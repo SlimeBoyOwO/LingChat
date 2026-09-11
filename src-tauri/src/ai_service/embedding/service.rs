@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use ort::session::Session;
 use ort::value::Tensor;
 
@@ -94,11 +94,18 @@ impl EmbeddingManager {
     }
 
     pub async fn is_ready(&self) -> bool {
-        self.runtime.lock().unwrap_or_else(|e| e.into_inner()).is_some()
+        self.runtime
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some()
     }
 
     pub async fn dim(&self) -> Option<usize> {
-        self.runtime.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|r| r.dim)
+        self.runtime
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .map(|r| r.dim)
     }
 
     pub async fn model_name(&self) -> Option<String> {
@@ -110,7 +117,10 @@ impl EmbeddingManager {
     }
 
     pub fn last_error(&self) -> Option<String> {
-        self.last_error.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.last_error
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn configured(&self) -> bool {
@@ -134,13 +144,13 @@ impl EmbeddingManager {
             Ok(rt) => {
                 *guard = Some(rt);
                 true
-            }
+            },
             Err(e) => {
                 let msg = format!("{e:#}");
                 *self.last_error.lock().unwrap_or_else(|e| e.into_inner()) = Some(msg.clone());
                 tracing::warn!("[embedding] 加载失败（状态查询触发）: {msg}");
                 false
-            }
+            },
         }
     }
 
@@ -157,11 +167,17 @@ impl EmbeddingManager {
     /// 语料/记忆片段 encode：自动加 `passage_prefix`（同上，视模型而定）。
     /// 返回的 `Embedded.text` 仍是原始文本（不含前缀）。
     pub async fn embed_passages(&self, texts: &[String]) -> Option<Vec<Embedded>> {
-        let vecs = self.encode_prefixed(texts, &self.cfg.passage_prefix).await?;
+        let vecs = self
+            .encode_prefixed(texts, &self.cfg.passage_prefix)
+            .await?;
         Some(
-            texts.iter()
+            texts
+                .iter()
                 .zip(vecs.into_iter())
-                .map(|(t, v)| Embedded { text: t.clone(), vector: v })
+                .map(|(t, v)| Embedded {
+                    text: t.clone(),
+                    vector: v,
+                })
                 .collect(),
         )
     }
@@ -182,7 +198,7 @@ impl EmbeddingManager {
                     *self.last_error.lock().unwrap_or_else(|e| e.into_inner()) = Some(msg.clone());
                     tracing::warn!("[embedding] 加载失败，嵌入功能禁用: {msg}");
                     return None;
-                }
+                },
             }
         }
         let rt = guard.as_mut().expect("just loaded");
@@ -204,7 +220,7 @@ impl EmbeddingManager {
                     *self.last_error.lock().unwrap_or_else(|e| e.into_inner()) = Some(msg.clone());
                     tracing::warn!("[embedding] encode 失败: {msg}");
                     return None;
-                }
+                },
             }
         }
         let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
@@ -233,10 +249,15 @@ impl EmbeddingManager {
         }
     }
 
-    pub async fn cosine_similarity_matrix(&self, a: &[String], b: &[String]) -> Option<Vec<Vec<f32>>> {
+    pub async fn cosine_similarity_matrix(
+        &self,
+        a: &[String],
+        b: &[String],
+    ) -> Option<Vec<Vec<f32>>> {
         let va = self.encode(a).await?;
         let vb = self.encode(b).await?;
-        let out: Vec<Vec<f32>> = va.iter()
+        let out: Vec<Vec<f32>> = va
+            .iter()
             .map(|x| vb.iter().map(|y| cosine(x, y)).collect())
             .collect();
         #[cfg(debug_assertions)]
@@ -247,9 +268,13 @@ impl EmbeddingManager {
     pub async fn embed_many(&self, texts: &[String]) -> Option<Vec<Embedded>> {
         let vecs = self.encode(texts).await?;
         Some(
-            texts.iter()
+            texts
+                .iter()
                 .zip(vecs.into_iter())
-                .map(|(t, v)| Embedded { text: t.clone(), vector: v })
+                .map(|(t, v)| Embedded {
+                    text: t.clone(),
+                    vector: v,
+                })
                 .collect(),
         )
     }
@@ -258,7 +283,9 @@ impl EmbeddingManager {
 
     fn load(&self) -> Result<Runtime> {
         if self.cfg.backend == "st" {
-            return Err(anyhow!("Rust 侧不支持 sentence-transformers 后端（需 torch），请使用 backend=auto/onnx"));
+            return Err(anyhow!(
+                "Rust 侧不支持 sentence-transformers 后端（需 torch），请使用 backend=auto/onnx"
+            ));
         }
         let model_dir = &self.cfg.model_dir;
         let onnx_path = Self::find_onnx(model_dir)
@@ -270,9 +297,7 @@ impl EmbeddingManager {
         let load_started = std::time::Instant::now();
         // 显式注册 CPU 执行提供者并关闭其 arena：ORT 默认 CPU arena 会随推理把
         // RSS 顶到 ~1GB，嵌入式小模型不值得（嵌入只有低频小批量推理）。
-        let cpu = ort::ep::CPU::default()
-            .with_arena_allocator(false)
-            .into();
+        let cpu = ort::ep::CPU::default().with_arena_allocator(false).into();
         let mut session = Session::builder()
             .map_err(|e| anyhow!("创建 SessionBuilder 失败: {e}"))?
             .with_execution_providers([cpu])
@@ -292,9 +317,13 @@ impl EmbeddingManager {
         if dim == 0 {
             return Err(anyhow!("模型输出向量为空"));
         }
-        let model_name = format!("onnx:{}", model_dir.file_name()
-            .map(|f| f.to_string_lossy().to_string())
-            .unwrap_or_else(|| "embedding".into()));
+        let model_name = format!(
+            "onnx:{}",
+            model_dir
+                .file_name()
+                .map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_else(|| "embedding".into())
+        );
 
         let load_ms = load_started.elapsed().as_secs_f64() * 1000.0;
         let size_mb = std::fs::metadata(&onnx_path)
@@ -303,7 +332,13 @@ impl EmbeddingManager {
         tracing::info!(
             "[embedding] 就绪: dim={dim} model={model_name} onnx={size_mb:.1}MB load={load_ms:.0}ms"
         );
-        Ok(Runtime { session, tokenizer, dim, model_name, zero_ttype })
+        Ok(Runtime {
+            session,
+            tokenizer,
+            dim,
+            model_name,
+            zero_ttype,
+        })
     }
 
     fn find_onnx(model_dir: &Path) -> Option<PathBuf> {
@@ -337,7 +372,9 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
         na += x * x;
         nb += y * y;
     }
-    if na <= 0.0 || nb <= 0.0 { return 0.0; }
+    if na <= 0.0 || nb <= 0.0 {
+        return 0.0;
+    }
     dot / (na.sqrt() * nb.sqrt())
 }
 
@@ -361,27 +398,43 @@ fn truncate(text: &str) -> &str {
     const MAX: usize = 60;
     let trimmed = text.trim();
     if trimmed.chars().count() > MAX {
-        &trimmed[..trimmed.char_indices().nth(MAX).map(|(i, _)| i).unwrap_or(trimmed.len())]
+        &trimmed[..trimmed
+            .char_indices()
+            .nth(MAX)
+            .map(|(i, _)| i)
+            .unwrap_or(trimmed.len())]
     } else {
         trimmed
     }
 }
 
 /// 跑 ONNX session，对已 tokenized 的输入做 mean pooling + L2 归一化。
-fn run_session(session: &mut Session, tok: &Tokenized, zero_ttype: &mut Vec<i64>) -> Result<Vec<f32>> {
+fn run_session(
+    session: &mut Session,
+    tok: &Tokenized,
+    zero_ttype: &mut Vec<i64>,
+) -> Result<Vec<f32>> {
     let n = tok.input_ids.len() as i64;
 
     let ids_tensor = Tensor::from_array(([1i64, n], tok.input_ids.clone().into_boxed_slice()))
         .context("创建 input_ids 张量失败")?;
-    let mask_tensor = Tensor::from_array(([1i64, n], tok.attention_mask.clone().into_boxed_slice()))
-        .context("创建 attention_mask 张量失败")?;
+    let mask_tensor =
+        Tensor::from_array(([1i64, n], tok.attention_mask.clone().into_boxed_slice()))
+            .context("创建 attention_mask 张量失败")?;
     if zero_ttype.len() < n as usize {
         zero_ttype.extend(std::iter::repeat(0i64).take(n as usize - zero_ttype.len()));
     }
-    let ttype_tensor = Tensor::from_array(([1i64, n], zero_ttype[..n as usize].to_vec().into_boxed_slice()))
-        .context("创建 token_type_ids 张量失败")?;
+    let ttype_tensor = Tensor::from_array((
+        [1i64, n],
+        zero_ttype[..n as usize].to_vec().into_boxed_slice(),
+    ))
+    .context("创建 token_type_ids 张量失败")?;
 
-    let input_names: Vec<String> = session.inputs().iter().map(|o| o.name().to_string()).collect();
+    let input_names: Vec<String> = session
+        .inputs()
+        .iter()
+        .map(|o| o.name().to_string())
+        .collect();
 
     // 按名字识别核心输入（大小写无关），找不到时按位置兜底。
     // 不按 input_names.len() 猜输入个数：旧实现里 `_` 分支写死 `input_names[2]`，
@@ -394,8 +447,8 @@ fn run_session(session: &mut Session, tok: &Tokenized, zero_ttype: &mut Vec<i64>
             .map(|s| s.as_str())
     };
     let ids_name = find("input_ids", 0).ok_or_else(|| anyhow!("模型缺少 input_ids 输入"))?;
-    let mask_name = find("attention_mask", 1)
-        .ok_or_else(|| anyhow!("模型缺少 attention_mask 输入"))?;
+    let mask_name =
+        find("attention_mask", 1).ok_or_else(|| anyhow!("模型缺少 attention_mask 输入"))?;
     if ids_name == mask_name {
         return Err(anyhow!(
             "模型输入名异常: input_ids 与 attention_mask 解析到了同一个输入 '{ids_name}'"
@@ -434,10 +487,14 @@ fn run_session(session: &mut Session, tok: &Tokenized, zero_ttype: &mut Vec<i64>
                 .map(|a| a.map(|x| x.to_f32()))
         })
         .context("输出张量不是 f32/f16")?;
-    let slice = arr.as_slice().ok_or_else(|| anyhow!("输出张量非连续布局"))?;
+    let slice = arr
+        .as_slice()
+        .ok_or_else(|| anyhow!("输出张量非连续布局"))?;
     // shape 是 [1, n, dim]
     let dim = slice.len() / (n as usize);
-    if dim == 0 { return Err(anyhow!("模型输出维度为 0")); }
+    if dim == 0 {
+        return Err(anyhow!("模型输出维度为 0"));
+    }
     let hidden = slice;
 
     // Mean pooling（attention mask 加权）
@@ -446,7 +503,9 @@ fn run_session(session: &mut Session, tok: &Tokenized, zero_ttype: &mut Vec<i64>
     let mask_den = mask_sum.max(1e-9);
     let mut pooled = vec![0.0f32; dim];
     for t in 0..mask.len() {
-        if mask[t] == 0 { continue; }
+        if mask[t] == 0 {
+            continue;
+        }
         let base = t * dim;
         for d in 0..dim {
             pooled[d] += hidden[base + d];
@@ -501,21 +560,30 @@ mod tests {
     /// `model.onnx` + `tokenizer.json` 的目录；CI 无模型时跳过）。
     #[test]
     fn encodes_through_onnx_session() {
-        let model = std::env::var("EMBEDDING_TEST_MODEL").unwrap_or_else(|_| "/tmp/tiny_emo".into());
+        let model =
+            std::env::var("EMBEDDING_TEST_MODEL").unwrap_or_else(|_| "/tmp/tiny_emo".into());
         let repo_path = |p: &str| -> PathBuf {
             let b = PathBuf::from(p);
-            if b.is_absolute() { b }
-            else { PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join(&b) }
+            if b.is_absolute() {
+                b
+            } else {
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("..")
+                    .join(&b)
+            }
         };
         let model_dir = match std::fs::canonicalize(repo_path(&model)) {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("跳过：模型目录不可用 ({model}): {e}");
                 return;
-            }
+            },
         };
-        let cfg = EmbeddingConfig { model_dir, backend: "auto".into(),
-            ..EmbeddingConfig::default() };
+        let cfg = EmbeddingConfig {
+            model_dir,
+            backend: "auto".into(),
+            ..EmbeddingConfig::default()
+        };
         let mgr = EmbeddingManager::new(cfg);
         assert!(mgr.configured(), "配置应就绪");
 
@@ -549,7 +617,11 @@ mod tests {
                 .ok()
                 .and_then(|s| {
                     s.lines().find(|l| l.starts_with("VmRSS:")).map(|l| {
-                        l.split_whitespace().nth(1).unwrap_or("0").parse::<u64>().unwrap_or(0)
+                        l.split_whitespace()
+                            .nth(1)
+                            .unwrap_or("0")
+                            .parse::<u64>()
+                            .unwrap_or(0)
                     })
                 })
                 .unwrap_or(0);
@@ -566,14 +638,26 @@ mod tests {
         let mut rt = mgr.load().expect("load 应成功");
         let after_load = rss_kb("加载后");
         for i in 0..6 {
-            let tok = rt.tokenizer.encode(if i % 2 == 0 { "你好世界" } else { "The weather is nice today, let's go for a walk." });
+            let tok = rt.tokenizer.encode(if i % 2 == 0 {
+                "你好世界"
+            } else {
+                "The weather is nice today, let's go for a walk."
+            });
             let _ = rt.run(&tok).unwrap();
         }
         let after_infer = rss_kb("6 次推理后");
         let load_growth = after_load.saturating_sub(before);
         let infer_growth = after_infer.saturating_sub(before);
-        assert!(load_growth < 300 * 1024, "加载后 RSS 不应暴涨（实测 +{:.0}MB）", load_growth as f64 / 1024.0);
-        assert!(infer_growth < 400 * 1024, "多次推理后 RSS 不应膨胀到 GB 级（实测 +{:.0}MB）", infer_growth as f64 / 1024.0);
+        assert!(
+            load_growth < 300 * 1024,
+            "加载后 RSS 不应暴涨（实测 +{:.0}MB）",
+            load_growth as f64 / 1024.0
+        );
+        assert!(
+            infer_growth < 400 * 1024,
+            "多次推理后 RSS 不应膨胀到 GB 级（实测 +{:.0}MB）",
+            infer_growth as f64 / 1024.0
+        );
     }
 
     /// 多语言语义检索质量测试（需本机模型，CI 无模型时跳过）。只断言命中"语义簇"

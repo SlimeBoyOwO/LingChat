@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tauri::AppHandle;
 
 use crate::ai_service::semantic_memory::{AddOutcome, SemanticMemory};
@@ -18,9 +18,7 @@ use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::{ensure_no_args, game_status_handle};
 
 /// 取当前角色的 role_id 与语义记忆句柄（快速锁定后立即释放 GameStatus）。
-async fn current_semantic_memory(
-    app: &AppHandle,
-) -> Result<(i32, Arc<SemanticMemory>), ToolError> {
+async fn current_semantic_memory(app: &AppHandle) -> Result<(i32, Arc<SemanticMemory>), ToolError> {
     let gs = game_status_handle(app).await;
     let (role_id, sm) = {
         let guard = gs.lock().await;
@@ -55,9 +53,9 @@ fn parse_tags(value: Option<&Value>, tool: &str) -> Result<Vec<String>, ToolErro
         .ok_or_else(|| ToolError::InvalidArguments(format!("{tool} 的 tags 必须是字符串数组")))?;
     let mut tags = Vec::with_capacity(array.len());
     for value in array {
-        let tag = value
-            .as_str()
-            .ok_or_else(|| ToolError::InvalidArguments(format!("{tool} 的 tags 必须全部是字符串")))?;
+        let tag = value.as_str().ok_or_else(|| {
+            ToolError::InvalidArguments(format!("{tool} 的 tags 必须全部是字符串"))
+        })?;
         tags.push(tag.to_string());
     }
     Ok(tags)
@@ -106,9 +104,7 @@ impl Tool for SemanticMemAdd {
         let app = context.require_app()?;
         let (role_id, sm) = current_semantic_memory(&app).await?;
         match sm.add(role_id, &content, &tags).await {
-            Ok(AddOutcome::Added(id)) => {
-                Ok(json!({"ok": true, "result": "added", "id": id}))
-            }
+            Ok(AddOutcome::Added(id)) => Ok(json!({"ok": true, "result": "added", "id": id})),
             Ok(AddOutcome::Duplicate) => Err(ToolError::Execution(
                 "这条内容与已有语义记忆重复，未保存（如需更新请改写措辞再试）".into(),
             )),
@@ -155,10 +151,7 @@ impl Tool for SemanticMemSearch {
                 "semantic_mem_search 的 query 不能为空".into(),
             ));
         }
-        let top_k = obj
-            .get("top_k")
-            .and_then(Value::as_u64)
-            .map(|n| n as usize);
+        let top_k = obj.get("top_k").and_then(Value::as_u64).map(|n| n as usize);
 
         let app = context.require_app()?;
         let (role_id, sm) = current_semantic_memory(&app).await?;

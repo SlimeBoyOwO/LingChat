@@ -117,11 +117,7 @@ impl EmbeddingConfig {
             default_model_path(data_dir, resource_dir)
         } else {
             let p = PathBuf::from(self.model_dir.trim());
-            if p.is_absolute() {
-                p
-            } else {
-                data_dir.join(p)
-            }
+            if p.is_absolute() { p } else { data_dir.join(p) }
         };
         crate::ai_service::embedding::EmbeddingConfig {
             model_dir,
@@ -135,7 +131,10 @@ impl EmbeddingConfig {
 /// 默认模型目录：优先打包资源内的内置模型，否则数据目录默认路径。
 fn default_model_path(data_dir: &PathBuf, resource_dir: Option<&std::path::Path>) -> PathBuf {
     if let Some(r) = resource_dir {
-        let bundled = r.join("data").join("third_party").join("embedding_paraphrase_multilingual_minilm_l12_v2");
+        let bundled = r
+            .join("data")
+            .join("third_party")
+            .join("embedding_paraphrase_multilingual_minilm_l12_v2");
         if ["model.onnx", "model_quantized.onnx", "model_int8.onnx"]
             .iter()
             .any(|name| bundled.join(name).exists())
@@ -164,7 +163,10 @@ mod tests {
     fn to_service_config_prefers_bundled_model_in_resource_dir() {
         let base = std::env::temp_dir().join(format!("emb-cfg-test-{}-bundle", std::process::id()));
         let data_dir = base.join("data");
-        let bundled = base.join("data").join("third_party").join("embedding_paraphrase_multilingual_minilm_l12_v2");
+        let bundled = base
+            .join("data")
+            .join("third_party")
+            .join("embedding_paraphrase_multilingual_minilm_l12_v2");
         std::fs::create_dir_all(&bundled).unwrap();
         std::fs::write(bundled.join("model.onnx"), b"").unwrap();
         let cfg = EmbeddingConfig::default();

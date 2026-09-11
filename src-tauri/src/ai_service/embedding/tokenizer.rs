@@ -20,7 +20,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
 
 const DEFAULT_MAX_LENGTH: usize = 512;
@@ -45,14 +45,17 @@ impl Tokenizer {
             .with_context(|| format!("读取 tokenizer.json 失败: {}", tok_path.display()))?;
         let v: serde_json::Value =
             serde_json::from_str(&raw).context("解析 tokenizer.json 失败")?;
-        let kind = v["model"]["type"].as_str().unwrap_or("").to_ascii_lowercase();
+        let kind = v["model"]["type"]
+            .as_str()
+            .unwrap_or("")
+            .to_ascii_lowercase();
         match kind.as_str() {
-            "wordpiece" | "bertwordpiece" => {
-                Ok(Tokenizer::WordPiece(BertTokenizer::from_json(&raw, model_dir)?))
-            }
-            "unigram" | "sentencepiece" => {
-                Ok(Tokenizer::SentencePiece(SentencePieceTokenizer::from_json(&raw, model_dir)?))
-            }
+            "wordpiece" | "bertwordpiece" => Ok(Tokenizer::WordPiece(BertTokenizer::from_json(
+                &raw, model_dir,
+            )?)),
+            "unigram" | "sentencepiece" => Ok(Tokenizer::SentencePiece(
+                SentencePieceTokenizer::from_json(&raw, model_dir)?,
+            )),
             other => Err(anyhow!(
                 "不支持的 tokenizer 类型: {other}（需要 WordPiece/BERT 或 Unigram/SentencePiece）"
             )),
@@ -129,7 +132,8 @@ pub struct BertTokenizer {
 
 impl BertTokenizer {
     fn from_json(raw: &str, model_dir: &Path) -> Result<Self> {
-        let file: TokenizerFile<'_> = serde_json::from_str(raw).context("解析 tokenizer.json 失败")?;
+        let file: TokenizerFile<'_> =
+            serde_json::from_str(raw).context("解析 tokenizer.json 失败")?;
 
         let kind = file.model.kind.to_ascii_lowercase();
         if !(kind == "wordpiece" || kind == "bertwordpiece") {
@@ -144,7 +148,10 @@ impl BertTokenizer {
             vocab.insert(t.content, t.id);
         }
 
-        let unk_token = file.model.unknown_token.unwrap_or_else(|| "[UNK]".to_string());
+        let unk_token = file
+            .model
+            .unknown_token
+            .unwrap_or_else(|| "[UNK]".to_string());
         let mut unk_id = *vocab.get(unk_token.as_str()).unwrap_or(&100);
         let mut sep_id = *vocab.get("[SEP]").unwrap_or(&102);
         let mut cls_id = *vocab.get("[CLS]").unwrap_or(&101);
@@ -174,7 +181,10 @@ impl BertTokenizer {
 
         Ok(Self {
             vocab,
-            prefix: file.model.continuing_subword_prefix.unwrap_or_else(|| "##".to_string()),
+            prefix: file
+                .model
+                .continuing_subword_prefix
+                .unwrap_or_else(|| "##".to_string()),
             unk_id,
             sep_id,
             cls_id,
@@ -210,7 +220,10 @@ impl BertTokenizer {
         let pad = self.max_length - ids.len();
         ids.extend(std::iter::repeat(self.pad_id).take(pad));
         attention_mask.extend(std::iter::repeat(0i64).take(pad));
-        Tokenized { input_ids: ids, attention_mask }
+        Tokenized {
+            input_ids: ids,
+            attention_mask,
+        }
     }
 
     fn normalize(&self, text: &str) -> String {
@@ -295,11 +308,11 @@ impl BertTokenizer {
                 Some((id, consumed)) => {
                     out.push(id);
                     start += consumed;
-                }
+                },
                 None => {
                     out.push(self.unk_id);
                     break;
-                }
+                },
             }
         }
         out
@@ -439,7 +452,10 @@ impl SentencePieceTokenizer {
         let pad = self.max_length.saturating_sub(ids.len());
         ids.extend(std::iter::repeat(self.pad_id).take(pad));
         attention_mask.extend(std::iter::repeat(0i64).take(pad));
-        Tokenized { input_ids: ids, attention_mask }
+        Tokenized {
+            input_ids: ids,
+            attention_mask,
+        }
     }
 
     /// 对单个 metaspace 段（形如 `▁word`）做 Unigram Viterbi 最优切分。
@@ -587,30 +603,38 @@ fn is_chinese_char(c: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
     use super::*;
+    use std::path::PathBuf;
 
     /// 参考 ids 来自 Python `tokenizers.Tokenizer.from_file`（paraphrase-multilingual-
     /// MiniLM-L12-v2 的 250k XLM-R Unigram 词表）。若换模型/词表需同步更新。
     ///
     /// 注意：切分把前导 `▁` 合入首段，输出与 Python 参考一致（按 `</s>` 截断）。
     fn e5_ids(text: &str) -> Vec<i64> {
-        let model = std::env::var("EMBEDDING_TEST_MODEL").unwrap_or_else(|_| "/tmp/tiny_emo".into());
+        let model =
+            std::env::var("EMBEDDING_TEST_MODEL").unwrap_or_else(|_| "/tmp/tiny_emo".into());
         let repo_path = |p: &str| -> PathBuf {
             let b = PathBuf::from(p);
-            if b.is_absolute() { b }
-            else { PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join(&b) }
+            if b.is_absolute() {
+                b
+            } else {
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("..")
+                    .join(&b)
+            }
         };
         let model_dir = match std::fs::canonicalize(repo_path(&model)) {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("跳过：模型目录不可用 ({model}): {e}");
                 return Vec::new();
-            }
+            },
         };
         let tok = Tokenizer::load(&model_dir).unwrap();
         let sep = tok.sep_id();
-        tok.encode(text).input_ids.into_iter()
+        tok.encode(text)
+            .input_ids
+            .into_iter()
             .take_while(|&id| id != sep)
             .collect()
     }
