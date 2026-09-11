@@ -3,5 +3,5 @@
 </template>
 
 <script setup lang="ts">
-  import MainMenu from "./MainMenu.vue";
+  import MainMenu from "../MainMenu.vue";
 </script>
