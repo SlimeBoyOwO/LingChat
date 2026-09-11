@@ -443,6 +443,16 @@ export default {
       item: "衣装 #{index}",
       empty: "衣装設定がまだありません。「衣装を追加」をクリックして作成してください",
     },
+    gsvEmo: {
+      title: 'GSV 感情参照音声',
+      description: 'オンにすると感情分類（驚き/喜び/恐怖/悲しみ/怒り/中立）ごとに参照音声とテキストをリアルタイムで切り替えます。オフの場合は上の gsv_voice_filename / gsv_voice_text を使用します。',
+      enable: 'オン',
+      disable: 'オフ',
+      voiceFile: '参照音声ファイル',
+      voiceFilePlaceholder: '例: 开心.wav（空欄なら voice/开心.* を自動検索）',
+      text: '参照テキスト',
+      textPlaceholder: '参照音声に対応するテキスト',
+    },
     live2d: {
       importDirectory: "モデルフォルダーをインポート",
       importZip: "ZIP をインポート",

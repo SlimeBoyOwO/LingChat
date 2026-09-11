@@ -148,6 +148,69 @@
                 :offset-y="Number(localSettings.offset_y) || 0"
               />
 
+              <!-- GSV 六情绪参考语音（tts_type=gsv 时显示） -->
+              <div
+                v-if="activeTab === 'voice' && localSettings.tts_type === 'gsv'"
+                class="space-y-4"
+              >
+                <div class="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-4">
+                  <div>
+                    <h3 class="text-sm font-bold text-white/70">
+                      {{ $t("settings.characterInfo.gsvEmo.title") }}
+                    </h3>
+                    <p class="mt-1 text-xs text-white/40">
+                      {{ $t("settings.characterInfo.gsvEmo.description") }}
+                    </p>
+                  </div>
+                  <button
+                    role="switch"
+                    :aria-checked="gsvEmoEnabled"
+                    class="cursor-pointer rounded-lg border-none px-3.5 py-1.5 text-xs transition-colors"
+                    :class="gsvEmoEnabled ? 'bg-[#5e72e4] text-white hover:bg-[#4a5acf]' : 'bg-white/10 text-white/60 hover:bg-white/20'"
+                    @click="toggleGsvEmo"
+                  >
+                    {{
+                      gsvEmoEnabled
+                        ? $t("settings.characterInfo.gsvEmo.enable")
+                        : $t("settings.characterInfo.gsvEmo.disable")
+                    }}
+                  </button>
+                </div>
+
+                <div v-if="gsvEmoEnabled" class="space-y-3">
+                  <div
+                    v-for="cat in GSV_EMO_CATEGORIES"
+                    :key="cat"
+                    class="grid grid-cols-1 gap-3 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-2"
+                  >
+                    <div class="flex flex-col gap-2">
+                      <label class="text-[13px] font-medium text-white/60">
+                        {{ cat }} · {{ $t("settings.characterInfo.gsvEmo.voiceFile") }}
+                      </label>
+                      <input
+                        v-model="gsvEmoForm[cat].file"
+                        type="text"
+                        :placeholder="$t('settings.characterInfo.gsvEmo.voiceFilePlaceholder')"
+                        class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white outline-none transition-all duration-200"
+                        @input="handleGsvEmoChange"
+                      />
+                    </div>
+                    <div class="flex flex-col gap-2">
+                      <label class="text-[13px] font-medium text-white/60">
+                        {{ cat }} · {{ $t("settings.characterInfo.gsvEmo.text") }}
+                      </label>
+                      <input
+                        v-model="gsvEmoForm[cat].text"
+                        type="text"
+                        :placeholder="$t('settings.characterInfo.gsvEmo.textPlaceholder')"
+                        class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white outline-none transition-all duration-200"
+                        @input="handleGsvEmoChange"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <!-- Clothes Tab (custom UI, outside data-driven block) -->
               <div v-if="activeTab === 'clothes'" class="space-y-4">
                 <div class="flex items-center justify-between">
@@ -290,7 +353,7 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, onUnmounted, ref, toRaw, watch } from "vue";
+  import { computed, onUnmounted, reactive, ref, toRaw, watch } from "vue";
   import { useI18n } from "vue-i18n";
   import {
     deleteCharacter as deleteCharacterApi,
@@ -710,7 +773,8 @@
         type: "text",
         isVoiceModel: true,
         realtime: true,
-        visibleIf: (s) => s.tts_type === "gsv",
+        // 六情绪开关开启后由分类参考文本接管，隐藏旧的单一参考文本
+        visibleIf: (s) => s.tts_type === "gsv" && !s.voice_models?.gsv_emo_enabled,
       },
       {
         key: "gsv_voice_filename",
@@ -718,7 +782,7 @@
         type: "text",
         isVoiceModel: true,
         realtime: true,
-        visibleIf: (s) => s.tts_type === "gsv",
+        visibleIf: (s) => s.tts_type === "gsv" && !s.voice_models?.gsv_emo_enabled,
       },
       {
         key: "gsv_gpt_model_name",
@@ -892,6 +956,54 @@
     }
   };
 
+  // --- GSV 六情绪参考语音（自定义 UI，复用立绘系统的分类思路） ---
+
+  const GSV_EMO_CATEGORIES = ["吃惊", "开心", "恐惧", "难过", "生气", "中立"] as const;
+
+  const gsvEmoEnabled = computed({
+    get: () => Boolean(localSettings.value.voice_models?.gsv_emo_enabled),
+    set: (val: boolean) => {
+      ensureVoiceModels();
+      (localSettings.value.voice_models as Record<string, unknown>).gsv_emo_enabled = val;
+    },
+  });
+
+  const toggleGsvEmo = () => {
+    gsvEmoEnabled.value = !gsvEmoEnabled.value;
+    flushGsvEmoForm();
+    handleGsvEmoChange();
+  };
+
+  // setup 阶段创建扁平的响应式表单，模板直接绑定，避免 v-for 里动态创建 computed
+  const gsvEmoForm = reactive(
+    Object.fromEntries(
+      GSV_EMO_CATEGORIES.map((cat) => [cat, { file: "", text: "" }])
+    ) as Record<(typeof GSV_EMO_CATEGORIES)[number], { file: string; text: string }>
+  );
+
+  // 从已加载的 voice_models 回填表单（打开对话框加载完成后调用）
+  const loadGsvEmoForm = () => {
+    const vm = (localSettings.value.voice_models ?? {}) as Record<string, any>;
+    for (const cat of GSV_EMO_CATEGORIES) {
+      gsvEmoForm[cat].file = vm.gsv_emo_voice_files?.[cat] ?? "";
+      gsvEmoForm[cat].text = vm.gsv_emo_texts?.[cat] ?? "";
+    }
+  };
+
+  // 开关开启时把表单内容写回 voice_models（保存前调用）
+  const flushGsvEmoForm = () => {
+    if (!gsvEmoEnabled.value) return;
+    const vm = ensureVoiceModels();
+    const texts: Record<string, string> = {};
+    const files: Record<string, string> = {};
+    for (const cat of GSV_EMO_CATEGORIES) {
+      texts[cat] = gsvEmoForm[cat].text;
+      files[cat] = gsvEmoForm[cat].file;
+    }
+    vm.gsv_emo_texts = texts;
+    vm.gsv_emo_voice_files = files;
+  };
+
   const fieldModel = (field: FieldSchema) => {
     return computed({
       get: () => {
@@ -969,6 +1081,7 @@
           const data = await getRoleSettings(props.roleId);
           localSettings.value = JSON.parse(JSON.stringify(data));
           migrateLegacyVoiceModelFields();
+          loadGsvEmoForm();
           if (!localSettings.value.voice_lang) {
             localSettings.value.voice_lang = "ja";
           }
@@ -1030,6 +1143,27 @@
         // 使用国际化
         await dialogStore.alert(
           t("settings.characterInfo.messages.realtimeUpdateFailed", { label: field.label })
+        );
+      }
+    }, REALTIME_SAVE_DEBOUNCE_MS);
+  };
+
+  // GSV 六情绪参考的实时保存（与 handleFieldChange 共用防抖机制）
+  const handleGsvEmoChange = () => {
+    if (!props.roleId) return;
+
+    flushGsvEmoForm();
+    const roleId = props.roleId;
+    clearRealtimeSaveTimer();
+    realtimeSaveTimer = setTimeout(async () => {
+      realtimeSaveTimer = null;
+      if (!props.visible || props.roleId !== roleId) return;
+      try {
+        await updateRoleSettings(roleId, localSettings.value);
+      } catch (e) {
+        console.error("实时更新 GSV 情绪参考失败:", e);
+        await dialogStore.alert(
+          t("settings.characterInfo.messages.realtimeUpdateFailed", { label: "gsv_emo" })
         );
       }
     }, REALTIME_SAVE_DEBOUNCE_MS);

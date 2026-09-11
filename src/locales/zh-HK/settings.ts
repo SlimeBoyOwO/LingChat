@@ -433,6 +433,16 @@ export default {
       item: "服裝 #{index}",
       empty: '而家冇服裝配置，撳"新增服裝"開一個',
     },
+    gsvEmo: {
+      title: "GSV 情緒參考語音",
+      description: "開啟後按情緒分類（吃驚/開心/恐懼/難過/生氣/中立）即時切換參考語音與文本；關閉時使用上面的 gsv_voice_filename / gsv_voice_text。",
+      enable: "已開啟",
+      disable: "已關閉",
+      voiceFile: "參考語音檔案",
+      voiceFilePlaceholder: "如 開心.wav；留空自動找 voice/開心.*",
+      text: "參考文本",
+      textPlaceholder: "參考音頻對應的文本內容",
+    },
     live2d: {
       importDirectory: "匯入模型資料夾",
       importZip: "匯入 ZIP",

@@ -466,6 +466,16 @@ export default {
       item: "服装 #{index}",
       empty: '暂无服装配置，点击"添加服装"创建',
     },
+    gsvEmo: {
+      title: 'GSV 情绪参考语音',
+      description: '开启后按情绪分类（吃惊/开心/恐惧/难过/生气/中立）实时切换参考语音与文本；关闭时使用上面的 gsv_voice_filename / gsv_voice_text。',
+      enable: '已开启',
+      disable: '已关闭',
+      voiceFile: '参考语音文件',
+      voiceFilePlaceholder: '如 开心.wav；留空自动找 voice/开心.*',
+      text: '参考文本',
+      textPlaceholder: '参考音频对应的文本内容',
+    },
     live2d: {
       importDirectory: "导入模型目录",
       importZip: "导入 ZIP",
