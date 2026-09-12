@@ -36,6 +36,7 @@
     SettingsAdventure,
     SettingsBackground,
     SettingsCharacter,
+    SettingsData,
     SettingsHistory,
     SettingsLog,
     SettingsPlugins,
@@ -90,6 +91,7 @@
     "advance",
     "log",
     "plugins",
+    "data",
   ] as const;
 
   // 标签 → 组件映射（推入推出转场用 v-if 动态组件）
@@ -105,6 +107,7 @@
     background: SettingsBackground,
     log: SettingsLog,
     plugins: SettingsPlugins,
+    data: SettingsData,
   };
   const currentTabComponent = computed(() => tabComponents[uiStore.currentSettingsTab]);
   // 转场方向：左滑下一项 → slide-left（新页从右进）；右滑上一项 → slide-right
