@@ -222,8 +222,8 @@ pub async fn get_embedding_status(app: AppHandle) -> Result<EmbeddingStatusSnaps
         return Ok(snap);
     }
     snap.error = manager.last_error();
-    snap.dim = manager.dim().await;
-    snap.model = manager.model_name().await;
+    snap.dim = manager.dim();
+    snap.model = manager.model_name();
     Ok(snap)
 }
 

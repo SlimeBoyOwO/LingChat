@@ -468,15 +468,20 @@ impl Tool for SearchMemory {
         }
         let app = context.require_app()?;
         let gs = game_status_handle(&app).await;
-        let gs = gs.lock().await;
-        let idx = gs.role_manager.memory_index();
-        if !idx.enabled() {
-            return Err(ToolError::Execution(
-                "记忆嵌入未启用（需要配置 embedding.model_dir，指向含 model.onnx 的模型目录）"
-                    .into(),
-            ));
-        }
-        let hits = idx.search(&query, Some(5)).await;
+        // 在 GameStatus 锁内只做快速检查 + 克隆检索上下文，随后释放锁再执行
+        // ONNX 编码推理，避免 CPU 密集推理长时间独占游戏状态锁。
+        let ctx = {
+            let gs = gs.lock().await;
+            let idx = gs.role_manager.memory_index();
+            if !idx.enabled() {
+                return Err(ToolError::Execution(
+                    "记忆嵌入未启用（需要配置 embedding.model_dir，指向含 model.onnx 的模型目录）"
+                        .into(),
+                ));
+            }
+            idx.search_context().await
+        };
+        let hits = ctx.search(&query, Some(5)).await;
         let results: Vec<Value> = hits
             .iter()
             .map(|h| {

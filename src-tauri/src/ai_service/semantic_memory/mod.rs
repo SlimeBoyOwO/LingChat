@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use crate::ai_service::embedding::EmbeddingManager;
 use crate::ai_service::embedding::service::cosine;
+use crate::ai_service::embedding::service::cosine_ge_threshold;
 
 use self::store::Store;
 
@@ -111,11 +112,14 @@ impl SemanticMemory {
 
     /// 最近一次操作失败诊断。
     pub fn last_error(&self) -> Option<String> {
-        self.last_error.lock().unwrap().clone()
+        self.last_error
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     fn record_error(&self, message: impl Into<String>) {
-        *self.last_error.lock().unwrap() = Some(message.into());
+        *self.last_error.lock().unwrap_or_else(|e| e.into_inner()) = Some(message.into());
     }
 
     /// 新增一条语义记忆（去重后写入）。返回 `Duplicate` 表示与已有记忆重复。
@@ -138,12 +142,10 @@ impl SemanticMemory {
         };
         let vector = std::mem::take(&mut encoded[0].vector);
 
-        // 与该角色的既有记忆做语义去重
-        let existing = self.store.fetch_role(role_id).await?;
-        if existing
-            .iter()
-            .any(|m| cosine(&m.vector, &vector) >= DUP_THRESHOLD)
-        {
+        // 与该角色的既有记忆做语义去重（只读向量列 + L2 前缀剪枝，快速排除不相似项）
+        let existing = self.store.fetch_vectors(role_id).await?;
+        let candidates: Vec<&[f32]> = existing.iter().map(|(_, v)| v.as_slice()).collect();
+        if cosine_ge_threshold(&candidates, &vector, DUP_THRESHOLD) {
             return Ok(AddOutcome::Duplicate);
         }
 
@@ -247,8 +249,8 @@ impl SemanticMemory {
             self.record_error(&msg);
             return Err(msg);
         };
-        let existing = self.store.fetch_role(role_id).await?;
-        if !existing.iter().any(|m| m.id == id) {
+        let existing = self.store.fetch_vectors(role_id).await?;
+        if !existing.iter().any(|(i, _)| i == id) {
             return Ok(UpdateOutcome::NotFound);
         }
         let Some(mut encoded) = embedding.embed_passages(&[text.to_string()]).await else {
@@ -258,12 +260,13 @@ impl SemanticMemory {
         };
         let vector = std::mem::take(&mut encoded[0].vector);
 
-        // 去重时排除自身，仅与其它既有记忆比较
-        if existing
+        // 去重时排除自身，仅与其它既有记忆比较（只读向量列 + 前缀剪枝）
+        let candidates: Vec<&[f32]> = existing
             .iter()
-            .filter(|m| m.id != id)
-            .any(|m| cosine(&m.vector, &vector) >= DUP_THRESHOLD)
-        {
+            .filter(|(i, _)| i != id)
+            .map(|(_, v)| v.as_slice())
+            .collect();
+        if cosine_ge_threshold(&candidates, &vector, DUP_THRESHOLD) {
             return Ok(UpdateOutcome::Duplicate);
         }
 
@@ -287,15 +290,26 @@ impl SemanticMemory {
     /// 列出某个角色的全部记忆（不含向量）。
     pub async fn list(&self, role_id: i32) -> Result<Vec<Item>, String> {
         let rows = self.store.fetch_role(role_id).await?;
-        Ok(rows
-            .into_iter()
-            .map(|m| Item {
+        let mut items = Vec::with_capacity(rows.len());
+        for m in rows {
+            let tags = match serde_json::from_str(&m.tags) {
+                Ok(tags) => tags,
+                Err(e) => {
+                    tracing::warn!(
+                        "[semantic_memory] 标签 JSON 损坏 (id={})，按空标签处理: {e}",
+                        m.id
+                    );
+                    Vec::new()
+                },
+            };
+            items.push(Item {
                 id: m.id,
                 text: m.text,
-                tags: serde_json::from_str(&m.tags).unwrap_or_default(),
+                tags,
                 created_at: m.created_at,
-            })
-            .collect())
+            });
+        }
+        Ok(items)
     }
 
     /// 全局记忆总数。

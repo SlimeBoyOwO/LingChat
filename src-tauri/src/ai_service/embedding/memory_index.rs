@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
-use super::service::{EmbeddingManager, cosine};
+use super::service::{EmbeddingManager, cosine, cosine_ge_threshold};
 
 /// 跳过检索/去重的零碎文本阈值（低于此长度不建索引，避免噪音）。
 const MIN_INDEX_CHARS: usize = 2;
@@ -51,8 +51,6 @@ impl FragmentSource {
 pub struct MemoryIndex {
     manager: Arc<EmbeddingManager>,
     fragments: RwLock<Vec<Fragment>>,
-    /// 最近一次重建内容的签名（内容未变时跳过不必要的重建）。
-    signature: RwLock<Option<u64>>,
     /// 为空的 fragment id 集合（语义检索时排除零碎文本）。
     min_chars: usize,
     top_k: usize,
@@ -63,74 +61,14 @@ impl MemoryIndex {
         Self {
             manager,
             fragments: RwLock::new(Vec::new()),
-            signature: RwLock::new(None),
             min_chars: MIN_INDEX_CHARS,
             top_k: DEFAULT_TOP_K,
-        }
-    }
-
-    /// 内容指纹：拼合（来源标签 + 文本），内容不变则指纹不变。
-    fn signature_of(texts: &[(String, FragmentSource)]) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        for (t, s) in texts {
-            s.label().hash(&mut h);
-            b"\x00".hash(&mut h);
-            t.hash(&mut h);
-            b"\x1e".hash(&mut h);
-        }
-        h.finish()
-    }
-
-    /// 若内容与上次重建不同则重建索引（避免每个对话轮次重复编码）。返回是否实际重建。
-    pub async fn rebuild_if_changed(&self, texts: &[(String, FragmentSource)]) -> bool {
-        let sig = Self::signature_of(texts);
-        if *self.signature.read().await == Some(sig) {
-            return false;
-        }
-        if self.rebuild(texts).await {
-            *self.signature.write().await = Some(sig);
-            true
-        } else {
-            // 编码失败：不推进指纹，下次内容变化（或恢复后）仍会重试重建。
-            false
         }
     }
 
     /// 嵌入服务是否可用。
     pub fn enabled(&self) -> bool {
         self.manager.configured()
-    }
-
-    /// 重建索引：清空并以给定片段文本重建（用于角色记忆/笔记变更后批量刷新）。
-    ///
-    /// 返回是否成功；当嵌入不可用时返回 `false` 并保留旧索引，
-    /// 避免一次瞬时失败把可用的旧语义索引清成空。
-    pub async fn rebuild(&self, texts: &[(String, FragmentSource)]) -> bool {
-        let usable: Vec<(String, FragmentSource)> = texts
-            .iter()
-            .filter(|(t, _)| t.chars().count() >= self.min_chars)
-            .cloned()
-            .collect();
-        let encoded = self
-            .manager
-            .embed_passages(&usable.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>())
-            .await;
-        let Some(embedded) = encoded else {
-            return false;
-        };
-        let mut fragments = Vec::new();
-        for ((text, source), emb) in usable.iter().zip(embedded.into_iter()) {
-            fragments.push(Fragment {
-                id: fragment_id(&emb.text, source),
-                source: source.clone(),
-                text: text.clone(),
-                vector: emb.vector,
-            });
-        }
-        let mut guard = self.fragments.write().await;
-        *guard = fragments;
-        true
     }
 
     /// 增量添加若干片段（去重后保留）。返回实际新增数量。
@@ -149,14 +87,12 @@ impl MemoryIndex {
                 continue;
             }
             let id = fragment_id(&emb.text, source);
-            if guard.iter().any(|f| f.id == id) {
-                continue;
-            }
-            // 去重：与已有片段相似度 ≥ 阈值则跳过
-            if guard
-                .iter()
-                .any(|f| cosine(&f.vector, &emb.vector) >= DUP_THRESHOLD)
-            {
+            // 单遍去重：精确 id 匹配视为重复；否则做余弦去重（L2 前缀剪枝快速排除）。
+            let dominated = guard.iter().any(|f| {
+                f.id == id
+                    || cosine_ge_threshold(&[f.vector.as_slice()], &emb.vector, DUP_THRESHOLD)
+            });
+            if dominated {
                 continue;
             }
             guard.push(Fragment {
@@ -173,7 +109,6 @@ impl MemoryIndex {
     /// 清空索引。
     pub async fn clear(&self) {
         self.fragments.write().await.clear();
-        *self.signature.write().await = None;
     }
 
     /// 更新一条已有片段（笔记内容被编辑时用）。用 `source + old_text` 定位旧片段，
@@ -251,35 +186,21 @@ impl MemoryIndex {
 
     /// 语义检索：给定查询，返回按相似度降序的片段。
     pub async fn search(&self, query: &str, top_k: Option<usize>) -> Vec<SearchHit> {
-        if query.trim().is_empty() {
-            return Vec::new();
-        }
-        let k = top_k.unwrap_or(self.top_k).min(20);
-        let Some(query_vec) = self.manager.encode_queries(&[query.to_string()]).await else {
-            return Vec::new();
-        };
-        let qv = &query_vec[0];
+        self.search_context().await.search(query, top_k).await
+    }
+
+    /// 生成检索上下文快照：克隆片段向量 + 管理器句柄（短暂读取锁 + 内存复制）。
+    ///
+    /// 调用方可在快照后立即释放 `GameStatus` 等外部锁，再在快照上执行
+    /// `search`，避免 ONNX 推理期间长时间独占全局锁阻塞消息处理等其它逻辑。
+    pub async fn search_context(&self) -> SearchContext {
         let guard = self.fragments.read().await;
-        if guard.is_empty() {
-            return Vec::new();
+        SearchContext {
+            manager: self.manager.clone(),
+            fragments: guard.clone(),
+            min_chars: self.min_chars,
+            top_k: self.top_k,
         }
-        let mut scored: Vec<SearchHit> = guard
-            .iter()
-            .filter(|f| f.text.chars().count() >= self.min_chars)
-            .map(|f| SearchHit {
-                fragment_id: f.id.clone(),
-                source: f.source.clone(),
-                text: f.text.clone(),
-                score: cosine(qv, &f.vector),
-            })
-            .collect();
-        scored.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        scored.truncate(k);
-        scored
     }
 
     /// 判断候选片段是否与已有索引片段语义重复。
@@ -293,7 +214,8 @@ impl MemoryIndex {
         let v = &vec[0].vector;
         let threshold = threshold.unwrap_or(DUP_THRESHOLD);
         let guard = self.fragments.read().await;
-        guard.iter().any(|f| cosine(&f.vector, v) >= threshold)
+        let candidates: Vec<&[f32]> = guard.iter().map(|f| f.vector.as_slice()).collect();
+        cosine_ge_threshold(&candidates, v, threshold)
     }
 
     /// 当前索引片段数。
@@ -331,6 +253,53 @@ pub struct SearchHit {
     pub source: FragmentSource,
     pub text: String,
     pub score: f32,
+}
+
+/// 检索上下文快照：持有片段向量副本与管理器句柄，可在释放外部锁后独立检索。
+///
+/// 由 [`MemoryIndex::search_context`] 生成，目的是把 ONNX 编码推理移出
+/// `GameStatus` 等全局锁的作用域，避免 CPU 密集推理阻塞其它对话/工具逻辑。
+#[derive(Clone)]
+pub struct SearchContext {
+    manager: Arc<EmbeddingManager>,
+    fragments: Vec<Fragment>,
+    min_chars: usize,
+    top_k: usize,
+}
+
+impl SearchContext {
+    /// 语义检索：给定查询，返回按余弦相似度降序的片段。
+    pub async fn search(&self, query: &str, top_k: Option<usize>) -> Vec<SearchHit> {
+        if query.trim().is_empty() {
+            return Vec::new();
+        }
+        let k = top_k.unwrap_or(self.top_k).min(20);
+        let Some(query_vec) = self.manager.encode_queries(&[query.to_string()]).await else {
+            return Vec::new();
+        };
+        let qv = &query_vec[0];
+        if self.fragments.is_empty() {
+            return Vec::new();
+        }
+        let mut scored: Vec<SearchHit> = self
+            .fragments
+            .iter()
+            .filter(|f| f.text.chars().count() >= self.min_chars)
+            .map(|f| SearchHit {
+                fragment_id: f.id.clone(),
+                source: f.source.clone(),
+                text: f.text.clone(),
+                score: cosine(qv, &f.vector),
+            })
+            .collect();
+        scored.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        scored.truncate(k);
+        scored
+    }
 }
 
 fn fragment_id(text: &str, source: &FragmentSource) -> String {

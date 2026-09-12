@@ -119,6 +119,21 @@ impl Store {
         Ok(out)
     }
 
+    /// 仅取出某个角色的（id, 向量）对，供去重使用（不读 text/tags/created_at 列，
+    /// 减少行解码与内存拷贝；向量在写入前已归一化）。
+    pub async fn fetch_vectors(&self, role_id: i32) -> Result<Vec<(String, Vec<f32>)>, String> {
+        let rows = sqlx::query("SELECT id, vector FROM semantic_memory WHERE role_id = ?")
+            .bind(role_id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| format!("读取语义记忆失败: {e}"))?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            out.push((row.get(0), decode_vector(row.get::<Vec<u8>, _>(1))));
+        }
+        Ok(out)
+    }
+
     /// 按 id 删除某个角色的记忆。返回是否实际删除。
     pub async fn delete(&self, role_id: i32, id: &str) -> Result<bool, String> {
         let result = sqlx::query("DELETE FROM semantic_memory WHERE role_id = ? AND id = ?")
@@ -169,10 +184,16 @@ impl Store {
 
     /// 全局记忆总数（供前端状态面板展示）。
     pub async fn count_all(&self) -> usize {
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM semantic_memory")
+        let count: i64 = match sqlx::query_scalar("SELECT COUNT(*) FROM semantic_memory")
             .fetch_one(&self.pool)
             .await
-            .unwrap_or(0);
+        {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("[semantic_memory] count_all 查询失败: {e}");
+                0
+            },
+        };
         count.max(0) as usize
     }
 }

@@ -754,7 +754,7 @@ mod memory_bank_context_tests {
 
     #[tokio::test]
     async fn invalidation_covers_systems_for_roles_no_longer_present_in_history() {
-        let db = Database::memory().await.unwrap();
+        let db = Database::connect("sqlite::memory:").await.unwrap();
         let llm: LlmSlot = Arc::new(RwLock::new(None));
         let mut manager = GameRoleManager::new(
             PathBuf::new(),

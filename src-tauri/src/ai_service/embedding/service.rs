@@ -93,14 +93,14 @@ impl EmbeddingManager {
         }
     }
 
-    pub async fn is_ready(&self) -> bool {
+    pub fn is_ready(&self) -> bool {
         self.runtime
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .is_some()
     }
 
-    pub async fn dim(&self) -> Option<usize> {
+    pub fn dim(&self) -> Option<usize> {
         self.runtime
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -108,7 +108,7 @@ impl EmbeddingManager {
             .map(|r| r.dim)
     }
 
-    pub async fn model_name(&self) -> Option<String> {
+    pub fn model_name(&self) -> Option<String> {
         self.runtime
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -343,9 +343,10 @@ impl EmbeddingManager {
 
     fn find_onnx(model_dir: &Path) -> Option<PathBuf> {
         // 量化模型体积小且推理更快，优先加载；无则退回原始 float32 模型。
+        // 与 has_model_files 一致地使用 non_empty_file，避免加载 0 字节损坏文件。
         for name in ["model_quantized.onnx", "model_int8.onnx", "model.onnx"] {
             let p = model_dir.join(name);
-            if p.exists() {
+            if non_empty_file(&p) {
                 return Some(p);
             }
         }
@@ -376,6 +377,38 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
         return 0.0;
     }
     dot / (na.sqrt() * nb.sqrt())
+}
+
+/// 快速判断候选向量是否与已知向量集合中任一向量余弦 ≥ threshold。
+///
+/// 利用 L2 归一化单位向量的等价关系做前缀剪枝：
+/// `cos(a,b) = 1 - ||a-b||²/2`，阈值 T 时仅当 `||a-b||² ≤ 2*(1-T)` 才可能满足。
+/// 对大部分不相似向量，前几维平方和即超出阈值即 break，避免完整 384 维点积。
+pub fn cosine_ge_threshold(candidates: &[&[f32]], query: &[f32], threshold: f32) -> bool {
+    if query.is_empty() || threshold <= 0.0 {
+        return true;
+    }
+    if candidates.is_empty() {
+        return false;
+    }
+    let sq_threshold = 2.0 * (1.0 - threshold);
+    for cand in candidates {
+        if cand.len() != query.len() || cand.is_empty() {
+            continue;
+        }
+        let mut sq = 0.0f32;
+        for (&a, &b) in cand.iter().zip(query.iter()) {
+            let d = a - b;
+            sq += d * d;
+            if sq >= sq_threshold {
+                break;
+            }
+        }
+        if sq < sq_threshold {
+            return true;
+        }
+    }
+    false
 }
 
 /// 截断超长文本。仅在超长时分配，短文本零拷贝复用原切片。
@@ -545,6 +578,45 @@ mod tests {
     #[test]
     fn mismatch_length_returns_zero() {
         assert_eq!(cosine(&[1.0, 2.0], &[1.0]), 0.0);
+    }
+
+    /// `cosine_ge_threshold` 与暴力 `cosine >= T` 判定结果一致（含归一化向量）。
+    #[test]
+    fn cosine_ge_threshold_matches_bruteforce() {
+        // 高斯采样的单位向量：大量接近正交、少量高相似
+        let mut rng = 20260912u64;
+        let rand = |state: &mut u64| {
+            *state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (*state >> 33) as f32 / (1u64 << 31) as f32 - 1.0
+        };
+        let unit = |state: &mut u64, dim: usize| -> Vec<f32> {
+            let mut v: Vec<f32> = (0..dim).map(|_| rand(state)).collect();
+            let n: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-12);
+            v.iter_mut().for_each(|x| *x /= n);
+            v
+        };
+        let query = unit(&mut rng, 384);
+        let mut candidates: Vec<Vec<f32>> = (0..8).map(|_| unit(&mut rng, 384)).collect();
+        // 造一个高相似候选（原向量叠加小扰动再归一化）
+        let mut near = query.clone();
+        for x in near.iter_mut().take(384) {
+            *x += rand(&mut rng) * 0.05;
+        }
+        let n: f32 = near.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-12);
+        near.iter_mut().for_each(|x| *x /= n);
+        candidates.push(near);
+
+        for threshold in [0.5, 0.88, 0.99] {
+            let cached_slice: Vec<&[f32]> = candidates.iter().map(|v| v.as_slice()).collect();
+            let fast = cosine_ge_threshold(&cached_slice, &query, threshold);
+            let brute = candidates.iter().any(|c| cosine(c, &query) >= threshold);
+            assert_eq!(
+                fast, brute,
+                "threshold={threshold}: 剪枝判定({fast}) 应等价于暴力判定({brute})"
+            );
+        }
     }
 
     #[test]
