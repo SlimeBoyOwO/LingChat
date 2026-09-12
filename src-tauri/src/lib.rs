@@ -299,6 +299,13 @@ pub fn run() {
             // 将其传递给独立的本地 TTS crate。
             init::static_copy::init_data_dir(&app.handle());
 
+            // ONNX Runtime：定位 onnxruntime.dll 并显式加载
+            // （仅 Windows 的 load-dynamic 模式，兼容无 AVX2 的旧 CPU，如三代酷睿；
+            //  非 Windows 走 download-binaries 静态链接，无需此调用）。
+            // 必须在任何 ort::Session 创建之前调用。
+            #[cfg(target_os = "windows")]
+            utils::onnx::init_onnx_runtime(app.handle());
+
             // 管理各种状态
             app.manage(api::pet::HitTestState::default());
             app.manage(resource_sync::ResourceSyncState::default());

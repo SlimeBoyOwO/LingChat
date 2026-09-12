@@ -75,6 +75,11 @@ impl LocalTtsEngine {
 
     /// Initialize the holder from on-disk DeBerta + tokenizer bytes.
     pub async fn init(&self, paths: &LocalTtsPaths) -> std::result::Result<(), String> {
+        // ONNX Runtime 不可用（onnxruntime.dll 缺失）时直接降级，绝不创建 Session
+        // （ort 在 dll 缺失时首次创建 Session 会 panic，导致应用崩溃）。
+        if !crate::utils::onnx::onnx_available() {
+            return Err("ONNX Runtime 不可用（onnxruntime.dll 缺失），本地 TTS 停用".into());
+        }
         // 与 unload_all/load_voice/synthesize 保持一致，整个 init 过程串行化，
         // 避免与 unload_all 并发导致关闭后引擎被复活、或被 synthesize 放回的旧 holder 覆盖。
         let _serialize_guard = self.serialize.lock().await;
@@ -107,6 +112,11 @@ impl LocalTtsEngine {
         paths: &LocalTtsPaths,
         voice_id: &str,
     ) -> std::result::Result<(), String> {
+        // ONNX Runtime 不可用（onnxruntime.dll 缺失）时直接降级，绝不创建 Session
+        // （ort 在 dll 缺失时首次创建 Session 会 panic，导致应用崩溃）。
+        if !crate::utils::onnx::onnx_available() {
+            return Err("ONNX Runtime 不可用（onnxruntime.dll 缺失），本地 TTS 停用".into());
+        }
         let sbv2 = paths.voice_dir(voice_id).join("model.sbv2");
         let onnx = paths.voice_dir(voice_id).join("model.onnx");
         let (model_bytes, style_vectors) = if sbv2.exists() {

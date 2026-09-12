@@ -99,6 +99,8 @@ jobs:
           touch data/.official/game_data/.gitkeep
           touch data/third_party/.gitkeep
           node scripts/prepare-desktop-resources.mjs
+          # 确保 onnxruntime.dll 就位（tauri build 钩子也会执行，这里显式兜底）
+          node scripts/ensure-onnxruntime.mjs
           pip install Pillow
           rm -rf ./src-tauri/icons/icon.png
           python -c "from PIL import Image, ImageDraw; img=Image.new('RGB', (1024,1024), color='#4A90D9'); draw=ImageDraw.Draw(img); draw.ellipse((100,100,924,924), fill='#2C3E50'); img.save('./src-tauri/icons/icon.png')"
@@ -112,9 +114,18 @@ jobs:
             ${{ runner.os == 'macOS' && '' || '' }}
         run: pnpm tauri build --no-bundle
 
+      - name: 收集产物（Windows 附带 onnxruntime.dll）
+        shell: bash
+        run: |
+          mkdir -p "${{ runner.temp }}/dist"
+          cp "${{ matrix.artifact-path }}" "${{ runner.temp }}/dist/"
+          if [ "${{ runner.os }}" = "Windows" ] && [ -f "src-tauri/target/release/onnxruntime.dll" ]; then
+            cp "src-tauri/target/release/onnxruntime.dll" "${{ runner.temp }}/dist/"
+          fi
+
       - name: 上传 artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact-name }}
-          path: ${{ matrix.artifact-path }}
+          path: ${{ runner.temp }}/dist
           retention-days: 7

@@ -7,6 +7,7 @@ pub mod fs;
 pub mod gpu_perf;
 pub mod llm_request_logger;
 pub mod log_bridge;
+pub mod onnx;
 pub mod path;
 pub mod prompt;
 pub mod proxy;

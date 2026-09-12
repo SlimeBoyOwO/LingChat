@@ -76,6 +76,11 @@ impl EmotionClassifier {
 
     /// 从 `model_dir` 加载模型（目录内需有 `model.onnx`、`vocab.txt`、`label_mapping.json`）。
     pub fn load<P: AsRef<Path>>(model_dir: P) -> Result<Self> {
+        // ONNX Runtime 不可用（onnxruntime.dll 缺失）时直接降级，绝不创建 Session
+        // （ort 在 dll 缺失时首次创建 Session 会 panic，导致应用崩溃）。
+        if !crate::utils::onnx::onnx_available() {
+            return Err(anyhow!("ONNX Runtime 不可用（onnxruntime.dll 缺失），情绪分类器禁用"));
+        }
         let dir: PathBuf = model_dir.as_ref().to_path_buf();
         let onnx_path = dir.join("model.onnx");
         let vocab_path = dir.join("vocab.txt");
