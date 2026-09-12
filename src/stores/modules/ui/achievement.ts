@@ -71,9 +71,14 @@ export const useAchievementStore = defineStore("achievement", {
 
     hideAchievement() {
       this.isVisible = false;
+      const shown = this.current?.id;
 
       setTimeout(() => {
-        this.current = null;
+        // 只清空"本次展示的成就"；若 500ms 内已有下一个成就开始展示，跳过清空，
+        // 避免连续解锁时上一个定时器误把新成就 current 清空。
+        if (shown && this.current?.id === shown) {
+          this.current = null;
+        }
         this.processQueue();
       }, 500);
     },
@@ -83,7 +88,9 @@ export const useAchievementStore = defineStore("achievement", {
      */
     notifyBackendUnlock(achievementData: Omit<Achievement, "id"> & { id?: string }) {
       if (achievementData.id) {
-        invoke("unlock_achievement", { achievementId: achievementData.id });
+        invoke("unlock_achievement", { achievementId: achievementData.id }).catch((e) =>
+          console.error("通知后端解锁成就失败:", e)
+        );
       }
     },
 
@@ -105,6 +112,7 @@ export const useAchievementStore = defineStore("achievement", {
      * 监听后端推送的成就解锁消息（Tauri 事件）
      */
     listenForUnlocks() {
+      // App 级一次性监听，unlisten 有意丢弃（与 App 生命周期一致）
       listen<Achievement>("achievement:unlocked", (event) => {
         const data = event.payload;
         if (!data) return;
@@ -131,7 +139,7 @@ export const useAchievementStore = defineStore("achievement", {
           duration: duration || DEFAULT_DURATION,
         });
         this.processQueue();
-      });
+      }).catch((e) => console.error("监听成就解锁事件失败:", e));
     },
   },
 });

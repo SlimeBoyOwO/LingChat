@@ -7,6 +7,7 @@ pub mod package;
 pub mod paths;
 pub mod registry;
 pub mod setup;
+pub mod sherpa_onnx_manager;
 
 mod download;
 pub(crate) mod saf_bridge;

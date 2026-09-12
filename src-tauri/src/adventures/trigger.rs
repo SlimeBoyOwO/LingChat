@@ -22,23 +22,21 @@ pub struct UnlockedAdventureInfo {
 
 /// Evaluate all unlock conditions for all adventures.
 /// Returns list of newly unlocked adventures.
-pub fn check_all_adventures(
+pub async fn check_all_adventures(
     db: &DatabaseConnection,
     achievement_mgr: &AchievementManager,
     game_status: &GameStatus,
     adventures: &[&ScriptStatus],
 ) -> Result<Vec<UnlockedAdventureInfo>> {
-    let rt = tokio::runtime::Handle::current();
-
     let mut newly_unlocked = Vec::new();
 
     for adv in adventures {
         let folder = &adv.folder_key;
 
         // Skip if already unlocked
-        let already_unlocked =
-            tokio::task::block_in_place(|| rt.block_on(AdventureManager::is_unlocked(db, folder)))
-                .unwrap_or(false);
+        let already_unlocked = AdventureManager::is_unlocked(db, folder)
+            .await
+            .unwrap_or(false);
         if already_unlocked {
             continue;
         }
@@ -47,13 +45,8 @@ pub fn check_all_adventures(
         let conditions = &adv.adventure.unlock_conditions;
         if conditions.is_empty() {
             // No conditions: default-unlock
-            tokio::task::block_in_place(|| {
-                rt.block_on(AdventureManager::unlock_adventure(
-                    db,
-                    folder,
-                    &adv.adventure.bound_character_folder,
-                ))
-            })?;
+            AdventureManager::unlock_adventure(db, folder, &adv.adventure.bound_character_folder)
+                .await?;
             newly_unlocked.push(UnlockedAdventureInfo {
                 adventure_folder: folder.clone(),
                 name: adv.name.clone(),
@@ -64,18 +57,17 @@ pub fn check_all_adventures(
             continue;
         }
 
-        let all_passed = conditions
-            .iter()
-            .all(|cond| evaluate_condition(db, achievement_mgr, game_status, cond));
+        let mut all_passed = true;
+        for cond in conditions {
+            if !evaluate_condition(db, achievement_mgr, game_status, cond).await {
+                all_passed = false;
+                break;
+            }
+        }
 
         if all_passed {
-            tokio::task::block_in_place(|| {
-                rt.block_on(AdventureManager::unlock_adventure(
-                    db,
-                    folder,
-                    &adv.adventure.bound_character_folder,
-                ))
-            })?;
+            AdventureManager::unlock_adventure(db, folder, &adv.adventure.bound_character_folder)
+                .await?;
             newly_unlocked.push(UnlockedAdventureInfo {
                 adventure_folder: folder.clone(),
                 name: adv.name.clone(),
@@ -90,7 +82,7 @@ pub fn check_all_adventures(
 }
 
 /// Evaluate a single unlock condition.
-fn evaluate_condition(
+async fn evaluate_condition(
     db: &DatabaseConnection,
     achievement_mgr: &AchievementManager,
     game_status: &GameStatus,
@@ -134,11 +126,9 @@ fn evaluate_condition(
             if prereq.is_empty() {
                 return false;
             }
-            let rt = tokio::runtime::Handle::current();
-            tokio::task::block_in_place(|| {
-                rt.block_on(AdventureManager::is_globally_completed(db, prereq))
-            })
-            .unwrap_or(false)
+            AdventureManager::is_globally_completed(db, prereq)
+                .await
+                .unwrap_or(false)
         },
 
         "achievement_unlocked" => {

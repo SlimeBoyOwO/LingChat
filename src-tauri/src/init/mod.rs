@@ -334,9 +334,16 @@ async fn load_default_character(
     data_dir: &std::path::Path,
 ) -> Result<CharacterSettings> {
     // 1. 尝试从 settings store 读取上次游玩的角色 ID
-    let store = app
-        .store(config::STORE_FILE)
-        .unwrap_or_else(|_| app.handle().store(config::STORE_FILE).unwrap());
+    let store = match app.store(config::STORE_FILE) {
+        Ok(s) => s,
+        Err(first_err) => {
+            // 双路径兜底：外层失败再无条件 unwrap 会在极罕见情况下 panic，
+            // 改为把第二次失败的错误向上传播。
+            app.handle().store(config::STORE_FILE).map_err(|e| {
+                anyhow::anyhow!("settings store 打开失败: primary={first_err}, fallback={e}")
+            })?
+        },
+    };
     if let Some(last_id) = store
         .get(config::session::LAST_CHARACTER_ID)
         .and_then(|v| v.as_i64())

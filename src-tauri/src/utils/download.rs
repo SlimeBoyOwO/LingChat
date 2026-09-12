@@ -117,40 +117,49 @@ pub async fn download_to_file(
     let mut last_emit = Instant::now();
     let mut last_emitted_bytes: u64 = 0;
 
-    while let Some(chunk) = stream.next().await {
-        // 取消检查
-        if let Some(ref token) = cancel {
-            if token.is_cancelled() {
-                let _ = tokio::fs::remove_file(&tmp).await;
-                return Err("download cancelled".into());
+    let result: Result<u64, String> = async {
+        while let Some(chunk) = stream.next().await {
+            // 取消检查
+            if let Some(ref token) = cancel {
+                if token.is_cancelled() {
+                    return Err("download cancelled".into());
+                }
+            }
+
+            let chunk = chunk.map_err(|e| format!("chunk: {e}"))?;
+            tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
+                .await
+                .map_err(|e| format!("write: {e}"))?;
+            bytes_done += chunk.len() as u64;
+
+            let now = Instant::now();
+            if progress_update_due(
+                now.duration_since(last_emit),
+                bytes_done.saturating_sub(last_emitted_bytes),
+            ) {
+                if let Some(ref cb) = progress {
+                    cb(DownloadProgress::new(bytes_done, total));
+                }
+                last_emit = now;
+                last_emitted_bytes = bytes_done;
             }
         }
 
-        let chunk = chunk.map_err(|e| format!("chunk: {e}"))?;
-        tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
+        tokio::io::AsyncWriteExt::shutdown(&mut file)
             .await
-            .map_err(|e| format!("write: {e}"))?;
-        bytes_done += chunk.len() as u64;
+            .map_err(|e| format!("shutdown: {e}"))?;
+        tokio::fs::rename(&tmp, dest)
+            .await
+            .map_err(|e| format!("rename: {e}"))?;
 
-        let now = Instant::now();
-        if progress_update_due(
-            now.duration_since(last_emit),
-            bytes_done.saturating_sub(last_emitted_bytes),
-        ) {
-            if let Some(ref cb) = progress {
-                cb(DownloadProgress::new(bytes_done, total));
-            }
-            last_emit = now;
-            last_emitted_bytes = bytes_done;
-        }
+        Ok(bytes_done)
     }
+    .await;
 
-    tokio::io::AsyncWriteExt::shutdown(&mut file)
-        .await
-        .map_err(|e| format!("shutdown: {e}"))?;
-    tokio::fs::rename(&tmp, dest)
-        .await
-        .map_err(|e| format!("rename: {e}"))?;
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return result;
+    }
 
     // 完成回调
     if let Some(ref cb) = progress {

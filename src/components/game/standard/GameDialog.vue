@@ -791,11 +791,18 @@
     const ce = e as CustomEvent<string>;
     if (typeof ce.detail !== "string") return;
     inputMessage.value = ce.detail;
-    window.setTimeout(() => send(), ASR_AUTO_SEND_DELAY_MS);
+    if (asrSendTimer !== null) window.clearTimeout(asrSendTimer);
+    asrSendTimer = window.setTimeout(() => {
+      if (disposed) return;
+      send();
+    }, ASR_AUTO_SEND_DELAY_MS);
   }
 
   let unlistenScreenshot: (() => void) | null = null;
   let unlistenCancelled: (() => void) | null = null;
+  let unregisterAsrBridge: (() => void) | null = null;
+  let disposed = false;
+  let asrSendTimer: number | null = null;
 
   onMounted(async () => {
     // 模式切换重挂载：立即从 store 恢复当前台词（不重播打字动画）
@@ -810,7 +817,7 @@
     // 监听 asr-send 事件（auto_send 模式 dispatch）
     window.addEventListener("asr-send", onAsrAutoSend);
     // 输入框桥：流式 partial 实时写入 + 拼接基准读取
-    registerAsrInputBridge({
+    unregisterAsrBridge = registerAsrInputBridge({
       getText: () => inputMessage.value,
       setText: (v) => {
         inputMessage.value = v;
@@ -821,21 +828,33 @@
     // 监听窗口大小变化
     window.addEventListener("resize", updateContainerWidth);
 
-    // 监听截图完成事件
-    unlistenScreenshot = await listen<{ base64: string }>("screenshot:captured", (event) => {
+    // 监听截图完成事件（resolve 前组件已卸载时立即反注册，避免泄漏）
+    const unlistenShot = await listen<{ base64: string }>("screenshot:captured", (event) => {
       screenshotBase64.value = event.payload.base64;
       hasScreenshot.value = true;
       isCapturing.value = false;
     });
+    if (disposed) {
+      unlistenShot();
+      return;
+    }
+    unlistenScreenshot = unlistenShot;
 
     // 监听截图取消事件
-    unlistenCancelled = await listen("screenshot:cancelled", () => {
+    const unlistenCancel = await listen("screenshot:cancelled", () => {
       isCapturing.value = false;
       hasScreenshot.value = false;
     });
+    if (disposed) {
+      unlistenCancel();
+      return;
+    }
+    unlistenCancelled = unlistenCancel;
   });
 
   onUnmounted(() => {
+    disposed = true;
+    if (asrSendTimer !== null) window.clearTimeout(asrSendTimer);
     // 卸载时清掉打字状态：避免返回主界面后首条回复被当成「续打合并」
     dialogueMerge.isTyping = false;
     // 动作打字机停止并释放（否则 setTimeout 循环可能继续跑）
@@ -845,6 +864,7 @@
     window.removeEventListener("resize", updateContainerWidth);
     window.removeEventListener("asr-text", onAsrText);
     window.removeEventListener("asr-send", onAsrAutoSend);
+    unregisterAsrBridge?.();
     if (unlistenScreenshot) unlistenScreenshot();
     if (unlistenCancelled) unlistenCancelled();
   });

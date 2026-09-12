@@ -17,6 +17,7 @@ export interface CosyVoiceRecord {
   name: string;
   model: string;
   created_at: string | null;
+  status: string | null;
 }
 
 export interface CosyvoiceProgress {

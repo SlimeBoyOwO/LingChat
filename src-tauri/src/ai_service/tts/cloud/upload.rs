@@ -22,7 +22,7 @@ struct UploadPolicy {
     policy: String,
     oss_access_key_id: String,
     signature: String,
-    x_oss_object_acl: String,
+    x_oss_object_acl: Option<String>,
     x_oss_forbid_overwrite: String,
 }
 
@@ -39,7 +39,7 @@ fn parse_policy(data: &Value) -> Result<UploadPolicy> {
         policy: required("policy")?,
         oss_access_key_id: required("oss_access_key_id")?,
         signature: required("signature")?,
-        x_oss_object_acl: required("x_oss_object_acl")?,
+        x_oss_object_acl: data["x_oss_object_acl"].as_str().map(str::to_string),
         x_oss_forbid_overwrite: required("x_oss_forbid_overwrite")?,
     })
 }
@@ -48,7 +48,7 @@ fn parse_policy(data: &Value) -> Result<UploadPolicy> {
 pub async fn upload_audio(api_key: &str, model: &str, file_path: &Path) -> Result<String> {
     // ① 拿 OSS 上传凭证
     let resp = http_client()
-        .get(format!("{BASE_URL}{UPLOADS_PATH}"))
+        .post(format!("{BASE_URL}{UPLOADS_PATH}"))
         .query(&[("action", "getPolicy"), ("model", model)])
         .bearer_auth(api_key)
         .send()
@@ -86,13 +86,17 @@ pub async fn upload_audio(api_key: &str, model: &str, file_path: &Path) -> Resul
         .map_err(|e| anyhow!("读取音频文件失败: {e}"))?;
     tracing::info!("CosyVoice 上传样本: {} ({} bytes)", file_name, bytes.len());
 
-    let form = reqwest::multipart::Form::new()
+    let mut form = reqwest::multipart::Form::new()
         .text("OSSAccessKeyId", policy.oss_access_key_id.clone())
         // 注意：OSS POST 直传字段名——Signature 首字母大写、x-oss-* 用连字符
         // （与已验证实现一致；写错字段名 OSS 会直接 400）
         .text("Signature", policy.signature.clone())
-        .text("policy", policy.policy.clone())
-        .text("x-oss-object-acl", policy.x_oss_object_acl.clone())
+        .text("policy", policy.policy.clone());
+    // x_oss_object_acl 为可选字段：getPolicy 并非总是返回，存在时透传，省略时走 OSS 默认 ACL
+    if let Some(acl) = &policy.x_oss_object_acl {
+        form = form.text("x-oss-object-acl", acl.clone());
+    }
+    form = form
         .text(
             "x-oss-forbid-overwrite",
             policy.x_oss_forbid_overwrite.clone(),

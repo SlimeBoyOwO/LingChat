@@ -493,7 +493,11 @@ pub async fn import_live2d(
         },
     };
     let target = root.join("live2d").join(format!("import-{nonce}"));
-    if let Err(error) = fs::create_dir_all(target.parent().unwrap()) {
+    let Some(parent) = target.parent() else {
+        let _ = fs::remove_dir_all(&staging);
+        return Err("Live2D 导入目录无父目录".to_string());
+    };
+    if let Err(error) = fs::create_dir_all(parent) {
         let _ = fs::remove_dir_all(&staging);
         return Err(error.to_string());
     }

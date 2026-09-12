@@ -186,9 +186,11 @@ export const useUIStore = defineStore("ui", {
     currentCharacterFolder(): string {
       return useSettingsStore().characterFolder;
     },
-    // 视口宽高比
+    // 视口宽高比（viewportHeight 未初始化/为 0 时兜底 16:9，避免 Infinity/NaN）
     aspectRatio(): number {
-      return this.viewportWidth / this.viewportHeight;
+      const h = this.viewportHeight;
+      if (!h || h <= 0) return 16 / 9;
+      return this.viewportWidth / h;
     },
     // 窄屏判断（竖屏 / 移动端）
     isNarrowScreen(): boolean {

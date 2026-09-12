@@ -168,3 +168,82 @@ export function synthesizePreview(params: {
 }): Promise<Uint8Array> {
   return invoke<Uint8Array>("tts_local_synthesize_preview", params);
 }
+
+// ---------------------------------------------------------------------------
+// Sherpa-ONNX 本地模型管理
+// ---------------------------------------------------------------------------
+
+export interface SherpaOnnxModelRecord {
+  id: string;
+  display_name: string;
+  model_type: string;
+  language: string;
+  voice: string;
+  size_bytes: number;
+  installed: boolean;
+  path: string;
+}
+
+interface SherpaDownloadProgressPayload {
+  asset_id: string;
+  percent: number;
+  bytes_done?: number;
+  total_bytes?: number;
+}
+
+const sherpaProgressBus = createProgressBus();
+let sherpaProgressUnlisten: UnlistenFn | null = null;
+let sherpaProgressSubscription: Promise<void> | null = null;
+
+async function ensureSherpaProgressSubscription(): Promise<void> {
+  if (sherpaProgressUnlisten) return;
+  if (!sherpaProgressSubscription) {
+    sherpaProgressSubscription = listen<SherpaDownloadProgressPayload>(
+      "tts://sherpa-download-progress",
+      (event) => {
+        sherpaProgressBus.dispatch({
+          asset_id: event.payload.asset_id,
+          percent: event.payload.percent,
+          bytes_done: 0,
+          total_bytes: 0,
+        });
+      }
+    )
+      .then((unlisten) => {
+        sherpaProgressUnlisten = unlisten;
+        if (sherpaProgressBus.listenerCount === 0) {
+          sherpaProgressUnlisten();
+          sherpaProgressUnlisten = null;
+        }
+      })
+      .finally(() => {
+        sherpaProgressSubscription = null;
+      });
+  }
+  await sherpaProgressSubscription;
+}
+
+/** 订阅 Sherpa 模型下载进度；返回取消订阅函数。 */
+export function onSherpaDownloadProgress(listener: ProgressListener): () => void {
+  void ensureSherpaProgressSubscription();
+  const unsubscribe = sherpaProgressBus.subscribe(listener);
+  return () => {
+    unsubscribe();
+    if (sherpaProgressBus.listenerCount === 0 && sherpaProgressUnlisten) {
+      sherpaProgressUnlisten();
+      sherpaProgressUnlisten = null;
+    }
+  };
+}
+
+export function listSherpaModels(): Promise<SherpaOnnxModelRecord[]> {
+  return invoke<SherpaOnnxModelRecord[]>("sherpa_list_models");
+}
+
+export function downloadSherpaModel(modelId: string): Promise<void> {
+  return invoke<void>("sherpa_download_model", { modelId });
+}
+
+export function deleteSherpaModel(modelId: string): Promise<void> {
+  return invoke<void>("sherpa_delete_model", { modelId });
+}

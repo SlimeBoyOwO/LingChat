@@ -48,6 +48,7 @@
   const format = ref<ArchiveFormat>("zip");
 
   const busy = ref(false);
+  let mountedTimer: number | null = null;
 
   function toggle() {
     open.value = !open.value;
@@ -75,9 +76,16 @@
 
   onMounted(() => {
     // 延迟注册，避免捕获刚刚用于打开菜单的点击事件。
-    setTimeout(() => document.addEventListener("click", onDocClick), 0);
+    mountedTimer = window.setTimeout(() => {
+      document.addEventListener("click", onDocClick);
+    }, 0);
   });
   onUnmounted(() => {
+    // 卸载时清掉尚未触发的定时器，避免卸载后仍给 document 挂上监听
+    if (mountedTimer !== null) {
+      window.clearTimeout(mountedTimer);
+      mountedTimer = null;
+    }
     document.removeEventListener("click", onDocClick);
   });
 </script>

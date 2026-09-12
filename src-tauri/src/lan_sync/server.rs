@@ -250,67 +250,76 @@ async fn push_file_handler(
     })?;
 
     use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    let mut stream = body.into_data_stream();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| {
-            AppError(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("接收数据失败: {e}"),
-            )
-        })?;
-        tokio::io::AsyncWriteExt::write_all(&mut dest, &chunk)
+
+    let result: Result<Json<serde_json::Value>, AppError> = async {
+        let mut hasher = Sha256::new();
+        let mut stream = body.into_data_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| {
+                AppError(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("接收数据失败: {e}"),
+                )
+            })?;
+            tokio::io::AsyncWriteExt::write_all(&mut dest, &chunk)
+                .await
+                .map_err(|e| {
+                    AppError(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("写入临时文件失败: {e}"),
+                    )
+                })?;
+            hasher.update(&chunk);
+        }
+
+        // 确保数据落盘
+        tokio::io::AsyncWriteExt::flush(&mut dest)
             .await
             .map_err(|e| {
                 AppError(
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("写入临时文件失败: {e}"),
+                    format!("flush 失败: {e}"),
                 )
             })?;
-        hasher.update(&chunk);
-    }
+        drop(dest);
 
-    // 确保数据落盘
-    tokio::io::AsyncWriteExt::flush(&mut dest)
-        .await
-        .map_err(|e| {
-            AppError(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("flush 失败: {e}"),
-            )
-        })?;
-    drop(dest);
+        let sha256 = format!("{:x}", hasher.finalize());
 
-    let sha256 = format!("{:x}", hasher.finalize());
-
-    if let Err(e) = std::fs::rename(&tmp_path, &file_path) {
-        // 目标文件被锁定（如 SQLite DB），回退到暂存
-        match super::staging::stage_file(&state.data_dir, &query.path, &tmp_path) {
-            Ok(()) => {
-                let _ = std::fs::remove_file(&tmp_path);
-                return Ok(Json(serde_json::json!({
-                    "ok": true,
-                    "staged": true,
-                    "sha256": sha256,
-                })));
-            },
-            Err(se) => {
-                return Err(AppError(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!(
-                        "重命名失败且暂存失败: {} (rename: {}, stage: {})",
-                        query.path, e, se
-                    ),
-                ));
-            },
+        if let Err(e) = std::fs::rename(&tmp_path, &file_path) {
+            // 目标文件被锁定（如 SQLite DB），回退到暂存
+            match super::staging::stage_file(&state.data_dir, &query.path, &tmp_path) {
+                Ok(()) => {
+                    let _ = std::fs::remove_file(&tmp_path);
+                    return Ok(Json(serde_json::json!({
+                        "ok": true,
+                        "staged": true,
+                        "sha256": sha256,
+                    })));
+                },
+                Err(se) => {
+                    return Err(AppError(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!(
+                            "重命名失败且暂存失败: {} (rename: {}, stage: {})",
+                            query.path, e, se
+                        ),
+                    ));
+                },
+            }
         }
-    }
 
-    Ok(Json(serde_json::json!({
-        "ok": true,
-        "staged": false,
-        "sha256": sha256,
-    })))
+        Ok(Json(serde_json::json!({
+            "ok": true,
+            "staged": false,
+            "sha256": sha256,
+        })))
+    }
+    .await;
+    // 注意：rename 成功时 tmp_path 已被移动，remove_file 失败会被忽略。
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+    }
+    result
 }
 
 /// POST /push-delete?path=... — 接收删除指令（软删除到 .trash/）。

@@ -307,6 +307,9 @@ pub fn run() {
             app.manage(utils::cpu_perf::CpuDetectionCache::new());
             app.manage(utils::gpu_perf::GpuDetectionCache::new());
             app.manage(api::role_archive::RoleArchiveState::default());
+            app.manage(api::tts_sherpa::init(
+                &crate::init::static_copy::get_data_dir().clone(),
+            ));
 
             // Android 修复：Tauri 在 setup 闭包执行前已创建 webview 窗口，前端 invoke
             // 命令会在 IPC runtime worker 上立即 dispatch；如果 AppState 还没 manage
@@ -903,6 +906,12 @@ pub fn run() {
             ai_service::tts::local::tts_local_get_device,
             ai_service::tts::local::tts_local_list_devices,
             ai_service::tts::local::tts_local_set_device,
+            // Sherpa-ONNX 本地模型管理
+            api::tts_sherpa::sherpa_list_models,
+            api::tts_sherpa::sherpa_download_model,
+            api::tts_sherpa::sherpa_delete_model,
+            api::tts_sherpa::test_sherpa_onnx_voice,
+            api::tts_sherpa::open_sherpa_onnx_model_manager,
             // ASR 相关命令
             api::asr::asr_start_listening,
             api::asr::asr_stop_listening,

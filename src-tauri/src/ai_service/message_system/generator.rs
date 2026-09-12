@@ -220,7 +220,9 @@ impl MessageGenerator {
             return Ok(());
         }
 
-        let scene_id = gs.current_scene_id.clone().unwrap();
+        let Some(scene_id) = gs.current_scene_id.clone() else {
+            return Ok(());
+        };
         let store = SceneStore::new(&data_dir());
         if let Ok(Some(scene)) = store.find_by_id(&scene_id) {
             if !scene.description.trim().is_empty() {
@@ -235,7 +237,9 @@ impl MessageGenerator {
                     display_name: Some("系统".to_string()),
                     ..Default::default()
                 };
-                let _ = gs.add_line(&self.deps.db, line).await;
+                if let Err(e) = gs.add_line(&self.deps.db, line).await {
+                    tracing::error!("写入场景切换系统台词失败: {e}");
+                }
             }
         }
         gs.last_processed_scene_id = gs.current_scene_id.clone();
