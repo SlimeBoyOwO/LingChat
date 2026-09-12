@@ -2,6 +2,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 use crate::AppState;
+use crate::ai_service::game_system::auto_save;
 use crate::ai_service::game_system::game_status::GameStatusSnapshot;
 use crate::api::game::WebInitData;
 use crate::api::game::build_web_init_data;
@@ -189,6 +190,15 @@ pub async fn create_save(
         .map_err(|e| eprintln!("[SAVE_WARN] create_save: 保存剧本状态失败: {}", e));
     }
 
+    // 8. 同步自动存档基线（内容刚落盘，避免下个 tick 重存；与定时循环 manager→ai_service 反向，需先 drop service）
+    let baseline_hash = auto_save::hash_of_real_lines(&lines);
+    drop(service);
+    state
+        .auto_save_manager
+        .lock()
+        .await
+        .set_baseline(baseline_hash);
+
     Ok(CreateSaveResponse {
         save_id,
         message: "存档创建成功".into(),
@@ -238,6 +248,8 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         .map_err(|e| eprintln!("[SAVE_WARN] 恢复记忆库失败: {}", e));
 
     // 8. 载入台词（sync_memories 用恢复后的正确指针，只压缩存档点之后的增量）
+    // 先记下载入内容的真实对话指纹，稍后同步自动存档基线，避免下个 tick 把刚载入内容当新变化重存覆盖旧档
+    let baseline_hash = auto_save::hash_of_real_lines(&line_list);
     service
         .load_lines(line_list, main_role_id, Some(save_id))
         .await
@@ -253,7 +265,15 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     }
 
     // 11. 返回前端初始化数据
-    build_web_init_data(&service, &app).await
+    let result = build_web_init_data(&service, &app).await?;
+    // 释放 ai_service 锁后再取 manager，避免与定时循环（manager→ai_service）反向取锁死锁
+    drop(service);
+    state
+        .auto_save_manager
+        .lock()
+        .await
+        .set_baseline(baseline_hash);
+    Ok(result)
 }
 
 #[tauri::command]
@@ -316,6 +336,15 @@ pub async fn update_save(
         .await
         .map_err(|e| eprintln!("[SAVE_WARN] update_save: 保存剧本状态失败: {}", e));
     }
+
+    // 7. 同步自动存档基线（内容刚落盘，避免下个 tick 重存；与定时循环 manager→ai_service 反向，需先 drop service）
+    let baseline_hash = auto_save::hash_of_real_lines(&lines);
+    drop(service);
+    state
+        .auto_save_manager
+        .lock()
+        .await
+        .set_baseline(baseline_hash);
 
     Ok(())
 }

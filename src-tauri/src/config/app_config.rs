@@ -57,10 +57,18 @@ fn default_memory_promises_max_chars() -> u32 {
 fn default_disable_splash_animation() -> bool {
     false
 }
+fn default_auto_save_enabled() -> bool {
+    true
+}
+fn default_auto_save_interval_secs() -> u32 {
+    300
+}
 
 pub const DEFAULT_LLM_TIMEOUT_SECS: u64 = 120;
 pub const MIN_LLM_TIMEOUT_SECS: u64 = 10;
 pub const MAX_LLM_TIMEOUT_SECS: u64 = 3600;
+pub const MIN_AUTO_SAVE_INTERVAL_SECS: u32 = 30;
+pub const MAX_AUTO_SAVE_INTERVAL_SECS: u32 = 3600;
 pub const MIN_MEMORY_UPDATE_INTERVAL: u32 = 1;
 pub const MAX_MEMORY_UPDATE_INTERVAL: u32 = 10_000;
 pub const MAX_MEMORY_RECENT_WINDOW: u32 = 10_000;
@@ -116,6 +124,12 @@ pub struct AppConfig {
     #[serde(default = "default_disable_splash_animation")]
     pub disable_splash_animation: bool,
 
+    // ---- 自动存档 ----
+    #[serde(default = "default_auto_save_enabled")]
+    pub auto_save_enabled: bool,
+    #[serde(default = "default_auto_save_interval_secs")]
+    pub auto_save_interval_secs: u32,
+
     /// TTS 引擎配置（适配器 URL、音频格式等）
     #[serde(default)]
     pub tts: TtsConfig,
@@ -149,6 +163,8 @@ impl Default for AppConfig {
             memory_user_info_max_chars: default_memory_user_info_max_chars(),
             memory_promises_max_chars: default_memory_promises_max_chars(),
             disable_splash_animation: default_disable_splash_animation(),
+            auto_save_enabled: default_auto_save_enabled(),
+            auto_save_interval_secs: default_auto_save_interval_secs(),
             tts: TtsConfig::default(),
             embedding: EmbeddingConfig::default(),
             semantic_memory: SemanticMemoryConfig::default(),
@@ -288,6 +304,14 @@ impl AppConfig {
                 &store,
                 keys::DISABLE_SPLASH_ANIMATION,
                 default.disable_splash_animation,
+            ),
+            auto_save_enabled: get_bool(&store, keys::AUTO_SAVE_ENABLED, default.auto_save_enabled),
+            auto_save_interval_secs: get_u32_in_range(
+                &store,
+                keys::AUTO_SAVE_INTERVAL_SECS,
+                default.auto_save_interval_secs,
+                MIN_AUTO_SAVE_INTERVAL_SECS,
+                MAX_AUTO_SAVE_INTERVAL_SECS,
             ),
             tts: TtsConfig::from_store(Some(&store)),
             embedding: EmbeddingConfig::from_store(Some(&store)),

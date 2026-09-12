@@ -282,6 +282,9 @@ export default {
           "MEMORY_UPDATE_INTERVAL — 触发摘要的可见台词数（1–10000，默认 250）",
         memory_recent_window:
           "MEMORY_RECENT_WINDOW — 压缩后保留的角色可见台词数（0–10000，默认 30）",
+        auto_save_enabled: "AUTO_SAVE_ENABLED — 是否启用自动存档（关闭后定时与退出存档均不再写入）",
+        auto_save_interval_secs:
+          "AUTO_SAVE_INTERVAL_SECS — 自动存档间隔（秒，30–3600，默认 300，改后即时生效）",
       },
       tts: {
         simple_vits_api_url: "Simple-Vits-API 地址（VITS 适配器）",

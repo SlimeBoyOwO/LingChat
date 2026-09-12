@@ -812,10 +812,10 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
         let svc = state.ai_service.lock().await;
         let mut gs = svc.game_status.lock().await;
 
-        if gs.player_entered {
+        if gs.entry_greeting_done {
             return Ok(());
         }
-        gs.player_entered = true;
+        gs.entry_greeting_done = true;
 
         let current_role_id = match gs.current_role_id {
             Some(id) => id,

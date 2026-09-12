@@ -37,6 +37,10 @@ pub const TRANSLATE_ENABLE: &str = "translate.enable";
 pub const ENABLE_TIME_SENSE: &str = "features.enable_time_sense";
 pub const ENABLE_EMOTION_CLASSIFIER: &str = "features.enable_emotion_classifier";
 
+// ========== 自动存档 ==========
+pub const AUTO_SAVE_ENABLED: &str = "features.auto_save_enabled";
+pub const AUTO_SAVE_INTERVAL_SECS: &str = "features.auto_save_interval_secs";
+
 // ========== 功能开关（记忆系统） ==========
 pub const USE_PERSISTENT_MEMORY: &str = "features.use_persistent_memory";
 pub const MEMORY_UPDATE_INTERVAL: &str = "features.memory_update_interval";

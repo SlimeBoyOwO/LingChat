@@ -172,6 +172,36 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             },
         );
 
+        // 自动存档
+        feat_subs.insert(
+            "自动存档".to_string(),
+            Subcategory {
+                description: "自动存档的开关与写入间隔；间隔改动即时生效，无需重启".to_string(),
+                settings: vec![
+                    ConfigSetting {
+                        key: keys::AUTO_SAVE_ENABLED.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::AUTO_SAVE_ENABLED,
+                            &app_defaults.auto_save_enabled.to_string(),
+                        ),
+                        description: "AUTO_SAVE_ENABLED — 是否启用自动存档（关闭后定时与退出存档均不再写入）".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::AUTO_SAVE_INTERVAL_SECS.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::AUTO_SAVE_INTERVAL_SECS,
+                            &app_defaults.auto_save_interval_secs.to_string(),
+                        ),
+                        description: "AUTO_SAVE_INTERVAL_SECS — 自动存档间隔（秒，30–3600，默认 300，改后即时生效）".to_string(),
+                        setting_type: "number".to_string(),
+                    },
+                ],
+            },
+        );
+
         // 记忆系统
         feat_subs.insert(
             "记忆系统".to_string(),

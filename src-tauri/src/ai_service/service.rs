@@ -190,7 +190,7 @@ impl AIService {
         gs.line_list.clear();
         gs.onstage_role_ids.clear();
         gs.present_role_ids.clear();
-        gs.player_entered = false;
+        gs.entry_greeting_done = false;
     }
 
     pub async fn set_active_save_id(&mut self, save_id: Option<i32>) {

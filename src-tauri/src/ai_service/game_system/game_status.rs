@@ -56,9 +56,9 @@ pub struct GameStatus {
     /// 行为不受影响。
     pub preview_generation: u64,
 
-    /// 标记玩家是否已在本会话中入场（内存标记，重启重置）。
-    /// 用于防止重复触发入场问候。
-    pub player_entered: bool,
+    /// 本会话是否已触发过入场问候（内存标记，重启/清档重置）。
+    /// `notify_player_entry` 靠它去重，避免重复生成问候台词；与"玩家是否在游戏里"无关。
+    pub entry_greeting_done: bool,
 
     /// 场景感知开关（关闭后切换场景不再触发旁白）
     pub scene_awareness_enabled: bool,
@@ -86,7 +86,7 @@ impl GameStatus {
             script_status: None,
             active_save_id: None,
             preview_generation: 0,
-            player_entered: false,
+            entry_greeting_done: false,
             scene_awareness_enabled: true,
         }
     }

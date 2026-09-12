@@ -9,11 +9,56 @@ use tauri::{AppHandle, Emitter, WebviewWindow};
 use tokio::sync::Mutex;
 
 use crate::ai_service::service::SharedAIService;
+use crate::ai_service::types::GameLine;
+use crate::config::AppConfig;
+use crate::db::entities::line::LineAttribute;
 use crate::db::managers::save_repo::SaveRepo;
 
 const AUTO_SAVE_PREFIX: &str = "自动存档";
-const AUTO_SAVE_INTERVAL_SECS: u64 = 300; // 5 minutes
 const EXIT_SAVE_TIMEOUT_SECS: u64 = 5;
+
+/// 一行是否属于「真实对话」——玩家发言或角色回复。
+/// 人设 system 行、旁白/系统/剧情提示（内容以 [`NARRATION_TAG`] 开头）一律不计，
+/// 因此主菜单（仅有占位/旁白行）算不出内容，自动存档不会误触发覆盖旧档。
+/// 用内容前缀而非 display_name 判旁白：剧本作者可给旁白事件自定义展示名，会绕过 display_name。
+/// 已知边角：试玩会话（`preview_generation`）期间若正好 tick，预览台词会被计为真实对话写进主槽，本次不处理。
+pub(crate) fn is_real_dialogue(line: &GameLine) -> bool {
+    match line.attribute() {
+        // 角色回复：assistant 且归属某角色（工具调用回填的前缀行 sender 为空，排除）
+        LineAttribute::Assistant => line.base.sender_role_id.is_some(),
+        // 玩家发言：sender_role_id==0（DB 不变量）且非旁白/系统/剧情内容
+        LineAttribute::User => {
+            line.base.sender_role_id == Some(0)
+                && !line
+                    .base
+                    .content
+                    .starts_with(crate::utils::prompt::NARRATION_TAG)
+        },
+        _ => false,
+    }
+}
+
+/// 计算「真实对话」内容指纹；无真实对话返回 `None`。
+/// 抽出为自由函数，供载入/手动存档路径在持有 `game_status` 锁时复用，避免与
+/// 定时循环（manager→ai_service）反向取锁造成死锁。
+pub fn hash_of_real_lines(lines: &[GameLine]) -> Option<u64> {
+    let mut hasher = DefaultHasher::new();
+    let mut real = 0u64;
+    for line in lines {
+        if !is_real_dialogue(line) {
+            continue;
+        }
+        real += 1;
+        line.base.content.hash(&mut hasher);
+        line.base.sender_role_id.hash(&mut hasher);
+        line.base.attribute.as_str().hash(&mut hasher);
+    }
+    if real == 0 {
+        None
+    } else {
+        Some(hasher.finish())
+    }
+}
 
 /// Payload emitted to frontend after each successful auto-save.
 #[derive(Debug, Clone, Serialize)]
@@ -46,14 +91,27 @@ impl AutoSaveManager {
 
     // ========== Periodic Loop ==========
 
-    /// Run the periodic auto-save loop (every 5 minutes).  Never returns.
+    /// Run the periodic auto-save loop.  Never returns.
+    ///
+    /// 每轮先 sleep 再存：避免 `tokio::time::interval` 首次 `tick()` 立即返回导致启动抢跑，
+    /// 并让开关与间隔每轮热重读（改设置无需重启）。
     pub async fn run_periodic(manager: Arc<Mutex<Self>>) {
-        let mut interval = tokio::time::interval(Duration::from_secs(AUTO_SAVE_INTERVAL_SECS));
         loop {
-            interval.tick().await;
+            let (enabled, interval_secs) = {
+                let mgr = manager.lock().await;
+                let cfg = AppConfig::load(&mgr.app).unwrap_or_default();
+                (cfg.auto_save_enabled, cfg.auto_save_interval_secs)
+            };
+
+            tokio::time::sleep(Duration::from_secs(interval_secs as u64)).await;
+
+            if !enabled {
+                continue;
+            }
+
             let mut mgr = manager.lock().await;
             if let Err(e) = mgr.perform_save().await {
-                tracing::warn!("[AutoSave] 自动存档失败: {}", e);
+                tracing::warn!("[AutoSave] 自动存档失败: {e}");
             }
         }
     }
@@ -102,15 +160,21 @@ impl AutoSaveManager {
 
     // ========== Core Save Logic ==========
 
-    /// Perform a save if line_list is non-empty and has changed since last save.
+    /// Perform a save only when there is real dialogue whose content changed since last save.
     async fn perform_save(&mut self) -> Result<(), String> {
-        // 1. Compute current hash (returns None if line_list is empty)
+        // 0. 开关：关闭时定时与退出存档都跳过
+        let cfg = AppConfig::load(&self.app).unwrap_or_default();
+        if !cfg.auto_save_enabled {
+            return Ok(());
+        }
+
+        // 1. Compute current hash (returns None if there is no real dialogue)
         let current_hash = self.compute_line_hash().await;
 
         let current_hash = match current_hash {
             Some(h) => h,
             None => {
-                // line_list is empty — nothing to save
+                // 无真实对话（主菜单/仅人设/仅旁白）— 绝不覆盖旧档
                 return Ok(());
             },
         };
@@ -189,35 +253,26 @@ impl AutoSaveManager {
         Ok(())
     }
 
-    /// Exit save: force a save regardless of change detection.
+    /// Exit save: go through the same gate as the periodic save.
+    /// 不再 reset 强制写：开关关闭 / 无真实对话 / 内容自上次存档未变化时跳过，
+    /// 避免停在主菜单关程序也盖一次旧自动存档。
     async fn perform_exit_save(&mut self) -> Result<(), String> {
-        // Reset hash to force save even if nothing changed
-        self.last_saved_hash = None;
         self.perform_save().await
     }
 
     // ========== Helpers ==========
 
-    /// Compute a hash of the current line_list contents.
-    /// Returns `None` if the list is empty (nothing to save).
+    /// 载入存档 / 手动存档成功后同步基线：把 `last_saved_hash` 设为已给定内容的 hash，
+    /// 使下一次 tick 不会把刚载入（或刚落盘）的内容当成新变化重存一次而覆盖旧自动存档。
+    pub fn set_baseline(&mut self, hash: Option<u64>) {
+        self.last_saved_hash = hash;
+    }
+
+    /// Compute a hash of the current real-dialogue contents (see [`hash_of_real_lines`]).
     async fn compute_line_hash(&self) -> Option<u64> {
         let service = self.ai_service.lock().await;
         let lines = &service.game_status.lock().await.line_list;
-
-        // 初始化时 line_list 自带一条 system 台词（角色人设），
-        // 只有大于 1 条时才说明有实际对话发生，才需要自动存档。
-        if lines.len() <= 1 {
-            return None;
-        }
-
-        let mut hasher = DefaultHasher::new();
-        for line in lines {
-            line.base.content.hash(&mut hasher);
-            line.base.sender_role_id.hash(&mut hasher);
-            line.base.attribute.as_str().hash(&mut hasher);
-        }
-
-        Some(hasher.finish())
+        hash_of_real_lines(lines)
     }
 
     /// Find the existing auto-save slot by title prefix, or create a new one.

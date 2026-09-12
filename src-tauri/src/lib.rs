@@ -573,7 +573,7 @@ pub fn run() {
                 auto_save_manager.clone(),
             );
 
-            // 启动定期自动存档循环（每 5 分钟）
+            // 启动定期自动存档循环（间隔读自配置，热生效）
             tauri::async_runtime::spawn(async move {
                 ai_service::game_system::auto_save::AutoSaveManager::run_periodic(
                     auto_save_manager,
