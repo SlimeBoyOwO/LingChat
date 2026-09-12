@@ -1,14 +1,14 @@
-import { bindTouchControls, usesMobileControls } from "../touch-controls.js";
+import { bindTouchControls, usesMobileControls } from "../shared/touch-controls.js";
 import { SONGS } from "./songs.js";
 import { Judge, WINDOWS } from "./core.js";
 import { inputPerformanceTime } from "./timing.js";
 import { drawIdle, idleFrameAt, breathAt } from "./idle.js";
-import backgroundUrl from "../../assets/minigames/twilight/shrine-dusk.png";
-import pose0Url from "../../assets/minigames/twilight/qinling-0.png";
-import pose1Url from "../../assets/minigames/twilight/qinling-1.png";
-import pose2Url from "../../assets/minigames/twilight/qinling-2.png";
-import pose3Url from "../../assets/minigames/twilight/qinling-3.png";
-import idleUrl from "../../assets/minigames/twilight/qinling-idle.png";
+import backgroundUrl from "@/assets/minigames/twilight/shrine-dusk.png";
+import pose0Url from "@/assets/minigames/twilight/qinling-0.png";
+import pose1Url from "@/assets/minigames/twilight/qinling-1.png";
+import pose2Url from "@/assets/minigames/twilight/qinling-2.png";
+import pose3Url from "@/assets/minigames/twilight/qinling-3.png";
+import idleUrl from "@/assets/minigames/twilight/qinling-idle.png";
 
 /** Mount the bundled game inside an isolated UI root; all resources belong to this mount. */
 export async function mountRhythm(root, options) {

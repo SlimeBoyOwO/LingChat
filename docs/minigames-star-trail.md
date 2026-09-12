@@ -52,7 +52,7 @@
 
 ## 实现
 
-- `src/minigames/star-trail/levels.js`：地图、敌人和收集物布局。
+- `src/components/views/minigames/star-trail/levels.js`：地图、敌人和收集物布局。
 - `core.js`：固定 120 Hz 模拟、碰撞、输入缓冲、射击、伤害、检查点、周期机关和 Boss 状态机；Boss 行为按关卡指定的类型选择，耐久逻辑独立管理阶段和护盾。
 - `render.js`：程序化像素绘制及视差背景；画布随窗口比例调整，保持像素比例。
 - `bgm.js`、`audio.js`：原创 kawaii bass 风格配乐，包含铃音主旋律、失谐锯齿七和弦、切分低音、底鼓、噪声拍手与踩镲、鼓点压低和弦音量的律动。七关分别为 144 / 150 / 140 / 154 / 160 / 166 / 150 BPM；前三关 Boss 为 164 BPM，新增路线 Boss 为 168 BPM，耐久 Boss 为 174 BPM。全部通过 Web Audio 代码合成，不需要采样文件；短前瞻调度，暂停时停止音符并挂起音频上下文。

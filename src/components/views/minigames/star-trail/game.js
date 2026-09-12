@@ -1,4 +1,4 @@
-import { bindTouchControls, usesMobileControls } from "../touch-controls.js";
+import { bindTouchControls, usesMobileControls } from "../shared/touch-controls.js";
 import { Adventure, STEP } from "./core.js";
 import { TrailAudio } from "./audio.js";
 import { ARMOR_TIERS, LEVELS } from "./levels.js";

@@ -5,9 +5,9 @@
 <script setup lang="ts">
   import { onBeforeUnmount, onMounted, ref } from "vue";
   import { useRouter } from "vue-router";
-  import { mountStarTrail, type StarTrailController } from "@/minigames/star-trail/game.js";
-  import template from "@/minigames/star-trail/template.html?raw";
-  import styles from "@/minigames/star-trail/style.css?raw";
+  import { mountStarTrail, type StarTrailController } from "./star-trail/game.js";
+  import template from "./star-trail/template.html?raw";
+  import styles from "./star-trail/style.css?raw";
 
   const host = ref<HTMLDivElement | null>(null);
   const router = useRouter();

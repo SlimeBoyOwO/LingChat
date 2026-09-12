@@ -5,9 +5,9 @@
 <script setup lang="ts">
   import { onBeforeUnmount, onMounted, ref } from "vue";
   import { useRouter } from "vue-router";
-  import { mountRhythm, type RhythmController } from "@/minigames/twilight/game.js";
-  import template from "@/minigames/twilight/template.html?raw";
-  import styles from "@/minigames/twilight/style.css?raw";
+  import { mountRhythm, type RhythmController } from "./twilight/game.js";
+  import template from "./twilight/template.html?raw";
+  import styles from "./twilight/style.css?raw";
 
   const router = useRouter();
   const host = ref<HTMLDivElement | null>(null);

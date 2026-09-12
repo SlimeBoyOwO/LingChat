@@ -48,6 +48,8 @@
 
 ## 运行与资源归属
 
+小游戏页面与逻辑集中在 `src/components/views/minigames/`：`MiniGames.vue` 为选择入口，`TwilightRhythm.vue`、`StarTrail.vue` 为各自的挂载组件；`twilight/`、`star-trail/` 分别包含游戏逻辑、模板、样式与类型声明，共用触摸输入位于 `shared/touch-controls.js`。图片与谱面数据保留在 `src/assets/minigames/`，通过资源别名引用。
+
 `TwilightRhythm.vue` 在主窗口内挂载画布和 Web Audio。静态模板和样式使用 Shadow DOM 隔离，避免像素游戏样式污染主菜单，或剧本的全局红色 UI 覆盖游戏；没有 iframe、外部网页或附加窗口。
 
 主窗口现有 AudioContext 包装仍可为小游戏选择输出设备。该页面不进入聊天路由，主动对话不会在此投放。
