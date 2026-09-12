@@ -52,6 +52,7 @@ pub struct VoiceMaker {
     lang: String,
     /// 中文方言（仅 cosyvoice + lang=zh 时生效；空 = 普通话）
     voice_dialect: Option<String>,
+    character_path: Option<PathBuf>,
     temp_dir: PathBuf,
     audio_format: String,
     availability: TtsAvailability,
@@ -158,6 +159,7 @@ impl VoiceMaker {
             tts_type: String::new(),
             lang: "ja".into(),
             voice_dialect: None,
+            character_path: None,
             temp_dir,
             audio_format,
             availability: TtsAvailability::default(),
