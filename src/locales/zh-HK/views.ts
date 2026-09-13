@@ -61,7 +61,6 @@ export default {
     "continueSaveTitle": "繼續上次進度",
     "continueSaveMessage": "偵測到上次存檔。要繼續上次嘅進度嗎？（取消則前往存檔頁）"
   },
-  },
   pet: {
     chatInput: {
       placeholder: "輸入訊息...",

@@ -85,7 +85,6 @@
 </template>
 
 <script setup lang="ts">
-<script setup lang="ts">
   import type { WebInitData } from "@/api/services/game-info";
   import { getScriptList, type ScriptSummary } from "@/api/services/script-info";
   import { invoke } from "@tauri-apps/api/core";
