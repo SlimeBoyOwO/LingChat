@@ -46,6 +46,8 @@ export default {
     noOutfits: "利用可能な衣装はありません",
     confirmSwitch:
       "キャラクターを切り替えると、現在のキャラクターの記憶はクリアされます。必要な場合は忘れずにセーブしてくださいね",
+    fav: "お気に入り（先頭へ移動）",
+    unfav: "お気に入りを解除",
   },
   archiveProgress: {
     importing: "インポート中",

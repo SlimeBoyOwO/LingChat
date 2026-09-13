@@ -46,6 +46,8 @@ export default {
     outfits: "可揀嘅服裝",
     noOutfits: "暫時冇可用嘅服裝",
     confirmSwitch: "轉角色會令而家呢個角色嘅記憶清空，有需要嘅話記住存檔喎",
+    fav: "收藏（移到最前）",
+    unfav: "取消收藏",
   },
   archiveProgress: {
     importing: "匯入緊",
