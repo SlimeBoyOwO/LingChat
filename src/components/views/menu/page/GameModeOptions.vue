@@ -76,4 +76,3 @@
     emit("open-scripts");
   };
 </script>
-</script>

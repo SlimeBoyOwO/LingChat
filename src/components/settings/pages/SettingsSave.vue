@@ -197,7 +197,6 @@
     saves: SaveInfo[];
     total: number;
   }
-  }
 
   interface CreateSaveResponse {
     save_id: number;
