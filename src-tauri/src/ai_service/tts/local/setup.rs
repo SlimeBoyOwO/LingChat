@@ -26,11 +26,8 @@ pub struct LocalTtsBootstrap {
 /// 解析路径、确保磁盘布局、注册 State/开关，并收敛出共享运行时。
 /// 目录不可用时弹错误对话框，本次启动停用本地 TTS。
 pub fn bootstrap(app: &App) -> Result<LocalTtsBootstrap, String> {
-    let tts_paths = LocalTtsPaths::resolve(
-        app.handle(),
-        crate::init::static_copy::get_data_dir().clone(),
-    )
-    .map_err(|e| format!("LocalTtsPaths::resolve: {e}"))?;
+    let tts_paths = LocalTtsPaths::resolve(app.handle(), crate::data_dir::get_data_dir().clone())
+        .map_err(|e| format!("LocalTtsPaths::resolve: {e}"))?;
 
     let paths_available = match tts_paths.ensure() {
         Ok(()) => true,

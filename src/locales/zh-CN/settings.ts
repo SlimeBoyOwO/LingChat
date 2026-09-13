@@ -786,6 +786,7 @@ export default {
       sakura: "樱花",
       snow: "雪景",
       fireworks: "烟花",
+      ba: "星辉",
     },
     animation: {
       switchTitle: "动画开关",

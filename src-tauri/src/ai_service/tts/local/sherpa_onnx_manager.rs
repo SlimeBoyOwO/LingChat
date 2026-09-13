@@ -29,7 +29,7 @@ pub struct SherpaOnnxModelInfo {
 /// （Android 为应用专属外部存储 `Android/data/<package>/files/sherpa_onnx_models`，
 /// 无需申请 MANAGE_EXTERNAL_STORAGE 权限）。
 pub fn sherpa_onnx_models_root() -> PathBuf {
-    crate::init::static_copy::get_data_dir().join("sherpa_onnx_models")
+    crate::data_dir::get_data_dir().join("sherpa_onnx_models")
 }
 
 /// Sherpa-ONNX 模型管理器

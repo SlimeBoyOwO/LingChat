@@ -47,10 +47,13 @@
               :PET_SCALE_MIN="PET_SCALE_MIN"
               :PET_SCALE_MAX="PET_SCALE_MAX"
               :petVolume="petVolume"
+              :live2dFps="petLive2dFps"
               @updateScale="updateScale"
               @resetScale="resetScale"
               @updateVolume="updateVolume"
               @resetVolume="resetVolume"
+              @updateLive2dFps="updateLive2dFps"
+              @resetLive2dFps="resetLive2dFps"
             />
             <HistoryTab
               v-else-if="activeTab === 'interaction'"
@@ -88,6 +91,7 @@
   import TodoTab from "../components/tabs/TodoTab.vue";
   const PET_SCALE_EVENT = "pet-scale-changed";
   const PET_VOLUME_EVENT = "pet-volume-changed";
+  const PET_LIVE2D_FPS_EVENT = "pet-live2d-fps-changed";
   const DIALOG_HISTORY_EVENT = "dialog-history-changed";
   const DARK_MODE_KEY = "lingchat-dark-mode";
   const appWindow = getCurrentWindow();
@@ -150,6 +154,7 @@
 
   const petScale = computed(() => settingsStore.pet.scale);
   const petVolume = computed(() => settingsStore.characterVolume);
+  const petLive2dFps = computed(() => settingsStore.pet.live2dFps ?? 30);
 
   const syncMaximizedState = async () => {
     isMaximized.value = await appWindow.isMaximized();
@@ -180,6 +185,19 @@
 
   const resetVolume = async () => {
     await updateVolume(DEFAULT_SETTINGS.audio.characterVolume);
+  };
+
+  const emitLive2dFpsChanged = async (fps: number) => {
+    await appWindow.emit(PET_LIVE2D_FPS_EVENT, { fps });
+  };
+
+  const updateLive2dFps = async (fps: number) => {
+    settingsStore.setPetLive2dFps(fps);
+    await emitLive2dFpsChanged(fps);
+  };
+
+  const resetLive2dFps = async () => {
+    await updateLive2dFps(DEFAULT_SETTINGS.pet.live2dFps);
   };
 
   const minimizeWindow = async () => {

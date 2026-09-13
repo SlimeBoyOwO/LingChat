@@ -740,6 +740,7 @@ export default {
       sakura: "櫻花",
       snow: "雪景",
       fireworks: "煙花",
+      ba: "星輝",
     },
     animation: {
       switchTitle: "動畫開關",

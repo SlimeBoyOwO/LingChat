@@ -4,25 +4,36 @@
  * 编辑器的「背景特效」下拉从这里取值，作者只能从列表里选，杜绝拼错大小写
  * 导致特效被静默清空（上游复核要求：从前端获取粒子列表、防范输入错误）。
  *
- * 新增粒子：在此加一项 + 在 GameBackground.vue 加对应渲染分支即可，
- * 不必改后端（后端 background_effect_event 仅做大小写纠错 warn）。
+ * 新增粒子：在此加一项 + 在 GameBackground.vue 加对应渲染分支 + 补两份词条。
+ * 若还想让剧本能写这个特效，需同步 Rust 的 `KNOWN_EFFECTS`
+ * （`background_effect_event.rs`），否则校验器会判它非法。
  *
- * 暂未让 GameBackground 读这个表（本轮不动正式游玩渲染层）；粒子稳定后
- * 可让 GameBackground 也改读此处，消除硬编码 v-if。
+ * 设置页与剧本编辑器的下拉均已改读此处；GameBackground 仍是硬编码 v-if
+ * （每个粒子的 props 各不相同），新增粒子时两边都要动。
  */
 export interface ParticleEffect {
   /** 写进 YAML 的值，与 GameBackground 的 v-if 分支、引擎的 KNOWN_EFFECTS 对应 */
   key: string;
-  /** 编辑器下拉里给作者看的中文名 */
+  /** 下拉里给作者看的中文名（i18n 词条缺失时的兜底） */
   label: string;
+  /**
+   * 词条后缀：`settings.background.particle.<i18n>`（设置页）
+   * 与 `scriptEditor.schema.particle.<i18n>`（剧本编辑器）共用。
+   * 新增粒子时两处词条都要补。
+   */
+  i18n: string;
+  /** 桌宠头像内是否渲染：桌宠只有一个圆形头像，全屏量级的特效（雨/樱花/雪/烟花）不适用 */
+  petSupported?: boolean;
 }
 
 export const PARTICLE_EFFECTS: ParticleEffect[] = [
-  { key: "StarField", label: "星空" },
-  { key: "Rain", label: "雨" },
-  { key: "Sakura", label: "樱花" },
-  { key: "Snow", label: "雪" },
-  { key: "Fireworks", label: "烟花" },
+  { key: "StarField", label: "星空", i18n: "starField", petSupported: true },
+  { key: "Rain", label: "雨", i18n: "rain" },
+  { key: "Sakura", label: "樱花", i18n: "sakura" },
+  { key: "Snow", label: "雪", i18n: "snow" },
+  { key: "Fireworks", label: "烟花", i18n: "fireworks" },
+  // 星辉：原桌宠专属粒子，现已并入主界面可选项（i18n 沿用桌宠既有的「星辉 / Starglow」）
+  { key: "BA", label: "星辉", i18n: "ba", petSupported: true },
 ];
 
 /**

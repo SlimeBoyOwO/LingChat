@@ -259,11 +259,6 @@ impl PersistentMemorySystem {
         self.history_revision.fetch_add(1, Ordering::AcqRel);
     }
 
-    #[cfg(test)]
-    pub(crate) fn history_revision_for_test(&self) -> u64 {
-        self.history_revision.load(Ordering::Acquire)
-    }
-
     /// 返回给调用方用于裁剪 line_list 的起点索引。
     ///
     /// `recent_window` 的单位与触发阈值一致，都是“该角色可见、非 system 的台词”，

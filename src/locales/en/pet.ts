@@ -27,6 +27,12 @@ export default {
     particleBA: "Starglow",
     volumeTitle: "Desktop Pet Volume",
     volumeReset: "Reset to Default Volume",
+    live2dFpsTitle: "Live2D Render FPS",
+    live2dFpsDesc:
+      "Capping the character animation FPS greatly reduces idle CPU usage (0 or empty = unlimited)",
+    live2dFpsUnlimited: "Unlimited",
+    live2dFpsCustom: "Custom",
+    live2dFpsReset: "Reset to Default FPS",
   },
   history: {
     title: "Chat History",

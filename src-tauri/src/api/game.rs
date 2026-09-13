@@ -420,8 +420,6 @@ pub(crate) async fn build_web_init_data(
         )
     };
 
-    tracing::info!("character_settings: {:?}", character_settings);
-
     let (
         lines,
         current_scene_id,
