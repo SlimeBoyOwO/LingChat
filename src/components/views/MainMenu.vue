@@ -23,17 +23,20 @@
 
     <!-- 人物图层（位于星星之上，菜单之下） -->
     <img
-      class="pointer-events-none absolute top-1/2 left-1/2 z-3 max-h-full max-w-full
+      class="pointer-events-none absolute top-1/2 left-1/2 z-3 max-h-full max-w-full select-none
         transform-[translate(-50%,-50%)] will-change-transform"
       ref="charRef"
       src="../../assets/images/alona.png"
       :alt="$t('views.mainMenu.characterAlt')"
+      draggable="false"
+      @contextmenu.prevent
     />
 
     <!-- 菜单容器，绑定鼠标移动和移出事件实现视差 -->
     <StartPage
       v-if="currentPage === 'mainMenu'"
       ref="containerRef"
+      class="select-none"
       @mousemove="handleMouseMove"
       @mouseleave="handleMouseLeave"
     >

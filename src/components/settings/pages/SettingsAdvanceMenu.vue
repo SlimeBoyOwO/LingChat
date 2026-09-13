@@ -1,5 +1,5 @@
 <template>
-  <div class="grid grid-cols-1 gap-5 p-2 md:grid-cols-2 lg:grid-cols-3">
+  <div class="grid grid-cols-1 items-stretch gap-5 p-2 md:grid-cols-2 lg:grid-cols-3">
     <!-- 大模型管理 -->
     <div class="h-full cursor-pointer transition-all duration-300" @click="emit('navigate', 'llm')">
       <MenuItem :title="$t('advance.menu.llmTitle')" size="large">
