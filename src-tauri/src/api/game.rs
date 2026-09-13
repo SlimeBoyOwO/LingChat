@@ -21,7 +21,6 @@ use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::prompt::{sys_prompt_builder_by_settings, PromptOptions, PromptRole};
-use crate::AppState;
 
 // ========== 响应类型 ==========
 
@@ -371,8 +370,14 @@ pub(crate) async fn begin_new_progress(
     db: &DatabaseConnection,
     app: &AppHandle,
 ) -> Result<i32, String> {
+    // 加载 prompt 配置（与 select_character 一致）
+    let app_config = AppConfig::load(app).unwrap_or_default();
+    let prompt_options = PromptOptions {
+        output_sec_lang: app_config.llm_output_sec_lang,
+        no_emotion_limit: app_config.no_emotion_limit_prompt,
+    };
     service
-        .init_game_status()
+        .init_game_status(None, prompt_options)
         .await
         .map_err(|e| format!("初始化新游戏失败: {}", e))?;
 

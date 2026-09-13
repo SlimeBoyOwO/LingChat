@@ -101,7 +101,7 @@ fn settings_backup_path() -> PathBuf {
 /// 保存前把现有 settings.json 备份为 .bak。
 /// tauri-plugin-store 的 save() 是 `fs::write` 直接覆盖写（非原子），
 /// Android 外部存储（FUSE）写盘中途被杀会损坏文件 → 下次启动解析失败 → 空 store 覆盖 → 配置"离奇重置"。
-pub fn backup_settings_file(app: &AppHandle) {
+pub fn backup_settings_file(_app: &AppHandle) {
     let path = store_path();
     if path.exists() {
         let _ = std::fs::copy(&path, settings_backup_path());

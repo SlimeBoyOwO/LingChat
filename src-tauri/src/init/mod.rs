@@ -81,16 +81,12 @@ pub async fn initialize(
                     old_path,
                     new_path
                 );
-                // rename 跨文件系统会返回 EXDEV，此时回退到 copy + delete
+                // rename 跨文件系统可能失败（EXDEV），此时回退到 copy + delete
                 if let Err(e) = std::fs::rename(&old_path, &new_path) {
-                    if e.raw_os_error() == Some(libc::EXDEV) {
-                        tracing::info!("跨文件系统迁移，改用 copy + delete");
-                        if let Err(e) = std::fs::copy(&old_path, &new_path)
-                            .and_then(|_| std::fs::remove_file(&old_path))
-                        {
-                            tracing::warn!("迁移 settings.json 失败: {:#}", e);
-                        }
-                    } else {
+                    tracing::info!("rename 失败（可能跨文件系统），改用 copy + delete: {e}");
+                    if let Err(e) = std::fs::copy(&old_path, &new_path)
+                        .and_then(|_| std::fs::remove_file(&old_path))
+                    {
                         tracing::warn!("迁移 settings.json 失败: {:#}", e);
                     }
                 }

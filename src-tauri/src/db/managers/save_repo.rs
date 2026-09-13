@@ -288,7 +288,7 @@ impl SaveRepo {
     /// Port of Python `SaveManager.sync_lines`. Walks DB line chain and
     /// input `GameLine` list in lockstep, finds the divergence point, then
     /// deletes stale DB lines and inserts new input lines after that point.
-    pub async fn sync_lines<C: ConnectionTrait>(
+    pub async fn sync_lines<C: ConnectionTrait + sea_orm::TransactionTrait>(
         db: &C,
         save_id: i32,
         input_lines: &[GameLine],
