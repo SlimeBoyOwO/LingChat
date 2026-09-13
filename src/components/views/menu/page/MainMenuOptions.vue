@@ -1,5 +1,4 @@
 <template>
-<template>
   <StartList responsive>
     <StartLine>
       <StartItem @click="() => emit('start-game')">{{ $t("views.menu.startGame") }}</StartItem>
@@ -19,7 +18,6 @@
       <StartItem @click="exitGame">{{ $t("views.menu.exitGame") }}</StartItem>
     </StartLine>
   </StartList>
-</template>
 </template>
 
 <script setup lang="ts">
