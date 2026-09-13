@@ -180,6 +180,95 @@
         duration-300"
       :class="isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white'"
     >
+      <Gauge
+        class="absolute -right-4 -bottom-4 h-32 w-32 -rotate-12 opacity-10 transition-all
+          duration-300 group-hover:scale-110"
+        :class="isDarkMode ? 'text-slate-700' : 'text-slate-300'"
+      />
+
+      <div class="relative z-10">
+        <h3
+          class="mb-1 flex items-center gap-2 text-lg font-bold"
+          :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'"
+        >
+          <Gauge class="h-5 w-5 text-sky-500" />
+          {{ $t("pet.petTab.live2dFpsTitle") }}
+        </h3>
+        <p class="mb-4 text-xs" :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'">
+          {{ $t("pet.petTab.live2dFpsDesc") }}
+        </p>
+
+        <div class="flex flex-wrap items-center gap-3">
+          <button
+            v-for="opt in fpsPresets"
+            :key="opt.value"
+            type="button"
+            @click="emit('updateLive2dFps', opt.value)"
+            class="rounded-lg border px-4 py-2 text-sm font-medium transition-all duration-200"
+            :class="[
+              live2dFps === opt.value
+                ? isDarkMode
+                  ? 'border-sky-500 bg-sky-500/20 text-sky-400'
+                  : 'border-sky-500 bg-sky-500 text-white shadow-md'
+                : isDarkMode
+                  ? `border-slate-600 bg-transparent text-slate-400 hover:border-slate-500
+                    hover:text-slate-300`
+                  : `border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300
+                    hover:bg-slate-100`,
+            ]"
+          >
+            {{ opt.label }}
+          </button>
+
+          <!-- 自定义帧率输入：0/留空 = 不限帧 -->
+          <div class="flex items-center gap-2">
+            <input
+              type="number"
+              min="10"
+              max="144"
+              step="1"
+              :value="customFpsInput"
+              :placeholder="t('pet.petTab.live2dFpsCustom')"
+              @change="onCustomFpsChange"
+              class="w-24 rounded-lg border px-3 py-2 text-sm font-medium transition-colors
+                outline-none"
+              :class="[
+                isCustomFpsActive
+                  ? 'border-sky-500 text-sky-500'
+                  : isDarkMode
+                    ? 'border-slate-600 bg-transparent text-slate-300'
+                    : 'border-slate-200 bg-slate-50 text-slate-600',
+              ]"
+            />
+            <span class="text-xs" :class="isDarkMode ? 'text-slate-500' : 'text-slate-400'">
+              FPS
+            </span>
+          </div>
+        </div>
+
+        <div
+          class="mt-6 flex justify-end border-t pt-4 transition-colors"
+          :class="isDarkMode ? 'border-slate-700' : 'border-slate-100/80'"
+        >
+          <button
+            type="button"
+            @click="$emit('resetLive2dFps')"
+            class="flex items-center gap-2 rounded-lg bg-sky-500 px-5 py-2 text-[13px] font-bold
+              text-white shadow-[0_4px_12px_rgba(56,189,248,0.25)] transition-all hover:bg-sky-400
+              hover:shadow-[0_6px_16px_rgba(56,189,248,0.35)] active:scale-95"
+          >
+            <RotateCcw class="h-4 w-4" />
+            {{ $t("pet.petTab.live2dFpsReset") }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="group relative mt-4 overflow-hidden rounded-xl border p-6 shadow-sm transition-colors
+        duration-300"
+      :class="isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white'"
+    >
       <Sparkles
         class="absolute -right-4 -bottom-4 h-32 w-32 -rotate-12 opacity-10 transition-all
           duration-300 group-hover:scale-110"
@@ -310,6 +399,7 @@
     Stars,
     Sun,
     Volume2,
+    Gauge,
   } from "lucide-vue-next";
   import { useUIStore } from "../../../../stores/modules/ui/ui";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -320,6 +410,8 @@
     petVolume: number;
     PET_SCALE_MIN: number;
     PET_SCALE_MAX: number;
+    /** Live2D 渲染帧率上限（0 = 不限制） */
+    live2dFps: number;
   }>();
 
   const emit = defineEmits<{
@@ -327,6 +419,8 @@
     resetScale: [];
     updateVolume: [value: number];
     resetVolume: [];
+    updateLive2dFps: [value: number];
+    resetLive2dFps: [];
   }>();
 
   const uiStore = useUIStore();
@@ -368,6 +462,29 @@
   const onVolumeInput = (event: Event) => {
     const target = event.target as HTMLInputElement;
     emit("updateVolume", Number(target.value));
+  };
+
+  // ===== Live2D 帧率 =====
+  const FPS_PRESETS = [30, 60] as const;
+
+  const fpsPresets = computed(() => [
+    ...FPS_PRESETS.map((fps) => ({ label: `${fps} FPS`, value: fps })),
+    { label: t("pet.petTab.live2dFpsUnlimited"), value: 0 },
+  ]);
+
+  // 预设之外的值（含 0 视为"不限"预设）在输入框中回显
+  const isCustomFpsActive = computed(
+    () => props.live2dFps !== 30 && props.live2dFps !== 60 && props.live2dFps !== 0
+  );
+  const customFpsInput = computed(() => (isCustomFpsActive.value ? props.live2dFps : ""));
+
+  const onCustomFpsChange = (event: Event) => {
+    const target = event.target as HTMLInputElement;
+    const raw = Number(target.value);
+    if (Number.isNaN(raw)) return;
+    // 夹紧到 10-144；0/负数视为不限帧
+    const fps = raw <= 0 ? 0 : Math.min(144, Math.max(10, Math.round(raw)));
+    emit("updateLive2dFps", fps);
   };
 </script>
 

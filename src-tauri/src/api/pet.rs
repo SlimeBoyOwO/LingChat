@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::AppHandle;
 #[cfg(desktop)]
+use tauri::Emitter;
+#[cfg(desktop)]
 use tauri::LogicalSize;
 #[cfg(desktop)]
 use tauri::Manager;
@@ -44,6 +46,112 @@ pub fn update_solid_regions(rects: Vec<Rect>, state: tauri::State<'_, HitTestSta
     if let Ok(mut locked) = state.solid_rects.lock() {
         *locked = rects;
     }
+}
+
+/// 桌宠点击穿透轮询：全局轮询鼠标位置，只有落在前端上报的 solid 区域内才接收鼠标事件，
+/// 其余透明区域把点击让给底下的窗口。
+///
+/// 原本用 Win32 的 GetCursorPos，因此整段是 cfg(windows) 独占，macOS 上桌宠窗口
+/// 会整块挡住底下窗口的点击。cursor_position() 与 set_ignore_cursor_events() 都是
+/// Tauri 的跨平台 API，改用前者后三个桌面平台可以共用同一个循环。
+/// （Linux 未实测：X11 / Wayland 下最差情况是 API 返回 Err，本轮直接跳过。）
+///
+/// 同时承担 pet:cursor 鼠标广播：向桌宠前端广播全局鼠标位置驱动 Live2D 视线。
+#[cfg(desktop)]
+pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
+    let hit_test_state = window.state::<HitTestState>();
+    let rects_arc = hit_test_state.solid_rects.clone();
+    let enabled_arc = hit_test_state.enabled.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let mut was_ignored = false;
+        // 上一次向前端广播的鼠标位置：挂机时鼠标不动，若仍 20Hz 无条件
+        // emit，webview 渲染进程会被 IPC 持续唤醒而无法进入空闲。
+        // 只有位移超过 1 逻辑像素（过滤亚像素抖动）才真正广播。
+        let mut last_emitted: Option<(f64, f64)> = None;
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+            let enabled = if let Ok(locked) = enabled_arc.lock() {
+                *locked
+            } else {
+                false
+            };
+
+            if !enabled {
+                if was_ignored {
+                    let _ = window.set_ignore_cursor_events(false);
+                    was_ignored = false;
+                }
+                continue;
+            }
+
+            // 桌面全局坐标（物理像素），与 outer_position() 同一坐标系
+            let Ok(cursor) = window.cursor_position() else {
+                continue;
+            };
+
+            if let Ok(window_pos) = window.outer_position() {
+                if let Ok(scale_factor) = window.scale_factor() {
+                    let mouse_x = cursor.x - f64::from(window_pos.x);
+                    let mouse_y = cursor.y - f64::from(window_pos.y);
+
+                    let logical_x = mouse_x / scale_factor;
+                    let logical_y = mouse_y / scale_factor;
+
+                    // 向桌宠前端广播全局鼠标位置：桌宠窗口非全屏，DOM
+                    // pointermove 在鼠标移出窗口后停发，Live2D 视线会冻结在
+                    // 最后一次窗口内位置。这里把窗口内逻辑坐标（即 webview
+                    // 视口坐标）发给前端驱动视线，与 DOM clientX/Y 同坐标系。
+                    // 视线弹簧在前端 ticker 内持续插值，广播间隔变大不影响
+                    // 追踪平滑度，因此只在位移 ≥1px 时发送。
+                    let moved = match last_emitted {
+                        Some((lx, ly)) => {
+                            (logical_x - lx).abs() >= 1.0
+                                || (logical_y - ly).abs() >= 1.0
+                        }
+                        None => true,
+                    };
+                    if moved {
+                        let _ = window.emit(
+                            "pet:cursor",
+                            CursorPosition {
+                                x: logical_x,
+                                y: logical_y,
+                            },
+                        );
+                        last_emitted = Some((logical_x, logical_y));
+                    }
+
+                    let mut is_over_solid = false;
+                    if let Ok(rects) = rects_arc.lock() {
+                        for r in rects.iter() {
+                            if logical_x >= r.x
+                                && logical_y >= r.y
+                                && logical_x <= (r.x + r.width)
+                                && logical_y <= (r.y + r.height)
+                            {
+                                is_over_solid = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if is_over_solid {
+                        if was_ignored {
+                            let _ = window.set_ignore_cursor_events(false);
+                            was_ignored = false;
+                        }
+                    } else {
+                        if !was_ignored {
+                            let _ = window.set_ignore_cursor_events(true);
+                            was_ignored = true;
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
 /// 退出全屏，并等到它真正结束。

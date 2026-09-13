@@ -26,6 +26,11 @@ export default {
     particleBA: "星辉",
     volumeTitle: "桌宠音量大小",
     volumeReset: "恢复默认音量",
+    live2dFpsTitle: "Live2D 渲染帧率",
+    live2dFpsDesc: "限制角色动画帧率可显著降低挂机 CPU 占用（0 或留空 = 不限制）",
+    live2dFpsUnlimited: "不限",
+    live2dFpsCustom: "自定义",
+    live2dFpsReset: "恢复默认帧率",
   },
   history: {
     title: "历史对话",

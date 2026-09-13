@@ -112,6 +112,7 @@
         :active-speaker-id="gameStore.currentInteractRoleId"
         :audio-element="mainAudio"
         :voice-data-url="voiceDataUrl"
+        :max-fps="live2dFps"
         @active-change="setLive2dActiveRoles"
         @failed-change="setLive2dFailedRoles"
       />
@@ -181,6 +182,9 @@
     const scale = settingsStore.pet?.scale || 1;
     return Math.round(210 * scale);
   });
+
+  // Live2D 渲染帧率上限（0 = 不限制）：来自桌宠设置 pet.live2dFps，默认 30
+  const live2dFps = computed(() => settingsStore.pet?.live2dFps ?? 30);
 
   // --- 截图 ---
   const {

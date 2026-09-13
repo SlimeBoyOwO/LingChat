@@ -118,6 +118,7 @@
   let scaleUnlisten: (() => void) | null = null;
   let effectUnlisten: (() => void) | null = null;
   let volumeUnlisten: (() => void) | null = null;
+  let live2dFpsUnlisten: (() => void) | null = null;
   let dialogHistoryUnlisten: (() => void) | null = null;
 
   onMounted(async () => {
@@ -148,6 +149,17 @@
       }
     });
 
+    // 设置窗口修改 Live2D 帧率后同步到本窗口 store；GameRolesStage 响应式读取即热生效
+    live2dFpsUnlisten = await appWindow.listen<{ fps: number }>(
+      "pet-live2d-fps-changed",
+      (event) => {
+        const fps = Number(event.payload?.fps);
+        if (!Number.isNaN(fps)) {
+          settingsStore.setPetLive2dFps(fps);
+        }
+      }
+    );
+
     // 响应设置窗口的初始历史数据请求
     dialogHistoryUnlisten = await appWindow.listen("request-dialog-history", () => {
       appWindow.emit("dialog-history-changed", {
@@ -163,6 +175,8 @@
     await applyWindowLayout();
 
     // 2. 启动 100ms 一次的 solid bounds 测试
+    // 挂机时各区域 rect 恒定不变，先做内容比对、有变化才走 IPC，避免 10Hz 空转唤醒后端
+    let lastRectsKey = "";
     hitTestInterval = window.setInterval(() => {
       const rects = [];
 
@@ -196,7 +210,13 @@
         });
       }
 
-      invoke("update_solid_regions", { rects }).catch(console.error);
+      const rectsKey = JSON.stringify(rects);
+      if (rectsKey === lastRectsKey) return;
+      lastRectsKey = rectsKey;
+      invoke("update_solid_regions", { rects }).catch(() => {
+        // 失败时清空缓存，让下一轮重试上报
+        lastRectsKey = "";
+      });
     }, 100);
   });
 
@@ -226,6 +246,7 @@
     if (scaleUnlisten) scaleUnlisten();
     if (effectUnlisten) effectUnlisten();
     if (volumeUnlisten) volumeUnlisten();
+    if (live2dFpsUnlisten) live2dFpsUnlisten();
     if (dialogHistoryUnlisten) dialogHistoryUnlisten();
 
     if (hitTestInterval !== undefined) {

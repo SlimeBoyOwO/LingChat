@@ -375,6 +375,9 @@
     -webkit-mask: radial-gradient(transparent 68%, #000 69%);
     mask: radial-gradient(transparent 68%, #000 69%);
     animation: spin 4s linear infinite;
+    /* 性能：常驻旋转动画提升为独立合成层，避免每帧走主线程重绘
+      （mask+gradient 光栅化结果被缓存，旋转退化为纯 GPU 纹理变换，视觉不变） */
+    will-change: transform;
   }
 
   [data-tauri-drag-region] {
