@@ -181,6 +181,7 @@
 <script setup lang="ts">
   import { ref, onMounted } from "vue";
   import { useI18n } from "vue-i18n";
+  import { useRouter } from "vue-router";
   import { MenuPage, MenuItem } from "../../ui";
   import { Input } from "../../base";
   import { useGameStore } from "../../../stores/modules/game";
@@ -206,6 +207,7 @@
   const uiStore = useUIStore();
   const dialogStore = useDialogStore();
   const { t } = useI18n();
+  const router = useRouter();
 
   const saves = ref<SaveInfo[]>([]);
   const newSaveTitle = ref("");
@@ -296,6 +298,31 @@
     return gameStore.latestScreenshot;
   };
 
+  const handleLoadSave = async (saveId: number) => {
+    const confirmed = await dialogStore.confirm(t("settings.save.msg.loadConfirm"));
+    if (!confirmed) return;
+    actionLoading.value = saveId;
+    try {
+      const gameInfo = await invoke<WebInitData>("load_save", { saveId });
+      applyWebInitData(gameStore.$state, gameInfo);
+      uiStore.showSuccess({
+        title: t("settings.save.msg.loadSuccessTitle"),
+        message: t("settings.save.msg.loadSuccessMsg"),
+      });
+      // 读档即进入游戏：关设置面板，直接跳对话页
+      uiStore.toggleSettings(false);
+      router.push("/chat");
+    } catch (e: any) {
+      console.error("读取存档失败:", e);
+      uiStore.showError({
+        title: t("settings.save.msg.loadFailTitle"),
+        message: typeof e === "string" ? e : e.message || t("settings.save.msg.unknownError"),
+      });
+    } finally {
+      actionLoading.value = null;
+    }
+  };
+
   const handleCreateSave = async () => {
     if (!newSaveTitle.value.trim()) {
       uiStore.showWarning({
@@ -320,28 +347,6 @@
       console.error("创建存档失败:", e);
       uiStore.showError({
         title: t("settings.save.msg.createFailTitle"),
-        message: typeof e === "string" ? e : e.message || t("settings.save.msg.unknownError"),
-      });
-    } finally {
-      actionLoading.value = null;
-    }
-  };
-
-  const handleLoadSave = async (saveId: number) => {
-    const confirmed = await dialogStore.confirm(t("settings.save.msg.loadConfirm"));
-    if (!confirmed) return;
-    actionLoading.value = saveId;
-    try {
-      const gameInfo = await invoke<WebInitData>("load_save", { saveId });
-      applyWebInitData(gameStore.$state, gameInfo);
-      uiStore.showSuccess({
-        title: t("settings.save.msg.loadSuccessTitle"),
-        message: t("settings.save.msg.loadSuccessMsg"),
-      });
-    } catch (e: any) {
-      console.error("读取存档失败:", e);
-      uiStore.showError({
-        title: t("settings.save.msg.loadFailTitle"),
         message: typeof e === "string" ? e : e.message || t("settings.save.msg.unknownError"),
       });
     } finally {

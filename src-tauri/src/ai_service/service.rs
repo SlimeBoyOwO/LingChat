@@ -98,6 +98,13 @@ impl AIService {
         tracing::info!("正在初始化的角色id是: {:?}", cid);
 
         let mut gs = self.game_status.lock().await;
+        gs.role_manager.reset_roles();
+        gs.line_list.clear();
+        gs.onstage_role_ids.clear();
+        gs.present_role_ids.clear();
+        gs.entry_greeting_done = false;
+        // 开新世界：清掉当前进行标记，避免新角色的台词写进旧角色的存档
+        gs.active_save_id = None;
 
         let settings = gs
             .role_manager
@@ -131,7 +138,6 @@ impl AIService {
             .unwrap_or_default();
         tracing::info!("外部获取的当前服装是: {:?}", clothes);
         if clothes != "default" && !clothes.is_empty() {
-            // 不是你个傻逼 AI 角色服装已经换过了你再他妈比较那台词表能变吗我草你的？，已修复
             let _ = gs
                 .add_character_clothes_change_line(&self.db, cid, &clothes)
                 .await;

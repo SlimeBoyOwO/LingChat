@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 use chrono::{DateTime, Local};
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -11,6 +11,7 @@ use crate::ai_service::types::{
     GameLine, GameRole, LineAttributeExt, LineBase, Player, ScriptStatus,
 };
 use crate::db::entities::line::LineAttribute;
+use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::prompt::PromptRole;
 
 /// 存储所有运行时共享的游戏状态。
@@ -105,6 +106,33 @@ impl GameStatus {
         let game_line = GameLine::from_base(line, perceived);
         self.line_list.push(game_line);
         self.refresh_memories(db).await?;
+
+        // 逐条落盘：新台词立即增量写入当前存档（无存档则用自动存档槽）。
+        // 安卓上 app 随时可能被杀，这样内存里的台词最多丢当前这一条。
+        // 只在 len>1 时写（len==1 只是初始化自带的 system 人设台词，跳过）。
+        // 整个块 best-effort：失败只记日志，不让对话流程跟着挂（周期自动存档会兜底）。
+        // 用 append_line (O(1)) 替代 sync_lines (O(N))，避免长会话逐条落盘时 O(N²)。
+        if self.line_list.len() > 1 {
+            let new_line = self.line_list.last().unwrap().clone();
+            let write_result: anyhow::Result<()> = async {
+                let save_id = match self.active_save_id {
+                    Some(id) => id,
+                    None => {
+                        let id =
+                            SaveRepo::find_or_create_auto_save_slot(db, self.main_role_id).await?;
+                        self.active_save_id = Some(id);
+                        id
+                    }
+                };
+                SaveRepo::append_line(db, save_id, &new_line).await?;
+                Ok(())
+            }
+            .await;
+            if let Err(e) = write_result {
+                tracing::warn!("[Save] 逐条落盘失败: {e}");
+            }
+        }
+
         Ok(())
     }
 

@@ -46,18 +46,20 @@ export default {
     },
     you: "你",
   },
-  menu: {
-    startGame: "開始遊戲",
-    continueGame: "繼續遊戲",
-    gameConfig: "遊戲配置",
-    credits: "致謝名單",
-    exitGame: "退出遊戲",
-    freeDialogue: "自由傾偈模式",
-    storyMode: "劇情模式",
-    scriptEditor: "創意工坊",
-    cloudWorkshop: "雲·創意工坊",
-    miniGame: "小遊戲（開發緊）",
-    back: "返回",
+  "menu": {
+    "startGame": "開始遊戲",
+    "continueGame": "繼續遊戲",
+    "gameConfig": "遊戲配置",
+    "credits": "致謝名單",
+    "exitGame": "退出遊戲",
+    "freeDialogue": "自由傾偈模式",
+    "storyMode": "劇情模式",
+    "scriptEditor": "創意工坊",
+    "cloudWorkshop": "雲·創意工坊",
+    "miniGame": "小遊戲（開發緊）",
+    "back": "返回",
+    "continueSaveTitle": "繼續上次進度",
+    "continueSaveMessage": "偵測到上次存檔。要繼續上次嘅進度嗎？（取消則前往存檔頁）"
   },
   pet: {
     chatInput: {

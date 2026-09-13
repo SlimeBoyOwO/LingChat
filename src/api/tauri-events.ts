@@ -332,13 +332,7 @@ export function initializeTauriEventListeners() {
       }
     }
 
-    useUIStore().showNotification({
-      type: "info",
-      title: i18n.global.t("api.events.autoSave.title"),
-      message: i18n.global.t("api.events.autoSave.message", { time: payload.timestamp }),
-      duration: 2500,
-      skipTipsCheck: true,
-    });
+    // 台词已逐条落盘，自动存档只是后台兜底快照——不再弹提示刷屏
   });
 
   // === Script events ===
@@ -432,6 +426,14 @@ export function initializeTauriEventListeners() {
     const uiStore = useUIStore();
     gameStore.setCurrentScene(payload.scene);
     uiStore.setCurrentBackground(payload.scene.background ?? "");
+  });
+
+  // app 退后台/锁屏（安卓无 RunEvent::Paused，这是唯一可靠信号）→ 强制落盘。
+  // 逐条落盘已保证台词不丢，这里兜底快照/记忆库；桌面最小化也会触发，幂等无害。
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      invoke('flush_save_now').catch((e) => console.error('[Tauri] flush_save_now failed', e))
+    }
   });
 
   console.log(
