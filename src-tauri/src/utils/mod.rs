@@ -5,6 +5,7 @@ pub mod download;
 pub mod file_logger;
 pub mod fs;
 pub mod gpu_perf;
+pub mod image;
 pub mod llm_request_logger;
 pub mod log_bridge;
 pub mod path;

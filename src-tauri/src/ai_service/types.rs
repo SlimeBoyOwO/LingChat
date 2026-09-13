@@ -98,6 +98,12 @@ pub struct LlmMessage {
     pub tool_calls: Option<Vec<ToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+    /// 本条消息附带的多模态图片（`data:image/...;base64,...` data URL）。
+    /// 仅用于**当轮** LLM 请求，绝不写入角色长期记忆（避免每一轮重复携带图片
+    /// 导致上下文/缓存占用膨胀）。genai 的 OpenAI 兼容 / Gemini 适配器会把它
+    /// 转为 provider 原生的 `image_url` / `inline_data` content part。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_data_url: Option<String>,
 }
 
 impl LlmMessage {
@@ -107,6 +113,7 @@ impl LlmMessage {
             content: content.into(),
             tool_calls: None,
             tool_call_id: None,
+            image_data_url: None,
         }
     }
     pub fn user(content: impl Into<String>) -> Self {
@@ -115,6 +122,7 @@ impl LlmMessage {
             content: content.into(),
             tool_calls: None,
             tool_call_id: None,
+            image_data_url: None,
         }
     }
     pub fn assistant(content: impl Into<String>) -> Self {
@@ -123,6 +131,7 @@ impl LlmMessage {
             content: content.into(),
             tool_calls: None,
             tool_call_id: None,
+            image_data_url: None,
         }
     }
     /// 助手消息携带 tool calls（LLM 请求调用工具）。
@@ -132,6 +141,7 @@ impl LlmMessage {
             content: String::new(),
             tool_calls: Some(tool_calls),
             tool_call_id: None,
+            image_data_url: None,
         }
     }
     /// 工具调用结果（role = "tool"）。
@@ -141,6 +151,19 @@ impl LlmMessage {
             content: content.into(),
             tool_calls: None,
             tool_call_id: Some(tool_call_id.into()),
+            image_data_url: None,
+        }
+    }
+    /// 构建一条携带多模态图片的用户消息。`image_data_url` 为
+    /// `data:image/<type>;base64,<data>` 格式的 data URL；`content` 为可选的
+    /// 随附文字说明（可为空串）。仅用于当轮请求，不写入记忆。
+    pub fn user_with_image(content: impl Into<String>, image_data_url: String) -> Self {
+        Self {
+            role: "user".into(),
+            content: content.into(),
+            tool_calls: None,
+            tool_call_id: None,
+            image_data_url: Some(image_data_url),
         }
     }
 }

@@ -181,6 +181,7 @@
 <script setup lang="ts">
   import { ref, onMounted } from "vue";
   import { useI18n } from "vue-i18n";
+  import { useRouter } from "vue-router";
   import { MenuPage, MenuItem } from "../../ui";
   import { Input } from "../../base";
   import { useGameStore } from "../../../stores/modules/game";
@@ -205,6 +206,7 @@
   const gameStore = useGameStore();
   const uiStore = useUIStore();
   const dialogStore = useDialogStore();
+  const router = useRouter();
   const { t } = useI18n();
 
   const saves = ref<SaveInfo[]>([]);
@@ -333,11 +335,19 @@
     actionLoading.value = saveId;
     try {
       const gameInfo = await invoke<WebInitData>("load_save", { saveId });
+      // 读档会整体替换游戏状态，先清掉上一局的剧本标记，避免陈旧选项/章节名残留；
+      // load_save 不恢复剧本引擎，读档后一律回到自由对话模式
+      gameStore.exitStoryMode();
       applyWebInitData(gameStore.$state, gameInfo);
       uiStore.showSuccess({
         title: t("settings.save.msg.loadSuccessTitle"),
         message: t("settings.save.msg.loadSuccessMsg"),
       });
+      // 主菜单读取存档后自动进入聊天页；游戏内/投屏窗口内保持在原界面
+      if (router.currentRoute.value.path === "/") {
+        uiStore.showSettings = false;
+        router.push("/chat");
+      }
     } catch (e: any) {
       console.error("读取存档失败:", e);
       uiStore.showError({

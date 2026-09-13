@@ -50,6 +50,7 @@ impl AIService {
         memory_limits: MemorySectionLimits,
         embedding: Option<Arc<EmbeddingManager>>,
         semantic_memory: Option<Arc<SemanticMemory>>,
+        memory_inject_continue_user: bool,
     ) -> Self {
         // Initialize the event handler registry before any script is run
         crate::ai_service::game_system::script_engine::init_event_registry();
@@ -66,6 +67,7 @@ impl AIService {
             memory_limits,
             embedding,
             semantic_memory.clone(),
+            memory_inject_continue_user,
         );
         let game_status = Arc::new(Mutex::new(GameStatus::new(role_manager)));
         let script_manager = ScriptManager::new(&data_dir);

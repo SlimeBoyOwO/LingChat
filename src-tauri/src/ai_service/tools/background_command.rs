@@ -256,6 +256,7 @@ async fn notify_model(
         suppress_thinking: false,
         generation: expected_generation,
         is_preview: false,
+        transient_image: None,
     });
     generator.process_notification(notification).await?;
     Ok(())

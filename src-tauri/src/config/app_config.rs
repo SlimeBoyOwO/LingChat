@@ -63,6 +63,9 @@ fn default_auto_save_enabled() -> bool {
 fn default_auto_save_interval_secs() -> u32 {
     300
 }
+fn default_auto_compress_image() -> bool {
+    true
+}
 
 pub const DEFAULT_LLM_TIMEOUT_SECS: u64 = 120;
 pub const MIN_LLM_TIMEOUT_SECS: u64 = 10;
@@ -91,6 +94,9 @@ pub struct AppConfig {
     pub no_emotion_limit_prompt: bool,
     #[serde(default = "default_llm_timeout_secs")]
     pub llm_timeout_secs: u64,
+    /// 图片超过端点大小限制时是否自动压缩后再发送（作用于所有携带图片的 LLM 请求）。
+    #[serde(default = "default_auto_compress_image")]
+    pub auto_compress_image: bool,
 
     // ---- 翻译 ----
     #[serde(default = "default_enable_translate")]
@@ -109,6 +115,10 @@ pub struct AppConfig {
     pub memory_update_interval: u32,
     #[serde(default = "default_memory_recent_window")]
     pub memory_recent_window: u32,
+    /// 记忆窗口内没有 user 消息时，是否在裁切后的首条 assistant 前注入一条 user「继续」。
+    /// 默认开启：genai 不做消息规范化，Gemini 等 provider 要求首条为 user。
+    #[serde(default = "default_true")]
+    pub memory_inject_continue_user: bool,
     // 记忆段长度上限（字符数，0 = 不截断）：决定压缩喂给 LLM 的旧内容与运行时注入上下文的长度
     #[serde(default = "default_memory_short_term_max_chars")]
     pub memory_short_term_max_chars: u32,
@@ -152,12 +162,14 @@ impl Default for AppConfig {
             consumers: default_consumers(),
             no_emotion_limit_prompt: false,
             llm_timeout_secs: default_llm_timeout_secs(),
+            auto_compress_image: default_auto_compress_image(),
             enable_translate: default_enable_translate(),
             enable_time_sense: default_enable_time_sense(),
             enable_emotion_classifier: default_enable_emotion_classifier(),
             use_persistent_memory: true,
             memory_update_interval: default_memory_update_interval(),
             memory_recent_window: default_memory_recent_window(),
+            memory_inject_continue_user: true,
             memory_short_term_max_chars: default_memory_short_term_max_chars(),
             memory_long_term_max_chars: default_memory_long_term_max_chars(),
             memory_user_info_max_chars: default_memory_user_info_max_chars(),
@@ -246,6 +258,11 @@ impl AppConfig {
                 MIN_LLM_TIMEOUT_SECS,
                 MAX_LLM_TIMEOUT_SECS,
             ),
+            auto_compress_image: get_bool(
+                &store,
+                keys::LLM_AUTO_COMPRESS_IMAGE,
+                default.auto_compress_image,
+            ),
             enable_translate: get_bool(&store, keys::TRANSLATE_ENABLE, default.enable_translate),
             enable_time_sense: get_bool(&store, keys::ENABLE_TIME_SENSE, default.enable_time_sense),
             enable_emotion_classifier: get_bool(
@@ -271,6 +288,11 @@ impl AppConfig {
                 default.memory_recent_window,
                 0,
                 MAX_MEMORY_RECENT_WINDOW,
+            ),
+            memory_inject_continue_user: get_bool(
+                &store,
+                keys::MEMORY_INJECT_CONTINUE_USER,
+                default.memory_inject_continue_user,
             ),
             memory_short_term_max_chars: get_u32_in_range(
                 &store,

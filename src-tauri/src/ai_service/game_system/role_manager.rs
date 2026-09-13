@@ -44,6 +44,9 @@ pub struct GameRoleManager {
     memory_recent_window: u32,
     /// 各记忆段长度上限（来自 `AppConfig::memory_*_max_chars`），透传给压缩系统。
     memory_limits: MemorySectionLimits,
+    /// 记忆窗口内没有 user 消息时，是否在裁切后的首条 assistant 前注入一条 user「继续」
+    /// （来自 `AppConfig::memory_inject_continue_user`）。
+    memory_inject_continue_user: bool,
     /// 角色服装覆盖（session store → register_role_by_id 时优先读取）
     clothes_overrides: HashMap<i32, String>,
     /// 记忆语义索引（嵌入检索 + 去重）。未配置时为空索引（嵌入功能禁用）。
@@ -66,6 +69,7 @@ impl GameRoleManager {
         memory_limits: MemorySectionLimits,
         embedding: Option<Arc<EmbeddingManager>>,
         semantic_memory: Option<Arc<SemanticMemory>>,
+        memory_inject_continue_user: bool,
     ) -> Self {
         let memory_index = MemoryIndex::new(embedding.unwrap_or_else(|| {
             Arc::new(EmbeddingManager::new(
@@ -87,6 +91,7 @@ impl GameRoleManager {
             memory_update_interval,
             memory_recent_window,
             memory_limits,
+            memory_inject_continue_user,
             clothes_overrides: HashMap::new(),
             memory_index,
             semantic_memory,
@@ -385,7 +390,9 @@ impl GameRoleManager {
                 }
             }
 
-            let built = MemoryBuilder::new(rid).build(&final_sliced);
+            let built = MemoryBuilder::new(rid)
+                .with_continue_user(self.memory_inject_continue_user)
+                .build(&final_sliced);
 
             // 阶段 4: 写入角色记忆
             if let Some(role) = self.loaded_roles.get_mut(&rid) {

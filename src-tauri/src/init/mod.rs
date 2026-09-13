@@ -69,10 +69,11 @@ pub async fn initialize(
     // 提前加载配置 + 构建 LlmClient（AIService 的子成员 GameRoleManager 需要它）
     let app_config = AppConfig::load(&app.handle()).unwrap_or_default();
     tracing::info!(
-        "MemoryBank 配置: enabled={}, update_interval={}, recent_window={}, limits=[{},{},{},{}]（记忆设置需重启生效）",
+        "MemoryBank 配置: enabled={}, update_interval={}, recent_window={}, inject_continue_user={}, limits=[{},{},{},{}]（记忆设置需重启生效）",
         app_config.use_persistent_memory,
         app_config.memory_update_interval,
         app_config.memory_recent_window,
+        app_config.memory_inject_continue_user,
         app_config.memory_short_term_max_chars,
         app_config.memory_long_term_max_chars,
         app_config.memory_user_info_max_chars,
@@ -161,6 +162,7 @@ pub async fn initialize(
         },
         embedding,
         semantic_memory,
+        app_config.memory_inject_continue_user,
     )
     .await;
 

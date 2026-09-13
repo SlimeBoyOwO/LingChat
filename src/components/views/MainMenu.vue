@@ -84,14 +84,10 @@
 </template>
 
 <script setup lang="ts">
-  import type { WebInitData } from "@/api/services/game-info";
   import { getScriptList, type ScriptSummary } from "@/api/services/script-info";
-  import { invoke } from "@tauri-apps/api/core";
   import { computed, onMounted, ref, watch } from "vue";
   import { useI18n } from "vue-i18n";
   import { useRouter } from "vue-router";
-  import { useGameStore } from "../../stores/modules/game";
-  import { applyWebInitData } from "../../stores/modules/game/actions";
   import { useSettingsStore } from "../../stores/modules/settings";
   import { useUIStore } from "../../stores/modules/ui/ui";
   import MeteorAnimation from "../game/standard/animations/MeteorAnimation.vue";
@@ -160,35 +156,6 @@
   function goToGithub() {
     window.open("https://github.com/SlimeBoyOwO/LingChat", "_blank");
   }
-
-  const handleContinueGame = async () => {
-    try {
-      const { saves } = await invoke<{ saves: Array<{ id: number }>; total: number }>(
-        "list_saves",
-        {
-          page: 1,
-          pageSize: 1,
-        }
-      );
-      if (!saves || saves.length === 0) {
-        uiStore.showWarning({
-          title: t("views.mainMenu.noSaveTitle"),
-          message: t("views.mainMenu.noSaveMessage"),
-        });
-        return;
-      }
-      const gameInfo = await invoke<WebInitData>("load_save", { saveId: saves[0].id });
-      const gameStore = useGameStore();
-      applyWebInitData(gameStore.$state, gameInfo);
-      router.push("/chat");
-    } catch (error) {
-      console.error("继续游戏失败:", error);
-      uiStore.showError({
-        title: t("views.mainMenu.continueFailTitle"),
-        message: t("views.mainMenu.continueFailMessage"),
-      });
-    }
-  };
 
   async function handleOpenSettings(tab?: string) {
     // 后台执行隐藏与捕获，不阻塞设置页打开

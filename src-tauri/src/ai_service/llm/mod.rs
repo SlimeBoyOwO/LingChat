@@ -9,6 +9,7 @@ pub(crate) mod factory;
 mod provider;
 pub mod provider_config;
 mod providers;
+pub mod vision;
 
 // 兼容别名：既有 `llm::codex_auth::...` 路径继续可用（模块化后为 codex::auth）
 pub use codex::auth as codex_auth;
@@ -64,6 +65,9 @@ pub struct LlmConfig {
     pub reasoning_effort: Option<String>,
     /// Codex Fast Mode（1.5× 速度，额度消耗更快）= Responses API 的 `service_tier: "priority"`。
     pub fast_mode: bool,
+    /// 该模型是否支持原生多模态识图。为 true 时，用户发图可直接携带图片走对话
+    /// 模型完成识图，而无需先用旁白模型转述。默认 false。
+    pub support_vision: bool,
 }
 
 impl LlmConfig {
