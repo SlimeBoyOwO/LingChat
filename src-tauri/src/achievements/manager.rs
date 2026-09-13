@@ -146,29 +146,21 @@ impl AchievementManager {
     pub fn get_all_achievements(&self) -> HashMap<String, Achievement> {
         let mut result = HashMap::new();
         for (id, def) in DEFAULT_ACHIEVEMENTS.iter() {
-            let state = self
-                .state
-                .get(*id)
-                .cloned()
-                .unwrap_or_else(|| AchievementState {
-                    unlocked: false,
-                    unlocked_at: None,
-                    current_progress: 0,
-                });
+            let state = self.state.get(*id).cloned().unwrap_or(AchievementState {
+                unlocked: false,
+                unlocked_at: None,
+                current_progress: 0,
+            });
             let mut ach = Achievement::from_parts(id.to_string(), def, &state);
             Self::mask_hidden(&mut ach, def, &state);
             result.insert(id.to_string(), ach);
         }
         for (id, def) in &self.dynamic_achievements {
-            let state = self
-                .state
-                .get(id)
-                .cloned()
-                .unwrap_or_else(|| AchievementState {
-                    unlocked: false,
-                    unlocked_at: None,
-                    current_progress: 0,
-                });
+            let state = self.state.get(id).cloned().unwrap_or(AchievementState {
+                unlocked: false,
+                unlocked_at: None,
+                current_progress: 0,
+            });
             let mut ach = Achievement::from_parts(id.clone(), def, &state);
             Self::mask_hidden(&mut ach, def, &state);
             result.insert(id.clone(), ach);
@@ -187,16 +179,11 @@ impl AchievementManager {
     /// 注册动态成就（如冒险的 completion_achievements）
     pub fn register_achievement(&mut self, id: String, def: AchievementDef) {
         self.dynamic_achievements.insert(id.clone(), def);
-        if !self.state.contains_key(&id) {
-            self.state.insert(
-                id,
-                AchievementState {
-                    unlocked: false,
-                    unlocked_at: None,
-                    current_progress: 0,
-                },
-            );
-        }
+        self.state.entry(id).or_insert(AchievementState {
+            unlocked: false,
+            unlocked_at: None,
+            current_progress: 0,
+        });
     }
 
     /// 增加成就进度，到达目标时自动解锁

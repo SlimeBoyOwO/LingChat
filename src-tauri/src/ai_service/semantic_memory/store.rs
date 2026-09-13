@@ -69,6 +69,7 @@ impl Store {
     }
 
     /// 写入一条记忆。
+    #[allow(clippy::too_many_arguments)]
     pub async fn insert(
         &self,
         id: &str,
@@ -208,7 +209,9 @@ fn encode_vector(vector: &[f32]) -> Vec<u8> {
 
 fn decode_vector(bytes: Vec<u8>) -> Vec<f32> {
     bytes
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
         .collect()
 }

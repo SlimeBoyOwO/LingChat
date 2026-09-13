@@ -77,19 +77,19 @@ commands.deny = []
 [[permission]]
 identifier = "tts-local-list-sherpa-models"
 description = "List all available Sherpa-ONNX models from the registry."
-commands.allow = ["tts_local_list_sherpa_models"]
+commands.allow = ["sherpa_list_models"]
 commands.deny = []
 
 [[permission]]
 identifier = "tts-local-download-sherpa-model"
 description = "Download a Sherpa-ONNX model from the registry."
-commands.allow = ["tts_local_download_sherpa_model"]
+commands.allow = ["sherpa_download_model"]
 commands.deny = []
 
 [[permission]]
 identifier = "tts-local-delete-sherpa-model"
 description = "Delete a downloaded Sherpa-ONNX model."
-commands.allow = ["tts_local_delete_sherpa_model"]
+commands.allow = ["sherpa_delete_model"]
 commands.deny = []
 
 [[permission]]
@@ -108,4 +108,16 @@ commands.deny = []
 identifier = "tts-local-set-device"
 description = "Switch the TTS inference device."
 commands.allow = ["tts_local_set_device"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-check-sherpa-storage-permission"
+description = "Check whether the Sherpa-ONNX model directory can be accessed (external storage permission)."
+commands.allow = ["check_sherpa_storage_permission"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-request-sherpa-storage-permission"
+description = "Request external storage access for the Sherpa-ONNX model directory."
+commands.allow = ["request_sherpa_storage_permission"]
 commands.deny = []

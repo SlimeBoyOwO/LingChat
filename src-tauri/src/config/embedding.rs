@@ -6,7 +6,7 @@
 //!   空/不存在时嵌入功能自动禁用，不影响主流程。
 //! - `python`：旧版遗留字段，仅保留解析，不再参与服务（向后兼容配置文件）。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -110,7 +110,7 @@ impl EmbeddingConfig {
     ///   （打包内置模型），否则用数据目录默认路径。
     pub fn to_service_config(
         &self,
-        data_dir: &PathBuf,
+        data_dir: &Path,
         resource_dir: Option<&std::path::Path>,
     ) -> crate::ai_service::embedding::EmbeddingConfig {
         let model_dir = if self.model_dir.trim().is_empty() {
@@ -129,7 +129,7 @@ impl EmbeddingConfig {
 }
 
 /// 默认模型目录：优先打包资源内的内置模型，否则数据目录默认路径。
-fn default_model_path(data_dir: &PathBuf, resource_dir: Option<&std::path::Path>) -> PathBuf {
+fn default_model_path(data_dir: &Path, resource_dir: Option<&std::path::Path>) -> PathBuf {
     if let Some(r) = resource_dir {
         let bundled = r
             .join("data")
@@ -177,8 +177,10 @@ mod tests {
     #[test]
     fn to_service_config_keeps_absolute_model_dir() {
         let data_dir = std::env::temp_dir();
-        let mut cfg = EmbeddingConfig::default();
-        cfg.model_dir = "/mnt/models".into();
+        let cfg = EmbeddingConfig {
+            model_dir: "/mnt/models".into(),
+            ..Default::default()
+        };
         let sc = cfg.to_service_config(&data_dir, None);
         assert_eq!(sc.model_dir, std::path::PathBuf::from("/mnt/models"));
     }

@@ -265,7 +265,7 @@ pub fn list_imported_fonts() -> Result<Vec<ImportedFontInfo>, String> {
         });
     }
 
-    fonts.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    fonts.sort_by_key(|a| a.name.to_lowercase());
     Ok(fonts)
 }
 

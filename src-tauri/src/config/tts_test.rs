@@ -12,16 +12,18 @@ fn cosyvoice_default_models() {
 
 #[test]
 fn cosyvoice_config_serde_roundtrip() {
-    let mut cfg = TtsConfig::default();
-    cfg.cosyvoice_api_key = Some("sk-test".into());
-    cfg.cosyvoice_models = vec!["cosyvoice-v3.5-flash".into(), "cosyvoice-v3.5-plus".into()];
-    cfg.cosyvoice_voices = vec![CosyVoiceRecord {
-        voice_id: "cosyvoice-v3.5-flash-myvoice-abc".into(),
-        name: "诺一".into(),
-        model: "cosyvoice-v3.5-flash".into(),
-        created_at: Some("2026-08-29".into()),
-        status: Some("ok".into()),
-    }];
+    let cfg = TtsConfig {
+        cosyvoice_api_key: Some("sk-test".into()),
+        cosyvoice_models: vec!["cosyvoice-v3.5-flash".into(), "cosyvoice-v3.5-plus".into()],
+        cosyvoice_voices: vec![CosyVoiceRecord {
+            voice_id: "cosyvoice-v3.5-flash-myvoice-abc".into(),
+            name: "诺一".into(),
+            model: "cosyvoice-v3.5-flash".into(),
+            created_at: Some("2026-08-29".into()),
+            status: Some("ok".into()),
+        }],
+        ..Default::default()
+    };
     let json = serde_json::to_string(&cfg).unwrap();
     let back: TtsConfig = serde_json::from_str(&json).unwrap();
     assert_eq!(back.cosyvoice_api_key, Some("sk-test".into()));

@@ -38,6 +38,7 @@ pub struct AIService {
 }
 
 impl AIService {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: DatabaseConnection,
         data_dir: PathBuf,
@@ -188,6 +189,12 @@ impl AIService {
     async fn clear_game_status(&mut self) {
         let mut gs = self.game_status.lock().await;
         gs.role_manager.invalidate_memory_history();
+        // 清掉上一局「一键整理当前对话」归档的台词片段，避免残留到新角色的
+        // 语义检索/去重候选里（load_save 恢复时同样会先清理再写回本档）。
+        gs.role_manager
+            .memory_index()
+            .clear_conversation_fragments()
+            .await;
         gs.role_manager.reset_roles();
         gs.line_list.clear();
         gs.onstage_role_ids.clear();

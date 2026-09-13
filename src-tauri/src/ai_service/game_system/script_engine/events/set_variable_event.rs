@@ -44,13 +44,13 @@ impl ScriptEvent for SetVariableEvent {
         for opt in &self.options {
             // Check condition
             let condition = opt.get("condition").and_then(|v| v.as_str()).unwrap_or("");
-            if !condition.is_empty() {
-                if !crate::ai_service::game_system::script_engine::events::evaluate_condition(
+            if !condition.is_empty()
+                && !crate::ai_service::game_system::script_engine::events::evaluate_condition(
                     condition,
                     &script_status.vars,
-                ) {
-                    continue;
-                }
+                )
+            {
+                continue;
             }
 
             // Process actions
@@ -67,7 +67,7 @@ impl ScriptEvent for SetVariableEvent {
                                 "[SetVariableEvent] {} = {:?}",
                                 content,
                                 script_status.get_variable(
-                                    &content
+                                    content
                                         .split(&['=', '+', '-'][..])
                                         .next()
                                         .unwrap_or("")

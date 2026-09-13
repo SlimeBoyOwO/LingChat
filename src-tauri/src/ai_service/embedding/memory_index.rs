@@ -16,8 +16,9 @@ use super::service::{EmbeddingManager, cosine, cosine_ge_threshold};
 
 /// 跳过检索/去重的零碎文本阈值（低于此长度不建索引，避免噪音）。
 const MIN_INDEX_CHARS: usize = 2;
-/// 去重判定阈值（余弦相似度高于此值视为重复）。
-const DUP_THRESHOLD: f32 = 0.88;
+/// 去重判定阈值（余弦相似度高于此值视为重复）。供本模块与「一键整理当前对话」
+/// 命令共用同一标准。
+pub const DUP_THRESHOLD: f32 = 0.88;
 /// 检索返回的上限。
 const DEFAULT_TOP_K: usize = 4;
 
@@ -36,13 +37,16 @@ pub enum FragmentSource {
     MemoryBank(&'static str),
     /// 手动笔记（id）。
     Note(String),
+    /// 一键整理当前对话归档的台词片段（携带存档标识，如 `save:3`）。
+    Conversation(String),
 }
 
 impl FragmentSource {
-    fn label(&self) -> &str {
+    pub fn label(&self) -> &str {
         match self {
             FragmentSource::MemoryBank(s) => s,
             FragmentSource::Note(_) => "note",
+            FragmentSource::Conversation(_) => "conversation",
         }
     }
 }
@@ -82,7 +86,10 @@ impl MemoryIndex {
             return 0;
         };
         let mut guard = self.fragments.write().await;
-        for ((text, source), emb) in texts.iter().zip(embedded.into_iter()) {
+        for ((text, source), emb) in texts.iter().zip(embedded) {
+            let Some(emb) = emb else {
+                continue;
+            };
             if text.chars().count() < self.min_chars {
                 continue;
             }
@@ -111,6 +118,44 @@ impl MemoryIndex {
         self.fragments.write().await.clear();
     }
 
+    /// 将「一键整理当前对话」归档的片段从索引中移除（切换到其它存档时调用，
+    /// 避免上一存档的对话台词残留到当前存档的检索/去重候选里）。
+    pub async fn clear_conversation_fragments(&self) {
+        self.fragments
+            .write()
+            .await
+            .retain(|f| !matches!(f.source, FragmentSource::Conversation(_)));
+    }
+
+    /// 直接写入已编码好的片段（供读档恢复 / 一键整理对话使用，跳过再次编码）。
+    ///
+    /// 入库（`embedding` 表）前已做过余弦去重，故恢复时只需按精确 id 去重，
+    /// 不再对全量索引做 O(n²) 的余弦比较，避免大存档读档时长时间占用全局锁。
+    /// 返回实际新增数量。
+    pub async fn restore_encoded(&self, items: &[(String, FragmentSource, Vec<f32>)]) -> usize {
+        let mut guard = self.fragments.write().await;
+        let mut existing: std::collections::HashSet<String> =
+            guard.iter().map(|f| f.id.clone()).collect();
+        let mut added = 0usize;
+        for (text, source, vector) in items {
+            if text.chars().count() < self.min_chars {
+                continue;
+            }
+            let id = fragment_id(text, source);
+            if !existing.insert(id.clone()) {
+                continue;
+            }
+            guard.push(Fragment {
+                id,
+                source: source.clone(),
+                text: text.clone(),
+                vector: vector.clone(),
+            });
+            added += 1;
+        }
+        added
+    }
+
     /// 更新一条已有片段（笔记内容被编辑时用）。用 `source + old_text` 定位旧片段，
     /// 找到则整体替换 text/vector；找不到则按新增处理（新片段直接入索引，不去重，
     /// 因为这是对既有记忆的明确更新）。返回是否实际改变了索引。
@@ -120,7 +165,10 @@ impl MemoryIndex {
         if new_text.chars().count() < self.min_chars {
             return self.remove(source, old_text).await;
         }
-        let Some(emb) = self.manager.embed_passages(&[new_text.to_string()]).await else {
+        let Some(embedded) = self.manager.embed_passages(&[new_text.to_string()]).await else {
+            return false;
+        };
+        let Some(emb) = embedded.into_iter().next().flatten() else {
             return false;
         };
         let mut guard = self.fragments.write().await;
@@ -137,7 +185,7 @@ impl MemoryIndex {
                 id: new_id,
                 source: source.clone(),
                 text: new_text.to_string(),
-                vector: emb[0].vector.clone(),
+                vector: emb.vector.clone(),
             });
             return true;
         }
@@ -147,7 +195,7 @@ impl MemoryIndex {
         {
             f.id = new_id;
             f.text = new_text.to_string();
-            f.vector = emb[0].vector.clone();
+            f.vector = emb.vector.clone();
             true
         } else {
             if guard
@@ -160,7 +208,7 @@ impl MemoryIndex {
                 id: new_id,
                 source: source.clone(),
                 text: new_text.to_string(),
-                vector: emb[0].vector.clone(),
+                vector: emb.vector.clone(),
             });
             true
         }
@@ -208,10 +256,13 @@ impl MemoryIndex {
         if text.chars().count() < self.min_chars {
             return false;
         }
-        let Some(vec) = self.manager.embed_passages(&[text.to_string()]).await else {
+        let Some(embedded) = self.manager.embed_passages(&[text.to_string()]).await else {
             return false;
         };
-        let v = &vec[0].vector;
+        let Some(emb) = embedded.into_iter().next().flatten() else {
+            return false;
+        };
+        let v = &emb.vector;
         let threshold = threshold.unwrap_or(DUP_THRESHOLD);
         let guard = self.fragments.read().await;
         let candidates: Vec<&[f32]> = guard.iter().map(|f| f.vector.as_slice()).collect();
@@ -237,6 +288,7 @@ impl MemoryIndex {
             let tag = match &h.source {
                 FragmentSource::MemoryBank(s) => format!("[{}]", s),
                 FragmentSource::Note(_) => "[笔记]".to_string(),
+                FragmentSource::Conversation(_) => "[对话]".to_string(),
             };
             lines.push(format!("{tag} {:.0}% {}", h.score * 100.0, h.text));
         }
@@ -302,8 +354,15 @@ impl SearchContext {
     }
 }
 
+/// 片段唯一标识：带存档标识的对话台词片段直接携带 `save:<id>`，避免两个存档的
+/// 相同台词在索引里碰撞/互相去重；其余来源用 `label::text`。
 fn fragment_id(text: &str, source: &FragmentSource) -> String {
-    format!("{}::{}", source.label(), text)
+    match source {
+        FragmentSource::Conversation(save_tag) => {
+            format!("conversation:{save_tag}::{text}")
+        },
+        _ => format!("{}::{text}", source.label()),
+    }
 }
 
 impl Default for MemoryIndex {

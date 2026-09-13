@@ -215,7 +215,7 @@ impl MessageProcessor {
         processed = processed.replace('＜', "<").replace('＞', ">");
 
         // 移除书名号《》（保留内容，避免被误识别为日文标签）
-        processed = processed.replace('《', "").replace('》', "");
+        processed = processed.replace(['《', '》'], "");
 
         // 2. 修复未闭合标签（不使用正则前瞻）
         processed = Self::fix_unclosed_tags(&processed);
@@ -357,8 +357,7 @@ pub fn fix_ai_generated_text(text: &str) -> String {
     let text = text
         .replace('＜', "<")
         .replace('＞', ">")
-        .replace('《', "")
-        .replace('》', "");
+        .replace(['《', '》'], "");
     let re = emotion_re();
     let mut parts: Vec<String> = Vec::new();
     let mut has_any = false;

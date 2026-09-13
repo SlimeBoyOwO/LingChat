@@ -12,6 +12,9 @@ use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::AppState;
+use crate::ai_service::embedding::FragmentSource;
+use crate::ai_service::embedding::memory_index::DUP_THRESHOLD;
+use crate::ai_service::embedding::service::cosine_ge_threshold;
 use crate::ai_service::god_agent::config::resolve_god_agent_provider;
 use crate::ai_service::llm::LlmModelInfo;
 use crate::ai_service::llm::error::LlmErrorPayload;
@@ -26,7 +29,10 @@ use crate::config::app_config::{
     MAX_MEMORY_UPDATE_INTERVAL, MIN_LLM_TIMEOUT_SECS, MIN_MEMORY_UPDATE_INTERVAL,
 };
 use crate::config::{self, ConfigSetting, ConfigTree, keys};
+use crate::db::entities::line::LineAttribute;
+use crate::db::managers::embedding_repo::EmbeddingRepo;
 use crate::db::managers::role_repo::RoleRepo;
+use crate::db::managers::save_repo::SaveRepo;
 
 // ========== Settings CRUD ==========
 
@@ -225,6 +231,153 @@ pub async fn get_embedding_status(app: AppHandle) -> Result<EmbeddingStatusSnaps
     snap.dim = manager.dim();
     snap.model = manager.model_name();
     Ok(snap)
+}
+
+/// 「一键整理当前对话」操作结果。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizeConversationResult {
+    /// 本次扫描到的候选台词条数（用户 / 助手内容，已过滤旁白/系统行）。
+    pub scanned: usize,
+    /// 本次实际新入库的条数。
+    pub added: usize,
+    /// 因与既有归档/本批次内容重复而跳过的条数。
+    pub duplicates: usize,
+    /// 该存档当前累计已归档的条数。
+    pub stored: usize,
+}
+
+/// 一键整理当前对话：把当前存档台词逐条编码为向量并持久化到 `embedding` 表，
+/// 同时载回内存语义索引（供语义检索 / 后续去重）。重复内容自动跳过。
+#[tauri::command]
+pub async fn organize_current_conversation(
+    app: AppHandle,
+) -> Result<OrganizeConversationResult, String> {
+    let state = app.state::<AppState>();
+
+    // 锁内快速快照：当前存档 id、台词列表、嵌入管理器句柄（随后释放锁做长耗时编码）。
+    let (save_id, line_list, manager) = {
+        let ai_service = state.ai_service.lock().await;
+        let gs = ai_service.game_status.lock().await;
+        let idx = gs.role_manager.memory_index();
+        if !idx.enabled() {
+            return Err(
+                "记忆嵌入未启用：请先在「高级设置 → 记忆嵌入」开启并配置模型目录".to_string(),
+            );
+        }
+        (gs.active_save_id, gs.line_list.clone(), idx.manager_arc())
+    };
+    let Some(save_id) = save_id else {
+        return Err("当前没有进行中的存档，请先创建或载入一个存档".to_string());
+    };
+
+    // 收集候选台词：只处理用户 / 助手两种真实对话内容，跳过旁白与空行。
+    let mut texts: Vec<String> = Vec::new();
+    for line in &line_list {
+        if !matches!(
+            line.attribute(),
+            LineAttribute::User | LineAttribute::Assistant
+        ) {
+            continue;
+        }
+        let content = line.content().trim();
+        if content.is_empty() {
+            continue;
+        }
+        texts.push(content.to_string());
+    }
+    let scanned = texts.len();
+    if texts.is_empty() {
+        return Ok(OrganizeConversationResult {
+            scanned: 0,
+            added: 0,
+            duplicates: 0,
+            stored: 0,
+        });
+    }
+
+    // 批量编码（外部加载模型，可能耗时较长）。
+    let Some(embedded) = manager.embed_passages(&texts).await else {
+        return Err(format!(
+            "嵌入编码失败：{}",
+            manager
+                .last_error()
+                .unwrap_or_else(|| "未知错误".to_string())
+        ));
+    };
+
+    // 与该存档既有向量做余弦去重，再与新批次互相去重。
+    let db = &state.data().db;
+    let mut known_vectors: Vec<Vec<f32>> = EmbeddingRepo::list_decoded(db, save_id)
+        .await
+        .map_err(|e| format!("读取既有归档失败：{e}"))?
+        .into_iter()
+        .map(|(_, _, v)| v)
+        .collect();
+    let source = FragmentSource::Conversation(format!("save:{save_id}"));
+    let mut new_rows: Vec<(String, String, Vec<f32>)> = Vec::new();
+    let mut to_index: Vec<(String, FragmentSource, Vec<f32>)> = Vec::new();
+    let mut duplicates = 0usize;
+    for (text, emb) in texts.iter().zip(embedded) {
+        let Some(emb) = emb else {
+            continue;
+        };
+        let candidates: Vec<&[f32]> = known_vectors.iter().map(|v| v.as_slice()).collect();
+        if cosine_ge_threshold(&candidates, &emb.vector, DUP_THRESHOLD) {
+            duplicates += 1;
+            continue;
+        }
+        known_vectors.push(emb.vector.clone());
+        let source_tag = match &source {
+            FragmentSource::Conversation(tag) => tag.clone(),
+            _ => source.label().to_string(),
+        };
+        new_rows.push((text.clone(), source_tag, emb.vector.clone()));
+        to_index.push((text.clone(), source.clone(), emb.vector));
+    }
+
+    // 编码期间存档可能已被切换/删除：落库前重新校验当前存档仍活跃且存在，
+    // 避免把向量写入错误存档或产生孤儿 embedding 行。
+    let still_active = {
+        let ai_service = state.ai_service.lock().await;
+        let gs = ai_service.game_status.lock().await;
+        gs.active_save_id == Some(save_id)
+    };
+    if !still_active {
+        return Err("整理期间已切换存档，请重新整理当前对话".to_string());
+    }
+    if SaveRepo::get_save_by_id(db, save_id)
+        .await
+        .map_err(|e| format!("读取存档失败：{e}"))?
+        .is_none()
+    {
+        return Err(format!("存档 {save_id} 已不存在，请重新整理当前对话"));
+    }
+
+    // 持久化新批次。
+    let added = EmbeddingRepo::insert_many(db, save_id, &new_rows)
+        .await
+        .map_err(|e| format!("写入嵌入失败：{e}"))?;
+
+    // 载回内存语义索引（跳过再次编码）。
+    if !to_index.is_empty() {
+        let ai_service = state.ai_service.lock().await;
+        let gs = ai_service.game_status.lock().await;
+        gs.role_manager
+            .memory_index()
+            .restore_encoded(&to_index)
+            .await;
+    }
+
+    let stored = EmbeddingRepo::count_by_save(db, save_id)
+        .await
+        .map_err(|e| format!("读取归档计数失败：{e}"))?;
+    Ok(OrganizeConversationResult {
+        scanned,
+        added,
+        duplicates,
+        stored: stored as usize,
+    })
 }
 
 #[tauri::command]

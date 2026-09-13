@@ -455,6 +455,7 @@ impl GameRoleManager {
     /// 惰性构造角色的 `PersistentMemorySystem`。
     ///
     /// 调用方保证在 `enabled=true` 时槽位内已就绪 LLM（构造函数注入）。
+    #[allow(clippy::too_many_arguments)]
     fn ensure_memory_bank_system(
         &mut self,
         role_id: i32,
@@ -784,6 +785,7 @@ mod memory_bank_context_tests {
             MemorySectionLimits::default(),
             None,
             None,
+            false,
         );
         for role_id in [1, 2] {
             manager.memory_bank_systems.insert(
@@ -858,6 +860,7 @@ mod memory_bank_context_tests {
 }
 
 /// 语义召回查询文本：取该角色最近可见的非 system 台词，作为检索当前话题的 query。
+#[allow(clippy::items_after_test_module)]
 fn build_recall_query(lines: &[GameLine], role_id: i32) -> String {
     let mut parts: Vec<String> = lines
         .iter()
@@ -878,6 +881,7 @@ fn build_recall_query(lines: &[GameLine], role_id: i32) -> String {
 ///
 /// 未启用 TTS / 配置缺失时返回 `None`。对应 Python `GameRole` 构造时调用
 /// `voice_maker = VoiceMaker(...)`。
+#[allow(clippy::items_after_test_module)]
 fn build_voice_maker(
     data_dir: &Path,
     settings: &CharacterSettings,

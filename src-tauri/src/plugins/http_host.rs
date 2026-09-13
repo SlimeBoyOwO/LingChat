@@ -61,8 +61,7 @@ pub(crate) fn runtime() -> Option<&'static tokio::runtime::Runtime> {
 
 /// 把 Python 对象转成 serde_json::Value（用于解析 kwargs 里的 headers/body）。
 fn py_to_value(vm: &VirtualMachine, obj: &PyObjectRef) -> serde_json::Value {
-    py_serde::serialize(vm, &**obj, serde_json::value::Serializer)
-        .unwrap_or(serde_json::Value::Null)
+    py_serde::serialize(vm, obj, serde_json::value::Serializer).unwrap_or(serde_json::Value::Null)
 }
 
 /// 递归把 serde_json::Value 转成 Python 对象（返回给插件脚本）。

@@ -5,8 +5,9 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::{Value as JsonValue, json};
 use sherpa_onnx::{
-    GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsKokoroModelConfig,
-    OfflineTtsMatchaModelConfig, OfflineTtsModelConfig, OfflineTtsVitsModelConfig,
+    GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsKittenModelConfig,
+    OfflineTtsKokoroModelConfig, OfflineTtsMatchaModelConfig, OfflineTtsModelConfig,
+    OfflineTtsPocketModelConfig, OfflineTtsSupertonicModelConfig, OfflineTtsVitsModelConfig,
     OfflineTtsZipvoiceModelConfig,
 };
 
@@ -49,8 +50,11 @@ impl SherpaOnnxAdapter {
                 "vits" | "fastspeech2" => Self::create_vits_tts(model_dir, provider),
                 "matcha" => Self::create_matcha_tts(model_dir, provider),
                 "kokoro" => Self::create_kokoro_tts(model_dir, &language, provider),
+                "kitten" => Self::create_kitten_tts(model_dir, provider),
                 "zipvoice" => Self::create_zipvoice_tts(model_dir, provider),
-                other => return Err(anyhow!("Sherpa-ONNX 不支持的模型类型: {other}")),
+                "pocket" => Self::create_pocket_tts(model_dir, provider),
+                "supertonic" => Self::create_supertonic_tts(model_dir, provider),
+                other => Err(anyhow!("Sherpa-ONNX 不支持的模型类型: {other}")),
             }
         };
 
@@ -165,7 +169,7 @@ impl SherpaOnnxAdapter {
             ..Default::default()
         };
 
-        OfflineTts::create(&config)
+        OfflineTts::create(&with_rule_files(config, model_dir))
             .ok_or_else(|| anyhow!("Sherpa-ONNX VITS 模型加载失败，请检查模型文件是否完整"))
     }
 
@@ -214,7 +218,7 @@ impl SherpaOnnxAdapter {
             ..Default::default()
         };
 
-        OfflineTts::create(&config)
+        OfflineTts::create(&with_rule_files(config, model_dir))
             .ok_or_else(|| anyhow!("Sherpa-ONNX Matcha 模型加载失败，请检查模型文件是否完整"))
     }
 
@@ -254,7 +258,7 @@ impl SherpaOnnxAdapter {
             ..Default::default()
         };
 
-        OfflineTts::create(&config)
+        OfflineTts::create(&with_rule_files(config, model_dir))
             .ok_or_else(|| anyhow!("Sherpa-ONNX Kokoro 模型加载失败，请检查模型文件是否完整"))
     }
 
@@ -291,8 +295,135 @@ impl SherpaOnnxAdapter {
             ..Default::default()
         };
 
-        OfflineTts::create(&config)
+        OfflineTts::create(&with_rule_files(config, model_dir))
             .ok_or_else(|| anyhow!("Sherpa-ONNX ZipVoice 模型加载失败，请检查模型文件是否完整"))
+    }
+
+    fn create_kitten_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTts> {
+        let model = find_file(model_dir, &["model.onnx", "model.int8.onnx"])?;
+        let voices = find_file(model_dir, &["voices.bin"])?;
+
+        let kitten_config = OfflineTtsKittenModelConfig {
+            model: Some(model.to_string_lossy().to_string()),
+            voices: Some(voices.to_string_lossy().to_string()),
+            tokens: find_file_optional(model_dir, &["tokens.txt"])
+                .map(|p| p.to_string_lossy().to_string()),
+            data_dir: Self::espeak_data_dir(model_dir).map(|p| p.to_string_lossy().to_string()),
+            ..Default::default()
+        };
+
+        let config = OfflineTtsConfig {
+            model: OfflineTtsModelConfig {
+                kitten: kitten_config,
+                provider: provider.map(|s| s.to_string()),
+                ..Default::default()
+            },
+            max_num_sentences: 2,
+            ..Default::default()
+        };
+
+        OfflineTts::create(&with_rule_files(config, model_dir))
+            .ok_or_else(|| anyhow!("Sherpa-ONNX Kitten 模型加载失败，请检查模型文件是否完整"))
+    }
+
+    fn create_pocket_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTts> {
+        let pocket_config = OfflineTtsPocketModelConfig {
+            lm_flow: Some(
+                find_file(model_dir, &["lm_flow.int8.onnx", "lm_flow.onnx"])?
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            lm_main: Some(
+                find_file(model_dir, &["lm_main.int8.onnx", "lm_main.onnx"])?
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            encoder: Some(
+                find_file(model_dir, &["encoder.onnx"])?
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            decoder: Some(
+                find_file(model_dir, &["decoder.int8.onnx", "decoder.onnx"])?
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            text_conditioner: Some(
+                find_file(model_dir, &["text_conditioner.onnx"])?
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            vocab_json: Some(
+                find_file(model_dir, &["vocab.json"])?
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            token_scores_json: Some(
+                find_file(model_dir, &["token_scores.json"])?
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            voice_embedding_cache_capacity: 8,
+        };
+
+        let config = OfflineTtsConfig {
+            model: OfflineTtsModelConfig {
+                pocket: pocket_config,
+                provider: provider.map(|s| s.to_string()),
+                ..Default::default()
+            },
+            max_num_sentences: 2,
+            ..Default::default()
+        };
+
+        OfflineTts::create(&with_rule_files(config, model_dir))
+            .ok_or_else(|| anyhow!("Sherpa-ONNX Pocket TTS 模型加载失败，请检查模型文件是否完整"))
+    }
+
+    fn create_supertonic_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTts> {
+        let supertonic_config = OfflineTtsSupertonicModelConfig {
+            duration_predictor: Some(
+                find_file(model_dir, &["duration_predictor.onnx"])?
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            text_encoder: Some(
+                find_file(model_dir, &["text_encoder.onnx"])?
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            vector_estimator: Some(
+                find_file(model_dir, &["vector_estimator.onnx"])?
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            vocoder: Some(
+                find_file(model_dir, &["vocoder.onnx", "vocoder_f16.onnx"])?
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            tts_json: Some(
+                find_file(model_dir, &["tts.json"])?
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            unicode_indexer: find_file_optional(model_dir, &["unicode_indexer.json"])
+                .map(|p| p.to_string_lossy().to_string()),
+            voice_style: find_file_optional(model_dir, &["voice_style.onnx"])
+                .map(|p| p.to_string_lossy().to_string()),
+        };
+
+        let config = OfflineTtsConfig {
+            model: OfflineTtsModelConfig {
+                supertonic: supertonic_config,
+                provider: provider.map(|s| s.to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        OfflineTts::create(&with_rule_files(config, model_dir))
+            .ok_or_else(|| anyhow!("Sherpa-ONNX Supertonic 模型加载失败，请检查模型文件是否完整"))
     }
 }
 
@@ -371,6 +502,19 @@ fn find_file(dir: &Path, candidates: &[&str]) -> Result<PathBuf> {
         dir.display(),
         candidates
     ))
+}
+
+/// 若模型目录内附带 Thrax 规则文件（rule_fst.fst / rule.far 等），自动挂载到
+/// `OfflineTtsConfig`，使长文本/数字的书名号、日期等规范化更准确。
+fn with_rule_files(mut config: OfflineTtsConfig, model_dir: &Path) -> OfflineTtsConfig {
+    if let Some(fst) = find_file_optional(model_dir, &["rule_fst.fst", "rule_fst.far", "rule.fst"])
+    {
+        config.rule_fsts = Some(fst.to_string_lossy().to_string());
+    }
+    if let Some(far) = find_file_optional(model_dir, &["rulefst.far", "rule.far"]) {
+        config.rule_fars = Some(far.to_string_lossy().to_string());
+    }
+    config
 }
 
 fn find_file_optional(dir: &Path, candidates: &[&str]) -> Option<PathBuf> {
@@ -472,13 +616,17 @@ pub fn load_reference_audio(path: &Path) -> Result<(Vec<f32>, i32)> {
     let samples = match bits_per_sample {
         16 => {
             let raw = &data[data_offset..];
-            raw.chunks_exact(2)
+            raw.as_chunks::<2>()
+                .0
+                .iter()
                 .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0)
                 .collect::<Vec<_>>()
         },
         32 => {
             let raw = &data[data_offset..];
-            raw.chunks_exact(4)
+            raw.as_chunks::<4>()
+                .0
+                .iter()
                 .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f32 / 2147483648.0)
                 .collect::<Vec<_>>()
         },
@@ -597,8 +745,10 @@ mod tests {
         let data_start = find_wav_data_chunk(&wav).unwrap();
         let pcm = &wav[data_start..];
         let has_signal = pcm
-            .chunks_exact(2)
-            .any(|c| i16::from_le_bytes([c[0], c[1]]).unsigned_abs() > 200);
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .any(|c| i16::from_le_bytes(*c).unsigned_abs() > 200);
         assert!(has_signal, "生成音频疑似全静音");
 
         // 保存输出
@@ -643,8 +793,8 @@ mod tests {
 
             let data_start = find_wav_data_chunk(&wav).unwrap();
             let pcm = &wav[data_start..];
-            let has_signal = pcm.chunks_exact(2).any(|c| {
-                let v = i16::from_le_bytes([c[0], c[1]]);
+            let has_signal = pcm.as_chunks::<2>().0.iter().any(|c| {
+                let v = i16::from_le_bytes(*c);
                 v.unsigned_abs() > 200
             });
             assert!(has_signal, "use_gpu={use_gpu} 生成音频疑似全静音");

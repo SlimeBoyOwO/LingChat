@@ -384,7 +384,7 @@ async fn fetch_via_rest() -> Result<Vec<Discussion>, String> {
 #[tauri::command]
 pub async fn fetch_discussions(app: AppHandle) -> Result<Vec<Discussion>, String> {
     let token = config::get_setting_string(&app, config::keys::GITHUB_TOKEN);
-    let has_token = token.as_ref().map_or(false, |t| !t.trim().is_empty());
+    let has_token = token.as_ref().is_some_and(|t| !t.trim().is_empty());
 
     // 检查缓存
     if let Ok(cache) = CACHE.lock() {

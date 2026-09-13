@@ -40,7 +40,7 @@ pub async fn initialize(
     // （参见 lib.rs），因此在此函数运行之前，缓存的数据目录就已经对
     // LocalTtsPaths::resolve 可用了。如果在这里再次调用它，会导致
     // OnceLock 发生 panic。
-    static_copy::seed_data_dir(&app.handle())?;
+    static_copy::seed_data_dir(app.handle())?;
     let data_dir = static_copy::get_data_dir().clone();
 
     // 应用 LAN 同步暂存文件（必须在 DB 初始化之前，否则 .db 仍被锁定）
@@ -62,12 +62,12 @@ pub async fn initialize(
     RoleRepo::ensure_user_role(&db).await?;
 
     // 迁移旧的扁平 LLM 配置 → 多供应商列表
-    migrate_if_needed(&app.handle());
+    migrate_if_needed(app.handle());
     // 迁移旧的主动视觉独立配置（VD_*）→ 大模型管理中的视觉模型角色
-    migrate_legacy_vision_keys(&app.handle());
+    migrate_legacy_vision_keys(app.handle());
 
     // 提前加载配置 + 构建 LlmClient（AIService 的子成员 GameRoleManager 需要它）
-    let app_config = AppConfig::load(&app.handle()).unwrap_or_default();
+    let app_config = AppConfig::load(app.handle()).unwrap_or_default();
     tracing::info!(
         "MemoryBank 配置: enabled={}, update_interval={}, recent_window={}, inject_continue_user={}, limits=[{},{},{},{}]（记忆设置需重启生效）",
         app_config.use_persistent_memory,
@@ -83,8 +83,8 @@ pub async fn initialize(
     // 构建聊天主 LLM 槽位（支持运行时热切换）。
     // 槽位本身始终存在，未配置模型时内部值为 None。
     let llm: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(
-        resolve_chat_provider(&app.handle())
-            .and_then(|p| build_llm_client_from_provider(&app.handle(), &p))
+        resolve_chat_provider(app.handle())
+            .and_then(|p| build_llm_client_from_provider(app.handle(), &p))
             .map(Arc::new),
     ));
 
@@ -201,8 +201,8 @@ pub async fn initialize(
     // —— 构建聊天组件 ——
     // 翻译 LLM 槽位（支持运行时热切换）；槽位本身始终存在。
     let translate_llm: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(
-        resolve_translate_provider(&app.handle())
-            .and_then(|p| build_llm_client_from_provider(&app.handle(), &p))
+        resolve_translate_provider(app.handle())
+            .and_then(|p| build_llm_client_from_provider(app.handle(), &p))
             .map(Arc::new),
     ));
 

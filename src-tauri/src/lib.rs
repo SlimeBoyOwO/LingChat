@@ -42,6 +42,10 @@ impl FormatTime for LocalTimer {
     }
 }
 
+/// Android 存储权限插件的句柄（由 lib.rs 的 `storage-permission` 插件在 setup
+/// 阶段注册并 manage；桌面端不注册，命令在非 Android 平台直接返回已授权）。
+pub struct StoragePermissionPluginHandle(pub tauri::plugin::PluginHandle<tauri::Wry>);
+
 /// 构建日志过滤器。
 ///
 /// `genai_debug` 为 true 时把 `genai` crate 的日志级别从 error 提到 debug，
@@ -282,7 +286,25 @@ pub fn run() {
         .plugin(tauri_plugin_screenshots::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_android_fs::init());
+        .plugin(tauri_plugin_android_fs::init())
+        // Android 插件：在系统文件管理器中打开 Sherpa-ONNX 模型目录
+        // （`data/sherpa_onnx_models`，位于应用专属目录，无需存储权限）。
+        // 桌面端仅注册占位插件，相关命令恒返回已授权。
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry, ()>::new("storage-permission")
+                .setup(|_app, _api| {
+                    #[cfg(target_os = "android")]
+                    {
+                        let handle = _api.register_android_plugin(
+                            "com.noiq.lingchat",
+                            "StoragePermissionPlugin",
+                        )?;
+                        _app.manage(StoragePermissionPluginHandle(handle));
+                    }
+                    Ok(())
+                })
+                .build(),
+        );
 
     // 桌面端额外插件
     #[cfg(desktop)]
@@ -292,12 +314,18 @@ pub fn run() {
 
     builder
         .setup(move |app| {
+            // Android 修复：Tauri 在 setup 闭包执行前已创建 webview 窗口，前端 invoke
+            // 命令会在 IPC runtime worker 上立即 dispatch；如果 AppState 还没 manage
+            // 就会 panic "state() called before manage()"。所以 setup 一开始就 manage
+            // 一个空壳 AppState，init::initialize 完成后用真实值 fill。
+            app.manage(AppState::empty());
+
             // 设置日志桥接的应用句柄
             utils::log_bridge::set_app_handle(app.handle().clone());
 
             // 提前初始化数据目录缓存，以便在 init::initialize 之前
             // 将其传递给独立的本地 TTS crate。
-            init::static_copy::init_data_dir(&app.handle());
+            init::static_copy::init_data_dir(app.handle());
 
             // 管理各种状态
             app.manage(api::pet::HitTestState::default());
@@ -307,15 +335,7 @@ pub fn run() {
             app.manage(utils::cpu_perf::CpuDetectionCache::new());
             app.manage(utils::gpu_perf::GpuDetectionCache::new());
             app.manage(api::role_archive::RoleArchiveState::default());
-            app.manage(api::tts_sherpa::init(
-                &crate::init::static_copy::get_data_dir().clone(),
-            ));
-
-            // Android 修复：Tauri 在 setup 闭包执行前已创建 webview 窗口，前端 invoke
-            // 命令会在 IPC runtime worker 上立即 dispatch；如果 AppState 还没 manage
-            // 就会 panic "state() called before manage()"。所以 setup 一开始就 manage
-            // 一个空壳 AppState，init::initialize 完成后用真实值 fill。
-            app.manage(AppState::empty());
+            app.manage(api::tts_sherpa::init());
             let rt = tokio::runtime::Runtime::new()?;
             // 本地 TTS（SBV2 进程内实现）：解析路径、注册 State/开关并收敛运行时。
             let local_tts = ai_service::tts::local::setup::bootstrap(app)?;
@@ -464,7 +484,7 @@ pub fn run() {
 
             // 创建屏幕分析器
             let screen_analyzer = {
-                let sa_config = ScreenAnalyzerConfig::resolve(&app.handle());
+                let sa_config = ScreenAnalyzerConfig::resolve(app.handle());
                 std::sync::Arc::new(tokio::sync::Mutex::new(ScreenAnalyzer::new(sa_config)))
             };
 
@@ -482,8 +502,8 @@ pub fn run() {
             ));
 
             // 构建上帝 Agent（多人对话编排器）—— 使用独立槽位以支持热切换
-            let god_agent = resolve_god_agent_provider(&app.handle()).map(|llm| {
-                let config = ai_service::god_agent::config::GodAgentConfig::load(&app.handle());
+            let god_agent = resolve_god_agent_provider(app.handle()).map(|llm| {
+                let config = ai_service::god_agent::config::GodAgentConfig::load(app.handle());
                 let slot: LlmSlot =
                     std::sync::Arc::new(tokio::sync::RwLock::new(Some(Arc::new(llm))));
                 Arc::new(GodAgentCore::new(slot, config))
@@ -562,7 +582,7 @@ pub fn run() {
             // 延迟加载 DeBerta 直到应用主体挂载完成；
             // 如果在加载完成前有聊天请求到达，LocalTtsAdapter 的惰性引导仍然会运行，
             // 因此首次消息延迟是启动时加载的代价。
-            ai_service::tts::local::setup::spawn_preload(&app.handle(), &local_tts);
+            ai_service::tts::local::setup::spawn_preload(app.handle(), &local_tts);
 
             // 启动鼠标轮询点击穿透循环
             let window = app
@@ -694,6 +714,7 @@ pub fn run() {
             api::settings::save_settings,
             api::settings::get_setting_by_key,
             api::settings::get_embedding_status,
+            api::settings::organize_current_conversation,
             api::settings::get_semantic_memory_status,
             api::settings::list_semantic_memory_roles,
             api::settings::list_semantic_memories,
@@ -912,6 +933,8 @@ pub fn run() {
             api::tts_sherpa::sherpa_delete_model,
             api::tts_sherpa::test_sherpa_onnx_voice,
             api::tts_sherpa::open_sherpa_onnx_model_manager,
+            api::tts_sherpa::check_sherpa_storage_permission,
+            api::tts_sherpa::request_sherpa_storage_permission,
             // ASR 相关命令
             api::asr::asr_start_listening,
             api::asr::asr_stop_listening,

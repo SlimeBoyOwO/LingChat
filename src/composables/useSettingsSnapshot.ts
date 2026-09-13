@@ -52,11 +52,12 @@ async function capture(): Promise<string | null> {
     }
   };
 
+  const capturePromise = doCapture();
   const timeout = new Promise<null>((resolve) =>
     setTimeout(() => resolve(null), CAPTURE_TIMEOUT_MS)
   );
 
-  const p = Promise.race([doCapture(), timeout]) as Promise<string | null>;
+  const p = Promise.race([capturePromise, timeout]) as Promise<string | null>;
   capturePending = p;
 
   let resultPath: string | null = null;
@@ -64,6 +65,16 @@ async function capture(): Promise<string | null> {
     resultPath = await p;
   } finally {
     if (capturePending === p) capturePending = null;
+  }
+
+  // 超时（race 返回 null）时 doCapture 仍可能稍后落盘；迟到结果必须清理，
+  // 否则临时 PNG 会不断累积（该前缀没有启动期兜底清理）。
+  if (resultPath === null) {
+    void capturePromise.then((late) => {
+      if (late) {
+        invoke("cleanup_settings_snapshot", { path: late }).catch(() => {});
+      }
+    });
   }
 
   // session 已过期 → 丢弃结果并清理新产生的临时文件

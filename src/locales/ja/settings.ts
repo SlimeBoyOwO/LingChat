@@ -5,6 +5,8 @@ export default {
     loading: "読み込み中...",
     pageOf: "{current} / {total} ページ",
     pageOfTotal: "{current} ページ / 全 {total} ページ",
+    cancel: "キャンセル",
+    save: "保存",
   },
   history: {
     title: "会話履歴",
@@ -171,6 +173,10 @@ export default {
       indexLen: "索引フラグメント数",
       loading: "読み込み中…",
       refresh: "状態を更新",
+      organizeConversation: "現在の会話を整理",
+      organizeResult:
+        "整理完了：追加 {added} 件、重複スキップ {duplicates} 件、このセーブに {stored} 件収蔵。",
+      organizeError: "整理に失敗しました：{error}",
       labelOn: "有効",
       labelOff: "無効",
       labelYes: "はい",
@@ -466,6 +472,36 @@ export default {
       voiceDialect: "中国語方言",
 
       openttsVoice: "OpenTTS 音色識別子",
+
+      sbv2: "ローカル SBV2",
+      opentts: "OpenTTS",
+      indextts2: "Index-TTS2",
+      sherpaOnnx: "Sherpa-ONNX ローカル音声",
+      sherpaOnnxModelName: "Sherpa-ONNX モデル",
+      sherpaOnnxModelType: "モデル種別",
+      sherpaOnnxLanguage: "言語",
+      sherpaOnnxVoice: "音声",
+      sherpaOnnxUseGpu: "GPU 推論",
+      sherpaOnnxSpeed: "話速",
+      sherpaOnnxParameters: "パラメータ",
+      sherpaOnnxManageModels: "モデル管理",
+      sherpaOnnxVoicesMale: "男性",
+      sherpaOnnxVoicesFemale: "女性",
+      sherpaOnnxVoicesChild: "子供",
+      sherpaOnnxVoicesElderly: "年配",
+      sherpaOnnxModelDir: "モデル保存先",
+      sherpaOnnxStoragePermHint:
+        "モデルはアプリのデータディレクトリ（data/sherpa_onnx_models）に保存されます。追加のストレージ権限は不要です",
+      sherpaOnnxGrantPermission: "権限を付与",
+      basicSettings: "基本音声設定",
+      emotion: "感情",
+      emotionsNormal: "普通",
+      emotionsHappy: "嬉しい",
+      emotionsSad: "悲しい",
+      emotionsAngry: "怒り",
+      emotionsSurprised: "驚き",
+      noSherpaModel:
+        "Sherpa-ONNX モデルがインストールされていません（TTS 設定からダウンロードしてください）",
     },
     placeholders: {
       openttsVoice: "空欄の場合は詳細設定のグローバル音色識別子を使用します",
@@ -541,6 +577,8 @@ export default {
       failTitle: "削除失敗",
       systemProtected: "システム保護キャラクターのため削除できません",
       onstage: "このキャラクターは場にいるため、退場してから削除してください",
+      pluginFromPlugin:
+        "このキャラクターはプラグイン由来のため直接削除できません。「設定 · プラグイン」のリソース欄で非表示にしてください。",
     },
     messages: {
       realtimeUpdateFailed:
@@ -1289,6 +1327,35 @@ export default {
       deviceSwitched: "推論デバイスを切り替えました: {name}",
       deviceSwitchFailed: "推論デバイスの切り替えに失敗: {error}",
     },
+  },
+
+  sherpa: {
+    title: "Sherpa-ONNX ローカル音声",
+    models: "モデル",
+    noModels: "利用可能なモデルがありません。先にダウンロードしてください",
+    manageModels: "モデルフォルダを開く",
+    modelConfig: "モデル設定",
+    modelType: "モデル種別",
+    language: "言語",
+    voice: "音声",
+    useGpu: "GPU 推論",
+    parameters: "パラメータ",
+    speed: "話速",
+    zeroShot: "ゼロショット音声クローン",
+    zeroShotDesc:
+      "一部のモデル（kokoro/kitten 等）は参照音声 + 参照テキストによるゼロショットクローンに対応しています。",
+    refLoaded: "参照音声を読み込みました",
+    refNone: "参照音声が選択されていません",
+    refChange: "音声を変更",
+    refPick: "音声を選択",
+    refClear: "クリア",
+    refText: "参照テキスト",
+    refTextPlaceholder: "参照音声に対応するテキスト……",
+    test: "試聴",
+    testPlaceholder: "試聴するテキストを入力……",
+    synthesizing: "合成中…",
+    listen: "試聴",
+    noModelHint: "インストール済みのモデルを選択してください",
   },
 
   asr: {

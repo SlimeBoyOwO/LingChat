@@ -7,7 +7,7 @@
 - **文件**: `src-tauri/src/ai_service/tts/adapters/sherpa_onnx.rs`
 - **功能**: 实现了 Sherpa-ONNX 适配器，支持多种模型类型
 - **特性**:
-  - 支持 VITS、FastSpeech2、Tortoise、Matcha-TTS 等模型
+  - 支持 VITS、FastSpeech2、Matcha-TTS、Kokoro、Kitten、ZipVoice、Pocket、Supertonic 等模型
   - 多语言支持（中文、英文、日文等）
   - GPU 加速支持
   - 统一的 TTS 适配器接口
@@ -36,11 +36,12 @@
 - **功能**: 在 `VoiceModel` 中添加了 Sherpa-ONNX 相关字段
 - **字段**:
   - `sherpa_onnx_model_name`
-  - `sherpa_onnx_model_path`
   - `sherpa_onnx_model_type`
   - `sherpa_onnx_lang`
   - `sherpa_onnx_voice`
   - `sherpa_onnx_use_gpu`
+  - `sherpa_onnx_speed`
+  - `sherpa_onnx_ref_audio_path` / `sherpa_onnx_ref_text`（零样本克隆）
 
 ### 5. Provider 支持 ✅
 
@@ -101,7 +102,6 @@ node scripts/download_sherpa_onnx_models.mjs vits-zh
 {
   "tts_type": "sherpa-onnx",
   "sherpa_onnx_model_name": "vits-zh",
-  "sherpa_onnx_model_path": "data/tts-local/sherpa_onnx_models/vits-zh",
   "sherpa_onnx_model_type": "vits",
   "sherpa_onnx_lang": "zh",
   "sherpa_onnx_voice": "female",
@@ -115,22 +115,22 @@ node scripts/download_sherpa_onnx_models.mjs vits-zh
 
 ## 📊 支持的模型
 
-| 模型名称       | 描述                  | 语言 | 模型类型    |
-| -------------- | --------------------- | ---- | ----------- |
-| vits-zh        | 中文 VITS 模型        | 中文 | VITS        |
-| vits-en        | 英文 VITS 模型        | 英文 | VITS        |
-| fastspeech2-zh | 中文 FastSpeech2 模型 | 中文 | FastSpeech2 |
-| fastspeech2-en | 英文 FastSpeech2 模型 | 英文 | FastSpeech2 |
-| tortoise-en    | 英文 Tortoise 模型    | 英文 | Tortoise    |
-| matcha-zh      | 中文 Matcha-TTS 模型  | 中文 | Matcha-TTS  |
-| matcha-en      | 英文 Matcha-TTS 模型  | 英文 | Matcha-TTS  |
+| 模型名称       | 描述                    | 语言   | 模型类型    |
+| -------------- | ----------------------- | ------ | ----------- |
+| vits-zh        | 中文 VITS 模型          | 中文   | VITS        |
+| vits-en        | 英文 VITS 模型          | 英文   | VITS        |
+| fastspeech2-zh | 中文 FastSpeech2 模型   | 中文   | FastSpeech2 |
+| fastspeech2-en | 英文 FastSpeech2 模型   | 英文   | FastSpeech2 |
+| matcha-zh      | 中文 Matcha-TTS 模型    | 中文   | Matcha-TTS  |
+| matcha-en      | 英文 Matcha-TTS 模型    | 英文   | Matcha-TTS  |
+| kokoro         | Kokoro 多语言模型       | 多语言 | Kokoro      |
+| zipvoice       | ZipVoice 中英零样本克隆 | 中英   | ZipVoice    |
 
 ## 🔧 配置选项
 
 | 参数                     | 类型    | 默认值   | 描述              |
 | ------------------------ | ------- | -------- | ----------------- |
 | `sherpa_onnx_model_name` | String  | -        | 模型名称          |
-| `sherpa_onnx_model_path` | String  | -        | 模型文件路径      |
 | `sherpa_onnx_model_type` | String  | "vits"   | 模型类型          |
 | `sherpa_onnx_lang`       | String  | "zh"     | 语言代码          |
 | `sherpa_onnx_voice`      | String  | "female" | 音色名称          |

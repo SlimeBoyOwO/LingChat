@@ -78,8 +78,12 @@
               <select v-model="config.model_type" class="config-select">
                 <option value="vits">VITS</option>
                 <option value="fastspeech2">FastSpeech2</option>
-                <option value="tortoise">Tortoise</option>
                 <option value="matcha">Matcha-TTS</option>
+                <option value="kokoro">Kokoro</option>
+                <option value="kitten">Kitten</option>
+                <option value="zipvoice">ZipVoice</option>
+                <option value="pocket">Pocket TTS</option>
+                <option value="supertonic">Supertonic</option>
               </select>
             </div>
             <div class="config-item">
@@ -126,20 +130,6 @@
               </div>
               <input
                 v-model.number="config.speed"
-                type="range"
-                min="0.5"
-                max="2.0"
-                step="0.1"
-                class="param-slider"
-              />
-            </div>
-            <div class="param-item">
-              <div class="param-header">
-                <label class="param-label">{{ t("settings.sherpa.pitch") }}</label>
-                <span class="param-value">{{ config.pitch.toFixed(1) }}</span>
-              </div>
-              <input
-                v-model.number="config.pitch"
                 type="range"
                 min="0.5"
                 max="2.0"
@@ -290,7 +280,6 @@
     voice: "female",
     use_gpu: false,
     speed: 1.0,
-    pitch: 1.0,
     ref_audio_path: "",
     ref_text: "",
   });
@@ -326,6 +315,8 @@
   }
 
   function selectModel(model: SherpaOnnxModelRecord) {
+    // 未安装的模型无本地文件，选中后试听只会失败；需先下载。
+    if (!model.installed) return;
     selectedModelId.value = model.id;
     config.value.model_type = model.model_type;
     config.value.lang = model.language;
@@ -401,7 +392,6 @@
             sherpa_onnx_voice: config.value.voice,
             sherpa_onnx_use_gpu: config.value.use_gpu,
             sherpa_onnx_speed: config.value.speed,
-            sherpa_onnx_pitch: config.value.pitch,
             sherpa_onnx_ref_audio_path: config.value.ref_audio_path,
             sherpa_onnx_ref_text: config.value.ref_text,
           },
@@ -410,6 +400,10 @@
       if (result?.audio_path) {
         playlist.value = await playLocalAudio(result.audio_path);
         playlist.value.onended = () => {
+          playlist.value = null;
+        };
+        // 加载/解码失败时同样复位，否则试听按钮会一直处于禁用状态。
+        playlist.value.onerror = () => {
           playlist.value = null;
         };
       } else {

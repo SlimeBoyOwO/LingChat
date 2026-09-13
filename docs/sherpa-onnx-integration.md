@@ -4,7 +4,7 @@
 
 ## 功能特性
 
-- 🎤 **多种模型支持**：支持 VITS、FastSpeech2、Tortoise、Matcha-TTS 等多种模型
+- 🎤 **多种模型支持**：支持 VITS、FastSpeech2、Matcha-TTS、Kokoro、Kitten、ZipVoice（零样本克隆）、Pocket、Supertonic 等模型
 - 🌐 **多语言支持**：支持中文、英文、日文等多种语言
 - 🔧 **本地运行**：完全本地化，无需联网即可使用
 - 🚀 **高性能**：基于 ONNX Runtime，支持 CPU 和 GPU 加速
@@ -47,13 +47,15 @@ node scripts/download_sherpa_onnx_models.mjs --list
 {
   "tts_type": "sherpa-onnx",
   "sherpa_onnx_model_name": "vits-zh",
-  "sherpa_onnx_model_path": "data/tts-local/sherpa_onnx_models/vits-zh",
   "sherpa_onnx_model_type": "vits",
   "sherpa_onnx_lang": "zh",
   "sherpa_onnx_voice": "female",
   "sherpa_onnx_use_gpu": false
 }
 ```
+
+> 说明：模型目录为 `data/sherpa_onnx_models/<name>/`，由 `sherpa_onnx_model_name`
+> 唯一确定；不存在 `sherpa_onnx_model_path` 配置项。
 
 ### 3. 使用 Sherpa-ONNX
 
@@ -71,53 +73,59 @@ node scripts/download_sherpa_onnx_models.mjs --list
 - **fastspeech2-zh**: 中文 FastSpeech2 模型
 - **fastspeech2-en**: 英文 FastSpeech2 模型
 
-### Tortoise 模型
-
-- **tortoise-en**: 英文 Tortoise 模型（高质量语音合成）
-
 ### Matcha-TTS 模型
 
 - **matcha-zh**: 中文 Matcha-TTS 模型
 - **matcha-en**: 英文 Matcha-TTS 模型
 
+### Kokoro / Kitten 模型
+
+- **kokoro**: Kokoro 多语言模型（含 `voices.bin`）
+- **kitten**: Kitten 模型（与 Kokoro 同结构的 `voices.bin`）
+
+### ZipVoice 模型（零样本克隆）
+
+- **zipvoice**: ZipVoice 中英模型（Emilia 数据集），支持参考音频零样本语音克隆：
+  - `sherpa_onnx_ref_audio_path` + `sherpa_onnx_ref_text`
+
+### Pocket / Supertonic 模型
+
+- **pocket**: Pocket-TTS（`lm_flow`/`lm_main`/encoder/decoder/text_conditioner/vocab/token_scores）
+- **supertonic**: Supertonic（duration_predictor/text_encoder/vector_estimator/vocoder/tts.json）
+
+> 说明：引擎底层由 sherpa-onnx 提供这些模型族支持，但应用的预置下载目录仅收录
+> VITS/FastSpeech2/Matcha/Kokoro/ZipVoice；Kitten/Pocket/Supertonic 需手动放入
+> `data/sherpa_onnx_models/` 后使用。Tortoise 不受 sherpa-onnx 支持，请勿使用。
+
 ## 配置选项
 
 ### 基础配置
 
-| 参数                     | 类型    | 默认值   | 描述              |
-| ------------------------ | ------- | -------- | ----------------- |
-| `sherpa_onnx_model_name` | String  | -        | 模型名称          |
-| `sherpa_onnx_model_path` | String  | -        | 模型文件路径      |
-| `sherpa_onnx_model_type` | String  | "vits"   | 模型类型          |
-| `sherpa_onnx_lang`       | String  | "zh"     | 语言代码          |
-| `sherpa_onnx_voice`      | String  | "female" | 音色名称          |
-| `sherpa_onnx_use_gpu`    | Boolean | false    | 是否使用 GPU 加速 |
+| 参数                         | 类型    | 默认值   | 描述                                                                         |
+| ---------------------------- | ------- | -------- | ---------------------------------------------------------------------------- |
+| `sherpa_onnx_model_name`     | String  | -        | 模型名称（对应 `data/sherpa_onnx_models/<name>/` 目录）                      |
+| `sherpa_onnx_model_type`     | String  | "vits"   | 模型类型（vits/fastspeech2/matcha/kokoro/kitten/zipvoice/pocket/supertonic） |
+| `sherpa_onnx_lang`           | String  | "zh"     | 语言代码                                                                     |
+| `sherpa_onnx_voice`          | String  | "female" | 音色名称                                                                     |
+| `sherpa_onnx_use_gpu`        | Boolean | false    | 是否使用 GPU/硬件加速                                                        |
+| `sherpa_onnx_speed`          | Number  | 1.0      | 语速（0.5–2.0）                                                              |
+| `sherpa_onnx_ref_audio_path` | String  | -        | 零样本参考音频路径（ZipVoice 等）                                            |
+| `sherpa_onnx_ref_text`       | String  | -        | 参考音频对应的文本                                                           |
 
-### 模型特定参数
+### 推理参数说明
 
-#### VITS 模型
-
-- `speed`: 语速（默认：1.0）
-- `noise_scale`: 噪声尺度（默认：0.667）
-- `noise_scale_w`: 噪声尺度 W（默认：0.8）
-
-#### FastSpeech2 模型
-
-- `duration_scale`: 时长缩放（默认：1.0）
-- `energy_scale`: 能量缩放（默认：1.0）
-- `pitch_scale`: 音高缩放（默认：1.0）
-
-#### Tortoise 模型
-
-- `temperature`: 温度参数（默认：0.8）
-- `diffusion_temperature`: 扩散温度（默认：1.0）
+- VITS/FastSpeech2 的 `noise_scale`(0.667)、`noise_scale_w`(0.8)、`length_scale`(1.0)
+  等为引擎硬编码的官方推荐默认值，**不可通过配置调整**（如需调整可修改源码适配器）。
+- 直接可调项为 `sherpa_onnx_speed`；`sid` 由 `sherpa_onnx_voice` 映射。
+- 若模型目录内附带 Thrax 规则文件（`rule_fst.fst`/`rule.fst`/`rule.far`），
+  适配器会自动挂载，提升长文本中日期、数字等的规范化效果。
 
 ## 高级用法
 
 ### 自定义模型
 
-1. 下载自定义模型文件到 `data/tts-local/sherpa_onnx_models/your-model-name/`
-2. 确保 `model.onnx` 文件存在
+1. 下载自定义模型文件到 `data/sherpa_onnx_models/your-model-name/`
+2. 确保对应模型类型的核心文件存在（如 VITS 需 `model.onnx`、ZipVoice 需 `fm_decoder.onnx`）
 3. 创建 `config.json` 配置文件：
 
 ```json
@@ -132,20 +140,21 @@ node scripts/download_sherpa_onnx_models.mjs --list
 
 ### GPU 加速
 
-支持多种 GPU 后端：
+开启 `sherpa_onnx_use_gpu: true` 后，运行时按平台自动选择后端：
+GPU 初始化失败会自动回退 CPU：
 
-```json
-{
-  "sherpa_onnx_use_gpu": true,
-  "sherpa_onnx_device": "cuda" // 或 "directml" (Windows)
-}
-```
+- Windows: `dml`（DirectML）
+- macOS: `coreml`
+- Linux x86_64: `cuda`
+- Android: `nnapi`
+
+> 不存在 `sherpa_onnx_device` 配置项，设备由系统自动选择。
 
 ### 批量处理
 
 ```javascript
 // 批量下载多个模型
-const models = ["vits-zh", "fastspeech2-en", "tortoise-en"];
+const models = ["vits-zh", "fastspeech2-en", "matcha-zh"];
 for (const model of models) {
   await exec(`node scripts/download_sherpa_onnx_models.mjs ${model}`);
 }
@@ -231,7 +240,7 @@ node scripts/download_sherpa_onnx_models.mjs vits-zh
 node scripts/download_sherpa_onnx_models.mjs --list
 
 # 删除不需要的模型
-rm -rf data/tts-local/sherpa_onnx_models/old-model
+rm -rf data/sherpa_onnx_models/old-model
 ```
 
 ## 贡献

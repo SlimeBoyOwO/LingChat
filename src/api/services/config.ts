@@ -77,6 +77,19 @@ export async function getEmbeddingStatus(): Promise<EmbeddingStatus> {
   return data as EmbeddingStatus;
 }
 
+// 「一键整理当前对话」操作结果
+export interface OrganizeConversationResult {
+  scanned: number;
+  added: number;
+  duplicates: number;
+  stored: number;
+}
+
+export async function organizeCurrentConversation(): Promise<OrganizeConversationResult> {
+  const data = await invoke("organize_current_conversation");
+  return data as OrganizeConversationResult;
+}
+
 // 独立语义记忆运行状态（高级设置 → 语义记忆 界面诊断展示）
 export interface SemanticMemoryStatus {
   enabled: boolean;

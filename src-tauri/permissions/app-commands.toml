@@ -180,5 +180,13 @@ commands.allow = [
   "generate_line_voice",
   "editor_agent_rename_conversation",
   "editor_agent_rewind",
+  "get_embedding_status",
+  "organize_current_conversation",
+  "get_semantic_memory_status",
+  "list_semantic_memory_roles",
+  "list_semantic_memories",
+  "add_semantic_memory",
+  "update_semantic_memory",
+  "delete_semantic_memory",
 ]
 commands.deny = []

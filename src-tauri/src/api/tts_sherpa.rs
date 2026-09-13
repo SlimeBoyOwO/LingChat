@@ -37,9 +37,11 @@ pub struct SherpaModelsState {
     pub downloading: Arc<Mutex<std::collections::HashSet<String>>>,
 }
 
-/// 在 setup 中把 Sherpa 模型管理器挂到全局 data 目录。
-pub fn init(data_dir: &PathBuf) -> SherpaModelsState {
-    let manager = Arc::new(SherpaOnnxManager::new(data_dir.clone()));
+/// 在 setup 中把 Sherpa 模型管理器挂到全局。
+pub fn init() -> SherpaModelsState {
+    let manager = Arc::new(SherpaOnnxManager::new(
+        crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root(),
+    ));
     SherpaModelsState {
         manager: Arc::new(RwLock::new(Some(manager))),
         downloading: Arc::new(Mutex::new(Default::default())),
@@ -53,7 +55,7 @@ async fn get_manager(
     let mut guard = state.manager.write().await;
     if guard.is_none() {
         let mgr = Arc::new(SherpaOnnxManager::new(
-            crate::init::static_copy::get_data_dir().clone(),
+            crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root(),
         ));
         mgr.initialize()
             .await
@@ -131,6 +133,16 @@ pub async fn sherpa_delete_model(
     model_id: String,
 ) -> Result<(), String> {
     let mgr = get_manager(&state).await?;
+    // model_id 只允许是模型目录下的单个普通目录名：拒绝路径分隔符与 `.`/`..`，
+    // 防止把删除操作引导到模型目录之外（路径穿越）。
+    if model_id.is_empty()
+        || model_id == "."
+        || model_id == ".."
+        || model_id.contains('/')
+        || model_id.contains('\\')
+    {
+        return Err(format!("非法模型 ID: {model_id}"));
+    }
     let dir = mgr.model_dir().join(&model_id);
     if !dir.exists() {
         return Err(format!("Sherpa 模型不存在: {model_id}"));
@@ -213,10 +225,10 @@ fn skip_repo_file(dir: &str, path: &str) -> bool {
         return true;
     }
     // ZipVoice：若存在非 int8 的 encoder/decoder，则跳过 int8 冗余
-    if dir == "sherpa-onnx-zipvoice-distill-zh-en-emilia" {
-        if path.ends_with("fm_decoder_int8.onnx") || path.ends_with("text_encoder_int8.onnx") {
-            return true;
-        }
+    if dir == "sherpa-onnx-zipvoice-distill-zh-en-emilia"
+        && (path.ends_with("fm_decoder_int8.onnx") || path.ends_with("text_encoder_int8.onnx"))
+    {
+        return true;
     }
     false
 }
@@ -261,7 +273,7 @@ async fn fetch_repo_files(dir: &str) -> Result<Vec<RepoFile>, String> {
                 continue;
             }
             let rel = path[prefix.len()..].to_string();
-            if rel.is_empty() || skip_repo_file(dir, &path) {
+            if rel.is_empty() || skip_repo_file(dir, path) {
                 continue;
             }
             let size = f.get("Size").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -399,18 +411,29 @@ async fn run_download(
 
     let mut any_err = None;
     for task in tasks {
-        if let Err(join_err) = task.await {
-            any_err.get_or_insert(format!("下载任务异常: {join_err}"));
-            break;
+        // `task.await` 是 `Result<Result<(), String>, JoinError>`：内层 `Err` 才是
+        // 单文件下载失败，必须一并捕获，否则会被当成下载成功（留下半成品模型）。
+        match task.await {
+            Err(join_err) => {
+                any_err.get_or_insert(format!("下载任务异常: {join_err}"));
+                break;
+            },
+            Ok(Err(e)) => {
+                any_err.get_or_insert(e);
+            },
+            Ok(Ok(())) => {},
         }
     }
 
-    // 若已下过共享 espeak-ng-data，则拷贝进本模型目录
+    // 若已下过共享 espeak-ng-data，则拷贝进本模型目录（失败清理半成品并报错）
     if shared_espeak {
         let src = model_root.join("_cache").join("espeak-ng-data");
         let dst = target_dir.join("espeak-ng-data");
         if src.exists() {
-            copy_dir_tree(&src, &dst).await?;
+            if let Err(e) = copy_dir_tree(&src, &dst).await {
+                let _ = tokio::fs::remove_dir_all(&target_dir).await;
+                return Err(e);
+            }
         }
     }
 
@@ -449,7 +472,9 @@ async fn copy_dir_tree(src: &std::path::Path, dst: &std::path::Path) -> Result<(
         if is_dir {
             Box::pin(copy_dir_tree(&path, &dest)).await?;
         } else {
-            let _ = tokio::fs::copy(&path, &dest).await;
+            tokio::fs::copy(&path, &dest)
+                .await
+                .map_err(|e| format!("复制文件失败 {path:?} -> {dest:?}: {e}"))?;
         }
     }
     Ok(())
@@ -464,7 +489,6 @@ pub struct SherpaPreviewSettings {
     pub sherpa_onnx_voice: Option<String>,
     pub sherpa_onnx_use_gpu: Option<bool>,
     pub sherpa_onnx_speed: Option<f32>,
-    pub sherpa_onnx_pitch: Option<f32>,
     pub sherpa_onnx_ref_audio_path: Option<String>,
     pub sherpa_onnx_ref_text: Option<String>,
 }
@@ -489,8 +513,7 @@ pub async fn test_sherpa_onnx_voice(
         .filter(|s| !s.trim().is_empty())
         .ok_or_else(|| "未选择 Sherpa 模型".to_string())?;
 
-    let model_root = crate::init::static_copy::get_data_dir()
-        .join("sherpa_onnx_models")
+    let model_root = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
         .join(&model_name);
 
     let model_type = settings
@@ -523,26 +546,34 @@ pub async fn test_sherpa_onnx_voice(
     )
     .map_err(|e| e.to_string())?;
 
-    // 参考音频
-    if let (Some(ref_path), Some(ref_text)) = (
-        settings
-            .sherpa_onnx_ref_audio_path
-            .clone()
-            .filter(|s| !s.trim().is_empty()),
-        settings
-            .sherpa_onnx_ref_text
-            .clone()
-            .filter(|s| !s.trim().is_empty()),
-    ) {
-        let p = PathBuf::from(&ref_path);
-        if let Ok((samples, sr)) = load_ref_audio(&p) {
-            adapter.set_reference_audio(samples, sr, ref_text);
-        }
+    // 参考音频（零样本克隆）：音频与文本必须成对，只有其一无法生效，明确报错
+    // 以免用户误以为已启用克隆。
+    let ref_audio = settings
+        .sherpa_onnx_ref_audio_path
+        .clone()
+        .filter(|s| !s.trim().is_empty());
+    let ref_text = settings
+        .sherpa_onnx_ref_text
+        .clone()
+        .filter(|s| !s.trim().is_empty());
+    match (&ref_audio, &ref_text) {
+        (Some(ref_path), Some(ref_text)) => {
+            let p = PathBuf::from(ref_path);
+            if let Ok((samples, sr)) = load_ref_audio(&p) {
+                adapter.set_reference_audio(samples, sr, ref_text.clone());
+            }
+        },
+        (Some(_), None) => {
+            return Err("已选择参考音频但未填写参考文本：零样本克隆需同时提供两者".to_string());
+        },
+        (None, Some(_)) => {
+            return Err("已填写参考文本但未选择参考音频：零样本克隆需同时提供两者".to_string());
+        },
+        (None, None) => {},
     }
     if let Some(speed) = settings.sherpa_onnx_speed {
         adapter.set_speed(speed.clamp(0.5, 2.0));
     }
-    let _ = settings.sherpa_onnx_pitch;
 
     let audio = adapter
         .generate_voice(&text, "")
@@ -575,12 +606,77 @@ pub async fn test_sherpa_onnx_voice(
 }
 
 /// 打开 Sherpa 模型目录（文件管理器）。
+///
+/// Android 经 `storage-permission` 插件在系统文件管理器中打开目录；
+/// 桌面端用系统默认方式（explorer / open / xdg-open）。
 #[tauri::command]
-pub async fn open_sherpa_onnx_model_manager(
-    state: State<'_, SherpaModelsState>,
-) -> Result<(), String> {
-    let mgr = get_manager(&state).await?;
-    let dir = mgr.model_dir();
+pub async fn open_sherpa_onnx_model_manager(app: tauri::AppHandle) -> Result<(), String> {
+    let dir = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root();
     let _ = tokio::fs::create_dir_all(&dir).await;
-    crate::utils::system::open_folder(&dir.to_string_lossy())
+
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        let handle = &app.state::<crate::StoragePermissionPluginHandle>().0;
+        // 必须以 JSON object 形式传参（Kotlin 侧通过 invoke.parseArgs 取 `path`），
+        // 不能传裸字符串，否则 Android 插件无法解析。
+        handle
+            .run_mobile_plugin_async::<()>(
+                "openModelDir",
+                serde_json::json!({ "path": dir.to_string_lossy() }),
+            )
+            .await
+            .map_err(|e| format!("打开模型文件夹失败: {e}"))?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        crate::utils::system::open_folder(&dir.to_string_lossy())
+    }
+}
+
+/// Sherpa 模型目录的存储访问状态（移动端权限 + 模型根目录路径）。
+#[derive(Debug, Serialize)]
+pub struct SherpaStorageStatus {
+    /// 是否已获得外部存储读写权限（桌面端恒为 `true`）。
+    pub granted: bool,
+    /// 模型根目录（模型文件夹 `<name>/` 直接位于该目录下）。
+    pub model_root: String,
+}
+
+/// 检查 Sherpa-ONNX 模型目录的存储访问权限。
+///
+/// 模型目录统一位于应用数据目录（`data/sherpa_onnx_models`，Android 为应用专属
+/// 沙箱 `Android/data/<package>/files/sherpa_onnx_models`），无需任何存储权限，
+/// 因此恒返回已授权；同时返回模型根目录路径供前端展示。
+#[tauri::command]
+pub async fn check_sherpa_storage_permission(
+    _app: tauri::AppHandle,
+) -> Result<SherpaStorageStatus, String> {
+    let model_root = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
+        .to_string_lossy()
+        .to_string();
+    Ok(SherpaStorageStatus {
+        granted: true,
+        model_root,
+    })
+}
+
+/// 请求 Sherpa-ONNX 模型目录的存储访问权限。
+///
+/// 模型目录位于应用数据目录，无需存储权限，恒视为已授权（保留此命令仅为前端
+/// 兼容，不再弹出任何系统授权流程）。
+#[tauri::command]
+pub async fn request_sherpa_storage_permission(
+    _app: tauri::AppHandle,
+) -> Result<SherpaStorageStatus, String> {
+    let model_root = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
+        .to_string_lossy()
+        .to_string();
+    Ok(SherpaStorageStatus {
+        granted: true,
+        model_root,
+    })
 }

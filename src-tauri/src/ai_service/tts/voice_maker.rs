@@ -499,11 +499,11 @@ impl VoiceMaker {
                 )));
             },
             "sherpa" | "sherpa-onnx" if self.availability.sherpa => {
-                // 本地 Sherpa-ONNX 模型：模型目录位于 data/sherpa_onnx_models/<name>/。
+                // 本地 Sherpa-ONNX 模型：模型目录位于 sherpa_onnx_models_root()/<name>/。
                 let model_name = cfg.sherpa_onnx_model_name.clone().unwrap_or_default();
-                let models_root = crate::init::static_copy::get_data_dir()
-                    .join("sherpa_onnx_models")
-                    .join(&model_name);
+                let models_root =
+                    crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
+                        .join(&model_name);
                 let model_type = cfg
                     .sherpa_onnx_model_type
                     .clone()
@@ -533,30 +533,37 @@ impl VoiceMaker {
                             adapter.set_speed(speed.clamp(0.5, 2.0));
                         }
                         // 零样本参考音频（如配置了模型支持 + 参考路径/文本）
-                        if let (Some(ref_path), Some(ref_text)) = (
-                            cfg.sherpa_onnx_ref_audio_path
-                                .clone()
-                                .filter(|s| !s.trim().is_empty()),
-                            cfg.sherpa_onnx_ref_text
-                                .clone()
-                                .filter(|s| !s.trim().is_empty()),
-                        ) {
-                            let resolved =
-                                resolve_character_rel_path(&self.character_path, &ref_path);
-                            match crate::ai_service::tts::adapters::sherpa_onnx::load_reference_audio(
-                                &resolved,
-                            ) {
-                                Ok((samples, sr)) => {
-                                    adapter.set_reference_audio(samples, sr, ref_text);
-                                    tracing::info!(
-                                        "Sherpa-ONNX 已加载参考音频: {}",
-                                        resolved.display()
-                                    );
-                                },
-                                Err(e) => tracing::warn!(
-                                    "Sherpa-ONNX 参考音频加载失败（忽略，走普通合成）: {e}"
-                                ),
-                            }
+                        let ref_audio = cfg
+                            .sherpa_onnx_ref_audio_path
+                            .clone()
+                            .filter(|s| !s.trim().is_empty());
+                        let ref_text = cfg
+                            .sherpa_onnx_ref_text
+                            .clone()
+                            .filter(|s| !s.trim().is_empty());
+                        match (ref_audio, ref_text) {
+                            (Some(ref_path), Some(ref_text)) => {
+                                let resolved =
+                                    resolve_character_rel_path(&self.character_path, &ref_path);
+                                match crate::ai_service::tts::adapters::sherpa_onnx::load_reference_audio(
+                                    &resolved,
+                                ) {
+                                    Ok((samples, sr)) => {
+                                        adapter.set_reference_audio(samples, sr, ref_text);
+                                        tracing::info!(
+                                            "Sherpa-ONNX 已加载参考音频: {}",
+                                            resolved.display()
+                                        );
+                                    },
+                                    Err(e) => tracing::warn!(
+                                        "Sherpa-ONNX 参考音频加载失败（忽略，走普通合成）: {e}"
+                                    ),
+                                }
+                            },
+                            (Some(_), None) | (None, Some(_)) => tracing::warn!(
+                                "Sherpa-ONNX 参考音频与参考文本需同时提供，当前只有一个，已忽略零样本克隆"
+                            ),
+                            (None, None) => {},
                         }
                         self.provider.sherpa = Some(Arc::new(adapter));
                     },

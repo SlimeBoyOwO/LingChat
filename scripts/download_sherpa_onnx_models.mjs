@@ -53,13 +53,21 @@ const MODEL_CONFIGS = {
     voice: "female",
     description: "英文 FastSpeech2 模型",
   },
-  "tortoise-en": {
-    name: "Tortoise English",
-    url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-tortoise-en-v1.tar.bz2",
-    model_type: "tortoise",
-    language: "en",
+  "kokoro": {
+    name: "Kokoro 多语言",
+    url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-kokoro-multi-lang-v1_1.tar.bz2",
+    model_type: "kokoro",
+    language: "zh",
     voice: "female",
-    description: "英文 Tortoise 模型",
+    description: "Kokoro 多语言模型",
+  },
+  "zipvoice": {
+    name: "ZipVoice 中英 (Emilia)",
+    url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-zh-en-emilia.tar.bz2",
+    model_type: "zipvoice",
+    language: "zh",
+    voice: "female",
+    description: "ZipVoice 中英零样本克隆模型",
   },
   "matcha-zh": {
     name: "Matcha Chinese",
@@ -79,8 +87,8 @@ const MODEL_CONFIGS = {
   },
 };
 
-// 模型存储目录
-const MODEL_DIR = path.join(process.cwd(), "data", "tts-local", "sherpa_onnx_models");
+// 模型存储目录（与运行时保持一致：app 固定读取 data/sherpa_onnx_models/）
+const MODEL_DIR = path.join(process.cwd(), "data", "sherpa_onnx_models");
 
 // 显示帮助信息
 function showHelp() {
@@ -131,45 +139,83 @@ async function downloadFile(url, outputPath) {
   }
 }
 
-// 解压 tar.bz2 文件
-async function extractTarBz2(inputPath, outputDir) {
+// 解压 tar.bz2 并把模型文件规整到目标模型目录（modelDir）
+//
+// sherpa-onnx 发布的 tarball 解出来通常是一个子目录（如 `sherpa-onnx-vits-zh-aishell3/`），
+// 运行时要求模型文件直接位于 `<models>/<modelKey>/` 下，因此这里把该顶层目录重命名为 modelKey。
+async function extractToModelDir(tempFile, modelDir) {
   try {
-    console.log(`📦 解压文件: ${inputPath}`);
+    console.log(`📦 解压文件: ${tempFile}`);
 
-    // 使用 7z 解压
     const { exec } = await import("child_process");
     const { promisify } = await import("util");
     const execAsync = promisify(exec);
 
-    await execAsync(`7z x "${inputPath}" -o"${outputDir}" -y`);
+    const extractDir = path.join(modelDir, ".extract_tmp");
+    await fs.rm(extractDir, { recursive: true, force: true });
+    await fs.mkdir(extractDir, { recursive: true });
 
-    console.log(`✓ 解压完成: ${outputDir}`);
+    await execAsync(`7z x "${tempFile}" -o"${extractDir}" -y`);
+
+    const entries = await fs.readdir(extractDir, { withFileTypes: true });
+    const subDirs = entries.filter((entry) => entry.isDirectory());
+    const topFiles = entries.filter((entry) => entry.isFile());
+
+    await fs.mkdir(path.dirname(modelDir), { recursive: true });
+    await fs.rm(modelDir, { recursive: true, force: true });
+
+    if (subDirs.length === 1 && topFiles.length === 0) {
+      // 单顶层目录：整体重命名，保证模型文件位于 modelDir 根下
+      await fs.rename(path.join(extractDir, subDirs[0].name), modelDir);
+    } else {
+      await fs.rename(extractDir, modelDir);
+    }
+
+    console.log(`✓ 解压完成: ${modelDir}`);
   } catch (error) {
     throw new Error(`解压失败: ${error.message}`);
   }
 }
 
-// 验证下载的模型
-async function validateModel(modelDir) {
-  const requiredFiles = ["model.onnx", "config.json"];
-  const missingFiles = [];
+// 验证下载的模型（依赖已写入的 config.json；按 model_type 检查对应的关键文件）
+async function validateModel(modelDir, modelType) {
+  const configPath = path.join(modelDir, "config.json");
+  try {
+    await fs.access(configPath);
+  } catch {
+    throw new Error("模型缺少 config.json（应由脚本自动生成，请确认脚本版本）");
+  }
 
-  for (const file of requiredFiles) {
-    const filePath = path.join(modelDir, file);
+  const modelFilesByType = {
+    vits: ["model.onnx", "tts-model.onnx", "sherpa-onnx-tts.onnx"],
+    fastspeech2: ["model.onnx", "tts-model.onnx", "sherpa-onnx-tts.onnx"],
+    matcha: ["model.onnx", "model-steps-3.onnx", "model-steps-6.onnx"],
+    kokoro: ["model.onnx", "model.int8.onnx"],
+    kitten: ["model.onnx", "model.int8.onnx"],
+    zipvoice: ["fm_decoder.onnx", "text_encoder.onnx"],
+    pocket: ["lm_flow.int8.onnx", "lm_flow.onnx"],
+    supertonic: ["tts.json"],
+  };
+  const candidates = modelFilesByType[modelType] || modelFilesByType.vits;
+
+  let found = null;
+  for (const name of candidates) {
     try {
-      await fs.access(filePath);
+      await fs.access(path.join(modelDir, name));
+      found = name;
+      break;
     } catch {
-      missingFiles.push(file);
+      // 继续尝试下一个候选文件
     }
   }
 
-  if (missingFiles.length > 0) {
-    throw new Error(`模型文件不完整，缺少: ${missingFiles.join(", ")}`);
+  if (!found) {
+    throw new Error(
+      `模型文件不完整（model_type=${modelType}），未找到: ${candidates.join(" / ")}`
+    );
   }
 
-  // 检查模型文件大小
-  const modelPath = path.join(modelDir, "model.onnx");
-  const stats = await fs.stat(modelPath);
+  const stats = await fs.stat(path.join(modelDir, found));
   if (stats.size < 1024 * 1024) {
     // 小于 1MB 可能有问题
     throw new Error(`模型文件大小异常: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
@@ -186,7 +232,7 @@ async function downloadModel(modelKey) {
 
   const config = MODEL_CONFIGS[modelKey];
   const modelDir = path.join(MODEL_DIR, modelKey);
-  const tempDir = path.join(MODEL_DIR, "temp");
+  const tempDir = path.join(MODEL_DIR, ".download_tmp");
   const tempFile = path.join(tempDir, `${modelKey}.tar.bz2`);
 
   try {
@@ -202,15 +248,11 @@ async function downloadModel(modelKey) {
     console.log("⬇️ 下载中...");
     const downloadedSize = await downloadFile(config.url, tempFile);
 
-    // 解压文件
+    // 解压并规整到模型目录
     console.log("\n📦 解压中...");
-    await extractTarBz2(tempFile, modelDir);
+    await extractToModelDir(tempFile, modelDir);
 
-    // 验证模型
-    console.log("\n✅ 验证中...");
-    await validateModel(modelDir);
-
-    // 创建配置文件
+    // 先写入配置文件（运行时识别模型类型依赖它，验证也需要它）
     const configPath = path.join(modelDir, "config.json");
     const configContent = JSON.stringify(
       {
@@ -227,6 +269,10 @@ async function downloadModel(modelKey) {
     );
 
     await fs.writeFile(configPath, configContent);
+
+    // 验证模型
+    console.log("\n✅ 验证中...");
+    await validateModel(modelDir, config.model_type);
 
     // 清理临时文件
     await fs.rm(tempDir, { recursive: true, force: true });
@@ -274,7 +320,9 @@ async function listDownloadedModels() {
       const configContent = await fs.readFile(configPath, "utf-8");
       const config = JSON.parse(configContent);
 
-      const size = await fs.stat(path.join(modelDir, "model.onnx"));
+      const entries = await fs.readdir(modelDir, { withFileTypes: true });
+      const onnx = entries.find((e) => e.name.endsWith(".onnx"));
+      const size = await fs.stat(path.join(modelDir, onnx.name));
       const sizeStr = `${(size.size / 1024 / 1024).toFixed(1)}MB`;
 
       console.log(

@@ -206,10 +206,7 @@ pub async fn apply_resource_sync(
 
     let _guard = SyncGuard(&state.syncing);
 
-    let result =
-        sync::apply_selected_files(&get_data_dir(), &selected_files).map_err(|e| e.to_string());
-
-    result
+    sync::apply_selected_files(get_data_dir(), &selected_files).map_err(|e| e.to_string())
 }
 
 // ─── 辅助 ────────────────────────────────────────────────────

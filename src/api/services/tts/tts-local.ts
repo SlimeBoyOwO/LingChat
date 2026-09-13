@@ -247,3 +247,25 @@ export function downloadSherpaModel(modelId: string): Promise<void> {
 export function deleteSherpaModel(modelId: string): Promise<void> {
   return invoke<void>("sherpa_delete_model", { modelId });
 }
+
+// ---------------------------------------------------------------------------
+// Sherpa-ONNX 模型目录状态（目录固定为应用数据目录 data/sherpa_onnx_models，
+// 无需外部存储权限，granted 恒为 true，仅用于向用户展示模型存放位置）
+// ---------------------------------------------------------------------------
+
+export interface SherpaStorageStatus {
+  /** 是否可访问模型目录。目录位于应用数据目录，恒为 true。 */
+  granted: boolean;
+  /** 模型根目录（SherpaOnnxSettingsModal 展示给用户）。 */
+  model_root: string;
+}
+
+/** 查询 Sherpa-ONNX 模型目录状态（granted + 模型根目录路径）。 */
+export function checkSherpaStoragePermission(): Promise<SherpaStorageStatus> {
+  return invoke<SherpaStorageStatus>("check_sherpa_storage_permission");
+}
+
+/** 兼容保留：模型目录无需权限，恒返回已授权。 */
+export function requestSherpaStoragePermission(): Promise<SherpaStorageStatus> {
+  return invoke<SherpaStorageStatus>("request_sherpa_storage_permission");
+}

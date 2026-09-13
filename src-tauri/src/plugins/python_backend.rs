@@ -50,7 +50,7 @@ fn build_interpreter() -> Interpreter {
     rustpython_vm::Interpreter::builder(rustpython_vm::Settings::default())
         .add_frozen_modules(rustpython_pylib::FROZEN_STDLIB)
         .add_native_module(http_host::plugin_module_def(
-            &rustpython_vm::Context::genesis(),
+            rustpython_vm::Context::genesis(),
         ))
         .build()
 }
@@ -187,7 +187,7 @@ pub(crate) fn run_plugin_script(
         let result = run_func
             .call((ctx,), vm)
             .map_err(|e| format!("run() 调用失败: {}", exc_message(vm, &e)))?;
-        py_serde::serialize(vm, &*result, serde_json::value::Serializer)
+        py_serde::serialize(vm, &result, serde_json::value::Serializer)
             .map_err(|e| format!("结果序列化失败: {e}"))
     })
 }

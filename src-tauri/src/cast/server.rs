@@ -293,7 +293,7 @@ async fn handle_ws(app: AppHandle, mut socket: WebSocket) {
             } => {
                 match broadcast {
                     Some(Ok(text)) => {
-                        let _ = socket.send(Message::Text(text.into())).await;
+                        let _ = socket.send(Message::Text(text)).await;
                     }
                     // 服务停止（通道关闭）或未运行：停掉发送支路，连接仅保留 mic 上行
                     _ => broadcast_rx = None,
@@ -340,7 +340,7 @@ async fn handle_client_frame(
         Err(e) => {
             tracing::warn!("[Cast][mic] 处理失败: {e}");
             let err = serde_json::json!({"type": "cast:mic", "error": e}).to_string();
-            let _ = socket.send(Message::Text(err.into())).await;
+            let _ = socket.send(Message::Text(err)).await;
         },
     }
 }
@@ -348,7 +348,7 @@ async fn handle_client_frame(
 /// 回执（预留协议：客户端可据此判断服务端已收到）。
 async fn send_ack(socket: &mut WebSocket) {
     let ack = serde_json::json!({"type": "cast:mic", "ack": true}).to_string();
-    let _ = socket.send(Message::Text(ack.into())).await;
+    let _ = socket.send(Message::Text(ack)).await;
 }
 
 /// 广播一条 `cast:audio`(play, voice) 给所有投屏 WS 客户端，供设备同步播放。
@@ -642,7 +642,7 @@ mod tests {
     fn wav_44100_downsample_16k_len() {
         // 44.1kHz 4410 帧 → 16kHz ≈1600 帧；仅校验长度与 RIFF
         let samples: Vec<i16> = (0..4410)
-            .map(|i| (((i as i32 * 37) % 32000) - 16000) as i16)
+            .map(|i| (((i * 37) % 32000) - 16000) as i16)
             .collect();
         let wav = make_wav(44_100, 1, 16, &samples);
         let out = normalize_voice_wav(&wav).expect("应重采样");

@@ -488,6 +488,7 @@ impl Tool for SearchMemory {
                 let source = match &h.source {
                     FragmentSource::MemoryBank(s) => format!("memory_bank:{s}"),
                     FragmentSource::Note(_) => "note".to_string(),
+                    FragmentSource::Conversation(_) => "conversation".to_string(),
                 };
                 json!({
                     "source": source,

@@ -175,10 +175,10 @@ impl ScriptManager {
 
     /// 用当前启用插件的剧本目录重建 `all_scripts` 中「插件来源」的部分。
     ///
-    /// - 先移除所有 `plugin_id.is_some()` 的旧条目（插件禁用 / 隐藏 / 删除后清理）；
-    /// - 再按传入顺序（调用方保证按插件 id 升序 + 已做游戏/插件间冲突去重）插入，
-    ///   若 script_name 与游戏剧本同名则跳过（游戏优先）。
-    /// `plugin_scripts` 每项为 `(plugin_id, 剧本包目录)`。
+    ///   - 先移除所有 `plugin_id.is_some()` 的旧条目（插件禁用 / 隐藏 / 删除后清理）；
+    ///   - 再按传入顺序（调用方保证按插件 id 升序 + 已做游戏/插件间冲突去重）插入，
+    ///     若 script_name 与游戏剧本同名则跳过（游戏优先）。
+    ///   - `plugin_scripts` 每项为 `(plugin_id, 剧本包目录)`。
     pub fn apply_plugin_scripts(&mut self, plugin_scripts: &[(String, std::path::PathBuf)]) {
         self.all_scripts.retain(|_, s| s.plugin_id.is_none());
         for (plugin_id, dir) in plugin_scripts {

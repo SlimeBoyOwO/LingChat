@@ -205,12 +205,12 @@ impl BertTokenizer {
         let body_budget = self.max_length.saturating_sub(2);
         for piece in pieces {
             for tid in self.wordpiece(&piece) {
-                if ids.len() >= 1 + body_budget {
+                if ids.len() > body_budget {
                     break;
                 }
                 ids.push(tid);
             }
-            if ids.len() >= 1 + body_budget {
+            if ids.len() > body_budget {
                 break;
             }
         }
@@ -218,8 +218,8 @@ impl BertTokenizer {
 
         let mut attention_mask = vec![1i64; ids.len()];
         let pad = self.max_length - ids.len();
-        ids.extend(std::iter::repeat(self.pad_id).take(pad));
-        attention_mask.extend(std::iter::repeat(0i64).take(pad));
+        ids.extend(std::iter::repeat_n(self.pad_id, pad));
+        attention_mask.extend(std::iter::repeat_n(0i64, pad));
         Tokenized {
             input_ids: ids,
             attention_mask,
@@ -264,11 +264,7 @@ impl BertTokenizer {
                     c = lc;
                 }
             }
-            if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
-                prev_space = true;
-            } else {
-                prev_space = false;
-            }
+            prev_space = c == ' ' || c == '\t' || c == '\n' || c == '\r';
             out.push(c);
         }
         out
@@ -437,12 +433,12 @@ impl SentencePieceTokenizer {
         let body_budget = self.max_length.saturating_sub(2);
         'outer: for seg in segments {
             for tid in self.segment(&seg) {
-                if ids.len() >= 1 + body_budget {
+                if ids.len() > body_budget {
                     break 'outer;
                 }
                 ids.push(tid);
             }
-            if ids.len() >= 1 + body_budget {
+            if ids.len() > body_budget {
                 break;
             }
         }
@@ -450,8 +446,8 @@ impl SentencePieceTokenizer {
 
         let mut attention_mask = vec![1i64; ids.len()];
         let pad = self.max_length.saturating_sub(ids.len());
-        ids.extend(std::iter::repeat(self.pad_id).take(pad));
-        attention_mask.extend(std::iter::repeat(0i64).take(pad));
+        ids.extend(std::iter::repeat_n(self.pad_id, pad));
+        attention_mask.extend(std::iter::repeat_n(0i64, pad));
         Tokenized {
             input_ids: ids,
             attention_mask,
@@ -595,10 +591,10 @@ fn is_word_char(c: char) -> bool {
 /// BERT 官方 `_is_chinese_char`。
 fn is_chinese_char(c: char) -> bool {
     let cp = c as u32;
-    (cp >= 0x3400 && cp <= 0x4dbf)
-        || (cp >= 0x4e00 && cp <= 0x9fff)
-        || (cp >= 0xf900 && cp <= 0xfaff)
-        || (cp >= 0x20000 && cp <= 0x3134f)
+    (0x3400..=0x4dbf).contains(&cp)
+        || (0x4e00..=0x9fff).contains(&cp)
+        || (0xf900..=0xfaff).contains(&cp)
+        || (0x20000..=0x3134f).contains(&cp)
 }
 
 #[cfg(test)]

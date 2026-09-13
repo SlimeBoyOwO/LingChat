@@ -1,272 +1,286 @@
 <template>
-  <div class="sherpa-modal">
-    <div class="modal-overlay" @click="closeModal" />
-    <div class="modal-content">
-      <div class="modal-header">
-        <div class="header-left">
-          <Cpu :size="20" class="header-icon" />
-          <h3>{{ $t("settings.characterInfo.fields.sherpaOnnx") }}</h3>
-        </div>
-        <button @click="closeModal" class="close-btn">
-          <X :size="20" />
-        </button>
-      </div>
-
-      <div class="modal-body">
-        <!-- 模型选择 -->
-        <section class="config-section">
-          <h4 class="section-title">
-            <Package :size="16" />
-            {{ $t("settings.characterInfo.fields.sherpaOnnxModelName") }}
-          </h4>
-          <div class="model-list">
-            <div
-              v-for="model in availableModels"
-              :key="model.id"
-              class="model-item"
-              :class="{ selected: settings.sherpa_onnx_model_name === model.id }"
-              @click="selectModel(model)"
-            >
-              <div class="model-info">
-                <span class="model-name">{{ model.display_name }}</span>
-                <span class="model-meta">
-                  {{ model.model_type.toUpperCase() }} · {{ model.language }} ·
-                  {{ formatSize(model.size_bytes) }}
-                </span>
-              </div>
-              <div class="model-actions">
-                <button
-                  v-if="!model.installed"
-                  @click.stop="downloadModel(model.id)"
-                  class="btn-icon btn-download"
-                  :disabled="downloading === model.id"
-                >
-                  <Loader2 v-if="downloading === model.id" :size="14" class="spin" />
-                  <Download v-else :size="14" />
-                </button>
-                <button
-                  v-else
-                  @click.stop="deleteModel(model.id)"
-                  class="btn-icon btn-delete"
-                  :disabled="deleting === model.id"
-                >
-                  <Loader2 v-if="deleting === model.id" :size="14" class="spin" />
-                  <Trash2 v-else :size="14" />
-                </button>
-              </div>
-              <div v-if="downloading === model.id" class="model-progress">
-                <div class="progress-track">
-                  <div
-                    class="progress-fill"
-                    :style="{ width: Math.round(progressByModel[model.id] ?? 0) + '%' }"
-                  />
-                </div>
-                <span class="progress-text">{{ Math.round(progressByModel[model.id] ?? 0) }}%</span>
-              </div>
-            </div>
-            <p v-if="availableModels.length === 0" class="no-models">暂无可用模型</p>
+  <Teleport to="body">
+    <div class="sherpa-modal">
+      <div class="modal-overlay" @click="closeModal" />
+      <div class="modal-content">
+        <div class="modal-header">
+          <div class="header-left">
+            <Cpu :size="20" class="header-icon" />
+            <h3>{{ $t("settings.characterInfo.fields.sherpaOnnx") }}</h3>
           </div>
-          <button @click="openModelManager" class="btn-secondary btn-block">
-            <FolderOpen :size="16" />
-            {{ $t("settings.characterInfo.fields.sherpaOnnxManageModels") }}
+          <button @click="closeModal" class="close-btn">
+            <X :size="20" />
           </button>
-        </section>
+        </div>
 
-        <!-- 模型配置 -->
-        <section class="config-section">
-          <h4 class="section-title">
-            <Settings :size="16" />
-            模型配置
-          </h4>
+        <div class="modal-body">
+          <!-- 模型选择 -->
+          <section class="config-section">
+            <h4 class="section-title">
+              <Package :size="16" />
+              {{ $t("settings.characterInfo.fields.sherpaOnnxModelName") }}
+            </h4>
 
-          <div class="config-grid">
-            <div class="config-item">
-              <label class="config-label">{{
-                $t("settings.characterInfo.fields.sherpaOnnxModelType")
-              }}</label>
-              <select v-model="settings.sherpa_onnx_model_type" class="config-select">
-                <option value="vits">VITS</option>
-                <option value="fastspeech2">FastSpeech2</option>
-                <option value="tortoise">Tortoise</option>
-                <option value="matcha">Matcha-TTS</option>
-              </select>
-            </div>
-
-            <div class="config-item">
-              <label class="config-label">{{
-                $t("settings.characterInfo.fields.sherpaOnnxLanguage")
-              }}</label>
-              <select v-model="settings.sherpa_onnx_lang" class="config-select">
-                <option value="zh">中文</option>
-                <option value="en">English</option>
-                <option value="ja">日本語</option>
-                <option value="ko">한국어</option>
-              </select>
-            </div>
-
-            <div class="config-item">
-              <label class="config-label">{{
-                $t("settings.characterInfo.fields.sherpaOnnxVoice")
-              }}</label>
-              <select v-model="settings.sherpa_onnx_voice" class="config-select">
-                <option value="female">
-                  {{ $t("settings.characterInfo.fields.sherpaOnnxVoicesFemale") }}
-                </option>
-                <option value="male">
-                  {{ $t("settings.characterInfo.fields.sherpaOnnxVoicesMale") }}
-                </option>
-                <option value="child">
-                  {{ $t("settings.characterInfo.fields.sherpaOnnxVoicesChild") }}
-                </option>
-                <option value="elderly">
-                  {{ $t("settings.characterInfo.fields.sherpaOnnxVoicesElderly") }}
-                </option>
-              </select>
-            </div>
-
-            <div class="config-item">
-              <label class="config-label">{{
-                $t("settings.characterInfo.fields.sherpaOnnxUseGpu")
-              }}</label>
-              <label class="toggle-wrapper">
-                <input
-                  v-model="settings.sherpa_onnx_use_gpu"
-                  type="checkbox"
-                  class="toggle-input"
-                />
-                <span class="toggle-track">
-                  <span class="toggle-thumb" />
-                </span>
-              </label>
-            </div>
-          </div>
-        </section>
-
-        <!-- 参数调节 -->
-        <section class="config-section">
-          <h4 class="section-title">
-            <SlidersHorizontal :size="16" />
-            {{ $t("settings.characterInfo.fields.sherpaOnnxParameters") }}
-          </h4>
-          <div class="param-grid">
-            <div class="param-item">
-              <div class="param-header">
-                <label class="param-label">{{
-                  $t("settings.characterInfo.fields.sherpaOnnxSpeed")
-                }}</label>
-                <span class="param-value">{{ settings.sherpa_onnx_speed.toFixed(1) }}</span>
-              </div>
-              <input
-                v-model.number="settings.sherpa_onnx_speed"
-                type="range"
-                min="0.5"
-                max="2.0"
-                step="0.1"
-                class="param-slider"
-              />
-            </div>
-            <div class="param-item">
-              <div class="param-header">
-                <label class="param-label">{{
-                  $t("settings.characterInfo.fields.sherpaOnnxPitch")
-                }}</label>
-                <span class="param-value">{{ settings.sherpa_onnx_pitch.toFixed(1) }}</span>
-              </div>
-              <input
-                v-model.number="settings.sherpa_onnx_pitch"
-                type="range"
-                min="0.5"
-                max="2.0"
-                step="0.1"
-                class="param-slider"
-              />
-            </div>
-          </div>
-        </section>
-
-        <!-- 零样本合成 -->
-        <section class="config-section zero-shot-section">
-          <h4 class="section-title">
-            <Wand2 :size="16" />
-            零样本声音克隆
-          </h4>
-          <p class="section-desc">上传一段参考音频，模型将模仿该声音的音色进行合成</p>
-
-          <div class="ref-audio-card" :class="{ active: settings.sherpa_onnx_ref_audio_path }">
-            <div class="ref-audio-info">
-              <Mic :size="24" class="ref-audio-icon" />
-              <div v-if="settings.sherpa_onnx_ref_audio_path" class="ref-audio-detail">
-                <span class="ref-audio-name">{{ refAudioName }}</span>
-                <span class="ref-audio-status">已加载参考音频</span>
-              </div>
-              <div v-else class="ref-audio-detail">
-                <span class="ref-audio-name">未选择音频</span>
-                <span class="ref-audio-status">仅支持 WAV 格式</span>
+            <!-- Android 存储权限未授权警告 -->
+            <div v-if="isAndroid() && !storageGranted" class="perm-warning">
+              <AlertTriangle :size="16" class="perm-warning-icon" />
+              <div class="perm-warning-text">
+                <p>{{ $t("settings.characterInfo.fields.sherpaOnnxStoragePermHint") }}</p>
+                <button @click="requestStoragePermission" class="btn-secondary btn-sm">
+                  <ShieldCheck :size="14" />
+                  {{ $t("settings.characterInfo.fields.sherpaOnnxGrantPermission") }}
+                </button>
               </div>
             </div>
-            <div class="ref-audio-actions">
-              <button @click="pickRefAudio" class="btn-secondary">
-                <FolderOpen :size="16" />
-                {{ settings.sherpa_onnx_ref_audio_path ? "更换" : "选择音频" }}
-              </button>
-              <button
-                v-if="settings.sherpa_onnx_ref_audio_path"
-                @click="clearRefAudio"
-                class="btn-secondary btn-danger"
+
+            <!-- 模型存放目录 -->
+            <div class="model-dir-info">
+              <FolderOpen :size="14" class="model-dir-icon" />
+              <span class="model-dir-label">{{
+                $t("settings.characterInfo.fields.sherpaOnnxModelDir")
+              }}</span>
+              <code class="model-dir-path">{{ modelRoot || "…" }}</code>
+            </div>
+
+            <div class="model-list">
+              <div
+                v-for="model in availableModels"
+                :key="model.id"
+                class="model-item"
+                :class="{ selected: settings.sherpa_onnx_model_name === model.id }"
+                @click="selectModel(model)"
               >
-                <X :size="16" /> 清除
+                <div class="model-info">
+                  <span class="model-name">{{ model.display_name }}</span>
+                  <span class="model-meta">
+                    {{ model.model_type.toUpperCase() }} · {{ model.language }} ·
+                    {{ formatSize(model.size_bytes) }}
+                  </span>
+                </div>
+                <div class="model-actions">
+                  <button
+                    v-if="!model.installed"
+                    @click.stop="downloadModel(model.id)"
+                    class="btn-icon btn-download"
+                    :disabled="downloading === model.id"
+                  >
+                    <Loader2 v-if="downloading === model.id" :size="14" class="spin" />
+                    <Download v-else :size="14" />
+                  </button>
+                  <button
+                    v-else
+                    @click.stop="deleteModel(model.id)"
+                    class="btn-icon btn-delete"
+                    :disabled="deleting === model.id"
+                  >
+                    <Loader2 v-if="deleting === model.id" :size="14" class="spin" />
+                    <Trash2 v-else :size="14" />
+                  </button>
+                </div>
+                <div v-if="downloading === model.id" class="model-progress">
+                  <div class="progress-track">
+                    <div
+                      class="progress-fill"
+                      :style="{ width: Math.round(progressByModel[model.id] ?? 0) + '%' }"
+                    />
+                  </div>
+                  <span class="progress-text"
+                    >{{ Math.round(progressByModel[model.id] ?? 0) }}%</span
+                  >
+                </div>
+              </div>
+              <p v-if="availableModels.length === 0" class="no-models">暂无可用模型</p>
+            </div>
+            <button @click="openModelManager" class="btn-secondary btn-block">
+              <FolderOpen :size="16" />
+              {{ $t("settings.characterInfo.fields.sherpaOnnxManageModels") }}
+            </button>
+          </section>
+
+          <!-- 模型配置 -->
+          <section class="config-section">
+            <h4 class="section-title">
+              <Settings :size="16" />
+              模型配置
+            </h4>
+
+            <div class="config-grid">
+              <div class="config-item">
+                <label class="config-label">{{
+                  $t("settings.characterInfo.fields.sherpaOnnxModelType")
+                }}</label>
+                <select v-model="settings.sherpa_onnx_model_type" class="config-select">
+                  <option value="vits">VITS</option>
+                  <option value="fastspeech2">FastSpeech2</option>
+                  <option value="matcha">Matcha-TTS</option>
+                  <option value="kokoro">Kokoro</option>
+                  <option value="kitten">Kitten</option>
+                  <option value="zipvoice">ZipVoice</option>
+                  <option value="pocket">Pocket TTS</option>
+                  <option value="supertonic">Supertonic</option>
+                </select>
+              </div>
+
+              <div class="config-item">
+                <label class="config-label">{{
+                  $t("settings.characterInfo.fields.sherpaOnnxLanguage")
+                }}</label>
+                <select v-model="settings.sherpa_onnx_lang" class="config-select">
+                  <option value="zh">中文</option>
+                  <option value="en">English</option>
+                  <option value="ja">日本語</option>
+                  <option value="ko">한국어</option>
+                </select>
+              </div>
+
+              <div class="config-item">
+                <label class="config-label">{{
+                  $t("settings.characterInfo.fields.sherpaOnnxVoice")
+                }}</label>
+                <select v-model="settings.sherpa_onnx_voice" class="config-select">
+                  <option value="female">
+                    {{ $t("settings.characterInfo.fields.sherpaOnnxVoicesFemale") }}
+                  </option>
+                  <option value="male">
+                    {{ $t("settings.characterInfo.fields.sherpaOnnxVoicesMale") }}
+                  </option>
+                  <option value="child">
+                    {{ $t("settings.characterInfo.fields.sherpaOnnxVoicesChild") }}
+                  </option>
+                  <option value="elderly">
+                    {{ $t("settings.characterInfo.fields.sherpaOnnxVoicesElderly") }}
+                  </option>
+                </select>
+              </div>
+
+              <div class="config-item">
+                <label class="config-label">{{
+                  $t("settings.characterInfo.fields.sherpaOnnxUseGpu")
+                }}</label>
+                <label class="toggle-wrapper">
+                  <input
+                    v-model="settings.sherpa_onnx_use_gpu"
+                    type="checkbox"
+                    class="toggle-input"
+                  />
+                  <span class="toggle-track">
+                    <span class="toggle-thumb" />
+                  </span>
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <!-- 参数调节 -->
+          <section class="config-section">
+            <h4 class="section-title">
+              <SlidersHorizontal :size="16" />
+              {{ $t("settings.characterInfo.fields.sherpaOnnxParameters") }}
+            </h4>
+            <div class="param-grid">
+              <div class="param-item">
+                <div class="param-header">
+                  <label class="param-label">{{
+                    $t("settings.characterInfo.fields.sherpaOnnxSpeed")
+                  }}</label>
+                  <span class="param-value">{{ settings.sherpa_onnx_speed.toFixed(1) }}</span>
+                </div>
+                <input
+                  v-model.number="settings.sherpa_onnx_speed"
+                  type="range"
+                  min="0.5"
+                  max="2.0"
+                  step="0.1"
+                  class="param-slider"
+                />
+              </div>
+            </div>
+          </section>
+
+          <!-- 零样本合成 -->
+          <section class="config-section zero-shot-section">
+            <h4 class="section-title">
+              <Wand2 :size="16" />
+              零样本声音克隆
+            </h4>
+            <p class="section-desc">上传一段参考音频，模型将模仿该声音的音色进行合成</p>
+
+            <div class="ref-audio-card" :class="{ active: settings.sherpa_onnx_ref_audio_path }">
+              <div class="ref-audio-info">
+                <Mic :size="24" class="ref-audio-icon" />
+                <div v-if="settings.sherpa_onnx_ref_audio_path" class="ref-audio-detail">
+                  <span class="ref-audio-name">{{ refAudioName }}</span>
+                  <span class="ref-audio-status">已加载参考音频</span>
+                </div>
+                <div v-else class="ref-audio-detail">
+                  <span class="ref-audio-name">未选择音频</span>
+                  <span class="ref-audio-status">仅支持 WAV 格式</span>
+                </div>
+              </div>
+              <div class="ref-audio-actions">
+                <button @click="pickRefAudio" class="btn-secondary">
+                  <FolderOpen :size="16" />
+                  {{ settings.sherpa_onnx_ref_audio_path ? "更换" : "选择音频" }}
+                </button>
+                <button
+                  v-if="settings.sherpa_onnx_ref_audio_path"
+                  @click="clearRefAudio"
+                  class="btn-secondary btn-danger"
+                >
+                  <X :size="16" /> 清除
+                </button>
+              </div>
+            </div>
+
+            <div v-if="settings.sherpa_onnx_ref_audio_path" class="ref-text-group">
+              <label class="config-label">参考文本（选择音频后必填）</label>
+              <input
+                v-model="settings.sherpa_onnx_ref_text"
+                type="text"
+                class="config-input"
+                placeholder="与参考音频对应的文本，零样本克隆需与音频同时提供"
+              />
+            </div>
+          </section>
+
+          <!-- 测试合成 -->
+          <section class="config-section test-section">
+            <h4 class="section-title">
+              <Play :size="16" />
+              试听测试
+            </h4>
+            <div class="test-row">
+              <input
+                v-model="testText"
+                type="text"
+                class="config-input test-input"
+                placeholder="输入测试文本"
+              />
+              <button
+                @click="testVoice"
+                class="btn-primary"
+                :disabled="testing || !settings.sherpa_onnx_model_name"
+              >
+                <Loader2 v-if="testing" :size="16" class="spin" />
+                <MicVocal v-else :size="16" />
+                {{ testing ? "合成中..." : "试听" }}
               </button>
             </div>
-          </div>
+            <p v-if="!settings.sherpa_onnx_model_name" class="test-hint">请先选择一个模型</p>
+          </section>
+        </div>
 
-          <div v-if="settings.sherpa_onnx_ref_audio_path" class="ref-text-group">
-            <label class="config-label">参考文本 (可选)</label>
-            <input
-              v-model="settings.sherpa_onnx_ref_text"
-              type="text"
-              class="config-input"
-              placeholder="输入参考音频对应的文本内容，可提升克隆效果"
-            />
-          </div>
-        </section>
-
-        <!-- 测试合成 -->
-        <section class="config-section test-section">
-          <h4 class="section-title">
-            <Play :size="16" />
-            试听测试
-          </h4>
-          <div class="test-row">
-            <input
-              v-model="testText"
-              type="text"
-              class="config-input test-input"
-              placeholder="输入测试文本"
-            />
-            <button
-              @click="testVoice"
-              class="btn-primary"
-              :disabled="testing || !settings.sherpa_onnx_model_name"
-            >
-              <Loader2 v-if="testing" :size="16" class="spin" />
-              <MicVocal v-else :size="16" />
-              {{ testing ? "合成中..." : "试听" }}
-            </button>
-          </div>
-          <p v-if="!settings.sherpa_onnx_model_name" class="test-hint">请先选择一个模型</p>
-        </section>
-      </div>
-
-      <div class="modal-footer">
-        <button @click="closeModal" class="btn-secondary">
-          {{ $t("settings.shared.cancel") }}
-        </button>
-        <button @click="saveAndClose" class="btn-primary">
-          <Check :size="16" /> {{ $t("settings.shared.save") }}
-        </button>
+        <div class="modal-footer">
+          <button @click="closeModal" class="btn-secondary">
+            {{ $t("settings.shared.cancel") }}
+          </button>
+          <button @click="saveAndClose" class="btn-primary">
+            <Check :size="16" /> {{ $t("settings.shared.save") }}
+          </button>
+        </div>
       </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -287,6 +301,8 @@
     Trash2,
     Loader2,
     MicVocal,
+    AlertTriangle,
+    ShieldCheck,
   } from "lucide-vue-next";
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
@@ -295,8 +311,11 @@
     downloadSherpaModel,
     deleteSherpaModel,
     onSherpaDownloadProgress,
+    checkSherpaStoragePermission,
+    requestSherpaStoragePermission,
     type SherpaOnnxModelRecord,
   } from "@/api/services/tts/tts-local";
+  import { isAndroid } from "@/utils/platform";
   import { playLocalAudio } from "@/utils/mediaUrl";
 
   export interface SherpaOnnxSettings {
@@ -307,7 +326,6 @@
     sherpa_onnx_voice: string;
     sherpa_onnx_use_gpu: boolean;
     sherpa_onnx_speed: number;
-    sherpa_onnx_pitch: number;
     sherpa_onnx_ref_audio_path: string;
     sherpa_onnx_ref_text: string;
   }
@@ -332,7 +350,6 @@
     sherpa_onnx_voice: "female",
     sherpa_onnx_use_gpu: false,
     sherpa_onnx_speed: 1.0,
-    sherpa_onnx_pitch: 1.0,
     sherpa_onnx_ref_audio_path: "",
     sherpa_onnx_ref_text: "",
   });
@@ -343,6 +360,8 @@
   const progressByModel = ref<Record<string, number>>({});
   const testing = ref(false);
   const testText = ref("你好，这是一段测试语音。");
+  const storageGranted = ref(true);
+  const modelRoot = ref("");
 
   let progressUnlisten: (() => void) | null = null;
 
@@ -357,6 +376,7 @@
       settings.value = { ...settings.value, ...props.initialSettings };
     }
     loadModels();
+    void refreshStorageStatus();
     progressUnlisten = onSherpaDownloadProgress((progress) => {
       progressByModel.value = {
         ...progressByModel.value,
@@ -379,7 +399,31 @@
     }
   };
 
+  /** 查询模型目录与存储权限（桌面端 granted 恒为 true）。 */
+  const refreshStorageStatus = async () => {
+    try {
+      const status = await checkSherpaStoragePermission();
+      storageGranted.value = status.granted;
+      modelRoot.value = status.model_root;
+    } catch (error) {
+      console.error("检查 Sherpa 存储权限失败:", error);
+      storageGranted.value = isAndroid() ? false : true;
+    }
+  };
+
+  /** 请求存储权限（Android 会弹出对话框 / 跳转系统设置页）。 */
+  const requestStoragePermission = async () => {
+    try {
+      const status = await requestSherpaStoragePermission();
+      storageGranted.value = status.granted;
+    } catch (error) {
+      console.error("请求 Sherpa 存储权限失败:", error);
+    }
+  };
+
   const selectModel = (model: SherpaOnnxModelRecord) => {
+    // 未安装的模型无本地文件，选中后试听/合成都只会失败；需先下载。
+    if (!model.installed) return;
     settings.value.sherpa_onnx_model_name = model.id;
     settings.value.sherpa_onnx_model_path = model.path;
     settings.value.sherpa_onnx_lang = model.language;
@@ -702,6 +746,71 @@
     padding: 16px;
   }
 
+  /* 模型存放目录展示 */
+  .model-dir-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    min-width: 0;
+  }
+
+  .model-dir-icon {
+    color: rgba(255, 255, 255, 0.4);
+    flex-shrink: 0;
+  }
+
+  .model-dir-label {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+
+  .model-dir-path {
+    color: rgba(139, 92, 246, 0.9);
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Android 存储权限未授权警告 */
+  .perm-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    background: rgba(234, 179, 8, 0.08);
+    border: 1px solid rgba(234, 179, 8, 0.35);
+    border-radius: 8px;
+  }
+
+  .perm-warning-icon {
+    color: rgba(234, 179, 8, 0.9);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .perm-warning-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .perm-warning-text p {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 12px;
+    line-height: 1.5;
+    margin: 0 0 8px 0;
+  }
+
   /* Config grid */
   .config-grid {
     display: grid;
@@ -989,6 +1098,11 @@
 
   .btn-danger:hover {
     background: rgba(239, 68, 68, 0.15);
+  }
+
+  .btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
   }
 
   .btn-block {

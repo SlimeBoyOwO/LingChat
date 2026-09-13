@@ -197,27 +197,27 @@ impl UserActivityMonitor {
         let interest_modifier;
 
         if mouse_distance < 10.0 && keystrokes == 0 && clicks == 0 {
-            state = UserState::IDLE;
+            state = UserState::Idle;
             description = "挂机发呆".to_string();
             interest_modifier = -15;
         } else if keystrokes < 5 && (mouse_distance > 2000.0 || clicks > 2) {
-            state = UserState::BROWSING;
+            state = UserState::Browsing;
             description = "在网上冲浪".to_string();
             interest_modifier = 10;
         } else if keystrokes >= 5 {
             let is_gaming =
                 (game_ratio >= 0.6 && keystrokes > 20) || (clicks > 30 && game_ratio >= 0.4);
             if is_gaming {
-                state = UserState::GAME;
+                state = UserState::Game;
                 description = "在打游戏".to_string();
                 interest_modifier = 20;
             } else {
-                state = UserState::WORK;
+                state = UserState::Work;
                 description = "在认真工作/学习".to_string();
                 interest_modifier = -10;
             }
         } else {
-            state = UserState::CASUAL;
+            state = UserState::Casual;
             description = "轻度活动".to_string();
             interest_modifier = 0;
         }

@@ -23,25 +23,34 @@ pub struct SherpaOnnxModelInfo {
     pub is_valid: bool,
 }
 
+/// Sherpa-ONNX 模型根目录（模型文件夹 `<name>/` 直接位于该目录下）。
+///
+/// 所有平台统一使用应用数据目录下的 `sherpa_onnx_models`
+/// （Android 为应用专属外部存储 `Android/data/<package>/files/sherpa_onnx_models`，
+/// 无需申请 MANAGE_EXTERNAL_STORAGE 权限）。
+pub fn sherpa_onnx_models_root() -> PathBuf {
+    crate::init::static_copy::get_data_dir().join("sherpa_onnx_models")
+}
+
 /// Sherpa-ONNX 模型管理器
 #[derive(Debug)]
 pub struct SherpaOnnxManager {
     models: Arc<RwLock<HashMap<String, SherpaOnnxModelInfo>>>,
-    base_path: PathBuf,
+    models_root: PathBuf,
 }
 
 impl SherpaOnnxManager {
-    /// 创建新的模型管理器
-    pub fn new(base_path: PathBuf) -> Self {
+    /// 创建新的模型管理器（`models_root` 即模型文件夹所在目录）
+    pub fn new(models_root: PathBuf) -> Self {
         Self {
             models: Arc::new(RwLock::new(HashMap::new())),
-            base_path,
+            models_root,
         }
     }
 
     /// 获取模型目录
     pub fn model_dir(&self) -> PathBuf {
-        self.base_path.join("sherpa_onnx_models")
+        self.models_root.clone()
     }
 
     /// 初始化模型管理器
@@ -63,6 +72,8 @@ impl SherpaOnnxManager {
         }
 
         let mut models = self.models.write().await;
+        // 每次扫描都从磁盘重建，避免外部删除目录后旧的“已安装”记录残留。
+        models.clear();
         let mut entries = tokio::fs::read_dir(&model_dir).await?;
 
         while let Ok(Some(entry)) = entries.next_entry().await {
@@ -96,8 +107,16 @@ impl SherpaOnnxManager {
             "model-steps-6.onnx",
             // ZipVoice
             "fm_decoder.onnx",
-            // Kokoro
+            // Kokoro / Kitten
             "model.int8.onnx",
+            // Pocket
+            "lm_main.int8.onnx",
+            "lm_main.onnx",
+            "lm_flow.int8.onnx",
+            "lm_flow.onnx",
+            // Supertonic
+            "text_encoder.onnx",
+            "duration_predictor.onnx",
         ];
         let mut model_path = None;
 
@@ -292,6 +311,9 @@ mod tests {
 
         // 初始化
         assert!(manager.initialize().await.is_ok());
+
+        // 模型目录即传入的根目录
+        assert_eq!(manager.model_dir(), temp_dir.path().to_path_buf());
 
         // 测试空模型列表
         let models = manager.get_models().await;

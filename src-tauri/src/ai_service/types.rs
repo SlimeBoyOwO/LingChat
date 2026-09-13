@@ -345,10 +345,10 @@ pub struct VoiceModel {
     pub sbv2_local_cloud_fallback_model: Option<String>,
     pub sbv2_local_cloud_fallback_speaker_id: Option<String>,
     pub cosyvoice_voice_id: Option<String>,
-    /// Sherpa-ONNX 模型名（对应 data/sherpa_onnx_models/<name>/ 目录里的模型）
+    /// Sherpa-ONNX 模型名（对应 sherpa_onnx_models_root()/<name>/ 目录里的模型）
     #[serde(default, rename = "sherpa_onnx_model_name")]
     pub sherpa_onnx_model_name: Option<String>,
-    /// Sherpa-ONNX 模型类型（vits / matcha / kokoro / zipvoice / fastspeech2）
+    /// Sherpa-ONNX 模型类型（vits / fastspeech2 / matcha / kokoro / kitten / zipvoice / pocket / supertonic）
     #[serde(default, rename = "sherpa_onnx_model_type")]
     pub sherpa_onnx_model_type: Option<String>,
     /// Sherpa-ONNX 朗读语言（zh / ja / en）
@@ -363,9 +363,6 @@ pub struct VoiceModel {
     /// Sherpa-ONNX 语速（0.5–2.0，1.0 为原速）
     #[serde(default, rename = "sherpa_onnx_speed")]
     pub sherpa_onnx_speed: Option<f32>,
-    /// Sherpa-ONNX 音高（0.5–2.0，1.0 为原音高）
-    #[serde(default, rename = "sherpa_onnx_pitch")]
-    pub sherpa_onnx_pitch: Option<f32>,
     /// Sherpa-ONNX 零样本参考音频路径（保留导入的 unicode-escape 形式）
     #[serde(default, rename = "sherpa_onnx_ref_audio_path")]
     pub sherpa_onnx_ref_audio_path: Option<String>,

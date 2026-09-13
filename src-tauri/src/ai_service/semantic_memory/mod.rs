@@ -140,10 +140,28 @@ impl SemanticMemory {
             self.record_error(&msg);
             return Err(msg);
         };
-        let vector = std::mem::take(&mut encoded[0].vector);
+        let Some(emb) = encoded.first_mut().and_then(|e| e.take()) else {
+            let msg = "语义记忆编码失败：该文本无法生成向量".to_string();
+            self.record_error(&msg);
+            return Err(msg);
+        };
+        let vector = emb.vector;
 
         // 与该角色的既有记忆做语义去重（只读向量列 + L2 前缀剪枝，快速排除不相似项）
         let existing = self.store.fetch_vectors(role_id).await?;
+        // 维度一致性：更换嵌入模型后若库内已有不同维度向量，写入会污染检索/去重，直接拒绝。
+        if let Some((first_id, first_vec)) = existing.first() {
+            if first_vec.len() != vector.len() {
+                let msg = format!(
+                    "语义记忆向量维度不一致（库内 {}-维 id={first_id} vs 新文本 {}-维）。\
+                     请先删除该角色的全部语义记忆，或恢复原嵌入模型后重试。",
+                    first_vec.len(),
+                    vector.len()
+                );
+                self.record_error(&msg);
+                return Err(msg);
+            }
+        }
         let candidates: Vec<&[f32]> = existing.iter().map(|(_, v)| v.as_slice()).collect();
         if cosine_ge_threshold(&candidates, &vector, DUP_THRESHOLD) {
             return Ok(AddOutcome::Duplicate);
@@ -192,8 +210,16 @@ impl SemanticMemory {
             return Vec::new();
         }
         let k = top_k.unwrap_or(self.top_k).clamp(1, 20);
+        let mut dim_mismatched = 0usize;
         let mut scored: Vec<Hit> = existing
             .iter()
+            .filter(|m| {
+                if m.vector.len() != qv.len() {
+                    dim_mismatched += 1;
+                    return false;
+                }
+                true
+            })
             .filter(|m| m.text.trim().chars().count() >= MIN_CHARS)
             .map(|m| Hit {
                 id: m.id.clone(),
@@ -201,6 +227,12 @@ impl SemanticMemory {
                 score: cosine(&qv, &m.vector),
             })
             .collect();
+        if dim_mismatched > 0 {
+            tracing::warn!(
+                "[semantic_memory] role_id={role_id} 检索跳过 {dim_mismatched} 条维度不一致的旧向量（查询 {} 维）",
+                qv.len()
+            );
+        }
         scored.sort_by(|a, b| {
             b.score
                 .partial_cmp(&a.score)
@@ -258,9 +290,27 @@ impl SemanticMemory {
             self.record_error(&msg);
             return Err(msg);
         };
-        let vector = std::mem::take(&mut encoded[0].vector);
+        let Some(emb) = encoded.first_mut().and_then(|e| e.take()) else {
+            let msg = "语义记忆编码失败：该文本无法生成向量".to_string();
+            self.record_error(&msg);
+            return Err(msg);
+        };
+        let vector = emb.vector;
 
         // 去重时排除自身，仅与其它既有记忆比较（只读向量列 + 前缀剪枝）
+        // 维度一致性：防止更换嵌入模型后旧库向量与新模型维度不一致而静默失效。
+        if let Some((first_id, first_vec)) = existing.first() {
+            if first_vec.len() != vector.len() {
+                let msg = format!(
+                    "语义记忆向量维度不一致（库内 {}-维 id={first_id} vs 本文本 {}-维）。\
+                     请先删除该角色的全部语义记忆，或恢复原嵌入模型后重试。",
+                    first_vec.len(),
+                    vector.len()
+                );
+                self.record_error(&msg);
+                return Err(msg);
+            }
+        }
         let candidates: Vec<&[f32]> = existing
             .iter()
             .filter(|(i, _)| i != id)

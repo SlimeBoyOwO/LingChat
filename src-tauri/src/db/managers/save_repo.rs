@@ -49,7 +49,7 @@ impl SaveRepo {
         prefix: &str,
     ) -> Result<Option<save::Model>> {
         save::Entity::find()
-            .filter(save::Column::Title.like(&format!("{}%", prefix)))
+            .filter(save::Column::Title.like(format!("{}%", prefix)))
             .order_by_desc(save::Column::UpdateDate)
             .one(db)
             .await
@@ -414,7 +414,7 @@ impl SaveRepo {
                 None
             };
 
-            for (_j, input_line) in new_input_lines.iter().enumerate() {
+            for input_line in new_input_lines.iter() {
                 let new_line = line::ActiveModel {
                     content: Set(input_line.base.content.clone()),
                     attribute: Set(input_line.base.attribute.0.clone()),

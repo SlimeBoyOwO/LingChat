@@ -166,20 +166,70 @@ impl EmbeddingManager {
 
     /// 语料/记忆片段 encode：自动加 `passage_prefix`（同上，视模型而定）。
     /// 返回的 `Embedded.text` 仍是原始文本（不含前缀）。
-    pub async fn embed_passages(&self, texts: &[String]) -> Option<Vec<Embedded>> {
-        let vecs = self
-            .encode_prefixed(texts, &self.cfg.passage_prefix)
-            .await?;
-        Some(
-            texts
-                .iter()
-                .zip(vecs.into_iter())
-                .map(|(t, v)| Embedded {
-                    text: t.clone(),
-                    vector: v,
-                })
-                .collect(),
-        )
+    ///
+    /// 返回结构与输入**逐条对齐**：单条 encode 失败仅在该位置置 `None`
+    /// （记录 `last_error` 便于诊断），不拖垮整批，也不让调用方在批量场景下
+    /// 因「跳过」而错位配对；全部失败或不可用时整个返回 `None`。
+    pub async fn embed_passages(&self, texts: &[String]) -> Option<Vec<Option<Embedded>>> {
+        if texts.is_empty() {
+            return Some(Vec::new());
+        }
+        if !self.cfg.enabled() {
+            return None;
+        }
+        let mut guard = self.runtime.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.is_none() {
+            match self.load() {
+                Ok(rt) => *guard = Some(rt),
+                Err(e) => {
+                    let msg = format!("{e:#}");
+                    *self.last_error.lock().unwrap_or_else(|e| e.into_inner()) = Some(msg.clone());
+                    tracing::warn!("[embedding] 加载失败，嵌入功能禁用: {msg}");
+                    return None;
+                },
+            }
+        }
+        let rt = guard.as_mut().expect("just loaded");
+
+        let started = std::time::Instant::now();
+        let mut out = Vec::with_capacity(texts.len());
+        let mut ok = 0usize;
+        for text in texts {
+            let clean = sanitize(text);
+            let input = if self.cfg.passage_prefix.is_empty() {
+                clean.to_string()
+            } else {
+                format!("{}{clean}", self.cfg.passage_prefix)
+            };
+            let tok = rt.tokenizer.encode(&input);
+            match rt.run(&tok) {
+                Ok(vec) => {
+                    out.push(Some(Embedded {
+                        text: text.clone(),
+                        vector: vec,
+                    }));
+                    ok += 1;
+                },
+                Err(e) => {
+                    let msg = format!("{e:#}");
+                    *self.last_error.lock().unwrap_or_else(|e| e.into_inner()) = Some(msg.clone());
+                    tracing::warn!("[embedding] embed_passages 单条失败（该位置置空）: {msg}");
+                    out.push(None);
+                },
+            }
+        }
+        if ok == 0 {
+            return None;
+        }
+        let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+        tracing::debug!(
+            "[embedding] embed_passages: asked={} ok={} dim={} elapsed={:.2}ms",
+            texts.len(),
+            ok,
+            rt.dim,
+            elapsed_ms,
+        );
+        Some(out)
     }
 
     async fn encode_prefixed(&self, texts: &[String], prefix: &str) -> Option<Vec<Vec<f32>>> {
@@ -270,7 +320,7 @@ impl EmbeddingManager {
         Some(
             texts
                 .iter()
-                .zip(vecs.into_iter())
+                .zip(vecs)
                 .map(|(t, v)| Embedded {
                     text: t.clone(),
                     vector: v,
@@ -455,7 +505,7 @@ fn run_session(
         Tensor::from_array(([1i64, n], tok.attention_mask.clone().into_boxed_slice()))
             .context("创建 attention_mask 张量失败")?;
     if zero_ttype.len() < n as usize {
-        zero_ttype.extend(std::iter::repeat(0i64).take(n as usize - zero_ttype.len()));
+        zero_ttype.extend(std::iter::repeat_n(0i64, n as usize - zero_ttype.len()));
     }
     let ttype_tensor = Tensor::from_array((
         [1i64, n],
@@ -535,8 +585,8 @@ fn run_session(
     let mask_sum: f32 = mask.iter().map(|&x| x as f32).sum();
     let mask_den = mask_sum.max(1e-9);
     let mut pooled = vec![0.0f32; dim];
-    for t in 0..mask.len() {
-        if mask[t] == 0 {
+    for (t, &m) in mask.iter().enumerate() {
+        if m == 0 {
             continue;
         }
         let base = t * dim;
@@ -769,6 +819,7 @@ mod tests {
                 .await
                 .unwrap()
                 .into_iter()
+                .flatten()
                 .map(|e| e.vector)
                 .collect();
 

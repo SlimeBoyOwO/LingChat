@@ -213,10 +213,27 @@
 
   // 抽取接口请求逻辑，不阻塞动画初始化
   async function fetchScripts() {
+    // 启动初期 Android 上后端/AppState 可能尚未就绪（webview 先于 setup 创建），
+    // 短暂重试几次再报错，避免首启竞态误报“后端未启动”。
+    const maxRetry = 3;
+    const retryDelayMs = 1000;
     loadingScripts.value = true;
     try {
       scripts.value = await getScriptList();
     } catch (e) {
+      let lastError = e;
+      let resolved = false;
+      for (let i = 1; i < maxRetry && !resolved; i++) {
+        await new Promise((r) => setTimeout(r, retryDelayMs));
+        try {
+          scripts.value = await getScriptList();
+          resolved = true;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      if (resolved) return;
+      console.error("获取剧本列表失败:", lastError);
       uiStore.showError({
         errorCode: "script_list_failed",
         message: t("views.mainMenu.scriptListFailed"),

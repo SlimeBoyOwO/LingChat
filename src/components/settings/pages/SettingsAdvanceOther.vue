@@ -448,6 +448,14 @@
   const memFormError = ref("");
   const memFormSuccess = ref("");
 
+  // Tauri invoke 拒绝时错误通常是字符串，统一提取可读文本（`error.message` 会得到 undefined）
+  const errorText = (error: any): string => {
+    if (error == null) return "";
+    if (typeof error === "string") return error;
+    if (typeof error === "object" && typeof error.message === "string") return error.message;
+    return String(error);
+  };
+
   const getEnabledClass = (enabled?: boolean) => (enabled ? "text-green-400" : "text-gray-400");
   const getEnabledText = (enabled?: boolean) =>
     enabled
@@ -484,7 +492,7 @@
       }
     } catch (error: any) {
       memFormError.value = t("settings.advanceOther.semanticMemoryManage.loadFailed", {
-        error: error.message,
+        error: errorText(error),
       });
     } finally {
       isLoadingMemRoles.value = false;
@@ -502,7 +510,7 @@
       memItems.value = await listSemanticMemories(memRoleId.value);
     } catch (error: any) {
       memFormError.value = t("settings.advanceOther.semanticMemoryManage.loadFailed", {
-        error: error.message,
+        error: errorText(error),
       });
     } finally {
       isLoadingMemItems.value = false;
@@ -530,7 +538,7 @@
       await loadMemItems();
       await loadSemanticMemoryStatus();
     } catch (error: any) {
-      memFormError.value = error.message;
+      memFormError.value = errorText(error);
     } finally {
       isSavingMem.value = false;
       setTimeout(() => {
@@ -562,7 +570,7 @@
       await loadMemItems();
       await loadSemanticMemoryStatus();
     } catch (error: any) {
-      memFormError.value = error.message;
+      memFormError.value = errorText(error);
     }
   };
 
@@ -617,7 +625,7 @@
 
       await loadConfig(false);
     } catch (error: any) {
-      saveStatus.message = t("settings.advanceOther.msg.error", { error: error.message });
+      saveStatus.message = t("settings.advanceOther.msg.error", { error: errorText(error) });
       saveStatus.colorClass = "text-red-500";
     } finally {
       isLoading.value = false;
@@ -680,7 +688,7 @@
     } catch (error: any) {
       console.error(error);
       saveStatus.message = t("settings.advanceOther.msg.loadConfigFailed", {
-        error: error.message,
+        error: errorText(error),
       });
       saveStatus.colorClass = "text-red-500";
     } finally {

@@ -97,14 +97,14 @@ impl PluginManager {
     /// 加载单个插件记录（解析 manifest + 从集中状态读取 state）。
     fn load_record(
         &self,
-        dir: &PathBuf,
+        dir: &Path,
         id: &str,
         states: &HashMap<String, PluginState>,
     ) -> PluginRecord {
         let mut record = PluginRecord {
             manifest: Default::default(),
             state: PluginState::new(),
-            dir: dir.clone(),
+            dir: dir.to_path_buf(),
             error: None,
         };
         let text = match std::fs::read_to_string(dir.join("manifest.toml")) {
@@ -218,9 +218,8 @@ impl PluginManager {
             }
             record.state.enabled = enabled;
             let apply_result: Result<(), String> = if enabled {
-                self.register_tools(record).map_err(|e| {
+                self.register_tools(record).inspect_err(|_e| {
                     record.state.enabled = false;
-                    e
                 })
             } else {
                 self.unregister_tools(record);

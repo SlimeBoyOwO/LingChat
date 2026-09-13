@@ -30,7 +30,7 @@ pub async fn cleanup_orphan_voice_files(
         .await
         .map_err(|e| anyhow!("查询语音文件引用失败: {e}"))?
         .into_iter()
-        .filter_map(|x| x)
+        .flatten()
         .collect();
 
     tracing::info!("数据库中引用了 {} 个语音文件", referenced.len());

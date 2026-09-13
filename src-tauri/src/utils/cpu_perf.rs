@@ -36,6 +36,12 @@ pub struct CpuDetectionCache {
     pub info: Mutex<Option<CpuInfo>>,
 }
 
+impl Default for CpuDetectionCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CpuDetectionCache {
     pub fn new() -> Self {
         Self {
@@ -351,7 +357,7 @@ mod x86_impl {
         };
 
         let before = &brand[..cpu_at].trim();
-        let last_part = before.split(' ').last().unwrap_or("");
+        let last_part = before.split(' ').next_back().unwrap_or("");
         last_part.contains('U') || last_part.contains('Y')
     }
 

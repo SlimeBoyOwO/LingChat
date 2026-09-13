@@ -51,6 +51,9 @@ use super::error::AsrError;
 // 公共结果类型
 // ============================================================================
 
+/// 流式识别 partial 回调：把增量文本回传给调用方。
+pub type PartialTranscriptCb = Arc<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>;
+
 /// provider 识别返回结果。
 #[derive(Debug, Clone, Serialize)]
 pub struct AsrResult {
@@ -191,7 +194,7 @@ pub trait AsrProvider: Send + Sync {
     async fn stream_recognize(
         &self,
         _wav_bytes: Vec<u8>,
-        _on_partial: Option<Arc<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>>,
+        _on_partial: Option<PartialTranscriptCb>,
     ) -> Result<AsrResult, AsrError> {
         Err(AsrError::StreamingNotSupported(self.id().into()))
     }
@@ -545,7 +548,7 @@ impl AsrProvider for LlamaAsrProvider {
     async fn stream_recognize(
         &self,
         wav_bytes: Vec<u8>,
-        on_partial: Option<Arc<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>>,
+        on_partial: Option<PartialTranscriptCb>,
     ) -> Result<AsrResult, AsrError> {
         super::provider_stream_llama::recognize_stream(
             &self.http,
