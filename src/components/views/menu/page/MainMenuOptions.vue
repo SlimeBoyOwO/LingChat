@@ -30,6 +30,7 @@
     (e: "open-settings", tab?: string): void;
     (e: "open-credits"): void;
     (e: "open-workshop"): void;
+    (e: "open-script-editor"): void;
   }>();
 
   // 保留 Current 的退出逻辑
