@@ -62,9 +62,9 @@ export const i18n = createI18n<[MessageSchema], AppLocale>({
   // 各语言词条以 zh-CN 为基准 schema；缺失键运行时经 fallbackLocale 回落中文
   messages: {
     "zh-CN": zhCN,
-    "zh-HK": zhHK as MessageSchema,
-    ja: ja as MessageSchema,
-    en: en as MessageSchema,
+    "zh-HK": zhHK as unknown as MessageSchema,
+    ja: ja as unknown as MessageSchema,
+    en: en as unknown as MessageSchema,
   },
 });
 
