@@ -1,15 +1,11 @@
 <template>
+<template>
   <StartList responsive>
     <StartLine>
       <StartItem @click="() => emit('start-game')">{{ $t("views.menu.startGame") }}</StartItem>
     </StartLine>
-    <StartLine>
-      <StartItem @click="() => emit('open-settings', 'save')">{{
-        $t("views.menu.continueGame")
-      }}</StartItem>
-    </StartLine>
     <StartLine :mobile="false">
-      <StartItem @click="() => emit('open-workshop')">{{
+      <StartItem @click="() => emit('open-script-editor')">{{
         $t("views.menu.scriptEditor")
       }}</StartItem>
     </StartLine>
@@ -23,6 +19,7 @@
       <StartItem @click="exitGame">{{ $t("views.menu.exitGame") }}</StartItem>
     </StartLine>
   </StartList>
+</template>
 </template>
 
 <script setup lang="ts">

@@ -55,7 +55,7 @@ pub fn last_save_key(role_id: i32) -> String {
 pub fn get_last_character_id(app: &AppHandle) -> Option<i32> {
     let store = settings_store(app).ok()?;
     store
-        .get(keys::LAST_CHARACTER_ID)
+        .get(session::LAST_CHARACTER_ID)
         .and_then(|v| v.as_i64())
         .map(|n| n as i32)
 }

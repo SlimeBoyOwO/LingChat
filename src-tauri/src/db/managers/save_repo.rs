@@ -484,6 +484,57 @@ impl SaveRepo {
 
         Ok(())
     }
+
+    /// 逐条追加：只读最后一条 DB 行的 id 作为 parent，插入新行。
+    /// 复杂度 O(1)，适用于对话时逐条落盘（sync_lines 是全量 O(N) diff）。
+    /// 注意：仅在新行追加到末尾时适用，不处理中间插入/修改/删除。
+    pub async fn append_line<C: ConnectionTrait>(
+        db: &C,
+        save_id: i32,
+        game_line: &GameLine,
+    ) -> Result<i32> {
+        // 取当前存档最后一条台词的 id 作为 parent
+        let parent_id = line::Entity::find()
+            .filter(line::Column::SaveId.eq(save_id))
+            .order_by_desc(line::Column::Id)
+            .one(db)
+            .await?
+            .map(|l| l.id);
+
+        let new_line = line::ActiveModel {
+            content: Set(game_line.base.content.clone()),
+            attribute: Set(game_line.base.attribute.0.clone()),
+            sender_role_id: Set(game_line.base.sender_role_id),
+            display_name: Set(game_line.base.display_name.clone()),
+            original_emotion: Set(game_line.base.original_emotion.clone()),
+            predicted_emotion: Set(game_line.base.predicted_emotion.clone()),
+            tts_content: Set(game_line.base.tts_content.clone()),
+            action_content: Set(game_line.base.action_content.clone()),
+            thinking: Set(game_line.base.thinking.clone()),
+            tool_call: Set(game_line.base.tool_call.clone()),
+            audio_file: Set(game_line.base.audio_file.clone()),
+            save_id: Set(save_id),
+            parent_line_id: Set(parent_id),
+            ..Default::default()
+        };
+
+        let inserted = new_line.insert(db).await.map_err(|e| anyhow!("{e}"))?;
+        let new_id = inserted.id;
+
+        // 插入 line_perception
+        for &role_id in &game_line.perceived_role_ids {
+            let perception = line_perception::ActiveModel {
+                line_id: Set(new_id),
+                role_id: Set(role_id),
+            };
+            perception.insert(db).await.map_err(|e| anyhow!("{e}"))?;
+        }
+
+        // 更新 save.last_message_id
+        Self::update_save_last_message(db, save_id, Some(new_id)).await?;
+
+        Ok(new_id)
+    }
 }
 
 // ========== Memory Bank ==========

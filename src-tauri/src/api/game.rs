@@ -389,7 +389,7 @@ pub(crate) async fn begin_new_progress(
         crate::config::set_last_save_id(app, rid, save_id);
         if let Ok(store) = app.store(crate::config::store_path()) {
             store.set(
-                crate::config::keys::LAST_CHARACTER_ID.to_string(),
+                crate::config::session::LAST_CHARACTER_ID.to_string(),
                 JsonValue::Number((rid as i64).into()),
             );
             let _ = store.save();

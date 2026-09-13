@@ -111,7 +111,9 @@ impl GameStatus {
         // 安卓上 app 随时可能被杀，这样内存里的台词最多丢当前这一条。
         // 只在 len>1 时写（len==1 只是初始化自带的 system 人设台词，跳过）。
         // 整个块 best-effort：失败只记日志，不让对话流程跟着挂（周期自动存档会兜底）。
+        // 用 append_line (O(1)) 替代 sync_lines (O(N))，避免长会话逐条落盘时 O(N²)。
         if self.line_list.len() > 1 {
+            let new_line = self.line_list.last().unwrap().clone();
             let write_result: anyhow::Result<()> = async {
                 let save_id = match self.active_save_id {
                     Some(id) => id,
@@ -122,10 +124,7 @@ impl GameStatus {
                         id
                     }
                 };
-                // 事务化增量写，单条原子
-                let txn = db.begin().await?;
-                SaveRepo::sync_lines(&txn, save_id, &self.line_list).await?;
-                txn.commit().await?;
+                SaveRepo::append_line(db, save_id, &new_line).await?;
                 Ok(())
             }
             .await;

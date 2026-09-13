@@ -55,6 +55,7 @@
           v-if="menuState === 'gameMode'"
           @back="backToMainMenu"
           @open-scripts="showScriptModeMenu"
+          @go-save="handleGoSave"
           :loadingScripts="loadingScripts"
           :scripts="scripts"
         />
@@ -83,6 +84,7 @@
   </div>
 </template>
 
+<script setup lang="ts">
 <script setup lang="ts">
   import type { WebInitData } from "@/api/services/game-info";
   import { getScriptList, type ScriptSummary } from "@/api/services/script-info";
@@ -189,6 +191,11 @@
       });
     }
   };
+
+  // 自由对话里"否 → 前往存档页"：直接复用打开设置并定位到存档 tab
+  function handleGoSave() {
+    handleOpenSettings("save");
+  }
 
   async function handleOpenSettings(tab?: string) {
     // 后台执行隐藏与捕获，不阻塞设置页打开

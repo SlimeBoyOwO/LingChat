@@ -59,6 +59,8 @@ export default {
     cloudWorkshop: "クラウド工房",
     miniGame: "ミニゲーム（開発中）",
     back: "戻る",
+    continueSaveTitle: "前回の続きから",
+    continueSaveMessage: "前回のセーブデータが見つかりました。続きから始めますか？（キャンセルで存档管理へ）",
   },
   pet: {
     chatInput: {
