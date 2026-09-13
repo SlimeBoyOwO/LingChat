@@ -13,7 +13,6 @@ strip = true
 opt-level = "z"
 
 [target.aarch64-linux-android]
-linker = "/home/lzx/Android/Sdk/ndk/30.0.15729638/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
 rustflags = [
     "-C",
     "link-arg=-Wl,--allow-shlib-undefined",
