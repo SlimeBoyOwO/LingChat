@@ -873,6 +873,10 @@ pub fn run() {
             api::role_archive::rescan_roles,
             api::role_archive::export_role,
             api::role_archive::export_role_to_path,
+            // 数据备份/恢复
+            api::data_backup::export_data_backup,
+            api::data_backup::peek_data_backup,
+            api::data_backup::import_data_backup,
             // 本地 TTS 相关命令
             ai_service::tts::local::tts_local_status,
             ai_service::tts::local::tts_local_list_catalog,
