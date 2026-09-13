@@ -21,7 +21,6 @@
 </template>
 
 <script setup lang="ts">
-<script setup lang="ts">
   import { StartItem, StartLine, StartList } from "../base";
   import { useRouter } from "vue-router";
   import { useI18n } from "vue-i18n";

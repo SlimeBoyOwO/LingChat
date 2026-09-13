@@ -515,4 +515,3 @@ export function initializeCastWindowListeners() {
     "[Tauri] Cast window listeners initialized (scene:switch + character:switch + cast:mic:recognized)",
   );
 }
-}
