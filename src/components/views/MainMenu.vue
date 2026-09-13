@@ -57,6 +57,7 @@
           v-if="menuState === 'gameMode'"
           @back="backToMainMenu"
           @open-scripts="showScriptModeMenu"
+          @go-save="handleGoSave"
           :loadingScripts="loadingScripts"
           :scripts="scripts"
         />
@@ -183,6 +184,11 @@ async function handleOpenSettings(tab?: string) {
   } else {
     currentPage.value = "settings";
   }
+}
+
+// 自由对话里"否 → 前往存档页"：直接复用打开设置并定位到存档 tab
+function handleGoSave() {
+  handleOpenSettings("save");
 }
 
 watch(
