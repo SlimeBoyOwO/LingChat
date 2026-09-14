@@ -4,7 +4,7 @@
 //! 被以下模块共同使用：
 //! - `resource_sync`: 从安装包资源同步默认文件到 data/ 工作目录
 //! - `lan_sync`: 局域网全量数据同步
-//! - `init::static_copy`: 移动端首次播种
+//! - `data_dir`: 移动端首次播种
 
 use std::collections::{HashMap, HashSet};
 use std::io;

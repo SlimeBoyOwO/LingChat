@@ -849,9 +849,11 @@ mod tests {
         let tool = WebSearchTool::new(SharedToolSettings::new(
             crate::ai_service::tools::settings::ToolSettings::default(),
         ));
-        let mut cfg = WebSearchSettings::default();
-        cfg.provider = "future-provider".into();
-        cfg.api_key = "must-not-be-forwarded".into();
+        let cfg = WebSearchSettings {
+            provider: "future-provider".into(),
+            api_key: "must-not-be-forwarded".into(),
+            ..Default::default()
+        };
         let error = tool
             .execute_search_endpoint(&ToolContext::default(), "query", &cfg)
             .await

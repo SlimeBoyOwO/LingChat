@@ -74,7 +74,10 @@ impl ScriptEvent for ChapterEndEvent {
                 .unwrap_or_else(|| "end".to_string()),
             "branching" => {
                 let gs = ctx.game_status.lock().await;
-                let script_status = gs.script_status.as_ref().unwrap(); // safe: checked above
+                let script_status = gs
+                    .script_status
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
                 let mut result = "end".to_string();
                 for opt in &self.options {
                     let condition = opt.get("condition").and_then(|v| v.as_str()).unwrap_or("");
@@ -104,12 +107,12 @@ impl ScriptEvent for ChapterEndEvent {
             "ai_judged" => {
                 // AI 判断走向：必须调 LLM。LLM 不可用就终止剧本，不再回落到任何
                 // 默认分支——那会让剧本以错误逻辑继续跑（上游复核明确要求）。
-                let llm = ctx.llm.clone().ok_or_else(|| {
+                let llm = ctx.llm.ok_or_else(|| {
                     anyhow!(
                         "「AI 判断」章节结束需要大模型判断走向，但 LLM 不可用，剧本终止。请先配置并选择模型。"
                     )
                 })?;
-                self.call_llm_for_judgment(&llm, ctx).await?
+                self.call_llm_for_judgment(llm, ctx).await?
             },
             _ => {
                 tracing::warn!(

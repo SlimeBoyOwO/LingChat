@@ -6,7 +6,7 @@
  * 各领域用 `createArchiveImportController` 绑定自己的三元组，
  * 再在模块作用域调用一次以获得共享的监听器与 task_id（与原 `useRoleImportExport` 一致）。
  */
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { decodePathFileName } from "@/utils/path";
 import type {
@@ -61,9 +61,6 @@ function isAndroidContentUri(p: string): boolean {
 
 export function createArchiveImportController(binding: ArchiveImportBinding) {
   const tag = binding.logTag ?? "ArchiveImport";
-  let progressUnlisten: UnlistenFn | null = null;
-  let errorUnlisten: UnlistenFn | null = null;
-  let startedUnlisten: UnlistenFn | null = null;
   let progressTimer: number | null = null;
   let listenersInitialized = false;
   // 当前正在进行的导入任务 id；cancel() 时传给后端以找到正确的取消令牌。
@@ -88,7 +85,7 @@ export function createArchiveImportController(binding: ArchiveImportBinding) {
     // 只缓存 store 实例：`resetImport()` 会整体替换 `import` 对象，
     // 提前取出 `store.import` 会导致监听器写入一个已被丢弃的旧对象。
     const st = store();
-    progressUnlisten = await listen<EntryEvent>(`${binding.eventPrefix}:import-progress`, (e) => {
+    await listen<EntryEvent>(`${binding.eventPrefix}:import-progress`, (e) => {
       const evt = e.payload;
       if (evt.phase === "entry") {
         if (evt.bytes_total > 0) {
@@ -100,16 +97,13 @@ export function createArchiveImportController(binding: ArchiveImportBinding) {
         st.import.percent = 100;
       }
     });
-    startedUnlisten = await listen<ImportStartedEvent>(
-      `${binding.eventPrefix}:import-started`,
-      (e) => {
-        // 后端刚生成 task_id 时立刻发送，前端存下来给 cancel() 用。
-        currentTaskId = e.payload?.task_id ?? null;
-      }
-    );
+    await listen<ImportStartedEvent>(`${binding.eventPrefix}:import-started`, (e) => {
+      // 后端刚生成 task_id 时立刻发送，前端存下来给 cancel() 用。
+      currentTaskId = e.payload?.task_id ?? null;
+    });
     if (binding.errorEvent) {
       const errorEvent = binding.errorEvent;
-      errorUnlisten = await listen<string>(errorEvent, (e) => {
+      await listen<string>(errorEvent, (e) => {
         if (cancelledByUser) return; // 用户已主动取消，不覆盖「已取消」状态
         store().import.phase = "error";
         store().import.error = e.payload || "import failed";
@@ -157,7 +151,7 @@ export function createArchiveImportController(binding: ArchiveImportBinding) {
     filePath: string,
     fileName: string,
     format: ArchiveFormat | undefined,
-    conflict: string
+    conflict: string,
   ) {
     store().resetImport();
     store().import.phase = "running";
@@ -176,7 +170,7 @@ export function createArchiveImportController(binding: ArchiveImportBinding) {
       console.log(
         `[${tag}] backend path import: source=%s, androidSaf=%s`,
         filePath,
-        isAndroidContentUri(filePath)
+        isAndroidContentUri(filePath),
       );
       startFakeProgress();
       const result = await binding.invoke({ path: filePath, fileName, format, conflict });
@@ -189,7 +183,7 @@ export function createArchiveImportController(binding: ArchiveImportBinding) {
       console.log(
         `[${tag}] runImport 完成: action=%s, bytes=%d`,
         result.conflict_action,
-        result.bytes_extracted
+        result.bytes_extracted,
       );
     } catch (e: any) {
       console.error(`[${tag}] runImport 失败:`, e);

@@ -137,6 +137,41 @@
                 </div>
               </div>
 
+              <!-- Sherpa-ONNX 角色级高级设置入口 -->
+              <div
+                v-if="activeTab === 'voice' && localSettings.tts_type === 'sherpa-onnx'"
+                class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border
+                  border-violet-400/20 bg-violet-500/10 p-4"
+              >
+                <div class="flex min-w-0 items-center gap-3">
+                  <Cpu :size="20" class="shrink-0 text-violet-300" />
+                  <div class="min-w-0">
+                    <p class="m-0 text-sm font-semibold text-white">
+                      {{ t("settings.characterInfo.fields.sherpaOnnx") }}
+                    </p>
+                    <p class="m-0 text-xs text-white/45">
+                      {{ t("settings.characterInfo.fields.sherpaOnnxManageModels") }} /
+                      {{ t("settings.characterInfo.fields.sherpaOnnxParameters") }}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  class="shrink-0 cursor-pointer rounded-lg border-none bg-violet-600 px-4 py-2
+                    text-sm font-medium text-white transition-colors hover:bg-violet-500"
+                  @click="openSherpaVoiceModal"
+                >
+                  {{ t("settings.characterInfo.fields.sherpaOnnxModelName") }}
+                </button>
+              </div>
+
+              <CharacterVoiceSettingsModal
+                v-if="voiceModalVisible && props.roleId"
+                :character-id="props.roleId"
+                :initial-settings="voiceModalInitial"
+                @close="voiceModalVisible = false"
+                @save="onVoiceModalSaved"
+              />
+
               <Live2DSettings
                 v-if="activeTab === 'live2d' && props.roleId"
                 v-model="localSettings.live2d"
@@ -305,6 +340,9 @@
   import { useUIStore } from "@/stores/modules/ui/ui";
   import * as TtsLocal from "../../../api/services/tts/tts-local";
   import * as TtsCosyvoice from "../../../api/services/tts/tts-cosyvoice";
+  import CharacterVoiceSettingsModal from "../../ui/CharacterVoiceSettingsModal.vue";
+  import type { SherpaOnnxModelRecord } from "../../../api/services/tts/tts-local";
+  import { Cpu } from "lucide-vue-next";
 
   const props = defineProps<{
     visible: boolean;
@@ -327,6 +365,8 @@
   const localSettings = ref<any>({});
   const installedVoices = ref<TtsLocal.VoiceRecord[]>([]);
   const cloudVoices = ref<TtsCosyvoice.CosyVoiceView[]>([]);
+  const installedSherpaModels = ref<SherpaOnnxModelRecord[]>([]);
+  const voiceModalVisible = ref(false);
 
   // 删除按钮可用性：系统保护角色 / 在场角色不可删
   const deleteState = computed(() => {
@@ -406,6 +446,74 @@
     }
   }
 
+  async function refreshSherpaModels(): Promise<void> {
+    try {
+      installedSherpaModels.value = await TtsLocal.listSherpaModels();
+    } catch (error) {
+      console.warn("refreshSherpaModels failed", error);
+      installedSherpaModels.value = [];
+    }
+  }
+
+  // 角色级 Sherpa-ONNX 弹窗：初始化数据（扁平结构，与 CharacterVoiceSettingsModal 约定一致）
+  const voiceModalInitial = computed(() => {
+    const vm =
+      localSettings.value?.voice_models && typeof localSettings.value.voice_models === "object"
+        ? localSettings.value.voice_models
+        : {};
+    return {
+      tts_type: localSettings.value.tts_type ?? "sherpa-onnx",
+      voice_lang: localSettings.value.voice_lang ?? "ja",
+      emotion: localSettings.value.emotion ?? "normal",
+      sherpa_onnx_model_name: vm.sherpa_onnx_model_name ?? "",
+      sherpa_onnx_model_path: "",
+      sherpa_onnx_model_type: vm.sherpa_onnx_model_type ?? "vits",
+      sherpa_onnx_lang: vm.sherpa_onnx_lang ?? "zh",
+      sherpa_onnx_voice: vm.sherpa_onnx_voice ?? "female",
+      sherpa_onnx_use_gpu: vm.sherpa_onnx_use_gpu ?? false,
+      sherpa_onnx_speed: vm.sherpa_onnx_speed ?? 1.0,
+      sherpa_onnx_ref_audio_path: vm.sherpa_onnx_ref_audio_path ?? "",
+      sherpa_onnx_ref_text: vm.sherpa_onnx_ref_text ?? "",
+    };
+  });
+
+  const SHERPA_VOICE_KEYS = [
+    "sherpa_onnx_model_name",
+    "sherpa_onnx_model_type",
+    "sherpa_onnx_lang",
+    "sherpa_onnx_voice",
+    "sherpa_onnx_use_gpu",
+    "sherpa_onnx_speed",
+    "sherpa_onnx_ref_audio_path",
+    "sherpa_onnx_ref_text",
+  ] as const;
+
+  // 弹窗内可编辑、且应写入 voice_models 的字段：Sherpa 参数 + 其它 TTS 的音色字段。
+  const VOICE_MODAL_MODEL_KEYS = [
+    ...SHERPA_VOICE_KEYS,
+    "sbv2_speaker_id",
+    "opentts_voice",
+  ] as const;
+
+  const openSherpaVoiceModal = () => {
+    void refreshSherpaModels();
+    voiceModalVisible.value = true;
+  };
+
+  const onVoiceModalSaved = (settings: any) => {
+    const vm = ensureVoiceModels();
+    for (const key of VOICE_MODAL_MODEL_KEYS) {
+      if (settings[key] !== undefined) {
+        vm[key] = settings[key];
+      }
+    }
+    if (settings.tts_type) localSettings.value.tts_type = settings.tts_type;
+    if (settings.voice_lang) localSettings.value.voice_lang = settings.voice_lang;
+    if (settings.emotion !== undefined) localSettings.value.emotion = settings.emotion;
+    voiceModalVisible.value = false;
+    queueRealtimeSave();
+  };
+
   const tabs = computed(() => [
     { id: "basic", label: t("settings.characterInfo.tabs.basic") },
     { id: "prompts", label: t("settings.characterInfo.tabs.prompts") },
@@ -431,6 +539,14 @@
     "opentts_voice",
     "fish_s2_voice",
     "cosyvoice_voice_id",
+    "sherpa_onnx_model_name",
+    "sherpa_onnx_model_type",
+    "sherpa_onnx_lang",
+    "sherpa_onnx_voice",
+    "sherpa_onnx_use_gpu",
+    "sherpa_onnx_speed",
+    "sherpa_onnx_ref_audio_path",
+    "sherpa_onnx_ref_text",
   ] as const;
 
   // --- Schema Definition ---
@@ -566,6 +682,7 @@
           { label: t("settings.characterInfo.fields.localSbv2Api"), value: "localsbv2api" },
           { label: "indextts2", value: "indextts2" },
           { label: t("settings.characterInfo.fields.voiceCloneTts"), value: "cosyvoice" },
+          { label: t("settings.characterInfo.fields.sherpaOnnx"), value: "sherpa-onnx" },
         ],
       },
 
@@ -738,16 +855,6 @@
       },
 
       {
-        key: "opentts_voice",
-        label: t("settings.characterInfo.fields.openttsVoice"),
-        type: "text",
-        isVoiceModel: true,
-        realtime: true,
-        placeholder: t("settings.characterInfo.placeholders.openttsVoice"),
-        visibleIf: (s) => s.tts_type === "opentts",
-      },
-
-      {
         key: "aivis_model_uuid",
         label: "aivis_model_uuid",
         type: "text",
@@ -855,6 +962,92 @@
         realtime: true,
         placeholder: t("settings.characterInfo.fields.openttsVoicePlaceholder"),
         visibleIf: (s) => s.tts_type === "opentts",
+      },
+
+      // --- Sherpa-ONNX ---
+      {
+        key: "sherpa_onnx_model_name",
+        label: t("settings.characterInfo.fields.sherpaOnnxModelName"),
+        type: "select",
+        isVoiceModel: true,
+        realtime: true,
+        dynamicOptions: () =>
+          installedSherpaModels.value.length === 0
+            ? [{ label: t("settings.characterInfo.fields.noSherpaModel"), value: "" }]
+            : installedSherpaModels.value.map((model) => ({
+                label: model.display_name,
+                value: model.id,
+              })),
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_model_type",
+        label: t("settings.characterInfo.fields.sherpaOnnxModelType"),
+        type: "select",
+        isVoiceModel: true,
+        realtime: true,
+        options: [
+          { label: "vits", value: "vits" },
+          { label: "fastspeech2", value: "fastspeech2" },
+          { label: "matcha", value: "matcha" },
+          { label: "kokoro", value: "kokoro" },
+          { label: "kitten", value: "kitten" },
+          { label: "zipvoice", value: "zipvoice" },
+          { label: "pocket", value: "pocket" },
+          { label: "supertonic", value: "supertonic" },
+        ],
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_lang",
+        label: t("settings.characterInfo.fields.sherpaOnnxLanguage"),
+        type: "select",
+        isVoiceModel: true,
+        realtime: true,
+        options: [
+          { label: "中文", value: "zh" },
+          { label: "English", value: "en" },
+          { label: "日本語", value: "ja" },
+          { label: "한국어", value: "ko" },
+          { label: "Deutsch", value: "de" },
+          { label: "Français", value: "fr" },
+          { label: "Русский", value: "ru" },
+        ],
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_voice",
+        label: t("settings.characterInfo.fields.sherpaOnnxVoice"),
+        type: "text",
+        isVoiceModel: true,
+        realtime: true,
+        placeholder: "female / male / child / elderly",
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_speed",
+        label: t("settings.characterInfo.fields.sherpaOnnxSpeed"),
+        type: "number",
+        isVoiceModel: true,
+        step: "0.1",
+        realtime: true,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_ref_audio_path",
+        label: "sherpa_onnx_ref_audio_path",
+        type: "text",
+        isVoiceModel: true,
+        realtime: true,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_ref_text",
+        label: "sherpa_onnx_ref_text",
+        type: "text",
+        isVoiceModel: true,
+        realtime: true,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
       },
     ],
   }));
@@ -993,6 +1186,10 @@
         if (ttsType === "localsbv2api") {
           void refreshLocalVoices();
         }
+        // Sherpa-ONNX 模型列表:sherpa-onnx 需要
+        if (ttsType === "sherpa-onnx") {
+          void refreshSherpaModels();
+        }
         // 云端音色:cosyvoice 下拉随时需要（与 tts_type 无关）
         void refreshCloudVoices();
       }
@@ -1014,10 +1211,8 @@
     emit("close");
   };
 
-  const handleFieldChange = (field: FieldSchema) => {
-    if (!field.realtime || !props.roleId) return;
-
-    // 防抖逻辑
+  const queueRealtimeSave = (label = "") => {
+    if (!props.roleId) return;
     const roleId = props.roleId;
     clearRealtimeSaveTimer();
     realtimeSaveTimer = setTimeout(async () => {
@@ -1026,13 +1221,18 @@
       try {
         await updateRoleSettings(roleId, localSettings.value);
       } catch (e) {
-        console.error(`实时更新 ${field.key} 失败:`, e);
+        console.error("实时更新失败:", e);
         // 使用国际化
         await dialogStore.alert(
-          t("settings.characterInfo.messages.realtimeUpdateFailed", { label: field.label })
+          t("settings.characterInfo.messages.realtimeUpdateFailed", { label })
         );
       }
     }, REALTIME_SAVE_DEBOUNCE_MS);
+  };
+
+  const handleFieldChange = (field: FieldSchema) => {
+    if (!field.realtime || !props.roleId) return;
+    queueRealtimeSave(field.label);
   };
 
   const saveSettings = async () => {

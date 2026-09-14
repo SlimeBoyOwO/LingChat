@@ -7,7 +7,12 @@ export default {
     other: "Other Advanced Settings",
     tts: "TTS Settings",
     asr: "Speech Recognition",
+    embedding: "Memory Embedding",
     cast: "Cast Settings",
+  },
+  embedding: {
+    title: "Memory Embedding",
+    desc: "Configure the local embedding model used for semantic retrieval and note deduplication, and view its runtime status",
   },
   menu: {
     llmTitle: "LLM Management",
@@ -24,6 +29,10 @@ export default {
     asrTitle: "Speech Recognition",
     asrDesc: "Configure Alibaba Cloud ASR, send mode, and microphone auto-listen",
     asrButton: "Open Speech Recognition",
+    embeddingTitle: "Memory Embedding",
+    embeddingDesc:
+      "Configure the local embedding model for semantic retrieval and note deduplication, and check its runtime status",
+    embeddingButton: "Open Memory Embedding",
     otherTitle: "Other Advanced Settings",
     otherDesc:
       "Tweak system environment settings, prompt templates, chat parameters, and more (takes effect after restart)",

@@ -88,7 +88,7 @@ impl FileTools {
                 Some((kind, entry.file_name().to_string_lossy().into_owned()))
             })
             .collect::<Vec<_>>();
-        entries.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+        entries.sort_by_key(|a| a.1.to_lowercase());
         let truncated = entries.len() > MAX_LIST_ENTRIES;
 
         let mut lines = format!("📂 {}\n", dir.display());

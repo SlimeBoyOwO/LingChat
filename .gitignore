@@ -20,7 +20,7 @@ keystore.properties
 .env
 .env.*
 !.env.example
-
+src-tauri/.bundled_build/
 # ============================================================
 #      IDE 和编辑器配置 (IDE & Editor Configuration)
 # ============================================================
@@ -40,6 +40,7 @@ keystore.properties
 
 # 虚拟环境
 .venv/
+.venv-embedding/
 venv/
 python-embed/
 # Python 缓存和编译文件

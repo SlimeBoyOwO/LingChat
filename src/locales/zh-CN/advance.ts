@@ -6,7 +6,12 @@ export default {
     other: "其他高级设置",
     tts: "TTS 设置",
     asr: "语音识别",
+    embedding: "记忆嵌入",
     cast: "投屏设置",
+  },
+  embedding: {
+    title: "记忆嵌入",
+    desc: "配置用于语义检索与手动笔记去重的本地嵌入模型，并查看运行状态",
   },
   menu: {
     llmTitle: "大模型管理",
@@ -22,6 +27,9 @@ export default {
     asrTitle: "语音识别",
     asrDesc: "配置阿里云语音识别、发送方式与麦克风监听",
     asrButton: "进入语音识别界面",
+    embeddingTitle: "记忆嵌入",
+    embeddingDesc: "配置用于语义检索与手动笔记去重的本地嵌入模型，并查看运行状态",
+    embeddingButton: "进入记忆嵌入界面",
     otherTitle: "其他高级设置",
     otherDesc: "调整系统环境配置、提示词模板、对话参数等高级选项（重启后生效）",
     otherButton: "进入其他高级设置界面",

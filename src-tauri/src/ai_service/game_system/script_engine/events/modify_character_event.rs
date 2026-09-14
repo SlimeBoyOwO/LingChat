@@ -99,8 +99,8 @@ impl ScriptEvent for ModifyCharacterEvent {
 
         let role_id = {
             let mut gs = ctx.game_status.lock().await;
-            let role = script_function::get_role(&mut *gs, ctx.db, &script_status, &self.character)
-                .await?;
+            let role =
+                script_function::get_role(&mut gs, ctx.db, &script_status, &self.character).await?;
             let id = role.role_id.ok_or_else(|| anyhow!("角色 ID 未设置"))?;
 
             // Apply clothes (while we have mutable access to role)

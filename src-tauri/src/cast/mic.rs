@@ -114,7 +114,9 @@ fn decode_pcm16_frames(data: Option<&str>, format: &str) -> Result<Option<Vec<f3
     // 容忍客户端分帧对齐问题：非 2 的倍数截断到最近偶数
     let bytes = &bytes[..bytes.len() / 2 * 2];
     let samples: Vec<f32> = bytes
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|c| {
             let s = i16::from_le_bytes([c[0], c[1]]);
             s as f32 / 32768.0

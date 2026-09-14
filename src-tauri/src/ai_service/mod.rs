@@ -1,5 +1,6 @@
 pub mod asr;
 pub mod config;
+pub mod embedding;
 pub mod emotion;
 pub mod game_system;
 pub mod god_agent;
@@ -7,6 +8,7 @@ pub mod llm;
 pub mod message_system;
 pub mod proactive_system;
 pub mod screen_analyzer;
+pub mod semantic_memory;
 pub mod service;
 pub mod skill_agent;
 pub mod tools;

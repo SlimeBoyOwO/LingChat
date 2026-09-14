@@ -224,7 +224,9 @@ impl MessageGenerator {
             return Ok(());
         }
 
-        let scene_id = gs.current_scene_id.clone().unwrap();
+        let Some(scene_id) = gs.current_scene_id.clone() else {
+            return Ok(());
+        };
         let store = SceneStore::new(&data_dir());
         if let Ok(Some(scene)) = store.find_by_id(&scene_id) {
             if !scene.description.trim().is_empty() {
@@ -239,7 +241,9 @@ impl MessageGenerator {
                     display_name: Some("系统".to_string()),
                     ..Default::default()
                 };
-                let _ = gs.add_line(&self.deps.db, line).await;
+                if let Err(e) = gs.add_line(&self.deps.db, line).await {
+                    tracing::error!("写入场景切换系统台词失败: {e}");
+                }
             }
         }
         gs.last_processed_scene_id = gs.current_scene_id.clone();
@@ -446,7 +450,10 @@ impl MessageGenerator {
             let marker = if user_message.trim().is_empty() {
                 format!("（用户「{}」发来一张图片，请查看图片内容。）", user_name)
             } else {
-                format!("【图片】用户「{}」发来一张图片，请结合图片内容回复。", user_name)
+                format!(
+                    "【图片】用户「{}」发来一张图片，请结合图片内容回复。",
+                    user_name
+                )
             };
             ctx.push(LlmMessage::user_with_image(marker, image));
             ctx

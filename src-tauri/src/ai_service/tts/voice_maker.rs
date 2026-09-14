@@ -21,6 +21,7 @@ use crate::ai_service::tts::adapters::indextts::IndexTtsAdapter;
 use crate::ai_service::tts::adapters::opentts::OpenTtsAdapter;
 use crate::ai_service::tts::adapters::sbv2::Sbv2Adapter;
 use crate::ai_service::tts::adapters::sbv2api::Sbv2ApiAdapter;
+use crate::ai_service::tts::adapters::sherpa_onnx::SherpaOnnxAdapter;
 use crate::ai_service::tts::adapters::vits::VitsAdapter;
 use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::tts::local::adapter::LocalTtsAdapter;
@@ -41,6 +42,7 @@ pub struct TtsAvailability {
     pub fish_s2: bool,
     pub sbv2_local: bool,
     pub cosyvoice: bool,
+    pub sherpa: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -50,6 +52,7 @@ pub struct VoiceMaker {
     lang: String,
     /// 中文方言（仅 cosyvoice + lang=zh 时生效；空 = 普通话）
     voice_dialect: Option<String>,
+    character_path: Option<PathBuf>,
     temp_dir: PathBuf,
     audio_format: String,
     availability: TtsAvailability,
@@ -83,6 +86,18 @@ impl LocalCloudFallback {
 
 fn non_empty(s: &Option<String>) -> bool {
     s.as_ref().map(|v| !v.trim().is_empty()).unwrap_or(false)
+}
+
+/// 解析资源路径：绝对路径直接使用；相对路径则以角色目录为基解析。
+fn resolve_character_rel_path(character_path: &Option<PathBuf>, path: &str) -> PathBuf {
+    let p = Path::new(path);
+    if p.is_absolute() {
+        return p.to_path_buf();
+    }
+    match character_path {
+        Some(base) => base.join(path),
+        None => p.to_path_buf(),
+    }
 }
 
 fn gsv_prompt_language(prompt_text: &str) -> &'static str {
@@ -144,6 +159,7 @@ impl VoiceMaker {
             tts_type: String::new(),
             lang: "ja".into(),
             voice_dialect: None,
+            character_path: None,
             temp_dir,
             audio_format,
             availability: TtsAvailability::default(),
@@ -211,6 +227,8 @@ impl VoiceMaker {
         let sbv2_local = non_empty(&cfg.sbv2_local_voice_id);
         // CosyVoice 云端音色：角色选了 voice_id 即可用（Key 缺失在初始化时禁用）
         let cosyvoice = non_empty(&cfg.cosyvoice_voice_id);
+        // Sherpa-ONNX 本地模型：选了模型名即可用（模型目录缺失/无效在初始化时报错）
+        let sherpa = non_empty(&cfg.sherpa_onnx_model_name);
 
         self.availability = TtsAvailability {
             sva,
@@ -223,6 +241,7 @@ impl VoiceMaker {
             fish_s2,
             sbv2_local,
             cosyvoice,
+            sherpa,
         };
     }
 
@@ -478,6 +497,81 @@ impl VoiceMaker {
                     self.tts_config.indextts_api_url.clone(),
                     self.lang.clone(),
                 )));
+            },
+            "sherpa" | "sherpa-onnx" if self.availability.sherpa => {
+                // 本地 Sherpa-ONNX 模型：模型目录位于 sherpa_onnx_models_root()/<name>/。
+                let model_name = cfg.sherpa_onnx_model_name.clone().unwrap_or_default();
+                let models_root =
+                    crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
+                        .join(&model_name);
+                let model_type = cfg
+                    .sherpa_onnx_model_type
+                    .clone()
+                    .unwrap_or_else(|| "vits".to_string());
+                let language = cfg
+                    .sherpa_onnx_language
+                    .clone()
+                    .filter(|s| !s.trim().is_empty())
+                    .unwrap_or_else(|| self.lang.clone());
+                let voice = cfg
+                    .sherpa_onnx_voice
+                    .clone()
+                    .filter(|s| !s.trim().is_empty())
+                    .unwrap_or_else(|| "female".to_string());
+                let use_gpu = cfg.sherpa_onnx_use_gpu.unwrap_or(false);
+
+                match SherpaOnnxAdapter::new(
+                    self.tts_config.clone(),
+                    models_root.to_string_lossy().into_owned(),
+                    model_type,
+                    language,
+                    voice,
+                    use_gpu,
+                ) {
+                    Ok(mut adapter) => {
+                        if let Some(speed) = cfg.sherpa_onnx_speed {
+                            adapter.set_speed(speed.clamp(0.5, 2.0));
+                        }
+                        // 零样本参考音频（如配置了模型支持 + 参考路径/文本）
+                        let ref_audio = cfg
+                            .sherpa_onnx_ref_audio_path
+                            .clone()
+                            .filter(|s| !s.trim().is_empty());
+                        let ref_text = cfg
+                            .sherpa_onnx_ref_text
+                            .clone()
+                            .filter(|s| !s.trim().is_empty());
+                        match (ref_audio, ref_text) {
+                            (Some(ref_path), Some(ref_text)) => {
+                                let resolved =
+                                    resolve_character_rel_path(&self.character_path, &ref_path);
+                                match crate::ai_service::tts::adapters::sherpa_onnx::load_reference_audio(
+                                    &resolved,
+                                ) {
+                                    Ok((samples, sr)) => {
+                                        adapter.set_reference_audio(samples, sr, ref_text);
+                                        tracing::info!(
+                                            "Sherpa-ONNX 已加载参考音频: {}",
+                                            resolved.display()
+                                        );
+                                    },
+                                    Err(e) => tracing::warn!(
+                                        "Sherpa-ONNX 参考音频加载失败（忽略，走普通合成）: {e}"
+                                    ),
+                                }
+                            },
+                            (Some(_), None) | (None, Some(_)) => tracing::warn!(
+                                "Sherpa-ONNX 参考音频与参考文本需同时提供，当前只有一个，已忽略零样本克隆"
+                            ),
+                            (None, None) => {},
+                        }
+                        self.provider.sherpa = Some(Arc::new(adapter));
+                    },
+                    Err(e) => {
+                        tracing::warn!("Sherpa-ONNX 初始化失败: {e}");
+                        self.provider.disable();
+                    },
+                }
             },
             _ => {
                 tracing::warn!("TTS 类型不可用或未初始化: {tts_type}");

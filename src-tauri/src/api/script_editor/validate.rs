@@ -383,7 +383,7 @@ pub fn validate(
                 if let Some(ach_id) = obj.get("achievement_id").and_then(|v| v.as_str()) {
                     let id = ach_id.trim();
                     if !id.is_empty() {
-                        if builtin_achievement_ids.iter().any(|b| *b == id) {
+                        if builtin_achievement_ids.contains(&id) {
                             diags.push(
                                 Diagnostic::event(
                                     Severity::Error,
@@ -1605,7 +1605,7 @@ fn check_graph(
         if let Some(ns) = adj.get(node) {
             for n in ns {
                 match mark.get(*n).copied().unwrap_or(Mark::White) {
-                    Mark::White => dfs(*n, adj, mark, path, found),
+                    Mark::White => dfs(n, adj, mark, path, found),
                     Mark::Gray => {
                         if found.is_none() {
                             let start = path.iter().position(|p| *p == *n).unwrap_or(0);

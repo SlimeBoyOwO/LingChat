@@ -9,6 +9,8 @@ const handlers = new Map<string, WebSocketHandler>();
 const reconnectAttempts = ref(0);
 const maxReconnectAttempts = 5;
 const reconnectDelay = 3000;
+const maxReconnectDelay = 30000;
+let manuallyClosed = false;
 
 // 连接状态追踪
 const connectionReady = ref(false); // WebSocket 是否已经成功连接过
@@ -32,7 +34,7 @@ const shouldShowConnectionError = (): boolean => {
 
 // 显示连接错误并重置状态的辅助函数
 const handleConnectionError = (
-  errorMessage: string = i18n.global.t("api.websocket.connectFailed")
+  errorMessage: string = i18n.global.t("api.websocket.connectFailed"),
 ) => {
   // 检查是否应该显示错误
   if (!shouldShowConnectionError()) {
@@ -55,6 +57,7 @@ const handleConnectionError = (
 };
 
 export const connectWebSocket = (url: string) => {
+  manuallyClosed = false;
   socket.value = new WebSocket(url);
 
   socket.value.onopen = () => {
@@ -79,12 +82,25 @@ export const connectWebSocket = (url: string) => {
 
   socket.value.onclose = () => {
     console.log("WebSocket disconnected");
-    if (reconnectAttempts.value < maxReconnectAttempts) {
-      setTimeout(() => {
-        reconnectAttempts.value++;
-        connectWebSocket(url);
-      }, reconnectDelay);
+    if (manuallyClosed) return;
+
+    // 达到最大重试次数后不再放弃：提示用户同时继续重连（指数退避，封顶 30s）
+    if (reconnectAttempts.value >= maxReconnectAttempts) {
+      handleConnectionError();
     }
+
+    const backoff =
+      reconnectAttempts.value <= maxReconnectAttempts
+        ? reconnectDelay
+        : Math.min(
+            maxReconnectDelay,
+            reconnectDelay * 2 ** (reconnectAttempts.value - maxReconnectAttempts),
+          );
+
+    setTimeout(() => {
+      reconnectAttempts.value++;
+      connectWebSocket(url);
+    }, backoff);
   };
 
   socket.value.onerror = (error) => {
@@ -121,6 +137,7 @@ export const sendWebSocketChatMessage = (type: string, content: string) => {
 };
 
 export const closeWebSocket = () => {
+  manuallyClosed = true;
   if (socket.value) {
     socket.value.close();
     socket.value = null;

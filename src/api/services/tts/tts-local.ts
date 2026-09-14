@@ -168,3 +168,104 @@ export function synthesizePreview(params: {
 }): Promise<Uint8Array> {
   return invoke<Uint8Array>("tts_local_synthesize_preview", params);
 }
+
+// ---------------------------------------------------------------------------
+// Sherpa-ONNX 本地模型管理
+// ---------------------------------------------------------------------------
+
+export interface SherpaOnnxModelRecord {
+  id: string;
+  display_name: string;
+  model_type: string;
+  language: string;
+  voice: string;
+  size_bytes: number;
+  installed: boolean;
+  path: string;
+}
+
+interface SherpaDownloadProgressPayload {
+  asset_id: string;
+  percent: number;
+  bytes_done?: number;
+  total_bytes?: number;
+}
+
+const sherpaProgressBus = createProgressBus();
+let sherpaProgressUnlisten: UnlistenFn | null = null;
+let sherpaProgressSubscription: Promise<void> | null = null;
+
+async function ensureSherpaProgressSubscription(): Promise<void> {
+  if (sherpaProgressUnlisten) return;
+  if (!sherpaProgressSubscription) {
+    sherpaProgressSubscription = listen<SherpaDownloadProgressPayload>(
+      "tts://sherpa-download-progress",
+      (event) => {
+        sherpaProgressBus.dispatch({
+          asset_id: event.payload.asset_id,
+          percent: event.payload.percent,
+          bytes_done: 0,
+          total_bytes: 0,
+        });
+      }
+    )
+      .then((unlisten) => {
+        sherpaProgressUnlisten = unlisten;
+        if (sherpaProgressBus.listenerCount === 0) {
+          sherpaProgressUnlisten();
+          sherpaProgressUnlisten = null;
+        }
+      })
+      .finally(() => {
+        sherpaProgressSubscription = null;
+      });
+  }
+  await sherpaProgressSubscription;
+}
+
+/** 订阅 Sherpa 模型下载进度；返回取消订阅函数。 */
+export function onSherpaDownloadProgress(listener: ProgressListener): () => void {
+  void ensureSherpaProgressSubscription();
+  const unsubscribe = sherpaProgressBus.subscribe(listener);
+  return () => {
+    unsubscribe();
+    if (sherpaProgressBus.listenerCount === 0 && sherpaProgressUnlisten) {
+      sherpaProgressUnlisten();
+      sherpaProgressUnlisten = null;
+    }
+  };
+}
+
+export function listSherpaModels(): Promise<SherpaOnnxModelRecord[]> {
+  return invoke<SherpaOnnxModelRecord[]>("sherpa_list_models");
+}
+
+export function downloadSherpaModel(modelId: string): Promise<void> {
+  return invoke<void>("sherpa_download_model", { modelId });
+}
+
+export function deleteSherpaModel(modelId: string): Promise<void> {
+  return invoke<void>("sherpa_delete_model", { modelId });
+}
+
+// ---------------------------------------------------------------------------
+// Sherpa-ONNX 模型目录状态（目录固定为应用数据目录 data/sherpa_onnx_models，
+// 无需外部存储权限，granted 恒为 true，仅用于向用户展示模型存放位置）
+// ---------------------------------------------------------------------------
+
+export interface SherpaStorageStatus {
+  /** 是否可访问模型目录。目录位于应用数据目录，恒为 true。 */
+  granted: boolean;
+  /** 模型根目录（SherpaOnnxSettingsModal 展示给用户）。 */
+  model_root: string;
+}
+
+/** 查询 Sherpa-ONNX 模型目录状态（granted + 模型根目录路径）。 */
+export function checkSherpaStoragePermission(): Promise<SherpaStorageStatus> {
+  return invoke<SherpaStorageStatus>("check_sherpa_storage_permission");
+}
+
+/** 兼容保留：模型目录无需权限，恒返回已授权。 */
+export function requestSherpaStoragePermission(): Promise<SherpaStorageStatus> {
+  return invoke<SherpaStorageStatus>("request_sherpa_storage_permission");
+}

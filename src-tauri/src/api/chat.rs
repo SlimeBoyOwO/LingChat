@@ -38,9 +38,11 @@ pub async fn send_chat_message(
         return Err("消息内容不能为空".to_string());
     }
 
-    // --- 调试指令处理 ---
+    // --- 调试指令处理（仅拦截已识别的指令；未知 `/` 消息放行，视为普通聊天） ---
     if text.starts_with('/') {
-        return handle_debug_command(&app, &text).await;
+        if let Some(result) = handle_debug_command(&app, &text).await {
+            return result;
+        }
     }
 
     let state = app.state::<AppState>();
@@ -188,6 +190,7 @@ pub async fn send_chat_message(
                 &gs,
                 &adventures,
             )
+            .await
             .unwrap_or_default()
         };
         for info in &newly_unlocked {
@@ -210,7 +213,10 @@ pub async fn send_chat_message(
 }
 
 /// 处理以 "/" 开头的调试指令（仅在后端日志输出，不发往前端）。
-async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String> {
+///
+/// 返回 `Some(result)` 表示该指令已被识别并处理（调用方立即返回其结果）；
+/// 返回 `None` 表示未知指令，调用方应将其当作普通聊天消息继续处理，避免消息被静默丢弃。
+async fn handle_debug_command(app: &AppHandle, text: &str) -> Option<Result<(), String>> {
     match text {
         "/查看记忆" => {
             let state = app.state::<AppState>();
@@ -221,7 +227,7 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
                 Some(id) => id,
                 None => {
                     tracing::warn!("没有当前绑定的角色。");
-                    return Ok(());
+                    return Some(Ok(()));
                 },
             };
 
@@ -229,7 +235,7 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
                 Some(r) => r,
                 None => {
                     tracing::warn!("角色 ID {} 未加载。", current_id);
-                    return Ok(());
+                    return Some(Ok(()));
                 },
             };
 
@@ -279,11 +285,15 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
             }
         },
         other if other.starts_with('/') => {
-            tracing::warn!("未知调试指令: {}。可用指令: /查看记忆, /查看台词", other);
+            tracing::warn!(
+                "未知调试指令: {}，将按普通聊天消息处理。可用指令: /查看记忆, /查看台词",
+                other
+            );
+            return None;
         },
         _ => unreachable!(),
     }
-    Ok(())
+    Some(Ok(()))
 }
 
 /// 回溯对话：将台词列表截断到指定玩家消息之前（移除该消息及之后所有内容）。

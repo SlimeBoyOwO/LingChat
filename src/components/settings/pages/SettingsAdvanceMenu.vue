@@ -43,6 +43,24 @@
       </MenuItem>
     </div>
 
+    <!-- 记忆嵌入 -->
+    <div
+      class="h-full cursor-pointer transition-all duration-300"
+      @click="emit('navigate', 'embedding')"
+    >
+      <MenuItem :title="$t('advance.menu.embeddingTitle')" size="large">
+        <template #header>
+          <BrainCircuit :size="20" />
+        </template>
+        <p class="mb-3 min-h-[68px] text-sm leading-relaxed text-white/50">
+          {{ $t("advance.menu.embeddingDesc") }}
+        </p>
+        <Button type="big" icon="setting" :icon_size="18">
+          {{ $t("advance.menu.embeddingButton") }}
+        </Button>
+      </MenuItem>
+    </div>
+
     <!-- 其他高级设置 -->
     <div
       class="h-full cursor-pointer transition-all duration-300"
@@ -146,6 +164,7 @@
   import {
     AudioLines,
     BookOpen,
+    BrainCircuit,
     Cast,
     Cpu,
     Mic,
@@ -162,7 +181,7 @@
   const { locale } = useI18n();
 
   const emit = defineEmits<{
-    navigate: [tab: "llm" | "tts" | "asr" | "other" | "tools" | "cast"];
+    navigate: [tab: "llm" | "tts" | "asr" | "embedding" | "other" | "tools" | "cast"];
   }>();
 
   // 内置 TTS 官方教程（LingBlog）

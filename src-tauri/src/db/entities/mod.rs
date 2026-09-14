@@ -1,4 +1,5 @@
 pub mod adventure_unlock;
+pub mod embedding;
 pub mod line;
 pub mod line_perception;
 pub mod memory_bank;

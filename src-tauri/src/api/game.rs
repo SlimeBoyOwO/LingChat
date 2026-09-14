@@ -146,7 +146,7 @@ async fn get_referenced_voice_files(db: &DatabaseConnection) -> Result<HashSet<S
         .into_tuple::<Option<String>>()
         .all(db)
         .await
-        .map(|v| v.into_iter().filter_map(|x| x).collect())
+        .map(|v| v.into_iter().flatten().collect())
         .map_err(|e| format!("查询语音文件引用失败: {e}"))
 }
 
@@ -411,10 +411,7 @@ pub(crate) async fn build_web_init_data(
 ) -> Result<WebInitData, String> {
     let character_settings = {
         let cid = service.init_character_id;
-        let cid = match cid {
-            Some(v) => v,
-            None => 0,
-        };
+        let cid = cid.unwrap_or_default();
         CharacterSettingsInit::from(
             &service
                 .get_role_settings_by_id(cid)
@@ -422,8 +419,6 @@ pub(crate) async fn build_web_init_data(
                 .map_err(|e| format!("获取角色设定失败: {}", e))?,
         )
     };
-
-    tracing::info!("character_settings: {:?}", character_settings);
 
     let (
         lines,
@@ -476,7 +471,8 @@ pub(crate) async fn build_web_init_data(
             let store = SceneStore::new(&service.data_dir);
             if let Ok(scenes) = store.load_all() {
                 if !scenes.is_empty() {
-                    let idx = chrono::Utc::now().timestamp_subsec_nanos() as usize % scenes.len();
+                    use rand::Rng;
+                    let idx = rand::thread_rng().gen_range(0..scenes.len());
                     sid = Some(scenes[idx].id.clone());
                 }
             }

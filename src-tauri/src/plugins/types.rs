@@ -8,8 +8,10 @@ use serde_json::Value;
 /// 配置字段的类型（前端据此渲染表单控件）。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ConfigKind {
     /// 普通文本输入
+    #[default]
     String,
     /// 密码输入（不回显明文）
     Secret,
@@ -17,12 +19,6 @@ pub enum ConfigKind {
     Number,
     /// 开关
     Boolean,
-}
-
-impl Default for ConfigKind {
-    fn default() -> Self {
-        Self::String
-    }
 }
 
 /// 插件级配置字段声明（前端设置页据此生成表单）。

@@ -7,7 +7,12 @@ export default {
     other: "其他進階設定",
     tts: "TTS 設置",
     asr: "語音識別",
+    embedding: "記憶嵌入",
     cast: "投屏設置",
+  },
+  embedding: {
+    title: "記憶嵌入",
+    desc: "配置用於語義檢索同手動筆記去重嘅本地嵌入模型，並查看運行狀態",
   },
   menu: {
     llmTitle: "大模型管理",
@@ -23,6 +28,9 @@ export default {
     asrTitle: "語音識別",
     asrDesc: "設定阿里雲語音識別、發送方式同埋咪高峰監聽",
     asrButton: "進入語音識別介面",
+    embeddingTitle: "記憶嵌入",
+    embeddingDesc: "配置用於語義檢索同手動筆記去重嘅本地嵌入模型，並查看運行狀態",
+    embeddingButton: "入去記憶嵌入界面",
     otherTitle: "其他進階設定",
     otherDesc: "調整系統環境配置、提示詞模板、對話參數呢啲進階選項（重新開機之後先至生效）",
     otherButton: "入去其他進階設定界面",

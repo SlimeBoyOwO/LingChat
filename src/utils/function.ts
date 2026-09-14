@@ -8,7 +8,7 @@ export const convertToGameMessages = (lines: GameLine[]): GameMessage[] => {
       line.attribute !== "SYSTEM" &&
       line.attribute !== "system" &&
       line.attribute !== "tool" &&
-      line.attribute !== "TOOL"
+      line.attribute !== "TOOL",
   );
 
   return filteredLines.map((line, index, array) => {
@@ -28,7 +28,7 @@ export const convertToGameMessages = (lines: GameLine[]): GameMessage[] => {
     }
 
     return {
-      type: line.attribute === "USER" ? "message" : "reply",
+      type: line.attribute === "user" ? "message" : "reply",
       displayName: line.display_name || "",
       content: filteredContent,
       emotion: line.predicted_emotion || undefined,
@@ -36,7 +36,7 @@ export const convertToGameMessages = (lines: GameLine[]): GameMessage[] => {
       isFinal: isFinal,
       motionText: line.action_content || undefined,
       originalTag: line.original_emotion || undefined,
-      timestamp: Date.now(),
+      timestamp: Date.now() - (array.length - 1 - index) * 1000,
     };
   });
 };

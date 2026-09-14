@@ -33,6 +33,10 @@ use super::messages::{CompleteManifest, DeviceIdentity};
 
 // ─── 服务端状态 ──────────────────────────────────────────────
 
+/// 请求体大小上限（DB 记录 JSON 可能较大，但必须封顶防止恶意超大 body 打爆内存）。
+/// push-file 使用流式 Body 提取器不受此限制。
+const MAX_BODY_SIZE: usize = 256 * 1024 * 1024;
+
 /// axum 共享状态。
 #[derive(Clone)]
 struct ServerState {
@@ -67,7 +71,7 @@ pub async fn start_server(app: tauri::AppHandle, identity: &DeviceIdentity) -> R
         .route("/push-delete", post(push_delete_handler))
         .route("/db-records", get(db_records_handler))
         .route("/db-records", post(db_records_push_handler))
-        .layer(DefaultBodyLimit::disable())
+        .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .with_state(state);
 
     // 绑定随机端口
@@ -228,17 +232,28 @@ async fn push_file_handler(
                 format!("创建目录失败: {e}"),
             )
         })?;
-        validate_path_in_base(&parent.to_path_buf(), &state.data_dir)
+        validate_path_in_base(parent, &state.data_dir)
             .map_err(|e| AppError(StatusCode::FORBIDDEN, e))?;
     }
 
-    // 原子写入：先流式写 .tmp，再 rename；若 rename 失败则暂存
-    let tmp_path = file_path.with_extension(format!(
-        "{}.tmp",
-        file_path
-            .extension()
-            .map(|e| format!(".{}", e.to_string_lossy()))
+    // 原子写入：先流式写唯一临时文件，再 rename；若 rename 失败则暂存。
+    // 临时文件带唯一后缀（pid + 纳秒时间戳），避免并发推送同一文件时
+    // 共享同一个 .tmp 路径导致分块交错写入、最终得到损坏文件。
+    let unique_suffix = format!(
+        "{}.{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
+            .as_nanos()
+    );
+    let tmp_path = file_path.with_file_name(format!(
+        "{}.{}.tmp",
+        file_path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "file".to_string()),
+        unique_suffix
     ));
 
     // 流式写入 + 边写边算 SHA-256
@@ -250,67 +265,76 @@ async fn push_file_handler(
     })?;
 
     use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    let mut stream = body.into_data_stream();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| {
-            AppError(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("接收数据失败: {e}"),
-            )
-        })?;
-        tokio::io::AsyncWriteExt::write_all(&mut dest, &chunk)
+
+    let result: Result<Json<serde_json::Value>, AppError> = async {
+        let mut hasher = Sha256::new();
+        let mut stream = body.into_data_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| {
+                AppError(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("接收数据失败: {e}"),
+                )
+            })?;
+            tokio::io::AsyncWriteExt::write_all(&mut dest, &chunk)
+                .await
+                .map_err(|e| {
+                    AppError(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("写入临时文件失败: {e}"),
+                    )
+                })?;
+            hasher.update(&chunk);
+        }
+
+        // 确保数据落盘
+        tokio::io::AsyncWriteExt::flush(&mut dest)
             .await
             .map_err(|e| {
                 AppError(
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("写入临时文件失败: {e}"),
+                    format!("flush 失败: {e}"),
                 )
             })?;
-        hasher.update(&chunk);
-    }
+        drop(dest);
 
-    // 确保数据落盘
-    tokio::io::AsyncWriteExt::flush(&mut dest)
-        .await
-        .map_err(|e| {
-            AppError(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("flush 失败: {e}"),
-            )
-        })?;
-    drop(dest);
+        let sha256 = format!("{:x}", hasher.finalize());
 
-    let sha256 = format!("{:x}", hasher.finalize());
-
-    if let Err(e) = std::fs::rename(&tmp_path, &file_path) {
-        // 目标文件被锁定（如 SQLite DB），回退到暂存
-        match super::staging::stage_file(&state.data_dir, &query.path, &tmp_path) {
-            Ok(()) => {
-                let _ = std::fs::remove_file(&tmp_path);
-                return Ok(Json(serde_json::json!({
-                    "ok": true,
-                    "staged": true,
-                    "sha256": sha256,
-                })));
-            },
-            Err(se) => {
-                return Err(AppError(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!(
-                        "重命名失败且暂存失败: {} (rename: {}, stage: {})",
-                        query.path, e, se
-                    ),
-                ));
-            },
+        if let Err(e) = std::fs::rename(&tmp_path, &file_path) {
+            // 目标文件被锁定（如 SQLite DB），回退到暂存
+            match super::staging::stage_file(&state.data_dir, &query.path, &tmp_path) {
+                Ok(()) => {
+                    let _ = std::fs::remove_file(&tmp_path);
+                    return Ok(Json(serde_json::json!({
+                        "ok": true,
+                        "staged": true,
+                        "sha256": sha256,
+                    })));
+                },
+                Err(se) => {
+                    return Err(AppError(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!(
+                            "重命名失败且暂存失败: {} (rename: {}, stage: {})",
+                            query.path, e, se
+                        ),
+                    ));
+                },
+            }
         }
-    }
 
-    Ok(Json(serde_json::json!({
-        "ok": true,
-        "staged": false,
-        "sha256": sha256,
-    })))
+        Ok(Json(serde_json::json!({
+            "ok": true,
+            "staged": false,
+            "sha256": sha256,
+        })))
+    }
+    .await;
+    // 注意：rename 成功时 tmp_path 已被移动，remove_file 失败会被忽略。
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+    }
+    result
 }
 
 /// POST /push-delete?path=... — 接收删除指令（软删除到 .trash/）。

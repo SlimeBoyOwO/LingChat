@@ -34,6 +34,12 @@ pub struct GpuDetectionCache {
     pub info: Mutex<Option<GpuInfo>>,
 }
 
+impl Default for GpuDetectionCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GpuDetectionCache {
     pub fn new() -> Self {
         Self {
@@ -225,7 +231,7 @@ fn grade_nvidia_by_device_id(device_id: u32) -> Option<PerfTier> {
 /// 只收录名字规则覆盖不精确 / 易误判的型号：
 /// - 名字不含型号（驱动只显示 "FirePro Series Graphics Adapter" 等）→ 靠 ID 定级
 /// - 远古弱卡名字前缀区分不出代际的 M / RG 系列 → LOW（名字规则会误判为现代卡）
-/// 数据来源：PCI ID Repository (pci-ids.ucw.cz, vendor 1002)。
+/// - 数据来源：PCI ID Repository (pci-ids.ucw.cz, vendor 1002)。
 fn grade_amd_by_device_id(device_id: u32) -> Option<PerfTier> {
     match device_id {
         // --- 名字不含型号，只能靠 ID 定级 ---
@@ -548,7 +554,7 @@ fn parse_renderer(renderer: &str) -> (u32, String) {
     // 在第一个后端描述关键字处截断（Direct3D / Vulkan / OpenGL / Metal / d3d 等）
     let cut = ["direct3d", "vulkan", "opengl", "metal", "d3d11", "d3d12"]
         .iter()
-        .filter_map(|kw| name_part.to_ascii_lowercase().find(kw).map(|i| i))
+        .filter_map(|kw| name_part.to_ascii_lowercase().find(kw))
         .min()
         .unwrap_or(name_part.len());
     let name = name_part[..cut].trim().to_string();

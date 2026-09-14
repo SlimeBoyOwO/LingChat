@@ -7,11 +7,13 @@ use sea_orm::DatabaseConnection;
 use tokio::sync::Mutex;
 
 use crate::ai_service::config::AIServiceConfig;
+use crate::ai_service::embedding::EmbeddingManager;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
 use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::ai_service::llm::LlmSlot;
+use crate::ai_service::semantic_memory::SemanticMemory;
 use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::tts::TtsConfig;
@@ -30,9 +32,13 @@ pub struct AIService {
 
     /// Script/story mode engine: discovers and runs scripts.
     pub script_manager: ScriptManager,
+
+    /// 独立语义记忆（与普通记忆库解耦的向量库）。未启用时为 `None`。
+    pub semantic_memory: Option<Arc<SemanticMemory>>,
 }
 
 impl AIService {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: DatabaseConnection,
         data_dir: PathBuf,
@@ -43,6 +49,8 @@ impl AIService {
         memory_update_interval: u32,
         memory_recent_window: u32,
         memory_limits: MemorySectionLimits,
+        embedding: Option<Arc<EmbeddingManager>>,
+        semantic_memory: Option<Arc<SemanticMemory>>,
         memory_inject_continue_user: bool,
     ) -> Self {
         // Initialize the event handler registry before any script is run
@@ -58,6 +66,8 @@ impl AIService {
             memory_update_interval,
             memory_recent_window,
             memory_limits,
+            embedding,
+            semantic_memory.clone(),
             memory_inject_continue_user,
         );
         let game_status = Arc::new(Mutex::new(GameStatus::new(role_manager)));
@@ -70,6 +80,7 @@ impl AIService {
             init_character_id: None,
             prompt_options: None,
             script_manager,
+            semantic_memory,
         }
     }
 
@@ -178,6 +189,12 @@ impl AIService {
     async fn clear_game_status(&mut self) {
         let mut gs = self.game_status.lock().await;
         gs.role_manager.invalidate_memory_history();
+        // 清掉上一局「一键整理当前对话」归档的台词片段，避免残留到新角色的
+        // 语义检索/去重候选里（load_save 恢复时同样会先清理再写回本档）。
+        gs.role_manager
+            .memory_index()
+            .clear_conversation_fragments()
+            .await;
         gs.role_manager.reset_roles();
         gs.line_list.clear();
         gs.onstage_role_ids.clear();

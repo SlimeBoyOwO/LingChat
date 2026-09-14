@@ -258,7 +258,7 @@ impl EmotionClassifier {
             .id2label
             .get(&pred_id)
             .cloned()
-            .unwrap_or_else(|| String::new());
+            .unwrap_or_else(String::new);
         tracing::debug!("情绪识别: {text} -> {label} ({:.2}%)", pred_prob * 100.0);
         Ok(EmotionPrediction {
             label,
@@ -284,8 +284,8 @@ impl EmotionClassifier {
 
         let mut mask: Vec<i64> = vec![1; ids.len()];
         let pad_len = MAX_SEQ_LEN - ids.len();
-        ids.extend(std::iter::repeat(self.pad_id).take(pad_len));
-        mask.extend(std::iter::repeat(0i64).take(pad_len));
+        ids.extend(std::iter::repeat_n(self.pad_id, pad_len));
+        mask.extend(std::iter::repeat_n(0i64, pad_len));
 
         (ids, mask)
     }
@@ -314,7 +314,7 @@ fn top_k(probs: &[f32], k: usize, id2label: &HashMap<i64, String>) -> Vec<(Strin
             let label = id2label
                 .get(&(i as i64))
                 .cloned()
-                .unwrap_or_else(|| String::new());
+                .unwrap_or_else(String::new);
             (label, probs[i])
         })
         .collect()

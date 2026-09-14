@@ -9,6 +9,7 @@ use tauri::Manager;
 use uuid::Uuid;
 
 use crate::AppState;
+use crate::ai_service::embedding::FragmentSource;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::types::ToolDefinition;
 use crate::api::character::read_character_settings;
@@ -296,6 +297,19 @@ impl Tool for AddNote {
 
         let role_name = current_role_name_for_write(context).await?;
         let mut notes = load_role_notes(&role_name).map_err(ToolError::Execution)?;
+
+        // 语义去重：嵌入索引未启用或其检测到与现有笔记高度相似时，跳过重复。
+        if let Ok(app2) = context.require_app() {
+            let gs = game_status_handle(&app2).await;
+            let gs = gs.lock().await;
+            let idx = gs.role_manager.memory_index();
+            if idx.enabled() && idx.is_duplicate(&content, None).await {
+                return Err(ToolError::Execution(
+                    "这条笔记与已有记忆语义重复，未添加（如需强制保存请改写内容）".into(),
+                ));
+            }
+        }
+
         let note = Note {
             id: Uuid::new_v4().to_string(),
             content,
@@ -305,6 +319,24 @@ impl Tool for AddNote {
         let id = note.id.clone();
         notes.push(note);
         save_role_notes(&role_name, &notes).map_err(ToolError::Execution)?;
+        // 语义索引增量同步：新笔记立即进入检索/去重候选，无需等待下次记忆重建。
+        if let Ok(app2) = context.require_app() {
+            let gs = game_status_handle(&app2).await;
+            let gs = gs.lock().await;
+            let idx = gs.role_manager.memory_index();
+            if idx.enabled() {
+                let note_text = notes
+                    .iter()
+                    .find(|n| n.id == id)
+                    .map(|n| n.content.clone())
+                    .unwrap_or_default();
+                if !note_text.trim().is_empty() {
+                    let _ = idx
+                        .add(&[(note_text, FragmentSource::Note(role_name.clone()))])
+                        .await;
+                }
+            }
+        }
         Ok(json!({"ok": true, "id": id}))
     }
 }
@@ -367,12 +399,105 @@ impl Tool for UpdateNote {
 
         let role_name = current_role_name_for_write(context).await?;
         let mut notes = load_role_notes(&role_name).map_err(ToolError::Execution)?;
-        let Some(note) = notes.iter_mut().find(|n| n.id == id) else {
-            return Err(ToolError::Execution(format!("笔记 {id} 不存在")));
+        let (old_content, new_content) = {
+            let Some(note) = notes.iter_mut().find(|n| n.id == id) else {
+                return Err(ToolError::Execution(format!("笔记 {id} 不存在")));
+            };
+            let old_content = note.content.clone();
+            apply_note_update(note, content, tags);
+            let new_content = note.content.clone();
+            (old_content, new_content)
         };
-        apply_note_update(note, content, tags);
         save_role_notes(&role_name, &notes).map_err(ToolError::Execution)?;
+        // 语义索引增量同步：内容变化时替换对应片段（仅标签变化不必动索引）。
+        if old_content != new_content {
+            if let Ok(app2) = context.require_app() {
+                let gs = game_status_handle(&app2).await;
+                let gs = gs.lock().await;
+                let idx = gs.role_manager.memory_index();
+                if idx.enabled() {
+                    let _ = idx
+                        .replace(
+                            &FragmentSource::Note(role_name.clone()),
+                            &old_content,
+                            &new_content,
+                        )
+                        .await;
+                }
+            }
+        }
         Ok(json!({"ok": true, "id": id}))
+    }
+}
+
+/// memory_search：按语义相似度检索当前角色的记忆库与笔记。
+pub struct SearchMemory;
+
+#[async_trait]
+impl Tool for SearchMemory {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            "memory_search",
+            "按语义相似度搜索当前角色的记忆库与手动笔记，返回最相关的记忆片段（用于精确召回过去的某段记忆）",
+            json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "要检索的内容或话题描述"}
+                },
+                "required": ["query"],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    async fn execute(
+        &self,
+        context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
+        let obj = require_object(&arguments, "memory_search")?;
+        let query = obj
+            .get("query")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .ok_or_else(|| ToolError::InvalidArguments("memory_search 需要 query".into()))?;
+        if query.trim().is_empty() {
+            return Err(ToolError::InvalidArguments(
+                "memory_search 的 query 不能为空".into(),
+            ));
+        }
+        let app = context.require_app()?;
+        let gs = game_status_handle(&app).await;
+        // 在 GameStatus 锁内只做快速检查 + 克隆检索上下文，随后释放锁再执行
+        // ONNX 编码推理，避免 CPU 密集推理长时间独占游戏状态锁。
+        let ctx = {
+            let gs = gs.lock().await;
+            let idx = gs.role_manager.memory_index();
+            if !idx.enabled() {
+                return Err(ToolError::Execution(
+                    "记忆嵌入未启用（需要配置 embedding.model_dir，指向含 model.onnx 的模型目录）"
+                        .into(),
+                ));
+            }
+            idx.search_context().await
+        };
+        let hits = ctx.search(&query, Some(5)).await;
+        let results: Vec<Value> = hits
+            .iter()
+            .map(|h| {
+                let source = match &h.source {
+                    FragmentSource::MemoryBank(s) => format!("memory_bank:{s}"),
+                    FragmentSource::Note(_) => "note".to_string(),
+                    FragmentSource::Conversation(_) => "conversation".to_string(),
+                };
+                json!({
+                    "source": source,
+                    "text": h.text,
+                    "similarity": h.score,
+                })
+            })
+            .collect();
+        Ok(json!({"query": query, "count": results.len(), "results": results}))
     }
 }
 
@@ -410,12 +535,26 @@ impl Tool for DeleteNote {
 
         let role_name = current_role_name_for_write(context).await?;
         let mut notes = load_role_notes(&role_name).map_err(ToolError::Execution)?;
+        let deleted_text = notes.iter().find(|n| n.id == id).map(|n| n.content.clone());
         let before = notes.len();
         notes.retain(|n| n.id != id);
         if notes.len() == before {
             return Err(ToolError::Execution(format!("笔记 {id} 不存在")));
         }
         save_role_notes(&role_name, &notes).map_err(ToolError::Execution)?;
+        // 语义索引增量同步：删除后从索引移除对应片段，避免检索到失效记忆。
+        if let Some(text) = deleted_text.filter(|t| !t.trim().is_empty()) {
+            if let Ok(app2) = context.require_app() {
+                let gs = game_status_handle(&app2).await;
+                let gs = gs.lock().await;
+                let idx = gs.role_manager.memory_index();
+                if idx.enabled() {
+                    let _ = idx
+                        .remove(&FragmentSource::Note(role_name.clone()), &text)
+                        .await;
+                }
+            }
+        }
         Ok(json!({"ok": true, "id": id}))
     }
 }

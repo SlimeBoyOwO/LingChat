@@ -69,6 +69,14 @@ fn strip_jp_action_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"<[^>]*>|（[^）]*）").expect("invalid regex"))
 }
+fn emotion_bracket_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"【[^】]*】").expect("invalid regex"))
+}
+fn curly_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\{[^{}]*\}").expect("invalid regex"))
+}
 
 /// MessageProcessor 配置。
 #[derive(Debug, Clone, Copy)]
@@ -152,7 +160,7 @@ impl MessageProcessor {
             } else if !japanese_text.is_empty() {
                 // 清理：去掉可能出现在日文里的 情绪/动作 片段
                 let step1 = motion_re().replace_all(&japanese_text, "");
-                let step2 = Regex::new(r"【[^】]*】").unwrap().replace_all(&step1, "");
+                let step2 = emotion_bracket_re().replace_all(&step1, "");
                 step2.trim().replace('~', "。")
             } else {
                 japanese_text
@@ -200,14 +208,14 @@ impl MessageProcessor {
 
         // 3. 清理违规内容
         // 删除 {} 内容
-        let curly_re = Regex::new(r"\{[^{}]*\}").unwrap();
+        let curly_re = curly_re();
         processed = curly_re.replace_all(&processed, "").to_string();
 
         // 1. 统一括号风格（不转换书名号，书名号单独处理）
         processed = processed.replace('＜', "<").replace('＞', ">");
 
         // 移除书名号《》（保留内容，避免被误识别为日文标签）
-        processed = processed.replace('《', "").replace('》', "");
+        processed = processed.replace(['《', '》'], "");
 
         // 2. 修复未闭合标签（不使用正则前瞻）
         processed = Self::fix_unclosed_tags(&processed);
@@ -349,8 +357,7 @@ pub fn fix_ai_generated_text(text: &str) -> String {
     let text = text
         .replace('＜', "<")
         .replace('＞', ">")
-        .replace('《', "")
-        .replace('》', "");
+        .replace(['《', '》'], "");
     let re = emotion_re();
     let mut parts: Vec<String> = Vec::new();
     let mut has_any = false;

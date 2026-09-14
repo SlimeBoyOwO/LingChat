@@ -6,7 +6,12 @@ export default {
     other: "その他の詳細設定",
     tts: "TTS 設定",
     asr: "音声認識",
+    embedding: "メモリー埋め込み",
     cast: "投写設定",
+  },
+  embedding: {
+    title: "メモリー埋め込み",
+    desc: "セマンティック検索とメモの重複排除に使うローカル埋め込みモデルを設定し、実行状態を確認します",
   },
   menu: {
     llmTitle: "モデル管理",
@@ -22,6 +27,10 @@ export default {
     asrTitle: "音声認識",
     asrDesc: "阿里雲音声認識、送信方式、マイク自動監視を設定",
     asrButton: "音声認識画面へ",
+    embeddingTitle: "メモリー埋め込み",
+    embeddingDesc:
+      "セマンティック検索とメモの重複排除に使うローカル埋め込みモデルを設定し、実行状態を確認します",
+    embeddingButton: "メモリー埋め込み画面へ",
     otherTitle: "その他の詳細設定",
     otherDesc:
       "システム環境設定、プロンプトテンプレート、会話パラメータなどの詳細オプション（再起動後に有効）",

@@ -53,6 +53,17 @@
         <button
           class="rounded-md px-4 py-1.5 text-sm font-medium transition-all duration-200"
           :class="
+            advanceTab === 'embedding'
+              ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+              : 'text-white/60 hover:text-white/80'
+          "
+          @click="advanceTab = 'embedding'"
+        >
+          {{ $t("advance.tabs.embedding") }}
+        </button>
+        <button
+          class="rounded-md px-4 py-1.5 text-sm font-medium transition-all duration-200"
+          :class="
             advanceTab === 'tools'
               ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
               : 'text-white/60 hover:text-white/80'
@@ -95,14 +106,47 @@
         <SettingsLlmProviders />
       </div>
 
-      <!-- ====== 本地 TTS ====== -->
-      <div v-else-if="advanceTab === 'tts'" class="min-h-0 flex-1">
-        <SettingsTts />
+      <!-- ====== 本地 TTS / Sherpa-ONNX ====== -->
+      <div v-else-if="advanceTab === 'tts'" class="flex min-h-0 flex-1 flex-col">
+        <!-- 子区块切换：本地 TTS / Sherpa-ONNX -->
+        <div class="mb-4 flex shrink-0 items-center gap-2">
+          <button
+            class="rounded-md px-4 py-1.5 text-sm font-medium transition-all duration-200"
+            :class="
+              ttsSection === 'tts'
+                ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+                : 'text-white/60 hover:text-white/80'
+            "
+            @click="ttsSection = 'tts'"
+          >
+            {{ $t("advance.tabs.tts") }}
+          </button>
+          <button
+            class="rounded-md px-4 py-1.5 text-sm font-medium transition-all duration-200"
+            :class="
+              ttsSection === 'sherpa'
+                ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+                : 'text-white/60 hover:text-white/80'
+            "
+            @click="ttsSection = 'sherpa'"
+          >
+            {{ $t("settings.sherpa.title") }}
+          </button>
+        </div>
+        <div class="min-h-0 flex-1">
+          <SettingsTts v-show="ttsSection === 'tts'" />
+          <SettingsSherpa v-show="ttsSection === 'sherpa'" />
+        </div>
       </div>
 
       <!-- ====== 语音识别 ====== -->
       <div v-else-if="advanceTab === 'asr'" class="min-h-0 flex-1">
         <SettingsAsr />
+      </div>
+
+      <!-- ====== 记忆嵌入 ====== -->
+      <div v-else-if="advanceTab === 'embedding'" class="min-h-0 flex-1">
+        <SettingsEmbedding />
       </div>
 
       <!-- ====== 工具配置 ====== -->
@@ -132,7 +176,9 @@
   import SettingsLlmProviders from "./SettingsLlmProviders.vue";
   import SettingsAdvanceMenu from "./SettingsAdvanceMenu.vue";
   import SettingsTts from "./SettingsTts.vue";
+  import SettingsSherpa from "./SettingsSherpa.vue";
   import SettingsAsr from "./SettingsAsr.vue";
+  import SettingsEmbedding from "./SettingsEmbedding.vue";
   import SettingsTools from "./SettingsTools.vue";
   import SettingsAdvanceOther from "./SettingsAdvanceOther.vue";
   import { useUIStore } from "@/stores/modules/ui/ui";
@@ -149,6 +195,9 @@
   });
 
   const advanceOtherRef = ref<InstanceType<typeof SettingsAdvanceOther> | null>(null);
+
+  // TTS 子区块：本地 TTS / Sherpa-ONNX
+  const ttsSection = ref<"tts" | "sherpa">("tts");
 
   const emit = defineEmits<{
     "remove-more-menu-from-b": [];

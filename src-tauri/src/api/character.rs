@@ -107,8 +107,10 @@ pub(crate) fn read_character_settings(resource_folder: &str) -> CharacterSetting
     let yaml_path = resolve_character_dir(resource_folder).join("settings.yml");
     if !yaml_path.exists() {
         tracing::warn!("角色设置文件不存在: {:?}", yaml_path);
-        let mut s = CharacterSettings::default();
-        s.character_folder = resource_folder.to_string();
+        let s = CharacterSettings {
+            character_folder: resource_folder.to_string(),
+            ..Default::default()
+        };
         return s;
     }
     match fs::read_to_string(&yaml_path) {
@@ -119,16 +121,18 @@ pub(crate) fn read_character_settings(resource_folder: &str) -> CharacterSetting
             },
             Err(e) => {
                 tracing::error!("解析 {:?} 失败: {}", yaml_path, e);
-                let mut s = CharacterSettings::default();
-                s.character_folder = resource_folder.to_string();
-                s
+                CharacterSettings {
+                    character_folder: resource_folder.to_string(),
+                    ..Default::default()
+                }
             },
         },
         Err(e) => {
             tracing::error!("读取 {:?} 失败: {}", yaml_path, e);
-            let mut s = CharacterSettings::default();
-            s.character_folder = resource_folder.to_string();
-            s
+            CharacterSettings {
+                character_folder: resource_folder.to_string(),
+                ..Default::default()
+            }
         },
     }
 }

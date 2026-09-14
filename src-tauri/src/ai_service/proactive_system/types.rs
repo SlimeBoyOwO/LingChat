@@ -4,21 +4,21 @@ use std::collections::HashMap;
 /// 用户当前的状态分类。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UserState {
-    IDLE,
-    BROWSING,
-    WORK,
-    GAME,
-    CASUAL,
+    Idle,
+    Browsing,
+    Work,
+    Game,
+    Casual,
 }
 
 impl UserState {
     pub fn as_str(&self) -> &'static str {
         match self {
-            UserState::IDLE => "IDLE",
-            UserState::BROWSING => "BROWSING",
-            UserState::WORK => "WORK",
-            UserState::GAME => "GAME",
-            UserState::CASUAL => "CASUAL",
+            UserState::Idle => "IDLE",
+            UserState::Browsing => "BROWSING",
+            UserState::Work => "WORK",
+            UserState::Game => "GAME",
+            UserState::Casual => "CASUAL",
         }
     }
 }

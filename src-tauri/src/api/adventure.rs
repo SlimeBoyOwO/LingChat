@@ -282,6 +282,7 @@ pub async fn check_adventure_unlocks(app: AppHandle) -> Result<Vec<UnlockedAdven
         }
 
         let result = trigger::check_all_adventures(db, &ach_mgr, &game_status, &adventures)
+            .await
             .map_err(|e| format!("检测冒险解锁失败: {}", e))?;
         result
     };
@@ -402,7 +403,9 @@ pub(crate) async fn handle_adventure_completion(
             .collect();
         let gs = service.game_status.lock().await;
         let ach_mgr = achievement_manager.lock().await;
-        trigger::check_all_adventures(db, &ach_mgr, &gs, &adventures).unwrap_or_default()
+        trigger::check_all_adventures(db, &ach_mgr, &gs, &adventures)
+            .await
+            .unwrap_or_default()
     };
 
     for info in &newly_unlocked {

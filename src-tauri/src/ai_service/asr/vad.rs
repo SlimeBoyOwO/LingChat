@@ -243,9 +243,9 @@ impl AsrVad {
 }
 
 /// 解析 VAD 模型路径：`data_dir/third_party/asr_vad/silero-vad.onnx`。
-/// （data_dir 按平台由 [`crate::init::static_copy`] 解析，与 emotion 模型同策略。）
+/// （data_dir 按平台由 [`crate::data_dir`] 解析，与 emotion 模型同策略。）
 fn resolve_vad_model_path(_app: &AppHandle) -> Result<PathBuf, AsrError> {
-    let data_dir = crate::init::static_copy::get_data_dir().clone();
+    let data_dir = crate::data_dir::get_data_dir().clone();
     let path = data_dir
         .join("third_party")
         .join("asr_vad")

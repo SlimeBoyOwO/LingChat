@@ -92,21 +92,21 @@ impl StrategyDispatcher {
         let mut screen_w = config.screen_weight;
 
         if todo_w <= 0.0 {
-            todo_w = if perception.state == UserState::WORK {
+            todo_w = if perception.state == UserState::Work {
                 60.0
             } else {
                 10.0
             };
         }
         if topic_w <= 0.0 {
-            topic_w = if perception.state == UserState::IDLE {
+            topic_w = if perception.state == UserState::Idle {
                 80.0
             } else {
                 60.0
             };
         }
         if screen_w <= 0.0 {
-            screen_w = if perception.state == UserState::GAME {
+            screen_w = if perception.state == UserState::Game {
                 60.0
             } else {
                 30.0

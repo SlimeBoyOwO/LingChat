@@ -70,6 +70,10 @@ const asrLockedUntil = ref(0);
 /** auto_send 模式：识别完成后延迟发送的毫秒数（给用户看到结果的窗口，防乱序）。
  *  导出供 GameDialog / ChatInput 的 asr-send 监听复用（同一延迟语义）。 */
 export const ASR_AUTO_SEND_DELAY_MS = 800;
+/** fill_only 模式：识别结果填入输入框后短暂锁定 ASR 的毫秒数（§1.10）。
+ *  防 auto_listen 立即再触发录音、覆盖刚填入的内容（手动触发不受此锁限制）。
+ *  导出供 GameDialog / ChatInput 的 asr-text 监听复用（同一语义）。 */
+export const ASR_DISPLAY_MS = 400;
 /** 录音硬上限（samples）：1 分钟 @ 16kHz。达到后自动 stop()——
  *  防止按钮长按/异常会话无限录音（VAD 端 max_segment_frames 同为 60s，两处对齐；
  *  有界也顺带解决长时间录音时 pcmBuffer 的无限内存增长）。 */
@@ -86,6 +90,7 @@ const ENERGY_WARMUP_MS = 100;
 const voicePlaying = ref(false);
 /** 输入框桥：GameDialog 注册，供 partial 实时写入 / 拼接基准读取 */
 let inputBridge: { getText: () => string; setText: (v: string) => void } | null = null;
+let inputBridgeId = 0;
 /** 录音开始时的输入框内容快照（拼接语义的基准：partial 只追加在这之后） */
 let baseText = "";
 /** 语音会话进行中（GameDialog 据此 readonly 输入框，语音期间禁止手动输入） */
@@ -221,12 +226,20 @@ function updateAsrAvailability(): void {
   }
 }
 
-/** GameDialog 调用：注册输入框读写桥（partial 写入 / 拼接基准） */
+/** GameDialog 调用：注册输入框读写桥（partial 写入 / 拼接基准）。
+ *  返回 unregister：组件卸载时调用，避免 bridge 悬挂指向已卸载组件；带 token
+ *  防竞态（若其他组件已注册新 bridge，则不误删新 bridge）。 */
 export function registerAsrInputBridge(b: {
   getText: () => string;
   setText: (v: string) => void;
-}): void {
+}): () => void {
+  const id = ++inputBridgeId;
   inputBridge = b;
+  return () => {
+    if (id === inputBridgeId) {
+      inputBridge = null;
+    }
+  };
 }
 
 /** 流式是否生效：设置开关 + 当前生效模型的流式能力（模型级权威判定，
@@ -670,7 +683,7 @@ function ensureInit() {
       if (e.type === "turn_candidate" || e.type === "turn_sealed") {
         void onVadTurnEnd();
       }
-    }
+    },
   );
 
   // 流式 partial：实时写入输入框（整体替换语音追加块，不触碰 baseText 之前的内容）
@@ -699,7 +712,7 @@ function ensureInit() {
       }
       updateAsrAvailability();
     },
-    { immediate: true }
+    { immediate: true },
   );
   // auto_listen 设置开关（用户在设置页切换时立即启停）
   watch(
@@ -710,49 +723,49 @@ function ensureInit() {
       autoListenActive.value = !!enabled;
       updateAsrAvailability();
     },
-    { immediate: true }
+    { immediate: true },
   );
   // 语音输入总开关（设置页切换立即生效）
   watch(
     () => asrStore?.settings.voice_input_enabled,
-    (enabled) => {
+    (_enabled) => {
       updateAsrAvailability();
     },
-    { immediate: true }
+    { immediate: true },
   );
   // 触摸模式（§1.4）
   watch(
     () => gameStore?.command,
-    (cmd) => {
+    (_cmd) => {
       updateAsrAvailability();
     },
-    { immediate: true }
+    { immediate: true },
   );
   // currentStatus（§1.1-3：thinking/responding/presenting）
   watch(
     () => gameStore?.currentStatus,
-    (status) => {
+    (_status) => {
       updateAsrAvailability();
     },
-    { immediate: true }
+    { immediate: true },
   );
   // 剧本选择分支（§1.8）
   watch(
     () =>
       (gameStore as unknown as { runningScript?: { choices?: unknown[] } })?.runningScript?.choices
         ?.length ?? 0,
-    (n) => {
+    (_n) => {
       updateAsrAvailability();
     },
-    { immediate: true }
+    { immediate: true },
   );
   // LoadingTransition 启动动画完成（§1.9）
   watch(
     () => gameStore?.loadingComplete,
-    (done) => {
+    (_done) => {
       updateAsrAvailability();
     },
-    { immediate: true }
+    { immediate: true },
   );
 }
 

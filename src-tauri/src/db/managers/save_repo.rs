@@ -49,7 +49,7 @@ impl SaveRepo {
         prefix: &str,
     ) -> Result<Option<save::Model>> {
         save::Entity::find()
-            .filter(save::Column::Title.like(&format!("{}%", prefix)))
+            .filter(save::Column::Title.like(format!("{}%", prefix)))
             .order_by_desc(save::Column::UpdateDate)
             .one(db)
             .await
@@ -119,8 +119,8 @@ impl SaveRepo {
         Ok(())
     }
 
-    pub async fn update_save_last_message(
-        db: &DatabaseConnection,
+    pub async fn update_save_last_message<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         last_message_id: Option<i32>,
     ) -> Result<()> {
@@ -414,7 +414,7 @@ impl SaveRepo {
                 None
             };
 
-            for (_j, input_line) in new_input_lines.iter().enumerate() {
+            for input_line in new_input_lines.iter() {
                 let new_line = line::ActiveModel {
                     content: Set(input_line.base.content.clone()),
                     attribute: Set(input_line.base.attribute.0.clone()),
@@ -458,15 +458,7 @@ impl SaveRepo {
         } else {
             None
         };
-        let save_model = save::Entity::find_by_id(save_id)
-            .one(&txn)
-            .await
-            .map_err(|e| anyhow!("{e}"))?
-            .context("Save not found")?;
-        let mut active: save::ActiveModel = save_model.into();
-        active.last_message_id = Set(last_id);
-        active.update_date = Set(Utc::now().naive_utc());
-        active.update(&txn).await.map_err(|e| anyhow!("{e}"))?;
+        Self::update_save_last_message(&txn, save_id, last_id).await?;
 
         txn.commit().await.map_err(|e| anyhow!("{e}"))?;
 

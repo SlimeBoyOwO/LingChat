@@ -64,7 +64,7 @@ export class ScriptHandler {
 
     registerHandler(WebSocketMessageTypes.SCRIPT_PRESENT_PIC, (data: any) => {
       console.log("收到图片展示事件:", data);
-      eventQueue.addEvent(data as ScriptTypes.ScriptPlayerEvent);
+      eventQueue.addEvent(data as ScriptTypes.ScriptPresentPicEvent);
     });
 
     registerHandler(WebSocketMessageTypes.SCRIPT_SOUND, (data: any) => {

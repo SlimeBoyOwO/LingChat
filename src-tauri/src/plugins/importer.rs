@@ -236,7 +236,7 @@ pub async fn do_import_plugin(
 
 /// `data/plugins` 根目录（与 `PluginManager::new` 的定位方式一致）。
 pub fn plugin_root_dir() -> PathBuf {
-    crate::init::static_copy::get_data_dir().join("plugins")
+    crate::data_dir::get_data_dir().join("plugins")
 }
 
 /// 严格定位插件内容根目录，只接受两种形态：
@@ -271,7 +271,7 @@ async fn read_manifest(dir: &Path) -> anyhow::Result<PluginManifest> {
     let text = tokio::fs::read_to_string(dir.join("manifest.toml"))
         .await
         .map_err(|e| anyhow::anyhow!("读取 manifest.toml 失败: {e}"))?;
-    Ok(manifest::parse(&text)?)
+    manifest::parse(&text)
 }
 
 /// 返回第一个「manifest 声明了但实际不存在」的工具脚本名。

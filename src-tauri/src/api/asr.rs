@@ -15,7 +15,9 @@ use tauri::Emitter;
 
 use crate::AppState;
 use crate::ai_service::asr::error::AsrError;
-use crate::ai_service::asr::provider::{self, AsrResult, ProviderInfo, list_provider_info};
+use crate::ai_service::asr::provider::{
+    self, AsrResult, PartialTranscriptCb, ProviderInfo, list_provider_info,
+};
 use crate::ai_service::asr::session::{AsrSession, AsrSource};
 use crate::ai_service::asr::settings::{self, AsrSettings};
 
@@ -199,10 +201,9 @@ pub async fn asr_recognize_wav_stream(
     );
     // partial 事件统一由命令层发射（provider 只回传文本，展示与识别解耦）
     let app_handle = app.clone();
-    let on_partial: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>> =
-        Some(std::sync::Arc::new(move |text: &str| {
-            let _ = app_handle.emit("asr://stream_partial", text.to_string());
-        }));
+    let on_partial: Option<PartialTranscriptCb> = Some(std::sync::Arc::new(move |text: &str| {
+        let _ = app_handle.emit("asr://stream_partial", text.to_string());
+    }));
     let result = tokio::select! {
         result = p.stream_recognize(wav_bytes, on_partial) => result,
         _ = cancel_child.cancelled() => Err(AsrError::Canceled),

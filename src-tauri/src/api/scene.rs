@@ -175,7 +175,7 @@ pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
             .map_err(|e| format!("保存场景失败: {}", e))?;
     }
 
-    Ok(scenes.iter().map(|s| model_to_info(s)).collect())
+    Ok(scenes.iter().map(model_to_info).collect())
 }
 
 #[tauri::command]

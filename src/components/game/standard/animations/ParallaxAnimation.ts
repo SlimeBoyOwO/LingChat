@@ -1,4 +1,4 @@
-import { onUnmounted, ref, type Ref } from "vue";
+import { onUnmounted, type Ref } from "vue";
 
 /* ================== 视差倾斜 & 平移效果 ================== */
 export interface ParallaxConfig {
@@ -47,7 +47,7 @@ const DEFAULT_PARALLAX_CONFIG: ParallaxConfig = {
 export function useParallaxAnimation(
   elements: ParallaxElements,
   config: Partial<ParallaxConfig> = {},
-  enabledRef?: Ref<boolean>
+  enabledRef?: Ref<boolean>,
 ) {
   // 合并默认配置
   const PARALLAX_CONFIG: ParallaxConfig = {
@@ -115,7 +115,7 @@ export function useParallaxAnimation(
   /**
    * 高性能视差变换应用
    */
-  function applyParallaxTransforms(offsetX: number, offsetY: number) {
+  function applyParallaxTransforms(offsetX: number, _offsetY: number) {
     const charShift = -offsetX * PARALLAX_CONFIG.CHAR_MAX_SHIFT;
     const bgShift = -offsetX * PARALLAX_CONFIG.BG_MAX_SHIFT;
     const starsShift = -offsetX * PARALLAX_CONFIG.STARS_MAX_SHIFT;

@@ -44,6 +44,7 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
             "memory_add_note",
             "memory_update_note",
             "memory_delete_note",
+            "memory_search",
         ],
     ),
     ("character", &["character_list", "character_switch"]),

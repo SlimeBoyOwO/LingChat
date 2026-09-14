@@ -342,18 +342,12 @@ async fn browse_mdns(
             Err(e) => warn!("发送 stop_browse 失败: {e}"),
         }
         // 排空 channel 中的残留事件（包括 SearchStopped）
-        loop {
-            match receiver.recv_timeout(Duration::from_millis(500)) {
-                Ok(event) => {
-                    if matches!(event, mdns_sd::ServiceEvent::SearchStopped(_)) {
-                        debug!("mDNS 浏览已干净关闭");
-                        break;
-                    }
-                },
-                Err(_) => break,
+        while let Ok(event) = receiver.recv_timeout(Duration::from_millis(500)) {
+            if matches!(event, mdns_sd::ServiceEvent::SearchStopped(_)) {
+                debug!("mDNS 浏览已干净关闭");
+                break;
             }
         }
-
         Ok(found)
     })
     .await

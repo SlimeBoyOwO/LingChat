@@ -97,14 +97,14 @@ impl PluginManager {
     /// 加载单个插件记录（解析 manifest + 从集中状态读取 state）。
     fn load_record(
         &self,
-        dir: &PathBuf,
+        dir: &Path,
         id: &str,
         states: &HashMap<String, PluginState>,
     ) -> PluginRecord {
         let mut record = PluginRecord {
             manifest: Default::default(),
             state: PluginState::new(),
-            dir: dir.clone(),
+            dir: dir.to_path_buf(),
             error: None,
         };
         let text = match std::fs::read_to_string(dir.join("manifest.toml")) {
@@ -205,27 +205,36 @@ impl PluginManager {
 
     /// 启用/禁用插件：注册或注销其工具，保存状态，刷新权限。
     pub async fn set_enabled(&self, id: &str, enabled: bool) -> Result<(), String> {
-        let mut records = self.records.lock().await;
-        let record = records
-            .get_mut(id)
-            .ok_or_else(|| format!("插件 '{id}' 不存在"))?;
-        if record.error.is_some() {
-            return Err(format!("插件 '{id}' 加载失败，无法启用"));
+        let (apply_result, new_state) = {
+            let mut records = self.records.lock().await;
+            let record = records
+                .get_mut(id)
+                .ok_or_else(|| format!("插件 '{id}' 不存在"))?;
+            if record.error.is_some() {
+                return Err(format!("插件 '{id}' 加载失败，无法启用"));
+            }
+            if record.state.enabled == enabled {
+                return Ok(());
+            }
+            record.state.enabled = enabled;
+            let apply_result: Result<(), String> = if enabled {
+                self.register_tools(record).inspect_err(|_e| {
+                    record.state.enabled = false;
+                })
+            } else {
+                self.unregister_tools(record);
+                Ok(())
+            };
+            (apply_result, record.state.clone())
+        };
+
+        // 同步磁盘 I/O（persist_state / save_permissions）在锁外执行，避免阻塞 tokio 引擎。
+        if let Err(e) = apply_result {
+            self.persist_state(id, &new_state);
+            let _ = self.registry.save_permissions(&self.data_dir);
+            return Err(e);
         }
-        if record.state.enabled == enabled {
-            return Ok(());
-        }
-        record.state.enabled = enabled;
-        if enabled {
-            self.register_tools(record).map_err(|e| {
-                record.state.enabled = false;
-                self.persist_state(id, &record.state);
-                e
-            })?;
-        } else {
-            self.unregister_tools(record);
-        }
-        self.persist_state(id, &record.state);
+        self.persist_state(id, &new_state);
         let _ = self.registry.save_permissions(&self.data_dir);
         Ok(())
     }
@@ -256,15 +265,20 @@ impl PluginManager {
 
     /// 删除插件：注销其工具、移除集中状态记录、删除插件目录。
     pub async fn delete_plugin(&self, id: &str) -> Result<(), String> {
-        let mut records = self.records.lock().await;
-        let record = records
-            .get(id)
-            .ok_or_else(|| format!("插件 '{id}' 不存在"))?;
-        if record.state.enabled {
-            self.unregister_tools(record);
-        }
-        let dir = record.dir.clone();
-        records.remove(id);
+        let dir = {
+            let mut records = self.records.lock().await;
+            let record = records
+                .get(id)
+                .ok_or_else(|| format!("插件 '{id}' 不存在"))?;
+            if record.state.enabled {
+                self.unregister_tools(record);
+            }
+            let dir = record.dir.clone();
+            records.remove(id);
+            dir
+        };
+
+        // 同步磁盘 I/O（save_states / remove_dir_all / save_permissions）在锁外执行。
         let mut states = self.load_states();
         states.remove(id);
         self.save_states(&states);

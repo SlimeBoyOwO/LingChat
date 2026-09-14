@@ -128,6 +128,212 @@
             </p>
           </section>
 
+          <!-- 独立语义记忆运行状态 -->
+          <section
+            v-if="activeSelection.category === '语义记忆'"
+            class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
+          >
+            <h3 class="mb-1 text-base font-semibold text-white">
+              {{ $t("settings.advanceOther.semanticMemoryStatus.title") }}
+            </h3>
+            <p class="mb-3 text-sm leading-6 text-white/65">
+              {{ $t("settings.advanceOther.semanticMemoryStatus.desc") }}
+            </p>
+
+            <div class="space-y-1.5 text-sm">
+              <div class="flex items-center gap-2">
+                <span class="text-white/70">{{
+                  $t("settings.advanceOther.semanticMemoryStatus.enabled")
+                }}</span>
+                <span :class="getEnabledClass(semanticMemoryStatus?.enabled)">
+                  {{ getEnabledText(semanticMemoryStatus?.enabled) }}
+                </span>
+                <span v-if="!semanticMemoryStatus" class="text-xs text-white/40">{{
+                  $t("settings.advanceOther.semanticMemoryStatus.loading")
+                }}</span>
+              </div>
+              <div
+                v-if="semanticMemoryStatus"
+                class="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2"
+              >
+                <div class="flex items-center gap-2">
+                  <span class="text-white/70">{{
+                    $t("settings.advanceOther.semanticMemoryStatus.opened")
+                  }}</span>
+                  <span :class="semanticMemoryStatus.opened ? 'text-green-400' : 'text-yellow-400'">
+                    {{ yesNoLabel(semanticMemoryStatus.opened) }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-white/70">{{
+                    $t("settings.advanceOther.semanticMemoryStatus.embeddingReady")
+                  }}</span>
+                  <span
+                    :class="semanticMemoryStatus.embeddingReady ? 'text-green-400' : 'text-red-400'"
+                  >
+                    {{ yesNoLabel(semanticMemoryStatus.embeddingReady) }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-white/70">{{
+                    $t("settings.advanceOther.semanticMemoryStatus.count")
+                  }}</span>
+                  <span class="text-white">{{ semanticMemoryStatus.count }}</span>
+                </div>
+                <div
+                  v-if="semanticMemoryStatus.dbPath"
+                  class="col-span-full flex items-center gap-2"
+                >
+                  <span class="text-white/70">{{
+                    $t("settings.advanceOther.semanticMemoryStatus.dbPath")
+                  }}</span>
+                  <span class="break-all text-white">{{ semanticMemoryStatus.dbPath }}</span>
+                </div>
+              </div>
+              <p
+                v-if="semanticMemoryStatus && !semanticMemoryStatus.embeddingReady"
+                class="mt-2 text-sm text-yellow-400"
+              >
+                {{ $t("settings.advanceOther.semanticMemoryStatus.needEmbedding") }}
+              </p>
+              <p
+                v-if="semanticMemoryStatus && semanticMemoryStatus.error"
+                class="mt-2 text-sm break-all text-red-400"
+              >
+                {{ semanticMemoryStatus.error }}
+              </p>
+            </div>
+
+            <Button
+              type="big"
+              :disabled="isLoadingSemanticMemory"
+              class="mt-3"
+              @click="loadSemanticMemoryStatus"
+            >
+              <RefreshCw :size="18" :class="{ 'animate-spin': isLoadingSemanticMemory }" />
+              {{ $t("settings.advanceOther.semanticMemoryStatus.refresh") }}
+            </Button>
+          </section>
+
+          <!-- 语义记忆可视化管理 -->
+          <section
+            v-if="activeSelection.category === '语义记忆'"
+            class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
+          >
+            <h3 class="mb-1 text-base font-semibold text-white">
+              {{ $t("settings.advanceOther.semanticMemoryManage.title") }}
+            </h3>
+            <p class="mb-3 text-sm leading-6 text-white/65">
+              {{ $t("settings.advanceOther.semanticMemoryManage.desc") }}
+            </p>
+
+            <div class="mb-3 flex items-center gap-2 text-sm">
+              <span class="text-white/70">{{
+                $t("settings.advanceOther.semanticMemoryManage.role")
+              }}</span>
+              <select
+                v-model="memRoleId"
+                class="rounded-lg border border-white/10 bg-black/25 px-3 py-1.5 text-sm text-white
+                  focus:outline-none"
+                @change="loadMemItems"
+              >
+                <option v-for="r in memRoles" :key="r.id" :value="r.id">
+                  {{ r.name
+                  }}{{
+                    r.isCurrent
+                      ? " · " + $t("settings.advanceOther.semanticMemoryManage.currentRole")
+                      : ""
+                  }}
+                </option>
+              </select>
+              <span v-if="!memRoles.length && !isLoadingMemRoles" class="text-xs text-white/40">{{
+                $t("settings.advanceOther.semanticMemoryManage.noneRole")
+              }}</span>
+            </div>
+
+            <div class="mb-3">
+              <div class="mb-1.5 text-sm text-white/70">
+                {{
+                  editMemId
+                    ? $t("settings.advanceOther.semanticMemoryManage.editTitle")
+                    : $t("settings.advanceOther.semanticMemoryManage.addTitle")
+                }}
+              </div>
+              <textarea
+                v-model="memForm.content"
+                rows="2"
+                class="w-full resize-y rounded-lg border border-white/10 bg-black/25 px-3 py-2
+                  text-sm text-white placeholder-white/30 focus:border-white/30 focus:outline-none"
+                :placeholder="$t('settings.advanceOther.semanticMemoryManage.contentPlaceholder')"
+              ></textarea>
+              <input
+                v-model="memForm.tags"
+                type="text"
+                class="mt-1.5 w-full rounded-lg border border-white/10 bg-black/25 px-3 py-1.5
+                  text-sm text-white placeholder-white/30 focus:border-white/30 focus:outline-none"
+                :placeholder="$t('settings.advanceOther.semanticMemoryManage.tagsPlaceholder')"
+              />
+              <div class="mt-2 flex gap-2">
+                <Button :disabled="isSavingMem || !memForm.content.trim()" @click="saveMemForm">
+                  <RefreshCw v-if="isSavingMem" :size="16" class="animate-spin" />
+                  {{
+                    editMemId
+                      ? $t("settings.advanceOther.semanticMemoryManage.save")
+                      : $t("settings.advanceOther.semanticMemoryManage.add")
+                  }}
+                </Button>
+                <Button v-if="editMemId" @click="cancelMemEdit">
+                  {{ $t("settings.advanceOther.semanticMemoryManage.cancelEdit") }}
+                </Button>
+              </div>
+              <p v-if="memFormError" class="mt-2 text-sm break-all text-red-400">
+                {{ memFormError }}
+              </p>
+              <p v-if="memFormSuccess" class="mt-2 text-sm text-green-400">{{ memFormSuccess }}</p>
+            </div>
+
+            <div v-if="isLoadingMemItems" class="text-sm text-white/50">
+              {{ $t("settings.advanceOther.semanticMemoryManage.loading") }}
+            </div>
+            <div v-else-if="!memItems.length" class="text-sm text-white/50">
+              {{ $t("settings.advanceOther.semanticMemoryManage.empty") }}
+            </div>
+            <ul v-else class="space-y-2">
+              <li
+                v-for="item in memItems"
+                :key="item.id"
+                class="rounded-lg border border-white/10 bg-white/5 p-2.5"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <p class="min-w-0 flex-1 text-sm break-all text-white">{{ item.text }}</p>
+                  <div class="flex shrink-0 gap-1.5">
+                    <button
+                      class="rounded bg-gray-200 px-2 py-1 text-xs font-medium text-gray-800
+                        hover:bg-gray-300"
+                      @click="editMem(item)"
+                    >
+                      {{ $t("settings.advanceOther.semanticMemoryManage.edit") }}
+                    </button>
+                    <button
+                      class="rounded bg-[#f44336] px-2 py-1 text-xs font-medium text-white
+                        hover:bg-[#d32f2f]"
+                      @click="removeMem(item)"
+                    >
+                      {{ $t("settings.advanceOther.semanticMemoryManage.delete") }}
+                    </button>
+                  </div>
+                </div>
+                <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-white/45">
+                  <span v-if="item.tags.length">{{ item.tags.join("、") }}</span>
+                  <span v-else>{{
+                    $t("settings.advanceOther.semanticMemoryManage.emptyTags")
+                  }}</span>
+                  <span>{{ item.createdAt }}</span>
+                </div>
+              </li>
+            </ul>
+          </section>
+
           <!-- 保存操作区域 -->
           <div
             class="bg-brand inline-flex min-w-30 cursor-pointer flex-col gap-2 rounded-lg
@@ -167,7 +373,19 @@
   import { useUIStore } from "@/stores/modules/ui/ui";
   import SettingItem from "@/components/base/items/SettingItem.vue";
   import { Button } from "@/components/base";
-  import { getEnvConfigSettings, saveEnvConfigSettings } from "@/api/services/config";
+  import {
+    getEnvConfigSettings,
+    saveEnvConfigSettings,
+    getSemanticMemoryStatus,
+    type SemanticMemoryStatus,
+    listSemanticMemoryRoles,
+    type SemanticMemoryRole,
+    listSemanticMemories,
+    type SemanticMemoryItem,
+    addSemanticMemory,
+    updateSemanticMemory,
+    deleteSemanticMemory,
+  } from "@/api/services/config";
   import { reactivateTTS } from "@/api/services/game-info";
   import { switchLlm } from "@/api/services/llm-providers";
   import { RefreshCw } from "lucide-vue-next";
@@ -213,6 +431,148 @@
     colorClass: "text-green-400",
   });
   let reconnectStatusTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // --- 独立语义记忆状态 ---
+  const isLoadingSemanticMemory = ref(false);
+  const semanticMemoryStatus = ref<SemanticMemoryStatus | null>(null);
+
+  // --- 语义记忆可视化管理 ---
+  const memRoles = ref<SemanticMemoryRole[]>([]);
+  const memRoleId = ref<number | null>(null);
+  const memItems = ref<SemanticMemoryItem[]>([]);
+  const isLoadingMemRoles = ref(false);
+  const isLoadingMemItems = ref(false);
+  const isSavingMem = ref(false);
+  const memForm = reactive({ content: "", tags: "" });
+  const editMemId = ref<string | null>(null);
+  const memFormError = ref("");
+  const memFormSuccess = ref("");
+
+  // Tauri invoke 拒绝时错误通常是字符串，统一提取可读文本（`error.message` 会得到 undefined）
+  const errorText = (error: any): string => {
+    if (error == null) return "";
+    if (typeof error === "string") return error;
+    if (typeof error === "object" && typeof error.message === "string") return error.message;
+    return String(error);
+  };
+
+  const getEnabledClass = (enabled?: boolean) => (enabled ? "text-green-400" : "text-gray-400");
+  const getEnabledText = (enabled?: boolean) =>
+    enabled
+      ? t("settings.advanceOther.embeddingStatus.labelOn")
+      : t("settings.advanceOther.embeddingStatus.labelOff");
+  const yesNoLabel = (value: boolean) =>
+    value
+      ? t("settings.advanceOther.embeddingStatus.labelYes")
+      : t("settings.advanceOther.embeddingStatus.labelNo");
+
+  const loadSemanticMemoryStatus = async () => {
+    isLoadingSemanticMemory.value = true;
+    try {
+      semanticMemoryStatus.value = await getSemanticMemoryStatus();
+    } catch (error) {
+      console.error("加载语义记忆状态失败:", error);
+      semanticMemoryStatus.value = null;
+    } finally {
+      isLoadingSemanticMemory.value = false;
+    }
+  };
+
+  const loadMemRoles = async () => {
+    isLoadingMemRoles.value = true;
+    memFormError.value = "";
+    try {
+      memRoles.value = await listSemanticMemoryRoles();
+      const current = memRoles.value.find((r) => r.isCurrent);
+      memRoleId.value = current?.id ?? memRoles.value[0]?.id ?? null;
+      if (memRoleId.value != null) {
+        await loadMemItems();
+      } else {
+        memItems.value = [];
+      }
+    } catch (error: any) {
+      memFormError.value = t("settings.advanceOther.semanticMemoryManage.loadFailed", {
+        error: errorText(error),
+      });
+    } finally {
+      isLoadingMemRoles.value = false;
+    }
+  };
+
+  const loadMemItems = async () => {
+    if (memRoleId.value == null) {
+      memItems.value = [];
+      return;
+    }
+    isLoadingMemItems.value = true;
+    memFormError.value = "";
+    try {
+      memItems.value = await listSemanticMemories(memRoleId.value);
+    } catch (error: any) {
+      memFormError.value = t("settings.advanceOther.semanticMemoryManage.loadFailed", {
+        error: errorText(error),
+      });
+    } finally {
+      isLoadingMemItems.value = false;
+    }
+  };
+
+  const saveMemForm = async () => {
+    if (memRoleId.value == null || !memForm.content.trim()) return;
+    isSavingMem.value = true;
+    memFormError.value = "";
+    memFormSuccess.value = "";
+    const tags = memForm.tags
+      .split(/[,，、]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    try {
+      if (editMemId.value) {
+        await updateSemanticMemory(memRoleId.value, editMemId.value, memForm.content.trim());
+        memFormSuccess.value = t("settings.advanceOther.semanticMemoryManage.updated");
+      } else {
+        await addSemanticMemory(memRoleId.value, memForm.content.trim(), tags);
+        memFormSuccess.value = t("settings.advanceOther.semanticMemoryManage.added");
+      }
+      cancelMemEdit();
+      await loadMemItems();
+      await loadSemanticMemoryStatus();
+    } catch (error: any) {
+      memFormError.value = errorText(error);
+    } finally {
+      isSavingMem.value = false;
+      setTimeout(() => {
+        memFormSuccess.value = "";
+      }, 4000);
+    }
+  };
+
+  const editMem = (item: SemanticMemoryItem) => {
+    editMemId.value = item.id;
+    memForm.content = item.text;
+    memForm.tags = item.tags.join("、");
+    memFormError.value = "";
+    memFormSuccess.value = "";
+  };
+
+  const cancelMemEdit = () => {
+    editMemId.value = null;
+    memForm.content = "";
+    memForm.tags = "";
+  };
+
+  const removeMem = async (item: SemanticMemoryItem) => {
+    if (memRoleId.value == null) return;
+    if (!window.confirm(t("settings.advanceOther.semanticMemoryManage.deleteConfirm"))) return;
+    memFormError.value = "";
+    try {
+      await deleteSemanticMemory(memRoleId.value, item.id);
+      await loadMemItems();
+      await loadSemanticMemoryStatus();
+    } catch (error: any) {
+      memFormError.value = errorText(error);
+    }
+  };
 
   const emit = defineEmits<{
     "remove-more-menu-from-b": [];
@@ -265,7 +625,7 @@
 
       await loadConfig(false);
     } catch (error: any) {
-      saveStatus.message = t("settings.advanceOther.msg.error", { error: error.message });
+      saveStatus.message = t("settings.advanceOther.msg.error", { error: errorText(error) });
       saveStatus.colorClass = "text-red-500";
     } finally {
       isLoading.value = false;
@@ -310,6 +670,9 @@
     try {
       configData.value = await getEnvConfigSettings();
 
+      // 「记忆嵌入」已独立成高级设置子标签（SettingsEmbedding），这里不再重复展示
+      delete configData.value["记忆嵌入"];
+
       if (selectFirst && Object.keys(configData.value).length > 0) {
         const firstCategory = Object.keys(configData.value)[0];
         if (firstCategory) {
@@ -325,7 +688,7 @@
     } catch (error: any) {
       console.error(error);
       saveStatus.message = t("settings.advanceOther.msg.loadConfigFailed", {
-        error: error.message,
+        error: errorText(error),
       });
       saveStatus.colorClass = "text-red-500";
     } finally {
@@ -369,6 +732,11 @@
     async () => {
       await nextTick();
       updateIndicatorPosition();
+      // 进入「语义记忆」分类时自动拉取运行状态与管理数据
+      if (activeSelection.category === "语义记忆") {
+        loadSemanticMemoryStatus();
+        loadMemRoles();
+      }
     },
     { deep: true }
   );

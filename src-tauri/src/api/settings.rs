@@ -8,9 +8,13 @@ use std::sync::Arc;
 
 use serde_json::Value as JsonValue;
 use tauri::AppHandle;
+use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::AppState;
+use crate::ai_service::embedding::FragmentSource;
+use crate::ai_service::embedding::memory_index::DUP_THRESHOLD;
+use crate::ai_service::embedding::service::cosine_ge_threshold;
 use crate::ai_service::god_agent::config::resolve_god_agent_provider;
 use crate::ai_service::llm::LlmModelInfo;
 use crate::ai_service::llm::error::LlmErrorPayload;
@@ -19,11 +23,16 @@ use crate::ai_service::llm::provider_config::{
     load_role_assignment, resolve_chat_provider, resolve_translate_provider, save_providers,
     save_role_assignment,
 };
+use crate::ai_service::semantic_memory::{AddOutcome, SemanticMemory, UpdateOutcome};
 use crate::config::app_config::{
     MAX_LLM_TIMEOUT_SECS, MAX_MEMORY_RECENT_WINDOW, MAX_MEMORY_SECTION_CHARS,
     MAX_MEMORY_UPDATE_INTERVAL, MIN_LLM_TIMEOUT_SECS, MIN_MEMORY_UPDATE_INTERVAL,
 };
 use crate::config::{self, ConfigSetting, ConfigTree, keys};
+use crate::db::entities::line::LineAttribute;
+use crate::db::managers::embedding_repo::EmbeddingRepo;
+use crate::db::managers::role_repo::RoleRepo;
+use crate::db::managers::save_repo::SaveRepo;
 
 // ========== Settings CRUD ==========
 
@@ -147,10 +156,440 @@ pub fn get_setting_by_key(app: AppHandle, key: String) -> Result<ConfigSetting, 
     Err(format!("Key '{}' not found", key))
 }
 
+// ========== 记忆嵌入（Embedding） ==========
+
+/// 记忆嵌入运行状态快照（供「高级设置 → 记忆嵌入」界面展示诊断）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmbeddingStatusSnapshot {
+    /// 用户在设置里是否开启 `embedding.enabled`。
+    pub enabled: bool,
+    /// 模型目录是否齐备（service 层可直接启用）。
+    pub configured: bool,
+    /// 模型是否已加载（真正就绪）。
+    pub ready: bool,
+    /// 向量维度（就绪后才有）。
+    pub dim: Option<usize>,
+    /// 加载的模型名（就绪后才有）。
+    pub model: Option<String>,
+    /// 实际解析后的模型目录。
+    pub model_dir: String,
+    /// 后端选择：auto / onnx / st。
+    pub backend: String,
+    /// `embedding.model_dir` 留空时使用的默认模型目录。
+    pub default_model_dir: String,
+    /// 最近一次启动/请求失败诊断。
+    pub error: Option<String>,
+    /// 当前语义索引中的片段数（记忆库 + 笔记）。
+    pub index_len: usize,
+}
+
+/// 查询记忆嵌入状态。只读诊断，不会在未配置时启动子进程。
+#[tauri::command]
+pub async fn get_embedding_status(app: AppHandle) -> Result<EmbeddingStatusSnapshot, String> {
+    let cfg = {
+        let store = config::settings_store(&app).map_err(|e| e.to_string())?;
+        crate::config::embedding::EmbeddingConfig::from_store(Some(&store))
+    };
+    let data_dir = crate::api::data_dir();
+    let default_model_dir = data_dir.join("third_party").join("embedding");
+    let resource_dir = app.path().resource_dir().ok();
+    let service_cfg = cfg.to_service_config(&data_dir, resource_dir.as_deref());
+
+    let mut snap = EmbeddingStatusSnapshot {
+        enabled: cfg.enabled,
+        configured: service_cfg.enabled(),
+        ready: false,
+        dim: None,
+        model: None,
+        model_dir: service_cfg.model_dir.display().to_string(),
+        backend: cfg.backend,
+        default_model_dir: default_model_dir.display().to_string(),
+        error: None,
+        index_len: 0,
+    };
+    if !(snap.enabled && snap.configured) {
+        return Ok(snap);
+    }
+
+    // 从 GameRoleManager 取出管理器句柄并读取当前索引规模（锁内只做快速读取）。
+    let state = app.state::<AppState>();
+    let (manager, index_len) = {
+        let ai_service = state.ai_service.lock().await;
+        let gs = ai_service.game_status.lock().await;
+        let idx = gs.role_manager.memory_index();
+        (idx.manager_arc(), idx.len().await)
+    };
+    snap.index_len = index_len;
+
+    snap.ready = manager.ensure_started().await;
+    if !snap.ready {
+        snap.error = manager.last_error();
+        return Ok(snap);
+    }
+    snap.error = manager.last_error();
+    snap.dim = manager.dim();
+    snap.model = manager.model_name();
+    Ok(snap)
+}
+
+/// 「一键整理当前对话」操作结果。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizeConversationResult {
+    /// 本次扫描到的候选台词条数（用户 / 助手内容，已过滤旁白/系统行）。
+    pub scanned: usize,
+    /// 本次实际新入库的条数。
+    pub added: usize,
+    /// 因与既有归档/本批次内容重复而跳过的条数。
+    pub duplicates: usize,
+    /// 该存档当前累计已归档的条数。
+    pub stored: usize,
+}
+
+/// 一键整理当前对话：把当前存档台词逐条编码为向量并持久化到 `embedding` 表，
+/// 同时载回内存语义索引（供语义检索 / 后续去重）。重复内容自动跳过。
+#[tauri::command]
+pub async fn organize_current_conversation(
+    app: AppHandle,
+) -> Result<OrganizeConversationResult, String> {
+    let state = app.state::<AppState>();
+
+    // 锁内快速快照：当前存档 id、台词列表、嵌入管理器句柄（随后释放锁做长耗时编码）。
+    let (save_id, line_list, manager) = {
+        let ai_service = state.ai_service.lock().await;
+        let gs = ai_service.game_status.lock().await;
+        let idx = gs.role_manager.memory_index();
+        if !idx.enabled() {
+            return Err(
+                "记忆嵌入未启用：请先在「高级设置 → 记忆嵌入」开启并配置模型目录".to_string(),
+            );
+        }
+        (gs.active_save_id, gs.line_list.clone(), idx.manager_arc())
+    };
+    let Some(save_id) = save_id else {
+        return Err("当前没有进行中的存档，请先创建或载入一个存档".to_string());
+    };
+
+    // 收集候选台词：只处理用户 / 助手两种真实对话内容，跳过旁白与空行。
+    let mut texts: Vec<String> = Vec::new();
+    for line in &line_list {
+        if !matches!(
+            line.attribute(),
+            LineAttribute::User | LineAttribute::Assistant
+        ) {
+            continue;
+        }
+        let content = line.content().trim();
+        if content.is_empty() {
+            continue;
+        }
+        texts.push(content.to_string());
+    }
+    let scanned = texts.len();
+    if texts.is_empty() {
+        return Ok(OrganizeConversationResult {
+            scanned: 0,
+            added: 0,
+            duplicates: 0,
+            stored: 0,
+        });
+    }
+
+    // 批量编码（外部加载模型，可能耗时较长）。
+    let Some(embedded) = manager.embed_passages(&texts).await else {
+        return Err(format!(
+            "嵌入编码失败：{}",
+            manager
+                .last_error()
+                .unwrap_or_else(|| "未知错误".to_string())
+        ));
+    };
+
+    // 与该存档既有向量做余弦去重，再与新批次互相去重。
+    let db = &state.data().db;
+    let mut known_vectors: Vec<Vec<f32>> = EmbeddingRepo::list_decoded(db, save_id)
+        .await
+        .map_err(|e| format!("读取既有归档失败：{e}"))?
+        .into_iter()
+        .map(|(_, _, v)| v)
+        .collect();
+    let source = FragmentSource::Conversation(format!("save:{save_id}"));
+    let mut new_rows: Vec<(String, String, Vec<f32>)> = Vec::new();
+    let mut to_index: Vec<(String, FragmentSource, Vec<f32>)> = Vec::new();
+    let mut duplicates = 0usize;
+    for (text, emb) in texts.iter().zip(embedded) {
+        let Some(emb) = emb else {
+            continue;
+        };
+        let candidates: Vec<&[f32]> = known_vectors.iter().map(|v| v.as_slice()).collect();
+        if cosine_ge_threshold(&candidates, &emb.vector, DUP_THRESHOLD) {
+            duplicates += 1;
+            continue;
+        }
+        known_vectors.push(emb.vector.clone());
+        let source_tag = match &source {
+            FragmentSource::Conversation(tag) => tag.clone(),
+            _ => source.label().to_string(),
+        };
+        new_rows.push((text.clone(), source_tag, emb.vector.clone()));
+        to_index.push((text.clone(), source.clone(), emb.vector));
+    }
+
+    // 编码期间存档可能已被切换/删除：落库前重新校验当前存档仍活跃且存在，
+    // 避免把向量写入错误存档或产生孤儿 embedding 行。
+    let still_active = {
+        let ai_service = state.ai_service.lock().await;
+        let gs = ai_service.game_status.lock().await;
+        gs.active_save_id == Some(save_id)
+    };
+    if !still_active {
+        return Err("整理期间已切换存档，请重新整理当前对话".to_string());
+    }
+    if SaveRepo::get_save_by_id(db, save_id)
+        .await
+        .map_err(|e| format!("读取存档失败：{e}"))?
+        .is_none()
+    {
+        return Err(format!("存档 {save_id} 已不存在，请重新整理当前对话"));
+    }
+
+    // 持久化新批次。
+    let added = EmbeddingRepo::insert_many(db, save_id, &new_rows)
+        .await
+        .map_err(|e| format!("写入嵌入失败：{e}"))?;
+
+    // 载回内存语义索引（跳过再次编码）。
+    if !to_index.is_empty() {
+        let ai_service = state.ai_service.lock().await;
+        let gs = ai_service.game_status.lock().await;
+        gs.role_manager
+            .memory_index()
+            .restore_encoded(&to_index)
+            .await;
+    }
+
+    let stored = EmbeddingRepo::count_by_save(db, save_id)
+        .await
+        .map_err(|e| format!("读取归档计数失败：{e}"))?;
+    Ok(OrganizeConversationResult {
+        scanned,
+        added,
+        duplicates,
+        stored: stored as usize,
+    })
+}
+
 #[tauri::command]
 pub fn select_file(app: AppHandle) -> Result<Option<String>, String> {
     let file = app.dialog().file().blocking_pick_file();
     Ok(file.map(|f| f.to_string()))
+}
+
+// ========== 独立语义记忆（Semantic Memory） ==========
+
+/// 独立语义记忆运行状态快照（供「高级设置 → 语义记忆」界面展示诊断）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticMemoryStatusSnapshot {
+    /// 用户是否开启 `semantic_memory.enabled`。
+    pub enabled: bool,
+    /// 向量库是否已打开（语义记忆系统是否初始化）。
+    pub opened: bool,
+    /// 嵌入引擎是否就绪（编码/检索可用）。
+    pub embedding_ready: bool,
+    /// 向量库文件路径。
+    pub db_path: String,
+    /// 当前保存的语义记忆总数（跨角色）。
+    pub count: usize,
+    /// 最近一次操作失败诊断。
+    pub error: Option<String>,
+}
+
+/// 查询独立语义记忆状态。只读诊断。
+#[tauri::command]
+pub async fn get_semantic_memory_status(
+    app: AppHandle,
+) -> Result<SemanticMemoryStatusSnapshot, String> {
+    let cfg = {
+        let store = config::settings_store(&app).map_err(|e| e.to_string())?;
+        crate::config::semantic_memory::SemanticMemoryConfig::from_store(Some(&store))
+    };
+    let data_dir = crate::api::data_dir();
+    let default_db = data_dir.join("game_data").join("semantic_memory.db");
+
+    let mut snap = SemanticMemoryStatusSnapshot {
+        enabled: cfg.enabled,
+        opened: false,
+        embedding_ready: false,
+        db_path: default_db.display().to_string(),
+        count: 0,
+        error: None,
+    };
+
+    let state = app.state::<AppState>();
+    let semantic_memory_arc = {
+        let ai_service = state.ai_service.lock().await;
+        ai_service.semantic_memory.clone()
+    };
+    let Some(sm) = semantic_memory_arc else {
+        return Ok(snap);
+    };
+
+    snap.opened = true;
+    snap.embedding_ready = sm.embedding_ready();
+    snap.count = sm.count().await;
+    snap.error = sm.last_error();
+    Ok(snap)
+}
+
+// ---------- 语义记忆可视化管理 ----------
+
+/// 角色下拉项（供前端选择要管理的角色）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticMemoryRole {
+    pub id: i32,
+    pub name: String,
+    pub role_type: String,
+    /// 是否为当前对话角色（下拉默认选中）。
+    pub is_current: bool,
+}
+
+/// 一条语义记忆的展示数据（不含向量）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticMemoryItemDto {
+    pub id: String,
+    pub text: String,
+    pub tags: Vec<String>,
+    pub created_at: String,
+}
+
+/// 写操作结果。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticMemoryWriteResult {
+    pub ok: bool,
+    pub id: Option<String>,
+    pub outcome: String,
+}
+
+/// 取语义记忆管理器句柄（clone 出 Arc 后立即释放锁）。未启用时返回可读错误。
+async fn semantic_memory_handle(app: &AppHandle) -> Result<Arc<SemanticMemory>, String> {
+    let state = app.state::<AppState>();
+    let sm = {
+        let service = state.ai_service.lock().await;
+        service.semantic_memory.clone()
+    };
+    sm.ok_or_else(|| "语义记忆未启用（请在「高级设置 → 语义记忆」中开启；需重启生效）".to_string())
+}
+
+/// 列出全部 main 角色供前端下拉选择（附当前对话角色标记）。
+#[tauri::command]
+pub async fn list_semantic_memory_roles(app: AppHandle) -> Result<Vec<SemanticMemoryRole>, String> {
+    let state = app.state::<AppState>();
+    let roles = RoleRepo::get_all_main_roles(&state.data().db)
+        .await
+        .map_err(|e| format!("读取角色列表失败: {e}"))?;
+    let current_role_id = {
+        let service = state.ai_service.lock().await;
+        let gs = service.game_status.lock().await;
+        gs.current_role_id
+    };
+    Ok(roles
+        .into_iter()
+        .map(|r| SemanticMemoryRole {
+            id: r.id,
+            name: r.name,
+            role_type: format!("{:?}", r.role_type),
+            is_current: Some(r.id) == current_role_id,
+        })
+        .collect())
+}
+
+/// 列出指定角色的全部语义记忆（含 id / 文本 / 标签 / 保存时间）。
+#[tauri::command]
+pub async fn list_semantic_memories(
+    app: AppHandle,
+    role_id: i32,
+) -> Result<Vec<SemanticMemoryItemDto>, String> {
+    let sm = semantic_memory_handle(&app).await?;
+    let items = sm.list(role_id).await.map_err(|e| e.to_string())?;
+    Ok(items
+        .into_iter()
+        .map(|i| SemanticMemoryItemDto {
+            id: i.id,
+            text: i.text,
+            tags: i.tags,
+            created_at: i.created_at,
+        })
+        .collect())
+}
+
+/// 向指定角色新增一条语义记忆（自动嵌入向量 + 去重）。
+#[tauri::command]
+pub async fn add_semantic_memory(
+    app: AppHandle,
+    role_id: i32,
+    content: String,
+    tags: Vec<String>,
+) -> Result<SemanticMemoryWriteResult, String> {
+    let sm = semantic_memory_handle(&app).await?;
+    match sm
+        .add(role_id, &content, &tags)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        AddOutcome::Added(id) => Ok(SemanticMemoryWriteResult {
+            ok: true,
+            id: Some(id),
+            outcome: "added".into(),
+        }),
+        AddOutcome::Duplicate => Err("这条内容与已有语义记忆重复，未保存".to_string()),
+    }
+}
+
+/// 更新指定角色的一条语义记忆（重新编码向量 + 去重，排除自身）。
+#[tauri::command]
+pub async fn update_semantic_memory(
+    app: AppHandle,
+    role_id: i32,
+    id: String,
+    content: String,
+) -> Result<SemanticMemoryWriteResult, String> {
+    let sm = semantic_memory_handle(&app).await?;
+    match sm
+        .update(role_id, &id, &content)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        UpdateOutcome::Updated => Ok(SemanticMemoryWriteResult {
+            ok: true,
+            id: Some(id),
+            outcome: "updated".into(),
+        }),
+        UpdateOutcome::NotFound => Err(format!("语义记忆 {id} 不存在")),
+        UpdateOutcome::Duplicate => Err("修改后的内容与已有语义记忆重复，未保存".to_string()),
+    }
+}
+
+/// 删除指定角色的一条语义记忆。
+#[tauri::command]
+pub async fn delete_semantic_memory(
+    app: AppHandle,
+    role_id: i32,
+    id: String,
+) -> Result<SemanticMemoryWriteResult, String> {
+    let sm = semantic_memory_handle(&app).await?;
+    match sm.delete(role_id, &id).await.map_err(|e| e.to_string())? {
+        true => Ok(SemanticMemoryWriteResult {
+            ok: true,
+            id: Some(id),
+            outcome: "deleted".into(),
+        }),
+        false => Err(format!("语义记忆 {id} 不存在")),
+    }
 }
 
 // ========== LLM Multi-Provider Management ==========

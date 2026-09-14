@@ -2,11 +2,13 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 use crate::AppState;
+use crate::ai_service::embedding::FragmentSource;
 use crate::ai_service::game_system::auto_save;
 use crate::ai_service::game_system::game_status::GameStatusSnapshot;
 use crate::api::game::WebInitData;
 use crate::api::game::build_web_init_data;
 use crate::config::AppConfig;
+use crate::db::managers::embedding_repo::EmbeddingRepo;
 use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::prompt::PromptOptions;
 
@@ -255,6 +257,26 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         .await
         .map_err(|e| format!("载入台词失败: {}", e))?;
 
+    // 8.5 恢复「一键整理当前对话」归档：先清掉上一存档的对话台词片段，再把本存档
+    //     embedding 表里的向量写回内存语义索引（读档后无需重新编码即可参与检索/去重）。
+    //    DB 读取放在 game_status 锁之外，缩短全局锁占用。
+    let decoded = EmbeddingRepo::list_decoded(db, save_id)
+        .await
+        .unwrap_or_default();
+    {
+        let gs = service.game_status.lock().await;
+        let idx = gs.role_manager.memory_index();
+        idx.clear_conversation_fragments().await;
+        if !decoded.is_empty() {
+            let items: Vec<_> = decoded
+                .into_iter()
+                .map(|(text, source, vector)| (text, FragmentSource::Conversation(source), vector))
+                .collect();
+            let restored = idx.restore_encoded(&items).await;
+            tracing::info!("[SAVE] 载回对话嵌入 {restored} 条（存档 {save_id}）");
+        }
+    }
+
     // 9. 恢复 GameStatus 快照
     let snapshot: GameStatusSnapshot = serde_json::from_str(&save_model.status).unwrap_or_default();
     service.game_status.lock().await.apply_snapshot(&snapshot);
@@ -360,6 +382,11 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
     SaveRepo::delete_memory_banks_by_save(db, save_id)
         .await
         .map_err(|e| format!("删除记忆库失败: {}", e))?;
+
+    // 1.5 删除对话嵌入归档
+    EmbeddingRepo::delete_by_save(db, save_id)
+        .await
+        .map_err(|e| format!("删除对话嵌入失败: {}", e))?;
 
     // 2. 删除 running_script 关联（若有）
     if let Ok(Some(save_model)) = SaveRepo::get_save_by_id(db, save_id).await {

@@ -22,6 +22,7 @@ pub mod script;
 pub mod script_editor;
 pub mod settings;
 pub mod tool_settings;
+pub mod tts_sherpa;
 pub mod workshop;
 
 use std::path::PathBuf;
@@ -52,7 +53,7 @@ pub(crate) fn mtime_secs(path: &std::path::Path) -> String {
 // ========== 共享路径辅助函数 ==========
 
 pub(crate) fn data_dir() -> PathBuf {
-    crate::init::static_copy::get_data_dir().clone()
+    crate::data_dir::get_data_dir().clone()
 }
 
 pub(crate) fn game_data_dir() -> PathBuf {

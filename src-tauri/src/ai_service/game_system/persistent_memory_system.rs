@@ -214,6 +214,7 @@ fn commit_update_if_current(
 }
 
 impl PersistentMemorySystem {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         role_id: i32,
         initial_bank: &GameMemoryBank,
@@ -256,11 +257,6 @@ impl PersistentMemorySystem {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         self.history_revision.fetch_add(1, Ordering::AcqRel);
-    }
-
-    #[cfg(test)]
-    pub(crate) fn history_revision_for_test(&self) -> u64 {
-        self.history_revision.load(Ordering::Acquire)
     }
 
     /// 返回给调用方用于裁剪 line_list 的起点索引。

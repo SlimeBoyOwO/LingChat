@@ -19,7 +19,7 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 use tracing::info;
 
-use crate::init::static_copy::get_data_dir;
+use crate::data_dir::get_data_dir;
 use crate::manifest::DataManifest;
 
 // ─── 状态 ────────────────────────────────────────────────────
@@ -184,6 +184,17 @@ pub async fn apply_resource_sync(
     state: State<'_, ResourceSyncState>,
     selected_files: Vec<String>,
 ) -> Result<ResourceSyncResult, String> {
+    // RAII 守卫：无论 apply_selected_files 成功、失败还是 panic，
+    // 都会复位并发旗标，避免同步被永久拒绝。
+    struct SyncGuard<'a>(&'a std::sync::Mutex<bool>);
+    impl Drop for SyncGuard<'_> {
+        fn drop(&mut self) {
+            if let Ok(mut locked) = self.0.lock() {
+                *locked = false;
+            }
+        }
+    }
+
     // 防止并发
     {
         let mut locked = state.syncing.lock().map_err(|e| format!("锁失败: {e}"))?;
@@ -193,20 +204,9 @@ pub async fn apply_resource_sync(
         *locked = true;
     }
 
-    let result = sync::apply_selected_files(&get_data_dir(), &selected_files).map_err(|e| {
-        // 出错时也要解锁
-        let mut locked = state.syncing.lock().unwrap();
-        *locked = false;
-        e.to_string()
-    });
+    let _guard = SyncGuard(&state.syncing);
 
-    // 解锁
-    {
-        let mut locked = state.syncing.lock().map_err(|_| "锁错误".to_string())?;
-        *locked = false;
-    }
-
-    result
+    sync::apply_selected_files(get_data_dir(), &selected_files).map_err(|e| e.to_string())
 }
 
 // ─── 辅助 ────────────────────────────────────────────────────

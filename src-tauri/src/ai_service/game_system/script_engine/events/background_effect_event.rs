@@ -17,7 +17,11 @@ use crate::ai_service::message_system::events::emit;
 /// `GameBackground.vue` compares with `===`, so these are **case sensitive**:
 /// `starfield` and `Starfield` both silently render nothing. Anything not in
 /// this list (including the conventional `None`) clears the current effect.
-pub const KNOWN_EFFECTS: [&str; 5] = ["StarField", "Rain", "Sakura", "Snow", "Fireworks"];
+///
+/// Mirrors `PARTICLE_EFFECTS` in
+/// `src/components/game/standard/particles/index.ts` — adding a particle there
+/// without adding it here makes the script validator reject it.
+pub const KNOWN_EFFECTS: [&str; 6] = ["StarField", "Rain", "Sakura", "Snow", "Fireworks", "BA"];
 
 /// Names that explicitly mean "no effect" and therefore must not be warned about.
 const CLEARING_EFFECTS: [&str; 3] = ["none", "None", ""];

@@ -27,6 +27,11 @@ export default {
     particleBA: "星輝",
     volumeTitle: "桌寵音量大細",
     volumeReset: "還原預設音量",
+    live2dFpsTitle: "Live2D 渲染幀率",
+    live2dFpsDesc: "限制角色動畫幀率可顯著降低掛機 CPU 佔用（0 或留空 = 不限制）",
+    live2dFpsUnlimited: "不限",
+    live2dFpsCustom: "自訂",
+    live2dFpsReset: "還原預設幀率",
   },
   history: {
     title: "歷史對話",

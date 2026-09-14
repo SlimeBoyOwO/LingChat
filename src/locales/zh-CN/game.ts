@@ -19,6 +19,9 @@ export default {
     noModelTitle: "提示",
     noModelMessage:
       "还没选择对话模型呢，笨蛋！去高级设置里配置并选择模型就好啦，切换后自动生效哦！",
+    // 剧本模式下提交自由输入被后端拒绝时的提示
+    choiceRequired: "请点击一个选项",
+    inputNotAllowed: "当前无法输入",
   },
   avatar: {
     live2dUnavailable: "Live2D 不可用",

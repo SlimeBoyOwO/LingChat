@@ -8,6 +8,7 @@ pub mod read_media_file;
 pub mod registry;
 pub mod scene;
 pub mod schedule;
+pub mod semantic_memory;
 pub mod settings;
 pub mod skill_files;
 pub mod status;
@@ -28,13 +29,13 @@ use crate::ai_service::game_system::game_status::GameStatus;
 
 use character::{CharacterList, CharacterSwitch};
 use clock::CurrentTimeTool;
-use memory::{AddNote, DeleteNote, GetCurrentMemory, GetNotes, UpdateNote};
-use permissions::CONFIG_FILE_NAME;
-use permissions::ToolPermissionConfig;
+use memory::{AddNote, DeleteNote, GetCurrentMemory, GetNotes, SearchMemory, UpdateNote};
+use permissions::{CONFIG_FILE_NAME, ToolPermissionConfig};
 use read_media_file::ReadMediaFileTool;
 use registry::ToolRegistry;
 use scene::{SceneList, SceneSwitch};
 use schedule::{AddTodo, DeleteTodo, GetAllSchedule, UpdateTodo};
+use semantic_memory::{SemanticMemAdd, SemanticMemDelete, SemanticMemList, SemanticMemSearch};
 use settings::SharedToolSettings;
 #[cfg(desktop)]
 use skill_files::ExecuteCommand;
@@ -107,6 +108,11 @@ pub fn built_in_registry(
     registry.register(Arc::new(AddNote))?;
     registry.register(Arc::new(UpdateNote))?;
     registry.register(Arc::new(DeleteNote))?;
+    registry.register(Arc::new(SearchMemory))?;
+    registry.register(Arc::new(SemanticMemAdd))?;
+    registry.register(Arc::new(SemanticMemSearch))?;
+    registry.register(Arc::new(SemanticMemDelete))?;
+    registry.register(Arc::new(SemanticMemList))?;
     registry.register(Arc::new(CurrentStatus))?;
     registry.register(Arc::new(SceneStatus))?;
     registry.register(Arc::new(SceneList))?;
