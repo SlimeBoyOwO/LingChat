@@ -55,9 +55,15 @@
           v-if="menuState === 'gameMode'"
           @back="backToMainMenu"
           @open-scripts="showScriptModeMenu"
+          @open-mini-games="showMiniGameMenu"
           :loadingScripts="loadingScripts"
           :scripts="scripts"
         />
+      </Transition>
+
+      <!-- 小游戏菜单沿用主菜单背景、字体和布局 -->
+      <Transition name="slide-right">
+        <MiniGameOptions v-if="menuState === 'miniGames'" @back="showGameModeMenu" />
       </Transition>
 
       <!-- 剧本模式菜单 -->
@@ -98,11 +104,15 @@
   import { StartLogo, StartPage } from "./menu/base";
   import {
     GameModeOptions,
+    MiniGameOptions,
     MainMenuOptions,
     ScriptModeOptions,
     WorkshopOptions,
   } from "./menu/page";
 
+  const props = withDefaults(defineProps<{ initialMenu?: "main" | "miniGames" }>(), {
+    initialMenu: "main",
+  });
   const { t } = useI18n();
   const router = useRouter();
   const uiStore = useUIStore();
@@ -110,7 +120,9 @@
 
   // 页面与菜单状态
   const currentPage = ref("mainMenu");
-  const menuState = ref<"main" | "gameMode" | "scriptMode" | "workshop">("main");
+  const menuState = ref<"main" | "gameMode" | "scriptMode" | "workshop" | "miniGames">(
+    props.initialMenu
+  );
   const scripts = ref<ScriptSummary[]>([]);
   const loadingScripts = ref(false);
   const starsEnabled = computed(() => settingsStore.mainMenuStarsEnabled);
@@ -140,6 +152,9 @@
   /* ================== 菜单逻辑 ================== */
   function showGameModeMenu() {
     menuState.value = "gameMode";
+  }
+  function showMiniGameMenu() {
+    menuState.value = "miniGames";
   }
   function handleOpenCredits() {
     router.push("/credit");

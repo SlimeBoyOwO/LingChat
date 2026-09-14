@@ -11,7 +11,9 @@
     </StartLine>
 
     <StartLine>
-      <StartItem class="menu-subitem" disabled="true">{{ $t("views.menu.miniGame") }}</StartItem>
+      <StartItem class="menu-subitem" @click="emit('open-mini-games')">{{
+        $t("views.menu.miniGame")
+      }}</StartItem>
     </StartLine>
 
     <StartLine>
@@ -28,6 +30,7 @@
   const emit = defineEmits<{
     (e: "back"): void;
     (e: "open-scripts"): void;
+    (e: "open-mini-games"): void;
   }>();
 
   const router = useRouter();
