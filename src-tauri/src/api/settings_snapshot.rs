@@ -38,10 +38,7 @@ pub async fn capture_settings_snapshot(app: AppHandle) -> Result<String, String>
     };
 
     let temp_dir = std::env::temp_dir();
-    let temp_path = temp_dir.join(format!(
-        "lingchat_settings_bg_{}_{}_{}.png",
-        pid, ts, rand
-    ));
+    let temp_path = temp_dir.join(format!("lingchat_settings_bg_{}_{}_{}.png", pid, ts, rand));
     image
         .save(&temp_path)
         .map_err(|e| format!("保存设置快照失败: {}", e))?;
@@ -68,10 +65,7 @@ pub async fn cleanup_settings_snapshot(path: String) -> Result<(), String> {
     let p = std::path::Path::new(&path);
 
     // 文件名必须含前缀，否则拒绝
-    let file_name = p
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
+    let file_name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
     if !file_name.contains("lingchat_settings_bg_") {
         return Err(format!("拒绝删除非设置快照文件: {}", path));
     }
@@ -82,11 +76,16 @@ pub async fn cleanup_settings_snapshot(path: String) -> Result<(), String> {
     let allowed = match (p.canonicalize(), temp_dir.canonicalize()) {
         (Ok(cp), Ok(ct)) => cp.starts_with(&ct),
         _ => {
-            // 回退：检查路径字符串是否以 temp_dir 开头
-            let s = p.to_string_lossy();
-            let t = temp_dir.to_string_lossy();
-            s.starts_with(t.as_ref())
-        }
+            // 回退：按路径组件级比较 temp_dir 是否为前缀。
+            // 不能用字符串 starts_with，否则 /tmp_evil 会被 /tmp 误判为合法前缀。
+            let s_comp: Vec<_> = p.components().collect();
+            let t_comp: Vec<_> = temp_dir.components().collect();
+            if s_comp.len() < t_comp.len() {
+                false
+            } else {
+                s_comp[..t_comp.len()] == t_comp[..]
+            }
+        },
     };
     // 额外允许：未落盘的路径（文件不存在）也视为成功，直接返回
     if !allowed {

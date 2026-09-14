@@ -471,7 +471,8 @@ pub(crate) async fn build_web_init_data(
             let store = SceneStore::new(&service.data_dir);
             if let Ok(scenes) = store.load_all() {
                 if !scenes.is_empty() {
-                    let idx = chrono::Utc::now().timestamp_subsec_nanos() as usize % scenes.len();
+                    use rand::Rng;
+                    let idx = rand::thread_rng().gen_range(0..scenes.len());
                     sid = Some(scenes[idx].id.clone());
                 }
             }

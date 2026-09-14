@@ -255,7 +255,20 @@ pub async fn apply_staged_db_records(
 }
 
 /// 删除表中的全部行。
+/// 表名仅接受白名单内的业务表，杜绝字符串拼接导致的（潜在）SQL 注入。
 async fn delete_all(db: &impl ConnectionTrait, table: &str) -> Result<u64, String> {
+    const ALLOWED: [&str; 7] = [
+        "line_perception",
+        "memory_bank",
+        "line",
+        "running_script",
+        "adventure_unlock",
+        "save",
+        "role",
+    ];
+    if !ALLOWED.contains(&table) {
+        return Err(format!("非法表名，拒绝清空: {}", table));
+    }
     let sql = format!("DELETE FROM {}", table);
     let result = db
         .execute(Statement::from_string(DatabaseBackend::Sqlite, sql))

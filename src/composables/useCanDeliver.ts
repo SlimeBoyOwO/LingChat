@@ -1,4 +1,4 @@
-import { ref, watch, onMounted } from "vue";
+import { ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { invoke } from "@tauri-apps/api/core";
 import { useUIStore } from "@/stores/modules/ui/ui";
@@ -52,7 +52,7 @@ export function useCanDeliver() {
     if (val !== lastInvoked) {
       lastInvoked = val;
       invoke("proactive_set_can_deliver", { canDeliver: val }).catch((e) =>
-        console.error("[CanDeliver] invoke failed:", e)
+        console.error("[CanDeliver] invoke failed:", e),
       );
     }
   });

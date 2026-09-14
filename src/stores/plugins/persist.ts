@@ -78,7 +78,7 @@ export function persist({ store, options }: PiniaPluginContext) {
       // 深度合并：确保新增的默认字段不会因旧持久化数据丢失
       const merged = deepMerge(
         JSON.parse(JSON.stringify(store.$state)),
-        deepExclude(filtered, excludePathFields)
+        deepExclude(filtered, excludePathFields),
       );
       store.$patch(merged);
     } catch (e) {
@@ -87,7 +87,7 @@ export function persist({ store, options }: PiniaPluginContext) {
   }
 
   // 变化时：自动保存到 localStorage
-  store.$subscribe((mutation, state) => {
+  store.$subscribe((_mutation, state) => {
     try {
       // 过滤掉排除的字段（顶层 + 点路径深度剔除）
       const filtered = excludeFields.length

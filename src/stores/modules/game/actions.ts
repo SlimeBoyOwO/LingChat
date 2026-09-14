@@ -8,6 +8,9 @@ import { useSettingsStore } from "../settings";
 import type { SceneInfo } from "@/api/services/scene";
 import { invoke } from "@tauri-apps/api/core";
 
+// 进行中的 getRoleInfo 请求（按 role_id 去重，避免并发 TOCTOU 重复 IPC）
+const pendingRoleFetches = new Map<number, Promise<GameRole>>();
+
 export const actions = {
   appendGameMessage(this: GameState, message: GameMessage) {
     this.dialogHistory.push({
@@ -26,7 +29,7 @@ export const actions = {
       applyWebInitData(this, gameInfo);
       // 通知后端玩家已入场，触发 AI 问候（不等 LoadingTransition，fire-and-forget）
       invoke("notify_player_entry").catch((err) =>
-        console.warn("[Entry] 问候触发失败（非致命）:", err)
+        console.warn("[Entry] 问候触发失败（非致命）:", err),
       );
       return gameInfo;
     } catch (error) {
@@ -39,35 +42,43 @@ export const actions = {
     if (this.gameRoles[role_id]) {
       return this.gameRoles[role_id];
     }
-    try {
-      const roleInfo = await getRoleInfo(role_id);
-      this.gameRoles[role_id] = {
-        roleId: roleInfo.character_id,
-        roleName: roleInfo.ai_name,
-        roleSubTitle: roleInfo.ai_subtitle,
-        thinkMessage: roleInfo.thinking_message,
-        scale: roleInfo.scale,
-        offsetX: roleInfo.offset_x,
-        offsetY: roleInfo.offset_y,
-        scaleP: roleInfo.scale_p,
-        offsetXP: roleInfo.offset_x_p,
-        offsetYP: roleInfo.offset_y_p,
-        bubbleLeft: roleInfo.bubble_left,
-        bubbleTop: roleInfo.bubble_top,
-        clothes: roleInfo.clothes,
-        clothesName: roleInfo.clothes_name,
-        bodyPart: roleInfo.body_part,
-        live2d: roleInfo.live2d,
-        character_folder: roleInfo.character_folder,
-        emotion: "正常",
-        originalEmotion: "正常",
-        show: true,
-      };
-      return this.gameRoles[role_id];
-    } catch (error) {
-      console.error("游戏角色信息获取失败:", error);
-      throw error;
-    }
+    // 复用进行中的请求，避免并发调用同一 role_id 时重复发起 IPC（TOCTOU）
+    const inFlight = pendingRoleFetches.get(role_id);
+    if (inFlight) return inFlight;
+    const promise = (async () => {
+      try {
+        const roleInfo = await getRoleInfo(role_id);
+        this.gameRoles[role_id] = {
+          roleId: roleInfo.character_id,
+          roleName: roleInfo.ai_name,
+          roleSubTitle: roleInfo.ai_subtitle,
+          thinkMessage: roleInfo.thinking_message,
+          scale: roleInfo.scale,
+          offsetX: roleInfo.offset_x,
+          offsetY: roleInfo.offset_y,
+          scaleP: roleInfo.scale_p,
+          offsetXP: roleInfo.offset_x_p,
+          offsetYP: roleInfo.offset_y_p,
+          bubbleLeft: roleInfo.bubble_left,
+          bubbleTop: roleInfo.bubble_top,
+          clothes: roleInfo.clothes,
+          clothesName: roleInfo.clothes_name,
+          bodyPart: roleInfo.body_part,
+          live2d: roleInfo.live2d,
+          character_folder: roleInfo.character_folder,
+          emotion: "正常",
+          originalEmotion: "正常",
+          show: true,
+        };
+        return this.gameRoles[role_id];
+      } catch (error) {
+        console.error("游戏角色信息获取失败:", error);
+        throw error;
+      }
+    })();
+    pendingRoleFetches.set(role_id, promise);
+    promise.finally(() => pendingRoleFetches.delete(role_id)).catch(() => {});
+    return promise;
   },
 
   /** 标记进入剧情模式（用于控制UI显示：隐藏番茄钟/日程等） */
@@ -278,7 +289,7 @@ export function convertInitLines(lines: GameLineInit[]): GameMessage[] {
       isFinal,
       motionText: line.action_content || undefined,
       originalTag: line.original_emotion || undefined,
-      timestamp: Date.now(),
+      timestamp: Date.now() - (array.length - 1 - index) * 1000,
       userMessageSeq: line.user_message_seq ?? undefined,
       thinking: line.thinking || undefined,
       ttsText: line.tts_content || undefined,

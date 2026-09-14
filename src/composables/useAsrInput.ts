@@ -728,7 +728,7 @@ function ensureInit() {
   // 语音输入总开关（设置页切换立即生效）
   watch(
     () => asrStore?.settings.voice_input_enabled,
-    (enabled) => {
+    (_enabled) => {
       updateAsrAvailability();
     },
     { immediate: true },
@@ -736,7 +736,7 @@ function ensureInit() {
   // 触摸模式（§1.4）
   watch(
     () => gameStore?.command,
-    (cmd) => {
+    (_cmd) => {
       updateAsrAvailability();
     },
     { immediate: true },
@@ -744,7 +744,7 @@ function ensureInit() {
   // currentStatus（§1.1-3：thinking/responding/presenting）
   watch(
     () => gameStore?.currentStatus,
-    (status) => {
+    (_status) => {
       updateAsrAvailability();
     },
     { immediate: true },
@@ -754,7 +754,7 @@ function ensureInit() {
     () =>
       (gameStore as unknown as { runningScript?: { choices?: unknown[] } })?.runningScript?.choices
         ?.length ?? 0,
-    (n) => {
+    (_n) => {
       updateAsrAvailability();
     },
     { immediate: true },
@@ -762,7 +762,7 @@ function ensureInit() {
   // LoadingTransition 启动动画完成（§1.9）
   watch(
     () => gameStore?.loadingComplete,
-    (done) => {
+    (_done) => {
       updateAsrAvailability();
     },
     { immediate: true },

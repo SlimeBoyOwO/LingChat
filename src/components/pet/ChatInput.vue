@@ -36,7 +36,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
-import { useUIStore } from "@/stores/modules/ui/ui";
 import { useSettingsStore } from "@/stores/modules/settings";
 import { useChatInput } from "@/composables/chat/useChatInput";
 import { useDialogStatus } from "@/composables/chat/useDialogStatus";
@@ -44,7 +43,6 @@ import { useScreenshot } from "@/composables/useScreenshot";
 import { Forward } from "lucide-vue-next";
 
 const { t } = useI18n();
-const uiStore = useUIStore();
 const settingsStore = useSettingsStore();
 
 const { init: initScreenshot, destroy: destroyScreenshot } = useScreenshot();

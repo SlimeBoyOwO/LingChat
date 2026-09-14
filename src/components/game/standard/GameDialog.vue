@@ -284,7 +284,6 @@ const { micEnabled, micTitle, micIconName, toggleRecording } = useMicControl();
 // 截图状态改用共享 composable（桌宠早已在用），不再各自维护一套 listen + refs。
 // 失败提示由调用方提供：桌宠侧静默，主界面弹 alert。
 const {
-  hasScreenshot,
   init: initScreenshot,
   destroy: destroyScreenshot,
   start: startScreenshotRaw,
@@ -380,7 +379,7 @@ function stopMotionTyping() {
 // 同角色短句回复，就继续武装——使 MainChat 在这行展示完成后自动推进下一条也走
 // 追加路径。解决快速连发时 i+2/i+3 在 i+1 处理前就入队、被 addEvent 的队列守卫
 // 挡住、导致最多只融合两句的问题。
-function rearmNextMerge(appendedLine: string) {
+function rearmNextMerge(_appendedLine: string) {
   if (!settingsStore.text.inlineMotionText || settingsStore.text.mergeLineThreshold <= 0) {
     return;
   }

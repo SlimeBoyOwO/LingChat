@@ -1,7 +1,6 @@
 import type { IEventProcessor } from "../event-processor";
 import type { ScriptChoiceEvent } from "../../../types";
 import { useGameStore } from "../../../stores/modules/game";
-import { useUIStore } from "../../../stores/modules/ui/ui";
 import { WebSocketMessageTypes } from "../../../types";
 
 export default class ChoiceProcessor implements IEventProcessor {
@@ -11,7 +10,6 @@ export default class ChoiceProcessor implements IEventProcessor {
 
   async processEvent(event: ScriptChoiceEvent): Promise<void> {
     const gameStore = useGameStore();
-    const uiStore = useUIStore();
 
     // 更新游戏状态
     if (gameStore.runningScript) {

@@ -33,6 +33,10 @@ use super::messages::{CompleteManifest, DeviceIdentity};
 
 // ─── 服务端状态 ──────────────────────────────────────────────
 
+/// 请求体大小上限（DB 记录 JSON 可能较大，但必须封顶防止恶意超大 body 打爆内存）。
+/// push-file 使用流式 Body 提取器不受此限制。
+const MAX_BODY_SIZE: usize = 256 * 1024 * 1024;
+
 /// axum 共享状态。
 #[derive(Clone)]
 struct ServerState {
@@ -67,7 +71,7 @@ pub async fn start_server(app: tauri::AppHandle, identity: &DeviceIdentity) -> R
         .route("/push-delete", post(push_delete_handler))
         .route("/db-records", get(db_records_handler))
         .route("/db-records", post(db_records_push_handler))
-        .layer(DefaultBodyLimit::disable())
+        .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .with_state(state);
 
     // 绑定随机端口
@@ -232,13 +236,24 @@ async fn push_file_handler(
             .map_err(|e| AppError(StatusCode::FORBIDDEN, e))?;
     }
 
-    // 原子写入：先流式写 .tmp，再 rename；若 rename 失败则暂存
-    let tmp_path = file_path.with_extension(format!(
-        "{}.tmp",
-        file_path
-            .extension()
-            .map(|e| format!(".{}", e.to_string_lossy()))
+    // 原子写入：先流式写唯一临时文件，再 rename；若 rename 失败则暂存。
+    // 临时文件带唯一后缀（pid + 纳秒时间戳），避免并发推送同一文件时
+    // 共享同一个 .tmp 路径导致分块交错写入、最终得到损坏文件。
+    let unique_suffix = format!(
+        "{}.{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
+            .as_nanos()
+    );
+    let tmp_path = file_path.with_file_name(format!(
+        "{}.{}.tmp",
+        file_path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "file".to_string()),
+        unique_suffix
     ));
 
     // 流式写入 + 边写边算 SHA-256

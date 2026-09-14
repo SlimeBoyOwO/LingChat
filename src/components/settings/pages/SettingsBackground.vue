@@ -464,7 +464,6 @@ import type { BackgroundImageInfo } from "../../../types";
 import {
   getBackgroundImages,
   uploadBackgroundImage,
-  generateBackgroundImage,
   openBackgroundsFolder,
 } from "../../../api/services/background";
 import { unlockAchievement } from "../../../api/services/achievement";
@@ -489,7 +488,6 @@ import {
   PictureInPicture,
   Sparkles,
   Settings,
-  Wand2,
   Wrench,
   Cpu,
   RefreshCw,
@@ -497,13 +495,11 @@ import {
 import SceneEditModal from "../scene/SceneEditModal.vue";
 import DialogAppearancePanel from "../dialog/DialogAppearancePanel.vue";
 import PluginTag from "@/components/ui/PluginTag.vue";
-import { useUserStore } from "../../../stores/modules/user/user";
 import { PARTICLE_EFFECTS } from "@/components/game/standard/particles";
 
 const gameStore = useGameStore();
 const uiStore = useUIStore();
 const settingsStore = useSettingsStore();
-const userStore = useUserStore();
 const dialogStore = useDialogStore();
 const { t } = useI18n();
 
@@ -954,16 +950,4 @@ function handleStarsInputEnter() {
 watch(starsFps, (newValue) => {
   starsFpsInput.value = newValue;
 });
-
-// ── 对话框外观 ──
-const dialogBgInput = ref<HTMLInputElement | null>(null);
-
-function hexToRgba(hex: string, alpha: number): string {
-  const m = hex.replace("#", "").match(/^([0-9a-fA-F]{6})$/);
-  if (!m) return `rgba(0,14,39,${alpha})`;
-  const r = parseInt(m[1]!.substring(0, 2), 16);
-  const g = parseInt(m[1]!.substring(2, 4), 16);
-  const b = parseInt(m[1]!.substring(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
 </script>

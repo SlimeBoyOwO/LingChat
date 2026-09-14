@@ -45,7 +45,7 @@ const emit = defineEmits(["audio-ended", "audio-started"]);
 
 /** 投屏全局缩放与偏移（仅投屏窗口传入；主窗口缺省无影响）。
     水平偏移由投屏窗口 .cast-role-layer 的 CSS translateX 整层平移，不在此处理。 */
-const props = withDefaults(
+withDefaults(
   defineProps<{
     /** 投屏全局缩放（作用于 Live2D / 立绘布局，保持贴底定位） */
     castScale?: number;

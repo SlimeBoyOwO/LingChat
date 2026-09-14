@@ -28,7 +28,6 @@ async function capture(): Promise<string | null> {
 
   // 清理上一会话的临时资源（懒清理，避免异常积累）
   const prevPath = snapshotPath.value;
-  const prevSrc = snapshotSrc.value;
   // 先清空显示，避免旧图闪烁；但保留 prevPath 以便后台删除
   snapshotSrc.value = null;
   snapshotPath.value = null;
@@ -54,7 +53,7 @@ async function capture(): Promise<string | null> {
 
   const capturePromise = doCapture();
   const timeout = new Promise<null>((resolve) =>
-    setTimeout(() => resolve(null), CAPTURE_TIMEOUT_MS)
+    setTimeout(() => resolve(null), CAPTURE_TIMEOUT_MS),
   );
 
   const p = Promise.race([capturePromise, timeout]) as Promise<string | null>;
@@ -113,7 +112,6 @@ async function capture(): Promise<string | null> {
  * 若 myId 与当前会话不匹配则不清理显示（防止旧清理影响新会话）。
  */
 async function release(myId?: number): Promise<void> {
-  const targetId = myId ?? snapshotSessionId.value;
   const path = snapshotPath.value;
   const currentId = snapshotSessionId.value;
 

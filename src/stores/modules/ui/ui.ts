@@ -521,7 +521,7 @@ export const useUIStore = defineStore("ui", {
       const newFileName = getFileName(track.src);
       // 按完整路径或文件名去重，剧本指令优先覆盖手动导入
       this.ambientTracks = this.ambientTracks.filter(
-        (t) => t.src !== track.src && getFileName(t.src) !== newFileName
+        (t) => t.src !== track.src && getFileName(t.src) !== newFileName,
       );
       // 超出上限时移除最早的
       if (this.ambientTracks.length >= MAX_AMBIENT_TRACKS) {
@@ -567,7 +567,7 @@ export const useUIStore = defineStore("ui", {
       if (targetSrc) {
         // 按文件名匹配清除指定轨道
         this.ambientTracks = this.ambientTracks.filter(
-          (t) => !t.src.endsWith(targetSrc) && !t.src.includes(targetSrc)
+          (t) => !t.src.endsWith(targetSrc) && !t.src.includes(targetSrc),
         );
       } else {
         this.ambientTracks = [];
@@ -626,7 +626,6 @@ export function initUIStore() {
     syncSafeArea();
   });
 
-  const settingsStore = useSettingsStore();
   // 使用 getter 获取角色文件夹
   store.loadCharacterTips(store.currentCharacterFolder);
 

@@ -2,9 +2,8 @@
  * 对话框外观管理 composable
  * 封装对话框的视觉样式计算和交互行为（滚轮历史、空格隐藏、思考时自动隐藏）
  */
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useSettingsStore } from "@/stores/modules/settings";
-import { useGameStore } from "@/stores/modules/game";
 import { hexToRgba } from "@/utils/color";
 
 export interface UseDialogAppearanceOptions {
@@ -14,7 +13,6 @@ export interface UseDialogAppearanceOptions {
 
 export function useDialogAppearance(options: UseDialogAppearanceOptions) {
   const settingsStore = useSettingsStore();
-  const gameStore = useGameStore();
 
   // ── 外观配置（响应式读取 settings store） ──
   const dialogBgImage = computed(() => settingsStore.dialogBackgroundImage);
@@ -27,7 +25,6 @@ export function useDialogAppearance(options: UseDialogAppearanceOptions) {
   // ── 交互行为开关（用 computed 追踪 getter 的变化） ──
   const scrollHistoryEnabled = computed(() => settingsStore.dialogScrollHistoryEnabled);
   const spacebarHideEnabled = computed(() => settingsStore.dialogSpacebarHideEnabled);
-  const autoHideOnThinkEnabled = computed(() => settingsStore.dialogAutoHideOnThinkEnabled);
 
   // ── 对话框隐藏状态 ──
   const isHidden = ref(false);

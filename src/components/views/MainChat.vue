@@ -109,14 +109,12 @@ const goToPetMode = () => {
 
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null);
 const menuPanelRef = ref<HTMLElement | null>(null);
-let settingsSnapshotSession: number | null = null;
 
 const openSettings = async () => {
   // 存档截图（原逻辑，保留用于存档预览）
   gameStore.captureScreenshot();
   // Windows 静态背景快照 — 非阻塞：hide → capture → 立即开设置 → await → finally restore
   if (isWindows()) {
-    const el = menuPanelRef.value;
     (async () => {
       try {
         uiStore.toggleSettings(true);

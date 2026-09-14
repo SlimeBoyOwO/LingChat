@@ -73,7 +73,7 @@ const settingsStore = useSettingsStore();
 const uiStore = useUIStore();
 
 const showChatInput = ref(false);
-const { isDragging, hasFile } = useFileDrop();
+const { isDragging } = useFileDrop();
 
 const avatarContainer = ref<HTMLElement | null>(null);
 const chatContainer = ref<HTMLElement | null>(null);
