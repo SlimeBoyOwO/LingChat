@@ -60,6 +60,10 @@ pub struct GameStatus {
     /// `notify_player_entry` 靠它去重，避免重复生成问候台词；与"玩家是否在游戏里"无关。
     pub entry_greeting_done: bool,
 
+    /// 好感度评估游标：上次评估时「真实对话」的段数。
+    /// 每累计 `GodAgentConfig.affection_eval_interval` 段新对话触发一次上帝 Agent 评估。
+    pub affection_eval_cursor: usize,
+
     /// 场景感知开关（关闭后切换场景不再触发旁白）
     pub scene_awareness_enabled: bool,
 }
@@ -87,6 +91,7 @@ impl GameStatus {
             active_save_id: None,
             preview_generation: 0,
             entry_greeting_done: false,
+            affection_eval_cursor: 0,
             scene_awareness_enabled: true,
         }
     }

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Live2dSettings } from "@/types/live2d";
 import type { SceneInfo } from "./scene";
+import type { AffectionVector, NegativeVector } from "@/stores/modules/game/state";
 
 // 1. 定义角色配置接口 (原先摊平的字段现在归属到这里)
 export interface CharacterSettings {
@@ -23,6 +24,10 @@ export interface CharacterSettings {
   body_part: Record<string, any>;
   live2d?: Live2dSettings | null;
   character_folder: string;
+  /** 该角色对玩家的六维好感度（由角色目录 affection.yml 载入；未加载时为 null） */
+  affection: AffectionVector | null;
+  /** 负面六维（被冒犯/伤害时增加、安抚时减少；未加载时为 null） */
+  negative: NegativeVector | null;
 }
 
 /// 前端用台词条目（对应 Rust GameLineInit）

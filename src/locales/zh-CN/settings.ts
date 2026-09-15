@@ -807,7 +807,7 @@ export default {
     },
     vueDevTools: {
       title: "Vue DevTools 显示",
-      desc: "仅开发模式生效，控制全局所有窗口（主窗 / 投屏 / 日志 / 桌宠）的 Vue DevTools 悬浮面板显示",
+      desc: "仅开发模式生效，控制主窗口的 Vue DevTools 悬浮面板显示（日志/投屏/桌宠等独立窗口始终隐藏）",
     },
     memory: {
       title: "启用永久记忆",

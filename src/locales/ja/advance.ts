@@ -39,5 +39,10 @@ export default {
     memoryDesc:
       "キャラクターの記憶バンクと実際のコンテキストを確認し、記憶の圧縮・注入の問題を調査します",
     memoryButton: "記憶デバッグ画面へ",
+    affectionTitle: "好感度ハート",
+    affectionDesc:
+      "好感度ハートの鼓動と赤い液体の波アニメーションの切替。鼓動オフ時はトップバーのハートのみ静止し、好感度パネル内は鼓動を継続します",
+    affectionToggle: "鼓動アニメーションを有効化",
+    affectionWaveToggle: "波アニメーションを有効化",
   },
 };

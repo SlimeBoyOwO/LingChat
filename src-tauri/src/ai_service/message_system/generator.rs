@@ -15,9 +15,11 @@ use sea_orm::DatabaseConnection;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
+use crate::ai_service::affection::AffectionChangedPayload;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::god_agent::GodAgentCore;
+use crate::ai_service::god_agent::core::NpcAffectionView;
 use crate::ai_service::llm::LlmClient;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::processor::{
@@ -152,6 +154,10 @@ impl MessageGenerator {
             }
         }
 
+        // 好感度定期评估：真实对话累计到间隔后，后台 spawn 上帝 Agent 评估，
+        // 不阻塞本轮回复的呈现。
+        self.maybe_evaluate_affection().await;
+
         Ok(accumulated)
     }
 
@@ -254,7 +260,12 @@ impl MessageGenerator {
             return Ok(Vec::new());
         };
         let role = gs.get_role(&self.deps.db, rid).await?;
-        Ok(role.memory.clone())
+        let mut context = role.memory.clone();
+        // 注入当前角色对玩家的情感状态与负面情绪（每轮实时拼装，不落台词历史）
+        context.push(LlmMessage::system(
+            crate::ai_service::affection::describe_for_prompt(&role.affection, &role.negative),
+        ));
+        Ok(context)
     }
 
     /// Step 3: 启动 LLM 流管道，统一处理 thinking emit 与错误分发。
@@ -405,6 +416,112 @@ impl MessageGenerator {
 
         self.emit_character_switch(selected_role_id, &character_name);
         Ok((true, selected_role_id))
+    }
+
+    /// 好感度定期评估：真实对话每累计 `affection_eval_interval` 段，spawn 一个
+    /// 上帝 Agent 评估任务在后台调整在场 NPC 的六维好感度。
+    ///
+    /// 不阻塞本轮回复：快照在锁内取、LLM 调用在锁外、结果写角色文件并广播
+    /// `affection:changed`。游标先推进，即使评估失败也不会形成重试风暴。
+    async fn maybe_evaluate_affection(&self) {
+        let Some(god) = &self.deps.god_agent else {
+            return;
+        };
+        let interval = god.config.affection_eval_interval.max(1);
+        let window = god.config.recent_window;
+
+        let (npcs, lines) = {
+            let mut gs = self.deps.game_status.lock().await;
+            // 剧本模式下的对话不进好感度评估（剧本事件接口另行扩展）。
+            if gs.script_status.is_some() {
+                return;
+            }
+            let real_count = gs
+                .line_list
+                .iter()
+                .filter(|l| crate::ai_service::game_system::auto_save::is_real_dialogue(l))
+                .count();
+            if real_count < gs.affection_eval_cursor + interval {
+                return;
+            }
+            gs.affection_eval_cursor = real_count;
+
+            let npcs: Vec<NpcAffectionView> = gs
+                .present_role_ids
+                .iter()
+                .filter(|&&id| id != 0)
+                .filter_map(|&id| gs.role_manager.get_loaded(id))
+                .filter_map(|r| {
+                    let role_id = r.role_id?;
+                    Some(NpcAffectionView {
+                        role_id,
+                        name: r
+                            .display_name
+                            .clone()
+                            .unwrap_or_else(|| format!("角色{}", role_id)),
+                        subtitle: r.settings.ai_subtitle.clone().unwrap_or_default(),
+                        info: r.settings.info.clone().unwrap_or_default(),
+                        current: r.affection,
+                        negative: r.negative,
+                    })
+                })
+                .collect::<Vec<_>>();
+            if npcs.is_empty() {
+                return;
+            }
+            let lines: Vec<GameLine> = gs
+                .line_list
+                .iter()
+                .rev()
+                .take(window)
+                .cloned()
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect();
+            (npcs, lines)
+        };
+
+        let god = Arc::clone(god);
+        let game_status = self.deps.game_status.clone();
+        let app = self.deps.app.clone();
+        tauri::async_runtime::spawn(async move {
+            match god.evaluate_affection(&lines, &npcs).await {
+                Ok(adjustments) => {
+                    if adjustments.is_empty() {
+                        return;
+                    }
+                    let mut gs = game_status.lock().await;
+                    for adj in adjustments {
+                        let Some((values, negative)) = gs.role_manager.adjust_affection(
+                            adj.role_id,
+                            &adj.deltas,
+                            &adj.negative_deltas,
+                        ) else {
+                            continue;
+                        };
+                        let payload = AffectionChangedPayload {
+                            role_id: adj.role_id,
+                            deltas: adj.deltas.iter().cloned().collect(),
+                            negative_deltas: adj.negative_deltas.iter().cloned().collect(),
+                            average: values.average(),
+                            values,
+                            negative,
+                            reason: adj.reason,
+                        };
+                        tracing::info!(
+                            "[Affection] role_id={} 调整 {:?}（{}）→ 平均 {}",
+                            payload.role_id,
+                            payload.deltas,
+                            payload.reason,
+                            payload.average,
+                        );
+                        let _ = app.emit("affection:changed", payload);
+                    }
+                },
+                Err(e) => tracing::warn!("[Affection] 好感度评估失败: {e:#}"),
+            }
+        });
     }
 
     /// 通知前端当前说话角色已切换。

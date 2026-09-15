@@ -141,6 +141,31 @@
       </MenuItem>
     </div>
 
+    <!-- 好感度心跳 -->
+    <div class="h-full transition-all duration-300">
+      <MenuItem :title="$t('advance.menu.affectionTitle')" size="large">
+        <template #header>
+          <Heart :size="20" />
+        </template>
+        <p class="mb-3 min-h-17 text-sm leading-relaxed text-white/50">
+          {{ $t("advance.menu.affectionDesc") }}
+        </p>
+        <Toggle
+          :checked="affectionHeartbeatEnabled"
+          @change="settingsStore.setAffectionHeartbeatEnabled($event)"
+        >
+          {{ $t("advance.menu.affectionToggle") }}
+        </Toggle>
+        <Toggle
+          class="mt-2"
+          :checked="affectionWaveEnabled"
+          @change="settingsStore.setAffectionWaveEnabled($event)"
+        >
+          {{ $t("advance.menu.affectionWaveToggle") }}
+        </Toggle>
+      </MenuItem>
+    </div>
+
     <!-- 内置 TTS 教程 -->
     <div class="h-full cursor-pointer transition-all duration-300" @click="openGuide">
       <MenuItem :title="$t('advance.menu.guideTitle')" size="large">
@@ -165,6 +190,7 @@ import {
   Cast,
   Cpu,
   Database,
+  Heart,
   Mic,
   SlidersHorizontal,
   Languages,
@@ -174,9 +200,15 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useI18n } from "vue-i18n";
 import { MenuItem } from "../../ui";
 import { Button } from "../../base";
+import Toggle from "@/components/base/widget/Toggle.vue";
 import { SUPPORTED_LOCALES, setLocale, type AppLocale } from "@/locales";
+import { useSettingsStore } from "@/stores/modules/settings";
+import { computed } from "vue";
 
 const { locale } = useI18n();
+const settingsStore = useSettingsStore();
+const affectionHeartbeatEnabled = computed(() => settingsStore.affectionHeartbeatEnabled);
+const affectionWaveEnabled = computed(() => settingsStore.affectionWaveEnabled);
 
 const emit = defineEmits<{
   navigate: [tab: "llm" | "tts" | "asr" | "other" | "tools" | "cast" | "memory"];

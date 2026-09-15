@@ -777,7 +777,7 @@ export default {
     },
     vueDevTools: {
       title: "Vue DevTools 表示",
-      desc: "開発モードのみ有効。全ウィンドウ（メイン / 投屏 / ログ / デスクトップペット）の Vue DevTools フローティングパネル表示を制御します",
+      desc: "開発モードのみ有効。メインウィンドウの Vue DevTools フローティングパネル表示を制御します（ログ/投屏/ペット等の独立ウィンドウでは常に非表示）",
     },
     memory: {
       title: "永続メモリを有効化",

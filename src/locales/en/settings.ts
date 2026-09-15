@@ -796,7 +796,7 @@ export default {
     },
     vueDevTools: {
       title: "Vue DevTools",
-      desc: "Dev mode only — controls the Vue DevTools floating panel across all windows (main / cast / log / pet)",
+      desc: "Dev mode only — controls the Vue DevTools floating panel in the main window (always hidden in secondary windows like log / cast / pet)",
     },
     memory: {
       title: "Enable Persistent Memory",

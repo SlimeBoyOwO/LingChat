@@ -100,6 +100,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::game::notify_player_entry,
         api::memory::get_memory_debug_overview,
         api::memory::get_role_memory_snapshot,
+        api::affection::get_affection,
         api::chat::send_chat_message,
         api::chat::rollback_conversation,
         api::chat::generate_line_voice,

@@ -37,5 +37,9 @@ export default {
     memoryTitle: "永久記憶調試",
     memoryDesc: "查看角色當前的記憶庫內容與真實上下文，用於排查記憶壓縮與注入問題",
     memoryButton: "進入記憶調試界面",
+    affectionTitle: "好感度心跳",
+    affectionDesc: "好感度愛心嘅跳動同紅色液體波浪動畫開關；閂咗心跳之後頂欄愛心靜止，好感度面板內仍會跳動",
+    affectionToggle: "啟用心跳動畫",
+    affectionWaveToggle: "啟用波浪動畫",
   },
 };
