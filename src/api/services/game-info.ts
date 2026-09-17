@@ -44,6 +44,20 @@ export interface GameLineInit {
   tts_content: string | null;
 }
 
+/** 「我的身份」精简信息（对应后端 `PlayerIdentityInit`）。
+ *
+ * 刻意与 `character_settings.user_name/user_subtitle` 分成两个出口：
+ * 那两个字段是「该 AI 角色对我的称呼」，会被角色编辑页原样写回角色卡；
+ * 把身份名字填进去会在用户编辑角色时污染角色卡数据。
+ */
+export interface PlayerIdentityInit {
+  /** 身份 id；null = 还没选过身份（显示为合成默认身份） */
+  id: string | null;
+  name: string;
+  subtitle: string;
+  prompt: string;
+}
+
 // 2. 定义完整的初始化数据接口 (对应 Rust WebInitData)
 export interface WebInitData {
   character_settings: CharacterSettings;
@@ -66,6 +80,10 @@ export interface WebInitData {
   last_bgm_mode?: string | null;
   /** 上次会话环境音轨道（JSON 字符串） */
   last_ambient_tracks?: string | null;
+  /** 当前「我的身份」id（null/undefined = 未选择，使用合成默认身份） */
+  player_identity_id?: string | null;
+  /** 当前「我的身份」精简信息（旧后端不返回，前端需兜底） */
+  player_identity?: PlayerIdentityInit;
 }
 
 /**

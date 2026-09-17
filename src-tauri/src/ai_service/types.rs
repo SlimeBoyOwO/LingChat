@@ -639,6 +639,15 @@ pub struct Player {
     pub user_name: String,
     pub user_subtitle: String,
     pub user_prompt: String,
+    /// 当前「我的身份」的不可变 id。`None` = 尚未选择身份（使用合成身份）。
+    ///
+    /// 新增字段，`#[serde(default)]` 保证旧数据/旧调用方反序列化不受影响。
+    #[serde(default)]
+    pub identity_id: Option<String>,
+    /// 当前身份对其他对象的关系，键为 `ai:<角色文件夹>` / `me:<身份 id>`。
+    /// 供多 AI 场景下按「说话者视角」解析关系使用。
+    #[serde(default)]
+    pub relations: HashMap<String, String>,
 }
 
 // ==========================================

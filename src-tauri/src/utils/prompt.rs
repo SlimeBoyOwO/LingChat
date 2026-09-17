@@ -177,9 +177,38 @@ fn build_framing_prefix_cn(user_name: &str, character_name: &str) -> String {
 }
 
 /// 构建系统提示词。与 Python `Function.sys_prompt_builder` 语义一致。
+///
+/// 这是**兼容包装**：不注入「我」的身份与关系。需要注入时用
+/// [`sys_prompt_builder_with_player`]。
 pub fn sys_prompt_builder(
     user_name: &str,
     character_name: &str,
+    ai_prompt: &str,
+    ai_prompt_example: Option<&str>,
+    ai_prompt_example_old: Option<&str>,
+    options: PromptOptions,
+) -> String {
+    sys_prompt_builder_with_player(
+        user_name,
+        character_name,
+        "",
+        ai_prompt,
+        ai_prompt_example,
+        ai_prompt_example_old,
+        options,
+    )
+}
+
+/// 构建系统提示词，并把「正在与你对话的这个人」（身份 + 关系）一并注入。
+///
+/// ⚠️ 注入位置刻意放在**老角色卡那两个早返回分支之前**：这两个分支会直接
+/// `return ai_prompt`（不再拼接对话格式提示）。如果身份块只放在下面的拼接段里，
+/// 使用老角色卡的用户会完全看不到身份与关系，很容易被误判成「后端没生效」。
+/// 这里改为先把身份块并入 `ai_prompt`，两个分支返回时同样带上它。
+pub fn sys_prompt_builder_with_player(
+    user_name: &str,
+    character_name: &str,
+    player_block: &str,
     ai_prompt: &str,
     ai_prompt_example: Option<&str>,
     ai_prompt_example_old: Option<&str>,
@@ -191,6 +220,13 @@ pub fn sys_prompt_builder(
     let example_jp = ai_prompt_example_old.filter(|s| !s.is_empty());
     let framing = build_framing_prefix_cn(user_name, character_name);
 
+    // 身份/关系块并入人设正文；为空时与改造前完全一致。
+    let ai_prompt_with_player = if player_block.is_empty() {
+        ai_prompt.to_string()
+    } else {
+        format!("{ai_prompt}{player_block}")
+    };
+
     if !options.output_sec_lang {
         // 中文模式
         let example = match example_cn {
@@ -200,15 +236,15 @@ pub fn sys_prompt_builder(
 
         if ai_prompt.contains("日语翻译") {
             tracing::warn!("你使用的人物为旧版，不能使用实时翻译功能");
-            return ai_prompt.to_string();
+            return ai_prompt_with_player;
         }
         if ai_prompt.contains("以下是我的对话格式提示") {
             tracing::warn!("你使用的人物为旧版，不进行拼接prompt");
-            return ai_prompt.to_string();
+            return ai_prompt_with_player;
         }
 
-        let mut out = String::with_capacity(ai_prompt.len() + 4096);
-        out.push_str(ai_prompt);
+        let mut out = String::with_capacity(ai_prompt_with_player.len() + 4096);
+        out.push_str(&ai_prompt_with_player);
         out.push_str(&framing);
         out.push_str(DIALOG_FORMAT_PROMPT_CN);
         out.push_str(DEFAULT_EXAMPLE_CN);
@@ -225,11 +261,11 @@ pub fn sys_prompt_builder(
 
         if ai_prompt.contains("以下是我的对话格式提示") {
             tracing::warn!("你使用的人物为旧版，可能实时翻译功能不起作用");
-            return ai_prompt.to_string();
+            return ai_prompt_with_player;
         }
 
-        let mut out = String::with_capacity(ai_prompt.len() + 4096);
-        out.push_str(ai_prompt);
+        let mut out = String::with_capacity(ai_prompt_with_player.len() + 4096);
+        out.push_str(&ai_prompt_with_player);
         out.push_str(&framing);
         out.push_str(DIALOG_FORMAT_PROMPT_JP);
         out.push_str(DEFAULT_EXAMPLE_JP);
@@ -240,7 +276,7 @@ pub fn sys_prompt_builder(
     }
 }
 
-/// 便捷包装：直接从 `CharacterSettings` 构建。
+/// 便捷包装：直接从 `CharacterSettings` 构建（不注入身份）。
 /// TODO: 这个似乎是给老角色用的，暂时用 allow_dead_code 标记
 #[allow(dead_code)]
 pub fn sys_prompt_builder_by_settings(
@@ -253,6 +289,30 @@ pub fn sys_prompt_builder_by_settings(
     sys_prompt_builder(
         &settings.user_name,
         &settings.ai_name,
+        &ai_prompt,
+        settings.system_prompt_example.as_deref(),
+        settings.system_prompt_example_old.as_deref(),
+        options,
+    )
+}
+
+/// 便捷包装：从 `CharacterSettings` 构建，并注入「我」的身份与关系片段。
+///
+/// `user_name` 用**当前身份的名字**传入（而不是 `settings.user_name`）；
+/// 后者已降级为「该角色对『我』的称呼」，只在合成默认身份时作为兜底。
+pub fn sys_prompt_builder_by_settings_with_player(
+    settings: &CharacterSettings,
+    user_name: &str,
+    player_block: &str,
+    options: PromptOptions,
+) -> String {
+    let default_prompt =
+        "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息".to_string();
+    let ai_prompt = settings.system_prompt.clone().unwrap_or(default_prompt);
+    sys_prompt_builder_with_player(
+        user_name,
+        &settings.ai_name,
+        player_block,
         &ai_prompt,
         settings.system_prompt_example.as_deref(),
         settings.system_prompt_example_old.as_deref(),

@@ -16,7 +16,10 @@ use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
-use crate::utils::prompt::{PromptOptions, sys_prompt_builder};
+use crate::ai_service::game_system::player_identity::{
+    IdentityStore, RelationEndpoint, build_player_block, resolve_relation, role_relations,
+};
+use crate::utils::prompt::{PromptOptions, sys_prompt_builder_with_player};
 
 /// AI 服务：承载 `GameStatus` 与会话级配置。
 pub struct AIService {
@@ -108,16 +111,56 @@ impl AIService {
             .settings
             .clone();
 
-        let ai_prompt = sys_prompt_builder(
-            &settings.user_name.clone(),
+        // ── 「我」的身份 ────────────────────────────────────────────
+        // 优先使用当前选中的身份卡；从未选择过时，按老规则（AI 角色卡上的
+        // user_name / user_subtitle）合成一张并**落盘**，让「我」的名字
+        // 从此不再随 AI 角色卡变化——这是本次改造的核心目的。
+        let identity_store = IdentityStore::new(&self.data_dir);
+        let identity = identity_store.current_or_synthesize(
+            &settings.user_name,
+            settings.user_subtitle.as_deref().unwrap_or_default(),
+        );
+
+        // 说话者（当前 AI 角色）眼中的「我」：关系按 (说话者, 目标) 解析。
+        // 指向不存在对象的键会被静默跳过（resolve_relation 内部处理）。
+        let speaker = RelationEndpoint::Ai(settings.character_folder.clone());
+        let target = RelationEndpoint::Me(identity.id.clone());
+        let speaker_relations = role_relations::load(&self.data_dir, &settings.character_folder);
+        let relation = resolve_relation(
+            &speaker,
+            &target,
+            &speaker_relations,
+            &identity.relations,
+            Some(identity.prompt.as_str()),
+        );
+        let player_block = build_player_block(
+            &identity.name,
+            &identity.subtitle,
+            &identity.prompt,
+            relation.as_ref(),
+        );
+
+        let ai_prompt = sys_prompt_builder_with_player(
+            identity.display_name(),
             &settings.ai_name.clone(),
+            &player_block,
             &settings.system_prompt.clone().unwrap_or(default_prompt),
             settings.system_prompt_example.clone().as_deref(),
             settings.system_prompt_example_old.clone().as_deref(),
             prompt_options,
         );
-        gs.player.user_name = settings.user_name.clone();
-        gs.player.user_subtitle = settings.user_subtitle.clone().unwrap_or_default();
+
+        // 玩家对象结构不变，只把「填值的来源」从 AI 角色卡换成身份卡：
+        // 下游所有读 gs.player.user_name 的代码一行都不用改。
+        gs.player.user_name = identity.display_name().to_string();
+        gs.player.user_subtitle = identity.subtitle.clone();
+        gs.player.user_prompt = identity.prompt.clone();
+        gs.player.identity_id = if identity.id.trim().is_empty() {
+            None
+        } else {
+            Some(identity.id.clone())
+        };
+        gs.player.relations = identity.relations.clone();
 
         // 此处是初始角色被注册的地方
         let _ = gs.get_role(&self.db, cid).await?;
@@ -183,6 +226,10 @@ impl AIService {
         gs.onstage_role_ids.clear();
         gs.present_role_ids.clear();
         gs.entry_greeting_done = false;
+        // 玩家对象承载「我的身份」，必须一起清空：
+        // 否则「没指定角色 → 提前返回」这类路径会把上一条会话的身份残留下来，
+        // 造成脏读（例如新会话里名字还是上一次的身份）。
+        gs.player = Default::default();
     }
 
     pub async fn set_active_save_id(&mut self, save_id: Option<i32>) {

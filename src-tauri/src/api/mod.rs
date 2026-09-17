@@ -13,6 +13,7 @@ pub mod live2d;
 pub mod locale;
 pub mod music;
 pub mod pet;
+pub mod player_identity;
 pub mod plugins;
 pub mod save;
 pub mod scene;

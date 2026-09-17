@@ -70,6 +70,10 @@ export interface GameState {
 
   userName: string;
   userSubtitle: string;
+  /** 当前「我的身份」id（null = 未选择，使用合成默认身份） */
+  playerIdentityId: string | null;
+  /** 当前身份的身份提示词（供设置页回显；不参与游戏内渲染） */
+  playerPrompt: string;
 
   currentLine: string;
   currentStatus: "input" | "thinking" | "responding" | "presenting";
@@ -97,6 +101,8 @@ export const state: GameState = {
 
   userName: "",
   userSubtitle: "",
+  playerIdentityId: null,
+  playerPrompt: "",
 
   currentLine: "",
   currentStatus: "input",

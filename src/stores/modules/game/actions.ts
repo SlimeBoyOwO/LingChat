@@ -202,8 +202,15 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
 
   const uiStore = useUIStore();
   const settingsStore = useSettingsStore();
-  state.userName = characterInfo.user_name;
-  state.userSubtitle = characterInfo.user_subtitle;
+
+  // 「我」的名字来自**身份卡**，而不是 AI 角色卡的 user_name。
+  // 两个出口刻意分开：character_settings.user_name 是「该角色对我的称呼」，
+  // 会被角色编辑页原样写回角色卡，拿它当玩家名会导致「编辑角色 = 改我的名字」。
+  // 旧后端不返回 player_identity → 回退到老行为（读 character_settings）。
+  state.playerIdentityId = gameInfo.player_identity_id ?? null;
+  state.playerPrompt = gameInfo.player_identity?.prompt ?? "";
+  state.userName = gameInfo.player_identity?.name || characterInfo.user_name;
+  state.userSubtitle = gameInfo.player_identity?.subtitle ?? characterInfo.user_subtitle;
 
   uiStore.showCharacterTitle = characterInfo.ai_name;
   uiStore.showCharacterSubtitle = characterInfo.ai_subtitle;
