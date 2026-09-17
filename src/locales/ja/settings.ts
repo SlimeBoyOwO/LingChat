@@ -8,8 +8,11 @@ export default {
   },
   identity: {
     title: "わたしの身分",
-    hint: "「わたし」が誰かを決めます：名前・サブタイトル・チャットに注入される身分プロンプト・各キャラとの関係。シナリオ進行中は変更できません。",
-    empty: "身分カードがまだありません。下のボタンで作成できます。作成しなくても既定の身分で動きます。",
+    hint: "「わたし」が誰かを決めます：名前・サブタイトル・チャットに注入される身分プロンプト・各キャラとの関係。一度プレイを始めると（シナリオ進行中、またはセーブ作成後）変更できません。",
+    lockedHint:
+      "このプレイはセーブ（自動セーブを含む）に紐づいているため、身分はロックされています。変更するには先にそのセーブを削除してください。",
+    empty:
+      "身分カードがまだありません。下のボタンで作成できます。作成しなくても既定の身分で動きます。",
     current: "使用中",
     use: "これを使う",
     edit: "編集",
@@ -138,6 +141,11 @@ export default {
       placeholder: "セーブ名を入力",
       creating: "作成中...",
       button: "作成",
+      identityLabel: "このセーブで使う身分",
+      identityHint:
+        "既定では現在の身分を使います。別の身分を選ぶと、先に現在の身分を切り替えてからセーブを作成します。",
+      identityLocked:
+        "身分はロックされています：このプレイはセーブに紐づいているか、シナリオ進行中です",
     },
     list: {
       title: "セーブ一覧",
@@ -147,6 +155,7 @@ export default {
       editTitleTip: "ダブルクリックでセーブのタイトルを変更",
       untitled: "無題のセーブ",
       noMessage: "会話セリフの記録なし",
+      identityLabel: "身分：{name}",
     },
     action: {
       reading: "読み込み中...",
@@ -391,11 +400,25 @@ export default {
       pet: "デスクトップペット",
       voice: "音声設定",
     },
+    relations: {
+      title: "関係",
+      hint: "ここにはこのキャラが相手をどう見ているか（例：幼なじみ、ライバル）を書きます。キャラクターフォルダーの relations.yml に保存されるので、キャラ設定を上書きしても消えません。",
+      save: "関係を保存",
+      missing: "対象は既に存在しません（{key}）",
+      msg: {
+        savedTitle: "関係を保存しました",
+        savedMsg: "このキャラの関係を更新しました",
+        saveFailTitle: "関係の保存に失敗しました",
+        loadFailTitle: "関係の読み込みに失敗しました",
+      },
+    },
     fields: {
       aiName: "AI 名",
       aiSubtitle: "AI サブタイトル",
-      userName: "ユーザー名",
-      userSubtitle: "ユーザーサブタイトル",
+      userName: "このキャラが「わたし」を呼ぶ名前",
+      userNameHint: "空欄の場合は身分カードの名前を使用します",
+      userSubtitle: "このキャラが「わたし」に使うサブタイトル",
+      userSubtitleHint: "空欄の場合は身分カードのサブタイトルを使用します",
       title: "キャラクタータイトル",
       info: "キャラクター紹介",
       systemPrompt: "システムプロンプト",
@@ -533,8 +556,8 @@ export default {
       aiNamePlaceholder: "キャラクターの会話名",
       aiSubtitle: "AI サブタイトル",
       aiSubtitlePlaceholder: "例: 夜の番人 / スクールアイドル",
-      userName: "ユーザー名",
-      userSubtitle: "ユーザーサブタイトル",
+      userName: "このキャラが「わたし」を呼ぶ名前",
+      userSubtitle: "このキャラが「わたし」に使うサブタイトル",
       info: "キャラクター紹介",
       infoPlaceholder: "任意：キャラクター紹介の表示に使用",
     },

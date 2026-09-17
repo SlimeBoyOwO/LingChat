@@ -211,6 +211,8 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
   state.playerPrompt = gameInfo.player_identity?.prompt ?? "";
   state.userName = gameInfo.player_identity?.name || characterInfo.user_name;
   state.userSubtitle = gameInfo.player_identity?.subtitle ?? characterInfo.user_subtitle;
+  // 本局是否已绑定存档 → 决定身份切换 UI 是否锁定（后端 guard 是权威）
+  state.activeSaveId = gameInfo.active_save_id ?? null;
 
   uiStore.showCharacterTitle = characterInfo.ai_name;
   uiStore.showCharacterSubtitle = characterInfo.ai_subtitle;

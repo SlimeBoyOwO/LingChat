@@ -9,7 +9,9 @@ export default {
   },
   identity: {
     title: "My Identity",
-    hint: "Decides who \"I\" am: name, subtitle, the identity prompt injected into chat, and relationships with each character. Cannot be changed while a scenario is running.",
+    hint: 'Decides who "I" am: name, subtitle, the identity prompt injected into chat, and relationships with each character. Locked once the playthrough begins (a scenario is running or a save exists).',
+    lockedHint:
+      "This playthrough is bound to a save (auto-saves included), so the identity is locked. Delete that save first to change identity.",
     empty: "No identity cards yet. Create one below — or just keep using the default identity.",
     current: "In use",
     use: "Use",
@@ -21,10 +23,10 @@ export default {
     addRelation: "+ Add relationship",
     fieldName: "Name",
     fieldSubtitle: "Subtitle",
-    fieldPrompt: "Identity prompt (injected into chat; describes who \"I\" am)",
+    fieldPrompt: 'Identity prompt (injected into chat; describes who "I" am)',
     fieldRelations: "Relationships",
     relationsHint:
-      "Describe how I relate to a character or to another of my identities. If left empty, the other side's card is used as \"what you already know about them\" rather than as an established relationship.",
+      'Describe how I relate to a character or to another of my identities. If left empty, the other side\'s card is used as "what you already know about them" rather than as an established relationship.',
     targetAi: "AI character",
     targetMe: "My identity",
     relationCount: "{n} relationship(s)",
@@ -34,8 +36,7 @@ export default {
       savedMsg: "The identity card has been updated",
       saveFailTitle: "Failed to save identity",
       switchFailTitle: "Failed to switch identity",
-      deleteConfirm:
-        "Delete identity \"{name}\"? Identities in use by a save cannot be deleted.",
+      deleteConfirm: 'Delete identity "{name}"? Identities in use by a save cannot be deleted.',
       deleteFailTitle: "Failed to delete identity",
     },
   },
@@ -150,6 +151,11 @@ export default {
       placeholder: "Enter a save name",
       creating: "Creating...",
       button: "Create",
+      identityLabel: "Identity for this save",
+      identityHint:
+        "Uses the current identity by default. Picking another one switches the current identity first, then creates the save.",
+      identityLocked:
+        "Identity locked: this playthrough is bound to a save, or a scenario is running",
     },
     list: {
       title: "Save List",
@@ -159,6 +165,7 @@ export default {
       editTitleTip: "Double-click to edit the save title",
       untitled: "Untitled Save",
       noMessage: "No dialogue recorded yet",
+      identityLabel: "Identity: {name}",
     },
     action: {
       reading: "Loading...",
@@ -411,11 +418,25 @@ export default {
       pet: "Desktop Pet",
       voice: "Voice Settings",
     },
+    relations: {
+      title: "Relationships",
+      hint: "Describe how this character sees the others (e.g. childhood friend, rival). Stored in relations.yml inside the character folder, so it survives overwriting the character settings.",
+      save: "Save relationships",
+      missing: "Target no longer exists ({key})",
+      msg: {
+        savedTitle: "Relationships saved",
+        savedMsg: "This character's relationships have been updated",
+        saveFailTitle: "Failed to save relationships",
+        loadFailTitle: "Failed to load relationships",
+      },
+    },
     fields: {
       aiName: "AI Name",
       aiSubtitle: "AI Subtitle",
-      userName: "User Name",
-      userSubtitle: "User Subtitle",
+      userName: 'How this character addresses "me"',
+      userNameHint: "Falls back to the identity card's name (Settings → Character → My Identity)",
+      userSubtitle: 'Subtitle this character uses for "me"',
+      userSubtitleHint: "Falls back to the identity card's subtitle",
       title: "Character Title",
       info: "Character Bio",
       systemPrompt: "System Prompt",
@@ -552,8 +573,8 @@ export default {
       aiNamePlaceholder: "Name used in conversations",
       aiSubtitle: "AI Subtitle",
       aiSubtitlePlaceholder: "e.g. Night Watcher / School Idol",
-      userName: "User Name",
-      userSubtitle: "User Subtitle",
+      userName: 'How this character addresses "me"',
+      userSubtitle: 'Subtitle this character uses for "me"',
       info: "Character Bio",
       infoPlaceholder: "Optional: shown in the character introduction",
     },

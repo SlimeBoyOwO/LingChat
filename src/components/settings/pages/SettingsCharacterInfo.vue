@@ -97,6 +97,10 @@
                   <label :for="field.key" class="text-[13px] font-medium text-white/60"
                     >{{ field.label }} ({{ field.key }})</label
                   >
+                  <!-- 字段说明：用于把「该角色对我的称呼」和身份卡区分开 -->
+                  <p v-if="field.hint" class="-mt-1 text-[11px] leading-relaxed text-white/40">
+                    {{ field.hint }}
+                  </p>
                   <input
                     v-if="field.type === 'text' || field.type === 'number'"
                     :id="field.key"
@@ -135,6 +139,73 @@
                     </option>
                   </select>
                 </div>
+              </div>
+
+              <!-- ── 关系（AI 角色视角）────────────────────────────────
+                   填的是「这个角色怎么看各方」，与「我的身份」里的关系互为两个方向。
+                   刻意**不写进 settings.yml**：settings.yml 会被本页整体重写，
+                   塞进去的关系一旦被旧版本程序编辑该角色就会丢；
+                   这里单独读写角色目录下的 relations.yml（旧版本完全不认识它）。
+                   因此它有独立的保存按钮，与底部的「保存」无关。 -->
+              <div
+                v-if="activeTab === 'basic' && props.roleId"
+                class="space-y-3 rounded-xl border border-white/10 bg-black/20 p-4"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <h3 class="text-sm font-bold text-white/80">
+                      {{ $t("settings.characterInfo.relations.title") }}
+                    </h3>
+                    <p class="mt-1 text-[11px] leading-relaxed text-white/40">
+                      {{ $t("settings.characterInfo.relations.hint") }}
+                    </p>
+                  </div>
+                  <button
+                    class="relation-btn shrink-0"
+                    :disabled="relationsSaving || relationsLoading"
+                    @click="saveRelations"
+                  >
+                    {{
+                      relationsSaving
+                        ? $t("settings.shared.loading")
+                        : $t("settings.characterInfo.relations.save")
+                    }}
+                  </button>
+                </div>
+
+                <div v-if="relationsLoading" class="text-xs text-white/40">
+                  {{ $t("settings.shared.loading") }}
+                </div>
+
+                <template v-else>
+                  <div
+                    v-for="(row, idx) in relationRows"
+                    :key="idx"
+                    class="flex items-center gap-2"
+                  >
+                    <select v-model="row.target" class="relation-input w-44 shrink-0">
+                      <!-- 目标已被删除时保留原值，避免静默丢数据（解析侧同样会静默跳过） -->
+                      <option v-if="isMissingTarget(row.target)" :value="row.target">
+                        {{ $t("settings.characterInfo.relations.missing", { key: row.target }) }}
+                      </option>
+                      <optgroup :label="$t('settings.identity.targetAi')">
+                        <option v-for="t in relationTargetsAi" :key="t.value" :value="t.value">
+                          {{ t.label }}
+                        </option>
+                      </optgroup>
+                      <optgroup :label="$t('settings.identity.targetMe')">
+                        <option v-for="t in relationTargetsMe" :key="t.value" :value="t.value">
+                          {{ t.label }}
+                        </option>
+                      </optgroup>
+                    </select>
+                    <input v-model="row.text" class="relation-input flex-1" />
+                    <button class="relation-btn" @click="removeRelationRow(idx)">×</button>
+                  </div>
+                  <button class="relation-btn" @click="addRelationRow">
+                    {{ $t("settings.identity.addRelation") }}
+                  </button>
+                </template>
               </div>
 
               <Live2DSettings
@@ -293,10 +364,20 @@
   import { computed, onUnmounted, ref, toRaw, watch } from "vue";
   import { useI18n } from "vue-i18n";
   import {
+    characterGetAll,
     deleteCharacter as deleteCharacterApi,
     getRoleSettings,
     updateRoleSettings,
   } from "../../../api/services/character";
+  import {
+    aiKey,
+    getRoleRelations,
+    listPlayerIdentities,
+    meKey,
+    saveRoleRelations,
+    type PlayerIdentitySummary,
+  } from "../../../api/services/player-identity";
+  import type { Character as ApiCharacter } from "../../../types";
   import { Icon } from "../../base";
   import Live2DSettings from "../character/Live2DSettings.vue";
   import { isSystemProtectedRole } from "@/constants/character";
@@ -450,6 +531,8 @@
     rows?: number;
     step?: string;
     placeholder?: string;
+    /** 字段下方的小字说明（例如「留空则用身份卡的名字」） */
+    hint?: string;
     options?: FieldOption[];
     // Dynamic options computed from refs/state. Overrides options when set.
     dynamicOptions?: () => { label: string; value: string }[];
@@ -472,10 +555,18 @@
     basic: [
       { key: "ai_name", label: t("settings.characterInfo.fields.aiName"), type: "text" },
       { key: "ai_subtitle", label: t("settings.characterInfo.fields.aiSubtitle"), type: "text" },
-      { key: "user_name", label: t("settings.characterInfo.fields.userName"), type: "text" },
+      // 这两个字段是「**这个角色**对『我』的称呼」，不是「我」的名字。
+      // 「我」的名字来自身份卡（见「我的身份」）；这里的值只在身份卡没名字时兜底。
+      {
+        key: "user_name",
+        label: t("settings.characterInfo.fields.userName"),
+        hint: t("settings.characterInfo.fields.userNameHint"),
+        type: "text",
+      },
       {
         key: "user_subtitle",
         label: t("settings.characterInfo.fields.userSubtitle"),
+        hint: t("settings.characterInfo.fields.userSubtitleHint"),
         type: "text",
       },
       { key: "title", label: t("settings.characterInfo.fields.title"), type: "text" },
@@ -955,6 +1046,121 @@
     }
   };
 
+  // --- 关系（AI 角色视角）---
+  //
+  // 关系**不写进 settings.yml**：那个文件会被本页整体重写，而关系一旦被旧版本程序
+  // 编辑该角色就会丢。这里走独立的 relations.yml（sidecar 文件，旧版本不认识它），
+  // 所以读写用的是 getRoleRelations / saveRoleRelations，与底部「保存」按钮互不影响。
+  interface RelationTarget {
+    value: string;
+    label: string;
+    group: "ai" | "me";
+  }
+
+  const relationTargets = ref<RelationTarget[]>([]);
+  /** 编辑中的关系行（目标 + 文本）；保存时折成 {关系键: 文本} 映射 */
+  const relationRows = ref<{ target: string; text: string }[]>([]);
+  const relationsLoading = ref(false);
+  const relationsSaving = ref(false);
+
+  const relationTargetsAi = computed(() => relationTargets.value.filter((t) => t.group === "ai"));
+  const relationTargetsMe = computed(() => relationTargets.value.filter((t) => t.group === "me"));
+
+  /**
+   * 目标是否已不存在（角色被删、身份卡被删、或导入了别人写的角色卡）。
+   * 解析侧会静默跳过这类键；UI 侧保留原值并显式标注，避免用户以为关系被吞了。
+   */
+  const isMissingTarget = (target: string) =>
+    !!target && !relationTargets.value.some((t) => t.value === target);
+
+  /** 拉全量角色：下拉要覆盖全部角色，不能只看当前分页。 */
+  const fetchAllRelationCharacters = async (): Promise<ApiCharacter[]> => {
+    const pageSize = 100;
+    const first = await characterGetAll(1, pageSize);
+    const items = [...first.items];
+    const totalPages = Math.min(first.total_pages || 1, 50);
+    for (let page = 2; page <= totalPages; page += 1) {
+      const next = await characterGetAll(page, pageSize);
+      if (!next.items.length) break;
+      items.push(...next.items);
+    }
+    return items;
+  };
+
+  const loadRelations = async (roleId: number) => {
+    relationsLoading.value = true;
+    try {
+      const [chars, identities] = await Promise.all([
+        fetchAllRelationCharacters().catch(() => [] as ApiCharacter[]),
+        listPlayerIdentities().catch(() => [] as PlayerIdentitySummary[]),
+      ]);
+
+      // 自己不对自己建立关系：排除本角色自己的目录
+      const selfFolder = localSettings.value?.character_folder as string | undefined;
+      relationTargets.value = [
+        ...chars
+          .filter((c) => !!c.resource_folder && c.resource_folder !== selfFolder)
+          .map((c) => ({
+            value: aiKey(c.resource_folder as string),
+            label: c.name,
+            group: "ai" as const,
+          })),
+        ...identities.map((i) => ({
+          value: meKey(i.id),
+          label: i.name,
+          group: "me" as const,
+        })),
+      ];
+
+      const saved = await getRoleRelations(roleId);
+      relationRows.value = Object.entries(saved || {})
+        .filter(([target, text]) => !!target && !!text)
+        .map(([target, text]) => ({ target, text }));
+    } catch (e: any) {
+      console.error("读取角色关系失败:", e);
+      uiStore.showError({
+        title: t("settings.characterInfo.relations.msg.loadFailTitle"),
+        message: typeof e === "string" ? e : e?.message || "",
+      });
+      relationRows.value = [];
+    } finally {
+      relationsLoading.value = false;
+    }
+  };
+
+  const addRelationRow = () => {
+    relationRows.value.push({ target: relationTargets.value[0]?.value ?? "", text: "" });
+  };
+
+  const removeRelationRow = (idx: number) => {
+    relationRows.value.splice(idx, 1);
+  };
+
+  const saveRelations = async () => {
+    const roleId = props.roleId;
+    if (!roleId) return;
+    relationsSaving.value = true;
+    try {
+      // 空目标 / 空文本直接丢弃（后端也会再过滤一次）
+      const map: Record<string, string> = {};
+      for (const row of relationRows.value) {
+        if (row.target && row.text.trim()) map[row.target] = row.text.trim();
+      }
+      await saveRoleRelations(roleId, map);
+      uiStore.showSuccess({
+        title: t("settings.characterInfo.relations.msg.savedTitle"),
+        message: t("settings.characterInfo.relations.msg.savedMsg"),
+      });
+    } catch (e: any) {
+      uiStore.showError({
+        title: t("settings.characterInfo.relations.msg.saveFailTitle"),
+        message: typeof e === "string" ? e : e?.message || "",
+      });
+    } finally {
+      relationsSaving.value = false;
+    }
+  };
+
   // --- Watchers & Methods ---
 
   watch(
@@ -972,6 +1178,8 @@
           if (!localSettings.value.voice_lang) {
             localSettings.value.voice_lang = "ja";
           }
+          // 关系单独放在 relations.yml（不在 localSettings 里），需要另取一次
+          void loadRelations(props.roleId);
         } catch (e) {
           console.error("Failed to load character settings", e);
           emit("close");
@@ -1061,6 +1269,41 @@
 </script>
 
 <style scoped>
+  /* 关系区块的小控件：刻意用原生元素 + 纯 CSS，与「我的身份」区块保持一致 */
+  .relation-input {
+    border-radius: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.25);
+    padding: 0.375rem 0.625rem;
+    font-size: 0.8125rem;
+    color: #fff;
+    outline: none;
+    transition: border-color 0.2s ease;
+  }
+  .relation-input:focus {
+    border-color: rgba(121, 217, 255, 0.5);
+  }
+  .relation-btn {
+    cursor: pointer;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 0.3rem 0.7rem;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.85);
+    transition:
+      background 0.2s ease,
+      border-color 0.2s ease;
+  }
+  .relation-btn:hover:not(:disabled) {
+    background: rgba(121, 217, 255, 0.18);
+    border-color: rgba(121, 217, 255, 0.45);
+  }
+  .relation-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
   /* 表单控件 :focus 选中状态 */
   /* Vertical sidebar: thin custom scrollbar (Webkit + Firefox). */
   .tab-sidebar-scroll {

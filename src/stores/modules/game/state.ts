@@ -74,6 +74,11 @@ export interface GameState {
   playerIdentityId: string | null;
   /** 当前身份的身份提示词（供设置页回显；不参与游戏内渲染） */
   playerPrompt: string;
+  /**
+   * 本局绑定的存档 id（null = 还没开存档）。
+   * 与后端 `player_identity::guard` 同源：非 null 时身份切换被锁定，UI 应禁用按钮。
+   */
+  activeSaveId: number | null;
 
   currentLine: string;
   currentStatus: "input" | "thinking" | "responding" | "presenting";
@@ -103,6 +108,7 @@ export const state: GameState = {
   userSubtitle: "",
   playerIdentityId: null,
   playerPrompt: "",
+  activeSaveId: null,
 
   currentLine: "",
   currentStatus: "input",

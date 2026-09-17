@@ -26,6 +26,30 @@
           }}
         </button>
       </div>
+
+      <!-- 本次使用的身份：默认 = 当前身份；本局已绑定存档时锁定（后端 guard 同一条规则） -->
+      <div class="mt-3 flex flex-col gap-1.5">
+        <label class="text-xs font-medium text-white/60">
+          {{ $t("settings.save.create.identityLabel") }}
+        </label>
+        <div v-if="identityLocked" class="text-xs text-amber-300/80">
+          {{ $t("settings.save.create.identityLocked") }}
+        </div>
+        <select
+          v-else
+          v-model="selectedIdentityId"
+          class="cursor-pointer rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm
+            text-white outline-none"
+          :disabled="identityLoading || identities.length === 0"
+        >
+          <option v-for="item in identities" :key="item.id" :value="item.id" class="bg-[#333]">
+            {{ item.name }}{{ item.subtitle ? ` · ${item.subtitle}` : "" }}
+          </option>
+        </select>
+        <p class="text-[11px] leading-relaxed text-white/40">
+          {{ $t("settings.save.create.identityHint") }}
+        </p>
+      </div>
     </MenuItem>
     <MenuItem :title="$t('settings.save.list.title')">
       <template #header>
@@ -121,6 +145,14 @@
                   >
                     {{ save.last_message || $t("settings.save.list.noMessage") }}
                   </div>
+
+                  <!-- Line 4: Bound identity (old saves may not have one) -->
+                  <div
+                    v-if="save.identity_name"
+                    class="mt-1 truncate text-[11px] text-[#79d9ff]/70"
+                  >
+                    {{ $t("settings.save.list.identityLabel", { name: save.identity_name }) }}
+                  </div>
                 </div>
               </div>
 
@@ -179,7 +211,7 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, onMounted } from "vue";
+  import { computed, ref, onMounted } from "vue";
   import { useI18n } from "vue-i18n";
   import { useRouter } from "vue-router";
   import { MenuPage, MenuItem } from "../../ui";
@@ -191,6 +223,11 @@
   import { invoke, convertFileSrc } from "@tauri-apps/api/core";
   import type { SaveInfo } from "../../../types";
   import type { WebInitData } from "../../../api/services/game-info";
+  import {
+    listPlayerIdentities,
+    setCurrentPlayerIdentity,
+    type PlayerIdentitySummary,
+  } from "../../../api/services/player-identity";
   import { Save as SaveIcon, PencilLine, LayoutList, Clock } from "lucide-vue-next";
 
   interface SaveListResponse {
@@ -214,6 +251,33 @@
   const loading = ref(false);
   const error = ref<string | null>(null);
   const actionLoading = ref<number | null>(null);
+
+  // ── 本次使用的身份 ──────────────────────────────────────────
+  // 新建存档时记录「这一局我是谁」。默认 = 当前身份；选了别的就先切身份再建档，
+  // 这样存档里的身份和游戏内状态永远一致（读档时才能原样恢复）。
+  const identities = ref<PlayerIdentitySummary[]>([]);
+  const identityLoading = ref(false);
+  const selectedIdentityId = ref<string>("");
+
+  /** 本局已绑定存档（或剧本进行中）→ 身份已锁定，与后端 `player_identity::guard` 同一条规则。 */
+  const identityLocked = computed(
+    () => gameStore.activeSaveId !== null || !!gameStore.runningScript
+  );
+
+  const loadIdentities = async () => {
+    identityLoading.value = true;
+    try {
+      identities.value = await listPlayerIdentities();
+      const fallback = identities.value.find((i) => i.is_current)?.id ?? identities.value[0]?.id;
+      // 当前身份 id 为 null（还没选过身份、用的是合成默认卡）时回落到第一张
+      selectedIdentityId.value = gameStore.playerIdentityId ?? fallback ?? "";
+    } catch (e) {
+      console.error("获取身份列表失败:", e);
+      identities.value = [];
+    } finally {
+      identityLoading.value = false;
+    }
+  };
 
   // Title editing state
   const editingSaveId = ref<number | null>(null);
@@ -308,10 +372,22 @@
     }
     actionLoading.value = -1;
     try {
-      await invoke<CreateSaveResponse>("create_save", {
+      // 选了别的身份：先切身份（后端会做「本局是否已锁定」的判断），再建档。
+      // 顺序不能反：create_save 记录的是**当前**身份。
+      const picked = selectedIdentityId.value;
+      if (picked && picked !== gameStore.playerIdentityId) {
+        const gameInfo = await setCurrentPlayerIdentity(picked);
+        applyWebInitData(gameStore.$state, gameInfo);
+      }
+
+      const created = await invoke<CreateSaveResponse>("create_save", {
         title: newSaveTitle.value.trim(),
         screenshotPath: await ensureScreenshot(),
       });
+      // 建档后本局就绑定到这个存档了 → 身份锁定，UI 立刻反映
+      if (typeof created?.save_id === "number") {
+        gameStore.activeSaveId = created.save_id;
+      }
       newSaveTitle.value = "";
       uiStore.showSuccess({
         title: t("settings.save.msg.createSuccessTitle"),
@@ -389,6 +465,10 @@
     actionLoading.value = saveId;
     try {
       await invoke("delete_save", { saveId });
+      // 删掉的正好是本局绑定的存档 → 本局解除绑定，身份重新可切换
+      if (gameStore.activeSaveId === saveId) {
+        gameStore.activeSaveId = null;
+      }
       uiStore.showSuccess({
         title: t("settings.save.msg.deleteSuccessTitle"),
         message: t("settings.save.msg.deleteSuccessMsg"),
@@ -407,6 +487,7 @@
 
   onMounted(() => {
     fetchSaves();
+    loadIdentities();
   });
 </script>
 

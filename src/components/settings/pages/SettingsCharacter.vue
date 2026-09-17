@@ -62,6 +62,11 @@
       <div class="space-y-3">
         <p class="text-xs leading-relaxed text-white/50">{{ $t("settings.identity.hint") }}</p>
 
+        <!-- 本局已锁定：剧本进行中或已绑定存档（后端 player_identity::guard 同一条规则） -->
+        <p v-if="identityLocked" class="text-xs leading-relaxed text-amber-300/80">
+          {{ $t("settings.identity.lockedHint") }}
+        </p>
+
         <div v-if="identityLoading" class="text-sm text-white/50">
           {{ $t("settings.shared.loading") }}
         </div>
@@ -98,7 +103,13 @@
             </div>
 
             <div class="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-              <button v-if="!item.is_current" class="identity-btn" @click="useIdentity(item.id)">
+              <button
+                v-if="!item.is_current"
+                class="identity-btn"
+                :disabled="identityLocked"
+                :title="identityLocked ? $t('settings.identity.lockedHint') : ''"
+                @click="useIdentity(item.id)"
+              >
                 {{ $t("settings.identity.use") }}
               </button>
               <button class="identity-btn" @click="editIdentity(item.id)">
@@ -116,7 +127,10 @@
         </button>
 
         <!-- 内联编辑表单 -->
-        <div v-if="identityForm" class="space-y-3 rounded-xl border border-white/10 bg-black/20 p-3">
+        <div
+          v-if="identityForm"
+          class="space-y-3 rounded-xl border border-white/10 bg-black/20 p-3"
+        >
           <div class="flex flex-col gap-1.5">
             <label class="text-xs font-medium text-white/60">{{
               $t("settings.identity.fieldName")
@@ -407,6 +421,17 @@
       .map((i) => ({ value: meKey(i.id), label: i.name }))
   );
 
+  /**
+   * 本局身份是否已锁定：剧本进行中，或已经绑定存档。
+   *
+   * 与后端 `player_identity::guard` 是**同一条规则**：这里只负责把按钮禁掉并说明原因，
+   * 权威判断永远在后端（`set_current_player_identity` 会再拒绝一次），
+   * 所以即使前端状态过期（例如后台自动存档悄悄建了档），也只是多一次报错提示。
+   */
+  const identityLocked = computed(
+    () => gameStore.activeSaveId !== null || !!gameStore.runningScript
+  );
+
   const loadIdentities = async (): Promise<void> => {
     identityLoading.value = true;
     try {
@@ -512,7 +537,8 @@
     } catch (e: any) {
       uiStore.showError({
         title: t("settings.identity.msg.deleteFailTitle"),
-        message: typeof e === "string" ? e : e.message || t("settings.identity.msg.deleteFailTitle"),
+        message:
+          typeof e === "string" ? e : e.message || t("settings.identity.msg.deleteFailTitle"),
       });
     }
   };

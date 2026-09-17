@@ -320,6 +320,11 @@ export function initializeTauriEventListeners() {
 
     // Capture screenshot for auto-save slot
     const gameStore = useGameStore();
+    // 自动存档同样会把本局绑定到该存档（后端 `active_save_id`），身份切换随之锁定。
+    // 前端必须同步，否则「使用」按钮还亮着，点了才被后端拒绝。
+    if (typeof payload?.save_id === "number") {
+      gameStore.activeSaveId = payload.save_id;
+    }
     const screenshotPath = await gameStore.captureScreenshot();
     if (screenshotPath) {
       try {

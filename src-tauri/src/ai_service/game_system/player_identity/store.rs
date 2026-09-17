@@ -322,9 +322,11 @@ mod tests {
 
     #[test]
     fn endpoint_folder_falls_back_to_id() {
-        // 纯标点名字净化后为空 → 用 id 当文件夹名
+        // 路径分隔符会被换成下划线（与上一条用例同一套规则，保留名字可读性）；
+        // 真正会“净化成空”的是纯点号，那时 alloc_dir 用 id 当文件夹名。
+        assert_eq!(sanitize_folder("///"), "___");
+        assert!(sanitize_folder("...").is_empty());
         let store = IdentityStore::new(Path::new("/nonexistent"));
-        assert!(sanitize_folder("///").is_empty());
         // 不实际写盘，只验证净化逻辑
         let _ = store;
     }

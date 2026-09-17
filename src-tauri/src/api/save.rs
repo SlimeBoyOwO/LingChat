@@ -22,6 +22,9 @@ pub struct SaveListItem {
     pub update_date: String,
     pub last_message: Option<String>,
     pub screenshot: Option<String>,
+    /// 本存档绑定身份的名字（`None` = 老存档没绑定 / 身份卡已被删除）。
+    /// 纯新增字段：旧前端忽略它，旧版本程序也不会写它。
+    pub identity_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -94,6 +97,26 @@ pub async fn list_saves(
     let data_dir = super::data_dir();
     let screenshots_dir = data_dir.join("screenshots");
 
+    // 1c. 解析每个存档绑定的身份名（用于列表展示）。
+    //     身份卡是磁盘文件，这里只扫一次目录；查不到的（删过卡 / 导入的旧档）留空。
+    let identity_names: std::collections::HashMap<String, String> = {
+        let store = IdentityStore::new(&data_dir);
+        store
+            .list()
+            .into_iter()
+            .map(|i| (i.id.clone(), i.name.clone()))
+            .collect()
+    };
+    let mut save_identity_names: std::collections::HashMap<i32, String> =
+        std::collections::HashMap::new();
+    for s in saves.iter() {
+        if let Ok(Some(identity_id)) = SaveRepo::get_save_identity(db, s.id).await {
+            if let Some(name) = identity_names.get(&identity_id) {
+                save_identity_names.insert(s.id, name.clone());
+            }
+        }
+    }
+
     let items: Vec<SaveListItem> = saves
         .into_iter()
         .map(|s| {
@@ -104,6 +127,7 @@ pub async fn list_saves(
             } else {
                 None
             };
+            let identity_name = save_identity_names.get(&s.id).cloned();
 
             SaveListItem {
                 id: s.id,
@@ -112,6 +136,7 @@ pub async fn list_saves(
                 update_date: format_datetime(&s.update_date),
                 last_message,
                 screenshot,
+                identity_name,
             }
         })
         .collect();
@@ -144,13 +169,7 @@ pub async fn create_save(
     //     一个存档对应一个身份、中途不更换，所以这里写一次即可。
     //     没有选中身份（老会话）时不写 → 读档时按老规则兜底，零迁移。
     {
-        let identity_id = service
-            .game_status
-            .lock()
-            .await
-            .player
-            .identity_id
-            .clone();
+        let identity_id = service.game_status.lock().await.player.identity_id.clone();
         if let Some(ref id) = identity_id {
             if !id.trim().is_empty() {
                 SaveRepo::upsert_save_identity(db, save_id, id)

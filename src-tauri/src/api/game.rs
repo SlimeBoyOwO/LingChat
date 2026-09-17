@@ -7,6 +7,9 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::AppState;
+use crate::ai_service::game_system::player_identity::{
+    RelationEndpoint, build_player_block, resolve_relation, role_relations,
+};
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
@@ -18,12 +21,7 @@ use crate::ai_service::types::{
 use crate::config::{self, AppConfig};
 use crate::db::entities::line;
 use crate::db::entities::line::LineAttribute;
-use crate::ai_service::game_system::player_identity::{
-    RelationEndpoint, build_player_block, resolve_relation, role_relations,
-};
-use crate::utils::prompt::{
-    PromptOptions, PromptRole, sys_prompt_builder_by_settings_with_player,
-};
+use crate::utils::prompt::{PromptOptions, PromptRole, sys_prompt_builder_by_settings_with_player};
 
 // ========== 响应类型 ==========
 
@@ -72,6 +70,9 @@ pub struct WebInitData {
     pub player_identity_id: Option<String>,
     /// 当前「我的身份」精简信息
     pub player_identity: PlayerIdentityInit,
+    /// 本局绑定的存档 id（`None` = 还没开存档）。
+    /// 前端据此锁定身份切换 UI——后端 `player_identity::guard` 是同一规则的权威实现。
+    pub active_save_id: Option<i32>,
 }
 
 /// 精简的角色设定，匹配前端 `CharacterSettings` 接口
@@ -461,6 +462,7 @@ pub(crate) async fn build_web_init_data(
         scene_awareness_enabled,
         player_identity_id,
         player_identity,
+        active_save_id,
     ) = {
         let mut gs = service.game_status.lock().await;
         let seqs = compute_user_message_seqs(&gs.line_list);
@@ -564,6 +566,7 @@ pub(crate) async fn build_web_init_data(
             scene_awareness,
             player_identity_id,
             player_identity,
+            gs.active_save_id,
         )
     };
 
@@ -620,6 +623,7 @@ pub(crate) async fn build_web_init_data(
         last_ambient_tracks,
         player_identity_id,
         player_identity,
+        active_save_id,
     };
     Ok(result)
 }

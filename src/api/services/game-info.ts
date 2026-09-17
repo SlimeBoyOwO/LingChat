@@ -84,6 +84,11 @@ export interface WebInitData {
   player_identity_id?: string | null;
   /** 当前「我的身份」精简信息（旧后端不返回，前端需兜底） */
   player_identity?: PlayerIdentityInit;
+  /**
+   * 本局绑定的存档 id（null/undefined = 还没开存档）。
+   * 与后端 `player_identity::guard` 同一条规则：本局一旦绑定存档就锁定身份切换。
+   */
+  active_save_id?: number | null;
 }
 
 /**
