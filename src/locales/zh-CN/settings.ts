@@ -8,8 +8,15 @@ export default {
   },
   identity: {
     title: "我的身份",
-    hint: "决定「我」是谁：名字、副标题、注入聊天的身份提示词，以及和各角色的关系。本局一旦开始（剧本进行中，或已经开了存档）就无法更换。",
-    lockedHint: "本局已绑定存档（含自动存档），身份已锁定；如需更换身份，请先删除该存档。",
+    hint: "决定「我」是谁：名字、副标题、注入聊天的身份提示词，以及和各角色的关系。身份属于一局：本局一旦开始就不能中途换，换身份等于开一段新对话（剧本进行中除外）。",
+    lockedHint: "本局已绑定存档（含自动存档），身份已锁定：不能中途换，只能换一局。",
+    scriptBlocked: "剧本进行中无法更换身份，请先结束剧情。",
+    newGame: "用它开新对话",
+    newGameConfirm:
+      "用「{name}」开一段新对话？当前对话的记忆会清空，并按新身份重新开始（已存的存档不受影响）。想留住当前这局的话，先去存档页档一下。",
+    newGameDoneTitle: "已开新对话",
+    newGameDoneMsg: "现在「我」是「{name}」",
+    newGameFailTitle: "换身份失败",
     empty: "还没有身份卡。点下面的按钮新建一张；不新建也能用默认身份。",
     current: "当前使用",
     use: "使用",
@@ -139,9 +146,10 @@ export default {
       placeholder: "输入存档名称",
       creating: "创建中...",
       button: "创建",
-      identityLabel: "本次使用的身份",
-      identityHint: "默认使用当前身份。选择其它身份会先切换当前身份，再创建存档。",
-      identityLocked: "身份已锁定：本局已绑定存档，或剧本进行中",
+      identityLabel: "本局身份",
+      identityUnknown: "未命名身份",
+      identityHint:
+        "建档会记录本局身份，读档时连身份一起恢复。要换身份请到「角色 → 我的身份」用「用它开新对话」开新局。",
     },
     list: {
       title: "存档列表",

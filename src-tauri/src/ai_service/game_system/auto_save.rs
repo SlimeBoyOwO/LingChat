@@ -199,6 +199,23 @@ impl AutoSaveManager {
         // 4b. Set active save
         service.game_status.lock().await.active_save_id = Some(save_id);
 
+        // 4b2. 记录本局使用的「我的身份」。
+        //
+        //      手动建档（`create_save`）会写这条绑定，自动存档以前不写 →
+        //      读「自动存档」时 `load_save` 取不到绑定，只能沿用「全局当前身份」，
+        //      于是可能出现「这局明明用小 A 演的，读档回来变成小 B」。
+        //      身份未确定（老会话）时不写，读档仍按老规则兜底。
+        {
+            let identity_id = service.game_status.lock().await.player.identity_id.clone();
+            if let Some(ref id) = identity_id {
+                if !id.trim().is_empty() {
+                    if let Err(e) = SaveRepo::upsert_save_identity(&self.db, save_id, id).await {
+                        tracing::warn!("[AutoSave] 记录本局身份失败: {e}");
+                    }
+                }
+            }
+        }
+
         // 4c. Write GameStatus snapshot
         let snapshot = service.game_status.lock().await.to_snapshot();
         let snapshot_json =

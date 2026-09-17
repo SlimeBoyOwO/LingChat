@@ -6,18 +6,21 @@
 use std::collections::HashMap;
 
 use tauri::{AppHandle, Manager};
+use tauri_plugin_store::StoreExt;
 
 use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::player_identity::{
     IdentityStore, PlayerIdentity, PlayerIdentitySummary, RelationEndpoint, build_player_block,
-    ensure_identity_mutable, resolve_relation, role_relations,
+    ensure_identity_mutable, ensure_identity_switchable, resolve_relation, role_relations,
 };
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::api::game::{WebInitData, build_web_init_data};
+use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::db::managers::save_repo::SaveRepo;
+use crate::utils::prompt::PromptOptions;
 
 fn store() -> IdentityStore {
     IdentityStore::new(&crate::api::data_dir())
@@ -38,7 +41,10 @@ pub async fn list_player_identities(app: AppHandle) -> Result<Vec<PlayerIdentity
     // 这里只做展示，不落盘——落盘发生在载入游戏时（`current_or_synthesize`）。
     if items.is_empty() {
         if let Ok(current) = current_identity(&app).await {
-            items.push(PlayerIdentitySummary::from_identity(&current, Some(&current.id)));
+            items.push(PlayerIdentitySummary::from_identity(
+                &current,
+                Some(&current.id),
+            ));
         }
     }
 
@@ -68,7 +74,9 @@ pub async fn save_player_identity(
     _app: AppHandle,
     identity: PlayerIdentity,
 ) -> Result<PlayerIdentity, String> {
-    store().save(&identity).map_err(|e| format!("保存身份失败: {e}"))
+    store()
+        .save(&identity)
+        .map_err(|e| format!("保存身份失败: {e}"))
 }
 
 /// 删除身份卡（软删除，移入回收站目录）。
@@ -139,6 +147,77 @@ pub async fn set_current_player_identity(
             tracing::warn!("同步存档身份失败: {e}");
         }
     }
+
+    let result = build_web_init_data(&service, &app).await;
+    drop(service);
+    result
+}
+
+/// 用指定身份**开一段新对话** —— 换身份的正式路径（前端：「我的身份 → 用它开新对话」）。
+///
+/// 与 [`set_current_player_identity`]（原地切换）的区别，也是它存在的理由：
+/// 本命令会重开一局 —— 走 `init_game_status` 清空当前台词与记忆（与切换 AI 角色
+/// **同一条路径**），并解除本局与任何存档的绑定（`clear_game_status` 会清
+/// `active_save_id`）。所以：
+///
+/// - 「本局已绑定存档」**不是**障碍，那正是这条路径的用途；
+/// - 只受「剧本进行中」约束（见 `player_identity::guard::ensure_identity_switchable`）；
+/// - 旧对话想留着，请先到存档页建档：那条档记录的是**当时的**身份，
+///   因此读它会连身份一起恢复。
+#[tauri::command]
+pub async fn start_new_game_with_identity(
+    app: AppHandle,
+    id: String,
+) -> Result<WebInitData, String> {
+    let state = app.state::<AppState>();
+
+    let identity = store()
+        .find_by_id(&id)
+        .ok_or_else(|| "身份不存在".to_string())?;
+
+    let app_config = AppConfig::load(&app).unwrap_or_default();
+    let prompt_options = PromptOptions {
+        output_sec_lang: app_config.llm_output_sec_lang,
+        no_emotion_limit: app_config.no_emotion_limit_prompt,
+    };
+
+    // 剧本进行中一律拒绝：正在跑的剧情里换「我」会让剧本状态里的称呼错位。
+    {
+        let service = state.ai_service.lock().await;
+        let gs = service.game_status.lock().await;
+        ensure_identity_switchable(&gs)?;
+    }
+
+    // 全局当前身份：既是新局的「我」，也是下次启动开新局时的默认身份。
+    // 位置放在校验之后：万一同下面两步失败，不至于只改了身份却没换成新局。
+    store()
+        .set_current_id(&identity.id)
+        .map_err(|e| format!("记录当前身份失败: {e}"))?;
+
+    // 重开一局：清空台词/记忆、解除存档绑定，并按新身份重建人设行
+    // （`init_game_intro_character` 内部读 `_current.json` 取身份）。
+    //
+    // AI 角色保持不变：优先用当前已初始化的角色，没有则回落到「上次游玩的角色」
+    // （与启动流程 init/mod.rs 同一条兜底），都没有就明确报错——否则
+    // `init_game_status(None)` 会静默返回一个空状态，用户只会看到聊天页空掉。
+    let mut service = state.ai_service.lock().await;
+    let character_id = match service.init_character_id {
+        Some(id) => Some(id),
+        None => app
+            .store(crate::config::STORE_FILE)
+            .ok()
+            .and_then(|store| store.get(crate::config::session::LAST_CHARACTER_ID))
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32),
+    };
+    if character_id.is_none() {
+        return Err("还没有选择 AI 角色，无法开始新对话。".to_string());
+    }
+
+    service
+        .init_game_status(character_id, prompt_options)
+        .await
+        .map_err(|e| format!("开始新对话失败: {e}"))?;
 
     let result = build_web_init_data(&service, &app).await;
     drop(service);
@@ -254,7 +333,12 @@ async fn inject_identity_refresh_line(
         &identity.relations,
         Some(identity.prompt.as_str()),
     );
-    let block = build_player_block(&identity.name, &identity.subtitle, &identity.prompt, relation.as_ref());
+    let block = build_player_block(
+        &identity.name,
+        &identity.subtitle,
+        &identity.prompt,
+        relation.as_ref(),
+    );
     if block.trim().is_empty() {
         return;
     }

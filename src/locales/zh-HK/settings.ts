@@ -9,8 +9,15 @@ export default {
   },
   identity: {
     title: "我嘅身份",
-    hint: "決定「我」係邊個：名、副標題、注入聊天嘅身份提示詞，仲有同各角色嘅關係。本局一開始（劇本進行緊，或者開咗存檔）就改唔到。",
-    lockedHint: "本局已經綁咗存檔（包括自動存檔），身份鎖咗；想換身份就要先刪咗呢個存檔。",
+    hint: "決定「我」係邊個：名、副標題、注入聊天嘅身份提示詞，仲有同各角色嘅關係。身份屬於一局：本局一開始就唔可以中途換，換身份等於開一段新對話（劇本進行緊例外）。",
+    lockedHint: "本局已經綁咗存檔（包括自動存檔），身份鎖咗：唔可以中途換，只可以換一局。",
+    scriptBlocked: "劇本進行緊，換唔到身份，請先結束劇情。",
+    newGame: "用佢開新對話",
+    newGameConfirm:
+      "用「{name}」開一段新對話？而家呢段對話嘅記憶會清空，並按新身份重新開始（已存嘅存檔唔受影響）。想留低呢局嘅話，去存檔頁檔咗先。",
+    newGameDoneTitle: "已開新對話",
+    newGameDoneMsg: "而家「我」係「{name}」",
+    newGameFailTitle: "換身份失敗",
     empty: "仲未有身份卡。撳下面嘅掣開一張；唔開都可以用預設身份。",
     current: "而家用緊",
     use: "用呢個",
@@ -140,9 +147,10 @@ export default {
       placeholder: "入個存檔名",
       creating: "創建緊...",
       button: "創建",
-      identityLabel: "今次用嘅身份",
-      identityHint: "預設用當前身份。揀其他身份會先切換當前身份，再創建存檔。",
-      identityLocked: "身份鎖咗：本局已經綁咗存檔，或者劇本進行緊",
+      identityLabel: "本局身份",
+      identityUnknown: "未命名身份",
+      identityHint:
+        "建檔會記低本局身份，讀檔時連身份一齊恢復。想換身份就去「角色 → 我嘅身份」用「用佢開新對話」開新局。",
     },
     list: {
       title: "存檔列表",

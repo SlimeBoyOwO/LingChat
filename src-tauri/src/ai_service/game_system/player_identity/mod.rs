@@ -23,7 +23,7 @@ pub mod resolve;
 pub mod role_relations;
 pub mod store;
 
-pub use guard::ensure_identity_mutable;
+pub use guard::{ensure_identity_mutable, ensure_identity_switchable};
 pub use resolve::{RelationEndpoint, build_player_block, resolve_relation};
 pub use store::IdentityStore;
 
@@ -92,7 +92,11 @@ impl PlayerIdentitySummary {
             name: identity.display_name().to_string(),
             subtitle: identity.subtitle.clone(),
             prompt: identity.prompt.clone(),
-            has_avatar: identity.avatar.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false),
+            has_avatar: identity
+                .avatar
+                .as_deref()
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false),
             relation_count: identity
                 .relations
                 .values()

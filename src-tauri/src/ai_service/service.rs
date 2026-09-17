@@ -9,6 +9,9 @@ use tokio::sync::Mutex;
 use crate::ai_service::config::AIServiceConfig;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
+use crate::ai_service::game_system::player_identity::{
+    IdentityStore, RelationEndpoint, build_player_block, resolve_relation, role_relations,
+};
 use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::ai_service::llm::LlmSlot;
@@ -16,9 +19,6 @@ use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
-use crate::ai_service::game_system::player_identity::{
-    IdentityStore, RelationEndpoint, build_player_block, resolve_relation, role_relations,
-};
 use crate::utils::prompt::{PromptOptions, sys_prompt_builder_with_player};
 
 /// AI 服务：承载 `GameStatus` 与会话级配置。
@@ -230,6 +230,11 @@ impl AIService {
         // 否则「没指定角色 → 提前返回」这类路径会把上一条会话的身份残留下来，
         // 造成脏读（例如新会话里名字还是上一次的身份）。
         gs.player = Default::default();
+        // 存档绑定也属于「上一局」：清空后本局不再绑定任何存档。
+        // 于是所有「开新局」入口（切 AI 角色 / 清空对话 / 换身份开新对话）都会自动解绑，
+        // 否则新对话会被旧存档继续锁着身份。
+        // 读档不受影响：`load_lines` 会在初始化之后把绑定重新设回来。
+        gs.active_save_id = None;
     }
 
     pub async fn set_active_save_id(&mut self, save_id: Option<i32>) {

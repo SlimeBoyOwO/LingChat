@@ -777,6 +777,7 @@ pub fn run() {
             api::player_identity::save_player_identity,
             api::player_identity::delete_player_identity,
             api::player_identity::set_current_player_identity,
+            api::player_identity::start_new_game_with_identity,
             api::player_identity::get_role_relations,
             api::player_identity::save_role_relations,
             api::script::list_scripts,

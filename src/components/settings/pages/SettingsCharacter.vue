@@ -53,7 +53,10 @@
 
     <!-- ── 我的身份 ──────────────────────────────────────────────
          决定「我」是谁：名字 / 副标题 / 注入聊天的身份提示词 / 与各角色的关系。
-         后端限制：剧本进行中不能更换身份（会返回错误提示）。 -->
+
+         换身份 = 开一段新对话（与「切换 AI 角色」同一条路径）：
+         身份属于一局，本局一旦开始（剧本进行中 / 已绑定存档）就不能原地换，
+         只能重开一局；旧对话想留着要先到存档页建档。 -->
     <MenuItem :title="$t('settings.identity.title')">
       <template #header>
         <User :size="20" />
@@ -62,8 +65,11 @@
       <div class="space-y-3">
         <p class="text-xs leading-relaxed text-white/50">{{ $t("settings.identity.hint") }}</p>
 
-        <!-- 本局已锁定：剧本进行中或已绑定存档（后端 player_identity::guard 同一条规则） -->
-        <p v-if="identityLocked" class="text-xs leading-relaxed text-amber-300/80">
+        <!-- 锁定原因（与后端 player_identity::guard 同一条规则） -->
+        <p v-if="identityScriptBlocked" class="text-xs leading-relaxed text-red-300/80">
+          {{ $t("settings.identity.scriptBlocked") }}
+        </p>
+        <p v-else-if="identitySaveBound" class="text-xs leading-relaxed text-amber-300/80">
           {{ $t("settings.identity.lockedHint") }}
         </p>
 
@@ -106,11 +112,11 @@
               <button
                 v-if="!item.is_current"
                 class="identity-btn"
-                :disabled="identityLocked"
-                :title="identityLocked ? $t('settings.identity.lockedHint') : ''"
-                @click="useIdentity(item.id)"
+                :disabled="identityScriptBlocked"
+                :title="identityScriptBlocked ? $t('settings.identity.scriptBlocked') : ''"
+                @click="startNewGame(item)"
               >
-                {{ $t("settings.identity.use") }}
+                {{ $t("settings.identity.newGame") }}
               </button>
               <button class="identity-btn" @click="editIdentity(item.id)">
                 {{ $t("settings.identity.edit") }}
@@ -268,7 +274,7 @@
     getPlayerIdentity,
     listPlayerIdentities,
     savePlayerIdentity,
-    setCurrentPlayerIdentity,
+    startNewGameWithIdentity,
     aiKey,
     meKey,
     type PlayerIdentity,
@@ -422,15 +428,14 @@
   );
 
   /**
-   * 本局身份是否已锁定：剧本进行中，或已经绑定存档。
-   *
-   * 与后端 `player_identity::guard` 是**同一条规则**：这里只负责把按钮禁掉并说明原因，
-   * 权威判断永远在后端（`set_current_player_identity` 会再拒绝一次），
-   * 所以即使前端状态过期（例如后台自动存档悄悄建了档），也只是多一次报错提示。
+   * 剧本进行中 → 连「开新对话换身份」都不允许（按钮禁用并说明原因）。
+   * 与后端 `player_identity::guard::ensure_identity_switchable` 同一条规则；
+   * 权威判断永远在后端，这里只是提前告知。
    */
-  const identityLocked = computed(
-    () => gameStore.activeSaveId !== null || !!gameStore.runningScript
-  );
+  const identityScriptBlocked = computed(() => !!gameStore.runningScript);
+
+  /** 本局已绑定存档（含自动存档）→ 不能原地换身份，但可以「用它开新对话」。 */
+  const identitySaveBound = computed(() => gameStore.activeSaveId !== null);
 
   const loadIdentities = async (): Promise<void> => {
     identityLoading.value = true;
@@ -511,17 +516,37 @@
     }
   };
 
-  /** 切换当前身份。后端在剧本进行中会拒绝（见 player_identity::guard）。 */
-  const useIdentity = async (id: string) => {
+  /**
+   * 用这张身份卡**开一段新对话** —— 换身份的正式路径。
+   *
+   * 为什么不是原地切换：身份属于一局，本局一旦绑定存档（含自动存档）就不该中途换，
+   * 否则 AI 记忆会出现「前半段用 A 的身份写、后半段变成 B」。所以这里与「切换 AI 角色」
+   * 走同一条路径：确认后重开一局（当前对话记忆清空），并按新身份重建人设行。
+   * 旧对话想留着 → 先去存档页建档，那条档会连当时的身份一起记住。
+   */
+  const startNewGame = async (item: PlayerIdentitySummary) => {
+    const confirmed = await dialogStore.confirm(
+      t("settings.identity.newGameConfirm", { name: item.name })
+    );
+    if (!confirmed) return;
     try {
-      const gameInfo = await setCurrentPlayerIdentity(id);
+      const gameInfo = await startNewGameWithIdentity(item.id);
       applyWebInitData(gameStore.$state, gameInfo);
+      gameStore.exitStoryMode();
       await loadIdentities();
+      uiStore.showSuccess({
+        title: t("settings.identity.newGameDoneTitle"),
+        message: t("settings.identity.newGameDoneMsg", { name: item.name }),
+      });
+      // 换身份就是开新对话：和读档一样回到聊天页（在主菜单时）
+      if (router.currentRoute.value.path === "/") {
+        uiStore.showSettings = false;
+        router.push("/chat");
+      }
     } catch (e: any) {
       uiStore.showError({
-        title: t("settings.identity.msg.switchFailTitle"),
-        message:
-          typeof e === "string" ? e : e.message || t("settings.identity.msg.switchFailTitle"),
+        title: t("settings.identity.newGameFailTitle"),
+        message: typeof e === "string" ? e : e.message || t("settings.identity.newGameFailTitle"),
       });
     }
   };

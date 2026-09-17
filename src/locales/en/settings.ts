@@ -9,9 +9,17 @@ export default {
   },
   identity: {
     title: "My Identity",
-    hint: 'Decides who "I" am: name, subtitle, the identity prompt injected into chat, and relationships with each character. Locked once the playthrough begins (a scenario is running or a save exists).',
+    hint: 'Decides who "I" am: name, subtitle, the identity prompt injected into chat, and relationships with each character. Identity belongs to a playthrough: it cannot change mid-playthrough — switching means starting a new conversation (except while a scenario is running).',
     lockedHint:
-      "This playthrough is bound to a save (auto-saves included), so the identity is locked. Delete that save first to change identity.",
+      "This playthrough is bound to a save (auto-saves included), so the identity cannot be changed in place — start a new conversation instead.",
+    scriptBlocked:
+      "A scenario is running, so the identity cannot be changed. Finish the scenario first.",
+    newGame: "New chat with this identity",
+    newGameConfirm:
+      'Start a new conversation as "{name}"? The current conversation\'s memory will be cleared and the game restarts with the new identity (existing saves are unaffected). Save the current playthrough first if you want to keep it.',
+    newGameDoneTitle: "New conversation started",
+    newGameDoneMsg: 'You are now "{name}"',
+    newGameFailTitle: "Failed to switch identity",
     empty: "No identity cards yet. Create one below — or just keep using the default identity.",
     current: "In use",
     use: "Use",
@@ -151,11 +159,10 @@ export default {
       placeholder: "Enter a save name",
       creating: "Creating...",
       button: "Create",
-      identityLabel: "Identity for this save",
+      identityLabel: "Identity of this playthrough",
+      identityUnknown: "Unnamed identity",
       identityHint:
-        "Uses the current identity by default. Picking another one switches the current identity first, then creates the save.",
-      identityLocked:
-        "Identity locked: this playthrough is bound to a save, or a scenario is running",
+        'A save records the current identity and restores it on load. To change identity, use "New chat with this identity" under Character → My Identity.',
     },
     list: {
       title: "Save List",
