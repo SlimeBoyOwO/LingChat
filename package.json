@@ -1,7 +1,7 @@
 {
   "name": "ling-chat",
   "private": false,
-  "version": "0.5.1",
+  "version": "0.5.2",
   "packageManager": "pnpm@11.21.0",
   "type": "module",
   "scripts": {
@@ -69,7 +69,7 @@
       "prettier --write"
     ],
     "*.rs": [
-      "cargo fmt --manifest-path src-tauri/Cargo.toml"
+      "rustfmt"
     ]
   }
 }

@@ -13,7 +13,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use sea_orm::DatabaseConnection;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, oneshot};
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::scene_store::SceneStore;
@@ -69,6 +69,10 @@ pub struct GeneratorDeps {
     /// 是否运行在编辑器试玩中。为 true 时回复带 `preview_gen` 标记，
     /// 前端据此丢弃中止后迟到的流式回复。
     pub is_preview: bool,
+    /// 当轮附带的多模态图片（`data:image/...;base64,...` data URL）。
+    /// 由「该模型支持原生识图」的对话路径设置：图片仅拼接进**当轮** LLM 上下文，
+    /// 不写入角色记忆，从源头控制上下文/缓存占用。
+    pub transient_image: Option<String>,
 }
 
 /// `process_message` 各步骤间传递的用户消息上下文。
@@ -431,6 +435,27 @@ impl MessageGenerator {
                 .display_name
                 .clone()
         };
+        // 原生多模态识图：把当轮图片作为一条独立的用户消息拼进 LLM 上下文，
+        // 仅本次请求可见，不回写记忆。放在末尾（紧跟最新用户输入之后的视觉提示），
+        // 让模型把图片与最近的用户语境关联起来。
+        let context = if let Some(image) = self.deps.transient_image.clone() {
+            let mut ctx = context;
+            let gs_guard = self.deps.game_status.lock().await;
+            let user_name = gs_guard.player.user_name.clone();
+            drop(gs_guard);
+            let marker = if user_message.trim().is_empty() {
+                format!("（用户「{}」发来一张图片，请查看图片内容。）", user_name)
+            } else {
+                format!(
+                    "【图片】用户「{}」发来一张图片，请结合图片内容回复。",
+                    user_name
+                )
+            };
+            ctx.push(LlmMessage::user_with_image(marker, image));
+            ctx
+        } else {
+            context
+        };
         let tool_loop_result = stream_with_tool_loop(
             &self.deps.llm,
             &self.deps.tool_registry,
@@ -453,33 +478,21 @@ impl MessageGenerator {
 
         let (sentence_tx, sentence_rx) =
             mpsc::channel::<SentenceItem>(self.deps.concurrency.max(1) * 2);
-        let (publish_tx, mut publish_rx) =
-            mpsc::channel::<(usize, Option<ReplyResponse>)>(self.deps.concurrency.max(1) * 2);
+        let (publish_tx, publish_rx) =
+            mpsc::channel::<PublishItem>(self.deps.concurrency.max(1) * 2);
 
         // producer 与 consumer 共享的思考链缓冲：累积本轮生成的完整思考文本，
         // 由最终句（is_final）的 consumer 快照并挂载到台词行与前端响应。
         let thinking_buf = Arc::new(Mutex::new(String::new()));
 
-        // publisher：按索引顺序 emit 到前端
+        // publisher：按索引顺序 emit 到前端（并在推进到栅栏索引时回 ack）
         let app = self.deps.app.clone();
         let publisher = tokio::spawn(async move {
-            let mut next_index = 0usize;
-            let mut buf: HashMap<usize, Option<ReplyResponse>> = HashMap::new();
-            while let Some((idx, resp)) = publish_rx.recv().await {
-                buf.insert(idx, resp);
-                while let Some(item) = buf.remove(&next_index) {
-                    next_index += 1;
-                    if let Some(resp) = item {
-                        let is_final = resp.is_final;
-                        if let Err(e) = app.emit(event_names::AI_REPLY, &resp) {
-                            tracing::warn!("emit ai:reply 失败: {e}");
-                        }
-                        if is_final {
-                            return;
-                        }
-                    }
-                }
-            }
+            publish_ordered(publish_rx, |resp| {
+                app.emit(event_names::AI_REPLY, resp)
+                    .map_err(anyhow::Error::from)
+            })
+            .await
         });
 
         // consumer 池：并发处理句子
@@ -500,8 +513,26 @@ impl MessageGenerator {
                         let mut rx = sentence_rx.lock().await;
                         rx.recv().await
                     };
-                    let Some((sentence, index, is_final)) = item else {
+                    let Some(item) = item else {
                         break;
+                    };
+                    let (sentence, index, is_final) = match item {
+                        // 呈现栅栏不是句子：不解析、不翻译、不合成语音，只参与保序。
+                        // ack 由 publisher 推进到该索引时回传；若 publisher 已退出则
+                        // ack 随 send 失败被丢弃，工具侧据此 fail-closed。
+                        SentenceItem::BeforeTools { index, ack } => {
+                            if publish_tx
+                                .send(PublishItem::BeforeTools { index, ack })
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                            continue;
+                        },
+                        SentenceItem::Reply(sentence, index, is_final) => {
+                            (sentence, index, is_final)
+                        },
                     };
                     let resp = match consume_sentence(
                         &sdeps,
@@ -520,7 +551,12 @@ impl MessageGenerator {
                             None
                         },
                     };
-                    let _ = publish_tx.send((index, resp)).await;
+                    let _ = publish_tx
+                        .send(PublishItem::Reply {
+                            index,
+                            response: resp,
+                        })
+                        .await;
                     if is_final {
                         break;
                     }
@@ -537,12 +573,14 @@ impl MessageGenerator {
             thinking_buf,
             tool_calls_seen,
         );
-        let acc = producer.run().await.context("StreamProducer 失败")?;
+        let output = producer.run().await.context("StreamProducer 失败")?;
+        let acc = output.accumulated;
 
         for t in consumer_tasks {
             let _ = t.await;
         }
-        let _ = publisher.await;
+        // publisher 的返回值 = 是否成功发出过收尾句（`is_final`）。
+        let published_final = publisher.await.unwrap_or(false);
 
         // 流已消费完毕，工具消息收集完整：回填到助手回复之前的位置
         let tool_msgs = std::mem::take(&mut *tool_messages.lock().await);
@@ -598,10 +636,96 @@ impl MessageGenerator {
                 &self.deps.app,
                 &anyhow::anyhow!("模型没有返回任何内容，请再试一次"),
             );
+        } else if !published_final {
+            // 有正文、但没有一条 `is_final` 的回复成功落地——前端队列只认 is_final 或
+            // status:reset 来复位，缺了它界面会永远停在等待态。工具闭环下这条是可达的：
+            // 呈现栅栏已经把前导缓冲清空，工具后模型若不再产出正文，EOF 就没有可提升为
+            // 终句的内容（旧行为会重放前导，但那会让用户看到同一句话两次）。
+            // 这里只做温和复位：不重放、不弹错误提示。
+            tracing::warn!(
+                sent_final = output.sent_final,
+                "本轮没有成功发布收尾句，仅复位前端状态"
+            );
+            events::emit_status_reset(&self.deps.app);
         }
 
         Ok(acc)
     }
+}
+
+// ============================================================
+// 有序发布
+// ============================================================
+
+/// 投递到 publisher 的工作项。
+///
+/// 栅栏与回复共用同一个索引空间：publisher 只有在推进到栅栏索引（即所有更小索引
+/// 都已处理完，包括被丢弃的 `None` 结果）之后才会回 ack，从而保证"前导台词的
+/// `ai:reply` 已 emit"严格先于"工具事件 emit"。
+pub(super) enum PublishItem {
+    Reply {
+        index: usize,
+        response: Option<ReplyResponse>,
+    },
+    BeforeTools {
+        index: usize,
+        ack: oneshot::Sender<bool>,
+    },
+}
+
+impl PublishItem {
+    fn index(&self) -> usize {
+        match self {
+            Self::Reply { index, .. } | Self::BeforeTools { index, .. } => *index,
+        }
+    }
+}
+
+/// 按索引顺序发布；栅栏在其索引被推进到时回传"此前是否已发布过回复"。
+///
+/// 返回值 = **是否成功发出过收尾句（`is_final`）**：
+/// - `true`：某条 `is_final` 的回复已 emit；
+/// - `false`：`emit` 失败而中断，或通道关闭时都没等到终句。
+///
+/// `emit` 失败会立即返回，`pending` 里尚未回传的 ack 随函数一起被丢弃，
+/// 工具侧因此 fail-closed（不会在回复发布失败后继续执行工具）。
+///
+/// 生产与顺序契约测试共用本函数（`ordering_tests`）。
+pub(super) async fn publish_ordered(
+    mut rx: mpsc::Receiver<PublishItem>,
+    mut emit: impl FnMut(&ReplyResponse) -> Result<()>,
+) -> bool {
+    let mut next_index = 0usize;
+    let mut reply_before_fence = false;
+    let mut pending: HashMap<usize, PublishItem> = HashMap::new();
+    while let Some(item) = rx.recv().await {
+        pending.insert(item.index(), item);
+        while let Some(item) = pending.remove(&next_index) {
+            next_index += 1;
+            match item {
+                PublishItem::Reply {
+                    response: Some(resp),
+                    ..
+                } => {
+                    let is_final = resp.is_final;
+                    if let Err(e) = emit(&resp) {
+                        tracing::warn!("emit ai:reply 失败: {e}");
+                        return false;
+                    }
+                    reply_before_fence = true;
+                    if is_final {
+                        return true;
+                    }
+                },
+                PublishItem::Reply { response: None, .. } => {},
+                PublishItem::BeforeTools { ack, .. } => {
+                    let _ = ack.send(reply_before_fence);
+                    reply_before_fence = false;
+                },
+            }
+        }
+    }
+    false
 }
 
 // ============================================================
@@ -690,6 +814,16 @@ pub(crate) async fn consume_sentence(
 
     // 4. 写入 GameStatus
     add_assistant_line(deps, &response).await?;
+
+    // 会话代号复核（与 add_assistant_line 内守卫一致）：若本句写入已被丢弃，
+    // 说明读档/切角色/清对话已切换会话（旧流式任务游离），前端也已切到新会话——
+    // 这里返回 None，不再把这条过期回复发布给前端（防旧角色台词串进新对话展示）。
+    {
+        let gs = deps.game_status.lock().await;
+        if gs.preview_generation != deps.generation {
+            return Ok(None);
+        }
+    }
 
     Ok(Some(response))
 }

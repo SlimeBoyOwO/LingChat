@@ -1,15 +1,17 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use futures_util::StreamExt;
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, oneshot};
 
 use crate::AppState;
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmClient};
 use crate::ai_service::message_system::generator::GeneratorSource;
+use crate::ai_service::message_system::producer::{PresentationChunk, PresentationStream};
 use crate::ai_service::message_system::responses::event_names;
 use crate::ai_service::types::LlmMessage;
 
@@ -29,11 +31,17 @@ const CONTINUATION_PROMPT: &str = "工具结果已返回。请接着你上一条
 const FINAL_SYNTHESIS_RETRY_PROMPT: &str = "你刚才尝试调用的工具未被执行：当前已没有可用工具。请不要再尝试调用工具，直接基于已完成的工具结果，用正文给出最终答复；如仍有未完成事项，请明确说明。";
 const TOOL_USE_POLICY_PROMPT: &str = "你可以调用本请求随附的工具。用户要求执行文件读写/删除、命令运行、角色或场景切换等实际操作时，必须先真正调用相应工具，并在收到工具结果后再说明结果。绝不能只在思考中计划调用，或在没有成功工具结果时声称已经执行、删除、写入、切换或完成。需要用户确认的危险操作会由应用弹窗处理，请直接发起工具调用，不要用文字假装已经操作；如果工具失败、被拒绝或没有调用，必须明确说明操作尚未完成。";
 
+/// 工具执行前等待"前导台词已经 emit"的上限。
+///
+/// 这段等待包含 consumer 侧的一次翻译 LLM 往返与 TTS 合成，因此宁宽勿窄；
+/// 超时后**放行工具**（fail-open）——顺序不完美也好过让工具链路被富化卡死。
+const FENCE_ACK_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// 工具消息收集槽：流消费过程中由闭环填充，消费完毕后调用方取走。
 pub type ToolMessageSink = Arc<Mutex<Vec<LlmMessage>>>;
 
 pub struct ToolLoopResult {
-    pub stream: ChunkStream,
+    pub stream: PresentationStream,
     pub tool_messages: ToolMessageSink,
     /// 工具闭环是否真的执行过工具。生产者据此只在工具场景暂存最后一段，
     /// 让重复的收尾段可以被丢弃，同时仍把最后一条有效回复标为完成。
@@ -160,11 +168,11 @@ pub async fn stream_with_tool_loop(
                     LlmChunk::Content(text) => {
                         round_text.push_str(&text);
                         // 实时透传，保持下游流式体验
-                        yield LlmChunk::Content(text);
+                        yield PresentationChunk::Chunk(LlmChunk::Content(text));
                     }
                     // Thinking 等其它 chunk 也一起实时透传
                     other => {
-                        yield other;
+                        yield PresentationChunk::Chunk(other);
                     }
                 }
             }
@@ -205,12 +213,46 @@ pub async fn stream_with_tool_loop(
                 }
             }
 
+            // ── 呈现栅栏：工具执行前，先等本轮已透传的正文真正 emit 出去 ──
+            // 工具事件是裸 `app.emit`，而 `ai:reply` 要过 consumer 的翻译/TTS 才由
+            // publisher 发出；没有这个同步点，工具卡片必然抢在前导台词之前出现。
+            // 栅栏自身占一个句序号，publisher 按序推进到它时才回 ack（见
+            // `producer::PresentationChunk::BeforeTools`）。
+            let (fence_tx, fence_rx) = oneshot::channel();
+            yield PresentationChunk::BeforeTools(fence_tx);
+            let fence_started = Instant::now();
+            match tokio::time::timeout(FENCE_ACK_TIMEOUT, fence_rx).await {
+                Ok(Ok(reply_expected)) => {
+                    tracing::info!(
+                        waited_ms = fence_started.elapsed().as_millis() as u64,
+                        reply_expected,
+                        "工具执行前的呈现栅栏已放行"
+                    );
+                },
+                Ok(Err(_)) => {
+                    // ack 被丢弃：emit 失败 / producer 报错 / 整轮取消。此时执行有副作用
+                    // 的工具不可接受，且必须在此刻返回——早于下面组装 assistant_message，
+                    // 否则历史里会留下"有 tool_calls 却无 tool 结果"的坏配对。
+                    tracing::warn!("工具执行前的呈现栅栏被丢弃，本轮工具调用取消");
+                    return;
+                },
+                Err(_) => {
+                    // 等太久（通常卡在翻译/TTS）：放行工具，避免工具链路被富化阻塞。
+                    // 此时顺序可能不完美，但整轮不会挂死。
+                    tracing::warn!(
+                        timeout_ms = FENCE_ACK_TIMEOUT.as_millis() as u64,
+                        "等待前导台词呈现超时，继续执行工具（顺序可能不完美）"
+                    );
+                },
+            };
+
             // 本轮的内容文本 + tool_calls 一起存入助理消息
             let assistant_message = LlmMessage {
                 role: "assistant".to_string(),
                 content: round_text,
                 tool_calls: Some(calls.clone()),
                 tool_call_id: None,
+                image_data_url: None,
             };
             let mut round_messages = vec![assistant_message];
             let context = ToolContext::new(allowed).with_app(app.clone());
@@ -441,14 +483,16 @@ pub(crate) fn emit_tool_call_event(
     ok
 }
 
-fn presentation_stream(stream: ChunkStream) -> ChunkStream {
+/// 把 provider chunk 流包装成呈现层流（工具闭环外的路径不插入栅栏）。
+fn presentation_stream(stream: ChunkStream) -> PresentationStream {
     Box::pin(stream.filter_map(|chunk| async move {
         match chunk {
             Ok(LlmChunk::ToolCalls(calls)) => {
                 tracing::warn!(count = calls.len(), "非工具调用回复流包含工具调用，已丢弃");
                 None
             },
-            chunk => Some(chunk),
+            Ok(chunk) => Some(Ok(PresentationChunk::Chunk(chunk))),
+            Err(e) => Some(Err(e)),
         }
     }))
 }

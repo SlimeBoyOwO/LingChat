@@ -92,6 +92,8 @@ jobs:
           touch data/.official/game_data/.gitkeep
           touch data/third_party/.gitkeep
           node scripts/prepare-desktop-resources.mjs
+          # 确保 onnxruntime.dll 就位（cargo build 不走 tauri 钩子，需显式调用）
+          node scripts/ensure-onnxruntime.mjs
           pip install Pillow
           rm -rf ./src-tauri/icons/icon.png
           python -c "from PIL import Image, ImageDraw; img=Image.new('RGB', (1024,1024), color='#4A90D9'); draw=ImageDraw.Draw(img); draw.ellipse((100,100,924,924), fill='#2C3E50'); img.save('./src-tauri/icons/icon.png')"

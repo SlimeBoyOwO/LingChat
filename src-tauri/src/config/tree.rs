@@ -94,6 +94,17 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                                 .to_string(),
                         setting_type: "bool".to_string(),
                     },
+                    ConfigSetting {
+                        key: keys::LLM_AUTO_COMPRESS_IMAGE.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::LLM_AUTO_COMPRESS_IMAGE,
+                            &app_defaults.auto_compress_image.to_string(),
+                        ),
+                        description: "AUTO_COMPRESS_IMAGE — 图片超过端点大小限制（32 MiB / 单边 8192px）时自动压缩后再发送，作用于所有携带图片的 LLM 请求；关闭后不再做该检查，超限图片按原样直发、可能被服务端拒绝"
+                            .to_string(),
+                        setting_type: "bool".to_string(),
+                    },
                 ],
             },
         );
@@ -172,6 +183,36 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             },
         );
 
+        // 自动存档
+        feat_subs.insert(
+            "自动存档".to_string(),
+            Subcategory {
+                description: "自动存档的开关与写入间隔；间隔改动即时生效，无需重启".to_string(),
+                settings: vec![
+                    ConfigSetting {
+                        key: keys::AUTO_SAVE_ENABLED.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::AUTO_SAVE_ENABLED,
+                            &app_defaults.auto_save_enabled.to_string(),
+                        ),
+                        description: "AUTO_SAVE_ENABLED — 是否启用自动存档（关闭后定时与退出存档均不再写入）".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::AUTO_SAVE_INTERVAL_SECS.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::AUTO_SAVE_INTERVAL_SECS,
+                            &app_defaults.auto_save_interval_secs.to_string(),
+                        ),
+                        description: "AUTO_SAVE_INTERVAL_SECS — 自动存档间隔（秒，30–3600，默认 300，改后即时生效）".to_string(),
+                        setting_type: "number".to_string(),
+                    },
+                ],
+            },
+        );
+
         // 记忆系统
         feat_subs.insert(
             "记忆系统".to_string(),
@@ -211,6 +252,17 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         description: "MEMORY_RECENT_WINDOW — 压缩后保留的该角色最近可见台词数（0–10000，默认 30，重启生效）"
                             .to_string(),
                         setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::MEMORY_INJECT_CONTINUE_USER.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::MEMORY_INJECT_CONTINUE_USER,
+                            &app_defaults.memory_inject_continue_user.to_string(),
+                        ),
+                        description: "MEMORY_INJECT_CONTINUE_USER — 上下文窗口内没有玩家（user）消息时（工具调用挤满窗口等情况），裁切到下一条 assistant 并在其前面注入一条 user「继续」，兼容要求首条消息为 user 的 provider（如 Gemini）；关闭则只裁切、不注入（重启生效）"
+                            .to_string(),
+                        setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
                         key: keys::MEMORY_SHORT_TERM_MAX_CHARS.to_string(),

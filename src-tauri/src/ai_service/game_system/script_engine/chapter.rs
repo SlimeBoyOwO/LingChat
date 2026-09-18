@@ -38,10 +38,13 @@ impl Chapter {
             .cloned()
             .unwrap_or_default();
 
+        // 先构造事件处理器以传入章节标识，再让 chapter_id 移入 _chapter_id
+        let events_handler = EventsHandler::new(event_list, chapter_id.clone());
+
         Self {
             _chapter_id: chapter_id,
             chapter_name,
-            events_handler: EventsHandler::new(event_list),
+            events_handler,
         }
     }
 

@@ -72,100 +72,100 @@
 </template>
 
 <script setup lang="ts">
-  import { computed } from "vue";
-  import { useI18n } from "vue-i18n";
-  import { useScriptEditorStore } from "@/stores/modules/script-editor";
-  import type { Diagnostic, EventSpec, FieldSpec } from "@/api/services/script-editor";
-  import FieldRow from "../fields/FieldRow.vue";
-  import { categoryLabelOf, eventLabelOf } from "@/locales/schema-i18n";
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
+import { useScriptEditorStore } from "@/stores/modules/script-editor";
+import type { Diagnostic, EventSpec, FieldSpec } from "@/api/services/script-editor";
+import FieldRow from "../fields/FieldRow.vue";
+import { categoryLabelOf, eventLabelOf } from "@/locales/schema-i18n";
 
-  const { t } = useI18n();
-  const store = useScriptEditorStore();
+const { t } = useI18n();
+const store = useScriptEditorStore();
 
-  const event = computed(() => store.chapter?.events[store.selectedEvent]);
+const event = computed(() => store.chapter?.events[store.selectedEvent]);
 
-  const eventType = computed(() =>
-    typeof event.value?.type === "string" ? (event.value.type as string) : ""
-  );
+const eventType = computed(() =>
+  typeof event.value?.type === "string" ? (event.value.type as string) : "",
+);
 
-  const spec = computed<EventSpec | undefined>(() => store.eventSpecs[eventType.value]);
+const spec = computed<EventSpec | undefined>(() => store.eventSpecs[eventType.value]);
 
-  /**
-   * chapter_end 按结束方式联动显示字段：
-   * - linear    → 只留 next_chapter（引擎只读 next/next_chapter，分支和 AI 提示都不看）
-   * - branching → 只看分支，AI 判定提示不显示
-   * - ai_judged → 分支 + AI 判定提示都显示
-   * 隐藏的字段值不会丢，切换结束方式后自动回来。
-   */
-  const visibleFields = computed<FieldSpec[]>(() => {
-    const fields = spec.value?.fields ?? [];
-    if (eventType.value !== "chapter_end") return fields;
-    const et = typeof event.value?.end_type === "string" ? event.value.end_type : "linear";
-    return fields.filter((f) => {
-      if (f.key === "options") return et === "branching" || et === "ai_judged";
-      if (f.key === "prompt") return et === "ai_judged";
-      return true;
-    });
+/**
+ * chapter_end 按结束方式联动显示字段：
+ * - linear    → 只留 next_chapter（引擎只读 next/next_chapter，分支和 AI 提示都不看）
+ * - branching → 只看分支，AI 判定提示不显示
+ * - ai_judged → 分支 + AI 判定提示都显示
+ * 隐藏的字段值不会丢，切换结束方式后自动回来。
+ */
+const visibleFields = computed<FieldSpec[]>(() => {
+  const fields = spec.value?.fields ?? [];
+  if (eventType.value !== "chapter_end") return fields;
+  const et = typeof event.value?.end_type === "string" ? event.value.end_type : "linear";
+  return fields.filter((f) => {
+    if (f.key === "options") return et === "branching" || et === "ai_judged";
+    if (f.key === "prompt") return et === "ai_judged";
+    return true;
   });
+});
 
-  /** 按 schema 的 category 分组，与「添加事件」面板保持一致 */
-  const groupedSpecs = computed(() => {
-    const out: Record<string, EventSpec[]> = {};
-    for (const e of store.schema?.events ?? []) {
-      (out[e.category] ||= []).push(e);
-    }
-    return out;
-  });
+/** 按 schema 的 category 分组，与「添加事件」面板保持一致 */
+const groupedSpecs = computed(() => {
+  const out: Record<string, EventSpec[]> = {};
+  for (const e of store.schema?.events ?? []) {
+    (out[e.category] ||= []).push(e);
+  }
+  return out;
+});
 
-  /**
-   * 通用字段：触发条件 / 事件间隔（duration）——所有事件类型共有，
-   * 定义在 schema 的 common_fields，此处原样透出。
-   */
-  const commonFieldsToShow = computed<FieldSpec[]>(() => store.schema?.commonFields ?? []);
+/**
+ * 通用字段：触发条件 / 事件间隔（duration）——所有事件类型共有，
+ * 定义在 schema 的 common_fields，此处原样透出。
+ */
+const commonFieldsToShow = computed<FieldSpec[]>(() => store.schema?.commonFields ?? []);
 
-  const eventDiagnostics = computed<Diagnostic[]>(
-    () => store.chapterDiagnostics[store.selectedEvent] ?? []
-  );
+const eventDiagnostics = computed<Diagnostic[]>(
+  () => store.chapterDiagnostics[store.selectedEvent] ?? [],
+);
 
-  const fieldDiagnostics = (key: string) => eventDiagnostics.value.filter((d) => d.field === key);
+const fieldDiagnostics = (key: string) => eventDiagnostics.value.filter((d) => d.field === key);
 
-  const severityClass = (s: string) =>
-    s === "error" ? "text-red-300" : s === "warn" ? "text-yellow-200" : "text-white/50";
+const severityClass = (s: string) =>
+  s === "error" ? "text-red-300" : s === "warn" ? "text-yellow-200" : "text-white/50";
 
-  const emitField = (key: string, value: unknown) => {
-    store.setEventField(store.selectedEvent, key, value);
-  };
+const emitField = (key: string, value: unknown) => {
+  store.setEventField(store.selectedEvent, key, value);
+};
 
-  /**
-   * 换事件类型时保留同名字段，其余丢弃。
-   *
-   * 直接原地改 type 会留下一堆新类型不认识的键，校验器会全部报「未知字段」，
-   * 所以按新类型的 schema 过滤一遍。
-   */
-  const onTypeChange = (e: Event) => {
-    const next = (e.target as HTMLSelectElement).value;
-    const nextSpec = store.eventSpecs[next];
-    if (!nextSpec || !event.value || !store.chapter) return;
+/**
+ * 换事件类型时保留同名字段，其余丢弃。
+ *
+ * 直接原地改 type 会留下一堆新类型不认识的键，校验器会全部报「未知字段」，
+ * 所以按新类型的 schema 过滤一遍。
+ */
+const onTypeChange = (e: Event) => {
+  const next = (e.target as HTMLSelectElement).value;
+  const nextSpec = store.eventSpecs[next];
+  if (!nextSpec || !event.value || !store.chapter) return;
 
-    // 按「字段名相同 **且** 控件类型相同」保留旧值。
-    // 只比字段名会把 choices 的 options（[{text, actions}]）原样搬进
-    // set_variable 的 options（[{condition, actions}]），语义完全不同，
-    // 校验器立刻报错。复合类型之间一律不继承。
-    const prevSpec = spec.value;
-    const prevKinds = new Map(prevSpec?.fields.map((f) => [f.key, f.kind]) ?? []);
-    const nextKinds = new Map(nextSpec.fields.map((f) => [f.key, f.kind]));
-    for (const f of store.schema?.commonFields ?? []) {
-      prevKinds.set(f.key, f.kind);
-      nextKinds.set(f.key, f.kind);
-    }
+  // 按「字段名相同 **且** 控件类型相同」保留旧值。
+  // 只比字段名会把 choices 的 options（[{text, actions}]）原样搬进
+  // set_variable 的 options（[{condition, actions}]），语义完全不同，
+  // 校验器立刻报错。复合类型之间一律不继承。
+  const prevSpec = spec.value;
+  const prevKinds = new Map(prevSpec?.fields.map((f) => [f.key, f.kind]) ?? []);
+  const nextKinds = new Map(nextSpec.fields.map((f) => [f.key, f.kind]));
+  for (const f of store.schema?.commonFields ?? []) {
+    prevKinds.set(f.key, f.kind);
+    nextKinds.set(f.key, f.kind);
+  }
 
-    const rebuilt = store.blankEvent(next);
-    for (const [k, v] of Object.entries(event.value)) {
-      if (k === "type") continue;
-      const nk = nextKinds.get(k);
-      if (nk !== undefined && nk === prevKinds.get(k)) rebuilt[k] = v;
-    }
+  const rebuilt = store.blankEvent(next);
+  for (const [k, v] of Object.entries(event.value)) {
+    if (k === "type") continue;
+    const nk = nextKinds.get(k);
+    if (nk !== undefined && nk === prevKinds.get(k)) rebuilt[k] = v;
+  }
 
-    store.replaceEvent(store.selectedEvent, rebuilt);
-  };
+  store.replaceEvent(store.selectedEvent, rebuilt);
+};
 </script>

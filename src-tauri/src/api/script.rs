@@ -76,9 +76,24 @@ pub async fn list_standalone_scripts(app: AppHandle) -> Result<ScriptListRespons
     Ok(ScriptListResponse { scripts })
 }
 
-#[tauri::command]
-pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), String> {
+/// 在后台任务中执行剧本（含羁绊完成处理），并把任务句柄登记到 AppState。
+/// 新引擎起跑前先中止上一个登记的引擎任务并清理其输入通道——
+/// 阻塞中的旧引擎靠 oneshot 挂起，不中止就会往新会话的共享 GameStatus 里写台词。
+pub(crate) async fn spawn_script_execution(
+    app: AppHandle,
+    script: crate::ai_service::types::ScriptStatus,
+) {
     let state = app.state::<AppState>();
+
+    if let Some(handle) = state.script_task.lock().await.take() {
+        handle.abort();
+    }
+    {
+        let mut ch = state.script_channels.lock().await;
+        let _ = ch.input_tx.take();
+        let _ = ch.choice_tx.take();
+        ch.choice_allow_free = false;
+    }
 
     // Clone shared handles for the background task
     let ai_service = state.ai_service.clone();
@@ -88,27 +103,23 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
     let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
     let achievement_manager = state.achievement_manager.clone();
 
-    // Lock AIService briefly to validate and extract needed data
-    let (script, game_status, config, is_running) = {
+    // Lock AIService briefly to extract needed data
+    let (game_status, config, is_running) = {
         let service = ai_service.lock().await;
-        let script = service
-            .script_manager
-            .all_scripts
-            .get(&script_name)
-            .ok_or_else(|| format!("剧本不存在: '{}'", script_name))?
-            .clone();
-        let game_status = service.game_status.clone();
-        let config = service.config.clone();
-        let is_running = service.script_manager.is_running.clone();
-        (script, game_status, config, is_running)
+        (
+            service.game_status.clone(),
+            service.config.clone(),
+            service.script_manager.is_running.clone(),
+        )
     };
 
-    // Run script in background task (does NOT hold AIService lock across awaits)
-    tokio::spawn(async move {
+    // `app` 仍需被 `state` 借用（登记任务句柄要用），后台任务持有一份克隆
+    let task_app = app.clone();
+    let handle = tokio::spawn(async move {
         let mut ctx = ScriptContext {
             db: &db,
             data_dir: &data_dir,
-            app: &app,
+            app: &task_app,
             game_status,
             config: &config,
             llm: llm.as_ref(),
@@ -123,7 +134,7 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
                     super::adventure::handle_adventure_completion(
                         &db,
                         &achievement_manager,
-                        &app,
+                        &task_app,
                         &ai_service,
                         &script.folder_key,
                         &script.adventure.completion_achievements,
@@ -136,6 +147,24 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
             Err(e) => tracing::error!("[ScriptAPI] 剧本执行错误: {}", e),
         }
     });
+
+    *state.script_task.lock().await = Some(handle);
+}
+
+#[tauri::command]
+pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), String> {
+    let script = {
+        let state = app.state::<AppState>();
+        let service = state.ai_service.lock().await;
+        service
+            .script_manager
+            .all_scripts
+            .get(&script_name)
+            .ok_or_else(|| format!("剧本不存在: '{}'", script_name))?
+            .clone()
+    };
+
+    spawn_script_execution(app, script).await;
 
     Ok(())
 }

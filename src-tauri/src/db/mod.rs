@@ -1,6 +1,7 @@
 pub mod compat;
 pub mod entities;
 pub mod managers;
+pub mod role_sync;
 
 use std::path::Path;
 

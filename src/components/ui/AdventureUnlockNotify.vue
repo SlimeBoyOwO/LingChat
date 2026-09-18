@@ -2,8 +2,7 @@
   <Transition name="slide-up">
     <div
       v-if="visible && currentAdventure"
-      class="fixed right-8 bottom-[calc(32px+var(--safe-area-inset-bottom))] z-9999 flex max-w-100
-        min-w-[320px] items-center gap-4 overflow-hidden rounded-xl p-4"
+      class="fixed right-8 bottom-[calc(32px+var(--safe-area-inset-bottom))] z-9999 flex max-w-100 min-w-[320px] items-center gap-4 overflow-hidden rounded-xl p-4"
       style="
         background: rgba(15, 15, 15, 0.5);
         backdrop-filter: blur(20px);
@@ -68,60 +67,60 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, watch } from "vue";
-  import { useAdventureStore } from "@/stores/modules/adventure";
-  import type { UnlockedAdventure } from "@/api/services/adventure";
+import { ref, watch } from "vue";
+import { useAdventureStore } from "@/stores/modules/adventure";
+import type { UnlockedAdventure } from "@/api/services/adventure";
 
-  const adventureStore = useAdventureStore();
-  const visible = ref(false);
-  const currentAdventure = ref<UnlockedAdventure | null>(null);
+const adventureStore = useAdventureStore();
+const visible = ref(false);
+const currentAdventure = ref<UnlockedAdventure | null>(null);
 
-  let timer: number | null = null;
+let timer: number | null = null;
 
-  const showNotification = (adventure: UnlockedAdventure) => {
-    currentAdventure.value = adventure;
-    visible.value = true;
+const showNotification = (adventure: UnlockedAdventure) => {
+  currentAdventure.value = adventure;
+  visible.value = true;
 
-    if (timer) clearTimeout(timer);
-    timer = window.setTimeout(() => {
-      visible.value = false;
-      currentAdventure.value = null;
-    }, 3000);
-  };
+  if (timer) clearTimeout(timer);
+  timer = window.setTimeout(() => {
+    visible.value = false;
+    currentAdventure.value = null;
+  }, 3000);
+};
 
-  watch(
-    () => adventureStore.unlockNotifications.length,
-    (count) => {
-      if (count > 0 && !visible.value) {
-        const adventure = adventureStore.popUnlockNotification();
-        if (adventure) {
-          showNotification(adventure);
-        }
+watch(
+  () => adventureStore.unlockNotifications.length,
+  (count) => {
+    if (count > 0 && !visible.value) {
+      const adventure = adventureStore.popUnlockNotification();
+      if (adventure) {
+        showNotification(adventure);
       }
-    },
-    { immediate: true }
-  );
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <style scoped>
-  /* 保留必要的动画和过渡效果 */
-  @keyframes progress {
-    0% {
-      transform: scaleX(1);
-    }
-    100% {
-      transform: scaleX(0);
-    }
+/* 保留必要的动画和过渡效果 */
+@keyframes progress {
+  0% {
+    transform: scaleX(1);
   }
+  100% {
+    transform: scaleX(0);
+  }
+}
 
-  .slide-up-enter-active,
-  .slide-up-leave-active {
-    transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  }
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
 
-  .slide-up-enter-from,
-  .slide-up-leave-to {
-    transform: translateY(100px) scale(0.9);
-    opacity: 0;
-  }
+.slide-up-enter-from,
+.slide-up-leave-to {
+  transform: translateY(100px) scale(0.9);
+  opacity: 0;
+}
 </style>

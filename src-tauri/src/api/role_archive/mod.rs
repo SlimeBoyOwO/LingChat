@@ -391,9 +391,9 @@ pub async fn export_role_to_path(
 #[tauri::command]
 pub async fn rescan_roles(app: AppHandle) -> Result<Vec<i32>, String> {
     tracing::info!("[RoleArchive] rescan_roles 开始");
-    let data_dir = crate::init::static_copy::get_data_dir().clone();
+    let data_dir = crate::data_dir::get_data_dir().clone();
     let db = app.state::<crate::AppState>().db.clone();
-    let ids = crate::init::role_sync::sync_roles_from_folder(&db, &data_dir)
+    let ids = crate::db::role_sync::sync_roles_from_folder(&db, &data_dir)
         .await
         .map_err(|e| e.to_string())?;
     tracing::info!("[RoleArchive] rescan_roles 完成: 同步 {} 个角色", ids.len());

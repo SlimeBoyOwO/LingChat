@@ -19,7 +19,7 @@ export function pointerToStagePoint(
   clientX: number,
   clientY: number,
   rect: StageRect,
-  stage: StageSize
+  stage: StageSize,
 ): StagePoint | null {
   if (rect.width <= 0 || rect.height <= 0 || stage.width <= 0 || stage.height <= 0) return null;
   return {

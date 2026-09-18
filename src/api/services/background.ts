@@ -9,7 +9,7 @@ export const getBackgroundImages = async (): Promise<BackgroundImageInfo[]> => {
   } catch (error: any) {
     console.error(
       "Failed to get background list:",
-      typeof error === "string" ? error : error.message
+      typeof error === "string" ? error : error.message,
     );
     throw error;
   }
@@ -21,7 +21,7 @@ export const getBackgroundImageById = async (id: string): Promise<BackgroundImag
 
 export const uploadBackgroundImage = async (
   fileName: string,
-  fileData: Uint8Array
+  fileData: Uint8Array,
 ): Promise<BackgroundImageInfo[]> => {
   return invoke("upload_background_image", { fileName, fileData });
 };

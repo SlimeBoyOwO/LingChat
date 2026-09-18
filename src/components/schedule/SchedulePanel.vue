@@ -23,8 +23,7 @@
       >
         <div
           v-if="enabled"
-          class="fixed inset-0 z-[1100] flex items-center justify-center bg-black/50
-            backdrop-blur-sm"
+          class="fixed inset-0 z-[1100] flex items-center justify-center bg-black/50 backdrop-blur-sm"
         >
           <Transition
             enter-active-class="transition-all duration-300 cubic-bezier(0.2, 0.8, 0.2, 1)"
@@ -34,16 +33,14 @@
           >
             <div
               v-if="enabled"
-              class="relative flex flex-col rounded-3xl border border-white/10
-                shadow-[0_8px_32px_rgba(0,0,0,0.4)]"
+              class="relative flex flex-col rounded-3xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]"
               :class="
                 uiStore.isNarrowScreen ? 'h-[85dvh] w-[95vw]' : 'h-[80dvh] w-[80vw] max-w-[1200px]'
               "
             >
               <!-- Header bar -->
               <div
-                class="flex shrink-0 items-center justify-between border-b border-white/10
-                  bg-[#12121c]/90 px-5 py-3 backdrop-blur-xl"
+                class="flex shrink-0 items-center justify-between border-b border-white/10 bg-[#12121c]/90 px-5 py-3 backdrop-blur-xl"
               >
                 <div class="flex items-center gap-2">
                   <PawPrint :size="24" class="text-brand -rotate-18" />
@@ -52,8 +49,7 @@
                   </h3>
                 </div>
                 <button
-                  class="rounded-full p-2 text-white/50 transition-colors hover:bg-white/10
-                    hover:text-white"
+                  class="rounded-full p-2 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
                   @click="enabled = false"
                 >
                   <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -69,8 +65,7 @@
 
               <!-- Content area with glass styling -->
               <div
-                class="min-h-0 flex-1 overflow-hidden rounded-b-3xl bg-[#12121c]/75
-                  backdrop-blur-[20px]"
+                class="min-h-0 flex-1 overflow-hidden rounded-b-3xl bg-[#12121c]/75 backdrop-blur-[20px]"
               >
                 <ScheduleContent variant="popup" />
               </div>
@@ -83,24 +78,24 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, watch } from "vue";
-  import Button from "@/components/base/widget/Button.vue";
-  import { useUIStore } from "@/stores/modules/ui/ui";
-  import ScheduleContent from "./ScheduleContent.vue";
-  import { PawPrint } from "lucide-vue-next";
+import { ref, watch } from "vue";
+import Button from "@/components/base/widget/Button.vue";
+import { useUIStore } from "@/stores/modules/ui/ui";
+import ScheduleContent from "./ScheduleContent.vue";
+import { PawPrint } from "lucide-vue-next";
 
-  const uiStore = useUIStore();
+const uiStore = useUIStore();
 
-  const enabled = ref(false);
+const enabled = ref(false);
 
-  function toggleEnabled() {
-    enabled.value = !enabled.value;
-  }
+function toggleEnabled() {
+  enabled.value = !enabled.value;
+}
 
-  watch(
-    () => uiStore.showSettings,
-    (show) => {
-      if (show) enabled.value = false;
-    }
-  );
+watch(
+  () => uiStore.showSettings,
+  (show) => {
+    if (show) enabled.value = false;
+  },
+);
 </script>

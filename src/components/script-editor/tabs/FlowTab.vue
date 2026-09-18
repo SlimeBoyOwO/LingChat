@@ -1,80 +1,80 @@
 <script setup lang="ts">
-  import { computed, ref, watch } from "vue";
-  import { useI18n } from "vue-i18n";
-  import { Icon, Toggle } from "@/components/base";
-  import { MenuPage, MenuItem } from "@/components/ui";
-  import { useScriptEditorStore } from "@/stores/modules/script-editor";
-  import ChapterFlow from "../flow/ChapterFlow.vue";
-  import ChapterTimeline from "../flow/ChapterTimeline.vue";
-  import EventPropertyPanel from "../flow/EventPropertyPanel.vue";
-  import { openScriptFolder } from "@/api/services/script-editor";
-  import { isAndroid } from "@/utils/platform";
+import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import { Icon, Toggle } from "@/components/base";
+import { MenuPage, MenuItem } from "@/components/ui";
+import { useScriptEditorStore } from "@/stores/modules/script-editor";
+import ChapterFlow from "../flow/ChapterFlow.vue";
+import ChapterTimeline from "../flow/ChapterTimeline.vue";
+import EventPropertyPanel from "../flow/EventPropertyPanel.vue";
+import { openScriptFolder } from "@/api/services/script-editor";
+import { isAndroid } from "@/utils/platform";
 
-  const emit = defineEmits<{ "new-chapter": [] }>();
+const emit = defineEmits<{ "new-chapter": [] }>();
 
-  const { t } = useI18n();
-  const store = useScriptEditorStore();
+const { t } = useI18n();
+const store = useScriptEditorStore();
 
-  /** 抽成常量纯粹是因为 title 内联会超出 100 列的行宽 */
-  const FOLD_HINT = computed(() => t("scriptEditor.flowTab.foldHint"));
+/** 抽成常量纯粹是因为 title 内联会超出 100 列的行宽 */
+const FOLD_HINT = computed(() => t("scriptEditor.flowTab.foldHint"));
 
-  /** 属性栏拖拽宽度钳制：最小 360px，最大不超过编辑器宽度的 88% */
-  const GRIP_MIN = 360;
-  const GRIP_MAX_RATIO = 0.88;
+/** 属性栏拖拽宽度钳制：最小 360px，最大不超过编辑器宽度的 88% */
+const GRIP_MIN = 360;
+const GRIP_MAX_RATIO = 0.88;
 
-  // 章节编辑容器 ref，拖拽时取它的宽度计算上限
-  const editorWrap = ref<HTMLElement | null>(null);
+// 章节编辑容器 ref，拖拽时取它的宽度计算上限
+const editorWrap = ref<HTMLElement | null>(null);
 
-  /**
-   * 属性栏边缘竖条手柄：单击展开/折叠，按住拖拽调宽度。
-   * 用 pointer 事件区分单击与拖拽（移动超 4px 视为拖拽），拖拽结果写入
-   * store.propsWidth（持久化），展开/折叠状态是临时态不持久化。
-   */
-  let gripStartX = 0;
-  let gripStartW = 0;
-  let gripDragging = false;
+/**
+ * 属性栏边缘竖条手柄：单击展开/折叠，按住拖拽调宽度。
+ * 用 pointer 事件区分单击与拖拽（移动超 4px 视为拖拽），拖拽结果写入
+ * store.propsWidth（持久化），展开/折叠状态是临时态不持久化。
+ */
+let gripStartX = 0;
+let gripStartW = 0;
+let gripDragging = false;
 
-  const onGripDown = (e: PointerEvent) => {
-    gripStartX = e.clientX;
-    gripStartW = store.propsExpanded ? store.propsWidth : 340;
-    gripDragging = false;
-    const onMove = (ev: PointerEvent) => {
-      const delta = gripStartX - ev.clientX;
-      if (!gripDragging && Math.abs(delta) > 4) gripDragging = true;
-      if (!gripDragging) return;
-      const wrap = editorWrap.value;
-      const maxW = wrap ? Math.max(GRIP_MIN, Math.floor(wrap.clientWidth * GRIP_MAX_RATIO)) : 1200;
-      store.propsExpanded = true;
-      store.propsWidth = Math.min(maxW, Math.max(GRIP_MIN, gripStartW + delta));
-    };
-    const onUp = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      // 没有进入拖拽就是单击 → 切换展开/折叠
-      if (!gripDragging) store.propsExpanded = !store.propsExpanded;
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+const onGripDown = (e: PointerEvent) => {
+  gripStartX = e.clientX;
+  gripStartW = store.propsExpanded ? store.propsWidth : 340;
+  gripDragging = false;
+  const onMove = (ev: PointerEvent) => {
+    const delta = gripStartX - ev.clientX;
+    if (!gripDragging && Math.abs(delta) > 4) gripDragging = true;
+    if (!gripDragging) return;
+    const wrap = editorWrap.value;
+    const maxW = wrap ? Math.max(GRIP_MIN, Math.floor(wrap.clientWidth * GRIP_MAX_RATIO)) : 1200;
+    store.propsExpanded = true;
+    store.propsWidth = Math.min(maxW, Math.max(GRIP_MIN, gripStartW + delta));
   };
-
-  /** 退出章节编辑时自动收起属性栏 */
-  watch(
-    () => store.level,
-    (level) => {
-      if (level !== "chapter") store.propsExpanded = false;
-    }
-  );
-
-  const onRename = (e: Event) => store.setChapterName((e.target as HTMLInputElement).value);
-
-  const openFolder = async () => {
-    if (!store.scriptKey) return;
-    try {
-      await openScriptFolder(store.scriptKey);
-    } catch (err) {
-      store.notifyError(t("scriptEditor.notify.openFolderFailed"), err);
-    }
+  const onUp = () => {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    // 没有进入拖拽就是单击 → 切换展开/折叠
+    if (!gripDragging) store.propsExpanded = !store.propsExpanded;
   };
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+};
+
+/** 退出章节编辑时自动收起属性栏 */
+watch(
+  () => store.level,
+  (level) => {
+    if (level !== "chapter") store.propsExpanded = false;
+  },
+);
+
+const onRename = (e: Event) => store.setChapterName((e.target as HTMLInputElement).value);
+
+const openFolder = async () => {
+  if (!store.scriptKey) return;
+  try {
+    await openScriptFolder(store.scriptKey);
+  } catch (err) {
+    store.notifyError(t("scriptEditor.notify.openFolderFailed"), err);
+  }
+};
 </script>
 
 <template>
@@ -86,29 +86,20 @@
       </template>
       <div class="mb-3 flex flex-wrap items-center gap-2">
         <button
-          class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-3
-            py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all duration-200
-            hover:enabled:bg-white/[0.12] hover:enabled:text-white disabled:cursor-not-allowed
-            disabled:opacity-40"
+          class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all duration-200 hover:enabled:bg-white/[0.12] hover:enabled:text-white disabled:cursor-not-allowed disabled:opacity-40"
           @click="emit('new-chapter')"
         >
           {{ t("scriptEditor.flowTab.newChapter") }}
         </button>
         <button
-          class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-3
-            py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all duration-200
-            hover:enabled:bg-white/[0.12] hover:enabled:text-white disabled:cursor-not-allowed
-            disabled:opacity-40"
+          class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all duration-200 hover:enabled:bg-white/[0.12] hover:enabled:text-white disabled:cursor-not-allowed disabled:opacity-40"
           @click="store.runValidation()"
         >
           {{ t("scriptEditor.validate.revalidate") }}
         </button>
         <button
           v-if="!isAndroid()"
-          class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-3
-            py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all duration-200
-            hover:enabled:bg-white/[0.12] hover:enabled:text-white disabled:cursor-not-allowed
-            disabled:opacity-40"
+          class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all duration-200 hover:enabled:bg-white/[0.12] hover:enabled:text-white disabled:cursor-not-allowed disabled:opacity-40"
           @click="openFolder"
         >
           {{ t("scriptEditor.flowTab.openFolder") }}
@@ -165,14 +156,12 @@
     >
       <!-- 边缘竖条手柄：单击展开/折叠，按住拖拽调宽度 -->
       <div
-        class="group/grip absolute top-0 bottom-0 left-0 z-30 w-2 -translate-x-1/2 cursor-ew-resize
-          touch-none"
+        class="group/grip absolute top-0 bottom-0 left-0 z-30 w-2 -translate-x-1/2 cursor-ew-resize touch-none"
         :title="t('scriptEditor.flowTab.propsGrip')"
         @pointerdown="onGripDown"
       >
         <div
-          class="group-hover/grip:bg-brand absolute top-1/2 left-1/2 h-20 w-[3px] -translate-x-1/2
-            -translate-y-1/2 rounded-full bg-white/20 transition-colors"
+          class="group-hover/grip:bg-brand absolute top-1/2 left-1/2 h-20 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/20 transition-colors"
         ></div>
       </div>
       <MenuItem
@@ -191,11 +180,11 @@
 </template>
 
 <style scoped>
-  /* MenuItem 的 .content 默认只有 width:100%，在 .fill（flex 列）里不会收缩 */
-  .fill :deep(.content) {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
+/* MenuItem 的 .content 默认只有 width:100%，在 .fill（flex 列）里不会收缩 */
+.fill :deep(.content) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 </style>

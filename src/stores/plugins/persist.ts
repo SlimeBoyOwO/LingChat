@@ -78,7 +78,7 @@ export function persist({ store, options }: PiniaPluginContext) {
       // 深度合并：确保新增的默认字段不会因旧持久化数据丢失
       const merged = deepMerge(
         JSON.parse(JSON.stringify(store.$state)),
-        deepExclude(filtered, excludePathFields)
+        deepExclude(filtered, excludePathFields),
       );
       store.$patch(merged);
     } catch (e) {

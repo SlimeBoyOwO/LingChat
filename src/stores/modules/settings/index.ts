@@ -64,6 +64,8 @@ export const DEFAULT_SETTINGS = {
   // 桌宠设置
   pet: {
     scale: 1, // 桌宠缩放比例
+    live2dFps: 30, // Live2D 渲染帧率上限（0 = 不限制）；桌宠窗口小，30 帧足够且显著降 CPU
+    bubbleSide: "above" as BubbleSide, // 气泡/通知位置：above = 宠物上方，below = 宠物与输入框之间，auto = 自动
   },
   // 剧本编辑器快捷键（默认不含 Command 键；可在编辑器快捷键面板自定义）
   shortcuts: DEFAULT_SHORTCUTS,
@@ -119,8 +121,15 @@ export interface CharacterSettings {
   folder: string;
 }
 
+/** 气泡/通知位置：above = 宠物上方；below = 宠物与输入框之间；auto = 按宠物在屏幕中的位置自动选 */
+export type BubbleSide = "above" | "below" | "auto";
+
 export interface PetSettings {
   scale: number;
+  /** Live2D 渲染帧率上限（0 = 不限制），默认 30 */
+  live2dFps: number;
+  /** 气泡/通知位置 */
+  bubbleSide: BubbleSide;
 }
 
 export interface SettingsState {
@@ -411,9 +420,17 @@ export const useSettingsStore = defineStore("settings", {
     // 设置桌宠缩放比例
     setPetScale(scale: number) {
       if (!this.pet) {
-        this.pet = { scale: 1.0 };
+        this.pet = { ...DEFAULT_SETTINGS.pet };
       }
       this.pet.scale = scale;
+    },
+
+    // 设置 Live2D 渲染帧率上限（0 = 不限制）
+    setPetLive2dFps(fps: number) {
+      if (!this.pet) {
+        this.pet = { ...DEFAULT_SETTINGS.pet };
+      }
+      this.pet.live2dFps = fps;
     },
   },
 

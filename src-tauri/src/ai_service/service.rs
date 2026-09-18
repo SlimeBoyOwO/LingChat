@@ -43,6 +43,7 @@ impl AIService {
         memory_update_interval: u32,
         memory_recent_window: u32,
         memory_limits: MemorySectionLimits,
+        memory_inject_continue_user: bool,
     ) -> Self {
         // Initialize the event handler registry before any script is run
         crate::ai_service::game_system::script_engine::init_event_registry();
@@ -57,6 +58,7 @@ impl AIService {
             memory_update_interval,
             memory_recent_window,
             memory_limits,
+            memory_inject_continue_user,
         );
         let game_status = Arc::new(Mutex::new(GameStatus::new(role_manager)));
         let script_manager = ScriptManager::new(&data_dir);
@@ -180,7 +182,12 @@ impl AIService {
         gs.line_list.clear();
         gs.onstage_role_ids.clear();
         gs.present_role_ids.clear();
-        gs.player_entered = false;
+        gs.entry_greeting_done = false;
+        // 会话边界代号：切换角色 / 读档 / 清空对话都会清空 GameStatus 并重建，
+        // 旧一轮自由对话的流式任务（consumer/publisher）可能仍在游离生成。
+        // 递增代号后，它们的迟到 `add_assistant_line` / 工具回填会因
+        // `preview_generation != 捕获代号` 被丢弃，避免 A 的台词串进 B 的 line_list。
+        gs.preview_generation = gs.preview_generation.wrapping_add(1);
     }
 
     pub async fn set_active_save_id(&mut self, save_id: Option<i32>) {

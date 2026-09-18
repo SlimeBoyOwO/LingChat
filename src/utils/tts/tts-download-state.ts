@@ -21,7 +21,7 @@ export interface CatalogRowInputs {
 
 const findVoice = (
   voices: VoiceInstalledSnapshot[],
-  id: string
+  id: string,
 ): VoiceInstalledSnapshot | undefined => voices.find((v) => v.voice_id === id);
 
 export function catalogRowState(input: CatalogRowInputs): CatalogState {

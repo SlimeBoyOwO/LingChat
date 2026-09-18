@@ -5,8 +5,7 @@
         v-for="(group, id) in todoGroups"
         :key="'group-' + id"
         @click="selectTodoGroup(id)"
-        class="glass-effect group relative flex cursor-pointer items-center justify-between
-          rounded-2xl border border-slate-100 p-5 shadow-sm transition-all hover:border-cyan-200"
+        class="glass-effect group relative flex cursor-pointer items-center justify-between rounded-2xl border border-slate-100 p-5 shadow-sm transition-all hover:border-cyan-200"
       >
         <button
           @click.stop="removeTodoGroup(id)"
@@ -16,8 +15,7 @@
         </button>
         <div class="ml-2 flex items-center space-x-4">
           <div
-            class="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500 text-cyan-50
-              transition-all group-hover:bg-cyan-50 group-hover:text-cyan-500"
+            class="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500 text-cyan-50 transition-all group-hover:bg-cyan-50 group-hover:text-cyan-500"
           >
             <Folder />
           </div>
@@ -42,16 +40,14 @@
       </h3>
       <div
         v-if="globalPendingTodos.length === 0"
-        class="text-brand font-blod rounded-3xl border border-dashed border-slate-200 py-10
-          text-center text-xl"
+        class="text-brand font-blod rounded-3xl border border-dashed border-slate-200 py-10 text-center text-xl"
       >
         {{ $t("ui.todoPage.noPending") }}
       </div>
       <div
         v-for="todo in globalPendingTodos"
         :key="'global-' + todo.id"
-        class="glass-effect flex items-center space-x-4 rounded-2xl border-l-4 border-l-cyan-500 p-4
-          shadow-sm"
+        class="glass-effect flex items-center space-x-4 rounded-2xl border-l-4 border-l-cyan-500 p-4 shadow-sm"
       >
         <button
           @click.stop="completeTodo(todo)"
@@ -83,8 +79,7 @@
     <div v-if="globalCompletedTodos.length > 0" class="space-y-3">
       <button
         @click="showCompleted = !showCompleted"
-        class="flex items-center space-x-2 px-1 text-slate-400 transition-colors
-          hover:text-cyan-600"
+        class="flex items-center space-x-2 px-1 text-slate-400 transition-colors hover:text-cyan-600"
       >
         <component :is="showCompleted ? ChevronDown : ChevronRight" class="h-4 w-4" />
         <span class="text-[10px] font-black tracking-widest uppercase">{{
@@ -95,8 +90,7 @@
         <div
           v-for="todo in globalCompletedTodos"
           :key="'done-' + todo.id"
-          class="flex items-center space-x-4 rounded-2xl border border-slate-100 bg-slate-50/50 p-4
-            opacity-50"
+          class="flex items-center space-x-4 rounded-2xl border border-slate-100 bg-slate-50/50 p-4 opacity-50"
         >
           <CheckCircle class="h-5 w-5 text-cyan-500" />
           <div class="flex-1">
@@ -129,8 +123,7 @@
     <div
       v-for="(todo, idx) in activeTodoGroup.todos"
       :key="'detail-todo-' + todo.id"
-      class="glass-effect flex items-center space-x-4 rounded-2xl border border-slate-100 p-4
-        shadow-sm transition-all"
+      class="glass-effect flex items-center space-x-4 rounded-2xl border border-slate-100 p-4 shadow-sm transition-all"
       :class="todo.completed ? 'opacity-50' : ''"
     >
       <button
@@ -174,8 +167,7 @@
       <input
         v-model="formData.groupTitle"
         :placeholder="$t('ui.todoPage.groupNamePlaceholder')"
-        class="w-full rounded-2xl border-none bg-slate-100 px-5 py-4 transition-all outline-none
-          focus:ring-2 focus:ring-cyan-500/50"
+        class="w-full rounded-2xl border-none bg-slate-100 px-5 py-4 transition-all outline-none focus:ring-2 focus:ring-cyan-500/50"
       />
     </template>
 
@@ -184,8 +176,7 @@
       <input
         v-model="formData.todoText"
         :placeholder="$t('ui.todoPage.taskContentPlaceholder')"
-        class="w-full rounded-2xl border-none bg-slate-100 px-5 py-4 transition-all outline-none
-          focus:ring-2 focus:ring-cyan-500/50"
+        class="w-full rounded-2xl border-none bg-slate-100 px-5 py-4 transition-all outline-none focus:ring-2 focus:ring-cyan-500/50"
       />
       <div class="flex items-center space-x-3 rounded-2xl bg-slate-50 p-2">
         <span class="pl-2 text-xs font-bold text-slate-400 uppercase">{{
@@ -208,217 +199,217 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, computed, reactive, watch, onMounted } from "vue";
-  import { useUIStore } from "@/stores/modules/ui/ui";
-  import {
-    Trash2,
-    Star,
-    Folder,
-    ChevronRight,
-    Zap,
-    CheckCircle,
-    ChevronDown,
-    Inbox,
-    Check,
-  } from "lucide-vue-next";
-  import { getSchedules, saveSchedules } from "@/api/services/schedule";
+import { ref, computed, reactive, watch, onMounted } from "vue";
+import { useUIStore } from "@/stores/modules/ui/ui";
+import {
+  Trash2,
+  Star,
+  Folder,
+  ChevronRight,
+  Zap,
+  CheckCircle,
+  ChevronDown,
+  Inbox,
+  Check,
+} from "lucide-vue-next";
+import { getSchedules, saveSchedules } from "@/api/services/schedule";
 
-  import BaseModal from "@/components/ui/BaseModal.vue";
-  import { useI18n } from "vue-i18n";
+import BaseModal from "@/components/ui/BaseModal.vue";
+import { useI18n } from "vue-i18n";
 
-  const { t } = useI18n();
-  const uiStore = useUIStore();
+const { t } = useI18n();
+const uiStore = useUIStore();
 
-  const showCompleted = ref(false);
-  const todoInitialized = ref(false);
-  const preventFirstSave = ref(true);
-  const selectedTodoGroupId = ref<string | null>(null);
+const showCompleted = ref(false);
+const todoInitialized = ref(false);
+const preventFirstSave = ref(true);
+const selectedTodoGroupId = ref<string | null>(null);
 
-  interface TodoItem {
-    id: number;
-    text: string;
-    deadline?: string;
-    priority: number;
-    completed: boolean;
+interface TodoItem {
+  id: number;
+  text: string;
+  deadline?: string;
+  priority: number;
+  completed: boolean;
+}
+
+interface TodoGroup {
+  title: string;
+  description?: string;
+  todos: TodoItem[];
+}
+
+interface TodoItemWithGroup extends TodoItem {
+  groupTitle: string;
+  gid: string;
+}
+
+const todoGroups = ref<Record<string, TodoGroup>>({});
+
+const loadData = async () => {
+  try {
+    const data = await getSchedules();
+    if (data && data.todoGroups) {
+      todoGroups.value = data.todoGroups;
+    }
+  } catch (e) {
+    console.error("Failed to load todos", e);
+  } finally {
+    todoInitialized.value = true;
   }
+};
 
-  interface TodoGroup {
-    title: string;
-    description?: string;
-    todos: TodoItem[];
-  }
+watch(
+  todoGroups,
+  async (newVal) => {
+    if (!todoInitialized.value) return;
+    if (preventFirstSave.value) {
+      preventFirstSave.value = false;
+      return;
+    }
 
-  interface TodoItemWithGroup extends TodoItem {
-    groupTitle: string;
-    gid: string;
-  }
-
-  const todoGroups = ref<Record<string, TodoGroup>>({});
-
-  const loadData = async () => {
     try {
-      const data = await getSchedules();
-      if (data && data.todoGroups) {
-        todoGroups.value = data.todoGroups;
-      }
+      await saveSchedules({ todoGroups: newVal });
     } catch (e) {
-      console.error("Failed to load todos", e);
-    } finally {
-      todoInitialized.value = true;
+      console.error("Failed to save todos", e);
     }
-  };
+  },
+  { deep: true },
+);
 
-  watch(
-    todoGroups,
-    async (newVal) => {
-      if (!todoInitialized.value) return;
-      if (preventFirstSave.value) {
-        preventFirstSave.value = false;
-        return;
-      }
+onMounted(() => {
+  loadData();
+});
 
-      try {
-        await saveSchedules({ todoGroups: newVal });
-      } catch (e) {
-        console.error("Failed to save todos", e);
-      }
-    },
-    { deep: true }
-  );
+const activeTodoGroup = computed(() => {
+  if (!selectedTodoGroupId.value) {
+    return { todos: [] };
+  }
+  return todoGroups.value[selectedTodoGroupId.value] || { todos: [] };
+});
 
-  onMounted(() => {
-    loadData();
-  });
-
-  const activeTodoGroup = computed(() => {
-    if (!selectedTodoGroupId.value) {
-      return { todos: [] };
-    }
-    return todoGroups.value[selectedTodoGroupId.value] || { todos: [] };
-  });
-
-  const globalPendingTodos = computed(() => {
-    const list: TodoItemWithGroup[] = [];
-    Object.keys(todoGroups.value).forEach((gid) => {
-      const group = todoGroups.value[gid];
-      if (group) {
-        group.todos.forEach((t) => {
-          if (!t.completed)
-            list.push({
-              ...t,
-              groupTitle: group.title,
-              gid,
-            });
-        });
-      }
-    });
-    return list.sort((a, b) => b.priority - a.priority);
-  });
-
-  const globalCompletedTodos = computed(() => {
-    const list: TodoItemWithGroup[] = [];
-    Object.keys(todoGroups.value).forEach((gid) => {
-      const group = todoGroups.value[gid];
-      if (group) {
-        group.todos.forEach((t) => {
-          if (t.completed)
-            list.push({
-              ...t,
-              groupTitle: group.title,
-              gid,
-            });
-        });
-      }
-    });
-    return list;
-  });
-
-  // 修改 completeTodo
-  const completeTodo = (todo: TodoItem | TodoItemWithGroup) => {
-    console.log("完成代办");
-    // 兼容两种情况：全局视图传来带有 gid 的 copy 对象，详情视图传来没有 gid 的原始对象
-    const todoWithGid = todo as TodoItemWithGroup;
-    const gid = todoWithGid.gid || selectedTodoGroupId.value;
-
-    // 在原始数据源中找到真正的那个 todo 对象并修改它
-    if (gid && todoGroups.value[gid]) {
-      const targetTodo = todoGroups.value[gid].todos.find((t) => t.id === todo.id);
-      if (targetTodo) {
-        targetTodo.completed = true;
-      }
-    }
-  };
-
-  // 修改 undoComplete
-  const undoComplete = (todo: TodoItem | TodoItemWithGroup) => {
-    const todoWithGid = todo as TodoItemWithGroup;
-    const gid = todoWithGid.gid || selectedTodoGroupId.value;
-
-    // 在原始数据源中找到真正的那个 todo 对象并修改它
-    if (gid && todoGroups.value[gid]) {
-      const targetTodo = todoGroups.value[gid].todos.find((t) => t.id === todo.id);
-      if (targetTodo) {
-        targetTodo.completed = false;
-      }
-    }
-  };
-
-  const removeItem = (idx: number) => {
-    activeTodoGroup.value.todos.splice(idx, 1);
-  };
-
-  const removeTodoGroup = (id: string) => {
-    delete todoGroups.value[id];
-  };
-
-  const selectTodoGroup = (id: string) => {
-    selectedTodoGroupId.value = id;
-    uiStore.scheduleView = "todo_detail";
-  };
-  const showModal = ref(false);
-  const formData = reactive({
-    groupTitle: "",
-    todoText: "",
-    priority: 1,
-  });
-
-  const modalTitle = computed(() => {
-    return uiStore.scheduleView === "todo_groups"
-      ? t("ui.todoPage.newGroup")
-      : t("ui.todoPage.newTask");
-  });
-
-  const handleCreate = () => {
-    formData.groupTitle = "";
-    formData.todoText = "";
-    formData.priority = 1;
-    showModal.value = true;
-  };
-
-  const confirmCreate = () => {
-    if (uiStore.scheduleView === "todo_groups") {
-      // 新建组
-      const newId = "t" + Date.now();
-      todoGroups.value[newId] = {
-        title: formData.groupTitle,
-        todos: [],
-      };
-    } else {
-      // 新建任务
-      if (selectedTodoGroupId.value) {
-        const group = todoGroups.value[selectedTodoGroupId.value];
-        if (group) {
-          group.todos.push({
-            id: Date.now(),
-            text: formData.todoText,
-            priority: formData.priority,
-            completed: false,
+const globalPendingTodos = computed(() => {
+  const list: TodoItemWithGroup[] = [];
+  Object.keys(todoGroups.value).forEach((gid) => {
+    const group = todoGroups.value[gid];
+    if (group) {
+      group.todos.forEach((t) => {
+        if (!t.completed)
+          list.push({
+            ...t,
+            groupTitle: group.title,
+            gid,
           });
-        }
+      });
+    }
+  });
+  return list.sort((a, b) => b.priority - a.priority);
+});
+
+const globalCompletedTodos = computed(() => {
+  const list: TodoItemWithGroup[] = [];
+  Object.keys(todoGroups.value).forEach((gid) => {
+    const group = todoGroups.value[gid];
+    if (group) {
+      group.todos.forEach((t) => {
+        if (t.completed)
+          list.push({
+            ...t,
+            groupTitle: group.title,
+            gid,
+          });
+      });
+    }
+  });
+  return list;
+});
+
+// 修改 completeTodo
+const completeTodo = (todo: TodoItem | TodoItemWithGroup) => {
+  console.log("完成代办");
+  // 兼容两种情况：全局视图传来带有 gid 的 copy 对象，详情视图传来没有 gid 的原始对象
+  const todoWithGid = todo as TodoItemWithGroup;
+  const gid = todoWithGid.gid || selectedTodoGroupId.value;
+
+  // 在原始数据源中找到真正的那个 todo 对象并修改它
+  if (gid && todoGroups.value[gid]) {
+    const targetTodo = todoGroups.value[gid].todos.find((t) => t.id === todo.id);
+    if (targetTodo) {
+      targetTodo.completed = true;
+    }
+  }
+};
+
+// 修改 undoComplete
+const undoComplete = (todo: TodoItem | TodoItemWithGroup) => {
+  const todoWithGid = todo as TodoItemWithGroup;
+  const gid = todoWithGid.gid || selectedTodoGroupId.value;
+
+  // 在原始数据源中找到真正的那个 todo 对象并修改它
+  if (gid && todoGroups.value[gid]) {
+    const targetTodo = todoGroups.value[gid].todos.find((t) => t.id === todo.id);
+    if (targetTodo) {
+      targetTodo.completed = false;
+    }
+  }
+};
+
+const removeItem = (idx: number) => {
+  activeTodoGroup.value.todos.splice(idx, 1);
+};
+
+const removeTodoGroup = (id: string) => {
+  delete todoGroups.value[id];
+};
+
+const selectTodoGroup = (id: string) => {
+  selectedTodoGroupId.value = id;
+  uiStore.scheduleView = "todo_detail";
+};
+const showModal = ref(false);
+const formData = reactive({
+  groupTitle: "",
+  todoText: "",
+  priority: 1,
+});
+
+const modalTitle = computed(() => {
+  return uiStore.scheduleView === "todo_groups"
+    ? t("ui.todoPage.newGroup")
+    : t("ui.todoPage.newTask");
+});
+
+const handleCreate = () => {
+  formData.groupTitle = "";
+  formData.todoText = "";
+  formData.priority = 1;
+  showModal.value = true;
+};
+
+const confirmCreate = () => {
+  if (uiStore.scheduleView === "todo_groups") {
+    // 新建组
+    const newId = "t" + Date.now();
+    todoGroups.value[newId] = {
+      title: formData.groupTitle,
+      todos: [],
+    };
+  } else {
+    // 新建任务
+    if (selectedTodoGroupId.value) {
+      const group = todoGroups.value[selectedTodoGroupId.value];
+      if (group) {
+        group.todos.push({
+          id: Date.now(),
+          text: formData.todoText,
+          priority: formData.priority,
+          completed: false,
+        });
       }
     }
-    showModal.value = false;
-  };
+  }
+  showModal.value = false;
+};
 
-  defineExpose({ handleCreate });
+defineExpose({ handleCreate });
 </script>

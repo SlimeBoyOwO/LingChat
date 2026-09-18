@@ -10,13 +10,13 @@
 </template>
 
 <script setup lang="ts">
-  defineOptions({ inheritAttrs: false });
+defineOptions({ inheritAttrs: false });
 
-  interface Props {
-    mobile?: boolean;
-  }
+interface Props {
+  mobile?: boolean;
+}
 
-  withDefaults(defineProps<Props>(), {
-    mobile: true,
-  });
+withDefaults(defineProps<Props>(), {
+  mobile: true,
+});
 </script>

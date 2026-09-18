@@ -1,8 +1,7 @@
 <template>
   <MenuPage>
     <div
-      class="flex h-[85dvh] w-full flex-1 flex-col overflow-hidden rounded-lg bg-white/10 p-0
-        md:p-4"
+      class="flex h-[85dvh] w-full flex-1 flex-col overflow-hidden rounded-lg bg-white/10 p-0 md:p-4"
     >
       <!-- 顶部 Tab 切换栏：左 / 中 / 右 -->
       <div class="mb-5 flex shrink-0 items-center justify-between select-none">
@@ -115,6 +114,11 @@
         <SettingsCast />
       </div>
 
+      <!-- ====== 永久记忆调试 ====== -->
+      <div v-else-if="advanceTab === 'memory'" class="min-h-0 flex-1">
+        <SettingsMemoryDebug />
+      </div>
+
       <!-- ====== 其他高级设置 ====== -->
       <div v-else class="min-h-0 flex-1">
         <SettingsAdvanceOther
@@ -127,38 +131,39 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, computed } from "vue";
-  import { MenuPage } from "../../ui";
-  import SettingsLlmProviders from "./SettingsLlmProviders.vue";
-  import SettingsAdvanceMenu from "./SettingsAdvanceMenu.vue";
-  import SettingsTts from "./SettingsTts.vue";
-  import SettingsAsr from "./SettingsAsr.vue";
-  import SettingsTools from "./SettingsTools.vue";
-  import SettingsAdvanceOther from "./SettingsAdvanceOther.vue";
-  import { useUIStore } from "@/stores/modules/ui/ui";
-  import SettingsCast from "./SettingsCast.vue";
+import { ref, computed } from "vue";
+import { MenuPage } from "../../ui";
+import SettingsLlmProviders from "./SettingsLlmProviders.vue";
+import SettingsAdvanceMenu from "./SettingsAdvanceMenu.vue";
+import SettingsTts from "./SettingsTts.vue";
+import SettingsAsr from "./SettingsAsr.vue";
+import SettingsMemoryDebug from "./SettingsMemoryDebug.vue";
+import SettingsTools from "./SettingsTools.vue";
+import SettingsAdvanceOther from "./SettingsAdvanceOther.vue";
+import { useUIStore } from "@/stores/modules/ui/ui";
+import SettingsCast from "./SettingsCast.vue";
 
-  const uiStore = useUIStore();
+const uiStore = useUIStore();
 
-  // 子标签状态放在 ui store，供「日程 → 工具调用」等入口直接跳转定位
-  const advanceTab = computed({
-    get: () => uiStore.advanceTab,
-    set: (tab: string) => {
-      uiStore.advanceTab = tab;
-    },
-  });
+// 子标签状态放在 ui store，供「日程 → 工具调用」等入口直接跳转定位
+const advanceTab = computed({
+  get: () => uiStore.advanceTab,
+  set: (tab: string) => {
+    uiStore.advanceTab = tab;
+  },
+});
 
-  const advanceOtherRef = ref<InstanceType<typeof SettingsAdvanceOther> | null>(null);
+const advanceOtherRef = ref<InstanceType<typeof SettingsAdvanceOther> | null>(null);
 
-  const emit = defineEmits<{
-    "remove-more-menu-from-b": [];
-  }>();
+const emit = defineEmits<{
+  "remove-more-menu-from-b": [];
+}>();
 
-  const addMoreMenu = () => {
-    advanceOtherRef.value?.addMoreMenu();
-  };
+const addMoreMenu = () => {
+  advanceOtherRef.value?.addMoreMenu();
+};
 
-  defineExpose({
-    addMoreMenu,
-  });
+defineExpose({
+  addMoreMenu,
+});
 </script>

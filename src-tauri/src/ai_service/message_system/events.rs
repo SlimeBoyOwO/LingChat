@@ -54,6 +54,14 @@ pub fn emit_error(app: &AppHandle, err: &anyhow::Error) {
     );
     let err_payload = super::responses::ErrorResponse::new(info.code, info.raw);
     let _ = app.emit(super::responses::event_names::AI_ERROR, &err_payload);
+    emit_status_reset(app);
+}
+
+/// 只把前端状态复位为 input，不报错。
+///
+/// 用于"本轮没有可发布的收尾句"这类需要把界面从等待态放回输入态、但不该弹错误
+/// 提示的情况（前端只认 `is_final` 的回复或本事件来复位）。
+pub fn emit_status_reset(app: &AppHandle) {
     let reset = super::responses::StatusResetResponse::new("input");
     let _ = app.emit(super::responses::event_names::STATUS_RESET, &reset);
 }

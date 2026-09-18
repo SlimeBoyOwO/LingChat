@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::AppState;
 use crate::ai_service::game_system::scene_store::{Scene, SceneStore};
 use crate::api::encode_plugin_folder;
-use crate::init::role_sync::PluginRoleInput;
+use crate::db::role_sync::PluginRoleInput;
 use crate::plugins::{PluginInfo, PluginManager, PluginResourceEntry, ResourceKind};
 use crate::utils::archive::{self, ArchiveImportState, ConflictPolicy};
 
@@ -215,7 +215,7 @@ pub async fn plugin_resource_keep(
     match kind {
         ResourceKind::Characters => {
             let state = app.state::<AppState>();
-            crate::init::role_sync::sync_roles_from_folder(&state.db, &crate::api::data_dir())
+            crate::db::role_sync::sync_roles_from_folder(&state.db, &crate::api::data_dir())
                 .await
                 .map_err(|e| e.to_string())?;
         },
@@ -244,7 +244,7 @@ pub async fn refresh_plugin_content(app: &AppHandle) {
 async fn sync_plugin_roles_cmd(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     let inputs = collect_plugin_role_inputs(&state).await;
-    crate::init::role_sync::sync_plugin_roles(&state.db, &inputs)
+    crate::db::role_sync::sync_plugin_roles(&state.db, &inputs)
         .await
         .map_err(|e| e.to_string())?;
     Ok(())

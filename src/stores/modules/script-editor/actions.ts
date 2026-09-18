@@ -45,7 +45,7 @@ type Getters = ReturnType<typeof useEditorGetters>;
  * 目前只有「背景特效」：用前端粒子注册表覆盖该字段 options，新增粒子只改前端。
  */
 function applyFrontendOverrides(
-  schema: { events: { typeKey: string; fields: { key: string; options?: unknown[] }[] }[] } | null
+  schema: { events: { typeKey: string; fields: { key: string; options?: unknown[] }[] }[] } | null,
 ) {
   if (!schema) return;
   const effectField = schema.events
@@ -260,7 +260,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     const dialog = useDialogStore();
     const ok = await dialog.confirm(
       t("scriptEditor.scriptList.deleteConfirm", { name: displayName }),
-      t("scriptEditor.scriptList.deleteConfirmTitle")
+      t("scriptEditor.scriptList.deleteConfirmTitle"),
     );
     if (!ok) return;
     try {
@@ -271,7 +271,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       await syncEngine();
       notifyOk(
         t("scriptEditor.notify.scriptDeleted"),
-        t("scriptEditor.notify.scriptDeletedDesc", { name: displayName })
+        t("scriptEditor.notify.scriptDeletedDesc", { name: displayName }),
       );
     } catch (e) {
       notifyError(t("scriptEditor.notify.deleteFailed"), e);
@@ -648,7 +648,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     const dialog = useDialogStore();
     const ok = await dialog.confirm(
       t("scriptEditor.notify.chapterDeleteConfirm", { id: chapterId }),
-      t("scriptEditor.notify.chapterDeleteTitle")
+      t("scriptEditor.notify.chapterDeleteTitle"),
     );
     if (!ok) return;
     try {
@@ -781,7 +781,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       s.tab.value = "validate";
       notifyWarn(
         t("scriptEditor.notify.validateUnresolved"),
-        t("scriptEditor.notify.validateUnresolvedDesc", { count: s.report.value?.errorCount ?? 0 })
+        t("scriptEditor.notify.validateUnresolvedDesc", { count: s.report.value?.errorCount ?? 0 }),
       );
       return false;
     }
@@ -791,7 +791,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     if (s.readiness.value && !s.readiness.value.ok) {
       notifyWarn(
         t("scriptEditor.notify.previewNeedFix"),
-        s.readiness.value.reason ?? t("scriptEditor.notify.previewNoMain")
+        s.readiness.value.reason ?? t("scriptEditor.notify.previewNoMain"),
       );
       return false;
     }
@@ -852,7 +852,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
   async function uploadAsset(
     kind: AssetKind,
     scope: AssetScope,
-    srcPath: string
+    srcPath: string,
   ): Promise<string | null> {
     const key = g.scriptKey.value;
     if (!key) return null;
@@ -870,7 +870,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
         scope === "global"
           ? t("scriptEditor.notify.assetImportedGlobal")
           : t("scriptEditor.notify.assetImportedScript"),
-        saved
+        saved,
       );
       return saved;
     } catch (e) {
@@ -938,7 +938,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       void refreshGlobalCharacters();
       notifyOk(
         t("scriptEditor.notify.characterCreated"),
-        t("scriptEditor.notify.characterCreatedDesc", { key: c.roleKey })
+        t("scriptEditor.notify.characterCreatedDesc", { key: c.roleKey }),
       );
     } catch (e) {
       notifyError(t("scriptEditor.notify.characterCreateFailed"), e);
@@ -956,7 +956,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     const dialog = useDialogStore();
     const ok = await dialog.confirm(
       t("scriptEditor.notify.characterDeleteConfirm", { name: displayName }),
-      t("scriptEditor.notify.characterDeleteTitle")
+      t("scriptEditor.notify.characterDeleteTitle"),
     );
     if (!ok) return;
     try {
@@ -966,7 +966,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       await runValidation();
       notifyOk(
         t("scriptEditor.notify.characterDeleted"),
-        t("scriptEditor.notify.characterDeletedDesc", { name: displayName })
+        t("scriptEditor.notify.characterDeletedDesc", { name: displayName }),
       );
     } catch (e) {
       notifyError(t("scriptEditor.notify.characterDeleteFailed"), e);
@@ -998,7 +998,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
         : t("scriptEditor.notify.assetScriptNote");
     const ok = await dialog.confirm(
       t("scriptEditor.notify.assetDeleteConfirm", { name, scopeTag }),
-      t("scriptEditor.notify.assetDeleteTitle")
+      t("scriptEditor.notify.assetDeleteTitle"),
     );
     if (!ok) return;
     try {
@@ -1008,7 +1008,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       await runValidation();
       notifyOk(
         t("scriptEditor.notify.assetDeleted"),
-        t("scriptEditor.notify.assetDeletedDesc", { name })
+        t("scriptEditor.notify.assetDeletedDesc", { name }),
       );
     } catch (e) {
       notifyError(t("scriptEditor.notify.assetDeleteFailed"), e);
@@ -1042,7 +1042,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     try {
       const list = await achievementApi.getAchievementList();
       s.achievements.value = Object.fromEntries(
-        Object.entries(list).map(([id, a]) => [id, a.title ?? id])
+        Object.entries(list).map(([id, a]) => [id, a.title ?? id]),
       );
     } catch (e) {
       console.warn("读取成就列表失败:", e);
@@ -1068,7 +1068,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
         t("scriptEditor.notify.characterImported", { name: c.aiName }),
         withAvatar
           ? t("scriptEditor.notify.characterImportedWithAvatar", { key: c.roleKey })
-          : t("scriptEditor.notify.characterImportedNoAvatar", { key: c.roleKey })
+          : t("scriptEditor.notify.characterImportedNoAvatar", { key: c.roleKey }),
       );
     } catch (e) {
       notifyError(t("scriptEditor.notify.characterImportFailed"), e);

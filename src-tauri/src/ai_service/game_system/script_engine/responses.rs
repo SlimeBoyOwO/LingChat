@@ -25,6 +25,7 @@ pub mod event_names {
     pub const SCRIPT_CHOICE: &str = "script:choice";
     pub const SCRIPT_END: &str = "script:end";
     pub const SCRIPT_FREE_DIALOGUE: &str = "script:free-dialogue";
+    pub const SCRIPT_PROGRESS: &str = "script:progress";
 }
 
 // ============================================================
@@ -191,4 +192,15 @@ pub struct ScriptEndPayload {
     /// reaching its end. The frontend must not credit the player with an
     /// adventure completion in that case.
     pub completed: bool,
+}
+
+/// 阅读锚点：引擎每执行一个事件前广播，事件流进入前端队列、按阅读速度被消费。
+/// 前端记录消费到的锚点，存档时回传作为精确恢复点（章节 + 事件下标 + 台词条数 + 剧本变量）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ScriptProgressPayload {
+    pub chapter: String,
+    pub event_index: i32,
+    pub line_count: i32,
+    pub vars: serde_json::Map<String, serde_json::Value>,
 }

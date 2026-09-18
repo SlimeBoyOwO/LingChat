@@ -9,18 +9,15 @@ use std::path::Path;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use base64::Engine as _;
 use image::codecs::jpeg::JpegEncoder;
 use image::imageops::FilterType;
-use image::{DynamicImage, GenericImageView, ImageBuffer, ImageReader, Rgb};
-use reqwest::Client;
+use image::{DynamicImage, GenericImageView, ImageReader};
 use serde_json::{Value, json};
 
 use crate::ai_service::llm::provider_config::resolve_vision_provider;
 use crate::ai_service::skill_agent::config::SkillAgentConfig;
 use crate::ai_service::skill_agent::file_tools::FileTools;
 use crate::ai_service::types::ToolDefinition;
-use crate::utils::tls::build_tls_config;
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::settings::{MediaFileSettings, SharedToolSettings};
@@ -29,6 +26,8 @@ const HARD_MAX_MEDIA_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_DECODE_DIMENSION: u32 = 32_768;
 const MAX_DECODE_ALLOCATION: u64 = 384 * 1024 * 1024;
 const MEDIA_TOOL_TIMEOUT: Duration = Duration::from_secs(240);
+/// 视觉模型请求的 HTTP 超时（沿用原手写路径的 210 秒）。
+const VISION_REQUEST_TIMEOUT_SECS: u64 = 210;
 
 #[derive(Clone, Copy)]
 enum MediaKind {
@@ -217,6 +216,9 @@ impl Tool for ReadMediaFileTool {
                 "没有可用的视觉模型；请先在“高级设置 → 大模型管理”配置视觉模型".into(),
             )
         })?;
+        let auto_compress = crate::config::app_config::AppConfig::load(&app)
+            .map(|c| c.auto_compress_image)
+            .unwrap_or(true);
         let analysis = analyze_media(
             &provider,
             media_kind,
@@ -224,6 +226,7 @@ impl Tool for ReadMediaFileTool {
             mime,
             &prompt,
             media_settings.max_output_tokens,
+            auto_compress,
         )
         .await?;
 
@@ -394,7 +397,7 @@ fn prepare_image(
             image = image.resize(max_edge, max_edge, FilterType::Lanczos3);
         }
     }
-    let rgb = flatten_on_white(&image);
+    let rgb = crate::utils::image::flatten_on_white(&image);
     let (delivered_width, delivered_height) = rgb.dimensions();
     let mut output = Vec::new();
     JpegEncoder::new_with_quality(&mut output, settings.jpeg_quality)
@@ -411,18 +414,6 @@ fn prepare_image(
     })
 }
 
-fn flatten_on_white(image: &DynamicImage) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
-    let rgba = image.to_rgba8();
-    ImageBuffer::from_fn(rgba.width(), rgba.height(), |x, y| {
-        let pixel = rgba.get_pixel(x, y).0;
-        let alpha = u16::from(pixel[3]);
-        let blend = |channel: u8| -> u8 {
-            (((u16::from(channel) * alpha) + (255 * (255 - alpha))) / 255) as u8
-        };
-        Rgb([blend(pixel[0]), blend(pixel[1]), blend(pixel[2])])
-    })
-}
-
 async fn analyze_media(
     provider: &crate::ai_service::llm::provider_config::LlmProviderConfig,
     kind: MediaKind,
@@ -430,112 +421,41 @@ async fn analyze_media(
     mime: &str,
     prompt: &str,
     max_output_tokens: u32,
+    auto_compress: bool,
 ) -> Result<String, ToolError> {
-    let data = base64::engine::general_purpose::STANDARD.encode(bytes);
-    let data_url = format!("data:{mime};base64,{data}");
-    let media_part = match kind {
-        MediaKind::Image(_) => json!({
-            "type": "image_url",
-            "image_url": {"url": data_url}
-        }),
-        MediaKind::Video(_) => json!({
-            "type": "video_url",
-            "video_url": {"url": data_url}
-        }),
-    };
-    let payload = json!({
-        "model": provider.model,
-        "messages": [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                media_part
-            ]
-        }],
-        "max_tokens": max_output_tokens,
-    });
-    let tls = build_tls_config().map_err(ToolError::Execution)?;
-    let client = Client::builder()
-        .tls_backend_preconfigured(tls)
-        .timeout(Duration::from_secs(210))
-        .build()
+    let http = crate::ai_service::llm::factory::build_http_client(VISION_REQUEST_TIMEOUT_SECS)
         .map_err(|error| ToolError::Execution(format!("创建视觉请求客户端失败: {error}")))?;
-    let endpoint = format!(
-        "{}/chat/completions",
-        vision_base_url(provider).trim_end_matches('/')
-    );
-    let response = client
-        .post(endpoint)
-        .bearer_auth(&provider.api_key)
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|error| ToolError::Execution(format!("视觉模型请求失败: {error}")))?;
-    let status = response.status();
-    let body = response
-        .text()
-        .await
-        .map_err(|error| ToolError::Execution(format!("读取视觉模型响应失败: {error}")))?;
-    if !status.is_success() {
-        let detail: String = body.chars().take(2000).collect();
-        let compatibility = if matches!(kind, MediaKind::Video(_)) {
-            "；当前视觉模型可能不支持 OpenAI 兼容的 video_url 输入，可关闭视频识别或改用支持视频的视觉模型"
-        } else {
-            ""
-        };
-        return Err(ToolError::Execution(format!(
-            "视觉模型返回 HTTP {}: {}{}",
-            status.as_u16(),
-            detail,
-            compatibility
-        )));
-    }
-    let value: Value = serde_json::from_str(&body)
-        .map_err(|error| ToolError::Execution(format!("解析视觉模型响应失败: {error}")))?;
-    extract_response_text(&value)
-        .ok_or_else(|| ToolError::Execution("视觉模型响应中没有可用的文本识别结果".into()))
-}
+    let target = crate::ai_service::llm::vision::VisionTarget::from_provider(provider);
 
-fn vision_base_url(
-    provider: &crate::ai_service::llm::provider_config::LlmProviderConfig,
-) -> String {
-    let base = provider.base_url.trim().trim_end_matches('/');
-    match provider.provider.as_str() {
-        "kimicode" => {
-            if base.is_empty() {
-                "https://api.kimi.com/coding/v1".to_string()
-            } else if base.ends_with("/v1/messages") {
-                base.trim_end_matches("/messages").to_string()
-            } else if base.ends_with("/v1/chat/completions") {
-                base.trim_end_matches("/chat/completions").to_string()
-            } else if base.ends_with("/v1") {
-                base.to_string()
-            } else {
-                format!("{base}/v1")
-            }
+    // 图片走 genai（OpenAI 兼容 adapter）；视频保留手写 reqwest（genai 不支持
+    // video_url）。两条路径都收敛在 `llm::vision`，这里只负责分派。
+    let result = match kind {
+        MediaKind::Image(_) => {
+            crate::ai_service::llm::vision::analyze_image(
+                &http,
+                &target,
+                prompt,
+                bytes,
+                mime,
+                max_output_tokens,
+                auto_compress,
+            )
+            .await
         },
-        "openai" if base.is_empty() => "https://api.openai.com/v1".to_string(),
-        "deepseek" if base.is_empty() => "https://api.deepseek.com".to_string(),
-        _ => base.to_string(),
-    }
-}
+        MediaKind::Video(_) => {
+            crate::ai_service::llm::vision::analyze_video(
+                &http,
+                &target,
+                prompt,
+                bytes,
+                mime,
+                max_output_tokens,
+            )
+            .await
+        },
+    };
 
-fn extract_response_text(value: &Value) -> Option<String> {
-    let message = value.get("choices")?.get(0)?.get("message")?;
-    if let Some(content) = message.get("content").and_then(Value::as_str) {
-        let trimmed = content.trim();
-        return (!trimmed.is_empty()).then(|| trimmed.to_string());
-    }
-    let parts = message.get("content")?.as_array()?;
-    let text = parts
-        .iter()
-        .filter_map(|part| {
-            part.get("text")
-                .and_then(Value::as_str)
-                .or_else(|| part.get("content").and_then(Value::as_str))
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    let trimmed = text.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_string())
+    result
+        .map(|vision_result| vision_result.text)
+        .map_err(|error| ToolError::Execution(error.to_string()))
 }

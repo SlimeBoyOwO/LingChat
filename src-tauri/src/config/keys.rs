@@ -25,6 +25,9 @@ pub const LLM_OUTPUT_SEC_LANG: &str = "llm.output_sec_lang";
 pub const CONSUMERS: &str = "llm.consumers";
 pub const LLM_NO_EMOTION_LIMIT: &str = "llm.no_emotion_limit_prompt";
 pub const LLM_TIMEOUT_SECS: &str = "llm.timeout_secs";
+/// 图片超过端点大小限制时是否自动压缩后再发送（作用于所有携带图片的 LLM 请求；
+/// 关闭后不再做该检查，超限图片将按原样直发，可能被服务端拒绝）。
+pub const LLM_AUTO_COMPRESS_IMAGE: &str = "llm.auto_compress_image";
 
 // ========== 翻译（对应 TRANSLATE_LLM_PROVIDER / TRANSLATE_MODEL / TRANSLATE_API_KEY / TRANSLATE_BASE_URL） ==========
 pub const TRANSLATE_PROVIDER: &str = "translate.provider";
@@ -37,10 +40,17 @@ pub const TRANSLATE_ENABLE: &str = "translate.enable";
 pub const ENABLE_TIME_SENSE: &str = "features.enable_time_sense";
 pub const ENABLE_EMOTION_CLASSIFIER: &str = "features.enable_emotion_classifier";
 
+// ========== 自动存档 ==========
+pub const AUTO_SAVE_ENABLED: &str = "features.auto_save_enabled";
+pub const AUTO_SAVE_INTERVAL_SECS: &str = "features.auto_save_interval_secs";
+
 // ========== 功能开关（记忆系统） ==========
 pub const USE_PERSISTENT_MEMORY: &str = "features.use_persistent_memory";
 pub const MEMORY_UPDATE_INTERVAL: &str = "features.memory_update_interval";
 pub const MEMORY_RECENT_WINDOW: &str = "features.memory_recent_window";
+/// 上下文窗口内没有 user 消息时，是否在裁切后的首条 assistant 前注入一条 user「继续」。
+/// 兼容 Gemini 等要求首条消息为 user 的 provider。
+pub const MEMORY_INJECT_CONTINUE_USER: &str = "features.memory_inject_continue_user";
 
 // ========== 记忆段长度上限（字符数，0 = 不截断） ==========
 pub const MEMORY_SHORT_TERM_MAX_CHARS: &str = "features.memory_short_term_max_chars";

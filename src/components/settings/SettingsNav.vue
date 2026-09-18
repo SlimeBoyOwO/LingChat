@@ -6,14 +6,11 @@
     <img src="@/assets/images/LingChatLogo.png" alt="Logo" class="ml-5 hidden w-20 xl:block" />
     <nav
       ref="navContainer"
-      class="custom-scroll relative flex h-full w-full flex-nowrap items-center justify-start gap-1
-        overflow-x-auto overflow-y-hidden px-2 duration-100 ease-in-out
-        xl:[justify-content:safe_center]"
+      class="custom-scroll relative flex h-full w-full flex-nowrap items-center justify-start gap-1 overflow-x-auto overflow-y-hidden px-2 duration-100 ease-in-out xl:[justify-content:safe_center]"
     >
       <div
         ref="indicator"
-        class="bg-brand absolute bottom-0 left-0 z-10 h-1 w-0 rounded
-          shadow-[0_0_10px_rgba(121,217,255,0.4)]"
+        class="bg-brand absolute bottom-0 left-0 z-10 h-1 w-0 rounded shadow-[0_0_10px_rgba(121,217,255,0.4)]"
       ></div>
       <Button
         ref="characterBtn"
@@ -133,9 +130,7 @@
     </nav>
     <Icon
       icon="close"
-      class="hover:text-accent flex cursor-pointer items-center justify-center rounded-full
-        border-none bg-transparent p-1.5 text-white transition-all duration-300 ease-in-out
-        hover:rotate-90 hover:bg-white/10"
+      class="hover:text-accent flex cursor-pointer items-center justify-center rounded-full border-none bg-transparent p-1.5 text-white transition-all duration-300 ease-in-out hover:rotate-90 hover:bg-white/10"
       :size="40"
       @click="closeSettings"
     ></Icon>
@@ -143,235 +138,235 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, onMounted, watch } from "vue";
-  import { useUIStore } from "../../stores/modules/ui/ui";
-  import { isMobile } from "../../utils/platform";
-  import { Button } from "../base";
-  import Icon from "../base/widget/Icon.vue";
+import { ref, onMounted, watch } from "vue";
+import { useUIStore } from "../../stores/modules/ui/ui";
+import { isMobile } from "../../utils/platform";
+import { Button } from "../base";
+import Icon from "../base/widget/Icon.vue";
 
-  const props = defineProps<{}>();
+const props = defineProps<{}>();
 
-  const emit = defineEmits([
-    "remove-more-menu-from-a", // A 组件触发 remove 时通知父组件
-  ]);
+const emit = defineEmits([
+  "remove-more-menu-from-a", // A 组件触发 remove 时通知父组件
+]);
 
-  const uiStore = useUIStore();
-  const indicator = ref<HTMLElement | null>(null);
-  const navContainer = ref<HTMLElement | null>(null);
+const uiStore = useUIStore();
+const indicator = ref<HTMLElement | null>(null);
+const navContainer = ref<HTMLElement | null>(null);
 
-  // 定义按钮ref的类型
-  type ButtonRef = InstanceType<typeof Button>;
+// 定义按钮ref的类型
+type ButtonRef = InstanceType<typeof Button>;
 
-  // 使用更宽松的类型定义
-  const characterBtn = ref<ButtonRef | null>(null);
-  const textBtn = ref<ButtonRef | null>(null);
-  const backgroundBtn = ref<ButtonRef | null>(null);
-  const petBtn = ref<ButtonRef | null>(null);
-  const soundBtn = ref<ButtonRef | null>(null);
-  const historyBtn = ref<ButtonRef | null>(null);
-  const achievementBtn = ref<ButtonRef | null>(null);
-  const saveBtn = ref<ButtonRef | null>(null);
-  const advanceBtn = ref<ButtonRef | null>(null);
-  const updateBtn = ref<ButtonRef | null>(null);
-  const adventureBtn = ref<ButtonRef | null>(null);
-  const logBtn = ref<ButtonRef | null>(null);
-  const pluginsBtn = ref<ButtonRef | null>(null);
+// 使用更宽松的类型定义
+const characterBtn = ref<ButtonRef | null>(null);
+const textBtn = ref<ButtonRef | null>(null);
+const backgroundBtn = ref<ButtonRef | null>(null);
+const petBtn = ref<ButtonRef | null>(null);
+const soundBtn = ref<ButtonRef | null>(null);
+const historyBtn = ref<ButtonRef | null>(null);
+const achievementBtn = ref<ButtonRef | null>(null);
+const saveBtn = ref<ButtonRef | null>(null);
+const advanceBtn = ref<ButtonRef | null>(null);
+const updateBtn = ref<ButtonRef | null>(null);
+const adventureBtn = ref<ButtonRef | null>(null);
+const logBtn = ref<ButtonRef | null>(null);
+const pluginsBtn = ref<ButtonRef | null>(null);
 
-  // 设置可重设的值（使用 ref 存储，确保响应式或跨函数访问）
-  const oldRefName = ref("textBtn");
+// 设置可重设的值（使用 ref 存储，确保响应式或跨函数访问）
+const oldRefName = ref("textBtn");
 
-  // 提取：根据 refName 获取按钮并移动指示器
-  const handleIndicatorMove = (currentRefName: string) => {
-    const buttonRef = {
-      characterBtn,
-      textBtn,
-      backgroundBtn,
-      petBtn,
-      soundBtn,
-      historyBtn,
-      achievementBtn,
-      saveBtn,
-      advanceBtn,
-      updateBtn,
-      adventureBtn,
-      logBtn,
-      pluginsBtn,
-    }[currentRefName];
+// 提取：根据 refName 获取按钮并移动指示器
+const handleIndicatorMove = (currentRefName: string) => {
+  const buttonRef = {
+    characterBtn,
+    textBtn,
+    backgroundBtn,
+    petBtn,
+    soundBtn,
+    historyBtn,
+    achievementBtn,
+    saveBtn,
+    advanceBtn,
+    updateBtn,
+    adventureBtn,
+    logBtn,
+    pluginsBtn,
+  }[currentRefName];
 
-    if (buttonRef?.value?.$el) {
-      moveIndicator(buttonRef.value.$el);
+  if (buttonRef?.value?.$el) {
+    moveIndicator(buttonRef.value.$el);
+  }
+};
+
+// 移动指示器
+const moveIndicator = (target: HTMLElement) => {
+  if (!indicator.value || !target) return;
+
+  indicator.value.style.left = `${target.offsetLeft}px`;
+  indicator.value.style.width = `${target.offsetWidth}px`;
+};
+
+// 统一处理标签切换
+const switchTab = (tabName: string, refName: string) => {
+  // 记录当前 refName 到 oldRefName
+  oldRefName.value = refName;
+  uiStore.setSettingsTab(tabName);
+
+  if (!indicator.value) return;
+
+  // 1. 设置过渡动画
+  indicator.value.style.transition =
+    "left 0.3s cubic-bezier(0.18, 0.89, 0.32, 1), width 0.3s cubic-bezier(0.18, 0.89, 0.32, 1)";
+
+  // 2. 触发动画（移动指示器）
+  handleIndicatorMove(refName);
+
+  // 3. 使用 setTimeout 延迟执行 unset
+  //    延迟时间设置为 400ms，略长于动画时长 300ms，确保动画完全结束
+  setTimeout(() => {
+    if (indicator.value) {
+      // 再次检查 indicator 是否存在，避免组件卸载后报错
+      indicator.value.style.transition = "unset";
     }
-  };
+  }, 400); // 延迟 400 毫秒
+};
 
-  // 移动指示器
-  const moveIndicator = (target: HTMLElement) => {
-    if (!indicator.value || !target) return;
-
-    indicator.value.style.left = `${target.offsetLeft}px`;
-    indicator.value.style.width = `${target.offsetWidth}px`;
-  };
-
-  // 统一处理标签切换
-  const switchTab = (tabName: string, refName: string) => {
-    // 记录当前 refName 到 oldRefName
-    oldRefName.value = refName;
-    uiStore.setSettingsTab(tabName);
-
-    if (!indicator.value) return;
-
-    // 1. 设置过渡动画
-    indicator.value.style.transition =
-      "left 0.3s cubic-bezier(0.18, 0.89, 0.32, 1), width 0.3s cubic-bezier(0.18, 0.89, 0.32, 1)";
-
-    // 2. 触发动画（移动指示器）
-    handleIndicatorMove(refName);
-
-    // 3. 使用 setTimeout 延迟执行 unset
-    //    延迟时间设置为 400ms，略长于动画时长 300ms，确保动画完全结束
-    setTimeout(() => {
-      if (indicator.value) {
-        // 再次检查 indicator 是否存在，避免组件卸载后报错
-        indicator.value.style.transition = "unset";
-      }
-    }, 400); // 延迟 400 毫秒
-  };
-
-  // 屏幕宽度变化监测器
-  const setupResizeObserver = () => {
-    if (!navContainer.value) {
-      return;
-    }
-    const resizeObserver = new ResizeObserver((entries) => {
-      // 尺寸变化时，重新初始化指示条位置（使用 currentSettingsTab 作为真实来源）
-      initIndicator();
-    });
-
-    // 监听nav的大小变化
-    resizeObserver.observe(navContainer.value);
-  };
-
-  // 初始化指示器位置
-  const initIndicator = () => {
-    const activeTab = uiStore.currentSettingsTab;
-    let activeButton = null;
-
-    switch (activeTab) {
-      case "character":
-        activeButton = characterBtn.value;
-        break;
-      case "text":
-        activeButton = textBtn.value;
-        break;
-      case "background":
-        activeButton = backgroundBtn.value;
-        break;
-      case "pet":
-        activeButton = petBtn.value;
-        break;
-      case "sound":
-        activeButton = soundBtn.value;
-        break;
-      case "history":
-        activeButton = historyBtn.value;
-        break;
-      case "achievement":
-        activeButton = achievementBtn.value;
-        break;
-      case "save":
-        activeButton = saveBtn.value;
-        break;
-      case "advance":
-        activeButton = advanceBtn.value;
-        break;
-      case "update":
-        activeButton = updateBtn.value;
-        break;
-      case "adventure":
-        activeButton = adventureBtn.value;
-        break;
-      case "log":
-        activeButton = logBtn.value;
-        break;
-      case "plugins":
-        activeButton = pluginsBtn.value;
-        break;
-    }
-
-    if (activeButton?.$el) {
-      moveIndicator(activeButton.$el);
-      // 滑动/点击切换时激活项可能被滚出视野 → 滚回可视区（窄屏横向导航跟随）。
-      // 注意：不能用 scrollIntoView —— transform 缩放下 #app 布局尺寸超过视口
-      // （calc(100vw/z)），body 成为可滚动容器，scrollIntoView 会连带滚动 body，
-      // 把 fixed 定位的设置面板（containing block 是 #app）滚出视口，导致
-      // 非 100% 缩放下设置页右侧/底部露出空白。这里只滚动 nav 容器本身。
-      const nav = navContainer.value;
-      if (nav) {
-        const btn = activeButton.$el as HTMLElement;
-        // offsetLeft 相对 nav（nav 为 relative 定位），把按钮水平居中到容器
-        const target = btn.offsetLeft - nav.clientWidth / 2 + btn.clientWidth / 2;
-        nav.scrollTo({ left: target, behavior: "smooth" });
-      }
-    }
-  };
-
-  // 组件挂载后初始化指示器
-  onMounted(() => {
+// 屏幕宽度变化监测器
+const setupResizeObserver = () => {
+  if (!navContainer.value) {
+    return;
+  }
+  const resizeObserver = new ResizeObserver((entries) => {
+    // 尺寸变化时，重新初始化指示条位置（使用 currentSettingsTab 作为真实来源）
     initIndicator();
-    setupResizeObserver();
   });
 
-  // 监听当前标签变化
-  watch(
-    () => uiStore.currentSettingsTab,
-    () => {
-      initIndicator();
+  // 监听nav的大小变化
+  resizeObserver.observe(navContainer.value);
+};
+
+// 初始化指示器位置
+const initIndicator = () => {
+  const activeTab = uiStore.currentSettingsTab;
+  let activeButton = null;
+
+  switch (activeTab) {
+    case "character":
+      activeButton = characterBtn.value;
+      break;
+    case "text":
+      activeButton = textBtn.value;
+      break;
+    case "background":
+      activeButton = backgroundBtn.value;
+      break;
+    case "pet":
+      activeButton = petBtn.value;
+      break;
+    case "sound":
+      activeButton = soundBtn.value;
+      break;
+    case "history":
+      activeButton = historyBtn.value;
+      break;
+    case "achievement":
+      activeButton = achievementBtn.value;
+      break;
+    case "save":
+      activeButton = saveBtn.value;
+      break;
+    case "advance":
+      activeButton = advanceBtn.value;
+      break;
+    case "update":
+      activeButton = updateBtn.value;
+      break;
+    case "adventure":
+      activeButton = adventureBtn.value;
+      break;
+    case "log":
+      activeButton = logBtn.value;
+      break;
+    case "plugins":
+      activeButton = pluginsBtn.value;
+      break;
+  }
+
+  if (activeButton?.$el) {
+    moveIndicator(activeButton.$el);
+    // 滑动/点击切换时激活项可能被滚出视野 → 滚回可视区（窄屏横向导航跟随）。
+    // 注意：不能用 scrollIntoView —— transform 缩放下 #app 布局尺寸超过视口
+    // （calc(100vw/z)），body 成为可滚动容器，scrollIntoView 会连带滚动 body，
+    // 把 fixed 定位的设置面板（containing block 是 #app）滚出视口，导致
+    // 非 100% 缩放下设置页右侧/底部露出空白。这里只滚动 nav 容器本身。
+    const nav = navContainer.value;
+    if (nav) {
+      const btn = activeButton.$el as HTMLElement;
+      // offsetLeft 相对 nav（nav 为 relative 定位），把按钮水平居中到容器
+      const target = btn.offsetLeft - nav.clientWidth / 2 + btn.clientWidth / 2;
+      nav.scrollTo({ left: target, behavior: "smooth" });
     }
-  );
+  }
+};
 
-  const closeSettings = () => {
-    uiStore.toggleSettings(false);
-    // 将 refName 修改为默认的 "textBtn"
-    oldRefName.value = "textBtn";
-  };
+// 组件挂载后初始化指示器
+onMounted(() => {
+  initIndicator();
+  setupResizeObserver();
+});
 
-  const addMoreMenu = () => {
-    const btnEl = advanceBtn.value?.$el as HTMLElement | null;
-    if (btnEl) {
-      // console.log('A 组件内部执行 addMoreMenu');
-      btnEl.classList.add("moreMenu");
-    }
-  };
+// 监听当前标签变化
+watch(
+  () => uiStore.currentSettingsTab,
+  () => {
+    initIndicator();
+  },
+);
 
-  // 2. 定义 removeMoreMenu 方法
-  const removeMoreMenu = () => {
-    const btnEl = advanceBtn.value?.$el as HTMLElement | null;
-    if (btnEl) {
-      btnEl.classList.remove("moreMenu");
-    }
+const closeSettings = () => {
+  uiStore.toggleSettings(false);
+  // 将 refName 修改为默认的 "textBtn"
+  oldRefName.value = "textBtn";
+};
 
-    // 向父组件发送事件，告知“我这边已经执行了 remove”
-    emit("remove-more-menu-from-a");
-  };
+const addMoreMenu = () => {
+  const btnEl = advanceBtn.value?.$el as HTMLElement | null;
+  if (btnEl) {
+    // console.log('A 组件内部执行 addMoreMenu');
+    btnEl.classList.add("moreMenu");
+  }
+};
 
-  // 3. 关键：将 removeMoreMenu 方法暴露出去，这样父组件才能调用
-  defineExpose({
-    addMoreMenu,
-  });
+// 2. 定义 removeMoreMenu 方法
+const removeMoreMenu = () => {
+  const btnEl = advanceBtn.value?.$el as HTMLElement | null;
+  if (btnEl) {
+    btnEl.classList.remove("moreMenu");
+  }
 
-  // 监听父组件转发的 B 组件事件（触发 A 组件自身逻辑）
-  // 监听 B 组件的 add 事件，触发 A 组件的 addMoreMenu
-  watch(
-    () => {
-      /* 可通过 props 传递状态，或直接监听 emit 事件 */
-    },
-    () => {},
-    { immediate: true }
-  );
+  // 向父组件发送事件，告知“我这边已经执行了 remove”
+  emit("remove-more-menu-from-a");
+};
+
+// 3. 关键：将 removeMoreMenu 方法暴露出去，这样父组件才能调用
+defineExpose({
+  addMoreMenu,
+});
+
+// 监听父组件转发的 B 组件事件（触发 A 组件自身逻辑）
+// 监听 B 组件的 add 事件，触发 A 组件的 addMoreMenu
+watch(
+  () => {
+    /* 可通过 props 传递状态，或直接监听 emit 事件 */
+  },
+  () => {},
+  { immediate: true },
+);
 </script>
 
 <style lang="css" scoped>
-  .custom-scroll ::-webkit-scrollbar {
-    width: 8px;
-    height: 2px;
-  }
+.custom-scroll ::-webkit-scrollbar {
+  width: 8px;
+  height: 2px;
+}
 </style>

@@ -6,16 +6,13 @@
         <div class="mb-1.5 flex items-center gap-2">
           <span class="text-xs text-white/40">{{ i + 1 }}</span>
           <input
-            class="w-full min-w-0 rounded-md border border-white/[0.1] bg-black/[0.25] px-2 py-1.5
-              text-xs text-white transition-all focus:border-[var(--accent-color)]
-              focus:outline-none"
+            class="w-full min-w-0 rounded-md border border-white/[0.1] bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:border-[var(--accent-color)] focus:outline-none"
             :placeholder="t('scriptEditor.composite.fallbackLabel')"
             :value="str(opt.text)"
             @change="(e) => patch(i, 'text', val(e))"
           />
           <button
-            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all
-              hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
+            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
             :title="t('scriptEditor.composite.deleteOption')"
             @click="removeRow(i)"
           >
@@ -37,8 +34,7 @@
             @update:model-value="(v: string) => patch(i, 'condition', v)"
           />
           <button
-            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all
-              hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
+            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
             :title="t('scriptEditor.composite.removeCondition')"
             @click="closeCondition(i)"
           >
@@ -50,9 +46,7 @@
             t("scriptEditor.composite.disabledHint")
           }}</span>
           <input
-            class="min-w-0 flex-1 rounded-md border border-white/[0.1] bg-black/[0.25] px-2 py-1.5
-              text-xs text-white transition-all focus:border-[var(--accent-color)]
-              focus:outline-none"
+            class="min-w-0 flex-1 rounded-md border border-white/[0.1] bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:border-[var(--accent-color)] focus:outline-none"
             :placeholder="t('scriptEditor.composite.lockHintPlaceholder')"
             :value="str(opt.lock_hint)"
             @change="(e) => patch(i, 'lock_hint', val(e))"
@@ -72,8 +66,7 @@
           />
           <div
             v-else-if="legacySetVar(act)"
-            class="min-w-0 flex-1 rounded-md border border-yellow-300/25 bg-yellow-300/10 px-2
-              py-1.5"
+            class="min-w-0 flex-1 rounded-md border border-yellow-300/25 bg-yellow-300/10 px-2 py-1.5"
           >
             <p class="text-xs text-yellow-200">
               {{ t("scriptEditor.composite.legacyNotice") }}
@@ -84,16 +77,13 @@
           </div>
           <input
             v-else
-            class="min-w-0 flex-1 rounded-md border border-white/[0.1] bg-black/[0.25] px-2 py-1.5
-              text-xs text-white transition-all focus:border-[var(--accent-color)]
-              focus:outline-none"
+            class="min-w-0 flex-1 rounded-md border border-white/[0.1] bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:border-[var(--accent-color)] focus:outline-none"
             :placeholder="actionPlaceholder(str(act.type))"
             :value="str(act.content)"
             @change="(e) => patchAction(i, ai, 'content', val(e))"
           />
           <button
-            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all
-              hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
+            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
             :title="t('scriptEditor.composite.deleteAction')"
             @click="removeAction(i, ai)"
           >
@@ -105,8 +95,7 @@
              与底部说明合并，行距拉开，避免按钮横排拥挤 -->
         <div class="mt-1.5 ml-6 flex flex-col">
           <div
-            class="flex items-center gap-2.5 rounded-md px-1.5 py-1.5 transition-colors
-              hover:bg-white/[0.04]"
+            class="flex items-center gap-2.5 rounded-md px-1.5 py-1.5 transition-colors hover:bg-white/[0.04]"
           >
             <span class="bg-brand h-1.5 w-1.5 shrink-0 rounded-full"></span>
             <span class="text-brand shrink-0 text-xs font-semibold">{{
@@ -117,8 +106,7 @@
             }}</span>
             <button
               v-if="!hasAddLine(i)"
-              class="border-brand/40 bg-brand/10 text-brand hover:bg-brand/20 shrink-0 rounded-full
-                border px-2.5 py-0.5 text-xs transition-all"
+              class="border-brand/40 bg-brand/10 text-brand hover:bg-brand/20 shrink-0 rounded-full border px-2.5 py-0.5 text-xs transition-all"
               @click="addAction(i, 'add_line')"
             >
               ＋ {{ t("scriptEditor.composite.addBtn") }}
@@ -128,8 +116,7 @@
             }}</span>
           </div>
           <div
-            class="flex items-center gap-2.5 rounded-md px-1.5 py-1.5 transition-colors
-              hover:bg-white/[0.04]"
+            class="flex items-center gap-2.5 rounded-md px-1.5 py-1.5 transition-colors hover:bg-white/[0.04]"
           >
             <span class="bg-brand h-1.5 w-1.5 shrink-0 rounded-full"></span>
             <span class="text-brand shrink-0 text-xs font-semibold">{{
@@ -139,16 +126,14 @@
               t("scriptEditor.composite.addVarDesc")
             }}</span>
             <button
-              class="border-brand/40 bg-brand/10 text-brand hover:bg-brand/20 shrink-0 rounded-full
-                border px-2.5 py-0.5 text-xs transition-all"
+              class="border-brand/40 bg-brand/10 text-brand hover:bg-brand/20 shrink-0 rounded-full border px-2.5 py-0.5 text-xs transition-all"
               @click="addAction(i, 'set_var')"
             >
               ＋ {{ t("scriptEditor.composite.addBtn") }}
             </button>
           </div>
           <div
-            class="flex items-center gap-2.5 rounded-md px-1.5 py-1.5 transition-colors
-              hover:bg-white/[0.04]"
+            class="flex items-center gap-2.5 rounded-md px-1.5 py-1.5 transition-colors hover:bg-white/[0.04]"
           >
             <span class="bg-brand h-1.5 w-1.5 shrink-0 rounded-full"></span>
             <span class="text-brand shrink-0 text-xs font-semibold">{{
@@ -159,8 +144,7 @@
             }}</span>
             <button
               v-if="!conditionOpen(i)"
-              class="border-brand/40 bg-brand/10 text-brand hover:bg-brand/20 shrink-0 rounded-full
-                border px-2.5 py-0.5 text-xs transition-all"
+              class="border-brand/40 bg-brand/10 text-brand hover:bg-brand/20 shrink-0 rounded-full border px-2.5 py-0.5 text-xs transition-all"
               @click="openCondition(i)"
             >
               ＋ {{ t("scriptEditor.composite.addBtn") }}
@@ -173,8 +157,7 @@
       </div>
 
       <button
-        class="hover:border-brand hover:text-brand mt-2 w-full rounded-lg border border-dashed
-          border-white/15 py-1.5 text-xs text-white/45 transition-all"
+        class="hover:border-brand hover:text-brand mt-2 w-full rounded-lg border border-dashed border-white/15 py-1.5 text-xs text-white/45 transition-all"
         @click="addRow({ text: '', actions: [] })"
       >
         ＋ {{ t("scriptEditor.composite.addOption") }}
@@ -200,9 +183,7 @@
             t("scriptEditor.composite.jumpPrefix")
           }}</span>
           <select
-            class="w-full min-w-0 rounded-md border border-white/[0.1] bg-black/[0.25] px-2 py-1.5
-              text-xs text-white transition-all focus:border-[var(--accent-color)]
-              focus:outline-none"
+            class="w-full min-w-0 rounded-md border border-white/[0.1] bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:border-[var(--accent-color)] focus:outline-none"
             :value="str(opt.next)"
             @change="(e) => patch(i, 'next', val(e))"
           >
@@ -223,8 +204,7 @@
             {{ t("scriptEditor.composite.fallback") }}
           </label>
           <button
-            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all
-              hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
+            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
             :title="t('scriptEditor.composite.deleteBranch')"
             @click="removeRow(i)"
           >
@@ -236,9 +216,7 @@
             t("scriptEditor.composite.aiAlias")
           }}</span>
           <input
-            class="w-full min-w-0 rounded-md border border-white/[0.1] bg-black/[0.25] px-2 py-1.5
-              text-xs text-white transition-all focus:border-[var(--accent-color)]
-              focus:outline-none"
+            class="w-full min-w-0 rounded-md border border-white/[0.1] bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:border-[var(--accent-color)] focus:outline-none"
             :placeholder="t('scriptEditor.composite.branchName')"
             :value="str(opt.name)"
             @change="(e) => patch(i, 'name', val(e))"
@@ -247,8 +225,7 @@
       </div>
 
       <button
-        class="hover:border-brand hover:text-brand mt-2 w-full rounded-lg border border-dashed
-          border-white/15 py-1.5 text-xs text-white/45 transition-all"
+        class="hover:border-brand hover:text-brand mt-2 w-full rounded-lg border border-dashed border-white/15 py-1.5 text-xs text-white/45 transition-all"
         @click="addRow({ condition: '', next: '' })"
       >
         {{ t("scriptEditor.composite.addBranch") }}
@@ -274,16 +251,14 @@
             @update:model-value="(v: string) => patch(i, 'condition', v)"
           />
           <button
-            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all
-              hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
+            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
             :title="t('scriptEditor.composite.removeCondition')"
             @click="closeCondition(i)"
           >
             ✕
           </button>
           <button
-            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all
-              hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
+            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
             :title="t('scriptEditor.composite.deleteGroup')"
             @click="removeRow(i)"
           >
@@ -295,8 +270,7 @@
             ＋ {{ t("scriptEditor.composite.addCondition") }}
           </button>
           <button
-            class="ml-auto shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all
-              hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
+            class="ml-auto shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
             :title="t('scriptEditor.composite.deleteGroup')"
             @click="removeRow(i)"
           >
@@ -313,8 +287,7 @@
           />
           <div
             v-else-if="legacySetVar(act)"
-            class="min-w-0 flex-1 rounded-md border border-yellow-300/25 bg-yellow-300/10 px-2
-              py-1.5"
+            class="min-w-0 flex-1 rounded-md border border-yellow-300/25 bg-yellow-300/10 px-2 py-1.5"
           >
             <p class="text-xs text-yellow-200">
               {{ t("scriptEditor.composite.legacyNotice") }}
@@ -324,8 +297,7 @@
             </button>
           </div>
           <button
-            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all
-              hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
+            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
             @click="removeAction(i, ai)"
           >
             ✕
@@ -340,8 +312,7 @@
       </div>
 
       <button
-        class="hover:border-brand hover:text-brand mt-2 w-full rounded-lg border border-dashed
-          border-white/15 py-1.5 text-xs text-white/45 transition-all"
+        class="hover:border-brand hover:text-brand mt-2 w-full rounded-lg border border-dashed border-white/15 py-1.5 text-xs text-white/45 transition-all"
         @click="addRow({ actions: [{ type: 'set_var', content: '' }] })"
       >
         ＋ {{ t("scriptEditor.composite.addAssignmentGroup") }}
@@ -354,149 +325,149 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, reactive } from "vue";
-  import { useI18n } from "vue-i18n";
-  import { useScriptEditorStore } from "@/stores/modules/script-editor";
-  import type { FieldSpec } from "@/api/services/script-editor";
-  import ConditionEditor from "./ConditionEditor.vue";
-  import VariableEditor from "./VariableEditor.vue";
+import { computed, reactive } from "vue";
+import { useI18n } from "vue-i18n";
+import { useScriptEditorStore } from "@/stores/modules/script-editor";
+import type { FieldSpec } from "@/api/services/script-editor";
+import ConditionEditor from "./ConditionEditor.vue";
+import VariableEditor from "./VariableEditor.vue";
 
-  type Row = Record<string, unknown>;
+type Row = Record<string, unknown>;
 
-  const { t } = useI18n();
-  const props = defineProps<{
-    field: FieldSpec;
-    value: unknown;
-    /** 分支编辑器的显示模式，由父组件按 chapter_end 的 end_type 传入 */
-    branchMode?: "branching" | "ai_judged";
-  }>();
+const { t } = useI18n();
+const props = defineProps<{
+  field: FieldSpec;
+  value: unknown;
+  /** 分支编辑器的显示模式，由父组件按 chapter_end 的 end_type 传入 */
+  branchMode?: "branching" | "ai_judged";
+}>();
 
-  const emit = defineEmits<{ (e: "update", value: unknown): void }>();
+const emit = defineEmits<{ (e: "update", value: unknown): void }>();
 
-  const store = useScriptEditorStore();
+const store = useScriptEditorStore();
 
-  const rows = computed<Row[]>(() => (Array.isArray(props.value) ? (props.value as Row[]) : []));
+const rows = computed<Row[]>(() => (Array.isArray(props.value) ? (props.value as Row[]) : []));
 
-  const str = (v: unknown) => (typeof v === "string" ? v : v === undefined ? "" : String(v));
-  const val = (e: Event) => (e.target as HTMLInputElement | HTMLSelectElement).value;
+const str = (v: unknown) => (typeof v === "string" ? v : v === undefined ? "" : String(v));
+const val = (e: Event) => (e.target as HTMLInputElement | HTMLSelectElement).value;
 
-  const actions = (opt: Row): Row[] => (Array.isArray(opt.actions) ? (opt.actions as Row[]) : []);
+const actions = (opt: Row): Row[] => (Array.isArray(opt.actions) ? (opt.actions as Row[]) : []);
 
-  /** 该选项是否已有一条「追加玩家台词」——有则隐藏对应按钮（每条选项最多一句玩家台词有意义） */
-  const hasAddLine = (i: number) => actions(rows.value[i]).some((a) => a.type === "add_line");
+/** 该选项是否已有一条「追加玩家台词」——有则隐藏对应按钮（每条选项最多一句玩家台词有意义） */
+const hasAddLine = (i: number) => actions(rows.value[i]).some((a) => a.type === "add_line");
 
-  /**
-   * 分支编辑器模式。父组件在 end_type 为 ai_judged 时传 ai_judged，否则传
-   * branching（linear 不显示分支，走不到这里）。null 兜底为 branching。
-   */
-  const isAiJudged = computed(() => props.branchMode === "ai_judged");
+/**
+ * 分支编辑器模式。父组件在 end_type 为 ai_judged 时传 ai_judged，否则传
+ * branching（linear 不显示分支，走不到这里）。null 兜底为 branching。
+ */
+const isAiJudged = computed(() => props.branchMode === "ai_judged");
 
-  /**
-   * 命中「旧原型形状」的 set_var 动作：只写了 name/value/op、没有 content 表达式。
-   * 引擎只读 content，这类动作会被静默跳过（校验器也会报 action.legacy_shape）。
-   * 编辑器里只读展示，提供「一键转为新格式」入口。
-   */
-  const legacySetVar = (act: Row) =>
-    act.type === "set_var" &&
-    !(typeof act.content === "string" && act.content.trim()) &&
-    Boolean(act.name || act.value || act.op);
+/**
+ * 命中「旧原型形状」的 set_var 动作：只写了 name/value/op、没有 content 表达式。
+ * 引擎只读 content，这类动作会被静默跳过（校验器也会报 action.legacy_shape）。
+ * 编辑器里只读展示，提供「一键转为新格式」入口。
+ */
+const legacySetVar = (act: Row) =>
+  act.type === "set_var" &&
+  !(typeof act.content === "string" && act.content.trim()) &&
+  Boolean(act.name || act.value || act.op);
 
-  /** 把旧版 name/value/op 合并成 content 表达式（name op value），并清掉旧字段 */
-  const convertLegacy = (i: number, ai: number) => {
-    const next = clone();
-    const list = Array.isArray(next[i]?.actions) ? (next[i].actions as Row[]) : [];
-    const act = list[ai];
-    if (!act) return;
-    const expr = [act.name, act.op, act.value]
-      .filter((v) => typeof v === "string")
-      .join(" ")
-      .trim();
-    if (!expr) return;
-    act.content = expr;
-    delete act.name;
-    delete act.value;
-    delete act.op;
-    commit(next);
-  };
+/** 把旧版 name/value/op 合并成 content 表达式（name op value），并清掉旧字段 */
+const convertLegacy = (i: number, ai: number) => {
+  const next = clone();
+  const list = Array.isArray(next[i]?.actions) ? (next[i].actions as Row[]) : [];
+  const act = list[ai];
+  if (!act) return;
+  const expr = [act.name, act.op, act.value]
+    .filter((v) => typeof v === "string")
+    .join(" ")
+    .trim();
+  if (!expr) return;
+  act.content = expr;
+  delete act.name;
+  delete act.value;
+  delete act.op;
+  commit(next);
+};
 
-  /** choices 选项的条件行是否展开：已有条件 或 作者点过「＋ 条件」 */
-  const conditionOpenState = reactive<Record<number, boolean>>({});
-  const conditionOpen = (i: number) => {
-    const has =
-      typeof rows.value[i]?.condition === "string" && str(rows.value[i]?.condition).trim() !== "";
-    return has || conditionOpenState[i] === true;
-  };
-  const openCondition = (i: number) => {
-    conditionOpenState[i] = true;
-  };
-  const closeCondition = (i: number) => {
-    conditionOpenState[i] = false;
-    patch(i, "condition", "");
-  };
+/** choices 选项的条件行是否展开：已有条件 或 作者点过「＋ 条件」 */
+const conditionOpenState = reactive<Record<number, boolean>>({});
+const conditionOpen = (i: number) => {
+  const has =
+    typeof rows.value[i]?.condition === "string" && str(rows.value[i]?.condition).trim() !== "";
+  return has || conditionOpenState[i] === true;
+};
+const openCondition = (i: number) => {
+  conditionOpenState[i] = true;
+};
+const closeCondition = (i: number) => {
+  conditionOpenState[i] = false;
+  patch(i, "condition", "");
+};
 
-  const actionLabel = (type: string) =>
-    type === "set_var"
-      ? t("scriptEditor.composite.addVariable")
-      : t("scriptEditor.composite.playerLine");
+const actionLabel = (type: string) =>
+  type === "set_var"
+    ? t("scriptEditor.composite.addVariable")
+    : t("scriptEditor.composite.playerLine");
 
-  const actionPlaceholder = (type: string) =>
-    type === "set_var" ? "affection += 1" : t("scriptEditor.composite.playerLinePlaceholder");
+const actionPlaceholder = (type: string) =>
+  type === "set_var" ? "affection += 1" : t("scriptEditor.composite.playerLinePlaceholder");
 
-  /** 深拷贝后再改，避免直接 mutate 掉撤销栈里的旧帧 */
-  const clone = (): Row[] => JSON.parse(JSON.stringify(rows.value));
+/** 深拷贝后再改，避免直接 mutate 掉撤销栈里的旧帧 */
+const clone = (): Row[] => JSON.parse(JSON.stringify(rows.value));
 
-  const commit = (next: Row[]) => emit("update", next);
+const commit = (next: Row[]) => emit("update", next);
 
-  const patch = (i: number, key: string, v: unknown) => {
-    const next = clone();
-    if (!next[i]) return;
-    if (v === "" || v === false) delete next[i][key];
-    else next[i][key] = v;
-    commit(next);
-  };
+const patch = (i: number, key: string, v: unknown) => {
+  const next = clone();
+  if (!next[i]) return;
+  if (v === "" || v === false) delete next[i][key];
+  else next[i][key] = v;
+  commit(next);
+};
 
-  const addRow = (row: Row) => commit([...clone(), row]);
+const addRow = (row: Row) => commit([...clone(), row]);
 
-  const removeRow = (i: number) => {
-    const next = clone();
-    next.splice(i, 1);
-    commit(next);
-  };
+const removeRow = (i: number) => {
+  const next = clone();
+  next.splice(i, 1);
+  commit(next);
+};
 
-  const addAction = (i: number, type = "add_line") => {
-    const next = clone();
-    if (!next[i]) return;
-    const list = Array.isArray(next[i].actions) ? (next[i].actions as Row[]) : [];
-    // 同一个选项里不允许重复添加「追加玩家台词」——每条选项最多一句玩家台词有意义
-    if (type === "add_line" && list.some((a) => a.type === "add_line")) return;
-    // 追加玩家台词：默认复制上方选项文案，免去重复输入（一般保持一致即可）
-    const content = type === "add_line" ? str(rows.value[i]?.text) : "";
-    list.push({ type, content });
-    next[i].actions = list;
-    commit(next);
-  };
+const addAction = (i: number, type = "add_line") => {
+  const next = clone();
+  if (!next[i]) return;
+  const list = Array.isArray(next[i].actions) ? (next[i].actions as Row[]) : [];
+  // 同一个选项里不允许重复添加「追加玩家台词」——每条选项最多一句玩家台词有意义
+  if (type === "add_line" && list.some((a) => a.type === "add_line")) return;
+  // 追加玩家台词：默认复制上方选项文案，免去重复输入（一般保持一致即可）
+  const content = type === "add_line" ? str(rows.value[i]?.text) : "";
+  list.push({ type, content });
+  next[i].actions = list;
+  commit(next);
+};
 
-  const patchAction = (i: number, ai: number, key: string, v: unknown) => {
-    const next = clone();
-    const list = Array.isArray(next[i]?.actions) ? (next[i].actions as Row[]) : [];
-    if (!list[ai]) return;
-    list[ai][key] = v;
-    commit(next);
-  };
+const patchAction = (i: number, ai: number, key: string, v: unknown) => {
+  const next = clone();
+  const list = Array.isArray(next[i]?.actions) ? (next[i].actions as Row[]) : [];
+  if (!list[ai]) return;
+  list[ai][key] = v;
+  commit(next);
+};
 
-  const removeAction = (i: number, ai: number) => {
-    const next = clone();
-    const list = Array.isArray(next[i]?.actions) ? (next[i].actions as Row[]) : [];
-    list.splice(ai, 1);
-    next[i].actions = list;
-    commit(next);
-  };
+const removeAction = (i: number, ai: number) => {
+  const next = clone();
+  const list = Array.isArray(next[i]?.actions) ? (next[i].actions as Row[]) : [];
+  list.splice(ai, 1);
+  next[i].actions = list;
+  commit(next);
+};
 </script>
 
 <style scoped>
-  /* select 里的 option 无法用 class 直接打进去，保留本文件唯一一条 scoped 规则 */
-  select option {
-    background: #16202c;
-    color: #fff;
-  }
+/* select 里的 option 无法用 class 直接打进去，保留本文件唯一一条 scoped 规则 */
+select option {
+  background: #16202c;
+  color: #fff;
+}
 </style>

@@ -103,7 +103,7 @@ pub struct WebSearchSettings {
 
 /// DeepSeek Responses API 的默认模型（旧配置缺省该字段时使用）。
 fn default_deepseek_model() -> String {
-    "deepseek-v4-flash".to_string()
+    "deepseek-flash".to_string()
 }
 
 impl Default for WebSearchSettings {
@@ -111,7 +111,7 @@ impl Default for WebSearchSettings {
         Self {
             enabled: false,
             provider: "kimi".to_string(),
-            model: "deepseek-v4-flash".to_string(),
+            model: "deepseek-flash".to_string(),
             api_key: String::new(),
             base_url: "https://api.kimi.com/coding/v1/search".to_string(),
             proxy_enabled: false,

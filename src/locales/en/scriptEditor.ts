@@ -251,6 +251,7 @@ export default {
       sakura: "Cherry blossoms",
       snow: "Snow",
       fireworks: "Fireworks",
+      ba: "Starglow",
     },
   },
   characters: {

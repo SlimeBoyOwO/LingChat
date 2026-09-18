@@ -12,8 +12,7 @@
         class="flex flex-col items-center justify-center py-8 text-gray-400"
       >
         <div
-          class="border-brand mb-2 h-12 w-12 animate-spin rounded-full border-4
-            border-t-transparent"
+          class="border-brand mb-2 h-12 w-12 animate-spin rounded-full border-4 border-t-transparent"
         ></div>
         <p>{{ $t("settings.shared.loading") }}</p>
       </div>
@@ -36,15 +35,12 @@
           <div
             v-for="script in standaloneScripts"
             :key="script.script_name"
-            class="group hover:border-brand/50 relative flex cursor-pointer flex-col rounded-xl
-              border border-gray-700 bg-gray-800/50 p-4 transition-all duration-300
-              hover:bg-gray-800/80"
+            class="group hover:border-brand/50 relative flex cursor-pointer flex-col rounded-xl border border-gray-700 bg-gray-800/50 p-4 transition-all duration-300 hover:bg-gray-800/80"
           >
             <div class="mb-3 flex items-center justify-between">
               <h3 class="truncate text-lg font-bold text-white">{{ script.script_name }}</h3>
               <span
-                class="bg-brand/20 text-brand border-brand/30 rounded-full border px-3 py-1 text-xs
-                  font-medium"
+                class="bg-brand/20 text-brand border-brand/30 rounded-full border px-3 py-1 text-xs font-medium"
               >
                 {{ $t("settings.adventure.standalone.badge") }}
               </span>
@@ -147,99 +143,96 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, ref, onMounted, watch } from "vue";
-  import { useRouter } from "vue-router";
-  import { convertFileSrc } from "@tauri-apps/api/core";
-  import { openUrl } from "@tauri-apps/plugin-opener";
-  import { MenuPage, MenuItem } from "../../ui";
-  import { Button } from "@/components/base";
-  import AdventurePanel from "./Adeventure/AdventurePanel.vue";
-  import { useGameStore } from "@/stores/modules/game";
-  import { useUIStore } from "@/stores/modules/ui/ui";
-  import { getAvatarFile } from "@/api/services/character";
-  import { Birdhouse, Book, FileText, UserPlus } from "lucide-vue-next";
-  import {
-    getStandaloneScriptList,
-    startScript as startScriptApi,
-  } from "@/api/services/script-info";
-  import type { ScriptSummary } from "@/api/services/script-info";
+import { computed, ref, onMounted, watch } from "vue";
+import { useRouter } from "vue-router";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { MenuPage, MenuItem } from "../../ui";
+import { Button } from "@/components/base";
+import AdventurePanel from "./Adeventure/AdventurePanel.vue";
+import { useGameStore } from "@/stores/modules/game";
+import { useUIStore } from "@/stores/modules/ui/ui";
+import { getAvatarFile } from "@/api/services/character";
+import { Birdhouse, Book, FileText, UserPlus } from "lucide-vue-next";
+import { getStandaloneScriptList, startScript as startScriptApi } from "@/api/services/script-info";
+import type { ScriptSummary } from "@/api/services/script-info";
 
-  const gameStore = useGameStore();
-  const uiStore = useUIStore();
-  const router = useRouter();
-  // 独立剧本相关状态
-  const standaloneScripts = ref<ScriptSummary[]>([]);
-  const standaloneScriptsLoading = ref(true);
+const gameStore = useGameStore();
+const uiStore = useUIStore();
+const router = useRouter();
+// 独立剧本相关状态
+const standaloneScripts = ref<ScriptSummary[]>([]);
+const standaloneScriptsLoading = ref(true);
 
-  // 获取当前主角
-  const currentCharacter = computed(() => gameStore.mainRole);
+// 获取当前主角
+const currentCharacter = computed(() => gameStore.mainRole);
 
-  // 获取角色头像
-  const currentCharacterAvatar = ref("");
+// 获取角色头像
+const currentCharacterAvatar = ref("");
 
-  async function updateCharacterAvatar() {
-    if (gameStore.mainRole?.character_folder) {
-      try {
-        const path = await getAvatarFile(
-          gameStore.mainRole.character_folder,
-          gameStore.mainRole.clothesName
-        );
-        currentCharacterAvatar.value = convertFileSrc(path);
-      } catch {
-        currentCharacterAvatar.value = "";
-      }
-    } else {
+async function updateCharacterAvatar() {
+  if (gameStore.mainRole?.character_folder) {
+    try {
+      const path = await getAvatarFile(
+        gameStore.mainRole.character_folder,
+        gameStore.mainRole.clothesName,
+      );
+      currentCharacterAvatar.value = convertFileSrc(path);
+    } catch {
       currentCharacterAvatar.value = "";
     }
+  } else {
+    currentCharacterAvatar.value = "";
   }
+}
 
-  watch(() => gameStore.mainRole?.character_folder, updateCharacterAvatar, { immediate: true });
+watch(() => gameStore.mainRole?.character_folder, updateCharacterAvatar, { immediate: true });
 
-  // 跳转到角色标签页
-  const goToCharacterTab = () => {
-    uiStore.setSettingsTab("character");
-  };
+// 跳转到角色标签页
+const goToCharacterTab = () => {
+  uiStore.setSettingsTab("character");
+};
 
-  // 开始游玩独立剧本
-  const startStandaloneScript = async (script: ScriptSummary) => {
-    try {
-      await startScriptApi(script.script_name);
-      // 可选：关闭设置面板，开始剧本
-      uiStore.showSettings = false;
-    } catch (error) {
-      console.error("启动独立剧本失败:", error);
-    }
-  };
+// 开始游玩独立剧本
+const startStandaloneScript = async (script: ScriptSummary) => {
+  try {
+    await startScriptApi(script.script_name);
+    // 可选：关闭设置面板，开始剧本
+    uiStore.showSettings = false;
+  } catch (error) {
+    console.error("启动独立剧本失败:", error);
+  }
+};
 
-  // 获取独立剧本列表
-  const fetchStandaloneScripts = async () => {
-    try {
-      standaloneScriptsLoading.value = true;
-      const scripts = await getStandaloneScriptList();
-      standaloneScripts.value = scripts;
-    } catch (error) {
-      console.error("获取独立剧本列表失败:", error);
-      standaloneScripts.value = [];
-    } finally {
-      standaloneScriptsLoading.value = false;
-    }
-  };
+// 获取独立剧本列表
+const fetchStandaloneScripts = async () => {
+  try {
+    standaloneScriptsLoading.value = true;
+    const scripts = await getStandaloneScriptList();
+    standaloneScripts.value = scripts;
+  } catch (error) {
+    console.error("获取独立剧本列表失败:", error);
+    standaloneScripts.value = [];
+  } finally {
+    standaloneScriptsLoading.value = false;
+  }
+};
 
-  const openCreativeWeb = () => {
-    // 云端创意工坊已迁移为主菜单「创意工坊」二级菜单的独立路由页
-    router.push("/workshop");
-  };
+const openCreativeWeb = () => {
+  // 云端创意工坊已迁移为主菜单「创意工坊」二级菜单的独立路由页
+  router.push("/workshop");
+};
 
-  const openGuideWeb = () => {
-    openUrl("https://slimeboyowo.github.io/LingBlog/blog/projects/ling-chat/script-guide");
-  };
+const openGuideWeb = () => {
+  openUrl("https://slimeboyowo.github.io/LingBlog/blog/projects/ling-chat/script-guide");
+};
 
-  // 组件挂载时获取独立剧本列表
-  onMounted(() => {
-    fetchStandaloneScripts();
-  });
+// 组件挂载时获取独立剧本列表
+onMounted(() => {
+  fetchStandaloneScripts();
+});
 </script>
 
 <style scoped>
-  /* 可以添加自定义样式 */
+/* 可以添加自定义样式 */
 </style>

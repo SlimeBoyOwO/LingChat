@@ -23,16 +23,16 @@ export interface LlmPreset {
 
 export const llmPresets: LlmPreset[] = [
   {
-    key: "deepseek-v4-flash",
-    label: "DeepSeek V4 Flash",
-    provider: "openai",
-    model: "deepseek-v4-flash",
+    key: "deepseek-flash",
+    label: "DeepSeek V4.1 Flash",
+    provider: "deepseek",
+    model: "deepseek-flash",
     base_url: "https://api.deepseek.com",
   },
   {
     key: "deepseek-v4-pro",
     label: "DeepSeek V4 Pro",
-    provider: "openai",
+    provider: "deepseek",
     model: "deepseek-v4-pro",
     base_url: "https://api.deepseek.com",
   },
@@ -40,7 +40,7 @@ export const llmPresets: LlmPreset[] = [
     key: "qwen-max",
     label: "通义千问 Max",
     provider: "openai",
-    model: "qwen3.7-max",
+    model: "qwen3.8-max",
     base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
   },
   {
@@ -48,6 +48,13 @@ export const llmPresets: LlmPreset[] = [
     label: "通义千问 Plus",
     provider: "openai",
     model: "qwen3.7-plus",
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  },
+  {
+    key: "qwen-flash",
+    label: "通义千问 Flash",
+    provider: "openai",
+    model: "qwen3.8-flash",
     base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
   },
   {

@@ -1,7 +1,6 @@
 //! GPT-SoVITS 适配器，对应 `ling_chat/core/TTS/gsv_adapter.py`。
 
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
@@ -80,20 +79,8 @@ impl GsvAdapter {
     }
 
     /// 设置 GPT + SoVITS 权重。对应 Python `set_model`。
+    /// 路径按服务器视角解析（可能是远程机器），不做本地校验，加载失败由服务器返回非 200。
     pub async fn set_model(&self, gpt_model_path: &str, sovits_model_path: &str) -> Result<()> {
-        if !Path::new(gpt_model_path).exists() {
-            return Err(anyhow!("GPT 模型文件不存在: {gpt_model_path}"));
-        }
-        if !Path::new(sovits_model_path).exists() {
-            return Err(anyhow!("SoVITS 模型文件不存在: {sovits_model_path}"));
-        }
-        if !gpt_model_path.ends_with(".ckpt") {
-            return Err(anyhow!("GPT 模型扩展名必须为 .ckpt"));
-        }
-        if !sovits_model_path.ends_with(".pth") {
-            return Err(anyhow!("SoVITS 模型扩展名必须为 .pth"));
-        }
-
         let client = http_client();
         let r = client
             .get(format!("{}/set_gpt_weights", self.api_url))

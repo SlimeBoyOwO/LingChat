@@ -37,45 +37,45 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, ref } from "vue";
-  import { StartItem, StartLine, StartList } from "../base";
-  import PluginTag from "@/components/ui/PluginTag.vue";
-  import { useRouter } from "vue-router";
-  import { type ScriptSummary, startScript } from "@/api/services/script-info";
-  import { useGameStore } from "@/stores/modules/game";
+import { computed, ref } from "vue";
+import { StartItem, StartLine, StartList } from "../base";
+import PluginTag from "@/components/ui/PluginTag.vue";
+import { useRouter } from "vue-router";
+import { type ScriptSummary, startScript } from "@/api/services/script-info";
+import { useGameStore } from "@/stores/modules/game";
 
-  const emit = defineEmits<{
-    (e: "back"): void;
-  }>();
+const emit = defineEmits<{
+  (e: "back"): void;
+}>();
 
-  const props = defineProps({
-    scripts: {
-      type: Array as () => ScriptSummary[],
-      default: [],
-    },
-  });
+const props = defineProps({
+  scripts: {
+    type: Array as () => ScriptSummary[],
+    default: [],
+  },
+});
 
-  const router = useRouter();
-  const gameStore = useGameStore();
+const router = useRouter();
+const gameStore = useGameStore();
 
-  const currentPage = ref(1);
-  const pageSize = 3;
+const currentPage = ref(1);
+const pageSize = 3;
 
-  const selectScript = async (script: ScriptSummary) => {
-    await router.push("/chat");
+const selectScript = async (script: ScriptSummary) => {
+  await router.push("/chat");
 
-    gameStore.enterStoryMode(script.script_name);
+  gameStore.enterStoryMode(script.script_name);
 
-    await startScript(script.script_name);
-  };
+  await startScript(script.script_name);
+};
 
-  const totalPages = computed(() => {
-    return Math.ceil(props.scripts.length / pageSize);
-  });
+const totalPages = computed(() => {
+  return Math.ceil(props.scripts.length / pageSize);
+});
 
-  const currentPageScripts = computed(() => {
-    const start = (currentPage.value - 1) * pageSize;
-    const end = start + pageSize;
-    return props.scripts.slice(start, end);
-  });
+const currentPageScripts = computed(() => {
+  const start = (currentPage.value - 1) * pageSize;
+  const end = start + pageSize;
+  return props.scripts.slice(start, end);
+});
 </script>
