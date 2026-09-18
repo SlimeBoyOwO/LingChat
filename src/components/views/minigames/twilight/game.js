@@ -196,19 +196,32 @@ export async function mountRhythm(root, options) {
     wavePoints.fill(0);
     waveLevel = 0;
   }
-  // 按键音：90ms 合成打击采样（高音下滑 + 瞬态噪声），挂载在音乐总线上跟随音量设置
+  // 按键音：220ms 合成沙锤采样（参考 osu! 默认打击音特征——10ms 起音、低中频噪声主体、
+  // 衰减带珠粒回弹感），挂在音乐总线上跟随音量设置
   function makeHitBuffer() {
     const rate = audio.sampleRate,
-      length = Math.ceil(0.09 * rate),
+      length = Math.ceil(0.22 * rate),
       clip = audio.createBuffer(1, length, rate),
       data = clip.getChannelData(0);
-    let seed = 7;
+    let seed = 7,
+      lp1 = 0,
+      lp2 = 0;
+    const lpA = Math.exp((-2 * Math.PI * 2400) / rate); // 低通收掉刺耳高频
+    let hpPrevIn = 0,
+      hpPrevOut = 0;
+    const hpA = Math.exp((-2 * Math.PI * 300) / rate); // 高通去掉隆隆低频
     for (let i = 0; i < length; i++) {
       const t = i / rate;
       seed = (seed * 1664525 + 1013904223) >>> 0;
-      const noise = (seed / 4294967296) * 2 - 1,
-        tone = Math.sin(2 * Math.PI * (1900 - 700 * (t / 0.09)) * t);
-      data[i] = tone * Math.exp(-t * 50) * 0.35 + noise * Math.exp(-t * 300) * 0.22;
+      const s = (seed / 4294967296) * 2 - 1;
+      lp1 += (1 - lpA) * (s - lp1);
+      lp2 += (1 - lpA) * (lp1 - lp2);
+      const hp = hpA * (hpPrevOut + lp2 - hpPrevIn);
+      hpPrevIn = lp2;
+      hpPrevOut = hp;
+      const env =
+        Math.min(1, t / 0.01) * (Math.exp(-t * 26) + 0.32 * Math.exp(-Math.abs(t - 0.07) * 90));
+      data[i] = hp * env * 1.7;
     }
     return clip;
   }
