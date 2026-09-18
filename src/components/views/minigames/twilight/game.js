@@ -1,5 +1,5 @@
 import { bindTouchControls, usesMobileControls } from "../shared/touch-controls.js";
-import { SONGS } from "./songs.js";
+import { SONGS, createMidiSong } from "./songs.js";
 import { Judge, WINDOWS } from "./core.js";
 import { inputPerformanceTime } from "./timing.js";
 import { drawIdle, idleFrameAt, breathAt } from "./idle.js";
@@ -221,7 +221,7 @@ export async function mountRhythm(root, options) {
         worker.onmessage = ({ data }) =>
           finish(data.error ? new Error(data.error) : null, data.pcm);
         worker.onerror = () => finish(new Error("曲目合成失败，请重试"));
-        worker.postMessage({ songId: music.id, sampleRate: 22050 });
+        worker.postMessage({ songId: music.id, sampleRate: 22050, score: music.score });
       });
       if (destroyed) return;
       buffer = audio.createBuffer(1, pcm.length, 22050);
@@ -568,6 +568,24 @@ export async function mountRhythm(root, options) {
   }
   $("song-prev").onclick = () => selectSong(-1);
   $("song-next").onclick = () => selectSong(1);
+  $("song-import").onclick = () => $("midi-file").click();
+  $("midi-file").onchange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const imported = createMidiSong(file.name, await file.arrayBuffer());
+      SONGS.push(imported);
+      music = imported;
+      buffer = null;
+      selectSong();
+      $("footer-status").textContent =
+        `已导入《${imported.title}》：${imported.noteCount} 音符 · ${Math.round(imported.duration)} 秒`;
+    } catch (error) {
+      console.error("MIDI 导入失败:", error);
+      $("footer-status").textContent = `MIDI 导入失败：${error.message}`;
+    }
+  };
   selectSong();
   controls();
   function text(value, x, y, size = 12, color = "#f9e8d0", align = "left", weight = "normal") {

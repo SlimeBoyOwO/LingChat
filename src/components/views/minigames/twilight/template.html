@@ -20,8 +20,10 @@
       <button class="menu-item" id="start" type="button">开始演奏</button>
       <button class="menu-item" id="demo" type="button">观赏演示</button>
       <button class="menu-item" id="settings-toggle" type="button" aria-expanded="false">调校</button>
+      <button class="menu-item" id="song-import" type="button">导入 MIDI</button>
       <button class="menu-item" id="back-to-games" type="button">返回</button>
     </nav>
+    <input id="midi-file" type="file" accept=".mid,.midi,audio/midi" hidden />
     <p class="scene-hint"><b id="play-hint">D / F / J / K · 点按或长按</b> <span id="track-summary">112 BPM · 约 72 秒</span></p>
   </div>
 
