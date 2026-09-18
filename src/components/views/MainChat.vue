@@ -1,5 +1,5 @@
 <template>
-  <div class="main-box">
+  <div class="main-box" data-game-stage>
     <!-- 主界面始终渲染，加载动画期间在后台初始化 -->
     <FreeModeTools />
     <FullAccessWarning />
@@ -10,6 +10,7 @@
       @audio-ended="handleAudioFinished"
       @audio-started="handleAudioStarted"
     />
+    <StageBlackout />
     <GameDialog ref="gameDialogRef" @player-continued="manualTriggerContinue" />
 
     <!-- 原有的菜单按钮 -->
@@ -25,10 +26,13 @@
         <h3 class="hidden xl:block">{{ $t("views.mainChat.auto") }}</h3>
       </Button>
       <!-- 桌宠模式依赖 Windows 透明置顶窗口与 hit-test（lib.rs 为 cfg(windows)），移动端不可用 -->
+      <!-- 剧本运行期间锁定：她不允许你逃去桌宠 -->
       <Button
         v-if="!isMobile()"
         type="nav"
         icon="character"
+        :disabled="petLocked"
+        :title="petLocked ? '锁死了。从打开的那一刻起就锁死了。' : ''"
         @click="goToPetMode"
         v-show="uiStore.showSettings !== true"
       >
@@ -53,7 +57,7 @@ import { getEnvConfigByKey } from "@/api/services/config";
 import FreeModeTools from "@/components/tools/FreeModeTools.vue";
 import ToolActivityStatus from "@/components/tools/ToolActivityStatus.vue";
 import { eventQueue } from "@/core/events/event-queue";
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useGameStore } from "../../stores/modules/game";
 import { useUIStore } from "../../stores/modules/ui/ui";
@@ -66,6 +70,7 @@ import ImageSourcePicker from "@/components/ui/ImageSourcePicker.vue";
 import { isMobile, isWindows } from "@/utils/platform";
 import { useAutoAdvance } from "@/composables/chat/useAutoAdvance";
 import GameExtraUI from "../game/standard/GameExtraUI.vue";
+import StageBlackout from "../game/standard/StageBlackout.vue";
 
 const LOADING_STORAGE_KEY = "lingchat_loading_shown";
 
@@ -157,6 +162,9 @@ onMounted(() => {
     runInitialization();
   }
 });
+
+/** 恐怖剧本运行期间锁定桌宠入口（她不允许你逃去桌宠；正常剧本不受影响） */
+const petLocked = computed(() => gameStore.runningScript?.contentWarning === "horror");
 
 // 自动推进调度（AUTO + 台词合并共用一条管道）—— 与桌宠 PetMode 共用同一实现
 const {

@@ -141,11 +141,17 @@ export function useChatInput(o?: UseChatInputOptions): UseChatInputApi {
   }
 
   // auto_send：先显示到输入框，延迟后走完整 send()（复用剧本分支/模型检查/清理）
+  // timer 去重：连发时只保留最后一次；卸载时清理，避免幽灵发送
+  let asrAutoSendTimer: number | null = null;
   function onAsrAutoSend(e: Event) {
     const ce = e as CustomEvent<string>;
     if (typeof ce.detail !== "string") return;
     text.value = ce.detail;
-    window.setTimeout(() => send(), ASR_AUTO_SEND_DELAY_MS);
+    if (asrAutoSendTimer !== null) window.clearTimeout(asrAutoSendTimer);
+    asrAutoSendTimer = window.setTimeout(() => {
+      asrAutoSendTimer = null;
+      void send();
+    }, ASR_AUTO_SEND_DELAY_MS);
   }
 
   onMounted(() => {
@@ -163,6 +169,10 @@ export function useChatInput(o?: UseChatInputOptions): UseChatInputApi {
   onUnmounted(() => {
     window.removeEventListener("asr-text", onAsrText);
     window.removeEventListener("asr-send", onAsrAutoSend);
+    if (asrAutoSendTimer !== null) {
+      window.clearTimeout(asrAutoSendTimer);
+      asrAutoSendTimer = null;
+    }
   });
 
   return { text, isComposing, isSending, hasDraft, send };

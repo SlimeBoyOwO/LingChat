@@ -169,7 +169,6 @@ import { applyWebInitData } from "../../../stores/modules/game/actions";
 import { eventQueue } from "../../../core/events/event-queue";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
-import { eventQueue } from "@/core/events/event-queue";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import type { SaveInfo } from "../../../types";
 import type { WebInitData } from "../../../api/services/game-info";

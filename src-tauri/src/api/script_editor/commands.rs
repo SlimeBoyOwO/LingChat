@@ -1268,9 +1268,9 @@ pub fn editor_import_global_character(
 /// 刻意做成**增量 merge** 而不是整体替换 `script_manager`：
 /// - `ScriptStatus` 里的 `current_chapter_key` / `current_event_process` / `vars` /
 ///   `running_client_id` 是运行进度，整体替换会把**所有**剧本的进度清零；
-/// - `is_running` 是 `Arc<AtomicBool>`，调用方（`api/script.rs`、`api/adventure.rs`）
-///   会先 clone 出来、放掉锁之后才 `store(true)`。整体替换会换掉这个 Arc，让
-///   运行中的任务把状态写到一个已经被孤立的对象上，之后 `is_running` 永远是 false。
+/// - `is_running` 是 `Arc<AtomicBool>`，启动与 DLC 管理调用方会在持有服务锁时
+///   对同一个 Arc 做 compare_exchange 预留，再把它交给后台任务收尾。整体替换会
+///   换掉这个 Arc，让运行中的任务写到孤立对象，之后 `is_running` 永远是 false。
 #[tauri::command]
 pub async fn editor_rescan_scripts(app: AppHandle) -> Result<usize, String> {
     let state = app.state::<AppState>();
@@ -1287,42 +1287,27 @@ pub async fn editor_rescan_scripts(app: AppHandle) -> Result<usize, String> {
     let data = service.data_dir.clone();
     let fresh = crate::ai_service::game_system::script_engine::ScriptManager::new(&data);
 
-    // 记下当前插件来源的剧本，供重扫后重新套用（插件剧本不在游戏扫描范围内）
-    let plugin_scripts: Vec<(String, std::path::PathBuf)> = service
+    // 插件剧本不在 game_data/scripts 扫描根中，重扫前保存其来源并固定恢复顺序。
+    let mut plugin_scripts: Vec<(String, std::path::PathBuf)> = service
         .script_manager
         .all_scripts
         .values()
-        .filter_map(|s| s.plugin_id.clone().map(|p| (p, s.script_path.clone())))
+        .filter_map(|script| {
+            script
+                .plugin_id
+                .clone()
+                .map(|plugin_id| (plugin_id, script.script_path.clone()))
+        })
         .collect();
+    plugin_scripts.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
 
-    let existing = &mut service.script_manager.all_scripts;
+    // 先摘掉插件条目，避免新出现的游戏/DLC 同名剧本继承旧 plugin_id。
+    service.script_manager.apply_plugin_scripts(&[]);
 
-    // 磁盘上已经没有的剧本要摘掉（改名 / 删除）。
-    // 这里不特殊处理 plugin 条目：所有插件剧本在循环后用 apply_plugin_scripts 统一重建，
-    // 而它会跳过与游戏剧本同名的插件条目 → 游戏优先，同名插件自动让位。
-    existing.retain(|name, _| fresh.all_scripts.contains_key(name));
-
-    for (name, scanned) in fresh.all_scripts {
-        match existing.get_mut(&name) {
-            Some(old) => {
-                // 配置字段来自磁盘，运行进度保留
-                old.folder_key = scanned.folder_key;
-                old.description = scanned.description;
-                old.intro_chapter = scanned.intro_chapter;
-                old.settings = scanned.settings;
-                old.script_path = scanned.script_path;
-                old.recommand_start = scanned.recommand_start;
-                old.adventure = scanned.adventure;
-            },
-            None => {
-                existing.insert(name, scanned);
-            },
-        }
-    }
-
-    // 重新套用插件剧本：游戏同名优先，插件间按登记顺序去重
+    // Catalog reconciliation updates both runnable scripts and fail-closed
+    // duplicate claims, while preserving progress and the existing is_running Arc.
+    service.script_manager.merge_scanned_catalog(fresh);
     service.script_manager.apply_plugin_scripts(&plugin_scripts);
-
     let count = service.script_manager.all_scripts.len();
     tracing::info!("[ScriptEditor] 重新扫描完成，共 {} 个剧本", count);
     Ok(count)
@@ -1365,7 +1350,7 @@ pub async fn editor_start_preview(
     key: String,
     from_chapter: Option<String>,
 ) -> Result<PreviewStartInfo, String> {
-    // 先把磁盘状态同步进引擎
+    // 先把磁盘状态同步进引擎。
     editor_rescan_scripts(app.clone()).await?;
 
     let state = app.state::<AppState>();
@@ -1426,53 +1411,88 @@ pub async fn editor_start_preview(
             ));
         }
 
+        let is_running = service.script_manager.is_running.clone();
+        is_running
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            )
+            .map_err(|_| "已经有剧本运行或 DLC 管理操作尚未完成".to_string())?;
         (
             script,
             service.game_status.clone(),
             service.config.clone(),
-            service.script_manager.is_running.clone(),
+            is_running,
             service.data_dir.clone(),
         )
     };
+    // Capture fresh auxiliary/system-window ownership for this preview.
+    crate::api::script_popups::begin_run();
+    let glitch_window_generation = crate::ai_service::game_system::script_engine::events::glitch_window_event::begin_glitch_window_run(
+        &app,
+    );
 
     // 从哪一章开始 —— run_script 以 script.intro_chapter 为起点
     if let Some(from) = from_chapter {
         let from = validate::chapter_id_of(&from).to_string();
         if !from.is_empty() {
-            paths::resolve_chapter_file(&dir, &from, true)?;
+            if let Err(error) = paths::resolve_chapter_file(&dir, &from, true) {
+                is_running.store(false, std::sync::atomic::Ordering::SeqCst);
+                return Err(error);
+            }
             script.intro_chapter = from;
         }
     }
 
     // 备份整个会话状态，并按「刚进游戏」的样子把试玩场次搭好
-    let session = PreviewSession::begin(&db, &data_dir, &game_status, &script).await?;
+    let session = match PreviewSession::begin(&db, &data_dir, &game_status, &script).await {
+        Ok(session) => session,
+        Err(error) => {
+            is_running.store(false, std::sync::atomic::Ordering::SeqCst);
+            return Err(error);
+        },
+    };
     // 提前取出本轮代号返回给前端（session 随后整体移入 AppState 托管）
     let generation = session.generation;
 
-    // 快照托管给 AppState：试玩任务自然结束时还原一次，editor_stop_preview 兜底
-    // 再 take 一次（为空即跳过）。这样无论「跑完 / 报错 / 被中止」哪条路，
-    // 共享 GameStatus 都能回到试玩前，不会污染玩家自由对话的上下文。
+    // 快照与任务句柄必须作为一个所有权单元发布。任务先等启动门；两把锁都
+    // 填好后才放行，因此 stop IPC 不会看到“有快照但没有可中止任务”的半状态。
+    let (start_tx, start_rx) = tokio::sync::oneshot::channel::<()>();
+    let app_for_task = app.clone();
+    let is_running_for_task = is_running.clone();
+    let state_for_slots = app.state::<AppState>();
+    let mut task_slot = state_for_slots.preview_task.lock().await;
+    let mut restore_slot = state_for_slots.pending_preview_restore.lock().await;
+    if restore_slot.is_some()
+        || task_slot
+            .as_ref()
+            .is_some_and(|existing| !existing.is_finished())
     {
-        let state = app.state::<AppState>();
-        *state.pending_preview_restore.lock().await = Some(session);
-        // 清掉上一轮可能残留的已结束句柄
-        let _ = state.preview_task.lock().await.take();
+        drop(restore_slot);
+        drop(task_slot);
+        session.restore(&db, &game_status).await;
+        is_running.store(false, std::sync::atomic::Ordering::SeqCst);
+        return Err("上一轮试玩仍在收尾，请稍后重试".to_string());
     }
+    let _ = task_slot.take();
 
-    is_running.store(true, std::sync::atomic::Ordering::SeqCst);
-
-    let app_for_handle = app.clone();
     let handle = tokio::spawn(async move {
+        if start_rx.await.is_err() {
+            return;
+        }
         let mut ctx = crate::ai_service::game_system::script_engine::events::ScriptContext {
             db: &db,
             data_dir: &data_dir,
-            app: &app,
+            app: &app_for_task,
             game_status: game_status.clone(),
             config: &cfg,
             llm: llm.as_ref(),
             channels,
             // 试玩产出标记：ai:reply 会带 preview_gen，前端据此丢弃迟到的流式回复
             is_preview: true,
+            glitch_window_generation,
         };
         use crate::ai_service::game_system::script_engine::ScriptManager;
 
@@ -1484,17 +1504,24 @@ pub async fn editor_start_preview(
             tracing::error!("[ScriptEditor] 试玩执行失败: {:#}", e);
             crate::ai_service::message_system::events::emit_error(ctx.app, e);
         }
-        // completed = false：试玩永远不记通关
-        if let Err(e) = ScriptManager::on_script_end(&mut ctx, &is_running, false).await {
+        // 试玩收尾会发 script:end，但不会提前释放全局生命周期预留。
+        if let Err(e) = ScriptManager::on_preview_script_end(&mut ctx, &is_running_for_task).await {
             tracing::error!("[ScriptEditor] 试玩收尾失败: {:#}", e);
         }
 
-        // 把会话状态整个还原回试玩之前。幂等（Option::take）：被 editor_stop_preview
-        // 先 take 走时这里拿到 None 直接跳过。
-        apply_pending_restore(&app).await;
-        tracing::info!("[ScriptEditor] 试玩结束，会话状态已还原");
+        // 先完整还原共享会话，最后才允许下一次剧本/DLC CAS 成功。
+        if apply_pending_restore(&app_for_task).await {
+            // Only the side that actually claimed and restored the snapshot owns
+            // this reservation release. A concurrent stop otherwise releases it.
+            is_running_for_task.store(false, std::sync::atomic::Ordering::SeqCst);
+            tracing::info!("[ScriptEditor] 试玩结束，会话状态已还原");
+        }
     });
-    *app_for_handle.state::<AppState>().preview_task.lock().await = Some(handle);
+    *restore_slot = Some(session);
+    *task_slot = Some(handle);
+    let _ = start_tx.send(());
+    drop(restore_slot);
+    drop(task_slot);
 
     Ok(PreviewStartInfo { generation })
 }
@@ -1524,6 +1551,8 @@ pub struct PreviewSession {
     generation: u64,
     /// `to_snapshot()` 覆盖的场景状态：背景 / 音乐 / 特效 / 在场角色 / 全局变量 …
     scene: crate::ai_service::game_system::game_status::GameStatusSnapshot,
+    /// GameStatusSnapshot 会把 present 重建成 onstage，需单独保留真实舞台子集。
+    onstage_role_ids: Vec<i32>,
     /// 快照没覆盖的三个字段
     main_role_id: Option<i32>,
     current_role_id: Option<i32>,
@@ -1533,6 +1562,9 @@ pub struct PreviewSession {
     /// 玩家副标题。试玩期间剧本 settings 里可能覆盖它，还原时一并回退，
     /// 否则不同角色的副标题会混搭到自由对话
     user_subtitle: String,
+    /// 试玩前已经存在的命名空间角色；结束时只删除本轮新建的 DB 行。
+    script_key: String,
+    existing_script_role_ids: HashSet<i32>,
 }
 
 impl PreviewSession {
@@ -1542,6 +1574,13 @@ impl PreviewSession {
         game_status: &Arc<Mutex<GameStatus>>,
         script: &ScriptStatus,
     ) -> Result<Self, String> {
+        let script_key = script.path_key();
+        let existing_script_role_ids: HashSet<i32> = RoleRepo::get_script_roles(db, &script_key)
+            .await
+            .map_err(|error| format!("快照试玩角色行失败: {error:#}"))?
+            .into_iter()
+            .map(|role| role.id)
+            .collect();
         // 先确定 MAIN 是谁 —— 定不下来就别开场，免得作者对着不动的画面猜
         let main_id = resolve_preview_main_role(db, game_status, script).await?;
 
@@ -1554,11 +1593,14 @@ impl PreviewSession {
             line_len: gs.line_list.len(),
             generation,
             scene: gs.to_snapshot(),
+            onstage_role_ids: gs.onstage_role_ids.clone(),
             main_role_id: gs.main_role_id,
             current_role_id: gs.current_role_id,
             script_status: gs.script_status.clone().map(Box::new),
             user_name: gs.player.user_name.clone(),
             user_subtitle: gs.player.user_subtitle.clone(),
+            script_key,
+            existing_script_role_ids,
         };
 
         // ---- 按「刚进游戏」的样子搭场次，对齐 init_game_status 的三件事 ----
@@ -1568,6 +1610,7 @@ impl PreviewSession {
             gs.role_manager.invalidate_memory_history();
             gs.line_list.truncate(saved.line_len);
             gs.apply_snapshot(&saved.scene);
+            gs.onstage_role_ids = saved.onstage_role_ids.clone();
             gs.main_role_id = saved.main_role_id;
             gs.current_role_id = saved.current_role_id;
             gs.script_status = saved.script_status.map(|b| *b);
@@ -1619,7 +1662,23 @@ impl PreviewSession {
     /// 尽力还原，任何一步失败都只记日志 —— 收尾阶段再抛错没有接收方，
     /// 而且半途放弃只会让残留更多。
     async fn restore(self, db: &DatabaseConnection, game_status: &Arc<Mutex<GameStatus>>) {
+        let deleted_preview_roles = match RoleRepo::delete_preview_created_script_roles(
+            db,
+            &self.script_key,
+            &self.existing_script_role_ids,
+        )
+        .await
+        {
+            Ok(ids) => ids,
+            Err(error) => {
+                tracing::warn!("[ScriptEditor] 清理试玩临时角色行失败: {error:#}");
+                Vec::new()
+            },
+        };
         let mut gs = game_status.lock().await;
+        for role_id in deleted_preview_roles {
+            gs.role_manager.remove_preview_role(role_id);
+        }
         // 递增试玩代号：让上一场被中止后仍在排空的游离流式任务捕获的旧代号
         // 立即过期，它们的迟到写入会被 add_assistant_line 的守卫丢弃，不再
         // 污染已还原的自由对话会话。
@@ -1627,6 +1686,7 @@ impl PreviewSession {
         gs.role_manager.invalidate_memory_history();
         gs.line_list.truncate(self.line_len);
         gs.apply_snapshot(&self.scene);
+        gs.onstage_role_ids = self.onstage_role_ids;
         gs.main_role_id = self.main_role_id;
         gs.current_role_id = self.current_role_id;
         gs.script_status = self.script_status.map(|b| *b);
@@ -1639,25 +1699,32 @@ impl PreviewSession {
     }
 }
 
+/// Atomically claim both pieces of preview ownership. Natural completion and
+/// stop IPC use the same lock order, so exactly one side gets the snapshot and
+/// stale stop calls cannot touch another lifecycle reservation.
+async fn take_preview_ownership(
+    app: &AppHandle,
+) -> Option<(PreviewSession, Option<tokio::task::JoinHandle<()>>)> {
+    let state = app.state::<AppState>();
+    let mut task_slot = state.preview_task.lock().await;
+    let mut restore_slot = state.pending_preview_restore.lock().await;
+    let session = restore_slot.take()?;
+    let handle = task_slot.take();
+    Some((session, handle))
+}
+
 /// 取出托管在 AppState 里的试玩快照并还原（幂等）。
-///
-/// 试玩任务自然结束时调一次，`editor_stop_preview` 兜底再调一次：先到者拿走
-/// `Option` 执行还原，后到者拿到 `None` 直接返回，不会重复还原。
-async fn apply_pending_restore(app: &AppHandle) {
-    // 注意：app.state() 返回的 State 是借用，必须先用 let 绑定延长生命周期，
-    // 否则它作为临时值在本语句结束就被释放，MutexGuard 的借用会悬空（E0716）
-    let session = {
-        let state = app.state::<AppState>();
-        let mut slot = state.pending_preview_restore.lock().await;
-        match slot.take() {
-            Some(s) => s,
-            None => return,
-        }
+async fn apply_pending_restore(app: &AppHandle) -> bool {
+    let Some((session, handle)) = take_preview_ownership(app).await else {
+        return false;
     };
+    // Natural completion may drop its own JoinHandle; dropping never aborts.
+    drop(handle);
     let state = app.state::<AppState>();
     let db = state.db.clone();
     let game_status = state.ai_service.lock().await.game_status.clone();
     session.restore(&db, &game_status).await;
+    true
 }
 
 /// 试玩时 `MAIN` 应该解析成谁。
@@ -1903,14 +1970,19 @@ pub async fn editor_preview_readiness(
 
 /// 中止试玩。
 ///
-/// 直接中止试玩任务，不做等待：任务可能正阻塞在 LLM 流上，等它自然收尾会
-/// 拖住退出（最坏是长请求）。会话状态由 `apply_pending_restore` 立即还原；
-/// 任务被中止后仍在排空的游离流式任务（publisher/consumer）写不进已还原的
+/// 先原子取得“任务句柄 + 会话快照”，再 abort 并等待任务确认取消（不等待
+/// LLM 请求自然结束），最后还原会话并释放全局预留。任务被中止后仍在排空的
+/// 游离流式任务（publisher/consumer）写不进已还原的
 /// 会话——`restore` 已递增 `preview_generation`，`add_assistant_line` 的守卫
 /// 会丢弃它们的迟到写入；它们 emit 的 `ai:reply` 也带 `preview_gen` 代号，
 /// 前端比对不中即丢弃，不会串进自由对话或下一轮试玩。
 #[tauri::command]
 pub async fn editor_stop_preview(app: AppHandle) -> Result<(), String> {
+    // Claim preview ownership first. If there is no pending snapshot this is a
+    // stale/direct IPC call and must not clear a normal script or DLC reservation.
+    let Some((session, handle)) = take_preview_ownership(&app).await else {
+        return Ok(());
+    };
     let state = app.state::<AppState>();
 
     {
@@ -1921,9 +1993,25 @@ pub async fn editor_stop_preview(app: AppHandle) -> Result<(), String> {
         if let Some(tx) = ch.input_tx.take() {
             let _ = tx.send(String::new());
         }
+        if let Some(pending) = ch.poem_tx.take() {
+            let _ = pending.tx.send(String::new());
+        }
         ch.choice_allow_free = false;
     }
 
+    // Abort, then await quiescence before restoring shared state. The task can
+    // no longer race this snapshot because ownership was taken under both locks.
+    if let Some(handle) = handle {
+        handle.abort();
+        let _ = handle.await;
+    }
+    let db = state.db.clone();
+    let game_status = state.ai_service.lock().await.game_status.clone();
+    session.restore(&db, &game_status).await;
+    crate::ai_service::game_system::script_engine::events::glitch_window_event::close_all_glitch_windows(
+        &app,
+    );
+    crate::api::script_popups::close_all();
     state
         .ai_service
         .lock()
@@ -1931,13 +2019,7 @@ pub async fn editor_stop_preview(app: AppHandle) -> Result<(), String> {
         .script_manager
         .is_running
         .store(false, std::sync::atomic::Ordering::SeqCst);
-
-    // 立即中止任务并还原会话。幂等兜底：任务已自行还原则 take 为空跳过。
-    if let Some(h) = state.preview_task.lock().await.take() {
-        h.abort();
-        tracing::info!("[ScriptEditor] 试玩任务已中止，会话状态已还原");
-    }
-    apply_pending_restore(&app).await;
+    tracing::info!("[ScriptEditor] 试玩任务已中止，会话状态已还原");
     Ok(())
 }
 

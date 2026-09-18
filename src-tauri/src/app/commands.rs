@@ -119,9 +119,24 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::save::capture_main_window_screenshot,
         api::script::list_scripts,
         api::script::list_standalone_scripts,
+        api::script::get_script_menu_effect,
+        api::script::check_script_ghost_lock,
         api::script::start_script,
         api::script::script_submit_input,
         api::script::script_submit_choice,
+        api::script::script_submit_poem,
+        api::script::show_script_glitch_window,
+        api::script::spawn_script_console_window,
+        api::script::close_script_glitch_windows,
+        api::script::reset_script_state,
+        api::script::stop_script,
+        api::script::get_script_cursor_position,
+        api::script::warp_cursor,
+        api::script::cancel_script_cursor_warp,
+        // ── DLC 剧本包 ──
+        api::dlc::list_dlcs,
+        api::dlc::import_dlc,
+        api::dlc::remove_dlc,
         // ── 剧本编辑器 ──
         api::script_editor::editor_get_schema,
         api::script_editor::editor_list_scripts,
@@ -267,5 +282,6 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
 /// 前端确认关闭后调用，终止整个 Tauri 进程。
 #[tauri::command]
 fn exit_app(app: tauri::AppHandle) {
+    api::script::close_script_glitch_windows(app.clone());
     app.exit(0);
 }

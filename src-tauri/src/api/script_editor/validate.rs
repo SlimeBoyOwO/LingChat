@@ -2,7 +2,7 @@
 //!
 //! 目标是把引擎里所有**静默失败**变成作者能看见的一条诊断。判定逻辑尽量
 //! 复用引擎自己的函数（`resolve_script_media` 查素材、`parse_variable_action`
-//! 解析表达式、`KNOWN_EFFECTS` 判特效），避免校验器和运行时各说一套。
+//! 解析表达式、共享特效 manifest 判特效），避免校验器和运行时各说一套。
 //!
 //! 诊断分三级：
 //! - `error` —— 一定会出问题（跑不通、跳不过去、素材缺失）
@@ -17,7 +17,8 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 
-use crate::ai_service::game_system::script_engine::events::background_effect_event::KNOWN_EFFECTS;
+use crate::ai_service::game_system::script_engine::events::background_effect_event::known_effects;
+use crate::ai_service::game_system::script_engine::events::split_once_unquoted;
 use crate::ai_service::game_system::script_engine::utils::media::{
     MediaType, resolve_script_media,
 };
@@ -269,6 +270,67 @@ pub fn validate(
         ));
     }
 
+    if let Some(main_character) = config.get("main_character").and_then(|v| v.as_str()) {
+        let main_character = main_character.trim();
+        let safe_folder = !main_character.is_empty()
+            && Path::new(main_character).components().count() == 1
+            && Path::new(main_character)
+                .file_name()
+                .and_then(|v| v.to_str())
+                == Some(main_character);
+        let settings = data_dir
+            .join("game_data")
+            .join("characters")
+            .join(main_character)
+            .join("settings.yml");
+        if !safe_folder || !settings.is_file() {
+            diags.push(Diagnostic::script(
+                Severity::Error,
+                "config.main_character_missing",
+                format!(
+                    "main_character「{}」必须精确匹配全局 characters/ 下含 settings.yml 的目录名",
+                    main_character
+                ),
+            ));
+        }
+    }
+    if let Some(value) = config.get("content_warning") {
+        if value.as_str().is_none_or(|warning| warning != "horror") {
+            diags.push(Diagnostic::script(
+                Severity::Warn,
+                "config.bad_content_warning",
+                "content_warning 当前只支持字符串 horror".to_string(),
+            ));
+        }
+    }
+    if config
+        .get("editor_locked")
+        .is_some_and(|value| !value.is_boolean())
+    {
+        diags.push(Diagnostic::script(
+            Severity::Warn,
+            "config.bad_editor_locked",
+            "editor_locked 必须是布尔值".to_string(),
+        ));
+    }
+    let horror_system_effects_allowed = config
+        .get("content_warning")
+        .and_then(|v| v.as_str())
+        .is_some_and(|warning| warning == "horror")
+        && config
+            .get("script_settings")
+            .and_then(|v| v.get("allow_system_effects"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+    let declared_character_files: HashSet<String> = config
+        .get("script_settings")
+        .and_then(|v| v.get("character_files"))
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
+
     // 剧本内 NPC 目录名，用于校验 character 引用
     let known_characters = collect_script_characters(script_dir);
 
@@ -509,13 +571,18 @@ pub fn validate(
                 },
                 "background_effect" => {
                     let effect = obj.get("effect").and_then(|v| v.as_str()).unwrap_or("");
-                    let clearing = effect.is_empty() || effect.eq_ignore_ascii_case("none");
-                    if !clearing && !KNOWN_EFFECTS.contains(&effect) {
-                        let hint = KNOWN_EFFECTS
+                    // 运行时允许 `Glitch+BloodDrip` 形式叠加，校验器必须逐段使用
+                    // 同一份共享 manifest 判定，不能把整个组合误报为未知特效。
+                    for part in effect.split('+').map(str::trim) {
+                        let clearing = part.is_empty() || part.eq_ignore_ascii_case("none");
+                        if clearing || known_effects().iter().any(|known| known == part) {
+                            continue;
+                        }
+                        let hint = known_effects()
                             .iter()
-                            .find(|k| k.eq_ignore_ascii_case(effect));
+                            .find(|known| known.eq_ignore_ascii_case(part));
                         // 大小写不对 → 打开章节时前端会自动纠错为规范写法，故只给 Info；
-                        // 真未知特效 → 前端无法纠错，给 Warn（上游：纠不能纠错都 warning 即可）
+                        // 真未知特效 → 前端无法纠错，给 Warn。
                         match hint {
                             Some(correct) => diags.push(
                                 Diagnostic::event(
@@ -524,8 +591,8 @@ pub fn validate(
                                     cid,
                                     i,
                                     format!(
-                                        "特效「{}」大小写不对；在编辑器打开本章节时会自动纠正为「{}」",
-                                        effect, correct
+                                        "组合特效中的「{}」大小写不对；应为「{}」",
+                                        part, correct
                                     ),
                                 )
                                 .with_field("effect"),
@@ -537,8 +604,8 @@ pub fn validate(
                                     cid,
                                     i,
                                     format!(
-                                        "特效「{}」不是内置特效，引擎会清空当前特效。可从编辑器的特效下拉里选已支持的项",
-                                        effect
+                                        "组合特效中的「{}」不是内置特效，引擎会清空当前特效",
+                                        part
                                     ),
                                 )
                                 .with_field("effect"),
@@ -548,6 +615,168 @@ pub fn validate(
                 },
                 "choices" => {
                     check_choices(obj, cid, i, &mut diags, &mut vars_written, &mut vars_read);
+                },
+                "force_choice" => {
+                    check_choices(obj, cid, i, &mut diags, &mut vars_written, &mut vars_read);
+                    let forced = obj.get("forced").and_then(|v| v.as_str()).unwrap_or("");
+                    let matches = obj
+                        .get("options")
+                        .and_then(|v| v.as_array())
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|option| option.get("text").and_then(|v| v.as_str()))
+                        .filter(|text| *text == forced)
+                        .count();
+                    if forced.is_empty() || matches != 1 {
+                        diags.push(
+                            Diagnostic::event(
+                                Severity::Error,
+                                "force_choice.bad_forced",
+                                cid,
+                                i,
+                                "forced 必须精确匹配且只匹配一个选项文本".to_string(),
+                            )
+                            .with_field("forced"),
+                        );
+                    }
+                },
+                "random_var" => {
+                    if let Some(variable) = obj.get("variable").and_then(|v| v.as_str()) {
+                        if !variable.trim().is_empty() {
+                            vars_written.insert(variable.trim().to_string());
+                        }
+                    }
+                    if let Some(chance) = obj.get("chance").and_then(|v| v.as_f64()) {
+                        if !(0.0..=1.0).contains(&chance) {
+                            diags.push(
+                                Diagnostic::event(
+                                    Severity::Warn,
+                                    "random_var.clamped_chance",
+                                    cid,
+                                    i,
+                                    "chance 超出 0–1，运行时会截断".to_string(),
+                                )
+                                .with_field("chance"),
+                            );
+                        }
+                    }
+                },
+                "character_file" => {
+                    let action = obj
+                        .get("action")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("exists");
+                    if !["ensure", "exists", "delete", "open_folder"].contains(&action) {
+                        diags.push(Diagnostic::event(
+                            Severity::Error,
+                            "character_file.bad_action",
+                            cid,
+                            i,
+                            format!("未知角色文件操作「{}」", action),
+                        ));
+                    }
+                    if action != "open_folder" {
+                        let file = obj.get("file").and_then(|v| v.as_str()).unwrap_or("");
+                        if !declared_character_files.contains(file) {
+                            diags.push(
+                                Diagnostic::event(
+                                    Severity::Error,
+                                    "character_file.not_declared",
+                                    cid,
+                                    i,
+                                    format!("角色文件「{}」未在 story_config 白名单中声明", file),
+                                )
+                                .with_field("file"),
+                            );
+                        }
+                    }
+                    if let Some(variable) = obj
+                        .get("resultVar")
+                        .or_else(|| obj.get("result_var"))
+                        .and_then(|v| v.as_str())
+                    {
+                        if !variable.trim().is_empty() {
+                            vars_written.insert(variable.trim().to_string());
+                        }
+                    }
+                },
+                "watch_file" => {
+                    let action = obj
+                        .get("action")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("start");
+                    if action == "start" {
+                        let file = obj.get("file").and_then(|v| v.as_str()).unwrap_or("");
+                        if !declared_character_files.contains(file) {
+                            diags.push(
+                                Diagnostic::event(
+                                    Severity::Error,
+                                    "watch_file.not_declared",
+                                    cid,
+                                    i,
+                                    format!("监视文件「{}」未在 story_config 白名单中声明", file),
+                                )
+                                .with_field("file"),
+                            );
+                        }
+                        let target = obj.get("on_missing").and_then(|v| v.as_str()).unwrap_or("");
+                        push_target(
+                            target,
+                            "文件消失跳转",
+                            "watch_file",
+                            "watch_file",
+                            cid,
+                            i,
+                            &chapter_set,
+                            &mut edges,
+                            &mut diags,
+                        );
+                    } else if action != "stop" {
+                        diags.push(Diagnostic::event(
+                            Severity::Error,
+                            "watch_file.bad_action",
+                            cid,
+                            i,
+                            format!("watch_file action 只支持 start / stop，收到「{}」", action),
+                        ));
+                    }
+                },
+                "poem_game" => {
+                    if let Some(variable) = obj.get("resultVar").and_then(|v| v.as_str()) {
+                        if !variable.trim().is_empty() {
+                            vars_written.insert(variable.trim().to_string());
+                        }
+                    }
+                },
+                "console_window" => {
+                    if !horror_system_effects_allowed {
+                        diags.push(Diagnostic::event(
+                            Severity::Error,
+                            "console_window.not_authorized",
+                            cid,
+                            i,
+                            "console_window 需要 content_warning: horror 且 allow_system_effects: true"
+                                .to_string(),
+                        ));
+                    }
+                },
+                "main_menu_effect" => {
+                    let theme = obj
+                        .get("theme")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("normal");
+                    if !["normal", "blood", "ghost"].contains(&theme) {
+                        diags.push(
+                            Diagnostic::event(
+                                Severity::Error,
+                                "main_menu_effect.bad_theme",
+                                cid,
+                                i,
+                                format!("主菜单主题「{}」不受支持", theme),
+                            )
+                            .with_field("theme"),
+                        );
+                    }
                 },
                 "set_variable" => {
                     check_set_variable(obj, cid, i, &mut diags, &mut vars_written, &mut vars_read);
@@ -906,7 +1135,8 @@ fn check_asset(
     }
 }
 
-/// 条件语法检查 + 变量收集。
+/// 条件语法检查 + 变量收集。语法与运行时 `evaluate_condition` 保持一致：
+/// `||` / `&&`、字符串等值比较、数字大小比较和裸变量真值判断。
 fn check_condition(
     cond: &str,
     cid: &str,
@@ -914,64 +1144,91 @@ fn check_condition(
     diags: &mut Vec<Diagnostic>,
     vars_read: &mut BTreeSet<String>,
 ) {
+    fn visit(
+        expression: &str,
+        cid: &str,
+        i: usize,
+        diags: &mut Vec<Diagnostic>,
+        vars_read: &mut BTreeSet<String>,
+    ) {
+        let expression = expression.trim();
+        if expression.is_empty() {
+            return;
+        }
+        if let Some((left, right)) = split_once_unquoted(expression, " || ") {
+            visit(left, cid, i, diags, vars_read);
+            visit(right, cid, i, diags, vars_read);
+            return;
+        }
+        if let Some((left, right)) = split_once_unquoted(expression, " && ") {
+            visit(left, cid, i, diags, vars_read);
+            visit(right, cid, i, diags, vars_read);
+            return;
+        }
+
+        let mut comparison: Option<(&str, &str, &str)> = None;
+        for operator in ["!=", "==", ">=", "<=", ">", "<"] {
+            if let Some((left, right)) = split_once_unquoted(expression, operator) {
+                comparison = Some((left, right, operator));
+                break;
+            }
+        }
+        let (var, value, operator) = match comparison {
+            Some((left, right, operator)) => (left.trim(), Some(right.trim()), Some(operator)),
+            None => (expression, None, None),
+        };
+
+        if var.is_empty() {
+            diags.push(
+                Diagnostic::event(
+                    Severity::Error,
+                    "condition.no_variable",
+                    cid,
+                    i,
+                    format!("条件「{}」左侧没有变量名", expression),
+                )
+                .with_field("condition"),
+            );
+            return;
+        }
+        if var.contains(' ')
+            || ['!', '(', ')', '+', '*', '/']
+                .iter()
+                .any(|bad| var.contains(*bad))
+        {
+            diags.push(
+                Diagnostic::event(
+                    Severity::Error,
+                    "condition.bad_variable",
+                    cid,
+                    i,
+                    format!("条件中的变量名「{}」不合法", var),
+                )
+                .with_field("condition"),
+            );
+            return;
+        }
+
+        if matches!(operator, Some(">=" | "<=" | ">" | "<")) {
+            let numeric = value.and_then(|raw| raw.parse::<f64>().ok());
+            if numeric.is_none() {
+                diags.push(
+                    Diagnostic::event(
+                        Severity::Error,
+                        "condition.bad_number",
+                        cid,
+                        i,
+                        format!("数字比较「{}」右侧必须是有效数字", expression),
+                    )
+                    .with_field("condition"),
+                );
+            }
+        }
+        vars_read.insert(var.to_string());
+    }
+
     let cond = cond.trim();
     if cond.is_empty() {
-        return;
-    }
-
-    // 只扫**运算符左侧**。右值是任意字符串，`bg == city/night` 里的 / 是合法内容，
-    // 早先在整串上找 / + * ( ) 会把它误判成「用了不支持的运算符」并跳过变量收集。
-    let var = if let Some((v, _)) = cond.split_once("!=") {
-        v.trim()
-    } else if let Some((v, _)) = cond.split_once("==") {
-        v.trim()
-    } else {
-        cond
-    };
-
-    // 长运算符放前面，命中即停 —— 否则 `hp >= 5` 会同时报 >= 和 >
-    const BAD_OPS: [&str; 9] = ["&&", "||", ">=", "<=", ">", "<", "!", "(", ")"];
-    if let Some(op) = BAD_OPS.iter().find(|op| var.contains(**op)) {
-        diags.push(
-            Diagnostic::event(
-                Severity::Error,
-                "condition.unsupported_operator",
-                cid,
-                i,
-                format!(
-                    "条件里用了不支持的运算符「{}」。只支持「变量 == 值」「变量 != 值」或单独一个变量判断真假——写了别的不会按你的意思执行（没赋过值的变量不会正常运作）",
-                    op
-                ),
-            )
-            .with_field("condition"),
-        );
-        return;
-    }
-
-    if var.is_empty() {
-        diags.push(
-            Diagnostic::event(
-                Severity::Error,
-                "condition.no_variable",
-                cid,
-                i,
-                format!("条件「{}」左侧没有变量名", cond),
-            )
-            .with_field("condition"),
-        );
-        return;
-    }
-    if var.contains(' ') {
-        diags.push(
-            Diagnostic::event(
-                Severity::Error,
-                "condition.bad_variable",
-                cid,
-                i,
-                format!("变量名「{}」含空格，引擎的变量名不允许空格", var),
-            )
-            .with_field("condition"),
-        );
         return;
     }
     if cond.contains("%player%") {
@@ -986,7 +1243,7 @@ fn check_condition(
             .with_field("condition"),
         );
     }
-    vars_read.insert(var.to_string());
+    visit(cond, cid, i, diags, vars_read);
 }
 
 fn check_actions(

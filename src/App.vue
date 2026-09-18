@@ -15,6 +15,8 @@
   <AchievementToast v-if="isMainWindow" />
   <AdventureUnlockNotify v-if="isMainWindow" />
   <AppDialog v-if="isMainWindow" />
+  <HorrorEntryTransition v-if="isMainWindow" />
+  <GhostScriptLock v-if="isMainWindow" />
 </template>
 
 <script setup lang="ts">
@@ -25,6 +27,8 @@ import Notification from "./components/ui/Notification.vue";
 import AchievementToast from "./components/ui/AchievementToast.vue";
 import AdventureUnlockNotify from "./components/ui/AdventureUnlockNotify.vue";
 import AppDialog from "./components/ui/AppDialog.vue";
+import HorrorEntryTransition from "./components/ui/HorrorEntryTransition.vue";
+import GhostScriptLock from "./components/ui/GhostScriptLock.vue";
 import { useAsrInput } from "./composables/useAsrInput";
 import { useCanDeliver } from "./composables/useCanDeliver";
 import { useZoom } from "./composables/useZoom";
