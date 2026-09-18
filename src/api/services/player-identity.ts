@@ -57,17 +57,6 @@ export const deletePlayerIdentity = async (id: string): Promise<void> => {
 };
 
 /**
- * 切换当前身份，返回刷新后的初始化数据（调用方需 applyWebInitData）。
- *
- * ⚠️ 这是**原地**切换（不重开对话），只在「本局还没开始」时可用：
- * 剧本进行中、或本局已绑定存档（含自动存档）时后端会拒绝。
- * 换身份的正式入口是 `startNewGameWithIdentity`。
- */
-export const setCurrentPlayerIdentity = async (id: string): Promise<WebInitData> => {
-  return await invoke<WebInitData>("set_current_player_identity", { id });
-};
-
-/**
  * 用指定身份**开一段新对话** —— 换身份的正式路径。
  *
  * 会清空当前对话的记忆、并按新身份重建人设行（与切换 AI 角色同一条路径），

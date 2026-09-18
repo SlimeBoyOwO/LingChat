@@ -111,6 +111,15 @@ pub fn resolve_relation(
 
 /// 把「正在与你对话的这个人」拼成一段 system prompt 片段。
 ///
+/// 从「信息清单」改成**带优先级的指令块**。原因（实测）：
+/// 1. 角色卡里常写死「你会叫我"用户酱"」这类第一人称断言，且它出现在本段**之前**；
+///    只写一句「名字：宋分题」根本压不过它 —— 模型会照卡面叫旧称呼。
+///    所以这里显式声明**本节优先**，并明确"别的称呼一律不用"。
+/// 2. 关系只写成事实陈述（「你与 ta 的关系：特别害怕他」）时，模型基本当背景资料，
+///    不会落到台词上；而且本段排在 app 那上千字的格式铁律**之前**，被彻底压住。
+///    所以关系改成"必须体现在称呼、语气、动作与反应里"的行为要求，
+///    并且在 `prompt.rs` 里被挪到整段 system 的最后（紧邻对话）。
+///
 /// 全空时返回空串（保持与改造前的行为一致：角色卡里没有玩家信息就不注入任何东西）。
 pub fn build_player_block(
     name: &str,
@@ -126,7 +135,11 @@ pub fn build_player_block(
         return String::new();
     }
 
-    let mut out = String::from("\n\n【正在与你对话的这个人】\n");
+    let mut out = String::from("\n\n【本局必须遵守：正在与你对话的「我」】\n");
+    // 裁决声明：不写这句时，模型会优先执行卡面里写死的旧称呼（实测踩过）。
+    out.push_str(
+        "（本节优先于上面人设、历史台词与记忆里关于这个人的任何写法；两者冲突时以本节为准）\n",
+    );
 
     if !name.is_empty() {
         if subtitle.is_empty() {
@@ -141,11 +154,14 @@ pub fn build_player_block(
     if let Some(r) = relation {
         match r.source {
             RelationSource::Speaker => {
-                out.push_str(&format!("你与 ta 的关系：{}\n", r.text));
+                out.push_str(&format!(
+                    "你对 ta 的态度（必须体现在称呼、语气、动作与你的反应里，不要只是知道）：{}\n",
+                    r.text
+                ));
             },
             RelationSource::Counterparty => {
                 out.push_str(&format!(
-                    "对方对你们关系的描述（是 ta 的说法，未必是事实）：{}\n",
+                    "ta 对外描述你们的关系（是 ta 的说法，未必是事实；可作为你态度的参考）：{}\n",
                     r.text
                 ));
             },
@@ -153,6 +169,24 @@ pub fn build_player_block(
                 out.push_str(&format!("你已知的关于 ta 的信息：{}\n", r.text));
             },
         }
+    }
+
+    // 行为要求：只给"信息"时模型会当背景资料，这里要求落到输出上。
+    let has_attitude = matches!(
+        relation.map(|r| r.source),
+        Some(RelationSource::Speaker) | Some(RelationSource::Counterparty)
+    );
+    if !name.is_empty() || has_attitude {
+        out.push_str("要求：");
+        if !name.is_empty() {
+            out.push_str(&format!(
+                "称呼 ta 时只用「{name}」，人设、历史或记忆里若出现别的称呼一律不使用；"
+            ));
+        }
+        if has_attitude {
+            out.push_str("每一句台词都要让上面这层态度能被感觉到；");
+        }
+        out.push_str("不要复述本节内容，也不要提“设定 / 关系”这些字眼。\n");
     }
 
     out
@@ -189,7 +223,7 @@ mod tests {
         let speaker = RelationEndpoint::Ai("A".into());
         let target = RelationEndpoint::Me("p1".into());
         let sp = map(&[("me:p1", "旧识")]);
-        let tp = map(&[("ai:A", "陌生人" )]);
+        let tp = map(&[("ai:A", "陌生人")]);
         let v = resolve_relation(&speaker, &target, &sp, &tp, Some("侦探")).unwrap();
         assert_eq!(v.text, "旧识");
         assert_eq!(v.source, RelationSource::Speaker);
@@ -200,14 +234,29 @@ mod tests {
         let speaker = RelationEndpoint::Ai("A".into());
         let target = RelationEndpoint::Me("p1".into());
 
-        let v = resolve_relation(&speaker, &target, &HashMap::new(), &map(&[("ai:A", "陌生人")]), Some("侦探"))
-            .unwrap();
+        let v = resolve_relation(
+            &speaker,
+            &target,
+            &HashMap::new(),
+            &map(&[("ai:A", "陌生人")]),
+            Some("侦探"),
+        )
+        .unwrap();
         assert_eq!(v.source, RelationSource::Counterparty);
 
-        let v = resolve_relation(&speaker, &target, &HashMap::new(), &HashMap::new(), Some("侦探")).unwrap();
+        let v = resolve_relation(
+            &speaker,
+            &target,
+            &HashMap::new(),
+            &HashMap::new(),
+            Some("侦探"),
+        )
+        .unwrap();
         assert_eq!(v.source, RelationSource::PromptFallback);
 
-        assert!(resolve_relation(&speaker, &target, &HashMap::new(), &HashMap::new(), None).is_none());
+        assert!(
+            resolve_relation(&speaker, &target, &HashMap::new(), &HashMap::new(), None).is_none()
+        );
     }
 
     #[test]
@@ -227,7 +276,32 @@ mod tests {
         };
         let block = build_player_block("林默", "", "侦探", Some(&r));
         assert!(block.contains("你已知的关于 ta 的信息"));
-        assert!(!block.contains("你与 ta 的关系"));
+        // 兜底来源只是"已知信息"，不能写成既定态度，也不能要求"体现态度"
+        assert!(!block.contains("你对 ta 的态度"));
+        assert!(!block.contains("都要让上面这层态度能被感觉到"));
+    }
+
+    /// 卡面写死别的称呼、关系只当背景资料 —— 这两点实测会让模型无视身份块，
+    /// 所以这里把「优先级声明」和「行为要求」当成不变量钉住。
+    #[test]
+    fn block_declares_priority_and_behavior() {
+        let r = RelationView {
+            text: "特别害怕他，觉得他很丑".into(),
+            source: RelationSource::Speaker,
+        };
+        let block = build_player_block("宋分题", "sefanty", "超级无敌帅哥", Some(&r));
+
+        // 优先级声明 + 称呼压制
+        assert!(block.contains("本局必须遵守"));
+        assert!(block.contains("两者冲突时以本节为准"));
+        assert!(block.contains("若出现别的称呼一律不使用"));
+        // 关系必须是行为要求，而不是背景资料
+        assert!(block.contains("你对 ta 的态度"));
+        assert!(block.contains("特别害怕他，觉得他很丑"));
+        assert!(block.contains("每一句台词都要让上面这层态度能被感觉到"));
+        // 名字与身份设定照旧
+        assert!(block.contains("名字：宋分题（sefanty）"));
+        assert!(block.contains("身份设定：超级无敌帅哥"));
     }
 
     #[test]

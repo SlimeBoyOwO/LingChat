@@ -21,7 +21,6 @@ export default {
     empty:
       "身分カードがまだありません。下のボタンで作成できます。作成しなくても既定の身分で動きます。",
     current: "使用中",
-    use: "これを使う",
     edit: "編集",
     delete: "削除",
     create: "身分を作成",
@@ -42,7 +41,6 @@ export default {
       savedTitle: "身分を保存しました",
       savedMsg: "身分カードを更新しました",
       saveFailTitle: "身分の保存に失敗しました",
-      switchFailTitle: "身分の切り替えに失敗しました",
       deleteConfirm: "身分「{name}」を削除しますか？ 使用中のセーブがあると削除できません。",
       deleteFailTitle: "身分の削除に失敗しました",
     },

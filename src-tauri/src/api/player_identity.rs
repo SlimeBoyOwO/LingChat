@@ -108,9 +108,13 @@ pub async fn delete_player_identity(app: AppHandle, id: String) -> Result<(), St
 
 /// 切换当前使用的身份，并返回刷新后的初始化数据。
 ///
-/// 闸门：剧本运行中拒绝（见 `player_identity::guard`）。
+/// 闸门：剧本运行中、或本局已绑定存档（含自动存档）时拒绝（见 `player_identity::guard`）。
 /// 切换是**玩家侧操作**，不产生世界台词；但会补一条系统提示行，
 /// 让当前 AI 之后按新身份与关系称呼——否则名字变了而模型仍按旧名字叫。
+///
+/// ⚠️ 目前**没有 UI 调用**它：前端换身份统一走 [`start_new_game_with_identity`]（开新对话），
+/// 因为「身份属于一局」。保留这个命令是因为它实现的是另一条独立语义——**原地**切换
+/// （本局尚未开始时才成立），将来放开「世界内切换身份」时会用到；规则仍收在 guard 里。
 #[tauri::command]
 pub async fn set_current_player_identity(
     app: AppHandle,

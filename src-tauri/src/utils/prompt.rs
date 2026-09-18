@@ -201,10 +201,15 @@ pub fn sys_prompt_builder(
 
 /// 构建系统提示词，并把「正在与你对话的这个人」（身份 + 关系）一并注入。
 ///
-/// ⚠️ 注入位置刻意放在**老角色卡那两个早返回分支之前**：这两个分支会直接
-/// `return ai_prompt`（不再拼接对话格式提示）。如果身份块只放在下面的拼接段里，
-/// 使用老角色卡的用户会完全看不到身份与关系，很容易被误判成「后端没生效」。
-/// 这里改为先把身份块并入 `ai_prompt`，两个分支返回时同样带上它。
+/// ⚠️ 位置规则有两条，都是踩过坑才定下来的：
+///
+/// 1. **老角色卡的早返回分支**会直接 `return ai_prompt`（不再拼接对话格式提示），
+///    所以那里必须返回已经并入身份块的 `ai_prompt_with_player`——否则用老卡的
+///    用户完全看不到身份与关系，很容易被误判成「后端没生效」。
+/// 2. **正常路径把身份块放到整段 system 的最后**。之前它被拼在卡面之后、格式规则
+///    之前，于是被后面上千字的格式铁律（那段自称「最高优先级…与其他人设要求冲突时
+///    以本段为准」）压在中间：实测模型会照卡面里写死的旧称呼来叫人。放到最后 =
+///    紧邻对话历史，近因权重最高。
 pub fn sys_prompt_builder_with_player(
     user_name: &str,
     character_name: &str,
@@ -220,7 +225,7 @@ pub fn sys_prompt_builder_with_player(
     let example_jp = ai_prompt_example_old.filter(|s| !s.is_empty());
     let framing = build_framing_prefix_cn(user_name, character_name);
 
-    // 身份/关系块并入人设正文；为空时与改造前完全一致。
+    // 早返回分支用：身份/关系块并入人设正文；为空时与改造前完全一致。
     let ai_prompt_with_player = if player_block.is_empty() {
         ai_prompt.to_string()
     } else {
@@ -244,13 +249,15 @@ pub fn sys_prompt_builder_with_player(
         }
 
         let mut out = String::with_capacity(ai_prompt_with_player.len() + 4096);
-        out.push_str(&ai_prompt_with_player);
+        out.push_str(ai_prompt);
         out.push_str(&framing);
         out.push_str(DIALOG_FORMAT_PROMPT_CN);
         out.push_str(DEFAULT_EXAMPLE_CN);
         out.push_str(&example);
         out.push_str(emotion_head);
         out.push_str(DIALOG_FORMAT_PROMPT_2_BODY);
+        // 身份/关系块压尾：见函数文档第 2 条
+        out.push_str(player_block);
         out
     } else {
         // 中日双语模式
@@ -265,13 +272,15 @@ pub fn sys_prompt_builder_with_player(
         }
 
         let mut out = String::with_capacity(ai_prompt_with_player.len() + 4096);
-        out.push_str(&ai_prompt_with_player);
+        out.push_str(ai_prompt);
         out.push_str(&framing);
         out.push_str(DIALOG_FORMAT_PROMPT_JP);
         out.push_str(DEFAULT_EXAMPLE_JP);
         out.push_str(&example);
         out.push_str(emotion_head);
         out.push_str(DIALOG_FORMAT_PROMPT_2_BODY);
+        // 身份/关系块压尾：见函数文档第 2 条
+        out.push_str(player_block);
         out
     }
 }
