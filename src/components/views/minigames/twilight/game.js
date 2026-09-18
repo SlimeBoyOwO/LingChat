@@ -1,5 +1,5 @@
 import { bindTouchControls, usesMobileControls } from "../shared/touch-controls.js";
-import { SONGS, createMidiSong } from "./songs.js";
+import { SONGS, createMidiSong, loadImportedSongs, saveImportedSongs } from "./songs.js";
 import { Judge, WINDOWS } from "./core.js";
 import { inputPerformanceTime } from "./timing.js";
 import { drawIdle, idleFrameAt, breathAt } from "./idle.js";
@@ -108,6 +108,7 @@ export async function mountRhythm(root, options) {
     phase: i,
   }));
   const images = {};
+  loadImportedSongs(); // 恢复上次会话导入的 MIDI 曲目，需在读取存档选曲之前
   try {
     const saved = JSON.parse(localStorage.getItem("twilight-cadence-settings") || "{}");
     volume = Math.max(0, Math.min(1, Number.isFinite(saved.volume) ? saved.volume : 0.55));
@@ -121,7 +122,7 @@ export async function mountRhythm(root, options) {
     try {
       localStorage.setItem(
         "twilight-cadence-settings",
-        JSON.stringify({ volume, offset, approach, horror, beatEffects, songId: music.id })
+        JSON.stringify({ volume, offset, approach, horror, beatEffects, songId: music.id }),
       );
     } catch (_) {}
   }
@@ -559,11 +560,14 @@ export async function mountRhythm(root, options) {
       4,
       ...(music.neon
         ? ["#67e9ff", "#adacff", "#ff88ca", "#ffe29b"]
-        : ["#f2acb5", "#f7d39a", "#9fd0d4", "#c6b5ea"])
+        : ["#f2acb5", "#f7d39a", "#9fd0d4", "#c6b5ea"]),
     );
     root
       .querySelectorAll("[data-lane]")
       .forEach((button, lane) => button.style.setProperty("--lane-color", colors[lane]));
+    $("song-actions").hidden = !music.imported;
+    $("song-rename-row").hidden = true;
+    disarmDelete();
     if (direction) saveSettings();
   }
   $("song-prev").onclick = () => selectSong(-1);
@@ -576,15 +580,74 @@ export async function mountRhythm(root, options) {
     try {
       const imported = createMidiSong(file.name, await file.arrayBuffer());
       SONGS.push(imported);
+      const persisted = saveImportedSongs();
       music = imported;
       buffer = null;
       selectSong();
       $("footer-status").textContent =
-        `已导入《${imported.title}》：${imported.noteCount} 音符 · ${Math.round(imported.duration)} 秒`;
+        `已导入《${imported.title}》：${imported.noteCount} 音符 · ${Math.round(imported.duration)} 秒` +
+        (persisted ? "" : "（存储空间不足，重启后不会保留）");
     } catch (error) {
       console.error("MIDI 导入失败:", error);
       $("footer-status").textContent = `MIDI 导入失败：${error.message}`;
     }
+  };
+  // 导入曲目的管理：重命名（内联输入）与两步确认删除
+  let deleteArmed = false,
+    deleteTimer = null;
+  function disarmDelete() {
+    deleteArmed = false;
+    clearTimeout(deleteTimer);
+    $("song-delete").textContent = "删除谱面";
+  }
+  $("song-rename").onclick = () => {
+    if (!music.imported) return;
+    $("song-rename-input").value = music.title;
+    $("song-actions").hidden = true;
+    $("song-rename-row").hidden = false;
+    $("song-rename-input").focus();
+    $("song-rename-input").select();
+  };
+  const closeRename = () => {
+    $("song-rename-row").hidden = true;
+    $("song-actions").hidden = !music.imported;
+  };
+  const commitRename = () => {
+    const title = $("song-rename-input").value.trim();
+    if (title && music.imported) {
+      music.title = title;
+      saveImportedSongs();
+      selectSong();
+    }
+    closeRename();
+  };
+  $("song-rename-ok").onclick = commitRename;
+  $("song-rename-cancel").onclick = closeRename;
+  // 阻止按键冒泡到游戏的全局键盘监听（Esc 暂停、DFJK 轨道键等）
+  $("song-rename-input").onkeydown = (event) => {
+    event.stopPropagation();
+    if (event.key === "Enter") commitRename();
+    else if (event.key === "Escape") closeRename();
+  };
+  $("song-delete").onclick = () => {
+    if (!music.imported) return;
+    if (!deleteArmed) {
+      deleteArmed = true;
+      $("song-delete").textContent = "确认删除？";
+      clearTimeout(deleteTimer);
+      deleteTimer = setTimeout(disarmDelete, 2500);
+      return;
+    }
+    const removed = music,
+      index = SONGS.indexOf(removed);
+    disarmDelete();
+    SONGS.splice(index, 1);
+    saveImportedSongs();
+    music = SONGS[Math.min(index, SONGS.length - 1)];
+    buffer = null;
+    selectSong();
+    saveSettings();
+    $("footer-status").textContent = `已删除《${removed.title}》`;
   };
   selectSong();
   controls();
@@ -712,7 +775,7 @@ export async function mountRhythm(root, options) {
               Math.max(TRACK.top, tail),
               width - 28,
               Math.max(0, head - Math.max(TRACK.top, tail)),
-              colors[note.lane]
+              colors[note.lane],
             );
             ctx.shadowBlur = 0;
             ctx.globalAlpha = 0.65;
@@ -914,7 +977,7 @@ export async function mountRhythm(root, options) {
         (1 - effect.life) * 18 + 4,
         0,
         0,
-        Math.PI * 2
+        Math.PI * 2,
       );
       ctx.stroke();
       if (effect.combo)
@@ -925,7 +988,7 @@ export async function mountRhythm(root, options) {
           21,
           "#82edff",
           "center",
-          "bold"
+          "bold",
         );
       ctx.restore();
     }
@@ -1011,7 +1074,7 @@ export async function mountRhythm(root, options) {
         petal.y + Math.sin(idleElapsed / 1200 + petal.phase) * 7,
         3,
         2,
-        corrupt > 0.5 ? "#bd364c99" : "#f9bcb6aa"
+        corrupt > 0.5 ? "#bd364c99" : "#f9bcb6aa",
       );
     }
     drawNeon(t, idle);
@@ -1045,7 +1108,7 @@ export async function mountRhythm(root, options) {
         29,
         68,
         9,
-        "#e0b9c3"
+        "#e0b9c3",
       );
       text(String(result.score).padStart(7, "0"), 29, 108, 27, "#fae2ba");
       const liveAccuracy = judge.resolved ? judge.points / judge.resolved : 1;
@@ -1059,7 +1122,7 @@ export async function mountRhythm(root, options) {
           TRACK.top + (LINE - TRACK.top) * 0.34,
           39,
           "#fbe4c2",
-          "center"
+          "center",
         );
         text(
           "COMBO",
@@ -1067,7 +1130,7 @@ export async function mountRhythm(root, options) {
           TRACK.top + (LINE - TRACK.top) * 0.34 + 22,
           9,
           "#ebc3bd",
-          "center"
+          "center",
         );
       }
       if (feedback && visualTime < feedbackUntil) {
@@ -1078,7 +1141,7 @@ export async function mountRhythm(root, options) {
           LINE - 64,
           17,
           gradeColors[feedback.grade],
-          "center"
+          "center",
         );
         if (!demo && feedback.error != null)
           text(
@@ -1087,7 +1150,7 @@ export async function mountRhythm(root, options) {
             LINE - 44,
             10,
             feedback.error < 0 ? "#82eaff" : "#ffacd5",
-            "center"
+            "center",
           );
       }
       const time = Math.max(0, music.duration - t);
@@ -1097,7 +1160,7 @@ export async function mountRhythm(root, options) {
         portrait ? 136 : 47,
         11,
         "#edd0c9",
-        "right"
+        "right",
       );
     }
     if (state === "countdown" || (state === "playing" && t < music.beat * 4)) {

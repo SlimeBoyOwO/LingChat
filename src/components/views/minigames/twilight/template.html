@@ -15,6 +15,15 @@
       </div>
       <p id="song-details" class="song-details"></p>
       <p id="song-credit" class="song-credit" hidden></p>
+      <div class="song-actions" id="song-actions" hidden>
+        <button id="song-rename" type="button">重命名</button>
+        <button id="song-delete" type="button">删除谱面</button>
+      </div>
+      <div class="song-actions" id="song-rename-row" hidden>
+        <input id="song-rename-input" type="text" maxlength="40" aria-label="曲目名称" />
+        <button id="song-rename-ok" type="button" aria-label="确认重命名">✓</button>
+        <button id="song-rename-cancel" type="button" aria-label="取消重命名">✕</button>
+      </div>
     </div>
     <nav class="scene-menu" aria-label="音游菜单">
       <button class="menu-item" id="start" type="button">开始演奏</button>

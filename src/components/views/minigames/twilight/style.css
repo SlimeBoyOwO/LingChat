@@ -132,6 +132,37 @@
   font-size: clamp(16px, 1.5vw, 23px);
   letter-spacing: 0.03em;
 }
+.song-actions {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.song-actions button {
+  padding: 6px 14px;
+  border: 1px solid #ffe3cd66;
+  background: #241a3844;
+  color: #ffe4d6;
+  font:
+    13px/1 "Microsoft YaHei",
+    sans-serif;
+  cursor: pointer;
+}
+.song-actions button:hover {
+  background: #241a3888;
+}
+.song-actions input {
+  width: 180px;
+  padding: 6px 10px;
+  border: 1px solid #ffe3cd66;
+  background: #241a3866;
+  color: #fff;
+  font:
+    14px/1 "Microsoft YaHei",
+    sans-serif;
+}
 .song-details {
   margin: 10px 0 0;
   font:
