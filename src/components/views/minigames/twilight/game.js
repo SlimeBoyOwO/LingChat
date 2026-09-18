@@ -70,7 +70,8 @@ export async function mountRhythm(root, options) {
     buffer = null,
     source = null,
     gain = null,
-    analyser = null;
+    analyser = null,
+    hitBuffer = null;
   const waveSamples = new Float32Array(2048),
     wavePoints = new Float32Array(193);
   let waveLevel = 0;
@@ -87,7 +88,8 @@ export async function mountRhythm(root, options) {
   let volume = 0.55,
     offset = 0,
     approach = 1.8,
-    horror = false;
+    horror = false,
+    keySound = true;
   let poseIndex = 0,
     poseUntil = 0,
     feedback = null,
@@ -116,13 +118,22 @@ export async function mountRhythm(root, options) {
     approach = Math.max(1.1, Math.min(2.6, Number.isFinite(saved.approach) ? saved.approach : 1.8));
     horror = saved.horror === true;
     beatEffects = saved.beatEffects !== false;
+    keySound = saved.keySound !== false;
     music = SONGS.find((song) => song.id === saved.songId) ?? SONGS[0];
   } catch (_) {}
   function saveSettings() {
     try {
       localStorage.setItem(
         "twilight-cadence-settings",
-        JSON.stringify({ volume, offset, approach, horror, beatEffects, songId: music.id }),
+        JSON.stringify({
+          volume,
+          offset,
+          approach,
+          horror,
+          beatEffects,
+          keySound,
+          songId: music.id,
+        }),
       );
     } catch (_) {}
   }
@@ -185,6 +196,29 @@ export async function mountRhythm(root, options) {
     wavePoints.fill(0);
     waveLevel = 0;
   }
+  // 按键音：90ms 合成打击采样（高音下滑 + 瞬态噪声），挂载在音乐总线上跟随音量设置
+  function makeHitBuffer() {
+    const rate = audio.sampleRate,
+      length = Math.ceil(0.09 * rate),
+      clip = audio.createBuffer(1, length, rate),
+      data = clip.getChannelData(0);
+    let seed = 7;
+    for (let i = 0; i < length; i++) {
+      const t = i / rate;
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const noise = (seed / 4294967296) * 2 - 1,
+        tone = Math.sin(2 * Math.PI * (1900 - 700 * (t / 0.09)) * t);
+      data[i] = tone * Math.exp(-t * 50) * 0.35 + noise * Math.exp(-t * 300) * 0.22;
+    }
+    return clip;
+  }
+  function playHitSound() {
+    if (!keySound || !audio || !gain || !hitBuffer || state !== "playing") return;
+    const hit = audio.createBufferSource();
+    hit.buffer = hitBuffer;
+    hit.connect(gain);
+    hit.start();
+  }
   async function readyAudio() {
     if (!audio) {
       const Context = window.AudioContext || window.webkitAudioContext;
@@ -201,6 +235,7 @@ export async function mountRhythm(root, options) {
       analyser.fftSize = waveSamples.length;
       gain.connect(analyser);
       analyser.connect(audio.destination);
+      hitBuffer = makeHitBuffer();
     }
     gain.gain.value = volume;
     if (!buffer) {
@@ -507,6 +542,7 @@ export async function mountRhythm(root, options) {
     $("speed-value").textContent = approach.toFixed(1) + " s";
     $("horror").checked = horror;
     $("beat-effects").checked = beatEffects;
+    $("key-sound").checked = keySound;
     scene.dataset.effects = String(beatEffects && !reducedMotion.matches);
     if (!beatEffects || reducedMotion.matches) {
       effects.length = 0;
@@ -536,6 +572,11 @@ export async function mountRhythm(root, options) {
   };
   $("beat-effects").onchange = (event) => {
     beatEffects = event.target.checked;
+    controls();
+    saveSettings();
+  };
+  $("key-sound").onchange = (event) => {
+    keySound = event.target.checked;
     controls();
     saveSettings();
   };
@@ -810,6 +851,7 @@ export async function mountRhythm(root, options) {
       laneFlash[event.lane] = now;
       laneGrades[event.lane] = event.grade;
       if (event.grade !== "miss") {
+        playHitSound();
         poseIndex = event.lane < 2 ? 1 : 2;
         poseUntil = now + 240;
         if (beatEffects && !reducedMotion.matches)
