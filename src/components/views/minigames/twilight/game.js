@@ -565,8 +565,9 @@ export async function mountRhythm(root, options) {
     root
       .querySelectorAll("[data-lane]")
       .forEach((button, lane) => button.style.setProperty("--lane-color", colors[lane]));
-    $("song-actions").hidden = !music.imported;
-    $("song-rename-row").hidden = true;
+    $("song-rename").hidden = !music.imported;
+    $("song-delete").hidden = !music.imported;
+    closeRename();
     disarmDelete();
     if (direction) saveSettings();
   }
@@ -592,7 +593,7 @@ export async function mountRhythm(root, options) {
       $("footer-status").textContent = `MIDI 导入失败：${error.message}`;
     }
   };
-  // 导入曲目的管理：重命名（内联输入）与两步确认删除
+  // 导入曲目的管理：重命名（选曲行内联输入）与两步确认删除
   let deleteArmed = false,
     deleteTimer = null;
   function disarmDelete() {
@@ -600,17 +601,17 @@ export async function mountRhythm(root, options) {
     clearTimeout(deleteTimer);
     $("song-delete").textContent = "删除谱面";
   }
+  const closeRename = () => {
+    $("song-rename-row").hidden = true;
+    $("song-picker-row").hidden = false;
+  };
   $("song-rename").onclick = () => {
     if (!music.imported) return;
     $("song-rename-input").value = music.title;
-    $("song-actions").hidden = true;
+    $("song-picker-row").hidden = true;
     $("song-rename-row").hidden = false;
     $("song-rename-input").focus();
     $("song-rename-input").select();
-  };
-  const closeRename = () => {
-    $("song-rename-row").hidden = true;
-    $("song-actions").hidden = !music.imported;
   };
   const commitRename = () => {
     const title = $("song-rename-input").value.trim();

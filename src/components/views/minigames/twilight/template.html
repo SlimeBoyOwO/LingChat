@@ -8,28 +8,26 @@
   <div class="title-card" id="title-card" hidden>
     <div class="scene-title">
       <h1>暮色节拍</h1>
-      <div class="song-picker" role="group" aria-label="选择曲目">
+      <div class="song-picker" id="song-picker-row" role="group" aria-label="选择曲目">
         <button id="song-prev" type="button" aria-label="上一首曲目">‹</button>
         <strong id="song-title" aria-live="polite">灯下回声</strong>
         <button id="song-next" type="button" aria-label="下一首曲目">›</button>
       </div>
-      <p id="song-details" class="song-details"></p>
-      <p id="song-credit" class="song-credit" hidden></p>
-      <div class="song-actions" id="song-actions" hidden>
-        <button id="song-rename" type="button">重命名</button>
-        <button id="song-delete" type="button">删除谱面</button>
-      </div>
-      <div class="song-actions" id="song-rename-row" hidden>
+      <div class="song-picker song-rename" id="song-rename-row" hidden>
         <input id="song-rename-input" type="text" maxlength="40" aria-label="曲目名称" />
         <button id="song-rename-ok" type="button" aria-label="确认重命名">✓</button>
         <button id="song-rename-cancel" type="button" aria-label="取消重命名">✕</button>
       </div>
+      <p id="song-details" class="song-details"></p>
+      <p id="song-credit" class="song-credit" hidden></p>
     </div>
     <nav class="scene-menu" aria-label="音游菜单">
       <button class="menu-item" id="start" type="button">开始演奏</button>
       <button class="menu-item" id="demo" type="button">观赏演示</button>
       <button class="menu-item" id="settings-toggle" type="button" aria-expanded="false">调校</button>
       <button class="menu-item" id="song-import" type="button">导入 MIDI</button>
+      <button class="menu-item song-manage" id="song-rename" type="button" hidden>重命名谱面</button>
+      <button class="menu-item song-manage" id="song-delete" type="button" hidden>删除谱面</button>
       <button class="menu-item" id="back-to-games" type="button">返回</button>
     </nav>
     <input id="midi-file" type="file" accept=".mid,.midi,audio/midi" hidden />
