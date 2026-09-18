@@ -37,6 +37,9 @@ export default {
     dlcTitle: "DLC 管理",
     dlcDesc: "识别、导入或移除 DLC 剧本包（zip），安装后立即出现在剧本列表",
     dlcButton: "进入 DLC 管理界面",
+    memoryTitle: "永久记忆调试",
+    memoryDesc: "查看角色当前的记忆库内容与真实上下文，用于排查记忆压缩与注入问题",
+    memoryButton: "进入记忆调试界面",
   },
   dlc: {
     notice:

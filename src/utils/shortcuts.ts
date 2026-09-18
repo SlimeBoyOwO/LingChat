@@ -154,7 +154,7 @@ export const isValidBinding = (b: unknown): b is ShortcutBinding =>
 
 /** 整表校验：非法项用默认键位补齐，合法项保留（用户自定义不被重置） */
 export const sanitizeShortcuts = (
-  rec: Partial<Record<ShortcutAction, ShortcutBinding>>
+  rec: Partial<Record<ShortcutAction, ShortcutBinding>>,
 ): Record<ShortcutAction, ShortcutBinding> => {
   const out = { ...DEFAULT_SHORTCUTS };
   for (const a of SHORTCUT_ACTIONS) {

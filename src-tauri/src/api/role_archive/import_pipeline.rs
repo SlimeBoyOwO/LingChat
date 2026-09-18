@@ -228,9 +228,9 @@ pub(super) async fn do_import(
     }
 
     // 9. 把角色目录同步到数据库。
-    let data_dir = crate::init::static_copy::get_data_dir().clone();
+    let data_dir = crate::data_dir::get_data_dir().clone();
     let db = app.state::<crate::AppState>().db.clone();
-    if let Err(e) = crate::init::role_sync::sync_roles_from_folder(&db, &data_dir).await {
+    if let Err(e) = crate::db::role_sync::sync_roles_from_folder(&db, &data_dir).await {
         // 同步失败时立即回滚已移入的角色目录（await 而不是 spawn），
         // 避免用户立刻重试同名导入时遇到尚未删除的旧目录。
         let target = resolution.target.clone();

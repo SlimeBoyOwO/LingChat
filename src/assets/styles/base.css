@@ -156,6 +156,22 @@ textarea {
   color: #fff;
 }
 
+/* 图标按钮基类：设置页里反复出现的 34×34 方形图标按钮（删除/刷新/试听）。
+   这些按钮此前是逐个手抄一长串 utility 的，抄出过 cyan/red 抢同一属性的死代码，
+   故收敛到此处，hover 意图拆成 danger/primary 两个修饰类。放进 @layer components，
+   调用点的工具类（如 ml-auto）仍可覆盖。 */
+@layer components {
+  .btn-icon {
+    @apply inline-flex h-8.5 w-8.5 items-center justify-center gap-1.75 rounded-md border border-white/15 bg-white/5 text-white/80 transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .btn-icon-danger {
+    @apply enabled:hover:border-red-400/50 enabled:hover:bg-red-400/10 enabled:hover:text-red-300;
+  }
+  .btn-icon-primary {
+    @apply enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50;
+  }
+}
+
 /* ─── Markdown 渲染（剧本导师聊天） ─────────────────────
    配套 MarkdownText.vue；深色主题下的完整排版，作用于 v-html 内容。 */
 .markdown-body {

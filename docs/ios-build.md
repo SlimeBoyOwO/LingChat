@@ -3,6 +3,21 @@
 > 本文档描述 LingChat 的 iOS 支持现状与打包流程。
 > **iOS 构建只能在 macOS 上执行**（`tauri ios` 子命令仅存在于 macOS 版 tauri-cli）。
 
+## ⚠️ 构建前必读：把 `staticlib` 加回 crate-type
+
+`src-tauri/Cargo.toml` 的 `[lib] crate-type` 默认是 `["cdylib", "rlib"]`，
+**不含 iOS 需要的 `staticlib`**。原因是桌面端每次增量构建都会重新归档一个
+约 1.4 GB 的 `ling_chat_lib.lib`，而桌面开发完全用不到它（见该文件内的注释）。
+
+Xcode 链接的是静态库 `libling_chat_lib.a`，所以 **iOS 构建前必须临时改回**：
+
+```toml
+crate-type = ["staticlib", "cdylib", "rlib"]
+```
+
+改回后按下方流程正常构建；桌面开发时再改回 `["cdylib", "rlib"]`。
+忘了这一步的表现是链接期报找不到 `libling_chat_lib.a`，而不是静默出错。
+
 ## 现状
 
 - 后端（Rust）已支持 iOS：数据播种走 `data.7z`（与 Android 同一机制，见

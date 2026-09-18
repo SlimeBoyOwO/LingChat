@@ -4,19 +4,26 @@
 //! 设计参考 Python 原版 `ling_chat_python/core/pic_analyzer.py` 的 DesktopAnalyzer。
 
 use reqwest::Client;
-use serde_json::Value;
 use std::time::Instant;
 use tauri::AppHandle;
 
-use crate::ai_service::llm::provider_config::{LlmProviderConfig, resolve_vision_provider};
+use crate::ai_service::llm::provider_config::resolve_vision_provider;
+use crate::ai_service::llm::vision::{self, VisionTarget};
 
-/// 构造预配置的 reqwest Client（TLS 见 crate::utils::tls::build_tls_config）。
-fn build_vlm_client() -> Client {
-    let tls_config = crate::utils::tls::build_tls_config().expect("TLS 配置失败");
-    Client::builder()
-        .tls_backend_preconfigured(tls_config)
-        .build()
-        .expect("reqwest client 构建失败")
+/// 截屏分析的输出上限（token）。
+const VISION_MAX_TOKENS: u32 = 512;
+/// 视觉请求的 HTTP 读超时。
+const ANALYZER_HTTP_TIMEOUT_SECS: u64 = 120;
+
+/// 构造预配置的 reqwest Client（统一走 factory，复用 webpki-roots TLS 配置）。
+fn build_analyzer_client() -> Client {
+    match crate::ai_service::llm::factory::build_http_client(ANALYZER_HTTP_TIMEOUT_SECS) {
+        Ok(client) => client,
+        Err(e) => {
+            tracing::error!("[ScreenAnalyzer] 构建 HTTP 客户端失败: {e}");
+            Client::new()
+        },
+    }
 }
 
 /// 屏幕分析器的配置（从环境/Store 加载）。
@@ -25,6 +32,8 @@ pub struct ScreenAnalyzerConfig {
     pub vd_api_key: String,
     pub vd_base_url: String,
     pub vd_model: String,
+    /// 图片超过端点大小限制时是否自动压缩（全局开关 `llm.auto_compress_image`，默认 true）。
+    pub auto_compress_oversize: bool,
 }
 
 impl Default for ScreenAnalyzerConfig {
@@ -34,6 +43,7 @@ impl Default for ScreenAnalyzerConfig {
             vd_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string(),
             // model 为空表示未配置任何视觉 provider，分析会被跳过
             vd_model: String::new(),
+            auto_compress_oversize: true,
         }
     }
 }
@@ -60,35 +70,12 @@ impl ScreenAnalyzerConfig {
 
         Self {
             vd_api_key: provider.api_key.clone(),
-            vd_base_url: vision_base_url(&provider),
+            vd_base_url: vision::vision_base_url(&provider),
             vd_model: provider.model.clone(),
+            auto_compress_oversize: crate::config::app_config::AppConfig::load(app)
+                .map(|c| c.auto_compress_image)
+                .unwrap_or(true),
         }
-    }
-}
-
-/// 将 provider 的 base_url 适配为视觉分析使用的 OpenAI 兼容端点前缀
-/// （请求时拼接 `{base}/chat/completions`）。
-/// Kimi Code 的聊天入口是 Anthropic 兼容协议，视觉请求需要改用
-/// 官方提供的 OpenAI 兼容入口。
-fn vision_base_url(provider: &LlmProviderConfig) -> String {
-    let base = provider.base_url.trim().trim_end_matches('/');
-    match provider.provider.as_str() {
-        "kimicode" => {
-            if base.is_empty() {
-                "https://api.kimi.com/coding/v1".to_string()
-            } else if base.ends_with("/v1/messages") {
-                base.trim_end_matches("/messages").to_string()
-            } else if base.ends_with("/v1/chat/completions") {
-                base.trim_end_matches("/chat/completions").to_string()
-            } else if base.ends_with("/v1") {
-                base.to_string()
-            } else {
-                format!("{base}/v1")
-            }
-        },
-        "openai" if base.is_empty() => "https://api.openai.com/v1".to_string(),
-        "deepseek" if base.is_empty() => "https://api.deepseek.com".to_string(),
-        _ => base.to_string(),
     }
 }
 
@@ -110,7 +97,7 @@ impl ScreenAnalyzer {
     pub fn new(config: ScreenAnalyzerConfig) -> Self {
         Self {
             config,
-            client: build_vlm_client(),
+            client: build_analyzer_client(),
             last_report: AnalysisReport::default(),
         }
     }
@@ -136,9 +123,7 @@ impl ScreenAnalyzer {
         }
 
         let jpeg_bytes = capture_screen_as_jpeg()?;
-
-        let (base64, mime) = encode_image_base64(&jpeg_bytes, "jpeg");
-        self.call_vlm(prompt, &base64, &mime).await
+        self.run_vision(prompt, &jpeg_bytes, "image/jpeg").await
     }
 
     /// 分析任意图片字节（支持 JPEG / PNG / WebP 等格式）。
@@ -151,8 +136,7 @@ impl ScreenAnalyzer {
             return None;
         }
 
-        let (base64, mime) = encode_image_base64(image_bytes, "png");
-        self.call_vlm(prompt, &base64, &mime).await
+        self.run_vision(prompt, image_bytes, "image/png").await
     }
 
     /// 分析本地图片文件路径。
@@ -167,109 +151,144 @@ impl ScreenAnalyzer {
         let bytes = std::fs::read(image_path).ok()?;
 
         // 根据扩展名推断 MIME
-        let mime_type = if image_path.ends_with(".png") {
-            "png"
+        let mime = if image_path.ends_with(".png") {
+            "image/png"
         } else if image_path.ends_with(".webp") {
-            "webp"
+            "image/webp"
         } else {
-            "jpeg"
+            "image/jpeg"
         };
 
-        let (base64, mime) = encode_image_base64(&bytes, mime_type);
-        self.call_vlm(prompt, &base64, &mime).await
+        self.run_vision(prompt, &bytes, mime).await
     }
 
-    /// 调用视觉语言模型 API。
-    async fn call_vlm(
-        &mut self,
-        prompt: &str,
-        base64_image: &str,
-        mime_type: &str,
-    ) -> Option<String> {
-        let image_url = format!("data:image/{};base64,{}", mime_type, base64_image);
-        let model = &self.config.vd_model;
-
-        let payload = serde_json::json!({
-            "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": image_url}}
-                    ]
-                }
-            ],
-            "max_tokens": 512
-        });
+    /// 调用视觉模型识别一张图片，记录耗时与用量后返回文本描述。
+    async fn run_vision(&mut self, prompt: &str, image_bytes: &[u8], mime: &str) -> Option<String> {
+        // reqwest::Client 内部为 Arc，克隆廉价；避免跨 await 借用 self.client。
+        let client = self.client.clone();
+        let target = VisionTarget {
+            api_key: self.config.vd_api_key.clone(),
+            base_url: self.config.vd_base_url.clone(),
+            model: self.config.vd_model.clone(),
+        };
 
         tracing::info!(
             "[ScreenAnalyzer] Sending image to VLM ({}) for analysis...",
-            model
+            target.model
         );
-
         let start = Instant::now();
-
-        let api_key = &self.config.vd_api_key;
-        let endpoint = format!("{}/chat/completions", self.config.vd_base_url);
-
-        let res = self
-            .client
-            .post(&endpoint)
-            .bearer_auth(api_key)
-            .json(&payload)
-            .send()
-            .await;
-
+        let result = vision::analyze_image(
+            &client,
+            &target,
+            prompt,
+            image_bytes,
+            mime,
+            VISION_MAX_TOKENS,
+            self.config.auto_compress_oversize,
+        )
+        .await;
         let elapsed = start.elapsed().as_secs_f64();
 
-        match res {
-            Ok(response) => {
-                if response.status().is_success() {
-                    if let Ok(json_res) = response.json::<Value>().await {
-                        let content = json_res["choices"][0]["message"]["content"]
-                            .as_str()
-                            .map(|s| s.to_string());
-
-                        let usage = &json_res["usage"];
-                        self.last_report = AnalysisReport {
-                            response_time_secs: elapsed,
-                            input_tokens: usage["prompt_tokens"].as_u64().map(|n| n as u32),
-                            output_tokens: usage["completion_tokens"].as_u64().map(|n| n as u32),
-                        };
-
-                        if let Some(ref c) = content {
-                            tracing::info!("[ScreenAnalyzer] Analysis success: {}", c);
-                        }
-
-                        return content;
-                    }
-                } else {
-                    let err_text = response.text().await.unwrap_or_default();
-                    tracing::error!(
-                        "[ScreenAnalyzer] VLM API returned error status: {}",
-                        err_text
-                    );
-                }
+        match result {
+            Ok(result) => {
+                self.last_report = AnalysisReport {
+                    response_time_secs: elapsed,
+                    input_tokens: result.input_tokens,
+                    output_tokens: result.output_tokens,
+                };
+                tracing::info!("[ScreenAnalyzer] Analysis success: {}", result.text);
+                Some(result.text)
             },
             Err(e) => {
-                tracing::error!("[ScreenAnalyzer] Failed to send request to VLM: {:?}", e);
+                self.last_report = AnalysisReport {
+                    response_time_secs: elapsed,
+                    ..Default::default()
+                };
+                tracing::error!("[ScreenAnalyzer] VLM analysis failed: {e}");
+                None
             },
         }
-
-        self.last_report = AnalysisReport {
-            response_time_secs: elapsed,
-            ..Default::default()
-        };
-
-        None
     }
 }
 
-/// 将图片字节编码为 Base64，返回 (base64_string, mime_type)。
-fn encode_image_base64(bytes: &[u8], mime_type: &str) -> (String, String) {
-    let b64 = base64::Engine::encode(&base64::prelude::BASE64_STANDARD, bytes);
-    (b64, mime_type.to_string())
+/// 原生识图发送给对话模型的图片处理参数。
+/// 默认**不压缩、原图直发**；`enabled` 为 true 时才做缩放 + JPEG 压缩。
+#[derive(Clone, Copy, Debug)]
+pub struct NativeImageCompress {
+    /// 是否开启压缩。false = 原图直发（保留原始格式与分辨率）。
+    pub enabled: bool,
+    /// 压缩时图片最大边长（像素），超宽图等比缩放。
+    pub max_edge: u32,
+    /// 压缩时 JPEG 编码质量（0-100）。
+    pub jpeg_quality: u8,
+}
+
+impl Default for NativeImageCompress {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_edge: 2048,
+            jpeg_quality: 85,
+        }
+    }
+}
+
+/// 把任意图片字节转换为适合原生多模态识图的 `data:image/...;base64,...` data URL。
+///
+/// - 无法识别格式 / 尺寸非法返回 `None`（调用方自然回退到旁白转述）。
+/// - `compress.enabled == false` 时**原图直发**：不解码重编码，仅识别格式并按原始字节
+///   编码 base64，保留原分辨率与清晰度（用户默认偏好）。但图片超出端点硬限制
+///   （`utils::image` 的 32 MiB / 8192px）且 `auto_compress` 开启时，仍强制压缩，避免
+///   整条请求被服务端拒绝。`auto_compress`（全局开关 `llm.auto_compress_image`）关闭时
+///   跳过该超限检查，超限图片按原样直发。
+/// - `compress.enabled == true` 时统一转 JPEG、等比缩放到 `max_edge`（钳制到端点上限）、
+///   透明通道压白底：既减小 base64 体积，也规避 WebP/PNG 在部分 OpenAI 兼容端点的兼容问题。
+/// - **仅用于当轮请求**，不写入长期记忆（配合 `GeneratorDeps::transient_image`）。
+pub fn image_bytes_to_native_data_url(
+    image_bytes: &[u8],
+    compress: NativeImageCompress,
+    auto_compress: bool,
+) -> Option<String> {
+    use crate::utils::image::{MAX_INLINE_IMAGE_BYTES, MAX_INLINE_IMAGE_EDGE};
+
+    // 一次头部探测同时拿到格式与尺寸：格式供原图直发推断 MIME，尺寸判断是否超限。
+    let reader = image::ImageReader::new(std::io::Cursor::new(image_bytes))
+        .with_guessed_format()
+        .ok()?;
+    let detected_format = reader.format();
+    let (w, h) = reader.into_dimensions().ok()?;
+    if w == 0 || h == 0 {
+        return None;
+    }
+    // 超限检查仅在 `auto_compress` 开启时生效；关闭时按原样直发。
+    let oversize = auto_compress
+        && (image_bytes.len() > MAX_INLINE_IMAGE_BYTES || w.max(h) > MAX_INLINE_IMAGE_EDGE);
+
+    // ─── 原图直发：未开压缩且未超端点限制时，保留原始格式与字节 ───
+    if !compress.enabled && !oversize {
+        // 根据识别出的真实格式推断 MIME；未知格式统一按 png 兜底。
+        let mime = match detected_format {
+            Some(image::ImageFormat::Jpeg) => "jpeg",
+            Some(image::ImageFormat::WebP) => "webp",
+            Some(_) | None => "png",
+        };
+        let b64 = base64::Engine::encode(&base64::prelude::BASE64_STANDARD, image_bytes);
+        return Some(format!("data:image/{mime};base64,{b64}"));
+    }
+    if oversize && !compress.enabled {
+        tracing::info!(
+            "[Vision] 原图超出端点限制（{w}x{h}、{} 字节），强制压缩后直发对话模型。",
+            image_bytes.len()
+        );
+    }
+
+    // ─── 压缩路径：等比缩放到 max_edge（钳制到端点上限）、转 JPEG、透明压白 ───
+    let target_edge = compress.max_edge.min(MAX_INLINE_IMAGE_EDGE);
+    let bytes =
+        crate::utils::image::recompress_jpeg(image_bytes, target_edge, compress.jpeg_quality)
+            .ok()?;
+    let b64 = base64::Engine::encode(&base64::prelude::BASE64_STANDARD, &bytes);
+    Some(format!("data:image/jpeg;base64,{b64}"))
 }
 
 /// 捕获整个桌面并返回 JPEG 格式的字节。

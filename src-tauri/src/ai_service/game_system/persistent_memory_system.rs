@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use anyhow::Result;
+use serde::Serialize;
 
 use tokio::sync::Mutex;
 
@@ -110,6 +111,34 @@ fn truncate_to_chars(s: &str, max_chars: usize) -> String {
         return s.to_string();
     }
     s.chars().take(max_chars).collect()
+}
+
+/// 注入给 LLM 的 system 记忆块（仅 user_info / promises / long_term 三段，
+/// `short_term` 走 [`render_short_term_text`] 的 user 前缀路径）。
+///
+/// 与 [`PersistentMemorySystem::get_system_memory_text`] 同源：抽成纯函数是为了让
+/// 调试快照能在**同一把锁**里拿到"存储"与"注入"两个视图，避免撕裂值。
+fn render_system_memory_text(bank: &GameMemoryBank, limits: MemorySectionLimits) -> String {
+    format!(
+        "\n\n====== 记忆库 (Memory Bank) ======\n\
+         【taの信息】：{}\n\
+         【重要约定】：{}\n\
+         【长期经历】：{}\n\
+         =================================\n",
+        truncate_to_chars(&bank.data.user_info, limits.user_info),
+        truncate_to_chars(&bank.data.promises, limits.promises),
+        truncate_to_chars(&bank.data.long_term, limits.long_term),
+    )
+}
+
+/// 注入给 LLM 的短期回顾前缀；为空或仍是占位符时返回空串（= 完全不注入）。
+fn render_short_term_text(bank: &GameMemoryBank, limits: MemorySectionLimits) -> String {
+    let short = truncate_to_chars(bank.data.short_term.trim(), limits.short_term);
+    if short.is_empty() || short == "暂无近期对话摘要。" {
+        String::new()
+    } else {
+        format!("【近期回顾】{}\n\n", short)
+    }
 }
 
 // ── 结构体 ──
@@ -258,11 +287,6 @@ impl PersistentMemorySystem {
         self.history_revision.fetch_add(1, Ordering::AcqRel);
     }
 
-    #[cfg(test)]
-    pub(crate) fn history_revision_for_test(&self) -> u64 {
-        self.history_revision.load(Ordering::Acquire)
-    }
-
     /// 返回给调用方用于裁剪 line_list 的起点索引。
     ///
     /// `recent_window` 的单位与触发阈值一致，都是“该角色可见、非 system 的台词”，
@@ -298,29 +322,14 @@ impl PersistentMemorySystem {
     /// 各段按 `section_limits` 截断后注入（存储不截断，仅运行时视图截断）。
     pub async fn get_system_memory_text(&self) -> String {
         let bank = self.memory_bank.lock().await;
-        let limits = self.section_limits;
-        format!(
-            "\n\n====== 记忆库 (Memory Bank) ======\n\
-             【taの信息】：{}\n\
-             【重要约定】：{}\n\
-             【长期经历】：{}\n\
-             =================================\n",
-            truncate_to_chars(&bank.data.user_info, limits.user_info),
-            truncate_to_chars(&bank.data.promises, limits.promises),
-            truncate_to_chars(&bank.data.long_term, limits.long_term),
-        )
+        render_system_memory_text(&bank, self.section_limits)
     }
 
     /// 短期回顾文本（适合作为 user 消息前缀）。
     /// 按 `section_limits.short_term` 截断后注入。
     pub async fn get_short_term_user_text(&self) -> String {
         let bank = self.memory_bank.lock().await;
-        let short = truncate_to_chars(bank.data.short_term.trim(), self.section_limits.short_term);
-        if short.is_empty() || short == "暂无近期对话摘要。" {
-            String::new()
-        } else {
-            format!("【近期回顾】{}\n\n", short)
-        }
+        render_short_term_text(&bank, self.section_limits)
     }
 
     // ── 同步写回 ──
@@ -665,6 +674,135 @@ impl PersistentMemorySystem {
             (format!("{}\n", chat_text), visible_count)
         } else {
             (chat_text, visible_count)
+        }
+    }
+}
+
+// ── 调试快照（只读）──
+
+/// 单个记忆段的「存储字符数 / 注入上限」对照，用于解释注入时被截断了多少。
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemorySectionStat {
+    /// `short_term` / `long_term` / `user_info` / `promises`。
+    pub key: &'static str,
+    /// 存储真源里的字符数（`GameMemoryBank` 不截断）。
+    pub stored_chars: usize,
+    /// 该段的注入上限；`0` = 不截断。
+    pub limit: usize,
+    /// 注入时是否会被截断（`limit != 0 && stored_chars > limit`）。
+    pub truncated: bool,
+}
+
+/// 永久记忆运行时的只读快照，供前端调试页展示。
+///
+/// **这里是纯读路径**：不写回 bank、不置 `has_pending`、不触发压缩。
+/// 特别地，指针越界时只回报 `pointer_out_of_range`，**不顺手重置**——
+/// 重置是 `check_and_trigger_auto_update` 的写路径，它会经 `sync_to_role()`
+/// 传染到 `GameRole.memory_bank`，并最终由 `persist_memory_banks_to_db()`
+/// 落库；只读入口绝不能触发持久化写入。
+/// （计数口径与阈值判定一致：见 `check_and_trigger_auto_update` 里的
+/// `all_lines[last_idx..current_total]`。）
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemorySystemSnapshot {
+    /// 运行时真源，**不是** `GameRole.memory_bank` 那个滞后副本
+    /// （副本只在 `sync_to_role()` 且 `has_pending == true` 时更新）。
+    pub bank: GameMemoryBank,
+    pub sections: Vec<MemorySectionStat>,
+    /// LLM 实际收到的 system 记忆块（已按上限截断；注意 `short_term` **不在**这一块里）。
+    pub injected_system_text: String,
+    /// LLM 实际收到的短期回顾前缀；空串表示完全不注入（为空或仍是占位符）。
+    pub injected_short_term_text: String,
+    pub enabled: bool,
+    /// 构造时烘焙的角色名；压缩提示词里用的是它，角色改名后不会更新。
+    pub ai_name: String,
+    /// 以下是**运行时生效值**（构造时定死，改配置需重启）。
+    pub update_interval: usize,
+    pub recent_window: usize,
+    /// bank 里记录的原始指针（未做钳制）。
+    pub pointer_raw: i64,
+    /// 实际用于计数/切片的指针（钳制到 `[0, line_count]`）。
+    pub pointer_effective: usize,
+    /// 指针越界（撤回/读档/清空后历史变短）——下次触发时会被重置为 0。
+    pub pointer_out_of_range: bool,
+    /// 指针之后、该角色可见的非 system 台词数（= 触发进度）。
+    pub accumulated_visible_count: usize,
+    /// 当前台词历史总行数（用于解释指针）。
+    pub line_count: usize,
+    pub is_updating: bool,
+    /// 有未同步的后台结果。注意它**不等于**"压缩刚完成"：
+    /// 指针越界修正与空区间推进也会置位。
+    pub has_pending: bool,
+    pub fail_count: u32,
+    pub history_revision: u64,
+    /// 失败冷却剩余毫秒；`0` = 不在冷却中。
+    pub cooldown_remaining_ms: u64,
+}
+
+impl PersistentMemorySystem {
+    /// 取一份只读快照。
+    ///
+    /// 内部**只锁一次** bank：分成两次取值会产生"指针是 A 时刻、计数是 B 时刻"
+    /// 的撕裂结果，对调试页是致命的。
+    pub async fn debug_snapshot(&self, all_lines: &[GameLine]) -> MemorySystemSnapshot {
+        let bank = self.memory_bank.lock().await.clone();
+
+        let pointer_raw = bank.meta.last_processed_global_idx;
+        let pointer_out_of_range = pointer_raw < 0 || pointer_raw as usize > all_lines.len();
+        let pointer_effective = pointer_raw.clamp(0, all_lines.len() as i64) as usize;
+        let accumulated_visible_count = all_lines[pointer_effective..]
+            .iter()
+            .filter(|line| line_visible_to_role(line, self.role_id))
+            .count();
+
+        let limits = self.section_limits;
+        let sections = [
+            ("short_term", &bank.data.short_term, limits.short_term),
+            ("long_term", &bank.data.long_term, limits.long_term),
+            ("user_info", &bank.data.user_info, limits.user_info),
+            ("promises", &bank.data.promises, limits.promises),
+        ]
+        .into_iter()
+        .map(|(key, text, limit)| {
+            let stored_chars = text.chars().count();
+            MemorySectionStat {
+                key,
+                stored_chars,
+                limit,
+                truncated: limit != 0 && stored_chars > limit,
+            }
+        })
+        .collect();
+
+        let last_fail = self.last_failure_at_ms.load(Ordering::Acquire);
+        let cooldown_remaining_ms = if last_fail == 0 {
+            0
+        } else {
+            last_fail
+                .saturating_add(RETRY_COOLDOWN_MS)
+                .saturating_sub(current_time_ms())
+        };
+
+        MemorySystemSnapshot {
+            injected_system_text: render_system_memory_text(&bank, limits),
+            injected_short_term_text: render_short_term_text(&bank, limits),
+            bank,
+            sections,
+            enabled: self.enabled,
+            ai_name: self.ai_name.clone(),
+            update_interval: self.update_interval,
+            recent_window: self.recent_window,
+            pointer_raw,
+            pointer_effective,
+            pointer_out_of_range,
+            accumulated_visible_count,
+            line_count: all_lines.len(),
+            is_updating: self.is_updating.load(Ordering::Acquire),
+            has_pending: self.has_pending.load(Ordering::Acquire),
+            fail_count: self.fail_count.load(Ordering::Acquire),
+            history_revision: self.history_revision.load(Ordering::Acquire),
+            cooldown_remaining_ms,
         }
     }
 }

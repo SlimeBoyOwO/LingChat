@@ -22,7 +22,7 @@ export const RUNTIME_IDLE_GROUP = "__LingChatConfiguredIdle";
 
 export function configureRuntimeIdle(
   source: Live2dModelSource,
-  idle: Live2dMotionBinding | null | undefined
+  idle: Live2dMotionBinding | null | undefined,
 ): Live2dMotionBinding | null {
   if (!idle) return null;
   const motions = source.FileReferences?.Motions;
@@ -64,7 +64,7 @@ export function resolveModelReference(modelFile: string, reference: string): str
 export async function rewriteModelReferences(
   source: Live2dModelSource,
   modelFile: string,
-  resolveFileUrl: (roleRelativePath: string) => Promise<string>
+  resolveFileUrl: (roleRelativePath: string) => Promise<string>,
 ): Promise<Live2dModelSource> {
   const references = source.FileReferences;
   if (!references) throw new Error("Live2D model3 is missing FileReferences");
@@ -79,7 +79,7 @@ export async function rewriteModelReferences(
       rewrites.push(
         rewrite(reference).then((url) => {
           references[key] = url;
-        })
+        }),
       );
     }
   }
@@ -88,7 +88,7 @@ export async function rewriteModelReferences(
     rewrites.push(
       rewrite(reference).then((url) => {
         references.Textures![index] = url;
-      })
+      }),
     );
   });
 
@@ -97,7 +97,7 @@ export async function rewriteModelReferences(
       rewrites.push(
         rewrite(expression.File).then((url) => {
           expression.File = url;
-        })
+        }),
       );
     }
   });
@@ -108,14 +108,14 @@ export async function rewriteModelReferences(
         rewrites.push(
           rewrite(motion.File).then((url) => {
             motion.File = url;
-          })
+          }),
         );
       }
       if (typeof motion.Sound === "string" && motion.Sound.length > 0) {
         rewrites.push(
           rewrite(motion.Sound).then((url) => {
             motion.Sound = url;
-          })
+          }),
         );
       }
     }

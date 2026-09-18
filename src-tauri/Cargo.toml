@@ -13,7 +13,11 @@ edition = "2021"
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "ling_chat_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# staticlib 只有 iOS 需要（Xcode 链接 libling_chat_lib.a），cdylib 供 Android，
+# rlib 供桌面端与 bin 自身。桌面开发只用到 rlib，但 staticlib 会让每次增量构建
+# 都重新归档一个 ~1.4 GB 的 .lib（见 .cargo/config.toml 顶部的说明）。
+# 手动 iOS 构建（pnpm ios:build）前需要把 "staticlib" 加回列表首位，详见 docs/ios-build.md。
+crate-type = ["cdylib", "rlib"]
 
 [features]
 # 移动端（Android/iOS）构建时必须启用：让 webview 从应用内嵌资产加载前端
@@ -79,10 +83,13 @@ async-trait = "0.1"
 # 实时 ASR 用官方 /api-ws/v1/inference 端点（标准 GET 升级 + Bearer）；
 # rustls-tls-webpki-roots 与项目 reqwest 的 TLS 栈一致
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+# ort（ONNX Runtime）：Windows 用 load-dynamic 运行时加载，避免静态链接 pyke 预编译的
+# x86-64-v3（要求 AVX2/FMA）二进制——旧 CPU（如三代酷睿，无 AVX2）上启动会因非法指令崩溃。
+# 改为运行时从应用目录加载官方 onnxruntime.dll（SSE3 基线，兼容旧 CPU）。
+# 注意：load-dynamic 仅限 Windows（见下方 target 配置）；Linux/macOS 保持 download-binaries 静态链接，行为不变。
 ort = { version = "=2.0.0-rc.13", default-features = false, features = [
     "std",
     "ndarray",
-    "download-binaries",
 ] }
 ndarray = "0.17"
 
@@ -97,6 +104,7 @@ indoc = "2"
 image = { version = "0.25", default-features = false, features = [
     "png",
     "jpeg",
+    "webp",
 ] }
 infer = "0.19"
 sevenz-rust2 = "0.21"
@@ -133,6 +141,7 @@ tauri-plugin-process = "2"
 [target.'cfg(target_os = "windows")'.dependencies]
 ort = { version = "=2.0.0-rc.13", default-features = false, features = [
     "directml",
+    "load-dynamic",
 ] }
 sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
     "directml",
@@ -156,16 +165,22 @@ wgpu = "26"
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 ort = { version = "=2.0.0-rc.13", default-features = false, features = [
     "webgpu",
+    "download-binaries",
 ] }
 sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
     "webgpu",
 ] }
 ash = { version = "0.38", default-features = false, features = ["loaded"] }
 
+[target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
+# 与 x86_64 不同：aarch64 无 AVX2 问题，直接静态链接官方/预编译二进制即可
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["download-binaries"] }
+
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 ort = { version = "=2.0.0-rc.13", default-features = false, features = [
     "coreml",
+    "download-binaries",
 ] }
 sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
     "coreml",
@@ -179,3 +194,15 @@ sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", defau
 [patch.crates-io]
 esaxx-rs = { path = "patches/esaxx-rs" }
 jpreprocess-naist-jdic = { git = "https://gh-proxy.org/github.com/shadow01a/jpreprocess", branch = "main" }
+
+# ── 增量编译速度 ──────────────────────────────────────────────
+# 依赖不生成调试符号。dev 下单个 proc-macro 的 PDB 就有 34 MB（tauri_macros），
+# 而 proc-macro 每次指纹变化都要重编一次；普通依赖同样在往磁盘写大量 PDB。
+# 依赖里没有需要单步调试的代码，关掉是纯收益。
+# 放在 manifest 而不是 .cargo/config.toml：package 覆盖只支持 manifest，
+# 且 manifest 的 profile 不受 cwd 影响（config 有两份副本，容易改漏一份）。
+[profile.dev.build-override]
+debug = false
+
+[profile.dev.package."*"]
+debug = false

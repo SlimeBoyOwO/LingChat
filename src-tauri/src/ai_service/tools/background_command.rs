@@ -5,6 +5,8 @@
 //! 且不会向对话历史里伪造玩家发言。
 #![cfg_attr(not(desktop), allow(dead_code))]
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -20,6 +22,7 @@ use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
 };
 use crate::ai_service::skill_agent::command_executor::{self, CommandOutput};
+use crate::ai_service::types::GameLine;
 use crate::config::AppConfig;
 
 use super::executor::{ToolError, ToolResult};
@@ -65,6 +68,45 @@ impl BackgroundCommandManager {
     }
 }
 
+/// 对话尾部标记：后台命令启动时捕获，完成时据此校验「当前对话是否还是启动那一场」。
+///
+/// 只追加（push）的正常对话增长不影响校验；读档、清屏、试玩还原会整体替换或
+/// 截断台词列表，尾部对不上即视为已切换。不能用 `active_save_id` 判断——自动存档
+/// 懒创建槽位时会把它从 None 翻到 Some(id)，对话本身却没变，此前因此把正常通知
+/// 误判为「上下文已切换」而丢弃（长命令几乎必然撞上自动存档 tick）。
+#[derive(Clone)]
+struct ConversationTail {
+    line_count: usize,
+    tail_hash: u64,
+}
+
+impl ConversationTail {
+    fn hash_line(line: &GameLine) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        line.base.content.hash(&mut hasher);
+        line.base.sender_role_id.hash(&mut hasher);
+        line.base.attribute.as_str().hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn capture(lines: &[GameLine]) -> Option<Self> {
+        let tail_hash = Self::hash_line(lines.last()?);
+        Some(Self {
+            line_count: lines.len(),
+            tail_hash,
+        })
+    }
+
+    fn is_same_conversation(&self, lines: &[GameLine]) -> bool {
+        if lines.len() < self.line_count {
+            return false;
+        }
+        lines
+            .get(self.line_count - 1)
+            .is_some_and(|line| Self::hash_line(line) == self.tail_hash)
+    }
+}
+
 /// 启动一个分离的命令，不等待完成，直接返回其任务元数据。
 pub async fn start_background_command(
     app: AppHandle,
@@ -80,9 +122,12 @@ pub async fn start_background_command(
         let service = state.ai_service.lock().await;
         service.game_status.clone()
     };
-    let (expected_generation, expected_save_id) = {
+    let (expected_generation, conversation) = {
         let status = game_status.lock().await;
-        (status.preview_generation, status.active_save_id)
+        (
+            status.preview_generation,
+            ConversationTail::capture(&status.line_list),
+        )
     };
 
     let activity_arguments = json!({
@@ -138,8 +183,7 @@ pub async fn start_background_command(
         drop(permit);
 
         let notification = model_notification(&command, &cwd, &completion);
-        if let Err(error) =
-            notify_model(app, notification, expected_generation, expected_save_id).await
+        if let Err(error) = notify_model(app, notification, expected_generation, conversation).await
         {
             tracing::warn!(
                 task_id = spawned_task_id,
@@ -218,7 +262,7 @@ async fn notify_model(
     app: AppHandle,
     notification: String,
     expected_generation: u64,
-    expected_save_id: Option<i32>,
+    conversation: Option<ConversationTail>,
 ) -> anyhow::Result<()> {
     let generation_lock = app.state::<AppState>().generation_lock.clone();
     let _generation_guard = generation_lock.lock().await;
@@ -231,12 +275,19 @@ async fn notify_model(
         let service = state.ai_service.lock().await;
         service.game_status.clone()
     };
-    let (current_generation, current_save_id) = {
+    let (current_generation, same_conversation) = {
         let status = game_status.lock().await;
-        (status.preview_generation, status.active_save_id)
+        let same = match &conversation {
+            None => true,
+            Some(tail) => tail.is_same_conversation(&status.line_list),
+        };
+        (status.preview_generation, same)
     };
-    if current_generation != expected_generation || current_save_id != expected_save_id {
-        anyhow::bail!("对话上下文已切换，跳过过期后台通知");
+    if current_generation != expected_generation {
+        anyhow::bail!("试玩会话已切换，跳过过期后台通知");
+    }
+    if !same_conversation {
+        anyhow::bail!("对话内容已切换（读档/清屏），跳过过期后台通知");
     }
     let concurrency = AppConfig::load(&app)
         .map(|config| config.consumers as usize)
@@ -256,6 +307,7 @@ async fn notify_model(
         suppress_thinking: false,
         generation: expected_generation,
         is_preview: false,
+        transient_image: None,
     });
     generator.process_notification(notification).await?;
     Ok(())

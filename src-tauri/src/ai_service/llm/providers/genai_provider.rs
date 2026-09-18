@@ -9,8 +9,9 @@ use genai::Client as GenaiClient;
 use genai::ServiceTarget;
 use genai::adapter::AdapterKind;
 use genai::chat::{
-    ChatMessage, ChatOptions, ChatRequest, ChatResponse, ChatStreamEvent, StopReason,
-    ToolCall as GenaiToolCall, ToolChoice, ToolResponse,
+    ChatMessage, ChatOptions, ChatRequest, ChatResponse, ChatStreamEvent, ContentPart,
+    MessageContent, ReasoningEffort, StopReason, ToolCall as GenaiToolCall, ToolChoice,
+    ToolResponse,
 };
 use genai::resolver::{AuthData, Endpoint};
 use reqwest::Client;
@@ -20,16 +21,17 @@ use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig, LlmUsage};
 use crate::ai_service::types::{LlmMessage, ToolDefinition};
 
 // ─── Provider ────────────────────────────────────────────────────
-// 钦灵：为了修复 DeepSeek 问题，我在这里预留了两个字段，以备将来使用。
+// 钦灵：为了修复 DeepSeek 问题，我在这里预留了字段，以备将来使用。
+// （provider 现用于 #787 的剥名规避门控；reasoning_effort 为思考等级，仅开启思考时下发）
 
 pub struct GenaiProvider {
     client: GenaiClient,
     model: String,
-    _provider: String,
+    provider: String,
     temperature: Option<f64>,
     top_p: Option<f64>,
     enable_thinking: bool,
-    _reasoning_effort: Option<String>,
+    reasoning_effort: Option<String>,
     /// 是否 MiniMax 兼容接口（base_url 或模型名含 minimax）。
     /// MiniMax 的 OpenAI 兼容 API 只接受 thinking.type = "adaptive" / "disabled"，
     /// 传 "enabled" 会直接 400 报错（invalid thinking.type），需单独映射。
@@ -43,12 +45,28 @@ pub struct GenaiProvider {
 /// `v1` 会被当作"文件"替换掉，拼出 `https://api.deepseek.com/chat/completions` → 404。
 ///
 /// 修复：在传给 genai 前补上尾斜杠（`https://api.deepseek.com/v1/`）。
-fn normalize_base_url(raw: &str) -> String {
+pub(crate) fn normalize_base_url(raw: &str) -> String {
     let trimmed = raw.trim().trim_end_matches('/');
     if trimmed.is_empty() {
         return raw.to_string();
     }
     format!("{trimmed}/")
+}
+
+/// 从 `data:image/<type>;base64,<data>` 的 data URL 前缀解析 MIME 类型，
+/// 供 genai 的 Binary content part 使用（`is_image()` 依赖 `image/` 前缀）。
+fn infer_image_mime(data_url: &str) -> String {
+    let lower = data_url.trim();
+    if let Some(rest) = lower.strip_prefix("data:") {
+        if let Some(semi) = rest.find(';') {
+            let mime = rest[..semi].to_string();
+            if !mime.is_empty() {
+                return mime;
+            }
+        }
+    }
+    // 兜底：无法解析时按通用 JPEG 处理（OpenAI 兼容端点通常忽略具体子类型）
+    "image/jpeg".to_string()
 }
 
 impl GenaiProvider {
@@ -115,11 +133,11 @@ impl GenaiProvider {
         Ok(Self {
             client: builder.build(),
             model,
-            _provider: cfg.provider.to_lowercase(),
+            provider: cfg.provider.to_lowercase(),
             temperature: cfg.temperature,
             top_p: cfg.top_p,
             enable_thinking: cfg.enable_thinking,
-            _reasoning_effort: cfg.reasoning_effort.clone(),
+            reasoning_effort: cfg.reasoning_effort.clone(),
             is_minimax: cfg.base_url.to_lowercase().contains("minimax")
                 || cfg.model.to_lowercase().contains("minimax"),
         })
@@ -174,7 +192,24 @@ impl GenaiProvider {
                 _ => {
                     let role = match msg.role.as_str() {
                         "assistant" => ChatMessage::assistant(&msg.content),
-                        _ => ChatMessage::user(&msg.content),
+                        _ => {
+                            // 原生多模态：当该用户消息携带图片时，把文本与图片拼成
+                            // 多 part 内容（OpenAI 兼容 image_url / Gemini inline_data）。
+                            if let Some(data_url) = msg.image_data_url.as_deref() {
+                                let mut content = MessageContent::from_parts(Vec::new());
+                                if !msg.content.is_empty() {
+                                    content.push(ContentPart::Text(msg.content.clone()));
+                                }
+                                content.push(ContentPart::from_binary_url(
+                                    infer_image_mime(data_url),
+                                    data_url.to_string(),
+                                    None,
+                                ));
+                                ChatMessage::user(content)
+                            } else {
+                                ChatMessage::user(&msg.content)
+                            }
+                        },
                     };
                     genai_messages.push(role);
                 },
@@ -205,6 +240,33 @@ impl GenaiProvider {
         }
         if let Some(p) = self.top_p {
             opts = opts.with_top_p(p);
+        }
+
+        // 用户配置的思考等级（low/medium/high/xhigh/max）：仅开启思考模式时生效。
+        // MiniMax 兼容接口不支持调档（thinking.type 只认 adaptive/disabled），不下发。
+        // 显式设置 effort 还会让 OpenAI 系 adapter 保留完整模型名，天然规避 #787 的剥名。
+        let user_effort = if self.enable_thinking && !self.is_minimax {
+            self.reasoning_effort
+                .as_deref()
+                .and_then(ReasoningEffort::from_keyword)
+        } else {
+            None
+        };
+
+        // issue #787：genai 的 OpenAI 系 adapter（openai/lmstudio/deepseek 共用剥名逻辑）
+        // 在未显式设置 reasoning_effort 时，会用 ReasoningEffort::from_model_name 从模型名
+        // 尾部剥掉 effort 关键字（如 gemini-3.8-flash-high → gemini-3.8-flash 并附带
+        // reasoning_effort=high），导致按完整名注册渠道的中转服务商报 model_not_found。
+        // 显式传入 Budget(_) 可让 adapter 保留完整模型名；而 insert_openai_reasoning_effort
+        // 对 Budget 变体提前返回，不会向请求体注入 reasoning_effort 字段——请求体与原样
+        // 透传完全一致。仅探测后缀是否命中关键字，不采用其推断值；Gemini 原生 adapter 的
+        // 后缀推断是有意设计，此处不介入。
+        if let Some(effort) = user_effort {
+            opts = opts.with_reasoning_effort(effort);
+        } else if matches!(self.provider.as_str(), "openai" | "lmstudio" | "deepseek")
+            && ReasoningEffort::from_model_name(&self.model).0.is_some()
+        {
+            opts = opts.with_reasoning_effort(ReasoningEffort::Budget(0));
         }
 
         // DeepSeek Reasoner 等模型在 thinking 字段缺失时默认启用思考，

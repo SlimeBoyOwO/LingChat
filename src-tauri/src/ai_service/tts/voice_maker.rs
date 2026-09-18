@@ -50,7 +50,6 @@ pub struct VoiceMaker {
     lang: String,
     /// 中文方言（仅 cosyvoice + lang=zh 时生效；空 = 普通话）
     voice_dialect: Option<String>,
-    character_path: Option<PathBuf>,
     temp_dir: PathBuf,
     audio_format: String,
     availability: TtsAvailability,
@@ -145,7 +144,6 @@ impl VoiceMaker {
             tts_type: String::new(),
             lang: "ja".into(),
             voice_dialect: None,
-            character_path: None,
             temp_dir,
             audio_format,
             availability: TtsAvailability::default(),
@@ -168,10 +166,6 @@ impl VoiceMaker {
     /// 设置中文方言（仅 cosyvoice + lang=zh 时生效；空 = 普通话）。
     pub fn set_voice_dialect(&mut self, dialect: Option<String>) {
         self.voice_dialect = dialect;
-    }
-
-    pub fn set_character_path(&mut self, path: Option<PathBuf>) {
-        self.character_path = path;
     }
 
     pub fn tts_type(&self) -> &str {
@@ -245,11 +239,14 @@ impl VoiceMaker {
                     .as_deref()
                     .and_then(|s| s.parse::<i32>().ok())
                 {
+                    // lang 必须与 segment_text_for_lang 选出的文本一致：zh 读原文，
+                    // 其余语言读日文译文（或跳过）——只有 zh 才需要传 zh。
+                    let lang = if self.lang == "zh" { "zh" } else { "ja" };
                     self.provider.sva = Some(Arc::new(VitsAdapter::new(
                         self.tts_config.simple_vits_api_url.clone(),
                         id,
                         self.audio_format.clone(),
-                        "ja".into(),
+                        lang.into(),
                     )));
                 }
             },
@@ -339,12 +336,9 @@ impl VoiceMaker {
                 )));
             },
             "gsv" if self.availability.gsv => {
-                let ref_audio_path = match (&self.character_path, &cfg.gsv_voice_filename) {
-                    (Some(base), Some(name_)) if !name_.is_empty() => {
-                        base.join("voice").join(name_).to_string_lossy().to_string()
-                    },
-                    _ => String::new(),
-                };
+                // 参考音频路径由 GPT-SoVITS 服务器按自身文件系统解析（可能是远程机器），
+                // 原样透传配置值，不做本地目录拼接。
+                let ref_audio_path = cfg.gsv_voice_filename.clone().unwrap_or_default();
                 let prompt_text = cfg.gsv_voice_text.clone().unwrap_or_default();
                 let prompt_lang = gsv_prompt_language(&prompt_text).to_string();
                 let voice_lang = match self.lang.as_str() {

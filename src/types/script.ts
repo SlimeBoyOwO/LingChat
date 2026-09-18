@@ -208,6 +208,15 @@ export interface ScriptPoemGameEvent extends ScriptEvent {
   glitchLoopStart: number;
 }
 
+/** 剧本阅读锚点 —— 引擎每执行一个事件前广播，队列播到它时玩家刚好读完之前的台词 */
+export interface ScriptProgressEvent extends ScriptEvent {
+  type: "progress";
+  chapter: string;
+  event_index: number;
+  line_count: number;
+  vars: Record<string, unknown>;
+}
+
 export interface ScriptErrorEvent extends ScriptEvent {
   type: "error";
   error_code?: string;
@@ -237,6 +246,7 @@ export type ScriptEventType =
   | ScriptEndEvent
   | ScriptChoiceEvent
   | ScriptPresentPicEvent
+  | ScriptProgressEvent
   | ScriptFreeDialogueEvent
   | ScriptJumpscareEvent
   | ScriptWaitEvent

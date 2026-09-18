@@ -8,7 +8,7 @@
 //! - 头：`Authorization: Bearer`、`chatgpt-account-id`、`originator`、
 //!   `OpenAI-Beta: responses=experimental`、`accept: text/event-stream`
 //! - 体：`store:false, stream:true, instructions, input, include:[reasoning.encrypted_content]`，
-//!   `reasoning:{effort, summary:"auto"}`（Default/Off 档整体省略），
+//!   `reasoning:{effort, summary:"auto"}`（Default 仅省略 effort；Off 省略 reasoning），
 //!   Fast Mode（1.5×）= `service_tier:"priority"`
 //! - 推理档位映射：`minimal→low`，`xhigh/max` 原样，其余原样
 
@@ -23,12 +23,12 @@ use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValu
 use serde_json::{Value, json};
 
 use crate::ai_service::llm::codex_auth::{self, CodexCredential};
-use crate::ai_service::llm::provider::{
-    LlmModelInfo, LlmProvider, LlmResponseWithTools, ThinkEffortsInfo,
-};
+use crate::ai_service::llm::provider::{LlmModelInfo, LlmProvider, LlmResponseWithTools};
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig, LlmUsage};
 use crate::ai_service::types::{FunctionCall, LlmMessage, ToolCall, ToolDefinition};
 use crate::utils::proxy::build_proxied_client;
+
+use super::reasoning::ReasoningBuffer;
 
 const RESPONSES_URL: &str = "https://chatgpt.com/backend-api/codex/responses";
 const DEFAULT_MODEL: &str = "gpt-5.6-sol";
@@ -98,7 +98,7 @@ impl CodexProvider {
         Ok(headers)
     }
 
-    /// reasoning effort 映射：default/off/None → 省略 reasoning 字段；
+    /// reasoning effort 映射：default/off/None → 省略 effort 字段；
     /// minimal→low；xhigh/max 及其余原样（dsh-codex/pi-ai 同款映射表）。
     fn mapped_effort(&self) -> Option<String> {
         let effort = self.reasoning_effort.as_deref()?.trim().to_lowercase();
@@ -173,6 +173,13 @@ impl CodexProvider {
 
         if let Some(effort) = self.mapped_effort() {
             body["reasoning"] = json!({ "effort": effort, "summary": "auto" });
+        } else if !self
+            .reasoning_effort
+            .as_deref()
+            .is_some_and(|effort| effort.trim().eq_ignore_ascii_case("off"))
+        {
+            // Server-default effort still needs an explicit request for a visible summary.
+            body["reasoning"] = json!({ "summary": "auto" });
         }
         if self.fast_mode {
             body["service_tier"] = json!("priority");
@@ -281,8 +288,8 @@ impl CodexProvider {
             let mut finished_calls: Vec<ToolCall> = Vec::new();
             let mut usage: Option<LlmUsage> = None;
             let mut end_reason: Option<String> = None;
-            // 思考链累积：流末打到日志窗口（与 [Kimi-Code Thinking] 行为对齐）
-            let mut thinking_buffer = String::new();
+            let mut thinking_buffer = ReasoningBuffer::default();
+            let mut reasoning_tokens = 0;
             let mut byte_stream = resp.bytes_stream();
 
             'outer: while let Some(item) = byte_stream.next().await {
@@ -310,17 +317,14 @@ impl CodexProvider {
                         continue;
                     };
                     let event_type = event.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                    // Process completed snapshots before the final response ends the stream.
+                    for delta in thinking_buffer.consume(&event) {
+                        yield LlmChunk::Reasoning(delta);
+                    }
                     match event_type {
                         "response.output_text.delta" => {
                             if let Some(delta) = event.get("delta").and_then(|d| d.as_str()) {
                                 yield LlmChunk::Content(delta.to_string());
-                            }
-                        }
-                        "response.reasoning_summary_text.delta"
-                        | "response.reasoning_text.delta" => {
-                            if let Some(delta) = event.get("delta").and_then(|d| d.as_str()) {
-                                thinking_buffer.push_str(delta);
-                                yield LlmChunk::Reasoning(delta.to_string());
                             }
                         }
                         "response.output_item.added" => {
@@ -377,6 +381,8 @@ impl CodexProvider {
                         }
                         "response.completed" | "response.incomplete" => {
                             if let Some(u) = event.pointer("/response/usage") {
+                                reasoning_tokens = u.pointer("/output_tokens_details/reasoning_tokens")
+                                    .and_then(Value::as_u64).unwrap_or(0);
                                 usage = Some(LlmUsage {
                                     prompt_tokens: u.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
                                     completion_tokens: u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
@@ -406,8 +412,10 @@ impl CodexProvider {
             }
 
             // 流末日志：思考链汇总 + token 用量（对齐 [Kimi-Code Thinking] 的日志窗口行为）
-            if !thinking_buffer.is_empty() {
-                tracing::info!("[Codex Thinking] {}", thinking_buffer);
+            if !thinking_buffer.text().is_empty() {
+                tracing::info!("[Codex Thinking] {}", thinking_buffer.text());
+            } else if reasoning_tokens > 0 {
+                tracing::info!("[Codex] 已使用 {reasoning_tokens} 个推理 token，但服务端未返回可显示的推理摘要");
             }
             if let Some(u) = usage {
                 tracing::info!(
@@ -490,56 +498,8 @@ fn rand_f64() -> f64 {
 #[async_trait]
 impl LlmProvider for CodexProvider {
     async fn list_models(&self, _http: &Client) -> Result<Vec<LlmModelInfo>> {
-        // 内置目录（与 dsh-codex/pi-ai 的 openai-codex.json 同步）：
-        // 5.3/5.4/5.5 系档位 off~xhigh；5.6 系追加 max。
-        let standard_efforts = || {
-            Some(ThinkEffortsInfo {
-                valid_efforts: vec![
-                    "off".into(),
-                    "minimal".into(),
-                    "low".into(),
-                    "medium".into(),
-                    "high".into(),
-                    "xhigh".into(),
-                ],
-                default_effort: None,
-            })
-        };
-        let extended_efforts = || {
-            Some(ThinkEffortsInfo {
-                valid_efforts: vec![
-                    "off".into(),
-                    "minimal".into(),
-                    "low".into(),
-                    "medium".into(),
-                    "high".into(),
-                    "xhigh".into(),
-                    "max".into(),
-                ],
-                default_effort: None,
-            })
-        };
-        let model = |id: &str, name: &str, context: u64, extended: bool| LlmModelInfo {
-            id: id.to_string(),
-            display_name: Some(name.to_string()),
-            context_length: Some(context),
-            supports_reasoning: true,
-            supports_thinking_type: None,
-            think_efforts: if extended {
-                extended_efforts()
-            } else {
-                standard_efforts()
-            },
-        };
-        Ok(vec![
-            model("gpt-5.3-codex-spark", "GPT-5.3 Codex Spark", 128000, false),
-            model("gpt-5.4", "GPT-5.4", 272000, false),
-            model("gpt-5.4-mini", "GPT-5.4 mini", 272000, false),
-            model("gpt-5.5", "GPT-5.5", 272000, false),
-            model("gpt-5.6-luna", "GPT-5.6 Luna", 272000, true),
-            model("gpt-5.6-sol", "GPT-5.6 Sol", 272000, true),
-            model("gpt-5.6-terra", "GPT-5.6 Terra", 272000, true),
-        ])
+        let (http, cred) = self.client_and_token().await?;
+        super::models::fetch_models(&http, self.headers(&cred)?).await
     }
 
     async fn complete(&self, _http: &Client, messages: &[LlmMessage]) -> Result<String> {

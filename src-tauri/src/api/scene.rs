@@ -236,6 +236,15 @@ pub async fn delete_scene(app: AppHandle, id: String) -> Result<(), String> {
         .load_all()
         .map_err(|e| format!("加载场景列表失败: {}", e))?;
 
+    // 记住被删场景的背景图文件名，删除记录后据此清理孤儿文件。
+    // 插件场景随插件生命周期管理（且存绝对路径），不在此删除。
+    let deleted_bg = scenes
+        .iter()
+        .find(|s| s.id == id)
+        .filter(|s| s.plugin_id.is_none())
+        .map(|s| to_background_filename(&s.background))
+        .unwrap_or_default();
+
     let before = scenes.len();
     scenes.retain(|s| s.id != id);
     if scenes.len() == before {
@@ -245,6 +254,24 @@ pub async fn delete_scene(app: AppHandle, id: String) -> Result<(), String> {
     store
         .save_all(&scenes)
         .map_err(|e| format!("保存场景失败: {}", e))?;
+
+    // 若该背景图不再被任何剩余场景引用，删除文件，否则 list_scenes 会把它重新
+    // 注册成只有文件名、没有描述的占位场景（删除后“复活”的根因）。
+    if !deleted_bg.is_empty()
+        && !scenes
+            .iter()
+            .any(|s| to_background_filename(&s.background) == deleted_bg)
+    {
+        let base = super::backgrounds_dir();
+        let file_path = base.join(&deleted_bg);
+        if crate::utils::path::validate_path_in_base(&file_path, &base).is_ok()
+            && file_path.exists()
+        {
+            if let Err(e) = std::fs::remove_file(&file_path) {
+                tracing::warn!("删除场景背景图失败 {deleted_bg}: {e}");
+            }
+        }
+    }
 
     // 若删除的是当前选中场景，清除引用
     let state = app.state::<AppState>();

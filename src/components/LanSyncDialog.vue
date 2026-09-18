@@ -6,8 +6,7 @@
       @click="emit('close')"
     >
       <div
-        class="relative flex max-h-[80dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl
-          border border-white/20 bg-slate-900/40 shadow-2xl backdrop-blur-2xl"
+        class="relative flex max-h-[80dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-white/20 bg-slate-900/40 shadow-2xl backdrop-blur-2xl"
         @click.stop
       >
         <!-- ─── 头部 ─── -->
@@ -21,8 +20,7 @@
           </div>
           <button
             @click="emit('close')"
-            class="rounded-full p-2 text-white/50 transition-colors hover:bg-red-500/20
-              hover:text-white"
+            class="rounded-full p-2 text-white/50 transition-colors hover:bg-red-500/20 hover:text-white"
           >
             <Icon icon="close" class="h-5 w-5" />
           </button>
@@ -33,8 +31,7 @@
           <!-- 设备列表：扫描中 -->
           <div v-if="view === 'device-list' && phase === 'scanning'" class="py-8 text-center">
             <div
-              class="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-3 border-cyan-200/20
-                border-t-cyan-400"
+              class="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-3 border-cyan-200/20 border-t-cyan-400"
             ></div>
             <p class="text-sm text-white/80">{{ $t("ui.lanSync.scanning") }}</p>
             <p class="mt-1 text-xs text-white/40">
@@ -45,8 +42,7 @@
           <!-- 设备列表：获取对端清单中 -->
           <div v-if="view === 'device-list' && phase === 'fetching'" class="py-8 text-center">
             <div
-              class="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-3 border-indigo-200/20
-                border-t-indigo-400"
+              class="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-3 border-indigo-200/20 border-t-indigo-400"
             ></div>
             <p class="text-sm text-white/80">{{ $t("ui.lanSync.fetching") }}</p>
             <p class="mt-1 text-xs text-white/40">{{ $t("ui.lanSync.fetchingHint") }}</p>
@@ -74,8 +70,7 @@
             <div
               v-for="peer in peers"
               :key="peer.deviceId"
-              class="rounded-2xl border border-white/10 bg-white/5 p-4 transition-all
-                hover:border-white/20"
+              class="rounded-2xl border border-white/10 bg-white/5 p-4 transition-all hover:border-white/20"
             >
               <div class="flex items-center justify-between">
                 <div class="space-y-0.5">
@@ -93,17 +88,13 @@
                 <div class="flex gap-2">
                   <button
                     @click="emit('pull', peer)"
-                    class="rounded-full border border-cyan-400/50 bg-cyan-500/80 px-4 py-1.5 text-xs
-                      font-semibold text-white shadow-lg shadow-cyan-500/20 transition-all
-                      hover:bg-cyan-500 active:scale-95"
+                    class="rounded-full border border-cyan-400/50 bg-cyan-500/80 px-4 py-1.5 text-xs font-semibold text-white shadow-lg shadow-cyan-500/20 transition-all hover:bg-cyan-500 active:scale-95"
                   >
                     {{ $t("ui.lanSync.pull") }}
                   </button>
                   <button
                     @click="emit('push', peer)"
-                    class="rounded-full border border-amber-400/50 bg-amber-500/80 px-4 py-1.5
-                      text-xs font-semibold text-white shadow-lg shadow-amber-500/20 transition-all
-                      hover:bg-amber-500 active:scale-95"
+                    class="rounded-full border border-amber-400/50 bg-amber-500/80 px-4 py-1.5 text-xs font-semibold text-white shadow-lg shadow-amber-500/20 transition-all hover:bg-amber-500 active:scale-95"
                   >
                     {{ $t("ui.lanSync.push") }}
                   </button>
@@ -181,8 +172,7 @@
           <div v-if="view === 'progress'" class="space-y-4 py-4 text-center">
             <div class="h-2.5 w-full overflow-hidden rounded-full bg-white/10">
               <div
-                class="h-full rounded-full bg-gradient-to-r from-cyan-500 to-indigo-500
-                  transition-all duration-500 ease-out"
+                class="h-full rounded-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-500 ease-out"
                 :style="{ width: progress.progress + '%' }"
               ></div>
             </div>
@@ -253,8 +243,7 @@
           <button
             v-if="view === 'device-list'"
             @click="emit('close')"
-            class="w-full rounded-full border border-white/10 bg-white/10 py-3 text-sm font-medium
-              text-white/60 transition-all hover:bg-white/15 hover:text-white/80"
+            class="w-full rounded-full border border-white/10 bg-white/10 py-3 text-sm font-medium text-white/60 transition-all hover:bg-white/15 hover:text-white/80"
           >
             {{ $t("ui.lanSync.close") }}
           </button>
@@ -262,16 +251,13 @@
           <template v-if="view === 'sync-plan'">
             <button
               @click="emit('confirm')"
-              class="w-full rounded-full border border-cyan-400/50 bg-cyan-500/80 py-3 text-sm
-                font-bold text-white shadow-lg shadow-cyan-500/20 transition-all hover:bg-cyan-500
-                active:scale-95"
+              class="w-full rounded-full border border-cyan-400/50 bg-cyan-500/80 py-3 text-sm font-bold text-white shadow-lg shadow-cyan-500/20 transition-all hover:bg-cyan-500 active:scale-95"
             >
               {{ $t("ui.lanSync.confirmSync") }}
             </button>
             <button
               @click="emit('cancel')"
-              class="w-full rounded-full py-3 text-xs text-white/40 transition-colors
-                hover:text-white/60"
+              class="w-full rounded-full py-3 text-xs text-white/40 transition-colors hover:text-white/60"
             >
               {{ $t("ui.lanSync.cancel") }}
             </button>
@@ -285,9 +271,7 @@
           <button
             v-if="view === 'result' && lastResult?.success && lastResult.filesStaged > 0"
             @click="emit('restart')"
-            class="w-full rounded-full border border-emerald-400/50 bg-emerald-500/80 py-3 text-sm
-              font-bold text-white shadow-lg shadow-emerald-500/20 transition-all
-              hover:bg-emerald-500 active:scale-95"
+            class="w-full rounded-full border border-emerald-400/50 bg-emerald-500/80 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all hover:bg-emerald-500 active:scale-95"
           >
             {{ $t("ui.lanSync.restartToApply", { count: lastResult.filesStaged }) }}
           </button>
@@ -295,8 +279,7 @@
           <button
             v-if="view === 'result'"
             @click="emit('close')"
-            class="w-full rounded-full border border-white/10 bg-white/10 py-3 text-sm font-medium
-              text-white/60 transition-all hover:bg-white/15 hover:text-white/80"
+            class="w-full rounded-full border border-white/10 bg-white/10 py-3 text-sm font-medium text-white/60 transition-all hover:bg-white/15 hover:text-white/80"
           >
             {{ $t("ui.lanSync.close") }}
           </button>
@@ -304,8 +287,7 @@
           <button
             v-if="phase === 'error' && view !== 'result'"
             @click="emit('close')"
-            class="w-full rounded-full border border-red-500/20 bg-red-500/20 py-3 text-sm
-              font-medium text-red-400 transition-all hover:bg-red-500/30"
+            class="w-full rounded-full border border-red-500/20 bg-red-500/20 py-3 text-sm font-medium text-red-400 transition-all hover:bg-red-500/30"
           >
             {{ $t("ui.lanSync.close") }}
           </button>
@@ -316,123 +298,123 @@
 </template>
 
 <script setup lang="ts">
-  import { computed } from "vue";
-  import { useI18n } from "vue-i18n";
-  import { Icon } from "./base";
-  import { Wifi, Check, X } from "lucide-vue-next";
-  import type {
-    PeerInfo,
-    SyncPlan,
-    SyncProgressEvent,
-    SyncResult,
-    SyncPhase,
-    DialogView,
-  } from "../types/lanSync";
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
+import { Icon } from "./base";
+import { Wifi, Check, X } from "lucide-vue-next";
+import type {
+  PeerInfo,
+  SyncPlan,
+  SyncProgressEvent,
+  SyncResult,
+  SyncPhase,
+  DialogView,
+} from "../types/lanSync";
 
-  const props = defineProps<{
-    visible: boolean;
-    view: DialogView;
-    phase: SyncPhase;
-    serverPort: number;
-    peers: PeerInfo[];
-    syncPlan: SyncPlan | null;
-    progress: SyncProgressEvent;
-    lastResult: SyncResult | null;
-    errorMessage: string;
-  }>();
+const props = defineProps<{
+  visible: boolean;
+  view: DialogView;
+  phase: SyncPhase;
+  serverPort: number;
+  peers: PeerInfo[];
+  syncPlan: SyncPlan | null;
+  progress: SyncProgressEvent;
+  lastResult: SyncResult | null;
+  errorMessage: string;
+}>();
 
-  const emit = defineEmits<{
-    rescan: [];
-    pull: [peer: PeerInfo];
-    push: [peer: PeerInfo];
-    confirm: [];
-    cancel: [];
-    close: [];
-    restart: [];
-  }>();
+const emit = defineEmits<{
+  rescan: [];
+  pull: [peer: PeerInfo];
+  push: [peer: PeerInfo];
+  confirm: [];
+  cancel: [];
+  close: [];
+  restart: [];
+}>();
 
-  const { t } = useI18n();
+const { t } = useI18n();
 
-  const dialogTitle = computed(() => {
-    switch (props.view) {
-      case "device-list":
-        return t("ui.lanSync.titleDeviceList");
-      case "sync-plan":
-        return t("ui.lanSync.titleSyncPlan");
-      case "progress":
-        return t("ui.lanSync.titleProgress");
-      case "result":
-        return props.lastResult?.success
-          ? t("ui.lanSync.titleResultSuccess")
-          : t("ui.lanSync.titleResultFailed");
-      default:
-        return t("ui.lanSync.titleDeviceList");
-    }
-  });
-
-  const dialogSubtitle = computed(() => {
-    switch (props.view) {
-      case "device-list":
-        return t("ui.lanSync.subtitleDeviceList");
-      case "sync-plan":
-        return t("ui.lanSync.subtitleSyncPlan");
-      case "progress":
-        return t("ui.lanSync.subtitleProgress");
-      case "result":
-        return props.lastResult?.success
-          ? t("ui.lanSync.subtitleResultSuccess")
-          : t("ui.lanSync.subtitleResultFailed");
-      default:
-        return "";
-    }
-  });
-
-  const headerIconBg = computed(() => {
-    switch (props.view) {
-      case "progress":
-        return "bg-gradient-to-br from-cyan-500 to-indigo-500";
-      case "result":
-        return props.lastResult?.success
-          ? "bg-gradient-to-br from-emerald-500 to-teal-500"
-          : "bg-gradient-to-br from-red-500 to-rose-500";
-      default:
-        return "bg-gradient-to-br from-indigo-500 to-purple-500";
-    }
-  });
-
-  function formatBytes(bytes: number): string {
-    if (bytes < 1024) return bytes + " B";
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+const dialogTitle = computed(() => {
+  switch (props.view) {
+    case "device-list":
+      return t("ui.lanSync.titleDeviceList");
+    case "sync-plan":
+      return t("ui.lanSync.titleSyncPlan");
+    case "progress":
+      return t("ui.lanSync.titleProgress");
+    case "result":
+      return props.lastResult?.success
+        ? t("ui.lanSync.titleResultSuccess")
+        : t("ui.lanSync.titleResultFailed");
+    default:
+      return t("ui.lanSync.titleDeviceList");
   }
+});
 
-  function reasonLabel(reason: string): string {
-    switch (reason) {
-      case "new":
-        return t("ui.lanSync.reasonNew");
-      case "modified":
-        return t("ui.lanSync.reasonModified");
-      case "newer":
-        return t("ui.lanSync.reasonNewer");
-      default:
-        return reason;
-    }
+const dialogSubtitle = computed(() => {
+  switch (props.view) {
+    case "device-list":
+      return t("ui.lanSync.subtitleDeviceList");
+    case "sync-plan":
+      return t("ui.lanSync.subtitleSyncPlan");
+    case "progress":
+      return t("ui.lanSync.subtitleProgress");
+    case "result":
+      return props.lastResult?.success
+        ? t("ui.lanSync.subtitleResultSuccess")
+        : t("ui.lanSync.subtitleResultFailed");
+    default:
+      return "";
   }
+});
+
+const headerIconBg = computed(() => {
+  switch (props.view) {
+    case "progress":
+      return "bg-gradient-to-br from-cyan-500 to-indigo-500";
+    case "result":
+      return props.lastResult?.success
+        ? "bg-gradient-to-br from-emerald-500 to-teal-500"
+        : "bg-gradient-to-br from-red-500 to-rose-500";
+    default:
+      return "bg-gradient-to-br from-indigo-500 to-purple-500";
+  }
+});
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+}
+
+function reasonLabel(reason: string): string {
+  switch (reason) {
+    case "new":
+      return t("ui.lanSync.reasonNew");
+    case "modified":
+      return t("ui.lanSync.reasonModified");
+    case "newer":
+      return t("ui.lanSync.reasonNewer");
+    default:
+      return reason;
+  }
+}
 </script>
 
 <style scoped>
-  .modal-enter-active,
-  .modal-leave-active {
-    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .modal-enter-from,
-  .modal-leave-to {
-    opacity: 0;
-    transform: scale(0.95) translateY(10px);
-  }
+.modal-enter-active,
+.modal-leave-active {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+  transform: scale(0.95) translateY(10px);
+}
 
-  .overflow-y-auto::-webkit-scrollbar {
-    display: none;
-  }
+.overflow-y-auto::-webkit-scrollbar {
+  display: none;
+}
 </style>

@@ -15,7 +15,7 @@ export function trackMotionLifecycle(
   group: string,
   index: number,
   priority: number,
-  onFinish: () => void
+  onFinish: () => void,
 ): () => void {
   let active = true;
 

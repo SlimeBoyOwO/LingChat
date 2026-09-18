@@ -86,7 +86,7 @@ export const actions = {
         this.presentRoleIds = [];
       } else {
         invoke("notify_player_entry").catch((err) =>
-          console.warn("[Entry] 问候触发失败（非致命）:", err)
+          console.warn("[Entry] 问候触发失败（非致命）:", err),
         );
       }
       return gameInfo;

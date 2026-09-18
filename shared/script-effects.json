@@ -4,6 +4,7 @@
   { "key": "Sakura", "label": "樱花", "layer": "background", "horror": false },
   { "key": "Snow", "label": "雪", "layer": "background", "horror": false },
   { "key": "Fireworks", "label": "烟花", "layer": "background", "horror": false },
+  { "key": "BA", "label": "星辉", "layer": "background", "horror": false },
   { "key": "Glitch", "label": "画面故障", "layer": "horror", "horror": true },
   { "key": "Shake", "label": "画面震动", "layer": "horror", "horror": true },
   { "key": "Flash", "label": "红色闪光", "layer": "horror", "horror": true },

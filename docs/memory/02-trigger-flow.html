@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>永久记忆 · 触发判定流程（check_and_trigger_auto_update）</title>
+<style>
+  html, body { background: #fff; color: #000; margin: 0; padding: 24px; }
+  body { font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  p.cap { font-size: 12px; margin: 0 0 18px; max-width: 1060px; line-height: 1.75; }
+  svg { border: 1px solid #000; }
+  .box  { fill: #fff; stroke: #000; stroke-width: 1.2; }
+  .dec  { fill: #fff; stroke: #000; stroke-width: 1.6; }
+  .term { fill: #000; stroke: #000; }
+  .t    { font-size: 12px; }
+  .tw   { font-size: 12px; fill: #fff; }
+  .n    { font-size: 10.5px; }
+  .nb   { font-size: 10.5px; font-weight: bold; }
+  .edge { stroke: #000; stroke-width: 1.2; fill: none; }
+  .dash { stroke-dasharray: 6 4; stroke-width: 1.2; fill: none; stroke: #000; }
+  .lbl  { font-size: 10.5px; }
+</style>
+</head>
+<body>
+
+<h1>触发判定流程 · <code>check_and_trigger_auto_update</code></h1>
+<p class="cap">
+  这是<b>同步函数</b>，由 <code>role_manager::sync_memories</code> 在持有 <code>GameStatus</code> 锁的情况下调用——而
+  <code>GameStatus::add_line</code> 每追加一条台词就会走一次。右侧列出全部 <b>8 个静默 return 点</b>：
+  它们都不写日志（或只写 <code>debug</code>，而默认过滤器是 <code>warn,ling_chat_lib=info</code>），
+  所以"阈值设成 250 却从不触发"在日志上与"卡在 <code>is_updating</code>"、"卡在冷却"完全无法区分。
+  唯一的正向信号是 <code>:408</code> 那条 <code>info!</code>——注意它打在 CAS <b>之前</b>。
+</p>
+
+<svg viewBox="0 0 1200 1180" width="1200" height="1180" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#000"/>
+    </marker>
+  </defs>
+
+  <!-- 起点 -->
+  <rect class="box" x="330" y="20" width="460" height="50" rx="24"/>
+  <text class="t" x="346" y="42">add_line / 读档 / 撤回 ⇒ sync_memories</text>
+  <text class="t" x="346" y="60">⇒ check_and_trigger_auto_update(source_lines)</text>
+
+  <!-- A: enabled -->
+  <rect class="dec" x="330" y="96" width="460" height="40"/>
+  <text class="t" x="344" y="121">A　enabled == true ？（构造时定死，重启才变）</text>
+
+  <!-- B: is_updating -->
+  <rect class="dec" x="330" y="160" width="460" height="40"/>
+  <text class="t" x="344" y="185">B　is_updating == false ？（上一次压缩是否已结束）</text>
+
+  <!-- C: cooldown -->
+  <rect class="dec" x="330" y="224" width="460" height="40"/>
+  <text class="t" x="344" y="249">C　不在 60s 失败冷却内？</text>
+
+  <!-- D: try_lock -->
+  <rect class="dec" x="330" y="288" width="460" height="40"/>
+  <text class="t" x="344" y="313">D　memory_bank.try_lock() 成功？（后台正在写则失败）</text>
+
+  <!-- E: pointer -->
+  <rect class="dec" x="330" y="352" width="460" height="40"/>
+  <text class="t" x="344" y="377">E　指针 last_processed_global_idx 未越界？</text>
+
+  <!-- F: build -->
+  <rect class="box" x="330" y="416" width="460" height="62"/>
+  <text class="t" x="344" y="438">F　new_lines = lines[last_idx .. len]</text>
+  <text class="t" x="344" y="458">　　(chat_text, visible_count) =</text>
+  <text class="t" x="344" y="474">　　　build_chat_text_and_count(new_lines)</text>
+
+  <!-- G: threshold -->
+  <rect class="dec" x="330" y="502" width="460" height="40"/>
+  <text class="t" x="344" y="527">G　visible_count ≥ update_interval ？</text>
+
+  <!-- H: empty -->
+  <rect class="dec" x="330" y="566" width="460" height="40"/>
+  <text class="t" x="344" y="591">H　chat_text 非空？</text>
+
+  <!-- I: info -->
+  <rect class="box" x="330" y="630" width="460" height="38"/>
+  <text class="t" x="344" y="654">I　info!("…触发自动压缩…")　★唯一正向信号</text>
+
+  <!-- J: CAS -->
+  <rect class="dec" x="330" y="692" width="460" height="40"/>
+  <text class="t" x="344" y="717">J　CAS is_updating false → true 成功？</text>
+
+  <!-- K: spawn -->
+  <rect class="box" x="330" y="756" width="460" height="40"/>
+  <text class="t" x="344" y="781">K　spawn_background_update(text, target_idx, rev)</text>
+
+  <!-- 主干竖线 -->
+  <line class="edge" x1="560" y1="70" x2="560" y2="96" marker-end="url(#a)"/>
+  <line class="edge" x1="560" y1="136" x2="560" y2="160" marker-end="url(#a)"/>
+  <text class="lbl" x="566" y="153">是</text>
+  <line class="edge" x1="560" y1="200" x2="560" y2="224" marker-end="url(#a)"/>
+  <text class="lbl" x="566" y="217">是</text>
+  <line class="edge" x1="560" y1="264" x2="560" y2="288" marker-end="url(#a)"/>
+  <text class="lbl" x="566" y="281">是</text>
+  <line class="edge" x1="560" y1="328" x2="560" y2="352" marker-end="url(#a)"/>
+  <text class="lbl" x="566" y="345">是</text>
+  <line class="edge" x1="560" y1="392" x2="560" y2="416" marker-end="url(#a)"/>
+  <text class="lbl" x="566" y="409">是</text>
+  <line class="edge" x1="560" y1="478" x2="560" y2="502" marker-end="url(#a)"/>
+  <line class="edge" x1="560" y1="542" x2="560" y2="566" marker-end="url(#a)"/>
+  <text class="lbl" x="566" y="559">是</text>
+  <line class="edge" x1="560" y1="606" x2="560" y2="630" marker-end="url(#a)"/>
+  <text class="lbl" x="566" y="623">是</text>
+  <line class="edge" x1="560" y1="668" x2="560" y2="692" marker-end="url(#a)"/>
+  <line class="edge" x1="560" y1="732" x2="560" y2="756" marker-end="url(#a)"/>
+  <text class="lbl" x="566" y="749">是</text>
+
+  <!-- E 的"否"：写回 0 -->
+  <line class="edge" x1="330" y1="372" x2="250" y2="372" marker-end="url(#a)"/>
+  <text class="lbl" x="252" y="366">否</text>
+  <rect class="box" x="30" y="352" width="220" height="52"/>
+  <text class="n" x="40" y="372">写回指针 = 0、updated_at</text>
+  <text class="n" x="40" y="388">has_pending = true，然后继续</text>
+
+  <!-- ======== 右侧：静默 return 点 ======== -->
+  <text class="nb" x="836" y="104">静默 return ①</text>
+  <text class="n" x="836" y="119">:350　即使永久记忆开着，</text>
+  <text class="n" x="836" y="133">也是构造时取的值，永不重算</text>
+
+  <text class="nb" x="836" y="168">静默 return ②</text>
+  <text class="n" x="836" y="183">:354　压缩进行中（或标志卡死为 true）</text>
+  <text class="n" x="836" y="197">——每一条新台词都从这里被挡回</text>
+
+  <text class="nb" x="836" y="232">静默 return ③</text>
+  <text class="n" x="836" y="247">:360-365　失败后 60s 内不再试</text>
+  <text class="n" x="836" y="261">若 LLM 一直失败，每轮都落在这里</text>
+
+  <text class="nb" x="836" y="296">静默 return ④</text>
+  <text class="n" x="836" y="311">:373　后台任务正持 bank 锁 → 跳过本轮</text>
+
+  <text class="nb" x="836" y="510">静默 return ⑤（诊断本问题最关键）</text>
+  <text class="n" x="836" y="525">:394　没攒够。单位是"该角色可见、</text>
+  <text class="n" x="836" y="539">非 system 台词"，不是消息条数：</text>
+  <text class="n" x="836" y="553">别的角色的台词 / System / 感知不到</text>
+  <text class="n" x="836" y="567">的台词都不计数</text>
+
+  <text class="nb" x="836" y="600">静默 return ⑥（唯一会推指针的）</text>
+  <text class="n" x="836" y="615">:398-405　可见行够 250 条，但</text>
+  <text class="n" x="836" y="629">MemoryBuilder 产出的正文全是空</text>
+  <text class="n" x="836" y="643">（只剩 system 与孤儿 tool 行）时，</text>
+  <text class="n" x="836" y="657">直接把指针推到末尾并返回——</text>
+  <text class="n" x="836" y="671">不压缩、不报错、无日志</text>
+
+  <text class="nb" x="836" y="725">静默 return ⑦</text>
+  <text class="n" x="836" y="740">:415　CAS 失败（单线程下几乎不可能）</text>
+  <text class="n" x="836" y="754">注意 :408 的 info 在这之前，会误导</text>
+
+  <!-- 右侧箭头 -->
+  <line class="edge" x1="790" y1="112" x2="830" y2="112" marker-end="url(#a)"/>
+  <line class="edge" x1="790" y1="176" x2="830" y2="176" marker-end="url(#a)"/>
+  <line class="edge" x1="790" y1="240" x2="830" y2="240" marker-end="url(#a)"/>
+  <line class="edge" x1="790" y1="304" x2="830" y2="304" marker-end="url(#a)"/>
+  <line class="edge" x1="790" y1="518" x2="830" y2="518" marker-end="url(#a)"/>
+  <line class="edge" x1="790" y1="582" x2="830" y2="582" marker-end="url(#a)"/>
+  <line class="edge" x1="790" y1="708" x2="830" y2="708" marker-end="url(#a)"/>
+
+  <!-- ======== 后台任务 ======== -->
+  <rect class="dash" x="120" y="820" width="960" height="330"/>
+  <text class="nb" x="136" y="842">后台任务（tokio::spawn；UpdatingGuard 在任务开头构造，Drop 时释放 is_updating）</text>
+
+  <rect class="box" x="150" y="858" width="420" height="38"/>
+  <text class="t" x="162" y="882">1　slot_snapshot(&amp;llm) 取当前 LLM</text>
+  <line class="edge" x1="330" y1="796" x2="330" y2="858" marker-end="url(#a)"/>
+
+  <rect class="box" x="150" y="912" width="420" height="50"/>
+  <text class="t" x="162" y="932">2　tokio::join! 四段并发压缩</text>
+  <text class="t" x="162" y="950">　update_section(short/long/user/promises)</text>
+
+  <rect class="box" x="150" y="978" width="420" height="50"/>
+  <text class="t" x="162" y="998">3　复核 history_revision 未变</text>
+  <text class="t" x="162" y="1016">4　commit_update_if_current（commit_gate 内）</text>
+
+  <rect class="box" x="150" y="1044" width="420" height="66"/>
+  <text class="t" x="162" y="1064">5　写回四段 + 指针 = target_idx</text>
+  <text class="t" x="162" y="1082">　　清失败状态、has_pending = true</text>
+  <text class="t" x="162" y="1100">6　info!("记忆库更新完成! 指针已移动至 …")</text>
+
+  <line class="edge" x1="330" y1="896" x2="330" y2="912" marker-end="url(#a)"/>
+  <line class="edge" x1="330" y1="962" x2="330" y2="978" marker-end="url(#a)"/>
+  <line class="edge" x1="330" y1="1028" x2="330" y2="1044" marker-end="url(#a)"/>
+
+  <!-- 失败/丢弃出口 -->
+  <text class="nb" x="620" y="884">槽位为空 → warn + record_failure（进 60s 冷却）</text>
+  <line class="edge" x1="570" y1="877" x2="612" y2="877" marker-end="url(#a)"/>
+  <text class="nb" x="620" y="938">任一段 Err（含 LLM 返回空串）</text>
+  <text class="n" x="620" y="953">→ warn + record_failure；指针不动，下轮重试</text>
+  <line class="edge" x1="570" y1="931" x2="612" y2="931" marker-end="url(#a)"/>
+  <text class="nb" x="620" y="998">revision 已变（撤回/读档/清空）</text>
+  <text class="n" x="620" y="1013">→ info 丢弃结果：不写回、不推进指针、不记失败</text>
+  <line class="edge" x1="570" y1="996" x2="612" y2="996" marker-end="url(#a)"/>
+
+  <text class="n" x="620" y="1064">★ 正常追加台词（add_line）不会改 revision，</text>
+  <text class="n" x="620" y="1079">所以"聊天过程中压缩被新台词作废"不成立；</text>
+  <text class="n" x="620" y="1094">只有撤回 / 读档 / 清空状态 / 工具回填 才会。</text>
+</svg>
+
+<p class="cap" style="margin-top:16px">
+  另见：<a href="01-structure.html">01 结构图</a> ·
+  <a href="03-sequence.html">03 一次压缩的时序</a> ·
+  <a href="04-context-flow.html">04 上下文组装数据流</a>
+</p>
+
+</body>
+</html>

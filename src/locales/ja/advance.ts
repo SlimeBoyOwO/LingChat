@@ -40,6 +40,10 @@ export default {
     dlcDesc:
       "DLC シナリオパック（zip）の認識・インポート・削除。インストール後すぐシナリオリストに表示",
     dlcButton: "DLC 管理画面へ",
+    memoryTitle: "永続記憶デバッグ",
+    memoryDesc:
+      "キャラクターの記憶バンクと実際のコンテキストを確認し、記憶の圧縮・注入の問題を調査します",
+    memoryButton: "記憶デバッグ画面へ",
   },
   dlc: {
     notice:

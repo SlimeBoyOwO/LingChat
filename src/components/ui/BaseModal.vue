@@ -36,8 +36,7 @@
           <div class="mt-8">
             <button
               @click="$emit('confirm')"
-              class="w-full rounded-2xl bg-cyan-500 py-4 font-black text-white shadow-lg
-                transition-all hover:bg-cyan-600 active:scale-95"
+              class="w-full rounded-2xl bg-cyan-500 py-4 font-black text-white shadow-lg transition-all hover:bg-cyan-600 active:scale-95"
             >
               {{ $t("ui.baseModal.confirmCreate") }}
             </button>
@@ -49,14 +48,14 @@
 </template>
 
 <script setup lang="ts">
-  defineProps<{
-    show: boolean;
-    title: string;
-  }>();
+defineProps<{
+  show: boolean;
+  title: string;
+}>();
 
-  const emit = defineEmits(["close", "confirm"]);
+const emit = defineEmits(["close", "confirm"]);
 
-  const close = () => {
-    emit("close");
-  };
+const close = () => {
+  emit("close");
+};
 </script>

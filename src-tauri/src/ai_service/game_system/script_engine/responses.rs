@@ -35,6 +35,7 @@ pub mod event_names {
     pub const SCRIPT_WATCH_JUMP: &str = "script:watch-jump";
     pub const SCRIPT_WINDOW_TITLE: &str = "script:window-title";
     pub const SCRIPT_WINDOW_TITLE_RESET: &str = "script:window-title-reset";
+    pub const SCRIPT_PROGRESS: &str = "script:progress";
 }
 
 // ============================================================
@@ -330,4 +331,15 @@ pub struct VoiceShiftPayload {
     pub pitch: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+}
+
+/// 阅读锚点：引擎每执行一个事件前广播，事件流进入前端队列、按阅读速度被消费。
+/// 前端记录消费到的锚点，存档时回传作为精确恢复点（章节 + 事件下标 + 台词条数 + 剧本变量）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ScriptProgressPayload {
+    pub chapter: String,
+    pub event_index: i32,
+    pub line_count: i32,
+    pub vars: serde_json::Map<String, serde_json::Value>,
 }

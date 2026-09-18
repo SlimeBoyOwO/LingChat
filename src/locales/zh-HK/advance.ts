@@ -38,6 +38,9 @@ export default {
     dlcTitle: "DLC 管理",
     dlcDesc: "識別、匯入或者移除 DLC 劇本包（zip），裝完即刻喺劇本列表見到",
     dlcButton: "入去 DLC 管理界面",
+    memoryTitle: "永久記憶調試",
+    memoryDesc: "查看角色當前的記憶庫內容與真實上下文，用於排查記憶壓縮與注入問題",
+    memoryButton: "進入記憶調試界面",
   },
   dlc: {
     notice:

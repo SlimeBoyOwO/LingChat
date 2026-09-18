@@ -235,8 +235,13 @@ pub async fn list_standalone_scripts(app: AppHandle) -> Result<ScriptListRespons
     Ok(ScriptListResponse { scripts })
 }
 
-#[tauri::command]
-pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), String> {
+/// 在后台任务中执行剧本（含羁绊完成处理），并把任务句柄登记到 AppState。
+/// 新引擎起跑前先中止上一个登记的引擎任务并清理其输入通道——
+/// 阻塞中的旧引擎靠 oneshot 挂起，不中止就会往新会话的共享 GameStatus 里写台词。
+pub(crate) async fn spawn_script_execution(
+    app: AppHandle,
+    script: crate::ai_service::types::ScriptStatus,
+) -> Result<(), String> {
     let state = app.state::<AppState>();
 
     // Clone shared handles for the background task
@@ -247,27 +252,11 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
     let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
     let achievement_manager = state.achievement_manager.clone();
 
-    // Lock AIService briefly to validate and extract needed data
-    let (script, game_status, config, is_running) = {
+    // Lock AIService briefly to extract needed data and reserve the run.
+    // DLC 导入/删除与编辑器试玩对同一个 flag 做 compare_exchange 互斥，
+    // 必须先成功预留再动旧任务——否则会把正在运行的剧本杀掉却又拒绝起跑。
+    let (game_status, config, is_running) = {
         let service = ai_service.lock().await;
-        let script = service
-            .script_manager
-            .all_scripts
-            .get(&script_name)
-            .ok_or_else(|| format!("剧本不存在: '{}'", script_name))?
-            .clone();
-        // Enforce again for direct IPC callers and state changes after preflight.
-        // Reject before reserving a run, switching characters or opening windows.
-        if let Some(error) =
-            crate::ai_service::game_system::script_engine::persistent_state::entry_error(
-                &data_dir,
-                &script.path_key(),
-                &script.settings,
-            )
-            .map_err(|error| format!("无法读取剧本运行状态: {error}"))?
-        {
-            return Err(error);
-        }
         let game_status = service.game_status.clone();
         let config = service.config.clone();
         let is_running = service.script_manager.is_running.clone();
@@ -279,8 +268,23 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
                 std::sync::atomic::Ordering::SeqCst,
             )
             .map_err(|_| "已有剧本正在运行或 DLC 管理操作尚未完成".to_string())?;
-        (script, game_status, config, is_running)
+        (game_status, config, is_running)
     };
+
+    // 中止上一个登记的引擎任务并清理其输入通道——阻塞中的旧引擎靠 oneshot
+    // 挂起，不中止就会往新会话的共享 GameStatus 里写台词。CAS 已保证此刻
+    // 没有真正运行中的剧本，这里的 abort 只命中已收尾但句柄未摘除的旧任务。
+    if let Some(handle) = state.script_task.lock().await.take() {
+        handle.abort();
+    }
+    {
+        let mut ch = state.script_channels.lock().await;
+        let _ = ch.input_tx.take();
+        let _ = ch.choice_tx.take();
+        let _ = ch.poem_tx.take();
+        ch.choice_allow_free = false;
+        ch.force_choice_guard = None;
+    }
 
     // A previous frontend may have been closed before consuming script:end.
     // Bind every auxiliary/system-window ticket to this exact formal run.
@@ -296,12 +300,13 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
         status.preview_generation = status.preview_generation.wrapping_add(1);
     }
 
-    // Run script in background task (does NOT hold AIService lock across awaits)
-    tokio::spawn(async move {
+    // `app` 仍需被 `state` 借用（登记任务句柄要用），后台任务持有一份克隆
+    let task_app = app.clone();
+    let handle = tokio::spawn(async move {
         let mut ctx = ScriptContext {
             db: &db,
             data_dir: &data_dir,
-            app: &app,
+            app: &task_app,
             game_status,
             config: &config,
             llm: llm.as_ref(),
@@ -317,7 +322,7 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
                     super::adventure::handle_adventure_completion(
                         &db,
                         &achievement_manager,
-                        &app,
+                        &task_app,
                         &ai_service,
                         &script.folder_key,
                         &script.adventure.completion_achievements,
@@ -331,7 +336,37 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
         }
     });
 
+    *state.script_task.lock().await = Some(handle);
     Ok(())
+}
+
+#[tauri::command]
+pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), String> {
+    let script = {
+        let state = app.state::<AppState>();
+        let service = state.ai_service.lock().await;
+        let script = service
+            .script_manager
+            .all_scripts
+            .get(&script_name)
+            .ok_or_else(|| format!("剧本不存在: '{}'", script_name))?
+            .clone();
+        // Enforce again for direct IPC callers and state changes after preflight.
+        // Reject before reserving a run, switching characters or opening windows.
+        if let Some(error) =
+            crate::ai_service::game_system::script_engine::persistent_state::entry_error(
+                &service.data_dir,
+                &script.path_key(),
+                &script.settings,
+            )
+            .map_err(|error| format!("无法读取剧本运行状态: {error}"))?
+        {
+            return Err(error);
+        }
+        script
+    };
+
+    spawn_script_execution(app, script).await
 }
 
 /// Clear one script's persisted runtime state (playthrough memory), so the

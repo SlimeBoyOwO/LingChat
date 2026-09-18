@@ -43,6 +43,10 @@ export default {
     dlcDesc:
       "Detect, import or remove DLC script packs (zip) — installed packs appear in the script list right away",
     dlcButton: "Open DLC Manager",
+    memoryTitle: "Permanent Memory Debug",
+    memoryDesc:
+      "Inspect a role's memory bank and the context actually sent to the LLM, for diagnosing memory compaction and injection",
+    memoryButton: "Open Memory Debug",
   },
   dlc: {
     notice:

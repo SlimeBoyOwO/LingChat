@@ -275,20 +275,20 @@ pub enum PromptRole {
     Plot,
 }
 
+/// 所有 `PromptRole::*::build_prompt` 输出内容的统一前缀标记。
+/// 判定「某行是不是旁白/系统/剧情提示」应以此为准（单一真相源），
+/// 而非 `display_name`——剧本作者可给旁白事件自定义展示名，会绕过 display_name 判据。
+pub const NARRATION_TAG: &str = "{旁白:";
+
 impl PromptRole {
     /// 根据角色类型组装最终提示
     /// - `prompt`: 提示词内容
     pub fn build_prompt(&self, prompt: &str) -> String {
-        match self {
-            PromptRole::System => {
-                format!("{{旁白: （系统提示：{}）}}", prompt)
-            },
-            PromptRole::Narrator => {
-                format!("{{旁白: {}}}", prompt)
-            },
-            PromptRole::Plot => {
-                format!("{{旁白: （接下来的剧情演绎提示：{}）}}", prompt)
-            },
-        }
+        let inner = match self {
+            PromptRole::System => format!("（系统提示：{prompt}）"),
+            PromptRole::Narrator => prompt.to_string(),
+            PromptRole::Plot => format!("（接下来的剧情演绎提示：{prompt}）"),
+        };
+        format!("{NARRATION_TAG} {inner}}}")
     }
 }

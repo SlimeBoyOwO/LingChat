@@ -23,27 +23,27 @@
 </template>
 
 <script setup lang="ts">
-  import { StartItem, StartLine, StartList } from "../base";
-  import { useRouter } from "vue-router";
-  import { useGameStore } from "@/stores/modules/game";
-  import { eventQueue } from "@/core/events/event-queue";
+import { StartItem, StartLine, StartList } from "../base";
+import { useRouter } from "vue-router";
+import { useGameStore } from "@/stores/modules/game";
+import { eventQueue } from "@/core/events/event-queue";
 
-  const emit = defineEmits<{
-    (e: "back"): void;
-    (e: "open-scripts"): void;
-  }>();
+const emit = defineEmits<{
+  (e: "back"): void;
+  (e: "open-scripts"): void;
+}>();
 
-  const router = useRouter();
-  const gameStore = useGameStore();
+const router = useRouter();
+const gameStore = useGameStore();
 
-  const startFreeDialogue = () => {
-    eventQueue.clear();
-    gameStore.exitStoryMode();
-    router.push("/chat");
-  };
+const startFreeDialogue = () => {
+  eventQueue.clear();
+  gameStore.exitStoryMode();
+  router.push("/chat");
+};
 
-  // 进入剧情模式：切到剧本列表页
-  const startStoryMode = () => {
-    emit("open-scripts");
-  };
+// 进入剧情模式：切到剧本列表页
+const startStoryMode = () => {
+  emit("open-scripts");
+};
 </script>

@@ -360,6 +360,7 @@ pub async fn run_chat(
                     .collect(),
             ),
             tool_call_id: None,
+            image_data_url: None,
         };
         messages.push(assistant_msg.clone());
         let _ = db::insert_message(

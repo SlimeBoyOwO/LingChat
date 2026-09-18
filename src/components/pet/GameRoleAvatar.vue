@@ -5,21 +5,18 @@
   >
     <!-- 缩放与尺寸控制层 (无位移) -->
     <div class="relative h-full w-full">
-      <!-- 1. 右上角信息铭牌 -->
+      <!-- 1. 右上角信息铭牌（悬停显隐由祖先 .is-hovered 驱动，不能用 CSS :hover：
+           窗口会开点击穿透，见 GameRolesStage.vue 的 isStageHovered 说明） -->
       <div
-        class="pointer-events-none absolute top-1 -right-4 z-50 flex translate-x-4 flex-col
-          items-start opacity-0 transition-all duration-400 ease-out group-hover:translate-x-0
-          group-hover:opacity-100"
+        class="pointer-events-none absolute top-1 -right-4 z-50 flex translate-x-4 flex-col items-start opacity-0 transition-all duration-400 ease-out group-[.is-hovered]:translate-x-0 group-[.is-hovered]:opacity-100"
       >
         <div
-          class="rounded-tl-md rounded-br-md bg-cyan-500 px-2 py-0.5 text-[10px] font-black
-            tracking-wider text-white italic shadow-sm"
+          class="rounded-tl-md rounded-br-md bg-cyan-500 px-2 py-0.5 text-[10px] font-black tracking-wider text-white italic shadow-sm"
         >
           {{ role.roleName }}
         </div>
         <div
-          class="pl-1 text-xs font-bold tracking-widest text-cyan-700 uppercase drop-shadow-sm
-            dark:text-cyan-300"
+          class="pl-1 text-xs font-bold tracking-widest text-cyan-700 uppercase drop-shadow-sm dark:text-cyan-300"
         >
           {{ role.roleSubTitle }}
         </div>
@@ -27,13 +24,11 @@
 
       <!-- 3. 常驻特效：现代科技感流光圆环 -->
       <div
-        class="animate-pulse-slow pointer-events-none absolute inset-3 rounded-full border-[1.5px]
-          border-cyan-400/20"
+        class="animate-pulse-slow pointer-events-none absolute inset-3 rounded-full border-[1.5px] border-cyan-400/20"
       ></div>
       <!-- 流光扫边特效环 -->
       <div
-        class="sweep-glow-ring pointer-events-none absolute -inset-1 rounded-full
-          drop-shadow-[0_0_6px_rgba(34,211,238,0.4)]"
+        class="sweep-glow-ring pointer-events-none absolute -inset-1 rounded-full drop-shadow-[0_0_6px_rgba(34,211,238,0.4)]"
       ></div>
 
       <!-- 5. 核心头像框 -->
@@ -45,9 +40,7 @@
         Windows 的 -webkit-app-region: drag 保持原样。
       -->
       <div
-        class="relative z-10 flex h-full w-full items-center justify-center overflow-hidden
-          rounded-full border-2 border-white/60 bg-white/10 shadow-[0_8px_32px_rgba(0,176,255,0.15)]
-          backdrop-blur-md transition-colors duration-300 dark:border-white/20 dark:bg-black/10"
+        class="avatar-breath-frame relative z-10 flex h-full w-full items-center justify-center overflow-hidden rounded-full border-2 border-white/60 bg-white/10 shadow-[0_8px_32px_rgba(0,176,255,0.15)] backdrop-blur-md transition-colors duration-300 dark:border-white/20 dark:bg-black/10"
         data-tauri-drag-region="false"
         @mousedown="startWindowDrag"
         @dragstart.prevent
@@ -95,8 +88,7 @@
       <!-- 6. 气泡表情 -->
       <div
         :class="[
-          `pointer-events-none absolute top-[-2%] left-[-2%] z-73 h-full w-full origin-bottom-left
-          bg-contain bg-no-repeat transition-all duration-300`,
+          `pointer-events-none absolute top-[-2%] left-[-2%] z-73 h-full w-full origin-bottom-left bg-contain bg-no-repeat transition-all duration-300`,
           bubbleClasses,
         ]"
         :style="bubbleStyles"
@@ -106,278 +98,154 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, computed, watch, nextTick, toRefs } from "vue";
-  import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-  import { getCurrentWindow } from "@tauri-apps/api/window";
-  import BAParticles from "./BAParticles.vue";
-  import ImageCrossFade from "@/components/ui/ImageAcrossFade.vue";
-  import StarField from "../game/standard/particles/StarField.vue";
-  import type { GameRole } from "@/stores/modules/game/state";
-  import { useGameStore } from "@/stores/modules/game";
-  import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from "@/controllers/emotion/config";
-  import { useUIStore } from "@/stores/modules/ui/ui";
-  import "./avatar-animation.css";
+import { ref, computed, toRefs } from "vue";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import BAParticles from "../game/standard/particles/BAParticles.vue";
+import ImageCrossFade from "@/components/ui/ImageAcrossFade.vue";
+import StarField from "../game/standard/particles/StarField.vue";
+import type { GameRole } from "@/stores/modules/game/state";
+import { useUIStore } from "@/stores/modules/ui/ui";
+import { useRoleAvatar } from "@/composables/role/useRoleAvatar";
+import "@/assets/styles/avatar-animation.css";
 
-  const props = defineProps<{ role: GameRole; live2dActive?: boolean; live2dFailed?: boolean }>();
-  const { role } = toRefs(props);
+const props = defineProps<{ role: GameRole; live2dActive?: boolean; live2dFailed?: boolean }>();
+const { role } = toRefs(props);
 
-  const emit = defineEmits(["avatar-click"]);
-  const bubbleAudio = ref<HTMLAudioElement | null>(null);
-  const imageFadeRef = ref<InstanceType<typeof ImageCrossFade> | null>(null);
-  const uiStore = useUIStore();
-  const gameStore = useGameStore();
+const emit = defineEmits(["avatar-click"]);
+const bubbleAudio = ref<HTMLAudioElement | null>(null);
+const imageFadeRef = ref<InstanceType<typeof ImageCrossFade> | null>(null);
+const uiStore = useUIStore();
 
-  // ─── 窗口拖曳 ────────────────────────────────────────────────
-  // macOS 的 WKWebView 不支持 -webkit-app-region: drag，桌宠窗口因此完全拖不动。
-  // 这里手动接管：按下后位移超过阈值才进入原生窗口拖曳，未超过则保持为普通点击
-  // （头像的 click 仍会派发，"点击头像推进对话"不受影响）。
-  const DRAG_THRESHOLD_PX = 4;
+// ─── 窗口拖曳 ────────────────────────────────────────────────
+// macOS 的 WKWebView 不支持 -webkit-app-region: drag，桌宠窗口因此完全拖不动。
+// 这里手动接管：按下后位移超过阈值才进入原生窗口拖曳，未超过则保持为普通点击
+// （头像的 click 仍会派发，"点击头像推进对话"不受影响）。
+const DRAG_THRESHOLD_PX = 4;
 
-  const startWindowDrag = (e: MouseEvent) => {
-    if (e.button !== 0) return;
+const startWindowDrag = (e: MouseEvent) => {
+  if (e.button !== 0) return;
 
-    // 抑制文本选中与 <img> 的原生拖曳：原生 image drag 一旦启动，mousemove 就断流，
-    // 阈值永远达不到，拖曳会在整个头像区域间歇性失效。preventDefault 不影响后续 click 派发。
-    e.preventDefault();
+  // 抑制文本选中与 <img> 的原生拖曳：原生 image drag 一旦启动，mousemove 就断流，
+  // 阈值永远达不到，拖曳会在整个头像区域间歇性失效。preventDefault 不影响后续 click 派发。
+  e.preventDefault();
 
-    const startX = e.screenX;
-    const startY = e.screenY;
+  const startX = e.screenX;
+  const startY = e.screenY;
 
-    const cleanup = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", cleanup);
-    };
-
-    const onMove = (moveEvent: MouseEvent) => {
-      if (
-        Math.abs(moveEvent.screenX - startX) < DRAG_THRESHOLD_PX &&
-        Math.abs(moveEvent.screenY - startY) < DRAG_THRESHOLD_PX
-      ) {
-        return;
-      }
-      // 交给系统接管后 webview 收不到后续鼠标事件，先摘监听器再启动拖曳
-      cleanup();
-      void getCurrentWindow().startDragging();
-    };
-
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", cleanup);
+  const cleanup = () => {
+    window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("mouseup", cleanup);
   };
 
-  const activeAnimationClass = ref("normal");
-  const isBubbleVisible = ref(false);
-  const currentBubbleImageUrl = ref("");
-  const currentBubbleClass = ref("");
-
-  let bubbleTimeoutId: number | null = null;
-  let latestEmotionId = 0;
-
-  const containerClasses = computed(() => ({
-    [activeAnimationClass.value]: true,
-    "opacity-100": role.value.show,
-    "opacity-0": !role.value.show,
-  }));
-
-  const avatarStyles = computed(() => ({
-    transform: `scale(${role.value.scaleP}) translate(${role.value.offsetXP}px, ${role.value.offsetYP}px)`,
-  }));
-
-  const imageStyles = computed(() => ({
-    top: `-10px`,
-  }));
-
-  const bubbleClasses = computed(() => ({
-    "opacity-100": isBubbleVisible.value,
-    "opacity-0": !isBubbleVisible.value,
-    [currentBubbleClass.value]: isBubbleVisible.value && currentBubbleClass.value,
-  }));
-
-  const bubbleStyles = computed(() => ({
-    backgroundImage: `url(${currentBubbleImageUrl.value})`,
-  }));
-
-  const handleAvatarClick = () => emit("avatar-click");
-
-  const handleAnimationEnd = () => {
-    if (activeAnimationClass.value !== "normal") {
-      activeAnimationClass.value = "normal";
+  const onMove = (moveEvent: MouseEvent) => {
+    if (
+      Math.abs(moveEvent.screenX - startX) < DRAG_THRESHOLD_PX &&
+      Math.abs(moveEvent.screenY - startY) < DRAG_THRESHOLD_PX
+    ) {
+      return;
     }
+    // 交给系统接管后 webview 收不到后续鼠标事件，先摘监听器再启动拖曳
+    cleanup();
+    void getCurrentWindow().startDragging();
   };
 
-  const targetAvatarUrl = ref("");
-  let resolveAvatarId = 0;
+  window.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup", cleanup);
+};
 
-  async function resolveAvatar() {
-    const r = role.value;
-    const clothesName = r.clothesName === "默认" || !r.clothesName ? "default" : r.clothesName;
-    const emotion = r.emotion;
-    const mappedEmotion = EMOTION_CONFIG_EMO[emotion] || "正常";
+// 头像解析 + 情绪演出（动画类 / 气泡 / 音效）—— 与主界面共用同一实现
+const {
+  targetAvatarUrl,
+  activeAnimationClass,
+  isBubbleVisible,
+  currentBubbleImageUrl,
+  currentBubbleClass,
+  handleAnimationEnd,
+} = useRoleAvatar({
+  role,
+  audioRef: bubbleAudio,
+  waitForAvatarLoad: () => imageFadeRef.value?.waitForLoad(),
+});
 
-    const currentId = ++resolveAvatarId;
-    try {
-      const path = await invoke<string>("get_avatar_file", {
-        characterFolder: r.character_folder,
-        emotion: mappedEmotion,
-        clothesName,
-      });
-      if (currentId === resolveAvatarId) {
-        targetAvatarUrl.value = convertFileSrc(path);
-      }
-    } catch {
-      if (currentId === resolveAvatarId) {
-        targetAvatarUrl.value = "";
-      }
-    }
-  }
+const containerClasses = computed(() => ({
+  [activeAnimationClass.value]: true,
+  "opacity-100": role.value.show,
+  "opacity-0": !role.value.show,
+}));
 
-  watch(
-    () => [
-      role.value.roleId,
-      role.value.emotion,
-      role.value.clothesName,
-      role.value.character_folder,
-    ],
-    () => resolveAvatar(),
-    { immediate: true }
-  );
+const avatarStyles = computed(() => ({
+  transform: `scale(${role.value.scaleP}) translate(${role.value.offsetXP}px, ${role.value.offsetYP}px)`,
+}));
 
-  watch(
-    () => role.value.emotion,
-    async (newEmotion) => {
-      const currentId = ++latestEmotionId;
-      await resolveAvatar();
-      await nextTick();
-      if (imageFadeRef.value) await imageFadeRef.value.waitForLoad();
-      if (currentId !== latestEmotionId) return;
+const imageStyles = computed(() => ({
+  top: `-10px`,
+}));
 
-      const config = EMOTION_CONFIG[newEmotion];
-      if (!config) return;
+const bubbleClasses = computed(() => ({
+  "opacity-100": isBubbleVisible.value,
+  "opacity-0": !isBubbleVisible.value,
+  [currentBubbleClass.value]: isBubbleVisible.value && currentBubbleClass.value,
+}));
 
-      if (config.animation && config.animation !== "none")
-        activeAnimationClass.value = config.animation;
+const bubbleStyles = computed(() => ({
+  backgroundImage: `url(${currentBubbleImageUrl.value})`,
+}));
 
-      if (config.bubbleImage && config.bubbleImage !== "none") {
-        // 修复代码：移除 ?t=... 形式的 cache-buster，避免由于本地重新加载导致的疯狂闪烁
-        currentBubbleImageUrl.value = config.bubbleImage;
-        currentBubbleClass.value = config.bubbleClass;
-
-        if (bubbleTimeoutId !== null) {
-          window.clearTimeout(bubbleTimeoutId);
-          bubbleTimeoutId = null;
-        }
-
-        if (!isBubbleVisible.value) {
-          isBubbleVisible.value = true;
-        }
-
-        bubbleTimeoutId = window.setTimeout(() => {
-          isBubbleVisible.value = false;
-          bubbleTimeoutId = null;
-        }, 2000);
-      }
-
-      if (config.audio && config.audio !== "none") {
-        playBubbleAudio(config.audio);
-      }
-    },
-    { immediate: true }
-  );
-
-  // 播放情绪气泡音效（音量跟随「气泡音量」设置，否则恒为满音量）
-  const playBubbleAudio = (src: string) => {
-    if (!bubbleAudio.value) return;
-    bubbleAudio.value.volume = uiStore.bubbleVolume / 100;
-    bubbleAudio.value.src = src;
-    bubbleAudio.value.load();
-    bubbleAudio.value.play().catch((e) => console.error("气泡音效播放失败:", e));
-  };
-
-  // 气泡音量设置变化时，对已加载的音效实时生效
-  watch(
-    () => uiStore.bubbleVolume,
-    (v) => {
-      if (bubbleAudio.value) bubbleAudio.value.volume = v / 100;
-    }
-  );
-
-  // 思考中反馈：气泡 + 音效（由 currentStatus 驱动，与 emotion 解耦）
-  watch(
-    () => gameStore.currentStatus,
-    (newStatus) => {
-      if (newStatus === "thinking") {
-        const config = EMOTION_CONFIG["AI思考"];
-        if (config && config.bubbleImage && config.bubbleImage !== "none") {
-          currentBubbleImageUrl.value = config.bubbleImage;
-          currentBubbleClass.value = config.bubbleClass;
-
-          if (bubbleTimeoutId !== null) {
-            window.clearTimeout(bubbleTimeoutId);
-            bubbleTimeoutId = null;
-          }
-          if (!isBubbleVisible.value) {
-            isBubbleVisible.value = true;
-          }
-          bubbleTimeoutId = window.setTimeout(() => {
-            isBubbleVisible.value = false;
-            bubbleTimeoutId = null;
-          }, 2000);
-        }
-        if (config?.audio && config.audio !== "none") {
-          playBubbleAudio(config.audio);
-        }
-      } else {
-        // 离开思考态：隐藏思考气泡、停掉定时器
-        isBubbleVisible.value = false;
-        if (bubbleTimeoutId !== null) {
-          window.clearTimeout(bubbleTimeoutId);
-          bubbleTimeoutId = null;
-        }
-      }
-    }
-  );
+const handleAvatarClick = () => emit("avatar-click");
 </script>
 
 <style scoped>
-  .animate-breathing {
-    animation: breathing 4s ease-in-out infinite alternate;
-  }
+/* 呼吸幅度：桌宠头像尺寸小，需要比主界面（1.0035）更明显才看得出。
+     共享的 @keyframes breathing 读这个变量，见 src/assets/styles/avatar-animation.css */
+.avatar-breath-frame {
+  --avatar-breath-scale: 1.005;
+}
 
-  .animate-pulse-slow {
-    animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  }
+/* 注意：这是给头像图片用的另一个呼吸动画，与共享 CSS 里的 @keyframes breathing 同名。
+     Vue 的 scoped 样式会把 @keyframes 重命名，因此两者不会互相覆盖。 */
+.animate-breathing {
+  animation: breathing 4s ease-in-out infinite alternate;
+}
 
-  @keyframes breathing {
-    0% {
-      transform: scale(1);
-    }
-    100% {
-      transform: scale(1.02);
-    }
-  }
+.animate-pulse-slow {
+  animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
 
-  @keyframes pulse-slow {
-    0%,
-    100% {
-      opacity: 0.3;
-    }
-    50% {
-      opacity: 1;
-    }
+@keyframes breathing {
+  0% {
+    transform: scale(1);
   }
+  100% {
+    transform: scale(1.02);
+  }
+}
 
-  .sweep-glow-ring {
-    background: conic-gradient(
-      from 0deg,
-      transparent 40%,
-      rgba(34, 211, 238, 0.1) 70%,
-      rgba(34, 211, 238, 0.8) 100%
-    );
-    -webkit-mask: radial-gradient(transparent 68%, #000 69%);
-    mask: radial-gradient(transparent 68%, #000 69%);
-    animation: spin 4s linear infinite;
+@keyframes pulse-slow {
+  0%,
+  100% {
+    opacity: 0.3;
   }
+  50% {
+    opacity: 1;
+  }
+}
 
-  [data-tauri-drag-region] {
-    -webkit-app-region: drag;
-  }
+.sweep-glow-ring {
+  background: conic-gradient(
+    from 0deg,
+    transparent 40%,
+    rgba(34, 211, 238, 0.1) 70%,
+    rgba(34, 211, 238, 0.8) 100%
+  );
+  -webkit-mask: radial-gradient(transparent 68%, #000 69%);
+  mask: radial-gradient(transparent 68%, #000 69%);
+  animation: spin 4s linear infinite;
+  /* 性能：常驻旋转动画提升为独立合成层，避免每帧走主线程重绘
+      （mask+gradient 光栅化结果被缓存，旋转退化为纯 GPU 纹理变换，视觉不变） */
+  will-change: transform;
+}
+
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+}
 </style>
