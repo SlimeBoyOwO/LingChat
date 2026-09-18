@@ -71,7 +71,7 @@ export async function mountRhythm(root, options) {
     source = null,
     gain = null,
     analyser = null,
-    hitBuffer = null;
+    hitBuffers = null;
   const waveSamples = new Float32Array(2048),
     wavePoints = new Float32Array(193);
   let waveLevel = 0;
@@ -196,36 +196,76 @@ export async function mountRhythm(root, options) {
     wavePoints.fill(0);
     waveLevel = 0;
   }
-  // 按键音：300ms 合成小铃铛采样（基频 + 两个非谐泛音叠出金属感，2ms 起音带敲击瞬态），
+  // 按键音：三种合成采样按节拍位置混用——整数拍主铃、半拍亮铃、细分音软嗒，
   // 挂在音乐总线上跟随音量设置
-  function makeHitBuffer() {
+  function synthHit({ f0, partials, attack, noiseGain, noiseDecay, gain: level, seconds }) {
     const rate = audio.sampleRate,
-      length = Math.ceil(0.3 * rate),
+      length = Math.ceil(seconds * rate),
       clip = audio.createBuffer(1, length, rate),
-      data = clip.getChannelData(0),
-      f0 = 2600;
-    const partials = [
-      [1, 1.0, 22],
-      [2.43, 0.38, 55],
-      [3.91, 0.16, 110],
-    ];
+      data = clip.getChannelData(0);
     let seed = 7;
     for (let i = 0; i < length; i++) {
       const t = i / rate;
       let s = 0;
-      for (const [ratio, gain, decay] of partials)
-        s += Math.sin(2 * Math.PI * f0 * ratio * t) * gain * Math.exp(-t * decay);
-      s *= Math.min(1, t / 0.002);
+      for (const [ratio, g, decay] of partials)
+        s += Math.sin(2 * Math.PI * f0 * ratio * t) * g * Math.exp(-t * decay);
+      s *= Math.min(1, t / attack);
       seed = (seed * 1664525 + 1013904223) >>> 0;
-      s += ((seed / 4294967296) * 2 - 1) * Math.exp(-t * 500) * 0.12;
-      data[i] = s * 0.45;
+      s += ((seed / 4294967296) * 2 - 1) * Math.exp(-t * noiseDecay) * noiseGain;
+      data[i] = s * level;
     }
     return clip;
   }
-  function playHitSound() {
-    if (!keySound || !audio || !gain || !hitBuffer || state !== "playing") return;
+  function makeHitBuffers() {
+    return {
+      on: synthHit({
+        f0: 2600,
+        partials: [
+          [1, 1.0, 22],
+          [2.43, 0.38, 55],
+          [3.91, 0.16, 110],
+        ],
+        attack: 0.002,
+        noiseGain: 0.12,
+        noiseDecay: 500,
+        gain: 0.45,
+        seconds: 0.3,
+      }),
+      half: synthHit({
+        f0: 3400,
+        partials: [
+          [1, 0.9, 40],
+          [2.76, 0.3, 110],
+        ],
+        attack: 0.0015,
+        noiseGain: 0.08,
+        noiseDecay: 500,
+        gain: 0.32,
+        seconds: 0.18,
+      }),
+      sub: synthHit({
+        f0: 1300,
+        partials: [[1, 1.0, 60]],
+        attack: 0.0015,
+        noiseGain: 0.18,
+        noiseDecay: 350,
+        gain: 0.28,
+        seconds: 0.09,
+      }),
+    };
+  }
+  function playHitSound(time) {
+    if (!keySound || !audio || !gain || !hitBuffers || state !== "playing") return;
+    const beats = music.beatPosition?.(time) ?? time / music.beat;
+    const phase = beats - Math.floor(beats);
+    const buffer =
+      Math.min(phase, 1 - phase) < 0.07
+        ? hitBuffers.on
+        : Math.abs(phase - 0.5) < 0.07
+          ? hitBuffers.half
+          : hitBuffers.sub;
     const hit = audio.createBufferSource();
-    hit.buffer = hitBuffer;
+    hit.buffer = buffer;
     hit.connect(gain);
     hit.start();
   }
@@ -245,7 +285,7 @@ export async function mountRhythm(root, options) {
       analyser.fftSize = waveSamples.length;
       gain.connect(analyser);
       analyser.connect(audio.destination);
-      hitBuffer = makeHitBuffer();
+      hitBuffers = makeHitBuffers();
     }
     gain.gain.value = volume;
     if (!buffer) {
@@ -861,7 +901,7 @@ export async function mountRhythm(root, options) {
       laneFlash[event.lane] = now;
       laneGrades[event.lane] = event.grade;
       if (event.grade !== "miss") {
-        playHitSound();
+        playHitSound(event.at ?? event.time);
         poseIndex = event.lane < 2 ? 1 : 2;
         poseUntil = now + 240;
         if (beatEffects && !reducedMotion.matches)
