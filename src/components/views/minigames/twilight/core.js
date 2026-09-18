@@ -25,15 +25,7 @@ class Judge {
     this.points += WEIGHT[grade];
     this.combo = grade === "miss" ? 0 : this.combo + 1;
     this.maxCombo = Math.max(this.maxCombo, this.combo);
-    this.events.push({
-      grade,
-      lane: note.lane,
-      time,
-      combo: this.combo,
-      error,
-      // 谱面时间用于按键音的节拍定位：长按尾端按尾端时刻算
-      at: note.end != null && note.headGrade != null ? note.end : note.at,
-    });
+    this.events.push({ grade, lane: note.lane, time, combo: this.combo, error });
   }
   update(time) {
     // Allow recently queued input to arrive before automatic misses/tails are resolved.
@@ -55,7 +47,7 @@ class Judge {
       (n) =>
         n.lane === lane &&
         n.state === "pending" &&
-        Math.abs(time - (n.resumeAt ?? n.at)) <= WINDOWS.hit,
+        Math.abs(time - (n.resumeAt ?? n.at)) <= WINDOWS.hit
     );
     if (!note) return null;
     const error = time - note.at;
@@ -81,7 +73,6 @@ class Judge {
         time,
         combo: this.combo,
         error: resumed ? null : error,
-        at: note.at,
       });
     } else this.finish(note, grade, time, error);
     return grade;

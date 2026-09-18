@@ -70,8 +70,7 @@ export async function mountRhythm(root, options) {
     buffer = null,
     source = null,
     gain = null,
-    analyser = null,
-    hitBuffers = null;
+    analyser = null;
   const waveSamples = new Float32Array(2048),
     wavePoints = new Float32Array(193);
   let waveLevel = 0;
@@ -88,8 +87,7 @@ export async function mountRhythm(root, options) {
   let volume = 0.55,
     offset = 0,
     approach = 1.8,
-    horror = false,
-    keySound = true;
+    horror = false;
   let poseIndex = 0,
     poseUntil = 0,
     feedback = null,
@@ -118,22 +116,13 @@ export async function mountRhythm(root, options) {
     approach = Math.max(1.1, Math.min(2.6, Number.isFinite(saved.approach) ? saved.approach : 1.8));
     horror = saved.horror === true;
     beatEffects = saved.beatEffects !== false;
-    keySound = saved.keySound !== false;
     music = SONGS.find((song) => song.id === saved.songId) ?? SONGS[0];
   } catch (_) {}
   function saveSettings() {
     try {
       localStorage.setItem(
         "twilight-cadence-settings",
-        JSON.stringify({
-          volume,
-          offset,
-          approach,
-          horror,
-          beatEffects,
-          keySound,
-          songId: music.id,
-        }),
+        JSON.stringify({ volume, offset, approach, horror, beatEffects, songId: music.id }),
       );
     } catch (_) {}
   }
@@ -196,79 +185,6 @@ export async function mountRhythm(root, options) {
     wavePoints.fill(0);
     waveLevel = 0;
   }
-  // 按键音：三种合成采样按节拍位置混用——整数拍主铃、半拍亮铃、细分音软嗒，
-  // 挂在音乐总线上跟随音量设置
-  function synthHit({ f0, partials, attack, noiseGain, noiseDecay, gain: level, seconds }) {
-    const rate = audio.sampleRate,
-      length = Math.ceil(seconds * rate),
-      clip = audio.createBuffer(1, length, rate),
-      data = clip.getChannelData(0);
-    let seed = 7;
-    for (let i = 0; i < length; i++) {
-      const t = i / rate;
-      let s = 0;
-      for (const [ratio, g, decay] of partials)
-        s += Math.sin(2 * Math.PI * f0 * ratio * t) * g * Math.exp(-t * decay);
-      s *= Math.min(1, t / attack);
-      seed = (seed * 1664525 + 1013904223) >>> 0;
-      s += ((seed / 4294967296) * 2 - 1) * Math.exp(-t * noiseDecay) * noiseGain;
-      data[i] = s * level;
-    }
-    return clip;
-  }
-  function makeHitBuffers() {
-    return {
-      on: synthHit({
-        f0: 2600,
-        partials: [
-          [1, 1.0, 22],
-          [2.43, 0.38, 55],
-          [3.91, 0.16, 110],
-        ],
-        attack: 0.002,
-        noiseGain: 0.12,
-        noiseDecay: 500,
-        gain: 0.45,
-        seconds: 0.3,
-      }),
-      half: synthHit({
-        f0: 3400,
-        partials: [
-          [1, 0.9, 40],
-          [2.76, 0.3, 110],
-        ],
-        attack: 0.0015,
-        noiseGain: 0.08,
-        noiseDecay: 500,
-        gain: 0.32,
-        seconds: 0.18,
-      }),
-      sub: synthHit({
-        f0: 1300,
-        partials: [[1, 1.0, 60]],
-        attack: 0.0015,
-        noiseGain: 0.18,
-        noiseDecay: 350,
-        gain: 0.28,
-        seconds: 0.09,
-      }),
-    };
-  }
-  function playHitSound(time) {
-    if (!keySound || !audio || !gain || !hitBuffers || state !== "playing") return;
-    const beats = music.beatPosition?.(time) ?? time / music.beat;
-    const phase = beats - Math.floor(beats);
-    const buffer =
-      Math.min(phase, 1 - phase) < 0.07
-        ? hitBuffers.on
-        : Math.abs(phase - 0.5) < 0.07
-          ? hitBuffers.half
-          : hitBuffers.sub;
-    const hit = audio.createBufferSource();
-    hit.buffer = buffer;
-    hit.connect(gain);
-    hit.start();
-  }
   async function readyAudio() {
     if (!audio) {
       const Context = window.AudioContext || window.webkitAudioContext;
@@ -285,7 +201,6 @@ export async function mountRhythm(root, options) {
       analyser.fftSize = waveSamples.length;
       gain.connect(analyser);
       analyser.connect(audio.destination);
-      hitBuffers = makeHitBuffers();
     }
     gain.gain.value = volume;
     if (!buffer) {
@@ -592,7 +507,6 @@ export async function mountRhythm(root, options) {
     $("speed-value").textContent = approach.toFixed(1) + " s";
     $("horror").checked = horror;
     $("beat-effects").checked = beatEffects;
-    $("key-sound").checked = keySound;
     scene.dataset.effects = String(beatEffects && !reducedMotion.matches);
     if (!beatEffects || reducedMotion.matches) {
       effects.length = 0;
@@ -622,11 +536,6 @@ export async function mountRhythm(root, options) {
   };
   $("beat-effects").onchange = (event) => {
     beatEffects = event.target.checked;
-    controls();
-    saveSettings();
-  };
-  $("key-sound").onchange = (event) => {
-    keySound = event.target.checked;
     controls();
     saveSettings();
   };
@@ -901,7 +810,6 @@ export async function mountRhythm(root, options) {
       laneFlash[event.lane] = now;
       laneGrades[event.lane] = event.grade;
       if (event.grade !== "miss") {
-        playHitSound(event.at ?? event.time);
         poseIndex = event.lane < 2 ? 1 : 2;
         poseUntil = now + 240;
         if (beatEffects && !reducedMotion.matches)
