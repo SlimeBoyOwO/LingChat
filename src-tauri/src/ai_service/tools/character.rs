@@ -191,6 +191,18 @@ impl Tool for CharacterSwitch {
             gs.onstage_role(role_id);
         }
         gs.current_role_id = Some(role_id);
+
+        // 切换说话者也会改变"谁在场"的语义（单角色替换时阵容全变），
+        // 所以按当前阵容重建在场角色的人设行，再刷新记忆。
+        crate::ai_service::game_system::player_identity::persona::rebuild_onstage_personas(
+            &mut gs,
+            &state.db,
+            &crate::api::data_dir(),
+            prompt_options,
+        )
+        .await
+        .map_err(|e| ToolError::Execution(format!("重建在场角色人设行失败: {e}")))?;
+
         gs.refresh_memories(&state.db)
             .await
             .map_err(|e| ToolError::Execution(format!("刷新角色 {role_id} 上下文失败: {e}")))?;

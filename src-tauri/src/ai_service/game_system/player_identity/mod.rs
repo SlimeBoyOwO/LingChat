@@ -19,12 +19,15 @@
 //! 不会读它、不会写它、不会删它。
 
 pub mod guard;
+pub mod persona;
 pub mod resolve;
 pub mod role_relations;
 pub mod store;
 
 pub use guard::{ensure_identity_mutable, ensure_identity_switchable};
-pub use resolve::{RelationEndpoint, build_player_block, resolve_relation};
+pub use resolve::{
+    RelationEndpoint, ScenePeer, build_peers_block, build_player_block, resolve_relation,
+};
 pub use store::IdentityStore;
 
 use std::collections::HashMap;

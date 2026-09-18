@@ -192,6 +192,64 @@ pub fn build_player_block(
     out
 }
 
+/// 一位**在场的其他角色**（「你眼里的其他角色」块的输入）。
+#[derive(Clone, Debug)]
+pub struct ScenePeer {
+    /// 角色文件夹（关系键用 `ai:<folder>`）。
+    pub folder: String,
+    /// 展示名（拼进 prompt 用的名字）。
+    pub name: String,
+    /// 对方自己的关系表（用于「对方视角」回退）。
+    pub relations: HashMap<String, String>,
+}
+
+/// 拼「你眼里的其他角色」块：说话者对各在场角色的看法。
+///
+/// 与玩家块的关键差别：**不做提示词兜底**。
+/// 玩家块的兜底来源是玩家自己写的身份提示词（写给自己看的，注入无妨）；
+/// 而 AI 角色的兜底来源是它**整份人设**，注入给另一个角色等于人设泄漏
+/// （B 会因此知道 A 的全部设定）。所以这里把 `target_prompt` 传 `None`：
+/// 只注入**显式写过**的关系（自己写的优先，其次是对方写的）。
+///
+/// 一条显式关系都没有时返回空串（不注入空块）。
+pub fn build_peers_block(
+    speaker: &RelationEndpoint,
+    speaker_relations: &HashMap<String, String>,
+    peers: &[ScenePeer],
+) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    for peer in peers {
+        let target = RelationEndpoint::Ai(peer.folder.clone());
+        // 第三个参数传 None：禁用"拿对方人设兜底"，避免人设泄漏
+        let Some(view) =
+            resolve_relation(speaker, &target, speaker_relations, &peer.relations, None)
+        else {
+            continue;
+        };
+        let text = match view.source {
+            RelationSource::Speaker => format!("你对 ta 的看法：{}", view.text),
+            RelationSource::Counterparty => {
+                format!("ta 对你的说法（是 ta 的说法，未必是事实）：{}", view.text)
+            },
+            // 上面传了 None，走不到兜底分支
+            RelationSource::PromptFallback => continue,
+        };
+        lines.push(format!("- {}：{}\n", peer.name, text));
+    }
+
+    if lines.is_empty() {
+        return String::new();
+    }
+
+    let mut out = String::from(
+        "\n\n【你眼里的其他角色】\n（这些是你自己的认知，相关时体现即可，不必每句都提）\n",
+    );
+    for line in lines {
+        out.push_str(&line);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,5 +365,56 @@ mod tests {
     #[test]
     fn empty_identity_produces_no_block() {
         assert!(build_player_block("", "", "", None).is_empty());
+    }
+
+    /// 说话者自己写过 → 用自己写的；没写过的对象整条跳过；
+    /// **绝不回退到对方的人设**（AI↔AI 注入不做提示词兜底，防止人设泄漏）。
+    #[test]
+    fn peers_block_only_injects_explicit_relations() {
+        let speaker = RelationEndpoint::Ai("DeepSeek".into());
+        let speaker_relations = map(&[("ai:诺一钦灵", "坚持认为他是男性小狗")]);
+        let peers = vec![
+            ScenePeer {
+                folder: "诺一钦灵".into(),
+                name: "钦灵".into(),
+                relations: map(&[("ai:DeepSeek", "讨厌的鲸鱼")]),
+            },
+            ScenePeer {
+                folder: "风雪".into(),
+                name: "风雪".into(),
+                relations: HashMap::new(),
+            },
+        ];
+
+        let block = build_peers_block(&speaker, &speaker_relations, &peers);
+        assert!(block.contains("【你眼里的其他角色】"));
+        assert!(block.contains("- 钦灵："));
+        assert!(block.contains("坚持认为他是男性小狗"));
+        // 没有显式关系的角色不应出现
+        assert!(!block.contains("风雪"));
+        // 说话者自己写过的优先，不回退到对方说法
+        assert!(!block.contains("讨厌的鲸鱼"));
+    }
+
+    /// 只有对方写过时，用"对方说法（未必是事实）"的措辞；两边都没写过 → 空串。
+    #[test]
+    fn peers_block_falls_back_to_counterparty_wording() {
+        let speaker = RelationEndpoint::Ai("A".into());
+        let peer = ScenePeer {
+            folder: "B".into(),
+            name: "B".into(),
+            relations: map(&[("ai:A", "老对手")]),
+        };
+        let block = build_peers_block(&speaker, &HashMap::new(), &[peer]);
+        assert!(block.contains("老对手"));
+        assert!(block.contains("未必是事实"));
+
+        assert!(build_peers_block(&speaker, &HashMap::new(), &[]).is_empty());
+        let silent = ScenePeer {
+            folder: "C".into(),
+            name: "C".into(),
+            relations: HashMap::new(),
+        };
+        assert!(build_peers_block(&speaker, &HashMap::new(), &[silent]).is_empty());
     }
 }
