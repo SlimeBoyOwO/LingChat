@@ -31,7 +31,7 @@ export class TypeWriter {
     element: HTMLElement,
     onTextUpdateCallback?: (text: string) => void,
     soundUrls?: string[],
-    writeFn?: (element: HTMLElement, text: string) => void
+    writeFn?: (element: HTMLElement, text: string) => void,
   ) {
     this.element = element;
     this.timer = null;

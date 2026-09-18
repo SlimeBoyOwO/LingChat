@@ -297,7 +297,7 @@ export const listAssetFiles = (key: string, scope: AssetScope) =>
  */
 export const listGlobalBackgrounds = () =>
   invoke<AssetFileIndex>("editor_list_asset_files", { key: "", scope: "global" }).then(
-    (idx) => idx.background
+    (idx) => idx.background,
   );
 
 /** 删除素材。与章节、剧本一致，移到同级 .trash/ 而不是真删 */
@@ -360,7 +360,7 @@ export const createCharacter = (
   key: string,
   folder: string,
   aiName: string,
-  systemPrompt: string
+  systemPrompt: string,
 ) => invoke<ScriptCharacter>("editor_create_character", { key, folder, aiName, systemPrompt });
 
 export const rescanScripts = () => invoke<number>("editor_rescan_scripts");

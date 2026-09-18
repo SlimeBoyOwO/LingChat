@@ -71,7 +71,7 @@ export const useAdventureStore = defineStore("adventure", {
       try {
         await startAdventure(adventureFolder);
         const adventure = this.currentCharacterAdventures.find(
-          (adv) => adv.adventure_folder === adventureFolder
+          (adv) => adv.adventure_folder === adventureFolder,
         );
         if (adventure) {
           adventure.status = "in_progress";
@@ -99,7 +99,7 @@ export const useAdventureStore = defineStore("adventure", {
       try {
         await resetAdventure(adventureFolder);
         const adventure = this.currentCharacterAdventures.find(
-          (adv) => adv.adventure_folder === adventureFolder
+          (adv) => adv.adventure_folder === adventureFolder,
         );
         if (adventure) {
           adventure.status = "unlocked";
@@ -121,7 +121,7 @@ export const useAdventureStore = defineStore("adventure", {
 
     markAdventureCompleted(adventureFolder: string) {
       const adventure = this.currentCharacterAdventures.find(
-        (adv) => adv.adventure_folder === adventureFolder
+        (adv) => adv.adventure_folder === adventureFolder,
       );
       if (adventure) {
         adventure.status = "completed";

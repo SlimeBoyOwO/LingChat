@@ -212,7 +212,7 @@ export function handleToolActivity(event: ToolActivityEvent) {
         activeToolCalls.delete(event.call_id);
         watchdogTimers.delete(event.call_id);
         showFinished(stale, false);
-      }, ACTIVE_WATCHDOG_MS)
+      }, ACTIVE_WATCHDOG_MS),
     );
     return;
   }

@@ -168,7 +168,7 @@ export const clearAgentConversation = (conversationId: number) =>
 export const startAgentChat = (
   conversationId: number,
   message: string,
-  channel: Channel<SkillAgentEvent>
+  channel: Channel<SkillAgentEvent>,
 ) => invoke<number>("editor_agent_start_chat", { conversationId, message, channel });
 
 export const stopAgentChat = () => invoke<void>("editor_agent_stop_chat");

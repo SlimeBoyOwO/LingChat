@@ -8,7 +8,11 @@ use serde_json::Value;
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::script_engine::events::{ScriptContext, create_event};
+use crate::ai_service::game_system::script_engine::responses::{
+    ScriptProgressPayload, event_names::SCRIPT_PROGRESS,
+};
 use crate::ai_service::game_system::script_engine::utils::script_function::replace_placeholder;
+use crate::ai_service::message_system::events::emit;
 
 /// Processes a chapter's event list sequentially.
 pub struct EventsHandler {
@@ -18,14 +22,18 @@ pub struct EventsHandler {
     pub event_list: Vec<Value>,
     /// Set when a chapter_end event returns a result (the next chapter name).
     pub chapter_result: Option<String>,
+    /// 当前章节的标识（YAML 路径相对剧本目录），随阅读锚点广播给前端，
+    /// 使前端存的恢复点能定位到章节而非仅事件下标。
+    pub chapter_key: String,
 }
 
 impl EventsHandler {
-    pub fn new(event_list: Vec<Value>) -> Self {
+    pub fn new(event_list: Vec<Value>, chapter_key: String) -> Self {
         Self {
             progress: 0,
             event_list,
             chapter_result: None,
+            chapter_key,
         }
     }
 
@@ -49,6 +57,34 @@ impl EventsHandler {
 
         let event_data = self.event_list[self.progress].clone();
         self.progress += 1;
+
+        let event_index = self.progress - 1;
+        // 把「即将执行的事件下标」同步进 script_status，并向前端广播阅读锚点。
+        // 引擎在阅读型事件上不停顿、一路跑到下一个阻塞事件（选项/输入/自由对话），
+        // 锚点随事件流进入前端队列、按阅读速度被消费——玩家读到哪，锚点就跟到哪，
+        // 存档时据此记录精确的恢复点（章节 + 事件下标 + 当时台词条数 + 当时剧本变量）。
+        let (line_count, vars) = {
+            let mut gs = ctx.game_status.lock().await;
+            if let Some(ref mut ss) = gs.script_status {
+                ss.current_event_process = event_index as i32;
+            }
+            let vars = gs
+                .script_status
+                .as_ref()
+                .map(|s| s.vars.clone())
+                .unwrap_or_default();
+            (gs.line_list.len(), vars)
+        };
+        let _ = emit(
+            ctx.app,
+            SCRIPT_PROGRESS,
+            &ScriptProgressPayload {
+                chapter: self.chapter_key.clone(),
+                event_index: event_index as i32,
+                line_count: line_count as i32,
+                vars,
+            },
+        );
 
         let event_type = event_data
             .get("type")

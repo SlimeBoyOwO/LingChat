@@ -34,5 +34,8 @@ export default {
     castTitle: "投屏設置",
     castDesc: "將遊戲畫面串流到區域網設備，配置端口、解像度同畫面調校",
     castButton: "入去投屏設置界面",
+    memoryTitle: "永久記憶調試",
+    memoryDesc: "查看角色當前的記憶庫內容與真實上下文，用於排查記憶壓縮與注入問題",
+    memoryButton: "進入記憶調試界面",
   },
 };

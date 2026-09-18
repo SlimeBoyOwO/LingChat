@@ -56,8 +56,7 @@ pub fn save(
 ) -> Result<()> {
     let path = relations_path(data_dir, character_folder);
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("创建角色目录失败: {:?}", parent))?;
+        fs::create_dir_all(parent).with_context(|| format!("创建角色目录失败: {:?}", parent))?;
     }
 
     let cleaned: HashMap<&str, &str> = relations

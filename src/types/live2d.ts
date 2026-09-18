@@ -55,7 +55,7 @@ export interface Live2dImportResult {
 
 export function resolveLive2dVariant(
   settings: Live2dSettings,
-  clothesName: string
+  clothesName: string,
 ): Live2dVariant | undefined {
   const normalized = !clothesName || clothesName === "默认" ? "default" : clothesName;
   const mapped = settings.clothes_variants[normalized];

@@ -73,6 +73,8 @@ pub struct WebInitData {
     /// 本局绑定的存档 id（`None` = 还没开存档）。
     /// 前端据此锁定身份切换 UI——后端 `player_identity::guard` 是同一规则的权威实现。
     pub active_save_id: Option<i32>,
+    /// 当前活跃剧本名（读档/进入剧本模式时非空），供前端还原剧本模式 UI
+    pub active_script: Option<String>,
 }
 
 /// 精简的角色设定，匹配前端 `CharacterSettings` 接口
@@ -448,8 +450,6 @@ pub(crate) async fn build_web_init_data(
         )
     };
 
-    tracing::info!("character_settings: {:?}", character_settings);
-
     let (
         lines,
         current_scene_id,
@@ -463,6 +463,7 @@ pub(crate) async fn build_web_init_data(
         player_identity_id,
         player_identity,
         active_save_id,
+        active_script,
     ) = {
         let mut gs = service.game_status.lock().await;
         let seqs = compute_user_message_seqs(&gs.line_list);
@@ -553,6 +554,8 @@ pub(crate) async fn build_web_init_data(
             subtitle: gs.player.user_subtitle.clone(),
             prompt: gs.player.user_prompt.clone(),
         };
+        // 剧本模式名（启动时 script_status 恒为 None，不影响 init_game 路径）
+        let active_script = gs.script_status.as_ref().map(|s| s.name.clone());
 
         (
             lines,
@@ -567,6 +570,7 @@ pub(crate) async fn build_web_init_data(
             player_identity_id,
             player_identity,
             gs.active_save_id,
+            active_script,
         )
     };
 
@@ -624,6 +628,7 @@ pub(crate) async fn build_web_init_data(
         player_identity_id,
         player_identity,
         active_save_id,
+        active_script,
     };
     Ok(result)
 }

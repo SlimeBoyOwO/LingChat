@@ -73,7 +73,7 @@ export const getRoleRelations = async (roleId: number): Promise<Record<string, s
 
 export const saveRoleRelations = async (
   roleId: number,
-  relations: Record<string, string>
+  relations: Record<string, string>,
 ): Promise<void> => {
   await invoke("save_role_relations", { roleId, relations });
 };

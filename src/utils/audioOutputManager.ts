@@ -99,7 +99,7 @@ function scheduleElementRetry(el: HTMLMediaElement) {
     () => {
       if (pendingElements.has(el)) applyToElement(el);
     },
-    { once: true }
+    { once: true },
   );
 }
 
@@ -287,7 +287,7 @@ export async function refreshDevices(forcePermission = false) {
     const hasLabels = outputs.some((d) => !!d.label);
     labelsAvailable.value = hasLabels;
     const realOutputs = outputs.filter(
-      (d) => d.deviceId !== "default" && d.deviceId !== "communications"
+      (d) => d.deviceId !== "default" && d.deviceId !== "communications",
     );
     devices.value = realOutputs.map((d, i) => ({
       deviceId: d.deviceId,
@@ -334,7 +334,7 @@ export async function setDevice(id: string) {
     elements.size,
     "个媒体元素,",
     contexts.size,
-    "个 AudioContext"
+    "个 AudioContext",
   );
 }
 

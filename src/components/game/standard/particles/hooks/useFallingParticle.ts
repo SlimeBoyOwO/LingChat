@@ -28,7 +28,7 @@ export function randomInRange(min: number, max: number): number {
 export function createDefaultParticle(
   id: string,
   config: FallingParticleConfig,
-  customization?: ParticleCustomization
+  customization?: ParticleCustomization,
 ): FallingParticle {
   const size = randomInRange(config.minSize, config.maxSize);
   const left = Math.random() * window.innerWidth;
@@ -60,7 +60,7 @@ export function createDefaultParticle(
 export function createDefaultKeyframes(
   particle: FallingParticle,
   maxHeight: number,
-  keyframeConfig: KeyframeConfig
+  keyframeConfig: KeyframeConfig,
 ): string {
   const { rotation, opacity } = keyframeConfig;
   const ranges = rotation.rotationRanges;
@@ -99,7 +99,7 @@ export function createDefaultKeyframes(
 export function useFallingParticle<T extends FallingParticle>(
   props: { enabled?: boolean; intensity?: number },
   options: UseFallingParticleOptions<T>,
-  containerRef: Ref<HTMLElement | null>
+  containerRef: Ref<HTMLElement | null>,
 ): UseFallingParticleReturn<T> {
   const { config, baseCount, createParticle, generateKeyframes } = options;
 
@@ -175,7 +175,7 @@ export function useFallingParticle<T extends FallingParticle>(
     (newIntensity) => {
       particleCount.value = Math.floor(baseCount * (newIntensity ?? 1));
       recreateParticles();
-    }
+    },
   );
 
   // Watch for enabled state changes
@@ -188,7 +188,7 @@ export function useFallingParticle<T extends FallingParticle>(
       } else {
         removeAllParticles();
       }
-    }
+    },
   );
 
   // Lifecycle hooks

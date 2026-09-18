@@ -100,7 +100,7 @@ async function loadLocaleMessages(locale: AppLocale) {
       seedContent: JSON.stringify(
         { __locale_version: BUNDLE_VERSION, ...BUNDLED[locale] },
         null,
-        2
+        2,
       ),
     });
     const fileMsgs = JSON.parse(json);

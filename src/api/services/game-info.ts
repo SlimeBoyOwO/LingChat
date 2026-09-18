@@ -89,6 +89,8 @@ export interface WebInitData {
    * 与后端 `player_identity::guard` 同一条规则：本局一旦绑定存档就锁定身份切换。
    */
   active_save_id?: number | null;
+  /** 读档恢复时后端续跑的剧本显示名（null = 存档无剧本进度） */
+  active_script?: string | null;
 }
 
 /**

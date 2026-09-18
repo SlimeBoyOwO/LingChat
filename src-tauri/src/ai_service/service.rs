@@ -235,6 +235,11 @@ impl AIService {
         // 否则新对话会被旧存档继续锁着身份。
         // 读档不受影响：`load_lines` 会在初始化之后把绑定重新设回来。
         gs.active_save_id = None;
+        // 会话边界代号：切换角色 / 读档 / 清空对话都会清空 GameStatus 并重建，
+        // 旧一轮自由对话的流式任务（consumer/publisher）可能仍在游离生成。
+        // 递增代号后，它们的迟到 `add_assistant_line` / 工具回填会因
+        // `preview_generation != 捕获代号` 被丢弃，避免 A 的台词串进 B 的 line_list。
+        gs.preview_generation = gs.preview_generation.wrapping_add(1);
     }
 
     pub async fn set_active_save_id(&mut self, save_id: Option<i32>) {

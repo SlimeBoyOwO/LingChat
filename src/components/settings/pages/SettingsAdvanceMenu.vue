@@ -97,6 +97,24 @@
       </MenuItem>
     </div>
 
+    <!-- 永久记忆调试 -->
+    <div
+      class="h-full cursor-pointer transition-all duration-300"
+      @click="emit('navigate', 'memory')"
+    >
+      <MenuItem :title="$t('advance.menu.memoryTitle')" size="large">
+        <template #header>
+          <Database :size="20" />
+        </template>
+        <p class="mb-3 min-h-17 text-sm leading-relaxed text-white/50">
+          {{ $t("advance.menu.memoryDesc") }}
+        </p>
+        <Button type="big" icon="advance" :icon_size="18">
+          {{ $t("advance.menu.memoryButton") }}
+        </Button>
+      </MenuItem>
+    </div>
+
     <!-- 界面语言 -->
     <div class="h-full transition-all duration-300">
       <MenuItem :title="$t('advance.menu.languageTitle')" size="large">
@@ -108,9 +126,7 @@
         </p>
         <select
           :value="locale"
-          class="w-full cursor-pointer rounded-lg border border-white/10 bg-white/5 px-3 py-2
-            text-sm text-white/80 transition-all duration-200 hover:border-white/30 hover:text-white
-            focus:border-[rgba(121,217,255,0.6)] focus:outline-none"
+          class="w-full cursor-pointer rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 transition-all duration-200 hover:border-white/30 hover:text-white focus:border-[rgba(121,217,255,0.6)] focus:outline-none"
           @change="setLocale(($event.target as HTMLSelectElement).value as AppLocale)"
         >
           <option
@@ -143,52 +159,53 @@
 </template>
 
 <script setup lang="ts">
-  import {
-    AudioLines,
-    BookOpen,
-    Cast,
-    Cpu,
-    Mic,
-    SlidersHorizontal,
-    Languages,
-    Wrench,
-  } from "lucide-vue-next";
-  import { openUrl } from "@tauri-apps/plugin-opener";
-  import { useI18n } from "vue-i18n";
-  import { MenuItem } from "../../ui";
-  import { Button } from "../../base";
-  import { SUPPORTED_LOCALES, setLocale, type AppLocale } from "@/locales";
+import {
+  AudioLines,
+  BookOpen,
+  Cast,
+  Cpu,
+  Database,
+  Mic,
+  SlidersHorizontal,
+  Languages,
+  Wrench,
+} from "lucide-vue-next";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { useI18n } from "vue-i18n";
+import { MenuItem } from "../../ui";
+import { Button } from "../../base";
+import { SUPPORTED_LOCALES, setLocale, type AppLocale } from "@/locales";
 
-  const { locale } = useI18n();
+const { locale } = useI18n();
 
-  const emit = defineEmits<{
-    navigate: [tab: "llm" | "tts" | "asr" | "other" | "tools" | "cast"];
-  }>();
+const emit = defineEmits<{
+  navigate: [tab: "llm" | "tts" | "asr" | "other" | "tools" | "cast" | "memory"];
+}>();
 
-  // 内置 TTS 官方教程（LingBlog）
-  const TTS_GUIDE_URL =
-    "https://slimeboyowo.github.io/LingBlog/blog/projects/ling-chat/develop/tts_guide";
+// 内置 TTS 官方教程（LingBlog）
+const TTS_GUIDE_URL =
+  "https://slimeboyowo.github.io/LingBlog/blog/projects/ling-chat/develop/tts_guide";
 
-  const openGuide = () => {
-    void openUrl(TTS_GUIDE_URL);
-  };
+const openGuide = () => {
+  void openUrl(TTS_GUIDE_URL);
+};
 </script>
 
 <style scoped>
-  /* 统一卡片尺寸:菜单卡片等高(撑满 grid 行)、描述区对齐、按钮贴底 */
-  :deep(.menu-item) {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-  }
+/* 统一卡片尺寸:菜单卡片等高(撑满 grid 行)、描述区对齐、按钮贴底 */
+:deep(.menu-item) {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
 
-  :deep(.menu-item .content) {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-  }
+:deep(.menu-item .content) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
 
-  :deep(.menu-item .content > :last-child) {
-    margin-top: auto;
-  }
+:deep(.menu-item .content > :last-child) {
+  margin-top: auto;
+}
 </style>

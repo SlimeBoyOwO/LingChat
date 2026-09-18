@@ -93,7 +93,7 @@ export function useSedentaryReminder(): void {
         stopTimer();
       }
     },
-    { immediate: true }
+    { immediate: true },
   );
 
   onUnmounted(() => {

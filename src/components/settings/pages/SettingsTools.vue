@@ -7,9 +7,7 @@
         v-for="item in navItems"
         :key="item"
         href="#"
-        class="adv-nav-link relative z-10 block rounded-lg px-5 py-3 text-white no-underline
-          transition-colors duration-200 hover:bg-gray-200 hover:text-black active:font-bold
-          active:text-white"
+        class="adv-nav-link relative z-10 block rounded-lg px-5 py-3 text-white no-underline transition-colors duration-200 hover:bg-gray-200 hover:text-black active:font-bold active:text-white"
         :class="{ 'bg-brand/30 font-bold': selected === item }"
         @click.prevent="selected = item"
       >
@@ -45,8 +43,7 @@
         </p>
         <button
           type="button"
-          class="mt-3 rounded-lg border border-sky-200/30 bg-sky-300/15 px-3 py-2 text-sky-100
-            transition-colors hover:bg-sky-300/25"
+          class="mt-3 rounded-lg border border-sky-200/30 bg-sky-300/15 px-3 py-2 text-sky-100 transition-colors hover:bg-sky-300/25"
           @click="enableAndroidRecommended"
         >
           {{ $t("ui.toolCalls.androidEnableRecommended") }}
@@ -80,8 +77,7 @@
               <span class="flex items-center gap-2.5">
                 <!-- 单选圆点：选中态填充，未选中仅描边 -->
                 <span
-                  class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border
-                    transition-colors duration-200"
+                  class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors duration-200"
                   :class="
                     form.access_mode === mode
                       ? mode === 'full_access'
@@ -132,8 +128,7 @@
             </div>
             <div class="flex shrink-0 flex-col items-start gap-1 sm:items-end">
               <label
-                class="focus-within:border-brand flex items-center gap-2 rounded-lg border
-                  border-white/20 bg-black/20 px-3 py-2"
+                class="focus-within:border-brand flex items-center gap-2 rounded-lg border border-white/20 bg-black/20 px-3 py-2"
               >
                 <!-- 隐藏原生数字箭头，避免与深色玻璃风格冲突 -->
                 <input
@@ -142,9 +137,7 @@
                   :min="MIN_TOOL_ROUND_LIMIT"
                   :max="MAX_TOOL_ROUND_LIMIT"
                   step="1"
-                  class="w-16 [appearance:textfield] bg-transparent text-center font-semibold
-                    text-white outline-none [&::-webkit-inner-spin-button]:appearance-none
-                    [&::-webkit-outer-spin-button]:appearance-none"
+                  class="w-16 [appearance:textfield] bg-transparent text-center font-semibold text-white outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   :aria-label="$t('ui.toolCalls.maxToolRoundsTitle')"
                   @blur="normalizeToolRoundLimit"
                 />
@@ -166,8 +159,7 @@
         </div>
         <div
           v-if="form.access_mode === 'full_access'"
-          class="mt-3 rounded-lg border-l-4 border-amber-400/70 bg-amber-400/10 px-4 py-3 text-sm
-            text-amber-200/90"
+          class="mt-3 rounded-lg border-l-4 border-amber-400/70 bg-amber-400/10 px-4 py-3 text-sm text-amber-200/90"
         >
           {{ $t("ui.toolCalls.fullAccessSettingsWarning") }}
         </div>
@@ -189,16 +181,14 @@
                   ? "ui.toolCalls.adminModeElevated"
                   : elevationStatus === "checking"
                     ? "ui.toolCalls.adminModeChecking"
-                    : "ui.toolCalls.adminModeStandard"
+                    : "ui.toolCalls.adminModeStandard",
               )
             }}
           </p>
           <button
             v-if="elevationStatus !== 'elevated'"
             type="button"
-            class="mt-3 rounded-lg border border-amber-400/60 bg-amber-400/15 px-4 py-2 text-sm
-              font-semibold text-amber-200 transition-colors hover:bg-amber-400/25
-              disabled:cursor-wait disabled:opacity-60"
+            class="mt-3 rounded-lg border border-amber-400/60 bg-amber-400/15 px-4 py-2 text-sm font-semibold text-amber-200 transition-colors hover:bg-amber-400/25 disabled:cursor-wait disabled:opacity-60"
             :disabled="elevationRestarting || elevationStatus === 'checking'"
             @click="restartAsAdmin"
           >
@@ -206,7 +196,7 @@
               $t(
                 elevationRestarting
                   ? "ui.toolCalls.adminModeRestarting"
-                  : "ui.toolCalls.adminModeRestart"
+                  : "ui.toolCalls.adminModeRestart",
               )
             }}
           </button>
@@ -235,10 +225,7 @@
         </label>
         <select
           v-model="form.web_search.provider"
-          class="shadow-glass focus:border-brand focus:ring-brand/20 mt-2 w-full cursor-pointer
-            rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white
-            backdrop-blur-xl backdrop-saturate-150 transition-all duration-200 focus:ring-2
-            focus:outline-none"
+          class="shadow-glass focus:border-brand focus:ring-brand/20 mt-2 w-full cursor-pointer rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
         >
           <option value="kimi" class="bg-slate-800 text-white">Kimi /search</option>
           <option value="bocha" class="bg-slate-800 text-white">BoCha 博查</option>
@@ -279,9 +266,7 @@
                   ? $t('ui.toolCalls.kimiApiKeyPlaceholder')
                   : $t('ui.toolCalls.apiKeyPlaceholder')
             "
-            class="shadow-glass focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border
-              border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl
-              backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
+            class="shadow-glass focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
           />
           <p v-if="form.web_search.provider === 'kimi'" class="mt-2 mb-2 text-sm text-gray-300">
             {{ $t("ui.toolCalls.kimiHint") }}
@@ -297,9 +282,7 @@
             type="text"
             v-model="form.web_search.model"
             placeholder="deepseek-flash"
-            class="shadow-glass focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border
-              border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl
-              backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
+            class="shadow-glass focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
           />
           <p class="mt-2 mb-2 text-sm text-gray-300">
             {{ $t("ui.toolCalls.dsHint") }}
@@ -318,9 +301,7 @@
             type="text"
             v-model="form.web_search.base_url"
             placeholder="https://api.kimi.com/coding/v1/search"
-            class="shadow-glass focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border
-              border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl
-              backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
+            class="shadow-glass focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
           />
         </template>
 
@@ -334,9 +315,7 @@
             min="1"
             max="20"
             step="1"
-            class="shadow-glass focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border
-              border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl
-              backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
+            class="shadow-glass focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
           />
         </template>
 
@@ -363,9 +342,7 @@
           type="text"
           v-model="form.web_search.proxy_addr"
           placeholder="http://127.0.0.1:10808"
-          class="shadow-glass focus:border-brand focus:ring-brand/20 w-full rounded-lg border
-            border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl
-            backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
+          class="shadow-glass focus:border-brand focus:ring-brand/20 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
         />
       </div>
 
@@ -418,9 +395,7 @@
               min="1"
               max="100"
               step="1"
-              class="focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border
-                border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white focus:ring-2
-                focus:outline-none"
+              class="focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white focus:ring-2 focus:outline-none"
             />
           </label>
           <label class="block">
@@ -433,9 +408,7 @@
               min="128"
               max="4096"
               step="128"
-              class="focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border
-                border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white focus:ring-2
-                focus:outline-none"
+              class="focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white focus:ring-2 focus:outline-none"
             />
           </label>
           <label class="block">
@@ -449,9 +422,7 @@
               max="4096"
               step="128"
               :disabled="!form.media_file.image_enabled"
-              class="focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border
-                border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white focus:ring-2
-                focus:outline-none disabled:opacity-50"
+              class="focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white focus:ring-2 focus:outline-none disabled:opacity-50"
             />
           </label>
           <label class="block">
@@ -465,9 +436,7 @@
               max="95"
               step="1"
               :disabled="!form.media_file.image_enabled"
-              class="focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border
-                border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white focus:ring-2
-                focus:outline-none disabled:opacity-50"
+              class="focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white focus:ring-2 focus:outline-none disabled:opacity-50"
             />
           </label>
         </div>
@@ -479,9 +448,7 @@
           <textarea
             v-model="form.media_file.default_prompt"
             rows="3"
-            class="focus:border-brand focus:ring-brand/20 mt-2 w-full resize-y rounded-lg border
-              border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white focus:ring-2
-              focus:outline-none"
+            class="focus:border-brand focus:ring-brand/20 mt-2 w-full resize-y rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white focus:ring-2 focus:outline-none"
           ></textarea>
         </label>
 
@@ -557,16 +524,14 @@
       <!-- 保存/测试操作区 -->
       <div class="mt-6 flex items-center gap-2">
         <div
-          class="bg-brand w-18 cursor-pointer rounded-lg border-none px-5 py-2.5 text-sm font-medium
-            text-white transition-colors duration-200 hover:bg-[#0056b3]"
+          class="bg-brand w-18 cursor-pointer rounded-lg border-none px-5 py-2.5 text-sm font-medium text-white transition-colors duration-200 hover:bg-[#0056b3]"
           @click="saveSettings"
         >
           {{ $t("ui.toolCalls.save") }}
         </div>
         <div
           v-if="selected === 'web_search'"
-          class="cursor-pointer rounded-lg border border-white/20 bg-white/10 px-5 py-2.5 text-sm
-            font-medium text-white transition-colors duration-200 hover:bg-white/20"
+          class="cursor-pointer rounded-lg border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-medium text-white transition-colors duration-200 hover:bg-white/20"
           @click="runTest"
         >
           {{ $t("ui.toolCalls.test") }}
@@ -578,227 +543,226 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, reactive, ref, watch, onMounted } from "vue";
-  import { useI18n } from "vue-i18n";
-  import {
-    getToolSettings,
-    getToolElevationStatus,
-    getToolRuntimeInfo,
-    restartToolProcessAsAdmin,
-    saveToolSettings,
-    testWebSearch,
-    TOOL_GROUP_KEYS,
-    type ToolAccessMode,
-    type ToolRuntimeInfo,
-    type ToolSettings,
-  } from "@/api/services/tool-settings";
-  import Toggle from "@/components/base/widget/Toggle.vue";
-  import { isAndroid, isWindows } from "@/utils/platform";
-  import { useDialogStore } from "@/stores/modules/ui/dialog";
+import { computed, reactive, ref, watch, onMounted } from "vue";
+import { useI18n } from "vue-i18n";
+import {
+  getToolSettings,
+  getToolElevationStatus,
+  getToolRuntimeInfo,
+  restartToolProcessAsAdmin,
+  saveToolSettings,
+  testWebSearch,
+  TOOL_GROUP_KEYS,
+  type ToolAccessMode,
+  type ToolRuntimeInfo,
+  type ToolSettings,
+} from "@/api/services/tool-settings";
+import Toggle from "@/components/base/widget/Toggle.vue";
+import { isAndroid, isWindows } from "@/utils/platform";
+import { useDialogStore } from "@/stores/modules/ui/dialog";
 
-  const { t, te } = useI18n();
-  const dialogStore = useDialogStore();
+const { t, te } = useI18n();
+const dialogStore = useDialogStore();
 
-  /** 当前选中的设置项：访问模式、web_search 或工具组名 */
-  const selected = ref<string>("access");
-  const android = isAndroid();
-  const runtimeInfo = ref<ToolRuntimeInfo | null>(null);
-  const commandAvailable = computed(() => runtimeInfo.value?.commandAvailable ?? !android);
+/** 当前选中的设置项：访问模式、web_search 或工具组名 */
+const selected = ref<string>("access");
+const android = isAndroid();
+const runtimeInfo = ref<ToolRuntimeInfo | null>(null);
+const commandAvailable = computed(() => runtimeInfo.value?.commandAvailable ?? !android);
 
-  const navItems = ["access", "web_search", ...TOOL_GROUP_KEYS] as const;
-  const accessModes: ToolAccessMode[] = ["manual", "auto_approve", "full_access"];
-  const DEFAULT_TOOL_ROUND_LIMIT = 8;
-  const MIN_TOOL_ROUND_LIMIT = 1;
-  const MAX_TOOL_ROUND_LIMIT = 64;
-  const DEFAULT_MEDIA_PROMPT =
-    "请详细识别并描述这个媒体文件的内容；如果其中包含文字、界面、人物、物体、动作或时间顺序，请准确说明。";
+const navItems = ["access", "web_search", ...TOOL_GROUP_KEYS] as const;
+const accessModes: ToolAccessMode[] = ["manual", "auto_approve", "full_access"];
+const DEFAULT_TOOL_ROUND_LIMIT = 8;
+const MIN_TOOL_ROUND_LIMIT = 1;
+const MAX_TOOL_ROUND_LIMIT = 64;
+const DEFAULT_MEDIA_PROMPT =
+  "请详细识别并描述这个媒体文件的内容；如果其中包含文字、界面、人物、物体、动作或时间顺序，请准确说明。";
 
-  const navLabel = (item: string) =>
-    item === "access"
-      ? t("ui.toolCalls.accessModeTitle")
-      : item === "web_search"
-        ? t("ui.toolCalls.webSearchTitle")
-        : te(`ui.toolCalls.nav.${item}`)
-          ? t(`ui.toolCalls.nav.${item}`)
-          : t(`ui.toolCalls.groups.${item}`);
+const navLabel = (item: string) =>
+  item === "access"
+    ? t("ui.toolCalls.accessModeTitle")
+    : item === "web_search"
+      ? t("ui.toolCalls.webSearchTitle")
+      : te(`ui.toolCalls.nav.${item}`)
+        ? t(`ui.toolCalls.nav.${item}`)
+        : t(`ui.toolCalls.groups.${item}`);
 
-  const form = reactive<ToolSettings>({
-    web_search: {
-      enabled: false,
-      provider: "kimi",
-      model: "deepseek-flash",
-      api_key: "",
-      base_url: "",
-      proxy_enabled: false,
-      proxy_addr: "http://127.0.0.1:10808",
-      max_results: 8,
-      hide_search_results: false,
-    },
-    media_file: {
-      image_enabled: true,
-      video_enabled: true,
-      max_file_mb: 100,
-      image_max_edge: 2000,
-      jpeg_quality: 85,
-      max_output_tokens: 1024,
-      default_prompt: DEFAULT_MEDIA_PROMPT,
-    },
-    groups: {},
-    access_mode: "manual",
-    max_tool_rounds: DEFAULT_TOOL_ROUND_LIMIT,
-  });
+const form = reactive<ToolSettings>({
+  web_search: {
+    enabled: false,
+    provider: "kimi",
+    model: "deepseek-flash",
+    api_key: "",
+    base_url: "",
+    proxy_enabled: false,
+    proxy_addr: "http://127.0.0.1:10808",
+    max_results: 8,
+    hide_search_results: false,
+  },
+  media_file: {
+    image_enabled: true,
+    video_enabled: true,
+    max_file_mb: 100,
+    image_max_edge: 2000,
+    jpeg_quality: 85,
+    max_output_tokens: 1024,
+    default_prompt: DEFAULT_MEDIA_PROMPT,
+  },
+  groups: {},
+  access_mode: "manual",
+  max_tool_rounds: DEFAULT_TOOL_ROUND_LIMIT,
+});
 
-  const status = reactive({ message: "", color: "#4ade80" });
-  const testing = ref(false);
-  const elevationStatus = ref<"checking" | "standard" | "elevated">("checking");
-  const elevationRestarting = ref(false);
+const status = reactive({ message: "", color: "#4ade80" });
+const testing = ref(false);
+const elevationStatus = ref<"checking" | "standard" | "elevated">("checking");
+const elevationRestarting = ref(false);
 
-  const loadRuntimeInfo = async () => {
-    try {
-      runtimeInfo.value = await getToolRuntimeInfo();
-    } catch (error) {
-      console.warn("加载工具运行状态失败:", error);
-    }
-  };
+const loadRuntimeInfo = async () => {
+  try {
+    runtimeInfo.value = await getToolRuntimeInfo();
+  } catch (error) {
+    console.warn("加载工具运行状态失败:", error);
+  }
+};
 
-  const enableAndroidRecommended = () => {
-    for (const group of TOOL_GROUP_KEYS) {
-      form.groups[group] = group !== "command";
-    }
-    showStatus(t("ui.toolCalls.androidRecommendedStaged"), "#7dd3fc");
-  };
+const enableAndroidRecommended = () => {
+  for (const group of TOOL_GROUP_KEYS) {
+    form.groups[group] = group !== "command";
+  }
+  showStatus(t("ui.toolCalls.androidRecommendedStaged"), "#7dd3fc");
+};
 
-  const showStatus = (message: string, color = "#4ade80") => {
-    status.message = message;
-    status.color = color;
-    setTimeout(() => {
-      status.message = "";
-    }, 5000);
-  };
+const showStatus = (message: string, color = "#4ade80") => {
+  status.message = message;
+  status.color = color;
+  setTimeout(() => {
+    status.message = "";
+  }, 5000);
+};
 
-  const selectAccessMode = async (mode: ToolAccessMode) => {
-    if (mode === form.access_mode) return;
-    if (mode === "full_access") {
-      const approved = await dialogStore.confirm(
-        t("ui.toolCalls.fullAccessConfirmMessage"),
-        t("ui.toolCalls.fullAccessConfirmTitle")
-      );
-      if (!approved) return;
-    }
-    form.access_mode = mode;
-  };
-
-  const normalizeToolRoundLimit = () => {
-    const value = Number(form.max_tool_rounds);
-    form.max_tool_rounds = Number.isFinite(value)
-      ? Math.min(MAX_TOOL_ROUND_LIMIT, Math.max(MIN_TOOL_ROUND_LIMIT, Math.round(value)))
-      : DEFAULT_TOOL_ROUND_LIMIT;
-  };
-
-  const normalizeMediaSettings = () => {
-    const clamp = (value: unknown, fallback: number, min: number, max: number) => {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.round(parsed))) : fallback;
-    };
-    form.media_file.max_file_mb = clamp(form.media_file.max_file_mb, 100, 1, 100);
-    form.media_file.image_max_edge = clamp(form.media_file.image_max_edge, 2000, 512, 4096);
-    form.media_file.jpeg_quality = clamp(form.media_file.jpeg_quality, 85, 50, 95);
-    form.media_file.max_output_tokens = clamp(form.media_file.max_output_tokens, 1024, 128, 4096);
-    if (!form.media_file.default_prompt.trim())
-      form.media_file.default_prompt = DEFAULT_MEDIA_PROMPT;
-  };
-
-  const saveSettings = async (): Promise<boolean> => {
-    try {
-      normalizeToolRoundLimit();
-      normalizeMediaSettings();
-      if (android) {
-        form.groups.command = false;
-      }
-      // 深拷贝一份普通对象，避免把 reactive 代理传给 Tauri IPC
-      const payload: ToolSettings = JSON.parse(JSON.stringify(form));
-      // deepseek 使用官方 /responses 端点；base_url 对该 provider 不可编辑，
-      // 清空避免把 kimi 的默认端点残留进配置导致请求打到错误地址
-      if (payload.web_search.provider === "deepseek") {
-        payload.web_search.base_url = "";
-      }
-      await saveToolSettings(payload);
-      await loadRuntimeInfo();
-      showStatus(t("ui.toolCalls.saveSuccess"));
-      return true;
-    } catch (error: any) {
-      showStatus(t("ui.toolCalls.saveFailed", { message: String(error) }), "red");
-      return false;
-    }
-  };
-
-  const refreshElevationStatus = async () => {
-    elevationStatus.value = "checking";
-    try {
-      elevationStatus.value = (await getToolElevationStatus()) ? "elevated" : "standard";
-    } catch (error) {
-      console.warn("读取管理员权限状态失败:", error);
-      elevationStatus.value = "standard";
-    }
-  };
-
-  const restartAsAdmin = async () => {
-    if (elevationRestarting.value) return;
+const selectAccessMode = async (mode: ToolAccessMode) => {
+  if (mode === form.access_mode) return;
+  if (mode === "full_access") {
     const approved = await dialogStore.confirm(
-      t("ui.toolCalls.adminModeConfirmMessage"),
-      t("ui.toolCalls.adminModeConfirmTitle")
+      t("ui.toolCalls.fullAccessConfirmMessage"),
+      t("ui.toolCalls.fullAccessConfirmTitle"),
     );
     if (!approved) return;
-    if (!(await saveSettings())) return;
-    elevationRestarting.value = true;
-    try {
-      await restartToolProcessAsAdmin();
-    } catch (error: any) {
-      elevationRestarting.value = false;
-      showStatus(t("ui.toolCalls.adminModeRestartFailed", { message: String(error) }), "red");
-    }
-  };
+  }
+  form.access_mode = mode;
+};
 
-  // 切换到 deepseek provider 时同步清空 base_url（加载旧配置时同样生效）
-  watch(
-    () => form.web_search.provider,
-    (provider) => {
-      if (provider === "deepseek") {
-        form.web_search.base_url = "";
-      }
+const normalizeToolRoundLimit = () => {
+  const value = Number(form.max_tool_rounds);
+  form.max_tool_rounds = Number.isFinite(value)
+    ? Math.min(MAX_TOOL_ROUND_LIMIT, Math.max(MIN_TOOL_ROUND_LIMIT, Math.round(value)))
+    : DEFAULT_TOOL_ROUND_LIMIT;
+};
+
+const normalizeMediaSettings = () => {
+  const clamp = (value: unknown, fallback: number, min: number, max: number) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.round(parsed))) : fallback;
+  };
+  form.media_file.max_file_mb = clamp(form.media_file.max_file_mb, 100, 1, 100);
+  form.media_file.image_max_edge = clamp(form.media_file.image_max_edge, 2000, 512, 4096);
+  form.media_file.jpeg_quality = clamp(form.media_file.jpeg_quality, 85, 50, 95);
+  form.media_file.max_output_tokens = clamp(form.media_file.max_output_tokens, 1024, 128, 4096);
+  if (!form.media_file.default_prompt.trim()) form.media_file.default_prompt = DEFAULT_MEDIA_PROMPT;
+};
+
+const saveSettings = async (): Promise<boolean> => {
+  try {
+    normalizeToolRoundLimit();
+    normalizeMediaSettings();
+    if (android) {
+      form.groups.command = false;
     }
+    // 深拷贝一份普通对象，避免把 reactive 代理传给 Tauri IPC
+    const payload: ToolSettings = JSON.parse(JSON.stringify(form));
+    // deepseek 使用官方 /responses 端点；base_url 对该 provider 不可编辑，
+    // 清空避免把 kimi 的默认端点残留进配置导致请求打到错误地址
+    if (payload.web_search.provider === "deepseek") {
+      payload.web_search.base_url = "";
+    }
+    await saveToolSettings(payload);
+    await loadRuntimeInfo();
+    showStatus(t("ui.toolCalls.saveSuccess"));
+    return true;
+  } catch (error: any) {
+    showStatus(t("ui.toolCalls.saveFailed", { message: String(error) }), "red");
+    return false;
+  }
+};
+
+const refreshElevationStatus = async () => {
+  elevationStatus.value = "checking";
+  try {
+    elevationStatus.value = (await getToolElevationStatus()) ? "elevated" : "standard";
+  } catch (error) {
+    console.warn("读取管理员权限状态失败:", error);
+    elevationStatus.value = "standard";
+  }
+};
+
+const restartAsAdmin = async () => {
+  if (elevationRestarting.value) return;
+  const approved = await dialogStore.confirm(
+    t("ui.toolCalls.adminModeConfirmMessage"),
+    t("ui.toolCalls.adminModeConfirmTitle"),
   );
+  if (!approved) return;
+  if (!(await saveSettings())) return;
+  elevationRestarting.value = true;
+  try {
+    await restartToolProcessAsAdmin();
+  } catch (error: any) {
+    elevationRestarting.value = false;
+    showStatus(t("ui.toolCalls.adminModeRestartFailed", { message: String(error) }), "red");
+  }
+};
 
-  const runTest = async () => {
-    if (testing.value) return;
-    testing.value = true;
-    try {
-      // 测试前先保存，确保后端用的是页面上的最新配置
-      if (!(await saveSettings())) return;
-      const result = await testWebSearch("LingChat");
-      const parsed = JSON.parse(result);
-      showStatus(t("ui.toolCalls.testSuccess", { count: parsed.result_count ?? 0 }));
-    } catch (error: any) {
-      showStatus(t("ui.toolCalls.testFailed", { message: String(error) }), "red");
-    } finally {
-      testing.value = false;
+// 切换到 deepseek provider 时同步清空 base_url（加载旧配置时同样生效）
+watch(
+  () => form.web_search.provider,
+  (provider) => {
+    if (provider === "deepseek") {
+      form.web_search.base_url = "";
     }
-  };
+  },
+);
 
-  onMounted(async () => {
-    try {
-      const settings = await getToolSettings();
-      Object.assign(form.web_search, settings.web_search);
-      Object.assign(form.media_file, settings.media_file ?? {});
-      Object.assign(form.groups, settings.groups ?? {});
-      form.access_mode = settings.access_mode ?? "manual";
-      form.max_tool_rounds = settings.max_tool_rounds ?? DEFAULT_TOOL_ROUND_LIMIT;
-      normalizeToolRoundLimit();
-      normalizeMediaSettings();
-      await loadRuntimeInfo();
-      if (isWindows()) await refreshElevationStatus();
-    } catch (error) {
-      console.error("加载工具配置失败:", error);
-    }
-  });
+const runTest = async () => {
+  if (testing.value) return;
+  testing.value = true;
+  try {
+    // 测试前先保存，确保后端用的是页面上的最新配置
+    if (!(await saveSettings())) return;
+    const result = await testWebSearch("LingChat");
+    const parsed = JSON.parse(result);
+    showStatus(t("ui.toolCalls.testSuccess", { count: parsed.result_count ?? 0 }));
+  } catch (error: any) {
+    showStatus(t("ui.toolCalls.testFailed", { message: String(error) }), "red");
+  } finally {
+    testing.value = false;
+  }
+};
+
+onMounted(async () => {
+  try {
+    const settings = await getToolSettings();
+    Object.assign(form.web_search, settings.web_search);
+    Object.assign(form.media_file, settings.media_file ?? {});
+    Object.assign(form.groups, settings.groups ?? {});
+    form.access_mode = settings.access_mode ?? "manual";
+    form.max_tool_rounds = settings.max_tool_rounds ?? DEFAULT_TOOL_ROUND_LIMIT;
+    normalizeToolRoundLimit();
+    normalizeMediaSettings();
+    await loadRuntimeInfo();
+    if (isWindows()) await refreshElevationStatus();
+  } catch (error) {
+    console.error("加载工具配置失败:", error);
+  }
+});
 </script>

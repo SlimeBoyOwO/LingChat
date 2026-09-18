@@ -37,15 +37,17 @@ impl IdentityStore {
 
     /// 身份卡目录（供「打开文件夹」之类的命令使用）。
     pub fn ensure_root(&self) -> Result<()> {
-        fs::create_dir_all(&self.root)
-            .with_context(|| format!("创建身份目录失败: {:?}", self.root))
+        fs::create_dir_all(&self.root).with_context(|| format!("创建身份目录失败: {:?}", self.root))
     }
 
     // ---------- 读 ----------
 
     /// 扫描全部身份卡。解析失败的单张卡会被跳过并打日志，不影响其他卡。
     pub fn list(&self) -> Vec<PlayerIdentity> {
-        self.scan().into_iter().map(|(_, identity)| identity).collect()
+        self.scan()
+            .into_iter()
+            .map(|(_, identity)| identity)
+            .collect()
     }
 
     pub fn find_by_id(&self, id: &str) -> Option<PlayerIdentity> {
@@ -70,11 +72,7 @@ impl IdentityStore {
             },
         };
         let id = pointer.identity_id.trim().to_string();
-        if id.is_empty() {
-            None
-        } else {
-            Some(id)
-        }
+        if id.is_empty() { None } else { Some(id) }
     }
 
     pub fn current(&self) -> Option<PlayerIdentity> {
@@ -99,7 +97,11 @@ impl IdentityStore {
     /// 老用户的「我」的名字才会稳定下来——否则这个改造对老用户体验为零变化。
     ///
     /// 落盘失败时返回内存里的合成卡（`synthetic = true`），功能仍可用，只是不持久。
-    pub fn current_or_synthesize(&self, fallback_name: &str, fallback_subtitle: &str) -> PlayerIdentity {
+    pub fn current_or_synthesize(
+        &self,
+        fallback_name: &str,
+        fallback_subtitle: &str,
+    ) -> PlayerIdentity {
         if let Some(existing) = self.current() {
             return existing;
         }
@@ -107,7 +109,11 @@ impl IdentityStore {
         let name = fallback_name.trim();
         let synthetic = PlayerIdentity {
             id: String::new(),
-            name: if name.is_empty() { "用户".to_string() } else { name.to_string() },
+            name: if name.is_empty() {
+                "用户".to_string()
+            } else {
+                name.to_string()
+            },
             subtitle: fallback_subtitle.trim().to_string(),
             prompt: String::new(),
             avatar: None,
@@ -120,7 +126,11 @@ impl IdentityStore {
                 if let Err(e) = self.set_current_id(&saved.id) {
                     tracing::warn!("记录当前身份失败: {e}");
                 }
-                tracing::info!("已按角色卡合成默认身份并落盘: id={} name={}", saved.id, saved.name);
+                tracing::info!(
+                    "已按角色卡合成默认身份并落盘: id={} name={}",
+                    saved.id,
+                    saved.name
+                );
                 saved
             },
             Err(e) => {
@@ -209,7 +219,8 @@ impl IdentityStore {
             if !path.is_dir() {
                 continue;
             }
-            let Some(folder_name) = path.file_name().map(|s| s.to_string_lossy().to_string()) else {
+            let Some(folder_name) = path.file_name().map(|s| s.to_string_lossy().to_string())
+            else {
                 continue;
             };
             if folder_name.starts_with('.') {
@@ -259,7 +270,11 @@ impl IdentityStore {
     /// 按名字挑一个不冲突的文件夹名；重名时追加序号。
     fn alloc_dir(&self, name: &str, id: &str) -> Result<PathBuf> {
         let base = sanitize_folder(name);
-        let base = if base.is_empty() { id.to_string() } else { base };
+        let base = if base.is_empty() {
+            id.to_string()
+        } else {
+            base
+        };
 
         let mut candidate = base.clone();
         let mut index = 2;

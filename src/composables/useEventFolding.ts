@@ -143,7 +143,7 @@ export function groupContaining(rows: FoldedRow[], eventIndex: number): number |
 export function eventSummary(
   e: ScriptEventData,
   mainRoleName?: string,
-  roleNameMap?: Map<string, string>
+  roleNameMap?: Map<string, string>,
 ): string {
   const t = typeOf(e);
   const s = (k: string) => str(e, k);
@@ -186,9 +186,9 @@ export function eventSummary(
         .flatMap((o) =>
           Array.isArray(o.actions)
             ? (o.actions as Record<string, unknown>[]).map((a) =>
-                typeof a.content === "string" ? a.content : ""
+                typeof a.content === "string" ? a.content : "",
               )
-            : []
+            : [],
         )
         .filter(Boolean)
         .join("；");
