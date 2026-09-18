@@ -565,8 +565,7 @@ export async function mountRhythm(root, options) {
     root
       .querySelectorAll("[data-lane]")
       .forEach((button, lane) => button.style.setProperty("--lane-color", colors[lane]));
-    $("song-rename").hidden = !music.imported;
-    $("song-delete").hidden = !music.imported;
+    $("song-side-actions").hidden = !music.imported;
     closeRename();
     disarmDelete();
     if (direction) saveSettings();
@@ -599,7 +598,7 @@ export async function mountRhythm(root, options) {
   function disarmDelete() {
     deleteArmed = false;
     clearTimeout(deleteTimer);
-    $("song-delete").textContent = "删除谱面";
+    $("song-delete").textContent = "删除";
   }
   const closeRename = () => {
     $("song-rename-row").hidden = true;

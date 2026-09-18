@@ -132,9 +132,24 @@
   font-size: clamp(16px, 1.5vw, 23px);
   letter-spacing: 0.03em;
 }
-.menu-item.song-manage {
-  font-size: clamp(16px, 1.8vw, 26px);
-  opacity: 0.85;
+.song-side-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 8px;
+  flex: 0 0 auto;
+}
+.song-side-actions button {
+  border: 0;
+  background: none;
+  padding: 2px;
+  color: #ffe4d699;
+  font:
+    12px/1 "Microsoft YaHei",
+    sans-serif;
+}
+.song-side-actions button:hover {
+  color: #fff6c9;
 }
 .song-rename {
   pointer-events: auto;

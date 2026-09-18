@@ -12,6 +12,10 @@
         <button id="song-prev" type="button" aria-label="上一首曲目">‹</button>
         <strong id="song-title" aria-live="polite">灯下回声</strong>
         <button id="song-next" type="button" aria-label="下一首曲目">›</button>
+        <span class="song-side-actions" id="song-side-actions" hidden>
+          <button id="song-rename" type="button">重命名</button>
+          <button id="song-delete" type="button">删除</button>
+        </span>
       </div>
       <div class="song-picker song-rename" id="song-rename-row" hidden>
         <input id="song-rename-input" type="text" maxlength="40" aria-label="曲目名称" />
@@ -26,8 +30,6 @@
       <button class="menu-item" id="demo" type="button">观赏演示</button>
       <button class="menu-item" id="settings-toggle" type="button" aria-expanded="false">调校</button>
       <button class="menu-item" id="song-import" type="button">导入 MIDI</button>
-      <button class="menu-item song-manage" id="song-rename" type="button" hidden>重命名谱面</button>
-      <button class="menu-item song-manage" id="song-delete" type="button" hidden>删除谱面</button>
       <button class="menu-item" id="back-to-games" type="button">返回</button>
     </nav>
     <input id="midi-file" type="file" accept=".mid,.midi,audio/midi" hidden />
