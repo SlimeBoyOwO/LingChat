@@ -12,10 +12,6 @@
         <button id="song-prev" type="button" aria-label="上一首曲目">‹</button>
         <strong id="song-title" aria-live="polite">灯下回声</strong>
         <button id="song-next" type="button" aria-label="下一首曲目">›</button>
-        <span class="song-side-actions" id="song-side-actions" hidden>
-          <button id="song-rename" type="button">重命名</button>
-          <button id="song-delete" type="button">删除</button>
-        </span>
       </div>
       <div class="song-picker song-rename" id="song-rename-row" hidden>
         <input id="song-rename-input" type="text" maxlength="40" aria-label="曲目名称" />
@@ -34,6 +30,11 @@
     </nav>
     <input id="midi-file" type="file" accept=".mid,.midi,audio/midi" hidden />
     <p class="scene-hint"><b id="play-hint">D / F / J / K · 点按或长按</b> <span id="track-summary">112 BPM · 约 72 秒</span></p>
+    <div class="song-manage-line" id="song-side-actions" hidden>
+      <button id="song-rename" type="button">重命名</button>
+      <span aria-hidden="true">·</span>
+      <button id="song-delete" type="button">删除</button>
+    </div>
   </div>
 
   <div class="live-tools" id="live-tools" hidden>

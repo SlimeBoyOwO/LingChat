@@ -132,23 +132,28 @@
   font-size: clamp(16px, 1.5vw, 23px);
   letter-spacing: 0.03em;
 }
-.song-side-actions {
+.song-manage-line {
+  position: absolute;
+  left: 7%;
+  bottom: calc(4% + 30px);
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-left: 8px;
-  flex: 0 0 auto;
+  pointer-events: auto;
+  font-size: clamp(10px, 1vw, 14px);
+  color: #fff1dccc;
+  letter-spacing: 0.06em;
+  text-shadow: 0 2px 5px #190d29;
 }
-.song-side-actions button {
+.song-manage-line button {
   border: 0;
   background: none;
-  padding: 2px;
+  padding: 2px 0;
   color: #ffe4d699;
-  font:
-    12px/1 "Microsoft YaHei",
-    sans-serif;
+  font-size: inherit;
+  letter-spacing: inherit;
 }
-.song-side-actions button:hover {
+.song-manage-line button:hover {
   color: #fff6c9;
 }
 .song-rename {
@@ -713,6 +718,9 @@ input:focus-visible {
 .cadence-root[data-layout="portrait"] .scene-hint {
   bottom: 3%;
   font-size: 10px;
+}
+.cadence-root[data-layout="portrait"] .song-manage-line {
+  bottom: calc(3% + 26px);
 }
 @media (max-height: 550px) {
   .song-picker {
