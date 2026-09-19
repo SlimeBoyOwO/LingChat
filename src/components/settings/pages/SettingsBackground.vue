@@ -214,6 +214,13 @@
       </div>
     </MenuItem>
 
+    <MenuItem :title="$t('settings.background.lighting.title')" size="large">
+      <template #header>
+        <Sunset :size="20" />
+      </template>
+      <LightingPanel />
+    </MenuItem>
+
     <MenuItem :title="$t('settings.background.animation.switchTitle')" size="large">
       <template #header>
         <Settings :size="20" />
@@ -546,9 +553,11 @@
     Wrench,
     Cpu,
     RefreshCw,
+    Sunset,
   } from "lucide-vue-next";
   import SceneEditModal from "../scene/SceneEditModal.vue";
   import DialogAppearancePanel from "../dialog/DialogAppearancePanel.vue";
+  import LightingPanel from "../lighting/LightingPanel.vue";
   import PluginTag from "@/components/ui/PluginTag.vue";
   import { useUserStore } from "../../../stores/modules/user/user";
 
