@@ -5,5 +5,6 @@ pub mod memory_bank;
 pub mod role;
 pub mod running_script;
 pub mod save;
+pub mod save_identity;
 pub mod skill_agent_conversation;
 pub mod skill_agent_message;

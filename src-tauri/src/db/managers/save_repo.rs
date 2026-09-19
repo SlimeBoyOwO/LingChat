@@ -4,7 +4,9 @@ use sea_orm::*;
 use std::collections::HashMap;
 
 use crate::ai_service::types::{GameLine, LineAttributeExt};
-use crate::db::entities::{line, line_perception, memory_bank, running_script, save};
+use crate::db::entities::{
+    line, line_perception, memory_bank, running_script, save, save_identity,
+};
 
 pub struct SaveRepo;
 
@@ -176,6 +178,14 @@ impl SaveRepo {
         // Delete all lines for this save
         line::Entity::delete_many()
             .filter(line::Column::SaveId.eq(save_id))
+            .exec(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))?;
+
+        // 清理「我的身份」绑定。这张表刻意没有外键（save 表历史上被整体重建过），
+        // 所以必须由应用层清理，否则会留下孤儿行。
+        save_identity::Entity::delete_many()
+            .filter(save_identity::Column::SaveId.eq(save_id))
             .exec(db)
             .await
             .map_err(|e| anyhow!("{e}"))?;
@@ -606,6 +616,66 @@ impl SaveRepo {
             .await
             .map_err(|e| anyhow!("{e}"))?;
         Ok(())
+    }
+
+    // ========== 「我的身份」绑定 ==========
+
+    /// 写入/更新某个存档使用的身份。
+    pub async fn upsert_save_identity(
+        db: &DatabaseConnection,
+        save_id: i32,
+        identity_id: &str,
+    ) -> Result<()> {
+        let now = Utc::now().naive_utc().to_string();
+
+        if let Some(existing) = save_identity::Entity::find_by_id(save_id)
+            .one(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+        {
+            let mut active: save_identity::ActiveModel = existing.into();
+            active.identity_id = Set(identity_id.to_string());
+            active.updated_at = Set(now);
+            active.update(db).await.map_err(|e| anyhow!("{e}"))?;
+        } else {
+            let active = save_identity::ActiveModel {
+                save_id: Set(save_id),
+                identity_id: Set(identity_id.to_string()),
+                created_at: Set(now.clone()),
+                updated_at: Set(now),
+            };
+            active.insert(db).await.map_err(|e| anyhow!("{e}"))?;
+        }
+
+        Ok(())
+    }
+
+    /// 读取某个存档使用的身份 id。
+    ///
+    /// 老存档没有这条记录 → `None`，调用方按老规则兜底（合成默认身份），
+    /// 因此**老存档不需要任何迁移动作**。
+    pub async fn get_save_identity(
+        db: &DatabaseConnection,
+        save_id: i32,
+    ) -> Result<Option<String>> {
+        Ok(save_identity::Entity::find_by_id(save_id)
+            .one(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+            .map(|m| m.identity_id))
+    }
+
+    /// 列出所有引用了某身份的存档（删除身份前的引用检查）。
+    pub async fn find_saves_using_identity(
+        db: &DatabaseConnection,
+        identity_id: &str,
+    ) -> Result<Vec<i32>> {
+        save_identity::Entity::find()
+            .filter(save_identity::Column::IdentityId.eq(identity_id))
+            .all(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))
+            .map(|rows| rows.into_iter().map(|r| r.save_id).collect())
     }
 
     /// 清除存档关联的剧本进度行。存档时若当前无剧本在跑，必须清掉该存档

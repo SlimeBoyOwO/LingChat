@@ -3,11 +3,14 @@ use serde_json::{Value, json};
 use tauri::{Emitter, Manager};
 
 use crate::AppState;
+use crate::ai_service::game_system::player_identity::{
+    RelationEndpoint, build_player_block, resolve_relation, role_relations,
+};
 use crate::ai_service::types::{LineAttributeExt, LineBase, ToolDefinition};
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::utils::prompt::{PromptOptions, sys_prompt_builder_by_settings};
+use crate::utils::prompt::{PromptOptions, sys_prompt_builder_by_settings_with_player};
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::{ensure_no_args, game_status_handle};
@@ -131,7 +134,33 @@ impl Tool for CharacterSwitch {
                 .get_loaded(role_id)
                 .ok_or_else(|| ToolError::Execution(format!("角色 {role_id} 加载后不可用")))?;
             let name = loaded.display_name.clone().unwrap_or(fallback_role_name);
-            let prompt = sys_prompt_builder_by_settings(&loaded.settings, prompt_options);
+
+            // 按**该角色自己的视角**解析「我」的身份与关系（理由同 add_role_to_scene：
+            // 多 AI 场景下每个角色各注入一份自己视角的人设，关系不互相泄漏）。
+            let speaker = RelationEndpoint::Ai(loaded.settings.character_folder.clone());
+            let target = RelationEndpoint::Me(gs.player.identity_id.clone().unwrap_or_default());
+            let speaker_relations =
+                role_relations::load(&crate::api::data_dir(), &loaded.settings.character_folder);
+            let relation = resolve_relation(
+                &speaker,
+                &target,
+                &speaker_relations,
+                &gs.player.relations,
+                Some(gs.player.user_prompt.as_str()),
+            );
+            let player_block = build_player_block(
+                &gs.player.user_name,
+                &gs.player.user_subtitle,
+                &gs.player.user_prompt,
+                relation.as_ref(),
+            );
+
+            let prompt = sys_prompt_builder_by_settings_with_player(
+                &loaded.settings,
+                &gs.player.user_name,
+                &player_block,
+                prompt_options,
+            );
             (name, prompt)
         };
 
@@ -162,6 +191,17 @@ impl Tool for CharacterSwitch {
             gs.onstage_role(role_id);
         }
         gs.current_role_id = Some(role_id);
+
+        // 切换说话者可能改变阵容（单角色替换时阵容全变），重建在场角色人设行。
+        crate::ai_service::game_system::player_identity::persona::rebuild_onstage_personas(
+            &mut gs,
+            &state.db,
+            &crate::api::data_dir(),
+            prompt_options,
+        )
+        .await
+        .map_err(|e| ToolError::Execution(format!("重建在场角色人设行失败: {e}")))?;
+
         gs.refresh_memories(&state.db)
             .await
             .map_err(|e| ToolError::Execution(format!("刷新角色 {role_id} 上下文失败: {e}")))?;

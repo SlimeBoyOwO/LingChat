@@ -4,6 +4,7 @@ use tauri::{AppHandle, Manager};
 use crate::AppState;
 use crate::ai_service::game_system::auto_save;
 use crate::ai_service::game_system::game_status::GameStatusSnapshot;
+use crate::ai_service::game_system::player_identity::IdentityStore;
 use crate::api::game::WebInitData;
 use crate::api::game::build_web_init_data;
 use crate::config::AppConfig;
@@ -21,6 +22,9 @@ pub struct SaveListItem {
     pub update_date: String,
     pub last_message: Option<String>,
     pub screenshot: Option<String>,
+    /// 本存档绑定身份的名字（`None` = 老存档没绑定 / 身份卡已被删除）。
+    /// 纯新增字段：旧前端忽略它，旧版本程序也不会写它。
+    pub identity_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -145,6 +149,26 @@ pub async fn list_saves(
     let data_dir = super::data_dir();
     let screenshots_dir = data_dir.join("screenshots");
 
+    // 1c. 解析每个存档绑定的身份名（用于列表展示）。
+    //     身份卡是磁盘文件，这里只扫一次目录；查不到的（删过卡 / 导入的旧档）留空。
+    let identity_names: std::collections::HashMap<String, String> = {
+        let store = IdentityStore::new(&data_dir);
+        store
+            .list()
+            .into_iter()
+            .map(|i| (i.id.clone(), i.name.clone()))
+            .collect()
+    };
+    let mut save_identity_names: std::collections::HashMap<i32, String> =
+        std::collections::HashMap::new();
+    for s in saves.iter() {
+        if let Ok(Some(identity_id)) = SaveRepo::get_save_identity(db, s.id).await {
+            if let Some(name) = identity_names.get(&identity_id) {
+                save_identity_names.insert(s.id, name.clone());
+            }
+        }
+    }
+
     let items: Vec<SaveListItem> = saves
         .into_iter()
         .map(|s| {
@@ -155,6 +179,7 @@ pub async fn list_saves(
             } else {
                 None
             };
+            let identity_name = save_identity_names.get(&s.id).cloned();
 
             SaveListItem {
                 id: s.id,
@@ -163,6 +188,7 @@ pub async fn list_saves(
                 update_date: format_datetime(&s.update_date),
                 last_message,
                 screenshot,
+                identity_name,
             }
         })
         .collect();
@@ -194,6 +220,20 @@ pub async fn create_save(
         .await
         .map_err(|e| format!("创建存档失败: {}", e))?;
     let save_id = save_model.id;
+
+    // 1b. 记录本存档使用的「我的身份」。
+    //     一个存档对应一个身份、中途不更换，所以这里写一次即可。
+    //     没有选中身份（老会话）时不写 → 读档时按老规则兜底，零迁移。
+    {
+        let identity_id = service.game_status.lock().await.player.identity_id.clone();
+        if let Some(ref id) = identity_id {
+            if !id.trim().is_empty() {
+                SaveRepo::upsert_save_identity(db, save_id, id)
+                    .await
+                    .map_err(|e| format!("记录身份失败: {}", e))?;
+            }
+        }
+    }
 
     // 复制截图到 screenshots 目录
     if let Some(ref path) = screenshot_path {
@@ -394,6 +434,30 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         output_sec_lang: app_config.llm_output_sec_lang,
         no_emotion_limit: app_config.no_emotion_limit_prompt,
     };
+
+    // 6b. 恢复本存档使用的「我的身份」。
+    //
+    //     ⚠️ 必须放在 `init_game_status` **之前**：身份是在初始化时被填进玩家对象、
+    //     并写进角色的 System 人设行的。晚于它设置只会影响下一轮，人设行里仍是旧名字。
+    //
+    //     老存档没有这条记录 → `None` → 保持当前身份（与改造前行为一致，**零迁移**）。
+    //     身份卡已被删除/换机器的场合保留当前身份，绝不让读档失败。
+    {
+        let identity_store = IdentityStore::new(&crate::api::data_dir());
+        match SaveRepo::get_save_identity(db, save_id).await {
+            Ok(Some(id)) => {
+                if identity_store.find_by_id(&id).is_some() {
+                    if let Err(e) = identity_store.set_current_id(&id) {
+                        tracing::warn!("恢复存档身份失败: {e}");
+                    }
+                } else {
+                    tracing::warn!("存档引用的身份 {id} 不存在，沿用当前身份");
+                }
+            },
+            Ok(None) => {},
+            Err(e) => tracing::warn!("读取存档身份失败: {e}"),
+        }
+    }
 
     service
         .init_game_status(Some(main_role_id), prompt_options)
