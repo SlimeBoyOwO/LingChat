@@ -45,6 +45,8 @@ export default {
     outfits: "可选服装",
     noOutfits: "暂无可用服装",
     confirmSwitch: "切换角色会导致当前角色记忆清空，有需要的话不要忘记存档哦",
+    fav: "收藏（移到最前）",
+    unfav: "取消收藏",
   },
   archiveProgress: {
     importing: "导入中",

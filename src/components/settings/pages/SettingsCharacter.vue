@@ -18,13 +18,19 @@
           :clothes="character.clothes || []"
           :resource-folder="character.resourceFolder"
           :source="character.source"
+          :favored="favoredCharacterIds.includes(character.id)"
           @saved="handleSettingsSaved"
+          @favoredChange="handleCharacterFavoriteChange"
         />
       </div>
 
       <div v-if="totalPages > 1" class="flex w-full items-center justify-between px-3 py-2">
         <button
-          class="cursor-pointer rounded-lg border-none bg-[#e9ecef] px-4 py-1.5 text-sm font-medium text-[#495057] transition-all duration-200 hover:-translate-y-0.5 hover:bg-(--accent-color) hover:text-white hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:cursor-not-allowed disabled:opacity-40"
+          class="cursor-pointer rounded-lg border-none bg-[#e9ecef] px-4 py-1.5 text-sm font-medium
+            text-[#495057] transition-all duration-200 hover:-translate-y-0.5
+            hover:bg-(--accent-color) hover:text-white
+            hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:cursor-not-allowed
+            disabled:opacity-40"
           :disabled="currentPage <= 1"
           @click="changePage(currentPage - 1)"
         >
@@ -34,7 +40,11 @@
           $t("settings.shared.pageOf", { current: currentPage, total: totalPages })
         }}</span>
         <button
-          class="cursor-pointer rounded-lg border-none bg-[#e9ecef] px-4 py-1.5 text-sm font-medium text-[#495057] transition-all duration-200 hover:-translate-y-0.5 hover:bg-(--accent-color) hover:text-white hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:cursor-not-allowed disabled:opacity-40"
+          class="cursor-pointer rounded-lg border-none bg-[#e9ecef] px-4 py-1.5 text-sm font-medium
+            text-[#495057] transition-all duration-200 hover:-translate-y-0.5
+            hover:bg-(--accent-color) hover:text-white
+            hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:cursor-not-allowed
+            disabled:opacity-40"
           :disabled="currentPage >= totalPages"
           @click="changePage(currentPage + 1)"
         >
@@ -67,7 +77,8 @@
           }}</label>
           <select
             v-model="conflictPolicy"
-            class="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white transition-all duration-200 outline-none"
+            class="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white
+              transition-all duration-200 outline-none"
           >
             <option value="rename">{{ $t("settings.character.import.policyRename") }}</option>
             <option value="skip">{{ $t("settings.character.import.policySkip") }}</option>
@@ -101,149 +112,180 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
-import { useRouter } from "vue-router";
-import { Birdhouse, FolderOpen, PackageOpen, Rabbit, RefreshCcw } from "lucide-vue-next";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { invoke } from "@tauri-apps/api/core";
+  import { onMounted, ref, watch } from "vue";
+  import { useI18n } from "vue-i18n";
+  import { useRouter } from "vue-router";
+  import { Birdhouse, FolderOpen, PackageOpen, Rabbit, RefreshCcw } from "lucide-vue-next";
+  import { convertFileSrc } from "@tauri-apps/api/core";
+  import { invoke } from "@tauri-apps/api/core";
 
-import CharacterCard from "../../ui/Menu/CharacterCard.vue";
-import { Button } from "../../base";
-import { MenuItem, MenuPage } from "../../ui";
-import { characterGetAll } from "../../../api/services/character";
-import { useRoleImportExport } from "../../../composables/useRoleImportExport";
-import type { ConflictPolicy } from "../../../api/services/role-archive";
-import { useGameStore } from "../../../stores/modules/game";
-import { useUIStore } from "../../../stores/modules/ui/ui";
-import { useDialogStore } from "../../../stores/modules/ui/dialog";
-import type { Character as ApiCharacter, Clothes } from "../../../types";
-import { isAndroid } from "@/utils/platform";
-import RoleArchiveProgress from "@/components/ui/RoleArchiveProgress.vue";
+  import CharacterCard from "../../ui/Menu/CharacterCard.vue";
+  import { Button } from "../../base";
+  import { MenuItem, MenuPage } from "../../ui";
+  import { characterGetAll } from "../../../api/services/character";
+  import {
+    getCharacterFavorites,
+    saveCharacterFavorites,
+  } from "../../../api/services/character-favorites";
+  import { useRoleImportExport } from "../../../composables/useRoleImportExport";
+  import type { ConflictPolicy } from "../../../api/services/role-archive";
+  import { useGameStore } from "../../../stores/modules/game";
+  import { useUIStore } from "../../../stores/modules/ui/ui";
+  import { useDialogStore } from "../../../stores/modules/ui/dialog";
+  import type { Character as ApiCharacter, Clothes } from "../../../types";
+  import { isAndroid } from "@/utils/platform";
+  import RoleArchiveProgress from "@/components/ui/RoleArchiveProgress.vue";
 
-interface CharacterCardData {
-  id: number;
-  title: string;
-  info: string;
-  avatar: string;
-  name: string;
-  subName: string;
-  clothes?: Clothes[];
-  resourceFolder?: string;
-  source?: string | null;
-}
+  interface CharacterCardData {
+    id: number;
+    title: string;
+    info: string;
+    avatar: string;
+    name: string;
+    subName: string;
+    clothes?: Clothes[];
+    resourceFolder?: string;
+    source?: string | null;
+  }
 
-const characters = ref<CharacterCardData[]>([]);
-const currentPage = ref(1);
-const totalPages = ref(1);
-const gameStore = useGameStore();
-const uiStore = useUIStore();
-const router = useRouter();
-const dialogStore = useDialogStore();
-const { t } = useI18n();
+  const characters = ref<CharacterCardData[]>([]);
+  const allCharacters = ref<CharacterCardData[]>([]);
+  const currentPage = ref(1);
+  const totalPages = ref(1);
+  const favoredCharacterIds = ref<number[]>([]);
+  const PAGE_SIZE = 6;
+  const FETCH_ALL_PAGE_SIZE = 1000;
 
-const mapCharacter = (char: ApiCharacter): CharacterCardData => {
-  return {
-    id: parseInt(char.character_id),
-    title: char.title,
-    name: char.name,
-    subName: char.sub_name,
-    info: char.info || t("settings.character.list.noDesc"),
-    avatar: char.avatar_path ? convertFileSrc(char.avatar_path) : "",
-    clothes: char.clothes
-      ? char.clothes.map((clothes: Clothes) => ({
-          title: clothes.title,
-          avatar: clothes.avatar ? convertFileSrc(clothes.avatar) : "",
-        }))
-      : [],
-    resourceFolder: char.resource_folder,
-    source: char.source,
-  };
-};
-
-const fetchCharacters = async (page: number): Promise<void> => {
-  try {
-    const result = await characterGetAll(page);
-    totalPages.value = result.total_pages;
-
-    // 防御：删除角色后当前页可能超出 total_pages（例如停在第 2 页删掉最后一个），
-    // 此时分页条 v-if="totalPages > 1" 整条消失，回退按钮不存在 → 空白列表死锁。
-    // 钳制并重取最后一页。
-    if (currentPage.value > result.total_pages && result.total_pages > 0) {
-      currentPage.value = result.total_pages;
-      await fetchCharactersInternal(result.total_pages);
-      return;
+  async function loadCharacterFavorites(): Promise<void> {
+    try {
+      favoredCharacterIds.value = await getCharacterFavorites();
+    } catch (error) {
+      console.error("读取角色收藏失败:", error);
+      favoredCharacterIds.value = [];
     }
-
-    characters.value = result.items.map(mapCharacter);
-  } catch (error) {
-    console.error("获取角色列表失败:", error);
-    characters.value = [];
   }
-};
 
-// fetchCharacters 的内部调用（钳制回退时用，避免无限递归）
-const fetchCharactersInternal = async (page: number): Promise<void> => {
-  try {
-    const result = await characterGetAll(page);
-    totalPages.value = result.total_pages;
-    characters.value = result.items.map(mapCharacter);
-  } catch (error) {
-    console.error("获取角色列表失败:", error);
-    characters.value = [];
+  function paginate(page: number): void {
+    const pages = Math.max(1, Math.ceil(allCharacters.value.length / PAGE_SIZE));
+    totalPages.value = pages;
+    currentPage.value = Math.min(Math.max(page, 1), pages);
+    const start = (currentPage.value - 1) * PAGE_SIZE;
+    characters.value = allCharacters.value.slice(start, start + PAGE_SIZE);
   }
-};
-
-const loadCharacters = async (): Promise<void> => {
-  await fetchCharacters(currentPage.value);
-};
-
-const changePage = async (page: number): Promise<void> => {
-  currentPage.value = page;
-  await fetchCharacters(page);
-};
-
-const { pickAndImport, rescan } = useRoleImportExport();
-
-const conflictPolicy = ref<ConflictPolicy>("rename");
-
-const refreshCharacters = async (): Promise<void> => {
-  try {
-    await rescan();
-  } catch (e) {
-    console.error("刷新角色列表失败:", e);
+  function applyCharacterFavoriteOrder(): void {
+    const favoredSet = new Set(favoredCharacterIds.value);
+    const favoredCharacters = favoredCharacterIds.value
+      .map((id) => allCharacters.value.find((character) => character.id === id))
+      .filter((character): character is CharacterCardData => Boolean(character));
+    const others = allCharacters.value.filter((character) => !favoredSet.has(character.id));
+    allCharacters.value = [...favoredCharacters, ...others];
+    paginate(currentPage.value);
   }
-  await loadCharacters();
-};
 
-const openCreativeWeb = async (): Promise<void> => {
-  // 云端创意工坊已迁移为主菜单「创意工坊」二级菜单的独立路由页
-  router.push("/workshop");
-};
+  async function handleCharacterFavoriteChange(characterId: number): Promise<void> {
+    const previous = favoredCharacterIds.value;
+    const next = previous.includes(characterId)
+      ? previous.filter((id) => id !== characterId)
+      : [...previous, characterId];
+    favoredCharacterIds.value = next;
+    applyCharacterFavoriteOrder();
 
-const handleImport = async () => {
-  await pickAndImport(conflictPolicy.value);
-  // After import dialog closes (success or cancel), refresh list
-  await refreshCharacters();
-};
+    try {
+      await saveCharacterFavorites(next);
+    } catch (error) {
+      console.error("保存角色收藏失败:", error);
+      favoredCharacterIds.value = previous;
+      applyCharacterFavoriteOrder();
+    }
+  }
+  const gameStore = useGameStore();
+  const uiStore = useUIStore();
+  const router = useRouter();
+  const dialogStore = useDialogStore();
+  const { t } = useI18n();
 
-const openCharacterFolder = async () => {
-  await invoke("open_characters_folder");
-};
+  const mapCharacter = (char: ApiCharacter): CharacterCardData => {
+    return {
+      id: parseInt(char.character_id),
+      title: char.title,
+      name: char.name,
+      subName: char.sub_name,
+      info: char.info || t("settings.character.list.noDesc"),
+      avatar: char.avatar_path ? convertFileSrc(char.avatar_path) : "",
+      clothes: char.clothes
+        ? char.clothes.map((clothes: Clothes) => ({
+            title: clothes.title,
+            avatar: clothes.avatar ? convertFileSrc(clothes.avatar) : "",
+          }))
+        : [],
+      resourceFolder: char.resource_folder,
+      source: char.source,
+    };
+  };
 
-const handleSettingsSaved = () => {
-  refreshCharacters();
-};
+  const fetchCharacters = async (): Promise<void> => {
+    try {
+      const result = await characterGetAll(1, FETCH_ALL_PAGE_SIZE);
+      allCharacters.value = result.items.map(mapCharacter);
+      applyCharacterFavoriteOrder();
+    } catch (error) {
+      console.error("获取角色列表失败:", error);
+      allCharacters.value = [];
+      characters.value = [];
+      totalPages.value = 1;
+    }
+  };
 
-onMounted(() => {
-  loadCharacters();
-});
+  const loadCharacters = async (): Promise<void> => {
+    await loadCharacterFavorites();
+    await fetchCharacters();
+  };
 
-watch(
-  () => gameStore.mainRoleId,
-  () => {
-    currentPage.value = 1;
+  const changePage = (page: number): void => {
+    paginate(page);
+  };
+
+  const { pickAndImport, rescan } = useRoleImportExport();
+
+  const conflictPolicy = ref<ConflictPolicy>("rename");
+
+  const refreshCharacters = async (): Promise<void> => {
+    try {
+      await rescan();
+    } catch (e) {
+      console.error("刷新角色列表失败:", e);
+    }
+    await loadCharacters();
+  };
+
+  const openCreativeWeb = async (): Promise<void> => {
+    // 云端创意工坊已迁移为主菜单「创意工坊」二级菜单的独立路由页
+    router.push("/workshop");
+  };
+
+  const handleImport = async () => {
+    await pickAndImport(conflictPolicy.value);
+    // After import dialog closes (success or cancel), refresh list
+    await refreshCharacters();
+  };
+
+  const openCharacterFolder = async () => {
+    await invoke("open_characters_folder");
+  };
+
+  const handleSettingsSaved = () => {
+    refreshCharacters();
+  };
+
+  onMounted(() => {
     loadCharacters();
-  },
-);
+  });
+
+  watch(
+    () => gameStore.mainRoleId,
+    () => {
+      currentPage.value = 1;
+      loadCharacters();
+    }
+  );
 </script>
