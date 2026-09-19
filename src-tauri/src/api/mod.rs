@@ -3,6 +3,7 @@ pub mod adventure;
 pub mod ambient;
 pub mod asr;
 pub mod asset;
+pub mod autostart;
 pub mod background;
 pub mod character;
 pub mod chat;

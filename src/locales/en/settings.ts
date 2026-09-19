@@ -172,6 +172,19 @@ export default {
       reconnecting: "Reconnecting…",
       forceReconnect: "Force Reconnect TTS",
     },
+    autostart: {
+      title: "System Auto Start",
+      desc: 'When enabled, LingChat registers itself in the system startup items and launches automatically on boot. "Launch as pet" above controls whether it opens into pet mode at startup; for external TTS modes you can also configure a startup script to launch the voice service on boot.',
+      enable: "Enable system auto-start",
+      disable: "Disable system auto-start",
+      status: "Current system auto-start status: {status}",
+      on: "Enabled",
+      off: "Disabled",
+      defaultRole: "Default startup role",
+      noRole: "(Keep last role)",
+      roleHint:
+        "The selection is saved automatically; this role will be loaded by default at startup.",
+    },
     saveButton: "Save",
     loadFailed: "Load Failed",
     loadFailedDesc: "Unable to load the config, or the config is empty.",
@@ -191,6 +204,7 @@ export default {
       创意工坊: "Workshop",
       日志配置: "Log Settings",
       主动对话配置: "Proactive Chat Settings",
+      启动项: "Startup",
     },
     subcategories: {
       高级选项: "Advanced Options",
@@ -204,6 +218,8 @@ export default {
       基础开关: "Basic Switches",
       视觉感知设置: "Visual Perception Settings",
       感知与话题配置: "Perception & Topic Settings",
+      开机自启动: "Auto Start as Pet",
+      启动设置: "Startup Settings",
     },
     subcategoryDescs: {
       高级选项: "Advanced parameters for tuning AI conversation behavior",
@@ -221,6 +237,8 @@ export default {
       视觉感知设置:
         "Desktop visual perception switch and trigger weight for proactive chat; the vision model is configured in Model Management",
       感知与话题配置: "Weights and switches for schedule, TODO, and random conversations",
+      开机自启动: "Launch LingChat automatically at startup",
+      启动设置: "Control how LingChat starts and its default behavior",
     },
     fields: {
       llm: {
@@ -279,6 +297,25 @@ export default {
           "LOG_LLM_REQUEST_BODY — Log the full request body JSON of every LLM request to the data/log/llm/ directory (off by default)",
         genai_debug:
           "LOG_GENAI_DEBUG — Enable genai SDK debug logs (request/response details; takes effect immediately on save, off by default)",
+      },
+      autostart: {
+        enabled:
+          "When on, LingChat registers itself in the system startup items and launches automatically on boot (desktop only)",
+        boot_as_pet:
+          "Start as pet: when on, LingChat opens in pet mode on an autostart launch (Windows only)",
+        pet_role_id:
+          "Default role ID loaded at auto-startup (leave empty to keep the last role you played)",
+        tts_launcher_bat:
+          "Path to the startup script (.bat) for external TTS modes, used to launch your self-hosted voice service at startup; can be left empty for the built-in local TTS engine",
+      },
+      startup: {
+        pet_mode:
+          'Start as pet: when on, launching the exe manually opens directly in pet mode (independent of the pet switch under "Auto Start as Pet"; Windows only)',
+        auto_play:
+          "Auto-play dialogue: when on, the dialogue auto-play switch is on by default in chat scenes (applies globally)",
+        auto_start_tts:
+          "Auto-start API service: when on, LingChat launches and refreshes the external TTS service on startup whether in pet mode or normal mode (needs the startup script below)",
+        greeting: "Entry greeting: when on, the character proactively greets you",
       },
       ENABLE_PROACTIVE_SYSTEM:
         "ENABLE_PROACTIVE_SYSTEM — Whether to enable the proactive chat system",
