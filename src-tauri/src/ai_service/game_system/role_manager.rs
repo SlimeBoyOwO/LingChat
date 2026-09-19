@@ -11,9 +11,12 @@ use crate::ai_service::game_system::persistent_memory_system::{
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::tts::local::LocalTtsRuntime;
-use crate::ai_service::types::{CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage};
+use crate::ai_service::types::{
+    CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage, RoleProfile,
+};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
+use crate::db::entities::role::{Model as RoleModel, RoleType};
 use crate::db::managers::memory_repo::MemoryRepo;
 use crate::db::managers::role_repo::RoleRepo;
 
@@ -188,8 +191,17 @@ impl GameRoleManager {
         let role = RoleRepo::get_role_by_id(db, role_id).await?;
         let role = role.ok_or_else(|| anyhow!("角色 ID {} 未在数据库中找到", role_id))?;
 
-        let settings = RoleRepo::get_role_settings_by_id(db, &self.data_dir, role.id).await?;
-        let settings = settings.ok_or_else(|| anyhow!("角色 ID {} 的设置相关文件缺失", role_id))?;
+        // 玩家身份实体（role_type=User）没有资源目录与 settings.yml，人设存放在
+        // `profile_json`；这里按同一套 CharacterSettings 契约合成，让下游（提示词、
+        // 记忆、God Agent 简介）无需为"人"与"AI"分叉。AI 角色仍走磁盘 settings.yml。
+        let settings = if role.role_type == RoleType::User {
+            let profile = RoleRepo::get_role_profile(db, role.id).await?;
+            user_identity_settings(&role, &profile)
+        } else {
+            RoleRepo::get_role_settings_by_id(db, &self.data_dir, role.id)
+                .await?
+                .ok_or_else(|| anyhow!("角色 ID {} 的设置相关文件缺失", role_id))?
+        };
 
         let display_name = settings.ai_name.clone();
         let resource_path = role.resource_folder.clone();
@@ -272,10 +284,9 @@ impl GameRoleManager {
         let mut involved_ids: HashSet<i32> = HashSet::new();
         for line in source_lines {
             if let Some(sid) = line.sender_role_id() {
-                // 跳过 id 为 0 的角色（ 0 代表的是玩家，不参与记忆同步）
-                if sid != 0 {
-                    involved_ids.insert(sid);
-                }
+                // 玩家身份实体同构参与记忆构建：被 AI 控制时需要其短期记忆，
+                // 被玩家附身时台词按 sender 天然归属它，故不再跳过任何 sender。
+                involved_ids.insert(sid);
             }
             for rid in &line.perceived_role_ids {
                 involved_ids.insert(*rid);
@@ -341,7 +352,19 @@ impl GameRoleManager {
                 if let Some(sp) = Self::find_first_system_prompt(source_lines, rid) {
                     final_sliced.insert(0, sp.clone());
                 } else {
-                    tracing::warn!("role_id={} 没有找到 SYSTEM 属性的台词，可能人设丢失", rid);
+                    // 人设本就为空时（如玩家身份实体没填介绍），SYSTEM 行缺失是预期，
+                    // 不应告警刷屏；只有配置了人设却找不到注入行才是真的异常。
+                    let persona_empty = self
+                        .loaded_roles
+                        .get(&rid)
+                        .and_then(|role| role.settings.system_prompt.as_deref())
+                        .map(|prompt| prompt.trim().is_empty())
+                        .unwrap_or(true);
+                    if persona_empty {
+                        tracing::debug!("role_id={} 无人设，跳过 SYSTEM 提示注入", rid);
+                    } else {
+                        tracing::warn!("role_id={} 没有找到 SYSTEM 属性的台词，可能人设丢失", rid);
+                    }
                 }
             }
 
@@ -542,6 +565,35 @@ impl GameRoleManager {
         true
     }
 
+    /// 用最新配置刷新已加载角色的**人设字段**（不含 TTS/Live2D）。
+    ///
+    /// 人设是 SYSTEM 行的内容来源；改名/改人设后必须热更新内存副本，否则重建
+    /// SYSTEM 行仍会取到旧值。返回角色当前是否已加载；未加载时磁盘配置会在
+    /// 下次注册角色时自然生效。
+    pub fn update_role_persona_settings(
+        &mut self,
+        role_id: i32,
+        settings: &CharacterSettings,
+    ) -> bool {
+        let Some(role) = self.loaded_roles.get_mut(&role_id) else {
+            tracing::info!("角色 {} 尚未加载，人设设置将在下次加载时生效", role_id);
+            return false;
+        };
+        role.settings.system_prompt = settings.system_prompt.clone();
+        role.settings.ai_name = settings.ai_name.clone();
+        role.settings.ai_subtitle = settings.ai_subtitle.clone();
+        role.settings.info = settings.info.clone();
+        role.settings.system_prompt_example = settings.system_prompt_example.clone();
+        role.settings.system_prompt_example_old = settings.system_prompt_example_old.clone();
+        // display_name 是展示署名，跟随 ai_name 同步；ai_name 为空时保持原值
+        if !role.settings.ai_name.trim().is_empty() {
+            role.display_name = Some(role.settings.ai_name.clone());
+        }
+        // 已知限制：PersistentMemorySystem 在构造时固化了 display_name（用于压缩提示
+        // 署名），此处热更新不会同步已构造的压缩系统，改名后的压缩署名需等其重建才生效。
+        true
+    }
+
     /// 更新已加载角色的语音语言并重新初始化其 VoiceMaker。
     pub fn update_role_voice_lang(&mut self, role_id: i32, lang: &str) {
         let Some(role) = self.loaded_roles.get_mut(&role_id) else {
@@ -691,6 +743,23 @@ impl GameRoleManager {
         self.memory_bank_systems
             .get(&role_id)
             .map(|s| s.is_enabled())
+    }
+}
+
+/// 为玩家身份实体合成 `CharacterSettings`（不读 settings.yml）。
+///
+/// User 实体没有资源目录，其人设存在 `role.name` + `profile_json`；下游统一按
+/// `CharacterSettings` 消费（提示词构建、记忆、God Agent 简介），所以在这里
+/// 做一次形状适配。语音相关字段保持默认（tts_type 为空 → 不构造 VoiceMaker）。
+pub fn user_identity_settings(role: &RoleModel, profile: &RoleProfile) -> CharacterSettings {
+    CharacterSettings {
+        ai_name: role.name.clone(),
+        ai_subtitle: Some(profile.subtitle.clone()),
+        // 身份只有一个「介绍」描述字段，它同时充当 system 人设材料与 God Agent 简介
+        system_prompt: Some(profile.info.clone()),
+        info: Some(profile.info.clone()),
+        character_id: Some(role.id),
+        ..Default::default()
     }
 }
 

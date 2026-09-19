@@ -9,6 +9,7 @@ pub mod chat;
 pub mod codex;
 pub mod font;
 pub mod game;
+pub mod identity;
 pub mod live2d;
 pub mod locale;
 pub mod memory;

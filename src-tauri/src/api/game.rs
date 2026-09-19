@@ -13,8 +13,9 @@ use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
 };
 use crate::ai_service::types::{
-    CharacterSettings, GameLine, LineAttributeExt, LineBase, Live2dSettings,
+    CharacterSettings, GameLine, LineAttributeExt, LineBase, Live2dSettings, PLAYER_ROLE_ID,
 };
+use crate::api::identity::{emit_possessed, PossessedInfo};
 use crate::config::{self, AppConfig};
 use crate::db::entities::line;
 use crate::db::entities::line::LineAttribute;
@@ -116,12 +117,16 @@ pub struct GameLineInit {
     pub action_content: Option<String>,
     pub audio_file: Option<String>,
     pub perceived_role_ids: Vec<i32>,
-    /// 玩家消息序号（1-indexed），仅对 sender_role_id == Some(0) 的 User 行有值
+    /// 玩家消息序号（1-indexed），仅「玩家身份实体（role_type=User，含 id=0）」的 user 行有值
     pub user_message_seq: Option<u32>,
     /// 该轮生成的思考链（仅每轮最后一条 assistant 行有值）。
     pub thinking: Option<String>,
     /// 该台词的第二语言（日语）译文，供日文界面显示；无译文时为 None。
     pub tts_content: Option<String>,
+    /// 该行的 TTS 序号（0-based）：仅「可补生成语音」的 AI 行（assistant、有正文、
+    /// 有关联角色）有值，其余为 None。序号由后端统一下发，前端只回传给
+    /// `generate_line_voice`，不再自行在本地历史上计数。
+    pub tts_seq: Option<u32>,
 }
 
 // ========== Tauri 命令 ==========
@@ -326,6 +331,22 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     // 1. 从 DB 加载角色设定
     let state = app.state::<AppState>();
 
+    // 被附身的角色不能作为常规对话对象：玩家身份与对话对象重合会形成
+    // "自己跟自己说话"的死锁。此处在 init_game_status 的加锁区间之外单独读一次。
+    let previously_possessed = {
+        let service = state.ai_service.lock().await;
+        let gs = service.game_status.lock().await;
+        if gs.is_possessed(character_id) {
+            return Err("该角色正被你扮演，请先切换扮演身份".to_string());
+        }
+        // 剧本/试玩运行中切换对话对象会打乱引擎持有的当前角色绑定，必须在
+        // 任何状态突变之前拦住（试玩结束还会整体还原会话，改了也会被冲掉）
+        if gs.script_status.is_some() {
+            return Err("剧本/试玩进行中，无法切换对话对象".to_string());
+        }
+        gs.possessed_role_id
+    };
+
     // 2. 读取 AppConfig 构建 PromptOptions
     let app_config = AppConfig::load(&app).unwrap_or_default();
     let prompt_options = PromptOptions {
@@ -355,10 +376,29 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
 
     // 5. 返回最新游戏状态（复用 init_game 逻辑）
     //    drop 后再拿锁，避免同一个锁两次借用
-    let init = {
+    let (init, fallback_info) = {
         let service = state.ai_service.lock().await;
-        build_web_init_data(&service, &app).await?
+        // 清档会把附身归零（见 init_game_status）；先按新会话态取好默认身份信息。
+        // gs 锁必须在 build_web_init_data 前释放，后者会再次加锁。
+        let fallback_info = {
+            let gs = service.game_status.lock().await;
+            if previously_possessed != PLAYER_ROLE_ID {
+                Some(PossessedInfo {
+                    role_id: gs.possessed_role_id,
+                    name: gs.player.user_name.clone(),
+                    subtitle: gs.player.user_subtitle.clone(),
+                })
+            } else {
+                None
+            }
+        };
+        let init = build_web_init_data(&service, &app).await?;
+        (init, fallback_info)
     };
+    // 先前处于附身态时，清档已把它归零；补发一次默认身份广播让前端徽标同步
+    if let Some(info) = fallback_info {
+        emit_possessed(&app, &info);
+    }
     Ok(init)
 }
 
@@ -390,13 +430,18 @@ pub async fn clear_conversation(app: AppHandle) -> Result<WebInitData, String> {
 }
 
 /// 为台词列表计算玩家消息序号（1-indexed）。
-/// 玩家消息由 `sender_role_id == Some(0) && attribute == User` 标识。
+///
+/// 判定以行为为准：`attribute == User` 且有明确发送者即算玩家发言。被附身 AI
+/// 实体替玩家发出的台词 sender 虽是 AI 实体，attribute 仍是 User，按行为判定
+/// 才能覆盖这些真实的玩家发言；sender 为空的系统旁白（如入场/退场提示）不计入。
 pub fn compute_user_message_seqs(line_list: &[GameLine]) -> Vec<Option<u32>> {
     let mut count = 0u32;
     line_list
         .iter()
         .map(|gl| {
-            if gl.base.sender_role_id == Some(0) && matches!(gl.attribute(), LineAttribute::User) {
+            if gl.base.sender_role_id.is_some()
+                && matches!(gl.attribute(), LineAttribute::User)
+            {
                 count += 1;
                 Some(count)
             } else {
@@ -406,12 +451,41 @@ pub fn compute_user_message_seqs(line_list: &[GameLine]) -> Vec<Option<u32>> {
         .collect()
 }
 
+/// 把运行时台词行转换为前端格式，并下发两类序号：玩家消息序号与 TTS 序号。
+///
+/// 两类序号都必须由后端统一计算：前端只在本地历史上按同规则重数时，任何一侧
+/// 的事件丢失都会让两份列表漂移，进而把「生成语音」定位到错误的台词上。
+/// 初始化与回溯共用本函数，保证同一行在全链路始终拿到同一个序号。
+pub(crate) fn build_game_line_inits(line_list: &[GameLine]) -> Vec<GameLineInit> {
+    let user_seqs = compute_user_message_seqs(line_list);
+    let tts_seqs = super::chat::tts_seqs(line_list);
+    line_list
+        .iter()
+        .enumerate()
+        .map(|(i, gl)| GameLineInit {
+            content: gl.base.content.clone(),
+            attribute: gl.base.attribute.as_str().to_string(),
+            sender_role_id: gl.base.sender_role_id,
+            display_name: gl.base.display_name.clone(),
+            original_emotion: gl.base.original_emotion.clone(),
+            predicted_emotion: gl.base.predicted_emotion.clone(),
+            action_content: gl.base.action_content.clone(),
+            audio_file: gl.base.audio_file.clone(),
+            perceived_role_ids: gl.perceived_role_ids.clone(),
+            user_message_seq: user_seqs[i],
+            thinking: gl.base.thinking.clone(),
+            tts_content: gl.base.tts_content.clone(),
+            tts_seq: tts_seqs[i],
+        })
+        .collect()
+}
+
 /// 从 AIService 快照构建 WebInitData（不持锁的函数）
 pub(crate) async fn build_web_init_data(
     service: &crate::ai_service::service::AIService,
     app: &AppHandle,
 ) -> Result<WebInitData, String> {
-    let character_settings = {
+    let mut character_settings = {
         let cid = service.init_character_id;
         let cid = match cid {
             Some(v) => v,
@@ -438,26 +512,7 @@ pub(crate) async fn build_web_init_data(
         active_script,
     ) = {
         let mut gs = service.game_status.lock().await;
-        let seqs = compute_user_message_seqs(&gs.line_list);
-        let lines: Vec<GameLineInit> = gs
-            .line_list
-            .iter()
-            .zip(seqs.iter())
-            .map(|(gl, &seq)| GameLineInit {
-                content: gl.base.content.clone(),
-                attribute: gl.base.attribute.as_str().to_string(),
-                sender_role_id: gl.base.sender_role_id,
-                display_name: gl.base.display_name.clone(),
-                original_emotion: gl.base.original_emotion.clone(),
-                predicted_emotion: gl.base.predicted_emotion.clone(),
-                action_content: gl.base.action_content.clone(),
-                audio_file: gl.base.audio_file.clone(),
-                perceived_role_ids: gl.perceived_role_ids.clone(),
-                user_message_seq: seq,
-                thinking: gl.base.thinking.clone(),
-                tts_content: gl.base.tts_content.clone(),
-            })
-            .collect();
+        let lines: Vec<GameLineInit> = build_game_line_inits(&gs.line_list);
 
         let mut sid = gs.current_scene_id.clone();
 
@@ -536,6 +591,14 @@ pub(crate) async fn build_web_init_data(
         )
     };
 
+    // 玩家名的真相源是实体行（possessed 缓存）。主角色 settings.yml 里那份 user_name
+    // 只在"搬家"时读过一次，可能已过时；这里统一覆盖，保证前端初始玩家名与后端一致。
+    {
+        let gs = service.game_status.lock().await;
+        character_settings.user_name = gs.player.user_name.clone();
+        character_settings.user_subtitle = gs.player.user_subtitle.clone();
+    }
+
     // 从 session store 恢复上次会话状态（服装、音乐、环境音）
     let (last_bgm_track, last_bgm_paused, last_bgm_mode, last_ambient_tracks) = {
         let store = app.store(config::STORE_FILE).ok();
@@ -598,7 +661,7 @@ pub(crate) async fn build_web_init_data(
 
 #[tauri::command]
 pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue, String> {
-    if role_id == 0 {
+    if role_id == PLAYER_ROLE_ID {
         return Err("无法添加玩家角色 (role_id=0)".to_string());
     }
 
@@ -622,8 +685,9 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
             return Err("剧本模式下无法手动添加角色到场景".to_string());
         }
 
-        // 已在场
-        if gs.present_role_ids.contains(&role_id) {
+        // 已在场（以舞台集合为准）：present 可能因附身等边缘路径多出一个实体，
+        // 只查 present 会把这类残留当成"已入场"而挡住正常入场。
+        if gs.onstage_role_ids.contains(&role_id) {
             return Ok(serde_json::json!({"success": false, "message": "角色已在场景中"}));
         }
 
@@ -642,8 +706,9 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
             .clone()
             .unwrap_or_else(|| format!("角色{}", role_id));
 
-        // 构建角色的 system prompt
-        let system_prompt = sys_prompt_builder_by_settings(&role.settings, prompt_options);
+        // 构建角色的 system prompt（玩家名取自当前附身实体缓存）
+        let system_prompt =
+            sys_prompt_builder_by_settings(&role.settings, prompt_options, &gs.player.user_name);
 
         // ★ 注入 System 行必须在 onstage_role 之前。
         //    仅当台词表中不存在本角色的 System 行时才添加（避免退出后重入时重复）。
@@ -705,7 +770,7 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
 
 #[tauri::command]
 pub async fn remove_role_from_scene(app: AppHandle, role_id: i32) -> Result<JsonValue, String> {
-    if role_id == 0 {
+    if role_id == PLAYER_ROLE_ID {
         return Err("无法移除玩家角色 (role_id=0)".to_string());
     }
 
@@ -724,6 +789,11 @@ pub async fn remove_role_from_scene(app: AppHandle, role_id: i32) -> Result<Json
         // 主角不可退场
         if gs.main_role_id == Some(role_id) {
             return Err("无法移除主角".to_string());
+        }
+
+        // 被附身角色正被玩家扮演，退场会让玩家身份失去承载实体
+        if gs.is_possessed(role_id) {
+            return Err("该角色正被你扮演，请先解除扮演".to_string());
         }
 
         // 不在场

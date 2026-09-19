@@ -55,7 +55,7 @@ pub struct ReplyResponse {
     pub original_message: String,
     pub display_name: Option<String>,
     pub display_subtitle: Option<String>,
-    /// 触发此回复的用户消息序号（1-indexed，由 sender_role_id == Some(0) 计数得出）。
+    /// 触发此回复的用户消息序号（1-indexed，按玩家身份实体 sender 计数得出）。
     /// `None` 表示主动对话等非用户触发的回复。`None` 时不序列化该字段，
     /// 避免前端把 `null` 当成有效序号回填进用户消息、导致回溯传 null 报错。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -66,6 +66,12 @@ pub struct ReplyResponse {
     /// 流式回复：代号与当前轮不一致即过期。自由对话/正式剧本为 `None`。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preview_gen: Option<u64>,
+    /// 该回复新增的 assistant 台词行的 TTS 序号（0-based），口径与
+    /// `generate_line_voice` 的 `line_seq` 完全一致。前端直接携带该序号回传即可，
+    /// 无需在本地历史上重数——序号由后端统一下发才能避免计数漂移造成语音错位。
+    /// `None`（不序列化）表示该行不可补生成语音：纯动作行、无关联角色或未成功写入。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tts_seq: Option<u32>,
 }
 
 impl ReplyResponse {
@@ -88,6 +94,7 @@ impl ReplyResponse {
             user_message_seq: None,
             thinking: None,
             preview_gen: None,
+            tts_seq: None,
         }
     }
 }

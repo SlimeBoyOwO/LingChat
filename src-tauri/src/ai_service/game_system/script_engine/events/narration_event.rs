@@ -1,4 +1,4 @@
-//! Narration event — displays narrator text and adds an ASSISTANT line.
+//! 旁白事件 —— 展示旁白文本并写入一条台词行。
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -11,7 +11,7 @@ use crate::ai_service::game_system::script_engine::responses::{
     NarrationPayload, event_names::SCRIPT_NARRATION,
 };
 use crate::ai_service::message_system::events::emit;
-use crate::ai_service::types::{LineAttributeExt, LineBase};
+use crate::ai_service::types::{LineAttributeExt, LineBase, PLAYER_ROLE_ID};
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
 
@@ -62,7 +62,7 @@ impl ScriptEvent for NarrationEvent {
             content: PromptRole::Narrator.build_prompt(&self.text.clone()),
             attribute: LineAttributeExt(LineAttribute::User),
             display_name: self.display_name.clone().or_else(|| Some("旁白".into())),
-            sender_role_id: Some(0),
+            sender_role_id: Some(PLAYER_ROLE_ID),
             ..Default::default()
         };
         ctx.game_status.lock().await.add_line(ctx.db, line).await?;

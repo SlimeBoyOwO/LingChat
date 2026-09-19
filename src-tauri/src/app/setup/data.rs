@@ -42,6 +42,12 @@ pub async fn bootstrap(app: &tauri::App<tauri::Wry>) -> Result<(DatabaseConnecti
     // 确保玩家 User 角色存在（id=0，用于 line.sender_role_id 的 FK 约束）
     RoleRepo::ensure_user_role(&db).await?;
 
+    // 玩家名搬家：首次启动从主角色 settings.yml 静默灌入 id=0 实体（幂等，只读不改写文件）。
+    // 失败只告警不阻断：id=0 保持 "User" 兜底即可，下次启动会再试。
+    if let Err(e) = RoleRepo::ensure_default_player_identity(&db, &data_dir).await {
+        tracing::warn!("默认玩家身份初始化失败（已跳过，不影响启动）: {e}");
+    }
+
     // 迁移旧的扁平 LLM 配置 → 多供应商列表
     migrate_if_needed(&app.handle());
     // 迁移旧的主动视觉独立配置（VD_*）→ 大模型管理中的视觉模型角色

@@ -120,6 +120,13 @@ impl Tool for CharacterSwitch {
         let gs = game_status_handle(&app).await;
         let mut gs = gs.lock().await;
 
+        // 被玩家附身的角色处于玩家控制态，AI 切换过去会与玩家身份冲突
+        if gs.is_possessed(role_id) {
+            return Err(ToolError::Execution(
+                "该角色正被玩家扮演，无法切换".to_string(),
+            ));
+        }
+
         // 先加载并构建目标角色的人设；任何一步失败都不修改 current_role_id，避免
         // 留下“界面已经切换、后端上下文却不可用”的半完成状态。
         gs.get_role(&state.db, role_id)
@@ -131,7 +138,12 @@ impl Tool for CharacterSwitch {
                 .get_loaded(role_id)
                 .ok_or_else(|| ToolError::Execution(format!("角色 {role_id} 加载后不可用")))?;
             let name = loaded.display_name.clone().unwrap_or(fallback_role_name);
-            let prompt = sys_prompt_builder_by_settings(&loaded.settings, prompt_options);
+            // 玩家名取自当前附身实体缓存（gs.player 由 possession 链路统一维护）
+            let prompt = sys_prompt_builder_by_settings(
+                &loaded.settings,
+                prompt_options,
+                &gs.player.user_name,
+            );
             (name, prompt)
         };
 

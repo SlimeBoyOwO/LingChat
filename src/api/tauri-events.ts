@@ -413,18 +413,37 @@ export function initializeTauriEventListeners() {
     const payload = event.payload as { type: string; roleId: number; characterName: string };
     console.log("[Tauri] character:switch", payload);
     const gameStore = useGameStore();
-    const uiStore = useUIStore();
-    // 先确保角色数据已加载（立绘/名字都从这里取）
-    const role = await gameStore.getOrCreateGameRole(payload.roleId);
+    // 先确保角色数据已加载（立绘/名字都从这里取，进 presentRoleIds 前必须已在 gameRoles）
+    await gameStore.getOrCreateGameRole(payload.roleId);
+    // 这里只维护后端交互对象的镜像与在场名单；标题/立绘高亮改由展示态
+    // （displaySpeakerRoleId）派生，本事件是旁路、不能越权改写正在展示的台词归属。
     gameStore.currentInteractRoleId = payload.roleId;
-    // 新角色不在场时才替换舞台（多人场景下 God Agent 只会选在场角色，不进这分支）；
-    // 用替换而非 push，避免标准模式舞台出现两个角色、桌宠不生效
+    // 不在场则追加进场，保留其他在场角色——多人场景下每位说话人的立绘都应在场
     if (!gameStore.presentRoleIds.includes(payload.roleId)) {
-      gameStore.presentRoleIds = [payload.roleId];
+      gameStore.presentRoleIds.push(payload.roleId);
     }
-    // 同步主界面/桌宠标题（对话中名字由 currentInteractRole 驱动，已覆盖）
-    uiStore.showCharacterTitle = role.roleName;
-    uiStore.showCharacterSubtitle = role.roleSubTitle;
+  });
+
+  // === 附身事件（玩家侧行为，与 AI 侧角色切换 character:switch 分离）===
+
+  listen("identity:possessed", (event) => {
+    const payload = event.payload as { role_id: number; name: string; subtitle: string };
+    console.log("[Tauri] identity:possessed", payload);
+    const gameStore = useGameStore();
+    // 玩家名/副标题真相源已在后端搬进实体行，这里只同步前端展示缓存；
+    // possessedRoleId 用于设置页高亮「当前扮演」并防呆，属于会话态。
+    gameStore.possessedRoleId = payload?.role_id ?? 0;
+    if (payload?.name) {
+      gameStore.userName = payload.name;
+    }
+    gameStore.userSubtitle = payload?.subtitle ?? "";
+  });
+
+  // 角色/身份列表变更广播（身份 CRUD、角色设置保存、插件资源变动等）：
+  // 订阅方只需自增版本号，由各列表自行重拉，避免事件负载膨胀。
+  listen("role:list-updated", () => {
+    const gameStore = useGameStore();
+    gameStore.roleListVersion += 1;
   });
 
   // === LLM 场景工具事件 ===
@@ -457,14 +476,12 @@ export function initializeCastWindowListeners() {
   listen("character:switch", async (event) => {
     const payload = event.payload as { type: string; roleId: number; characterName: string };
     const gameStore = useGameStore();
-    const uiStore = useUIStore();
-    const role = await gameStore.getOrCreateGameRole(payload.roleId);
+    // 与主窗口同一套语义：只更新交互对象镜像与在场名单，展示态由 displaySpeakerRoleId 派生
+    await gameStore.getOrCreateGameRole(payload.roleId);
     gameStore.currentInteractRoleId = payload.roleId;
     if (!gameStore.presentRoleIds.includes(payload.roleId)) {
-      gameStore.presentRoleIds = [payload.roleId];
+      gameStore.presentRoleIds.push(payload.roleId);
     }
-    uiStore.showCharacterTitle = role.roleName;
-    uiStore.showCharacterSubtitle = role.roleSubTitle;
   });
 
   listen("scene:switch", (event) => {

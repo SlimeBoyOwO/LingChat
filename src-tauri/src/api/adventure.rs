@@ -177,6 +177,9 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
         return Err("冒险尚未解锁，无法启动".to_string());
     }
 
+    // 与剧本共用同一道互斥闸：附身态或已有 run 在跑时直接拒绝
+    crate::api::script::ensure_script_start_allowed(&app, "冒险").await?;
+
     // 取出剧本后即结束对 state 的借用，随后把 app 交给共用的后台执行入口
     let script = {
         let service = state.ai_service.lock().await;

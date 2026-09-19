@@ -45,6 +45,8 @@ export default class DialogueProcessor implements IEventProcessor {
       thinking: event.thinking,
       ttsText: event.ttsText,
       senderRoleId: event.roleId,
+      // 携带后端统一下发的 TTS 序号，历史页「生成语音」据此回传，避免前端计数漂移
+      ttsSeq: event.ttsSeq,
     });
 
     // 回溯更新最近一条没有序号标记的用户消息（前端发送消息时尚未拿到序号）
@@ -62,6 +64,9 @@ export default class DialogueProcessor implements IEventProcessor {
     role.emotion = event.emotion || "正常";
     role.originalEmotion = event.originalTag || "正常";
     gameStore.currentInteractRoleId = role.roleId;
+    // 记下「正在展示的这条 AI 台词是谁说的」：character:switch 是不入队的旁路事件，
+    // 会在上一句仍展示时就改写 currentInteractRoleId，展示层读这个快照才不会提前换脸。
+    gameStore.displaySpeakerRoleId = event.roleId;
     uiStore.currentAvatarAudio = event.audioFile || "None";
     // 前端触发对话/播放回复音频时，把该句语音广播给投屏客户端（远端设备同步播放）。
     // 仅主窗口处理 ai:reply 事件，这里每句回复恰好执行一次；投屏服务未运行时命令内 no-op。

@@ -41,6 +41,9 @@ export interface ScriptDialogueEvent extends ScriptEvent {
   userMessageSeq?: number;
   /** 本轮生成的思考链（仅最后一帧携带） */
   thinking?: string;
+  /** 该回复新增 assistant 行的 TTS 序号（0-based），与 GameLineInit.tts_seq 同口径；
+   *  前端只携带回传给 generate_line_voice。不可补生成语音的行不带该字段。 */
+  ttsSeq?: number;
 }
 
 export interface ScriptThinkingEvent extends ScriptEvent {

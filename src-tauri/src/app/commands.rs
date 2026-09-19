@@ -98,6 +98,13 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::game::add_role_to_scene,
         api::game::remove_role_from_scene,
         api::game::notify_player_entry,
+        // ── 统一实体 · 玩家身份与附身 ──
+        api::identity::list_identities,
+        api::identity::create_identity,
+        api::identity::update_identity,
+        api::identity::delete_identity,
+        api::identity::possess_entity,
+        api::identity::get_possessed_entity,
         api::memory::get_memory_debug_overview,
         api::memory::get_role_memory_snapshot,
         api::chat::send_chat_message,

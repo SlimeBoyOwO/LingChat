@@ -61,7 +61,13 @@
                   })
                 }}
               </span>
-              <Button type="select" size="sm" @click.stop="startStandaloneScript(script)">
+              <Button
+                type="select"
+                size="sm"
+                :disabled="isPossessed"
+                :title="isPossessed ? $t('ui.characterCard.scriptStartDisabledPossessed') : ''"
+                @click.stop="startStandaloneScript(script)"
+              >
                 {{ $t("settings.adventure.standalone.play") }}
               </Button>
             </div>
@@ -145,6 +151,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { MenuPage, MenuItem } from "../../ui";
@@ -160,6 +167,10 @@ import type { ScriptSummary } from "@/api/services/script-info";
 const gameStore = useGameStore();
 const uiStore = useUIStore();
 const router = useRouter();
+const { t } = useI18n();
+
+/** 附身中禁止开始剧本：以扮演身份进剧本会让身份错乱，与后端校验同源 */
+const isPossessed = computed(() => gameStore.possessedRoleId !== 0);
 // 独立剧本相关状态
 const standaloneScripts = ref<ScriptSummary[]>([]);
 const standaloneScriptsLoading = ref(true);
@@ -195,12 +206,19 @@ const goToCharacterTab = () => {
 
 // 开始游玩独立剧本
 const startStandaloneScript = async (script: ScriptSummary) => {
+  if (isPossessed.value) return;
   try {
     await startScriptApi(script.script_name);
     // 可选：关闭设置面板，开始剧本
     uiStore.showSettings = false;
   } catch (error) {
-    console.error("启动独立剧本失败:", error);
+    // 后端拒绝（如剧本不存在）此前纯静默，用户看不到任何反馈
+    uiStore.showNotification({
+      type: "warning",
+      title: t("ui.characterCard.startFailedTitle"),
+      message: String(error),
+      skipTipsCheck: true,
+    });
   }
 };
 

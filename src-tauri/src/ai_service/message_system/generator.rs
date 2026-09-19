@@ -28,6 +28,7 @@ use crate::ai_service::message_system::responses::{ReplyResponse, event_names};
 use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::tools::tool_loop::stream_with_tool_loop;
 use crate::ai_service::translator::Translator;
+use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage};
 use crate::api::data_dir;
 use crate::db::entities::line::LineAttribute;
@@ -83,7 +84,8 @@ struct UserMessageContext {
     temp: Option<String>,
     /// 插入的用户行在 line_list 中的索引。
     line_index: Option<usize>,
-    /// 用户消息序号（1-indexed，按 sender_role_id==0 且 User 属性计数）。
+    /// 用户消息序号（1-indexed，按「玩家身份实体 sender」且 User 属性计数）。
+    /// 附身 AI 时本轮输入不属于玩家身份消息，为 None。
     seq: Option<u32>,
 }
 
@@ -120,6 +122,16 @@ impl MessageGenerator {
         let original_msg = user_message.unwrap_or_default();
 
         loop {
+            // 每轮记录生成判据：附身实体应休眠跳过，便于排查"无人回应"
+            {
+                let gs = self.deps.game_status.lock().await;
+                tracing::info!(
+                    "生成轮次开始: current_role_id={:?}, possessed={}, 休眠跳过={}",
+                    gs.current_role_id,
+                    gs.possessed_role_id,
+                    gs.current_role_id.is_some_and(|rid| gs.is_possessed(rid)),
+                );
+            }
             // 取当前角色记忆（每轮重新获取，因为 current_role_id 可能已变化）
             let context = self.get_current_context().await?;
             if context.is_empty() {
@@ -188,20 +200,26 @@ impl MessageGenerator {
 
         let mut gs = self.deps.game_status.lock().await;
         let user_name = gs.player.user_name.clone();
+        let sender_role_id = gs.possessed_role_id;
         let line = LineBase {
             content: main.clone(),
             attribute: LineAttributeExt(LineAttribute::User),
             display_name: Some(user_name),
-            sender_role_id: Some(0),
+            // 玩家台词的归属 = 当前被附身实体；默认身份仍是 PLAYER_ROLE_ID(0)
+            sender_role_id: Some(sender_role_id),
             ..Default::default()
         };
         gs.add_line(&self.deps.db, line).await?;
         let line_index = Some(gs.line_list.len().saturating_sub(1));
+        // 回溯序号按 `attribute == User` 且有明确发送者判定，与
+        // compute_user_message_seqs 同源：附身期间玩家发言的 sender 是被附身实体，
+        // 不能再按玩家身份集合过滤；sender 为空的系统旁白不计入。
         let seq = Some(
             gs.line_list
                 .iter()
                 .filter(|l| {
-                    l.base.sender_role_id == Some(0) && matches!(l.attribute(), LineAttribute::User)
+                    l.base.sender_role_id.is_some()
+                        && matches!(l.attribute(), LineAttribute::User)
                 })
                 .count() as u32,
         );
@@ -247,12 +265,20 @@ impl MessageGenerator {
     }
 
     /// Step 2: 根据 current_role_id 获取当前角色的 memory 上下文。
+    ///
+    /// 被附身实体的生成休眠挂在这里：玩家正以它发言，AI 不能再替它说话。
+    /// 返回空上下文后，主循环与 `process_notification` 的 `is_empty()` 分支天然
+    /// 跳过本轮生成，无需改动主循环。
     async fn get_current_context(&self) -> Result<Vec<LlmMessage>> {
         let mut gs = self.deps.game_status.lock().await;
         let Some(rid) = gs.current_role_id else {
             tracing::error!("生成消息的时候没有当前角色，取消生成");
             return Ok(Vec::new());
         };
+        if gs.is_possessed(rid) {
+            tracing::info!("当前角色 {} 正被玩家附身，AI 生成休眠", rid);
+            return Ok(Vec::new());
+        }
         let role = gs.get_role(&self.deps.db, rid).await?;
         Ok(role.memory.clone())
     }
@@ -326,8 +352,13 @@ impl MessageGenerator {
             god.decide_next_speaker(&gs, current_speaker).await?
         };
 
-        if selected_role_id == 0 {
-            return Ok(()); // 选择玩家，保持现状
+        // 选中当前被附身实体 = 上帝把话筒交还玩家，保持现状
+        let return_to_player = {
+            let gs = self.deps.game_status.lock().await;
+            gs.is_possessed(selected_role_id)
+        };
+        if return_to_player {
+            return Ok(());
         }
 
         // 设定新的 current_role_id
@@ -383,9 +414,13 @@ impl MessageGenerator {
             god.decide_next_speaker(&gs, current_speaker).await?
         };
 
-        if selected_role_id == 0 {
-            // 交还玩家
-            return Ok((false, 0));
+        // 选中当前被附身实体 = 交还玩家
+        let (return_to_player, possessed) = {
+            let gs = self.deps.game_status.lock().await;
+            (gs.is_possessed(selected_role_id), gs.possessed_role_id)
+        };
+        if return_to_player {
+            return Ok((false, possessed));
         }
 
         // 设定下一个说话者
@@ -425,16 +460,34 @@ impl MessageGenerator {
         user_message: String,
         user_message_seq: Option<u32>,
     ) -> Result<String> {
-        let role_name = {
+        // 本轮角色快照：在 god 选人/写 current_role_id 之后、流水线启动之前一次性捕获。
+        // 其后整轮（prompt 角色名、翻译/TTS 音色、回复归属）都只读本快照，不再各自去读
+        // 可变的 gs.current_role_id，避免长 await 期间角色漂移导致音色与显示角色错配。
+        let snapshot = {
             let mut gs = self.deps.game_status.lock().await;
             let Some(role_id) = gs.current_role_id else {
                 return Err(anyhow::anyhow!("工具调用时没有当前角色"));
             };
-            gs.get_role(&self.deps.db, role_id)
+            // 惰性注册：保证显示名与音色字段取自同一份已加载角色
+            let display_name = gs
+                .get_role(&self.deps.db, role_id)
                 .await?
                 .display_name
-                .clone()
+                .clone();
+            let loaded = gs.role_manager.get_loaded(role_id);
+            RoundRoleSnapshot {
+                role_id: Some(role_id),
+                display_name,
+                voice_maker: loaded.and_then(|role| role.voice_maker.clone()),
+                tts_type: loaded
+                    .and_then(|role| role.settings.tts_type.clone())
+                    .unwrap_or_default(),
+                voice_lang: loaded
+                    .and_then(|role| role.settings.voice_lang.clone())
+                    .unwrap_or_default(),
+            }
         };
+        let role_name = snapshot.display_name.clone();
         // 原生多模态识图：把当轮图片作为一条独立的用户消息拼进 LLM 上下文，
         // 仅本次请求可见，不回写记忆。放在末尾（紧跟最新用户输入之后的视觉提示），
         // 让模型把图片与最近的用户语境关联起来。
@@ -501,6 +554,8 @@ impl MessageGenerator {
         let mut consumer_tasks = Vec::with_capacity(concurrency);
         for cid in 0..concurrency {
             let deps = self.deps.clone();
+            // 每个 consumer 持有本轮快照的副本：角色归属与音色不随并发切换漂移
+            let snapshot = snapshot.clone();
             let sentence_rx = sentence_rx.clone();
             let publish_tx = publish_tx.clone();
             let user_message = user_message.clone();
@@ -534,8 +589,9 @@ impl MessageGenerator {
                             (sentence, index, is_final)
                         },
                     };
-                    let resp = match consume_sentence(
+                    let resp = match consume_sentence_with_snapshot(
                         &sdeps,
+                        &snapshot,
                         sentence,
                         &user_message,
                         is_final,
@@ -732,6 +788,52 @@ pub(super) async fn publish_ordered(
 // consumer 句子处理
 // ============================================================
 
+/// 一轮生成的角色快照。
+///
+/// 一轮台词从 LLM 流生成到翻译、TTS 合成之间隔着多个长 await，期间
+/// `GameStatus.current_role_id` 可能被工具调用、附身切换等不持生成锁的写路径改写。
+/// 若让「prompt 角色名」「音色字段」「回复归属」各自去读这个可变值，同一轮内就会读到
+/// 不同角色，导致音色与显示角色错配。故在每轮生成开始（角色已选定、流水线启动前）
+/// 一次性捕获本快照，本轮全部环节只读快照。
+#[derive(Clone, Default)]
+struct RoundRoleSnapshot {
+    /// 本轮归属角色 id；`None` 表示捕获时没有当前角色（剧本固定台词的兜底路径可能出现）。
+    role_id: Option<i32>,
+    /// 本轮角色显示名，取自已加载角色；缺省时由响应回退到情绪分段自带的角色。
+    display_name: Option<String>,
+    /// 本轮角色音色生成器，与显示名同源捕获，避免中途换人后音色错配。
+    voice_maker: Option<VoiceMaker>,
+    /// 本轮角色 TTS 引擎类型，决定翻译目标语言。
+    tts_type: String,
+    /// 本轮角色语音语言，决定翻译目标语言。
+    voice_lang: String,
+}
+
+impl RoundRoleSnapshot {
+    /// 从 `GameStatus` 的当前角色就地捕获快照（仅取已加载信息，不触发惰性加载）。
+    ///
+    /// 供没有跨轮快照的外部调用方（如剧本固定台词）使用：把「一句台词」当作一轮，
+    /// 保证同一句内音色与归属也只读同一次结果。
+    async fn capture(deps: &SentenceDeps) -> Self {
+        let gs = deps.game_status.lock().await;
+        let Some(role_id) = gs.current_role_id else {
+            return Self::default();
+        };
+        let loaded = gs.role_manager.get_loaded(role_id);
+        Self {
+            role_id: Some(role_id),
+            display_name: loaded.and_then(|role| role.display_name.clone()),
+            voice_maker: loaded.and_then(|role| role.voice_maker.clone()),
+            tts_type: loaded
+                .and_then(|role| role.settings.tts_type.clone())
+                .unwrap_or_default(),
+            voice_lang: loaded
+                .and_then(|role| role.settings.voice_lang.clone())
+                .unwrap_or_default(),
+        }
+    }
+}
+
 /// `consume_sentence` 的最小依赖集。仅含句子处理真正用到的字段，
 /// 不要求 LLM / 工具，剧本 `dialogue` 事件可在未配置模型时直接构建。
 #[derive(Clone)]
@@ -771,8 +873,36 @@ pub struct ReplyOverrides {
 ///
 /// 供 MessageGenerator 的 consumer 池与剧本 `dialogue` 事件复用。
 /// `overrides` 让固定台词覆盖响应字段（显示名/副标题/时长），生成路径传默认值。
+///
+/// 本入口按「调用即一轮」就地捕获角色快照，供没有跨轮快照的调用方使用；
+/// 生成路径已持有整轮快照，直接走 `consume_sentence_with_snapshot`。
 pub(crate) async fn consume_sentence(
     deps: &SentenceDeps,
+    sentence: String,
+    user_message: &str,
+    is_final: bool,
+    user_message_seq: Option<u32>,
+    thinking_buf: &Mutex<String>,
+    overrides: &ReplyOverrides,
+) -> Result<Option<ReplyResponse>> {
+    let snapshot = RoundRoleSnapshot::capture(deps).await;
+    consume_sentence_with_snapshot(
+        deps,
+        &snapshot,
+        sentence,
+        user_message,
+        is_final,
+        user_message_seq,
+        thinking_buf,
+        overrides,
+    )
+    .await
+}
+
+/// `consume_sentence` 的整轮快照版本：角色归属与音色一律取本轮快照。
+async fn consume_sentence_with_snapshot(
+    deps: &SentenceDeps,
+    snapshot: &RoundRoleSnapshot,
     sentence: String,
     user_message: &str,
     is_final: bool,
@@ -791,11 +921,12 @@ pub(crate) async fn consume_sentence(
     }
 
     // 2. 富化：翻译 + 语音
-    enrich_segments(deps, &mut segments).await?;
+    enrich_segments(deps, snapshot, &mut segments).await?;
 
     // 3. 构建前端响应
     let mut response = build_reply_response(
         deps,
+        snapshot,
         &segments,
         user_message,
         is_final,
@@ -813,7 +944,7 @@ pub(crate) async fn consume_sentence(
     }
 
     // 4. 写入 GameStatus
-    add_assistant_line(deps, &response).await?;
+    add_assistant_line(deps, &mut response).await?;
 
     // 会话代号复核（与 add_assistant_line 内守卫一致）：若本句写入已被丢弃，
     // 说明读档/切角色/清对话已切换会话（旧流式任务游离），前端也已切到新会话——
@@ -885,29 +1016,22 @@ fn needs_japanese_translation(segments: &[EmotionSegment]) -> bool {
 }
 
 /// Step B: 翻译与语音生成。
-async fn enrich_segments(deps: &SentenceDeps, segments: &mut [EmotionSegment]) -> Result<()> {
-    let (voice_maker, tts_type, voice_lang) = {
-        let gs = deps.game_status.lock().await;
-        gs.current_role_id
-            .and_then(|rid| {
-                gs.role_manager.get_loaded(rid).map(|role| {
-                    (
-                        role.voice_maker.clone(),
-                        role.settings.tts_type.clone().unwrap_or_default(),
-                        role.settings.voice_lang.clone().unwrap_or_default(),
-                    )
-                })
-            })
-            .unwrap_or_default()
-    };
-
-    let translation_language = tts_translation_language(&tts_type, &voice_lang).or_else(|| {
-        if voice_lang == "ja" && needs_japanese_translation(segments) {
-            Some("ja")
-        } else {
-            None
-        }
-    });
+///
+/// 音色字段一律取本轮快照：翻译与语音合成都发生在本步之后的长 await 中，
+/// 若此处再读 `current_role_id`，期间的角色切换会让台词用上别人的音色。
+async fn enrich_segments(
+    deps: &SentenceDeps,
+    snapshot: &RoundRoleSnapshot,
+    segments: &mut [EmotionSegment],
+) -> Result<()> {
+    let translation_language = tts_translation_language(&snapshot.tts_type, &snapshot.voice_lang)
+        .or_else(|| {
+            if snapshot.voice_lang == "ja" && needs_japanese_translation(segments) {
+                Some("ja")
+            } else {
+                None
+            }
+        });
 
     if let Some(target_lang) = translation_language {
         let translated = deps
@@ -922,7 +1046,7 @@ async fn enrich_segments(deps: &SentenceDeps, segments: &mut [EmotionSegment]) -
         }
     }
 
-    if let Some(vm) = voice_maker {
+    if let Some(vm) = &snapshot.voice_maker {
         vm.generate_voice_files(segments).await;
     }
 
@@ -930,31 +1054,39 @@ async fn enrich_segments(deps: &SentenceDeps, segments: &mut [EmotionSegment]) -
 }
 
 /// Step C: 构建 ReplyResponse（含角色信息填充）。
+///
+/// 归属角色取本轮快照；同时对比此刻的 `GameStatus.current_role_id`，
+/// 不一致只告警不改归属——本轮从生成到落地都必须归属同一个角色。
 async fn build_reply_response(
     deps: &SentenceDeps,
+    snapshot: &RoundRoleSnapshot,
     segments: &[EmotionSegment],
     user_message: &str,
     is_final: bool,
     user_message_seq: Option<u32>,
     overrides: &ReplyOverrides,
 ) -> Result<ReplyResponse> {
-    // 从 GameStatus 取当前角色信息
-    let role_info: Option<(Option<String>, Option<i32>)> = {
+    // 角色漂移观察位：本轮开始后若有别的写路径（工具调用、附身切换等）改了当前角色，
+    // 这里能留下证据，但仍按快照归属，避免同一轮正文被算到另一个角色名下。
+    {
         let gs = deps.game_status.lock().await;
-        gs.current_role_id.map(|rid| {
-            // 角色未加载（如工具刚切换）时也保留 rid，
-            // 让前端能按 role_id 自行加载，而不是丢成 None 被丢弃
-            let name = gs
-                .role_manager
-                .get_loaded(rid)
-                .and_then(|role| role.display_name.clone());
-            (name, Some(rid))
-        })
-    };
+        if gs.current_role_id != snapshot.role_id {
+            tracing::warn!(
+                "本轮角色快照与当前角色不一致（快照 {:?}，当前 {:?}），回复仍归属快照角色",
+                snapshot.role_id,
+                gs.current_role_id
+            );
+        }
+    }
 
     let first = &segments[0];
-    let (character, role_id) = match role_info {
-        Some((name, rid)) => (name.or(first.character.clone()), rid),
+    // 快照没有角色时回退到情绪分段自带的角色信息；有快照则保留 role_id，
+    // 让角色未加载（如工具刚切换）时前端也能按 role_id 自行加载，而不是丢成 None
+    let (character, role_id) = match snapshot.role_id {
+        Some(rid) => (
+            snapshot.display_name.clone().or(first.character.clone()),
+            Some(rid),
+        ),
         None => (first.character.clone(), first.role_id),
     };
 
@@ -1010,8 +1142,8 @@ async fn build_reply_response(
     Ok(response)
 }
 
-/// Step D: 将 assistant LINE 写入 GameStatus。
-async fn add_assistant_line(deps: &SentenceDeps, response: &ReplyResponse) -> Result<()> {
+/// Step D: 将 assistant LINE 写入 GameStatus，并回填该行随 `ai:reply` 下发的 TTS 序号。
+async fn add_assistant_line(deps: &SentenceDeps, response: &mut ReplyResponse) -> Result<()> {
     // 试玩代号守卫：试玩任务被中止后，游离的 consumer 任务仍会带着旧代号继续
     // 生成句子。此时 GameStatus 可能已还原回自由对话，写入会把试玩台词漏进
     // 自由对话的上下文与历史。捕获代号与当前值不一致即丢弃整条（含记忆同步）。
@@ -1026,6 +1158,8 @@ async fn add_assistant_line(deps: &SentenceDeps, response: &ReplyResponse) -> Re
             return Ok(());
         }
     }
+    // sender_role_id / display_name 均来自 response：角色归属已由本轮快照透传进来，
+    // 此处不再读 GameStatus.current_role_id，避免与生成时的角色不一致
     let line = LineBase {
         content: response.message.clone(),
         sender_role_id: response.role_id,
@@ -1042,5 +1176,9 @@ async fn add_assistant_line(deps: &SentenceDeps, response: &ReplyResponse) -> Re
     };
     let mut gs = deps.game_status.lock().await;
     gs.add_line(&deps.db, line).await?;
+    // 行落库后再取号，保证序号与该行在 line_list 中的实际位置一致；
+    // 前端回传这个序号调 generate_line_voice，无需自行计数。
+    response.tts_seq =
+        crate::api::chat::tts_seq_at(&gs.line_list, gs.line_list.len().saturating_sub(1));
     Ok(())
 }

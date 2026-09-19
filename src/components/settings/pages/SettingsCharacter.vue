@@ -1,5 +1,8 @@
 <template>
   <MenuPage>
+    <!-- 身份管理并入角色 Tab：玩家身份与 AI 角色统一在同一页管理 -->
+    <IdentitySection />
+
     <MenuItem :title="$t('settings.character.list.title')">
       <template #header>
         <Rabbit :size="20" />
@@ -18,6 +21,10 @@
           :clothes="character.clothes || []"
           :resource-folder="character.resourceFolder"
           :source="character.source"
+          show-possess
+          :possess-disabled-reason="possessBlockedReason(character.id)"
+          :select-disabled-reason="selectDisabledReason(character.id)"
+          :leave-disabled-reason="leaveDisabledReason(character.id)"
           @saved="handleSettingsSaved"
         />
       </div>
@@ -101,7 +108,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { Birdhouse, FolderOpen, PackageOpen, Rabbit, RefreshCcw } from "lucide-vue-next";
@@ -109,9 +116,11 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { invoke } from "@tauri-apps/api/core";
 
 import CharacterCard from "../../ui/Menu/CharacterCard.vue";
+import IdentitySection from "./IdentitySection.vue";
 import { Button } from "../../base";
 import { MenuItem, MenuPage } from "../../ui";
 import { characterGetAll } from "../../../api/services/character";
+import { listIdentities } from "../../../api/services/identity";
 import { useRoleImportExport } from "../../../composables/useRoleImportExport";
 import type { ConflictPolicy } from "../../../api/services/role-archive";
 import { useGameStore } from "../../../stores/modules/game";
@@ -235,8 +244,58 @@ const handleSettingsSaved = () => {
   refreshCharacters();
 };
 
+// ===== 附身防呆 =====
+/** 全部玩家身份 id：用于判断在场是否存在可接管话筒的 AI（User 身份永不由 AI 生成） */
+const userRoleIds = ref<Set<number>>(new Set());
+
+const loadUserRoleIds = async (): Promise<void> => {
+  try {
+    const list = await listIdentities();
+    userRoleIds.value = new Set(list.map((item) => item.role_id));
+  } catch (error) {
+    console.warn("[SettingsCharacter] 获取玩家身份集合失败:", error);
+  }
+};
+
+/** 剧本/试玩进行中禁止附身，与后端 gs.script_status 校验同源 */
+const isScriptRunning = computed(() => gameStore.runningScript?.isRunning === true);
+
+/** 在场是否存在除目标外、可接管话筒的 AI（User 身份不参与） */
+const hasHandoffCandidate = (id: number): boolean =>
+  gameStore.presentRoleIds.some((pid) => pid !== id && !userRoleIds.value.has(pid));
+
+/**
+ * 返回非空字符串表示禁用原因，空串表示可附身。
+ * 附身当前对话对象必须把话筒移交给另一在场 AI；真·一对一没有接替者时后端会拒绝，
+ * 这里按同一判据提前置灰防呆，避免用户点了才看到报错。
+ */
+const possessBlockedReason = (id: number): string => {
+  if (isScriptRunning.value) return t("ui.characterCard.possessDisabledScript");
+  // AI 角色必须先入场才能接管话筒；玩家身份（userRoleIds）不参与在场判定
+  if (!userRoleIds.value.has(id) && !gameStore.presentRoleIds.includes(id)) {
+    return t("ui.characterCard.possessDisabledOffstage");
+  }
+  if (gameStore.currentInteractRoleId === id && !hasHandoffCandidate(id)) {
+    return t("ui.characterCard.possessDisabledCurrent");
+  }
+  return "";
+};
+
+/** 角色正被玩家扮演：此时「选择」与「退场」都会让扮演身份失配，提前置灰 */
+const isPossessed = (id: number): boolean => gameStore.possessedRoleId === id;
+
+const selectDisabledReason = (id: number): string => {
+  // 剧本/试玩进行中切换对话对象会打断引擎流程，优先于附身判定置灰
+  if (isScriptRunning.value) return t("ui.characterCard.selectDisabledScript");
+  return isPossessed(id) ? t("ui.characterCard.selectDisabledPossessed") : "";
+};
+
+const leaveDisabledReason = (id: number): string =>
+  isPossessed(id) ? t("ui.characterCard.leaveDisabledPossessed") : "";
+
 onMounted(() => {
   loadCharacters();
+  void loadUserRoleIds();
 });
 
 watch(
@@ -244,6 +303,16 @@ watch(
   () => {
     currentPage.value = 1;
     loadCharacters();
+  },
+);
+
+// 身份 CRUD / 角色设置保存后后端广播 role:list-updated：重拉列表并刷新身份集合，
+// 让附身防呆的「可接管 AI」判据及时跟上
+watch(
+  () => gameStore.roleListVersion,
+  () => {
+    loadCharacters();
+    void loadUserRoleIds();
   },
 );
 </script>

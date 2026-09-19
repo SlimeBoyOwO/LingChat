@@ -6,6 +6,7 @@
 use crate::AppState;
 use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::ai_service::game_system::script_engine::events::ScriptContext;
+use crate::ai_service::types::PLAYER_ROLE_ID;
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
@@ -74,6 +75,39 @@ pub async fn list_standalone_scripts(app: AppHandle) -> Result<ScriptListRespons
         .collect();
 
     Ok(ScriptListResponse { scripts })
+}
+
+/// 剧本/冒险启动前的互斥校验（命令层第一道闸）。
+///
+/// 附身态启动会让玩家身份与剧本场次互相污染；已有 run 在跑时重复启动会让两个
+/// run 争抢同一份 `script_status` 与输入通道，前端也收不到明确的结束信号。
+/// 注意：读档续跑（`api/save.rs`）直连 `spawn_script_execution` 恢复被中止的引擎，
+/// 不复用本校验——`is_running` 会因为任务被 abort 而残留 true。
+pub(crate) async fn ensure_script_start_allowed(
+    app: &AppHandle,
+    kind: &str,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let service = state.ai_service.lock().await;
+
+    // 带附身启动会让玩家身份与剧本场次互相污染，先要求解除扮演
+    {
+        let gs = service.game_status.lock().await;
+        if gs.possessed_role_id != PLAYER_ROLE_ID {
+            return Err(format!("请先解除扮演（切回默认身份）后再开始{kind}"));
+        }
+    }
+
+    // 同一时刻只允许一个剧本/冒险占用引擎
+    if service
+        .script_manager
+        .is_running
+        .load(std::sync::atomic::Ordering::SeqCst)
+    {
+        return Err("已有剧本或冒险正在进行中".to_string());
+    }
+
+    Ok(())
 }
 
 /// 在后台任务中执行剧本（含羁绊完成处理），并把任务句柄登记到 AppState。
@@ -153,6 +187,9 @@ pub(crate) async fn spawn_script_execution(
 
 #[tauri::command]
 pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), String> {
+    // 先过附身/并发互斥校验：被拒时命令返回 Err，前端不会进入剧本模式
+    ensure_script_start_allowed(&app, "剧本").await?;
+
     let script = {
         let state = app.state::<AppState>();
         let service = state.ai_service.lock().await;

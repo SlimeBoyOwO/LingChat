@@ -446,12 +446,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
   basic: [
     { key: "ai_name", label: t("settings.characterInfo.fields.aiName"), type: "text" },
     { key: "ai_subtitle", label: t("settings.characterInfo.fields.aiSubtitle"), type: "text" },
-    { key: "user_name", label: t("settings.characterInfo.fields.userName"), type: "text" },
-    {
-      key: "user_subtitle",
-      label: t("settings.characterInfo.fields.userSubtitle"),
-      type: "text",
-    },
     { key: "title", label: t("settings.characterInfo.fields.title"), type: "text" },
     { key: "info", label: t("settings.characterInfo.fields.info"), type: "textarea", rows: 4 },
   ],
