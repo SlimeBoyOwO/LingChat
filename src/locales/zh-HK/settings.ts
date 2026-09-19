@@ -161,6 +161,12 @@ export default {
       reconnecting: "重新連緊線…",
       forceReconnect: "強制重新連接 TTS",
     },
+    affectionAnim: {
+      title: "好感度動畫",
+      desc: "好感度愛心嘅跳動同紅色液體波浪動畫開關，即時生效；閂咗心跳之後頂欄愛心靜止，好感度面板內仍會跳動",
+      heartbeat: "啟用心跳動畫",
+      wave: "啟用波浪動畫",
+    },
     saveButton: "儲存",
     loadFailed: "載入失敗",
     loadFailedDesc: "載入唔到配置，或者配置係空嘅。",

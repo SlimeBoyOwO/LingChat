@@ -160,6 +160,12 @@ export default {
       reconnecting: "再接続中…",
       forceReconnect: "TTS を強制再接続",
     },
+    affectionAnim: {
+      title: "好感度アニメーション",
+      desc: "好感度ハートの鼓動と赤い液体の波アニメーションの切替（即時反映）。鼓動オフ時はトップバーのハートのみ静止し、好感度パネル内は鼓動を継続します",
+      heartbeat: "鼓動アニメーションを有効化",
+      wave: "波アニメーションを有効化",
+    },
     saveButton: "保存",
     loadFailed: "読み込み失敗",
     loadFailedDesc: "設定を読み込めないか、設定が空です。",
@@ -777,7 +783,7 @@ export default {
     },
     vueDevTools: {
       title: "Vue DevTools 表示",
-      desc: "開発モードのみ有効。全ウィンドウ（メイン / 投屏 / ログ / デスクトップペット）の Vue DevTools フローティングパネル表示を制御します",
+      desc: "開発モードのみ有効。メインウィンドウの Vue DevTools フローティングパネル表示を制御します（ログ/投屏/ペット等の独立ウィンドウでは常に非表示）",
     },
     memory: {
       title: "永続メモリを有効化",

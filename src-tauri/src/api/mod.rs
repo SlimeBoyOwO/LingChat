@@ -1,5 +1,6 @@
 pub mod achievement;
 pub mod adventure;
+pub mod affection;
 pub mod ambient;
 pub mod asr;
 pub mod asset;

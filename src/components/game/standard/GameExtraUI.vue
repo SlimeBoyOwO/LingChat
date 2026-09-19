@@ -18,6 +18,9 @@
 
     <!-- 6. 声效控制面板 -->
     <SoundEffectPanel />
+
+    <!-- 7. 好感度/负面情绪变化飘出标签 -->
+    <AffectionChangeFloat />
   </div>
 </template>
 
@@ -28,4 +31,5 @@ import ScriptCompleteDisplay from "./extra/ScriptCompleteDisplay.vue";
 import ScriptPicDisplay from "./extra/ScriptPicDisplay.vue";
 import ScriptFreeDialogueDisplay from "./extra/ScriptFreeDialogueDisplay.vue";
 import SoundEffectPanel from "./extra/SoundEffectPanel.vue";
+import AffectionChangeFloat from "./extra/AffectionChangeFloat.vue";
 </script>

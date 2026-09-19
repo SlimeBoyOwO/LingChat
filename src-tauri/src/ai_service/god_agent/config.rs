@@ -22,6 +22,10 @@ pub struct GodAgentConfig {
     pub max_consecutive_npc: usize,
     /// 决策时参考的最近台词行数。
     pub recent_window: usize,
+    /// 好感度评估间隔：每累计多少段真实对话评估一次。
+    pub affection_eval_interval: usize,
+    /// 好感度系统总开关：关闭后不评估、不写情感状态旁白台词。
+    pub affection_enabled: bool,
 }
 
 impl Default for GodAgentConfig {
@@ -30,6 +34,8 @@ impl Default for GodAgentConfig {
             provider_id: None,
             max_consecutive_npc: 3,
             recent_window: 20,
+            affection_eval_interval: 5,
+            affection_enabled: true,
         }
     }
 }
@@ -57,10 +63,23 @@ impl GodAgentConfig {
             .unwrap_or(20)
             .max(5);
 
+        let affection_eval_interval = store
+            .get(keys::GOD_AGENT_AFFECTION_EVAL_INTERVAL)
+            .and_then(|v| v.as_str().and_then(|s| s.parse::<usize>().ok()))
+            .unwrap_or(5)
+            .max(1);
+
+        let affection_enabled = store
+            .get(keys::AFFECTION_ENABLED)
+            .and_then(|v| v.as_str().map(|s| s == "true"))
+            .unwrap_or(true);
+
         Self {
             provider_id,
             max_consecutive_npc,
             recent_window,
+            affection_eval_interval,
+            affection_enabled,
         }
     }
 }

@@ -583,6 +583,181 @@ impl Default for CharacterSettings {
 }
 
 // ==========================================
+// AffectionVector（六维好感度）
+// ==========================================
+
+/// 单个角色对玩家的六维情感状态，各项取值任意整数（允许溢出：
+/// >100 为「满溢」、负数为「疏离」）。
+///
+/// 持久化在存档全局变量 JSON（`GameStatus::global_variables`，键 `affection.{role_id}`，
+/// 跟随存档快照回滚）；运行时挂在 `GameRole.affection` 上，由上帝 Agent 定期评估对话后调整。
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AffectionVector {
+    /// 好感：整体喜欢程度，影响语气甜度
+    pub fondness: i32,
+    /// 信赖：倾诉深度、说真心话的程度
+    pub trust: i32,
+    /// 亲密：肢体接触与近距离描写的接受度
+    pub intimacy: i32,
+    /// 默契：接梗、理解言外之意的程度
+    pub rapport: i32,
+    /// 兴趣：对玩家话题的好奇心、主动提问的倾向
+    pub interest: i32,
+    /// 思念：久别重逢的反应强度
+    pub longing: i32,
+}
+
+impl Default for AffectionVector {
+    fn default() -> Self {
+        Self {
+            fondness: 10,
+            trust: 5,
+            intimacy: 0,
+            rapport: 5,
+            interest: 15,
+            longing: 0,
+        }
+    }
+}
+
+impl AffectionVector {
+    /// 图表满刻度的参考上下限；数值本身允许溢出（>100 为满溢、负数为疏离）。
+    pub const MIN: i32 = 0;
+    pub const MAX: i32 = 100;
+
+    /// 六维的（序列化键名, 中文显示名）。
+    pub const DIMENSIONS: [(&'static str, &'static str); 6] = [
+        ("fondness", "好感"),
+        ("trust", "信赖"),
+        ("intimacy", "亲密"),
+        ("rapport", "默契"),
+        ("interest", "兴趣"),
+        ("longing", "思念"),
+    ];
+
+    pub fn average(&self) -> i32 {
+        (self.fondness + self.trust + self.intimacy + self.rapport + self.interest + self.longing)
+            / 6
+    }
+
+    pub fn get(&self, dimension: &str) -> Option<i32> {
+        match dimension {
+            "fondness" => Some(self.fondness),
+            "trust" => Some(self.trust),
+            "intimacy" => Some(self.intimacy),
+            "rapport" => Some(self.rapport),
+            "interest" => Some(self.interest),
+            "longing" => Some(self.longing),
+            _ => None,
+        }
+    }
+
+    /// 按维度键名增减；数值**允许溢出**（不钳制 0~100，>100 为「满溢」、
+    /// 负数为「疏离」），未知维度返回 false。
+    pub fn add_delta(&mut self, dimension: &str, delta: i32) -> bool {
+        let slot = match dimension {
+            "fondness" => &mut self.fondness,
+            "trust" => &mut self.trust,
+            "intimacy" => &mut self.intimacy,
+            "rapport" => &mut self.rapport,
+            "interest" => &mut self.interest,
+            "longing" => &mut self.longing,
+            _ => return false,
+        };
+        *slot = slot.saturating_add(delta);
+        true
+    }
+}
+
+// ==========================================
+// NegativeVector（六维负面情绪）
+// ==========================================
+
+/// 单个角色对玩家的六维负面情绪强度，取值任意整数（>100 为「失控」边缘）。
+///
+/// 与好感度同存于存档全局变量 JSON（键 `affection.{role_id}`）；正面互动会消解、冒犯会积累，
+/// 由上帝 Agent 与好感度同一次评估调整。
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NegativeVector {
+    /// 愤怒：被冒犯时的火气
+    pub anger: i32,
+    /// 受伤：被刺痛、委屈的程度
+    pub hurt: i32,
+    /// 失望：期待落空的程度
+    pub disappointment: i32,
+    /// 冷漠：敷衍、不在乎的态度强度
+    pub indifference: i32,
+    /// 嫉妒：玩家关注别人时的吃醋程度
+    pub jealousy: i32,
+    /// 疏远：想保持距离的程度
+    pub estrangement: i32,
+}
+
+impl Default for NegativeVector {
+    fn default() -> Self {
+        Self {
+            anger: 0,
+            hurt: 0,
+            disappointment: 0,
+            indifference: 0,
+            jealousy: 0,
+            estrangement: 0,
+        }
+    }
+}
+
+impl NegativeVector {
+    /// 六维的（序列化键名, 中文显示名）。
+    pub const DIMENSIONS: [(&'static str, &'static str); 6] = [
+        ("anger", "愤怒"),
+        ("hurt", "受伤"),
+        ("disappointment", "失望"),
+        ("indifference", "冷漠"),
+        ("jealousy", "嫉妒"),
+        ("estrangement", "疏远"),
+    ];
+
+    /// 六维中的最大强度（全 0 表示没有负面情绪）。
+    pub fn peak(&self) -> i32 {
+        self.anger
+            .max(self.hurt)
+            .max(self.disappointment)
+            .max(self.indifference)
+            .max(self.jealousy)
+            .max(self.estrangement)
+    }
+
+    pub fn get(&self, dimension: &str) -> Option<i32> {
+        match dimension {
+            "anger" => Some(self.anger),
+            "hurt" => Some(self.hurt),
+            "disappointment" => Some(self.disappointment),
+            "indifference" => Some(self.indifference),
+            "jealousy" => Some(self.jealousy),
+            "estrangement" => Some(self.estrangement),
+            _ => None,
+        }
+    }
+
+    /// 按维度键名增减；下限 0（负面情绪不会跌成负值），上限不封（允许溢出）。
+    pub fn add_delta(&mut self, dimension: &str, delta: i32) -> bool {
+        let slot = match dimension {
+            "anger" => &mut self.anger,
+            "hurt" => &mut self.hurt,
+            "disappointment" => &mut self.disappointment,
+            "indifference" => &mut self.indifference,
+            "jealousy" => &mut self.jealousy,
+            "estrangement" => &mut self.estrangement,
+            _ => return false,
+        };
+        *slot = slot.saturating_add(delta).max(0);
+        true
+    }
+}
+
+// ==========================================
 // GameRole
 // ==========================================
 
@@ -597,6 +772,12 @@ pub struct GameRole {
     pub prompt: Option<String>,
     pub current_clothes: String,
     pub memory_bank: GameMemoryBank,
+    /// 对玩家的六维好感度（持久化在存档全局变量 `affection.{role_id}`）。
+    pub affection: AffectionVector,
+    /// 对玩家的六维负面情绪强度（同源存档全局变量；评估积累、安抚消解）。
+    pub negative: NegativeVector,
+    /// 角色目录（settings.yml 所在路径；旧版 `affection.yml` 初始值也从这里读取）。
+    pub character_dir: Option<PathBuf>,
     pub voice_maker: Option<crate::ai_service::tts::VoiceMaker>,
 }
 

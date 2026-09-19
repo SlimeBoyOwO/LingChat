@@ -42,5 +42,12 @@ export default {
     memoryDesc:
       "Inspect a role's memory bank and the context actually sent to the LLM, for diagnosing memory compaction and injection",
     memoryButton: "Open Memory Debug",
+    affectionTitle: "Affection System",
+    affectionDesc:
+      "Master switch for the affection system (auto-restarts to apply); heartbeat and wave animation toggles are under Other Advanced Settings",
+    affectionMasterToggle: "Enable affection system",
+    affectionRestartConfirm:
+      "Changing the affection system takes effect after a restart. Restart the app now?",
+    affectionRestartFailed: "Restart failed, please restart the app manually",
   },
 };

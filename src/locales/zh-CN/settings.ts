@@ -160,6 +160,12 @@ export default {
       reconnecting: "正在重新连接…",
       forceReconnect: "强制重新连接 TTS",
     },
+    affectionAnim: {
+      title: "好感度动画",
+      desc: "好感度爱心的跳动与红色液体波浪动画开关，即时生效；关闭心跳后顶栏爱心静止，好感度面板内仍会跳动",
+      heartbeat: "启用心跳动画",
+      wave: "启用波浪动画",
+    },
     saveButton: "保存",
     loadFailed: "加载失败",
     loadFailedDesc: "无法加载配置或配置为空。",
@@ -807,7 +813,7 @@ export default {
     },
     vueDevTools: {
       title: "Vue DevTools 显示",
-      desc: "仅开发模式生效，控制全局所有窗口（主窗 / 投屏 / 日志 / 桌宠）的 Vue DevTools 悬浮面板显示",
+      desc: "仅开发模式生效，控制主窗口的 Vue DevTools 悬浮面板显示（日志/投屏/桌宠等独立窗口始终隐藏）",
     },
     memory: {
       title: "启用永久记忆",

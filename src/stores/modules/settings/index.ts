@@ -21,7 +21,7 @@ export const DEFAULT_SETTINGS = {
     mergeMotionMode: "append" as const, // 台词合并时动作文本的处理方式：append=接在后面显示（| 分隔）/ replace=清空旧动作，独立显示本次动作
     sedentaryReminder: false, // 久坐喝水提醒
     fontFamily: "", // 自定义界面字体名（为空走系统默认栈；初始菜单/加载页不受影响）
-    vueDevToolsEnabled: true, // Vue DevTools 悬浮面板显示开关（仅开发模式生效，全局所有窗口）
+    vueDevToolsEnabled: true, // Vue DevTools 悬浮面板显示开关（仅开发模式生效，仅主窗口）
   },
   // 音频设置
   audio: {
@@ -56,6 +56,8 @@ export const DEFAULT_SETTINGS = {
     dialogScrollHistoryEnabled: true, // 滚轮向上查看历史记录
     dialogSpacebarHideEnabled: true, // 空格键隐藏/显示对话框
     dialogAutoHideOnThinkEnabled: true, // AI 思考时自动隐藏
+    affectionHeartbeatEnabled: true, // 好感度爱心心跳动画开关（关闭后液体爱心静止）
+    affectionWaveEnabled: true, // 好感度爱心液体波浪动画开关（关闭后液面为静止平面）
   },
   // 角色设置
   character: {
@@ -115,6 +117,8 @@ export interface DisplaySettings {
   dialogScrollHistoryEnabled: boolean;
   dialogSpacebarHideEnabled: boolean;
   dialogAutoHideOnThinkEnabled: boolean;
+  affectionHeartbeatEnabled: boolean;
+  affectionWaveEnabled: boolean;
 }
 
 export interface CharacterSettings {
@@ -194,6 +198,10 @@ export const useSettingsStore = defineStore("settings", {
     dialogScrollHistoryEnabled: (state) => state.display.dialogScrollHistoryEnabled,
     dialogSpacebarHideEnabled: (state) => state.display.dialogSpacebarHideEnabled,
     dialogAutoHideOnThinkEnabled: (state) => state.display.dialogAutoHideOnThinkEnabled,
+    // 好感度爱心心跳动画开关（旧持久化数据缺该字段时回退 true）
+    affectionHeartbeatEnabled: (state) => state.display.affectionHeartbeatEnabled ?? true,
+    // 好感度爱心液体波浪动画开关（同上回退 true）
+    affectionWaveEnabled: (state) => state.display.affectionWaveEnabled ?? true,
     // 各音量
     characterVolume: (state) => state.audio.characterVolume,
     bubbleVolume: (state) => state.audio.bubbleVolume,
@@ -397,6 +405,14 @@ export const useSettingsStore = defineStore("settings", {
     },
     setDialogAutoHideOnThinkEnabled(enabled: boolean) {
       this.display.dialogAutoHideOnThinkEnabled = enabled;
+    },
+    // 设置好感度爱心心跳动画开关
+    setAffectionHeartbeatEnabled(enabled: boolean) {
+      this.display.affectionHeartbeatEnabled = enabled;
+    },
+    // 设置好感度爱心液体波浪动画开关
+    setAffectionWaveEnabled(enabled: boolean) {
+      this.display.affectionWaveEnabled = enabled;
     },
     // 全部重置为默认
     resetDialogAppearance() {

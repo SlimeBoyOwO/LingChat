@@ -37,6 +37,26 @@ export interface ScriptInfo {
   freeDialogueInfo: FreeDialogueInfo;
 }
 
+/** 六维好感度向量（与 Rust AffectionVector 同 snake_case 键名），各项 0~100 */
+export interface AffectionVector {
+  fondness: number;
+  trust: number;
+  intimacy: number;
+  rapport: number;
+  interest: number;
+  longing: number;
+}
+
+/** 负面六维向量（与 Rust NegativeVector 同 snake_case 键名），下限 0、允许超 100 */
+export interface NegativeVector {
+  anger: number;
+  hurt: number;
+  disappointment: number;
+  indifference: number;
+  jealousy: number;
+  estrangement: number;
+}
+
 export interface GameRole {
   roleId: number;
   roleName: string;
@@ -58,6 +78,10 @@ export interface GameRole {
   bodyPart: object;
   live2d?: Live2dSettings | null;
   character_folder: string;
+  /** 对玩家的六维好感度（init 数据携带，affection:changed 事件刷新；未加载时为 undefined） */
+  affection?: AffectionVector;
+  /** 负面六维（被冒犯/伤害时增加、安抚时减少，随 affection 同源刷新；未加载时为 undefined） */
+  negative?: NegativeVector;
 }
 
 export interface GameState {
@@ -78,6 +102,17 @@ export interface GameState {
   dialogHistory: GameMessage[];
   currentScene: SceneInfo | null; // 当前加载的场景
   command: string | null;
+
+  /** 最近一次好感度变化（面板「最近变化」展示；deltas/reason 直接来自事件负载） */
+  lastAffectionChange: {
+    roleId: number;
+    deltaSum: number;
+    deltas: Record<string, number>;
+    /** 负面六维的本轮增量（键名为负面维度序列化键） */
+    negativeDeltas: Record<string, number>;
+    reason: string;
+    at: number;
+  } | null;
 
   initialized: boolean;
   /** LoadingTransition 启动动画是否已完成（§1.9 门控：动画期间不启动 ASR） */
@@ -112,6 +147,7 @@ export const state: GameState = {
   dialogHistory: [],
   currentScene: null,
   command: null,
+  lastAffectionChange: null,
 
   initialized: false,
   loadingComplete: false,

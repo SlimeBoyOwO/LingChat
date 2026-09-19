@@ -37,5 +37,11 @@ export default {
     memoryTitle: "永久記憶調試",
     memoryDesc: "查看角色當前的記憶庫內容與真實上下文，用於排查記憶壓縮與注入問題",
     memoryButton: "進入記憶調試界面",
+    affectionTitle: "好感度系統",
+    affectionDesc:
+      "好感度系統總開關（切換後自動重啟生效）；心跳同波浪動畫開關喺「其他進階設定 → 好感度」度",
+    affectionMasterToggle: "啟用好感度系統",
+    affectionRestartConfirm: "切換好感度系統將在重啟後生效，確定立即重啟應用嗎？",
+    affectionRestartFailed: "重啟失敗，請手動重啟應用",
   },
 };
