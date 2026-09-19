@@ -11,7 +11,7 @@
 import { computed, watch, type ComputedRef } from "vue";
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";
-import { useAsrInput, asrVoiceActive } from "@/composables/useAsrInput";
+import { useAsrInput, asrVoiceActive } from "@/composables/asr";
 
 export type GameStatus = "input" | "thinking" | "responding" | "presenting";
 

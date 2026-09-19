@@ -18,11 +18,11 @@ import { useLlmProvidersStore } from "@/stores/modules/llm-providers";
 import { useScreenshot } from "@/composables/useScreenshot";
 import { setInputHasText } from "@/composables/useCanDeliver";
 import {
-  ASR_AUTO_SEND_DELAY_MS,
   ASR_DISPLAY_MS,
   lockAsrForDisplay,
   registerAsrInputBridge,
-} from "@/composables/useAsrInput";
+  useAsrAutoSend,
+} from "@/composables/asr";
 
 export interface UseChatInputOptions {
   /** 未选择对话模型时的提示标题词条 key（两模式文案不同） */
@@ -140,12 +140,19 @@ export function useChatInput(o?: UseChatInputOptions): UseChatInputApi {
     lockAsrForDisplay(ASR_DISPLAY_MS);
   }
 
-  // auto_send：先显示到输入框，延迟后走完整 send()（复用剧本分支/模型检查/清理）
+  // auto_send：先显示到输入框，延迟后走完整 send()（复用剧本分支/模型检查/清理）。
+  // 发送窗口用 useAsrAutoSend 统一管理（连续识别清旧 timer、卸载自动取消），
+  // 发送时刻复查（审查 F-5）：仅当输入框仍是识别结果原文时才发送——用户编辑过
+  //（非空且 ≠ detail）→ 尊重编辑不发送；被清空 → 只可能是已手动发送或手动清空，
+  // 不再重填——否则同一句语音会被手动 + 定时器双发（重复消息污染对话）。
+  const asrAutoSend = useAsrAutoSend((detail) => {
+    if (text.value === detail) send();
+  });
   function onAsrAutoSend(e: Event) {
     const ce = e as CustomEvent<string>;
     if (typeof ce.detail !== "string") return;
     text.value = ce.detail;
-    window.setTimeout(() => send(), ASR_AUTO_SEND_DELAY_MS);
+    asrAutoSend.arm(ce.detail);
   }
 
   onMounted(() => {

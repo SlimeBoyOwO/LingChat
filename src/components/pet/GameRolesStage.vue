@@ -116,7 +116,7 @@
       />
     </div>
 
-    <audio ref="mainAudio" @ended="onAudioEnded"></audio>
+    <audio ref="mainAudio" @ended="onAudioEnded" @error="onAudioEnded"></audio>
   </div>
 </template>
 
