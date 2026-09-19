@@ -2,6 +2,7 @@ pub mod background_command;
 pub mod character;
 pub mod clock;
 pub mod executor;
+pub mod lighting;
 pub mod memory;
 pub mod permissions;
 pub mod read_media_file;
@@ -28,6 +29,7 @@ use crate::ai_service::game_system::game_status::GameStatus;
 
 use character::{CharacterList, CharacterSwitch};
 use clock::CurrentTimeTool;
+use lighting::{LightingApply, LightingGet, LightingListPresets};
 use memory::{AddNote, DeleteNote, GetCurrentMemory, GetNotes, UpdateNote};
 use permissions::CONFIG_FILE_NAME;
 use permissions::ToolPermissionConfig;
@@ -111,6 +113,9 @@ pub fn built_in_registry(
     registry.register(Arc::new(SceneStatus))?;
     registry.register(Arc::new(SceneList))?;
     registry.register(Arc::new(SceneSwitch))?;
+    registry.register(Arc::new(LightingListPresets))?;
+    registry.register(Arc::new(LightingApply))?;
+    registry.register(Arc::new(LightingGet))?;
     registry.register(Arc::new(CharacterList))?;
     registry.register(Arc::new(CharacterSwitch))?;
     registry.register(Arc::new(ListSkills))?;

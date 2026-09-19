@@ -1,4 +1,4 @@
-//! 事件 schema —— 16 种事件及其全部字段的**单一真相源**。
+//! 事件 schema —— 所有事件及其全部字段的**单一真相源**。
 //!
 //! 在这之前，同一份 schema 散落在三处：Rust 的 16 个 handler、前端
 //! `src/types/script.ts` 的运行时 payload 类型、原型编辑器的 `constants/events.ts`。
@@ -17,9 +17,11 @@
 //! - **角色**是 `MAIN` 加上该剧本 `characters/` 下的目录名。
 //! - **背景特效**由 Rust 拥有（`background_effect_event::KNOWN_EFFECTS`），
 //!   因为它对应前端组件是否存在，本文件直接引用那个常量。
+//! - **光影预设**同理，由 `game_system::lighting_store` 拥有，编辑器和运行时共用。
 
 use serde::Serialize;
 
+use crate::ai_service::game_system::lighting_store;
 use crate::ai_service::game_system::script_engine::events::background_effect_event::KNOWN_EFFECTS;
 
 /// 字段该用什么控件渲染。
@@ -219,7 +221,19 @@ fn effect_options() -> Vec<String> {
     v
 }
 
+/// 光影预设下拉：首项「跟随场景」= 清除覆盖，其余来自 `lighting_store`（唯一真源）。
+fn lighting_preset_options() -> (Vec<String>, Vec<String>) {
+    let mut ids = vec!["follow_scene".to_string()];
+    let mut labels = vec!["follow_scene（跟随场景灯光）".to_string()];
+    for s in lighting_store::summaries() {
+        ids.push(s.id.clone());
+        labels.push(format!("{}（{}）", s.id, s.name));
+    }
+    (ids, labels)
+}
+
 pub fn build_schema() -> ScriptSchema {
+    let (lighting_ids, lighting_labels) = lighting_preset_options();
     let events = vec![
         // ---------- 叙事 ----------
         EventSpec {
@@ -394,6 +408,22 @@ pub fn build_schema() -> ScriptSchema {
                 .required()
                 .options(effect_options())
                 .hint("从下拉里选；选「无特效」会清空当前特效")],
+        },
+        EventSpec {
+            type_key: "lighting",
+            label: "光影",
+            category: "演出",
+            color: "#fcd34d",
+            fields: vec![
+                FieldSpec::new("preset", "光影预设", FieldKind::Select)
+                    .required()
+                    .options(lighting_ids)
+                    .option_labels(lighting_labels)
+                    .hint("选「follow_scene」= 取消覆盖，回到该场景自己的灯光"),
+                FieldSpec::new("duration", "过渡时长（秒）", FieldKind::Number)
+                    .placeholder("0")
+                    .hint("预留字段，目前前端立即生效"),
+            ],
         },
         EventSpec {
             type_key: "present_pic",

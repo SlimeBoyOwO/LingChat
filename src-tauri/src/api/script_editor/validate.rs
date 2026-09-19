@@ -17,6 +17,7 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 
+use crate::ai_service::game_system::lighting_store;
 use crate::ai_service::game_system::script_engine::events::background_effect_event::KNOWN_EFFECTS;
 use crate::ai_service::game_system::script_engine::utils::media::{
     MediaType, resolve_script_media,
@@ -544,6 +545,29 @@ pub fn validate(
                                 .with_field("effect"),
                             ),
                         }
+                    }
+                },
+                "lighting" => {
+                    let preset = obj.get("preset").and_then(|v| v.as_str()).unwrap_or("");
+                    // 空串和 follow_scene 都表示「取消覆盖，回到场景自身灯光」
+                    let clearing = preset.is_empty() || preset.eq_ignore_ascii_case("follow_scene");
+                    if !clearing && lighting_store::normalize_id(preset).is_none() {
+                        // 与特效不同：运行时对未知预设就是清空，且前端无法自动纠错，
+                        // 所以直接 Error——作者看到的一定是跑不通的东西。
+                        diags.push(
+                            Diagnostic::event(
+                                Severity::Error,
+                                "lighting.unknown_preset",
+                                cid,
+                                i,
+                                format!(
+                                    "光影预设「{}」不存在，运行时会清掉灯光。可用：{}；或填 follow_scene 表示跟随场景",
+                                    preset,
+                                    lighting_store::preset_ids().join("、")
+                                ),
+                            )
+                            .with_field("preset"),
+                        );
                     }
                 },
                 "choices" => {

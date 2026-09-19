@@ -34,6 +34,7 @@ pub fn init_event_registry() {
     events::chapter_end_event::register();
     events::background_event::register();
     events::background_effect_event::register();
+    events::lighting_event::register();
     events::music_event::register();
     events::sound_event::register();
     events::present_pic_event::register();

@@ -516,6 +516,16 @@ impl ScriptManager {
     ) -> Result<()> {
         tracing::info!("[ScriptManager] 剧本结束 (completed={})", completed);
 
+        // 剧本自带的灯光属于这一段剧情。不收掉的话最后一格的暖光会一直挂在
+        // 舞台上，之后的自由对话就永远「跟随不了场景」。
+        let had_lighting_override = {
+            let mut gs = ctx.game_status.lock().await;
+            gs.clear_lighting_override()
+        };
+        if had_lighting_override {
+            crate::api::lighting::emit_cleared(ctx.app, "script");
+        }
+
         // Emit script_end event. This is what releases the frontend from story
         // mode, so it must fire on the error path too — but flagged so the
         // client does not mark the adventure as completed.

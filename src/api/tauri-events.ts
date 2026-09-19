@@ -21,6 +21,8 @@ import { useDialogStore } from "../stores/modules/ui/dialog";
 import { useAsrStore } from "../stores/modules/settings/asr";
 import type { VadEvent } from "../api/services/asr";
 import type { SceneInfo } from "./services/scene";
+import type { LightingChangePayload } from "./services/lighting";
+import { useLightingStore } from "../stores/modules/lighting";
 
 function asEvent(
   payload: unknown,
@@ -363,6 +365,10 @@ export function initializeTauriEventListeners() {
     eventQueue.addEvent(asEvent(event.payload, { type: "background_effect", defaultDuration: 0 }));
   });
 
+  listen("script:lighting", (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: "lighting", defaultDuration: 0 }));
+  });
+
   listen("script:music", (event) => {
     eventQueue.addEvent(asEvent(event.payload, { type: "music", defaultDuration: 0 }));
   });
@@ -434,8 +440,16 @@ export function initializeTauriEventListeners() {
     uiStore.setCurrentBackground(payload.scene.background ?? "");
   });
 
+  // === 光影：面板 / LLM 工具的即时改动（剧本事件走上面的 script:lighting 队列） ===
+
+  listen("lighting:change", (event) => {
+    useLightingStore().applyPayload(event.payload as LightingChangePayload);
+  });
+
+  void useLightingStore().ensurePresets();
+
   console.log(
-    "[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 13 script events + character:switch + scene:switch)"
+    "[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 14 script events + character:switch + scene:switch + lighting:change)"
   );
 }
 
@@ -471,6 +485,18 @@ export function initializeCastWindowListeners() {
     uiStore.setCurrentBackground(payload.scene.background ?? "");
   });
 
+  // 光影是纯画面状态，投屏窗口没有事件队列，两条来源都即时套用。
+  // 主窗口的队列节奏会让投屏略早一点点——灯光比台词先到位，观感上反而自然。
+  listen("script:lighting", (event) => {
+    useLightingStore().applyPayload(event.payload as LightingChangePayload);
+  });
+
+  listen("lighting:change", (event) => {
+    useLightingStore().applyPayload(event.payload as LightingChangePayload);
+  });
+
+  void useLightingStore().ensurePresets();
+
   // 投屏客户端麦克风经投屏 /ws 送到 Rust ASR，识别文本由这里注入对话。
   // 复用既有 asr-send 自定义事件 → GameDialog.onAsrAutoSend → send()（sendMessage）。
   // 仅投屏窗口注册此监听（主窗口不注册），保证每次识别恰好注入一次。
@@ -481,6 +507,6 @@ export function initializeCastWindowListeners() {
   });
 
   console.log(
-    "[Tauri] Cast window listeners initialized (scene:switch + character:switch + cast:mic:recognized)"
+    "[Tauri] Cast window listeners initialized (scene:switch + character:switch + script:lighting + lighting:change + cast:mic:recognized)"
   );
 }

@@ -11,6 +11,23 @@
     />
   </div>
 
+  <!-- bloom 泛光：拿同一张背景再复制一层，整体模糊后提亮、screen 叠回去。
+       背景是不透明的整块图，原本那个 glow_radius 的 drop-shadow 落在图自己外圈上
+       基本看不见，真正的亮部溢出只能靠这么dup。层级在背景之上、粒子与角色之下。 -->
+  <div
+    v-if="bloom"
+    class="pointer-events-none absolute inset-0"
+    :class="bloom.className"
+    :style="bloom.style"
+  >
+    <ImageAcrossFade
+      :src="backgroundSrc"
+      position="center center"
+      object-fit="cover"
+      :duration="uiStore.currentBackgroundTransition"
+    />
+  </div>
+
   <!-- 粒子特效层：独立于背景图，透明背景时依然显示 -->
   <!-- isolation: isolate 建立独立层叠上下文，把粒子组件内部的 z-index 限制在本层内，
        防止其逃逸到根层叠上下文盖过 UI 面板 -->
@@ -92,7 +109,7 @@
   import { convertFileSrc } from "@tauri-apps/api/core";
   import { toPlayableMediaUrl } from "@/utils/mediaUrl";
   import { useUIStore } from "../../../stores/modules/ui/ui";
-  import { useGameStore } from "../../../stores/modules/game";
+  import { useLightingStore } from "@/stores/modules/lighting";
   import ImageAcrossFade from "@/components/ui/ImageAcrossFade.vue";
   import AudioAcrossFade from "@/components/ui/AudioAcrossFade.vue";
   import AmbientLoopPlayer from "@/components/ui/AmbientLoopPlayer.vue";
@@ -103,7 +120,7 @@
   import Fireworks from "./particles/Fireworks.vue";
 
   const uiStore = useUIStore();
-  const gameStore = useGameStore();
+  const lightingStore = useLightingStore();
 
   const backgroundSrc = computed(() => {
     const bg = uiStore.currentBackground;
@@ -144,31 +161,14 @@
     { immediate: true }
   );
 
-  // 背景光照滤镜
+  // 生效灯光由 lighting store 统一裁决，这里只取换算好的背景侧样式。
   const bgLightingFilter = computed(() => {
-    const c = gameStore.currentScene?.lighting?.background;
-    if (!c) return undefined;
-    const parts: string[] = [];
-    if (c.brightness !== 1.0) parts.push(`brightness(${c.brightness})`);
-    if (c.contrast !== 1.0) parts.push(`contrast(${c.contrast})`);
-    if (c.saturation !== 1.0) parts.push(`saturate(${c.saturation})`);
-    if (c.glow_radius > 0) parts.push(`drop-shadow(0 0 ${c.glow_radius}px ${c.glow_color})`);
-    if (c.sepia > 0) parts.push(`sepia(${c.sepia})`);
-    return parts.length > 0 ? { filter: parts.join(" ") } : undefined;
+    const filter = lightingStore.plan.backgroundFilter;
+    return filter ? { filter } : undefined;
   });
 
-  // 背景光照叠加层（仅当 target 为 background 或 both 时启用）
-  const bgOverlayStyle = computed(() => {
-    const l = gameStore.currentScene?.lighting;
-    if (!l?.overlay_enabled) return undefined;
-    if (l.overlay_target !== "background" && l.overlay_target !== "both") return undefined;
-    const blend = l.blend_mode !== "normal" ? l.blend_mode : "overlay";
-    return {
-      background: `radial-gradient(circle at ${l.light_x}% ${l.light_y}%, ${l.overlay_color1} 0%, ${l.overlay_color2} ${l.overlay_radius}%)`,
-      mixBlendMode: blend,
-      opacity: l.overlay_opacity,
-    };
-  });
+  const bgOverlayStyle = computed(() => lightingStore.plan.bgOverlay);
+  const bloom = computed(() => lightingStore.plan.bloom);
 
   // 背景效果 z-index 应该比其他组件高，否则会被覆盖
   const BACKGROUND_ZINDEX = 114514;

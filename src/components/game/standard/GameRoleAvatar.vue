@@ -36,6 +36,7 @@
   import { convertFileSrc } from "@tauri-apps/api/core";
   import { useGameStore } from "@/stores/modules/game";
   import { useUIStore } from "@/stores/modules/ui/ui";
+  import { useLightingStore } from "@/stores/modules/lighting";
   import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from "@/controllers/emotion/config";
   import type { GameRole } from "@/stores/modules/game/state";
   import Live2DRolePresentation from "./Live2DRolePresentation.vue";
@@ -54,6 +55,7 @@
 
   const gameStore = useGameStore();
   const uiStore = useUIStore();
+  const lightingStore = useLightingStore();
   const { role } = toRefs(props);
 
   const bubbleAudio = ref<HTMLAudioElement | null>(null);
@@ -103,17 +105,9 @@
     return ((myIndex + 1) / (totalCount + 1)) * 100;
   });
 
-  const lightingFilter = computed(() => {
-    const c = gameStore.currentScene?.lighting?.character;
-    if (!c) return undefined;
-    const parts: string[] = [];
-    if (c.brightness !== 1.0) parts.push(`brightness(${c.brightness})`);
-    if (c.contrast !== 1.0) parts.push(`contrast(${c.contrast})`);
-    if (c.saturation !== 1.0) parts.push(`saturate(${c.saturation})`);
-    if (c.glow_radius > 0) parts.push(`drop-shadow(0 0 ${c.glow_radius}px ${c.glow_color})`);
-    if (c.sepia > 0) parts.push(`sepia(${c.sepia})`);
-    return parts.length > 0 ? parts.join(" ") : undefined;
-  });
+  // 立绘滤镜：亮度/对比度/饱和等 + 轮廓光。轮廓光靠带偏移的 drop-shadow 沿
+  // 立绘自身的 alpha 剪影描边，所以不需要遮罩就能只在受光那一侧发光。
+  const lightingFilter = computed(() => lightingStore.plan.characterFilter);
 
   const roleLayerStyle = computed(() => {
     const autoLeft = layoutPosition.value;

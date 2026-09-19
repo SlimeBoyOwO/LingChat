@@ -61,6 +61,19 @@ export const DEFAULT_SETTINGS = {
   character: {
     folder: "诺一钦灵", // 当前角色文件夹
   },
+  // 光影设置（总开关 + 各效果独立开关；子开关只负责「压掉」参数里自带的启用位）
+  lighting: {
+    masterEnabled: true, // 总开关：关掉后所有光影层一律不渲染
+    globalPreset: "", // 全局预设 id；空串 = 跟随各场景自己的灯光
+    overlayEnabled: true, // 径向光照叠加层（旧版已有）
+    directionalEnabled: true, // 方向光（受光侧暖 / 背光侧冷）
+    rimEnabled: true, // 轮廓光（沿立绘剪影描边）
+    bloomEnabled: true, // bloom 泛光
+    vignetteEnabled: true, // 暗角
+    gradeEnabled: true, // 冷暖分离染色
+    breathingEnabled: true, // 呼吸动画
+    lowPerfMode: false, // 低性能模式：停掉呼吸动画等持续合成
+  },
   // 桌宠设置
   pet: {
     scale: 1, // 桌宠缩放比例
@@ -119,6 +132,21 @@ export interface CharacterSettings {
   folder: string;
 }
 
+export interface LightingSettings {
+  /** 总开关：关掉后所有光影层一律不渲染 */
+  masterEnabled: boolean;
+  /** 全局预设 id；空串 = 跟随各场景自己的灯光 */
+  globalPreset: string;
+  overlayEnabled: boolean;
+  directionalEnabled: boolean;
+  rimEnabled: boolean;
+  bloomEnabled: boolean;
+  vignetteEnabled: boolean;
+  gradeEnabled: boolean;
+  breathingEnabled: boolean;
+  lowPerfMode: boolean;
+}
+
 export interface PetSettings {
   scale: number;
 }
@@ -128,6 +156,7 @@ export interface SettingsState {
   audio: AudioSettings;
   display: DisplaySettings;
   character: CharacterSettings;
+  lighting: LightingSettings;
   pet: PetSettings;
   shortcuts: Record<ShortcutAction, ShortcutBinding>;
 }
@@ -138,6 +167,7 @@ export const useSettingsStore = defineStore("settings", {
     audio: { ...DEFAULT_SETTINGS.audio },
     display: { ...DEFAULT_SETTINGS.display },
     character: { ...DEFAULT_SETTINGS.character },
+    lighting: { ...DEFAULT_SETTINGS.lighting },
     pet: { ...DEFAULT_SETTINGS.pet },
     shortcuts: { ...DEFAULT_SETTINGS.shortcuts },
   }),
@@ -236,6 +266,7 @@ export const useSettingsStore = defineStore("settings", {
         this.text = { ...DEFAULT_SETTINGS.text };
         this.audio = { ...DEFAULT_SETTINGS.audio };
         this.display = { ...DEFAULT_SETTINGS.display };
+        this.lighting = { ...DEFAULT_SETTINGS.lighting };
         this.shortcuts = { ...DEFAULT_SETTINGS.shortcuts };
       } else {
         const keys = path.split(".");
@@ -275,6 +306,7 @@ export const useSettingsStore = defineStore("settings", {
         if (data.audio) this.audio = { ...DEFAULT_SETTINGS.audio, ...data.audio };
         if (data.display) this.display = { ...DEFAULT_SETTINGS.display, ...data.display };
         if (data.character) this.character = { ...DEFAULT_SETTINGS.character, ...data.character };
+        if (data.lighting) this.lighting = { ...DEFAULT_SETTINGS.lighting, ...data.lighting };
         if (data.pet) this.pet = { ...DEFAULT_SETTINGS.pet, ...data.pet };
         if (data.shortcuts) this.shortcuts = { ...DEFAULT_SETTINGS.shortcuts, ...data.shortcuts };
         return true;
@@ -297,6 +329,11 @@ export const useSettingsStore = defineStore("settings", {
     // 批量更新显示设置
     updateDisplay(updates: Partial<DisplaySettings>) {
       this.display = { ...this.display, ...updates };
+    },
+
+    // 批量更新光影设置（总开关与各效果开关）
+    updateLighting(updates: Partial<LightingSettings>) {
+      this.lighting = { ...this.lighting, ...updates };
     },
 
     // 设置文字速度

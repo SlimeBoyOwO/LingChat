@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ai_service::game_system::role_manager::GameRoleManager;
+use crate::ai_service::game_system::scene_store::LightingOverride;
 use crate::ai_service::types::{
     GameLine, GameRole, LineAttributeExt, LineBase, Player, ScriptStatus,
 };
@@ -34,6 +35,11 @@ pub struct GameStatus {
     pub present_pic: String,
     pub background_music: String,
     pub background_effect: String,
+    /// 运行时光影覆盖（剧本 lighting 事件 / 插件工具 / 设置面板写入）。
+    /// 优先级高于场景自带光影；不写进存档快照，重启即回到「跟随场景」。
+    pub lighting_override: Option<LightingOverride>,
+    /// 当前生效的覆盖来自哪里，仅用于诊断与状态回读。
+    pub lighting_override_source: String,
 
     /// 当前用户选择的场景 ID（对应 scenes.json 中的场景）
     pub current_scene_id: Option<String>,
@@ -78,6 +84,8 @@ impl GameStatus {
             present_pic: String::new(),
             background_music: String::new(),
             background_effect: String::new(),
+            lighting_override: None,
+            lighting_override_source: String::new(),
             current_scene_id: None,
             last_processed_scene_id: None,
             global_variables: HashMap::new(),
@@ -130,6 +138,21 @@ impl GameStatus {
             .iter()
             .filter(|l| !matches!(l.attribute(), LineAttribute::System))
             .count()
+    }
+
+    // ============ 运行时光影覆盖 ============
+
+    pub fn set_lighting_override(&mut self, override_: LightingOverride, source: &str) {
+        self.lighting_override = Some(override_);
+        self.lighting_override_source = source.to_string();
+    }
+
+    /// 清掉覆盖，回到「跟随场景」。本来就没有覆盖时返回 false。
+    pub fn clear_lighting_override(&mut self) -> bool {
+        let had = self.lighting_override.is_some();
+        self.lighting_override = None;
+        self.lighting_override_source = String::new();
+        had
     }
 
     // ============ 舞台管理 ============

@@ -16,6 +16,7 @@ pub mod event_names {
     pub const SCRIPT_CHAPTER_CHANGE: &str = "script:chapter-change";
     pub const SCRIPT_BACKGROUND: &str = "script:background";
     pub const SCRIPT_BACKGROUND_EFFECT: &str = "script:background-effect";
+    pub const SCRIPT_LIGHTING: &str = "script:lighting";
     pub const SCRIPT_MUSIC: &str = "script:music";
     pub const SCRIPT_SOUND: &str = "script:sound";
     pub const SCRIPT_AMBIENT: &str = "script:ambient";

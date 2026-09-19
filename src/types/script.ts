@@ -1,3 +1,5 @@
+import type { LightingParams } from "@/api/services/scene";
+
 export interface ScriptEvent {
   type: string;
   duration: number;
@@ -70,6 +72,17 @@ export interface ScriptPresentPicEvent extends ScriptEvent {
 export interface ScriptBackgroundEffectEvent extends ScriptEvent {
   type: "background_effect";
   effect: string;
+}
+
+/**
+ * 剧本光影事件。`params` 已由后端解析成完整参数（预设查表 + 大小写纠正），
+ * 前端不再查表；为 null 表示清回「跟随场景」。
+ */
+export interface ScriptLightingEvent extends ScriptEvent {
+  type: "lighting";
+  preset: string | null;
+  params: LightingParams | null;
+  source: string;
 }
 
 export interface ScriptSoundEvent extends ScriptEvent {
@@ -145,6 +158,7 @@ export type ScriptEventType =
   | ScriptPlayerEvent
   | ScriptModifyCharacterEvent
   | ScriptBackgroundEffectEvent
+  | ScriptLightingEvent
   | ScriptMusicEvent
   | ScriptSoundEvent
   | ScriptAmbientEvent

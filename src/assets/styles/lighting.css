@@ -1,0 +1,29 @@
+/**
+ * 光影层的呼吸动画。
+ *
+ * 只动 opacity：合成器就能处理，不会每帧重绘渐变。`--lighting-base` 是该层的
+ * 本征不透明度（由 `utils/lighting.ts` 写在行内样式上），动画在它上下浮动，
+ * 而不是把行内 opacity 顶掉。
+ */
+
+@keyframes lighting-breathe {
+  0%,
+  100% {
+    opacity: calc(var(--lighting-base, 1) * var(--lighting-breath-lo, 0.85));
+  }
+  50% {
+    opacity: calc(var(--lighting-base, 1) * var(--lighting-breath-hi, 1.15));
+  }
+}
+
+.lighting-breath {
+  animation: lighting-breathe var(--lighting-breath-period, 7s) ease-in-out infinite;
+  will-change: opacity;
+}
+
+/* 灯光持续闪动对前庭敏感的人是负担，系统级减弱动效时一律静止 */
+@media (prefers-reduced-motion: reduce) {
+  .lighting-breath {
+    animation: none;
+  }
+}

@@ -21,14 +21,17 @@
       />
     </Live2DStage>
 
-    <!-- 3. 场景光照叠加层 -->
+    <!-- 3. 场景光照叠加层（径向光，跟着立绘走） -->
     <div
-      v-if="lightOverlayStyle"
+      v-if="stageOverlay"
       class="pointer-events-none absolute inset-0 z-10"
-      :style="lightOverlayStyle as any"
+      :style="stageOverlay as any"
     ></div>
 
-    <!-- 4. 全局主语音播放器 -->
+    <!-- 4. 进阶光影层：方向光 / 冷暖分离 / 暗角，压在整块舞台之上 -->
+    <LightingLayer />
+
+    <!-- 5. 全局主语音播放器 -->
     <audio ref="mainAudio" @ended="onAudioEnded"></audio>
   </div>
 </template>
@@ -36,14 +39,17 @@
 <script setup lang="ts">
   import { computed, ref, watch } from "vue";
   import { useGameStore } from "@/stores/modules/game";
+  import { useLightingStore } from "@/stores/modules/lighting";
   import { useUIStore } from "@/stores/modules/ui/ui";
   import { getVoiceAudio } from "@/api/services/game-info";
   import { setVoicePlaying } from "@/composables/useAsrInput";
   import RoleAvatar from "./GameRoleAvatar.vue";
+  import LightingLayer from "./LightingLayer.vue";
   import Live2DStage from "../live2d/Live2DStage.vue";
 
   const gameStore = useGameStore();
   const uiStore = useUIStore();
+  const lightingStore = useLightingStore();
   const emit = defineEmits(["audio-ended", "audio-started"]);
 
   /** 投屏全局缩放与偏移（仅投屏窗口传入；主窗口缺省无影响）。
@@ -61,13 +67,9 @@
   const mainAudio = ref<HTMLAudioElement | null>(null);
   const voiceDataUrl = ref("");
 
-  const lightOverlayStyle = computed(() => {
-    const l = gameStore.currentScene?.lighting;
-    if (!l?.overlay_enabled) return undefined;
-    if (l.overlay_target !== "character" && l.overlay_target !== "both") return undefined;
-    const blend = l.blend_mode !== "normal" ? l.blend_mode : "overlay";
-    return `background: radial-gradient(circle at ${l.light_x}% ${l.light_y}%, ${l.overlay_color1} 0%, ${l.overlay_color2} ${l.overlay_radius}%); mix-blend-mode: ${blend}; opacity: ${l.overlay_opacity}`;
-  });
+  // 生效灯光由 lighting store 统一裁决（总开关 → 剧本覆盖 → 全局预设 → 场景），
+  // 组件只消费换算好的 CSS，不再各自读 currentScene.lighting。
+  const stageOverlay = computed(() => lightingStore.plan.stageOverlay);
 
   // --- 音频逻辑 (全局) ---
   // 监听 UI Store 的音频播放指令
