@@ -44,11 +44,7 @@
     </MenuItem>
 
     <!-- ── 我的身份 ──────────────────────────────────────────────
-         决定「我」是谁：名字 / 副标题 / 注入聊天的身份提示词 / 与各角色的关系。
-
-         换身份 = 开一段新对话（与「切换 AI 角色」同一条路径）：
-         身份属于一局，本局一旦开始（剧本进行中 / 已绑定存档）就不能原地换，
-         只能重开一局；旧对话想留着要先到存档页建档。 -->
+         换身份 = 开一段新对话（与切换 AI 角色同路径）；本局已开始则不能原地换。 -->
     <MenuItem :title="$t('settings.identity.title')">
       <template #header>
         <User :size="20" />
@@ -395,14 +391,12 @@ const handleSettingsSaved = () => {
 };
 
 // ── 我的身份 ────────────────────────────────────────────────
-//
-// 身份卡决定「我」是谁；后端把「当前身份」与「该角色对我的称呼」分成两个出口，
-// 所以这里改的只是身份卡，不会动到 AI 角色卡上的 user_name。
+// 只改身份卡；AI 角色卡上的 user_name 是「该角色对我的称呼」，两条出口互不影响。
 const identities = ref<PlayerIdentitySummary[]>([]);
 const identityLoading = ref(false);
 const savingIdentity = ref(false);
 const identityForm = ref<PlayerIdentity | null>(null);
-/** 编辑表单里的关系行（目标下拉 + 文本）；保存时折成 relations 映射 */
+/** 编辑表单里的关系行；保存时折成 relations 映射 */
 const relationRows = ref<{ target: string; text: string }[]>([]);
 
 const relationTargetsAi = computed(() =>
@@ -417,11 +411,7 @@ const relationTargetsMe = computed(() =>
     .map((i) => ({ value: meKey(i.id), label: i.name })),
 );
 
-/**
- * 剧本进行中 → 连「开新对话换身份」都不允许（按钮禁用并说明原因）。
- * 与后端 `player_identity::guard::ensure_identity_switchable` 同一条规则；
- * 权威判断永远在后端，这里只是提前告知。
- */
+/** 剧本进行中不允许换身份；权威判断在后端 guard，这里只是提前禁用按钮。 */
 const identityScriptBlocked = computed(() => !!gameStore.runningScript);
 
 /** 本局已绑定存档（含自动存档）→ 不能原地换身份，但可以「用它开新对话」。 */
@@ -506,14 +496,7 @@ const submitIdentity = async () => {
   }
 };
 
-/**
- * 用这张身份卡**开一段新对话** —— 换身份的正式路径。
- *
- * 为什么不是原地切换：身份属于一局，本局一旦绑定存档（含自动存档）就不该中途换，
- * 否则 AI 记忆会出现「前半段用 A 的身份写、后半段变成 B」。所以这里与「切换 AI 角色」
- * 走同一条路径：确认后重开一局（当前对话记忆清空），并按新身份重建人设行。
- * 旧对话想留着 → 先去存档页建档，那条档会连当时的身份一起记住。
- */
+/** 用这张身份卡开一段新对话：重开一局并重建人设行；旧对话需先建档。 */
 const startNewGame = async (item: PlayerIdentitySummary) => {
   const confirmed = await dialogStore.confirm(
     t("settings.identity.newGameConfirm", { name: item.name }),

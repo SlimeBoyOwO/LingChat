@@ -56,13 +56,7 @@ export const deletePlayerIdentity = async (id: string): Promise<void> => {
   await invoke("delete_player_identity", { id });
 };
 
-/**
- * 用指定身份**开一段新对话** —— 换身份的正式路径。
- *
- * 会清空当前对话的记忆、并按新身份重建人设行（与切换 AI 角色同一条路径），
- * 同时解除本局与任何存档的绑定。旧对话想留着请先到存档页建档：
- * 存档记录的是当时的身份，读它会连身份一起恢复。
- */
+/** 用指定身份开一段新对话（重开一局并按新身份重建人设行）；旧对话需先建档。 */
 export const startNewGameWithIdentity = async (id: string): Promise<WebInitData> => {
   return await invoke<WebInitData>("start_new_game_with_identity", { id });
 };

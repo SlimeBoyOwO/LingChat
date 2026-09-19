@@ -128,11 +128,8 @@
               </div>
 
               <!-- ── 关系（AI 角色视角）────────────────────────────────
-                   填的是「这个角色怎么看各方」，与「我的身份」里的关系互为两个方向。
-                   刻意**不写进 settings.yml**：settings.yml 会被本页整体重写，
-                   塞进去的关系一旦被旧版本程序编辑该角色就会丢；
-                   这里单独读写角色目录下的 relations.yml（旧版本完全不认识它）。
-                   因此它有独立的保存按钮，与底部的「保存」无关。 -->
+                   写角色目录下的 relations.yml（不走会被本页整体重写的 settings.yml），
+                   故有独立的保存按钮。 -->
               <div
                 v-if="activeTab === 'basic' && props.roleId"
                 class="space-y-3 rounded-xl border border-white/10 bg-black/20 p-4"
@@ -1021,10 +1018,7 @@ const removeClothesItem = (idx: number) => {
 };
 
 // --- 关系（AI 角色视角）---
-//
-// 关系**不写进 settings.yml**：那个文件会被本页整体重写，而关系一旦被旧版本程序
-// 编辑该角色就会丢。这里走独立的 relations.yml（sidecar 文件，旧版本不认识它），
-// 所以读写用的是 getRoleRelations / saveRoleRelations，与底部「保存」按钮互不影响。
+// 读写独立的 relations.yml，与底部「保存」按钮互不影响。
 interface RelationTarget {
   value: string;
   label: string;
@@ -1040,14 +1034,11 @@ const relationsSaving = ref(false);
 const relationTargetsAi = computed(() => relationTargets.value.filter((t) => t.group === "ai"));
 const relationTargetsMe = computed(() => relationTargets.value.filter((t) => t.group === "me"));
 
-/**
- * 目标是否已不存在（角色被删、身份卡被删、或导入了别人写的角色卡）。
- * 解析侧会静默跳过这类键；UI 侧保留原值并显式标注，避免用户以为关系被吞了。
- */
+/** 目标已不存在（角色/身份被删）时保留原值并标注；解析侧会静默跳过这类键。 */
 const isMissingTarget = (target: string) =>
   !!target && !relationTargets.value.some((t) => t.value === target);
 
-/** 拉全量角色：下拉要覆盖全部角色，不能只看当前分页。 */
+/** 下拉要覆盖全部角色，不只当前分页。 */
 const fetchAllRelationCharacters = async (): Promise<ApiCharacter[]> => {
   const pageSize = 100;
   const first = await characterGetAll(1, pageSize);

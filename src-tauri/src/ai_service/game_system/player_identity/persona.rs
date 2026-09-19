@@ -1,13 +1,7 @@
-//! 人设行的**按阵容重建**：把「我是谁」与「你眼里的其他角色」按该角色自己的视角
-//! 烘进它的 SYSTEM 人设行。
+//! 按当前阵容重建角色的 SYSTEM 人设行。
 //!
-//! 为什么需要单独一个文件：人设行是**一次性**拼进 `line_list` 的，而多 AI 场景的
-//! 阵容会变（角色入场 / 切换说话者 / 出场）。阵容一变，各角色人设行里
-//! 「你眼里的其他角色」这段就过期了 —— 例如 A 的人设行里没有「我眼里的 B」，
-//! 于是**B 认为 A 是狗**这种设定永远不会被 A 感知到（这正是修这个文件的起因）。
-//!
-//! 这里提供唯一的实现点：`rebuild_persona_line`（单个角色）与
-//! `rebuild_onstage_personas`（所有在场角色）。以后要改"人设行怎么拼"，只改这里。
+//! 人设行是一次性拼进 `line_list` 的，阵容一变（角色入场 / 切换说话者 / 出场）
+//! 里面「你眼里的其他角色」就过期了。这里提供唯一的重建实现点。
 
 use std::path::Path;
 
@@ -23,10 +17,7 @@ use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::{PromptOptions, sys_prompt_builder_by_settings_with_player};
 
-/// 收集说话者**以外**的在场角色，供「你眼里的其他角色」块使用。
-///
-/// 只收已加载到 `role_manager` 的角色；每个角色各自读自己的 `relations.yml`，
-/// 这样"对方视角"的回退也能用上。
+/// 收集说话者以外的在场角色，供「你眼里的其他角色」块使用。
 pub fn collect_peers(gs: &GameStatus, data_dir: &Path, self_folder: &str) -> Vec<ScenePeer> {
     gs.onstage_role_ids
         .iter()
@@ -43,11 +34,8 @@ pub fn collect_peers(gs: &GameStatus, data_dir: &Path, self_folder: &str) -> Vec
         .collect()
 }
 
-/// 按当前阵容重建某个角色的 SYSTEM 人设行（**原位替换**第一条；没有才追加）。
-///
-/// - 「我」的部分与开局完全同源：说话者视角 = (该角色, 当前身份)；
-/// - 「其他角色」的部分见 [`build_peers_block`]（只注入显式关系，不泄漏人设）；
-/// - 原位替换而不是新增，是为了不改动台词序列（存档/回溯都按顺序来）。
+/// 按当前阵容重建某角色的人设行：**原位替换**第一条 SYSTEM 行（没有才追加），
+/// 避免改动台词序列——存档与回溯都按顺序来。
 pub async fn rebuild_persona_line(
     gs: &mut GameStatus,
     db: &DatabaseConnection,

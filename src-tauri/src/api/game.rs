@@ -740,9 +740,7 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
         // 上台 + 刷新记忆（让新角色感知后续台词）
         gs.onstage_role(role_id);
 
-        // ★ 阵容变了 → 所有在场角色的人设行里「你眼里的其他角色」都过期了：
-        //   新入场的人看不到"我眼里的老面孔"，老面孔也不知道"来了个新人"。
-        //   这里按新阵容重建（含刚入场的这个角色本身），再刷新记忆。
+        // 阵容变了 → 在场角色人设行里的「你眼里的其他角色」全部过期，重建后再刷新记忆。
         crate::ai_service::game_system::player_identity::persona::rebuild_onstage_personas(
             &mut gs,
             db,

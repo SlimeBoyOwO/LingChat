@@ -106,15 +106,11 @@ pub async fn delete_player_identity(app: AppHandle, id: String) -> Result<(), St
     Ok(())
 }
 
-/// 切换当前使用的身份，并返回刷新后的初始化数据。
+/// 原地切换当前身份并返回刷新后的初始化数据。闸门见 `player_identity::guard`。
+/// 切换会补一条系统提示行，让 AI 之后按新身份与关系称呼。
 ///
-/// 闸门：剧本运行中、或本局已绑定存档（含自动存档）时拒绝（见 `player_identity::guard`）。
-/// 切换是**玩家侧操作**，不产生世界台词；但会补一条系统提示行，
-/// 让当前 AI 之后按新身份与关系称呼——否则名字变了而模型仍按旧名字叫。
-///
-/// ⚠️ 目前**没有 UI 调用**它：前端换身份统一走 [`start_new_game_with_identity`]（开新对话），
-/// 因为「身份属于一局」。保留这个命令是因为它实现的是另一条独立语义——**原地**切换
-/// （本局尚未开始时才成立），将来放开「世界内切换身份」时会用到；规则仍收在 guard 里。
+/// 目前没有 UI 调用：前端换身份统一走 [`start_new_game_with_identity`]。
+/// 保留它是因为「原地切换」是另一条独立语义，将来放开世界内切换时要用。
 #[tauri::command]
 pub async fn set_current_player_identity(
     app: AppHandle,
@@ -140,7 +136,7 @@ pub async fn set_current_player_identity(
         inject_identity_refresh_line(&state.db, &mut gs, &identity).await;
     }
 
-    // 记录全局当前身份 + 同步到当前存档（这样读档能恢复到同一个身份）
+    // 记录全局当前身份 + 同步到当前存档（读档才能恢复到同一个身份）
     store()
         .set_current_id(&identity.id)
         .map_err(|e| format!("记录当前身份失败: {e}"))?;
@@ -157,17 +153,11 @@ pub async fn set_current_player_identity(
     result
 }
 
-/// 用指定身份**开一段新对话** —— 换身份的正式路径（前端：「我的身份 → 用它开新对话」）。
+/// 用指定身份开一段新对话 —— 换身份的正式路径。
 ///
-/// 与 [`set_current_player_identity`]（原地切换）的区别，也是它存在的理由：
-/// 本命令会重开一局 —— 走 `init_game_status` 清空当前台词与记忆（与切换 AI 角色
-/// **同一条路径**），并解除本局与任何存档的绑定（`clear_game_status` 会清
-/// `active_save_id`）。所以：
-///
-/// - 「本局已绑定存档」**不是**障碍，那正是这条路径的用途；
-/// - 只受「剧本进行中」约束（见 `player_identity::guard::ensure_identity_switchable`）；
-/// - 旧对话想留着，请先到存档页建档：那条档记录的是**当时的**身份，
-///   因此读它会连身份一起恢复。
+/// 与 [`set_current_player_identity`] 的区别：本命令重开一局（走 `init_game_status`，
+/// 与切换 AI 角色同一条路径），因此「已绑定存档」不是障碍，只受「剧本进行中」约束。
+/// 旧对话想留着请先建档，那条档记录的是当时的身份。
 #[tauri::command]
 pub async fn start_new_game_with_identity(
     app: AppHandle,
@@ -192,18 +182,13 @@ pub async fn start_new_game_with_identity(
         ensure_identity_switchable(&gs)?;
     }
 
-    // 全局当前身份：既是新局的「我」，也是下次启动开新局时的默认身份。
-    // 位置放在校验之后：万一同下面两步失败，不至于只改了身份却没换成新局。
+    // 全局当前身份放在校验之后写：万一后面失败，不至于只改了身份却没换成新局。
     store()
         .set_current_id(&identity.id)
         .map_err(|e| format!("记录当前身份失败: {e}"))?;
 
-    // 重开一局：清空台词/记忆、解除存档绑定，并按新身份重建人设行
-    // （`init_game_intro_character` 内部读 `_current.json` 取身份）。
-    //
-    // AI 角色保持不变：优先用当前已初始化的角色，没有则回落到「上次游玩的角色」
-    // （与启动流程 init/mod.rs 同一条兜底），都没有就明确报错——否则
-    // `init_game_status(None)` 会静默返回一个空状态，用户只会看到聊天页空掉。
+    // 重开一局：清空台词/记忆、解除存档绑定，并按新身份重建人设行。
+    // AI 角色保持不变；没有已初始化角色时回落到「上次游玩的角色」。
     let mut service = state.ai_service.lock().await;
     let character_id = match service.init_character_id {
         Some(id) => Some(id),
@@ -298,15 +283,8 @@ async fn role_folder(state: &AppState, role_id: i32) -> Result<String, String> {
         .ok_or_else(|| format!("角色 {role_id} 没有资源目录"))
 }
 
-/// 追加一条系统提示行，让当前 AI 之后的回复按新的身份与关系来称呼。
-///
-/// 身份切换本身是玩家侧操作（世界里的其他人并没有看见什么），
-/// 所以注入的是 `System` 属性行而不是旁白——它表达「你感知到/被告知的信息」，
-/// 与场景切换旁白走同一套机制。
-///
-/// 之所以必须补这一行：人设是以**台词行**的形式留在对话历史里的
-/// （见 `service.rs` 初始化时的 System 行）。只改运行时状态而不补行，
-/// 模型在后续轮次里仍会按旧名字称呼玩家。
+/// 追加一条系统提示行，让 AI 之后按新身份与关系称呼。
+/// 必须补行：人设是以台词行留在历史里的，只改运行时状态模型仍会叫旧名字。
 async fn inject_identity_refresh_line(
     db: &sea_orm::DatabaseConnection,
     gs: &mut GameStatus,

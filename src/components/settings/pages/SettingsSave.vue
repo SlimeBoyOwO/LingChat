@@ -24,10 +24,7 @@
         </button>
       </div>
 
-      <!-- 本局身份：只读展示。
-           换身份 = 开一段新对话（见「角色 → 我的身份 → 用它开新对话」），
-           所以这里不能再提供一个「切换身份」的下拉——那会变成「清空对话再建档」。
-           建档时后端记录的本来就是当前身份，读档时连身份一起恢复。 -->
+      <!-- 本局身份：只读展示。换身份要走「角色 → 我的身份 → 用它开新对话」，故不提供切换下拉。 -->
       <div class="mt-3 flex flex-col gap-1.5">
         <label class="text-xs font-medium text-white/60">
           {{ $t("settings.save.create.identityLabel") }}
