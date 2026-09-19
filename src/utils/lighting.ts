@@ -166,9 +166,10 @@ export interface LightingPlan {
 export function planLighting(l: LightingParams | null): LightingPlan {
   if (!l) return {};
   // 呼吸只作用在真正启用的层上；任一层开着呼吸就得带动画参数。
-  const breathing =
-    !!l.breathing_enabled &&
-    (l.directional_enabled || l.bloom_enabled || l.grade_enabled || l.vignette_enabled);
+  const breathing = !!(
+    l.breathing_enabled &&
+    (l.directional_enabled || l.bloom_enabled || l.grade_enabled || l.vignette_enabled)
+  );
   const plan: LightingPlan = {
     characterFilter: buildFilter(l.character),
     backgroundFilter: buildFilter(l.background),
