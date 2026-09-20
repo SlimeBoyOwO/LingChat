@@ -402,6 +402,16 @@ fn chapter_id_of_path(path: &str) -> Option<String> {
     (!id.is_empty()).then(|| id.to_string())
 }
 
+/// 从写入路径反推剧本 key：`…/scripts/<key…>/story_config.yaml`。
+///
+/// `story_config.yaml` 落盘即代表剧本包诞生，而写入路径本身就含 key。
+pub fn script_key_of_story_config(path: &str) -> Option<String> {
+    let normalized = path.replace('\\', "/");
+    let (_, tail) = normalized.rsplit_once("/scripts/")?;
+    let key = tail.strip_suffix("/story_config.yaml")?.trim_matches('/');
+    (!key.is_empty()).then(|| key.to_string())
+}
+
 /// 若这是一次写章节文件的调用，返回章节 id。
 fn written_chapter_id(tool: &str, arguments: &str) -> Option<String> {
     if tool != "write_file" {
@@ -811,5 +821,42 @@ id: Intro/02
         assert!(check_written_chapter(&snap, "/p/standalone/B/Chapters/01.yaml").is_none());
         // 未绑定剧本时不检查
         assert!(check_written_chapter(&StageSnapshot::default(), "/p/Chapters/01.yaml").is_none());
+    }
+
+    #[test]
+    fn script_key_from_story_config_path() {
+        assert_eq!(
+            script_key_of_story_config(
+                "game_data/scripts/character/DeepSeek/雨夜爆种/story_config.yaml"
+            )
+            .as_deref(),
+            Some("character/DeepSeek/雨夜爆种")
+        );
+        // Windows 分隔符
+        assert_eq!(
+            script_key_of_story_config(
+                r"D:\d\data\game_data\scripts\standalone\我的剧本\story_config.yaml"
+            )
+            .as_deref(),
+            Some("standalone/我的剧本")
+        );
+        // flat 布局
+        assert_eq!(
+            script_key_of_story_config("game_data/scripts/我的剧本/story_config.yaml").as_deref(),
+            Some("我的剧本")
+        );
+        // 章节文件 / .bak / 不在 scripts 下 → 一律不认
+        assert_eq!(
+            script_key_of_story_config("game_data/scripts/x/Chapters/01.yaml"),
+            None
+        );
+        assert_eq!(
+            script_key_of_story_config("game_data/scripts/x/story_config.yaml.bak"),
+            None
+        );
+        assert_eq!(
+            script_key_of_story_config("data/skills/foo/story_config.yaml"),
+            None
+        );
     }
 }

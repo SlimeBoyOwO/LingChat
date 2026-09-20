@@ -86,6 +86,27 @@ pub async fn update_conversation_title(
     Ok(())
 }
 
+/// 绑定会话的剧本 key。
+///
+/// 用于「新建会话直接造剧本」这条路径：建会话时还没有剧本，key 只能等
+/// `story_config.yaml` 落盘后再补。顺带刷新 updated_at，保持列表排序正确。
+pub async fn update_conversation_script_key(
+    db: &DatabaseConnection,
+    id: i32,
+    script_key: String,
+) -> Result<(), String> {
+    let Some(m) = get_conversation(db, id).await? else {
+        return Ok(());
+    };
+    let mut am: skill_agent_conversation::ActiveModel = m.into();
+    am.script_key = Set(Some(script_key));
+    am.updated_at = Set(Local::now().naive_local());
+    am.update(db)
+        .await
+        .map_err(|e| format!("更新会话剧本 key 失败: {}", e))?;
+    Ok(())
+}
+
 /// 删除会话及其全部消息。
 pub async fn delete_conversation(db: &DatabaseConnection, id: i32) -> Result<(), String> {
     MsgEntity::delete_many()

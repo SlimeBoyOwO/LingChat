@@ -236,7 +236,10 @@ pub async fn execute_tool(
                 return (false, "缺少 path 参数".into());
             }
             match ft().write_file(path, content, append) {
-                Ok(out) => (true, with_chapter_check(ctx, path, out, append)),
+                Ok(out) => {
+                    bind_script_key_if_new(ctx, path).await;
+                    (true, with_chapter_check(ctx, path, out, append))
+                },
                 Err(e) => (false, e.to_string()),
             }
         },
@@ -371,5 +374,33 @@ fn with_chapter_check(ctx: &SkillAgentRunContext, path: &str, out: String, appen
     match stage::check_written_chapter(&ctx.stage_snapshot, path) {
         Some(problems) => format!("{}\n\n[章节自检] {}", out, problems),
         None => out,
+    }
+}
+
+/// 剧本包诞生时把它的 key 绑到会话上。
+///
+/// 「新建会话直接造剧本」这条路径建会话时还没有剧本，key 只能等
+/// `story_config.yaml` 落盘后再补 —— 路径本身就含 key。
+/// 会话已有绑定时不覆盖；绑定在**下一轮**生效（本轮快照已定，材料与 directive 不中途换）。
+async fn bind_script_key_if_new(ctx: &SkillAgentRunContext, path: &str) {
+    if ctx.stage_snapshot.script_key.is_some() {
+        return;
+    }
+    let Some(key) = stage::script_key_of_story_config(path) else {
+        return;
+    };
+    // 确认它确实是引擎认得的剧本包，别把同名文件当剧本
+    if crate::utils::script_paths::resolve_script_dir(&key).is_err() {
+        return;
+    }
+    match crate::ai_service::skill_agent::db::update_conversation_script_key(
+        &ctx.db,
+        ctx.conversation_id,
+        key.clone(),
+    )
+    .await
+    {
+        Ok(()) => tracing::info!("[skill_agent] 会话已绑定剧本 key: {}", key),
+        Err(e) => tracing::warn!("[skill_agent] 绑定剧本 key 失败: {}", e),
     }
 }
