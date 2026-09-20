@@ -1407,7 +1407,7 @@ export async function mountFlyBrain(root, options) {
   /* 果蝇姿态：poseT 0=飞行 1=落地 */
   let poseT = 0;
   function fillFly(t, dt, poseTarget) {
-    poseT += (poseTarget - poseT) * (1 - Math.exp(-dt * 3));
+    poseT += (poseTarget - poseT) * (1 - Math.exp(-dt * 2)); // 起飞/落地过渡 ~0.5s
     const airT = 1 - poseT;
     const lean = airT * 0.32; // 飞行前倾
     const cx = Math.cos(lean),
@@ -1490,6 +1490,8 @@ export async function mountFlyBrain(root, options) {
         flyBuf[o++] = col[2];
       }
     };
+    /* tripod 步态：L1/R2/L3 与 R1/L2/L3 两组交替，步频 6-8Hz 随速度缩放 */
+    const stepFreq = 6 + 2 * Math.min(1, flySpeed / 3);
     for (const leg of LEGS) {
       const j1 = Math.sin(t * 13 + leg.phase) * jitterAmp,
         j2 = Math.sin(t * 17 + leg.phase * 1.3) * jitterAmp,
@@ -1506,6 +1508,25 @@ export async function mountFlyBrain(root, options) {
         lerpP(leg.curlF[1], leg.standF[1]) + j2,
         lerpP(leg.curlF[2], leg.standF[2]) + j3 + dangle,
       ];
+      if (gaitT > 0.001) {
+        // 摆动相抬腿前移、支撑相蹬地后移（局部 -Z 为前方）
+        const group = (leg.i + (leg.s > 0 ? 0 : 1)) % 2;
+        const ph = (t * stepFreq + group * 0.5 + leg.phase * 0.03) % 1;
+        let gz = 0,
+          gy = 0;
+        if (ph < 0.5) {
+          const u = ph / 0.5;
+          gz = 0.24 * (0.5 - u);
+          gy = 0.05 * Math.sin(Math.PI * u);
+        } else {
+          const u = (ph - 0.5) / 0.5;
+          gz = 0.24 * (u - 0.5);
+        }
+        kL[1] += gy * 0.45 * gaitT;
+        kL[2] += gz * 0.5 * gaitT;
+        fL[1] += gy * gaitT;
+        fL[2] += gz * gaitT;
+      }
       rot(leg.a[0], leg.a[1], leg.a[2], pa);
       rot(kL[0], kL[1], kL[2], pk);
       rot(fL[0], fL[1], fL[2], pf);
@@ -1633,9 +1654,51 @@ export async function mountFlyBrain(root, options) {
       spikeTimes = null,
       spikeBuf = null,
       ready = false;
-    let yaw = 0.8;
-    const pitch = 0.35,
+    let yaw = 0.8,
+      pitch = 0.35,
       dist = 1.7;
+    let lastDrag = 0,
+      dragging = false,
+      dragX = 0,
+      dragY = 0;
+    /* 轨道交互对齐原版网页：左键拖拽旋转、滚轮缩放、空闲 3 秒恢复自转 */
+    on(cv, "pointerdown", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      dragging = true;
+      dragX = e.clientX;
+      dragY = e.clientY;
+      cv.setPointerCapture(e.pointerId);
+      lastDrag = performance.now();
+    });
+    on(cv, "pointermove", (e) => {
+      if (!dragging) return;
+      e.stopPropagation();
+      const dx = e.clientX - dragX,
+        dy = e.clientY - dragY;
+      dragX = e.clientX;
+      dragY = e.clientY;
+      yaw += dx * 0.006;
+      pitch = Math.max(-1.5, Math.min(1.5, pitch + dy * 0.006));
+      lastDrag = performance.now();
+    });
+    on(cv, "pointerup", () => {
+      dragging = false;
+    });
+    on(cv, "pointercancel", () => {
+      dragging = false;
+    });
+    on(
+      cv,
+      "wheel",
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dist = Math.max(0.4, Math.min(5, dist * Math.exp(e.deltaY * 0.001)));
+        lastDrag = performance.now();
+      },
+      { passive: false },
+    );
     async function init() {
       const res = await invoke("fly_brain_positions");
       const data = base64ToF32(res.data_b64);
@@ -1687,7 +1750,7 @@ export async function mountFlyBrain(root, options) {
     }
     function render(now, dt) {
       if (!ready || destroyed) return;
-      yaw += dt * 0.12; // 固定缓慢自转（纯观赏，不可拖拽）
+      if (now - lastDrag > 3000) yaw += dt * 0.06; // 空闲 3 秒缓慢自转（对齐原版）
       const asp = cv.width / cv.height;
       const m = matMul(trans(0, 0, -dist), matMul(rotX(pitch), rotY(yaw)));
       const mvp = matMul(persp(0.9, asp, 0.01, 10), m);
@@ -1795,7 +1858,9 @@ export async function mountFlyBrain(root, options) {
     eating: "进食中",
     resting: "休息中",
     sleeping: "睡觉中",
+    walking: "散步中",
   };
+  const KNOWN_STATES = new Set(Object.keys(STATE_TEXT));
   let sim = null,
     firstState = false;
   let tod = 0.5;
@@ -1810,6 +1875,9 @@ export async function mountFlyBrain(root, options) {
     visionLT = 0,
     visionRT = 0,
     eatFlashT0 = -10;
+  let gaitT = 0, // tripod 步态混合权重（0=站立静止 1=行走）
+    flySpeed = 0,
+    flySpeedT = 0;
   let hungerV = 0,
     energyV = 1,
     activity = 0,
@@ -1880,9 +1948,11 @@ export async function mountFlyBrain(root, options) {
       flyTarget.x = st.fly.x ?? flyTarget.x;
       flyTarget.z = st.fly.z ?? flyTarget.z;
       if (typeof st.fly.heading === "number") flyHeading = st.fly.heading;
-      const nextState = st.fly.state || "flying";
+      const nextRaw = st.fly.state || "flying";
+      const nextState = KNOWN_STATES.has(nextRaw) ? nextRaw : "flying"; // 不认识的 state 按 flying 处理
       if (nextState === "eating" && flyState !== "eating") eatFlashT0 = performance.now() / 1000; // 吃到瞬间双眼同闪
       flyState = nextState;
+      if (typeof st.fly.speed === "number") flySpeedT = st.fly.speed;
       hungerV = st.fly.hunger ?? hungerV;
       energyV = st.fly.energy ?? energyV;
     }
@@ -2020,6 +2090,8 @@ export async function mountFlyBrain(root, options) {
     activity += (activityTarget - activity) * (1 - Math.exp(-dt * 4));
     visionL += (visionLT - visionL) * (1 - Math.exp(-dt * 7));
     visionR += (visionRT - visionR) * (1 - Math.exp(-dt * 7));
+    flySpeed += (flySpeedT - flySpeed) * (1 - Math.exp(-dt * 6));
+    gaitT += ((flyState === "walking" ? 1 : 0) - gaitT) * (1 - Math.exp(-dt * 4));
     const flyFloats = fillFly(t, dt, airborne ? 0 : 1);
 
     /* 相机 */

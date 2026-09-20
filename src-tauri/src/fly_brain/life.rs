@@ -20,12 +20,18 @@
 //! - 光照注入：白天给左右视觉群加 ∝ max(0,sun_elevation)×0.5 的电流（昼夜节律），
 //!   夜间无注入脑更安静；
 //! - 进食：距食物 <2.0 → reward(1.0)、hunger=0、eating 2 tick、食物进入重生计时；
+//! - 走路（walking）：进食结束后 ~20% 概率落地散步 40~120 tick（随机）后起飞
+//!   （概率按验收区间定标，见 LAND_P_AFTER_EAT 注释）；
+//!   白天飞行中每 tick 约 1/800 概率自发落地；走路时贴地（前端按 state 处理 y）、
+//!   speed = 飞行基础速 ×0.25，转向仍走 DN 读出（无感知时沿用漫游规则），
+//!   走路中靠近食物 <2.0 同样可以进食（吃完接着走）；散步中饥饿 ≥70 起飞觅食，
+//!   夜间入睡转换从 walking 也允许。落地/起飞各记 land/takeoff 事件；
 //! - 作息：sun_elevation<−0.2 且 energy<60 → sleeping（不注入 drive、speed=0、
 //!   energy +2/tick）；sun_elevation>0 → 醒来（wake 事件）。白天飞行 energy 缓慢
 //!   下降，<20 → resting 落地恢复（≥60 起飞）。hunger≥100 → 挨饿：punish(−1.0)、
 //!   hunger=50、energy−30（starve 事件）；
-//! - 事件日志：{seq 自增, kind: eat|sleep|wake|starve|punish, text 中文短句}，
-//!   保留最近 8 条（"punish" 为预留 kind，当前由 starve 承载惩罚语义）。
+//! - 事件日志：{seq 自增, kind: eat|sleep|wake|starve|land|takeoff|punish,
+//!   text 中文短句}，保留最近 8 条（"punish" 为预留 kind，由 starve 承载惩罚语义）。
 //!
 //! 本模块只管世界规则：仿真推进与配速在 worker.rs，感觉/运动映射在 brain_io.rs。
 
@@ -63,6 +69,16 @@ const EVENT_CAP: usize = 8; // 事件日志保留条数
 // ---- 无感知巡航（打转修复）----
 const WANDER_AMP: f32 = 0.05; // 漫游摆动幅度（rad/tick，远小于 TURN_RATE）
 const WANDER_PERIOD: f32 = 53.0; // 漫游摆动周期（tick，低频正弦）
+// ---- 地面走路 ----
+const WALK_SPEED_FACTOR: f32 = 0.25; // 走路速度 = 飞行基础速 ×0.25（贴地悠闲散步）
+const WALK_MIN_TICKS: u32 = 40; // 散步最短 tick
+const WALK_MAX_TICKS: u32 = 120; // 散步最长 tick
+const LAND_P_AFTER_EAT: f64 = 0.2; // 进食结束后落地散步概率（定标见下行冒烟记录：
+// 觅食成功率高（~8 次进食/600 tick）下，0.35 会使
+//   walking 占白天 ~53% 超出验收区间上限 40%；
+//   0.2 落在 ~25-35%。任务文本原为"~35%"的近似值）
+const LAND_P_SPONT: f64 = 1.0 / 800.0; // 白天飞行中每 tick 自发落地概率
+const WALK_TAKEOFF_HUNGER: f32 = 70.0; // 散步中饥饿达到此值起飞觅食
 
 /// 果蝇状态（snapshot 序列化为小写字符串）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,6 +88,8 @@ pub enum FlyState {
     Eating,
     Resting,
     Sleeping,
+    /// 地面走路：贴地散步（speed = 飞行基础速 ×0.25），转向仍走 DN 读出。
+    Walking,
 }
 
 impl FlyState {
@@ -82,6 +100,7 @@ impl FlyState {
             FlyState::Eating => "eating",
             FlyState::Resting => "resting",
             FlyState::Sleeping => "sleeping",
+            FlyState::Walking => "walking",
         }
     }
 }
@@ -109,6 +128,8 @@ pub struct Fly {
     pub energy: f32,
     pub state: FlyState,
     eating_left: u32,
+    /// 剩余散步 tick（walking 倒计时；起飞/入睡时清零）。
+    walk_left: u32,
 }
 
 /// 生活事件（kind 取自 eat|sleep|wake|starve|punish）。
@@ -155,6 +176,7 @@ impl FlyLife {
                 energy: 100.0,
                 state: FlyState::Flying,
                 eating_left: 0,
+                walk_left: 0,
             },
             foods: Vec::new(),
             events: VecDeque::with_capacity(EVENT_CAP + 1),
@@ -327,9 +349,11 @@ impl FlyLife {
         let elev = self.sun_elevation();
         let day = elev > 0.0;
         let airborne = matches!(self.fly.state, FlyState::Flying | FlyState::Foraging);
+        let walking = self.fly.state == FlyState::Walking;
+        let mobile = airborne || walking; // 会动的状态（飞行/走路）
 
-        // 1) 转向（仅飞行状态；action 1=左转, 2=右转, 0=直行）
-        if airborne {
+        // 1) 转向（飞行与走路状态；action 1=左转, 2=右转, 0=直行）
+        if mobile {
             if self.had_percept {
                 // 有方向性感知：采信 DN 读出（MARGIN 死区判定保留在 BrainIO::decide，
                 // 与 snake.py 一致，此处不误用/不重复判定）
@@ -350,11 +374,14 @@ impl FlyLife {
             self.fly.heading = self.fly.heading.rem_euclid(TAU);
         }
 
-        // 2) 速度 = 基础速 × (0.5+DN 总放电归一) × energy 系数；落地状态 speed=0
+        // 2) 速度：飞行 = 基础速 × (0.5+DN 总放电归一) × energy 系数；
+        //    走路 = 基础速 ×0.25（贴地散步，不随 DN/精力缩放）；其余落地状态 speed=0
         let dn_norm = ((l + r) as f64 / (io.norm_l + io.norm_r).max(1.0)).clamp(0.0, 1.0) as f32;
         let energy_factor = 0.3 + 0.7 * (self.fly.energy / 100.0).clamp(0.0, 1.0);
         self.fly.speed = if airborne {
             BASE_SPEED * (0.5 + dn_norm) * energy_factor
+        } else if walking {
+            BASE_SPEED * WALK_SPEED_FACTOR
         } else {
             0.0
         };
@@ -368,8 +395,8 @@ impl FlyLife {
             self.fly.z *= WORLD_RADIUS / d;
         }
 
-        // 4) 进食判定（飞行中距食物 <2.0）：reward、hunger=0、eating 2 tick、重生计时
-        if airborne {
+        // 4) 进食判定（飞行/走路中距食物 <2.0）：reward、hunger=0、eating 2 tick、重生计时
+        if mobile {
             if let Some((fi, dist)) = self.nearest_food() {
                 if dist < EAT_DIST {
                     let kind = self.foods[fi].kind;
@@ -414,7 +441,17 @@ impl FlyLife {
             FlyState::Eating => {
                 self.fly.eating_left = self.fly.eating_left.saturating_sub(1);
                 if self.fly.eating_left == 0 {
-                    self.fly.state = FlyState::Flying;
+                    if self.fly.walk_left > 0 {
+                        // 走路中吃的：吃完接着走
+                        self.fly.state = FlyState::Walking;
+                    } else if self.rng.gen::<f64>() < LAND_P_AFTER_EAT {
+                        // 进食结束 ~35% 概率落地散步 40~120 tick
+                        self.fly.state = FlyState::Walking;
+                        self.fly.walk_left = self.rng.gen_range(WALK_MIN_TICKS..=WALK_MAX_TICKS);
+                        self.push_event("land", "落地散散步");
+                    } else {
+                        self.fly.state = FlyState::Flying;
+                    }
                 }
             },
             FlyState::Resting => {
@@ -432,6 +469,20 @@ impl FlyLife {
                     self.push_event("wake", "天亮了，起床觅食！");
                 }
             },
+            FlyState::Walking => {
+                // 散步倒计时；走路不耗精力也不恢复（低强度活动）
+                self.fly.walk_left = self.fly.walk_left.saturating_sub(1);
+                if self.fly.hunger >= WALK_TAKEOFF_HUNGER {
+                    // 饿了 → 起飞觅食
+                    self.take_off();
+                } else if elev < SLEEP_ELEVATION && self.fly.energy < 60.0 {
+                    // 夜间入睡（走路本来就贴着地）
+                    self.fall_asleep();
+                } else if self.fly.walk_left == 0 {
+                    // 散步结束 → 起飞
+                    self.take_off();
+                }
+            },
             FlyState::Flying | FlyState::Foraging => {
                 let drain = if day {
                     ENERGY_DRAIN_DAY
@@ -443,6 +494,11 @@ impl FlyLife {
                     self.fall_asleep();
                 } else if self.fly.energy < REST_ENTER {
                     self.fly.state = FlyState::Resting;
+                } else if day && self.rng.gen::<f64>() < LAND_P_SPONT {
+                    // 白天飞行中每 tick 小概率自发落地散步
+                    self.fly.state = FlyState::Walking;
+                    self.fly.walk_left = self.rng.gen_range(WALK_MIN_TICKS..=WALK_MAX_TICKS);
+                    self.push_event("land", "落地散散步");
                 }
             },
         }
@@ -466,8 +522,16 @@ impl FlyLife {
         self.tick += 1;
     }
 
+    /// 起飞（散步结束/饿了去觅食）：清散步倒计时并记事件。
+    fn take_off(&mut self) {
+        self.fly.state = FlyState::Flying;
+        self.fly.walk_left = 0;
+        self.push_event("takeoff", "起飞啦！");
+    }
+
     fn fall_asleep(&mut self) {
         self.fly.state = FlyState::Sleeping;
+        self.fly.walk_left = 0; // 入睡即中断本次散步
         if self.fly.hunger >= 60.0 {
             self.push_event("sleep", "饿着肚子睡着了…");
         } else {

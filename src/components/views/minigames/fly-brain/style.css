@@ -147,7 +147,12 @@
   aspect-ratio: 4 / 3;
   display: block;
   border-radius: 12px;
+  cursor: grab;
+  touch-action: none;
   /* 透明底：点云浮在毛玻璃面板之上 */
+}
+.brain-panel canvas:active {
+  cursor: grabbing;
 }
 .brain-hint {
   font-size: 11px;

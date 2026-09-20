@@ -12,7 +12,8 @@
 //!   tick, sim_time, speed, plasticity, weights_changed, brain_activity,
 //!   spikes_total, spikes, spike_ages_ms,
 //!   vision: { left, right, optic }（视觉群 600ms 窗口发放率归一 0..1，复眼发光用）,
-//!   fly: { x, z, heading, speed, state, hunger, energy },
+//!   fly: { x, z, heading, speed, state, hunger, energy }
+//!   （state ∈ flying/foraging/eating/resting/sleeping/walking，walking=贴地散步），
 //!   foods: [{ id, x, z, kind }], events: [{ seq, kind, text }],
 //!   world_radius, day_length_ticks }`。建议 5~20Hz 轮询。
 //! - `invoke("fly_brain_control", { payload })` → `{ ok, speed, plasticity }`：
