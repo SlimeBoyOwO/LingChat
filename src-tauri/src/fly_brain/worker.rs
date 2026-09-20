@@ -61,7 +61,7 @@ pub struct FlySnap {
     pub energy: f32,
 }
 
-/// 蜜源快照（foods 数组元素；只列当前可用的，重生中的不出现）。
+/// 蜜源快照（foods 数组元素；只列当前存在的——被吃移除、补货随机新位置）。
 #[derive(Debug, Clone, Serialize)]
 pub struct FoodSnap {
     pub id: u32,
@@ -377,7 +377,6 @@ fn build_life_state(life: &FlyLife, brain: &Brain, speed: f32, spikes_total: u64
         foods: life
             .foods
             .iter()
-            .filter(|f| f.available)
             .map(|f| FoodSnap {
                 id: f.id,
                 x: f.x,
