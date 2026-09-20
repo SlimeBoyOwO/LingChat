@@ -1,0 +1,56 @@
+<div class="fly-life-root">
+  <canvas id="scene"></canvas>
+
+  <header class="hud-top">
+    <h1>果蝇的每一天</h1>
+    <div class="tod-line">
+      <span id="todIcon" class="tod-icon">☀️</span>
+      <span id="todClock">12:00</span>
+    </div>
+  </header>
+
+  <nav class="hud-buttons" aria-label="场景控制">
+    <button type="button" id="btnSpeed" title="时间流速">流速 1x</button>
+    <button type="button" id="btnPlastic" title="蘑菇体式奖惩可塑性（工程近似）">学习 关</button>
+    <button type="button" id="btnBrain" title="左上角果蝇全脑点云小窗">大脑 关</button>
+    <button type="button" id="btnRestart">重新开始</button>
+    <button type="button" id="btnExit">返回</button>
+  </nav>
+
+  <aside class="brain-panel" id="brainPanel" hidden>
+    <div class="brain-title"><span>果蝇大脑</span><span class="brain-sub">139,255 神经元</span></div>
+    <canvas id="brainCv" width="640" height="480"></canvas>
+    <div class="brain-hint" id="brainHint">载入脑模型…</div>
+  </aside>
+
+  <aside class="status-card" aria-live="polite">
+    <div class="status-state" id="flyState">飞舞中</div>
+    <div class="bar-row">
+      <span class="bar-name">饥饿</span>
+      <div class="bar"><i id="barHunger" class="bar-hunger"></i></div>
+    </div>
+    <div class="bar-row">
+      <span class="bar-name">能量</span>
+      <div class="bar"><i id="barEnergy" class="bar-energy"></i></div>
+    </div>
+    <div class="bar-row eye-row">
+      <span class="bar-name">复眼</span>
+      <span class="eye-dot" id="eyeL"></span>
+      <span class="eye-tag">L</span>
+      <span class="eye-dot" id="eyeR"></span>
+      <span class="eye-tag">R</span>
+    </div>
+  </aside>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+  <footer class="hud-credit">
+    <span class="brain-dot" id="brainDot"></span>
+    <span class="brain-label">脑活动</span>
+    <span class="credit-text">脑模型：FlyWire FAFB v783 · CC BY-NC 4.0 · Shiu et al. 2024</span>
+  </footer>
+
+  <div class="loading-veil" id="loadingVeil">
+    <div class="loading-text">正在唤醒果蝇大脑……</div>
+  </div>
+</div>

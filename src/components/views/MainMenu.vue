@@ -22,8 +22,7 @@
 
     <!-- 人物图层（位于星星之上，菜单之下） -->
     <img
-      class="pointer-events-none absolute top-1/2 left-1/2 z-3 max-h-full max-w-full select-none
-        transform-[translate(-50%,-50%)] will-change-transform"
+      class="pointer-events-none absolute top-1/2 left-1/2 z-3 max-h-full max-w-full transform-[translate(-50%,-50%)] will-change-transform select-none"
       ref="charRef"
       src="../../assets/images/alona.png"
       :alt="$t('views.mainMenu.characterAlt')"
@@ -57,9 +56,15 @@
           v-if="menuState === 'gameMode'"
           @back="backToMainMenu"
           @open-scripts="showScriptModeMenu"
+          @open-mini-games="showMiniGameMenu"
           :loadingScripts="loadingScripts"
           :scripts="scripts"
         />
+      </Transition>
+
+      <!-- 小游戏菜单沿用主菜单背景、字体和布局 -->
+      <Transition name="slide-right">
+        <MiniGameOptions v-if="menuState === 'miniGames'" @back="showGameModeMenu" />
       </Transition>
 
       <!-- 剧本模式菜单 -->
@@ -98,8 +103,17 @@ import StarAnimation from "../game/standard/animations/StarAnimation.vue";
 import { SettingsPanel as Settings } from "../settings/";
 import MainChat from "./MainChat.vue";
 import { StartLogo, StartPage } from "./menu/base";
-import { GameModeOptions, MainMenuOptions, ScriptModeOptions, WorkshopOptions } from "./menu/page";
+import {
+  GameModeOptions,
+  MiniGameOptions,
+  MainMenuOptions,
+  ScriptModeOptions,
+  WorkshopOptions,
+} from "./menu/page";
 
+const props = withDefaults(defineProps<{ initialMenu?: "main" | "miniGames" }>(), {
+  initialMenu: "main",
+});
 const { t } = useI18n();
 const router = useRouter();
 const uiStore = useUIStore();
@@ -107,7 +121,9 @@ const settingsStore = useSettingsStore();
 
 // 页面与菜单状态
 const currentPage = ref("mainMenu");
-const menuState = ref<"main" | "gameMode" | "scriptMode" | "workshop">("main");
+const menuState = ref<"main" | "gameMode" | "scriptMode" | "workshop" | "miniGames">(
+  props.initialMenu,
+);
 const scripts = ref<ScriptSummary[]>([]);
 const loadingScripts = ref(false);
 const starsEnabled = computed(() => settingsStore.mainMenuStarsEnabled);
@@ -137,6 +153,9 @@ const Save = Settings;
 /* ================== 菜单逻辑 ================== */
 function showGameModeMenu() {
   menuState.value = "gameMode";
+}
+function showMiniGameMenu() {
+  menuState.value = "miniGames";
 }
 function handleOpenCredits() {
   router.push("/credit");

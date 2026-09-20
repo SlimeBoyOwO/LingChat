@@ -7,6 +7,7 @@ mod cast;
 mod config;
 mod data_dir;
 mod db;
+mod fly_brain;
 mod lan_sync;
 mod manifest;
 mod migration;

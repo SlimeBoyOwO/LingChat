@@ -1,4 +1,8 @@
 export default {
+  miniGames: {
+    flyBrainTitle: "ハエの一日",
+  },
+
   loader: {
     preparing: "きみのかわいい子が準備中だよ",
   },
@@ -57,7 +61,7 @@ export default {
     storyMode: "ストーリーモード",
     scriptEditor: "クリエイティブ工房",
     cloudWorkshop: "クラウド工房",
-    miniGame: "ミニゲーム（開発中）",
+    miniGame: "ミニゲーム",
     back: "戻る",
   },
   pet: {

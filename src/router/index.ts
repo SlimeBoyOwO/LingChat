@@ -16,8 +16,14 @@ const ScriptEditor = () => import("../components/views/ScriptEditor.vue");
 // 云端创意工坊（主菜单「创意工坊」二级菜单进入，原设置页 workshop 标签迁移）
 const WorkshopPage = () => import("../components/views/WorkshopPage.vue");
 
+// 小游戏相关 view 集中在 components/views/minigames/ 子目录，避免堆在 views 根目录
+const MiniGames = () => import("../components/views/minigames/MiniGames.vue");
+const FlyBrain = () => import("../components/views/minigames/FlyBrain.vue");
+
 // 1. 定义路由表
 const routes = [
+  { path: "/mini-games", name: "MiniGames", component: MiniGames },
+  { path: "/mini-games/fly-brain", name: "FlyBrain", component: FlyBrain },
   {
     path: "/",
     name: "MainMenu",

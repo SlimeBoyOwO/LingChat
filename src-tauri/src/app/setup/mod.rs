@@ -19,7 +19,7 @@
 
 use crate::app::logging::LogFilterHandle;
 use crate::app::state::AppState;
-use crate::{ai_service, api, cast, data_dir, lan_sync, resource_sync, utils};
+use crate::{ai_service, api, cast, data_dir, fly_brain, lan_sync, resource_sync, utils};
 use tauri::Manager;
 
 mod asr;
@@ -55,6 +55,7 @@ pub fn setup(
     app.manage(utils::cpu_perf::CpuDetectionCache::new());
     app.manage(utils::gpu_perf::GpuDetectionCache::new());
     app.manage(api::role_archive::RoleArchiveState::default());
+    app.manage(fly_brain::FlyBrainState::default());
 
     // Android 修复：Tauri 在 setup 闭包执行前已创建 webview 窗口，前端 invoke
     // 命令会在 IPC runtime worker 上立即 dispatch；如果 AppState 还没 manage

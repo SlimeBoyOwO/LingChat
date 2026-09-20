@@ -1,5 +1,9 @@
 // 繁體中文（香港 · 粵語文體）语言包，由 zh-CN/views.ts（约 44 条） 翻譯維護
 export default {
+  miniGames: {
+    flyBrainTitle: "果蠅的每一天",
+  },
+
   loader: {
     preparing: "你嘅小可愛準備緊",
   },
@@ -56,7 +60,7 @@ export default {
     storyMode: "劇情模式",
     scriptEditor: "創意工坊",
     cloudWorkshop: "雲·創意工坊",
-    miniGame: "小遊戲（開發緊）",
+    miniGame: "小遊戲",
     back: "返回",
   },
   pet: {

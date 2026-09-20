@@ -1,4 +1,8 @@
 export default {
+  miniGames: {
+    flyBrainTitle: "果蝇的每一天",
+  },
+
   loader: {
     preparing: "你的小可爱正在准备中",
   },
@@ -55,7 +59,7 @@ export default {
     storyMode: "剧情模式（在自由模式进入）",
     scriptEditor: "创意工坊",
     cloudWorkshop: "云·创意工坊",
-    miniGame: "小游戏（开发中）",
+    miniGame: "小游戏",
     back: "返回",
   },
   pet: {

@@ -1,5 +1,9 @@
 // English language pack, maintained from zh-CN/views.ts（约 44 条）
 export default {
+  miniGames: {
+    flyBrainTitle: "A Fly's Life",
+  },
+
   loader: {
     preparing: "Your little cutie is getting ready",
   },
@@ -58,7 +62,7 @@ export default {
     storyMode: "Story Mode",
     scriptEditor: "Workshop",
     cloudWorkshop: "Cloud Workshop",
-    miniGame: "Mini Games (In Development)",
+    miniGame: "Mini Games",
     back: "Back",
   },
   pet: {

@@ -260,6 +260,12 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::asr::asr_stream_audio_chunk,
         api::asr::asr_stop_streaming,
         api::asr::asr_cancel_streaming,
+        // ── 果蝇大脑（模拟果蝇生活）──
+        api::fly_brain::fly_brain_enter,
+        api::fly_brain::fly_brain_exit,
+        api::fly_brain::fly_brain_positions,
+        api::fly_brain::fly_brain_state,
+        api::fly_brain::fly_brain_control,
         exit_app,
     ])
 }
