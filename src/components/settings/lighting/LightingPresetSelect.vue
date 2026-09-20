@@ -4,8 +4,7 @@
     <button
       ref="triggerEl"
       @click="toggle"
-      class="flex w-full items-center justify-between gap-2 rounded-xl border border-white/15
-        bg-black/40 px-3 py-2 text-left transition-colors hover:border-amber-400/50"
+      class="flex w-full items-center justify-between gap-2 rounded-xl border border-white/15 bg-black/40 px-3 py-2 text-left transition-colors hover:border-amber-400/50"
     >
       <span
         class="min-w-0 flex-1 truncate text-sm"
@@ -31,16 +30,14 @@
         v-if="open"
         ref="panelEl"
         :style="panelStyle"
-        class="z-[10001] flex min-w-[19rem] flex-col overflow-hidden rounded-xl border
-          border-white/15 bg-slate-900/95 shadow-2xl backdrop-blur-2xl"
+        class="z-[10001] flex min-w-[19rem] flex-col overflow-hidden rounded-xl border border-white/15 bg-slate-900/95 shadow-2xl backdrop-blur-2xl"
       >
         <div class="shrink-0 border-b border-white/10 p-2">
           <input
             ref="searchEl"
             v-model="q"
             :placeholder="$t('settings.background.lighting.select.searchPlaceholder')"
-            class="w-full rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs
-              text-white placeholder-white/30 focus:border-amber-400/60 focus:outline-none"
+            class="w-full rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs text-white placeholder-white/30 focus:border-amber-400/60 focus:outline-none"
           />
         </div>
 
@@ -49,8 +46,7 @@
           <div
             @click="pick(null)"
             :class="{ 'bg-amber-400/15': !selectedId }"
-            class="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors
-              hover:bg-white/10"
+            class="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors hover:bg-white/10"
           >
             <span class="text-xs font-bold text-white/80">{{ noneLabel }}</span>
           </div>
@@ -67,8 +63,7 @@
               :key="p.id"
               @click="pick(p)"
               :class="{ 'bg-amber-400/15': selectedId === p.id }"
-              class="group/row flex cursor-pointer items-start gap-2 rounded-lg px-2.5 py-2
-                transition-colors hover:bg-white/10"
+              class="group/row flex cursor-pointer items-start gap-2 rounded-lg px-2.5 py-2 transition-colors hover:bg-white/10"
             >
               <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-center gap-1.5">
@@ -119,8 +114,7 @@
         <div class="shrink-0 border-t border-white/10 p-1.5">
           <div
             @click="openCreate"
-            class="cursor-pointer rounded-lg px-2.5 py-2 text-xs font-bold text-amber-200/90
-              transition-colors hover:bg-amber-400/10"
+            class="cursor-pointer rounded-lg px-2.5 py-2 text-xs font-bold text-amber-200/90 transition-colors hover:bg-amber-400/10"
           >
             {{ $t("settings.background.lighting.select.newPreset") }}
           </div>
@@ -138,174 +132,174 @@
 </template>
 
 <script setup lang="ts">
-  /**
-   * 光影预设下拉。以前是一大片卡片网格，19 个内置预设加上「我的预设」越堆越高，
-   * 场景编辑器里根本放不下；这里收成一条下拉，描述常驻在每一行下面。
-   *
-   * 只负责「选哪盏灯」，不碰任何状态：选完把预设原样抛给父组件，套到全局默认还是
-   * 灌进场景草稿由父组件决定 —— 预设与场景之间是复制参数，不记引用，
-   * 所以「引用 + 手工微调」谁覆盖谁这种问题不会出现在这里。
-   */
-  import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-  import type { CSSProperties } from "vue";
-  import { useI18n } from "vue-i18n";
-  import LightingEditorModal from "./LightingEditorModal.vue";
-  import type { LightingPreset } from "../../../api/services/lighting";
-  import { clearLighting } from "../../../api/services/lighting";
-  import { useLightingStore } from "../../../stores/modules/lighting";
-  import { useDialogStore } from "../../../stores/modules/ui/dialog";
+/**
+ * 光影预设下拉。以前是一大片卡片网格，19 个内置预设加上「我的预设」越堆越高，
+ * 场景编辑器里根本放不下；这里收成一条下拉，描述常驻在每一行下面。
+ *
+ * 只负责「选哪盏灯」，不碰任何状态：选完把预设原样抛给父组件，套到全局默认还是
+ * 灌进场景草稿由父组件决定 —— 预设与场景之间是复制参数，不记引用，
+ * 所以「引用 + 手工微调」谁覆盖谁这种问题不会出现在这里。
+ */
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import type { CSSProperties } from "vue";
+import { useI18n } from "vue-i18n";
+import LightingEditorModal from "./LightingEditorModal.vue";
+import type { LightingPreset } from "../../../api/services/lighting";
+import { clearLighting } from "../../../api/services/lighting";
+import { useLightingStore } from "../../../stores/modules/lighting";
+import { useDialogStore } from "../../../stores/modules/ui/dialog";
 
-  defineProps<{
-    /** 触发条上显示的名字；空串显示 noneLabel */
-    currentLabel: string;
-    /** 「不使用预设」那一行与触发条空值时的文案（两处语义不同，交给父组件给） */
-    noneLabel: string;
-    /** 高亮用；不传就只按 currentLabel 显示 */
-    selectedId?: string;
-  }>();
+defineProps<{
+  /** 触发条上显示的名字；空串显示 noneLabel */
+  currentLabel: string;
+  /** 「不使用预设」那一行与触发条空值时的文案（两处语义不同，交给父组件给） */
+  noneLabel: string;
+  /** 高亮用；不传就只按 currentLabel 显示 */
+  selectedId?: string;
+}>();
 
-  const emit = defineEmits<{
-    picked: [preset: LightingPreset | null];
-    saved: [preset: LightingPreset];
-  }>();
+const emit = defineEmits<{
+  picked: [preset: LightingPreset | null];
+  saved: [preset: LightingPreset];
+}>();
 
-  const { t } = useI18n();
-  const lightingStore = useLightingStore();
-  const dialogStore = useDialogStore();
+const { t } = useI18n();
+const lightingStore = useLightingStore();
+const dialogStore = useDialogStore();
 
-  const rootEl = ref<HTMLElement | null>(null);
-  const triggerEl = ref<HTMLElement | null>(null);
-  const panelEl = ref<HTMLElement | null>(null);
-  const searchEl = ref<HTMLInputElement | null>(null);
-  const open = ref(false);
-  const q = ref("");
-  const editorShow = ref(false);
-  const editingPreset = ref<LightingPreset | null>(null);
-  const panelStyle = ref<CSSProperties>({});
+const rootEl = ref<HTMLElement | null>(null);
+const triggerEl = ref<HTMLElement | null>(null);
+const panelEl = ref<HTMLElement | null>(null);
+const searchEl = ref<HTMLInputElement | null>(null);
+const open = ref(false);
+const q = ref("");
+const editorShow = ref(false);
+const editingPreset = ref<LightingPreset | null>(null);
+const panelStyle = ref<CSSProperties>({});
 
-  /** 视口里放不下就朝上开，别把列表裁成看不见的一截。 */
-  function reposition() {
-    const rect = triggerEl.value?.getBoundingClientRect();
-    if (!rect) return;
-    const gap = 6;
-    const margin = 12;
-    const below = window.innerHeight - rect.bottom - gap - margin;
-    const above = rect.top - gap - margin;
-    const upward = below < 200 && above > below;
-    panelStyle.value = {
-      position: "fixed",
-      left: `${rect.left}px`,
-      width: `${Math.max(rect.width, 304)}px`,
-      maxHeight: `${Math.max(180, upward ? above : below)}px`,
-      ...(upward
-        ? { bottom: `${window.innerHeight - rect.top + gap}px` }
-        : { top: `${rect.bottom + gap}px` }),
-    };
+/** 视口里放不下就朝上开，别把列表裁成看不见的一截。 */
+function reposition() {
+  const rect = triggerEl.value?.getBoundingClientRect();
+  if (!rect) return;
+  const gap = 6;
+  const margin = 12;
+  const below = window.innerHeight - rect.bottom - gap - margin;
+  const above = rect.top - gap - margin;
+  const upward = below < 200 && above > below;
+  panelStyle.value = {
+    position: "fixed",
+    left: `${rect.left}px`,
+    width: `${Math.max(rect.width, 304)}px`,
+    maxHeight: `${Math.max(180, upward ? above : below)}px`,
+    ...(upward
+      ? { bottom: `${window.innerHeight - rect.top + gap}px` }
+      : { top: `${rect.bottom + gap}px` }),
+  };
+}
+
+const groups = computed(() => {
+  const kw = q.value.trim().toLowerCase();
+  const hit = (p: LightingPreset) =>
+    !kw || [p.name, p.description, p.mood.join(" ")].some((s) => s.toLowerCase().includes(kw));
+  const all = lightingStore.presets.filter(hit);
+  return [
+    { key: "custom", items: all.filter((p) => p.custom) },
+    { key: "builtin", items: all.filter((p) => !p.custom) },
+  ];
+});
+
+function toggle() {
+  open.value = !open.value;
+  if (open.value) {
+    reposition();
+    void nextTick(() => searchEl.value?.focus());
   }
+}
 
-  const groups = computed(() => {
-    const kw = q.value.trim().toLowerCase();
-    const hit = (p: LightingPreset) =>
-      !kw || [p.name, p.description, p.mood.join(" ")].some((s) => s.toLowerCase().includes(kw));
-    const all = lightingStore.presets.filter(hit);
-    return [
-      { key: "custom", items: all.filter((p) => p.custom) },
-      { key: "builtin", items: all.filter((p) => !p.custom) },
-    ];
-  });
+function close() {
+  open.value = false;
+}
 
-  function toggle() {
-    open.value = !open.value;
-    if (open.value) {
-      reposition();
-      void nextTick(() => searchEl.value?.focus());
-    }
+function pick(preset: LightingPreset | null) {
+  emit("picked", preset);
+  close();
+}
+
+function openCreate() {
+  editingPreset.value = null;
+  editorShow.value = true;
+  close();
+}
+
+function openEdit(p: LightingPreset) {
+  editingPreset.value = p;
+  editorShow.value = true;
+  close();
+}
+
+/**
+ * 编辑器自己会刷新预设表；这里只负责把存好的那条抛给父组件去套用。
+ *
+ * 保存后必须把实时预览留下的运行时覆盖清掉：它压在所有灯光之上，留着就等于
+ * 「刚才那盏灯」永远赖在画面上，之后场景自己的灯再也上不去。套哪一盏由父组件决定。
+ */
+async function onSaved(id: string) {
+  editorShow.value = false;
+  const saved = lightingStore.presets.find((p) => p.id === id);
+  editingPreset.value = null;
+  try {
+    await clearLighting();
+  } catch (e) {
+    console.error("[Lighting] 取消预览灯光失败:", e);
   }
+  if (saved) emit("saved", saved);
+}
 
-  function close() {
-    open.value = false;
+async function remove(p: LightingPreset) {
+  const ok = await dialogStore.confirm(
+    t("settings.background.lighting.custom.deleteConfirm", { name: p.name }),
+  );
+  if (!ok) return;
+  try {
+    await lightingStore.removePreset(p.id);
+  } catch (e) {
+    console.error("[Lighting] 删除自建预设失败:", e);
+    dialogStore.alert(t("settings.background.lighting.custom.deleteFailed", { msg: String(e) }));
   }
+}
 
-  function pick(preset: LightingPreset | null) {
-    emit("picked", preset);
-    close();
-  }
+function onDocClick(e: MouseEvent) {
+  if (!open.value) return;
+  const target = e.target as Node;
+  if (rootEl.value?.contains(target) || panelEl.value?.contains(target)) return;
+  close();
+}
 
-  function openCreate() {
-    editingPreset.value = null;
-    editorShow.value = true;
-    close();
-  }
+function onDocKeydown(e: KeyboardEvent) {
+  if (e.key === "Escape" && open.value) close();
+}
 
-  function openEdit(p: LightingPreset) {
-    editingPreset.value = p;
-    editorShow.value = true;
-    close();
-  }
+onMounted(() => {
+  document.addEventListener("click", onDocClick, true);
+  document.addEventListener("keydown", onDocKeydown);
+  void lightingStore.ensurePresets();
+});
 
-  /**
-   * 编辑器自己会刷新预设表；这里只负责把存好的那条抛给父组件去套用。
-   *
-   * 保存后必须把实时预览留下的运行时覆盖清掉：它压在所有灯光之上，留着就等于
-   * 「刚才那盏灯」永远赖在画面上，之后场景自己的灯再也上不去。套哪一盏由父组件决定。
-   */
-  async function onSaved(id: string) {
-    editorShow.value = false;
-    const saved = lightingStore.presets.find((p) => p.id === id);
-    editingPreset.value = null;
-    try {
-      await clearLighting();
-    } catch (e) {
-      console.error("[Lighting] 取消预览灯光失败:", e);
-    }
-    if (saved) emit("saved", saved);
-  }
+onBeforeUnmount(() => {
+  document.removeEventListener("click", onDocClick, true);
+  document.removeEventListener("keydown", onDocKeydown);
+  window.removeEventListener("scroll", reposition, true);
+  window.removeEventListener("resize", reposition);
+});
 
-  async function remove(p: LightingPreset) {
-    const ok = await dialogStore.confirm(
-      t("settings.background.lighting.custom.deleteConfirm", { name: p.name })
-    );
-    if (!ok) return;
-    try {
-      await lightingStore.removePreset(p.id);
-    } catch (e) {
-      console.error("[Lighting] 删除自建预设失败:", e);
-      dialogStore.alert(t("settings.background.lighting.custom.deleteFailed", { msg: String(e) }));
-    }
-  }
-
-  function onDocClick(e: MouseEvent) {
-    if (!open.value) return;
-    const target = e.target as Node;
-    if (rootEl.value?.contains(target) || panelEl.value?.contains(target)) return;
-    close();
-  }
-
-  function onDocKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && open.value) close();
-  }
-
-  onMounted(() => {
-    document.addEventListener("click", onDocClick, true);
-    document.addEventListener("keydown", onDocKeydown);
-    void lightingStore.ensurePresets();
-  });
-
-  onBeforeUnmount(() => {
-    document.removeEventListener("click", onDocClick, true);
-    document.removeEventListener("keydown", onDocKeydown);
+// 列表挂到 body 之后不跟着宿主滚动，所以一滚动就得重算位置。
+watch(open, (isOpen) => {
+  if (isOpen) {
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+  } else {
     window.removeEventListener("scroll", reposition, true);
     window.removeEventListener("resize", reposition);
-  });
-
-  // 列表挂到 body 之后不跟着宿主滚动，所以一滚动就得重算位置。
-  watch(open, (isOpen) => {
-    if (isOpen) {
-      window.addEventListener("scroll", reposition, true);
-      window.addEventListener("resize", reposition);
-    } else {
-      window.removeEventListener("scroll", reposition, true);
-      window.removeEventListener("resize", reposition);
-    }
-  });
+  }
+});
 </script>

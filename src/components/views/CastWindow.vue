@@ -192,7 +192,7 @@ function applyBackground(bg: string, effect: string) {
   if (effect !== uiStore.currentBackgroundEffect) uiStore.setBackgroundEffect(effect);
 }
 
-// 场景光照（GameRolesStage 的 lightOverlayStyle 依赖 currentScene）
+// 场景自带光影（lightingStore 会回落到 gameStore.currentScene.lighting）
 async function applyScene(sceneId: string) {
   try {
     let scene = scenesCache.find((s) => s.id === String(sceneId));

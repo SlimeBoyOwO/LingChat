@@ -124,7 +124,7 @@ function buildFilter(f: FilterParams | undefined): string | undefined {
   if (f.sepia > 0) parts.push(`sepia(${f.sepia})`);
   if (f.rim_enabled && (f.rim_blur ?? 0) > 0) {
     parts.push(
-      `drop-shadow(${f.rim_dx ?? 0}px ${f.rim_dy ?? 0}px ${f.rim_blur}px ${f.rim_color ?? "#ffffff"})`
+      `drop-shadow(${f.rim_dx ?? 0}px ${f.rim_dy ?? 0}px ${f.rim_blur}px ${f.rim_color ?? "#ffffff"})`,
     );
   }
   return parts.length > 0 ? parts.join(" ") : undefined;
@@ -138,7 +138,7 @@ function buildFilter(f: FilterParams | undefined): string | undefined {
  */
 function buildOverlay(
   l: LightingParams,
-  want: "background" | "character"
+  want: "background" | "character",
 ): CSSProperties | undefined {
   if (!l.overlay_enabled) return undefined;
   if (l.overlay_target !== "both" && l.overlay_target !== want) return undefined;

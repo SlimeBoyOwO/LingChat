@@ -185,7 +185,7 @@ export const useLightingStore = defineStore("lighting", {
             source: masterOn ? source : "off",
           }).catch((e) => console.warn("[Lighting] 生效状态上报失败:", e));
         },
-        { immediate: true }
+        { immediate: true },
       );
     },
   },

@@ -37,9 +37,9 @@
 </template>
 
 <script setup lang="ts">
-  import { computed } from "vue";
-  import { useLightingStore } from "@/stores/modules/lighting";
+import { computed } from "vue";
+import { useLightingStore } from "@/stores/modules/lighting";
 
-  const lightingStore = useLightingStore();
-  const plan = computed(() => lightingStore.plan);
+const lightingStore = useLightingStore();
+const plan = computed(() => lightingStore.plan);
 </script>
