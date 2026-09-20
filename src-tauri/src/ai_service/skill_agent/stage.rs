@@ -129,7 +129,29 @@ pub struct StageProfile {
     pub thinking: Option<bool>,
     /// 稳定材料：相对技能目录的路径，注入系统提示。
     pub system_materials: &'static [&'static str],
+    /// 本阶段的行为要求，注入在材料之前。
+    ///
+    /// 通用系统提示里「任务必须完成到产出物为止」容易被读成「一口气做完」，
+    /// 这里显式给出**粒度**，避免模型跨步推进或在一轮里写多章。
+    pub directive: &'static str,
 }
+
+// 各阶段的行为要求。
+const DIRECTIVE_SETUP: &str = "本阶段是设计与大纲：产出设计稿（大纲 + 章节设计 + 素材诉求）。\
+    \n- 设计稿落地后**停下等用户确认**，不要接着开始写章节";
+
+const DIRECTIVE_FORGE: &str = "本阶段是逐章编写，**粒度是「一轮一章」**：\
+    \n- 一轮只写一章，写完立即停下等用户确认；不要在一条消息里并行写多章\
+    \n- 也不要写完一章后不等确认就接着写下一章\
+    \n- 通用规则里的「任务必须完成到产出物为止」指的是**当前这一章的产出物**，不是整部剧本";
+
+const DIRECTIVE_POLISH: &str = "本阶段是校验与修复：\
+    \n- 按诊断逐条修复；需要**新编剧情内容**才能补上的缺口交回用户，不要自行编造\
+    \n- 修复完成、校验通过后停下汇报";
+
+const DIRECTIVE_MODIFY: &str = "本阶段是修改既有剧本：\
+    \n- 按用户提出的修改需求**逐项**修改，改动完成后停下等用户确认\
+    \n- **不要自行扩大改动范围**，也不要顺手重写未被要求改动的章节";
 
 /// 取阶段对应的配置。
 ///
@@ -141,28 +163,55 @@ pub fn profile(stage: Stage) -> StageProfile {
         Stage::Routing => StageProfile {
             thinking: None,
             system_materials: &[HUB_DOC],
+            directive: "",
         },
         Stage::Setup => StageProfile {
             thinking: Some(true),
             system_materials: &[HUB_DOC, WRITER_DOC, TRANSFORMER_DOC],
+            directive: DIRECTIVE_SETUP,
         },
         Stage::Forge => StageProfile {
             thinking: Some(false),
             system_materials: &[HUB_DOC, TRANSFORMER_DOC, EVENT_REFERENCE, CHAPTER_TEMPLATE],
+            directive: DIRECTIVE_FORGE,
         },
         Stage::Polish => StageProfile {
             thinking: Some(false),
             system_materials: &[HUB_DOC, TRANSFORMER_DOC, OPTIMIZER_DOC],
+            directive: DIRECTIVE_POLISH,
         },
         Stage::Modify => StageProfile {
             thinking: Some(true),
             system_materials: &[HUB_DOC, WRITER_DOC, TRANSFORMER_DOC, OPTIMIZER_DOC],
+            directive: DIRECTIVE_MODIFY,
         },
     }
 }
 
-/// 读取并拼接稳定材料，作为可注入系统提示的块。
-pub fn load_system_materials(skills_dir: &Path, stage: Stage) -> String {
+/// 渲染完整的阶段块：阶段名 + 本阶段行为要求 + 角色指令。
+///
+/// 放在系统提示末尾：前面几段一次会话内稳定，阶段切换不会作废缓存前缀。
+pub fn build_stage_block(skills_dir: &Path, stage: Stage) -> String {
+    let profile = profile(stage);
+    let mut out = format!("\n\n【当前阶段】{}", stage.label());
+    if !profile.directive.is_empty() {
+        out.push('\n');
+        out.push_str(profile.directive);
+    }
+    out.push_str(
+        "\n\n以下技能文档是本阶段**必须遵守的角色指令**，不是参考资料。\
+         \n本阶段所需的技能文档已随本提示一并提供，无需再调用 read_skill；\
+         如需其他技能（如 file-operations）仍可自行加载。",
+    );
+    out.push_str(&load_system_materials(skills_dir, stage));
+    out
+}
+
+/// 读取并拼接稳定材料，加上「角色指令」形式的来源头。
+///
+/// 用 `【角色指令 · …】` 而不是 `===== … =====`：后者读起来像文件转储，
+/// 会让模型把技能里的约束当成参考资料而不是必须执行的指令。
+fn load_system_materials(skills_dir: &Path, stage: Stage) -> String {
     let mut out = String::new();
     for rel in profile(stage).system_materials {
         let path = skills_dir.join(rel);
@@ -171,9 +220,7 @@ pub fn load_system_materials(skills_dir: &Path, stage: Stage) -> String {
             tracing::warn!("[skill_agent] 阶段材料缺失: {}", path.display());
             continue;
         };
-        out.push_str("\n\n===== ");
-        out.push_str(rel);
-        out.push_str(" =====\n");
+        out.push_str(&format!("\n\n【角色指令 · {}】\n", rel));
         out.push_str(text.trim_end());
     }
     out
@@ -524,6 +571,34 @@ id: Intro/02
                 "{stage:?} 会写/改剧本 YAML，材料里必须含 script-transformer"
             );
         }
+    }
+
+    /// 会产出章节的阶段必须显式给出「一轮一章」的粒度，否则通用规则里的
+    /// 「任务必须完成到产出物为止」会被读成「一口气写完」。
+    #[test]
+    fn forge_directive_states_one_chapter_per_turn() {
+        let d = profile(Stage::Forge).directive;
+        assert!(d.contains("一轮只写一章"), "Forge 必须写明粒度：{d}");
+        assert!(d.contains("多章"), "Forge 必须禁止多章：{d}");
+    }
+
+    #[test]
+    fn non_routing_stages_all_have_directives() {
+        for stage in [Stage::Setup, Stage::Forge, Stage::Polish, Stage::Modify] {
+            assert!(
+                !profile(stage).directive.is_empty(),
+                "{stage:?} 缺少行为要求"
+            );
+        }
+        assert!(profile(Stage::Routing).directive.is_empty());
+    }
+
+    #[test]
+    fn stage_block_marks_materials_as_directives() {
+        let block = build_stage_block(Path::new("/nonexistent-skills"), Stage::Forge);
+        assert!(block.contains("【当前阶段】"));
+        assert!(block.contains("必须遵守的角色指令"));
+        assert!(block.contains("一轮只写一章"));
     }
 
     /// 阶段材料路径必须是「技能目录/…」形式，不能是靠 base dir 解析的裸相对路径。

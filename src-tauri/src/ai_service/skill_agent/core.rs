@@ -90,8 +90,7 @@ fn build_system_prompt(
     config: &SkillAgentConfig,
     skills_block: &str,
     script_block: &str,
-    materials_block: &str,
-    stage: stage::Stage,
+    stage_block: &str,
     sandbox_dir: &Path,
     skills_dir: &Path,
 ) -> String {
@@ -129,16 +128,8 @@ fn build_system_prompt(
         Some(custom) if !custom.trim().is_empty() => custom.clone(),
         _ => default,
     };
-    // 材料块拼在最后：前面的 base/script/skills 三段在一次会话内稳定，阶段切换不会作废缓存前缀。
-    format!(
-        "{}{}{}\n\n【当前阶段】{}\n本阶段所需的技能文档已随本提示一并提供，无需再调用 read_skill；\
-         如需其他技能（如 file-operations）仍可自行加载。{}",
-        base,
-        script_block,
-        skills_block,
-        stage.label(),
-        materials_block
-    )
+    // 阶段块拼在最后：前面的 base/script/skills 三段在一次会话内稳定，阶段切换不会作废缓存前缀。
+    format!("{}{}{}{}", base, script_block, skills_block, stage_block)
 }
 
 // ---------- 历史规整 ----------
@@ -227,13 +218,12 @@ pub async fn run_chat(
     let skill_list = skills::find_all_skills(&ctx.skills_dir);
     let skills_block = skills::build_skills_xml(&skill_list);
     let script_block = build_script_block(&ctx.sandbox_dir, ctx.script_key.as_deref());
-    let materials_block = stage::load_system_materials(&ctx.skills_dir, ctx.stage_snapshot.stage);
+    let stage_block = stage::build_stage_block(&ctx.skills_dir, ctx.stage_snapshot.stage);
     let system_prompt = build_system_prompt(
         &ctx.config,
         &skills_block,
         &script_block,
-        &materials_block,
-        ctx.stage_snapshot.stage,
+        &stage_block,
         &ctx.sandbox_dir,
         &ctx.skills_dir,
     );
