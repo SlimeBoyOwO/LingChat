@@ -442,14 +442,12 @@ export function initializeTauriEventListeners() {
 
   // === 光影：面板 / LLM 工具的即时改动（剧本事件走上面的 script:lighting 队列） ===
 
-  const lightingStore = useLightingStore();
-  lightingStore.ensurePresets();
+  // 这里只能把 `useLightingStore()` 留在回调里：main.ts 是在 `app.use(pinia)`
+  // 之前调用本函数的，提前取 store 会抛「no active Pinia」，整个入口模块中断，
+  // 表现就是透明窗口里什么都没有。预设预取与生效上报改到 App.vue 的 onMounted。
   listen("lighting:change", (event) => {
-    lightingStore.applyPayload(event.payload as LightingChangePayload);
+    useLightingStore().applyPayload(event.payload as LightingChangePayload);
   });
-
-  // 只有主窗口上报生效光影：投屏窗口一起报会让两边互相覆盖后端那份状态。
-  if (mainWindow) lightingStore.startActiveReporting();
 
   console.log(
     "[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 14 script events + character:switch + scene:switch + lighting:change)"

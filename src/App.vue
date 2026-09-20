@@ -29,6 +29,7 @@
   import { useGameStore } from "./stores/modules/game";
   import { i18n } from "./locales";
   import { useSettingsStore } from "./stores/modules/settings";
+  import { useLightingStore } from "./stores/modules/lighting";
   import { useLlmProvidersStore } from "./stores/modules/llm-providers";
   import { useAchievementStore } from "./stores/modules/ui/achievement";
   import { useDialogStore } from "./stores/modules/ui/dialog";
@@ -314,6 +315,15 @@
     // 预加载 LLM 提供商配置，避免主界面因 store 未加载而误判未选择模型
     const llmStore = useLlmProvidersStore();
     llmStore.load().catch((e) => console.error("加载 LLM 提供商失败:", e));
+
+    // 光影预设要在渲染前拿到，全局预设才压得住场景灯光；生效状态只由主窗口上报，
+    // 投屏一起报会让两边互相覆盖后端那份状态。这两件放在这里而不是 tauri-events：
+    // initializeTauriEventListeners 跑在 app.use(pinia) 之前，提前取 store 会白屏。
+    if (isMainWindow) {
+      const lightingStore = useLightingStore();
+      void lightingStore.ensurePresets();
+      lightingStore.startActiveReporting();
+    }
 
     // 供成就系统控制台测试用，在 window 对象中注册一些方法
     const achievementStore = useAchievementStore();
