@@ -1611,7 +1611,7 @@ export async function mountFlyBrain(root, options) {
     return soup;
   }
   /* 双主角：初始化时只建当前角色（灵梦/果蝇的部件汤均懒构建，GL 缓冲两角色共享） */
-  let character = null; // "reimu" | "fly"，选图页选定后确定
+  let character = mapKind === "shrine" ? "reimu" : "fly"; // "reimu" | "fly"，挂载即按上次地图起跑（选图页背景预览），点击可再切
   let RIGID_SOUP = null,
     EYE_HI_L = null,
     EYE_HI_R = null;
@@ -2261,11 +2261,17 @@ export async function mountFlyBrain(root, options) {
       pitch = Math.max(-1.5, Math.min(1.5, pitch + dy * 0.006));
       lastDrag = performance.now();
     });
-    on(cv, "pointerup", () => {
+    on(cv, "pointerup", (e) => {
       dragging = false;
+      try {
+        cv.releasePointerCapture(e.pointerId);
+      } catch (_) {}
     });
-    on(cv, "pointercancel", () => {
+    on(cv, "pointercancel", (e) => {
       dragging = false;
+      try {
+        cv.releasePointerCapture(e.pointerId);
+      } catch (_) {}
     });
     on(
       cv,
@@ -2418,11 +2424,18 @@ export async function mountFlyBrain(root, options) {
     pitch = Math.max(0.06, Math.min(1.3, pitch + dy * 0.005));
     lastInteract = performance.now();
   });
-  on(canvas, "pointerup", () => {
+  // 显式释放指针捕获：若捕获悬置（如窗外松键），后续点击会被重定向到画布、吞掉覆盖层按钮
+  on(canvas, "pointerup", (e) => {
     dragBtn = -1;
+    try {
+      canvas.releasePointerCapture(e.pointerId);
+    } catch (_) {}
   });
-  on(canvas, "pointercancel", () => {
+  on(canvas, "pointercancel", (e) => {
     dragBtn = -1;
+    try {
+      canvas.releasePointerCapture(e.pointerId);
+    } catch (_) {}
   });
   on(
     canvas,
@@ -2597,16 +2610,22 @@ export async function mountFlyBrain(root, options) {
     e.stopPropagation(); // 别触发小窗 canvas 的拖拽
     if (brain) $("#brainMode").textContent = brain.toggleMode();
   });
-  /* 地图与主角绑定：神社=灵梦 / 牧场=果蝇（选择存 localStorage，场景内不再提供切换按钮） */
-  function setMap(kind) {
+  /* 地图与主角绑定：神社=灵梦 / 牧场=果蝇；点击才持久化，hover 预览只切场景不写存储 */
+  function setMap(kind, persist = true) {
     mapKind = kind;
-    try {
-      localStorage.setItem("flyBrainMap", kind);
-    } catch (_) {}
+    if (persist)
+      try {
+        localStorage.setItem("flyBrainMap", kind);
+      } catch (_) {}
     decor = decorSets[kind];
   }
-  /* 选图页：进入先出（每次进入都显示），选定淡出；场景内「返回」回到选图页 */
+  function applyCharacter(kind) {
+    character = kind === "shrine" ? "reimu" : "fly";
+    if (character === "fly") ensureFlyChar();
+  }
+  /* 选图页：全透明覆盖层只承载左侧菜单，背后实时 3D 风景（挂载即按上次地图起跑） */
   const picker = $("#picker");
+  const sceneRoot = root.querySelector(".fly-life-root");
   function updatePickLast() {
     let last = null;
     try {
@@ -2621,16 +2640,25 @@ export async function mountFlyBrain(root, options) {
   }
   function showPicker() {
     updatePickLast();
+    sceneRoot.classList.add("picking");
     picker.classList.remove("hide");
   }
+  /* hover 预览：与当前背景地图不同则瞬时切换（管线预建，零卡顿） */
+  function previewMap(kind) {
+    if (kind === mapKind) return;
+    setMap(kind, false);
+    applyCharacter(kind);
+  }
   function pickMap(kind) {
-    setMap(kind);
-    character = kind === "shrine" ? "reimu" : "fly";
-    if (character === "fly") ensureFlyChar();
+    previewMap(kind); // hover 未触发时兜底
+    setMap(kind, true);
+    sceneRoot.classList.remove("picking");
     picker.classList.add("hide");
   }
   on($("#pickShrine"), "click", () => pickMap("shrine"));
   on($("#pickPasture"), "click", () => pickMap("pasture"));
+  on($("#pickShrine"), "mouseenter", () => previewMap("shrine"));
+  on($("#pickPasture"), "mouseenter", () => previewMap("pasture"));
   on($("#pickBack"), "click", () => {
     destroy();
     options.onExit();

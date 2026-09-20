@@ -331,21 +331,27 @@
 
 .loading-veil {
   position: absolute;
-  inset: 0;
+  top: 16%;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 20;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(180deg, #a8d8f8 0%, #e8f6ff 100%);
+  padding: 10px 28px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  pointer-events: none;
   transition: opacity 0.6s ease;
 }
 .loading-veil.hide {
   opacity: 0;
-  pointer-events: none;
 }
 .loading-text {
-  font-size: clamp(20px, 2.6vw, 32px);
+  font-size: clamp(15px, 1.6vw, 20px);
   letter-spacing: 0.2em;
   color: #ffffff;
+  text-shadow: 0 2px 6px rgba(31, 64, 104, 0.45);
   animation: breathe 1.8s ease-in-out infinite;
 }
 @keyframes breathe {
@@ -354,16 +360,15 @@
   }
 }
 
-/* 选图页：LC 主菜单风格（Maoken 大字 + 白字柔和阴影 + hover 上浮发光） */
+/* 选图页：实时 3D 风景作背景，覆盖层全透明只承载左侧竖排菜单（LC 主菜单/暮色节拍观感） */
 .picker {
   position: absolute;
   inset: 0;
   z-index: 30;
-  display: grid;
-  place-items: center;
-  background:
-    radial-gradient(900px 500px at 75% 10%, rgba(255, 255, 255, 0.5), transparent 60%),
-    linear-gradient(180deg, #9fd3f5 0%, #bfe4fb 52%, #e6f6ff 100%);
+  display: flex;
+  align-items: center;
+  /* 左侧一层极轻压暗，保证白字在明亮风景上的可读性，风景完整透出 */
+  background: linear-gradient(90deg, rgba(23, 42, 70, 0.3), rgba(23, 42, 70, 0) 58%);
   transition: opacity 0.5s ease;
 }
 .picker.hide {
@@ -371,42 +376,43 @@
   pointer-events: none;
 }
 .picker-inner {
+  margin-left: clamp(26px, 7vw, 130px);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
+  align-items: flex-start;
+  text-align: left;
 }
 .picker-title {
-  font-size: clamp(34px, 5vw, 68px);
+  font-size: clamp(32px, 4.6vw, 62px);
   font-weight: 700;
   letter-spacing: 0.14em;
   color: #ffffff;
-  text-shadow: 0 3px 10px rgba(31, 64, 104, 0.4);
+  text-shadow: 0 3px 10px rgba(31, 64, 104, 0.45);
 }
 .picker-sub {
-  margin-top: 10px;
-  font-size: clamp(14px, 1.6vw, 20px);
-  letter-spacing: 0.4em;
+  margin-top: 8px;
+  font-size: clamp(12px, 1.3vw, 17px);
+  letter-spacing: 0.35em;
   color: #f4fbff;
-  text-shadow: 0 2px 6px rgba(31, 64, 104, 0.4);
+  text-shadow: 0 2px 6px rgba(31, 64, 104, 0.45);
 }
 .picker-menu {
-  margin-top: 46px;
+  margin-top: 36px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: clamp(14px, 2.6vh, 26px);
+  align-items: flex-start;
+  gap: clamp(10px, 2.2vh, 22px);
 }
 .picker-item {
   font: inherit;
   border: 0;
   background: transparent;
-  padding: 5px 18px;
-  font-size: clamp(26px, 3.4vw, 50px);
+  padding: 4px 10px;
+  font-size: clamp(24px, 3vw, 44px);
   font-weight: 700;
   letter-spacing: 0.1em;
   color: #ffffff;
-  text-shadow: 0 3px 6px rgba(31, 64, 104, 0.5);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   cursor: pointer;
   transition:
     transform 0.18s,
@@ -415,31 +421,28 @@
 }
 .picker-item:hover {
   transform: translate(-3px, -4px);
-  color: #fff6c9;
-  text-shadow: 0 3px 12px rgba(31, 64, 104, 0.65);
-}
-.picker-back {
-  margin-top: 40px;
-  font: inherit;
-  border: 0;
-  background: transparent;
-  font-size: 15px;
-  letter-spacing: 0.2em;
-  color: rgba(255, 255, 255, 0.85);
-  text-shadow: 0 2px 5px rgba(31, 64, 104, 0.45);
-  cursor: pointer;
-  transition: color 0.2s;
-}
-.picker-back:hover {
-  color: #fff6c9;
+  color: #f0f0f0;
+  text-shadow:
+    0 0 6px rgba(255, 255, 255, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.3);
 }
 .picker-last {
-  margin-top: 14px;
+  margin-top: 20px;
   font-size: 12px;
   letter-spacing: 0.12em;
-  color: rgba(255, 255, 255, 0.75);
-  text-shadow: 0 2px 5px rgba(31, 64, 104, 0.4);
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow: 0 2px 5px rgba(31, 64, 104, 0.45);
   min-height: 1em;
+}
+
+/* 选图期间隐藏场景 HUD，选定后再出现 */
+.fly-life-root.picking .hud-top,
+.fly-life-root.picking .hud-buttons,
+.fly-life-root.picking .status-card,
+.fly-life-root.picking .hud-credit,
+.fly-life-root.picking .brain-panel,
+.fly-life-root.picking .toast-stack {
+  display: none !important;
 }
 
 @media (max-width: 720px) {
