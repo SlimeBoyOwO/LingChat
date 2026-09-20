@@ -582,6 +582,10 @@
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
 }
+/* display:grid 会压过 UA 的 [hidden]{display:none}，必须显式补回，否则弹层常驻且点不掉 */
+.confirm-scrim[hidden] {
+  display: none;
+}
 .confirm-box {
   width: min(360px, 84vw);
   padding: 22px 24px 18px;
