@@ -686,7 +686,8 @@ export default {
       masterShort: "Off",
       current: "Active:",
       presetsTitle: "Global lighting presets",
-      presetsHint: "Click to apply instantly — the main window and the cast window stay in sync",
+      presetsHint:
+        "Click to apply instantly and see the change right away; the cast window picks it up next time you open it",
       presetFollow: "Follow scene",
       presetFollowDesc: "Skip the global preset and use each scene's own lighting",
       presetInline: "Temporary params",

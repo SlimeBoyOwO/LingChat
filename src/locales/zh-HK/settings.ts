@@ -654,7 +654,7 @@ export default {
       masterOffHint: "總開關已關閉，畫面不會做任何光影處理",
       current: "目前生效：",
       presetsTitle: "全域光影預設",
-      presetsHint: "撳一下即刻套用，主視窗同投映視窗會同步改變",
+      presetsHint: "撳一下即刻套用，畫面即時變化；投映視窗要重新開過一次先會跟隨",
       presetFollow: "跟隨場景",
       presetFollowDesc: "唔套用全域預設，用每個場景自己設定嘅燈光",
       presetInline: "臨時參數",

@@ -668,7 +668,8 @@ export default {
       masterOffHint: "マスタースイッチがオフのため、映像には何も補正が掛かりません",
       current: "現在適用中：",
       presetsTitle: "グローバルライティングプリセット",
-      presetsHint: "クリックで即時適用。メイン窓と配信窓も同期します",
+      presetsHint:
+        "クリックで即時適用され、その場で変化を確認できます。配信窓は開き直したときに反映されます",
       presetFollow: "シーンに従う",
       presetFollowDesc: "グローバルプリセットを使わず、各シーン自身の照明を適用します",
       presetInline: "一時パラメータ",

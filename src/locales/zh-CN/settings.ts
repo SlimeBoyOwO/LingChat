@@ -697,7 +697,7 @@ export default {
       masterOffHint: "总开关已关闭，画面不做任何光影处理",
       current: "当前生效：",
       presetsTitle: "全局光影预设",
-      presetsHint: "点一下立即套用，主窗口与投屏窗口同步变化",
+      presetsHint: "点一下立即套用，画面实时变化；投屏窗口要重新打开一次才会跟上",
       presetFollow: "跟随场景",
       presetFollowDesc: "不套用全局预设，用每个场景自己设置的灯光",
       presetInline: "临时参数",
