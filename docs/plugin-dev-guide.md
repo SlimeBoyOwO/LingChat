@@ -132,7 +132,7 @@ def run(ctx):
 
 ## 调用内置工具：`ctx["call_tool"]`
 
-插件脚本可以调用 **所有已注册的 LLM tools**（目前是内置 15 个 + 其他插件注册的），返回该工具产出的 JSON dict：
+插件脚本可以调用 **所有已注册的 LLM tools**（目前是内置 19 个 + 其他插件注册的），返回该工具产出的 JSON dict：
 
 ```python
 def run(ctx):
@@ -169,7 +169,7 @@ r = http_post("https://example.com/api", headers={"Authorization": "Bearer xx"},
 
 ## 内置工具 API 清单
 
-以下 15 个工具可直接通过 `call_tool(name, args)` 调用。
+以下 19 个工具可直接通过 `call_tool(name, args)` 调用。
 
 ### 时间
 
@@ -262,6 +262,27 @@ r = http_post("https://example.com/api", headers={"Authorization": "Bearer xx"},
 
 - 参数：`{ id: number(必) }`
 - 返回：`{ ok: true, role_id: number }`
+
+### 光影（改舞台灯光）
+
+**`lighting_list_presets`**
+
+- 参数：`{}`
+- 返回：`[ { id: string, name: string, description: string, mood: string[] } ]`，`mood` 是该预设适用的心情关键词
+
+**`lighting_apply`**
+
+- 参数：`{ preset?: string, clear?: boolean }`（二选一；`preset` 取 `lighting_list_presets` 的 id）
+- 返回：`{ ok: true, preset: string|null, cleared: boolean }`
+- 立即生效，主窗口与投屏窗口同步；`clear=true` 表示清除覆盖，回到「跟随场景」自带的灯光
+
+**`lighting_get`**
+
+- 参数：`{}`
+- 返回：`{ override_preset: string|null, override_source: string, current_scene_id: string|null }`（没有临时灯光时 `override_preset` 为 null、`override_source` 为空串）
+
+> 光影只给立绘和背景叠加打光，不会换背景图、不会换角色。
+> 设置页里的「光影总开关」属于渲染层，插件碰不到——`clear` 只是取消临时灯光，不是把整个光影关掉。
 
 ## 完整示例
 

@@ -1,0 +1,26 @@
+id = "lighting_studio"
+name = "光影工坊"
+description = "用一句话描述当前气氛，自动为立绘和背景打光（暖窗光 / 冷月夜 / 逆光剪影等）"
+version = "0.1.0"
+author = "LingChat"
+
+[[tools]]
+name = "lighting_studio_list"
+description = "列出全部光影预设（id、名称、说明、适用心情关键词），并附带当前生效的灯光状态。想换灯光前先看这个。"
+timeout_ms = 8000
+script = "lighting_studio.py"
+parameters = '{ "type":"object", "properties":{}, "required":[], "additionalProperties":false }'
+
+[[tools]]
+name = "lighting_studio_apply"
+description = "套用指定光影预设。preset 可填预设 id（warm_window）或中文名（暖窗光），也接受「跟随场景」「取消灯光」表示清除临时灯光（不影响设置页的光影总开关）。只改画面光照，不改背景图与角色立绘本身。"
+timeout_ms = 8000
+script = "lighting_studio.py"
+parameters = '{ "type":"object", "properties":{ "preset":{"type":"string","description":"预设 id、中文名，或「跟随场景」/「取消」"} }, "required":["preset"], "additionalProperties":false }'
+
+[[tools]]
+name = "lighting_studio_mood"
+description = "按情绪/场景描述自动挑一个最贴合的光影预设并套用，例如「雨夜想哭」「午后窗边很暖」「突然很紧张」。不需要知道预设名。"
+timeout_ms = 8000
+script = "lighting_studio.py"
+parameters = '{ "type":"object", "properties":{ "mood":{"type":"string","description":"一段自然语言，描述当下气氛、时间、地点或情绪"} }, "required":["mood"], "additionalProperties":false }'

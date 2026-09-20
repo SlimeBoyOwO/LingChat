@@ -1,6 +1,6 @@
 # LingChat 剧本事件大全（源码级参考）
 
-本文件为 LingChat 脚本引擎全部 17 种事件类型的权威参考，字段与默认值均取自 Rust 源码：
+本文件为 LingChat 脚本引擎全部 18 种事件类型的权威参考，字段与默认值均取自 Rust 源码：
 `src-tauri/src/ai_service/game_system/script_engine/events/events/*.rs`
 
 ---
@@ -351,24 +351,71 @@
 
 ---
 
+## 六、光影事件
+
+### 18. lighting — 舞台光影
+
+```yaml
+# 写法一：套用预设
+- type: lighting
+  preset: warm_window
+
+# 写法二：取消覆盖，回到「跟随场景」自带的灯光
+- type: lighting
+  clear: true
+
+# 写法三：内联完整参数（预设里没有的组合）
+- type: lighting
+  params:
+    directional_enabled: true
+    light_angle: 315
+    vignette_enabled: true
+    character: { brightness: 1.08, rim_enabled: true, rim_color: "#ffd9a0" }
+```
+
+| 字段       | 必填 | 类型   | 默认值  | 说明                                             |
+| ---------- | ---- | ------ | ------- | ------------------------------------------------ |
+| `preset`   | 否   | string | —       | 光影预设 id（见下方清单）                        |
+| `clear`    | 否   | bool   | `false` | `true` = 取消覆盖，回到跟随场景                  |
+| `params`   | 否   | object | —       | 内联完整光影参数，字段名与场景 `lighting` 一致   |
+| `duration` | 否   | float  | `0`     | 过渡时长（秒），目前前端立即生效，留给后续做补间 |
+
+> ⚠️ 三个字段都不填等同于 `clear: true`。
+>
+> ⚠️ `preset` 写错会让剧本**当场报错**（不是静默沿用上一段灯光），别凭记忆编 id。
+>
+> 光影只改变立绘与背景的打光，不换背景图、不换角色，也不影响 BGM。
+> 剧本自带的灯光会在剧本结束时自动清掉，不会漏到之后的自由对话。
+
+可用预设 id（与「设置 · 背景 · 光影」面板同源）：
+`warm_window` 暖窗光、`backlight_silhouette` 逆光剪影、`moonlit_night` 冷月夜、
+`dusk_sunset` 黄昏、`candlelight` 烛光、`neon_night` 霓虹夜、`morning_soft` 清晨柔光、
+`overcast_gray` 阴天平光、`rainy_gloom` 雨雾、`snow_bright` 雪地强光、
+`forest_dapple` 林间光斑、`classroom_noon` 正午教室、`stage_spotlight` 舞台聚光、
+`screen_glow` 屏幕冷光、`thriller_red` 危险红光、`dream_pastel` 梦幻粉彩、
+`golden_hour` 黄金时刻、`night_ambient` 夜室内、`sepia_memory` 旧照片。
+
+---
+
 ## 事件类型速查表
 
-| type                 | 用途             | 必填字段                                 |
-| -------------------- | ---------------- | ---------------------------------------- |
-| `narration`          | 旁白             | `text`                                   |
-| `player`             | 玩家固定台词     | `text`                                   |
-| `dialogue`           | AI 固定台词      | `character`, `text`                      |
-| `ai_dialogue`        | AI 生成台词      | 无（`character` 默认 MAIN）              |
-| `input`              | 玩家输入         | 无                                       |
-| `choices`            | 玩家选项         | `options`                                |
-| `free_dialogue`      | 多轮自由对话     | 无                                       |
-| `background`         | 背景             | `imagePath`                              |
-| `music`              | 背景音乐         | `musicPath`                              |
-| `sound`              | 音效             | `soundPath`                              |
-| `ambient`            | 环境音           | `ambientPath`                            |
-| `background_effect`  | 背景特效         | 无                                       |
-| `present_pic`        | 展示图片         | `imagePath`                              |
-| `modify_character`   | 显示/隐藏/改角色 | `character`                              |
-| `set_variable`       | 设置变量         | `options`                                |
-| `chapter_end`        | 章节结束         | `end_type` + (next/options)              |
-| `unlock_achievement` | 解锁成就         | `achievement_id`, `title`, `description` |
+| type                 | 用途             | 必填字段                                   |
+| -------------------- | ---------------- | ------------------------------------------ |
+| `narration`          | 旁白             | `text`                                     |
+| `player`             | 玩家固定台词     | `text`                                     |
+| `dialogue`           | AI 固定台词      | `character`, `text`                        |
+| `ai_dialogue`        | AI 生成台词      | 无（`character` 默认 MAIN）                |
+| `input`              | 玩家输入         | 无                                         |
+| `choices`            | 玩家选项         | `options`                                  |
+| `free_dialogue`      | 多轮自由对话     | 无                                         |
+| `background`         | 背景             | `imagePath`                                |
+| `music`              | 背景音乐         | `musicPath`                                |
+| `sound`              | 音效             | `soundPath`                                |
+| `ambient`            | 环境音           | `ambientPath`                              |
+| `background_effect`  | 背景特效         | 无                                         |
+| `present_pic`        | 展示图片         | `imagePath`                                |
+| `modify_character`   | 显示/隐藏/改角色 | `character`                                |
+| `set_variable`       | 设置变量         | `options`                                  |
+| `chapter_end`        | 章节结束         | `end_type` + (next/options)                |
+| `unlock_achievement` | 解锁成就         | `achievement_id`, `title`, `description`   |
+| `lighting`           | 舞台光影         | 无（`preset` / `clear` / `params` 三选一） |

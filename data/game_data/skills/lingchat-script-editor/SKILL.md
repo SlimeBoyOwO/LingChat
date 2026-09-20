@@ -112,7 +112,7 @@ game_data/scripts/
 
 #### 6.2 写剧情 `yaml` 原则
 
-- **只用引擎已注册的 17 种事件类型**（`references/event-reference.md` 有完整清单）。未知 `type` 会在运行时报"未注册的事件类型"。
+- **只用引擎已注册的 18 种事件类型**（`references/event-reference.md` 有完整清单）。未知 `type` 会在运行时报"未注册的事件类型"。
 - 每章必须以 `chapter_end` 结束；`linear` 型必须给 `next_chapter`（或 `next`），结束用 `"end"`。
 - `choices` 选项的 `actions` 支持 `add_line`（把玩家选的话加入聊天）与 `set_var`（修改变量）。
 - 变量赋值语法：`flag = true`、`count += 1`、`hp -= 5`、`random(1,10)`；条件表达式：`var`（truthy）、`var == value`、`var != value`。
@@ -165,7 +165,7 @@ game_data/scripts/
   - `chapter.no_events` — 章节没有任何事件 → 补事件。
   - `chapter.unreadable` / `parse_failed` / `bad_shape` — YAML 语法或结构问题 → 修正格式（顶层 `name` + `events` 列表，`- type:` 与属性同级对齐）。
 - **事件与字段**
-  - `event.unknown_type` / `missing_type` — 事件类型非法/缺失 → 用事件大全里引擎注册的类型（见 `references/event-reference.md`，共 17 种），别拼错。
+  - `event.unknown_type` / `missing_type` — 事件类型非法/缺失 → 用事件大全里引擎注册的类型（见 `references/event-reference.md`，共 18 种），别拼错。
   - `event.not_a_map` — 事件不是键值映射 → 修 YAML 缩进。
   - `field.required_missing` — 缺必填字段 → 按事件大全补该事件的必填字段；需要创作内容的先与用户确认（见「修复边界」）。
   - `field.unknown` — 写了引擎不认识的字段（多半拼错）→ 删除或改正。
@@ -236,7 +236,7 @@ game_data/scripts/
 3. **建目录**：创建 `story_config.yaml` 与 `Chapters/`；如需 NPC 再建 `characters/`。
 4. **写配置**：按 `references/story-config-reference.md` 写 `story_config.yaml`。`script_name` 必须与剧本文件夹名一致。
 5. **写章节**：起始章节文件名必须与 `intro_chapter` 一致；每章由 `name` + `events` 列表组成，以 `chapter_end` 收尾。
-6. **选事件**：按 `references/event-reference.md` 的 17 种事件表选型填字段，**只用引擎注册的类型**。
+6. **选事件**：按 `references/event-reference.md` 的 18 种事件表选型填字段，**只用引擎注册的类型**。
 7. **角色**：剧本 NPC 复制角色卡字段并加 `script_role_key`（唯一 id），见 `references/character-reference.md`。
 8. **资源**：媒体文件放入对应 `Assets/` 子目录，事件里只写文件名；引擎按资源类型自动在子目录中查找。
 9. **占位符**：文本中可用 `%player%`（玩家名）、`%main%`（主角色名），运行时自动替换。
@@ -246,7 +246,7 @@ game_data/scripts/
 - 配置模板：`assets/templates/story_config.yaml`
 - 章节模板：`assets/templates/chapter_template.yaml`
 - 角色模板：`assets/templates/character_settings.yml`
-- 事件大全（17 种，源码级字段与默认值）：`references/event-reference.md`
+- 事件大全（18 种，源码级字段与默认值）：`references/event-reference.md`
 - 配置字段参考：`references/story-config-reference.md`
 - 角色设定参考：`references/character-reference.md`
 - 剧本设计原则示范（错误示范 / 正确示范 / 固定台词示范）：`references/design-principles.md`
