@@ -1,13 +1,15 @@
 /**
  * 光影生效状态。
  *
- * 三条来源写到这里：剧本 `lighting` 事件、`lighting_apply` 工具、设置面板。
+ * 三条来源写到这里：剧本 `lighting` 事件、`lighting_apply` 工具、设置页。
+ *
  * 渲染层（背景 / 舞台 / 立绘三个组件）只读 `active`，不再各自判断优先级——
  * 原先每个组件都直接读 `gameStore.currentScene.lighting`，谁都能改灯光却没有
  * 统一的裁决点，剧本一改就会和场景设置打架。
  *
  * 生效优先级：总开关关 → 完全没有光影；否则
- * 运行时覆盖（剧本/工具/编辑器预览）→ 场景自带的灯 → 默认光影（设置面板那盏）。
+ * 运行时覆盖（剧本/工具/编辑器预览）→ 场景自带的灯 → 默认光影（「场景及光影设置」
+ * 那盏只兜底）。
  *
  * 场景灯排在默认光影之前：默认光影是「这个场景没设灯时用什么」，不是「所有场景
  * 都得用我这盏」。反过来就会出现在场景编辑器里调半天、预览也对了，一进聊天又被
@@ -62,11 +64,16 @@ export const useLightingStore = defineStore("lighting", {
   }),
 
   getters: {
-    /** 默认光影（设置面板选的那盏）；空串或未知 id 视为「没有默认」。 */
-    globalParams(state): LightingParams | null {
+    /** 默认光影（设置里选的那盏）；空串或未知 id 视为「没有默认」。 */
+    globalPreset(state): LightingPreset | null {
       const id = useSettingsStore().lighting.globalPreset;
       if (!id) return null;
-      return state.presets.find((p) => p.id === id)?.params ?? null;
+      return state.presets.find((p) => p.id === id) ?? null;
+    },
+
+    /** 默认光影的参数，场景没设灯时拿它兜底。 */
+    globalParams(): LightingParams | null {
+      return this.globalPreset?.params ?? null;
     },
 
     /** 场景自带的那盏灯，没有则为 null。 */

@@ -611,11 +611,16 @@ export default {
     },
     lighting: {
       title: "Lighting Parameters",
-      enableForScene: "Enable lighting parameters for this scene",
-      presetNone: "No preset (fall back to the default lighting)",
+      enableForScene: "Pin these lights to this scene",
+      presetNone: "No preset (follow the default lighting)",
       presetCustom: "Custom (modified from a preset)",
-      priorityTip:
-        "These are this scene's own lights, and they win over the default lighting under Lighting — the default only fills in when a scene has no lights of its own.",
+      followTip:
+        "This scene currently follows the default lighting ({name}). Change anything below and these lights get pinned to this scene — later edits to the default won't affect it.",
+      pinnedTip: "These lights are pinned to this scene and no longer follow the default lighting.",
+      restoreFollow: "Follow the default lighting again",
+      noDefaultPreset: "no default lighting, i.e. unlit",
+      masterOffTip:
+        "The master switch in Scenes & Lighting is off, so these lights won't show on screen.",
     },
     filter: {
       character: "Character Filter",
@@ -653,7 +658,7 @@ export default {
   },
   background: {
     scene: {
-      title: "Scene Management",
+      title: "Scenes & Lighting",
       current: "Current scene: ",
       none: "None",
       create: "Create Scene",
@@ -681,25 +686,22 @@ export default {
       fireworks: "Fireworks",
     },
     lighting: {
-      title: "Lighting",
-      description:
-        "Adds lighting to the sprite and background: directional light, rim light, bloom, vignette and warm/cool split.",
       master: "Enable lighting system (master switch)",
       masterOffHint: "The master switch is off, so no lighting is applied at all",
       masterShort: "Off",
       current: "Active:",
       defaultTitle: "Default lighting",
       defaultHint:
-        "Only fills in for scenes that set no lights of their own; a scene configured under Scene management · Update scene wins. The cast window picks changes up next time you open it.",
+        "Only fills in for scenes that pin no lights of their own; a scene with its own lights wins. The cast window picks changes up next time you open it.",
       presetFollow: "The scene's own lighting",
       presetInline: "Temporary params",
       sourceScene: "the scene",
       sourceGlobal: "the default lighting",
       sourceScript: "the script",
       sourceTool: "a plugin or the assistant",
-      sourcePanel: "this panel",
+      sourcePanel: "the editor preview",
       overriddenHint:
-        "Lighting is temporarily driven by {who}; changing the default lighting below releases it and takes over",
+        "Lighting is temporarily driven by {who}; changing the default lighting releases it and takes over",
       clearRuntime: "Release temporary lighting",
       clearRuntimeFailed: "Failed to release temporary lighting",
       takenOver: "Lighting taken over: temporary lighting released, your default now applies",

@@ -620,11 +620,15 @@ export default {
     },
     lighting: {
       title: "光影参数",
-      enableForScene: "为此场景启用光影参数",
+      enableForScene: "把这套灯固定到本场景",
       presetNone: "不套用预设（跟随默认光影）",
       presetCustom: "自定义（在预设基础上改过）",
-      priorityTip:
-        "这里调的是本场景自己的灯，并且优先于「光影」里的默认光影；默认那盏只在场景没设灯时兜底。",
+      followTip:
+        "这个场景现在跟着默认光影（{name}）。改下面任何一项，就会把这套灯固定到本场景，之后默认光影再改也不影响它。",
+      pinnedTip: "灯光已固定到本场景，不再跟随默认光影。",
+      restoreFollow: "恢复跟随默认光影",
+      noDefaultPreset: "未选默认光影，即不打光",
+      masterOffTip: "「场景及光影设置」里的总开关已关闭，这里的灯不会亮。",
     },
     filter: {
       character: "角色滤镜",
@@ -662,7 +666,7 @@ export default {
   },
   background: {
     scene: {
-      title: "场景管理",
+      title: "场景及光影设置",
       current: "当前场景：",
       none: "无",
       create: "创建场景",
@@ -693,23 +697,20 @@ export default {
       fireworks: "烟花",
     },
     lighting: {
-      title: "光影",
-      description: "给立绘和背景叠加打光效果：方向光、轮廓光、泛光、暗角与冷暖分离。",
       master: "启用光影系统（总开关）",
       masterShort: "已关闭",
       masterOffHint: "总开关已关闭，画面不做任何光影处理",
       current: "当前生效：",
       defaultTitle: "默认光影",
-      defaultHint:
-        "只给「没设灯的场景」兜底；场景自己在「场景管理 · 更新场景」里调过灯，就以场景为准。",
+      defaultHint: "只给没固定灯光的场景兜底；场景自己在「更新场景」里定过灯，就以场景为准。",
       presetFollow: "仅用场景自己的灯",
       presetInline: "临时参数",
       sourceScene: "场景自带",
       sourceGlobal: "默认光影",
       sourceScript: "剧本",
       sourceTool: "插件或助手",
-      sourcePanel: "设置面板",
-      overriddenHint: "灯光正由「{who}」临时控制；改动下方默认光影会立刻取消它并接管",
+      sourcePanel: "编辑器预览",
+      overriddenHint: "灯光正由「{who}」临时控制；改动默认光影会立刻取消它并接管",
       clearRuntime: "取消临时灯光",
       clearRuntimeFailed: "取消临时灯光失败",
       takenOver: "已接管灯光：临时灯光已取消，现在按你选的默认光影打光",

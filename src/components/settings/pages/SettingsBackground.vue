@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <!-- ========== 场景管理 ========== -->
+    <!-- ========== 场景及光影设置 ========== -->
     <MenuItem :title="$t('settings.background.scene.title')">
       <template #header>
         <PictureInPicture :size="20" />
@@ -54,6 +54,9 @@
           </button>
         </div>
       </div>
+
+      <!-- 全局光影：跨场景的设置，跟「选哪张场景图」是同一层的事，所以放在卡片上方 -->
+      <LightingGlobalBar />
 
       <!-- 场景卡片网格 -->
       <div class="grid w-full grid-cols-1 gap-5 pb-5 sm:grid-cols-2 xl:grid-cols-3">
@@ -212,13 +215,6 @@
           >{{ $t("settings.background.particle.fireworks") }}</Button
         >
       </div>
-    </MenuItem>
-
-    <MenuItem :title="$t('settings.background.lighting.title')" size="large">
-      <template #header>
-        <Sunset :size="20" />
-      </template>
-      <LightingPanel />
     </MenuItem>
 
     <MenuItem :title="$t('settings.background.animation.switchTitle')" size="large">
@@ -553,11 +549,10 @@
     Wrench,
     Cpu,
     RefreshCw,
-    Sunset,
   } from "lucide-vue-next";
   import SceneEditModal from "../scene/SceneEditModal.vue";
   import DialogAppearancePanel from "../dialog/DialogAppearancePanel.vue";
-  import LightingPanel from "../lighting/LightingPanel.vue";
+  import LightingGlobalBar from "../lighting/LightingGlobalBar.vue";
   import PluginTag from "@/components/ui/PluginTag.vue";
   import { useUserStore } from "../../../stores/modules/user/user";
 

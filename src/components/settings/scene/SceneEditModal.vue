@@ -161,7 +161,7 @@
                     }}</span>
                   </label>
 
-                  <!-- 预设收成一条下拉：挑一盏灯抄进本场景，挑完照样能继续手动微调 -->
+                  <!-- 预设下拉：挑一盏抄进本场景（抄完即固定），挑完照样能继续手动微调 -->
                   <LightingPresetSelect
                     :current-label="presetCurrentLabel"
                     :none-label="$t('settings.sceneEdit.lighting.presetNone')"
@@ -170,26 +170,45 @@
                     @saved="applyPreset"
                   />
 
+                  <!-- 跟随与固定是两件事，得说不同的话：不写清楚，保存之后换默认光影
+                       发现这里的灯跟着变，只会以为没存上。 -->
                   <div
-                    class="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2
-                      text-[11px] leading-snug text-amber-100/80"
+                    :class="
+                      formData.lightingEnabled
+                        ? 'border-amber-400/30 bg-amber-400/10 text-amber-100/80'
+                        : 'border-white/10 bg-white/5 text-white/55'
+                    "
+                    class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border px-3 py-2
+                      text-[11px] leading-snug"
                   >
-                    {{ $t("settings.sceneEdit.lighting.priorityTip") }}
+                    <span>{{
+                      formData.lightingEnabled
+                        ? $t("settings.sceneEdit.lighting.pinnedTip")
+                        : $t("settings.sceneEdit.lighting.followTip", { name: followedName })
+                    }}</span>
+                    <button
+                      v-if="formData.lightingEnabled"
+                      @click="restoreFollow"
+                      class="shrink-0 rounded-full border border-white/20 bg-white/10 px-2.5 py-0.5
+                        text-[11px] text-white/70 transition-colors hover:bg-white/20
+                        hover:text-white"
+                    >
+                      {{ $t("settings.sceneEdit.lighting.restoreFollow") }}
+                    </button>
                   </div>
 
-                  <template v-if="formData.lightingEnabled">
-                    <!-- 与光影编辑器共用同一套控件：以前这里只认最早 11 个字段，
-                         进阶层看不到，保存还会把它们抹掉。 -->
-                    <LightingControls :params="lightingDraft" />
+                  <div
+                    v-if="!masterOn"
+                    class="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-2
+                      text-[11px] leading-snug text-yellow-100/80"
+                  >
+                    {{ $t("settings.sceneEdit.lighting.masterOffTip") }}
+                  </div>
 
-                    <button
-                      @click="resetLighting"
-                      class="text-[11px] text-white/40 underline transition-colors
-                        hover:text-white/80"
-                    >
-                      {{ $t("settings.sceneEdit.button.resetDefault") }}
-                    </button>
-                  </template>
+                  <!-- 与光影编辑器共用同一套控件：以前这里只认最早 11 个字段，进阶层
+                       看不到，保存还会把它们抹掉。现在不管有没有固定都照常显示，
+                       底稿就是画面上真正生效的那盏灯。 -->
+                  <LightingControls :params="lightingDraft" />
                 </div>
               </section>
             </div>
@@ -327,6 +346,7 @@
   import LightingPresetSelect from "../lighting/LightingPresetSelect.vue";
   import { useGameStore } from "../../../stores/modules/game";
   import { useLightingStore } from "../../../stores/modules/lighting";
+  import { useSettingsStore } from "../../../stores/modules/settings";
   import { EMOTION_CONFIG_EMO } from "../../../controllers/emotion/config";
   import type { BackgroundImageInfo } from "../../../types";
   import type { LightingParams } from "../../../api/services/scene";
@@ -365,7 +385,11 @@
 
   const gameStore = useGameStore();
   const lightingStore = useLightingStore();
+  const settingsStore = useSettingsStore();
   const { t } = useI18n();
+
+  /** 总开关关掉时这里的灯不会亮，但照常允许调，所以只提示不锁死。 */
+  const masterOn = computed(() => settingsStore.lighting.masterEnabled);
 
   // ---- reactive form ----
 
@@ -386,29 +410,45 @@
   });
 
   /**
-   * 场景自带的那盏灯。所有光影字段都住在这里，交给共用的 LightingControls 直接改；
+   * 本场景的灯光草稿。所有光影字段都住在这里，交给共用的 LightingControls 直接改；
    * 之前拆成十几个散装表单字段，旧字段名对不上进阶层，保存时就把新层抹掉了。
    */
   const lightingDraft = reactive<LightingParams>(blankLighting());
+
+  /**
+   * 本场景「跟随」的那盏灯（= 默认光影）的快照，用来判断用户动没动过参数。
+   * 取的是打开弹窗那一刻的值，所以中途换默认光影不会影响这次的判断。
+   */
+  const followBase = ref<LightingParams>(blankLighting());
 
   // ---- sub-state ----
 
   const showLighting = ref(false);
   const previewAvatarUrl = ref("");
 
-  // ---- reset ----
+  // ---- 跟随 / 固定 ----
 
-  function resetLighting() {
-    Object.assign(lightingDraft, blankLighting());
+  /** 把草稿退回「跟随默认光影」：底稿重取一遍，固定标记清掉。 */
+  function restoreFollow() {
+    followBase.value = cloneLighting({ ...blankLighting(), ...(lightingStore.globalParams ?? {}) });
+    Object.assign(lightingDraft, cloneLighting(followBase.value));
+    formData.lightingEnabled = false;
   }
+
+  // 动了任何一项就算把灯固定到本场景。不自动的话，用户调完没勾那个框，保存下去
+  // 又被默认光影接管，就成了「调了没生效」。误动可以点提示旁的按钮退回去。
+  watch(lightingDraft, () => {
+    if (!formData.lightingEnabled && !sameLighting(lightingDraft, followBase.value)) {
+      formData.lightingEnabled = true;
+    }
+  });
 
   // ---- 预设下拉 ----
 
   /** 选中的预设是「抄一份参数进场景」，不是引用：之后预设怎么改都不影响本场景。 */
   function applyPreset(preset: LightingPreset | null) {
     if (!preset) {
-      formData.lightingEnabled = false;
-      resetLighting();
+      restoreFollow();
       return;
     }
     showLighting.value = true;
@@ -437,16 +477,22 @@
     return true;
   }
 
-  const matchedPreset = computed(() =>
-    formData.lightingEnabled
-      ? (lightingStore.presets.find((p) => sameLighting(p.params, lightingDraft)) ?? null)
-      : null
-  );
+  const matchedPreset = computed(() => {
+    if (formData.lightingEnabled)
+      return lightingStore.presets.find((p) => sameLighting(p.params, lightingDraft)) ?? null;
+    // 没固定时，下拉显示的就是这个场景正在跟随的那盏默认光影。
+    return lightingStore.globalPreset;
+  });
 
   const presetCurrentLabel = computed(() => {
     if (matchedPreset.value) return matchedPreset.value.name;
     return formData.lightingEnabled ? t("settings.sceneEdit.lighting.presetCustom") : "";
   });
+
+  /** 跟随提示里要说清跟的是哪盏；一盏默认光影都没选时直说就是不打光。 */
+  const followedName = computed(
+    () => lightingStore.globalPreset?.name ?? t("settings.sceneEdit.lighting.noDefaultPreset")
+  );
 
   // ---- role avatar ----
 
@@ -475,24 +521,35 @@
 
   watch(
     () => props.show,
-    (val) => {
-      if (val && props.initialData) {
+    async (val) => {
+      if (!val) return;
+      // 底稿要取默认光影，而预设表是懒加载的：不先等它就只会拿到空白灯光。
+      await lightingStore.ensurePresets();
+      if (props.initialData) {
         formData.sceneName = props.initialData.sceneName;
         formData.sceneImage = props.initialData.sceneImage || "";
         formData.sceneDescription = props.initialData.sceneDescription;
         const l = props.initialData.lighting;
+        // 底稿取画面上真正生效的那盏：场景没自己的灯就用默认光影，看得见才谈得上改。
+        // 场景自己有灯时别把默认光影掺进来 —— 老场景缺的进阶层要补空白，否则保存会
+        // 把默认光影的层悄悄抄进这个场景。
+        followBase.value = cloneLighting({
+          ...blankLighting(),
+          ...(lightingStore.globalParams ?? {}),
+        });
+        Object.assign(
+          lightingDraft,
+          cloneLighting({ ...blankLighting(), ...(l ?? followBase.value) })
+        );
         formData.lightingEnabled = !!l;
-        // 老场景存的时候还没有进阶层，用空白灯光垫底补齐，免得滑块停在 0 而不是默认值。
-        Object.assign(lightingDraft, cloneLighting({ ...blankLighting(), ...l }));
-        showLighting.value = !!l;
+        showLighting.value = !!l || !!lightingStore.globalParams;
         resolveAvatar();
-      } else if (val) {
+      } else {
         formData.sceneName = "";
         formData.sceneImage = "";
         formData.sceneDescription = "";
-        formData.lightingEnabled = false;
-        resetLighting();
-        showLighting.value = false;
+        restoreFollow();
+        showLighting.value = !!lightingStore.globalParams;
         resolveAvatar();
       }
     }
@@ -506,10 +563,9 @@
   });
 
   /** 预览与真实画面走同一个渲染器：这里看到的灯，保存后就是那个样子。 */
-  const previewPlan = computed(() => planLighting(formData.lightingEnabled ? lightingDraft : null));
+  const previewPlan = computed(() => planLighting(lightingDraft));
 
   const previewBgFilterStyle = computed<CSSProperties | undefined>(() => {
-    if (!formData.lightingEnabled) return undefined;
     const filter = previewPlan.value.backgroundFilter;
     return filter ? { filter } : undefined;
   });

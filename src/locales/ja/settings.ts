@@ -593,11 +593,16 @@ export default {
     },
     lighting: {
       title: "ライティングパラメータ",
-      enableForScene: "このシーンでライティングパラメータを有効にする",
+      enableForScene: "この照明をこのシーンに固定する",
       presetNone: "プリセットを使わない（デフォルトの灯りに従う）",
       presetCustom: "カスタム（プリセットから変更済み）",
-      priorityTip:
-        "ここはこのシーン独自の照明で、「ライティング」のデフォルトの灯りより優先されます。デフォルトはシーンに灯りがないときだけ使われます。",
+      followTip:
+        "このシーンは現在デフォルトの灯り（{name}）に従っています。下を少しでも変更するとこのシーンに固定され、あとでデフォルトの灯りを変えても影響しません。",
+      pinnedTip: "この照明はシーンに固定済みで、デフォルトの灯りには従いません。",
+      restoreFollow: "デフォルトの灯りに戻す",
+      noDefaultPreset: "デフォルトの灯りなし＝照明なし",
+      masterOffTip:
+        "「シーン・ライティング設定」のマスタースイッチがオフのため、ここでの照明は映りません。",
     },
     filter: {
       character: "キャラクターフィルター",
@@ -635,7 +640,7 @@ export default {
   },
   background: {
     scene: {
-      title: "シーン管理",
+      title: "シーン・ライティング設定",
       current: "現在のシーン：",
       none: "なし",
       create: "シーンを作成",
@@ -663,25 +668,22 @@ export default {
       fireworks: "花火",
     },
     lighting: {
-      title: "ライティング",
-      description:
-        "立ち絵と背景に照明を重ねます。方向光・リムライト・ブルーム・ビネット・コールドウォーム分離。",
       master: "ライティング機能を有効化（マスタースイッチ）",
       masterShort: "オフ",
       masterOffHint: "マスタースイッチがオフのため、映像には何も補正が掛かりません",
       current: "現在適用中：",
       defaultTitle: "デフォルトの灯り",
       defaultHint:
-        "照明を設定していないシーンにだけ適用されます。シーン側で照明を設定すると、そちらが優先されます。配信窓は開き直したときに反映されます",
+        "照明を固定していないシーンにだけ適用されます。シーン側で照明を固定すると、そちらが優先されます。配信窓は開き直したときに反映されます",
       presetFollow: "シーン独自の照明のみ",
       presetInline: "一時パラメータ",
       sourceScene: "シーン",
       sourceGlobal: "デフォルトの灯り",
       sourceScript: "シナリオ",
       sourceTool: "プラグインまたはアシスタント",
-      sourcePanel: "このパネル",
+      sourcePanel: "エディターのプレビュー",
       overriddenHint:
-        "照明は現在「{who}」が一時制御中です。下のデフォルトの灯りを変更すると解除して引き継ぎます",
+        "照明は現在「{who}」が一時制御中です。デフォルトの灯りを変更すると解除して引き継ぎます",
       clearRuntime: "一時照明を解除",
       clearRuntimeFailed: "一時照明の解除に失敗しました",
       takenOver: "照明を引き継ぎました。一時照明を解除し、選んだデフォルトの灯りを適用しました",

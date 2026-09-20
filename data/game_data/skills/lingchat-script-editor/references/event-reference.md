@@ -389,8 +389,9 @@
 >
 > 画面上的灯按「运行时覆盖（剧本 / 工具）→ 场景自带的灯 → 设置页的默认光影」取第一份：
 > 想让某段剧情固定用什么灯，写 `preset`；想撤掉临时灯光交还给场景，写 `clear: true`。
+> 场景编辑器里改一下任何灯光参数，就会把灯固定到该场景，从此不再跟默认光影。
 
-可用预设 id（与「设置 · 背景 · 光影」的默认光影下拉同源）：
+可用预设 id（与「设置 · 背景 · 场景及光影设置」的默认光影下拉同源）：
 `warm_window` 暖窗光、`backlight_silhouette` 逆光剪影、`moonlit_night` 冷月夜、
 `dusk_sunset` 黄昏、`candlelight` 烛光、`neon_night` 霓虹夜、`morning_soft` 清晨柔光、
 `overcast_gray` 阴天平光、`rainy_gloom` 雨雾、`snow_bright` 雪地强光、

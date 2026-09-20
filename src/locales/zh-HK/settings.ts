@@ -581,11 +581,15 @@ export default {
     },
     lighting: {
       title: "光影參數",
-      enableForScene: "幫呢個場景開光影參數",
+      enableForScene: "將呢套燈固定喺呢個場景",
       presetNone: "唔套用預設（跟默認光影）",
       presetCustom: "自訂（喺預設基礎上改過）",
-      priorityTip:
-        "處里調嘅係呢個場景自己嘅燈，而且優先於「光影」入面嘅默認光影；默認嗰盞只有場景冇設燈先會兜底。",
+      followTip:
+        "呢個場景而家跟住默認光影（{name}）。改下面任何一項，就會將呢套燈固定喺呢個場景，之後改默認光影都唔再影響佢。",
+      pinnedTip: "燈光已經固定喺呢個場景，唔再跟默認光影。",
+      restoreFollow: "恢復跟默認光影",
+      noDefaultPreset: "未揀默認光影，即係唔打光",
+      masterOffTip: "「場景及光影設置」入面嘅總開關已經關閉，處里嘅燈唔會光。",
     },
     filter: {
       character: "角色濾鏡",
@@ -623,7 +627,7 @@ export default {
   },
   background: {
     scene: {
-      title: "場景管理",
+      title: "場景及光影設置",
       current: "而家嘅場景：",
       none: "冇",
       create: "創建場景",
@@ -650,23 +654,20 @@ export default {
       fireworks: "煙花",
     },
     lighting: {
-      title: "光影",
-      description: "為立繪和背景加上打光效果：方向光、輪廓光、泛光、暗角與冷熱分離。",
       master: "啟用光影系統（總開關）",
       masterShort: "已關閉",
       masterOffHint: "總開關已關閉，畫面不會做任何光影處理",
       current: "目前生效：",
       defaultTitle: "默認光影",
-      defaultHint:
-        "只幫「冇設燈嘅場景」兜底；場景喺「場景管理 · 更新場景」自己調過燈，就以場景為準。",
+      defaultHint: "只幫冇固定燈光嘅場景兜底；場景喺「更新場景」自己定過燈，就以場景為準。",
       presetFollow: "僅用場景自己嘅燈",
       presetInline: "臨時參數",
       sourceScene: "場景自帶",
       sourceGlobal: "默認光影",
       sourceScript: "劇本",
       sourceTool: "外掛程式或助手",
-      sourcePanel: "設定面板",
-      overriddenHint: "燈光正由「{who}」臨時控制；改下面嘅默認光影會即刻取消佢並接管",
+      sourcePanel: "編輯器預覽",
+      overriddenHint: "燈光正由「{who}」臨時控制；改默認光影會即刻取消佢並接管",
       clearRuntime: "取消臨時燈光",
       clearRuntimeFailed: "取消臨時燈光失敗",
       takenOver: "已接管燈光：臨時燈光已經取消，而家按你揀嘅默認光影打光",
