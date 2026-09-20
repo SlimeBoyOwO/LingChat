@@ -332,6 +332,7 @@ import {
   cloneLighting,
   planLighting,
 } from "../../../utils/lighting";
+import { presetNameOf } from "../../../locales/lighting-i18n";
 
 const props = defineProps<{
   show: boolean;
@@ -460,13 +461,15 @@ const matchedPreset = computed(() => {
 });
 
 const presetCurrentLabel = computed(() => {
-  if (matchedPreset.value) return matchedPreset.value.name;
+  if (matchedPreset.value) return presetNameOf(matchedPreset.value);
   return formData.lightingEnabled ? t("settings.sceneEdit.lighting.presetCustom") : "";
 });
 
 /** 跟随提示里要说清跟的是哪盏；一盏默认光影都没选时直说就是不打光。 */
-const followedName = computed(
-  () => lightingStore.globalPreset?.name ?? t("settings.sceneEdit.lighting.noDefaultPreset"),
+const followedName = computed(() =>
+  lightingStore.globalPreset
+    ? presetNameOf(lightingStore.globalPreset)
+    : t("settings.sceneEdit.lighting.noDefaultPreset"),
 );
 
 // ---- role avatar ----

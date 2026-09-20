@@ -67,7 +67,7 @@
             >
               <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-center gap-1.5">
-                  <span class="text-xs font-bold text-white/90">{{ p.name }}</span>
+                  <span class="text-xs font-bold text-white/90">{{ presetNameOf(p) }}</span>
                   <span
                     v-if="p.custom"
                     class="rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[10px] text-amber-200/90"
@@ -76,11 +76,11 @@
                 </div>
                 <!-- 描述常驻：悬停才出的 tooltip 看不见也读不全 -->
                 <div class="mt-0.5 text-[11px] leading-snug break-words text-white/45">
-                  {{ p.description }}
+                  {{ presetDescriptionOf(p) }}
                 </div>
                 <div class="mt-1 flex flex-wrap gap-1">
                   <span
-                    v-for="m in p.mood.slice(0, 4)"
+                    v-for="m in presetMoodOf(p).slice(0, 4)"
                     :key="m"
                     class="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50"
                     >{{ m }}</span
@@ -148,6 +148,12 @@ import type { LightingPreset } from "../../../api/services/lighting";
 import { clearLighting } from "../../../api/services/lighting";
 import { useLightingStore } from "../../../stores/modules/lighting";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
+import {
+  presetDescriptionOf,
+  presetMoodOf,
+  presetNameOf,
+  presetSearchTextOf,
+} from "../../../locales/lighting-i18n";
 
 defineProps<{
   /** 触发条上显示的名字；空串显示 noneLabel */
@@ -199,8 +205,7 @@ function reposition() {
 
 const groups = computed(() => {
   const kw = q.value.trim().toLowerCase();
-  const hit = (p: LightingPreset) =>
-    !kw || [p.name, p.description, p.mood.join(" ")].some((s) => s.toLowerCase().includes(kw));
+  const hit = (p: LightingPreset) => !kw || presetSearchTextOf(p).includes(kw);
   const all = lightingStore.presets.filter(hit);
   return [
     { key: "custom", items: all.filter((p) => p.custom) },
@@ -257,7 +262,7 @@ async function onSaved(id: string) {
 
 async function remove(p: LightingPreset) {
   const ok = await dialogStore.confirm(
-    t("settings.background.lighting.custom.deleteConfirm", { name: p.name }),
+    t("settings.background.lighting.custom.deleteConfirm", { name: presetNameOf(p) }),
   );
   if (!ok) return;
   try {

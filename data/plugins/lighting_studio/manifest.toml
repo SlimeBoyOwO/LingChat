@@ -6,17 +6,17 @@ author = "LingChat"
 
 [[tools]]
 name = "lighting_studio_list"
-description = "列出全部光影预设（id、名称、说明、适用心情关键词），并附带 active —— 屏幕上此刻真正在打的灯（含中文名和来源）。想知道现状只认 active，不要凭上一轮对话推断。"
+description = "列出全部光影预设（id、名称、各语言显示名 names、说明、适用心情关键词），并附带 active —— 屏幕上此刻真正在打的灯（含名字和来源）。想知道现状只认 active，不要凭上一轮对话推断。"
 timeout_ms = 8000
 script = "lighting_studio.py"
 parameters = '{ "type":"object", "properties":{}, "required":[], "additionalProperties":false }'
 
 [[tools]]
 name = "lighting_studio_apply"
-description = "套用指定光影预设。preset 可填预设 id（warm_window）或中文名（暖窗光），也接受「跟随场景」「取消灯光」表示清除临时灯光（不影响设置页的光影总开关）。只改画面光照，不改背景图与角色立绘本身。"
+description = "套用指定光影预设。preset 可填预设 id（warm_window），也可照用户屏幕上看到的名字说（暖窗光 / Warm Window Light / 暖かい窓辺の光 / 暖窗光），都认；也接受「跟随场景」「取消灯光」表示清除临时灯光（不影响设置页的光影总开关）。只改画面光照，不改背景图与角色立绘本身。"
 timeout_ms = 8000
 script = "lighting_studio.py"
-parameters = '{ "type":"object", "properties":{ "preset":{"type":"string","description":"预设 id、中文名，或「跟随场景」/「取消」"} }, "required":["preset"], "additionalProperties":false }'
+parameters = '{ "type":"object", "properties":{ "preset":{"type":"string","description":"预设 id、任一语言的预设名，或「跟随场景」/「取消」"} }, "required":["preset"], "additionalProperties":false }'
 
 [[tools]]
 name = "lighting_studio_mood"

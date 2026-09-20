@@ -26,7 +26,7 @@ impl Tool for LightingListPresets {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             "lighting_list_presets",
-            "列出所有光影预设（id、名称、说明、适用心情关键词）。切换灯光前先调用它确认 id。",
+            "列出所有光影预设（id、名称、各语言显示名 names、说明、适用心情关键词）。切换灯光前先调用它确认 id。",
             json!({
                 "type": "object",
                 "properties": {},
@@ -59,7 +59,7 @@ impl Tool for LightingApply {
             json!({
                 "type": "object",
                 "properties": {
-                    "preset": {"type": "string", "description": "预设 id，见 lighting_list_presets"},
+                    "preset": {"type": "string", "description": "预设 id，或用户屏幕上看到的任一语言预设名（暖窗光 / Warm Window Light），见 lighting_list_presets"},
                     "clear": {"type": "boolean", "description": "true = 清除覆盖，回到跟随场景"}
                 },
                 "required": [],

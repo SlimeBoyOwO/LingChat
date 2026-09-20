@@ -4,7 +4,7 @@
 碰不到渲染层）：lighting_list_presets / lighting_apply / lighting_get。
 
 本插件只加语义层：
-- id 与中文名互相容错，避免记住 warm_window 这种串才能换灯；
+- id、中文名与各语言的显示名互相容错，界面切成英文也不用记住 warm_window 这种串；
 - 拿一句情绪描述去和预设的心情关键词对分，挑最贴合的那个。
 """
 
@@ -120,6 +120,52 @@ def _push(call_tool, payload):
 # ---------- 匹配 ----------
 
 
+def _names(preset):
+    """一盏灯的所有写法：后端自带名 + 各语言界面上的显示名。
+
+    宿主把 en / ja / zh-HK 的名字一起给过来，是因为用户看着英文下拉说的
+    「Warm Window Light」，到插件这里仍然要落到 warm_window 上。
+    """
+    out = []
+    for raw in [str(preset.get("name") or "")] + [str(n) for n in preset.get("names") or []]:
+        name = raw.strip()
+        if name and name not in out:
+            out.append(name)
+    return out
+
+
+def _is_cjk(ch):
+    o = ord(ch)
+    # 汉字 + 假名：这些语言连写、没有空格，只能按二字组匹配
+    return 0x3400 <= o <= 0x9FFF or 0xF900 <= o <= 0xFAFF or 0x3040 <= o <= 0x30FF
+
+
+def _words(text):
+    """切出按空格书写的单词（小写）；汉字与假名交给二字组。"""
+    out, cur = [], []
+    for ch in text:
+        if ord(ch) < 128 and (ch.isalnum() or ch in "-'"):
+            cur.append(ch)
+        else:
+            if cur:
+                out.append("".join(cur).lower())
+                cur = []
+    if cur:
+        out.append("".join(cur).lower())
+    return out
+
+
+def _cjk_bigrams(text):
+    """相邻两个 CJK 字组成的词片，中间隔着别的文字就不拼接。"""
+    out, prev = [], None
+    for ch in text:
+        cur = ch if _is_cjk(ch) else None
+        if cur and prev:
+            out.append(prev + cur)
+        prev = cur
+    return out
+
+
 def _is_clear(text):
     t = (text or "").strip().lower()
     if not t:
@@ -138,20 +184,28 @@ def _mood_hits(query, preset):
 
 
 def _score(query, preset):
-    """中文没有空格可分词，所以两头都算：
-    关键词整词命中给重分，query 的相邻二字组出现在预设名/描述里给轻分。
+    """整名、整关键词命中给重分，单词或中文二字组落在名字/说明里给轻分。
+
+    二字组只对中日韩这种连写文字用；英文必须按单词切，否则 "glare" 切出来的
+    "la"、"ar" 会撞上描述里不相干的词，把别的灯顶上来。
     """
     score = len(_mood_hits(query, preset)) * 3
-    hay = (str(preset.get("name") or "") + str(preset.get("description") or "")).lower()
-    for i in range(len(query) - 1):
-        gram = query[i : i + 2].strip()
-        if gram and gram in hay:
+    names = _names(preset)
+    hay = ("".join(names) + str(preset.get("description") or "")).lower()
+    for name in names:
+        if name.lower() in query:
+            score += 3
+    for word in _words(query):
+        if len(word) >= 3 and word in hay:
+            score += 1
+    for gram in _cjk_bigrams(query):
+        if gram in hay:
             score += 1
     return score
 
 
 def _exact(presets, key):
-    """id 或中文名对上就算，两个方向都认：
+    """id、中文名或任一语言的显示名对上就算，两个方向都认：
     「霓虹」→ 霓虹夜（用户只说半截），「关掉霓虹夜」→ 霓虹夜（夹了别的话）。
     多个预设都说得通时取更具体的那个，避免短名字抢长名字。
     """
@@ -160,9 +214,7 @@ def _exact(presets, key):
         return None
     best, best_len = None, 0
     for p in presets:
-        pid = str(p.get("id") or "").lower()
-        name = str(p.get("name") or "").lower()
-        for needle in (pid, name):
+        for needle in [str(p.get("id") or "").lower()] + [n.lower() for n in _names(p)]:
             if not needle:
                 continue
             if k == needle:
@@ -221,6 +273,8 @@ def _list(call_tool):
             {
                 "id": p.get("id"),
                 "name": p.get("name"),
+                # 各语言界面上的写法：用户照屏幕说哪一种，助手就照那一种回
+                "names": _names(p),
                 "description": p.get("description"),
                 "mood": p.get("mood") or [],
                 # 用户在设置面板自建的：名字是他起的，匹配到时可以直接照说

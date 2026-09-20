@@ -23,14 +23,14 @@
           <div class="flex items-center justify-between gap-3">
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
-                <h3 class="truncate text-base font-bold text-white">{{ plugin.name }}</h3>
+                <h3 class="truncate text-base font-bold text-white">{{ pluginName(plugin) }}</h3>
                 <span
                   class="shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-white/60"
                 >
                   v{{ plugin.version }}
                 </span>
               </div>
-              <p class="mt-0.5 text-xs text-white/60">{{ plugin.description }}</p>
+              <p class="mt-0.5 text-xs text-white/60">{{ pluginDescription(plugin) }}</p>
             </div>
             <Toggle
               class="shrink-0"
@@ -269,6 +269,17 @@ import {
   type ResourceKind,
 } from "@/api/services/plugins";
 
+/**
+ * 插件名与描述的显示翻译。manifest.toml 里的中文是单一真相源（宿主和插件作者都靠
+ * 它对齐），这里只覆盖内置插件的显示：词条存在用词条，否则回落 manifest 原文，
+ * 所以第三方插件永远显示作者写的名字，不会被我们的词条表张冠李戴。
+ */
+const localized = (key: string, fallback: string) =>
+  i18n.global.te(key) ? String(i18n.global.t(key)) : fallback;
+const pluginName = (p: PluginInfo) => localized(`settings.plugins.items.${p.id}.name`, p.name);
+const pluginDescription = (p: PluginInfo) =>
+  localized(`settings.plugins.items.${p.id}.description`, p.description);
+
 const plugins = ref<PluginInfo[]>([]);
 const error = ref("");
 const saving = ref(false);
@@ -360,7 +371,7 @@ const toggle = async (plugin: PluginInfo, enabled: boolean) => {
   // 禁用会移除插件角色并级联删除其存档/记忆（重启用不恢复），破坏性操作前确认。
   if (!enabled && plugin.resources.includes("characters")) {
     const ok = await dialogStore.confirm(
-      i18n.global.t("settings.plugins.disableCharactersConfirm", { name: plugin.name }),
+      i18n.global.t("settings.plugins.disableCharactersConfirm", { name: pluginName(plugin) }),
     );
     if (!ok) return;
   }
@@ -396,7 +407,7 @@ const saveConfig = async (plugin: PluginInfo) => {
 
 const removePlugin = async (plugin: PluginInfo) => {
   const confirmed = await dialogStore.confirm(
-    i18n.global.t("settings.plugins.deleteConfirm", { name: plugin.name }),
+    i18n.global.t("settings.plugins.deleteConfirm", { name: pluginName(plugin) }),
   );
   if (!confirmed) return;
   try {

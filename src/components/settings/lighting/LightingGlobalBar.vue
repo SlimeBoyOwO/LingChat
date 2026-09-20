@@ -87,6 +87,7 @@ import { useLightingStore } from "../../../stores/modules/lighting";
 import type { LightingPreset } from "../../../api/services/lighting";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
 import { clearLighting } from "../../../api/services/lighting";
+import { presetNameById, presetNameOf } from "../../../locales/lighting-i18n";
 
 const settings = useSettingsStore();
 const lightingStore = useLightingStore();
@@ -96,8 +97,8 @@ const { t } = useI18n();
 const presets = computed(() => lightingStore.presets);
 const runtimeOverride = computed(() => lightingStore.override !== null);
 
-const currentDefaultName = computed(
-  () => presets.value.find((p) => p.id === settings.lighting.globalPreset)?.name ?? "",
+const currentDefaultName = computed(() =>
+  presetNameById(presets.value, settings.lighting.globalPreset, ""),
 );
 
 function setMaster(enabled: boolean) {
@@ -134,13 +135,15 @@ function onPick(preset: LightingPreset | null) {
 /** 下拉在抛出 saved 之前已经把预览用的临时灯光清掉了，这里只负责套用与回执。 */
 async function onSaved(preset: LightingPreset) {
   await setGlobalPreset(preset.id);
-  dialogStore.alert(t("settings.background.lighting.custom.savedOk", { name: preset.name }));
+  dialogStore.alert(
+    t("settings.background.lighting.custom.savedOk", { name: presetNameOf(preset) }),
+  );
 }
 
 const activeLabel = computed(() => {
   if (!settings.lighting.masterEnabled) return t("settings.background.lighting.masterShort");
   const id = lightingStore.activePresetId;
-  if (id) return presets.value.find((p) => p.id === id)?.name ?? id;
+  if (id) return presetNameById(presets.value, id);
   return lightingStore.override
     ? t("settings.background.lighting.presetInline")
     : t("settings.background.lighting.presetFollow");

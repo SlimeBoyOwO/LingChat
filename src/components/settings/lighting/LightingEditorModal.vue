@@ -215,6 +215,7 @@ import {
   cloneLighting,
   planLighting,
 } from "../../../utils/lighting";
+import { presetDescriptionOf, presetMoodOf, presetNameOf } from "../../../locales/lighting-i18n";
 
 const props = defineProps<{ show: boolean; editing: LightingPreset | null }>();
 const emit = defineEmits<{ close: []; saved: [id: string] }>();
@@ -345,13 +346,15 @@ watch(
     initial = cloneLighting(from);
     Object.assign(draft, cloneLighting(from));
     isBuiltinSource.value = !!props.editing && !props.editing.custom;
+    // 改内置预设走「另存为我的预设」，底稿用当前语言的显示文案，这样复制出来的
+    // 自建预设带着用户看得懂的名字/说明/关键词，而不是回落到后端原文。
     name.value = props.editing
       ? isBuiltinSource.value
-        ? t(`${L}.forkName`, { name: props.editing.name })
-        : props.editing.name
+        ? t(`${L}.forkName`, { name: presetNameOf(props.editing) })
+        : presetNameOf(props.editing)
       : "";
-    description.value = props.editing?.description ?? "";
-    mood.value = (props.editing?.mood ?? []).join(" ");
+    description.value = props.editing ? presetDescriptionOf(props.editing) : "";
+    mood.value = props.editing ? presetMoodOf(props.editing).join(" ") : "";
     const ov = lightingStore.override;
     snapshot = ov ? { preset: ov.preset, params: cloneLighting(ov.params) } : null;
     resolveAvatar();

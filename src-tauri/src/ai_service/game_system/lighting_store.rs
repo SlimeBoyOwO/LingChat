@@ -92,8 +92,13 @@ pub fn save_user_preset(
     if name.chars().count() > 24 {
         return Err("预设名请控制在 24 个字以内".to_string());
     }
-    // 重名会让「换成暖窗光」这类指令说不清指哪一个，内置和自建都不许撞名。
-    if ENTRIES.iter().any(|e| e.1 == name) {
+    // 重名会让「换成暖窗光」这类指令说不清指哪一个，内置和自建都不许撞名；
+    // 撞上任一语言的显示名也一样，否则用户自建一盏「Candlelight」后，英文界面
+    // 下说这句话会套到内置的那盏上。
+    if ENTRIES
+        .iter()
+        .any(|e| e.1 == name || aliases_for(e.0).contains(&name))
+    {
         return Err(format!("「{name}」是内置预设的名字，请换一个"));
     }
     if user_presets()
@@ -966,6 +971,83 @@ const ENTRIES: &[(&str, &str, &str, &str, Builder)] = &[
     ),
 ];
 
+/// 内置预设在其他三种界面上的显示名：`(id, [en, ja, zh-HK])`。
+///
+/// 前端显示用 `src/locales/*/settings.ts` 的词条（vue-i18n 不吃中文 key），这张表
+/// 只管匹配：英文界面下用户照着屏幕说「Warm Window Light」，后端也得认出
+/// `warm_window`，否则会回一句「未知光影预设」，而那盏灯就挂在他眼前的下拉里。
+/// 简体中文名取 [`ENTRIES`] 第 2 列，这里不重复登记。新增内置预设要一并加一行。
+const NAME_ALIASES: &[(&str, &[&str])] = &[
+    (
+        "warm_window",
+        &["Warm Window Light", "暖かい窓辺の光", "暖窗光"],
+    ),
+    (
+        "backlight_silhouette",
+        &["Backlit Silhouette", "逆光のシルエット", "逆光剪影"],
+    ),
+    (
+        "moonlit_night",
+        &["Cold Moonlit Night", "冷たい月夜", "冷月夜"],
+    ),
+    ("dusk_sunset", &["Dusk", "黄昏", "黃昏"]),
+    ("candlelight", &["Candlelight", "ろうそくの灯り", "燭光"]),
+    ("neon_night", &["Neon Night", "ネオンの夜", "霓虹夜"]),
+    (
+        "morning_soft",
+        &["Soft Morning Light", "朝のやわらかい光", "清晨柔光"],
+    ),
+    (
+        "overcast_gray",
+        &["Overcast Flat Light", "曇りのフラット光", "陰天平光"],
+    ),
+    ("rainy_gloom", &["Rain Haze", "雨のけむり", "雨霧"]),
+    (
+        "snow_bright",
+        &["Snowfield Glare", "雪明かりの强光", "雪地強光"],
+    ),
+    ("forest_dapple", &["Forest Dapple", "木漏れ日", "林間光斑"]),
+    (
+        "classroom_noon",
+        &["Midday Classroom", "真昼の教室", "正午教室"],
+    ),
+    (
+        "stage_spotlight",
+        &["Stage Spotlight", "舞台のスポット", "舞台聚光"],
+    ),
+    ("screen_glow", &["Screen Glow", "画面の冷光", "屏幕冷光"]),
+    ("thriller_red", &["Danger Red", "危険な赤光", "危險紅光"]),
+    (
+        "dream_pastel",
+        &["Dream Pastel", "夢見るパステル", "夢幻粉彩"],
+    ),
+    (
+        "golden_hour",
+        &["Golden Hour", "ゴールデンアワー", "黃金時刻"],
+    ),
+    (
+        "night_ambient",
+        &["Dim Interior Night", "夜の室内", "夜室內"],
+    ),
+    ("sepia_memory", &["Old Photograph", "古い写真", "舊照片"]),
+];
+
+/// 除简体中文名之外的可匹配写法。自建预设没有词条，返回空表。
+fn aliases_for(id: &str) -> &'static [&'static str] {
+    NAME_ALIASES
+        .iter()
+        .find(|(preset_id, _)| *preset_id == id)
+        .map(|(_, names)| *names)
+        .unwrap_or(&[])
+}
+
+/// 一个预设的全部可匹配写法：自带名 + 各语言显示名。
+fn display_names(preset: &LightingPreset) -> Vec<&str> {
+    let mut names = vec![preset.name.as_str()];
+    names.extend(aliases_for(&preset.id));
+    names
+}
+
 /// 内置预设（不含用户自建的那份）。
 fn builtin_presets() -> Vec<LightingPreset> {
     ENTRIES
@@ -988,13 +1070,26 @@ pub fn presets() -> Vec<LightingPreset> {
     out
 }
 
-/// 按 id 找预设，内置优先，再做大小写纠正。所有查询都走这里，避免各处规则不一致。
+/// 按 id 或任意语言的显示名找预设，内置在前、自建在后，id 再做大小写纠正。
+/// 所有查询都走这里，避免各处规则不一致。
 fn find_preset(id: &str) -> Option<LightingPreset> {
     let all = presets();
+    let key = id.trim();
+    if key.is_empty() {
+        return None;
+    }
+    let lower = key.to_lowercase();
     all.iter()
-        .find(|p| p.id == id)
+        .find(|p| p.id == key)
+        .or_else(|| all.iter().find(|p| p.id.eq_ignore_ascii_case(key)))
+        .or_else(|| {
+            all.iter().find(|p| {
+                display_names(p)
+                    .into_iter()
+                    .any(|name| name.trim().to_lowercase() == lower)
+            })
+        })
         .cloned()
-        .or_else(|| all.into_iter().find(|p| p.id.eq_ignore_ascii_case(id)))
 }
 
 /// 预设 id 列表（剧本编辑器下拉与校验共用）。
@@ -1007,7 +1102,7 @@ pub fn resolve(id: &str) -> Option<LightingParams> {
     find_preset(id).map(|p| p.params)
 }
 
-/// 校验用：返回规范化后的预设 id（大小写纠正），完全未知则 `None`。
+/// 校验用：返回规范化后的预设 id（id 大小写纠正、显示名换成规范 id），未知则 `None`。
 pub fn normalize_id(id: &str) -> Option<String> {
     find_preset(id).map(|p| p.id)
 }
@@ -1026,6 +1121,8 @@ pub fn preset_name(id: &str) -> Option<String> {
 pub struct PresetSummary {
     pub id: String,
     pub name: String,
+    /// 各语言界面上可能出现的写法。用户照屏幕上的英文名说，LLM 原样转过来也能对上。
+    pub names: Vec<String>,
     pub description: String,
     pub mood: Vec<String>,
     /// 自建预设要标出来：用户说「我那个黄昏」时，LLM 知道这不是内置名
@@ -1035,12 +1132,16 @@ pub struct PresetSummary {
 pub fn summaries() -> Vec<PresetSummary> {
     presets()
         .into_iter()
-        .map(|p| PresetSummary {
-            id: p.id,
-            name: p.name,
-            description: p.description,
-            mood: p.mood,
-            custom: p.custom,
+        .map(|p| {
+            let names = display_names(&p).into_iter().map(str::to_string).collect();
+            PresetSummary {
+                id: p.id,
+                name: p.name,
+                names,
+                description: p.description,
+                mood: p.mood,
+                custom: p.custom,
+            }
         })
         .collect()
 }
@@ -1104,6 +1205,72 @@ mod tests {
                 p.light_y
             );
         }
+    }
+
+    /// 英文界面下用户是照着屏幕说名字的，AI 原样转过来也必须认出那一盏灯。
+    #[test]
+    fn every_localized_name_resolves_to_its_own_preset() {
+        for preset in builtin_presets() {
+            for name in display_names(&preset) {
+                assert_eq!(
+                    normalize_id(name).as_deref(),
+                    Some(preset.id.as_str()),
+                    "「{name}」应指向 {}",
+                    preset.id
+                );
+                assert!(resolve(name).is_some(), "「{name}」解析不出参数");
+            }
+        }
+    }
+
+    #[test]
+    fn matching_ignores_case_and_surrounding_spaces() {
+        assert_eq!(
+            normalize_id("  warm WINDOW light ").as_deref(),
+            Some("warm_window")
+        );
+        assert_eq!(normalize_id("冷月夜").as_deref(), Some("moonlit_night"));
+        assert_eq!(normalize_id("ネオンの夜").as_deref(), Some("neon_night"));
+        assert_eq!(normalize_id("陰天平光").as_deref(), Some("overcast_gray"));
+        assert_eq!(normalize_id("没这盏灯"), None);
+        assert_eq!(normalize_id("   "), None);
+    }
+
+    /// 一个名字指向两盏灯时内置先赢，用户点了却换到别的灯，这种歧义必须挡住。
+    #[test]
+    fn aliases_never_point_at_two_builtins() {
+        let mut seen: Vec<(String, String)> = Vec::new();
+        for preset in builtin_presets() {
+            let aliases = aliases_for(&preset.id);
+            assert!(!aliases.is_empty(), "{} 没登记多语言名", preset.id);
+            for alias in aliases {
+                assert!(
+                    !seen
+                        .iter()
+                        .any(|(_, other)| other.eq_ignore_ascii_case(alias)),
+                    "「{alias}」同时属于 {} 和 {}",
+                    preset.id,
+                    seen.iter()
+                        .find(|(_, other)| other.eq_ignore_ascii_case(alias))
+                        .map(|(id, _)| id.as_str())
+                        .unwrap_or("?")
+                );
+                seen.push((preset.id.clone(), alias.to_string()));
+            }
+        }
+    }
+
+    #[test]
+    fn summaries_carry_every_spelling_for_matching() {
+        let warm = summaries()
+            .into_iter()
+            .find(|s| s.id == "warm_window")
+            .expect("清单里应有暖窗光");
+        assert_eq!(warm.name, "暖窗光");
+        assert!(
+            warm.names.iter().any(|n| n == "Warm Window Light"),
+            "插件要靠 names 认英文界面的显示名"
+        );
     }
 
     /// 自建预设表是进程级全局，几个测试共用同一份，必须串行。
