@@ -446,8 +446,6 @@ export function initializeTauriEventListeners() {
     useLightingStore().applyPayload(event.payload as LightingChangePayload);
   });
 
-  void useLightingStore().ensurePresets();
-
   console.log(
     "[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 14 script events + character:switch + scene:switch + lighting:change)"
   );
@@ -494,8 +492,6 @@ export function initializeCastWindowListeners() {
   listen("lighting:change", (event) => {
     useLightingStore().applyPayload(event.payload as LightingChangePayload);
   });
-
-  void useLightingStore().ensurePresets();
 
   // 投屏客户端麦克风经投屏 /ws 送到 Rust ASR，识别文本由这里注入对话。
   // 复用既有 asr-send 自定义事件 → GameDialog.onAsrAutoSend → send()（sendMessage）。
