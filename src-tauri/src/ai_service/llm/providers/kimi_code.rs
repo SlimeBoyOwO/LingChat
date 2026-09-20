@@ -569,10 +569,14 @@ impl KimiCodeProvider {
                         let Some(data) = line.strip_prefix("data:") else { continue };
                         let data = data.trim();
                         if data == "[DONE]" {
-                            // 流式响应结束前输出剩余的 thinking 内容
-                            if !thinking_buffer.is_empty() {
+                            // 流式响应结束前补发尚未增量的 thinking 尾部。
+                            // 只发尾部：前面已按增量发过，发整段会把前缀重复一遍。
+                            if thinking_buffer.len() > last_flush_len {
                                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
-                                yield LlmChunk::Reasoning(thinking_buffer.clone());
+                                let tail = &thinking_buffer[last_flush_len..];
+                                if !tail.is_empty() {
+                                    yield LlmChunk::Reasoning(tail.to_string());
+                                }
                             }
                             // 如果 text 为空但 thinking 有内容，把 thinking 作为正式回复兜底
                             // 工具调用轮的 thinking 只是决策过程，不能混入正文。
@@ -690,10 +694,13 @@ impl KimiCodeProvider {
                     last_flush_len = thinking_buffer.len();
                 }
             }
-            // 流正常结束时也输出未打印的 thinking
-            if !thinking_buffer.is_empty() {
+            // 流正常结束时补发尚未打印的 thinking 尾部（同上：只发尾部，不发整段）
+            if thinking_buffer.len() > last_flush_len {
                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
-                yield LlmChunk::Reasoning(thinking_buffer.clone());
+                let tail = &thinking_buffer[last_flush_len..];
+                if !tail.is_empty() {
+                    yield LlmChunk::Reasoning(tail.to_string());
+                }
             }
             // 兜底：text 为空时使用 thinking。
             // 但本轮若包含工具调用（tool_use 块），thinking 只是决策过程，
