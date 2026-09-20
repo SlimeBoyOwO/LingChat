@@ -11,6 +11,7 @@
 //! - `invoke("fly_brain_state")` → 快照：`{ time_of_day, sun_elevation, is_night,
 //!   tick, sim_time, speed, plasticity, weights_changed, brain_activity,
 //!   spikes_total, spikes, spike_ages_ms,
+//!   active_neurons（600ms 窗口内发放过的去重神经元数，状态卡显示用）,
 //!   vision: { left, right, optic }（视觉群 600ms 窗口发放率归一 0..1，复眼发光用）,
 //!   fly: { x, z, heading, speed, state, hunger, energy }
 //!   （state ∈ flying/foraging/eating/resting/sleeping/walking，walking=贴地散步），

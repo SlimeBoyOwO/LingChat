@@ -8,7 +8,8 @@
 //!   读出转向 → life.advance 推进世界（移动/进食/饥饿/作息/奖惩）；
 //! - 维护三条 600ms 脉冲滚动窗口通道：每步发放**计数**（brain_activity = 窗口
 //!   发放率归一 0..1，前端萤火虫亮度）+ 完整发放**索引**（快照 spikes /
-//!   spike_ages_ms，>8000 等距抽样，3D 小窗点亮用）+ 视觉群**分组计数**
+//!   spike_ages_ms / active_neurons（窗口内去重神经元数，常驻位图去重），
+//!   >8000 等距抽样仅作用于 spikes/ages 展示通道）+ 视觉群**分组计数**
 //!   （左/右眼群与 optic 全集，快照 vision 字段，复眼发光用）；
 //! - 控制面：speed 倍率（0.5/1/2，配速每轮直接读 ctrl 即时生效）、cmd=restart
 //!   （重置世界+果蝇+脑权重恢复 w0、可塑性状态清零）、plasticity 开关；
@@ -125,6 +126,8 @@ pub struct FlyBrainSnapshot {
     pub spikes: Vec<u32>,
     /// 与 spikes 对齐的距快照时刻 ms（int16）。
     pub spike_ages_ms: Vec<i16>,
+    /// 近 600ms 窗口内发放过的去重神经元数（对窗口全量计数，不受抽样影响）。
+    pub active_neurons: u32,
     pub vision: VisionSnap,
     pub fly: FlySnap,
     pub foods: Vec<FoodSnap>,
@@ -159,8 +162,10 @@ pub struct Shared {
     life_state: Mutex<LifeStatePub>,
     /// (sim_now, 当步发放计数) 滚动窗口；brain_activity 用。
     spike_log: Mutex<VecDeque<(u64, u32)>>,
-    /// (sim_now, 当步发放索引) 滚动窗口；快照 spikes/spike_ages_ms 用（第二通道）。
+    /// (sim_now, 当步发放索引) 滚动窗口；快照 spikes/spike_ages_ms/active_neurons 用。
     spike_idx_log: Mutex<VecDeque<(u64, Vec<u32>)>>,
+    /// 活跃神经元去重位图（常驻 n 字节，快照时置位计数后复位）。
+    active_bitmap: Mutex<Vec<u8>>,
     /// (sim_now, 左, 右, optic) 视觉群分组计数滚动窗口；快照 vision 用（第三通道）。
     vision_log: Mutex<VecDeque<(u64, u32, u32, u32)>>,
     /// 三个视觉群的神经元数（left/right/optic），归一化分母。
@@ -294,6 +299,23 @@ impl Shared {
                 ages.push(age);
             }
         }
+        // 窗口全量发放的去重神经元数（常驻位图两趟：置位计数 → 仅对本批索引复位；
+        // 位图在两次快照间保持全零，无每步清零开销）
+        let active_neurons = {
+            let mut bm = lock(&self.active_bitmap);
+            let mut cnt = 0u32;
+            for &s in &idx {
+                let b = &mut bm[s as usize];
+                if *b == 0 {
+                    *b = 1;
+                    cnt += 1;
+                }
+            }
+            for &s in &idx {
+                bm[s as usize] = 0;
+            }
+            cnt
+        };
         if idx.len() > MAX_SPIKES {
             let step = idx.len().div_ceil(MAX_SPIKES);
             idx = idx.into_iter().step_by(step).collect();
@@ -324,6 +346,7 @@ impl Shared {
             spikes_total: ls.spikes_total,
             spikes: idx,
             spike_ages_ms: ages,
+            active_neurons,
             vision,
             fly: ls.fly,
             foods: ls.foods,
@@ -416,6 +439,7 @@ pub fn start(graph: BrainGraph) -> Result<Running, String> {
         life_state: Mutex::new(build_life_state(&life, &brain, 1.0, 0)),
         spike_log: Mutex::new(VecDeque::new()),
         spike_idx_log: Mutex::new(VecDeque::new()),
+        active_bitmap: Mutex::new(vec![0u8; brain.n]),
         vision_log: Mutex::new(VecDeque::new()),
         vision_ns: (vision.n_left, vision.n_right, vision.n_optic),
         sim_now: AtomicU64::new(0),

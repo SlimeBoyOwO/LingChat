@@ -231,6 +231,36 @@
   opacity: 0.8;
   margin-right: 8px;
 }
+.active-row b {
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+.brain-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.brain-mode {
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  padding: 2px 11px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition:
+    background 0.25s,
+    box-shadow 0.25s;
+}
+.brain-mode:hover {
+  background: rgba(255, 255, 255, 0.38);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+}
 
 .toast-stack {
   position: absolute;

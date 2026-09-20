@@ -548,9 +548,9 @@ impl FlyLife {
                     self.push_event(
                         "eat",
                         if kind == 0 {
-                            "吃到了花蜜！"
+                            "吃到了团子！"
                         } else {
-                            "吃到了甜果！"
+                            "捡到了赛钱！"
                         },
                     );
                 }

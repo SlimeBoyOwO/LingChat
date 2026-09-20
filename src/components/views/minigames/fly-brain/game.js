@@ -549,6 +549,192 @@ export async function mountFlyBrain(root, options) {
     return { vao, count: idx.length };
   })();
 
+  /* ================= 博丽神社（本殿/鸟居/参道/石灯笼，静态合并单次 draw） ================= */
+  const lanternGlows = []; // 石灯笼火袋位置，夜里在 sprite 批次加暖光晕
+  const shrineGeo = (() => {
+    const P = [],
+      Nr = [],
+      C = [];
+    const push = (p, n, col) => {
+      P.push(p[0], p[1], p[2]);
+      Nr.push(n[0], n[1], n[2]);
+      C.push(col[0], col[1], col[2]);
+    };
+    const tri = (a, b, c, col) => {
+      const ux = b[0] - a[0],
+        uy = b[1] - a[1],
+        uz = b[2] - a[2];
+      const vx = c[0] - a[0],
+        vy = c[1] - a[1],
+        vz = c[2] - a[2];
+      let nx = uy * vz - uz * vy,
+        ny = uz * vx - ux * vz,
+        nz = ux * vy - uy * vx;
+      const l = Math.hypot(nx, ny, nz) || 1;
+      const n = [nx / l, ny / l, nz / l];
+      push(a, n, col);
+      push(b, n, col);
+      push(c, n, col);
+    };
+    const quad = (a, b, c, d, col) => {
+      tri(a, b, c, col);
+      tri(a, c, d, col);
+    };
+    const box = (cx, cy, cz, w, h, d, col) => {
+      const x0 = cx - w / 2,
+        x1 = cx + w / 2,
+        y0 = cy - h / 2,
+        y1 = cy + h / 2,
+        z0 = cz - d / 2,
+        z1 = cz + d / 2;
+      quad([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], col);
+      quad([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], col);
+      quad([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], col);
+      quad([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], col);
+      quad([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], col);
+      quad([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], col);
+    };
+    const cylY = (cx, y0, cz, r, h, col, segs = 10) => {
+      for (let j = 0; j < segs; j++) {
+        const t0 = (j / segs) * Math.PI * 2,
+          t1 = ((j + 1) / segs) * Math.PI * 2;
+        const c0 = Math.cos(t0),
+          s0 = Math.sin(t0),
+          c1 = Math.cos(t1),
+          s1 = Math.sin(t1);
+        quad(
+          [cx + c0 * r, y0, cz + s0 * r],
+          [cx + c1 * r, y0, cz + s1 * r],
+          [cx + c1 * r, y0 + h, cz + s1 * r],
+          [cx + c0 * r, y0 + h, cz + s0 * r],
+          col,
+        );
+        tri(
+          [cx, y0 + h, cz],
+          [cx + c1 * r, y0 + h, cz + s1 * r],
+          [cx + c0 * r, y0 + h, cz + s0 * r],
+          col,
+        );
+      }
+    };
+    const soupMerge = (arr) => {
+      for (let i = 0; i < arr.length; i += 9)
+        push(
+          [arr[i], arr[i + 1], arr[i + 2]],
+          [arr[i + 3], arr[i + 4], arr[i + 5]],
+          [arr[i + 6], arr[i + 7], arr[i + 8]],
+        );
+    };
+    /* 四坡屋顶（寄棟/歇山简化）：檐口四角微起翘，前后梯形坡 + 两侧三角坡 */
+    const hipRoof = (cx, cy, cz, hw, hd, rh, rhalf, col) => {
+      const lift = (x, z) =>
+        0.3 * Math.pow(Math.abs(x) / hw, 2) + 0.12 * Math.pow(Math.abs(z) / hd, 2);
+      const eave = (x, z) => [cx + x, cy + lift(x, z), cz + z];
+      const ridge = (x) => [cx + Math.max(-rhalf, Math.min(rhalf, x)), cy + rh, cz];
+      for (const zs of [-1, 1]) {
+        for (let i = 0; i < 3; i++) {
+          const x0 = -hw + (i / 3) * 2 * hw,
+            x1 = -hw + ((i + 1) / 3) * 2 * hw;
+          quad(eave(x0, zs * hd), eave(x1, zs * hd), ridge(x1), ridge(x0), col);
+        }
+      }
+      for (const xs of [-1, 1]) tri(eave(xs * hw, hd), eave(xs * hw, -hd), ridge(xs * rhalf), col);
+    };
+    const VERM = [0.84, 0.2, 0.1],
+      VERM_D = [0.66, 0.13, 0.07],
+      REDWOOD = [0.48, 0.15, 0.1],
+      WHITEW = [0.93, 0.92, 0.88],
+      ROOF = [0.2, 0.22, 0.26],
+      ROOF_R = [0.15, 0.16, 0.2],
+      STONE = [0.6, 0.61, 0.59],
+      STONE_D = [0.5, 0.51, 0.5],
+      WOOD = [0.4, 0.28, 0.16],
+      WOOD_D = [0.24, 0.16, 0.09],
+      STRAW = [0.85, 0.74, 0.45],
+      WARMW = [1.0, 0.78, 0.5],
+      SLAB = [0.72, 0.72, 0.69];
+
+    /* 朱红鸟居（南侧参道入口，明神鸟居比例） */
+    const tg = heightAt(0, 30);
+    cylY(-1.9, tg - 0.3, 30, 0.22, 4.9, VERM, 12);
+    cylY(1.9, tg - 0.3, 30, 0.22, 4.9, VERM, 12);
+    box(0, tg + 4.62, 30, 5.6, 0.3, 0.5, VERM); // 笠木
+    box(0, tg + 4.9, 30, 5.9, 0.26, 0.58, VERM_D); // 岛木压顶
+    box(0, tg + 3.55, 30, 4.5, 0.24, 0.3, VERM); // 贯
+    box(0, tg + 4.08, 30, 0.28, 0.6, 0.26, VERM); // 额束
+    box(-1.9, tg - 0.12, 30, 0.7, 0.35, 0.7, STONE);
+    box(1.9, tg - 0.12, 30, 0.7, 0.35, 0.7, STONE);
+
+    /* 参道石板（贴合地形逐块取高） */
+    for (let z = 27.5; z >= -23.6; z -= 1.45)
+      box(0, heightAt(0, z) + 0.04, z, 2.2, 0.12, 1.18, SLAB);
+
+    /* 石灯笼（参道两侧成对，夜里火袋放暖光晕） */
+    const lantern = (x, z) => {
+      const g = heightAt(x, z);
+      box(x, g + 0.11, z, 0.55, 0.22, 0.55, STONE_D); // 基座
+      cylY(x, g + 0.22, z, 0.08, 0.72, STONE, 8); // 竿
+      box(x, g + 0.98, z, 0.44, 0.1, 0.44, STONE); // 中台
+      box(x, g + 1.19, z, 0.34, 0.32, 0.34, STONE_D); // 火袋
+      box(x, g + 1.19, z - 0.172, 0.2, 0.18, 0.015, WARMW); // 火袋窗
+      box(x, g + 1.19, z + 0.172, 0.2, 0.18, 0.015, WARMW);
+      box(x, g + 1.42, z, 0.46, 0.1, 0.46, STONE); // 笠
+      soupMerge(sphereSoup(x, g + 1.55, z, 0.09, 0.11, 0.09, 6, 4, () => STONE_D)); // 宝珠
+      lanternGlows.push({
+        x,
+        y: g + 1.19,
+        z,
+        phase: hash2(Math.round(x * 10), Math.round(z * 10)) * 6.28,
+      });
+    };
+    for (const lz of [24, 14, 4, -6, -16]) {
+      lantern(-2.9, lz);
+      lantern(2.9, lz);
+    }
+
+    /* 神社本殿（北侧高台）：石台基 + 红柱白墙 + 歇山顶 + 注连绳 + 赛钱箱 + 大铃铛 */
+    const hg = heightAt(0, -30),
+      plat = hg + 0.9;
+    box(0, hg - 0.05, -30, 11, 1.9, 9, STONE); // 石台基
+    for (let i = 0; i < 3; i++)
+      box(0, hg + 0.3 * (i + 1) - 0.175, -24.4 - i * 0.55, 4.2, 0.35, 0.6, STONE_D); // 台阶
+    for (const px of [-3.3, -1.1, 1.1, 3.3]) cylY(px, plat, -26.6, 0.16, 2.4, REDWOOD, 10); // 前柱
+    for (const px of [-3.3, 3.3]) cylY(px, plat, -33.4, 0.16, 2.4, REDWOOD, 10);
+    box(0, plat + 1.15, -30, 8, 2.3, 6, WHITEW); // 白墙身
+    box(0, plat + 0.95, -26.94, 1.5, 1.9, 0.08, WOOD_D); // 正门
+    box(0, plat + 0.35, -26.93, 2.2, 0.28, 0.1, WOOD); // 门槛
+    hipRoof(0, plat + 2.55, -30, 5.0, 4.1, 1.75, 2.0, ROOF); // 歇山顶
+    box(0, plat + 4.37, -30, 4.3, 0.24, 0.55, ROOF_R); // 屋脊
+    box(-2.05, plat + 4.53, -30, 0.5, 0.3, 0.5, ROOF_R); // 脊端饰
+    box(2.05, plat + 4.53, -30, 0.5, 0.3, 0.5, ROOF_R);
+    box(0, plat + 2.0, -26.45, 6.6, 0.13, 0.13, STRAW); // 注连绳
+    for (const px of [-2.4, -0.8, 0.8, 2.4]) {
+      box(px, plat + 1.74, -26.45, 0.2, 0.4, 0.03, WHITEW); // 纸垂（折阶两段）
+      box(px + 0.05, plat + 1.44, -26.45, 0.16, 0.24, 0.03, WHITEW);
+    }
+    box(0, plat + 0.42, -24.7, 1.7, 0.85, 1.0, WOOD); // 赛钱箱
+    for (let i = -2; i <= 2; i++) box(i * 0.32, plat + 0.88, -24.7, 0.09, 0.07, 1.06, WOOD_D);
+    cylY(-1.25, plat, -24.1, 0.07, 2.1, REDWOOD, 8); // 铃架
+    cylY(1.25, plat, -24.1, 0.07, 2.1, REDWOOD, 8);
+    box(0, plat + 2.12, -24.1, 2.8, 0.15, 0.18, REDWOOD);
+    cylY(0, plat + 1.62, -24.1, 0.025, 0.5, STRAW, 6); // 铃绳
+    soupMerge(sphereSoup(0, plat + 1.42, -24.1, 0.17, 0.19, 0.17, 8, 6, () => [0.26, 0.23, 0.18])); // 大铃铛
+
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    const bind = (loc, arr) => {
+      const b = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, b);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 0, 0);
+    };
+    bind(0, P);
+    bind(1, Nr);
+    bind(2, C);
+    gl.bindVertexArray(null);
+    return { vao, count: P.length / 3 };
+  })();
   /* ================= 草叶（实例化） ================= */
   const GRASS_N = 4500;
   const grassProg = makeProg(
@@ -616,6 +802,8 @@ export async function mountFlyBrain(root, options) {
       const r = Math.hypot(x, z);
       if (r > 46 || Math.random() > 1 - (r / 46) * (r / 46) * 0.72) continue;
       if (Math.hypot(x - POND.x, z - POND.z) < POND.r + 1.5) continue; // 塘里不长草
+      if (Math.abs(x) < 1.8 && Math.abs(z) < 33) continue; // 参道不长草
+      if (Math.abs(x) < 7.5 && z < -22 && z > -37.5) continue; // 社殿高台不长草
       const o = placed * 7;
       inst[o] = x;
       inst[o + 1] = heightAt(x, z) - 0.03;
@@ -639,18 +827,20 @@ export async function mountFlyBrain(root, options) {
     return vao;
   })();
 
-  /* ================= 程序化贴图集（荷花/桃子/竹/松/桃树/石头/雾带/荷叶） ================= */
+  /* ================= 程序化贴图集（团子/赛钱箱/竹/松/樱花/石头/雾带/荷叶/荷花/灯晕） ================= */
   const ATLAS = 512;
   const atlasCanvas = document.createElement("canvas");
   atlasCanvas.width = ATLAS;
   atlasCanvas.height = ATLAS;
   const REG = {
-    lotus: [0, 0, 128, 128],
-    peach: [128, 0, 128, 128],
+    dango: [0, 0, 128, 128],
+    saisen: [128, 0, 128, 128],
     bamboo: [256, 0, 128, 128],
     pine: [384, 0, 128, 128],
-    peachTree: [0, 128, 128, 128],
+    sakura: [0, 128, 128, 128],
     stone: [128, 128, 128, 128],
+    lotus: [256, 128, 128, 128],
+    glow: [384, 128, 64, 64],
     mist: [0, 256, 256, 64],
     lotusLeaf: [256, 256, 64, 64],
   };
@@ -673,76 +863,63 @@ export async function mountFlyBrain(root, options) {
       c.fill();
       c.restore();
     };
-    /* 荷花（蜜源 kind 0）：层叠粉瓣 + 莲蓬 */
+    /* 团子串（蜜源 kind 0）：三色团子 */
     c.save();
     c.translate(0, 0);
-    c.strokeStyle = "#4d7d46";
-    c.lineWidth = 6;
+    c.strokeStyle = "#c8a06a";
+    c.lineWidth = 5;
     c.lineCap = "round";
     c.beginPath();
     c.moveTo(64, 126);
-    c.quadraticCurveTo(60, 98, 64, 72);
+    c.lineTo(64, 22);
     c.stroke();
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      const g = c.createLinearGradient(64, 30, 64, 62);
-      g.addColorStop(0, i % 2 ? "#ffe9f2" : "#ffd3e4");
-      g.addColorStop(1, "#f78fb8");
+    const dango = (y, c1, c2) => {
+      const g = c.createRadialGradient(58, y - 7, 4, 64, y, 19);
+      g.addColorStop(0, c1);
+      g.addColorStop(1, c2);
       c.fillStyle = g;
       c.beginPath();
-      c.ellipse(64 + Math.cos(a) * 14, 48 + Math.sin(a) * 12, 12, 6.5, a, 0, Math.PI * 2);
+      c.arc(64, y, 19, 0, Math.PI * 2);
       c.fill();
-    }
-    c.fillStyle = "#ffd76e";
-    c.beginPath();
-    c.arc(64, 48, 8, 0, Math.PI * 2);
-    c.fill();
-    c.fillStyle = "#e8a83e";
-    for (let i = 0; i < 5; i++) {
+      c.fillStyle = "rgba(255,255,255,0.65)";
       c.beginPath();
-      c.arc(
-        64 + Math.cos((i / 5) * Math.PI * 2) * 4,
-        48 + Math.sin((i / 5) * Math.PI * 2) * 4,
-        1.4,
-        0,
-        Math.PI * 2,
-      );
-      c.fill();
-    }
-    c.restore();
-    /* 桃子（蜜源 kind 1）：粉橙成串 */
-    c.save();
-    c.translate(128, 0);
-    const peach = (x, y, r) => {
-      const g = c.createRadialGradient(x - r * 0.3, y - r * 0.4, r * 0.15, x, y, r);
-      g.addColorStop(0, "#ffd9b8");
-      g.addColorStop(0.6, "#ffb08a");
-      g.addColorStop(1, "#f07f68");
-      c.fillStyle = g;
-      c.beginPath();
-      c.arc(x, y, r, 0, Math.PI * 2);
-      c.fill();
-      c.strokeStyle = "rgba(214,90,80,0.65)";
-      c.lineWidth = 2;
-      c.beginPath();
-      c.moveTo(x, y - r * 0.9);
-      c.quadraticCurveTo(x + r * 0.18, y, x, y + r * 0.9);
-      c.stroke();
-      c.fillStyle = "rgba(255,255,255,0.7)";
-      c.beginPath();
-      c.ellipse(x - r * 0.32, y - r * 0.4, r * 0.2, r * 0.12, -0.6, 0, Math.PI * 2);
+      c.ellipse(57, y - 8, 5, 3.4, -0.6, 0, Math.PI * 2);
       c.fill();
     };
-    c.fillStyle = "#5da85f";
+    dango(97, "#ffc9d9", "#f28cae"); // 粉
+    dango(64, "#fff8f0", "#ead9c2"); // 白
+    dango(31, "#cdebb6", "#92c47c"); // 绿
+    c.restore();
+    /* 赛钱箱（蜜源 kind 1）：小木箱 + 金币光点 */
+    c.save();
+    c.translate(128, 0);
+    const boxG = c.createLinearGradient(0, 50, 0, 120);
+    boxG.addColorStop(0, "#96622f");
+    boxG.addColorStop(1, "#5d3a1a");
+    c.fillStyle = boxG;
     c.beginPath();
-    c.ellipse(60, 42, 18, 7, -0.4, 0, Math.PI * 2);
+    c.roundRect(22, 52, 84, 66, 6);
     c.fill();
+    c.fillStyle = "#3d2712";
+    for (let i = 0; i < 4; i++) c.fillRect(26, 58 + i * 9, 76, 3.5); // 箱顶木缝
+    c.fillStyle = "#7a4c22";
+    c.fillRect(22, 112, 84, 8); // 底沿
+    const coin = c.createRadialGradient(58, 34, 2, 64, 40, 14);
+    coin.addColorStop(0, "#fff3b8");
+    coin.addColorStop(0.7, "#ffd76e");
+    coin.addColorStop(1, "#d9a441");
+    c.fillStyle = coin;
     c.beginPath();
-    c.ellipse(78, 50, 14, 6, 0.5, 0, Math.PI * 2);
+    c.arc(64, 40, 13, 0, Math.PI * 2);
     c.fill();
-    peach(54, 76, 17);
-    peach(80, 84, 15);
-    peach(62, 100, 13);
+    c.fillStyle = "rgba(255,255,255,0.9)";
+    c.beginPath(); // 金币闪光（四角星）
+    c.moveTo(84, 18);
+    c.quadraticCurveTo(86, 26, 94, 28);
+    c.quadraticCurveTo(86, 30, 84, 38);
+    c.quadraticCurveTo(82, 30, 74, 28);
+    c.quadraticCurveTo(82, 26, 84, 18);
+    c.fill();
     c.restore();
     /* 竹丛：细高绿杆 + 叶簇 */
     c.save();
@@ -808,7 +985,7 @@ export async function mountFlyBrain(root, options) {
     pineLayer(62, 52, "#487a58");
     pineLayer(44, 30, "#5c9468");
     c.restore();
-    /* 桃树：褐干 + 粉色花团 */
+    /* 樱花树：褐干 + 淡粉花团 */
     c.save();
     c.translate(0, 128);
     c.strokeStyle = "#6b4a36";
@@ -828,12 +1005,12 @@ export async function mountFlyBrain(root, options) {
     c.quadraticCurveTo(80, 86, 86, 72);
     c.stroke();
     const blossom = (x, y, r, col) => softBlob(x, y, r, r * 0.85, col, 0.95);
-    blossom(46, 62, 22, "rgba(255,178,204,A)");
-    blossom(82, 58, 24, "rgba(255,194,214,A)");
-    blossom(64, 44, 24, "rgba(255,214,228,A)");
-    blossom(56, 76, 18, "rgba(255,158,196,A)");
-    blossom(78, 80, 16, "rgba(255,178,204,A)");
-    c.fillStyle = "rgba(255,255,255,0.85)";
+    blossom(46, 62, 22, "rgba(255,206,222,A)");
+    blossom(82, 58, 24, "rgba(255,222,234,A)");
+    blossom(64, 44, 24, "rgba(255,236,244,A)");
+    blossom(56, 76, 18, "rgba(255,192,214,A)");
+    blossom(78, 80, 16, "rgba(255,214,228,A)");
+    c.fillStyle = "rgba(255,255,255,0.9)";
     for (let i = 0; i < 14; i++) {
       const a = hash2(i, 7) * Math.PI * 2,
         r = 8 + hash2(i, 13) * 22;
@@ -841,6 +1018,49 @@ export async function mountFlyBrain(root, options) {
       c.arc(64 + Math.cos(a) * r, 58 + (hash2(i, 29) - 0.5) * 36, 1.6, 0, Math.PI * 2);
       c.fill();
     }
+    c.restore();
+    /* 荷花（池塘装饰，蜜源已换成团子） */
+    c.save();
+    c.translate(256, 128);
+    c.strokeStyle = "#4d7d46";
+    c.lineWidth = 6;
+    c.lineCap = "round";
+    c.beginPath();
+    c.moveTo(64, 126);
+    c.quadraticCurveTo(60, 98, 64, 72);
+    c.stroke();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const g = c.createLinearGradient(64, 30, 64, 62);
+      g.addColorStop(0, i % 2 ? "#ffe9f2" : "#ffd3e4");
+      g.addColorStop(1, "#f78fb8");
+      c.fillStyle = g;
+      c.beginPath();
+      c.ellipse(64 + Math.cos(a) * 14, 48 + Math.sin(a) * 12, 12, 6.5, a, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.fillStyle = "#ffd76e";
+    c.beginPath();
+    c.arc(64, 48, 8, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = "#e8a83e";
+    for (let i = 0; i < 5; i++) {
+      c.beginPath();
+      c.arc(
+        64 + Math.cos((i / 5) * Math.PI * 2) * 4,
+        48 + Math.sin((i / 5) * Math.PI * 2) * 4,
+        1.4,
+        0,
+        Math.PI * 2,
+      );
+      c.fill();
+    }
+    c.restore();
+    /* 石灯笼暖光晕（夜间 sprite） */
+    c.save();
+    c.translate(384, 128);
+    softBlob(32, 32, 26, 26, "rgba(255,236,180,A)", 0.95);
+    softBlob(32, 32, 12, 12, "rgba(255,250,230,A)", 0.95);
     c.restore();
     /* 石头（山水点缀） */
     c.save();
@@ -995,6 +1215,9 @@ export async function mountFlyBrain(root, options) {
   const decor = [];
   {
     const clearOfPond = (x, z, margin) => Math.hypot(x - POND.x, z - POND.z) > POND.r + margin;
+    // 参道 / 社殿高台 / 鸟居一带不种树
+    const clearOfShrine = (x, z) =>
+      !(Math.abs(x) < 4.2 && z > -35 && z < 34) && !(Math.abs(x) < 8.5 && z < -22);
     const scatter = (count, rMin, rMax) => {
       const out = [];
       let guard = 0;
@@ -1003,7 +1226,7 @@ export async function mountFlyBrain(root, options) {
           r = rMin + Math.random() * (rMax - rMin);
         const x = Math.cos(a) * r,
           z = Math.sin(a) * r;
-        if (!clearOfPond(x, z, 3)) continue;
+        if (!clearOfPond(x, z, 3) || !clearOfShrine(x, z)) continue;
         out.push([x, z]);
       }
       return out;
@@ -1034,7 +1257,8 @@ export async function mountFlyBrain(root, options) {
         sway: 0.03,
       });
     }
-    for (const [i, [x, z]] of scatter(3, 10, 38).entries()) {
+    /* 樱花树：参道入口两侧成对 + 散植 */
+    for (const [i, [x, z]] of [[-5.2, 26.5], [5.2, 26.5], ...scatter(3, 12, 38)].entries()) {
       const h = 3.6 + Math.random() * 0.6;
       decor.push({
         x,
@@ -1042,7 +1266,7 @@ export async function mountFlyBrain(root, options) {
         z,
         w: 3.6,
         h,
-        uv: UV.peachTree,
+        uv: UV.sakura,
         phase: i * 3.1,
         sway: 0.05,
       });
@@ -1102,21 +1326,21 @@ export async function mountFlyBrain(root, options) {
     });
   }
 
-  /* 蜜源（后端 foods 驱动，吃掉消失/重生）：荷花与桃子 */
+  /* 蜜源（后端 foods 驱动，吃掉消失/重生）：团子串与赛钱箱 */
   let foodSprites = [],
     foodsSig = "";
   function rebuildFoods(foods) {
     foodSprites = (foods || []).map((f) => {
       const isFruit = f.kind === 1;
-      const w = isFruit ? 1.55 : 1.3,
-        h = isFruit ? 1.55 : 1.45;
+      const w = isFruit ? 1.5 : 1.15,
+        h = isFruit ? 1.35 : 1.5;
       return {
         x: f.x,
         y: heightAt(f.x, f.z) + h * 0.44,
         z: f.z,
         w,
         h,
-        uv: isFruit ? UV.peach : UV.lotus,
+        uv: isFruit ? UV.saisen : UV.dango,
         phase: (f.id * 2.39) % 6.28,
         sway: 0.09,
       };
@@ -1181,7 +1405,7 @@ export async function mountFlyBrain(root, options) {
     return vao;
   })();
 
-  /* ================= 3D 果蝇（程序化建模：头胸腹 + 复眼 + 膜翅 + 六条腿） ================= */
+  /* ================= Q 版博丽灵梦（程序化二头身巫女：刚体汤合并动态缓冲单 draw + 高光 emissive 小 draw） ================= */
   function sphereSoup(cx, cy, cz, rx, ry, rz, wSeg, hSeg, colorFn) {
     const out = [];
     const P = (phi, th) => {
@@ -1217,7 +1441,7 @@ export async function mountFlyBrain(root, options) {
     }
     return out;
   }
-  /* 单位细圆柱（半径 1，y∈[0,1]，侧面），腿节共用 */
+  /* 单位细圆柱（半径 1，y∈[0,1]，侧面），袖/腿/缎带共用 */
   const TUBE = (() => {
     const out = [];
     const SEG = 6;
@@ -1228,7 +1452,6 @@ export async function mountFlyBrain(root, options) {
         s0 = Math.sin(t0),
         c1 = Math.cos(t1),
         s1 = Math.sin(t1);
-      // (x,y,z, nx,0,nz)
       const a = [c0, 0, s0, c0, 0, s0],
         b = [c0, 1, s0, c0, 0, s0],
         d = [c1, 0, s1, c1, 0, s1],
@@ -1237,19 +1460,7 @@ export async function mountFlyBrain(root, options) {
     }
     return out;
   })();
-  const BODY_DARK = [0.3, 0.23, 0.16];
-  const RIGID_SOUP = (() => {
-    const abdomenBand = (p) => {
-      const z = p[2] - 0.03;
-      return Math.floor(z / 0.1) % 2 === 0 ? [0.38, 0.3, 0.21] : [0.24, 0.18, 0.13];
-    };
-    return new Float32Array([
-      ...sphereSoup(0, 0, 0, 0.2, 0.17, 0.22, 10, 7, () => BODY_DARK), // 胸
-      ...sphereSoup(0, -0.03, 0.33, 0.21, 0.16, 0.3, 10, 7, abdomenBand), // 腹（环纹）
-      ...sphereSoup(0, 0.03, -0.27, 0.12, 0.11, 0.11, 9, 6, () => [0.27, 0.2, 0.14]), // 头
-    ]);
-  })();
-  /* 复眼：独立几何（只存位置），颜色逐帧随 vision 放电调制，emissive 不走光照 */
+  /* 只存位置的球汤（眼睛高光用） */
   function spherePos(cx, cy, cz, r, wSeg, hSeg) {
     const out = [];
     const P = (phi, th) => {
@@ -1271,12 +1482,93 @@ export async function mountFlyBrain(root, options) {
     }
     return out;
   }
-  const EYE_L_POS = spherePos(0.08, 0.07, -0.31, 0.055, 7, 5),
-    EYE_R_POS = spherePos(-0.08, 0.07, -0.31, 0.055, 7, 5);
-  const EYE_VERTS = (EYE_L_POS.length + EYE_R_POS.length) / 3;
-  const EYE_BASE = [0.38, 0.08, 0.07], // 平时暗红
-    EYE_HOT = [1.0, 0.42, 0.56]; // 看到食物一侧的粉红亮光
-  const eyeBuf = new Float32Array(EYE_VERTS * 6);
+  const C_HAIR = [0.1, 0.08, 0.09],
+    C_SKIN = [1.0, 0.87, 0.75],
+    C_WHITE = [0.96, 0.95, 0.93],
+    C_RED = [0.78, 0.12, 0.16],
+    C_BOW = [0.86, 0.1, 0.14],
+    C_SHOE = [0.5, 0.2, 0.14],
+    C_EYE = [0.16, 0.1, 0.12];
+  /* 圆台汤（袴/袖/小腿）：底半径 rB、顶半径 rT、高 h，侧面 + 底盖，colorFn 按高度 0..1 分带 */
+  function coneSoup(cx, cy, cz, rB, rT, h, segs, colorFn) {
+    const out = [];
+    const slope = (rB - rT) / h;
+    const nl = Math.hypot(1, slope);
+    const pushV = (px, py, pz, nx, ny, nz) => {
+      const cc = colorFn((py - cy) / h);
+      out.push(px, py, pz, nx, ny, nz, cc[0], cc[1], cc[2]);
+    };
+    for (let j = 0; j < segs; j++) {
+      const t0 = (j / segs) * Math.PI * 2,
+        t1 = ((j + 1) / segs) * Math.PI * 2;
+      const c0 = Math.cos(t0),
+        s0 = Math.sin(t0),
+        c1 = Math.cos(t1),
+        s1 = Math.sin(t1);
+      // 侧面四边形（法线带锥度）
+      pushV(cx + c0 * rB, cy, cz + s0 * rB, c0 / nl, slope / nl, s0 / nl);
+      pushV(cx + c1 * rB, cy, cz + s1 * rB, c1 / nl, slope / nl, s1 / nl);
+      pushV(cx + c0 * rT, cy + h, cz + s0 * rT, c0 / nl, slope / nl, s0 / nl);
+      pushV(cx + c0 * rT, cy + h, cz + s0 * rT, c0 / nl, slope / nl, s0 / nl);
+      pushV(cx + c1 * rB, cy, cz + s1 * rB, c1 / nl, slope / nl, s1 / nl);
+      pushV(cx + c1 * rT, cy + h, cz + s1 * rT, c1 / nl, slope / nl, s1 / nl);
+      // 底盖（朝下）
+      pushV(cx, cy, cz, 0, -1, 0);
+      pushV(cx + c1 * rB, cy, cz + s1 * rB, 0, -1, 0);
+      pushV(cx + c0 * rB, cy, cz + s0 * rB, 0, -1, 0);
+    }
+    return out;
+  }
+  /* 蝴蝶结双耳：椭球建好后绕 Z 轴倾转（顶点与法线同转） */
+  function rotZSoup(soup, cx, cy, ang) {
+    const c = Math.cos(ang),
+      s = Math.sin(ang);
+    for (let i = 0; i < soup.length; i += 9) {
+      const x = soup[i] - cx,
+        y = soup[i + 1] - cy;
+      soup[i] = cx + x * c - y * s;
+      soup[i + 1] = cy + x * s + y * c;
+      const nx = soup[i + 3],
+        ny = soup[i + 4];
+      soup[i + 3] = nx * c - ny * s;
+      soup[i + 4] = nx * s + ny * c;
+    }
+    return soup;
+  }
+  const RIGID_SOUP = (() => {
+    const bowL = rotZSoup(
+      sphereSoup(0.155, 1.38, 0.03, 0.135, 0.065, 0.085, 8, 5, () => C_BOW),
+      0.155,
+      1.38,
+      -0.5,
+    );
+    const bowR = rotZSoup(
+      sphereSoup(-0.155, 1.38, 0.03, 0.135, 0.065, 0.085, 8, 5, () => C_BOW),
+      -0.155,
+      1.38,
+      0.5,
+    );
+    return new Float32Array([
+      ...coneSoup(0, 0.26, 0, 0.34, 0.2, 0.44, 12, (u) => (u < 0.16 ? C_WHITE : C_RED)), // 红袴白裾
+      ...sphereSoup(0, 0.84, 0, 0.21, 0.19, 0.155, 10, 7, () => C_WHITE), // 白衣上身
+      ...sphereSoup(0, 0.74, -0.14, 0.05, 0.06, 0.03, 6, 4, () => C_BOW), // 领口红领巾
+      ...sphereSoup(0, 1.1, 0, 0.27, 0.26, 0.26, 12, 9, () => C_SKIN), // 头
+      ...sphereSoup(0, 1.13, 0.045, 0.285, 0.275, 0.285, 12, 9, () => C_HAIR), // 发盖
+      ...sphereSoup(0, 0.86, 0.17, 0.21, 0.4, 0.12, 10, 7, () => C_HAIR), // 后长发
+      ...sphereSoup(0.245, 0.98, 0.02, 0.055, 0.2, 0.06, 6, 5, () => C_HAIR), // 侧发
+      ...sphereSoup(-0.245, 0.98, 0.02, 0.055, 0.2, 0.06, 6, 5, () => C_HAIR),
+      ...sphereSoup(0.105, 1.1, -0.238, 0.035, 0.05, 0.02, 6, 4, () => C_EYE), // 眼（暗底）
+      ...sphereSoup(-0.105, 1.1, -0.238, 0.035, 0.05, 0.02, 6, 4, () => C_EYE),
+      ...bowL,
+      ...bowR, // 大红蝴蝶结双耳
+      ...sphereSoup(0, 1.36, 0, 0.05, 0.05, 0.05, 6, 4, () => C_WHITE), // 结心
+    ]);
+  })();
+  /* 眼睛高光点（emissive，不走光照）：vision 越强越亮，eating 双闪 */
+  const EYE_HI_L = spherePos(0.117, 1.11, -0.262, 0.018, 5, 4),
+    EYE_HI_R = spherePos(-0.117, 1.11, -0.262, 0.018, 5, 4);
+  const eyeBuf = new Float32Array(((EYE_HI_L.length + EYE_HI_R.length) / 3) * 6);
+  let eyeHiVerts = 0;
   const eyeProg = makeProg(
     `#version 300 es
     layout(location=0) in vec3 aPos;
@@ -1313,53 +1605,14 @@ export async function mountFlyBrain(root, options) {
     gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
     gl.bindVertexArray(null);
   }
-  function eyeColorAt(v, t, phase) {
-    const pulse = 1 + 0.2 * v * Math.sin(t * 8 + phase); // 轻微脉动，幅度随视觉放电
-    const k = Math.max(0, Math.min(1, v * pulse));
-    return [
-      EYE_BASE[0] + (EYE_HOT[0] - EYE_BASE[0]) * k,
-      EYE_BASE[1] + (EYE_HOT[1] - EYE_BASE[1]) * k,
-      EYE_BASE[2] + (EYE_HOT[2] - EYE_BASE[2]) * k,
-    ];
-  }
-  /* 六条腿：胸节两侧各 3 条（前/中/后），站立与蜷飞两套姿态 */
-  const LEGS = [];
-  for (const s of [1, -1])
-    for (let i = 0; i < 3; i++) {
-      LEGS.push({
-        s,
-        i,
-        phase: (s > 0 ? i : i + 3) * 1.31,
-        a: [s * 0.11, -0.06, -0.13 + i * 0.13],
-        standK: [s * 0.3, -0.16, -0.13 + i * 0.13 + (i - 1) * 0.02],
-        standF: [s * 0.38, -0.3, -0.17 + i * 0.15 + (i === 0 ? -0.05 : i === 2 ? 0.07 : 0)],
-        curlK: [s * 0.16, -0.14, -0.08 + i * 0.1],
-        curlF: [s * 0.18, -0.26, -0.02 + i * 0.08],
-      });
-    }
-  const LEG_COLORS = { femur: [0.22, 0.17, 0.12], tibia: [0.16, 0.12, 0.09] };
-  /* 膜翅：root 相对的 12 个顶点（两侧各一个四边形） */
-  const WING_ROOT = [0.09, 0.12, 0.03];
-  const WING_VERTS = [];
-  for (const s of [1, -1]) {
-    const q = [
-      [0, 0, -0.08],
-      [s * 0.55, 0.03, -0.02],
-      [s * 0.45, 0.03, 0.3],
-      [0, 0, -0.08],
-      [s * 0.45, 0.03, 0.3],
-      [0, 0, 0.12],
-    ];
-    for (const v of q) WING_VERTS.push({ s, v });
-  }
-  const FLY_MAX_FLOATS = 40000;
-  const flyBuf = new Float32Array(FLY_MAX_FLOATS);
+  const BODY_MAX_FLOATS = 40000;
+  const flyBuf = new Float32Array(BODY_MAX_FLOATS);
   const flyVao = gl.createVertexArray();
   const flyVbo = gl.createBuffer();
   {
     gl.bindVertexArray(flyVao);
     gl.bindBuffer(gl.ARRAY_BUFFER, flyVbo);
-    gl.bufferData(gl.ARRAY_BUFFER, FLY_MAX_FLOATS * 4, gl.DYNAMIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, BODY_MAX_FLOATS * 4, gl.DYNAMIC_DRAW);
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 36, 0);
     gl.enableVertexAttribArray(1);
@@ -1368,54 +1621,23 @@ export async function mountFlyBrain(root, options) {
     gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 36, 24);
     gl.bindVertexArray(null);
   }
-  const wingProg = makeProg(
-    `#version 300 es
-    layout(location=0) in vec3 aPos;
-    uniform mat4 uVP;
-    out float vFog;
-    void main() {
-      vec4 cp = uVP * vec4(aPos, 1.0);
-      vFog = cp.w;
-      gl_Position = cp;
-    }`,
-    `#version 300 es
-    precision mediump float;
-    in float vFog;
-    uniform vec4 uColor;
-    uniform vec3 uFogColor;
-    uniform float uLight, uFogK;
-    out vec4 o;
-    void main() {
-      vec3 col = uColor.rgb * uLight;
-      float f = 1.0 - exp(-vFog * vFog * uFogK);
-      col = mix(col, uFogColor, f);
-      o = vec4(col * uColor.a, uColor.a);
-    }`,
-  );
-  const wingU = uniforms(wingProg, ["uVP", "uColor", "uLight", "uFogColor", "uFogK"]);
-  const wingVao = gl.createVertexArray();
-  const wingVbo = gl.createBuffer();
-  const wingBuf = new Float32Array(WING_VERTS.length * 3);
-  {
-    gl.bindVertexArray(wingVao);
-    gl.bindBuffer(gl.ARRAY_BUFFER, wingVbo);
-    gl.bufferData(gl.ARRAY_BUFFER, wingBuf.byteLength, gl.DYNAMIC_DRAW);
-    gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-    gl.bindVertexArray(null);
-  }
-  /* 果蝇姿态：poseT 0=飞行 1=落地 */
-  let poseT = 0;
-  function fillFly(t, dt, poseTarget) {
-    poseT += (poseTarget - poseT) * (1 - Math.exp(-dt * 2)); // 起飞/落地过渡 ~0.5s
+  /* 姿态：poseT 0=漂浮 1=落地；restT 0=站/走 0.4=坐 1=躺 */
+  let poseT = 0,
+    restT = 0;
+  function fillReimu(t, dt, poseTarget) {
+    poseT += (poseTarget - poseT) * (1 - Math.exp(-dt * 2)); // 起落 0.5s 过渡
     const airT = 1 - poseT;
-    const lean = airT * 0.32; // 飞行前倾
-    const cx = Math.cos(lean),
-      sx = Math.sin(lean);
+    const restTarget = flyState === "sleeping" ? 1 : flyState === "resting" ? 0.4 : 0;
+    restT += (restTarget - restT) * (1 - Math.exp(-dt * 2.5));
+    const stepFreq = 6 + 2 * Math.min(1, flySpeed / 3); // 步频 6-8Hz 随速度缩放
+    const bodyPitch = -0.22 * airT + 1.3 * restT; // 漂浮微前倾 / 睡觉后仰躺下
+    const cx = Math.cos(bodyPitch),
+      sx = Math.sin(bodyPitch);
     const cy = -Math.sin(flyRot),
       sy = -Math.cos(flyRot);
+    const bounce = gaitT * Math.abs(Math.sin(t * Math.PI * 2 * stepFreq)) * 0.03; // 走路身体轻弹
     const ox = flyPos.x,
-      oy = flyPos.y,
+      oy = flyPos.y + bounce,
       oz = flyPos.z;
     const rot = (x, y, z, out) => {
       const y1 = y * cx - z * sx,
@@ -1446,20 +1668,12 @@ export async function mountFlyBrain(root, options) {
       flyBuf[o++] = RIGID_SOUP[i + 7];
       flyBuf[o++] = RIGID_SOUP[i + 8];
     }
-    /* 六条腿：抖动幅度 ∝ 脑活动——「接上神经元」 */
-    const jitterAmp = 0.006 + 0.05 * activity;
-    const pa = [0, 0, 0],
-      pk = [0, 0, 0],
-      pf = [0, 0, 0];
-    const writeTube = (p0, p1, radius, col) => {
-      const dx = p1[0] - p0[0],
-        dy = p1[1] - p0[1],
-        dz = p1[2] - p0[2];
-      const len = Math.hypot(dx, dy, dz) || 1e-4;
-      const wx = dx / len,
-        wy = dy / len,
-        wz = dz / len;
-      // 正交基
+    /* 圆台部件（袖/腿）：逐顶点变半径与分带色 */
+    const writeCone = (p0, dir, len, r0, r1, colFn) => {
+      const dl = Math.hypot(dir[0], dir[1], dir[2]) || 1e-4;
+      const wx = dir[0] / dl,
+        wy = dir[1] / dl,
+        wz = dir[2] / dl;
       const ax = Math.abs(wy) < 0.9 ? 0 : 1,
         ay = Math.abs(wy) < 0.9 ? 1 : 0,
         az = 0;
@@ -1474,108 +1688,108 @@ export async function mountFlyBrain(root, options) {
         vy = wz * ux - wx * uz,
         vz = wx * uy - wy * ux;
       for (let i = 0; i < TUBE.length; i += 6) {
-        const lx = TUBE[i] * radius,
-          ly = TUBE[i + 1] * len,
-          lz = TUBE[i + 2] * radius;
-        flyBuf[o++] = p0[0] + ux * lx + wx * ly + vx * lz;
-        flyBuf[o++] = p0[1] + uy * lx + wy * ly + vy * lz;
-        flyBuf[o++] = p0[2] + uz * lx + wz * ly + vz * lz;
-        const nx = TUBE[i + 3],
-          nz = TUBE[i + 5];
-        flyBuf[o++] = ux * nx + vx * nz;
-        flyBuf[o++] = uy * nx + vy * nz;
-        flyBuf[o++] = uz * nx + vz * nz;
+        const u01 = TUBE[i + 1];
+        const r = r0 + (r1 - r0) * u01;
+        const lx = TUBE[i] * r,
+          lz = TUBE[i + 2] * r;
+        flyBuf[o++] = p0[0] + ux * lx + wx * u01 * len + vx * lz;
+        flyBuf[o++] = p0[1] + uy * lx + wy * u01 * len + vy * lz;
+        flyBuf[o++] = p0[2] + uz * lx + wz * u01 * len + vz * lz;
+        flyBuf[o++] = ux * TUBE[i + 3] + vx * TUBE[i + 5];
+        flyBuf[o++] = uy * TUBE[i + 3] + vy * TUBE[i + 5];
+        flyBuf[o++] = uz * TUBE[i + 3] + vz * TUBE[i + 5];
+        const cc = colFn(u01);
+        flyBuf[o++] = cc[0];
+        flyBuf[o++] = cc[1];
+        flyBuf[o++] = cc[2];
+      }
+    };
+    /* 白色 detached 袖：摆动幅度 ∝ 脑活动（接上神经元），漂浮时向后飘 */
+    for (const s of [1, -1]) {
+      rot(s * 0.2, 0.92, 0.02, w);
+      const sway = Math.sin(t * 2.4 + s * 1.7) * (0.1 + 0.45 * activity) + airT * 0.3;
+      const dL = [s * 0.26, -1, sway * 0.5 + airT * 0.3];
+      const dl = Math.hypot(dL[0], dL[1], dL[2]);
+      const dW = [0, 0, 0];
+      rotN(dL[0] / dl, dL[1] / dl, dL[2] / dl, dW);
+      writeCone([w[0], w[1], w[2]], dW, 0.32, 0.075, 0.105, (u) => (u > 0.8 ? C_RED : C_WHITE));
+    }
+    /* 小腿小鞋：散步交替摆步，坐/躺向前伸，漂浮垂落 */
+    for (const s of [1, -1]) {
+      rot(s * 0.095, 0.34, 0, w);
+      const swing =
+        gaitT * Math.sin(t * Math.PI * 2 * stepFreq + (s > 0 ? 0 : Math.PI)) * 0.55 +
+        restT * 1.15 -
+        airT * 0.28;
+      const dW = [0, 0, 0];
+      rotN(0, -Math.cos(swing), -Math.sin(swing), dW);
+      writeCone([w[0], w[1], w[2]], dW, 0.27, 0.05, 0.042, (u) => (u > 0.78 ? C_SHOE : C_SKIN));
+    }
+    /* 蝴蝶结缎带尾：摆动幅度 ∝ 脑活动 */
+    for (const s of [1, -1]) {
+      const pv = [0, 0, 0];
+      rot(s * 0.055, 1.35, 0.075, pv);
+      const swayB = Math.sin(t * 3.1 + s * 2.3) * (0.15 + 0.7 * activity) + airT * 0.4;
+      const dL = [s * 0.1, -1, 0.3 + swayB];
+      const dl = Math.hypot(dL[0], dL[1], dL[2]);
+      const dW = [0, 0, 0];
+      rotN(dL[0] / dl, dL[1] / dl, dL[2] / dl, dW);
+      const wv = [0, 0, 0];
+      rotN(1, 0, 0, wv);
+      const hw = 0.048;
+      // 面片法线 = dir × width
+      let nx = dW[1] * wv[2] - dW[2] * wv[1],
+        ny = dW[2] * wv[0] - dW[0] * wv[2],
+        nz = dW[0] * wv[1] - dW[1] * wv[0];
+      const nl2 = Math.hypot(nx, ny, nz) || 1;
+      nx /= nl2;
+      ny /= nl2;
+      nz /= nl2;
+      const tip = [pv[0] + dW[0] * 0.34, pv[1] + dW[1] * 0.34, pv[2] + dW[2] * 0.34];
+      const quadV = (px, py, pz, col) => {
+        flyBuf[o++] = px;
+        flyBuf[o++] = py;
+        flyBuf[o++] = pz;
+        flyBuf[o++] = nx;
+        flyBuf[o++] = ny;
+        flyBuf[o++] = nz;
         flyBuf[o++] = col[0];
         flyBuf[o++] = col[1];
         flyBuf[o++] = col[2];
-      }
-    };
-    /* tripod 步态：L1/R2/L3 与 R1/L2/L3 两组交替，步频 6-8Hz 随速度缩放 */
-    const stepFreq = 6 + 2 * Math.min(1, flySpeed / 3);
-    for (const leg of LEGS) {
-      const j1 = Math.sin(t * 13 + leg.phase) * jitterAmp,
-        j2 = Math.sin(t * 17 + leg.phase * 1.3) * jitterAmp,
-        j3 = Math.cos(t * 15 + leg.phase) * jitterAmp;
-      const dangle = airT * Math.sin(t * 2.6 + leg.phase) * 0.035; // 飞行悬垂轻摆
-      const lerpP = (a, b) => a + (b - a) * poseT;
-      const kL = [
-        lerpP(leg.curlK[0], leg.standK[0]) + j1 * 0.5,
-        lerpP(leg.curlK[1], leg.standK[1]),
-        lerpP(leg.curlK[2], leg.standK[2]) + j3 * 0.5,
-      ];
-      const fL = [
-        lerpP(leg.curlF[0], leg.standF[0]) + j1,
-        lerpP(leg.curlF[1], leg.standF[1]) + j2,
-        lerpP(leg.curlF[2], leg.standF[2]) + j3 + dangle,
-      ];
-      if (gaitT > 0.001) {
-        // 摆动相抬腿前移、支撑相蹬地后移（局部 -Z 为前方）
-        const group = (leg.i + (leg.s > 0 ? 0 : 1)) % 2;
-        const ph = (t * stepFreq + group * 0.5 + leg.phase * 0.03) % 1;
-        let gz = 0,
-          gy = 0;
-        if (ph < 0.5) {
-          const u = ph / 0.5;
-          gz = 0.24 * (0.5 - u);
-          gy = 0.05 * Math.sin(Math.PI * u);
-        } else {
-          const u = (ph - 0.5) / 0.5;
-          gz = 0.24 * (u - 0.5);
-        }
-        kL[1] += gy * 0.45 * gaitT;
-        kL[2] += gz * 0.5 * gaitT;
-        fL[1] += gy * gaitT;
-        fL[2] += gz * gaitT;
-      }
-      rot(leg.a[0], leg.a[1], leg.a[2], pa);
-      rot(kL[0], kL[1], kL[2], pk);
-      rot(fL[0], fL[1], fL[2], pf);
-      writeTube(pa, pk, 0.017, LEG_COLORS.femur);
-      writeTube(pk, pf, 0.013, LEG_COLORS.tibia);
+      };
+      const A = [pv[0] + wv[0] * hw, pv[1] + wv[1] * hw, pv[2] + wv[2] * hw],
+        B = [pv[0] - wv[0] * hw, pv[1] - wv[1] * hw, pv[2] - wv[2] * hw],
+        Cc = [tip[0] + wv[0] * hw * 0.7, tip[1] + wv[1] * hw * 0.7, tip[2] + wv[2] * hw * 0.7],
+        D = [tip[0] - wv[0] * hw * 0.7, tip[1] - wv[1] * hw * 0.7, tip[2] - wv[2] * hw * 0.7];
+      quadV(A[0], A[1], A[2], C_BOW);
+      quadV(B[0], B[1], B[2], C_BOW);
+      quadV(Cc[0], Cc[1], Cc[2], C_WHITE); // 尾端白边
+      quadV(B[0], B[1], B[2], C_BOW);
+      quadV(D[0], D[1], D[2], C_WHITE);
+      quadV(Cc[0], Cc[1], Cc[2], C_WHITE);
     }
-    /* 膜翅：绕胸部连接点扇动，落地收拢后掠 */
-    const flap = Math.sin(t * Math.PI * 2 * 11) * 0.9 * airT; // 飞行 ~11Hz 扇动
-    const fold = poseT * 1.05;
-    let wo = 0;
-    for (const { s, v } of WING_VERTS) {
-      // 收拢后掠（绕 root 的 rotY）
-      const sweep = s * fold;
-      const cs = Math.cos(sweep),
-        ss = Math.sin(sweep);
-      const x1 = v[0] * cs + v[2] * ss,
-        z1 = -v[0] * ss + v[2] * cs,
-        y1 = v[1];
-      // 扇动（绕 root 的 rotZ）
-      const ang = s * (0.25 + flap - poseT * 0.2);
-      const ca = Math.cos(ang),
-        sa = Math.sin(ang);
-      const x2 = x1 * ca - y1 * sa,
-        y2 = x1 * sa + y1 * ca;
-      rot(WING_ROOT[0] * s + x2, WING_ROOT[1] + y2, WING_ROOT[2] + z1, w);
-      wingBuf[wo++] = w[0];
-      wingBuf[wo++] = w[1];
-      wingBuf[wo++] = w[2];
-    }
-    /* 复眼发光：亮度/脉动 ∝ 对应侧视觉神经放电；eating 时双眼同闪一下 */
+    /* 眼睛高光：亮度 ∝ 对应侧 vision（subtle 白点）；eating 双眼同闪 */
     let flash = 0;
     const ft = t - eatFlashT0;
     if (ft >= 0 && ft < 0.9) flash = (1 - ft / 0.9) * (0.65 + 0.35 * Math.sin(t * 26));
     const vL = Math.max(visionL, flash),
       vR = Math.max(visionR, flash);
     let eo = 0;
-    const fillEye = (posArr, col) => {
+    const fillEye = (posArr, v) => {
+      const k = Math.max(0, Math.min(1, 0.25 + 0.75 * v * (1 + 0.15 * Math.sin(t * 6))));
       for (let i = 0; i < posArr.length; i += 3) {
         rot(posArr[i], posArr[i + 1], posArr[i + 2], w);
         eyeBuf[eo++] = w[0];
         eyeBuf[eo++] = w[1];
         eyeBuf[eo++] = w[2];
-        eyeBuf[eo++] = col[0];
-        eyeBuf[eo++] = col[1];
-        eyeBuf[eo++] = col[2];
+        eyeBuf[eo++] = k;
+        eyeBuf[eo++] = k * 0.98;
+        eyeBuf[eo++] = k;
       }
     };
-    fillEye(EYE_L_POS, eyeColorAt(vL, t, 0));
-    fillEye(EYE_R_POS, eyeColorAt(vR, t, 2.1));
+    fillEye(EYE_HI_L, vL);
+    fillEye(EYE_HI_R, vR);
+    eyeHiVerts = eo / 6;
     return o;
   }
 
@@ -1654,6 +1868,8 @@ export async function mountFlyBrain(root, options) {
       spikeTimes = null,
       spikeBuf = null,
       ready = false;
+    // 显示模式（原版两档）：活动=uDim 0（静默点不可见，只看被激活神经元，默认）；解剖=uDim 1.1（全脑分类色）
+    let modeDim = 0.0;
     let yaw = 0.8,
       pitch = 0.35,
       dist = 1.7;
@@ -1758,7 +1974,7 @@ export async function mountFlyBrain(root, options) {
       bgl.useProgram(prog);
       bgl.uniformMatrix4fv(uMVP, false, mvp);
       bgl.uniform1f(uNow, now);
-      bgl.uniform1f(uDim, 0.22);
+      bgl.uniform1f(uDim, modeDim);
       bgl.uniform1f(uSize, 3.0);
       bgl.bindVertexArray(vao);
       bgl.drawArrays(bgl.POINTS, 0, N);
@@ -1767,11 +1983,16 @@ export async function mountFlyBrain(root, options) {
     function lose() {
       bgl.getExtension("WEBGL_lose_context")?.loseContext();
     }
+    function toggleMode() {
+      modeDim = modeDim === 0 ? 1.1 : 0.0;
+      return modeDim === 0 ? "活动" : "解剖";
+    }
     return {
       init,
       uploadSpikes,
       render,
       lose,
+      toggleMode,
       get ready() {
         return ready;
       },
@@ -1925,6 +2146,9 @@ export async function mountFlyBrain(root, options) {
     eyeL.style.boxShadow = `0 0 8px 2px rgba(255,95,122,${0.65 * vl})`;
     eyeR.style.opacity = String(0.22 + 0.78 * vr);
     eyeR.style.boxShadow = `0 0 8px 2px rgba(255,95,122,${0.65 * vr})`;
+    // 「活跃」近 600ms 发放过的去重神经元数（旧快照无此字段显示 —）
+    $("#activeNeurons").textContent =
+      typeof st.active_neurons === "number" ? st.active_neurons.toLocaleString("zh-CN") : "—";
   }
 
   async function poll() {
@@ -2006,6 +2230,10 @@ export async function mountFlyBrain(root, options) {
   });
   on($("#btnPlastic"), "click", () => control({ plasticity: !plasticOn }));
   on($("#btnBrain"), "click", () => setBrain(!brainOn));
+  on($("#brainMode"), "click", (e) => {
+    e.stopPropagation(); // 别触发小窗 canvas 的拖拽
+    if (brain) $("#brainMode").textContent = brain.toggleMode();
+  });
   on($("#btnRestart"), "click", () => control({ cmd: "restart" }));
   on($("#btnExit"), "click", () => {
     destroy();
@@ -2085,14 +2313,19 @@ export async function mountFlyBrain(root, options) {
     const airborne = flyState === "flying" || flyState === "foraging";
     flyBob += dt * (airborne ? 7 : 0);
     const groundY = heightAt(flyPos.x, flyPos.z);
-    const targetY = airborne ? groundY + 1.15 + Math.sin(flyBob) * 0.14 : groundY + 0.3; // 落地 y = 草面 + 腿长
+    // 灵梦：漂浮=离地 1.05 上下浮动；睡觉=躺下（贴地半高）；其余贴地站立
+    const targetY = airborne
+      ? groundY + 1.05 + Math.sin(flyBob) * 0.16
+      : flyState === "sleeping"
+        ? groundY + 0.24
+        : groundY + 0.02;
     flyPos.y += (targetY - flyPos.y) * (1 - Math.exp(-dt * 3.5));
     activity += (activityTarget - activity) * (1 - Math.exp(-dt * 4));
     visionL += (visionLT - visionL) * (1 - Math.exp(-dt * 7));
     visionR += (visionRT - visionR) * (1 - Math.exp(-dt * 7));
     flySpeed += (flySpeedT - flySpeed) * (1 - Math.exp(-dt * 6));
     gaitT += ((flyState === "walking" ? 1 : 0) - gaitT) * (1 - Math.exp(-dt * 4));
-    const flyFloats = fillFly(t, dt, airborne ? 0 : 1);
+    const flyFloats = fillReimu(t, dt, airborne ? 0 : 1);
 
     /* 相机 */
     if (now - lastInteract > 4000) yaw += dt * 0.045; // 空闲缓慢环绕
@@ -2180,12 +2413,15 @@ export async function mountFlyBrain(root, options) {
     gl.drawElements(gl.TRIANGLES, mountainVao.count, gl.UNSIGNED_SHORT, 0);
     gl.bindVertexArray(terrainVao.vao);
     gl.drawElements(gl.TRIANGLES, terrainVao.count, gl.UNSIGNED_SHORT, 0);
-    /* 果蝇身体与六条腿（CPU 逐帧变换后整体上传，一次 draw） */
+    /* 博丽神社（本殿/鸟居/参道/石灯笼，静态单次 draw） */
+    gl.bindVertexArray(shrineGeo.vao);
+    gl.drawArrays(gl.TRIANGLES, 0, shrineGeo.count);
+    /* 灵梦身体（刚体汤 + 袖/腿/缎带，CPU 逐帧变换后整体上传，一次 draw） */
     gl.bindBuffer(gl.ARRAY_BUFFER, flyVbo);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, flyBuf, 0, flyFloats);
     gl.bindVertexArray(flyVao);
     gl.drawArrays(gl.TRIANGLES, 0, flyFloats / 9);
-    /* 复眼：emissive 自发光（随视觉神经放电调制的顶点色，不走 N·L），一次小 draw */
+    /* 眼睛高光：emissive（随 vision 调制的白色小亮点，不走 N·L），一次小 draw */
     gl.useProgram(eyeProg);
     gl.uniformMatrix4fv(eyeU.uVP, false, vp);
     gl.uniform3fv(eyeU.uFogColor, pal.hor);
@@ -2193,7 +2429,7 @@ export async function mountFlyBrain(root, options) {
     gl.bindBuffer(gl.ARRAY_BUFFER, eyeVbo);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, eyeBuf);
     gl.bindVertexArray(eyeVao);
-    gl.drawArrays(gl.TRIANGLES, 0, EYE_VERTS);
+    gl.drawArrays(gl.TRIANGLES, 0, eyeHiVerts);
 
     /* 草叶 */
     gl.useProgram(grassProg);
@@ -2245,6 +2481,20 @@ export async function mountFlyBrain(root, options) {
       });
     }
     for (const f of foodSprites) sprites.push({ ...f, alpha: 1, rot: 0 });
+    /* 石灯笼暖光晕：仅夜晚点亮，轻微闪烁 */
+    for (const g of lanternGlows)
+      sprites.push({
+        x: g.x,
+        y: g.y,
+        z: g.z,
+        w: 1.15,
+        h: 1.15,
+        uv: UV.glow,
+        phase: g.phase,
+        sway: 0,
+        alpha: pal.night * (0.5 + 0.18 * Math.sin(t * 2.6 + g.phase)),
+        rot: 0,
+      });
     const fwd = [-view[2], -view[6], -view[10]];
     for (const s of sprites)
       s.depth = (s.x - eye[0]) * fwd[0] + (s.y - eye[1]) * fwd[1] + (s.z - eye[2]) * fwd[2];
@@ -2281,20 +2531,6 @@ export async function mountFlyBrain(root, options) {
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, spriteData, 0, n * 13);
     gl.bindVertexArray(spriteVao);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, n);
-
-    gl.useProgram(wingProg);
-    gl.uniformMatrix4fv(wingU.uVP, false, vp);
-    gl.uniform4fv(wingU.uColor, [0.92, 0.96, 1.0, 0.38]);
-    gl.uniform1f(
-      wingU.uLight,
-      0.35 + 0.75 * (pal.ambient[0] + pal.ambient[1]) * 0.5 + pal.sunVis * 0.3,
-    );
-    gl.uniform3fv(wingU.uFogColor, pal.hor);
-    gl.uniform1f(wingU.uFogK, FOG_K);
-    gl.bindBuffer(gl.ARRAY_BUFFER, wingVbo);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, wingBuf);
-    gl.bindVertexArray(wingVao);
-    gl.drawArrays(gl.TRIANGLES, 0, WING_VERTS.length);
 
     gl.useProgram(fireflyProg);
     gl.uniformMatrix4fv(fireflyU.uVP, false, vp);

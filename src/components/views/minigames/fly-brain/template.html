@@ -18,7 +18,13 @@
   </nav>
 
   <aside class="brain-panel" id="brainPanel" hidden>
-    <div class="brain-title"><span>果蝇大脑</span><span class="brain-sub">139,255 神经元</span></div>
+    <div class="brain-title">
+      <span>果蝇大脑</span>
+      <span class="brain-right">
+        <span class="brain-sub">139,255 神经元</span>
+        <button type="button" id="brainMode" class="brain-mode" title="切换显示模式（活动/解剖）">活动</button>
+      </span>
+    </div>
     <canvas id="brainCv" width="640" height="480"></canvas>
     <div class="brain-hint" id="brainHint">载入脑模型…</div>
   </aside>
@@ -39,6 +45,10 @@
       <span class="eye-tag">L</span>
       <span class="eye-dot" id="eyeR"></span>
       <span class="eye-tag">R</span>
+    </div>
+    <div class="bar-row active-row">
+      <span class="bar-name">活跃</span>
+      <b id="activeNeurons">—</b>
     </div>
   </aside>
 
