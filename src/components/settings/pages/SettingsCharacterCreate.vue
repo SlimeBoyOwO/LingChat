@@ -2,14 +2,11 @@
   <Transition name="modal">
     <div
       v-if="visible"
-      class="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/70 p-4
-        backdrop-blur-sm"
+      class="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
       @click="handleClose"
     >
       <div
-        class="h-[90dvh] w-full max-w-6xl overflow-hidden rounded-3xl border border-white/20
-          bg-[radial-gradient(circle_at_10%_10%,rgba(251,191,36,0.12),transparent_35%),radial-gradient(circle_at_90%_20%,rgba(45,212,191,0.12),transparent_40%),linear-gradient(160deg,rgba(15,23,42,0.96),rgba(15,23,42,0.88))]
-          text-white shadow-2xl"
+        class="h-[90dvh] w-full max-w-6xl overflow-hidden rounded-3xl border border-white/20 bg-[radial-gradient(circle_at_10%_10%,rgba(251,191,36,0.12),transparent_35%),radial-gradient(circle_at_90%_20%,rgba(45,212,191,0.12),transparent_40%),linear-gradient(160deg,rgba(15,23,42,0.96),rgba(15,23,42,0.88))] text-white shadow-2xl"
         @click.stop
       >
         <div class="flex h-full flex-col">
@@ -59,8 +56,7 @@
                     v-model="form.resource_folder"
                     type="text"
                     :placeholder="$t('settings.characterCreate.form.resourceFolderPlaceholder')"
-                    class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2
-                      focus:border-amber-300/70 focus:outline-none"
+                    class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 focus:border-amber-300/70 focus:outline-none"
                   />
                 </div>
                 <div class="space-y-2">
@@ -71,8 +67,7 @@
                     v-model="form.title"
                     type="text"
                     :placeholder="$t('settings.characterCreate.form.titlePlaceholder')"
-                    class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2
-                      focus:border-amber-300/70 focus:outline-none"
+                    class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 focus:border-amber-300/70 focus:outline-none"
                   />
                 </div>
                 <div class="space-y-2">
@@ -83,8 +78,7 @@
                     v-model="form.ai_name"
                     type="text"
                     :placeholder="$t('settings.characterCreate.form.aiNamePlaceholder')"
-                    class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2
-                      focus:border-amber-300/70 focus:outline-none"
+                    class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 focus:border-amber-300/70 focus:outline-none"
                   />
                 </div>
                 <div class="space-y-2">
@@ -95,8 +89,7 @@
                     v-model="form.ai_subtitle"
                     type="text"
                     :placeholder="$t('settings.characterCreate.form.aiSubtitlePlaceholder')"
-                    class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2
-                      focus:border-amber-300/70 focus:outline-none"
+                    class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 focus:border-amber-300/70 focus:outline-none"
                   />
                 </div>
                 <div class="space-y-2">
@@ -106,8 +99,7 @@
                   <input
                     v-model="form.user_name"
                     type="text"
-                    class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2
-                      focus:border-amber-300/70 focus:outline-none"
+                    class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 focus:border-amber-300/70 focus:outline-none"
                   />
                 </div>
                 <div class="space-y-2">
@@ -117,8 +109,7 @@
                   <input
                     v-model="form.user_subtitle"
                     type="text"
-                    class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2
-                      focus:border-amber-300/70 focus:outline-none"
+                    class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 focus:border-amber-300/70 focus:outline-none"
                   />
                 </div>
               </div>
@@ -130,8 +121,7 @@
                   v-model="form.info"
                   rows="4"
                   :placeholder="$t('settings.characterCreate.form.infoPlaceholder')"
-                  class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2
-                    focus:border-amber-300/70 focus:outline-none"
+                  class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 focus:border-amber-300/70 focus:outline-none"
                 ></textarea>
               </div>
             </section>
@@ -177,8 +167,7 @@
                     }}</span>
                   </div>
                   <div
-                    class="aspect-square overflow-hidden rounded-xl border border-white/10
-                      bg-slate-900/60"
+                    class="aspect-square overflow-hidden rounded-xl border border-white/10 bg-slate-900/60"
                   >
                     <img
                       v-if="avatarPreviewUrl"
@@ -219,8 +208,7 @@
                     }}</span>
                   </div>
                   <div
-                    class="aspect-square overflow-hidden rounded-xl border border-white/10
-                      bg-slate-900/60"
+                    class="aspect-square overflow-hidden rounded-xl border border-white/10 bg-slate-900/60"
                   >
                     <img
                       v-if="emotionPreviewUrls[emotion]"
@@ -247,8 +235,7 @@
 
             <section v-else class="space-y-4">
               <button
-                class="w-full rounded-xl bg-white/10 px-4 py-2 transition hover:bg-white/20
-                  md:w-auto"
+                class="w-full rounded-xl bg-white/10 px-4 py-2 transition hover:bg-white/20 md:w-auto"
                 @click="showAdvanced = !showAdvanced"
               >
                 {{
@@ -323,9 +310,9 @@
                     class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2"
                   >
                     <option value="">{{ $t("settings.characterCreate.advanced.ttsNone") }}</option>
-                    <option value="sva">sva</option>
+                    <option value="sva-vits">sva</option>
                     <option value="sbv2">sbv2</option>
-                    <option value="bv2">bv2</option>
+                    <option value="sva-bv2">bv2</option>
                     <option value="sbv2api">sbv2api</option>
                     <option value="gsv">gsv</option>
                     <option value="aivis">aivis</option>
@@ -380,8 +367,7 @@
               </button>
               <button
                 v-if="activeStep !== 'advanced'"
-                class="rounded-xl bg-amber-400/80 px-4 py-2 text-slate-900 transition
-                  hover:bg-amber-300 disabled:opacity-50"
+                class="rounded-xl bg-amber-400/80 px-4 py-2 text-slate-900 transition hover:bg-amber-300 disabled:opacity-50"
                 @click="nextStep"
                 :disabled="
                   (activeStep === 'basic' && !isBasicComplete) ||
@@ -392,8 +378,7 @@
               </button>
               <button
                 v-else
-                class="rounded-xl bg-emerald-400/90 px-4 py-2 text-slate-900 transition
-                  hover:bg-emerald-300 disabled:opacity-50"
+                class="rounded-xl bg-emerald-400/90 px-4 py-2 text-slate-900 transition hover:bg-emerald-300 disabled:opacity-50"
                 :disabled="!canSubmit"
                 @click="submitCreate"
               >
@@ -412,386 +397,386 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, reactive, ref, watch } from "vue";
-  import { useI18n } from "vue-i18n";
-  import { createCharacter } from "@/api/services/character";
+import { computed, reactive, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import { createCharacter } from "@/api/services/character";
 
-  type StepId = "basic" | "avatar" | "advanced";
+type StepId = "basic" | "avatar" | "advanced";
 
-  interface CharacterFormState {
-    resource_folder: string;
-    title: string;
-    ai_name: string;
-    ai_subtitle: string;
-    user_name: string;
-    user_subtitle: string;
-    info: string;
-    scale: number;
-    offset: number;
-    bubble_top: number;
-    bubble_left: number;
-    thinking_message: string;
-    tts_type: string;
-    system_prompt: string;
-    system_prompt_example: string;
-    system_prompt_example_old: string;
-  }
+interface CharacterFormState {
+  resource_folder: string;
+  title: string;
+  ai_name: string;
+  ai_subtitle: string;
+  user_name: string;
+  user_subtitle: string;
+  info: string;
+  scale: number;
+  offset: number;
+  bubble_top: number;
+  bubble_left: number;
+  thinking_message: string;
+  tts_type: string;
+  system_prompt: string;
+  system_prompt_example: string;
+  system_prompt_example_old: string;
+}
 
-  const props = defineProps<{
-    visible: boolean;
-  }>();
+const props = defineProps<{
+  visible: boolean;
+}>();
 
-  const emit = defineEmits<{
-    (event: "close"): void;
-    (
-      event: "created",
-      payload: { character_id: number; title: string; resource_folder: string }
-    ): void;
-  }>();
+const emit = defineEmits<{
+  (event: "close"): void;
+  (
+    event: "created",
+    payload: { character_id: number; title: string; resource_folder: string },
+  ): void;
+}>();
 
-  const EMOTION_SLOTS = [
-    "兴奋",
-    "厌恶",
-    "哭泣",
-    "害怕",
-    "害羞",
-    "平静",
-    "心动",
-    "惊讶",
-    "慌张",
-    "担心",
-    "无奈",
-    "生气",
-    "疑惑",
-    "紧张",
-    "自信",
-    "认真",
-    "调皮",
-    "难为情",
-    "高兴",
-    "正常",
-  ] as const;
+const EMOTION_SLOTS = [
+  "兴奋",
+  "厌恶",
+  "哭泣",
+  "害怕",
+  "害羞",
+  "平静",
+  "心动",
+  "惊讶",
+  "慌张",
+  "担心",
+  "无奈",
+  "生气",
+  "疑惑",
+  "紧张",
+  "自信",
+  "认真",
+  "调皮",
+  "难为情",
+  "高兴",
+  "正常",
+] as const;
 
-  const { t } = useI18n();
+const { t } = useI18n();
 
-  // 情绪槽位名称是后端协议字段，不能改动；仅通过该映射做界面显示的本地化
-  const EMOTION_KEY_MAP: Record<string, string> = {
-    兴奋: "excited",
-    厌恶: "disgusted",
-    哭泣: "crying",
-    害怕: "scared",
-    害羞: "shy",
-    平静: "calm",
-    心动: "heartFlutter",
-    惊讶: "surprised",
-    慌张: "flustered",
-    担心: "worried",
-    无奈: "helpless",
-    生气: "angry",
-    疑惑: "confused",
-    紧张: "nervous",
-    自信: "confident",
-    认真: "serious",
-    调皮: "playful",
-    难为情: "embarrassed",
-    高兴: "happy",
-    正常: "normal",
-  };
+// 情绪槽位名称是后端协议字段，不能改动；仅通过该映射做界面显示的本地化
+const EMOTION_KEY_MAP: Record<string, string> = {
+  兴奋: "excited",
+  厌恶: "disgusted",
+  哭泣: "crying",
+  害怕: "scared",
+  害羞: "shy",
+  平静: "calm",
+  心动: "heartFlutter",
+  惊讶: "surprised",
+  慌张: "flustered",
+  担心: "worried",
+  无奈: "helpless",
+  生气: "angry",
+  疑惑: "confused",
+  紧张: "nervous",
+  自信: "confident",
+  认真: "serious",
+  调皮: "playful",
+  难为情: "embarrassed",
+  高兴: "happy",
+  正常: "normal",
+};
 
-  const emotionLabel = (emotion: string) => {
-    const slug = EMOTION_KEY_MAP[emotion];
-    return slug ? t(`settings.characterCreate.emotions.${slug}`) : emotion;
-  };
+const emotionLabel = (emotion: string) => {
+  const slug = EMOTION_KEY_MAP[emotion];
+  return slug ? t(`settings.characterCreate.emotions.${slug}`) : emotion;
+};
 
-  const steps = computed<{ id: StepId; label: string }[]>(() => [
-    { id: "basic", label: t("settings.characterCreate.steps.basic") },
-    { id: "avatar", label: t("settings.characterCreate.steps.avatar") },
-    { id: "advanced", label: t("settings.characterCreate.steps.advanced") },
-  ]);
+const steps = computed<{ id: StepId; label: string }[]>(() => [
+  { id: "basic", label: t("settings.characterCreate.steps.basic") },
+  { id: "avatar", label: t("settings.characterCreate.steps.avatar") },
+  { id: "advanced", label: t("settings.characterCreate.steps.advanced") },
+]);
 
-  const activeStep = ref<StepId>("basic");
-  const showAdvanced = ref(false);
-  const creating = ref(false);
-  const errorMessage = ref("");
+const activeStep = ref<StepId>("basic");
+const showAdvanced = ref(false);
+const creating = ref(false);
+const errorMessage = ref("");
 
-  const form = reactive<CharacterFormState>({
-    resource_folder: "",
-    title: "",
-    ai_name: "",
-    ai_subtitle: "",
-    user_name: "用户",
-    user_subtitle: "",
-    info: "",
-    scale: 1,
-    offset: 0,
-    bubble_top: 5,
-    bubble_left: 20,
-    thinking_message: "正在思考中...",
-    tts_type: "",
-    system_prompt: "",
-    system_prompt_example: "",
-    system_prompt_example_old: "",
-  });
+const form = reactive<CharacterFormState>({
+  resource_folder: "",
+  title: "",
+  ai_name: "",
+  ai_subtitle: "",
+  user_name: "用户",
+  user_subtitle: "",
+  info: "",
+  scale: 1,
+  offset: 0,
+  bubble_top: 5,
+  bubble_left: 20,
+  thinking_message: "正在思考中...",
+  tts_type: "",
+  system_prompt: "",
+  system_prompt_example: "",
+  system_prompt_example_old: "",
+});
 
-  const avatarFile = ref<File | null>(null);
-  const avatarPreviewUrl = ref("");
-  const emotionFiles = reactive<Record<string, File | null>>({});
-  const emotionPreviewUrls = reactive<Record<string, string>>({});
+const avatarFile = ref<File | null>(null);
+const avatarPreviewUrl = ref("");
+const emotionFiles = reactive<Record<string, File | null>>({});
+const emotionPreviewUrls = reactive<Record<string, string>>({});
 
-  // 拖拽状态
-  const dragOver = reactive({
-    avatar: false,
-    emotions: {} as Record<string, boolean>,
-  });
+// 拖拽状态
+const dragOver = reactive({
+  avatar: false,
+  emotions: {} as Record<string, boolean>,
+});
 
-  // 初始化情绪拖拽状态
+// 初始化情绪拖拽状态
+for (const emotion of EMOTION_SLOTS) {
+  dragOver.emotions[emotion] = false;
+}
+
+const resetAll = () => {
+  activeStep.value = "basic";
+  showAdvanced.value = false;
+  creating.value = false;
+  errorMessage.value = "";
+
+  form.resource_folder = "";
+  form.title = "";
+  form.ai_name = "";
+  form.ai_subtitle = "";
+  form.user_name = "用户";
+  form.user_subtitle = "";
+  form.info = "";
+  form.scale = 1;
+  form.offset = 0;
+  form.bubble_top = 5;
+  form.bubble_left = 20;
+  form.thinking_message = "正在思考中...";
+  form.tts_type = "";
+  form.system_prompt = "";
+  form.system_prompt_example = "";
+  form.system_prompt_example_old = "";
+
+  if (avatarPreviewUrl.value) URL.revokeObjectURL(avatarPreviewUrl.value);
+  avatarPreviewUrl.value = "";
+  avatarFile.value = null;
+
   for (const emotion of EMOTION_SLOTS) {
-    dragOver.emotions[emotion] = false;
+    const prev = emotionPreviewUrls[emotion];
+    if (prev) URL.revokeObjectURL(prev);
+    emotionFiles[emotion] = null;
+    emotionPreviewUrls[emotion] = "";
+  }
+};
+
+watch(
+  () => props.visible,
+  (visible) => {
+    if (visible) {
+      resetAll();
+    }
+  },
+);
+
+const isBasicComplete = computed(() => {
+  return (
+    form.resource_folder.trim().length > 0 &&
+    form.title.trim().length > 0 &&
+    form.ai_name.trim().length > 0
+  );
+});
+
+const missingEmotionNames = computed(() => {
+  return EMOTION_SLOTS.filter((emotion) => !emotionFiles[emotion]);
+});
+
+const uploadedEmotionCount = computed(() => {
+  return EMOTION_SLOTS.filter((emotion) => emotionFiles[emotion]).length;
+});
+
+const missingEmotionLabels = computed(() => {
+  return missingEmotionNames.value.map(emotionLabel).join("、");
+});
+
+const avatarStatusText = computed(() => {
+  const avatarText = avatarFile.value
+    ? t("settings.characterCreate.avatar.avatarUploaded")
+    : t("settings.characterCreate.avatar.avatarNotUploaded");
+  return t("settings.characterCreate.avatar.uploadedStatus", {
+    count: uploadedEmotionCount.value,
+    avatar: avatarText,
+  });
+});
+
+const isAvatarComplete = computed(() => {
+  return Boolean(avatarFile.value) && missingEmotionNames.value.length === 0;
+});
+
+const canSubmit = computed(() => {
+  return isBasicComplete.value && isAvatarComplete.value && !creating.value;
+});
+
+const setPreview = (target: "avatar" | "emotion", key: string, file: File) => {
+  const newUrl = URL.createObjectURL(file);
+  if (target === "avatar") {
+    if (avatarPreviewUrl.value) URL.revokeObjectURL(avatarPreviewUrl.value);
+    avatarPreviewUrl.value = newUrl;
+    return;
   }
 
-  const resetAll = () => {
+  const prev = emotionPreviewUrls[key];
+  if (prev) URL.revokeObjectURL(prev);
+  emotionPreviewUrls[key] = newUrl;
+};
+
+const onAvatarChange = (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const file = target.files?.[0];
+  if (!file) return;
+  avatarFile.value = file;
+  setPreview("avatar", "avatar", file);
+};
+
+const onEmotionChange = (emotion: string, event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const file = target.files?.[0];
+  if (!file) return;
+  emotionFiles[emotion] = file;
+  setPreview("emotion", emotion, file);
+};
+
+// 头像拖拽事件处理
+const onDragOver = (type: "avatar", event: DragEvent) => {
+  if (type === "avatar") {
+    dragOver.avatar = true;
+  }
+};
+
+const onDragLeave = (type: "avatar") => {
+  if (type === "avatar") {
+    dragOver.avatar = false;
+  }
+};
+
+const onAvatarDrop = (event: DragEvent) => {
+  dragOver.avatar = false;
+  const file = event.dataTransfer?.files?.[0];
+  if (!file || !file.type.startsWith("image/")) return;
+  avatarFile.value = file;
+  setPreview("avatar", "avatar", file);
+};
+
+// 情绪立绘拖拽事件处理
+const onEmotionDragOver = (emotion: string, event: DragEvent) => {
+  dragOver.emotions[emotion] = true;
+};
+
+const onEmotionDragLeave = (emotion: string) => {
+  dragOver.emotions[emotion] = false;
+};
+
+const onEmotionDrop = (emotion: string, event: DragEvent) => {
+  dragOver.emotions[emotion] = false;
+  const file = event.dataTransfer?.files?.[0];
+  if (!file || !file.type.startsWith("image/")) return;
+  emotionFiles[emotion] = file;
+  setPreview("emotion", emotion, file);
+};
+
+const handleClose = () => {
+  if (creating.value) return;
+  emit("close");
+};
+
+const prevStep = () => {
+  if (activeStep.value === "avatar") {
     activeStep.value = "basic";
-    showAdvanced.value = false;
-    creating.value = false;
-    errorMessage.value = "";
+    return;
+  }
+  if (activeStep.value === "advanced") {
+    activeStep.value = "avatar";
+  }
+};
 
-    form.resource_folder = "";
-    form.title = "";
-    form.ai_name = "";
-    form.ai_subtitle = "";
-    form.user_name = "用户";
-    form.user_subtitle = "";
-    form.info = "";
-    form.scale = 1;
-    form.offset = 0;
-    form.bubble_top = 5;
-    form.bubble_left = 20;
-    form.thinking_message = "正在思考中...";
-    form.tts_type = "";
-    form.system_prompt = "";
-    form.system_prompt_example = "";
-    form.system_prompt_example_old = "";
+const nextStep = () => {
+  errorMessage.value = "";
+  if (activeStep.value === "basic") {
+    if (!isBasicComplete.value) {
+      errorMessage.value = t("settings.characterCreate.errors.basicIncomplete");
+      return;
+    }
+    activeStep.value = "avatar";
+    return;
+  }
+  if (activeStep.value === "avatar") {
+    if (!isAvatarComplete.value) {
+      errorMessage.value = t("settings.characterCreate.errors.avatarIncomplete");
+      return;
+    }
+    activeStep.value = "advanced";
+  }
+};
 
-    if (avatarPreviewUrl.value) URL.revokeObjectURL(avatarPreviewUrl.value);
-    avatarPreviewUrl.value = "";
-    avatarFile.value = null;
+const submitCreate = async () => {
+  if (!canSubmit.value || !avatarFile.value) return;
+
+  errorMessage.value = "";
+  creating.value = true;
+
+  try {
+    const settingsPayload = {
+      ai_name: form.ai_name.trim(),
+      ai_subtitle: form.ai_subtitle.trim(),
+      user_name: form.user_name.trim() || "用户",
+      user_subtitle: form.user_subtitle.trim(),
+      title: form.title.trim(),
+      info: form.info.trim(),
+      scale: Number(form.scale),
+      offset: Number(form.offset),
+      bubble_top: Number(form.bubble_top),
+      bubble_left: Number(form.bubble_left),
+      thinking_message: form.thinking_message.trim() || "正在思考中...",
+      tts_type: form.tts_type || null,
+      system_prompt: form.system_prompt.trim() || null,
+      system_prompt_example: form.system_prompt_example.trim() || null,
+      system_prompt_example_old: form.system_prompt_example_old.trim() || null,
+    };
+
+    const formData = new FormData();
+    formData.append("resource_folder", form.resource_folder.trim());
+    formData.append("settings_json", JSON.stringify(settingsPayload));
+    formData.append("avatar_file", avatarFile.value);
 
     for (const emotion of EMOTION_SLOTS) {
-      const prev = emotionPreviewUrls[emotion];
-      if (prev) URL.revokeObjectURL(prev);
-      emotionFiles[emotion] = null;
-      emotionPreviewUrls[emotion] = "";
-    }
-  };
-
-  watch(
-    () => props.visible,
-    (visible) => {
-      if (visible) {
-        resetAll();
+      const emotionFile = emotionFiles[emotion];
+      if (!emotionFile) {
+        throw new Error(
+          t("settings.characterCreate.errors.missingEmotionFile", { name: emotionLabel(emotion) }),
+        );
       }
-    }
-  );
-
-  const isBasicComplete = computed(() => {
-    return (
-      form.resource_folder.trim().length > 0 &&
-      form.title.trim().length > 0 &&
-      form.ai_name.trim().length > 0
-    );
-  });
-
-  const missingEmotionNames = computed(() => {
-    return EMOTION_SLOTS.filter((emotion) => !emotionFiles[emotion]);
-  });
-
-  const uploadedEmotionCount = computed(() => {
-    return EMOTION_SLOTS.filter((emotion) => emotionFiles[emotion]).length;
-  });
-
-  const missingEmotionLabels = computed(() => {
-    return missingEmotionNames.value.map(emotionLabel).join("、");
-  });
-
-  const avatarStatusText = computed(() => {
-    const avatarText = avatarFile.value
-      ? t("settings.characterCreate.avatar.avatarUploaded")
-      : t("settings.characterCreate.avatar.avatarNotUploaded");
-    return t("settings.characterCreate.avatar.uploadedStatus", {
-      count: uploadedEmotionCount.value,
-      avatar: avatarText,
-    });
-  });
-
-  const isAvatarComplete = computed(() => {
-    return Boolean(avatarFile.value) && missingEmotionNames.value.length === 0;
-  });
-
-  const canSubmit = computed(() => {
-    return isBasicComplete.value && isAvatarComplete.value && !creating.value;
-  });
-
-  const setPreview = (target: "avatar" | "emotion", key: string, file: File) => {
-    const newUrl = URL.createObjectURL(file);
-    if (target === "avatar") {
-      if (avatarPreviewUrl.value) URL.revokeObjectURL(avatarPreviewUrl.value);
-      avatarPreviewUrl.value = newUrl;
-      return;
+      formData.append("emotion_names", emotion);
+      formData.append("emotion_files", emotionFile);
     }
 
-    const prev = emotionPreviewUrls[key];
-    if (prev) URL.revokeObjectURL(prev);
-    emotionPreviewUrls[key] = newUrl;
-  };
-
-  const onAvatarChange = (event: Event) => {
-    const target = event.target as HTMLInputElement;
-    const file = target.files?.[0];
-    if (!file) return;
-    avatarFile.value = file;
-    setPreview("avatar", "avatar", file);
-  };
-
-  const onEmotionChange = (emotion: string, event: Event) => {
-    const target = event.target as HTMLInputElement;
-    const file = target.files?.[0];
-    if (!file) return;
-    emotionFiles[emotion] = file;
-    setPreview("emotion", emotion, file);
-  };
-
-  // 头像拖拽事件处理
-  const onDragOver = (type: "avatar", event: DragEvent) => {
-    if (type === "avatar") {
-      dragOver.avatar = true;
-    }
-  };
-
-  const onDragLeave = (type: "avatar") => {
-    if (type === "avatar") {
-      dragOver.avatar = false;
-    }
-  };
-
-  const onAvatarDrop = (event: DragEvent) => {
-    dragOver.avatar = false;
-    const file = event.dataTransfer?.files?.[0];
-    if (!file || !file.type.startsWith("image/")) return;
-    avatarFile.value = file;
-    setPreview("avatar", "avatar", file);
-  };
-
-  // 情绪立绘拖拽事件处理
-  const onEmotionDragOver = (emotion: string, event: DragEvent) => {
-    dragOver.emotions[emotion] = true;
-  };
-
-  const onEmotionDragLeave = (emotion: string) => {
-    dragOver.emotions[emotion] = false;
-  };
-
-  const onEmotionDrop = (emotion: string, event: DragEvent) => {
-    dragOver.emotions[emotion] = false;
-    const file = event.dataTransfer?.files?.[0];
-    if (!file || !file.type.startsWith("image/")) return;
-    emotionFiles[emotion] = file;
-    setPreview("emotion", emotion, file);
-  };
-
-  const handleClose = () => {
-    if (creating.value) return;
+    const response = await createCharacter(formData);
+    emit("created", response.data);
     emit("close");
-  };
-
-  const prevStep = () => {
-    if (activeStep.value === "avatar") {
-      activeStep.value = "basic";
-      return;
-    }
-    if (activeStep.value === "advanced") {
-      activeStep.value = "avatar";
-    }
-  };
-
-  const nextStep = () => {
-    errorMessage.value = "";
-    if (activeStep.value === "basic") {
-      if (!isBasicComplete.value) {
-        errorMessage.value = t("settings.characterCreate.errors.basicIncomplete");
-        return;
-      }
-      activeStep.value = "avatar";
-      return;
-    }
-    if (activeStep.value === "avatar") {
-      if (!isAvatarComplete.value) {
-        errorMessage.value = t("settings.characterCreate.errors.avatarIncomplete");
-        return;
-      }
-      activeStep.value = "advanced";
-    }
-  };
-
-  const submitCreate = async () => {
-    if (!canSubmit.value || !avatarFile.value) return;
-
-    errorMessage.value = "";
-    creating.value = true;
-
-    try {
-      const settingsPayload = {
-        ai_name: form.ai_name.trim(),
-        ai_subtitle: form.ai_subtitle.trim(),
-        user_name: form.user_name.trim() || "用户",
-        user_subtitle: form.user_subtitle.trim(),
-        title: form.title.trim(),
-        info: form.info.trim(),
-        scale: Number(form.scale),
-        offset: Number(form.offset),
-        bubble_top: Number(form.bubble_top),
-        bubble_left: Number(form.bubble_left),
-        thinking_message: form.thinking_message.trim() || "正在思考中...",
-        tts_type: form.tts_type || null,
-        system_prompt: form.system_prompt.trim() || null,
-        system_prompt_example: form.system_prompt_example.trim() || null,
-        system_prompt_example_old: form.system_prompt_example_old.trim() || null,
-      };
-
-      const formData = new FormData();
-      formData.append("resource_folder", form.resource_folder.trim());
-      formData.append("settings_json", JSON.stringify(settingsPayload));
-      formData.append("avatar_file", avatarFile.value);
-
-      for (const emotion of EMOTION_SLOTS) {
-        const emotionFile = emotionFiles[emotion];
-        if (!emotionFile) {
-          throw new Error(
-            t("settings.characterCreate.errors.missingEmotionFile", { name: emotionLabel(emotion) })
-          );
-        }
-        formData.append("emotion_names", emotion);
-        formData.append("emotion_files", emotionFile);
-      }
-
-      const response = await createCharacter(formData);
-      emit("created", response.data);
-      emit("close");
-    } catch (error: any) {
-      errorMessage.value = error?.message || t("settings.characterCreate.errors.createFailed");
-    } finally {
-      creating.value = false;
-    }
-  };
+  } catch (error: any) {
+    errorMessage.value = error?.message || t("settings.characterCreate.errors.createFailed");
+  } finally {
+    creating.value = false;
+  }
+};
 </script>
 
 <style scoped>
-  .modal-enter-active,
-  .modal-leave-active {
-    transition: all 0.25s ease;
-  }
-  .modal-enter-from,
-  .modal-leave-to {
-    opacity: 0;
-    transform: translateY(8px);
-  }
+.modal-enter-active,
+.modal-leave-active {
+  transition: all 0.25s ease;
+}
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
 </style>

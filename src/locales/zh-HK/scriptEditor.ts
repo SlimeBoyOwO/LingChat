@@ -232,6 +232,7 @@ export default {
       sakura: "櫻花",
       snow: "雪",
       fireworks: "煙花",
+      ba: "星輝",
     },
   },
   characters: {

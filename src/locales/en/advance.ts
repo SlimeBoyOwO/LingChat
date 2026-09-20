@@ -38,5 +38,9 @@ export default {
     castDesc:
       "Stream the game scene to LAN devices — configure the port, resolution, and picture tuning",
     castButton: "Open Cast Settings",
+    memoryTitle: "Permanent Memory Debug",
+    memoryDesc:
+      "Inspect a role's memory bank and the context actually sent to the LLM, for diagnosing memory compaction and injection",
+    memoryButton: "Open Memory Debug",
   },
 };

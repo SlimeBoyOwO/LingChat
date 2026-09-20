@@ -19,6 +19,9 @@ export default {
     noModelTitle: "ヒント",
     noModelMessage:
       "まだ会話モデルを選んでないの？バカ！詳細設定でモデルを設定して選べばいいよ。切り替えは自動で反映されるからね！",
+    // スクリプトが自由入力を拒否したときの通知
+    choiceRequired: "選択肢をクリックしてください",
+    inputNotAllowed: "現在は入力できません",
   },
   avatar: {
     live2dUnavailable: "Live2D を利用できません",

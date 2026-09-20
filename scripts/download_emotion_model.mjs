@@ -76,7 +76,7 @@ function askUserConfirmation(fileName) {
       (answer) => {
         rl.close();
         resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
-      }
+      },
     );
   });
 }
@@ -183,17 +183,17 @@ async function main() {
     downloadPromises.map((p) =>
       p.then(
         (result) => result,
-        (err) => ({ fileName: "unknown", status: "rejected", error: err })
-      )
-    )
+        (err) => ({ fileName: "unknown", status: "rejected", error: err }),
+      ),
+    ),
   );
 
   // 统计结果
   const succeeded = results.filter(
-    (r) => r.status === "fulfilled" && r.value.status === "fulfilled"
+    (r) => r.status === "fulfilled" && r.value.status === "fulfilled",
   ).length;
   const failed = results.filter(
-    (r) => r.status === "rejected" || r.value?.status === "rejected"
+    (r) => r.status === "rejected" || r.value?.status === "rejected",
   ).length;
 
   if (failed === 0) {

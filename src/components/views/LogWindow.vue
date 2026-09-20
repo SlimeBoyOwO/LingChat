@@ -5,5 +5,5 @@
 </template>
 
 <script setup lang="ts">
-  import LogConsole from "../settings/pages/LogConsole.vue";
+import LogConsole from "../settings/pages/LogConsole.vue";
 </script>

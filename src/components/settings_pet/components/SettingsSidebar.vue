@@ -1,7 +1,6 @@
 <template>
   <aside
-    class="z-10 flex w-[200px] shrink-0 flex-col border-r transition-colors duration-300
-      md:w-[220px]"
+    class="z-10 flex w-[200px] shrink-0 flex-col border-r transition-colors duration-300 md:w-[220px]"
     :class="isDarkMode ? 'border-slate-700 bg-slate-800/80' : 'border-slate-200 bg-white/80'"
   >
     <div
@@ -11,15 +10,13 @@
       <div class="flex items-center gap-3">
         <div class="relative">
           <div
-            class="relative z-10 flex h-10 w-10 items-center justify-center rounded-lg border
-              text-sky-400 transition-colors"
+            class="relative z-10 flex h-10 w-10 items-center justify-center rounded-lg border text-sky-400 transition-colors"
             :class="isDarkMode ? 'border-slate-600 bg-slate-700' : 'border-slate-200 bg-slate-100'"
           >
             <Heart class="h-6 w-6" />
           </div>
           <div
-            class="absolute -right-0.5 -bottom-0.5 z-20 h-3 w-3 rounded-full border-2 bg-emerald-400
-              transition-colors"
+            class="absolute -right-0.5 -bottom-0.5 z-20 h-3 w-3 rounded-full border-2 bg-emerald-400 transition-colors"
             :class="isDarkMode ? 'border-slate-800' : 'border-white'"
           ></div>
         </div>
@@ -44,8 +41,7 @@
         :key="item.key"
         type="button"
         @click="$emit('update:activeTab', item.key)"
-        class="group relative flex w-full flex-col items-start overflow-hidden px-5 py-3
-          transition-all duration-200"
+        class="group relative flex w-full flex-col items-start overflow-hidden px-5 py-3 transition-all duration-200"
         :class="[
           activeTab === item.key
             ? isDarkMode
@@ -57,8 +53,7 @@
         ]"
       >
         <div
-          class="absolute top-0 bottom-0 left-0 w-1 origin-left bg-sky-400 transition-transform
-            duration-300"
+          class="absolute top-0 bottom-0 left-0 w-1 origin-left bg-sky-400 transition-transform duration-300"
           :class="activeTab === item.key ? 'scale-x-100' : 'scale-x-0'"
         ></div>
 
@@ -109,22 +104,22 @@
 </template>
 
 <script setup lang="ts">
-  import { Heart } from "lucide-vue-next";
+import { Heart } from "lucide-vue-next";
 
-  type TabItem = {
-    key: "pet" | "interaction" | "window" | "todo";
-    label: string;
-    icon: any;
-    en: string;
-  };
+type TabItem = {
+  key: "pet" | "interaction" | "window" | "todo";
+  label: string;
+  icon: any;
+  en: string;
+};
 
-  defineProps<{
-    isDarkMode: boolean;
-    activeTab: "pet" | "interaction" | "window" | "todo";
-    tabs: TabItem[];
-  }>();
+defineProps<{
+  isDarkMode: boolean;
+  activeTab: "pet" | "interaction" | "window" | "todo";
+  tabs: TabItem[];
+}>();
 
-  defineEmits<{
-    "update:activeTab": [value: "pet" | "interaction" | "window" | "todo"];
-  }>();
+defineEmits<{
+  "update:activeTab": [value: "pet" | "interaction" | "window" | "todo"];
+}>();
 </script>

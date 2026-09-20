@@ -22,18 +22,14 @@
 
         <div class="flex gap-2">
           <button
-            class="border-brand/45 bg-brand/14 text-brand hover:bg-brand/24 inline-flex flex-1
-              items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-[0.8rem]
-              transition-colors"
+            class="border-brand/45 bg-brand/14 text-brand hover:bg-brand/24 inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-[0.8rem] transition-colors"
             @click="pickImage"
           >
             <Icon icon="background" :size="14" />
             {{ t("scriptEditor.appearance.pick") }}
           </button>
           <button
-            class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10
-              bg-white/6 px-3 py-2 text-[0.8rem] text-white/70 transition-colors
-              hover:bg-white/[0.12] hover:text-white"
+            class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/6 px-3 py-2 text-[0.8rem] text-white/70 transition-colors hover:bg-white/[0.12] hover:text-white"
             :title="t('scriptEditor.appearance.resetTitle')"
             :disabled="!store.editorBg.path"
             @click="store.resetEditorBg()"
@@ -55,8 +51,7 @@
             <button
               v-for="f in store.globalBgFiles"
               :key="f.path"
-              class="flex items-center gap-2 rounded-[10px] border px-3 py-2 text-left
-                transition-all duration-200"
+              class="flex items-center gap-2 rounded-[10px] border px-3 py-2 text-left transition-all duration-200"
               :class="
                 store.editorBg.path === f.path
                   ? 'border-brand/40 bg-brand/10'
@@ -126,62 +121,62 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, onMounted, ref } from "vue";
-  import { useI18n } from "vue-i18n";
-  import { open as openDialog } from "@tauri-apps/plugin-dialog";
-  import { Icon, Slider } from "@/components/base";
-  import { MenuItem } from "@/components/ui";
-  import ImageCropModal from "@/components/script-editor/modals/ImageCropModal.vue";
-  import { useScriptEditorStore } from "@/stores/modules/script-editor";
+import { computed, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { Icon, Slider } from "@/components/base";
+import { MenuItem } from "@/components/ui";
+import ImageCropModal from "@/components/script-editor/modals/ImageCropModal.vue";
+import { useScriptEditorStore } from "@/stores/modules/script-editor";
 
-  const { t } = useI18n();
-  const store = useScriptEditorStore();
+const { t } = useI18n();
+const store = useScriptEditorStore();
 
-  const IMAGE_EXT = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
+const IMAGE_EXT = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
 
-  /** 当前正在裁剪的源文件路径；非空时显示裁剪弹窗 */
-  const cropSrc = ref<string | null>(null);
+/** 当前正在裁剪的源文件路径；非空时显示裁剪弹窗 */
+const cropSrc = ref<string | null>(null);
 
-  /** 当前背景显示名：自定义时取落盘文件名，默认时说明内置背景 */
-  const bgFileName = computed(() => {
-    const path = store.editorBg.path;
-    if (!path) return t("scriptEditor.appearance.builtin");
-    return path.split(/[\\/]/).pop() || path;
+/** 当前背景显示名：自定义时取落盘文件名，默认时说明内置背景 */
+const bgFileName = computed(() => {
+  const path = store.editorBg.path;
+  if (!path) return t("scriptEditor.appearance.builtin");
+  return path.split(/[\\/]/).pop() || path;
+});
+
+/** 压暗遮罩：UI 用 0~90 整数显示，store 存 0~1 小数 */
+const dimPercent = computed(() => Math.round(store.editorBg.dim * 100));
+
+// 本组件只 emit change，不 emit update:modelValue，这里显式回写 store
+const onBlurChange = (v: number) => {
+  store.editorBg = { ...store.editorBg, blur: v };
+};
+const onDimChange = (v: number) => {
+  store.editorBg = { ...store.editorBg, dim: v / 100 };
+};
+
+const humanSize = (n: number) => {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+};
+
+/** 选图后进入裁剪弹窗（默认选区铺满整图，不拖框即等于不裁剪） */
+const pickImage = async () => {
+  const picked = await openDialog({
+    multiple: false,
+    filters: [{ name: t("scriptEditor.fieldRow.image"), extensions: IMAGE_EXT }],
   });
+  if (typeof picked !== "string" || !picked) return;
+  cropSrc.value = picked;
+};
 
-  /** 压暗遮罩：UI 用 0~90 整数显示，store 存 0~1 小数 */
-  const dimPercent = computed(() => Math.round(store.editorBg.dim * 100));
+const onCropConfirm = async (dataUrl: string, name: string) => {
+  cropSrc.value = null;
+  await store.uploadEditorBgData(dataUrl, name);
+};
 
-  // 本组件只 emit change，不 emit update:modelValue，这里显式回写 store
-  const onBlurChange = (v: number) => {
-    store.editorBg = { ...store.editorBg, blur: v };
-  };
-  const onDimChange = (v: number) => {
-    store.editorBg = { ...store.editorBg, dim: v / 100 };
-  };
-
-  const humanSize = (n: number) => {
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-    return `${(n / 1024 / 1024).toFixed(1)} MB`;
-  };
-
-  /** 选图后进入裁剪弹窗（默认选区铺满整图，不拖框即等于不裁剪） */
-  const pickImage = async () => {
-    const picked = await openDialog({
-      multiple: false,
-      filters: [{ name: t("scriptEditor.fieldRow.image"), extensions: IMAGE_EXT }],
-    });
-    if (typeof picked !== "string" || !picked) return;
-    cropSrc.value = picked;
-  };
-
-  const onCropConfirm = async (dataUrl: string, name: string) => {
-    cropSrc.value = null;
-    await store.uploadEditorBgData(dataUrl, name);
-  };
-
-  onMounted(() => {
-    void store.refreshGlobalBgFiles();
-  });
+onMounted(() => {
+  void store.refreshGlobalBgFiles();
+});
 </script>

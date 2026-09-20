@@ -239,11 +239,14 @@ impl VoiceMaker {
                     .as_deref()
                     .and_then(|s| s.parse::<i32>().ok())
                 {
+                    // lang 必须与 segment_text_for_lang 选出的文本一致：zh 读原文，
+                    // 其余语言读日文译文（或跳过）——只有 zh 才需要传 zh。
+                    let lang = if self.lang == "zh" { "zh" } else { "ja" };
                     self.provider.sva = Some(Arc::new(VitsAdapter::new(
                         self.tts_config.simple_vits_api_url.clone(),
                         id,
                         self.audio_format.clone(),
-                        "ja".into(),
+                        lang.into(),
                     )));
                 }
             },

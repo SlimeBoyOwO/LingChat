@@ -85,6 +85,14 @@ export interface GameState {
   latestScreenshot: string | null;
   /** 正在进行的截图 Promise，供 save handler 等待 */
   screenshotPending: Promise<string | null> | null;
+
+  /** 剧本阅读锚点：队列按阅读速度消费 script:progress 时更新；存档时传给后端记录精确恢复点 */
+  scriptReadCursor: {
+    chapter: string;
+    eventIndex: number;
+    lineCount: number;
+    vars: Record<string, unknown>;
+  } | null;
 }
 
 export const state: GameState = {
@@ -109,4 +117,6 @@ export const state: GameState = {
   loadingComplete: false,
   latestScreenshot: null,
   screenshotPending: null,
+
+  scriptReadCursor: null,
 };

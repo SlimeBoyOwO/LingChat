@@ -119,6 +119,7 @@ impl SaveRepo {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn update_save_last_message(
         db: &DatabaseConnection,
         save_id: i32,
@@ -346,6 +347,18 @@ impl SaveRepo {
             // No match — divergence starts here
             diverge = i;
             break;
+        }
+
+        // 安全网：输入与 DB 链在首行即分歧（diverge=0）且双方都非空时，
+        // 说明输入不是"同一段对话的演进"（正常续写/回溯/语音回填首行都会匹配），
+        // 而是把另一段对话（如跨角色残留、错位回溯）误当成当前存档内容——
+        // 若继续会让下面 diverge.. 删除把整个存档历史抹空。拒绝覆盖以保护存档。
+        if diverge == 0 && !db_lines.is_empty() && !input_lines.is_empty() {
+            return Err(anyhow!(
+                "sync_lines 安全保护：输入与存档无共同锚点，拒绝全量覆盖（save_id={save_id}，db_lines={}，input_lines={}）",
+                db_lines.len(),
+                input_lines.len()
+            ));
         }
 
         // Keep line rows, perceptions, and the save tail pointer consistent if
@@ -592,6 +605,19 @@ impl SaveRepo {
             .exec(db)
             .await
             .map_err(|e| anyhow!("{e}"))?;
+        Ok(())
+    }
+
+    /// 清除存档关联的剧本进度行。存档时若当前无剧本在跑，必须清掉该存档
+    /// 早年关联的旧行，否则读档会把一个早已结束的剧本误续跑起来。
+    pub async fn clear_running_script(db: &DatabaseConnection, save_id: i32) -> Result<()> {
+        let save_model = Self::get_save_by_id(db, save_id)
+            .await?
+            .context("Save not found")?;
+        if let Some(rs_id) = save_model.running_script_id {
+            Self::update_save_running_script(db, save_id, None).await?;
+            Self::delete_running_script(db, rs_id).await?;
+        }
         Ok(())
     }
 }

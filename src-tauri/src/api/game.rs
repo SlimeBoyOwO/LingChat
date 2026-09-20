@@ -48,6 +48,8 @@ pub struct WebInitData {
     pub last_bgm_mode: Option<String>,
     /// 上次环境音轨道（JSON 字符串，前端解析）
     pub last_ambient_tracks: Option<String>,
+    /// 当前活跃剧本名（读档/进入剧本模式时非空），供前端还原剧本模式 UI
+    pub active_script: Option<String>,
 }
 
 /// 精简的角色设定，匹配前端 `CharacterSettings` 接口
@@ -423,8 +425,6 @@ pub(crate) async fn build_web_init_data(
         )
     };
 
-    tracing::info!("character_settings: {:?}", character_settings);
-
     let (
         lines,
         current_scene_id,
@@ -435,6 +435,7 @@ pub(crate) async fn build_web_init_data(
         background_effect,
         background_music,
         scene_awareness_enabled,
+        active_script,
     ) = {
         let mut gs = service.game_status.lock().await;
         let seqs = compute_user_message_seqs(&gs.line_list);
@@ -518,6 +519,9 @@ pub(crate) async fn build_web_init_data(
             })
             .collect();
 
+        // 剧本模式名（启动时 script_status 恒为 None，不影响 init_game 路径）
+        let active_script = gs.script_status.as_ref().map(|s| s.name.clone());
+
         (
             lines,
             sid,
@@ -528,6 +532,7 @@ pub(crate) async fn build_web_init_data(
             gs.background_effect.clone(),
             gs.background_music.clone(),
             scene_awareness,
+            active_script,
         )
     };
 
@@ -582,6 +587,7 @@ pub(crate) async fn build_web_init_data(
         last_bgm_paused,
         last_bgm_mode,
         last_ambient_tracks,
+        active_script,
     };
     Ok(result)
 }

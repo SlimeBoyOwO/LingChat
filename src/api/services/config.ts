@@ -47,7 +47,7 @@ export const getEnvConfigSettings = async (): Promise<StructuredConfig> => {
 };
 
 export const saveEnvConfigSettings = async (
-  values: Record<string, string>
+  values: Record<string, string>,
 ): Promise<{ status: string; message: string }> => {
   try {
     const message = await invoke("save_settings", { values });

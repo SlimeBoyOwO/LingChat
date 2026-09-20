@@ -21,20 +21,20 @@
 </template>
 
 <script setup lang="ts">
-  import { StartItem, StartLine, StartList } from "../base";
-  import { useRouter } from "vue-router";
-  import { useGameStore } from "@/stores/modules/game";
+import { StartItem, StartLine, StartList } from "../base";
+import { useRouter } from "vue-router";
+import { useGameStore } from "@/stores/modules/game";
 
-  const emit = defineEmits<{
-    (e: "back"): void;
-    (e: "open-scripts"): void;
-  }>();
+const emit = defineEmits<{
+  (e: "back"): void;
+  (e: "open-scripts"): void;
+}>();
 
-  const router = useRouter();
-  const gameStore = useGameStore();
+const router = useRouter();
+const gameStore = useGameStore();
 
-  const startFreeDialogue = () => {
-    gameStore.exitStoryMode();
-    router.push("/chat");
-  };
+const startFreeDialogue = () => {
+  gameStore.exitStoryMode();
+  router.push("/chat");
+};
 </script>

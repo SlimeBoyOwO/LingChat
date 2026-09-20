@@ -214,20 +214,31 @@ impl AutoSaveManager {
             .map_err(|e| format!("保存记忆库失败: {}", e))?;
 
         // 4e. Persist script state (if running)
-        if let Some(ref script_status) = service.game_status.lock().await.script_status {
-            let vars_json = serde_json::to_string(&script_status.vars).unwrap_or_default();
-            let _ = SaveRepo::upsert_running_script(
-                &self.db,
-                save_id,
-                &script_status.folder_key,
-                &vars_json,
-                &script_status.current_chapter_key,
-                script_status.current_event_process,
-            )
-            .await
-            .map_err(|e| {
-                tracing::warn!("[AutoSave] 保存剧本状态失败: {}", e);
-            });
+        let script_status_snapshot = service.game_status.lock().await.script_status.clone();
+        match script_status_snapshot {
+            Some(script_status) => {
+                let vars_json = serde_json::to_string(&script_status.vars).unwrap_or_default();
+                // 与手动存档统一：写 path_key() 并归一化分隔符，读档时按同一规则回匹配
+                let script_folder = script_status.path_key().replace('\\', "/");
+                let _ = SaveRepo::upsert_running_script(
+                    &self.db,
+                    save_id,
+                    &script_folder,
+                    &vars_json,
+                    &script_status.current_chapter_key,
+                    script_status.current_event_process,
+                )
+                .await
+                .map_err(|e| {
+                    tracing::warn!("[AutoSave] 保存剧本状态失败: {}", e);
+                });
+            },
+            None => {
+                // 当前无剧本在跑：清掉该存档早年关联的旧进度行，避免读档误续跑已结束的剧本
+                if let Err(e) = SaveRepo::clear_running_script(&self.db, save_id).await {
+                    tracing::warn!("[AutoSave] 清理旧剧本状态失败: {}", e);
+                }
+            },
         }
 
         drop(service);

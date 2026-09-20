@@ -1,20 +1,18 @@
 <script setup lang="ts">
-  defineProps<{
-    isDragging: boolean;
-  }>();
+defineProps<{
+  isDragging: boolean;
+}>();
 </script>
 
 <template>
   <div class="relative">
     <div
       v-if="isDragging"
-      class="pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center
-        gap-1 rounded-full"
+      class="pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-1 rounded-full"
     >
       <!-- 光圈 -->
       <div
-        class="absolute inset-0 animate-pulse rounded-full border-2 border-cyan-400/50
-          transition-all"
+        class="absolute inset-0 animate-pulse rounded-full border-2 border-cyan-400/50 transition-all"
       ></div>
       <div
         class="absolute inset-0 animate-pulse rounded-full border border-cyan-300/30"

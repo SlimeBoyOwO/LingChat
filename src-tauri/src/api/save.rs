@@ -52,6 +52,58 @@ async fn save_screenshot_file(save_id: i32, source_path: &str) -> Result<(), Str
     Ok(())
 }
 
+/// 解析待写入 running_script 的剧本进度。
+///
+/// 前端阅读锚点四要素齐全（章节 + 事件下标 + 台词条数 + 变量 JSON）且变量可解析时
+/// 以锚点为准：引擎会一口气跑到下一个阻塞事件，用引擎当前下标会存到玩家尚未读到的
+/// 预生成内容之后。锚点缺失则回退引擎当前值。返回
+/// `(script_folder, chapter, event_index, vars_json)`，`script_folder` 取 `path_key()`
+/// 并统一分隔符，读档时按同一规则回匹配。
+fn resolve_script_progress(
+    script_status: &crate::ai_service::types::ScriptStatus,
+    player_chapter: Option<&str>,
+    player_event_index: Option<i32>,
+    player_line_count: Option<i32>,
+    player_vars_json: Option<&str>,
+) -> (String, String, i32, String) {
+    let anchor = match (
+        player_chapter,
+        player_event_index,
+        player_line_count,
+        player_vars_json,
+    ) {
+        (Some(chapter), Some(event_index), Some(line_count), Some(vars_json)) => {
+            serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(vars_json)
+                .ok()
+                .map(|vars| (chapter.to_string(), event_index, line_count, vars))
+        },
+        _ => None,
+    };
+
+    let (chapter, event_index, vars) = match anchor {
+        Some((chapter, event_index, line_count, mut vars)) => {
+            // 记录存档时玩家已读到的台词条数（内部键）：读档侧据此截断台词，
+            // 锚点之后的内容由续跑引擎重新生成；加载时会剔除该键，不污染剧本变量。
+            // 该键必须与锚点同源——锚点失效走引擎回退时若仍记录它，
+            // 读档会把台词截到阅读位置却从阻塞点续跑，中间内容既被截掉又不重播。
+            vars.insert("__line_count".to_string(), serde_json::json!(line_count));
+            (chapter, event_index, vars)
+        },
+        None => (
+            script_status.current_chapter_key.clone(),
+            script_status.current_event_process,
+            script_status.vars.clone(),
+        ),
+    };
+
+    (
+        script_status.path_key().replace('\\', "/"),
+        chapter,
+        event_index,
+        serde_json::to_string(&vars).unwrap_or_default(),
+    )
+}
+
 // ========== Tauri 命令 ==========
 
 #[tauri::command]
@@ -126,6 +178,10 @@ pub async fn create_save(
     app: AppHandle,
     title: String,
     screenshot_path: Option<String>,
+    player_chapter: Option<String>,
+    player_event_index: Option<i32>,
+    player_line_count: Option<i32>,
+    player_vars_json: Option<String>,
 ) -> Result<CreateSaveResponse, String> {
     let state = app.state::<AppState>();
     let db = &state.db;
@@ -176,18 +232,33 @@ pub async fn create_save(
         .map_err(|e| format!("保存记忆库失败: {}", e))?;
 
     // 7. 持久化剧本状态（若有）
-    if let Some(ref script_status) = service.game_status.lock().await.script_status {
-        let vars_json = serde_json::to_string(&script_status.vars).unwrap_or_default();
-        let _ = SaveRepo::upsert_running_script(
-            db,
-            save_id,
-            &script_status.folder_key,
-            &vars_json,
-            &script_status.current_chapter_key,
-            script_status.current_event_process,
-        )
-        .await
-        .map_err(|e| eprintln!("[SAVE_WARN] create_save: 保存剧本状态失败: {}", e));
+    let script_status_snapshot = service.game_status.lock().await.script_status.clone();
+    match script_status_snapshot {
+        Some(script_status) => {
+            let (script_folder, chapter, event_index, vars_json) = resolve_script_progress(
+                &script_status,
+                player_chapter.as_deref(),
+                player_event_index,
+                player_line_count,
+                player_vars_json.as_deref(),
+            );
+            let _ = SaveRepo::upsert_running_script(
+                db,
+                save_id,
+                &script_folder,
+                &vars_json,
+                &chapter,
+                event_index,
+            )
+            .await
+            .map_err(|e| eprintln!("[SAVE_WARN] create_save: 保存剧本状态失败: {}", e));
+        },
+        None => {
+            // 当前无剧本在跑：清掉该存档早年关联的旧进度行，避免读档误续跑已结束的剧本
+            if let Err(e) = SaveRepo::clear_running_script(db, save_id).await {
+                eprintln!("[SAVE_WARN] create_save: 清理旧剧本状态失败: {}", e);
+            }
+        },
     }
 
     // 8. 同步自动存档基线（内容刚落盘，避免下个 tick 重存；与定时循环 manager→ai_service 反向，需先 drop service）
@@ -210,7 +281,32 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     let state = app.state::<AppState>();
     let db = &state.db;
 
+    // 旧引擎是独立 tokio 任务，读档前必须中止它并清掉其挂起的输入通道：
+    // 否则它会继续往恢复后的共享 GameStatus 写台词，污染本次读档的状态。
+    let aborted_script_engine = if let Some(handle) = state.script_task.lock().await.take() {
+        handle.abort();
+        true
+    } else {
+        false
+    };
+    {
+        let mut ch = state.script_channels.lock().await;
+        let _ = ch.input_tx.take();
+        let _ = ch.choice_tx.take();
+        ch.choice_allow_free = false;
+    }
+
     let mut service = state.ai_service.lock().await;
+
+    // 被中止的引擎走不到 on_script_end 收尾，is_running 会残留 true——
+    // 若本存档没有剧本可续跑，编辑器试玩/重扫的守卫会永远以为有剧本在跑。
+    // 试玩任务不登记在 script_task（走 preview_task），不受此复位影响。
+    if aborted_script_engine {
+        service
+            .script_manager
+            .is_running
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
 
     // 1. 获取存档
     let save_model = SaveRepo::get_save_by_id(db, save_id)
@@ -218,12 +314,76 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         .map_err(|e| format!("查询存档失败: {}", e))?
         .ok_or_else(|| format!("存档 {} 不存在", save_id))?;
 
-    // 2. 获取台词列表
-    let line_list = SaveRepo::get_gameline_list(db, save_id)
+    // 2. 读取剧本进度并构造恢复版 ScriptStatus（若有）
+    let mut resume_line_count: Option<usize> = None;
+    let resume_script: Option<crate::ai_service::types::ScriptStatus> =
+        match save_model.running_script_id {
+            Some(rs_id) => match SaveRepo::get_running_script(db, rs_id).await {
+                Ok(Some(rs)) => {
+                    // 统一分隔符：旧档可能存 Windows 反斜杠的 path_key，或旧版的 folder_key
+                    let saved_key = rs.script_folder.replace('\\', "/");
+                    let matched = service
+                        .script_manager
+                        .all_scripts
+                        .values()
+                        .find(|s| s.path_key().replace('\\', "/") == saved_key)
+                        .or_else(|| {
+                            service
+                                .script_manager
+                                .all_scripts
+                                .values()
+                                .find(|s| s.folder_key == saved_key)
+                        })
+                        .cloned();
+
+                    match matched {
+                        Some(mut script) => {
+                            let mut vars = serde_json::from_str::<
+                                serde_json::Map<String, serde_json::Value>,
+                            >(&rs.variable_info)
+                            .unwrap_or_default();
+                            // __line_count 是存档侧记录「玩家已读到第几条台词」的内部键，
+                            // 不属于剧本变量：调出来供截断台词用，并从变量表剔除
+                            if let Some(v) = vars.remove("__line_count") {
+                                resume_line_count = v.as_u64().map(|n| n as usize);
+                            }
+                            script.vars = vars;
+                            script.current_chapter_key = rs.current_chapter;
+                            script.current_event_process = rs.event_sequence;
+                            Some(script)
+                        },
+                        None => {
+                            tracing::warn!(
+                                "[SaveAPI] 存档 {} 关联的剧本 '{}' 已不存在，降级为普通读档",
+                                save_id,
+                                rs.script_folder
+                            );
+                            None
+                        },
+                    }
+                },
+                Ok(None) => None,
+                Err(e) => {
+                    tracing::warn!("[SaveAPI] 读取剧本进度失败，降级为普通读档: {}", e);
+                    None
+                },
+            },
+            None => None,
+        };
+
+    // 3. 获取台词列表
+    let mut line_list = SaveRepo::get_gameline_list(db, save_id)
         .await
         .map_err(|e| format!("读取台词失败: {}", e))?;
 
-    // 3. 获取主角 role_id
+    // 锚点之后的台词是引擎跑快进时预先生成的，玩家尚未读到；截掉后由续跑引擎重新生成，
+    // 保证恢复后不重复播放、也不漏掉未读内容。
+    if let Some(n) = resume_line_count {
+        let keep = n.min(line_list.len());
+        line_list.truncate(keep);
+    }
+
+    // 4. 获取主角 role_id
     let main_role_id = save_model
         .main_role_id
         .ok_or_else(|| "存档中未记录主角信息".to_string())?;
@@ -240,14 +400,14 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         .await
         .map_err(|e| format!("初始化游戏状态失败: {}", e))?;
 
-    // 7. 先恢复 MemoryBank：若在 load_lines（内部 sync_memories 会触发压缩检查）之后再恢复，
+    // 6. 先恢复 MemoryBank：若在 load_lines（内部 sync_memories 会触发压缩检查）之后再恢复，
     //    后台全量重压会用旧库/旧指针把 DB 恢复的记忆库覆盖掉。
     let _ = service
         .restore_memory_banks(save_id)
         .await
         .map_err(|e| eprintln!("[SAVE_WARN] 恢复记忆库失败: {}", e));
 
-    // 8. 载入台词（sync_memories 用恢复后的正确指针，只压缩存档点之后的增量）
+    // 7. 载入台词（sync_memories 用恢复后的正确指针，只压缩存档点之后的增量）
     // 先记下载入内容的真实对话指纹，稍后同步自动存档基线，避免下个 tick 把刚载入内容当新变化重存覆盖旧档
     let baseline_hash = auto_save::hash_of_real_lines(&line_list);
     service
@@ -255,19 +415,21 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         .await
         .map_err(|e| format!("载入台词失败: {}", e))?;
 
-    // 9. 恢复 GameStatus 快照
+    // 8. 恢复 GameStatus 快照
     let snapshot: GameStatusSnapshot = serde_json::from_str(&save_model.status).unwrap_or_default();
     service.game_status.lock().await.apply_snapshot(&snapshot);
 
-    // 10. 恢复剧本状态（若有）
-    if let Some(rs_id) = save_model.running_script_id {
-        let _ = SaveRepo::get_running_script(db, rs_id).await;
-    }
+    // 9. 恢复剧本状态：覆盖掉被中止旧引擎可能残留的 script_status（含 None 的情况）
+    service.game_status.lock().await.script_status = resume_script.clone();
 
-    // 11. 返回前端初始化数据
+    // 10. 返回前端初始化数据
     let result = build_web_init_data(&service, &app).await?;
     // 释放 ai_service 锁后再取 manager，避免与定时循环（manager→ai_service）反向取锁死锁
     drop(service);
+    // 续跑引擎必须在释放 ai_service 锁之后启动（spawn 内部会再锁 ai_service）
+    if let Some(script) = resume_script {
+        crate::api::script::spawn_script_execution(app.clone(), script).await;
+    }
     state
         .auto_save_manager
         .lock()
@@ -281,6 +443,10 @@ pub async fn update_save(
     app: AppHandle,
     save_id: i32,
     screenshot_path: Option<String>,
+    player_chapter: Option<String>,
+    player_event_index: Option<i32>,
+    player_line_count: Option<i32>,
+    player_vars_json: Option<String>,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
     let db = &state.db;
@@ -323,18 +489,33 @@ pub async fn update_save(
         .map_err(|e| format!("保存记忆库失败: {}", e))?;
 
     // 6. 持久化剧本状态
-    if let Some(ref script_status) = service.game_status.lock().await.script_status {
-        let vars_json = serde_json::to_string(&script_status.vars).unwrap_or_default();
-        let _ = SaveRepo::upsert_running_script(
-            db,
-            save_id,
-            &script_status.folder_key,
-            &vars_json,
-            &script_status.current_chapter_key,
-            script_status.current_event_process,
-        )
-        .await
-        .map_err(|e| eprintln!("[SAVE_WARN] update_save: 保存剧本状态失败: {}", e));
+    let script_status_snapshot = service.game_status.lock().await.script_status.clone();
+    match script_status_snapshot {
+        Some(script_status) => {
+            let (script_folder, chapter, event_index, vars_json) = resolve_script_progress(
+                &script_status,
+                player_chapter.as_deref(),
+                player_event_index,
+                player_line_count,
+                player_vars_json.as_deref(),
+            );
+            let _ = SaveRepo::upsert_running_script(
+                db,
+                save_id,
+                &script_folder,
+                &vars_json,
+                &chapter,
+                event_index,
+            )
+            .await
+            .map_err(|e| eprintln!("[SAVE_WARN] update_save: 保存剧本状态失败: {}", e));
+        },
+        None => {
+            // 当前无剧本在跑：清掉该存档早年关联的旧进度行，避免读档误续跑已结束的剧本
+            if let Err(e) = SaveRepo::clear_running_script(db, save_id).await {
+                eprintln!("[SAVE_WARN] update_save: 清理旧剧本状态失败: {}", e);
+            }
+        },
     }
 
     // 7. 同步自动存档基线（内容刚落盘，避免下个 tick 重存；与定时循环 manager→ai_service 反向，需先 drop service）

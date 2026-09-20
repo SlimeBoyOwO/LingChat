@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::AppHandle;
 #[cfg(desktop)]
+use tauri::Emitter;
+#[cfg(desktop)]
 use tauri::LogicalSize;
 #[cfg(desktop)]
 use tauri::Manager;
@@ -44,6 +46,111 @@ pub fn update_solid_regions(rects: Vec<Rect>, state: tauri::State<'_, HitTestSta
     if let Ok(mut locked) = state.solid_rects.lock() {
         *locked = rects;
     }
+}
+
+/// 桌宠点击穿透轮询：全局轮询鼠标位置，只有落在前端上报的 solid 区域内才接收鼠标事件，
+/// 其余透明区域把点击让给底下的窗口。
+///
+/// 原本用 Win32 的 GetCursorPos，因此整段是 cfg(windows) 独占，macOS 上桌宠窗口
+/// 会整块挡住底下窗口的点击。cursor_position() 与 set_ignore_cursor_events() 都是
+/// Tauri 的跨平台 API，改用前者后三个桌面平台可以共用同一个循环。
+/// （Linux 未实测：X11 / Wayland 下最差情况是 API 返回 Err，本轮直接跳过。）
+///
+/// 同时承担 pet:cursor 鼠标广播：向桌宠前端广播全局鼠标位置驱动 Live2D 视线。
+#[cfg(desktop)]
+pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
+    let hit_test_state = window.state::<HitTestState>();
+    let rects_arc = hit_test_state.solid_rects.clone();
+    let enabled_arc = hit_test_state.enabled.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let mut was_ignored = false;
+        // 上一次向前端广播的鼠标位置：挂机时鼠标不动，若仍 20Hz 无条件
+        // emit，webview 渲染进程会被 IPC 持续唤醒而无法进入空闲。
+        // 只有位移超过 1 逻辑像素（过滤亚像素抖动）才真正广播。
+        let mut last_emitted: Option<(f64, f64)> = None;
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+            let enabled = if let Ok(locked) = enabled_arc.lock() {
+                *locked
+            } else {
+                false
+            };
+
+            if !enabled {
+                if was_ignored {
+                    let _ = window.set_ignore_cursor_events(false);
+                    was_ignored = false;
+                }
+                continue;
+            }
+
+            // 桌面全局坐标（物理像素），与 outer_position() 同一坐标系
+            let Ok(cursor) = window.cursor_position() else {
+                continue;
+            };
+
+            if let Ok(window_pos) = window.outer_position() {
+                if let Ok(scale_factor) = window.scale_factor() {
+                    let mouse_x = cursor.x - f64::from(window_pos.x);
+                    let mouse_y = cursor.y - f64::from(window_pos.y);
+
+                    let logical_x = mouse_x / scale_factor;
+                    let logical_y = mouse_y / scale_factor;
+
+                    // 向桌宠前端广播全局鼠标位置：桌宠窗口非全屏，DOM
+                    // pointermove 在鼠标移出窗口后停发，Live2D 视线会冻结在
+                    // 最后一次窗口内位置。这里把窗口内逻辑坐标（即 webview
+                    // 视口坐标）发给前端驱动视线，与 DOM clientX/Y 同坐标系。
+                    // 视线弹簧在前端 ticker 内持续插值，广播间隔变大不影响
+                    // 追踪平滑度，因此只在位移 ≥1px 时发送。
+                    let moved = match last_emitted {
+                        Some((lx, ly)) => {
+                            (logical_x - lx).abs() >= 1.0 || (logical_y - ly).abs() >= 1.0
+                        },
+                        None => true,
+                    };
+                    if moved {
+                        let _ = window.emit(
+                            "pet:cursor",
+                            CursorPosition {
+                                x: logical_x,
+                                y: logical_y,
+                            },
+                        );
+                        last_emitted = Some((logical_x, logical_y));
+                    }
+
+                    let mut is_over_solid = false;
+                    if let Ok(rects) = rects_arc.lock() {
+                        for r in rects.iter() {
+                            if logical_x >= r.x
+                                && logical_y >= r.y
+                                && logical_x <= (r.x + r.width)
+                                && logical_y <= (r.y + r.height)
+                            {
+                                is_over_solid = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if is_over_solid {
+                        if was_ignored {
+                            let _ = window.set_ignore_cursor_events(false);
+                            was_ignored = false;
+                        }
+                    } else {
+                        if !was_ignored {
+                            let _ = window.set_ignore_cursor_events(true);
+                            was_ignored = true;
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
 /// 退出全屏，并等到它真正结束。
@@ -100,6 +207,30 @@ fn restore_normal_geometry(window: &tauri::WebviewWindow) {
     }
 }
 
+/// macOS：把主窗口标题栏样式重新断言为 Overlay（titlebar 透明 + FullSizeContentView，
+/// 窗口圆角、红绿灯悬浮）。
+///
+/// 桌宠模式进出时 `set_decorations` 会异步重建 style mask（走主线程 GCD 队列），
+/// 丢掉 Overlay 依赖的 FullSizeContentView，窗口会变回「有标题栏 + 直角角」、
+/// 红绿灯被挤出画面；而 `set_title_bar_style` 是同步读当前 mask 再叠加，
+/// mask 未落地时调用会读到旧态。恢复流程要在 mask 落地后、几何恢复后各断言一次。
+#[cfg(target_os = "macos")]
+fn reassert_overlay_title_bar(window: &tauri::WebviewWindow) {
+    let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
+}
+
+/// macOS：等待 `set_decorations(true)` 异步重建的 style mask 落地，再断言 Overlay。
+///
+/// tao 的 mask 重建没有完成回调，只能固定退让 80ms——这个时延依赖 tao 的异步
+/// 实现细节，若上游改为同步应用 mask 可移除等待。仅在退出桌宠紧跟
+/// `set_decorations(true)` 之后调用一次；几何恢复（set_size/set_position）后
+/// 的最终断言直接用 `reassert_overlay_title_bar`，不要重复等待。
+#[cfg(target_os = "macos")]
+async fn wait_decoration_mask_then_reassert_overlay_title_bar(window: &tauri::WebviewWindow) {
+    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+    reassert_overlay_title_bar(window);
+}
+
 #[tauri::command]
 // scale/app_handle 只在桌面分支（cfg(desktop) 内调整窗口）使用，
 // 安卓/iOS 编译时视为未使用——用 cfg_attr 消除该平台上的警告
@@ -124,11 +255,11 @@ pub async fn set_pet_mode(
         if enable {
             let scale_val = scale.unwrap_or(1.0);
 
-            // 窗口尺寸基于桌宠组件尺寸计算：BASE_AVATAR_SIZE = 240, CHAT_BASE_H = 45, DIALOG_MAX_BASE = 200
-            // GameRoleAvatar 头像框: Math.round(210 * scale)，使用标准桌宠尺寸:
-            // Width: 240 * scale, Height: (240 + 200 + 45) * scale = 485 * scale
+            // 窗口尺寸与前端 constants.ts 一一对应：宽 240（圆框 210 + 两侧 15 呼吸边），
+            // 高 = 头像带 210 + 气泡带预算 200 + 输入带 70 = 480。改前端带高时这里必须同步。
+            // GameRoleAvatar 头像框: Math.round(210 * scale)
             let width = (240.0 * scale_val) as u32;
-            let height = ((240.0 + 200.0 + 45.0) * scale_val) as u32;
+            let height = ((210.0 + 200.0 + 70.0) * scale_val) as u32;
 
             let _ = window.set_skip_taskbar(true);
             let _ = window.set_always_on_top(true);
@@ -149,6 +280,11 @@ pub async fn set_pet_mode(
             let _ = window.set_always_on_top(false);
             let _ = window.set_resizable(true);
             let _ = window.set_decorations(true);
+            // macOS：set_decorations(true) 异步重建 style mask 会丢掉 Overlay 依赖的
+            // FullSizeContentView（窗口变回有标题栏 + 直角角），等 mask 落地后恢复，
+            // 场景与竞态细节见 wait_decoration_mask_then_reassert_overlay_title_bar。
+            #[cfg(target_os = "macos")]
+            wait_decoration_mask_then_reassert_overlay_title_bar(&window).await;
 
             // 恢复 1500×800 并居中，但任何情况下不超出当前显示器工作区。
             // 之前直接 set_size(LogicalSize 1500,800)：高 DPI / 小屏下逻辑尺寸
@@ -156,6 +292,10 @@ pub async fn set_pet_mode(
             // 不确定几何，结果窗口撑出屏幕、盖住任务栏，看起来像全屏。
             restore_normal_geometry(&window);
 
+            // macOS：restore_normal_geometry 会 set_size/set_position，期间可能再次
+            // 覆盖掩码，这里再断言一次 Overlay，确保最终仍保留 FullSizeContentView 圆角。
+            #[cfg(target_os = "macos")]
+            reassert_overlay_title_bar(&window);
             // Always restore cursor ignore to false
             let _ = window.set_ignore_cursor_events(false);
         }

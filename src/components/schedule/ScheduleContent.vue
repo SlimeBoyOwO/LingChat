@@ -7,13 +7,11 @@
       :class="{ 'min-h-0 flex-1': uiStore.isNarrowScreen }"
     >
       <div
-        class="text-brand inset_0_1px_1px_rgba(255,255,255,0.1)] mb-8 flex items-center space-x-3
-          rounded-lg px-3.75 py-2.5 text-base font-bold"
+        class="text-brand inset_0_1px_1px_rgba(255,255,255,0.1)] mb-8 flex items-center space-x-3 rounded-lg px-3.75 py-2.5 text-base font-bold"
       >
         <div class="relative">
           <div
-            class="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500 text-white
-              shadow-lg"
+            class="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500 text-white shadow-lg"
           >
             <Sparkles :size="20" />
           </div>
@@ -23,45 +21,35 @@
 
       <nav class="min-h-0 w-full flex-1 space-y-2 overflow-y-auto">
         <button
-          class="adv-nav-link relative z-10 flex w-full items-center space-x-6 rounded-lg px-5 py-3
-            text-white no-underline transition-colors duration-200 hover:bg-gray-200
-            hover:text-black active:font-bold active:text-white"
+          class="adv-nav-link relative z-10 flex w-full items-center space-x-6 rounded-lg px-5 py-3 text-white no-underline transition-colors duration-200 hover:bg-gray-200 hover:text-black active:font-bold active:text-white"
           @click="changeView('schedule_groups')"
         >
           <Layers :size="18" />
           <span>{{ $t("ui.scheduleContent.navSchedule") }}</span>
         </button>
         <button
-          class="adv-nav-link relative z-10 flex w-full items-center space-x-6 rounded-lg px-5 py-3
-            text-white no-underline transition-colors duration-200 hover:bg-gray-200
-            hover:text-black active:font-bold active:text-white"
+          class="adv-nav-link relative z-10 flex w-full items-center space-x-6 rounded-lg px-5 py-3 text-white no-underline transition-colors duration-200 hover:bg-gray-200 hover:text-black active:font-bold active:text-white"
           @click="changeView('todo_groups')"
         >
           <CheckCircle2 :size="18" />
           <span>{{ $t("ui.scheduleContent.navTodo") }}</span>
         </button>
         <button
-          class="adv-nav-link relative z-10 flex w-full items-center space-x-6 rounded-lg px-5 py-3
-            text-white no-underline transition-colors duration-200 hover:bg-gray-200
-            hover:text-black active:font-bold active:text-white"
+          class="adv-nav-link relative z-10 flex w-full items-center space-x-6 rounded-lg px-5 py-3 text-white no-underline transition-colors duration-200 hover:bg-gray-200 hover:text-black active:font-bold active:text-white"
           @click="changeView('calendar')"
         >
           <CalendarDays :size="18" />
           <span>{{ $t("ui.scheduleContent.navCalendar") }}</span>
         </button>
         <button
-          class="adv-nav-link relative z-10 flex w-full items-center space-x-6 rounded-lg px-5 py-3
-            text-white no-underline transition-colors duration-200 hover:bg-gray-200
-            hover:text-black active:font-bold active:text-white"
+          class="adv-nav-link relative z-10 flex w-full items-center space-x-6 rounded-lg px-5 py-3 text-white no-underline transition-colors duration-200 hover:bg-gray-200 hover:text-black active:font-bold active:text-white"
           @click="changeView('proactive_settings')"
         >
           <Cat :size="18" />
           <span>{{ $t("ui.scheduleContent.navProactive") }}</span>
         </button>
         <button
-          class="adv-nav-link relative z-10 flex w-full items-center space-x-6 rounded-lg px-5 py-3
-            text-white no-underline transition-colors duration-200 hover:bg-gray-200
-            hover:text-black active:font-bold active:text-white"
+          class="adv-nav-link relative z-10 flex w-full items-center space-x-6 rounded-lg px-5 py-3 text-white no-underline transition-colors duration-200 hover:bg-gray-200 hover:text-black active:font-bold active:text-white"
           @click="changeView('tool_calls')"
         >
           <Wrench :size="18" />
@@ -96,8 +84,7 @@
           <button
             v-if="uiStore.isNarrowScreen"
             @click="narrowViewLevel = 'menu'"
-            class="flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-sm text-white/70
-              transition-colors hover:bg-white/10 hover:text-white"
+            class="flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-sm text-white/70 transition-colors hover:bg-white/10 hover:text-white"
           >
             <ChevronLeft :size="18" />
           </button>
@@ -131,8 +118,7 @@
             !uiStore.scheduleView.startsWith('tool_calls')
           "
           @click="triggerCreate"
-          class="flex shrink-0 items-center rounded-xl bg-cyan-500 text-white shadow-lg
-            transition-all hover:bg-cyan-600"
+          class="flex shrink-0 items-center rounded-xl bg-cyan-500 text-white shadow-lg transition-all hover:bg-cyan-600"
           :class="uiStore.isNarrowScreen ? 'space-x-1 px-3 py-2 text-sm' : 'space-x-2 px-5 py-2.5'"
         >
           <Plus :size="uiStore.isNarrowScreen ? 16 : undefined" />
@@ -166,116 +152,116 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, ref } from "vue";
-  import { useI18n } from "vue-i18n";
-  import { useUIStore } from "@/stores/modules/ui/ui";
-  import TodoPage from "@/components/schedule/pages/TodoPage.vue";
-  import SchedulePage from "@/components/schedule/pages/SchedulePage.vue";
-  import CalendarPage from "@/components/schedule/pages/CalendarPage.vue";
-  import ProactivePage from "@/components/schedule/pages/ProactivePage.vue";
-  import ToolCallsPage from "@/components/schedule/pages/ToolCallsPage.vue";
-  import {
-    Layers,
-    CheckCircle2,
-    CalendarDays,
-    Plus,
-    Cat,
-    ChevronLeft,
-    Sparkles,
-    Wrench,
-  } from "lucide-vue-next";
+import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { useUIStore } from "@/stores/modules/ui/ui";
+import TodoPage from "@/components/schedule/pages/TodoPage.vue";
+import SchedulePage from "@/components/schedule/pages/SchedulePage.vue";
+import CalendarPage from "@/components/schedule/pages/CalendarPage.vue";
+import ProactivePage from "@/components/schedule/pages/ProactivePage.vue";
+import ToolCallsPage from "@/components/schedule/pages/ToolCallsPage.vue";
+import {
+  Layers,
+  CheckCircle2,
+  CalendarDays,
+  Plus,
+  Cat,
+  ChevronLeft,
+  Sparkles,
+  Wrench,
+} from "lucide-vue-next";
 
-  type Variant = "settings" | "popup";
+type Variant = "settings" | "popup";
 
-  const props = withDefaults(
-    defineProps<{
-      variant?: Variant;
-    }>(),
-    { variant: "settings" }
-  );
+const props = withDefaults(
+  defineProps<{
+    variant?: Variant;
+  }>(),
+  { variant: "settings" },
+);
 
-  const uiStore = useUIStore();
-  const { t } = useI18n();
-  const narrowViewLevel = ref<"menu" | "content">("menu");
+const uiStore = useUIStore();
+const { t } = useI18n();
+const narrowViewLevel = ref<"menu" | "content">("menu");
 
-  const scheduleRef = ref();
-  const todoRef = ref();
-  const calendarRef = ref();
-  const titleInfo = computed(() => {
-    const currentView = uiStore.scheduleView;
+const scheduleRef = ref();
+const todoRef = ref();
+const calendarRef = ref();
+const titleInfo = computed(() => {
+  const currentView = uiStore.scheduleView;
 
-    if (currentView.startsWith("schedule")) {
-      return {
-        title: t("ui.scheduleContent.titleSchedule"),
-        subtitle: t("ui.scheduleContent.subtitleSchedule"),
-      };
-    } else if (currentView.startsWith("todo")) {
-      return {
-        title: t("ui.scheduleContent.titleTodo"),
-        subtitle: t("ui.scheduleContent.subtitleTodo"),
-      };
-    } else if (currentView.startsWith("proactive")) {
-      return {
-        title: t("ui.scheduleContent.titleProactive"),
-        subtitle: t("ui.scheduleContent.subtitleProactive"),
-      };
-    } else if (currentView.startsWith("tool_calls")) {
-      return {
-        title: t("ui.scheduleContent.titleToolCalls"),
-        subtitle: t("ui.scheduleContent.subtitleToolCalls"),
-      };
-    } else if (currentView.startsWith("calendar")) {
-      return {
-        title: t("ui.scheduleContent.titleCalendar"),
-        subtitle: t("ui.scheduleContent.subtitleCalendar"),
-      };
-    } else {
-      // 默认情况
-      return {
-        title: t("ui.scheduleContent.titleDefault"),
-        subtitle: t("ui.scheduleContent.subtitleDefault"),
-      };
-    }
-  });
+  if (currentView.startsWith("schedule")) {
+    return {
+      title: t("ui.scheduleContent.titleSchedule"),
+      subtitle: t("ui.scheduleContent.subtitleSchedule"),
+    };
+  } else if (currentView.startsWith("todo")) {
+    return {
+      title: t("ui.scheduleContent.titleTodo"),
+      subtitle: t("ui.scheduleContent.subtitleTodo"),
+    };
+  } else if (currentView.startsWith("proactive")) {
+    return {
+      title: t("ui.scheduleContent.titleProactive"),
+      subtitle: t("ui.scheduleContent.subtitleProactive"),
+    };
+  } else if (currentView.startsWith("tool_calls")) {
+    return {
+      title: t("ui.scheduleContent.titleToolCalls"),
+      subtitle: t("ui.scheduleContent.subtitleToolCalls"),
+    };
+  } else if (currentView.startsWith("calendar")) {
+    return {
+      title: t("ui.scheduleContent.titleCalendar"),
+      subtitle: t("ui.scheduleContent.subtitleCalendar"),
+    };
+  } else {
+    // 默认情况
+    return {
+      title: t("ui.scheduleContent.titleDefault"),
+      subtitle: t("ui.scheduleContent.subtitleDefault"),
+    };
+  }
+});
 
-  const triggerCreate = () => {
-    const currentView = uiStore.scheduleView;
+const triggerCreate = () => {
+  const currentView = uiStore.scheduleView;
 
-    // 这里的逻辑是：判断当前在哪个视图，就调用哪个组件内部的 handleCreate 方法
-    if (currentView.startsWith("schedule")) {
-      // 日程相关视图
-      scheduleRef.value?.handleCreate();
-    } else if (currentView.startsWith("todo")) {
-      // 待办相关视图
-      todoRef.value?.handleCreate();
-    } else if (currentView === "calendar") {
-      // 日历视图
-      calendarRef.value?.handleCreate();
-    }
-  };
+  // 这里的逻辑是：判断当前在哪个视图，就调用哪个组件内部的 handleCreate 方法
+  if (currentView.startsWith("schedule")) {
+    // 日程相关视图
+    scheduleRef.value?.handleCreate();
+  } else if (currentView.startsWith("todo")) {
+    // 待办相关视图
+    todoRef.value?.handleCreate();
+  } else if (currentView === "calendar") {
+    // 日历视图
+    calendarRef.value?.handleCreate();
+  }
+};
 
-  const changeView = (view: string) => {
-    uiStore.scheduleView = view;
-    // 窄屏下自动切换到内容视图
-    if (uiStore.isNarrowScreen) {
-      narrowViewLevel.value = "content";
-    }
-  };
+const changeView = (view: string) => {
+  uiStore.scheduleView = view;
+  // 窄屏下自动切换到内容视图
+  if (uiStore.isNarrowScreen) {
+    narrowViewLevel.value = "content";
+  }
+};
 
-  const goBackToParentView = () => {
-    if (uiStore.scheduleView === "schedule_detail") {
-      uiStore.scheduleView = "schedule_groups";
-    } else if (uiStore.scheduleView === "todo_detail") {
-      uiStore.scheduleView = "todo_groups";
-    }
-  };
+const goBackToParentView = () => {
+  if (uiStore.scheduleView === "schedule_detail") {
+    uiStore.scheduleView = "schedule_groups";
+  } else if (uiStore.scheduleView === "todo_detail") {
+    uiStore.scheduleView = "todo_groups";
+  }
+};
 
-  const containerClass = computed(() => {
-    // settings：沿用原来的全屏设置页布局
-    if (props.variant === "settings") {
-      return "h-[85dvh] max-w-6xl md:w-[calc(100vw-4rem)] glass-panel bg-white/10 rounded-2xl";
-    }
-    // popup：由父级 modal 控制尺寸和样式，此处填满容器
-    return "w-full h-full";
-  });
+const containerClass = computed(() => {
+  // settings：沿用原来的全屏设置页布局
+  if (props.variant === "settings") {
+    return "h-[85dvh] max-w-6xl md:w-[calc(100vw-4rem)] glass-panel bg-white/10 rounded-2xl";
+  }
+  // popup：由父级 modal 控制尺寸和样式，此处填满容器
+  return "w-full h-full";
+});
 </script>

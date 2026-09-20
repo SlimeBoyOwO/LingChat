@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>永久记忆 · 上下文组装数据流</title>
+<style>
+  html, body { background: #fff; color: #000; margin: 0; padding: 24px; }
+  body { font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  p.cap { font-size: 12px; margin: 0 0 18px; max-width: 1100px; line-height: 1.75; }
+  svg { border: 1px solid #000; }
+  .box  { fill: #fff; stroke: #000; stroke-width: 1.2; }
+  .key  { fill: #fff; stroke: #000; stroke-width: 1.8; }
+  .t    { font-size: 12px; }
+  .tb   { font-size: 12px; font-weight: bold; }
+  .n    { font-size: 10.5px; }
+  .nb   { font-size: 10.5px; font-weight: bold; }
+  .edge { stroke: #000; stroke-width: 1.3; fill: none; }
+  .dash { stroke: #000; stroke-width: 1.1; fill: none; stroke-dasharray: 5 4; }
+  .lbl  { font-size: 10.5px; }
+</style>
+</head>
+<body>
+
+<h1>上下文组装 · 数据流</h1>
+<p class="cap">
+  这条链把"全局台词表"变成"发给 LLM 的 <code>Vec&lt;LlmMessage&gt;</code>"，每追加一条台词就重跑一次
+  （<code>sync_memories</code> 阶段 3~4）。两个容易混淆的点：<b>窗口裁剪</b>用的是压缩指针 + <code>recent_window</code>；
+  <b>记忆库文本</b>是另插进 system 的，与窗口无关。
+</p>
+
+<svg viewBox="0 0 1200 920" width="1200" height="920" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#000"/>
+    </marker>
+  </defs>
+
+  <!-- ===== 主链 ===== -->
+  <rect class="box" x="340" y="24" width="520" height="52"/>
+  <text class="tb" x="354" y="44">line_list: Vec&lt;GameLine&gt;</text>
+  <text class="n" x="354" y="63">全局台词表：所有角色的台词 + 本角色 System 人设行 + tool 行</text>
+
+  <rect class="box" x="340" y="106" width="520" height="52"/>
+  <text class="t" x="354" y="126">get_slice_start_index(all_lines) → slice_start</text>
+  <text class="n" x="354" y="145">从压缩指针处往回数 recent_window 条"角色可见台词"</text>
+
+  <rect class="box" x="340" y="188" width="520" height="44"/>
+  <text class="t" x="354" y="215">sliced = source_lines[slice_start ..]</text>
+
+  <rect class="key" x="340" y="262" width="520" height="76"/>
+  <text class="tb" x="354" y="282">人设兜底</text>
+  <text class="n" x="354" y="300">切片里没有本角色的 System 行？→ 从全量历史里找并 insert(0)</text>
+  <text class="n" x="354" y="316">两者都找不到 → warn「没有找到 SYSTEM 属性的台词，可能人设丢失」后继续</text>
+
+  <rect class="box" x="340" y="368" width="520" height="56"/>
+  <text class="t" x="354" y="388">MemoryBuilder::new(rid).with_continue_user(flag)</text>
+  <text class="t" x="354" y="406">　.build(&amp;final_sliced) → Vec&lt;LlmMessage&gt;</text>
+
+  <rect class="box" x="340" y="454" width="520" height="56"/>
+  <text class="t" x="354" y="474">normalize_window_head(messages, inject)</text>
+  <text class="n" x="354" y="493">裁到首条 user（窗口内无 user 时裁到首条 assistant，可注入「继续」）</text>
+
+  <rect class="box" x="340" y="540" width="520" height="56"/>
+  <text class="t" x="354" y="560">sanitize_tool_pairing(messages)</text>
+  <text class="n" x="354" y="579">剪掉没有结果回应的 tool_calls、以及孤儿 tool 行（上游 #774）</text>
+
+  <rect class="key" x="340" y="626" width="520" height="88"/>
+  <text class="tb" x="354" y="646">merge_memory_bank_into_context(built, sys, short)</text>
+  <text class="n" x="354" y="664">sys 追加到首条 system 末尾；首条不是 system 时新插一条（← 人设丢失时）</text>
+  <text class="n" x="354" y="680">short 前拼到首条 user；最后把相邻的 system 合并成一条</text>
+  <text class="n" x="354" y="698">注意：get_system_memory_text() 恒非空（空库也带边框），所以这条恒定生效</text>
+
+  <rect class="box" x="340" y="744" width="520" height="52"/>
+  <text class="tb" x="354" y="764">GameRole.memory → 发给 LLM</text>
+  <text class="n" x="354" y="783">system（人设 + 记忆库）/ user（近期回顾 + 台词）/ assistant / tool</text>
+
+  <!-- 主链箭头 -->
+  <line class="edge" x1="600" y1="76"  x2="600" y2="106" marker-end="url(#a)"/>
+  <line class="edge" x1="600" y1="158" x2="600" y2="188" marker-end="url(#a)"/>
+  <line class="edge" x1="600" y1="232" x2="600" y2="262" marker-end="url(#a)"/>
+  <line class="edge" x1="600" y1="338" x2="600" y2="368" marker-end="url(#a)"/>
+  <line class="edge" x1="600" y1="424" x2="600" y2="454" marker-end="url(#a)"/>
+  <line class="edge" x1="600" y1="510" x2="600" y2="540" marker-end="url(#a)"/>
+  <line class="edge" x1="600" y1="596" x2="600" y2="626" marker-end="url(#a)"/>
+  <line class="edge" x1="600" y1="714" x2="600" y2="744" marker-end="url(#a)"/>
+
+  <!-- ===== MemoryBuilder 内部规则 ===== -->
+  <rect class="dash" x="880" y="368" width="300" height="142"/>
+  <text class="nb" x="892" y="386">MemoryBuilder 内部（按角色视角）</text>
+  <text class="n" x="892" y="404">· System 行：只取本角色的第一条</text>
+  <text class="n" x="892" y="419">　（重复的跳过并 warn），先 flush 再 push</text>
+  <text class="n" x="892" y="434">· 自己的 assistant 行 → 合并成块</text>
+  <text class="n" x="892" y="449">· 他人的台词 → 另一类块，交替时 flush</text>
+  <text class="n" x="892" y="464">· assistant(tool_calls) / tool 行原样转消息</text>
+  <text class="n" x="892" y="479">· 感知不到的行直接跳过（is_target）</text>
+  <text class="n" x="892" y="494">★ 无状态：每次都按当前切片重建</text>
+  <line class="edge" x1="860" y1="396" x2="876" y2="396" marker-end="url(#a)"/>
+
+  <!-- ===== 记忆库来源 ===== -->
+  <rect class="dash" x="30" y="626" width="280" height="88"/>
+  <text class="nb" x="42" y="646">GameMemoryBank（四段文本）</text>
+  <text class="n" x="42" y="664">short_term「近期回顾」→ short 前缀</text>
+  <text class="n" x="42" y="680">long_term / user_info / promises</text>
+  <text class="n" x="42" y="696">→ 拼成 ====== 记忆库 ====== 块</text>
+  <line class="edge" x1="310" y1="670" x2="336" y2="670" marker-end="url(#a)"/>
+
+  <!-- ===== 右侧：两个单位 ===== -->
+  <rect class="dash" x="880" y="106" width="300" height="126"/>
+  <text class="nb" x="892" y="124">两个"单位"别混（都是角色可见台词）</text>
+  <text class="n" x="892" y="142">· update_interval：触发压缩的阈值</text>
+  <text class="n" x="892" y="157">　（"触发摘要的可见台词数"，默认 250）</text>
+  <text class="n" x="892" y="172">· recent_window：压缩后保留多少条</text>
+  <text class="n" x="892" y="187">　（"压缩后保留的角色可见台词数"，默认 30）</text>
+  <text class="n" x="892" y="206">可见 = 非 System + 内容非空 +</text>
+  <text class="n" x="892" y="221">（自己发的 或 perceived_role_ids 含自己）</text>
+  <line class="edge" x1="864" y1="132" x2="876" y2="132" marker-end="url(#a)"/>
+
+  <!-- ===== 底部：人设丢失示意 ===== -->
+  <rect class="dash" x="30" y="240" width="280" height="110"/>
+  <text class="nb" x="42" y="258">人设为什么会丢</text>
+  <text class="n" x="42" y="276">人设只是 line_list 里一条普通行。</text>
+  <text class="n" x="42" y="292">一旦历史里不存在这一行（空人设</text>
+  <text class="n" x="42" y="308">NPC / 撤回切掉中途加入的角色 /</text>
+  <text class="n" x="42" y="324">读档覆盖），兜底就无处可找 ⇒</text>
+  <text class="n" x="42" y="340">记忆库独占 system 位</text>
+  <line class="edge" x1="310" y1="300" x2="336" y2="300" marker-end="url(#a)"/>
+</svg>
+
+<p class="cap" style="margin-top:16px">
+  另见：<a href="01-structure.html">01 结构图</a> ·
+  <a href="02-trigger-flow.html">02 触发判定流程</a> ·
+  <a href="03-sequence.html">03 一次压缩的时序</a>
+</p>
+
+</body>
+</html>

@@ -20,6 +20,9 @@ export default {
     noModelTitle: "提提你",
     noModelMessage:
       "仲未揀對話模型喎，笨蛋！去高級設定嗰度配置同揀返個模型就得㗎啦，切換之後自動生效㗎！",
+    // 劇本模式下提交自由輸入被後端拒絕時嘅提示
+    choiceRequired: "請撳一個選項",
+    inputNotAllowed: "而家輸入唔到",
   },
   avatar: {
     live2dUnavailable: "Live2D 暫時用唔到",

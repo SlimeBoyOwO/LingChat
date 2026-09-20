@@ -8,7 +8,7 @@ export function useAgentGetters(state: ReturnType<typeof useAgentState>) {
   const hasContent = computed(() => state.items.value.length > 0);
 
   const currentConversation = computed(
-    () => state.conversations.value.find((c) => c.id === state.currentId.value) ?? null
+    () => state.conversations.value.find((c) => c.id === state.currentId.value) ?? null,
   );
 
   return { hasContent, currentConversation };

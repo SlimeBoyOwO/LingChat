@@ -38,14 +38,21 @@ struct ActivityEvent {
 struct MonitorInner {
     events: Vec<ActivityEvent>,
     last_mouse_pos: Option<(i32, i32)>,
+    // Win32 钩子句柄存进内部状态（而非监控器结构体字段）：
+    // 钩子改为按需安装，需要内部可变性，且 Drop 时要从锁内取出卸载
+    #[cfg(target_os = "windows")]
+    kbd_hook: Option<SendHhook>,
+    #[cfg(target_os = "windows")]
+    ms_hook: Option<SendHhook>,
 }
+
+/// 事件缓冲软上限：超过后批量裁掉前半。普通鼠标（~125Hz）20 秒窗口约 2500 条，
+/// 远低于该值，统计语义不受影响；只有高回报率鼠标长时间滑动才会触发。
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+const EVENT_SOFT_CAP: usize = 8192;
 
 pub struct UserActivityMonitor {
     inner: Arc<Mutex<MonitorInner>>,
-    #[cfg(target_os = "windows")]
-    _kbd_hook: Option<SendHhook>,
-    #[cfg(target_os = "windows")]
-    _ms_hook: Option<SendHhook>,
 }
 
 // Win32 hooks require a static/global callback, so we use a OnceLock to access the active monitor's inner state.
@@ -56,29 +63,39 @@ impl UserActivityMonitor {
         let inner = Arc::new(Mutex::new(MonitorInner {
             events: Vec::new(),
             last_mouse_pos: None,
+            #[cfg(target_os = "windows")]
+            kbd_hook: None,
+            #[cfg(target_os = "windows")]
+            ms_hook: None,
         }));
 
         GLOBAL_MONITOR_INNER.get_or_init(|| inner.clone());
 
-        #[cfg(target_os = "windows")]
-        {
-            let mut monitor = Self {
-                inner,
-                _kbd_hook: None,
-                _ms_hook: None,
-            };
-            monitor.start_monitoring();
-            monitor
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            Self { inner }
-        }
+        // 注意：钩子不再在构造时装上（见 ensure_hooks_installed），避免用户
+        // 从不开启主动对话时系统级鼠标/键盘钩子白白常驻
+        Self { inner }
     }
 
+    /// 按需安装 Win32 低级钩子。
+    ///
+    /// 主动对话功能未开启时 `get_user_status` 永远不会被调用（30 秒轮询在
+    /// enable_proactive_system=false 时直接 continue），钩子就不会安装；
+    /// 一旦开启，首次感知周期会走到这里补装。非 Windows 平台为空操作。
     #[cfg(target_os = "windows")]
-    fn start_monitoring(&mut self) {
+    fn ensure_hooks_installed(&self) {
+        // 先 try_lock 快查：绝大多数调用发生在钩子已装好的状态
+        if let Ok(inner) = self.inner.try_lock() {
+            if inner.kbd_hook.is_some() {
+                return;
+            }
+        }
+        let Ok(mut inner) = self.inner.lock() else {
+            return;
+        };
+        if inner.kbd_hook.is_some() {
+            return;
+        }
+
         let kbd_hook = unsafe {
             SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_callback), None, 0)
                 .ok()
@@ -92,19 +109,19 @@ impl UserActivityMonitor {
         };
 
         if kbd_hook.is_some() && ms_hook.is_some() {
-            tracing::info!("[ActivityMonitor] Win32 hooks installed successfully!");
+            tracing::info!("[ActivityMonitor] Win32 hooks installed (on-demand).");
         } else {
             tracing::error!(
                 "[ActivityMonitor] Failed to install Win32 hooks: kbd={:?}, ms={:?}",
-                kbd_hook,
-                ms_hook
+                kbd_hook.is_some(),
+                ms_hook.is_some()
             );
         }
 
-        self._kbd_hook = kbd_hook;
-        self._ms_hook = ms_hook;
+        inner.kbd_hook = kbd_hook;
+        inner.ms_hook = ms_hook;
 
-        // Spawn a Win32 message pump thread to receive hook events
+        // 钩子回调要求线程有消息循环，安装时一并拉起消息泵线程
         std::thread::spawn(|| {
             unsafe {
                 let mut msg = MSG::default();
@@ -117,6 +134,10 @@ impl UserActivityMonitor {
 
     /// 清理 20 秒之前的旧事件并计算统计信息。
     pub fn get_user_status(&self) -> PerceptionResult {
+        // 钩子按需安装：只有主动对话真正跑起感知周期才会走到这里
+        #[cfg(target_os = "windows")]
+        self.ensure_hooks_installed();
+
         let mut inner = self.inner.lock().unwrap();
         let now = Instant::now();
         let cutoff = now - Duration::from_secs(20);
@@ -240,6 +261,13 @@ unsafe extern "system" fn keyboard_hook_callback(
                         timestamp: Instant::now(),
                         input_type: InputType::Key { is_game },
                     });
+                    // 安全阀：事件量超软上限时批量裁掉前半（队首最旧）。
+                    // 时间裁剪的兜底在 get_user_status，但主动对话关闭时它不会被
+                    // 调用，没有这道阀门事件会无限累积（内存泄漏 + 每条锁开销）
+                    if inner.events.len() > EVENT_SOFT_CAP {
+                        let half = inner.events.len() / 2;
+                        inner.events.drain(..half);
+                    }
                 }
             }
         }
@@ -271,6 +299,11 @@ unsafe extern "system" fn mouse_hook_callback(
                         input_type: InputType::Move { x: pt.x, y: pt.y },
                     });
                 }
+                // 安全阀：同键盘钩子，防高回报率鼠标下无上限累积
+                if inner.events.len() > EVENT_SOFT_CAP {
+                    let half = inner.events.len() / 2;
+                    inner.events.drain(..half);
+                }
             }
         }
     }
@@ -280,12 +313,22 @@ unsafe extern "system" fn mouse_hook_callback(
 #[cfg(target_os = "windows")]
 impl Drop for UserActivityMonitor {
     fn drop(&mut self) {
+        // 钩子句柄现在存于内部状态（按需安装），从锁内取出卸载
+        let (kbd_hook, ms_hook) = {
+            let Ok(mut inner) = self.inner.lock() else {
+                return;
+            };
+            (inner.kbd_hook.take(), inner.ms_hook.take())
+        };
+        if kbd_hook.is_none() && ms_hook.is_none() {
+            return;
+        }
         tracing::info!("[ActivityMonitor] Cleaning up Win32 hooks...");
         unsafe {
-            if let Some(hook) = self._kbd_hook {
+            if let Some(hook) = kbd_hook {
                 let _ = UnhookWindowsHookEx(hook.0);
             }
-            if let Some(hook) = self._ms_hook {
+            if let Some(hook) = ms_hook {
                 let _ = UnhookWindowsHookEx(hook.0);
             }
         }

@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>永久记忆 · 结构图（静态）</title>
+<style>
+  html, body { background: #fff; color: #000; margin: 0; padding: 24px; }
+  body { font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  p.cap { font-size: 12px; margin: 0 0 18px; max-width: 1000px; line-height: 1.7; }
+  svg { border: 1px solid #000; }
+  .cls   { fill: #fff; stroke: #000; stroke-width: 1.2; }
+  .div   { stroke: #000; stroke-width: 1.2; }
+  .ttl   { font-size: 13px; font-weight: bold; }
+  .mem   { font-size: 11px; }
+  .note  { font-size: 11px; fill: #000; }
+  .edge  { stroke: #000; stroke-width: 1.2; fill: none; }
+  .dash  { stroke-dasharray: 5 4; }
+  .lbl   { font-size: 10.5px; }
+  .sec   { font-size: 10px; font-style: italic; }
+</style>
+</head>
+<body>
+
+<h1>永久记忆（MemoryBank）· 静态结构图</h1>
+<p class="cap">
+  实线 = 持有 / 依赖调用；◆ = 组合（生命周期由持有者决定）；虚线 = 异步回写或 Drop 回调。
+  <b>唯一真源</b>：记忆库只活在 <code>PersistentMemorySystem.memory_bank</code>（<code>Arc&lt;Mutex&lt;GameMemoryBank&gt;&gt;</code>）里；
+  <code>GameRole.memory_bank</code> 只是后台结果同步过来的副本（<code>sync_to_role</code>）。压缩窗口、阈值计数、上下文注入，全部由同一个实例负责。
+</p>
+
+<svg viewBox="0 0 1200 600" width="1200" height="600" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#000"/>
+    </marker>
+    <marker id="dia" viewBox="0 0 12 12" refX="1" refY="6" markerWidth="12" markerHeight="12" orient="auto-start-reverse">
+      <path d="M 1 6 L 6 2 L 11 6 L 6 10 z" fill="#000"/>
+    </marker>
+  </defs>
+
+  <!-- ================= 左列 ================= -->
+  <!-- GameStatus -->
+  <rect class="cls" x="20" y="20" width="320" height="112"/>
+  <text class="ttl" x="32" y="40">GameStatus</text>
+  <line class="div" x1="20" y1="50" x2="340" y2="50"/>
+  <text class="mem" x="32" y="68">- line_list: Vec&lt;GameLine&gt;</text>
+  <text class="mem" x="32" y="84">- present_role_ids: HashSet&lt;i32&gt;</text>
+  <line class="div" x1="20" y1="94" x2="340" y2="94"/>
+  <text class="mem" x="32" y="110">+ add_line(db, LineBase)</text>
+  <text class="mem" x="32" y="126">+ refresh_memories(db)</text>
+
+  <!-- GameRoleManager -->
+  <rect class="cls" x="20" y="170" width="320" height="200"/>
+  <text class="ttl" x="32" y="190">GameRoleManager</text>
+  <line class="div" x1="20" y1="200" x2="340" y2="200"/>
+  <text class="mem" x="32" y="218">- loaded_roles: HashMap&lt;i32, GameRole&gt;</text>
+  <text class="mem" x="32" y="234">- memory_bank_systems: HashMap&lt;i32, …&gt;</text>
+  <text class="mem" x="32" y="250">- use_persistent_memory: bool</text>
+  <text class="mem" x="32" y="266">- memory_update_interval / _recent_window</text>
+  <text class="mem" x="32" y="282">- memory_inject_continue_user: bool</text>
+  <line class="div" x1="20" y1="292" x2="340" y2="292"/>
+  <text class="mem" x="32" y="308">+ sync_memories(db, lines, recent_n)</text>
+  <text class="mem" x="32" y="324">- ensure_memory_bank_system(…)</text>
+  <text class="mem" x="32" y="340">+ invalidate_memory_history()</text>
+  <text class="mem" x="32" y="356">+ load_memory_banks_from_db(db, save_id)</text>
+
+  <!-- GameRole -->
+  <rect class="cls" x="20" y="410" width="320" height="140"/>
+  <text class="ttl" x="32" y="430">GameRole</text>
+  <line class="div" x1="20" y1="440" x2="340" y2="440"/>
+  <text class="mem" x="32" y="458">+ memory_bank: GameMemoryBank  ← 副本</text>
+  <text class="mem" x="32" y="474">+ memory: Vec&lt;LlmMessage&gt;      ← 待注入</text>
+  <text class="mem" x="32" y="490">+ settings: CharacterSettings</text>
+  <text class="mem" x="32" y="506">+ display_name: Option&lt;String&gt;</text>
+  <line class="div" x1="20" y1="516" x2="340" y2="516"/>
+  <text class="sec" x="32" y="534">（settings.system_prompt 是人设的来源）</text>
+
+  <!-- ================= 中列：核心 ================= -->
+  <rect class="cls" x="420" y="20" width="400" height="530"/>
+  <text class="ttl" x="434" y="42">PersistentMemorySystem 　（每角色一个实例）</text>
+  <line class="div" x1="420" y1="52" x2="820" y2="52"/>
+
+  <text class="mem" x="434" y="70">- role_id: i32</text>
+  <text class="mem" x="434" y="86">- ai_name: String</text>
+  <text class="mem" x="434" y="102">- llm: LlmSlot</text>
+  <text class="mem" x="434" y="118">- memory_bank: Arc&lt;Mutex&lt;GameMemoryBank&gt;&gt;</text>
+  <text class="mem" x="434" y="134">- is_updating: Arc&lt;AtomicBool&gt;</text>
+  <text class="mem" x="434" y="150">- has_pending: Arc&lt;AtomicBool&gt;</text>
+  <text class="mem" x="434" y="166">- history_revision: Arc&lt;AtomicU64&gt;</text>
+  <text class="mem" x="434" y="182">- commit_gate: Arc&lt;std::sync::Mutex&lt;()&gt;&gt;</text>
+  <text class="mem" x="434" y="198">- last_failure_at_ms: Arc&lt;AtomicU64&gt;</text>
+  <text class="mem" x="434" y="214">- fail_count: Arc&lt;AtomicU32&gt;</text>
+  <text class="mem" x="434" y="230">+ enabled: bool</text>
+  <text class="mem" x="434" y="246">- update_interval / recent_window: usize</text>
+  <text class="mem" x="434" y="262">- section_limits: MemorySectionLimits</text>
+  <text class="mem" x="434" y="278">- section_prompts: HashMap&lt;String, String&gt;</text>
+
+  <line class="div" x1="420" y1="290" x2="820" y2="290"/>
+  <text class="mem" x="434" y="308">+ check_and_trigger_auto_update(&amp;[GameLine])</text>
+  <text class="mem" x="434" y="324">+ get_slice_start_index(&amp;[GameLine]) → usize</text>
+  <text class="mem" x="434" y="340">+ get_system_memory_text() → String</text>
+  <text class="mem" x="434" y="356">+ get_short_term_user_text() → String</text>
+  <text class="mem" x="434" y="372">+ sync_to_role(&amp;mut GameRole)</text>
+  <text class="mem" x="434" y="388">+ reset_from(&amp;GameMemoryBank)</text>
+  <text class="mem" x="434" y="404">+ invalidate_history()</text>
+  <text class="mem" x="434" y="420">- spawn_background_update(text, target_idx, rev)</text>
+  <text class="mem" x="434" y="436">- build_chat_text_and_count(&amp;[GameLine])</text>
+  <text class="mem" x="434" y="452">- update_section(llm, prompts, key, old, max)</text>
+
+  <line class="div" x1="420" y1="464" x2="820" y2="464"/>
+  <text class="sec" x="434" y="482">★ 触发判定是同步的：在持有 GameStatus 锁的主线程里跑</text>
+  <text class="sec" x="434" y="498">★ 只有 4 段 LLM 调用是异步的（tokio::spawn）</text>
+  <text class="sec" x="434" y="514">★ 所有共享状态都是 Arc，因为后台任务要跨 await 持有</text>
+  <text class="sec" x="434" y="530">★ enabled / interval / window 构造后不可变（只有重启能改）</text>
+
+  <!-- ================= 右列 ================= -->
+  <!-- LlmSlot -->
+  <rect class="cls" x="900" y="20" width="280" height="86"/>
+  <text class="ttl" x="912" y="40">LlmSlot</text>
+  <line class="div" x1="900" y1="50" x2="1180" y2="50"/>
+  <text class="mem" x="912" y="68">Arc&lt;RwLock&lt;Option&lt;Arc&lt;LlmClient&gt;&gt;&gt;&gt;</text>
+  <line class="div" x1="900" y1="78" x2="1180" y2="78"/>
+  <text class="sec" x="912" y="94">（热切换：后台任务每次 slot_snapshot）</text>
+
+  <!-- GameMemoryBank -->
+  <rect class="cls" x="900" y="146" width="280" height="150"/>
+  <text class="ttl" x="912" y="166">GameMemoryBank</text>
+  <line class="div" x1="900" y1="176" x2="1180" y2="176"/>
+  <text class="mem" x="912" y="194">data.short_term  「近期回顾」</text>
+  <text class="mem" x="912" y="210">data.long_term   「长期经历」</text>
+  <text class="mem" x="912" y="226">data.user_info   「taの信息」</text>
+  <text class="mem" x="912" y="242">data.promises    「重要约定」</text>
+  <text class="mem" x="912" y="262">meta.last_processed_global_idx: i64</text>
+  <text class="mem" x="912" y="278">meta.updated_at: String</text>
+
+  <!-- MemoryBuilder -->
+  <rect class="cls" x="900" y="336" width="280" height="120"/>
+  <text class="ttl" x="912" y="356">MemoryBuilder</text>
+  <line class="div" x1="900" y1="366" x2="1180" y2="366"/>
+  <text class="mem" x="912" y="384">+ with_continue_user(bool)</text>
+  <text class="mem" x="912" y="400">+ build(&amp;[GameLine]) → Vec&lt;LlmMessage&gt;</text>
+  <text class="mem" x="912" y="416">- normalize_window_head(…)</text>
+  <text class="mem" x="912" y="432">- sanitize_tool_pairing(…)</text>
+  <line class="div" x1="900" y1="442" x2="1180" y2="442"/>
+  <text class="sec" x="912" y="452">无状态：每次按角色视角重建</text>
+
+  <!-- UpdatingGuard -->
+  <rect class="cls" x="900" y="496" width="280" height="86"/>
+  <text class="ttl" x="912" y="516">UpdatingGuard</text>
+  <line class="div" x1="900" y1="526" x2="1180" y2="526"/>
+  <text class="mem" x="912" y="544">struct UpdatingGuard(Arc&lt;AtomicBool&gt;)</text>
+  <line class="div" x1="900" y1="554" x2="1180" y2="554"/>
+  <text class="sec" x="912" y="570">Drop ⇒ is_updating.store(false)</text>
+
+  <!-- ================= 边 ================= -->
+  <!-- GameStatus ◆→ GameRoleManager -->
+  <line class="edge" x1="180" y1="132" x2="180" y2="170" marker-end="url(#dia)"/>
+  <text class="lbl" x="188" y="155">1</text>
+
+  <!-- GameRoleManager ◆→ GameRole -->
+  <line class="edge" x1="180" y1="370" x2="180" y2="410" marker-end="url(#dia)"/>
+  <text class="lbl" x="188" y="395">0..*</text>
+
+  <!-- GameRoleManager ◆→ PersistentMemorySystem -->
+  <line class="edge" x1="340" y1="230" x2="420" y2="230" marker-end="url(#dia)"/>
+  <text class="lbl" x="346" y="224">0..*  memory_bank_systems</text>
+
+  <!-- PersistentMemorySystem → LlmSlot -->
+  <line class="edge" x1="820" y1="80" x2="900" y2="60" marker-end="url(#arr)"/>
+  <text class="lbl" x="824" y="52">llm（共享 Arc）</text>
+
+  <!-- PersistentMemorySystem → GameMemoryBank -->
+  <line class="edge" x1="820" y1="200" x2="900" y2="200" marker-end="url(#arr)"/>
+  <text class="lbl" x="824" y="192">memory_bank（唯一真源）</text>
+
+  <!-- PersistentMemorySystem → MemoryBuilder -->
+  <line class="edge" x1="820" y1="380" x2="900" y2="380" marker-end="url(#arr)"/>
+  <text class="lbl" x="824" y="372">压缩取文本时构建</text>
+
+  <!-- UpdatingGuard ⇢ is_updating -->
+  <line class="edge dash" x1="900" y1="540" x2="826" y2="540" marker-end="url(#arr)"/>
+  <text class="lbl" x="836" y="556">持有 is_updating 的 Arc</text>
+
+  <!-- GameRole ⇢ PersistentMemorySystem -->
+  <line class="edge dash" x1="340" y1="480" x2="420" y2="480" marker-end="url(#arr)"/>
+  <text class="lbl" x="342" y="474">sync_to_role / reset_from</text>
+</svg>
+
+<p class="cap" style="margin-top:16px">
+  另见：<a href="02-trigger-flow.html">02 触发判定流程</a> ·
+  <a href="03-sequence.html">03 一次压缩的时序</a> ·
+  <a href="04-context-flow.html">04 上下文组装数据流</a>
+</p>
+
+</body>
+</html>

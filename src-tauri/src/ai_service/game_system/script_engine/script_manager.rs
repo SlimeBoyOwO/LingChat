@@ -460,7 +460,17 @@ impl ScriptManager {
             .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?
             .clone();
 
-        let mut next_chapter = script.intro_chapter.clone();
+        // current_chapter_key 非空表示这是读档续跑：从存档章节起跑，
+        // 且第一章的事件处理器直接跳到存档记录下标（已播内容随台词列表一并恢复，不重不漏）。
+        // 正常启动/试玩时该字段恒为空（运行进度只写在 GameStatus 的克隆上，从不回写目录），此分支惰性。
+        let (mut next_chapter, mut resume_event_index) = if script.current_chapter_key.is_empty() {
+            (script.intro_chapter.clone(), 0usize)
+        } else {
+            (
+                script.current_chapter_key.clone(),
+                script.current_event_process.max(0) as usize,
+            )
+        };
 
         // Resolve "Intro/intro" style paths → find the actual yaml file
         let chapters_dir = script.script_path.join("Chapters");
@@ -488,6 +498,21 @@ impl ScriptManager {
                 .clone();
 
             let mut chapter = Chapter::new(next_chapter.clone(), chapter_config, &script_ref);
+
+            // 续跑的第一章：把事件下标拨到存档记录的位置（存档点之后的事件由本次运行重新生成）
+            if resume_event_index > 0 {
+                let len = chapter.events_handler.event_list.len();
+                if resume_event_index > len {
+                    // 存档后章节文件被改短：恢复点失效，截到章末让章节自然结束，不 panic
+                    tracing::warn!(
+                        "[ScriptEngine] 续跑下标 {} 超出章节事件数 {}，截断到章末",
+                        resume_event_index,
+                        len
+                    );
+                }
+                chapter.events_handler.progress = resume_event_index.min(len);
+                resume_event_index = 0;
+            }
 
             // Update tracking fields
             if let Some(ref mut ss) = ctx.game_status.lock().await.script_status {

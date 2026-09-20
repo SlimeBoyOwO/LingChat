@@ -11,7 +11,8 @@
  * 在 App.vue 中调用一次以激活全局缩放功能。
  */
 
-import { onUnmounted, ref } from "vue";
+import { onUnmounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { i18n } from "@/locales";
 
@@ -97,11 +98,27 @@ function applyZoom(level: number): void {
  * 应在 App.vue 等始终挂载的根组件中调用一次。
  */
 export function useZoom(): void {
-  // 初始化时应用已保存的缩放
-  applyZoom(currentZoom.value);
+  const route = useRoute();
+  // 桌宠模式自成一套缩放（--pet-ui-scale + 固定尺寸的无边框窗口），必须忽略主界面缩放：
+  // 否则 #app 被 transform 缩放、窗口尺寸却不变，内容会被裁掉或留白。
+  const isPetMode = () => route.path === "/pet";
+  const effectiveZoom = () => (isPetMode() ? ZOOM_DEFAULT : currentZoom.value);
+
+  // 初始化 + 进出桌宠时都按当前路由重新应用（桌宠里恒为 100%）
+  watch(
+    () => route.path,
+    () => applyZoom(effectiveZoom()),
+    { immediate: true },
+  );
 
   const handleWheel = (event: WheelEvent) => {
     if (!event.ctrlKey) return;
+
+    // 桌宠模式：吞掉 Ctrl+滚轮（既不缩放界面，也不让它触发 WebView 原生缩放）
+    if (isPetMode()) {
+      event.preventDefault();
+      return;
+    }
 
     // 阻止浏览器默认的缩放行为
     event.preventDefault();

@@ -10,6 +10,7 @@
  * 时才需要补词条 + 在此登记映射。
  */
 import { i18n } from "@/locales";
+import { PARTICLE_EFFECTS } from "@/components/game/standard/particles";
 
 /** schema 里字段的通用形状（取用前端的字段子集） */
 export interface SchemaFieldLike {
@@ -198,7 +199,7 @@ export const optionLabelOf = (
   field: SchemaFieldLike,
   typeKey: string | undefined,
   optionValue: string,
-  idx: number
+  idx: number,
 ) => {
   const keys = typeKey ? OPTION_KEYS[`${typeKey}.${field.key}`] : undefined;
   if (keys?.[idx]) return text(keys[idx], optionValue);
@@ -289,14 +290,13 @@ export const emotionLabelOf = (emotion: string) => {
     : emotion;
 };
 
-/** 粒子特效选项（编辑器「背景特效」下拉，前端自有中文） */
+/**
+ * 粒子特效选项（编辑器「背景特效」下拉，前端自有中文）。
+ * 由粒子注册表派生，不再手抄一份 —— 新增粒子只改 particles/index.ts。
+ */
 const PARTICLE_KEYS: Record<string, string> = {
   None: "particle.none",
-  StarField: "particle.starField",
-  Rain: "particle.rain",
-  Sakura: "particle.sakura",
-  Snow: "particle.snow",
-  Fireworks: "particle.fireworks",
+  ...Object.fromEntries(PARTICLE_EFFECTS.map((p) => [p.key, `particle.${p.i18n}`])),
 };
 
 export const particleLabelOf = (value: string, label: string) =>

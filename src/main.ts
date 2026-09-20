@@ -6,6 +6,7 @@ import { initializeTauriEventListeners, initializeCastWindowListeners } from "./
 import App from "./App.vue";
 import "./assets/styles/base.css";
 import "./assets/styles/variables.css";
+import "./assets/styles/dialogue-text.css";
 import "./assets/styles/lighting.css";
 import { i18n } from "./locales";
 

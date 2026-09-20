@@ -70,6 +70,15 @@ pub async fn start_screenshot(app: AppHandle) -> Result<(), String> {
         tracing::info!("[Screenshot] Overlay window created, waiting for user selection.");
         Ok(())
     }
+
+    // iOS：xcap 不支持（桌面窗口/显示器截图在 iOS 无意义）。这里不能是空函数体——
+    // async fn 若无任何 return 分支会返回 ()，与签名 Result<(), String> 类型不匹配，
+    // iOS 构建直接编译失败。与插件侧一致，iOS 打桩为「不支持」。
+    #[cfg(target_os = "ios")]
+    {
+        tracing::info!("[Screenshot] Not supported on iOS.");
+        Err("iOS 暂不支持屏幕截图".to_string())
+    }
 }
 
 /// 覆盖窗口调用：获取之前存储的全屏截图 base64。

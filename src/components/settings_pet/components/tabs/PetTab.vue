@@ -28,8 +28,7 @@
     <div class="mt-4 grid grid-cols-2 gap-4">
       <div
         @click="selectMode('normal')"
-        class="relative flex min-h-35 cursor-pointer flex-col overflow-hidden rounded-xl border p-5
-          shadow-sm transition-all duration-300 hover:-translate-y-1"
+        class="relative flex min-h-35 cursor-pointer flex-col overflow-hidden rounded-xl border p-5 shadow-sm transition-all duration-300 hover:-translate-y-1"
         :class="[
           isDarkMode
             ? 'border-slate-700 hover:border-sky-500 hover:bg-slate-800'
@@ -65,8 +64,7 @@
 
       <div
         @click="selectMode('game')"
-        class="relative flex min-h-35 cursor-pointer flex-col overflow-hidden rounded-xl border p-5
-          shadow-sm transition-all duration-300 hover:-translate-y-1"
+        class="relative flex min-h-35 cursor-pointer flex-col overflow-hidden rounded-xl border p-5 shadow-sm transition-all duration-300 hover:-translate-y-1"
         :class="[
           isDarkMode
             ? 'border-slate-700 hover:border-violet-500 hover:bg-slate-800'
@@ -102,13 +100,11 @@
     </div>
 
     <div
-      class="group relative mt-4 overflow-hidden rounded-xl border p-6 shadow-sm transition-colors
-        duration-300"
+      class="group relative mt-4 overflow-hidden rounded-xl border p-6 shadow-sm transition-colors duration-300"
       :class="isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white'"
     >
       <Ruler
-        class="absolute -right-4 -bottom-4 h-32 w-32 -rotate-12 opacity-50 transition-all
-          duration-300 group-hover:scale-110"
+        class="absolute -right-4 -bottom-4 h-32 w-32 -rotate-12 opacity-50 transition-all duration-300 group-hover:scale-110"
         :class="isDarkMode ? 'text-slate-700' : 'text-slate-50'"
       />
 
@@ -125,8 +121,7 @@
             {{ percentLabel }}
           </div>
           <div
-            class="mb-1.5 rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase
-              transition-colors"
+            class="mb-1.5 rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase transition-colors"
             :class="isDarkMode ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-500'"
           >
             CURRENT SCALE
@@ -149,8 +144,7 @@
           >
             <span>MIN {{ PET_SCALE_MIN * 100 }}%</span>
             <span
-              class="relative pl-2 text-sky-500 before:absolute before:top-1.5 before:left-0
-                before:h-1 before:w-1 before:rounded-full before:bg-sky-400 before:content-['']"
+              class="relative pl-2 text-sky-500 before:absolute before:top-1.5 before:left-0 before:h-1 before:w-1 before:rounded-full before:bg-sky-400 before:content-['']"
               >DEF 100%</span
             >
             <span>MAX {{ PET_SCALE_MAX * 100 }}%</span>
@@ -164,9 +158,7 @@
           <button
             type="button"
             @click="$emit('resetScale')"
-            class="flex items-center gap-2 rounded-lg bg-sky-500 px-5 py-2 text-[13px] font-bold
-              text-white shadow-[0_4px_12px_rgba(56,189,248,0.25)] transition-all hover:bg-sky-400
-              hover:shadow-[0_6px_16px_rgba(56,189,248,0.35)] active:scale-95"
+            class="flex items-center gap-2 rounded-lg bg-sky-500 px-5 py-2 text-[13px] font-bold text-white shadow-[0_4px_12px_rgba(56,189,248,0.25)] transition-all hover:bg-sky-400 hover:shadow-[0_6px_16px_rgba(56,189,248,0.35)] active:scale-95"
           >
             <RotateCcw class="h-4 w-4" />
             {{ $t("pet.petTab.scaleReset") }}
@@ -176,13 +168,126 @@
     </div>
 
     <div
-      class="group relative mt-4 overflow-hidden rounded-xl border p-6 shadow-sm transition-colors
-        duration-300"
+      class="group relative mt-4 overflow-hidden rounded-xl border p-6 shadow-sm transition-colors duration-300"
+      :class="isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white'"
+    >
+      <h3
+        class="mb-4 flex items-center gap-2 text-lg font-bold"
+        :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'"
+      >
+        <MessageSquare class="h-5 w-5 text-sky-500" />
+        {{ $t("pet.petTab.bubbleSideTitle") }}
+      </h3>
+      <div class="flex flex-wrap items-center gap-3">
+        <button
+          v-for="opt in bubbleSideOptions"
+          :key="opt.value"
+          type="button"
+          @click="emit('updateBubbleSide', opt.value)"
+          class="rounded-lg border px-4 py-2 text-sm font-medium transition-all duration-200"
+          :class="[
+            petBubbleSide === opt.value
+              ? isDarkMode
+                ? 'border-sky-500 bg-sky-500/20 text-sky-400'
+                : 'border-sky-500 bg-sky-500 text-white shadow-md'
+              : isDarkMode
+                ? 'border-slate-600 bg-transparent text-slate-400 hover:border-slate-500 hover:text-slate-300'
+                : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-slate-100',
+          ]"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
+    </div>
+
+    <div
+      class="group relative mt-4 overflow-hidden rounded-xl border p-6 shadow-sm transition-colors duration-300"
+      :class="isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white'"
+    >
+      <Gauge
+        class="absolute -right-4 -bottom-4 h-32 w-32 -rotate-12 opacity-10 transition-all duration-300 group-hover:scale-110"
+        :class="isDarkMode ? 'text-slate-700' : 'text-slate-300'"
+      />
+
+      <div class="relative z-10">
+        <h3
+          class="mb-1 flex items-center gap-2 text-lg font-bold"
+          :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'"
+        >
+          <Gauge class="h-5 w-5 text-sky-500" />
+          {{ $t("pet.petTab.live2dFpsTitle") }}
+        </h3>
+        <p class="mb-4 text-xs" :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'">
+          {{ $t("pet.petTab.live2dFpsDesc") }}
+        </p>
+
+        <div class="flex flex-wrap items-center gap-3">
+          <button
+            v-for="opt in fpsPresets"
+            :key="opt.value"
+            type="button"
+            @click="emit('updateLive2dFps', opt.value)"
+            class="rounded-lg border px-4 py-2 text-sm font-medium transition-all duration-200"
+            :class="[
+              live2dFps === opt.value
+                ? isDarkMode
+                  ? 'border-sky-500 bg-sky-500/20 text-sky-400'
+                  : 'border-sky-500 bg-sky-500 text-white shadow-md'
+                : isDarkMode
+                  ? `border-slate-600 bg-transparent text-slate-400 hover:border-slate-500 hover:text-slate-300`
+                  : `border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-slate-100`,
+            ]"
+          >
+            {{ opt.label }}
+          </button>
+
+          <!-- 自定义帧率输入：0/留空 = 不限帧 -->
+          <div class="flex items-center gap-2">
+            <input
+              type="number"
+              min="10"
+              max="144"
+              step="1"
+              :value="customFpsInput"
+              :placeholder="t('pet.petTab.live2dFpsCustom')"
+              @change="onCustomFpsChange"
+              class="w-24 rounded-lg border px-3 py-2 text-sm font-medium transition-colors outline-none"
+              :class="[
+                isCustomFpsActive
+                  ? 'border-sky-500 text-sky-500'
+                  : isDarkMode
+                    ? 'border-slate-600 bg-transparent text-slate-300'
+                    : 'border-slate-200 bg-slate-50 text-slate-600',
+              ]"
+            />
+            <span class="text-xs" :class="isDarkMode ? 'text-slate-500' : 'text-slate-400'">
+              FPS
+            </span>
+          </div>
+        </div>
+
+        <div
+          class="mt-6 flex justify-end border-t pt-4 transition-colors"
+          :class="isDarkMode ? 'border-slate-700' : 'border-slate-100/80'"
+        >
+          <button
+            type="button"
+            @click="$emit('resetLive2dFps')"
+            class="flex items-center gap-2 rounded-lg bg-sky-500 px-5 py-2 text-[13px] font-bold text-white shadow-[0_4px_12px_rgba(56,189,248,0.25)] transition-all hover:bg-sky-400 hover:shadow-[0_6px_16px_rgba(56,189,248,0.35)] active:scale-95"
+          >
+            <RotateCcw class="h-4 w-4" />
+            {{ $t("pet.petTab.live2dFpsReset") }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="group relative mt-4 overflow-hidden rounded-xl border p-6 shadow-sm transition-colors duration-300"
       :class="isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white'"
     >
       <Sparkles
-        class="absolute -right-4 -bottom-4 h-32 w-32 -rotate-12 opacity-10 transition-all
-          duration-300 group-hover:scale-110"
+        class="absolute -right-4 -bottom-4 h-32 w-32 -rotate-12 opacity-10 transition-all duration-300 group-hover:scale-110"
         :class="isDarkMode ? 'text-slate-700' : 'text-slate-300'"
       />
 
@@ -200,18 +305,15 @@
             v-for="opt in particleOptions"
             :key="opt.value"
             @click="selectParticle(opt.value)"
-            class="flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm
-              font-medium transition-all duration-200"
+            class="flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-all duration-200"
             :class="[
               currentParticle === opt.value
                 ? isDarkMode
                   ? 'border-sky-500 bg-sky-500/20 text-sky-400'
                   : 'border-sky-500 bg-sky-500 text-white shadow-md'
                 : isDarkMode
-                  ? `border-slate-600 bg-transparent text-slate-400 hover:border-slate-500
-                    hover:text-slate-300`
-                  : `border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300
-                    hover:bg-slate-100`,
+                  ? `border-slate-600 bg-transparent text-slate-400 hover:border-slate-500 hover:text-slate-300`
+                  : `border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-slate-100`,
             ]"
           >
             <component :is="opt.icon" class="h-4 w-4" v-if="opt.icon" />
@@ -222,13 +324,11 @@
     </div>
 
     <div
-      class="group relative mt-4 overflow-hidden rounded-xl border p-6 shadow-sm transition-colors
-        duration-300"
+      class="group relative mt-4 overflow-hidden rounded-xl border p-6 shadow-sm transition-colors duration-300"
       :class="isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white'"
     >
       <Volume2
-        class="absolute -right-4 -bottom-4 h-32 w-32 -rotate-12 opacity-10 transition-all
-          duration-300 group-hover:scale-110"
+        class="absolute -right-4 -bottom-4 h-32 w-32 -rotate-12 opacity-10 transition-all duration-300 group-hover:scale-110"
         :class="isDarkMode ? 'text-slate-700' : 'text-slate-200'"
       />
 
@@ -245,8 +345,7 @@
             {{ volumeLabel }}
           </div>
           <div
-            class="mb-1.5 rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase
-              transition-colors"
+            class="mb-1.5 rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase transition-colors"
             :class="isDarkMode ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-500'"
           >
             PET VOLUME
@@ -269,8 +368,7 @@
           >
             <span>MIN 0%</span>
             <span
-              class="relative pl-2 text-sky-500 before:absolute before:top-1.5 before:left-0
-                before:h-1 before:w-1 before:rounded-full before:bg-sky-400 before:content-['']"
+              class="relative pl-2 text-sky-500 before:absolute before:top-1.5 before:left-0 before:h-1 before:w-1 before:rounded-full before:bg-sky-400 before:content-['']"
               >DEF 50%</span
             >
             <span>MAX 100%</span>
@@ -284,9 +382,7 @@
           <button
             type="button"
             @click="$emit('resetVolume')"
-            class="flex items-center gap-2 rounded-lg bg-sky-500 px-5 py-2 text-[13px] font-bold
-              text-white shadow-[0_4px_12px_rgba(56,189,248,0.25)] transition-all hover:bg-sky-400
-              hover:shadow-[0_6px_16px_rgba(56,189,248,0.35)] active:scale-95"
+            class="flex items-center gap-2 rounded-lg bg-sky-500 px-5 py-2 text-[13px] font-bold text-white shadow-[0_4px_12px_rgba(56,189,248,0.25)] transition-all hover:bg-sky-400 hover:shadow-[0_6px_16px_rgba(56,189,248,0.35)] active:scale-95"
           >
             <RotateCcw class="h-4 w-4" />
             {{ $t("pet.petTab.volumeReset") }}
@@ -298,140 +394,195 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, computed } from "vue";
-  import { useI18n } from "vue-i18n";
-  import {
-    Ruler,
-    RotateCcw,
-    MessageSquare,
-    Gamepad2,
-    Sparkles,
-    Ban,
-    Stars,
-    Sun,
-    Volume2,
-  } from "lucide-vue-next";
-  import { useUIStore } from "../../../../stores/modules/ui/ui";
-  import { getCurrentWindow } from "@tauri-apps/api/window";
+import { ref, computed, type Component } from "vue";
+import { useI18n } from "vue-i18n";
+import {
+  Ruler,
+  RotateCcw,
+  MessageSquare,
+  Gamepad2,
+  Sparkles,
+  Ban,
+  Stars,
+  Sun,
+  Volume2,
+  Gauge,
+} from "lucide-vue-next";
+import { useUIStore } from "../../../../stores/modules/ui/ui";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { PARTICLE_EFFECTS } from "@/components/game/standard/particles";
+import type { BubbleSide } from "@/stores/modules/settings";
 
-  const props = defineProps<{
-    isDarkMode: boolean;
-    petScale: number;
-    petVolume: number;
-    PET_SCALE_MIN: number;
-    PET_SCALE_MAX: number;
-  }>();
+const props = defineProps<{
+  isDarkMode: boolean;
+  petScale: number;
+  petVolume: number;
+  PET_SCALE_MIN: number;
+  PET_SCALE_MAX: number;
+  /** Live2D 渲染帧率上限（0 = 不限制） */
+  live2dFps: number;
+  /** 气泡/通知位置：above / below / auto */
+  petBubbleSide: BubbleSide;
+}>();
 
-  const emit = defineEmits<{
-    updateScale: [value: number];
-    resetScale: [];
-    updateVolume: [value: number];
-    resetVolume: [];
-  }>();
+const emit = defineEmits<{
+  updateScale: [value: number];
+  resetScale: [];
+  updateVolume: [value: number];
+  resetVolume: [];
+  updateLive2dFps: [value: number];
+  resetLive2dFps: [];
+  updateBubbleSide: [value: BubbleSide];
+}>();
 
-  const uiStore = useUIStore();
-  const { t } = useI18n();
+const uiStore = useUIStore();
+const { t } = useI18n();
 
-  const currentMode = ref("normal");
-  const selectMode = (mode: string) => {
-    currentMode.value = mode;
-    // 空函数，留作后续逻辑实现
-  };
+const currentMode = ref("normal");
+const selectMode = (mode: string) => {
+  currentMode.value = mode;
+  // 空函数，留作后续逻辑实现
+};
 
-  const currentParticle = computed(() => uiStore.currentBackgroundEffect);
+const currentParticle = computed(() => uiStore.currentBackgroundEffect);
 
-  const particleOptions = computed(() => [
-    { label: t("pet.petTab.particleNone"), value: "None", icon: Ban },
-    { label: t("pet.petTab.particleStarField"), value: "StarField", icon: Stars },
-    { label: t("pet.petTab.particleBA"), value: "BA", icon: Sun },
-  ]);
+// 桌宠自己的词条（措辞与主设置页不同，如「无」vs「无特效」）；
+// 注册表新增 petSupported 粒子却忘补词条时，回落到主设置页词条而不是露出 key
+const PET_PARTICLE_LABELS: Record<string, string> = {
+  StarField: "pet.petTab.particleStarField",
+  BA: "pet.petTab.particleBA",
+};
+const PET_PARTICLE_ICONS: Record<string, Component> = {
+  StarField: Stars,
+  BA: Sun,
+};
 
-  const selectParticle = async (value: string) => {
-    uiStore.setBackgroundEffect(value);
-    const appWindow = getCurrentWindow();
-    await appWindow.emit("background-effect-changed", { effect: value });
-  };
+// 选项来自粒子注册表（只取 petSupported），与主设置页共用同一份真相
+const particleOptions = computed(() => [
+  { label: t("pet.petTab.particleNone"), value: "None", icon: Ban },
+  ...PARTICLE_EFFECTS.filter((p) => p.petSupported).map((p) => ({
+    label: t(PET_PARTICLE_LABELS[p.key] ?? `settings.background.particle.${p.i18n}`),
+    value: p.key,
+    icon: PET_PARTICLE_ICONS[p.key] ?? Sparkles,
+  })),
+]);
 
-  const percentLabel = computed(() => {
-    return `${Math.round(props.petScale * 100)}%`;
-  });
+const selectParticle = async (value: string) => {
+  uiStore.setBackgroundEffect(value);
+  const appWindow = getCurrentWindow();
+  await appWindow.emit("background-effect-changed", { effect: value });
+};
 
-  const volumeLabel = computed(() => {
-    return `${Math.round(props.petVolume)}%`;
-  });
+const percentLabel = computed(() => {
+  return `${Math.round(props.petScale * 100)}%`;
+});
 
-  const onScaleInput = (event: Event) => {
-    const target = event.target as HTMLInputElement;
-    emit("updateScale", Number(target.value));
-  };
+const volumeLabel = computed(() => {
+  return `${Math.round(props.petVolume)}%`;
+});
 
-  const onVolumeInput = (event: Event) => {
-    const target = event.target as HTMLInputElement;
-    emit("updateVolume", Number(target.value));
-  };
+const onScaleInput = (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  emit("updateScale", Number(target.value));
+};
+
+const onVolumeInput = (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  emit("updateVolume", Number(target.value));
+};
+
+// ===== 气泡位置 =====
+const bubbleSideOptions = computed(() => [
+  { label: t("pet.petTab.bubbleSideAuto"), value: "auto" as const },
+  { label: t("pet.petTab.bubbleSideAbove"), value: "above" as const },
+  { label: t("pet.petTab.bubbleSideBelow"), value: "below" as const },
+]);
+
+// ===== Live2D 帧率 =====
+const FPS_PRESETS = [30, 60] as const;
+
+const fpsPresets = computed(() => [
+  ...FPS_PRESETS.map((fps) => ({ label: `${fps} FPS`, value: fps })),
+  { label: t("pet.petTab.live2dFpsUnlimited"), value: 0 },
+]);
+
+// 预设之外的值（含 0 视为"不限"预设）在输入框中回显
+const isCustomFpsActive = computed(
+  () => props.live2dFps !== 30 && props.live2dFps !== 60 && props.live2dFps !== 0,
+);
+const customFpsInput = computed(() => (isCustomFpsActive.value ? props.live2dFps : ""));
+
+const onCustomFpsChange = (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const raw = Number(target.value);
+  if (Number.isNaN(raw)) return;
+  // 夹紧到 10-144；0/负数视为不限帧
+  const fps = raw <= 0 ? 0 : Math.min(144, Math.max(10, Math.round(raw)));
+  emit("updateLive2dFps", fps);
+};
 </script>
 
 <style scoped>
-  /* 自定义滑块轨道与手柄 (BA 科技感风格) */
-  .custom-slider {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    background: transparent;
-    outline: none;
-  }
+/* 自定义滑块轨道与手柄 (BA 科技感风格) */
+.custom-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  background: transparent;
+  outline: none;
+}
 
-  .custom-slider::-webkit-slider-runnable-track {
-    width: 100%;
-    height: 6px;
-    cursor: pointer;
-    background-color: #e2e8f0; /* slate-200 */
-    border-radius: 9999px;
-    transition: background-color 0.2s;
-  }
+.custom-slider::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 6px;
+  cursor: pointer;
+  background-color: #e2e8f0; /* slate-200 */
+  border-radius: 9999px;
+  transition: background-color 0.2s;
+}
 
-  .dark .custom-slider::-webkit-slider-runnable-track {
-    background-color: #334155; /* slate-700 */
-  }
+.dark .custom-slider::-webkit-slider-runnable-track {
+  background-color: #334155; /* slate-700 */
+}
 
-  .custom-slider:hover::-webkit-slider-runnable-track {
-    background-color: #cbd5e1; /* slate-300 */
-  }
+.custom-slider:hover::-webkit-slider-runnable-track {
+  background-color: #cbd5e1; /* slate-300 */
+}
 
-  .dark .custom-slider:hover::-webkit-slider-runnable-track {
-    background-color: #475569; /* slate-600 */
-  }
+.dark .custom-slider:hover::-webkit-slider-runnable-track {
+  background-color: #475569; /* slate-600 */
+}
 
-  .custom-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    height: 20px;
-    width: 12px;
-    border-radius: 4px;
-    background-color: #ffffff;
-    border: 3px solid #38bdf8; /* sky-400 */
-    cursor: pointer;
-    margin-top: -7px;
-    box-shadow: 0 2px 6px rgba(56, 189, 248, 0.4);
-    transition:
-      transform 0.1s ease,
-      box-shadow 0.1s ease,
-      background-color 0.3s ease;
-  }
+.custom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 20px;
+  width: 12px;
+  border-radius: 4px;
+  background-color: #ffffff;
+  border: 3px solid #38bdf8; /* sky-400 */
+  cursor: pointer;
+  margin-top: -7px;
+  box-shadow: 0 2px 6px rgba(56, 189, 248, 0.4);
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease,
+    background-color 0.3s ease;
+}
 
-  .dark .custom-slider::-webkit-slider-thumb {
-    background-color: #0f172a; /* slate-900 */
-    border: 3px solid #0ea5e9; /* sky-500 */
-    box-shadow: 0 2px 6px rgba(14, 165, 233, 0.4);
-  }
+.dark .custom-slider::-webkit-slider-thumb {
+  background-color: #0f172a; /* slate-900 */
+  border: 3px solid #0ea5e9; /* sky-500 */
+  box-shadow: 0 2px 6px rgba(14, 165, 233, 0.4);
+}
 
-  .custom-slider::-webkit-slider-thumb:active {
-    transform: scale(0.85);
-    box-shadow: 0 1px 3px rgba(56, 189, 248, 0.5);
-    border-color: #0ea5e9; /* sky-500 */
-  }
+.custom-slider::-webkit-slider-thumb:active {
+  transform: scale(0.85);
+  box-shadow: 0 1px 3px rgba(56, 189, 248, 0.5);
+  border-color: #0ea5e9; /* sky-500 */
+}
 
-  .dark .custom-slider::-webkit-slider-thumb:active {
-    border-color: #38bdf8; /* sky-400 */
-  }
+.dark .custom-slider::-webkit-slider-thumb:active {
+  border-color: #38bdf8; /* sky-400 */
+}
 </style>

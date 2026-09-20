@@ -6,7 +6,7 @@ use sea_orm::DatabaseConnection;
 
 use crate::ai_service::game_system::memory_builder::MemoryBuilder;
 use crate::ai_service::game_system::persistent_memory_system::{
-    MemorySectionLimits, PersistentMemorySystem,
+    MemorySectionLimits, MemorySystemSnapshot, PersistentMemorySystem,
 };
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::tts::VoiceMaker;
@@ -670,6 +670,27 @@ impl GameRoleManager {
     /// 提供给 memory_builder 之外的工具：把 `memory` 合并成 `[{role,content}, ...]` 的 serde 形式。
     pub fn memory_as_json(&self, role_id: i32) -> Option<Vec<LlmMessage>> {
         self.loaded_roles.get(&role_id).map(|r| r.memory.clone())
+    }
+
+    /// 取某角色永久记忆运行时的**只读**快照（供前端的记忆调试页）。
+    ///
+    /// 返回 `None` 只表示"运行时不存在"：全局开关关闭时运行时**仍会创建**
+    /// （只是 `enabled == false`），因此那种情况返回 `Some`；运行时缺失通常
+    /// 是 LLM 槽位为空（`ensure_memory_bank_system` 会直接早退、不插入条目）。
+    pub async fn memory_debug(
+        &self,
+        role_id: i32,
+        lines: &[GameLine],
+    ) -> Option<MemorySystemSnapshot> {
+        let system = self.memory_bank_systems.get(&role_id)?;
+        Some(system.debug_snapshot(lines).await)
+    }
+
+    /// 运行时是否存在；存在时返回其 `enabled`。给列表用的廉价查询（不做快照）。
+    pub fn memory_runtime_enabled(&self, role_id: i32) -> Option<bool> {
+        self.memory_bank_systems
+            .get(&role_id)
+            .map(|s| s.is_enabled())
     }
 }
 

@@ -129,7 +129,7 @@ for (const subPath of sortedPaths) {
 
 writeFileSync(outputPath, JSON.stringify(manifest, null, 2), "utf-8");
 console.log(
-  `✅ 已生成 ${outputPath} (data_version=${dataVersion}, ${Object.keys(manifest.files).length} 个文件)`
+  `✅ 已生成 ${outputPath} (data_version=${dataVersion}, ${Object.keys(manifest.files).length} 个文件)`,
 );
 
 const totalSize = Object.values(manifest.files).reduce((sum, f) => sum + f.size, 0);
