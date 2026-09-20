@@ -1560,17 +1560,21 @@ export async function mountFlyBrain(root, options) {
   const C_HAIR = [0.1, 0.08, 0.09],
     C_SKIN = [1.0, 0.87, 0.75],
     C_WHITE = [0.96, 0.95, 0.93],
-    C_RED = [0.78, 0.12, 0.16],
+    C_RED = [0.85, 0.29, 0.37], // 巫女绯红（柔和 #d94a5f 系）
     C_BOW = [0.86, 0.1, 0.14],
+    C_ASCOT = [0.98, 0.78, 0.27], // 领结暖黄
+    C_BLUSH = [1.0, 0.74, 0.72],
+    C_LID = [0.92, 0.68, 0.58],
+    C_MOUTH = [0.5, 0.18, 0.18],
     C_SHOE = [0.5, 0.2, 0.14],
     C_EYE = [0.16, 0.1, 0.12];
-  /* 圆台汤（袴/袖/小腿）：底半径 rB、顶半径 rT、高 h，侧面 + 底盖，colorFn 按高度 0..1 分带 */
+  /* 圆台汤（袴/袖/小腿）：底半径 rB、顶半径 rT、高 h，侧面 + 底盖，colorFn(高度01, x, y, z) 分带 */
   function coneSoup(cx, cy, cz, rB, rT, h, segs, colorFn) {
     const out = [];
     const slope = (rB - rT) / h;
     const nl = Math.hypot(1, slope);
     const pushV = (px, py, pz, nx, ny, nz) => {
-      const cc = colorFn((py - cy) / h);
+      const cc = colorFn((py - cy) / h, px, py, pz);
       out.push(px, py, pz, nx, ny, nz, cc[0], cc[1], cc[2]);
     };
     for (let j = 0; j < segs; j++) {
@@ -1618,36 +1622,77 @@ export async function mountFlyBrain(root, options) {
   let reimuReady = false;
   function ensureReimuChar() {
     if (reimuReady) return;
+    // 大红蝴蝶结双耳：红底 + 外圈白色荷叶边（按顶点离结心横向距离分色）
     const bowL = rotZSoup(
-      sphereSoup(0.155, 1.38, 0.03, 0.135, 0.065, 0.085, 8, 5, () => C_BOW),
+      sphereSoup(0.155, 1.38, 0.03, 0.135, 0.065, 0.085, 8, 5, (p) =>
+        Math.abs(p[0] - 0.155) > 0.08 ? C_WHITE : C_BOW,
+      ),
       0.155,
       1.38,
       -0.5,
     );
     const bowR = rotZSoup(
-      sphereSoup(-0.155, 1.38, 0.03, 0.135, 0.065, 0.085, 8, 5, () => C_BOW),
+      sphereSoup(-0.155, 1.38, 0.03, 0.135, 0.065, 0.085, 8, 5, (p) =>
+        Math.abs(p[0] + 0.155) > 0.08 ? C_WHITE : C_BOW,
+      ),
       -0.155,
       1.38,
       0.5,
     );
+    // 黄色大领结（ascot）：双结翼倾转 + 结心 + 垂带
+    const ascotL = rotZSoup(
+      sphereSoup(0.095, 0.78, -0.145, 0.075, 0.045, 0.035, 7, 5, () => C_ASCOT),
+      0.095,
+      0.78,
+      -0.5,
+    );
+    const ascotR = rotZSoup(
+      sphereSoup(-0.095, 0.78, -0.145, 0.075, 0.045, 0.035, 7, 5, () => C_ASCOT),
+      -0.095,
+      0.78,
+      0.5,
+    );
+    // 裙摆白荷叶边：下摆按方位角 zigzag 三角齿分色（12 段=12 齿）
+    const hemZig = (u, x, y, z) =>
+      u < 0.16
+        ? Math.floor((Math.atan2(z, x) / Math.PI) * 6 + 12) % 2 === 0
+          ? C_WHITE
+          : C_RED
+        : C_RED;
     RIGID_SOUP = new Float32Array([
-      ...coneSoup(0, 0.26, 0, 0.34, 0.2, 0.44, 12, (u) => (u < 0.16 ? C_WHITE : C_RED)), // 红袴白裾
+      ...coneSoup(0, 0.26, 0, 0.34, 0.2, 0.44, 12, hemZig), // 绯红袴 + 白色 zigzag 裙边
       ...sphereSoup(0, 0.84, 0, 0.21, 0.19, 0.155, 10, 7, () => C_WHITE), // 白衣上身
-      ...sphereSoup(0, 0.74, -0.14, 0.05, 0.06, 0.03, 6, 4, () => C_BOW), // 领口红领巾
+      ...ascotL,
+      ...ascotR, // 黄色大领结结翼
+      ...sphereSoup(0, 0.775, -0.15, 0.038, 0.038, 0.03, 6, 4, () => [0.9, 0.62, 0.15]), // 领结结心
+      ...sphereSoup(0, 0.66, -0.135, 0.045, 0.11, 0.025, 7, 5, () => C_ASCOT), // 领结垂带
       ...sphereSoup(0, 1.1, 0, 0.27, 0.26, 0.26, 12, 9, () => C_SKIN), // 头
       ...sphereSoup(0, 1.13, 0.045, 0.285, 0.275, 0.285, 12, 9, () => C_HAIR), // 发盖
-      ...sphereSoup(0, 0.86, 0.17, 0.21, 0.4, 0.12, 10, 7, () => C_HAIR), // 后长发
-      ...sphereSoup(0.245, 0.98, 0.02, 0.055, 0.2, 0.06, 6, 5, () => C_HAIR), // 侧发
-      ...sphereSoup(-0.245, 0.98, 0.02, 0.055, 0.2, 0.06, 6, 5, () => C_HAIR),
-      ...sphereSoup(0.105, 1.1, -0.238, 0.035, 0.05, 0.02, 6, 4, () => C_EYE), // 眼（暗底）
-      ...sphereSoup(-0.105, 1.1, -0.238, 0.035, 0.05, 0.02, 6, 4, () => C_EYE),
+      ...sphereSoup(0, 0.92, 0.17, 0.2, 0.3, 0.12, 10, 7, () => C_HAIR), // 后发底盘（长飘发走动态件）
+      ...coneSoup(0.26, 0.98, -0.02, 0.05, 0.05, 0.16, 8, (u) =>
+        u < 0.22 || u > 0.78 ? C_RED : C_WHITE,
+      ), // 鬓角发筒（红白相间）
+      ...coneSoup(-0.26, 0.98, -0.02, 0.05, 0.05, 0.16, 8, (u) =>
+        u < 0.22 || u > 0.78 ? C_RED : C_WHITE,
+      ),
+      ...sphereSoup(0.26, 0.86, -0.04, 0.045, 0.22, 0.05, 6, 5, () => C_HAIR), // 鬓发两缕垂到胸前
+      ...sphereSoup(0.26, 0.88, 0.08, 0.04, 0.2, 0.05, 6, 5, () => C_HAIR),
+      ...sphereSoup(-0.26, 0.86, -0.04, 0.045, 0.22, 0.05, 6, 5, () => C_HAIR),
+      ...sphereSoup(-0.26, 0.88, 0.08, 0.04, 0.2, 0.05, 6, 5, () => C_HAIR),
+      ...sphereSoup(0.105, 1.09, -0.245, 0.05, 0.075, 0.022, 8, 6, () => C_EYE), // 椭圆大眼
+      ...sphereSoup(-0.105, 1.09, -0.245, 0.05, 0.075, 0.022, 8, 6, () => C_EYE),
+      ...sphereSoup(0.105, 1.038, -0.243, 0.035, 0.011, 0.014, 6, 4, () => C_LID), // 下眼睑小弧线
+      ...sphereSoup(-0.105, 1.038, -0.243, 0.035, 0.011, 0.014, 6, 4, () => C_LID),
+      ...sphereSoup(0, 1.0, -0.256, 0.032, 0.008, 0.01, 6, 4, () => C_MOUTH), // 小嘴（一短线）
+      ...sphereSoup(0.185, 1.05, -0.215, 0.038, 0.02, 0.012, 6, 4, () => C_BLUSH), // 腮红
+      ...sphereSoup(-0.185, 1.05, -0.215, 0.038, 0.02, 0.012, 6, 4, () => C_BLUSH),
       ...bowL,
-      ...bowR, // 大红蝴蝶结双耳
+      ...bowR, // 大红蝴蝶结双耳（白边）
       ...sphereSoup(0, 1.36, 0, 0.05, 0.05, 0.05, 6, 4, () => C_WHITE), // 结心
     ]);
     /* 眼睛高光点（emissive，不走光照）：vision 越强越亮，eating 双闪 */
-    EYE_HI_L = spherePos(0.117, 1.11, -0.262, 0.018, 5, 4);
-    EYE_HI_R = spherePos(-0.117, 1.11, -0.262, 0.018, 5, 4);
+    EYE_HI_L = spherePos(0.118, 1.105, -0.262, 0.02, 5, 4);
+    EYE_HI_R = spherePos(-0.118, 1.105, -0.262, 0.02, 5, 4);
     reimuReady = true;
   }
   /* 眼睛动态缓冲两主角共享：灵梦高光 240 顶点 / 果蝇复眼 420 顶点，取大者 */
@@ -1788,7 +1833,7 @@ export async function mountFlyBrain(root, options) {
         flyBuf[o++] = cc[2];
       }
     };
-    /* 白色 detached 袖：摆动幅度 ∝ 脑活动（接上神经元），漂浮时向后飘 */
+    /* 白色 detached 袖：摆动幅度 ∝ 脑活动（接上神经元），漂浮时向后飘；袖口红绳结 + 微喇白蕾丝 */
     for (const s of [1, -1]) {
       rot(s * 0.2, 0.92, 0.02, w);
       const sway = Math.sin(t * 2.4 + s * 1.7) * (0.1 + 0.45 * activity) + airT * 0.3;
@@ -1796,7 +1841,19 @@ export async function mountFlyBrain(root, options) {
       const dl = Math.hypot(dL[0], dL[1], dL[2]);
       const dW = [0, 0, 0];
       rotN(dL[0] / dl, dL[1] / dl, dL[2] / dl, dW);
-      writeCone([w[0], w[1], w[2]], dW, 0.32, 0.075, 0.105, (u) => (u > 0.8 ? C_RED : C_WHITE));
+      writeCone([w[0], w[1], w[2]], dW, 0.32, 0.075, 0.115, (u) =>
+        u > 0.9 ? C_WHITE : u > 0.76 ? C_RED : C_WHITE,
+      );
+    }
+    /* 长飘发：3 缕后发片（末端尖细），随身体轻摆，摆幅 ∝ 脑活动 */
+    for (const [i, lx] of [-0.11, 0, 0.11].entries()) {
+      rot(lx, 1.04, 0.17, w);
+      const swayH = Math.sin(t * 2.0 + i * 1.9) * (0.06 + 0.4 * activity) + airT * 0.35;
+      const dL = [lx * 0.15, -1, 0.18 + swayH * 0.4];
+      const dl = Math.hypot(dL[0], dL[1], dL[2]);
+      const dW = [0, 0, 0];
+      rotN(dL[0] / dl, dL[1] / dl, dL[2] / dl, dW);
+      writeCone([w[0], w[1], w[2]], dW, 0.68, 0.075, 0.014, () => C_HAIR);
     }
     /* 小腿小鞋：散步交替摆步，坐/躺向前伸，漂浮垂落 */
     for (const s of [1, -1]) {
@@ -2231,8 +2288,9 @@ export async function mountFlyBrain(root, options) {
       spikeTimes = null,
       spikeBuf = null,
       ready = false;
-    // 显示模式（原版两档）：活动=uDim 0（静默点不可见，只看被激活神经元，默认）；解剖=uDim 1.1（全脑分类色）
-    let modeDim = 0.0;
+    // 显示模式（原版两档）：活动=uDim 0.22（暗色全脑轮廓可见 + 激活神经元高亮拖尾，默认）；
+    // 解剖=uDim 1.1（全脑分类色，原版解剖档）
+    let modeDim = 0.22;
     let yaw = 0.8,
       pitch = 0.35,
       dist = 1.7;
@@ -2353,8 +2411,8 @@ export async function mountFlyBrain(root, options) {
       bgl.getExtension("WEBGL_lose_context")?.loseContext();
     }
     function toggleMode() {
-      modeDim = modeDim === 0 ? 1.1 : 0.0;
-      return modeDim === 0 ? "活动" : "解剖";
+      modeDim = modeDim < 1 ? 1.1 : 0.22;
+      return modeDim < 1 ? "活动" : "解剖";
     }
     return {
       init,
