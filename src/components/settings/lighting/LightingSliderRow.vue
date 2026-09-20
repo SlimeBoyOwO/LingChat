@@ -18,6 +18,7 @@
     <!-- 数值既能看又能敲：显示位做成输入框，精确值直接键入，↑↓ 微调。
          刻意不用 type="number"，它自带滚轮步进，一滚列表就把值改了。 -->
     <input
+      ref="textRef"
       v-model="text"
       type="text"
       inputmode="decimal"
@@ -37,7 +38,7 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, watch } from "vue";
+  import { nextTick, ref, watch } from "vue";
 
   const props = withDefaults(
     defineProps<{
@@ -57,6 +58,7 @@
   const emit = defineEmits<{ "update:modelValue": [value: number] }>();
 
   const sliderRef = ref<HTMLInputElement | null>(null);
+  const textRef = ref<HTMLInputElement | null>(null);
   const editing = ref(false);
   const text = ref(format(props.modelValue));
 
@@ -102,7 +104,7 @@
   function onFocus(): void {
     editing.value = true;
     text.value = String(props.modelValue);
-    (event?.target as HTMLInputElement | null)?.select?.();
+    void nextTick(() => textRef.value?.select());
   }
 
   function commit(): void {
@@ -110,17 +112,19 @@
     apply(parse(text.value));
   }
 
+  // 这里不抢焦点：Esc 只是把内容弹回当前值，紧接着的 blur 会走 commit，
+  // 而回弹后的文本本来就等于当前值，所以不会有副作用。
   function cancel(): void {
     editing.value = false;
     text.value = format(props.modelValue);
-    (event?.target as HTMLInputElement | null)?.blur?.();
   }
 
   function nudge(dir: number, e: KeyboardEvent): void {
+    const scale = 10 ** props.decimals;
     const base = parse(text.value) ?? props.modelValue;
     const delta = props.step * (e.shiftKey ? 10 : 1) * dir;
-    apply(parse(String(base + delta)) ?? base);
-    if (e.shiftKey) e.preventDefault();
+    // 先放大再取整，避开 0.1+0.2 这类浮点尾巴
+    apply(Math.round((base + delta) * scale) / scale);
   }
 </script>
 
