@@ -107,11 +107,19 @@ pub struct GroupPermission {
     pub roles: HashSet<String>,
 }
 
-/// 授权/收回 default 角色组对某个工具的访问（供工具设置页开关使用）。
+/// 授权/收回 default 角色组对某个工具的访问（供工具设置页开关与插件启停使用）。
 impl ToolPermissionConfig {
     /// `allowed = true`：确保 default 角色组启用且包含该工具；
-    /// `allowed = false`：仅从 default 组工具列表移除，不动组的启用状态与其他工具。
+    /// `allowed = false`：从 default 组工具列表移除，不动其他工具。
+    ///
+    /// 移除到空列表时连带关掉组开关：`allowed_tools` 把「default 组工具集为空」理解成
+    /// 「不收窄场景权限」，而主聊天的 `scene_admin` 是 `all_tools = true`，两边一交
+    /// 就成了全集。留着 `enabled = true` 的空组，等于收回最后一个工具时顺手把
+    /// file_ops、execute_command 全放开。`all_tools = true` 的组本就不靠列表收窄，跳过。
     pub fn set_tool_allowed_for_default_group(&mut self, tool: &str, allowed: bool) {
+        if !allowed && !self.role_groups.contains_key(DEFAULT_ROLE_GROUP) {
+            return;
+        }
         let group = self
             .role_groups
             .entry(DEFAULT_ROLE_GROUP.to_string())
@@ -119,8 +127,11 @@ impl ToolPermissionConfig {
         if allowed {
             group.enabled = true;
             group.tools.insert(tool.to_string());
-        } else {
-            group.tools.remove(tool);
+            return;
+        }
+        group.tools.remove(tool);
+        if group.tools.is_empty() && !group.all_tools {
+            group.enabled = false;
         }
     }
 }
@@ -430,4 +441,58 @@ const fn default_enabled() -> bool {
 
 fn is_false(b: &bool) -> bool {
     !b
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tool_set(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|n| n.to_string()).collect()
+    }
+
+    /// 主聊天（`user_chat` → `scene_admin`）+ 一个归属 default 组的角色。
+    fn config_with(tools: &[&str]) -> ToolPermissionConfig {
+        let mut config = ToolPermissionConfig::with_default_tools(tool_set(tools));
+        config
+            .role_groups
+            .get_mut(DEFAULT_ROLE_GROUP)
+            .unwrap()
+            .roles
+            .insert("小灵".to_string());
+        config
+    }
+
+    fn allowed(config: &ToolPermissionConfig) -> HashSet<String> {
+        let all = config.scene_groups["scene_admin"].tools.clone();
+        config.allowed_tools(GeneratorSource::UserChat, Some("小灵"), &all)
+    }
+
+    #[test]
+    fn granting_a_tool_exposes_only_that_tool() {
+        let mut config = config_with(&["lighting_studio_list", "execute_command"]);
+        config.set_tool_allowed_for_default_group("lighting_studio_list", true);
+        assert_eq!(allowed(&config), tool_set(&["lighting_studio_list"]));
+    }
+
+    #[test]
+    fn revoking_the_last_tool_locks_the_group_down() {
+        let mut config = config_with(&["lighting_studio_list", "execute_command"]);
+        config.set_tool_allowed_for_default_group("lighting_studio_list", true);
+        config.set_tool_allowed_for_default_group("lighting_studio_list", false);
+        assert!(
+            allowed(&config).is_empty(),
+            "收回插件最后一个工具后不能剩下一整组授权：{:?}",
+            allowed(&config)
+        );
+    }
+
+    #[test]
+    fn revoked_tool_does_not_touch_other_grants() {
+        let mut config = config_with(&["lighting_studio_list", "execute_command"]);
+        config.set_tool_allowed_for_default_group("lighting_studio_list", true);
+        config.set_tool_allowed_for_default_group("execute_command", true);
+        config.set_tool_allowed_for_default_group("lighting_studio_list", false);
+        assert_eq!(allowed(&config), tool_set(&["execute_command"]));
+    }
 }

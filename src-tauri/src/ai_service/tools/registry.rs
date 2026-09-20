@@ -152,6 +152,18 @@ impl ToolRegistry {
         perms.available_tools = set.into_iter().collect();
     }
 
+    /// 授予/收回 default 角色组对一批工具的访问（插件启用/禁用时调用，不落盘）。
+    ///
+    /// 只并进 `available_tools` 不够：那只是设置页的展示列表，真正下发给模型的工具由
+    /// [`ToolPermissionConfig::allowed_tools`] 按「场景组 ∩ 角色组」算出来，不在结果里
+    /// 的工具模型根本看不见，也就谈不上调用。
+    pub fn set_tools_allowed(&self, names: &[String], allowed: bool) {
+        let mut perms = self.permissions.write().unwrap();
+        for name in names {
+            perms.set_tool_allowed_for_default_group(name, allowed);
+        }
+    }
+
     /// 把当前权限配置落盘到 data_dir/tool_permissions.toml。
     ///
     /// 用原子 tmp+rename 模式（与 permissions.rs 内部一致）。

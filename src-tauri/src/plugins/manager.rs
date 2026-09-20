@@ -133,7 +133,7 @@ impl PluginManager {
         record
     }
 
-    /// 把插件的所有工具注册进 registry，并并入 available_tools。
+    /// 把插件的所有工具注册进 registry，并并入 available_tools、放开给 default 角色组。
     fn register_tools(&self, record: &PluginRecord) -> Result<(), String> {
         let mut registered: Vec<String> = Vec::new();
         for spec in &record.manifest.tools {
@@ -156,10 +156,11 @@ impl PluginManager {
             .map(|t| t.name.clone())
             .collect();
         self.registry.add_available_tools(&names);
+        self.registry.set_tools_allowed(&names, true);
         Ok(())
     }
 
-    /// 注销插件的所有工具，并同步移除 available_tools 展示列表。
+    /// 注销插件的所有工具：同步移出 available_tools 与 default 角色组的授权。
     fn unregister_tools(&self, record: &PluginRecord) {
         let names: Vec<String> = record
             .manifest
@@ -171,6 +172,7 @@ impl PluginManager {
             self.registry.unregister(name);
         }
         self.registry.remove_available_tools(&names);
+        self.registry.set_tools_allowed(&names, false);
     }
 
     /// 获取插件目录。
