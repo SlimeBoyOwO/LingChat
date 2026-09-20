@@ -8,12 +8,15 @@
         @click="$emit('close')"
       >
         <div
-          class="relative flex max-h-[92dvh] w-full max-w-7xl overflow-hidden rounded-3xl border
-            border-white/20 bg-slate-900/40 shadow-2xl backdrop-blur-2xl"
+          class="relative flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl
+            border border-white/20 bg-slate-900/85 shadow-2xl backdrop-blur-2xl md:flex-row"
           @click.stop
         >
           <!-- ====== 左栏：表单 ====== -->
-          <div class="flex w-[420px] shrink-0 flex-col border-r border-white/10">
+          <!-- 尺寸与光影编辑器同一套：两个弹窗调的是同一份参数，窗口不一样大会很割裂 -->
+          <div
+            class="flex min-w-0 flex-1 flex-col border-r border-white/10 md:w-[440px] md:shrink-0"
+          >
             <!-- Header -->
             <div
               class="flex shrink-0 items-center justify-between border-b border-white/10 bg-white/10
@@ -159,214 +162,15 @@
                   </label>
 
                   <template v-if="formData.lightingEnabled">
-                    <label class="flex cursor-pointer items-center gap-2 pl-4">
-                      <input
-                        v-model="formData.overlayEnabled"
-                        type="checkbox"
-                        class="h-3.5 w-3.5 rounded accent-amber-500"
-                      />
-                      <span class="text-xs text-white/70">{{
-                        $t("settings.sceneEdit.lighting.enableOverlay")
-                      }}</span>
-                    </label>
-
-                    <!-- ======== 角色滤镜 ======== -->
-                    <div class="pt-1 text-[11px] font-bold tracking-wider text-white/40 uppercase">
-                      {{ $t("settings.sceneEdit.filter.character") }}
-                    </div>
-
+                    <!-- 与光影编辑器共用同一套控件：以前这里只认最早 11 个字段，
+                         进阶层看不到，保存还会把它们抹掉。 -->
                     <div
-                      v-for="s in charFilterSliders"
-                      :key="'char-' + s.key"
-                      class="flex items-center gap-2"
+                      class="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2
+                        text-[11px] leading-snug text-amber-100/80"
                     >
-                      <span class="w-16 shrink-0 text-[11px] text-white/50">{{ s.label }}</span>
-                      <input
-                        type="range"
-                        :min="s.min"
-                        :max="s.max"
-                        :step="s.step"
-                        v-model.number="formData[s.key]"
-                        class="lighting-range flex-1"
-                        :style="{ '--accent-color': s.color }"
-                      />
-                      <span class="w-12 text-right text-[11px] text-white/50 tabular-nums"
-                        >{{ formData[s.key] }}{{ s.unit }}</span
-                      >
+                      {{ $t("settings.sceneEdit.lighting.globalOverrideTip") }}
                     </div>
-
-                    <div class="flex items-center gap-3">
-                      <span class="shrink-0 text-[11px] text-white/50">{{
-                        $t("settings.sceneEdit.label.glowColor")
-                      }}</span>
-                      <input
-                        v-model="formData.charGlowColor"
-                        type="color"
-                        class="h-6 w-6 shrink-0 cursor-pointer rounded border-0 bg-transparent"
-                      />
-                      <span class="truncate text-[11px] text-white/30">{{
-                        formData.charGlowColor
-                      }}</span>
-                    </div>
-
-                    <!-- ======== 背景滤镜 ======== -->
-                    <div class="pt-1 text-[11px] font-bold tracking-wider text-white/40 uppercase">
-                      {{ $t("settings.sceneEdit.filter.background") }}
-                    </div>
-
-                    <div
-                      v-for="s in bgFilterSliders"
-                      :key="'bg-' + s.key"
-                      class="flex items-center gap-2"
-                    >
-                      <span class="w-16 shrink-0 text-[11px] text-white/50">{{ s.label }}</span>
-                      <input
-                        type="range"
-                        :min="s.min"
-                        :max="s.max"
-                        :step="s.step"
-                        v-model.number="formData[s.key]"
-                        class="lighting-range flex-1"
-                        :style="{ '--accent-color': s.color }"
-                      />
-                      <span class="w-12 text-right text-[11px] text-white/50 tabular-nums"
-                        >{{ formData[s.key] }}{{ s.unit }}</span
-                      >
-                    </div>
-
-                    <div class="flex items-center gap-3">
-                      <span class="shrink-0 text-[11px] text-white/50">{{
-                        $t("settings.sceneEdit.label.glowColor")
-                      }}</span>
-                      <input
-                        v-model="formData.bgGlowColor"
-                        type="color"
-                        class="h-6 w-6 shrink-0 cursor-pointer rounded border-0 bg-transparent"
-                      />
-                      <span class="truncate text-[11px] text-white/30">{{
-                        formData.bgGlowColor
-                      }}</span>
-                    </div>
-
-                    <!-- ======== 光照叠加（仅 overlayEnabled 时显示） ======== -->
-                    <template v-if="formData.overlayEnabled">
-                      <div
-                        class="pt-1 text-[11px] font-bold tracking-wider text-white/40 uppercase"
-                      >
-                        {{ $t("settings.sceneEdit.overlay.title") }}
-                      </div>
-
-                      <div class="flex items-center gap-3">
-                        <span class="shrink-0 text-[11px] text-white/50">{{
-                          $t("settings.sceneEdit.overlay.blend")
-                        }}</span>
-                        <select
-                          v-model="formData.blendMode"
-                          class="flex-1 rounded-lg border border-white/10 bg-black/40 px-2 py-1
-                            text-[11px] text-white focus:ring-1 focus:ring-purple-400/50
-                            focus:outline-none"
-                        >
-                          <option value="normal">Normal</option>
-                          <option value="multiply">Multiply</option>
-                          <option value="screen">Screen</option>
-                          <option value="overlay">Overlay</option>
-                          <option value="soft-light">Soft Light</option>
-                          <option value="hard-light">Hard Light</option>
-                          <option value="color-dodge">Color Dodge</option>
-                          <option value="color-burn">Color Burn</option>
-                          <option value="difference">Difference</option>
-                        </select>
-                      </div>
-
-                      <div
-                        v-for="s in overlaySliders"
-                        :key="'ov-' + s.key"
-                        class="flex items-center gap-2"
-                      >
-                        <span class="w-16 shrink-0 text-[11px] text-white/50">{{ s.label }}</span>
-                        <input
-                          type="range"
-                          :min="s.min"
-                          :max="s.max"
-                          :step="s.step"
-                          v-model.number="formData[s.key]"
-                          class="lighting-range flex-1"
-                          :style="{ '--accent-color': s.color }"
-                        />
-                        <span class="w-12 text-right text-[11px] text-white/50 tabular-nums"
-                          >{{ formData[s.key] }}{{ s.unit }}</span
-                        >
-                      </div>
-
-                      <div class="flex items-center gap-3">
-                        <span class="shrink-0 text-[11px] text-white/50">{{
-                          $t("settings.sceneEdit.overlay.centerColor")
-                        }}</span>
-                        <input
-                          v-model="formData.overlayColor1"
-                          type="color"
-                          class="h-6 w-6 shrink-0 cursor-pointer rounded border-0 bg-transparent"
-                        />
-                        <span class="truncate text-[11px] text-white/30">{{
-                          formData.overlayColor1
-                        }}</span>
-                      </div>
-                      <div class="flex items-center gap-3">
-                        <span class="shrink-0 text-[11px] text-white/50">{{
-                          $t("settings.sceneEdit.overlay.edgeColor")
-                        }}</span>
-                        <input
-                          v-model="formData.overlayColor2"
-                          type="color"
-                          class="h-6 w-6 shrink-0 cursor-pointer rounded border-0 bg-transparent"
-                        />
-                        <span class="truncate text-[11px] text-white/30">{{
-                          formData.overlayColor2
-                        }}</span>
-                      </div>
-
-                      <div
-                        v-for="s in overlayExtraSliders"
-                        :key="'ove-' + s.key"
-                        class="flex items-center gap-2"
-                      >
-                        <span class="w-16 shrink-0 text-[11px] text-white/50">{{ s.label }}</span>
-                        <input
-                          type="range"
-                          :min="s.min"
-                          :max="s.max"
-                          :step="s.step"
-                          v-model.number="formData[s.key]"
-                          class="lighting-range flex-1"
-                          :style="{ '--accent-color': s.color }"
-                        />
-                        <span class="w-12 text-right text-[11px] text-white/50 tabular-nums"
-                          >{{ formData[s.key] }}{{ s.unit }}</span
-                        >
-                      </div>
-
-                      <div class="flex items-center gap-3">
-                        <span class="shrink-0 text-[11px] text-white/50">{{
-                          $t("settings.sceneEdit.overlay.target")
-                        }}</span>
-                        <select
-                          v-model="formData.overlayTarget"
-                          class="flex-1 rounded-lg border border-white/10 bg-black/40 px-2 py-1
-                            text-[11px] text-white focus:ring-1 focus:ring-purple-400/50
-                            focus:outline-none"
-                        >
-                          <option value="both">
-                            {{ $t("settings.sceneEdit.overlayTarget.both") }}
-                          </option>
-                          <option value="character">
-                            {{ $t("settings.sceneEdit.overlayTarget.character") }}
-                          </option>
-                          <option value="background">
-                            {{ $t("settings.sceneEdit.overlayTarget.background") }}
-                          </option>
-                        </select>
-                      </div>
-                    </template>
+                    <LightingControls :params="lightingDraft" />
 
                     <button
                       @click="resetLighting"
@@ -409,51 +213,89 @@
           </div>
 
           <!-- ====== 右栏：实时预览 ====== -->
-          <div class="flex min-w-0 flex-1 flex-col bg-black/20 p-5">
+          <div class="flex min-w-0 flex-1 flex-col bg-black/30 p-5">
             <span class="mb-3 shrink-0 text-xs font-bold tracking-widest text-white/40 uppercase">{{
               $t("settings.sceneEdit.preview.title")
             }}</span>
+            <!-- 与光影编辑器同样：混合层要有一张不透明的底才算得出「打光」 -->
             <div
-              class="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden
-                rounded-xl border border-white/10 bg-slate-800/50"
+              class="relative min-h-[16rem] flex-1 overflow-hidden rounded-xl border border-white/10
+                bg-slate-800"
+              style="isolation: isolate"
             >
+              <div class="absolute inset-0 bg-slate-800"></div>
               <!-- 背景图（应用背景滤镜） -->
-              <img
-                v-if="selectedBackgroundPreview"
-                :src="selectedBackgroundPreview"
-                class="absolute inset-0 h-full w-full object-cover"
-                :style="previewBgFilterStyle"
-              />
-              <!-- 角色立绘（应用角色滤镜 + 位置/缩放） -->
+              <div class="absolute inset-0" :style="previewBgFilterStyle">
+                <img
+                  v-if="selectedBackgroundPreview"
+                  :src="selectedBackgroundPreview"
+                  class="h-full w-full object-cover"
+                  alt=""
+                />
+                <div
+                  v-else
+                  class="flex h-full w-full items-center justify-center text-sm text-white/20"
+                >
+                  {{ $t("settings.sceneEdit.preview.placeholder") }}
+                </div>
+              </div>
+              <!-- bloom 泛光：同一张背景复制一层，模糊提亮后 screen 叠回去 -->
+              <div
+                v-if="previewPlan.bloom && selectedBackgroundPreview"
+                class="pointer-events-none absolute inset-0"
+                :class="previewPlan.bloom.className"
+                :style="previewPlan.bloom.style"
+              >
+                <img :src="selectedBackgroundPreview" class="h-full w-full object-cover" alt="" />
+              </div>
+              <div
+                v-if="previewPlan.bgOverlay"
+                class="pointer-events-none absolute inset-0"
+                :style="previewPlan.bgOverlay"
+              ></div>
+              <!-- 角色立绘（角色滤镜 + 位置/缩放） -->
               <img
                 v-if="previewAvatarUrl"
                 :src="previewAvatarUrl"
                 class="absolute"
                 :style="previewCharStyle"
+                alt=""
               />
-              <!-- 光照叠加层 -->
               <div
-                v-if="formData.lightingEnabled && formData.overlayEnabled"
-                class="pointer-events-none absolute inset-0 z-10"
-                :style="previewOverlayStyle"
+                v-if="previewPlan.stageOverlay"
+                class="pointer-events-none absolute inset-0"
+                :style="previewPlan.stageOverlay"
               ></div>
-              <!-- 占位 -->
-              <div v-if="!selectedBackgroundPreview" class="text-sm text-white/20">
-                {{ $t("settings.sceneEdit.preview.placeholder") }}
-              </div>
+              <template v-if="previewPlan.directional">
+                <div
+                  class="pointer-events-none absolute inset-0 z-20"
+                  :class="previewPlan.directional.lit.className"
+                  :style="previewPlan.directional.lit.style"
+                ></div>
+                <div
+                  class="pointer-events-none absolute inset-0 z-20"
+                  :class="previewPlan.directional.shadow.className"
+                  :style="previewPlan.directional.shadow.style"
+                ></div>
+              </template>
+              <div
+                v-if="previewPlan.grade"
+                class="pointer-events-none absolute inset-0 z-20"
+                :class="previewPlan.grade.className"
+                :style="previewPlan.grade.style"
+              ></div>
+              <div
+                v-if="previewPlan.vignette"
+                class="pointer-events-none absolute inset-0 z-20"
+                :class="previewPlan.vignette.className"
+                :style="previewPlan.vignette.style"
+              ></div>
             </div>
             <!-- 信息标签 -->
             <div class="mt-2 flex shrink-0 gap-3 text-xs text-white/40">
-              <span
-                v-if="
-                  formData.lightingEnabled &&
-                  formData.overlayEnabled &&
-                  formData.blendMode !== 'normal'
-                "
-                >{{
-                  $t("settings.sceneEdit.preview.blendMode", { mode: formData.blendMode })
-                }}</span
-              >
+              <span v-if="!selectedBackgroundPreview">{{
+                $t("settings.sceneEdit.preview.noBackground")
+              }}</span>
               <span v-if="previewAvatarUrl">{{
                 $t("settings.sceneEdit.preview.avatarLoaded")
               }}</span>
@@ -467,13 +309,20 @@
 
 <script setup lang="ts">
   import { computed, reactive, ref, watch } from "vue";
-  import { useI18n } from "vue-i18n";
+  import type { CSSProperties } from "vue";
   import { convertFileSrc, invoke } from "@tauri-apps/api/core";
   import { Button } from "../../base";
+  import LightingControls from "../lighting/LightingControls.vue";
   import { useGameStore } from "../../../stores/modules/game";
   import { EMOTION_CONFIG_EMO } from "../../../controllers/emotion/config";
   import type { BackgroundImageInfo } from "../../../types";
-  import type { LightingParams, FilterParams } from "../../../api/services/scene";
+  import type { LightingParams } from "../../../api/services/scene";
+  import {
+    angleTowardLight,
+    blankLighting,
+    cloneLighting,
+    planLighting,
+  } from "../../../utils/lighting";
 
   const props = defineProps<{
     show: boolean;
@@ -501,59 +350,15 @@
   }>();
 
   const gameStore = useGameStore();
-  const { t } = useI18n();
-
-  // ---- defaults ----
-
-  const DEF = {
-    brightness: 1.0,
-    contrast: 1.0,
-    saturation: 1.0,
-    sepia: 0.0,
-    glowRadius: 0,
-    glowColor: "#ffaa33",
-    blendMode: "normal",
-    lightX: 50,
-    lightY: 50,
-    overlayColor1: "#ffb44b",
-    overlayColor2: "#18202e",
-    overlayRadius: 80,
-    overlayOpacity: 50, // slider 0–100, saved as 0.0–1.0
-    overlayTarget: "both",
-  };
 
   // ---- reactive form ----
 
-  // 使用 interface 保持类型安全
+  // 只用 interface 保持类型安全
   interface FormData {
     sceneName: string;
     sceneImage: string;
     sceneDescription: string;
     lightingEnabled: boolean;
-    overlayEnabled: boolean;
-    // 角色滤镜
-    charBrightness: number;
-    charContrast: number;
-    charSaturation: number;
-    charSepia: number;
-    charGlowRadius: number;
-    charGlowColor: string;
-    // 背景滤镜
-    bgBrightness: number;
-    bgContrast: number;
-    bgSaturation: number;
-    bgSepia: number;
-    bgGlowRadius: number;
-    bgGlowColor: string;
-    // 叠加
-    blendMode: string;
-    lightX: number;
-    lightY: number;
-    overlayColor1: string;
-    overlayColor2: string;
-    overlayRadius: number;
-    overlayOpacity: number;
-    overlayTarget: string;
     [key: string]: string | number | boolean; // 索引签名以支持 v-model="formData[key]"
   }
 
@@ -562,178 +367,13 @@
     sceneImage: "",
     sceneDescription: "",
     lightingEnabled: false,
-    overlayEnabled: false,
-    charBrightness: DEF.brightness,
-    charContrast: DEF.contrast,
-    charSaturation: DEF.saturation,
-    charSepia: DEF.sepia,
-    charGlowRadius: DEF.glowRadius,
-    charGlowColor: DEF.glowColor,
-    bgBrightness: DEF.brightness,
-    bgContrast: DEF.contrast,
-    bgSaturation: DEF.saturation,
-    bgSepia: DEF.sepia,
-    bgGlowRadius: DEF.glowRadius,
-    bgGlowColor: DEF.glowColor,
-    blendMode: DEF.blendMode,
-    lightX: DEF.lightX,
-    lightY: DEF.lightY,
-    overlayColor1: DEF.overlayColor1,
-    overlayColor2: DEF.overlayColor2,
-    overlayRadius: DEF.overlayRadius,
-    overlayOpacity: DEF.overlayOpacity,
-    overlayTarget: DEF.overlayTarget,
   });
 
-  // ---- slider configs ----
-
-  interface SliderDef {
-    key: keyof FormData;
-    label: string;
-    min: number;
-    max: number;
-    step: number;
-    color: string;
-    unit: string;
-  }
-
-  const charFilterSliders = computed<SliderDef[]>(() => [
-    {
-      key: "charBrightness",
-      label: t("settings.sceneEdit.slider.brightness"),
-      min: 0.3,
-      max: 2.2,
-      step: 0.01,
-      color: "#8b5cf6",
-      unit: "",
-    },
-    {
-      key: "charContrast",
-      label: t("settings.sceneEdit.slider.contrast"),
-      min: 0.5,
-      max: 2.0,
-      step: 0.01,
-      color: "#8b5cf6",
-      unit: "",
-    },
-    {
-      key: "charSaturation",
-      label: t("settings.sceneEdit.slider.saturation"),
-      min: 0.0,
-      max: 2.5,
-      step: 0.01,
-      color: "#8b5cf6",
-      unit: "",
-    },
-    {
-      key: "charSepia",
-      label: t("settings.sceneEdit.slider.sepia"),
-      min: 0.0,
-      max: 1.0,
-      step: 0.01,
-      color: "#8b5cf6",
-      unit: "",
-    },
-    {
-      key: "charGlowRadius",
-      label: t("settings.sceneEdit.slider.glowRadius"),
-      min: 0,
-      max: 50,
-      step: 1,
-      color: "#f59e0b",
-      unit: "px",
-    },
-  ]);
-
-  const bgFilterSliders = computed<SliderDef[]>(() => [
-    {
-      key: "bgBrightness",
-      label: t("settings.sceneEdit.slider.brightness"),
-      min: 0.3,
-      max: 2.2,
-      step: 0.01,
-      color: "#06b6d4",
-      unit: "",
-    },
-    {
-      key: "bgContrast",
-      label: t("settings.sceneEdit.slider.contrast"),
-      min: 0.5,
-      max: 2.0,
-      step: 0.01,
-      color: "#06b6d4",
-      unit: "",
-    },
-    {
-      key: "bgSaturation",
-      label: t("settings.sceneEdit.slider.saturation"),
-      min: 0.0,
-      max: 2.5,
-      step: 0.01,
-      color: "#06b6d4",
-      unit: "",
-    },
-    {
-      key: "bgSepia",
-      label: t("settings.sceneEdit.slider.sepia"),
-      min: 0.0,
-      max: 1.0,
-      step: 0.01,
-      color: "#06b6d4",
-      unit: "",
-    },
-    {
-      key: "bgGlowRadius",
-      label: t("settings.sceneEdit.slider.glowRadius"),
-      min: 0,
-      max: 50,
-      step: 1,
-      color: "#f59e0b",
-      unit: "px",
-    },
-  ]);
-
-  const overlaySliders = computed<SliderDef[]>(() => [
-    {
-      key: "lightX",
-      label: t("settings.sceneEdit.slider.lightX"),
-      min: 0,
-      max: 100,
-      step: 1,
-      color: "#fbbf24",
-      unit: "%",
-    },
-    {
-      key: "lightY",
-      label: t("settings.sceneEdit.slider.lightY"),
-      min: 0,
-      max: 100,
-      step: 1,
-      color: "#fbbf24",
-      unit: "%",
-    },
-  ]);
-
-  const overlayExtraSliders = computed<SliderDef[]>(() => [
-    {
-      key: "overlayRadius",
-      label: t("settings.sceneEdit.slider.overlayRadius"),
-      min: 10,
-      max: 100,
-      step: 1,
-      color: "#fbbf24",
-      unit: "%",
-    },
-    {
-      key: "overlayOpacity",
-      label: t("settings.sceneEdit.slider.overlayOpacity"),
-      min: 0,
-      max: 100,
-      step: 1,
-      color: "#fbbf24",
-      unit: "%",
-    },
-  ]);
+  /**
+   * 场景自带的那盏灯。所有光影字段都住在这里，交给共用的 LightingControls 直接改；
+   * 之前拆成十几个散装表单字段，旧字段名对不上进阶层，保存时就把新层抹掉了。
+   */
+  const lightingDraft = reactive<LightingParams>(blankLighting());
 
   // ---- sub-state ----
 
@@ -743,28 +383,7 @@
   // ---- reset ----
 
   function resetLighting() {
-    formData.lightingEnabled = true;
-    formData.overlayEnabled = false;
-    formData.charBrightness = DEF.brightness;
-    formData.charContrast = DEF.contrast;
-    formData.charSaturation = DEF.saturation;
-    formData.charSepia = DEF.sepia;
-    formData.charGlowRadius = DEF.glowRadius;
-    formData.charGlowColor = DEF.glowColor;
-    formData.bgBrightness = DEF.brightness;
-    formData.bgContrast = DEF.contrast;
-    formData.bgSaturation = DEF.saturation;
-    formData.bgSepia = DEF.sepia;
-    formData.bgGlowRadius = DEF.glowRadius;
-    formData.bgGlowColor = DEF.glowColor;
-    formData.blendMode = DEF.blendMode;
-    formData.lightX = DEF.lightX;
-    formData.lightY = DEF.lightY;
-    formData.overlayColor1 = DEF.overlayColor1;
-    formData.overlayColor2 = DEF.overlayColor2;
-    formData.overlayRadius = DEF.overlayRadius;
-    formData.overlayOpacity = DEF.overlayOpacity;
-    formData.overlayTarget = DEF.overlayTarget;
+    Object.assign(lightingDraft, blankLighting());
   }
 
   // ---- role avatar ----
@@ -800,35 +419,10 @@
         formData.sceneImage = props.initialData.sceneImage || "";
         formData.sceneDescription = props.initialData.sceneDescription;
         const l = props.initialData.lighting;
-        if (l) {
-          formData.lightingEnabled = true;
-          formData.overlayEnabled = l.overlay_enabled;
-          formData.charBrightness = l.character.brightness;
-          formData.charContrast = l.character.contrast;
-          formData.charSaturation = l.character.saturation;
-          formData.charSepia = l.character.sepia;
-          formData.charGlowRadius = l.character.glow_radius;
-          formData.charGlowColor = l.character.glow_color;
-          formData.bgBrightness = l.background.brightness;
-          formData.bgContrast = l.background.contrast;
-          formData.bgSaturation = l.background.saturation;
-          formData.bgSepia = l.background.sepia;
-          formData.bgGlowRadius = l.background.glow_radius;
-          formData.bgGlowColor = l.background.glow_color;
-          formData.blendMode = l.blend_mode;
-          formData.lightX = l.light_x;
-          formData.lightY = l.light_y;
-          formData.overlayColor1 = l.overlay_color1;
-          formData.overlayColor2 = l.overlay_color2;
-          formData.overlayRadius = l.overlay_radius ?? 80;
-          formData.overlayOpacity = (l.overlay_opacity ?? 0.5) * 100;
-          formData.overlayTarget = l.overlay_target || "both";
-          showLighting.value = true;
-        } else {
-          formData.lightingEnabled = false;
-          resetLighting();
-          showLighting.value = false;
-        }
+        formData.lightingEnabled = !!l;
+        // 老场景存的时候还没有进阶层，用空白灯光垫底补齐，免得滑块停在 0 而不是默认值。
+        Object.assign(lightingDraft, cloneLighting({ ...blankLighting(), ...l }));
+        showLighting.value = !!l;
         resolveAvatar();
       } else if (val) {
         formData.sceneName = "";
@@ -849,46 +443,13 @@
     return convertFileSrc(formData.sceneImage);
   });
 
-  function buildFilterString(
-    brightness: number,
-    contrast: number,
-    saturation: number,
-    sepia: number,
-    glowRadius: number,
-    glowColor: string
-  ) {
-    const parts: string[] = [];
-    if (brightness !== 1.0) parts.push(`brightness(${brightness})`);
-    if (contrast !== 1.0) parts.push(`contrast(${contrast})`);
-    if (saturation !== 1.0) parts.push(`saturate(${saturation})`);
-    if (sepia > 0) parts.push(`sepia(${sepia})`);
-    if (glowRadius > 0) parts.push(`drop-shadow(0 0 ${glowRadius}px ${glowColor})`);
-    return parts.join(" ");
-  }
+  /** 预览与真实画面走同一个渲染器：这里看到的灯，保存后就是那个样子。 */
+  const previewPlan = computed(() => planLighting(formData.lightingEnabled ? lightingDraft : null));
 
-  const previewBgFilterStyle = computed(() => {
+  const previewBgFilterStyle = computed<CSSProperties | undefined>(() => {
     if (!formData.lightingEnabled) return undefined;
-    const filter = buildFilterString(
-      formData.bgBrightness,
-      formData.bgContrast,
-      formData.bgSaturation,
-      formData.bgSepia,
-      formData.bgGlowRadius,
-      formData.bgGlowColor
-    );
+    const filter = previewPlan.value.backgroundFilter;
     return filter ? { filter } : undefined;
-  });
-
-  const previewCharFilter = computed(() => {
-    if (!formData.lightingEnabled) return undefined;
-    return buildFilterString(
-      formData.charBrightness,
-      formData.charContrast,
-      formData.charSaturation,
-      formData.charSepia,
-      formData.charGlowRadius,
-      formData.charGlowColor
-    );
   });
 
   const previewCharPosition = computed(() => {
@@ -906,7 +467,6 @@
 
   const previewCharStyle = computed(() => {
     const pos = previewCharPosition.value;
-    const filter = previewCharFilter.value;
     const style: Record<string, string> = {
       left: pos.left || "50%",
       top: pos.top || "0px",
@@ -915,16 +475,11 @@
       maxHeight: "100%",
       maxWidth: "100%",
     };
+    const filter = previewPlan.value.characterFilter;
     if (filter) {
       style.filter = filter;
     }
     return style;
-  });
-
-  const previewOverlayStyle = computed(() => {
-    if (!formData.lightingEnabled || !formData.overlayEnabled) return undefined;
-    const blend = formData.blendMode !== "normal" ? formData.blendMode : "overlay";
-    return `background: radial-gradient(circle at ${formData.lightX}% ${formData.lightY}%, ${formData.overlayColor1} 0%, ${formData.overlayColor2} ${formData.overlayRadius}%); mix-blend-mode: ${blend}; opacity: ${formData.overlayOpacity / 100}`;
   });
 
   // ---- submit ----
@@ -932,34 +487,11 @@
   const handleSubmit = () => {
     let lighting: LightingParams | null = null;
     if (formData.lightingEnabled) {
-      const charFilter: FilterParams = {
-        brightness: formData.charBrightness,
-        contrast: formData.charContrast,
-        saturation: formData.charSaturation,
-        sepia: formData.charSepia,
-        glow_radius: formData.charGlowRadius,
-        glow_color: formData.charGlowColor,
-      };
-      const bgFilter: FilterParams = {
-        brightness: formData.bgBrightness,
-        contrast: formData.bgContrast,
-        saturation: formData.bgSaturation,
-        sepia: formData.bgSepia,
-        glow_radius: formData.bgGlowRadius,
-        glow_color: formData.bgGlowColor,
-      };
+      // 整份草稿原样带走，一个字段都不挑：漏掉哪个，哪个就在下次读取时清零。
       lighting = {
-        character: charFilter,
-        background: bgFilter,
-        overlay_enabled: formData.overlayEnabled,
-        blend_mode: formData.blendMode,
-        light_x: formData.lightX,
-        light_y: formData.lightY,
-        overlay_color1: formData.overlayColor1,
-        overlay_color2: formData.overlayColor2,
-        overlay_radius: formData.overlayRadius,
-        overlay_opacity: formData.overlayOpacity / 100,
-        overlay_target: formData.overlayTarget,
+        ...cloneLighting(lightingDraft),
+        light_angle:
+          Math.round(angleTowardLight(lightingDraft.light_x, lightingDraft.light_y) * 10) / 10,
       };
     }
     emit("submit", {
@@ -970,33 +502,3 @@
     });
   };
 </script>
-
-<style scoped>
-  /* 实时响应的 range input 样式 */
-  .lighting-range {
-    -webkit-appearance: none;
-    appearance: none;
-    height: 6px;
-    border-radius: 3px;
-    background: rgba(255, 255, 255, 0.15);
-    outline: none;
-    cursor: pointer;
-  }
-
-  .lighting-range::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: var(--accent-color, #8b5cf6);
-    border: 2px solid rgba(255, 255, 255, 0.8);
-    cursor: grab;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  }
-
-  .lighting-range::-webkit-slider-thumb:active {
-    cursor: grabbing;
-    transform: scale(1.15);
-  }
-</style>

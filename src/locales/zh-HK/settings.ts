@@ -582,7 +582,8 @@ export default {
     lighting: {
       title: "光影參數",
       enableForScene: "幫呢個場景開光影參數",
-      enableOverlay: "啟用光照疊加層",
+      globalOverrideTip:
+        "處里調嘅係呢個場景自己嘅燈；一旦喺「光影」入面揀咗全域預設，全域嗰份會蓋過佢。",
     },
     filter: {
       character: "角色濾鏡",
@@ -614,7 +615,7 @@ export default {
     preview: {
       title: "即時預覽",
       placeholder: "揀咗背景圖片之後會顯示預覽",
-      blendMode: "疊加混合: {mode}",
+      noBackground: "未揀背景，預覽會用中性底色代替",
       avatarLoaded: "角色立繪載入咗",
     },
   },
@@ -706,7 +707,8 @@ export default {
         previewTitle: "即時預覽",
         previewHint: "預覽使用目前場景的背景與立繪；畫面上的真實燈光也會同步變化。",
         previewNoBg: "目前場景沒有背景圖，預覽使用示意底色。",
-        builtinForkTip: "內建燈光不能直接修改，這裡是它的複本；儲存後會出现在「我的預設」裡。",
+        builtinForkTip:
+          "內建燈光不能直接改，這裡係佢嘅複本；儲存之後會成為「我的預設」入面嘅新燈光。",
         forkName: "{name}（複本）",
         reset: "全部重置為無光",
         revert: "重置為原來效果",

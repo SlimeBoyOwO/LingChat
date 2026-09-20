@@ -594,7 +594,8 @@ export default {
     lighting: {
       title: "ライティングパラメータ",
       enableForScene: "このシーンでライティングパラメータを有効にする",
-      enableOverlay: "ライトオーバーレイを有効にする",
+      globalOverrideTip:
+        "ここはこのシーン独自の照明です。「ライティング」でグローバルプリセットを選ぶと、そちらが優先されます。",
     },
     filter: {
       character: "キャラクターフィルター",
@@ -626,7 +627,7 @@ export default {
     preview: {
       title: "リアルタイムプレビュー",
       placeholder: "背景画像を選択するとプレビューが表示されます",
-      blendMode: "オーバーレイブレンド: {mode}",
+      noBackground: "背景未選択のため、プレビューは無地の下地を表示します",
       avatarLoaded: "キャラクター立ち絵を読み込み済み",
     },
   },

@@ -621,7 +621,8 @@ export default {
     lighting: {
       title: "光影参数",
       enableForScene: "为此场景启用光影参数",
-      enableOverlay: "启用光照叠加层",
+      globalOverrideTip:
+        "这里调的是本场景自己的灯；一旦在「光影」里选了全局预设，全局那份会盖过它。",
     },
     filter: {
       character: "角色滤镜",
@@ -653,7 +654,7 @@ export default {
     preview: {
       title: "实时预览",
       placeholder: "选择背景图片后显示预览",
-      blendMode: "叠加混合: {mode}",
+      noBackground: "未选背景，预览用中性底色代替",
       avatarLoaded: "已加载角色立绘",
     },
   },

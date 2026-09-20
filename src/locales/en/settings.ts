@@ -612,7 +612,8 @@ export default {
     lighting: {
       title: "Lighting Parameters",
       enableForScene: "Enable lighting parameters for this scene",
-      enableOverlay: "Enable lighting overlay",
+      globalOverrideTip:
+        "These are this scene's own lights; picking a global preset under Lighting overrides them.",
     },
     filter: {
       character: "Character Filter",
@@ -644,7 +645,7 @@ export default {
     preview: {
       title: "Live Preview",
       placeholder: "Preview appears after choosing a background image",
-      blendMode: "Overlay blend: {mode}",
+      noBackground: "No background chosen — preview falls back to a neutral base",
       avatarLoaded: "Character sprite loaded",
     },
   },
