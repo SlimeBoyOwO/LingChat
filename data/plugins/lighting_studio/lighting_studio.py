@@ -223,6 +223,8 @@ def _list(call_tool):
                 "name": p.get("name"),
                 "description": p.get("description"),
                 "mood": p.get("mood") or [],
+                # 用户在设置面板自建的：名字是他起的，匹配到时可以直接照说
+                "custom": bool(p.get("custom")),
             }
             for p in presets
         ],

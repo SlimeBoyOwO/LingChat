@@ -9,6 +9,8 @@ export interface LightingPreset {
   /** 适用心情关键词，供搜索 / LLM 匹配 */
   mood: string[];
   params: LightingParams;
+  /** true = 用户自建（「我的预设」），可编辑可删除；内置预设不可改 */
+  custom: boolean;
 }
 
 /** `lighting:change` / `script:lighting` 的负载，字段名与 Rust 的 camelCase 一致。 */
@@ -62,4 +64,29 @@ export async function reportLightingActive(req: {
   source: string;
 }): Promise<void> {
   await invoke("lighting_report_active", { req });
+}
+
+/** 保存自建预设的入参。`replaceId` 有值即覆盖同名自建预设（编辑后保存）。 */
+export interface SaveLightingPresetReq {
+  name: string;
+  description?: string;
+  mood?: string[];
+  params: LightingParams;
+  replaceId?: string | null;
+}
+
+export async function saveLightingPreset(req: SaveLightingPresetReq): Promise<LightingPreset> {
+  return invoke<LightingPreset>("lighting_preset_save", {
+    req: {
+      name: req.name,
+      description: req.description ?? "",
+      mood: req.mood ?? [],
+      params: req.params,
+      replaceId: req.replaceId ?? null,
+    },
+  });
+}
+
+export async function deleteLightingPreset(id: string): Promise<void> {
+  await invoke("lighting_preset_delete", { id });
 }

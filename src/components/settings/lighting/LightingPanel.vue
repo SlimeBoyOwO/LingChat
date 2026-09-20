@@ -55,7 +55,10 @@
         {{ $t("settings.background.lighting.loading") }}
       </div>
 
-      <div class="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-2">
+      <div
+        class="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-2"
+        :class="{ 'pointer-events-none opacity-50': !settings.lighting.masterEnabled }"
+      >
         <!-- 跟随场景：清空全局预设，交回场景自带的灯光 -->
         <button
           class="rounded-lg border px-3 py-2 text-left transition-all"
@@ -75,19 +78,25 @@
           </div>
         </button>
 
-        <button
+        <div
           v-for="p in presets"
           :key="p.id"
-          class="rounded-lg border px-3 py-2 text-left transition-all"
+          class="group cursor-pointer rounded-lg border px-3 py-2 text-left transition-all"
           :class="
             settings.lighting.globalPreset === p.id
               ? 'border-amber-400/60 bg-amber-400/15 ring-1 ring-amber-400/40'
               : 'border-white/10 bg-white/5 hover:border-white/25'
           "
-          :disabled="!settings.lighting.masterEnabled"
           @click="setGlobalPreset(p.id)"
         >
-          <div class="text-sm font-bold text-white/90">{{ p.name }}</div>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <div class="text-sm font-bold text-white/90">{{ p.name }}</div>
+            <span
+              v-if="p.custom"
+              class="rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[10px] text-amber-200/90"
+              >{{ $t("settings.background.lighting.custom.badge") }}</span
+            >
+          </div>
           <div class="mt-0.5 line-clamp-2 text-xs leading-snug text-white/45">
             {{ p.description }}
           </div>
@@ -99,7 +108,40 @@
               >{{ m }}</span
             >
           </div>
-        </button>
+          <div
+            v-if="p.custom"
+            class="mt-1.5 flex gap-3 opacity-0 transition-opacity group-hover:opacity-100
+              focus-within:opacity-100"
+          >
+            <button
+              class="text-[11px] text-white/50 transition-colors hover:text-amber-300"
+              @click.stop="openEdit(p)"
+            >
+              {{ $t("settings.background.lighting.custom.edit") }}
+            </button>
+            <button
+              class="text-[11px] text-white/50 transition-colors hover:text-red-300"
+              @click.stop="remove(p)"
+            >
+              {{ $t("settings.background.lighting.custom.delete") }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 自建入口 -->
+        <div
+          class="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border
+            border-dashed border-white/25 bg-white/5 px-3 py-2 text-center transition-all
+            hover:border-amber-400/60 hover:bg-amber-400/10"
+          @click="openCreate"
+        >
+          <div class="text-sm font-bold text-amber-200/90">
+            {{ $t("settings.background.lighting.custom.newPreset") }}
+          </div>
+          <div class="text-xs leading-snug text-white/45">
+            {{ $t("settings.background.lighting.custom.newPresetDesc") }}
+          </div>
+        </div>
       </div>
     </div>
 
@@ -137,16 +179,25 @@
         {{ $t("settings.background.lighting.lowPerfHint") }}
       </div>
     </div>
+
+    <LightingEditorModal
+      :show="editorShow"
+      :editing="editingPreset"
+      @close="editorShow = false"
+      @saved="applySaved"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-  import { computed, onMounted } from "vue";
+  import { computed, onMounted, ref } from "vue";
   import { useI18n } from "vue-i18n";
   import { Toggle } from "../../base";
+  import LightingEditorModal from "./LightingEditorModal.vue";
   import { useSettingsStore } from "../../../stores/modules/settings";
   import type { LightingSettings } from "../../../stores/modules/settings";
   import { useLightingStore } from "../../../stores/modules/lighting";
+  import type { LightingPreset } from "../../../api/services/lighting";
   import { useDialogStore } from "../../../stores/modules/ui/dialog";
   import { clearLighting } from "../../../api/services/lighting";
 
@@ -169,15 +220,54 @@
    * 预设、画面却还是旧的那盏」；用户以为没生效，之后让 AI 调灯也会被同一份残留
    * 骗过。清完之后靠 `lighting:change` 广播把真实状态回传给后端，不留暗状态。
    */
-  async function setGlobalPreset(id: string) {
+  async function setGlobalPreset(id: string, notice?: string) {
     settings.updateLighting({ globalPreset: id });
     if (!lightingStore.override) return;
     try {
       await clearLighting();
-      dialogStore.alert(t("settings.background.lighting.takenOver"));
+      dialogStore.alert(notice ?? t("settings.background.lighting.takenOver"));
     } catch (e) {
       console.error("[Lighting] 接管运行时灯光失败:", e);
       dialogStore.alert(t("settings.background.lighting.clearRuntimeFailed"));
+    }
+  }
+
+  // ========== 「我的预设」：自建光影 ==========
+
+  const editorShow = ref(false);
+  const editingPreset = ref<LightingPreset | null>(null);
+
+  function openCreate() {
+    editingPreset.value = null;
+    editorShow.value = true;
+  }
+
+  function openEdit(p: LightingPreset) {
+    editingPreset.value = p;
+    editorShow.value = true;
+  }
+
+  /** 编辑器里改参数时是拿运行时覆盖做实时预览的，保存后把它换成正式的全局预设。 */
+  async function applySaved(id: string) {
+    editorShow.value = false;
+    const saved = presets.value.find((p) => p.id === id);
+    editingPreset.value = null;
+    await setGlobalPreset(
+      id,
+      t("settings.background.lighting.custom.savedOk", { name: saved?.name ?? id })
+    );
+  }
+
+  async function remove(p: LightingPreset) {
+    const ok = await dialogStore.confirm(
+      t("settings.background.lighting.custom.deleteConfirm", { name: p.name })
+    );
+    if (!ok) return;
+    try {
+      await lightingStore.removePreset(p.id);
+    } catch (e) {
+      console.error("[Lighting] 删除自建预设失败:", e);
+      dialogStore.alert(t("settings.background.lighting.custom.deleteFailed", { msg: String(e) }));
     }
   }
 

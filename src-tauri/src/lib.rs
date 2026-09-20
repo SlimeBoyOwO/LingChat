@@ -414,6 +414,9 @@ pub fn run() {
                 tool_settings.clone(),
             )?);
 
+            // 自建光影预设：面板、剧本、AI 共用同一张表，所以必须在任何解析发生前读盘。
+            ai_service::game_system::lighting_store::load_user_presets(&api::data_dir());
+
             // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）。
             let plugin_manager = {
                 let data_dir = api::data_dir();
@@ -732,6 +735,8 @@ pub fn run() {
             api::scene::select_scene,
             api::scene::set_scene_awareness,
             api::lighting::lighting_list_presets,
+            api::lighting::lighting_preset_save,
+            api::lighting::lighting_preset_delete,
             api::lighting::lighting_apply,
             api::lighting::lighting_clear,
             api::lighting::lighting_get,

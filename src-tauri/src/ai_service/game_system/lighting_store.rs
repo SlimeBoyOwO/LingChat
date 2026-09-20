@@ -6,20 +6,176 @@
 //! - 插件与 LLM：`lighting_list_presets` 工具拿到 id / 名称 / 心情关键词
 //!
 //! 新增预设 = 写一个 `fn` + 在 [`ENTRIES`] 加一行，其余全自动。
+//!
+//! 除了编译期的 [`ENTRIES`]，还有一张运行期可写的「用户自建预设」表（见
+//! [`load_user_presets`]）。所有查询函数都必须走那张表而不是只翻 `ENTRIES`，
+//! 否则会出现「面板里看得到、AI 一切换就报未知预设」这种半拉子状态。
 
-use serde::Serialize;
+use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, OnceLock, RwLock};
+
+use serde::{Deserialize, Serialize};
 
 use super::scene_store::LightingParams;
 
 /// 预设元信息 + 参数。`mood` 是空格分隔的关键词，供 LLM / 搜索匹配用。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct LightingPreset {
     pub id: String,
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub description: String,
+    #[serde(default)]
     pub mood: Vec<String>,
+    #[serde(default)]
     pub params: LightingParams,
+    /// true = 用户在设置面板里自己调出来的；内置预设恒为 false
+    #[serde(default)]
+    pub custom: bool,
+}
+
+/// 用户自建预设表。
+///
+/// 用全局表而不是把 `Arc<Store>` 传来传去：`LightingOverride::resolve` 是纯函数、
+/// 剧本事件和工具都直接调它，拿不到应用状态。预设数量是个位数，锁开销可忽略。
+static USER_PRESETS: LazyLock<RwLock<Vec<LightingPreset>>> = LazyLock::new(Default::default);
+static USER_PRESET_FILE: OnceLock<PathBuf> = OnceLock::new();
+
+/// 自建预设的条数上限：够个人用，又能挡住「脚本一键生成一万条」把列表刷爆。
+const MAX_USER_PRESETS: usize = 100;
+
+/// 启动时加载 `<data_dir>/game_data/lighting_presets.json`。
+///
+/// 文件不存在算正常状态（还没建过预设）；解析失败只警告不报错——不能让一个坏掉的
+/// 自建预设把整个软件启不起来，内置灯光必须照常能用。
+pub fn load_user_presets(data_dir: &Path) {
+    let path = data_dir.join("game_data").join("lighting_presets.json");
+    let _ = USER_PRESET_FILE.set(path.clone());
+    let content = match std::fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(_) => return,
+    };
+    match serde_json::from_str::<Vec<LightingPreset>>(&content) {
+        Ok(list) => {
+            let count = list.len();
+            *USER_PRESETS.write().expect("自建光影预设锁被污染") = list;
+            tracing::info!("已加载 {count} 个自建光影预设");
+        },
+        Err(e) => tracing::warn!("自建光影预设解析失败，已忽略该文件: {e}"),
+    }
+}
+
+/// 全部自建预设（按 id 稳定排序，避免面板顺序每次启动跳一下）。
+pub fn user_presets() -> Vec<LightingPreset> {
+    let mut list = USER_PRESETS.read().expect("自建光影预设锁被污染").clone();
+    list.sort_by(|a, b| a.id.cmp(&b.id));
+    list
+}
+
+/// 新增或覆盖一个自建预设，返回落库后的正式 id。
+///
+/// id 由这里生成而不是让前端传：预设 id 会存进设置面板的 localStorage，一旦和
+/// 内置预设撞名，`resolve` 就会在两张表之间摇摆，灯光切换出现解释不了的行为。
+pub fn save_user_preset(
+    name: &str,
+    description: &str,
+    mood: Vec<String>,
+    params: LightingParams,
+    replace_id: Option<&str>,
+) -> Result<LightingPreset, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("预设名不能为空".to_string());
+    }
+    if name.chars().count() > 24 {
+        return Err("预设名请控制在 24 个字以内".to_string());
+    }
+    // 重名会让「换成暖窗光」这类指令说不清指哪一个，内置和自建都不许撞名。
+    if ENTRIES.iter().any(|e| e.1 == name) {
+        return Err(format!("「{name}」是内置预设的名字，请换一个"));
+    }
+    if user_presets()
+        .iter()
+        .any(|p| p.name == name && Some(p.id.as_str()) != replace_id)
+    {
+        return Err(format!("已经有一个叫「{name}」的自建预设，请换一个"));
+    }
+
+    let preset = LightingPreset {
+        id: match replace_id {
+            Some(id) if is_user_preset(id) => id.to_string(),
+            Some(id) => return Err(format!("要覆盖的预设不存在：{id}")),
+            None => next_user_id(),
+        },
+        name: name.to_string(),
+        description: description.trim().to_string(),
+        mood,
+        params,
+        custom: true,
+    };
+
+    let mut list = USER_PRESETS.write().expect("自建光影预设锁被污染");
+    let existed = list.iter().position(|p| p.id == preset.id);
+    match existed {
+        Some(idx) => list[idx] = preset.clone(),
+        None => {
+            if list.len() >= MAX_USER_PRESETS {
+                return Err(format!("自建预设最多 {MAX_USER_PRESETS} 个，请先删掉一些"));
+            }
+            list.push(preset.clone());
+        },
+    }
+    drop(list);
+
+    write_user_presets()?;
+    Ok(preset)
+}
+
+/// 删除自建预设；内置预设删不掉，直接报错。
+pub fn delete_user_preset(id: &str) -> Result<(), String> {
+    if normalize_id(id).is_some() && !is_user_preset(id) {
+        return Err("内置预设不能删除".to_string());
+    }
+    let mut list = USER_PRESETS.write().expect("自建光影预设锁被污染");
+    let before = list.len();
+    list.retain(|p| p.id != id);
+    if list.len() == before {
+        return Err(format!("找不到自建预设：{id}"));
+    }
+    drop(list);
+    write_user_presets()
+}
+
+fn is_user_preset(id: &str) -> bool {
+    USER_PRESETS
+        .read()
+        .expect("自建光影预设锁被污染")
+        .iter()
+        .any(|p| p.id == id)
+}
+
+/// id 用毫秒时间戳：删掉再建也不会把旧 id 复用给另一个样子的灯。
+fn next_user_id() -> String {
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    format!("custom_{millis}")
+}
+
+fn write_user_presets() -> Result<(), String> {
+    let Some(path) = USER_PRESET_FILE.get() else {
+        return Err("自建光影预设还没完成初始化".to_string());
+    };
+    let list = USER_PRESETS.read().expect("自建光影预设锁被污染").clone();
+    let json = serde_json::to_string_pretty(&list).map_err(|e| e.to_string())?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("创建 {} 失败: {e}", parent.display()))?;
+    }
+    std::fs::write(path, json).map_err(|e| format!("写入 {} 失败: {e}", path.display()))
 }
 
 type Builder = fn() -> LightingParams;
@@ -810,8 +966,8 @@ const ENTRIES: &[(&str, &str, &str, &str, Builder)] = &[
     ),
 ];
 
-/// 全部预设（含完整参数）。
-pub fn presets() -> Vec<LightingPreset> {
+/// 内置预设（不含用户自建的那份）。
+fn builtin_presets() -> Vec<LightingPreset> {
     ENTRIES
         .iter()
         .map(|(id, name, desc, mood, build)| LightingPreset {
@@ -820,49 +976,48 @@ pub fn presets() -> Vec<LightingPreset> {
             description: (*desc).to_string(),
             mood: mood.split_whitespace().map(str::to_string).collect(),
             params: build(),
+            custom: false,
         })
         .collect()
 }
 
+/// 全部预设（含完整参数）：内置在前、自建在后，面板和 LLM 看到的是同一张表。
+pub fn presets() -> Vec<LightingPreset> {
+    let mut out = builtin_presets();
+    out.extend(user_presets());
+    out
+}
+
+/// 按 id 找预设，内置优先，再做大小写纠正。所有查询都走这里，避免各处规则不一致。
+fn find_preset(id: &str) -> Option<LightingPreset> {
+    let all = presets();
+    all.iter()
+        .find(|p| p.id == id)
+        .cloned()
+        .or_else(|| all.into_iter().find(|p| p.id.eq_ignore_ascii_case(id)))
+}
+
 /// 预设 id 列表（剧本编辑器下拉与校验共用）。
-pub fn preset_ids() -> Vec<&'static str> {
-    ENTRIES.iter().map(|e| e.0).collect()
+pub fn preset_ids() -> Vec<String> {
+    presets().into_iter().map(|p| p.id).collect()
 }
 
 /// 按 id 取预设参数；未知 id 返回 `None`。大小写不匹配时给出规范写法。
 pub fn resolve(id: &str) -> Option<LightingParams> {
-    ENTRIES
-        .iter()
-        .find(|e| e.0 == id)
-        .map(|e| (e.4)())
-        .or_else(|| {
-            ENTRIES
-                .iter()
-                .find(|e| e.0.eq_ignore_ascii_case(id))
-                .map(|e| (e.4)())
-        })
+    find_preset(id).map(|p| p.params)
 }
 
-/// 校验用：返回规范化后的预设名（大小写纠正），完全未知则 `None`。
-pub fn normalize_id(id: &str) -> Option<&'static str> {
-    if let Some(e) = ENTRIES.iter().find(|e| e.0 == id) {
-        return Some(e.0);
-    }
-    ENTRIES
-        .iter()
-        .find(|e| e.0.eq_ignore_ascii_case(id))
-        .map(|e| e.0)
+/// 校验用：返回规范化后的预设 id（大小写纠正），完全未知则 `None`。
+pub fn normalize_id(id: &str) -> Option<String> {
+    find_preset(id).map(|p| p.id)
 }
 
 /// 按 id 取展示名（如 `warm_window` → 「暖窗光」）。
 ///
 /// 回给 LLM 的状态要带名字：它判断「用户要的暖窗光是否已经在打」时用的是中文，
 /// 只给 id 就得再调一次 `lighting_list_presets` 才能对上。
-pub fn preset_name(id: &str) -> Option<&'static str> {
-    ENTRIES
-        .iter()
-        .find(|e| e.0 == id || e.0.eq_ignore_ascii_case(id))
-        .map(|e| e.1)
+pub fn preset_name(id: &str) -> Option<String> {
+    find_preset(id).map(|p| p.name)
 }
 
 /// 供 LLM / 插件读的轻量清单（不含参数，省 token）。
@@ -873,16 +1028,19 @@ pub struct PresetSummary {
     pub name: String,
     pub description: String,
     pub mood: Vec<String>,
+    /// 自建预设要标出来：用户说「我那个黄昏」时，LLM 知道这不是内置名
+    pub custom: bool,
 }
 
 pub fn summaries() -> Vec<PresetSummary> {
-    ENTRIES
-        .iter()
-        .map(|(id, name, desc, mood, _)| PresetSummary {
-            id: (*id).to_string(),
-            name: (*name).to_string(),
-            description: (*desc).to_string(),
-            mood: mood.split_whitespace().map(str::to_string).collect(),
+    presets()
+        .into_iter()
+        .map(|p| PresetSummary {
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            mood: p.mood,
+            custom: p.custom,
         })
         .collect()
 }
@@ -892,9 +1050,11 @@ mod tests {
     use super::super::scene_store::FilterParams;
     use super::*;
 
+    /// 内置表是编译期常量，读它的测试不该被别的测试临时塞进来的自建预设干扰。
     #[test]
     fn ids_are_unique() {
-        let mut ids: Vec<&str> = preset_ids();
+        let builtins = builtin_presets();
+        let mut ids: Vec<&str> = builtins.iter().map(|p| p.id.as_str()).collect();
         let total = ids.len();
         ids.sort_unstable();
         ids.dedup();
@@ -911,7 +1071,7 @@ mod tests {
 
     #[test]
     fn every_preset_serializes_with_all_fields() {
-        for preset in presets() {
+        for preset in builtin_presets() {
             let json = serde_json::to_value(&preset.params).unwrap();
             assert!(json.get("light_angle").is_some(), "{} 缺字段", preset.id);
             assert!(json.get("bloom_radius").is_some(), "{} 缺字段", preset.id);
@@ -931,7 +1091,7 @@ mod tests {
     /// 写反就会出现「窗在右上、阴影也压在右上」的裂开效果，所以钉死在一起。
     #[test]
     fn directional_angle_points_at_the_light() {
-        for preset in presets() {
+        for preset in builtin_presets() {
             let p = &preset.params;
             let delta = (p.light_angle - angle_toward_light(p.light_x, p.light_y)).abs();
             let delta = delta.min(360.0 - delta);
@@ -944,5 +1104,86 @@ mod tests {
                 p.light_y
             );
         }
+    }
+
+    /// 自建预设表是进程级全局，几个测试共用同一份，必须串行。
+    static USER_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn lock_user_presets() -> std::sync::MutexGuard<'static, ()> {
+        USER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 把落盘指向临时目录；`USER_PRESET_FILE` 是 OnceLock，首个测试设定后大家共用。
+    fn init_temp_store() {
+        let dir = std::env::temp_dir().join("lingchat_lighting_preset_test");
+        let _ = std::fs::create_dir_all(&dir);
+        load_user_presets(&dir);
+    }
+
+    fn sample_params() -> LightingParams {
+        let mut p = LightingParams::default();
+        p.overlay_enabled = true;
+        p.light_x = 80;
+        p.light_y = 20;
+        p.bloom_radius = 14;
+        p
+    }
+
+    #[test]
+    fn user_preset_shows_up_in_every_lookup() {
+        let _guard = lock_user_presets();
+        init_temp_store();
+        let saved = save_user_preset("测试黄昏", "", vec![], sample_params(), None)
+            .expect("自建预设应能保存");
+        assert!(saved.custom);
+        assert!(resolve(&saved.id).is_some(), "resolve 要认自建预设");
+        assert_eq!(preset_name(&saved.id).as_deref(), Some("测试黄昏"));
+        assert!(
+            summaries().iter().any(|s| s.id == saved.id && s.custom),
+            "LLM 拿到的清单里要带上自建预设，并标出不是内置的"
+        );
+        assert!(delete_user_preset(&saved.id).is_ok());
+        assert!(resolve(&saved.id).is_none(), "删掉后不该还能解析");
+    }
+
+    #[test]
+    fn user_preset_cannot_shadow_a_builtin_name() {
+        let _guard = lock_user_presets();
+        init_temp_store();
+        let name = builtin_presets()[0].name.clone();
+        let err = save_user_preset(&name, "", vec![], sample_params(), None)
+            .expect_err("和内置预设重名必须被拒绝");
+        assert!(err.contains("内置预设"), "报错要说明原因，实际: {err}");
+    }
+
+    #[test]
+    fn builtin_presets_are_read_only() {
+        let _guard = lock_user_presets();
+        init_temp_store();
+        assert!(
+            delete_user_preset("warm_window").is_err(),
+            "内置预设不能被删除"
+        );
+        assert!(
+            save_user_preset("覆盖测试", "", vec![], sample_params(), Some("warm_window")).is_err(),
+            "不能借 replace_id 改写内置预设"
+        );
+    }
+
+    #[test]
+    fn saving_with_replace_id_updates_in_place() {
+        let _guard = lock_user_presets();
+        init_temp_store();
+        let first = save_user_preset("改名前", "", vec![], sample_params(), None).unwrap();
+        let second = save_user_preset("改名后", "", vec![], sample_params(), Some(&first.id))
+            .expect("编辑自己的预设应该原地覆盖");
+        assert_eq!(first.id, second.id, "编辑不该换 id，否则面板选中的会跳掉");
+        assert_eq!(preset_name(&first.id).as_deref(), Some("改名后"));
+        assert_eq!(
+            user_presets().iter().filter(|p| p.id == first.id).count(),
+            1,
+            "覆盖后不能留两份"
+        );
+        delete_user_preset(&first.id).unwrap();
     }
 }

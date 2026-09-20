@@ -10,6 +10,80 @@ import type { FilterParams, LightingParams } from "@/api/services/scene";
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
+/**
+ * 光源位置 (0–100 %) → CSS 罗盘角 (0 = 正上方，顺时针)。
+ *
+ * 16:9 加权是为了让「同一个灯位」在横向铺满的舞台渐变里仍然指向亮侧。必须与
+ * Rust `lighting_store::angle_toward_light` 同一公式：方向光按 `light_angle` 铺
+ * 渐变、径向光斑按 `light_x/light_y` 画，两处对不上就会出现「窗在右上、阴影也压
+ * 在右上」的裂开效果（后端有测试钉住这条不变量）。
+ */
+export function angleTowardLight(x: number, y: number): number {
+  const a = (Math.atan2((x - 50) * 16, (50 - y) * 9) * 180) / Math.PI;
+  return a < 0 ? a + 360 : a;
+}
+
+/** 空白灯光：字段与取值对齐 Rust `LightingParams::default()` 的 serde default。 */
+export function blankFilter(): FilterParams {
+  return {
+    brightness: 1,
+    contrast: 1,
+    saturation: 1,
+    sepia: 0,
+    glow_radius: 0,
+    glow_color: "#ffaa33",
+    rim_enabled: false,
+    rim_color: "#ffd9a0",
+    rim_dx: 16,
+    rim_dy: -12,
+    rim_blur: 14,
+  };
+}
+
+export function blankLighting(): LightingParams {
+  return {
+    character: blankFilter(),
+    background: blankFilter(),
+    overlay_enabled: false,
+    blend_mode: "normal",
+    light_x: 50,
+    light_y: 50,
+    overlay_color1: "#ffb44b",
+    overlay_color2: "#18202e",
+    overlay_radius: 80,
+    overlay_opacity: 0.5,
+    overlay_target: "both",
+    directional_enabled: false,
+    light_angle: 315,
+    light_warm_color: "#ffd9a0",
+    shadow_cool_color: "#16233b",
+    light_softness: 0.55,
+    light_strength: 0.5,
+    bloom_enabled: false,
+    bloom_radius: 18,
+    bloom_intensity: 0.35,
+    vignette_enabled: false,
+    vignette_strength: 0.45,
+    vignette_size: 55,
+    grade_enabled: false,
+    grade_warm_color: "#ffb45e",
+    grade_cool_color: "#2a3f63",
+    grade_strength: 0.35,
+    breathing_enabled: false,
+    breathing_period: 7,
+    breathing_amount: 0.18,
+  };
+}
+
+/** 深拷贝一份来编辑：预设表里的参数是共享对象，不能就地改。 */
+export function cloneLighting(l: LightingParams): LightingParams {
+  return {
+    ...l,
+    character: { ...l.character },
+    background: { ...l.background },
+  };
+}
+
 /** 一个光影层：样式 + 可选动画类。 */
 export interface LightingLayer {
   style: CSSProperties;

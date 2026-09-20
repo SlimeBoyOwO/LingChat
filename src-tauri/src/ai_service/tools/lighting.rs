@@ -142,8 +142,7 @@ impl Tool for LightingGet {
         let active_preset = gs.lighting_active_preset.clone();
         let active_name = active_preset
             .as_deref()
-            .and_then(lighting_store::preset_name)
-            .map(str::to_string);
+            .and_then(lighting_store::preset_name);
         Ok(json!({
             // 屏幕上真正在渲染的灯，前端算好后回传
             "active_preset": active_preset,

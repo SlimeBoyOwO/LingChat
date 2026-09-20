@@ -17,7 +17,11 @@
 import { defineStore } from "pinia";
 import { watch } from "vue";
 
-import { listLightingPresets, reportLightingActive } from "@/api/services/lighting";
+import {
+  deleteLightingPreset,
+  listLightingPresets,
+  reportLightingActive,
+} from "@/api/services/lighting";
 import type { LightingChangePayload, LightingPreset } from "@/api/services/lighting";
 import type { LightingParams } from "@/api/services/scene";
 import { planLighting } from "@/utils/lighting";
@@ -109,6 +113,25 @@ export const useLightingStore = defineStore("lighting", {
         this.presetsLoaded = false;
         console.warn("[Lighting] 预设列表加载失败:", e);
       }
+    },
+
+    /** 自建预设增删后强制重取，让面板卡片和 AI 的工具返回值立刻一致。 */
+    async refreshPresets() {
+      this.presets = await listLightingPresets();
+      this.presetsLoaded = true;
+    },
+
+    /**
+     * 删掉一个自建预设。
+     *
+     * 如果它正被当成全局预设用，必须一并清成「跟随场景」：留着失效 id 会让
+     * `activePresetId` 报出一个不存在的灯，上报给后端的就是假状态。
+     */
+    async removePreset(id: string) {
+      await deleteLightingPreset(id);
+      const settings = useSettingsStore();
+      if (settings.lighting.globalPreset === id) settings.updateLighting({ globalPreset: "" });
+      await this.refreshPresets();
     },
 
     /** 收到 `lighting:change` / `script:lighting` 广播。params 为 null 即清回跟随场景。 */

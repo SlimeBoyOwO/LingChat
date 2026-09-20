@@ -57,7 +57,7 @@ pub fn resolve_request(
     let preset = requested
         .preset
         .as_deref()
-        .map(|raw| lighting_store::normalize_id(raw).unwrap_or(raw).to_string());
+        .map(|raw| lighting_store::normalize_id(raw).unwrap_or_else(|| raw.to_string()));
     Ok((preset, params))
 }
 
@@ -160,6 +160,42 @@ pub struct LightingState {
 #[tauri::command]
 pub async fn lighting_list_presets() -> Result<Vec<LightingPreset>, String> {
     Ok(lighting_store::presets())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveLightingPresetRequest {
+    /// 展示名，对话里就说这个名字换灯
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// 适用心情关键词，给 LLM 匹配用；留空就是只能手动选
+    #[serde(default)]
+    pub mood: Vec<String>,
+    pub params: LightingParams,
+    /// 有值 = 覆盖这个已有的自建预设（编辑后保存），None = 新建
+    #[serde(default)]
+    pub replace_id: Option<String>,
+}
+
+/// 保存自建光影预设（新建或覆盖）。
+#[tauri::command]
+pub async fn lighting_preset_save(
+    req: SaveLightingPresetRequest,
+) -> Result<LightingPreset, String> {
+    lighting_store::save_user_preset(
+        &req.name,
+        &req.description,
+        req.mood,
+        req.params,
+        req.replace_id.as_deref(),
+    )
+}
+
+/// 删除自建光影预设；内置预设删不掉。
+#[tauri::command]
+pub async fn lighting_preset_delete(id: String) -> Result<(), String> {
+    lighting_store::delete_user_preset(&id)
 }
 
 #[tauri::command]
