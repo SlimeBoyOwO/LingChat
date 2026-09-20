@@ -784,7 +784,8 @@ export async function mountFlyBrain(root, options) {
     "uFogK",
     "uSunUp",
   ]);
-  const grassVao = (() => {
+  /* 草叶两张地图各一份实例缓冲（神社避让参道/高台，牧场只避池塘），切换瞬时无卡顿 */
+  function buildGrassVao(excludeShrine) {
     const vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
     const quad = new Float32Array([-0.5, 0, 0.5, 0, 0, 1]);
@@ -802,8 +803,10 @@ export async function mountFlyBrain(root, options) {
       const r = Math.hypot(x, z);
       if (r > 46 || Math.random() > 1 - (r / 46) * (r / 46) * 0.72) continue;
       if (Math.hypot(x - POND.x, z - POND.z) < POND.r + 1.5) continue; // 塘里不长草
-      if (Math.abs(x) < 1.8 && Math.abs(z) < 33) continue; // 参道不长草
-      if (Math.abs(x) < 7.5 && z < -22 && z > -37.5) continue; // 社殿高台不长草
+      if (excludeShrine) {
+        if (Math.abs(x) < 1.8 && Math.abs(z) < 33) continue; // 参道不长草
+        if (Math.abs(x) < 7.5 && z < -22 && z > -37.5) continue; // 社殿高台不长草
+      }
       const o = placed * 7;
       inst[o] = x;
       inst[o + 1] = heightAt(x, z) - 0.03;
@@ -825,7 +828,9 @@ export async function mountFlyBrain(root, options) {
     gl.vertexAttribDivisor(2, 1);
     gl.bindVertexArray(null);
     return vao;
-  })();
+  }
+  const grassVaoShrine = buildGrassVao(true),
+    grassVaoPasture = buildGrassVao(false);
 
   /* ================= 程序化贴图集（团子/赛钱箱/竹/松/樱花/石头/雾带/荷叶/荷花/灯晕） ================= */
   const ATLAS = 512;
@@ -843,6 +848,7 @@ export async function mountFlyBrain(root, options) {
     glow: [384, 128, 64, 64],
     mist: [0, 256, 256, 64],
     lotusLeaf: [256, 256, 64, 64],
+    peachTree: [0, 320, 128, 128], // 牧场地图用：094091f7 旧版普通粉花桃树
   };
   function uvRect(x, y, w, h) {
     return [x / ATLAS, 1 - (y + h) / ATLAS, (x + w) / ATLAS, 1 - y / ATLAS];
@@ -1062,6 +1068,40 @@ export async function mountFlyBrain(root, options) {
     softBlob(32, 32, 26, 26, "rgba(255,236,180,A)", 0.95);
     softBlob(32, 32, 12, 12, "rgba(255,250,230,A)", 0.95);
     c.restore();
+    /* 桃树（牧场地图）：094091f7 旧版普通粉花 */
+    c.save();
+    c.translate(0, 320);
+    c.strokeStyle = "#6b4a36";
+    c.lineWidth = 8;
+    c.lineCap = "round";
+    c.beginPath();
+    c.moveTo(64, 128);
+    c.quadraticCurveTo(60, 100, 64, 82);
+    c.stroke();
+    c.lineWidth = 5;
+    c.beginPath();
+    c.moveTo(64, 96);
+    c.quadraticCurveTo(48, 88, 42, 74);
+    c.stroke();
+    c.beginPath();
+    c.moveTo(64, 92);
+    c.quadraticCurveTo(80, 86, 86, 72);
+    c.stroke();
+    const peachBloom = (x, y, r, col) => softBlob(x, y, r, r * 0.85, col, 0.95);
+    peachBloom(46, 62, 22, "rgba(255,178,204,A)");
+    peachBloom(82, 58, 24, "rgba(255,194,214,A)");
+    peachBloom(64, 44, 24, "rgba(255,214,228,A)");
+    peachBloom(56, 76, 18, "rgba(255,158,196,A)");
+    peachBloom(78, 80, 16, "rgba(255,178,204,A)");
+    c.fillStyle = "rgba(255,255,255,0.85)";
+    for (let i = 0; i < 14; i++) {
+      const a = hash2(i, 7) * Math.PI * 2,
+        r = 8 + hash2(i, 13) * 22;
+      c.beginPath();
+      c.arc(64 + Math.cos(a) * r, 58 + (hash2(i, 29) - 0.5) * 36, 1.6, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.restore();
     /* 石头（山水点缀） */
     c.save();
     c.translate(128, 128);
@@ -1209,31 +1249,34 @@ export async function mountFlyBrain(root, options) {
   }
   const spriteData = new Float32Array(MAX_SPRITES * 13);
 
-  /* 装饰：竹丛 / 松树 / 桃树 / 石头 + 塘中荷叶荷花（静态） */
+  /* 装饰：两张地图各建一份静态集合（神社避让参道/高台/鸟居，牧场只避池塘），初始化都建好，切换只换引用 */
   const UV = {};
   for (const k of Object.keys(REG)) UV[k] = uvRect(...REG[k]);
-  const decor = [];
-  {
-    const clearOfPond = (x, z, margin) => Math.hypot(x - POND.x, z - POND.z) > POND.r + margin;
-    // 参道 / 社殿高台 / 鸟居一带不种树
-    const clearOfShrine = (x, z) =>
-      !(Math.abs(x) < 4.2 && z > -35 && z < 34) && !(Math.abs(x) < 8.5 && z < -22);
-    const scatter = (count, rMin, rMax) => {
-      const out = [];
-      let guard = 0;
-      while (out.length < count && guard++ < count * 30) {
-        const a = Math.random() * Math.PI * 2,
-          r = rMin + Math.random() * (rMax - rMin);
-        const x = Math.cos(a) * r,
-          z = Math.sin(a) * r;
-        if (!clearOfPond(x, z, 3) || !clearOfShrine(x, z)) continue;
-        out.push([x, z]);
-      }
-      return out;
-    };
-    for (const [i, [x, z]] of scatter(4, 12, 40).entries()) {
+  let mapKind = "shrine"; // 神社（默认）/ 牧场（青绿牧场，094091f7 旧版装饰恢复）
+  try {
+    mapKind = localStorage.getItem("flyBrainMap") === "pasture" ? "pasture" : "shrine";
+  } catch (_) {}
+  const clearOfPond = (x, z, margin) => Math.hypot(x - POND.x, z - POND.z) > POND.r + margin;
+  const inShrineZone = (x, z) =>
+    (Math.abs(x) < 4.2 && z > -35 && z < 34) || (Math.abs(x) < 8.5 && z < -22); // 参道/高台/鸟居
+  const scatter = (count, rMin, rMax, avoidShrine) => {
+    const out = [];
+    let guard = 0;
+    while (out.length < count && guard++ < count * 30) {
+      const a = Math.random() * Math.PI * 2,
+        r = rMin + Math.random() * (rMax - rMin);
+      const x = Math.cos(a) * r,
+        z = Math.sin(a) * r;
+      if (!clearOfPond(x, z, 3)) continue;
+      if (avoidShrine && inShrineZone(x, z)) continue;
+      out.push([x, z]);
+    }
+    return out;
+  };
+  const pushPlants = (out, sc, treeUv) => {
+    for (const [i, [x, z]] of sc(4, 12, 40).entries()) {
       const h = 4.2 + Math.random();
-      decor.push({
+      out.push({
         x,
         y: heightAt(x, z) + h * 0.48,
         z,
@@ -1244,9 +1287,9 @@ export async function mountFlyBrain(root, options) {
         sway: 0.07,
       });
     }
-    for (const [i, [x, z]] of scatter(3, 14, 42).entries()) {
+    for (const [i, [x, z]] of sc(3, 14, 42).entries()) {
       const h = 4.0 + Math.random() * 0.8;
-      decor.push({
+      out.push({
         x,
         y: heightAt(x, z) + h * 0.47,
         z,
@@ -1257,23 +1300,22 @@ export async function mountFlyBrain(root, options) {
         sway: 0.03,
       });
     }
-    /* 樱花树：参道入口两侧成对 + 散植 */
-    for (const [i, [x, z]] of [[-5.2, 26.5], [5.2, 26.5], ...scatter(3, 12, 38)].entries()) {
+    for (const [i, [x, z]] of sc(3, 10, 38).entries()) {
       const h = 3.6 + Math.random() * 0.6;
-      decor.push({
+      out.push({
         x,
         y: heightAt(x, z) + h * 0.46,
         z,
         w: 3.6,
         h,
-        uv: UV.sakura,
+        uv: treeUv,
         phase: i * 3.1,
         sway: 0.05,
       });
     }
-    for (const [i, [x, z]] of scatter(3, 8, 40).entries()) {
+    for (const [i, [x, z]] of sc(3, 8, 40).entries()) {
       const s = 1.0 + Math.random() * 0.9;
-      decor.push({
+      out.push({
         x,
         y: heightAt(x, z) + s * 0.34,
         z,
@@ -1284,13 +1326,15 @@ export async function mountFlyBrain(root, options) {
         sway: 0,
       });
     }
-    // 塘面荷叶与一朵荷花
+  };
+  const pushPondDecor = (out) => {
+    // 塘面荷叶与一朵荷花（两张地图共享）
     for (let i = 0; i < 5; i++) {
       const a = hash2(i, 31) * Math.PI * 2,
         r = 1.5 + hash2(i, 37) * (WATER_R - 3);
       const x = POND.x + Math.cos(a) * r,
         z = POND.z + Math.sin(a) * r;
-      decor.push({
+      out.push({
         x,
         y: WATER_Y + 0.06,
         z,
@@ -1301,7 +1345,7 @@ export async function mountFlyBrain(root, options) {
         sway: 0.015,
       });
     }
-    decor.push({
+    out.push({
       x: POND.x + 2.2,
       y: WATER_Y + 0.42,
       z: POND.z - 1.4,
@@ -1311,7 +1355,38 @@ export async function mountFlyBrain(root, options) {
       phase: 4.4,
       sway: 0.03,
     });
+  };
+  function buildDecorShrine() {
+    const out = [];
+    pushPlants(out, (c, a, b) => scatter(c, a, b, true), UV.sakura);
+    // 樱花树：参道入口两侧成对
+    for (const [i, [x, z]] of [
+      [-5.2, 26.5],
+      [5.2, 26.5],
+    ].entries()) {
+      const h = 3.6 + i * 0.2;
+      out.push({
+        x,
+        y: heightAt(x, z) + h * 0.46,
+        z,
+        w: 3.6,
+        h,
+        uv: UV.sakura,
+        phase: 9 + i * 1.7,
+        sway: 0.05,
+      });
+    }
+    pushPondDecor(out);
+    return out;
   }
+  function buildDecorPasture() {
+    const out = [];
+    pushPlants(out, (c, a, b) => scatter(c, a, b, false), UV.peachTree); // 牧场用回旧版粉花桃树
+    pushPondDecor(out);
+    return out;
+  }
+  const decorSets = { shrine: buildDecorShrine(), pasture: buildDecorPasture() };
+  let decor = decorSets[mapKind];
   /* 山间雾带（缓慢环场漂移，每帧更新位置） */
   const mists = [];
   for (let i = 0; i < 9; i++) {
@@ -2234,6 +2309,17 @@ export async function mountFlyBrain(root, options) {
     e.stopPropagation(); // 别触发小窗 canvas 的拖拽
     if (brain) $("#brainMode").textContent = brain.toggleMode();
   });
+  /* 双地图切换：神社（默认）/ 牧场，选择存 localStorage */
+  function setMap(kind) {
+    mapKind = kind;
+    try {
+      localStorage.setItem("flyBrainMap", kind);
+    } catch (_) {}
+    $("#btnMap").textContent = `地图 ${kind === "shrine" ? "神社" : "牧场"}`;
+    decor = decorSets[kind];
+  }
+  on($("#btnMap"), "click", () => setMap(mapKind === "shrine" ? "pasture" : "shrine"));
+  setMap(mapKind);
   on($("#btnRestart"), "click", () => control({ cmd: "restart" }));
   on($("#btnExit"), "click", () => {
     destroy();
@@ -2413,9 +2499,11 @@ export async function mountFlyBrain(root, options) {
     gl.drawElements(gl.TRIANGLES, mountainVao.count, gl.UNSIGNED_SHORT, 0);
     gl.bindVertexArray(terrainVao.vao);
     gl.drawElements(gl.TRIANGLES, terrainVao.count, gl.UNSIGNED_SHORT, 0);
-    /* 博丽神社（本殿/鸟居/参道/石灯笼，静态单次 draw） */
-    gl.bindVertexArray(shrineGeo.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, shrineGeo.count);
+    /* 博丽神社（本殿/鸟居/参道/石灯笼，静态单次 draw，仅神社地图） */
+    if (mapKind === "shrine") {
+      gl.bindVertexArray(shrineGeo.vao);
+      gl.drawArrays(gl.TRIANGLES, 0, shrineGeo.count);
+    }
     /* 灵梦身体（刚体汤 + 袖/腿/缎带，CPU 逐帧变换后整体上传，一次 draw） */
     gl.bindBuffer(gl.ARRAY_BUFFER, flyVbo);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, flyBuf, 0, flyFloats);
@@ -2442,7 +2530,7 @@ export async function mountFlyBrain(root, options) {
     gl.uniform3fv(grassU.uFogColor, pal.hor);
     gl.uniform1f(grassU.uFogK, FOG_K);
     gl.uniform1f(grassU.uSunUp, sunDir[1]);
-    gl.bindVertexArray(grassVao);
+    gl.bindVertexArray(mapKind === "shrine" ? grassVaoShrine : grassVaoPasture);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, GRASS_N);
 
     /* 透明通道：水面 → 广告牌精灵 → 膜翅 → 萤火虫 */
@@ -2481,20 +2569,21 @@ export async function mountFlyBrain(root, options) {
       });
     }
     for (const f of foodSprites) sprites.push({ ...f, alpha: 1, rot: 0 });
-    /* 石灯笼暖光晕：仅夜晚点亮，轻微闪烁 */
-    for (const g of lanternGlows)
-      sprites.push({
-        x: g.x,
-        y: g.y,
-        z: g.z,
-        w: 1.15,
-        h: 1.15,
-        uv: UV.glow,
-        phase: g.phase,
-        sway: 0,
-        alpha: pal.night * (0.5 + 0.18 * Math.sin(t * 2.6 + g.phase)),
-        rot: 0,
-      });
+    /* 石灯笼暖光晕：仅神社地图、仅夜晚点亮，轻微闪烁 */
+    if (mapKind === "shrine")
+      for (const g of lanternGlows)
+        sprites.push({
+          x: g.x,
+          y: g.y,
+          z: g.z,
+          w: 1.15,
+          h: 1.15,
+          uv: UV.glow,
+          phase: g.phase,
+          sway: 0,
+          alpha: pal.night * (0.5 + 0.18 * Math.sin(t * 2.6 + g.phase)),
+          rot: 0,
+        });
     const fwd = [-view[2], -view[6], -view[10]];
     for (const s of sprites)
       s.depth = (s.x - eye[0]) * fwd[0] + (s.y - eye[1]) * fwd[1] + (s.z - eye[2]) * fwd[2];
