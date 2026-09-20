@@ -8,10 +8,15 @@
 //!   世界从 tod=0.3（上午）开始；
 //! - 食物：4 个蜜源（花/果，kind 0/1），种子化随机散布（StdRng 固定种子），被吃后
 //!   200~400 tick（随机）原地重生；
-//! - 每 tick：构造 percepts（最近食物方位 ±30° 锥 = front 否则 left/right；距边界
-//!   <5 时按外法线方位给 danger；hunger 递增、白天 ×1.5）→ BrainIO 编码注入 →
-//!   150 步仿真 → BrainIO decide 读出转向（±0.35 rad/tick）→ speed = 基础速 ×
-//!   (0.5+DN 总放电归一) × energy 系数 → 移动并 clamp 在圆盘内；
+//! - 每 tick：构造 percepts（最近食物方位 ±30° 锥 = front，其余按转向较短一侧
+//!   给 left/right（含正后方，无方向死角）；距边界 <5 时按外法线方位给 danger；
+//!   hunger 递增、白天 ×1.5）→ BrainIO 编码注入 → 150 步仿真 → BrainIO decide
+//!   读出转向（±0.35 rad/tick）→ speed = 基础速 × (0.5+DN 总放电归一) × energy
+//!   系数 → 移动并 clamp 在圆盘内；
+//! - 打转修复（与原作者 README 的现象分析一致）：本 tick 既无食物方位也无危险时
+//!   （encode 只注入了对称光照电流，decide 被 DN 残余基线不对称主导会每 tick
+//!   同向偏转），忽略 DN 转向输出——直行 + ±0.05 rad 低频漫游摆动（种子确定性），
+//!   呈现悠闲巡航而非原地打转；有感知时保留原 MARGIN 判定；
 //! - 光照注入：白天给左右视觉群加 ∝ max(0,sun_elevation)×0.5 的电流（昼夜节律），
 //!   夜间无注入脑更安静；
 //! - 进食：距食物 <2.0 → reward(1.0)、hunger=0、eating 2 tick、食物进入重生计时；
@@ -55,6 +60,9 @@ const LIGHT_CURR_FACTOR: f32 = 0.5; // 光照注入电流系数
 const FOOD_RESPAWN_MIN: u32 = 200; // 食物重生最短 tick
 const FOOD_RESPAWN_SPAN: u32 = 200; // 重生随机跨度（200~400）
 const EVENT_CAP: usize = 8; // 事件日志保留条数
+// ---- 无感知巡航（打转修复）----
+const WANDER_AMP: f32 = 0.05; // 漫游摆动幅度（rad/tick，远小于 TURN_RATE）
+const WANDER_PERIOD: f32 = 53.0; // 漫游摆动周期（tick，低频正弦）
 
 /// 果蝇状态（snapshot 序列化为小写字符串）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,7 +94,8 @@ pub struct Food {
     pub z: f32,
     pub kind: u8,
     pub available: bool,
-    respawn_at: u64,
+    /// 重生 tick（仅 available=false 时有意义；测试可覆写以控制窗口）。
+    pub respawn_at: u64,
 }
 
 /// 果蝇本体。
@@ -123,6 +132,11 @@ pub struct FlyLife {
     event_seq: u64,
     /// 本 tick 的食物方位输入（foraging 判定用；build_drive 时更新）。
     food_rel: Option<Rel>,
+    /// 本 tick 是否有方向性感知（食物方位或危险；build_drive 时更新）。
+    /// false 时忽略 DN 转向输出（打转修复，见 advance 注释）。
+    had_percept: bool,
+    /// 漫游摆动相位（种子派生，确定性）。
+    wander_phase: f32,
 }
 
 impl FlyLife {
@@ -146,9 +160,12 @@ impl FlyLife {
             events: VecDeque::with_capacity(EVENT_CAP + 1),
             event_seq: 0,
             food_rel: None,
+            had_percept: false,
+            wander_phase: 0.0,
         };
         life.scatter_foods();
         life.fly.heading = life.rng.gen_range(0.0..TAU);
+        life.wander_phase = life.rng.gen_range(0.0..TAU);
         life
     }
 
@@ -197,6 +214,11 @@ impl FlyLife {
         self.food_rel
     }
 
+    /// 本 tick 是否有方向性感知（build_drive 时更新；打转修复的判定依据）。
+    pub fn had_percept(&self) -> bool {
+        self.had_percept
+    }
+
     // ---- 感知 ----
     /// 最近的可用蜜源：(食物索引, 距离)。
     fn nearest_food(&self) -> Option<(usize, f32)> {
@@ -213,7 +235,9 @@ impl FlyLife {
         best
     }
 
-    /// 世界向量 (dx,dz) 相对朝向的方位：前方 ±30° = front，否则左/右。
+    /// 世界向量 (dx,dz) 相对朝向的方位：前方 ±30° = front，其余按符号给左/右。
+    /// 正后方锥区不置 None：按「转向较短一侧」给 Left/Right（rel>0 左转更近、
+    /// rel<0 右转更近），保证任何方位都有明确方向输入，消灭打转死角。
     fn rel_side(&self, dx: f32, dz: f32) -> Rel {
         let mut rel = dz.atan2(dx) - self.fly.heading;
         while rel > PI {
@@ -247,24 +271,29 @@ impl FlyLife {
 
     /// 构造本 tick 的注入电流（percepts 编码 + 光照注入）。
     /// sleeping 完全不注入；eating/resting 只保留光照（无觅食/避险转向输入）。
+    /// 顺带维护 `had_percept`：本 tick 是否有方向性感知（食物方位或危险）。
     pub fn build_drive(&mut self, io: &BrainIO) -> Vec<(u32, f32)> {
         if self.fly.state == FlyState::Sleeping {
             self.food_rel = None;
+            self.had_percept = false;
             return Vec::new();
         }
         let elev = self.sun_elevation();
         let grounded = matches!(self.fly.state, FlyState::Eating | FlyState::Resting);
         let mut drive = if grounded {
             self.food_rel = None;
+            self.had_percept = false;
             Vec::new()
         } else {
             let food_rel = self.nearest_food().map(|(i, _)| {
                 self.rel_side(self.foods[i].x - self.fly.x, self.foods[i].z - self.fly.z)
             });
+            let danger = self.boundary_danger();
             self.food_rel = food_rel;
+            self.had_percept = food_rel.is_some() || danger.front || danger.left || danger.right;
             let percepts = Percepts {
                 food_rel,
-                danger: self.boundary_danger(),
+                danger,
                 steps: self.tick,
                 hunger: self.fly.hunger as i64,
             };
@@ -301,10 +330,22 @@ impl FlyLife {
 
         // 1) 转向（仅飞行状态；action 1=左转, 2=右转, 0=直行）
         if airborne {
-            match action {
-                1 => self.fly.heading += TURN_RATE,
-                2 => self.fly.heading -= TURN_RATE,
-                _ => {},
+            if self.had_percept {
+                // 有方向性感知：采信 DN 读出（MARGIN 死区判定保留在 BrainIO::decide，
+                // 与 snake.py 一致，此处不误用/不重复判定）
+                match action {
+                    1 => self.fly.heading += TURN_RATE,
+                    2 => self.fly.heading -= TURN_RATE,
+                    _ => {},
+                }
+            } else {
+                // 无感知（既无食物方位也无危险）：encode 只注入了对称光照电流，
+                // decide() 会被 DN 左右群的残余基线不对称主导，每 tick 同向转
+                // TURN_RATE → 原地打转（与原作者 README 记载的现象一致）。
+                // 忽略 DN 转向输出：直行，并叠加低频平滑漫游摆动（±WANDER_AMP），
+                // 呈现为悠闲巡航而非打转。
+                self.fly.heading += WANDER_AMP
+                    * (TAU * (self.tick as f32 / WANDER_PERIOD) + self.wander_phase).sin();
             }
             self.fly.heading = self.fly.heading.rem_euclid(TAU);
         }

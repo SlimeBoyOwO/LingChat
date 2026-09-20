@@ -1560,7 +1560,13 @@ export async function mountFlyBrain(root, options) {
 
   /* ================= 左上角「果蝇大脑」小窗（复活 f25008a6 点云渲染器，独立 GL 上下文） ================= */
   function createBrainView(cv) {
-    const bgl = cv.getContext("webgl2", { antialias: true, alpha: false });
+    // alpha:true + 非预乘 compositing：加法混合下 alpha 会随点亮累积（点中心≈1、间隙=0），
+    // 用 premultipliedAlpha:false 让页面合成按非预乘处理，点色不被 alpha 二次压暗/截断
+    const bgl = cv.getContext("webgl2", {
+      antialias: true,
+      alpha: true,
+      premultipliedAlpha: false,
+    });
     if (!bgl) return null;
     const SC_COLOR = {
       optic: "#1f77b4",
@@ -1669,7 +1675,7 @@ export async function mountFlyBrain(root, options) {
       bgl.bindVertexArray(null);
       bgl.enable(bgl.BLEND);
       bgl.blendFunc(bgl.SRC_ALPHA, bgl.ONE);
-      bgl.clearColor(0.05, 0.05, 0.1, 1.0);
+      bgl.clearColor(0, 0, 0, 0); // 透明底，透出毛玻璃面板
       bgl.viewport(0, 0, cv.width, cv.height);
       ready = true;
     }
