@@ -48,6 +48,10 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
     ),
     ("character", &["character_list", "character_switch"]),
     ("scene", &["scene_list", "scene_switch"]),
+    (
+        "lighting",
+        &["lighting_list_presets", "lighting_apply", "lighting_get"],
+    ),
     ("status", &["status_get_current", "status_get_scene"]),
     ("clock", &["get_current_time"]),
     ("skills", &["list_skills", "read_skill"]),

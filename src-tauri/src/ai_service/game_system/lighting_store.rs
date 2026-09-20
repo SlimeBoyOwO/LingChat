@@ -25,10 +25,13 @@ pub struct LightingPreset {
 type Builder = fn() -> LightingParams;
 
 /// 「暖高光 + 冷阴影 + 柔 bloom + 轻暗角」——多数 eden 室内场景的公共底子。
+///
+/// 叠加层用 `screen`：光应该往画面上「加」，`soft-light` / `overlay` 配深色外圈
+/// 会变成整幅压暗，看着像关灯不像打光。外圈颜色写 #000000 即可，screen 对黑色恒等。
 fn eden_base() -> LightingParams {
     let mut p = LightingParams::default();
     p.overlay_enabled = true;
-    p.blend_mode = "soft-light".into();
+    p.blend_mode = "screen".into();
     p.directional_enabled = true;
     p.bloom_enabled = true;
     p.vignette_enabled = true;
@@ -39,33 +42,33 @@ fn eden_base() -> LightingParams {
 
 fn warm_window() -> LightingParams {
     let mut p = eden_base();
-    p.background.brightness = 0.94;
-    p.background.contrast = 1.12;
-    p.background.saturation = 0.92;
-    p.character.brightness = 1.04;
+    p.background.brightness = 0.95;
+    p.background.contrast = 1.15;
+    p.background.saturation = 0.98;
+    p.character.brightness = 1.02;
     p.character.contrast = 1.06;
     p.light_x = 74;
     p.light_y = 26;
     p.overlay_color1 = "#ffd9a0".into();
-    p.overlay_color2 = "#1b2540".into();
-    p.overlay_radius = 88;
-    p.overlay_opacity = 0.5;
-    p.light_angle = 232.0;
+    p.overlay_color2 = "#000000".into();
+    p.overlay_radius = 34;
+    p.overlay_opacity = 0.24;
+    p.light_angle = 60.6;
     p.light_warm_color = "#ffd7a1".into();
-    p.shadow_cool_color = "#152238".into();
-    p.light_softness = 0.62;
-    p.light_strength = 0.55;
-    p.bloom_radius = 20;
-    p.bloom_intensity = 0.3;
-    p.vignette_strength = 0.42;
-    p.vignette_size = 54;
-    p.grade_warm_color = "#ffc887".into();
-    p.grade_cool_color = "#3f5c86".into();
-    p.grade_strength = 0.3;
-    p.character.rim_color = "#ffe3b8".into();
-    p.character.rim_dx = 14;
-    p.character.rim_dy = -10;
-    p.character.rim_blur = 13;
+    p.shadow_cool_color = "#6d82a6".into();
+    p.light_softness = 0.34;
+    p.light_strength = 0.2;
+    p.bloom_radius = 12;
+    p.bloom_intensity = 0.14;
+    p.vignette_strength = 0.32;
+    p.vignette_size = 60;
+    p.grade_warm_color = "#ff8a00".into();
+    p.grade_cool_color = "#5277ad".into();
+    p.grade_strength = 0.42;
+    p.character.rim_color = "rgba(255,227,184,0.85)".into();
+    p.character.rim_dx = 6;
+    p.character.rim_dy = -5;
+    p.character.rim_blur = 8;
     p.breathing_enabled = true;
     p.breathing_period = 9.0;
     p.breathing_amount = 0.1;
@@ -85,18 +88,18 @@ fn backlight_silhouette() -> LightingParams {
     p.overlay_color1 = "#fff0cf".into();
     p.overlay_color2 = "#101a2c".into();
     p.overlay_radius = 52;
-    p.overlay_opacity = 0.62;
+    p.overlay_opacity = 0.31;
     p.light_angle = 0.0;
     p.light_warm_color = "#ffeec2".into();
     p.shadow_cool_color = "#0c1524".into();
     p.light_softness = 0.4;
-    p.light_strength = 0.66;
+    p.light_strength = 0.30;
     p.bloom_radius = 30;
-    p.bloom_intensity = 0.46;
+    p.bloom_intensity = 0.23;
     p.vignette_strength = 0.6;
     p.vignette_size = 40;
-    p.grade_warm_color = "#ffdca6".into();
-    p.grade_cool_color = "#22314c".into();
+    p.grade_warm_color = "#ff9b00".into();
+    p.grade_cool_color = "#4f72b0".into();
     p.grade_strength = 0.36;
     p.character.rim_color = "#fff3d6".into();
     p.character.rim_dx = 0;
@@ -117,18 +120,18 @@ fn moonlit_night() -> LightingParams {
     p.overlay_color1 = "#cfe3ff".into();
     p.overlay_color2 = "#070d1a".into();
     p.overlay_radius = 70;
-    p.overlay_opacity = 0.5;
-    p.light_angle = 208.0;
+    p.overlay_opacity = 0.25;
+    p.light_angle = 57.3;
     p.light_warm_color = "#d7e8ff".into();
     p.shadow_cool_color = "#050b16".into();
     p.light_softness = 0.68;
-    p.light_strength = 0.5;
+    p.light_strength = 0.23;
     p.bloom_radius = 26;
-    p.bloom_intensity = 0.26;
+    p.bloom_intensity = 0.13;
     p.vignette_strength = 0.62;
     p.vignette_size = 42;
-    p.grade_warm_color = "#9fc0e8".into();
-    p.grade_cool_color = "#16233d".into();
+    p.grade_warm_color = "#3178ce".into();
+    p.grade_cool_color = "#446cbb".into();
     p.grade_strength = 0.34;
     p.character.rim_color = "#d9e9ff".into();
     p.character.rim_dx = 12;
@@ -150,19 +153,19 @@ fn dusk_sunset() -> LightingParams {
     p.light_y = 62;
     p.overlay_color1 = "#ffb26b".into();
     p.overlay_color2 = "#2b1a3a".into();
-    p.overlay_radius = 92;
-    p.overlay_opacity = 0.56;
-    p.light_angle = 118.0;
+    p.overlay_radius = 74;
+    p.overlay_opacity = 0.28;
+    p.light_angle = 256.4;
     p.light_warm_color = "#ffb877".into();
     p.shadow_cool_color = "#2a1c3e".into();
     p.light_softness = 0.6;
-    p.light_strength = 0.6;
+    p.light_strength = 0.27;
     p.bloom_radius = 24;
-    p.bloom_intensity = 0.38;
+    p.bloom_intensity = 0.19;
     p.vignette_strength = 0.4;
     p.vignette_size = 56;
-    p.grade_warm_color = "#ffa86b".into();
-    p.grade_cool_color = "#4a3a72".into();
+    p.grade_warm_color = "#ff6900".into();
+    p.grade_cool_color = "#6c53ac".into();
     p.grade_strength = 0.4;
     p.character.rim_color = "#ffcf9a".into();
     p.character.rim_dx = -16;
@@ -183,18 +186,18 @@ fn candlelight() -> LightingParams {
     p.overlay_color1 = "#ffc072".into();
     p.overlay_color2 = "#0d0a12".into();
     p.overlay_radius = 46;
-    p.overlay_opacity = 0.66;
+    p.overlay_opacity = 0.33;
     p.light_angle = 180.0;
     p.light_warm_color = "#ffc27a".into();
     p.shadow_cool_color = "#0a0710".into();
     p.light_softness = 0.34;
-    p.light_strength = 0.62;
+    p.light_strength = 0.28;
     p.bloom_radius = 22;
-    p.bloom_intensity = 0.34;
+    p.bloom_intensity = 0.17;
     p.vignette_strength = 0.7;
     p.vignette_size = 34;
-    p.grade_warm_color = "#ffae5c".into();
-    p.grade_cool_color = "#241a2e".into();
+    p.grade_warm_color = "#ff8000".into();
+    p.grade_cool_color = "#8053ac".into();
     p.grade_strength = 0.32;
     p.character.rim_color = "#ffcf94".into();
     p.character.rim_dx = 0;
@@ -218,18 +221,18 @@ fn neon_night() -> LightingParams {
     p.overlay_color1 = "#ff5fa8".into();
     p.overlay_color2 = "#08131f".into();
     p.overlay_radius = 66;
-    p.overlay_opacity = 0.55;
-    p.light_angle = 104.0;
+    p.overlay_opacity = 0.28;
+    p.light_angle = 285.7;
     p.light_warm_color = "#4de1ff".into();
     p.shadow_cool_color = "#0a0f1c".into();
     p.light_softness = 0.42;
-    p.light_strength = 0.58;
+    p.light_strength = 0.26;
     p.bloom_radius = 28;
-    p.bloom_intensity = 0.44;
+    p.bloom_intensity = 0.22;
     p.vignette_strength = 0.56;
     p.vignette_size = 46;
-    p.grade_warm_color = "#ff5f9e".into();
-    p.grade_cool_color = "#2ad0ff".into();
+    p.grade_warm_color = "#ff0064".into();
+    p.grade_cool_color = "#00c7ff".into();
     p.grade_strength = 0.44;
     p.character.rim_color = "#66e6ff".into();
     p.character.rim_dx = -14;
@@ -243,7 +246,7 @@ fn neon_night() -> LightingParams {
 
 fn morning_soft() -> LightingParams {
     let mut p = eden_base();
-    p.background.brightness = 1.08;
+    p.background.brightness = 1.05;
     p.background.contrast = 1.02;
     p.background.saturation = 0.96;
     p.character.brightness = 1.06;
@@ -251,19 +254,19 @@ fn morning_soft() -> LightingParams {
     p.light_y = 22;
     p.overlay_color1 = "#fff4dd".into();
     p.overlay_color2 = "#3d4a5e".into();
-    p.overlay_radius = 96;
-    p.overlay_opacity = 0.42;
-    p.light_angle = 132.0;
+    p.overlay_radius = 74;
+    p.overlay_opacity = 0.21;
+    p.light_angle = 303.3;
     p.light_warm_color = "#fff6e4".into();
     p.shadow_cool_color = "#425066".into();
     p.light_softness = 0.74;
-    p.light_strength = 0.44;
+    p.light_strength = 0.20;
     p.bloom_radius = 22;
-    p.bloom_intensity = 0.32;
+    p.bloom_intensity = 0.16;
     p.vignette_strength = 0.26;
     p.vignette_size = 64;
-    p.grade_warm_color = "#ffeecd".into();
-    p.grade_cool_color = "#7d93b0".into();
+    p.grade_warm_color = "#ffa800".into();
+    p.grade_cool_color = "#5379ac".into();
     p.grade_strength = 0.24;
     p.character.rim_color = "#fff6e0".into();
     p.character.rim_dx = -12;
@@ -283,14 +286,14 @@ fn overcast_gray() -> LightingParams {
     p.character.brightness = 0.98;
     p.character.saturation = 0.72;
     p.directional_enabled = true;
-    p.light_angle = 200.0;
+    p.light_angle = 0.0;
     p.light_warm_color = "#e8eef4".into();
     p.shadow_cool_color = "#3b444f".into();
     p.light_softness = 0.86;
-    p.light_strength = 0.3;
+    p.light_strength = 0.14;
     p.grade_enabled = true;
-    p.grade_warm_color = "#d7dee6".into();
-    p.grade_cool_color = "#5b6773".into();
+    p.grade_warm_color = "#537dac".into();
+    p.grade_cool_color = "#5380ac".into();
     p.grade_strength = 0.3;
     p.vignette_enabled = true;
     p.vignette_strength = 0.24;
@@ -309,19 +312,19 @@ fn rainy_gloom() -> LightingParams {
     p.light_y = 14;
     p.overlay_color1 = "#b9cede".into();
     p.overlay_color2 = "#0e1620".into();
-    p.overlay_radius = 78;
-    p.overlay_opacity = 0.44;
-    p.light_angle = 186.0;
+    p.overlay_radius = 74;
+    p.overlay_opacity = 0.22;
+    p.light_angle = 0.0;
     p.light_warm_color = "#c6d8e6".into();
     p.shadow_cool_color = "#0b131c".into();
     p.light_softness = 0.78;
-    p.light_strength = 0.4;
+    p.light_strength = 0.18;
     p.bloom_radius = 26;
-    p.bloom_intensity = 0.22;
+    p.bloom_intensity = 0.11;
     p.vignette_strength = 0.52;
     p.vignette_size = 44;
-    p.grade_warm_color = "#9db3c4".into();
-    p.grade_cool_color = "#22303f".into();
+    p.grade_warm_color = "#5385ac".into();
+    p.grade_cool_color = "#537eac".into();
     p.grade_strength = 0.36;
     p.character.rim_color = "#cfe0ec".into();
     p.character.rim_dx = 0;
@@ -335,7 +338,7 @@ fn rainy_gloom() -> LightingParams {
 
 fn snow_bright() -> LightingParams {
     let mut p = eden_base();
-    p.background.brightness = 1.14;
+    p.background.brightness = 1.05;
     p.background.contrast = 1.04;
     p.background.saturation = 0.8;
     p.character.brightness = 1.08;
@@ -343,19 +346,19 @@ fn snow_bright() -> LightingParams {
     p.light_y = 20;
     p.overlay_color1 = "#ffffff".into();
     p.overlay_color2 = "#5a6b80".into();
-    p.overlay_radius = 100;
-    p.overlay_opacity = 0.36;
-    p.light_angle = 216.0;
+    p.overlay_radius = 74;
+    p.overlay_opacity = 0.18;
+    p.light_angle = 35.4;
     p.light_warm_color = "#ffffff".into();
     p.shadow_cool_color = "#63758c".into();
     p.light_softness = 0.8;
-    p.light_strength = 0.4;
+    p.light_strength = 0.18;
     p.bloom_radius = 30;
-    p.bloom_intensity = 0.4;
+    p.bloom_intensity = 0.20;
     p.vignette_strength = 0.22;
     p.vignette_size = 66;
-    p.grade_warm_color = "#f2f7ff".into();
-    p.grade_cool_color = "#7f96b3".into();
+    p.grade_warm_color = "#0062ff".into();
+    p.grade_cool_color = "#537aac".into();
     p.grade_strength = 0.22;
     p.character.rim_color = "#ffffff".into();
     p.character.rim_dx = 10;
@@ -375,18 +378,18 @@ fn forest_dapple() -> LightingParams {
     p.overlay_color1 = "#e8ff9f".into();
     p.overlay_color2 = "#10240f".into();
     p.overlay_radius = 58;
-    p.overlay_opacity = 0.5;
-    p.light_angle = 156.0;
+    p.overlay_opacity = 0.25;
+    p.light_angle = 330.7;
     p.light_warm_color = "#e9ffa8".into();
     p.shadow_cool_color = "#0e2110".into();
     p.light_softness = 0.46;
-    p.light_strength = 0.58;
+    p.light_strength = 0.26;
     p.bloom_radius = 24;
-    p.bloom_intensity = 0.36;
+    p.bloom_intensity = 0.18;
     p.vignette_strength = 0.46;
     p.vignette_size = 50;
-    p.grade_warm_color = "#d8ff9a".into();
-    p.grade_cool_color = "#2c4a33".into();
+    p.grade_warm_color = "#9dff00".into();
+    p.grade_cool_color = "#53ac68".into();
     p.grade_strength = 0.34;
     p.character.rim_color = "#eaffb0".into();
     p.character.rim_dx = -10;
@@ -408,19 +411,19 @@ fn classroom_noon() -> LightingParams {
     p.light_y = 32;
     p.overlay_color1 = "#fff1cf".into();
     p.overlay_color2 = "#2f3b52".into();
-    p.overlay_radius = 94;
-    p.overlay_opacity = 0.4;
-    p.light_angle = 246.0;
+    p.overlay_radius = 74;
+    p.overlay_opacity = 0.20;
+    p.light_angle = 72.4;
     p.light_warm_color = "#fff2d2".into();
     p.shadow_cool_color = "#33405a".into();
     p.light_softness = 0.66;
-    p.light_strength = 0.46;
+    p.light_strength = 0.21;
     p.bloom_radius = 18;
-    p.bloom_intensity = 0.26;
+    p.bloom_intensity = 0.13;
     p.vignette_strength = 0.3;
     p.vignette_size = 62;
-    p.grade_warm_color = "#ffeec6".into();
-    p.grade_cool_color = "#5f7089".into();
+    p.grade_warm_color = "#ffb300".into();
+    p.grade_cool_color = "#5377ac".into();
     p.grade_strength = 0.24;
     p.character.rim_color = "#fff0cc".into();
     p.character.rim_dx = 16;
@@ -443,16 +446,16 @@ fn stage_spotlight() -> LightingParams {
     p.overlay_color1 = "#fff6e0".into();
     p.overlay_color2 = "#04060a".into();
     p.overlay_radius = 30;
-    p.overlay_opacity = 0.82;
+    p.overlay_opacity = 0.41;
     p.directional_enabled = true;
-    p.light_angle = 180.0;
+    p.light_angle = 0.0;
     p.light_warm_color = "#fff4dd".into();
     p.shadow_cool_color = "#04070c".into();
     p.light_softness = 0.26;
-    p.light_strength = 0.7;
+    p.light_strength = 0.32;
     p.bloom_enabled = true;
     p.bloom_radius = 26;
-    p.bloom_intensity = 0.34;
+    p.bloom_intensity = 0.17;
     p.vignette_enabled = true;
     p.vignette_strength = 0.85;
     p.vignette_size = 26;
@@ -479,18 +482,18 @@ fn screen_glow() -> LightingParams {
     p.overlay_color1 = "#9fd8ff".into();
     p.overlay_color2 = "#050810".into();
     p.overlay_radius = 44;
-    p.overlay_opacity = 0.6;
-    p.light_angle = 0.0;
+    p.overlay_opacity = 0.30;
+    p.light_angle = 180.0;
     p.light_warm_color = "#a8dcff".into();
     p.shadow_cool_color = "#04070e".into();
     p.light_softness = 0.4;
-    p.light_strength = 0.54;
+    p.light_strength = 0.24;
     p.bloom_radius = 24;
-    p.bloom_intensity = 0.3;
+    p.bloom_intensity = 0.15;
     p.vignette_strength = 0.66;
     p.vignette_size = 38;
-    p.grade_warm_color = "#7fc8f2".into();
-    p.grade_cool_color = "#1b2740".into();
+    p.grade_warm_color = "#189ce7".into();
+    p.grade_cool_color = "#4c6db3".into();
     p.grade_strength = 0.38;
     p.character.rim_color = "#b6e2ff".into();
     p.character.rim_dx = 0;
@@ -514,18 +517,18 @@ fn thriller_red() -> LightingParams {
     p.overlay_color1 = "#ff4d4d".into();
     p.overlay_color2 = "#0b0206".into();
     p.overlay_radius = 62;
-    p.overlay_opacity = 0.6;
-    p.light_angle = 96.0;
+    p.overlay_opacity = 0.30;
+    p.light_angle = 274.0;
     p.light_warm_color = "#ff5b52".into();
     p.shadow_cool_color = "#0a0206".into();
     p.light_softness = 0.4;
-    p.light_strength = 0.64;
+    p.light_strength = 0.29;
     p.bloom_radius = 22;
-    p.bloom_intensity = 0.28;
+    p.bloom_intensity = 0.14;
     p.vignette_strength = 0.74;
     p.vignette_size = 34;
-    p.grade_warm_color = "#ff6a5a".into();
-    p.grade_cool_color = "#2a0d1c".into();
+    p.grade_warm_color = "#ff1900".into();
+    p.grade_cool_color = "#c33c82".into();
     p.grade_strength = 0.42;
     p.character.rim_color = "#ff7a68".into();
     p.character.rim_dx = -14;
@@ -539,7 +542,7 @@ fn thriller_red() -> LightingParams {
 
 fn dream_pastel() -> LightingParams {
     let mut p = eden_base();
-    p.background.brightness = 1.1;
+    p.background.brightness = 1.05;
     p.background.contrast = 0.94;
     p.background.saturation = 1.06;
     p.character.brightness = 1.08;
@@ -547,19 +550,19 @@ fn dream_pastel() -> LightingParams {
     p.light_y = 30;
     p.overlay_color1 = "#ffe1f4".into();
     p.overlay_color2 = "#b9c8f5".into();
-    p.overlay_radius = 100;
-    p.overlay_opacity = 0.4;
-    p.light_angle = 20.0;
+    p.overlay_radius = 74;
+    p.overlay_opacity = 0.20;
+    p.light_angle = 0.0;
     p.light_warm_color = "#ffe6f6".into();
     p.shadow_cool_color = "#c3d0f7".into();
     p.light_softness = 0.88;
-    p.light_strength = 0.36;
+    p.light_strength = 0.16;
     p.bloom_radius = 34;
-    p.bloom_intensity = 0.48;
+    p.bloom_intensity = 0.24;
     p.vignette_strength = 0.18;
     p.vignette_size = 72;
-    p.grade_warm_color = "#ffd9ef".into();
-    p.grade_cool_color = "#bcd0ff".into();
+    p.grade_warm_color = "#ff0094".into();
+    p.grade_cool_color = "#004cff".into();
     p.grade_strength = 0.3;
     p.character.rim_color = "#fff0fa".into();
     p.character.rim_dx = 0;
@@ -582,19 +585,19 @@ fn golden_hour() -> LightingParams {
     p.light_y = 54;
     p.overlay_color1 = "#ffcf7a".into();
     p.overlay_color2 = "#3a2415".into();
-    p.overlay_radius = 96;
-    p.overlay_opacity = 0.58;
-    p.light_angle = 100.0;
+    p.overlay_radius = 74;
+    p.overlay_opacity = 0.29;
+    p.light_angle = 266.2;
     p.light_warm_color = "#ffd488".into();
     p.shadow_cool_color = "#33210f".into();
     p.light_softness = 0.58;
-    p.light_strength = 0.62;
+    p.light_strength = 0.28;
     p.bloom_radius = 26;
-    p.bloom_intensity = 0.42;
+    p.bloom_intensity = 0.21;
     p.vignette_strength = 0.36;
     p.vignette_size = 58;
-    p.grade_warm_color = "#ffc470".into();
-    p.grade_cool_color = "#6b4a2a".into();
+    p.grade_warm_color = "#ff9600".into();
+    p.grade_cool_color = "#b77f48".into();
     p.grade_strength = 0.38;
     p.character.rim_color = "#ffdca0".into();
     p.character.rim_dx = -18;
@@ -615,18 +618,18 @@ fn night_ambient() -> LightingParams {
     p.overlay_color1 = "#8fa9d8".into();
     p.overlay_color2 = "#04060e".into();
     p.overlay_radius = 60;
-    p.overlay_opacity = 0.44;
-    p.light_angle = 168.0;
+    p.overlay_opacity = 0.22;
+    p.light_angle = 318.4;
     p.light_warm_color = "#9db6e0".into();
     p.shadow_cool_color = "#03050c".into();
     p.light_softness = 0.72;
-    p.light_strength = 0.42;
+    p.light_strength = 0.19;
     p.bloom_radius = 20;
-    p.bloom_intensity = 0.2;
+    p.bloom_intensity = 0.10;
     p.vignette_strength = 0.68;
     p.vignette_size = 40;
-    p.grade_warm_color = "#8fa9d8".into();
-    p.grade_cool_color = "#101a2c".into();
+    p.grade_warm_color = "#426ebd".into();
+    p.grade_cool_color = "#446fbb".into();
     p.grade_strength = 0.32;
     p.character.rim_color = "#b9ccf0".into();
     p.character.rim_dx = 8;
@@ -655,17 +658,18 @@ fn sepia_memory() -> LightingParams {
     p.overlay_color1 = "#f0d9a8".into();
     p.overlay_color2 = "#3a2c1a".into();
     p.overlay_radius = 70;
-    p.overlay_opacity = 0.5;
+    p.overlay_opacity = 0.25;
+    p.light_angle = 0.0;
     p.vignette_enabled = true;
     p.vignette_strength = 0.62;
     p.vignette_size = 36;
     p.grade_enabled = true;
-    p.grade_warm_color = "#e8c98d".into();
-    p.grade_cool_color = "#5a4a30".into();
+    p.grade_warm_color = "#d49a2b".into();
+    p.grade_cool_color = "#ac8a53".into();
     p.grade_strength = 0.4;
     p.bloom_enabled = true;
     p.bloom_radius = 20;
-    p.bloom_intensity = 0.22;
+    p.bloom_intensity = 0.11;
     p
 }
 
@@ -900,6 +904,34 @@ mod tests {
             let json = serde_json::to_value(&preset.params).unwrap();
             assert!(json.get("light_angle").is_some(), "{} 缺字段", preset.id);
             assert!(json.get("bloom_radius").is_some(), "{} 缺字段", preset.id);
+        }
+    }
+
+    /// CSS 罗盘角（0 = 光源在正上方，顺时针）。舞台按 16:9 计算，横向偏移要乘 16/9
+    /// 才是画面上的真实方向。
+    fn angle_toward_light(x: i32, y: i32) -> f64 {
+        let a = ((x - 50) as f64 * 16.0)
+            .atan2((50 - y) as f64 * 9.0)
+            .to_degrees();
+        if a < 0.0 { a + 360.0 } else { a }
+    }
+
+    /// 方向光和冷暖分离按 `light_angle` 铺渐变，径向光斑按 `light_x/light_y` 画。两处
+    /// 写反就会出现「窗在右上、阴影也压在右上」的裂开效果，所以钉死在一起。
+    #[test]
+    fn directional_angle_points_at_the_light() {
+        for preset in presets() {
+            let p = &preset.params;
+            let delta = (p.light_angle - angle_toward_light(p.light_x, p.light_y)).abs();
+            let delta = delta.min(360.0 - delta);
+            assert!(
+                delta < 0.6,
+                "{}: light_angle={} 与灯光位置 ({},{}) 相差 {delta:.1} 度",
+                preset.id,
+                p.light_angle,
+                p.light_x,
+                p.light_y
+            );
         }
     }
 }

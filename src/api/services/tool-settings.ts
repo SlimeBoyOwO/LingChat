@@ -62,6 +62,7 @@ export const TOOL_GROUP_KEYS = [
   "memory",
   "character",
   "scene",
+  "lighting",
   "status",
   "clock",
   "skills",
