@@ -76,12 +76,7 @@ pub fn set_last_save_id(app: &AppHandle, role_id: i32, save_id: i32) {
         return;
     };
     let key = last_save_key(role_id);
-    if store
-        .get(&key)
-        .and_then(|v| v.as_i64())
-        .map(|n| n as i32)
-        == Some(save_id)
-    {
+    if store.get(&key).and_then(|v| v.as_i64()).map(|n| n as i32) == Some(save_id) {
         return;
     }
     backup_settings_file(app);

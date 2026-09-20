@@ -12,11 +12,8 @@ use crate::ai_service::service::SharedAIService;
 use crate::ai_service::types::GameLine;
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
-use crate::db::managers::save_repo::{SaveRepo, AUTO_SAVE_PREFIX};
+use crate::db::managers::save_repo::{AUTO_SAVE_PREFIX, SaveRepo};
 
-// 台词已改为逐条落盘（见 game_status::add_line），周期自动存档只兜底
-// 快照/记忆库/剧本变量/截图，不需要 5 分钟一次，120s 足够
-const AUTO_SAVE_INTERVAL_SECS: u64 = 120;
 const EXIT_SAVE_TIMEOUT_SECS: u64 = 5;
 
 /// 一行是否属于「真实对话」——玩家发言或角色回复。
@@ -202,7 +199,7 @@ impl AutoSaveManager {
                         .map_err(|e| format!("查找/创建自动存档槽失败: {}", e))?;
                     gs.active_save_id = Some(id);
                     id
-                }
+                },
             };
             // 目标槽可能已被用户删除 → 回退到当前角色的自动槽
             let is_auto_slot = match SaveRepo::get_save_by_id(&self.db, save_id)
@@ -217,7 +214,7 @@ impl AutoSaveManager {
                     save_id = id;
                     gs.active_save_id = Some(id);
                     true
-                }
+                },
             };
             (save_id, is_auto_slot)
         };
@@ -350,5 +347,4 @@ impl AutoSaveManager {
         let lines = &service.game_status.lock().await.line_list;
         hash_of_real_lines(lines)
     }
-
 }

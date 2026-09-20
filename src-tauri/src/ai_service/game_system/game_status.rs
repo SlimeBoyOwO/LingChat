@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 use chrono::{DateTime, Local};
-use sea_orm::{DatabaseConnection, TransactionTrait};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -140,7 +140,7 @@ impl GameStatus {
                             SaveRepo::find_or_create_auto_save_slot(db, self.main_role_id).await?;
                         self.active_save_id = Some(id);
                         id
-                    }
+                    },
                 };
                 SaveRepo::append_line(db, save_id, &new_line).await?;
                 Ok(())

@@ -46,7 +46,6 @@ export default {
     you: "你",
   },
   menu: {
-  menu: {
     startGame: "开始游戏",
     continueGame: "继续游戏",
     gameConfig: "游戏配置",
@@ -61,7 +60,6 @@ export default {
     back: "返回",
     continueSaveTitle: "继续上次进度",
     continueSaveMessage: "检测到上次存档。要继续上次的进度吗？（取消则前往存档页）",
-  },
   },
   pet: {
     chatInput: {

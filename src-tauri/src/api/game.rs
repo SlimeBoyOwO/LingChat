@@ -19,9 +19,8 @@ use crate::ai_service::types::{
 use crate::config::{self, AppConfig};
 use crate::db::entities::line;
 use crate::db::entities::line::LineAttribute;
-use crate::db::managers::role_repo::RoleRepo;
 use crate::db::managers::save_repo::SaveRepo;
-use crate::utils::prompt::{sys_prompt_builder_by_settings, PromptOptions, PromptRole};
+use crate::utils::prompt::{PromptOptions, PromptRole, sys_prompt_builder_by_settings};
 
 // ========== 响应类型 ==========
 
@@ -347,7 +346,7 @@ pub async fn init_game(app: AppHandle) -> Result<WebInitData, String> {
             };
             drop(state);
             rid
-        }
+        },
     };
     if let Some(role_id) = role_id {
         // 优先 last_save_id；迁移兼容：旧版本没有该 key 时，回退到当前角色的自动槽，

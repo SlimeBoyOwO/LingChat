@@ -1,5 +1,5 @@
-use serde::Serialize;
 use sea_orm::TransactionTrait;
+use serde::Serialize;
 use serde_json::Value as JsonValue;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_store::StoreExt;
@@ -624,7 +624,7 @@ pub async fn get_last_save_id(app: AppHandle) -> Result<Option<i32>, String> {
             let service = state.ai_service.lock().await;
             let gs = service.game_status.lock().await;
             gs.main_role_id
-        }
+        },
     };
     let save_id = role_id.and_then(|rid| crate::config::get_last_save_id(&app, rid));
 

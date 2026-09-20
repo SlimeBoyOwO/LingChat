@@ -665,10 +665,7 @@ impl SaveRepo {
         Ok(inserted.id)
     }
 
-    pub async fn delete_running_script<C: ConnectionTrait>(
-        db: &C,
-        script_id: i32,
-    ) -> Result<()> {
+    pub async fn delete_running_script<C: ConnectionTrait>(db: &C, script_id: i32) -> Result<()> {
         running_script::Entity::delete_by_id(script_id)
             .exec(db)
             .await
