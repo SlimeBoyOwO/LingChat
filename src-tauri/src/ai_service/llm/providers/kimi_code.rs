@@ -569,8 +569,7 @@ impl KimiCodeProvider {
                         let Some(data) = line.strip_prefix("data:") else { continue };
                         let data = data.trim();
                         if data == "[DONE]" {
-                            // 流式响应结束前补发尚未增量的 thinking 尾部。
-                            // 只发尾部：前面已按增量发过，发整段会把前缀重复一遍。
+                            // 只发尚未增量的尾部：发整段会把前面已增量的部分重复一遍。
                             if thinking_buffer.len() > last_flush_len {
                                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
                                 let tail = &thinking_buffer[last_flush_len..];
@@ -694,7 +693,7 @@ impl KimiCodeProvider {
                     last_flush_len = thinking_buffer.len();
                 }
             }
-            // 流正常结束时补发尚未打印的 thinking 尾部（同上：只发尾部，不发整段）
+            // 同上：只补发尾部
             if thinking_buffer.len() > last_flush_len {
                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
                 let tail = &thinking_buffer[last_flush_len..];

@@ -86,10 +86,7 @@ pub async fn update_conversation_title(
     Ok(())
 }
 
-/// 绑定会话的剧本 key。
-///
-/// 用于「新建会话直接造剧本」这条路径：建会话时还没有剧本，key 只能等
-/// `story_config.yaml` 落盘后再补。顺带刷新 updated_at，保持列表排序正确。
+/// 绑定会话的剧本 key；顺带刷新 updated_at 保持列表排序。
 pub async fn update_conversation_script_key(
     db: &DatabaseConnection,
     id: i32,

@@ -1,16 +1,13 @@
-//! 剧本创作阶段推导与按阶段上下文配置。
+//! 阶段推导与按阶段上下文配置。
 //!
-//! 阶段完全由文件系统事实推导：不落库、不强制流程，只用于组装上下文与切换思考模式。
+//! 阶段由文件系统事实推导，不落库、不强制流程。
 
 use std::path::{Path, PathBuf};
 
 use crate::ai_service::types::LlmMessage;
 use crate::utils::script_paths;
 
-/// 设计稿在剧本包内的相对路径。
-///
-/// 放在点号目录下：剧本枚举（`enumerate_script_keys`）与章节遍历（`walk_chapters`）
-/// 都会跳过点号开头的目录，因此不会干扰引擎、校验器与编辑器。
+/// 设计稿在剧本包内的相对路径。点号目录不会被引擎扫描，也不进编辑器枚举。
 pub const DESIGN_REL_PATH: &str = ".agent/design.md";
 
 // 相对技能目录（`data/game_data/skills`）的材料路径。
@@ -21,10 +18,7 @@ const OPTIMIZER_DOC: &str = "script-optimizer/SKILL.md";
 const EVENT_REFERENCE: &str = "lingchat-script-editor/references/event-reference.md";
 const CHAPTER_TEMPLATE: &str = "lingchat-script-editor/assets/templates/chapter_template.yaml";
 
-/// 创作阶段。
-///
-/// 按「上下文配置是否相同」划分，不与产品流程的小节一一对应：
-/// 类型选择 / 大纲 / 内容设计三节的配置一致，合并为 [`Stage::Setup`]。
+/// 创作阶段。按「上下文配置是否相同」划分，S1–S3 合并为 [`Stage::Setup`]。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Stage {
     /// 未绑定剧本。
@@ -129,10 +123,7 @@ pub struct StageProfile {
     pub thinking: Option<bool>,
     /// 稳定材料：相对技能目录的路径，注入系统提示。
     pub system_materials: &'static [&'static str],
-    /// 本阶段的行为要求，注入在材料之前。
-    ///
-    /// 通用系统提示里「任务必须完成到产出物为止」容易被读成「一口气做完」，
-    /// 这里显式给出**粒度**，避免模型跨步推进或在一轮里写多章。
+    /// 本阶段的行为要求（粒度等），注入在材料之前。
     pub directive: &'static str,
 }
 
@@ -156,10 +147,7 @@ const DIRECTIVE_MODIFY: &str = "本阶段是修改既有剧本：\
     \n- 按用户提出的修改需求**逐项**修改，改动完成后停下等用户确认\
     \n- **不要自行扩大改动范围**，也不要顺手重写未被要求改动的章节";
 
-/// 取阶段对应的配置。
-///
-/// 凡是会落到剧本 YAML 的阶段（建工程 / 写章节 / 改章节 / 修章节）都带 `TRANSFORMER_DOC`
-/// —— 它承载事件字段与 YAML 规范；缺了模型只能自行摸索，会去翻引擎源码或全盘搜索。
+/// 取阶段配置。会落到剧本 YAML 的阶段都带 `TRANSFORMER_DOC`（事件字段与 YAML 规范）。
 pub fn profile(stage: Stage) -> StageProfile {
     // 创作类阶段需要推理；机械落盘与按诊断码表修复不需要。
     match stage {
@@ -191,9 +179,7 @@ pub fn profile(stage: Stage) -> StageProfile {
     }
 }
 
-/// 渲染完整的阶段块：阶段名 + 本阶段行为要求 + 角色指令。
-///
-/// 放在系统提示末尾：前面几段一次会话内稳定，阶段切换不会作废缓存前缀。
+/// 渲染阶段块（阶段名 + 行为要求 + 角色指令），拼在系统提示末尾以保前缀缓存。
 pub fn build_stage_block(skills_dir: &Path, stage: Stage) -> String {
     let profile = profile(stage);
     let mut out = format!("\n\n【当前阶段】{}", stage.label());
@@ -210,16 +196,13 @@ pub fn build_stage_block(skills_dir: &Path, stage: Stage) -> String {
     out
 }
 
-/// 读取并拼接稳定材料，加上「角色指令」形式的来源头。
-///
-/// 用 `【角色指令 · …】` 而不是 `===== … =====`：后者读起来像文件转储，
-/// 会让模型把技能里的约束当成参考资料而不是必须执行的指令。
+/// 读取阶段材料，冠以「角色指令」来源头（区别于看起来像附件的文件转储）。
 fn load_system_materials(skills_dir: &Path, stage: Stage) -> String {
     let mut out = String::new();
     for rel in profile(stage).system_materials {
         let path = skills_dir.join(rel);
         let Ok(text) = std::fs::read_to_string(&path) else {
-            // 材料缺失会让模型失去依据转而自行摸索，必须显式暴露而不是静默跳过。
+            // 材料缺失必须可见，否则模型会转而自行摸索。
             tracing::warn!("[skill_agent] 阶段材料缺失: {}", path.display());
             continue;
         };
@@ -229,9 +212,7 @@ fn load_system_materials(skills_dir: &Path, stage: Stage) -> String {
     out
 }
 
-/// 组装本轮的动态材料。
-///
-/// 刻意不落库：每轮由 `run_chat` 重新拼装并追加在对话尾部，避免污染前缀缓存。
+/// 组装本轮动态材料（待写章节 + 上一章收尾状态）；不落库，每轮重算。
 pub fn build_run_materials(snap: &StageSnapshot) -> String {
     let Some(dir) = snap.script_dir.as_deref() else {
         return String::new();
@@ -267,8 +248,7 @@ fn read_plan(script_dir: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// 解析设计稿的章节列表：每个 `##` 标题为一个块，块内**第一个非空行**为 `id:` 时
-/// 才认作章节。把规则收紧到首行，避免大纲等正文里的 `id:` 被误判。
+/// 解析设计稿的章节列表：`##` 块内第一个非空行为 `id:` 才算章节。
 fn parse_plan(markdown: &str) -> Vec<String> {
     let lines: Vec<&str> = markdown.lines().collect();
     let mut plan: Vec<String> = Vec::new();
@@ -350,9 +330,7 @@ fn chapter_file(script_dir: &Path, id: &str) -> PathBuf {
 
 /// 丢弃已被超越的章节写入轮次，避免历史里堆积整章 YAML。
 ///
-/// 判据：该轮的全部工具调用都是 `write_file` 写入「已落盘、且不是当前待写」的章节。
-/// 整轮丢弃（含 tool 回应）而不是只丢回应，历史结构保持合法；只改内存中的历史，
-/// DB 不动，所以回溯仍然完整。
+/// 整轮丢弃（含 tool 回应）以保持历史结构合法；只改内存，DB 不动。
 pub fn compact_history(history: Vec<LlmMessage>, snap: &StageSnapshot) -> Vec<LlmMessage> {
     if snap.stage != Stage::Forge {
         return history;
@@ -403,8 +381,6 @@ fn chapter_id_of_path(path: &str) -> Option<String> {
 }
 
 /// 从写入路径反推剧本 key：`…/scripts/<key…>/story_config.yaml`。
-///
-/// `story_config.yaml` 落盘即代表剧本包诞生，而写入路径本身就含 key。
 pub fn script_key_of_story_config(path: &str) -> Option<String> {
     let normalized = path.replace('\\', "/");
     let (_, tail) = normalized.rsplit_once("/scripts/")?;
@@ -423,8 +399,7 @@ fn written_chapter_id(tool: &str, arguments: &str) -> Option<String> {
 
 /// 章节写入后的轻量结构自检；不适用或无问题时返回 `None`。
 ///
-/// 只查与本章自身有关、必然可判的硬性要求（`SKILL.md` 6.2），刻意**不做整剧本校验**：
-/// 落盘阶段后续章节尚未写完，全量校验会报一堆指向未写章节的断链，反而误导模型去补。
+/// 不做整剧本校验：未写完时的断链诊断会误导模型去补后续章节。
 pub fn check_written_chapter(snap: &StageSnapshot, path: &str) -> Option<String> {
     let dir = snap.script_dir.as_deref()?;
     let id = chapter_id_of_path(path)?;
@@ -572,7 +547,6 @@ id: Intro/02
         assert_eq!(profile(Stage::Setup).thinking, Some(true));
     }
 
-    /// 会落到剧本 YAML 的阶段必须带落盘规范，否则模型会自行摸索、去翻源码或全盘搜索。
     #[test]
     fn stages_that_touch_yaml_include_transformer_doc() {
         for stage in [Stage::Setup, Stage::Forge, Stage::Polish, Stage::Modify] {
@@ -586,8 +560,6 @@ id: Intro/02
         }
     }
 
-    /// 会产出章节的阶段必须显式给出「一轮一章」的粒度，否则通用规则里的
-    /// 「任务必须完成到产出物为止」会被读成「一口气写完」。
     #[test]
     fn forge_directive_states_one_chapter_per_turn() {
         let d = profile(Stage::Forge).directive;
@@ -595,7 +567,6 @@ id: Intro/02
         assert!(d.contains("多章"), "Forge 必须禁止多章：{d}");
     }
 
-    /// 逐章阶段必须劝止整剧校验：未写完时的断链与「变量还没轮上消费」都是必然的假错。
     #[test]
     fn forge_directive_discourages_whole_script_validation() {
         let d = profile(Stage::Forge).directive;
@@ -628,7 +599,6 @@ id: Intro/02
         assert!(block.contains("一轮只写一章"));
     }
 
-    /// 阶段材料路径必须是「技能目录/…」形式，不能是靠 base dir 解析的裸相对路径。
     #[test]
     fn stage_materials_are_skill_relative() {
         for stage in [
@@ -652,7 +622,7 @@ id: Intro/02
         assert_eq!(derive(None).stage, Stage::Routing);
     }
 
-    /// 造一轮「模型调 write_file 并拿到结果」的历史。
+    /// 造一轮 write_file 的工具轮次。
     fn write_round(call_id: &str, path: &str, tool: &str) -> Vec<LlmMessage> {
         let args = format!(r#"{{"path":"{}"}}"#, path.replace('\\', "\\\\"));
         let mut assistant = LlmMessage::assistant("我来写。");

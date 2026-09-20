@@ -400,9 +400,7 @@ impl GenaiProvider {
             .map_err(|e| anyhow!("genai 流式请求失败: {e}"))?;
         let mut inner = stream_resp.stream;
 
-        // 思考链在流式期间已逐块发过时，End 事件里那份「完整思考」就不能再发：
-        // 消费方（core.rs）只是把收到的片断拼接起来，两份会累积成 X+X，
-        // 于是界面与 DB 里都出现重复的思考。
+        // 流式已逐块发过思考时，End 里那份「完整思考」不能再发，否则拼接成 X+X。
         let mut saw_reasoning_delta = false;
 
         let output = async_stream::try_stream! {
@@ -418,7 +416,7 @@ impl GenaiProvider {
                     }
                     ChatStreamEvent::Chunk(_) | ChatStreamEvent::ReasoningChunk(_) => {}
                     ChatStreamEvent::End(end) => {
-                        // 只给累计值、不给分片的提供商才在这里补发一次
+                        // 只给累计值、不给分片的提供商才补发
                         if !saw_reasoning_delta {
                             if let Some(reasoning) = end.captured_reasoning_content.clone() {
                                 if !reasoning.is_empty() {

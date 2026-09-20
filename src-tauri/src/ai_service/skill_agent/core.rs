@@ -128,7 +128,7 @@ fn build_system_prompt(
         Some(custom) if !custom.trim().is_empty() => custom.clone(),
         _ => default,
     };
-    // 阶段块拼在最后：前面的 base/script/skills 三段在一次会话内稳定，阶段切换不会作废缓存前缀。
+    // 阶段块拼在最后：前三段一次会话内稳定，拼在尾部可保缓存前缀。
     format!("{}{}{}{}", base, script_block, skills_block, stage_block)
 }
 
@@ -240,7 +240,7 @@ pub async fn run_chat(
         history,
         &ctx.stage_snapshot,
     )));
-    // 本轮动态材料（待写章节 + 上一章收尾状态）不落库：每轮重算，取完即弃。
+    // 动态材料不落库，每轮重算。
     let run_materials = stage::build_run_materials(&ctx.stage_snapshot);
     if !run_materials.is_empty() {
         messages.push(LlmMessage::user(run_materials));

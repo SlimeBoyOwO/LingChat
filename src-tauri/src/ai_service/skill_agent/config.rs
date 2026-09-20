@@ -97,8 +97,7 @@ impl SkillAgentConfig {
 
 /// 解析 Skill Agent 使用的 LLM provider，fallback 到聊天主 LLM（镜像 God Agent）。
 ///
-/// `stage_thinking` 是阶段级的思考模式规定（创作阶段开、机械阶段关），优先于设置项；
-/// 阶段不给规定时才回落到 `enable_thinking`。
+/// `stage_thinking` 为阶段级规定，优先于设置项。
 pub fn resolve_skill_agent_provider(
     app: &AppHandle,
     stage_thinking: Option<bool>,

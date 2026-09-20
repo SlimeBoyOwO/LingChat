@@ -364,9 +364,7 @@ fn format_validation_report(key: &str, report: &ValidationReport) -> String {
     out
 }
 
-/// 写完章节后附上轻量结构自检，便于当场发现写坏或被截断的章节。
-///
-/// 分段追加（`append = true`）时跳过 —— 那时文件还没写完，结构必然不完整。
+/// 写完章节后附上结构自检。分段追加（`append = true`）时跳过，那时还没写完。
 fn with_chapter_check(ctx: &SkillAgentRunContext, path: &str, out: String, append: bool) -> String {
     if append {
         return out;
@@ -377,11 +375,9 @@ fn with_chapter_check(ctx: &SkillAgentRunContext, path: &str, out: String, appen
     }
 }
 
-/// 剧本包诞生时把它的 key 绑到会话上。
+/// `story_config.yaml` 落盘即剧本包诞生，从写入路径反推 key 绑到会话上。
 ///
-/// 「新建会话直接造剧本」这条路径建会话时还没有剧本，key 只能等
-/// `story_config.yaml` 落盘后再补 —— 路径本身就含 key。
-/// 会话已有绑定时不覆盖；绑定在**下一轮**生效（本轮快照已定，材料与 directive 不中途换）。
+/// 已有绑定不覆盖；绑定下一轮生效。
 async fn bind_script_key_if_new(ctx: &SkillAgentRunContext, path: &str) {
     if ctx.stage_snapshot.script_key.is_some() {
         return;
@@ -389,7 +385,7 @@ async fn bind_script_key_if_new(ctx: &SkillAgentRunContext, path: &str) {
     let Some(key) = stage::script_key_of_story_config(path) else {
         return;
     };
-    // 确认它确实是引擎认得的剧本包，别把同名文件当剧本
+    // 复核它确实是引擎认得的剧本包
     if crate::utils::script_paths::resolve_script_dir(&key).is_err() {
         return;
     }
