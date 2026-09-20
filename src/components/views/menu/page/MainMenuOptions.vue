@@ -3,11 +3,6 @@
     <StartLine>
       <StartItem @click="() => emit('start-game')">{{ $t("views.menu.startGame") }}</StartItem>
     </StartLine>
-    <StartLine>
-      <StartItem @click="() => emit('open-settings', 'save')">{{
-        $t("views.menu.continueGame")
-      }}</StartItem>
-    </StartLine>
     <StartLine :mobile="false">
       <StartItem @click="() => emit('open-script-editor')">{{
         $t("views.menu.scriptEditorEntry")
