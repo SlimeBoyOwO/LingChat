@@ -225,9 +225,12 @@
             </div>
             <div
               class="relative min-h-[16rem] flex-1 overflow-hidden rounded-xl border border-white/10
-                bg-slate-800/60"
+                bg-slate-800"
               style="isolation: isolate"
             >
+              <!-- 混合层要有一张不透明的底才能算出「打光」；没有场景图时透明底会让
+                   screen / soft-light 直接变成一层色块，预览和真实画面完全对不上。 -->
+              <div class="absolute inset-0 bg-slate-800"></div>
               <img
                 v-if="bgSrc"
                 :src="bgSrc"
