@@ -1610,7 +1610,14 @@ export async function mountFlyBrain(root, options) {
     }
     return soup;
   }
-  const RIGID_SOUP = (() => {
+  /* 双主角：初始化时只建当前角色（灵梦/果蝇的部件汤均懒构建，GL 缓冲两角色共享） */
+  let character = null; // "reimu" | "fly"，选图页选定后确定
+  let RIGID_SOUP = null,
+    EYE_HI_L = null,
+    EYE_HI_R = null;
+  let reimuReady = false;
+  function ensureReimuChar() {
+    if (reimuReady) return;
     const bowL = rotZSoup(
       sphereSoup(0.155, 1.38, 0.03, 0.135, 0.065, 0.085, 8, 5, () => C_BOW),
       0.155,
@@ -1623,7 +1630,7 @@ export async function mountFlyBrain(root, options) {
       1.38,
       0.5,
     );
-    return new Float32Array([
+    RIGID_SOUP = new Float32Array([
       ...coneSoup(0, 0.26, 0, 0.34, 0.2, 0.44, 12, (u) => (u < 0.16 ? C_WHITE : C_RED)), // 红袴白裾
       ...sphereSoup(0, 0.84, 0, 0.21, 0.19, 0.155, 10, 7, () => C_WHITE), // 白衣上身
       ...sphereSoup(0, 0.74, -0.14, 0.05, 0.06, 0.03, 6, 4, () => C_BOW), // 领口红领巾
@@ -1638,11 +1645,13 @@ export async function mountFlyBrain(root, options) {
       ...bowR, // 大红蝴蝶结双耳
       ...sphereSoup(0, 1.36, 0, 0.05, 0.05, 0.05, 6, 4, () => C_WHITE), // 结心
     ]);
-  })();
-  /* 眼睛高光点（emissive，不走光照）：vision 越强越亮，eating 双闪 */
-  const EYE_HI_L = spherePos(0.117, 1.11, -0.262, 0.018, 5, 4),
+    /* 眼睛高光点（emissive，不走光照）：vision 越强越亮，eating 双闪 */
+    EYE_HI_L = spherePos(0.117, 1.11, -0.262, 0.018, 5, 4);
     EYE_HI_R = spherePos(-0.117, 1.11, -0.262, 0.018, 5, 4);
-  const eyeBuf = new Float32Array(((EYE_HI_L.length + EYE_HI_R.length) / 3) * 6);
+    reimuReady = true;
+  }
+  /* 眼睛动态缓冲两主角共享：灵梦高光 240 顶点 / 果蝇复眼 420 顶点，取大者 */
+  const eyeBuf = new Float32Array(420 * 6);
   let eyeHiVerts = 0;
   const eyeProg = makeProg(
     `#version 300 es
@@ -1868,6 +1877,285 @@ export async function mountFlyBrain(root, options) {
     return o;
   }
 
+  /* ================= 原版果蝇主角（复活自 094091f7：牧场地图专用，首次选用时懒构建） ================= */
+  let flyChar = null;
+  function ensureFlyChar() {
+    if (flyChar) return flyChar;
+    const BODY_DARK = [0.3, 0.23, 0.16];
+    const abdomenBand = (p) => {
+      const z = p[2] - 0.03;
+      return Math.floor(z / 0.1) % 2 === 0 ? [0.38, 0.3, 0.21] : [0.24, 0.18, 0.13];
+    };
+    const FLY_RIGID = new Float32Array([
+      ...sphereSoup(0, 0, 0, 0.2, 0.17, 0.22, 10, 7, () => BODY_DARK), // 胸
+      ...sphereSoup(0, -0.03, 0.33, 0.21, 0.16, 0.3, 10, 7, abdomenBand), // 腹（环纹）
+      ...sphereSoup(0, 0.03, -0.27, 0.12, 0.11, 0.11, 9, 6, () => [0.27, 0.2, 0.14]), // 头
+    ]);
+    /* 复眼：独立几何（只存位置），颜色逐帧随 vision 放电调制，emissive 不走光照 */
+    const EYE_L_POS = spherePos(0.08, 0.07, -0.31, 0.055, 7, 5),
+      EYE_R_POS = spherePos(-0.08, 0.07, -0.31, 0.055, 7, 5);
+    const EYE_BASE = [0.38, 0.08, 0.07], // 平时暗红
+      EYE_HOT = [1.0, 0.42, 0.56]; // 看到食物一侧的粉红亮光
+    const eyeColorAt = (v, t, phase) => {
+      const pulse = 1 + 0.2 * v * Math.sin(t * 8 + phase); // 轻微脉动，幅度随视觉放电
+      const k = Math.max(0, Math.min(1, v * pulse));
+      return [
+        EYE_BASE[0] + (EYE_HOT[0] - EYE_BASE[0]) * k,
+        EYE_BASE[1] + (EYE_HOT[1] - EYE_BASE[1]) * k,
+        EYE_BASE[2] + (EYE_HOT[2] - EYE_BASE[2]) * k,
+      ];
+    };
+    /* 六条腿：胸节两侧各 3 条（前/中/后），站立与蜷飞两套姿态 */
+    const LEGS = [];
+    for (const s of [1, -1])
+      for (let i = 0; i < 3; i++) {
+        LEGS.push({
+          s,
+          i,
+          phase: (s > 0 ? i : i + 3) * 1.31,
+          a: [s * 0.11, -0.06, -0.13 + i * 0.13],
+          standK: [s * 0.3, -0.16, -0.13 + i * 0.13 + (i - 1) * 0.02],
+          standF: [s * 0.38, -0.3, -0.17 + i * 0.15 + (i === 0 ? -0.05 : i === 2 ? 0.07 : 0)],
+          curlK: [s * 0.16, -0.14, -0.08 + i * 0.1],
+          curlF: [s * 0.18, -0.26, -0.02 + i * 0.08],
+        });
+      }
+    const LEG_COLORS = { femur: [0.22, 0.17, 0.12], tibia: [0.16, 0.12, 0.09] };
+    /* 膜翅：root 相对的 12 个顶点（两侧各一个四边形） */
+    const WING_ROOT = [0.09, 0.12, 0.03];
+    const WING_VERTS = [];
+    for (const s of [1, -1]) {
+      const q = [
+        [0, 0, -0.08],
+        [s * 0.55, 0.03, -0.02],
+        [s * 0.45, 0.03, 0.3],
+        [0, 0, -0.08],
+        [s * 0.45, 0.03, 0.3],
+        [0, 0, 0.12],
+      ];
+      for (const v of q) WING_VERTS.push({ s, v });
+    }
+    const wingProg = makeProg(
+      `#version 300 es
+      layout(location=0) in vec3 aPos;
+      uniform mat4 uVP;
+      out float vFog;
+      void main() {
+        vec4 cp = uVP * vec4(aPos, 1.0);
+        vFog = cp.w;
+        gl_Position = cp;
+      }`,
+      `#version 300 es
+      precision mediump float;
+      in float vFog;
+      uniform vec4 uColor;
+      uniform vec3 uFogColor;
+      uniform float uLight, uFogK;
+      out vec4 o;
+      void main() {
+        vec3 col = uColor.rgb * uLight;
+        float f = 1.0 - exp(-vFog * vFog * uFogK);
+        col = mix(col, uFogColor, f);
+        o = vec4(col * uColor.a, uColor.a);
+      }`,
+    );
+    const wingU = uniforms(wingProg, ["uVP", "uColor", "uLight", "uFogColor", "uFogK"]);
+    const wingVao = gl.createVertexArray();
+    const wingVbo = gl.createBuffer();
+    const wingBuf = new Float32Array(WING_VERTS.length * 3);
+    {
+      gl.bindVertexArray(wingVao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, wingVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, wingBuf.byteLength, gl.DYNAMIC_DRAW);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      gl.bindVertexArray(null);
+    }
+    /* 果蝇姿态：poseT 0=飞行 1=落地（与灵梦共享平滑变量） */
+    function fillFly(t, dt, poseTarget) {
+      poseT += (poseTarget - poseT) * (1 - Math.exp(-dt * 2)); // 起飞/落地过渡 ~0.5s
+      const airT = 1 - poseT;
+      const lean = airT * 0.32; // 飞行前倾
+      const cx = Math.cos(lean),
+        sx = Math.sin(lean);
+      const cy = -Math.sin(flyRot),
+        sy = -Math.cos(flyRot);
+      const ox = flyPos.x,
+        oy = flyPos.y,
+        oz = flyPos.z;
+      const rot = (x, y, z, out) => {
+        const y1 = y * cx - z * sx,
+          z1 = y * sx + z * cx;
+        out[0] = x * cy + z1 * sy + ox;
+        out[1] = y1 + oy;
+        out[2] = -x * sy + z1 * cy + oz;
+      };
+      const rotN = (x, y, z, out) => {
+        const y1 = y * cx - z * sx,
+          z1 = y * sx + z * cx;
+        out[0] = x * cy + z1 * sy;
+        out[1] = y1;
+        out[2] = -x * sy + z1 * cy;
+      };
+      let o = 0;
+      const w = [0, 0, 0];
+      for (let i = 0; i < FLY_RIGID.length; i += 9) {
+        rot(FLY_RIGID[i], FLY_RIGID[i + 1], FLY_RIGID[i + 2], w);
+        flyBuf[o++] = w[0];
+        flyBuf[o++] = w[1];
+        flyBuf[o++] = w[2];
+        rotN(FLY_RIGID[i + 3], FLY_RIGID[i + 4], FLY_RIGID[i + 5], w);
+        flyBuf[o++] = w[0];
+        flyBuf[o++] = w[1];
+        flyBuf[o++] = w[2];
+        flyBuf[o++] = FLY_RIGID[i + 6];
+        flyBuf[o++] = FLY_RIGID[i + 7];
+        flyBuf[o++] = FLY_RIGID[i + 8];
+      }
+      /* 六条腿：抖动幅度 ∝ 脑活动——「接上神经元」 */
+      const jitterAmp = 0.006 + 0.05 * activity;
+      const pa = [0, 0, 0],
+        pk = [0, 0, 0],
+        pf = [0, 0, 0];
+      const writeTube = (p0, p1, radius, col) => {
+        const dx = p1[0] - p0[0],
+          dy = p1[1] - p0[1],
+          dz = p1[2] - p0[2];
+        const len = Math.hypot(dx, dy, dz) || 1e-4;
+        const wx = dx / len,
+          wy = dy / len,
+          wz = dz / len;
+        // 正交基
+        const ax = Math.abs(wy) < 0.9 ? 0 : 1,
+          ay = Math.abs(wy) < 0.9 ? 1 : 0,
+          az = 0;
+        let ux = ay * wz - az * wy,
+          uy = az * wx - ax * wz,
+          uz = ax * wy - ay * wx;
+        const ul = Math.hypot(ux, uy, uz) || 1;
+        ux /= ul;
+        uy /= ul;
+        uz /= ul;
+        const vx = wy * uz - wz * uy,
+          vy = wz * ux - wx * uz,
+          vz = wx * uy - wy * ux;
+        for (let i = 0; i < TUBE.length; i += 6) {
+          const lx = TUBE[i] * radius,
+            ly = TUBE[i + 1] * len,
+            lz = TUBE[i + 2] * radius;
+          flyBuf[o++] = p0[0] + ux * lx + wx * ly + vx * lz;
+          flyBuf[o++] = p0[1] + uy * lx + wy * ly + vy * lz;
+          flyBuf[o++] = p0[2] + uz * lx + wz * ly + vz * lz;
+          const nx = TUBE[i + 3],
+            nz = TUBE[i + 5];
+          flyBuf[o++] = ux * nx + vx * nz;
+          flyBuf[o++] = uy * nx + vy * nz;
+          flyBuf[o++] = uz * nx + vz * nz;
+          flyBuf[o++] = col[0];
+          flyBuf[o++] = col[1];
+          flyBuf[o++] = col[2];
+        }
+      };
+      /* tripod 步态：L1/R2/L3 与 R1/L2/L3 两组交替，步频 6-8Hz 随速度缩放 */
+      const stepFreq = 6 + 2 * Math.min(1, flySpeed / 3);
+      for (const leg of LEGS) {
+        const j1 = Math.sin(t * 13 + leg.phase) * jitterAmp,
+          j2 = Math.sin(t * 17 + leg.phase * 1.3) * jitterAmp,
+          j3 = Math.cos(t * 15 + leg.phase) * jitterAmp;
+        const dangle = airT * Math.sin(t * 2.6 + leg.phase) * 0.035; // 飞行悬垂轻摆
+        const lerpP = (a, b) => a + (b - a) * poseT;
+        const kL = [
+          lerpP(leg.curlK[0], leg.standK[0]) + j1 * 0.5,
+          lerpP(leg.curlK[1], leg.standK[1]),
+          lerpP(leg.curlK[2], leg.standK[2]) + j3 * 0.5,
+        ];
+        const fL = [
+          lerpP(leg.curlF[0], leg.standF[0]) + j1,
+          lerpP(leg.curlF[1], leg.standF[1]) + j2,
+          lerpP(leg.curlF[2], leg.standF[2]) + j3 + dangle,
+        ];
+        if (gaitT > 0.001) {
+          // 摆动相抬腿前移、支撑相蹬地后移（局部 -Z 为前方）
+          const group = (leg.i + (leg.s > 0 ? 0 : 1)) % 2;
+          const ph = (t * stepFreq + group * 0.5 + leg.phase * 0.03) % 1;
+          let gz = 0,
+            gy = 0;
+          if (ph < 0.5) {
+            const u = ph / 0.5;
+            gz = 0.24 * (0.5 - u);
+            gy = 0.05 * Math.sin(Math.PI * u);
+          } else {
+            const u = (ph - 0.5) / 0.5;
+            gz = 0.24 * (u - 0.5);
+          }
+          kL[1] += gy * 0.45 * gaitT;
+          kL[2] += gz * 0.5 * gaitT;
+          fL[1] += gy * gaitT;
+          fL[2] += gz * gaitT;
+        }
+        rot(leg.a[0], leg.a[1], leg.a[2], pa);
+        rot(kL[0], kL[1], kL[2], pk);
+        rot(fL[0], fL[1], fL[2], pf);
+        writeTube(pa, pk, 0.017, LEG_COLORS.femur);
+        writeTube(pk, pf, 0.013, LEG_COLORS.tibia);
+      }
+      /* 膜翅：绕胸部连接点扇动，落地收拢后掠 */
+      const flap = Math.sin(t * Math.PI * 2 * 11) * 0.9 * airT; // 飞行 ~11Hz 扇动
+      const fold = poseT * 1.05;
+      let wo = 0;
+      for (const { s, v } of WING_VERTS) {
+        // 收拢后掠（绕 root 的 rotY）
+        const sweep = s * fold;
+        const cs = Math.cos(sweep),
+          ss = Math.sin(sweep);
+        const x1 = v[0] * cs + v[2] * ss,
+          z1 = -v[0] * ss + v[2] * cs,
+          y1 = v[1];
+        // 扇动（绕 root 的 rotZ）
+        const ang = s * (0.25 + flap - poseT * 0.2);
+        const ca = Math.cos(ang),
+          sa = Math.sin(ang);
+        const x2 = x1 * ca - y1 * sa,
+          y2 = x1 * sa + y1 * ca;
+        rot(WING_ROOT[0] * s + x2, WING_ROOT[1] + y2, WING_ROOT[2] + z1, w);
+        wingBuf[wo++] = w[0];
+        wingBuf[wo++] = w[1];
+        wingBuf[wo++] = w[2];
+      }
+      /* 复眼发光：亮度/脉动 ∝ 对应侧视觉神经放电；eating 时双眼同闪一下 */
+      let flash = 0;
+      const ft = t - eatFlashT0;
+      if (ft >= 0 && ft < 0.9) flash = (1 - ft / 0.9) * (0.65 + 0.35 * Math.sin(t * 26));
+      const vL = Math.max(visionL, flash),
+        vR = Math.max(visionR, flash);
+      let eo = 0;
+      const fillEye = (posArr, col) => {
+        for (let i = 0; i < posArr.length; i += 3) {
+          rot(posArr[i], posArr[i + 1], posArr[i + 2], w);
+          eyeBuf[eo++] = w[0];
+          eyeBuf[eo++] = w[1];
+          eyeBuf[eo++] = w[2];
+          eyeBuf[eo++] = col[0];
+          eyeBuf[eo++] = col[1];
+          eyeBuf[eo++] = col[2];
+        }
+      };
+      fillEye(EYE_L_POS, eyeColorAt(vL, t, 0));
+      fillEye(EYE_R_POS, eyeColorAt(vR, t, 2.1));
+      eyeHiVerts = eo / 6;
+      return o;
+    }
+    flyChar = {
+      fill: fillFly,
+      wingProg,
+      wingU,
+      wingVao,
+      wingVbo,
+      wingBuf,
+      wingVertCount: WING_VERTS.length,
+    };
+    return flyChar;
+  }
   /* ================= 左上角「果蝇大脑」小窗（复活 f25008a6 点云渲染器，独立 GL 上下文） ================= */
   function createBrainView(cv) {
     // alpha:true + 非预乘 compositing：加法混合下 alpha 会随点亮累积（点中心≈1、间隙=0），
@@ -2309,22 +2597,46 @@ export async function mountFlyBrain(root, options) {
     e.stopPropagation(); // 别触发小窗 canvas 的拖拽
     if (brain) $("#brainMode").textContent = brain.toggleMode();
   });
-  /* 双地图切换：神社（默认）/ 牧场，选择存 localStorage */
+  /* 地图与主角绑定：神社=灵梦 / 牧场=果蝇（选择存 localStorage，场景内不再提供切换按钮） */
   function setMap(kind) {
     mapKind = kind;
     try {
       localStorage.setItem("flyBrainMap", kind);
     } catch (_) {}
-    $("#btnMap").textContent = `地图 ${kind === "shrine" ? "神社" : "牧场"}`;
     decor = decorSets[kind];
   }
-  on($("#btnMap"), "click", () => setMap(mapKind === "shrine" ? "pasture" : "shrine"));
-  setMap(mapKind);
-  on($("#btnRestart"), "click", () => control({ cmd: "restart" }));
-  on($("#btnExit"), "click", () => {
+  /* 选图页：进入先出（每次进入都显示），选定淡出；场景内「返回」回到选图页 */
+  const picker = $("#picker");
+  function updatePickLast() {
+    let last = null;
+    try {
+      last = localStorage.getItem("flyBrainMap");
+    } catch (_) {}
+    $("#pickLast").textContent =
+      last === "pasture"
+        ? "上次：青绿牧场 · 果蝇"
+        : last === "shrine"
+          ? "上次：博丽神社 · 灵梦"
+          : "";
+  }
+  function showPicker() {
+    updatePickLast();
+    picker.classList.remove("hide");
+  }
+  function pickMap(kind) {
+    setMap(kind);
+    character = kind === "shrine" ? "reimu" : "fly";
+    if (character === "fly") ensureFlyChar();
+    picker.classList.add("hide");
+  }
+  on($("#pickShrine"), "click", () => pickMap("shrine"));
+  on($("#pickPasture"), "click", () => pickMap("pasture"));
+  on($("#pickBack"), "click", () => {
     destroy();
     options.onExit();
   });
+  on($("#btnRestart"), "click", () => control({ cmd: "restart" }));
+  on($("#btnExit"), "click", () => showPicker());
 
   /* ================= 天色板（青绿山水：白天石青白雾、黄昏暖金、夜晚水墨） ================= */
   const DAY_ZEN = [0.45, 0.68, 0.88],
@@ -2399,26 +2711,36 @@ export async function mountFlyBrain(root, options) {
     const airborne = flyState === "flying" || flyState === "foraging";
     flyBob += dt * (airborne ? 7 : 0);
     const groundY = heightAt(flyPos.x, flyPos.z);
-    // 灵梦：漂浮=离地 1.05 上下浮动；睡觉=躺下（贴地半高）；其余贴地站立
+    const isReimu = character !== "fly";
+    // 灵梦：漂浮=离地 1.05 上下浮动、睡觉=躺下、其余贴地；果蝇：飞行 1.15、落地 y = 草面 + 腿长
     const targetY = airborne
-      ? groundY + 1.05 + Math.sin(flyBob) * 0.16
-      : flyState === "sleeping"
-        ? groundY + 0.24
-        : groundY + 0.02;
+      ? groundY + (isReimu ? 1.05 : 1.15) + Math.sin(flyBob) * (isReimu ? 0.16 : 0.14)
+      : isReimu
+        ? flyState === "sleeping"
+          ? groundY + 0.24
+          : groundY + 0.02
+        : groundY + 0.3;
     flyPos.y += (targetY - flyPos.y) * (1 - Math.exp(-dt * 3.5));
     activity += (activityTarget - activity) * (1 - Math.exp(-dt * 4));
     visionL += (visionLT - visionL) * (1 - Math.exp(-dt * 7));
     visionR += (visionRT - visionR) * (1 - Math.exp(-dt * 7));
     flySpeed += (flySpeedT - flySpeed) * (1 - Math.exp(-dt * 6));
     gaitT += ((flyState === "walking" ? 1 : 0) - gaitT) * (1 - Math.exp(-dt * 4));
-    const flyFloats = fillReimu(t, dt, airborne ? 0 : 1);
+    /* 双主角分发：神社=灵梦 / 牧场=果蝇（首次选用时懒构建） */
+    let flyFloats = 0;
+    if (character === "reimu") {
+      ensureReimuChar();
+      flyFloats = fillReimu(t, dt, airborne ? 0 : 1);
+    } else if (character === "fly") {
+      flyFloats = ensureFlyChar().fill(t, dt, airborne ? 0 : 1);
+    }
 
     /* 相机 */
     if (now - lastInteract > 4000) yaw += dt * 0.045; // 空闲缓慢环绕
     const kCam = 1 - Math.exp(-dt * 1.6);
     camTarget[0] += (flyPos.x - camTarget[0]) * kCam;
     camTarget[2] += (flyPos.z - camTarget[2]) * kCam;
-    camTarget[1] += (groundY + 1.1 - camTarget[1]) * kCam;
+    camTarget[1] += (groundY + (isReimu ? 1.1 : 0.55) - camTarget[1]) * kCam; // 跟随高度按主角体型微调
     const cp = Math.cos(pitch),
       sp = Math.sin(pitch);
     const eye = [
@@ -2620,6 +2942,23 @@ export async function mountFlyBrain(root, options) {
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, spriteData, 0, n * 13);
     gl.bindVertexArray(spriteVao);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, n);
+
+    /* 果蝇膜翅（仅牧场主角，透明通道） */
+    if (character === "fly" && flyChar) {
+      gl.useProgram(flyChar.wingProg);
+      gl.uniformMatrix4fv(flyChar.wingU.uVP, false, vp);
+      gl.uniform4fv(flyChar.wingU.uColor, [0.92, 0.96, 1.0, 0.38]);
+      gl.uniform1f(
+        flyChar.wingU.uLight,
+        0.35 + 0.75 * (pal.ambient[0] + pal.ambient[1]) * 0.5 + pal.sunVis * 0.3,
+      );
+      gl.uniform3fv(flyChar.wingU.uFogColor, pal.hor);
+      gl.uniform1f(flyChar.wingU.uFogK, FOG_K);
+      gl.bindBuffer(gl.ARRAY_BUFFER, flyChar.wingVbo);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, flyChar.wingBuf);
+      gl.bindVertexArray(flyChar.wingVao);
+      gl.drawArrays(gl.TRIANGLES, 0, flyChar.wingVertCount);
+    }
 
     gl.useProgram(fireflyProg);
     gl.uniformMatrix4fv(fireflyU.uVP, false, vp);

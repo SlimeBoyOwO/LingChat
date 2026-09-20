@@ -13,7 +13,6 @@
     <button type="button" id="btnSpeed" title="时间流速">流速 1x</button>
     <button type="button" id="btnPlastic" title="蘑菇体式奖惩可塑性（工程近似）">学习 关</button>
     <button type="button" id="btnBrain" title="左上角果蝇全脑点云小窗">大脑 关</button>
-    <button type="button" id="btnMap" title="切换地图（神社/牧场）">地图 神社</button>
     <button type="button" id="btnRestart">重新开始</button>
     <button type="button" id="btnExit">返回</button>
   </nav>
@@ -63,5 +62,18 @@
 
   <div class="loading-veil" id="loadingVeil">
     <div class="loading-text">正在唤醒果蝇大脑……</div>
+  </div>
+
+  <div class="picker" id="picker">
+    <div class="picker-inner">
+      <h1 class="picker-title">果蝇的每一天</h1>
+      <p class="picker-sub">选择今天的舞台</p>
+      <nav class="picker-menu" aria-label="选择地图">
+        <button type="button" id="pickShrine" class="picker-item">博丽神社 · 灵梦</button>
+        <button type="button" id="pickPasture" class="picker-item">青绿牧场 · 果蝇</button>
+      </nav>
+      <button type="button" id="pickBack" class="picker-back">返回</button>
+      <p class="picker-last" id="pickLast"></p>
+    </div>
   </div>
 </div>

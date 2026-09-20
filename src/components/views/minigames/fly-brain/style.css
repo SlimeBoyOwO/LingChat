@@ -354,6 +354,94 @@
   }
 }
 
+/* 选图页：LC 主菜单风格（Maoken 大字 + 白字柔和阴影 + hover 上浮发光） */
+.picker {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(900px 500px at 75% 10%, rgba(255, 255, 255, 0.5), transparent 60%),
+    linear-gradient(180deg, #9fd3f5 0%, #bfe4fb 52%, #e6f6ff 100%);
+  transition: opacity 0.5s ease;
+}
+.picker.hide {
+  opacity: 0;
+  pointer-events: none;
+}
+.picker-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.picker-title {
+  font-size: clamp(34px, 5vw, 68px);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #ffffff;
+  text-shadow: 0 3px 10px rgba(31, 64, 104, 0.4);
+}
+.picker-sub {
+  margin-top: 10px;
+  font-size: clamp(14px, 1.6vw, 20px);
+  letter-spacing: 0.4em;
+  color: #f4fbff;
+  text-shadow: 0 2px 6px rgba(31, 64, 104, 0.4);
+}
+.picker-menu {
+  margin-top: 46px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(14px, 2.6vh, 26px);
+}
+.picker-item {
+  font: inherit;
+  border: 0;
+  background: transparent;
+  padding: 5px 18px;
+  font-size: clamp(26px, 3.4vw, 50px);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #ffffff;
+  text-shadow: 0 3px 6px rgba(31, 64, 104, 0.5);
+  cursor: pointer;
+  transition:
+    transform 0.18s,
+    color 0.18s,
+    text-shadow 0.18s;
+}
+.picker-item:hover {
+  transform: translate(-3px, -4px);
+  color: #fff6c9;
+  text-shadow: 0 3px 12px rgba(31, 64, 104, 0.65);
+}
+.picker-back {
+  margin-top: 40px;
+  font: inherit;
+  border: 0;
+  background: transparent;
+  font-size: 15px;
+  letter-spacing: 0.2em;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 2px 5px rgba(31, 64, 104, 0.45);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.picker-back:hover {
+  color: #fff6c9;
+}
+.picker-last {
+  margin-top: 14px;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.75);
+  text-shadow: 0 2px 5px rgba(31, 64, 104, 0.4);
+  min-height: 1em;
+}
+
 @media (max-width: 720px) {
   .hud-top h1 {
     font-size: 22px;
