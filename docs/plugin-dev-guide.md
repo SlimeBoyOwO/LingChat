@@ -268,7 +268,8 @@ r = http_post("https://example.com/api", headers={"Authorization": "Bearer xx"},
 **`lighting_list_presets`**
 
 - 参数：`{}`
-- 返回：`[ { id: string, name: string, description: string, mood: string[] } ]`，`mood` 是该预设适用的心情关键词
+- 返回：`[ { id: string, name: string, description: string, mood: string[], custom: boolean } ]`，`mood` 是该预设适用的心情关键词
+- `custom: true` 是用户在设置页自建的「我的预设」：和内置预设同一张表、同样能用 id 套用，只是名字是用户自己起的，别去改写或删除
 
 **`lighting_apply`**
 
@@ -279,7 +280,8 @@ r = http_post("https://example.com/api", headers={"Authorization": "Bearer xx"},
 **`lighting_get`**
 
 - 参数：`{}`
-- 返回：`{ override_preset: string|null, override_source: string, current_scene_id: string|null }`（没有临时灯光时 `override_preset` 为 null、`override_source` 为空串）
+- 返回：`{ active_preset: string|null, active_preset_name: string|null, active_source: string, override_preset: string|null, override_source: string, current_scene_id: string|null }`
+- 判断「此刻屏幕上是什么灯」只看 `active_*`：那是渲染层算完优先级后回传的结果，含用户手动选的预设和场景自带的灯。`override_*` 只是剧本/工具留下的临时覆盖，单独读它会漏掉用户自己选的灯光，于是出现「用户明明切成了冷月夜，插件却说现在是暖窗光、不用改」
 
 > 光影只给立绘和背景叠加打光，不会换背景图、不会换角色。
 > 设置页里的「光影总开关」属于渲染层，插件碰不到——`clear` 只是取消临时灯光，不是把整个光影关掉。
