@@ -143,7 +143,10 @@ const DIRECTIVE_SETUP: &str = "本阶段是设计与大纲：产出设计稿（�
 const DIRECTIVE_FORGE: &str = "本阶段是逐章编写，**粒度是「一轮一章」**：\
     \n- 一轮只写一章，写完立即停下等用户确认；不要在一条消息里并行写多章\
     \n- 也不要写完一章后不等确认就接着写下一章\
-    \n- 通用规则里的「任务必须完成到产出物为止」指的是**当前这一章的产出物**，不是整部剧本";
+    \n- 通用规则里的「任务必须完成到产出物为止」指的是**当前这一章的产出物**，不是整部剧本\
+    \n- **不要调用 `validate_script`**：全剧没写完时它必然报 `chapter_end.dangling`、\
+     `graph.unreachable`、`variable.never_read` 等一批「尚未写完」的假错，\
+     会把你引向提前补写后续章节；校验留到交付阶段";
 
 const DIRECTIVE_POLISH: &str = "本阶段是校验与修复：\
     \n- 按诊断逐条修复；需要**新编剧情内容**才能补上的缺口交回用户，不要自行编造\
@@ -580,6 +583,20 @@ id: Intro/02
         let d = profile(Stage::Forge).directive;
         assert!(d.contains("一轮只写一章"), "Forge 必须写明粒度：{d}");
         assert!(d.contains("多章"), "Forge 必须禁止多章：{d}");
+    }
+
+    /// 逐章阶段必须劝止整剧校验：未写完时的断链与「变量还没轮上消费」都是必然的假错。
+    #[test]
+    fn forge_directive_discourages_whole_script_validation() {
+        let d = profile(Stage::Forge).directive;
+        assert!(
+            d.contains("validate_script"),
+            "Forge 必须提醒别调 validate_script：{d}"
+        );
+        assert!(
+            d.contains("never_read") || d.contains("假错"),
+            "应说清会报什么错：{d}"
+        );
     }
 
     #[test]

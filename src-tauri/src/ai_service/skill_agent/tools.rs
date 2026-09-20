@@ -34,7 +34,7 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
         ),
         ToolDefinition::new(
             "validate_script",
-            "用引擎真实的剧本校验器检查剧本（story_config.yaml + Chapters/*.yaml），返回错误/警告/提示诊断。剧本写完、交付之前必须运行本工具，修复所有「错误」后重新校验，直到 error_count == 0。",
+            "用引擎真实的剧本校验器检查剧本（story_config.yaml + Chapters/*.yaml），返回错误/警告/提示诊断。剧本写完、交付之前必须运行本工具，修复所有「错误」后重新校验，直到 error_count == 0。\n\n⚠ 剧本尚未全部写完时（逐章撰写阶段）不要调用本工具：那时它必然报出一批「尚未写完」造成的假错 —— `chapter_end.dangling`（指向还没写的章节）、`graph.unreachable`（后续章节还不可达）、`variable.never_read`（变量已赋值但还没轮到在后面章节消费）、`chapters.empty` 等。这些不是你此刻该修的，照着改会把你引向提前补写后续章节。校验留到全部章节写完后再做。",
             json!({
                 "type": "object",
                 "properties": {
