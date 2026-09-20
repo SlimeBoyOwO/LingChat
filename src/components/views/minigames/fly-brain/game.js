@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 /** Mount the fly's meadow-life scene inside an isolated UI root; all resources belong to this mount. */
 export async function mountFlyBrain(root, options) {
@@ -11,13 +12,17 @@ export async function mountFlyBrain(root, options) {
     target.addEventListener(name, callback, { ...opts, signal: lifetime.signal });
   let destroyed = false,
     frameId = 0,
-    pollTimer = 0;
+    pollTimer = 0,
+    unlistenModel = null,
+    dlPollTimer = 0;
   let brain = null;
   function destroy() {
     if (destroyed) return;
     destroyed = true;
     cancelAnimationFrame(frameId);
     clearInterval(pollTimer);
+    clearInterval(dlPollTimer);
+    unlistenModel?.();
     lifetime.abort();
     brain?.lose();
     if (gl) gl.getExtension("WEBGL_lose_context")?.loseContext();
@@ -2701,6 +2706,7 @@ export async function mountFlyBrain(root, options) {
   }
   function showPicker() {
     updatePickLast();
+    refreshBaseHint();
     sceneRoot.classList.add("picking");
     picker.classList.remove("hide");
   }
@@ -2726,6 +2732,195 @@ export async function mountFlyBrain(root, options) {
   });
   on($("#btnRestart"), "click", () => control({ cmd: "restart" }));
   on($("#btnExit"), "click", () => showPicker());
+
+  /* ================= 权重管理（基础权重下载/更新 + 学习权重持久化） ================= */
+  const fmtNum = (n) => Number(n || 0).toLocaleString("zh-CN");
+  const fmtMB = (bytes) => `${(Number(bytes || 0) / 1048576).toFixed(1)}MB`;
+  const fmtDate = (at) => {
+    if (!at) return "—";
+    const d = new Date(at > 1e12 ? at : at * 1000); // 秒/毫秒时间戳兼容
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+  /* invoke 超时护栏：后端命令挂死（如锁死）时按 __timeout 降级返回，UI 永不冻结。
+     status 3s / download 10s / save/reset 4s */
+  const invokeGuard = (cmd, ms, args) =>
+    Promise.race([
+      invoke(cmd, args),
+      new Promise((resolve) => setTimeout(() => resolve({ __timeout: true }), ms)),
+    ]).catch(() => ({ __timeout: true }));
+  let weightsOpen = false,
+    modelStatus = null,
+    dlMessage = ""; // 下载终态消息（done/error），下轮下载开始时清空
+  function syncDownloadUi() {
+    const dl = modelStatus?.download;
+    const active = !!dl?.active;
+    $("#dlWrap").hidden = !active && !dlMessage;
+    $("#btnDownload").disabled = active;
+    if (active) {
+      $("#dlBar").style.width = `${Math.max(0, Math.min(100, dl.percent ?? 0))}%`;
+      $("#dlStage").textContent =
+        dl.stage === "build" ? "本地构建中…" : `下载中 ${Math.round(dl.percent ?? 0)}%`;
+    }
+  }
+  async function refreshModelStatus() {
+    const st = await invokeGuard("fly_brain_model_status", 3000);
+    if (destroyed || !st || st.__timeout) return; // 挂起/超时静默跳过，状态保持上一帧
+    modelStatus = st;
+    const base = st.base || {};
+    $("#baseStatus").textContent = st.download?.active
+      ? "下载中…"
+      : base.present
+        ? `已下载 ${fmtMB(base.size_bytes)} · FlyWire FAFB ${base.version || "v783"}`
+        : "未下载 ⚠";
+    $("#btnDownload").textContent = base.present ? "重新下载/更新" : "下载";
+    const ld = st.learned || {};
+    const lines = [];
+    if (ld.present) {
+      // learned_weights.bin 为 f32 序列，按每权重 4 字节估算条数
+      lines.push(
+        `已保存约 ${fmtNum(Math.floor((ld.size_bytes || 0) / 4))} 条权重 · 上次保存 ${fmtDate(ld.saved_at)}`,
+      );
+      lines.push(`奖励 ${fmtNum(ld.rewards)} 次 · 惩罚 ${fmtNum(ld.punishes)} 次`);
+    } else {
+      lines.push("未开始学习");
+    }
+    if (typeof st.running_weights_changed === "number")
+      lines.push(`当前会话已修改 ${fmtNum(st.running_weights_changed)} 条`);
+    $("#learnedStatus").textContent = lines.join("\n");
+    const saveBtn = $("#btnSaveLearned");
+    saveBtn.disabled = typeof st.running_weights_changed !== "number";
+    saveBtn.title = saveBtn.disabled ? "仿真未运行（进入场景后开始）" : "保存当前学习权重";
+    syncDownloadUi();
+  }
+  async function refreshBaseHint() {
+    const st = await invokeGuard("fly_brain_model_status", 3000);
+    if (!destroyed && st && !st.__timeout && st.base)
+      $("#baseMissingHint").hidden = !!st.base.present;
+    /* 其余情况保持现状优雅降级 */
+  }
+  function stopDlPoll() {
+    clearInterval(dlPollTimer);
+    dlPollTimer = 0;
+  }
+  function startDlPoll() {
+    if (dlPollTimer) return;
+    dlPollTimer = setInterval(async () => {
+      await refreshModelStatus();
+      if (!modelStatus?.download?.active) stopDlPoll();
+    }, 1000);
+  }
+  function showDlProgress(p) {
+    if (p.stage === "download") {
+      dlMessage = "";
+      $("#dlWrap").hidden = false;
+      $("#btnDownload").disabled = true;
+      $("#dlBar").style.width = `${Math.max(0, Math.min(100, p.percent ?? 0))}%`;
+      $("#dlStage").textContent =
+        `下载 ${p.file || "connections.csv.gz"} ${fmtMB(p.downloaded_bytes)}/${p.total_bytes ? fmtMB(p.total_bytes) : "?"}`;
+      startDlPoll();
+    } else if (p.stage === "build") {
+      $("#dlStage").textContent = "本地构建中…";
+      $("#dlBar").style.width = "100%";
+    } else if (p.stage === "done" || p.stage === "error") {
+      dlMessage = p.stage === "done" ? p.message || "完成" : `失败：${p.message || "未知原因"}`;
+      $("#dlStage").textContent = dlMessage;
+      $("#btnDownload").disabled = false;
+      stopDlPoll();
+      refreshModelStatus();
+      refreshBaseHint();
+    }
+  }
+  listen("fly-brain:model-progress", (ev) => {
+    if (!destroyed) showDlProgress(ev.payload || {});
+  })
+    .then((fn) => {
+      if (destroyed) fn();
+      else unlistenModel = fn;
+    })
+    .catch(() => {});
+  function openWeights() {
+    weightsOpen = true;
+    refreshModelStatus();
+    picker.classList.add("hide");
+    $("#weights").classList.remove("hide");
+  }
+  function closeWeights() {
+    weightsOpen = false;
+    $("#weights").classList.add("hide");
+    picker.classList.remove("hide");
+  }
+  on($("#pickWeights"), "click", () => {
+    openWeights();
+  });
+  on($("#weightsBack"), "click", () => {
+    closeWeights();
+  });
+  on($("#btnDownload"), "click", async () => {
+    const btn = $("#btnDownload");
+    if (btn.disabled) return;
+    btn.disabled = true; // 置灰防重复，任何结果都恢复
+    dlMessage = "";
+    const r = await invokeGuard("fly_brain_model_download", 10000);
+    if (destroyed) return;
+    if (r.__timeout) {
+      $("#dlWrap").hidden = false;
+      $("#dlStage").textContent = "请求超时（后端无响应），请稍后再试";
+      btn.disabled = false;
+    } else if (!r?.ok) {
+      $("#dlWrap").hidden = false;
+      $("#dlStage").textContent = r?.error || "下载繁忙，请稍后再试";
+      btn.disabled = false;
+    } else {
+      $("#dlWrap").hidden = false;
+      startDlPoll();
+    }
+    refreshModelStatus(); // 自身带 3s 超时护栏，不会挂住按钮恢复
+  });
+  on($("#btnSaveLearned"), "click", async () => {
+    const btn = $("#btnSaveLearned");
+    if (btn.disabled) return;
+    btn.disabled = true;
+    const r = await invokeGuard("fly_brain_learned_save", 4000);
+    if (destroyed) return;
+    if (r.__timeout) {
+      $("#learnedStatus").textContent = "保存失败：后端无响应（超时），请稍后再试";
+    } else if (r?.ok) {
+      $("#learnedStatus").textContent = `已保存 ${fmtMB(r.size_bytes)}，正在刷新状态…`;
+    } else {
+      $("#learnedStatus").textContent = "保存失败，请稍后再试";
+    }
+    refreshModelStatus(); // 刷新后按 running_weights_changed 重设 disabled
+  });
+  on($("#btnResetLearned"), "click", () => {
+    $("#confirmErr").textContent = "";
+    $("#confirmReset").disabled = false;
+    $("#confirmScrim").hidden = false;
+  });
+  on($("#cancelReset"), "click", () => {
+    // 永远立即关闭弹层：不等任何 promise、无 disabled 态
+    $("#confirmErr").textContent = "";
+    $("#confirmScrim").hidden = true;
+  });
+  on($("#confirmReset"), "click", async () => {
+    const btn = $("#confirmReset");
+    if (btn.disabled) return;
+    btn.disabled = true; // 置灰防重复，任何结果都恢复
+    $("#confirmErr").textContent = "重置中…";
+    const r = await invokeGuard("fly_brain_learned_reset", 4000);
+    if (destroyed) return;
+    btn.disabled = false;
+    if (r.__timeout || !r?.ok) {
+      // 超时/失败：错误显示在弹层内，按钮恢复可点，弹层保持可重试或取消
+      $("#confirmErr").textContent = r.__timeout
+        ? "重置失败：后端无响应（超时），可取消后重试"
+        : "重置失败，请稍后再试";
+      return;
+    }
+    $("#confirmErr").textContent = "";
+    $("#confirmScrim").hidden = true;
+    refreshModelStatus();
+  });
 
   /* ================= 天色板（青绿山水：白天石青白雾、黄昏暖金、夜晚水墨） ================= */
   const DAY_ZEN = [0.45, 0.68, 0.88],

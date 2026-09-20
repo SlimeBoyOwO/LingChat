@@ -266,6 +266,10 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::fly_brain::fly_brain_positions,
         api::fly_brain::fly_brain_state,
         api::fly_brain::fly_brain_control,
+        api::fly_brain::fly_brain_model_status,
+        api::fly_brain::fly_brain_model_download,
+        api::fly_brain::fly_brain_learned_save,
+        api::fly_brain::fly_brain_learned_reset,
         exit_app,
     ])
 }

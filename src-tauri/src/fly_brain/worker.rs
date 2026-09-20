@@ -19,6 +19,7 @@
 //! 快照契约见 [`FlyBrainSnapshot`]（JSON 键名逐字固定，前端按此开发）。
 
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
@@ -30,6 +31,7 @@ use tracing::{info, warn};
 use super::brain_io::{BrainIO, SENS_K};
 use super::engine::Brain;
 use super::graph::BrainGraph;
+use super::learned;
 use super::life::{FlyLife, SIM_STEPS_PER_TICK, WORLD_RADIUS};
 use super::{FlyBrainControlResp, PositionsData};
 
@@ -49,6 +51,7 @@ const VISION_RATE_REF: f32 = 150.0;
 const VISION_OPTIC_RATE_REF: f32 = 3.0;
 const LIFE_SEED: u64 = 42; // 世界随机种子（食物布局固定）
 const CATCH_UP_BATCH: u64 = 50; // 单次 catch-up 最多补的步数
+const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(60); // 学习权重自动保存间隔
 
 /// 果蝇快照（fly 字段）。
 #[derive(Debug, Clone, Serialize)]
@@ -144,6 +147,10 @@ struct CtrlState {
     plasticity: bool,
     dirty_plasticity: bool,
     restart: bool,
+    /// 立即保存学习权重（learned_save 命令）。
+    save_weights: bool,
+    /// 重置学习权重到出厂 w0（learned_reset 命令；文件由命令侧删除）。
+    reset_learned: bool,
 }
 
 impl Default for CtrlState {
@@ -153,6 +160,8 @@ impl Default for CtrlState {
             plasticity: false, // 对齐参考实现的默认（启动不开启可塑性）
             dirty_plasticity: false,
             restart: false,
+            save_weights: false,
+            reset_learned: false,
         }
     }
 }
@@ -174,6 +183,10 @@ pub struct Shared {
     ctrl: Mutex<CtrlState>,
     /// 归一化全脑点云（fly_brain_positions 数据源，只读）。
     pub positions: PositionsData,
+    /// learned_save 的应答通道：最近一次保存结果（Ok=字节数，Err=原因）。
+    save_ack: Mutex<Option<Result<u64, String>>>,
+    /// 保存结果序号（每次尝试 +1；命令侧据此等待本次保存完成）。
+    save_seq: AtomicU64,
 }
 
 fn lock<'a, T>(m: &'a Mutex<T>) -> MutexGuard<'a, T> {
@@ -274,6 +287,24 @@ impl Shared {
             speed: c.speed,
             plasticity: c.plasticity,
         }
+    }
+
+    /// 请求立即保存学习权重，返回当前结果序号（命令侧据此等待）。
+    pub fn request_save(&self) -> u64 {
+        let seq = self.save_seq.load(Ordering::Relaxed);
+        lock(&self.ctrl).save_weights = true;
+        seq
+    }
+
+    /// 读取保存结果（seq 为序号；None=尚无结果）。
+    pub fn save_result(&self) -> Option<(u64, Result<u64, String>)> {
+        let seq = self.save_seq.load(Ordering::Relaxed);
+        lock(&self.save_ack).clone().map(|r| (seq, r))
+    }
+
+    /// 请求把工作权重重置为出厂 w0（learned_reset 命令；文件由命令侧删除）。
+    pub fn request_learned_reset(&self) {
+        lock(&self.ctrl).reset_learned = true;
     }
 
     /// 组装完整快照：生活状态 + sim_time + brain_activity（窗口发放率归一）
@@ -422,9 +453,24 @@ fn build_life_state(life: &FlyLife, brain: &Brain, speed: f32, spikes_total: u64
 }
 
 /// 构建脑 + BrainIO + 校准 + 生活世界 + 归一化点云，然后 spawn 常驻仿真线程。
+/// （learned_weights.bin 持久化禁用；测试/冒烟用）
 pub fn start(graph: BrainGraph) -> Result<Running, String> {
+    start_with_dir(graph, None)
+}
+
+/// 同 `start`，附加 fly_brain 数据目录（含 learned_weights.bin 的持久化）。
+pub fn start_with_dir(graph: BrainGraph, dir: Option<PathBuf>) -> Result<Running, String> {
     let t0 = Instant::now();
     let mut brain = Brain::new(graph);
+    // 学习权重：若存在且边数匹配则覆盖 weight（w0 出厂基线不动）
+    let learned_path = dir.map(|d| d.join("learned_weights.bin"));
+    if let Some(p) = &learned_path {
+        match learned::load_into(p, &mut brain) {
+            Ok(true) => info!("已恢复上次学习权重"),
+            Ok(false) => {},
+            Err(e) => warn!("学习权重加载失败（忽略）: {e}"),
+        }
+    }
     let positions = PositionsData::from_brain(&brain).ok_or("图缺少 coords，无法生成点云")?;
     let mut io = BrainIO::new(&brain, SENS_K, 0);
     io.calibrate(&mut brain);
@@ -445,6 +491,8 @@ pub fn start(graph: BrainGraph) -> Result<Running, String> {
         sim_now: AtomicU64::new(0),
         ctrl: Mutex::new(CtrlState::default()),
         positions,
+        save_ack: Mutex::new(None),
+        save_seq: AtomicU64::new(0),
     });
     let stop = Arc::new(AtomicBool::new(false));
 
@@ -453,6 +501,9 @@ pub fn start(graph: BrainGraph) -> Result<Running, String> {
         io,
         life,
         vision,
+        learned_path,
+        last_save: Instant::now(),
+        last_saved_changed: 0,
         drive: Vec::new(),
         sim_now: 0,
         spikes_total: 0,
@@ -481,6 +532,11 @@ struct Worker {
     life: FlyLife,
     /// 视觉群分组标志（step 记录发放时顺带累加左/右/optic 计数）。
     vision: VisionTracker,
+    /// learned_weights.bin 路径（None=持久化禁用）。
+    learned_path: Option<PathBuf>,
+    /// 上次保存时间 / 上次保存时的 weights_changed（增量判定）。
+    last_save: Instant,
+    last_saved_changed: u64,
     drive: Vec<(u32, f32)>,
     /// 仿真时钟（ms，dt=1ms 步进）；与 Shared.sim_now 镜像。
     sim_now: u64,
@@ -530,7 +586,33 @@ impl Worker {
                 std::thread::sleep(Duration::from_millis(1));
             }
         }
+        // worker 停止前落盘学习权重（有增量才写；plastic 关但已学过也保留成果）
+        if learned::has_learned_state(&self.brain)
+            && self.brain.plastic_stats.weights_changed > self.last_saved_changed
+        {
+            self.save_learned_now(&shared);
+        }
         info!("果蝇脑 worker 主循环退出");
+    }
+
+    /// 保存学习权重并更新应答通道（autosave / save 命令 / exit 落盘共用）。
+    fn save_learned_now(&mut self, shared: &Shared) {
+        let Some(path) = &self.learned_path else {
+            return;
+        };
+        let result = if learned::has_learned_state(&self.brain) {
+            learned::save(path, &self.brain)
+        } else {
+            Err("从未开启可塑性，无可学权重".to_string())
+        };
+        if result.is_ok() {
+            self.last_saved_changed = self.brain.plastic_stats.weights_changed;
+            self.last_save = Instant::now();
+        } else if let Err(e) = &result {
+            warn!("学习权重保存失败: {e}");
+        }
+        *lock(&shared.save_ack) = Some(result);
+        shared.save_seq.fetch_add(1, Ordering::Relaxed);
     }
 
     /// 一个决策 tick 的开始：应用控制 → 编码驱动 → 清空窗口计数。
@@ -579,13 +661,40 @@ impl Worker {
         let speed = lock(&shared.ctrl).speed;
         *lock(&shared.life_state) =
             build_life_state(&self.life, &self.brain, speed, self.spikes_total);
+        // 学习权重自动保存：可塑性开启且有增量时每 60 秒落盘一次
+        if self.brain.plastic
+            && self.brain.plastic_stats.weights_changed > self.last_saved_changed
+            && self.last_save.elapsed() >= AUTOSAVE_INTERVAL
+        {
+            self.save_learned_now(shared);
+        }
     }
 
-    /// tick 边界应用控制命令（restart / plasticity；speed 由配速循环直接读）。
+    /// tick 边界应用控制命令（restart / plasticity / save / reset_learned；
+    /// speed 由配速循环直接读）。
+    /// 死锁修复：先持锁取走标志位并清零，**立即放锁**，再执行慢操作
+    /// （enable_plasticity 大数组分配、reset_learned_weights 全量拷贝、
+    /// 学习权重文件 IO、spike 窗口清空）——worker 绝不在持有 ctrl 锁时
+    /// 做这些重活，否则命令侧的 request_save/request_learned_reset/
+    /// apply_control（都要拿同一把 ctrl 锁）会被堵成锁车队，在高负载下
+    /// 表现为整个界面卡死。
     fn apply_ctrl(&mut self, shared: &Shared) {
-        let mut c = lock(&shared.ctrl);
-        if c.restart {
+        let (restart, dirty_plasticity, plasticity, save_weights, reset_learned) = {
+            let mut c = lock(&shared.ctrl);
+            let flags = (
+                c.restart,
+                c.dirty_plasticity,
+                c.plasticity,
+                c.save_weights,
+                c.reset_learned,
+            );
             c.restart = false;
+            c.dirty_plasticity = false;
+            c.save_weights = false;
+            c.reset_learned = false;
+            flags
+        };
+        if restart {
             self.life.reset();
             self.brain.reset_state(true);
             self.brain.reset_learned_weights();
@@ -593,13 +702,19 @@ impl Worker {
             lock(&shared.spike_idx_log).clear();
             lock(&shared.vision_log).clear();
         }
-        if c.dirty_plasticity {
-            c.dirty_plasticity = false;
-            if c.plasticity {
+        if dirty_plasticity {
+            if plasticity {
                 self.brain.enable_plasticity();
             } else {
                 self.brain.disable_plasticity();
             }
+        }
+        if save_weights {
+            self.save_learned_now(shared);
+        }
+        if reset_learned {
+            self.brain.reset_learned_weights();
+            self.last_saved_changed = 0;
         }
     }
 }

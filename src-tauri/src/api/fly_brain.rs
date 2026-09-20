@@ -21,6 +21,19 @@
 //!   payload = `{ speed?: 0.5|1|2, cmd?: "restart", plasticity?: bool }`；
 //!   restart = 重置世界+果蝇+脑权重恢复 w0（可塑性状态清零）。
 //!
+//! 权重管理（基础权重下载/构建 + 学习权重持久化）：
+//! - `invoke("fly_brain_model_status")` → `{ base: { present, size_bytes,
+//!   version("FlyWire FAFB v783") }, learned: { present, size_bytes, saved_at|null,
+//!   rewards, punishes }, running_weights_changed|null, download|null }`；
+//! - `invoke("fly_brain_model_download")` → `{ ok, error|null }`：后台下载 FlyWire
+//!   官方 CSV → raw/ 离线构建 → 原子替换 graph.npz（进行中返回 ok:false error:"busy"）；
+//!   进度经事件 `fly-brain:model-progress`（payload `{ stage: "download"|"build"|
+//!   "done"|"error", file, downloaded_bytes, total_bytes, percent, message }`）推送；
+//! - `invoke("fly_brain_learned_save")` → `{ ok, size_bytes }`：worker 立即落盘
+//!   学习权重（learned_weights.bin；worker 未运行/从未开启可塑性 → ok:false）；
+//! - `invoke("fly_brain_learned_reset")` → `{ ok }`：删 learned 文件，
+//!   worker 在跑则同时重置为出厂权重。
+//!
 //! enter/exit 可能阻塞数百毫秒到数秒（磁盘 + 大内存分配），放 `spawn_blocking`；
 //! state/control 只动共享状态，直接执行。
 
@@ -30,6 +43,7 @@ use tauri::{AppHandle, Manager};
 use crate::fly_brain::worker::FlyBrainSnapshot;
 use crate::fly_brain::{
     FlyBrainControlResp, FlyBrainEnterResp, FlyBrainExitResp, FlyBrainPositionsResp, FlyBrainState,
+    LearnedResetResp, LearnedSaveResp, ModelDownloadResp, ModelStatusResp,
 };
 
 /// `fly_brain_control` 的载荷。
@@ -73,4 +87,29 @@ pub async fn fly_brain_control(
 ) -> Result<FlyBrainControlResp, String> {
     app.state::<FlyBrainState>()
         .control(payload.speed, payload.cmd, payload.plasticity)
+}
+
+// ─── 权重管理 ───
+
+#[tauri::command]
+pub async fn fly_brain_model_status(app: AppHandle) -> Result<ModelStatusResp, String> {
+    app.state::<FlyBrainState>().model_status()
+}
+
+#[tauri::command]
+pub async fn fly_brain_model_download(app: AppHandle) -> Result<ModelDownloadResp, String> {
+    app.state::<FlyBrainState>().model_download(&app)
+}
+
+#[tauri::command]
+pub async fn fly_brain_learned_save(app: AppHandle) -> Result<LearnedSaveResp, String> {
+    // 需要等待 worker 在 tick 边界完成落盘（≤2.5s），放 blocking 线程
+    tauri::async_runtime::spawn_blocking(move || app.state::<FlyBrainState>().learned_save())
+        .await
+        .map_err(|e| format!("任务失败: {e}"))?
+}
+
+#[tauri::command]
+pub async fn fly_brain_learned_reset(app: AppHandle) -> Result<LearnedResetResp, String> {
+    app.state::<FlyBrainState>().learned_reset()
 }

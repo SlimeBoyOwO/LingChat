@@ -21,14 +21,17 @@
 //!   点云而完整加载 ~90MB 图数据）；enter 后改用 worker 持有的实时数据。
 
 pub mod brain_io;
+pub mod build_graph;
+pub mod download;
 pub mod engine;
 pub mod graph;
+pub mod learned;
 pub mod life;
 pub mod worker;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tracing::info;
@@ -66,6 +69,56 @@ pub struct FlyBrainControlResp {
     pub ok: bool,
     pub speed: f32,
     pub plasticity: bool,
+}
+
+// ─── 权重管理（model_status / model_download / learned_save / learned_reset）───
+
+/// model_status.base：基础权重文件信息。
+#[derive(Debug, Clone, Serialize)]
+pub struct BaseInfo {
+    pub present: bool,
+    pub size_bytes: u64,
+    /// 目前固定 "FlyWire FAFB v783"。
+    pub version: String,
+}
+
+/// model_status.learned：学习权重文件信息（含文件头统计）。
+#[derive(Debug, Clone, Serialize)]
+pub struct LearnedInfo {
+    pub present: bool,
+    pub size_bytes: u64,
+    pub saved_at: Option<u64>,
+    pub rewards: u64,
+    pub punishes: u64,
+}
+
+/// `fly_brain_model_status` 响应。
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelStatusResp {
+    pub base: BaseInfo,
+    pub learned: LearnedInfo,
+    pub running_weights_changed: Option<u64>,
+    pub download: Option<download::ModelDownloadState>,
+}
+
+/// `fly_brain_model_download` 响应。
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelDownloadResp {
+    pub ok: bool,
+    pub error: Option<String>,
+}
+
+/// `fly_brain_learned_save` 响应。
+#[derive(Debug, Clone, Serialize)]
+pub struct LearnedSaveResp {
+    pub ok: bool,
+    pub size_bytes: u64,
+}
+
+/// `fly_brain_learned_reset` 响应。
+#[derive(Debug, Clone, Serialize)]
+pub struct LearnedResetResp {
+    pub ok: bool,
 }
 
 // ─── 归一化点云（positions.bin 语义，对齐 web_server.py 47-60/90-105 行）───
@@ -188,12 +241,22 @@ pub fn graph_path() -> PathBuf {
         .join("graph.npz")
 }
 
+/// learned_weights.bin 的运行时路径（与 graph.npz 同目录）。
+pub fn learned_path() -> PathBuf {
+    crate::data_dir::get_data_dir()
+        .join("third_party")
+        .join("fly_brain")
+        .join("learned_weights.bin")
+}
+
 /// 果蝇脑全局状态：持有运行中的 worker（脑数据归 worker 线程所有），
-/// 以及未 enter 时懒加载的 positions 缓存。
+/// 以及未 enter 时懒加载的 positions 缓存、模型下载/构建任务状态。
 #[derive(Default)]
 pub struct FlyBrainState {
     running: Mutex<Option<worker::Running>>,
     positions_cache: Mutex<Option<Arc<PositionsData>>>,
+    /// 模型下载/构建任务状态（None=从未发起）。
+    pub model_dl: Mutex<Option<download::ModelDownloadState>>,
 }
 
 impl FlyBrainState {
@@ -213,7 +276,8 @@ impl FlyBrainState {
             return Err(format!("未找到果蝇脑图数据: {}", path.display()));
         }
         let graph = BrainGraph::load(&path)?;
-        let running = worker::start(graph)?;
+        let dir = path.parent().map(|p| p.to_path_buf());
+        let running = worker::start_with_dir(graph, dir)?;
         let load_ms = t0.elapsed().as_millis() as u64;
         info!("果蝇脑 enter: 加载+校准+启动 worker 共耗时 {}ms", load_ms);
         *guard = Some(running);
@@ -236,18 +300,28 @@ impl FlyBrainState {
 
     /// 快照（未启动返回 Err("not started")）。
     pub fn state(&self) -> Result<worker::FlyBrainSnapshot, String> {
-        let guard = self.running.lock().map_err(|e| format!("锁失败: {e}"))?;
-        let r = guard.as_ref().ok_or_else(|| "not started".to_string())?;
-        Ok(r.shared.snapshot())
+        // 锁纪律：running 锁只用于取出 Arc<Shared>（瞬时），快照组装（窗口克隆、
+        // 位图去重等重活）在放锁后进行，绝不持 running 锁等 worker 侧的任何锁。
+        let shared = {
+            let guard = self.running.lock().map_err(|e| format!("锁失败: {e}"))?;
+            guard
+                .as_ref()
+                .map(|r| Arc::clone(&r.shared))
+                .ok_or_else(|| "not started".to_string())?
+        };
+        Ok(shared.snapshot())
     }
 
     /// 归一化点云（3D 小窗用）。enter 后用 worker 的实时数据；未 enter 时懒加载
     /// 并缓存（只读 coords/super_class/meta 三个 npz 条目，模块文档已注明此约定）。
     pub fn positions(&self) -> Result<FlyBrainPositionsResp, String> {
+        // 锁纪律同 state()：取 Arc 即放锁，base64 编码在锁外。
         {
             let guard = self.running.lock().map_err(|e| format!("锁失败: {e}"))?;
             if let Some(r) = guard.as_ref() {
-                return Ok(r.shared.positions.resp());
+                let shared = Arc::clone(&r.shared);
+                drop(guard);
+                return Ok(shared.positions.resp());
             }
         }
         let mut cache = self
@@ -280,8 +354,129 @@ impl FlyBrainState {
         cmd: Option<String>,
         plasticity: Option<bool>,
     ) -> Result<FlyBrainControlResp, String> {
+        // 锁纪律同 state()：取 Arc 即放锁，apply_control（要写 ctrl 锁）在锁外。
+        let shared = {
+            let guard = self.running.lock().map_err(|e| format!("锁失败: {e}"))?;
+            guard
+                .as_ref()
+                .map(|r| Arc::clone(&r.shared))
+                .ok_or_else(|| "not started".to_string())?
+        };
+        Ok(shared.apply_control(speed, cmd, plasticity))
+    }
+
+    /// model_status：基础权重/学习权重/运行中学习增量/下载状态。
+    pub fn model_status(&self) -> Result<ModelStatusResp, String> {
+        let gp = graph_path();
+        let base = BaseInfo {
+            present: gp.exists(),
+            size_bytes: gp.metadata().map(|m| m.len()).unwrap_or(0),
+            version: "FlyWire FAFB v783".to_string(),
+        };
+        let lp = learned_path();
+        let (present, size_bytes, header) = if lp.exists() {
+            (
+                true,
+                lp.metadata().map(|m| m.len()).unwrap_or(0),
+                learned::read_header(&lp),
+            )
+        } else {
+            (false, 0, None)
+        };
+        let learned = LearnedInfo {
+            present,
+            size_bytes,
+            saved_at: header.map(|h| h.saved_at),
+            rewards: header.map_or(0, |h| h.rewards),
+            punishes: header.map_or(0, |h| h.punishes),
+        };
+        let running_weights_changed = {
+            // 锁纪律：取 Arc 即放 running 锁，快照在锁外组装。
+            let shared = {
+                let guard = self.running.lock().map_err(|e| format!("锁失败: {e}"))?;
+                guard.as_ref().map(|r| Arc::clone(&r.shared))
+            };
+            shared.map(|s| s.snapshot().weights_changed)
+        };
+        let dl = self
+            .model_dl
+            .lock()
+            .map_err(|e| format!("锁失败: {e}"))?
+            .clone();
+        Ok(ModelStatusResp {
+            base,
+            learned,
+            running_weights_changed,
+            download: dl,
+        })
+    }
+
+    /// model_download：busy 判定后启动后台下载+构建任务。
+    pub fn model_download(&self, app: &tauri::AppHandle) -> Result<ModelDownloadResp, String> {
+        if download::is_busy(&self.model_dl) {
+            return Ok(ModelDownloadResp {
+                ok: false,
+                error: Some("busy".to_string()),
+            });
+        }
+        {
+            let mut g = self.model_dl.lock().map_err(|e| format!("锁失败: {e}"))?;
+            *g = Some(download::ModelDownloadState::busy());
+        }
+        download::spawn_model_download(app.clone());
+        Ok(ModelDownloadResp {
+            ok: true,
+            error: None,
+        })
+    }
+
+    /// learned_save：请求 worker 立即落盘学习权重并等待完成（≤2.5s）。
+    /// worker 未运行 / 从未开启可塑性 → ok:false。
+    pub fn learned_save(&self) -> Result<LearnedSaveResp, String> {
+        let running = {
+            let guard = self.running.lock().map_err(|e| format!("锁失败: {e}"))?;
+            guard.as_ref().map(|r| r.shared.clone())
+        };
+        let Some(shared) = running else {
+            return Ok(LearnedSaveResp {
+                ok: false,
+                size_bytes: 0,
+            });
+        };
+        let seq0 = shared.request_save();
+        let deadline = Instant::now() + Duration::from_millis(2500);
+        loop {
+            if let Some((seq, result)) = shared.save_result() {
+                if seq > seq0 {
+                    return match result {
+                        Ok(size) => Ok(LearnedSaveResp {
+                            ok: true,
+                            size_bytes: size,
+                        }),
+                        Err(_) => Ok(LearnedSaveResp {
+                            ok: false,
+                            size_bytes: 0,
+                        }),
+                    };
+                }
+            }
+            if Instant::now() >= deadline {
+                return Ok(LearnedSaveResp {
+                    ok: false,
+                    size_bytes: 0,
+                });
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    /// learned_reset：删 learned 文件；worker 在跑则同时把权重重置为出厂 w0。
+    pub fn learned_reset(&self) -> Result<LearnedResetResp, String> {
+        learned::remove(&learned_path())?;
         let guard = self.running.lock().map_err(|e| format!("锁失败: {e}"))?;
-        let r = guard.as_ref().ok_or_else(|| "not started".to_string())?;
-        Ok(r.shared.apply_control(speed, cmd, plasticity))
+        if let Some(r) = guard.as_ref() {
+            r.shared.request_learned_reset();
+        }
+        Ok(LearnedResetResp { ok: true })
     }
 }

@@ -294,6 +294,11 @@ impl Brain {
         self.spike_counts.fill(0);
     }
 
+    /// 是否开启过可塑性（w0 基线已分配；学习权重持久化的保存门槛）。
+    pub fn w0_is_empty(&self) -> bool {
+        self.w0.is_empty()
+    }
+
     /// 把权重恢复到初始值 w0 并清零全部可塑性状态（restart 用）。
     /// 不影响 plastic 开关本身与 DA 突触前集合；从未开启过可塑性时为空操作。
     pub fn reset_learned_weights(&mut self) {

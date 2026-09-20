@@ -71,9 +71,46 @@
       <nav class="picker-menu" aria-label="选择地图">
         <button type="button" id="pickShrine" class="picker-item">博丽神社 · 灵梦</button>
         <button type="button" id="pickPasture" class="picker-item">青绿牧场 · 果蝇</button>
+        <button type="button" id="pickWeights" class="picker-item">权重管理</button>
         <button type="button" id="pickBack" class="picker-item">返回</button>
       </nav>
+      <p class="picker-warn" id="baseMissingHint" hidden>⚠ 大脑权重未下载，请先到「权重管理」下载</p>
       <p class="picker-last" id="pickLast"></p>
+    </div>
+  </div>
+
+  <div class="weights hide" id="weights">
+    <div class="weights-inner">
+      <h1 class="weights-title">权重管理</h1>
+      <section class="wcard" aria-label="基础权重">
+        <h2>基础权重（连接组）</h2>
+        <div class="wstatus" id="baseStatus">检查中…</div>
+        <div class="wnote">数据来源 FlyWire Codex v783 · CC BY-NC 4.0 · 约 57MB 下载后本地构建</div>
+        <div class="wprogress" id="dlWrap" hidden>
+          <div class="wbar"><i id="dlBar"></i></div>
+          <div class="wstage" id="dlStage"></div>
+        </div>
+        <button type="button" id="btnDownload" class="wbtn">下载</button>
+      </section>
+      <section class="wcard" aria-label="学习权重">
+        <h2>学习权重</h2>
+        <div class="wstatus" id="learnedStatus">检查中…</div>
+        <div class="wrow">
+          <button type="button" id="btnSaveLearned" class="wbtn">立即保存</button>
+          <button type="button" id="btnResetLearned" class="wbtn danger">重置为出厂权重</button>
+        </div>
+      </section>
+      <button type="button" id="weightsBack" class="picker-item wback">返回</button>
+    </div>
+    <div class="confirm-scrim" id="confirmScrim" hidden>
+      <div class="confirm-box" role="dialog" aria-modal="true" aria-label="确认重置学习权重">
+        <p>将忘记这颗大脑学会的一切，恢复出厂状态？</p>
+        <p class="confirm-err" id="confirmErr"></p>
+        <div class="wrow center">
+          <button type="button" id="confirmReset" class="wbtn danger">确认重置</button>
+          <button type="button" id="cancelReset" class="wbtn">取消</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>

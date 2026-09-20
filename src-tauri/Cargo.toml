@@ -111,6 +111,8 @@ sevenz-rust2 = "0.21"
 sha2 = "0.10"
 tempfile = "3"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# 果蝇脑权重构建：读取 FlyWire 官方 .csv.gz（gzip 解压）
+flate2 = "1"
 
 # 插件系统：嵌入 RustPython 跑插件 Python 脚本（目前是一个受限沙箱）。
 # 桌面与移动端（Android/iOS）都编译，供安卓自测。

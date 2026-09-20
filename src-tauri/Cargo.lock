@@ -4269,6 +4269,7 @@ dependencies = [
  "bytes",
  "chrono",
  "encoding_rs",
+ "flate2",
  "futures-executor",
  "futures-util",
  "genai",
