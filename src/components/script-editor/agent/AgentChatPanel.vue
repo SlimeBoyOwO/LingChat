@@ -4,7 +4,7 @@
     <aside class="flex min-h-0 w-[230px] shrink-0 flex-col gap-3">
       <button
         class="border-brand/45 bg-brand/14 text-brand hover:bg-brand/24 inline-flex items-center justify-center gap-1 rounded-xl border px-3 py-2 text-[0.82rem] transition-all duration-200 disabled:opacity-50"
-        :disabled="store.loading"
+        :disabled="store.loading || store.sending"
         @click="store.createConversation()"
       >
         <span class="text-[1rem] leading-none">＋</span>
@@ -42,7 +42,12 @@
                 c.title || t("scriptEditor.agentChat.conversationTitle", { id: c.id })
               }}</span>
               <span
-                class="inline-flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+                class="inline-flex items-center gap-1 transition-opacity"
+                :class="
+                  store.sending
+                    ? 'pointer-events-none opacity-30'
+                    : 'opacity-0 group-hover:opacity-100'
+                "
               >
                 <Icon
                   icon="edit"
@@ -68,7 +73,8 @@
       </div>
 
       <button
-        class="text-[0.72rem] text-white/40 transition-colors hover:text-white/70"
+        class="text-[0.72rem] text-white/40 transition-colors hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="store.sending"
         @click="clearConversation"
       >
         {{ t("scriptEditor.agentChat.clearConversation") }}
