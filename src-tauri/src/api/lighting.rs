@@ -149,6 +149,10 @@ pub struct LightingState {
     pub override_params: Option<LightingParams>,
     pub override_preset: Option<String>,
     pub override_source: String,
+    /// 前端上报的「屏幕上真正在渲染的」预设 id
+    pub active_preset: Option<String>,
+    /// 生效来源：`tool` / `script` / `global` / `scene` / `off`
+    pub active_source: String,
     /// 当前场景 id，前端据此取场景自带光影
     pub current_scene_id: Option<String>,
 }
@@ -184,6 +188,33 @@ pub async fn lighting_get(app: AppHandle) -> Result<LightingState, String> {
         override_params: current.as_ref().and_then(LightingOverride::resolve),
         override_preset: current.as_ref().and_then(|c| c.preset.clone()),
         override_source: gs.lighting_override_source.clone(),
+        active_preset: gs.lighting_active_preset.clone(),
+        active_source: gs.lighting_active_source.clone(),
         current_scene_id: gs.current_scene_id.clone(),
     })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportLightingActiveRequest {
+    /// 前端解析出的生效预设 id；「跟随场景」或自定义参数时为 None
+    #[serde(default)]
+    pub preset: Option<String>,
+    /// 生效来源：`tool` / `script` / `global` / `scene` / `off`
+    pub source: String,
+}
+
+/// 前端上报「屏幕上真正在渲染的光影」。
+///
+/// 只回读、不再广播：这条状态就是前端自己算出来的，再发回去会让它重算一遍并
+/// 再次上报，形成事件环。
+#[tauri::command]
+pub async fn lighting_report_active(
+    app: AppHandle,
+    req: ReportLightingActiveRequest,
+) -> Result<(), String> {
+    let game_status = game_status_handle(&app).await;
+    let mut gs = game_status.lock().await;
+    gs.set_lighting_active(req.preset.filter(|s| !s.is_empty()), &req.source);
+    Ok(())
 }

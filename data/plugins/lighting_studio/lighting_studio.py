@@ -71,6 +71,44 @@ def _current(call_tool):
     return data if isinstance(data, dict) else None
 
 
+SOURCE_NAMES = {
+    "scene": "场景自带灯光",
+    "global": "用户在设置面板手动选的预设",
+    "panel": "用户在设置面板手动选的预设",
+    "script": "剧本事件",
+    "tool": "插件或助手",
+    "off": "光影总开关已关闭",
+}
+
+
+def _active(call_tool, presets):
+    """把「屏幕上此刻在打什么灯」说成一句中文。
+
+    这里只认 active_*，不认 override_*：override 只是后端记的覆盖，看不到用户
+    手动选的全局预设。拿 override 判断就会发生「用户明明切成了冷月夜，助手却说
+    现在是暖窗光、不用改」这类事。
+    """
+    current = _current(call_tool)
+    if not current:
+        return None
+    source = str(current.get("active_source") or "")
+    preset_id = current.get("active_preset")
+    if preset_id:
+        name = next(
+            (p.get("name") for p in presets if p.get("id") == preset_id),
+            str(preset_id),
+        )
+        summary = "当前画面正在打「" + str(name) + "」"
+    elif source == "off":
+        name = None
+        summary = "光影总开关关着，画面没有打光"
+    else:
+        name = None
+        summary = "当前没有套用任何预设，画面用的是" + SOURCE_NAMES.get(source, "场景自带灯光")
+    summary += "（来源：" + SOURCE_NAMES.get(source, source or "未知") + "）"
+    return {"preset": preset_id, "name": name, "source": source, "summary": summary}
+
+
 def _push(call_tool, payload):
     try:
         result = call_tool(APPLY_TOOL, payload)
@@ -178,7 +216,7 @@ def _list(call_tool):
     presets = loaded["presets"]
     return {
         "ok": True,
-        "current": _current(call_tool),
+        "active": _active(call_tool, presets),
         "presets": [
             {
                 "id": p.get("id"),

@@ -697,9 +697,11 @@ export default {
       sourceScript: "the script",
       sourceTool: "a plugin or the assistant",
       sourcePanel: "this panel",
-      overriddenHint: "Lighting is temporarily driven by {who}, so panel presets have no effect",
+      overriddenHint:
+        "Lighting is temporarily driven by {who}; picking any preset below releases it and takes over",
       clearRuntime: "Release temporary lighting",
       clearRuntimeFailed: "Failed to release temporary lighting",
+      takenOver: "Lighting taken over: temporary lighting released, your preset now applies",
       switchesTitle: "Per-effect switches",
       switchesHint: "These only mute an effect; they never change scene or preset intensities",
       overlay: "Light overlay (overall tint)",

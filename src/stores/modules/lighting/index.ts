@@ -8,10 +8,16 @@
  *
  * 生效优先级：总开关关 → 完全没有光影；否则
  * 运行时覆盖（剧本/工具）→ 全局预设（设置面板）→ 场景自带灯光。
+ *
+ * 后端看不见这份裁决结果：全局预设存在 localStorage 里，渲染层又在覆盖之后。
+ * 所以 `startActiveReporting` 会把最终生效的预设回传后端，`lighting_get` 才答得
+ * 出「现在到底在打什么灯」——否则 AI 读到一个永远为空的可观测量，就会误判成
+ * 「没打灯」或沿用上一次的结果，跳过用户要求的切换。
  */
 import { defineStore } from "pinia";
+import { watch } from "vue";
 
-import { listLightingPresets } from "@/api/services/lighting";
+import { listLightingPresets, reportLightingActive } from "@/api/services/lighting";
 import type { LightingChangePayload, LightingPreset } from "@/api/services/lighting";
 import type { LightingParams } from "@/api/services/scene";
 import { planLighting } from "@/utils/lighting";
@@ -25,6 +31,9 @@ interface OverrideState {
   params: LightingParams;
   source: string;
 }
+
+/** 上报器只需要一份，重复调用（热更新、多入口）不再叠 watcher。 */
+let reportingStarted = false;
 
 /** 子开关只负责「压掉」参数里自带的启用位，不会反向打开场景没启用的效果。 */
 function maskFeatures(params: LightingParams, on: LightingSettings): LightingParams {
@@ -116,6 +125,28 @@ export const useLightingStore = defineStore("lighting", {
     /** 剧本结束 / 场景重置时调用：回到「跟随场景」。 */
     clearOverride() {
       this.override = null;
+    },
+
+    /**
+     * 开始把生效光影回传后端。只在主窗口的监听初始化里调一次。
+     *
+     * 用 watch 而不是在每个改动点手动上报：裁决结果就这三个 getter，靠人工追
+     * 状态早晚会漏一处——而漏掉的那一处正是这次「AI 说已经调好了」的来源。
+     */
+    startActiveReporting() {
+      if (reportingStarted) return;
+      reportingStarted = true;
+      const settings = useSettingsStore();
+      watch(
+        () => [settings.lighting.masterEnabled, this.activePresetId, this.activeSource] as const,
+        ([masterOn, preset, source]) => {
+          void reportLightingActive({
+            preset: masterOn && preset ? preset : null,
+            source: masterOn ? source : "off",
+          }).catch((e) => console.warn("[Lighting] 生效状态上报失败:", e));
+        },
+        { immediate: true }
+      );
     },
   },
 });

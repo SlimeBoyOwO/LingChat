@@ -735,6 +735,7 @@ pub fn run() {
             api::lighting::lighting_apply,
             api::lighting::lighting_clear,
             api::lighting::lighting_get,
+            api::lighting::lighting_report_active,
             api::music::get_music_list,
             api::music::get_music_file,
             api::music::upload_music,

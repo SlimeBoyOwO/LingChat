@@ -119,7 +119,8 @@ impl Tool for LightingGet {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             "lighting_get",
-            "查询当前舞台光影：正在生效的预设、来源，以及当前场景。",
+            "查询当前舞台光影。以 active_* 为准判断屏幕上正在打的灯（含用户手动选的预设与跟随场景的默认灯）；\
+             override_* 只是剧本/工具留下的运行时覆盖记录，单独看它会漏掉用户手动设定的灯光。",
             json!({
                 "type": "object",
                 "properties": {},
@@ -138,7 +139,17 @@ impl Tool for LightingGet {
         let app = context.require_app()?;
         let gs = game_status_handle(&app).await;
         let gs = gs.lock().await;
+        let active_preset = gs.lighting_active_preset.clone();
+        let active_name = active_preset
+            .as_deref()
+            .and_then(lighting_store::preset_name)
+            .map(str::to_string);
         Ok(json!({
+            // 屏幕上真正在渲染的灯，前端算好后回传
+            "active_preset": active_preset,
+            "active_preset_name": active_name,
+            "active_source": gs.lighting_active_source,
+            // 后端侧的运行时覆盖记录，不含设置面板的全局预设
             "override_preset": gs.lighting_override.as_ref().and_then(|o| o.preset.clone()),
             "override_source": gs.lighting_override_source,
             "current_scene_id": gs.current_scene_id,

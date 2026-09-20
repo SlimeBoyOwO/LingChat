@@ -854,6 +854,17 @@ pub fn normalize_id(id: &str) -> Option<&'static str> {
         .map(|e| e.0)
 }
 
+/// 按 id 取展示名（如 `warm_window` → 「暖窗光」）。
+///
+/// 回给 LLM 的状态要带名字：它判断「用户要的暖窗光是否已经在打」时用的是中文，
+/// 只给 id 就得再调一次 `lighting_list_presets` 才能对上。
+pub fn preset_name(id: &str) -> Option<&'static str> {
+    ENTRIES
+        .iter()
+        .find(|e| e.0 == id || e.0.eq_ignore_ascii_case(id))
+        .map(|e| e.1)
+}
+
 /// 供 LLM / 插件读的轻量清单（不含参数，省 token）。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]

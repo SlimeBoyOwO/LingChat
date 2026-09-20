@@ -40,6 +40,15 @@ pub struct GameStatus {
     pub lighting_override: Option<LightingOverride>,
     /// 当前生效的覆盖来自哪里，仅用于诊断与状态回读。
     pub lighting_override_source: String,
+    /// 前端**实际渲染出来的**光影：预设 id；自定义参数或「跟随场景」时为 None。
+    ///
+    /// 只能由前端上报——设置面板选的全局预设存在 localStorage 里，后端读不到，
+    /// 而渲染时它排在运行时覆盖之后、场景自带之前。缺了这份回传，`lighting_get`
+    /// 只能报出 `override_preset = null`，模型会以为「没打光」或自行脑补成上一次
+    /// 那个预设，于是「再调一次暖窗光」被它当成已经生效而跳过执行。
+    pub lighting_active_preset: Option<String>,
+    /// 生效来源：`tool` / `script` / `global` / `scene` / `off`。
+    pub lighting_active_source: String,
 
     /// 当前用户选择的场景 ID（对应 scenes.json 中的场景）
     pub current_scene_id: Option<String>,
@@ -86,6 +95,8 @@ impl GameStatus {
             background_effect: String::new(),
             lighting_override: None,
             lighting_override_source: String::new(),
+            lighting_active_preset: None,
+            lighting_active_source: String::new(),
             current_scene_id: None,
             last_processed_scene_id: None,
             global_variables: HashMap::new(),
@@ -153,6 +164,12 @@ impl GameStatus {
         self.lighting_override = None;
         self.lighting_override_source = String::new();
         had
+    }
+
+    /// 记录前端上报的「屏幕上真正在渲染的光影」，供 `lighting_get` 回读。
+    pub fn set_lighting_active(&mut self, preset: Option<String>, source: &str) {
+        self.lighting_active_preset = preset;
+        self.lighting_active_source = source.to_string();
     }
 
     // ============ 舞台管理 ============

@@ -25,6 +25,9 @@ export interface LightingState {
   overrideParams: LightingParams | null;
   overridePreset: string | null;
   overrideSource: string;
+  /** 前端上报回来的「屏幕实际渲染」状态，后端只存不判 */
+  activePreset: string | null;
+  activeSource: string;
   currentSceneId: string | null;
 }
 
@@ -45,4 +48,18 @@ export async function clearLighting(): Promise<void> {
 
 export async function getLighting(): Promise<LightingState> {
   return invoke<LightingState>("lighting_get");
+}
+
+/**
+ * 上报「屏幕上正在渲染的光影」给后端。
+ *
+ * 后端自己算不出来：设置面板选的全局预设存在 localStorage，渲染优先级又排在
+ * 运行时覆盖之后。不回报的话 `lighting_get` 只能看见覆盖，模型会误判成
+ * 「没打灯」或沿用上一次的结果，从而跳过用户要求的切换。
+ */
+export async function reportLightingActive(req: {
+  preset?: string | null;
+  source: string;
+}): Promise<void> {
+  await invoke("lighting_report_active", { req });
 }

@@ -162,9 +162,23 @@
     settings.updateLighting({ masterEnabled: enabled });
   }
 
-  /** 面板只改「全局预设」这一层；运行时覆盖由剧本/工具持有，这里不去硬碰。 */
-  function setGlobalPreset(id: string) {
+  /**
+   * 手动点预设 = 直接接管灯光。
+   *
+   * 剧本/AI 留下的运行时覆盖压在全局预设之上，不先清掉就会出现「面板高亮跳到新
+   * 预设、画面却还是旧的那盏」；用户以为没生效，之后让 AI 调灯也会被同一份残留
+   * 骗过。清完之后靠 `lighting:change` 广播把真实状态回传给后端，不留暗状态。
+   */
+  async function setGlobalPreset(id: string) {
     settings.updateLighting({ globalPreset: id });
+    if (!lightingStore.override) return;
+    try {
+      await clearLighting();
+      dialogStore.alert(t("settings.background.lighting.takenOver"));
+    } catch (e) {
+      console.error("[Lighting] 接管运行时灯光失败:", e);
+      dialogStore.alert(t("settings.background.lighting.clearRuntimeFailed"));
+    }
   }
 
   type SwitchKey = keyof Omit<LightingSettings, "masterEnabled" | "globalPreset">;

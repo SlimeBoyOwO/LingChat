@@ -6,7 +6,7 @@ author = "LingChat"
 
 [[tools]]
 name = "lighting_studio_list"
-description = "列出全部光影预设（id、名称、说明、适用心情关键词），并附带当前生效的灯光状态。想换灯光前先看这个。"
+description = "列出全部光影预设（id、名称、说明、适用心情关键词），并附带 active —— 屏幕上此刻真正在打的灯（含中文名和来源）。想知道现状只认 active，不要凭上一轮对话推断。"
 timeout_ms = 8000
 script = "lighting_studio.py"
 parameters = '{ "type":"object", "properties":{}, "required":[], "additionalProperties":false }'

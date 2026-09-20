@@ -679,9 +679,11 @@ export default {
       sourceScript: "シナリオ",
       sourceTool: "プラグインまたはアシスタント",
       sourcePanel: "このパネル",
-      overriddenHint: "照明は現在「{who}」が一時制御しており、パネルのプリセットは反映されません",
+      overriddenHint:
+        "照明は現在「{who}」が一時制御中です。下のプリセットを選ぶと解除して引き継ぎます",
       clearRuntime: "一時照明を解除",
       clearRuntimeFailed: "一時照明の解除に失敗しました",
+      takenOver: "照明を引き継ぎました。一時照明を解除し、選んだプリセットを適用しました",
       switchesTitle: "項目別のスイッチ",
       switchesHint: "該当する効果を消すだけで、シーンやプリセットの数値は変更されません",
       overlay: "ライトオーバーレイ（全体の色付け）",
