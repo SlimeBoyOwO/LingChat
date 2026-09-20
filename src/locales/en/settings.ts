@@ -744,8 +744,12 @@ export default {
         previewTitle: "Live preview",
         previewHint:
           "Preview uses the current scene background and portrait; the real stage updates too.",
+        previewNoBg: "This scene has no background image, so the preview uses a placeholder wash.",
+        builtinForkTip:
+          "Built-in lighting can't be edited directly — this is a copy. Saving puts it under My presets.",
+        forkName: "{name} (copy)",
         reset: "Reset to no lighting",
-        revert: "Discard changes",
+        revert: "Reset to original",
         cancel: "Cancel",
         save: "Save and apply",
         saving: "Saving…",

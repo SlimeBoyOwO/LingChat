@@ -44,6 +44,14 @@
             </div>
 
             <div class="flex-1 space-y-4 overflow-y-auto p-4">
+              <!-- 内置预设改不动，先说清楚保存下来的是新的一条 -->
+              <div
+                v-if="isBuiltinSource"
+                class="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px]
+                  leading-snug text-amber-100/80"
+              >
+                {{ $t("settings.background.lighting.editor.builtinForkTip") }}
+              </div>
               <!-- 名称 / 描述 / 心情 -->
               <div class="space-y-2">
                 <input
@@ -222,6 +230,9 @@
             </span>
             <div class="mb-3 shrink-0 text-[11px] leading-snug text-white/35">
               {{ $t("settings.background.lighting.editor.previewHint") }}
+              <span v-if="!bgSrc" class="text-amber-200/70">
+                {{ $t("settings.background.lighting.editor.previewNoBg") }}
+              </span>
             </div>
             <div
               class="relative min-h-[16rem] flex-1 overflow-hidden rounded-xl border border-white/10
@@ -231,22 +242,19 @@
               <!-- 混合层要有一张不透明的底才能算出「打光」；没有场景图时透明底会让
                    screen / soft-light 直接变成一层色块，预览和真实画面完全对不上。 -->
               <div class="absolute inset-0 bg-slate-800"></div>
-              <img
-                v-if="bgSrc"
-                :src="bgSrc"
-                class="absolute inset-0 h-full w-full object-cover"
-                :style="
-                  previewPlan.backgroundFilter ? { filter: previewPlan.backgroundFilter } : {}
-                "
-                alt=""
-              />
+              <!-- 背景 + 背景滤镜；没有背景图时用中性底代替，滤镜照样看得见 -->
+              <div class="absolute inset-0" :style="bgFilterStyle">
+                <img v-if="bgSrc" :src="bgSrc" class="h-full w-full object-cover" alt="" />
+                <div v-else class="h-full w-full" :style="neutralBackdrop"></div>
+              </div>
               <div
-                v-if="previewPlan.bloom && bgSrc"
+                v-if="previewPlan.bloom"
                 class="pointer-events-none absolute inset-0"
                 :class="previewPlan.bloom.className"
                 :style="previewPlan.bloom.style"
               >
-                <img :src="bgSrc" class="h-full w-full object-cover" alt="" />
+                <img v-if="bgSrc" :src="bgSrc" class="h-full w-full object-cover" alt="" />
+                <div v-else class="h-full w-full" :style="neutralBackdrop"></div>
               </div>
               <div
                 v-if="previewPlan.bgOverlay"
@@ -299,6 +307,7 @@
 
 <script setup lang="ts">
   import { computed, nextTick, reactive, ref, watch } from "vue";
+  import type { CSSProperties } from "vue";
   import { useI18n } from "vue-i18n";
   import { convertFileSrc, invoke } from "@tauri-apps/api/core";
   import { Button } from "../../base";
@@ -309,6 +318,7 @@
   import type { LightingParams } from "../../../api/services/scene";
   import { useGameStore } from "../../../stores/modules/game";
   import { useLightingStore } from "../../../stores/modules/lighting";
+  import { useUIStore } from "../../../stores/modules/ui/ui";
   import { useDialogStore } from "../../../stores/modules/ui/dialog";
   import { EMOTION_CONFIG_EMO } from "../../../controllers/emotion/config";
   import {
@@ -323,6 +333,7 @@
 
   const { t } = useI18n();
   const gameStore = useGameStore();
+  const uiStore = useUIStore();
   const lightingStore = useLightingStore();
   const dialogStore = useDialogStore();
 
@@ -333,10 +344,12 @@
   const description = ref("");
   const mood = ref("");
   const saving = ref(false);
+  /** 底稿来自内置预设：内置的不能改，保存只能另存成用户自己的新预设。 */
+  const isBuiltinSource = ref(false);
 
   /** 打开时的画面状态：取消要还回去，保存则交给父组件套用新预设。 */
   let snapshot: { preset: string | null; params: LightingParams } | null = null;
-  /** 打开时那盏灯的参数，「放弃改动」退回到这里。 */
+  /** 打开时那盏灯的参数，「重置为原来效果」退回到这里。 */
   let initial: LightingParams = blankLighting();
   let dirty = false;
   let savedFlag = false;
@@ -765,6 +778,10 @@
 
   const previewPlan = computed(() => planLighting(draft));
 
+  const bgFilterStyle = computed<CSSProperties>(() =>
+    previewPlan.value.backgroundFilter ? { filter: previewPlan.value.backgroundFilter } : {}
+  );
+
   let timer: ReturnType<typeof setTimeout> | undefined;
   watch(
     () => draft,
@@ -794,10 +811,36 @@
 
   // ---- 预览素材：拿当前场景背景 + 立绘，没有就只按纯色底看 ----
 
+  /**
+   * 背景必须跟 `GameBackground.vue` 取同一份：主画面用的是 `uiStore.currentBackground`
+   * （切场景、换背景、角色默认图都会写它），而场景表里的 `background` 字段经常是空的。
+   * 取后者会让预览没有背景图，于是背景滤镜和泛光全都作用不到任何东西上——用户调完
+   * 亮度对比度看不到反应，以为功能坏了。
+   */
   const bgSrc = computed(() => {
-    const bg = gameStore.currentScene?.background;
-    return bg ? convertFileSrc(bg) : "";
+    const bg = uiStore.currentBackground;
+    if (
+      !bg ||
+      bg.startsWith("http://") ||
+      bg.startsWith("https://") ||
+      bg.startsWith("@/") ||
+      bg.startsWith("data:")
+    ) {
+      return bg || "";
+    }
+    return convertFileSrc(bg);
   });
+
+  /**
+   * 没有背景图时的中性底：留出亮部、中间调和暗部，亮度 / 对比度 / 饱和度 / 暖色调
+   * 才有可分辨的对象。纯灰或纯色的底看不出染色，也看不出压暗到什么程度。
+   */
+  const neutralBackdrop: CSSProperties = {
+    background:
+      "radial-gradient(circle at 72% 22%, #e2bd8c 0%, rgba(226,189,140,0) 42%)," +
+      "linear-gradient(158deg, #7f90a8 0%, #47516600 52%)," +
+      "linear-gradient(158deg, #475166 0%, #1a1f29 100%)",
+  };
   const avatarSrc = ref("");
 
   async function resolveAvatar() {
@@ -829,10 +872,15 @@
       savedFlag = false;
       dirty = false;
       const from = props.editing?.params ?? lightingStore.baseParams ?? blankLighting();
-      // 两份独立克隆：共用一个对象会让改 draft 连带改掉「放弃改动」的基准。
+      // 两份独立克隆：共用一个对象会让改 draft 连带改掉「重置为原来效果」的基准。
       initial = cloneLighting(from);
       Object.assign(draft, cloneLighting(from));
-      name.value = props.editing?.name ?? "";
+      isBuiltinSource.value = !!props.editing && !props.editing.custom;
+      name.value = props.editing
+        ? isBuiltinSource.value
+          ? t(`${L}.forkName`, { name: props.editing.name })
+          : props.editing.name
+        : "";
       description.value = props.editing?.description ?? "";
       mood.value = (props.editing?.mood ?? []).join(" ");
       const ov = lightingStore.override;
@@ -853,7 +901,6 @@
   function revert() {
     Object.assign(draft, cloneLighting(initial));
   }
-
   async function close() {
     clearTimeout(timer);
     if (savedFlag) {
@@ -888,7 +935,8 @@
           .filter(Boolean)
           .slice(0, 8),
         params: buildParams(),
-        replaceId: props.editing?.id ?? null,
+        // 内置预设不许覆盖：以它为底稿调出来的东西只能是一条新的「我的预设」。
+        replaceId: props.editing?.custom ? props.editing.id : null,
       });
       await lightingStore.refreshPresets();
       savedFlag = true;

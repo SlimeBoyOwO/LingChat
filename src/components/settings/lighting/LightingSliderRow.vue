@@ -2,6 +2,7 @@
   <div class="flex items-center gap-2">
     <span class="w-[5.5rem] shrink-0 text-[11px] text-white/50">{{ label }}</span>
     <input
+      ref="sliderRef"
       type="range"
       class="lighting-range min-w-0 flex-1"
       :class="{ 'opacity-40': disabled }"
@@ -11,17 +12,32 @@
       :step="step"
       :value="modelValue"
       :disabled="disabled"
-      @input="onInput"
+      @input="onSlide"
+      @pointerup="releaseSlider"
     />
-    <!-- 数值必须显式回显：调的是亮度还是强度，光看滑块位置猜不出来 -->
-    <span class="w-12 shrink-0 text-right text-[11px] text-white/60 tabular-nums">
-      {{ display }}
-    </span>
+    <!-- 数值既能看又能敲：显示位做成输入框，精确值直接键入，↑↓ 微调。
+         刻意不用 type="number"，它自带滚轮步进，一滚列表就把值改了。 -->
+    <input
+      v-model="text"
+      type="text"
+      inputmode="decimal"
+      class="w-14 shrink-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-right
+        text-[11px] text-white/60 tabular-nums transition-colors hover:border-white/15
+        hover:text-white/80 focus:border-amber-400/60 focus:bg-black/30 focus:text-white
+        focus:outline-none disabled:opacity-40"
+      :disabled="disabled"
+      @focus="onFocus"
+      @blur="commit"
+      @keydown.enter.prevent="commit"
+      @keydown.esc.prevent="cancel"
+      @keydown.up.prevent="nudge(1, $event)"
+      @keydown.down.prevent="nudge(-1, $event)"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-  import { computed } from "vue";
+  import { ref, watch } from "vue";
 
   const props = withDefaults(
     defineProps<{
@@ -40,11 +56,72 @@
 
   const emit = defineEmits<{ "update:modelValue": [value: number] }>();
 
-  function onInput(e: Event) {
+  const sliderRef = ref<HTMLInputElement | null>(null);
+  const editing = ref(false);
+  const text = ref(format(props.modelValue));
+
+  watch(
+    () => props.modelValue,
+    (v) => {
+      if (!editing.value) text.value = format(v);
+    }
+  );
+
+  function format(v: number): string {
+    return `${v.toFixed(props.decimals)}${props.unit}`;
+  }
+
+  function parse(raw: string): number | null {
+    const cleaned = raw.replace(/[^0-9.+\-]/g, "");
+    const n = Number.parseFloat(cleaned);
+    if (!Number.isFinite(n)) return null;
+    const clamped = Math.min(props.max, Math.max(props.min, n));
+    const factor = 10 ** props.decimals;
+    return Math.round(clamped * factor) / factor;
+  }
+
+  function apply(v: number | null): void {
+    if (v === null) {
+      text.value = format(props.modelValue);
+      return;
+    }
+    emit("update:modelValue", v);
+    text.value = format(v);
+  }
+
+  // 拖完就散焦：Chromium 里被点过的 range 会吃滚轮，用户在列表里往下滚就会
+  // 顺手把这格数值改掉。滚轮只该负责滚动，要微调请用输入框或方向键。
+  function releaseSlider(): void {
+    sliderRef.value?.blur();
+  }
+
+  function onSlide(e: Event): void {
     emit("update:modelValue", Number((e.target as HTMLInputElement).value));
   }
 
-  const display = computed(() => `${props.modelValue.toFixed(props.decimals)}${props.unit}`);
+  function onFocus(): void {
+    editing.value = true;
+    text.value = String(props.modelValue);
+    (event?.target as HTMLInputElement | null)?.select?.();
+  }
+
+  function commit(): void {
+    editing.value = false;
+    apply(parse(text.value));
+  }
+
+  function cancel(): void {
+    editing.value = false;
+    text.value = format(props.modelValue);
+    (event?.target as HTMLInputElement | null)?.blur?.();
+  }
+
+  function nudge(dir: number, e: KeyboardEvent): void {
+    const base = parse(text.value) ?? props.modelValue;
+    const delta = props.step * (e.shiftKey ? 10 : 1) * dir;
+    apply(parse(String(base + delta)) ?? base);
+    if (e.shiftKey) e.preventDefault();
+  }
 </script>
 
 <style scoped>

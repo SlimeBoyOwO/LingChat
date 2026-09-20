@@ -109,7 +109,6 @@
             >
           </div>
           <div
-            v-if="p.custom"
             class="mt-1.5 flex gap-3 opacity-0 transition-opacity group-hover:opacity-100
               focus-within:opacity-100"
           >
@@ -120,6 +119,7 @@
               {{ $t("settings.background.lighting.custom.edit") }}
             </button>
             <button
+              v-if="p.custom"
               class="text-[11px] text-white/50 transition-colors hover:text-red-300"
               @click.stop="remove(p)"
             >

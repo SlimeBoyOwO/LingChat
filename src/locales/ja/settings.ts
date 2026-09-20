@@ -723,8 +723,12 @@ export default {
         target: "適用先",
         previewTitle: "ライブプレビュー",
         previewHint: "現在のシーンの背景と立ち絵で確認できます。実際の画面の光も同時に変わります。",
+        previewNoBg: "このシーンに背景画像がないため、プレビューは仮の配色を表示しています。",
+        builtinForkTip:
+          "内蔵の照明は直接編集できません。これはそのコピーです。保存すると「マイ設定」に加わります。",
+        forkName: "{name}（コピー）",
         reset: "すべて無光に戻す",
-        revert: "変更を破棄",
+        revert: "元の効果に戻す",
         cancel: "キャンセル",
         save: "保存して適用",
         saving: "保存中…",
