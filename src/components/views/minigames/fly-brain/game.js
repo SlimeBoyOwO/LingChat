@@ -1734,7 +1734,10 @@ export async function mountFlyBrain(root, options) {
     gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
     gl.bindVertexArray(null);
   }
-  const BODY_MAX_FLOATS = 40000;
+  /* 体缓冲容量：美化版灵梦刚性+动态每帧约 54.6k floats（果蝇约 14.4k），65536 留 ~20% 余量。
+     超容时 typed array 越界写被静默丢弃、bufferSubData/drawArrays 仅产生 GL 错误不上报——
+     症状是整个角色静默消失但无 JS 异常，扩容后务必保持 实际写入 ≤ 容量（见数据级验证） */
+  const BODY_MAX_FLOATS = 65536;
   const flyBuf = new Float32Array(BODY_MAX_FLOATS);
   const flyVao = gl.createVertexArray();
   const flyVbo = gl.createBuffer();
