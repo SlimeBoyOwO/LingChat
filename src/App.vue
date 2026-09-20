@@ -316,7 +316,7 @@
     const llmStore = useLlmProvidersStore();
     llmStore.load().catch((e) => console.error("加载 LLM 提供商失败:", e));
 
-    // 光影预设要在渲染前拿到，全局预设才压得住场景灯光；生效状态只由主窗口上报，
+    // 光影预设要在渲染前拿到，「默认光影」才解析得出名字；生效状态只由主窗口上报，
     // 投屏一起报会让两边互相覆盖后端那份状态。这两件放在这里而不是 tauri-events：
     // initializeTauriEventListeners 跑在 app.use(pinia) 之前，提前取 store 会白屏。
     if (isMainWindow) {

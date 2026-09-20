@@ -4,7 +4,7 @@
 //! [`apply_lighting`]，保证「后端状态 + 前端画面」一次广播同步到位。
 //!
 //! 渲染优先级在前端 `useLighting` 里落地：
-//! 总开关关 → 无光影；否则 运行时覆盖 → 全局预设 → 场景自带。
+//! 总开关关 → 无光影；否则 运行时覆盖 → 场景自带 → 默认光影（面板那盏只兜底）。
 
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;

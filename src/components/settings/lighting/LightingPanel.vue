@@ -39,130 +39,23 @@
       </div>
     </div>
 
-    <!-- ========== 全局预设 ========== -->
+    <!-- ========== 默认光影 ========== -->
+    <!-- 一排卡片网格在 19 个预设下太重，而且这一项现在只是兜底：收成一条下拉。 -->
     <div class="flex flex-col gap-2">
       <label class="text-sm font-medium text-white/70">
-        {{ $t("settings.background.lighting.presetsTitle") }}
+        {{ $t("settings.background.lighting.defaultTitle") }}
       </label>
-      <div class="text-xs text-white/40">
-        {{ $t("settings.background.lighting.presetsHint") }}
+      <div class="text-xs leading-relaxed text-white/40">
+        {{ $t("settings.background.lighting.defaultHint") }}
       </div>
-
-      <div
-        v-if="!lightingStore.presetsLoaded && presets.length === 0"
-        class="text-xs text-white/40"
-      >
-        {{ $t("settings.background.lighting.loading") }}
-      </div>
-
-      <div
-        class="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-2"
-        :class="{ 'pointer-events-none opacity-50': !settings.lighting.masterEnabled }"
-      >
-        <!-- 跟随场景：清空全局预设，交回场景自带的灯光 -->
-        <button
-          class="rounded-lg border px-3 py-2 text-left transition-all"
-          :class="
-            settings.lighting.globalPreset
-              ? 'border-white/10 bg-white/5 hover:border-white/25'
-              : 'border-amber-400/60 bg-amber-400/15 ring-1 ring-amber-400/40'
-          "
-          :disabled="!settings.lighting.masterEnabled"
-          @click="setGlobalPreset('')"
-        >
-          <div class="text-sm font-bold text-white/90">
-            {{ $t("settings.background.lighting.presetFollow") }}
-          </div>
-          <div class="mt-0.5 text-xs leading-snug text-white/45">
-            {{ $t("settings.background.lighting.presetFollowDesc") }}
-          </div>
-        </button>
-
-        <div
-          v-for="p in presets"
-          :key="p.id"
-          class="group cursor-pointer rounded-lg border px-3 py-2 text-left transition-all"
-          :class="
-            settings.lighting.globalPreset === p.id
-              ? 'border-amber-400/60 bg-amber-400/15 ring-1 ring-amber-400/40'
-              : 'border-white/10 bg-white/5 hover:border-white/25'
-          "
-          @click="setGlobalPreset(p.id)"
-        >
-          <div class="flex flex-wrap items-center gap-1.5">
-            <div class="text-sm font-bold text-white/90">{{ p.name }}</div>
-            <span
-              v-if="p.custom"
-              class="rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[10px] text-amber-200/90"
-              >{{ $t("settings.background.lighting.custom.badge") }}</span
-            >
-          </div>
-          <div class="mt-0.5 line-clamp-2 text-xs leading-snug text-white/45">
-            {{ p.description }}
-          </div>
-          <div class="mt-1 flex flex-wrap gap-1">
-            <span
-              v-for="m in p.mood.slice(0, 4)"
-              :key="m"
-              class="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-white/50"
-              >{{ m }}</span
-            >
-          </div>
-          <div
-            class="mt-1.5 flex gap-3 opacity-0 transition-opacity group-hover:opacity-100
-              focus-within:opacity-100"
-          >
-            <button
-              class="text-[11px] text-white/50 transition-colors hover:text-amber-300"
-              @click.stop="openEdit(p)"
-            >
-              {{ $t("settings.background.lighting.custom.edit") }}
-            </button>
-            <button
-              v-if="p.custom"
-              class="text-[11px] text-white/50 transition-colors hover:text-red-300"
-              @click.stop="remove(p)"
-            >
-              {{ $t("settings.background.lighting.custom.delete") }}
-            </button>
-          </div>
-        </div>
-
-        <!-- 自建入口 -->
-        <div
-          class="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border
-            border-dashed border-white/25 bg-white/5 px-3 py-2 text-center transition-all
-            hover:border-amber-400/60 hover:bg-amber-400/10"
-          @click="openCreate"
-        >
-          <div class="text-sm font-bold text-amber-200/90">
-            {{ $t("settings.background.lighting.custom.newPreset") }}
-          </div>
-          <div class="text-xs leading-snug text-white/45">
-            {{ $t("settings.background.lighting.custom.newPresetDesc") }}
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ========== 分项开关 ========== -->
-    <div class="flex flex-col gap-2">
-      <label class="text-sm font-medium text-white/70">
-        {{ $t("settings.background.lighting.switchesTitle") }}
-      </label>
-      <div class="text-xs text-white/40">
-        {{ $t("settings.background.lighting.switchesHint") }}
-      </div>
-      <div class="flex flex-col gap-2.5">
-        <Toggle
-          v-for="item in switchItems"
-          :key="item.key"
-          :checked="settings.lighting[item.key]"
-          :disabled="!settings.lighting.masterEnabled"
-          @change="setSwitch(item.key, $event)"
-        >
-          {{ item.label }}
-        </Toggle>
+      <div :class="{ 'pointer-events-none opacity-50': !settings.lighting.masterEnabled }">
+        <LightingPresetSelect
+          :current-label="currentDefaultName"
+          :none-label="$t('settings.background.lighting.select.noneDefault')"
+          :selected-id="settings.lighting.globalPreset"
+          @picked="onPick"
+          @saved="onSaved"
+        />
       </div>
     </div>
 
@@ -171,7 +64,7 @@
       <Toggle
         :checked="settings.lighting.lowPerfMode"
         :disabled="!settings.lighting.masterEnabled"
-        @change="setSwitch('lowPerfMode', $event)"
+        @change="setLowPerf($event)"
       >
         {{ $t("settings.background.lighting.lowPerf") }}
       </Toggle>
@@ -179,23 +72,21 @@
         {{ $t("settings.background.lighting.lowPerfHint") }}
       </div>
     </div>
-
-    <LightingEditorModal
-      :show="editorShow"
-      :editing="editingPreset"
-      @close="editorShow = false"
-      @saved="applySaved"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
-  import { computed, onMounted, ref } from "vue";
+  /**
+   * 光影面板。这里只管三件事：总开关、默认光影（兜底那盏）、低性能模式。
+   *
+   * 调参和预设管理都搬进了「场景管理 · 更新场景」，因为生效优先级已经改成场景灯
+   * 优先 —— 面板再留一套完整编辑器，就是两处调一处生效，迟早算不到一起。
+   */
+  import { computed, onMounted } from "vue";
   import { useI18n } from "vue-i18n";
   import { Toggle } from "../../base";
-  import LightingEditorModal from "./LightingEditorModal.vue";
+  import LightingPresetSelect from "./LightingPresetSelect.vue";
   import { useSettingsStore } from "../../../stores/modules/settings";
-  import type { LightingSettings } from "../../../stores/modules/settings";
   import { useLightingStore } from "../../../stores/modules/lighting";
   import type { LightingPreset } from "../../../api/services/lighting";
   import { useDialogStore } from "../../../stores/modules/ui/dialog";
@@ -209,86 +100,45 @@
   const presets = computed(() => lightingStore.presets);
   const runtimeOverride = computed(() => lightingStore.override !== null);
 
+  const currentDefaultName = computed(
+    () => presets.value.find((p) => p.id === settings.lighting.globalPreset)?.name ?? ""
+  );
+
   function setMaster(enabled: boolean) {
     settings.updateLighting({ masterEnabled: enabled });
+  }
+
+  function setLowPerf(enabled: boolean) {
+    settings.updateLighting({ lowPerfMode: enabled });
   }
 
   /**
    * 手动点预设 = 直接接管灯光。
    *
-   * 剧本/AI 留下的运行时覆盖压在全局预设之上，不先清掉就会出现「面板高亮跳到新
-   * 预设、画面却还是旧的那盏」；用户以为没生效，之后让 AI 调灯也会被同一份残留
-   * 骗过。清完之后靠 `lighting:change` 广播把真实状态回传给后端，不留暗状态。
+   * 剧本/AI 留下的运行时覆盖压在所有灯光之上，不先清掉就会出现「下拉已经换成了
+   * 新的默认光影、画面却还是临时那盏」；用户以为没生效，之后让 AI 调灯也会被同一
+   * 份残留骗过。清完之后靠 `lighting:change` 广播把真实状态回传给后端，不留暗状态。
    */
-  async function setGlobalPreset(id: string, notice?: string) {
+  async function setGlobalPreset(id: string) {
     settings.updateLighting({ globalPreset: id });
     if (!lightingStore.override) return;
     try {
       await clearLighting();
-      dialogStore.alert(notice ?? t("settings.background.lighting.takenOver"));
+      dialogStore.alert(t("settings.background.lighting.takenOver"));
     } catch (e) {
       console.error("[Lighting] 接管运行时灯光失败:", e);
       dialogStore.alert(t("settings.background.lighting.clearRuntimeFailed"));
     }
   }
 
-  // ========== 「我的预设」：自建光影 ==========
-
-  const editorShow = ref(false);
-  const editingPreset = ref<LightingPreset | null>(null);
-
-  function openCreate() {
-    editingPreset.value = null;
-    editorShow.value = true;
+  function onPick(preset: LightingPreset | null) {
+    void setGlobalPreset(preset?.id ?? "");
   }
 
-  function openEdit(p: LightingPreset) {
-    editingPreset.value = p;
-    editorShow.value = true;
-  }
-
-  /** 编辑器里改参数时是拿运行时覆盖做实时预览的，保存后把它换成正式的全局预设。 */
-  async function applySaved(id: string) {
-    editorShow.value = false;
-    const saved = presets.value.find((p) => p.id === id);
-    editingPreset.value = null;
-    await setGlobalPreset(
-      id,
-      t("settings.background.lighting.custom.savedOk", { name: saved?.name ?? id })
-    );
-  }
-
-  async function remove(p: LightingPreset) {
-    const ok = await dialogStore.confirm(
-      t("settings.background.lighting.custom.deleteConfirm", { name: p.name })
-    );
-    if (!ok) return;
-    try {
-      await lightingStore.removePreset(p.id);
-    } catch (e) {
-      console.error("[Lighting] 删除自建预设失败:", e);
-      dialogStore.alert(t("settings.background.lighting.custom.deleteFailed", { msg: String(e) }));
-    }
-  }
-
-  type SwitchKey = keyof Omit<LightingSettings, "masterEnabled" | "globalPreset">;
-
-  const switchItems = computed(() =>
-    (
-      [
-        ["overlayEnabled", "settings.background.lighting.overlay"],
-        ["directionalEnabled", "settings.background.lighting.directional"],
-        ["rimEnabled", "settings.background.lighting.rim"],
-        ["bloomEnabled", "settings.background.lighting.bloom"],
-        ["vignetteEnabled", "settings.background.lighting.vignette"],
-        ["gradeEnabled", "settings.background.lighting.grade"],
-        ["breathingEnabled", "settings.background.lighting.breathing"],
-      ] as const
-    ).map(([key, labelKey]) => ({ key: key as SwitchKey, label: t(labelKey) }))
-  );
-
-  function setSwitch(key: SwitchKey, value: boolean) {
-    settings.updateLighting({ [key]: value } as Partial<LightingSettings>);
+  /** 下拉在抛出 saved 之前已经把预览用的临时灯光清掉了，这里只负责套用与回执。 */
+  async function onSaved(preset: LightingPreset) {
+    await setGlobalPreset(preset.id);
+    dialogStore.alert(t("settings.background.lighting.custom.savedOk", { name: preset.name }));
   }
 
   const activeLabel = computed(() => {

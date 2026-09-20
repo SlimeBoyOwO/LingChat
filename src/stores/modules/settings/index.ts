@@ -61,17 +61,10 @@ export const DEFAULT_SETTINGS = {
   character: {
     folder: "诺一钦灵", // 当前角色文件夹
   },
-  // 光影设置（总开关 + 各效果独立开关；子开关只负责「压掉」参数里自带的启用位）
+  // 光影设置（总开关 + 默认光影 + 低性能；每一层开不开由场景/预设参数自己说了算）
   lighting: {
     masterEnabled: true, // 总开关：关掉后所有光影层一律不渲染
-    globalPreset: "", // 全局预设 id；空串 = 跟随各场景自己的灯光
-    overlayEnabled: true, // 径向光照叠加层（旧版已有）
-    directionalEnabled: true, // 方向光（受光侧暖 / 背光侧冷）
-    rimEnabled: true, // 轮廓光（沿立绘剪影描边）
-    bloomEnabled: true, // bloom 泛光
-    vignetteEnabled: true, // 暗角
-    gradeEnabled: true, // 冷暖分离染色
-    breathingEnabled: true, // 呼吸动画
+    globalPreset: "", // 默认光影预设 id：只给没设灯的场景兜底，空串 = 不套用
     lowPerfMode: false, // 低性能模式：停掉呼吸动画等持续合成
   },
   // 桌宠设置
@@ -135,15 +128,12 @@ export interface CharacterSettings {
 export interface LightingSettings {
   /** 总开关：关掉后所有光影层一律不渲染 */
   masterEnabled: boolean;
-  /** 全局预设 id；空串 = 跟随各场景自己的灯光 */
+  /**
+   * 默认光影预设 id：只给「没设灯的场景」兜底，场景自己带了灯就以场景为准。
+   * 空串 = 不套用默认光影。
+   */
   globalPreset: string;
-  overlayEnabled: boolean;
-  directionalEnabled: boolean;
-  rimEnabled: boolean;
-  bloomEnabled: boolean;
-  vignetteEnabled: boolean;
-  gradeEnabled: boolean;
-  breathingEnabled: boolean;
+  /** 低性能模式只砍持续动画（呼吸），静态光影照常保留 */
   lowPerfMode: boolean;
 }
 

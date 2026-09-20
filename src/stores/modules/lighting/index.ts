@@ -7,9 +7,13 @@
  * 统一的裁决点，剧本一改就会和场景设置打架。
  *
  * 生效优先级：总开关关 → 完全没有光影；否则
- * 运行时覆盖（剧本/工具）→ 全局预设（设置面板）→ 场景自带灯光。
+ * 运行时覆盖（剧本/工具/编辑器预览）→ 场景自带的灯 → 默认光影（设置面板那盏）。
  *
- * 后端看不见这份裁决结果：全局预设存在 localStorage 里，渲染层又在覆盖之后。
+ * 场景灯排在默认光影之前：默认光影是「这个场景没设灯时用什么」，不是「所有场景
+ * 都得用我这盏」。反过来就会出现在场景编辑器里调半天、预览也对了，一进聊天又被
+ * 默认光影盖掉的错觉。
+ *
+ * 后端看不见这份裁决结果：默认光影存在 localStorage 里，渲染层又在覆盖之后。
  * 所以 `startActiveReporting` 会把最终生效的预设回传后端，`lighting_get` 才答得
  * 出「现在到底在打什么灯」——否则 AI 读到一个永远为空的可观测量，就会误判成
  * 「没打灯」或沿用上一次的结果，跳过用户要求的切换。
@@ -39,44 +43,46 @@ interface OverrideState {
 /** 上报器只需要一份，重复调用（热更新、多入口）不再叠 watcher。 */
 let reportingStarted = false;
 
-/** 子开关只负责「压掉」参数里自带的启用位，不会反向打开场景没启用的效果。 */
+/** 低性能模式只砍持续动画，静态光影照常保留。 */
 function maskFeatures(params: LightingParams, on: LightingSettings): LightingParams {
   return {
     ...params,
-    overlay_enabled: params.overlay_enabled && on.overlayEnabled,
-    directional_enabled: params.directional_enabled && on.directionalEnabled,
-    bloom_enabled: params.bloom_enabled && on.bloomEnabled,
-    vignette_enabled: params.vignette_enabled && on.vignetteEnabled,
-    grade_enabled: params.grade_enabled && on.gradeEnabled,
-    character: { ...params.character, rim_enabled: params.character?.rim_enabled && on.rimEnabled },
-    // 低性能模式只砍持续动画，静态光影照常保留
-    breathing_enabled: params.breathing_enabled && on.breathingEnabled && !on.lowPerfMode,
+    // 每一层开不开由参数自带的启用位说了算（调参控件里就有勾选），
+    // 全局不再遮一层——两处都能开关同一效果，早晚会算不到一起。
+    breathing_enabled: params.breathing_enabled && !on.lowPerfMode,
   };
 }
 
 export const useLightingStore = defineStore("lighting", {
   state: () => ({
-    /** 剧本事件 / LLM 工具写入的运行时覆盖；null = 跟随场景 */
+    /** 剧本事件 / LLM 工具 / 编辑器预览写入的运行时覆盖；null = 交回场景与默认光影 */
     override: null as OverrideState | null,
     presets: [] as LightingPreset[],
     presetsLoaded: false,
   }),
 
   getters: {
-    /** 设置面板选定的全局预设参数；空串或未知 id 视为「跟随场景」。 */
+    /** 默认光影（设置面板选的那盏）；空串或未知 id 视为「没有默认」。 */
     globalParams(state): LightingParams | null {
       const id = useSettingsStore().lighting.globalPreset;
       if (!id) return null;
       return state.presets.find((p) => p.id === id)?.params ?? null;
     },
 
+    /** 场景自带的那盏灯，没有则为 null。 */
+    sceneParams(): LightingParams | null {
+      return useGameStore().currentScene?.lighting ?? null;
+    },
+
     /** 未经开关屏蔽的生效参数来源。 */
     baseParams(state): LightingParams | null {
       if (state.override) return state.override.params;
-      return this.globalParams ?? useGameStore().currentScene?.lighting ?? null;
+      // 场景自己的灯排在默认光影之前：用户在这个场景上调的灯，就该是这个场景
+      // 画面上的灯；默认光影只补「这个场景压根没设灯」的空缺。
+      return this.sceneParams ?? this.globalParams;
     },
 
-    /** 渲染层唯一该读的东西：已应用总开关与子开关的最终参数。 */
+    /** 渲染层唯一该读的东西：已应用总开关与低性能屏蔽的最终参数。 */
     active(): LightingParams | null {
       const s = useSettingsStore();
       if (!s.lighting.masterEnabled) return null;
@@ -89,21 +95,25 @@ export const useLightingStore = defineStore("lighting", {
       return planLighting(this.active);
     },
 
-    /** 当前生效的预设 id，供面板高亮与状态回显（空串 = 跟随场景）。 */
+    /** 当前生效的预设 id，供面板高亮与状态回显（空串 = 用场景自己的灯）。 */
     activePresetId(state): string {
       const fromOverride = state.override?.preset;
       if (fromOverride) return fromOverride;
-      return state.override ? "" : useSettingsStore().lighting.globalPreset;
+      if (state.override) return "";
+      // 场景自带灯时生效的不是任何预设；只有兜底那一档才报默认预设的 id。
+      return this.sceneParams ? "" : useSettingsStore().lighting.globalPreset;
     },
 
-    /** 谁在控制灯光：`scene` / `global` / `script` / `tool` / `panel`。 */
+    /** 谁在控制灯光：`scene` / `global`（默认光影兜底）/ `script` / `tool` / `panel`。 */
     activeSource(state): string {
-      return state.override?.source ?? (this.globalParams ? "global" : "scene");
+      if (state.override) return state.override.source;
+      if (this.sceneParams) return "scene";
+      return this.globalParams ? "global" : "scene";
     },
   },
 
   actions: {
-    /** 预设表懒加载：面板和全局预设解析都要用它。 */
+    /** 预设表懒加载：面板和默认光影的解析都要用它。 */
     async ensurePresets() {
       if (this.presetsLoaded) return;
       this.presetsLoaded = true;
@@ -124,7 +134,7 @@ export const useLightingStore = defineStore("lighting", {
     /**
      * 删掉一个自建预设。
      *
-     * 如果它正被当成全局预设用，必须一并清成「跟随场景」：留着失效 id 会让
+     * 如果它正被当成默认光影用，必须一并清掉：留着失效 id 会让
      * `activePresetId` 报出一个不存在的灯，上报给后端的就是假状态。
      */
     async removePreset(id: string) {
@@ -134,7 +144,7 @@ export const useLightingStore = defineStore("lighting", {
       await this.refreshPresets();
     },
 
-    /** 收到 `lighting:change` / `script:lighting` 广播。params 为 null 即清回跟随场景。 */
+    /** 收到 `lighting:change` / `script:lighting` 广播。params 为 null 即交回场景与默认光影。 */
     applyPayload(payload: LightingChangePayload) {
       this.override = payload.params
         ? {
@@ -145,7 +155,7 @@ export const useLightingStore = defineStore("lighting", {
         : null;
     },
 
-    /** 剧本结束 / 场景重置时调用：回到「跟随场景」。 */
+    /** 剧本结束 / 场景重置时调用：临时灯光撤掉，交回场景与默认光影。 */
     clearOverride() {
       this.override = null;
     },

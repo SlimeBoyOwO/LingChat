@@ -67,7 +67,7 @@
   const mainAudio = ref<HTMLAudioElement | null>(null);
   const voiceDataUrl = ref("");
 
-  // 生效灯光由 lighting store 统一裁决（总开关 → 剧本覆盖 → 全局预设 → 场景），
+  // 生效灯光由 lighting store 统一裁决（总开关 → 运行时覆盖 → 场景自带 → 默认光影），
   // 组件只消费换算好的 CSS，不再各自读 currentScene.lighting。
   const stageOverlay = computed(() => lightingStore.plan.stageOverlay);
 

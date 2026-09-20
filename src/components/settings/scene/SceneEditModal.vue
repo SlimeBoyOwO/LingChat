@@ -161,15 +161,25 @@
                     }}</span>
                   </label>
 
+                  <!-- 预设收成一条下拉：挑一盏灯抄进本场景，挑完照样能继续手动微调 -->
+                  <LightingPresetSelect
+                    :current-label="presetCurrentLabel"
+                    :none-label="$t('settings.sceneEdit.lighting.presetNone')"
+                    :selected-id="matchedPreset?.id ?? ''"
+                    @picked="applyPreset"
+                    @saved="applyPreset"
+                  />
+
+                  <div
+                    class="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2
+                      text-[11px] leading-snug text-amber-100/80"
+                  >
+                    {{ $t("settings.sceneEdit.lighting.priorityTip") }}
+                  </div>
+
                   <template v-if="formData.lightingEnabled">
                     <!-- 与光影编辑器共用同一套控件：以前这里只认最早 11 个字段，
                          进阶层看不到，保存还会把它们抹掉。 -->
-                    <div
-                      class="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2
-                        text-[11px] leading-snug text-amber-100/80"
-                    >
-                      {{ $t("settings.sceneEdit.lighting.globalOverrideTip") }}
-                    </div>
                     <LightingControls :params="lightingDraft" />
 
                     <button
@@ -310,13 +320,17 @@
 <script setup lang="ts">
   import { computed, reactive, ref, watch } from "vue";
   import type { CSSProperties } from "vue";
+  import { useI18n } from "vue-i18n";
   import { convertFileSrc, invoke } from "@tauri-apps/api/core";
   import { Button } from "../../base";
   import LightingControls from "../lighting/LightingControls.vue";
+  import LightingPresetSelect from "../lighting/LightingPresetSelect.vue";
   import { useGameStore } from "../../../stores/modules/game";
+  import { useLightingStore } from "../../../stores/modules/lighting";
   import { EMOTION_CONFIG_EMO } from "../../../controllers/emotion/config";
   import type { BackgroundImageInfo } from "../../../types";
   import type { LightingParams } from "../../../api/services/scene";
+  import type { LightingPreset } from "../../../api/services/lighting";
   import {
     angleTowardLight,
     blankLighting,
@@ -350,6 +364,8 @@
   }>();
 
   const gameStore = useGameStore();
+  const lightingStore = useLightingStore();
+  const { t } = useI18n();
 
   // ---- reactive form ----
 
@@ -385,6 +401,52 @@
   function resetLighting() {
     Object.assign(lightingDraft, blankLighting());
   }
+
+  // ---- 预设下拉 ----
+
+  /** 选中的预设是「抄一份参数进场景」，不是引用：之后预设怎么改都不影响本场景。 */
+  function applyPreset(preset: LightingPreset | null) {
+    if (!preset) {
+      formData.lightingEnabled = false;
+      resetLighting();
+      return;
+    }
+    showLighting.value = true;
+    formData.lightingEnabled = true;
+    // 老预设可能缺新加的字段，用空白灯光垫底补齐，滑块才不会停在 0。
+    Object.assign(lightingDraft, cloneLighting({ ...blankLighting(), ...preset.params }));
+  }
+
+  /**
+   * 草稿是否与某个预设逐字段相同 —— 只用于回显名字。
+   * `light_angle` 由灯位算出来，不参与比对，否则拖一下灯位就算改过。
+   */
+  function sameLighting(a: unknown, b: unknown): boolean {
+    if (typeof a === "number" || typeof b === "number") {
+      return typeof a === "number" && typeof b === "number" && Math.abs(a - b) < 1e-4;
+    }
+    if (a === b) return true;
+    if (typeof a !== "object" || typeof b !== "object" || !a || !b) return false;
+    const x = a as Record<string, unknown>;
+    const y = b as Record<string, unknown>;
+    const keys = new Set([...Object.keys(x), ...Object.keys(y)]);
+    for (const k of keys) {
+      if (k === "light_angle") continue;
+      if (!sameLighting(x[k], y[k])) return false;
+    }
+    return true;
+  }
+
+  const matchedPreset = computed(() =>
+    formData.lightingEnabled
+      ? (lightingStore.presets.find((p) => sameLighting(p.params, lightingDraft)) ?? null)
+      : null
+  );
+
+  const presetCurrentLabel = computed(() => {
+    if (matchedPreset.value) return matchedPreset.value.name;
+    return formData.lightingEnabled ? t("settings.sceneEdit.lighting.presetCustom") : "";
+  });
 
   // ---- role avatar ----
 

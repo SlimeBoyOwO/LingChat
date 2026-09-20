@@ -360,7 +360,7 @@
 - type: lighting
   preset: warm_window
 
-# 写法二：取消覆盖，回到「跟随场景」自带的灯光
+# 写法二：取消覆盖，交回场景自己的灯（场景没设灯时才用默认光影）
 - type: lighting
   clear: true
 
@@ -376,7 +376,7 @@
 | 字段       | 必填 | 类型   | 默认值  | 说明                                             |
 | ---------- | ---- | ------ | ------- | ------------------------------------------------ |
 | `preset`   | 否   | string | —       | 光影预设 id（见下方清单）                        |
-| `clear`    | 否   | bool   | `false` | `true` = 取消覆盖，回到跟随场景                  |
+| `clear`    | 否   | bool   | `false` | `true` = 取消覆盖，交回场景自己的灯              |
 | `params`   | 否   | object | —       | 内联完整光影参数，字段名与场景 `lighting` 一致   |
 | `duration` | 否   | float  | `0`     | 过渡时长（秒），目前前端立即生效，留给后续做补间 |
 
@@ -386,8 +386,11 @@
 >
 > 光影只改变立绘与背景的打光，不换背景图、不换角色，也不影响 BGM。
 > 剧本自带的灯光会在剧本结束时自动清掉，不会漏到之后的自由对话。
+>
+> 画面上的灯按「运行时覆盖（剧本 / 工具）→ 场景自带的灯 → 设置页的默认光影」取第一份：
+> 想让某段剧情固定用什么灯，写 `preset`；想撤掉临时灯光交还给场景，写 `clear: true`。
 
-可用预设 id（与「设置 · 背景 · 光影」面板同源）：
+可用预设 id（与「设置 · 背景 · 光影」的默认光影下拉同源）：
 `warm_window` 暖窗光、`backlight_silhouette` 逆光剪影、`moonlit_night` 冷月夜、
 `dusk_sunset` 黄昏、`candlelight` 烛光、`neon_night` 霓虹夜、`morning_soft` 清晨柔光、
 `overcast_gray` 阴天平光、`rainy_gloom` 雨雾、`snow_bright` 雪地强光、
