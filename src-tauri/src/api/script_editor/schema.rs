@@ -1,4 +1,4 @@
-//! 事件 schema —— 16 种事件及其全部字段的**单一真相源**。
+//! 事件 schema —— 17 种事件及其全部字段的**单一真相源**。
 //!
 //! 在这之前，同一份 schema 散落在三处：Rust 的 16 个 handler、前端
 //! `src/types/script.ts` 的运行时 payload 类型、原型编辑器的 `constants/events.ts`。
@@ -157,7 +157,7 @@ pub struct EventSpec {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptSchema {
-    /// 16 种事件
+    /// 17 种事件
     pub events: Vec<EventSpec>,
     /// 所有事件共有的字段（触发条件 / 事件间隔）
     pub common_fields: Vec<FieldSpec>,

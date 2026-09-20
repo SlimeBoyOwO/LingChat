@@ -9,6 +9,7 @@ use crate::ai_service::skill_agent::command_executor;
 use crate::ai_service::skill_agent::core::SkillAgentRunContext;
 use crate::ai_service::skill_agent::file_tools::FileTools;
 use crate::ai_service::skill_agent::skills;
+use crate::ai_service::skill_agent::stage;
 use crate::ai_service::types::ToolDefinition;
 use crate::api::script_editor::validate::{self, Diagnostic, Severity, ValidationReport};
 
@@ -235,7 +236,7 @@ pub async fn execute_tool(
                 return (false, "缺少 path 参数".into());
             }
             match ft().write_file(path, content, append) {
-                Ok(out) => (true, out),
+                Ok(out) => (true, with_chapter_check(ctx, path, out, append)),
                 Err(e) => (false, e.to_string()),
             }
         },
@@ -358,4 +359,17 @@ fn format_validation_report(key: &str, report: &ValidationReport) -> String {
     }
 
     out
+}
+
+/// 写完章节后附上轻量结构自检，便于当场发现写坏或被截断的章节。
+///
+/// 分段追加（`append = true`）时跳过 —— 那时文件还没写完，结构必然不完整。
+fn with_chapter_check(ctx: &SkillAgentRunContext, path: &str, out: String, append: bool) -> String {
+    if append {
+        return out;
+    }
+    match stage::check_written_chapter(&ctx.stage_snapshot, path) {
+        Some(problems) => format!("{}\n\n[章节自检] {}", out, problems),
+        None => out,
+    }
 }

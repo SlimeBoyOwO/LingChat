@@ -14,7 +14,7 @@ use crate::AppState;
 use crate::ai_service::skill_agent::config::{SkillAgentConfig, resolve_skill_agent_provider};
 use crate::ai_service::skill_agent::core::{SkillAgentRunContext, run_chat};
 use crate::ai_service::skill_agent::events::SkillAgentEvent;
-use crate::ai_service::skill_agent::{db, skills};
+use crate::ai_service::skill_agent::{db, skills, stage};
 use crate::ai_service::types::LlmMessage;
 use crate::config::keys;
 use crate::db::entities::skill_agent_conversation;
@@ -280,15 +280,17 @@ pub async fn editor_agent_start_chat(
     if message.trim().is_empty() {
         return Err("消息不能为空".to_string());
     }
-    let llm = resolve_skill_agent_provider(&app)
+    let conv = db::get_conversation(&state.db, conversation_id)
+        .await?
+        .ok_or_else(|| "会话不存在".to_string())?;
+
+    // 阶段由剧本包状态推导：决定本轮的思考模式与预注入材料。
+    let stage_snapshot = stage::derive(conv.script_key.as_deref());
+    let llm = resolve_skill_agent_provider(&app, stage::profile(stage_snapshot.stage).thinking)
         .ok_or_else(|| "未配置可用的 LLM provider，请在「LLM 设置」中配置模型后再试".to_string())?;
     let config = SkillAgentConfig::load(&app);
     let sandbox_dir = config.resolve_sandbox_dir();
     let skills_dir = config.resolve_skills_dir();
-
-    let conv = db::get_conversation(&state.db, conversation_id)
-        .await?
-        .ok_or_else(|| "会话不存在".to_string())?;
 
     let mut history = db::list_messages(&state.db, conversation_id)
         .await?
@@ -312,6 +314,7 @@ pub async fn editor_agent_start_chat(
         sandbox_dir,
         skills_dir,
         script_key: conv.script_key.clone(),
+        stage_snapshot,
     };
 
     let cancelled = state.skill_agent.cancelled.clone();

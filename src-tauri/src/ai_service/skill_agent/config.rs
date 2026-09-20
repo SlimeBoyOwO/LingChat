@@ -96,15 +96,22 @@ impl SkillAgentConfig {
 }
 
 /// 解析 Skill Agent 使用的 LLM provider，fallback 到聊天主 LLM（镜像 God Agent）。
-pub fn resolve_skill_agent_provider(app: &AppHandle) -> Option<LlmClient> {
+///
+/// `stage_thinking` 是阶段级的思考模式规定（创作阶段开、机械阶段关），优先于设置项；
+/// 阶段不给规定时才回落到 `enable_thinking`。
+pub fn resolve_skill_agent_provider(
+    app: &AppHandle,
+    stage_thinking: Option<bool>,
+) -> Option<LlmClient> {
     let config = SkillAgentConfig::load(app);
     let assignment = load_role_assignment(app);
 
-    // 构建客户端时套用 agent 的思考模式覆盖：克隆 provider 配置、改 enable_thinking，
+    // 构建客户端时套用思考模式覆盖：克隆 provider 配置、改 enable_thinking，
     // 只影响本次 agent 的 client，不触碰 llm.providers 存储（主对话设置不受影响）。
+    let thinking = stage_thinking.or(config.enable_thinking);
     let build_client = |p: &LlmProviderConfig| {
         let mut cfg = p.clone();
-        if let Some(v) = config.enable_thinking {
+        if let Some(v) = thinking {
             cfg.enable_thinking = v;
         }
         build_llm_client_from_provider(app, &cfg)

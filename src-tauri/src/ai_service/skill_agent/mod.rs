@@ -13,6 +13,7 @@ pub mod db;
 pub mod events;
 pub mod file_tools;
 pub mod skills;
+pub mod stage;
 pub mod tools;
 
 pub use command_executor::ApprovalMap;
