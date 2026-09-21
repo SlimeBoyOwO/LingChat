@@ -25,14 +25,14 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use super::brain_io::{BrainIO, SENS_K};
 use super::engine::Brain;
 use super::graph::BrainGraph;
 use super::learned;
-use super::life::{FlyLife, SIM_STEPS_PER_TICK, WORLD_RADIUS};
+use super::life::{self, FlyLife, SIM_STEPS_PER_TICK, WORLD_RADIUS};
 use super::{FlyBrainControlResp, PositionsData};
 
 const SPIKE_WINDOW_MS: u64 = 600; // 滚动放电窗口（仿真 ms）
@@ -110,6 +110,9 @@ pub struct LifeStatePub {
     pub events: Vec<EventSnap>,
     pub world_radius: f32,
     pub day_length_ticks: u32,
+    /// 食物设置：开局蜜源数 / 数量上限（设置面板显示用）。
+    pub food_init: u32,
+    pub food_max: u32,
 }
 
 /// `fly_brain_state` 的完整快照（键名逐字对齐 IPC 契约）。
@@ -137,6 +140,9 @@ pub struct FlyBrainSnapshot {
     pub events: Vec<EventSnap>,
     pub world_radius: f32,
     pub day_length_ticks: u32,
+    /// 食物设置：开局蜜源数 / 数量上限（设置面板显示用）。
+    pub food_init: u32,
+    pub food_max: u32,
 }
 
 /// 控制面状态：命令线程写入，worker 读取并应用。
@@ -151,6 +157,10 @@ struct CtrlState {
     save_weights: bool,
     /// 重置学习权重到出厂 w0（learned_reset 命令；文件由命令侧删除）。
     reset_learned: bool,
+    /// 食物设置（开局数/上限；命令侧合并后的当前值，set_food 置位时 worker 应用）。
+    food_init: usize,
+    food_max: usize,
+    set_food: bool,
 }
 
 impl Default for CtrlState {
@@ -162,6 +172,9 @@ impl Default for CtrlState {
             restart: false,
             save_weights: false,
             reset_learned: false,
+            food_init: life::DEFAULT_INIT_FOODS,
+            food_max: life::DEFAULT_MAX_FOODS,
+            set_food: false,
         }
     }
 }
@@ -307,6 +320,20 @@ impl Shared {
         lock(&self.ctrl).reset_learned = true;
     }
 
+    /// 应用食物设置（food_config 命令）：与当前值合并、钳制、置标志位，
+    /// worker 在 tick 边界应用到世界并持久化。返回生效的 (开局数, 上限)。
+    pub fn apply_food_config(&self, init: Option<u32>, max: Option<u32>) -> (usize, usize) {
+        let mut c = lock(&self.ctrl);
+        let (i, m) = life::clamp_food_config(
+            init.map(|v| v as usize).unwrap_or(c.food_init),
+            max.map(|v| v as usize).unwrap_or(c.food_max),
+        );
+        c.food_init = i;
+        c.food_max = m;
+        c.set_food = true;
+        (i, m)
+    }
+
     /// 组装完整快照：生活状态 + sim_time + brain_activity（窗口发放率归一）
     /// + spikes/spike_ages_ms（索引窗口，>8000 等距抽样，语义与初版一致）。
     pub fn snapshot(&self) -> FlyBrainSnapshot {
@@ -384,6 +411,8 @@ impl Shared {
             events: ls.events,
             world_radius: ls.world_radius,
             day_length_ticks: ls.day_length_ticks,
+            food_init: ls.food_init,
+            food_max: ls.food_max,
         }
     }
 }
@@ -410,6 +439,7 @@ impl Running {
 
 /// 从生活世界与脑状态组装发布用快照（initial 与 end_tick 共用）。
 fn build_life_state(life: &FlyLife, brain: &Brain, speed: f32, spikes_total: u64) -> LifeStatePub {
+    let (food_init, food_max) = life.food_config();
     LifeStatePub {
         time_of_day: life.time_of_day(),
         sun_elevation: life.sun_elevation(),
@@ -449,6 +479,8 @@ fn build_life_state(life: &FlyLife, brain: &Brain, speed: f32, spikes_total: u64
             .collect(),
         world_radius: WORLD_RADIUS,
         day_length_ticks: life.day_length_ticks,
+        food_init: food_init as u32,
+        food_max: food_max as u32,
     }
 }
 
@@ -463,7 +495,7 @@ pub fn start_with_dir(graph: BrainGraph, dir: Option<PathBuf>) -> Result<Running
     let t0 = Instant::now();
     let mut brain = Brain::new(graph);
     // 学习权重：若存在且边数匹配则覆盖 weight（w0 出厂基线不动）
-    let learned_path = dir.map(|d| d.join("learned_weights.bin"));
+    let learned_path = dir.as_ref().map(|d| d.join("learned_weights.bin"));
     if let Some(p) = &learned_path {
         match learned::load_into(p, &mut brain) {
             Ok(true) => info!("已恢复上次学习权重"),
@@ -471,11 +503,17 @@ pub fn start_with_dir(graph: BrainGraph, dir: Option<PathBuf>) -> Result<Running
             Err(e) => warn!("学习权重加载失败（忽略）: {e}"),
         }
     }
+    // 食物设置：读取持久化配置（无文件/损坏则用出厂默认）
+    let food_cfg_path = dir.as_ref().map(|d| d.join("food_config.json"));
+    let (food_init, food_max) = food_cfg_path
+        .as_ref()
+        .and_then(|p| load_food_config(p))
+        .unwrap_or((life::DEFAULT_INIT_FOODS, life::DEFAULT_MAX_FOODS));
     let positions = PositionsData::from_brain(&brain).ok_or("图缺少 coords，无法生成点云")?;
     let mut io = BrainIO::new(&brain, SENS_K, 0);
     io.calibrate(&mut brain);
     let vision = VisionTracker::new(&io, &brain);
-    let life = FlyLife::new(LIFE_SEED);
+    let life = FlyLife::new_with_food(LIFE_SEED, food_init, food_max);
     info!(
         "果蝇脑准备就绪（加载/校准耗时 {}ms），启动生活 worker 线程",
         t0.elapsed().as_millis()
@@ -489,7 +527,11 @@ pub fn start_with_dir(graph: BrainGraph, dir: Option<PathBuf>) -> Result<Running
         vision_log: Mutex::new(VecDeque::new()),
         vision_ns: (vision.n_left, vision.n_right, vision.n_optic),
         sim_now: AtomicU64::new(0),
-        ctrl: Mutex::new(CtrlState::default()),
+        ctrl: Mutex::new(CtrlState {
+            food_init,
+            food_max,
+            ..CtrlState::default()
+        }),
         positions,
         save_ack: Mutex::new(None),
         save_seq: AtomicU64::new(0),
@@ -502,6 +544,7 @@ pub fn start_with_dir(graph: BrainGraph, dir: Option<PathBuf>) -> Result<Running
         life,
         vision,
         learned_path,
+        food_cfg_path,
         last_save: Instant::now(),
         last_saved_changed: 0,
         drive: Vec::new(),
@@ -534,6 +577,8 @@ struct Worker {
     vision: VisionTracker,
     /// learned_weights.bin 路径（None=持久化禁用）。
     learned_path: Option<PathBuf>,
+    /// food_config.json 路径（None=食物设置不持久化）。
+    food_cfg_path: Option<PathBuf>,
     /// 上次保存时间 / 上次保存时的 weights_changed（增量判定）。
     last_save: Instant,
     last_saved_changed: u64,
@@ -679,7 +724,7 @@ impl Worker {
     /// apply_control（都要拿同一把 ctrl 锁）会被堵成锁车队，在高负载下
     /// 表现为整个界面卡死。
     fn apply_ctrl(&mut self, shared: &Shared) {
-        let (restart, dirty_plasticity, plasticity, save_weights, reset_learned) = {
+        let (restart, dirty_plasticity, plasticity, save_weights, reset_learned, set_food) = {
             let mut c = lock(&shared.ctrl);
             let flags = (
                 c.restart,
@@ -687,11 +732,13 @@ impl Worker {
                 c.plasticity,
                 c.save_weights,
                 c.reset_learned,
+                c.set_food,
             );
             c.restart = false;
             c.dirty_plasticity = false;
             c.save_weights = false;
             c.reset_learned = false;
+            c.set_food = false;
             flags
         };
         if restart {
@@ -716,5 +763,53 @@ impl Worker {
             self.brain.reset_learned_weights();
             self.last_saved_changed = 0;
         }
+        if set_food {
+            let (init, max) = {
+                let c = lock(&shared.ctrl);
+                (c.food_init, c.food_max)
+            };
+            self.life.set_food_config(init, max);
+            if let Some(p) = &self.food_cfg_path {
+                if let Err(e) = save_food_config(p, init, max) {
+                    warn!("食物设置保存失败: {e}");
+                }
+            }
+        }
     }
+}
+
+// ─── 食物设置持久化（food_config.json；与 learned_weights.bin 同目录）───
+
+/// 食物设置文件格式（JSON 两字段；损坏/缺字段视为无配置回退默认）。
+#[derive(Debug, Serialize, Deserialize)]
+struct FoodConfigFile {
+    init_foods: usize,
+    max_foods: usize,
+}
+
+/// 读取食物设置（无文件/损坏 → None，调用方回退默认）。钳制在读取侧不做，
+/// 由 life 构造/set_food_config 统一负责。
+fn load_food_config(path: &PathBuf) -> Option<(usize, usize)> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let cfg: FoodConfigFile = serde_json::from_str(&text).ok()?;
+    Some(life::clamp_food_config(cfg.init_foods, cfg.max_foods))
+}
+
+/// 原子写食物设置（先 .tmp 再删旧 rename，与 learned.rs 同套路）。
+fn save_food_config(path: &PathBuf, init_foods: usize, max_foods: usize) -> Result<(), String> {
+    let text = serde_json::to_string_pretty(&FoodConfigFile {
+        init_foods,
+        max_foods,
+    })
+    .map_err(|e| format!("序列化: {e}"))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
+    }
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, text).map_err(|e| format!("写 {} 失败: {e}", tmp.display()))?;
+    if path.exists() {
+        std::fs::remove_file(path).map_err(|e| format!("删除旧文件失败: {e}"))?;
+    }
+    std::fs::rename(&tmp, path).map_err(|e| format!("rename 失败: {e}"))?;
+    Ok(())
 }

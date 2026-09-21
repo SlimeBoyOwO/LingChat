@@ -2649,6 +2649,7 @@ export async function mountFlyBrain(root, options) {
       }
     }
     syncHud(st);
+    if (foodOpen) syncFoodNow(); // 食物设置面板打开时实时刷新场上蜜源数
   }
 
   /* ================= 控件 ================= */
@@ -2921,6 +2922,57 @@ export async function mountFlyBrain(root, options) {
     $("#confirmScrim").hidden = true;
     refreshModelStatus();
   });
+
+  /* ---- 食物设置面板（数量/上限滑杆，fly_brain_food_config 持久化到后端） ---- */
+  let foodOpen = false;
+  const foodInitEl = $("#foodInit"),
+    foodMaxEl = $("#foodMax");
+  function syncFoodNow() {
+    const n = sim?.foods?.length;
+    $("#foodNow").textContent =
+      typeof n === "number" ? `当前场上 ${n} 个蜜源` : "当前场上 — 个蜜源";
+  }
+  function setFoodSliders(init, max) {
+    foodInitEl.value = String(init);
+    foodMaxEl.value = String(max);
+    $("#foodInitVal").textContent = String(init);
+    $("#foodMaxVal").textContent = String(max);
+  }
+  function openFoods() {
+    foodOpen = true;
+    setFoodSliders(sim?.food_init ?? 6, sim?.food_max ?? 10); // 快照透出当前生效值
+    syncFoodNow();
+    picker.classList.add("hide");
+    $("#foodsPanel").classList.remove("hide");
+  }
+  function closeFoods() {
+    foodOpen = false;
+    $("#foodsPanel").classList.add("hide");
+    picker.classList.remove("hide");
+  }
+  async function applyFoodConfig() {
+    const r = await invokeGuard("fly_brain_food_config", 3000, {
+      payload: { init_foods: +foodInitEl.value, max_foods: +foodMaxEl.value },
+    });
+    if (destroyed || r.__timeout || !r?.ok) return;
+    setFoodSliders(r.init_foods, r.max_foods); // 回显钳制后的生效值
+  }
+  on($("#pickFoods"), "click", openFoods);
+  on($("#foodsBack"), "click", closeFoods);
+  on(foodInitEl, "input", () => {
+    // 开局数不能超过上限：超拖时把上限一起推上去
+    if (+foodInitEl.value > +foodMaxEl.value) foodMaxEl.value = foodInitEl.value;
+    $("#foodInitVal").textContent = foodInitEl.value;
+    $("#foodMaxVal").textContent = foodMaxEl.value;
+  });
+  on(foodMaxEl, "input", () => {
+    // 上限不能低于开局数：低拖时把开局数一起拉下来
+    if (+foodMaxEl.value < +foodInitEl.value) foodInitEl.value = foodMaxEl.value;
+    $("#foodInitVal").textContent = foodInitEl.value;
+    $("#foodMaxVal").textContent = foodMaxEl.value;
+  });
+  on(foodInitEl, "change", applyFoodConfig);
+  on(foodMaxEl, "change", applyFoodConfig);
 
   /* ================= 天色板（青绿山水：白天石青白雾、黄昏暖金、夜晚水墨） ================= */
   const DAY_ZEN = [0.45, 0.68, 0.88],

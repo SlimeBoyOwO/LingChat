@@ -71,6 +71,7 @@
       <nav class="picker-menu" aria-label="选择地图">
         <button type="button" id="pickShrine" class="picker-item">博丽神社 · 灵梦</button>
         <button type="button" id="pickPasture" class="picker-item">青绿牧场 · 果蝇</button>
+        <button type="button" id="pickFoods" class="picker-item">食物设置</button>
         <button type="button" id="pickWeights" class="picker-item">权重管理</button>
         <button type="button" id="pickBack" class="picker-item">返回</button>
       </nav>
@@ -111,6 +112,28 @@
           <button type="button" id="cancelReset" class="wbtn">取消</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div class="weights hide" id="foodsPanel">
+    <div class="weights-inner">
+      <h1 class="weights-title">食物设置</h1>
+      <section class="wcard" aria-label="蜜源数量">
+        <h2>蜜源数量</h2>
+        <div class="fslider-row">
+          <span class="fslider-name">开局数量</span>
+          <input type="range" id="foodInit" min="1" max="20" step="1" value="6" />
+          <b class="fslider-val" id="foodInitVal">6</b>
+        </div>
+        <div class="fslider-row">
+          <span class="fslider-name">数量上限</span>
+          <input type="range" id="foodMax" min="1" max="20" step="1" value="10" />
+          <b class="fslider-val" id="foodMaxVal">10</b>
+        </div>
+        <div class="wstatus" id="foodNow">当前场上 — 个蜜源</div>
+        <div class="wnote">位置全部随机生成 · 调高立即补足、调低上限立即裁减 · 重新开始按开局数量生成</div>
+      </section>
+      <button type="button" id="foodsBack" class="picker-item wback">返回</button>
     </div>
   </div>
 </div>

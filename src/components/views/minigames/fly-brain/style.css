@@ -572,6 +572,55 @@
   margin-top: 22px;
   font-size: clamp(20px, 2.4vw, 34px);
 }
+/* 食物设置面板滑杆（复用 weights 页骨架，仅补滑杆样式） */
+.fslider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0;
+}
+.fslider-name {
+  flex: none;
+  width: 5.5em;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-shadow: 0 2px 6px rgba(31, 64, 104, 0.45);
+}
+.fslider-val {
+  flex: none;
+  width: 2em;
+  text-align: center;
+  font-size: 16px;
+  text-shadow: 0 2px 6px rgba(31, 64, 104, 0.45);
+}
+.fslider-row input[type="range"] {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.fslider-row input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffd6e7;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 8px rgba(31, 64, 104, 0.4);
+}
+.fslider-row input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffd6e7;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 8px rgba(31, 64, 104, 0.4);
+}
 .confirm-scrim {
   position: absolute;
   inset: 0;

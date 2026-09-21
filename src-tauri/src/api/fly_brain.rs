@@ -34,6 +34,12 @@
 //! - `invoke("fly_brain_learned_reset")` → `{ ok }`：删 learned 文件，
 //!   worker 在跑则同时重置为出厂权重。
 //!
+//! 食物设置（选图页「食物设置」面板；持久化到 food_config.json）：
+//! - `invoke("fly_brain_food_config", { payload })` → `{ ok, init_foods, max_foods }`：
+//!   payload = `{ init_foods?: 1..=上限, max_foods?: 1..=20 }`（None 保持当前值）；
+//!   上限即时生效（超出立即裁减），低于开局数立即补足，restart/重进按开局数生成；
+//!   快照附带当前 `food_init`/`food_max` 字段。
+//!
 //! enter/exit 可能阻塞数百毫秒到数秒（磁盘 + 大内存分配），放 `spawn_blocking`；
 //! state/control 只动共享状态，直接执行。
 
@@ -43,7 +49,7 @@ use tauri::{AppHandle, Manager};
 use crate::fly_brain::worker::FlyBrainSnapshot;
 use crate::fly_brain::{
     FlyBrainControlResp, FlyBrainEnterResp, FlyBrainExitResp, FlyBrainPositionsResp, FlyBrainState,
-    LearnedResetResp, LearnedSaveResp, ModelDownloadResp, ModelStatusResp,
+    FoodConfigResp, LearnedResetResp, LearnedSaveResp, ModelDownloadResp, ModelStatusResp,
 };
 
 /// `fly_brain_control` 的载荷。
@@ -52,6 +58,13 @@ pub struct FlyBrainControlPayload {
     pub speed: Option<f64>,
     pub cmd: Option<String>,
     pub plasticity: Option<bool>,
+}
+
+/// `fly_brain_food_config` 的载荷（None 字段保持当前值；上限硬顶 20）。
+#[derive(Debug, Deserialize)]
+pub struct FlyBrainFoodConfigPayload {
+    pub init_foods: Option<u32>,
+    pub max_foods: Option<u32>,
 }
 
 #[tauri::command]
@@ -112,4 +125,13 @@ pub async fn fly_brain_learned_save(app: AppHandle) -> Result<LearnedSaveResp, S
 #[tauri::command]
 pub async fn fly_brain_learned_reset(app: AppHandle) -> Result<LearnedResetResp, String> {
     app.state::<FlyBrainState>().learned_reset()
+}
+
+#[tauri::command]
+pub async fn fly_brain_food_config(
+    app: AppHandle,
+    payload: FlyBrainFoodConfigPayload,
+) -> Result<FoodConfigResp, String> {
+    app.state::<FlyBrainState>()
+        .food_config(payload.init_foods, payload.max_foods)
 }

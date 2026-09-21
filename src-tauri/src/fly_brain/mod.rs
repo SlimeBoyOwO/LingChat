@@ -121,6 +121,14 @@ pub struct LearnedResetResp {
     pub ok: bool,
 }
 
+/// `fly_brain_food_config` 响应（生效值经钳制后返回）。
+#[derive(Debug, Clone, Serialize)]
+pub struct FoodConfigResp {
+    pub ok: bool,
+    pub init_foods: u32,
+    pub max_foods: u32,
+}
+
 // ─── 归一化点云（positions.bin 语义，对齐 web_server.py 47-60/90-105 行）───
 
 /// 归一化神经元点云：1%~99% 分位截断 → [0,1] → 居中 [-0.5,0.5]，y 翻转（背侧朝上），
@@ -478,5 +486,28 @@ impl FlyBrainState {
             r.shared.request_learned_reset();
         }
         Ok(LearnedResetResp { ok: true })
+    }
+
+    /// food_config：应用食物设置（None 字段保持当前值），worker 在 tick 边界
+    /// 应用到世界并持久化；返回钳制后的生效值。未启动返回 Err("not started")。
+    pub fn food_config(
+        &self,
+        init_foods: Option<u32>,
+        max_foods: Option<u32>,
+    ) -> Result<FoodConfigResp, String> {
+        // 锁纪律同 control()：取 Arc 即放 running 锁，apply 在锁外。
+        let shared = {
+            let guard = self.running.lock().map_err(|e| format!("锁失败: {e}"))?;
+            guard
+                .as_ref()
+                .map(|r| Arc::clone(&r.shared))
+                .ok_or_else(|| "not started".to_string())?
+        };
+        let (init_foods, max_foods) = shared.apply_food_config(init_foods, max_foods);
+        Ok(FoodConfigResp {
+            ok: true,
+            init_foods: init_foods as u32,
+            max_foods: max_foods as u32,
+        })
     }
 }

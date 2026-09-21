@@ -72,14 +72,23 @@ const REST_LEAVE: f32 = 60.0; // 休息恢复到该值起飞
 const SLEEP_ELEVATION: f32 = -0.2; // 太阳高度低于此值且精力不足 → 睡觉
 const LIGHT_CURR_FACTOR: f32 = 0.5; // 光照注入电流系数
 // ---- 蜜源补货（随机生成 + 数量限制；取代原地重生）----
-const INIT_FOODS: usize = 6; // 开局蜜源数
-const MAX_FOODS: usize = 10; // 数量上限（达到不再生成）
+// 数量可在「食物设置」面板调整（持久化到 food_config.json），以下为出厂默认值；
+// FOOD_HARD_MAX 是设置面板的硬上限（拒绝采样在 R=35 圆盘、间距 6 下的舒适容量）。
+pub const DEFAULT_INIT_FOODS: usize = 6; // 开局蜜源数（默认）
+pub const DEFAULT_MAX_FOODS: usize = 10; // 数量上限（默认；达到不再生成）
+pub const FOOD_HARD_MAX: usize = 20; // 设置可调的最大上限
 const SPAWN_INTERVAL_MIN: u32 = 50; // 补货抽签间隔最短 tick
 const SPAWN_INTERVAL_MAX: u32 = 130; // 补货抽签间隔最长 tick
 const SPAWN_BOUNDARY_MARGIN: f32 = 5.0; // 离边界（圆周）最小距离
 const SPAWN_FLY_DIST: f32 = 8.0; // 离果蝇当前位置最小距离（避免刷脸）
 const SPAWN_FOOD_DIST: f32 = 6.0; // 与现存蜜源最小间距
 const SPAWN_TRIES: u32 = 30; // 单次补货的拒绝采样次数上限
+
+/// 食物配置钳制：上限 1..=FOOD_HARD_MAX，开局数 1..=上限（0 视为未设置回退 1）。
+pub fn clamp_food_config(init_foods: usize, max_foods: usize) -> (usize, usize) {
+    let max_c = max_foods.clamp(1, FOOD_HARD_MAX);
+    (init_foods.clamp(1, max_c), max_c)
+}
 const EVENT_CAP: usize = 8; // 事件日志保留条数
 // ---- 无感知巡航（打转修复）----
 const WANDER_AMP: f32 = 0.05; // 漫游摆动幅度（rad/tick，远小于 TURN_RATE）
@@ -209,10 +218,20 @@ pub struct FlyLife {
     next_food_id: u32,
     /// 下一次补货抽签的 tick（冒烟测试可覆写以控制窗口）。
     pub next_spawn_at: u64,
+    /// 开局蜜源数（食物设置可调；世界构建/重置时使用）。
+    init_foods: usize,
+    /// 蜜源数量上限（食物设置可调；补货循环即时遵守）。
+    max_foods: usize,
 }
 
 impl FlyLife {
     pub fn new(seed: u64) -> Self {
+        Self::new_with_food(seed, DEFAULT_INIT_FOODS, DEFAULT_MAX_FOODS)
+    }
+
+    /// 带食物配置的构建（worker 用：启动时传入持久化的设置值）。
+    pub fn new_with_food(seed: u64, init_foods: usize, max_foods: usize) -> Self {
+        let (init_foods, max_foods) = clamp_food_config(init_foods, max_foods);
         let mut life = FlyLife {
             seed,
             day_length_ticks: DAY_LENGTH_TICKS,
@@ -245,9 +264,11 @@ impl FlyLife {
             noise_rng: StdRng::seed_from_u64(seed.wrapping_mul(0x9E3779B97F4A7C15) ^ 0x42),
             next_food_id: 0,
             next_spawn_at: 0,
+            init_foods,
+            max_foods,
         };
-        // 开局 INIT_FOODS 个蜜源（同一套拒绝采样生成器，果蝇在原点）
-        for _ in 0..INIT_FOODS {
+        // 开局 init_foods 个蜜源（同一套拒绝采样生成器，果蝇在原点）
+        for _ in 0..init_foods {
             life.try_spawn_food();
         }
         // 首次补货抽签间隔
@@ -257,16 +278,43 @@ impl FlyLife {
         life
     }
 
-    /// 重置世界与果蝇（restart）：同样的种子布局、世界钟归零、事件清空。
+    /// 重置世界与果蝇（restart）：同样的种子布局、世界钟归零、事件清空；
+    /// 食物设置（init/max）保留。
     pub fn reset(&mut self) {
         let day_length = self.day_length_ticks; // 测试覆盖保留
-        *self = FlyLife::new_with_day_length(self.seed, day_length);
+        let (init_foods, max_foods) = (self.init_foods, self.max_foods);
+        *self = FlyLife::new_with_day_length(self.seed, day_length, init_foods, max_foods);
     }
 
-    fn new_with_day_length(seed: u64, day_length_ticks: u32) -> Self {
-        let mut life = FlyLife::new(seed);
+    fn new_with_day_length(
+        seed: u64,
+        day_length_ticks: u32,
+        init_foods: usize,
+        max_foods: usize,
+    ) -> Self {
+        let mut life = FlyLife::new_with_food(seed, init_foods, max_foods);
         life.day_length_ticks = day_length_ticks;
         life
+    }
+
+    /// 当前食物配置（快照透出给设置面板）。
+    pub fn food_config(&self) -> (usize, usize) {
+        (self.init_foods, self.max_foods)
+    }
+
+    /// 应用食物设置（食物设置面板）：钳制后存下；超出新上限的多余蜜源立即裁掉
+    /// （按生成顺序，从最早的裁起），低于新开局数则立即补足。补货循环随后遵守
+    /// 新上限，restart/重新进入按新开局数生成。
+    pub fn set_food_config(&mut self, init_foods: usize, max_foods: usize) {
+        let (init_c, max_c) = clamp_food_config(init_foods, max_foods);
+        self.init_foods = init_c;
+        self.max_foods = max_c;
+        while self.foods.len() > max_c {
+            self.foods.remove(0);
+        }
+        while self.foods.len() < init_c.min(max_c) {
+            self.try_spawn_food();
+        }
     }
 
     /// 蜜源补货：圆盘内面积均匀随机（r = √u·(R−5)）拒绝采样——离边界 ≥5、
@@ -657,7 +705,7 @@ impl FlyLife {
             self.next_spawn_at =
                 self.tick + self.rng.gen_range(SPAWN_INTERVAL_MIN..=SPAWN_INTERVAL_MAX) as u64;
             for _ in 0..self.rng.gen_range(1..=2) {
-                if self.foods.len() < MAX_FOODS {
+                if self.foods.len() < self.max_foods {
                     self.try_spawn_food();
                 }
             }
