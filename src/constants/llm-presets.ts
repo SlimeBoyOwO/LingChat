@@ -85,4 +85,11 @@ export const llmPresets: LlmPreset[] = [
     model: "gpt-5.6-sol",
     base_url: "",
   },
+  {
+    key: "workbuddy",
+    label: "WorkBuddy 订阅",
+    provider: "workbuddy",
+    model: "auto",
+    base_url: "",
+  },
 ];

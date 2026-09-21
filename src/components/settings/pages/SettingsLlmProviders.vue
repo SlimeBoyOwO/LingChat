@@ -415,6 +415,9 @@
                   <option value="codex" class="bg-gray-800 text-white">
                     {{ $t("settings.llmProviders.form.providerCodex") }}
                   </option>
+                  <option value="workbuddy" class="bg-gray-800 text-white">
+                    {{ $t("settings.llmProviders.form.providerWorkbuddy") }}
+                  </option>
                 </select>
                 <div
                   class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5"
@@ -495,7 +498,13 @@
                   v-else
                   v-model="editing.model"
                   type="text"
-                  :placeholder="editing.provider === 'codex' ? 'gpt-5.6-sol' : 'kimi-for-coding'"
+                  :placeholder="
+                    editing.provider === 'codex'
+                      ? 'gpt-5.6-sol'
+                      : editing.provider === 'workbuddy'
+                        ? 'auto'
+                        : 'kimi-for-coding'
+                  "
                   class="focus:border-brand min-w-0 flex-1 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white transition-colors outline-none placeholder:text-white/20"
                 />
                 <button
@@ -562,8 +571,11 @@
               </div>
             </div>
 
-            <!-- API Key（Codex 走 OAuth 订阅登录，无需 API Key） -->
-            <div v-if="editing.provider !== 'codex'" class="flex flex-col gap-1">
+            <!-- API Key（Codex / WorkBuddy 走订阅登录，无需 API Key） -->
+            <div
+              v-if="editing.provider !== 'codex' && editing.provider !== 'workbuddy'"
+              class="flex flex-col gap-1"
+            >
               <label class="text-xs font-medium text-white/60">{{
                 $t("settings.llmProviders.form.apiKey")
               }}</label>
@@ -577,7 +589,7 @@
 
             <!-- Codex 登录区：设备码授权 ChatGPT 订阅 -->
             <div
-              v-else
+              v-else-if="editing.provider === 'codex'"
               class="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-3"
             >
               <div class="flex items-center justify-between">
@@ -651,6 +663,131 @@
                   {{ $t("settings.llmProviders.codex.logout") }}
                 </button>
               </div>
+            </div>
+
+            <!-- WorkBuddy 登录区：浏览器授权腾讯 CodeBuddy 订阅 -->
+            <div
+              v-if="editing.provider === 'workbuddy'"
+              class="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-3"
+            >
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-medium text-white/60">{{
+                  $t("settings.llmProviders.workbuddy.account")
+                }}</span>
+                <span v-if="workbuddyStatus?.logged_in" class="text-xs text-green-400">
+                  ●
+                  {{
+                    workbuddyStatus?.nickname ||
+                    workbuddyStatus?.uid ||
+                    $t("settings.llmProviders.workbuddy.loggedIn")
+                  }}
+                </span>
+                <span v-else class="text-xs text-white/40">{{
+                  $t("settings.llmProviders.workbuddy.notLoggedIn")
+                }}</span>
+              </div>
+              <div
+                v-if="workbuddyStatus?.logged_in && workbuddyStatus?.realm"
+                class="text-xs text-white/50"
+              >
+                {{ $t("settings.llmProviders.workbuddy.realm") }}:
+                {{
+                  workbuddyStatus.realm === "global"
+                    ? $t("settings.llmProviders.workbuddy.realmGlobal")
+                    : $t("settings.llmProviders.workbuddy.realmCn")
+                }}
+              </div>
+
+              <!-- 授权进行中：展示区域选择与授权链接 -->
+              <div v-if="workbuddyLogin" class="flex flex-col gap-2 rounded bg-black/30 p-3">
+                <div class="text-xs text-white/60">
+                  {{ $t("settings.llmProviders.workbuddy.openUrlHint") }}
+                </div>
+                <button
+                  type="button"
+                  class="text-brand text-left text-xs break-all underline underline-offset-2"
+                  @click="openUrl(workbuddyLogin.auth_url)"
+                >
+                  {{ workbuddyLogin.auth_url }}
+                </button>
+              </div>
+
+              <p
+                v-if="workbuddyLoginMessage"
+                class="text-xs"
+                :class="workbuddyLoginError ? 'text-red-400' : 'text-green-400'"
+              >
+                {{ workbuddyLoginMessage }}
+              </p>
+
+              <div class="flex flex-wrap gap-2">
+                <template v-if="!workbuddyStatus?.logged_in">
+                  <template v-if="!workbuddyLogin">
+                    <button
+                      type="button"
+                      class="bg-brand/80 hover:bg-brand rounded-lg px-3 py-1.5 text-xs text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                      :disabled="workbuddyLoginBusy"
+                      @click="startWorkbuddyLogin('cn')"
+                    >
+                      {{
+                        workbuddyLoginBusy ? "···" : $t("settings.llmProviders.workbuddy.loginCn")
+                      }}
+                    </button>
+                    <button
+                      type="button"
+                      class="bg-brand/80 hover:bg-brand rounded-lg px-3 py-1.5 text-xs text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                      :disabled="workbuddyLoginBusy"
+                      @click="startWorkbuddyLogin('global')"
+                    >
+                      {{ $t("settings.llmProviders.workbuddy.loginGlobal") }}
+                    </button>
+                  </template>
+                  <button
+                    v-else
+                    type="button"
+                    class="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white/70 transition-colors hover:bg-white/20"
+                    @click="cancelWorkbuddyLogin"
+                  >
+                    {{ $t("settings.llmProviders.workbuddy.cancel") }}
+                  </button>
+                </template>
+                <template v-else>
+                  <button
+                    type="button"
+                    class="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white/70 transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    :disabled="workbuddyUsageLoading"
+                    @click="refreshWorkbuddyUsage"
+                  >
+                    {{
+                      workbuddyUsageLoading ? "···" : $t("settings.llmProviders.workbuddy.quota")
+                    }}
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white/70 transition-colors hover:bg-white/20"
+                    @click="doWorkbuddyLogout"
+                  >
+                    {{ $t("settings.llmProviders.workbuddy.logout") }}
+                  </button>
+                </template>
+              </div>
+
+              <!-- 订阅额度（按需查询） -->
+              <p v-if="workbuddyUsage" class="text-xs text-white/60">
+                {{
+                  $t("settings.llmProviders.workbuddy.quotaRemaining", {
+                    remaining: workbuddyUsage.remaining,
+                    total: workbuddyUsage.total,
+                  })
+                }}
+              </p>
+              <p v-if="workbuddyUsageError" class="text-xs text-red-400">
+                {{ workbuddyUsageError }}
+              </p>
+
+              <p class="text-[11px] text-white/35">
+                {{ $t("settings.llmProviders.workbuddy.riskHint") }}
+              </p>
             </div>
 
             <!-- Base URL -->
@@ -973,6 +1110,16 @@ import {
   type CodexAuthStatus,
   type DeviceLoginStart,
 } from "@/api/services/codex";
+import {
+  workbuddyAuthStatus,
+  workbuddyStartLogin,
+  workbuddyPollLogin,
+  workbuddyLogout,
+  workbuddyGetQuota,
+  type WorkBuddyAuthStatus,
+  type WorkBuddyLoginStart,
+  type WorkBuddyUsage,
+} from "@/api/services/workbuddy";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useI18n } from "vue-i18n";
 import { llmPresets as presets, type LlmPreset } from "@/constants/llm-presets";
@@ -994,6 +1141,11 @@ function applyPreset(preset: LlmPreset) {
   if (preset.provider === "codex") {
     fetchProviderModels();
     refreshCodexStatus();
+  }
+  // WorkBuddy 预设：获取账号模型目录并刷新登录状态
+  if (preset.provider === "workbuddy") {
+    fetchProviderModels();
+    refreshWorkbuddyStatus();
   }
 }
 // --------------------
@@ -1018,6 +1170,19 @@ const codexLoginMessage = ref("");
 const codexLoginError = ref(false);
 const codexLoginBusy = ref(false);
 let codexPollTimer: ReturnType<typeof setInterval> | null = null;
+
+// ---- WorkBuddy（腾讯 CodeBuddy 订阅）登录状态 ----
+const workbuddyStatus = ref<WorkBuddyAuthStatus | null>(null);
+// 登录流程进行中：非 null 时展示授权链接与等待状态
+const workbuddyLogin = ref<WorkBuddyLoginStart | null>(null);
+const workbuddyLoginMessage = ref("");
+const workbuddyLoginError = ref(false);
+const workbuddyLoginBusy = ref(false);
+let workbuddyPollTimer: ReturnType<typeof setInterval> | null = null;
+// 订阅额度（按需查询）
+const workbuddyUsage = ref<WorkBuddyUsage | null>(null);
+const workbuddyUsageError = ref("");
+const workbuddyUsageLoading = ref(false);
 
 // Test state
 const testProvider = ref<LlmProviderConfig | null>(null);
@@ -1052,9 +1217,12 @@ function closePanel() {
   saveMessage.value = "";
 }
 
-// OAuth 订阅类提供商（Kimi Code / OpenAI Codex）：免填 base_url，模型走自动发现
+// OAuth 订阅类提供商（Kimi Code / OpenAI Codex / WorkBuddy）：免填 base_url，模型走自动发现
 const isOAuthProvider = computed(
-  () => editing.provider === "kimicode" || editing.provider === "codex",
+  () =>
+    editing.provider === "kimicode" ||
+    editing.provider === "codex" ||
+    editing.provider === "workbuddy",
 );
 
 // 推理深度档位完全由模型声明的 think_efforts.valid_efforts 驱动（与 kimi-code 官方一致）：
@@ -1126,6 +1294,13 @@ function onProviderChange() {
     editing.api_key = "";
     fetchProviderModels();
     refreshCodexStatus();
+  } else if (editing.provider === "workbuddy") {
+    // WorkBuddy：订阅登录，无需 key/base_url；模型从账号目录在线发现
+    editing.model = "auto";
+    editing.base_url = "";
+    editing.api_key = "";
+    fetchProviderModels();
+    refreshWorkbuddyStatus();
   } else {
     // 仅清除由 LM Studio 自动填入的默认值，不误伤用户手写的相同值
     if (lmstudioAutoFilled.value) {
@@ -1170,6 +1345,11 @@ function startEdit(p: LlmProviderConfig) {
   if (editing.provider === "codex") {
     fetchProviderModels();
     refreshCodexStatus();
+  }
+  // WorkBuddy 复用订阅登录凭据获取模型目录；同时刷新登录状态
+  if (editing.provider === "workbuddy") {
+    fetchProviderModels();
+    refreshWorkbuddyStatus();
   }
 }
 
@@ -1409,6 +1589,105 @@ async function doCodexLogout() {
   if (editing.provider === "codex") resetModelList();
 }
 
+// ---- WorkBuddy 浏览器授权登录流程 ----
+async function refreshWorkbuddyStatus() {
+  try {
+    workbuddyStatus.value = await workbuddyAuthStatus();
+  } catch {
+    workbuddyStatus.value = null;
+  }
+}
+
+function stopWorkbuddyPolling() {
+  if (workbuddyPollTimer) {
+    clearInterval(workbuddyPollTimer);
+    workbuddyPollTimer = null;
+  }
+}
+
+async function startWorkbuddyLogin(realm: "cn" | "global") {
+  if (workbuddyLoginBusy.value) return;
+  workbuddyLoginBusy.value = true;
+  workbuddyLoginError.value = false;
+  workbuddyLoginMessage.value = "";
+  stopWorkbuddyPolling();
+  try {
+    const start = await workbuddyStartLogin(realm);
+    workbuddyLogin.value = start;
+    workbuddyLoginMessage.value = t("settings.llmProviders.workbuddy.waitingAuth");
+    // 自动打开浏览器到授权页
+    openUrl(start.auth_url).catch(() => {});
+    workbuddyPollTimer = setInterval(async () => {
+      const login = workbuddyLogin.value;
+      if (!login) {
+        stopWorkbuddyPolling();
+        return;
+      }
+      try {
+        const result = await workbuddyPollLogin(login.state, login.realm);
+        if (result.status === "complete") {
+          stopWorkbuddyPolling();
+          workbuddyLogin.value = null;
+          workbuddyLoginError.value = false;
+          workbuddyLoginMessage.value = t("settings.llmProviders.workbuddy.loginSuccess");
+          await refreshWorkbuddyStatus();
+          if (editing.provider === "workbuddy") {
+            resetModelList();
+            await fetchProviderModels();
+          }
+        }
+      } catch (e: any) {
+        stopWorkbuddyPolling();
+        workbuddyLogin.value = null;
+        workbuddyLoginError.value = true;
+        workbuddyLoginMessage.value = t("settings.llmProviders.workbuddy.loginFailed", {
+          error: String(e?.message ?? e),
+        });
+      }
+    }, 3000);
+  } catch (e: any) {
+    workbuddyLoginError.value = true;
+    workbuddyLoginMessage.value = t("settings.llmProviders.workbuddy.loginFailed", {
+      error: String(e?.message ?? e),
+    });
+  } finally {
+    workbuddyLoginBusy.value = false;
+  }
+}
+
+function cancelWorkbuddyLogin() {
+  stopWorkbuddyPolling();
+  workbuddyLogin.value = null;
+  workbuddyLoginMessage.value = "";
+  workbuddyLoginError.value = false;
+}
+
+async function doWorkbuddyLogout() {
+  try {
+    await workbuddyLogout();
+  } catch {
+    /* 本地文件清理失败可忽略 */
+  }
+  workbuddyUsage.value = null;
+  workbuddyUsageError.value = "";
+  await refreshWorkbuddyStatus();
+  if (editing.provider === "workbuddy") resetModelList();
+}
+
+async function refreshWorkbuddyUsage() {
+  if (workbuddyUsageLoading.value) return;
+  workbuddyUsageLoading.value = true;
+  workbuddyUsageError.value = "";
+  try {
+    workbuddyUsage.value = await workbuddyGetQuota();
+  } catch (e: any) {
+    workbuddyUsage.value = null;
+    workbuddyUsageError.value = String(e?.message ?? e);
+  } finally {
+    workbuddyUsageLoading.value = false;
+  }
+}
+
 onMounted(async () => {
   await store.load();
   refreshCodexStatus();
@@ -1417,5 +1696,6 @@ onMounted(async () => {
 onUnmounted(() => {
   modelRequestId++;
   stopCodexPolling();
+  stopWorkbuddyPolling();
 });
 </script>
