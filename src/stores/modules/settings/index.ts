@@ -65,7 +65,7 @@ export const DEFAULT_SETTINGS = {
   pet: {
     scale: 1, // 桌宠缩放比例
     live2dFps: 30, // Live2D 渲染帧率上限（0 = 不限制）；桌宠窗口小，30 帧足够且显著降 CPU
-    bubbleSide: "above" as BubbleSide, // 气泡/通知位置：above = 宠物上方，below = 宠物与输入框之间，auto = 自动
+    bubbleSide: "above" as BubbleSide, // 气泡/通知位置：above = 宠物上方，below = 宠物与输入框之间
   },
   // 剧本编辑器快捷键（默认不含 Command 键；可在编辑器快捷键面板自定义）
   shortcuts: DEFAULT_SHORTCUTS,
@@ -121,8 +121,8 @@ export interface CharacterSettings {
   folder: string;
 }
 
-/** 气泡/通知位置：above = 宠物上方；below = 宠物与输入框之间；auto = 按宠物在屏幕中的位置自动选 */
-export type BubbleSide = "above" | "below" | "auto";
+/** 气泡/通知位置：above = 宠物上方（优先上置，放不下则降级下置）；below = 宠物与输入框之间 */
+export type BubbleSide = "above" | "below";
 
 export interface PetSettings {
   scale: number;

@@ -4,8 +4,10 @@
     class="relative z-30 flex w-full cursor-pointer items-center justify-center transition-all duration-300 ease-out"
     :class="
       isVisible
-        ? 'translate-y-0 opacity-100'
-        : 'pointer-events-none h-0 -translate-y-2 overflow-hidden opacity-0'
+        ? 'translate-y-0 scale-100 opacity-100'
+        : leaving
+          ? 'pointer-events-none translate-y-1 scale-95 opacity-0'
+          : 'pointer-events-none h-0 -translate-y-2 scale-95 overflow-hidden opacity-0'
     "
   >
     <div
@@ -59,6 +61,26 @@ const emit = defineEmits(["player-continued", "dialog-proceed"]);
 
 const isVisible = computed(() => {
   return gameStore.currentStatus === "responding" && gameStore.currentLine.trim() !== "";
+});
+
+// 退场动效需要一个“退场中”状态：隐藏态的 h-0 会在同一帧把内容裁掉，淡出根本看不见。
+// 先把高度保住播完动效（时长与 transition-all duration-300 对齐），再收成 h-0。
+const LEAVING_MS = 300;
+const leaving = ref(false);
+let leaveTimer: number | undefined;
+
+watch(isVisible, (visible) => {
+  if (leaveTimer !== undefined) window.clearTimeout(leaveTimer);
+  leaveTimer = undefined;
+  if (visible) {
+    leaving.value = false;
+    return;
+  }
+  leaving.value = true;
+  leaveTimer = window.setTimeout(() => {
+    leaving.value = false;
+    leaveTimer = undefined;
+  }, LEAVING_MS);
 });
 
 const characterEmotion = computed(() => {
@@ -120,7 +142,9 @@ watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLin
   } else if (newStatus === "input") {
     stopTyping();
     currentDisplayedText.value = "";
-    if (textareaRef.value) textareaRef.value.style.height = "";
+    // 收成 0px 而不是清空成 auto：让 .dialog-text-lock 的高度过渡把气泡平滑“缩回去”，
+    // 下置模式下输入框也会跟着平滑上升，而不是跳一下
+    if (textareaRef.value) textareaRef.value.style.height = "0px";
   }
 });
 

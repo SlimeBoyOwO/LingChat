@@ -22,7 +22,6 @@ export default {
     scaleTitle: "Desktop Pet Size",
     scaleReset: "Reset to Default Size",
     bubbleSideTitle: "Bubble Position",
-    bubbleSideAuto: "Auto",
     bubbleSideAbove: "Above the pet",
     bubbleSideBelow: "Below the pet",
     particleTitle: "Background Particle Effects (smoother with none)",

@@ -16,10 +16,11 @@
     <!-- 装饰带（气泡/通知）：上置时高度 = 当前位移（与窗口上移量同步推进，气泡从宠物头顶平滑升起）；
          空闲/下置时随内容 → 顶部永远没有透明空间，宠物可以贴屏幕顶 -->
     <div
+      ref="decorBand"
       class="flex w-full shrink-0 flex-col justify-end bg-transparent transition-none"
       :style="{ order: bubbleBelow ? 1 : 0, height: bandAbove ? `${shiftCss}px` : 'auto' }"
     >
-      <div ref="bandContent" class="flex w-full shrink-0 flex-col">
+      <div class="flex w-full shrink-0 flex-col">
         <PetNotification />
         <div class="flex items-end justify-center" :class="{ 'mb-1': bubbleVisible }">
           <DialogueBox ref="gameDialogRef" @player-continued="manualTriggerContinue" />
@@ -66,7 +67,7 @@ import { useUIStore } from "@/stores/modules/ui/ui";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { currentMonitor, getCurrentWindow, PhysicalPosition } from "@tauri-apps/api/window";
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { useFileDrop } from "../pet/useFileDrop";
@@ -90,22 +91,23 @@ const { isDragging, hasFile } = useFileDrop();
 
 const avatarContainer = ref<HTMLElement | null>(null);
 const chatContainer = ref<HTMLElement | null>(null);
-const bandContent = ref<HTMLElement | null>(null); // 装饰带内层：自然高度，用于量测与位移目标
+const decorBand = ref<HTMLElement | null>(null);
 const gameDialogRef = ref<InstanceType<typeof DialogueBox> | null>(null);
 const ChatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
 
-// 气泡/通知位置（用户设置）：above = 优先上置（上方放不下则降级下置），
-// below = 强制下置，auto = 按宠物在屏幕中的位置自动选（宠物偏上则下置）
-const bubbleSide = computed(() => settingsStore.pet?.bubbleSide ?? "above");
+// 气泡/通知位置（用户设置）：above = 宠物上方（不自动翻转，放不下时请手动改成下方）；below = 强制下置。
+// 旧版本可能存过 auto，一律按 above 处理
+const bubbleSide = computed<BubbleSide>(() =>
+  settingsStore.pet?.bubbleSide === "below" ? "below" : "above",
+);
 // 气泡当前是否有内容（显隐与点击穿透上报共用）
 const bubbleVisible = computed(
   () => gameStore.currentStatus === "responding" && gameStore.currentLine.trim() !== "",
 );
-const bandHasContent = computed(() => bubbleVisible.value || uiStore.notification.isVisible);
 
 // —— 窗口补偿：头像必须钉在屏幕上不动，而“上置”的气泡在窗口内只能挤在头像上方 ——
 // 做法：装饰带高度与窗口上移量始终相等、同步逐帧推进 —— 头像屏幕位置恒等于“归位顶边”，
-// 气泡从宠物头顶平滑升起；位移归零时顶部没有任何预留空间，仍可贴屏幕顶。
+// 气泡只是在自己这块预留区里淡入淡出。位移归零（下置模式）时顶部没有任何预留空间。
 // 逐帧推进是必需的：窗口位置由 OS 合成、内容由 webview 合成，一次跳完整段必然会有
 // 一帧错位（表现就是“上下抽动”）；分帧后单帧错位 ≤ 一步，肉眼不可见。
 const SHIFT_STEP_PX = 12; // 每帧最大位移：越小越平滑，越大越快
@@ -114,35 +116,24 @@ const layoutReady = ref(false);
 const restingTopCss = ref(0); // 归位后的窗口顶边（= 头像在屏幕上的顶边）
 const restingLeftCss = ref(0);
 const workTopCss = ref(0);
-const workCenterCss = ref(0);
 const dprRef = ref(window.devicePixelRatio || 1);
-const bandContentHeightCss = ref(0); // 装饰带内容自然高度
 const shiftCss = ref(0); // 当前位移：同时决定“装饰带高度”与“窗口上移量”
 
-// 上方空间是否够（按整个气泡预算保守判断；放不下就降级下置，宠物因此仍能被拖到屏幕最顶）
-const neededReserveCss = computed(() =>
-  bandHasContent.value ? DIALOG_MAX_BASE * petScale.value : 0,
-);
-const hasRoomAbove = computed(
-  () => !layoutReady.value || restingTopCss.value - neededReserveCss.value > workTopCss.value,
-);
-const autoBubbleBelow = computed(
-  () =>
-    layoutReady.value &&
-    restingTopCss.value + (AVATAR_BAND_BASE * petScale.value) / 2 < workCenterCss.value,
-);
-const bubbleBelow = computed(
-  () =>
-    bubbleSide.value === "below" ||
-    !hasRoomAbove.value ||
-    (bubbleSide.value === "auto" && autoBubbleBelow.value),
-);
-const bandAbove = computed(() => !bubbleBelow.value && bandHasContent.value);
-// 位移目标：上置时跟装饰带内容高度走，其余情况归零。
-// 封顶到气泡预算，避免“长气泡 + 通知”叠加时把输入框挤出窗口
-const targetShiftCss = computed(() =>
-  bandAbove.value ? Math.min(bandContentHeightCss.value, DIALOG_MAX_BASE * petScale.value) : 0,
-);
+// 上置需要预留的高度：整块气泡预算，且与“有没有内容”无关（常备）——
+// 正因如此，气泡出现/消失不会引起任何窗口移动
+const reserveCss = computed(() => DIALOG_MAX_BASE * petScale.value);
+// above = 永远上置，不再自动翻到下置（贴顶时上方放不下，请用户自行改成“下方”）；
+// 上移量按工作区顶边裁剪，避免把窗口推到屏幕外
+const bubbleBelow = computed(() => bubbleSide.value === "below");
+const bandAbove = computed(() => !bubbleBelow.value);
+// 位移目标：只取决于放置模式，与气泡/通知内容高度无关 —— 上置时窗口“常备”抬升整块预算，
+// 气泡只是在自己预留区里淡入淡出。内容变化时窗口与布局都不动 → 不会上下抽动。
+const targetShiftCss = computed(() => {
+  if (!bandAbove.value) return 0;
+  if (!layoutReady.value) return 0; // 还没拿到真实窗口位置，先不抬
+  const room = Math.max(0, restingTopCss.value - workTopCss.value);
+  return Math.min(reserveCss.value, room);
+});
 
 let shiftRaf: number | undefined;
 
@@ -195,8 +186,6 @@ const syncPetPlacement = async () => {
     }
     restingLeftCss.value = pos.x / dprRef.value;
     workTopCss.value = monitor.workArea.position.y / dprRef.value;
-    workCenterCss.value =
-      (monitor.workArea.position.y + monitor.workArea.size.height / 2) / dprRef.value;
     layoutReady.value = true;
     scheduleWindowShift();
   } catch {
@@ -218,13 +207,24 @@ const onWindowMoved = (event: { payload: PhysicalPosition }) => {
   schedulePlacementSync();
 };
 
-// 装饰带内容高度变化（气泡出现/消失/换行、通知弹出）时更新位移目标，窗口逐帧跟上。
-// 量测内层：外层高度是受控的（= 当前位移），不能用来当目标。
-const bandObserver = new ResizeObserver(() => {
-  const band = bandContent.value;
-  if (!band) return;
-  bandContentHeightCss.value = band.getBoundingClientRect().height;
-  scheduleWindowShift();
+// —— 换位动效：只对装饰带做一次屏幕坐标下的 FLIP ——
+// 安全性：装饰带的屏幕位置只由它自己的 transform 决定（布局上移量与窗口上移量始终是同一个
+// shiftCss、等量抵消），因此这段动画与逐帧位移、命中测试、头像/输入框位置完全解耦。
+const SWAP_DURATION = 260;
+const bandVisualTop = () => (decorBand.value?.getBoundingClientRect().top ?? 0) - shiftCss.value;
+
+watch(bubbleBelow, async () => {
+  const band = decorBand.value;
+  if (!band || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  band.getAnimations().forEach((anim) => anim.finish()); // 连续切换时先归位，避免叠加
+  const from = bandVisualTop(); // 换位前的屏幕位置
+  await nextTick();
+  const dy = from - bandVisualTop();
+  if (Math.abs(dy) < 1) return;
+  band.animate([{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }], {
+    duration: SWAP_DURATION,
+    easing: "cubic-bezier(0.34, 1.28, 0.4, 1)", // 末端轻微回弹
+  });
 });
 
 const appStyleVars = computed(() => {
@@ -365,9 +365,6 @@ onMounted(async () => {
   movedUnlisten = await appWindow.onMoved(onWindowMoved);
   await syncPetPlacement();
 
-  // 气泡/通知改变装饰带高度时驱动窗口补偿（见 bandObserver）
-  if (bandContent.value) bandObserver.observe(bandContent.value);
-
   // 设置透明背景的 body 属性样式（额外防护）
   document.body.style.backgroundColor = "transparent";
   document.documentElement.style.backgroundColor = "transparent";
@@ -415,7 +412,6 @@ onUnmounted(() => {
   if (movedUnlisten) movedUnlisten();
   if (placementTimer !== undefined) window.clearTimeout(placementTimer);
   if (shiftRaf !== undefined) window.cancelAnimationFrame(shiftRaf);
-  bandObserver.disconnect();
 
   if (hitTestInterval !== undefined) {
     window.clearInterval(hitTestInterval);

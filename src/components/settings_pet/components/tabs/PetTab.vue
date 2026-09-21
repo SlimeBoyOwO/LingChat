@@ -493,7 +493,6 @@ const onVolumeInput = (event: Event) => {
 
 // ===== 气泡位置 =====
 const bubbleSideOptions = computed(() => [
-  { label: t("pet.petTab.bubbleSideAuto"), value: "auto" as const },
   { label: t("pet.petTab.bubbleSideAbove"), value: "above" as const },
   { label: t("pet.petTab.bubbleSideBelow"), value: "below" as const },
 ]);

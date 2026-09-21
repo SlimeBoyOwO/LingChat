@@ -159,7 +159,9 @@ const tabs = computed(() => [
 const petScale = computed(() => settingsStore.pet.scale);
 const petVolume = computed(() => settingsStore.characterVolume);
 const petLive2dFps = computed(() => settingsStore.pet.live2dFps ?? 30);
-const petBubbleSide = computed(() => settingsStore.pet.bubbleSide);
+const petBubbleSide = computed(() =>
+  settingsStore.pet.bubbleSide === "below" ? "below" : "above",
+);
 
 const syncMaximizedState = async () => {
   isMaximized.value = await appWindow.isMaximized();
