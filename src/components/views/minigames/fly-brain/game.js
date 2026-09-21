@@ -343,17 +343,30 @@ export async function mountFlyBrain(root, options) {
     `#version 300 es
     precision mediump float;
     in vec3 vN; in vec3 vC; in float vFog;
-    uniform vec3 uSunDir, uSunColor, uAmbient, uFogColor;
+    uniform vec3 uSunDir, uSunColor, uMoonDir, uMoonColor, uAmbient, uFogColor;
     uniform float uFogK;
     out vec4 o;
     void main() {
-      float ndl = max(dot(normalize(vN), uSunDir), 0.0);
-      vec3 col = vC * (uAmbient + uSunColor * ndl);
+      vec3 n = normalize(vN);
+      float ndl = max(dot(n, uSunDir), 0.0);
+      float ndm = max(dot(n, uMoonDir), 0.0);
+      // 半球环境：坡面朝上多接天光，背光面也不死黑（可爱柔和基调）
+      float hemi = 0.85 + 0.3 * max(n.y, 0.0);
+      vec3 col = vC * (uAmbient * hemi + uSunColor * ndl + uMoonColor * ndm);
       float f = 1.0 - exp(-vFog * vFog * uFogK);
       o = vec4(mix(col, uFogColor, f), 1.0);
     }`,
   );
-  const litU = uniforms(litProg, ["uVP", "uSunDir", "uSunColor", "uAmbient", "uFogColor", "uFogK"]);
+  const litU = uniforms(litProg, [
+    "uVP",
+    "uSunDir",
+    "uSunColor",
+    "uMoonDir",
+    "uMoonColor",
+    "uAmbient",
+    "uFogColor",
+    "uFogK",
+  ]);
 
   /* ================= 地形 ================= */
   const terrainVao = (() => {
@@ -851,6 +864,7 @@ export async function mountFlyBrain(root, options) {
     stone: [128, 128, 128, 128],
     lotus: [256, 128, 128, 128],
     glow: [384, 128, 64, 64],
+    shadow: [448, 128, 64, 64], // blob 投影：纯黑软斑
     mist: [0, 256, 256, 64],
     lotusLeaf: [256, 256, 64, 64],
     peachTree: [0, 320, 128, 128], // 牧场地图用：094091f7 旧版普通粉花桃树
@@ -1073,6 +1087,18 @@ export async function mountFlyBrain(root, options) {
     softBlob(32, 32, 26, 26, "rgba(255,236,180,A)", 0.95);
     softBlob(32, 32, 12, 12, "rgba(255,250,230,A)", 0.95);
     c.restore();
+    /* 软椭圆影（blob shadow）：中心实、边缘渐隐的纯黑软斑 */
+    c.save();
+    c.translate(448, 128);
+    const sh = c.createRadialGradient(32, 32, 2, 32, 32, 30);
+    sh.addColorStop(0, "rgba(0,0,0,0.85)");
+    sh.addColorStop(0.55, "rgba(0,0,0,0.42)");
+    sh.addColorStop(1, "rgba(0,0,0,0)");
+    c.fillStyle = sh;
+    c.beginPath();
+    c.arc(32, 32, 30, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
     /* 桃树（牧场地图）：094091f7 旧版普通粉花 */
     c.save();
     c.translate(0, 320);
@@ -1174,7 +1200,7 @@ export async function mountFlyBrain(root, options) {
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
 
   /* ================= 广告牌精灵（实例化：植被/蜜源/雾带共用一个 draw call） ================= */
-  const MAX_SPRITES = 96;
+  const MAX_SPRITES = 192; // 装饰/蜜源/雾带/灯笼光晕 + blob 投影（约 50+45），上限留足余量
   const spriteProg = makeProg(
     `#version 300 es
     layout(location=0) in vec2 aCorner;
@@ -1187,12 +1213,21 @@ export async function mountFlyBrain(root, options) {
     uniform float uTime;
     out vec2 vUV; out float vAlpha; out float vFog;
     void main() {
-      float c = cos(iMisc.z), s = sin(iMisc.z);
-      vec2 rc = vec2(aCorner.x * c - aCorner.y * s, aCorner.x * s + aCorner.y * c);
-      vec3 wp = iCenter + uRight * (rc.x * iSize.x) + uUp * (rc.y * iSize.y);
-      float top = aCorner.y + 0.5;
-      wp.x += sin(uTime * 1.6 + iMisc.x) * iMisc.w * top;
-      wp.z += cos(uTime * 1.3 + iMisc.x * 1.7) * iMisc.w * top * 0.6;
+      vec3 wp;
+      if (iMisc.w < -0.5) {
+        // 贴地模式（blob 投影，swayAmp 为负作标记）：iMisc.z=阴影方向角，沿地面 XZ 展开
+        float c2 = cos(iMisc.z), s2 = sin(iMisc.z);
+        vec3 fu = vec3(c2, 0.0, s2);
+        vec3 fv = vec3(-s2, 0.0, c2);
+        wp = iCenter + fu * (aCorner.x * iSize.x) + fv * (aCorner.y * iSize.y);
+      } else {
+        float c = cos(iMisc.z), s = sin(iMisc.z);
+        vec2 rc = vec2(aCorner.x * c - aCorner.y * s, aCorner.x * s + aCorner.y * c);
+        wp = iCenter + uRight * (rc.x * iSize.x) + uUp * (rc.y * iSize.y);
+        float top = aCorner.y + 0.5;
+        wp.x += sin(uTime * 1.6 + iMisc.x) * iMisc.w * top;
+        wp.z += cos(uTime * 1.3 + iMisc.x * 1.7) * iMisc.w * top * 0.6;
+      }
       vUV = mix(iUV.xy, iUV.zw, aCorner + 0.5);
       vAlpha = iMisc.y;
       vec4 cp = uVP * vec4(wp, 1.0);
@@ -2998,8 +3033,8 @@ export async function mountFlyBrain(root, options) {
     hor = lerp3(hor, NIGHT_HOR, night);
     const sunVis = clamp01(day + dusk * 0.8) * smooth(-0.06, 0.01, e);
     const sunTint = lerp3([1, 0.96, 0.86], [1, 0.58, 0.38], dusk);
-    const ambient = lerp3([0.17, 0.21, 0.32], [0.6, 0.64, 0.56], clamp01(day + dusk * 0.3));
-    const sunColor = sunTint.map((v) => v * (day * 0.9 + dusk * 0.45));
+    const ambient = lerp3([0.17, 0.21, 0.32], [0.54, 0.58, 0.5], clamp01(day + dusk * 0.3));
+    const sunColor = sunTint.map((v) => v * (day * 1.15 + dusk * 0.5)); // 加强向阳/背阳对比
     return { zen, hor, dusk, night, sunVis, sunTint, ambient, sunColor };
   }
 
@@ -3150,6 +3185,8 @@ export async function mountFlyBrain(root, options) {
     gl.uniformMatrix4fv(litU.uVP, false, vp);
     gl.uniform3fv(litU.uSunDir, sunDir);
     gl.uniform3fv(litU.uSunColor, pal.sunColor);
+    gl.uniform3fv(litU.uMoonDir, moonDir);
+    gl.uniform3f(litU.uMoonColor, 0.16 * pal.night, 0.2 * pal.night, 0.3 * pal.night);
     gl.uniform3fv(litU.uAmbient, pal.ambient);
     gl.uniform3fv(litU.uFogColor, pal.hor);
     gl.uniform1f(litU.uFogK, FOG_K);
@@ -3242,6 +3279,49 @@ export async function mountFlyBrain(root, options) {
           alpha: pal.night * (0.5 + 0.18 * Math.sin(t * 2.6 + g.phase)),
           rot: 0,
         });
+    /* blob 动态投影：贴地软椭圆（sway=-1 走贴地分支），偏移=太阳反方位，长度随太阳高度，夜晚淡出 */
+    const shadowA = 0.3 * clamp01(e / 0.12);
+    if (shadowA > 0.004) {
+      const shLen = Math.hypot(sunDir[0], sunDir[2]) || 1;
+      const sd = [-sunDir[0] / shLen, -sunDir[2] / shLen]; // 阴影偏移方向（与太阳水平方位相反）
+      const sAng = Math.atan2(sd[1], sd[0]);
+      const elong = Math.max(0.55, Math.min(2.6, 0.6 / Math.max(e, 0.12))); // 中午短、早晚拉长
+      const pushShadow = (x, z, r, fade = 1) => {
+        const off = r * elong * 0.7;
+        sprites.push({
+          x: x + sd[0] * off,
+          y: heightAt(x, z) + 0.035, // 贴地形 + 微抬防 z-fight
+          z: z + sd[1] * off,
+          w: r * elong * 1.6,
+          h: r * 1.1,
+          uv: UV.shadow,
+          phase: 0,
+          sway: -1, // 贴地模式标记
+          alpha: shadowA * fade,
+          rot: sAng,
+        });
+      };
+      // 装饰树木/石头（跳过塘面荷叶荷花）
+      for (const d of decor)
+        if (d.uv !== UV.lotusLeaf && d.uv !== UV.lotus) pushShadow(d.x, d.z, d.w * 0.55);
+      // 蜜源
+      for (const f of foodSprites) pushShadow(f.x, f.z, 0.6);
+      // 神社静态建筑（鸟居/本殿/石灯笼）
+      if (mapKind === "shrine") {
+        pushShadow(0, 30, 2.6); // 鸟居
+        pushShadow(0, -30, 6.0); // 本殿
+        for (const g of lanternGlows) pushShadow(g.x, g.z, 0.5);
+      }
+      // 主角：跟随 x/z，飞行升高时影子变淡缩小
+      const chH = Math.max(0, flyPos.y - heightAt(flyPos.x, flyPos.z));
+      const chFade = Math.max(0, 1 - chH / 3.5);
+      pushShadow(
+        flyPos.x,
+        flyPos.z,
+        (character === "reimu" ? 0.5 : 0.32) * (0.7 + 0.3 * chFade),
+        chFade,
+      );
+    }
     const fwd = [-view[2], -view[6], -view[10]];
     for (const s of sprites)
       s.depth = (s.x - eye[0]) * fwd[0] + (s.y - eye[1]) * fwd[1] + (s.z - eye[2]) * fwd[2];

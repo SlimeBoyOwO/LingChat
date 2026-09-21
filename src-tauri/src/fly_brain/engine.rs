@@ -44,6 +44,20 @@ pub const W_MAX_F: f32 = 3.0; // 权重 clamp 上限
 pub const DA_STIM_STEPS: u32 = 50; // reward/punish 后 DA 神经元刺激时长 ms
 pub const DA_STIM_CURR: f32 = 0.8; // DA 刺激电流
 pub const ELIG_EPS: f32 = 1e-3; // 参与调制的资格迹阈值
+/// 单次奖惩调制时资格迹的取值上限：热边稳态资格迹 ≈ post_trace×500（τ=500ms 的
+/// 1/(1−decay) 稳态），不封顶时**一次** reward 就能把上万条边拍到 3x 权重上限
+/// （×(1+0.02×500)≈×11），长会话下整个连接组迅速饱和、行为退化（实测：一次
+/// reward 后 108,092 条边贴死 3x，果蝇随即不再转向觅食）。封顶 5 后单次奖惩
+/// 最多 ×(1±0.1)，同一方向需反复一致强化才到夹取边界，学习保持渐进。
+/// 注：这是与参考实现的有意差异点（参考实现无封顶，短局 snake 里不明显；
+/// 本游戏是长期共存的宠物，必须防学习失控）。
+pub const ELIG_CAP: f32 = 5.0;
+/// 单次奖惩调制的边数上限（取资格迹最高的前 K 条）。背景 tonic+噪声驱动下
+/// 全脑常年活跃，单次奖励的合格边高达 10~30 万条且资格迹普遍饱和（均值 2.2~5.0）
+/// ——如此广域的扰动即使每条仅 ×1.1 也足以把 DN 读出基线推离校准点，
+/// 觅食微分信号淹死（实测：一次奖励后转向能力即丧失）。限幅 K 条把单次扰动
+/// 约束在全图 ~0.04% 的边上，学习仍可逐餐累积（热边 ×1.1/餐）。
+pub const MODULATE_TOP_K: usize = 1000;
 pub const NT_DA: u8 = 4; // nt_type == DA 的编码
 
 /// 资格迹衰减查表长度（dt 为整数步号差；表内覆盖 exp(-dt/500) 到 ~2e-8，
@@ -96,6 +110,9 @@ pub struct Brain {
     da_pre: Vec<u32>,
     da_stim_left: u32,
     last_eids: Option<Vec<u32>>,
+    /// 突触稳态缩放基线：每个突触后神经元在出厂权重下的入边 |w| 总和
+    /// （Turrigiano 式 homeostasis；enable_plasticity 时分配）。
+    in_l1_0: Vec<f32>,
     pub plastic_stats: PlasticStats,
     /// exp(-dt/500) 查表（0..=10000 整数步）。
     elig_decay_tab: Vec<f32>,
@@ -147,6 +164,7 @@ impl Brain {
             da_pre: Vec::new(),
             da_stim_left: 0,
             last_eids: None,
+            in_l1_0: Vec::new(),
             plastic_stats: PlasticStats::default(),
             elig_decay_tab,
         }
@@ -167,7 +185,9 @@ impl Brain {
     // KC→MBON 突触可塑性。这里是诚实的工程近似，不是真实果蝇学习规则：
     //  - 每条边存惰性衰减的资格迹：突触前发放时按突触后近期活动迹增量累积
     //    （e += post_trace[post]），奖惩时才按指数衰减折算到当前值；
-    //  - reward/punish：W *= (1 + η·sign·e)，clamp 到初始权重 [0.3x, 3.0x]；
+    //  - reward/punish：W *= (1 + η·sign·min(e, ELIG_CAP))，clamp 到初始权重
+    //    [0.3x, 3.0x]——e 先封顶（热边稳态 ~500，不封顶一次 reward 就把上万
+    //    条边拍死到 3x，见 ELIG_CAP 注释）；
     //  - 生物风味：奖惩同时对 nt_type==DA 的突触前神经元群注入 50ms 电流。
     pub fn enable_plasticity(&mut self) -> bool {
         if self.plastic {
@@ -179,6 +199,16 @@ impl Brain {
         self.w0.clone_from(&self.weight);
         self.post_trace = vec![0.0; self.n];
         self.changed = vec![false; e];
+        // 突触稳态缩放基线：每个突触后神经元的入边 |w| 总和（边按 post 的 CSR
+        // 存储，indptr 切片即该神经元的全部入边）
+        self.in_l1_0 = (0..self.n)
+            .map(|i| {
+                self.weight[self.indptr[i] as usize..self.indptr[i + 1] as usize]
+                    .iter()
+                    .map(|w| w.abs())
+                    .sum()
+            })
+            .collect();
         // 多巴胺能突触前神经元集合（升序去重，对齐 np.unique）
         self.da_pre.clear();
         if let Some(nt) = &self.edge_nt {
@@ -223,17 +253,37 @@ impl Brain {
             return;
         }
         let now = self.step_count;
+        // 收集合格边（资格迹按衰减折算并封顶），超过 MODULATE_TOP_K 时只留
+        // 资格迹最高的前 K 条——背景驱动下合格边动辄 10~30 万条，广域扰动会
+        // 摧毁校准好的 DN 读出基线（见 MODULATE_TOP_K 注释）。
+        let mut cand: Vec<(f32, u32)> = Vec::new();
         for e in 0..self.elig.len() {
-            let actual = self.elig[e] * self.elig_decay(now - self.elig_t[e]);
+            let actual = (self.elig[e] * self.elig_decay(now - self.elig_t[e])).min(ELIG_CAP);
             if actual > ELIG_EPS {
-                let w0 = self.w0[e];
-                // clamp 到初始权重的 [0.3x, 3.0x]（w0 可能为负，取 min/max 包住）
-                let lo = (w0 * W_MIN_F).min(w0 * W_MAX_F);
-                let hi = (w0 * W_MIN_F).max(w0 * W_MAX_F);
-                self.weight[e] = (self.weight[e] * (1.0 + PLASTIC_ETA * s * actual)).clamp(lo, hi);
-                self.changed[e] = true;
+                cand.push((actual, e as u32));
             }
         }
+        if cand.len() > MODULATE_TOP_K {
+            cand.select_nth_unstable_by(MODULATE_TOP_K, |a, b| {
+                b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            cand.truncate(MODULATE_TOP_K);
+        }
+        for &(actual, e_u32) in &cand {
+            let e = e_u32 as usize;
+            let w0 = self.w0[e];
+            // clamp 到初始权重的 [0.3x, 3.0x]（w0 可能为负，取 min/max 包住）
+            let lo = (w0 * W_MIN_F).min(w0 * W_MAX_F);
+            let hi = (w0 * W_MIN_F).max(w0 * W_MAX_F);
+            self.weight[e] = (self.weight[e] * (1.0 + PLASTIC_ETA * s * actual)).clamp(lo, hi);
+            self.changed[e] = true;
+        }
+        // 突触稳态缩放（Turrigiano homeostasis）：把每个突触后神经元的入边 |w|
+        // 总和拉回到出厂基线——奖励只在同一神经元的输入之间**重新分配**权重预算，
+        // 网络整体增益（DN 基线放电率、校准好的读出归一）不被推高。没有这一步，
+        // 背景驱动下 ~11.5 万条边同时 ×1.1 会把 DN 基线抬到饱和，觅食微分信号
+        // 淹没在死区里（一次奖励后果蝇永久丧失转向觅食能力的根因）。
+        self.homeostatic_rescale();
         if s > 0.0 {
             self.plastic_stats.rewards += 1;
         } else {
@@ -242,6 +292,33 @@ impl Brain {
         self.refresh_plastic_stats();
         if !self.da_pre.is_empty() {
             self.da_stim_left = DA_STIM_STEPS;
+        }
+    }
+
+    /// 突触稳态缩放：逐突触后神经元把入边 |w| 总和缩放回出厂基线 `in_l1_0`。
+    /// 奖励后的权重重新分配只改变各输入通路的**相对**强度（学习发生），
+    /// 神经元的总突触预算不变（工作点稳定）。O(E)，奖惩时调用一次。
+    fn homeostatic_rescale(&mut self) {
+        if self.in_l1_0.is_empty() {
+            return;
+        }
+        for i in 0..self.n {
+            let target = self.in_l1_0[i];
+            if target <= 0.0 {
+                continue;
+            }
+            let s = self.indptr[i] as usize;
+            let t = self.indptr[i + 1] as usize;
+            let cur: f32 = self.weight[s..t].iter().map(|w| w.abs()).sum();
+            if cur <= 1e-12 {
+                continue;
+            }
+            let k = target / cur;
+            if (k - 1.0).abs() > 1e-6 {
+                for w in &mut self.weight[s..t] {
+                    *w *= k;
+                }
+            }
         }
     }
 
