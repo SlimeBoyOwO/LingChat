@@ -36,10 +36,11 @@
 //!   夜间入睡转换从 walking 也允许。落地/起飞各记 land/takeoff 事件；
 //! - 作息：sun_elevation<−0.2 且 energy<60 → sleeping（不注入 drive、speed=0、
 //!   energy +2/tick）；sun_elevation>0 → 醒来（wake 事件）。白天飞行 energy 缓慢
-//!   下降，<20 → resting 落地恢复（≥60 起飞）。hunger≥100 → 挨饿：punish(−1.0)、
-//!   hunger=50、energy−30（starve 事件）；
+//!   下降，<20 → resting 落地恢复（≥60 起飞）。hunger≥100 → 挨饿：hunger=50、
+//!   energy−30（starve 事件；只罚身体不罚脑——资格迹归因窗口 ~0.5s，挨饿瞬间
+//!   果蝇多在积极觅食，punish 会误压觅食突触越学越笨，学习梯度由进食 reward 提供）；
 //! - 事件日志：{seq 自增, kind: eat|sleep|wake|starve|land|takeoff|punish,
-//!   text 中文短句}，保留最近 8 条（"punish" 为预留 kind，由 starve 承载惩罚语义）。
+//!   text 中文短句}，保留最近 8 条（"punish" 为预留 kind，当前未使用）。
 //!
 //! 本模块只管世界规则：仿真推进与配速在 worker.rs，感觉/运动映射在 brain_io.rs。
 
@@ -71,14 +72,14 @@ const REST_LEAVE: f32 = 60.0; // 休息恢复到该值起飞
 const SLEEP_ELEVATION: f32 = -0.2; // 太阳高度低于此值且精力不足 → 睡觉
 const LIGHT_CURR_FACTOR: f32 = 0.5; // 光照注入电流系数
 // ---- 蜜源补货（随机生成 + 数量限制；取代原地重生）----
-const INIT_FOODS: usize = 3; // 开局蜜源数
-const MAX_FOODS: usize = 5; // 数量上限（达到不再生成）
-const SPAWN_INTERVAL_MIN: u32 = 60; // 补货抽签间隔最短 tick
-const SPAWN_INTERVAL_MAX: u32 = 160; // 补货抽签间隔最长 tick
+const INIT_FOODS: usize = 6; // 开局蜜源数
+const MAX_FOODS: usize = 10; // 数量上限（达到不再生成）
+const SPAWN_INTERVAL_MIN: u32 = 50; // 补货抽签间隔最短 tick
+const SPAWN_INTERVAL_MAX: u32 = 130; // 补货抽签间隔最长 tick
 const SPAWN_BOUNDARY_MARGIN: f32 = 5.0; // 离边界（圆周）最小距离
 const SPAWN_FLY_DIST: f32 = 8.0; // 离果蝇当前位置最小距离（避免刷脸）
 const SPAWN_FOOD_DIST: f32 = 6.0; // 与现存蜜源最小间距
-const SPAWN_TRIES: u32 = 20; // 单次补货的拒绝采样次数上限
+const SPAWN_TRIES: u32 = 30; // 单次补货的拒绝采样次数上限
 const EVENT_CAP: usize = 8; // 事件日志保留条数
 // ---- 无感知巡航（打转修复）----
 const WANDER_AMP: f32 = 0.05; // 漫游摆动幅度（rad/tick，远小于 TURN_RATE）
@@ -460,7 +461,7 @@ impl FlyLife {
     }
 
     /// 一个决策 tick 的世界推进：转向 → 移动 → 进食 → 饥饿/精力 → 作息状态机。
-    /// `action`/`l`/`r` 来自 BrainIO.decide；reward/punish 直接作用于脑。
+    /// `action`/`l`/`r` 来自 BrainIO.decide；进食 reward 直接作用于脑。
     pub fn advance(&mut self, action: u8, l: i64, r: i64, io: &BrainIO, brain: &mut Brain) {
         let elev = self.sun_elevation();
         let day = elev > 0.0;
@@ -557,7 +558,7 @@ impl FlyLife {
             }
         }
 
-        // 5) 饥饿（进食 tick 不增长）与挨饿惩罚
+        // 5) 饥饿（进食 tick 不增长）与挨饿后果
         if self.fly.state != FlyState::Eating {
             let rate = if day {
                 HUNGER_RATE_NIGHT * HUNGER_DAY_FACTOR
@@ -567,10 +568,12 @@ impl FlyLife {
             self.fly.hunger = (self.fly.hunger + rate).min(100.0);
         }
         if self.fly.hunger >= 100.0 {
-            brain.punish(-1.0);
+            // 挨饿只罚身体、不罚脑：资格迹只能归因到最近 ~0.5s 的活动，而挨饿瞬间
+            // 果蝇往往正在积极觅食——此时 punish 会压低觅食突触权重，越学越不敢找食
+            // （负向 reward shaping 事故）。觅食的学习梯度由进食 reward(1.0) 单边提供。
             self.fly.hunger = 50.0;
             self.fly.energy = (self.fly.energy - 30.0).max(0.0);
-            self.push_event("starve", "饿坏了，遭到惩罚…");
+            self.push_event("starve", "饿坏了，体力受损…");
         }
 
         // 6) 精力与作息状态机
@@ -649,12 +652,14 @@ impl FlyLife {
             };
         }
 
-        // 8) 蜜源补货：每 60~160 tick 抽一次签，未达上限则在随机新位置生成
+        // 8) 蜜源补货：每 50~130 tick 抽一次签，未达上限则随机补 1~2 个到新位置
         if self.tick >= self.next_spawn_at {
             self.next_spawn_at =
                 self.tick + self.rng.gen_range(SPAWN_INTERVAL_MIN..=SPAWN_INTERVAL_MAX) as u64;
-            if self.foods.len() < MAX_FOODS {
-                self.try_spawn_food();
+            for _ in 0..self.rng.gen_range(1..=2) {
+                if self.foods.len() < MAX_FOODS {
+                    self.try_spawn_food();
+                }
             }
         }
 

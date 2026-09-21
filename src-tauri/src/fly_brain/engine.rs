@@ -210,6 +210,10 @@ impl Brain {
         self.modulate(strength.abs());
     }
 
+    /// 惩罚调制：当前未接线（挨饿曾调用它，但资格迹归因窗口只有 ~0.5s，
+    /// 挨饿瞬间的觅食活动被误压，越学越不敢找食，已改为只罚体力）。
+    /// 保留作为学习 API 的另一半，供未来带行为归因的 shaping 使用。
+    #[allow(dead_code)]
     pub fn punish(&mut self, strength: f32) {
         self.modulate(-strength.abs());
     }
