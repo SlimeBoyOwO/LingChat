@@ -6,16 +6,24 @@
     @mouseleave="handleMouseLeave"
     class="relative flex h-(--app-height) w-(--app-width) flex-col items-center justify-start overflow-hidden bg-transparent transition-none select-none"
   >
-    <!-- 装饰带（气泡/通知）：高度完全随内容（无预留）→ 顶部永远没有透明空间：
-         默认在宠物上方（气泡吸顶，宠物被往下让位）；设置=下方时夹在宠物与输入框之间（气泡贴宠物下沿） -->
+    <!-- 位移占位：气泡在下置模式时用它与窗口上移量等高的空间顶住头像，
+         使上下切换的那一瞬头像不会跳（上置模式由装饰带高度承担同样职责） -->
     <div
-      ref="decorBand"
+      class="w-full shrink-0"
+      :style="{ height: bandAbove ? '0px' : `${shiftCss}px`, order: -1 }"
+    ></div>
+
+    <!-- 装饰带（气泡/通知）：上置时高度 = 当前位移（与窗口上移量同步推进，气泡从宠物头顶平滑升起）；
+         空闲/下置时随内容 → 顶部永远没有透明空间，宠物可以贴屏幕顶 -->
+    <div
       class="flex w-full shrink-0 flex-col justify-end bg-transparent transition-none"
-      :style="{ order: bubbleBelow ? 1 : 0 }"
+      :style="{ order: bubbleBelow ? 1 : 0, height: bandAbove ? `${shiftCss}px` : 'auto' }"
     >
-      <PetNotification />
-      <div class="flex items-end justify-center" :class="{ 'mb-1': bubbleVisible }">
-        <DialogueBox ref="gameDialogRef" @player-continued="manualTriggerContinue" />
+      <div ref="bandContent" class="flex w-full shrink-0 flex-col">
+        <PetNotification />
+        <div class="flex items-end justify-center" :class="{ 'mb-1': bubbleVisible }">
+          <DialogueBox ref="gameDialogRef" @player-continued="manualTriggerContinue" />
+        </div>
       </div>
     </div>
 
@@ -57,8 +65,8 @@ import { useSettingsStore, type BubbleSide } from "@/stores/modules/settings";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { currentMonitor, getCurrentWindow, PhysicalPosition } from "@tauri-apps/api/window";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { useFileDrop } from "../pet/useFileDrop";
@@ -82,109 +90,142 @@ const { isDragging, hasFile } = useFileDrop();
 
 const avatarContainer = ref<HTMLElement | null>(null);
 const chatContainer = ref<HTMLElement | null>(null);
-const decorBand = ref<HTMLElement | null>(null);
+const bandContent = ref<HTMLElement | null>(null); // 装饰带内层：自然高度，用于量测与位移目标
 const gameDialogRef = ref<InstanceType<typeof DialogueBox> | null>(null);
 const ChatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
 
-// 气泡/通知位置（用户设置）：above = 宠物上方，below = 宠物与输入框之间，auto = 按宠物在屏幕中的位置自动选
+// 气泡/通知位置（用户设置）：above = 优先上置（上方放不下则降级下置），
+// below = 强制下置，auto = 按宠物在屏幕中的位置自动选（宠物偏上则下置）
 const bubbleSide = computed(() => settingsStore.pet?.bubbleSide ?? "above");
-const autoBubbleBelow = ref(false);
-// 自动判据看宠物圆心落在工作区上半还是下半：与气泡布局本身无关，不会来回抖动
+// 气泡当前是否有内容（显隐与点击穿透上报共用）
+const bubbleVisible = computed(
+  () => gameStore.currentStatus === "responding" && gameStore.currentLine.trim() !== "",
+);
+const bandHasContent = computed(() => bubbleVisible.value || uiStore.notification.isVisible);
+
+// —— 窗口补偿：头像必须钉在屏幕上不动，而“上置”的气泡在窗口内只能挤在头像上方 ——
+// 做法：装饰带高度与窗口上移量始终相等、同步逐帧推进 —— 头像屏幕位置恒等于“归位顶边”，
+// 气泡从宠物头顶平滑升起；位移归零时顶部没有任何预留空间，仍可贴屏幕顶。
+// 逐帧推进是必需的：窗口位置由 OS 合成、内容由 webview 合成，一次跳完整段必然会有
+// 一帧错位（表现就是“上下抽动”）；分帧后单帧错位 ≤ 一步，肉眼不可见。
+const SHIFT_STEP_PX = 12; // 每帧最大位移：越小越平滑，越大越快
+const petScale = computed(() => settingsStore.pet?.scale || 1);
+const layoutReady = ref(false);
+const restingTopCss = ref(0); // 归位后的窗口顶边（= 头像在屏幕上的顶边）
+const restingLeftCss = ref(0);
+const workTopCss = ref(0);
+const workCenterCss = ref(0);
+const dprRef = ref(window.devicePixelRatio || 1);
+const bandContentHeightCss = ref(0); // 装饰带内容自然高度
+const shiftCss = ref(0); // 当前位移：同时决定“装饰带高度”与“窗口上移量”
+
+// 上方空间是否够（按整个气泡预算保守判断；放不下就降级下置，宠物因此仍能被拖到屏幕最顶）
+const neededReserveCss = computed(() =>
+  bandHasContent.value ? DIALOG_MAX_BASE * petScale.value : 0,
+);
+const hasRoomAbove = computed(
+  () => !layoutReady.value || restingTopCss.value - neededReserveCss.value > workTopCss.value,
+);
+const autoBubbleBelow = computed(
+  () =>
+    layoutReady.value &&
+    restingTopCss.value + (AVATAR_BAND_BASE * petScale.value) / 2 < workCenterCss.value,
+);
 const bubbleBelow = computed(
-  () => bubbleSide.value === "below" || (bubbleSide.value === "auto" && autoBubbleBelow.value),
+  () =>
+    bubbleSide.value === "below" ||
+    !hasRoomAbove.value ||
+    (bubbleSide.value === "auto" && autoBubbleBelow.value),
+);
+const bandAbove = computed(() => !bubbleBelow.value && bandHasContent.value);
+// 位移目标：上置时跟装饰带内容高度走，其余情况归零。
+// 封顶到气泡预算，避免“长气泡 + 通知”叠加时把输入框挤出窗口
+const targetShiftCss = computed(() =>
+  bandAbove.value ? Math.min(bandContentHeightCss.value, DIALOG_MAX_BASE * petScale.value) : 0,
 );
 
-let autoSideTimer: number | undefined;
-const refreshAutoBubbleSide = async () => {
-  if (bubbleSide.value !== "auto") return;
+let shiftRaf: number | undefined;
+
+const stepWindowShift = () => {
+  shiftRaf = undefined;
+  if (!layoutReady.value) return; // 还没拿到真实窗口位置，先不动
+  const target = targetShiftCss.value;
+  const delta = target - shiftCss.value;
+  // 亚像素直接抹平：浮点残差会让循环永不收敛（每帧都在移窗口 → 闪动）
+  if (Math.abs(delta) < 0.5) {
+    if (delta) shiftCss.value = target;
+    reportSolidRegions(); // 收敛后再报一次：此时 DOM 已经稳定
+    return;
+  }
+  // 步长自适应：差值大时尽快跟上（气泡不被久切），快到位时收小；
+  // 必须再按 |delta| 封顶 —— 步长大于差值就会来回震荡、永不收敛
+  const step = Math.min(SHIFT_STEP_PX, Math.max(2, Math.abs(delta) * 0.4), Math.abs(delta));
+  shiftCss.value += Math.sign(delta) * step;
+  void getCurrentWindow()
+    .setPosition(
+      new PhysicalPosition(
+        Math.round(restingLeftCss.value * dprRef.value),
+        Math.round((restingTopCss.value - shiftCss.value) * dprRef.value),
+      ),
+    )
+    .catch(() => {
+      // 移动失败：下一次同步或拖拽会重新对齐
+    });
+  reportSolidRegions(); // 视口坐标变了，立即重报，避免被误判成“光标不在桌宠上”
+  scheduleWindowShift();
+};
+
+const scheduleWindowShift = () => {
+  if (shiftRaf === undefined) shiftRaf = window.requestAnimationFrame(stepWindowShift);
+};
+
+// 读取窗口/显示器信息：刷新归位顶边与工作区，并重判“上方是否放得下”
+const syncPetPlacement = async () => {
   try {
     const [pos, monitor] = await Promise.all([
       getCurrentWindow().outerPosition(),
       currentMonitor(),
     ]);
     if (!monitor) return;
-    const { position, size } = monitor.workArea;
-    // 宠物可见圆心（窗口顶边 + 头像带一半）落在工作区上半 → 气泡下置
-    const petCenterY =
-      pos.y + (AVATAR_BAND_BASE * (settingsStore.pet?.scale ?? 1) * monitor.scaleFactor) / 2;
-    autoBubbleBelow.value = petCenterY < position.y + size.height / 2;
+    dprRef.value = monitor.scaleFactor || window.devicePixelRatio || 1;
+    // 当前窗口顶边 + 已上移量 = 归位后的顶边（用户拖动窗口后也靠这一步重新对齐）。
+    // 位移进行中不能重算：此时窗口位置是半途值，会把基准越算越低 → 宠物缓慢下沉
+    if (shiftRaf === undefined) {
+      restingTopCss.value = (pos.y + shiftCss.value * dprRef.value) / dprRef.value;
+    }
+    restingLeftCss.value = pos.x / dprRef.value;
+    workTopCss.value = monitor.workArea.position.y / dprRef.value;
+    workCenterCss.value =
+      (monitor.workArea.position.y + monitor.workArea.size.height / 2) / dprRef.value;
+    layoutReady.value = true;
+    scheduleWindowShift();
   } catch {
-    // 拿不到显示器信息时保持上一次判定
+    // 拿不到窗口/显示器信息时保持上一次判定
   }
 };
 
 // 原生拖拽期间 onMoved 会高频触发，去抖后再算
-const scheduleAutoBubbleSide = () => {
-  if (autoSideTimer !== undefined) window.clearTimeout(autoSideTimer);
-  autoSideTimer = window.setTimeout(() => void refreshAutoBubbleSide(), 150);
+let placementTimer: number | undefined;
+const schedulePlacementSync = () => {
+  if (placementTimer !== undefined) window.clearTimeout(placementTimer);
+  placementTimer = window.setTimeout(() => void syncPetPlacement(), 150);
 };
 
-// —— 换位 / 推挤动效（FLIP 思路）：flex 的 order 与“内容撑高”都无法过渡 ——
-// 换位：切换前记下位置，反向 transform 起手再弹性归位；气泡带同时淡入；
-// 推挤：气泡/通知撑高装饰带时，用高度差反推被顶开元素的旧位置，同样弹性滑回。
-const MOTION_DURATION = 420;
-const MOTION_EASING = "cubic-bezier(0.34, 1.28, 0.4, 1)"; // 末端轻微回弹
-let swapStartTops: [HTMLElement, number][] = [];
-
-const swapElements = () =>
-  [decorBand.value, avatarContainer.value, chatContainer.value].filter(
-    (el): el is HTMLElement => el !== null,
-  );
-
-// 从“旧位置”（相对当前布局偏移 dy）弹性滑回；fade 用于气泡带换位时的浮现
-const animateFrom = (el: HTMLElement, dy: number, fade = false) => {
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || Math.abs(dy) < 1) return;
-  // 上一段动效直接归位，避免两次位移叠加
-  el.getAnimations().forEach((anim) => anim.finish());
-  el.animate(
-    [
-      { transform: `translateY(${dy}px)`, opacity: fade ? 0.25 : 1 },
-      { transform: "translateY(0)", opacity: 1 },
-    ],
-    { duration: MOTION_DURATION, easing: MOTION_EASING },
-  );
+// 窗口被移动（原生拖拽/换屏）：水平方向只可能是用户拖动（补偿只改 y），必须立即跟随，
+// 否则下一次补偿移动会用过期的 x 把窗口拉回去 → 拖不动
+const onWindowMoved = (event: { payload: PhysicalPosition }) => {
+  restingLeftCss.value = event.payload.x / dprRef.value;
+  schedulePlacementSync();
 };
 
-const captureSwapStart = () => {
-  swapStartTops = swapElements().map((el) => {
-    el.getAnimations().forEach((anim) => anim.finish());
-    return [el, el.getBoundingClientRect().top];
-  });
-};
-
-const playSwap = () => {
-  for (const [el, startTop] of swapStartTops) {
-    animateFrom(el, startTop - el.getBoundingClientRect().top, el === decorBand.value);
-  }
-  swapStartTops = [];
-};
-
-// 气泡上/下切换（拖拽进出屏幕上半区、设置里改选项）时播放换位动效
-watch(bubbleBelow, async () => {
-  captureSwapStart();
-  await nextTick();
-  playSwap();
-});
-
-// 气泡/通知出现、消失、改高会立刻把下方内容顶开 → 观察装饰带高度，把被顶开的元素弹性推回
-let bandHeight: number | null = null;
+// 装饰带内容高度变化（气泡出现/消失/换行、通知弹出）时更新位移目标，窗口逐帧跟上。
+// 量测内层：外层高度是受控的（= 当前位移），不能用来当目标。
 const bandObserver = new ResizeObserver(() => {
-  const band = decorBand.value;
+  const band = bandContent.value;
   if (!band) return;
-  const rect = band.getBoundingClientRect();
-  const dy = bandHeight === null ? 0 : rect.height - bandHeight;
-  bandHeight = rect.height;
-  if (!dy) return;
-  for (const el of swapElements()) {
-    // 带子自身是“原地长高”，不位移；只有排在它下方被顶开的元素才回弹
-    if (el !== band && el.getBoundingClientRect().top > rect.top) animateFrom(el, -dy);
-  }
+  bandContentHeightCss.value = band.getBoundingClientRect().height;
+  scheduleWindowShift();
 });
-
-// 气泡当前是否有内容（显隐与点击穿透上报共用）
-const bubbleVisible = computed(
-  () => gameStore.currentStatus === "responding" && gameStore.currentLine.trim() !== "",
-);
 
 const appStyleVars = computed(() => {
   const scale = settingsStore.pet?.scale || 1.0;
@@ -208,6 +249,48 @@ const applyWindowLayout = async () => {
 };
 
 let hitTestInterval: number | undefined;
+
+// solid 区域上报（视口坐标，Rust 侧按当前窗口位置换算成屏幕坐标）：
+// 挂机时各区域 rect 恒定不变，先做内容比对、有变化才走 IPC，避免 10Hz 空转唤醒后端。
+// 窗口补偿移动窗口后会立即再报一次（见 stepWindowShift），否则旧坐标会短暂误判。
+let lastRectsKey = "";
+const reportSolidRegions = () => {
+  const rects = [];
+
+  // 如果对话气泡正在显示，则加入 solid region（用气泡元素精确 rect，避免包住整个对话框）
+  if (gameDialogRef.value?.bubbleRef && bubbleVisible.value) {
+    const r = gameDialogRef.value.bubbleRef.getBoundingClientRect();
+    if (r.height > 0) {
+      rects.push({ x: r.x, y: r.y, width: r.width, height: r.height });
+    }
+  }
+
+  // 头像圆环常驻 solid region 触发拖拽和交互
+  if (avatarContainer.value) {
+    const r = avatarContainer.value.getBoundingClientRect();
+    rects.push({ x: r.x, y: r.y, width: r.width, height: r.height });
+  }
+
+  // 输入框显示时，加入 solid region
+  if (chatContainer.value && showChatInput.value) {
+    const r = chatContainer.value.getBoundingClientRect();
+    // 输入框稍微拓宽，保证极小尺寸下的鼠标判定连贯性
+    rects.push({
+      x: r.x - 20,
+      y: r.y - 20,
+      width: r.width + 40,
+      height: r.height + 40,
+    });
+  }
+
+  const rectsKey = JSON.stringify(rects);
+  if (rectsKey === lastRectsKey) return;
+  lastRectsKey = rectsKey;
+  invoke("update_solid_regions", { rects }).catch(() => {
+    // 失败时清空缓存，让下一轮重试上报
+    lastRectsKey = "";
+  });
+};
 let scaleUnlisten: (() => void) | null = null;
 let effectUnlisten: (() => void) | null = null;
 let volumeUnlisten: (() => void) | null = null;
@@ -279,11 +362,11 @@ onMounted(async () => {
   );
 
   // 自动模式：窗口移动（原生拖拽、换屏）后重算气泡在上还是在下
-  movedUnlisten = await appWindow.onMoved(scheduleAutoBubbleSide);
-  await refreshAutoBubbleSide();
+  movedUnlisten = await appWindow.onMoved(onWindowMoved);
+  await syncPetPlacement();
 
-  // 气泡/通知撑高装饰带时，把被顶开的内容弹性推回（见 bandObserver）
-  if (decorBand.value) bandObserver.observe(decorBand.value);
+  // 气泡/通知改变装饰带高度时驱动窗口补偿（见 bandObserver）
+  if (bandContent.value) bandObserver.observe(bandContent.value);
 
   // 设置透明背景的 body 属性样式（额外防护）
   document.body.style.backgroundColor = "transparent";
@@ -293,45 +376,7 @@ onMounted(async () => {
   await applyWindowLayout();
 
   // 2. 启动 100ms 一次的 solid bounds 测试
-  // 挂机时各区域 rect 恒定不变，先做内容比对、有变化才走 IPC，避免 10Hz 空转唤醒后端
-  let lastRectsKey = "";
-  hitTestInterval = window.setInterval(() => {
-    const rects = [];
-
-    // 如果对话气泡正在显示，则加入 solid region（用气泡元素精确 rect，避免包住整个对话框）
-    if (gameDialogRef.value?.bubbleRef && bubbleVisible.value) {
-      const r = gameDialogRef.value.bubbleRef.getBoundingClientRect();
-      if (r.height > 0) {
-        rects.push({ x: r.x, y: r.y, width: r.width, height: r.height });
-      }
-    }
-
-    // 头像圆环常驻 solid region 触发拖拽和交互
-    if (avatarContainer.value) {
-      const r = avatarContainer.value.getBoundingClientRect();
-      rects.push({ x: r.x, y: r.y, width: r.width, height: r.height });
-    }
-
-    // 输入框显示时，加入 solid region
-    if (chatContainer.value && showChatInput.value) {
-      const r = chatContainer.value.getBoundingClientRect();
-      // 输入框稍微拓宽，保证极小尺寸下的鼠标判定连贯性
-      rects.push({
-        x: r.x - 20,
-        y: r.y - 20,
-        width: r.width + 40,
-        height: r.height + 40,
-      });
-    }
-
-    const rectsKey = JSON.stringify(rects);
-    if (rectsKey === lastRectsKey) return;
-    lastRectsKey = rectsKey;
-    invoke("update_solid_regions", { rects }).catch(() => {
-      // 失败时清空缓存，让下一轮重试上报
-      lastRectsKey = "";
-    });
-  }, 100);
+  hitTestInterval = window.setInterval(reportSolidRegions, 100);
 });
 
 watch(
@@ -342,7 +387,7 @@ watch(
 );
 
 // 设置里切到/切出“自动”时立即重算一次
-watch(bubbleSide, () => void refreshAutoBubbleSide());
+watch(bubbleSide, () => void syncPetPlacement());
 
 // 监听 dialogHistory 变化，推送给设置窗口
 watch(
@@ -368,7 +413,8 @@ onUnmounted(() => {
   if (cursorUnlisten) cursorUnlisten();
   if (bubbleSideUnlisten) bubbleSideUnlisten();
   if (movedUnlisten) movedUnlisten();
-  if (autoSideTimer !== undefined) window.clearTimeout(autoSideTimer);
+  if (placementTimer !== undefined) window.clearTimeout(placementTimer);
+  if (shiftRaf !== undefined) window.cancelAnimationFrame(shiftRaf);
   bandObserver.disconnect();
 
   if (hitTestInterval !== undefined) {
