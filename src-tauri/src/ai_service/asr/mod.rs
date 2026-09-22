@@ -6,6 +6,8 @@
 //! 配置由 [`settings`] 通过 tauri_plugin_store 持久化。
 
 pub mod error;
+#[cfg(desktop)]
+pub mod global_hotkey;
 pub mod provider;
 pub mod provider_stream;
 pub mod provider_stream_llama;

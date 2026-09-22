@@ -29,7 +29,7 @@ import AdventureUnlockNotify from "./components/ui/AdventureUnlockNotify.vue";
 import AppDialog from "./components/ui/AppDialog.vue";
 import HorrorEntryTransition from "./components/ui/HorrorEntryTransition.vue";
 import GhostScriptLock from "./components/ui/GhostScriptLock.vue";
-import { useAsrInput } from "./composables/useAsrInput";
+import { useAsrInput } from "./composables/asr";
 import { useCanDeliver } from "./composables/useCanDeliver";
 import { useZoom } from "./composables/useZoom";
 import { useSedentaryReminder } from "./composables/useSedentaryReminder";
@@ -41,7 +41,6 @@ import { useFullscreenHotkey } from "./composables/app/useFullscreenHotkey";
 import { useGlobalFont } from "./composables/app/useGlobalFont";
 import { useMacTitlebar } from "./composables/app/useMacTitlebar";
 import { useMobileViewport } from "./composables/app/useMobileViewport";
-
 // ─── 路由 / 窗口标识 ────────────────────────────────────────
 const route = useRoute();
 // 仅主窗口挂载全局弹窗（通知/成就/对话确认），日志窗口等复用 App.vue 的窗口不弹

@@ -27,6 +27,9 @@
 
     <!-- 6. 声效控制面板 -->
     <SoundEffectPanel />
+
+    <!-- 7. 好感度/负面情绪变化飘出标签 -->
+    <AffectionChangeFloat />
   </div>
 </template>
 
@@ -40,4 +43,5 @@ import ForceChoice from "./extra/ForceChoice.vue";
 import PoemGame from "./extra/PoemGame.vue";
 import HorrorEffectsLayer from "./HorrorEffectsLayer.vue";
 import SoundEffectPanel from "./extra/SoundEffectPanel.vue";
+import AffectionChangeFloat from "./extra/AffectionChangeFloat.vue";
 </script>

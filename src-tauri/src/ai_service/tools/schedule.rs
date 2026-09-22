@@ -142,7 +142,12 @@ impl Tool for GetAllSchedule {
     ) -> Result<ToolResult, ToolError> {
         ensure_no_args(&arguments, "schedule_get_all").map_err(ToolError::Execution)?;
         let settings = load_schedule_settings().map_err(ToolError::Execution)?;
-        Ok(serde_json::to_value(&settings).map_err(|e| ToolError::Execution(e.to_string()))?)
+        let mut value =
+            serde_json::to_value(&settings).map_err(|e| ToolError::Execution(e.to_string()))?;
+        if let Some(object) = value.as_object_mut() {
+            object.insert("ok".into(), Value::Bool(true));
+        }
+        Ok(value)
     }
 }
 

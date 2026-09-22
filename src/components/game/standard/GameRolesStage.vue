@@ -29,7 +29,7 @@
     ></div>
 
     <!-- 4. 全局主语音播放器 -->
-    <audio ref="mainAudio" @ended="onAudioEnded"></audio>
+    <audio ref="mainAudio" @ended="onAudioEnded" @error="onAudioEnded"></audio>
   </div>
 </template>
 

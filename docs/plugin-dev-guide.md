@@ -122,17 +122,17 @@ def run(ctx):
 
 ### ctx 注入的字段
 
-| 字段               | 类型     | 说明                                               |
-| ------------------ | -------- | -------------------------------------------------- |
-| `ctx["tool_name"]` | str      | 当前被调用的工具名                                 |
-| `ctx["args"]`      | dict     | 本次调用的参数（LLM 或调用方传入，按 schema 校验） |
-| `ctx["config"]`    | dict     | 插件配置（设置页表单保存的值）                     |
-| `ctx["env"]`       | dict     | 白名单环境变量，`ctx["env"].get("KEY")`            |
-| `ctx["call_tool"]` | function | 调用任意已注册工具，见下文                         |
+| 字段               | 类型     | 说明                                                                |
+| ------------------ | -------- | ------------------------------------------------------------------- |
+| `ctx["tool_name"]` | str      | 当前被调用的工具名                                                  |
+| `ctx["args"]`      | dict     | 本次调用的参数（已按 schema 校验，未知字段被拒）；无参工具为空 dict |
+| `ctx["config"]`    | dict     | 设置页保存的配置；未填的字段不出现，`number` 一律为 float           |
+| `ctx["env"]`       | dict     | 白名单环境变量（`[[env]]` 声明且进程里存在），用 `.get("KEY")` 读   |
+| `ctx["call_tool"]` | function | 调用任意已注册工具，见下文                                          |
 
 ## 调用内置工具：`ctx["call_tool"]`
 
-插件脚本可以调用 **所有已注册的 LLM tools**（目前是内置 15 个 + 其他插件注册的），返回该工具产出的 JSON dict：
+插件脚本可以调用 **所有已注册的 LLM 工具**（内置工具 + 其他插件注册的工具），返回该工具产出的 JSON dict：
 
 ```python
 def run(ctx):
@@ -143,8 +143,10 @@ def run(ctx):
     return {"ok": True, "now_role": status.get("current_role_id")}
 ```
 
-- 第一个参数是工具名（str），第二个是参数 dict（无参数传 `{}`）。
-- 成功返回工具结果的 JSON dict；工具执行失败或超时抛 `ValueError`，脚本可用 `try/except` 捕获。
+入参：第一个是工具名（str，**区分大小写**），第二个是参数 dict（无参工具传 `{}`）。
+
+返回：统一 JSON dict——成功 `{ "ok": true, ... }`，失败 `{ "ok": false, "error": { "code", "message" } }`。未知工具、参数非法、执行超时等都走失败分支，**不再抛异常**，脚本先判 `r.get("ok")` 即可。
+
 - **注意**：`call_tool` 可以调用含写操作的工具（`memory_add_note`、`schedule_add_todo`、`scene_switch`、`character_switch` 等），且当前沙箱不校验调用方身份——安装第三方插件前请自行评估。
 
 ## HTTP 请求：`from plugin_host import http_get, http_post`
@@ -169,48 +171,51 @@ r = http_post("https://example.com/api", headers={"Authorization": "Bearer xx"},
 
 ## 内置工具 API 清单
 
-以下 15 个工具可直接通过 `call_tool(name, args)` 调用。
+以下 30 个工具可直接通过 `call_tool(name, args)` 调用（`execute_command` 仅桌面端注册）。成功返回一律是带 `"ok": true` 的 JSON 对象；失败返回 `{"ok": false, "error": {...}}`（见上）。
 
 ### 时间
 
 **`get_current_time`**
 
 - 参数：`{}`
-- 返回：`{ local_time: string, timezone: string, unix_timestamp: number }`
+- 返回：`{ local_time: string(RFC3339), timezone: string(固定 "local"，非真实时区名), unix_timestamp: number(秒) }`
 
 ### 日程（读写 `game_data/schedules.json`）
 
 **`schedule_get_all`**
 
 - 参数：`{}`
-- 返回：完整日程配置（`todo_groups`、重要日子等，序列化自 `UserScheduleSettings`）
+- 返回：`{ ok: true, ... }`，完整日程配置，顶层三键（camelCase，均可能为 null）：
+  - `scheduleGroups`：定时日程分组
+  - `todoGroups`：待办分组，`todoGroups[*]` = `{ title, description, todos: [{ id, text, priority, completed, deadline }] }`
+  - `importantDays`：重要日子，`importantDays[*]` = `{ id, date, title, desc, cycle }`
 
 **`schedule_add_todo`**
 
-- 参数：`{ text: string(必), group?: string, priority?: number, deadline?: string }`
-- 返回：`{ ok: true, id: number }`
+- 参数：`{ text: string(必), group?: string(默认 "default"), priority?: integer(默认 0), deadline?: string }`
+- 返回：`{ ok: true, id: number, group: string }`
 
 **`schedule_update_todo`**
 
-- 参数：`{ id: number(必), done?: boolean, text?: string, priority?: number }`（至少一项）
-- 返回：`{ ok: true, id: number }`
+- 参数：`{ id: integer(必), done?: boolean, text?: string, priority?: integer, group?: string }`（done/text/priority 至少一项；`group` 仅在旧数据同一 ID 跨分组重复时用于唯一定位）
+- 返回：`{ ok: true, id: number, group: string }`
 
 **`schedule_delete_todo`**
 
-- 参数：`{ id: number(必) }`
-- 返回：`{ ok: true, id: number }`
+- 参数：`{ id: integer(必), group?: string }`（`group` 同上）
+- 返回：`{ ok: true, id: number, group: string }`
 
 ### 记忆（角色笔记文件 + 自动记忆库）
 
 **`memory_get_current`**
 
 - 参数：`{}`
-- 返回：`{ role_id: number, memory: string }`（当前角色的自动记忆库文本）
+- 返回：`{ ok: true, role_id: number, memory: string }`（当前角色的自动记忆库文本）
 
 **`memory_get_notes`**
 
 - 参数：`{ role?: string }`（不传读当前角色；传其他角色名只读）
-- 返回：`[ { id: string, content: string, tags: string[], created_at: string } ]`
+- 返回：`{ ok: true, notes: [ { id, content, tags: string[], created_at: string(RFC3339) } ] }`
 
 **`memory_add_note`**
 
@@ -232,19 +237,28 @@ r = http_post("https://example.com/api", headers={"Authorization": "Bearer xx"},
 **`status_get_current`**
 
 - 参数：`{}`
-- 返回：`{ player, current_role_id, onstage_role_ids, present_role_ids, main_role_id, background, present_pic, background_music, background_effect, current_scene_id, scene_awareness_enabled, global_variables }`
+- 返回（`{ ok: true, ... }`）：
+  - `player`：玩家名
+  - `current_role_id`：当前对话角色 ID（可能为 null）
+  - `onstage_role_ids`：舞台角色 ID（保持出场顺序）
+  - `present_role_ids`：在场角色 ID（升序；只有在场的角色能感知台词）
+  - `main_role_id`：剧本模式主角 ID（可能为 null）
+  - `background` / `present_pic` / `background_music` / `background_effect`：当前背景图 / 立绘 / 音乐 / 特效标识（无则为空串）
+  - `current_scene_id`：当前场景 ID（可能为 null）
+  - `scene_awareness_enabled`：场景感知开关（关后切场景不触发旁白）
+  - `global_variables`：全局变量表（键 → 任意 JSON 值）
 
 **`status_get_scene`**
 
-- 参数：`{}`
-- 返回：`{ current_scene_id: string, name: string, description: string, background: string }`
+- 参数：`{}`（未选择场景时报错）
+- 返回：`{ ok: true, current_scene_id: string, name: string, description: string, background: string }`
 
 ### 场景（读写 SceneStore）
 
 **`scene_list`**
 
 - 参数：`{}`
-- 返回：`[ { id: string, name: string, description: string, background: string } ]`
+- 返回：`{ ok: true, scenes: [ { id, name, description, background } ] }`
 
 **`scene_switch`**
 
@@ -256,12 +270,95 @@ r = http_post("https://example.com/api", headers={"Authorization": "Bearer xx"},
 **`character_list`**
 
 - 参数：`{}`
-- 返回：`[ { id: number, name: string } ]`
+- 返回：`{ ok: true, characters: [ { id: number, name: string } ] }`
 
 **`character_switch`**
 
-- 参数：`{ id: number(必) }`
-- 返回：`{ ok: true, role_id: number }`
+- 参数：`{ id: integer(必) }`（不清空对话历史；`id` 不存在时报错并列出可用角色）
+- 返回：`{ ok: true, role_id: number, name: string }`
+
+### 搜索
+
+**`web_search`**
+
+- 参数：`{ query: string(必，过长截断) }`
+- 返回：`{ ok: true, query: string, result_count: number, text: string }`（`text` 为排好版的搜索结果；未开启网页搜索时报错）
+
+### 技能
+
+**`list_skills`**
+
+- 参数：`{}`
+- 返回：`{ ok: true, skills: [ { name, location, description } ] }`
+
+**`read_skill`**
+
+- 参数：`{ name: string(必，kebab-case) }`
+- 返回：`{ ok: true, name: string, base_directory: string, content: string }`（技能不存在时报错）
+
+### 媒体
+
+**`ReadMediaFile`**（唯一的大驼峰工具名）
+
+- 参数：`{ path: string(必), prompt?: string, region?: { x, y, width, height }(4 个必填，仅图片), full_resolution?: boolean(仅图片) }`
+- 返回：`{ ok: true, path, kind: "image"|"video", mime_type, source_bytes, delivered_bytes, dimensions, vision_model, analysis }`（`dimensions` 图片为 `{ original_width, original_height, delivered_width, delivered_height }`，视频为 null）
+
+### 文件（受文件沙箱限制，默认 `data/`）
+
+**`list_files`**
+
+- 参数：`{ path: string(必) }`
+- 返回：`{ ok: true, path: string, entries: [ { name, kind: "dir"|"file"|"symlink" } ], truncated: bool }`
+
+**`read_file`**
+
+- 参数：`{ path: string(必) }`
+- 返回：`{ ok: true, path: string, content: string, truncated: bool }`（上限 200KB；图片/视频返回 `{ ok: false, error: { code: "media_file" } }` 提示改用 `ReadMediaFile`）
+
+**`write_file`**
+
+- 参数：`{ path: string(必), content: string(必), append?: boolean }`
+- 返回：`{ ok: true, path: string, bytes: number, appended: bool }`
+
+**`delete_file`**
+
+- 参数：`{ path: string(必) }`（仅文件，不能删目录；默认弹窗确认）
+- 返回：`{ ok: true, path: string }`
+
+**`edit_file`**
+
+- 参数：`{ path: string(必), old_string: string(必，须唯一匹配), new_string: string(必), replace_all?: boolean }`
+- 返回：`{ ok: true, path: string, replacements: number }`
+
+**`search_files`**
+
+- 参数：`{ path: string(必), pattern: string(必，`\*`/`?` 文件名通配，大小写不敏感) }`
+- 返回：`{ ok: true, pattern: string, matches: [ path ], truncated: bool }`
+
+**`glob`**
+
+- 参数：`{ pattern: string(必，支持 `\*\*`), path?: string, max_results?: integer(默认 100，上限 100) }`
+- 返回：`{ ok: true, pattern: string, matches: [ path ], truncated: bool }`
+
+**`grep_files`**
+
+- 参数：`{ path: string(必), pattern: string(必，正则), max_results?: integer(默认 50，上限 100) }`
+- 返回：`{ ok: true, pattern: string, output_mode: "content", matches: [ { path, line: number, text } ], truncated: bool }`
+
+**`grep`**
+
+- 参数：`{ pattern: string(必，正则), path?: string, glob?: string(文件过滤), case_insensitive?: boolean, output_mode?: "content"|"files_with_matches"|"count", max_results?: integer(默认 50) }`
+- 返回：`{ ok: true, pattern, output_mode, matches: [...], truncated }`（`matches` 元素随 `output_mode` 变化：`content` → `{ path, line, text }`；`files_with_matches` → path 字符串；`count` → `{ path, count }`）
+
+### 命令（仅桌面端）
+
+**`execute_command`**
+
+- 参数：`{ command: string(必), cwd?: string(默认沙箱根), uac?: boolean(仅 Windows), timeout_seconds?: integer(前台默认 60/最大 300，后台默认 600/最大 3600), run_in_background?: boolean, description?: string(后台必填) }`
+- 返回（前台）：`{ ok: true, exit_code: number, output: string }`——**命令成败看 `exit_code`**（0 为成功），`ok` 只表示调用成功
+- 返回（后台）：`{ ok: true, task_id, description, status: "running", message }`（完成后自动通知模型，无需轮询）
+
+## 插件系统的私有 API（非 llm 可调用工具）
 
 ## 完整示例
 

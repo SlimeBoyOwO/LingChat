@@ -160,6 +160,12 @@ export default {
       reconnecting: "再接続中…",
       forceReconnect: "TTS を強制再接続",
     },
+    affectionAnim: {
+      title: "好感度アニメーション",
+      desc: "好感度ハートの鼓動と赤い液体の波アニメーションの切替（即時反映）。鼓動オフ時はトップバーのハートのみ静止し、好感度パネル内は鼓動を継続します",
+      heartbeat: "鼓動アニメーションを有効化",
+      wave: "波アニメーションを有効化",
+    },
     saveButton: "保存",
     loadFailed: "読み込み失敗",
     loadFailedDesc: "設定を読み込めないか、設定が空です。",
@@ -645,6 +651,47 @@ export default {
       noDescriptionTip:
         "シーン「{name}」には説明がありません。選択してもシーンナレーションは発生しません",
       deleteConfirm: "シーン「{name}」を削除しますか？",
+      fav: "お気に入り（先頭へ移動）",
+      unfav: "お気に入りを解除",
+      categoryAll: "すべて",
+      categoryNameEmpty: "カテゴリ名を入力してください",
+      categoryNamePlaceholder: "新カテゴリ名",
+      categoryAdd: "カテゴリを追加",
+      categoryCreated: "カテゴリを作成しました",
+      categoryCreatedMsg: "カテゴリ「{name}」を作成しました",
+      categoryCreateFail: "カテゴリの作成に失敗しました",
+      categoryDeleted: "カテゴリを削除しました",
+      categoryDeletedMoved:
+        "カテゴリ「{name}」を削除し、{count} 件の背景をルートフォルダーに移動しました",
+      categoryDeleteFail: "カテゴリの削除に失敗しました",
+      categoryDelete: "カテゴリを削除",
+      categoryDeleteConfirmMove:
+        "カテゴリ「{name}」を削除し、配下の背景をすべてルートに移動しますか？",
+      refresh: "シーンを更新",
+      refreshTip: "背景フォルダーを再スキャンし、最新のシーン（サブフォルダー含む）を同期",
+      refreshDone: "更新完了",
+      refreshDoneMsg: "シーンを同期しました",
+      refreshFail: "更新に失敗しました",
+      refreshConfirm:
+        "シーンを更新すると、背景ファイルが存在しないシーンを削除し、背景フォルダーを再スキャンします。続行しますか？",
+      moveToTitle: "サブカテゴリへ移動",
+      moveToRoot: "ルート",
+      moveNoCategory: "サブカテゴリがありません。上の分類バーで作成してください",
+      moveNoBackground: "このシーンには背景画像がなく、移動できません",
+      movedTitle: "移動完了",
+      movedMsg: "シーン「{name}」を「{category}」に移動しました",
+      moveFail: "移動に失敗しました",
+    },
+    sort: {
+      title: "シーンの並び替え",
+      button: "シーンの並び替え",
+      save: "並び順を保存",
+      cancel: "キャンセル",
+      saved: "並び順を保存しました",
+      empty: "並び替えるシーンがありません",
+      favoredZone: "お気に入り",
+      unfavoredZone: "お気に入り以外",
+      onlyAll: "シーン順を変更する前に「すべて」カテゴリに切り替えてください。",
     },
     pagination: {
       first: "← 最初",
@@ -777,7 +824,7 @@ export default {
     },
     vueDevTools: {
       title: "Vue DevTools 表示",
-      desc: "開発モードのみ有効。全ウィンドウ（メイン / 投屏 / ログ / デスクトップペット）の Vue DevTools フローティングパネル表示を制御します",
+      desc: "開発モードのみ有効。メインウィンドウの Vue DevTools フローティングパネル表示を制御します（ログ/投屏/ペット等の独立ウィンドウでは常に非表示）",
     },
     memory: {
       title: "永続メモリを有効化",
@@ -916,6 +963,16 @@ export default {
       confirmDelete: "本当に《{name}》を削除しますか？",
       deleteFailed: "音楽の削除に失敗しました",
       uploadFailed: "一部または全部の音楽のアップロードに失敗しました",
+      categoryAll: "すべて",
+      categoryNamePlaceholder: "新カテゴリ名",
+      categoryAdd: "カテゴリを追加",
+      categoryDelete: "カテゴリを削除",
+      categoryDeleteConfirmMove:
+        "カテゴリ「{name}」を削除し、配下の音楽をすべてルートに移動しますか？",
+      refresh: "音楽を更新",
+      openFolder: "フォルダーを開く",
+      fav: "お気に入り（先頭へ移動）",
+      unfav: "お気に入りを解除",
     },
     ambient: {
       title: "環境音管理",
@@ -1229,6 +1286,18 @@ export default {
 
   asr: {
     title: "音声認識",
+    pttKey: "音声ショートカット",
+    pttKeyHint:
+      "押して話す、クリックで録音切替。自動音声認識オン時は自動リスニングを切替。単独キーも可（チャット入力時にも反応します。ファンクションキーか組合せ推奨）",
+    pttKeyCapture: "新しいキーを押してください…（Escでキャンセル）",
+    pttKeyInvalid: "このキーはバインドできません：Enter はメッセージ送信に使用されます",
+    pttKeyReset: "デフォルトに戻す",
+    pttGlobal: "フォーカス喪失時もショートカット有効",
+    pttGlobalHint:
+      "ウィンドウがフォーカスを失ってもショートカットが有効（グローバルショートカット）。英字・数字などの単独キーを割り当てると他のアプリでそのキーが奪われます。自己責任でご利用ください",
+    pttGlobalError: "グローバルショートカットの登録に失敗しました：{reason}",
+    pttGlobalNotRegistered:
+      "キーが他のアプリに使用されている可能性があり、グローバルショートカットが有効になっていません",
     status: {
       ready: "準備完了",
       notReady: "未設定",

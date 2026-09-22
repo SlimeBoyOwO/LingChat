@@ -41,12 +41,13 @@ impl Tool for CharacterList {
         let roles = RoleRepo::get_all_main_roles(&state.db)
             .await
             .map_err(|e| ToolError::Execution(format!("查询角色列表失败: {e}")))?;
-        Ok(json!(
-            roles
+        Ok(json!({
+            "ok": true,
+            "characters": roles
                 .iter()
                 .map(|r| json!({"id": r.id, "name": r.name}))
                 .collect::<Vec<_>>()
-        ))
+        }))
     }
 }
 

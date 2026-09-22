@@ -23,6 +23,7 @@ import type { VadEvent } from "../api/services/asr";
 import type { SceneInfo } from "./services/scene";
 import { resetScriptWindowTitle } from "@/utils/windowTitleCoordinator";
 import { isOwnedByStandaloneDlc } from "@/utils/dlcMediaOwnership";
+import type { AffectionChangedPayload } from "./services/affection";
 
 function asEvent(
   payload: unknown,
@@ -348,6 +349,30 @@ export function initializeTauriEventListeners() {
     });
   });
 
+  // === Affection events ===
+
+  // 六维好感度评估结果（几分钟一次、仅实际变化时发）：写回角色数据，
+  // 并记录 lastAffectionChange 供面板展示最近一次评估的变化维度与理由
+  listen("affection:changed", (event) => {
+    const payload = event.payload as AffectionChangedPayload;
+    console.log("[Tauri] affection:changed", payload);
+    const gameStore = useGameStore();
+    const role = gameStore.gameRoles[payload.role_id];
+    if (role) {
+      role.affection = payload.values;
+      role.negative = payload.negative;
+    }
+    const deltaSum = Object.values(payload.deltas).reduce((sum, d) => sum + d, 0);
+    gameStore.lastAffectionChange = {
+      roleId: payload.role_id,
+      deltaSum,
+      deltas: payload.deltas,
+      negativeDeltas: payload.negative_deltas,
+      reason: payload.reason,
+      at: Date.now(),
+    };
+  });
+
   // === Script events ===
 
   listen<string>("script:prepare-uninstall", (event) => {
@@ -530,7 +555,7 @@ export function initializeTauriEventListeners() {
   });
 
   console.log(
-    "[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 13 script events + character:switch + scene:switch)",
+    "[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + affection:changed + 13 script events + character:switch + scene:switch)",
   );
 }
 

@@ -110,6 +110,13 @@ pub const ENABLE_IMPORTANT_DAY_REMINDER: &str = "ENABLE_IMPORTANT_DAY_REMINDER";
 // ========== 上帝 Agent（God Agent）多人对话 ==========
 pub const GOD_AGENT_MAX_CONSECUTIVE_NPC: &str = "god_agent.max_consecutive_npc";
 pub const GOD_AGENT_RECENT_WINDOW: &str = "god_agent.recent_window";
+/// 好感度评估间隔（每累计多少段真实对话评估一次）。
+pub const GOD_AGENT_AFFECTION_EVAL_INTERVAL: &str = "god_agent.affection_eval_interval";
+
+// ========== 好感度（Affection） ==========
+/// 好感度系统总开关（默认开启）：关闭后上帝 Agent 不再评估情感、不写情感状态旁白，
+/// 前端好感度面板隐藏。
+pub const AFFECTION_ENABLED: &str = "affection.enabled";
 
 // ========== Skill Agent（剧本编辑器 AI 助手） ==========
 /// Skill Agent 使用的 LLM provider ID；空表示跟随聊天主 LLM。

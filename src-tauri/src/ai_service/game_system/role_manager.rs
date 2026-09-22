@@ -11,7 +11,10 @@ use crate::ai_service::game_system::persistent_memory_system::{
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::tts::local::LocalTtsRuntime;
-use crate::ai_service::types::{CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage};
+use crate::ai_service::types::{
+    AffectionVector, CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage,
+    NegativeVector,
+};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::memory_repo::MemoryRepo;
@@ -245,6 +248,62 @@ impl GameRoleManager {
         };
         self.loaded_roles.insert(role.id, new_role);
         Ok(())
+    }
+
+    /// 调整角色好感度与负面情绪的内存值；角色未加载时返回 None。
+    /// 持久化由调用方写入存档全局变量（见 `affection::var_key`）。
+    /// 返回调整后的（好感六维, 负面六维）。
+    pub fn adjust_affection(
+        &mut self,
+        role_id: i32,
+        deltas: &[(String, i32)],
+        negative_deltas: &[(String, i32)],
+    ) -> Option<(AffectionVector, NegativeVector)> {
+        let role = self.loaded_roles.get_mut(&role_id)?;
+        for (dim, delta) in deltas {
+            role.affection.add_delta(dim, *delta);
+        }
+        for (dim, delta) in negative_deltas {
+            role.negative.add_delta(dim, *delta);
+        }
+        Some((role.affection, role.negative))
+    }
+
+    /// 用存档全局变量中的好感度覆盖所有已加载角色的内存值（读档恢复用）。
+    pub fn overlay_affections_from_vars(&mut self, vars: &HashMap<String, serde_json::Value>) {
+        for role in self.loaded_roles.values_mut() {
+            let Some(rid) = role.role_id else {
+                continue;
+            };
+            if let Some(state) = vars
+                .get(&crate::ai_service::affection::var_key(rid))
+                .and_then(crate::ai_service::affection::state_from_value)
+            {
+                role.affection = state.vector;
+                role.negative = state.negative;
+            }
+        }
+    }
+
+    /// 所有已加载角色的当前好感度状态（role_id 字符串键，便于 JSON 序列化）。
+    pub fn loaded_affections(
+        &self,
+    ) -> HashMap<String, crate::ai_service::affection::AffectionState> {
+        self.loaded_roles
+            .iter()
+            .filter_map(|(id, role)| {
+                role.role_id.map(|_| {
+                    (
+                        id.to_string(),
+                        crate::ai_service::affection::AffectionState {
+                            total: role.affection.average(),
+                            vector: role.affection,
+                            negative: role.negative,
+                        },
+                    )
+                })
+            })
+            .collect()
     }
 
     /// 通过 script_key/script_role_key 获取运行时角色。

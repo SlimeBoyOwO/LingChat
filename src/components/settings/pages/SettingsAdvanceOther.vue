@@ -119,6 +119,32 @@
             </p>
           </section>
 
+          <!-- 好感度动画开关：前端即时生效，不走后端配置树 -->
+          <section
+            v-if="activeSelection.category === '好感度' && activeSelection.subcategory === '通用'"
+            class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
+          >
+            <h3 class="mb-1 text-base font-semibold text-white">
+              {{ $t("settings.advanceOther.affectionAnim.title") }}
+            </h3>
+            <p class="mb-3 text-sm leading-6 text-white/65">
+              {{ $t("settings.advanceOther.affectionAnim.desc") }}
+            </p>
+            <Toggle
+              :checked="affectionHeartbeatEnabled"
+              @change="settingsStore.setAffectionHeartbeatEnabled($event)"
+            >
+              {{ $t("settings.advanceOther.affectionAnim.heartbeat") }}
+            </Toggle>
+            <Toggle
+              class="mt-2"
+              :checked="affectionWaveEnabled"
+              @change="settingsStore.setAffectionWaveEnabled($event)"
+            >
+              {{ $t("settings.advanceOther.affectionAnim.wave") }}
+            </Toggle>
+          </section>
+
           <!-- 保存操作区域 -->
           <div
             class="bg-brand inline-flex min-w-30 cursor-pointer flex-col gap-2 rounded-lg border-none px-5 py-2.5 text-sm font-medium text-white transition-colors duration-200 hover:bg-[#0056b3]"
@@ -154,8 +180,9 @@
 import { ref, onMounted, onUnmounted, computed, reactive, watch, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
 import { useUIStore } from "@/stores/modules/ui/ui";
+import { useSettingsStore } from "@/stores/modules/settings";
 import SettingItem from "@/components/base/items/SettingItem.vue";
-import { Button } from "@/components/base";
+import { Button, Toggle } from "@/components/base";
 import { getEnvConfigSettings, saveEnvConfigSettings } from "@/api/services/config";
 import { reactivateTTS } from "@/api/services/game-info";
 import { switchLlm } from "@/api/services/llm-providers";
@@ -163,7 +190,12 @@ import { RefreshCw } from "lucide-vue-next";
 
 // --- 响应式状态定义 ---
 const uiStore = useUIStore();
+const settingsStore = useSettingsStore();
 const { t, te } = useI18n();
+
+// 好感度动画开关（前端设置项，即时生效，不入后端配置树）
+const affectionHeartbeatEnabled = computed(() => settingsStore.affectionHeartbeatEnabled);
+const affectionWaveEnabled = computed(() => settingsStore.affectionWaveEnabled);
 
 // 后端配置树的分类/子类/设置项描述均为中文（config/tree.rs），
 // 这里按名称/键查 i18n 词条做界面日文化；查不到时回退后端原文。

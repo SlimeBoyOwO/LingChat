@@ -8,10 +8,10 @@
  * 关键契约：TTS 播放期间必须 setVoicePlaying(true)。外放的 AI 语音会被麦克风
  * 收进去，不置位的话 ASR 会把 AI 自己的话当成用户输入。
  */
-import { ref, watch, type Ref } from "vue";
+import { onUnmounted, ref, watch, type Ref } from "vue";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { getVoiceAudio } from "@/api/services/game-info";
-import { setVoicePlaying } from "@/composables/useAsrInput";
+import { setVoicePlaying } from "@/composables/asr";
 
 export interface UseVoicePlaybackOptions {
   /** 模板里的 `<audio ref>` */
@@ -56,6 +56,10 @@ export function useVoicePlayback(options: UseVoicePlaybackOptions): UseVoicePlay
         return;
       }
 
+      // 前置播放锁（审查 M4）：watch 触发即占位 voicePlaying——getVoiceAudio
+      // 网络等待（100-500ms）与 play() 微任务延迟期间 ASR 不得触发录音
+      //（TTS 已传出但 voicePlaying 未置位 → 会录进 AI 自己的话）
+      setVoicePlaying(true);
       try {
         const dataUrl = await getVoiceAudio(newAudio);
         voiceDataUrl.value = dataUrl;
@@ -66,7 +70,6 @@ export function useVoicePlayback(options: UseVoicePlaybackOptions): UseVoicePlay
         audioRef.value
           .play()
           .then(() => {
-            setVoicePlaying(true);
             onStarted?.();
           })
           .catch((e) => {
@@ -75,6 +78,8 @@ export function useVoicePlayback(options: UseVoicePlaybackOptions): UseVoicePlay
           });
       } catch (e) {
         console.error("获取语音文件失败:", e);
+        // 获取失败：播放不会发生 → 解除前置锁，否则 ASR 门控永久卡死
+        setVoicePlaying(false);
       }
     },
   );
@@ -91,6 +96,11 @@ export function useVoicePlayback(options: UseVoicePlaybackOptions): UseVoicePlay
     setVoicePlaying(false);
     onEnded?.();
   };
+
+  // 路由切换（/chat ↔ /pet）销毁 audio 元素 → 播放被浏览器终止，ended 不触发：
+  // 必须主动复位 voicePlaying，否则 ASR 第 12 项门控（TTS 播放中禁用）永久卡死，
+  // PTT/mic/auto 全部静默失效直到下一次 TTS 自然播完
+  onUnmounted(() => setVoicePlaying(false));
 
   return { voiceDataUrl, onAudioEnded };
 }
