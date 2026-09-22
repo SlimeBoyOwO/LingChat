@@ -660,6 +660,8 @@ onUnmounted(() => {
   motionWriter = null;
   document.removeEventListener("contextmenu", handleDialogShow);
   window.removeEventListener("resize", updateContainerWidth);
+  // 移动端折叠菜单若开着，复位全局标记，避免卸载后残留（watch 只在开合变化时同步）
+  setMobileMenuOpen(false);
   destroyScreenshot();
 });
 
@@ -716,19 +718,19 @@ defineExpose({
 .dialog-divider-glow {
   height: 1px;
   border-radius: 9999px;
-  background-color: rgba(34, 211, 238, 0.12);
+  background-color: var(--ling-dialog-divider-base, rgba(34, 211, 238, 0.12));
   background-image: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(34, 211, 238, 0.12) 30%,
-    rgba(34, 211, 238, 0.55) 50%,
-    rgba(34, 211, 238, 0.12) 70%,
+    var(--ling-dialog-divider-dim, rgba(34, 211, 238, 0.12)) 30%,
+    var(--ling-dialog-divider-bright, rgba(34, 211, 238, 0.55)) 50%,
+    var(--ling-dialog-divider-dim, rgba(34, 211, 238, 0.12)) 70%,
     transparent 100%
   );
   background-size: 30% 100%;
   background-repeat: no-repeat;
   background-position: -30% 0;
-  box-shadow: 0 0 2px rgba(110, 187, 199, 0.01);
+  box-shadow: 0 0 2px var(--ling-dialog-divider-shadow, rgba(110, 187, 199, 0.01));
   animation: dialog-divider-flow 3s linear infinite;
 }
 @keyframes dialog-divider-flow {

@@ -280,6 +280,8 @@ const selectCharacter = async () => {
     eventQueue.resume();
   } catch (error) {
     console.error("切换角色失败:", error);
+    // 剧本运行中等情况后端会拒绝切换（角色锁定），把原因告诉用户而不是静默吞掉
+    await dialogStore.alert(t("ui.characterCard.switchFailed", { error: String(error) }));
   }
 };
 

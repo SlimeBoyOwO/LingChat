@@ -22,6 +22,7 @@ export default {
       "Failed to fetch the scenario list — please make sure the backend is running.",
     perfTip:
       "If this page feels laggy, you can turn off the star particles or meteor animation in General Settings.",
+    dlcRecognized: "DLC detected: {names}",
   },
   petMode: {
     settingsWindowTitle: "Settings",
@@ -60,6 +61,19 @@ export default {
     cloudWorkshop: "Cloud Workshop",
     miniGame: "Mini Games (In Development)",
     back: "Back",
+    resetMemoryTitle: "Reset Memory",
+    resetMemory: "Reset Memory",
+    resetMemoryDone2: "Reset",
+    resetMemoryMessage:
+      'This will erase all memories (playthrough progress) of "{name}", restore its declared safe narrative files, and clear its main-menu effect. Your next visit will start from the first playthrough.\n\nAre you sure?',
+    resetMemoryDone: "Memories erased. She no longer remembers you.",
+    resetMemoryEmpty: "This script has no stored memories yet.",
+    resetMemoryFailed: "Reset failed. Please try again later.",
+  },
+  contentWarning: {
+    horrorTitle: "⚠ Content Warning",
+    horrorMessage:
+      "This story contains horror, jumpscares and intense visual corruption effects. Recommended for players aged 16 and above.\nSome horror scripts also create restricted local glitch windows, briefly pull the system pointer while the main window is focused (press Esc to stop), and write harmless .chr narrative markers under the characters folder beside the app data directory. They never click automatically, run external commands, or modify real character files.\nIf you feel unwell while playing, please quit immediately.\n\nAre you sure you want to continue?",
   },
   pet: {
     chatInput: {

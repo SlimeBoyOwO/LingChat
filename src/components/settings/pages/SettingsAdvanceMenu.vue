@@ -79,6 +79,21 @@
       </MenuItem>
     </div>
 
+    <!-- DLC 管理 -->
+    <div class="cursor-pointer transition-all duration-300" @click="emit('navigate', 'dlc')">
+      <MenuItem :title="$t('advance.menu.dlcTitle')" size="large">
+        <template #header>
+          <Package :size="20" />
+        </template>
+        <p class="mb-3 text-sm leading-relaxed text-white/50">
+          {{ $t("advance.menu.dlcDesc") }}
+        </p>
+        <Button type="big" icon="advance" :icon_size="18">
+          {{ $t("advance.menu.dlcButton") }}
+        </Button>
+      </MenuItem>
+    </div>
+
     <!-- 投屏设置 -->
     <div
       class="h-full cursor-pointer transition-all duration-300"
@@ -185,9 +200,10 @@ import {
   Cpu,
   Database,
   Heart,
-  Mic,
-  SlidersHorizontal,
   Languages,
+  Mic,
+  Package,
+  SlidersHorizontal,
   Wrench,
 } from "lucide-vue-next";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -237,7 +253,7 @@ async function onAffectionMasterToggle(enabled: boolean) {
 }
 
 const emit = defineEmits<{
-  navigate: [tab: "llm" | "tts" | "asr" | "other" | "tools" | "cast" | "memory"];
+  navigate: [tab: "llm" | "tts" | "asr" | "other" | "tools" | "dlc" | "cast" | "memory"];
 }>();
 
 // 内置 TTS 官方教程（LingBlog）

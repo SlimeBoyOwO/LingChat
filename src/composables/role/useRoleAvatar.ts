@@ -85,12 +85,28 @@ export function useRoleAvatar(options: UseRoleAvatarOptions): UseRoleAvatarApi {
 
   async function resolveAvatar() {
     const currentId = ++resolveAvatarId;
+    const params = avatarFolderParams(role.value);
     try {
-      const path = await invoke<string>("get_avatar_file", avatarFolderParams(role.value));
+      const path = await invoke<string>("get_avatar_file", params);
       if (currentId === resolveAvatarId) {
         targetAvatarUrl.value = convertFileSrc(path);
       }
     } catch {
+      // 演出专用情绪（如"崩坏"）在角色目录里可能没有对应文件，回退到"正常"再试一次
+      if (params.emotion !== "正常") {
+        try {
+          const fallback = await invoke<string>("get_avatar_file", {
+            ...params,
+            emotion: "正常",
+          });
+          if (currentId === resolveAvatarId) {
+            targetAvatarUrl.value = convertFileSrc(fallback);
+          }
+          return;
+        } catch {
+          // 继续走置空兜底
+        }
+      }
       if (currentId === resolveAvatarId) {
         targetAvatarUrl.value = "";
       }

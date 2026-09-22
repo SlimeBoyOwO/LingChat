@@ -21,23 +21,48 @@
 
   <!-- 原有气泡、触摸层和情绪音效位于共享 Pixi 舞台上方。 -->
   <TouchAreas v-if="gameStore.command === 'touch'" :body-parts="role.bodyPart" />
+
+  <!-- 角色级演出覆盖层：跟随最新 Live2D/静态展示层的位置，同时保留 DLC 恐怖特效。 -->
   <div
     class="role-container-transition pointer-events-none absolute h-full w-full origin-[center_0%]"
     :style="effectsLayerStyle"
   >
+    <!-- 立绘闪现覆盖层（DDLC 式崩坏一闪）：硬切无淡入淡出，盖在正常立绘上 -->
+    <img
+      v-if="flashAvatarUrl"
+      :src="flashAvatarUrl"
+      class="sprite-flash-overlay absolute h-[102%] w-full"
+      :style="flashOverlayStyle"
+      alt=""
+      draggable="false"
+    />
+
+    <!-- 立绘噪点侵蚀覆盖层（DDLC n_rects_ghost 式）：常驻到剧本清除 -->
+    <SpriteNoiseOverlay
+      v-if="activeNoise"
+      :key="activeNoise.seq"
+      :noise="activeNoise.noise"
+      :fade-in-sec="activeNoise.fadeInSec"
+      :object-fit="computedObjectFit"
+    />
+
     <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
     <audio ref="bubbleAudio"></audio>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, toRefs } from "vue";
+import { ref, computed, watch, toRefs } from "vue";
+import type { CSSProperties } from "vue";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";
+import { EMOTION_CONFIG_EMO } from "@/controllers/emotion/config";
 import type { GameRole } from "@/stores/modules/game/state";
 import Live2DRolePresentation from "./Live2DRolePresentation.vue";
 import StaticRolePresentation from "./StaticRolePresentation.vue";
 import TouchAreas from "./TouchAreas.vue";
+import SpriteNoiseOverlay from "./SpriteNoiseOverlay.vue";
 import { useRoleAvatar } from "@/composables/role/useRoleAvatar";
 import "@/assets/styles/avatar-animation.css";
 
@@ -153,6 +178,73 @@ const roleLayerStyle = computed(() => {
   return style;
 });
 
+// --- 立绘噪点侵蚀（DDLC n_rects_ghost 式）：常驻状态，直接按 roleId 过滤即可 ---
+const activeNoise = computed(() => {
+  const n = uiStore.spriteNoise;
+  return n && n.roleId === role.value.roleId ? n : null;
+});
+
+// --- 立绘闪现（崩坏一闪）覆盖层 ---
+const flashAvatarUrl = ref("");
+const flashOverlayStyle = computed<CSSProperties>(() => ({
+  objectFit: computedObjectFit.value as CSSProperties["objectFit"],
+}));
+let flashTimerId: number | null = null;
+let flashResolveId = 0;
+
+watch(
+  () => uiStore.spriteFlash,
+  async (flash) => {
+    if (!flash) {
+      // 剧本结束/重置时的兜底：使尚未返回的异步解析失效，并取消旧计时器。
+      flashResolveId += 1;
+      if (flashTimerId !== null) {
+        window.clearTimeout(flashTimerId);
+        flashTimerId = null;
+      }
+      flashAvatarUrl.value = "";
+      return;
+    }
+    if (flash.roleId !== role.value.roleId) return;
+    const currentId = ++flashResolveId;
+    const r = role.value;
+    const clothesName = r.clothesName === "默认" || !r.clothesName ? "default" : r.clothesName;
+    const mappedEmotion = EMOTION_CONFIG_EMO[flash.emotion] || flash.emotion;
+
+    let url = "";
+    try {
+      const path = await invoke<string>("get_avatar_file", {
+        characterFolder: r.character_folder,
+        emotion: mappedEmotion,
+        clothesName,
+      });
+      url = convertFileSrc(path);
+    } catch {
+      // 角色目录没有该演出情绪的立绘文件：静默跳过这次闪现
+      return;
+    }
+    if (currentId !== flashResolveId) return;
+
+    // Start the authored flash timer only after the browser has decoded the
+    // image; otherwise a 300ms beat can expire while its first frame loads.
+    try {
+      const image = new Image();
+      image.src = url;
+      await image.decode();
+    } catch {
+      // Cached/local images may report decode errors transiently; still render.
+    }
+    if (currentId !== flashResolveId) return;
+
+    flashAvatarUrl.value = url;
+    if (flashTimerId !== null) window.clearTimeout(flashTimerId);
+    flashTimerId = window.setTimeout(() => {
+      flashAvatarUrl.value = "";
+      flashTimerId = null;
+    }, flash.duration * 1000);
+  },
+);
+
 // --avatar-breath-scale 挂在动画元素的直接父层上（.normal 落在子级 ImageAcrossFade 上，
 // 自定义属性会继承）。主界面角色大，幅度取更含蓄的 1.0035；桌宠小头像用 1.005。
 const staticLayerStyle = computed(() => ({
@@ -182,4 +274,29 @@ const bubbleStyles = computed(() => ({
 :deep(.touch-area) {
   pointer-events: auto;
 }
+
+/* 立绘闪现覆盖层：与主立绘同位同尺寸，硬切 + 高频抖动，模拟信号故障 */
+.sprite-flash-overlay {
+  object-position: center bottom;
+  z-index: 2;
+  pointer-events: none;
+  animation: sprite-flash-jitter 0.09s steps(2, end) infinite;
+  filter: saturate(1.4) contrast(1.15);
+}
+
+@keyframes sprite-flash-jitter {
+  0% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-6px, 2px);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(4px, -3px);
+    opacity: 1;
+  }
+}
+
 </style>
