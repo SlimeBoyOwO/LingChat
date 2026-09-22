@@ -23,6 +23,10 @@ export default {
     // Shown when the script engine rejects free-form input
     choiceRequired: "Please pick an option",
     inputNotAllowed: "Input isn't allowed right now",
+    // Possession success/failure notifications (player-side action)
+    possessSuccessTitle: "Possession successful",
+    possessSuccess: "Now playing as {name}",
+    possessFailedTitle: "Possession failed",
   },
   avatar: {
     live2dUnavailable: "Live2D unavailable",

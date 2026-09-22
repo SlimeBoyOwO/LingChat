@@ -26,9 +26,10 @@ pub(crate) fn is_real_dialogue(line: &GameLine) -> bool {
     match line.attribute() {
         // 角色回复：assistant 且归属某角色（工具调用回填的前缀行 sender 为空，排除）
         LineAttribute::Assistant => line.base.sender_role_id.is_some(),
-        // 玩家发言：sender_role_id==0（DB 不变量）且非旁白/系统/剧情内容
+        // 玩家发言：归属某实体（默认身份 0 或附身后的实体）且非旁白/系统/剧情内容。
+        // 不能写死 Some(0)：附身切换后玩家台词 sender 会变成被附身实体。
         LineAttribute::User => {
-            line.base.sender_role_id == Some(0)
+            line.base.sender_role_id.is_some()
                 && !line
                     .base
                     .content

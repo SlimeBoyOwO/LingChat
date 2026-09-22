@@ -92,26 +92,6 @@
                     class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 focus:border-amber-300/70 focus:outline-none"
                   />
                 </div>
-                <div class="space-y-2">
-                  <label class="text-sm text-white/70">{{
-                    $t("settings.characterCreate.form.userName")
-                  }}</label>
-                  <input
-                    v-model="form.user_name"
-                    type="text"
-                    class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 focus:border-amber-300/70 focus:outline-none"
-                  />
-                </div>
-                <div class="space-y-2">
-                  <label class="text-sm text-white/70">{{
-                    $t("settings.characterCreate.form.userSubtitle")
-                  }}</label>
-                  <input
-                    v-model="form.user_subtitle"
-                    type="text"
-                    class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 focus:border-amber-300/70 focus:outline-none"
-                  />
-                </div>
               </div>
               <div class="space-y-2">
                 <label class="text-sm text-white/70">{{
@@ -408,8 +388,6 @@ interface CharacterFormState {
   title: string;
   ai_name: string;
   ai_subtitle: string;
-  user_name: string;
-  user_subtitle: string;
   info: string;
   scale: number;
   offset: number;
@@ -504,8 +482,6 @@ const form = reactive<CharacterFormState>({
   title: "",
   ai_name: "",
   ai_subtitle: "",
-  user_name: "用户",
-  user_subtitle: "",
   info: "",
   scale: 1,
   offset: 0,
@@ -544,8 +520,6 @@ const resetAll = () => {
   form.title = "";
   form.ai_name = "";
   form.ai_subtitle = "";
-  form.user_name = "用户";
-  form.user_subtitle = "";
   form.info = "";
   form.scale = 1;
   form.offset = 0;
@@ -727,8 +701,6 @@ const submitCreate = async () => {
     const settingsPayload = {
       ai_name: form.ai_name.trim(),
       ai_subtitle: form.ai_subtitle.trim(),
-      user_name: form.user_name.trim() || "用户",
-      user_subtitle: form.user_subtitle.trim(),
       title: form.title.trim(),
       info: form.info.trim(),
       scale: Number(form.scale),

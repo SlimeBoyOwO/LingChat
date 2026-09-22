@@ -31,9 +31,18 @@ impl GodAgentCore {
     ///
     /// 条件：
     /// - 自由对话模式（`script_status.is_none()`）
-    /// - 在场角色数 > 1（含玩家，即玩家 + 至少 1 个 NPC）
+    /// - 在场且非附身、非 User 身份的 AI 实体数 ≥ 2
+    ///
+    /// 候选口径与 `decide_next_speaker` 完全一致：附身实体是玩家，User 身份实体
+    /// 由玩家操控（永不交给 AI 生成），都不参与编排。单 AI 场景因此不会激活，
+    /// 不会再被"强制多轮"。
     pub fn should_activate(&self, gs: &GameStatus) -> bool {
-        gs.script_status.is_none() && gs.present_role_ids.len() > 1
+        gs.script_status.is_none()
+            && gs.present_role_ids
+                .iter()
+                .filter(|&&id| !gs.is_possessed(id) && !gs.human_role_ids.contains(&id))
+                .count()
+                >= 2
     }
 
     // ============================================================
@@ -106,8 +115,12 @@ impl GodAgentCore {
         }
 
         // --- 当前发言者提示 ---
+        // 「玩家」= 当前被附身实体，附身后交还对象随之改变
+        let possessed = gs.possessed_role_id;
         let current_hint = match current_speaker {
-            Some(0) => "当前发言者是「玩家」。请选择下一个发言的 NPC 角色。\n".to_string(),
+            Some(id) if id == possessed => {
+                format!("当前发言者是「玩家」(role_id={})。请选择下一个发言的 NPC 角色。\n", possessed)
+            },
             Some(rid) => {
                 let name = gs
                     .role_manager
@@ -115,8 +128,8 @@ impl GodAgentCore {
                     .and_then(|r| r.display_name.clone())
                     .unwrap_or_else(|| format!("角色{}", rid));
                 format!(
-                    "当前发言者是「{}」(role_id={})，刚刚说完话。请判断：\n- 如果对话应该继续（比如另一个角色有强烈反应或话题未完），选择下一个发言的 NPC\n- 如果应该交还给玩家，选择 role_id=0\n",
-                    name, rid
+                    "当前发言者是「{}」(role_id={})，刚刚说完话。请判断：\n- 如果对话应该继续（比如另一个角色有强烈反应或话题未完），选择下一个发言的 NPC\n- 如果应该交还给玩家，选择 role_id={}\n",
+                    name, rid, possessed
                 )
             },
             None => String::new(),
@@ -144,12 +157,16 @@ impl GodAgentCore {
         let npc_ids: Vec<i32> = gs
             .present_role_ids
             .iter()
-            .filter(|&&id| id != 0)
+            .filter(|&&id| !gs.is_possessed(id) && !gs.human_role_ids.contains(&id))
             .copied()
             .collect();
 
+        // 没有可编排的 AI（真·一对一）时把话筒交还玩家
         if npc_ids.len() <= 1 {
-            return Ok((npc_ids.first().copied().unwrap_or(0), "single_npc".into()));
+            return Ok((
+                npc_ids.first().copied().unwrap_or(gs.possessed_role_id),
+                "single_npc".into(),
+            ));
         }
 
         let window = self.config.recent_window;
@@ -180,14 +197,17 @@ impl GodAgentCore {
         if let Some(ref tool_calls) = response.tool_calls {
             if let Some(tc) = tool_calls.first() {
                 if let Some(result) = tools::parse_speaker_selection(tc) {
-                    if result.0 == 0 || gs.present_role_ids.contains(&result.0) {
+                    // 合法目标只有两类：候选 AI 之一，或当前被附身实体（交还玩家）。
+                    // 「仅在 present 里」不再算数——User 身份实体与未参与编排的
+                    // 角色都不能被 LLM 选中。
+                    if gs.is_possessed(result.0) || npc_ids.contains(&result.0) {
                         return Ok(result);
                     }
-                    tracing::warn!("上帝Agent 选择了不在场的角色 {}，忽略", result.0);
+                    tracing::warn!("上帝Agent 选择了非候选角色 {}，忽略", result.0);
                     return Err(anyhow!(
-                        "上帝Agent 选择了不在场的角色 {}，在场角色: {:?}",
+                        "上帝Agent 选择了非候选角色 {}，候选角色: {:?}",
                         result.0,
-                        gs.present_role_ids
+                        npc_ids
                     ));
                 }
                 // 解析失败

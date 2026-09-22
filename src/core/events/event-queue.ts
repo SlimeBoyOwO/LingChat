@@ -1,4 +1,6 @@
 import { useGameStore } from "../../stores/modules/game";
+import { convertInitLines } from "../../stores/modules/game/actions";
+import { getGameInfo } from "../../api/services/game-info";
 import { useSettingsStore } from "../../stores/modules/settings";
 import { useUIStore } from "../../stores/modules/ui/ui";
 import type { ScriptEventType } from "../../types";
@@ -11,9 +13,16 @@ export class EventQueue {
   private paused = true;
   private currentEvent: ScriptEventType | null = null;
   private currentResolve: (() => void) | null = null;
+  /** 本轮清队列是否丢掉了「后端已落库、前端未消费」的 reply（见 addEvent），供 status_reset 后对账 */
+  private reconcilePending = false;
+  /** 对账进行中，防止重入 */
+  private reconciling = false;
 
   addEvent(event: ScriptEventType) {
     if ((event.type === "error" || event.type === "status_reset") && this.currentResolve) {
+      // 清空队列会连同尚未消费的 reply 一起丢掉——这些行后端已经落库，前端历史会缺句。
+      // 先记下这个事实，等 status_reset 消费完（状态已复位为 input）再重拉历史对账补齐。
+      if (this.queue.some((e) => e.type === "reply")) this.reconcilePending = true;
       this.currentResolve();
       this.currentResolve = null;
       this.queue = [];
@@ -33,6 +42,9 @@ export class EventQueue {
       const settings = useSettingsStore();
       const gameStore = useGameStore();
       const uiStore = useUIStore();
+      // 合并对象必须是「正在展示的那句台词」的发送者：character:switch 旁路会提前改写
+      // currentInteractRoleId，用它判定会把异角色回复错并进当前气泡。
+      const displaySpeakerRoleId = gameStore.displaySpeakerRoleId;
       const stillShowing = uiStore.autoMode
         ? this.getState().isWaitingForUser
         : dialogueMerge.isTyping || dialogueMerge.isAudioPlaying;
@@ -40,12 +52,13 @@ export class EventQueue {
         settings.text.inlineMotionText &&
         settings.text.mergeLineThreshold > 0 &&
         stillShowing &&
-        event.roleId === gameStore.currentInteractRoleId &&
+        event.roleId === displaySpeakerRoleId &&
         dialogueMerge.mergedLength + event.message.length <= settings.text.mergeLineThreshold &&
         !this.queue.some((e) => e.type !== "thinking")
       ) {
         // console.log("初始台词 第二句 融合允许");
         dialogueMerge.armed = true;
+        // 由上面的守卫可知 event.roleId 即 displaySpeakerRoleId，且此处必非 null
         dialogueMerge.armedRoleId = event.roleId;
       }
     }
@@ -87,12 +100,53 @@ export class EventQueue {
     // 处理事件并等待完成
     await eventProcessorManager.processEvent(event);
 
+    // 队列丢过 reply 时，借 status_reset 的时机从后端重拉历史对账。选 status_reset 而非
+    // error：错误路径 emit_error 总会在 ai:error 之后补发 status_reset，而此时本轮生成
+    // 已经结束、处理器也把状态复位为 input，重拉不会与进行中的流式写入抢同一份历史。
+    if (event.type === "status_reset" && this.reconcilePending) {
+      this.reconcilePending = false;
+      await this.reconcileHistoryFromBackend();
+    }
+
     // 如果事件需要等待用户继续，就等待
     if (this.shouldWaitForUser(event)) {
       await this.waitForUserContinue();
     } else {
       await this.waitForDuration(event.duration);
       console.log("等待" + event.duration + "秒");
+    }
+  }
+
+  /**
+   * 从后端重拉台词历史，补齐被丢掉的 reply。
+   *
+   * 只替换 dialogHistory，不套用完整的 applyWebInitData——后者会把在场角色、背景、
+   * 音乐、场景等实时状态一并按初始化快照重置，在会话中途调用反而制造新错乱。
+   */
+  private async reconcileHistoryFromBackend(): Promise<void> {
+    if (this.reconciling) return;
+    this.reconciling = true;
+    try {
+      const gameStore = useGameStore();
+      const lengthBefore = gameStore.dialogHistory.length;
+      const gameInfo = await getGameInfo();
+
+      // 竞态防护：拉取期间若已开始新一轮生成/消费、队列里又排进了 reply、或前端已追加
+      // 新台词，说明两份历史正在并发写入，此时整体替换会覆盖新内容。对账只求补齐缺句，
+      // 宁可漏掉这一次也不能覆盖——漏掉的部分等下一次 status_reset 兜底。
+      if (
+        gameStore.currentStatus !== "input" ||
+        gameStore.dialogHistory.length !== lengthBefore ||
+        this.queue.some((e) => e.type === "reply")
+      ) {
+        return;
+      }
+
+      gameStore.setGameMessages(convertInitLines(gameInfo.lines ?? []));
+    } catch (error) {
+      console.warn("[EventQueue] 历史对账失败（非致命）:", error);
+    } finally {
+      this.reconciling = false;
     }
   }
 

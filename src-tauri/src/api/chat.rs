@@ -12,8 +12,8 @@ use crate::ai_service::message_system::generator::{
 use crate::ai_service::message_system::processor::EmotionSegment;
 use crate::ai_service::screen_analyzer::{NativeImageCompress, image_bytes_to_native_data_url};
 use crate::ai_service::tts::local::LocalTtsState;
-use crate::ai_service::types::{LineAttributeExt, LineBase};
-use crate::api::game::{GameLineInit, compute_user_message_seqs};
+use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase};
+use crate::api::game::{GameLineInit, build_game_line_inits};
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::save_repo::SaveRepo;
@@ -288,7 +288,9 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
 
 /// 回溯对话：将台词列表截断到指定玩家消息之前（移除该消息及之后所有内容）。
 ///
-/// `message_seq` 为 1-indexed 的玩家消息序号（由 `sender_role_id == Some(0)` 标识）。
+/// `message_seq` 为 1-indexed 的玩家消息序号。玩家消息 = `attribute == User` 且
+/// 有明确发送者（附身期间由 AI 实体代发的玩家台词也算）；sender 为空的系统
+/// 旁白不计入。判定与 compute_user_message_seqs 同源，保证序号定义一致。
 #[tauri::command]
 pub async fn rollback_conversation(
     app: AppHandle,
@@ -305,13 +307,14 @@ pub async fn rollback_conversation(
         let svc = state.ai_service.lock().await;
         let mut gs = svc.game_status.lock().await;
 
-        // 按序号定位第 N 条玩家消息（1-indexed）
+        // 按序号定位第 N 条玩家消息（1-indexed）：attribute==User 且有明确发送者，
+        // 排除入场提示等 sender 为空的系统旁白
         let mut count = 0u32;
         let idx = gs
             .line_list
             .iter()
             .position(|line| {
-                if line.base.sender_role_id == Some(0)
+                if line.base.sender_role_id.is_some()
                     && matches!(line.attribute(), LineAttribute::User)
                 {
                     count += 1;
@@ -339,26 +342,9 @@ pub async fn rollback_conversation(
         gs.line_list.clone()
     }; // 释放锁
 
-    // 转换为前端格式（带序号）
-    let seqs = compute_user_message_seqs(&remaining);
-    let init_lines: Vec<GameLineInit> = remaining
-        .iter()
-        .zip(seqs.iter())
-        .map(|(gl, &seq)| GameLineInit {
-            content: gl.base.content.clone(),
-            attribute: gl.base.attribute.as_str().to_string(),
-            sender_role_id: gl.base.sender_role_id,
-            display_name: gl.base.display_name.clone(),
-            original_emotion: gl.base.original_emotion.clone(),
-            predicted_emotion: gl.base.predicted_emotion.clone(),
-            action_content: gl.base.action_content.clone(),
-            audio_file: gl.base.audio_file.clone(),
-            perceived_role_ids: gl.perceived_role_ids.clone(),
-            user_message_seq: seq,
-            thinking: gl.base.thinking.clone(),
-            tts_content: gl.base.tts_content.clone(),
-        })
-        .collect();
+    // 转换为前端格式：玩家消息序号与 TTS 序号都由后端统一计算，
+    // 回溯后的历史同样携带这两类序号，前端据此重建列表而无需自行计数
+    let init_lines = build_game_line_inits(&remaining);
 
     tracing::info!(
         "回溯对话完成: message_seq={}, 剩余台词 {} 条",
@@ -369,21 +355,84 @@ pub async fn rollback_conversation(
     Ok(init_lines)
 }
 
-/// 判断该台词行是否属于「可补生成语音」的 AI 台词：
-/// 剥掉 `{...}` 动作段后仍有正文。与前端 `convertInitLines` 判空规则对齐，
+/// 判断文本剥掉 `{...}` 动作段后是否仍有正文。与前端 `convertInitLines` 判空规则对齐，
 /// 避免纯动作行（如整行都是 `{...}`）前后端计数不一致。
-fn has_tts_countable_content(content: &str) -> bool {
+pub(crate) fn has_tts_countable_content(content: &str) -> bool {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = RE.get_or_init(|| Regex::new(r"\{[\s\S]*?\}").expect("invalid regex"));
     !re.replace_all(content, "").trim().is_empty()
+}
+
+/// 「可补生成语音」的 AI 台词行判据，三条同时成立：`attribute == Assistant`、
+/// 有关联角色（`sender_role_id` 非空）、剥掉动作段后仍有正文。
+///
+/// 「生成语音」按序号定位台词，序号口径必须全局唯一：一旦前后端各自在自家历史列表上
+/// 计数，任何一侧的事件丢失都会让计数漂移，把语音补到错误的台词上。因此计数与定位
+/// 一律走本函数。
+pub(crate) fn is_tts_countable_ai_line(line: &GameLine) -> bool {
+    matches!(line.attribute(), LineAttribute::Assistant)
+        && line.base.sender_role_id.is_some()
+        && has_tts_countable_content(&line.base.content)
+}
+
+/// 为整份历史逐行计算 TTS 序号：可数 AI 行填 0-based 递增序号，其余为 None。
+///
+/// 该结果随初始化/回溯数据下发，前端只回传序号、不再自行计数，从根源上消除
+/// 两侧列表漂移导致的错位。
+pub(crate) fn tts_seqs(line_list: &[GameLine]) -> Vec<Option<u32>> {
+    let mut count = 0u32;
+    line_list
+        .iter()
+        .map(|line| {
+            if is_tts_countable_ai_line(line) {
+                let seq = count;
+                count += 1;
+                Some(seq)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// 取第 `idx` 行的 TTS 序号；该行不可数时返回 None。
+/// 供刚写入的 assistant 行在 `ai:reply` emit 前取号，口径与 `tts_seqs` 一致。
+pub(crate) fn tts_seq_at(line_list: &[GameLine], idx: usize) -> Option<u32> {
+    let line = line_list.get(idx)?;
+    if !is_tts_countable_ai_line(line) {
+        return None;
+    }
+    Some(
+        line_list[..idx]
+            .iter()
+            .filter(|l| is_tts_countable_ai_line(l))
+            .count() as u32,
+    )
+}
+
+/// 定位第 `line_seq` 条可数 AI 行，返回其在 `line_list` 中的下标。
+/// 与 `tts_seqs` / `tts_seq_at` 互为逆运算，三者共用同一谓词，保证「下发的序号」
+/// 与「按序号定位」永远指同一行。
+pub(crate) fn locate_tts_line(line_list: &[GameLine], line_seq: u32) -> Option<usize> {
+    let mut count = 0u32;
+    for (i, line) in line_list.iter().enumerate() {
+        if is_tts_countable_ai_line(line) {
+            if count == line_seq {
+                return Some(i);
+            }
+            count += 1;
+        }
+    }
+    None
 }
 
 /// 为历史中某条 AI 台词补生成语音（「生成语音」按钮后端）。
 ///
 /// `line_seq` 为 0-based 的「AI 台词」全局序号：按 `line_list` 中
 /// attribute == Assistant 且有正文、且关联角色（sender_role_id 非空）的行计数。
-/// 前端历史展示与后端计数规则一致（同样跳过空内容与无角色行），因此任意来源的
-/// AI 台词都能定位——自由对话轮次、AI 开场白、主动对话、剧本台词均适用。
+/// 该序号由后端统一算好并随 `GameLineInit.tts_seq` / `ai:reply.ttsSeq` 下发，
+/// 前端只负责回传——前后端各自计数时，任一侧的历史漂移都会让语音补到错误的台词上。
+/// 因此自由对话轮次、AI 开场白、主动对话、剧本台词均能稳定定位。
 ///
 /// 语音生成复用该台词角色已构建的 `VoiceMaker`（未加载时从 DB 惰性注册，
 /// 保证重启后剧本 NPC 等角色也能正确对应），产物写入 `<data_dir>/voice/`
@@ -428,22 +477,14 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
         // 1. 定位目标台词：数「assistant 且有正文且关联角色」的行，取第 line_seq 条。
         //    跳过 sender_role_id 为 None 的行（工具调用回填的 assistant 前缀行，
         //    实时对话时前端不可见，重载后可见——若计入序号会造成前后端计数漂移）。
-        let mut count = 0u32;
-        let mut target_idx: Option<usize> = None;
-        for (i, gl) in gs.line_list.iter().enumerate() {
-            if matches!(gl.attribute(), LineAttribute::Assistant)
-                && gl.base.sender_role_id.is_some()
-                && has_tts_countable_content(&gl.base.content)
-            {
-                if count == line_seq {
-                    target_idx = Some(i);
-                    break;
-                }
-                count += 1;
-            }
-        }
-        let idx = target_idx
-            .ok_or_else(|| format!("未找到序号为 {} 的 AI 台词（共 {} 条）", line_seq, count))?;
+        let idx = locate_tts_line(&gs.line_list, line_seq).ok_or_else(|| {
+            let total = gs
+                .line_list
+                .iter()
+                .filter(|l| is_tts_countable_ai_line(l))
+                .count();
+            format!("未找到序号为 {} 的 AI 台词（共 {} 条）", line_seq, total)
+        })?;
 
         // 2. 先克隆台词数据（之后要对 gs 做可变借用）
         let role_id = gs.line_list[idx].base.sender_role_id;
@@ -730,4 +771,83 @@ pub async fn feed_text(app: AppHandle, text: String) -> Result<(), String> {
     let _ = trigger_ai_response(app, None).await;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line(attribute: LineAttribute, sender: Option<i32>, content: &str) -> GameLine {
+        GameLine::from_base(
+            LineBase {
+                content: content.to_string(),
+                attribute: LineAttributeExt(attribute),
+                sender_role_id: sender,
+                ..Default::default()
+            },
+            Vec::new(),
+        )
+    }
+
+    /// 覆盖全部干扰形态：系统行、玩家行、纯动作行、空正文行、无关联角色的
+    /// assistant 行（工具调用前缀）、工具行，以及正文中夹带动作段的正常 AI 行。
+    fn sample_lines() -> Vec<GameLine> {
+        vec![
+            line(LineAttribute::System, None, "人设"),
+            line(LineAttribute::User, Some(0), "你好"),
+            // 下标 2：第 1 条可数 AI 行 → tts_seq = 0
+            line(LineAttribute::Assistant, Some(7), "【开心】{挥手} 欢迎回来"),
+            line(LineAttribute::Assistant, Some(7), "{点头}"),
+            line(LineAttribute::Assistant, None, "我先查一下资料"),
+            line(LineAttribute::Assistant, Some(7), "   "),
+            line(LineAttribute::Tool, None, "{}"),
+            // 下标 7：第 2 条可数 AI 行 → tts_seq = 1
+            line(LineAttribute::Assistant, Some(8), "第二句"),
+        ]
+    }
+
+    /// 下发的序号与按序号定位必须互为逆运算：初始化/回溯侧按 `tts_seqs` 计数，
+    /// 「生成语音」侧按 `locate_tts_line` 定位，两者对同一行给出的序号一致。
+    #[test]
+    fn tts_seq_and_locate_agree_on_same_line() {
+        let lines = sample_lines();
+        let seqs = tts_seqs(&lines);
+
+        let expected = [(2usize, 0u32), (7, 1)];
+        for (idx, seq) in expected {
+            assert_eq!(seqs[idx], Some(seq), "下标 {idx} 应下发序号 {seq}");
+            assert_eq!(tts_seq_at(&lines, idx), Some(seq));
+            assert_eq!(
+                locate_tts_line(&lines, seq),
+                Some(idx),
+                "序号 {seq} 应定位回下标 {idx}"
+            );
+        }
+
+        // 不可数行不下发序号，也不会占用序号
+        for idx in [0usize, 1, 3, 4, 5, 6] {
+            assert_eq!(seqs[idx], None, "下标 {idx} 不应有 TTS 序号");
+            assert_eq!(tts_seq_at(&lines, idx), None);
+        }
+
+        // 越界序号不定位到任何行
+        assert_eq!(locate_tts_line(&lines, 2), None);
+        assert_eq!(tts_seq_at(&lines, lines.len()), None);
+    }
+
+    /// 纯动作行与空白行即使有角色也不可数；无角色的 assistant 行同样不可数。
+    #[test]
+    fn countable_requires_role_and_visible_text() {
+        let lines = sample_lines();
+        assert_eq!(
+            tts_seqs(&lines).iter().filter(|s| s.is_some()).count(),
+            2,
+            "只有两条正常 AI 行可数"
+        );
+        assert!(!is_tts_countable_ai_line(&lines[3]));
+        assert!(!is_tts_countable_ai_line(&lines[4]));
+        assert!(!is_tts_countable_ai_line(&lines[5]));
+        // 含动作段但仍有正文的行可数
+        assert!(is_tts_countable_ai_line(&lines[2]));
+    }
 }

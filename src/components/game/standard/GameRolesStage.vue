@@ -5,7 +5,7 @@
       class="z-2"
       :roles="gameStore.presentRolesList"
       mode="standard"
-      :active-speaker-id="gameStore.currentInteractRoleId"
+      :active-speaker-id="gameStore.displaySpeakerRoleId ?? gameStore.currentInteractRoleId"
       :audio-element="mainAudio"
       :voice-data-url="voiceDataUrl"
       :cast-scale="castScale"
@@ -16,6 +16,7 @@
         v-for="role in gameStore.presentRolesList"
         :key="role.roleId"
         :role="role"
+        :possessed="gameStore.possessedRoleId === role.roleId"
         :cast-scale="castScale"
         :cast-offset-y="castOffsetY"
       />

@@ -22,6 +22,10 @@ export default {
     // 剧本模式下提交自由输入被后端拒绝时的提示
     choiceRequired: "请点击一个选项",
     inputNotAllowed: "当前无法输入",
+    // 附身（玩家侧行为）成功/失败通知
+    possessSuccessTitle: "附身成功",
+    possessSuccess: "当前扮演：{name}",
+    possessFailedTitle: "附身失败",
   },
   avatar: {
     live2dUnavailable: "Live2D 不可用",

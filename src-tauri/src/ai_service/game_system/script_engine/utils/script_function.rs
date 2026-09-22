@@ -296,7 +296,8 @@ pub async fn handle_actions(
                     content,
                     attribute: LineAttributeExt(LineAttribute::User),
                     display_name: Some(game_status.player.user_name.clone()),
-                    sender_role_id: Some(0),
+                    // 玩家台词归属当前附身身份
+                    sender_role_id: Some(game_status.possessed_role_id),
                     ..Default::default()
                 };
                 game_status.add_line(db, line).await?;

@@ -1,4 +1,4 @@
-//! Input event — prompts the user for text input, waits, then adds as USER line.
+//! 输入事件 —— 提示用户输入文本，等待后写入一条 USER 台词行。
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
@@ -56,15 +56,16 @@ impl ScriptEvent for InputEvent {
         tracing::info!("[InputEvent] 收到用户输入: {}", user_input);
 
         // Add USER line — read fields under a single lock to avoid deadlock
-        let user_name = {
+        // 剧本玩家台词归属当前附身身份（与 handle_user_message 同语义）
+        let (user_name, possessed_role_id) = {
             let gs = ctx.game_status.lock().await;
-            gs.player.user_name.clone()
+            (gs.player.user_name.clone(), gs.possessed_role_id)
         };
         let line = LineBase {
             content: user_input,
             attribute: LineAttributeExt(LineAttribute::User),
             display_name: Some(user_name),
-            sender_role_id: Some(0),
+            sender_role_id: Some(possessed_role_id),
             ..Default::default()
         };
         ctx.game_status.lock().await.add_line(ctx.db, line).await?;

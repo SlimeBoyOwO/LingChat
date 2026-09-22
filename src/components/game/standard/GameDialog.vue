@@ -269,6 +269,32 @@ watch(showMobileMenu, (open) => setMobileMenuOpen(open));
 // 当前游戏状态（模板 v-show 判定回复显示区 / 输入框）
 const currentStatus = computed(() => gameStore.currentStatus);
 
+// ===== 附身同步 =====
+// 附身/身份切换只更新玩家名与副标题缓存（identity:possessed → gameStore）。
+// 空闲态下把它们同步到对话框头部标题；对话中标题由当前角色名驱动，此处不覆盖，
+// 避免把正在说话的 AI 名字顶掉。
+watch([() => gameStore.userName, () => gameStore.userSubtitle], ([name, subtitle]) => {
+  if (currentStatus.value !== "input") return;
+  uiStore.showCharacterTitle = name;
+  uiStore.showCharacterSubtitle = subtitle;
+});
+
+// character:switch 不再直写全局标题，输入待命态下由这里补位跟随当前对话对象：
+// 状态停在 input 时切换对话对象（God Agent 选下一位说话人），标题需立刻跟上，
+// 否则会停在上一句的名字上。对话中的标题由台词处理器/useDialogStatus 负责，不在此覆盖。
+watch(
+  () => gameStore.currentInteractRoleId,
+  (roleId) => {
+    if (currentStatus.value !== "input" || roleId == null) return;
+    // 角色数据在改写 currentInteractRoleId 之前已由切换事件加载，直接查内存即可；
+    // 缺失（如指向未在场角色）时保持标题不动，交由后续台词展示兜底。
+    const role = gameStore.getGameRole(roleId);
+    if (!role) return;
+    uiStore.showCharacterTitle = role.roleName;
+    uiStore.showCharacterSubtitle = role.roleSubTitle;
+  },
+);
+
 // 标题栏（角色名 + 副标题）切换 key：任一变化时整体一起滑出/滑入
 const titleSubtitleKey = computed(
   () => `${uiStore.showCharacterTitle}|${uiStore.showCharacterSubtitle}`,
@@ -386,7 +412,9 @@ function rearmNextMerge(appendedLine: string) {
   }
   const next = eventQueue.peek();
   if (!next || next.type !== "reply") return;
-  if (next.roleId !== gameStore.currentInteractRoleId) return;
+  // 与「正在展示的这句」同角色才续武装：currentInteractRoleId 可能已被 character:switch
+  // 提前改成下一位说话人，用它判定会把异角色的下一句追进当前气泡。
+  if (next.roleId !== gameStore.displaySpeakerRoleId) return;
   if (dialogueMerge.mergedLength + next.message.length > settingsStore.text.mergeLineThreshold) {
     // console.log(
     //   "原来的台词长度是:",

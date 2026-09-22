@@ -634,11 +634,45 @@ impl std::hash::Hash for GameRole {
 // Player
 // ==========================================
 
+/// 默认玩家身份实体在 `role` 表中的固定 id。
+///
+/// 该行永存且不可删（`RoleRepo::SYSTEM_PROTECTED_ROLE_IDS`），因此历史台词
+/// 的 `sender_role_id = 0` 无需任何改写：附身切换只改变"当前附身谁"，
+/// "这条台词原本归属默认身份"的语义天然保留。运行时所有涉及玩家归属的判断
+/// 都应引用本常量，不再散落字面值 0。
+pub const PLAYER_ROLE_ID: i32 = 0;
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Player {
     pub user_name: String,
     pub user_subtitle: String,
     pub user_prompt: String,
+}
+
+// ==========================================
+// RoleProfile
+// ==========================================
+
+/// 实体人设扩展（role.profile_json 的 JSON 结构）。
+/// 玩家身份实体的核心数据载体；AI 角色此列为 NULL。
+/// 字段全量 serde(default)，未来加字段不改表。
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct RoleProfile {
+    /// 副标题/称号
+    #[serde(default)]
+    pub subtitle: String,
+    /// 身份介绍：该实体的完整描述，同时充当人设材料（AI 控制时的 system 人设）
+    /// 与他人对它的认知摘要
+    #[serde(default)]
+    pub info: String,
+    // ── 空间玩法预留，本期不写任何逻辑 ──
+    #[serde(default)]
+    pub location_id: Option<String>,
+    #[serde(default)]
+    pub home_location_id: Option<String>,
+    #[serde(default)]
+    pub attributes: std::collections::HashMap<String, serde_json::Value>,
 }
 
 // ==========================================

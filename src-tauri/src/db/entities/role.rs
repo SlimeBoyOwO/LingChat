@@ -24,6 +24,8 @@ pub struct Model {
     pub name: String,
     pub role_type: RoleType,
     pub resource_folder: Option<String>,
+    /// 实体人设扩展（RoleProfile 的 JSON），可空；AI 角色保持 NULL，人设仍走 settings.yml。
+    pub profile_json: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

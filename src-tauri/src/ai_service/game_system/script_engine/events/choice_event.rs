@@ -133,13 +133,13 @@ impl ScriptEvent for ChoiceEvent {
         ctx.game_status.lock().await.script_status = Some(script_status);
 
         if !matched {
-            // 没有选项命中时，把原始输入作为 USER 台词写入
+            // 没有选项命中时，把原始输入作为 USER 台词写入（归属当前附身身份）
             let mut gs = ctx.game_status.lock().await;
             let line = LineBase {
                 content: user_choice,
                 attribute: LineAttributeExt(LineAttribute::User),
                 display_name: Some(gs.player.user_name.clone()),
-                sender_role_id: Some(0),
+                sender_role_id: Some(gs.possessed_role_id),
                 ..Default::default()
             };
             gs.add_line(ctx.db, line).await?;

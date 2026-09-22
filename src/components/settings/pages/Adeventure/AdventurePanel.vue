@@ -219,6 +219,9 @@ const { t } = useI18n();
 const props = defineProps<Props>();
 const adventureStore = useAdventureStore();
 
+/** 附身中禁止开始冒险：以扮演身份进剧本会让身份错乱，与后端校验同源 */
+const isPossessed = computed(() => gameStore.possessedRoleId !== 0);
+
 const loading = computed(() => adventureStore.loading);
 const adventures = computed(() => adventureStore.sortedAdventures);
 const completedCount = computed(() => adventureStore.completedCount);
@@ -395,6 +398,8 @@ async function fetchAdventures() {
 
 // CSS 和逻辑处理保持你的原始逻辑
 const getNodeClass = (adventure: AdventureInfo) => {
+  // 附身中整体置灰并拦截点击（与 locked 同款样式，覆盖原有悬停高亮）
+  if (isPossessed.value) return "bg-gray-800/30 border-gray-700/50 opacity-50 cursor-not-allowed";
   const baseClass = "bg-gray-800/50 border-gray-700 hover:bg-gray-800/80";
   switch (adventure.status) {
     case "completed":
@@ -463,15 +468,31 @@ const getUnlockHint = (adventure: AdventureInfo): string => {
 };
 
 const handleNodeClick = async (adventure: AdventureInfo) => {
+  if (isPossessed.value) {
+    uiStore.showNotification({
+      type: "warning",
+      title: t("ui.characterCard.startFailedTitle"),
+      message: t("ui.characterCard.scriptStartDisabledPossessed"),
+      skipTipsCheck: true,
+    });
+    return;
+  }
   if (adventure.status === "locked" || adventure.status === "completed") return;
   if (adventure.status === "unlocked") {
     try {
-      uiStore.showSettings = false;
-      gameStore.enterStoryMode(adventure.adventure_folder);
+      // 先等后端受理，成功后再关面板、进剧本模式，避免失败后卡进假剧本态
       await adventureStore.startAdventure(adventure.adventure_folder);
     } catch (error) {
-      console.error("启动冒险失败:", error);
+      uiStore.showNotification({
+        type: "warning",
+        title: t("ui.characterCard.startFailedTitle"),
+        message: String(error),
+        skipTipsCheck: true,
+      });
+      return;
     }
+    uiStore.showSettings = false;
+    gameStore.enterStoryMode(adventure.adventure_folder);
   }
 };
 </script>

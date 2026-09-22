@@ -1,4 +1,4 @@
-//! Player event — displays player text and adds a USER line.
+//! 玩家事件 —— 展示玩家台词并写入一条 USER 台词行。
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -40,7 +40,11 @@ impl PlayerEvent {
 #[async_trait]
 impl ScriptEvent for PlayerEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        let player_name = ctx.game_status.lock().await.player.user_name.clone();
+        // 一次加锁取出玩家名（缓存）与当前附身实体：剧本玩家台词归属当前附身身份
+        let (player_name, possessed_role_id) = {
+            let gs = ctx.game_status.lock().await;
+            (gs.player.user_name.clone(), gs.possessed_role_id)
+        };
         let display_name = self.display_name.clone().unwrap_or(player_name);
 
         let payload = PlayerPayload {
@@ -54,7 +58,7 @@ impl ScriptEvent for PlayerEvent {
             content: self.text.clone(),
             attribute: LineAttributeExt(LineAttribute::User),
             display_name: Some(display_name),
-            sender_role_id: Some(0),
+            sender_role_id: Some(possessed_role_id),
             ..Default::default()
         };
         ctx.game_status.lock().await.add_line(ctx.db, line).await?;

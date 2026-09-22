@@ -25,6 +25,13 @@
     class="role-container-transition pointer-events-none absolute h-full w-full origin-[center_0%]"
     :style="effectsLayerStyle"
   >
+    <!-- 附身（扮演中）角标：与立绘同层，随角色缩放/位移一起移动 -->
+    <div
+      v-if="possessed"
+      class="absolute top-2 left-1/2 z-10 -translate-x-1/2 rounded-full border border-white/30 bg-neutral-950/70 px-2.5 py-0.5 text-xs font-bold text-white shadow-md backdrop-blur-sm"
+    >
+      {{ $t("ui.characterCard.possessedBadge") }}
+    </div>
     <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
     <audio ref="bubbleAudio"></audio>
   </div>
@@ -43,6 +50,8 @@ import "@/assets/styles/avatar-animation.css";
 
 const props = defineProps<{
   role: GameRole;
+  /** 该角色是否正被玩家附身（扮演中）：立绘灰化并挂角标 */
+  possessed?: boolean;
   /** 投屏全局缩放：乘在角色基础 scale 上（主窗口缺省为 1，无影响） */
   castScale?: number;
   /** 投屏全局垂直偏移（像素，正值下移；主窗口缺省 0）。
@@ -162,8 +171,11 @@ const staticLayerStyle = computed(() => ({
 }));
 const effectsLayerStyle = computed(() => ({ ...roleLayerStyle.value, zIndex: "2" }));
 
+// 被附身的角色灰化降饱和，与「正在说话」的高亮立绘区分开
 const containerClasses = computed(() => ({
   [activeAnimationClass.value]: true,
+  grayscale: !!props.possessed,
+  "opacity-60": !!props.possessed,
 }));
 
 const bubbleClasses = computed(() => ({

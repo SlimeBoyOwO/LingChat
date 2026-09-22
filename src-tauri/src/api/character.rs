@@ -622,7 +622,8 @@ pub async fn update_role_settings(
     let yaml_path = base_path.join("settings.yml");
     write_json_as_yaml(&yaml_path, &save_data).map_err(|e| format!("保存失败: {e}"))?;
 
-    let runtime_updated = {
+    let options = crate::api::identity::prompt_options(&app);
+    let (runtime_updated, persona_updated) = {
         let service = state.ai_service.lock().await;
         let mut gs = service.game_status.lock().await;
         let voice_updated = gs
@@ -631,8 +632,25 @@ pub async fn update_role_settings(
         let live2d_updated = gs
             .role_manager
             .update_role_live2d_settings(role_id, &validated);
-        voice_updated || live2d_updated
+        // 人设字段（system_prompt/ai_name 等）是 SYSTEM 行内容与署名的来源，
+        // 已加载角色必须热更新并重建人设行，否则改名/改人设要重启才生效。
+        let persona_updated = gs
+            .role_manager
+            .update_role_persona_settings(role_id, &validated);
+        if persona_updated {
+            gs.rebuild_system_prompts(db, options)
+                .await
+                .map_err(|e| format!("重建角色人设失败: {}", e))?;
+        }
+        (voice_updated || live2d_updated, persona_updated)
     };
+
+    if persona_updated {
+        // 人设/署名变化会让角色列表的展示信息过期，通知前端刷新
+        if let Err(e) = app.emit("role:list-updated", ()) {
+            tracing::warn!("emit role:list-updated 失败: {e}");
+        }
+    }
 
     tracing::info!(
         "角色 {} 配置已保存到 {:?}, runtime_updated={}",

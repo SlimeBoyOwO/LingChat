@@ -97,7 +97,7 @@
         class="z-11 rounded-full"
         :roles="singleRole ? [singleRole] : []"
         mode="pet"
-        :active-speaker-id="gameStore.currentInteractRoleId"
+        :active-speaker-id="gameStore.displaySpeakerRoleId ?? gameStore.currentInteractRoleId"
         :audio-element="mainAudio"
         :voice-data-url="voiceDataUrl"
         :max-fps="live2dFps"

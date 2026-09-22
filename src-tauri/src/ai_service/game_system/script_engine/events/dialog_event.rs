@@ -79,6 +79,23 @@ impl DialogueEvent {
         } else {
             None
         };
+
+        // 先写入台词再 emit：与 consume_sentence 主路径一致，且 tts_seq 要在本行
+        // 落库后才能数出——前端凭它回传 generate_line_voice，不再自行计数。
+        let line = LineBase {
+            content: text.to_string(),
+            attribute: LineAttributeExt(LineAttribute::Assistant),
+            sender_role_id: Some(role_id),
+            display_name: Some(display_name.to_string()),
+            original_emotion: Some(emotion.to_string()),
+            ..Default::default()
+        };
+        ctx.game_status.lock().await.add_line(ctx.db, line).await?;
+        let tts_seq = {
+            let gs = ctx.game_status.lock().await;
+            crate::api::chat::tts_seq_at(&gs.line_list, gs.line_list.len().saturating_sub(1))
+        };
+
         let payload = ReplyResponse {
             type_: "reply".to_string(),
             duration: self.duration.unwrap_or(-1.0),
@@ -97,19 +114,10 @@ impl DialogueEvent {
             user_message_seq: None,
             thinking: None,
             preview_gen,
+            tts_seq,
         };
         let _ = emit(ctx.app, "ai:reply", &payload);
 
-        // Add ASSISTANT line
-        let line = LineBase {
-            content: text.to_string(),
-            attribute: LineAttributeExt(LineAttribute::Assistant),
-            sender_role_id: Some(role_id),
-            display_name: Some(display_name.to_string()),
-            original_emotion: Some(emotion.to_string()),
-            ..Default::default()
-        };
-        ctx.game_status.lock().await.add_line(ctx.db, line).await?;
         Ok(())
     }
 }
