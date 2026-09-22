@@ -14,6 +14,7 @@ pub mod locale;
 pub mod memory;
 pub mod music;
 pub mod pet;
+pub mod player_identity;
 pub mod plugins;
 pub mod save;
 pub mod scene;

@@ -7,6 +7,9 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::AppState;
+use crate::ai_service::game_system::player_identity::{
+    RelationEndpoint, build_player_block, resolve_relation, role_relations,
+};
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
@@ -18,9 +21,24 @@ use crate::ai_service::types::{
 use crate::config::{self, AppConfig};
 use crate::db::entities::line;
 use crate::db::entities::line::LineAttribute;
-use crate::utils::prompt::{PromptOptions, PromptRole, sys_prompt_builder_by_settings};
+use crate::utils::prompt::{PromptOptions, PromptRole, sys_prompt_builder_by_settings_with_player};
 
 // ========== 响应类型 ==========
+
+/// 「我的身份」精简信息（给前端展示「我」是谁）。
+///
+/// 刻意与 `character_settings.user_name/user_subtitle` **分成两个出口**：
+/// 那两个字段是「该 AI 角色对我的称呼」，会被角色编辑页原样写回角色卡；
+/// 若把身份名字填进去，用户一编辑角色就会污染角色卡数据。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct PlayerIdentityInit {
+    /// 身份卡 id；`None` = 还没选过身份（前端显示为合成默认身份）
+    pub id: Option<String>,
+    pub name: String,
+    pub subtitle: String,
+    pub prompt: String,
+}
 
 /// 对应前端 `WebInitData`（`src/api/services/game-info.ts`）
 #[derive(Debug, Clone, Serialize)]
@@ -48,6 +66,13 @@ pub struct WebInitData {
     pub last_bgm_mode: Option<String>,
     /// 上次环境音轨道（JSON 字符串，前端解析）
     pub last_ambient_tracks: Option<String>,
+    /// 当前「我的身份」id（`None` = 未选择，使用合成的默认身份）
+    pub player_identity_id: Option<String>,
+    /// 当前「我的身份」精简信息
+    pub player_identity: PlayerIdentityInit,
+    /// 本局绑定的存档 id（`None` = 还没开存档）。
+    /// 前端据此锁定身份切换 UI——后端 `player_identity::guard` 是同一规则的权威实现。
+    pub active_save_id: Option<i32>,
     /// 当前活跃剧本名（读档/进入剧本模式时非空），供前端还原剧本模式 UI
     pub active_script: Option<String>,
 }
@@ -435,6 +460,9 @@ pub(crate) async fn build_web_init_data(
         background_effect,
         background_music,
         scene_awareness_enabled,
+        player_identity_id,
+        player_identity,
+        active_save_id,
         active_script,
     ) = {
         let mut gs = service.game_status.lock().await;
@@ -519,6 +547,13 @@ pub(crate) async fn build_web_init_data(
             })
             .collect();
 
+        let player_identity_id = gs.player.identity_id.clone();
+        let player_identity = PlayerIdentityInit {
+            id: gs.player.identity_id.clone(),
+            name: gs.player.user_name.clone(),
+            subtitle: gs.player.user_subtitle.clone(),
+            prompt: gs.player.user_prompt.clone(),
+        };
         // 剧本模式名（启动时 script_status 恒为 None，不影响 init_game 路径）
         let active_script = gs.script_status.as_ref().map(|s| s.name.clone());
 
@@ -532,6 +567,9 @@ pub(crate) async fn build_web_init_data(
             gs.background_effect.clone(),
             gs.background_music.clone(),
             scene_awareness,
+            player_identity_id,
+            player_identity,
+            gs.active_save_id,
             active_script,
         )
     };
@@ -587,6 +625,9 @@ pub(crate) async fn build_web_init_data(
         last_bgm_paused,
         last_bgm_mode,
         last_ambient_tracks,
+        player_identity_id,
+        player_identity,
+        active_save_id,
         active_script,
     };
     Ok(result)
@@ -633,17 +674,46 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
             .map_err(|e| format!("加载角色失败: {}", e))?;
 
         // 获取角色信息用于 System prompt 和 display_name
-        let role = gs
-            .role_manager
-            .get_loaded(role_id)
-            .ok_or_else(|| "角色未加载".to_string())?;
-        let name = role
-            .display_name
-            .clone()
-            .unwrap_or_else(|| format!("角色{}", role_id));
+        //
+        // 这里同时按**该角色自己的视角**解析「我」的身份与关系：
+        // 多 AI 场景下每个入场的角色各自注入一份自己视角的人设行，
+        // 因此角色 A 眼中的玩家称呼/关系不会泄漏给角色 B。
+        let (name, system_prompt) = {
+            let role = gs
+                .role_manager
+                .get_loaded(role_id)
+                .ok_or_else(|| "角色未加载".to_string())?;
+            let name = role
+                .display_name
+                .clone()
+                .unwrap_or_else(|| format!("角色{}", role_id));
 
-        // 构建角色的 system prompt
-        let system_prompt = sys_prompt_builder_by_settings(&role.settings, prompt_options);
+            let speaker = RelationEndpoint::Ai(role.settings.character_folder.clone());
+            let target = RelationEndpoint::Me(gs.player.identity_id.clone().unwrap_or_default());
+            let speaker_relations =
+                role_relations::load(&crate::api::data_dir(), &role.settings.character_folder);
+            let relation = resolve_relation(
+                &speaker,
+                &target,
+                &speaker_relations,
+                &gs.player.relations,
+                Some(gs.player.user_prompt.as_str()),
+            );
+            let player_block = build_player_block(
+                &gs.player.user_name,
+                &gs.player.user_subtitle,
+                &gs.player.user_prompt,
+                relation.as_ref(),
+            );
+
+            let system_prompt = sys_prompt_builder_by_settings_with_player(
+                &role.settings,
+                &gs.player.user_name,
+                &player_block,
+                prompt_options,
+            );
+            (name, system_prompt)
+        };
 
         // ★ 注入 System 行必须在 onstage_role 之前。
         //    仅当台词表中不存在本角色的 System 行时才添加（避免退出后重入时重复）。
@@ -669,6 +739,17 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
 
         // 上台 + 刷新记忆（让新角色感知后续台词）
         gs.onstage_role(role_id);
+
+        // 阵容变了 → 在场角色人设行里的「你眼里的其他角色」全部过期，重建后再刷新记忆。
+        crate::ai_service::game_system::player_identity::persona::rebuild_onstage_personas(
+            &mut gs,
+            db,
+            &crate::api::data_dir(),
+            prompt_options,
+        )
+        .await
+        .map_err(|e| format!("重建在场角色人设行失败: {}", e))?;
+
         gs.refresh_memories(db)
             .await
             .map_err(|e| format!("刷新记忆失败: {}", e))?;

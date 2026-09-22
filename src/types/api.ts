@@ -73,6 +73,8 @@ export interface SaveInfo {
   create_date: string;
   last_message?: string;
   screenshot?: string;
+  /** 本存档绑定的身份名字（老存档 / 身份卡已删除时为 undefined） */
+  identity_name?: string | null;
 }
 
 export interface MusicTrack {

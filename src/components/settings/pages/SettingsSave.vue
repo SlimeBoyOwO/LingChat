@@ -23,6 +23,19 @@
           }}
         </button>
       </div>
+
+      <!-- 本局身份：只读展示。换身份要走「角色 → 我的身份 → 用它开新对话」，故不提供切换下拉。 -->
+      <div class="mt-3 flex flex-col gap-1.5">
+        <label class="text-xs font-medium text-white/60">
+          {{ $t("settings.save.create.identityLabel") }}
+        </label>
+        <div class="text-sm text-white/85">
+          {{ gameStore.userName || $t("settings.save.create.identityUnknown") }}
+        </div>
+        <p class="text-[11px] leading-relaxed text-white/40">
+          {{ $t("settings.save.create.identityHint") }}
+        </p>
+      </div>
     </MenuItem>
     <MenuItem :title="$t('settings.save.list.title')">
       <template #header>
@@ -111,6 +124,14 @@
                   >
                     {{ save.last_message || $t("settings.save.list.noMessage") }}
                   </div>
+
+                  <!-- Line 4: Bound identity (old saves may not have one) -->
+                  <div
+                    v-if="save.identity_name"
+                    class="mt-1 truncate text-[11px] text-[#79d9ff]/70"
+                  >
+                    {{ $t("settings.save.list.identityLabel", { name: save.identity_name }) }}
+                  </div>
                 </div>
               </div>
 
@@ -166,7 +187,6 @@ import { MenuPage, MenuItem } from "../../ui";
 import { Input } from "../../base";
 import { useGameStore } from "../../../stores/modules/game";
 import { applyWebInitData } from "../../../stores/modules/game/actions";
-import { eventQueue } from "../../../core/events/event-queue";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
@@ -290,7 +310,7 @@ const handleCreateSave = async () => {
   actionLoading.value = -1;
   try {
     const cursor = gameStore.scriptReadCursor;
-    await invoke<CreateSaveResponse>("create_save", {
+    const created = await invoke<CreateSaveResponse>("create_save", {
       title: newSaveTitle.value.trim(),
       screenshotPath: await ensureScreenshot(),
       ...(cursor
@@ -302,6 +322,10 @@ const handleCreateSave = async () => {
           }
         : {}),
     });
+    // 建档后本局就绑定到这个存档了 → 身份锁定，UI 立刻反映
+    if (typeof created?.save_id === "number") {
+      gameStore.activeSaveId = created.save_id;
+    }
     newSaveTitle.value = "";
     uiStore.showSuccess({
       title: t("settings.save.msg.createSuccessTitle"),
@@ -402,6 +426,10 @@ const handleDeleteSave = async (saveId: number) => {
   actionLoading.value = saveId;
   try {
     await invoke("delete_save", { saveId });
+    // 删掉的正好是本局绑定的存档 → 本局解除绑定，身份重新可切换
+    if (gameStore.activeSaveId === saveId) {
+      gameStore.activeSaveId = null;
+    }
     uiStore.showSuccess({
       title: t("settings.save.msg.deleteSuccessTitle"),
       message: t("settings.save.msg.deleteSuccessMsg"),
