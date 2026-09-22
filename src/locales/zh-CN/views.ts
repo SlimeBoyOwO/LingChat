@@ -22,6 +22,7 @@ export default {
   },
   petMode: {
     settingsWindowTitle: "设置",
+    loading: "正在准备对话…",
   },
   credits: {
     escExit: "ESC 退出",
