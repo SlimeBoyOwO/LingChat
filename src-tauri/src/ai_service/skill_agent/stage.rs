@@ -1,6 +1,8 @@
 //! 阶段推导与按阶段上下文配置。
 //!
 //! 阶段由文件系统事实推导，不落库、不强制流程。
+//! 本模块只装配上下文：运行中唯一阻塞等待用户的确认是命令审批，它由工具入口触发，
+//! 与阶段无关；这里的「确认门」全部只是提示词。
 
 use std::path::{Path, PathBuf};
 
@@ -151,9 +153,10 @@ const DIRECTIVE_MODIFY: &str = "本阶段是修改既有剧本：\
 pub fn profile(stage: Stage) -> StageProfile {
     // 创作类阶段需要推理；机械落盘与按诊断码表修复不需要。
     match stage {
+        // 未绑定剧本时做的正是 hub 的 0/1/2 阶段（入口判断 + 类型 + 大纲），归属 writer
         Stage::Routing => StageProfile {
             thinking: None,
-            system_materials: &[HUB_DOC],
+            system_materials: &[HUB_DOC, WRITER_DOC],
             directive: "",
         },
         Stage::Setup => StageProfile {
@@ -189,8 +192,8 @@ pub fn build_stage_block(skills_dir: &Path, stage: Stage) -> String {
     }
     out.push_str(
         "\n\n以下技能文档是本阶段**必须遵守的角色指令**，不是参考资料。\
-         \n本阶段所需的技能文档已随本提示一并提供，无需再调用 read_skill；\
-         如需其他技能（如 file-operations）仍可自行加载。",
+         \n已注入的文档无需重复调用 read_skill；文档里引用到的其他角色技能，\
+         需要时仍用 read_skill 加载。",
     );
     out.push_str(&load_system_materials(skills_dir, stage));
     out
@@ -201,13 +204,20 @@ fn load_system_materials(skills_dir: &Path, stage: Stage) -> String {
     let mut out = String::new();
     for rel in profile(stage).system_materials {
         let path = skills_dir.join(rel);
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            // 材料缺失必须可见，否则模型会转而自行摸索。
-            tracing::warn!("[skill_agent] 阶段材料缺失: {}", path.display());
-            continue;
-        };
-        out.push_str(&format!("\n\n【角色指令 · {}】\n", rel));
-        out.push_str(text.trim_end());
+        match std::fs::read_to_string(&path) {
+            Ok(text) => {
+                out.push_str(&format!("\n\n【角色指令 · {}】\n", rel));
+                out.push_str(text.trim_end());
+            },
+            // 缺失必须让模型看见：只打日志的话，它会凭记忆补规范且无人知情
+            Err(_) => {
+                tracing::warn!("[skill_agent] 阶段材料缺失: {}", path.display());
+                out.push_str(&format!(
+                    "\n\n【角色指令缺失 · {rel}】\n本文件读取失败。其中的规范不得凭记忆代替，\
+                     也不要静默继续；先告知用户技能文件缺失（可能需要在数据同步里重新勾选）。\n"
+                ));
+            },
+        }
     }
     out
 }
@@ -311,21 +321,14 @@ fn tail_state(chapter_text: &str) -> String {
 }
 
 fn read_chapter(script_dir: &Path, id: &str) -> String {
-    std::fs::read_to_string(chapter_file(script_dir, id)).unwrap_or_default()
+    chapter_file(script_dir, id)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .unwrap_or_default()
 }
 
-/// 章节 id → 磁盘文件（id 用 `/` 分隔，不含扩展名）。
-fn chapter_file(script_dir: &Path, id: &str) -> PathBuf {
-    let mut path = script_dir.join("Chapters");
-    let mut segs = id.split('/').peekable();
-    while let Some(seg) = segs.next() {
-        if segs.peek().is_none() {
-            path.push(format!("{seg}.yaml"));
-        } else {
-            path.push(seg);
-        }
-    }
-    path
+/// 章节 id → 磁盘文件。布局与合法性交给 `script_paths`，避免两处各写一遍规则。
+fn chapter_file(script_dir: &Path, id: &str) -> Option<PathBuf> {
+    script_paths::resolve_chapter_file(script_dir, id, false).ok()
 }
 
 /// 丢弃已被超越的章节写入轮次，避免历史里堆积整章 YAML。
@@ -403,15 +406,15 @@ fn written_chapter_id(tool: &str, arguments: &str) -> Option<String> {
 pub fn check_written_chapter(snap: &StageSnapshot, path: &str) -> Option<String> {
     let dir = snap.script_dir.as_deref()?;
     let id = chapter_id_of_path(path)?;
-    // 只认本会话绑定剧本自己的章节
+    // 只认本会话绑定剧本自己的章节。写的是相对还是绝对路径不一定，所以用包含判断；
+    // 大小写无关是因为 Windows 上实际目录名可能与绑定值不同。
+    let normalized = path.replace('\\', "/").to_lowercase();
     let key = snap.script_key.as_deref()?;
-    if !path
-        .replace('\\', "/")
-        .contains(&format!("{key}/Chapters/"))
-    {
+    if !normalized.contains(&format!("{}/chapters/", key.to_lowercase())) {
         return None;
     }
-    let value = match crate::utils::yaml_file::read_yaml_as_json(&chapter_file(dir, &id)) {
+    let file = chapter_file(dir, &id)?;
+    let value = match crate::utils::yaml_file::read_yaml_as_json(&file) {
         Ok(v) => v,
         Err(e) => return Some(format!("`{}` 不是可解析的 YAML：{}", id, e)),
     };
@@ -533,11 +536,21 @@ id: Intro/02
     #[test]
     fn chapter_file_supports_subdirs() {
         let dir = Path::new("/pkg");
-        assert_eq!(chapter_file(dir, "01"), Path::new("/pkg/Chapters/01.yaml"));
         assert_eq!(
-            chapter_file(dir, "Intro/intro"),
-            Path::new("/pkg/Chapters/Intro/intro.yaml")
+            chapter_file(dir, "01").as_deref(),
+            Some(Path::new("/pkg/Chapters/01.yaml"))
         );
+        assert_eq!(
+            chapter_file(dir, "Intro/intro").as_deref(),
+            Some(Path::new("/pkg/Chapters/Intro/intro.yaml"))
+        );
+    }
+
+    #[test]
+    fn chapter_file_rejects_unsafe_ids() {
+        let dir = Path::new("/pkg");
+        assert_eq!(chapter_file(dir, "../story_config"), None);
+        assert_eq!(chapter_file(dir, "end"), None);
     }
 
     #[test]
@@ -597,6 +610,19 @@ id: Intro/02
         assert!(block.contains("【当前阶段】"));
         assert!(block.contains("必须遵守的角色指令"));
         assert!(block.contains("一轮只写一章"));
+        // 材料读不到时必须写进提示词，否则模型会凭记忆补规范
+        assert!(block.contains("角色指令缺失"), "{block}");
+    }
+
+    #[test]
+    fn routing_stage_includes_writer_doc() {
+        assert!(
+            profile(Stage::Routing)
+                .system_materials
+                .iter()
+                .any(|m| m.starts_with("script-writer/")),
+            "未绑定剧本时做的是 0/1/2 阶段，必须给 writer"
+        );
     }
 
     #[test]
