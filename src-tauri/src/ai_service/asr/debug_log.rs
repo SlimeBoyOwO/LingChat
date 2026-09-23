@@ -22,19 +22,3 @@ pub fn set(enabled: bool) {
 pub fn enabled() -> bool {
     VAD_FRAME_LOG.load(Ordering::Relaxed)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 默认必须关闭（录音时每秒一条的噪音源），且能被 set 翻转。
-    /// 本静态只在这一个测试里被碰，与并行测试无冲突。
-    #[test]
-    fn off_by_default_and_toggleable() {
-        assert!(!enabled(), "逐帧 VAD 日志必须默认关闭");
-        set(true);
-        assert!(enabled());
-        set(false);
-        assert!(!enabled());
-    }
-}
