@@ -41,34 +41,37 @@
               <span class="truncate text-[0.8rem] text-white/85">{{
                 c.title || t("scriptEditor.agentChat.conversationTitle", { id: c.id })
               }}</span>
-              <span
-                class="inline-flex items-center gap-1 transition-opacity"
-                :class="
-                  store.sending
-                    ? 'pointer-events-none opacity-30'
-                    : 'opacity-0 group-hover:opacity-100'
-                "
-              >
-                <Icon
-                  icon="edit"
-                  :size="13"
-                  class="hover:text-brand cursor-pointer text-white/50"
-                  :title="t('scriptEditor.agentChat.rename')"
-                  @click.stop="startRename(c)"
-                />
+              <span class="flex shrink-0 items-center gap-1.5">
+                <!-- 常显：这一行是「看它写了什么」的入口，藏进悬停组太难发现 -->
                 <span
-                  class="shrink-0 cursor-pointer rounded px-1 py-px text-[0.64rem] text-white/50 transition-colors hover:bg-white/10 hover:text-white/85"
+                  class="cursor-pointer rounded px-1 py-px text-[0.64rem] text-white/35 transition-colors hover:bg-white/10 hover:text-white/80"
                   :title="t('scriptEditor.agentChat.scriptDetailHint')"
                   @click.stop="openScriptDetail(c)"
                   >{{ t("scriptEditor.agentChat.scriptDetail") }}</span
                 >
-                <Icon
-                  icon="close"
-                  :size="13"
-                  class="cursor-pointer text-white/50 hover:text-red-300"
-                  :title="t('scriptEditor.agentChat.deleteConversation')"
-                  @click.stop="removeConversation(c)"
-                />
+                <span
+                  class="inline-flex items-center gap-1 transition-opacity"
+                  :class="
+                    store.sending
+                      ? 'pointer-events-none opacity-30'
+                      : 'opacity-0 group-hover:opacity-100'
+                  "
+                >
+                  <Icon
+                    icon="edit"
+                    :size="13"
+                    class="hover:text-brand cursor-pointer text-white/50"
+                    :title="t('scriptEditor.agentChat.rename')"
+                    @click.stop="startRename(c)"
+                  />
+                  <Icon
+                    icon="close"
+                    :size="13"
+                    class="cursor-pointer text-white/50 hover:text-red-300"
+                    :title="t('scriptEditor.agentChat.deleteConversation')"
+                    @click.stop="removeConversation(c)"
+                  />
+                </span>
               </span>
             </div>
             <div v-if="c.scriptKey" class="text-brand/70 mt-1 truncate font-mono text-[0.66rem]">
@@ -319,7 +322,11 @@
       </div>
     </div>
 
-    <AgentChapterPreview v-if="previewOpen" :script-key="previewKey" @close="previewOpen = false" />
+    <AgentChapterPreview
+      :open="previewOpen"
+      :script-key="previewKey"
+      @close="previewOpen = false"
+    />
   </div>
 </template>
 
