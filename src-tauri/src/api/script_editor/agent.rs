@@ -258,6 +258,21 @@ pub async fn editor_agent_get_messages(
         .collect())
 }
 
+/// 会话归属的剧本 key。库里没绑定时从历史写入路径反推（老会话、建包早于绑定逻辑的会话）。
+#[tauri::command]
+pub async fn editor_agent_resolve_script_key(
+    state: State<'_, AppState>,
+    conversation_id: i32,
+) -> Result<Option<String>, String> {
+    let conv = db::get_conversation(&state.db, conversation_id)
+        .await?
+        .ok_or_else(|| "会话不存在".to_string())?;
+    if conv.script_key.is_some() {
+        return Ok(conv.script_key);
+    }
+    Ok(db::derive_script_key(&state.db, conversation_id).await)
+}
+
 #[tauri::command]
 pub async fn editor_agent_clear_conversation(
     state: State<'_, AppState>,
@@ -284,8 +299,26 @@ pub async fn editor_agent_start_chat(
         .await?
         .ok_or_else(|| "会话不存在".to_string())?;
 
+    // 未绑定的会话先尝试从历史写入路径反推并补绑：否则阶段机制对它永远不生效
+    // （老会话、以及建包发生在绑定逻辑之前的会话）。
+    let script_key = match conv.script_key.clone() {
+        Some(key) => Some(key),
+        None => match db::derive_script_key(&state.db, conversation_id).await {
+            Some(key) => {
+                if let Err(e) =
+                    db::update_conversation_script_key(&state.db, conversation_id, key.clone())
+                        .await
+                {
+                    tracing::warn!("[skill_agent] 补绑剧本 key 失败: {}", e);
+                }
+                Some(key)
+            },
+            None => None,
+        },
+    };
+
     // 阶段由剧本包状态推导：决定本轮的思考模式与预注入材料。
-    let stage_snapshot = stage::derive(conv.script_key.as_deref());
+    let stage_snapshot = stage::derive(script_key.as_deref());
     let llm = resolve_skill_agent_provider(&app, stage::profile(stage_snapshot.stage).thinking)
         .ok_or_else(|| "未配置可用的 LLM provider，请在「LLM 设置」中配置模型后再试".to_string())?;
     let config = SkillAgentConfig::load(&app);
@@ -313,7 +346,7 @@ pub async fn editor_agent_start_chat(
         config,
         sandbox_dir,
         skills_dir,
-        script_key: conv.script_key.clone(),
+        script_key,
         stage_snapshot,
     };
 

@@ -332,6 +332,29 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     if (conv) conv.title = title;
   }
 
+  /**
+   * 重拉会话列表：一轮结束后后端可能刚补绑了剧本 key（老会话兜底）或自动命名了标题。
+   * 本地已知的标题不被后端的空值覆盖 —— 自动命名任务与本次刷新存在竞态。
+   */
+  async function refreshConversations() {
+    if (state.streaming.value) return;
+    try {
+      const known = new Map(state.conversations.value.map((c) => [c.id, c.title]));
+      const list = await api.listAgentConversations();
+      state.conversations.value = list.map((c) => ({
+        ...c,
+        title: c.title ?? known.get(c.id) ?? null,
+      }));
+    } catch (err) {
+      console.warn("[Agent] 刷新会话列表失败:", err);
+    }
+  }
+
+  /** 会话归属的剧本 key（后端会从历史写入路径反推），供只读章节预览使用。 */
+  async function resolveScriptKey(conversationId: number) {
+    return api.resolveAgentScriptKey(conversationId);
+  }
+
   function currentAssistant(): ChatItem | undefined {
     return state.items.value.find((m) => m.id === activeAssistantId);
   }
@@ -368,6 +391,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     activeAssistantId = null;
     activeConvId = null;
     channel = null;
+    void refreshConversations();
     state.version.value++;
   }
 
@@ -525,6 +549,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     sendMessage,
     cancel,
     resolveApproval,
+    resolveScriptKey,
     rewindMessage,
     loadSettings,
     loadSkills,

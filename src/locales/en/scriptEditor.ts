@@ -539,6 +539,20 @@ export default {
     placeholder:
       "Ask the script coach to write scripts, edit files, run commands\u2026 (Enter to send, Shift+Enter for newline)",
     deleteConfirm: 'Delete conversation "{title}" and all its messages?',
+    scriptDetail: "Details",
+    scriptDetailHint: "View the chapters this conversation has produced (read-only)",
+  },
+  agentScriptPreview: {
+    title: "Script details · {name}",
+    noScriptTitle: "Script details",
+    noScript: "This conversation has not produced a script package yet.",
+    readOnly: "Read-only",
+    loading: "Loading…",
+    loadFailed: "Failed to read the script: {error}",
+    chapters: "Chapters ({count})",
+    eventCount: "{count} events",
+    empty: "No finished chapters yet",
+    emptyChapter: "This chapter has no events yet",
   },
   agentSettings: {
     model: "Model to use",

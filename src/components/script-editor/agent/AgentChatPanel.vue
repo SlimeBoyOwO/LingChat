@@ -56,6 +56,12 @@
                   :title="t('scriptEditor.agentChat.rename')"
                   @click.stop="startRename(c)"
                 />
+                <span
+                  class="shrink-0 cursor-pointer rounded px-1 py-px text-[0.64rem] text-white/50 transition-colors hover:bg-white/10 hover:text-white/85"
+                  :title="t('scriptEditor.agentChat.scriptDetailHint')"
+                  @click.stop="openScriptDetail(c)"
+                  >{{ t("scriptEditor.agentChat.scriptDetail") }}</span
+                >
                 <Icon
                   icon="close"
                   :size="13"
@@ -312,6 +318,8 @@
         </div>
       </div>
     </div>
+
+    <AgentChapterPreview v-if="previewOpen" :script-key="previewKey" @close="previewOpen = false" />
   </div>
 </template>
 
@@ -323,6 +331,7 @@ import { useDialogStore } from "@/stores/modules/ui/dialog";
 import { useAgentStore } from "@/stores/modules/agent";
 import AgentThinkingBlock from "./AgentThinkingBlock.vue";
 import AgentToolCard from "./AgentToolCard.vue";
+import AgentChapterPreview from "./AgentChapterPreview.vue";
 import MarkdownText from "./MarkdownText.vue";
 import type { ConversationInfo } from "@/api/services/agent";
 import type { ChatItem, ChatRound, ToolRun } from "@/stores/modules/agent/state";
@@ -333,6 +342,17 @@ const dialogStore = useDialogStore();
 
 const draft = ref("");
 const composing = ref(false);
+
+// ==================== 章节预览（只读） ====================
+
+const previewOpen = ref(false);
+/** null = 该会话没有可预览的剧本（后端会先按存储值、再从历史写入路径反推） */
+const previewKey = ref<string | null>(null);
+
+async function openScriptDetail(c: ConversationInfo) {
+  previewKey.value = await store.resolveScriptKey(c.id);
+  previewOpen.value = true;
+}
 
 /**
  * 一轮的「思考/规划」展示文本（折叠思考块内容）：

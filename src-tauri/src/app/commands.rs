@@ -160,6 +160,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::script_editor::agent::editor_agent_delete_conversation,
         api::script_editor::agent::editor_agent_rename_conversation,
         api::script_editor::agent::editor_agent_get_messages,
+        api::script_editor::agent::editor_agent_resolve_script_key,
         api::script_editor::agent::editor_agent_clear_conversation,
         api::script_editor::agent::editor_agent_start_chat,
         api::script_editor::agent::editor_agent_stop_chat,

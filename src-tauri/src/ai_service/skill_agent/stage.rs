@@ -391,6 +391,19 @@ pub fn script_key_of_story_config(path: &str) -> Option<String> {
     (!key.is_empty()).then(|| key.to_string())
 }
 
+/// 从剧本包内任意写入路径反推 key（`…/scripts/<key…>/…`）。
+///
+/// key 的层级不固定（`standalone/x`、`character/角色/x`、扁平 `x`），所以拿已知的剧本包列表
+/// 去匹配，而不是猜切几段；嵌套包时优先最长匹配。`keys` 由调用方传入，便于一次扫描多处复用。
+pub(crate) fn script_key_of_script_path(path: &str, keys: &[String]) -> Option<String> {
+    let normalized = path.replace('\\', "/");
+    let mut keys: Vec<&String> = keys.iter().collect();
+    keys.sort_by_key(|k| std::cmp::Reverse(k.len()));
+    keys.into_iter()
+        .find(|k| normalized.contains(&format!("/scripts/{}/", k.trim_matches('/'))))
+        .cloned()
+}
+
 /// 若这是一次写章节文件的调用，返回章节 id。
 fn written_chapter_id(tool: &str, arguments: &str) -> Option<String> {
     if tool != "write_file" {
@@ -551,6 +564,31 @@ id: Intro/02
         let dir = Path::new("/pkg");
         assert_eq!(chapter_file(dir, "../story_config"), None);
         assert_eq!(chapter_file(dir, "end"), None);
+    }
+
+    #[test]
+    fn script_key_from_any_package_path() {
+        let keys = vec![
+            "standalone/我的剧本".to_string(),
+            "character/风雪/高塔逆位".to_string(),
+            "character/风雪/高塔逆位/嵌套".to_string(),
+        ];
+        let hit = |p: &str| script_key_of_script_path(p, &keys);
+        // 章节 / 设计稿 / 配置，以及 Windows 反斜杠路径都能反推
+        assert_eq!(
+            hit("D:/d/data/game_data/scripts/character/风雪/高塔逆位/Chapters/01.yaml").as_deref(),
+            Some("character/风雪/高塔逆位")
+        );
+        assert_eq!(
+            hit(r"data\game_data\scripts\standalone\我的剧本\.agent\design.md").as_deref(),
+            Some("standalone/我的剧本")
+        );
+        // 嵌套包优先最长匹配
+        assert_eq!(
+            hit("game_data/scripts/character/风雪/高塔逆位/嵌套/Chapters/01.yaml").as_deref(),
+            Some("character/风雪/高塔逆位/嵌套")
+        );
+        assert_eq!(hit("game_data/scenes.json"), None);
     }
 
     #[test]
