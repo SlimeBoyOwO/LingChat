@@ -114,7 +114,7 @@ impl GameRoleManager {
     /// 记忆系统未启用或角色未加载时返回空字符串。供 memory.get_current 工具调用。
     pub async fn get_role_memory_text(&self, role_id: i32) -> String {
         match self.memory_bank_systems.get(&role_id) {
-            Some(sys) if sys.is_enabled() => sys.get_system_memory_text().await,
+            Some(sys) if sys.is_enabled() => sys.get_memory_context_text().await,
             _ => String::new(),
         }
     }
@@ -367,7 +367,7 @@ impl GameRoleManager {
             );
 
             // 阶段 2: MemoryBank 启用时 — 同步后台结果 + 触发压缩 + 获取记忆文本
-            let (mb_exists, slice_start, system_addendum, short_term_prefix) = {
+            let (mb_exists, slice_start, memory_context) = {
                 let sys = self.memory_bank_systems.get(&rid);
                 match sys {
                     Some(s) if s.is_enabled() => {
@@ -377,12 +377,11 @@ impl GameRoleManager {
                         }
                         s.check_and_trigger_auto_update(source_lines);
                         let start = s.get_slice_start_index(source_lines).await;
-                        let sys_text = s.get_system_memory_text().await;
-                        let short = s.get_short_term_user_text().await;
-                        (true, start, sys_text, short)
+                        let context = s.get_memory_context_text().await;
+                        (true, start, context)
                     },
-                    Some(_) => (true, 0, String::new(), String::new()),
-                    None => (false, 0, String::new(), String::new()),
+                    Some(_) => (true, 0, String::new()),
+                    None => (false, 0, String::new()),
                 }
             };
 
@@ -410,13 +409,9 @@ impl GameRoleManager {
 
             // 阶段 4: 写入角色记忆
             if let Some(role) = self.loaded_roles.get_mut(&rid) {
-                let use_mb = mb_exists && mb_enabled && !system_addendum.is_empty();
+                let use_mb = mb_exists && mb_enabled && !memory_context.is_empty();
                 role.memory = if use_mb {
-                    Self::merge_memory_bank_into_context(
-                        built,
-                        &system_addendum,
-                        &short_term_prefix,
-                    )
+                    Self::merge_memory_bank_into_context(built, &memory_context)
                 } else {
                     built
                 };
@@ -658,64 +653,28 @@ impl GameRoleManager {
         Ok(())
     }
 
-    /// 将 MemoryBank 文本合并到 LLM 消息中。
-    ///
-    /// - `system_addendum`：合并到第一条 system 消息末尾
-    /// - `short_term_prefix`：前置到第一条 user 消息；没有 user 时在 system 后插入
-    ///
-    /// 另会合并连续出现的多条 system 消息为一条。
+    /// 将 MemoryBank 作为独立、低优先级的历史资料消息插入上下文。
+    /// 角色人设和用户消息均保持原样，避免历史摘要冒充当前用户输入或覆盖人设。
     fn merge_memory_bank_into_context(
         memory: Vec<LlmMessage>,
-        system_addendum: &str,
-        short_term_prefix: &str,
+        memory_context: &str,
     ) -> Vec<LlmMessage> {
         let mut out = memory;
-
-        if !system_addendum.trim().is_empty() {
-            if let Some(first) = out.first_mut() {
-                if first.role == "system" {
-                    let content = &first.content;
-                    if !content.contains(system_addendum) {
-                        first.content = format!("{}{}", content, system_addendum);
-                    }
-                } else {
-                    out.insert(0, LlmMessage::system(system_addendum));
-                }
-            } else {
-                out.push(LlmMessage::system(system_addendum));
-            }
-        }
-
-        if !short_term_prefix.trim().is_empty() {
-            let insert_at = out
+        let memory_context = memory_context.trim();
+        if memory_context.is_empty()
+            || out
                 .iter()
-                .position(|message| message.role != "system")
-                .unwrap_or(out.len());
-            if out
-                .get(insert_at)
-                .is_some_and(|message| message.role == "user")
-            {
-                let first_user = &mut out[insert_at];
-                if !first_user.content.contains(short_term_prefix) {
-                    first_user.content = format!("{}{}", short_term_prefix, first_user.content);
-                }
-            } else {
-                out.insert(insert_at, LlmMessage::user(short_term_prefix));
-            }
+                .any(|message| message.role == "system" && message.content == memory_context)
+        {
+            return out;
         }
 
-        // 合并连续 system 消息
-        let mut cleaned: Vec<LlmMessage> = Vec::new();
-        for msg in out {
-            if let Some(last) = cleaned.last_mut() {
-                if last.role == "system" && msg.role == "system" {
-                    last.content = format!("{}\n{}", last.content, msg.content);
-                    continue;
-                }
-            }
-            cleaned.push(msg);
-        }
-        cleaned
+        let insert_at = out
+            .iter()
+            .take_while(|message| message.role == "system")
+            .count();
+        out.insert(insert_at, LlmMessage::system(memory_context));
+        out
     }
 
     // ── 内部辅助方法（已有，未修改） ──
@@ -750,6 +709,45 @@ impl GameRoleManager {
         self.memory_bank_systems
             .get(&role_id)
             .map(|s| s.is_enabled())
+    }
+}
+
+#[cfg(test)]
+mod memory_context_tests {
+    use super::*;
+
+    #[test]
+    fn memory_context_is_separate_from_persona_and_user_message() {
+        let input = vec![
+            LlmMessage::system("不可变角色人设"),
+            LlmMessage::user("玩家当前消息"),
+        ];
+
+        let output = GameRoleManager::merge_memory_bank_into_context(input, "历史记忆资料");
+
+        assert_eq!(output.len(), 3);
+        assert_eq!(output[0].role, "system");
+        assert_eq!(output[0].content, "不可变角色人设");
+        assert_eq!(output[1].role, "system");
+        assert_eq!(output[1].content, "历史记忆资料");
+        assert_eq!(output[2].role, "user");
+        assert_eq!(output[2].content, "玩家当前消息");
+    }
+
+    #[test]
+    fn memory_context_follows_all_original_system_messages() {
+        let input = vec![
+            LlmMessage::system("角色人设"),
+            LlmMessage::system("系统规则"),
+            LlmMessage::user("当前消息"),
+        ];
+
+        let output = GameRoleManager::merge_memory_bank_into_context(input, "历史资料");
+
+        assert_eq!(output[0].content, "角色人设");
+        assert_eq!(output[1].content, "系统规则");
+        assert_eq!(output[2].content, "历史资料");
+        assert_eq!(output[3].content, "当前消息");
     }
 }
 

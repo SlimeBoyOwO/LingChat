@@ -117,7 +117,7 @@ pub struct AppConfig {
     /// 默认开启：genai 不做消息规范化，Gemini 等 provider 要求首条为 user。
     #[serde(default = "default_true")]
     pub memory_inject_continue_user: bool,
-    // 记忆段长度上限（字符数，0 = 不截断）：决定压缩喂给 LLM 的旧内容与运行时注入上下文的长度
+    // 记忆段语义压缩目标（字符数，0 = 不限制）：超出后交给 LLM 重新压缩，不做字符截断
     #[serde(default = "default_memory_short_term_max_chars")]
     pub memory_short_term_max_chars: u32,
     #[serde(default = "default_memory_long_term_max_chars")]

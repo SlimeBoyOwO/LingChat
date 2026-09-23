@@ -272,7 +272,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             &app_defaults.memory_short_term_max_chars.to_string(),
                         ),
                         description:
-                            "MEMORY_SHORT_TERM_MAX_CHARS — 近期回顾长度上限（字符数，默认 500，0 不截断）"
+                            "MEMORY_SHORT_TERM_MAX_CHARS — 近期回顾语义压缩目标（字符数，默认 500，0 不限制；不会直接截断）"
                                 .to_string(),
                         setting_type: "text".to_string(),
                     },
@@ -284,7 +284,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             &app_defaults.memory_long_term_max_chars.to_string(),
                         ),
                         description:
-                            "MEMORY_LONG_TERM_MAX_CHARS — 长期经历长度上限（字符数，默认 2000，0 不截断）"
+                            "MEMORY_LONG_TERM_MAX_CHARS — 长期经历语义压缩目标（字符数，默认 2000，0 不限制；不会直接截断）"
                                 .to_string(),
                         setting_type: "text".to_string(),
                     },
@@ -296,7 +296,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             &app_defaults.memory_user_info_max_chars.to_string(),
                         ),
                         description:
-                            "MEMORY_USER_INFO_MAX_CHARS — taの信息长度上限（字符数，默认 800，0 不截断）"
+                            "MEMORY_USER_INFO_MAX_CHARS — 玩家资料语义压缩目标（字符数，默认 800，0 不限制；不会直接截断）"
                                 .to_string(),
                         setting_type: "text".to_string(),
                     },
@@ -308,7 +308,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             &app_defaults.memory_promises_max_chars.to_string(),
                         ),
                         description:
-                            "MEMORY_PROMISES_MAX_CHARS — 重要约定长度上限（字符数，默认 800，0 不截断）"
+                            "MEMORY_PROMISES_MAX_CHARS — 重要约定语义压缩目标（字符数，默认 800，0 不限制；不会直接截断）"
                                 .to_string(),
                         setting_type: "text".to_string(),
                     },
