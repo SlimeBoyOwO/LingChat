@@ -553,6 +553,10 @@ export default {
     eventCount: "{count} イベント",
     empty: "完成した章はまだありません",
     emptyChapter: "この章にはまだイベントがありません",
+    jump: "ジャンプ",
+    jumpHint: "この章をシナリオエディタで開く",
+    previewFrom: "この章から試遊",
+    previewFromHint: "この章からシナリオを実行",
   },
   agentSettings: {
     model: "使用するモデル",

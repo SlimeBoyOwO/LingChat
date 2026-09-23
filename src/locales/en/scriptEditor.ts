@@ -553,6 +553,10 @@ export default {
     eventCount: "{count} events",
     empty: "No finished chapters yet",
     emptyChapter: "This chapter has no events yet",
+    jump: "Jump to",
+    jumpHint: "Open this chapter in the script editor",
+    previewFrom: "Play from here",
+    previewFromHint: "Run the script starting from this chapter",
   },
   agentSettings: {
     model: "Model to use",

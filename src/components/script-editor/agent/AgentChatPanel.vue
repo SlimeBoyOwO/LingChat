@@ -42,9 +42,9 @@
                 c.title || t("scriptEditor.agentChat.conversationTitle", { id: c.id })
               }}</span>
               <span class="flex shrink-0 items-center gap-1.5">
-                <!-- 常显：这一行是「看它写了什么」的入口，藏进悬停组太难发现 -->
+                <!-- 常显：这一行是「看它写了什么」的入口，做成发送键那种小号按钮 -->
                 <span
-                  class="cursor-pointer rounded px-1 py-px text-[0.64rem] text-white/35 transition-colors hover:bg-white/10 hover:text-white/80"
+                  class="border-brand/45 bg-brand/14 text-brand hover:bg-brand/24 shrink-0 cursor-pointer rounded-md border px-1.5 py-px text-[0.66rem] transition-colors"
                   :title="t('scriptEditor.agentChat.scriptDetailHint')"
                   @click.stop="openScriptDetail(c)"
                   >{{ t("scriptEditor.agentChat.scriptDetail") }}</span

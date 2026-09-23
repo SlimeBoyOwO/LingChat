@@ -519,6 +519,10 @@ export default {
     eventCount: "{count} 事件",
     empty: "還沒有寫好的章節",
     emptyChapter: "這一章還沒有事件",
+    jump: "跳轉",
+    jumpHint: "跳到劇本編輯器裡這一章",
+    previewFrom: "從本章試玩",
+    previewFromHint: "從這一章開始運行劇本",
   },
   agentSettings: {
     model: "使用的模型",
