@@ -1281,6 +1281,9 @@ export default {
     energyWarmup: "Energy monitor warm-up (ms)",
     energyWarmupHint:
       "How long to wait after AI finishes speaking before voice trigger re-arms (default 100ms; set 0 to re-arm instantly. Increase if ambient sound right after AI speech causes false triggers)",
+    vadDebugLog: "Detailed VAD energy-detection log",
+    vadDebugLogHint:
+      "Write per-frame speech probability (frame/prob/len) to the log page, for diagnosing speech recognition that never triggers. Off by default; about 1 line per second while recording",
     sendMode: {
       title: "After recognition",
       fillOnly: "Fill input box (recommended)",

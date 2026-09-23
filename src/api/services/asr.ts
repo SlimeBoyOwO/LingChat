@@ -37,6 +37,8 @@ export interface AsrSettings {
   vad_silence_ms: number;
   /** 能量监测启动缓冲期（毫秒）：TTS 播完恢复监听后该时长内不触发录音（默认 100，0=无缓冲） */
   energy_warmup_ms: number;
+  /** 是否输出逐帧 VAD 能量检测日志（frame/prob/len，默认关，排查识别不触发时打开） */
+  vad_debug_log: boolean;
   /** 语音输入快捷键（ShortcutBinding JSON 字符串，默认 {"key":"f8"}） */
   ptt_key: string;
   /** 失去焦点快捷键可用（全局快捷键）：窗口不在前台时快捷键仍可用（默认关） */
