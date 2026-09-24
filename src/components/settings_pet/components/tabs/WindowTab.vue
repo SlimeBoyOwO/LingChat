@@ -39,8 +39,7 @@
 
       <!-- 保存操作栏：完美复刻你的第3个卡片 (Anchor Logic) 样式 -->
       <div
-        class="mt-2 flex shrink-0 items-center justify-between rounded-xl border p-5 shadow-sm
-          transition-colors duration-300 md:col-span-2"
+        class="mt-2 flex shrink-0 items-center justify-between rounded-xl border p-5 shadow-sm transition-colors duration-300 md:col-span-2"
         :class="isDarkMode ? 'border-slate-700 bg-slate-800/80' : 'border-slate-200 bg-slate-50'"
       >
         <div class="flex flex-col gap-1.5">
@@ -65,8 +64,7 @@
         <!-- 将原有的圆形 Anchor 换成同样风格的 Save 按钮 -->
         <button
           @click="saveSettings"
-          class="flex h-12 cursor-pointer items-center justify-center rounded-full border px-6
-            text-sm font-bold shadow-sm transition-all hover:scale-105 active:scale-95"
+          class="flex h-12 cursor-pointer items-center justify-center rounded-full border px-6 text-sm font-bold shadow-sm transition-all hover:scale-105 active:scale-95"
           :class="
             isDarkMode
               ? 'border-indigo-900/50 bg-slate-700 text-indigo-400 hover:bg-slate-600'
@@ -82,69 +80,69 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, onMounted, reactive } from "vue";
-  import { useI18n } from "vue-i18n";
-  import { Save } from "lucide-vue-next";
-  import { getEnvConfigByKey, saveEnvConfigSettings } from "../../../../api/services/config";
-  import { reloadProactiveSystem } from "../../../../api/services/schedule";
-  import type { ConfigItem } from "../../../../api/services/config";
-  import SettingItem from "../../../base/items/SettingItem.vue";
+import { ref, onMounted, reactive } from "vue";
+import { useI18n } from "vue-i18n";
+import { Save } from "lucide-vue-next";
+import { getEnvConfigByKey, saveEnvConfigSettings } from "../../../../api/services/config";
+import { reloadProactiveSystem } from "../../../../api/services/schedule";
+import type { ConfigItem } from "../../../../api/services/config";
+import SettingItem from "../../../base/items/SettingItem.vue";
 
-  defineProps<{
-    isDarkMode: boolean;
-  }>();
+defineProps<{
+  isDarkMode: boolean;
+}>();
 
-  const settings = ref<Record<string, ConfigItem>>({});
-  const { t } = useI18n();
-  const saveStatus = reactive({
-    message: "",
-    color: "#10b981", // 成功颜色
+const settings = ref<Record<string, ConfigItem>>({});
+const { t } = useI18n();
+const saveStatus = reactive({
+  message: "",
+  color: "#10b981", // 成功颜色
+});
+
+const saveSettings = async () => {
+  const formData: Record<string, string> = {};
+  Object.entries(settings.value).forEach(([key, config]) => {
+    formData[key] = config.value;
   });
 
-  const saveSettings = async () => {
-    const formData: Record<string, string> = {};
-    Object.entries(settings.value).forEach(([key, config]) => {
-      formData[key] = config.value;
-    });
+  saveStatus.message = t("pet.window.saving");
+  saveStatus.color = "#6366f1"; // 靛蓝色提示
 
-    saveStatus.message = t("pet.window.saving");
-    saveStatus.color = "#6366f1"; // 靛蓝色提示
+  try {
+    saveStatus.message = (await saveEnvConfigSettings(formData)).message;
+    saveStatus.color = "#10b981";
+    reloadProactiveSystem();
+    await loadConfig();
+  } catch (error: any) {
+    saveStatus.message = t("pet.window.error", { message: error.message });
+    saveStatus.color = "#ef4444";
+  } finally {
+    setTimeout(() => {
+      saveStatus.message = "";
+    }, 5000);
+  }
+};
 
-    try {
-      saveStatus.message = (await saveEnvConfigSettings(formData)).message;
-      saveStatus.color = "#10b981";
-      reloadProactiveSystem();
-      await loadConfig();
-    } catch (error: any) {
-      saveStatus.message = t("pet.window.error", { message: error.message });
-      saveStatus.color = "#ef4444";
-    } finally {
-      setTimeout(() => {
-        saveStatus.message = "";
-      }, 5000);
-    }
-  };
+const loadConfig = async () => {
+  const configKeys = [
+    "ENABLE_PROACTIVE_SYSTEM",
+    "MAX_PROACTIVE_TIMES",
+    "ENABLE_VISUAL_PRECEPTION",
+    "SCREEN_WEIGHT",
+    "ENABLE_TOPIC_CREATER",
+    "TOPIC_WEIGHT",
+    "ENABLE_TODO_PRECEPTION",
+    "TODO_WEIGHT",
+    "ENABLE_SCHEDULE_REMINDER",
+    "ENABLE_IMPORTANT_DAY_REMINDER",
+  ];
 
-  const loadConfig = async () => {
-    const configKeys = [
-      "ENABLE_PROACTIVE_SYSTEM",
-      "MAX_PROACTIVE_TIMES",
-      "ENABLE_VISUAL_PRECEPTION",
-      "SCREEN_WEIGHT",
-      "ENABLE_TOPIC_CREATER",
-      "TOPIC_WEIGHT",
-      "ENABLE_TODO_PRECEPTION",
-      "TODO_WEIGHT",
-      "ENABLE_SCHEDULE_REMINDER",
-      "ENABLE_IMPORTANT_DAY_REMINDER",
-    ];
+  for (const key of configKeys) {
+    settings.value[key] = await getEnvConfigByKey(key);
+  }
+};
 
-    for (const key of configKeys) {
-      settings.value[key] = await getEnvConfigByKey(key);
-    }
-  };
-
-  onMounted(async () => {
-    loadConfig();
-  });
+onMounted(async () => {
+  loadConfig();
+});
 </script>

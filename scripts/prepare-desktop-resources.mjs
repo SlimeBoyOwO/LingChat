@@ -192,7 +192,7 @@ manifest.files = sortedFiles;
 const manifestPath = join(stagingDir, "data_manifest.json");
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
 console.log(
-  `📄 已生成 data_manifest.json (data_version=${dataVersion}, ${Object.keys(manifest.files).length} 个文件)`
+  `📄 已生成 data_manifest.json (data_version=${dataVersion}, ${Object.keys(manifest.files).length} 个文件)`,
 );
 
 // 同时写入项目根目录（供 generate-data-manifest 兼容）

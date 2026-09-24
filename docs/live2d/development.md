@@ -16,28 +16,28 @@ The existing systems remain active. A static avatar is hidden only after a Live2
 
 ## Main Components
 
-| Path                                                      | Responsibility                                                                                                                                 |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/components/game/live2d/Live2DStage.vue`              | Stage ownership, role synchronization, model lifecycle, runtime-result ownership, layout, expressions, motions, gaze, and lip sync integration |
-| `src/components/game/live2d/live2d-stage-context.ts`      | Stage-local, read-only ready/unavailable role results for avatar fallback rendering                                                            |
-| `src/components/game/live2d/live2d-runtime.ts`            | Cubism Core and Pixi Live2D engine loading                                                                                                     |
-| `src/components/game/standard/GameRoleAvatar.vue`         | Role-intent dispatch plus shared avatar resolution, layout, animation, bubbles, touch, and effect audio                                        |
-| `src/components/game/standard/StaticRolePresentation.vue` | Traditional static image transition and load completion contract                                                                               |
-| `src/components/game/standard/Live2DRolePresentation.vue` | Stage-result consumption, static fallback visibility, and localized unavailable result                                                         |
-| `src/components/game/live2d/model-source.ts`              | Safe model3 reference rewriting and configured idle projection                                                                                 |
-| `src/components/game/live2d/live2d-interaction.ts`        | Pointer coordinate and gaze calculations                                                                                                       |
-| `src/components/game/live2d/live2d-layout.ts`             | Pure layout calculations shared with tests                                                                                                     |
-| `src/components/game/live2d/live2d-motion.ts`             | Motion start/finish attribution through engine lifecycle events                                                                                |
-| `src/components/game/live2d/useLive2dLipSync.ts`          | Passive audio decoding and mouth amplitude sampling                                                                                            |
-| `src/components/settings/character/Live2DSettings.vue`    | Import, variant editing, bindings, outfit mapping, and preview                                                                                 |
-| `src-tauri/src/api/live2d.rs`                             | Directory/ZIP import, inspection, validation, staging, rollback, and runtime refresh                                                           |
-| `src-tauri/src/ai_service/types.rs`                       | Serialized `settings.yml.live2d` contract                                                                                                      |
+| Path                                                      | Responsibility                                                                                                                                       |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/components/game/live2d/Live2DStage.vue`              | Stage ownership, role synchronization, model lifecycle, runtime-result ownership, layout, expressions, motions, gaze, and lip sync integration       |
+| `src/components/game/live2d/live2d-stage-context.ts`      | Stage-local, read-only ready/unavailable role results for avatar fallback rendering                                                                  |
+| `src/components/game/live2d/live2d-runtime.ts`            | Cubism Core and Pixi Live2D engine loading                                                                                                           |
+| `src/components/game/standard/GameRoleAvatar.vue`         | Role-intent dispatch plus shared avatar resolution, layout, animation, bubbles, touch, and effect audio                                              |
+| `src/components/game/standard/StaticRolePresentation.vue` | Traditional static image transition and load completion contract                                                                                     |
+| `src/components/game/standard/Live2DRolePresentation.vue` | Stage-result consumption, static fallback visibility, and localized unavailable result                                                               |
+| `src/components/game/live2d/model-source.ts`              | Safe model3 reference rewriting and configured idle projection                                                                                       |
+| `src/components/game/live2d/live2d-interaction.ts`        | Pointer coordinate and gaze calculations                                                                                                             |
+| `src/components/game/live2d/live2d-layout.ts`             | Pure layout calculations shared with tests                                                                                                           |
+| `src/components/game/live2d/live2d-motion.ts`             | Motion start/finish attribution through engine lifecycle events                                                                                      |
+| `src/components/game/live2d/useLive2dLipSync.ts`          | Passive audio decoding and mouth amplitude sampling                                                                                                  |
+| `src/components/settings/character/Live2DSettings.vue`    | Import, variant editing, bindings, outfit mapping, and preview                                                                                       |
+| `src-tauri/src/api/live2d.rs`                             | Directory/ZIP import, inspection, validation, staging, rollback, and runtime refresh                                                                 |
+| `src-tauri/src/ai_service/types.rs`                       | Serialized `settings.yml.live2d` contract, plus the `avatar_mode` / `avatar_mode_p` display-mode keys and the `pet_frameless` pet-window chrome flag |
 
 ## Render Stack
 
 Each mounted `GameRolesStage` creates at most one Pixi `Application`. All Live2D roles in that stage share it.
 
-`Live2DStage` owns model readiness and unavailability results. In standard mode, role DOM is rendered through its default slot. `GameRoleAvatar` uses only the presence of `role.live2d` to choose `Live2DRolePresentation` or `StaticRolePresentation`; the Live2D presentation consumes read-only results from the nearest stage context and reuses the static presentation for fallback. `GameRolesStage` must not copy model lifecycle results into its own state or choose a role's presentation from those results. Readiness only controls when the static fallback can be hidden.
+`Live2DStage` owns model readiness and unavailability results. In standard mode, role DOM is rendered through its default slot. `GameRoleAvatar` chooses `Live2DRolePresentation` or `StaticRolePresentation` through `prefersLive2d(role, "standard")` (`src/types/live2d.ts`), which is true when `role.live2d` exists **and** the character's `settings.yml` `avatar_mode` is not `"image"`. Pet mode makes the same call with `"pet"` against `avatar_mode_p`. `Live2DStage.syncRoles` is the only place that loads models, and it applies the same predicate with its `mode` prop, so a role set to `image` never creates a model or a Pixi `Application`. The Live2D presentation consumes read-only results from the nearest stage context and reuses the static presentation for fallback. `GameRolesStage` must not copy model lifecycle results into its own state or choose a role's presentation from those results. Readiness only controls when the static fallback can be hidden. Display mode is user intent and is deliberately independent of model lifecycle results — never derive it from load success or failure.
 
 The context is local to one mounted stage. Do not turn it into a global store, event bus, role registry, or persistence mechanism.
 

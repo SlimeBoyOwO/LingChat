@@ -13,11 +13,13 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use sea_orm::DatabaseConnection;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, oneshot};
 
+use crate::ai_service::affection::AffectionChangedPayload;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::god_agent::GodAgentCore;
+use crate::ai_service::god_agent::core::NpcAffectionView;
 use crate::ai_service::llm::LlmClient;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::processor::{
@@ -152,6 +154,10 @@ impl MessageGenerator {
             }
         }
 
+        // 好感度定期评估：真实对话累计到间隔后，后台 spawn 上帝 Agent 评估，
+        // 不阻塞本轮回复的呈现。
+        self.maybe_evaluate_affection().await;
+
         Ok(accumulated)
     }
 
@@ -254,6 +260,7 @@ impl MessageGenerator {
             return Ok(Vec::new());
         };
         let role = gs.get_role(&self.deps.db, rid).await?;
+        // 好感度不再逐轮注入上下文；变化时以旁白台词写入历史（见 maybe_evaluate_affection）
         Ok(role.memory.clone())
     }
 
@@ -407,6 +414,156 @@ impl MessageGenerator {
         Ok((true, selected_role_id))
     }
 
+    /// 好感度定期评估：真实对话每累计 `affection_eval_interval` 段，spawn 一个
+    /// 上帝 Agent 评估任务在后台调整在场 NPC 的六维好感度。
+    ///
+    /// 不阻塞本轮回复：快照在锁内取、LLM 调用在锁外、结果写角色文件并广播
+    /// `affection:changed`。游标先推进，即使评估失败也不会形成重试风暴。
+    async fn maybe_evaluate_affection(&self) {
+        let Some(god) = &self.deps.god_agent else {
+            return;
+        };
+        // 好感度系统总开关（高级设置）：关闭后不评估、不写旁白台词
+        if !god.config.affection_enabled {
+            return;
+        }
+        let interval = god.config.affection_eval_interval.max(1);
+        let window = god.config.recent_window;
+
+        let (npcs, lines) = {
+            let mut gs = self.deps.game_status.lock().await;
+            // 剧本模式下的对话不进好感度评估（剧本事件接口另行扩展）。
+            if gs.script_status.is_some() {
+                return;
+            }
+            let real_count = gs
+                .line_list
+                .iter()
+                .filter(|l| crate::ai_service::game_system::auto_save::is_real_dialogue(l))
+                .count();
+            if real_count < gs.affection_eval_cursor + interval {
+                return;
+            }
+            gs.affection_eval_cursor = real_count;
+
+            let npcs: Vec<NpcAffectionView> = gs
+                .present_role_ids
+                .iter()
+                .filter(|&&id| id != 0)
+                .filter_map(|&id| gs.role_manager.get_loaded(id))
+                .filter_map(|r| {
+                    let role_id = r.role_id?;
+                    Some(NpcAffectionView {
+                        role_id,
+                        name: r
+                            .display_name
+                            .clone()
+                            .unwrap_or_else(|| format!("角色{}", role_id)),
+                        subtitle: r.settings.ai_subtitle.clone().unwrap_or_default(),
+                        info: r.settings.info.clone().unwrap_or_default(),
+                        current: r.affection,
+                        negative: r.negative,
+                    })
+                })
+                .collect::<Vec<_>>();
+            if npcs.is_empty() {
+                return;
+            }
+            let lines: Vec<GameLine> = gs
+                .line_list
+                .iter()
+                .rev()
+                .take(window)
+                .cloned()
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect();
+            (npcs, lines)
+        };
+
+        let god = Arc::clone(god);
+        let game_status = self.deps.game_status.clone();
+        let app = self.deps.app.clone();
+        let db = self.deps.db.clone();
+        tauri::async_runtime::spawn(async move {
+            match god.evaluate_affection(&lines, &npcs).await {
+                Ok(adjustments) => {
+                    if adjustments.is_empty() {
+                        return;
+                    }
+                    let mut gs = game_status.lock().await;
+                    for adj in adjustments {
+                        let Some((values, negative)) = gs.role_manager.adjust_affection(
+                            adj.role_id,
+                            &adj.deltas,
+                            &adj.negative_deltas,
+                        ) else {
+                            continue;
+                        };
+                        // 持久化到本存档的全局变量 JSON（跟随存档保存）
+                        gs.set_variable(
+                            crate::ai_service::affection::var_key(adj.role_id),
+                            crate::ai_service::affection::state_to_value(
+                                &crate::ai_service::affection::AffectionState {
+                                    total: values.average(),
+                                    vector: values,
+                                    negative,
+                                },
+                            ),
+                        );
+                        let payload = AffectionChangedPayload {
+                            role_id: adj.role_id,
+                            deltas: adj.deltas.iter().cloned().collect(),
+                            negative_deltas: adj.negative_deltas.iter().cloned().collect(),
+                            average: values.average(),
+                            values,
+                            negative,
+                            reason: adj.reason,
+                        };
+                        tracing::info!(
+                            "[Affection] role_id={} 调整 {:?}（{}）→ 平均 {}",
+                            payload.role_id,
+                            payload.deltas,
+                            payload.reason,
+                            payload.average,
+                        );
+                        let _ = app.emit("affection:changed", payload);
+
+                        // 变化结果以旁白台词写入历史（复用换装/场景同款 add_line 台词
+                        // 工具），随记忆构建进入后续上下文；不做每轮注入，避免每次
+                        // 思维链都携带情感状态
+                        let name = gs
+                            .role_manager
+                            .get_loaded(adj.role_id)
+                            .and_then(|r| r.display_name.clone())
+                            .unwrap_or_else(|| format!("角色{}", adj.role_id));
+                        let player_name = gs.player.user_name.clone();
+                        let text = crate::ai_service::affection::describe_change_for_line(
+                            &name,
+                            &player_name,
+                            &values,
+                            &negative,
+                        );
+                        let line = LineBase {
+                            content: PromptRole::Narrator.build_prompt(&text),
+                            attribute: LineAttributeExt(LineAttribute::User),
+                            // sender_role_id=0 标记为玩家侧消息，与记忆构建器对齐
+                            // （System 属性会被记忆构建器去重丢弃，切勿使用）
+                            sender_role_id: Some(0),
+                            display_name: Some("系统".to_string()),
+                            ..Default::default()
+                        };
+                        if let Err(e) = gs.add_line(&db, line).await {
+                            tracing::warn!("[Affection] 写入好感度旁白台词失败: {e:#}");
+                        }
+                    }
+                },
+                Err(e) => tracing::warn!("[Affection] 好感度评估失败: {e:#}"),
+            }
+        });
+    }
+
     /// 通知前端当前说话角色已切换。
     fn emit_character_switch(&self, role_id: i32, name: &str) {
         let payload = serde_json::json!({
@@ -446,7 +603,10 @@ impl MessageGenerator {
             let marker = if user_message.trim().is_empty() {
                 format!("（用户「{}」发来一张图片，请查看图片内容。）", user_name)
             } else {
-                format!("【图片】用户「{}」发来一张图片，请结合图片内容回复。", user_name)
+                format!(
+                    "【图片】用户「{}」发来一张图片，请结合图片内容回复。",
+                    user_name
+                )
             };
             ctx.push(LlmMessage::user_with_image(marker, image));
             ctx
@@ -475,33 +635,21 @@ impl MessageGenerator {
 
         let (sentence_tx, sentence_rx) =
             mpsc::channel::<SentenceItem>(self.deps.concurrency.max(1) * 2);
-        let (publish_tx, mut publish_rx) =
-            mpsc::channel::<(usize, Option<ReplyResponse>)>(self.deps.concurrency.max(1) * 2);
+        let (publish_tx, publish_rx) =
+            mpsc::channel::<PublishItem>(self.deps.concurrency.max(1) * 2);
 
         // producer 与 consumer 共享的思考链缓冲：累积本轮生成的完整思考文本，
         // 由最终句（is_final）的 consumer 快照并挂载到台词行与前端响应。
         let thinking_buf = Arc::new(Mutex::new(String::new()));
 
-        // publisher：按索引顺序 emit 到前端
+        // publisher：按索引顺序 emit 到前端（并在推进到栅栏索引时回 ack）
         let app = self.deps.app.clone();
         let publisher = tokio::spawn(async move {
-            let mut next_index = 0usize;
-            let mut buf: HashMap<usize, Option<ReplyResponse>> = HashMap::new();
-            while let Some((idx, resp)) = publish_rx.recv().await {
-                buf.insert(idx, resp);
-                while let Some(item) = buf.remove(&next_index) {
-                    next_index += 1;
-                    if let Some(resp) = item {
-                        let is_final = resp.is_final;
-                        if let Err(e) = app.emit(event_names::AI_REPLY, &resp) {
-                            tracing::warn!("emit ai:reply 失败: {e}");
-                        }
-                        if is_final {
-                            return;
-                        }
-                    }
-                }
-            }
+            publish_ordered(publish_rx, |resp| {
+                app.emit(event_names::AI_REPLY, resp)
+                    .map_err(anyhow::Error::from)
+            })
+            .await
         });
 
         // consumer 池：并发处理句子
@@ -522,8 +670,26 @@ impl MessageGenerator {
                         let mut rx = sentence_rx.lock().await;
                         rx.recv().await
                     };
-                    let Some((sentence, index, is_final)) = item else {
+                    let Some(item) = item else {
                         break;
+                    };
+                    let (sentence, index, is_final) = match item {
+                        // 呈现栅栏不是句子：不解析、不翻译、不合成语音，只参与保序。
+                        // ack 由 publisher 推进到该索引时回传；若 publisher 已退出则
+                        // ack 随 send 失败被丢弃，工具侧据此 fail-closed。
+                        SentenceItem::BeforeTools { index, ack } => {
+                            if publish_tx
+                                .send(PublishItem::BeforeTools { index, ack })
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                            continue;
+                        },
+                        SentenceItem::Reply(sentence, index, is_final) => {
+                            (sentence, index, is_final)
+                        },
                     };
                     let resp = match consume_sentence(
                         &sdeps,
@@ -542,7 +708,12 @@ impl MessageGenerator {
                             None
                         },
                     };
-                    let _ = publish_tx.send((index, resp)).await;
+                    let _ = publish_tx
+                        .send(PublishItem::Reply {
+                            index,
+                            response: resp,
+                        })
+                        .await;
                     if is_final {
                         break;
                     }
@@ -559,12 +730,14 @@ impl MessageGenerator {
             thinking_buf,
             tool_calls_seen,
         );
-        let acc = producer.run().await.context("StreamProducer 失败")?;
+        let output = producer.run().await.context("StreamProducer 失败")?;
+        let acc = output.accumulated;
 
         for t in consumer_tasks {
             let _ = t.await;
         }
-        let _ = publisher.await;
+        // publisher 的返回值 = 是否成功发出过收尾句（`is_final`）。
+        let published_final = publisher.await.unwrap_or(false);
 
         // 流已消费完毕，工具消息收集完整：回填到助手回复之前的位置
         let tool_msgs = std::mem::take(&mut *tool_messages.lock().await);
@@ -620,10 +793,96 @@ impl MessageGenerator {
                 &self.deps.app,
                 &anyhow::anyhow!("模型没有返回任何内容，请再试一次"),
             );
+        } else if !published_final {
+            // 有正文、但没有一条 `is_final` 的回复成功落地——前端队列只认 is_final 或
+            // status:reset 来复位，缺了它界面会永远停在等待态。工具闭环下这条是可达的：
+            // 呈现栅栏已经把前导缓冲清空，工具后模型若不再产出正文，EOF 就没有可提升为
+            // 终句的内容（旧行为会重放前导，但那会让用户看到同一句话两次）。
+            // 这里只做温和复位：不重放、不弹错误提示。
+            tracing::warn!(
+                sent_final = output.sent_final,
+                "本轮没有成功发布收尾句，仅复位前端状态"
+            );
+            events::emit_status_reset(&self.deps.app);
         }
 
         Ok(acc)
     }
+}
+
+// ============================================================
+// 有序发布
+// ============================================================
+
+/// 投递到 publisher 的工作项。
+///
+/// 栅栏与回复共用同一个索引空间：publisher 只有在推进到栅栏索引（即所有更小索引
+/// 都已处理完，包括被丢弃的 `None` 结果）之后才会回 ack，从而保证"前导台词的
+/// `ai:reply` 已 emit"严格先于"工具事件 emit"。
+pub(super) enum PublishItem {
+    Reply {
+        index: usize,
+        response: Option<ReplyResponse>,
+    },
+    BeforeTools {
+        index: usize,
+        ack: oneshot::Sender<bool>,
+    },
+}
+
+impl PublishItem {
+    fn index(&self) -> usize {
+        match self {
+            Self::Reply { index, .. } | Self::BeforeTools { index, .. } => *index,
+        }
+    }
+}
+
+/// 按索引顺序发布；栅栏在其索引被推进到时回传"此前是否已发布过回复"。
+///
+/// 返回值 = **是否成功发出过收尾句（`is_final`）**：
+/// - `true`：某条 `is_final` 的回复已 emit；
+/// - `false`：`emit` 失败而中断，或通道关闭时都没等到终句。
+///
+/// `emit` 失败会立即返回，`pending` 里尚未回传的 ack 随函数一起被丢弃，
+/// 工具侧因此 fail-closed（不会在回复发布失败后继续执行工具）。
+///
+/// 生产与顺序契约测试共用本函数（`ordering_tests`）。
+pub(super) async fn publish_ordered(
+    mut rx: mpsc::Receiver<PublishItem>,
+    mut emit: impl FnMut(&ReplyResponse) -> Result<()>,
+) -> bool {
+    let mut next_index = 0usize;
+    let mut reply_before_fence = false;
+    let mut pending: HashMap<usize, PublishItem> = HashMap::new();
+    while let Some(item) = rx.recv().await {
+        pending.insert(item.index(), item);
+        while let Some(item) = pending.remove(&next_index) {
+            next_index += 1;
+            match item {
+                PublishItem::Reply {
+                    response: Some(resp),
+                    ..
+                } => {
+                    let is_final = resp.is_final;
+                    if let Err(e) = emit(&resp) {
+                        tracing::warn!("emit ai:reply 失败: {e}");
+                        return false;
+                    }
+                    reply_before_fence = true;
+                    if is_final {
+                        return true;
+                    }
+                },
+                PublishItem::Reply { response: None, .. } => {},
+                PublishItem::BeforeTools { ack, .. } => {
+                    let _ = ack.send(reply_before_fence);
+                    reply_before_fence = false;
+                },
+            }
+        }
+    }
+    false
 }
 
 // ============================================================
@@ -712,6 +971,16 @@ pub(crate) async fn consume_sentence(
 
     // 4. 写入 GameStatus
     add_assistant_line(deps, &response).await?;
+
+    // 会话代号复核（与 add_assistant_line 内守卫一致）：若本句写入已被丢弃，
+    // 说明读档/切角色/清对话已切换会话（旧流式任务游离），前端也已切到新会话——
+    // 这里返回 None，不再把这条过期回复发布给前端（防旧角色台词串进新对话展示）。
+    {
+        let gs = deps.game_status.lock().await;
+        if gs.preview_generation != deps.generation {
+            return Ok(None);
+        }
+    }
 
     Ok(Some(response))
 }

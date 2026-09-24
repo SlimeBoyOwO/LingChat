@@ -33,9 +33,9 @@ export function isIOS(): boolean {
  *  "Macintosh; Intel Mac OS X"（无 iPad 字样，isIOS 靠 MacIntel + 多点触控识别），
  *  裸 UA 正则会把移动端误判成 Mac，导致刘海屏安全区被 macOS 标题栏内边距覆盖。 */
 export function isMacOS(): boolean {
-  if (typeof navigator === 'undefined') return false
-  if (isIOS()) return false
-  return /macintosh|mac os/i.test(navigator.userAgent)
+  if (typeof navigator === "undefined") return false;
+  if (isIOS()) return false;
+  return /macintosh|mac os/i.test(navigator.userAgent);
 }
 
 /** 是否移动端（Android / iOS）。App.vue 的键盘/安全区/滚动适配仅移动端挂载，桌面端不运行。 */

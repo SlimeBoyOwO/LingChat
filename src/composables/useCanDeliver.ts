@@ -48,7 +48,7 @@ export function useCanDeliver() {
     if (val !== lastInvoked) {
       lastInvoked = val;
       invoke("proactive_set_can_deliver", { canDeliver: val }).catch((e) =>
-        console.error("[CanDeliver] invoke failed:", e)
+        console.error("[CanDeliver] invoke failed:", e),
       );
     }
   });

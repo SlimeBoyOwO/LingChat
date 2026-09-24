@@ -48,7 +48,7 @@ impl ScriptLayout {
 }
 
 fn scripts_root() -> PathBuf {
-    crate::init::static_copy::get_data_dir()
+    crate::data_dir::get_data_dir()
         .join("game_data")
         .join("scripts")
 }

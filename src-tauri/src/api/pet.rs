@@ -107,9 +107,8 @@ pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
                     // 追踪平滑度，因此只在位移 ≥1px 时发送。
                     let moved = match last_emitted {
                         Some((lx, ly)) => {
-                            (logical_x - lx).abs() >= 1.0
-                                || (logical_y - ly).abs() >= 1.0
-                        }
+                            (logical_x - lx).abs() >= 1.0 || (logical_y - ly).abs() >= 1.0
+                        },
                         None => true,
                     };
                     if moved {
@@ -256,11 +255,11 @@ pub async fn set_pet_mode(
         if enable {
             let scale_val = scale.unwrap_or(1.0);
 
-            // 窗口尺寸基于桌宠组件尺寸计算：BASE_AVATAR_SIZE = 240, CHAT_BASE_H = 45, DIALOG_MAX_BASE = 200
-            // GameRoleAvatar 头像框: Math.round(210 * scale)，使用标准桌宠尺寸:
-            // Width: 240 * scale, Height: (240 + 200 + 45) * scale = 485 * scale
+            // 窗口尺寸与前端 constants.ts 一一对应：宽 240（圆框 210 + 两侧 15 呼吸边），
+            // 高 = 头像带 210 + 气泡带预算 200 + 输入带 70 = 480。改前端带高时这里必须同步。
+            // GameRoleAvatar 头像框: Math.round(210 * scale)
             let width = (240.0 * scale_val) as u32;
-            let height = ((240.0 + 200.0 + 45.0) * scale_val) as u32;
+            let height = ((210.0 + 200.0 + 70.0) * scale_val) as u32;
 
             let _ = window.set_skip_taskbar(true);
             let _ = window.set_always_on_top(true);

@@ -1,7 +1,6 @@
 <template>
   <div
-    class="flex h-full min-h-0 w-full flex-wrap items-start gap-5 overflow-y-auto px-3 py-6
-      text-white text-shadow-2xs"
+    class="flex h-full min-h-0 w-full flex-wrap items-start gap-5 overflow-y-auto px-3 py-6 text-white text-shadow-2xs"
   >
     <MenuItem :title="t('settings.tts.title')" size="large">
       <template #header>
@@ -94,8 +93,7 @@
               <span class="text-xs text-white/45">{{ t("settings.tts.device.label") }}</span>
               <select
                 v-model="inferenceDevice"
-                class="mt-1 rounded-md border border-white/15 bg-white/5 px-2 py-1 text-sm
-                  text-white transition-colors outline-none focus:border-cyan-300/40"
+                class="mt-1 rounded-md border border-white/15 bg-white/5 px-2 py-1 text-sm text-white transition-colors outline-none focus:border-cyan-300/40"
                 :disabled="savingDevice"
                 @change="saveInferenceDevice"
               >
@@ -139,8 +137,7 @@
 
         <div
           v-if="status && !status.deberta_installed"
-          class="flex items-start gap-3 border-l-2 border-red-400 bg-red-500/8 px-4 py-3 text-sm
-            text-red-100"
+          class="flex items-start gap-3 border-l-2 border-red-400 bg-red-500/8 px-4 py-3 text-sm text-red-100"
         >
           <CircleAlert :size="18" class="mt-0.5 shrink-0 text-red-300" />
           <span>{{ t("settings.tts.deberta.warning") }}</span>
@@ -183,11 +180,7 @@
                   </p>
                 </div>
                 <button
-                  class="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.75
-                    rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80
-                    transition-colors duration-200 enabled:hover:border-cyan-300/40
-                    enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50
-                    disabled:cursor-not-allowed disabled:opacity-40"
+                  class="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.75 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
                   :disabled="downloadingId === asset.id || rowState(asset.id) === 'installed'"
                   @click="triggerDownload(asset.id)"
                 >
@@ -229,19 +222,13 @@
           <div class="flex min-w-0 gap-2">
             <input
               v-model="importVoiceId"
-              class="w-full min-w-0 flex-1 rounded-md border border-white/15 bg-black/25 px-2.5 py-2
-                text-[13px] text-white transition-colors outline-none focus:border-cyan-300/65
-                disabled:cursor-not-allowed disabled:opacity-45"
+              class="w-full min-w-0 flex-1 rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white transition-colors outline-none focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45"
               maxlength="64"
               :placeholder="t('settings.tts.import.voiceIdPlaceholder')"
               :aria-label="t('settings.tts.import.voiceIdPlaceholder')"
             />
             <button
-              class="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.75 rounded-md
-                border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80
-                transition-colors duration-200 enabled:hover:border-cyan-300/40
-                enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed
-                disabled:opacity-40"
+              class="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.75 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="busyAction !== null"
               @click="pickVoice"
             >
@@ -267,9 +254,7 @@
           <div class="flex min-w-0 flex-wrap items-center gap-2">
             <select
               v-model="styleVectorsTarget"
-              class="h-9 w-full min-w-0 flex-1 rounded-md border border-white/15 bg-black/25 px-2.5
-                py-2 text-[13px] text-white transition-colors outline-none focus:border-cyan-300/65
-                disabled:cursor-not-allowed disabled:opacity-45 sm:max-w-72"
+              class="h-9 w-full min-w-0 flex-1 rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white transition-colors outline-none focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45 sm:max-w-72"
               :disabled="busyAction !== null"
             >
               <option value="">{{ t("settings.tts.styleVectors.placeholder") }}</option>
@@ -282,11 +267,7 @@
               </option>
             </select>
             <button
-              class="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.75 rounded-md
-                border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80
-                transition-colors duration-200 enabled:hover:border-cyan-300/40
-                enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed
-                disabled:opacity-40"
+              class="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.75 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="busyAction !== null || !styleVectorsTarget"
               @click="pickStyleVectors"
             >
@@ -332,22 +313,19 @@
                 <p class="mt-1 flex items-center gap-1.5 text-[11px]">
                   <span
                     v-if="voice.kind === 'sbv2'"
-                    class="shrink-0 rounded border border-cyan-300/25 bg-cyan-600/10 px-1 py-px
-                      text-[10px] text-cyan-50/75"
+                    class="shrink-0 rounded border border-cyan-300/25 bg-cyan-600/10 px-1 py-px text-[10px] text-cyan-50/75"
                     :title="t('settings.tts.styleVectors.builtin')"
                     >{{ t("settings.tts.styleVectors.builtin") }}</span
                   >
                   <span
                     v-else-if="voice.has_style_vectors"
-                    class="shrink-0 rounded border border-cyan-300/25 bg-cyan-600/10 px-1 py-px
-                      text-[10px] text-cyan-50/75"
+                    class="shrink-0 rounded border border-cyan-300/25 bg-cyan-600/10 px-1 py-px text-[10px] text-cyan-50/75"
                     :title="t('settings.tts.styleVectors.configured')"
                     >{{ t("settings.tts.styleVectors.configured") }}</span
                   >
                   <span
                     v-else
-                    class="shrink-0 rounded border border-red-400/35 bg-red-400/10 px-1 py-px
-                      text-[10px] text-red-200"
+                    class="shrink-0 rounded border border-red-400/35 bg-red-400/10 px-1 py-px text-[10px] text-red-200"
                     :title="t('settings.tts.styleVectors.missing')"
                     >{{ t("settings.tts.styleVectors.missing") }}</span
                   >
@@ -379,9 +357,7 @@
           <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_17rem]">
             <textarea
               v-model="previewText"
-              class="min-h-28 w-full resize-y rounded-md border border-white/15 bg-black/25 px-2.5
-                py-2 text-[13px] text-white transition-colors outline-none focus:border-cyan-300/65
-                disabled:cursor-not-allowed disabled:opacity-45"
+              class="min-h-28 w-full resize-y rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white transition-colors outline-none focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45"
               maxlength="500"
               :placeholder="t('settings.tts.preview.placeholder')"
               :disabled="!status?.ready"
@@ -392,9 +368,7 @@
                 <span>{{ t("settings.tts.preview.voiceModel") }}</span>
                 <select
                   v-model="previewVoice"
-                  class="h-9 w-full rounded-md border border-white/15 bg-black/25 px-2.5 py-2
-                    text-[13px] text-white transition-colors outline-none focus:border-cyan-300/65
-                    disabled:cursor-not-allowed disabled:opacity-45"
+                  class="h-9 w-full rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white transition-colors outline-none focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45"
                   :disabled="!status?.ready"
                 >
                   <option value="">{{ t("settings.tts.preview.select") }}</option>
@@ -438,10 +412,7 @@
 
           <div class="mt-4 flex flex-wrap items-center gap-3">
             <button
-              class="inline-flex min-h-9 items-center justify-center gap-1.75 rounded-md border
-                border-cyan-300/40 bg-cyan-600/35 px-3.5 py-2 text-[13px] font-semibold text-cyan-50
-                transition-colors duration-200 enabled:hover:bg-cyan-600/50
-                disabled:cursor-not-allowed disabled:opacity-40"
+              class="inline-flex min-h-9 items-center justify-center gap-1.75 rounded-md border border-cyan-300/40 bg-cyan-600/35 px-3.5 py-2 text-[13px] font-semibold text-cyan-50 transition-colors duration-200 enabled:hover:bg-cyan-600/50 disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="!canPreview || previewing"
               @click="runPreview"
             >
@@ -475,9 +446,7 @@
             <input
               v-model="cosyKey"
               type="password"
-              class="w-full min-w-0 flex-1 rounded-md border border-white/15 bg-black/25 px-2.5 py-2
-                text-[13px] text-white transition-colors outline-none focus:border-cyan-300/65
-                disabled:cursor-not-allowed disabled:opacity-45 sm:max-w-80"
+              class="w-full min-w-0 flex-1 rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white transition-colors outline-none focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45 sm:max-w-80"
               :placeholder="
                 cosyKeyConfigured
                   ? t('settings.tts.cosyvoice.keyConfigured')
@@ -487,10 +456,7 @@
             />
             <button
               v-if="cosyKeyConfigured"
-              class="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.75 rounded-md
-                border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80
-                transition-colors duration-200 enabled:hover:border-cyan-300/40
-                enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50"
+              class="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.75 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50"
               @click="cosyKeyConfigured = false"
             >
               <KeyRound :size="16" />
@@ -498,10 +464,7 @@
             </button>
             <button
               v-else
-              class="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.75 rounded-md
-                border border-cyan-300/40 bg-cyan-600/35 px-3.5 py-2 text-[13px] font-semibold
-                text-cyan-50 transition-colors duration-200 enabled:hover:bg-cyan-600/50
-                disabled:cursor-not-allowed disabled:opacity-40"
+              class="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.75 rounded-md border border-cyan-300/40 bg-cyan-600/35 px-3.5 py-2 text-[13px] font-semibold text-cyan-50 transition-colors duration-200 enabled:hover:bg-cyan-600/50 disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="!cosyKey.trim()"
               @click="saveCosyKey"
             >
@@ -535,8 +498,7 @@
                     <span :class="statusClass(voice.status)">{{ statusLabel(voice.status) }}</span>
                     <button
                       v-if="statusPaused.has(voice.voice_id)"
-                      class="rounded border border-white/15 bg-white/5 px-1.5 py-px text-[10px]
-                        text-white/70 transition-colors hover:border-cyan-300/40 hover:text-cyan-50"
+                      class="rounded border border-white/15 bg-white/5 px-1.5 py-px text-[10px] text-white/70 transition-colors hover:border-cyan-300/40 hover:text-cyan-50"
                       @click="retryVoiceStatus(voice.voice_id)"
                     >
                       {{ t("settings.tts.cosyvoice.retryStatus") }}
@@ -586,9 +548,7 @@
                 }}</span>
                 <input
                   v-model="cosyVoiceName"
-                  class="h-9 w-full min-w-0 flex-1 rounded-md border border-white/15 bg-black/25
-                    px-2.5 py-2 text-[13px] text-white transition-colors outline-none
-                    focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45"
+                  class="h-9 w-full min-w-0 flex-1 rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white transition-colors outline-none focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45"
                   maxlength="32"
                   :placeholder="t('settings.tts.cosyvoice.voiceNamePlaceholder')"
                   :disabled="!cosyKeyConfigured || cosyRegistering"
@@ -600,9 +560,7 @@
                 }}</span>
                 <select
                   v-model="cosyLang"
-                  class="h-9 rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px]
-                    text-white transition-colors outline-none focus:border-cyan-300/65
-                    disabled:cursor-not-allowed disabled:opacity-45"
+                  class="h-9 rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white transition-colors outline-none focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45"
                   :disabled="!cosyKeyConfigured || cosyRegistering"
                 >
                   <option
@@ -615,11 +573,7 @@
                   </option>
                 </select>
                 <button
-                  class="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.75
-                    rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80
-                    transition-colors duration-200 enabled:hover:border-cyan-300/40
-                    enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50
-                    disabled:cursor-not-allowed disabled:opacity-40"
+                  class="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.75 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
                   :disabled="!cosyKeyConfigured || cosyRegistering"
                   @click="pickCosySample"
                 >
@@ -633,10 +587,7 @@
                   </span>
                 </button>
                 <button
-                  class="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.75
-                    rounded-md border border-cyan-300/40 bg-cyan-600/35 px-3.5 py-2 text-[13px]
-                    font-semibold text-cyan-50 transition-colors duration-200
-                    enabled:hover:bg-cyan-600/50 disabled:cursor-not-allowed disabled:opacity-40"
+                  class="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.75 rounded-md border border-cyan-300/40 bg-cyan-600/35 px-3.5 py-2 text-[13px] font-semibold text-cyan-50 transition-colors duration-200 enabled:hover:bg-cyan-600/50 disabled:cursor-not-allowed disabled:opacity-40"
                   :disabled="!cosyKeyConfigured || cosyRegistering || !cosySamplePath"
                   @click="registerCosyVoice()"
                 >
@@ -676,9 +627,7 @@
             <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_17rem]">
               <textarea
                 v-model="previewText"
-                class="min-h-28 w-full resize-y rounded-md border border-white/15 bg-black/25 px-2.5
-                  py-2 text-[13px] text-white transition-colors outline-none
-                  focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45"
+                class="min-h-28 w-full resize-y rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white transition-colors outline-none focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45"
                 maxlength="500"
                 :placeholder="t('settings.tts.cosyvoice.previewPlaceholder')"
                 :disabled="!cosyKeyConfigured"
@@ -687,9 +636,7 @@
                 <span>{{ t("settings.tts.cosyvoice.previewVoiceLabel") }}</span>
                 <select
                   v-model="cosyPreviewVoice"
-                  class="h-9 w-full rounded-md border border-white/15 bg-black/25 px-2.5 py-2
-                    text-[13px] text-white transition-colors outline-none focus:border-cyan-300/65
-                    disabled:cursor-not-allowed disabled:opacity-45"
+                  class="h-9 w-full rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white transition-colors outline-none focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45"
                   :disabled="!cosyKeyConfigured"
                 >
                   <option value="">{{ t("settings.tts.cosyvoice.previewSelect") }}</option>
@@ -706,10 +653,7 @@
             </div>
             <div class="mt-4 flex flex-wrap items-center gap-3">
               <button
-                class="inline-flex min-h-9 items-center justify-center gap-1.75 rounded-md border
-                  border-cyan-300/40 bg-cyan-600/35 px-3.5 py-2 text-[13px] font-semibold
-                  text-cyan-50 transition-colors duration-200 enabled:hover:bg-cyan-600/50
-                  disabled:cursor-not-allowed disabled:opacity-40"
+                class="inline-flex min-h-9 items-center justify-center gap-1.75 rounded-md border border-cyan-300/40 bg-cyan-600/35 px-3.5 py-2 text-[13px] font-semibold text-cyan-50 transition-colors duration-200 enabled:hover:bg-cyan-600/50 disabled:cursor-not-allowed disabled:opacity-40"
                 :disabled="!cosyKeyConfigured || !cosyPreviewVoice || cosyPreviewing"
                 @click="runCosyPreview"
               >
@@ -731,809 +675,806 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-  import { useI18n } from "vue-i18n";
-  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { open } from "@tauri-apps/plugin-dialog";
-  import type { DialogFilter } from "@tauri-apps/plugin-dialog";
-  import {
-    AudioLines,
-    Check,
-    CircleAlert,
-    FileArchive,
-    FileAudio,
-    FileDown,
-    FileJson,
-    HardDriveDownload,
-    KeyRound,
-    ListMusic,
-    LoaderCircle,
-    Mic2,
-    Play,
-    RefreshCw,
-    Trash2,
-    Volume2,
-    Wand2,
-  } from "lucide-vue-next";
-  import { MenuItem } from "@/components/ui";
-  import { useDialogStore } from "@/stores/modules/ui/dialog";
-  import { useUIStore } from "@/stores/modules/ui/ui";
-  import * as TtsLocal from "@/api/services/tts/tts-local";
-  import * as TtsCosyvoice from "@/api/services/tts/tts-cosyvoice";
-  import { speedToLengthScale } from "@/utils/tts/tts-speed";
-  import { catalogRowState } from "@/utils/tts/tts-download-state";
-  import type {
-    CatalogAsset,
-    TtsLocalInstallSnapshot,
-    TtsLocalStatus,
-    VoiceRecord,
-  } from "@/api/services/tts/tts-local";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
+import type { DialogFilter } from "@tauri-apps/plugin-dialog";
+import {
+  AudioLines,
+  Check,
+  CircleAlert,
+  FileArchive,
+  FileAudio,
+  FileDown,
+  FileJson,
+  HardDriveDownload,
+  KeyRound,
+  ListMusic,
+  LoaderCircle,
+  Mic2,
+  Play,
+  RefreshCw,
+  Trash2,
+  Volume2,
+  Wand2,
+} from "lucide-vue-next";
+import { MenuItem } from "@/components/ui";
+import { useDialogStore } from "@/stores/modules/ui/dialog";
+import { useUIStore } from "@/stores/modules/ui/ui";
+import * as TtsLocal from "@/api/services/tts/tts-local";
+import * as TtsCosyvoice from "@/api/services/tts/tts-cosyvoice";
+import { speedToLengthScale } from "@/utils/tts/tts-speed";
+import { catalogRowState } from "@/utils/tts/tts-download-state";
+import type {
+  CatalogAsset,
+  TtsLocalInstallSnapshot,
+  TtsLocalStatus,
+  VoiceRecord,
+} from "@/api/services/tts/tts-local";
 
-  const dialogStore = useDialogStore();
-  const uiStore = useUIStore();
-  const { t } = useI18n();
-  const catalog = ref<readonly CatalogAsset[]>([]);
-  const status = ref<TtsLocalStatus | null>(null);
-  const snapshot = ref<TtsLocalInstallSnapshot>({ assets: [], voices: [] });
-  const loading = ref(false);
-  // 引擎初始化（加载 DeBERTa ONNX）耗时数秒，期间用黄色"加载中"提示
-  const engineLoading = ref(false);
-  const busyAction = ref<string | null>(null);
-  const importVoiceId = ref("");
-  const styleVectorsTarget = ref("");
-  const notice = ref<{ kind: "success" | "error"; text: string } | null>(null);
-  const previewText = ref("こんにちは、これはローカル音声のテストです。");
-  const previewVoice = ref("");
-  const previewSpeed = ref(1);
-  const previewSdp = ref(0);
-  const previewing = ref(false);
-  const audioRef = ref<HTMLAudioElement | null>(null);
-  let audioUrl: string | null = null;
-  // cosyvoice 试听独立 audio 元素/URL（与本地 TTS 试听分开，避免同名 ref 互相覆盖）
-  const cosyAudioRef = ref<HTMLAudioElement | null>(null);
-  let cosyAudioUrl: string | null = null;
-  const progressByAsset = ref<Record<string, number>>({});
-  const downloadError = ref<Record<string, string>>({});
-  const downloadingId = ref<string | null>(null);
-  const localTtsEnabled = ref(false);
-  const savingLocalTts = ref(false);
-  // CosyVoice 云端语音克隆
-  const cosyKey = ref("");
-  const cosyKeyConfigured = ref(false);
-  const cosyModels = ref<string[]>([]);
-  const cosyVoices = ref<TtsCosyvoice.CosyVoiceView[]>([]);
-  const cosyVoiceName = ref("");
-  const cosyLang = ref("zh");
-  const cosySamplePath = ref("");
-  const cosyRegistering = ref(false);
-  const cosyPreviewVoice = ref("");
-  const cosyPreviewing = ref(false);
-  // 参考音频语言(cosyvoice-v3.5-flash 的 language_hints 官方支持范围)
-  const COSYVOICE_LANGUAGES = [
-    "zh",
-    "en",
-    "ja",
-    "ko",
-    "fr",
-    "de",
-    "ru",
-    "pt",
-    "th",
-    "id",
-    "vi",
-  ] as const;
-  // 云端合成固定使用音色所属模型(注册模型必须与之一致);列表为空时回退官方默认
-  const DEFAULT_COSYVOICE_MODEL = "cosyvoice-v3.5-flash";
+const dialogStore = useDialogStore();
+const uiStore = useUIStore();
+const { t } = useI18n();
+const catalog = ref<readonly CatalogAsset[]>([]);
+const status = ref<TtsLocalStatus | null>(null);
+const snapshot = ref<TtsLocalInstallSnapshot>({ assets: [], voices: [] });
+const loading = ref(false);
+// 引擎初始化（加载 DeBERTa ONNX）耗时数秒，期间用黄色"加载中"提示
+const engineLoading = ref(false);
+const busyAction = ref<string | null>(null);
+const importVoiceId = ref("");
+const styleVectorsTarget = ref("");
+const notice = ref<{ kind: "success" | "error"; text: string } | null>(null);
+const previewText = ref("こんにちは、これはローカル音声のテストです。");
+const previewVoice = ref("");
+const previewSpeed = ref(1);
+const previewSdp = ref(0);
+const previewing = ref(false);
+const audioRef = ref<HTMLAudioElement | null>(null);
+let audioUrl: string | null = null;
+// cosyvoice 试听独立 audio 元素/URL（与本地 TTS 试听分开，避免同名 ref 互相覆盖）
+const cosyAudioRef = ref<HTMLAudioElement | null>(null);
+let cosyAudioUrl: string | null = null;
+const progressByAsset = ref<Record<string, number>>({});
+const downloadError = ref<Record<string, string>>({});
+const downloadingId = ref<string | null>(null);
+const localTtsEnabled = ref(false);
+const savingLocalTts = ref(false);
+// CosyVoice 云端语音克隆
+const cosyKey = ref("");
+const cosyKeyConfigured = ref(false);
+const cosyModels = ref<string[]>([]);
+const cosyVoices = ref<TtsCosyvoice.CosyVoiceView[]>([]);
+const cosyVoiceName = ref("");
+const cosyLang = ref("zh");
+const cosySamplePath = ref("");
+const cosyRegistering = ref(false);
+const cosyPreviewVoice = ref("");
+const cosyPreviewing = ref(false);
+// 参考音频语言(cosyvoice-v3.5-flash 的 language_hints 官方支持范围)
+const COSYVOICE_LANGUAGES = [
+  "zh",
+  "en",
+  "ja",
+  "ko",
+  "fr",
+  "de",
+  "ru",
+  "pt",
+  "th",
+  "id",
+  "vi",
+] as const;
+// 云端合成固定使用音色所属模型(注册模型必须与之一致);列表为空时回退官方默认
+const DEFAULT_COSYVOICE_MODEL = "cosyvoice-v3.5-flash";
 
-  function voiceModelOf(voiceId: string): string {
-    const voice = cosyVoices.value.find((v) => v.voice_id === voiceId);
-    return voice?.model || cosyModels.value[0] || DEFAULT_COSYVOICE_MODEL;
+function voiceModelOf(voiceId: string): string {
+  const voice = cosyVoices.value.find((v) => v.voice_id === voiceId);
+  return voice?.model || cosyModels.value[0] || DEFAULT_COSYVOICE_MODEL;
+}
+// 审核状态轮询(参考 N.E.K.O.:5s 周期 + 在途/暂停去重 + 失败暂停手动重查)
+const statusPolling = new Set<string>();
+const statusPaused = new Set<string>();
+let statusTimer: ReturnType<typeof setInterval> | null = null;
+
+// 终态(不再轮询)
+function isTerminalStatus(status: string | null | undefined): boolean {
+  const s = status?.toLowerCase();
+  return s === "ok" || s === "undeployed";
+}
+
+// 状态徽标样式
+function statusClass(status: string | null | undefined): string {
+  switch (status?.toLowerCase()) {
+    case "ok":
+      return "text-emerald-300";
+    case "undeployed":
+      return "text-red-300";
+    case "deploying":
+      return "text-amber-300";
+    default:
+      return "text-white/40";
   }
-  // 审核状态轮询(参考 N.E.K.O.:5s 周期 + 在途/暂停去重 + 失败暂停手动重查)
-  const statusPolling = new Set<string>();
-  const statusPaused = new Set<string>();
-  let statusTimer: ReturnType<typeof setInterval> | null = null;
+}
 
-  // 终态(不再轮询)
-  function isTerminalStatus(status: string | null | undefined): boolean {
-    const s = status?.toLowerCase();
-    return s === "ok" || s === "undeployed";
+function statusLabel(status: string | null | undefined): string {
+  switch (status?.toLowerCase()) {
+    case "ok":
+      return t("settings.tts.cosyvoice.statusOk");
+    case "undeployed":
+      return t("settings.tts.cosyvoice.statusUndeployed");
+    case "deploying":
+      return t("settings.tts.cosyvoice.statusDeploying");
+    default:
+      return t("settings.tts.cosyvoice.statusUnknown");
   }
+}
 
-  // 状态徽标样式
-  function statusClass(status: string | null | undefined): string {
-    switch (status?.toLowerCase()) {
-      case "ok":
-        return "text-emerald-300";
-      case "undeployed":
-        return "text-red-300";
-      case "deploying":
-        return "text-amber-300";
-      default:
-        return "text-white/40";
-    }
-  }
-
-  function statusLabel(status: string | null | undefined): string {
-    switch (status?.toLowerCase()) {
-      case "ok":
-        return t("settings.tts.cosyvoice.statusOk");
-      case "undeployed":
-        return t("settings.tts.cosyvoice.statusUndeployed");
-      case "deploying":
-        return t("settings.tts.cosyvoice.statusDeploying");
-      default:
-        return t("settings.tts.cosyvoice.statusUnknown");
-    }
-  }
-
-  // 查单个音色状态:终态刷新列表;失败加入暂停集(显示"状态未知"+手动重查)
-  async function pollVoiceStatus(voiceId: string): Promise<void> {
-    statusPolling.add(voiceId);
-    try {
-      const status = await TtsCosyvoice.voiceStatus(voiceId);
-      if (isTerminalStatus(status)) {
-        await loadCosyvoice();
-      }
-      // 非终态:不刷新,下个 5s 周期自动重新加入再查
-    } catch {
-      statusPaused.add(voiceId);
+// 查单个音色状态:终态刷新列表;失败加入暂停集(显示"状态未知"+手动重查)
+async function pollVoiceStatus(voiceId: string): Promise<void> {
+  statusPolling.add(voiceId);
+  try {
+    const status = await TtsCosyvoice.voiceStatus(voiceId);
+    if (isTerminalStatus(status)) {
       await loadCosyvoice();
-    } finally {
-      statusPolling.delete(voiceId);
     }
+    // 非终态:不刷新,下个 5s 周期自动重新加入再查
+  } catch {
+    statusPaused.add(voiceId);
+    await loadCosyvoice();
+  } finally {
+    statusPolling.delete(voiceId);
   }
+}
 
-  // 每周期找出需要查的音色:非终态 + 不在途 + 未暂停
-  function startStatusPolling(): void {
-    for (const voice of cosyVoices.value) {
-      if (
-        isTerminalStatus(voice.status) ||
-        statusPolling.has(voice.voice_id) ||
-        statusPaused.has(voice.voice_id)
-      ) {
-        continue;
-      }
-      void pollVoiceStatus(voice.voice_id);
+// 每周期找出需要查的音色:非终态 + 不在途 + 未暂停
+function startStatusPolling(): void {
+  for (const voice of cosyVoices.value) {
+    if (
+      isTerminalStatus(voice.status) ||
+      statusPolling.has(voice.voice_id) ||
+      statusPaused.has(voice.voice_id)
+    ) {
+      continue;
     }
+    void pollVoiceStatus(voice.voice_id);
   }
+}
 
-  // 手动重查:解除暂停并立即查一次
-  async function retryVoiceStatus(voiceId: string): Promise<void> {
-    statusPaused.delete(voiceId);
-    await pollVoiceStatus(voiceId);
+// 手动重查:解除暂停并立即查一次
+async function retryVoiceStatus(voiceId: string): Promise<void> {
+  statusPaused.delete(voiceId);
+  await pollVoiceStatus(voiceId);
+}
+
+function stopStatusPolling(): void {
+  if (statusTimer) {
+    clearInterval(statusTimer);
+    statusTimer = null;
   }
+}
+// 推理设备（本地 TTS 热切换）：仅 Windows 显示 GPU 选项
+const inferenceDevice = ref("cpu");
+const savingDevice = ref(false);
+const isWindows = /win32|windows/i.test(navigator.userAgent);
+// 安卓 WebView 的 UA 也含 "Linux"，需排除（安卓无 GPU 推理后端）
+const isLinux = /linux/i.test(navigator.userAgent) && !/android/i.test(navigator.userAgent);
+// DirectML GPU 列表（device:<id> 选项）
+const gpuDevices = ref<{ id: number; name: string }[]>([]);
+let unlistenProgress: (() => void) | null = null;
+let unlistenInstallComplete: UnlistenFn | null = null;
+let unlistenDownloadComplete: UnlistenFn | null = null;
+let unlistenStatusChanged: UnlistenFn | null = null;
+let componentMounted = false;
 
-  function stopStatusPolling(): void {
-    if (statusTimer) {
-      clearInterval(statusTimer);
-      statusTimer = null;
-    }
+async function saveInferenceDevice() {
+  savingDevice.value = true;
+  try {
+    await TtsLocal.setDevice(inferenceDevice.value);
+    // 提示用型号名而非 device:<id>
+    const dev = gpuDevices.value.find((d) => `device:${d.id}` === inferenceDevice.value);
+    notice.value = {
+      kind: "success",
+      text: t("settings.tts.messages.deviceSwitched", {
+        name: dev ? dev.name : inferenceDevice.value,
+      }),
+    };
+  } catch (e) {
+    console.error("切换推理设备失败:", e);
+    notice.value = {
+      kind: "error",
+      text: t("settings.tts.messages.deviceSwitchFailed", { error: errorText(e) }),
+    };
+    // 失败时回滚下拉显示
+    inferenceDevice.value = "cpu";
+  } finally {
+    savingDevice.value = false;
   }
-  // 推理设备（本地 TTS 热切换）：仅 Windows 显示 GPU 选项
-  const inferenceDevice = ref("cpu");
-  const savingDevice = ref(false);
-  const isWindows = /win32|windows/i.test(navigator.userAgent);
-  // 安卓 WebView 的 UA 也含 "Linux"，需排除（安卓无 GPU 推理后端）
-  const isLinux = /linux/i.test(navigator.userAgent) && !/android/i.test(navigator.userAgent);
-  // DirectML GPU 列表（device:<id> 选项）
-  const gpuDevices = ref<{ id: number; name: string }[]>([]);
-  let unlistenProgress: (() => void) | null = null;
-  let unlistenInstallComplete: UnlistenFn | null = null;
-  let unlistenDownloadComplete: UnlistenFn | null = null;
-  let unlistenStatusChanged: UnlistenFn | null = null;
-  let componentMounted = false;
+}
 
-  async function saveInferenceDevice() {
-    savingDevice.value = true;
-    try {
-      await TtsLocal.setDevice(inferenceDevice.value);
-      // 提示用型号名而非 device:<id>
-      const dev = gpuDevices.value.find((d) => `device:${d.id}` === inferenceDevice.value);
-      notice.value = {
-        kind: "success",
-        text: t("settings.tts.messages.deviceSwitched", {
-          name: dev ? dev.name : inferenceDevice.value,
-        }),
-      };
-    } catch (e) {
-      console.error("切换推理设备失败:", e);
-      notice.value = {
-        kind: "error",
-        text: t("settings.tts.messages.deviceSwitchFailed", { error: errorText(e) }),
-      };
-      // 失败时回滚下拉显示
-      inferenceDevice.value = "cpu";
-    } finally {
-      savingDevice.value = false;
-    }
-  }
+type FilterIntent = "voice" | "style_vectors";
 
-  type FilterIntent = "voice" | "style_vectors";
-
-  // Android plugin-dialog interprets the `extensions` field as MIME types
-  // (not file extensions). ONNX / SBV2 have no registered MIME, so they fall
-  // back to application/octet-stream; the backend validates the actual file
-  // via archive::inspect_package and rejects unknown formats.
-  function dialogFilters(intent: FilterIntent): DialogFilter[] {
-    if (/android/i.test(navigator.userAgent)) {
-      switch (intent) {
-        case "voice":
-          return [{ name: "Voice model", extensions: ["application/octet-stream"] }];
-        case "style_vectors":
-          return [{ name: "style_vectors JSON", extensions: ["application/json", "text/json"] }];
-      }
-    }
+// Android plugin-dialog interprets the `extensions` field as MIME types
+// (not file extensions). ONNX / SBV2 have no registered MIME, so they fall
+// back to application/octet-stream; the backend validates the actual file
+// via archive::inspect_package and rejects unknown formats.
+function dialogFilters(intent: FilterIntent): DialogFilter[] {
+  if (/android/i.test(navigator.userAgent)) {
     switch (intent) {
       case "voice":
-        return [{ name: "SBV2 voice", extensions: ["sbv2", "onnx"] }];
+        return [{ name: "Voice model", extensions: ["application/octet-stream"] }];
       case "style_vectors":
-        return [{ name: "style_vectors JSON", extensions: ["json"] }];
+        return [{ name: "style_vectors JSON", extensions: ["application/json", "text/json"] }];
     }
   }
-
-  const canPreview = computed(() =>
-    Boolean(status.value?.ready && previewVoice.value && previewText.value.trim())
-  );
-
-  const voicesMissingStyleVectors = computed(() =>
-    snapshot.value.voices.filter((voice) => voice.kind === "onnx" && !voice.has_style_vectors)
-  );
-
-  function errorText(error: unknown): string {
-    if (typeof error === "string") return error;
-    if (error instanceof Error) return error.message;
-    return JSON.stringify(error);
+  switch (intent) {
+    case "voice":
+      return [{ name: "SBV2 voice", extensions: ["sbv2", "onnx"] }];
+    case "style_vectors":
+      return [{ name: "style_vectors JSON", extensions: ["json"] }];
   }
+}
 
-  function formatBytes(bytes: number): string {
-    if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-    const units = ["B", "KB", "MB", "GB"];
-    const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-    return `${(bytes / 1024 ** index).toFixed(index >= 2 ? 1 : 0)} ${units[index]}`;
-  }
+const canPreview = computed(() =>
+  Boolean(status.value?.ready && previewVoice.value && previewText.value.trim()),
+);
 
-  function selectedPath(value: string | string[] | null): string | null {
-    if (typeof value === "string") return value;
-    return value?.[0] ?? null;
-  }
+const voicesMissingStyleVectors = computed(() =>
+  snapshot.value.voices.filter((voice) => voice.kind === "onnx" && !voice.has_style_vectors),
+);
 
-  function normalizeVoiceId(value: string): string {
-    const fileName =
-      value
-        .split(/[\\/]/)
-        .pop()
-        ?.replace(/\.(sbv2|onnx)$/i, "") || "local-voice";
-    const normalized = fileName
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-    return (normalized || "local-voice").slice(0, 64);
-  }
+function errorText(error: unknown): string {
+  if (typeof error === "string") return error;
+  if (error instanceof Error) return error.message;
+  return JSON.stringify(error);
+}
 
-  async function refreshAll(): Promise<void> {
-    loading.value = true;
-    try {
-      const [nextCatalog, nextStatus, nextSnapshot] = await Promise.all([
-        TtsLocal.listCatalog(),
-        TtsLocal.status(),
-        TtsLocal.listInstalled(),
-      ]);
-      catalog.value = nextCatalog;
-      status.value = nextStatus;
-      snapshot.value = nextSnapshot;
-      if (
-        !previewVoice.value ||
-        !nextSnapshot.voices.some((voice) => voice.voice_id === previewVoice.value)
-      ) {
-        previewVoice.value = nextSnapshot.voices[0]?.voice_id ?? "";
-      }
-      await loadCosyvoice();
-    } catch (error) {
-      notice.value = {
-        kind: "error",
-        text: `${t("settings.tts.messages.readStatusFailed", { error: errorText(error) })}`,
-      };
-    } finally {
-      loading.value = false;
-    }
-  }
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** index).toFixed(index >= 2 ? 1 : 0)} ${units[index]}`;
+}
 
-  async function pickVoice(): Promise<void> {
-    const selection = await open({
-      multiple: false,
-      filters: dialogFilters("voice"),
-    });
-    const path = selectedPath(selection);
-    if (!path) return;
+function selectedPath(value: string | string[] | null): string | null {
+  if (typeof value === "string") return value;
+  return value?.[0] ?? null;
+}
 
-    busyAction.value = "import:voice";
-    notice.value = null;
-    try {
-      const voiceId = normalizeVoiceId(importVoiceId.value.trim() || path);
-      await TtsLocal.importFromPath(path, voiceId);
-      importVoiceId.value = "";
-      notice.value = {
-        kind: "success",
-        text: `${t("settings.tts.messages.importVoiceSuccess", { voiceId })}`,
-      };
-      await refreshAll();
-    } catch (error) {
-      notice.value = {
-        kind: "error",
-        text: `${t("settings.tts.messages.importFailed", { error: errorText(error) })}`,
-      };
-    } finally {
-      busyAction.value = null;
-    }
-  }
+function normalizeVoiceId(value: string): string {
+  const fileName =
+    value
+      .split(/[\\/]/)
+      .pop()
+      ?.replace(/\.(sbv2|onnx)$/i, "") || "local-voice";
+  const normalized = fileName
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return (normalized || "local-voice").slice(0, 64);
+}
 
-  async function pickStyleVectors(): Promise<void> {
-    if (!styleVectorsTarget.value) {
-      notice.value = { kind: "error", text: t("settings.tts.messages.styleVectorsNeedSelect") };
-      return;
-    }
-    const selection = await open({
-      multiple: false,
-      filters: dialogFilters("style_vectors"),
-    });
-    const path = selectedPath(selection);
-    if (!path) return;
-
-    const target = styleVectorsTarget.value;
-    busyAction.value = `style-vectors:${target}`;
-    notice.value = null;
-    try {
-      await TtsLocal.importStyleVectors(target, path);
-      notice.value = {
-        kind: "success",
-        text: `${t("settings.tts.messages.styleVectorsSuccess", { target })}`,
-      };
-      await refreshAll();
-    } catch (error) {
-      notice.value = {
-        kind: "error",
-        text: `${t("settings.tts.messages.importFailed", { error: errorText(error) })}`,
-      };
-    } finally {
-      busyAction.value = null;
-    }
-  }
-
-  async function removeVoice(voice: VoiceRecord): Promise<void> {
-    const confirmed = await dialogStore.confirm(
-      `${t("settings.tts.messages.deleteConfirm", { name: voice.display_name || voice.voice_id })}`,
-      t("settings.tts.messages.deleteConfirmTitle")
-    );
-    if (!confirmed) return;
-
-    busyAction.value = `delete:${voice.voice_id}`;
-    notice.value = null;
-    try {
-      await TtsLocal.deleteVoice(voice.voice_id);
-      notice.value = { kind: "success", text: t("settings.tts.messages.deleteSuccess") };
-      await refreshAll();
-    } catch (error) {
-      notice.value = {
-        kind: "error",
-        text: `${t("settings.tts.messages.deleteFailed", { error: errorText(error) })}`,
-      };
-    } finally {
-      busyAction.value = null;
-    }
-  }
-
-  async function removeDeberta(): Promise<void> {
-    const confirmed = await dialogStore.confirm(
-      t("settings.tts.messages.deleteDebertaConfirm"),
-      t("settings.tts.messages.deleteDebertaConfirmTitle")
-    );
-    if (!confirmed) return;
-
-    busyAction.value = "delete:deberta";
-    notice.value = null;
-    try {
-      await TtsLocal.deleteDeberta();
-      notice.value = { kind: "success", text: t("settings.tts.messages.deleteDebertaSuccess") };
-      await refreshAll();
-    } catch (error) {
-      notice.value = {
-        kind: "error",
-        text: `${t("settings.tts.messages.deleteDebertaFailed", { error: errorText(error) })}`,
-      };
-    } finally {
-      busyAction.value = null;
-    }
-  }
-
-  // Tauri invoke 返回 Vec<u8> 的三种形态:ArrayBuffer(自定义协议 Raw 路径)/
-  // Uint8Array / number[](postMessage fallback 序列化成 JSON 数组)。
-  // 统一归一化成 ArrayBuffer 才能正确构造 Blob——直接 Blob([number[]]) 会被
-  // String() 成逗号字符串,播放必然失败。
-  function toAudioBuffer(bytes: Uint8Array | ArrayBuffer | number[]): ArrayBuffer {
-    if (bytes instanceof ArrayBuffer) return bytes;
-    if (ArrayBuffer.isView(bytes)) {
-      // TypedArray/DataView 可能是更大 ArrayBuffer 的部分视图(byteOffset/byteLength 限定),
-      // 直接返回 bytes.buffer 会带上视图外的无关字节,必须切出精确区间。
-      // Tauri invoke 返回的底层 buffer 实际一定是 ArrayBuffer(非 SharedArrayBuffer),断言安全
-      return bytes.buffer.slice(
-        bytes.byteOffset,
-        bytes.byteOffset + bytes.byteLength
-      ) as ArrayBuffer;
-    }
-    return new Uint8Array(bytes).buffer;
-  }
-
-  async function runPreview(): Promise<void> {
-    if (!canPreview.value) return;
-    previewing.value = true;
-    notice.value = null;
-    try {
-      const bytes = await TtsLocal.synthesizePreview({
-        text: previewText.value.trim(),
-        voiceId: previewVoice.value,
-        lengthScale: speedToLengthScale(previewSpeed.value),
-        sdpRatio: previewSdp.value,
-      });
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
-      audioUrl = URL.createObjectURL(new Blob([toAudioBuffer(bytes)], { type: "audio/wav" }));
-      await nextTick();
-      if (audioRef.value) {
-        audioRef.value.src = audioUrl;
-        await audioRef.value.play();
-      }
-    } catch (error) {
-      notice.value = {
-        kind: "error",
-        text: `${t("settings.tts.messages.previewFailed", { error: errorText(error) })}`,
-      };
-    } finally {
-      previewing.value = false;
-    }
-  }
-
-  async function loadLocalTtsSwitch(): Promise<void> {
-    try {
-      const switchStatus = await TtsLocal.getEnabled();
-      localTtsEnabled.value = switchStatus.effective_enabled;
-    } catch (error) {
-      notice.value = {
-        kind: "error",
-        text: `${t("settings.tts.messages.readSwitchFailed", { error: errorText(error) })}`,
-      };
-    }
-  }
-
-  async function saveLocalTtsSwitch(): Promise<void> {
-    savingLocalTts.value = true;
-    try {
-      // 开启时后端会同步 init 引擎（加载 DeBERTa 需数秒），期间显示"加载中"
-      if (localTtsEnabled.value) engineLoading.value = true;
-      const switchStatus = await TtsLocal.setEnabled(localTtsEnabled.value);
-      localTtsEnabled.value = switchStatus.effective_enabled;
-      // 开关命令会同步初始化/卸载引擎，刷新 status 让 ready 反映真实状态，
-      // 否则试听区域会一直停留在旧的"未就绪"禁用态。
-      await refreshAll();
-      if (localTtsEnabled.value) {
-        // 开启成功：左上角弹窗引导去角色语音设置切换 TTS 类型
-        uiStore.showNotification({
-          type: "info",
-          title: t("settings.tts.messages.enableHintTitle"),
-          message: t("settings.tts.messages.enableHintMessage"),
-          duration: 6000,
-          skipTipsCheck: true,
-        });
-      }
-      notice.value = {
-        kind: "success",
-        text: localTtsEnabled.value
-          ? status.value?.ready
-            ? t("settings.tts.messages.switchEnabled")
-            : t("settings.tts.messages.switchEnabledNotReady")
-          : t("settings.tts.messages.switchDisabled"),
-      };
-    } catch (error) {
-      localTtsEnabled.value = !localTtsEnabled.value;
-      notice.value = {
-        kind: "error",
-        text: `${t("settings.tts.messages.saveSwitchFailed", { error: errorText(error) })}`,
-      };
-    } finally {
-      engineLoading.value = false;
-      savingLocalTts.value = false;
-    }
-  }
-
-  function rowState(assetId: string) {
-    const asset = catalog.value.find((item) => item.id === assetId);
-    if (!asset) return "missing";
-    return catalogRowState({
-      asset,
-      progressPercent: progressByAsset.value[assetId],
-      errorMessage: downloadError.value[assetId],
-      status: status.value,
-      voices: snapshot.value.voices,
-    });
-  }
-
-  function rowLabel(assetId: string): string {
-    const state = rowState(assetId);
-    if (state === "installed") return t("settings.tts.download.installed");
-    if (state === "downloading") return t("settings.tts.download.downloading");
-    if (state === "error") return t("settings.tts.download.retry");
-    return t("settings.tts.download.start");
-  }
-
-  watch(
-    () => snapshot.value.voices,
-    (voices) => {
-      if (!voices.some((voice) => voice.voice_id === previewVoice.value)) {
-        previewVoice.value = voices[0]?.voice_id ?? "";
-      }
-      if (
-        styleVectorsTarget.value &&
-        !voices.some((voice) => voice.voice_id === styleVectorsTarget.value)
-      ) {
-        styleVectorsTarget.value = "";
-      }
-    }
-  );
-
-  onMounted(async () => {
-    componentMounted = true;
-    const [installComplete, downloadComplete, statusChanged] = await Promise.all([
-      listen("tts://install-complete", () => {
-        void refreshAll();
-      }),
-      listen("tts://download-complete", () => {
-        void refreshAll();
-      }),
-      // 历史页「生成语音」触发：生成前后端会广播，静默刷新引擎就绪状态
-      listen("tts://status-changed", () => {
-        void refreshAll();
-      }),
+async function refreshAll(): Promise<void> {
+  loading.value = true;
+  try {
+    const [nextCatalog, nextStatus, nextSnapshot] = await Promise.all([
+      TtsLocal.listCatalog(),
+      TtsLocal.status(),
+      TtsLocal.listInstalled(),
     ]);
-    if (!componentMounted) {
-      installComplete();
-      downloadComplete();
-      statusChanged();
-      return;
+    catalog.value = nextCatalog;
+    status.value = nextStatus;
+    snapshot.value = nextSnapshot;
+    if (
+      !previewVoice.value ||
+      !nextSnapshot.voices.some((voice) => voice.voice_id === previewVoice.value)
+    ) {
+      previewVoice.value = nextSnapshot.voices[0]?.voice_id ?? "";
     }
-    unlistenInstallComplete = installComplete;
-    unlistenDownloadComplete = downloadComplete;
-    unlistenStatusChanged = statusChanged;
-
-    await loadLocalTtsSwitch();
-    await refreshAll();
     await loadCosyvoice();
-    // 审核状态轮询(每 5s;终态自动停止,失败自动暂停)
-    statusTimer = setInterval(startStatusPolling, 5000);
-    startStatusPolling();
+  } catch (error) {
+    notice.value = {
+      kind: "error",
+      text: `${t("settings.tts.messages.readStatusFailed", { error: errorText(error) })}`,
+    };
+  } finally {
+    loading.value = false;
+  }
+}
 
-    // 加载 GPU 设备列表（Windows 用 DXGI，Linux 用 Vulkan 枚举特定显卡）
-    if (isWindows || isLinux) {
-      try {
-        const devices = await TtsLocal.listDevices();
-        gpuDevices.value = devices.map((d) => ({ id: d.id, name: d.name }));
-      } catch (e) {
-        console.error("枚举推理设备失败:", e);
-      }
-    }
-
-    // 读取当前推理设备（持久化配置），同步下拉框显示
-    try {
-      const current = await TtsLocal.getDevice();
-      if (current) inferenceDevice.value = current;
-    } catch (e) {
-      console.error("读取推理设备失败:", e);
-    }
-    if (!componentMounted) return;
-    unlistenProgress = TtsLocal.onDownloadProgress((progress) => {
-      progressByAsset.value = {
-        ...progressByAsset.value,
-        [progress.asset_id]: progress.percent,
-      };
-    });
+async function pickVoice(): Promise<void> {
+  const selection = await open({
+    multiple: false,
+    filters: dialogFilters("voice"),
   });
+  const path = selectedPath(selection);
+  if (!path) return;
 
-  onUnmounted(() => {
-    componentMounted = false;
-    stopStatusPolling();
+  busyAction.value = "import:voice";
+  notice.value = null;
+  try {
+    const voiceId = normalizeVoiceId(importVoiceId.value.trim() || path);
+    await TtsLocal.importFromPath(path, voiceId);
+    importVoiceId.value = "";
+    notice.value = {
+      kind: "success",
+      text: `${t("settings.tts.messages.importVoiceSuccess", { voiceId })}`,
+    };
+    await refreshAll();
+  } catch (error) {
+    notice.value = {
+      kind: "error",
+      text: `${t("settings.tts.messages.importFailed", { error: errorText(error) })}`,
+    };
+  } finally {
+    busyAction.value = null;
+  }
+}
+
+async function pickStyleVectors(): Promise<void> {
+  if (!styleVectorsTarget.value) {
+    notice.value = { kind: "error", text: t("settings.tts.messages.styleVectorsNeedSelect") };
+    return;
+  }
+  const selection = await open({
+    multiple: false,
+    filters: dialogFilters("style_vectors"),
+  });
+  const path = selectedPath(selection);
+  if (!path) return;
+
+  const target = styleVectorsTarget.value;
+  busyAction.value = `style-vectors:${target}`;
+  notice.value = null;
+  try {
+    await TtsLocal.importStyleVectors(target, path);
+    notice.value = {
+      kind: "success",
+      text: `${t("settings.tts.messages.styleVectorsSuccess", { target })}`,
+    };
+    await refreshAll();
+  } catch (error) {
+    notice.value = {
+      kind: "error",
+      text: `${t("settings.tts.messages.importFailed", { error: errorText(error) })}`,
+    };
+  } finally {
+    busyAction.value = null;
+  }
+}
+
+async function removeVoice(voice: VoiceRecord): Promise<void> {
+  const confirmed = await dialogStore.confirm(
+    `${t("settings.tts.messages.deleteConfirm", { name: voice.display_name || voice.voice_id })}`,
+    t("settings.tts.messages.deleteConfirmTitle"),
+  );
+  if (!confirmed) return;
+
+  busyAction.value = `delete:${voice.voice_id}`;
+  notice.value = null;
+  try {
+    await TtsLocal.deleteVoice(voice.voice_id);
+    notice.value = { kind: "success", text: t("settings.tts.messages.deleteSuccess") };
+    await refreshAll();
+  } catch (error) {
+    notice.value = {
+      kind: "error",
+      text: `${t("settings.tts.messages.deleteFailed", { error: errorText(error) })}`,
+    };
+  } finally {
+    busyAction.value = null;
+  }
+}
+
+async function removeDeberta(): Promise<void> {
+  const confirmed = await dialogStore.confirm(
+    t("settings.tts.messages.deleteDebertaConfirm"),
+    t("settings.tts.messages.deleteDebertaConfirmTitle"),
+  );
+  if (!confirmed) return;
+
+  busyAction.value = "delete:deberta";
+  notice.value = null;
+  try {
+    await TtsLocal.deleteDeberta();
+    notice.value = { kind: "success", text: t("settings.tts.messages.deleteDebertaSuccess") };
+    await refreshAll();
+  } catch (error) {
+    notice.value = {
+      kind: "error",
+      text: `${t("settings.tts.messages.deleteDebertaFailed", { error: errorText(error) })}`,
+    };
+  } finally {
+    busyAction.value = null;
+  }
+}
+
+// Tauri invoke 返回 Vec<u8> 的三种形态:ArrayBuffer(自定义协议 Raw 路径)/
+// Uint8Array / number[](postMessage fallback 序列化成 JSON 数组)。
+// 统一归一化成 ArrayBuffer 才能正确构造 Blob——直接 Blob([number[]]) 会被
+// String() 成逗号字符串,播放必然失败。
+function toAudioBuffer(bytes: Uint8Array | ArrayBuffer | number[]): ArrayBuffer {
+  if (bytes instanceof ArrayBuffer) return bytes;
+  if (ArrayBuffer.isView(bytes)) {
+    // TypedArray/DataView 可能是更大 ArrayBuffer 的部分视图(byteOffset/byteLength 限定),
+    // 直接返回 bytes.buffer 会带上视图外的无关字节,必须切出精确区间。
+    // Tauri invoke 返回的底层 buffer 实际一定是 ArrayBuffer(非 SharedArrayBuffer),断言安全
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  }
+  return new Uint8Array(bytes).buffer;
+}
+
+async function runPreview(): Promise<void> {
+  if (!canPreview.value) return;
+  previewing.value = true;
+  notice.value = null;
+  try {
+    const bytes = await TtsLocal.synthesizePreview({
+      text: previewText.value.trim(),
+      voiceId: previewVoice.value,
+      lengthScale: speedToLengthScale(previewSpeed.value),
+      sdpRatio: previewSdp.value,
+    });
     if (audioUrl) URL.revokeObjectURL(audioUrl);
-    if (cosyAudioUrl) URL.revokeObjectURL(cosyAudioUrl);
-    unlistenProgress?.();
-    unlistenProgress = null;
-    unlistenInstallComplete?.();
-    unlistenInstallComplete = null;
-    unlistenDownloadComplete?.();
-    unlistenDownloadComplete = null;
-    unlistenStatusChanged?.();
-    unlistenStatusChanged = null;
+    audioUrl = URL.createObjectURL(new Blob([toAudioBuffer(bytes)], { type: "audio/wav" }));
+    await nextTick();
+    if (audioRef.value) {
+      audioRef.value.src = audioUrl;
+      await audioRef.value.play();
+    }
+  } catch (error) {
+    notice.value = {
+      kind: "error",
+      text: `${t("settings.tts.messages.previewFailed", { error: errorText(error) })}`,
+    };
+  } finally {
+    previewing.value = false;
+  }
+}
+
+async function loadLocalTtsSwitch(): Promise<void> {
+  try {
+    const switchStatus = await TtsLocal.getEnabled();
+    localTtsEnabled.value = switchStatus.effective_enabled;
+  } catch (error) {
+    notice.value = {
+      kind: "error",
+      text: `${t("settings.tts.messages.readSwitchFailed", { error: errorText(error) })}`,
+    };
+  }
+}
+
+async function saveLocalTtsSwitch(): Promise<void> {
+  savingLocalTts.value = true;
+  try {
+    // 开启时后端会同步 init 引擎（加载 DeBERTa 需数秒），期间显示"加载中"
+    if (localTtsEnabled.value) engineLoading.value = true;
+    const switchStatus = await TtsLocal.setEnabled(localTtsEnabled.value);
+    localTtsEnabled.value = switchStatus.effective_enabled;
+    // 开关命令会同步初始化/卸载引擎，刷新 status 让 ready 反映真实状态，
+    // 否则试听区域会一直停留在旧的"未就绪"禁用态。
+    await refreshAll();
+    if (localTtsEnabled.value) {
+      // 开启成功：左上角弹窗引导去角色语音设置切换 TTS 类型
+      uiStore.showNotification({
+        type: "info",
+        title: t("settings.tts.messages.enableHintTitle"),
+        message: t("settings.tts.messages.enableHintMessage"),
+        duration: 6000,
+        skipTipsCheck: true,
+      });
+    }
+    notice.value = {
+      kind: "success",
+      text: localTtsEnabled.value
+        ? status.value?.ready
+          ? t("settings.tts.messages.switchEnabled")
+          : t("settings.tts.messages.switchEnabledNotReady")
+        : t("settings.tts.messages.switchDisabled"),
+    };
+  } catch (error) {
+    localTtsEnabled.value = !localTtsEnabled.value;
+    notice.value = {
+      kind: "error",
+      text: `${t("settings.tts.messages.saveSwitchFailed", { error: errorText(error) })}`,
+    };
+  } finally {
+    engineLoading.value = false;
+    savingLocalTts.value = false;
+  }
+}
+
+function rowState(assetId: string) {
+  const asset = catalog.value.find((item) => item.id === assetId);
+  if (!asset) return "missing";
+  return catalogRowState({
+    asset,
+    progressPercent: progressByAsset.value[assetId],
+    errorMessage: downloadError.value[assetId],
+    status: status.value,
+    voices: snapshot.value.voices,
   });
+}
 
-  async function loadCosyvoice(): Promise<void> {
+function rowLabel(assetId: string): string {
+  const state = rowState(assetId);
+  if (state === "installed") return t("settings.tts.download.installed");
+  if (state === "downloading") return t("settings.tts.download.downloading");
+  if (state === "error") return t("settings.tts.download.retry");
+  return t("settings.tts.download.start");
+}
+
+watch(
+  () => snapshot.value.voices,
+  (voices) => {
+    if (!voices.some((voice) => voice.voice_id === previewVoice.value)) {
+      previewVoice.value = voices[0]?.voice_id ?? "";
+    }
+    if (
+      styleVectorsTarget.value &&
+      !voices.some((voice) => voice.voice_id === styleVectorsTarget.value)
+    ) {
+      styleVectorsTarget.value = "";
+    }
+  },
+);
+
+onMounted(async () => {
+  componentMounted = true;
+  const [installComplete, downloadComplete, statusChanged] = await Promise.all([
+    listen("tts://install-complete", () => {
+      void refreshAll();
+    }),
+    listen("tts://download-complete", () => {
+      void refreshAll();
+    }),
+    // 历史页「生成语音」触发：生成前后端会广播，静默刷新引擎就绪状态
+    listen("tts://status-changed", () => {
+      void refreshAll();
+    }),
+  ]);
+  if (!componentMounted) {
+    installComplete();
+    downloadComplete();
+    statusChanged();
+    return;
+  }
+  unlistenInstallComplete = installComplete;
+  unlistenDownloadComplete = downloadComplete;
+  unlistenStatusChanged = statusChanged;
+
+  await loadLocalTtsSwitch();
+  await refreshAll();
+  await loadCosyvoice();
+  // 审核状态轮询(每 5s;终态自动停止,失败自动暂停)
+  statusTimer = setInterval(startStatusPolling, 5000);
+  startStatusPolling();
+
+  // 加载 GPU 设备列表（Windows 用 DXGI，Linux 用 Vulkan 枚举特定显卡）
+  if (isWindows || isLinux) {
     try {
-      const cfg = await TtsCosyvoice.getConfig();
-      cosyKeyConfigured.value = cfg.api_key_configured;
-      cosyModels.value = cfg.models;
-      const voices = await TtsCosyvoice.listVoices();
-      cosyVoices.value = voices;
-      if (!cosyPreviewVoice.value || !voices.some((v) => v.voice_id === cosyPreviewVoice.value)) {
-        cosyPreviewVoice.value = voices[0]?.voice_id ?? "";
-      }
+      const devices = await TtsLocal.listDevices();
+      gpuDevices.value = devices.map((d) => ({ id: d.id, name: d.name }));
     } catch (e) {
-      notice.value = {
-        kind: "error",
-        text: t("settings.tts.cosyvoice.notices.loadConfigFailed", { error: errorText(e) }),
-      };
+      console.error("枚举推理设备失败:", e);
     }
   }
 
-  async function saveCosyKey(): Promise<void> {
-    const key = cosyKey.value.trim();
-    if (!key) return;
-    try {
-      await TtsCosyvoice.saveApiKey(key);
-      cosyKey.value = "";
-      cosyKeyConfigured.value = true;
-      notice.value = { kind: "success", text: t("settings.tts.cosyvoice.notices.keySaved") };
-      await loadCosyvoice();
-    } catch (e) {
-      notice.value = {
-        kind: "error",
-        text: t("settings.tts.cosyvoice.notices.keySaveFailed", { error: errorText(e) }),
-      };
-    }
+  // 读取当前推理设备（持久化配置），同步下拉框显示
+  try {
+    const current = await TtsLocal.getDevice();
+    if (current) inferenceDevice.value = current;
+  } catch (e) {
+    console.error("读取推理设备失败:", e);
   }
+  if (!componentMounted) return;
+  unlistenProgress = TtsLocal.onDownloadProgress((progress) => {
+    progressByAsset.value = {
+      ...progressByAsset.value,
+      [progress.asset_id]: progress.percent,
+    };
+  });
+});
 
-  async function pickCosySample(): Promise<void> {
-    // Android 上 plugin-dialog 的 extensions 字段是 MIME 类型(非扩展名),需特判
-    const filters = /android/i.test(navigator.userAgent)
-      ? [{ name: "Audio sample", extensions: ["audio/wav", "audio/mpeg", "audio/flac"] }]
-      : [{ name: "Audio sample", extensions: ["wav", "mp3", "flac"] }];
-    const selection = await open({ multiple: false, filters });
-    const path = selectedPath(selection);
-    if (path) cosySamplePath.value = path;
-  }
+onUnmounted(() => {
+  componentMounted = false;
+  stopStatusPolling();
+  if (audioUrl) URL.revokeObjectURL(audioUrl);
+  if (cosyAudioUrl) URL.revokeObjectURL(cosyAudioUrl);
+  unlistenProgress?.();
+  unlistenProgress = null;
+  unlistenInstallComplete?.();
+  unlistenInstallComplete = null;
+  unlistenDownloadComplete?.();
+  unlistenDownloadComplete = null;
+  unlistenStatusChanged?.();
+  unlistenStatusChanged = null;
+});
 
-  async function registerCosyVoice(): Promise<void> {
-    const name = cosyVoiceName.value.trim();
-    if (!name || !cosySamplePath.value) {
-      notice.value = { kind: "error", text: t("settings.tts.cosyvoice.notices.needNameAndSample") };
-      return;
+async function loadCosyvoice(): Promise<void> {
+  try {
+    const cfg = await TtsCosyvoice.getConfig();
+    cosyKeyConfigured.value = cfg.api_key_configured;
+    cosyModels.value = cfg.models;
+    const voices = await TtsCosyvoice.listVoices();
+    cosyVoices.value = voices;
+    if (!cosyPreviewVoice.value || !voices.some((v) => v.voice_id === cosyPreviewVoice.value)) {
+      cosyPreviewVoice.value = voices[0]?.voice_id ?? "";
     }
-    cosyRegistering.value = true;
-    notice.value = null;
-    try {
-      const record = await TtsCosyvoice.createVoice(
-        name,
-        cosyModels.value[0] || DEFAULT_COSYVOICE_MODEL,
-        cosySamplePath.value,
-        cosyLang.value,
-        (phase) => {
-          // 后端 progress 传 phase key（uploading/submitting/submitted），此处映射本地化文案
-          const phaseText = t(`settings.tts.cosyvoice.phases.${phase}`);
-          notice.value = { kind: "success", text: phaseText };
-        }
-      );
-      notice.value = {
-        kind: "success",
-        text: t("settings.tts.cosyvoice.notices.voiceSubmitted", {
-          name: record.name,
-          voiceId: record.voice_id,
-        }),
-      };
-      cosyVoiceName.value = "";
-      cosySamplePath.value = "";
-      await loadCosyvoice();
-      startStatusPolling();
-    } catch (e) {
-      notice.value = {
-        kind: "error",
-        text: t("settings.tts.cosyvoice.notices.registerFailed", { error: errorText(e) }),
-      };
-    } finally {
-      cosyRegistering.value = false;
-    }
+  } catch (e) {
+    notice.value = {
+      kind: "error",
+      text: t("settings.tts.cosyvoice.notices.loadConfigFailed", { error: errorText(e) }),
+    };
   }
+}
 
-  async function removeCosyVoice(voice: TtsCosyvoice.CosyVoiceView): Promise<void> {
-    const confirmed = await dialogStore.confirm(
-      t("settings.tts.cosyvoice.notices.deleteConfirm", { name: voice.name }),
-      t("settings.tts.cosyvoice.notices.deleteTitle")
+async function saveCosyKey(): Promise<void> {
+  const key = cosyKey.value.trim();
+  if (!key) return;
+  try {
+    await TtsCosyvoice.saveApiKey(key);
+    cosyKey.value = "";
+    cosyKeyConfigured.value = true;
+    notice.value = { kind: "success", text: t("settings.tts.cosyvoice.notices.keySaved") };
+    await loadCosyvoice();
+  } catch (e) {
+    notice.value = {
+      kind: "error",
+      text: t("settings.tts.cosyvoice.notices.keySaveFailed", { error: errorText(e) }),
+    };
+  }
+}
+
+async function pickCosySample(): Promise<void> {
+  // Android 上 plugin-dialog 的 extensions 字段是 MIME 类型(非扩展名),需特判
+  const filters = /android/i.test(navigator.userAgent)
+    ? [{ name: "Audio sample", extensions: ["audio/wav", "audio/mpeg", "audio/flac"] }]
+    : [{ name: "Audio sample", extensions: ["wav", "mp3", "flac"] }];
+  const selection = await open({ multiple: false, filters });
+  const path = selectedPath(selection);
+  if (path) cosySamplePath.value = path;
+}
+
+async function registerCosyVoice(): Promise<void> {
+  const name = cosyVoiceName.value.trim();
+  if (!name || !cosySamplePath.value) {
+    notice.value = { kind: "error", text: t("settings.tts.cosyvoice.notices.needNameAndSample") };
+    return;
+  }
+  cosyRegistering.value = true;
+  notice.value = null;
+  try {
+    const record = await TtsCosyvoice.createVoice(
+      name,
+      cosyModels.value[0] || DEFAULT_COSYVOICE_MODEL,
+      cosySamplePath.value,
+      cosyLang.value,
+      (phase) => {
+        // 后端 progress 传 phase key（uploading/submitting/submitted），此处映射本地化文案
+        const phaseText = t(`settings.tts.cosyvoice.phases.${phase}`);
+        notice.value = { kind: "success", text: phaseText };
+      },
     );
-    if (!confirmed) return;
-    try {
-      await TtsCosyvoice.deleteVoice(voice.voice_id);
-      await loadCosyvoice();
-    } catch (e) {
-      notice.value = {
-        kind: "error",
-        text: t("settings.tts.cosyvoice.notices.deleteFailed", { error: errorText(e) }),
-      };
-    }
+    notice.value = {
+      kind: "success",
+      text: t("settings.tts.cosyvoice.notices.voiceSubmitted", {
+        name: record.name,
+        voiceId: record.voice_id,
+      }),
+    };
+    cosyVoiceName.value = "";
+    cosySamplePath.value = "";
+    await loadCosyvoice();
+    startStatusPolling();
+  } catch (e) {
+    notice.value = {
+      kind: "error",
+      text: t("settings.tts.cosyvoice.notices.registerFailed", { error: errorText(e) }),
+    };
+  } finally {
+    cosyRegistering.value = false;
   }
+}
 
-  // 音色卡片的试听:合成模型取音色自己所属的模型(必须与注册模型一致,否则云端报错)
-  async function previewVoiceFrom(voice: TtsCosyvoice.CosyVoiceView): Promise<void> {
-    cosyPreviewVoice.value = voice.voice_id;
-    await runCosyPreview();
+async function removeCosyVoice(voice: TtsCosyvoice.CosyVoiceView): Promise<void> {
+  const confirmed = await dialogStore.confirm(
+    t("settings.tts.cosyvoice.notices.deleteConfirm", { name: voice.name }),
+    t("settings.tts.cosyvoice.notices.deleteTitle"),
+  );
+  if (!confirmed) return;
+  try {
+    await TtsCosyvoice.deleteVoice(voice.voice_id);
+    await loadCosyvoice();
+  } catch (e) {
+    notice.value = {
+      kind: "error",
+      text: t("settings.tts.cosyvoice.notices.deleteFailed", { error: errorText(e) }),
+    };
   }
+}
 
-  async function runCosyPreview(): Promise<void> {
-    if (!cosyPreviewVoice.value) return;
-    if (!previewText.value.trim()) {
-      notice.value = { kind: "error", text: t("settings.tts.cosyvoice.notices.needPreviewText") };
-      return;
-    }
-    console.log("[cosyvoice] 试听开始", {
-      model: voiceModelOf(cosyPreviewVoice.value),
-      voiceId: cosyPreviewVoice.value,
-      textLen: previewText.value.trim().length,
-    });
-    cosyPreviewing.value = true;
-    notice.value = null;
-    try {
-      const bytes = await TtsCosyvoice.synthesizePreview(
-        voiceModelOf(cosyPreviewVoice.value),
-        cosyPreviewVoice.value,
-        previewText.value.trim()
-      );
-      console.log(
-        "[cosyvoice] 合成返回",
-        bytes?.byteLength ?? "unknown",
-        "bytes, type:",
-        Object.prototype.toString.call(bytes)
-      );
-      // 统一归一化成 ArrayBuffer(见 toAudioBuffer 注释),否则 Blob 内容会变成逗号字符串
-      const audioBuffer = toAudioBuffer(bytes);
-      console.log("[cosyvoice] Blob 字节数", audioBuffer.byteLength);
-      if (cosyAudioUrl) URL.revokeObjectURL(cosyAudioUrl);
-      cosyAudioUrl = URL.createObjectURL(new Blob([audioBuffer], { type: "audio/wav" }));
-      await nextTick();
-      if (cosyAudioRef.value) {
-        cosyAudioRef.value.src = cosyAudioUrl;
-        try {
-          await cosyAudioRef.value.play();
-          console.log("[cosyvoice] 播放中", cosyAudioUrl);
-        } catch (playErr) {
-          console.error("[cosyvoice] 播放失败", playErr);
-          throw playErr;
-        }
+// 音色卡片的试听:合成模型取音色自己所属的模型(必须与注册模型一致,否则云端报错)
+async function previewVoiceFrom(voice: TtsCosyvoice.CosyVoiceView): Promise<void> {
+  cosyPreviewVoice.value = voice.voice_id;
+  await runCosyPreview();
+}
+
+async function runCosyPreview(): Promise<void> {
+  if (!cosyPreviewVoice.value) return;
+  if (!previewText.value.trim()) {
+    notice.value = { kind: "error", text: t("settings.tts.cosyvoice.notices.needPreviewText") };
+    return;
+  }
+  console.log("[cosyvoice] 试听开始", {
+    model: voiceModelOf(cosyPreviewVoice.value),
+    voiceId: cosyPreviewVoice.value,
+    textLen: previewText.value.trim().length,
+  });
+  cosyPreviewing.value = true;
+  notice.value = null;
+  try {
+    const bytes = await TtsCosyvoice.synthesizePreview(
+      voiceModelOf(cosyPreviewVoice.value),
+      cosyPreviewVoice.value,
+      previewText.value.trim(),
+    );
+    console.log(
+      "[cosyvoice] 合成返回",
+      bytes?.byteLength ?? "unknown",
+      "bytes, type:",
+      Object.prototype.toString.call(bytes),
+    );
+    // 统一归一化成 ArrayBuffer(见 toAudioBuffer 注释),否则 Blob 内容会变成逗号字符串
+    const audioBuffer = toAudioBuffer(bytes);
+    console.log("[cosyvoice] Blob 字节数", audioBuffer.byteLength);
+    if (cosyAudioUrl) URL.revokeObjectURL(cosyAudioUrl);
+    cosyAudioUrl = URL.createObjectURL(new Blob([audioBuffer], { type: "audio/wav" }));
+    await nextTick();
+    if (cosyAudioRef.value) {
+      cosyAudioRef.value.src = cosyAudioUrl;
+      try {
+        await cosyAudioRef.value.play();
+        console.log("[cosyvoice] 播放中", cosyAudioUrl);
+      } catch (playErr) {
+        console.error("[cosyvoice] 播放失败", playErr);
+        throw playErr;
       }
-    } catch (e) {
-      console.error("[cosyvoice] 试听失败", e);
-      notice.value = {
-        kind: "error",
-        text: t("settings.tts.cosyvoice.notices.previewFailed", { error: errorText(e) }),
-      };
-    } finally {
-      cosyPreviewing.value = false;
     }
+  } catch (e) {
+    console.error("[cosyvoice] 试听失败", e);
+    notice.value = {
+      kind: "error",
+      text: t("settings.tts.cosyvoice.notices.previewFailed", { error: errorText(e) }),
+    };
+  } finally {
+    cosyPreviewing.value = false;
   }
+}
 
-  async function triggerDownload(assetId: string): Promise<void> {
-    if (downloadingId.value) return;
-    downloadingId.value = assetId;
-    const nextProgress = { ...progressByAsset.value };
-    delete nextProgress[assetId];
-    progressByAsset.value = nextProgress;
-    const nextErrors = { ...downloadError.value };
-    delete nextErrors[assetId];
-    downloadError.value = nextErrors;
-    try {
-      await TtsLocal.download(assetId);
-      await refreshAll();
-      const completedProgress = { ...progressByAsset.value };
-      completedProgress[assetId] = 100;
-      progressByAsset.value = completedProgress;
-    } catch (error) {
-      downloadError.value = {
-        ...downloadError.value,
-        [assetId]: errorText(error),
-      };
-    } finally {
-      downloadingId.value = null;
-    }
+async function triggerDownload(assetId: string): Promise<void> {
+  if (downloadingId.value) return;
+  downloadingId.value = assetId;
+  const nextProgress = { ...progressByAsset.value };
+  delete nextProgress[assetId];
+  progressByAsset.value = nextProgress;
+  const nextErrors = { ...downloadError.value };
+  delete nextErrors[assetId];
+  downloadError.value = nextErrors;
+  try {
+    await TtsLocal.download(assetId);
+    await refreshAll();
+    const completedProgress = { ...progressByAsset.value };
+    completedProgress[assetId] = 100;
+    progressByAsset.value = completedProgress;
+  } catch (error) {
+    downloadError.value = {
+      ...downloadError.value,
+      [assetId]: errorText(error),
+    };
+  } finally {
+    downloadingId.value = null;
   }
+}
 </script>

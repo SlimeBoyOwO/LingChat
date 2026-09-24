@@ -47,7 +47,7 @@ const DEFAULT_PARALLAX_CONFIG: ParallaxConfig = {
 export function useParallaxAnimation(
   elements: ParallaxElements,
   config: Partial<ParallaxConfig> = {},
-  enabledRef?: Ref<boolean>
+  enabledRef?: Ref<boolean>,
 ) {
   // 合并默认配置
   const PARALLAX_CONFIG: ParallaxConfig = {

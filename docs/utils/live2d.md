@@ -63,6 +63,8 @@ Model paths in the import manifest are relative to the manifest file. Runtime mo
 - Pointer gaze uses a variant's optional drawable-relative `focus_anchor`; reactions freeze the current gaze and closed eyes suspend tracking.
 - Lip sync passively decodes the existing character voice and follows the existing audio element's `currentTime`; it does not create another player or change audio routing.
 - If a model fails to load, LingChat keeps the existing static avatar. A placeholder is shown only when neither visual is available.
+- A character that has a model can still be shown as a static portrait. The character's **Visuals** tab sets the main stage display and its **Desktop Pet** tab sets the pet window display, stored as `avatar_mode` and `avatar_mode_p` in `settings.yml` (`live2d` or `image`). Characters without an imported model show neither option.
+- The **Desktop Pet** tab also has a **Frameless Pet** switch (`pet_frameless`). Turning it on hides the pet's circular frame, glass background, and particles together, and drops the circular crop so the character is shown whole inside the same square box. The pet window's own 粒子特效 setting still selects _which_ particle effect is used.
 
 The Live2D canvas is above static character images and below Live2D character bubbles. In a mixed scene where character images overlap, Live2D visuals appear above static visuals.
 

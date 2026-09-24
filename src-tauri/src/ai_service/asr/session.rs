@@ -230,11 +230,12 @@ impl AsrSession {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         h.tx.send(StreamCommand::Stop { reply: reply_tx })
             .map_err(|_| AsrError::Canceled)?;
-        // 超时保护：服务端不回 result 时不能无限等（前端 stop 会卡死）
+        // 超时保护：服务端不回 result 时不能无限等（前端 stop 会卡死）。
+        // 错误归因用实际流式 provider（不写死——流式可能由任意支持流式的 provider 建立）
         let result = tokio::time::timeout(std::time::Duration::from_secs(30), reply_rx)
             .await
-            .map_err(|_| AsrError::ProviderTimeout("qwen-asr".into()))?
-            .map_err(|_| AsrError::ProviderTimeout("qwen-asr".into()))?;
+            .map_err(|_| AsrError::ProviderTimeout(h.provider_id.clone()))?
+            .map_err(|_| AsrError::ProviderTimeout(h.provider_id.clone()))?;
         let text = result?.text;
         Ok(AsrResult {
             text,

@@ -111,7 +111,7 @@ async function readFileAsBase64(attrs: InputAttrs): Promise<void> {
     if (signal.aborted) return;
     console.warn("[ImageSourcePicker] pick timeout, forcing cancel");
     invoke("cancel_screenshot").catch((e) =>
-      console.error("[ImageSourcePicker] cancel_screenshot failed:", e)
+      console.error("[ImageSourcePicker] cancel_screenshot failed:", e),
     );
     finish();
   }, PICK_TIMEOUT_MS);
@@ -176,7 +176,7 @@ async function readFileAsBase64(attrs: InputAttrs): Promise<void> {
           finish();
         }
       },
-      { once: true, signal }
+      { once: true, signal },
     );
 
     document.body.appendChild(input);

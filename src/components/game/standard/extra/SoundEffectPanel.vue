@@ -29,11 +29,91 @@
       <div
         v-if="panelVisible"
         ref="panelRef"
-        class="custom-scrollbar fixed bottom-[calc(64px+var(--safe-area-inset-bottom))] left-4
-          z-[1000] box-border max-h-[80dvh] w-[520px] overflow-y-auto rounded-3xl border
-          border-white/10 bg-[#12121c]/75 p-4 text-white shadow-[0_8px_32px_rgba(0,0,0,0.4)]
-          backdrop-blur-[20px]"
+        class="custom-scrollbar fixed bottom-[calc(64px+var(--safe-area-inset-bottom))] left-4 z-[1000] box-border max-h-[80dvh] w-[520px] overflow-y-auto rounded-3xl border border-white/10 bg-[#12121c]/75 p-4 text-white shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-[20px]"
       >
+        <!-- ===== 音频频谱可视化 =====
+             置顶（不是塞在末尾）：面板 max-h-[80dvh] 会滚动，放末尾等于藏起来。
+             关闭时只占一行，开启后原地展开配色配置。 -->
+        <div class="mb-3">
+          <div class="flex items-center justify-between gap-3">
+            <span class="flex items-center gap-2 text-sm font-semibold text-gray-300">
+              <AudioLines :size="14" class="text-[#79d9ff]" />
+              {{ $t("game.soundPanel.spectrum.title") }}
+            </span>
+            <div class="shrink-0">
+              <Toggle :checked="spectrumEnabled" @change="onSpectrumToggle" />
+            </div>
+          </div>
+
+          <template v-if="spectrumEnabled">
+            <p class="mt-1.5 px-1 text-[11px] leading-snug text-gray-500">
+              {{ $t("game.soundPanel.spectrum.hint") }}
+            </p>
+
+            <div class="mt-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2.5">
+              <!-- 形态：镜像 / 柱状 / 圆环 -->
+              <div class="mb-2.5 flex items-center gap-1 rounded-lg bg-black/20 p-0.5">
+                <button
+                  v-for="opt in styleOptions"
+                  :key="opt.id"
+                  type="button"
+                  class="flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors duration-150"
+                  :class="
+                    spectrumStyle === opt.id
+                      ? 'bg-white/12 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  "
+                  :title="opt.label"
+                  @click.stop="setSpectrumStyle(opt.id)"
+                >
+                  <component :is="opt.icon" :size="11" />
+                  <span class="truncate">{{ opt.label }}</span>
+                </button>
+              </div>
+
+              <div class="mb-2 flex items-center justify-between">
+                <span class="text-xs text-gray-400">{{
+                  $t("game.soundPanel.spectrum.palette")
+                }}</span>
+                <span class="text-[10px] text-gray-500">{{ paletteLabel }}</span>
+              </div>
+
+              <SpectrumPaletteChips
+                v-model="spectrumPalette"
+                :custom-from="spectrumColor1"
+                :custom-to="spectrumColor2"
+              />
+
+              <!-- 自定义配色：双取色器 -->
+              <div
+                v-if="spectrumPalette === CUSTOM_SPECTRUM_PALETTE"
+                class="mt-2.5 flex items-center gap-4"
+              >
+                <label class="flex cursor-pointer items-center gap-1.5 text-[11px] text-gray-400">
+                  <input
+                    type="color"
+                    class="spectrum-color-input"
+                    :value="spectrumColor1"
+                    @input="onColorInput('spectrumColor1', $event)"
+                  />
+                  {{ $t("game.soundPanel.spectrum.customFrom") }}
+                </label>
+                <label class="flex cursor-pointer items-center gap-1.5 text-[11px] text-gray-400">
+                  <input
+                    type="color"
+                    class="spectrum-color-input"
+                    :value="spectrumColor2"
+                    @input="onColorInput('spectrumColor2', $event)"
+                  />
+                  {{ $t("game.soundPanel.spectrum.customTo") }}
+                </label>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div class="mb-4 h-px bg-white/5"></div>
+
         <!-- ===== BGM 区域 ===== -->
         <div class="mb-4">
           <div class="mb-3 flex items-center justify-between">
@@ -44,8 +124,7 @@
             <div class="flex items-center gap-1">
               <button
                 @click.stop="handlePlayPause"
-                class="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-white/10
-                  hover:text-white"
+                class="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
                 :title="
                   uiStore.bgMusicPaused ? $t('game.soundPanel.play') : $t('game.soundPanel.pause')
                 "
@@ -55,16 +134,14 @@
               </button>
               <button
                 @click.stop="handleStop"
-                class="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-white/10
-                  hover:text-white"
+                class="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
                 :title="$t('game.soundPanel.stop')"
               >
                 <Square :size="13" />
               </button>
               <button
                 @click.stop="togglePlaybackMode"
-                class="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-white/10
-                  hover:text-white"
+                class="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
                 :title="modeText[uiStore.bgMusicMode]"
               >
                 <Repeat v-if="uiStore.bgMusicMode === 'loop-list'" :size="13" />
@@ -105,11 +182,10 @@
                 @input.stop="
                   (e) =>
                     (settingsStore.audio.backgroundVolume = Number(
-                      (e.target as HTMLInputElement).value
+                      (e.target as HTMLInputElement).value,
                     ))
                 "
-                class="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/10
-                  accent-[#79d9ff]"
+                class="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/10 accent-[#79d9ff]"
               />
               <span class="w-6 shrink-0 text-right text-[10px] text-gray-500 tabular-nums">{{
                 settingsStore.audio.backgroundVolume
@@ -126,8 +202,7 @@
                   v-for="music in bgmList"
                   :key="music.url"
                   @click.stop="playMusic(music)"
-                  class="group flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5
-                    transition-all duration-150"
+                  class="group flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 transition-all duration-150"
                   :class="[
                     uiStore.currentBackgroundMusic === music.url
                       ? 'bg-[#79d9ff]/20 text-[#79d9ff]'
@@ -157,8 +232,7 @@
             <button
               v-if="uiStore.ambientTracks.length > 0"
               @click.stop="stopAllAmbient"
-              class="flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400
-                transition-colors hover:bg-red-500/10 hover:text-red-300"
+              class="flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
             >
               <Square :size="10" /> {{ $t("game.soundPanel.stopAll") }}
             </button>
@@ -185,8 +259,7 @@
                 }}</span>
                 <button
                   @click.stop="uiStore.toggleAmbientTrackPause(track.id)"
-                  class="rounded p-1 text-gray-400 transition-colors hover:bg-white/10
-                    hover:text-white"
+                  class="rounded p-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
                   :title="track.paused ? $t('game.soundPanel.resume') : $t('game.soundPanel.pause')"
                 >
                   <Play v-if="track.paused" :size="11" />
@@ -194,8 +267,7 @@
                 </button>
                 <button
                   @click.stop="uiStore.removeAmbientTrack(track.id)"
-                  class="rounded p-1 text-gray-500 transition-colors hover:bg-red-500/10
-                    hover:text-red-400"
+                  class="rounded p-1 text-gray-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
                   :title="$t('game.soundPanel.remove')"
                 >
                   <X :size="11" />
@@ -213,11 +285,10 @@
                     (e) =>
                       uiStore.updateAmbientTrackVolume(
                         track.id,
-                        Number((e.target as HTMLInputElement).value)
+                        Number((e.target as HTMLInputElement).value),
                       )
                   "
-                  class="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/10
-                    accent-[#79d9ff]"
+                  class="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/10 accent-[#79d9ff]"
                 />
                 <span class="w-6 shrink-0 text-right text-[10px] text-gray-500 tabular-nums">{{
                   track.volume
@@ -236,8 +307,7 @@
                   v-for="ambient in ambientFileList"
                   :key="ambient.url"
                   @click.stop="playAmbientFromList(ambient)"
-                  class="group flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5
-                    text-gray-400 transition-all duration-150 hover:bg-white/10 hover:text-white"
+                  class="group flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 text-gray-400 transition-all duration-150 hover:bg-white/10 hover:text-white"
                 >
                   <Wind :size="12" class="shrink-0 text-[#79d9ff]" />
                   <span class="flex-1 truncate text-xs">{{ ambient.name }}</span>
@@ -253,255 +323,325 @@
 </template>
 
 <script setup lang="ts">
-  import { ambientGetAll, type AmbientItem } from "@/api/services/ambient";
-  import { musicGetAll } from "@/api/services/music";
-  import Button from "@/components/base/widget/Button.vue";
-  import { useSettingsStore } from "@/stores/modules/settings";
-  import { useUIStore } from "@/stores/modules/ui/ui";
-  import {
-    Music2,
-    Pause,
-    Play,
-    Repeat,
-    Repeat1,
-    Shuffle,
-    Square,
-    Volume2,
-    Wind,
-    X,
-  } from "lucide-vue-next";
-  import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-  import { useI18n } from "vue-i18n";
+import { ambientGetAll, type AmbientItem } from "@/api/services/ambient";
+import { musicGetAll } from "@/api/services/music";
+import Button from "@/components/base/widget/Button.vue";
+import Toggle from "@/components/base/widget/Toggle.vue";
+import {
+  CUSTOM_SPECTRUM_PALETTE,
+  DEFAULT_SPECTRUM_COLOR_FROM,
+  DEFAULT_SPECTRUM_COLOR_TO,
+  DEFAULT_SPECTRUM_PALETTE,
+  SPECTRUM_PALETTES,
+  resolveSpectrumStyle,
+  type SpectrumStyle,
+} from "@/constants/spectrum";
+import { useSettingsStore } from "@/stores/modules/settings";
+import { useUIStore } from "@/stores/modules/ui/ui";
+import {
+  AudioLines,
+  BarChart3,
+  CircleDot,
+  FlipVertical2,
+  Music2,
+  Pause,
+  Play,
+  Repeat,
+  Repeat1,
+  Shuffle,
+  Square,
+  Volume2,
+  Wind,
+  X,
+} from "lucide-vue-next";
+import { computed, onMounted, onUnmounted, ref, watch, type Component } from "vue";
+import { useI18n } from "vue-i18n";
+import SpectrumPaletteChips from "./SpectrumPaletteChips.vue";
 
-  const uiStore = useUIStore();
-  const settingsStore = useSettingsStore();
-  const { t } = useI18n();
+const uiStore = useUIStore();
+const settingsStore = useSettingsStore();
+const { t } = useI18n();
 
-  // ===== 面板状态 =====
-  const panelVisible = ref(false);
-  const panelRef = ref<HTMLElement | null>(null);
+// ===== 面板状态 =====
+const panelVisible = ref(false);
+const panelRef = ref<HTMLElement | null>(null);
 
-  // ===== 是否有活跃音频在播放（控制图标闪烁，暂停/停止时不闪） =====
-  const hasActiveAudio = computed(() => {
-    const bgmPlaying =
-      uiStore.currentBackgroundMusic !== "None" && !uiStore.bgMusicPaused && !uiStore.bgMusicStoped;
-    const ambientPlaying =
-      uiStore.ambientTracks.length > 0 && uiStore.ambientTracks.some((t) => !t.paused);
-    return bgmPlaying || ambientPlaying;
-  });
+// ===== 音频频谱可视化（右下角迷你频谱的配置，见 SpectrumVisualizer.vue）=====
+const spectrumEnabled = computed(() => !!settingsStore.audio.spectrumEnabled);
+const spectrumStyle = computed(() => resolveSpectrumStyle(settingsStore.audio.spectrumStyle));
+/** 形态选项：id 取自 constants/spectrum.ts（单一真相源），文案与图标在此组装 */
+const styleOptions: Array<{ id: SpectrumStyle; label: string; icon: Component }> = [
+  { id: "mirror", label: t("game.soundPanel.spectrum.styleMirror"), icon: FlipVertical2 },
+  { id: "bars", label: t("game.soundPanel.spectrum.styleBars"), icon: BarChart3 },
+  { id: "ring", label: t("game.soundPanel.spectrum.styleRing"), icon: CircleDot },
+];
+const spectrumPalette = computed({
+  get: () => settingsStore.audio.spectrumPalette || DEFAULT_SPECTRUM_PALETTE,
+  set: (id: string) => settingsStore.update("audio.spectrumPalette", id),
+});
+const spectrumColor1 = computed(
+  () => settingsStore.audio.spectrumColor1 || DEFAULT_SPECTRUM_COLOR_FROM,
+);
+const spectrumColor2 = computed(
+  () => settingsStore.audio.spectrumColor2 || DEFAULT_SPECTRUM_COLOR_TO,
+);
+const paletteLabel = computed(
+  () =>
+    SPECTRUM_PALETTES.find((p) => p.id === spectrumPalette.value)?.label ||
+    t("game.soundPanel.spectrum.custom"),
+);
 
-  // ===== BGM 相关 =====
-  const hasBgm = computed(
-    () => uiStore.currentBackgroundMusic && uiStore.currentBackgroundMusic !== "None"
-  );
+const onSpectrumToggle = (enabled: boolean) => {
+  settingsStore.update("audio.spectrumEnabled", enabled);
+};
 
-  interface MusicItem {
-    name: string;
-    url: string;
+const setSpectrumStyle = (style: SpectrumStyle) => {
+  settingsStore.update("audio.spectrumStyle", style);
+};
+
+const onColorInput = (field: "spectrumColor1" | "spectrumColor2", e: Event) => {
+  settingsStore.update(`audio.${field}`, (e.target as HTMLInputElement).value);
+};
+
+// ===== 是否有活跃音频在播放（控制图标闪烁，暂停/停止时不闪） =====
+const hasActiveAudio = computed(() => {
+  const bgmPlaying =
+    uiStore.currentBackgroundMusic !== "None" && !uiStore.bgMusicPaused && !uiStore.bgMusicStoped;
+  const ambientPlaying =
+    uiStore.ambientTracks.length > 0 && uiStore.ambientTracks.some((t) => !t.paused);
+  return bgmPlaying || ambientPlaying;
+});
+
+// ===== BGM 相关 =====
+const hasBgm = computed(
+  () => uiStore.currentBackgroundMusic && uiStore.currentBackgroundMusic !== "None",
+);
+
+interface MusicItem {
+  name: string;
+  url: string;
+}
+
+const bgmList = ref<MusicItem[]>([]);
+const currentMusicName = ref(t("game.soundPanel.noMusic"));
+
+const modeText = computed<Record<string, string>>(() => ({
+  "loop-list": t("game.soundPanel.modeLoopList"),
+  "loop-single": t("game.soundPanel.modeLoopSingle"),
+  random: t("game.soundPanel.modeRandom"),
+}));
+
+/** 从文件路径提取文件名 */
+const extractFileName = (filePath: string): string => {
+  if (!filePath || filePath === "None") return t("game.soundPanel.noMusic");
+  const parts = filePath.replace(/\\/g, "/").split("/");
+  const fileName = decodeURIComponent(parts.pop() || "");
+  if (!fileName) return t("game.soundPanel.noMusic");
+  return fileName.replace(/\.[^/.]+$/, "") || fileName;
+};
+
+/** 同步当前曲名 */
+const syncCurrentMusicName = () => {
+  const currentUrl = uiStore.currentBackgroundMusic;
+  if (!currentUrl || currentUrl === "None") {
+    currentMusicName.value = t("game.soundPanel.noMusic");
+    return;
   }
+  const matched = bgmList.value.find((item) => item.url === currentUrl);
+  currentMusicName.value = matched?.name || extractFileName(currentUrl);
+};
 
-  const bgmList = ref<MusicItem[]>([]);
-  const currentMusicName = ref(t("game.soundPanel.noMusic"));
+/** 切换播放模式 */
+const togglePlaybackMode = () => {
+  const modes: Array<"loop-list" | "loop-single" | "random"> = [
+    "loop-list",
+    "loop-single",
+    "random",
+  ];
+  const currentIndex = modes.indexOf(uiStore.bgMusicMode);
+  uiStore.bgMusicMode = modes[(currentIndex + 1) % modes.length];
+};
 
-  const modeText = computed<Record<string, string>>(() => ({
-    "loop-list": t("game.soundPanel.modeLoopList"),
-    "loop-single": t("game.soundPanel.modeLoopSingle"),
-    random: t("game.soundPanel.modeRandom"),
-  }));
+/** 播放/暂停 */
+const handlePlayPause = () => {
+  if (uiStore.currentBackgroundMusic === "None") return; // 未选曲目时不自动选中
+  uiStore.bgMusicPaused = !uiStore.bgMusicPaused;
+};
 
-  /** 从文件路径提取文件名 */
-  const extractFileName = (filePath: string): string => {
-    if (!filePath || filePath === "None") return t("game.soundPanel.noMusic");
-    const parts = filePath.replace(/\\/g, "/").split("/");
-    const fileName = decodeURIComponent(parts.pop() || "");
-    if (!fileName) return t("game.soundPanel.noMusic");
-    return fileName.replace(/\.[^/.]+$/, "") || fileName;
-  };
+/** 停止：清除选中状态，回退到"未选择音乐" */
+const handleStop = () => {
+  uiStore.bgMusicStoped = true;
+  uiStore.bgMusicPaused = true;
+  uiStore.currentBackgroundMusic = "None";
+};
 
-  /** 同步当前曲名 */
-  const syncCurrentMusicName = () => {
-    const currentUrl = uiStore.currentBackgroundMusic;
-    if (!currentUrl || currentUrl === "None") {
-      currentMusicName.value = t("game.soundPanel.noMusic");
-      return;
-    }
-    const matched = bgmList.value.find((item) => item.url === currentUrl);
-    currentMusicName.value = matched?.name || extractFileName(currentUrl);
-  };
+/** 播放指定曲目 */
+const playMusic = (music: MusicItem) => {
+  uiStore.currentBackgroundMusic = music.url;
+  uiStore.bgMusicPaused = false;
+  uiStore.bgMusicStoped = false;
+};
 
-  /** 切换播放模式 */
-  const togglePlaybackMode = () => {
-    const modes: Array<"loop-list" | "loop-single" | "random"> = [
-      "loop-list",
-      "loop-single",
-      "random",
-    ];
-    const currentIndex = modes.indexOf(uiStore.bgMusicMode);
-    uiStore.bgMusicMode = modes[(currentIndex + 1) % modes.length];
-  };
+/** 前往设置 */
+const openSettings = () => {
+  uiStore.showSettings = true;
+  uiStore.currentSettingsTab = "sound";
+  panelVisible.value = false;
+};
 
-  /** 播放/暂停 */
-  const handlePlayPause = () => {
-    if (uiStore.currentBackgroundMusic === "None") return; // 未选曲目时不自动选中
-    uiStore.bgMusicPaused = !uiStore.bgMusicPaused;
-  };
+// ===== 环境音相关 =====
+/** 从 src 推断轨道显示名 */
+const getTrackDisplayName = (track: { name?: string; src: string }): string => {
+  if (track.name) return track.name;
+  return extractFileName(track.src);
+};
 
-  /** 停止：清除选中状态，回退到"未选择音乐" */
-  const handleStop = () => {
-    uiStore.bgMusicStoped = true;
-    uiStore.bgMusicPaused = true;
-    uiStore.currentBackgroundMusic = "None";
-  };
+/** 停止全部环境音 */
+const stopAllAmbient = () => {
+  uiStore.clearAmbientTracks();
+};
 
-  /** 播放指定曲目 */
-  const playMusic = (music: MusicItem) => {
-    uiStore.currentBackgroundMusic = music.url;
-    uiStore.bgMusicPaused = false;
-    uiStore.bgMusicStoped = false;
-  };
+// ===== 数据加载 =====
+const loadBgmList = async () => {
+  try {
+    bgmList.value = await musicGetAll();
+    syncCurrentMusicName();
+  } catch (e) {
+    console.error("SoundEffectPanel: 加载音乐列表失败", e);
+  }
+};
 
-  /** 前往设置 */
-  const openSettings = () => {
-    uiStore.showSettings = true;
-    uiStore.currentSettingsTab = "sound";
-    panelVisible.value = false;
-  };
+// ===== 点击外部关闭 =====
+const triggerRef = ref<HTMLElement | null>(null);
 
-  // ===== 环境音相关 =====
-  /** 从 src 推断轨道显示名 */
-  const getTrackDisplayName = (track: { name?: string; src: string }): string => {
-    if (track.name) return track.name;
-    return extractFileName(track.src);
-  };
+// ===== 环境音文件库 =====
+const ambientFileList = ref<AmbientItem[]>([]);
 
-  /** 停止全部环境音 */
-  const stopAllAmbient = () => {
-    uiStore.clearAmbientTracks();
-  };
+const loadAmbientList = async () => {
+  try {
+    ambientFileList.value = await ambientGetAll();
+  } catch (e) {
+    console.error("SoundEffectPanel: 加载环境音列表失败", e);
+  }
+};
 
-  // ===== 数据加载 =====
-  const loadBgmList = async () => {
-    try {
-      bgmList.value = await musicGetAll();
-      syncCurrentMusicName();
-    } catch (e) {
-      console.error("SoundEffectPanel: 加载音乐列表失败", e);
-    }
-  };
-
-  // ===== 点击外部关闭 =====
-  const triggerRef = ref<HTMLElement | null>(null);
-
-  // ===== 环境音文件库 =====
-  const ambientFileList = ref<AmbientItem[]>([]);
-
-  const loadAmbientList = async () => {
-    try {
-      ambientFileList.value = await ambientGetAll();
-    } catch (e) {
-      console.error("SoundEffectPanel: 加载环境音列表失败", e);
-    }
-  };
-
-  /** 从文件库播放环境音 */
-  const playAmbientFromList = (ambient: AmbientItem) => {
-    uiStore.addAmbientTrack({
-      src: ambient.url,
-      name: ambient.name,
-      volume: 80,
-      loop: true,
-      fade: true,
-    });
-  };
-
-  const handleClickOutside = (e: MouseEvent) => {
-    if (!panelVisible.value) return;
-    const target = e.target as Node;
-    // 点击在面板内部或触发按钮上都不关闭
-    if (panelRef.value?.contains(target)) return;
-    // if (triggerRef.value?.contains(target)) return
-    panelVisible.value = false;
-  };
-
-  // ===== 生命周期 =====
-  onMounted(() => {
-    loadBgmList();
-    loadAmbientList();
-    document.addEventListener("mousedown", handleClickOutside);
+/** 从文件库播放环境音 */
+const playAmbientFromList = (ambient: AmbientItem) => {
+  uiStore.addAmbientTrack({
+    src: ambient.url,
+    name: ambient.name,
+    volume: 80,
+    loop: true,
+    fade: true,
   });
+};
 
-  onUnmounted(() => {
-    document.removeEventListener("mousedown", handleClickOutside);
-  });
+const handleClickOutside = (e: MouseEvent) => {
+  if (!panelVisible.value) return;
+  const target = e.target as Node;
+  // 点击在面板内部或触发按钮上都不关闭
+  if (panelRef.value?.contains(target)) return;
+  // if (triggerRef.value?.contains(target)) return
+  panelVisible.value = false;
+};
 
-  // 监听 BGM URL 变化同步名称
-  watch(
-    () => uiStore.currentBackgroundMusic,
-    () => syncCurrentMusicName()
-  );
+// ===== 生命周期 =====
+onMounted(() => {
+  loadBgmList();
+  loadAmbientList();
+  document.addEventListener("mousedown", handleClickOutside);
+});
 
-  // 打开设置时自动关闭声效面板
-  watch(
-    () => uiStore.showSettings,
-    (val) => {
-      if (val) panelVisible.value = false;
-    }
-  );
+onUnmounted(() => {
+  document.removeEventListener("mousedown", handleClickOutside);
+});
+
+// 监听 BGM URL 变化同步名称
+watch(
+  () => uiStore.currentBackgroundMusic,
+  () => syncCurrentMusicName(),
+);
+
+// 打开设置时自动关闭声效面板
+watch(
+  () => uiStore.showSettings,
+  (val) => {
+    if (val) panelVisible.value = false;
+  },
+);
 </script>
 
 <style scoped>
-  /* 自定义滚动条 */
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 4px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.15);
-    border-radius: 20px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.3);
-  }
+/* 自定义滚动条 */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
 
-  /* 音量滑块样式 */
-  input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: #79d9ff;
-    cursor: pointer;
-    border: 2px solid rgba(0, 0, 0, 0.3);
-  }
+/* 音量滑块样式 */
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #79d9ff;
+  cursor: pointer;
+  border: 2px solid rgba(0, 0, 0, 0.3);
+}
 
-  /* 链接按钮样式 */
-  .text-link {
-    background: none;
-    border: none;
-    padding: 0;
-    color: #79d9ff;
-    cursor: pointer;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-  .text-link:hover {
-    color: #93c5fd;
-  }
+/* 频谱自定义取色器（去掉原生 swatch 的内边距，方形化） */
+.spectrum-color-input {
+  height: 20px;
+  width: 30px;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 5px;
+}
+.spectrum-color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.spectrum-color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
 
-  /* 图标脉冲动画（.pulse-icon 仅让第一个子元素即 Icon 闪烁，文字不闪） */
-  @keyframes pulse-glow {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.4;
-    }
+/* 链接按钮样式 */
+.text-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #79d9ff;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.text-link:hover {
+  color: #93c5fd;
+}
+
+/* 图标脉冲动画（.pulse-icon 仅让第一个子元素即 Icon 闪烁，文字不闪） */
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 1;
   }
-  .pulse-icon > :deep(span:first-child) {
-    animation: pulse-glow 2s ease-in-out infinite;
+  50% {
+    opacity: 0.4;
   }
+}
+.pulse-icon > :deep(span:first-child) {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
 </style>

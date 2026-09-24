@@ -38,6 +38,7 @@ impl Tool for CurrentTimeTool {
 
         let now = Local::now();
         Ok(serde_json::json!({
+            "ok": true,
             "local_time": now.to_rfc3339(),
             "timezone": "local",
             "unix_timestamp": now.timestamp(),

@@ -1,20 +1,20 @@
 <script setup lang="ts">
-  import { convertFileSrc } from "@tauri-apps/api/core";
-  import { Button, Icon } from "@/components/base";
-  import { MenuPage, MenuItem } from "@/components/ui";
-  import { useI18n } from "vue-i18n";
-  import { useScriptEditorStore } from "@/stores/modules/script-editor";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { Button, Icon } from "@/components/base";
+import { MenuPage, MenuItem } from "@/components/ui";
+import { useI18n } from "vue-i18n";
+import { useScriptEditorStore } from "@/stores/modules/script-editor";
 
-  const emit = defineEmits<{
-    "new-character": [];
-    "import-character": [];
-  }>();
+const emit = defineEmits<{
+  "new-character": [];
+  "import-character": [];
+}>();
 
-  const { t } = useI18n();
-  const store = useScriptEditorStore();
+const { t } = useI18n();
+const store = useScriptEditorStore();
 
-  /** 绝对路径 → webview 能加载的 asset URL，与 GameBackground / GameRoleAvatar 同一套 */
-  const assetUrl = (path: string) => convertFileSrc(path);
+/** 绝对路径 → webview 能加载的 asset URL，与 GameBackground / GameRoleAvatar 同一套 */
+const assetUrl = (path: string) => convertFileSrc(path);
 </script>
 
 <template>
@@ -25,9 +25,7 @@
       </template>
 
       <p
-        class="[&_code]:text-brand mb-[0.9rem] rounded-xl border border-white/10 bg-black/16
-          px-[0.85rem] py-[0.7rem] text-[0.76rem] leading-[1.85] text-white/60 [&_b]:font-semibold
-          [&_b]:text-white/85 [&_code]:font-mono"
+        class="[&_code]:text-brand mb-[0.9rem] rounded-xl border border-white/10 bg-black/16 px-[0.85rem] py-[0.7rem] text-[0.76rem] leading-[1.85] text-white/60 [&_b]:font-semibold [&_b]:text-white/85 [&_code]:font-mono"
         v-html="t('scriptEditor.characters.intro')"
       ></p>
 
@@ -37,14 +35,12 @@
       <div
         v-for="c in store.characters"
         :key="c.folder"
-        class="group mb-2 flex w-full items-center rounded-[10px] border border-white/10 bg-white/6
-          px-[13px] py-[11px] transition-all duration-200"
+        class="group mb-2 flex w-full items-center rounded-[10px] border border-white/10 bg-white/6 px-[13px] py-[11px] transition-all duration-200"
       >
         <!-- 立绘缩略图：本地 avatar 优先，没有回退全局；都没有时占位，与
              引擎运行时同一个查找顺序，避免「编辑器看着有、游戏里没有」 -->
         <div
-          class="char-thumb border-brand/35 h-11 w-11 shrink-0 overflow-hidden rounded-full
-            border-[1.5px]"
+          class="char-thumb border-brand/35 h-11 w-11 shrink-0 overflow-hidden rounded-full border-[1.5px]"
         >
           <img
             v-if="c.previewImage"
@@ -65,8 +61,7 @@
             <code class="text-brand font-mono">character: {{ c.roleKey }}</code>
             <span
               v-if="c.emotions.length === 0 && c.globalAvatar"
-              class="border-brand/40 text-brand bg-brand/12 shrink-0 rounded-full border px-[7px]
-                py-px text-[0.6rem]"
+              class="border-brand/40 text-brand bg-brand/12 shrink-0 rounded-full border px-[7px] py-px text-[0.6rem]"
               :title="t('scriptEditor.characters.noLocalAvatar')"
               >{{ t("scriptEditor.characters.usesGlobalAvatar") }}</span
             >
@@ -88,8 +83,7 @@
           </p>
         </div>
         <button
-          class="shrink-0 rounded px-[5px] text-[11px] text-white/25 opacity-0 transition-all
-            duration-150 group-hover:opacity-100 hover:bg-red-400/15 hover:text-red-300"
+          class="shrink-0 rounded px-[5px] text-[11px] text-white/25 opacity-0 transition-all duration-150 group-hover:opacity-100 hover:bg-red-400/15 hover:text-red-300"
           :title="t('scriptEditor.characters.delete')"
           @click="store.deleteCharacter(c.folder, c.aiName)"
         >
@@ -110,9 +104,9 @@
 </template>
 
 <style scoped>
-  /* 棋盘底纹：透明图片不至于糊成一片黑 */
-  .char-thumb {
-    background: repeating-conic-gradient(rgba(255, 255, 255, 0.08) 0% 25%, transparent 0% 50%) 0 0 /
-      10px 10px;
-  }
+/* 棋盘底纹：透明图片不至于糊成一片黑 */
+.char-thumb {
+  background: repeating-conic-gradient(rgba(255, 255, 255, 0.08) 0% 25%, transparent 0% 50%) 0 0 /
+    10px 10px;
+}
 </style>

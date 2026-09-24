@@ -204,6 +204,7 @@ impl Tool for GetCurrentMemory {
         };
         let memory = gs.role_manager.get_role_memory_text(role_id).await;
         Ok(json!({
+            "ok": true,
             "role_id": role_id,
             "memory": memory,
         }))
@@ -251,7 +252,7 @@ impl Tool for GetNotes {
             let dn = current_display_name(&mut gs, &db).await?;
             load_role_notes(&dn).map_err(ToolError::Execution)?
         };
-        Ok(json!(notes))
+        Ok(json!({ "ok": true, "notes": notes }))
     }
 }
 

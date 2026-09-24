@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>上帝 Agent · 组件结构图</title>
+<style>
+  :root {
+    --bg: #0f1720;
+    --panel: #16202c;
+    --panel-2: #1b2430;
+    --border: #2a3a4a;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --brand: #79d9ff;
+    --rust: #f4a261;
+    --vue: #34d399;
+    --db: #a78bfa;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --pink: #f472b6;
+    --danger: #f87171;
+  }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; line-height: 1.8; max-width: 1360px; }
+  .wrap { max-width: 1360px; margin: 0 auto; }
+  svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 12.5px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  text { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>上帝 Agent · 组件结构图</h1>
+  <p class="sub">
+    实线 = 调用 / 持有；虚线 = 构建期装配。<b>上帝 Agent 的唯一上下文来源是 <code>GameStatus</code></b>——
+    它不读角色的 <code>role.memory</code>（MemoryBank），也不落任何自己的状态。
+  </p>
+
+  <svg viewBox="0 0 1360 1120" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="aBrand" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#79d9ff" />
+      </marker>
+      <marker id="aRust" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#f4a261" />
+      </marker>
+      <marker id="aVue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#34d399" />
+      </marker>
+      <marker id="aPink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#f472b6" />
+      </marker>
+      <marker id="aWarn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#fbbf24" />
+      </marker>
+    </defs>
+
+    <!-- ============ 左列：装配与接入 ============ -->
+    <!-- 装配与生命周期 -->
+    <rect x="40" y="40" width="400" height="470" rx="8" fill="#16202c" stroke="#f4a261" stroke-width="1.4" />
+    <text x="56" y="66" font-size="14" font-weight="700" fill="#f4a261">装配与生命周期</text>
+    <line x1="40" y1="78" x2="440" y2="78" stroke="#2a3a4a" />
+    <text x="56" y="100" font-size="11" fill="#e6edf3">app/setup/build.rs</text>
+    <text x="56" y="122" font-size="10.5" fill="#8b98a5">resolve_god_agent_provider(&amp;app)</text>
+    <text x="56" y="142" font-size="10.5" fill="#8b98a5">  → Option&lt;LlmClient&gt;（4 级兜底，全空则 None）</text>
+    <text x="56" y="162" font-size="10.5" fill="#8b98a5">GodAgentConfig::load(&amp;app)  → 见右列</text>
+    <text x="56" y="182" font-size="10.5" fill="#8b98a5">GodAgentCore::new(slot, config)</text>
+    <text x="56" y="202" font-size="10.5" fill="#8b98a5">  → Arc&lt;GodAgentCore&gt; 存入 AppState.god_agent</text>
+    <line x1="40" y1="218" x2="440" y2="218" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="56" y="240" font-size="11" font-weight="700" fill="#f4a261">LLM 兜底顺序</text>
+    <text x="56" y="262" font-size="10.5" fill="#e6edf3">1. llm.god_agent_provider_id（显式指定）</text>
+    <text x="56" y="282" font-size="10.5" fill="#e6edf3">2. assignment.god_agent_provider_id</text>
+    <text x="56" y="302" font-size="10.5" fill="#e6edf3">3. assignment.chat_provider_id（聊天主 LLM）</text>
+    <text x="56" y="322" font-size="10.5" fill="#e6edf3">4. 任意 is_usable() 的 provider</text>
+    <text x="56" y="344" font-size="10.5" fill="#f87171">全空 → warn + None → 多人对话静默降级为单角色</text>
+    <line x1="40" y1="360" x2="440" y2="360" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="56" y="382" font-size="11" font-weight="700" fill="#f4a261">api/settings.rs::switch_llm（热切换）</text>
+    <text x="56" y="404" font-size="10.5" fill="#8b98a5">god.llm.write().await = new_god</text>
+    <text x="56" y="424" font-size="10.5" fill="#8b98a5">与聊天 / 翻译槽位一同重建，无需重启</text>
+    <text x="56" y="446" font-size="10.5" fill="#8b98a5">LlmSlot = Arc&lt;RwLock&lt;Option&lt;Arc&lt;LlmClient&gt;&gt;&gt;&gt;</text>
+    <text x="56" y="472" font-size="10.5" fill="#8b98a5">store 值必须写成字符串，否则回落默认值</text>
+    <text x="56" y="494" font-size="10.5" fill="#8b98a5">（.as_str().and_then(parse)）</text>
+
+    <!-- MessageGenerator -->
+    <rect x="40" y="550" width="400" height="400" rx="8" fill="#16202c" stroke="#79d9ff" stroke-width="1.4" />
+    <text x="56" y="576" font-size="14" font-weight="700" fill="#79d9ff">MessageGenerator</text>
+    <text x="56" y="594" font-size="10.5" fill="#8b98a5">message_system/generator.rs</text>
+    <line x1="40" y1="606" x2="440" y2="606" stroke="#2a3a4a" />
+    <text x="56" y="628" font-size="11" font-weight="700" fill="#79d9ff">god_agent_pre_select()</text>
+    <text x="230" y="628" font-size="10.5" fill="#fbbf24">★ 用户发消息后</text>
+    <text x="56" y="648" font-size="10.5" fill="#8b98a5">仅 user_message.is_some() 才走</text>
+    <text x="56" y="668" font-size="10.5" fill="#8b98a5">选 0 → 保持现状；否则写 current_role_id</text>
+    <line x1="40" y1="684" x2="440" y2="684" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="56" y="706" font-size="11" font-weight="700" fill="#79d9ff">god_agent_post_select(n)</text>
+    <text x="248" y="706" font-size="10.5" fill="#fbbf24">★ 每轮回复后</text>
+    <text x="56" y="726" font-size="10.5" fill="#8b98a5">① god_agent 为 None → break</text>
+    <text x="56" y="746" font-size="10.5" fill="#8b98a5">② n &gt;= max_consecutive_npc → break（硬闸）</text>
+    <text x="56" y="766" font-size="10.5" fill="#8b98a5">③ !should_activate → break</text>
+    <text x="56" y="786" font-size="10.5" fill="#8b98a5">④ decide → role_id == 0 → break（交还玩家）</text>
+    <text x="56" y="806" font-size="10.5" fill="#8b98a5">⑤ 写 current_role_id + emit → 循环继续</text>
+    <line x1="40" y1="822" x2="440" y2="822" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="56" y="844" font-size="11" font-weight="700" fill="#79d9ff">maybe_evaluate_affection()</text>
+    <text x="272" y="844" font-size="10.5" fill="#fbbf24">★ 循环之后</text>
+    <text x="56" y="866" font-size="10.5" fill="#8b98a5">快照 → 释放锁 → spawn 后台调 LLM</text>
+    <text x="56" y="890" font-size="10.5" fill="#8b98a5">不阻塞本轮回复的呈现</text>
+    <text x="56" y="920" font-size="10.5" fill="#34d399">emit_character_switch() / app.emit(...)</text>
+
+    <!-- 不接编排的调用点 -->
+    <rect x="40" y="990" width="400" height="130" rx="8" fill="#16202c" stroke="#2a3a4a" stroke-width="1.2" />
+    <text x="56" y="1016" font-size="13" font-weight="700" fill="#8b98a5">god_agent: None 的调用点</text>
+    <line x1="40" y1="1028" x2="440" y2="1028" stroke="#2a3a4a" />
+    <text x="56" y="1050" font-size="10.5" fill="#8b98a5">剧本 AiDialogue / FreeDialogue 事件</text>
+    <text x="56" y="1070" font-size="10.5" fill="#8b98a5">proactive_system::deliver</text>
+    <text x="56" y="1090" font-size="10.5" fill="#8b98a5">tools/background_command.rs</text>
+    <text x="56" y="1110" font-size="10.5" fill="#fbbf24">双保险：should_activate 里的 script_status.is_none()</text>
+
+    <!-- ============ 中列：核心 ============ -->
+    <rect x="470" y="40" width="400" height="360" rx="8" fill="#16202c" stroke="#79d9ff" stroke-width="1.8" />
+    <text x="486" y="66" font-size="15" font-weight="700" fill="#79d9ff">GodAgentCore</text>
+    <text x="630" y="66" font-size="10.5" fill="#8b98a5">god_agent/core.rs</text>
+    <line x1="470" y1="78" x2="870" y2="78" stroke="#2a3a4a" />
+    <text x="486" y="100" font-size="10.5" fill="#e6edf3">llm: LlmSlot</text>
+    <text x="486" y="120" font-size="10.5" fill="#e6edf3">config: GodAgentConfig</text>
+    <line x1="470" y1="134" x2="870" y2="134" stroke="#2a3a4a" />
+    <text x="486" y="156" font-size="10.5" fill="#e6edf3">+ should_activate(gs) -&gt; bool</text>
+    <text x="486" y="176" font-size="10" fill="#8b98a5">script_status.is_none() &amp;&amp; present_role_ids.len() &gt; 1</text>
+    <text x="486" y="200" font-size="10.5" fill="#e6edf3">+ decide_next_speaker(&amp;gs, current_speaker)</text>
+    <text x="486" y="220" font-size="10" fill="#8b98a5">-&gt; Result&lt;(i32, String)&gt;</text>
+    <text x="486" y="238" font-size="10" fill="#fbbf24">单 NPC 短路：npc_ids.len() &lt;= 1 时不调 LLM</text>
+    <text x="486" y="262" font-size="10.5" fill="#e6edf3">+ evaluate_affection(&amp;lines, &amp;npcs)</text>
+    <text x="486" y="282" font-size="10" fill="#8b98a5">-&gt; Result&lt;Vec&lt;AffectionAdjustment&gt;&gt;</text>
+    <text x="486" y="306" font-size="10.5" fill="#e6edf3">- build_decision_prompt(&amp;lines, &amp;npc_ids, cur, &amp;gs)</text>
+    <text x="486" y="326" font-size="10.5" fill="#e6edf3">- build_affection_prompt(&amp;lines, &amp;npcs)</text>
+    <line x1="470" y1="340" x2="870" y2="340" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="486" y="362" font-size="10" fill="#f4a261">两条流水线共用 llm 槽位，均非流式单次调用</text>
+    <text x="486" y="382" font-size="10" fill="#f4a261">调用前 slot_snapshot()，未配置则 Err</text>
+
+    <!-- NpcAffectionView -->
+    <rect x="470" y="440" width="300" height="170" rx="8" fill="#16202c" stroke="#34d399" stroke-width="1.4" />
+    <text x="486" y="466" font-size="13" font-weight="700" fill="#34d399">NpcAffectionView</text>
+    <text x="666" y="466" font-size="10.5" fill="#8b98a5">core.rs</text>
+    <line x1="470" y1="478" x2="770" y2="478" stroke="#2a3a4a" />
+    <text x="486" y="500" font-size="10.5" fill="#e6edf3">role_id: i32</text>
+    <text x="486" y="520" font-size="10.5" fill="#e6edf3">name / subtitle / info: String</text>
+    <text x="486" y="540" font-size="10.5" fill="#e6edf3">current: AffectionVector    <tspan fill="#8b98a5">好感六维</tspan></text>
+    <text x="486" y="560" font-size="10.5" fill="#e6edf3">negative: NegativeVector    <tspan fill="#8b98a5">负面六维</tspan></text>
+    <line x1="470" y1="574" x2="770" y2="574" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="486" y="596" font-size="10" fill="#fbbf24">存在的唯一理由：评估前从 GameStatus 快照，避免持锁跨 await</text>
+
+    <!-- GameStatus -->
+    <rect x="470" y="650" width="400" height="470" rx="8" fill="#16202c" stroke="#34d399" stroke-width="1.6" />
+    <text x="486" y="676" font-size="14" font-weight="700" fill="#34d399">GameStatus</text>
+    <text x="620" y="676" font-size="11" fill="#fbbf24">← 唯一的上下文来源</text>
+    <line x1="470" y1="688" x2="870" y2="688" stroke="#2a3a4a" />
+    <text x="486" y="710" font-size="10.5" fill="#e6edf3">line_list: Vec&lt;GameLine&gt;</text>
+    <text x="486" y="728" font-size="10" fill="#8b98a5">→ 取尾部 recent_window 行（由旧到新）</text>
+    <text x="486" y="752" font-size="10.5" fill="#e6edf3">present_role_ids: HashSet&lt;i32&gt;</text>
+    <text x="486" y="770" font-size="10" fill="#8b98a5">→ 候选集（含 0 = 玩家）+ 返回值合法性校验</text>
+    <text x="486" y="794" font-size="10.5" fill="#e6edf3">current_role_id: Option&lt;i32&gt;</text>
+    <text x="486" y="812" font-size="10" fill="#8b98a5">→ current_speaker 提示的三种分支</text>
+    <text x="486" y="836" font-size="10.5" fill="#e6edf3">script_status: Option&lt;ScriptStatus&gt;</text>
+    <text x="486" y="854" font-size="10" fill="#8b98a5">→ 剧本模式直接不激活 / 不评估</text>
+    <text x="486" y="878" font-size="10.5" fill="#e6edf3">affection_eval_cursor: usize</text>
+    <text x="486" y="896" font-size="10" fill="#8b98a5">→ 评估节流游标（spawn 之前先推进）</text>
+    <text x="486" y="920" font-size="10.5" fill="#e6edf3">global_variables: HashMap&lt;String, Value&gt;</text>
+    <text x="486" y="938" font-size="10" fill="#8b98a5">→ 好感度持久化 affection.{role_id}，跟随存档</text>
+    <line x1="470" y1="956" x2="870" y2="956" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="486" y="978" font-size="10.5" fill="#e6edf3">role_manager: GameRoleManager</text>
+    <text x="486" y="998" font-size="10" fill="#8b98a5">get_loaded(rid) → display_name / ai_subtitle / info</text>
+    <text x="486" y="1018" font-size="10" fill="#8b98a5">adjust_affection(rid, deltas, neg) → (Affection, Negative)</text>
+    <text x="486" y="1044" font-size="10.5" fill="#f87171">get_role(db, rid).memory  ← 上帝 Agent 不读它</text>
+    <text x="486" y="1066" font-size="10" fill="#8b98a5">（那是角色侧 MemoryBank 注入的长程记忆）</text>
+
+    <!-- ============ 右列：依赖与产物 ============ -->
+    <!-- tools.rs -->
+    <rect x="910" y="40" width="410" height="300" rx="8" fill="#16202c" stroke="#f472b6" stroke-width="1.4" />
+    <text x="926" y="66" font-size="14" font-weight="700" fill="#f472b6">god_agent::tools</text>
+    <text x="1074" y="66" font-size="10.5" fill="#8b98a5">自由函数，无执行体</text>
+    <line x1="910" y1="78" x2="1320" y2="78" stroke="#2a3a4a" />
+    <text x="926" y="100" font-size="10.5" fill="#e6edf3">select_next_speaker_tool() -&gt; ToolDefinition</text>
+    <text x="926" y="120" font-size="10.5" fill="#e6edf3">parse_speaker_selection(&amp;ToolCall) -&gt; Option&lt;(i32, String)&gt;</text>
+    <text x="926" y="140" font-size="10.5" fill="#e6edf3">update_affection_tool() -&gt; ToolDefinition</text>
+    <text x="926" y="160" font-size="10.5" fill="#e6edf3">parse_affection_update(&amp;ToolCall) -&gt; Option&lt;Adjustment&gt;</text>
+    <line x1="910" y1="176" x2="1320" y2="176" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="926" y="198" font-size="11" font-weight="700" fill="#f472b6">容错归一化（模型输出不可靠）</text>
+    <text x="926" y="218" font-size="10" fill="#8b98a5">parse_tool_args：拆壳 / 双编码 JSON / 非法 JSON</text>
+    <text x="926" y="238" font-size="10" fill="#8b98a5">parse_role_id：int / float / "6" / " 6 " / "6.0"</text>
+    <text x="926" y="258" font-size="10" fill="#8b98a5">parse_delta：同上，再 clamp(-5, 5)</text>
+    <text x="926" y="278" font-size="10" fill="#8b98a5">白名单外维度、0 增量：静默丢弃</text>
+    <text x="926" y="298" font-size="10" fill="#8b98a5">role_id == 0 或两组增量皆空：返回 None</text>
+    <text x="926" y="324" font-size="10" fill="#8b98a5">struct AffectionAdjustment { role_id, deltas, negative_deltas, reason }</text>
+
+    <!-- LlmSlot -->
+    <rect x="910" y="380" width="410" height="130" rx="8" fill="#16202c" stroke="#fbbf24" stroke-width="1.4" />
+    <text x="926" y="406" font-size="13" font-weight="700" fill="#fbbf24">LlmSlot</text>
+    <text x="1000" y="406" font-size="10.5" fill="#8b98a5">llm/mod.rs</text>
+    <line x1="910" y1="418" x2="1320" y2="418" stroke="#2a3a4a" />
+    <text x="926" y="440" font-size="10.5" fill="#e6edf3">Arc&lt;RwLock&lt;Option&lt;Arc&lt;LlmClient&gt;&gt;&gt;&gt;</text>
+    <text x="926" y="460" font-size="10.5" fill="#e6edf3">slot_snapshot(&amp;slot).await -&gt; Option&lt;Arc&lt;LlmClient&gt;&gt;</text>
+    <text x="926" y="480" font-size="10.5" fill="#e6edf3">complete_with_tools(messages, tools, Some("auto"))</text>
+    <text x="926" y="500" font-size="10" fill="#fbbf24">← 非流式单次调用；工具只解析，从不执行</text>
+
+    <!-- GodAgentConfig -->
+    <rect x="910" y="550" width="410" height="200" rx="8" fill="#16202c" stroke="#f4a261" stroke-width="1.4" />
+    <text x="926" y="576" font-size="13" font-weight="700" fill="#f4a261">GodAgentConfig</text>
+    <text x="1052" y="576" font-size="10.5" fill="#8b98a5">config.rs</text>
+    <line x1="910" y1="588" x2="1320" y2="588" stroke="#2a3a4a" />
+    <text x="926" y="610" font-size="10.5" fill="#e6edf3">provider_id: Option&lt;String&gt;</text>
+    <text x="926" y="630" font-size="10.5" fill="#e6edf3">max_consecutive_npc: usize = 3      <tspan fill="#8b98a5">下限 1</tspan></text>
+    <text x="926" y="650" font-size="10.5" fill="#e6edf3">recent_window: usize = 20           <tspan fill="#8b98a5">下限 5</tspan></text>
+    <text x="926" y="670" font-size="10.5" fill="#e6edf3">affection_eval_interval: usize = 5  <tspan fill="#8b98a5">下限 1</tspan></text>
+    <text x="926" y="690" font-size="10.5" fill="#e6edf3">affection_enabled: bool = true</text>
+    <line x1="910" y1="706" x2="1320" y2="706" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="926" y="728" font-size="10" fill="#8b98a5">load(app)：从 tauri-plugin-store（settings.json）读</text>
+    <text x="926" y="746" font-size="10" fill="#fbbf24">只有 affection.enabled 进了设置树 UI</text>
+
+    <!-- 前端事件 -->
+    <rect x="910" y="790" width="410" height="330" rx="8" fill="#16202c" stroke="#a78bfa" stroke-width="1.4" />
+    <text x="926" y="816" font-size="13" font-weight="700" fill="#a78bfa">前端契约</text>
+    <text x="1014" y="816" font-size="10.5" fill="#8b98a5">app.emit 单向广播</text>
+    <line x1="910" y1="828" x2="1320" y2="828" stroke="#2a3a4a" />
+    <text x="926" y="850" font-size="11" font-weight="700" fill="#a78bfa">character:switch</text>
+    <text x="926" y="870" font-size="10" fill="#8b98a5">{ type, roleId, characterName }</text>
+    <text x="926" y="888" font-size="10" fill="#8b98a5">发起：MessageGenerator::emit_character_switch</text>
+    <text x="926" y="906" font-size="10" fill="#8b98a5">→ currentInteractRoleId / uiStore 标题副标题</text>
+    <text x="926" y="924" font-size="10" fill="#fbbf24">→ 仅当角色不在 presentRoleIds 时才替换舞台</text>
+    <line x1="910" y1="940" x2="1320" y2="940" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="926" y="962" font-size="11" font-weight="700" fill="#a78bfa">affection:changed</text>
+    <text x="926" y="982" font-size="10" fill="#8b98a5">AffectionChangedPayload</text>
+    <text x="926" y="1000" font-size="10" fill="#8b98a5">发起：maybe_evaluate_affection 的后台任务</text>
+    <text x="926" y="1018" font-size="10" fill="#8b98a5">→ gameRoles[rid].affection / .negative</text>
+    <text x="926" y="1036" font-size="10" fill="#8b98a5">→ lastAffectionChange（维度明细 + 理由）</text>
+    <text x="926" y="1054" font-size="10" fill="#8b98a5">面板：components/tools/AffectionPanel.vue</text>
+    <text x="926" y="1080" font-size="10" fill="#8b98a5">变更的唯一主动来源是事件，</text>
+    <text x="926" y="1098" font-size="10" fill="#8b98a5">api/affection.rs 仅用于初始化 / 兜底刷新</text>
+
+    <!-- ============ 连线 ============ -->
+    <!-- 装配 → GodAgentCore -->
+    <line x1="440" y1="120" x2="470" y2="120" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#aBrand)" />
+    <text x="466" y="112" font-size="9.5" fill="#79d9ff" text-anchor="end">new(slot, config)</text>
+
+    <!-- GodAgentCore → tools -->
+    <line x1="870" y1="160" x2="910" y2="160" stroke="#f472b6" stroke-width="1.6" marker-end="url(#aPink)" />
+    <text x="866" y="152" font-size="9.5" fill="#f472b6" text-anchor="end">*_tool() / parse_*()</text>
+
+    <!-- GodAgentCore → LlmSlot -->
+    <path d="M 870 280 L 890 280 L 890 445 L 910 445" fill="none" stroke="#fbbf24" stroke-width="1.6" marker-end="url(#aWarn)" />
+    <text x="866" y="272" font-size="9.5" fill="#fbbf24" text-anchor="end">llm</text>
+
+    <!-- GodAgentCore → GodAgentConfig -->
+    <path d="M 870 340 L 898 340 L 898 650 L 910 650" fill="none" stroke="#f4a261" stroke-width="1.6" marker-end="url(#aRust)" />
+    <text x="894" y="332" font-size="9.5" fill="#f4a261" text-anchor="end">config</text>
+
+    <!-- NpcAffectionView → GodAgentCore -->
+    <line x1="670" y1="440" x2="670" y2="400" stroke="#34d399" stroke-width="1.6" marker-end="url(#aVue)" />
+    <text x="680" y="424" font-size="9.5" fill="#34d399">evaluate_affection(&amp;lines, &amp;npcs)</text>
+
+    <!-- MessageGenerator → GodAgentCore -->
+    <path d="M 440 600 L 455 600 L 455 220 L 470 220" fill="none" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#aBrand)" />
+    <text x="436" y="620" font-size="9.5" fill="#79d9ff" text-anchor="end">pre / post select</text>
+
+    <!-- GameStatus → GodAgentCore -->
+    <line x1="800" y1="650" x2="800" y2="400" stroke="#34d399" stroke-width="1.6" marker-end="url(#aVue)" />
+    <text x="808" y="622" font-size="9.5" fill="#34d399">每次决策现场读取</text>
+    <text x="808" y="638" font-size="9.5" fill="#34d399">（line_list 等）</text>
+    <text x="808" y="500" font-size="9.5" fill="#34d399">无缓存、无历史</text>
+  </svg>
+
+  <div class="legend">
+    <span><i class="dot" style="background:#79d9ff"></i>核心 / 生成管线</span>
+    <span><i class="dot" style="background:#f4a261"></i>装配与配置</span>
+    <span><i class="dot" style="background:#34d399"></i>数据来源（上下文）</span>
+    <span><i class="dot" style="background:#f472b6"></i>工具定义与解析</span>
+    <span><i class="dot" style="background:#fbbf24"></i>LLM 槽位</span>
+    <span><i class="dot" style="background:#a78bfa"></i>前端契约</span>
+  </div>
+</div>
+</body>
+</html>

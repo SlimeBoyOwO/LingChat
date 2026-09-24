@@ -18,7 +18,7 @@ use tauri::{AppHandle, Manager};
 use serde_json::Value;
 
 use crate::AppState;
-use crate::ai_service::tools::executor::ToolContext;
+use crate::ai_service::tools::executor::{ToolContext, ToolExecutor};
 
 use super::http_host;
 use super::types::PluginManifest;
@@ -109,8 +109,9 @@ fn build_ctx(
 
 /// 构造 `call_tool(name, args)` 原生函数，注入到 ctx。
 ///
-/// 通过 AppHandle 取 ToolRegistry，在独立 runtime 内阻塞执行工具（脚本运行于
-/// spawn_blocking 线程，无 tokio runtime 上下文），返回序列化后的 JSON dict。
+/// 通过 AppHandle 取 ToolRegistry，在独立 runtime 内走 `ToolExecutor`（与 LLM
+/// 侧同一条路径）：参数按 schema 校验，未知工具 / 参数非法 / 超时统一编成
+/// `{ ok: false, error: { code, message } }` JSON 信封返回给脚本，而不是抛异常。
 fn make_call_tool(vm: &VirtualMachine, app: AppHandle) -> PyResult<PyObjectRef> {
     let app_for_fn = app.clone();
     let func = vm.new_function(
@@ -118,25 +119,20 @@ fn make_call_tool(vm: &VirtualMachine, app: AppHandle) -> PyResult<PyObjectRef> 
         move |name: String, args: PyObjectRef, vm: &VirtualMachine| -> PyResult<PyObjectRef> {
             let args_value = py_serde::serialize(vm, &args, serde_json::value::Serializer)
                 .map_err(|e| vm.new_type_error(format!("call_tool 参数序列化失败: {e}")))?;
+            let args_json = args_value.to_string();
             let state = app_for_fn.state::<AppState>();
             let registry = state.data().tool_registry.clone();
-            let tool = registry
-                .get(&name)
-                .ok_or_else(|| vm.new_value_error(format!("未知工具: {name}")))?;
             let allowed: std::collections::HashSet<String> =
                 std::iter::once(name.clone()).collect();
             let context = ToolContext::new(allowed).with_app(app_for_fn.clone());
-            let timeout = tool
-                .timeout_hint()
-                .unwrap_or(std::time::Duration::from_secs(2));
-            let result = http_host::runtime().block_on(async {
-                tokio::time::timeout(timeout, tool.execute(&context, args_value)).await
+            let result_json = http_host::runtime().block_on(async move {
+                ToolExecutor::new(&registry)
+                    .execute(&name, &args_json, &context)
+                    .await
             });
-            match result {
-                Ok(Ok(value)) => Ok(http_host::value_to_pyobject(vm, &value)),
-                Ok(Err(e)) => Err(vm.new_value_error(format!("工具 {name} 执行失败: {e}"))),
-                Err(_) => Err(vm.new_value_error(format!("工具 {name} 执行超时"))),
-            }
+            let parsed: serde_json::Value = serde_json::from_str(&result_json)
+                .unwrap_or_else(|_| serde_json::Value::String(result_json));
+            Ok(http_host::value_to_pyobject(vm, &parsed))
         },
     );
     Ok(func.into())

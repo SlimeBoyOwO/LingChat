@@ -1,3 +1,12 @@
+# ⚠️ 本文件与 src-tauri/.cargo/config.toml 必须保持一致（除本段说明文字外，
+# 两份的配置项应逐项相同）。
+# Cargo 是「从 cwd 向上查找」配置，不是从 manifest 向上：
+#   在 src-tauri/ 下直接跑 cargo            → 读 src-tauri/.cargo/config.toml
+#   在仓库根跑 cargo --manifest-path src-tauri/Cargo.toml → 读本文件
+# 因此两份都在实际生效。只改一份会让本地与 CI 的编译行为静默不一致。
+# 注意：新增的 [profile.dev.package."*"] 之类的 package 覆盖放在
+# src-tauri/Cargo.toml 里（覆盖只支持 manifest，且不受 cwd 影响）。
+
 [profile.dev]
 debug = 1
 strip = "debuginfo"
@@ -11,6 +20,15 @@ codegen-units = 16
 panic = "abort"
 strip = true
 opt-level = "z"
+
+# Windows 用 rust-lld 替代 link.exe。与 CI 对齐：dev-build.yml 的 Windows 任务
+# 通过 RUSTFLAGS 的 -C linker=rust-lld 设置，Linux 用 mold。
+# 放在 target 表而不是 RUSTFLAGS：RUSTFLAGS 变化会让所有依赖的指纹失效并全量重编，
+# 而 linker 只在最终链接时生效，不影响各依赖的 rlib。
+# 实测（本机，dev profile，改一行后增量构建）：rust-lld 21s vs link.exe 23s。
+# rust-lld 随工具链分发，本机与 CI 都无需额外安装。
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"
 
 [target.aarch64-linux-android]
 rustflags = [

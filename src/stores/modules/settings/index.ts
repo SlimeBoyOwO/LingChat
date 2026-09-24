@@ -4,6 +4,13 @@
  */
 import { setHdrMode } from "@/api/services/config";
 import { setSceneAwareness } from "@/api/services/scene";
+import {
+  DEFAULT_SPECTRUM_COLOR_FROM,
+  DEFAULT_SPECTRUM_COLOR_TO,
+  DEFAULT_SPECTRUM_PALETTE,
+  DEFAULT_SPECTRUM_STYLE,
+  type SpectrumStyle,
+} from "@/constants/spectrum";
 import type { ShortcutAction, ShortcutBinding } from "@/utils/shortcuts";
 import { DEFAULT_SHORTCUTS, sanitizeShortcuts } from "@/utils/shortcuts";
 import { defineStore } from "pinia";
@@ -21,7 +28,7 @@ export const DEFAULT_SETTINGS = {
     mergeMotionMode: "append" as const, // 台词合并时动作文本的处理方式：append=接在后面显示（| 分隔）/ replace=清空旧动作，独立显示本次动作
     sedentaryReminder: false, // 久坐喝水提醒
     fontFamily: "", // 自定义界面字体名（为空走系统默认栈；初始菜单/加载页不受影响）
-    vueDevToolsEnabled: true, // Vue DevTools 悬浮面板显示开关（仅开发模式生效，全局所有窗口）
+    vueDevToolsEnabled: true, // Vue DevTools 悬浮面板显示开关（仅开发模式生效，仅主窗口）
   },
   // 音频设置
   audio: {
@@ -32,6 +39,13 @@ export const DEFAULT_SETTINGS = {
     ambientVolume: 70, // 环境音音量
     chatEffectSound: true, // 对话音效开关
     outputDeviceId: "", // 输出音频设备（'' = 跟随系统默认）
+    // 音频频谱可视化（右下角迷你频谱）：默认关闭——开启后音频会接入 Web Audio
+    // 图（见 utils/audioSpectrum.ts），不想要的用户不该被默认卷进来。
+    spectrumEnabled: false, // 频谱可视化开关
+    spectrumStyle: DEFAULT_SPECTRUM_STYLE, // 形态：mirror 镜像 / bars 柱状 / ring 圆环
+    spectrumPalette: DEFAULT_SPECTRUM_PALETTE, // 配色方案 id（见 constants/spectrum.ts）
+    spectrumColor1: DEFAULT_SPECTRUM_COLOR_FROM, // 自定义配色：主色
+    spectrumColor2: DEFAULT_SPECTRUM_COLOR_TO, // 自定义配色：辅色
   },
   // 显示设置
   display: {
@@ -56,6 +70,8 @@ export const DEFAULT_SETTINGS = {
     dialogScrollHistoryEnabled: true, // 滚轮向上查看历史记录
     dialogSpacebarHideEnabled: true, // 空格键隐藏/显示对话框
     dialogAutoHideOnThinkEnabled: true, // AI 思考时自动隐藏
+    affectionHeartbeatEnabled: true, // 好感度爱心心跳动画开关（关闭后液体爱心静止）
+    affectionWaveEnabled: true, // 好感度爱心液体波浪动画开关（关闭后液面为静止平面）
   },
   // 角色设置
   character: {
@@ -65,6 +81,7 @@ export const DEFAULT_SETTINGS = {
   pet: {
     scale: 1, // 桌宠缩放比例
     live2dFps: 30, // Live2D 渲染帧率上限（0 = 不限制）；桌宠窗口小，30 帧足够且显著降 CPU
+    bubbleSide: "above" as BubbleSide, // 气泡/通知位置：above = 宠物上方，below = 宠物与输入框之间，auto = 自动
   },
   // 剧本编辑器快捷键（默认不含 Command 键；可在编辑器快捷键面板自定义）
   shortcuts: DEFAULT_SHORTCUTS,
@@ -91,6 +108,15 @@ export interface AudioSettings {
   ambientVolume: number;
   chatEffectSound: boolean;
   outputDeviceId: string;
+  /** 音频频谱可视化开关 */
+  spectrumEnabled: boolean;
+  /** 频谱形态：mirror 镜像 / bars 柱状 / ring 圆环 */
+  spectrumStyle: SpectrumStyle;
+  /** 频谱配色方案 id（"custom" = 用下面两个自定义色） */
+  spectrumPalette: string;
+  /** 自定义配色：主色 / 辅色 */
+  spectrumColor1: string;
+  spectrumColor2: string;
 }
 export interface DisplaySettings {
   currentBackground: string;
@@ -114,16 +140,23 @@ export interface DisplaySettings {
   dialogScrollHistoryEnabled: boolean;
   dialogSpacebarHideEnabled: boolean;
   dialogAutoHideOnThinkEnabled: boolean;
+  affectionHeartbeatEnabled: boolean;
+  affectionWaveEnabled: boolean;
 }
 
 export interface CharacterSettings {
   folder: string;
 }
 
+/** 气泡/通知位置：above = 宠物上方；below = 宠物与输入框之间；auto = 按宠物在屏幕中的位置自动选 */
+export type BubbleSide = "above" | "below" | "auto";
+
 export interface PetSettings {
   scale: number;
   /** Live2D 渲染帧率上限（0 = 不限制），默认 30 */
   live2dFps: number;
+  /** 气泡/通知位置 */
+  bubbleSide: BubbleSide;
 }
 
 export interface SettingsState {
@@ -188,6 +221,10 @@ export const useSettingsStore = defineStore("settings", {
     dialogScrollHistoryEnabled: (state) => state.display.dialogScrollHistoryEnabled,
     dialogSpacebarHideEnabled: (state) => state.display.dialogSpacebarHideEnabled,
     dialogAutoHideOnThinkEnabled: (state) => state.display.dialogAutoHideOnThinkEnabled,
+    // 好感度爱心心跳动画开关（旧持久化数据缺该字段时回退 true）
+    affectionHeartbeatEnabled: (state) => state.display.affectionHeartbeatEnabled ?? true,
+    // 好感度爱心液体波浪动画开关（同上回退 true）
+    affectionWaveEnabled: (state) => state.display.affectionWaveEnabled ?? true,
     // 各音量
     characterVolume: (state) => state.audio.characterVolume,
     bubbleVolume: (state) => state.audio.bubbleVolume,
@@ -391,6 +428,14 @@ export const useSettingsStore = defineStore("settings", {
     },
     setDialogAutoHideOnThinkEnabled(enabled: boolean) {
       this.display.dialogAutoHideOnThinkEnabled = enabled;
+    },
+    // 设置好感度爱心心跳动画开关
+    setAffectionHeartbeatEnabled(enabled: boolean) {
+      this.display.affectionHeartbeatEnabled = enabled;
+    },
+    // 设置好感度爱心液体波浪动画开关
+    setAffectionWaveEnabled(enabled: boolean) {
+      this.display.affectionWaveEnabled = enabled;
     },
     // 全部重置为默认
     resetDialogAppearance() {

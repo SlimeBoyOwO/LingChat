@@ -13,7 +13,8 @@ use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
 };
 use crate::ai_service::types::{
-    CharacterSettings, GameLine, LineAttributeExt, LineBase, Live2dSettings,
+    AffectionVector, CharacterSettings, GameLine, LineAttributeExt, LineBase, Live2dSettings,
+    NegativeVector,
 };
 use crate::config::{self, AppConfig};
 use crate::db::entities::line;
@@ -48,6 +49,8 @@ pub struct WebInitData {
     pub last_bgm_mode: Option<String>,
     /// 上次环境音轨道（JSON 字符串，前端解析）
     pub last_ambient_tracks: Option<String>,
+    /// 当前活跃剧本名（读档/进入剧本模式时非空），供前端还原剧本模式 UI
+    pub active_script: Option<String>,
 }
 
 /// 精简的角色设定，匹配前端 `CharacterSettings` 接口
@@ -70,9 +73,19 @@ pub struct CharacterSettingsInit {
     pub bubble_left: i32,
     pub clothes: Option<Vec<HashMap<String, String>>>,
     pub clothes_name: String,
+    pub avatar_mode: Option<String>,
     pub body_part: Option<HashMap<String, serde_json::Value>>,
     pub live2d: Option<Live2dSettings>,
+    pub avatar_mode_p: Option<String>,
+    /// 桌宠无框模式，语义见 `CharacterSettings::pet_frameless`。
+    /// 本结构体逐字段列举、没有 `#[serde(flatten)]` 兜底，漏掉这个字段
+    /// 会让每次 init / 切角色 / 读档都把用户的选择静默清成 null。
+    pub pet_frameless: Option<bool>,
     pub character_folder: String,
+    /// 该角色对玩家的六维好感度（存档全局变量里的当前值）。
+    pub affection: Option<AffectionVector>,
+    /// 该角色当前的六维负面情绪强度（同源存档全局变量）。
+    pub negative: Option<NegativeVector>,
 }
 
 impl From<&CharacterSettings> for CharacterSettingsInit {
@@ -94,9 +107,14 @@ impl From<&CharacterSettings> for CharacterSettingsInit {
             bubble_left: s.bubble_left,
             clothes: s.clothes.clone(),
             clothes_name: s.clothes_name.clone().unwrap_or_default(),
+            avatar_mode: s.avatar_mode.clone(),
             body_part: s.body_part.clone(),
             live2d: s.live2d.clone(),
+            avatar_mode_p: s.avatar_mode_p.clone(),
+            pet_frameless: s.pet_frameless,
             character_folder: s.character_folder.clone(),
+            affection: None,
+            negative: None,
         }
     }
 }
@@ -410,20 +428,20 @@ pub(crate) async fn build_web_init_data(
     app: &AppHandle,
 ) -> Result<WebInitData, String> {
     let character_settings = {
-        let cid = service.init_character_id;
-        let cid = match cid {
-            Some(v) => v,
-            None => 0,
-        };
-        CharacterSettingsInit::from(
-            &service
-                .get_role_settings_by_id(cid)
-                .await
-                .map_err(|e| format!("获取角色设定失败: {}", e))?,
-        )
+        let cid = service.init_character_id.unwrap_or(0);
+        let settings = service
+            .get_role_settings_by_id(cid)
+            .await
+            .map_err(|e| format!("获取角色设定失败: {}", e))?;
+        let mut init = CharacterSettingsInit::from(&settings);
+        // get_role_settings_by_id 经由 role_manager.get_role 加载角色，好感度随之就绪
+        let loaded = service.game_status.lock().await;
+        if let Some(role) = loaded.role_manager.get_loaded(cid) {
+            init.affection = Some(role.affection);
+            init.negative = Some(role.negative);
+        }
+        init
     };
-
-    tracing::info!("character_settings: {:?}", character_settings);
 
     let (
         lines,
@@ -435,6 +453,7 @@ pub(crate) async fn build_web_init_data(
         background_effect,
         background_music,
         scene_awareness_enabled,
+        active_script,
     ) = {
         let mut gs = service.game_status.lock().await;
         let seqs = compute_user_message_seqs(&gs.line_list);
@@ -513,10 +532,15 @@ pub(crate) async fn build_web_init_data(
                     let mut settings = CharacterSettingsInit::from(&r.settings);
                     // 这其中 clothes 需要额外处理。
                     settings.clothes_name = r.current_clothes.clone();
+                    settings.affection = Some(r.affection);
+                    settings.negative = Some(r.negative);
                     settings
                 })
             })
             .collect();
+
+        // 剧本模式名（启动时 script_status 恒为 None，不影响 init_game 路径）
+        let active_script = gs.script_status.as_ref().map(|s| s.name.clone());
 
         (
             lines,
@@ -528,6 +552,7 @@ pub(crate) async fn build_web_init_data(
             gs.background_effect.clone(),
             gs.background_music.clone(),
             scene_awareness,
+            active_script,
         )
     };
 
@@ -582,6 +607,7 @@ pub(crate) async fn build_web_init_data(
         last_bgm_paused,
         last_bgm_mode,
         last_ambient_tracks,
+        active_script,
     };
     Ok(result)
 }

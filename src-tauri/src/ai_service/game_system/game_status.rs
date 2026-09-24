@@ -60,6 +60,10 @@ pub struct GameStatus {
     /// `notify_player_entry` 靠它去重，避免重复生成问候台词；与"玩家是否在游戏里"无关。
     pub entry_greeting_done: bool,
 
+    /// 好感度评估游标：上次评估时「真实对话」的段数。
+    /// 每累计 `GodAgentConfig.affection_eval_interval` 段新对话触发一次上帝 Agent 评估。
+    pub affection_eval_cursor: usize,
+
     /// 场景感知开关（关闭后切换场景不再触发旁白）
     pub scene_awareness_enabled: bool,
 }
@@ -87,6 +91,7 @@ impl GameStatus {
             active_save_id: None,
             preview_generation: 0,
             entry_greeting_done: false,
+            affection_eval_cursor: 0,
             scene_awareness_enabled: true,
         }
     }
@@ -96,7 +101,20 @@ impl GameStatus {
         db: &DatabaseConnection,
         role_id: i32,
     ) -> Result<&'a mut GameRole> {
-        self.role_manager.get_role(db, role_id).await
+        // 存档全局变量里的好感度覆盖角色加载时的默认值
+        let var = self
+            .global_variables
+            .get(&crate::ai_service::affection::var_key(role_id))
+            .cloned();
+        let role = self.role_manager.get_role(db, role_id).await?;
+        if let Some(state) = var
+            .as_ref()
+            .and_then(crate::ai_service::affection::state_from_value)
+        {
+            role.affection = state.vector;
+            role.negative = state.negative;
+        }
+        Ok(role)
     }
 
     /// 追加台词，记录当前在场者为感知列表，并刷新相关角色的记忆。
@@ -257,6 +275,9 @@ impl GameStatus {
         self.present_role_ids = snapshot.present_role_ids.iter().copied().collect();
         self.onstage_role_ids = snapshot.present_role_ids.clone();
         self.scene_awareness_enabled = snapshot.scene_awareness_enabled;
+        // 好感度跟随存档：快照里的全局变量覆盖已加载角色的内存值
+        self.role_manager
+            .overlay_affections_from_vars(&self.global_variables);
     }
 }
 

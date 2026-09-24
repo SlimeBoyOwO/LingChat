@@ -429,7 +429,7 @@ unsubscribe();
 import { listen } from "@tauri-apps/api/event";
 
 const unlisten = await listen<DownloadProgress>("tts://download-progress", ({ payload }) =>
-  console.log(payload)
+  console.log(payload),
 );
 ```
 

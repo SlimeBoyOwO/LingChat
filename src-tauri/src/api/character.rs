@@ -95,8 +95,12 @@ pub struct RoleInfoResponse {
     pub bubble_left: i32,
     pub clothes: Option<Vec<HashMap<String, String>>>,
     pub clothes_name: String,
+    pub avatar_mode: Option<String>,
     pub body_part: Option<HashMap<String, JsonValue>>,
     pub live2d: Option<crate::ai_service::types::Live2dSettings>,
+    pub avatar_mode_p: Option<String>,
+    /// 桌宠无框模式，语义见 `CharacterSettings::pet_frameless`。
+    pub pet_frameless: Option<bool>,
     pub character_folder: String,
 }
 
@@ -362,8 +366,11 @@ pub async fn get_role_info(app: AppHandle, role_id: i32) -> Result<RoleInfoRespo
         bubble_left: settings.bubble_left,
         clothes: settings.clothes,
         clothes_name: settings.clothes_name.unwrap_or_default(),
+        avatar_mode: settings.avatar_mode,
         body_part: settings.body_part,
         live2d: settings.live2d,
+        avatar_mode_p: settings.avatar_mode_p,
+        pet_frameless: settings.pet_frameless,
         character_folder: folder,
     })
 }

@@ -28,9 +28,7 @@
     <textarea
       :id="setting.key"
       v-model="localValue"
-      class="shadow-glass focus:border-brand focus:ring-brand/20 w-full rounded-lg border
-        border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl
-        backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
+      class="shadow-glass focus:border-brand focus:ring-brand/20 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
       rows="8"
     ></textarea>
   </template>
@@ -51,15 +49,12 @@
         type="text"
         :id="setting.key"
         v-model="setting.value"
-        class="shadow-glass focus:border-brand focus:ring-brand/20 flex-1 rounded-lg border
-          border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl
-          backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
+        class="shadow-glass focus:border-brand focus:ring-brand/20 flex-1 rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
       />
       <button
         @click="selectFile(setting)"
         type="button"
-        class="bg-brand rounded-lg px-4 py-2.5 whitespace-nowrap text-white transition-colors
-          duration-200 hover:bg-[#0056b3]"
+        class="bg-brand rounded-lg px-4 py-2.5 whitespace-nowrap text-white transition-colors duration-200 hover:bg-[#0056b3]"
       >
         {{ $t("ui.settingItem.browse") }}
       </button>
@@ -72,9 +67,7 @@
         :min="setting.key === 'llm.timeout_secs' ? 10 : undefined"
         :max="setting.key === 'llm.timeout_secs' ? 3600 : undefined"
         :step="setting.key === 'llm.timeout_secs' ? 1 : undefined"
-        class="shadow-glass focus:border-brand focus:ring-brand/20 w-full rounded-lg border
-          border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl
-          backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
+        class="shadow-glass focus:border-brand focus:ring-brand/20 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
       />
     </div>
     <div v-else>
@@ -82,66 +75,64 @@
         type="text"
         :id="setting.key"
         v-model="localValue"
-        class="shadow-glass focus:border-brand focus:ring-brand/20 w-full rounded-lg border
-          border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl
-          backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
+        class="shadow-glass focus:border-brand focus:ring-brand/20 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-xl backdrop-saturate-150 transition-all duration-200 focus:ring-2 focus:outline-none"
       />
     </div>
   </template>
 </template>
 
 <script setup lang="ts">
-  import { ref, watch } from "vue";
-  import { invoke } from "@tauri-apps/api/core";
-  import Toggle from "../widget/Toggle.vue";
+import { ref, watch } from "vue";
+import { invoke } from "@tauri-apps/api/core";
+import Toggle from "../widget/Toggle.vue";
 
-  interface Setting {
-    key: string;
-    value: string;
-    type: "bool" | "textarea" | "text" | "path" | "number";
-    description?: string;
-  }
+interface Setting {
+  key: string;
+  value: string;
+  type: "bool" | "textarea" | "text" | "path" | "number";
+  description?: string;
+}
 
-  interface Props {
-    setting: Setting;
-  }
+interface Props {
+  setting: Setting;
+}
 
-  const props = defineProps<Props>();
+const props = defineProps<Props>();
 
-  const emit = defineEmits<{
-    "update:value": [value: string];
-  }>();
+const emit = defineEmits<{
+  "update:value": [value: string];
+}>();
 
-  const localValue = ref(props.setting.value);
+const localValue = ref(props.setting.value);
 
-  // 监听本地值的变化，并触发更新事件
-  watch(localValue, (newValue) => {
-    emit("update:value", newValue);
-  });
+// 监听本地值的变化，并触发更新事件
+watch(localValue, (newValue) => {
+  emit("update:value", newValue);
+});
 
-  // 监听props.setting.value的变化，同步到本地值
-  watch(
-    () => props.setting.value,
-    (newValue) => {
-      localValue.value = newValue;
-    }
-  );
-
-  // 处理复选框的变化
-  const handleCheckboxChange = (checked: boolean) => {
-    const newValue = checked ? "true" : "false";
+// 监听props.setting.value的变化，同步到本地值
+watch(
+  () => props.setting.value,
+  (newValue) => {
     localValue.value = newValue;
-    emit("update:value", newValue);
-  };
+  },
+);
 
-  const selectFile = async (setting: { key: string; value: string }) => {
-    try {
-      const path = await invoke<string | null>("select_file");
-      if (path) {
-        setting.value = path;
-      }
-    } catch (error: any) {
-      console.error("文件选择失败:", error);
+// 处理复选框的变化
+const handleCheckboxChange = (checked: boolean) => {
+  const newValue = checked ? "true" : "false";
+  localValue.value = newValue;
+  emit("update:value", newValue);
+};
+
+const selectFile = async (setting: { key: string; value: string }) => {
+  try {
+    const path = await invoke<string | null>("select_file");
+    if (path) {
+      setting.value = path;
     }
-  };
+  } catch (error: any) {
+    console.error("文件选择失败:", error);
+  }
+};
 </script>

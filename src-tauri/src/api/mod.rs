@@ -1,5 +1,6 @@
 pub mod achievement;
 pub mod adventure;
+pub mod affection;
 pub mod ambient;
 pub mod asr;
 pub mod asset;
@@ -11,6 +12,7 @@ pub mod font;
 pub mod game;
 pub mod live2d;
 pub mod locale;
+pub mod memory;
 pub mod music;
 pub mod pet;
 pub mod plugins;
@@ -52,7 +54,7 @@ pub(crate) fn mtime_secs(path: &std::path::Path) -> String {
 // ========== 共享路径辅助函数 ==========
 
 pub(crate) fn data_dir() -> PathBuf {
-    crate::init::static_copy::get_data_dir().clone()
+    crate::data_dir::get_data_dir().clone()
 }
 
 pub(crate) fn game_data_dir() -> PathBuf {

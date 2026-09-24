@@ -1,7 +1,6 @@
 <template>
   <div
-    class="flex h-full min-h-0 w-full flex-wrap items-start gap-5 overflow-y-auto px-3 py-6
-      text-white text-shadow-2xs"
+    class="flex h-full min-h-0 w-full flex-wrap items-start gap-5 overflow-y-auto px-3 py-6 text-white text-shadow-2xs"
   >
     <!-- 总开关（决定应用启动时是否自动开启投屏） -->
     <MenuItem :title="$t('settings.cast.enable')" size="small">
@@ -242,313 +241,313 @@
 </template>
 
 <script setup lang="ts">
-  import { saveEnvConfigSettings } from "@/api/services/config";
-  import { invoke } from "@tauri-apps/api/core";
-  import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import {
-    AlignLeft,
-    Cast,
-    Gauge,
-    MessageSquareOff,
-    MonitorPlay,
-    Palette,
-    PictureInPicture2,
-    PlugZap,
-    Scan,
-    Wifi,
-  } from "lucide-vue-next";
-  import { computed, onActivated, onMounted, onUnmounted, ref } from "vue";
-  import { useI18n } from "vue-i18n";
-  import { Button, Slider, Toggle } from "../../base";
-  import { MenuItem } from "../../ui";
+import { saveEnvConfigSettings } from "@/api/services/config";
+import { invoke } from "@tauri-apps/api/core";
+import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
+import {
+  AlignLeft,
+  Cast,
+  Gauge,
+  MessageSquareOff,
+  MonitorPlay,
+  Palette,
+  PictureInPicture2,
+  PlugZap,
+  Scan,
+  Wifi,
+} from "lucide-vue-next";
+import { computed, onActivated, onMounted, onUnmounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { Button, Slider, Toggle } from "../../base";
+import { MenuItem } from "../../ui";
 
-  interface CastStatus {
-    enabled: boolean;
-    port: number;
-    fps: number;
-    quality: number;
-    width: number;
-    height: number;
-    vivid: boolean;
-    charScale: number;
-    charOffsetX: number;
-    charOffsetY: number;
-    dialogWidth: number;
-    dialogHeight: number;
-    dialogFontSize: number;
-    dialogBgOpacity: number;
-    dialogHidden: boolean;
-    running: boolean;
-    castWindowOpen: boolean;
-    lanUrls: string[];
-    pageUrl: string;
-    streamUrl: string;
+interface CastStatus {
+  enabled: boolean;
+  port: number;
+  fps: number;
+  quality: number;
+  width: number;
+  height: number;
+  vivid: boolean;
+  charScale: number;
+  charOffsetX: number;
+  charOffsetY: number;
+  dialogWidth: number;
+  dialogHeight: number;
+  dialogFontSize: number;
+  dialogBgOpacity: number;
+  dialogHidden: boolean;
+  running: boolean;
+  castWindowOpen: boolean;
+  lanUrls: string[];
+  pageUrl: string;
+  streamUrl: string;
+}
+
+const { t } = useI18n();
+
+const status = ref<CastStatus | null>(null);
+const enabled = computed(() => status.value?.enabled ?? false);
+const running = computed(() => status.value?.running ?? false);
+const castWindowOpen = computed(() => status.value?.castWindowOpen ?? false);
+
+const port = ref(1470);
+const fps = ref(15);
+const quality = ref(80);
+const castWidth = ref(0);
+const castHeight = ref(0);
+const vivid = ref(false);
+const charScale = ref(1);
+const charOffsetX = ref(0);
+const charOffsetY = ref(0);
+const dialogWidth = ref(70);
+const dialogHeight = ref(40);
+const dialogFontSize = ref(20);
+const dialogBgOpacity = ref(70);
+const dialogHidden = ref(false);
+const streamUrl = ref("");
+const pageUrl = ref("");
+
+const statusMsg = ref("");
+const statusMsgColor = ref("text-white/60");
+let msgTimer: ReturnType<typeof setTimeout> | null = null;
+
+function setMsg(msg: string, color = "text-white/60") {
+  statusMsg.value = msg;
+  statusMsgColor.value = color;
+  if (msgTimer) clearTimeout(msgTimer);
+  msgTimer = setTimeout(() => {
+    statusMsg.value = "";
+  }, 6000);
+}
+
+async function refresh() {
+  try {
+    const s = await invoke<CastStatus>("cast_get_status");
+    status.value = s;
+    port.value = s.port;
+    fps.value = s.fps;
+    quality.value = s.quality;
+    castWidth.value = s.width;
+    castHeight.value = s.height;
+    vivid.value = s.vivid;
+    charScale.value = s.charScale ?? 1;
+    charOffsetX.value = s.charOffsetX ?? 0;
+    charOffsetY.value = s.charOffsetY ?? 0;
+    dialogWidth.value = s.dialogWidth ?? 70;
+    dialogHeight.value = s.dialogHeight ?? 40;
+    dialogFontSize.value = s.dialogFontSize ?? 20;
+    dialogBgOpacity.value = s.dialogBgOpacity ?? 70;
+    dialogHidden.value = s.dialogHidden ?? false;
+    streamUrl.value = s.streamUrl;
+    pageUrl.value = s.pageUrl;
+  } catch (e) {
+    setMsg(t("settings.cast.loadFailed", { error: String(e) }), "text-red-400");
   }
+}
 
-  const { t } = useI18n();
-
-  const status = ref<CastStatus | null>(null);
-  const enabled = computed(() => status.value?.enabled ?? false);
-  const running = computed(() => status.value?.running ?? false);
-  const castWindowOpen = computed(() => status.value?.castWindowOpen ?? false);
-
-  const port = ref(1470);
-  const fps = ref(15);
-  const quality = ref(80);
-  const castWidth = ref(0);
-  const castHeight = ref(0);
-  const vivid = ref(false);
-  const charScale = ref(1);
-  const charOffsetX = ref(0);
-  const charOffsetY = ref(0);
-  const dialogWidth = ref(70);
-  const dialogHeight = ref(40);
-  const dialogFontSize = ref(20);
-  const dialogBgOpacity = ref(70);
-  const dialogHidden = ref(false);
-  const streamUrl = ref("");
-  const pageUrl = ref("");
-
-  const statusMsg = ref("");
-  const statusMsgColor = ref("text-white/60");
-  let msgTimer: ReturnType<typeof setTimeout> | null = null;
-
-  function setMsg(msg: string, color = "text-white/60") {
-    statusMsg.value = msg;
-    statusMsgColor.value = color;
-    if (msgTimer) clearTimeout(msgTimer);
-    msgTimer = setTimeout(() => {
-      statusMsg.value = "";
-    }, 6000);
+/** 保存到后端 settings.json（Rust 侧读取的存储） */
+async function save(values: Record<string, string>): Promise<boolean> {
+  try {
+    await saveEnvConfigSettings(values);
+    return true;
+  } catch (e) {
+    setMsg(t("settings.cast.saveFailed", { error: String(e) }), "text-red-400");
+    return false;
   }
+}
 
-  async function refresh() {
-    try {
-      const s = await invoke<CastStatus>("cast_get_status");
-      status.value = s;
-      port.value = s.port;
-      fps.value = s.fps;
-      quality.value = s.quality;
-      castWidth.value = s.width;
-      castHeight.value = s.height;
-      vivid.value = s.vivid;
-      charScale.value = s.charScale ?? 1;
-      charOffsetX.value = s.charOffsetX ?? 0;
-      charOffsetY.value = s.charOffsetY ?? 0;
-      dialogWidth.value = s.dialogWidth ?? 70;
-      dialogHeight.value = s.dialogHeight ?? 40;
-      dialogFontSize.value = s.dialogFontSize ?? 20;
-      dialogBgOpacity.value = s.dialogBgOpacity ?? 70;
-      dialogHidden.value = s.dialogHidden ?? false;
-      streamUrl.value = s.streamUrl;
-      pageUrl.value = s.pageUrl;
-    } catch (e) {
-      setMsg(t("settings.cast.loadFailed", { error: String(e) }), "text-red-400");
-    }
+// ── 总开关 ────────────────────────────────────────────────
+async function onToggleEnabled(value: boolean) {
+  if (!(await save({ "cast.enabled": String(value) }))) return;
+  if (value) {
+    // 打开时顺手现在就开一次，方便即时体验（不开的话要等下次启动才生效）
+    await startCast();
   }
+  await refresh();
+}
 
-  /** 保存到后端 settings.json（Rust 侧读取的存储） */
-  async function save(values: Record<string, string>): Promise<boolean> {
-    try {
-      await saveEnvConfigSettings(values);
-      return true;
-    } catch (e) {
-      setMsg(t("settings.cast.saveFailed", { error: String(e) }), "text-red-400");
-      return false;
-    }
+// ── 参数变更 ──────────────────────────────────────────────
+async function onPortChange() {
+  const p = Math.round(port.value);
+  if (!(p >= 1 && p <= 65535)) {
+    port.value = status.value?.port ?? 1470;
+    return;
   }
+  port.value = p;
+  const ok = await save({ "cast.port": String(p) });
+  if (ok) setMsg(t("settings.cast.portChangedRestartHint"));
+}
 
-  // ── 总开关 ────────────────────────────────────────────────
-  async function onToggleEnabled(value: boolean) {
-    if (!(await save({ "cast.enabled": String(value) }))) return;
-    if (value) {
-      // 打开时顺手现在就开一次，方便即时体验（不开的话要等下次启动才生效）
-      await startCast();
-    }
-    await refresh();
+async function onFpsChange() {
+  await save({ "cast.fps": String(fps.value) });
+}
+
+async function onQualityChange() {
+  await save({ "cast.quality": String(quality.value) });
+}
+
+// 输出分辨率：宽高都填 0 = 跟随投屏窗口当前尺寸
+async function onResolutionChange() {
+  const w = Math.round(castWidth.value);
+  const h = Math.round(castHeight.value);
+  if (!(w >= 0 && w <= 1920 && h >= 0 && h <= 1920)) {
+    castWidth.value = status.value?.width ?? 0;
+    castHeight.value = status.value?.height ?? 0;
+    return;
   }
+  castWidth.value = w;
+  castHeight.value = h;
+  const ok = await save({ "cast.width": String(w), "cast.height": String(h) });
+  if (ok) setMsg(t("settings.cast.resolutionChangedHint"));
+}
 
-  // ── 参数变更 ──────────────────────────────────────────────
-  async function onPortChange() {
-    const p = Math.round(port.value);
-    if (!(p >= 1 && p <= 65535)) {
-      port.value = status.value?.port ?? 1470;
-      return;
-    }
-    port.value = p;
-    const ok = await save({ "cast.port": String(p) });
-    if (ok) setMsg(t("settings.cast.portChangedRestartHint"));
-  }
+// vivid 色彩增强：编码时生效（下一路串流连接即用新设置，无需重启服务）
+async function onVividChange(value: boolean) {
+  if (!(await save({ "cast.vivid": String(value) }))) return;
+  await refresh();
+}
 
-  async function onFpsChange() {
-    await save({ "cast.fps": String(fps.value) });
-  }
-
-  async function onQualityChange() {
-    await save({ "cast.quality": String(quality.value) });
-  }
-
-  // 输出分辨率：宽高都填 0 = 跟随投屏窗口当前尺寸
-  async function onResolutionChange() {
-    const w = Math.round(castWidth.value);
-    const h = Math.round(castHeight.value);
-    if (!(w >= 0 && w <= 1920 && h >= 0 && h <= 1920)) {
-      castWidth.value = status.value?.width ?? 0;
-      castHeight.value = status.value?.height ?? 0;
-      return;
-    }
-    castWidth.value = w;
-    castHeight.value = h;
-    const ok = await save({ "cast.width": String(w), "cast.height": String(h) });
-    if (ok) setMsg(t("settings.cast.resolutionChangedHint"));
-  }
-
-  // vivid 色彩增强：编码时生效（下一路串流连接即用新设置，无需重启服务）
-  async function onVividChange(value: boolean) {
-    if (!(await save({ "cast.vivid": String(value) }))) return;
-    await refresh();
-  }
-
-  // 调参广播：保存后把整套参数发给已打开的投屏窗口即时生效（挂载时还有 cast_get_status 兜底）
-  async function broadcastCastConfig() {
-    try {
-      await emit("cast:config", {
-        charScale: charScale.value,
-        charOffsetX: charOffsetX.value,
-        charOffsetY: charOffsetY.value,
-        dialogWidth: dialogWidth.value,
-        dialogHeight: dialogHeight.value,
-        dialogFontSize: dialogFontSize.value,
-        dialogBgOpacity: dialogBgOpacity.value,
-        dialogHidden: dialogHidden.value,
-      });
-    } catch (e) {
-      console.warn("广播投屏调参失败:", e);
-    }
-  }
-
-  // 角色调整（缩放 + 偏移）
-  async function onCharTuneChange() {
-    const ok = await save({
-      "cast.char_scale": String(charScale.value),
-      "cast.char_offset_x": String(charOffsetX.value),
-      "cast.char_offset_y": String(charOffsetY.value),
+// 调参广播：保存后把整套参数发给已打开的投屏窗口即时生效（挂载时还有 cast_get_status 兜底）
+async function broadcastCastConfig() {
+  try {
+    await emit("cast:config", {
+      charScale: charScale.value,
+      charOffsetX: charOffsetX.value,
+      charOffsetY: charOffsetY.value,
+      dialogWidth: dialogWidth.value,
+      dialogHeight: dialogHeight.value,
+      dialogFontSize: dialogFontSize.value,
+      dialogBgOpacity: dialogBgOpacity.value,
+      dialogHidden: dialogHidden.value,
     });
-    if (!ok) return;
-    setMsg(t("settings.cast.tuneChangedHint"));
-    await broadcastCastConfig();
+  } catch (e) {
+    console.warn("广播投屏调参失败:", e);
   }
+}
 
-  // 对话框调整（宽度 = 左右留白，高度 = 整体元素高度，字体大小，背景色透明度）
-  async function onDialogTuneChange() {
-    const ok = await save({
-      "cast.dialog_width": String(dialogWidth.value),
-      "cast.dialog_height": String(dialogHeight.value),
-      "cast.dialog_font_size": String(dialogFontSize.value),
-      "cast.dialog_bg_opacity": String(dialogBgOpacity.value),
-    });
-    if (!ok) return;
-    setMsg(t("settings.cast.tuneChangedHint"));
-    await broadcastCastConfig();
-  }
-
-  // 隐藏对话框：整层对话不显示（只留背景 + 角色舞台）
-  async function onDialogHiddenChange(value: boolean) {
-    if (!(await save({ "cast.dialog_hidden": String(value) }))) return;
-    setMsg(t("settings.cast.tuneChangedHint"));
-    await broadcastCastConfig();
-  }
-
-  // ── 窗口 / 服务控制 ───────────────────────────────────────
-  async function openWindow() {
-    try {
-      await invoke("cast_open_window");
-      await refresh();
-      setMsg(t("settings.cast.windowOpen"), "text-green-400");
-    } catch (e) {
-      setMsg(t("settings.cast.actionFailed", { error: String(e) }), "text-red-400");
-    }
-  }
-
-  async function closeWindow() {
-    try {
-      await invoke("cast_close_window");
-      await refresh();
-      setMsg(t("settings.cast.windowClosed"));
-    } catch (e) {
-      setMsg(t("settings.cast.actionFailed", { error: String(e) }), "text-red-400");
-    }
-  }
-
-  async function startCast() {
-    try {
-      await invoke("cast_start");
-      await refresh();
-      setMsg(t("settings.cast.runningStatus"), "text-green-400");
-    } catch (e) {
-      setMsg(t("settings.cast.startFailed", { error: String(e) }), "text-red-400");
-    }
-  }
-
-  async function stopCast() {
-    try {
-      await invoke("cast_stop");
-      await refresh();
-      setMsg(t("settings.cast.stopped"));
-    } catch (e) {
-      setMsg(t("settings.cast.stopFailed", { error: String(e) }), "text-red-400");
-    }
-  }
-
-  // ── 生命周期 ─────────────────────────────────────────────
-  let unlistenCastWindow: UnlistenFn | null = null;
-
-  onMounted(async () => {
-    await refresh();
-    // 用户直接点投屏窗口的 X 关闭时，同步按钮状态
-    unlistenCastWindow = await listen<boolean>("cast-window:state", async () => {
-      await refresh();
-    });
+// 角色调整（缩放 + 偏移）
+async function onCharTuneChange() {
+  const ok = await save({
+    "cast.char_scale": String(charScale.value),
+    "cast.char_offset_x": String(charOffsetX.value),
+    "cast.char_offset_y": String(charOffsetY.value),
   });
+  if (!ok) return;
+  setMsg(t("settings.cast.tuneChangedHint"));
+  await broadcastCastConfig();
+}
 
-  onActivated(async () => {
-    // KeepAlive 缓存下重新切回本页时刷新一次状态
+// 对话框调整（宽度 = 左右留白，高度 = 整体元素高度，字体大小，背景色透明度）
+async function onDialogTuneChange() {
+  const ok = await save({
+    "cast.dialog_width": String(dialogWidth.value),
+    "cast.dialog_height": String(dialogHeight.value),
+    "cast.dialog_font_size": String(dialogFontSize.value),
+    "cast.dialog_bg_opacity": String(dialogBgOpacity.value),
+  });
+  if (!ok) return;
+  setMsg(t("settings.cast.tuneChangedHint"));
+  await broadcastCastConfig();
+}
+
+// 隐藏对话框：整层对话不显示（只留背景 + 角色舞台）
+async function onDialogHiddenChange(value: boolean) {
+  if (!(await save({ "cast.dialog_hidden": String(value) }))) return;
+  setMsg(t("settings.cast.tuneChangedHint"));
+  await broadcastCastConfig();
+}
+
+// ── 窗口 / 服务控制 ───────────────────────────────────────
+async function openWindow() {
+  try {
+    await invoke("cast_open_window");
+    await refresh();
+    setMsg(t("settings.cast.windowOpen"), "text-green-400");
+  } catch (e) {
+    setMsg(t("settings.cast.actionFailed", { error: String(e) }), "text-red-400");
+  }
+}
+
+async function closeWindow() {
+  try {
+    await invoke("cast_close_window");
+    await refresh();
+    setMsg(t("settings.cast.windowClosed"));
+  } catch (e) {
+    setMsg(t("settings.cast.actionFailed", { error: String(e) }), "text-red-400");
+  }
+}
+
+async function startCast() {
+  try {
+    await invoke("cast_start");
+    await refresh();
+    setMsg(t("settings.cast.runningStatus"), "text-green-400");
+  } catch (e) {
+    setMsg(t("settings.cast.startFailed", { error: String(e) }), "text-red-400");
+  }
+}
+
+async function stopCast() {
+  try {
+    await invoke("cast_stop");
+    await refresh();
+    setMsg(t("settings.cast.stopped"));
+  } catch (e) {
+    setMsg(t("settings.cast.stopFailed", { error: String(e) }), "text-red-400");
+  }
+}
+
+// ── 生命周期 ─────────────────────────────────────────────
+let unlistenCastWindow: UnlistenFn | null = null;
+
+onMounted(async () => {
+  await refresh();
+  // 用户直接点投屏窗口的 X 关闭时，同步按钮状态
+  unlistenCastWindow = await listen<boolean>("cast-window:state", async () => {
     await refresh();
   });
+});
 
-  onUnmounted(() => {
-    if (msgTimer) clearTimeout(msgTimer);
-    unlistenCastWindow?.();
-  });
+onActivated(async () => {
+  // KeepAlive 缓存下重新切回本页时刷新一次状态
+  await refresh();
+});
+
+onUnmounted(() => {
+  if (msgTimer) clearTimeout(msgTimer);
+  unlistenCastWindow?.();
+});
 </script>
 
 <style scoped>
-  .cast-num-input {
-    width: 120px;
-    padding: 8px 10px;
-    color: #fff;
-    font-size: 14px;
-    font-family: ui-monospace, Consolas, monospace;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 8px;
-    outline: none;
-    transition:
-      border-color 0.2s,
-      box-shadow 0.2s;
-  }
-  .cast-num-input:focus {
-    border-color: var(--accent-color);
-    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
-  }
+.cast-num-input {
+  width: 120px;
+  padding: 8px 10px;
+  color: #fff;
+  font-size: 14px;
+  font-family: ui-monospace, Consolas, monospace;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  outline: none;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+.cast-num-input:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
+}
 
-  .cast-url {
-    font:
-      13px/1.6 ui-monospace,
-      Consolas,
-      monospace;
-    color: #71f59b;
-    word-break: break-all;
-    user-select: text;
-  }
+.cast-url {
+  font:
+    13px/1.6 ui-monospace,
+    Consolas,
+    monospace;
+  color: #71f59b;
+  word-break: break-all;
+  user-select: text;
+}
 </style>
