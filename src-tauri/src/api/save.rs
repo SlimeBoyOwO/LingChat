@@ -611,8 +611,10 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
     Ok(())
 }
 
-/// 获取当前角色的"当前进行"存档 id（主菜单"继续游戏"用）。
-/// 返回 None 表示没有可继续的存档。
+/// 获取当前角色的"当前进行"存档 id（主菜单"开始游戏→自由对话"的继续询问用）。
+/// 标记缺失（旧版本升级）或指向的档已被删除时，回退该角色最新的自动存档槽
+///（= 上次进行的那局，与 init_game 的迁移回退逻辑一致）。
+/// 返回 None 表示没有可继续的存档（前端将直接开新世界）。
 #[tauri::command]
 pub async fn get_last_save_id(app: AppHandle) -> Result<Option<i32>, String> {
     let state = app.state::<AppState>();
@@ -628,18 +630,26 @@ pub async fn get_last_save_id(app: AppHandle) -> Result<Option<i32>, String> {
     };
     let save_id = role_id.and_then(|rid| crate::config::get_last_save_id(&app, rid));
 
-    // 校验存档仍然存在（可能被删了）
-    if let Some(sid) = save_id {
-        let state = app.state::<AppState>();
-        let exists = SaveRepo::get_save_by_id(&state.db, sid)
+    // 校验标记指向的存档仍然存在（可能被删了）
+    let marked = match save_id {
+        Some(sid) => SaveRepo::get_save_by_id(&state.db, sid)
             .await
             .map_err(|e| format!("查询存档失败: {}", e))?
-            .is_some();
-        if !exists {
-            return Ok(None);
-        }
+            .map(|_| sid),
+        None => None,
+    };
+    if marked.is_some() {
+        return Ok(marked);
     }
-    Ok(save_id)
+
+    // 无标记或标记失效 → 回退该角色最新的自动存档槽；连自动槽都没有才是真正无档可续
+    match role_id {
+        Some(rid) => Ok(SaveRepo::find_auto_save_slot(&state.db, Some(rid))
+            .await
+            .map_err(|e| format!("查询自动存档失败: {}", e))?
+            .map(|m| m.id)),
+        None => Ok(None),
+    }
 }
 
 #[tauri::command]
