@@ -43,4 +43,20 @@ export default defineConfig(async () => ({
     exclude: ["src-tauri/*"],
     entries: ["src/*"],
   },
+
+  build: {
+    rollupOptions: {
+      output: {
+        // 把重库从使用方 chunk 中剥离成独立 chunk：改业务代码时这些大块走浏览器缓存；
+        // marked 不再混进 pixi chunk，未进入 Live2D 路径的页面不会连带加载它
+        manualChunks(id) {
+          if (id.includes("node_modules/pixi.js") || id.includes("node_modules/@pixi/")) {
+            return "pixi";
+          }
+          if (id.includes("node_modules/marked")) return "marked";
+          return undefined;
+        },
+      },
+    },
+  },
 }));

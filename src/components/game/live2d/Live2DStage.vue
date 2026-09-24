@@ -36,6 +36,9 @@ import { decodeVoiceForLipSync, sampleVoiceAmplitude, type DecodedVoice } from "
 
 defineOptions({ inheritAttrs: false });
 
+/** 未显式配置时的默认帧率上限：高刷屏（120Hz+）下不必要地翻倍渲染开销 */
+const DEFAULT_MAX_FPS = 60;
+
 const props = defineProps<{
   roles: GameRole[];
   mode: "standard" | "pet";
@@ -48,8 +51,9 @@ const props = defineProps<{
   /** 投屏全局垂直偏移（像素，正值下移；标准模式下仅投屏窗口传入，主窗口缺省 0）。
       水平偏移由投屏窗口 .cast-role-layer 的 CSS translateX 整层平移，不在此处理。 */
   castOffsetY?: number;
-  /** 渲染帧率上限（0 = 不限制）。桌宠窗口很小，30fps 足够且大幅降低挂机 CPU；
-      仅桌宠舞台（pet/GameRolesStage）传入，标准模式/预览不传保持原行为 */
+  /** 渲染帧率上限（0 = 不限制）。缺省 DEFAULT_MAX_FPS（60）：Live2D 动作/眨眼等均按
+      时间驱动，60fps 在高刷屏上视觉无差别但显著降低挂机 GPU/CPU；桌宠窗口很小，
+      传 30 进一步省电。显式传 0 可关闭上限（保持旧的不限帧行为） */
   maxFps?: number;
 }>();
 
@@ -181,10 +185,11 @@ async function ensureApplication() {
   app.canvas.className = "absolute inset-0 w-full h-full";
   host.value.appendChild(app.canvas);
   app.ticker.speed = 1.35;
-  // 帧率上限：0/undefined 视为不限帧（保持标准模式/预览原行为）
-  const fpsCap = props.maxFps ?? 0;
+  // 帧率上限：未配置用默认值，显式传 0 视为不限帧（保持旧的不限帧行为）
+  const fpsCap = props.maxFps ?? DEFAULT_MAX_FPS;
   if (fpsCap > 0) app.ticker.maxFPS = fpsCap;
   app.ticker.add(updateLipSync);
+  if (stagePaused) app.ticker.stop();
   resizeObserver = new ResizeObserver(() => {
     for (const entry of models.values()) {
       const role = props.roles.find((item) => item.roleId === entry.roleId);
@@ -193,6 +198,30 @@ async function ensureApplication() {
   });
   resizeObserver.observe(host.value);
   application = app;
+}
+
+/** 舞台暂停态：窗口失焦/页面隐藏时停掉渲染 ticker，恢复时再启动。
+    挂机/切后台时 Live2D 不再逐帧更新，是桌宠与对话页最大的常驻 GPU/CPU 来源 */
+let stagePaused = false;
+
+function setStagePaused(paused: boolean) {
+  if (paused === stagePaused) return;
+  stagePaused = paused;
+  if (!application) return;
+  if (paused) application.ticker.stop();
+  else application.ticker.start();
+}
+
+function handleVisibilityChange() {
+  setStagePaused(document.hidden);
+}
+
+function handleWindowBlur() {
+  setStagePaused(true);
+}
+
+function handleWindowFocus() {
+  setStagePaused(false);
 }
 
 function findParameterIndex(entry: RoleModel, parameter: string): number {
@@ -641,14 +670,28 @@ onMounted(() => {
         // 非 Tauri 环境或事件系统不可用时静默降级（DOM 监听仍覆盖窗口内移动）
       });
   }
+  // 失焦/最小化/切到后台时暂停 Live2D 渲染循环。
+  // 桌宠模式豁免 blur（桌宠就是“挂在别的应用上”看的，失焦暂停会让动作凝固），
+  // 但页面隐藏（最小化/完全不可见）时所有模式都暂停——不可见时渲染纯属浪费
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  if (document.hidden) setStagePaused(true);
+  if (props.mode !== "pet") {
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("focus", handleWindowFocus);
+  }
   queueSync();
 });
 onBeforeUnmount(() => {
   disposed = true;
+  setStagePaused(false);
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
   if (props.mode === "pet") {
     window.removeEventListener("pointermove", handlePointerMove);
     cursorUnlisten?.();
     cursorUnlisten = null;
+  } else {
+    window.removeEventListener("blur", handleWindowBlur);
+    window.removeEventListener("focus", handleWindowFocus);
   }
   decodeSequence += 1;
   for (const entry of [...models.values()]) destroyEntry(entry);
