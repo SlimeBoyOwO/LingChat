@@ -6,6 +6,7 @@
 
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, watch } from "vue";
+import { startFrameLoop, type FrameLoopHandle } from "@/core/animation/frame-scheduler";
 import { useSettingsStore } from "../../stores/modules/settings";
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -64,10 +65,8 @@ class MouseSpark {
   MOUSE_THROTTLE: number = 16;
   baseFrameMs: number = 1000 / 60;
   maxDeltaMs: number = 100;
-  lastFrameTime: number = performance.now();
-  lastDrawTime: number = 0;
+  /** 帧率上限，下发给共享调度器（原自管节流已移除） */
   targetFPS: number = 60;
-  frameInterval: number = 1000 / 60;
   dpr: number = 1;
   cssWidth: number = 1;
   cssHeight: number = 1;
@@ -77,7 +76,8 @@ class MouseSpark {
   ringsStartColor: number[] = [250, 252, 252];
   ringsEndColor: number[];
 
-  animationId: number | null = null;
+  /** 共享帧循环句柄（页面隐藏/失焦暂停由调度器统一处理） */
+  loop: FrameLoopHandle | null = null;
 
   constructor(canvas: HTMLCanvasElement, opts: any = {}) {
     this.mainCanvas = canvas;
@@ -93,7 +93,10 @@ class MouseSpark {
     this.bindHandlers();
     this.initCanvas();
     this.bindEvents();
-    this.animationId = requestAnimationFrame((now) => this.animationLoops(now));
+    // 帧率上限交给调度器；暂停期间虚拟时钟不推进，恢复后 delta 不会异常放大
+    this.loop = startFrameLoop((_now, delta) => this.animationLoops(delta), {
+      fps: this.targetFPS,
+    });
   }
 
   onMouseDown: (e: MouseEvent) => void = () => {};
@@ -193,9 +196,9 @@ class MouseSpark {
     window.removeEventListener("resize", this.onResize);
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
-    if (this.animationId) {
-      cancelAnimationFrame(this.animationId);
-    }
+    // 停止本实例的帧循环订阅（幂等；不会影响其他特效的订阅者）
+    this.loop?.stop();
+    this.loop = null;
   }
 
   initCanvas() {
@@ -676,28 +679,22 @@ class MouseSpark {
     }
   }
 
-  animationLoops(now: number) {
-    if (now - this.lastDrawTime < this.frameInterval) {
-      this.animationId = requestAnimationFrame((nextNow) => this.animationLoops(nextNow));
-      return;
-    }
-    this.lastDrawTime = now;
-
+  /** 每帧只做「更新 + 绘制」，不再自己重新调度（帧率上限与暂停由共享调度器统一处理） */
+  animationLoops(delta: number) {
     const hasWork = this.waves.length > 0 || this.sparks.length > 0 || this.trail.length > 0;
 
     if (!hasWork) {
-      this.lastFrameTime = now;
       if (this.previousDirtyRects.length > 0) {
         this._clearBufferRects(this.previousDirtyRects);
         this._renderToMain(this.previousDirtyRects);
         this.previousDirtyRects = [];
       }
-      this.animationId = requestAnimationFrame((nextNow) => this.animationLoops(nextNow));
       return;
     }
 
-    const deltaMs = Math.min(now - this.lastFrameTime, this.maxDeltaMs);
-    this.lastFrameTime = now;
+    // 调度器传入的 delta 即距上次回调的毫秒数（帧率上限导致的跳帧会自然累积），
+    // 仍然按原逻辑做上限截断，避免长暂停后粒子瞬移
+    const deltaMs = Math.min(delta, this.maxDeltaMs);
     const baseScale = deltaMs / this.baseFrameMs;
     const trailFrameScale = baseScale * this.trailSpeed;
     const clickFrameScale = baseScale * this.clickSpeed;
@@ -721,8 +718,6 @@ class MouseSpark {
     this._renderToMain(renderRects);
     this.previousDirtyRects = this._getEffectRects();
     this.forceFullRedraw = false;
-
-    this.animationId = requestAnimationFrame((nextNow) => this.animationLoops(nextNow));
   }
 }
 

@@ -69,6 +69,7 @@ import {
   setSpectrumEnabled,
   spectrumActive,
 } from "@/utils/audioSpectrum";
+import { startFrameLoop, type FrameLoopHandle } from "@/core/animation/frame-scheduler";
 import { AudioLines } from "lucide-vue-next";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -110,8 +111,8 @@ function specFor(style: SpectrumStyle, big: boolean): Spec {
     : { kind: style, w: 88, h: 32, bars: 20, gap: 1.6, glow: 4, r0: 0, len: 0 };
 }
 
-/** 帧率上限：40 帧肉眼已足够顺滑，明显更省 WebView 开销 */
-const FRAME_MS = 1000 / 40;
+/** 帧率上限：40 帧肉眼已足够顺滑，明显更省 WebView 开销（交给共享调度器限帧） */
+const TARGET_FPS = 40;
 
 const rootRef = ref<HTMLElement | null>(null);
 const miniCanvasRef = ref<HTMLCanvasElement | null>(null);
@@ -168,8 +169,8 @@ let bandSampleRate = 0;
 /** 0 = 实时数据，1 = 静息呼吸动画（两者之间平滑过渡） */
 let idleMix = 0;
 let idleClock = 0;
-let rafId = 0;
-let lastFrame = 0;
+/** 共享帧循环句柄（帧率上限与页面隐藏/失焦暂停由调度器统一处理） */
+let loop: FrameLoopHandle | null = null;
 
 /** 按对数分频铺频带：低频窄、高频宽，听感上更均匀 */
 function ensureBands(binCount: number) {
@@ -397,10 +398,13 @@ function draw(canvas: HTMLCanvasElement | null, spec: Spec) {
   else drawLinear(c, spec);
 }
 
+/**
+ * 每帧绘制（不再自己重新调度，也不再自己限帧/判页面隐藏——
+ * 这些由共享调度器统一处理；暂停期间 now 不推进，恢复后不会瞬移）
+ */
 function frame(now: number) {
-  rafId = requestAnimationFrame(frame);
-  if (!visible.value || document.hidden || now - lastFrame < FRAME_MS) return;
-  lastFrame = now;
+  // 采集与分析仍在每帧执行（不额外降频），与迁移前一致
+  if (!visible.value) return;
   updateLevels(now);
   if (expanded.value) draw(fullCanvasRef.value, fullSpec.value);
   draw(miniCanvasRef.value, miniSpec.value);
@@ -422,11 +426,13 @@ const onDocMouseDown = (e: MouseEvent) => {
 
 onMounted(() => {
   document.addEventListener("mousedown", onDocMouseDown);
-  rafId = requestAnimationFrame(frame);
+  // 循环随组件挂载启动、随卸载停止（与迁移前一致）；是否真正绘制仍由 visible 决定
+  loop ??= startFrameLoop(frame, { fps: TARGET_FPS });
 });
 
 onUnmounted(() => {
   document.removeEventListener("mousedown", onDocMouseDown);
-  cancelAnimationFrame(rafId);
+  loop?.stop();
+  loop = null;
 });
 </script>

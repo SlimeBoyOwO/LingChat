@@ -4,6 +4,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, type PropType } from "vue";
+import { startFrameLoop, type FrameLoopHandle } from "@/core/animation/frame-scheduler";
 
 /**
  * 星辉：蓝色细点自上而下飘落，上下两端淡入淡出（原桌宠 BAParticles）。
@@ -22,11 +23,11 @@ const props = defineProps({
 });
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
-let animationFrameId: number;
 let particles: Particle[] = [];
 let width = 0;
 let height = 0;
-let running = false;
+/** 共享帧循环句柄（页面隐藏/失焦暂停由调度器统一处理） */
+let particlesLoop: FrameLoopHandle | null = null;
 
 // 圆形与十字两种形态，圆形权重更高
 const types = ["circle", "circle", "cross"];
@@ -115,8 +116,8 @@ const resizeCanvas = () => {
   }
 };
 
-const loop = () => {
-  if (!running) return;
+/** 每帧只做「更新 + 绘制」，不再自己重新调度（调度器负责循环与暂停） */
+const renderParticles = () => {
   if (!canvasRef.value) return;
   const ctx = canvasRef.value.getContext("2d");
   if (!ctx) return;
@@ -127,19 +128,17 @@ const loop = () => {
     p.update();
     p.draw(ctx);
   });
-
-  animationFrameId = requestAnimationFrame(loop);
 };
 
 const startLoop = () => {
-  if (running) return;
-  running = true;
-  loop();
+  // 复用已有订阅者，避免重复 start 造成订阅者泄漏
+  particlesLoop ??= startFrameLoop(renderParticles);
 };
 
 const stopLoop = () => {
-  running = false;
-  cancelAnimationFrame(animationFrameId);
+  // stop 幂等：句柄置空后重复调用不会影响其他订阅者
+  particlesLoop?.stop();
+  particlesLoop = null;
 };
 
 onMounted(() => {
@@ -153,7 +152,7 @@ onMounted(() => {
   if (props.enabled) startLoop();
 });
 
-// 关闭时同时停掉 rAF：设置页切换特效只是换组件，但桌宠窗口的粒子是常驻的
+// 关闭时同时停掉帧循环订阅：设置页切换特效只是换组件，但桌宠窗口的粒子是常驻的
 watch(
   () => props.enabled,
   (on) => {

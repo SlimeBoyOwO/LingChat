@@ -4,6 +4,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { startFrameLoop, type FrameLoopHandle } from "@/core/animation/frame-scheduler";
 import type { Drop } from "./config/rain";
 import { useRain } from "./hooks/useRain";
 
@@ -30,12 +31,12 @@ let W = 0,
 let drops: Drop[] = [];
 
 let ctx: CanvasRenderingContext2D | null = null;
-let animId = 0;
+/** 共享帧循环句柄（帧率上限与页面隐藏/失焦暂停由调度器统一处理） */
+let loop: FrameLoopHandle | null = null;
 
 // 帧率限制相关变量
 const TARGET_FPS = 60;
 const FRAME_INTERVAL = 1000 / TARGET_FPS; // 约 16.67ms
-let lastFrameTime = 0;
 
 const { createDrop } = useRain();
 
@@ -74,9 +75,20 @@ function init() {
     drops.push(createDrop(W, H, props.intensity));
   }
 
-  // 重置上一帧时间戳
-  lastFrameTime = 0;
-  loop(0);
+  startLoop();
+}
+
+/** 启动共享帧循环（重复调用不会重复订阅） */
+function startLoop() {
+  // 帧率上限交给调度器；页面隐藏/窗口失焦时调度器会暂停并冻结虚拟时钟
+  loop ??= startFrameLoop(frame, { fps: TARGET_FPS });
+}
+
+/** 停止共享帧循环（幂等）并清空雨滴 */
+function stopLoop() {
+  loop?.stop();
+  loop = null;
+  drops = [];
 }
 
 /**
@@ -121,40 +133,22 @@ function render() {
   }
 }
 
-function loop(currentTime: number) {
+/**
+ * 每帧回调：只做更新与渲染，不再自己调度下一帧
+ * @param _now 虚拟时间（毫秒，页面隐藏/失焦期间不推进）；雨滴物理只依赖 delta
+ * @param delta 距上一次回调经过的时间（毫秒）
+ */
+function frame(_now: number, delta: number) {
   if (!ctx) return;
 
-  // 初始化上一帧时间
-  if (lastFrameTime === 0) {
-    lastFrameTime = currentTime;
-    animId = requestAnimationFrame(loop);
-    return;
-  }
-
-  // 计算距离上一帧的时间差（毫秒）
-  let elapsed = currentTime - lastFrameTime;
-
-  // 限制最大时间差，避免跳跃过大（例如切换标签页后恢复）
+  // 首帧（delta 为 0）与长时间暂停后的异常值都跳过/收敛，避免雨滴跳跃
   const MAX_DELTA = 100; // 最大100ms
-  if (elapsed > MAX_DELTA) {
-    elapsed = MAX_DELTA;
-  }
+  const elapsed = Math.min(delta, MAX_DELTA);
+  if (elapsed <= 0) return;
 
-  // 只有达到帧间隔时间才更新逻辑和渲染
-  if (elapsed >= FRAME_INTERVAL) {
-    // 更新时间戳，但保留超出部分用于下一帧（可选，保持平滑）
-    lastFrameTime = currentTime - (elapsed % FRAME_INTERVAL);
-
-    // 使用固定时间步长更新雨滴位置（保持速度稳定）
-    // 这里使用 FRAME_INTERVAL 作为标准步长，因为 elapsed 可能大于 FRAME_INTERVAL
-    // 为了更精确，可以使用 elapsed 但会受帧率波动影响，这里采用标准步长保证每帧移动距离一致
-    // 但如果帧率掉帧严重，使用固定步长会导致移动变慢，因此采用实际经过时间
-    // 改进：直接使用 elapsed 作为时间差，但速度因子基于实际时间与基准帧间隔的比例
-    updateDrops(elapsed);
-    render();
-  }
-
-  animId = requestAnimationFrame(loop);
+  // 使用实际经过时间更新雨滴位置（速度因子基于基准帧间隔，保持速度与帧率解耦）
+  updateDrops(elapsed);
+  render();
 }
 
 // 监听 intensity 变化，动态调整雨滴数量
@@ -173,8 +167,7 @@ watch(
     if (newVal) {
       init();
     } else {
-      cancelAnimationFrame(animId);
-      drops = [];
+      stopLoop();
     }
   },
 );
@@ -185,7 +178,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  cancelAnimationFrame(animId);
+  stopLoop();
   window.removeEventListener("resize", handleResize);
 });
 </script>

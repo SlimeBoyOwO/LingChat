@@ -1,4 +1,5 @@
 import { onUnmounted, ref, type Ref } from "vue";
+import { startFrameLoop, type FrameLoopHandle } from "@/core/animation/frame-scheduler";
 
 /* ================== 视差倾斜 & 平移效果 ================== */
 export interface ParallaxConfig {
@@ -61,10 +62,9 @@ export function useParallaxAnimation(
   let targetOffsetY = 0;
   let currentOffsetX = 0;
   let currentOffsetY = 0;
-  let parallaxRafId: number | null = null;
-  let isParallaxRunning = false;
+  /** 共享帧循环句柄（按需启动、收敛即停；页面隐藏/失焦暂停由调度器统一处理） */
+  let parallaxLoop: FrameLoopHandle | null = null;
   let lastMouseMoveTime = 0;
-  let isPageVisible = true;
 
   /**
    * 设置元素性能优化属性
@@ -135,17 +135,16 @@ export function useParallaxAnimation(
   }
 
   /**
-   * 高性能视差动画循环
+   * 高性能视差动画循环（共享调度器每帧回调，不再自己 requestAnimationFrame）
    * - 只在有实际移动时启动
    * - 当值收敛到目标时自动停止
    * - 避免空闲时的不必要计算
-   * - 页面不可见时暂停
+   * - 页面不可见/窗口失焦时由调度器统一暂停（虚拟时钟保证恢复后不跳变）
    */
-  function parallaxLoop() {
-    // 暂停态或页面不可见时停止
-    if (!isEnabled() || !isPageVisible) {
-      isParallaxRunning = false;
-      parallaxRafId = null;
+  function parallaxFrame() {
+    // 暂停态（enabled 关闭）时停止循环
+    if (!isEnabled()) {
+      stopParallax();
       return;
     }
 
@@ -162,18 +161,23 @@ export function useParallaxAnimation(
       currentOffsetX = targetOffsetX;
       currentOffsetY = targetOffsetY;
       applyParallaxTransforms(currentOffsetX, currentOffsetY);
-      isParallaxRunning = false;
-      parallaxRafId = null;
+      stopParallax();
       return;
     }
 
-    // 应用阻尼插值
+    // 应用阻尼插值（保持原有每帧固定阻尼系数，不改为 delta 积分，避免视觉速度变化）
     currentOffsetX += deltaX * PARALLAX_CONFIG.DAMPING;
     currentOffsetY += deltaY * PARALLAX_CONFIG.DAMPING;
 
     applyParallaxTransforms(currentOffsetX, currentOffsetY);
+  }
 
-    parallaxRafId = requestAnimationFrame(parallaxLoop);
+  /**
+   * 停止视差循环（幂等，重复调用不会泄漏订阅者）
+   */
+  function stopParallax() {
+    parallaxLoop?.stop();
+    parallaxLoop = null;
   }
 
   /**
@@ -181,22 +185,8 @@ export function useParallaxAnimation(
    */
   function startParallaxIfNeeded() {
     if (!isEnabled()) return;
-    if (!isParallaxRunning && isPageVisible) {
-      isParallaxRunning = true;
-      parallaxLoop();
-    }
-  }
-
-  /**
-   * 处理页面可见性变化
-   */
-  function handleVisibilityChange() {
-    isPageVisible = !document.hidden;
-    if (!isPageVisible && parallaxRafId) {
-      cancelAnimationFrame(parallaxRafId);
-      parallaxRafId = null;
-      isParallaxRunning = false;
-    }
+    // 页面隐藏时调度器不会调度，恢复可见后继续，语义与原「冻结」一致
+    parallaxLoop ??= startFrameLoop(parallaxFrame);
   }
 
   /**
@@ -204,7 +194,7 @@ export function useParallaxAnimation(
    */
   function handleMouseMove(e: MouseEvent) {
     if (!isEnabled()) return;
-    // 节流处理
+    // 节流处理（输入采样节流，非帧循环节流，保持原行为）
     const now = performance.now();
     if (now - lastMouseMoveTime < PARALLAX_CONFIG.THROTTLE_DELAY) {
       return;
@@ -228,22 +218,12 @@ export function useParallaxAnimation(
   // 初始化性能优化
   setupPerformanceOptimizations();
 
-  // 监听页面可见性变化
-  document.addEventListener("visibilitychange", handleVisibilityChange);
-
   // 组件卸载时清理
   onUnmounted(() => {
-    if (parallaxRafId) {
-      cancelAnimationFrame(parallaxRafId);
-      parallaxRafId = null;
-    }
-    isParallaxRunning = false;
+    stopParallax();
 
     // 清理性能优化
     cleanupPerformanceOptimizations();
-
-    // 移除事件监听
-    document.removeEventListener("visibilitychange", handleVisibilityChange);
   });
 
   return {

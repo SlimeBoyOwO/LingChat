@@ -5,7 +5,8 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch, computed } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
+import { startFrameLoop, type FrameLoopHandle } from "@/core/animation/frame-scheduler";
 
 interface MeteorTemplate {
   startX: number;
@@ -31,7 +32,8 @@ const props = defineProps<{
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let ctx: CanvasRenderingContext2D | null = null;
-let animationFrameId: number | null = null;
+/** 共享帧循环句柄（帧率上限与页面隐藏/失焦暂停由调度器统一处理） */
+let meteorLoop: FrameLoopHandle | null = null;
 
 const activeMeteors = ref<ActiveMeteor[]>([]);
 let meteorIdCounter = 0;
@@ -63,10 +65,13 @@ const METEOR_CONFIG = {
 
 // 帧率限制
 const TARGET_FPS = ref(30);
-const FRAME_INTERVAL = computed(() => 1000 / TARGET_FPS.value);
 
-// 上一帧时间戳 - 用于帧率控制
-let lastFrameTime = 0;
+/**
+ * 组件本地虚拟时钟（毫秒）：只累加调度器给出的 delta。
+ * 流星的进度仍按「绝对时间差」算，但时间基准换成它，页面隐藏/失焦暂停期间
+ * 时间不推进，恢复后既不会瞬移也不会整批流星一起过期。
+ */
+let showerClock = 0;
 
 /**
  * 计算二次贝塞尔曲线上的点
@@ -142,7 +147,8 @@ function createMeteor() {
 
 function createMeteorFromTemplate(template: MeteorTemplate) {
   const id = meteorIdCounter++;
-  const startTime = performance.now();
+  // 时间基准取本地虚拟时钟，避免用 performance.now() 时与调度器时钟不同源
+  const startTime = showerClock;
 
   activeMeteors.value.push({
     id,
@@ -249,20 +255,14 @@ function drawMeteor(meteor: ActiveMeteor, currentTime: number) {
 }
 
 /**
- * 动画循环
+ * 动画循环（每帧只写「这一帧画什么」，重排与页面隐藏/失焦暂停交给共享调度器）
+ * @param delta 距上一帧的毫秒数，暂停期间不推进
  */
-function animate(currentTime: number) {
-  if (!ctx || !canvasRef.value) {
-    animationFrameId = requestAnimationFrame(animate);
-    return;
-  }
+function animate(_now: number, delta: number) {
+  // 用 delta 推进本地虚拟时钟：原有的帧率限制与自调度已由调度器（fps 选项）接管
+  showerClock += delta;
 
-  // 帧率限制检查
-  if (currentTime - lastFrameTime < FRAME_INTERVAL.value) {
-    animationFrameId = requestAnimationFrame(animate);
-    return;
-  }
-  lastFrameTime = currentTime;
+  if (!ctx || !canvasRef.value) return;
 
   const canvas = canvasRef.value;
 
@@ -271,10 +271,8 @@ function animate(currentTime: number) {
 
   // 绘制所有活跃的流星
   for (const meteor of activeMeteors.value) {
-    drawMeteor(meteor, currentTime);
+    drawMeteor(meteor, showerClock);
   }
-
-  animationFrameId = requestAnimationFrame(animate);
 }
 
 function resizeCanvas() {
@@ -310,10 +308,9 @@ function startMeteorShower() {
     createMeteor();
   }
 
-  // 启动动画循环
-  if (!animationFrameId) {
-    animationFrameId = requestAnimationFrame(animate);
-  }
+  // 启动动画循环（帧率上限由共享调度器统一处理）
+  meteorLoop ??= startFrameLoop(animate, { fps: TARGET_FPS.value });
+  meteorLoop.setFps(TARGET_FPS.value);
 
   meteorIntervalId = setInterval(updateMeteorShower, METEOR_CONFIG.GENERATE_INTERVAL);
 }
@@ -323,31 +320,9 @@ function stopMeteorShower() {
     clearInterval(meteorIntervalId);
     meteorIntervalId = null;
   }
-  if (animationFrameId) {
-    cancelAnimationFrame(animationFrameId);
-    animationFrameId = null;
-  }
+  meteorLoop?.stop();
+  meteorLoop = null;
   activeMeteors.value = [];
-}
-
-function handleVisibilityChange() {
-  if (document.hidden) {
-    if (meteorIntervalId) {
-      clearInterval(meteorIntervalId);
-      meteorIntervalId = null;
-    }
-    if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = null;
-    }
-  } else if (props.meteorsEnabled) {
-    if (!animationFrameId) {
-      animationFrameId = requestAnimationFrame(animate);
-    }
-    if (!meteorIntervalId) {
-      meteorIntervalId = setInterval(updateMeteorShower, METEOR_CONFIG.GENERATE_INTERVAL);
-    }
-  }
 }
 
 onMounted(() => {
@@ -361,7 +336,7 @@ onMounted(() => {
     resizeCanvas();
   }
 
-  document.addEventListener("visibilitychange", handleVisibilityChange);
+  // 页面隐藏/窗口失焦的暂停由共享调度器统一处理（见 frame-scheduler）
   window.addEventListener("resize", resizeCanvas);
 
   // 监听meteorFps prop变化，动态更新帧率
@@ -370,6 +345,8 @@ onMounted(() => {
     (newFps) => {
       if (newFps && newFps >= 10 && newFps <= 60) {
         TARGET_FPS.value = newFps;
+        // 帧率设置热更新：直接下发给共享调度器，无需重启循环
+        meteorLoop?.setFps(newFps);
       }
     },
     { immediate: true },
@@ -389,7 +366,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  document.removeEventListener("visibilitychange", handleVisibilityChange);
   window.removeEventListener("resize", resizeCanvas);
   stopMeteorShower();
 });

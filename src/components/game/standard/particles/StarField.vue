@@ -4,6 +4,10 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from "vue";
+import { startFrameLoop } from "@/core/animation/frame-scheduler";
+
+/** 帧率上限：原先在帧循环里自己按 30fps 跳帧，现折算为共享调度器的 fps 选项 */
+const FPS_LIMIT = 30;
 
 const props = defineProps({
   enabled: {
@@ -33,7 +37,6 @@ const props = defineProps({
 const emit = defineEmits(["ready"]);
 
 const canvasRef = ref(null);
-const animationId = ref(null);
 const starField = ref(null);
 
 // Star类定义
@@ -59,9 +62,8 @@ class StarFieldRenderer {
     this.w = 0;
     this.h = 0;
 
-    this.fpsLimit = 30; // 限制为30fps
-    this.lastFrameTime = 0;
-    this.frameInterval = 1000 / this.fpsLimit;
+    /** 共享帧循环句柄（30fps 上限、页面隐藏/失焦暂停均由调度器统一处理） */
+    this.loop = null;
 
     this.init();
   }
@@ -96,19 +98,15 @@ class StarFieldRenderer {
     this.stars.sort((a, b) => a.v - b.v);
   }
 
-  update = (timestamp) => {
-    // 帧率控制：如果距离上一帧时间太短，跳过此帧
-    if (timestamp - this.lastFrameTime < this.frameInterval) {
-      this.animationId = requestAnimationFrame(this.update);
-      return;
-    }
-
-    this.lastFrameTime = timestamp;
+  update = (now) => {
+    // 帧率上限与页面隐藏/失焦暂停由共享调度器统一处理（见 frame-scheduler），
+    // 这里只写「每帧做什么」，不再自己 requestAnimationFrame
     if (this.w !== window.innerWidth || this.h !== window.innerHeight) {
       this.setupCanvas();
     }
 
-    this.dir = Math.sin((timestamp / 13289) * this.config.directionChangeRate) * Math.PI;
+    // 方向相位使用绝对时间（虚拟时钟），保证暂停恢复后不跳变
+    this.dir = Math.sin((now / 13289) * this.config.directionChangeRate) * Math.PI;
     this.ctx.clearRect(0, 0, this.w, this.h);
     this.ctx.globalCompositeOperation = "lighter";
 
@@ -131,7 +129,6 @@ class StarFieldRenderer {
     });
 
     this.ctx.globalCompositeOperation = "source-over";
-    this.animationId = requestAnimationFrame(this.update);
   };
 
   addEventListeners() {
@@ -140,11 +137,8 @@ class StarFieldRenderer {
   }
 
   handleResize = () => {
-    if (this.animationId) {
-      cancelAnimationFrame(this.animationId);
-    }
+    // 画布尺寸跟随窗口；共享帧循环常驻，无需重启（重启会重置调度器虚拟时钟）
     this.setupCanvas();
-    this.startAnimation();
   };
 
   handleMouseMove = (e) => {
@@ -153,14 +147,14 @@ class StarFieldRenderer {
   };
 
   startAnimation() {
-    this.animationId = requestAnimationFrame(this.update);
+    // 句柄复用：重复调用不会重复订阅
+    this.loop ??= startFrameLoop(this.update, { fps: FPS_LIMIT });
   }
 
   stopAnimation() {
-    if (this.animationId) {
-      cancelAnimationFrame(this.animationId);
-      this.animationId = null;
-    }
+    // stop() 幂等，重复调用不会泄漏订阅者
+    this.loop?.stop();
+    this.loop = null;
   }
 
   destroy() {

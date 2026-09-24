@@ -55,6 +55,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, useId, watch } from "vue";
+import { startFrameLoop, type FrameLoopHandle } from "@/core/animation/frame-scheduler";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
@@ -141,9 +142,7 @@ const overflow = computed(() => (props.value ?? 0) > 100);
 /** 雾霾强度 0..1（ref 供雾晕样式使用）：负面峰值 ≥95 起、≥135 拉满 */
 const hazeLevel = ref(0);
 /** 环境雾霾染色：整颗心罩一层暗色（强度随雾霾），让黑化状态在深色背景下也可读 */
-const hazeTintColor = computed(
-  () => `rgba(10, 10, 16, ${(hazeLevel.value * 0.42).toFixed(3)})`,
-);
+const hazeTintColor = computed(() => `rgba(10, 10, 16, ${(hazeLevel.value * 0.42).toFixed(3)})`);
 const glowStyle = computed(() => {
   const filters: string[] = [];
   if (overflow.value) {
@@ -192,8 +191,7 @@ let slosh = 0; // 晃动能量 0..1：液位突变/窗口拖动注入，随时�
 let phase = 0;
 let tilt = 0;
 let tiltVel = 0;
-let rafId: number | null = null;
-let lastT = 0;
+let loop: FrameLoopHandle | null = null;
 let unlistenMove: UnlistenFn | null = null;
 
 const W = 24;
@@ -208,9 +206,9 @@ function wavePath(surfaceY: number, amp: number, ph: number, waves: number): str
   return `M -4 28 ${points.join(" ")} L ${W + 4} 28 Z`;
 }
 
-function frame(t: number) {
-  const dt = Math.min(0.05, lastT ? (t - lastT) / 1000 : 0.016);
-  lastT = t;
+function frame(_now: number, delta: number) {
+  // 秒为单位的帧间隔；首帧 delta 为 0，退化为 60fps 步长（与迁移前一致）
+  const dt = Math.min(0.05, delta > 0 ? delta / 1000 : 0.016);
 
   // 弹簧阻尼积分：刚度/阻尼刻意欠阻尼，液面冲向目标位会轻微过冲再回稳
   const stiffness = 130;
@@ -276,8 +274,6 @@ function frame(t: number) {
     p.alpha = Math.max(0, haze * 0.55 * Math.min(fadeIn, fadeOut));
     if (p.life >= p.maxLife) hazeParticles.splice(i, 1);
   }
-
-  rafId = requestAnimationFrame(frame);
 }
 
 // 好感突变 → 注入晃动能量（升/降好感时液体「晃一下」）
@@ -286,7 +282,9 @@ watch(targetLevel, (next, prev) => {
 });
 
 onMounted(async () => {
-  rafId = requestAnimationFrame(frame);
+  // 液体物理循环交给共享调度器：页面隐藏/窗口失焦时自动暂停，恢复后虚拟时钟续上，
+  // 液面不会因为暂停时长而瞬移
+  loop ??= startFrameLoop(frame);
 
   // 拖动窗口 → 液体物理：位移距离注入晃动能量，水平速度注入倾斜角速度
   try {
@@ -305,7 +303,8 @@ onMounted(async () => {
   }
 });
 onUnmounted(() => {
-  if (rafId !== null) cancelAnimationFrame(rafId);
+  loop?.stop();
+  loop = null;
   unlistenMove?.();
 });
 </script>

@@ -7,6 +7,7 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, nextTick, computed } from "vue";
+import { startFrameLoop, type FrameLoopHandle } from "@/core/animation/frame-scheduler";
 
 // Constants
 const MAX_WIDTH = 7680;
@@ -15,7 +16,6 @@ const GRAVITY = 0.9;
 const PI_2 = Math.PI * 2;
 const PI_HALF = Math.PI * 0.5;
 const TARGET_FPS = 60;
-const FRAME_DURATION = 1000 / TARGET_FPS;
 const FIREWORK_RANGE = 3;
 
 // Colors
@@ -44,9 +44,7 @@ let currentFrame = 0;
 let activePointerCount = 0;
 let isUpdatingSpeed = false;
 let speedBarOpacity = 0;
-let isPaused = false;
 let isRunning = false;
-let isVisible = true;
 
 // Audio state
 let audioQueue: AudioBuffer[] = [];
@@ -56,11 +54,9 @@ let lastLaunchTime = 0;
 const DEBOUNCE_DELAY = 1000; // 1000ms debounce
 const AUDIO_DELAY_RANGE = [50, 200]; // 50-200ms random audio delay
 
-// Performance control
-let lastFrameTime = 0;
-
 // Animation frame
-let animationId: number;
+/** 共享帧循环句柄（帧率上限与页面隐藏/失焦暂停由调度器统一处理） */
+let loop: FrameLoopHandle | null = null;
 let autoLaunchInterval: ReturnType<typeof setInterval>;
 
 // Stars and particles
@@ -667,45 +663,6 @@ async function playFireworksAudio() {
   }
 }
 
-function handleVisibilityChange() {
-  isVisible = !document.hidden;
-  if (!isVisible) {
-    // When tab becomes hidden, pause the simulation and clean up particles
-    isPaused = true;
-    // Clear all active particles to prevent accumulation
-    clearAllParticles();
-  } else {
-    // When tab becomes visible again, resume
-    isPaused = false;
-  }
-}
-
-function clearAllParticles() {
-  // Clear all stars
-  COLOR_CODES_W_INVIS.forEach((color) => {
-    const stars = Star.active[color];
-    while (stars!.length > 0) {
-      const star = stars!.pop()!;
-      Star.returnInstance(star);
-    }
-  });
-
-  // Clear all sparks
-  COLOR_CODES_W_INVIS.forEach((color) => {
-    const sparks = Spark.active[color];
-    while (sparks!.length > 0) {
-      const spark = sparks!.pop()!;
-      Spark.returnInstance(spark);
-    }
-  });
-
-  // Clear all burst flashes
-  while (BurstFlash.active.length > 0) {
-    const flash = BurstFlash.active.pop()!;
-    BurstFlash.returnInstance(flash);
-  }
-}
-
 function updateGlobals() {
   currentFrame++;
 
@@ -878,6 +835,28 @@ function render() {
   }
 }
 
+/**
+ * 每帧回调：只做更新，不再自己调度下一帧
+ * 帧率上限与页面隐藏暂停均由共享调度器统一处理；
+ * 物理积分沿用固定时间步长（timeStep = 16.6667 * simSpeed），与迁移前一致
+ */
+function frame() {
+  update();
+}
+
+/** 启动共享帧循环（重复调用不会重复订阅） */
+function startLoop() {
+  // 帧率上限与页面隐藏暂停交给调度器；烟花可被全局点击触发，属前台交互特效，
+  // 故显式关闭「失焦暂停」，与迁移前一致（原实现只响应 document.hidden）
+  loop ??= startFrameLoop(frame, { fps: TARGET_FPS, pauseOnBlur: false });
+}
+
+/** 停止共享帧循环（幂等） */
+function stopLoop() {
+  loop?.stop();
+  loop = null;
+}
+
 // Lifecycle
 onMounted(async () => {
   await nextTick();
@@ -887,15 +866,14 @@ onMounted(async () => {
   window.addEventListener("pointerdown", handlePointerStart);
   window.addEventListener("pointerup", handlePointerEnd);
   window.addEventListener("pointermove", handlePointerMove);
-  document.addEventListener("visibilitychange", handleVisibilityChange);
 
   isRunning = true;
-  isPaused = false;
-  isVisible = !document.hidden;
 
   // Start with some random fireworks
+  // 页面隐藏时共享帧循环已暂停，这里同样不再生成新烟花，避免粒子在暂停期间堆积
+  // （原实现依赖 visibilitychange 手动暂停并清空粒子）
   autoLaunchInterval = setInterval(() => {
-    if (isRunning && !isPaused && isVisible) {
+    if (isRunning && !document.hidden) {
       const fireworkCount = Math.random() < 0.7 ? 1 : Math.floor(Math.random() * 5) + 1;
       for (let i = 0; i < fireworkCount; i++) {
         launchRandomShell(Math.random() * stageW, Math.random() * stageH * 0.5, false);
@@ -904,19 +882,7 @@ onMounted(async () => {
   }, 3000);
 
   // Start animation loop
-  function loop(timestamp: number) {
-    // Frame rate control
-    const deltaTime = timestamp - lastFrameTime;
-
-    if (deltaTime >= FRAME_DURATION && isVisible) {
-      update();
-      lastFrameTime = timestamp - (deltaTime % FRAME_DURATION);
-    }
-
-    animationId = requestAnimationFrame(loop);
-  }
-  lastFrameTime = performance.now();
-  animationId = requestAnimationFrame(loop);
+  startLoop();
 });
 
 onUnmounted(() => {
@@ -924,8 +890,7 @@ onUnmounted(() => {
   window.removeEventListener("pointerdown", handlePointerStart);
   window.removeEventListener("pointerup", handlePointerEnd);
   window.removeEventListener("pointermove", handlePointerMove);
-  document.removeEventListener("visibilitychange", handleVisibilityChange);
-  cancelAnimationFrame(animationId);
+  stopLoop();
   clearInterval(autoLaunchInterval);
 });
 </script>

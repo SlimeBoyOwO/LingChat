@@ -5,7 +5,8 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, shallowRef, watch, computed } from "vue";
+import { nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
+import { startFrameLoop, type FrameLoopHandle } from "@/core/animation/frame-scheduler";
 
 const props = defineProps<{
   starsEnabled: boolean;
@@ -29,21 +30,16 @@ interface Star {
 const STARS_COUNT = 80;
 const FLICKER_SPEED = 0.003;
 const starsPositions = shallowRef<Star[]>([]);
-let starsFrameId: number | null = null;
 let starsCtx: CanvasRenderingContext2D | null = null;
+/** 共享帧循环句柄（帧率上限与页面隐藏/失焦暂停由调度器统一处理） */
+let starsLoop: FrameLoopHandle | null = null;
 
 // 缓存预渲染的星星图像
 let starImageCache: Map<number, HTMLCanvasElement> | null = null;
 let circleImageCache: Map<number, HTMLCanvasElement> | null = null;
 
-let isPageVisible = true;
-
 // 帧率限制
 const TARGET_FPS = ref(30);
-const FRAME_INTERVAL = computed(() => 1000 / TARGET_FPS.value);
-
-// 上一帧时间戳 - 用于帧率控制
-let lastFrameTime = 0;
 
 /**
  * 创建带发光效果的星星形状到离屏 canvas
@@ -198,7 +194,7 @@ function generateStars() {
  * - 避免每帧创建渐变和设置阴影
  * - 缓存 stars 数组避免响应式开销
  */
-function renderStars() {
+function renderStars(now: number) {
   if (!starsCtx || !canvasRef.value) return;
   const w = canvasRef.value.width;
   const h = canvasRef.value.height;
@@ -206,8 +202,6 @@ function renderStars() {
   // 关键修复：重置全局透明度再 clearRect，避免清除不干净导致的问题
   starsCtx.globalAlpha = 1.0;
   starsCtx.clearRect(0, 0, w, h);
-
-  const now = performance.now();
 
   const stars = starsPositions.value;
 
@@ -239,22 +233,9 @@ function renderStars() {
   }
 }
 
-function flickerAnimation(currentTime: number) {
-  // 性能优化：帧率限制
-  if (currentTime - lastFrameTime < FRAME_INTERVAL.value) {
-    starsFrameId = requestAnimationFrame(flickerAnimation);
-    return;
-  }
-  lastFrameTime = currentTime;
-
-  // 性能优化：页面不可见时暂停渲染
-  if (!isPageVisible) {
-    starsFrameId = requestAnimationFrame(flickerAnimation);
-    return;
-  }
-
-  renderStars();
-  starsFrameId = requestAnimationFrame(flickerAnimation);
+function flickerAnimation(now: number) {
+  // 帧率上限与「页面隐藏暂停」均由共享调度器统一处理（见 frame-scheduler）
+  renderStars(now);
 }
 
 function handleResize() {
@@ -262,29 +243,19 @@ function handleResize() {
   startStars();
 }
 
-// 处理页面可见性变化
-function handleVisibilityChange() {
-  isPageVisible = !document.hidden;
-}
-
 function startStars() {
   if (!canvasRef.value) return;
   generateStars();
-  flickerAnimation(performance.now()); // 使用高精度时间戳
   window.removeEventListener("resize", handleResize);
   window.addEventListener("resize", handleResize);
-
-  // 添加页面可见性监听
-  document.addEventListener("visibilitychange", handleVisibilityChange);
+  starsLoop ??= startFrameLoop(flickerAnimation, { fps: TARGET_FPS.value });
+  starsLoop.setFps(TARGET_FPS.value);
 }
 
 function stopStars() {
   window.removeEventListener("resize", handleResize);
-  document.removeEventListener("visibilitychange", handleVisibilityChange);
-  if (starsFrameId) {
-    cancelAnimationFrame(starsFrameId);
-    starsFrameId = null;
-  }
+  starsLoop?.stop();
+  starsLoop = null;
   if (starsCtx && canvasRef.value) {
     starsCtx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height);
   }
@@ -299,6 +270,8 @@ onMounted(() => {
     (newFps) => {
       if (newFps && newFps >= 10 && newFps <= 300) {
         TARGET_FPS.value = newFps;
+        // 帧率设置热更新：直接下发给共享调度器，无需重启循环
+        starsLoop?.setFps(newFps);
       }
     },
     { immediate: true },
