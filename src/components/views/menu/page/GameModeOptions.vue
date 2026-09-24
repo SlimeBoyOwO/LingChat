@@ -36,26 +36,42 @@ const emit = defineEmits<{
   (e: "go-save"): void;
 }>();
 
+interface LastSaveInfo {
+  save_id: number;
+  title: string;
+  last_message: string | null;
+  script_name: string | null;
+}
+
+const truncate = (text: string, max: number) =>
+  text.length > max ? `${text.slice(0, max)}…` : text;
+
 const router = useRouter();
 const gameStore = useGameStore();
 const dialogStore = useDialogStore();
 const { t } = useI18n();
 
-// galgame New Game：先看有没有"当前进行"（last_save_id，后端在标记缺失/失效时
-// 会回退该角色最新的自动存档槽）。
-//   有 → 询问是否从上次存档继续：是 = 回到当前进行（load_save）；否 = 前往存档页。
+// galgame New Game：先看有没有"当前进行"（后端在标记缺失/失效时会回退该角色
+// 最新的自动存档槽），并返回摘要（剧本名/最后一句对话）供弹窗标明"上次进行"。
+//   有 → 询问是否从上次继续：是 = 回到当前进行（load_save）；否 = 前往存档页。
 //   无（无标记且无自动档）→ 直接开新世界（start_new_game 新建槽，不覆盖旧进度）。
 const startFreeDialogue = async () => {
   gameStore.exitStoryMode();
   try {
-    const lastSaveId = await invoke<number | null>("get_last_save_id");
-    if (lastSaveId) {
+    const lastSave = await invoke<LastSaveInfo | null>("get_last_save_id");
+    if (lastSave) {
+      const detail = lastSave.script_name
+        ? "\n" + t("views.menu.continueDetailScript", { name: lastSave.script_name })
+        : lastSave.last_message
+          ? "\n" +
+            t("views.menu.continueDetailFree", { message: truncate(lastSave.last_message, 40) })
+          : "";
       const ok = await dialogStore.confirm(
-        t("views.menu.continueSaveMessage"),
+        t("views.menu.continueSaveMessage") + detail,
         t("views.menu.continueSaveTitle"),
       );
       if (ok) {
-        const gameInfo = await invoke<WebInitData>("load_save", { saveId: lastSaveId });
+        const gameInfo = await invoke<WebInitData>("load_save", { saveId: lastSave.save_id });
         applyWebInitData(gameStore.$state, gameInfo);
         router.push("/chat");
         return;

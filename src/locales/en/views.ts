@@ -62,7 +62,10 @@ export default {
     miniGame: "Mini Games (In Development)",
     back: "Back",
     continueSaveTitle: "Continue Last Session",
-    continueSaveMessage: "A previous save was found. Continue from where you left off? (Cancel to go to save management)",
+    continueSaveMessage:
+      "A previous save was found. Continue from where you left off? (Cancel to go to save management)",
+    continueDetailScript: 'Last session: script "{name}"',
+    continueDetailFree: "Last session: {message}",
   },
   pet: {
     chatInput: {

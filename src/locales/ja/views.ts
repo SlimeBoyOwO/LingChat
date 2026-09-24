@@ -61,7 +61,10 @@ export default {
     miniGame: "ミニゲーム（開発中）",
     back: "戻る",
     continueSaveTitle: "前回の続きから",
-    continueSaveMessage: "前回のセーブデータが見つかりました。続きから始めますか？（キャンセルで存档管理へ）",
+    continueSaveMessage:
+      "前回のセーブデータが見つかりました。続きから始めますか？（キャンセルで存档管理へ）",
+    continueDetailScript: "前回のプレイ：スクリプト「{name}」",
+    continueDetailFree: "前回のプレイ：{message}",
   },
   pet: {
     chatInput: {

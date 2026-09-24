@@ -26,6 +26,18 @@ pub struct SaveListItem {
     pub screenshot: Option<String>,
 }
 
+/// "当前进行"存档摘要（主菜单继续询问弹窗展示用）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct LastSaveInfo {
+    pub save_id: i32,
+    pub title: String,
+    /// 该档最后一条对话内容（可能为 None）
+    pub last_message: Option<String>,
+    /// 剧本显示名（该档带有未完成的剧本进度时）；None = 普通自由对话档
+    pub script_name: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct SaveListResponse {
@@ -611,12 +623,12 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
     Ok(())
 }
 
-/// 获取当前角色的"当前进行"存档 id（主菜单"开始游戏→自由对话"的继续询问用）。
+/// 获取当前角色的"当前进行"存档摘要（主菜单"开始游戏→自由对话"的继续询问用）。
 /// 标记缺失（旧版本升级）或指向的档已被删除时，回退该角色最新的自动存档槽
 ///（= 上次进行的那局，与 init_game 的迁移回退逻辑一致）。
 /// 返回 None 表示没有可继续的存档（前端将直接开新世界）。
 #[tauri::command]
-pub async fn get_last_save_id(app: AppHandle) -> Result<Option<i32>, String> {
+pub async fn get_last_save_id(app: AppHandle) -> Result<Option<LastSaveInfo>, String> {
     let state = app.state::<AppState>();
     // 优先 settings 里的 LAST_CHARACTER_ID；没有则回退当前 game_status 的主角
     //（用户走"开始游戏"用默认角色时 LAST_CHARACTER_ID 可能尚未写入）
@@ -638,18 +650,79 @@ pub async fn get_last_save_id(app: AppHandle) -> Result<Option<i32>, String> {
             .map(|_| sid),
         None => None,
     };
-    if marked.is_some() {
-        return Ok(marked);
-    }
 
     // 无标记或标记失效 → 回退该角色最新的自动存档槽；连自动槽都没有才是真正无档可续
-    match role_id {
-        Some(rid) => Ok(SaveRepo::find_auto_save_slot(&state.db, Some(rid))
-            .await
-            .map_err(|e| format!("查询自动存档失败: {}", e))?
-            .map(|m| m.id)),
-        None => Ok(None),
-    }
+    let save_id = if marked.is_some() {
+        marked
+    } else {
+        match role_id {
+            Some(rid) => SaveRepo::find_auto_save_slot(&state.db, Some(rid))
+                .await
+                .map_err(|e| format!("查询自动存档失败: {}", e))?
+                .map(|m| m.id),
+            None => None,
+        }
+    };
+    let Some(save_id) = save_id else {
+        return Ok(None);
+    };
+
+    // 组装摘要：标题 + 最后一条消息 + 剧本名（若有未完成剧本进度）
+    let save_model = SaveRepo::get_save_by_id(&state.db, save_id)
+        .await
+        .map_err(|e| format!("查询存档失败: {}", e))?
+        .ok_or_else(|| format!("存档 {} 不存在", save_id))?;
+
+    let last_message = match save_model.last_message_id {
+        Some(mid) => {
+            use crate::db::entities::line;
+            use sea_orm::EntityTrait;
+            line::Entity::find_by_id(mid)
+                .one(&state.db)
+                .await
+                .map_err(|e| format!("查询最后消息失败: {}", e))?
+                .map(|l| l.content)
+        },
+        None => None,
+    };
+
+    let script_name = match save_model.running_script_id {
+        Some(rs_id) => {
+            let rs = SaveRepo::get_running_script(&state.db, rs_id)
+                .await
+                .map_err(|e| format!("查询剧本进度失败: {}", e))?;
+            match rs {
+                Some(rs) => {
+                    // 与 load_save 相同的匹配方式：path_key 归一化后按 folder_key 兜底
+                    let saved_key = rs.script_folder.replace('\\', "/");
+                    let service = state.ai_service.lock().await;
+                    let matched = service
+                        .script_manager
+                        .all_scripts
+                        .values()
+                        .find(|s| s.path_key().replace('\\', "/") == saved_key)
+                        .or_else(|| {
+                            service
+                                .script_manager
+                                .all_scripts
+                                .values()
+                                .find(|s| s.folder_key == saved_key)
+                        })
+                        .cloned();
+                    Some(matched.map(|s| s.name).unwrap_or(rs.script_folder))
+                },
+                None => None,
+            }
+        },
+        None => None,
+    };
+
+    Ok(Some(LastSaveInfo {
+        save_id,
+        title: save_model.title,
+        last_message,
+        script_name,
+    }))
 }
 
 #[tauri::command]
