@@ -211,7 +211,10 @@ const reportFloatingHeight = () => {
   // 中间那一帧气泡会把输入框顶出画布、被 overflow-hidden 裁掉。
   floatingContentHeight.value = logical;
   const height = Math.round(logical * k);
-  if (height <= 0 || height === lastReportedHeight) return;
+  if (height <= 0) return;
+  // 容差 2px：回传的宽度会经 dp↔px 取整，可能让 window.innerWidth 抖动 1dp，
+  // 进而让算出的高度抖 1px。没有容差就会和原生来回改尺寸停不下来。
+  if (lastReportedHeight > 0 && Math.abs(height - lastReportedHeight) <= 2) return;
   lastReportedHeight = height;
   // 宽度用当前窗口宽度原样回传：原生 set_size 的宽度单位是 dp，
   // 而 Android WebView 里 1 CSS px == 1 dp，两者同一坐标系。
