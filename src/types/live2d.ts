@@ -53,6 +53,19 @@ export interface Live2dImportResult {
   }>;
 }
 
+/**
+ * 一个 variant 的可用资源表，路径相对模型文件所在目录（与 `FileReferences` 同语义）。
+ *
+ * VTube Studio 式导出的 `model3.json` 里没有 `FileReferences.Expressions/.Motions`
+ * （资源散在模型目录下），而引擎只认 `model3.json` 里的声明，名字查不到时
+ * `setExpression` 会静默返回 false。所以加载模型时要用这份表把声明补进去。
+ * 派生数据，不落 `settings.yml`。
+ */
+export interface Live2dVariantAssets {
+  expressions: Record<string, string>;
+  motions: Record<string, string[]>;
+}
+
 export function resolveLive2dVariant(
   settings: Live2dSettings,
   clothesName: string,

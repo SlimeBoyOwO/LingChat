@@ -13,8 +13,8 @@ offset_x: 0.0
 offset_y: 45.0
 clothes_name: null
 clothes:
-- prompt: DeepSeek 酱换上了自己的日常女仆服装，穿着深蓝色的，白色花边的女仆装和女仆头饰，裙子上秀了金色的花纹，穿着白色丝袜和黑色圆头小皮鞋。女仆装的围巾上有 DeepSeek 的 logo，整体看起来很可爱。
-  name: default
+- name: default
+  prompt: DeepSeek 酱换上了自己的日常女仆服装，穿着深蓝色的，白色花边的女仆装和女仆头饰，裙子上秀了金色的花纹，穿着白色丝袜和黑色圆头小皮鞋。女仆装的围巾上有 DeepSeek 的 logo，整体看起来很可爱。
 - prompt: DeepSeek 换上了泳装，头上戴着淡蓝色的墨镜，穿着淡蓝色的外套和褶边淡蓝色泳衣和泳裙，漏着小肚子和嫩白的大腿，腿上还有一个腿环，裸足。
   name: 泳装
 avatar_mode: image
@@ -77,7 +77,27 @@ live2d:
     c_0120:
       model: live2d/import-1790154064438/c_0120.model3.json
       default_expression: null
-      expressions: {}
+      expressions:
+        无奈: 流汗
+        担心: 流汗
+        兴奋: 星星眼
+        紧张: 晕晕
+        疑惑: 问号
+        认真: 椭圆眼镜
+        生气: 生气
+        高兴: 开心兴奋
+        厌恶: 阴暗
+        害怕: 哭
+        心动: 心跳
+        害羞: 脸红
+        调皮: 双手比耶
+        平静: ''
+        难为情: 心跳
+        哭泣: 悲伤
+        惊讶: 感叹号
+        正常: ''
+        慌张: 流汗
+        自信: 星星眼
       motions: {}
       idle: null
       eye_blink:

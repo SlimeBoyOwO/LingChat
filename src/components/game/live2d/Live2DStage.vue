@@ -13,7 +13,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { onBeforeUnmount, onMounted, provide, readonly, ref, watch } from "vue";
 
-import { getLive2dFilePath } from "@/api/services/character";
+import { getLive2dFilePath, getLive2dVariantAssets } from "@/api/services/character";
 import { EMOTION_CONFIG_EMO } from "@/controllers/emotion/config";
 import type { GameRole } from "@/stores/modules/game/state";
 import {
@@ -21,6 +21,7 @@ import {
   resolveLive2dVariant,
   type Live2dMotionBinding,
   type Live2dVariant,
+  type Live2dVariantAssets,
 } from "@/types/live2d";
 import {
   areEyesOpen,
@@ -35,6 +36,7 @@ import { trackMotionLifecycle } from "./live2d-motion";
 import { loadLive2dRuntime, type Live2dRuntime } from "./live2d-runtime";
 import {
   configureRuntimeIdle,
+  mergeVariantAssets,
   rewriteModelReferences,
   type Live2dModelSource,
 } from "./model-source";
@@ -78,6 +80,9 @@ interface RoleModel {
   model: any;
   variant: Live2dVariant;
   runtimeIdle: Live2dMotionBinding | null;
+  /** 当前表情态，存的是**原始**情绪词（分类器/剧本产出的那个）。它是状态变化本身的
+      标识，也是查绑定的第一优先键；用 `EMOTION_CONFIG_EMO` 的映射词去重会让
+      哭泣与伤心、难为情与羞耻各塌成同一个键，切换时动作不会重放。 */
   emotion: string;
   requestId: number;
   mouthParameterIndex: number;
@@ -147,8 +152,36 @@ function motionBindingEquals(
   );
 }
 
-function mappedEmotion(emotion: string) {
-  return EMOTION_CONFIG_EMO[emotion] || "正常";
+/**
+ * 查情绪绑定用的键，按优先级排列。
+ *
+ * 第一项是分类器与剧本产出的原始情绪词（见 `data/third_party/emotion_model_19emo/label_mapping.json`），
+ * 也正是设置界面写进 `settings.yml` 的键，所以它必须先命中。
+ *
+ * 第二项是 `EMOTION_CONFIG_EMO` 的映射词。那张表是给静态立绘挑气泡图和音效用的
+ * （哭泣 → 伤心.webp），Live2D 这里带上它只是让已经写成映射词的配置不回归。少了第一项
+ * 会让「哭泣」「难为情」两行变成死键——设置界面绑得上，运行时永远查不到。
+ *
+ * 表外情绪（如剧本里的「尴尬」）映射词就是「正常」，与映射表出现前的行为一致。
+ */
+function emotionBindingKeys(emotion: string): string[] {
+  const mapped = EMOTION_CONFIG_EMO[emotion] || "正常";
+  return emotion === mapped ? [emotion] : [emotion, mapped];
+}
+
+/**
+ * 按上述顺序取第一个「存在」的绑定。
+ *
+ * 判空用 `!== undefined` 而不是真值判断：设置界面的「无表情」选项把值写成空串，
+ * 那表示用户显式关掉了这个情绪的表情，不能穿透到下一级——这正是 Live2D 文档里
+ * 「只在绑定缺失时才回退到 default_expression」的意思。
+ */
+function pickEmotionBinding<T>(table: Record<string, T>, emotion: string): T | undefined {
+  for (const key of emotionBindingKeys(emotion)) {
+    const value = table[key];
+    if (value !== undefined) return value;
+  }
+  return undefined;
 }
 
 function variantNameFor(role: GameRole): string | null {
@@ -159,12 +192,19 @@ function variantNameFor(role: GameRole): string | null {
   return mapped || settings.default_variant;
 }
 
-async function loadModelSource(roleId: number, modelFile: string) {
+async function loadModelSource(
+  roleId: number,
+  modelFile: string,
+  assets: Promise<Live2dVariantAssets | null>,
+) {
   const modelPath = await getLive2dFilePath(roleId, modelFile);
   const modelUrl = convertFileSrc(modelPath);
   const response = await fetch(modelUrl);
   if (!response.ok) throw new Error(`Failed to load Live2D settings: HTTP ${response.status}`);
   const source = (await response.json()) as Live2dModelSource;
+  // 注入必须夹在解析与改写之间：rewriteModelReferences 会把 FileReferences 里的相对路径
+  // 就地转成文件 URL，比它晚注入的路径永远不会被转换，引擎会拿到裸相对路径去取资源
+  mergeVariantAssets(source, await assets);
   await rewriteModelReferences(source, modelFile, async (relative) => {
     return convertFileSrc(await getLive2dFilePath(roleId, relative));
   });
@@ -373,7 +413,8 @@ function finishReaction(entry: RoleModel, sequence: number) {
 function applyEmotion(entry: RoleModel, emotion: string) {
   if (entry.emotion === emotion || !runtime) return;
   entry.emotion = emotion;
-  const expression = entry.variant.expressions[emotion] ?? entry.variant.default_expression;
+  const expression =
+    pickEmotionBinding(entry.variant.expressions, emotion) ?? entry.variant.default_expression;
   if (expression) {
     void entry.model
       .expression(expression)
@@ -381,7 +422,7 @@ function applyEmotion(entry: RoleModel, emotion: string) {
         console.warn(`[Live2D] expression failed for role ${entry.roleId}`, error),
       );
   }
-  const motion = entry.variant.motions[emotion];
+  const motion = pickEmotionBinding(entry.variant.motions, emotion);
   if (motion) {
     const sequence = ++entry.reactionSequence;
     freezeModelFocus(entry);
@@ -431,7 +472,15 @@ async function loadRole(
   const previous = models.get(role.roleId);
   let previousDetached = false;
   try {
-    const source = await loadModelSource(role.roleId, variant.model);
+    // 与模型文件并行取回。资源表拿不到不该拖垮模型加载：它只是补声明，缺了顶多
+    // 某个表情选了不生效，而抛出去会让角色退化成静态立绘，明显更糟
+    const assets = getLive2dVariantAssets(role.roleId, variantName).catch((error: unknown) => {
+      console.warn(`[Live2D] failed to load variant assets for role ${role.roleId}`, error);
+      return null;
+    });
+    const source = await loadModelSource(role.roleId, variant.model, assets);
+    // 必须在注入之后：扫描出来的待机组（小写 idle）只有注入完才解析得到，
+    // 解析不到会抛错，被下面的 catch 兜成静态立绘
     const runtimeIdle = configureRuntimeIdle(source, variant.idle);
     const model = await runtime.engine.Live2DModel.from(source, {
       ticker: application.ticker,
@@ -543,7 +592,7 @@ async function loadRole(
     models.set(role.roleId, entry);
     pendingModel = null;
     startIdle(entry);
-    applyEmotion(entry, mappedEmotion(role.emotion));
+    applyEmotion(entry, role.emotion);
     failedRoleIds.delete(role.roleId);
     emitFailedRoles();
     emitActiveRoles();
@@ -633,7 +682,7 @@ async function syncRoles() {
       startIdle(entry);
     }
     applyLayout(entry, role);
-    applyEmotion(entry, mappedEmotion(role.emotion));
+    applyEmotion(entry, role.emotion);
     application.stage.setChildIndex(
       entry.model,
       Math.min(index, application.stage.children.length - 1),

@@ -24,13 +24,13 @@ The existing systems remain active. A static avatar is hidden only after a Live2
 | `src/components/game/standard/GameRoleAvatar.vue`         | Role-intent dispatch plus shared avatar resolution, layout, animation, bubbles, touch, and effect audio                                              |
 | `src/components/game/standard/StaticRolePresentation.vue` | Traditional static image transition and load completion contract                                                                                     |
 | `src/components/game/standard/Live2DRolePresentation.vue` | Stage-result consumption, static fallback visibility, and localized unavailable result                                                               |
-| `src/components/game/live2d/model-source.ts`              | Safe model3 reference rewriting and configured idle projection                                                                                       |
+| `src/components/game/live2d/model-source.ts`              | Safe model3 reference rewriting, loose-asset injection, and configured idle projection                                                               |
 | `src/components/game/live2d/live2d-interaction.ts`        | Pointer coordinate and gaze calculations                                                                                                             |
 | `src/components/game/live2d/live2d-layout.ts`             | Pure layout calculations shared with tests                                                                                                           |
 | `src/components/game/live2d/live2d-motion.ts`             | Motion start/finish attribution through engine lifecycle events                                                                                      |
 | `src/components/game/live2d/useLive2dLipSync.ts`          | Passive audio decoding and mouth amplitude sampling                                                                                                  |
 | `src/components/settings/character/Live2DSettings.vue`    | Import, variant editing, bindings, outfit mapping, and preview                                                                                       |
-| `src-tauri/src/api/live2d.rs`                             | Directory/ZIP import, inspection, validation, staging, rollback, and runtime refresh                                                                 |
+| `src-tauri/src/api/live2d.rs`                             | Directory/ZIP import, inspection, loose-asset discovery, validation, staging, rollback, and runtime refresh                                          |
 | `src-tauri/src/ai_service/types.rs`                       | Serialized `settings.yml.live2d` contract, plus the `avatar_mode` / `avatar_mode_p` display-mode keys and the `pet_frameless` pet-window chrome flag |
 
 ## Render Stack
@@ -54,16 +54,21 @@ Do not migrate static characters into Pixi to solve a Live2D issue. Mixed static
 ## Load Lifecycle
 
 1. Resolve the active variant from `default_variant` and `clothes_variants`.
-2. Ask Tauri for the model3 path with `get_live2d_file`.
+2. Ask Tauri for the model3 path with `get_live2d_file`, and for the variant's loose-asset table with `get_live2d_variant_assets` in parallel.
 3. Fetch model3 through Tauri's asset protocol.
-4. Rewrite every model reference through the same controlled API.
-5. Project the configured idle definition into the internal `__LingChatConfiguredIdle` group.
-6. Create `Live2DModel` with the stage ticker and configured idle group.
-7. Add and lay out the pending model.
-8. Render one frame explicitly.
-9. Only after successful rendering, replace the previous variant and report the role as Live2D-active.
+4. Merge the loose-asset table into `FileReferences`, add-only.
+5. Rewrite every model reference through the same controlled API.
+6. Project the configured idle definition into the internal `__LingChatConfiguredIdle` group.
+7. Create `Live2DModel` with the stage ticker and configured idle group.
+8. Add and lay out the pending model.
+9. Render one frame explicitly.
+10. Only after successful rendering, replace the previous variant and report the role as Live2D-active.
 
 Variant replacement is transactional. Keep the old model attached until the new model has loaded and rendered. A failed replacement must preserve the old instance or the static fallback.
+
+Steps 4 and 5 are order-coupled, and both halves are load-bearing. The merge must happen **after** the fetch but **before** the rewrite, because the rewrite converts every `FileReferences` path into a `convertFileSrc` URL in place — a path injected later is never converted and the engine fetches a bare relative path. The idle projection in step 6 must come after the merge, because a discovered loose motion group (a lowercase `idle`) does not exist in `FileReferences` until the merge adds it, and `configureRuntimeIdle` throws when the configured group is missing.
+
+`get_live2d_variant_assets` is deliberately separate from `inspect_live2d`: the latter serves the settings UI (once per dialog open, all variants), the former serves the render path (once per model load, one variant). Its result is derived from disk on every call and never persisted — `settings.yml` records only bindings, so a discovered name→file table belongs to the session, not the character file. A failure to fetch it degrades to "no injection" rather than failing the load.
 
 ## Resource Ownership
 
@@ -145,7 +150,11 @@ Preview uses the same standard-mode model scale and offsets as the game view. It
 
 The optional `lingchat-live2d.json` is an import input only. After import, `settings.yml.live2d` is authoritative. Saving settings also updates the loaded backend role and the frontend store.
 
-Do not silently persist session-only runtime state. Do not treat the import manifest as a live configuration file.
+Inspection also reports assets the model never declared: when `FileReferences` has no `Expressions` / `Motions` section, `inspect_model` walks the model's directory for loose `.exp3.json` / `.motion3.json` files and treats each as a candidate, naming an expression after its file and giving each loose motion its own group named after its file. This is what makes a VTube Studio export selectable at all. It affects only what the settings UI may offer and what `get_live2d_variant_assets` returns — nothing discovered is written to `settings.yml`.
+
+Do not silently persist session-only runtime state. Do not treat the import manifest as a live configuration file. The loose-asset table is exactly such session-only state: it is derived from disk on demand, so it must not be cached into the character file.
+
+A loose-asset scan is stateful in one way that matters: the names it produces are persisted the moment a user binds one. Sorting the walk by relative path before deduplicating or uniquifying is therefore a correctness requirement, not a style choice — an unstable order would let the import-time name and the render-time name disagree, leaving the binding pointing at a group that no longer exists.
 
 ## Local Development
 
@@ -209,3 +218,5 @@ When adding a serialized field:
 8. Verify the normal Tauri development application before producing an installer.
 
 Keep fixes generic and contract-based. Character-specific calibration belongs in that character's `settings.yml`, not application source.
+
+Loose-asset discovery does **not** go through this checklist. It adds no serialized field: `settings.yml.live2d` is unchanged, `lingchat-live2d.json` is unchanged, and existing characters parse exactly as before. The only new wire shape is `get_live2d_variant_assets`, a read-only, session-scoped IPC payload rather than a persisted contract — which is why it has its own `Live2dVariantAssets` struct instead of widening `Live2dModelInfo`.

@@ -10,7 +10,9 @@ A complete character archive is imported from **Settings > Character > Import fr
 
 To add Live2D to a character that already exists in the character list, open the character's settings and select the **Live2D** tab. Desktop builds accept a model directory or ZIP file; Android accepts ZIP files. LingChat copies the imported files into that character's `live2d/` directory and scans every `.model3.json` file. ZIP entry names must use `/`, not Windows-style `\`, so the imported directory structure is preserved.
 
-The first model becomes the default variant. A variant is a visual rig inside the selected character; it does not create another selectable character. Expression and motion names are suggested from common English names and can be changed in the settings UI. Outfit names can be mapped to different model variants.
+The first model becomes the default variant. A variant is a visual rig inside the selected character; it does not create another selectable character. Outfit names can be mapped to different model variants.
+
+The expression and motion lists in that tab come from the model itself. A Cubism Web export declares them in `FileReferences`; a VTube Studio export declares nothing there and keeps them as loose `.exp3.json` / `.motion3.json` files instead, so LingChat walks the model's directory and picks those up, naming an expression after its file and giving each loose motion its own group. Names are then pre-bound to common English and Chinese emotion words as a starting point; both the bindings and the chosen expressions are yours to change in the settings UI. Loose files are re-read on every model load and are never written into `settings.yml`.
 
 ## Import Manifest
 
@@ -59,7 +61,7 @@ Model paths in the import manifest are relative to the manifest file. Runtime mo
 - One PixiJS application is created per mounted role stage and shared by its Live2D roles.
 - Models are loaded in on-stage order and removed when their role leaves the stage.
 - Cubism physics files referenced by `model3.json` are loaded by the runtime.
-- LingChat emotion values select configured expressions and one-shot motions. Expression lookup uses `expressions[currentEmotion]` first and falls back to `default_expression` only when that mapping is absent. `default_expression` is not implicitly the expression for the `正常` (Normal) emotion. The configured idle motion is projected into a single runtime idle group, so the engine resumes that exact motion after a reaction instead of randomly selecting another motion from the model's source group.
+- LingChat emotion values select configured expressions and one-shot motions. Expression lookup tries `expressions[currentEmotion]` first, then the legacy static-avatar alias for that emotion (`哭泣` → `伤心`, `难为情` → `羞耻`), then falls back to `default_expression` only when neither mapping is present. `default_expression` is not implicitly the expression for the `正常` (Normal) emotion. Motion lookup uses the same two keys but has no default fallback. The configured idle motion is projected into a single runtime idle group, so the engine resumes that exact motion after a reaction instead of randomly selecting another motion from the model's source group.
 - Pointer gaze uses a variant's optional drawable-relative `focus_anchor`. The gaze direction drives the pupils at full deflection, while the head rotates in proportion to how far the cursor has travelled from that origin toward the screen edge; reactions freeze the current gaze and closed eyes suspend tracking.
 - Lip sync passively decodes the existing character voice and follows the existing audio element's `currentTime`; it does not create another player or change audio routing.
 - If a model fails to load, LingChat keeps the existing static avatar. A placeholder is shown only when neither visual is available.

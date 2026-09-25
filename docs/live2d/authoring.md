@@ -57,6 +57,19 @@ The first reaction above is `Reactions[0]`; the second is `Reactions[1]`. Indexe
 
 Do not assume every motion in the source `Idle` group is suitable for automatic idle playback. Sleep, camera, and closed-eye motions are often stored in the same group. Select one intentional idle in the manifest. LingChat projects that selection into a one-motion runtime group so the engine resumes the configured idle after reactions.
 
+### VTube Studio Exports
+
+VTube Studio exports a valid `.model3.json` that declares **no** expressions and **no** motions. The rig is fine; the declarations simply live elsewhere — loose `.exp3.json` files for expressions, loose `.motion3.json` files for motions, and a private `.vtube.json` holding the hotkey registry. Such a package used to import with an empty expression and motion list, so none could be selected.
+
+LingChat now discovers these assets when `FileReferences` has no `Expressions` / `Motions` section. It walks the directory containing the `.model3.json` recursively and takes **every** `*.exp3.json` / `*.motion3.json` it finds, wherever it sits — a conventional `expressions/` folder, a misspelled one, or flat next to the model. Naming rules:
+
+- An expression's name is its file name with `.exp3.json` removed: `expressions/脸红.exp3.json` becomes `脸红`.
+- A motion has no group in this layout, so **each file becomes its own group**, named after the file with `.motion3.json` removed: `motions/idle.motion3.json` becomes the group `idle`. That is why a loose VTS motion is always bound as `{ "group": "idle", "index": 0 }`.
+- A group named `idle` (any case) or `待机` is taken as the idle motion. `sleep` deliberately is not.
+- No default expression is guessed. A VTS expression list has no conventional default, so `default_expression` stays unset unless a file is explicitly named `00_Default`, `default`, `默认`, or `正常`. Otherwise the model keeps whatever face the rig itself defines.
+
+Loose assets are re-read on every model load — they are never written into `settings.yml`. If you add or rename files in the model directory afterwards, restart or switch variants to pick them up.
+
 ## 3. Add the Import Manifest
 
 Place `lingchat-live2d.json` at the package root:
@@ -164,6 +177,8 @@ For an existing character:
 8. Enter desktop pet mode and confirm that the head is visible and top-aligned in the circular frame.
 
 For a new selectable character, import a complete character archive first. If that archive does not already include Live2D configuration and resources, open the imported character's **Live2D** settings tab and import this add-on package separately. A failed add-on import does not remove the existing character.
+
+A character that was imported before loose-asset discovery existed keeps its stored bindings. Its expression and motion dropdowns will be populated on the next visit to the **Live2D** tab, and anything you bind there works immediately — but its `idle` stays unset, because there is no idle control in the settings UI. Re-importing the package is what sets it. Note that a re-import mints a new `live2d/import-{nonce}` directory and drops the previous one, so any `focus_anchor` you set by hand is discarded with it.
 
 ## Troubleshooting
 

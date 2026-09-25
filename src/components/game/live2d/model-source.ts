@@ -1,4 +1,4 @@
-import type { Live2dMotionBinding } from "@/types/live2d";
+import type { Live2dMotionBinding, Live2dVariantAssets } from "@/types/live2d";
 
 export interface Live2dModelReferences {
   Moc?: string;
@@ -32,6 +32,56 @@ export function configureRuntimeIdle(
   }
   motions[RUNTIME_IDLE_GROUP] = [{ ...definition }];
   return { group: RUNTIME_IDLE_GROUP, index: 0, loop: idle.loop ?? true };
+}
+
+/**
+ * 把可用资源表补进 model3.json 的 `FileReferences`——只补缺，绝不替换或重排。
+ *
+ * VTube Studio 式导出的 model3.json 里没有 `Expressions`/`Motions` 段（资源散在模型
+ * 目录下），而引擎的 `ExpressionManager` 只从这两段建表，名字不在表里时
+ * `setExpression` 会静默返回 `false`（不抛错）。补进去之后，用户在设置界面绑定的
+ * 表情名才真的能生效。
+ *
+ * 两个「不」都在保护用户已有配置：
+ * - 不替换 `Expressions`：名字是绑定的键，只追加缺失的名字，已有顺序不动。
+ * - 不碰已存在的动作组：`motions[情绪] = {group, index}` 按 index 定位，往已有组里
+ *   插入或重排文件会让这个情绪的所有绑定整体错位。
+ *
+ * 必须在 `rewriteModelReferences` 之前调用，否则新补进来的相对路径不会被转成文件 URL。
+ */
+export function mergeVariantAssets(
+  source: Live2dModelSource,
+  assets: Live2dVariantAssets | null | undefined,
+): void {
+  if (!assets) return;
+  const references = source.FileReferences;
+  if (!references) return;
+
+  const existingExpressions = references.Expressions ?? [];
+  const knownNames = new Set(
+    existingExpressions
+      .map((expression) => expression?.Name)
+      .filter((name): name is string => typeof name === "string"),
+  );
+  const addedExpressions = Object.entries(assets.expressions)
+    .filter(([name]) => !knownNames.has(name))
+    .map(([Name, File]) => ({ Name, File }));
+  // 引擎用 `if (settings.expressions)` 判断要不要建 ExpressionManager，
+  // 补不出东西时别凭空造一个空的 Expressions 数组
+  if (addedExpressions.length > 0) {
+    references.Expressions = [...existingExpressions, ...addedExpressions];
+  }
+
+  const existingMotions = references.Motions ?? {};
+  const addedMotions: Record<string, Array<{ File: string }>> = {};
+  for (const [group, files] of Object.entries(assets.motions)) {
+    if (files.length === 0) continue;
+    if (Object.prototype.hasOwnProperty.call(existingMotions, group)) continue;
+    addedMotions[group] = files.map((File) => ({ File }));
+  }
+  if (Object.keys(addedMotions).length > 0) {
+    references.Motions = { ...existingMotions, ...addedMotions };
+  }
 }
 
 const URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;

@@ -66,6 +66,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::live2d::import_live2d,
         api::live2d::get_live2d_file,
         api::live2d::inspect_live2d,
+        api::live2d::get_live2d_variant_assets,
         api::background::get_background_list,
         api::background::get_background_file,
         api::background::upload_background_image,
