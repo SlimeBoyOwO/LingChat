@@ -70,6 +70,8 @@ build/
 dist/
 dist_old_*/
 dist-windows/
+# 本地存放 CI 产出的 Android 测试包（体积大，不入库）
+dist-android/
 target/
 
 ling_chat/static/frontend/
