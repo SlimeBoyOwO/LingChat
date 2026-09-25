@@ -11,6 +11,7 @@ permissions = [
     "allow-move-pet",
     "allow-set-size",
     "allow-set-touchable",
+    "allow-set-expanded",
     "allow-is-visible",
     "allow-status",
 ]
