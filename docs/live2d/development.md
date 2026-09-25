@@ -104,9 +104,20 @@ This ordering prevents an old Idle finishing during asynchronous reaction loadin
 
 ## Gaze and Eye State
 
-There is one passive `window.pointermove` listener per mounted stage. Browser coordinates are converted to Pixi stage coordinates.
+There is one passive `window.pointermove` listener per mounted stage, plus the desktop-only `pet:cursor` broadcast. Both feed the same window-relative logical coordinates; the broadcast also carries the current monitor's work area in that same coordinate space.
 
-If a variant has `focus_anchor`, its normalized drawable-relative point is transformed through the model's current Pixi world transform. This means the origin follows drawable bounds, scale, position, mode, and offsets. If no anchor is configured, the engine's canvas-center behavior is preserved for compatibility.
+A variant's optional `focus_anchor` is a normalized point within the model's drawable bounds, transformed through the model's current Pixi world transform, so the origin follows drawable bounds, scale, position, mode, and offsets. The local point is resolved once and cached: `getLocalBounds()` reads the live (animating) drawable vertices, so recomputing it per frame makes the origin drift with breathing and motions. When no anchor is configured the drawable-bounds center (`{x: 0.5, y: 0.5}`) is used — the same value the settings UI shows as its placeholder.
+
+Gaze is split into direction and magnitude, and only the magnitude damps the head:
+
+- **Direction** is the unit vector from the origin to the pointer. It drives pupil tracking, at full deflection.
+- **Magnitude** `m` is `distance(origin, pointer) / distance from the origin to the work-area edge along that direction`, clamped to `0..1`. The reference distance is floored at `GAZE_REFERENCE_RATIO` (0.35) times the work area's shorter side, because a pet parked in a screen corner may have only tens of pixels of headroom in that direction, which would otherwise saturate the head immediately.
+
+Damping is applied to the **focus controller input**, not to the parameters: `focusController.focus(ux * m, uy * m)`, so the engine's own `ParamAngle*` gains produce the damped head and no engine constants are duplicated here. The pupils are restored in the `beforeModelUpdate` handler by adding `fc * (1 / m - 1)`, which recovers the undamped spring position exactly — that spring is radial and speed-limited, so it always sits at `s * m * (ux, uy)`, and `|fc / m| <= 1` means the write is never clipped. At `m = 1` the correction is exactly zero and behaviour is byte-identical to no damping at all.
+
+The final head angle is `breath + motion + m * focus`; only the focus share is damped, and `ParamAngleZ` scales with roughly `m²` because the engine forms it from the product `fc.x * fc.y`.
+
+Do not read `window.screenX` or `availLeft` on the frontend for the work area. Under mixed-DPI multi-monitor setups Chromium mixes device and CSS pixels there, and this is a ratio of two distances that must come from one source — hence the Rust payload.
 
 Read eye-open parameters from the Cubism core model. Closed eyes suspend gaze updates. A reaction freezes the current focus direction and completion restores pointer tracking. Do not infer eye state from emotion names and do not force eye parameters after a motion.
 

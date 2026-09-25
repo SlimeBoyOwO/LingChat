@@ -22,7 +22,13 @@ import {
   type Live2dMotionBinding,
   type Live2dVariant,
 } from "@/types/live2d";
-import { areEyesOpen, focusDirection, pointerToStagePoint } from "./live2d-interaction";
+import {
+  areEyesOpen,
+  gazeFromPointer,
+  GAZE_MAGNITUDE_MIN,
+  radialReferenceDistance,
+  type ScreenBox,
+} from "./live2d-interaction";
 import { live2dStageContextKey } from "./live2d-stage-context";
 import { calculatePetLayout } from "./live2d-layout";
 import { trackMotionLifecycle } from "./live2d-motion";
@@ -61,6 +67,9 @@ const emit = defineEmits<{
 interface CursorPayload {
   x: number;
   y: number;
+  /** 当前显示器工作区，已按与 x/y 相同的公式换算到窗口相对逻辑像素。
+      旧版 Rust 载荷没有这个字段（undefined），取不到显示器信息时为 null。 */
+  screen?: ScreenBox | null;
 }
 
 interface RoleModel {
@@ -75,8 +84,16 @@ interface RoleModel {
   mouthValue: number;
   eyeLeftParameterIndex: number;
   eyeRightParameterIndex: number;
+  eyeBallXParameterIndex: number;
+  eyeBallYParameterIndex: number;
   eyesOpen: boolean;
   focusFrozen: boolean;
+  /** 视线幅度：锚点到鼠标的距离 ÷ 该方向上锚点到屏幕边缘的距离，已夹到
+      [GAZE_MAGNITUDE_MIN, 1]。1 表示不衰减（维持旧行为）。 */
+  gazeMagnitude: number;
+  /** 视线原点在模型局部坐标系里的位置，首次用到时由 drawable bounds 与
+      focus_anchor 算出后缓存——bounds 随呼吸/动作漂移，每帧重算会让锚点抖动。 */
+  focusOrigin: { x: number; y: number } | null;
   reactionSequence: number;
   reactionLifecycleCleanup: (() => void) | null;
 }
@@ -91,6 +108,10 @@ let decodedVoice: DecodedVoice | null = null;
 let decodeSequence = 0;
 let resizeObserver: ResizeObserver | null = null;
 let pointerPosition: { clientX: number; clientY: number } | null = null;
+/** 当前显示器工作区（窗口相对逻辑像素），由 Rust 侧的 pet:cursor 广播带过来。
+    前端自己读 window.screenX/availLeft 在混合 DPI 多显示器下会混用设备像素与
+    CSS 像素；尺寸可靠但位置不可靠，所以位置必须跟指针走同一个来源。 */
+let screenBox: ScreenBox | null = null;
 let cursorUnlisten: (() => void) | null = null;
 const models = new Map<number, RoleModel>();
 const failedRoleIds = new Set<number>();
@@ -203,6 +224,30 @@ function findParameterIndex(entry: RoleModel, parameter: string): number {
   return -1;
 }
 
+/** 工作区矩形缺失时（移动端、浏览器 dev）的径向参考距离。
+    window.screen 的尺寸在多 DPI 下可靠、位置不可靠，所以只取尺寸；
+    连尺寸都拿不到时返回 0，gazeFromPointer 据此退回「不衰减」。 */
+function fallbackReferenceDistance() {
+  const screen = window.screen;
+  return radialReferenceDistance(screen?.availWidth ?? 0, screen?.availHeight ?? 0);
+}
+
+/** 视线原点（模型局部坐标）= drawable bounds 上的 focus_anchor 位置。
+    没配 focus_anchor 时取 bounds 中心，与设置界面的 placeholder 一致。
+    getLocalBounds() 读的是当前（带呼吸/动作）的 drawable 顶点，会随动画漂移，
+    所以只算一次缓存；局部 bounds 不受 model.scale/position/anchor 影响，
+    桌宠改缩放不会让它失效。 */
+function resolveFocusOrigin(entry: RoleModel) {
+  if (entry.focusOrigin) return entry.focusOrigin;
+  const bounds = entry.model.getLocalBounds();
+  const anchor = entry.variant.focus_anchor ?? { x: 0.5, y: 0.5 };
+  entry.focusOrigin = {
+    x: (bounds.minX ?? bounds.x ?? 0) + bounds.width * anchor.x,
+    y: (bounds.minY ?? bounds.y ?? 0) + bounds.height * anchor.y,
+  };
+  return entry.focusOrigin;
+}
+
 function updateModelFocus(entry: RoleModel) {
   if (entry.focusFrozen) return;
   const focusController = entry.model.internalModel.focusController;
@@ -214,32 +259,38 @@ function updateModelFocus(entry: RoleModel) {
   // 眨眼/隐藏期间冻结视线目标：不重置回中。引擎的眨眼控制器会在
   // beforeModelUpdate 之前把眼部参数写成闭眼值，此时若走回中分支，
   // 弹簧插值会把瞳孔/头短暂拽向正中，表现为眨眼瞬间“瞬视中间”。
+  // 下面每条早退分支都保持 gazeMagnitude 不变：焦点弹簧自己会衰减到 0，
+  // 瞳孔补偿量随之归零，路径连续；清零反而会漏掉补偿、多出一个小跳变。
   if (!entry.eyesOpen || !entry.model.visible) return;
   if (!pointerPosition || !host.value || !application) {
     focusController.focus(0, 0);
     return;
   }
-  const point = pointerToStagePoint(
-    pointerPosition.clientX,
-    pointerPosition.clientY,
-    host.value.getBoundingClientRect(),
-    application.screen,
-  );
-  if (point) {
-    const anchor = entry.variant.focus_anchor;
-    if (!anchor || !runtime) {
-      entry.model.focus(point.x, point.y);
-      return;
-    }
-    const bounds = entry.model.getLocalBounds();
-    const localAnchor = new runtime.pixi.Point(
-      (bounds.minX ?? bounds.x ?? 0) + bounds.width * anchor.x,
-      (bounds.minY ?? bounds.y ?? 0) + bounds.height * anchor.y,
-    );
-    const worldAnchor = entry.model.toGlobal(localAnchor);
-    const direction = focusDirection(point, worldAnchor);
-    focusController.focus(direction.x, direction.y);
+  // 全程在视口坐标里算距离：指针与工作区矩形都在这个坐标系。
+  // 反算用 application.screen 而非 rect 做分母——PIXI 的 ResizePlugin 读
+  // clientWidth，application.screen 不受 CSS transform 影响，而 rect 会
+  // （桌宠入场有 scale(0.8→1) 动画，期间两者差 0.8 倍）。
+  const rect = host.value.getBoundingClientRect();
+  const stage = application.screen;
+  if (rect.width <= 0 || rect.height <= 0 || stage.width <= 0 || stage.height <= 0) {
+    focusController.focus(0, 0);
+    return;
   }
+  const origin = entry.model.toGlobal(resolveFocusOrigin(entry));
+  const gaze = gazeFromPointer(
+    { x: pointerPosition.clientX, y: pointerPosition.clientY },
+    {
+      x: rect.left + origin.x * (rect.width / stage.width),
+      y: rect.top + origin.y * (rect.height / stage.height),
+    },
+    screenBox,
+    screenBox ? 0 : fallbackReferenceDistance(),
+  );
+  // 方向按单位向量交给引擎驱动瞳孔；幅度只用来衰减头部旋转，
+  // 被缩掉的瞳孔偏转由 beforeModelUpdate 补回。
+  const magnitude = Math.max(gaze.magnitude, GAZE_MAGNITUDE_MIN);
+  entry.gazeMagnitude = magnitude;
+  focusController.focus(gaze.x * magnitude, gaze.y * magnitude);
 }
 
 function handlePointerMove(event: PointerEvent) {
@@ -417,8 +468,12 @@ async function loadRole(
       mouthValue: 0,
       eyeLeftParameterIndex: -1,
       eyeRightParameterIndex: -1,
+      eyeBallXParameterIndex: -1,
+      eyeBallYParameterIndex: -1,
       eyesOpen: true,
       focusFrozen: false,
+      gazeMagnitude: 1,
+      focusOrigin: null,
       reactionSequence: 0,
       reactionLifecycleCleanup: null,
     };
@@ -429,6 +484,10 @@ async function loadRole(
       entry.eyeLeftParameterIndex = findParameterIndex(entry, variant.eye_blink.left);
       entry.eyeRightParameterIndex = findParameterIndex(entry, variant.eye_blink.right);
     }
+    // 瞳孔参数名是 Cubism 标准 id，不像 eye_blink 那样需要按模型配置；
+    // 缺失时索引为 -1，该模型就只衰减头部、瞳孔也跟着衰减（降级而非报错）
+    entry.eyeBallXParameterIndex = findParameterIndex(entry, "ParamEyeBallX");
+    entry.eyeBallYParameterIndex = findParameterIndex(entry, "ParamEyeBallY");
     model.internalModel.on("beforeModelUpdate", () => {
       const coreModel = model.internalModel.coreModel as {
         addParameterValueByIndex(index: number, value: number, weight?: number): void;
@@ -445,6 +504,31 @@ async function loadRole(
         eyeValues.push(coreModel.getParameterValueByIndex(entry.eyeRightParameterIndex));
       }
       entry.eyesOpen = areEyesOpen(eyeValues);
+      // 瞳孔补偿。引擎已按衰减后的焦点写了一次眼球参数，这里把被缩掉的那份补回，
+      // 使瞳孔仍然是满幅追踪（头部不受影响，只衰减那一份）。
+      // 幅度必须在 updateModelFocus 覆写之前读：focusController.update(dt) 在帧首
+      // 执行，追赶的是上一帧 handler 里设的 target，所以本帧的 fc 对应的是旧幅度。
+      // fc 是「径向 + 限速」的弹簧，从原点出发时恒为 s·magnitude·u，故 fc/magnitude
+      // 恰是未衰减时瞳孔应有的值，且 |fc/magnitude| ≤ 1，这次写入不会被参数 clamp 削掉。
+      const magnitude = entry.gazeMagnitude;
+      if (props.mode === "pet" && magnitude < 1) {
+        const focusController = model.internalModel.focusController;
+        const gain = 1 / magnitude - 1;
+        if (entry.eyeBallXParameterIndex >= 0) {
+          coreModel.addParameterValueByIndex(
+            entry.eyeBallXParameterIndex,
+            focusController.x * gain,
+            1,
+          );
+        }
+        if (entry.eyeBallYParameterIndex >= 0) {
+          coreModel.addParameterValueByIndex(
+            entry.eyeBallYParameterIndex,
+            focusController.y * gain,
+            1,
+          );
+        }
+      }
       updateModelFocus(entry);
     });
     if (previous) {
@@ -543,6 +627,9 @@ async function syncRoles() {
     if (entry.variant !== variant) {
       entry.variant = variant;
       entry.emotion = "";
+      // 变体换了但模型没换（例如只改了 focus_anchor）：缓存的视线原点已经失效，
+      // 不清掉的话新锚点要等模型下次重新加载才生效
+      entry.focusOrigin = null;
       startIdle(entry);
     }
     applyLayout(entry, role);
@@ -629,6 +716,8 @@ onMounted(() => {
     window.addEventListener("pointermove", handlePointerMove, { passive: true });
     void listen<CursorPayload>("pet:cursor", (event) => {
       pointerPosition = { clientX: event.payload.x, clientY: event.payload.y };
+      // 旧版 Rust 载荷没有 screen 字段：保持上一次的值，别把参考系清掉
+      if (event.payload.screen !== undefined) screenBox = event.payload.screen ?? null;
     })
       .then((unlisten) => {
         if (disposed) {

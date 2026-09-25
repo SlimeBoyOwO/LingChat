@@ -129,7 +129,7 @@ Place `lingchat-live2d.json` at the package root:
 | `motions`            | LingChat emotion name to model3 motion group and zero-based index.                                                                                                                                         |
 | `idle`               | The exact motion used for automatic idle playback.                                                                                                                                                         |
 | `eye_blink`          | Cubism parameter IDs used to detect whether the eyes are open.                                                                                                                                             |
-| `focus_anchor`       | Optional gaze origin within drawable bounds; both values are in `0..1`.                                                                                                                                    |
+| `focus_anchor`       | Optional gaze origin within drawable bounds; both values are in `0..1`. It is also the point the head-rotation distance is measured from.                                                                  |
 | `lip_sync`           | Mouth-open parameter and optional amplitude gain.                                                                                                                                                          |
 | `clothes_variants`   | LingChat outfit name to variant name. Use `default` for the default outfit.                                                                                                                                |
 
@@ -144,7 +144,7 @@ Import the package, open the character's **Live2D** settings, and select each va
 3. Select an idle that keeps the character in the expected neutral state.
 4. Confirm `ParamEyeLOpen` and `ParamEyeROpen`, or enter the model's actual eye-open parameter IDs.
 5. Confirm the mouth parameter, usually `ParamMouthOpenY`.
-6. Adjust the gaze anchor to the center between the rendered eyes.
+6. Adjust the gaze anchor to the center between the rendered eyes. It is also the origin that the head-rotation distance is measured from, so an anchor left on the torso makes the head turn later and further than it should.
 7. Map every LingChat outfit to the correct variant.
 8. Save, leave settings, and test the character in both standard and desktop pet modes.
 
@@ -177,9 +177,9 @@ For a new selectable character, import a complete character archive first. If th
 
 Check the configured `idle` group and index. The source model may contain sleep or camera motions in its `Idle` group. LingChat resumes the configured entry, so an incorrect index remains an incorrect artistic choice.
 
-### Gaze starts from the torso
+### Gaze starts from the torso, or the head turns too early or too late
 
-Set `focus_anchor` for the active variant. The fallback is the model's Cubism canvas center, which may not be near the eyes. Calibrate every variant separately.
+Set `focus_anchor` for the active variant. The fallback is the center of the drawable bounds, which on a half-body rig sits around the chest rather than the eyes — so both the gaze direction and the head-rotation distance are measured from the wrong point. Calibrate every variant separately.
 
 ### Outfit switching keeps the wrong rig
 

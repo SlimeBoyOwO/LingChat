@@ -497,7 +497,7 @@ export default {
       defaultExpressionHint: "仅在当前情绪没有对应表情映射时作为后备；它不等同于“正常”情绪的表情。",
       focusAnchorX: "视线基点 X（0-1）",
       focusAnchorY: "视线基点 Y（0-1）",
-      focusAnchorReset: "恢复使用模型画布中心",
+      focusAnchorReset: "恢复使用模型显示区域中心",
       noExpression: "不切换表情",
       noMotion: "不播放动作",
       clothesMapping: "服装与模型变体映射",

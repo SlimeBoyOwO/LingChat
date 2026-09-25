@@ -52,7 +52,7 @@ A package may include `lingchat-live2d.json`. It is used only during import; `se
 }
 ```
 
-Model paths in the import manifest are relative to the manifest file. Runtime model paths are rewritten as character-relative paths when imported. `focus_anchor` is optional; its `x` and `y` values are normalized positions from 0 to 1 within the model's drawable bounds. When configured, mouse gaze direction originates from that point instead of the Cubism canvas center.
+Model paths in the import manifest are relative to the manifest file. Runtime model paths are rewritten as character-relative paths when imported. `focus_anchor` is optional; its `x` and `y` values are normalized positions from 0 to 1 within the model's drawable bounds. When configured, mouse gaze originates from that point; when omitted it defaults to the center of the drawable bounds (`0.5, 0.5`). The point is both the gaze direction origin and the distance reference for the head-rotation damping, so it belongs between the eyes.
 
 ## Runtime Behavior
 
@@ -60,7 +60,7 @@ Model paths in the import manifest are relative to the manifest file. Runtime mo
 - Models are loaded in on-stage order and removed when their role leaves the stage.
 - Cubism physics files referenced by `model3.json` are loaded by the runtime.
 - LingChat emotion values select configured expressions and one-shot motions. Expression lookup uses `expressions[currentEmotion]` first and falls back to `default_expression` only when that mapping is absent. `default_expression` is not implicitly the expression for the `正常` (Normal) emotion. The configured idle motion is projected into a single runtime idle group, so the engine resumes that exact motion after a reaction instead of randomly selecting another motion from the model's source group.
-- Pointer gaze uses a variant's optional drawable-relative `focus_anchor`; reactions freeze the current gaze and closed eyes suspend tracking.
+- Pointer gaze uses a variant's optional drawable-relative `focus_anchor`. The gaze direction drives the pupils at full deflection, while the head rotates in proportion to how far the cursor has travelled from that origin toward the screen edge; reactions freeze the current gaze and closed eyes suspend tracking.
 - Lip sync passively decodes the existing character voice and follows the existing audio element's `currentTime`; it does not create another player or change audio routing.
 - If a model fails to load, LingChat keeps the existing static avatar. A placeholder is shown only when neither visual is available.
 - A character that has a model can still be shown as a static portrait. The character's **Visuals** tab sets the main stage display and its **Desktop Pet** tab sets the pet window display, stored as `avatar_mode` and `avatar_mode_p` in `settings.yml` (`live2d` or `image`). Characters without an imported model show neither option.

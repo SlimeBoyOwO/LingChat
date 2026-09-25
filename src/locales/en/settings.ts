@@ -490,7 +490,7 @@ export default {
         "Used only as a fallback when the current emotion has no expression mapping; it is not the expression for the Normal emotion.",
       focusAnchorX: "Gaze Origin X (0-1)",
       focusAnchorY: "Gaze Origin Y (0-1)",
-      focusAnchorReset: "Use Model Canvas Center",
+      focusAnchorReset: "Use Model Bounds Center",
       noExpression: "Do Not Change Expression",
       noMotion: "Do Not Play Motion",
       clothesMapping: "Outfit to Model Variant Mapping",

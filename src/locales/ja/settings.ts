@@ -471,7 +471,7 @@ export default {
         "現在の感情に対応する表情マッピングがない場合のみフォールバックとして使用されます。「正常」感情の表情とは別です。",
       focusAnchorX: "視線基点 X（0-1）",
       focusAnchorY: "視線基点 Y（0-1）",
-      focusAnchorReset: "モデルキャンバスの中心を使用",
+      focusAnchorReset: "モデル描画領域の中心を使用",
       noExpression: "表情を変更しない",
       noMotion: "モーションを再生しない",
       clothesMapping: "衣装とモデルバリアントの対応",

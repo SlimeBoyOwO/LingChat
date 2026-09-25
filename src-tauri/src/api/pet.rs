@@ -18,6 +18,21 @@ pub struct Rect {
     pub height: f64,
 }
 
+/// 当前显示器工作区，已按与鼠标位置**完全相同**的公式换算成窗口相对逻辑像素。
+///
+/// 桌宠前端用它算视线衰减的参考距离（锚点沿鼠标方向到屏幕边缘有多远），所以
+/// 必须与 x/y 同坐标系、同 scale_factor。前端自己读 window.screenX/availLeft 不行：
+/// 混合 DPI 多显示器下 Chromium 会混用设备像素与 CSS 像素，而这是两个数的比值，
+/// 分子分母必须同源误差才会相消。
+#[cfg_attr(not(desktop), allow(dead_code))]
+#[derive(Clone, Debug, Serialize)]
+pub struct ScreenBox {
+    pub left: f64,
+    pub top: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
 /// 桌宠窗口内的鼠标位置（逻辑/CSS 像素），由 Rust 侧全局轮询循环计算并广播给前端。
 /// 坐标系与 DOM 的 clientX/clientY 一致（窗口非装饰时即 webview 视口坐标）。
 #[cfg_attr(not(desktop), allow(dead_code))]
@@ -25,6 +40,8 @@ pub struct Rect {
 pub struct CursorPosition {
     pub x: f64,
     pub y: f64,
+    /// 取不到显示器信息时为 None，前端据此退回径向参考距离
+    pub screen: Option<ScreenBox>,
 }
 
 pub struct HitTestState {
@@ -69,6 +86,9 @@ pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
         // emit，webview 渲染进程会被 IPC 持续唤醒而无法进入空闲。
         // 只有位移超过 1 逻辑像素（过滤亚像素抖动）才真正广播。
         let mut last_emitted: Option<(f64, f64)> = None;
+        // 上一次广播的工作区矩形。原生拖拽窗口时窗口跟着光标走，窗口相对坐标几乎
+        // 不变，只看鼠标位移会漏掉「参考系变了」，所以它也要参与判重。
+        let mut last_screen: Option<(f64, f64, f64, f64)> = None;
         loop {
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
@@ -99,6 +119,20 @@ pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
                     let logical_x = mouse_x / scale_factor;
                     let logical_y = mouse_y / scale_factor;
 
+                    // 当前显示器工作区，换算方式与鼠标位置逐字一致，
+                    // 保证两者是同一帧的原子快照。
+                    let screen = window.current_monitor().ok().flatten().map(|monitor| {
+                        let area = monitor.work_area();
+                        ScreenBox {
+                            left: (f64::from(area.position.x) - f64::from(window_pos.x))
+                                / scale_factor,
+                            top: (f64::from(area.position.y) - f64::from(window_pos.y))
+                                / scale_factor,
+                            width: f64::from(area.size.width) / scale_factor,
+                            height: f64::from(area.size.height) / scale_factor,
+                        }
+                    });
+
                     // 向桌宠前端广播全局鼠标位置：桌宠窗口非全屏，DOM
                     // pointermove 在鼠标移出窗口后停发，Live2D 视线会冻结在
                     // 最后一次窗口内位置。这里把窗口内逻辑坐标（即 webview
@@ -111,15 +145,20 @@ pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
                         },
                         None => true,
                     };
-                    if moved {
+                    let screen_key = screen
+                        .as_ref()
+                        .map(|area| (area.left, area.top, area.width, area.height));
+                    if moved || screen_key != last_screen {
                         let _ = window.emit(
                             "pet:cursor",
                             CursorPosition {
                                 x: logical_x,
                                 y: logical_y,
+                                screen,
                             },
                         );
                         last_emitted = Some((logical_x, logical_y));
+                        last_screen = screen_key;
                     }
 
                     let mut is_over_solid = false;
