@@ -275,8 +275,9 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 // 再重新搬。这里必须用 restore 而不是 detach —— detach 只是
                 // 断开引用，WebView 会变成无父容器的孤儿，随后
                 // findMainWebView() 就再也找不到它了。
+                // notifyPage=false：马上又会搬回去，没必要让页面闪一次「已回到 App」。
                 if (petView != null) {
-                    restoreWebViewToActivity()
+                    restoreWebViewToActivity(notifyPage = false)
                 }
 
                 petScale = args.scale.coerceIn(0.5, 2.0)
@@ -390,8 +391,13 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * 把 WebView 从悬浮窗搬回 Activity 内容视图，撤掉占位页。
      *
      * 必须在主线程调用。
+     *
+     * @param notifyPage 是否向页面派发 `pet-attached`。
+     *   `show()` 的幂等分支会先 restore 再重新搬，这种情况下页面马上又
+     *   会收到 `pet-detached`，中间那次 attached 只会造成布局闪动，
+     *   因此传 false 跳过。
      */
-    private fun restoreWebViewToActivity() {
+    private fun restoreWebViewToActivity(notifyPage: Boolean = true) {
         val view = petView
         if (view != null) {
             try {
@@ -416,7 +422,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             view.setBackgroundColor(Color.TRANSPARENT)
 
             // 通知页面：你已经回到 App 里了，恢复正常布局。
-            notifyWeb("pet-attached", JSObject())
+            if (notifyPage) notifyWeb("pet-attached", JSObject())
         }
         petDetached = false
     }
