@@ -54,7 +54,11 @@ pub fn get_settings_tree(app: AppHandle) -> ConfigTree {
 }
 
 #[tauri::command]
-pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result<String, String> {
+pub fn save_settings(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    values: BTreeMap<String, String>,
+) -> Result<String, String> {
     if let Some(value) = values.get(keys::LLM_TIMEOUT_SECS) {
         let timeout_secs = value
             .parse::<u64>()
@@ -102,6 +106,18 @@ pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result
         )
     });
 
+    // 好感度/上帝 Agent 相关设置：热更新运行中的 GodAgentCore 配置，
+    // 无需重启即可生效（总开关、评估间隔、决策窗口、连续 NPC 轮数上限）。
+    let god_agent_settings_changed = values.keys().any(|key| {
+        matches!(
+            key.as_str(),
+            keys::AFFECTION_ENABLED
+                | keys::GOD_AGENT_AFFECTION_EVAL_INTERVAL
+                | keys::GOD_AGENT_RECENT_WINDOW
+                | keys::GOD_AGENT_MAX_CONSECUTIVE_NPC
+        )
+    });
+
     let store = config::settings_store(&app).map_err(|e| e.to_string())?;
 
     for (key, value) in &values {
@@ -124,6 +140,18 @@ pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result
     }
 
     store.save().map_err(|e| e.to_string())?;
+
+    if god_agent_settings_changed {
+        // 热更新运行中的上帝 Agent 配置（含好感度总开关），无需重启
+        if let Some(god) = &state.god_agent {
+            let new_config = crate::ai_service::god_agent::config::GodAgentConfig::load(&app);
+            let affection_enabled = new_config.affection_enabled;
+            god.update_config(new_config);
+            // 通知前端刷新好感度面板的挂载状态（FreeModeTools 据此显隐面板）
+            use tauri::Emitter;
+            let _ = app.emit("affection:enabled-changed", affection_enabled);
+        }
+    }
 
     if memory_settings_changed {
         Ok("配置已成功保存；记忆压缩相关设置将在重启 LingChat 后生效。".to_string())

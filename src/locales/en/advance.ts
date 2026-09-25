@@ -44,10 +44,10 @@ export default {
     memoryButton: "Open Memory Debug",
     affectionTitle: "Affection System",
     affectionDesc:
-      "Master switch for the affection system (auto-restarts to apply); heartbeat and wave animation toggles are under Other Advanced Settings",
+      "Master switch for the affection system (applies immediately); heartbeat and wave animation toggles are under Other Advanced Settings",
     affectionMasterToggle: "Enable affection system",
-    affectionRestartConfirm:
-      "Changing the affection system takes effect after a restart. Restart the app now?",
-    affectionRestartFailed: "Restart failed, please restart the app manually",
+    affectionToggleConfirm:
+      "Toggle the affection system? When disabled, affection evaluation stops and the affection panel is hidden immediately.",
+    affectionToggleFailed: "Failed to toggle the affection system, please try again later",
   },
 };

@@ -721,12 +721,12 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
         affection_subs.insert(
             "通用".to_string(),
             Subcategory {
-                description: "好感度系统选项（修改后重启生效）".to_string(),
+                description: "好感度系统选项（保存后立即生效）".to_string(),
                 settings: vec![ConfigSetting {
                     key: keys::AFFECTION_ENABLED.to_string(),
                     value: read_setting(app, keys::AFFECTION_ENABLED, "true"),
                     description:
-                        "AFFECTION_ENABLED — 好感度系统总开关（关闭后不再评估情感、不写情感状态旁白，好感度面板隐藏）"
+                        "AFFECTION_ENABLED — 好感度系统总开关（关闭后上帝 Agent 立即停止评估情感、不写情感状态旁白，好感度面板隐藏）"
                             .to_string(),
                     setting_type: "bool".to_string(),
                 }],

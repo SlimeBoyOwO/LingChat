@@ -191,7 +191,6 @@ import {
   Wrench,
 } from "lucide-vue-next";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { relaunch } from "@tauri-apps/plugin-process";
 import { useI18n } from "vue-i18n";
 import { MenuItem } from "../../ui";
 import { Button } from "../../base";
@@ -204,7 +203,7 @@ import { onMounted, ref } from "vue";
 const { locale, t } = useI18n();
 const dialogStore = useDialogStore();
 
-// 好感度系统总开关，与「其他高级设置→好感度」的 affection.enabled 是同一项，切换后重启生效
+// 好感度系统总开关，与「其他高级设置→好感度」的 affection.enabled 是同一项，保存后立即生效
 const affectionMasterEnabled = ref(true);
 // 取消确认或操作失败时递增，强制重渲染 Toggle 以恢复开关视觉状态
 const affectionMasterEpoch = ref(0);
@@ -218,9 +217,10 @@ onMounted(async () => {
   }
 });
 
-// 重启流程抄自 SettingsBackground 的 HDR 开关：确认 → 写配置 → relaunch
+// 保存即热生效（后端 save_settings 会同步刷新上帝 Agent 配置），无需重启。
+// 保留确认对话框：关闭会停用好感度评估与面板，提醒用户防止误触
 async function onAffectionMasterToggle(enabled: boolean) {
-  const ok = await dialogStore.confirm(t("advance.menu.affectionRestartConfirm"));
+  const ok = await dialogStore.confirm(t("advance.menu.affectionToggleConfirm"));
   if (!ok) {
     affectionMasterEpoch.value++;
     return;
@@ -228,11 +228,10 @@ async function onAffectionMasterToggle(enabled: boolean) {
   try {
     await saveEnvConfig({ "affection.enabled": String(enabled) });
     affectionMasterEnabled.value = enabled;
-    await relaunch();
   } catch (e) {
     console.error("切换好感度系统失败:", e);
     affectionMasterEpoch.value++;
-    dialogStore.alert(t("advance.menu.affectionRestartFailed"));
+    dialogStore.alert(t("advance.menu.affectionToggleFailed"));
   }
 }
 

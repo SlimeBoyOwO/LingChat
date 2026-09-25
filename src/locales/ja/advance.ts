@@ -41,10 +41,10 @@ export default {
     memoryButton: "記憶デバッグ画面へ",
     affectionTitle: "好感度システム",
     affectionDesc:
-      "好感度システムのマスタースイッチ（切替後に自動再起動）。鼓動・波アニメーションの切替は「その他の詳細設定」にあります",
+      "好感度システムのマスタースイッチ（保存後すぐ有効）。鼓動・波アニメーションの切替は「その他の詳細設定」にあります",
     affectionMasterToggle: "好感度システムを有効化",
-    affectionRestartConfirm:
-      "好感度システムの切替は再起動後に有効になります。今すぐ再起動しますか？",
-    affectionRestartFailed: "再起動に失敗しました。手動で再起動してください",
+    affectionToggleConfirm:
+      "好感度システムを切り替えますか？オフにすると、好感度の評価が直ちに停止し、好感度パネルも非表示になります。",
+    affectionToggleFailed: "好感度システムの切替に失敗しました。後でもう一度お試しください",
   },
 };

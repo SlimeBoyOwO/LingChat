@@ -11,7 +11,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { listen } from "@tauri-apps/api/event";
 import { useGameStore } from "@/stores/modules/game";
 import { getEnvConfigByKey } from "@/api/services/config";
 import PomodoroPanel from "@/components/pomodoro/PomodoroPanel.vue";
@@ -34,5 +35,16 @@ onMounted(async () => {
   } catch {
     affectionEnabled.value = true;
   }
+});
+
+// 开关保存后后端热更新上帝 Agent 配置并广播最新状态，面板即时显隐
+let unlisten: (() => void) | null = null;
+onMounted(async () => {
+  unlisten = await listen<boolean>("affection:enabled-changed", (event) => {
+    affectionEnabled.value = event.payload !== false;
+  });
+});
+onUnmounted(() => {
+  unlisten?.();
 });
 </script>
