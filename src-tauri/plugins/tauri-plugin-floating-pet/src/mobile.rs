@@ -1,11 +1,14 @@
-//! Android / iOS 实现：把命令转发给原生插件执行。
+//! Android 实现：把命令转发给原生 Kotlin 插件执行。
 //!
-//! 目前只实现了 Android（Kotlin）。iOS 侧走 `NotSupported`，
-//! 因为 iOS 从系统层面就不允许第三方 App 创建跨 App 的覆盖窗口。
+//! iOS 与桌面端走 `NotSupported`——iOS 从系统层面就不允许第三方 App
+//! 创建跨 App 的覆盖窗口，桌面端则由 `api::pet` 的原生窗口实现。
 
-use tauri::{AppHandle, Runtime};
+#[cfg(target_os = "android")]
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::FloatingPetState;
+#[cfg(target_os = "android")]
+use crate::MobilePluginHandle;
 use crate::models::*;
 
 #[cfg(target_os = "android")]
@@ -18,38 +21,31 @@ pub fn is_supported<R: Runtime>(_app: &AppHandle<R>) -> bool {
     false
 }
 
-/// 转发调用到原生插件。
+/// 取原生插件 handle 并转发调用。
 ///
-/// Tauri 在移动端约定：Rust 侧用 `run_mobile_plugin`，Kotlin 侧用
-/// `@Command` 注解的方法接收，方法名与这里的字符串一一对应。
+/// handle 由 `init()` 的 setup 阶段注册并 manage，这里通过 `AppHandle`
+/// 反查。命令名与 Kotlin 侧 `@Command` 注解的方法名一一对应。
 #[cfg(target_os = "android")]
-fn call<R: Runtime, P: serde::Serialize>(
+fn call<R: Runtime, P: serde::Serialize, T: serde::de::DeserializeOwned>(
     app: &AppHandle<R>,
     method: &str,
     payload: P,
-) -> Result<()> {
-    app.run_mobile_plugin::<()>(method, payload)
-        .map_err(|e| Error::Native(e.to_string()))
+) -> Result<T> {
+    let handle = app.state::<MobilePluginHandle<R>>();
+    handle.run::<T>(method, payload)
 }
 
 #[cfg(not(target_os = "android"))]
-fn call<R: Runtime, P: serde::Serialize>(
+fn call<R: Runtime, P: serde::Serialize, T: serde::de::DeserializeOwned>(
     _app: &AppHandle<R>,
     _method: &str,
     _payload: P,
-) -> Result<()> {
+) -> Result<T> {
     Err(Error::NotSupported)
 }
 
-#[cfg(target_os = "android")]
 pub fn check_permission<R: Runtime>(app: &AppHandle<R>) -> Result<bool> {
-    app.run_mobile_plugin::<bool>("checkPermission", ())
-        .map_err(|e| Error::Native(e.to_string()))
-}
-
-#[cfg(not(target_os = "android"))]
-pub fn check_permission<R: Runtime>(_app: &AppHandle<R>) -> Result<bool> {
-    Ok(false)
+    call(app, "checkPermission", ())
 }
 
 #[cfg(target_os = "android")]
@@ -67,13 +63,13 @@ pub fn show<R: Runtime>(
     args: ShowArgs,
     state: &FloatingPetState,
 ) -> Result<()> {
-    call(app, "show", args)?;
+    call::<R, _, ()>(app, "show", args)?;
     state.set_visible(true);
     Ok(())
 }
 
 pub fn hide<R: Runtime>(app: &AppHandle<R>, state: &FloatingPetState) -> Result<()> {
-    call(app, "hide", ())?;
+    call::<R, _, ()>(app, "hide", ())?;
     state.set_visible(false);
     Ok(())
 }
@@ -86,7 +82,7 @@ pub fn move_pet<R: Runtime>(
     if !state.is_visible() {
         return Err(Error::NotVisible);
     }
-    call(app, "movePet", args)
+    call::<R, _, ()>(app, "movePet", args)
 }
 
 pub fn set_size<R: Runtime>(
@@ -97,7 +93,7 @@ pub fn set_size<R: Runtime>(
     if !state.is_visible() {
         return Err(Error::NotVisible);
     }
-    call(app, "setSize", args)
+    call::<R, _, ()>(app, "setSize", args)
 }
 
 /// 切换点击穿透。
@@ -116,5 +112,5 @@ pub fn set_touchable<R: Runtime>(
         return Err(Error::NotVisible);
     }
     state.set_touchable(touchable);
-    call(app, "setTouchable", TouchableArgs { touchable })
+    call::<R, _, ()>(app, "setTouchable", TouchableArgs { touchable })
 }

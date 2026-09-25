@@ -187,11 +187,53 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             is_visible,
             status,
         ])
-        .setup(|app, _api| {
+        .setup(|app, api| {
             app.manage(FloatingPetState::default());
+
+            // 把 Kotlin 侧实现注册给 Tauri，拿到 PluginHandle。
+            // 移动端所有命令都通过这个 handle 转发到原生（见 mobile.rs）；
+            // 没有这一步，run_mobile_plugin 无从调用。
+            #[cfg(target_os = "android")]
+            {
+                let handle =
+                    api.register_android_plugin(ANDROID_PLUGIN_IDENTIFIER, ANDROID_CLASS_NAME)?;
+                app.manage(MobilePluginHandle::<R>(handle));
+            }
+
+            // 非 Android 平台（含 iOS）保留占位，避免 cfg 分支导致
+            // FloatingPetState 之外的引用不一致。
+            #[cfg(not(target_os = "android"))]
+            let _ = api;
+
             Ok(())
         })
         .build()
+}
+
+/// Kotlin 插件所在包名，需与 `android/src/main/java/.../FloatingPetPlugin.kt` 的
+/// `package` 声明一致。
+#[cfg(target_os = "android")]
+const ANDROID_PLUGIN_IDENTIFIER: &str = "com.noiq.floatingpet";
+
+/// Kotlin 插件类名（不带包名）。
+#[cfg(target_os = "android")]
+const ANDROID_CLASS_NAME: &str = "FloatingPetPlugin";
+
+/// 持有移动端原生插件的 `PluginHandle`，供命令转发时取用。
+#[cfg(target_os = "android")]
+pub struct MobilePluginHandle<R: Runtime>(pub tauri::plugin::PluginHandle<R>);
+
+#[cfg(target_os = "android")]
+impl<R: Runtime> MobilePluginHandle<R> {
+    pub fn run<T: serde::de::DeserializeOwned>(
+        &self,
+        command: impl AsRef<str>,
+        payload: impl serde::Serialize,
+    ) -> Result<T> {
+        self.0
+            .run_mobile_plugin::<T>(command, payload)
+            .map_err(|e| Error::Native(e.to_string()))
+    }
 }
 
 /// 扩展 trait：`app.floating_pet()` 直接拿到状态。

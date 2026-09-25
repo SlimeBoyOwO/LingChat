@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 ///
 /// 所有尺寸/坐标都是 **逻辑像素（dp）**，由 Kotlin 侧乘以 density 后
 /// 再交给 `WindowManager`，避免不同 DPI 设备上桌宠大小不一致。
-#[derive(Debug, Clone, Deserialize)]
+///
+/// 需要 `Serialize`：移动端要把参数转发给原生插件（`run_mobile_plugin`）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShowArgs {
     /// 悬浮窗内加载的 URL（通常是 LingChat 自身的 /pet 路由）。
@@ -24,7 +26,7 @@ pub struct ShowArgs {
 }
 
 /// `move_pet` 命令的参数。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MoveArgs {
     pub x: f64,
@@ -32,7 +34,7 @@ pub struct MoveArgs {
 }
 
 /// `set_size` 命令的参数。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SizeArgs {
     pub width: f64,
