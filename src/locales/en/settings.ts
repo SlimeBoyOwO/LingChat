@@ -113,8 +113,14 @@ export default {
     focusLog: "Focus log window",
   },
   save: {
+    newGame: {
+      title: "Start New Game (opens a fresh world; existing saves stay in the list)",
+      button: "Start New Game",
+      starting: "Starting...",
+    },
     create: {
-      title: "Create Backup / Bookmark (saves the current conversation as a bookmark, doesn't change current progress)",
+      title:
+        "Create Backup / Bookmark (saves the current conversation as a bookmark, doesn't change current progress)",
       placeholder: "Enter a save name",
       creating: "Creating...",
       button: "Create",
@@ -148,6 +154,11 @@ export default {
       createSuccessMsg: "Save created",
       createFailTitle: "Create Failed",
       loadConfirm: "Loading a save will discard your current conversation progress. Load anyway?",
+      newGameConfirm:
+        "This will start a brand-new story (existing saves stay in the list). Continue?",
+      newGameSuccessTitle: "New game started",
+      newGameSuccessMsg: "A new world has begun",
+      newGameFailTitle: "Failed to start",
       loadSuccessTitle: "Loaded",
       loadSuccessMsg: "Save loaded",
       loadFailTitle: "Load Failed",

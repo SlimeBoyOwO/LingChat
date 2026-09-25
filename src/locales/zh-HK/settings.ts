@@ -103,6 +103,11 @@ export default {
     focusLog: "聚焦日誌窗口",
   },
   save: {
+    newGame: {
+      title: "開始新遊戲（開空檔：開啟新世界，舊存檔仍保留喺列表）",
+      button: "開始新遊戲",
+      starting: "開始緊...",
+    },
     create: {
       title: "建立備份/書籤（將當前對話另存為書籤，唔會改變當前進行）",
       placeholder: "入個存檔名",
@@ -138,6 +143,10 @@ export default {
       createSuccessMsg: "存檔開咗喇",
       createFailTitle: "創建失敗",
       loadConfirm: "載入存檔會冇咗而家嘅對話進度，確定要載入咩？",
+      newGameConfirm: "會開啟一段全新嘅故事（舊存檔仍保留喺列表），確定咩？",
+      newGameSuccessTitle: "新遊戲已開始",
+      newGameSuccessMsg: "已開啟新嘅世界",
+      newGameFailTitle: "開始失敗",
       loadSuccessTitle: "載入成功",
       loadSuccessMsg: "存檔載入咗喇",
       loadFailTitle: "載入失敗",

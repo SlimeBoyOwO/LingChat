@@ -1,5 +1,23 @@
 <template>
   <MenuPage>
+    <MenuItem :title="$t('settings.save.newGame.title')">
+      <template #header>
+        <Play :size="20" />
+      </template>
+      <div class="flex gap-2.5">
+        <button
+          class="cursor-pointer rounded-md border border-[rgba(121,217,255,0.35)] bg-[rgba(121,217,255,0.18)] px-4 py-2 whitespace-nowrap text-[#ddd] transition-all duration-200 hover:-translate-y-px hover:bg-[rgba(121,217,255,0.32)] hover:shadow-[0_0_10px_rgba(121,217,255,0.15)] disabled:cursor-not-allowed disabled:opacity-60"
+          @click="handleStartNewGame"
+          :disabled="actionLoading !== null"
+        >
+          {{
+            actionLoading === -2
+              ? $t("settings.save.newGame.starting")
+              : $t("settings.save.newGame.button")
+          }}
+        </button>
+      </div>
+    </MenuItem>
     <MenuItem :title="$t('settings.save.create.title')">
       <template #header>
         <PencilLine :size="20" />
@@ -172,7 +190,7 @@ import { useDialogStore } from "../../../stores/modules/ui/dialog";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import type { SaveInfo } from "../../../types";
 import type { WebInitData } from "../../../api/services/game-info";
-import { Save as SaveIcon, PencilLine, LayoutList, Clock } from "lucide-vue-next";
+import { Save as SaveIcon, PencilLine, LayoutList, Clock, Play } from "lucide-vue-next";
 
 interface SaveListResponse {
   saves: SaveInfo[];
@@ -312,6 +330,40 @@ const handleCreateSave = async () => {
     console.error("创建存档失败:", e);
     uiStore.showError({
       title: t("settings.save.msg.createFailTitle"),
+      message: typeof e === "string" ? e : e.message || t("settings.save.msg.unknownError"),
+    });
+  } finally {
+    actionLoading.value = null;
+  }
+};
+
+// 开空档：新世界（后端新建自动槽，旧存档保留在列表里）。
+// 与读档同样做会话切换清理，并在主菜单入口下自动进入聊天页。
+const handleStartNewGame = async () => {
+  const confirmed = await dialogStore.confirm(t("settings.save.msg.newGameConfirm"));
+  if (!confirmed) return;
+  actionLoading.value = -2;
+  eventQueue.clear();
+  try {
+    const gameInfo = await invoke<WebInitData>("start_new_game");
+    applyWebInitData(gameStore.$state, gameInfo);
+    gameStore.scriptReadCursor = null;
+    gameStore.exitStoryMode();
+    // 丢弃旧会话残留事件，防止上一个剧本/对话的迟到事件播进新世界
+    eventQueue.clear();
+    eventQueue.resume();
+    uiStore.showSuccess({
+      title: t("settings.save.msg.newGameSuccessTitle"),
+      message: t("settings.save.msg.newGameSuccessMsg"),
+    });
+    if (router.currentRoute.value.path === "/") {
+      uiStore.showSettings = false;
+      router.push("/chat");
+    }
+  } catch (e: any) {
+    console.error("开始新游戏失败:", e);
+    uiStore.showError({
+      title: t("settings.save.msg.newGameFailTitle"),
       message: typeof e === "string" ? e : e.message || t("settings.save.msg.unknownError"),
     });
   } finally {

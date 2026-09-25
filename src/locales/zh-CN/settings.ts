@@ -102,6 +102,11 @@ export default {
     focusLog: "聚焦日志窗口",
   },
   save: {
+    newGame: {
+      title: "开始新游戏（开空档：开启新世界，旧存档仍保留在列表中）",
+      button: "开始新游戏",
+      starting: "开始中...",
+    },
     create: {
       title: "创建备份/书签（把当前对话另存为一格书签，不改变当前进行）",
       placeholder: "输入存档名称",
@@ -137,6 +142,10 @@ export default {
       createSuccessMsg: "存档已创建",
       createFailTitle: "创建失败",
       loadConfirm: "加载存档会导致丢失当前对话进度，确定要加载吗？",
+      newGameConfirm: "将开启一段全新的故事（旧存档仍保留在列表中），确定吗？",
+      newGameSuccessTitle: "新游戏已开始",
+      newGameSuccessMsg: "已开启新的世界",
+      newGameFailTitle: "开始失败",
       loadSuccessTitle: "加载成功",
       loadSuccessMsg: "存档已加载",
       loadFailTitle: "加载失败",
