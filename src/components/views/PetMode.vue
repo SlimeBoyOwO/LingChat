@@ -6,6 +6,24 @@
     @mouseleave="handleMouseLeave"
     class="relative flex h-(--app-height) w-(--app-width) flex-col items-center justify-start overflow-hidden bg-transparent transition-none select-none"
   >
+    <!-- 悬浮窗展开态的退出按钮：收回悬浮窗并切回聊天页。
+
+         位置必须在逻辑画布**内部**（top-1 / right-1，而不是 -top-1 / -right-1）：
+         早先挂在头像右上角用负偏移，整体等比缩放后会被 #pet-app 的
+         overflow-hidden 裁掉一半，真机上根本点不到。
+
+         只在展开态出现——收起态只有头像、没有放按钮的地方，而展开本来就靠
+         点头像，退出需要一个明确、看得见的入口。 -->
+    <button
+      v-if="floatingWindowMode && petExpanded"
+      type="button"
+      aria-label="收回桌宠"
+      class="absolute top-1 right-1 z-50 flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-neutral-950/80 text-[13px] leading-none text-white/90 shadow-lg backdrop-blur-xl active:scale-95"
+      @click.stop="handleExitPetMode"
+    >
+      ✕
+    </button>
+
     <!-- 装饰带（气泡/通知）：高度完全随内容（无预留）→ 顶部永远没有透明空间：
          默认在宠物上方（气泡吸顶，宠物被往下让位）；设置=下方时夹在宠物与输入框之间（气泡贴宠物下沿）
 

@@ -2,12 +2,14 @@ package com.noiq.floatingpet
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -101,24 +103,38 @@ private const val KEEP_ALIVE_INTERVAL_MS = 500L
 /**
  * 收回时重发 `pet-attached` 的延迟序列（毫秒）。
  *
- * 用户常常是在**别的 App 里**双击收回的，此时宿主 Activity 仍处于暂停态，
- * WebView 刚被唤醒，`evaluateJavascript` 有概率落空。这条事件一旦丢失，
- * 页面就会一直停在悬浮窗布局（表现为「收回之后还是一小块、也不回聊天页」），
- * 因此宁可重复发几次。页面侧对同一事件幂等。
+ * 用户常常是在**别的 App 里**触发收回的，此时宿主 Activity 还处于停止态，
+ * WebView 刚被唤醒、窗口也还没重新布局，`evaluateJavascript` 会被丢掉。
+ * 这条事件一旦丢失，页面就一直停在悬浮窗布局（表现为「切回去只有左上一角、
+ * 也不回聊天页」）。
+ *
+ * 因此这里既拉长重试跨度，又在 Activity 真正回到前台时补发一次
+ * （见 [ensureLifecycleCallbacks] 的 `onActivityResumed`）——单纯靠固定
+ * 延迟重试是不够的，因为「用户什么时候切回来」完全不可预测。
  */
-private val PET_ATTACHED_RETRY_DELAYS_MS = longArrayOf(0L, 250L, 800L)
-
-/** 单击与拖拽的判定阈值（dp）：按下到抬起位移超过它就算拖动，不触发点击。 */
-private const val TAP_SLOP_DP = 8.0
+private val PET_ATTACHED_RETRY_DELAYS_MS = longArrayOf(0L, 300L, 1000L, 3000L)
 
 /**
- * 双击判定窗口（毫秒）。
+ * 收回后保活轮询继续运行的时长（毫秒）。
  *
- * 两次抬手间隔小于它就算双击 → 切回 App。
- * 用 300ms：接近 Android 系统 ViewConfiguration.getDoubleTapTimeout()（300ms），
- * 用户手感一致。
+ * 不能一收回就 [FloatingPetPlugin.stopKeepAlive]：WebView 从 60dp 的
+ * 悬浮窗被塞回整屏 Activity 时，Chromium 的视口要重新算一次，而宿主
+ * Activity 此刻往往还在后台、不跑布局遍历。轮询多撑一会儿，等用户切回来、
+ * 视口真正更新完再停，否则整个 App 会以悬浮窗的窄视口渲染
+ * ——看起来就是「只有左上一角」。
  */
-private const val DOUBLE_TAP_TIMEOUT_MS = 300L
+private const val KEEP_ALIVE_GRACE_MS = 20000L
+
+/**
+ * 单击与拖拽的判定阈值（dp）：按下到抬起位移超过它就算拖动，不触发点击。
+ *
+ * 取 16dp 而不是 Android 默认的 8dp。这里判定的是「整个窗口要不要跟着
+ * 手指走」，不是滚动，因此容差该给得比 `ViewConfiguration` 的 touchSlop
+ * 宽：手指点按时天然会带几 dp 位移，8dp 会把大量正常点按判成拖动
+ * ——表现就是「单击经常没反应，窗口还会被带偏一点」。
+ */
+private const val TAP_SLOP_DP = 16.0
+
 
 // ─── 参数结构（字段名需与 Rust 侧 serde camelCase 对应） ──────────
 
@@ -230,16 +246,70 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     private var keepAliveRunning = false
     private val keepAliveTick = object : Runnable {
         override fun run() {
-            if (!petDetached) {
-                keepAliveRunning = false
-                return
-            }
+            if (!keepAliveRunning) return
+            // 收回之后（petDetached=false）也要继续唤醒：WebView 从 60dp 的
+            // 悬浮窗被塞回整屏 Activity，Chromium 的视口要重算一次，而宿主
+            // Activity 此刻往往还在后台、不跑布局遍历。不继续撑着的话，
+            // 整个 App 会以悬浮窗的窄视口渲染 —— 就是「只有左上一角」。
             (petView as? WebView)?.let { resumePetWebView(it, "keep-alive") }
             // 顺带重推一次窗口几何：前端靠它算缩放系数，而 WebView 的视口
             // 在原生改完尺寸后会滞后一会儿，自算必然出错。低频重推让页面
             // 即使漏掉某次事件也能在半秒内自愈。
-            layoutParams?.let { notifyMetrics(it, petView) }
+            if (petDetached) layoutParams?.let { notifyMetrics(it, petView) }
             keepAliveHandler.postDelayed(this, KEEP_ALIVE_INTERVAL_MS)
+        }
+    }
+
+    /**
+     * 收回后仍待补发的 `pet-attached` 目标 WebView。
+     *
+     * 见 [ensureLifecycleCallbacks]：用户多半是在别的 App 里点 ✕ 收回的，
+     * 那时宿主 Activity 处于停止态，`evaluateJavascript` 会被丢弃；
+     * 等用户真正切回来（Activity 重新 resume）再补发一次才可靠。
+     */
+    private var pendingAttachNotify: WebView? = null
+
+    /** [ensureLifecycleCallbacks] 的幂等标记。 */
+    private var lifecycleCallbacksRegistered = false
+
+    /**
+     * 注册进程级 Activity 生命周期回调。
+     *
+     * ## 为什么不能用 Tauri 的插件生命周期
+     *
+     * Tauri 2.11.1 里 `PluginManager.onPause/onResume/onStop` 是**死代码**
+     * （`TauriLifecycleObserver` 从未被 `addObserver()` 注册），
+     * 因此插件拿不到「用户切回 App」这个时机。改用 Android 自己的
+     * `Application.ActivityLifecycleCallbacks`——它由系统直接分发，不受
+     * Tauri 版本影响。
+     *
+     * 目前只用到 `onActivityResumed`：把收回时没送达的 `pet-attached`
+     * 补发给页面。这条事件一旦丢失，页面就会一直停在悬浮窗布局。
+     */
+    private fun ensureLifecycleCallbacks() {
+        if (lifecycleCallbacksRegistered) return
+        lifecycleCallbacksRegistered = true
+        try {
+            activity.application.registerActivityLifecycleCallbacks(
+                object : Application.ActivityLifecycleCallbacks {
+                    override fun onActivityCreated(a: Activity, b: Bundle?) = Unit
+                    override fun onActivityStarted(a: Activity) = Unit
+
+                    override fun onActivityResumed(a: Activity) {
+                        val wv = pendingAttachNotify ?: return
+                        pendingAttachNotify = null
+                        Log.i(TAG, "Activity 已回到前台，补发 pet-attached")
+                        notifyWeb(wv, "pet-attached", JSObject())
+                    }
+
+                    override fun onActivityPaused(a: Activity) = Unit
+                    override fun onActivityStopped(a: Activity) = Unit
+                    override fun onActivitySaveInstanceState(a: Activity, b: Bundle) = Unit
+                    override fun onActivityDestroyed(a: Activity) = Unit
+                }
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "注册 Activity 生命周期回调失败（可忽略）", e)
         }
     }
 
@@ -450,7 +520,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 // 页面自身的 html/body 背景（由 /pet 路由控制）。
                 webView.setBackgroundColor(Color.TRANSPARENT)
 
-                // 拖动 / 单击 / 双击手势：挂在整个窗口上
+                // 拖动手势：挂在整个窗口上；点按一律交回页面
                 webView.setOnTouchListener(buildPetTouchListener())
 
                 // 注意：petView / petDetached 已在步骤 1 赋值（为了让 rollback
@@ -477,6 +547,10 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 // 并启动 WebView 保活轮询：前台服务只保证**进程**不被回收，
                 // 不阻止 wry 在 Activity onPause 时把 WebView 暂停。
                 startKeepAlive()
+
+                // 注册 Activity 生命周期回调（幂等）：收回时若 App 在后台，
+                // 靠它在用户切回来时补发 pet-attached。
+                ensureLifecycleCallbacks()
 
                 Log.i(TAG, "桌宠已展开 ${width}x${height} @ (${params.x},${params.y})")
                 invoke.resolve()
@@ -544,10 +618,6 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         expanded = false
         instance = null
 
-        // 先停保活再清状态：keepAliveTick 靠 petDetached 自行退出，
-        // 显式停一次可以立刻回收 Handler 上的消息。
-        stopKeepAlive()
-
         // 桌宠已收回，不再需要前台优先级
         PetForegroundService.stop(activity)
 
@@ -573,18 +643,38 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             // 重新测量/布局，立即 evaluateJavascript 可能落在一个尚未就绪的
             // 渲染上下文里。
             //
-            // 连发三次而不是一次：用户往往是在**别的 App 里**双击收回的，
-            // 此时宿主 Activity 还处于暂停态，WebView 可能刚被唤醒、
-            // evaluateJavascript 有概率落空。这条事件一旦丢失，页面就会
-            // 一直停在悬浮窗布局（表现为「收回之后还是一小块」），
-            // 因此宁可重复。页面侧对同一事件是幂等的。
+            // 光靠固定延迟重试是不够的：用户多半是在**别的 App 里**点 ✕
+            // 收回的，宿主 Activity 此刻处于停止态，这几次 evaluateJavascript
+            // 会被整体丢弃，而「用户什么时候切回来」完全不可预测。
+            // 因此除了这里的重试，还把 wv 记进 pendingAttachNotify，
+            // 由 Activity 真正 resume 时补发（见 ensureLifecycleCallbacks）。
             //
             // 注意这里显式把 view 传进去，不能依赖 petView —— 上面已经置空。
             if (notifyPage) {
+                pendingAttachNotify = wv
                 for (delay in PET_ATTACHED_RETRY_DELAYS_MS) {
                     view.postDelayed({ notifyWeb(wv, "pet-attached", JSObject()) }, delay)
                 }
+                // 兜底清理：万一 Activity 一直没 resume（例如用户再也没回来），
+                // 不要让引用一直挂着。
+                keepAliveHandler.postDelayed(
+                    { pendingAttachNotify = null },
+                    KEEP_ALIVE_GRACE_MS
+                )
             }
+
+            // 保活轮询**不能立刻停**：WebView 从 60dp 的悬浮窗被塞回整屏
+            // Activity 时，Chromium 的视口要重算一次，而宿主 Activity 此刻
+            // 往往还在后台、不跑布局遍历。轮询多撑 20 秒，等用户切回来、
+            // 视口真正更新完再停——否则整个 App 会以悬浮窗的窄视口渲染，
+            // 看起来就是「切回去只有左上一角」。
+            keepAliveHandler.postDelayed(
+                {
+                    // 期间若又重新进入悬浮窗，就别停了
+                    if (!petDetached) stopKeepAlive()
+                },
+                KEEP_ALIVE_GRACE_MS
+            )
         }
         petDetached = false
     }
@@ -613,6 +703,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         windowManager = null
         instance = null
         petDetached = false
+        pendingAttachNotify = null
         stopKeepAlive()
         // Activity 正在销毁，前台服务若继续留着会变成没有悬浮窗的空服务
         PetForegroundService.stop(activity)
@@ -695,7 +786,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         container.addView(title)
 
         val hint = android.widget.TextView(context).apply {
-            text = "轻点头像展开输入框，再点一下收起，双击头像把它收回来"
+            text = "轻点头像展开输入框，再点一下收起；展开后点右上角 ✕ 收回"
             setTextColor(Color.parseColor("#99FFFFFF"))
             textSize = 13f
             gravity = Gravity.CENTER
@@ -719,27 +810,28 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         return root
     }
 
-    // ─── 拖动 + 双击切回 ──────────────────────────────────────
+    // ─── 拖动 ─────────────────────────────────────────────────
 
     /**
-     * 悬浮窗的触摸处理：拖动移动窗口，双击切回 App。
+     * 悬浮窗的触摸处理：只负责拖动，其余点按一律交回给页面。
      *
      * 手机没有鼠标，桌面端那套 `mouseenter/mouseleave` 展开输入框的逻辑
-     * 完全不适用，因此这里用「拖动 / 双击」两个手势补上：
+     * 完全不适用，因此这里只补一件事：
      *
-     * - **拖动**：按下到抬起位移超过 [TAP_SLOP_DP] → 移动窗口
-     * - **单击**：交回给页面 —— 页面据此展开输入框（见 `PetMode.vue`）
-     * - **双击**：切回 App，等价于桌面端的「返回主页」按钮
+     * - **拖动**：按下到抬起位移超过 [TAP_SLOP_DP] → 移动窗口，松手吸附边缘
+     * - **其余点按**：原样交回 WebView，页面据此点头像展开/收起、点按钮
      *
-     * ## 为什么切回必须用双击而不是单击
+     * ## 为什么不再做「双击收回」
      *
-     * 单击已经被页面占用（点头像展开输入框）。如果切回也用单击，
-     * 两者会直接冲突：用户想展开，结果被弹回 App。
+     * 双击和「点头像展开/收起」是**直接冲突**的：同一位置的两次点按，
+     * 既可能是「展开 → 收起」，也可能是「收回」，物理上无法区分。
+     * 再加上原来的判定只看时间不看位置，任意两次 300ms 内的点按都算双击
+     * （点完头像紧接着点输入框也会把桌宠收回去），真机误触严重。
      *
-     * 因此把「切回」升级为双击：单击仍归页面，双击才切回。
-     * 这样两个手势各司其职，且双击是移动端常见的「返回/退出」语义。
+     * 现在收回改由展开面板里的 ✕ 按钮负责（见 `PetMode.vue`），
+     * 手势只剩「单击头像 = 展开/收起」一种，没有歧义。
      *
-     * 阈值判断同样必须：没有它，用户每次拖完桌宠都会误触发切回。
+     * 阈值判断仍然必须：没有它，每次拖动都会被页面当成一次点击。
      */
     @SuppressLint("ClickableViewAccessibility")
     private fun buildPetTouchListener(): View.OnTouchListener {
@@ -748,9 +840,6 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         var startX = 0
         var startY = 0
         var dragging = false
-
-        /** 上一次抬手的时间戳，用于判定双击。 */
-        var lastTapAt = 0L
         val slop = dp(TAP_SLOP_DP).toFloat()
 
         return View.OnTouchListener { v, event ->
@@ -771,6 +860,18 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                     val dy = event.rawY - downY
                     if (!dragging && (Math.abs(dx) > slop || Math.abs(dy) > slop)) {
                         dragging = true
+                        // 一旦转为拖动，通知 WebView 取消它已经开始的手势。
+                        // ACTION_DOWN 是交回给它的，若不给 CANCEL，页面那边会
+                        // 一直停在「按下未抬起」的状态（按钮保持按压态、
+                        // 输入框可能进入选择模式）。
+                        try {
+                            val cancel = MotionEvent.obtain(event)
+                            cancel.action = MotionEvent.ACTION_CANCEL
+                            v.dispatchTouchEvent(cancel)
+                            cancel.recycle()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "取消 WebView 手势失败（可忽略）", e)
+                        }
                     }
                     if (dragging) {
                         params.x = startX + dx.toInt()
@@ -791,21 +892,8 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                         dragging = false
                         true
                     } else {
-                        // 单击或双击：交回给页面，同时自行判定双击
-                        val now = System.currentTimeMillis()
-                        if (now - lastTapAt < DOUBLE_TAP_TIMEOUT_MS) {
-                            lastTapAt = 0L
-                            // 关键：必须 post 到下一轮消息循环再搬移，不能在这里同步做。
-                            // 此刻系统正在向这个 View 分发触摸事件、输入通道还挂在它身上；
-                            // 同步 setContentView / removeView 等于在输入分发途中拆掉窗口，
-                            // 输入通道与 ViewRootImpl 会互相等待 → 界面卡死。
-                            v.post { restoreWebViewToActivity() }
-                            true
-                        } else {
-                            lastTapAt = now
-                            // 单击交给页面（点头像 → 展开输入框）
-                            false
-                        }
+                        // 单击：交回给页面（点头像 → 展开/收起）
+                        false
                     }
                 }
 
@@ -1141,8 +1229,6 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * WebView 的暂停是「渲染」与「定时器」两套独立机制。
      */
     private fun resumePetWebView(wv: WebView, from: String) {
-        // 已经回到 Activity 里时不需要干预，交给 Tauri 自己的生命周期管理
-        if (!petDetached) return
         try {
             wv.onResume()
             wv.resumeTimers()
