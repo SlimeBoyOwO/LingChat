@@ -123,18 +123,66 @@ Tauri 窗口 API，在悬浮窗环境下会失败。
 
 > 注：本项目为 **AGPL-3.0**，代码本就要求开源，无闭源商业化顾虑。
 
-## 七、验证方式
+## 七、怎么测试
 
-Rust 侧本地 `cargo check` 可验证桌面端编译，但**移动端代码路径
-（`#[cfg(target_os = "android")]`）本地无法验证**——本项目桌面端不编译
-`mobile.rs`，而 Android 交叉编译在本机环境受 `ring` / `aws-lc-sys` 的
-C/汇编工具链限制。
+### 7.1 拿安装包
 
-因此 Android 相关改动**必须走 CI 验证**：
+CI 每次构建都产出 APK artifact（不上架、不建 Release）：
+
+```bash
+gh workflow run dev-build-android.yml --repo <你的fork> --ref feat/android-floating-pet
+gh run download <run-id> --repo <你的fork> -n lingchat-dev-android
+```
+
+也可以本地出包（需要能跑 Android 工具链的机器）：
+
+```bash
+pnpm android:devbuild    # debug APK，装起来最快
+```
+
+### 7.2 真机验证步骤
+
+1. 安装 APK，启动 App，进入聊天主界面
+2. 点右上角**「桌宠」**按钮
+3. **首次**会提示需要悬浮窗权限 → 跳系统「显示在其他应用上层」设置页
+   → 打开 LingChat 开关 → 返回 App
+4. **再点一次「桌宠」** → 悬浮窗弹出，显示角色
+5. 按 Home 回桌面 → 悬浮窗应仍浮在桌面上（这就是系统级悬浮窗的意义）
+6. 回 App 再点「桌宠」（按钮高亮态）→ 悬浮窗收回
+
+### 7.3 当前能验证到哪一步
+
+| 能力              | 状态                                           |
+| ----------------- | ---------------------------------------------- |
+| 弹出透明悬浮窗    | ✅                                             |
+| 浮在其他 App 之上 | ✅                                             |
+| 通过按钮收回      | ✅                                             |
+| 角色/台词显示     | ⚠️ 取决于 `/pet` 在无 IPC 下的表现（已加分支） |
+| 拖拽移动          | ❌ 未接（P2）                                  |
+| 在悬浮窗里发消息  | ❌ 未接（P2，需事件通道）                      |
+
+对话数据来自前端 store，悬浮窗是全新 WebView，重启后为空 —— 要让桌宠"活起来"
+需要主界面把状态推给悬浮窗，这是 P2 的事件通道工作。
+
+### 7.4 权限被拒 / 找不到开关
+
+- **国产 ROM**：小米/华为/OPPO 等除「显示在其他应用上层」，还需在
+  「后台弹出界面」「自启动」里放行，否则悬浮窗被静默拦截
+- **没弹设置页**：部分系统该权限默认关闭且无入口，属系统限制
+- **排查**：看 logcat 中 `FloatingPet` 标签的输出
+
+## 八、工程验证方式
+
+Rust 侧本地 `cargo check` 只能验证桌面端，**移动端代码路径
+（`#[cfg(target_os = "android")]`）本地测不出**——桌面端不编译 `mobile.rs`，
+而 Android 交叉编译受 `ring` / `aws-lc-sys` 的 C/汇编工具链限制。
+
+因此 Android 改动**必须走 CI**：
 
 ```bash
 gh workflow run dev-build-android.yml --ref <branch>
 gh run watch <run-id> --exit-status
 ```
 
-CI 会完整编译 Rust（android target）+ Kotlin，并产出 APK artifact。
+CI 完整编译 Rust（android target）+ Kotlin 并产出 APK。P0 阶段已借此发现并
+修复两个本地不可见的错误（`run_mobile_plugin` 的宿主类型、参数缺 `Serialize`）。
