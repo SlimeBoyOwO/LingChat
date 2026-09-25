@@ -1,17 +1,23 @@
 <template>
-  <div class="blur-overlay" v-if="shouldShowOverlay" :style="{ opacity: overlayOpacity }"></div>
+  <div
+    class="blur-overlay"
+    :class="{ 'no-blur': isTransitioning }"
+    v-if="shouldShowOverlay"
+    :style="{ opacity: overlayOpacity }"
+  ></div>
   <div class="settings-panel flex h-full flex-col" v-show="uiStore.showSettings">
-    <div class="w-full shrink-0">
+    <div class="w-full shrink-0" v-show="!prewarming">
       <SettingsNav ref="settingsNavRef" @remove-more-menu-from-a="onAddFromA" />
     </div>
 
     <div
       class="relative w-full flex-1 overflow-hidden"
+      v-show="!prewarming"
       ref="contentRef"
       @touchstart="onTouchStart"
       @touchend="onTouchEnd"
     >
-      <Transition :name="transitionName">
+      <Transition :name="prewarming ? 'settings-prewarm' : transitionName">
         <!-- KeepAlive 缓存设置子页面实例：切换时只激活/停用，不销毁重建，保留状态 -->
         <KeepAlive>
           <component
@@ -28,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, type Component } from "vue";
+import { computed, nextTick, ref, watch, type Component } from "vue";
 import { useUIStore } from "../../stores/modules/ui/ui";
 import {
   SettingsAchievement,
@@ -110,6 +116,60 @@ const currentTabComponent = computed(() => tabComponents[uiStore.currentSettings
 // 转场方向：左滑下一项 → slide-left（新页从右进）；右滑上一项 → slide-right
 const transitionName = ref<"slide-left" | "slide-right">("slide-left");
 
+// ========== 转场期间临时摘掉 overlay 的 backdrop-filter ==========
+// backdrop-filter 的语义是「每帧对身后内容重新取样模糊」，转场时新旧两页整屏滑动，
+// 模糊区域内容剧变，是切页卡顿的最大来源。转场的 0.32s 内降级为纯半透明黑
+// （视觉焦点在滑动的页面上，注意不到背景糊不糊），转场结束恢复全效。
+const isTransitioning = ref(false);
+let transitionTimer: ReturnType<typeof setTimeout> | null = null;
+
+function markTransitioning() {
+  isTransitioning.value = true;
+  if (transitionTimer) clearTimeout(transitionTimer);
+  transitionTimer = setTimeout(() => {
+    isTransitioning.value = false;
+    transitionTimer = null;
+  }, 360); // 覆盖 0.32s 转场并留缓冲
+}
+
+// ========== KeepAlive 预热 ==========
+// 首次切到某个 tab 时整页 DOM 同步挂载，动画第一帧掉 1~2 帧（滑动起步快，
+// 缓动掩盖有限）。面板首次打开后，在内容区隐藏的状态下把全部 tab 依序挂载一遍
+// （KeepAlive 逐个缓存），此后所有切换都是缓存实例的 DOM 重插，不再有挂载尖峰。
+// 每个 tab 之间 await nextTick 分帧执行，开销摊开；代价是每次会话首次打开设置时
+// 子页面 onMounted 的副作用提前发生（本来就是一次性异步加载）。
+const prewarmed = ref(false);
+const prewarming = ref(false);
+
+async function prewarmTabs() {
+  prewarming.value = true;
+  await nextTick(); // 先渲染「隐藏内容区」状态，避免用户看到 tab 快速轮播
+  const target = uiStore.currentSettingsTab;
+  try {
+    for (const tab of TABS) {
+      if (tab === target) continue;
+      uiStore.currentSettingsTab = tab; // 直接赋值，不走 setSettingsTab（避免持久化/导航副作用）
+      await nextTick();
+    }
+    uiStore.currentSettingsTab = target;
+    await nextTick();
+  } catch (e) {
+    console.warn("[Settings] tab 预热失败（不影响使用）:", e);
+  } finally {
+    prewarming.value = false;
+  }
+}
+
+watch(
+  () => uiStore.showSettings,
+  (show) => {
+    if (!show || prewarmed.value) return;
+    prewarmed.value = true;
+    void prewarmTabs();
+  },
+  { immediate: true },
+);
+
 // 依据 TABS 顺序决定滑动方向：目标索引更大 → 下一项（slide-left）；更小 → 上一项（slide-right）。
 // watch 默认 flush: 'pre'，在重渲染前更新 transitionName，Transition 开始动画时能取到正确方向。
 watch(
@@ -121,6 +181,7 @@ watch(
     // 目标/来源不在滑动顺序里（理论不应发生）→ 保持原方向
     if (newIdx === -1 || oldIdx === -1) return;
     transitionName.value = newIdx > oldIdx ? "slide-left" : "slide-right";
+    markTransitioning();
   },
 );
 
@@ -233,6 +294,17 @@ defineExpose({
      切 Tab 时新页挂载/旧页缓存 DOM 重插会有 1~2 帧主线程开销，慢起步缓动
      会让旧页看起来「卡在原地」形成残留；快速起步则把这点开销掩盖掉。 */
   transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+  /* 提示浏览器把滑动页提升为合成层：0.32s 内纯 compositor 驱动，
+     不因滚动容器/大面积内容重绘回退到主线程 */
+  will-change: transform;
+}
+
+/* 转场期间 overlay 降级：摘掉 backdrop-filter（每帧全屏重采样模糊是切页
+   卡顿大头），换更高的不透明度补偿对比度，转场结束恢复 */
+.blur-overlay.no-blur {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(0, 0, 0, 0.82);
 }
 
 .slide-left-enter-from {
