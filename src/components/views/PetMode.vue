@@ -29,11 +29,11 @@
       <div
         ref="avatarContainer"
         class="relative flex shrink-0 items-center justify-center bg-transparent transition-all duration-100"
-        :class="{ 'flex-1': floatingWindowMode && !petExpanded }"
-        :style="{
-          width: floatingWindowMode && !petExpanded ? '100%' : 'var(--avatar-size)',
-          height: floatingWindowMode && !petExpanded ? 'auto' : 'var(--avatar-size)',
-        }"
+        :style="
+          floatingWindowMode
+            ? undefined
+            : { width: 'var(--avatar-size)', height: 'var(--avatar-size)' }
+        "
       >
         <GameRolesStage
           @avatar-click="handleAvatarClick"

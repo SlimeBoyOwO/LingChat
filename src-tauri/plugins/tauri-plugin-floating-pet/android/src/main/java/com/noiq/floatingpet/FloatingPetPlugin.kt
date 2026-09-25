@@ -437,12 +437,9 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
 
             // 恢复 WebView 的渲染与 JS 定时器：悬浮窗期间可能因宿主 Activity
             // 进入后台而被 WryActivity.onPause() 暂停过（见本类 onResume）。
-            try {
-                view.onResume()
-                view.resumeTimers()
-            } catch (e: Exception) {
-                Log.w(TAG, "恢复 WebView 运行状态失败（可忽略）", e)
-            }
+            // 注意 onResume/resumeTimers 是 WebView 的方法，不是 View 的，
+            // 必须转型后再调。
+            (view as? WebView)?.let { resumePetWebView(it, "restore") }
 
             // 通知页面：你已经回到 App 里了，恢复正常布局。
             // 必须 post 到下一轮循环：此刻视图层级刚被重挂，WebView 还在

@@ -1,8 +1,9 @@
 <template>
   <div
     ref="stageRootRef"
-    class="group relative flex h-full w-full items-center justify-center"
+    class="group relative flex shrink-0 items-center justify-center"
     :class="{ 'is-hovered': isStageHovered }"
+    :style="{ width: frameSize + 'px', height: frameSize + 'px' }"
   >
     <!-- 缩放与尺寸控制层 (无位移) -->
     <div
@@ -190,29 +191,47 @@ const petLive2d = computed(() => !!singleRole.value && prefersLive2d(singleRole.
 const petFrameless = computed(() => singleRole.value?.petFrameless === true);
 
 /**
- * 悬浮窗视口宽度。
+ * 悬浮窗**收起态**的视口宽度（头像尺寸的锚点）。
  *
  * 悬浮窗模式下 WebView 就是窗口本身，`window.innerWidth` 即窗口宽度。
- * 展开/收起会改变窗口尺寸，因此监听 resize 保持同步。
+ *
+ * 为什么不直接用当前视口宽度：收起态窗口约 1/6 屏宽（≈60dp），
+ * 展开态约 2/5 屏宽（≈165dp）。若头像跟着视口走，展开瞬间会放大
+ * 2.75 倍，Live2D 还得重新布局，视觉上是一次突兀的跳变。
+ * 锚定收起态宽度后，窗口变宽只是给输入框腾地方，角色本身不变。
+ *
+ * 取**观测到的最小宽度**来自校准：页面是在 Activity 里挂载、之后才被
+ * 搬进悬浮窗的，因此首次 resize 会把宽度从整屏收缩到收起态，此后
+ * 展开只会变大。最小值即收起态宽度，无需与原生同步常量。
  */
-const floatingViewportWidth = ref(typeof window !== "undefined" ? window.innerWidth : 0);
+const floatingCollapsedWidth = ref(Number.POSITIVE_INFINITY);
 const syncFloatingViewport = () => {
-  floatingViewportWidth.value = window.innerWidth;
+  const w = window.innerWidth;
+  if (!isInFloatingWindow() || w <= 0) return;
+  floatingCollapsedWidth.value = Math.min(floatingCollapsedWidth.value, w);
 };
-onMounted(() => window.addEventListener("resize", syncFloatingViewport));
+onMounted(() => {
+  syncFloatingViewport();
+  window.addEventListener("resize", syncFloatingViewport);
+});
 onUnmounted(() => window.removeEventListener("resize", syncFloatingViewport));
 
 const frameSize = computed(() => {
   const scale = settingsStore.pet?.scale || 1;
 
-  // 悬浮窗：WebView 就是窗口本身，视口宽度即窗口宽度，头像直接铺满它。
+  // 悬浮窗：头像铺满**收起态**窗口宽度。
   //
   // 这里**不能**再用固定 210（= AVATAR_BAND_BASE）：收起态窗口只有约
   // 1/6 屏宽（≈60dp），210px 的头像会远远超出窗口而被裁掉——这正是
   // 「两种形态缩放都没处理好」的根因。窗口尺寸本身已按屏幕比例算过，
   // 因此这里也不再乘 scale，否则会双重缩放。
   if (isInFloatingWindow()) {
-    return Math.max(1, Math.round(floatingViewportWidth.value));
+    const collapsed = floatingCollapsedWidth.value;
+    // 尚未观测到有效宽度时退回当前视口，避免渲染成 0 尺寸
+    if (!Number.isFinite(collapsed) || collapsed <= 0) {
+      return Math.max(1, Math.round(window.innerWidth));
+    }
+    return Math.max(1, Math.round(collapsed));
   }
 
   return Math.round(210 * scale);
