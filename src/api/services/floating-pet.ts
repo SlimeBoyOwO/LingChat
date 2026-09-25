@@ -111,6 +111,45 @@ export function onPetExpandedChange(handler: (expanded: boolean) => void): () =>
   return () => window.removeEventListener("pet-expanded-changed", listener);
 }
 
+/** 原生推来的窗口几何。 */
+export interface FloatingPetMetrics {
+  /** 逻辑画布 → 窗口的缩放系数，等于 `窗口宽度 / PET_WIDTH_BASE`。 */
+  scale: number;
+  /** 窗口宽度（dp）。 */
+  width: number;
+  /** 窗口高度（dp）。 */
+  height: number;
+}
+
+/**
+ * 监听原生推来的窗口几何（`pet-metrics`）。
+ *
+ * ## 为什么缩放系数必须由原生给
+ *
+ * 悬浮窗里页面按固定逻辑画布（240dp 宽）排版，再整体 `transform: scale()`
+ * 到窗口大小。这个系数**不能**由页面从 `window.innerWidth` 推：
+ * 原生 `updateViewLayout` 之后 WebView 的视口要过一会儿才跟上，
+ * 这中间读到的宽度是滞后的，算出来的系数偏小——内容只占窗口一角、
+ * 展开后一大片空白，还得等下一次 resize 事件才自愈。
+ * 原生手里有权威的 `params.width`，因此由它算好推过来。
+ *
+ * @returns 取消监听的函数。
+ */
+export function onPetMetrics(handler: (metrics: FloatingPetMetrics) => void): () => void {
+  const listener = (e: Event) => {
+    const detail = (e as CustomEvent<Partial<FloatingPetMetrics>>).detail;
+    const scale = Number(detail?.scale);
+    if (!Number.isFinite(scale) || scale <= 0) return;
+    handler({
+      scale,
+      width: Number(detail?.width) || 0,
+      height: Number(detail?.height) || 0,
+    });
+  };
+  window.addEventListener("pet-metrics", listener);
+  return () => window.removeEventListener("pet-metrics", listener);
+}
+
 /** 查询平台能力与授权状态。任一平台均可安全调用。 */
 export async function getFloatingPetStatus(): Promise<FloatingPetStatus> {
   try {
@@ -178,7 +217,13 @@ export async function moveFloatingPet(x: number, y: number): Promise<void> {
   await invoke(`${PLUGIN}|move_pet`, { args: { x, y } });
 }
 
-/** 更新悬浮窗尺寸（dp）。一般不需要——展开/收起请用 {@link setFloatingPetExpanded}。 */
+/**
+ * 更新悬浮窗尺寸（dp）。
+ *
+ * `width <= 0` 表示**只改高度、宽度保持不变** —— 宽度由原生按屏幕比例
+ * 独占（前端回传的宽度是滞后值，会把刚展开的窗口缩回去）。
+ * 一般不需要直接调用；展开/收起请用 {@link setFloatingPetExpanded}。
+ */
 export async function resizeFloatingPet(width: number, height: number): Promise<void> {
   await invoke(`${PLUGIN}|set_size`, { args: { width, height } });
 }

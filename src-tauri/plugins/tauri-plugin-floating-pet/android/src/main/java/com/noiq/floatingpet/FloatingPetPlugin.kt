@@ -98,6 +98,16 @@ private const val MAX_SIZE_DP = 720.0
  */
 private const val KEEP_ALIVE_INTERVAL_MS = 500L
 
+/**
+ * 收回时重发 `pet-attached` 的延迟序列（毫秒）。
+ *
+ * 用户常常是在**别的 App 里**双击收回的，此时宿主 Activity 仍处于暂停态，
+ * WebView 刚被唤醒，`evaluateJavascript` 有概率落空。这条事件一旦丢失，
+ * 页面就会一直停在悬浮窗布局（表现为「收回之后还是一小块、也不回聊天页」），
+ * 因此宁可重复发几次。页面侧对同一事件幂等。
+ */
+private val PET_ATTACHED_RETRY_DELAYS_MS = longArrayOf(0L, 250L, 800L)
+
 /** 单击与拖拽的判定阈值（dp）：按下到抬起位移超过它就算拖动，不触发点击。 */
 private const val TAP_SLOP_DP = 8.0
 
@@ -225,6 +235,10 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 return
             }
             (petView as? WebView)?.let { resumePetWebView(it, "keep-alive") }
+            // 顺带重推一次窗口几何：前端靠它算缩放系数，而 WebView 的视口
+            // 在原生改完尺寸后会滞后一会儿，自算必然出错。低频重推让页面
+            // 即使漏掉某次事件也能在半秒内自愈。
+            layoutParams?.let { notifyMetrics(it, petView) }
             keepAliveHandler.postDelayed(this, KEEP_ALIVE_INTERVAL_MS)
         }
     }
@@ -451,6 +465,11 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 // 因为 evaluateJavascript 需要有可用的 WebView 实例。
                 notifyWeb(webView, "pet-detached", JSObject())
 
+                // 紧接着把权威几何推给页面：收起态的缩放系数约 0.25，
+                // 页面必须用它来 scale，否则会按挂载时读到的整屏宽度
+                // （系数约 1.5）渲染，头像被裁得只剩一块。
+                notifyMetrics(params, webView)
+
                 // 拉起前台服务：桌宠要长期浮在桌面上，必须有前台优先级，
                 // 否则 App 退到后台后进程被回收，悬浮窗会直接消失。
                 PetForegroundService.start(activity)
@@ -549,12 +568,23 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             wv?.let { resumePetWebView(it, "restore") }
 
             // 通知页面：你已经回到 App 里了，恢复正常布局。
+            //
             // 必须 post 到下一轮循环：此刻视图层级刚被重挂，WebView 还在
             // 重新测量/布局，立即 evaluateJavascript 可能落在一个尚未就绪的
             // 渲染上下文里。
             //
+            // 连发三次而不是一次：用户往往是在**别的 App 里**双击收回的，
+            // 此时宿主 Activity 还处于暂停态，WebView 可能刚被唤醒、
+            // evaluateJavascript 有概率落空。这条事件一旦丢失，页面就会
+            // 一直停在悬浮窗布局（表现为「收回之后还是一小块」），
+            // 因此宁可重复。页面侧对同一事件是幂等的。
+            //
             // 注意这里显式把 view 传进去，不能依赖 petView —— 上面已经置空。
-            if (notifyPage) view.post { notifyWeb(wv, "pet-attached", JSObject()) }
+            if (notifyPage) {
+                for (delay in PET_ATTACHED_RETRY_DELAYS_MS) {
+                    view.postDelayed({ notifyWeb(wv, "pet-attached", JSObject()) }, delay)
+                }
+            }
         }
         petDetached = false
     }
@@ -888,6 +918,11 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 // 展开后主动请求焦点，页面里的输入框才能拿到 IME
                 if (expanded) view.requestFocus()
 
+                // 先把权威尺寸推给页面（页面据此重算 scale 与内容高度），
+                // 再通知展开态。顺序不能反：页面收到展开态会立刻按新布局
+                // 量高度，那时 scale 必须已经是新的。
+                notifyMetrics(params, view)
+
                 // 通知页面切换布局（头像态 vs 完整态）
                 notifyWeb(view as? WebView, "pet-expanded-changed", JSObject().apply { put("expanded", expanded) })
                 invoke.resolve()
@@ -933,10 +968,20 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 return@runOnUiThread
             }
             try {
-                params.width = dp(args.width.coerceIn(MIN_SIZE_DP, MAX_SIZE_DP))
+                // width <= 0 表示「只改高度，宽度保持不变」。
+                //
+                // 宽度**必须**由原生独占：它是按屏幕比例算出来的，前端只负责
+                // 内容高度。前端曾经回传 window.innerWidth 当宽度，而原生刚
+                // updateViewLayout 完时 WebView 的视口还没跟上，那个值是滞后的
+                // ——于是页面会把刚展开的窗口又缩回收起态，表现就是「内容宽度
+                // 总是很小、展开后一大片空白、瞎点几下又莫名其妙好了」。
+                if (args.width > 0) {
+                    params.width = dp(args.width.coerceIn(MIN_SIZE_DP, MAX_SIZE_DP))
+                }
                 params.height = dp(args.height.coerceIn(MIN_SIZE_DP, MAX_SIZE_DP))
                 clampIntoScreen(params)
                 windowManager?.updateViewLayout(view, params)
+                notifyMetrics(params, view)
                 invoke.resolve()
             } catch (e: Exception) {
                 Log.e(TAG, "调整悬浮窗尺寸失败", e)
@@ -1017,6 +1062,37 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         } catch (e: Exception) {
             Log.w(TAG, "通知页面失败: $function", e)
         }
+    }
+
+    /**
+     * 逻辑画布 → 窗口的缩放系数，与前端 `transform: scale()` 用的值一致。
+     *
+     * 前端**不能**自己从 `window.innerWidth` 推这个值：原生改完窗口尺寸后
+     * WebView 的视口要过一会儿才跟上，这中间读到的宽度是滞后的，算出来的
+     * 系数偏小 → 内容只占窗口一角、展开后一大片空白，而且要等下一次
+     * resize 事件才自愈（用户感受就是「瞎点几下又莫名其妙好了」）。
+     *
+     * 原生手里有权威的 `params.width`，因此由原生算好推给前端。
+     */
+    private fun currentScale(params: WindowManager.LayoutParams): Double =
+        (params.width / density.toDouble()) / PET_LOGICAL_WIDTH
+
+    /**
+     * 把窗口几何推给页面（`pet-metrics`）。
+     *
+     * 每次窗口尺寸变化后都要调：show / setExpanded / setSize。
+     * 页面据此更新缩放系数，并重新回报内容高度。
+     */
+    private fun notifyMetrics(params: WindowManager.LayoutParams, view: View?) {
+        notifyWeb(
+            view as? WebView,
+            "pet-metrics",
+            JSObject().apply {
+                put("scale", currentScale(params))
+                put("width", params.width / density.toDouble())
+                put("height", params.height / density.toDouble())
+            }
+        )
     }
 
     // ─── 生命周期 ─────────────────────────────────────────────

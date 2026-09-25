@@ -92,6 +92,7 @@ import {
   isInFloatingWindow,
   onFloatingWindowModeChange,
   onPetExpandedChange,
+  onPetMetrics,
   resizeFloatingPet,
   setFloatingPetExpanded,
 } from "@/api/services/floating-pet";
@@ -176,8 +177,18 @@ const floatingCanvasHeight = computed(() => {
   return Math.max(base, floatingContentHeight.value);
 });
 
+/**
+ * 是否已经收到过原生推来的权威几何。
+ *
+ * 收到之后就**不再**从 `window.innerWidth` 自算：那个值在原生刚改完
+ * 窗口尺寸时是滞后的，自算反而会把正确的系数覆盖成错的。
+ */
+let metricsReceived = false;
+
+/** 兜底：还没收到 pet-metrics 时，先从视口宽度自算一个系数。 */
 const syncFloatingFit = () => {
   if (!isInFloatingWindow()) return;
+  if (metricsReceived) return;
   const k = window.innerWidth / FLOATING_LOGICAL_WIDTH;
   if (k > 0) floatingFit.value = k;
 };
@@ -212,16 +223,31 @@ const reportFloatingHeight = () => {
   floatingContentHeight.value = logical;
   const height = Math.round(logical * k);
   if (height <= 0) return;
-  // 容差 2px：回传的宽度会经 dp↔px 取整，可能让 window.innerWidth 抖动 1dp，
-  // 进而让算出的高度抖 1px。没有容差就会和原生来回改尺寸停不下来。
+  // 容差 2px：原生改高度后视口可能抖动 1px，进而让算出的高度抖 1px。
+  // 没有容差就会和原生来回改尺寸停不下来。
   if (lastReportedHeight > 0 && Math.abs(height - lastReportedHeight) <= 2) return;
   lastReportedHeight = height;
-  // 宽度用当前窗口宽度原样回传：原生 set_size 的宽度单位是 dp，
-  // 而 Android WebView 里 1 CSS px == 1 dp，两者同一坐标系。
-  void resizeFloatingPet(window.innerWidth, height).catch(() => {
+  // 宽度传 0 = 「只改高度」：宽度归原生独占。回传 window.innerWidth 会踩到
+  // 视口滞后——原生刚改完尺寸时那个值还是旧的，等于把刚展开的窗口缩回去。
+  void resizeFloatingPet(0, height).catch(() => {
     // 失败时清掉缓存，下一轮重试
     lastReportedHeight = -1;
   });
+};
+
+/**
+ * 延迟回报内容高度（兜底）。
+ *
+ * 正常情况下 `pet-metrics` 一到就会回报，这里只是防止那一轮事件丢失
+ * （例如原生改尺寸与页面改布局撞在一起）。去抖避免连续展开/收起时堆积。
+ */
+let heightReportTimer: number | undefined;
+const scheduleHeightReport = (delay = 200) => {
+  if (heightReportTimer !== undefined) window.clearTimeout(heightReportTimer);
+  heightReportTimer = window.setTimeout(() => {
+    heightReportTimer = undefined;
+    reportFloatingHeight();
+  }, delay);
 };
 
 // 气泡/通知位置（用户设置）：above = 宠物上方，below = 宠物与输入框之间，auto = 按宠物在屏幕中的位置自动选
@@ -383,6 +409,7 @@ let bubbleSideUnlisten: (() => void) | null = null;
 let movedUnlisten: (() => void) | null = null;
 let floatingModeUnlisten: (() => void) | null = null;
 let expandedUnlisten: (() => void) | null = null;
+let metricsUnlisten: (() => void) | null = null;
 
 onMounted(async () => {
   floatingWindowMode.value = isInFloatingWindow();
@@ -390,6 +417,10 @@ onMounted(async () => {
   // 原生搬移/移出悬浮窗时同步本页形态
   floatingModeUnlisten = onFloatingWindowModeChange((active) => {
     floatingWindowMode.value = active;
+    // 每次进出都重新等原生的权威几何：搬运瞬间视口宽度是整屏，
+    // 自算出来的系数一定是错的。
+    metricsReceived = false;
+    lastReportedHeight = -1;
     if (active) return;
 
     // ─── 回到 Activity：重置形态并切回聊天页 ────────────────────
@@ -399,12 +430,28 @@ onMounted(async () => {
     // 也不再是桌宠。
     petExpanded.value = false;
     showChatInput.value = false;
+    // 回到 Activity 后页面不再缩放：必须显式归位，否则 --pet-fit 还留着
+    // 悬浮窗里的系数（约 0.25），整页会被缩成一小块。
+    floatingFit.value = 1;
+    lastReportedHeight = -1;
     void router.push("/chat");
   });
 
   // 原生改完窗口尺寸后同步展开态
   expandedUnlisten = onPetExpandedChange((expanded) => {
     petExpanded.value = expanded;
+  });
+
+  // 原生推来的权威窗口几何。缩放系数**只能**信这个：从 window.innerWidth
+  // 自算会踩到「原生刚改完尺寸、WebView 视口还没跟上」的滞后窗口，
+  // 算出的系数偏小 → 内容只占窗口一角、展开后一大片空白。
+  metricsUnlisten = onPetMetrics(({ scale }) => {
+    if (scale > 0) {
+      metricsReceived = true;
+      floatingFit.value = scale;
+    }
+    // 系数变了，内容高度的换算结果也变了，立刻按新系数重报一次
+    reportFloatingHeight();
   });
 
   if (floatingWindowMode.value) {
@@ -598,7 +645,9 @@ onUnmounted(() => {
   if (movedUnlisten) movedUnlisten();
   if (floatingModeUnlisten) floatingModeUnlisten();
   if (expandedUnlisten) expandedUnlisten();
+  if (metricsUnlisten) metricsUnlisten();
   if (autoSideTimer !== undefined) window.clearTimeout(autoSideTimer);
+  if (heightReportTimer !== undefined) window.clearTimeout(heightReportTimer);
   window.removeEventListener("resize", onFloatingResize);
   bandObserver.disconnect();
 
@@ -649,29 +698,35 @@ const handleAvatarClick = () => {
 
 /** 展开悬浮窗：显示输入框，窗口同步变大（原生按屏幕比例算，约 0.6 屏宽）。 */
 const expandPet = async () => {
+  // 先乐观改本地状态：原生的 pet-metrics 会在 invoke 返回前后到达，
+  // 那时 DOM 必须已经按展开态排好版，reportFloatingHeight 才量得到正确高度。
+  petExpanded.value = true;
+  showChatInput.value = true;
   try {
     await setFloatingPetExpanded(true);
-    petExpanded.value = true;
-    showChatInput.value = true;
-    // 展开后内容变高（多了输入带），把新高度报给原生
-    await nextTick();
-    reportFloatingHeight();
   } catch (e) {
+    petExpanded.value = false;
+    showChatInput.value = false;
     console.error("[PetMode] 展开悬浮窗失败:", e);
+    return;
   }
+  // 兜底：万一本轮 pet-metrics 丢了，也要把新高度报上去
+  scheduleHeightReport();
 };
 
 /** 收起悬浮窗：隐藏输入框，回到仅头像形态。 */
 const collapsePet = async () => {
+  petExpanded.value = false;
+  showChatInput.value = false;
   try {
     await setFloatingPetExpanded(false);
-    petExpanded.value = false;
-    showChatInput.value = false;
-    await nextTick();
-    reportFloatingHeight();
   } catch (e) {
+    petExpanded.value = true;
+    showChatInput.value = true;
     console.error("[PetMode] 收起悬浮窗失败:", e);
+    return;
   }
+  scheduleHeightReport();
 };
 
 const handleOpenSettings = async () => {
