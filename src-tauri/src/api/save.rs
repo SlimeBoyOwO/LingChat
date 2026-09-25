@@ -673,17 +673,36 @@ pub async fn get_last_save_id(app: AppHandle) -> Result<Option<LastSaveInfo>, St
         .map_err(|e| format!("查询存档失败: {}", e))?
         .ok_or_else(|| format!("存档 {} 不存在", save_id))?;
 
-    let last_message = match save_model.last_message_id {
-        Some(mid) => {
-            use crate::db::entities::line;
-            use sea_orm::EntityTrait;
-            line::Entity::find_by_id(mid)
+    // 链尾可能是 tool / system 行（工具调用结果、剧本系统行），而弹窗要回答的是
+    // "上次演到哪"——回溯到最近一句玩家/角色台词，跳过 tool / system 与空内容；
+    // 都没有（如刚建槽还没开口）则返回 None，前端退回不显示细节行。
+    let last_message = {
+        use crate::db::entities::line;
+        use sea_orm::EntityTrait;
+        let mut cursor = save_model.last_message_id;
+        let mut found = None;
+        // 上限保护：链异常时兜底，正常最多回溯几跳
+        for _ in 0..50 {
+            let Some(id) = cursor else { break };
+            let Some(l) = line::Entity::find_by_id(id)
                 .one(&state.db)
                 .await
                 .map_err(|e| format!("查询最后消息失败: {}", e))?
-                .map(|l| l.content)
-        },
-        None => None,
+            else {
+                break;
+            };
+            cursor = l.parent_line_id;
+            if !l.content.trim().is_empty()
+                && !matches!(
+                    l.attribute,
+                    line::LineAttribute::Tool | line::LineAttribute::System
+                )
+            {
+                found = Some(l.content);
+                break;
+            }
+        }
+        found
     };
 
     let script_name = match save_model.running_script_id {
