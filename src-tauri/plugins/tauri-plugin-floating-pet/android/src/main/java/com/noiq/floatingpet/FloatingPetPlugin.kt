@@ -357,6 +357,10 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 // 因为 evaluateJavascript 需要有可用的 WebView 实例。
                 notifyWeb("pet-detached", JSObject())
 
+                // 拉起前台服务：桌宠要长期浮在桌面上，必须有前台优先级，
+                // 否则 App 退到后台后进程被回收，悬浮窗会直接消失。
+                PetForegroundService.start(activity)
+
                 Log.i(TAG, "桌宠已展开 ${width}x${height} @ (${params.x},${params.y})")
                 invoke.resolve()
             } catch (e: Exception) {
@@ -401,7 +405,15 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         val view = petView
         if (view != null) {
             try {
-                windowManager?.removeView(view)
+                // 必须用 removeViewImmediate 而不是 removeView：
+                // removeView 是**异步**的，它只是把移除动作 post 给
+                // ViewRootImpl，返回时 view.parent 仍未清空。
+                // 紧接着的 activity.setContentView(view) 会因此抛
+                // 「The specified child already has a parent」，
+                // 结果是 WebView 既不在悬浮窗、也没进 Activity → 界面卡死。
+                // removeViewImmediate 同步摘除，保证下面 setContentView 时
+                // view.parent 已经是 null。
+                windowManager?.removeViewImmediate(view)
             } catch (e: Exception) {
                 // 窗口可能已被系统移除，忽略
                 Log.w(TAG, "移除悬浮窗视图时出错（可忽略）", e)
@@ -415,14 +427,28 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         expanded = false
         instance = null
 
+        // 桌宠已收回，不再需要前台优先级
+        PetForegroundService.stop(activity)
+
         if (view != null && petDetached) {
-            // 先把占位页换掉，再把 WebView 装回内容视图。
-            // 直接 setContentView(webView) 即可完成替换，无需手动 addView。
+            // 直接 setContentView(webView) 即可完成内容视图替换，无需手动 addView。
             activity.setContentView(view)
             view.setBackgroundColor(Color.TRANSPARENT)
 
+            // 恢复 WebView 的渲染与 JS 定时器：悬浮窗期间可能因宿主 Activity
+            // 进入后台而被 WryActivity.onPause() 暂停过（见本类 onResume）。
+            try {
+                view.onResume()
+                view.resumeTimers()
+            } catch (e: Exception) {
+                Log.w(TAG, "恢复 WebView 运行状态失败（可忽略）", e)
+            }
+
             // 通知页面：你已经回到 App 里了，恢复正常布局。
-            if (notifyPage) notifyWeb("pet-attached", JSObject())
+            // 必须 post 到下一轮循环：此刻视图层级刚被重挂，WebView 还在
+            // 重新测量/布局，立即 evaluateJavascript 可能落在一个尚未就绪的
+            // 渲染上下文里。
+            if (notifyPage) view.post { notifyWeb("pet-attached", JSObject()) }
         }
         petDetached = false
     }
@@ -451,6 +477,8 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         windowManager = null
         instance = null
         petDetached = false
+        // Activity 正在销毁，前台服务若继续留着会变成没有悬浮窗的空服务
+        PetForegroundService.stop(activity)
     }
 
     /**
@@ -588,7 +616,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         var lastTapAt = 0L
         val slop = dp(TAP_SLOP_DP).toFloat()
 
-        return View.OnTouchListener { _, event ->
+        return View.OnTouchListener { v, event ->
             val params = layoutParams ?: return@OnTouchListener false
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -630,7 +658,11 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                         val now = System.currentTimeMillis()
                         if (now - lastTapAt < DOUBLE_TAP_TIMEOUT_MS) {
                             lastTapAt = 0L
-                            restoreWebViewToActivity()
+                            // 关键：必须 post 到下一轮消息循环再搬移，不能在这里同步做。
+                            // 此刻系统正在向这个 View 分发触摸事件、输入通道还挂在它身上；
+                            // 同步 setContentView / removeView 等于在输入分发途中拆掉窗口，
+                            // 输入通道与 ViewRootImpl 会互相等待 → 界面卡死。
+                            v.post { restoreWebViewToActivity() }
                             true
                         } else {
                             lastTapAt = now
@@ -699,7 +731,31 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 params.x = centerX - width / 2
                 params.y = centerY - height / 2
 
+                // ── 输入法：只有展开态才让窗口可获焦 ──────────────────
+                // FLAG_NOT_FOCUSABLE 的窗口永远收不到输入法：IME 只服务于
+                // 持有输入焦点的窗口。收起态保持 NOT_FOCUSABLE（不抢焦点、
+                // 不挡返回键）；展开态必须去掉它，否则点输入框毫无反应。
+                //
+                // 代价：展开期间悬浮窗会持有输入焦点，返回键也会先给它。
+                // 因此收起时一定要把标志加回去（见 else 分支），
+                // 不能只在展开时改一次。
+                if (expanded) {
+                    params.flags =
+                        params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                    // ADJUST_RESIZE：键盘弹出时把窗口往上顶，输入框不被遮住
+                    params.softInputMode =
+                        WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                        WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE
+                } else {
+                    params.flags =
+                        params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED
+                }
+
                 windowManager?.updateViewLayout(view, params)
+
+                // 展开后主动请求焦点，页面里的输入框才能拿到 IME
+                if (expanded) view.requestFocus()
 
                 // 通知页面切换布局（头像态 vs 完整态）
                 notifyWeb("pet-expanded-changed", JSObject().apply { put("expanded", expanded) })
@@ -823,6 +879,54 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     // ─── 生命周期 ─────────────────────────────────────────────
+
+    /**
+     * App 退到后台时，保持桌宠的 WebView 继续运行。
+     *
+     * 宿主 Activity 一旦 onPause，`WryActivity.onPause()` 会调用
+     * `mWebView.onPause()` —— 而搬进悬浮窗的正是这个 WebView，
+     * 于是桌宠在桌面上会**静止不动**（渲染与 JS 定时器全停），
+     * 表现就是「WebView 停止运行了」。
+     *
+     * 这里在插件收到 onPause 后把 WebView 重新唤醒。时机上插件的
+     * onPause 由 ProcessLifecycleOwner 分发，晚于 Activity 的 onPause，
+     * 因此这次唤醒能覆盖掉前面的暂停。
+     *
+     * 用 post 再执行一次，避免与同一轮里的暂停动作竞态。
+     */
+    override fun onPause() {
+        super.onPause()
+        val wv = petView as? WebView ?: return
+        if (!petDetached) return
+        wv.post { resumePetWebView(wv, "onPause") }
+    }
+
+    /** App 回到前台时同样确保 WebView 处于运行状态。 */
+    override fun onResume() {
+        super.onResume()
+        val wv = petView as? WebView ?: return
+        if (!petDetached) return
+        wv.post { resumePetWebView(wv, "onResume") }
+    }
+
+    /**
+     * 唤醒桌宠 WebView。
+     *
+     * `onResume()` 恢复渲染与 JS 执行，`resumeTimers()` 恢复被
+     * `pauseTimers()` 全局停掉的定时器——两者都要，只调一个不够：
+     * WebView 的暂停是「渲染」与「定时器」两套独立机制。
+     */
+    private fun resumePetWebView(wv: WebView, from: String) {
+        // 已经回到 Activity 里时不需要干预，交给 Tauri 自己的生命周期管理
+        if (!petDetached) return
+        try {
+            wv.onResume()
+            wv.resumeTimers()
+            Log.d(TAG, "已唤醒桌宠 WebView（$from）")
+        } catch (e: Exception) {
+            Log.w(TAG, "唤醒桌宠 WebView 失败（$from，可忽略）", e)
+        }
+    }
 
     /**
      * Activity 销毁时必须移除悬浮窗。

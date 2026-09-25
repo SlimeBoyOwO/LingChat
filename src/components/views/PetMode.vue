@@ -276,11 +276,16 @@ const appStyleVars = computed(() => {
       "--pet-ui-scale": scale.toString(),
       "--app-width": "100%",
       "--app-height": "100%",
-      // 收起态：头像占满窗口宽度，高度略小于窗口（留出下方提示文字空间）
-      // 展开态：头像按窗口宽度算，下方依次是气泡带与输入框
+      // 头像尺寸由 GameRolesStage 按视口宽度自行计算（见其 frameSize），
+      // 这里给 100% 只是让容器铺满，不再参与头像实际尺寸的推导。
       "--avatar-size": "100%",
-      "--chat-h": `${Math.round(CHAT_BASE_H * scale)}px`,
-      "--dialog-h": `${Math.round(DIALOG_MAX_BASE * scale)}px`,
+      // 悬浮窗里 100vh 就是窗口高度，因此用 vh 表达比例才不会溢出。
+      //
+      // 不能沿用桌面端常量：展开态窗口高约 2/5 屏宽 × 2.0 ≈ 330dp，
+      // 而桌面端的「气泡 200 + 输入 70」加上头像就已经超过这个高度，
+      // 输入框会被挤到可视区外——这也是「缩放没处理好」的一部分。
+      "--chat-h": `min(${Math.round(CHAT_BASE_H * scale)}px, 22vh)`,
+      "--dialog-h": "30vh",
     };
   }
 

@@ -14,4 +14,33 @@
     <!-- 悬浮窗需在 App 退到后台后继续存活，依赖前台服务 + 常驻通知 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
+    <!--
+      Android 14（API 34）起，前台服务必须声明具体类型，否则启动即崩。
+      桌宠「在其他应用上层持续显示一个交互角色」不属于任何既有分类
+      （mediaPlayback / location / camera 等都不贴切），因此用 specialUse。
+
+      targetSdk 36 下，specialUse 还需要下面的 PROPERTY_SPECIAL_USE_FGS_SUBTYPE
+      声明具体用途；上架 Google Play 时该类型需要单独填写用途说明。
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- Android 13+ 前台服务的常驻通知需要通知权限才可见（被拒也能启动服务，只是通知不显示） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <!--
+          桌宠前台服务：把进程提升为前台优先级，避免 App 退到后台后
+          进程被回收导致悬浮窗消失。详见 PetForegroundService.kt。
+        -->
+        <service
+            android:name="com.noiq.floatingpet.PetForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="desktop_pet_overlay" />
+        </service>
+    </application>
+
 </manifest>

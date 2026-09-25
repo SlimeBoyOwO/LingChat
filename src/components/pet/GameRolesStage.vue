@@ -134,6 +134,7 @@ import { useMicControl } from "@/composables/useMicControl";
 import { useVoicePlayback } from "@/composables/role/useVoicePlayback";
 import { prefersLive2d } from "@/types/live2d";
 import { isAndroid } from "@/utils/platform";
+import { isInFloatingWindow } from "@/api/services/floating-pet";
 import RoleAvatar from "./GameRoleAvatar.vue";
 import Live2DStage from "../game/live2d/Live2DStage.vue";
 import { Play, Pause, Settings, LogOut, Camera, Mic, MicOff } from "lucide-vue-next";
@@ -188,8 +189,32 @@ const petLive2d = computed(() => !!singleRole.value && prefersLive2d(singleRole.
 // 所以并进 Live2DStage 的 class 即可，无需像 petLive2d 那样喂 v-if / active 状态。
 const petFrameless = computed(() => singleRole.value?.petFrameless === true);
 
+/**
+ * 悬浮窗视口宽度。
+ *
+ * 悬浮窗模式下 WebView 就是窗口本身，`window.innerWidth` 即窗口宽度。
+ * 展开/收起会改变窗口尺寸，因此监听 resize 保持同步。
+ */
+const floatingViewportWidth = ref(typeof window !== "undefined" ? window.innerWidth : 0);
+const syncFloatingViewport = () => {
+  floatingViewportWidth.value = window.innerWidth;
+};
+onMounted(() => window.addEventListener("resize", syncFloatingViewport));
+onUnmounted(() => window.removeEventListener("resize", syncFloatingViewport));
+
 const frameSize = computed(() => {
   const scale = settingsStore.pet?.scale || 1;
+
+  // 悬浮窗：WebView 就是窗口本身，视口宽度即窗口宽度，头像直接铺满它。
+  //
+  // 这里**不能**再用固定 210（= AVATAR_BAND_BASE）：收起态窗口只有约
+  // 1/6 屏宽（≈60dp），210px 的头像会远远超出窗口而被裁掉——这正是
+  // 「两种形态缩放都没处理好」的根因。窗口尺寸本身已按屏幕比例算过，
+  // 因此这里也不再乘 scale，否则会双重缩放。
+  if (isInFloatingWindow()) {
+    return Math.max(1, Math.round(floatingViewportWidth.value));
+  }
+
   return Math.round(210 * scale);
 });
 
