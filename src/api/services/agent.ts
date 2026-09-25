@@ -157,6 +157,10 @@ export const renameAgentConversation = (conversationId: number, title: string) =
 export const getAgentMessages = (conversationId: number) =>
   invoke<PersistedMessage[]>("editor_agent_get_messages", { conversationId });
 
+/** 会话归属的剧本 key；库里没绑定时后端会从历史写入路径反推（老会话兜底）。 */
+export const resolveAgentScriptKey = (conversationId: number) =>
+  invoke<string | null>("editor_agent_resolve_script_key", { conversationId });
+
 export const clearAgentConversation = (conversationId: number) =>
   invoke<void>("editor_agent_clear_conversation", { conversationId });
 

@@ -26,7 +26,7 @@ PR #540 在 `src-tauri/src/api/script_editor/` 下新增了完整的后端模块
 | ---------- | ----------------------------------------------------------- |
 | `paths`    | 剧本 key ⇄ 磁盘路径、三种布局枚举、路径穿越防护、名称合法性 |
 | `io`       | YAML ⇄ JSON、原子写、`.bak` 备份、章节文档归一              |
-| `schema`   | 16 种事件及其全部字段的**单一真相源**，导出给前端驱动表单   |
+| `schema`   | 17 种事件及其全部字段的**单一真相源**，导出给前端驱动表单   |
 | `validate` | 校验器：把引擎里的静默失败变成作者能看见的诊断              |
 | `commands` | Tauri 命令层                                                |
 
@@ -77,7 +77,7 @@ PR #540 在 `src-tauri/src/api/script_editor/` 下新增了完整的后端模块
 
 ```
 ScriptSchema
-├── events: Vec<EventSpec>           16 种事件（5 大类别）
+├── events: Vec<EventSpec>           17 种事件（5 大类别）
 │     EventSpec { type_key, label, category, color, fields }
 ├── common_fields                    所有事件共有：condition / duration
 ├── story_config_fields              story_config.yaml 的字段

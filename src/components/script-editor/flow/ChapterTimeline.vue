@@ -57,17 +57,19 @@
                 :key="item.index"
                 :index="item.index"
                 :event="item.event"
+                v-bind="rowContext"
               />
             </div>
           </div>
         </div>
 
         <!-- 单个事件 -->
-        <EventRow v-else :index="row.index" :event="row.event" />
+        <EventRow v-else :index="row.index" :event="row.event" v-bind="rowContext" />
       </div>
     </template>
 
     <button
+      v-if="!readonly"
       class="hover:border-brand hover:text-brand mt-2 -ml-[22px] w-[calc(100%+22px)] rounded-lg border border-dashed border-white/18 p-[7px] text-[0.78rem] text-white/45 transition-all duration-150 hover:bg-[rgba(121,217,255,0.05)]"
       @click="paletteOpen = true"
     >
@@ -139,17 +141,39 @@ import {
   type FoldedGroup,
   type FoldedRow,
 } from "@/composables/useEventFolding";
-import type { EventSpec } from "@/api/services/script-editor";
+import type { Diagnostic, EventSpec, ScriptEventData } from "@/api/services/script-editor";
 import EventRow from "./EventRow.vue";
 import { categoryLabelOf, eventLabelOf } from "@/locales/schema-i18n";
 
 const { t } = useI18n();
 const store = useScriptEditorStore();
 
+/** 只读预览（助手面板的章节预览）传入事件数组与渲染上下文，完全不碰编辑器状态 */
+const props = defineProps<{
+  readonly?: boolean;
+  events?: ScriptEventData[];
+  diagnostics?: Diagnostic[];
+  roleNameMap?: Map<string, string>;
+  mainRoleName?: string;
+  foldCompounds?: boolean;
+}>();
+
 const paletteOpen = ref(false);
 const expanded = ref<Record<string, boolean>>({});
 
-const rows = computed(() => foldEvents(store.chapter?.events ?? [], store.foldCompounds));
+const effectiveEvents = computed<ScriptEventData[]>(() =>
+  props.readonly ? (props.events ?? []) : (store.chapter?.events ?? []),
+);
+
+const foldingEnabled = computed(() =>
+  props.foldCompounds !== undefined
+    ? props.foldCompounds
+    : props.readonly
+      ? true
+      : store.foldCompounds,
+);
+
+const rows = computed(() => foldEvents(effectiveEvents.value, foldingEnabled.value));
 
 const groupedSpecs = computed(() => {
   const out: Record<string, EventSpec[]> = {};
@@ -162,18 +186,19 @@ const groupedSpecs = computed(() => {
 // ---- 复合块整段移动（▲▼） ----
 
 const typeAt = (i: number) => {
-  const t = store.chapter?.events[i]?.type;
+  const t = effectiveEvents.value[i]?.type;
   return typeof t === "string" ? t : "";
 };
 
 const rowStart = (row: FoldedRow) => (row.kind === "group" ? row.from : row.index);
 const rowSpan = (row: FoldedRow) => (row.kind === "group" ? row.to - row.from : 1);
 
-const canMoveUp = (row: FoldedRow) => rowStart(row) > 0;
+const canMoveUp = (row: FoldedRow) => !props.readonly && rowStart(row) > 0;
 
 const canMoveDown = (row: FoldedRow) => {
+  if (props.readonly) return false;
   const end = rowStart(row) + rowSpan(row);
-  const total = store.chapter?.events.length ?? 0;
+  const total = effectiveEvents.value.length;
   // 不能越过 chapter_end
   const lastIdx = total > 0 && typeAt(total - 1) === "chapter_end" ? total - 1 : total;
   return end < lastIdx;
@@ -210,10 +235,25 @@ const toggle = (key: string) => {
 
 const groupHasError = (row: FoldedGroup) => {
   for (let i = row.from; i < row.to; i++) {
-    if ((store.chapterDiagnostics[i] ?? []).some((d) => d.severity === "error")) return true;
+    if (groupDiagnostics(i).some((d) => d.severity === "error")) return true;
   }
   return false;
 };
+
+const groupDiagnostics = (index: number): Diagnostic[] =>
+  props.readonly ? (props.diagnostics ?? []) : (store.chapterDiagnostics[index] ?? []);
+
+/** 透传给 EventRow 的只读上下文；编辑器里是空对象（EventRow 自己读 store） */
+const rowContext = computed(() =>
+  props.readonly
+    ? {
+        readonly: true,
+        diagnostics: props.diagnostics,
+        roleNameMap: props.roleNameMap,
+        mainRoleName: props.mainRoleName,
+      }
+    : {},
+);
 
 const insert = (typeKey: string) => {
   store.insertEvent(typeKey);

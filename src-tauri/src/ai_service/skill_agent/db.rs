@@ -6,7 +6,7 @@ use sea_orm::{
 };
 
 use crate::ai_service::skill_agent::events::Usage;
-use crate::ai_service::types::LlmMessage;
+use crate::ai_service::types::{LlmMessage, ToolCall};
 use crate::db::entities::skill_agent_conversation::{self, Entity as ConvEntity};
 use crate::db::entities::skill_agent_message::{self, Entity as MsgEntity};
 
@@ -83,6 +83,24 @@ pub async fn update_conversation_title(
     am.update(db)
         .await
         .map_err(|e| format!("更新会话标题失败: {}", e))?;
+    Ok(())
+}
+
+/// 绑定会话的剧本 key；顺带刷新 updated_at 保持列表排序。
+pub async fn update_conversation_script_key(
+    db: &DatabaseConnection,
+    id: i32,
+    script_key: String,
+) -> Result<(), String> {
+    let Some(m) = get_conversation(db, id).await? else {
+        return Ok(());
+    };
+    let mut am: skill_agent_conversation::ActiveModel = m.into();
+    am.script_key = Set(Some(script_key));
+    am.updated_at = Set(Local::now().naive_local());
+    am.update(db)
+        .await
+        .map_err(|e| format!("更新会话剧本 key 失败: {}", e))?;
     Ok(())
 }
 
@@ -195,4 +213,63 @@ pub fn message_to_llm(m: &skill_agent_message::Model) -> LlmMessage {
         tool_call_id: m.tool_call_id.clone(),
         image_data_url: None,
     }
+}
+
+/// 从会话写入过的路径反推它归属的剧本包，供 `script_key` 为空的会话兜底
+/// （老会话，或建包发生在绑定逻辑之前）。
+///
+/// 取写入次数最多的包；同票取最早出现的，避免把中间顺手写过的别的剧本当成归属。
+pub async fn derive_script_key(db: &DatabaseConnection, conversation_id: i32) -> Option<String> {
+    let rows = MsgEntity::find()
+        .filter(skill_agent_message::Column::ConversationId.eq(conversation_id))
+        .filter(skill_agent_message::Column::ToolCalls.like("%/scripts/%"))
+        .order_by_asc(skill_agent_message::Column::Id)
+        .all(db)
+        .await
+        .ok()?;
+
+    let known = crate::utils::script_paths::enumerate_script_keys();
+    let mut votes: Vec<(String, usize)> = Vec::new();
+    for row in rows {
+        let Some(calls) = row
+            .tool_calls
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<Vec<ToolCall>>(s).ok())
+        else {
+            continue;
+        };
+        for call in calls {
+            if call.function.name != "write_file" {
+                continue;
+            }
+            let Ok(args) = serde_json::from_str::<serde_json::Value>(&call.function.arguments)
+            else {
+                continue;
+            };
+            let Some(path) = args.get("path").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some(key) =
+                crate::ai_service::skill_agent::stage::script_key_of_script_path(path, &known)
+            else {
+                continue;
+            };
+            match votes.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, n)) => *n += 1,
+                None => votes.push((key, 1)),
+            }
+        }
+    }
+
+    let mut best: Option<(String, usize)> = None;
+    for (key, n) in votes {
+        let better = match &best {
+            Some((_, bn)) => n > *bn,
+            None => true,
+        };
+        if better {
+            best = Some((key, n));
+        }
+    }
+    best.map(|(key, _)| key)
 }

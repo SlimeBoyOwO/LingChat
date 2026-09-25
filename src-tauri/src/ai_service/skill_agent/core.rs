@@ -20,7 +20,7 @@ use crate::ai_service::llm::{LlmChunk, LlmClient};
 use crate::ai_service::skill_agent::command_executor::ApprovalMap;
 use crate::ai_service::skill_agent::config::SkillAgentConfig;
 use crate::ai_service::skill_agent::events::{SkillAgentEvent, Usage};
-use crate::ai_service::skill_agent::{db, skills, tools};
+use crate::ai_service::skill_agent::{db, skills, stage, tools};
 use crate::ai_service::types::{
     FunctionCall, LlmMessage, ToolCall, ToolDefinition, parse_tool_args,
 };
@@ -52,6 +52,8 @@ pub struct SkillAgentRunContext {
     pub skills_dir: std::path::PathBuf,
     /// 会话绑定的剧本 key（运行时解析为路径注入系统提示）。
     pub script_key: Option<String>,
+    /// 由剧本包状态推导出的当前阶段。
+    pub stage_snapshot: stage::StageSnapshot,
 }
 
 /// 累积中的工具调用（流式分片拼接）。
@@ -88,6 +90,7 @@ fn build_system_prompt(
     config: &SkillAgentConfig,
     skills_block: &str,
     script_block: &str,
+    stage_block: &str,
     sandbox_dir: &Path,
     skills_dir: &Path,
 ) -> String {
@@ -125,7 +128,8 @@ fn build_system_prompt(
         Some(custom) if !custom.trim().is_empty() => custom.clone(),
         _ => default,
     };
-    format!("{}{}{}", base, script_block, skills_block)
+    // 阶段块拼在最后：前三段一次会话内稳定，拼在尾部可保缓存前缀。
+    format!("{}{}{}{}", base, script_block, skills_block, stage_block)
 }
 
 // ---------- 历史规整 ----------
@@ -214,10 +218,12 @@ pub async fn run_chat(
     let skill_list = skills::find_all_skills(&ctx.skills_dir);
     let skills_block = skills::build_skills_xml(&skill_list);
     let script_block = build_script_block(&ctx.sandbox_dir, ctx.script_key.as_deref());
+    let stage_block = stage::build_stage_block(&ctx.skills_dir, ctx.stage_snapshot.stage);
     let system_prompt = build_system_prompt(
         &ctx.config,
         &skills_block,
         &script_block,
+        &stage_block,
         &ctx.sandbox_dir,
         &ctx.skills_dir,
     );
@@ -230,7 +236,15 @@ pub async fn run_chat(
     let is_first_turn = !history.iter().any(|m| m.role == "assistant");
     // 历史先规整再并入：DB 里可能残留上一轮中断产生的「无 tool 回应的 assistant
     // (tool_calls)」，不处理会触发 OpenAI 400（insufficient tool messages）。
-    messages.extend(sanitize_history(history));
+    messages.extend(sanitize_history(stage::compact_history(
+        history,
+        &ctx.stage_snapshot,
+    )));
+    // 动态材料不落库，每轮重算。
+    let run_materials = stage::build_run_materials(&ctx.stage_snapshot);
+    if !run_materials.is_empty() {
+        messages.push(LlmMessage::user(run_materials));
+    }
 
     // -1 表示无上限（保留全部上下文与工具轮次）；否则为有限轮数，至少 1 轮。
     // 无上限时用 usize::MAX 作区间上界，`round == max_rounds - 1` 的下限检查永不触发。

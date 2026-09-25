@@ -17,6 +17,11 @@ const nextId = () => `m-${Date.now()}-${++idCounter}`;
 
 /** 当前正在生成的 assistant 消息 id；跨 turn 复位。 */
 let activeAssistantId: string | null = null;
+/**
+ * 本轮流式所属的会话 id。用户切到别的会话时，事件仍属于这个会话 ——
+ * 视图只在「显示的就是它」时才更新，避免把内容画到别的会话上。
+ */
+let activeConvId: number | null = null;
 /** 当前 turn 的流式通道；turn 结束后置空。 */
 let channel: Channel<SkillAgentEvent> | null = null;
 /**
@@ -68,7 +73,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
   }
 
   async function createConversation() {
-    if (state.streaming.value) await cancel();
+    // 不打断正在跑的会话（运行时 UI 已禁用「新建会话」入口）
     const key = scriptEditor.scriptKey ?? null;
     const conv = await api.createAgentConversation(key);
     state.conversations.value.unshift(conv);
@@ -77,16 +82,29 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
   }
 
   async function switchConversation(id: number) {
-    if (state.streaming.value) await cancel();
+    // 切会话不打断正在跑的任务：事件按所属会话路由（见 handleEvent）。
     state.currentId.value = id;
     const msgs = await api.getAgentMessages(id);
     state.items.value = rebuildItems(msgs);
     restoreUsage(msgs);
+    // 切回正在跑的会话：补一条流式项重新挂上，否则后续事件会被静默丢弃。
+    if (state.streaming.value && id === activeConvId) {
+      activeAssistantId = nextId();
+      state.items.value.push({
+        id: activeAssistantId,
+        role: "assistant",
+        content: "",
+        rounds: [],
+        streaming: true,
+      });
+    }
     state.status.value = "";
     state.version.value++;
   }
 
   async function deleteConversation(id: number) {
+    // 运行中不删（UI 已禁用入口）
+    if (state.streaming.value) return;
     await api.deleteAgentConversation(id);
     state.conversations.value = state.conversations.value.filter((c) => c.id !== id);
     if (state.currentId.value === id) {
@@ -111,6 +129,8 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
 
   async function clearConversation() {
     if (state.currentId.value == null) return;
+    // 运行中不清空（UI 已禁用入口）
+    if (state.streaming.value) return;
     await api.clearAgentConversation(state.currentId.value);
     state.items.value = [];
     state.totalTokens.value = 0;
@@ -129,7 +149,8 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     if (state.currentId.value == null) return;
     const dbId = Number(item.id.replace(/^p-/, ""));
     if (Number.isNaN(dbId)) return;
-    if (state.streaming.value) await cancel();
+    // 运行中不回溯（UI 已禁用入口）
+    if (state.streaming.value) return;
     await api.rewindAgentMessages(state.currentId.value, dbId);
     const msgs = await api.getAgentMessages(state.currentId.value);
     state.items.value = rebuildItems(msgs);
@@ -166,8 +187,11 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     state.version.value++;
     finished = false;
 
+    // 记下本轮所属会话
+    const ownerId = state.currentId.value;
+    activeConvId = ownerId;
     channel = new Channel<SkillAgentEvent>();
-    channel.onmessage = (event: SkillAgentEvent) => handleEvent(event);
+    channel.onmessage = (event: SkillAgentEvent) => handleEvent(event, ownerId);
 
     try {
       // 用后端返回的 DB id 覆盖本地临时 id，与历史消息统一为 `p-<id>` 格式，
@@ -179,11 +203,36 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     }
   }
 
-  function handleEvent(event: SkillAgentEvent) {
+  function handleEvent(event: SkillAgentEvent, ownerId: number | null) {
     // 本轮已结束（停止/完成/出错）后忽略迟到事件，防止停止后界面还在被写入。
     // conversation_title 例外：它由后端后台任务在 Done 之后才推送（会话自动命名），
     // 与流式内容无关，必须放行否则列表永远刷新不到新标题。
     if (finished && event.type !== "conversation_title") return;
+
+    // 事件属于 ownerId 的会话；已切走时只收尾全局状态，不写当前视图。
+    if (ownerId == null || state.currentId.value !== ownerId) {
+      switch (event.type) {
+        case "done":
+          finish(null, event.final_text || undefined, event.usage ?? null);
+          break;
+        case "error":
+          finishWithError(event.message);
+          uiStore.showNotification({
+            type: "error",
+            title: "AI 助手出错",
+            message: event.message,
+            skipTipsCheck: true,
+          });
+          break;
+        case "conversation_title":
+          applyTitle(ownerId, event.title);
+          break;
+        default:
+          break;
+      }
+      return;
+    }
+
     const msg = currentAssistant();
     switch (event.type) {
       case "status":
@@ -266,17 +315,44 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
       case "done":
         finish(activeAssistantId, event.final_text || undefined, event.usage ?? null);
         break;
-      case "conversation_title": {
+      case "conversation_title":
         // 后端首轮自动生成标题后推送，刷新侧栏列表；迟到事件已被 finished 守卫丢弃
-        const conv = state.conversations.value.find((c) => c.id === state.currentId.value);
-        if (conv) conv.title = event.title;
+        applyTitle(ownerId, event.title);
         break;
-      }
       case "error":
         finishWithError(event.message);
         break;
     }
     state.version.value++;
+  }
+
+  /** 把标题写到指定会话（后台命名任务可能在 Done 之后、用户已切走时才推）。 */
+  function applyTitle(convId: number | null, title: string) {
+    const conv = state.conversations.value.find((c) => c.id === convId);
+    if (conv) conv.title = title;
+  }
+
+  /**
+   * 重拉会话列表：一轮结束后后端可能刚补绑了剧本 key（老会话兜底）或自动命名了标题。
+   * 本地已知的标题不被后端的空值覆盖 —— 自动命名任务与本次刷新存在竞态。
+   */
+  async function refreshConversations() {
+    if (state.streaming.value) return;
+    try {
+      const known = new Map(state.conversations.value.map((c) => [c.id, c.title]));
+      const list = await api.listAgentConversations();
+      state.conversations.value = list.map((c) => ({
+        ...c,
+        title: c.title ?? known.get(c.id) ?? null,
+      }));
+    } catch (err) {
+      console.warn("[Agent] 刷新会话列表失败:", err);
+    }
+  }
+
+  /** 会话归属的剧本 key（后端会从历史写入路径反推），供只读章节预览使用。 */
+  async function resolveScriptKey(conversationId: number) {
+    return api.resolveAgentScriptKey(conversationId);
   }
 
   function currentAssistant(): ChatItem | undefined {
@@ -313,7 +389,9 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     state.sending.value = false;
     state.status.value = "";
     activeAssistantId = null;
+    activeConvId = null;
     channel = null;
+    void refreshConversations();
     state.version.value++;
   }
 
@@ -328,6 +406,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     state.sending.value = false;
     state.status.value = "";
     activeAssistantId = null;
+    activeConvId = null;
     channel = null;
     state.version.value++;
   }
@@ -470,6 +549,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     sendMessage,
     cancel,
     resolveApproval,
+    resolveScriptKey,
     rewindMessage,
     loadSettings,
     loadSkills,
