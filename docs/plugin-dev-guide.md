@@ -292,7 +292,7 @@ def on_start(ctx):
 
 ## 内置工具 API 清单
 
-以下 30 个工具可直接通过 `call_tool(name, args)` 调用（`execute_command` 仅桌面端注册）。成功返回一律是带 `"ok": true` 的 JSON 对象；失败返回 `{"ok": false, "error": {...}}`（见上）。
+以下 32 个工具可直接通过 `call_tool(name, args)` 调用（`execute_command` 仅桌面端注册）。成功返回一律是带 `"ok": true` 的 JSON 对象；失败返回 `{"ok": false, "error": {...}}`（见上）。
 
 ### 时间
 
@@ -388,15 +388,31 @@ def on_start(ctx):
 
 ### 角色（读写数据库 + game_status）
 
+> 角色有两个名字，界面上两处分别用它们，所以报告「现在是哪个角色」的工具两个都给：
+> `name` 是**对话里显示的 AI 名称**（`settings.yml` 的 `ai_name`，如「风雪」），
+> `title` 是**角色标题**（`settings.yml` 的 `title`，如「可爱的小风雪」，角色卡列表页那行大字）。
+
 **`character_list`**
 
 - 参数：`{}`
-- 返回：`{ ok: true, characters: [ { id: number, name: string } ] }`
+- 返回：`{ ok: true, characters: [ { id: number, name: string, title: string } ] }`
 
 **`character_switch`**
 
 - 参数：`{ id: integer(必) }`（不清空对话历史；`id` 不存在时报错并列出可用角色）
-- 返回：`{ ok: true, role_id: number, name: string }`
+- 返回：`{ ok: true, role_id: number, name: string, title: string }`
+
+**`character_get_clothes`**
+
+- 参数：`{ role_id?: integer }`（省略时查当前对话角色）
+- 返回：`{ ok: true, role_id: number, name: string, clothes_name: string, clothes: string[] }`（`clothes` 为该角色可更换的全部服装名）
+
+**`character_set_clothes`**
+
+- 参数：`{ name: string(必), role_id?: integer }`（省略 `role_id` 时换当前对话角色；`name` 须为 `character_get_clothes` 返回的服装之一，否则报错并列出可选值）
+- 返回：`{ ok: true, role_id: number, name: string, clothes_name: string, switched: boolean }`（`switched: false` 表示本来就是这套，不会重复生成换装旁白）
+
+> 换装会立即刷新立绘并往对话里写一句换装旁白（形如「XX换上了新服装：YY，…」），所以插件不需要再自己补一句描写。
 
 ### 搜索
 
@@ -480,6 +496,36 @@ def on_start(ctx):
 - 返回（后台）：`{ ok: true, task_id, description, status: "running", message }`（完成后自动通知模型，无需轮询）
 
 ## 插件系统的私有 API（非 llm 可调用工具）
+
+这些能力**只有插件脚本能用**，不注册进 `ToolRegistry`，因此 LLM 选不到它们。放进这一类通常是因为「不该让模型自己决定」——比如会丢弃对话历史的破坏性操作。
+
+和 `http_get` / `http_post` 同一个模块，用 `from plugin_host import ...` 取用。返回统一信封：成功 `{ "ok": true, ... }`，失败 `{ "ok": false, "error": "..." }`，**不抛异常**。工具脚本、信号 handler、启动入口里都能调。
+
+### `switch_character(role_id)`
+
+完整切换当前角色，与玩家在角色卡上点「切换角色」走的是**同一条路径**：
+
+- **会清空当前对话历史**，重置已加载角色与角色内存，清空在场角色；
+- 递增会话边界代号，把旧一轮生成中迟到的台词丢掉，避免 A 的台词串进 B 的对话；
+- 把新的整份游戏状态推给前端，前端整体替换并丢弃旧事件队列。
+
+返回：成功 `{ "ok": true, "role_id": 3, "name": "风雪", "title": "可爱的小风雪" }`；角色不存在 `{ "ok": false, "error": "角色 id 3 不存在" }`。
+
+`name` / `title` 的语义与 `character_list`、`character_switch` 一致（见上面「角色」一节的说明）。
+
+```python
+# data/plugins/story_switch/boot.py
+from plugin_host import switch_character
+
+def on_start(ctx):
+    r = switch_character(3)
+    if not r["ok"]:
+        print("切换失败:", r["error"])
+```
+
+> **想保留对话历史地换角色**，请改用 `ctx["call_tool"]("character_switch", {"id": 3})`——那是 LLM 工具，只换角色、不动历史。
+>
+> `role_id` 会先校验存在性再动手，所以写错 id 只会拿到 `ok: false`，不会先把你的对话清空。
 
 ## 完整示例
 

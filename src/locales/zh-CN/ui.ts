@@ -320,6 +320,8 @@ export default {
       memory_delete_note: "删除笔记",
       character_list: "角色列表",
       character_switch: "切换角色",
+      character_get_clothes: "查询服装",
+      character_set_clothes: "更换服装",
       scene_list: "场景列表",
       scene_switch: "切换场景",
       status_get_current: "当前状态",

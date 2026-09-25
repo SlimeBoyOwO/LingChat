@@ -161,7 +161,10 @@ fn find_avatar_in_dir(dir: &PathBuf) -> Option<PathBuf> {
 }
 
 /// 扫描角色头像目录，返回衣服列表（每项包含头像文件的绝对路径）
-fn scan_clothes(resource_folder: &str) -> Vec<ClothesItem> {
+///
+/// 同时是「这个角色能换哪些服装」的权威来源：`get_avatar_file` 按 title 去
+/// `avatar/<title>/` 找立绘，玩家的换装面板也走这里（见 `get_character_list`）。
+pub(crate) fn scan_clothes(resource_folder: &str) -> Vec<ClothesItem> {
     let allowed_extensions = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
 
     let avatar_dir = resolve_character_dir(resource_folder).join("avatar");
