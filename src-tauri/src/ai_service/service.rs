@@ -189,6 +189,10 @@ impl AIService {
         gs.onstage_role_ids.clear();
         gs.present_role_ids.clear();
         gs.entry_greeting_done = false;
+        // 剧本状态属于上一局：前端"退出剧本"只清 store，后端若继续留着 script_status，
+        // 自动存档会把已退出的剧本进度写进新的自由对话槽（读档时还会误续跑该剧本）。
+        // 读档路径随后用 resume_script 重新赋值，不受此处影响。
+        gs.script_status = None;
         // 会话边界代号：切换角色 / 读档 / 清空对话都会清空 GameStatus 并重建，
         // 旧一轮自由对话的流式任务（consumer/publisher）可能仍在游离生成。
         // 递增代号后，它们的迟到 `add_assistant_line` / 工具回填会因

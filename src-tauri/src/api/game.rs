@@ -387,6 +387,23 @@ pub(crate) async fn begin_new_progress(
     db: &DatabaseConnection,
     app: &AppHandle,
 ) -> Result<i32, String> {
+    // 开新一局前先中止上一个剧本引擎：前端"退出剧本"只清 store，后端引擎可能仍在
+    // 阻塞等待输入，不中止就会继续往新会话的共享 GameStatus 里写台词（load_save 同款防护）。
+    {
+        let state = app.state::<AppState>();
+        if state.script_task.lock().await.take().is_some() {
+            // 被中止的引擎走不到 on_script_end 收尾，is_running 会残留 true
+            service
+                .script_manager
+                .is_running
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+        let mut ch = state.script_channels.lock().await;
+        let _ = ch.input_tx.take();
+        let _ = ch.choice_tx.take();
+        ch.choice_allow_free = false;
+    }
+
     // 加载 prompt 配置（与 select_character 一致）
     let app_config = AppConfig::load(app).unwrap_or_default();
     let prompt_options = PromptOptions {
