@@ -108,7 +108,53 @@ export async function showFloatingPet(options?: {
   });
 }
 
-/** 隐藏桌宠悬浮窗。未显示时安全返回。 */
+/** 悬浮窗当前是否可见。 */
+export async function isVisible(): Promise<boolean> {
+  return invoke<boolean>(`${PLUGIN}|is_visible`);
+}
+
+/**
+ * 悬浮窗 WebView 内注入的原生桥（见 Kotlin 侧 `PetBridge`）。
+ *
+ * 悬浮窗里没有 Tauri IPC，这是页面**唯一**能与原生通信的通道。
+ * 目前只提供 `close()`：让悬浮窗能关闭自己，避免弹出后收不回去。
+ */
+interface PetBridge {
+  close(): void;
+}
+
+declare global {
+  interface Window {
+    LingChatPet?: PetBridge;
+  }
+}
+
+/** 当前页面是否运行在悬浮窗内（即存在原生桥）。 */
+export function isInFloatingWindow(): boolean {
+  return typeof window !== "undefined" && !!window.LingChatPet;
+}
+
+/**
+ * 关闭当前悬浮窗。
+ *
+ * 与 {@link hideFloatingPet} 的区别：后者由**主界面**调用（走 Tauri IPC），
+ * 本函数由**悬浮窗内部**调用（走原生注入桥）。悬浮窗里没有 IPC，必须用它。
+ *
+ * @returns 是否成功发起关闭。
+ */
+export function closeFloatingWindowFromInside(): boolean {
+  const bridge = typeof window !== "undefined" ? window.LingChatPet : undefined;
+  if (!bridge) return false;
+  try {
+    bridge.close();
+    return true;
+  } catch (e) {
+    console.error("[floating-pet] 关闭悬浮窗失败:", e);
+    return false;
+  }
+}
+
+/** 隐藏桌宠悬浮窗（由主界面调用）。未显示时安全返回。 */
 export async function hideFloatingPet(): Promise<void> {
   await invoke(`${PLUGIN}|hide`);
 }

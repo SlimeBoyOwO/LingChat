@@ -63,6 +63,7 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { useFileDrop } from "../pet/useFileDrop";
 import { useAutoAdvance } from "@/composables/chat/useAutoAdvance";
+import { closeFloatingWindowFromInside } from "@/api/services/floating-pet";
 
 import ChatInput from "../pet/ChatInput.vue";
 import DialogueBox from "../pet/DialogueBox.vue";
@@ -79,6 +80,26 @@ const uiStore = useUIStore();
 
 const showChatInput = ref(false);
 const { isDragging, hasFile } = useFileDrop();
+
+/**
+ * 是否运行在 Android 悬浮窗的 WebView 里。
+ *
+ * 悬浮窗是**独立的 WebView 实例**，不在 Tauri 的 IPC 上下文里：
+ * `getCurrentWindow()` 会直接抛错，`invoke()` 也不可用。因此本页在
+ * 该模式下必须跳过所有窗口/后端相关逻辑，只保留纯前端的渲染与交互。
+ *
+ * 探测方式用 try/catch —— 这正是最可靠的判据（能拿到窗口 = 在主 WebView）。
+ */
+const floatingWindowMode = ref(false);
+
+function detectFloatingWindowMode(): boolean {
+  try {
+    getCurrentWindow();
+    return false;
+  } catch {
+    return true;
+  }
+}
 
 const avatarContainer = ref<HTMLElement | null>(null);
 const chatContainer = ref<HTMLElement | null>(null);
@@ -218,6 +239,18 @@ let bubbleSideUnlisten: (() => void) | null = null;
 let movedUnlisten: (() => void) | null = null;
 
 onMounted(async () => {
+  floatingWindowMode.value = detectFloatingWindowMode();
+
+  // ─── 悬浮窗模式：独立 WebView，无 Tauri IPC ────────────────
+  // 只做纯前端渲染（角色/气泡/台词），跳过全部窗口与后端调用。
+  // 主界面在 show 时已把窗口尺寸定好，这里不需要再调整。
+  if (floatingWindowMode.value) {
+    document.body.style.backgroundColor = "transparent";
+    document.documentElement.style.backgroundColor = "transparent";
+    document.body.style.overflow = "hidden";
+    return;
+  }
+
   const appWindow = getCurrentWindow();
 
   scaleUnlisten = await appWindow.listen<{ scale: number }>("pet-scale-changed", (event) => {
@@ -359,6 +392,8 @@ onUnmounted(() => {
   // 恢复默认背景色
   document.body.style.backgroundColor = "";
   document.documentElement.style.backgroundColor = "";
+  // 悬浮窗模式下由本组件设置的滚动锁（见 onMounted 的早期返回分支）
+  document.body.style.overflow = "";
 
   if (scaleUnlisten) scaleUnlisten();
   if (effectUnlisten) effectUnlisten();
@@ -442,6 +477,14 @@ const {
 });
 
 const handleExitPetMode = async () => {
+  // 悬浮窗模式：没有 Tauri IPC，只能走注入的原生桥关闭自己
+  if (floatingWindowMode.value) {
+    if (!closeFloatingWindowFromInside()) {
+      console.warn("[PetMode] 悬浮窗桥不可用，无法关闭");
+    }
+    return;
+  }
+
   // 关闭设置窗口（如果打开的话）
   try {
     const settingsWindow = await WebviewWindow.getByLabel("settings");

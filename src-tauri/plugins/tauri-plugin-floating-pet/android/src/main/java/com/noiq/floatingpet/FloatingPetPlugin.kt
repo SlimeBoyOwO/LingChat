@@ -69,6 +69,23 @@ class TouchableArgs {
 }
 
 /**
+ * 注入到悬浮窗 WebView 的最小 JS 桥（`window.LingChatPet`）。
+ *
+ * 悬浮窗内的 WebView 不在 Tauri IPC 上下文，前端不能 `invoke()`。
+ * 在建立完整的事件通道（P2）之前，至少要让页面能关闭悬浮窗 ——
+ * 否则弹出来就收不回去。
+ *
+ * 注意：`@JavascriptInterface` 标注的方法运行在 **WebView 的 JS 线程**，
+ * 不是主线程，因此内部操作必须切回 UI 线程。
+ */
+private class PetBridge {
+    @android.webkit.JavascriptInterface
+    fun close() {
+        FloatingPetPlugin.requestCloseFromWeb()
+    }
+}
+
+/**
  * Android 系统级悬浮窗插件。
  *
  * 使用 `TYPE_APPLICATION_OVERLAY`（API 26+）或 `TYPE_PHONE`（API 26 以下）
@@ -85,6 +102,24 @@ class TouchableArgs {
  */
 @TauriPlugin
 class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
+
+    companion object {
+        /**
+         * 当前活跃实例，供注入到 WebView 的 [PetBridge] 回调使用。
+         *
+         * WebView 的 `addJavascriptInterface` 只能绑定普通对象，拿不到
+         * 插件实例，故用静态引用中转。同一时刻只应存在一个悬浮窗，
+         * 因此单引用足够。
+         */
+        @Volatile
+        private var instance: FloatingPetPlugin? = null
+
+        /** 由页面通过 `window.LingChatPet.close()` 触发。 */
+        fun requestCloseFromWeb() {
+            val plugin = instance ?: return
+            plugin.activity.runOnUiThread { plugin.removePetView() }
+        }
+    }
 
     private var windowManager: WindowManager? = null
     private var petView: View? = null
@@ -171,6 +206,12 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                     settings.allowFileAccess = true
                     settings.allowContentAccess = true
                     webViewClient = WebViewClient()
+
+                    // 悬浮窗内的 WebView 不在 Tauri IPC 上下文里，前端无法 invoke。
+                    // 这里注入一个最小桥接对象，至少让页面能关闭自己——
+                    // 否则悬浮窗弹出后用户无从退出。
+                    addJavascriptInterface(PetBridge(), "LingChatPet")
+
                     loadUrl(args.url.ifBlank { DEFAULT_PET_URL })
                 }
 
@@ -205,6 +246,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 windowManager = wm
                 petView = webView
                 layoutParams = params
+                instance = this
 
                 Log.i(TAG, "悬浮窗已显示 ${width}x${height} @ (${params.x},${params.y})")
                 invoke.resolve()
@@ -244,6 +286,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             }
             petView = null
             layoutParams = null
+            instance = null
         }
     }
 

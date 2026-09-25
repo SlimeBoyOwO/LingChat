@@ -24,12 +24,13 @@
       >
         <h3 class="hidden xl:block">{{ $t("views.mainChat.auto") }}</h3>
       </Button>
-      <!-- 桌宠模式依赖 Windows 透明置顶窗口与 hit-test（lib.rs 为 cfg(windows)），移动端不可用 -->
+      <!-- 桌面端：走原生窗口桌宠（/pet 路由 + set_pet_mode）。
+           移动端：走 Android 系统级悬浮窗（floating-pet 插件），见 goToPetMode。 -->
       <Button
-        v-if="!isMobile()"
         type="nav"
         icon="character"
         @click="goToPetMode"
+        :active="floatingPetActive"
         v-show="uiStore.showSettings !== true"
       >
         <h3 class="hidden xl:block">{{ $t("views.mainChat.pet") }}</h3>
@@ -53,9 +54,10 @@ import { getEnvConfigByKey } from "@/api/services/config";
 import FreeModeTools from "@/components/tools/FreeModeTools.vue";
 import ToolActivityStatus from "@/components/tools/ToolActivityStatus.vue";
 import { eventQueue } from "@/core/events/event-queue";
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useGameStore } from "../../stores/modules/game";
+import { useSettingsStore } from "../../stores/modules/settings";
 import { useUIStore } from "../../stores/modules/ui/ui";
 import { Button } from "../base";
 import { GameBackground, GameDialog, GameRolesStage } from "../game/standard";
@@ -64,6 +66,7 @@ import LoadingTransition from "./LoadingTransition.vue";
 import FullAccessWarning from "@/components/tools/FullAccessWarning.vue";
 import ImageSourcePicker from "@/components/ui/ImageSourcePicker.vue";
 import { isMobile, isWindows } from "@/utils/platform";
+import { enterFloatingPet, hideFloatingPet, isVisible } from "@/api/services/floating-pet";
 import { useAutoAdvance } from "@/composables/chat/useAutoAdvance";
 import GameExtraUI from "../game/standard/GameExtraUI.vue";
 
@@ -77,6 +80,7 @@ let loadingShownThisSession = false;
 const router = useRouter();
 const uiStore = useUIStore();
 const gameStore = useGameStore();
+const settingsStore = useSettingsStore();
 
 // 首次加载过渡状态：仅当本次 session 未播放过且 localStorage 未标记时播放
 const showLoading = ref(!loadingShownThisSession && !localStorage.getItem(LOADING_STORAGE_KEY));
@@ -103,9 +107,89 @@ getEnvConfigByKey("display.disable_splash_animation")
     // 读取失败（键不存在等）按默认行为播放开屏动画
   });
 
-const goToPetMode = () => {
-  router.push("/pet");
+/**
+ * 进入/退出桌宠模式，按平台分流：
+ *
+ * - 桌面端：跳 `/pet` 路由，由 `set_pet_mode` 把窗口缩成透明置顶小窗
+ * - Android：弹出系统级悬浮窗（可浮在其他 App 之上），本页面保持不动
+ *
+ * 悬浮窗路径的授权是「特殊权限」，无法运行时弹窗申请 —— 首次点击会跳系统
+ * 设置页，用户授权返回后需再点一次。
+ */
+const floatingPetActive = ref(false);
+
+/** 同步悬浮窗状态。从系统设置页返回、或从悬浮窗切回 App 时都要刷新。 */
+const syncFloatingPetState = async () => {
+  if (!isMobile()) return;
+  try {
+    floatingPetActive.value = await isVisible();
+  } catch {
+    floatingPetActive.value = false;
+  }
 };
+
+const goToPetMode = async () => {
+  if (!isMobile()) {
+    router.push("/pet");
+    return;
+  }
+
+  // 已开启则关闭：给用户一个明确的退出路径，避免悬浮窗无法收回
+  if (floatingPetActive.value) {
+    try {
+      await hideFloatingPet();
+      floatingPetActive.value = false;
+      uiStore.showInfo({ title: "桌宠已收回", message: "悬浮窗已关闭。" });
+    } catch (e) {
+      console.error("[MainChat] 关闭悬浮桌宠失败:", e);
+    }
+    return;
+  }
+
+  try {
+    const result = await enterFloatingPet({ scale: settingsStore.pet?.scale ?? 1 });
+
+    if (result === "need-permission") {
+      uiStore.showInfo({
+        title: "需要悬浮窗权限",
+        message: "请在系统设置里允许 LingChat「显示在其他应用上层」，然后回来再点一次桌宠。",
+        duration: 6000,
+      });
+      return;
+    }
+
+    if (result === "unsupported") {
+      uiStore.showWarning({
+        title: "当前设备不支持",
+        message: "这台设备的系统不允许创建悬浮窗，桌宠暂时无法使用。",
+      });
+      return;
+    }
+
+    floatingPetActive.value = true;
+  } catch (e) {
+    console.error("[MainChat] 启动悬浮桌宠失败:", e);
+    uiStore.showError({
+      title: "桌宠启动失败",
+      message: "悬浮窗没能创建成功，请检查是否已授予悬浮窗权限。",
+    });
+  }
+};
+
+// 用户去系统设置授权后返回、或从悬浮窗切回 App，重新同步按钮状态
+const handleVisibilityChange = () => {
+  if (document.visibilityState === "visible") void syncFloatingPetState();
+};
+
+onMounted(() => {
+  if (!isMobile()) return;
+  void syncFloatingPetState();
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+});
+
+onUnmounted(() => {
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+});
 
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null);
 const menuPanelRef = ref<HTMLElement | null>(null);
