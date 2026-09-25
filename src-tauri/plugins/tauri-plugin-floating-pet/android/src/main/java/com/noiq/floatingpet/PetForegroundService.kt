@@ -86,7 +86,7 @@ class PetForegroundService : Service() {
 
         return builder
             .setContentTitle("桌宠正在运行")
-            .setContentText("轻点悬浮窗展开，双击收回")
+            .setContentText("轻点悬浮窗展开输入框，双击收回")
             .setSmallIcon(icon)
             .setOngoing(true)
             .build()

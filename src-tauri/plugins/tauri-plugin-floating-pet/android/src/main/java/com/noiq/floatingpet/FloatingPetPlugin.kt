@@ -8,6 +8,8 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
@@ -27,37 +29,74 @@ import app.tauri.plugin.Plugin
 private const val TAG = "FloatingPet"
 
 /**
+ * 悬浮窗内页面的**逻辑尺寸**（dp）。
+ *
+ * 必须与前端 `src/components/pet/constants.ts` 的 `PET_WIDTH_BASE`（240）、
+ * `AVATAR_BAND_BASE`（210）、`CHAT_BASE_H`（70）保持一致。
+ *
+ * ## 为什么是「固定逻辑尺寸 + 整体缩放」
+ *
+ * 悬浮窗里的页面**不再**按窗口宽度做响应式布局，而是始终按桌面端那套
+ * 240dp 宽的布局排版，再由前端 `transform: scale(window.innerWidth / 240)`
+ * 整体等比缩放到窗口大小。
+ *
+ * 这样做的理由：
+ * - 布局只有一套（与桌面端完全相同），不会在小窗里错位、溢出、点不到
+ * - 文字/按钮/输入框随窗口等比缩放，小窗下不会「挤成一团」
+ * - 页面内容恰好铺满逻辑画布 → 窗口里没有大块透明区域
+ *
+ * 代价：文字绝对大小与窗口宽度成正比，因此展开态不能太窄——
+ * 2/5 屏宽时缩放系数只有 0.6，15px 字缩到 9px 就看不清了。
+ */
+private const val PET_LOGICAL_WIDTH = 240.0
+private const val COLLAPSED_LOGICAL_HEIGHT = 210.0
+private const val EXPANDED_LOGICAL_HEIGHT = 280.0
+
+/**
  * 头像态宽度 = 屏幕宽度 × 该比例（用户指定「约 1/6 屏宽」）。
- * 展开态宽度 = 屏幕宽度 × 该比例（用户指定「约 2/5 屏宽」）。
+ * 展开态宽度 = 屏幕宽度 × 该比例。
  *
  * 用屏幕比例而非固定 dp，是为了让桌宠在不同尺寸/DPI 的机器上
  * 视觉占比一致——固定 dp 在小屏上会显得过大（这正是此前 240dp
  * 占了普通手机 60% 屏宽的原因）。
+ *
+ * 展开态取 0.6 而不是 2/5：逻辑宽 240dp 缩到 0.6×360=216dp 时
+ * 缩放系数 0.9，15px 的字约 13.5px，勉强可读；2/5 屏宽（144dp）
+ * 只有 0.6 倍，字会小到看不清。
  */
 private const val COLLAPSED_WIDTH_RATIO = 1.0 / 6.0
-private const val EXPANDED_WIDTH_RATIO = 2.0 / 5.0
+private const val EXPANDED_WIDTH_RATIO = 0.6
 
 /**
- * 头像态窗口高度与宽度之比。
+ * 窗口高度与宽度之比 —— 直接由逻辑尺寸推出，保证原生给的初始尺寸
+ * 与前端按同一套常量算出的内容高度一致，避免「先给一个错的高度、
+ * 前端再纠正一次」造成的闪动。
  *
- * 前端桌宠布局的常量是「头像带 210 + 气泡带 200 + 输入带 70 = 480」，
- * 宽 240 → 高宽比 2.0。但那是「桌宠窗口」的完整比例；
- * 手机上收起态只显示头像，因此高度取宽度的 1.15 倍——
- * 略高于头像本身，给气泡留一点悬浮空间（气泡本身绘制在窗口外，
- * 见 FLAG_LAYOUT_NO_LIMITS 与 PetMode.vue 的负边距）。
+ * 收起态只有头像（210）；展开态是头像 + 输入框（210 + 70 = 280）。
+ * 气泡出现时窗口高度由前端通过 `set_size` 再撑高，不在这里预留。
  */
-private const val COLLAPSED_HEIGHT_RATIO = 1.15
+private const val COLLAPSED_HEIGHT_RATIO = COLLAPSED_LOGICAL_HEIGHT / PET_LOGICAL_WIDTH
+private const val EXPANDED_HEIGHT_RATIO = EXPANDED_LOGICAL_HEIGHT / PET_LOGICAL_WIDTH
 
 /**
- * 展开态窗口高度与宽度之比。
+ * 尺寸兜底上下限（dp），防止异常比例算出不可见或超屏的窗口。
  *
- * 展开后要同时容纳「头像 + 气泡 + 输入框」，接近桌面端的 2.0 宽高比。
+ * 下限必须够小：收起态窗口只有约 1/6 屏宽（360dp 屏上约 60dp），
+ * 高度约 52dp。此前下限 80dp 会把前端报上来的高度硬抬到 80，
+ * 于是收起态窗口下方多出一块透明区域。
  */
-private const val EXPANDED_HEIGHT_RATIO = 2.0
-
-/** 尺寸兜底上下限（dp），防止异常比例算出不可见或超屏的窗口。 */
-private const val MIN_SIZE_DP = 80.0
+private const val MIN_SIZE_DP = 24.0
 private const val MAX_SIZE_DP = 720.0
+
+/**
+ * 桌宠 WebView 保活轮询间隔（毫秒）。
+ *
+ * 见 [FloatingPetPlugin.startKeepAlive]：宿主 Activity 一旦 onPause，
+ * wry 会调 `mWebView.onPause()` 把桌宠冻住，而重入时机在不同 ROM /
+ * Tauri 版本上并不稳定，因此除了生命周期回调里补一次，还用一个
+ * 低频轮询兜底。
+ */
+private const val KEEP_ALIVE_INTERVAL_MS = 500L
 
 /** 单击与拖拽的判定阈值（dp）：按下到抬起位移超过它就算拖动，不触发点击。 */
 private const val TAP_SLOP_DP = 8.0
@@ -170,6 +209,61 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * 避免把悬浮窗里的 WebView 当成主界面 WebView 处理。
      */
     private var petDetached: Boolean = false
+
+    /**
+     * 桌宠 WebView 的保活轮询（见 [startKeepAlive]）。
+     *
+     * 用主线程 Handler 而不是 Timer：`WebView.onResume()` / `resumeTimers()`
+     * 都必须在 UI 线程调用。
+     */
+    private val keepAliveHandler = Handler(Looper.getMainLooper())
+    private var keepAliveRunning = false
+    private val keepAliveTick = object : Runnable {
+        override fun run() {
+            if (!petDetached) {
+                keepAliveRunning = false
+                return
+            }
+            (petView as? WebView)?.let { resumePetWebView(it, "keep-alive") }
+            keepAliveHandler.postDelayed(this, KEEP_ALIVE_INTERVAL_MS)
+        }
+    }
+
+    /**
+     * 开始保活轮询。
+     *
+     * ## 为什么需要轮询而不是只靠生命周期回调
+     *
+     * 宿主 Activity 一旦 onPause，`WryActivity.onPause()` 会调用
+     * `mWebView.onPause()`，把搬进悬浮窗的**同一个** WebView 冻住——
+     * 渲染停、`requestAnimationFrame` 停、JS 定时器停，桌宠在桌面上
+     * 静止不动，并且 `evaluateJavascript` 也不再执行（于是原生派发的
+     * `pet-attached` 等事件全部丢失）。
+     *
+     * 直觉上应该在插件的 `onPause` 钩子里补一次 `onResume()`，但**这条路
+     * 在 Tauri 2.11.1 上走不通**：`PluginManager.onPause/onResume/onStop`
+     * 唯一的上游是 `TauriLifecycleObserver`，而它只被定义、
+     * **从未被 `addObserver()` 注册**（见 `mobile/android-codegen/TauriActivity.kt`）。
+     * 也就是说插件的那两个覆写目前在真机上根本不会被调用。
+     *
+     * 因此这里用 500ms 一次的轮询兜底：不依赖任何生命周期回调，只要还在
+     * 悬浮窗里就持续把 WebView 拉回运行态。`onResume()` / `resumeTimers()`
+     * 都是幂等的，重复调用没有副作用。
+     */
+    private fun startKeepAlive() {
+        if (keepAliveRunning) return
+        keepAliveRunning = true
+        keepAliveHandler.postDelayed(keepAliveTick, KEEP_ALIVE_INTERVAL_MS)
+        Log.i(TAG, "已启动桌宠 WebView 保活轮询")
+    }
+
+    /** 停止保活轮询（WebView 已还给 Activity 时调用）。 */
+    private fun stopKeepAlive() {
+        if (!keepAliveRunning) return
+        keepAliveRunning = false
+        keepAliveHandler.removeCallbacks(keepAliveTick)
+        Log.i(TAG, "已停止桌宠 WebView 保活轮询")
+    }
 
     private val density: Float
         get() = activity.resources.displayMetrics.density
@@ -355,11 +449,15 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 // 通知页面：你现在在悬浮窗里了。
                 // 页面据此切换为「仅头像」布局——这必须发生在 addView 之后，
                 // 因为 evaluateJavascript 需要有可用的 WebView 实例。
-                notifyWeb("pet-detached", JSObject())
+                notifyWeb(webView, "pet-detached", JSObject())
 
                 // 拉起前台服务：桌宠要长期浮在桌面上，必须有前台优先级，
                 // 否则 App 退到后台后进程被回收，悬浮窗会直接消失。
                 PetForegroundService.start(activity)
+
+                // 并启动 WebView 保活轮询：前台服务只保证**进程**不被回收，
+                // 不阻止 wry 在 Activity onPause 时把 WebView 暂停。
+                startKeepAlive()
 
                 Log.i(TAG, "桌宠已展开 ${width}x${height} @ (${params.x},${params.y})")
                 invoke.resolve()
@@ -427,6 +525,10 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         expanded = false
         instance = null
 
+        // 先停保活再清状态：keepAliveTick 靠 petDetached 自行退出，
+        // 显式停一次可以立刻回收 Handler 上的消息。
+        stopKeepAlive()
+
         // 桌宠已收回，不再需要前台优先级
         PetForegroundService.stop(activity)
 
@@ -439,13 +541,20 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             // 进入后台而被 WryActivity.onPause() 暂停过（见本类 onResume）。
             // 注意 onResume/resumeTimers 是 WebView 的方法，不是 View 的，
             // 必须转型后再调。
-            (view as? WebView)?.let { resumePetWebView(it, "restore") }
+            //
+            // 这里必须**先**唤醒再派发事件：WebView 处于暂停态时
+            // evaluateJavascript 不会执行，pet-attached 会直接丢失，
+            // 页面就永远停在悬浮窗布局里（表现为「收回后只剩一小块」）。
+            val wv = view as? WebView
+            wv?.let { resumePetWebView(it, "restore") }
 
             // 通知页面：你已经回到 App 里了，恢复正常布局。
             // 必须 post 到下一轮循环：此刻视图层级刚被重挂，WebView 还在
             // 重新测量/布局，立即 evaluateJavascript 可能落在一个尚未就绪的
             // 渲染上下文里。
-            if (notifyPage) view.post { notifyWeb("pet-attached", JSObject()) }
+            //
+            // 注意这里显式把 view 传进去，不能依赖 petView —— 上面已经置空。
+            if (notifyPage) view.post { notifyWeb(wv, "pet-attached", JSObject()) }
         }
         petDetached = false
     }
@@ -474,6 +583,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         windowManager = null
         instance = null
         petDetached = false
+        stopKeepAlive()
         // Activity 正在销毁，前台服务若继续留着会变成没有悬浮窗的空服务
         PetForegroundService.stop(activity)
     }
@@ -555,7 +665,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         container.addView(title)
 
         val hint = android.widget.TextView(context).apply {
-            text = "轻点头像可展开输入框，双击头像把它收回来"
+            text = "轻点头像展开输入框，再点一下收起，双击头像把它收回来"
             setTextColor(Color.parseColor("#99FFFFFF"))
             textSize = 13f
             gravity = Gravity.CENTER
@@ -674,9 +784,32 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
+    /**
+     * 把窗口位置夹回屏幕内。
+     *
+     * 展开态是**以中心为锚点**放大的，若桌宠原本贴着屏幕下沿，
+     * 放大后窗口下半部分会跑到屏幕外——输入框正好在那里，用户就
+     * 「看不到也点不到」了。尺寸变化后一律夹一次。
+     *
+     * 宽度超过屏幕时左对齐（此时 x 已无意义，保证左边缘可见）。
+     */
+    private fun clampIntoScreen(params: WindowManager.LayoutParams) {
+        val screenW = activity.resources.displayMetrics.widthPixels
+        val screenH = activity.resources.displayMetrics.heightPixels
+        params.x = if (params.width >= screenW) {
+            0
+        } else {
+            params.x.coerceIn(0, screenW - params.width)
+        }
+        params.y = if (params.height >= screenH) {
+            0
+        } else {
+            params.y.coerceIn(0, screenH - params.height)
+        }
+    }
+
     /** 拖动结束后把窗口吸附到最近的左右边缘（带 8dp 边距）。 */
-    private fun snapToEdge(params: WindowManager.LayoutParams) {
-        val view = petView ?: return
+    private fun snapToEdge(params: WindowManager.LayoutParams) {        val view = petView ?: return
         val screenW = activity.resources.displayMetrics.widthPixels
         val margin = dp(8.0)
         val centerX = params.x + view.width / 2
@@ -727,6 +860,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 params.height = height
                 params.x = centerX - width / 2
                 params.y = centerY - height / 2
+                clampIntoScreen(params)
 
                 // ── 输入法：只有展开态才让窗口可获焦 ──────────────────
                 // FLAG_NOT_FOCUSABLE 的窗口永远收不到输入法：IME 只服务于
@@ -755,7 +889,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 if (expanded) view.requestFocus()
 
                 // 通知页面切换布局（头像态 vs 完整态）
-                notifyWeb("pet-expanded-changed", JSObject().apply { put("expanded", expanded) })
+                notifyWeb(view as? WebView, "pet-expanded-changed", JSObject().apply { put("expanded", expanded) })
                 invoke.resolve()
             } catch (e: Exception) {
                 Log.e(TAG, "切换展开状态失败", e)
@@ -801,6 +935,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             try {
                 params.width = dp(args.width.coerceIn(MIN_SIZE_DP, MAX_SIZE_DP))
                 params.height = dp(args.height.coerceIn(MIN_SIZE_DP, MAX_SIZE_DP))
+                clampIntoScreen(params)
                 windowManager?.updateViewLayout(view, params)
                 invoke.resolve()
             } catch (e: Exception) {
@@ -862,16 +997,25 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * 现在 WebView 就是主 WebView，`invoke()` 可用，大部分通信应直接走
      * Tauri 命令。这里保留 `evaluateJavascript` 是为了传递那些不方便
      * 走 IPC 的原生事件（如展开状态变更）。
+     *
+     * ## 为什么必须把 WebView 当参数传进来
+     *
+     * 早先这里读的是成员 `petView`，于是 [restoreWebViewToActivity] 里
+     * 「先 `petView = null` 再 `view.post { notifyWeb(...) }`」的写法会
+     * 让事件**永远发不出去**——post 执行时 petView 已经是 null。
+     * 表现就是页面永远不知道自己已经回到 Activity：仍按悬浮窗布局渲染
+     * （看起来只有小小一块），也不会切回聊天页。
+     * 显式传参后就不依赖成员变量的时序了。
      */
-    private fun notifyWeb(function: String, detail: JSObject) {
-        val view = petView as? WebView ?: return
+    private fun notifyWeb(view: WebView?, function: String, detail: JSObject) {
+        if (view == null) return
         val payload = detail.toString().replace("\\", "\\\\").replace("'", "\\'")
         val js =
             "window.dispatchEvent(new CustomEvent('$function',{detail:JSON.parse('$payload')}))"
         try {
             view.evaluateJavascript(js, null)
         } catch (e: Exception) {
-            Log.e(TAG, "通知页面失败: $function", e)
+            Log.w(TAG, "通知页面失败: $function", e)
         }
     }
 
@@ -880,16 +1024,23 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     /**
      * App 退到后台时，保持桌宠的 WebView 继续运行。
      *
-     * 宿主 Activity 一旦 onPause，`WryActivity.onPause()` 会调用
-     * `mWebView.onPause()` —— 而搬进悬浮窗的正是这个 WebView，
-     * 于是桌宠在桌面上会**静止不动**（渲染与 JS 定时器全停），
-     * 表现就是「WebView 停止运行了」。
+     * ## 为什么真正起作用的是 [startKeepAlive] 而不是这里
      *
-     * 这里在插件收到 onPause 后把 WebView 重新唤醒。时机上插件的
-     * onPause 由 ProcessLifecycleOwner 分发，晚于 Activity 的 onPause，
-     * 因此这次唤醒能覆盖掉前面的暂停。
+     * 宿主 Activity 一旦 onPause，`WryActivity.onPause()` 会**无条件**
+     * 调用 `mWebView.onPause()`（wry 0.55.1 `WryActivity.kt`），而搬进
+     * 悬浮窗的正是这个 WebView —— 于是桌宠在桌面上静止不动：渲染停、
+     * `requestAnimationFrame` 停，连 `evaluateJavascript` 都不再执行
+     * （原生派发的 `pet-attached` 等事件会直接丢失）。
      *
-     * 用 post 再执行一次，避免与同一轮里的暂停动作竞态。
+     * 直觉上应该在插件的 onPause 钩子里补一次 `onResume()`，但**这条路
+     * 在 Tauri 2.11.1 上走不通**：`PluginManager.onPause/onResume/onStop`
+     * 唯一的上游是 `TauriLifecycleObserver`，而它只被定义、
+     * **从未被 `addObserver()` 注册**（见 `mobile/android-codegen/TauriActivity.kt`）。
+     * 也就是说这两个覆写目前在真机上根本不会被调用。
+     *
+     * 保留它们是为了将来 Tauri 补上注册后能立即生效；当下真正兜底的是
+     * [startKeepAlive] 的 500ms 轮询——它不依赖任何生命周期回调，
+     * 只要还在悬浮窗里就把 WebView 拉回运行态。
      */
     override fun onPause() {
         super.onPause()
@@ -919,7 +1070,8 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         try {
             wv.onResume()
             wv.resumeTimers()
-            Log.d(TAG, "已唤醒桌宠 WebView（$from）")
+            // 保活轮询每 500ms 走一次，别刷日志
+            if (from != "keep-alive") Log.d(TAG, "已唤醒桌宠 WebView（$from）")
         } catch (e: Exception) {
             Log.w(TAG, "唤醒桌宠 WebView 失败（$from，可忽略）", e)
         }

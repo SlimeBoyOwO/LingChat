@@ -10,8 +10,11 @@
       class="animate-pet-scale relative transition-transform duration-300 ease-out"
       :style="{ width: frameSize + 'px', height: frameSize + 'px' }"
     >
-      <!-- 设置按钮 -->
+      <!-- 设置按钮：悬浮窗里隐藏 —— 手机上没有 hover，按钮永远不浮现；
+           而且整页等比缩放后它们挂在头像左外侧，会被 overflow-hidden 裁掉。
+           手机端交互收敛为「点头像 = 展开/收起，双击 = 收回 App」。 -->
       <button
+        v-if="!floatingMode"
         type="button"
         :aria-label="$t('views.pet.stage.openSettingsAria')"
         :title="$t('views.pet.stage.settings')"
@@ -23,6 +26,7 @@
 
       <!-- 自动按钮 -->
       <button
+        v-if="!floatingMode"
         type="button"
         :aria-label="$t('views.pet.stage.openAutoAria')"
         :title="$t('views.pet.stage.auto')"
@@ -36,6 +40,7 @@
 
       <!-- 返回主页按钮 -->
       <button
+        v-if="!floatingMode"
         type="button"
         :aria-label="$t('views.pet.stage.backHome')"
         :title="$t('views.pet.stage.backHome')"
@@ -47,6 +52,7 @@
 
       <!-- 截图按钮 -->
       <div
+        v-if="!floatingMode"
         class="absolute top-28 -left-3.5 z-40 translate-y-2 opacity-0 transition-all duration-300 group-[.is-hovered]:translate-y-0 group-[.is-hovered]:opacity-100"
       >
         <button
@@ -67,6 +73,7 @@
 
       <!-- 语音输入按钮（与桌面 GameDialog 同源：useAsrInput 共享会话） -->
       <div
+        v-if="!floatingMode"
         class="absolute top-37 -left-3.5 z-40 translate-y-2 opacity-0 transition-all duration-300 group-[.is-hovered]:translate-y-0 group-[.is-hovered]:opacity-100"
       >
         <!-- 自动监听开着但当前已暂停时，用强调色提示"点一下可恢复"。
@@ -135,7 +142,8 @@ import { useMicControl } from "@/composables/useMicControl";
 import { useVoicePlayback } from "@/composables/role/useVoicePlayback";
 import { prefersLive2d } from "@/types/live2d";
 import { isAndroid } from "@/utils/platform";
-import { isInFloatingWindow } from "@/api/services/floating-pet";
+import { isInFloatingWindow, onFloatingWindowModeChange } from "@/api/services/floating-pet";
+import { AVATAR_BAND_BASE } from "./constants";
 import RoleAvatar from "./GameRoleAvatar.vue";
 import Live2DStage from "../game/live2d/Live2DStage.vue";
 import { Play, Pause, Settings, LogOut, Camera, Mic, MicOff } from "lucide-vue-next";
@@ -191,50 +199,34 @@ const petLive2d = computed(() => !!singleRole.value && prefersLive2d(singleRole.
 const petFrameless = computed(() => singleRole.value?.petFrameless === true);
 
 /**
- * 悬浮窗**收起态**的视口宽度（头像尺寸的锚点）。
+ * 是否运行在 Android 悬浮窗里（响应式）。
  *
- * 悬浮窗模式下 WebView 就是窗口本身，`window.innerWidth` 即窗口宽度。
- *
- * 为什么不直接用当前视口宽度：收起态窗口约 1/6 屏宽（≈60dp），
- * 展开态约 2/5 屏宽（≈165dp）。若头像跟着视口走，展开瞬间会放大
- * 2.75 倍，Live2D 还得重新布局，视觉上是一次突兀的跳变。
- * 锚定收起态宽度后，窗口变宽只是给输入框腾地方，角色本身不变。
- *
- * 取**观测到的最小宽度**来自校准：页面是在 Activity 里挂载、之后才被
- * 搬进悬浮窗的，因此首次 resize 会把宽度从整屏收缩到收起态，此后
- * 展开只会变大。最小值即收起态宽度，无需与原生同步常量。
+ * 悬浮窗里要隐藏那排「悬停才浮现」的桌面端按钮：手机没有 hover，
+ * 而且整页是等比缩放的，挂在头像角上的按钮会被 `overflow-hidden` 裁掉。
+ * 手机上的交互收敛为「点头像 = 展开/收起，双击 = 收回 App」。
  */
-const floatingCollapsedWidth = ref(Number.POSITIVE_INFINITY);
-const syncFloatingViewport = () => {
-  const w = window.innerWidth;
-  if (!isInFloatingWindow() || w <= 0) return;
-  floatingCollapsedWidth.value = Math.min(floatingCollapsedWidth.value, w);
-};
-onMounted(() => {
-  syncFloatingViewport();
-  window.addEventListener("resize", syncFloatingViewport);
-});
-onUnmounted(() => window.removeEventListener("resize", syncFloatingViewport));
+const floatingMode = ref(isInFloatingWindow());
+let floatingModeUnlisten: (() => void) | null = null;
 
+/**
+ * 头像框边长（逻辑画布 px）。
+ *
+ * ## 悬浮窗里为什么不再跟随视口宽度
+ *
+ * 悬浮窗内是「固定逻辑画布 + 整体等比缩放」：一律按桌面端尺寸渲染，
+ * 再由 PetMode 的 `transform: scale(窗口宽度 / 240)` 缩到窗口大小。
+ *
+ * 早先这里取「观测到的最小视口宽度」来自校准头像尺寸，本意是避免展开
+ * 时头像跳变；但它同时让展开态窗口（2.75 倍宽）里空出一大片透明区，
+ * 而 Android 悬浮窗没有逐像素穿透——那片空白既难看，又会吃掉下层
+ * App 的触摸。改成整体缩放后，头像跟着画布一起放大，空白自然消失。
+ *
+ * 悬浮窗里也**不乘** `pet.scale`：缩放系数已由屏幕比例决定（见
+ * `FloatingPetPlugin.EXPANDED_WIDTH_RATIO`），再乘一次就是双重缩放。
+ */
 const frameSize = computed(() => {
-  const scale = settingsStore.pet?.scale || 1;
-
-  // 悬浮窗：头像铺满**收起态**窗口宽度。
-  //
-  // 这里**不能**再用固定 210（= AVATAR_BAND_BASE）：收起态窗口只有约
-  // 1/6 屏宽（≈60dp），210px 的头像会远远超出窗口而被裁掉——这正是
-  // 「两种形态缩放都没处理好」的根因。窗口尺寸本身已按屏幕比例算过，
-  // 因此这里也不再乘 scale，否则会双重缩放。
-  if (isInFloatingWindow()) {
-    const collapsed = floatingCollapsedWidth.value;
-    // 尚未观测到有效宽度时退回当前视口，避免渲染成 0 尺寸
-    if (!Number.isFinite(collapsed) || collapsed <= 0) {
-      return Math.max(1, Math.round(window.innerWidth));
-    }
-    return Math.max(1, Math.round(collapsed));
-  }
-
-  return Math.round(210 * scale);
+  const scale = floatingMode.value ? 1 : settingsStore.pet?.scale || 1;
+  return Math.round(AVATAR_BAND_BASE * scale);
 });
 
 // --- 舞台悬停态（驱动按钮与角色铭牌的显隐）---
@@ -269,6 +261,11 @@ onMounted(() => {
   window.addEventListener("pointermove", onDomPointer, { passive: true });
   window.addEventListener("pointerdown", onDomPointer, { passive: true });
 
+  // 进出悬浮窗时切换按钮可见性（原生搬运完成后派发）
+  floatingModeUnlisten = onFloatingWindowModeChange((active) => {
+    floatingMode.value = active;
+  });
+
   void listen<{ x: number; y: number }>("pet:cursor", (event) => {
     // 收到全局广播后 DOM 事件就没用了：穿透开启后它会停发，留着反而会用陈旧位置覆盖广播
     stopDomPointerFallback();
@@ -286,6 +283,8 @@ onUnmounted(() => {
   stopDomPointerFallback();
   cursorUnlisten?.();
   cursorUnlisten = null;
+  floatingModeUnlisten?.();
+  floatingModeUnlisten = null;
 });
 
 // Live2D 渲染帧率上限（0 = 不限制）：来自桌宠设置 pet.live2dFps，默认 30

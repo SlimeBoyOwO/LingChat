@@ -11,23 +11,32 @@ export const DIALOG_MAX_BASE = 200;
 /**
  * 手机悬浮窗的窗口宽度（占屏幕宽度的比例）。
  *
- * 与桌面端固定 240dp 不同：手机屏幕宽度差异很大（360–430dp），
- * 固定 dp 会让桌宠在小屏上占到 60% 以上，显得巨大。按屏幕比例算
- * 才能保证视觉占比一致。
+ * ## 悬浮窗是「固定逻辑画布 + 整体等比缩放」
+ *
+ * 悬浮窗里的页面**不做响应式布局**：始终按上面那套桌面端尺寸
+ * （240dp 宽）排版，再由 `PetMode.vue` 的 `transform: scale(窗口宽度 / 240)`
+ * 缩放到窗口大小。这样布局只有一套、内容恰好铺满画布，窗口里不会
+ * 出现大块透明区（悬浮窗没有逐像素穿透，空白区域会吃掉下层 App 的触摸）。
+ *
+ * 代价：文字绝对大小与窗口宽度成正比，所以展开态不能太窄——
+ * 2/5 屏宽时缩放系数只有 0.6，15px 的字缩到 9px 就看不清了。
  *
  * 必须与 Kotlin 侧 `COLLAPSED_WIDTH_RATIO` / `EXPANDED_WIDTH_RATIO` 保持一致
  * （见 `android/.../FloatingPetPlugin.kt`）。
  */
 export const MOBILE_COLLAPSED_WIDTH_RATIO = 1 / 6;
-export const MOBILE_EXPANDED_WIDTH_RATIO = 2 / 5;
+export const MOBILE_EXPANDED_WIDTH_RATIO = 0.6;
 
 /**
- * 手机悬浮窗的高宽比。
+ * 手机悬浮窗的高宽比 —— 直接由逻辑画布尺寸推出。
  *
- * - 收起态 1.15：只显示头像，略高一点给下方提示文字留空间
- * - 展开态 2.0：头像 + 气泡 + 输入框，与桌面端窗口比例一致
+ * - 收起态 = 头像带 210 → 210/240 = 0.875
+ * - 展开态 = 头像带 + 输入带 = 280 → 280/240 ≈ 1.1667
+ *
+ * 气泡出现时内容会变高，窗口高度由前端通过 `resizeFloatingPet` 再撑高，
+ * 不在这里预留。
  *
  * 必须与 Kotlin 侧 `COLLAPSED_HEIGHT_RATIO` / `EXPANDED_HEIGHT_RATIO` 一致。
  */
-export const MOBILE_COLLAPSED_HEIGHT_RATIO = 1.15;
-export const MOBILE_EXPANDED_HEIGHT_RATIO = 2.0;
+export const MOBILE_COLLAPSED_HEIGHT_RATIO = AVATAR_BAND_BASE / PET_WIDTH_BASE;
+export const MOBILE_EXPANDED_HEIGHT_RATIO = (AVATAR_BAND_BASE + CHAT_BASE_H) / PET_WIDTH_BASE;

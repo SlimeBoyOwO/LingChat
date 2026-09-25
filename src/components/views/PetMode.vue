@@ -9,13 +9,15 @@
     <!-- 装饰带（气泡/通知）：高度完全随内容（无预留）→ 顶部永远没有透明空间：
          默认在宠物上方（气泡吸顶，宠物被往下让位）；设置=下方时夹在宠物与输入框之间（气泡贴宠物下沿）
 
-         悬浮窗收起态不渲染：窗口只有 1/6 屏宽，气泡没有可读空间。
-         气泡在手机上是独立悬浮的气泡（见 DialogueBox 的悬浮窗适配）。 -->
+         悬浮窗收起态不渲染：窗口只有 1/6 屏宽，整体缩放系数约 0.25，
+         气泡里的字会小到看不清，没有可读空间。
+         悬浮窗展开态则**必须**排到头像之后（order=1）：气泡撑高窗口时
+         头像不动、只有输入框下移，视觉上气泡像是从宠物下方长出来。 -->
     <div
       v-show="!(floatingWindowMode && !petExpanded)"
       ref="decorBand"
       class="flex w-full shrink-0 flex-col justify-end bg-transparent transition-none"
-      :style="{ order: bubbleBelow ? 1 : 0 }"
+      :style="{ order: floatingWindowMode || bubbleBelow ? 1 : 0 }"
     >
       <!-- 悬浮窗里不显示通知条：窗口太小，通知会挤占头像 -->
       <PetNotification v-if="!floatingWindowMode" />
@@ -44,32 +46,12 @@
           @audio-started="handleAudioStarted"
         />
 
-        <!-- 悬浮窗展开态的窗口按钮。
-             手机没有 hover，GameRolesStage 里那个「悬停才浮现」的返回按钮
-             在触屏上永远出不来，因此这里给常驻按钮。 -->
-        <div
-          v-if="floatingWindowMode && petExpanded"
-          class="absolute -top-1 -right-1 z-50 flex gap-1"
-        >
-          <!-- 收起：回到「仅头像」形态，但留在桌面上 -->
-          <button
-            type="button"
-            aria-label="收起桌宠窗口"
-            class="flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-neutral-950/80 text-white/90 shadow-lg backdrop-blur-xl active:scale-95"
-            @click.stop="collapsePet"
-          >
-            <span class="text-sm leading-none">⌄</span>
-          </button>
-          <!-- 关闭：收回悬浮窗，回到 App 主界面 -->
-          <button
-            type="button"
-            aria-label="关闭桌宠"
-            class="flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-neutral-950/80 text-white/90 shadow-lg backdrop-blur-xl active:scale-95"
-            @click.stop="handleExitPetMode"
-          >
-            <span class="text-sm leading-none">✕</span>
-          </button>
-        </div>
+        <!-- 悬浮窗里不再放「收起 / 关闭」按钮。
+             原先那两个圆形按钮挂在头像右上角（-top-1 -right-1），在
+             整体缩放的悬浮窗里会被 #pet-app 的 overflow-hidden 裁掉一半，
+             实测点不到。手机上的手势约定改为：
+             点头像 = 展开/收起切换，双击头像 = 收回 App。
+             少两个按钮同时也少一次「按钮在不在窗口内」的布局风险。 -->
       </div>
     </DragArea>
 
@@ -80,22 +62,16 @@
       v-show="!(floatingWindowMode && !petExpanded)"
       ref="chatContainer"
       class="flex w-full shrink-0 items-start justify-center bg-transparent transition-none"
-      :style="{ height: 'var(--chat-h)', order: bubbleBelow ? 2 : 0 }"
+      :style="{ height: 'var(--chat-h)', order: floatingWindowMode || bubbleBelow ? 2 : 0 }"
     >
       <ChatInput ref="ChatInputRef" :visible="showChatInput" />
     </div>
 
-    <!-- 收起态提示：告诉用户怎么展开 / 怎么退出。
-         只在悬浮窗收起时出现，避免占用展开后的空间。 -->
-    <div
-      v-if="floatingWindowMode && !petExpanded"
-      class="pointer-events-none mt-1 text-center text-[10px] leading-tight text-white/70 drop-shadow"
-    >
-      点头像展开<br />双击收回
-    </div>
+    <!-- 余量吸收带：只在“下方”模式接管气泡带腾出的空间，保证窗口总高恒定（不上报 solid 区域）
 
-    <!-- 余量吸收带：只在“下方”模式接管气泡带腾出的空间，保证窗口总高恒定（不上报 solid 区域） -->
-    <div class="w-full flex-1" :style="{ order: bubbleBelow ? 3 : 0 }"></div>
+         悬浮窗里必须排在最后（order=3）：它带 flex-1，若 order 仍是 0
+         会插到头像与气泡之间，把气泡挤到窗口底部。 -->
+    <div class="w-full flex-1" :style="{ order: floatingWindowMode || bubbleBelow ? 3 : 0 }"></div>
   </div>
 </template>
 
@@ -116,6 +92,7 @@ import {
   isInFloatingWindow,
   onFloatingWindowModeChange,
   onPetExpandedChange,
+  resizeFloatingPet,
   setFloatingPetExpanded,
 } from "@/api/services/floating-pet";
 
@@ -163,6 +140,86 @@ const chatContainer = ref<HTMLElement | null>(null);
 const decorBand = ref<HTMLElement | null>(null);
 const gameDialogRef = ref<InstanceType<typeof DialogueBox> | null>(null);
 const ChatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
+
+// ─── 悬浮窗的「逻辑画布 + 整体缩放」模型 ───────────────────────────
+//
+// 悬浮窗里的页面**不做响应式布局**：始终按桌面端那套 240dp 宽的布局排版
+// （下称逻辑画布），再整体 `transform: scale(窗口宽度 / 240)` 缩放到窗口。
+//
+// 之前是让布局跟着窗口宽度走，结果是三件事同时坏掉：
+//   1. 展开态窗口 2.75 倍宽，但头像仍按收起态宽度渲染 → 窗口里一大片透明区
+//      （而 Android 悬浮窗没有逐像素穿透，那片区域还会吃掉触摸）
+//   2. 输入框、按钮、字号不会跟着缩 → 小窗里挤成一团、点不到
+//   3. 布局在两种形态下走不同分支 → 只有一套分支被真机验证过
+//
+// 换成整体缩放后布局只有一套（与桌面端完全一致），内容恰好铺满逻辑画布，
+// 于是窗口里没有透明区、所有控件等比可点。
+//
+// 代价：文字绝对大小与窗口宽度成正比，所以展开态不能太窄——见
+// FloatingPetPlugin.kt 的 EXPANDED_WIDTH_RATIO（取 0.6 屏宽，缩放系数约 0.9）。
+const FLOATING_LOGICAL_WIDTH = PET_WIDTH_BASE;
+
+/** 逻辑画布 → 实际窗口的缩放系数。仅悬浮窗模式有意义。 */
+const floatingFit = ref(1);
+
+/**
+ * 逻辑画布的内容高度（未缩放）。
+ *
+ * 由 {@link reportFloatingHeight} 从实际 DOM 量出来回填——气泡是流式
+ * 输出的，高度随时在变，写死常量必然算错。初值取收起态的头像带高度。
+ */
+const floatingContentHeight = ref(AVATAR_BAND_BASE);
+
+/** 画布高度：至少容纳当前形态的固定部分，再多容纳气泡。 */
+const floatingCanvasHeight = computed(() => {
+  const base = petExpanded.value ? AVATAR_BAND_BASE + CHAT_BASE_H : AVATAR_BAND_BASE;
+  return Math.max(base, floatingContentHeight.value);
+});
+
+const syncFloatingFit = () => {
+  if (!isInFloatingWindow()) return;
+  const k = window.innerWidth / FLOATING_LOGICAL_WIDTH;
+  if (k > 0) floatingFit.value = k;
+};
+
+/** 悬浮窗尺寸变化（展开/收起、气泡撑高、原生改尺寸）后重算并回报。 */
+const onFloatingResize = () => {
+  syncFloatingFit();
+  reportFloatingHeight();
+};
+
+/**
+ * 把内容高度上报给原生，让窗口恰好裹住内容。
+ *
+ * 原生只知道宽度（按屏幕比例算），高度得由页面说了算——气泡出现时
+ * 内容会变高，窗口必须跟着长，否则气泡被裁掉、用户以为「消息发不出去」。
+ *
+ * 高度只依赖内容（头像带 + 输入带 + 气泡带），**不依赖窗口高度**，
+ * 因此这里不会和原生形成「改高度 → 重排 → 再改高度」的来回震荡。
+ * `lastReportedHeight` 再去掉重复上报。
+ */
+let lastReportedHeight = -1;
+const reportFloatingHeight = () => {
+  if (!floatingWindowMode.value) return;
+  const k = floatingFit.value;
+  if (!(k > 0)) return;
+  const base = petExpanded.value ? AVATAR_BAND_BASE + CHAT_BASE_H : AVATAR_BAND_BASE;
+  // offsetHeight 是布局尺寸（未乘 transform），正是逻辑画布里的高度
+  const band = decorBand.value?.offsetHeight ?? 0;
+  const logical = base + band;
+  // 先让画布长高再报尺寸：反过来的话，窗口先变大而画布还是旧的，
+  // 中间那一帧气泡会把输入框顶出画布、被 overflow-hidden 裁掉。
+  floatingContentHeight.value = logical;
+  const height = Math.round(logical * k);
+  if (height <= 0 || height === lastReportedHeight) return;
+  lastReportedHeight = height;
+  // 宽度用当前窗口宽度原样回传：原生 set_size 的宽度单位是 dp，
+  // 而 Android WebView 里 1 CSS px == 1 dp，两者同一坐标系。
+  void resizeFloatingPet(window.innerWidth, height).catch(() => {
+    // 失败时清掉缓存，下一轮重试
+    lastReportedHeight = -1;
+  });
+};
 
 // 气泡/通知位置（用户设置）：above = 宠物上方，below = 宠物与输入框之间，auto = 按宠物在屏幕中的位置自动选
 const bubbleSide = computed(() => settingsStore.pet?.bubbleSide ?? "above");
@@ -249,6 +306,10 @@ let bandHeight: number | null = null;
 const bandObserver = new ResizeObserver(() => {
   const band = decorBand.value;
   if (!band) return;
+  // 悬浮窗里装饰带一长高，窗口必须跟着长：气泡被裁掉时用户会以为
+  // 「消息发不出去」（实际发出去了，只是回复看不见）。
+  // 放在 dy 判定之前——首次观测 dy 为 0，但高度可能已经变了。
+  reportFloatingHeight();
   const rect = band.getBoundingClientRect();
   const dy = bandHeight === null ? 0 : rect.height - bandHeight;
   bandHeight = rect.height;
@@ -267,25 +328,25 @@ const bubbleVisible = computed(
 const appStyleVars = computed(() => {
   const scale = settingsStore.pet?.scale || 1.0;
 
-  // ─── 悬浮窗：尺寸由原生按屏幕比例给，页面必须跟着窗口走 ──────────
-  // 收起态窗口 ≈ 1/6 屏宽 × 1.15 倍高，展开态 ≈ 2/5 屏宽 × 2.0 倍高。
-  // 这里不用 PET_WIDTH_BASE（240 是桌面端窗口宽度），而是让内容
-  // 撑满 100% 窗口：WebView 就是窗口本身，`100%` 即窗口尺寸。
+  // ─── 悬浮窗：固定逻辑画布 + 整体等比缩放 ──────────────────────
+  // 窗口尺寸由原生按屏幕比例给，页面则始终按桌面端那套 240dp 宽的布局
+  // 排版，再由 `--pet-fit` 整体缩放铺满窗口（见 #pet-app 的 scoped 样式
+  // 与 reportFloatingHeight）。
+  //
+  // 这里刻意**不乘 settingsStore.pet.scale**：手机上的缩放系数由屏幕
+  // 比例决定（收起 1/6 屏宽、展开 0.6 屏宽），再乘一次用户缩放会双重缩放。
+  // pet.scale 是桌面端「改窗口大小」的概念，悬浮窗里没有对应物。
   if (floatingWindowMode.value) {
     return {
-      "--pet-ui-scale": scale.toString(),
-      "--app-width": "100%",
-      "--app-height": "100%",
-      // 头像尺寸由 GameRolesStage 按视口宽度自行计算（见其 frameSize），
-      // 这里给 100% 只是让容器铺满，不再参与头像实际尺寸的推导。
-      "--avatar-size": "100%",
-      // 悬浮窗里 100vh 就是窗口高度，因此用 vh 表达比例才不会溢出。
-      //
-      // 不能沿用桌面端常量：展开态窗口高约 2/5 屏宽 × 2.0 ≈ 330dp，
-      // 而桌面端的「气泡 200 + 输入 70」加上头像就已经超过这个高度，
-      // 输入框会被挤到可视区外——这也是「缩放没处理好」的一部分。
-      "--chat-h": `min(${Math.round(CHAT_BASE_H * scale)}px, 22vh)`,
-      "--dialog-h": "30vh",
+      "--pet-ui-scale": "1",
+      "--app-width": `${FLOATING_LOGICAL_WIDTH}px`,
+      // 画布高度取「内容需要的高度」，气泡出现时会变高，
+      // 否则气泡会把输入框顶出画布、被 overflow-hidden 裁掉。
+      "--app-height": `${floatingCanvasHeight.value}px`,
+      "--avatar-size": `${AVATAR_BAND_BASE}px`,
+      "--chat-h": `${CHAT_BASE_H}px`,
+      "--dialog-h": `${DIALOG_MAX_BASE}px`,
+      "--pet-fit": floatingFit.value.toString(),
     };
   }
 
@@ -326,7 +387,16 @@ onMounted(async () => {
   // 原生搬移/移出悬浮窗时同步本页形态
   floatingModeUnlisten = onFloatingWindowModeChange((active) => {
     floatingWindowMode.value = active;
-    if (!active) petExpanded.value = false;
+    if (active) return;
+
+    // ─── 回到 Activity：重置形态并切回聊天页 ────────────────────
+    // 这一步不能少。原生把 WebView 装回 Activity 时只改了视图父子关系，
+    // **路由仍停在 /pet**；不主动跳走的话，用户看到的是「桌宠页铺满整屏」
+    // 又因为页面还处在悬浮窗分支而只渲染出一小块 —— 既不是聊天界面、
+    // 也不再是桌宠。
+    petExpanded.value = false;
+    showChatInput.value = false;
+    void router.push("/chat");
   });
 
   // 原生改完窗口尺寸后同步展开态
@@ -342,6 +412,14 @@ onMounted(async () => {
     document.body.style.backgroundColor = "transparent";
     document.documentElement.style.backgroundColor = "transparent";
     document.body.style.overflow = "hidden";
+
+    // 逻辑画布 → 窗口的缩放系数，窗口尺寸变化（展开/收起、气泡撑高）时重算
+    syncFloatingFit();
+    window.addEventListener("resize", onFloatingResize);
+    // 首帧就要把真实内容高度报给原生：原生只知道宽度，收起态/展开态的
+    // 初始高度是按同一套常量估的，气泡在挂载时可能已经有内容。
+    await nextTick();
+    reportFloatingHeight();
     // 注意：这里**不能 return**。IPC 可用意味着角色数据、语音、
     // 对话推进等全部逻辑都能正常工作——这正是搬运方案的价值。
   } else {
@@ -518,6 +596,7 @@ onUnmounted(() => {
   if (floatingModeUnlisten) floatingModeUnlisten();
   if (expandedUnlisten) expandedUnlisten();
   if (autoSideTimer !== undefined) window.clearTimeout(autoSideTimer);
+  window.removeEventListener("resize", onFloatingResize);
   bandObserver.disconnect();
 
   if (hitTestInterval !== undefined) {
@@ -541,19 +620,20 @@ const handleMouseLeave = () => {
 /**
  * 点击头像。
  *
- * 三种形态下含义不同：
- *
- * - **悬浮窗收起态**：展开 —— 显示输入框与关闭按钮
- * - **悬浮窗展开态**：推进对话（与桌面端一致）
+ * - **悬浮窗**：展开 / 收起**来回切换**
  * - **桌面端**：推进对话（原有行为）
  *
- * 展开态点头像不收起，是为了和桌面端保持同一套语义：头像点击 = 推进对话。
- * 收起由展开后那个 ✕ 旁边的收起按钮负责（见模板），避免「想推进对话
- * 结果把窗口缩回去」的误操作。
+ * 手机上不用「展开后另给一个收起按钮」那套：悬浮窗里页面是整体缩放的，
+ * 挂在头像角上的小圆按钮会被 `overflow-hidden` 裁掉一半，实测点不到。
+ * 直接把同一个手势做成开关，既省掉一个可能落在窗口外的热区，
+ * 也省掉一次「按钮在不在窗口内」的布局风险。
+ *
+ * 代价是悬浮窗展开态下不能再点头像推进对话——但那时用户有输入框，
+ * 推进对话由发送消息 / 自动模式承担，比在手机上误触收起要好。
  */
 const handleAvatarClick = () => {
-  if (floatingWindowMode.value && !petExpanded.value) {
-    void expandPet();
+  if (floatingWindowMode.value) {
+    void (petExpanded.value ? collapsePet() : expandPet());
     return;
   }
 
@@ -564,12 +644,15 @@ const handleAvatarClick = () => {
   gameDialogRef.value?.continueDialog(true);
 };
 
-/** 展开悬浮窗：显示输入框与关闭按钮，窗口同步变大到约 2/5 屏宽。 */
+/** 展开悬浮窗：显示输入框，窗口同步变大（原生按屏幕比例算，约 0.6 屏宽）。 */
 const expandPet = async () => {
   try {
     await setFloatingPetExpanded(true);
     petExpanded.value = true;
     showChatInput.value = true;
+    // 展开后内容变高（多了输入带），把新高度报给原生
+    await nextTick();
+    reportFloatingHeight();
   } catch (e) {
     console.error("[PetMode] 展开悬浮窗失败:", e);
   }
@@ -581,6 +664,8 @@ const collapsePet = async () => {
     await setFloatingPetExpanded(false);
     petExpanded.value = false;
     showChatInput.value = false;
+    await nextTick();
+    reportFloatingHeight();
   } catch (e) {
     console.error("[PetMode] 收起悬浮窗失败:", e);
   }
@@ -663,10 +748,21 @@ const handleExitPetMode = async () => {
 </script>
 
 <style scoped>
+/*
+ * 尺寸必须走 var(--app-width/height)，不能写 100vw/100dvh：
+ * ID 选择器的优先级高于 Tailwind 工具类，写成 100vw/100dvh 会把模板上的
+ * `w-(--app-width) h-(--app-height)` 全部压掉，悬浮窗里页面就永远是
+ * 「满视口」而不是「逻辑画布」，整体缩放随之失效。
+ *
+ * --pet-fit 只在悬浮窗模式下有值（= window.innerWidth / 240），
+ * 桌面端缺省 1，缩放是恒等变换。
+ */
 #pet-app {
   position: relative;
-  width: 100vw;
-  height: 100dvh;
+  width: var(--app-width, 100vw);
+  height: var(--app-height, 100dvh);
   overflow: hidden;
+  transform: scale(var(--pet-fit, 1));
+  transform-origin: top left;
 }
 </style>
