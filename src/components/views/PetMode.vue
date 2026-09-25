@@ -44,19 +44,32 @@
           @audio-started="handleAudioStarted"
         />
 
-        <!-- 悬浮窗展开态的关闭按钮。
+        <!-- 悬浮窗展开态的窗口按钮。
              手机没有 hover，GameRolesStage 里那个「悬停才浮现」的返回按钮
-             在触屏上永远出不来，因此这里给一个常驻的关闭按钮。
-             只在展开态显示：收起态窗口很小，按钮会挡住头像。 -->
-        <button
+             在触屏上永远出不来，因此这里给常驻按钮。 -->
+        <div
           v-if="floatingWindowMode && petExpanded"
-          type="button"
-          aria-label="关闭桌宠"
-          class="absolute -top-1 -right-1 z-50 flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-neutral-950/80 text-white/90 shadow-lg backdrop-blur-xl active:scale-95"
-          @click.stop="handleExitPetMode"
+          class="absolute -top-1 -right-1 z-50 flex gap-1"
         >
-          <span class="text-sm leading-none">✕</span>
-        </button>
+          <!-- 收起：回到「仅头像」形态，但留在桌面上 -->
+          <button
+            type="button"
+            aria-label="收起桌宠窗口"
+            class="flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-neutral-950/80 text-white/90 shadow-lg backdrop-blur-xl active:scale-95"
+            @click.stop="collapsePet"
+          >
+            <span class="text-sm leading-none">⌄</span>
+          </button>
+          <!-- 关闭：收回悬浮窗，回到 App 主界面 -->
+          <button
+            type="button"
+            aria-label="关闭桌宠"
+            class="flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-neutral-950/80 text-white/90 shadow-lg backdrop-blur-xl active:scale-95"
+            @click.stop="handleExitPetMode"
+          >
+            <span class="text-sm leading-none">✕</span>
+          </button>
+        </div>
       </div>
     </DragArea>
 
@@ -523,11 +536,15 @@ const handleMouseLeave = () => {
 /**
  * 点击头像。
  *
- * 两种形态下含义不同：
+ * 三种形态下含义不同：
  *
- * - **桌面端**：推进对话（原有的 `continueDialog` 行为）
  * - **悬浮窗收起态**：展开 —— 显示输入框与关闭按钮
- * - **悬浮窗展开态**：仍然推进对话（与桌面端一致，保留原有交互）
+ * - **悬浮窗展开态**：推进对话（与桌面端一致）
+ * - **桌面端**：推进对话（原有行为）
+ *
+ * 展开态点头像不收起，是为了和桌面端保持同一套语义：头像点击 = 推进对话。
+ * 收起由展开后那个 ✕ 旁边的收起按钮负责（见模板），避免「想推进对话
+ * 结果把窗口缩回去」的误操作。
  */
 const handleAvatarClick = () => {
   if (floatingWindowMode.value && !petExpanded.value) {
