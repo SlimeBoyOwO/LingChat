@@ -16,6 +16,7 @@ import android.view.View
 import android.view.WindowManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.appcompat.app.AppCompatActivity
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -355,8 +356,14 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
 
     // ─── 生命周期 ─────────────────────────────────────────────
 
-    override fun onDestroy() {
+    /**
+     * Activity 销毁时必须移除悬浮窗。
+     *
+     * 否则 overlay 会留在屏幕上成为「僵尸窗口」：宿主 Activity 已经没了，
+     * 用户却还能看到那个宠物，且无法通过 App 关闭它。
+     */
+    override fun onDestroy(activity: AppCompatActivity) {
         activity.runOnUiThread { removePetView() }
-        super.onDestroy()
+        super.onDestroy(activity)
     }
 }
