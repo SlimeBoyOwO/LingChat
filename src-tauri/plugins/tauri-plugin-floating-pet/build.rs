@@ -6,6 +6,7 @@ const COMMANDS: &[&str] = &[
     "hide",
     "move_pet",
     "set_touchable",
+    "set_expanded",
     "set_size",
     "is_visible",
     "status",

@@ -9,6 +9,8 @@ package-lock.json
 yarn.lock
 
 /.tauri
+# android/.tauri 由构建时生成（gradle 侧的中间产物），同样不入库
+android/.tauri/
 /target
 Cargo.lock
 node_modules/

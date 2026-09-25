@@ -114,3 +114,21 @@ pub fn set_touchable<R: Runtime>(
     state.set_touchable(touchable);
     call::<R, _, ()>(app, "setTouchable", TouchableArgs { touchable })
 }
+
+/// 展开 / 收起桌宠窗口。
+///
+/// 收起态只显示头像（约 1/6 屏宽），展开态容纳头像 + 输入框
+/// （约 2/5 屏宽）。窗口尺寸由 Kotlin 侧按屏幕比例计算并 `updateViewLayout`。
+///
+/// 手机端没有鼠标悬停，因此由前端「点击头像」触发——这是与桌面端
+/// `mouseenter/mouseleave` 自动展开的主要差异。
+pub fn set_expanded<R: Runtime>(
+    app: &AppHandle<R>,
+    expanded: bool,
+    state: &FloatingPetState,
+) -> Result<()> {
+    if !state.is_visible() {
+        return Err(Error::NotVisible);
+    }
+    call::<R, _, ()>(app, "setExpanded", ExpandedArgs { expanded })
+}

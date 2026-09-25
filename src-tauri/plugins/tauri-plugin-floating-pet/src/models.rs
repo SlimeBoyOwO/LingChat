@@ -7,22 +7,27 @@ use serde::{Deserialize, Serialize};
 /// 所有尺寸/坐标都是 **逻辑像素（dp）**，由 Kotlin 侧乘以 density 后
 /// 再交给 `WindowManager`，避免不同 DPI 设备上桌宠大小不一致。
 ///
+/// 尺寸不再由前端传入：手机端窗口大小按**屏幕宽度的比例**计算
+/// （收起态 1/6 屏宽、展开态 2/5 屏宽），这个比例只有原生侧知道
+/// 真实屏幕宽度，因此由 Kotlin 自己算。前端只传缩放系数。
+///
 /// 需要 `Serialize`：移动端要把参数转发给原生插件（`run_mobile_plugin`）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShowArgs {
-    /// 悬浮窗内加载的 URL（通常是 LingChat 自身的 /pet 路由）。
-    pub url: String,
-    /// 悬浮窗宽度（dp）。
-    pub width: f64,
-    /// 悬浮窗高度（dp）。
-    pub height: f64,
+    /// 桌宠缩放系数（来自设置），原生侧在此基础上再乘屏幕比例。
+    #[serde(default = "default_scale")]
+    pub scale: f64,
     /// 初始 X 坐标（dp），屏幕左上角为原点。
     #[serde(default)]
     pub x: f64,
     /// 初始 Y 坐标（dp），屏幕左上角为原点。
     #[serde(default)]
     pub y: f64,
+}
+
+fn default_scale() -> f64 {
+    1.0
 }
 
 /// `move_pet` 命令的参数。
@@ -46,6 +51,17 @@ pub struct SizeArgs {
 #[serde(rename_all = "camelCase")]
 pub struct TouchableArgs {
     pub touchable: bool,
+}
+
+/// `set_expanded` 命令的参数。
+///
+/// 手机端没有鼠标悬停，展开/收起由前端「点头像」触发，
+/// 对应桌面端 `mouseenter/mouseleave` 的行为。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExpandedArgs {
+    /// true = 展开（头像 + 输入框）；false = 收起（仅头像）。
+    pub expanded: bool,
 }
 
 /// 权限 / 可见性查询结果。

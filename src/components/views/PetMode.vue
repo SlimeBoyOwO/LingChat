@@ -7,13 +7,18 @@
     class="relative flex h-(--app-height) w-(--app-width) flex-col items-center justify-start overflow-hidden bg-transparent transition-none select-none"
   >
     <!-- 装饰带（气泡/通知）：高度完全随内容（无预留）→ 顶部永远没有透明空间：
-         默认在宠物上方（气泡吸顶，宠物被往下让位）；设置=下方时夹在宠物与输入框之间（气泡贴宠物下沿） -->
+         默认在宠物上方（气泡吸顶，宠物被往下让位）；设置=下方时夹在宠物与输入框之间（气泡贴宠物下沿）
+
+         悬浮窗收起态不渲染：窗口只有 1/6 屏宽，气泡没有可读空间。
+         气泡在手机上是独立悬浮的气泡（见 DialogueBox 的悬浮窗适配）。 -->
     <div
+      v-show="!(floatingWindowMode && !petExpanded)"
       ref="decorBand"
       class="flex w-full shrink-0 flex-col justify-end bg-transparent transition-none"
       :style="{ order: bubbleBelow ? 1 : 0 }"
     >
-      <PetNotification />
+      <!-- 悬浮窗里不显示通知条：窗口太小，通知会挤占头像 -->
+      <PetNotification v-if="!floatingWindowMode" />
       <div class="flex items-end justify-center" :class="{ 'mb-1': bubbleVisible }">
         <DialogueBox ref="gameDialogRef" @player-continued="manualTriggerContinue" />
       </div>
@@ -23,8 +28,12 @@
     <DragArea :isDragging="isDragging">
       <div
         ref="avatarContainer"
-        class="flex shrink-0 items-center justify-center bg-transparent transition-all duration-100"
-        :style="{ width: 'var(--avatar-size)', height: 'var(--avatar-size)' }"
+        class="relative flex shrink-0 items-center justify-center bg-transparent transition-all duration-100"
+        :class="{ 'flex-1': floatingWindowMode && !petExpanded }"
+        :style="{
+          width: floatingWindowMode && !petExpanded ? '100%' : 'var(--avatar-size)',
+          height: floatingWindowMode && !petExpanded ? 'auto' : 'var(--avatar-size)',
+        }"
       >
         <GameRolesStage
           @avatar-click="handleAvatarClick"
@@ -34,16 +43,42 @@
           @audio-ended="handleAudioFinished"
           @audio-started="handleAudioStarted"
         />
+
+        <!-- 悬浮窗展开态的关闭按钮。
+             手机没有 hover，GameRolesStage 里那个「悬停才浮现」的返回按钮
+             在触屏上永远出不来，因此这里给一个常驻的关闭按钮。
+             只在展开态显示：收起态窗口很小，按钮会挡住头像。 -->
+        <button
+          v-if="floatingWindowMode && petExpanded"
+          type="button"
+          aria-label="关闭桌宠"
+          class="absolute -top-1 -right-1 z-50 flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-neutral-950/80 text-white/90 shadow-lg backdrop-blur-xl active:scale-95"
+          @click.stop="handleExitPetMode"
+        >
+          <span class="text-sm leading-none">✕</span>
+        </button>
       </div>
     </DragArea>
 
-    <!-- ChatInput 区域（始终贴住上方元素：默认在宠物正下方，设置=下方时在气泡带之下） -->
+    <!-- ChatInput 区域（始终贴住上方元素：默认在宠物正下方，设置=下方时在气泡带之下）
+
+         悬浮窗收起态不渲染：此时只有头像，输入框在展开后才出现。 -->
     <div
+      v-show="!(floatingWindowMode && !petExpanded)"
       ref="chatContainer"
       class="flex w-full shrink-0 items-start justify-center bg-transparent transition-none"
       :style="{ height: 'var(--chat-h)', order: bubbleBelow ? 2 : 0 }"
     >
       <ChatInput ref="ChatInputRef" :visible="showChatInput" />
+    </div>
+
+    <!-- 收起态提示：告诉用户怎么展开 / 怎么退出。
+         只在悬浮窗收起时出现，避免占用展开后的空间。 -->
+    <div
+      v-if="floatingWindowMode && !petExpanded"
+      class="pointer-events-none mt-1 text-center text-[10px] leading-tight text-white/70 drop-shadow"
+    >
+      点头像展开<br />双击收回
     </div>
 
     <!-- 余量吸收带：只在“下方”模式接管气泡带腾出的空间，保证窗口总高恒定（不上报 solid 区域） -->
@@ -63,7 +98,13 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { useFileDrop } from "../pet/useFileDrop";
 import { useAutoAdvance } from "@/composables/chat/useAutoAdvance";
-import { closeFloatingWindowFromInside } from "@/api/services/floating-pet";
+import {
+  hideFloatingPet,
+  isInFloatingWindow,
+  onFloatingWindowModeChange,
+  onPetExpandedChange,
+  setFloatingPetExpanded,
+} from "@/api/services/floating-pet";
 
 import ChatInput from "../pet/ChatInput.vue";
 import DialogueBox from "../pet/DialogueBox.vue";
@@ -82,24 +123,27 @@ const showChatInput = ref(false);
 const { isDragging, hasFile } = useFileDrop();
 
 /**
- * 是否运行在 Android 悬浮窗的 WebView 里。
+ * 是否运行在 Android 悬浮窗里。
  *
- * 悬浮窗是**独立的 WebView 实例**，不在 Tauri 的 IPC 上下文里：
- * `getCurrentWindow()` 会直接抛错，`invoke()` 也不可用。因此本页在
- * 该模式下必须跳过所有窗口/后端相关逻辑，只保留纯前端的渲染与交互。
+ * 悬浮窗里放的是**主 WebView 本身**（原生搬运视图，不是新建实例），
+ * 所以 `getCurrentWindow()` 和 `invoke()` 在这里都**是正常的**——
+ * 早期那套「用 try/catch getCurrentWindow 探测」的判据已经失效。
  *
- * 探测方式用 try/catch —— 这正是最可靠的判据（能拿到窗口 = 在主 WebView）。
+ * 现在由原生在搬移完成后派发 `pet-detached` 事件告知，见
+ * {@link onFloatingWindowModeChange}。
  */
-const floatingWindowMode = ref(false);
+const floatingWindowMode = ref(isInFloatingWindow());
 
-function detectFloatingWindowMode(): boolean {
-  try {
-    getCurrentWindow();
-    return false;
-  } catch {
-    return true;
-  }
-}
+/**
+ * 悬浮窗的收起/展开态。
+ *
+ * 收起 = 只显示头像（窗口约 1/6 屏宽）；展开 = 头像 + 输入框（约 2/5 屏宽）。
+ *
+ * 手机上没有鼠标悬停，因此展开由「点击头像」触发，这与桌面端的
+ * `mouseenter/mouseleave` 是本质差异。窗口尺寸同步由原生改，
+ * 页面通过 `pet-expanded-changed` 事件得知结果。
+ */
+const petExpanded = ref(false);
 
 const avatarContainer = ref<HTMLElement | null>(null);
 const chatContainer = ref<HTMLElement | null>(null);
@@ -209,6 +253,24 @@ const bubbleVisible = computed(
 
 const appStyleVars = computed(() => {
   const scale = settingsStore.pet?.scale || 1.0;
+
+  // ─── 悬浮窗：尺寸由原生按屏幕比例给，页面必须跟着窗口走 ──────────
+  // 收起态窗口 ≈ 1/6 屏宽 × 1.15 倍高，展开态 ≈ 2/5 屏宽 × 2.0 倍高。
+  // 这里不用 PET_WIDTH_BASE（240 是桌面端窗口宽度），而是让内容
+  // 撑满 100% 窗口：WebView 就是窗口本身，`100%` 即窗口尺寸。
+  if (floatingWindowMode.value) {
+    return {
+      "--pet-ui-scale": scale.toString(),
+      "--app-width": "100%",
+      "--app-height": "100%",
+      // 收起态：头像占满窗口宽度，高度略小于窗口（留出下方提示文字空间）
+      // 展开态：头像按窗口宽度算，下方依次是气泡带与输入框
+      "--avatar-size": "100%",
+      "--chat-h": `${Math.round(CHAT_BASE_H * scale)}px`,
+      "--dialog-h": `${Math.round(DIALOG_MAX_BASE * scale)}px`,
+    };
+  }
+
   return {
     "--pet-ui-scale": scale.toString(),
     "--app-width": `${Math.round(PET_WIDTH_BASE * scale)}px`,
@@ -237,18 +299,36 @@ let dialogHistoryUnlisten: (() => void) | null = null;
 let cursorUnlisten: (() => void) | null = null;
 let bubbleSideUnlisten: (() => void) | null = null;
 let movedUnlisten: (() => void) | null = null;
+let floatingModeUnlisten: (() => void) | null = null;
+let expandedUnlisten: (() => void) | null = null;
 
 onMounted(async () => {
-  floatingWindowMode.value = detectFloatingWindowMode();
+  floatingWindowMode.value = isInFloatingWindow();
 
-  // ─── 悬浮窗模式：独立 WebView，无 Tauri IPC ────────────────
-  // 只做纯前端渲染（角色/气泡/台词），跳过全部窗口与后端调用。
-  // 主界面在 show 时已把窗口尺寸定好，这里不需要再调整。
+  // 原生搬移/移出悬浮窗时同步本页形态
+  floatingModeUnlisten = onFloatingWindowModeChange((active) => {
+    floatingWindowMode.value = active;
+    if (!active) petExpanded.value = false;
+  });
+
+  // 原生改完窗口尺寸后同步展开态
+  expandedUnlisten = onPetExpandedChange((expanded) => {
+    petExpanded.value = expanded;
+  });
+
   if (floatingWindowMode.value) {
+    // ─── 悬浮窗模式 ────────────────────────────────────────────
+    // 与早期「独立 WebView」版本的关键区别：这里**就是主 WebView**，
+    // Tauri IPC 完全可用，因此不需要跳过后端调用、也不需要数据镜像。
+    // 只做两件悬浮窗专属的事：透明背景，以及跳过桌面端的窗口操作。
     document.body.style.backgroundColor = "transparent";
     document.documentElement.style.backgroundColor = "transparent";
     document.body.style.overflow = "hidden";
-    return;
+    // 注意：这里**不能 return**。IPC 可用意味着角色数据、语音、
+    // 对话推进等全部逻辑都能正常工作——这正是搬运方案的价值。
+  } else {
+    // 桌面端：调整原生窗口为桌宠尺寸
+    await applyWindowLayout().catch(() => {});
   }
 
   const appWindow = getCurrentWindow();
@@ -321,6 +401,20 @@ onMounted(async () => {
   // 设置透明背景的 body 属性样式（额外防护）
   document.body.style.backgroundColor = "transparent";
   document.documentElement.style.backgroundColor = "transparent";
+
+  // ─── 悬浮窗模式到此为止 ─────────────────────────────────────
+  // 上面的监听器都要保留（它们只更新 store，与窗口无关），
+  // 但下面两步是**桌面端窗口专属**的，在悬浮窗里必须跳过：
+  //
+  // - applyWindowLayout → set_pet_mode 会把**整个 Activity 窗口**缩成桌宠尺寸，
+  //   而悬浮窗尺寸已由原生按屏幕比例定好，再调会互相打架
+  // - hitTestInterval → 桌面端靠它做逐像素点击穿透；Android 的穿透是窗口级开关，
+  //   这套 solid region 上报在手机上没有任何作用，只会 10Hz 空转唤醒后端
+  if (floatingWindowMode.value) {
+    // 悬浮窗里单击头像即展开，不依赖光标位置（手机没有 hover）
+    showChatInput.value = false;
+    return;
+  }
 
   // 1. 初始化窗口为桌宠尺寸
   await applyWindowLayout();
@@ -403,6 +497,8 @@ onUnmounted(() => {
   if (cursorUnlisten) cursorUnlisten();
   if (bubbleSideUnlisten) bubbleSideUnlisten();
   if (movedUnlisten) movedUnlisten();
+  if (floatingModeUnlisten) floatingModeUnlisten();
+  if (expandedUnlisten) expandedUnlisten();
   if (autoSideTimer !== undefined) window.clearTimeout(autoSideTimer);
   bandObserver.disconnect();
 
@@ -424,12 +520,48 @@ const handleMouseLeave = () => {
   setShowChatInput(false);
 };
 
+/**
+ * 点击头像。
+ *
+ * 两种形态下含义不同：
+ *
+ * - **桌面端**：推进对话（原有的 `continueDialog` 行为）
+ * - **悬浮窗收起态**：展开 —— 显示输入框与关闭按钮
+ * - **悬浮窗展开态**：仍然推进对话（与桌面端一致，保留原有交互）
+ */
 const handleAvatarClick = () => {
+  if (floatingWindowMode.value && !petExpanded.value) {
+    void expandPet();
+    return;
+  }
+
   // 走 continueDialog 而非直接 eventQueue.continue()：后者绕过了「打字中先补全文本
   // 再推进」的守卫，也跳过 player-continued/dialog-proceed 派发——打字中点头像会
   // 把正在打的字丢掉。continueDialog 在真的推进时会派发 player-continued，
   // 由 @player-continued 绑定的 manualTriggerContinue 取消待触发的自动推进定时器。
   gameDialogRef.value?.continueDialog(true);
+};
+
+/** 展开悬浮窗：显示输入框与关闭按钮，窗口同步变大到约 2/5 屏宽。 */
+const expandPet = async () => {
+  try {
+    await setFloatingPetExpanded(true);
+    petExpanded.value = true;
+    showChatInput.value = true;
+  } catch (e) {
+    console.error("[PetMode] 展开悬浮窗失败:", e);
+  }
+};
+
+/** 收起悬浮窗：隐藏输入框，回到仅头像形态。 */
+const collapsePet = async () => {
+  try {
+    await setFloatingPetExpanded(false);
+    petExpanded.value = false;
+    showChatInput.value = false;
+  } catch (e) {
+    console.error("[PetMode] 收起悬浮窗失败:", e);
+  }
 };
 
 const handleOpenSettings = async () => {
@@ -477,10 +609,14 @@ const {
 });
 
 const handleExitPetMode = async () => {
-  // 悬浮窗模式：没有 Tauri IPC，只能走注入的原生桥关闭自己
+  // 悬浮窗模式：IPC 完全可用（搬的就是主 WebView），直接调命令把视图搬回
+  // Activity，并切回聊天页——与桌面端 set_pet_mode(false) + push("/chat") 对齐。
   if (floatingWindowMode.value) {
-    if (!closeFloatingWindowFromInside()) {
-      console.warn("[PetMode] 悬浮窗桥不可用，无法关闭");
+    try {
+      await hideFloatingPet();
+      await router.push("/chat");
+    } catch (e) {
+      console.error("[PetMode] 退出悬浮窗失败:", e);
     }
     return;
   }

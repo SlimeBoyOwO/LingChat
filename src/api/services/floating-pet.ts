@@ -8,28 +8,31 @@
  * | 平台 | 桌宠实现 |
  * |------|----------|
  * | 桌面端 | `api::pet` 的原生窗口（`set_pet_mode`），透明 + 置顶 + 点击穿透 |
- * | Android | **本模块**：`SYSTEM_ALERT_WINDOW` 系统悬浮窗，可浮在其他 App 之上 |
+ * | Android | **本模块**：`SYSTEM_ALERT_WINDOW` 悬浮窗 + **搬运主 WebView** |
  * | iOS | 不支持（系统不允许跨 App 覆盖窗口） |
  *
  * 调用方应先用 {@link getFloatingPetStatus} 探测，再决定走哪条路径。
+ *
+ * ## 关键：搬运而非新建
+ *
+ * 桌面端的桌宠**不是新窗口**——它把 `main` 窗口改属性（去边框、缩尺寸、
+ * 置顶），于是同一个 WebView 从「聊天界面」变成「桌宠」，IPC 与 store
+ * 全部原样保留。
+ *
+ * Android 侧现在采用同样的思路：原生把**主 WebView 本身**从 Activity
+ * 视图树搬进悬浮窗，同时给 Activity 塞一个占位页避免白屏。
+ * 因此：
+ *
+ * - 悬浮窗里的页面**就是主界面**，`invoke()` 可用、store 数据完整
+ * - 不需要任何 JS 桥或数据镜像
+ * - 页面通过 {@link isInFloatingWindow} 感知自己已被搬入悬浮窗
+ *
+ * 进入顺序**必须先切页再搬移**，否则用户会看到主界面闪一下才变成桌宠。
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import {
-  AVATAR_BAND_BASE,
-  CHAT_BASE_H,
-  DIALOG_MAX_BASE,
-  PET_WIDTH_BASE,
-} from "@/components/pet/constants";
 
 const PLUGIN = "plugin:floating-pet";
-
-/** 悬浮窗默认加载的页面地址（App 自身的 /pet 路由）。 */
-const PET_ROUTE = "/pet";
-
-/** 尺寸限制（dp），与 Kotlin 侧 MIN_SIZE_DP / MAX_SIZE_DP 保持一致。 */
-const MIN_SIZE_DP = 80;
-const MAX_SIZE_DP = 720;
 
 /** 平台能力与授权状态的聚合结果。 */
 export interface FloatingPetStatus {
@@ -37,7 +40,7 @@ export interface FloatingPetStatus {
   supported: boolean;
   /** 是否已获得「显示在其他应用上层」权限。 */
   granted: boolean;
-  /** 悬浮窗当前是否可见。 */
+  /** 悬浮窗当前是否可见（WebView 已被搬入悬浮窗）。 */
   visible: boolean;
 }
 
@@ -45,29 +48,67 @@ export interface FloatingPetStatus {
 export type EnterResult = "shown" | "need-permission" | "unsupported";
 
 /**
- * 构造悬浮窗内的页面 URL。
+ * 页面是否已被搬入悬浮窗。
  *
- * Android WebView 在 Tauri 中通过 `http://tauri.localhost` 访问内嵌前端资源，
- * 与桌面端一致，因此可以直接复用 `/pet` 路由与全部现有组件。
+ * 由原生在搬移完成后通过 `evaluateJavascript` 设置（见 Kotlin 侧
+ * `notifyWeb("pet-detached", ...)`）。用全局标记而非 Tauri IPC 查询，
+ * 是为了让页面在**搬移发生的那一帧**就能切换布局，不必等一次异步往返。
  */
-function buildPetUrl(): string {
-  return `${window.location.origin}${PET_ROUTE}`;
+let detachedIntoOverlay = false;
+
+/** 标记页面已进入/离开悬浮窗形态。由原生事件驱动。 */
+export function markFloatingWindowMode(active: boolean): void {
+  detachedIntoOverlay = active;
 }
 
 /**
- * 计算桌宠悬浮窗尺寸（dp）。
+ * 当前页面是否运行在悬浮窗里。
  *
- * 复用 `components/pet/constants.ts` 的基准值——它们同时也是桌面端窗口
- * 尺寸的计算依据（见 `src-tauri/src/api/pet.rs`），保证两端视觉一致。
+ * 注意这里**不能**再用 `getCurrentWindow()` 抛错来判断：现在悬浮窗里
+ * 就是主 WebView，IPC 完全可用，那个判据已经失效。
  */
-export function calcFloatingPetSize(scale = 1) {
-  const s = Math.max(0.5, Math.min(scale, 3));
-  const width = Math.round(PET_WIDTH_BASE * s);
-  const height = Math.round((AVATAR_BAND_BASE + CHAT_BASE_H + DIALOG_MAX_BASE) * s);
-  return {
-    width: Math.max(MIN_SIZE_DP, Math.min(width, MAX_SIZE_DP)),
-    height: Math.max(MIN_SIZE_DP, Math.min(height, MAX_SIZE_DP)),
+export function isInFloatingWindow(): boolean {
+  return detachedIntoOverlay;
+}
+
+/**
+ * 监听原生发来的「已搬入/已移出悬浮窗」事件。
+ *
+ * 原生通过 `window.dispatchEvent(new CustomEvent(...))` 派发，
+ * 因此这里用标准 DOM 事件监听，不占用 Tauri IPC。
+ *
+ * @returns 取消监听的函数。
+ */
+export function onFloatingWindowModeChange(handler: (active: boolean) => void): () => void {
+  const onDetached = () => {
+    markFloatingWindowMode(true);
+    handler(true);
   };
+  const onAttached = () => {
+    markFloatingWindowMode(false);
+    handler(false);
+  };
+  window.addEventListener("pet-detached", onDetached);
+  window.addEventListener("pet-attached", onAttached);
+  return () => {
+    window.removeEventListener("pet-detached", onDetached);
+    window.removeEventListener("pet-attached", onAttached);
+  };
+}
+
+/**
+ * 监听原生发来的「展开状态变更」事件。
+ *
+ * 展开/收起时窗口尺寸由原生改变（头像态 ≈ 1/6 屏宽，展开态 ≈ 2/5 屏宽），
+ * 页面需要同步切换布局。
+ */
+export function onPetExpandedChange(handler: (expanded: boolean) => void): () => void {
+  const listener = (e: Event) => {
+    const detail = (e as CustomEvent<{ expanded: boolean }>).detail;
+    handler(!!detail?.expanded);
+  };
+  window.addEventListener("pet-expanded-changed", listener);
+  return () => window.removeEventListener("pet-expanded-changed", listener);
 }
 
 /** 查询平台能力与授权状态。任一平台均可安全调用。 */
@@ -86,26 +127,34 @@ export async function isFloatingPetSupported(): Promise<boolean> {
 }
 
 /**
- * 显示桌宠悬浮窗。
+ * 把主 WebView 搬进悬浮窗。
  *
- * @throws 未授权时抛出 `PERMISSION_DENIED`。请优先使用 {@link enterFloatingPet}，
- *         它会自动处理授权引导。
+ * 窗口尺寸**不由前端指定**：手机端按屏幕宽度的比例在原生侧计算
+ * （收起态 1/6 屏宽、展开态 2/5 屏宽），只有原生知道真实屏幕宽度。
+ *
+ * @throws 未授权时抛出 `PERMISSION_DENIED`。请优先使用 {@link enterFloatingPet}。
  */
 export async function showFloatingPet(options?: {
   scale?: number;
   x?: number;
   y?: number;
 }): Promise<void> {
-  const { width, height } = calcFloatingPetSize(options?.scale ?? 1);
-  await invoke(`${PLUGIN}|show`, {
-    args: {
-      url: buildPetUrl(),
-      width,
-      height,
-      x: options?.x ?? 0,
-      y: options?.y ?? 0,
-    },
-  });
+  // 先把标记打上再 await：原生 addView 完成时页面必须已经是悬浮窗布局，
+  // 否则会看到「主界面布局被塞进小窗」的闪动。
+  markFloatingWindowMode(true);
+  try {
+    await invoke(`${PLUGIN}|show`, {
+      args: {
+        scale: options?.scale ?? 1,
+        x: options?.x ?? 0,
+        y: options?.y ?? 0,
+      },
+    });
+  } catch (e) {
+    // 搬移失败要回滚标记，否则页面会停在悬浮窗布局而实际仍在 Activity 里
+    markFloatingWindowMode(false);
+    throw e;
+  }
 }
 
 /** 悬浮窗当前是否可见。 */
@@ -114,49 +163,14 @@ export async function isVisible(): Promise<boolean> {
 }
 
 /**
- * 悬浮窗 WebView 内注入的原生桥（见 Kotlin 侧 `PetBridge`）。
+ * 收起桌宠：把 WebView 搬回 Activity，恢复主界面。
  *
- * 悬浮窗里没有 Tauri IPC，这是页面**唯一**能与原生通信的通道。
- * 目前只提供 `close()`：让悬浮窗能关闭自己，避免弹出后收不回去。
+ * 与桌面端 `set_pet_mode(enable=false)` 对应——那边恢复窗口属性，
+ * 这边恢复视图父子关系。
  */
-interface PetBridge {
-  close(): void;
-}
-
-declare global {
-  interface Window {
-    LingChatPet?: PetBridge;
-  }
-}
-
-/** 当前页面是否运行在悬浮窗内（即存在原生桥）。 */
-export function isInFloatingWindow(): boolean {
-  return typeof window !== "undefined" && !!window.LingChatPet;
-}
-
-/**
- * 关闭当前悬浮窗。
- *
- * 与 {@link hideFloatingPet} 的区别：后者由**主界面**调用（走 Tauri IPC），
- * 本函数由**悬浮窗内部**调用（走原生注入桥）。悬浮窗里没有 IPC，必须用它。
- *
- * @returns 是否成功发起关闭。
- */
-export function closeFloatingWindowFromInside(): boolean {
-  const bridge = typeof window !== "undefined" ? window.LingChatPet : undefined;
-  if (!bridge) return false;
-  try {
-    bridge.close();
-    return true;
-  } catch (e) {
-    console.error("[floating-pet] 关闭悬浮窗失败:", e);
-    return false;
-  }
-}
-
-/** 隐藏桌宠悬浮窗（由主界面调用）。未显示时安全返回。 */
 export async function hideFloatingPet(): Promise<void> {
   await invoke(`${PLUGIN}|hide`);
+  markFloatingWindowMode(false);
 }
 
 /** 移动悬浮窗到指定坐标（dp）。 */
@@ -164,10 +178,22 @@ export async function moveFloatingPet(x: number, y: number): Promise<void> {
   await invoke(`${PLUGIN}|move_pet`, { args: { x, y } });
 }
 
-/** 更新悬浮窗尺寸（跟随 pet.scale 设置）。 */
-export async function resizeFloatingPet(scale: number): Promise<void> {
-  const { width, height } = calcFloatingPetSize(scale);
+/** 更新悬浮窗尺寸（dp）。一般不需要——展开/收起请用 {@link setFloatingPetExpanded}。 */
+export async function resizeFloatingPet(width: number, height: number): Promise<void> {
   await invoke(`${PLUGIN}|set_size`, { args: { width, height } });
+}
+
+/**
+ * 展开 / 收起桌宠。
+ *
+ * 收起态只显示头像（约 1/6 屏宽），展开后容纳头像 + 输入框（约 2/5 屏宽）。
+ * 原生会 `updateViewLayout` 改窗口尺寸并派发 `pet-expanded-changed` 事件。
+ *
+ * 手机端没有鼠标悬停，因此由「点击头像」触发——对应桌面端的
+ * `mouseenter/mouseleave` 自动展开。
+ */
+export async function setFloatingPetExpanded(expanded: boolean): Promise<void> {
+  await invoke(`${PLUGIN}|set_expanded`, { expanded });
 }
 
 /**
@@ -177,7 +203,7 @@ export async function resizeFloatingPet(scale: number): Promise<void> {
  * - `true`：悬浮窗可交互（点击角色、输入消息）
  *
  * 注意这是窗口级开关，无法按区域精细控制，因此悬浮窗尺寸已按宠物本身
- * 收窄（见 {@link calcFloatingPetSize}），不做大块透明留白。
+ * 收窄（头像态仅 1/6 屏宽），不做大块透明留白。
  */
 export async function setFloatingPetTouchable(touchable: boolean): Promise<void> {
   await invoke(`${PLUGIN}|set_touchable`, { touchable });
@@ -194,10 +220,14 @@ export async function requestFloatingPetPermission(): Promise<void> {
 }
 
 /**
- * 进入悬浮桌宠的完整流程：探测能力 → 检查授权 → 必要时引导授权 → 显示。
+ * 进入悬浮桌宠的完整流程：探测能力 → 检查授权 → 必要时引导授权 → 搬运 WebView。
+ *
+ * **调用前必须已经把页面切到 `/pet` 路由**（`router.push("/pet")`），
+ * 否则搬移的瞬间用户会看到主界面闪一下。切页与搬移的顺序由调用方保证，
+ * 见 `MainChat.vue` 的 `goToPetMode`。
  *
  * @returns
- *  - `'shown'`：已成功显示
+ *  - `'shown'`：WebView 已搬入悬浮窗
  *  - `'need-permission'`：已跳转授权页，用户返回后应重新调用本函数
  *  - `'unsupported'`：当前平台不支持（桌面端请走 `set_pet_mode` 路径）
  */

@@ -66,7 +66,13 @@ import LoadingTransition from "./LoadingTransition.vue";
 import FullAccessWarning from "@/components/tools/FullAccessWarning.vue";
 import ImageSourcePicker from "@/components/ui/ImageSourcePicker.vue";
 import { isMobile, isWindows } from "@/utils/platform";
-import { enterFloatingPet, hideFloatingPet, isVisible } from "@/api/services/floating-pet";
+import {
+  getFloatingPetStatus,
+  hideFloatingPet,
+  isVisible,
+  requestFloatingPetPermission,
+  showFloatingPet,
+} from "@/api/services/floating-pet";
 import { useAutoAdvance } from "@/composables/chat/useAutoAdvance";
 import GameExtraUI from "../game/standard/GameExtraUI.vue";
 
@@ -111,20 +117,44 @@ getEnvConfigByKey("display.disable_splash_animation")
  * 进入/退出桌宠模式，按平台分流：
  *
  * - 桌面端：跳 `/pet` 路由，由 `set_pet_mode` 把窗口缩成透明置顶小窗
- * - Android：弹出系统级悬浮窗（可浮在其他 App 之上），本页面保持不动
+ * - Android：**先切 `/pet` 路由，再把主 WebView 搬进系统悬浮窗**
+ *
+ * ## 为什么必须先切页再搬移
+ *
+ * 悬浮窗里放的就是**主 WebView 本身**（不是新建实例），因此搬移是
+ * 「瞬间完成、不重载页面」的。如果先搬移再切页，用户会看到主界面
+ * 闪一下才变成桌宠；先切页则切页在屏幕内完成、搬移对用户无感。
  *
  * 悬浮窗路径的授权是「特殊权限」，无法运行时弹窗申请 —— 首次点击会跳系统
  * 设置页，用户授权返回后需再点一次。
  */
 const floatingPetActive = ref(false);
 
-/** 同步悬浮窗状态。从系统设置页返回、或从悬浮窗切回 App 时都要刷新。 */
+/** 同步悬浮窗状态。从系统设置页返回时刷新（按钮高亮与否）。 */
 const syncFloatingPetState = async () => {
   if (!isMobile()) return;
   try {
     floatingPetActive.value = await isVisible();
   } catch {
     floatingPetActive.value = false;
+  }
+};
+
+/**
+ * 退出悬浮桌宠：把 WebView 搬回 Activity。
+ *
+ * 页面此时停在 `/pet`，搬回后要再切回 `/chat`，行为与桌面端一致
+ * （桌面端 `set_pet_mode(false)` 之后同样 `router.push("/chat")`）。
+ */
+const leavePetMode = async () => {
+  try {
+    await hideFloatingPet();
+    floatingPetActive.value = false;
+    if (router.currentRoute.value.path === "/pet") {
+      await router.push("/chat");
+    }
+  } catch (e) {
+    console.error("[MainChat] 收回悬浮桌宠失败:", e);
   }
 };
 
@@ -136,20 +166,25 @@ const goToPetMode = async () => {
 
   // 已开启则关闭：给用户一个明确的退出路径，避免悬浮窗无法收回
   if (floatingPetActive.value) {
-    try {
-      await hideFloatingPet();
-      floatingPetActive.value = false;
-      uiStore.showInfo({ title: "桌宠已收回", message: "悬浮窗已关闭。" });
-    } catch (e) {
-      console.error("[MainChat] 关闭悬浮桌宠失败:", e);
-    }
+    await leavePetMode();
+    uiStore.showInfo({ title: "桌宠已收回", message: "已切回主界面。" });
     return;
   }
 
   try {
-    const result = await enterFloatingPet({ scale: settingsStore.pet?.scale ?? 1 });
+    // 先探测再切页：没授权/不支持时不该让用户白跳一次 /pet 路由。
+    const status = await getFloatingPetStatus();
 
-    if (result === "need-permission") {
+    if (!status.supported) {
+      uiStore.showWarning({
+        title: "当前设备不支持",
+        message: "这台设备的系统不允许创建悬浮窗，桌宠暂时无法使用。",
+      });
+      return;
+    }
+
+    if (!status.granted) {
+      await requestFloatingPetPermission();
       uiStore.showInfo({
         title: "需要悬浮窗权限",
         message: "请在系统设置里允许 LingChat「显示在其他应用上层」，然后回来再点一次桌宠。",
@@ -158,17 +193,17 @@ const goToPetMode = async () => {
       return;
     }
 
-    if (result === "unsupported") {
-      uiStore.showWarning({
-        title: "当前设备不支持",
-        message: "这台设备的系统不允许创建悬浮窗，桌宠暂时无法使用。",
-      });
-      return;
-    }
-
+    // ① 先切页 —— 此时还在屏幕内，用户看到 /pet 渲染完成
+    await router.push("/pet");
+    // ② 再搬移 —— 原生把 WebView 摘进悬浮窗，Activity 换成占位页
+    await showFloatingPet({ scale: settingsStore.pet?.scale ?? 1 });
     floatingPetActive.value = true;
   } catch (e) {
     console.error("[MainChat] 启动悬浮桌宠失败:", e);
+    // 搬移失败时把页面退回来，避免用户停在 /pet 却不在悬浮窗里
+    if (router.currentRoute.value.path === "/pet") {
+      await router.push("/chat").catch(() => {});
+    }
     uiStore.showError({
       title: "桌宠启动失败",
       message: "悬浮窗没能创建成功，请检查是否已授予悬浮窗权限。",

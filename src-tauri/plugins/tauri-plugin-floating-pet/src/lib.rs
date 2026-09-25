@@ -158,6 +158,19 @@ fn is_visible(state: tauri::State<'_, FloatingPetState>) -> bool {
     state.is_visible()
 }
 
+/// 展开 / 收起桌宠窗口。
+///
+/// 手机端没有鼠标悬停，展开动作由前端「点击头像」触发，
+/// 对应桌面端 `mouseenter/mouseleave` 的自动展开。
+#[tauri::command]
+fn set_expanded<R: Runtime>(
+    app: AppHandle<R>,
+    expanded: bool,
+    state: tauri::State<'_, FloatingPetState>,
+) -> Result<()> {
+    imp::set_expanded(&app, expanded, &state)
+}
+
 /// 查询平台能力与授权状态的聚合接口，前端一次调用即可决策。
 #[tauri::command]
 fn status<R: Runtime>(app: AppHandle<R>, state: tauri::State<'_, FloatingPetState>) -> PetStatus {
@@ -184,6 +197,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             move_pet,
             set_size,
             set_touchable,
+            set_expanded,
             is_visible,
             status,
         ])

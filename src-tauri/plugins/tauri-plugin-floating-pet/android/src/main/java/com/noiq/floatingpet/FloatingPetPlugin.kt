@@ -12,10 +12,11 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
@@ -27,26 +28,55 @@ import app.tauri.plugin.Plugin
 private const val TAG = "FloatingPet"
 
 /**
- * 悬浮窗内容 URL。
+ * 头像态宽度 = 屏幕宽度 × 该比例（用户指定「约 1/6 屏宽」）。
+ * 展开态宽度 = 屏幕宽度 × 该比例（用户指定「约 2/5 屏宽」）。
  *
- * 走 Tauri 的 asset 协议，指向 App 自身的 /pet 路由。
- * 注意：悬浮窗里是**独立的 WebView 实例**，不在 Tauri 的 IPC 上下文里，
- * 因此它只能渲染页面 / 播放语音，无法直接 invoke Tauri 命令。
- * 与主界面的通信走 Plugin.trigger() 事件（见 notifyMain）。
+ * 用屏幕比例而非固定 dp，是为了让桌宠在不同尺寸/DPI 的机器上
+ * 视觉占比一致——固定 dp 在小屏上会显得过大（这正是此前 240dp
+ * 占了普通手机 60% 屏宽的原因）。
  */
-private const val DEFAULT_PET_URL = "http://tauri.localhost/pet"
+private const val COLLAPSED_WIDTH_RATIO = 1.0 / 6.0
+private const val EXPANDED_WIDTH_RATIO = 2.0 / 5.0
 
-/** 悬浮窗最小/最大尺寸限制（dp），防止前端传入异常值导致窗口不可见。 */
+/**
+ * 头像态窗口高度与宽度之比。
+ *
+ * 前端桌宠布局的常量是「头像带 210 + 气泡带 200 + 输入带 70 = 480」，
+ * 宽 240 → 高宽比 2.0。但那是「桌宠窗口」的完整比例；
+ * 手机上收起态只显示头像，因此高度取宽度的 1.15 倍——
+ * 略高于头像本身，给气泡留一点悬浮空间（气泡本身绘制在窗口外，
+ * 见 FLAG_LAYOUT_NO_LIMITS 与 PetMode.vue 的负边距）。
+ */
+private const val COLLAPSED_HEIGHT_RATIO = 1.15
+
+/**
+ * 展开态窗口高度与宽度之比。
+ *
+ * 展开后要同时容纳「头像 + 气泡 + 输入框」，接近桌面端的 2.0 宽高比。
+ */
+private const val EXPANDED_HEIGHT_RATIO = 2.0
+
+/** 尺寸兜底上下限（dp），防止异常比例算出不可见或超屏的窗口。 */
 private const val MIN_SIZE_DP = 80.0
 private const val MAX_SIZE_DP = 720.0
+
+/** 单击与拖拽的判定阈值（dp）：按下到抬起位移超过它就算拖动，不触发点击。 */
+private const val TAP_SLOP_DP = 8.0
+
+/**
+ * 双击判定窗口（毫秒）。
+ *
+ * 两次抬手间隔小于它就算双击 → 切回 App。
+ * 用 300ms：接近 Android 系统 ViewConfiguration.getDoubleTapTimeout()（300ms），
+ * 用户手感一致。
+ */
+private const val DOUBLE_TAP_TIMEOUT_MS = 300L
 
 // ─── 参数结构（字段名需与 Rust 侧 serde camelCase 对应） ──────────
 
 @InvokeArg
 class ShowArgs {
-    var url: String = DEFAULT_PET_URL
-    var width: Double = 240.0
-    var height: Double = 360.0
+    var scale: Double = 1.0
     var x: Double = 0.0
     var y: Double = 0.0
 }
@@ -69,36 +99,38 @@ class TouchableArgs {
 }
 
 /**
- * 注入到悬浮窗 WebView 的最小 JS 桥（`window.LingChatPet`）。
+ * Android 系统级悬浮窗插件 —— **搬运主 WebView** 的实现。
  *
- * 悬浮窗内的 WebView 不在 Tauri IPC 上下文，前端不能 `invoke()`。
- * 在建立完整的事件通道（P2）之前，至少要让页面能关闭悬浮窗 ——
- * 否则弹出来就收不回去。
+ * ## 为什么是「搬运」而不是「新建」
  *
- * 注意：`@JavascriptInterface` 标注的方法运行在 **WebView 的 JS 线程**，
- * 不是主线程，因此内部操作必须切回 UI 线程。
- */
-private class PetBridge {
-    @android.webkit.JavascriptInterface
-    fun close() {
-        FloatingPetPlugin.requestCloseFromWeb()
-    }
-}
-
-/**
- * Android 系统级悬浮窗插件。
+ * 桌面端的桌宠**不是新窗口**：它把 `label="main"` 那个窗口改属性
+ * （`set_decorations(false)` + `set_size` + `set_always_on_top`），
+ * 于是同一个 WebView 从「聊天界面」变成了「桌宠」——IPC、store、
+ * 路由状态全部原样保留。
  *
- * 使用 `TYPE_APPLICATION_OVERLAY`（API 26+）或 `TYPE_PHONE`（API 26 以下）
- * 创建可浮在其他 App 之上的透明 WebView 窗口。
+ * 早期版本在悬浮窗里 `WebView(activity)` 新建了一个实例，结果是
+ * 一个**没有 IPC 的空壳**：读不到角色数据、发不出消息，只能渲染静态页面。
  *
- * 相比桌面端 `api::pet` 的实现，这里有两个平台差异必须注意：
+ * 现在改为搬运主 WebView 本身：
  *
- * 1. **点击穿透是窗口级开关**：Android 的 `FLAG_NOT_TOUCHABLE` 作用于整个窗口，
- *    无法像 Windows 那样按像素区域判定。因此悬浮窗尺寸应紧贴角色，
- *    不要留大块透明区域，否则会挡住下层 App 的触摸。
+ * 1. wry 用 `activity.setContentView(webView)` 把 Tauri 的 WebView
+ *    设成 Activity 的**根内容视图**（见 wry `android/main_pipe.rs`）。
+ * 2. Tauri 的 IPC 是 `webView.addJavascriptInterface(ipc, "ipc")`，
+ *    **绑定在 WebView 对象上，不绑定在窗口上**。
+ * 3. 因此把同一个 View 从 Activity 视图树移到 `WindowManager`，
+ *    JS 上下文不重载、`invoke()` 照常可用、store 数据完整。
  *
- * 2. **权限只能手动授予**：`SYSTEM_ALERT_WINDOW` 是特殊权限，
- *    必须跳转设置页由用户手动开启，无法运行时弹窗申请。
+ * ## 占位视图
+ *
+ * WebView 是 Activity 的唯一内容视图，搬走后 Activity 就空了（白屏）。
+ * 因此在搬走前先 `setContentView(占位页)`，用户切回 App 时看到的是
+ * 一张引导图，而不是空白。
+ *
+ * ## 生命周期风险
+ *
+ * `WryActivity.mWebView` 是 `lateinit`，`onPause/onResume/onDestroy`
+ * 都会直接访问它。搬运期间必须避免这些回调把 WebView 销毁掉——
+ * 具体做法见 [[petDetached]] 与 [[restoreWebViewToActivity]]。
  */
 @TauriPlugin
 class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
@@ -106,32 +138,68 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     companion object {
         /**
          * 当前活跃实例，供注入到 WebView 的 [PetBridge] 回调使用。
-         *
-         * WebView 的 `addJavascriptInterface` 只能绑定普通对象，拿不到
-         * 插件实例，故用静态引用中转。同一时刻只应存在一个悬浮窗，
-         * 因此单引用足够。
+         * 同一时刻只应存在一个悬浮窗，因此单引用足够。
          */
         @Volatile
         private var instance: FloatingPetPlugin? = null
-
-        /** 由页面通过 `window.LingChatPet.close()` 触发。 */
-        fun requestCloseFromWeb() {
-            val plugin = instance ?: return
-            plugin.activity.runOnUiThread { plugin.removePetView() }
-        }
     }
 
     private var windowManager: WindowManager? = null
+
+    /** 搬进悬浮窗的那个 View（就是主 WebView）。 */
     private var petView: View? = null
     private var layoutParams: WindowManager.LayoutParams? = null
 
     /** 触摸可交互状态，与 Rust 侧 FloatingPetState 保持同步。 */
     private var touchable: Boolean = true
 
+    /** 当前是否处于展开态（头像 + 输入框）。 */
+    private var expanded: Boolean = false
+
+    /** 桌宠缩放系数，来自设置。 */
+    private var petScale: Double = 1.0
+
+    /**
+     * WebView 是否已被搬离 Activity。
+     *
+     * 用于在 Activity 生命周期回调里判断「WebView 不在视图树上」，
+     * 避免把悬浮窗里的 WebView 当成主界面 WebView 处理。
+     */
+    private var petDetached: Boolean = false
+
     private val density: Float
         get() = activity.resources.displayMetrics.density
 
     private fun dp(value: Double): Int = (value * density).toInt()
+
+    /**
+     * 屏幕可用宽度（dp）。
+     *
+     * 用 `resources.displayMetrics.widthPixels` 而不是 `WindowManager.currentWindowMetrics`：
+     * 后者在部分 ROM 上返回值受多窗口/折叠屏影响，且 API 30 才有。
+     * 这里要的是「这块屏幕多宽」这个稳定物理量。
+     */
+    private fun screenWidthDp(): Double =
+        activity.resources.displayMetrics.widthPixels / density.toDouble()
+
+    private fun screenHeightDp(): Double =
+        activity.resources.displayMetrics.heightPixels / density.toDouble()
+
+    /** 收起态尺寸：宽度约 1/6 屏宽。 */
+    private fun collapsedSize(): Pair<Int, Int> {
+        val w = (screenWidthDp() * COLLAPSED_WIDTH_RATIO * petScale)
+            .coerceIn(MIN_SIZE_DP, MAX_SIZE_DP)
+        val h = (w * COLLAPSED_HEIGHT_RATIO).coerceIn(MIN_SIZE_DP, MAX_SIZE_DP)
+        return dp(w) to dp(h)
+    }
+
+    /** 展开态尺寸：宽度约 2/5 屏宽。 */
+    private fun expandedSize(): Pair<Int, Int> {
+        val w = (screenWidthDp() * EXPANDED_WIDTH_RATIO * petScale)
+            .coerceIn(MIN_SIZE_DP, MAX_SIZE_DP)
+        val h = (w * EXPANDED_HEIGHT_RATIO).coerceIn(MIN_SIZE_DP, MAX_SIZE_DP)
+        return dp(w) to dp(h)
+    }
 
     // ─── 权限 ────────────────────────────────────────────────
 
@@ -177,9 +245,17 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
-    // ─── 显示 / 隐藏 ──────────────────────────────────────────
+    // ─── 搬运主 WebView ───────────────────────────────────────
 
-    @SuppressLint("SetJavaScriptEnabled")
+    /**
+     * 展示桌宠悬浮窗——把主 WebView 搬进悬浮窗。
+     *
+     * 调用前提：前端**已经先把页面切到 /pet 路由**。
+     * 顺序不能反，否则用户会看到主界面闪一下才变成桌宠。
+     *
+     * 注意本命令必须在主线程执行：`setContentView` / `addView`
+     * 都是 UI 操作，且 WebView 的父容器变更只能在主线程做。
+     */
     @Command
     fun show(invoke: Invoke) {
         val args = invoke.parseArgs(ShowArgs::class.java)
@@ -191,30 +267,32 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
 
         activity.runOnUiThread {
             try {
-                // 幂等：先清理可能残留的旧窗口，避免 addView 重复导致泄漏
-                removePetView()
-
-                val width = dp(args.width.coerceIn(MIN_SIZE_DP, MAX_SIZE_DP))
-                val height = dp(args.height.coerceIn(MIN_SIZE_DP, MAX_SIZE_DP))
-
-                val webView = WebView(activity).apply {
-                    // 关键：透明背景，否则会显示 WebView 默认白底
-                    setBackgroundColor(Color.TRANSPARENT)
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.mediaPlaybackRequiresUserGesture = false
-                    settings.allowFileAccess = true
-                    settings.allowContentAccess = true
-                    webViewClient = WebViewClient()
-
-                    // 悬浮窗内的 WebView 不在 Tauri IPC 上下文里，前端无法 invoke。
-                    // 这里注入一个最小桥接对象，至少让页面能关闭自己——
-                    // 否则悬浮窗弹出后用户无从退出。
-                    addJavascriptInterface(PetBridge(), "LingChatPet")
-
-                    loadUrl(args.url.ifBlank { DEFAULT_PET_URL })
+                // 幂等：先清理可能残留的旧状态，避免重复 addView 导致泄漏
+                if (petView != null) {
+                    detachPetView(destroy = false)
                 }
 
+                petScale = args.scale.coerceIn(0.5, 2.0)
+
+                val webView = findMainWebView()
+                if (webView == null) {
+                    invoke.reject("主 WebView 尚未创建，无法搬入悬浮窗")
+                    return@runOnUiThread
+                }
+
+                // ── 1. 先把 WebView 从 Activity 视图树摘下 ──
+                // 必须在 setContentView(占位页) 之前摘：setContentView 会
+                // 替换整个内容视图，若不先摘，WebView 会随旧视图树一起被
+                // 丢弃（虽然 View 对象还在，但已 detach，重新 addView 时
+                // 部分 ROM 上会丢失渲染上下文）。
+                val root = activity.findViewById<ViewGroup>(android.R.id.content)
+                root?.removeView(webView)
+
+                // ── 2. 给 Activity 塞占位页，避免白屏 ──
+                activity.setContentView(buildPlaceholderView())
+
+                // ── 3. 把 WebView 放进悬浮窗 ──
+                val (width, height) = collapsedSize()
                 val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 } else {
@@ -226,8 +304,9 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                     width,
                     height,
                     type,
-                    // FLAG_NOT_FOCUSABLE 让悬浮窗不抢输入焦点（不弹键盘、不挡返回键）
-                    // FLAG_LAYOUT_NO_LIMITS 允许贴边/部分出屏
+                    // FLAG_NOT_FOCUSABLE：默认不抢输入焦点（不弹键盘、不挡返回键）
+                    // FLAG_LAYOUT_NO_LIMITS：允许气泡绘制到窗口外/贴边
+                    // FLAG_HARDWARE_ACCELERATED：WebView 需要硬件加速渲染
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                         WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
@@ -243,50 +322,341 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
                 wm.addView(webView, params)
 
+                // WebView 的背景必须透明，否则悬浮窗是个白方块。
+                // 主界面里它是贴满屏幕的不透明内容，这里改成透明不影响
+                // 页面自身的 html/body 背景（由 /pet 路由控制）。
+                webView.setBackgroundColor(Color.TRANSPARENT)
+
+                // 拖动 + 单击切回：挂在整个窗口上
+                webView.setOnTouchListener(buildPetTouchListener())
+
                 windowManager = wm
                 petView = webView
                 layoutParams = params
+                petDetached = true
+                expanded = false
                 instance = this
 
-                Log.i(TAG, "悬浮窗已显示 ${width}x${height} @ (${params.x},${params.y})")
+                // 通知页面：你现在在悬浮窗里了。
+                // 页面据此切换为「仅头像」布局——这必须发生在 addView 之后，
+                // 因为 evaluateJavascript 需要有可用的 WebView 实例。
+                notifyWeb("pet-detached", JSObject())
+
+                Log.i(TAG, "桌宠已展开 ${width}x${height} @ (${params.x},${params.y})")
                 invoke.resolve()
             } catch (e: Exception) {
-                Log.e(TAG, "显示悬浮窗失败", e)
-                removePetView()
-                invoke.reject("显示悬浮窗失败: ${e.message}")
+                Log.e(TAG, "搬入悬浮窗失败", e)
+                // 失败时必须把 WebView 还给 Activity，否则主界面永久黑屏
+                restoreWebViewToActivity()
+                invoke.reject("搬入悬浮窗失败: ${e.message}")
             }
         }
     }
 
+    /**
+     * 收起桌宠：把 WebView 搬回 Activity，恢复主界面。
+     *
+     * 与桌面端 `set_pet_mode(enable=false)` 对应——那边是恢复窗口属性，
+     * 这边是恢复视图父子关系，本质都是「同一个 WebView 换个形态」。
+     */
     @Command
     fun hide(invoke: Invoke) {
         activity.runOnUiThread {
             try {
-                removePetView()
+                restoreWebViewToActivity()
                 invoke.resolve()
             } catch (e: Exception) {
-                Log.e(TAG, "隐藏悬浮窗失败", e)
-                invoke.reject("隐藏悬浮窗失败: ${e.message}")
+                Log.e(TAG, "恢复主界面失败", e)
+                invoke.reject("恢复主界面失败: ${e.message}")
             }
         }
     }
 
-    /** 必须在主线程调用。 */
-    private fun removePetView() {
+    /**
+     * 把 WebView 从悬浮窗搬回 Activity 内容视图，撤掉占位页。
+     *
+     * 必须在主线程调用。
+     */
+    private fun restoreWebViewToActivity() {
+        val view = petView
+        if (view != null) {
+            try {
+                windowManager?.removeView(view)
+            } catch (e: Exception) {
+                // 窗口可能已被系统移除，忽略
+                Log.w(TAG, "移除悬浮窗视图时出错（可忽略）", e)
+            }
+            view.setOnTouchListener(null)
+        }
+
+        petView = null
+        layoutParams = null
+        windowManager = null
+        expanded = false
+        instance = null
+
+        if (view != null && petDetached) {
+            // 先把占位页换掉，再把 WebView 装回内容视图。
+            // 直接 setContentView(webView) 即可完成替换，无需手动 addView。
+            activity.setContentView(view)
+            view.setBackgroundColor(Color.TRANSPARENT)
+
+            // 通知页面：你已经回到 App 里了，恢复正常布局。
+            notifyWeb("pet-attached", JSObject())
+        }
+        petDetached = false
+    }
+
+    /**
+     * 彻底销毁桌宠视图（插件的 onDestroy 路径）。
+     *
+     * 与 [restoreWebViewToActivity] 的区别：这里不再把 WebView 还给
+     * Activity（Activity 本身正在销毁），而是直接断开引用。
+     */
+    private fun detachPetView(destroy: Boolean) {
         val view = petView ?: return
         try {
             windowManager?.removeView(view)
         } catch (e: Exception) {
-            // 窗口可能已因 Activity 销毁被系统移除，忽略
             Log.w(TAG, "移除悬浮窗视图时出错（可忽略）", e)
-        } finally {
-            (view as? WebView)?.let {
-                it.loadUrl("about:blank")
-                it.destroy()
+        }
+        view.setOnTouchListener(null)
+        petView = null
+        layoutParams = null
+        windowManager = null
+        instance = null
+        petDetached = false
+        if (destroy) {
+            (view as? WebView)?.destroy()
+        }
+    }
+
+    /**
+     * 找到 Tauri 的主 WebView。
+     *
+     * 不用 `WryActivity.mWebView`：那是 `private lateinit`，插件拿不到，
+     * 且改生成文件会被 `tauri android init` 覆盖。这里从内容视图递归查找，
+     * 稳定且不依赖生成代码内部结构。
+     */
+    private fun findMainWebView(): WebView? {
+        val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return null
+        return findWebView(root)
+    }
+
+    private fun findWebView(parent: ViewGroup): WebView? {
+        for (i in 0 until parent.childCount) {
+            when (val child = parent.getChildAt(i)) {
+                is WebView -> return child
+                is ViewGroup -> findWebView(child)?.let { return it }
             }
-            petView = null
-            layoutParams = null
-            instance = null
+        }
+        return null
+    }
+
+    /**
+     * 构造 Activity 的占位页（WebView 被搬走期间显示）。
+     *
+     * 用户切回 App 时看到的不是白屏，而是一张引导图 ——
+     * 提示桌宠正在桌面上运行，点击悬浮窗即可回来。
+     *
+     * 用纯代码构造 View，不引入 layout 资源文件：插件目录下加资源
+     * 需要额外的 gradle 配置，收益不抵成本。
+     */
+    private fun buildPlaceholderView(): View {
+        val context = activity
+        val root = android.widget.FrameLayout(context).apply {
+            setBackgroundColor(Color.parseColor("#101014"))
+        }
+
+        // 背景图：复用 App 的启动图，保持视觉一致
+        try {
+            val bg = android.widget.ImageView(context).apply {
+                setImageResource(activity.applicationInfo.icon)
+                scaleType = android.widget.ImageView.ScaleType.CENTER
+                alpha = 0.15f
+            }
+            root.addView(
+                bg,
+                android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "占位页背景图加载失败（可忽略）", e)
+        }
+
+        val text = android.widget.TextView(context).apply {
+            text = "桌宠正在桌面上陪着你"
+            setTextColor(Color.parseColor("#CCFFFFFF"))
+            textSize = 16f
+            gravity = Gravity.CENTER
+        }
+        root.addView(
+            text,
+            android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = Gravity.CENTER }
+        )
+
+        return root
+    }
+
+    // ─── 拖动 + 双击切回 ──────────────────────────────────────
+
+    /**
+     * 悬浮窗的触摸处理：拖动移动窗口，双击切回 App。
+     *
+     * 手机没有鼠标，桌面端那套 `mouseenter/mouseleave` 展开输入框的逻辑
+     * 完全不适用，因此这里用「拖动 / 双击」两个手势补上：
+     *
+     * - **拖动**：按下到抬起位移超过 [TAP_SLOP_DP] → 移动窗口
+     * - **单击**：交回给页面 —— 页面据此展开输入框（见 `PetMode.vue`）
+     * - **双击**：切回 App，等价于桌面端的「返回主页」按钮
+     *
+     * ## 为什么切回必须用双击而不是单击
+     *
+     * 单击已经被页面占用（点头像展开输入框）。如果切回也用单击，
+     * 两者会直接冲突：用户想展开，结果被弹回 App。
+     *
+     * 因此把「切回」升级为双击：单击仍归页面，双击才切回。
+     * 这样两个手势各司其职，且双击是移动端常见的「返回/退出」语义。
+     *
+     * 阈值判断同样必须：没有它，用户每次拖完桌宠都会误触发切回。
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun buildPetTouchListener(): View.OnTouchListener {
+        var downX = 0f
+        var downY = 0f
+        var startX = 0
+        var startY = 0
+        var dragging = false
+
+        /** 上一次抬手的时间戳，用于判定双击。 */
+        var lastTapAt = 0L
+        val slop = dp(TAP_SLOP_DP).toFloat()
+
+        return View.OnTouchListener { _, event ->
+            val params = layoutParams ?: return@OnTouchListener false
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.rawX
+                    downY = event.rawY
+                    startX = params.x
+                    startY = params.y
+                    dragging = false
+                    // 交回给 WebView：页面的点头像/点按钮等交互才能工作
+                    false
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - downX
+                    val dy = event.rawY - downY
+                    if (!dragging && (Math.abs(dx) > slop || Math.abs(dy) > slop)) {
+                        dragging = true
+                    }
+                    if (dragging) {
+                        params.x = startX + dx.toInt()
+                        params.y = startY + dy.toInt()
+                        try {
+                            windowManager?.updateViewLayout(petView, params)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "拖动悬浮窗失败（可忽略）", e)
+                        }
+                    }
+                    dragging
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    if (dragging) {
+                        // 拖动结束：吸附到屏幕边缘，避免挡住中间内容
+                        snapToEdge(params)
+                        dragging = false
+                        true
+                    } else {
+                        // 单击或双击：交回给页面，同时自行判定双击
+                        val now = System.currentTimeMillis()
+                        if (now - lastTapAt < DOUBLE_TAP_TIMEOUT_MS) {
+                            lastTapAt = 0L
+                            restoreWebViewToActivity()
+                            true
+                        } else {
+                            lastTapAt = now
+                            // 单击交给页面（点头像 → 展开输入框）
+                            false
+                        }
+                    }
+                }
+
+                else -> dragging
+            }
+        }
+    }
+
+    /** 拖动结束后把窗口吸附到最近的左右边缘（带 8dp 边距）。 */
+    private fun snapToEdge(params: WindowManager.LayoutParams) {
+        val view = petView ?: return
+        val screenW = activity.resources.displayMetrics.widthPixels
+        val margin = dp(8.0)
+        val centerX = params.x + view.width / 2
+        params.x = if (centerX < screenW / 2) {
+            margin
+        } else {
+            (screenW - view.width - margin).coerceAtLeast(margin)
+        }
+        try {
+            windowManager?.updateViewLayout(view, params)
+        } catch (e: Exception) {
+            Log.w(TAG, "吸附悬浮窗失败（可忽略）", e)
+        }
+    }
+
+    // ─── 展开 / 收起 ──────────────────────────────────────────
+
+    /**
+     * 展开或收起桌宠窗口。
+     *
+     * 收起态只显示头像（约 1/6 屏宽），展开后容纳头像 + 输入框
+     * （约 2/5 屏宽）。窗口尺寸必须跟着内容变 —— Android 的悬浮窗
+     * 没有逐像素穿透，留大块透明区域会挡住下层 App 的触摸。
+     *
+     * 与桌面端的差异：桌面端靠鼠标悬停自动展开，手机端由前端
+     * 「点头像」触发。
+     */
+    @Command
+    fun setExpanded(invoke: Invoke) {
+        val args = invoke.parseArgs(ExpandedArgs::class.java)
+        activity.runOnUiThread {
+            val params = layoutParams
+            val view = petView
+            if (params == null || view == null) {
+                invoke.reject("NOT_VISIBLE")
+                return@runOnUiThread
+            }
+            try {
+                expanded = args.expanded
+                val (width, height) = if (expanded) expandedSize() else collapsedSize()
+
+                // 以中心为锚点缩放：直接改宽高会让窗口往右下角长，
+                // 视觉上像「跳」了一下。这里保持中心不动。
+                val centerX = params.x + view.width / 2
+                val centerY = params.y + view.height / 2
+
+                params.width = width
+                params.height = height
+                params.x = centerX - width / 2
+                params.y = centerY - height / 2
+
+                windowManager?.updateViewLayout(view, params)
+
+                // 通知页面切换布局（头像态 vs 完整态）
+                notifyWeb("pet-expanded-changed", JSObject().apply { put("expanded", expanded) })
+                invoke.resolve()
+            } catch (e: Exception) {
+                Log.e(TAG, "切换展开状态失败", e)
+                invoke.reject("切换展开状态失败: ${e.message}")
+            }
         }
     }
 
@@ -383,11 +753,25 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     // ─── 事件通道 ─────────────────────────────────────────────
 
     /**
-     * 向主 WebView 广播事件。
+     * 评估 JS（在悬浮窗 WebView 里执行）。
      *
-     * 悬浮窗内的 WebView 不在 Tauri IPC 上下文中，无法直接 invoke 命令，
-     * 因此需要主界面监听这些事件来接收桌宠的操作（如点击角色、请求设置等）。
+     * 现在 WebView 就是主 WebView，`invoke()` 可用，大部分通信应直接走
+     * Tauri 命令。这里保留 `evaluateJavascript` 是为了传递那些不方便
+     * 走 IPC 的原生事件（如展开状态变更）。
      */
+    private fun notifyWeb(function: String, detail: JSObject) {
+        val view = petView as? WebView ?: return
+        val payload = detail.toString().replace("\\", "\\\\").replace("'", "\\'")
+        val js =
+            "window.dispatchEvent(new CustomEvent('$function',{detail:JSON.parse('$payload')}))"
+        try {
+            view.evaluateJavascript(js, null)
+        } catch (e: Exception) {
+            Log.e(TAG, "通知页面失败: $function", e)
+        }
+    }
+
+    /** 向主 WebView 广播事件（插件 trigger，主界面可用 listen 接收）。 */
     @Suppress("unused")
     private fun notifyMain(event: String, payload: JSObject = JSObject()) {
         try {
@@ -404,9 +788,24 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      *
      * 否则 overlay 会留在屏幕上成为「僵尸窗口」：宿主 Activity 已经没了，
      * 用户却还能看到那个宠物，且无法通过 App 关闭它。
+     *
+     * 注意这里用 [detachPetView] 而非 [restoreWebViewToActivity]：
+     * Activity 正在销毁，把 WebView 还回去没有意义，反而可能在
+     * 销毁流程里制造新的引用。
      */
     override fun onDestroy(activity: AppCompatActivity) {
-        activity.runOnUiThread { removePetView() }
+        activity.runOnUiThread { detachPetView(destroy = false) }
         super.onDestroy(activity)
     }
+}
+
+/**
+ * `setExpanded` 命令的参数。
+ *
+ * 独立定义在文件末尾而非参数区，是因为它是本轮新增的
+ * （此前只有 show/move/setSize/setTouchable 四个）。
+ */
+@InvokeArg
+class ExpandedArgs {
+    var expanded: Boolean = false
 }
