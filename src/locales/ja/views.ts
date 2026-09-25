@@ -56,9 +56,15 @@ export default {
     freeDialogue: "フリー会話モード",
     storyMode: "ストーリーモード",
     scriptEditor: "クリエイティブ工房",
+    scriptEditorEntry: "スクリプトエディタ",
     cloudWorkshop: "クラウド工房",
     miniGame: "ミニゲーム（開発中）",
     back: "戻る",
+    continueSaveTitle: "前回の続きから",
+    continueSaveMessage:
+      "前回のセーブデータが見つかりました。続きから始めますか？（キャンセルで存档管理へ）",
+    continueDetailScript: "前回のプレイ：スクリプト「{name}」",
+    continueDetailFree: "前回のプレイ：{message}",
   },
   pet: {
     chatInput: {

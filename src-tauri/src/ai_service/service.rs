@@ -100,6 +100,13 @@ impl AIService {
         tracing::info!("正在初始化的角色id是: {:?}", cid);
 
         let mut gs = self.game_status.lock().await;
+        gs.role_manager.reset_roles();
+        gs.line_list.clear();
+        gs.onstage_role_ids.clear();
+        gs.present_role_ids.clear();
+        gs.entry_greeting_done = false;
+        // 开新世界：清掉当前进行标记，避免新角色的台词写进旧角色的存档
+        gs.active_save_id = None;
 
         let settings = gs
             .role_manager
@@ -133,7 +140,6 @@ impl AIService {
             .unwrap_or_default();
         tracing::info!("外部获取的当前服装是: {:?}", clothes);
         if clothes != "default" && !clothes.is_empty() {
-            // 不是你个傻逼 AI 角色服装已经换过了你再他妈比较那台词表能变吗我草你的？，已修复
             let _ = gs
                 .add_character_clothes_change_line(&self.db, cid, &clothes)
                 .await;
@@ -183,6 +189,10 @@ impl AIService {
         gs.onstage_role_ids.clear();
         gs.present_role_ids.clear();
         gs.entry_greeting_done = false;
+        // 剧本状态属于上一局：前端"退出剧本"只清 store，后端若继续留着 script_status，
+        // 自动存档会把已退出的剧本进度写进新的自由对话槽（读档时还会误续跑该剧本）。
+        // 读档路径随后用 resume_script 重新赋值，不受此处影响。
+        gs.script_status = None;
         // 会话边界代号：切换角色 / 读档 / 清空对话都会清空 GameStatus 并重建，
         // 旧一轮自由对话的流式任务（consumer/publisher）可能仍在游离生成。
         // 递增代号后，它们的迟到 `add_assistant_line` / 工具回填会因

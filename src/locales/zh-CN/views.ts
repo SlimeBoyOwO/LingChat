@@ -54,9 +54,14 @@ export default {
     freeDialogue: "自由对话模式",
     storyMode: "剧情模式（在自由模式进入）",
     scriptEditor: "创意工坊",
+    scriptEditorEntry: "剧本编辑器",
     cloudWorkshop: "云·创意工坊",
     miniGame: "小游戏（开发中）",
     back: "返回",
+    continueSaveTitle: "继续上次进度",
+    continueSaveMessage: "检测到上次存档。要继续上次的进度吗？（取消则前往存档页）",
+    continueDetailScript: "上次进行：剧本《{name}》",
+    continueDetailFree: "上次进行：{message}",
   },
   pet: {
     chatInput: {

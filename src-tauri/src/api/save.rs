@@ -1,5 +1,8 @@
+use sea_orm::TransactionTrait;
 use serde::Serialize;
+use serde_json::Value as JsonValue;
 use tauri::{AppHandle, Manager};
+use tauri_plugin_store::StoreExt;
 
 use crate::AppState;
 use crate::ai_service::game_system::auto_save;
@@ -21,6 +24,18 @@ pub struct SaveListItem {
     pub update_date: String,
     pub last_message: Option<String>,
     pub screenshot: Option<String>,
+}
+
+/// "当前进行"存档摘要（主菜单继续询问弹窗展示用）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct LastSaveInfo {
+    pub save_id: i32,
+    pub title: String,
+    /// 该档最后一条对话内容（可能为 None）
+    pub last_message: Option<String>,
+    /// 剧本显示名（该档带有未完成的剧本进度时）；None = 普通自由对话档
+    pub script_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -187,43 +202,51 @@ pub async fn create_save(
     let db = &state.db;
 
     let mut service = state.ai_service.lock().await;
-    let lines = service.game_status.lock().await.line_list.clone();
 
-    // 1. 创建 save 行
-    let save_model = SaveRepo::create_save(db, &title)
+    // 一次性读取台词、主角、快照（减少锁持有时长）
+    let (lines, main_role_id, snapshot) = {
+        let gs = service.game_status.lock().await;
+        (gs.line_list.clone(), gs.main_role_id, gs.to_snapshot())
+    };
+
+    // 1. 事务：创建 save 行 + 同步台词 + 设置主角 + 写入快照，中途失败整体回滚，
+    //    避免安卓上被杀/出错留下"半截存档"（有台词链但 last_message_id 没跟上等）
+    let txn = db
+        .begin()
+        .await
+        .map_err(|e| format!("开启事务失败: {}", e))?;
+
+    let save_model = SaveRepo::create_save(&txn, &title)
         .await
         .map_err(|e| format!("创建存档失败: {}", e))?;
     let save_id = save_model.id;
 
-    // 复制截图到 screenshots 目录
-    if let Some(ref path) = screenshot_path {
-        let _ = save_screenshot_file(save_id, path).await;
-    }
-
-    // 2. 同步台词
     if !lines.is_empty() {
-        SaveRepo::sync_lines(db, save_id, &lines)
+        SaveRepo::sync_lines(&txn, save_id, &lines)
             .await
             .map_err(|e| format!("同步台词失败: {}", e))?;
     }
 
-    // 3. 设置主角
-    if let Some(main_id) = service.game_status.lock().await.main_role_id {
-        SaveRepo::update_save_main_role(db, save_id, Some(main_id))
+    if let Some(main_id) = main_role_id {
+        SaveRepo::update_save_main_role(&txn, save_id, Some(main_id))
             .await
             .map_err(|e| format!("设置主角失败: {}", e))?;
     }
 
-    // 4. 写入 GameStatus 快照
-    let snapshot = service.game_status.lock().await.to_snapshot();
     let snapshot_json =
         serde_json::to_string(&snapshot).map_err(|e| format!("序列化状态失败: {}", e))?;
-    SaveRepo::update_save_status(db, save_id, &snapshot_json)
+    SaveRepo::update_save_status(&txn, save_id, &snapshot_json)
         .await
         .map_err(|e| format!("保存状态失败: {}", e))?;
 
-    // 5. 标记当前活跃存档
-    service.game_status.lock().await.active_save_id = Some(save_id);
+    txn.commit()
+        .await
+        .map_err(|e| format!("提交事务失败: {}", e))?;
+
+    // 复制截图到 screenshots 目录（文件操作，事务外，尽力而为）
+    if let Some(ref path) = screenshot_path {
+        let _ = save_screenshot_file(save_id, path).await;
+    }
 
     // 6. 持久化 MemoryBank
     service
@@ -422,7 +445,18 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     // 9. 恢复剧本状态：覆盖掉被中止旧引擎可能残留的 script_status（含 None 的情况）
     service.game_status.lock().await.script_status = resume_script.clone();
 
-    // 10. 返回前端初始化数据
+    // 10. 记录"当前进行"（per-role），供启动/继续恢复
+    crate::config::set_last_save_id(&app, main_role_id, save_id);
+    // 同步记录当前角色，供主菜单"继续游戏"定位（与 select_character 一致）
+    if let Ok(store) = app.store(crate::config::store_path()) {
+        store.set(
+            crate::config::session::LAST_CHARACTER_ID.to_string(),
+            JsonValue::Number((main_role_id as i64).into()),
+        );
+        let _ = store.save();
+    }
+
+    // 11. 返回前端初始化数据
     let result = build_web_init_data(&service, &app).await?;
     // 释放 ai_service 锁后再取 manager，避免与定时循环（manager→ai_service）反向取锁死锁
     drop(service);
@@ -459,28 +493,33 @@ pub async fn update_save(
         .map_err(|e| format!("查询存档失败: {}", e))?
         .ok_or_else(|| format!("存档 {} 不存在", save_id))?;
 
-    // 复制截图到 screenshots 目录
-    if let Some(ref path) = screenshot_path {
-        let _ = save_screenshot_file(save_id, path).await;
-    }
+    let (lines, snapshot) = {
+        let gs = service.game_status.lock().await;
+        (gs.line_list.clone(), gs.to_snapshot())
+    };
 
-    let lines = service.game_status.lock().await.line_list.clone();
-
-    // 2. 同步台词（智能 diff）
-    SaveRepo::sync_lines(db, save_id, &lines)
+    // 2. 事务：同步台词（智能 diff）+ 更新快照，整体原子
+    let txn = db
+        .begin()
+        .await
+        .map_err(|e| format!("开启事务失败: {}", e))?;
+    SaveRepo::sync_lines(&txn, save_id, &lines)
         .await
         .map_err(|e| format!("同步台词失败: {}", e))?;
 
-    // 3. 标记活跃存档
-    service.game_status.lock().await.active_save_id = Some(save_id);
-
-    // 4. 更新 GameStatus 快照
-    let snapshot = service.game_status.lock().await.to_snapshot();
     let snapshot_json =
         serde_json::to_string(&snapshot).map_err(|e| format!("序列化状态失败: {}", e))?;
-    SaveRepo::update_save_status(db, save_id, &snapshot_json)
+    SaveRepo::update_save_status(&txn, save_id, &snapshot_json)
         .await
         .map_err(|e| format!("保存状态失败: {}", e))?;
+    txn.commit()
+        .await
+        .map_err(|e| format!("提交事务失败: {}", e))?;
+
+    // 复制截图到 screenshots 目录（文件操作，事务外，尽力而为）
+    if let Some(ref path) = screenshot_path {
+        let _ = save_screenshot_file(save_id, path).await;
+    }
 
     // 5. 持久化 MemoryBank
     service
@@ -542,12 +581,15 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
         .await
         .map_err(|e| format!("删除记忆库失败: {}", e))?;
 
-    // 2. 删除 running_script 关联（若有）
-    if let Ok(Some(save_model)) = SaveRepo::get_save_by_id(db, save_id).await {
+    // 2. 删除 running_script 关联（若有），并记下该档的主角（供清"当前进行"记录用）
+    let deleted_role = if let Ok(Some(save_model)) = SaveRepo::get_save_by_id(db, save_id).await {
         if let Some(rs_id) = save_model.running_script_id {
             let _ = SaveRepo::delete_running_script(db, rs_id).await;
         }
-    }
+        save_model.main_role_id
+    } else {
+        None
+    };
 
     // 删除关联的截图文件
     let screenshot_path = super::data_dir()
@@ -566,12 +608,140 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
         return Err(format!("存档 {} 不存在", save_id));
     }
 
-    // 4. 若当前活跃存档是被删除的，清除标记
+    // 4. 若当前活跃存档是被删除的，清除标记 + settings 里的"当前进行"记录，
+    //    避免下次启动恢复到一个不存在的档
     if service.game_status.lock().await.active_save_id == Some(save_id) {
         service.game_status.lock().await.active_save_id = None;
+        if let Some(rid) = deleted_role {
+            if let Ok(store) = crate::config::settings_store(&app) {
+                store.delete(&crate::config::last_save_key(rid));
+                let _ = store.save();
+            }
+        }
     }
 
     Ok(())
+}
+
+/// 获取当前角色的"当前进行"存档摘要（主菜单"开始游戏→自由对话"的继续询问用）。
+/// 标记缺失（旧版本升级）或指向的档已被删除时，回退该角色最新的自动存档槽
+///（= 上次进行的那局，与 init_game 的迁移回退逻辑一致）。
+/// 返回 None 表示没有可继续的存档（前端将直接开新世界）。
+#[tauri::command]
+pub async fn get_last_save_id(app: AppHandle) -> Result<Option<LastSaveInfo>, String> {
+    let state = app.state::<AppState>();
+    // 优先 settings 里的 LAST_CHARACTER_ID；没有则回退当前 game_status 的主角
+    //（用户走"开始游戏"用默认角色时 LAST_CHARACTER_ID 可能尚未写入）
+    let role_id = match crate::config::get_last_character_id(&app) {
+        Some(rid) => Some(rid),
+        None => {
+            let service = state.ai_service.lock().await;
+            let gs = service.game_status.lock().await;
+            gs.main_role_id
+        },
+    };
+    let save_id = role_id.and_then(|rid| crate::config::get_last_save_id(&app, rid));
+
+    // 校验标记指向的存档仍然存在（可能被删了）
+    let marked = match save_id {
+        Some(sid) => SaveRepo::get_save_by_id(&state.db, sid)
+            .await
+            .map_err(|e| format!("查询存档失败: {}", e))?
+            .map(|_| sid),
+        None => None,
+    };
+
+    // 无标记或标记失效 → 回退该角色最新的自动存档槽；连自动槽都没有才是真正无档可续
+    let save_id = if marked.is_some() {
+        marked
+    } else {
+        match role_id {
+            Some(rid) => SaveRepo::find_auto_save_slot(&state.db, Some(rid))
+                .await
+                .map_err(|e| format!("查询自动存档失败: {}", e))?
+                .map(|m| m.id),
+            None => None,
+        }
+    };
+    let Some(save_id) = save_id else {
+        return Ok(None);
+    };
+
+    // 组装摘要：标题 + 最后一条消息 + 剧本名（若有未完成剧本进度）
+    let save_model = SaveRepo::get_save_by_id(&state.db, save_id)
+        .await
+        .map_err(|e| format!("查询存档失败: {}", e))?
+        .ok_or_else(|| format!("存档 {} 不存在", save_id))?;
+
+    // 链尾可能是 tool / system 行（工具调用结果、剧本系统行），而弹窗要回答的是
+    // "上次演到哪"——回溯到最近一句玩家/角色台词，跳过 tool / system 与空内容；
+    // 都没有（如刚建槽还没开口）则返回 None，前端退回不显示细节行。
+    let last_message = {
+        use crate::db::entities::line;
+        use sea_orm::EntityTrait;
+        let mut cursor = save_model.last_message_id;
+        let mut found = None;
+        // 上限保护：链异常时兜底，正常最多回溯几跳
+        for _ in 0..50 {
+            let Some(id) = cursor else { break };
+            let Some(l) = line::Entity::find_by_id(id)
+                .one(&state.db)
+                .await
+                .map_err(|e| format!("查询最后消息失败: {}", e))?
+            else {
+                break;
+            };
+            cursor = l.parent_line_id;
+            if !l.content.trim().is_empty()
+                && !matches!(
+                    l.attribute,
+                    line::LineAttribute::Tool | line::LineAttribute::System
+                )
+            {
+                found = Some(l.content);
+                break;
+            }
+        }
+        found
+    };
+
+    let script_name = match save_model.running_script_id {
+        Some(rs_id) => {
+            let rs = SaveRepo::get_running_script(&state.db, rs_id)
+                .await
+                .map_err(|e| format!("查询剧本进度失败: {}", e))?;
+            match rs {
+                Some(rs) => {
+                    // 与 load_save 相同的匹配方式：path_key 归一化后按 folder_key 兜底
+                    let saved_key = rs.script_folder.replace('\\', "/");
+                    let service = state.ai_service.lock().await;
+                    let matched = service
+                        .script_manager
+                        .all_scripts
+                        .values()
+                        .find(|s| s.path_key().replace('\\', "/") == saved_key)
+                        .or_else(|| {
+                            service
+                                .script_manager
+                                .all_scripts
+                                .values()
+                                .find(|s| s.folder_key == saved_key)
+                        })
+                        .cloned();
+                    Some(matched.map(|s| s.name).unwrap_or(rs.script_folder))
+                },
+                None => None,
+            }
+        },
+        None => None,
+    };
+
+    Ok(Some(LastSaveInfo {
+        save_id,
+        title: save_model.title,
+        last_message,
+        script_name,
+    }))
 }
 
 #[tauri::command]
@@ -627,4 +797,18 @@ pub async fn capture_main_window_screenshot(app: AppHandle) -> Result<String, St
 #[tauri::command]
 pub async fn capture_main_window_screenshot(_app: AppHandle) -> Result<String, String> {
     Err("capture_main_window_screenshot is only available on Windows".to_string())
+}
+
+/// 前端检测到 app 退后台/锁屏（`visibilitychange` → hidden）时调用，强制落盘。
+///
+/// 安卓没有 `RunEvent::Paused`，退后台是唯一可靠信号；逐条落盘已保证台词不丢，
+/// 这里主要兜底场景快照/记忆库/剧本变量。桌面窗口最小化也会触发，幂等无害。
+#[tauri::command]
+pub async fn flush_save_now(app: AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let mgr = state.auto_save_manager.clone();
+    let mut mgr = mgr.lock().await;
+    mgr.perform_exit_save()
+        .await
+        .map_err(|e| format!("强制落盘失败: {}", e))
 }

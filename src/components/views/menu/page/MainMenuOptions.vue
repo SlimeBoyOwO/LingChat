@@ -3,9 +3,9 @@
     <StartLine>
       <StartItem @click="() => emit('start-game')">{{ $t("views.menu.startGame") }}</StartItem>
     </StartLine>
-    <StartLine>
-      <StartItem @click="() => emit('open-settings', 'save')">{{
-        $t("views.menu.continueGame")
+    <StartLine :mobile="false">
+      <StartItem @click="() => emit('open-script-editor')">{{
+        $t("views.menu.scriptEditorEntry")
       }}</StartItem>
     </StartLine>
     <StartLine :mobile="false">
@@ -35,6 +35,7 @@ const emit = defineEmits<{
   (e: "open-settings", tab?: string): void;
   (e: "open-credits"): void;
   (e: "open-workshop"): void;
+  (e: "open-script-editor"): void;
 }>();
 
 // 保留 Current 的退出逻辑

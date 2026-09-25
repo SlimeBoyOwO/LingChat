@@ -102,8 +102,14 @@ export default {
     focusLog: "ログウィンドウを表示",
   },
   save: {
+    newGame: {
+      title: "新しいゲームを始める（新しい世界を開始。既存のセーブは一覧に残ります）",
+      button: "新しいゲーム",
+      starting: "開始中...",
+    },
     create: {
-      title: "新規セーブ（現在の会話を記録します）",
+      title:
+        "バックアップ/ブックマークを作成（現在の会話をブックマークとして保存し、現在の進行は変えません）",
       placeholder: "セーブ名を入力",
       creating: "作成中...",
       button: "作成",
@@ -137,6 +143,11 @@ export default {
       createSuccessMsg: "セーブを作成しました",
       createFailTitle: "作成に失敗しました",
       loadConfirm: "セーブを読み込むと現在の会話の進行が失われます。読み込みますか？",
+      newGameConfirm:
+        "まったく新しい物語を始めます（既存のセーブは一覧に残ります）。よろしいですか？",
+      newGameSuccessTitle: "新しいゲームを開始しました",
+      newGameSuccessMsg: "新しい世界が始まりました",
+      newGameFailTitle: "開始に失敗しました",
       loadSuccessTitle: "読み込みました",
       loadSuccessMsg: "セーブを読み込みました",
       loadFailTitle: "読み込みに失敗しました",

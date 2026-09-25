@@ -153,15 +153,22 @@ pub(crate) async fn spawn_script_execution(
 
 #[tauri::command]
 pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), String> {
+    // Lock AIService briefly to validate, start a fresh session, and extract the script
     let script = {
         let state = app.state::<AppState>();
-        let service = state.ai_service.lock().await;
-        service
+        let mut service = state.ai_service.lock().await;
+        let script = service
             .script_manager
             .all_scripts
             .get(&script_name)
             .ok_or_else(|| format!("剧本不存在: '{}'", script_name))?
-            .clone()
+            .clone();
+
+        // 剧本单开：开新世界（新自动槽 + active_save_id），顶替自由对话成为唯一"当前进行"，
+        // 剧本台词写进剧本自己的槽，不和自由对话混。旧自由对话槽留在存档列表（不再自动保存）。
+        crate::api::game::begin_new_progress(&mut *service, &state.db, &app).await?;
+
+        script
     };
 
     spawn_script_execution(app, script).await;
