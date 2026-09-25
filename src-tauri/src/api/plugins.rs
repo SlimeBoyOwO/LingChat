@@ -27,9 +27,25 @@ pub async fn plugin_list(app: AppHandle) -> Result<Vec<PluginInfo>, String> {
 }
 
 /// 启用/禁用插件。
+///
+/// 启用后会在后台跑该插件的启动入口：失败时插件会自行禁用并推 `plugin:auto-disabled`
+/// 事件，所以这里不等它，直接返回。禁用时级联停掉依赖它的插件（前置没了它们跑不通）。
 #[tauri::command]
 pub async fn plugin_set_enabled(app: AppHandle, id: String, enabled: bool) -> Result<(), String> {
-    manager(&app).set_enabled(&id, enabled).await?;
+    let plugin_manager = manager(&app);
+    plugin_manager.set_enabled(&id, enabled).await?;
+    if enabled {
+        let app_handle = app.clone();
+        let startup_manager = plugin_manager.clone();
+        let startup_id = id.clone();
+        tauri::async_runtime::spawn(async move {
+            startup_manager
+                .run_startup_hook_for(&app_handle, &startup_id)
+                .await;
+        });
+    } else {
+        plugin_manager.cascade_disable_dependents(&app, &id).await;
+    }
     refresh_plugin_content(&app).await;
     Ok(())
 }
@@ -47,18 +63,29 @@ pub async fn plugin_save_config(
 /// 重新扫描插件目录（异步，避免阻塞调用线程）。
 #[tauri::command]
 pub async fn plugin_reload(app: AppHandle) -> Result<(), String> {
-    let manager = manager(&app);
-    tokio::task::spawn_blocking(move || manager.reload())
+    let plugin_manager = manager(&app);
+    let reload_manager = plugin_manager.clone();
+    tokio::task::spawn_blocking(move || reload_manager.reload())
         .await
         .map_err(|e| format!("插件重载线程异常: {e}"))?;
     refresh_plugin_content(&app).await;
+    // 重载等于按 state.json 把插件重新起一遍：旧令牌作废、记录重建，所以启动入口
+    // 也得跟着重跑——否则插件的初始化状态丢了，而用户没有别的入口补跑。与启动路径
+    // 一致，不等它跑完（见 plugin_set_enabled 的说明）。
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        plugin_manager.run_startup_hooks(&app_handle).await;
+    });
     Ok(())
 }
 
 /// 删除插件（含插件目录与状态记录）。
 #[tauri::command]
 pub async fn plugin_delete(app: AppHandle, id: String) -> Result<(), String> {
-    manager(&app).delete_plugin(&id).await?;
+    let plugin_manager = manager(&app);
+    plugin_manager.delete_plugin(&id).await?;
+    // 前置被卸载，依赖它的插件已跑不通，一并停掉。
+    plugin_manager.cascade_disable_dependents(&app, &id).await;
     refresh_plugin_content(&app).await;
     Ok(())
 }

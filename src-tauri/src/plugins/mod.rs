@@ -11,6 +11,7 @@
 //! - [`PluginInfo`](types::PluginInfo)：暴露给前端的插件信息
 //! - [`manifest::parse`](manifest::parse)：解析并校验 manifest.toml
 //! - [`importer::do_import_plugin`](importer::do_import_plugin)：从 zip/7z 压缩包安装插件
+//! - [`signal::SignalRegistry`](signal::SignalRegistry)：宿主信号登记与插件订阅派发
 
 pub mod http_host;
 pub mod importer;
@@ -18,6 +19,7 @@ pub mod manager;
 pub mod manifest;
 pub mod python_backend;
 pub mod resources;
+pub mod signal;
 pub mod tool;
 pub mod types;
 

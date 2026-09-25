@@ -313,6 +313,14 @@ export default {
     empty: "未搵到插件。請將插件資料夾放入 data/plugins/ 目錄",
     delete: "刪除",
     deleteConfirm: "確定要刪除插件「{name}」嗎？會刪除插件目錄，不可恢復",
+    dependsOn: "前置插件",
+    enableFailedTitle: "無法啟用插件",
+    errors: {
+      PLUGIN_MISSING_DEPENDENCY: "缺少前置插件，需要先安裝它們",
+      PLUGIN_INACTIVE_DEPENDENCY: "前置插件未啟用，需要先啟用它們",
+      PLUGIN_DEPENDENCY_CYCLE: "前置插件形成循環依賴，無法確定啟動順序",
+      PLUGIN_STARTUP_FAILED: "插件的啟動函式執行失敗",
+    },
   },
   adventurePanel: {
     header: {

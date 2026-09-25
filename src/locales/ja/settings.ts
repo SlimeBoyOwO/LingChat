@@ -323,6 +323,15 @@ export default {
     delete: "削除",
     deleteConfirm:
       "プラグイン「{name}」を削除しますか？プラグインフォルダごと削除され、元に戻せません",
+    dependsOn: "前提プラグイン",
+    enableFailedTitle: "プラグインを有効化できません",
+    errors: {
+      PLUGIN_MISSING_DEPENDENCY:
+        "前提プラグインがインストールされていません。先にインストールしてください",
+      PLUGIN_INACTIVE_DEPENDENCY: "前提プラグインが無効です。先に有効化してください",
+      PLUGIN_DEPENDENCY_CYCLE: "前提プラグインが循環参照になっており、起動順を決定できません",
+      PLUGIN_STARTUP_FAILED: "プラグインの起動関数の実行に失敗しました",
+    },
   },
   adventurePanel: {
     header: {

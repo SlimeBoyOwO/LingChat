@@ -67,8 +67,36 @@ fn block_dangerous_imports(vm: &VirtualMachine) -> PyResult<()> {
     Ok(())
 }
 
-/// 构造注入给脚本的 ctx 对象（Python dict）。
-fn build_ctx(
+/// 注入所有脚本共用的字段：`config` / `env` / `call_tool`。
+fn inject_common(
+    vm: &VirtualMachine,
+    ctx: &PyDictRef,
+    config: &HashMap<String, Value>,
+    env: &HashMap<String, String>,
+    app: AppHandle,
+) -> PyResult<()> {
+    ctx.set_item(
+        vm.ctx.intern_str("config"),
+        http_host::value_to_pyobject(vm, &serde_json::to_value(config).unwrap_or(Value::Null)),
+        vm,
+    )?;
+    // ctx.env 是 dict：白名单环境变量查询，脚本用 ctx.env.get("KEY")
+    let env_dict = vm.ctx.new_dict();
+    for (k, v) in env {
+        env_dict.set_item(
+            vm.ctx.intern_str(k.as_str()),
+            vm.ctx.new_str(v.clone()).into(),
+            vm,
+        )?;
+    }
+    ctx.set_item(vm.ctx.intern_str("env"), env_dict.into(), vm)?;
+    // call_tool：让插件脚本调用任意已注册工具（内置或插件），返回其 JSON 结果
+    ctx.set_item(vm.ctx.intern_str("call_tool"), make_call_tool(vm, app)?, vm)?;
+    Ok(())
+}
+
+/// 构造工具调用注入给脚本的 ctx 对象（Python dict）。
+fn build_tool_ctx(
     vm: &VirtualMachine,
     tool_name: &str,
     args: &Value,
@@ -87,23 +115,34 @@ fn build_ctx(
         http_host::value_to_pyobject(vm, args),
         vm,
     )?;
+    inject_common(vm, &ctx, config, env, app)?;
+    Ok(ctx.into())
+}
+
+/// 构造信号 handler 注入给脚本的 ctx 对象（Python dict）。
+///
+/// 与工具 ctx 形状一致，只把 `tool_name` / `args` 换成 `signal` / `payload`，
+/// 插件作者只需要学一套注入字段。
+fn build_signal_ctx(
+    vm: &VirtualMachine,
+    signal: &str,
+    payload: &Value,
+    config: &HashMap<String, Value>,
+    env: &HashMap<String, String>,
+    app: AppHandle,
+) -> PyResult<PyObjectRef> {
+    let ctx = vm.ctx.new_dict();
     ctx.set_item(
-        vm.ctx.intern_str("config"),
-        http_host::value_to_pyobject(vm, &serde_json::to_value(config).unwrap_or(Value::Null)),
+        vm.ctx.intern_str("signal"),
+        vm.ctx.new_str(signal).into(),
         vm,
     )?;
-    // ctx.env 是 dict：白名单环境变量查询，脚本用 ctx.env.get("KEY")
-    let env_dict = vm.ctx.new_dict();
-    for (k, v) in env {
-        env_dict.set_item(
-            vm.ctx.intern_str(k.as_str()),
-            vm.ctx.new_str(v.clone()).into(),
-            vm,
-        )?;
-    }
-    ctx.set_item(vm.ctx.intern_str("env"), env_dict.into(), vm)?;
-    // call_tool：让插件脚本调用任意已注册工具（内置或插件），返回其 JSON 结果
-    ctx.set_item(vm.ctx.intern_str("call_tool"), make_call_tool(vm, app)?, vm)?;
+    ctx.set_item(
+        vm.ctx.intern_str("payload"),
+        http_host::value_to_pyobject(vm, payload),
+        vm,
+    )?;
+    inject_common(vm, &ctx, config, env, app)?;
     Ok(ctx.into())
 }
 
@@ -147,17 +186,17 @@ pub(crate) fn collect_env(manifest: &PluginManifest) -> HashMap<String, String> 
         .collect()
 }
 
-/// 执行插件脚本，调用 `run(ctx)` 并返回结果。
+/// 公共执行骨架：建解释器 → 跑脚本顶层 → 拦截危险模块 → 调用入口函数。
 ///
-/// 必须在 `spawn_blocking` 内调用（`Interpreter::enter` 需要线程局部状态）。
-pub(crate) fn run_plugin_script(
+/// `collect_result` 为 false 时不序列化返回值（信号 handler 的返回值按约定丢弃，
+/// 不该因为返回了不可序列化的对象而报错）。
+fn run_entry(
     script_path: &Path,
-    tool_name: &str,
-    args: &Value,
-    config: &HashMap<String, Value>,
-    env: &HashMap<String, String>,
+    entry: &str,
+    collect_result: bool,
     app: AppHandle,
-) -> Result<Value, String> {
+    build_ctx: impl FnOnce(&VirtualMachine, AppHandle) -> PyResult<PyObjectRef>,
+) -> Result<Option<Value>, String> {
     let script = std::fs::read_to_string(script_path).map_err(|e| format!("读取脚本失败: {e}"))?;
     let interpreter = build_interpreter();
     interpreter.enter(|vm| {
@@ -168,19 +207,76 @@ pub(crate) fn run_plugin_script(
         vm.run_code_obj(code, scope.clone())
             .map_err(|e| format!("脚本执行失败: {}", exc_message(vm, &e)))?;
 
-        // 顶层定义执行完毕后，拦截危险模块，再调用 run()
+        // 顶层定义执行完毕后，拦截危险模块，再调用入口函数
         block_dangerous_imports(vm).map_err(|e| exc_message(vm, &e))?;
 
-        let ctx =
-            build_ctx(vm, tool_name, args, config, env, app).map_err(|e| exc_message(vm, &e))?;
-        let run_func = scope
+        let ctx = build_ctx(vm, app).map_err(|e| exc_message(vm, &e))?;
+        let func = scope
             .globals
-            .get_item("run", vm)
-            .map_err(|_| "脚本未定义 run(ctx) 函数".to_string())?;
-        let result = run_func
+            .get_item(entry, vm)
+            .map_err(|_| format!("脚本未定义 {entry}(ctx) 函数"))?;
+        let result = func
             .call((ctx,), vm)
-            .map_err(|e| format!("run() 调用失败: {}", exc_message(vm, &e)))?;
+            .map_err(|e| format!("{entry}() 调用失败: {}", exc_message(vm, &e)))?;
+        if !collect_result {
+            return Ok(None);
+        }
         py_serde::serialize(vm, &*result, serde_json::value::Serializer)
+            .map(Some)
             .map_err(|e| format!("结果序列化失败: {e}"))
     })
+}
+
+/// 执行工具脚本，调用 `run(ctx)` 并返回结果。
+///
+/// 必须在 `spawn_blocking` 内调用（`Interpreter::enter` 需要线程局部状态）。
+pub(crate) fn run_plugin_script(
+    script_path: &Path,
+    tool_name: &str,
+    args: &Value,
+    config: &HashMap<String, Value>,
+    env: &HashMap<String, String>,
+    app: AppHandle,
+) -> Result<Value, String> {
+    run_entry(script_path, "run", true, app, |vm, app| {
+        build_tool_ctx(vm, tool_name, args, config, env, app)
+    })
+    .map(|result| result.unwrap_or(Value::Null))
+}
+
+/// 执行插件的启动入口，调用 `handler(ctx)`。
+///
+/// ctx 只有 `config` / `env` / `call_tool`——启动没有信号名与载荷。返回值按约定丢弃。
+pub(crate) fn run_plugin_startup(
+    script_path: &Path,
+    handler: &str,
+    config: &HashMap<String, Value>,
+    env: &HashMap<String, String>,
+    app: AppHandle,
+) -> Result<(), String> {
+    run_entry(script_path, handler, false, app, |vm, app| {
+        let ctx = vm.ctx.new_dict();
+        inject_common(vm, &ctx, config, env, app)?;
+        Ok(ctx.into())
+    })
+    .map(|_| ())
+}
+
+/// 执行插件的信号 handler，调用 `handler(ctx)`。
+///
+/// 返回值按约定丢弃——信号没有下游消费者，结果只用于让宿主感知执行失败。
+/// 同样必须在 `spawn_blocking` 内调用。
+pub(crate) fn run_plugin_handler(
+    script_path: &Path,
+    handler: &str,
+    signal: &str,
+    payload: &Value,
+    config: &HashMap<String, Value>,
+    env: &HashMap<String, String>,
+    app: AppHandle,
+) -> Result<(), String> {
+    run_entry(script_path, handler, false, app, |vm, app| {
+        build_signal_ctx(vm, signal, payload, config, env, app)
+    })
+    .map(|_| ())
 }

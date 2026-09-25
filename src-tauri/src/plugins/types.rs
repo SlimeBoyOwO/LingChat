@@ -66,6 +66,80 @@ fn default_timeout_ms() -> u64 {
     30_000
 }
 
+/// 信号订阅的匹配值：单值等值，或集合（命中任一）。
+///
+/// 注意 `Many` 必须排在 `One` 前面：`One` 装着 `serde_json::Value`，能吞下任何
+/// 值，反过来的话数组会被当成「等于这个数组」而不是「命中其中之一」。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum MatchValue {
+    /// 命中其中任一即可。
+    Many(Vec<Value>),
+    /// 等值命中。
+    One(Value),
+}
+
+impl MatchValue {
+    /// `actual` 为 `None`（payload 里没这个字段）时一律不命中。
+    pub(crate) fn hits(&self, actual: Option<&Value>) -> bool {
+        match (self, actual) {
+            (_, None) => false,
+            (Self::Many(expected), Some(actual)) => expected.iter().any(|e| e == actual),
+            (Self::One(expected), Some(actual)) => expected == actual,
+        }
+    }
+}
+
+/// 插件对宿主信号的订阅声明。
+///
+/// 宿主收到信号时按 `matches` 在宿主侧筛选（key 对应 payload 顶层字段），
+/// 命中才调用 `script` 里的 `handler(ctx)`，避免为不关心的插件新建解释器。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SubscribeDecl {
+    /// 宿主注册的信号名（如 `scene:switch`）。
+    pub signal: String,
+    /// 处理该信号的脚本（相对插件目录的单个文件名）。
+    pub script: String,
+    /// 脚本内的处理函数名，签名为 `handler(ctx)`。
+    pub handler: String,
+    /// 单次执行超时（毫秒），默认 30s。
+    #[serde(default = "default_timeout_ms")]
+    pub timeout_ms: u64,
+    /// 匹配条件：payload 顶层字段名 → 期望值。空表示不筛选，一律派发。
+    #[serde(default, rename = "match")]
+    pub matches: HashMap<String, MatchValue>,
+}
+
+/// 插件在程序启动（或启用）时执行的入口声明。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct StartupDecl {
+    /// 启动脚本（相对插件目录的单个文件名）。
+    pub script: String,
+    /// 脚本内的入口函数名，签名为 `handler(ctx)`。
+    pub handler: String,
+    /// 单次尝试的超时（毫秒），默认 30s。
+    #[serde(default = "default_timeout_ms")]
+    pub timeout_ms: u64,
+    /// 重试次数：**首次失败后再试 N 次**，共最多 N+1 次执行。上限 5，默认 0。
+    #[serde(default)]
+    pub retries: u64,
+    /// 两次尝试之间的等待（毫秒），默认 5s，上限 60s。
+    #[serde(default = "default_retry_interval_ms")]
+    pub retry_interval_ms: u64,
+    /// 全部尝试都失败时是否禁用插件（默认 true）。
+    /// 置 false 表示「尽力而为」的初始化，失败只记日志。
+    #[serde(default = "default_true")]
+    pub required: bool,
+}
+
+fn default_retry_interval_ms() -> u64 {
+    5_000
+}
+
+fn default_true() -> bool {
+    true
+}
+
 /// 插件可携带的资源类型（与 game_data 下同名子目录一一对应）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -113,6 +187,16 @@ pub struct PluginManifest {
     /// 插件携带的资源类型声明（空 = 纯工具插件，向后兼容）。
     #[serde(default)]
     pub resources: Vec<ResourceKind>,
+    /// 插件订阅的宿主信号（空 = 不订阅任何信号）。
+    #[serde(default)]
+    pub subscribe: Vec<SubscribeDecl>,
+    /// 启动（或启用）时执行的入口。
+    #[serde(default)]
+    pub startup: Option<StartupDecl>,
+    /// 前置插件 id：这些插件必须已安装且已启用，本插件才能启用；
+    /// 启动时也会等它们的启动函数执行完再执行自己的。与是否有启动函数无关。
+    #[serde(default)]
+    pub depends_on: Vec<String>,
 }
 
 /// 插件运行期状态（含持久化开关与配置）。
@@ -146,6 +230,12 @@ pub struct PluginRecord {
     pub dir: std::path::PathBuf,
     /// 启动/加载时的错误信息（如 manifest 解析失败）。
     pub error: Option<String>,
+    /// 启动阶段未能运行的原因（`错误码|补充信息`，见 `PLUGIN_*` 错误码）。
+    ///
+    /// 与 `error` 分开：`error` 非空会让插件**无法启用**（manifest 坏了），
+    /// 而这里只表示「这次没跑起来」，用户修好原因后可以重新启用重试。
+    /// 不持久化，重扫即清空。
+    pub startup_error: Option<String>,
 }
 
 /// 暴露给前端的插件信息。
@@ -162,7 +252,11 @@ pub struct PluginInfo {
     pub tools: Vec<String>,
     /// 该插件声明携带的资源类型（如 `["characters", "musics"]`）。
     pub resources: Vec<String>,
+    /// 本插件依赖的前置插件 id（前端据此提示「需要先启用谁」）。
+    pub depends_on: Vec<String>,
     pub error: Option<String>,
+    /// 启动阶段未能运行的原因（`错误码|补充信息`）。
+    pub startup_error: Option<String>,
 }
 
 impl From<&PluginRecord> for PluginInfo {
@@ -188,7 +282,9 @@ impl From<&PluginRecord> for PluginInfo {
                 .iter()
                 .map(|k| k.as_str().to_string())
                 .collect(),
+            depends_on: record.manifest.depends_on.clone(),
             error: record.error.clone(),
+            startup_error: record.startup_error.clone(),
         }
     }
 }

@@ -342,6 +342,15 @@ export default {
     empty: "No plugins found. Put a plugin folder in data/plugins/",
     delete: "Delete",
     deleteConfirm: 'Delete plugin "{name}"? This removes the plugin folder and cannot be undone.',
+    dependsOn: "Requires",
+    enableFailedTitle: "Cannot enable plugin",
+    errors: {
+      PLUGIN_MISSING_DEPENDENCY: "Missing required plugin(s). Install them first",
+      PLUGIN_INACTIVE_DEPENDENCY: "Required plugin(s) are disabled. Enable them first",
+      PLUGIN_DEPENDENCY_CYCLE:
+        "Required plugins form a dependency cycle, so the startup order cannot be determined",
+      PLUGIN_STARTUP_FAILED: "The plugin's startup function failed",
+    },
   },
   adventurePanel: {
     header: {

@@ -336,6 +336,14 @@ export default {
     resourceKeepConfirm: "将把{kind}「{name}」复制到游戏目录成为游戏自有资源，插件版随后自动隐藏。",
     disableCharactersConfirm:
       "禁用插件「{name}」会将其携带的角色从列表中移除，并删除这些角色的全部存档与对话记忆（重新启用也不会恢复）。确定要禁用吗？",
+    dependsOn: "前置插件",
+    enableFailedTitle: "无法启用插件",
+    errors: {
+      PLUGIN_MISSING_DEPENDENCY: "缺少前置插件，需要先安装它们",
+      PLUGIN_INACTIVE_DEPENDENCY: "前置插件未启用，需要先启用它们",
+      PLUGIN_DEPENDENCY_CYCLE: "前置插件形成循环依赖，无法确定启动顺序",
+      PLUGIN_STARTUP_FAILED: "插件的启动函数执行失败",
+    },
     resourceKinds: {
       characters: "角色",
       scripts: "剧本",
