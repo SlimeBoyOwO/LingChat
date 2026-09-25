@@ -1,6 +1,7 @@
 <template>
   <div
     id="pet-app"
+    v-show="!returningToApp"
     :style="appStyleVars"
     @mouseenter="handleMouseEnter"
     @mouseleave="handleMouseLeave"
@@ -142,6 +143,17 @@ const { isDragging, hasFile } = useFileDrop();
  * {@link onFloatingWindowModeChange}。
  */
 const floatingWindowMode = ref(isInFloatingWindow());
+
+/**
+ * 已从悬浮窗收回、正在等路由切回 `/chat`。
+ *
+ * 收回的那一瞬间页面还停在 `/pet`：`floatingWindowMode` 已经是 false，
+ * 于是走桌面分支按 240×480 渲染——在整屏 Activity 里就是**左上角一小块**，
+ * 看起来和「没收回去」一模一样。`router.push("/chat")` 落地通常只要几十
+ * 毫秒，但慢机器上足够被看见。这里先把桌宠页藏起来。
+ */
+const returningToApp = ref(false);
+let returningTimer: number | undefined;
 
 /**
  * 悬浮窗的收起/展开态。
@@ -452,6 +464,14 @@ onMounted(async () => {
     // 悬浮窗里的系数（约 0.25），整页会被缩成一小块。
     floatingFit.value = 1;
     lastReportedHeight = -1;
+    // 导航落地前先藏起桌宠页，避免它按桌面尺寸在左上角闪一下
+    returningToApp.value = true;
+    if (returningTimer !== undefined) window.clearTimeout(returningTimer);
+    returningTimer = window.setTimeout(() => {
+      returningTimer = undefined;
+      // 兜底：万一导航没落地，也不能让页面一直空着
+      returningToApp.value = false;
+    }, 1500);
     void router.push("/chat");
   });
 
@@ -666,6 +686,7 @@ onUnmounted(() => {
   if (metricsUnlisten) metricsUnlisten();
   if (autoSideTimer !== undefined) window.clearTimeout(autoSideTimer);
   if (heightReportTimer !== undefined) window.clearTimeout(heightReportTimer);
+  if (returningTimer !== undefined) window.clearTimeout(returningTimer);
   window.removeEventListener("resize", onFloatingResize);
   bandObserver.disconnect();
 
