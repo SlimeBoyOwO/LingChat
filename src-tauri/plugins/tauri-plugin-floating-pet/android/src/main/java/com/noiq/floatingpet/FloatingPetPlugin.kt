@@ -1,6 +1,5 @@
 package com.noiq.floatingpet
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
@@ -96,6 +95,11 @@ class SizeArgs {
 @InvokeArg
 class TouchableArgs {
     var touchable: Boolean = true
+}
+
+@InvokeArg
+class ExpandedArgs {
+    var expanded: Boolean = false
 }
 
 /**
@@ -267,9 +271,12 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
 
         activity.runOnUiThread {
             try {
-                // 幂等：先清理可能残留的旧状态，避免重复 addView 导致泄漏
+                // 幂等：已经搬过一次时，先把 WebView 完整地还给 Activity
+                // 再重新搬。这里必须用 restore 而不是 detach —— detach 只是
+                // 断开引用，WebView 会变成无父容器的孤儿，随后
+                // findMainWebView() 就再也找不到它了。
                 if (petView != null) {
-                    detachPetView(destroy = false)
+                    restoreWebViewToActivity()
                 }
 
                 petScale = args.scale.coerceIn(0.5, 2.0)
@@ -281,10 +288,17 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 }
 
                 // ── 1. 先把 WebView 从 Activity 视图树摘下 ──
-                // 必须在 setContentView(占位页) 之前摘：setContentView 会
-                // 替换整个内容视图，若不先摘，WebView 会随旧视图树一起被
-                // 丢弃（虽然 View 对象还在，但已 detach，重新 addView 时
-                // 部分 ROM 上会丢失渲染上下文）。
+                // 必须先摘再 setContentView(占位页)：setContentView 是「整个
+                // 内容视图替换」，直接调用会让 WebView 随旧视图树一起被移除，
+                // 而我们还需要这个实例，因此显式摘下、持有引用。
+                //
+                // 记到 petView：此后任何一步失败，catch 里的 rollback 都能
+                // 通过 restoreWebViewToActivity() 把它装回去。若只在 addView
+                // 成功后才赋值，addView 之前的失败会导致 WebView 无家可归
+                // → 主界面永久黑屏。
+                petView = webView
+                petDetached = true
+
                 val root = activity.findViewById<ViewGroup>(android.R.id.content)
                 root?.removeView(webView)
 
@@ -327,13 +341,13 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 // 页面自身的 html/body 背景（由 /pet 路由控制）。
                 webView.setBackgroundColor(Color.TRANSPARENT)
 
-                // 拖动 + 单击切回：挂在整个窗口上
+                // 拖动 / 单击 / 双击手势：挂在整个窗口上
                 webView.setOnTouchListener(buildPetTouchListener())
 
+                // 注意：petView / petDetached 已在步骤 1 赋值（为了让 rollback
+                // 在任何一步失败时都能把 WebView 装回去），这里只补窗口相关状态。
                 windowManager = wm
-                petView = webView
                 layoutParams = params
-                petDetached = true
                 expanded = false
                 instance = this
 
@@ -408,12 +422,17 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * 彻底销毁桌宠视图（插件的 onDestroy 路径）。
+     * 断开桌宠视图（插件的 onDestroy 路径）。
      *
-     * 与 [restoreWebViewToActivity] 的区别：这里不再把 WebView 还给
-     * Activity（Activity 本身正在销毁），而是直接断开引用。
+     * 与 [restoreWebViewToActivity] 的区别：这里**不**把 WebView 还给
+     * Activity —— Activity 本身正在销毁，装回去没有意义，反而可能在
+     * 销毁流程里制造新的引用。只把窗口摘掉、断开插件侧的引用即可。
+     *
+     * 不销毁 WebView 实例：它归 Tauri 管，Tauri 自己的
+     * `Rust.onWebviewDestroy` 会负责释放。这里手动 destroy 会造成
+     * 二次销毁。
      */
-    private fun detachPetView(destroy: Boolean) {
+    private fun detachPetView() {
         val view = petView ?: return
         try {
             windowManager?.removeView(view)
@@ -426,9 +445,6 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         windowManager = null
         instance = null
         petDetached = false
-        if (destroy) {
-            (view as? WebView)?.destroy()
-        }
     }
 
     /**
@@ -468,36 +484,65 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             setBackgroundColor(Color.parseColor("#101014"))
         }
 
-        // 背景图：复用 App 的启动图，保持视觉一致
+        // 背景：App 图标放大、淡化后铺底，保持与 App 一致的视觉调性。
+        // 用 applicationInfo.icon —— 它是 App 自己的资源，不需要往插件目录
+        // 加 drawable（那要额外的 gradle 配置）。icon 为 0 时 setImageResource
+        // 会抛异常，因此整段包在 try 里，失败就只留纯色底。
         try {
-            val bg = android.widget.ImageView(context).apply {
-                setImageResource(activity.applicationInfo.icon)
-                scaleType = android.widget.ImageView.ScaleType.CENTER
-                alpha = 0.15f
-            }
-            root.addView(
-                bg,
-                android.widget.FrameLayout.LayoutParams(
-                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            val iconId = activity.applicationInfo.icon
+            if (iconId != 0) {
+                val bg = android.widget.ImageView(context).apply {
+                    setImageResource(iconId)
+                    scaleType = android.widget.ImageView.ScaleType.CENTER
+                    alpha = 0.12f
+                }
+                root.addView(
+                    bg,
+                    android.widget.FrameLayout.LayoutParams(
+                        android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                        android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+                    )
                 )
-            )
+            }
         } catch (e: Exception) {
             Log.w(TAG, "占位页背景图加载失败（可忽略）", e)
         }
 
-        val text = android.widget.TextView(context).apply {
-            text = "桌宠正在桌面上陪着你"
-            setTextColor(Color.parseColor("#CCFFFFFF"))
-            textSize = 16f
+        // 文案用两行：主句说明现状，次句给出操作。
+        // 用户切回 App 看到的应该是「桌宠还在，怎么回去」而不是空白。
+        val container = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
+
+        val title = android.widget.TextView(context).apply {
+            text = "桌宠正在桌面上陪着你"
+            setTextColor(Color.parseColor("#E6FFFFFF"))
+            textSize = 18f
+            gravity = Gravity.CENTER
+        }
+        container.addView(title)
+
+        val hint = android.widget.TextView(context).apply {
+            text = "轻点头像可展开输入框，双击头像把它收回来"
+            setTextColor(Color.parseColor("#99FFFFFF"))
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(12.0), 0, 0)
+        }
+        container.addView(hint)
+
         root.addView(
-            text,
+            container,
             android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
-            ).apply { gravity = Gravity.CENTER }
+            ).apply {
+                gravity = Gravity.CENTER
+                // 左右留边，避免长文案顶到屏幕边缘
+                marginStart = dp(32.0)
+                marginEnd = dp(32.0)
+            }
         )
 
         return root
@@ -771,16 +816,6 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
-    /** 向主 WebView 广播事件（插件 trigger，主界面可用 listen 接收）。 */
-    @Suppress("unused")
-    private fun notifyMain(event: String, payload: JSObject = JSObject()) {
-        try {
-            trigger(event, payload)
-        } catch (e: Exception) {
-            Log.e(TAG, "广播事件失败: $event", e)
-        }
-    }
-
     // ─── 生命周期 ─────────────────────────────────────────────
 
     /**
@@ -789,23 +824,11 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * 否则 overlay 会留在屏幕上成为「僵尸窗口」：宿主 Activity 已经没了，
      * 用户却还能看到那个宠物，且无法通过 App 关闭它。
      *
-     * 注意这里用 [detachPetView] 而非 [restoreWebViewToActivity]：
-     * Activity 正在销毁，把 WebView 还回去没有意义，反而可能在
-     * 销毁流程里制造新的引用。
+     * 用 [detachPetView] 而非 [restoreWebViewToActivity]：Activity 正在销毁，
+     * 把 WebView 装回内容视图没有意义，反而可能在销毁流程里制造新引用。
      */
     override fun onDestroy(activity: AppCompatActivity) {
-        activity.runOnUiThread { detachPetView(destroy = false) }
+        activity.runOnUiThread { detachPetView() }
         super.onDestroy(activity)
     }
-}
-
-/**
- * `setExpanded` 命令的参数。
- *
- * 独立定义在文件末尾而非参数区，是因为它是本轮新增的
- * （此前只有 show/move/setSize/setTouchable 四个）。
- */
-@InvokeArg
-class ExpandedArgs {
-    var expanded: Boolean = false
 }
