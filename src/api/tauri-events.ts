@@ -21,7 +21,7 @@ import { useDialogStore } from "../stores/modules/ui/dialog";
 import { useAsrStore } from "../stores/modules/settings/asr";
 import type { VadEvent } from "../api/services/asr";
 import type { SceneInfo } from "./services/scene";
-import type { AffectionChangedPayload } from "./services/affection";
+import { getAffection, type AffectionChangedPayload } from "./services/affection";
 
 function asEvent(
   payload: unknown,
@@ -450,6 +450,20 @@ export function initializeTauriEventListeners() {
     // 同步主界面/桌宠标题（对话中名字由 currentInteractRole 驱动，已覆盖）
     uiStore.showCharacterTitle = role.roleName;
     uiStore.showCharacterSubtitle = role.roleSubTitle;
+    // 好感度跟随角色：get_role_info 不携带 affection，切到尚未建档的角色时
+    // 好感度面板会短暂沿用旧角色数值（跨角色显示污染），这里全量兜底刷新
+    try {
+      const all = await getAffection();
+      for (const [roleId, values] of Object.entries(all)) {
+        const r = gameStore.gameRoles[Number(roleId)];
+        if (r) {
+          r.affection = values;
+          r.negative = values.negative;
+        }
+      }
+    } catch (e) {
+      console.warn("[Affection] 切换角色后刷新好感度失败:", e);
+    }
   });
 
   // === LLM 场景工具事件 ===
