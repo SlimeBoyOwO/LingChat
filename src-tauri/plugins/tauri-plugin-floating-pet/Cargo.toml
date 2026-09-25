@@ -1,0 +1,23 @@
+[package]
+name = "tauri-plugin-floating-pet"
+version = "0.1.0"
+authors = ["LingChat"]
+description = "Android system-level floating window (overlay) for the desktop-pet mode."
+license = "AGPL-3.0"
+edition = "2021"
+rust-version = "1.77.2"
+links = "tauri-plugin-floating-pet"
+exclude = ["/android", "/guest-js", "/node_modules"]
+
+[lib]
+name = "tauri_plugin_floating_pet"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[dependencies]
+tauri = { version = "2" }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+log = "0.4"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

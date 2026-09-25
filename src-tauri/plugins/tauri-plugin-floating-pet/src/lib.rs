@@ -1,0 +1,206 @@
+//! # tauri-plugin-floating-pet
+//!
+//! 为 LingChat 的桌宠模式提供 **Android 系统级悬浮窗**能力。
+//!
+//! ## 背景
+//!
+//! 桌面端的桌宠是一个「透明 + 置顶 + 可点击穿透」的原生小窗口，
+//! 由 `ling_chat_lib::api::pet` 实现。Android 没有等价的窗口概念，
+//! 需要走 `SYSTEM_ALERT_WINDOW` + `WindowManager.addView()`，
+//! 因此单独抽成一个插件，避免污染桌面端逻辑。
+//!
+//! ## 平台能力
+//!
+//! | 平台 | 支持 | 实现方式 |
+//! |------|------|----------|
+//! | Android | ✅ | `TYPE_APPLICATION_OVERLAY` 悬浮窗 + 内嵌 WebView |
+//! | iOS | ❌ | 系统不允许跨 App 覆盖窗口 |
+//! | 桌面端 | ❌ | 由 `api::pet` 的原生窗口实现 |
+//!
+//! 前端应先用 `is_supported` / `check_permission` 探测，
+//! 再决定走悬浮窗路径还是桌面端窗口路径。
+
+use std::sync::{Arc, Mutex};
+
+use tauri::{
+    AppHandle, Manager, Runtime,
+    plugin::{Builder, TauriPlugin},
+};
+
+mod models;
+
+#[cfg(desktop)]
+mod desktop;
+#[cfg(mobile)]
+mod mobile;
+
+#[cfg(desktop)]
+use desktop as imp;
+#[cfg(mobile)]
+use mobile as imp;
+
+pub use models::*;
+
+/// 悬浮窗运行时状态，供 Rust 侧查询与幂等控制。
+#[derive(Default, Clone)]
+pub struct FloatingPetState {
+    inner: Arc<Mutex<Inner>>,
+}
+
+#[derive(Default)]
+struct Inner {
+    visible: bool,
+    touchable: bool,
+}
+
+impl FloatingPetState {
+    pub fn is_visible(&self) -> bool {
+        self.inner.lock().map(|g| g.visible).unwrap_or(false)
+    }
+
+    pub fn is_touchable(&self) -> bool {
+        self.inner.lock().map(|g| g.touchable).unwrap_or(false)
+    }
+
+    /// 仅供 `mobile.rs` 调用。桌面端构建时 `mobile.rs` 不参与编译，
+    /// 因此这里显式放行 dead_code 警告（而非删掉或改结构）。
+    #[cfg_attr(desktop, allow(dead_code))]
+    fn set_visible(&self, visible: bool) {
+        if let Ok(mut g) = self.inner.lock() {
+            g.visible = visible;
+        }
+    }
+
+    #[cfg_attr(desktop, allow(dead_code))]
+    fn set_touchable(&self, touchable: bool) {
+        if let Ok(mut g) = self.inner.lock() {
+            g.touchable = touchable;
+        }
+    }
+}
+
+// ─── 命令 ────────────────────────────────────────────────────
+
+#[tauri::command]
+fn is_supported<R: Runtime>(app: AppHandle<R>) -> bool {
+    imp::is_supported(&app)
+}
+
+#[tauri::command]
+fn check_permission<R: Runtime>(app: AppHandle<R>) -> Result<bool> {
+    imp::check_permission(&app)
+}
+
+/// 跳转到系统的「显示在其他应用上层」授权页。
+///
+/// 该权限是 Android 的特殊权限，**无法通过运行时弹窗申请**，
+/// 只能引导用户到设置页手动开启。前端应在 `show` 失败于
+/// `PermissionDenied` 时调用本命令，并在 App 恢复前台后重新
+/// `check_permission` 确认结果。
+#[tauri::command]
+fn request_permission<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    imp::request_permission(&app)
+}
+
+#[tauri::command]
+fn show<R: Runtime>(
+    app: AppHandle<R>,
+    args: ShowArgs,
+    state: tauri::State<'_, FloatingPetState>,
+) -> Result<()> {
+    if !imp::is_supported(&app) {
+        return Err(Error::NotSupported);
+    }
+    // 幂等：已显示时先隐藏，避免重复 addView 造成窗口泄漏
+    if state.is_visible() {
+        let _ = imp::hide(&app, &state);
+    }
+    imp::show(&app, args, &state)
+}
+
+#[tauri::command]
+fn hide<R: Runtime>(app: AppHandle<R>, state: tauri::State<'_, FloatingPetState>) -> Result<()> {
+    if !state.is_visible() {
+        return Ok(());
+    }
+    imp::hide(&app, &state)
+}
+
+#[tauri::command]
+fn move_pet<R: Runtime>(
+    app: AppHandle<R>,
+    args: MoveArgs,
+    state: tauri::State<'_, FloatingPetState>,
+) -> Result<()> {
+    imp::move_pet(&app, args, &state)
+}
+
+#[tauri::command]
+fn set_size<R: Runtime>(
+    app: AppHandle<R>,
+    args: SizeArgs,
+    state: tauri::State<'_, FloatingPetState>,
+) -> Result<()> {
+    imp::set_size(&app, args, &state)
+}
+
+#[tauri::command]
+fn set_touchable<R: Runtime>(
+    app: AppHandle<R>,
+    touchable: bool,
+    state: tauri::State<'_, FloatingPetState>,
+) -> Result<()> {
+    imp::set_touchable(&app, touchable, &state)
+}
+
+#[tauri::command]
+fn is_visible(state: tauri::State<'_, FloatingPetState>) -> bool {
+    state.is_visible()
+}
+
+/// 查询平台能力与授权状态的聚合接口，前端一次调用即可决策。
+#[tauri::command]
+fn status<R: Runtime>(app: AppHandle<R>, state: tauri::State<'_, FloatingPetState>) -> PetStatus {
+    let supported = imp::is_supported(&app);
+    PetStatus {
+        supported,
+        granted: if supported {
+            imp::check_permission(&app).unwrap_or(false)
+        } else {
+            false
+        },
+        visible: state.is_visible(),
+    }
+}
+
+pub fn init<R: Runtime>() -> TauriPlugin<R> {
+    Builder::new("floating-pet")
+        .invoke_handler(tauri::generate_handler![
+            is_supported,
+            check_permission,
+            request_permission,
+            show,
+            hide,
+            move_pet,
+            set_size,
+            set_touchable,
+            is_visible,
+            status,
+        ])
+        .setup(|app, _api| {
+            app.manage(FloatingPetState::default());
+            Ok(())
+        })
+        .build()
+}
+
+/// 扩展 trait：`app.floating_pet()` 直接拿到状态。
+pub trait FloatingPetExt<R: Runtime> {
+    fn floating_pet(&self) -> tauri::State<'_, FloatingPetState>;
+}
+
+impl<R: Runtime, T: Manager<R>> FloatingPetExt<R> for T {
+    fn floating_pet(&self) -> tauri::State<'_, FloatingPetState> {
+        self.state::<FloatingPetState>()
+    }
+}

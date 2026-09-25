@@ -39,6 +39,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-notification = "2.4"
 tauri-plugin-screenshots = { path = "plugins/tauri-plugin-screenshots" }
+# Android 系统级悬浮窗（桌宠模式）。桌面端 / iOS 自动降级为 NotSupported。
+tauri-plugin-floating-pet = { path = "plugins/tauri-plugin-floating-pet" }
 tauri-plugin-android-fs = "28"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

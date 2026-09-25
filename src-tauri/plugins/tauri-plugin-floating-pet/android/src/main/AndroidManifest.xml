@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      系统级悬浮窗权限（「显示在其他应用上层」）。
+
+      这是 Android 的特殊权限（special permission），特点：
+      1. 无法通过运行时弹窗申请，只能跳转设置页由用户手动开启；
+      2. 部分厂商 ROM（小米/华为/OPPO 等）还需额外加入「后台弹出界面」白名单；
+      3. Google Play 上架需在应用说明中陈述必要性。
+    -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- 悬浮窗需在 App 退到后台后继续存活，依赖前台服务 + 常驻通知 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+</manifest>
