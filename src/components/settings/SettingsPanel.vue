@@ -1,10 +1,5 @@
 <template>
-  <div
-    class="blur-overlay"
-    :class="{ 'no-blur': isTransitioning }"
-    v-if="shouldShowOverlay"
-    :style="{ opacity: overlayOpacity }"
-  ></div>
+  <div class="blur-overlay" v-if="shouldShowOverlay" :style="{ opacity: overlayOpacity }"></div>
   <div class="settings-panel flex h-full flex-col" v-show="uiStore.showSettings">
     <div class="w-full shrink-0" v-show="!prewarming">
       <SettingsNav ref="settingsNavRef" @remove-more-menu-from-a="onAddFromA" />
@@ -116,22 +111,6 @@ const currentTabComponent = computed(() => tabComponents[uiStore.currentSettings
 // 转场方向：左滑下一项 → slide-left（新页从右进）；右滑上一项 → slide-right
 const transitionName = ref<"slide-left" | "slide-right">("slide-left");
 
-// ========== 转场期间临时摘掉 overlay 的 backdrop-filter ==========
-// backdrop-filter 的语义是「每帧对身后内容重新取样模糊」，转场时新旧两页整屏滑动，
-// 模糊区域内容剧变，是切页卡顿的最大来源。转场的 0.32s 内降级为纯半透明黑
-// （视觉焦点在滑动的页面上，注意不到背景糊不糊），转场结束恢复全效。
-const isTransitioning = ref(false);
-let transitionTimer: ReturnType<typeof setTimeout> | null = null;
-
-function markTransitioning() {
-  isTransitioning.value = true;
-  if (transitionTimer) clearTimeout(transitionTimer);
-  transitionTimer = setTimeout(() => {
-    isTransitioning.value = false;
-    transitionTimer = null;
-  }, 360); // 覆盖 0.32s 转场并留缓冲
-}
-
 // ========== KeepAlive 预热 ==========
 // 首次切到某个 tab 时整页 DOM 同步挂载，动画第一帧掉 1~2 帧（滑动起步快，
 // 缓动掩盖有限）。面板首次打开后，在内容区隐藏的状态下把全部 tab 依序挂载一遍
@@ -181,7 +160,6 @@ watch(
     // 目标/来源不在滑动顺序里（理论不应发生）→ 保持原方向
     if (newIdx === -1 || oldIdx === -1) return;
     transitionName.value = newIdx > oldIdx ? "slide-left" : "slide-right";
-    markTransitioning();
   },
 );
 
@@ -299,13 +277,8 @@ defineExpose({
   will-change: transform;
 }
 
-/* 转场期间 overlay 降级：摘掉 backdrop-filter（每帧全屏重采样模糊是切页
-   卡顿大头），换更高的不透明度补偿对比度，转场结束恢复 */
-.blur-overlay.no-blur {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  background: rgba(0, 0, 0, 0.82);
-}
+/* 转场期间 overlay 降级的方案已撤销：实测 blur 有无的视觉跳变非常明显
+   （背景一闪一闪），且未证实它是切页卡顿的主因，得不偿失 */
 
 .slide-left-enter-from {
   transform: translateX(100%);
