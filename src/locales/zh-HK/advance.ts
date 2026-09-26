@@ -39,9 +39,9 @@ export default {
     memoryButton: "進入記憶調試界面",
     affectionTitle: "好感度系統",
     affectionDesc:
-      "好感度系統總開關（切換後自動重啟生效）；心跳同波浪動畫開關喺「其他進階設定 → 好感度」度",
+      "好感度系統總開關（儲存後立即生效）；心跳同波浪動畫開關喺「其他進階設定 → 好感度」度",
     affectionMasterToggle: "啟用好感度系統",
-    affectionRestartConfirm: "切換好感度系統將在重啟後生效，確定立即重啟應用嗎？",
-    affectionRestartFailed: "重啟失敗，請手動重啟應用",
+    affectionToggleConfirm: "確定要切換好感度系統嗎？關閉後將立即停止好感度評估並隱藏好感度面板。",
+    affectionToggleFailed: "切換好感度系統失敗，請稍後重試",
   },
 };

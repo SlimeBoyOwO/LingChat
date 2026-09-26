@@ -30,12 +30,34 @@ pub struct NpcAffectionView {
 pub struct GodAgentCore {
     /// LLM 槽位（支持运行时热切换）。
     pub llm: LlmSlot,
-    pub config: GodAgentConfig,
+    /// 运行配置（支持运行时热更新：save_settings 保存 god_agent/affection
+    /// 相关设置后立即生效，无需重启；读写走 RwLock 快照）。
+    pub config: std::sync::RwLock<GodAgentConfig>,
 }
 
 impl GodAgentCore {
     pub fn new(llm: LlmSlot, config: GodAgentConfig) -> Self {
-        Self { llm, config }
+        Self {
+            llm,
+            config: std::sync::RwLock::new(config),
+        }
+    }
+
+    /// 运行时热更新配置（save_settings 保存相关设置后调用）。
+    pub fn update_config(&self, config: GodAgentConfig) {
+        *self.config.write().expect("上帝 Agent 配置锁中毒") = config.clone();
+        tracing::info!(
+            "[GodAgent] 配置已热更新: affection_enabled={}, eval_interval={}, recent_window={}, max_consecutive_npc={}",
+            config.affection_enabled,
+            config.affection_eval_interval,
+            config.recent_window,
+            config.max_consecutive_npc,
+        );
+    }
+
+    /// 配置快照（读锁拷贝；GodAgentConfig 是小值类型，拷贝开销可忽略）。
+    pub fn config_snapshot(&self) -> GodAgentConfig {
+        self.config.read().expect("上帝 Agent 配置锁中毒").clone()
     }
 
     // ============================================================
@@ -168,7 +190,7 @@ impl GodAgentCore {
             return Ok((npc_ids.first().copied().unwrap_or(0), "single_npc".into()));
         }
 
-        let window = self.config.recent_window;
+        let window = self.config_snapshot().recent_window;
         let lines: Vec<GameLine> = gs
             .line_list
             .iter()

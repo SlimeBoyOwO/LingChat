@@ -183,6 +183,12 @@ impl AIService {
         gs.onstage_role_ids.clear();
         gs.present_role_ids.clear();
         gs.entry_greeting_done = false;
+        // 好感度会话边界：存档全局变量里的 `affection.{role_id}` 是「上一个会话/存档」
+        // 留下的状态。切换角色 / 新对话（clear_conversation）语义是全新开始，必须一并
+        // 清空，否则新角色的好感度会继承上一角色的数值（跨角色污染）；读档不走这里，
+        // 由 apply_snapshot 用存档里的全局变量原样恢复，读旧档即回到旧档的感情状态。
+        gs.global_variables.clear();
+        gs.affection_eval_cursor = 0;
         // 会话边界代号：切换角色 / 读档 / 清空对话都会清空 GameStatus 并重建，
         // 旧一轮自由对话的流式任务（consumer/publisher）可能仍在游离生成。
         // 递增代号后，它们的迟到 `add_assistant_line` / 工具回填会因

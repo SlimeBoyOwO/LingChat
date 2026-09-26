@@ -367,7 +367,7 @@ impl MessageGenerator {
         };
 
         // 检查是否超过连续 NPC 轮数上限
-        if consecutive_npc_rounds >= god.config.max_consecutive_npc {
+        if consecutive_npc_rounds >= god.config_snapshot().max_consecutive_npc {
             tracing::info!(
                 "[GodAgent] 连续 {} 轮 NPC 发言，强制返回玩家",
                 consecutive_npc_rounds
@@ -423,12 +423,14 @@ impl MessageGenerator {
         let Some(god) = &self.deps.god_agent else {
             return;
         };
-        // 好感度系统总开关（高级设置）：关闭后不评估、不写旁白台词
-        if !god.config.affection_enabled {
+        // 好感度系统总开关（高级设置）：关闭后不评估、不写旁白台词。
+        // config 可被 save_settings 热更新，这里取快照保证读到最新值。
+        let god_config = god.config_snapshot();
+        if !god_config.affection_enabled {
             return;
         }
-        let interval = god.config.affection_eval_interval.max(1);
-        let window = god.config.recent_window;
+        let interval = god_config.affection_eval_interval.max(1);
+        let window = god_config.recent_window;
 
         let (npcs, lines) = {
             let mut gs = self.deps.game_status.lock().await;
