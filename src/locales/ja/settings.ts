@@ -1337,6 +1337,9 @@ export default {
     energyWarmup: "エネルギーモニター起動バッファ（ms）",
     energyWarmupHint:
       "AI の発話終了後、この時間だけ音声トリガーを待機します（デフォルト 100ms。0 で即時トリガー。AI 発話直後の環境音で誤反応する場合は大きくしてください）",
+    vadDebugLog: "詳細 VAD エネルギー検出ログ",
+    vadDebugLogHint:
+      "フレームごとの音声確率（frame/prob/len）をログページに出力します。音声認識が発火しない原因の調査用。デフォルトはオフ、録音中は毎秒約 1 行",
     sendMode: {
       title: "認識後",
       fillOnly: "入力欄に挿入（推奨）",

@@ -14,6 +14,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 
+use super::debug_log;
 use super::error::AsrError;
 use super::vad_segmenter::SegmentEvent;
 
@@ -198,15 +199,16 @@ impl AsrVad {
         let events = seg.feed(prob);
         drop(seg);
 
-        // 诊断日志（切分链路观测）：前 10 帧 + 每秒 1 条（33 帧 @30ms），
-        // 确认前端 VAD 流在走、prob 是否检测到语音；块长异常直接暴露。
+        // 诊断日志（切分链路观测）：块长异常直接暴露，逐帧 prob 由调试开关控制。
         if pcm.len() != 512 {
             tracing::warn!(
                 "[ASR/VAD] chunk 长度异常: {} samples（期望 512）",
                 pcm.len()
             );
         }
-        if frame < 10 || frame % 33 == 0 {
+        // 前 10 帧 + 每秒 1 条（33 帧 @30ms），确认前端 VAD 流在走、prob 是否检测到语音。
+        // 默认关闭（录音时每秒一条会刷屏），设置页「详细VAD能量检测日志开关」打开。
+        if debug_log::enabled() && (frame < 10 || frame % 33 == 0) {
             tracing::info!("[ASR/VAD] frame={frame} prob={prob:.3} len={}", pcm.len());
         }
 

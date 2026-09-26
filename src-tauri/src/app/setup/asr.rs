@@ -17,10 +17,13 @@ pub async fn init_asr(
     app: &tauri::AppHandle,
     asr_state: &Arc<crate::ai_service::asr::AsrState>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use crate::ai_service::asr::{provider, session::AsrSession, settings, vad::AsrVad};
+    use crate::ai_service::asr::{debug_log, provider, session::AsrSession, settings, vad::AsrVad};
 
     tracing::info!("[ASR] init_asr 开始");
     let cfg = settings::load(app)?;
+    // 逐帧 VAD 调试日志开关（默认关）。放在 VAD 加载之前：加载失败会提前 return，
+    // 开关值也要按设置落定，不留半初始化状态
+    debug_log::set(cfg.vad_debug_log);
     // TLS 走统一的 webpki-roots 配置（Android 上 rustls-platform-verifier 未初始化会 panic）
     let tls_config = crate::utils::tls::build_tls_config()?;
     let http = reqwest::Client::builder()

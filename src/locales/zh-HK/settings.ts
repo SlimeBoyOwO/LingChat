@@ -1304,6 +1304,9 @@ export default {
     energyWarmup: "能量監測緩衝期（毫秒）",
     energyWarmupHint:
       "AI 講完嘢後等幾耐先恢復語音觸發（預設 100ms，設 0 即時觸發；若 AI 講完即刻有環境聲誤觸可以調大）",
+    vadDebugLog: "詳細VAD能量檢測日誌開關",
+    vadDebugLogHint:
+      "輸出逐幀語音概率（frame/prob/len）到日誌頁，排查語音識別唔觸發嗰陣用；預設閂，錄音期間每秒約 1 條",
     sendMode: {
       title: "識別完成後",
       fillOnly: "填入輸入框（推薦）",

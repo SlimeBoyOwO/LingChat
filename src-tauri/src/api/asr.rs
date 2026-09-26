@@ -14,6 +14,7 @@ use tauri::AppHandle;
 use tauri::Emitter;
 
 use crate::AppState;
+use crate::ai_service::asr::debug_log;
 use crate::ai_service::asr::error::AsrError;
 #[cfg(desktop)]
 use crate::ai_service::asr::global_hotkey;
@@ -359,6 +360,9 @@ pub async fn asr_set_settings(
     settings::save(&app, &settings).map_err(|e| err_to_user(&e))?;
     // 重建 provider registry（settings 改了 credentials 后立即生效）
     rebuild_providers(&state, &settings).await?;
+    // 逐帧 VAD 调试日志开关立即生效。模块内原子量，不依赖 VAD session 是否就绪
+    // （VAD 加载失败时也应记录设置值，故不等下面的 session_ref）
+    debug_log::set(settings.vad_debug_log);
     // VAD 静音计时立即生效（下一轮录音按新配置切分）；
     // session 未初始化（VAD 加载失败）时跳过——设置本身已保存成功
     if let Ok(session) = session_ref(&state.asr_state.session).await {

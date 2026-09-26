@@ -1350,6 +1350,9 @@ export default {
     energyWarmup: "能量监测缓冲期（毫秒）",
     energyWarmupHint:
       "AI 说完话后等待该时长才恢复语音触发（默认 100ms，设 0 立即触发；若 AI 话音刚落环境声会误触发可调大）",
+    vadDebugLog: "详细VAD能量检测日志开关",
+    vadDebugLogHint:
+      "输出逐帧语音概率（frame/prob/len）到日志页，排查语音识别不触发时用；默认关闭，录音期间每秒约 1 条",
     sendMode: {
       title: "识别完成后",
       fillOnly: "填入输入框（推荐）",

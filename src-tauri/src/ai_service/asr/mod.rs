@@ -5,6 +5,7 @@
 //! 会话编排由 [`session::AsrSession`] 统一管理互斥和取消；
 //! 配置由 [`settings`] 通过 tauri_plugin_store 持久化。
 
+pub mod debug_log;
 pub mod error;
 #[cfg(desktop)]
 pub mod global_hotkey;
