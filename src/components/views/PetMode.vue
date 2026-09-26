@@ -391,6 +391,15 @@ const nativeWindowWidth = ref(0);
 const DIAG_VISIBLE_MS = 30000;
 let diagTimer: number | undefined;
 const showViewportDiagnostic = (label: string) => {
+  // 只在视口看起来不对时才显示（已离开悬浮窗、但 innerWidth 明显小于屏宽）。
+  // 修好之后它自然消失，不会一直糊在屏幕上。
+  const screenW = window.screen?.width ?? 0;
+  const suspicious = !floatingWindowMode.value && screenW > 0 && window.innerWidth < screenW * 0.9;
+  if (!suspicious) {
+    document.getElementById("__lc_pet_diag")?.remove();
+    return;
+  }
+
   let el = document.getElementById("__lc_pet_diag") as HTMLDivElement | null;
   if (!el) {
     el = document.createElement("div");

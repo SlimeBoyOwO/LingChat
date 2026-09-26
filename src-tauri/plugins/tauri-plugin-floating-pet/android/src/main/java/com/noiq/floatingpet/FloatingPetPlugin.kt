@@ -680,6 +680,27 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         if (view != null && petDetached) {
             // 直接 setContentView(webView) 即可完成内容视图替换，无需手动 addView。
             activity.setContentView(view)
+
+            // ── 必须显式把 LayoutParams 改回 MATCH_PARENT ──────────────
+            //
+            // `setContentView(view)` **不会**重置 View 的 LayoutParams：实测它
+            // 保留了悬浮窗那套 `WindowManager.LayoutParams`。于是 WebView 回到
+            // Activity 后视图本身仍然只有悬浮窗那么大（展开态 216×252dp），
+            // 整个 App 被挤在屏幕左上角一小块里。
+            //
+            // 真机诊断数据（360×803dp 的屏幕）：
+            //     innerW=216 innerH=252 fit=1.000 floating=false
+            // 216×252 正是展开态悬浮窗的尺寸 —— 视口没跟上只是表象，
+            // 真正的原因是 View 的尺寸压根没被改回来。
+            //
+            // 上一版只改过 height（forceViewportRefresh 里），所以表现成
+            // 「高度对了、宽度不对」，这里必须两个都显式设。
+            view.layoutParams =
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+
             view.setBackgroundColor(Color.TRANSPARENT)
 
             // 强制 WebView 重算 CSS 视口。见 forceViewportRefresh 的说明：
