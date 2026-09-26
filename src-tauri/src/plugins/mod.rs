@@ -13,7 +13,7 @@
 //! - [`importer::do_import_plugin`](importer::do_import_plugin)：从 zip/7z 压缩包安装插件
 //! - [`signal::SignalRegistry`](signal::SignalRegistry)：宿主信号登记与插件订阅派发
 
-pub mod http_host;
+pub mod host_api;
 pub mod importer;
 pub mod manager;
 pub mod manifest;
@@ -23,6 +23,27 @@ pub mod signal;
 pub mod tool;
 pub mod types;
 
+use std::sync::OnceLock;
+
+use tauri::AppHandle;
+
 pub use manager::PluginManager;
 pub use resources::PluginResourceEntry;
 pub use types::{PluginInfo, ResourceKind};
+
+/// 宿主 `AppHandle` 的全局副本。
+///
+/// 插件脚本在 `spawn_blocking` 线程里执行，那条路径上没有调用方的 `AppHandle`，
+/// 而少数宿主能力（如 `plugin_host.switch_character`）必须经它访问 `AppState`。
+/// 启动时登记一次；未登记时相关能力返回错误，而不是 panic。
+static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
+
+/// 启动时登记宿主句柄（与 `utils::log_bridge::set_app_handle` 同一时机）。
+pub fn set_app_handle(handle: AppHandle) {
+    let _ = APP_HANDLE.set(handle);
+}
+
+/// 取宿主句柄；启动完成前为 `None`。
+pub(crate) fn app_handle() -> Option<AppHandle> {
+    APP_HANDLE.get().cloned()
+}

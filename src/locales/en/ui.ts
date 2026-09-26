@@ -339,6 +339,8 @@ export default {
       memory_delete_note: "Delete Note",
       character_list: "List Characters",
       character_switch: "Switch Character",
+      character_get_clothes: "Get Outfit",
+      character_set_clothes: "Change Outfit",
       scene_list: "List Scenes",
       scene_switch: "Switch Scene",
       status_get_current: "Current Status",

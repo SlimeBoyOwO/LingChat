@@ -20,7 +20,7 @@ use serde_json::Value;
 use crate::AppState;
 use crate::ai_service::tools::executor::{ToolContext, ToolExecutor};
 
-use super::http_host;
+use super::host_api;
 use super::types::PluginManifest;
 
 /// 沙箱拦截的顶层模块名：碰文件系统、跑命令、调底层 C 的一律禁止导入。
@@ -49,7 +49,7 @@ fn exc_message(vm: &VirtualMachine, e: &PyBaseExceptionRef) -> String {
 fn build_interpreter() -> Interpreter {
     rustpython_vm::Interpreter::builder(rustpython_vm::Settings::default())
         .add_frozen_modules(rustpython_pylib::FROZEN_STDLIB)
-        .add_native_module(http_host::plugin_module_def(
+        .add_native_module(host_api::plugin_module_def(
             &rustpython_vm::Context::genesis(),
         ))
         .build()
@@ -77,7 +77,7 @@ fn inject_common(
 ) -> PyResult<()> {
     ctx.set_item(
         vm.ctx.intern_str("config"),
-        http_host::value_to_pyobject(vm, &serde_json::to_value(config).unwrap_or(Value::Null)),
+        host_api::value_to_pyobject(vm, &serde_json::to_value(config).unwrap_or(Value::Null)),
         vm,
     )?;
     // ctx.env 是 dict：白名单环境变量查询，脚本用 ctx.env.get("KEY")
@@ -112,7 +112,7 @@ fn build_tool_ctx(
     )?;
     ctx.set_item(
         vm.ctx.intern_str("args"),
-        http_host::value_to_pyobject(vm, args),
+        host_api::value_to_pyobject(vm, args),
         vm,
     )?;
     inject_common(vm, &ctx, config, env, app)?;
@@ -139,7 +139,7 @@ fn build_signal_ctx(
     )?;
     ctx.set_item(
         vm.ctx.intern_str("payload"),
-        http_host::value_to_pyobject(vm, payload),
+        host_api::value_to_pyobject(vm, payload),
         vm,
     )?;
     inject_common(vm, &ctx, config, env, app)?;
@@ -164,14 +164,14 @@ fn make_call_tool(vm: &VirtualMachine, app: AppHandle) -> PyResult<PyObjectRef> 
             let allowed: std::collections::HashSet<String> =
                 std::iter::once(name.clone()).collect();
             let context = ToolContext::new(allowed).with_app(app_for_fn.clone());
-            let result_json = http_host::runtime().block_on(async move {
+            let result_json = host_api::runtime().block_on(async move {
                 ToolExecutor::new(&registry)
                     .execute(&name, &args_json, &context)
                     .await
             });
             let parsed: serde_json::Value = serde_json::from_str(&result_json)
                 .unwrap_or_else(|_| serde_json::Value::String(result_json));
-            Ok(http_host::value_to_pyobject(vm, &parsed))
+            Ok(host_api::value_to_pyobject(vm, &parsed))
         },
     );
     Ok(func.into())

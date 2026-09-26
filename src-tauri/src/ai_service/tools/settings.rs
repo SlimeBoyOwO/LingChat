@@ -46,7 +46,15 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
             "memory_delete_note",
         ],
     ),
-    ("character", &["character_list", "character_switch"]),
+    (
+        "character",
+        &[
+            "character_list",
+            "character_switch",
+            "character_get_clothes",
+            "character_set_clothes",
+        ],
+    ),
     ("scene", &["scene_list", "scene_switch"]),
     ("status", &["status_get_current", "status_get_scene"]),
     ("clock", &["get_current_time"]),

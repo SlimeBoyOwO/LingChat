@@ -1,9 +1,10 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use tauri::{Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::AppState;
 use crate::ai_service::types::{LineAttributeExt, LineBase, ToolDefinition};
+use crate::api::character::{ClothesItem, read_character_settings, scan_clothes};
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
@@ -12,7 +13,7 @@ use crate::utils::prompt::{PromptOptions, sys_prompt_builder_by_settings};
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::{ensure_no_args, game_status_handle};
 
-/// character_list：列出所有可用角色的 ID 与名称。
+/// character_list：列出所有可用角色的 ID、名称与角色标题。
 pub struct CharacterList;
 
 #[async_trait]
@@ -20,7 +21,7 @@ impl Tool for CharacterList {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             "character_list",
-            "列出所有可用角色的 ID 与名称",
+            "列出所有可用角色的 ID、名称与角色标题",
             json!({
                 "type": "object",
                 "properties": {},
@@ -45,7 +46,15 @@ impl Tool for CharacterList {
             "ok": true,
             "characters": roles
                 .iter()
-                .map(|r| json!({"id": r.id, "name": r.name}))
+                .map(|r| {
+                    // name = 对话里的 AI 名称（settings.yml 的 ai_name），
+                    // title = 角色标题（DB 的 role.name，即 settings.yml 的 title）。
+                    // 两个名字在界面上都出现过：角色列表页的大字用 title，
+                    // 详情页与对话里用 name，所以都给出来。
+                    let settings =
+                        read_character_settings(r.resource_folder.as_deref().unwrap_or_default());
+                    json!({"id": r.id, "name": settings.ai_name, "title": r.name})
+                })
                 .collect::<Vec<_>>()
         }))
     }
@@ -110,7 +119,9 @@ impl Tool for CharacterSwitch {
                 available.join(", ")
             )));
         };
-        let fallback_role_name = role.name.clone();
+        // 角色标题（DB 的 role.name，即 settings.yml 的 title）；展示名缺失时拿它兜底
+        let title = role.name.clone();
+        let fallback_role_name = title.clone();
 
         let app_config = AppConfig::load(&app).unwrap_or_default();
         let prompt_options = PromptOptions {
@@ -178,6 +189,207 @@ impl Tool for CharacterSwitch {
             tracing::warn!("emit character:switch 失败: {e}");
         }
 
-        Ok(json!({"ok": true, "role_id": role_id, "name": role_name}))
+        Ok(json!({"ok": true, "role_id": role_id, "name": role_name, "title": title}))
+    }
+}
+
+/// 把外部传入的服装名归一到 `scan_clothes` 的列表项上。
+///
+/// `scan_clothes` 给根目录立绘起的 title 是「默认」，而同一套服装在角色配置里
+/// 可能被写成 `default` 或空串（`role_manager` 找不到配置时的兜底值就是
+/// `default`），所以这三种写法都归到根目录那一项；其余先精确匹配，再忽略大小写。
+/// 都不匹配返回 `None`，由调用方给出带可选列表的错误。
+fn canonical_clothes(available: &[ClothesItem], raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    let is_root_alias =
+        trimmed.is_empty() || trimmed == "默认" || trimmed.eq_ignore_ascii_case("default");
+    if is_root_alias {
+        if let Some(root) = available.iter().find(|item| item.title == "默认") {
+            return Some(root.title.clone());
+        }
+    }
+    available
+        .iter()
+        .find(|item| item.title == trimmed)
+        .or_else(|| {
+            available
+                .iter()
+                .find(|item| item.title.eq_ignore_ascii_case(trimmed))
+        })
+        .map(|item| item.title.clone())
+}
+
+/// 解析目标角色：`role_id` 缺省时取当前对话角色。
+async fn resolve_target_role(app: &AppHandle, arguments: &Value) -> Result<i32, ToolError> {
+    let obj = arguments
+        .as_object()
+        .ok_or_else(|| ToolError::InvalidArguments("参数必须是 JSON object".into()))?;
+    if let Some(raw) = obj.get("role_id") {
+        let raw = raw
+            .as_i64()
+            .ok_or_else(|| ToolError::InvalidArguments("role_id 必须是整数".into()))?;
+        return i32::try_from(raw)
+            .map_err(|_| ToolError::InvalidArguments("role_id 超出 i32 范围".into()));
+    }
+    let gs = game_status_handle(app).await;
+    let gs = gs.lock().await;
+    gs.current_role_id
+        .ok_or_else(|| ToolError::Execution("当前没有对话角色".into()))
+}
+
+/// 确保目标角色已加载，取出（展示名、当前服装、可换服装列表）。
+///
+/// 必须先把角色加载起来：`on_character_change_clothes` 内部走 `get_loaded_mut`，
+/// 未加载的角色会直接报「角色 X 未加载」。这里与 `character_switch` 同样处理。
+async fn load_clothes_view(
+    app: &AppHandle,
+    role_id: i32,
+) -> Result<(String, String, Vec<ClothesItem>), ToolError> {
+    let state = app.state::<AppState>();
+    let exists = RoleRepo::get_role_by_id(&state.db, role_id)
+        .await
+        .map_err(|e| ToolError::Execution(format!("查询角色 {role_id} 失败: {e}")))?
+        .is_some();
+    if !exists {
+        return Err(ToolError::Execution(format!("角色 id {role_id} 不存在")));
+    }
+
+    let gs = game_status_handle(app).await;
+    let mut gs = gs.lock().await;
+    let role = gs
+        .get_role(&state.db, role_id)
+        .await
+        .map_err(|e| ToolError::Execution(format!("加载角色 {role_id} 失败: {e}")))?;
+    let name = role.display_name.clone().unwrap_or_default();
+    let current = role.current_clothes.clone();
+    let folder = role
+        .resource_path
+        .clone()
+        .ok_or_else(|| ToolError::Execution(format!("角色 {role_id} 缺少资源目录")))?;
+    // 扫描要读目录，别占着 game_status 锁
+    drop(gs);
+
+    Ok((name, current, scan_clothes(&folder)))
+}
+
+/// character_get_clothes：查询角色当前服装与可更换的服装列表。
+pub struct CharacterGetClothes;
+
+#[async_trait]
+impl Tool for CharacterGetClothes {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            "character_get_clothes",
+            "查询角色当前穿着的服装，以及该角色可更换的全部服装名称。优先省略 role_id（查你自己）",
+            json!({
+                "type": "object",
+                "properties": {
+                    "role_id": {"type": "integer", "description": "角色 ID；省略（推荐）时查询你自己当前的服装，仅在明确要看其他角色时才传"}
+                },
+                "required": [],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    async fn execute(
+        &self,
+        context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
+        let app = context.require_app()?;
+        let role_id = resolve_target_role(&app, &arguments).await?;
+        let (name, current, available) = load_clothes_view(&app, role_id).await?;
+
+        // 当前值可能是 "default"/"" 这类别名写法，回给模型前归一到列表里的名字；
+        // 归一不了（比如那套服装的目录已被删）就如实回原始值。
+        let clothes_name =
+            canonical_clothes(&available, &current).unwrap_or_else(|| current.clone());
+
+        Ok(json!({
+            "ok": true,
+            "role_id": role_id,
+            "name": name,
+            "clothes_name": clothes_name,
+            "clothes": available
+                .iter()
+                .map(|item| item.title.clone())
+                .collect::<Vec<_>>(),
+        }))
+    }
+}
+
+/// character_set_clothes：更换角色的服装。
+///
+/// 复用玩家换装的唯一入口 `api::character::select_clothes`（session 持久化 +
+/// role_manager override + 旁白台词生成），再补发 `character:clothes-changed`：
+/// 玩家换装时前端拿到返回值自己更新 store，LLM 工具没有这个调用方，不广播的话
+/// 后端状态变了而前端立绘仍停在旧服装。
+pub struct CharacterSetClothes;
+
+#[async_trait]
+impl Tool for CharacterSetClothes {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            "character_set_clothes",
+            "更换服装（默认换你自己，即当前对话角色），立绘会立即更新，并自动生成一句换装旁白。优先省略 role_id；只有明确要更换其他角色的服装时才传。已经是该服装时不重复生成",
+            json!({
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "目标服装名称，须为 character_get_clothes 返回的服装之一"},
+                    "role_id": {"type": "integer", "description": "角色 ID；省略（推荐）时更换你自己当前的服装，仅在明确要换其他角色时才传"}
+                },
+                "required": ["name"],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    async fn execute(
+        &self,
+        context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
+        let app = context.require_app()?;
+        let raw = arguments
+            .as_object()
+            .and_then(|obj| obj.get("name"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                ToolError::InvalidArguments("character_set_clothes 需要字符串 name".into())
+            })?;
+
+        let role_id = resolve_target_role(&app, &arguments).await?;
+        let (name, current, available) = load_clothes_view(&app, role_id).await?;
+        let target = canonical_clothes(&available, raw).ok_or_else(|| {
+            let names: Vec<&str> = available.iter().map(|item| item.title.as_str()).collect();
+            ToolError::Execution(format!(
+                "角色 {role_id} 没有服装「{raw}」，可选：{}",
+                names.join("、")
+            ))
+        })?;
+
+        // 语义相同但写法不同（当前是 "default"、目标是「默认」）时不能交给
+        // select_clothes：它按原始字符串比较，会凭空生成一句换装旁白。
+        let switched = canonical_clothes(&available, &current).as_deref() != Some(target.as_str());
+        if switched {
+            crate::api::character::select_clothes(app.clone(), role_id, target.clone())
+                .await
+                .map_err(|e| ToolError::Execution(format!("更换服装失败: {e}")))?;
+        }
+
+        // 事件无条件发：即使后端判定「已经是这套」，重发一次也能纠正前端可能的陈旧状态
+        let payload = json!({"roleId": role_id, "clothesName": target});
+        if let Err(e) = app.emit("character:clothes-changed", &payload) {
+            tracing::warn!("emit character:clothes-changed 失败: {e}");
+        }
+
+        Ok(json!({
+            "ok": true,
+            "role_id": role_id,
+            "name": name,
+            "clothes_name": target,
+            "switched": switched,
+        }))
     }
 }

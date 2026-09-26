@@ -312,6 +312,8 @@ export default {
       memory_delete_note: "刪除筆記",
       character_list: "角色列表",
       character_switch: "切換角色",
+      character_get_clothes: "查詢服裝",
+      character_set_clothes: "更換服裝",
       scene_list: "場景列表",
       scene_switch: "切換場景",
       status_get_current: "目前狀態",

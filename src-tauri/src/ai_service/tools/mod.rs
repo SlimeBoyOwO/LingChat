@@ -26,7 +26,7 @@ use tokio::sync::Mutex;
 use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
 
-use character::{CharacterList, CharacterSwitch};
+use character::{CharacterGetClothes, CharacterList, CharacterSetClothes, CharacterSwitch};
 use clock::CurrentTimeTool;
 use memory::{AddNote, DeleteNote, GetCurrentMemory, GetNotes, UpdateNote};
 use permissions::CONFIG_FILE_NAME;
@@ -113,6 +113,8 @@ pub fn built_in_registry(
     registry.register(Arc::new(SceneSwitch))?;
     registry.register(Arc::new(CharacterList))?;
     registry.register(Arc::new(CharacterSwitch))?;
+    registry.register(Arc::new(CharacterGetClothes))?;
+    registry.register(Arc::new(CharacterSetClothes))?;
     registry.register(Arc::new(ListSkills))?;
     registry.register(Arc::new(ReadSkill))?;
     registry.register(Arc::new(ReadMediaFileTool::new(tool_settings.clone())))?;

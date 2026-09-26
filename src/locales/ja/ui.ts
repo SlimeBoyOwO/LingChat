@@ -336,6 +336,8 @@ export default {
       memory_delete_note: "メモ削除",
       character_list: "キャラ一覧",
       character_switch: "キャラ切替",
+      character_get_clothes: "衣装取得",
+      character_set_clothes: "衣装変更",
       scene_list: "シーン一覧",
       scene_switch: "シーン切替",
       status_get_current: "現在の状態",
