@@ -77,8 +77,8 @@ Android 复刻同一思路：
 这一点提前说明：本方案**没有改动任何既有架构**。
 
 - 桌面端桌宠路径（`api::pet::set_pet_mode`）完全不动
-- 改动形态是**纯增量**：相对 `upstream/dev` 是 27 文件 +3530/−20，
-  其中 18 个是全新文件（独立 crate 的插件 + 一层前端封装），
+- 改动形态是**纯增量**：相对 `upstream/dev` 是 28 文件 +4005/−20，
+  其中 19 个是全新文件（独立 crate 的插件 + 一层前端封装 + 文档），
   9 个是既有文件，删除行数总共 20
 - 既有文件的改动集中在 4 个前端文件（`PetMode.vue` / `MainChat.vue` /
   `GameRolesStage.vue` / `constants.ts`），其余 5 个是 1–12 行的接线
@@ -109,13 +109,14 @@ Android 复刻同一思路：
 ### 相对 upstream/dev 的规模
 
 ```
-27 files changed, 3530 insertions(+), 20 deletions(-)
-├─ 18 个全新文件  +2255 行
+28 files changed, 4005 insertions(+), 20 deletions(-)
+├─ 19 个全新文件  +2255 行（插件 17 个）+ 前端封装 + 本文档
 │  ├─ src-tauri/plugins/tauri-plugin-floating-pet/**  （17 个）
 │  │  Kotlin 1376（FloatingPetPlugin 1255 + PetForegroundService 121）
 │  │  Rust    564（lib 262 + mobile 134 + models 100 + desktop 68）
 │  │  gradle / manifest / permissions / build.rs / guest-js
-│  └─ src/api/services/floating-pet.ts
+│  ├─ src/api/services/floating-pet.ts
+│  └─ docs/android-floating-pet-issue.md
 └─  9 个修改文件
    src/components/views/PetMode.vue          +405 −11
    src/components/views/MainChat.vue         +124  −5
