@@ -7,6 +7,16 @@
     >
       <Cat :size="20" />
     </div>
+    <button
+      class="absolute top-2 left-2 z-10 rounded-lg bg-black/5 p-1.5 opacity-0 transition-all group-hover:opacity-100 focus-visible:opacity-100"
+      @click.stop="handleToggleFavored"
+      :title="favored ? $t('ui.characterCard.unfav') : $t('ui.characterCard.fav')"
+    >
+      <Star
+        :size="16"
+        :class="favored ? 'fill-amber-400 text-amber-400' : 'text-white/60 hover:text-white'"
+      />
+    </button>
     <div class="absolute top-3 right-3 z-10 flex items-center gap-2">
       <RoleExportMenu :role-id="id" :role-name="name" />
       <button
@@ -225,7 +235,7 @@ import { useGameStore } from "@/stores/modules/game";
 import { applyWebInitData } from "@/stores/modules/game/actions";
 import { eventQueue } from "@/core/events/event-queue";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
-import { Settings } from "lucide-vue-next";
+import { Settings, Star } from "lucide-vue-next";
 import { Cat, Check } from "lucide-vue-next";
 import type { Clothes } from "@/types";
 
@@ -240,6 +250,7 @@ interface CharacterProps {
   resourceFolder?: string;
   /** 来源："game" 或提供该角色的插件 id。 */
   source?: string | null;
+  favored?: boolean;
 }
 
 const props = withDefaults(defineProps<CharacterProps>(), {
@@ -248,13 +259,17 @@ const props = withDefaults(defineProps<CharacterProps>(), {
   info: "",
   clothes: () => [],
   resourceFolder: "",
+  favored: false,
 });
 
-const emit = defineEmits(["saved"]);
+const emit = defineEmits(["saved", "favoredChange"]);
 
 // 状态管理
 const isDetailVisible = ref(false);
 const isSettingsModalVisible = ref(false);
+function handleToggleFavored(): void {
+  emit("favoredChange", props.id);
+}
 
 const { t } = useI18n();
 const gameStore = useGameStore();
