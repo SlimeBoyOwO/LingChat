@@ -262,6 +262,44 @@ view.layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
 > 教训：这类「整个界面缩在一角」的问题，先量 `window.innerWidth`，
 > 再和屏宽对照。数字一比就知道是视口问题还是 View 尺寸问题，不用猜。
 
+**「先切页、再搬移」导致页面挂载时还不知道自己在悬浮窗里**
+
+进入流程是刻意排成「① `router.push('/pet')` → ② `showFloatingPet()`」的
+（先切页，用户能看到 `/pet` 渲染完成，不会闪一下主界面）。代价是
+**`PetMode.onMounted` 跑的时候第②步还没执行**，于是：
+
+```ts
+floatingWindowMode.value = isInFloatingWindow(); // ← 必然是 false
+```
+
+页面于是掉进**桌面端分支**，真机上就是这一串症状：
+
+| 症状                                   | 原因                                                                           |
+| -------------------------------------- | ------------------------------------------------------------------------------ |
+| 透明区特别大，且**大小随桌宠缩放变化** | 布局用 `PET_WIDTH_BASE × pet.scale`，而且**没有 `--pet-fit` 整体缩放**         |
+| 宠物大小由桌面端设置决定               | `GameRolesStage.frameSize = AVATAR_BAND_BASE × (floatingMode ? 1 : pet.scale)` |
+| 渲染出「悬停才浮现」的桌面端按钮       | 桌面端按钮的 `v-if="!floatingMode"`                                            |
+| ✕ 走的是桌面端退出路径                 | 那条路**不调用 `hideFloatingPet()`** → 悬浮窗永远留在屏幕上                    |
+| 屏幕上的诊断数字一直不出现             | 诊断挂在几何轮询里，而轮询只在「进入悬浮窗」时启动                             |
+
+页面本来可以靠原生的 `pet-detached` 事件自愈，但那条事件本身不可靠
+（见 4.4 开头：`evaluateJavascript` 在搬运前后会丢）。
+
+**应对**：手机端 `/pet` 只可能来自悬浮窗流程（不支持/未授权时
+`goToPetMode` 会提前 `return`），所以**直接按悬浮窗渲染**，不赌事件：
+
+```ts
+if (isAndroid() && !floatingWindowMode.value) enterFloatingLayout();
+```
+
+`enterFloatingLayout()` 一次性把形态、`markFloatingWindowMode(true)`、透明背景、
+几何轮询都置好；`pollNativeState` 里再用原生的 `status.detached` 兜一层自愈。
+`pet/GameRolesStage.vue` 的 `floatingMode` 同理（它只被 PetMode 使用，
+所以可以直接 `isInFloatingWindow() || isAndroid()`）。
+
+> 教训：**形态（我在不在悬浮窗里）不能由「原生推来的事件」决定**，只能由
+> 「页面自己发起的请求」或「同步可知的平台事实」决定。事件只配当快路径。
+
 ## 五、手机端的交互设计
 
 ### 5.1 尺寸：固定逻辑画布 + 整体等比缩放

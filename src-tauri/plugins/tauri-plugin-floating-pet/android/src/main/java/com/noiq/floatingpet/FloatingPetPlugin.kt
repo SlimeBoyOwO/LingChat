@@ -691,13 +691,16 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         keepAliveHandler.postDelayed(
             {
                 try {
-                    restoreWebViewToActivity()
-                    // 把 Activity 拉到前台。
+                    // 顺序：**先**把任务栈拉到前台，**再**搬 WebView。
                     //
-                    // 用户点「返回」时人往往在**别的 App** 里：WebView 虽然被
-                    // 装回了 Activity，但 Activity 自己还在后台，用户不手动切
-                    // 回来就什么也看不到 —— 表现为「按了返回却像没反应」。
+                    // `restoreWebViewToActivity()` 会把 WebView 重新挂进
+                    // Activity 的内容视图；而用户点 ✕ 时人往往在别的 App 里，
+                    // Activity 处于 stopped 态。往一个 stopped 的 Activity 里
+                    // 搬视图，紧接着它又被拉到前台重新走 resume/布局，
+                    // 是最容易出事的组合。先把任务栈叫到前台，让这次搬运
+                    // 落在一个正在恢复的 Activity 上。
                     bringActivityToFront()
+                    restoreWebViewToActivity()
                     invoke.resolve()
                 } catch (t: Throwable) {
                     // 这里必须 catch Throwable：Handler 里逃出去的异常会直接
@@ -733,7 +736,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * ## 现在用的是「Launcher 那条 intent」
      *
      * `ACTION_MAIN` + `CATEGORY_LAUNCHER` + 显式组件 + `NEW_TASK`，
-     * 与用户点桌面图标时系统发出的 intent **完全一致**：
+     * 与用户点桌面图标时系统发出的 intent 基本一致：
      *
      * - 对 singleTask 而言，系统会复用已有实例并把它的任务栈移到前台，
      *   不会新建实例
@@ -743,6 +746,11 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * - 不需要任何额外权限（`moveTaskToFront` 需要 `REORDER_TASKS`，
      *   且在 Android 10+ 的后台启动限制下更容易被静默拒绝）
      *
+     * 刻意**不加** `FLAG_ACTIVITY_RESET_TASK_IF_NEEDED`：那是 Launcher 用来
+     * 「任务栈状态与 launcher intent 不一致时重建任务栈」的开关，极端情况下
+     * 会 finish 掉当前实例再新建一个——那等于把正在搬运 WebView 的 Activity
+     * 拆掉。singleTask + `NEW_TASK` 已经足够复用实例。
+     *
      * Activity 已经在前台时这是一个无害的空操作。
      */
     private fun bringActivityToFront() {
@@ -751,10 +759,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 Intent(Intent.ACTION_MAIN).apply {
                     addCategory(Intent.CATEGORY_LAUNCHER)
                     component = ComponentName(activity, activity.javaClass)
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-                    )
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
             activity.startActivity(intent)
             Log.i(TAG, "已把 Activity 拉到前台")

@@ -128,6 +128,7 @@ import DragArea from "../pet/DragArea.vue";
 import GameRolesStage from "../pet/GameRolesStage.vue";
 import PetNotification from "../pet/PetNotification.vue";
 import { ArrowLeft } from "lucide-vue-next";
+import { isAndroid } from "@/utils/platform";
 import { AVATAR_BAND_BASE, CHAT_BASE_H, DIALOG_MAX_BASE, PET_WIDTH_BASE } from "../pet/constants";
 
 const { t } = useI18n();
@@ -354,6 +355,9 @@ const pollNativeState = async () => {
     nativeWindowWidth.value = status.width;
     if (status.detached) {
       sawDetached = true;
+      // 兜底自愈：万一进悬浮窗时的事件丢了、页面还停在桌面端布局
+      // （见 enterFloatingLayout 的说明），这里按原生的权威答案切回来。
+      if (!floatingWindowMode.value) enterFloatingLayout();
       if (status.scale > 0) {
         metricsReceived = true;
         floatingFit.value = status.scale;
@@ -637,6 +641,43 @@ let floatingModeUnlisten: (() => void) | null = null;
 let expandedUnlisten: (() => void) | null = null;
 let metricsUnlisten: (() => void) | null = null;
 
+/**
+ * 切到「悬浮窗形态」：页面布局、缩放、轮询三件事一起就位。
+ *
+ * ## 为什么不能只靠 `isInFloatingWindow()`
+ *
+ * `MainChat.goToPetMode` 的顺序是「① `router.push('/pet')` → ② `showFloatingPet()`」，
+ * 所以本页 `onMounted` 跑的时候第②步还没执行，`isInFloatingWindow()` **必然是 false**。
+ * 于是页面掉进**桌面端分支**，真机上表现就是：
+ *
+ * - `applyWindowLayout()` → `set_pet_mode`（手机上是空操作，但语义已经错了）
+ * - 布局用桌面端那套：画布 `PET_WIDTH_BASE × pet.scale`，而且**没有 `--pet-fit`**
+ *   整体缩放 → 画布与悬浮窗尺寸对不上，四周空出一大片**吃触摸**的透明区
+ * - `GameRolesStage` 的 `frameSize` 乘上 `pet.scale` → 宠物大小由桌面端缩放决定
+ * - 渲染出「悬停才浮现」的桌面端按钮
+ * - **不启动几何轮询** → 页面永远等不到 `pet-detached` 的自愈
+ *
+ * 真机反馈「是不是桌面端行为影响了透明区域大小」正是这一条；诊断条不显示
+ * 也是因为它挂在轮询里，而轮询压根没起来。
+ *
+ * 手机端 `/pet` 只可能来自悬浮窗流程（不支持/未授权时 `goToPetMode` 会提前
+ * return），所以这里**直接按悬浮窗渲染**，不赌那条不可靠的事件。
+ */
+const enterFloatingLayout = () => {
+  metricsReceived = false;
+  lastReportedHeight = -1;
+  floatingWindowMode.value = true;
+  // 让 api 层的 isInFloatingWindow() 与本页保持一致（进/出都靠它）
+  markFloatingWindowMode(true);
+  document.body.style.backgroundColor = "transparent";
+  document.documentElement.style.backgroundColor = "transparent";
+  document.body.style.overflow = "hidden";
+  startMetricsPolling();
+  // 立刻画一次诊断，不等轮询的第一拍（用户截屏时它必须已经在屏幕上）
+  showViewportDiagnostic("enter");
+  void nextTick().then(() => reportFloatingHeight());
+};
+
 onMounted(async () => {
   floatingWindowMode.value = isInFloatingWindow();
 
@@ -647,8 +688,7 @@ onMounted(async () => {
     metricsReceived = false;
     lastReportedHeight = -1;
     if (active) {
-      floatingWindowMode.value = true;
-      startMetricsPolling();
+      enterFloatingLayout();
       return;
     }
 
@@ -677,6 +717,12 @@ onMounted(async () => {
     // 系数变了，内容高度的换算结果也变了，立刻按新系数重报一次
     reportFloatingHeight();
   });
+
+  // 手机端：/pet 只可能来自悬浮窗流程，先按悬浮窗形态就位。
+  // 必须在下面那条 if 之前——否则会掉进桌面端分支（见 enterFloatingLayout）。
+  if (isAndroid() && !floatingWindowMode.value) {
+    enterFloatingLayout();
+  }
 
   if (floatingWindowMode.value) {
     // ─── 悬浮窗模式 ────────────────────────────────────────────
@@ -1008,7 +1054,14 @@ const handleExitPetMode = async () => {
   // 事件丢了（实测在搬运/收回前后会丢），页面就永远停在悬浮窗分支——用户
   // 看到的就是「收回了，但只有左上一角」。现在页面自己立即归位，原生那边
   // 成不成功都不影响界面正确性。
-  if (floatingWindowMode.value) {
+  //
+  // 手机端额外兜一层：万一形态判断出错（页面以为自己在桌面端），也必须让
+  // 原生把悬浮窗摘掉，否则窗口会一直留在屏幕上、且再也关不掉。
+  if (floatingWindowMode.value || isAndroid()) {
+    if (!floatingWindowMode.value) {
+      floatingWindowMode.value = true;
+      markFloatingWindowMode(true);
+    }
     handleReturnedToApp();
     try {
       await hideFloatingPet();

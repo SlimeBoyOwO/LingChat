@@ -204,8 +204,19 @@ const petFrameless = computed(() => singleRole.value?.petFrameless === true);
  * 悬浮窗里要隐藏那排「悬停才浮现」的桌面端按钮：手机没有 hover，
  * 而且整页是等比缩放的，挂在头像角上的按钮会被 `overflow-hidden` 裁掉。
  * 手机上的交互收敛为「点头像 = 展开/收起，双击 = 收回 App」。
+ *
+ * ## 为什么 Android 上直接当 true
+ *
+ * 本组件只被 `PetMode` 使用，而手机端 `/pet` 只可能来自悬浮窗流程。
+ * 但 `PetMode` 挂载时 `showFloatingPet()` 还没调用（先 push 后 show），
+ * `isInFloatingWindow()` 必然是 false —— 于是这里会取到桌面端行为：
+ * `frameSize` 乘上 `pet.scale`，宠物大小与整页缩放全由桌面端设置决定，
+ * 悬浮窗里就空出一大片吃触摸的透明区。
+ *
+ * 所以 Android 上直接按悬浮窗渲染，不赌那条不可靠的事件
+ * （`PetMode.enterFloatingLayout` 里有完整说明）。
  */
-const floatingMode = ref(isInFloatingWindow());
+const floatingMode = ref(isInFloatingWindow() || isAndroid());
 let floatingModeUnlisten: (() => void) | null = null;
 
 /**
@@ -263,7 +274,9 @@ onMounted(() => {
 
   // 进出悬浮窗时切换按钮可见性（原生搬运完成后派发）
   floatingModeUnlisten = onFloatingWindowModeChange((active) => {
-    floatingMode.value = active;
+    // Android 上本组件只可能出现在悬浮窗形态里（见 floatingMode 的说明），
+    // 一条迟到的 pet-attached 不该把布局切回桌面端。
+    floatingMode.value = active || isAndroid();
   });
 
   void listen<{ x: number; y: number }>("pet:cursor", (event) => {
