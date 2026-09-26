@@ -34,7 +34,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 const PLUGIN = "plugin:floating-pet";
 
-/** 平台能力与授权状态的聚合结果。 */
+/** 平台能力、授权状态与窗口几何的聚合结果。 */
 export interface FloatingPetStatus {
   /** 当前平台是否支持系统级悬浮窗。 */
   supported: boolean;
@@ -42,6 +42,26 @@ export interface FloatingPetStatus {
   granted: boolean;
   /** 悬浮窗当前是否可见（WebView 已被搬入悬浮窗）。 */
   visible: boolean;
+  /**
+   * WebView 此刻是否**真的**还在悬浮窗里。
+   *
+   * 与 `visible` 的区别：`visible` 是「桌宠在运行」，`detached` 是
+   * 「WebView 不在 Activity 里」。页面用它判断自己是否已被搬回 Activity，
+   * 且**完全不依赖原生推来的事件**——那条路在搬运/收回前后并不可靠。
+   */
+  detached: boolean;
+  /**
+   * 逻辑画布 → 窗口的缩放系数（`窗口宽度 / PET_WIDTH_BASE`）。
+   *
+   * 必须用这个值做整体 `transform: scale()`，不要自己从
+   * `window.innerWidth` 推：原生刚改完窗口尺寸时 WebView 视口还没跟上，
+   * 算出来的系数偏小 → 内容只占窗口一角、展开后一大片空白。
+   */
+  scale: number;
+  /** 悬浮窗宽度（dp）。不在悬浮窗里时为 0。 */
+  width: number;
+  /** 悬浮窗高度（dp）。不在悬浮窗里时为 0。 */
+  height: number;
 }
 
 /** 进入悬浮桌宠的流程结果。 */
@@ -150,13 +170,31 @@ export function onPetMetrics(handler: (metrics: FloatingPetMetrics) => void): ()
   return () => window.removeEventListener("pet-metrics", listener);
 }
 
-/** 查询平台能力与授权状态。任一平台均可安全调用。 */
+/** 查询平台能力、授权状态与窗口几何。任一平台均可安全调用。 */
 export async function getFloatingPetStatus(): Promise<FloatingPetStatus> {
   try {
-    return await invoke<FloatingPetStatus>(`${PLUGIN}|status`);
+    const status = await invoke<FloatingPetStatus>(`${PLUGIN}|status`);
+    // 兜底：老版本插件可能不返回几何字段
+    return {
+      supported: !!status?.supported,
+      granted: !!status?.granted,
+      visible: !!status?.visible,
+      detached: !!status?.detached,
+      scale: Number(status?.scale) > 0 ? Number(status.scale) : 1,
+      width: Number(status?.width) || 0,
+      height: Number(status?.height) || 0,
+    };
   } catch {
     // 插件不可用（如桌面端未注册、旧版本）时降级为「不支持」
-    return { supported: false, granted: false, visible: false };
+    return {
+      supported: false,
+      granted: false,
+      visible: false,
+      detached: false,
+      scale: 1,
+      width: 0,
+      height: 0,
+    };
   }
 }
 

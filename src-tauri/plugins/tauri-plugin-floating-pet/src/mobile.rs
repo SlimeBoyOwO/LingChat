@@ -132,3 +132,15 @@ pub fn set_expanded<R: Runtime>(
     }
     call::<R, _, ()>(app, "setExpanded", ExpandedArgs { expanded })
 }
+
+/// 查询实时状态与窗口几何。
+///
+/// 直接转发给 Kotlin 的 `status`：那里的 `detached` / `scale` 才是真值，
+/// 而 Rust 侧 `FloatingPetState` 只是「前端调过 show/hide」的记录，
+/// 原生自己把 WebView 搬回去时它并不知道。
+///
+/// 前端靠轮询这个命令自愈：不依赖任何原生 → 页面的事件推送，
+/// 那条路在搬运/收回前后并不可靠。
+pub fn status<R: Runtime>(app: &AppHandle<R>, _state: &FloatingPetState) -> Result<PetStatus> {
+    call(app, "status", ())
+}

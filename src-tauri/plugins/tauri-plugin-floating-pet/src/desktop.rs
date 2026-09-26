@@ -66,3 +66,9 @@ pub fn set_expanded<R: Runtime>(
 ) -> Result<()> {
     Err(Error::NotSupported)
 }
+
+/// 桌面端没有系统悬浮窗，几何查询一律 `NotSupported`，
+/// 由 `lib.rs` 回落到纯 Rust 状态（只有 `supported: false`）。
+pub fn status<R: Runtime>(_app: &AppHandle<R>, _state: &FloatingPetState) -> Result<PetStatus> {
+    Err(Error::NotSupported)
+}

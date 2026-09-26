@@ -126,6 +126,17 @@ private val PET_ATTACHED_RETRY_DELAYS_MS = longArrayOf(0L, 300L, 1000L, 3000L)
 private const val KEEP_ALIVE_GRACE_MS = 20000L
 
 /**
+ * `hide` 命令延迟执行的时间（毫秒）。
+ *
+ * 收回是页面点「返回」触发的，而那次点击此刻正由 WebView 分发。
+ * 若在同一个消息循环里同步 `removeViewImmediate` + `setContentView`，
+ * 等于在输入分发途中把 WebView 从窗口上摘下来，输入通道与 ViewRootImpl
+ * 会互相等待 → 界面卡死（与早期「双击收回卡死」是同一个坑）。
+ * 让出一拍，等触摸分发跑完再搬。
+ */
+private const val HIDE_DELAY_MS = 80L
+
+/**
  * 单击与拖拽的判定阈值（dp）：按下到抬起位移超过它就算拖动，不触发点击。
  *
  * 取 16dp 而不是 Android 默认的 8dp。这里判定的是「整个窗口要不要跟着
@@ -427,6 +438,46 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
+    /**
+     * 查询实时状态与**窗口几何**。
+     *
+     * ## 为什么前端要主动查，而不是等原生推
+     *
+     * 原生往页面推事件只能用 `evaluateJavascript`，而这条路在搬运/收回
+     * 前后并不可靠（WebView 刚被挂上、宿主 Activity 还在后台、视口尚未
+     * 就绪……）。反过来 **页面 → 原生** 的 Tauri IPC 是稳的——用户的点击、
+     * 发消息都走它。
+     *
+     * 因此把「缩放系数」和「我还在不在悬浮窗里」都做成可查询的：
+     * 页面轮询这个命令即可自愈，不必赌某一次事件有没有送达。
+     *
+     * `scale = 窗口宽度(dp) / 240`，与前端 `transform: scale()` 用的是同一个
+     * 值。前端**不能**自己从 `window.innerWidth` 推：原生改完窗口尺寸后
+     * WebView 视口要过一会儿才跟上，那时读到的宽度是滞后的，算出来的系数
+     * 偏小 → 内容只占窗口一角、展开后一大片空白。
+     */
+    @Command
+    fun status(invoke: Invoke) {
+        val params = layoutParams
+        val view = petView
+        val visible = petDetached && view != null
+        invoke.resolveObject(
+            JSObject().apply {
+                put("supported", true)
+                put("granted", hasOverlayPermission())
+                put("visible", visible)
+                put("detached", petDetached)
+                // 不在悬浮窗里时给中性值，前端会忽略
+                put("scale", if (params != null) currentScale(params, view) else 1.0)
+                put(
+                    "width",
+                    if (params != null) actualWidthPx(params, view) / density.toDouble() else 0.0
+                )
+                put("height", if (params != null) params.height / density.toDouble() else 0.0)
+            }
+        )
+    }
+
     // ─── 搬运主 WebView ───────────────────────────────────────
 
     /**
@@ -571,15 +622,20 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      */
     @Command
     fun hide(invoke: Invoke) {
-        activity.runOnUiThread {
-            try {
-                restoreWebViewToActivity()
-                invoke.resolve()
-            } catch (e: Exception) {
-                Log.e(TAG, "恢复主界面失败", e)
-                invoke.reject("恢复主界面失败: ${e.message}")
-            }
-        }
+        // 让出一拍再搬：这个命令由页面点「返回」触发，而那次点击此刻正在
+        // 由 WebView 分发。同步摘窗口会死锁，见 HIDE_DELAY_MS。
+        keepAliveHandler.postDelayed(
+            {
+                try {
+                    restoreWebViewToActivity()
+                    invoke.resolve()
+                } catch (e: Exception) {
+                    Log.e(TAG, "恢复主界面失败", e)
+                    invoke.reject("恢复主界面失败: ${e.message}")
+                }
+            },
+            HIDE_DELAY_MS
+        )
     }
 
     /**
@@ -1153,6 +1209,16 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
+     * 窗口**实际**宽度（物理 px）。
+     *
+     * 优先取 View 的布局尺寸而不是 `params.width`：系统可能因为 insets /
+     * 多窗口对窗口做过调整，`params` 里记的只是我们请求的值。前端要的是
+     * 「WebView 现在到底多宽」，那必须以实际布局为准。
+     */
+    private fun actualWidthPx(params: WindowManager.LayoutParams, view: View?): Int =
+        if (view != null && view.width > 0) view.width else params.width
+
+    /**
      * 逻辑画布 → 窗口的缩放系数，与前端 `transform: scale()` 用的值一致。
      *
      * 前端**不能**自己从 `window.innerWidth` 推这个值：原生改完窗口尺寸后
@@ -1160,24 +1226,27 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * 系数偏小 → 内容只占窗口一角、展开后一大片空白，而且要等下一次
      * resize 事件才自愈（用户感受就是「瞎点几下又莫名其妙好了」）。
      *
-     * 原生手里有权威的 `params.width`，因此由原生算好推给前端。
+     * 原生手里有权威的实际尺寸，因此由原生算好推给前端。
      */
-    private fun currentScale(params: WindowManager.LayoutParams): Double =
-        (params.width / density.toDouble()) / PET_LOGICAL_WIDTH
+    private fun currentScale(params: WindowManager.LayoutParams, view: View?): Double =
+        actualWidthPx(params, view) / density.toDouble() / PET_LOGICAL_WIDTH
 
     /**
      * 把窗口几何推给页面（`pet-metrics`）。
      *
      * 每次窗口尺寸变化后都要调：show / setExpanded / setSize。
      * 页面据此更新缩放系数，并重新回报内容高度。
+     *
+     * 注意这只是**快路径**：原生 → 页面的事件在搬运/收回前后并不可靠，
+     * 页面还会轮询 `status` 命令拿同样的数据（见 [status]）。
      */
     private fun notifyMetrics(params: WindowManager.LayoutParams, view: View?) {
         notifyWeb(
             view as? WebView,
             "pet-metrics",
             JSObject().apply {
-                put("scale", currentScale(params))
-                put("width", params.width / density.toDouble())
+                put("scale", currentScale(params, view))
+                put("width", actualWidthPx(params, view) / density.toDouble())
                 put("height", params.height / density.toDouble())
             }
         )

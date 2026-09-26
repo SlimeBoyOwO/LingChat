@@ -171,9 +171,20 @@ fn set_expanded<R: Runtime>(
     imp::set_expanded(&app, expanded, &state)
 }
 
-/// 查询平台能力与授权状态的聚合接口，前端一次调用即可决策。
+/// 查询平台能力、授权状态与**窗口几何**的聚合接口。
+///
+/// Android 上 `detached` / `scale` / `width` / `height` 只有 Kotlin 侧知道，
+/// 因此优先转发给它；桌面端会返回 `NotSupported`，回落到纯 Rust 状态。
+///
+/// 前端**轮询**这个命令而不是等原生推事件：页面 → 原生的 Tauri IPC 是稳的
+/// （点击、发消息都走它），而原生 → 页面的 `evaluateJavascript` 在搬运/收回
+/// 前后并不可靠。
 #[tauri::command]
 fn status<R: Runtime>(app: AppHandle<R>, state: tauri::State<'_, FloatingPetState>) -> PetStatus {
+    if let Ok(status) = imp::status(&app, &state) {
+        return status;
+    }
+
     let supported = imp::is_supported(&app);
     PetStatus {
         supported,
@@ -183,6 +194,10 @@ fn status<R: Runtime>(app: AppHandle<R>, state: tauri::State<'_, FloatingPetStat
             false
         },
         visible: state.is_visible(),
+        detached: false,
+        scale: 1.0,
+        width: 0.0,
+        height: 0.0,
     }
 }
 

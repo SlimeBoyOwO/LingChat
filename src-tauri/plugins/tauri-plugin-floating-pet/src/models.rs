@@ -64,8 +64,11 @@ pub struct ExpandedArgs {
     pub expanded: bool,
 }
 
-/// 权限 / 可见性查询结果。
-#[derive(Debug, Clone, Serialize)]
+/// 权限 / 可见性 / 窗口几何查询结果。
+///
+/// 需要 `Deserialize`：Android 侧这些字段由 Kotlin 插件返回
+/// （见 `FloatingPetPlugin.status`），Rust 只做转发。
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PetStatus {
     /// 当前平台是否支持系统级悬浮窗。
@@ -74,6 +77,26 @@ pub struct PetStatus {
     pub granted: bool,
     /// 悬浮窗当前是否可见。
     pub visible: bool,
+    /// WebView 当前是否已被搬进悬浮窗。
+    ///
+    /// 与 `visible` 的区别：`visible` 是「原生侧认为桌宠在运行」，
+    /// `detached` 是「WebView 此刻真的不在 Activity 里」。页面用它在
+    /// **不依赖任何原生事件**的情况下判断自己是否已被搬回 Activity。
+    #[serde(default)]
+    pub detached: bool,
+    /// 逻辑画布 → 窗口的缩放系数（`窗口宽度 / PET_LOGICAL_WIDTH`）。
+    ///
+    /// 前端用它做整体 `transform: scale()`。**必须由原生给**：页面从
+    /// `window.innerWidth` 自算会踩到「原生刚改完尺寸、WebView 视口还没
+    /// 跟上」的滞后窗口，算出的系数偏小 → 内容只占窗口一角、大片空白。
+    #[serde(default = "default_scale")]
+    pub scale: f64,
+    /// 悬浮窗宽度（dp）。
+    #[serde(default)]
+    pub width: f64,
+    /// 悬浮窗高度（dp）。
+    #[serde(default)]
+    pub height: f64,
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -7,22 +7,26 @@
     @mouseleave="handleMouseLeave"
     class="relative flex h-(--app-height) w-(--app-width) flex-col items-center justify-start overflow-hidden bg-transparent transition-none select-none"
   >
-    <!-- 悬浮窗展开态的退出按钮：收回悬浮窗并切回聊天页。
+    <!-- 悬浮窗展开态的返回按钮：收回悬浮窗并切回聊天页。
 
          位置必须在逻辑画布**内部**（top-1 / right-1，而不是 -top-1 / -right-1）：
          早先挂在头像右上角用负偏移，整体等比缩放后会被 #pet-app 的
          overflow-hidden 裁掉一半，真机上根本点不到。
+
+         z 值给到 100：气泡带、头像里的 Live2D 画布都是同层的定位元素，
+         给低了会被压在下面看不见。
 
          只在展开态出现——收起态只有头像、没有放按钮的地方，而展开本来就靠
          点头像，退出需要一个明确、看得见的入口。 -->
     <button
       v-if="floatingWindowMode && petExpanded"
       type="button"
-      aria-label="收回桌宠"
-      class="absolute top-1 right-1 z-50 flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-neutral-950/80 text-[13px] leading-none text-white/90 shadow-lg backdrop-blur-xl active:scale-95"
+      aria-label="返回"
+      title="返回"
+      class="absolute top-1 right-1 z-[100] flex h-7 w-7 items-center justify-center rounded-full border border-white/25 bg-neutral-950/85 text-white/95 shadow-lg backdrop-blur-xl active:scale-95"
       @click.stop="handleExitPetMode"
     >
-      ✕
+      <ArrowLeft :size="15" />
     </button>
 
     <!-- 装饰带（气泡/通知）：高度完全随内容（无预留）→ 顶部永远没有透明空间：
@@ -107,8 +111,10 @@ import { useRouter } from "vue-router";
 import { useFileDrop } from "../pet/useFileDrop";
 import { useAutoAdvance } from "@/composables/chat/useAutoAdvance";
 import {
+  getFloatingPetStatus,
   hideFloatingPet,
   isInFloatingWindow,
+  markFloatingWindowMode,
   onFloatingWindowModeChange,
   onPetExpandedChange,
   onPetMetrics,
@@ -121,6 +127,7 @@ import DialogueBox from "../pet/DialogueBox.vue";
 import DragArea from "../pet/DragArea.vue";
 import GameRolesStage from "../pet/GameRolesStage.vue";
 import PetNotification from "../pet/PetNotification.vue";
+import { ArrowLeft } from "lucide-vue-next";
 import { AVATAR_BAND_BASE, CHAT_BASE_H, DIALOG_MAX_BASE, PET_WIDTH_BASE } from "../pet/constants";
 
 const { t } = useI18n();
@@ -278,6 +285,91 @@ const scheduleHeightReport = (delay = 200) => {
     heightReportTimer = undefined;
     reportFloatingHeight();
   }, delay);
+};
+
+// ─── 主动查询原生状态（页面 → 原生） ─────────────────────────────
+//
+// 原生往页面推事件只能用 `evaluateJavascript`，而这条路在搬运/收回前后
+// **并不可靠**：WebView 刚被挂上、宿主 Activity 还在后台、视口尚未就绪……
+// 实测「即使在前台收回，页面也仍然停在悬浮窗布局」。
+//
+// 反过来，**页面 → 原生**的 Tauri IPC 是稳的——用户点 ✕、发消息都走它。
+// 因此把「我现在还在不在悬浮窗里」和「窗口多大」都改成主动查询：
+// 每 500ms 问一次，漏了哪一次都会在下一轮自愈。
+
+/** 几何轮询间隔（毫秒）。 */
+const METRICS_POLL_MS = 500;
+let metricsTimer: number | undefined;
+
+/**
+ * 是否曾经观察到「确实在悬浮窗里」。
+ *
+ * 进入流程是「先切 /pet 路由 → 再调 show 搬移」，页面挂载时原生还没搬，
+ * 第一次查询必然是 `detached: false`。没有这个标记就会把「还没搬进去」
+ * 误判成「已经收回来了」，直接把用户弹回聊天页。
+ */
+let sawDetached = false;
+
+/**
+ * 已回到 Activity：重置形态、切回聊天页。
+ *
+ * 事件（`pet-attached`）与轮询（`detached` 变 false）两条路都走它，
+ * 且**幂等**——重复调用只会重复 push 同一个路由，vue-router 会忽略。
+ */
+const handleReturnedToApp = () => {
+  if (!floatingWindowMode.value) return;
+  floatingWindowMode.value = false;
+  markFloatingWindowMode(false);
+  stopMetricsPolling();
+  petExpanded.value = false;
+  showChatInput.value = false;
+  // 页面不再缩放：不归位的话 --pet-fit 还留着悬浮窗里的系数（约 0.25），
+  // 整页会被缩成左上角一小块。
+  floatingFit.value = 1;
+  lastReportedHeight = -1;
+  // 导航落地前先藏起桌宠页，避免它按桌面尺寸（240×480）在整屏 Activity
+  // 左上角闪一下。1.5 秒兜底：万一导航没落地，也不能让页面一直空着。
+  returningToApp.value = true;
+  if (returningTimer !== undefined) window.clearTimeout(returningTimer);
+  returningTimer = window.setTimeout(() => {
+    returningTimer = undefined;
+    returningToApp.value = false;
+  }, 1500);
+  void router.push("/chat");
+};
+
+const stopMetricsPolling = () => {
+  if (metricsTimer === undefined) return;
+  window.clearInterval(metricsTimer);
+  metricsTimer = undefined;
+};
+
+/** 查询一次原生状态；查询失败保持现状，等下一轮。 */
+const pollNativeState = async () => {
+  if (!isInFloatingWindow()) return;
+  try {
+    const status = await getFloatingPetStatus();
+    if (status.detached) {
+      sawDetached = true;
+      if (status.scale > 0) {
+        metricsReceived = true;
+        floatingFit.value = status.scale;
+      }
+      reportFloatingHeight();
+      return;
+    }
+    // 原生说 WebView 已经不在悬浮窗里了 → 按「已回到 App」处理。
+    // 只有**见过** detached 才认，否则会误伤「刚挂载、还没搬进去」。
+    if (sawDetached) handleReturnedToApp();
+  } catch {
+    // 插件不可用或瞬时失败，下一轮重试
+  }
+};
+
+const startMetricsPolling = () => {
+  if (metricsTimer !== undefined) return;
+  void pollNativeState();
+  metricsTimer = window.setInterval(() => void pollNativeState(), METRICS_POLL_MS);
 };
 
 // 气泡/通知位置（用户设置）：above = 宠物上方，below = 宠物与输入框之间，auto = 按宠物在屏幕中的位置自动选
@@ -446,33 +538,23 @@ onMounted(async () => {
 
   // 原生搬移/移出悬浮窗时同步本页形态
   floatingModeUnlisten = onFloatingWindowModeChange((active) => {
-    floatingWindowMode.value = active;
     // 每次进出都重新等原生的权威几何：搬运瞬间视口宽度是整屏，
     // 自算出来的系数一定是错的。
     metricsReceived = false;
     lastReportedHeight = -1;
-    if (active) return;
+    if (active) {
+      floatingWindowMode.value = true;
+      startMetricsPolling();
+      return;
+    }
 
-    // ─── 回到 Activity：重置形态并切回聊天页 ────────────────────
-    // 这一步不能少。原生把 WebView 装回 Activity 时只改了视图父子关系，
-    // **路由仍停在 /pet**；不主动跳走的话，用户看到的是「桌宠页铺满整屏」
-    // 又因为页面还处在悬浮窗分支而只渲染出一小块 —— 既不是聊天界面、
-    // 也不再是桌宠。
-    petExpanded.value = false;
-    showChatInput.value = false;
-    // 回到 Activity 后页面不再缩放：必须显式归位，否则 --pet-fit 还留着
-    // 悬浮窗里的系数（约 0.25），整页会被缩成一小块。
-    floatingFit.value = 1;
-    lastReportedHeight = -1;
-    // 导航落地前先藏起桌宠页，避免它按桌面尺寸在左上角闪一下
-    returningToApp.value = true;
-    if (returningTimer !== undefined) window.clearTimeout(returningTimer);
-    returningTimer = window.setTimeout(() => {
-      returningTimer = undefined;
-      // 兜底：万一导航没落地，也不能让页面一直空着
-      returningToApp.value = false;
-    }, 1500);
-    void router.push("/chat");
+    // 回到 Activity。原生把 WebView 装回 Activity 时只改了视图父子关系，
+    // **路由仍停在 /pet**，必须主动跳回聊天页，否则用户看到的是「桌宠页
+    // 铺满整屏、又只渲染出一小块」——既不是聊天界面、也不再是桌宠。
+    //
+    // 这个事件只是**快路径**：它在搬运/收回前后并不可靠（实测即使在前台
+    // 收回也可能收不到），真正兜底的是 pollNativeState 的轮询。
+    handleReturnedToApp();
   });
 
   // 原生改完窗口尺寸后同步展开态
@@ -504,6 +586,8 @@ onMounted(async () => {
     // 逻辑画布 → 窗口的缩放系数，窗口尺寸变化（展开/收起、气泡撑高）时重算
     syncFloatingFit();
     window.addEventListener("resize", onFloatingResize);
+    // 开始轮询原生几何：这是缩放系数与「是否已收回」的可靠来源
+    startMetricsPolling();
     // 首帧就要把真实内容高度报给原生：原生只知道宽度，收起态/展开态的
     // 初始高度是按同一套常量估的，气泡在挂载时可能已经有内容。
     await nextTick();
@@ -687,6 +771,7 @@ onUnmounted(() => {
   if (autoSideTimer !== undefined) window.clearTimeout(autoSideTimer);
   if (heightReportTimer !== undefined) window.clearTimeout(heightReportTimer);
   if (returningTimer !== undefined) window.clearTimeout(returningTimer);
+  stopMetricsPolling();
   window.removeEventListener("resize", onFloatingResize);
   bandObserver.disconnect();
 
@@ -813,12 +898,16 @@ const {
 });
 
 const handleExitPetMode = async () => {
-  // 悬浮窗模式：IPC 完全可用（搬的就是主 WebView），直接调命令把视图搬回
-  // Activity，并切回聊天页——与桌面端 set_pet_mode(false) + push("/chat") 对齐。
+  // 悬浮窗模式：**先**把页面本地切回正常布局，再去调原生命令搬回去。
+  //
+  // 顺序很重要。若反过来「先 await 原生、再靠事件通知页面归位」，一旦那条
+  // 事件丢了（实测在搬运/收回前后会丢），页面就永远停在悬浮窗分支——用户
+  // 看到的就是「收回了，但只有左上一角」。现在页面自己立即归位，原生那边
+  // 成不成功都不影响界面正确性。
   if (floatingWindowMode.value) {
+    handleReturnedToApp();
     try {
       await hideFloatingPet();
-      await router.push("/chat");
     } catch (e) {
       console.error("[PetMode] 退出悬浮窗失败:", e);
     }
