@@ -335,6 +335,8 @@ const handleReturnedToApp = () => {
     returningTimer = undefined;
     returningToApp.value = false;
   }, 1500);
+  // 临时诊断：这一帧的视口尺寸就是「只有左上一角」的关键证据
+  showViewportDiagnostic("returned");
   void router.push("/chat");
 };
 
@@ -349,6 +351,7 @@ const pollNativeState = async () => {
   if (!isInFloatingWindow()) return;
   try {
     const status = await getFloatingPetStatus();
+    nativeWindowWidth.value = status.width;
     if (status.detached) {
       sawDetached = true;
       if (status.scale > 0) {
@@ -356,6 +359,7 @@ const pollNativeState = async () => {
         floatingFit.value = status.scale;
       }
       reportFloatingHeight();
+      showViewportDiagnostic("floating");
       return;
     }
     // 原生说 WebView 已经不在悬浮窗里了 → 按「已回到 App」处理。
@@ -370,6 +374,45 @@ const startMetricsPolling = () => {
   if (metricsTimer !== undefined) return;
   void pollNativeState();
   metricsTimer = window.setInterval(() => void pollNativeState(), METRICS_POLL_MS);
+};
+
+// ─── 临时诊断（定位完即删，合并前必须移除） ──────────────────────
+//
+// 「收回后只有左上一角」这类问题靠推理定不下来：必须知道
+// `window.innerWidth` 到底是「窗口宽度」还是「悬浮窗那个窄视口」。
+// 这里把关键数字直接画在屏幕上。
+//
+// 挂在 document.body 而不是组件里，这样路由切到 /chat 之后它还在
+// ——出问题的正是切换之后那一刻。
+
+/** 原生报告的窗口宽度（dp），用于和 window.innerWidth 对照。 */
+const nativeWindowWidth = ref(0);
+
+const DIAG_VISIBLE_MS = 30000;
+let diagTimer: number | undefined;
+const showViewportDiagnostic = (label: string) => {
+  let el = document.getElementById("__lc_pet_diag") as HTMLDivElement | null;
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "__lc_pet_diag";
+    el.style.cssText =
+      "position:fixed;left:0;top:0;z-index:2147483647;pointer-events:none;" +
+      "background:rgba(0,0,0,.85);color:#4ade80;font:11px/1.45 monospace;" +
+      "padding:3px 6px;white-space:pre;border-bottom-right-radius:6px";
+    document.body.appendChild(el);
+  }
+  const expected = Math.round(FLOATING_LOGICAL_WIDTH * floatingFit.value);
+  el.textContent =
+    `[${label}]\n` +
+    `innerW=${window.innerWidth} innerH=${window.innerHeight}\n` +
+    `dpr=${window.devicePixelRatio} screen=${window.screen?.width}x${window.screen?.height}\n` +
+    `fit=${floatingFit.value.toFixed(3)} expectW=${expected}\n` +
+    `nativeW=${nativeWindowWidth.value} floating=${floatingWindowMode.value}`;
+  if (diagTimer !== undefined) window.clearTimeout(diagTimer);
+  diagTimer = window.setTimeout(() => {
+    diagTimer = undefined;
+    el?.remove();
+  }, DIAG_VISIBLE_MS);
 };
 
 // 气泡/通知位置（用户设置）：above = 宠物上方，below = 宠物与输入框之间，auto = 按宠物在屏幕中的位置自动选

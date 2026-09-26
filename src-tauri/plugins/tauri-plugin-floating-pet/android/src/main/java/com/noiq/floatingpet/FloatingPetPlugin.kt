@@ -682,6 +682,11 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             activity.setContentView(view)
             view.setBackgroundColor(Color.TRANSPARENT)
 
+            // 强制 WebView 重算 CSS 视口。见 forceViewportRefresh 的说明：
+            // 视口没跟上时整个 App 会以悬浮窗的窄视口渲染，看起来就是
+            // 「切回去只有左上一角」。
+            forceViewportRefresh(view)
+
             // 恢复 WebView 的渲染与 JS 定时器：悬浮窗期间可能因宿主 Activity
             // 进入后台而被 WryActivity.onPause() 暂停过（见本类 onResume）。
             // 注意 onResume/resumeTimers 是 WebView 的方法，不是 View 的，
@@ -1250,6 +1255,45 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 put("height", params.height / density.toDouble())
             }
         )
+    }
+
+    /**
+     * 强制 WebView 重算 CSS 视口。
+     *
+     * ## 为什么需要这个
+     *
+     * WebView 从 60dp 的悬浮窗被塞回整屏 Activity 时，Chromium 的 CSS 视口
+     * 应该跟着 View 的尺寸变化重算。但宿主 Activity 若此刻在后台、不跑布局
+     * 遍历，这次重算可能被跳过；之后即使切回前台，也可能因为「尺寸看起来
+     * 没变」而不再触发。
+     *
+     * 视口一旦没跟上，**整个 App 都会以悬浮窗的窄视口渲染**——聊天页被挤在
+     * 屏幕左上角一小块里，这正是「切回去只有左上一角」。
+     *
+     * 这里主动制造一次真实的尺寸变化（高度 -1px 再还原），逼 `onSizeChanged`
+     * 触发两次，从而强制 Chromium 重算。代价是两次额外的布局遍历。
+     */
+    private fun forceViewportRefresh(view: View) {
+        view.post {
+            try {
+                val lp = view.layoutParams ?: return@post
+                val height = view.height
+                if (height <= 1) return@post
+                lp.height = height - 1
+                view.layoutParams = lp
+                view.post {
+                    try {
+                        val restored = view.layoutParams ?: return@post
+                        restored.height = ViewGroup.LayoutParams.MATCH_PARENT
+                        view.layoutParams = restored
+                    } catch (e: Exception) {
+                        Log.w(TAG, "还原 WebView 尺寸失败（可忽略）", e)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "强制刷新 WebView 视口失败（可忽略）", e)
+            }
+        }
     }
 
     // ─── 生命周期 ─────────────────────────────────────────────
