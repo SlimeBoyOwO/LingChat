@@ -168,6 +168,39 @@ wry 0.55.1 的 `WryActivity.onPause()` 会**无条件**调 `mWebView.onPause()`
 （两者都幂等）。进程存活由 `PetForegroundService` 保证，WebView 存活由轮询保证，
 这是两个独立问题，缺一不可。
 
+**`setContentView(view)` 不会重置 View 的 LayoutParams**
+
+这条坑了整整四轮真机验证，记在这里。
+
+把 WebView 从 `WindowManager` 搬回 Activity 时，直觉是
+`activity.setContentView(view)` 就会让它铺满内容区——**不会**。
+实测它保留了悬浮窗那套 `WindowManager.LayoutParams`（展开态 216×252dp），
+于是 WebView 回到 Activity 后视图本身还是那么小，**整个 App 被挤在屏幕左上角
+一小块里**。
+
+真机诊断数据（360×803dp 屏幕）：
+
+```
+[returned]
+innerW=216 innerH=252      ← 正是展开态悬浮窗的尺寸
+fit=1.000 floating=false   ← 页面侧状态完全正确，问题在原生
+```
+
+必须显式改回来：
+
+```kotlin
+activity.setContentView(view)
+view.layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+```
+
+**为什么排查了这么久**：前几轮一直在怀疑「Chromium 的 CSS 视口没重算」，
+方向错了。有一次只改了 `lp.height = MATCH_PARENT`（没碰 width），结果表现成
+「**高度对了、宽度不对**」——如果真是视口没重算，改高度时宽度会一起更新。
+这个「一半好一半不好」的现象本身就反证了根因是 LayoutParams。
+
+> 教训：这类「整个界面缩在一角」的问题，先量 `window.innerWidth`，
+> 再和屏宽对照。数字一比就知道是视口问题还是 View 尺寸问题，不用猜。
+
 ## 五、手机端的交互设计
 
 ### 5.1 尺寸：固定逻辑画布 + 整体等比缩放
@@ -324,6 +357,7 @@ pnpm android:devbuild    # debug APK，装起来最快
 | 切回 App 白屏                      | 占位页没生效，`setContentView` 顺序有问题                                                                                                      |
 | 收回后主界面黑屏                   | WebView 搬回失败，需看 `restoreWebViewToActivity` 日志                                                                                         |
 | **收回后只剩左上一角、不回聊天页** | `pet-attached` 没送达。三层保险：`notifyWeb` 显式收 WebView 参数、0/300/1000/3000ms 重试、Activity resume 时由 `ensureLifecycleCallbacks` 补发 |
+| **收回后整个界面缩在左上角**       | **`setContentView` 没重置 LayoutParams**（见 4.4）。先量 `window.innerWidth` 和屏宽对照：等于悬浮窗宽度就是这条，等于屏宽则是视口问题          |
 | **收回后整个 App 用窄视口渲染**    | 保活轮询停得太早，Chromium 视口没重算；收回后仍要撑满 `KEEP_ALIVE_GRACE_MS`                                                                    |
 | **退后台后桌宠不动**               | 保活轮询没起来；看 logcat 里 `FloatingPet` 的「已启动保活轮询」                                                                                |
 | **悬浮窗里点不到按钮**             | 按钮落在缩放后的逻辑画布外，被 `#pet-app` 的 `overflow-hidden` 裁掉                                                                            |

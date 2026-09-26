@@ -59,6 +59,7 @@ import { useRouter } from "vue-router";
 import { useGameStore } from "../../stores/modules/game";
 import { useSettingsStore } from "../../stores/modules/settings";
 import { useUIStore } from "../../stores/modules/ui/ui";
+import { useDialogStore } from "../../stores/modules/ui/dialog";
 import { Button } from "../base";
 import { GameBackground, GameDialog, GameRolesStage } from "../game/standard";
 import LoadingTransition from "./LoadingTransition.vue";
@@ -85,6 +86,7 @@ let loadingShownThisSession = false;
 
 const router = useRouter();
 const uiStore = useUIStore();
+const dialogStore = useDialogStore();
 const gameStore = useGameStore();
 const settingsStore = useSettingsStore();
 
@@ -129,6 +131,14 @@ getEnvConfigByKey("display.disable_splash_animation")
  * 设置页，用户授权返回后需再点一次。
  */
 const floatingPetActive = ref(false);
+
+/**
+ * 用户被引导去系统设置页授权悬浮窗时置位。
+ *
+ * 回来后 `handleVisibilityChange` 会据此自动接着进桌宠——否则用户得自己
+ * 再点一次「桌宠」按钮，而多数人不会知道要这么做。
+ */
+const pendingPetEntry = ref(false);
 
 /** 同步悬浮窗状态。从系统设置页返回时刷新（按钮高亮与否）。 */
 const syncFloatingPetState = async () => {
@@ -184,12 +194,23 @@ const goToPetMode = async () => {
     }
 
     if (!status.granted) {
+      // 先解释、再跳转。
+      //
+      // 原来这里是「直接跳系统设置页 + showInfo 提示」，但那个 toast 是在
+      // 应用**已经切到后台**之后才弹的，用户正盯着系统设置页，根本看不到——
+      // 表现就是「点了桌宠什么都没发生」。
+      //
+      // 改成模态确认框：用户看清要开哪个开关、点确定才跳，返回后自动继续。
+      const confirmed = await dialogStore.confirm(
+        "桌宠需要「显示在其他应用上层」权限，才能浮在别的应用之上。\n\n" +
+          "点「确定」会打开系统设置页，请在列表里找到 LingChat 并打开该开关。\n" +
+          "返回本应用后会自动继续，不用再点一次桌宠。",
+        "需要悬浮窗权限",
+      );
+      if (!confirmed) return;
+
+      pendingPetEntry.value = true;
       await requestFloatingPetPermission();
-      uiStore.showInfo({
-        title: "需要悬浮窗权限",
-        message: "请在系统设置里允许 LingChat「显示在其他应用上层」，然后回来再点一次桌宠。",
-        duration: 6000,
-      });
       return;
     }
 
@@ -212,8 +233,28 @@ const goToPetMode = async () => {
 };
 
 // 用户去系统设置授权后返回、或从悬浮窗切回 App，重新同步按钮状态
-const handleVisibilityChange = () => {
-  if (document.visibilityState === "visible") void syncFloatingPetState();
+const handleVisibilityChange = async () => {
+  if (document.visibilityState !== "visible") return;
+  await syncFloatingPetState();
+
+  // 刚才是为了授权才跳走的：回来后自动接着进桌宠，不用再点一次
+  if (!pendingPetEntry.value) return;
+  pendingPetEntry.value = false;
+
+  const status = await getFloatingPetStatus();
+  if (status.granted) {
+    await goToPetMode();
+    return;
+  }
+
+  // 没授权成功就别静默失败——用户很可能在系统设置里没找到那个开关
+  uiStore.showWarning({
+    title: "还没有拿到权限",
+    message:
+      "LingChat 的「显示在其他应用上层」开关仍是关闭的，桌宠无法启动。\n" +
+      "部分系统里这个开关叫「悬浮窗」或「后台弹出界面」。",
+    duration: 8000,
+  });
 };
 
 onMounted(() => {

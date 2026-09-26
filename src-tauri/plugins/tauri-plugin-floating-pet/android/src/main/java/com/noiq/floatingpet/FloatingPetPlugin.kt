@@ -628,6 +628,12 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             {
                 try {
                     restoreWebViewToActivity()
+                    // 把 Activity 拉到前台。
+                    //
+                    // 用户点「返回」时人往往在**别的 App** 里：WebView 虽然被
+                    // 装回了 Activity，但 Activity 自己还在后台，用户不手动切
+                    // 回来就什么也看不到 —— 表现为「按了返回却像没反应」。
+                    bringActivityToFront()
                     invoke.resolve()
                 } catch (e: Exception) {
                     Log.e(TAG, "恢复主界面失败", e)
@@ -636,6 +642,31 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             },
             HIDE_DELAY_MS
         )
+    }
+
+    /**
+     * 把宿主 Activity 从后台拉到前台。
+     *
+     * 用 `FLAG_ACTIVITY_REORDER_TO_FRONT` 而不是 `moveTaskToFront`：
+     * 后者需要 `REORDER_TASKS` 权限，而前者是普通 `startActivity`，
+     * 且会把**已存在的那个实例**移到任务栈前面，不会新建实例。
+     *
+     * Activity 已经在前台时这是一个无害的空操作。
+     */
+    private fun bringActivityToFront() {
+        try {
+            val intent = Intent(activity, activity.javaClass).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+            activity.startActivity(intent)
+            Log.i(TAG, "已把 Activity 拉到前台")
+        } catch (e: Exception) {
+            // 少数 ROM 限制后台启动 Activity；失败不致命，用户手动切回来即可
+            Log.w(TAG, "把 Activity 拉到前台失败（可忽略）", e)
+        }
     }
 
     /**
@@ -1008,16 +1039,28 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
-    /** 拖动结束后把窗口吸附到最近的左右边缘（带 8dp 边距）。 */
-    private fun snapToEdge(params: WindowManager.LayoutParams) {        val view = petView ?: return
+    /**
+     * 把窗口吸附到最近的左右边缘（带 8dp 边距）。
+     *
+     * 宽度取 `params.width` 而不是 `view.width`：本函数也会在
+     * `updateViewLayout` **之前**被调用（收起时要先算好落点再一次性布局），
+     * 那时 `view.width` 还是旧值，用它算会吸到错误的位置。
+     *
+     * @param apply 是否立即 `updateViewLayout`。拖动结束时用 true；
+     *   [setExpanded] 里已经在同一次布局里改了尺寸，传 false 少一次遍历。
+     */
+    private fun snapToEdge(params: WindowManager.LayoutParams, apply: Boolean = true) {
         val screenW = activity.resources.displayMetrics.widthPixels
         val margin = dp(8.0)
-        val centerX = params.x + view.width / 2
+        val width = params.width
+        val centerX = params.x + width / 2
         params.x = if (centerX < screenW / 2) {
             margin
         } else {
-            (screenW - view.width - margin).coerceAtLeast(margin)
+            (screenW - width - margin).coerceAtLeast(margin)
         }
+        if (!apply) return
+        val view = petView ?: return
         try {
             windowManager?.updateViewLayout(view, params)
         } catch (e: Exception) {
@@ -1061,6 +1104,16 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 params.x = centerX - width / 2
                 params.y = centerY - height / 2
                 clampIntoScreen(params)
+
+                // 收起后贴边。
+                //
+                // 收起态窗口只有约 1/6 屏宽，若停在屏幕正中会一直挡着内容；
+                // 而「贴边」此前只在拖动结束时做，收起是居中缩放，于是缩完
+                // 就停在原地了。
+                //
+                // apply = false：落点先算好，和尺寸一起在下面那次
+                // updateViewLayout 里生效，省一次布局遍历。
+                if (!expanded) snapToEdge(params, apply = false)
 
                 // ── 输入法：只有展开态才让窗口可获焦 ──────────────────
                 // FLAG_NOT_FOCUSABLE 的窗口永远收不到输入法：IME 只服务于
