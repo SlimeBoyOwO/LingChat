@@ -342,6 +342,15 @@ export default {
     empty: "No plugins found. Put a plugin folder in data/plugins/",
     delete: "Delete",
     deleteConfirm: 'Delete plugin "{name}"? This removes the plugin folder and cannot be undone.',
+    dependsOn: "Requires",
+    enableFailedTitle: "Cannot enable plugin",
+    errors: {
+      PLUGIN_MISSING_DEPENDENCY: "Missing required plugin(s). Install them first",
+      PLUGIN_INACTIVE_DEPENDENCY: "Required plugin(s) are disabled. Enable them first",
+      PLUGIN_DEPENDENCY_CYCLE:
+        "Required plugins form a dependency cycle, so the startup order cannot be determined",
+      PLUGIN_STARTUP_FAILED: "The plugin's startup function failed",
+    },
   },
   adventurePanel: {
     header: {
@@ -401,9 +410,14 @@ export default {
       bubbleTop: "Bubble Top Distance",
       bubbleLeft: "Bubble Left Distance",
       thinkingMessage: "Thinking Message Text",
+      avatarMode: "Stage Display",
       scaleP: "Desktop Pet Scale",
       offsetXP: "Desktop Pet Horizontal Offset",
       offsetYP: "Desktop Pet Vertical Offset",
+      avatarModeP: "Desktop Pet Display",
+      petFrameless: "Frameless Pet",
+      petFramelessHint:
+        "Hide the frame and background so only the character remains; particles are hidden too and the circular crop is removed",
       ttsType: "TTS Type",
       voiceLang: "Voice Language",
       localVoiceId: "Local Voice ID",
@@ -443,6 +457,10 @@ export default {
       ru: "Russian",
       pt: "Portuguese",
     },
+    avatarModeOptions: {
+      live2d: "Live2D Model",
+      image: "Static Portrait",
+    },
     dialectOptions: {
       mandarin: "Mandarin",
       cantonese: "Cantonese",
@@ -481,7 +499,7 @@ export default {
         "Used only as a fallback when the current emotion has no expression mapping; it is not the expression for the Normal emotion.",
       focusAnchorX: "Gaze Origin X (0-1)",
       focusAnchorY: "Gaze Origin Y (0-1)",
-      focusAnchorReset: "Use Model Canvas Center",
+      focusAnchorReset: "Use Model Bounds Center",
       noExpression: "Do Not Change Expression",
       noMotion: "Do Not Play Motion",
       clothesMapping: "Outfit to Model Variant Mapping",
@@ -1335,6 +1353,9 @@ export default {
     energyWarmup: "Energy monitor warm-up (ms)",
     energyWarmupHint:
       "How long to wait after AI finishes speaking before voice trigger re-arms (default 100ms; set 0 to re-arm instantly. Increase if ambient sound right after AI speech causes false triggers)",
+    vadDebugLog: "Detailed VAD energy-detection log",
+    vadDebugLogHint:
+      "Write per-frame speech probability (frame/prob/len) to the log page, for diagnosing speech recognition that never triggers. Off by default; about 1 line per second while recording",
     sendMode: {
       title: "After recognition",
       fillOnly: "Fill input box (recommended)",

@@ -3,20 +3,22 @@
 > 本文档描述 LingChat 的 iOS 支持现状与打包流程。
 > **iOS 构建只能在 macOS 上执行**（`tauri ios` 子命令仅存在于 macOS 版 tauri-cli）。
 
-## ⚠️ 构建前必读：把 `staticlib` 加回 crate-type
+## iOS 静态库配置
 
 `src-tauri/Cargo.toml` 的 `[lib] crate-type` 默认是 `["cdylib", "rlib"]`，
 **不含 iOS 需要的 `staticlib`**。原因是桌面端每次增量构建都会重新归档一个
 约 1.4 GB 的 `ling_chat_lib.lib`，而桌面开发完全用不到它（见该文件内的注释）。
 
-Xcode 链接的是静态库 `libling_chat_lib.a`，所以 **iOS 构建前必须临时改回**：
+Xcode 链接的是静态库 `libling_chat_lib.a`。运行 `pnpm run ios:build` 时，脚本会
+临时将 `crate-type` 改为：
 
 ```toml
 crate-type = ["staticlib", "cdylib", "rlib"]
 ```
 
-改回后按下方流程正常构建；桌面开发时再改回 `["cdylib", "rlib"]`。
-忘了这一步的表现是链接期报找不到 `libling_chat_lib.a`，而不是静默出错。
+构建结束或失败后，脚本会恢复原始 `Cargo.toml`。CI 也调用此脚本，无需手动修改。
+若直接运行 `pnpm tauri ios build --no-sign`，则需要先手动添加 `staticlib`，
+完成后再恢复 `["cdylib", "rlib"]`；遗漏时 Xcode 会报找不到 `libling_chat_lib.a`。
 
 ## 现状
 
@@ -72,12 +74,12 @@ pnpm tauri ios dev "iPhone 17 Pro"             # 设备名可换成任意可用�
 pnpm run ios:build
 ```
 
-等价于（分步）：
+脚本依次执行以下步骤，并在第 3 步期间临时启用 `staticlib`：
 
 ```bash
 bash scripts/configure-ios-project.sh      # 1. init Xcode 工程 + iPhone/iPad 兜底
 node scripts/prepare-bundled-resources.mjs 9  # 2. data.7z → gen/apple/assets/data/
-pnpm tauri ios build --no-sign             # 3. 构建（beforeBuildCommand 自动跑前端构建）
+pnpm tauri ios build --no-sign             # 3. 构建（直接运行前需手动启用 staticlib）
 ```
 
 产物：`src-tauri/gen/apple/build/<arch>/LingChat.ipa`（无签名）。

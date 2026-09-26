@@ -107,6 +107,21 @@
       <p class="mt-1.5 block text-sm text-gray-300">{{ t("settings.asr.energyWarmupHint") }}</p>
     </section>
 
+    <!-- 详细 VAD 能量检测日志（调试）：开启后逐帧打印 frame/prob/len，默认关闭。
+         归 AsrSettings，保存走本页既有的 debounce → asr_set_settings（后端在该命令里
+         同步给 asr::debug_log 的原子量，无需额外的 store 事件通路） -->
+    <section class="mb-6">
+      <Toggle
+        :checked="localSettings.vad_debug_log"
+        @change="(v: boolean) => (localSettings.vad_debug_log = v)"
+      >
+        <span class="font-medium">{{ t("settings.asr.vadDebugLog") }}</span>
+        <span class="mt-0.5 block text-sm text-gray-300">{{
+          t("settings.asr.vadDebugLogHint")
+        }}</span>
+      </Toggle>
+    </section>
+
     <!-- 识别完成后处理方式 -->
     <section class="mb-6">
       <div class="text-brand mb-3 font-medium">{{ t("settings.asr.sendMode.title") }}</div>

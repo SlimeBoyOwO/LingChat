@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>上帝 Agent · 上下文组装数据流</title>
+<style>
+  :root {
+    --bg: #0f1720;
+    --panel: #16202c;
+    --panel-2: #1b2430;
+    --border: #2a3a4a;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --brand: #79d9ff;
+    --rust: #f4a261;
+    --vue: #34d399;
+    --db: #a78bfa;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --pink: #f472b6;
+    --danger: #f87171;
+  }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; line-height: 1.8; max-width: 1440px; }
+  .wrap { max-width: 1440px; margin: 0 auto; }
+  svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 12.5px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  text { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>上下文组装数据流</h1>
+  <p class="sub">
+    上帝 Agent <b>没有自己的消息历史</b>。每次决策的 prompt 都从 <code>GameStatus</code> / <code>GameRoleManager</code> 现场重建，
+    恒为 <b>2 条消息</b>——这是它上下文开销不随对话增长的原因，也是"窗口之外永久不可见"的原因。
+  </p>
+
+  <svg viewBox="0 0 1440 1210" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="cB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#79d9ff" />
+      </marker>
+      <marker id="cG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#8b98a5" />
+      </marker>
+      <marker id="cP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#f472b6" />
+      </marker>
+      <marker id="cR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#f87171" />
+      </marker>
+    </defs>
+
+    <!-- ============================ 分区 ① ============================ -->
+    <text x="40" y="44" font-size="14.5" font-weight="700" fill="#79d9ff">① decide_next_speaker 的上下文组装</text>
+    <text x="40" y="64" font-size="10.5" fill="#8b98a5">每次调用现场重建，不缓存、不回写、不看上一轮的 prompt</text>
+
+    <text x="40" y="100" font-size="11" font-weight="700" fill="#34d399">数据来源</text>
+    <text x="440" y="100" font-size="11" font-weight="700" fill="#f472b6">prompt 组件</text>
+    <text x="910" y="100" font-size="11" font-weight="700" fill="#a78bfa">最终 payload</text>
+
+    <!-- 来源 S_a -->
+    <rect x="40" y="112" width="340" height="124" rx="6" fill="#16202c" stroke="#34d399" stroke-width="1.3" />
+    <text x="56" y="134" font-size="11" font-weight="700" fill="#34d399">GameStatus.present_role_ids</text>
+    <text x="56" y="154" font-size="10" fill="#8b98a5">去 0（玩家）→ npc_ids</text>
+    <line x1="40" y1="166" x2="380" y2="166" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="56" y="186" font-size="11" font-weight="700" fill="#34d399">GameRoleManager.get_loaded(rid)</text>
+    <text x="56" y="206" font-size="10" fill="#e6edf3">display_name　settings.ai_subtitle</text>
+    <text x="56" y="224" font-size="10" fill="#e6edf3">settings.info</text>
+
+    <!-- 来源 S_b -->
+    <rect x="40" y="256" width="340" height="124" rx="6" fill="#16202c" stroke="#34d399" stroke-width="1.3" />
+    <text x="56" y="278" font-size="11" font-weight="700" fill="#34d399">GameStatus.line_list</text>
+    <text x="56" y="298" font-size="10" fill="#e6edf3">Vec&lt;GameLine&gt;　全量共享台词历史</text>
+    <line x1="40" y1="310" x2="380" y2="310" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="56" y="330" font-size="10" fill="#fbbf24">rev().take(recent_window).rev()</text>
+    <text x="56" y="348" font-size="10" fill="#8b98a5">尾部滑动窗口，由旧到新</text>
+    <text x="56" y="366" font-size="10" fill="#8b98a5">不区分说话人：玩家 / NPC / 旁白 / 系统行都在内</text>
+
+    <!-- 来源 S_c -->
+    <rect x="40" y="400" width="340" height="100" rx="6" fill="#16202c" stroke="#34d399" stroke-width="1.3" />
+    <text x="56" y="422" font-size="11" font-weight="700" fill="#34d399">GameStatus.current_role_id</text>
+    <text x="56" y="442" font-size="10" fill="#e6edf3">Option&lt;i32&gt;</text>
+    <text x="56" y="462" font-size="10" fill="#8b98a5">pre-select 时由上一轮的切换结果决定</text>
+    <text x="56" y="480" font-size="10" fill="#8b98a5">post-select 时是刚说完话的那个角色</text>
+
+    <!-- 来源 S_d：不读 -->
+    <rect x="40" y="520" width="340" height="104" rx="6" fill="#2a1a1e" stroke="#f87171" stroke-width="1.3" stroke-dasharray="5 4" />
+    <text x="56" y="542" font-size="11" font-weight="700" fill="#f87171">GameRole.memory</text>
+    <text x="56" y="560" font-size="10" fill="#8b98a5">MemoryBank 注入的长程记忆</text>
+    <text x="56" y="577" font-size="10.5" fill="#f87171">✗ 上帝 Agent 完全不读它</text>
+    <text x="56" y="596" font-size="9.5" fill="#8b98a5">（short_term / long_term /</text>
+    <text x="56" y="608" font-size="9.5" fill="#8b98a5">　 user_info / promises 都不进这里）</text>
+
+    <!-- 组件 C1 -->
+    <rect x="440" y="112" width="430" height="124" rx="6" fill="#16202c" stroke="#f472b6" stroke-width="1.3" />
+    <text x="456" y="134" font-size="11.5" font-weight="700" fill="#f472b6">① 角色信息块</text>
+    <text x="456" y="156" font-size="10" fill="#e6edf3">- role_id=6: 林雪</text>
+    <text x="456" y="174" font-size="10" fill="#e6edf3">  简介: <tspan fill="#8b98a5">&lt;ai_subtitle&gt;　空则填「无」</tspan></text>
+    <text x="456" y="192" font-size="10" fill="#e6edf3">  设定: <tspan fill="#8b98a5">&lt;info&gt;　空则填「无」</tspan></text>
+    <text x="456" y="216" font-size="9.5" fill="#8b98a5">每个在场 NPC 一段；没有记忆、没有好感度</text>
+    <text x="456" y="230" font-size="9.5" fill="#8b98a5">（好感度只有评估流水线才喂，见下方 ②）</text>
+
+    <!-- 组件 C2 -->
+    <rect x="440" y="256" width="430" height="124" rx="6" fill="#16202c" stroke="#f472b6" stroke-width="1.3" />
+    <text x="456" y="278" font-size="11.5" font-weight="700" fill="#f472b6">② 最近对话块</text>
+    <text x="456" y="300" font-size="10" fill="#e6edf3">[role_id=0] 你: 【平静】今天去哪玩？</text>
+    <text x="456" y="318" font-size="10" fill="#e6edf3">[role_id=6] 林雪: 【开心】想去海边！</text>
+    <text x="456" y="336" font-size="10" fill="#e6edf3">[role_id=4] 苏晴: 【无奈】又去海边…</text>
+    <text x="456" y="358" font-size="9.5" fill="#fbbf24">格式：[role_id=N] 名字: 【情绪】内容</text>
+    <text x="456" y="374" font-size="9.5" fill="#8b98a5">带 original_emotion；旁白行也在这里</text>
+
+    <!-- 组件 C3 -->
+    <rect x="440" y="400" width="430" height="100" rx="6" fill="#16202c" stroke="#f472b6" stroke-width="1.3" />
+    <text x="456" y="422" font-size="11.5" font-weight="700" fill="#f472b6">③ 当前发言者提示</text>
+    <text x="456" y="444" font-size="10" fill="#e6edf3">Some(0)　→「当前发言者是「玩家」…」</text>
+    <text x="456" y="462" font-size="10" fill="#e6edf3">Some(rid) →「…刚刚说完话。请判断：继续 or 交还」</text>
+    <text x="456" y="480" font-size="10" fill="#e6edf3">None　 　→ 空字符串</text>
+
+    <!-- payload M1 -->
+    <rect x="910" y="112" width="490" height="124" rx="6" fill="#1b2430" stroke="#a78bfa" stroke-width="1.3" />
+    <text x="926" y="134" font-size="11.5" font-weight="700" fill="#a78bfa">LlmMessage::system</text>
+    <text x="926" y="158" font-size="10" fill="#e6edf3">「你是一个多人对话的导演（上帝视角）。你的任务</text>
+    <text x="926" y="174" font-size="10" fill="#e6edf3">是：…做出判断后，调用 select_next_speaker 工具。」</text>
+    <text x="926" y="198" font-size="9.5" fill="#8b98a5">← 硬编码文案，不含任何数据</text>
+    <text x="926" y="218" font-size="9.5" fill="#fbbf24">← 不能把数据挪进来：Codex Responses 单 system 会 400</text>
+
+    <!-- payload M2 -->
+    <rect x="910" y="256" width="490" height="348" rx="6" fill="#1b2430" stroke="#a78bfa" stroke-width="1.3" />
+    <text x="926" y="278" font-size="11.5" font-weight="700" fill="#a78bfa">LlmMessage::user　=　① ＋ ② ＋ ③</text>
+    <line x1="910" y1="290" x2="1400" y2="290" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="926" y="312" font-size="10" fill="#34d399">【当前在场的非玩家角色列表】</text>
+    <text x="926" y="330" font-size="10" fill="#8b98a5">- role_id=6: 林雪</text>
+    <text x="926" y="346" font-size="10" fill="#8b98a5">  简介: …</text>
+    <text x="926" y="362" font-size="10" fill="#8b98a5">  设定: …</text>
+    <text x="926" y="386" font-size="10" fill="#34d399">【最近对话记录（由旧到新）】</text>
+    <text x="926" y="404" font-size="10" fill="#8b98a5">[role_id=0] 你: 【平静】今天去哪玩？</text>
+    <text x="926" y="420" font-size="10" fill="#8b98a5">[role_id=6] 林雪: 【开心】想去海边！</text>
+    <text x="926" y="436" font-size="10" fill="#8b98a5">…（共 recent_window 行）</text>
+    <text x="926" y="460" font-size="10" fill="#34d399">当前发言者是「林雪」(role_id=6)，刚刚说完话。请判断：</text>
+    <text x="926" y="478" font-size="10" fill="#8b98a5">- 如果对话应该继续…选择下一个发言的 NPC</text>
+    <text x="926" y="494" font-size="10" fill="#8b98a5">- 如果应该交还给玩家，选择 role_id=0</text>
+    <line x1="910" y1="512" x2="1400" y2="512" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="926" y="534" font-size="10" fill="#fbbf24">一个字符串：format!("{}\n{}\n{}", ①, ②, ③)</text>
+    <text x="926" y="556" font-size="10" fill="#8b98a5">没有消息数组、没有对话轮次、没有 tool 结果回填</text>
+    <text x="926" y="576" font-size="10" fill="#8b98a5">（区别于聊天管线的 stream_with_tool_loop 闭环）</text>
+
+    <!-- 徽标 -->
+    <rect x="910" y="620" width="490" height="52" rx="6" fill="#16261f" stroke="#4ade80" stroke-width="1.4" />
+    <text x="926" y="642" font-size="11" font-weight="700" fill="#4ade80">最终 payload 恒为 2 条消息（1 system + 1 user）</text>
+    <text x="926" y="660" font-size="10" fill="#8b98a5">上下文开销 O(1)，与对话长度无关；代价是窗口外永久不可见</text>
+
+    <!-- 箭头 ①区 -->
+    <line x1="380" y1="174" x2="440" y2="174" stroke="#34d399" stroke-width="1.5" marker-end="url(#cG)" />
+    <line x1="380" y1="318" x2="440" y2="318" stroke="#34d399" stroke-width="1.5" marker-end="url(#cG)" />
+    <line x1="380" y1="450" x2="440" y2="450" stroke="#34d399" stroke-width="1.5" marker-end="url(#cG)" />
+
+    <path d="M 870 174 L 886 174 L 886 320 L 910 320" fill="none" stroke="#f472b6" stroke-width="1.5" marker-end="url(#cP)" />
+    <path d="M 870 318 L 898 318 L 898 400 L 910 400" fill="none" stroke="#f472b6" stroke-width="1.5" marker-end="url(#cP)" />
+    <line x1="870" y1="450" x2="910" y2="450" stroke="#f472b6" stroke-width="1.5" marker-end="url(#cP)" />
+
+    <line x1="380" y1="560" x2="424" y2="560" stroke="#f87171" stroke-width="1.4" stroke-dasharray="4 3" />
+    <text x="432" y="565" font-size="13" font-weight="700" fill="#f87171">✕</text>
+    <text x="452" y="565" font-size="9.5" fill="#f87171">这条路不通：上帝 Agent 不读角色的长程记忆</text>
+    <text x="452" y="582" font-size="9" fill="#8b98a5">决策只看「最近发生了什么」，不看「故事讲到了哪」</text>
+
+    <!-- ============================ 分隔 ============================ -->
+    <line x1="40" y1="704" x2="1400" y2="704" stroke="#2a3a4a" stroke-width="1.5" />
+
+    <!-- ============================ 分区 ② ============================ -->
+    <text x="40" y="742" font-size="14.5" font-weight="700" fill="#fbbf24">② evaluate_affection 的上下文组装</text>
+    <text x="40" y="762" font-size="10.5" fill="#8b98a5">同一种模式，两处差异：角色块多带情感数值；对话块不带 role_id 与情绪标签</text>
+
+    <text x="40" y="800" font-size="11" font-weight="700" fill="#34d399">数据来源</text>
+    <text x="440" y="800" font-size="11" font-weight="700" fill="#fbbf24">prompt 组件</text>
+    <text x="910" y="800" font-size="11" font-weight="700" fill="#a78bfa">最终 payload</text>
+
+    <!-- 来源 T_a -->
+    <rect x="40" y="812" width="340" height="124" rx="6" fill="#16202c" stroke="#34d399" stroke-width="1.3" />
+    <text x="56" y="834" font-size="11" font-weight="700" fill="#34d399">NpcAffectionView　<tspan font-size="9.5" fill="#fbbf24">锁内快照</tspan></text>
+    <text x="56" y="854" font-size="10" fill="#e6edf3">role_id / name / subtitle / info</text>
+    <text x="56" y="872" font-size="10" fill="#e6edf3">current: AffectionVector　<tspan fill="#8b98a5">好感六维</tspan></text>
+    <text x="56" y="890" font-size="10" fill="#e6edf3">negative: NegativeVector　<tspan fill="#8b98a5">负面六维</tspan></text>
+    <text x="56" y="912" font-size="9.5" fill="#8b98a5">快照出来后才释放 GameStatus 锁，LLM 调用在锁外</text>
+    <text x="56" y="928" font-size="9.5" fill="#8b98a5">（decide_next_speaker 没做这一步，见 architecture.md §3.4）</text>
+
+    <!-- 来源 T_b -->
+    <rect x="40" y="956" width="340" height="108" rx="6" fill="#16202c" stroke="#34d399" stroke-width="1.3" />
+    <text x="56" y="978" font-size="11" font-weight="700" fill="#34d399">GameStatus.line_list</text>
+    <text x="56" y="998" font-size="10" fill="#e6edf3">同样取尾部 recent_window 行</text>
+    <line x1="40" y1="1010" x2="380" y2="1010" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="56" y="1030" font-size="10" fill="#8b98a5">节流判据另取：真实对话段数</text>
+    <text x="56" y="1048" font-size="10" fill="#fbbf24">affection_eval_cursor（先推进再 spawn）</text>
+
+    <!-- 组件 D1 -->
+    <rect x="440" y="812" width="430" height="124" rx="6" fill="#16202c" stroke="#fbbf24" stroke-width="1.3" />
+    <text x="456" y="834" font-size="11.5" font-weight="700" fill="#fbbf24">角色块（比 ① 多了情感状态）</text>
+    <text x="456" y="856" font-size="10" fill="#e6edf3">- role_id=6: 林雪　简介: …　设定: …</text>
+    <text x="456" y="876" font-size="10" fill="#e6edf3">  当前情感（数值可超 100，负数为疏离）:</text>
+    <text x="456" y="894" font-size="10" fill="#8b98a5">    好感 72、信赖 65、亲密 40、默契 58、兴趣 80、思念 30</text>
+    <text x="456" y="914" font-size="10" fill="#e6edf3">  当前负面情绪（0 为无，越高越强烈）:</text>
+    <text x="456" y="932" font-size="10" fill="#8b98a5">    愤怒 0、受伤 12、失望 0、冷漠 0、嫉妒 5、疏远 0</text>
+
+    <!-- 组件 D2 -->
+    <rect x="440" y="956" width="430" height="108" rx="6" fill="#16202c" stroke="#fbbf24" stroke-width="1.3" />
+    <text x="456" y="978" font-size="11.5" font-weight="700" fill="#fbbf24">对话块（格式更简）</text>
+    <text x="456" y="1000" font-size="10" fill="#e6edf3">你: 今天去哪玩？</text>
+    <text x="456" y="1018" font-size="10" fill="#e6edf3">林雪: 想去海边！</text>
+    <text x="456" y="1040" font-size="9.5" fill="#f87171">无 [role_id=N] 前缀　·　无 【情绪】标签</text>
+    <text x="456" y="1056" font-size="9.5" fill="#8b98a5">评估只看内容，不需要知道谁在说</text>
+
+    <!-- payload E1 -->
+    <rect x="910" y="812" width="490" height="124" rx="6" fill="#1b2430" stroke="#a78bfa" stroke-width="1.3" />
+    <text x="926" y="834" font-size="11.5" font-weight="700" fill="#a78bfa">LlmMessage::system</text>
+    <text x="926" y="858" font-size="10" fill="#e6edf3">「你是一个情感观察员（上帝视角）。…」</text>
+    <text x="926" y="878" font-size="10" fill="#e6edf3">＋ 12 个维度释义（好感六维 / 负面六维）</text>
+    <text x="926" y="898" font-size="10" fill="#e6edf3">＋ 评估原则：日常 ±1~2、明显 ±3、深刻 ±4~5、宁少勿多</text>
+    <text x="926" y="920" font-size="9.5" fill="#fbbf24">＋「请对每个有情感变化的在场角色调用一次 update_affection」</text>
+
+    <!-- payload E2 -->
+    <rect x="910" y="956" width="490" height="108" rx="6" fill="#1b2430" stroke="#a78bfa" stroke-width="1.3" />
+    <text x="926" y="978" font-size="11.5" font-weight="700" fill="#a78bfa">LlmMessage::user　=　角色块 ＋ 对话块</text>
+    <text x="926" y="1000" font-size="10" fill="#8b98a5">没有 ③ 当前发言者提示（评估与"轮到谁"无关）</text>
+    <text x="926" y="1020" font-size="10" fill="#fbbf24">单 NPC 时也真调 LLM（decide_next_speaker 会短路，这里不会）</text>
+    <text x="926" y="1042" font-size="10" fill="#8b98a5">返回 tool_calls 里每个在场角色的 update_affection，逐个解析</text>
+
+    <!-- 箭头 ②区 -->
+    <line x1="380" y1="874" x2="440" y2="874" stroke="#34d399" stroke-width="1.5" marker-end="url(#cG)" />
+    <line x1="380" y1="1010" x2="440" y2="1010" stroke="#34d399" stroke-width="1.5" marker-end="url(#cG)" />
+
+    <path d="M 870 874 L 886 874 L 886 1000 L 910 1000" fill="none" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#cP)" />
+    <path d="M 870 1010 L 898 1010 L 898 1030 L 910 1030" fill="none" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#cP)" />
+
+    <!-- 底部约束 -->
+    <rect x="40" y="1096" width="1360" height="92" rx="8" fill="#16202c" stroke="#2a3a4a" stroke-width="1.3" />
+    <text x="56" y="1120" font-size="11.5" font-weight="700" fill="#8b98a5">两条流水线共有的设计约束</text>
+    <line x1="40" y1="1130" x2="1400" y2="1130" stroke="#2a3a4a" stroke-dasharray="3 4" />
+    <text x="56" y="1152" font-size="10.5" fill="#e6edf3">· <tspan fill="#fbbf24">system 只放任务说明，数据载荷全部走 user</tspan>　—— 单 system 消息会被 Codex Responses API 拒为 400（空 input）</text>
+    <text x="56" y="1172" font-size="10.5" fill="#e6edf3">· <tspan fill="#4ade80">每次调用独立重建</tspan>，无跨轮状态、无压缩、无摘要、不写回 line_list —— 决策过程不留痕</text>
+    <text x="56" y="1192" font-size="10.5" fill="#e6edf3">· 唯一进入 line_list 的产物是<tspan fill="#a78bfa">好感度变化旁白</tspan>（由评估流水线写回，见 affection-flow.html）</text>
+  </svg>
+
+  <div class="legend">
+    <span><i class="dot" style="background:#34d399"></i>数据来源（GameStatus / RoleManager）</span>
+    <span><i class="dot" style="background:#f472b6"></i>发言者选择的 prompt 组件</span>
+    <span><i class="dot" style="background:#fbbf24"></i>好感度评估的 prompt 组件</span>
+    <span><i class="dot" style="background:#a78bfa"></i>发给 LLM 的 payload</span>
+    <span><i class="dot" style="background:#f87171"></i>被排除的上下文</span>
+  </div>
+</div>
+</body>
+</html>

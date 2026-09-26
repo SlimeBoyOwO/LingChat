@@ -92,9 +92,11 @@
       </div>
 
       <!-- Live2D 角色渲染（上游合并） -->
+      <!-- 无框模式下不再给 host div 加 rounded-full，模型因此不再被裁成圆 -->
       <Live2DStage
-        v-if="singleRole?.live2d"
-        class="z-11 rounded-full"
+        v-if="petLive2d"
+        class="z-11"
+        :class="{ 'rounded-full': !petFrameless }"
         :roles="singleRole ? [singleRole] : []"
         mode="pet"
         :active-speaker-id="gameStore.currentInteractRoleId"
@@ -110,8 +112,8 @@
         v-if="singleRole"
         :key="singleRole.roleId"
         :role="singleRole"
-        :live2d-active="live2dActiveRoleIds.has(singleRole.roleId)"
-        :live2d-failed="live2dFailedRoleIds.has(singleRole.roleId)"
+        :live2d-active="petLive2d && live2dActiveRoleIds.has(singleRole.roleId)"
+        :live2d-failed="petLive2d && live2dFailedRoleIds.has(singleRole.roleId)"
         @avatar-click="emit('avatar-click')"
       />
     </div>
@@ -130,6 +132,7 @@ import { useSettingsStore } from "@/stores/modules/settings";
 import { useScreenshot } from "@/composables/useScreenshot";
 import { useMicControl } from "@/composables/useMicControl";
 import { useVoicePlayback } from "@/composables/role/useVoicePlayback";
+import { prefersLive2d } from "@/types/live2d";
 import { isAndroid } from "@/utils/platform";
 import RoleAvatar from "./GameRoleAvatar.vue";
 import Live2DStage from "../game/live2d/Live2DStage.vue";
@@ -172,6 +175,18 @@ const setLive2dFailedRoles = (roleIds: number[]) => {
 const singleRole = computed(() => {
   return gameStore.presentRolesList.length > 0 ? gameStore.presentRolesList[0] : null;
 });
+
+// 桌宠用 Live2D 还是静态立绘：角色设定里独立于主对话设置，缺省沿袭「有模型就用模型」。
+//
+// 必须同时喂给 Live2DStage 的 v-if 和 RoleAvatar 的 live2d-active/failed：
+// Live2DStage 被 v-if 卸载时只会销毁模型、不会 emit activeChange（见其 onBeforeUnmount），
+// 于是 live2dActiveRoleIds 会留着旧 id。只改 v-if 的话，切到静态立绘后 canvas 没了、
+// 图片又被 v-show="!live2dActive" 藏住，桌宠会整个空掉。
+const petLive2d = computed(() => !!singleRole.value && prefersLive2d(singleRole.value, "pet"));
+
+// 无框桌宠（角色设定 → 桌宠）：只影响绘图，不影响加载哪些模型，
+// 所以并进 Live2DStage 的 class 即可，无需像 petLive2d 那样喂 v-if / active 状态。
+const petFrameless = computed(() => singleRole.value?.petFrameless === true);
 
 const frameSize = computed(() => {
   const scale = settingsStore.pet?.scale || 1;

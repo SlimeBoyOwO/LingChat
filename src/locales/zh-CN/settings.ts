@@ -336,6 +336,14 @@ export default {
     resourceKeepConfirm: "将把{kind}「{name}」复制到游戏目录成为游戏自有资源，插件版随后自动隐藏。",
     disableCharactersConfirm:
       "禁用插件「{name}」会将其携带的角色从列表中移除，并删除这些角色的全部存档与对话记忆（重新启用也不会恢复）。确定要禁用吗？",
+    dependsOn: "前置插件",
+    enableFailedTitle: "无法启用插件",
+    errors: {
+      PLUGIN_MISSING_DEPENDENCY: "缺少前置插件，需要先安装它们",
+      PLUGIN_INACTIVE_DEPENDENCY: "前置插件未启用，需要先启用它们",
+      PLUGIN_DEPENDENCY_CYCLE: "前置插件形成循环依赖，无法确定启动顺序",
+      PLUGIN_STARTUP_FAILED: "插件的启动函数执行失败",
+    },
     resourceKinds: {
       characters: "角色",
       scripts: "剧本",
@@ -410,9 +418,13 @@ export default {
       bubbleTop: "气泡顶部距离",
       bubbleLeft: "气泡左侧距离",
       thinkingMessage: "思考消息文本",
+      avatarMode: "舞台显示方式",
       scaleP: "桌宠缩放",
       offsetXP: "桌宠水平偏移",
       offsetYP: "桌宠垂直偏移",
+      avatarModeP: "桌宠显示方式",
+      petFrameless: "无框桌宠",
+      petFramelessHint: "隐藏外框与背景，只留角色本体；粒子一并隐藏，角色不再裁成圆形",
       ttsType: "TTS 类型",
       voiceLang: "语音语言",
       localVoiceId: "本地语音 ID",
@@ -452,6 +464,10 @@ export default {
       ru: "俄语",
       pt: "葡萄牙语",
     },
+    avatarModeOptions: {
+      live2d: "Live2D 模型",
+      image: "静态立绘",
+    },
     dialectOptions: {
       mandarin: "普通话",
       cantonese: "广东话",
@@ -489,7 +505,7 @@ export default {
       defaultExpressionHint: "仅在当前情绪没有对应表情映射时作为后备；它不等同于“正常”情绪的表情。",
       focusAnchorX: "视线基点 X（0-1）",
       focusAnchorY: "视线基点 Y（0-1）",
-      focusAnchorReset: "恢复使用模型画布中心",
+      focusAnchorReset: "恢复使用模型显示区域中心",
       noExpression: "不切换表情",
       noMotion: "不播放动作",
       clothesMapping: "服装与模型变体映射",
@@ -1334,6 +1350,9 @@ export default {
     energyWarmup: "能量监测缓冲期（毫秒）",
     energyWarmupHint:
       "AI 说完话后等待该时长才恢复语音触发（默认 100ms，设 0 立即触发；若 AI 话音刚落环境声会误触发可调大）",
+    vadDebugLog: "详细VAD能量检测日志开关",
+    vadDebugLogHint:
+      "输出逐帧语音概率（frame/prob/len）到日志页，排查语音识别不触发时用；默认关闭，录音期间每秒约 1 条",
     sendMode: {
       title: "识别完成后",
       fillOnly: "填入输入框（推荐）",

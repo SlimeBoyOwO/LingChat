@@ -323,6 +323,15 @@ export default {
     delete: "削除",
     deleteConfirm:
       "プラグイン「{name}」を削除しますか？プラグインフォルダごと削除され、元に戻せません",
+    dependsOn: "前提プラグイン",
+    enableFailedTitle: "プラグインを有効化できません",
+    errors: {
+      PLUGIN_MISSING_DEPENDENCY:
+        "前提プラグインがインストールされていません。先にインストールしてください",
+      PLUGIN_INACTIVE_DEPENDENCY: "前提プラグインが無効です。先に有効化してください",
+      PLUGIN_DEPENDENCY_CYCLE: "前提プラグインが循環参照になっており、起動順を決定できません",
+      PLUGIN_STARTUP_FAILED: "プラグインの起動関数の実行に失敗しました",
+    },
   },
   adventurePanel: {
     header: {
@@ -382,9 +391,14 @@ export default {
       bubbleTop: "吹き出し上端の距離",
       bubbleLeft: "吹き出し左端の距離",
       thinkingMessage: "思考メッセージテキスト",
+      avatarMode: "ステージ表示方式",
       scaleP: "デスクトップペットのスケール",
       offsetXP: "デスクトップペットの水平オフセット",
       offsetYP: "デスクトップペットの垂直オフセット",
+      avatarModeP: "デスクトップペット表示方式",
+      petFrameless: "フレームなし",
+      petFramelessHint:
+        "外枠と背景を非表示にし、キャラクターだけを表示します。パーティクルも非表示になり、円形の切り抜きも解除されます",
       ttsType: "TTS タイプ",
       voiceLang: "音声言語",
       localVoiceId: "ローカル音声 ID",
@@ -424,6 +438,10 @@ export default {
       ru: "ロシア語",
       pt: "ポルトガル語",
     },
+    avatarModeOptions: {
+      live2d: "Live2D モデル",
+      image: "立ち絵",
+    },
     dialectOptions: {
       mandarin: "標準中国語",
       cantonese: "広東語",
@@ -462,7 +480,7 @@ export default {
         "現在の感情に対応する表情マッピングがない場合のみフォールバックとして使用されます。「正常」感情の表情とは別です。",
       focusAnchorX: "視線基点 X（0-1）",
       focusAnchorY: "視線基点 Y（0-1）",
-      focusAnchorReset: "モデルキャンバスの中心を使用",
+      focusAnchorReset: "モデル描画領域の中心を使用",
       noExpression: "表情を変更しない",
       noMotion: "モーションを再生しない",
       clothesMapping: "衣装とモデルバリアントの対応",
@@ -1319,6 +1337,9 @@ export default {
     energyWarmup: "エネルギーモニター起動バッファ（ms）",
     energyWarmupHint:
       "AI の発話終了後、この時間だけ音声トリガーを待機します（デフォルト 100ms。0 で即時トリガー。AI 発話直後の環境音で誤反応する場合は大きくしてください）",
+    vadDebugLog: "詳細 VAD エネルギー検出ログ",
+    vadDebugLogHint:
+      "フレームごとの音声確率（frame/prob/len）をログページに出力します。音声認識が発火しない原因の調査用。デフォルトはオフ、録音中は毎秒約 1 行",
     sendMode: {
       title: "認識後",
       fillOnly: "入力欄に挿入（推奨）",

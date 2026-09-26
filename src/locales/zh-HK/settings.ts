@@ -313,6 +313,14 @@ export default {
     empty: "未搵到插件。請將插件資料夾放入 data/plugins/ 目錄",
     delete: "刪除",
     deleteConfirm: "確定要刪除插件「{name}」嗎？會刪除插件目錄，不可恢復",
+    dependsOn: "前置插件",
+    enableFailedTitle: "無法啟用插件",
+    errors: {
+      PLUGIN_MISSING_DEPENDENCY: "缺少前置插件，需要先安裝它們",
+      PLUGIN_INACTIVE_DEPENDENCY: "前置插件未啟用，需要先啟用它們",
+      PLUGIN_DEPENDENCY_CYCLE: "前置插件形成循環依賴，無法確定啟動順序",
+      PLUGIN_STARTUP_FAILED: "插件的啟動函式執行失敗",
+    },
   },
   adventurePanel: {
     header: {
@@ -372,9 +380,13 @@ export default {
       bubbleTop: "氣泡頂部距離",
       bubbleLeft: "氣泡左側距離",
       thinkingMessage: "思考訊息文字",
+      avatarMode: "舞台顯示方式",
       scaleP: "桌寵縮放",
       offsetXP: "桌寵水平偏移",
       offsetYP: "桌寵垂直偏移",
+      avatarModeP: "桌寵顯示方式",
+      petFrameless: "無框桌寵",
+      petFramelessHint: "隱藏外框與背景，只留角色本體；粒子一併隱藏，角色不再裁成圓形",
       ttsType: "TTS 類型",
       voiceLang: "語音語言",
       localVoiceId: "本地語音 ID",
@@ -414,6 +426,10 @@ export default {
       ru: "俄語",
       pt: "葡萄牙語",
     },
+    avatarModeOptions: {
+      live2d: "Live2D 模型",
+      image: "靜態立繪",
+    },
     dialectOptions: {
       mandarin: "普通話",
       cantonese: "廣東話",
@@ -451,7 +467,7 @@ export default {
       defaultExpressionHint: "只會喺目前情緒冇對應表情映射時作後備；佢唔等同於「正常」情緒嘅表情。",
       focusAnchorX: "視線基點 X（0-1）",
       focusAnchorY: "視線基點 Y（0-1）",
-      focusAnchorReset: "恢復使用模型畫布中心",
+      focusAnchorReset: "恢復使用模型顯示區域中心",
       noExpression: "唔切換表情",
       noMotion: "唔播放動作",
       clothesMapping: "服裝同模型變體對應",
@@ -1288,6 +1304,9 @@ export default {
     energyWarmup: "能量監測緩衝期（毫秒）",
     energyWarmupHint:
       "AI 講完嘢後等幾耐先恢復語音觸發（預設 100ms，設 0 即時觸發；若 AI 講完即刻有環境聲誤觸可以調大）",
+    vadDebugLog: "詳細VAD能量檢測日誌開關",
+    vadDebugLogHint:
+      "輸出逐幀語音概率（frame/prob/len）到日誌頁，排查語音識別唔觸發嗰陣用；預設閂，錄音期間每秒約 1 條",
     sendMode: {
       title: "識別完成後",
       fillOnly: "填入輸入框（推薦）",

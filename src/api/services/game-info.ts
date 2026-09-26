@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Live2dSettings } from "@/types/live2d";
+import type { AvatarDisplayMode, Live2dSettings } from "@/types/live2d";
 import type { SceneInfo } from "./scene";
 import type { AffectionVector, NegativeVector } from "@/stores/modules/game/state";
 
@@ -21,8 +21,12 @@ export interface CharacterSettings {
   bubble_left: number;
   clothes: Record<string, any>;
   clothes_name: string;
+  avatar_mode?: AvatarDisplayMode | null;
   body_part: Record<string, any>;
   live2d?: Live2dSettings | null;
+  avatar_mode_p?: AvatarDisplayMode | null;
+  /** 桌宠无框模式：true = 隐藏圆形外框/半透明底/粒子并取消圆形裁剪 */
+  pet_frameless?: boolean | null;
   character_folder: string;
   /** 该角色对玩家的六维好感度（由角色目录 affection.yml 载入；未加载时为 null） */
   affection: AffectionVector | null;

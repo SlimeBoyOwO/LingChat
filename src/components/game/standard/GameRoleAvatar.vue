@@ -1,6 +1,6 @@
 <template>
   <Live2DRolePresentation
-    v-if="role.live2d"
+    v-if="useLive2d"
     ref="presentationRef"
     :role-id="role.roleId"
     :src="targetAvatarUrl"
@@ -64,6 +64,7 @@ import StaticRolePresentation from "./StaticRolePresentation.vue";
 import TouchAreas from "./TouchAreas.vue";
 import SpriteNoiseOverlay from "./SpriteNoiseOverlay.vue";
 import { useRoleAvatar } from "@/composables/role/useRoleAvatar";
+import { prefersLive2d } from "@/types/live2d";
 import "@/assets/styles/avatar-animation.css";
 
 const props = defineProps<{
@@ -83,6 +84,9 @@ const bubbleAudio = ref<HTMLAudioElement | null>(null);
 const presentationRef = ref<
   InstanceType<typeof Live2DRolePresentation> | InstanceType<typeof StaticRolePresentation> | null
 >(null);
+
+// 主对话用 Live2D 还是静态立绘：角色设定里可选，缺省沿袭「有模型就用模型」
+const useLive2d = computed(() => prefersLive2d(role.value, "standard"));
 
 // 头像解析 + 情绪演出（动画类 / 气泡 / 音效）—— 与桌宠共用同一实现
 const {

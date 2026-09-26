@@ -36,6 +36,9 @@ pub fn setup(
     // 设置日志桥接的应用句柄
     utils::log_bridge::set_app_handle(app.handle().clone());
 
+    // 插件脚本在独立线程执行，需要一份全局句柄才能访问宿主状态
+    crate::plugins::set_app_handle(app.handle().clone());
+
     // 提前初始化数据目录缓存，以便在数据层引导之前
     // 将其传递给独立的本地 TTS crate。
     data_dir::init_data_dir(&app.handle());

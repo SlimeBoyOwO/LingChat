@@ -120,6 +120,27 @@
                       {{ opt.label }}
                     </option>
                   </select>
+                  <!-- 开关：轨道本身充当第二个 <label>（与上方的字段名 label 是兄弟，
+                       不能嵌套），滑块用绝对定位的兄弟节点 + peer-checked 联动 -->
+                  <div v-else-if="field.type === 'switch'" class="relative flex w-fit items-center">
+                    <input
+                      :id="field.key"
+                      v-model="fieldModel(field).value"
+                      type="checkbox"
+                      class="peer sr-only"
+                      @change="handleFieldChange(field)"
+                    />
+                    <label
+                      :for="field.key"
+                      class="peer-checked:border-brand peer-checked:bg-brand block h-5 w-9 cursor-pointer rounded-full border border-white/20 bg-white/10 transition-colors"
+                    ></label>
+                    <div
+                      class="pointer-events-none absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4"
+                    ></div>
+                  </div>
+                  <p v-if="field.hint" class="text-[12px] leading-relaxed text-white/40">
+                    {{ field.hint }}
+                  </p>
                 </div>
               </div>
 
@@ -409,7 +430,7 @@ const voiceModelKeys = [
 
 // --- Schema Definition ---
 
-type FieldType = "text" | "number" | "textarea" | "select";
+type FieldType = "text" | "number" | "textarea" | "select" | "switch";
 
 interface FieldOption {
   label: string;
@@ -427,6 +448,8 @@ interface FieldSchema {
   options?: FieldOption[];
   // Dynamic options computed from refs/state. Overrides options when set.
   dynamicOptions?: () => { label: string; value: string }[];
+  // One-line explainer rendered under the control (switch fields especially need it)
+  hint?: string;
   visibleIf?: (settings: any) => boolean;
   isVoiceModel?: boolean;
   realtime?: boolean;
@@ -441,6 +464,13 @@ const resolveFieldOptions = (field: FieldSchema) => {
     : (field.options ?? []);
   return options.filter((option) => !option.visibleIf || option.visibleIf(localSettings.value));
 };
+
+// 主对话/桌宠形象共用的两个选项。value 是落盘的协议值（settings.yml 的
+// avatar_mode / avatar_mode_p），按 docs/i18n.md 只翻译标签、不翻译取值。
+const avatarModeOptions = computed<FieldOption[]>(() => [
+  { label: t("settings.characterInfo.avatarModeOptions.live2d"), value: "live2d" },
+  { label: t("settings.characterInfo.avatarModeOptions.image"), value: "image" },
+]);
 
 const schemas = computed<Record<string, FieldSchema[]>>(() => ({
   basic: [
@@ -477,6 +507,15 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
   ],
   visuals: [
     {
+      key: "avatar_mode",
+      label: t("settings.characterInfo.fields.avatarMode"),
+      type: "select",
+      // 没有 Live2D 模型时只有「静态立绘」一种可能，整项隐藏（schemas 是 computed，
+      // 在本弹窗的 Live2D tab 导入模型后回到本 tab 会自动出现）
+      visibleIf: (s) => Boolean(s.live2d),
+      options: avatarModeOptions.value,
+    },
+    {
       key: "scale",
       label: t("settings.characterInfo.fields.scale"),
       type: "number",
@@ -503,6 +542,19 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
     },
   ],
   pet: [
+    {
+      key: "avatar_mode_p",
+      label: t("settings.characterInfo.fields.avatarModeP"),
+      type: "select",
+      visibleIf: (s) => Boolean(s.live2d),
+      options: avatarModeOptions.value,
+    },
+    {
+      key: "pet_frameless",
+      label: t("settings.characterInfo.fields.petFrameless"),
+      type: "switch",
+      hint: t("settings.characterInfo.fields.petFramelessHint"),
+    },
     {
       key: "scale_p",
       label: t("settings.characterInfo.fields.scaleP"),
@@ -946,6 +998,15 @@ watch(
         if (!localSettings.value.voice_lang) {
           localSettings.value.voice_lang = "ja";
         }
+        // 形象缺省值兜底：老配置里这两个键不存在，不回填的话 <select v-model> 没有
+        // 任何 option 匹配、会显示为空白。回填成 live2d 与实际渲染行为一致
+        // （`prefersLive2d` 也是「非 image 即 live2d」）。
+        if (!localSettings.value.avatar_mode) {
+          localSettings.value.avatar_mode = "live2d";
+        }
+        if (!localSettings.value.avatar_mode_p) {
+          localSettings.value.avatar_mode_p = "live2d";
+        }
       } catch (e) {
         console.error("Failed to load character settings", e);
         emit("close");
@@ -1020,6 +1081,12 @@ const saveSettings = async () => {
       runtimeRole.live2d = localSettings.value.live2d
         ? structuredClone(toRaw(localSettings.value.live2d))
         : null;
+      // 形象一并热更，保存后舞台立刻切换（Live2DStage 的 watch 依赖含这两个字段）
+      runtimeRole.avatarMode = localSettings.value.avatar_mode ?? null;
+      runtimeRole.avatarModeP = localSettings.value.avatar_mode_p ?? null;
+      // /chat 与 /pet 是互斥路由，弹窗和桌宠不会同时在屏幕上，全靠这次内存热更
+      // 才不必后端 re-init；不进 Live2DStage 的 watch 依赖，因为它只换一个 CSS 类
+      runtimeRole.petFrameless = localSettings.value.pet_frameless ?? false;
     }
     emit("saved");
     emit("close");

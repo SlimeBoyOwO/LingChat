@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>上帝 Agent · 好感度评估时序图</title>
+<style>
+  :root {
+    --bg: #0f1720;
+    --panel: #16202c;
+    --panel-2: #1b2430;
+    --border: #2a3a4a;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --brand: #79d9ff;
+    --rust: #f4a261;
+    --vue: #34d399;
+    --db: #a78bfa;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --pink: #f472b6;
+    --danger: #f87171;
+  }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; line-height: 1.8; max-width: 1520px; }
+  .wrap { max-width: 1520px; margin: 0 auto; }
+  svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 12.5px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  text { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>好感度评估时序图（maybe_evaluate_affection）</h1>
+  <p class="sub">
+    好感度在<b>生成循环结束后</b>触发，<b>快照在锁内、LLM 调用在锁外、回写在另一个锁区</b>，整条链路跑在 <code>spawn</code> 出去的后台任务里——
+    本轮回复的呈现不被它阻塞。游标在 LLM 调用<b>之前</b>就已推进，所以失败不会重试。
+  </p>
+
+  <svg viewBox="0 0 1520 1200" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="sB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#79d9ff" />
+      </marker>
+      <marker id="sG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#8b98a5" />
+      </marker>
+      <marker id="sY" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#fbbf24" />
+      </marker>
+      <marker id="sV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#34d399" />
+      </marker>
+      <marker id="sP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#a78bfa" />
+      </marker>
+      <marker id="sO" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#f4a261" />
+      </marker>
+    </defs>
+
+    <!-- ================= 生命线表头 ================= -->
+    <rect x="40" y="40" width="180" height="58" rx="6" fill="#1b2430" stroke="#79d9ff" />
+    <text x="130" y="62" text-anchor="middle" font-size="11.5" font-weight="700" fill="#79d9ff">生成循环 → 后台任务</text>
+    <text x="130" y="80" text-anchor="middle" font-size="9.5" fill="#8b98a5">MessageGenerator</text>
+    <text x="130" y="93" text-anchor="middle" font-size="9" fill="#8b98a5">spawn 出的 async 块</text>
+
+    <rect x="310" y="40" width="180" height="58" rx="6" fill="#1b2430" stroke="#34d399" />
+    <text x="400" y="62" text-anchor="middle" font-size="11.5" font-weight="700" fill="#34d399">GameStatus</text>
+    <text x="400" y="80" text-anchor="middle" font-size="9.5" fill="#8b98a5">Arc&lt;Mutex&lt;…&gt;&gt; 保护</text>
+    <text x="400" y="93" text-anchor="middle" font-size="9" fill="#8b98a5">line_list / global_variables</text>
+
+    <rect x="570" y="40" width="180" height="58" rx="6" fill="#1b2430" stroke="#f4a261" />
+    <text x="660" y="62" text-anchor="middle" font-size="11.5" font-weight="700" fill="#f4a261">GameRoleManager</text>
+    <text x="660" y="80" text-anchor="middle" font-size="9.5" fill="#8b98a5">角色内存状态</text>
+    <text x="660" y="93" text-anchor="middle" font-size="9" fill="#8b98a5">+ 存档全局变量</text>
+
+    <rect x="830" y="40" width="180" height="58" rx="6" fill="#1b2430" stroke="#fbbf24" />
+    <text x="920" y="62" text-anchor="middle" font-size="11.5" font-weight="700" fill="#fbbf24">GodAgentCore</text>
+    <text x="920" y="80" text-anchor="middle" font-size="9.5" fill="#8b98a5">evaluate_affection</text>
+    <text x="920" y="93" text-anchor="middle" font-size="9" fill="#8b98a5">prompt 构建 + 解析</text>
+
+    <rect x="1080" y="40" width="180" height="58" rx="6" fill="#1b2430" stroke="#f472b6" />
+    <text x="1170" y="62" text-anchor="middle" font-size="11.5" font-weight="700" fill="#f472b6">LLM</text>
+    <text x="1170" y="80" text-anchor="middle" font-size="9.5" fill="#8b98a5">complete_with_tools</text>
+    <text x="1170" y="93" text-anchor="middle" font-size="9" fill="#8b98a5">非流式单次</text>
+
+    <rect x="1310" y="40" width="180" height="58" rx="6" fill="#1b2430" stroke="#a78bfa" />
+    <text x="1400" y="62" text-anchor="middle" font-size="11.5" font-weight="700" fill="#a78bfa">前端</text>
+    <text x="1400" y="80" text-anchor="middle" font-size="9.5" fill="#8b98a5">gameStore / 好感度面板</text>
+    <text x="1400" y="93" text-anchor="middle" font-size="9" fill="#8b98a5">affection:changed 监听</text>
+
+    <!-- 生命线 -->
+    <line x1="130" y1="98" x2="130" y2="1150" stroke="#79d9ff" stroke-width="1.2" stroke-dasharray="4 4" />
+    <line x1="400" y1="98" x2="400" y2="1150" stroke="#34d399" stroke-width="1.2" stroke-dasharray="4 4" />
+    <line x1="660" y1="98" x2="660" y2="1150" stroke="#f4a261" stroke-width="1.2" stroke-dasharray="4 4" />
+    <line x1="920" y1="98" x2="920" y2="1150" stroke="#fbbf24" stroke-width="1.2" stroke-dasharray="4 4" />
+    <line x1="1170" y1="98" x2="1170" y2="1150" stroke="#f472b6" stroke-width="1.2" stroke-dasharray="4 4" />
+    <line x1="1400" y1="98" x2="1400" y2="1150" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="4 4" />
+
+    <!-- ================= 阶段 1 ================= -->
+    <text x="20" y="124" font-size="12" font-weight="700" fill="#34d399">阶段 1 · 锁内：总开关 / 剧本 / 节流 / 快照</text>
+    <line x1="20" y1="132" x2="1500" y2="132" stroke="#34d399" stroke-opacity="0.35" stroke-width="1" />
+    <rect x="392" y="140" width="16" height="240" rx="3" fill="#34d399" fill-opacity="0.18" stroke="#34d399" stroke-opacity="0.6" />
+    <text x="412" y="152" font-size="9" fill="#34d399">锁</text>
+
+    <!-- 1 self -->
+    <path d="M 130 156 L 172 156 L 172 170 L 130 170" fill="none" stroke="#79d9ff" stroke-width="1.3" marker-end="url(#sB)" />
+    <text x="180" y="167" font-size="9.5" fill="#79d9ff">① config.affection_enabled？（总开关）</text>
+
+    <line x1="130" y1="190" x2="400" y2="190" stroke="#79d9ff" stroke-width="1.4" marker-end="url(#sB)" />
+    <text x="140" y="184" font-size="9.5" fill="#79d9ff">② gs.script_status.is_none()？</text>
+    <text x="416" y="194" font-size="9" fill="#f87171">剧本对话不进评估</text>
+
+    <line x1="130" y1="220" x2="400" y2="220" stroke="#79d9ff" stroke-width="1.4" marker-end="url(#sB)" />
+    <text x="136" y="214" font-size="9.5" fill="#79d9ff">③ real_count = count(is_real_dialogue)</text>
+    <text x="416" y="224" font-size="9" fill="#8b98a5">旁白 / 系统行不计入</text>
+
+    <path d="M 130 244 L 172 244 L 172 258 L 130 258" fill="none" stroke="#79d9ff" stroke-width="1.3" marker-end="url(#sB)" />
+    <text x="180" y="255" font-size="9.5" fill="#fbbf24">④ real_count &lt; cursor + interval → return</text>
+
+    <line x1="130" y1="280" x2="400" y2="280" stroke="#f4a261" stroke-width="1.6" marker-end="url(#sO)" />
+    <text x="140" y="274" font-size="9.5" fill="#f4a261">⑤ gs.affection_eval_cursor = real_count</text>
+    <text x="416" y="284" font-size="9" fill="#f4a261">★ 先推进再 spawn：失败也不重试</text>
+
+    <line x1="130" y1="310" x2="400" y2="310" stroke="#79d9ff" stroke-width="1.4" marker-end="url(#sB)" />
+    <text x="140" y="304" font-size="9.5" fill="#79d9ff">⑥ 快照 npcs: Vec&lt;NpcAffectionView&gt;</text>
+
+    <line x1="130" y1="340" x2="400" y2="340" stroke="#79d9ff" stroke-width="1.4" marker-end="url(#sB)" />
+    <text x="140" y="334" font-size="9.5" fill="#79d9ff">⑦ 快照 lines: line_list 尾部 window 行</text>
+
+    <path d="M 130 364 L 172 364 L 172 378 L 130 378" fill="none" stroke="#79d9ff" stroke-width="1.3" marker-end="url(#sB)" />
+    <text x="180" y="375" font-size="9.5" fill="#4ade80">⑧ 释放锁 → spawn(后台任务)　★ 不阻塞本轮回复</text>
+
+    <!-- ================= 阶段 2 ================= -->
+    <text x="20" y="412" font-size="12" font-weight="700" fill="#fbbf24">阶段 2 · 锁外：后台单次 LLM 评估</text>
+    <line x1="20" y1="420" x2="1500" y2="420" stroke="#fbbf24" stroke-opacity="0.35" stroke-width="1" />
+
+    <line x1="130" y1="444" x2="920" y2="444" stroke="#79d9ff" stroke-width="1.4" marker-end="url(#sB)" />
+    <text x="480" y="438" font-size="9.5" fill="#79d9ff">evaluate_affection(&amp;lines, &amp;npcs)</text>
+
+    <path d="M 920 468 L 962 468 L 962 482 L 920 482" fill="none" stroke="#fbbf24" stroke-width="1.3" marker-end="url(#sY)" />
+    <text x="970" y="479" font-size="9.5" fill="#fbbf24">build_affection_prompt：角色块（含情感数值）+ 对话块</text>
+
+    <line x1="920" y1="504" x2="1170" y2="504" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#sY)" />
+    <text x="930" y="498" font-size="9.5" fill="#fbbf24">complete_with_tools([update_affection], "auto")</text>
+
+    <line x1="1170" y1="534" x2="920" y2="534" stroke="#f472b6" stroke-width="1.5" marker-end="url(#sB)" />
+    <text x="1045" y="528" font-size="9.5" fill="#f472b6" text-anchor="middle">tool_calls: [update_affection(role_id=6, …), …]</text>
+
+    <path d="M 920 558 L 962 558 L 962 572 L 920 572" fill="none" stroke="#fbbf24" stroke-width="1.3" marker-end="url(#sY)" />
+    <text x="970" y="569" font-size="9.5" fill="#fbbf24">逐条 parse_affection_update；按 npcs 过滤不在场的 role_id</text>
+
+    <line x1="920" y1="596" x2="130" y2="596" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#sY)" />
+    <text x="480" y="590" font-size="9.5" fill="#fbbf24">Vec&lt;AffectionAdjustment&gt;（尚未应用）</text>
+
+    <!-- ================= 阶段 3 ================= -->
+    <text x="20" y="640" font-size="12" font-weight="700" fill="#f4a261">阶段 3 · 重新加锁：应用 / 持久化 / 广播 / 旁白</text>
+    <line x1="20" y1="648" x2="1500" y2="648" stroke="#f4a261" stroke-opacity="0.35" stroke-width="1" />
+    <rect x="392" y="656" width="16" height="286" rx="3" fill="#f4a261" fill-opacity="0.15" stroke="#f4a261" stroke-opacity="0.55" />
+    <text x="412" y="668" font-size="9" fill="#f4a261">锁</text>
+
+    <path d="M 130 676 L 172 676 L 172 690 L 130 690" fill="none" stroke="#79d9ff" stroke-width="1.3" marker-end="url(#sB)" />
+    <text x="180" y="687" font-size="9.5" fill="#8b98a5">为空 → return（模型判定这段对话没有情感变化）</text>
+
+    <line x1="130" y1="712" x2="400" y2="712" stroke="#79d9ff" stroke-width="1.4" marker-end="url(#sB)" />
+    <text x="140" y="706" font-size="9.5" fill="#79d9ff">lock()　重新获取 GameStatus</text>
+
+    <line x1="130" y1="742" x2="660" y2="742" stroke="#79d9ff" stroke-width="1.4" marker-end="url(#sB)" />
+    <text x="140" y="736" font-size="9.5" fill="#79d9ff">role_manager.adjust_affection(rid, &amp;deltas, &amp;neg)</text>
+
+    <line x1="660" y1="772" x2="130" y2="772" stroke="#f4a261" stroke-width="1.5" marker-end="url(#sO)" />
+    <text x="140" y="766" font-size="9.5" fill="#f4a261">Some((AffectionVector, NegativeVector))</text>
+    <text x="416" y="776" font-size="9" fill="#8b98a5">None = 角色未加载 → continue</text>
+
+    <line x1="130" y1="802" x2="400" y2="802" stroke="#f4a261" stroke-width="1.6" marker-end="url(#sO)" />
+    <text x="140" y="796" font-size="9.5" fill="#f4a261">gs.set_variable("affection.{rid}", …)</text>
+    <text x="416" y="812" font-size="9" fill="#f4a261">★ 写入存档全局变量，跟随存档保存 / 回滚</text>
+
+    <line x1="130" y1="832" x2="1400" y2="832" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#sP)" />
+    <text x="940" y="826" font-size="9.5" fill="#a78bfa">app.emit("affection:changed", payload)</text>
+
+    <path d="M 130 858 L 172 858 L 172 872 L 130 872" fill="none" stroke="#79d9ff" stroke-width="1.3" marker-end="url(#sB)" />
+    <text x="180" y="869" font-size="9.5" fill="#79d9ff">describe_change_for_line(name, player_name, …)</text>
+    <text x="180" y="884" font-size="9" fill="#8b98a5">文案只出现程度词（初识 / 熟络 / 炽烈…），不出现数值</text>
+
+    <line x1="130" y1="904" x2="400" y2="904" stroke="#34d399" stroke-width="1.5" marker-end="url(#sV)" />
+    <text x="136" y="898" font-size="9.5" fill="#34d399">add_line(旁白, LineAttribute::User, sender = 0, …)</text>
+    <text x="416" y="908" font-size="9" fill="#f87171">不能用 System —— 会被记忆构建器去重丢弃</text>
+
+    <path d="M 130 928 L 172 928 L 172 942 L 130 942" fill="none" stroke="#79d9ff" stroke-width="1.3" marker-end="url(#sB)" />
+    <text x="180" y="939" font-size="9.5" fill="#8b98a5">释放锁（对每个 adjustment 循环；失败仅 warn，不中断）</text>
+
+    <!-- ================= 阶段 4 ================= -->
+    <text x="20" y="976" font-size="12" font-weight="700" fill="#a78bfa">阶段 4 · 前端与后续影响</text>
+    <line x1="20" y1="984" x2="1500" y2="984" stroke="#a78bfa" stroke-opacity="0.35" stroke-width="1" />
+
+    <path d="M 1400 1000 L 1358 1000 L 1358 1014 L 1400 1014" fill="none" stroke="#a78bfa" stroke-width="1.3" marker-end="url(#sP)" />
+    <text x="1350" y="1011" font-size="9.5" fill="#a78bfa" text-anchor="end">gameRoles[rid].affection ← values</text>
+
+    <path d="M 1400 1030 L 1358 1030 L 1358 1044 L 1400 1044" fill="none" stroke="#a78bfa" stroke-width="1.3" marker-end="url(#sP)" />
+    <text x="1350" y="1041" font-size="9.5" fill="#a78bfa" text-anchor="end">lastAffectionChange ← {…, reason}</text>
+
+    <path d="M 1400 1060 L 1358 1060 L 1358 1074 L 1400 1074" fill="none" stroke="#a78bfa" stroke-width="1.3" marker-end="url(#sP)" />
+    <text x="1350" y="1071" font-size="9.5" fill="#a78bfa" text-anchor="end">AffectionPanel.vue 刷新</text>
+
+    <!-- 旁白回流 note -->
+    <rect x="230" y="1092" width="700" height="52" rx="6" fill="#16202c" stroke="#34d399" stroke-width="1.3" stroke-dasharray="5 4" />
+    <text x="246" y="1114" font-size="10" fill="#34d399">旁白台词已进 line_list → 记忆构建 → 后续对话上下文</text>
+    <text x="246" y="1132" font-size="9.5" fill="#8b98a5">不做每轮注入：情感状态不会每轮都挂在思维链上，只在变化那一刻留痕</text>
+    <path d="M 440 1092 L 440 962" fill="none" stroke="#34d399" stroke-width="1.2" stroke-dasharray="5 4" />
+  </svg>
+
+  <div class="legend">
+    <span><i class="dot" style="background:#79d9ff"></i>生成循环 / 后台任务</span>
+    <span><i class="dot" style="background:#34d399"></i>GameStatus（锁区）</span>
+    <span><i class="dot" style="background:#f4a261"></i>角色状态与存档变量</span>
+    <span><i class="dot" style="background:#fbbf24"></i>GodAgentCore / LLM</span>
+    <span><i class="dot" style="background:#a78bfa"></i>前端</span>
+  </div>
+</div>
+</body>
+</html>

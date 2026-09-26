@@ -4,6 +4,13 @@
  */
 import { setHdrMode } from "@/api/services/config";
 import { setSceneAwareness } from "@/api/services/scene";
+import {
+  DEFAULT_SPECTRUM_COLOR_FROM,
+  DEFAULT_SPECTRUM_COLOR_TO,
+  DEFAULT_SPECTRUM_PALETTE,
+  DEFAULT_SPECTRUM_STYLE,
+  type SpectrumStyle,
+} from "@/constants/spectrum";
 import type { ShortcutAction, ShortcutBinding } from "@/utils/shortcuts";
 import { DEFAULT_SHORTCUTS, sanitizeShortcuts } from "@/utils/shortcuts";
 import { defineStore } from "pinia";
@@ -32,6 +39,13 @@ export const DEFAULT_SETTINGS = {
     ambientVolume: 70, // 环境音音量
     chatEffectSound: true, // 对话音效开关
     outputDeviceId: "", // 输出音频设备（'' = 跟随系统默认）
+    // 音频频谱可视化（右下角迷你频谱）：默认关闭——开启后音频会接入 Web Audio
+    // 图（见 utils/audioSpectrum.ts），不想要的用户不该被默认卷进来。
+    spectrumEnabled: false, // 频谱可视化开关
+    spectrumStyle: DEFAULT_SPECTRUM_STYLE, // 形态：mirror 镜像 / bars 柱状 / ring 圆环
+    spectrumPalette: DEFAULT_SPECTRUM_PALETTE, // 配色方案 id（见 constants/spectrum.ts）
+    spectrumColor1: DEFAULT_SPECTRUM_COLOR_FROM, // 自定义配色：主色
+    spectrumColor2: DEFAULT_SPECTRUM_COLOR_TO, // 自定义配色：辅色
   },
   // 显示设置
   display: {
@@ -94,6 +108,15 @@ export interface AudioSettings {
   ambientVolume: number;
   chatEffectSound: boolean;
   outputDeviceId: string;
+  /** 音频频谱可视化开关 */
+  spectrumEnabled: boolean;
+  /** 频谱形态：mirror 镜像 / bars 柱状 / ring 圆环 */
+  spectrumStyle: SpectrumStyle;
+  /** 频谱配色方案 id（"custom" = 用下面两个自定义色） */
+  spectrumPalette: string;
+  /** 自定义配色：主色 / 辅色 */
+  spectrumColor1: string;
+  spectrumColor2: string;
 }
 export interface DisplaySettings {
   currentBackground: string;

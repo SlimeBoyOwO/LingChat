@@ -16,7 +16,8 @@ name = "ling_chat_lib"
 # staticlib 只有 iOS 需要（Xcode 链接 libling_chat_lib.a），cdylib 供 Android，
 # rlib 供桌面端与 bin 自身。桌面开发只用到 rlib，但 staticlib 会让每次增量构建
 # 都重新归档一个 ~1.4 GB 的 .lib（见 .cargo/config.toml 顶部的说明）。
-# 手动 iOS 构建（pnpm ios:build）前需要把 "staticlib" 加回列表首位，详见 docs/ios-build.md。
+# pnpm ios:build 会临时加回 staticlib 并在结束后恢复；直接调用 tauri ios build
+# 时仍需手动加回，详见 docs/ios-build.md。
 crate-type = ["cdylib", "rlib"]
 
 [features]

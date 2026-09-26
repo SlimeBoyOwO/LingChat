@@ -48,6 +48,35 @@ node scripts/prepare-bundled-resources.mjs "${IOS_BUNDLED_7Z_LEVEL:-9}"
 
 # --- 3. Unsigned build --------------------------------------------------------
 echo "[build-ios] Step 3/3: pnpm tauri ios build --no-sign (unsigned IPA)"
+# Xcode links libling_chat_lib.a, but keeping staticlib in Cargo.toml makes every
+# desktop incremental build archive a large, unused .lib. Enable it only while
+# this iOS build runs, then restore the original manifest even if the build fails.
+CARGO_MANIFEST="src-tauri/Cargo.toml"
+CARGO_MANIFEST_BACKUP="$(mktemp)"
+cp -p "$CARGO_MANIFEST" "$CARGO_MANIFEST_BACKUP"
+restore_cargo_manifest() {
+  local status=$?
+  trap - EXIT
+  cp -p "$CARGO_MANIFEST_BACKUP" "$CARGO_MANIFEST"
+  rm -f "$CARGO_MANIFEST_BACKUP"
+  exit "$status"
+}
+trap restore_cargo_manifest EXIT
+
+node - "$CARGO_MANIFEST" <<'NODE'
+const fs = require("node:fs");
+const manifestPath = process.argv[2];
+const manifest = fs.readFileSync(manifestPath, "utf8");
+const desktopTypes = 'crate-type = ["cdylib", "rlib"]';
+const iosTypes = 'crate-type = ["staticlib", "cdylib", "rlib"]';
+
+if (manifest.includes(desktopTypes)) {
+  fs.writeFileSync(manifestPath, manifest.replace(desktopTypes, iosTypes));
+} else if (!manifest.includes(iosTypes)) {
+  throw new Error(`Unexpected [lib] crate-type in ${manifestPath}`);
+}
+NODE
+
 # beforeBuildCommand automatically runs prepare-desktop-resources.mjs + pnpm build
 pnpm tauri ios build --no-sign "$@"
 

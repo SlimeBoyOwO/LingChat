@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>上帝 Agent · 发言者选择工作流</title>
+<style>
+  :root {
+    --bg: #0f1720;
+    --panel: #16202c;
+    --panel-2: #1b2430;
+    --border: #2a3a4a;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --brand: #79d9ff;
+    --rust: #f4a261;
+    --vue: #34d399;
+    --db: #a78bfa;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --pink: #f472b6;
+    --danger: #f87171;
+  }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; line-height: 1.8; max-width: 1520px; }
+  .wrap { max-width: 1520px; margin: 0 auto; }
+  svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 12.5px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  text { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>发言者选择工作流</h1>
+  <p class="sub">
+    上帝 Agent 在一次用户消息里被调用<b>两次</b>：<b>pre-select</b>（左）决定谁先接话，<b>post-select</b>（右）决定要不要让下一个 NPC 接着说。
+    两者的守卫条件不同，但最终都落到同一个 <code>decide_next_speaker</code>——<b>每次都是一次独立、无历史的单次 LLM 调用</b>。
+  </p>
+
+  <svg viewBox="0 0 1520 1330" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="fB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#79d9ff" />
+      </marker>
+      <marker id="fG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#8b98a5" />
+      </marker>
+      <marker id="fR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#f87171" />
+      </marker>
+      <marker id="fY" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#fbbf24" />
+      </marker>
+      <marker id="fP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#f472b6" />
+      </marker>
+    </defs>
+
+    <!-- ==================== 分区标题 ==================== -->
+    <text x="60" y="40" font-size="14" font-weight="700" fill="#79d9ff">① pre-select —— 用户说完话，谁先接？</text>
+    <text x="800" y="40" font-size="14" font-weight="700" fill="#f472b6">② post-select —— 一个 NPC 说完，还有下一个吗？</text>
+
+    <!-- ==================== 左列：pre-select ==================== -->
+    <!-- start -->
+    <circle cx="330" cy="86" r="9" fill="#79d9ff" />
+    <line x1="330" y1="95" x2="330" y2="120" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#fB)" />
+    <rect x="60" y="120" width="540" height="46" rx="6" fill="#1b2430" stroke="#79d9ff" />
+    <text x="76" y="149" font-size="11.5" fill="#e6edf3">用户发送消息　<tspan fill="#8b98a5" font-size="10">api/chat.rs::send_chat_message</tspan></text>
+
+    <line x1="330" y1="166" x2="330" y2="192" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#fB)" />
+    <rect x="60" y="192" width="540" height="62" rx="6" fill="#1b2430" stroke="#2a3a4a" />
+    <text x="76" y="214" font-size="10.5" fill="#e6edf3">handle_user_message：预处理后作为 User 行 add_line 入 line_list</text>
+    <text x="76" y="236" font-size="10.5" fill="#e6edf3">detect_scene_change：场景切换写入旁白台词（也进 line_list）</text>
+
+    <line x1="330" y1="254" x2="330" y2="286" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#fB)" />
+    <text x="76" y="278" font-size="10" fill="#fbbf24">god_agent_pre_select()　仅当 user_message.is_some() 才被调用</text>
+
+    <!-- D1 -->
+    <polygon points="330,290 530,328 330,366 130,328" fill="#16202c" stroke="#79d9ff" stroke-width="1.4" />
+    <text x="330" y="333" text-anchor="middle" font-size="10.5" fill="#e6edf3">deps.god_agent 是 Some？</text>
+    <line x1="530" y1="328" x2="620" y2="328" stroke="#8b98a5" stroke-width="1.4" marker-end="url(#fG)" />
+    <text x="545" y="321" font-size="9.5" fill="#8b98a5">否</text>
+    <rect x="620" y="306" width="160" height="44" rx="6" fill="#1b2430" stroke="#8b98a5" stroke-dasharray="4 3" />
+    <text x="630" y="326" font-size="10" fill="#8b98a5">跳过（无编排，</text>
+    <text x="630" y="341" font-size="10" fill="#8b98a5">退化为单角色对话）</text>
+
+    <line x1="330" y1="366" x2="330" y2="398" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#fB)" />
+    <text x="338" y="388" font-size="9.5" fill="#79d9ff">是</text>
+
+    <!-- D2 -->
+    <polygon points="330,402 530,456 330,510 130,456" fill="#16202c" stroke="#79d9ff" stroke-width="1.4" />
+    <text x="330" y="448" text-anchor="middle" font-size="10.5" fill="#e6edf3">should_activate(gs)？</text>
+    <text x="330" y="466" text-anchor="middle" font-size="9.5" fill="#8b98a5">script_status.is_none() &amp;&amp; present_role_ids.len() &gt; 1</text>
+    <line x1="530" y1="456" x2="620" y2="456" stroke="#8b98a5" stroke-width="1.4" marker-end="url(#fG)" />
+    <text x="545" y="449" font-size="9.5" fill="#8b98a5">否</text>
+    <rect x="620" y="434" width="160" height="44" rx="6" fill="#1b2430" stroke="#8b98a5" stroke-dasharray="4 3" />
+    <text x="630" y="454" font-size="10" fill="#8b98a5">跳过，保持</text>
+    <text x="630" y="469" font-size="10" fill="#8b98a5">gs.current_role_id</text>
+
+    <line x1="330" y1="510" x2="330" y2="542" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#fB)" />
+    <text x="338" y="532" font-size="9.5" fill="#79d9ff">是</text>
+
+    <rect x="60" y="542" width="540" height="46" rx="6" fill="#1b2430" stroke="#79d9ff" />
+    <text x="76" y="571" font-size="11" fill="#e6edf3">decide_next_speaker(&amp;gs, current_speaker = gs.current_role_id)</text>
+
+    <line x1="330" y1="588" x2="330" y2="620" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#fB)" />
+
+    <!-- D3 -->
+    <polygon points="330,624 530,662 330,700 130,662" fill="#16202c" stroke="#fbbf24" stroke-width="1.4" />
+    <text x="330" y="667" text-anchor="middle" font-size="10.5" fill="#e6edf3">npc_ids.len() &lt;= 1？</text>
+    <line x1="530" y1="662" x2="620" y2="662" stroke="#fbbf24" stroke-width="1.4" marker-end="url(#fY)" />
+    <text x="545" y="655" font-size="9.5" fill="#fbbf24">是</text>
+    <rect x="620" y="632" width="160" height="60" rx="6" fill="#1b2430" stroke="#fbbf24" stroke-dasharray="4 3" />
+    <text x="630" y="652" font-size="10" fill="#fbbf24">直接返回该 NPC</text>
+    <text x="630" y="667" font-size="10" fill="#fbbf24">reason="single_npc"</text>
+    <text x="630" y="682" font-size="10" fill="#fbbf24">不调 LLM（省一次请求）</text>
+
+    <line x1="330" y1="700" x2="330" y2="732" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#fB)" />
+    <text x="338" y="722" font-size="9.5" fill="#79d9ff">否</text>
+
+    <!-- B: build prompt -->
+    <rect x="60" y="732" width="540" height="92" rx="6" fill="#16202c" stroke="#f472b6" stroke-width="1.4" />
+    <text x="76" y="754" font-size="11" font-weight="700" fill="#f472b6">构建 decision prompt —— 恒为 2 条消息</text>
+    <text x="76" y="776" font-size="10" fill="#e6edf3">system：固定任务说明<tspan fill="#8b98a5">（不可并入 user，Codex Responses 会 400）</tspan></text>
+    <text x="76" y="794" font-size="10" fill="#e6edf3">user：角色信息块 + 最近 recent_window 行对话 + 当前发言者提示</text>
+    <text x="76" y="812" font-size="10" fill="#8b98a5">详见 context-assembly.html</text>
+
+    <line x1="330" y1="824" x2="330" y2="856" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#fB)" />
+
+    <rect x="60" y="856" width="540" height="46" rx="6" fill="#1b2430" stroke="#fbbf24" />
+    <text x="76" y="885" font-size="10.5" fill="#e6edf3">complete_with_tools([select_next_speaker], tool_choice = "auto")　<tspan fill="#fbbf24">非流式单次</tspan></text>
+
+    <line x1="330" y1="902" x2="330" y2="934" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#fB)" />
+
+    <!-- D4 -->
+    <polygon points="330,938 530,984 330,1030 130,984" fill="#16202c" stroke="#79d9ff" stroke-width="1.4" />
+    <text x="330" y="988" text-anchor="middle" font-size="10.5" fill="#e6edf3">有 tool_calls 且解析成功？</text>
+    <line x1="530" y1="984" x2="620" y2="984" stroke="#f87171" stroke-width="1.4" marker-end="url(#fR)" />
+    <text x="545" y="977" font-size="9.5" fill="#f87171">否</text>
+    <rect x="620" y="946" width="160" height="76" rx="6" fill="#2a1a1e" stroke="#f87171" stroke-dasharray="4 3" />
+    <text x="630" y="966" font-size="10" fill="#f87171">Err → 本轮编排放弃</text>
+    <text x="630" y="983" font-size="9.5" fill="#8b98a5">· 未调用工具</text>
+    <text x="630" y="998" font-size="9.5" fill="#8b98a5">· 解析失败</text>
+    <text x="630" y="1013" font-size="9.5" fill="#8b98a5">· 无重试，靠下条消息恢复</text>
+
+    <line x1="330" y1="1030" x2="330" y2="1062" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#fB)" />
+    <text x="338" y="1052" font-size="9.5" fill="#79d9ff">是</text>
+
+    <!-- D5 -->
+    <polygon points="330,1066 530,1100 330,1134 130,1100" fill="#16202c" stroke="#79d9ff" stroke-width="1.4" />
+    <text x="330" y="1105" text-anchor="middle" font-size="10.5" fill="#e6edf3">role_id == 0？</text>
+    <line x1="530" y1="1100" x2="620" y2="1100" stroke="#8b98a5" stroke-width="1.4" marker-end="url(#fG)" />
+    <text x="545" y="1093" font-size="9.5" fill="#8b98a5">是</text>
+    <rect x="620" y="1078" width="160" height="44" rx="6" fill="#1b2430" stroke="#8b98a5" stroke-dasharray="4 3" />
+    <text x="630" y="1098" font-size="10" fill="#8b98a5">保持现状（玩家</text>
+    <text x="630" y="1113" font-size="10" fill="#8b98a5">自己接着说）</text>
+
+    <line x1="330" y1="1134" x2="330" y2="1166" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#fB)" />
+    <text x="338" y="1156" font-size="9.5" fill="#79d9ff">否</text>
+
+    <!-- D6 -->
+    <polygon points="330,1170 530,1208 330,1246 130,1208" fill="#16202c" stroke="#79d9ff" stroke-width="1.4" />
+    <text x="330" y="1213" text-anchor="middle" font-size="10.5" fill="#e6edf3">role_id ∈ present_role_ids？</text>
+    <line x1="530" y1="1208" x2="620" y2="1208" stroke="#f87171" stroke-width="1.4" marker-end="url(#fR)" />
+    <text x="545" y="1201" font-size="9.5" fill="#f87171">否</text>
+    <rect x="620" y="1186" width="160" height="44" rx="6" fill="#2a1a1e" stroke="#f87171" stroke-dasharray="4 3" />
+    <text x="630" y="1206" font-size="10" fill="#f87171">warn + Err：模型</text>
+    <text x="630" y="1221" font-size="10" fill="#f87171">选了不在场的角色</text>
+
+    <line x1="330" y1="1246" x2="330" y2="1274" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#fB)" />
+    <text x="338" y="1266" font-size="9.5" fill="#79d9ff">是</text>
+    <rect x="60" y="1274" width="540" height="26" rx="6" fill="#1b2430" stroke="#34d399" />
+    <text x="76" y="1292" font-size="10.5" fill="#34d399">gs.current_role_id = rid → emit "character:switch" → 进入生成循环 →</text>
+
+    <!-- ==================== 右列：post-select ==================== -->
+    <circle cx="1070" cy="86" r="9" fill="#f472b6" />
+    <line x1="1070" y1="95" x2="1070" y2="120" stroke="#f472b6" stroke-width="1.6" marker-end="url(#fP)" />
+    <rect x="800" y="120" width="540" height="46" rx="6" fill="#1b2430" stroke="#f472b6" />
+    <text x="816" y="149" font-size="11.5" fill="#e6edf3">一轮 AI 回复结束（execute_pipeline 已 emit ai:reply）</text>
+
+    <line x1="1070" y1="166" x2="1070" y2="192" stroke="#f472b6" stroke-width="1.6" marker-end="url(#fP)" />
+    <rect x="800" y="192" width="540" height="46" rx="6" fill="#1b2430" stroke="#2a3a4a" />
+    <text x="816" y="213" font-size="10.5" fill="#e6edf3">consecutive_npc_rounds += 1</text>
+    <text x="816" y="230" font-size="9.5" fill="#8b98a5">每收到一条用户消息重置为 0（process_message 内的局部变量）</text>
+
+    <line x1="1070" y1="238" x2="1070" y2="268" stroke="#f472b6" stroke-width="1.6" marker-end="url(#fP)" />
+    <text x="816" y="262" font-size="10" fill="#fbbf24">god_agent_post_select(consecutive_npc_rounds)</text>
+
+    <!-- PD1 -->
+    <polygon points="1070,272 1270,308 1070,344 870,308" fill="#16202c" stroke="#f472b6" stroke-width="1.4" />
+    <text x="1070" y="313" text-anchor="middle" font-size="10.5" fill="#e6edf3">god_agent 是 Some？</text>
+    <line x1="1270" y1="308" x2="1360" y2="308" stroke="#8b98a5" stroke-width="1.4" marker-end="url(#fG)" />
+    <text x="1285" y="301" font-size="9.5" fill="#8b98a5">否</text>
+    <rect x="1360" y="286" width="150" height="44" rx="6" fill="#1b2430" stroke="#8b98a5" stroke-dasharray="4 3" />
+    <text x="1370" y="306" font-size="10" fill="#8b98a5">break（无编排）</text>
+    <text x="1370" y="321" font-size="9.5" fill="#8b98a5">单角色对话不循环</text>
+
+    <line x1="1070" y1="344" x2="1070" y2="376" stroke="#f472b6" stroke-width="1.6" marker-end="url(#fP)" />
+    <text x="1078" y="366" font-size="9.5" fill="#f472b6">是</text>
+
+    <!-- PD2 -->
+    <polygon points="1070,380 1270,416 1070,452 870,416" fill="#16202c" stroke="#fbbf24" stroke-width="1.5" />
+    <text x="1070" y="414" text-anchor="middle" font-size="10.5" fill="#e6edf3">n &gt;= max_consecutive_npc？</text>
+    <text x="1070" y="430" text-anchor="middle" font-size="9" fill="#8b98a5">默认 3，硬闸，不看模型判断</text>
+    <line x1="1270" y1="416" x2="1360" y2="416" stroke="#fbbf24" stroke-width="1.4" marker-end="url(#fY)" />
+    <text x="1285" y="409" font-size="9.5" fill="#fbbf24">是</text>
+    <rect x="1360" y="394" width="150" height="44" rx="6" fill="#2a2417" stroke="#fbbf24" stroke-dasharray="4 3" />
+    <text x="1370" y="414" font-size="10" fill="#fbbf24">强制返回玩家 break</text>
+    <text x="1370" y="429" font-size="9.5" fill="#8b98a5">防玩家被边缘化</text>
+
+    <line x1="1070" y1="452" x2="1070" y2="484" stroke="#f472b6" stroke-width="1.6" marker-end="url(#fP)" />
+    <text x="1078" y="474" font-size="9.5" fill="#f472b6">否</text>
+
+    <!-- PD3 -->
+    <polygon points="1070,488 1270,524 1070,560 870,524" fill="#16202c" stroke="#f472b6" stroke-width="1.4" />
+    <text x="1070" y="529" text-anchor="middle" font-size="10.5" fill="#e6edf3">should_activate(gs)？</text>
+    <line x1="1270" y1="524" x2="1360" y2="524" stroke="#8b98a5" stroke-width="1.4" marker-end="url(#fG)" />
+    <text x="1285" y="517" font-size="9.5" fill="#8b98a5">否</text>
+    <rect x="1360" y="502" width="150" height="44" rx="6" fill="#1b2430" stroke="#8b98a5" stroke-dasharray="4 3" />
+    <text x="1370" y="522" font-size="10" fill="#8b98a5">break（剧本 / 单人）</text>
+
+    <line x1="1070" y1="560" x2="1070" y2="592" stroke="#f472b6" stroke-width="1.6" marker-end="url(#fP)" />
+    <text x="1078" y="582" font-size="9.5" fill="#f472b6">是</text>
+
+    <!-- P-B: decide -->
+    <rect x="800" y="596" width="540" height="80" rx="6" fill="#16202c" stroke="#79d9ff" stroke-width="1.4" />
+    <text x="816" y="618" font-size="11" fill="#e6edf3">decide_next_speaker(&amp;gs, current_speaker)</text>
+    <text x="816" y="640" font-size="10" fill="#8b98a5">内部流程与左列完全一致（单 NPC 短路 → 建 prompt → 单次调用 → 校验），</text>
+    <text x="816" y="658" font-size="10" fill="#8b98a5">每个守卫不通过都返回 Err → 本轮编排放弃。</text>
+
+    <line x1="1070" y1="676" x2="1070" y2="708" stroke="#f472b6" stroke-width="1.6" marker-end="url(#fP)" />
+
+    <!-- PD4 -->
+    <polygon points="1070,712 1270,748 1070,784 870,748" fill="#16202c" stroke="#79d9ff" stroke-width="1.4" />
+    <text x="1070" y="753" text-anchor="middle" font-size="10.5" fill="#e6edf3">role_id == 0？</text>
+    <line x1="1270" y1="748" x2="1360" y2="748" stroke="#34d399" stroke-width="1.4" marker-end="url(#fG)" />
+    <text x="1285" y="741" font-size="9.5" fill="#34d399">是</text>
+    <rect x="1360" y="726" width="150" height="44" rx="6" fill="#16261f" stroke="#34d399" stroke-dasharray="4 3" />
+    <text x="1370" y="746" font-size="10" fill="#34d399">break：交还玩家</text>
+    <text x="1370" y="761" font-size="9.5" fill="#8b98a5">本轮对话结束</text>
+
+    <line x1="1070" y1="784" x2="1070" y2="816" stroke="#f472b6" stroke-width="1.6" marker-end="url(#fP)" />
+    <text x="1078" y="806" font-size="9.5" fill="#f472b6">否</text>
+
+    <rect x="800" y="820" width="540" height="70" rx="6" fill="#16202c" stroke="#34d399" stroke-width="1.5" />
+    <text x="816" y="842" font-size="11" fill="#34d399">gs.current_role_id = rid → emit "character:switch"</text>
+    <text x="816" y="862" font-size="10.5" fill="#e6edf3">should_continue = true　<tspan fill="#8b98a5">（返回值里的 next_role 调用方丢弃不用）</tspan></text>
+    <text x="816" y="880" font-size="10" fill="#fbbf24">→ 回到生成循环顶部，重取 get_current_context()（current_role_id 已变）</text>
+
+    <line x1="1070" y1="890" x2="1070" y2="918" stroke="#f472b6" stroke-width="1.6" marker-end="url(#fP)" />
+    <circle cx="1070" cy="928" r="9" fill="#f472b6" />
+    <text x="1090" y="933" font-size="10" fill="#8b98a5">循环继续</text>
+
+    <!-- 循环契约 -->
+    <rect x="800" y="980" width="710" height="150" rx="8" fill="#16202c" stroke="#a78bfa" stroke-width="1.4" />
+    <text x="816" y="1006" font-size="12.5" font-weight="700" fill="#a78bfa">循环契约（process_message 内的 loop）</text>
+    <line x1="800" y1="1018" x2="1510" y2="1018" stroke="#2a3a4a" />
+    <text x="816" y="1040" font-size="10.5" fill="#e6edf3">· 一条用户消息 → 最多 max_consecutive_npc（默认 3）轮 NPC 回复</text>
+    <text x="816" y="1060" font-size="10.5" fill="#e6edf3">· 任一守卫不通过 / 选择 role_id=0 / 决策 Err → 交还玩家，循环结束</text>
+    <text x="816" y="1080" font-size="10.5" fill="#e6edf3">· 每轮重新 get_current_context() 读该角色的 memory（上下文随说话人切换）</text>
+    <text x="816" y="1100" font-size="10.5" fill="#e6edf3">· cleanup_temp_message 只在首轮执行</text>
+    <text x="816" y="1120" font-size="10.5" fill="#34d399">· 循环结束后调用 maybe_evaluate_affection()（后台 spawn，不阻塞）→ affection-flow.html</text>
+
+    <!-- 左列末尾：指向右列的交接 -->
+    <path d="M 600 1287 L 788 1287 L 788 940 L 800 940" fill="none" stroke="#79d9ff" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#fB)" />
+    <text x="694" y="1276" font-size="10" fill="#79d9ff" text-anchor="middle">pre-select 完成后进入生成循环 →</text>
+  </svg>
+
+  <div class="legend">
+    <span><i class="dot" style="background:#79d9ff"></i>pre-select 主链</span>
+    <span><i class="dot" style="background:#f472b6"></i>post-select 主链</span>
+    <span><i class="dot" style="background:#fbbf24"></i>短路 / 硬闸</span>
+    <span><i class="dot" style="background:#34d399"></i>成功出口</span>
+    <span><i class="dot" style="background:#f87171"></i>错误退出（本轮编排放弃）</span>
+    <span><i class="dot" style="background:#8b98a5"></i>跳过 / 不切换</span>
+  </div>
+</div>
+</body>
+</html>

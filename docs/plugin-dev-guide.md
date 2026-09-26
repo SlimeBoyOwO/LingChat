@@ -71,6 +71,8 @@ script = "tavily.py"
 parameters = '{ "type":"object", "properties":{ "query":{"type":"string"}, "max_results":{"type":"integer","default":5} }, "required":["query"] }'
 ```
 
+除工具与资源，插件还可以订阅宿主信号（`[[subscribe]]`）、声明启动入口（`[startup]`）与前置插件（`depends_on`），见后文对应章节。
+
 ## 插件携带资源（人物 / 剧本 / 音乐 / 背景图 / 环境音）
 
 除了工具，插件还可以携带内容资源，直接混入游戏对应列表并带「插件」来源角标。
@@ -106,7 +108,7 @@ data/plugins/<id>/
 
 ## 脚本结构
 
-每个工具执行时会都新建一个 Python 解释器，读取脚本，执行顶层定义后调用你定义的 `run(ctx)`：
+每次执行都会新建一个 Python 解释器，读取脚本，执行顶层定义后调用入口函数——工具走 `run(ctx)`，信号订阅走 `[[subscribe]]` 声明的 `handler(ctx)`（见「订阅宿主信号」）。两类入口可以放在同一个脚本里：
 
 ```python
 def run(ctx):
@@ -118,9 +120,9 @@ def run(ctx):
 
 - `run(ctx)` 必须返回可 JSON 序列化的 dict（`Value`）。
 - 顶层定义（import、函数、常量）在**沙箱拦截之前**执行；`import os/subprocess/shutil/pathlib/ctypes/sysconfig` 会直接抛 `ImportError`，这些模块被置为不可用。
-- 每次工具调用都会**新建**解释器，脚本里的全局状态不跨调用保留。
+- 每次执行都会**新建**解释器，脚本里的全局状态不跨调用保留。
 
-### ctx 注入的字段
+### ctx 注入的字段（工具）
 
 | 字段               | 类型     | 说明                                                                |
 | ------------------ | -------- | ------------------------------------------------------------------- |
@@ -169,9 +171,128 @@ r = http_post("https://example.com/api", headers={"Authorization": "Bearer xx"},
 
 注意 `body` 里的 JSON 在 `r["body"]` 字段下，不是顶层（打个比方，Tavily 结果要取 `r["body"]["results"]`）。
 
+## 订阅宿主信号：`[[subscribe]]`
+
+工具是「LLM 来调你」，信号是「宿主来调你」。在 manifest 顶层声明要监听哪些信号：
+
+```toml
+[[subscribe]]
+signal = "scene:switch"          # 宿主注册的信号名
+script = "hook.py"               # 处理脚本（相对插件目录的单个文件名）
+handler = "on_scene"             # 脚本内的处理函数，签名为 handler(ctx)
+timeout_ms = 30000               # 可选，单次执行超时（默认 30000，上限 120000）
+match = { scene_id = "night" }   # 可选，见下
+```
+
+> **当前宿主还没有注册任何信号，所以这里声明的订阅暂时不会触发。** 先声明是安全的：加载时只会对未注册的信号打一条 warn，不算 manifest 错误，插件包在信号上线前后都能正常安装启用。
+>
+> 插件也可以**只有订阅、没有工具和资源**。
+
+### 匹配：`match`
+
+`match` 在**宿主侧**筛选，键是信号 payload 的顶层字段名：
+
+- 标量 = 等值命中：`match = { scene_id = "night" }`
+- 数组 = 命中其中任一：`match = { scene_id = ["night", "rooftop"] }`
+- 省略 `match` = 一律派发
+- payload 里没有该字段 = **不命中**（不会退化成通配）
+- 多个键之间是「与」
+
+判断逻辑刻意做得便宜，为的是在派发前把绝大多数信号挡掉——只有命中的订阅才会新建解释器。复杂条件（正则、跨字段比较、依赖运行时状态）请在 handler 内部自己判。
+
+### handler 的 `ctx`
+
+与工具脚本形状一致，只把 `tool_name` / `args` 换成 `signal` / `payload`：
+
+| 字段               | 类型     | 说明                                               |
+| ------------------ | -------- | -------------------------------------------------- |
+| `ctx["signal"]`    | str      | 触发的信号名                                       |
+| `ctx["payload"]`   | dict     | 信号载荷；`match` 就是在这个 dict 的顶层字段上筛选 |
+| `ctx["config"]`    | dict     | 同工具脚本                                         |
+| `ctx["env"]`       | dict     | 同工具脚本                                         |
+| `ctx["call_tool"]` | function | 同工具脚本                                         |
+
+```python
+# data/plugins/my_plugin/hook.py
+def on_scene(ctx):
+    payload = ctx["payload"]
+    ctx["call_tool"]("memory_add_note", {"content": f"去过 {payload.get('name')}"})
+```
+
+约定与限制：
+
+- **返回值会被丢弃**。信号没有下游消费者，不要靠 `return` 传递信息；想让结果进入对话，自己在 handler 里调 `call_tool`（如 `memory_add_note`）。
+- **handler 必须尽快返回**。超时（`timeout_ms`）会放弃本次执行，但中断不了阻塞线程，死循环会一直占着那个线程。
+- **同时执行的 handler 有上限**（当前 4 个）。达到上限时本次派发被**跳过**并记一条 warn，不排队。
+- **每次派发都新建解释器**，全局状态不跨派发保留，和工具调用一样。
+- **沙箱规则与工具脚本完全一致**（见文末「沙箱与限制」）。
+- 插件被禁用 / 删除后订阅立即失效；重新启用后恢复。
+
+## 前置插件：`depends_on`
+
+```toml
+depends_on = ["base_lib", "net_core"]   # 插件 id，不是显示名
+```
+
+> TOML 语法上 `depends_on` 是顶层键，必须写在第一个表（`[[config]]` / `[startup]` / `[[tools]]`）**之前**，否则会被解析成那个表的字段。
+
+声明本插件依赖哪些插件。与「前置有没有启动函数」无关——它首先是启用条件。
+
+- **前置必须已安装且已启用**，否则本插件无法启用，设置页会弹窗说明缺谁。
+- 启动时，本插件的启动函数会等前置的启动函数**执行完**再执行；前置没有启动函数则无需等待。互不依赖的插件之间仍然并行。
+- **循环依赖会被检测出来**：环上的插件都不会启动，并被自动禁用、给出提示。
+- **前置被禁用或卸载时，依赖它的插件会被自动禁用**（前置没了之后它调用上游工具会直接失败）。含传递依赖。
+- **不自动恢复**：前置重新启用后，下游插件需要手动重新启用（卡片上会显示被禁用的原因）。
+- 只有**启用与启动**时会查前置；导入插件时不校验，前置可以稍后再装。
+
+## 启动入口：`[startup]`
+
+```toml
+[startup]
+script = "boot.py"
+handler = "on_start"
+timeout_ms = 30000         # 可选，单次尝试的超时，默认 30000，上限 120000
+retries = 3                # 可选，默认 0，上限 5
+retry_interval_ms = 5000   # 可选，默认 5000，上限 60000
+required = true            # 可选，默认 true
+```
+
+**程序启动时**、以及**插件在设置页被启用时**，各执行一次 `handler(ctx)`。
+
+`retries = 3` 指「首次失败后**再试 3 次**」，即最多执行 4 次。
+
+### handler 的 `ctx`
+
+| 字段               | 类型     | 说明       |
+| ------------------ | -------- | ---------- |
+| `ctx["config"]`    | dict     | 同工具脚本 |
+| `ctx["env"]`       | dict     | 同工具脚本 |
+| `ctx["call_tool"]` | function | 同工具脚本 |
+
+启动没有信号名与载荷，所以**没有** `signal` / `payload` / `tool_name` / `args`。
+
+```python
+# data/plugins/my_plugin/boot.py
+def on_start(ctx):
+    ctx["call_tool"]("memory_add_note", {"content": "插件已启动", "tags": ["system"]})
+```
+
+### 失败与重试
+
+- `timeout_ms` 是**每次尝试各自**的超时。最坏情况单个插件会占用 `retries × (timeout_ms + retry_interval_ms)`；全按上限算约 15 分钟。**只有依赖它的插件会等**，无关插件照常并行推进、不会受影响。
+- `required = true`（默认）：所有尝试都失败后，插件会被**自动禁用**，设置页的开关会自动关回去并显示原因。
+- `required = false`：失败只记录原因，插件保持启用。适合「连不上也不该整个挂掉」的初始化，比如连接外部服务。
+- 重试期间插件**保持启用**，开关不会动——只有彻底放弃时才关。
+
+### 两个硬约束
+
+**正在执行的脚本无法中断。** 插件被禁用时：等待中的重试会立刻停止，还没开始的调用不会再启动；但**已经进入脚本的执行只能等它自己返回**，返回值被丢弃。所以启动函数要快速返回，别写死循环。
+
+**启动函数必须可重复执行。** 重试会再跑一次，而上次失败留下的副作用（写了一半的文件等）**不会回滚**。要么保证幂等，要么在开头自己清理。
+
 ## 内置工具 API 清单
 
-以下 30 个工具可直接通过 `call_tool(name, args)` 调用（`execute_command` 仅桌面端注册）。成功返回一律是带 `"ok": true` 的 JSON 对象；失败返回 `{"ok": false, "error": {...}}`（见上）。
+以下 32 个工具可直接通过 `call_tool(name, args)` 调用（`execute_command` 仅桌面端注册）。成功返回一律是带 `"ok": true` 的 JSON 对象；失败返回 `{"ok": false, "error": {...}}`（见上）。
 
 ### 时间
 
@@ -267,15 +388,31 @@ r = http_post("https://example.com/api", headers={"Authorization": "Bearer xx"},
 
 ### 角色（读写数据库 + game_status）
 
+> 角色有两个名字，界面上两处分别用它们，所以报告「现在是哪个角色」的工具两个都给：
+> `name` 是**对话里显示的 AI 名称**（`settings.yml` 的 `ai_name`，如「风雪」），
+> `title` 是**角色标题**（`settings.yml` 的 `title`，如「可爱的小风雪」，角色卡列表页那行大字）。
+
 **`character_list`**
 
 - 参数：`{}`
-- 返回：`{ ok: true, characters: [ { id: number, name: string } ] }`
+- 返回：`{ ok: true, characters: [ { id: number, name: string, title: string } ] }`
 
 **`character_switch`**
 
 - 参数：`{ id: integer(必) }`（不清空对话历史；`id` 不存在时报错并列出可用角色）
-- 返回：`{ ok: true, role_id: number, name: string }`
+- 返回：`{ ok: true, role_id: number, name: string, title: string }`
+
+**`character_get_clothes`**
+
+- 参数：`{ role_id?: integer }`（省略时查当前对话角色）
+- 返回：`{ ok: true, role_id: number, name: string, clothes_name: string, clothes: string[] }`（`clothes` 为该角色可更换的全部服装名）
+
+**`character_set_clothes`**
+
+- 参数：`{ name: string(必), role_id?: integer }`（省略 `role_id` 时换当前对话角色；`name` 须为 `character_get_clothes` 返回的服装之一，否则报错并列出可选值）
+- 返回：`{ ok: true, role_id: number, name: string, clothes_name: string, switched: boolean }`（`switched: false` 表示本来就是这套，不会重复生成换装旁白）
+
+> 换装会立即刷新立绘并往对话里写一句换装旁白（形如「XX换上了新服装：YY，…」），所以插件不需要再自己补一句描写。
 
 ### 搜索
 
@@ -359,6 +496,36 @@ r = http_post("https://example.com/api", headers={"Authorization": "Bearer xx"},
 - 返回（后台）：`{ ok: true, task_id, description, status: "running", message }`（完成后自动通知模型，无需轮询）
 
 ## 插件系统的私有 API（非 llm 可调用工具）
+
+这些能力**只有插件脚本能用**，不注册进 `ToolRegistry`，因此 LLM 选不到它们。放进这一类通常是因为「不该让模型自己决定」——比如会丢弃对话历史的破坏性操作。
+
+和 `http_get` / `http_post` 同一个模块，用 `from plugin_host import ...` 取用。返回统一信封：成功 `{ "ok": true, ... }`，失败 `{ "ok": false, "error": "..." }`，**不抛异常**。工具脚本、信号 handler、启动入口里都能调。
+
+### `switch_character(role_id)`
+
+完整切换当前角色，与玩家在角色卡上点「切换角色」走的是**同一条路径**：
+
+- **会清空当前对话历史**，重置已加载角色与角色内存，清空在场角色；
+- 递增会话边界代号，把旧一轮生成中迟到的台词丢掉，避免 A 的台词串进 B 的对话；
+- 把新的整份游戏状态推给前端，前端整体替换并丢弃旧事件队列。
+
+返回：成功 `{ "ok": true, "role_id": 3, "name": "风雪", "title": "可爱的小风雪" }`；角色不存在 `{ "ok": false, "error": "角色 id 3 不存在" }`。
+
+`name` / `title` 的语义与 `character_list`、`character_switch` 一致（见上面「角色」一节的说明）。
+
+```python
+# data/plugins/story_switch/boot.py
+from plugin_host import switch_character
+
+def on_start(ctx):
+    r = switch_character(3)
+    if not r["ok"]:
+        print("切换失败:", r["error"])
+```
+
+> **想保留对话历史地换角色**，请改用 `ctx["call_tool"]("character_switch", {"id": 3})`——那是 LLM 工具，只换角色、不动历史。
+>
+> `role_id` 会先校验存在性再动手，所以写错 id 只会拿到 `ok: false`，不会先把你的对话清空。
 
 ## 完整示例
 

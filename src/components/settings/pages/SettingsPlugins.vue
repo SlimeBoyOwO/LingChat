@@ -43,6 +43,16 @@
           <!-- 错误信息 -->
           <p v-if="plugin.error" class="mt-2 text-xs text-red-300">{{ plugin.error }}</p>
 
+          <!-- 启动阶段未能运行的原因（前置未就绪 / 启动入口失败，插件已被自动禁用） -->
+          <p v-if="plugin.startup_error" class="mt-2 text-xs whitespace-pre-line text-amber-300">
+            {{ formatPluginError(plugin.startup_error) }}
+          </p>
+
+          <!-- 前置插件：未满足时后端会拒绝启用 -->
+          <p v-if="plugin.depends_on.length" class="mt-2 text-xs text-white/50">
+            {{ $t("settings.plugins.dependsOn") }}：{{ plugin.depends_on.join("、") }}
+          </p>
+
           <!-- 工具列表 -->
           <div v-if="plugin.tools.length" class="mt-3 flex flex-wrap gap-1.5">
             <span
@@ -244,7 +254,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from "vue";
+import { ref, onMounted, onUnmounted, reactive } from "vue";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { ChevronDown, PackageOpen } from "lucide-vue-next";
 import { MenuPage, MenuItem } from "../../ui";
 import { Button } from "../../base";
@@ -274,6 +285,25 @@ const error = ref("");
 const saving = ref(false);
 const formState = reactive<Record<string, Record<string, unknown>>>({});
 const dialogStore = useDialogStore();
+
+/**
+ * 后端错误可能是纯错误码（`PLUGIN_MISSING_DEPENDENCY`），也可能是
+ * 「错误码|补充信息」（`PLUGIN_INACTIVE_DEPENDENCY|base_lib`）。
+ * 查表翻译错误码，补充信息附在下一行；查不到则原样显示（兼容其它字符串错误）。
+ */
+const formatPluginError = (raw: string): string => {
+  const [code, ...rest] = raw.split("|");
+  const detail = rest.join("|").trim();
+  const base = i18n.global.t(`settings.plugins.errors.${code}`, code);
+  return detail ? `${base}\n${detail}` : base;
+};
+
+/** 用弹窗而不是内联提示的错误码：都是「用户主动启用被拒」，需要解释该先做什么。 */
+const DIALOG_ERROR_CODES = new Set([
+  "PLUGIN_MISSING_DEPENDENCY",
+  "PLUGIN_INACTIVE_DEPENDENCY",
+  "PLUGIN_DEPENDENCY_CYCLE",
+]);
 
 // 每个插件的资源条目 + 展开状态（懒加载：只在展开或声明资源时拉取）
 const resourceMap = reactive<Record<string, PluginResourceEntry[]>>({});
@@ -367,11 +397,22 @@ const toggle = async (plugin: PluginInfo, enabled: boolean) => {
   try {
     await setPluginEnabled(plugin.id, enabled);
     plugin.enabled = enabled;
+    plugin.startup_error = null;
     if (plugin.resources.length) {
       await loadResources(plugin.id);
     }
   } catch (e) {
-    error.value = String(e);
+    const raw = String(e);
+    // 前置插件没装 / 没启用 / 成环：用户主动启用被拒，弹窗说明该先做什么。
+    // 其余错误仍走页面顶部的内联提示。
+    if (DIALOG_ERROR_CODES.has(raw.split("|")[0])) {
+      await dialogStore.alert(
+        formatPluginError(raw),
+        i18n.global.t("settings.plugins.enableFailedTitle"),
+      );
+    } else {
+      error.value = raw;
+    }
   }
 };
 
@@ -425,7 +466,26 @@ const handleImport = async () => {
   await load();
 };
 
-onMounted(() => {
+let unlistenAutoDisabled: UnlistenFn | null = null;
+
+onMounted(async () => {
   load();
+  // 后端自动禁用插件（启动入口失败 / 前置未就绪 / 循环依赖）时同步 UI：
+  // 只改状态，让开关滑块自己动画关闭并显示原因；**不弹窗**——弹窗留给
+  // 用户主动启用被拒的场景，否则「刚点开又被推回去」还会再弹一次。
+  unlistenAutoDisabled = await listen<{ id: string; reason: string }>(
+    "plugin:auto-disabled",
+    (event) => {
+      const target = plugins.value.find((p) => p.id === event.payload.id);
+      if (!target) return;
+      target.enabled = false;
+      target.startup_error = event.payload.reason;
+    },
+  );
+});
+
+onUnmounted(() => {
+  unlistenAutoDisabled?.();
+  unlistenAutoDisabled = null;
 });
 </script>

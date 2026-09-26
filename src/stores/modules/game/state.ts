@@ -1,4 +1,4 @@
-import type { Live2dSettings } from "@/types/live2d";
+import type { AvatarDisplayMode, Live2dSettings } from "@/types/live2d";
 import type { SceneInfo } from "@/api/services/scene"; // 导入场景类型
 import type { ScriptChoiceItem, ScriptPoemGameEvent } from "@/types/script";
 
@@ -81,6 +81,12 @@ export interface GameRole {
   clothesName: string;
   bodyPart: object;
   live2d?: Live2dSettings | null;
+  /** 主对话形象（`"live2d"` / `"image"`）；缺省等价于 live2d，见 `prefersLive2d` */
+  avatarMode?: AvatarDisplayMode | null;
+  /** 桌宠形象，语义同 `avatarMode` */
+  avatarModeP?: AvatarDisplayMode | null;
+  /** 桌宠无框模式：true = 隐藏圆形外框/半透明底/粒子并取消圆形裁剪 */
+  petFrameless?: boolean | null;
   character_folder: string;
   /** 对玩家的六维好感度（init 数据携带，affection:changed 事件刷新；未加载时为 undefined） */
   affection?: AffectionVector;

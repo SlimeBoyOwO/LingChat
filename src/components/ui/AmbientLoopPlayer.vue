@@ -1,10 +1,22 @@
 <template>
   <!-- 双 <audio> 实例：关闭原生 loop，在循环尾部用等功率交叉淡入淡出重叠播放，消除循环点击 -->
-  <audio ref="audioA" @ended="handleEnded('A')" @timeupdate="handleTimeUpdate('A')"></audio>
-  <audio ref="audioB" @ended="handleEnded('B')" @timeupdate="handleTimeUpdate('B')"></audio>
+  <!-- crossorigin 供频谱可视化接入（见 utils/audioSpectrum.ts）：CORS 加载才能接进 AudioContext -->
+  <audio
+    ref="audioA"
+    crossorigin="anonymous"
+    @ended="handleEnded('A')"
+    @timeupdate="handleTimeUpdate('A')"
+  ></audio>
+  <audio
+    ref="audioB"
+    crossorigin="anonymous"
+    @ended="handleEnded('B')"
+    @timeupdate="handleTimeUpdate('B')"
+  ></audio>
 </template>
 
 <script setup lang="ts">
+import { registerSpectrumSource, unregisterSpectrumSource } from "@/utils/audioSpectrum";
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
 
 const props = withDefaults(
@@ -171,6 +183,9 @@ const stopWithFade = () => {
 };
 
 onMounted(() => {
+  // 注册给频谱可视化（未开启该功能时不做任何事）
+  registerSpectrumSource(audioA.value);
+  registerSpectrumSource(audioB.value);
   const active = getEl(activeKey);
   if (!active) return;
   targetVolume = props.volume;
@@ -257,6 +272,8 @@ watch(
 onBeforeUnmount(() => {
   cancelFade();
   cancelCross();
+  unregisterSpectrumSource(audioA.value);
+  unregisterSpectrumSource(audioB.value);
   const a = getEl("A");
   const b = getEl("B");
   if (a) {

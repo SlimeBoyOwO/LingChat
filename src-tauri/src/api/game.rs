@@ -73,8 +73,14 @@ pub struct CharacterSettingsInit {
     pub bubble_left: i32,
     pub clothes: Option<Vec<HashMap<String, String>>>,
     pub clothes_name: String,
+    pub avatar_mode: Option<String>,
     pub body_part: Option<HashMap<String, serde_json::Value>>,
     pub live2d: Option<Live2dSettings>,
+    pub avatar_mode_p: Option<String>,
+    /// 桌宠无框模式，语义见 `CharacterSettings::pet_frameless`。
+    /// 本结构体逐字段列举、没有 `#[serde(flatten)]` 兜底，漏掉这个字段
+    /// 会让每次 init / 切角色 / 读档都把用户的选择静默清成 null。
+    pub pet_frameless: Option<bool>,
     pub character_folder: String,
     /// 该角色对玩家的六维好感度（存档全局变量里的当前值）。
     pub affection: Option<AffectionVector>,
@@ -101,8 +107,11 @@ impl From<&CharacterSettings> for CharacterSettingsInit {
             bubble_left: s.bubble_left,
             clothes: s.clothes.clone(),
             clothes_name: s.clothes_name.clone().unwrap_or_default(),
+            avatar_mode: s.avatar_mode.clone(),
             body_part: s.body_part.clone(),
             live2d: s.live2d.clone(),
+            avatar_mode_p: s.avatar_mode_p.clone(),
+            pet_frameless: s.pet_frameless,
             character_folder: s.character_folder.clone(),
             affection: None,
             negative: None,

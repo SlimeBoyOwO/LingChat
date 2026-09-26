@@ -473,6 +473,13 @@ pub struct CharacterSettings {
     pub clothes_name: Option<String>,
     #[serde(default)]
     pub clothes: Option<Vec<HashMap<String, String>>>,
+    /// 主对话形象：`live2d` = 有 Live2D 模型则用模型，`image` = 强制静态立绘。
+    /// 缺省或非法值等价于 `live2d`（即本功能出现前的行为，老配置无需迁移）。
+    /// 用 `Option<String>` 而非 enum：YAML 解析失败时 `read_character_settings`
+    /// 会整份回退默认值、`role_repo` 则直接报错导致角色渲染不出来，
+    /// 严格 enum 会让一个手写错别字把整份设定打回默认。
+    #[serde(default)]
+    pub avatar_mode: Option<String>,
 
     #[serde(default = "default_scale")]
     pub scale_p: f64,
@@ -480,6 +487,19 @@ pub struct CharacterSettings {
     pub offset_x_p: f64,
     #[serde(default)]
     pub offset_y_p: f64,
+    /// 桌宠形象，语义同 `avatar_mode`（`_p` 后缀沿用 `scale_p` 等桌宠字段惯例）。
+    #[serde(default)]
+    pub avatar_mode_p: Option<String>,
+    /// 桌宠无框模式：true = 隐藏圆形外框、半透明底与粒子，并取消圆形裁剪，
+    /// 让角色在本来的方形区域内完整显示。缺省/false = 现有的圆盘外观。
+    /// 正语义键名（而非 `pet_frame` 反着写）是为了让 `#[serde(default)]` 的
+    /// `None` 直接对应「有框」，不必再写自定义 default 函数。
+    /// 用 `Option<bool>` 而非裸 `bool`：`pet_frameless:`（空值）会解析成 YAML 的
+    /// null，裸 bool 会硬失败，而失败代价是 `read_character_settings` 把**整份设定**
+    /// 打回默认、`role_repo` 则让角色渲染不出来。非布尔值仍然会解析失败，
+    /// 这一点与既有的 `scale_p: f64` 同等风险，不额外加固。
+    #[serde(default)]
+    pub pet_frameless: Option<bool>,
 
     #[serde(default)]
     pub voice_models: Option<VoiceModel>,
@@ -558,9 +578,12 @@ impl Default for CharacterSettings {
             offset_y: 0.0,
             clothes_name: None,
             clothes: None,
+            avatar_mode: None,
             scale_p: 1.0,
             offset_x_p: 0.0,
             offset_y_p: 0.0,
+            avatar_mode_p: None,
+            pet_frameless: None,
             voice_models: None,
             tts_type: None,
             voice_lang: None,

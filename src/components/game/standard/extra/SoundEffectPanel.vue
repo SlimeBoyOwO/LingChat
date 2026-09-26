@@ -31,6 +31,89 @@
         ref="panelRef"
         class="custom-scrollbar fixed bottom-[calc(64px+var(--safe-area-inset-bottom))] left-4 z-[1000] box-border max-h-[80dvh] w-[520px] overflow-y-auto rounded-3xl border border-white/10 bg-[#12121c]/75 p-4 text-white shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-[20px]"
       >
+        <!-- ===== 音频频谱可视化 =====
+             置顶（不是塞在末尾）：面板 max-h-[80dvh] 会滚动，放末尾等于藏起来。
+             关闭时只占一行，开启后原地展开配色配置。 -->
+        <div class="mb-3">
+          <div class="flex items-center justify-between gap-3">
+            <span class="flex items-center gap-2 text-sm font-semibold text-gray-300">
+              <AudioLines :size="14" class="text-[#79d9ff]" />
+              {{ $t("game.soundPanel.spectrum.title") }}
+            </span>
+            <div class="shrink-0">
+              <Toggle :checked="spectrumEnabled" @change="onSpectrumToggle" />
+            </div>
+          </div>
+
+          <template v-if="spectrumEnabled">
+            <p class="mt-1.5 px-1 text-[11px] leading-snug text-gray-500">
+              {{ $t("game.soundPanel.spectrum.hint") }}
+            </p>
+
+            <div class="mt-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2.5">
+              <!-- 形态：镜像 / 柱状 / 圆环 -->
+              <div class="mb-2.5 flex items-center gap-1 rounded-lg bg-black/20 p-0.5">
+                <button
+                  v-for="opt in styleOptions"
+                  :key="opt.id"
+                  type="button"
+                  class="flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors duration-150"
+                  :class="
+                    spectrumStyle === opt.id
+                      ? 'bg-white/12 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  "
+                  :title="opt.label"
+                  @click.stop="setSpectrumStyle(opt.id)"
+                >
+                  <component :is="opt.icon" :size="11" />
+                  <span class="truncate">{{ opt.label }}</span>
+                </button>
+              </div>
+
+              <div class="mb-2 flex items-center justify-between">
+                <span class="text-xs text-gray-400">{{
+                  $t("game.soundPanel.spectrum.palette")
+                }}</span>
+                <span class="text-[10px] text-gray-500">{{ paletteLabel }}</span>
+              </div>
+
+              <SpectrumPaletteChips
+                v-model="spectrumPalette"
+                :custom-from="spectrumColor1"
+                :custom-to="spectrumColor2"
+              />
+
+              <!-- 自定义配色：双取色器 -->
+              <div
+                v-if="spectrumPalette === CUSTOM_SPECTRUM_PALETTE"
+                class="mt-2.5 flex items-center gap-4"
+              >
+                <label class="flex cursor-pointer items-center gap-1.5 text-[11px] text-gray-400">
+                  <input
+                    type="color"
+                    class="spectrum-color-input"
+                    :value="spectrumColor1"
+                    @input="onColorInput('spectrumColor1', $event)"
+                  />
+                  {{ $t("game.soundPanel.spectrum.customFrom") }}
+                </label>
+                <label class="flex cursor-pointer items-center gap-1.5 text-[11px] text-gray-400">
+                  <input
+                    type="color"
+                    class="spectrum-color-input"
+                    :value="spectrumColor2"
+                    @input="onColorInput('spectrumColor2', $event)"
+                  />
+                  {{ $t("game.soundPanel.spectrum.customTo") }}
+                </label>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div class="mb-4 h-px bg-white/5"></div>
+
         <!-- ===== BGM 区域 ===== -->
         <div class="mb-4">
           <div class="mb-3 flex items-center justify-between">
@@ -243,9 +326,23 @@
 import { ambientGetAll, type AmbientItem } from "@/api/services/ambient";
 import { musicGetAll } from "@/api/services/music";
 import Button from "@/components/base/widget/Button.vue";
+import Toggle from "@/components/base/widget/Toggle.vue";
+import {
+  CUSTOM_SPECTRUM_PALETTE,
+  DEFAULT_SPECTRUM_COLOR_FROM,
+  DEFAULT_SPECTRUM_COLOR_TO,
+  DEFAULT_SPECTRUM_PALETTE,
+  SPECTRUM_PALETTES,
+  resolveSpectrumStyle,
+  type SpectrumStyle,
+} from "@/constants/spectrum";
 import { useSettingsStore } from "@/stores/modules/settings";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import {
+  AudioLines,
+  BarChart3,
+  CircleDot,
+  FlipVertical2,
   Music2,
   Pause,
   Play,
@@ -257,8 +354,9 @@ import {
   Wind,
   X,
 } from "lucide-vue-next";
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch, type Component } from "vue";
 import { useI18n } from "vue-i18n";
+import SpectrumPaletteChips from "./SpectrumPaletteChips.vue";
 
 const uiStore = useUIStore();
 const settingsStore = useSettingsStore();
@@ -267,6 +365,43 @@ const { t } = useI18n();
 // ===== 面板状态 =====
 const panelVisible = ref(false);
 const panelRef = ref<HTMLElement | null>(null);
+
+// ===== 音频频谱可视化（右下角迷你频谱的配置，见 SpectrumVisualizer.vue）=====
+const spectrumEnabled = computed(() => !!settingsStore.audio.spectrumEnabled);
+const spectrumStyle = computed(() => resolveSpectrumStyle(settingsStore.audio.spectrumStyle));
+/** 形态选项：id 取自 constants/spectrum.ts（单一真相源），文案与图标在此组装 */
+const styleOptions: Array<{ id: SpectrumStyle; label: string; icon: Component }> = [
+  { id: "mirror", label: t("game.soundPanel.spectrum.styleMirror"), icon: FlipVertical2 },
+  { id: "bars", label: t("game.soundPanel.spectrum.styleBars"), icon: BarChart3 },
+  { id: "ring", label: t("game.soundPanel.spectrum.styleRing"), icon: CircleDot },
+];
+const spectrumPalette = computed({
+  get: () => settingsStore.audio.spectrumPalette || DEFAULT_SPECTRUM_PALETTE,
+  set: (id: string) => settingsStore.update("audio.spectrumPalette", id),
+});
+const spectrumColor1 = computed(
+  () => settingsStore.audio.spectrumColor1 || DEFAULT_SPECTRUM_COLOR_FROM,
+);
+const spectrumColor2 = computed(
+  () => settingsStore.audio.spectrumColor2 || DEFAULT_SPECTRUM_COLOR_TO,
+);
+const paletteLabel = computed(
+  () =>
+    SPECTRUM_PALETTES.find((p) => p.id === spectrumPalette.value)?.label ||
+    t("game.soundPanel.spectrum.custom"),
+);
+
+const onSpectrumToggle = (enabled: boolean) => {
+  settingsStore.update("audio.spectrumEnabled", enabled);
+};
+
+const setSpectrumStyle = (style: SpectrumStyle) => {
+  settingsStore.update("audio.spectrumStyle", style);
+};
+
+const onColorInput = (field: "spectrumColor1" | "spectrumColor2", e: Event) => {
+  settingsStore.update(`audio.${field}`, (e.target as HTMLInputElement).value);
+};
 
 // ===== 是否有活跃音频在播放（控制图标闪烁，暂停/停止时不闪） =====
 const hasActiveAudio = computed(() => {
@@ -462,6 +597,24 @@ input[type="range"]::-webkit-slider-thumb {
   background: #79d9ff;
   cursor: pointer;
   border: 2px solid rgba(0, 0, 0, 0.3);
+}
+
+/* 频谱自定义取色器（去掉原生 swatch 的内边距，方形化） */
+.spectrum-color-input {
+  height: 20px;
+  width: 30px;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 5px;
+}
+.spectrum-color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.spectrum-color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
 }
 
 /* 链接按钮样式 */
