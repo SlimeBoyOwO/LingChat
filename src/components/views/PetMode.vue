@@ -378,19 +378,53 @@ const startMetricsPolling = () => {
 
 // ─── 临时诊断（定位完即删，合并前必须移除） ──────────────────────
 //
-// 「收回后只有左上一角」这类问题靠推理定不下来：必须知道
-// `window.innerWidth` 到底是「窗口宽度」还是「悬浮窗那个窄视口」。
-// 这里把关键数字直接画在屏幕上。
+// 「收回后只有左上一角」「展开后一大片透明区」这类问题靠推理定不下来：
+// 必须知道窗口、画布、各条带各自的**实际矩形**。这里把关键数字和
+// 描边直接画到屏幕上，用户截一张图就能定位。
 //
 // 挂在 document.body 而不是组件里，这样路由切到 /chat 之后它还在
 // ——出问题的正是切换之后那一刻。
+//
+// ⚠️ 合并前必须整段删除（含 DEBUG_FLOATING_OVERLAY 常量与
+// showViewportDiagnostic 的全部调用点）。
+
+/** 诊断开关：置 false 即关闭（保留代码便于下次排查）。 */
+const DEBUG_FLOATING_OVERLAY = true;
 
 /** 原生报告的窗口宽度（dp），用于和 window.innerWidth 对照。 */
 const nativeWindowWidth = ref(0);
 
 const DIAG_VISIBLE_MS = 30000;
 let diagTimer: number | undefined;
+
+/** 给元素加一圈描边（outline 不参与布局，不会改变被观测的几何）。 */
+const outlineOf = (el: HTMLElement | null, color: string) => {
+  if (!el) return;
+  el.style.outline = `1px solid ${color}`;
+  el.style.outlineOffset = "-1px";
+};
+
+/** 撤掉所有诊断描边。 */
+const clearOutlines = () => {
+  for (const el of [
+    document.getElementById("pet-app"),
+    avatarContainer.value,
+    decorBand.value,
+    chatContainer.value,
+  ]) {
+    if (el) (el as HTMLElement).style.outline = "";
+  }
+};
+
+/** `w×h @ x,y` 形式的矩形摘要。 */
+const rectOf = (el: HTMLElement | null): string => {
+  if (!el) return "null";
+  const r = el.getBoundingClientRect();
+  return `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.left)},${Math.round(r.top)}`;
+};
+
 const showViewportDiagnostic = (label: string) => {
+  if (!DEBUG_FLOATING_OVERLAY) return;
   // 悬浮窗内**一直**显示：本轮要拿到 innerW 与 nativeW 的对照，判断「展开后
   // 四周空白」到底是视口滞后（innerW ≠ nativeW）还是窗口真的大了。
   // 回到 App 后只在视口明显不对时才显示，修好就自然消失。
@@ -398,26 +432,43 @@ const showViewportDiagnostic = (label: string) => {
   const suspicious = floatingWindowMode.value || (screenW > 0 && window.innerWidth < screenW * 0.9);
   if (!suspicious) {
     document.getElementById("__lc_pet_diag")?.remove();
+    clearOutlines();
     return;
   }
+
+  // 描边：一眼看出「透明区」到底属于哪条带
+  //   品红 = #pet-app 画布，青 = 头像带，黄 = 气泡带，绿 = 输入带
+  outlineOf(document.getElementById("pet-app"), "#ff00ff");
+  outlineOf(avatarContainer.value, "#22d3ee");
+  outlineOf(decorBand.value, "#facc15");
+  outlineOf(chatContainer.value, "#4ade80");
 
   let el = document.getElementById("__lc_pet_diag") as HTMLDivElement | null;
   if (!el) {
     el = document.createElement("div");
     el.id = "__lc_pet_diag";
+    // 贴左下角：别盖住宠物本体，截图时才看得见宠物到底多大
     el.style.cssText =
-      "position:fixed;left:0;top:0;z-index:2147483647;pointer-events:none;" +
-      "background:rgba(0,0,0,.85);color:#4ade80;font:11px/1.45 monospace;" +
-      "padding:3px 6px;white-space:pre;border-bottom-right-radius:6px";
+      "position:fixed;left:0;bottom:0;z-index:2147483647;pointer-events:none;" +
+      "background:rgba(0,0,0,.8);color:#4ade80;font:11px/1.4 monospace;" +
+      "padding:2px 5px;white-space:pre;border-top-right-radius:6px";
     document.body.appendChild(el);
   }
   const expected = Math.round(FLOATING_LOGICAL_WIDTH * floatingFit.value);
+  // 角色侧的「桌宠缩放 / 偏移」：这是**桌面端**的调参项，桌面上透明区靠
+  // 点击穿透忽略掉，但 Android 悬浮窗没有逐像素穿透——若 scaleP < 1，
+  // 宠物就只占头像框的一部分，四周全是吃触摸的透明区。见 GameRoleAvatar。
+  const r = gameStore.presentRolesList[0];
+  const roleInfo = r
+    ? `role scaleP=${r.scaleP} offX=${r.offsetXP} offY=${r.offsetYP} frameless=${r.petFrameless}`
+    : "role=none";
   el.textContent =
-    `[${label}]\n` +
-    `innerW=${window.innerWidth} innerH=${window.innerHeight}\n` +
-    `dpr=${window.devicePixelRatio} screen=${window.screen?.width}x${window.screen?.height}\n` +
-    `fit=${floatingFit.value.toFixed(3)} expectW=${expected}\n` +
-    `nativeW=${nativeWindowWidth.value} floating=${floatingWindowMode.value}`;
+    `[${label}] inner=${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio}\n` +
+    `fit=${floatingFit.value.toFixed(3)} expectW=${expected} nativeW=${nativeWindowWidth.value}\n` +
+    `canvas=${rectOf(document.getElementById("pet-app"))} floating=${floatingWindowMode.value}\n` +
+    `avatar=${rectOf(avatarContainer.value)} band=${decorBand.value?.offsetHeight ?? -1}\n` +
+    `chat=${rectOf(chatContainer.value)} exp=${petExpanded.value}\n` +
+    roleInfo;
   if (diagTimer !== undefined) window.clearTimeout(diagTimer);
   diagTimer = window.setTimeout(() => {
     diagTimer = undefined;

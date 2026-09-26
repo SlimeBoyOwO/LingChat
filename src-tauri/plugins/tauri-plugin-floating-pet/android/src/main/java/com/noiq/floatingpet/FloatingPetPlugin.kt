@@ -3,6 +3,7 @@ package com.noiq.floatingpet
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Application
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -97,6 +98,9 @@ private const val MAX_SIZE_DP = 720.0
  * wry 会调 `mWebView.onPause()` 把桌宠冻住，而重入时机在不同 ROM /
  * Tauri 版本上并不稳定，因此除了生命周期回调里补一次，还用一个
  * 低频轮询兜底。
+ *
+ * 注意轮询本身很便宜，真正贵的是轮询里那次 `WebView.onResume()`：
+ * 它只在「确实被暂停过」时才调一次，见 `petNeedsResume`。
  */
 private const val KEEP_ALIVE_INTERVAL_MS = 500L
 
@@ -115,13 +119,10 @@ private const val KEEP_ALIVE_INTERVAL_MS = 500L
 private val PET_ATTACHED_RETRY_DELAYS_MS = longArrayOf(0L, 300L, 1000L, 3000L)
 
 /**
- * 收回后保活轮询继续运行的时长（毫秒）。
+ * 收回后延迟清理 [FloatingPetPlugin.pendingAttachNotify] 引用的时长（毫秒）。
  *
- * 不能一收回就 [FloatingPetPlugin.stopKeepAlive]：WebView 从 60dp 的
- * 悬浮窗被塞回整屏 Activity 时，Chromium 的视口要重新算一次，而宿主
- * Activity 此刻往往还在后台、不跑布局遍历。轮询多撑一会儿，等用户切回来、
- * 视口真正更新完再停，否则整个 App 会以悬浮窗的窄视口渲染
- * ——看起来就是「只有左上一角」。
+ * 只在「Activity 一直没 resume、补发事件始终没送出去」时兜底，
+ * 防止那个 WebView 引用一直挂着。
  */
 private const val KEEP_ALIVE_GRACE_MS = 20000L
 
@@ -255,18 +256,52 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      */
     private val keepAliveHandler = Handler(Looper.getMainLooper())
     private var keepAliveRunning = false
+
+    /**
+     * 宿主 Activity 当前是否处于 resumed 态（由 [ensureLifecycleCallbacks] 维护）。
+     *
+     * 只有 Activity 处于 paused/stopped 时 wry 才会调用 `mWebView.onPause()`，
+     * 也才需要我们补一次 `onResume()`。见 [petNeedsResume]。
+     */
+    private var hostResumed = true
+
+    /**
+     * WebView 是否「被 wry 暂停过、还没补唤醒」。
+     *
+     * ## 为什么需要这个标记（性能）
+     *
+     * 早先的保活轮询是**每 500ms 无条件**调一次
+     * `WebView.onResume()` + `resumeTimers()`。这两个调用都不是空操作：
+     * `onResume()` 会走到 `AwContents.onResume()` → 触发一次重绘/重排，
+     * 于是**前台使用时**（Activity 明明还 resumed、wry 根本没暂停过它）
+     * 也在以每秒 2 次的频率强制刷新 WebView —— 用户感受就是
+     * 「启动和使用时都变卡了」。
+     *
+     * 事实上 WebView 一旦被唤醒就会一直跑，直到下一次 `onPause()`；
+     * 因此每个「暂停周期」只需要补唤醒**一次**。这里在 Activity paused 时
+     * 置位、补唤醒后清零，把每秒 2 次的重绘降到「每次切后台 1 次」。
+     */
+    private var petNeedsResume = false
+
     private val keepAliveTick = object : Runnable {
         override fun run() {
             if (!keepAliveRunning) return
-            // 收回之后（petDetached=false）也要继续唤醒：WebView 从 60dp 的
-            // 悬浮窗被塞回整屏 Activity，Chromium 的视口要重算一次，而宿主
-            // Activity 此刻往往还在后台、不跑布局遍历。不继续撑着的话，
-            // 整个 App 会以悬浮窗的窄视口渲染 —— 就是「只有左上一角」。
-            (petView as? WebView)?.let { resumePetWebView(it, "keep-alive") }
-            // 顺带重推一次窗口几何：前端靠它算缩放系数，而 WebView 的视口
-            // 在原生改完尺寸后会滞后一会儿，自算必然出错。低频重推让页面
-            // 即使漏掉某次事件也能在半秒内自愈。
-            if (petDetached) layoutParams?.let { notifyMetrics(it, petView) }
+            try {
+                // 只在「wry 刚把它暂停过」时补唤醒一次（见 petNeedsResume）。
+                if (petDetached && petNeedsResume) {
+                    (petView as? WebView)?.let {
+                        resumePetWebView(it, "keep-alive")
+                        petNeedsResume = false
+                    }
+                }
+                // 顺带重推一次窗口几何：前端靠它算缩放系数，而 WebView 的视口
+                // 在原生改完尺寸后会滞后一会儿，自算必然出错。低频重推让页面
+                // 即使漏掉某次事件也能在半秒内自愈。
+                if (petDetached) layoutParams?.let { notifyMetrics(it, petView) }
+            } catch (t: Throwable) {
+                // 轮询体绝不能抛出：Handler 里未捕获的异常会直接杀掉进程
+                Log.w(TAG, "保活轮询出错（已忽略）", t)
+            }
             keepAliveHandler.postDelayed(this, KEEP_ALIVE_INTERVAL_MS)
         }
     }
@@ -294,8 +329,17 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * `Application.ActivityLifecycleCallbacks`——它由系统直接分发，不受
      * Tauri 版本影响。
      *
-     * 目前只用到 `onActivityResumed`：把收回时没送达的 `pet-attached`
-     * 补发给页面。这条事件一旦丢失，页面就会一直停在悬浮窗布局。
+     * 目前用到两件事：
+     * - `onActivityResumed`：把收回时没送达的 `pet-attached` 补发给页面。
+     *   这条事件一旦丢失，页面就会一直停在悬浮窗布局。
+     * - `onActivityPaused` / `onActivityResumed`：维护 [hostResumed] /
+     *   [petNeedsResume]，让保活轮询只在真的被暂停过之后补唤醒一次，
+     *   而不是每 500ms 无条件刷新 WebView（那是卡顿的来源）。
+     *
+     * 注意顺序：`WryActivity.onPause()` 是**先** `super.onPause()`（其中会分发
+     * 生命周期回调）**后**才 `mWebView.onPause()`。所以回调里不能立刻
+     * `onResume()`——那会被紧随其后的 `mWebView.onPause()` 覆盖掉。
+     * 这里只置标记，真正的唤醒留给 500ms 后的 [keepAliveTick]。
      */
     private fun ensureLifecycleCallbacks() {
         if (lifecycleCallbacksRegistered) return
@@ -307,13 +351,22 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                     override fun onActivityStarted(a: Activity) = Unit
 
                     override fun onActivityResumed(a: Activity) {
+                        if (a !== activity) return
+                        hostResumed = true
+                        petNeedsResume = false
                         val wv = pendingAttachNotify ?: return
                         pendingAttachNotify = null
                         Log.i(TAG, "Activity 已回到前台，补发 pet-attached")
                         notifyWeb(wv, "pet-attached", JSObject())
                     }
 
-                    override fun onActivityPaused(a: Activity) = Unit
+                    override fun onActivityPaused(a: Activity) {
+                        if (a !== activity) return
+                        hostResumed = false
+                        // 紧随其后 wry 会 mWebView.onPause()，交给我方轮询补唤醒
+                        if (petDetached) petNeedsResume = true
+                    }
+
                     override fun onActivityStopped(a: Activity) = Unit
                     override fun onActivitySaveInstanceState(a: Activity, b: Bundle) = Unit
                     override fun onActivityDestroyed(a: Activity) = Unit
@@ -342,12 +395,23 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * 也就是说插件的那两个覆写目前在真机上根本不会被调用。
      *
      * 因此这里用 500ms 一次的轮询兜底：不依赖任何生命周期回调，只要还在
-     * 悬浮窗里就持续把 WebView 拉回运行态。`onResume()` / `resumeTimers()`
-     * 都是幂等的，重复调用没有副作用。
+     * 悬浮窗里就持续把 WebView 拉回运行态。
+     *
+     * ## 但**不能**每轮都真的去唤醒
+     *
+     * `onResume()` / `resumeTimers()` 在 WebView 内部不是空操作：
+     * `onResume()` 会走 `AwContents.onResume()` 并触发重绘。早先每 500ms
+     * 无条件调用一次，等于**每秒强制刷新 2 次 WebView**——App 明明在前台、
+     * wry 根本没暂停过它，也在被刷。用户感受就是「启动和使用时都变卡了」。
+     *
+     * WebView 被唤醒后会一直跑，直到下一次 `onPause()`；所以每个暂停周期
+     * 只需要补唤醒一次，由 [petNeedsResume] 控制（见该字段的说明）。
      */
     private fun startKeepAlive() {
         if (keepAliveRunning) return
         keepAliveRunning = true
+        // 若此刻宿主已在后台，进来就先补一次唤醒
+        petNeedsResume = petDetached && !hostResumed
         keepAliveHandler.postDelayed(keepAliveTick, KEEP_ALIVE_INTERVAL_MS)
         Log.i(TAG, "已启动桌宠 WebView 保活轮询")
     }
@@ -635,9 +699,15 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                     // 回来就什么也看不到 —— 表现为「按了返回却像没反应」。
                     bringActivityToFront()
                     invoke.resolve()
-                } catch (e: Exception) {
-                    Log.e(TAG, "恢复主界面失败", e)
-                    invoke.reject("恢复主界面失败: ${e.message}")
+                } catch (t: Throwable) {
+                    // 这里必须 catch Throwable：Handler 里逃出去的异常会直接
+                    // 杀掉进程（用户看到的就是「点返回就闪退」）。
+                    Log.e(TAG, "恢复主界面失败", t)
+                    try {
+                        invoke.reject("恢复主界面失败: ${t.message}")
+                    } catch (ignored: Throwable) {
+                        // invoke 可能已随进程状态失效，忽略
+                    }
                 }
             },
             HIDE_DELAY_MS
@@ -647,25 +717,50 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     /**
      * 把宿主 Activity 从后台拉到前台。
      *
-     * 用 `FLAG_ACTIVITY_REORDER_TO_FRONT` 而不是 `moveTaskToFront`：
-     * 后者需要 `REORDER_TASKS` 权限，而前者是普通 `startActivity`，
-     * 且会把**已存在的那个实例**移到任务栈前面，不会新建实例。
+     * ## 为什么不能用 `FLAG_ACTIVITY_REORDER_TO_FRONT`
+     *
+     * 上一版用的是
+     * `startActivity(Intent(activity, activity.javaClass).addFlags(REORDER_TO_FRONT or SINGLE_TOP))`，
+     * 真机结果是**点「返回」直接闪退**（App 消失回桌面，是未捕获异常杀进程）。
+     *
+     * 病根在本 App 的 MainActivity 是 `android:launchMode="singleTask"`
+     * （见 `gen/android/app/src/main/AndroidManifest.xml`）。singleTask 的
+     * 启动语义由系统接管：`ActivityStarter` 会强制补上 `NEW_TASK` 并走
+     * 「复用已有实例 + CLEAR_TOP 式收尾」那条路径，而
+     * `FLAG_ACTIVITY_REORDER_TO_FRONT` 是给**标准**启动模式用的重排标志，
+     * 两者语义互斥。这条组合不是文档化的用法，真机上直接把进程带崩。
+     *
+     * ## 现在用的是「Launcher 那条 intent」
+     *
+     * `ACTION_MAIN` + `CATEGORY_LAUNCHER` + 显式组件 + `NEW_TASK`，
+     * 与用户点桌面图标时系统发出的 intent **完全一致**：
+     *
+     * - 对 singleTask 而言，系统会复用已有实例并把它的任务栈移到前台，
+     *   不会新建实例
+     * - 它会给已有实例投递一次 `onNewIntent`——这正是「点图标切回 App」
+     *   每次都在发生的事，天然安全（Tauri 的 `PluginManager.onNewIntent`
+     *   只是遍历插件，插件未覆写该方法）
+     * - 不需要任何额外权限（`moveTaskToFront` 需要 `REORDER_TASKS`，
+     *   且在 Android 10+ 的后台启动限制下更容易被静默拒绝）
      *
      * Activity 已经在前台时这是一个无害的空操作。
      */
     private fun bringActivityToFront() {
         try {
-            val intent = Intent(activity, activity.javaClass).apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-                )
-            }
+            val intent =
+                Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                    component = ComponentName(activity, activity.javaClass)
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                    )
+                }
             activity.startActivity(intent)
             Log.i(TAG, "已把 Activity 拉到前台")
-        } catch (e: Exception) {
-            // 少数 ROM 限制后台启动 Activity；失败不致命，用户手动切回来即可
-            Log.w(TAG, "把 Activity 拉到前台失败（可忽略）", e)
+        } catch (t: Throwable) {
+            // 少数 ROM 限制后台拉起 Activity；失败不致命，用户手动切回来即可
+            Log.w(TAG, "把 Activity 拉到前台失败（可忽略）", t)
         }
     }
 
@@ -766,7 +861,17 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             if (notifyPage) {
                 pendingAttachNotify = wv
                 for (delay in PET_ATTACHED_RETRY_DELAYS_MS) {
-                    view.postDelayed({ notifyWeb(wv, "pet-attached", JSObject()) }, delay)
+                    view.postDelayed(
+                        {
+                            // Handler 里逃出去的异常会直接杀进程，必须兜住
+                            try {
+                                notifyWeb(wv, "pet-attached", JSObject())
+                            } catch (t: Throwable) {
+                                Log.w(TAG, "补发 pet-attached 失败（可忽略）", t)
+                            }
+                        },
+                        delay
+                    )
                 }
                 // 兜底清理：万一 Activity 一直没 resume（例如用户再也没回来），
                 // 不要让引用一直挂着。
@@ -776,20 +881,21 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 )
             }
 
-            // 保活轮询**不能立刻停**：WebView 从 60dp 的悬浮窗被塞回整屏
-            // Activity 时，Chromium 的视口要重算一次，而宿主 Activity 此刻
-            // 往往还在后台、不跑布局遍历。轮询多撑 20 秒，等用户切回来、
-            // 视口真正更新完再停——否则整个 App 会以悬浮窗的窄视口渲染，
-            // 看起来就是「切回去只有左上一角」。
-            keepAliveHandler.postDelayed(
-                {
-                    // 期间若又重新进入悬浮窗，就别停了
-                    if (!petDetached) stopKeepAlive()
-                },
-                KEEP_ALIVE_GRACE_MS
-            )
+            // 保活轮询到此为止。
+            //
+            // 早先这里还让轮询多撑 20 秒，理由是「WebView 从 60dp 的悬浮窗
+            // 被塞回整屏 Activity 时视口要重算」。那个诊断是错的：真正的
+            // 病根是 `setContentView` 不重置 LayoutParams（见上面的说明），
+            // 现在已显式改回 MATCH_PARENT。继续撑着只会让 WebView 在
+            // Activity 已经前台的情况下被反复唤醒——纯粹的性能损失。
+            //
+            // 另外，若收回后宿主仍在后台，WebView 会保持 wry 暂停它的状态；
+            // 等用户切回来时 `WryActivity.onResume()` 会自己唤醒它，
+            // 不需要我们代劳。
+            stopKeepAlive()
         }
         petDetached = false
+        petNeedsResume = false
     }
 
     /**
@@ -816,6 +922,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         windowManager = null
         instance = null
         petDetached = false
+        petNeedsResume = false
         pendingAttachNotify = null
         stopKeepAlive()
         // Activity 正在销毁，前台服务若继续留着会变成没有悬浮窗的空服务
@@ -1392,20 +1499,24 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * 保留它们是为了将来 Tauri 补上注册后能立即生效；当下真正兜底的是
      * [startKeepAlive] 的 500ms 轮询——它不依赖任何生命周期回调，
      * 只要还在悬浮窗里就把 WebView 拉回运行态。
+     *
+     * 注意这里也**只置标记**，不直接唤醒：`wry` 的 `mWebView.onPause()`
+     * 紧跟在 `super.onPause()` 之后，此刻唤醒会被它立刻覆盖。真正的唤醒
+     * 交给 [keepAliveTick]。
      */
     override fun onPause() {
         super.onPause()
-        val wv = petView as? WebView ?: return
         if (!petDetached) return
-        wv.post { resumePetWebView(wv, "onPause") }
+        petNeedsResume = true
     }
 
     /** App 回到前台时同样确保 WebView 处于运行状态。 */
     override fun onResume() {
         super.onResume()
-        val wv = petView as? WebView ?: return
         if (!petDetached) return
-        wv.post { resumePetWebView(wv, "onResume") }
+        // 宿主已回到前台，wry 自己会唤醒它，不必再补
+        hostResumed = true
+        petNeedsResume = false
     }
 
     /**

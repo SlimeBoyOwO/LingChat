@@ -138,9 +138,22 @@ WebView 是 Activity 的唯一内容视图，搬走后 Activity 就空了（白�
 **点击穿透是窗口级开关，无法按区域精细控制**
 
 桌面端（Windows）用 `GetCursorPos` 轮询 + `set_ignore_cursor_events`，可以按
-**像素区域**判定是否穿透。Android 的 `FLAG_NOT_TOUCHABLE` 只能作用于**整个窗口**。
+**像素区域**判定是否穿透。Android 的 `FLAG_NOT_TOUCHABLE` 只能作用于**整个窗口**，
+而且它在**按下那一刻**就被求值——没有「先看手指落在哪再决定穿不穿透」的余地。
 
 **应对**：窗口尺寸按屏幕比例收窄（收起态仅 1/6 屏宽），不做大块透明留白。
+
+> ⚠️ **残留问题（未解决）**：悬浮窗是矩形，宠物是圆形，所以展开态必然有一圈
+> 透明角落吃触摸。这部分**无法**用现有 API 消除——这是「矩形系统窗口 + 圆形宠物」
+> 的固有代价，不是 bug。能做的只有把矩形收紧到宠物的可见外接矩形。
+> 真机上先看诊断里的两组数字：
+>
+> - `band=`（气泡带 `offsetHeight`）：不为 0 说明气泡带占了高度却没渲染出内容，
+>   会在宠物与输入框**中间**留出一条透明带
+> - `role scaleP=`：角色卡的「桌宠缩放」。它 < 1 时宠物只占头像框的一部分，
+>   四周全是透明区。桌面端靠点击穿透忽略这些区域，Android 上则会吃掉触摸
+>
+> 诊断代码在 `PetMode.vue` 的 `DEBUG_FLOATING_OVERLAY` 段落，**合并前必须删除**。
 
 **WebView 的生命周期归 Activity 管**
 
@@ -164,9 +177,57 @@ wry 0.55.1 的 `WryActivity.onPause()` 会**无条件**调 `mWebView.onPause()`
 > `onCreate / onNewIntent / onRestart / onDestroy / onConfigurationChanged`。
 
 **应对**：`FloatingPetPlugin.startKeepAlive()` —— 不依赖任何生命周期回调，
-用主线程 Handler 每 500ms 调一次 `webView.onResume()` + `resumeTimers()`
-（两者都幂等）。进程存活由 `PetForegroundService` 保证，WebView 存活由轮询保证，
+用主线程 Handler 每 500ms 轮询一次。
+
+> ⚠️ 轮询里**不能**每轮都真的去 `onResume()`。`WebView.onResume()` 会走到
+> `AwContents.onResume()` 并触发重绘，不是空操作；早先每 500ms 无条件调一次，
+> 等于 App 明明在前台也在被**每秒强制刷新 2 次**，真机反馈就是「启动和使用时
+> 都变卡了」。WebView 一旦被唤醒会一直跑到下次 `onPause()`，所以每个暂停周期
+> 只需要补唤醒一次：`onActivityPaused` 置 `petNeedsResume`，轮询看到标记才唤醒。
+>
+> 另外**收回后要立刻 `stopKeepAlive()`**：早先让轮询多撑 20 秒是为了「等视口
+> 重算」，但那个诊断是错的（真正的病根是 LayoutParams，见下），继续撑着只有
+> 性能损失。
+
+进程存活由 `PetForegroundService` 保证，WebView 存活由轮询保证，
 这是两个独立问题，缺一不可。
+
+**`FLAG_ACTIVITY_REORDER_TO_FRONT` 会把 singleTask 的 App 直接带崩**
+
+「点 ✕ 收回后要把 App 从后台拉到前台」这条需求，第一版写的是：
+
+```kotlin
+activity.startActivity(
+    Intent(activity, activity.javaClass)
+        .addFlags(FLAG_ACTIVITY_REORDER_TO_FRONT or FLAG_ACTIVITY_SINGLE_TOP)
+)
+```
+
+真机结果是**点「返回」直接闪退**（App 消失回桌面，属于未捕获异常杀进程）。
+
+本 App 的 `MainActivity` 是 `android:launchMode="singleTask"`
+（`gen/android/app/src/main/AndroidManifest.xml`）。singleTask 的启动语义由系统
+接管：`ActivityStarter` 会强制补 `NEW_TASK` 并走「复用已有实例 + CLEAR_TOP 式
+收尾」那条路径，而 `REORDER_TO_FRONT` 是给**标准**启动模式用的重排标志，
+两者语义互斥——这条组合不是文档化用法。
+
+**应对**：改用 Launcher 那条 intent，与用户点桌面图标时系统发出的完全一致：
+
+```kotlin
+Intent(Intent.ACTION_MAIN).apply {
+    addCategory(Intent.CATEGORY_LAUNCHER)
+    component = ComponentName(activity, activity.javaClass)
+    addFlags(FLAG_ACTIVITY_NEW_TASK or FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+}
+```
+
+对 singleTask 而言它会复用已有实例、把任务栈移到前台，不会新建实例；
+投递的 `onNewIntent` 正是「点图标切回 App」每次都在发生的事，天然安全。
+也不需要 `REORDER_TASKS` 权限（`moveTaskToFront` 需要，且更容易被
+Android 10+ 的后台启动限制静默拒绝）。
+
+> 教训：Handler 里逃出去的异常会直接杀掉进程。`hide()` 这条路径上的所有
+> 延迟任务（`hide` 本体、`pet-attached` 重试、保活轮询）现在都 `catch (t: Throwable)`。
 
 **`setContentView(view)` 不会重置 View 的 LayoutParams**
 
@@ -352,19 +413,21 @@ pnpm android:devbuild    # debug APK，装起来最快
 
 ### 7.5 已知风险点（真机重点观察）
 
-| 现象                               | 可能原因                                                                                                                                       |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| 切回 App 白屏                      | 占位页没生效，`setContentView` 顺序有问题                                                                                                      |
-| 收回后主界面黑屏                   | WebView 搬回失败，需看 `restoreWebViewToActivity` 日志                                                                                         |
-| **收回后只剩左上一角、不回聊天页** | `pet-attached` 没送达。三层保险：`notifyWeb` 显式收 WebView 参数、0/300/1000/3000ms 重试、Activity resume 时由 `ensureLifecycleCallbacks` 补发 |
-| **收回后整个界面缩在左上角**       | **`setContentView` 没重置 LayoutParams**（见 4.4）。先量 `window.innerWidth` 和屏宽对照：等于悬浮窗宽度就是这条，等于屏宽则是视口问题          |
-| **收回后整个 App 用窄视口渲染**    | 保活轮询停得太早，Chromium 视口没重算；收回后仍要撑满 `KEEP_ALIVE_GRACE_MS`                                                                    |
-| **退后台后桌宠不动**               | 保活轮询没起来；看 logcat 里 `FloatingPet` 的「已启动保活轮询」                                                                                |
-| **悬浮窗里点不到按钮**             | 按钮落在缩放后的逻辑画布外，被 `#pet-app` 的 `overflow-hidden` 裁掉                                                                            |
-| **气泡看不到 / 以为消息没发出**    | 窗口高度没跟着内容长，气泡被裁；查 `reportFloatingHeight` 的 IPC 是否成功                                                                      |
-| **单击经常没反应、窗口被带偏**     | `TAP_SLOP_DP` 偏小，正常点按被判成拖动                                                                                                         |
-| 悬浮窗里输入框弹不出键盘           | 窗口 `FLAG_NOT_FOCUSABLE` 没在展开态摘掉                                                                                                       |
-| 按住 Home 后悬浮窗消失             | 前台服务被 ROM 拦截，需加「后台弹出界面」白名单                                                                                                |
+| 现象                                 | 可能原因                                                                                                                                                               |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 切回 App 白屏                        | 占位页没生效，`setContentView` 顺序有问题                                                                                                                              |
+| 收回后主界面黑屏                     | WebView 搬回失败，需看 `restoreWebViewToActivity` 日志                                                                                                                 |
+| **收回后只剩左上一角、不回聊天页**   | `pet-attached` 没送达。三层保险：`notifyWeb` 显式收 WebView 参数、0/300/1000/3000ms 重试、Activity resume 时由 `ensureLifecycleCallbacks` 补发                         |
+| **收回后整个界面缩在左上角**         | **`setContentView` 没重置 LayoutParams**（见 4.4）。先量 `window.innerWidth` 和屏宽对照：等于悬浮窗宽度就是这条，等于屏宽则是视口问题                                  |
+| **点 ✕ 收回直接闪退**                | `bringActivityToFront` 用了 `FLAG_ACTIVITY_REORDER_TO_FRONT` + singleTask（见 4.4）；现在改成 Launcher intent                                                          |
+| **收回后整个 App 用窄视口渲染**      | 先量 `window.innerWidth`。等于屏宽就是视口问题（收回后 `forceViewportRefresh` 强制重算）；等于悬浮窗宽度则是 LayoutParams                                              |
+| **展开后一大片透明区、吃掉下层触摸** | 悬浮窗是矩形、宠物是圆形，透明角落**无法**逐像素穿透（见 4.4）。先看诊断里 `band=`：不为 0 说明气泡带占了高但没渲染；再看 `role scaleP=`：< 1 说明宠物只占头像框一部分 |
+| **退后台后桌宠不动**                 | 保活轮询没起来；看 logcat 里 `FloatingPet` 的「已启动保活轮询」                                                                                                        |
+| **悬浮窗里点不到按钮**               | 按钮落在缩放后的逻辑画布外，被 `#pet-app` 的 `overflow-hidden` 裁掉                                                                                                    |
+| **气泡看不到 / 以为消息没发出**      | 窗口高度没跟着内容长，气泡被裁；查 `reportFloatingHeight` 的 IPC 是否成功                                                                                              |
+| **单击经常没反应、窗口被带偏**       | `TAP_SLOP_DP` 偏小，正常点按被判成拖动                                                                                                                                 |
+| 悬浮窗里输入框弹不出键盘             | 窗口 `FLAG_NOT_FOCUSABLE` 没在展开态摘掉                                                                                                                               |
+| 按住 Home 后悬浮窗消失               | 前台服务被 ROM 拦截，需加「后台弹出界面」白名单                                                                                                                        |
 
 ## 八、工程验证方式
 
