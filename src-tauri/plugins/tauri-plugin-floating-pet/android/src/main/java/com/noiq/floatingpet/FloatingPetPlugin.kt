@@ -2,8 +2,8 @@ package com.noiq.floatingpet
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.Application
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -720,52 +720,44 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     /**
      * 把宿主 Activity 从后台拉到前台。
      *
-     * ## 为什么不能用 `FLAG_ACTIVITY_REORDER_TO_FRONT`
+     * ## 为什么不用 `startActivity`
      *
-     * 上一版用的是
-     * `startActivity(Intent(activity, activity.javaClass).addFlags(REORDER_TO_FRONT or SINGLE_TOP))`，
-     * 真机结果是**点「返回」直接闪退**（App 消失回桌面，是未捕获异常杀进程）。
+     * 这一版之前试过两种 `startActivity`，真机上**点 ✕ 都会闪退**：
      *
-     * 病根在本 App 的 MainActivity 是 `android:launchMode="singleTask"`
-     * （见 `gen/android/app/src/main/AndroidManifest.xml`）。singleTask 的
-     * 启动语义由系统接管：`ActivityStarter` 会强制补上 `NEW_TASK` 并走
-     * 「复用已有实例 + CLEAR_TOP 式收尾」那条路径，而
-     * `FLAG_ACTIVITY_REORDER_TO_FRONT` 是给**标准**启动模式用的重排标志，
-     * 两者语义互斥。这条组合不是文档化的用法，真机上直接把进程带崩。
+     * 1. `Intent(activity, activity.javaClass)` + `REORDER_TO_FRONT or SINGLE_TOP`
+     * 2. `ACTION_MAIN` + `CATEGORY_LAUNCHER` + 显式组件 + `NEW_TASK`（Launcher 那条）
      *
-     * ## 现在用的是「Launcher 那条 intent」
+     * 第 1 种是明确的用法错误：本 App 的 `MainActivity` 是
+     * `android:launchMode="singleTask"`，singleTask 的启动语义由系统接管
+     * （`ActivityStarter` 会强制补 `NEW_TASK` 并走「复用已有实例 + CLEAR_TOP
+     * 式收尾」），与 `REORDER_TO_FRONT` 语义互斥。
      *
-     * `ACTION_MAIN` + `CATEGORY_LAUNCHER` + 显式组件 + `NEW_TASK`，
-     * 与用户点桌面图标时系统发出的 intent 基本一致：
+     * 第 2 种是标准做法，真机仍然闪退——说明问题不在 flag，而在
+     * **`startActivity` 这件事本身**：它会给已有实例投递 `onNewIntent`，
+     * 而我们此刻正在同一个消息里搬运 WebView、宿主 Activity 还在后台，
+     * 等于把「Activity 被重新拉起」和「视图树正在换根」叠在一起。
      *
-     * - 对 singleTask 而言，系统会复用已有实例并把它的任务栈移到前台，
-     *   不会新建实例
-     * - 它会给已有实例投递一次 `onNewIntent`——这正是「点图标切回 App」
-     *   每次都在发生的事，天然安全（Tauri 的 `PluginManager.onNewIntent`
-     *   只是遍历插件，插件未覆写该方法）
-     * - 不需要任何额外权限（`moveTaskToFront` 需要 `REORDER_TASKS`，
-     *   且在 Android 10+ 的后台启动限制下更容易被静默拒绝）
+     * ## 现在用 `moveTaskToFront`
      *
-     * 刻意**不加** `FLAG_ACTIVITY_RESET_TASK_IF_NEEDED`：那是 Launcher 用来
-     * 「任务栈状态与 launcher intent 不一致时重建任务栈」的开关，极端情况下
-     * 会 finish 掉当前实例再新建一个——那等于把正在搬运 WebView 的 Activity
-     * 拆掉。singleTask + `NEW_TASK` 已经足够复用实例。
+     * 它走的是**任务栈**而不是 Activity 启动：不构造 Intent、不投递
+     * `onNewIntent`、不碰 launchMode、不可能创建第二个实例——正是
+     * Launcher / Recents 把 App 切回前台用的那条路。需要 `REORDER_TASKS`
+     * 权限（normal 级，manifest 声明即授予）。
      *
      * Activity 已经在前台时这是一个无害的空操作。
      */
     private fun bringActivityToFront() {
         try {
-            val intent =
-                Intent(Intent.ACTION_MAIN).apply {
-                    addCategory(Intent.CATEGORY_LAUNCHER)
-                    component = ComponentName(activity, activity.javaClass)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            activity.startActivity(intent)
-            Log.i(TAG, "已把 Activity 拉到前台")
+            val am = activity.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            if (am == null) {
+                Log.w(TAG, "拿不到 ActivityManager，无法把任务栈拉到前台")
+                return
+            }
+            am.moveTaskToFront(activity.taskId, ActivityManager.MOVE_TASK_NO_USER_ACTION)
+            Log.i(TAG, "已把任务栈拉到前台（taskId=${activity.taskId}）")
         } catch (t: Throwable) {
-            // 少数 ROM 限制后台拉起 Activity；失败不致命，用户手动切回来即可
-            Log.w(TAG, "把 Activity 拉到前台失败（可忽略）", t)
+            // 少数 ROM 限制后台拉起任务栈；失败不致命，用户手动切回来即可
+            Log.w(TAG, "把任务栈拉到前台失败（可忽略）", t)
         }
     }
 
@@ -834,10 +826,16 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
 
             view.setBackgroundColor(Color.TRANSPARENT)
 
-            // 强制 WebView 重算 CSS 视口。见 forceViewportRefresh 的说明：
-            // 视口没跟上时整个 App 会以悬浮窗的窄视口渲染，看起来就是
-            // 「切回去只有左上一角」。
-            forceViewportRefresh(view)
+            // 这里**曾经**还调过一次 forceViewportRefresh(view)（已删除）：把高度
+            // 改成 `height - 1` 再在下一帧改回 MATCH_PARENT，靠两次尺寸变化逼
+            // Chromium 重算 CSS 视口。删掉的理由见下面这段注释。
+            //
+            // 现在删掉了，两个理由：
+            // 1. 那个诊断本身就是错的——「切回去只有左上一角」的真病根是
+            //    setContentView 不重置 LayoutParams（见上），上面那行已经修好；
+            // 2. 它是在**刚重新挂载的 WebView** 上连续做两次「故意写错尺寸」的
+            //    布局，而且是挂在 post 里的延迟任务，真机上点 ✕ 收回会闪退。
+            //    收回路径上不该留这种「用错误状态换一次重算」的写法。
 
             // 恢复 WebView 的渲染与 JS 定时器：悬浮窗期间可能因宿主 Activity
             // 进入后台而被 WryActivity.onPause() 暂停过（见本类 onResume）。
@@ -1441,45 +1439,6 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 put("height", params.height / density.toDouble())
             }
         )
-    }
-
-    /**
-     * 强制 WebView 重算 CSS 视口。
-     *
-     * ## 为什么需要这个
-     *
-     * WebView 从 60dp 的悬浮窗被塞回整屏 Activity 时，Chromium 的 CSS 视口
-     * 应该跟着 View 的尺寸变化重算。但宿主 Activity 若此刻在后台、不跑布局
-     * 遍历，这次重算可能被跳过；之后即使切回前台，也可能因为「尺寸看起来
-     * 没变」而不再触发。
-     *
-     * 视口一旦没跟上，**整个 App 都会以悬浮窗的窄视口渲染**——聊天页被挤在
-     * 屏幕左上角一小块里，这正是「切回去只有左上一角」。
-     *
-     * 这里主动制造一次真实的尺寸变化（高度 -1px 再还原），逼 `onSizeChanged`
-     * 触发两次，从而强制 Chromium 重算。代价是两次额外的布局遍历。
-     */
-    private fun forceViewportRefresh(view: View) {
-        view.post {
-            try {
-                val lp = view.layoutParams ?: return@post
-                val height = view.height
-                if (height <= 1) return@post
-                lp.height = height - 1
-                view.layoutParams = lp
-                view.post {
-                    try {
-                        val restored = view.layoutParams ?: return@post
-                        restored.height = ViewGroup.LayoutParams.MATCH_PARENT
-                        view.layoutParams = restored
-                    } catch (e: Exception) {
-                        Log.w(TAG, "还原 WebView 尺寸失败（可忽略）", e)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "强制刷新 WebView 视口失败（可忽略）", e)
-            }
-        }
     }
 
     // ─── 生命周期 ─────────────────────────────────────────────

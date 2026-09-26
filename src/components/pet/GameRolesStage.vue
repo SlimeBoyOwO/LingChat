@@ -153,6 +153,19 @@ const gameStore = useGameStore();
 const uiStore = useUIStore();
 const settingsStore = useSettingsStore();
 
+/**
+ * 是否处于悬浮窗形态，由 `PetMode` 传入。
+ *
+ * 本组件只被 `PetMode` 使用，而形态判断（我到底在不在悬浮窗里）**只有
+ * `PetMode` 知道**——它既可能是原生推来的 `pet-detached`，也可能是轮询
+ * 问出来的 `status.detached`。早先这里自己监听事件 + 自己读
+ * `isInFloatingWindow()`，等于把同一个判断做了三份，任一份不同步就会
+ * 出现「画布按桌面端尺寸、却渲染在悬浮窗里」这类错位。
+ *
+ * 不传时退回自己判断，保持组件可独立使用。
+ */
+const props = defineProps<{ floatingWindow?: boolean }>();
+
 const emit = defineEmits([
   "audio-ended",
   "audio-started",
@@ -205,19 +218,13 @@ const petFrameless = computed(() => singleRole.value?.petFrameless === true);
  * 而且整页是等比缩放的，挂在头像角上的按钮会被 `overflow-hidden` 裁掉。
  * 手机上的交互收敛为「点头像 = 展开/收起，双击 = 收回 App」。
  *
- * ## 为什么 Android 上直接当 true
- *
- * 本组件只被 `PetMode` 使用，而手机端 `/pet` 只可能来自悬浮窗流程。
- * 但 `PetMode` 挂载时 `showFloatingPet()` 还没调用（先 push 后 show），
- * `isInFloatingWindow()` 必然是 false —— 于是这里会取到桌面端行为：
- * `frameSize` 乘上 `pet.scale`，宠物大小与整页缩放全由桌面端设置决定，
- * 悬浮窗里就空出一大片吃触摸的透明区。
- *
- * 所以 Android 上直接按悬浮窗渲染，不赌那条不可靠的事件
- * （`PetMode.enterFloatingLayout` 里有完整说明）。
+ * 形态以 `PetMode` 传进来的为准（见 `props.floatingWindow` 的说明）；
+ * 没有传时才自己判断——那时只能读挂载瞬间的 `isInFloatingWindow()`，
+ * 也就是「搬移完成前一律按非悬浮窗渲染」，这与 `PetMode` 的初始值一致。
  */
-const floatingMode = ref(isInFloatingWindow() || isAndroid());
+const ownFloatingMode = ref(isInFloatingWindow());
 let floatingModeUnlisten: (() => void) | null = null;
+const floatingMode = computed(() => props.floatingWindow ?? ownFloatingMode.value);
 
 /**
  * 头像框边长（逻辑画布 px）。
@@ -274,9 +281,8 @@ onMounted(() => {
 
   // 进出悬浮窗时切换按钮可见性（原生搬运完成后派发）
   floatingModeUnlisten = onFloatingWindowModeChange((active) => {
-    // Android 上本组件只可能出现在悬浮窗形态里（见 floatingMode 的说明），
-    // 一条迟到的 pet-attached 不该把布局切回桌面端。
-    floatingMode.value = active || isAndroid();
+    // 只在没有外部传入形态时生效（见 props.floatingWindow 的说明）
+    ownFloatingMode.value = active;
   });
 
   void listen<{ x: number; y: number }>("pet:cursor", (event) => {

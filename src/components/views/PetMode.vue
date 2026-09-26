@@ -61,6 +61,7 @@
         "
       >
         <GameRolesStage
+          :floating-window="floatingWindowMode"
           @avatar-click="handleAvatarClick"
           @open-settings="handleOpenSettings"
           @switch-auto-mode="handleSwitchAutoMode"
@@ -349,7 +350,9 @@ const stopMetricsPolling = () => {
 
 /** 查询一次原生状态；查询失败保持现状，等下一轮。 */
 const pollNativeState = async () => {
-  if (!isInFloatingWindow()) return;
+  // 桌面端不轮询。Android 上**无论当前是什么形态**都要问：形态本身
+  // 就是靠这个答案决定的（见 onMounted 里 startMetricsPolling 的说明）。
+  if (!isInFloatingWindow() && !isAndroid()) return;
   try {
     const status = await getFloatingPetStatus();
     nativeWindowWidth.value = status.width;
@@ -644,24 +647,22 @@ let metricsUnlisten: (() => void) | null = null;
 /**
  * 切到「悬浮窗形态」：页面布局、缩放、轮询三件事一起就位。
  *
- * ## 为什么不能只靠 `isInFloatingWindow()`
+ * ## 为什么形态不能由事件或平台假设决定
  *
  * `MainChat.goToPetMode` 的顺序是「① `router.push('/pet')` → ② `showFloatingPet()`」，
  * 所以本页 `onMounted` 跑的时候第②步还没执行，`isInFloatingWindow()` **必然是 false**。
- * 于是页面掉进**桌面端分支**，真机上表现就是：
  *
- * - `applyWindowLayout()` → `set_pet_mode`（手机上是空操作，但语义已经错了）
- * - 布局用桌面端那套：画布 `PET_WIDTH_BASE × pet.scale`，而且**没有 `--pet-fit`**
- *   整体缩放 → 画布与悬浮窗尺寸对不上，四周空出一大片**吃触摸**的透明区
- * - `GameRolesStage` 的 `frameSize` 乘上 `pet.scale` → 宠物大小由桌面端缩放决定
- * - 渲染出「悬停才浮现」的桌面端按钮
- * - **不启动几何轮询** → 页面永远等不到 `pet-detached` 的自愈
+ * - 如果就此按「桌面端」渲染，搬移完成后页面**不会自己切回来**（`pet-detached`
+ *   不可靠），真机表现是：布局用 `PET_WIDTH_BASE × pet.scale`、没有 `--pet-fit`
+ *   整体缩放、渲染出桌面端悬停按钮、✕ 走桌面端退出路径（**不调 `hideFloatingPet`**，
+ *   悬浮窗永远留在屏幕上）。
+ * - 反过来，如果因为「手机端 /pet 必然是悬浮窗」就在挂载时**抢跑**成悬浮窗形态，
+ *   那搬移完成前页面会以「宠物画布尺寸」渲染在一个**整屏** WebView 里
+ *   ——真机诊断实测 `inner=360x802 floating=true canvas=360x315@0,0 nativeW=0`，
+ *   也就是屏幕下方空出四百多 dp。
  *
- * 真机反馈「是不是桌面端行为影响了透明区域大小」正是这一条；诊断条不显示
- * 也是因为它挂在轮询里，而轮询压根没起来。
- *
- * 手机端 `/pet` 只可能来自悬浮窗流程（不支持/未授权时 `goToPetMode` 会提前
- * return），所以这里**直接按悬浮窗渲染**，不赌那条不可靠的事件。
+ * 两条路都不对，唯一正确的答案是**问原生**：`status.detached`。轮询在挂载时
+ * 就启动，答案一到就切形态；切过来之前老老实实按整屏布局渲染。
  */
 const enterFloatingLayout = () => {
   metricsReceived = false;
@@ -718,11 +719,16 @@ onMounted(async () => {
     reportFloatingHeight();
   });
 
-  // 手机端：/pet 只可能来自悬浮窗流程，先按悬浮窗形态就位。
-  // 必须在下面那条 if 之前——否则会掉进桌面端分支（见 enterFloatingLayout）。
-  if (isAndroid() && !floatingWindowMode.value) {
-    enterFloatingLayout();
-  }
+  // 手机端：**立刻开始轮询**，让「我到底在不在悬浮窗里」由原生答案决定。
+  //
+  // 这一步是整套形态判断的地基。`onMounted` 跑的时候 `showFloatingPet()` 还没
+  // 调用（goToPetMode 是先 push 后 show），所以此刻：
+  //   - `isInFloatingWindow()` 是 false → 只能按桌面端布局渲染（此时 WebView
+  //     确实还是整屏，桌面端那套 240×480 铺满屏幕是对的）
+  //   - 原生 `status.detached` 也是 false
+  // 搬移完成后原生会推 `pet-detached`，但那条事件不可靠；轮询是可靠的那条路，
+  // 一旦 `detached` 变真就切到悬浮窗形态（见 enterFloatingLayout）。
+  if (isAndroid()) startMetricsPolling();
 
   if (floatingWindowMode.value) {
     // ─── 悬浮窗模式 ────────────────────────────────────────────
@@ -833,6 +839,21 @@ onMounted(async () => {
     showChatInput.value = false;
     return;
   }
+
+  // 手机端还没搬进悬浮窗的那个短暂窗口（onMounted 时 showFloatingPet 尚未调用）。
+  //
+  // 这一段只需要「按整屏铺满」——布局由 appStyleVars 的桌面分支给出
+  // （画布 = 240 × pet.scale，在整屏 WebView 里正好铺满），而下面两步在手机上
+  // 全是无意义的副作用：
+  // - applyWindowLayout → set_pet_mode 只碰桌面窗口
+  // - hitTestInterval → 10Hz 上报 solid region，Android 是窗口级穿透，用不上
+  //
+  // 早先这里没有这层拦截，页面在搬移前就开始跑桌面端的窗口逻辑；更糟的是
+  // 有人（我）为了让「页面知道自己在悬浮窗里」而在挂载时抢跑成悬浮窗形态，
+  // 结果宠物画布被渲染在一个**整屏** WebView 里——真机诊断实测
+  // `inner=360x802 floating=true canvas=360x315@0,0`，屏幕下方空出四百多 dp。
+  // 形态一律等轮询问出来的 `status.detached`，在那之前按整屏渲染。
+  if (isAndroid()) return;
 
   // 1. 初始化窗口为桌宠尺寸
   await applyWindowLayout();
