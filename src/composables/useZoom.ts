@@ -99,12 +99,14 @@ function applyZoom(level: number): void {
  */
 export function useZoom(): void {
   const route = useRoute();
-  // 桌宠模式自成一套缩放（--pet-ui-scale + 固定尺寸的无边框窗口），必须忽略主界面缩放：
-  // 否则 #app 被 transform 缩放、窗口尺寸却不变，内容会被裁掉或留白。
-  const isPetMode = () => route.path === "/pet";
-  const effectiveZoom = () => (isPetMode() ? ZOOM_DEFAULT : currentZoom.value);
+  // 桌宠相关窗口自成一套缩放（--pet-ui-scale + 固定尺寸的无边框窗口），必须忽略主界面
+  // 缩放：applyZoom 的尺寸补偿会把 #app 布局盒改成「视口 / z」，而窗口尺寸并没有跟着变，
+  // 结果是布局坐标系与视口不一致 —— inset-x-0 的元素会比视口宽，右侧与底部被窗口裁掉。
+  // 气泡窗（/bubble）同样属于桌宠，漏掉它就会出现「整个气泡窗被裁」。
+  const ownScalingRoutes = new Set(["/pet", "/bubble"]);
+  const effectiveZoom = () => (ownScalingRoutes.has(route.path) ? ZOOM_DEFAULT : currentZoom.value);
 
-  // 初始化 + 进出桌宠时都按当前路由重新应用（桌宠里恒为 100%）
+  // 初始化 + 进出桌宠时都按当前路由重新应用（桌宠/气泡窗里恒为 100%）
   watch(
     () => route.path,
     () => applyZoom(effectiveZoom()),
@@ -114,8 +116,8 @@ export function useZoom(): void {
   const handleWheel = (event: WheelEvent) => {
     if (!event.ctrlKey) return;
 
-    // 桌宠模式：吞掉 Ctrl+滚轮（既不缩放界面，也不让它触发 WebView 原生缩放）
-    if (isPetMode()) {
+    // 桌宠相关窗口：吞掉 Ctrl+滚轮（既不缩放界面，也不让它触发 WebView 原生缩放）
+    if (ownScalingRoutes.has(route.path)) {
       event.preventDefault();
       return;
     }
