@@ -233,6 +233,9 @@ match = { emotion = "高兴" }      # 可选，见下
 
 `ai_reply` 的 payload 顶层字段：`type`、`duration`、`isFinal`、`character`、`roleId`、`emotion`、`originalTag`、`message`、`ttsText`、`motionText`、`audioFile`、`originalMessage`、`displayName`、`displaySubtitle`、`userMessageSeq`、`thinking`、`previewGen`。
 
+比前端收到的 `ai:reply` 事件多一个 `avatarDir`：角色的立绘目录（相对 `data/`），
+例如 `game_data/characters/风雪/avatar`。角色的显示名和目录名不一定一样，所以由宿主查库给出；剧本角色等没有立绘目录时该字段为 `null`。
+
 > 声明**未注册**的信号是安全的：加载时只对未注册的信号打一条 warn，不算 manifest 错误，插件包在信号上线前后都能正常安装启用。
 >
 > 插件也可以**只有订阅、没有工具和资源**。

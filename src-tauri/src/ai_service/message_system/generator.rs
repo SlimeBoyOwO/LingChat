@@ -748,7 +748,15 @@ pub(super) async fn publish_ordered(
                     // 这段自然跳过。
                     if let Some(app) = crate::plugins::app_handle() {
                         match serde_json::to_value(&resp) {
-                            Ok(payload) => {
+                            Ok(mut payload) => {
+                                // 顺手带上立绘目录：插件要发角色表情包时，
+                                // 得先知道图在 `data/` 下的哪儿（角色显示名和
+                                // 目录名不一定一样，查库最稳）。
+                                if let Some(role_id) = resp.role_id {
+                                    if let Some(dir) = avatar_dir_for_role(&app, role_id).await {
+                                        payload["avatarDir"] = serde_json::Value::String(dir);
+                                    }
+                                }
                                 let manager =
                                     app.state::<AppState>().data().plugin_manager.clone();
                                 manager
@@ -776,6 +784,26 @@ pub(super) async fn publish_ordered(
         }
     }
     false
+}
+
+/// 角色立绘目录（相对 `data/`），随 `ai_reply` 信号一起给插件。
+///
+/// 角色的**显示名和目录名不一定一样**（`resource_folder` 才是目录名），所以这里
+/// 查一次库。查不到就返回 `None`——插件拿不到 `avatarDir` 时只是发不出表情包，
+/// 不该影响文字本身。
+async fn avatar_dir_for_role(app: &AppHandle, role_id: i32) -> Option<String> {
+    use crate::db::managers::role_repo::RoleRepo;
+
+    let state = app.state::<AppState>();
+    let role = RoleRepo::get_role_by_id(&state.db, role_id)
+        .await
+        .ok()
+        .flatten()?;
+    let folder = role.resource_folder?;
+    let dir = crate::api::resolve_character_dir(&folder).join("avatar");
+    let rel = dir.strip_prefix(data_dir()).ok()?;
+    // 插件侧按 URL 风格拼路径，统一用 `/`
+    Some(rel.to_string_lossy().replace('\\', "/"))
 }
 
 // ============================================================
