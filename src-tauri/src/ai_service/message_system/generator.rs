@@ -12,9 +12,10 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use sea_orm::DatabaseConnection;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
+use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::god_agent::GodAgentCore;
@@ -737,6 +738,29 @@ pub(super) async fn publish_ordered(
                     if let Err(e) = emit(&resp) {
                         tracing::warn!("emit ai:reply 失败: {e}");
                         return false;
+                    }
+                    // 插件信号：同一条回复也交给订阅了 ai_reply 的插件。
+                    // 派发只做筛选 + spawn（handler 在后台线程跑），不拖慢发射；
+                    // 没有插件订阅时这里几乎零开销。
+                    //
+                    // 这里拿不到调用方的 `AppHandle`（本函数是自由函数，顺序契约测试
+                    // 也直接调它），所以用启动时登记的全局句柄；测试里没有句柄，
+                    // 这段自然跳过。
+                    if let Some(app) = crate::plugins::app_handle() {
+                        match serde_json::to_value(&resp) {
+                            Ok(payload) => {
+                                let manager =
+                                    app.state::<AppState>().data().plugin_manager.clone();
+                                manager
+                                    .dispatch_signal(
+                                        &app,
+                                        crate::plugins::signal::SIGNAL_AI_REPLY,
+                                        &payload,
+                                    )
+                                    .await;
+                            },
+                            Err(e) => tracing::warn!("ai_reply 信号载荷序列化失败: {e}"),
+                        }
                     }
                     reply_before_fence = true;
                     if is_final {

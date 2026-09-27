@@ -4,7 +4,11 @@
 //! handler 的返回值被丢弃。因此订阅索引按「信号名 → 订阅列表」预建，派发时先查
 //! 注册表、再按 `match` 在宿主侧筛选——只有命中的订阅才会新建解释器执行脚本。
 //!
-//! **宿主信号登记表当前为空**，即没有对插件承诺任何信号。接入新信号时：
+//! 已登记的信号：
+//!
+//! - [`SIGNAL_AI_REPLY`]：每条助手回复（自由对话、剧本固定台词、主动消息都会触发）
+//!
+//! 接入新信号时：
 //! 1. 在 [`SignalRegistry::new`] 里 `register` 一条 [`SignalSpec`]（名称 + payload 字段）；
 //! 2. 在对应业务点调用 `PluginManager::dispatch_signal`。
 //!
@@ -23,12 +27,40 @@ use super::types::{PluginRecord, SubscribeDecl};
 /// 阻塞线程打满。
 const MAX_CONCURRENT_HANDLERS: usize = 4;
 
+/// 每条助手回复。payload 与前端收到的 `ai:reply` 事件完全一致（camelCase）。
+pub const SIGNAL_AI_REPLY: &str = "ai_reply";
+
+/// [`SIGNAL_AI_REPLY`] payload 的顶层字段（camelCase）。
+///
+/// 只用于校验插件 `match` 里写的键是否存在——写错了表现为「永不命中」，
+/// 加载时给一条 warn 比让插件作者自己猜要省事。
+pub const AI_REPLY_FIELDS: &[&str] = &[
+    "type",
+    "duration",
+    "isFinal",
+    "character",
+    "roleId",
+    "emotion",
+    "originalTag",
+    "message",
+    "ttsText",
+    "motionText",
+    "audioFile",
+    "originalMessage",
+    "displayName",
+    "displaySubtitle",
+    "userMessageSeq",
+    "thinking",
+    "previewGen",
+    "avatarDir",
+];
+
 /// 宿主登记的一条信号。
 #[derive(Clone, Copy)]
 pub struct SignalSpec {
     /// 信号名，派发与订阅都按它匹配。
     pub name: &'static str,
-    /// 说明，供文档与插件页展示。当前注册表为空，暂无读取方。
+    /// 说明，供文档与插件页展示。暂无读取方，留给插件页。
     #[allow(dead_code)]
     pub description: &'static str,
     /// payload 的顶层字段名，用于校验插件 `match` 的键是否写错。
@@ -71,16 +103,20 @@ impl Default for SignalRegistry {
 
 impl SignalRegistry {
     pub fn new() -> Self {
-        Self {
+        let mut registry = Self {
             specs: HashMap::new(),
             index: HashMap::new(),
             slots: Arc::new(Semaphore::new(MAX_CONCURRENT_HANDLERS)),
-        }
+        };
+        registry.register(SignalSpec {
+            name: SIGNAL_AI_REPLY,
+            description: "每条助手回复（自由对话、剧本固定台词、主动消息都会触发）",
+            fields: AI_REPLY_FIELDS,
+        });
+        registry
     }
 
-    /// 登记一个宿主信号。**当前没有任何调用**——信号登记表为空是刻意状态，
-    /// 接入首个信号时在此登记（并删除这里的 allow）。
-    #[allow(dead_code)]
+    /// 登记一个宿主信号。只应在 [`SignalRegistry::new`] 里调用。
     pub fn register(&mut self, spec: SignalSpec) {
         self.specs.insert(spec.name, spec);
     }
@@ -103,8 +139,8 @@ impl SignalRegistry {
             let plugin_id = &record.manifest.id;
             for decl in &record.manifest.subscribe {
                 match self.specs.get(decl.signal.as_str()) {
-                    // 从宽处理：注册表为空时（当前）所有订阅都走到这里。
-                    // 信号上线后这些订阅自动生效，无需重装插件。
+                    // 从宽处理：订阅了未登记的信号只 warn，不算 manifest 错误，
+                    // 这样信号上线前后插件包都能正常安装（上线后订阅自动生效）。
                     None => tracing::warn!(
                         plugin = %plugin_id,
                         signal = %decl.signal,

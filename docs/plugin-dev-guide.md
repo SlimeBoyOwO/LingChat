@@ -208,14 +208,22 @@ r = read_data_file("game_data/characters/风雪/avatar/高兴.webp")
 
 ```toml
 [[subscribe]]
-signal = "scene:switch"          # 宿主注册的信号名
+signal = "ai_reply"              # 宿主注册的信号名，见下表
 script = "hook.py"               # 处理脚本（相对插件目录的单个文件名）
-handler = "on_scene"             # 脚本内的处理函数，签名为 handler(ctx)
+handler = "on_reply"             # 脚本内的处理函数，签名为 handler(ctx)
 timeout_ms = 30000               # 可选，单次执行超时（默认 30000，上限 120000）
-match = { scene_id = "night" }   # 可选，见下
+match = { emotion = "高兴" }      # 可选，见下
 ```
 
-> **当前宿主还没有注册任何信号，所以这里声明的订阅暂时不会触发。** 先声明是安全的：加载时只会对未注册的信号打一条 warn，不算 manifest 错误，插件包在信号上线前后都能正常安装启用。
+### 已注册的信号
+
+| 信号       | 触发时机                                                       | payload                                                       |
+| ---------- | -------------------------------------------------------------- | ------------------------------------------------------------- |
+| `ai_reply` | 每条助手回复。自由对话、剧本固定台词、主动消息都会触发         | 与前端 `ai:reply` 事件一致（camelCase），见下                  |
+
+`ai_reply` 的 payload 顶层字段：`type`、`duration`、`isFinal`、`character`、`roleId`、`emotion`、`originalTag`、`message`、`ttsText`、`motionText`、`audioFile`、`originalMessage`、`displayName`、`displaySubtitle`、`userMessageSeq`、`thinking`、`previewGen`。
+
+> 声明**未注册**的信号是安全的：加载时只对未注册的信号打一条 warn，不算 manifest 错误，插件包在信号上线前后都能正常安装启用。
 >
 > 插件也可以**只有订阅、没有工具和资源**。
 
@@ -223,8 +231,8 @@ match = { scene_id = "night" }   # 可选，见下
 
 `match` 在**宿主侧**筛选，键是信号 payload 的顶层字段名：
 
-- 标量 = 等值命中：`match = { scene_id = "night" }`
-- 数组 = 命中其中任一：`match = { scene_id = ["night", "rooftop"] }`
+- 标量 = 等值命中：`match = { emotion = "高兴" }`
+- 数组 = 命中其中任一：`match = { emotion = ["高兴", "害羞"] }`
 - 省略 `match` = 一律派发
 - payload 里没有该字段 = **不命中**（不会退化成通配）
 - 多个键之间是「与」
@@ -245,9 +253,16 @@ match = { scene_id = "night" }   # 可选，见下
 
 ```python
 # data/plugins/my_plugin/hook.py
-def on_scene(ctx):
+from plugin_host import http_post
+
+
+def on_reply(ctx):
     payload = ctx["payload"]
-    ctx["call_tool"]("memory_add_note", {"content": f"去过 {payload.get('name')}"})
+    # 例：把每条回复推给外部服务（配置项在 manifest 的 [[config]] 里声明）
+    http_post(
+        ctx["config"]["endpoint"],
+        body={"text": payload.get("message"), "emotion": payload.get("emotion")},
+    )
 ```
 
 约定与限制：

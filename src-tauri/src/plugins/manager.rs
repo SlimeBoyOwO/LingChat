@@ -642,9 +642,8 @@ impl PluginManager {
     /// 免得为不关心的插件白新建一个解释器。handler 的返回值按约定丢弃，执行失败
     /// 只记日志——信号是宿主业务的旁路，不能反过来影响发出方。
     ///
-    /// **当前宿主信号登记表为空，因此还没有调用点**：接入首个信号时在发射点调用
-    /// 本方法，并删掉这里的 allow。
-    #[allow(dead_code)]
+    /// 目前只有 `ai_reply` 一个信号，在回复流水线的发射点调用（见
+    /// `ai_service::message_system::generator`）。
     pub async fn dispatch_signal(&self, app: &AppHandle, signal: &str, payload: &Value) {
         let (subscriptions, slots) = {
             let signals = self.signals.read().unwrap_or_else(|e| e.into_inner());
