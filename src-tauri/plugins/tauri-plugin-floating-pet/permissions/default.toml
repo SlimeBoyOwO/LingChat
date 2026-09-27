@@ -1,0 +1,17 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "LingChat 桌宠悬浮窗的默认权限：允许查询能力/授权状态，以及显示与操控悬浮窗。"
+permissions = [
+    "allow-is-supported",
+    "allow-check-permission",
+    "allow-request-permission",
+    "allow-show",
+    "allow-hide",
+    "allow-move-pet",
+    "allow-set-size",
+    "allow-set-touchable",
+    "allow-set-expanded",
+    "allow-is-visible",
+    "allow-status",
+]
