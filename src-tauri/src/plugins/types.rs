@@ -30,6 +30,10 @@ impl Default for ConfigKind {
 pub struct ConfigFieldDecl {
     pub key: String,
     pub label: String,
+    /// 输入框下面那行小字（可选）：写给用户看「这里该填什么、去哪儿拿」。
+    /// 支持 `\n` 换行，设置页按原样渲染。
+    #[serde(default)]
+    pub hint: Option<String>,
     #[serde(default)]
     pub kind: ConfigKind,
     #[serde(default)]

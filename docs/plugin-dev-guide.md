@@ -60,6 +60,16 @@ label = "默认返回条数"
 kind = "number"
 required = false
 
+# hint 可选：会以一行小字显示在输入框下面，告诉用户该填什么、去哪儿拿。
+# \n 可以换行（比如一行写本机、一行写服务器）。
+[[config]]
+key = "endpoint"
+label = "接收地址"
+kind = "string"
+required = true
+default = "http://127.0.0.1:8080/reply"
+hint = "本机就用默认值；对接别的机器时，把 127.0.0.1 换成对方的地址。"
+
 # 可选：环境变量白名单。宿主只把这里声明的变量注入 ctx.env，插件读不到其他环境变量
 [[env]]
 key = "TAVILY_API_KEY"

@@ -156,27 +156,40 @@
             <div
               v-for="field in plugin.config_schema"
               :key="field.key"
-              class="flex items-center gap-2"
+              class="flex items-start gap-2"
             >
-              <label class="w-28 shrink-0 text-xs text-white/70">{{ field.label }}</label>
-              <input
-                v-if="field.kind === 'boolean'"
-                type="checkbox"
-                class="accent-brand"
-                :checked="(formState[plugin.id]?.[field.key] as boolean) === true"
-                @change="
-                  onBoolChange(plugin, field.key, ($event.target as HTMLInputElement).checked)
-                "
-              />
-              <input
-                v-else
-                :type="
-                  field.kind === 'secret' ? 'password' : field.kind === 'number' ? 'number' : 'text'
-                "
-                class="focus:border-brand/60 min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:outline-none"
-                :value="formState[plugin.id]?.[field.key] ?? ''"
-                @input="onInput(plugin, field.key, ($event.target as HTMLInputElement).value)"
-              />
+              <label class="w-28 shrink-0 pt-1.5 text-xs text-white/70">{{ field.label }}</label>
+              <div class="min-w-0 flex-1">
+                <input
+                  v-if="field.kind === 'boolean'"
+                  type="checkbox"
+                  class="accent-brand"
+                  :checked="(formState[plugin.id]?.[field.key] as boolean) === true"
+                  @change="
+                    onBoolChange(plugin, field.key, ($event.target as HTMLInputElement).checked)
+                  "
+                />
+                <input
+                  v-else
+                  :type="
+                    field.kind === 'secret'
+                      ? 'password'
+                      : field.kind === 'number'
+                        ? 'number'
+                        : 'text'
+                  "
+                  class="focus:border-brand/60 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:outline-none"
+                  :value="formState[plugin.id]?.[field.key] ?? ''"
+                  @input="onInput(plugin, field.key, ($event.target as HTMLInputElement).value)"
+                />
+                <!-- 字段说明：告诉用户这里该填什么、去哪儿拿 -->
+                <p
+                  v-if="field.hint"
+                  class="mt-1 text-[11px] leading-relaxed whitespace-pre-line text-white/45"
+                >
+                  {{ field.hint }}
+                </p>
+              </div>
             </div>
             <div class="flex justify-end">
               <button

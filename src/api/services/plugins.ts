@@ -8,6 +8,8 @@ export type ConfigKind = "string" | "secret" | "number" | "boolean";
 export interface ConfigFieldDecl {
   key: string;
   label: string;
+  /** 输入框下面那行小字（可选），说明这个字段该填什么、去哪儿拿。 */
+  hint?: string | null;
   kind: ConfigKind;
   required: boolean;
   default?: unknown;
