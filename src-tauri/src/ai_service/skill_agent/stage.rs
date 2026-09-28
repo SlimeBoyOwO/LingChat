@@ -1216,6 +1216,61 @@ id: Intro/02
     }
 
     #[test]
+    fn real_chapters_pass_shape_check() {
+        // 自检每次写章节都会跑，误报会当场拦住作者。拿仓库里真实章节当样本回归。
+        // 没带剧本数据的环境（CI）直接跳过。
+        let scripts = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .map(|p| p.join("data/game_data/scripts"));
+        let Some(scripts) = scripts.filter(|p| p.is_dir()) else {
+            return;
+        };
+
+        let mut checked = 0usize;
+        let mut failures: Vec<String> = Vec::new();
+        collect_chapter_files(&scripts, &mut |file| {
+            let Ok(value) = crate::utils::yaml_file::read_yaml_as_json(file) else {
+                return;
+            };
+            checked += 1;
+            let problems = chapter_shape_problems(&value);
+            if !problems.is_empty() {
+                failures.push(format!("{}：{}", file.display(), problems.join("；")));
+            }
+        });
+
+        assert!(
+            checked > 0,
+            "{} 下没扫到章节，样本目录可能不对",
+            scripts.display()
+        );
+        assert!(
+            failures.is_empty(),
+            "真实章节被自检误报：\n{}",
+            failures.join("\n")
+        );
+    }
+
+    /// 递归收集 `Chapters/` 下的章节文件（`.agent/` 等点号目录不看）。
+    fn collect_chapter_files(dir: &Path, f: &mut impl FnMut(&Path)) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            if path.is_dir() {
+                collect_chapter_files(&path, f);
+            } else if name.ends_with(".yaml") && path.to_string_lossy().contains("Chapters") {
+                f(&path);
+            }
+        }
+    }
+
+    #[test]
     fn artifact_paths_all_live_under_agent_dir() {
         // 「详情」浮窗按目录列产物、按目录取文件，写歪一处就会静默漏掉一份
         for rel in [DESIGN_REL_PATH, CONSTRAINTS_REL_PATH, QUEUE_REL_PATH] {
