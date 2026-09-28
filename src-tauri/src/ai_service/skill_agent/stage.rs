@@ -7,10 +7,17 @@
 use std::path::{Path, PathBuf};
 
 use crate::ai_service::types::LlmMessage;
+use crate::api::script_editor::validate;
 use crate::utils::script_paths;
 
 /// 设计稿在剧本包内的相对路径。点号目录不会被引擎扫描，也不进编辑器枚举。
 pub const DESIGN_REL_PATH: &str = ".agent/design.md";
+
+/// 用户约束卡片。素材模式等"问过用户才知道"的事实记在这里。
+pub const CONSTRAINTS_REL_PATH: &str = ".agent/constraints.md";
+
+/// 任务队列。这一版只读不写：写它的是流程 Agent（尚未实现）。
+pub const QUEUE_REL_PATH: &str = ".agent/queue.md";
 
 // 相对技能目录（`data/game_data/skills`）的材料路径。
 const HUB_DOC: &str = "lingchat-script-editor/SKILL.md";
@@ -222,34 +229,109 @@ fn load_system_materials(skills_dir: &Path, stage: Stage) -> String {
     out
 }
 
-/// 组装本轮动态材料（待写章节 + 上一章收尾状态）；不落库，每轮重算。
+/// 组装本轮动态材料（待写章节 + 上一章收尾状态 + 落盘进度）；不落库，每轮重算。
 pub fn build_run_materials(snap: &StageSnapshot) -> String {
     let Some(dir) = snap.script_dir.as_deref() else {
         return String::new();
     };
     let design = std::fs::read_to_string(dir.join(DESIGN_REL_PATH)).unwrap_or_default();
 
-    match snap.stage {
+    let mut out = match snap.stage {
         Stage::Setup | Stage::Modify if !design.is_empty() => {
             format!("\n\n【现有设计稿】\n{}", design.trim_end())
         },
         Stage::Forge => {
-            let mut out = String::new();
+            let mut forge = String::new();
             if let Some(id) = snap.next_chapter() {
                 if let Some(block) = extract_chapter_block(&design, id) {
-                    out.push_str(&format!("\n\n【待写章节 · {}】\n{}", id, block));
+                    forge.push_str(&format!("\n\n【待写章节 · {}】\n{}", id, block));
                 }
             }
             if let Some(prev) = snap.last_written() {
                 let tail = tail_state(&read_chapter(dir, prev));
                 if !tail.is_empty() {
-                    out.push_str(&format!("\n\n【上一章（{}）收尾状态】\n{}", prev, tail));
+                    forge.push_str(&format!("\n\n【上一章（{}）收尾状态】\n{}", prev, tail));
                 }
             }
-            out
+            forge
         },
         _ => String::new(),
+    };
+    out.push_str(&progress_block(snap, dir));
+    out
+}
+
+/// 交接单里的进度事实：素材模式 + 已落盘清单 + 下一章是否已有内容 + 队列剩余。
+///
+/// 「下一章是否已有内容」补的是删章那一脚：阶段按文件事实推，代码只能说"还没写"，
+/// 而磁盘上那一章可能真有内容，模型得知道写下去会覆盖什么。
+fn progress_block(snap: &StageSnapshot, dir: &Path) -> String {
+    let mut lines: Vec<String> = vec![format!("素材模式：{}", read_asset_mode(dir).describe())];
+
+    lines.push(format!(
+        "已落盘：{}",
+        if snap.written.is_empty() {
+            "（无）".to_string()
+        } else {
+            snap.written.join(" ")
+        }
+    ));
+
+    if let Some(after) = chapter_after(snap) {
+        let exists = snap.written.iter().any(|w| w == &after);
+        lines.push(format!(
+            "下一章 {}：{}",
+            after,
+            if exists {
+                "磁盘上已有内容（本轮改的是它前面，别顺手覆盖它）"
+            } else {
+                "尚未落盘"
+            }
+        ));
     }
+    if let Some(queue) = read_queue_progress(dir) {
+        lines.push(format!("队列：{}", queue));
+    }
+
+    let mut out = String::from("\n\n【落盘进度】\n");
+    for line in lines {
+        out.push_str(&format!("- {}\n", line));
+    }
+    out
+}
+
+/// 设计稿里排在「本章」之后的那一章。
+fn chapter_after(snap: &StageSnapshot) -> Option<String> {
+    let current = snap.next_chapter()?;
+    let idx = snap.plan.iter().position(|p| p == current)?;
+    snap.plan.get(idx + 1).cloned()
+}
+
+/// 队列进度（`.agent/queue.md` 的 `- [ ]` / `- [x]`）。文件不存在返回 `None`。
+fn read_queue_progress(dir: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(dir.join(QUEUE_REL_PATH)).ok()?;
+    let (mut done, mut pending) = (0usize, Vec::new());
+    for line in text.lines() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("- [x]").or_else(|| t.strip_prefix("- [X]")) {
+            if !rest.trim().is_empty() {
+                done += 1;
+            }
+        } else if let Some(rest) = t.strip_prefix("- [ ]") {
+            if !rest.trim().is_empty() {
+                pending.push(rest.trim().to_string());
+            }
+        }
+    }
+    let total = done + pending.len();
+    if total == 0 {
+        return None;
+    }
+    let mut out = format!("共 {} 项，已完成 {}，还剩 {}", total, done, pending.len());
+    if let Some(next) = pending.first() {
+        out.push_str(&format!("（下一项：{}）", next));
+    }
+    Some(out)
 }
 
 fn read_plan(script_dir: &Path) -> Vec<String> {
@@ -413,10 +495,111 @@ fn written_chapter_id(tool: &str, arguments: &str) -> Option<String> {
     chapter_id_of_path(args.get("path")?.as_str()?)
 }
 
-/// 章节写入后的轻量结构自检；不适用或无问题时返回 `None`。
+/// 素材从哪来。动笔前必须问用户，它决定"引用了不存在的素材"算不算错。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AssetMode {
+    /// 没问过 / 卡片里没写或写得不认识。
+    #[default]
+    Unspecified,
+    /// 只用磁盘上已有的 —— 写了不存在的名字就是错，必须当场换掉。
+    OnlyExisting,
+    /// 之后补素材，先留位置 —— 缺失只登记，不阻断。
+    Reserve,
+}
+
+impl AssetMode {
+    /// 交接单里那一行：既说模式，也说缺素材在这一模式下算不算错。
+    pub fn describe(self) -> &'static str {
+        match self {
+            AssetMode::Unspecified => "未声明（先问用户：只用已有 / 先预留）",
+            AssetMode::OnlyExisting => "只用已有（引用不存在的素材 = 错误，当场改）",
+            AssetMode::Reserve => "先预留（缺素材只登记进 .agent/assets.md）",
+        }
+    }
+
+    /// 未声明时不拦人：没问过就按警告处理，同时催去问。
+    fn missing_is_error(self) -> bool {
+        self == AssetMode::OnlyExisting
+    }
+}
+
+/// 从约束卡片里读素材模式，格式 `- 素材模式：只用已有`（半角全角冒号都认）。
+///
+/// 只在「仅用已有」「之后补充」两个同义写法上放宽；其余一律当未声明 ——
+/// 认错的代价是校验松紧反了，宁可多问一次也不要猜。
+pub fn parse_asset_mode(text: &str) -> AssetMode {
+    for line in text.lines() {
+        let head = line.trim_start_matches(['-', '*', ' ', '\t']);
+        let Some(rest) = head.strip_prefix("素材模式") else {
+            continue;
+        };
+        let value = rest.trim_start_matches([':', '：']).trim();
+        return match value {
+            "只用已有" | "仅用已有" => AssetMode::OnlyExisting,
+            "先预留" | "之后补充" => AssetMode::Reserve,
+            _ => AssetMode::Unspecified,
+        };
+    }
+    AssetMode::Unspecified
+}
+
+fn read_asset_mode(script_dir: &Path) -> AssetMode {
+    std::fs::read_to_string(script_dir.join(CONSTRAINTS_REL_PATH))
+        .map(|t| parse_asset_mode(&t))
+        .unwrap_or_default()
+}
+
+/// 一章的自检结果：错误必须当场改完，警告只记录。
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct ChapterCheck {
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+    /// 本章有素材缺口（先预留模式下只登记，不阻断）。
+    pub assets_missing: bool,
+}
+
+impl ChapterCheck {
+    pub fn is_empty(&self) -> bool {
+        self.errors.is_empty() && self.warnings.is_empty()
+    }
+
+    /// 自检回执，按「能不能就此收工」组织。
+    pub fn render(&self) -> String {
+        let mut out = String::new();
+        if !self.errors.is_empty() {
+            out.push_str("\n\n[章节自检] 这一章还不算写完，先改这些：\n");
+            for e in &self.errors {
+                out.push_str(&format!("- {}\n", e));
+            }
+            out.push_str("改好后重新 write_file 覆盖它（不要 append）。\n");
+        }
+        if !self.warnings.is_empty() {
+            out.push_str("\n[章节自检] 记下来即可，不阻断：\n");
+            for w in &self.warnings {
+                out.push_str(&format!("- {}\n", w));
+            }
+        }
+        if self.assets_missing {
+            out.push_str("缺的素材登记进 .agent/assets.md，别等交付才发现。\n");
+        }
+        out
+    }
+}
+
+/// 章节写入后的轻量自检；不适用或无问题时返回 `None`。
 ///
 /// 不做整剧本校验：未写完时的断链诊断会误导模型去补后续章节。
-pub fn check_written_chapter(snap: &StageSnapshot, path: &str) -> Option<String> {
+/// 但素材是「写完这一章就能定论」的事实，所以这里当场查。
+pub fn check_written_chapter(snap: &StageSnapshot, path: &str) -> Option<ChapterCheck> {
+    let (dir, id) = chapter_of_write(snap, path)?;
+    check_chapter(dir, &id, &crate::api::data_dir())
+}
+
+/// 认出「刚写的是本会话这个剧本的哪一章」；认不出就不产生自检。
+///
+/// 数据目录留到确认是自己剧本的章节之后才取 —— 它跟这一步无关，
+/// 提前取会在没有数据目录的场合（测试）无谓地炸掉。
+fn chapter_of_write<'a>(snap: &'a StageSnapshot, path: &str) -> Option<(&'a Path, String)> {
     let dir = snap.script_dir.as_deref()?;
     let id = chapter_id_of_path(path)?;
     // 只认本会话绑定剧本自己的章节。写的是相对还是绝对路径不一定，所以用包含判断；
@@ -426,13 +609,49 @@ pub fn check_written_chapter(snap: &StageSnapshot, path: &str) -> Option<String>
     if !normalized.contains(&format!("{}/chapters/", key.to_lowercase())) {
         return None;
     }
-    let file = chapter_file(dir, &id)?;
+    Some((dir, id))
+}
+
+/// 判定本体：结构 + 素材；素材的松紧由 `.agent/constraints.md` 里的素材模式决定。
+fn check_chapter(dir: &Path, id: &str, data_dir: &Path) -> Option<ChapterCheck> {
+    let file = chapter_file(dir, id)?;
     let value = match crate::utils::yaml_file::read_yaml_as_json(&file) {
         Ok(v) => v,
-        Err(e) => return Some(format!("`{}` 不是可解析的 YAML：{}", id, e)),
+        Err(e) => {
+            return Some(ChapterCheck {
+                errors: vec![format!("`{}` 不是可解析的 YAML：{}", id, e)],
+                ..Default::default()
+            });
+        },
     };
-    let problems = chapter_shape_problems(&value);
-    (!problems.is_empty()).then(|| format!("`{}` 结构有问题：{}", id, problems.join("；")))
+
+    let mut check = ChapterCheck {
+        errors: chapter_shape_problems(&value),
+        ..Default::default()
+    };
+
+    let mode = read_asset_mode(dir);
+    let findings = validate::check_chapter_assets(data_dir, dir, id, &value);
+    for d in findings {
+        check.assets_missing = true;
+        let at = d.event_index.map(|i| i + 1).unwrap_or_default();
+        let line = format!("第 {} 个事件 · {}", at, d.message);
+        if mode.missing_is_error() {
+            check.errors.push(line);
+        } else {
+            check.warnings.push(line);
+        }
+    }
+    if check.assets_missing && mode == AssetMode::Unspecified {
+        check.warnings.push(format!(
+            "`素材模式`还没声明：这一轮先问用户「只用已有」还是「先预留」，\
+             写进 {}（格式 `- 素材模式：只用已有`）。\
+             未声明时缺失只按警告算，但这正是用户最在意的那类错。",
+            CONSTRAINTS_REL_PATH
+        ));
+    }
+
+    (!check.is_empty()).then_some(check)
 }
 
 /// 章节的硬性结构要求。
@@ -892,5 +1111,254 @@ id: Intro/02
             script_key_of_story_config("data/skills/foo/story_config.yaml"),
             None
         );
+    }
+
+    #[test]
+    fn asset_mode_reads_canonical_values() {
+        let read = |s: &str| parse_asset_mode(&format!("# 用户约束\n\n{}", s));
+        assert_eq!(read("- 素材模式：只用已有"), AssetMode::OnlyExisting);
+        assert_eq!(read("- 素材模式: 先预留"), AssetMode::Reserve);
+        assert_eq!(read("  * 素材模式：仅用已有"), AssetMode::OnlyExisting);
+        assert_eq!(read("素材模式：之后补充"), AssetMode::Reserve);
+    }
+
+    #[test]
+    fn asset_mode_unrecognized_is_unspecified() {
+        // 认不出的写法一律当未声明：猜错方向会把校验松紧弄反
+        assert_eq!(
+            parse_asset_mode("- 素材模式：尽量用已有的"),
+            AssetMode::Unspecified
+        );
+        assert_eq!(parse_asset_mode("- 素材模式："), AssetMode::Unspecified);
+        assert_eq!(parse_asset_mode("- 玩家扮演：风雪"), AssetMode::Unspecified);
+        assert_eq!(parse_asset_mode(""), AssetMode::Unspecified);
+    }
+
+    #[test]
+    fn only_existing_mode_turns_missing_asset_into_error() {
+        assert!(AssetMode::OnlyExisting.missing_is_error());
+        // 没问过就不拦人，但会催去问
+        assert!(!AssetMode::Reserve.missing_is_error());
+        assert!(!AssetMode::Unspecified.missing_is_error());
+    }
+
+    #[test]
+    fn chapter_check_render_separates_blocking_from_recorded() {
+        let check = ChapterCheck {
+            errors: vec!["缺少顶层 `name`".into()],
+            warnings: vec!["第 2 个事件 · 找不到素材「夜晚.png」".into()],
+            assets_missing: true,
+        };
+        let text = check.render();
+        assert!(text.contains("还不算写完"), "{text}");
+        assert!(text.contains("重新 write_file 覆盖"), "{text}");
+        assert!(text.contains("记下来即可"), "{text}");
+        assert!(text.contains(".agent/assets.md"), "{text}");
+    }
+
+    #[test]
+    fn empty_chapter_check_renders_nothing_to_say() {
+        assert!(ChapterCheck::default().is_empty());
+        assert_eq!(ChapterCheck::default().render(), "");
+    }
+
+    #[test]
+    fn chapter_after_follows_plan_order() {
+        // 本章 = 03 → 下一章 = 04A
+        let snap = forge(&["01", "02", "03", "04A"], &["01", "02"]);
+        assert_eq!(chapter_after(&snap).as_deref(), Some("04A"));
+        // 最后一章之后没有了
+        let snap = forge(&["01", "02"], &["01"]);
+        assert_eq!(chapter_after(&snap), None);
+        // 没有计划就没有"下一章"
+        assert_eq!(chapter_after(&forge(&[], &[])), None);
+    }
+
+    /// 造一个只属于这条测试的临时剧本包目录。
+    fn tmp_script_dir(tag: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("lingchat-stage-{}-{}", tag, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".agent")).unwrap();
+        dir
+    }
+
+    #[test]
+    fn asset_mode_comes_from_constraints_file() {
+        let dir = tmp_script_dir("mode");
+        assert_eq!(read_asset_mode(&dir), AssetMode::Unspecified);
+        std::fs::write(
+            dir.join(CONSTRAINTS_REL_PATH),
+            "# 用户约束\n\n- 素材模式：只用已有\n- 玩家扮演：风雪\n",
+        )
+        .unwrap();
+        assert_eq!(read_asset_mode(&dir), AssetMode::OnlyExisting);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn queue_progress_counts_and_names_next() {
+        let dir = tmp_script_dir("queue");
+        assert_eq!(read_queue_progress(&dir), None);
+        std::fs::write(
+            dir.join(QUEUE_REL_PATH),
+            "# 队列\n- [x] 改章节细节：13–19 章\n- [ ] 写章节：第 09 章\n- [ ] 查素材\n",
+        )
+        .unwrap();
+        let progress = read_queue_progress(&dir).unwrap();
+        assert!(progress.contains("共 3 项"), "{progress}");
+        assert!(progress.contains("还剩 2"), "{progress}");
+        assert!(progress.contains("写章节：第 09 章"), "{progress}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn progress_block_reports_mode_and_next_chapter() {
+        let dir = tmp_script_dir("progress");
+        std::fs::write(dir.join(CONSTRAINTS_REL_PATH), "- 素材模式：先预留\n").unwrap();
+        std::fs::write(dir.join(QUEUE_REL_PATH), "- [ ] 写章节：第 09 章\n").unwrap();
+        let mut snap = forge(&["01", "02", "03", "04"], &["01", "02"]);
+        snap.script_dir = Some(dir.clone());
+
+        let block = progress_block(&snap, &dir);
+        assert!(block.contains("【落盘进度】"), "{block}");
+        assert!(block.contains("先预留"), "{block}");
+        assert!(block.contains("已落盘：01 02"), "{block}");
+        // 本章 = 03，下一章 04 在磁盘上还没有
+        assert!(block.contains("下一章 04：尚未落盘"), "{block}");
+        assert!(block.contains("队列：共 1 项"), "{block}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn progress_block_flags_existing_next_chapter() {
+        let dir = tmp_script_dir("progress2");
+        // 01 被删了、02 03 还在：本章 = 01，而 02 已有内容
+        let mut snap = forge(&["01", "02", "03"], &["02", "03"]);
+        snap.script_dir = Some(dir.clone());
+        let block = progress_block(&snap, &dir);
+        assert!(block.contains("下一章 02：磁盘上已有内容"), "{block}");
+        assert!(block.contains("素材模式：未声明"), "{block}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 造一个完整的剧本包：`<tmp>/scripts/standalone/A/`。
+    ///
+    /// 里面预置 `Assets/Backgrounds/夜晚.webp` —— 于是「章节里写 夜晚.png」正好是
+    /// 「换个扩展名就能找到」那一种，笔误提示与素材模式两条路都能验到。
+    fn tmp_script_package(tag: &str, chapter: &str, constraints: &str) -> (PathBuf, PathBuf) {
+        let pkg = std::env::temp_dir().join(format!(
+            "lingchat-stage-{}-{}/scripts/standalone/A",
+            tag,
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(pkg.parent().unwrap().parent().unwrap());
+        std::fs::create_dir_all(pkg.join(".agent")).unwrap();
+        std::fs::write(pkg.join(CONSTRAINTS_REL_PATH), constraints).unwrap();
+        std::fs::create_dir_all(pkg.join("Chapters")).unwrap();
+        std::fs::write(pkg.join("Chapters/01.yaml"), chapter).unwrap();
+        let backgrounds = pkg.join("Assets").join("Backgrounds");
+        std::fs::create_dir_all(&backgrounds).unwrap();
+        std::fs::write(backgrounds.join("夜晚.webp"), b"x").unwrap();
+        let data_dir = pkg.parent().unwrap().parent().unwrap().to_path_buf();
+        (pkg, data_dir)
+    }
+
+    fn snap_of(pkg: &Path) -> StageSnapshot {
+        StageSnapshot {
+            stage: Stage::Forge,
+            script_key: Some("standalone/A".into()),
+            script_dir: Some(pkg.to_path_buf()),
+            plan: vec!["01".into()],
+            written: vec![],
+        }
+    }
+
+    /// 一个结构错（缺 name）+ 一个素材缺口（磁盘上没有 夜晚.png）的章节。
+    const BAD_CHAPTER: &str = "name: ''\nevents:\n  - type: background\n    imagePath: 夜晚.png\n  - type: chapter_end\n    next: end\n";
+
+    #[test]
+    fn self_check_flags_shape_and_missing_asset_as_errors_in_only_existing_mode() {
+        let (pkg, data_dir) = tmp_script_package("e2e-only", BAD_CHAPTER, "- 素材模式：只用已有\n");
+        let check = check_chapter(&pkg, "01", &data_dir).expect("有问题就必须给出自检");
+
+        // 结构错 + 素材缺失 = 两条都必须当场改
+        assert_eq!(check.errors.len(), 2, "{:?}", check.errors);
+        assert!(check.errors.iter().any(|e| e.contains("name")), "{check:?}");
+        let asset = check
+            .errors
+            .iter()
+            .find(|e| e.contains("夜晚.png"))
+            .unwrap();
+        assert!(asset.contains("疑似写错了扩展名"), "{asset}");
+        assert!(check.warnings.is_empty(), "{:?}", check.warnings);
+        assert!(check.assets_missing);
+        assert!(check.render().contains("还不算写完"));
+        let _ = std::fs::remove_dir_all(pkg.parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn self_check_downgrades_missing_asset_in_reserve_mode() {
+        let (pkg, data_dir) =
+            tmp_script_package("e2e-reserve", BAD_CHAPTER, "- 素材模式：先预留\n");
+        let check = check_chapter(&pkg, "01", &data_dir).unwrap();
+
+        // 同一份章节：素材缺口从错误降成警告，只剩结构错是非改不可的
+        assert_eq!(check.errors.len(), 1, "{:?}", check.errors);
+        assert!(
+            check.warnings.iter().any(|w| w.contains("夜晚.png")),
+            "{check:?}"
+        );
+        // 已经声明过模式，就不该再催问
+        assert!(
+            !check.warnings.iter().any(|w| w.contains("还没声明")),
+            "{check:?}"
+        );
+        let _ = std::fs::remove_dir_all(pkg.parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn self_check_asks_for_asset_mode_when_undeclared() {
+        let (pkg, data_dir) = tmp_script_package("e2e-undeclared", BAD_CHAPTER, "");
+        let check = check_chapter(&pkg, "01", &data_dir).unwrap();
+        assert!(
+            check
+                .warnings
+                .iter()
+                .any(|w| w.contains("素材模式") && w.contains("还没声明")),
+            "{:?}",
+            check.warnings
+        );
+        let _ = std::fs::remove_dir_all(pkg.parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn self_check_skips_clean_chapter() {
+        let clean = "name: 雨夜\nevents:\n  - type: chapter_end\n    next: end\n";
+        let (pkg, data_dir) = tmp_script_package("e2e-clean", clean, "- 素材模式：只用已有\n");
+        assert_eq!(check_chapter(&pkg, "01", &data_dir), None);
+        let _ = std::fs::remove_dir_all(pkg.parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn self_check_ignores_chapters_of_other_scripts() {
+        let (pkg, _) = tmp_script_package("e2e-other", BAD_CHAPTER, "- 素材模式：只用已有\n");
+        let other = pkg
+            .parent()
+            .unwrap()
+            .join("B")
+            .join("Chapters")
+            .join("01.yaml");
+        assert!(
+            chapter_of_write(&snap_of(&pkg), other.to_str().unwrap()).is_none(),
+            "别的剧本的章节不该拿来自检"
+        );
+        // 自己的章节认得出来
+        let mine = pkg.join("Chapters").join("01.yaml");
+        assert_eq!(
+            chapter_of_write(&snap_of(&pkg), mine.to_str().unwrap()).map(|(_, id)| id),
+            Some("01".to_string())
+        );
+        let _ = std::fs::remove_dir_all(pkg.parent().unwrap().parent().unwrap());
     }
 }

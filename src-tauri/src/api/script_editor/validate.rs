@@ -890,20 +890,92 @@ fn check_asset(
     }
 
     if resolve_script_media(data_dir, Some(script_dir), path, media).is_none() {
+        let mut message = format!(
+            "找不到素材「{}」。运行时不会报错，只会静默把画面/声音清空",
+            path
+        );
+        if let Some(existing) = sibling_extension_asset(data_dir, script_dir, path, media) {
+            message.push_str(&format!("；磁盘上有「{}」，疑似写错了扩展名", existing));
+        }
         diags.push(
-            Diagnostic::event(
-                Severity::Error,
-                "asset.missing",
-                cid,
-                i,
-                format!(
-                    "找不到素材「{}」。运行时不会报错，只会静默把画面/声音清空",
-                    path
-                ),
-            )
-            .with_field(key),
+            Diagnostic::event(Severity::Error, "asset.missing", cid, i, message).with_field(key),
         );
     }
+}
+
+/// 换个扩展名能不能找到同一个素材：写的是 `夜晚.png`，磁盘上是 `夜晚.webp`。
+///
+/// 解析器按完整文件名精确匹配，所以不会自动命中；它和真的缺素材表现一样
+/// （运行时静默清空画面/声音），但修法完全不同 —— 一个是改扩展名，一个是补素材。
+fn sibling_extension_asset(
+    data_dir: &Path,
+    script_dir: &Path,
+    path: &str,
+    media: MediaType,
+) -> Option<String> {
+    let file = Path::new(path);
+    let stem = file.file_stem()?.to_str()?;
+    let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase());
+    let dir = file
+        .parent()
+        .and_then(|d| d.to_str())
+        .filter(|d| !d.is_empty());
+
+    for candidate_ext in media.allowed_extensions() {
+        if ext.as_deref() == Some(*candidate_ext) {
+            continue;
+        }
+        let candidate = match dir {
+            Some(d) => format!(
+                "{}/{}.{}",
+                d.trim_end_matches(['/', '\\']),
+                stem,
+                candidate_ext
+            ),
+            None => format!("{}.{}", stem, candidate_ext),
+        };
+        if let Some(found) = resolve_script_media(data_dir, Some(script_dir), &candidate, media) {
+            return Some(
+                Path::new(&found)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or(candidate),
+            );
+        }
+    }
+    None
+}
+
+/// 单章素材自检：只查这一章引用的素材存不存在。
+///
+/// 供 Skill Agent 写完一章时当场复查 —— 此时整剧还没写完，[`validate`] 会报一批
+/// 「尚未写完」的假错（断链、不可达），而素材是**写完这一章就能定论**的事实。
+/// 判定复用 `check_asset`，规则不在这里重写第二遍。
+pub fn check_chapter_assets(
+    data_dir: &Path,
+    script_dir: &Path,
+    cid: &str,
+    chapter: &serde_json::Value,
+) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    let Some(events) = chapter.get("events").and_then(|v| v.as_array()) else {
+        return diags;
+    };
+    for (i, ev) in events.iter().enumerate() {
+        let Some(obj) = ev.as_object() else {
+            continue;
+        };
+        let Some(ty) = obj.get("type").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if matches!(
+            ty,
+            "background" | "present_pic" | "music" | "sound" | "ambient"
+        ) {
+            check_asset(data_dir, script_dir, obj, ty, cid, i, &mut diags);
+        }
+    }
+    diags
 }
 
 /// 条件语法检查 + 变量收集。
@@ -1640,5 +1712,80 @@ fn check_graph(
                 c.join(" → ")
             ),
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 造一个只有 `Assets/Backgrounds/夜晚.webp` 的剧本包。
+    fn script_dir_with_night_webp(tag: &str) -> std::path::PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("lingchat-validate-{}-{}", tag, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let backgrounds = dir.join("Assets").join("Backgrounds");
+        std::fs::create_dir_all(&backgrounds).unwrap();
+        std::fs::write(backgrounds.join("夜晚.webp"), b"x").unwrap();
+        dir
+    }
+
+    fn chapter_with_image(path: &str) -> serde_json::Value {
+        serde_json::json!({
+            "name": "雨夜",
+            "events": [
+                {"type": "narration", "text": "…"},
+                {"type": "background", "imagePath": path},
+                {"type": "chapter_end", "next": "end"},
+            ],
+        })
+    }
+
+    #[test]
+    fn chapter_check_only_reports_media_events() {
+        let dir = script_dir_with_night_webp("media");
+        let data_dir = std::env::temp_dir().join("lingchat-validate-missing-data");
+        // 只有 narration 与 chapter_end：没有任何素材诊断
+        let clean = serde_json::json!({
+            "name": "x",
+            "events": [{"type": "narration", "text": "…"}, {"type": "chapter_end", "next": "end"}],
+        });
+        assert!(check_chapter_assets(&data_dir, &dir, "01", &clean).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chapter_check_flags_missing_asset() {
+        let dir = script_dir_with_night_webp("missing");
+        let data_dir = std::env::temp_dir().join("lingchat-validate-missing-data");
+        let diags = check_chapter_assets(&data_dir, &dir, "01", &chapter_with_image("不存在.webp"));
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert_eq!(diags[0].code, "asset.missing");
+        assert_eq!(diags[0].severity, Severity::Error);
+        // 事件下标指向 background 那一条（第 2 个）
+        assert_eq!(diags[0].event_index, Some(1));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chapter_check_hints_at_extension_typo() {
+        let dir = script_dir_with_night_webp("typo");
+        let data_dir = std::env::temp_dir().join("lingchat-validate-missing-data");
+        // 磁盘上是 夜晚.webp，章节里写的 夜晚.png
+        let diags = check_chapter_assets(&data_dir, &dir, "01", &chapter_with_image("夜晚.png"));
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        let msg = &diags[0].message;
+        assert!(msg.contains("疑似写错了扩展名"), "{msg}");
+        assert!(msg.contains("夜晚.webp"), "{msg}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chapter_check_stays_quiet_on_exact_match() {
+        let dir = script_dir_with_night_webp("exact");
+        let data_dir = std::env::temp_dir().join("lingchat-validate-missing-data");
+        let diags = check_chapter_assets(&data_dir, &dir, "01", &chapter_with_image("夜晚.webp"));
+        assert!(diags.is_empty(), "{diags:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

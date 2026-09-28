@@ -364,13 +364,15 @@ fn format_validation_report(key: &str, report: &ValidationReport) -> String {
     out
 }
 
-/// 写完章节后附上结构自检。分段追加（`append = true`）时跳过，那时还没写完。
+/// 写完章节后附上自检回执 —— 写一章和查一章是同一个动作，不攒到最后。
+///
+/// 分段追加（`append = true`）时跳过：那时文件还没写完，查了只会误报。
 fn with_chapter_check(ctx: &SkillAgentRunContext, path: &str, out: String, append: bool) -> String {
     if append {
         return out;
     }
     match stage::check_written_chapter(&ctx.stage_snapshot, path) {
-        Some(problems) => format!("{}\n\n[章节自检] {}", out, problems),
+        Some(check) => format!("{}{}", out, check.render()),
         None => out,
     }
 }

@@ -715,28 +715,37 @@ pub enum AssetScope {
     Global,
 }
 
+/// 素材类别（命令参数的取值）→ 引擎的素材类型。
+fn media_type_of(
+    kind: &str,
+) -> Result<crate::ai_service::game_system::script_engine::utils::media::MediaType, String> {
+    use crate::ai_service::game_system::script_engine::utils::media::MediaType;
+    match kind {
+        "background" => Ok(MediaType::Background),
+        "music" => Ok(MediaType::Music),
+        "sound" => Ok(MediaType::Sound),
+        "ambient" => Ok(MediaType::Ambient),
+        "pic" => Ok(MediaType::Pic),
+        other => Err(format!("未知素材类别: {}", other)),
+    }
+}
+
 /// 素材类别 → 剧本内子目录 / 全局目录。
 ///
 /// 剧本内一律落在 `media.rs` 候选列表的**第一个**目录，保证引擎一定能找到；
 /// 全局目录直接用 `MediaType::fallback_dir()` 的同一套值，避免又写一份会发散的映射。
 fn asset_dirs(kind: &str) -> Result<(&'static str, PathBuf), String> {
-    use crate::ai_service::game_system::script_engine::utils::media::MediaType;
-    let (subdir, media) = match kind {
-        "background" => ("Backgrounds", MediaType::Background),
-        "music" => ("Musics", MediaType::Music),
-        "sound" => ("Sounds", MediaType::Sound),
-        "ambient" => ("Ambients", MediaType::Ambient),
-        "pic" => ("Pics", MediaType::Pic),
-        other => return Err(format!("未知素材类别: {}", other)),
-    };
-    Ok((subdir, game_data_dir().join(media.fallback_dir())))
+    let media = media_type_of(kind)?;
+    Ok((
+        media.subdir_candidates()[0],
+        game_data_dir().join(media.fallback_dir()),
+    ))
 }
 
 fn allowed_extensions(kind: &str) -> &'static [&'static str] {
-    match kind {
-        "background" | "pic" => &["png", "jpg", "jpeg", "webp", "bmp", "gif"],
-        _ => &["mp3", "wav", "ogg", "flac"],
-    }
+    media_type_of(kind)
+        .map(|m| m.allowed_extensions())
+        .unwrap_or(&[])
 }
 
 /// 列出全局素材（`game_data/backgrounds` / `musics` / `ambient`）。
