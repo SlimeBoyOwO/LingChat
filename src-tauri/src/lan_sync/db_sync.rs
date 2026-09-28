@@ -199,6 +199,27 @@ pub async fn apply_staged_db_records(
         None => return Ok(0),
     };
 
+    let imported = apply_db_records(db, &records).await?;
+
+    // 清理暂存文件
+    let staging_path = staging_dir(data_dir).join(DB_RECORDS_FILE);
+    if let Err(e) = std::fs::remove_file(&staging_path) {
+        warn!("清理暂存 DB 记录文件失败: {e}");
+    }
+
+    Ok(imported)
+}
+
+/// 将 `DbRecords` 应用到主数据库（核心逻辑，可供 LAN 同步和数据备份共用）。
+///
+/// 通过 `PRAGMA foreign_keys = OFF` 禁用外键检查，
+/// 按依赖顺序 DELETE 全部行后重新 INSERT。
+///
+/// 返回导入的总行数。
+pub async fn apply_db_records(
+    db: &DatabaseConnection,
+    records: &DbRecords,
+) -> Result<u64, String> {
     let src_id = truncate_str(&records.device_id, 8);
     info!("开始导入数据库记录 (来源: {})...", src_id);
 
@@ -243,12 +264,6 @@ pub async fn apply_staged_db_records(
     txn.commit()
         .await
         .map_err(|e| format!("提交事务失败: {e}"))?;
-
-    // 清理暂存文件
-    let staging_path = staging_dir(data_dir).join(DB_RECORDS_FILE);
-    if let Err(e) = std::fs::remove_file(&staging_path) {
-        warn!("清理暂存 DB 记录文件失败: {e}");
-    }
 
     info!("数据库记录导入完成: {} 行", imported);
     Ok(imported)

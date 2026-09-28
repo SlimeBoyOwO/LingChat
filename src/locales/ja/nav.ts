@@ -10,4 +10,5 @@ export default {
   advance: "詳細設定",
   log: "ログ",
   plugins: "プラグイン",
+  data: "データ",
 };
