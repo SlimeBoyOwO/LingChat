@@ -557,6 +557,10 @@ export default {
     jumpHint: "Open this chapter in the script editor",
     previewFrom: "Play from here",
     previewFromHint: "Run the script starting from this chapter",
+    artifacts: "Artifacts ({count})",
+    artifactTitle: "Artifacts",
+    artifactsEmpty: "No artifacts yet",
+    artifactHint: "Read-only; ask in the chat to change it",
   },
   agentSettings: {
     model: "Model to use",

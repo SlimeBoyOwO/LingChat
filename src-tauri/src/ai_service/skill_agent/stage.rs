@@ -10,7 +10,11 @@ use crate::ai_service::types::LlmMessage;
 use crate::api::script_editor::validate;
 use crate::utils::script_paths;
 
-/// 设计稿在剧本包内的相对路径。点号目录不会被引擎扫描，也不进编辑器枚举。
+/// 流程产物所在目录。点号目录不会被引擎扫描，也不进编辑器枚举；
+/// 助手面板的「详情」浮窗直接列这一层，所以加新产物不用改前端。
+pub const AGENT_DIR: &str = ".agent";
+
+/// 设计稿在剧本包内的相对路径。
 pub const DESIGN_REL_PATH: &str = ".agent/design.md";
 
 /// 用户约束卡片。素材模式等"问过用户才知道"的事实记在这里。
@@ -1209,6 +1213,17 @@ id: Intro/02
             script_key_of_story_config("data/skills/foo/story_config.yaml"),
             None
         );
+    }
+
+    #[test]
+    fn artifact_paths_all_live_under_agent_dir() {
+        // 「详情」浮窗按目录列产物、按目录取文件，写歪一处就会静默漏掉一份
+        for rel in [DESIGN_REL_PATH, CONSTRAINTS_REL_PATH, QUEUE_REL_PATH] {
+            assert!(
+                rel.starts_with(&format!("{AGENT_DIR}/")),
+                "`{rel}` 不在 {AGENT_DIR}/ 下"
+            );
+        }
     }
 
     #[test]

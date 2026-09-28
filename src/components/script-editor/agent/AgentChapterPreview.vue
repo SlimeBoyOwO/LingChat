@@ -14,6 +14,8 @@ import { MenuItem } from "@/components/ui";
 import { useScriptEditorStore } from "@/stores/modules/script-editor";
 import { readChapter, readScript } from "@/api/services/script-editor";
 import type { ChapterSummary, ScriptDetail, ScriptEventData } from "@/api/services/script-editor";
+import { listAgentArtifacts } from "@/api/services/agent";
+import type { AgentArtifact } from "@/api/services/agent";
 import ChapterTimeline from "@/components/script-editor/flow/ChapterTimeline.vue";
 
 const props = defineProps<{ open: boolean; scriptKey: string | null }>();
@@ -28,6 +30,10 @@ const loading = ref(false);
 const currentId = ref("");
 const events = ref<ScriptEventData[]>([]);
 const opening = ref(false);
+/** 流程产物（`.agent/` 下的设计稿、队列、约束等）；只读展示 */
+const artifacts = ref<AgentArtifact[]>([]);
+/** 非空表示左侧正在看这份产物，而不是章节时间线 */
+const artifactName = ref("");
 /** 合并转场等固定组合：视图开关，与编辑器同名同义（只读预览里是本地状态） */
 const foldCompounds = ref(true);
 
@@ -44,6 +50,11 @@ const currentName = computed(
 
 const roleNameMap = computed(
   () => new Map((detail.value?.characters ?? []).map((c) => [c.roleKey, c.aiName])),
+);
+
+/** 左侧正在看的产物内容；没选中时为空串。 */
+const artifactContent = computed(
+  () => artifacts.value.find((a) => a.name === artifactName.value)?.content ?? "",
 );
 
 /** MAIN 的展示名：与编辑器 getter 同口径（绑定角色优先，其次剧本里的玩家名）。 */
@@ -69,6 +80,8 @@ async function openChapter(id: string) {
     const content = await readChapter(key, id);
     events.value = content.events;
     currentId.value = id;
+    // 从产物切回章节：左侧跟着换回时间线
+    artifactName.value = "";
   } catch (e) {
     error.value = String(e);
   } finally {
@@ -76,17 +89,25 @@ async function openChapter(id: string) {
   }
 }
 
-/** 每次打开重新加载：关闭期间编辑器可能改过章节 */
+/** 每次打开重新加载：关闭期间编辑器和 Agent 都可能改过东西 */
 async function load() {
   detail.value = null;
   error.value = "";
   events.value = [];
   currentId.value = "";
+  artifacts.value = [];
+  artifactName.value = "";
   const key = props.scriptKey;
   if (!key) return;
   loading.value = true;
   try {
-    detail.value = await readScript(key);
+    // 产物读取失败不该挡住看章节：它是附加信息
+    const [script, files] = await Promise.all([
+      readScript(key),
+      listAgentArtifacts(key).catch(() => [] as AgentArtifact[]),
+    ]);
+    detail.value = script;
+    artifacts.value = files;
     const first = chapters.value[0];
     if (first) await openChapter(first.id);
   } catch (e) {
@@ -180,10 +201,14 @@ async function previewFromChapter() {
             {{ t("scriptEditor.agentScriptPreview.loadFailed", { error }) }}
           </div>
           <div v-else class="flex min-h-0 flex-1 gap-4 px-4 py-3.5">
-            <!-- 左：只读事件时间线（结构与「章节流程」一致） -->
+            <!-- 左：只读事件时间线 / 流程产物 -->
             <div class="flex min-w-0 flex-1 flex-col">
               <MenuItem
-                :title="t('scriptEditor.flowTab.timeline')"
+                :title="
+                  artifactName
+                    ? t('scriptEditor.agentScriptPreview.artifactTitle')
+                    : t('scriptEditor.flowTab.timeline')
+                "
                 class="fill flex h-full min-h-0 flex-col"
               >
                 <template #header>
@@ -192,41 +217,54 @@ async function previewFromChapter() {
                 <div class="mb-2 flex items-center gap-2">
                   <!-- 纯文字：这是当前正在看的那一章（只读，不做成输入框免得像能改） -->
                   <span class="min-w-0 flex-1 truncate text-sm text-white/85">{{
-                    currentName
+                    artifactName || currentName
                   }}</span>
-                  <label
-                    class="inline-flex items-center gap-2 text-[0.8rem] whitespace-nowrap text-white/70"
-                  >
-                    <Toggle
-                      :checked="foldCompounds"
-                      @change="(v: boolean) => (foldCompounds = v)"
-                    />
-                    {{ t("scriptEditor.flowTab.foldToggle") }}
-                  </label>
-                  <span class="shrink-0 text-xs text-white/40">
-                    {{ t("scriptEditor.chapterFlow.events", { count: events.length }) }}
-                  </span>
-                  <!-- 两个动作作用于「当前这一章」，所以跟章节名放同一行 -->
-                  <button
-                    class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-2.5 py-[0.25rem] text-[0.76rem] whitespace-nowrap text-white/70 transition-all duration-200 hover:bg-white/[0.12] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                    :title="t('scriptEditor.agentScriptPreview.jumpHint')"
-                    :disabled="!currentId"
-                    @click="jumpToEditor"
-                  >
-                    {{ t("scriptEditor.agentScriptPreview.jump") }}
-                  </button>
-                  <button
-                    class="border-brand/45 bg-brand/14 text-brand hover:bg-brand/24 inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-[0.25rem] text-[0.76rem] whitespace-nowrap transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
-                    :title="t('scriptEditor.agentScriptPreview.previewFromHint')"
-                    :disabled="!currentId"
-                    @click="previewFromChapter"
-                  >
-                    {{ t("scriptEditor.agentScriptPreview.previewFrom") }}
-                  </button>
+                  <!-- 产物是纯文本，章节才有转场折叠与两个跳转动作 -->
+                  <template v-if="artifactName">
+                    <span class="shrink-0 text-xs text-white/40">
+                      {{ t("scriptEditor.agentScriptPreview.artifactHint") }}
+                    </span>
+                  </template>
+                  <template v-else>
+                    <label
+                      class="inline-flex items-center gap-2 text-[0.8rem] whitespace-nowrap text-white/70"
+                    >
+                      <Toggle
+                        :checked="foldCompounds"
+                        @change="(v: boolean) => (foldCompounds = v)"
+                      />
+                      {{ t("scriptEditor.flowTab.foldToggle") }}
+                    </label>
+                    <span class="shrink-0 text-xs text-white/40">
+                      {{ t("scriptEditor.chapterFlow.events", { count: events.length }) }}
+                    </span>
+                    <!-- 两个动作作用于「当前这一章」，所以跟章节名放同一行 -->
+                    <button
+                      class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-2.5 py-[0.25rem] text-[0.76rem] whitespace-nowrap text-white/70 transition-all duration-200 hover:bg-white/[0.12] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      :title="t('scriptEditor.agentScriptPreview.jumpHint')"
+                      :disabled="!currentId"
+                      @click="jumpToEditor"
+                    >
+                      {{ t("scriptEditor.agentScriptPreview.jump") }}
+                    </button>
+                    <button
+                      class="border-brand/45 bg-brand/14 text-brand hover:bg-brand/24 inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-[0.25rem] text-[0.76rem] whitespace-nowrap transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
+                      :title="t('scriptEditor.agentScriptPreview.previewFromHint')"
+                      :disabled="!currentId"
+                      @click="previewFromChapter"
+                    >
+                      {{ t("scriptEditor.agentScriptPreview.previewFrom") }}
+                    </button>
+                  </template>
                 </div>
                 <div class="min-h-0 flex-1 overflow-y-auto pr-1">
+                  <pre
+                    v-if="artifactName"
+                    class="font-mono text-[0.74rem] leading-relaxed whitespace-pre-wrap text-white/75"
+                    >{{ artifactContent }}</pre
+                  >
                   <ChapterTimeline
-                    v-if="events.length"
+                    v-else-if="events.length"
                     readonly
                     :events="events"
                     :fold-compounds="foldCompounds"
@@ -240,11 +278,11 @@ async function previewFromChapter() {
               </MenuItem>
             </div>
 
-            <!-- 右：已落盘章节列表 -->
-            <div class="flex min-h-0 w-[236px] shrink-0 flex-col">
+            <!-- 右：已落盘章节 + 流程产物 -->
+            <div class="flex min-h-0 w-[236px] shrink-0 flex-col gap-3">
               <MenuItem
                 :title="t('scriptEditor.agentScriptPreview.chapters', { count: chapters.length })"
-                class="fill flex h-full min-h-0 flex-col"
+                class="fill flex min-h-0 flex-1 flex-col"
               >
                 <template #header>
                   <Icon icon="edit" :size="20" />
@@ -255,7 +293,7 @@ async function previewFromChapter() {
                     :key="c.id"
                     class="rounded-lg border px-2.5 py-2 text-left transition-all duration-150"
                     :class="
-                      c.id === currentId
+                      c.id === currentId && !artifactName
                         ? 'border-brand/60 bg-brand/12'
                         : 'hover:border-brand/40 border-white/10 bg-white/5 hover:bg-white/10'
                     "
@@ -276,6 +314,34 @@ async function previewFromChapter() {
                   </button>
                   <p v-if="!chapters.length" class="px-1 text-[0.74rem] text-white/40">
                     {{ t("scriptEditor.agentScriptPreview.empty") }}
+                  </p>
+                </div>
+              </MenuItem>
+
+              <!-- 流程产物（.agent/）：设计稿、任务队列、用户约束……只读，改就在对话里说 -->
+              <MenuItem
+                :title="t('scriptEditor.agentScriptPreview.artifacts', { count: artifacts.length })"
+                class="fill flex max-h-[38%] min-h-0 flex-col"
+              >
+                <template #header>
+                  <Icon icon="log" :size="20" />
+                </template>
+                <div class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
+                  <button
+                    v-for="a in artifacts"
+                    :key="a.name"
+                    class="truncate rounded-lg border px-2.5 py-1.5 text-left font-mono text-[0.72rem] transition-all duration-150"
+                    :class="
+                      a.name === artifactName
+                        ? 'border-brand/60 bg-brand/12 text-brand'
+                        : 'hover:border-brand/40 border-white/10 bg-white/5 text-white/75 hover:bg-white/10'
+                    "
+                    @click="artifactName = a.name"
+                  >
+                    {{ a.name }}
+                  </button>
+                  <p v-if="!artifacts.length" class="px-1 text-[0.72rem] text-white/40">
+                    {{ t("scriptEditor.agentScriptPreview.artifactsEmpty") }}
                   </p>
                 </div>
               </MenuItem>

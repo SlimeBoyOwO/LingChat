@@ -3,6 +3,7 @@
 //! 薄封装：核心逻辑在 `ai_service::skill_agent`。事件走 `Channel<SkillAgentEvent>`
 //! （作用域隔离），对话按「会话」隔离并持久化到 DB。
 
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -281,6 +282,59 @@ pub async fn editor_agent_clear_conversation(
     db::clear_messages(&state.db, conversation_id).await
 }
 
+// ==================== 流程产物 ====================
+
+/// 剧本包 `.agent/` 下的一份流程产物（设计稿、任务队列、用户约束……）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentArtifact {
+    pub name: String,
+    pub content: String,
+}
+
+/// 单份产物的内容上限。超了就只列名字：这些是给人看的文本，不该把浮窗顶爆。
+const ARTIFACT_MAX_BYTES: u64 = 64 * 1024;
+
+/// 列出剧本包里的流程产物。
+///
+/// 直接读目录而不是列一份固定清单 —— 加新产物（如 `cast.md`）不用改这里。
+/// 没产出过任何东西是正常状态，返回空表而不是报错。
+#[tauri::command]
+pub fn editor_agent_list_artifacts(script_key: String) -> Result<Vec<AgentArtifact>, String> {
+    let dir = crate::utils::script_paths::resolve_script_dir(&script_key)?;
+    Ok(read_artifacts(&dir))
+}
+
+fn read_artifacts(script_dir: &Path) -> Vec<AgentArtifact> {
+    let Ok(entries) = std::fs::read_dir(script_dir.join(stage::AGENT_DIR)) else {
+        return Vec::new();
+    };
+
+    let mut out: Vec<AgentArtifact> = Vec::new();
+    for entry in entries.flatten() {
+        let Ok(meta) = entry.metadata() else {
+            continue;
+        };
+        if !meta.is_file() || meta.len() > ARTIFACT_MAX_BYTES {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        // 这一层是给人看的 markdown；临时文件与别的东西不列
+        if name.starts_with('.') || !name.ends_with(".md") {
+            continue;
+        }
+        match std::fs::read_to_string(entry.path()) {
+            Ok(content) => out.push(AgentArtifact { name, content }),
+            Err(e) => tracing::warn!("[agent] 流程产物读取失败 {}: {}", name, e),
+        }
+    }
+
+    // 设计稿是这一层的主角，排最前；其余按名字
+    let design = stage::DESIGN_REL_PATH.rsplit('/').next().unwrap_or("");
+    out.sort_by(|a, b| (a.name != design, &a.name).cmp(&(b.name != design, &b.name)));
+    out
+}
+
 // ==================== 对话 ====================
 
 /// 开始一轮对话。返回本次用户消息的 DB id（前端用于「回溯删除」定位删除起点）。
@@ -402,4 +456,48 @@ pub async fn editor_agent_resolve_approval(
         let _ = req.tx.send(allowed);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pkg(tag: &str) -> std::path::PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("lingchat-artifacts-{}-{}", tag, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(stage::AGENT_DIR)).unwrap();
+        dir
+    }
+
+    fn write(pkg: &Path, name: &str, body: &str) {
+        std::fs::write(pkg.join(stage::AGENT_DIR).join(name), body).unwrap();
+    }
+
+    #[test]
+    fn artifacts_list_markdown_with_design_first() {
+        let dir = pkg("list");
+        write(&dir, "queue.md", "- [ ] 写第 9 章");
+        write(&dir, "design.md", "## 大纲");
+        write(&dir, "constraints.md", "- 素材模式：只用已有");
+        // 不该被列出来的：非 markdown、临时文件、子目录
+        write(&dir, "notes.txt", "x");
+        write(&dir, ".hidden.md", "x");
+        std::fs::create_dir_all(dir.join(stage::AGENT_DIR).join("sub")).unwrap();
+
+        let names: Vec<String> = read_artifacts(&dir).into_iter().map(|a| a.name).collect();
+        assert_eq!(names, vec!["design.md", "constraints.md", "queue.md"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn artifacts_empty_when_nothing_produced() {
+        let dir = pkg("empty");
+        assert!(read_artifacts(&dir).is_empty());
+        // 连 `.agent/` 都还没有时也不该报错
+        let bare =
+            std::env::temp_dir().join(format!("lingchat-artifacts-bare-{}", std::process::id()));
+        assert!(read_artifacts(&bare).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

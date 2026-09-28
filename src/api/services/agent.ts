@@ -165,6 +165,20 @@ export const clearAgentConversation = (conversationId: number) =>
   invoke<void>("editor_agent_clear_conversation", { conversationId });
 
 // ============================================================
+// 流程产物
+// ============================================================
+
+/** 剧本包 `.agent/` 下的一份流程产物（设计稿、任务队列、用户约束……）。 */
+export interface AgentArtifact {
+  name: string;
+  content: string;
+}
+
+/** 只读列出流程产物；没产出过时返回空数组。 */
+export const listAgentArtifacts = (scriptKey: string) =>
+  invoke<AgentArtifact[]>("editor_agent_list_artifacts", { scriptKey });
+
+// ============================================================
 // 对话
 // ============================================================
 

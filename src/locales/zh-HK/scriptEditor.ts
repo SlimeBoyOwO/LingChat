@@ -523,6 +523,10 @@ export default {
     jumpHint: "跳到劇本編輯器裡這一章",
     previewFrom: "從本章試玩",
     previewFromHint: "從這一章開始運行劇本",
+    artifacts: "流程產物（{count}）",
+    artifactTitle: "流程產物",
+    artifactsEmpty: "還沒有流程產物",
+    artifactHint: "只讀；要改就在對話裡說",
   },
   agentSettings: {
     model: "使用的模型",

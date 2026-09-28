@@ -557,6 +557,10 @@ export default {
     jumpHint: "この章をシナリオエディタで開く",
     previewFrom: "この章から試遊",
     previewFromHint: "この章からシナリオを実行",
+    artifacts: "制作物（{count}）",
+    artifactTitle: "制作物",
+    artifactsEmpty: "制作物はまだありません",
+    artifactHint: "読み取り専用。変更はチャットで指示してください",
   },
   agentSettings: {
     model: "使用するモデル",
