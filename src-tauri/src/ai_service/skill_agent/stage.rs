@@ -257,16 +257,21 @@ pub fn build_run_materials(snap: &StageSnapshot) -> String {
         },
         _ => String::new(),
     };
-    out.push_str(&progress_block(snap, dir));
+    out.push_str(&progress_block(snap, dir, &crate::api::data_dir()));
     out
 }
 
-/// 交接单里的进度事实：素材模式 + 已落盘清单 + 下一章是否已有内容 + 队列剩余。
+/// 交接单里的进度事实：素材模式 + 已落盘清单 + 素材缺口影响面 + 下一章是否已有内容 + 队列剩余。
 ///
 /// 「下一章是否已有内容」补的是删章那一脚：阶段按文件事实推，代码只能说"还没写"，
 /// 而磁盘上那一章可能真有内容，模型得知道写下去会覆盖什么。
-fn progress_block(snap: &StageSnapshot, dir: &Path) -> String {
-    let mut lines: Vec<String> = vec![format!("素材模式：{}", read_asset_mode(dir).describe())];
+/// `data_dir` 由调用方给（判素材要用它），这样这条逻辑离开全局静态也能测。
+fn progress_block(snap: &StageSnapshot, dir: &Path, data_dir: &Path) -> String {
+    let mode = read_asset_mode(dir);
+    let mut lines: Vec<String> = vec![format!(
+        "素材模式：{}（随时可改，说一句就行）",
+        mode.describe()
+    )];
 
     lines.push(format!(
         "已落盘：{}",
@@ -276,6 +281,14 @@ fn progress_block(snap: &StageSnapshot, dir: &Path) -> String {
             snap.written.join(" ")
         }
     ));
+
+    // 换模式的影响面：已落盘的章节不会跟着重写，所以先把要改的地方摊开
+    if !snap.written.is_empty() {
+        let missing = missing_assets_of_written(snap, dir, data_dir);
+        if !missing.is_empty() {
+            lines.push(asset_impact_line(mode, &missing));
+        }
+    }
 
     if let Some(after) = chapter_after(snap) {
         let exists = snap.written.iter().any(|w| w == &after);
@@ -298,6 +311,42 @@ fn progress_block(snap: &StageSnapshot, dir: &Path) -> String {
         out.push_str(&format!("- {}\n", line));
     }
     out
+}
+
+/// 已落盘的素材缺口在**当前模式下**意味着什么 —— 用户改主意时的影响面。
+///
+/// 这一行是给"改主意"准备的：换了模式，已经写好的章节不会自动重写，
+/// 所以得先把"会多出／少掉哪些要改的地方"摊开。
+fn asset_impact_line(mode: AssetMode, missing: &[String]) -> String {
+    /// 列全没意义，模型和用户都只需要知道大概规模与前几个。
+    const SHOW: usize = 4;
+
+    let mut list = missing
+        .iter()
+        .take(SHOW)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("、");
+    if missing.len() > SHOW {
+        list.push_str(&format!("…（共 {} 处）", missing.len()));
+    }
+    let n = missing.len();
+    match mode {
+        AssetMode::OnlyExisting => format!(
+            "按「只用已有」有 {} 处要改：{}。若这些其实打算之后补素材，\
+             说一句「素材我之后补，先留位置」就能改成「先预留」",
+            n, list
+        ),
+        AssetMode::Reserve => format!(
+            "已留空 {} 处：{}。逐条补 / 改 / 接受看 .agent/assets.md；\
+             改成「只用已有」它们会变成必须修的错",
+            n, list
+        ),
+        AssetMode::Unspecified => format!(
+            "已落盘章节里有 {} 处引用了磁盘上没有的素材：{}。先问用户要「只用已有」还是「先预留」",
+            n, list
+        ),
+    }
 }
 
 /// 设计稿里排在「本章」之后的那一章。
@@ -521,6 +570,29 @@ impl AssetMode {
     fn missing_is_error(self) -> bool {
         self == AssetMode::OnlyExisting
     }
+
+    /// 怎么换一个模式。
+    ///
+    /// 用户决定没有一次性的：改主意不是"打脸"，是常态，所以要把改法随手说出来，
+    /// 而不是让他自己想怎么改。
+    pub fn switch_hint(self) -> &'static str {
+        match self {
+            AssetMode::Unspecified => {
+                "素材模式还没定：问用户要「只用已有」还是「先预留」，\
+                 写进 .agent/constraints.md（`- 素材模式：只用已有`）。\
+                 定下来之后想换，说一句就行。\n"
+            },
+            AssetMode::OnlyExisting => {
+                "素材模式是「只用已有」。若其实打算之后补素材，\
+                 说一句「素材我之后补，先留位置」，\
+                 我就把 .agent/constraints.md 改成「先预留」，这些就不再拦；已落盘的章节不用重写。\n"
+            },
+            AssetMode::Reserve => {
+                "素材模式是「先预留」。若想改成「只用已有」，说一句就行；\
+                 改成后已落盘章节里留空的素材会变成必须修的错。\n"
+            },
+        }
+    }
 }
 
 /// 从约束卡片里读素材模式，格式 `- 素材模式：只用已有`（半角全角冒号都认）。
@@ -556,6 +628,8 @@ pub struct ChapterCheck {
     pub warnings: Vec<String>,
     /// 本章有素材缺口（先预留模式下只登记，不阻断）。
     pub assets_missing: bool,
+    /// 本轮生效的素材模式；决定回执里怎么告诉用户"还能改"。
+    pub mode: AssetMode,
 }
 
 impl ChapterCheck {
@@ -581,6 +655,8 @@ impl ChapterCheck {
         }
         if self.assets_missing {
             out.push_str("缺的素材登记进 .agent/assets.md，别等交付才发现。\n");
+            // 卡在这里的其实是用户当初选的那个模式，所以把换法的句子一并给出
+            out.push_str(self.mode.switch_hint());
         }
         out
     }
@@ -627,22 +703,22 @@ fn check_chapter(dir: &Path, id: &str, data_dir: &Path) -> Option<ChapterCheck> 
 
     let mut check = ChapterCheck {
         errors: chapter_shape_problems(&value),
+        mode: read_asset_mode(dir),
         ..Default::default()
     };
 
-    let mode = read_asset_mode(dir);
     let findings = validate::check_chapter_assets(data_dir, dir, id, &value);
     for d in findings {
         check.assets_missing = true;
         let at = d.event_index.map(|i| i + 1).unwrap_or_default();
         let line = format!("第 {} 个事件 · {}", at, d.message);
-        if mode.missing_is_error() {
+        if check.mode.missing_is_error() {
             check.errors.push(line);
         } else {
             check.warnings.push(line);
         }
     }
-    if check.assets_missing && mode == AssetMode::Unspecified {
+    if check.assets_missing && check.mode == AssetMode::Unspecified {
         check.warnings.push(format!(
             "`素材模式`还没声明：这一轮先问用户「只用已有」还是「先预留」，\
              写进 {}（格式 `- 素材模式：只用已有`）。\
@@ -652,6 +728,28 @@ fn check_chapter(dir: &Path, id: &str, data_dir: &Path) -> Option<ChapterCheck> 
     }
 
     (!check.is_empty()).then_some(check)
+}
+
+/// 已落盘章节里引用了磁盘上不存在的素材，返回 `章节 id + 素材名`。
+///
+/// 与当前模式无关 —— 它回答的是「换个模式会多出/少掉哪些要改的地方」，
+/// 也就是用户改主意时的影响面。改了模式，已写好的章节不会自动重写，得摊开给他看。
+fn missing_assets_of_written(snap: &StageSnapshot, dir: &Path, data_dir: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    for id in &snap.written {
+        let Some(file) = chapter_file(dir, id) else {
+            continue;
+        };
+        let Ok(value) = crate::utils::yaml_file::read_yaml_as_json(&file) else {
+            continue;
+        };
+        for d in validate::check_chapter_assets(data_dir, dir, id, &value) {
+            if let Some(name) = validate::missing_asset_name(&d) {
+                out.push(format!("{} {}", id, name));
+            }
+        }
+    }
+    out
 }
 
 /// 章节的硬性结构要求。
@@ -1148,12 +1246,53 @@ id: Intro/02
             errors: vec!["缺少顶层 `name`".into()],
             warnings: vec!["第 2 个事件 · 找不到素材「夜晚.png」".into()],
             assets_missing: true,
+            mode: AssetMode::OnlyExisting,
         };
         let text = check.render();
         assert!(text.contains("还不算写完"), "{text}");
         assert!(text.contains("重新 write_file 覆盖"), "{text}");
         assert!(text.contains("记下来即可"), "{text}");
         assert!(text.contains(".agent/assets.md"), "{text}");
+        // 卡人的其实是用户当初选的那个模式，所以回执里必须带上"怎么改"
+        assert!(text.contains("改成「先预留」"), "{text}");
+    }
+
+    #[test]
+    fn every_asset_mode_says_how_to_switch() {
+        for mode in [
+            AssetMode::Unspecified,
+            AssetMode::OnlyExisting,
+            AssetMode::Reserve,
+        ] {
+            let hint = mode.switch_hint();
+            assert!(
+                hint.contains("素材模式") && hint.contains("说一句"),
+                "{mode:?} 没给出改法：{hint}"
+            );
+        }
+    }
+
+    #[test]
+    fn impact_line_frames_the_switch_both_ways() {
+        let missing = vec!["03 夜晚.png".to_string(), "05 走廊.webp".to_string()];
+        // 收紧：告诉他这些会变成必须修的错
+        let strict = asset_impact_line(AssetMode::Reserve, &missing);
+        assert!(strict.contains("必须修的错"), "{strict}");
+        assert!(strict.contains("03 夜晚.png、05 走廊.webp"), "{strict}");
+        // 放宽：告诉他一句话就能不再拦
+        let loose = asset_impact_line(AssetMode::OnlyExisting, &missing);
+        assert!(loose.contains("改成「先预留」"), "{loose}");
+        // 未定：先问，不替他决定
+        let undecided = asset_impact_line(AssetMode::Unspecified, &missing);
+        assert!(undecided.contains("先问用户"), "{undecided}");
+    }
+
+    #[test]
+    fn impact_line_caps_the_listing() {
+        let many: Vec<String> = (0..9).map(|i| format!("0{i} 素材{i}.webp")).collect();
+        let line = asset_impact_line(AssetMode::Reserve, &many);
+        assert!(line.contains("共 9 处"), "{line}");
+        assert!(!line.contains("素材8"), "不该把 9 条全列出来：{line}");
     }
 
     #[test]
@@ -1220,7 +1359,7 @@ id: Intro/02
         let mut snap = forge(&["01", "02", "03", "04"], &["01", "02"]);
         snap.script_dir = Some(dir.clone());
 
-        let block = progress_block(&snap, &dir);
+        let block = progress_block(&snap, &dir, &dir);
         assert!(block.contains("【落盘进度】"), "{block}");
         assert!(block.contains("先预留"), "{block}");
         assert!(block.contains("已落盘：01 02"), "{block}");
@@ -1236,7 +1375,7 @@ id: Intro/02
         // 01 被删了、02 03 还在：本章 = 01，而 02 已有内容
         let mut snap = forge(&["01", "02", "03"], &["02", "03"]);
         snap.script_dir = Some(dir.clone());
-        let block = progress_block(&snap, &dir);
+        let block = progress_block(&snap, &dir, &dir);
         assert!(block.contains("下一章 02：磁盘上已有内容"), "{block}");
         assert!(block.contains("素材模式：未声明"), "{block}");
         let _ = std::fs::remove_dir_all(&dir);
@@ -1337,6 +1476,31 @@ id: Intro/02
         let clean = "name: 雨夜\nevents:\n  - type: chapter_end\n    next: end\n";
         let (pkg, data_dir) = tmp_script_package("e2e-clean", clean, "- 素材模式：只用已有\n");
         assert_eq!(check_chapter(&pkg, "01", &data_dir), None);
+        let _ = std::fs::remove_dir_all(pkg.parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn switch_impact_covers_every_written_chapter() {
+        let (pkg, data_dir) = tmp_script_package("impact", BAD_CHAPTER, "- 素材模式：先用已有的\n");
+        // 02 也留了一个空
+        std::fs::write(
+            pkg.join("Chapters/02.yaml"),
+            "name: 第二章\nevents:\n  - type: music\n    musicPath: 走廊.mp3\n  - type: chapter_end\n    next: end\n",
+        )
+        .unwrap();
+
+        let mut snap = snap_of(&pkg);
+        snap.plan = vec!["01".into(), "02".into()];
+        snap.written = vec!["01".into(), "02".into()];
+
+        let missing = missing_assets_of_written(&snap, &pkg, &data_dir);
+        assert_eq!(missing, vec!["01 夜晚.png", "02 走廊.mp3"], "{missing:?}");
+
+        // 「先用已有的」不是规范写法 → 当未声明，所以影响面那行是"先问用户"
+        let block = progress_block(&snap, &pkg, &data_dir);
+        assert!(block.contains("素材模式：未声明"), "{block}");
+        assert!(block.contains("随时可改"), "{block}");
+        assert!(block.contains("01 夜晚.png"), "{block}");
         let _ = std::fs::remove_dir_all(pkg.parent().unwrap().parent().unwrap());
     }
 

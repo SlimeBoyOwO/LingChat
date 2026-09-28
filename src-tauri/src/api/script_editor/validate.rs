@@ -890,10 +890,7 @@ fn check_asset(
     }
 
     if resolve_script_media(data_dir, Some(script_dir), path, media).is_none() {
-        let mut message = format!(
-            "找不到素材「{}」。运行时不会报错，只会静默把画面/声音清空",
-            path
-        );
+        let mut message = format!("{}{}」{}", ASSET_MISSING_PREFIX, path, ASSET_MISSING_TAIL);
         if let Some(existing) = sibling_extension_asset(data_dir, script_dir, path, media) {
             message.push_str(&format!("；磁盘上有「{}」，疑似写错了扩展名", existing));
         }
@@ -901,6 +898,24 @@ fn check_asset(
             Diagnostic::event(Severity::Error, "asset.missing", cid, i, message).with_field(key),
         );
     }
+}
+
+/// `asset.missing` 文案的固定前后缀。提取函数与它同源，避免两处各写一遍。
+const ASSET_MISSING_PREFIX: &str = "找不到素材「";
+const ASSET_MISSING_TAIL: &str = "。运行时不会报错，只会静默把画面/声音清空";
+
+/// 从 `asset.missing` 诊断里取出被引用的素材名。
+///
+/// 诊断本身只给文案，而调用方常常需要名字（例如列出「哪些素材留空了」）。
+/// 提取规则跟文案放在一起，改文案时这里会一起被想到。
+pub fn missing_asset_name(d: &Diagnostic) -> Option<&str> {
+    if d.code != "asset.missing" {
+        return None;
+    }
+    d.message
+        .strip_prefix(ASSET_MISSING_PREFIX)?
+        .split('」')
+        .next()
 }
 
 /// 换个扩展名能不能找到同一个素材：写的是 `夜晚.png`，磁盘上是 `夜晚.webp`。
