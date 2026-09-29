@@ -57,9 +57,15 @@
           v-if="menuState === 'gameMode'"
           @back="backToMainMenu"
           @open-scripts="showScriptModeMenu"
+          @open-mini-games="showMiniGameMenu"
           :loadingScripts="loadingScripts"
           :scripts="scripts"
         />
+      </Transition>
+
+      <!-- 小游戏菜单沿用主菜单背景、字体和布局 -->
+      <Transition name="slide-right">
+        <MiniGameOptions v-if="menuState === 'miniGames'" @back="showGameModeMenu" />
       </Transition>
 
       <!-- 剧本模式菜单 -->
@@ -86,10 +92,14 @@
 </template>
 
 <script setup lang="ts">
+import type { WebInitData } from "@/api/services/game-info";
 import { getScriptList, type ScriptSummary } from "@/api/services/script-info";
+import { invoke } from "@tauri-apps/api/core";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import { useGameStore } from "../../stores/modules/game";
+import { applyWebInitData } from "../../stores/modules/game/actions";
 import { useSettingsStore } from "../../stores/modules/settings";
 import { useUIStore } from "../../stores/modules/ui/ui";
 import MeteorAnimation from "../game/standard/animations/MeteorAnimation.vue";
@@ -98,8 +108,17 @@ import StarAnimation from "../game/standard/animations/StarAnimation.vue";
 import { SettingsPanel as Settings } from "../settings/";
 import MainChat from "./MainChat.vue";
 import { StartLogo, StartPage } from "./menu/base";
-import { GameModeOptions, MainMenuOptions, ScriptModeOptions, WorkshopOptions } from "./menu/page";
+import {
+  GameModeOptions,
+  MiniGameOptions,
+  MainMenuOptions,
+  ScriptModeOptions,
+  WorkshopOptions,
+} from "./menu/page";
 
+const props = withDefaults(defineProps<{ initialMenu?: "main" | "miniGames" }>(), {
+  initialMenu: "main",
+});
 const { t } = useI18n();
 const router = useRouter();
 const uiStore = useUIStore();
@@ -107,7 +126,9 @@ const settingsStore = useSettingsStore();
 
 // 页面与菜单状态
 const currentPage = ref("mainMenu");
-const menuState = ref<"main" | "gameMode" | "scriptMode" | "workshop">("main");
+const menuState = ref<"main" | "gameMode" | "scriptMode" | "workshop" | "miniGames">(
+  props.initialMenu,
+);
 const scripts = ref<ScriptSummary[]>([]);
 const loadingScripts = ref(false);
 const starsEnabled = computed(() => settingsStore.mainMenuStarsEnabled);
@@ -138,6 +159,9 @@ const Save = Settings;
 function showGameModeMenu() {
   menuState.value = "gameMode";
 }
+function showMiniGameMenu() {
+  menuState.value = "miniGames";
+}
 function handleOpenCredits() {
   router.push("/credit");
 }
@@ -153,6 +177,35 @@ function showWorkshopMenu() {
 function goToGithub() {
   window.open("https://github.com/SlimeBoyOwO/LingChat", "_blank");
 }
+
+const handleContinueGame = async () => {
+  try {
+    const { saves } = await invoke<{ saves: Array<{ id: number }>; total: number }>(
+      "list_saves",
+      {
+        page: 1,
+        pageSize: 1,
+      },
+    );
+    if (!saves || saves.length === 0) {
+      uiStore.showWarning({
+        title: t("views.mainMenu.noSaveTitle"),
+        message: t("views.mainMenu.noSaveMessage"),
+      });
+      return;
+    }
+    const gameInfo = await invoke<WebInitData>("load_save", { saveId: saves[0].id });
+    const gameStore = useGameStore();
+    applyWebInitData(gameStore.$state, gameInfo);
+    router.push("/chat");
+  } catch (error) {
+    console.error("继续游戏失败:", error);
+    uiStore.showError({
+      title: t("views.mainMenu.continueFailTitle"),
+      message: t("views.mainMenu.continueFailMessage"),
+    });
+  }
+};
 
 async function handleOpenSettings(tab?: string) {
   // 后台执行隐藏与捕获，不阻塞设置页打开
