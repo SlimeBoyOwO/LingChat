@@ -261,6 +261,9 @@ pub async fn execute_tool(
             if path.trim().is_empty() {
                 return (false, "缺少 path 参数".into());
             }
+            if let Some(refusal) = unbound_foreign_package(ctx, path) {
+                return (false, refusal);
+            }
             match ft().write_file(path, content, append) {
                 Ok(out) => {
                     bind_script_key_if_new(ctx, path).await;
@@ -454,6 +457,39 @@ async fn with_chapter_check(
     format!("{}{}", out, check.render())
 }
 
+/// 未绑定会话想往**已经存在**的剧本包里写 → 拦住。
+///
+/// 真机踩过：用户在一个空会话里说「把第三章写出来」，模型自己去扫盘、挑了一个
+/// 「正好缺第 3 章」的剧本包当成"用户当前的剧本"。读只读没问题，写下去就是改别人的东西。
+///
+/// 这一轮**新写出来的**包不在 `existing_script_keys` 里，所以"新建剧本"照常 ——
+/// 绑定的正常路径就是写 `<新目录>/story_config.yaml` 或 `.agent/design.md`。
+fn unbound_foreign_package(ctx: &SkillAgentRunContext, path: &str) -> Option<String> {
+    foreign_package_refusal(
+        ctx.stage_snapshot.script_key.as_deref(),
+        &ctx.existing_script_keys,
+        path,
+    )
+}
+
+/// 判定本体。抽出来只为测得动 —— 为它造一个完整的 run context 不值得。
+fn foreign_package_refusal(bound: Option<&str>, existing: &[String], path: &str) -> Option<String> {
+    if bound.is_some() {
+        return None;
+    }
+    let key = stage::script_key_of_package_path(path)?;
+    if !existing.iter().any(|k| k == &key) {
+        return None;
+    }
+    Some(format!(
+        "本会话还没有绑定剧本，不能改已存在的剧本包「{key}」。\
+         要让用户先在编辑器里打开那个剧本、再新建会话（会自动绑定），\
+         或者让他把剧本 key 说出来并新建一个会话；\
+         如果是要新建剧本，就写一个新目录下的 story_config.yaml。\
+         这一轮先把这件事告诉用户，不要动文件。"
+    ))
+}
+
 /// `story_config.yaml` 落盘即剧本包诞生，从写入路径反推 key 绑到会话上。
 ///
 /// 已有绑定不覆盖；绑定下一轮生效。
@@ -488,5 +524,53 @@ async fn bind_script_key_if_new(ctx: &SkillAgentRunContext, path: &str) {
     {
         Ok(()) => tracing::info!("[skill_agent] 会话已绑定剧本 key: {}", key),
         Err(e) => tracing::warn!("[skill_agent] 绑定剧本 key 失败: {}", e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::foreign_package_refusal;
+
+    fn keys() -> Vec<String> {
+        vec![
+            "standalone/雨夜的自动售货机".into(),
+            "character/风雪/无限占卜".into(),
+        ]
+    }
+
+    #[test]
+    fn unbound_conversation_cannot_write_into_someone_elses_package() {
+        // 真机：空会话说「把第三章写出来」，模型自己挑了一个「正好缺第 3 章」的包当成用户的剧本
+        let refusal = foreign_package_refusal(
+            None,
+            &keys(),
+            "game_data/scripts/standalone/雨夜的自动售货机/Chapters/03.yaml",
+        )
+        .expect("要拦住");
+        assert!(refusal.contains("还没有绑定剧本"), "{refusal}");
+        assert!(refusal.contains("雨夜的自动售货机"), "{refusal}");
+
+        // 绑定了就随便写（这个剧本就是本会话的）
+        assert!(
+            foreign_package_refusal(
+                Some("standalone/雨夜的自动售货机"),
+                &keys(),
+                "game_data/scripts/standalone/雨夜的自动售货机/Chapters/03.yaml",
+            )
+            .is_none()
+        );
+
+        // 新建剧本：目录还不存在于"开始时就有的包"里 → 照写不误（绑定就靠这一写）
+        assert!(
+            foreign_package_refusal(
+                None,
+                &keys(),
+                "game_data/scripts/standalone/未寄出的信/.agent/design.md",
+            )
+            .is_none()
+        );
+
+        // 不是剧本包的路径（沙箱里别的文件）→ 不归这条管
+        assert!(foreign_package_refusal(None, &keys(), "game_data/notes.txt").is_none());
     }
 }

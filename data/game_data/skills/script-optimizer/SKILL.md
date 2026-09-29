@@ -83,7 +83,8 @@ description: LingChat 剧本的校验与修复技能。运行引擎级校验器�
   - `condition.unsupported_operator` / `no_variable` / `bad_variable` — 条件语法错误 → 只支持 `变量 == 值`、`变量 != 值` 或单个变量判真假；变量名不能含空格；不要用 `&&`、`||`、`>`、`<`、`!`、括号、算术。
   - `condition.placeholder_not_replaced` — `%player%` 写在 condition 里不会被替换 → 移走。
 - **素材与媒体**
-  - `asset.missing` — 素材找不到 → 引用已存在的文件，或把素材放到对应 `Assets/` 子目录（Backgrounds / Musics / Sounds / Pics / Ambients）。
+  - `asset.missing` — 素材找不到 → 引用已存在的文件，或把素材放到对应 `Assets/` 子目录（Backgrounds / Musics / Sounds / Pics / Ambients）。**这是错误还是提醒，由 `.agent/constraints.md` 的素材模式决定**：用户说过「先预留」时它只是提醒，别为了消掉它去改用户认可的剧情；只有「只用已有」才是必须当场修的错。
+  - `asset.forbidden` — 用户选了「零素材」，这一章却引用了素材 → 把那几个事件改成纯文字（旁白 + 对白），或问用户是否换模式。**不要自作主张删掉整段剧情**。
   - `ambient.no_path` — 播放环境音但没给路径 → 填 `ambientPath`；要停掉全部轨道请用「停止该轨」。
   - `music.bad_speed` — 播放速度超范围 → 改到 0–4。
 - **特效**
@@ -123,7 +124,7 @@ description: LingChat 剧本的校验与修复技能。运行引擎级校验器�
   - `variable.never_set` — 条件里用了未赋值的变量 → 用 `set_variable` 赋值，或改掉变量名。
   - `variable.never_read` — 赋值了但从未在条件里用 → 接线或删除（info，可忽略）。
 - **角色**
-  - `character.unknown` — 引用的角色在 `characters/` 下找不到 → 引用已存在的角色，或写 `MAIN`。
+  - `character.unknown` — 引用的角色在 `characters/` 下找不到 → 引用已存在的角色，或写 `MAIN`。**松紧同样由 `.agent/constraints.md` 的 `- 角色卡：允许缺失` 决定**：允许缺失时它只是提醒，用户会自己补卡 —— 不要为了消掉提示去把台词改写成别人说的，更不要自己造一张卡。
   - `character.no_role_key` — `settings.yml` 缺 `script_role_key` → 补上（剧本 NPC 必须显式声明）。
   - `character.no_persona` — 人设为空 → 按需补 `system_prompt`（info，可忽略）。
   - `character.action_unknown` — `modify_character` 动作非法 → 用 `show_character`（登场）/ `hide_character`（退场）。

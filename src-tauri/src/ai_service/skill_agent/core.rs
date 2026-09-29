@@ -55,6 +55,9 @@ pub struct SkillAgentRunContext {
     pub data_dir: std::path::PathBuf,
     /// 会话绑定的剧本 key（运行时解析为路径注入系统提示）。
     pub script_key: Option<String>,
+    /// 运行开始时就存在的剧本包 key。用来认出"未绑定的会话正往别人的剧本包里写" ——
+    /// 这一轮新写出来的包不在这个列表里，所以**新建剧本的流程不受影响**。
+    pub existing_script_keys: Vec<String>,
     /// 由剧本包状态推导出的当前阶段。
     pub stage_snapshot: stage::StageSnapshot,
 }
@@ -71,9 +74,29 @@ struct AccumToolCall {
 // ---------- 系统提示 ----------
 
 /// 构建「当前剧本」段：给出 key/路径，并指示 agent 先看已有内容（实时读取，不注入静态快照）。
-fn build_script_block(sandbox_dir: &Path, script_key: Option<&str>) -> String {
+fn build_script_block(
+    sandbox_dir: &Path,
+    script_key: Option<&str>,
+    known_keys: &[String],
+) -> String {
     let Some(key) = script_key else {
-        return String::new();
+        // 未绑定：编辑器里没打开剧本时新建的会话就是这样。
+        // 真机踩过：用户在这个状态下说「把第三章写出来」，模型自己扫盘挑了一个
+        // 「正好缺第 3 章」的包当成"用户当前的剧本" —— 所以这里把话说死。
+        let mut out = String::from(
+            "\n\n【当前剧本上下文】\n本会话**还没有绑定剧本**（在编辑器里没打开剧本时新建的会话就是这样）。\
+             \n- **不要自己去磁盘上挑一个剧本当作用户的「当前剧本」**，哪怕它看起来正好缺某一章。\
+             \n- 用户要弄已有剧本：让他先在编辑器里打开那个剧本、再新建一个会话（会自动绑定）；\
+             或者你先把候选列给他，让他挑。\n- 用户要新建剧本：问清剧本名与类型，\
+             然后写 `<standalone 或 character/<角色>>/<剧本名>/story_config.yaml`（写完会自动绑定）。\
+             \n- 在没绑定之前，除非用户明确让你新建剧本，**不要写任何剧本文件**。",
+        );
+        if !known_keys.is_empty() {
+            out.push_str("\n\n（磁盘上现有的剧本包，仅供你告诉用户「有这些」：");
+            out.push_str(&known_keys.join("、"));
+            out.push('）');
+        }
+        return out;
     };
     match crate::utils::script_paths::resolve_script_dir(key) {
         Ok(dir) => {
@@ -280,7 +303,11 @@ pub async fn run_chat(
         content: format!("思考中…（{}）", approval_mode),
     });
 
-    let script_block = build_script_block(&ctx.sandbox_dir, ctx.script_key.as_deref());
+    let script_block = build_script_block(
+        &ctx.sandbox_dir,
+        ctx.script_key.as_deref(),
+        &ctx.existing_script_keys,
+    );
 
     // 已绑定的会话顺手把包骨架补上（修"半成品包"：只有 .agent/、编辑器打不开）。
     // 新建剧本的绑定发生在写文件那一刻，那时也已经补过了；这里是既有包的兜底。

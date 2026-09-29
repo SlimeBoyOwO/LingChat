@@ -128,19 +128,33 @@ impl TaskKind {
                  有错误当场改好，这一章才算落盘。\
                  \n**队列里还有别的章节就接着写**，直到队列做完再收尾；\
                  不要在一条消息里把没让写的章节也一并写了。\
+                 \n回执必须让人看得见成果：**哪一章（id + 标题）、落到哪个文件、这一章到底\
+                 发生了什么（3~5 条，按事件顺序）、自检结果、设计稿里的下一章是哪一章**。\
+                 只报「已落盘」或只报字节数等于没汇报。\
                  \n不要调用 validate_script：全剧没写完时它必然报一批「尚未写完」的假错\
                  （断链、不可达），照着改会把你引向提前补写后续章节。"
             },
             TaskKind::Outline => {
-                "设计稿落地后，队列里若还有别的事（接着写章节、盘点素材等）就继续做完再收尾。"
+                "**回执里要把大纲贴出来给人看** —— 每章一行：`id` + 标题 + 一句梗概，\
+                 末尾带上结局走向与预计章节数。只说「写完了 / 已落盘 / 多少字节」\
+                 等于没交付：用户要看的正是这份清单。\
+                 设计稿落地后，队列里若还有别的事（接着写章节、盘点素材等）就继续做完再收尾。"
+            },
+            TaskKind::ReviseOutline => {
+                "回执要说清**改前是什么、改后是什么**，并把改过的章节那一行重新贴出来\
+                 （`id` + 标题 + 梗概）；只报「已更新设计稿」等于没交付。\
+                 只改点名的那几处，不要顺手重写没让动的章节；队列里若还有别的项，继续做完再收尾。"
             },
             TaskKind::Polish => {
                 "按诊断逐条修复；需要新编剧情内容才能补上的缺口交回用户，不要自行编造。\
+                 回执要把**还剩哪些诊断**逐条列出来（带 `code` 与位置），别只说「校验通过」。\
                  修完、校验通过后，队列里若还有别的事继续做完再汇报。"
             },
-            TaskKind::ReviseOutline | TaskKind::ReviseChapter => {
+            TaskKind::ReviseChapter => {
                 "按用户提出的修改需求逐项修改，不要自行扩大改动范围，\
-                 也不要顺手重写未被要求改动的部分；队列里若还有别的项，继续做完再收尾。"
+                 也不要顺手重写未被要求改动的部分；\
+                 回执要说清改了哪一章、改前改后各是什么。\
+                 队列里若还有别的项，继续做完再收尾。"
             },
             _ => "",
         }
@@ -328,6 +342,12 @@ pub struct ScriptFacts {
     pub has_next: bool,
     /// 用户点名的目标存在吗；`None` = 这一轮没点名。
     pub target_exists: Option<bool>,
+    /// 用户点名要写的那一章，正好是设计稿里**下一个待写**的章。
+    ///
+    /// 用来认出"跳着写"：设计稿有 7 章、只落盘了 3 章时直接写 07，
+    /// 上一章的 `chapter_end` 还指着不存在的 04、变量也接不上 —— 引擎从 03 走就断了。
+    /// 用户确实认可这种拒绝（试玩反馈）。
+    pub target_is_next: bool,
 }
 
 /// 这一轮的任务能不能直接做；不能的话往哪走。
@@ -376,20 +396,33 @@ pub fn reconcile(kind: TaskKind, facts: ScriptFacts) -> Handoff {
         // 只是"顺手补上/补对"的提醒 —— 早先把它做成硬前置，结果是
         // 用户喊着「把第一二章落盘」，它却一直去写大纲。
         K::WriteChapter => {
-            if facts.has_plan && facts.has_next {
-                Handoff::Proceed
-            } else if facts.has_plan {
+            if !facts.has_plan {
+                if facts.has_design {
+                    Handoff::ProceedNote(
+                        "设计稿文件在，但读不出章节列表 —— 章节标题要 `## ` 开头、\
+                         紧随其后的第一个非空行写 `id: <章节id>`；这一轮按用户说的写，顺手把格式补对",
+                    )
+                } else {
+                    Handoff::ProceedNote(
+                        "还没有设计稿；这一轮按用户说的写，并把设计稿补上，别让后面的章节没依据",
+                    )
+                }
+            } else if !facts.has_next {
                 Handoff::ProceedNote(
                     "设计稿里列的章节都写完了；这一章是新加的，记得顺手在设计稿里补一节",
                 )
-            } else if facts.has_design {
-                Handoff::ProceedNote(
-                    "设计稿文件在，但读不出章节列表 —— 章节标题要 `## ` 开头、\
-                     紧随其后的第一个非空行写 `id: <章节id>`；这一轮按用户说的写，顺手把格式补对",
-                )
+            } else if facts.target_is_next || facts.target_exists != Some(false) {
+                // 下一个待写章，或者点名的章已经在磁盘上（重写）→ 直接做
+                Handoff::Proceed
             } else {
+                // 跳着写：前面还有没落盘的章。不是不许，是**会接不上** ——
+                // 上一章的 chapter_end 指向的正是缺的那一章，变量也还没产生。
+                // 用户没明说"知道会接不上、就要跳着写"时，先把这件事说清楚。
                 Handoff::ProceedNote(
-                    "还没有设计稿；这一轮按用户说的写，并把设计稿补上，别让后面的章节没依据",
+                    "用户点名的那一章不是设计稿里下一个待写的：前面还有没落盘的章，\
+                     直接写它会接不上（上一章的 chapter_end 指向缺的那一章）。\
+                     他没明说「知道会接不上，就要跳着写」时，先说清这件事再问一句；\
+                     他确认了就照写，并在回执里说明它暂时接不上",
                 )
             }
         },
@@ -527,6 +560,9 @@ mod tests {
     // 五列对应计划里的 R/S · F(刚列完) · F(写一半) · P · M。
 
     /// `plan` 默认为与 `design` 一致（文件在且读得出）；格式读不出的情况单独造。
+    ///
+    /// 默认"点名的那一章就是下一个待写章" —— 也就是最常见的那条路；
+    /// 跳章单独特判（见 `write_chapter_only_skipping_ahead_gets_a_note`）。
     fn facts(design: bool, written: bool, next: bool) -> ScriptFacts {
         ScriptFacts {
             has_design: design,
@@ -534,6 +570,7 @@ mod tests {
             has_written: written,
             has_next: next,
             target_exists: None,
+            target_is_next: next,
         }
     }
 
@@ -679,6 +716,53 @@ mod tests {
             reconcile(TaskKind::ReviseOutline, facts(true, false, true)),
             Handoff::Proceed
         );
+    }
+
+    #[test]
+    fn write_chapter_only_skipping_ahead_gets_a_note() {
+        // 设计稿 7 章、只落盘了 3 章，用户点名写 07：不是不许，是**会接不上**
+        // （03 的 chapter_end 指着不存在的 04）。真机上模型自己拒绝了，用户认可。
+        let skipping = ScriptFacts {
+            has_design: true,
+            has_plan: true,
+            has_written: true,
+            has_next: true,
+            target_exists: Some(false),
+            target_is_next: false,
+        };
+        let Handoff::ProceedNote(note) = reconcile(TaskKind::WriteChapter, skipping) else {
+            panic!("跳章要带一句说明，而不是默默照做")
+        };
+        assert!(note.contains("接不上"), "{note}");
+        assert!(note.contains("跳着写"), "{note}");
+
+        // 正常顺序（点名的就是下一个待写章）→ 无话可说，直接做
+        let in_order = ScriptFacts {
+            target_is_next: true,
+            ..skipping
+        };
+        assert_eq!(
+            reconcile(TaskKind::WriteChapter, in_order),
+            Handoff::Proceed
+        );
+
+        // 点名的是已经落盘的章（重写）→ 也别拦
+        let rewrite = ScriptFacts {
+            target_exists: Some(true),
+            ..skipping
+        };
+        assert_eq!(reconcile(TaskKind::WriteChapter, rewrite), Handoff::Proceed);
+
+        // 计划里的都写完了（新加一章）→ 老规矩：提醒顺手补设计稿
+        let extra = ScriptFacts {
+            has_next: false,
+            target_is_next: false,
+            ..skipping
+        };
+        let Handoff::ProceedNote(note) = reconcile(TaskKind::WriteChapter, extra) else {
+            panic!("新加的章应当照做 + 提醒补设计稿")
+        };
+        assert!(note.contains("新加的"), "{note}");
     }
 
     #[test]

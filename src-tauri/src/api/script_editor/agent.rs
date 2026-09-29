@@ -415,6 +415,8 @@ pub async fn editor_agent_start_chat(
         skills_dir,
         data_dir: crate::api::data_dir(),
         script_key,
+        // 这一轮之前就存在的剧本包。新建剧本时它自己写的包不在里面，所以不受限。
+        existing_script_keys: crate::utils::script_paths::enumerate_script_keys(),
         stage_snapshot,
     };
 

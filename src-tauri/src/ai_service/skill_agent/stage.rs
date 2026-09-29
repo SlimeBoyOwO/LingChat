@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::ai_service::types::LlmMessage;
 use crate::api::script_editor::validate;
+use crate::utils::script_modes::{self, AssetMode, CastMode, ScriptModes};
 use crate::utils::script_paths;
 
 /// 流程产物所在目录。点号目录不会被引擎扫描，也不进编辑器枚举；
@@ -17,8 +18,15 @@ pub const AGENT_DIR: &str = ".agent";
 /// 设计稿在剧本包内的相对路径。
 pub const DESIGN_REL_PATH: &str = ".agent/design.md";
 
-/// 用户约束卡片。素材模式等"问过用户才知道"的事实记在这里。
-pub const CONSTRAINTS_REL_PATH: &str = ".agent/constraints.md";
+/// 章节细节稿。用户在大纲之后补的细节落在这里，**按章分节**。
+///
+/// 之前没有这个名字：模型自己发明了一个文件来放细节（真机在 `chapter-details.md`
+/// 里写了 12KB），系统不知道它存在、交接单也不提，于是"细节改过、设计稿没改"没人发现。
+/// 现在它是正式产物：细节写这里，并且**同一处细节改完要顺手把设计稿那一节的梗概对齐**。
+pub const CHAPTER_DETAILS_REL_PATH: &str = ".agent/chapter-details.md";
+
+/// 用户约束卡片。剧本包内的相对路径（解析在 `utils::script_modes`，只此一处）。
+pub use crate::utils::script_modes::CONSTRAINTS_REL_PATH;
 
 /// 任务队列。这一版只读不写：写它的是流程 Agent（尚未实现）。
 pub const QUEUE_REL_PATH: &str = ".agent/queue.md";
@@ -320,11 +328,12 @@ pub fn build_task_block(
     }
 
     // 听用户的：**能力范围内就按他说的来**。推荐写法只是默认，不是死规矩。
+    // "能力范围" = 这一轮能用的工具 + 手上这本手册里的手艺（判准与手册里那一节同源）。
     out.push_str(&format!(
-        "\n【听用户的】你这一轮能用的工具是 {}。用户要的事只要这些工具做得到，就按他说的做 —— \
-         下面那些只是**推荐写法**，用户有别的写法就以他的为准（他说一次写三章就写三章；\
-         他说顺手把某章改掉，而你有 write_file，就改）。\
-         做不到的（这一轮的工具里没有那个手段）不要硬编，直说做不到，并告诉他该在什么时候做。",
+        "\n【听用户的】你这一轮能用的工具是 {}。用户要的事只要这些工具加这本手册做得到，\
+         就按他说的做 —— 下面那些只是**推荐写法**，用户有别的写法就以他的为准\
+         （他说一次写三章就写三章；他说顺手把某章改掉，而你有 write_file，就改）。\
+         做不到的（这一轮没那个手段）不要硬编，直说做不到，并告诉他该在什么时候做。",
         task.tools().join(" / ")
     ));
 
@@ -350,7 +359,8 @@ pub fn build_task_block(
             ));
         }
         out.push_str(
-            "\n每做完一项都要留在最终回复里（做了什么、落到哪个文件）；\
+            "\n**一项一项按顺序做**：上一项没做完就别同时铺开下一项（写章节就是一章落盘了再写下一章）。\
+             每做完一项都要留在最终回复里（做了什么、落到哪个文件）；\
              某一项缺信息做不了，就停下来问用户，并说明剩下的还在队列里 —— \
              除这两种情况，别只做一部分就收尾。",
         );
@@ -402,29 +412,83 @@ pub fn build_task_block(
 /// 而那一章已经落盘 → 算做完。别的类型（改章节、盘点、校验）**不打勾** ——
 /// "那一章早就在磁盘上"不等于"这一轮改完了它"，按磁盘事实打勾会当场误判成做完。
 /// 队列是给人看的事实，用户可以随时手改；它不落库。
+/// 队列落盘。
+///
+/// **是合并，不是覆盖**：真机上有一轮用户只是闲聊，路由判成「仅对话」，
+/// 队列文件被整份重写成"仅对话"那一项 —— 上一轮排着的「编写章节：07」当场消失，
+/// 模型下一轮自己发现"队列自相矛盾"。
+/// 所以：旧文件里**没勾的项一律留着**（这正是"还没做完"的记忆），
+/// 本轮新项追加在后面；同名同对象的项不重复添加。
 pub fn write_queue(
     dir: &Path,
     items: &[super::router::QueueItem],
     written: &[String],
 ) -> std::io::Result<()> {
-    let mut out = String::from("# 任务队列（流程 Agent 维护；可以直接手改）\n\n");
+    let mut entries: Vec<(bool, String)> = read_queue_entries(dir);
     for item in items {
-        let target = item.target.trim();
-        let done = item.kind == super::role::TaskKind::WriteChapter
-            && !target.is_empty()
-            && written.iter().any(|w| w == target);
-        out.push_str(&format!(
-            "- [{}] {}：{}\n",
-            if done { "x" } else { " " },
-            item.kind.label(),
-            if target.is_empty() {
-                "（未指明）"
-            } else {
-                target
+        let text = queue_text(item);
+        // 「仅对话」没有待办可言，别往队列里塞
+        if item.kind == super::role::TaskKind::Chat && item.target.trim().is_empty() {
+            continue;
+        }
+        if !entries.iter().any(|(_, e)| e == &text) {
+            entries.push((false, text));
+        }
+    }
+    // 已落盘章节的「编写章节」打勾；其余保持原状（旧文件里勾过的不会被抹掉）
+    for (done, text) in entries.iter_mut() {
+        if *done {
+            continue;
+        }
+        if let Some(target) = text.strip_prefix("编写章节：") {
+            if !target.trim().is_empty() && written.iter().any(|w| w == target.trim()) {
+                *done = true;
             }
-        ));
+        }
+    }
+    let mut out = String::from("# 任务队列（流程 Agent 维护；可以直接手改）\n\n");
+    for (done, text) in &entries {
+        out.push_str(&format!("- [{}] {}\n", if *done { "x" } else { " " }, text));
     }
     std::fs::write(dir.join(QUEUE_REL_PATH), out)
+}
+
+/// 队列文件里一行 → `(是否已勾, 条目文本)`。
+fn read_queue_entries(dir: &Path) -> Vec<(bool, String)> {
+    let Ok(text) = std::fs::read_to_string(dir.join(QUEUE_REL_PATH)) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let t = line.trim_start();
+        let (done, rest) =
+            if let Some(r) = t.strip_prefix("- [x]").or_else(|| t.strip_prefix("- [X]")) {
+                (true, r)
+            } else if let Some(r) = t.strip_prefix("- [ ]") {
+                (false, r)
+            } else {
+                continue;
+            };
+        let rest = rest.trim();
+        if !rest.is_empty() {
+            out.push((done, rest.to_string()));
+        }
+    }
+    out
+}
+
+/// 队列里一项怎么写。与 [`read_queue_progress`] 的解析对齐。
+fn queue_text(item: &super::router::QueueItem) -> String {
+    let target = item.target.trim();
+    format!(
+        "{}：{}",
+        item.kind.label(),
+        if target.is_empty() {
+            "（未指明）"
+        } else {
+            target
+        }
+    )
 }
 
 /// 流程总纲全文。稳定部分，流程 Agent 每次都要用它来判断流程走到哪了。
@@ -441,6 +505,7 @@ pub fn hub_doc(skills_dir: &Path) -> Option<String> {
 /// `target` 是用户点名的章节 id；`target_exists` 只认**已落盘**的
 /// （唯一看它的是「改章节」，改不到还没写的东西）。
 pub fn facts_of(snap: &StageSnapshot, target: Option<&str>) -> super::role::ScriptFacts {
+    let wanted = target.map(str::trim).filter(|t| !t.is_empty());
     let target_exists = target.map(|t| {
         let t = t.trim();
         !t.is_empty() && snap.written.iter().any(|w| w == t)
@@ -458,6 +523,7 @@ pub fn facts_of(snap: &StageSnapshot, target: Option<&str>) -> super::role::Scri
         has_written: !snap.written.is_empty(),
         has_next: snap.next_chapter().is_some(),
         target_exists,
+        target_is_next: wanted.is_some_and(|t| snap.next_chapter() == Some(t)),
     }
 }
 
@@ -501,11 +567,34 @@ pub fn build_run_materials(snap: &StageSnapshot, data_dir: &Path) -> String {
 /// 而磁盘上那一章可能真有内容，模型得知道写下去会覆盖什么。
 /// `data_dir` 由调用方给（判素材要用它），这样这条逻辑离开全局静态也能测。
 fn progress_block(snap: &StageSnapshot, dir: &Path, data_dir: &Path) -> String {
-    let mode = read_asset_mode(dir);
-    let mut lines: Vec<String> = vec![
-        format!("素材模式：{}（随时可改，说一句就行）", mode.describe()),
-        config_line(dir),
-    ];
+    let modes = ScriptModes::read(dir);
+    let mut lines: Vec<String> = vec![format!(
+        "素材模式：{}（`.agent/constraints.md` 是唯一来源；要改就改那一行，并检查别处有没有旧说法）",
+        modes.asset.describe()
+    )];
+    // 不用人物卡的剧本不必被这一行占地方
+    if uses_character_cards(snap, dir, modes.cast) {
+        lines.push(format!(
+            "角色卡模式：{}（同上，改一处就全都对齐）",
+            modes.cast.describe()
+        ));
+    }
+    // 卡片里自己前后矛盾时当场说破 —— 不然模型会像真机那样连着几轮问用户按哪个走
+    if let Some(note) = constraint_conflict(dir) {
+        lines.push(format!("⚠️ {note}"));
+    }
+    lines.push(config_line(dir));
+    // 有设计稿就照实报"读出了什么"；没有但已经有章节（既存剧本）也提一句，
+    // 全新的空剧本不提 —— 那时候还没到设计这一步。
+    if dir.join(DESIGN_REL_PATH).is_file() || !snap.written.is_empty() {
+        lines.push(design_line(dir));
+    }
+    if dir.join(CHAPTER_DETAILS_REL_PATH).is_file() {
+        lines.push(format!(
+            "章节细节稿：在（{}）—— 落盘时的细节以它为准，跟设计稿的梗概有出入就当场对齐",
+            CHAPTER_DETAILS_REL_PATH
+        ));
+    }
 
     lines.push(format!(
         "已落盘：{}",
@@ -520,7 +609,7 @@ fn progress_block(snap: &StageSnapshot, dir: &Path, data_dir: &Path) -> String {
     if !snap.written.is_empty() {
         let missing = missing_assets_of_written(snap, dir, data_dir);
         if !missing.is_empty() {
-            lines.push(asset_impact_line(mode, &missing));
+            lines.push(asset_impact_line(modes.asset, &missing));
         }
     }
 
@@ -587,6 +676,30 @@ fn asset_impact_line(mode: AssetMode, missing: &[String]) -> String {
     }
 }
 
+/// 用户声明的模式在卡片里自相矛盾时的那一句提示（读不到卡片就没有）。
+fn constraint_conflict(dir: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(dir.join(CONSTRAINTS_REL_PATH)).ok()?;
+    script_modes::conflict_note(&text)
+}
+
+/// 设计稿那一行：告诉模型代码**从设计稿里读出了什么**。
+///
+/// 「设计稿在、但一个章节 id 都读不出来」是最坑的一种：代码这边算不出"下一章"，
+/// 模型却以为清单已经列好了，于是要么接着往下写、要么反复问用户"章节哪去了"。
+fn design_line(dir: &Path) -> String {
+    let Ok(text) = std::fs::read_to_string(dir.join(DESIGN_REL_PATH)) else {
+        return "设计稿：缺（还没有 .agent/design.md）".to_string();
+    };
+    let plan = parse_plan(&text);
+    if plan.is_empty() {
+        "设计稿：在，但读不出章节 —— 每个 `##` 标题后的**第一个非空行**必须写 `id: 01`\
+         （写在别处的 id 会被忽略），补上才能按章推进"
+            .to_string()
+    } else {
+        format!("设计稿：{} 章（{}）", plan.len(), plan.join(" "))
+    }
+}
+
 /// 剧本配置那一行：让模型知道现在是"还没建"还是"只有系统骨架、等你补全"。
 ///
 /// 不这么做的话，自动骨架会让模型以为工程已经建好了，就不去补 description /
@@ -633,6 +746,11 @@ fn read_queue_progress(dir: &Path) -> Option<String> {
     let mut out = format!("共 {} 项，已完成 {}，还剩 {}", total, done, pending.len());
     if let Some(next) = pending.first() {
         out.push_str(&format!("（下一项：{}）", next));
+    }
+    if !pending.is_empty() {
+        // 队列是"还欠着的事"，不是"这一轮的事"。用户不要了就得有人把它去掉，
+        // 否则它永远挂着、每轮都在催。
+        out.push_str("。没勾的是还欠着的：用户说了不用做、或者已经改口做别的，就把它从队列文件里删掉并说一声");
     }
     Some(out)
 }
@@ -822,89 +940,31 @@ fn written_chapter_id(tool: &str, arguments: &str) -> Option<String> {
     chapter_id_of_path(args.get("path")?.as_str()?)
 }
 
-/// 素材从哪来。动笔前必须问用户，它决定"引用了不存在的素材"算不算错。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum AssetMode {
-    /// 没问过 / 卡片里没写或写得不认识。
-    #[default]
-    Unspecified,
-    /// 只用磁盘上已有的 —— 写了不存在的名字就是错，必须当场换掉。
-    OnlyExisting,
-    /// 之后补素材，先留位置 —— 缺失只登记，不阻断。
-    Reserve,
-    /// 零素材：纯文字剧情，**连磁盘上有的也不引用**。
-    None,
-}
-
-impl AssetMode {
-    /// 交接单里那一行：既说模式，也说缺素材在这一模式下算不算错。
-    pub fn describe(self) -> &'static str {
-        match self {
-            AssetMode::Unspecified => "未声明（先问用户：只用已有 / 先预留 / 零素材）",
-            AssetMode::OnlyExisting => "只用已有（引用不存在的素材 = 错误，当场改）",
-            AssetMode::Reserve => "先预留（缺素材只登记进 .agent/assets.md）",
-            AssetMode::None => "零素材（不引用任何素材，纯文字剧情）",
-        }
-    }
-
-    /// 未声明时不拦人：没问过就按警告处理，同时催去问。
-    fn missing_is_error(self) -> bool {
-        matches!(self, AssetMode::OnlyExisting | AssetMode::None)
-    }
-
-    /// 怎么换一个模式。
-    ///
-    /// 用户决定没有一次性的：改主意不是"打脸"，是常态，所以要把改法随手说出来，
-    /// 而不是让他自己想怎么改。
-    pub fn switch_hint(self) -> &'static str {
-        match self {
-            AssetMode::Unspecified => {
-                "素材模式还没定：问用户要「只用已有」「先预留」还是「零素材」，\
-                 写进 .agent/constraints.md（`- 素材模式：只用已有`）。\
-                 定下来之后想换，说一句就行。\n"
-            },
-            AssetMode::OnlyExisting => {
-                "素材模式是「只用已有」。若其实打算之后补素材，\
-                 说一句「素材我之后补，先留位置」，\
-                 我就把 .agent/constraints.md 改成「先预留」，这些就不再拦；已落盘的章节不用重写。\n"
-            },
-            AssetMode::Reserve => {
-                "素材模式是「先预留」。若想改成「只用已有」，说一句就行；\
-                 改成后已落盘章节里留空的素材会变成必须修的错。\n"
-            },
-            AssetMode::None => {
-                "素材模式是「零素材」：这一章不该引用任何素材（连磁盘上有的也不用），\
-                 画面全靠旁白与对白写出来。若想改成「只用已有」或「先预留」，说一句就行。\n"
-            },
-        }
-    }
-}
-
-/// 从约束卡片里读素材模式，格式 `- 素材模式：只用已有`（半角全角冒号都认）。
+/// 本会话这个剧本当前生效的素材模式。
 ///
-/// 只在同义写法上放宽（「仅用已有」「之后补充」「不要素材」）；其余一律当未声明 ——
-/// 认错的代价是校验松紧反了，宁可多问一次也不要猜。
-pub fn parse_asset_mode(text: &str) -> AssetMode {
-    for line in text.lines() {
-        let head = line.trim_start_matches(['-', '*', ' ', '\t']);
-        let Some(rest) = head.strip_prefix("素材模式") else {
-            continue;
-        };
-        let value = rest.trim_start_matches([':', '：']).trim();
-        return match value {
-            "只用已有" | "仅用已有" => AssetMode::OnlyExisting,
-            "先预留" | "之后补充" => AssetMode::Reserve,
-            "零素材" | "不要素材" | "不用素材" | "无素材" => AssetMode::None,
-            _ => AssetMode::Unspecified,
-        };
-    }
-    AssetMode::Unspecified
+/// 解析只有一处（`utils::script_modes`），**整剧校验与章节自检共用同一份判定** ——
+/// 免得两处各读一遍 `.agent/constraints.md`，一处认得出、一处认不出（真机踩过：
+/// 用户允许缺口，章节自检只是警告，整剧校验却一直报错误）。
+fn read_asset_mode(script_dir: &Path) -> AssetMode {
+    ScriptModes::read(script_dir).asset
 }
 
-fn read_asset_mode(script_dir: &Path) -> AssetMode {
-    std::fs::read_to_string(script_dir.join(CONSTRAINTS_REL_PATH))
-        .map(|t| parse_asset_mode(&t))
-        .unwrap_or_default()
+/// 这个剧本用不用人物卡 —— 决定交接单里要不要带角色卡模式那一行。
+///
+/// 三种情况都算用：用户已经声明过模式、是角色卡羁绊冒险、或者仓库里已经建了 `characters/`。
+/// 纯独立剧本没这些，就不必被这一行占地方。
+fn uses_character_cards(snap: &StageSnapshot, script_dir: &Path, cast: CastMode) -> bool {
+    if cast != CastMode::Unspecified {
+        return true;
+    }
+    if snap
+        .script_key
+        .as_deref()
+        .is_some_and(|k| k.replace('\\', "/").starts_with("character/"))
+    {
+        return true;
+    }
+    std::fs::read_dir(script_dir.join("characters")).is_ok_and(|mut d| d.next().is_some())
 }
 
 /// 一章的自检结果：错误必须当场改完，警告只记录。
@@ -1023,7 +1083,7 @@ fn check_chapter(dir: &Path, id: &str, data_dir: &Path) -> Option<ChapterCheck> 
             }
             let at = d.event_index.map(|i| i + 1).unwrap_or_default();
             let line = format!("第 {} 个事件 · {}", at, d.message);
-            if check.mode.missing_is_error() {
+            if script_modes::asset_missing_is_error(check.mode) {
                 check.errors.push(line);
             } else {
                 check.warnings.push(line);
@@ -1916,11 +1976,14 @@ id: Intro/02
         assert!(block.contains("[当前] 编写章节：03"), "{block}");
         assert!(block.contains("[待做] 改章节：12"), "{block}");
         assert!(block.contains("全部做完才算这一轮结束"), "{block}");
+        // 顺序执行：不能一口气把两章一起铺开
+        assert!(block.contains("一项一项按顺序做"), "{block}");
         // 用户原话要带给角色；能力范围内要按用户的来
         assert!(block.contains("【用户这一轮的原话】"), "{block}");
         assert!(block.contains("顺手把第十二章那句改掉"), "{block}");
         assert!(block.contains("【听用户的】"), "{block}");
         assert!(block.contains("只是**推荐写法**"), "{block}");
+        assert!(block.contains("这些工具加这本手册做得到"), "{block}");
 
         // 只有一项、又没指明对象（用户就说了一句"继续"）→ 不刷队列段
         let single = plan(vec![q(role::TaskKind::Chat, "")]);
@@ -2019,6 +2082,30 @@ id: Intro/02
     }
 
     #[test]
+    fn design_line_says_what_the_code_actually_read_out_of_the_design() {
+        let dir = tmp_script_dir("designline");
+        assert!(design_line(&dir).contains("缺"), "{}", design_line(&dir));
+        // 设计稿在、但没有一个 `##` 块的第一行是 `id:` → 代码算不出下一章
+        std::fs::write(
+            dir.join(DESIGN_REL_PATH),
+            "# 设计\n\n## 第一章 雨夜\n梗概: …\nid: 01\n",
+        )
+        .unwrap();
+        let line = design_line(&dir);
+        assert!(line.contains("读不出章节"), "{line}");
+        assert!(line.contains("id: 01"), "要说清怎么写才认：{line}");
+        // 写对了就报出代码认到的清单
+        std::fs::write(
+            dir.join(DESIGN_REL_PATH),
+            "# 设计\n\n## 第一章 雨夜\nid: 01\n\n## 第二章 清晨\nid: 02\n",
+        )
+        .unwrap();
+        let line = design_line(&dir);
+        assert!(line.contains("2 章") && line.contains("01 02"), "{line}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn artifact_paths_all_live_under_agent_dir() {
         // 「详情」浮窗按目录列产物、按目录取文件，写歪一处就会静默漏掉一份
         for rel in [DESIGN_REL_PATH, CONSTRAINTS_REL_PATH, QUEUE_REL_PATH] {
@@ -2027,38 +2114,6 @@ id: Intro/02
                 "`{rel}` 不在 {AGENT_DIR}/ 下"
             );
         }
-    }
-
-    #[test]
-    fn asset_mode_reads_canonical_values() {
-        let read = |s: &str| parse_asset_mode(&format!("# 用户约束\n\n{}", s));
-        assert_eq!(read("- 素材模式：只用已有"), AssetMode::OnlyExisting);
-        assert_eq!(read("- 素材模式: 先预留"), AssetMode::Reserve);
-        assert_eq!(read("  * 素材模式：仅用已有"), AssetMode::OnlyExisting);
-        assert_eq!(read("- 素材模式：之后补充"), AssetMode::Reserve);
-        // 真人真的会这么说：「素材的话就零素材」
-        assert_eq!(read("- 素材模式：零素材"), AssetMode::None);
-        assert_eq!(read("- 素材模式：不要素材"), AssetMode::None);
-    }
-
-    #[test]
-    fn asset_mode_unrecognized_is_unspecified() {
-        // 认不出的写法一律当未声明：猜错方向会把校验松紧弄反
-        assert_eq!(
-            parse_asset_mode("- 素材模式：尽量用已有的"),
-            AssetMode::Unspecified
-        );
-        assert_eq!(parse_asset_mode("- 素材模式："), AssetMode::Unspecified);
-        assert_eq!(parse_asset_mode("- 玩家扮演：风雪"), AssetMode::Unspecified);
-        assert_eq!(parse_asset_mode(""), AssetMode::Unspecified);
-    }
-
-    #[test]
-    fn only_existing_mode_turns_missing_asset_into_error() {
-        assert!(AssetMode::OnlyExisting.missing_is_error());
-        // 没问过就不拦人，但会催去问
-        assert!(!AssetMode::Reserve.missing_is_error());
-        assert!(!AssetMode::Unspecified.missing_is_error());
     }
 
     #[test]
@@ -2153,6 +2208,125 @@ id: Intro/02
         )
         .unwrap();
         assert_eq!(read_asset_mode(&dir), AssetMode::OnlyExisting);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn queue_is_merged_not_overwritten_so_a_chat_turn_cannot_wipe_pending_work() {
+        use crate::ai_service::skill_agent::role::TaskKind;
+        use crate::ai_service::skill_agent::router::QueueItem;
+        let dir = tmp_script_dir("queue-merge");
+        let q = |kind, target: &str| QueueItem {
+            kind,
+            target: target.to_string(),
+        };
+
+        // 用户一轮里排了两件事
+        write_queue(
+            &dir,
+            &[
+                q(TaskKind::WriteChapter, "04"),
+                q(TaskKind::CheckAssets, ""),
+            ],
+            &["01".into()],
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(dir.join(QUEUE_REL_PATH)).unwrap();
+        assert!(text.contains("- [ ] 编写章节：04"), "{text}");
+        assert!(text.contains("- [ ] 素材盘点：（未指明）"), "{text}");
+
+        // 下一轮只是闲聊（仅对话）—— 队列**不该**被这条闲聊清空（真机踩过）
+        write_queue(&dir, &[q(TaskKind::Chat, "")], &["01".into()]).unwrap();
+        let text = std::fs::read_to_string(dir.join(QUEUE_REL_PATH)).unwrap();
+        assert!(
+            text.contains("- [ ] 编写章节：04"),
+            "闲聊轮把待办抹掉了：{text}"
+        );
+        assert!(!text.contains("仅对话"), "仅对话不该进队列：{text}");
+
+        // 第四章真落盘之后才打勾；同一项不重复添加
+        write_queue(
+            &dir,
+            &[q(TaskKind::WriteChapter, "04")],
+            &["01".into(), "04".into()],
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(dir.join(QUEUE_REL_PATH)).unwrap();
+        assert!(text.contains("- [x] 编写章节：04"), "{text}");
+        assert_eq!(
+            text.matches("编写章节：04").count(),
+            1,
+            "重复添加了：{text}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn conflicting_mode_statements_are_called_out_in_the_handoff() {
+        // 真机：卡片里「零素材」和别处旧说法并存，交接单却说"未声明"，
+        // 模型连着几轮追问按哪个走。现在两件事都修了：读得出来 + 矛盾要说破。
+        let dir = tmp_script_dir("mode-conflict");
+        std::fs::write(
+            dir.join(CONSTRAINTS_REL_PATH),
+            "# 约束\n\n- 素材：零素材（依据：用户改口）\n- 素材模式：只用已有\n",
+        )
+        .unwrap();
+        let mut snap = forge(&[], &[]);
+        snap.script_dir = Some(dir.clone());
+        let block = progress_block(&snap, &dir, &dir);
+        // 以最后一条为准
+        assert!(block.contains("只用已有"), "{block}");
+        assert!(block.contains("互相矛盾"), "{block}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chapter_details_file_is_reported_when_it_exists() {
+        let dir = tmp_script_dir("details");
+        let mut snap = forge(&[], &[]);
+        snap.script_dir = Some(dir.clone());
+        assert!(!progress_block(&snap, &dir, &dir).contains("章节细节稿"));
+        std::fs::write(dir.join(CHAPTER_DETAILS_REL_PATH), "## 第4章\n…\n").unwrap();
+        let block = progress_block(&snap, &dir, &dir);
+        assert!(block.contains("章节细节稿"), "{block}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cast_mode_line_shows_up_only_when_the_script_uses_character_cards() {
+        // 用户已经声明过 → 一定要带出来（他要改主意就得有这一行可改）
+        let dir = tmp_script_dir("cast-declared");
+        std::fs::write(dir.join(CONSTRAINTS_REL_PATH), "- 角色卡：允许缺失\n").unwrap();
+        let mut snap = forge(&[], &[]);
+        snap.script_dir = Some(dir.clone());
+        let block = progress_block(&snap, &dir, &dir);
+        assert!(block.contains("角色卡模式：允许缺失"), "{block}");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // 角色卡羁绊冒险 → 没声明也要问
+        let dir = tmp_script_dir("cast-adventure");
+        let mut snap = forge(&[], &[]);
+        snap.script_dir = Some(dir.clone());
+        snap.script_key = Some("character/诺一/无限占卜".to_string());
+        let block = progress_block(&snap, &dir, &dir);
+        assert!(block.contains("角色卡模式：未声明"), "{block}");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // 已建了 characters/ 也一样
+        let dir = tmp_script_dir("cast-dir");
+        std::fs::create_dir_all(dir.join("characters").join("风雪")).unwrap();
+        let mut snap = forge(&[], &[]);
+        snap.script_dir = Some(dir.clone());
+        assert!(progress_block(&snap, &dir, &dir).contains("角色卡模式"));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // 纯独立剧本、没人声明过 → 不占地方
+        let dir = tmp_script_dir("cast-none");
+        let mut snap = forge(&[], &[]);
+        snap.script_dir = Some(dir.clone());
+        snap.script_key = Some("standalone/我的剧本".to_string());
+        let block = progress_block(&snap, &dir, &dir);
+        assert!(!block.contains("角色卡模式"), "{block}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2320,7 +2494,7 @@ id: Intro/02
         // 「先用已有的」不是规范写法 → 当未声明，所以影响面那行是"先问用户"
         let block = progress_block(&snap, &pkg, &data_dir);
         assert!(block.contains("素材模式：未声明"), "{block}");
-        assert!(block.contains("随时可改"), "{block}");
+        assert!(block.contains("唯一来源"), "{block}");
         assert!(block.contains("01 夜晚.png"), "{block}");
         let _ = std::fs::remove_dir_all(pkg.parent().unwrap().parent().unwrap());
     }

@@ -24,6 +24,7 @@ use crate::ai_service::game_system::script_engine::utils::media::{
 use crate::ai_service::game_system::script_engine::utils::script_function::parse_variable_action;
 
 use super::schema::build_schema;
+use crate::utils::script_modes::{AssetMode, CastMode, ScriptModes};
 use crate::utils::script_paths as paths;
 use crate::utils::yaml_file;
 
@@ -187,6 +188,8 @@ pub fn validate(
 ) -> ValidationReport {
     let mut diags: Vec<Diagnostic> = Vec::new();
     let schema = build_schema();
+    // 用户声明的模式决定松紧：他说过"素材/角色卡之后补"，就不该再判成错。
+    let modes = ScriptModes::read(script_dir);
 
     // 事件类型 → 字段表，用于必填/未知字段检查
     let mut field_index: HashMap<&str, &Vec<super::schema::FieldSpec>> = HashMap::new();
@@ -485,7 +488,7 @@ pub fn validate(
             // 逐类型细查
             match ty {
                 "background" | "present_pic" | "music" | "sound" | "ambient" => {
-                    check_asset(data_dir, script_dir, obj, ty, cid, i, &mut diags);
+                    check_asset(data_dir, script_dir, modes, obj, ty, cid, i, &mut diags);
                     // music 事件的播放速度：超范围会失真或被浏览器拒绝，提前告警
                     if ty == "music" {
                         if let Some(speed) = obj.get("playbackSpeed").and_then(|v| v.as_f64()) {
@@ -604,18 +607,23 @@ pub fn validate(
             // character 引用
             if let Some(ch) = obj.get("character").and_then(|v| v.as_str()) {
                 if ch != "MAIN" && !known_characters.contains(ch) {
+                    // 松紧由角色卡模式决定：**只有"只用已有"才算错误**。
+                    // "允许缺失"（角色之后再加）与"没问过"都只提醒 —— 没问过就不该拦人。
+                    let severity = if modes.cast == CastMode::OnlyExisting {
+                        Severity::Error
+                    } else {
+                        Severity::Warn
+                    };
+                    let mut message = format!(
+                        "角色「{}」在本剧本的 characters/ 下找不到；写 MAIN 表示当前主角",
+                        ch
+                    );
+                    if severity == Severity::Warn {
+                        message.push_str("（角色卡模式允许缺失：之后建好这张卡即可）");
+                    }
                     diags.push(
-                        Diagnostic::event(
-                            Severity::Error,
-                            "character.unknown",
-                            cid,
-                            i,
-                            format!(
-                                "角色「{}」在本剧本的 characters/ 下找不到；写 MAIN 表示当前主角",
-                                ch
-                            ),
-                        )
-                        .with_field("character"),
+                        Diagnostic::event(severity, "character.unknown", cid, i, message)
+                            .with_field("character"),
                     );
                 }
             }
@@ -854,6 +862,7 @@ fn check_modify_character_action(
 fn check_asset(
     data_dir: &Path,
     script_dir: &Path,
+    modes: ScriptModes,
     obj: &serde_json::Map<String, JsonValue>,
     ty: &str,
     cid: &str,
@@ -894,14 +903,41 @@ fn check_asset(
         return;
     }
 
+    // 零素材：**引用任何素材都是错**（连磁盘上有的也不行），不必再去找
+    if modes.asset == AssetMode::None {
+        diags.push(
+            Diagnostic::event(
+                Severity::Error,
+                "asset.forbidden",
+                cid,
+                i,
+                format!(
+                    "素材模式是「零素材」，不该引用素材（「{}」）。改成纯文字剧情，\
+                     或在 .agent/constraints.md 里改了模式再写",
+                    path
+                ),
+            )
+            .with_field(key),
+        );
+        return;
+    }
+
     if resolve_script_media(data_dir, Some(script_dir), path, media).is_none() {
         let mut message = format!("{}{}」{}", ASSET_MISSING_PREFIX, path, ASSET_MISSING_TAIL);
         if let Some(existing) = sibling_extension_asset(data_dir, script_dir, path, media) {
             message.push_str(&format!("；磁盘上有「{}」，疑似写错了扩展名", existing));
         }
-        diags.push(
-            Diagnostic::event(Severity::Error, "asset.missing", cid, i, message).with_field(key),
-        );
+        // 松紧由用户声明的素材模式决定：**只有"只用已有"才算错误**。
+        // "先预留"是用户允许的缺口；没声明时按最宽（章节自检会去催问）。
+        let severity = if crate::utils::script_modes::asset_missing_is_error(modes.asset) {
+            Severity::Error
+        } else {
+            Severity::Warn
+        };
+        if severity == Severity::Warn {
+            message.push_str("（素材模式允许缺口：登记进 .agent/assets.md 即可）");
+        }
+        diags.push(Diagnostic::event(severity, "asset.missing", cid, i, message).with_field(key));
     }
 }
 
@@ -1016,6 +1052,7 @@ pub fn check_chapter_assets(
     chapter: &serde_json::Value,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
+    let modes = ScriptModes::read(script_dir);
     let Some(events) = chapter.get("events").and_then(|v| v.as_array()) else {
         return diags;
     };
@@ -1030,7 +1067,7 @@ pub fn check_chapter_assets(
             ty,
             "background" | "present_pic" | "music" | "sound" | "ambient"
         ) {
-            check_asset(data_dir, script_dir, obj, ty, cid, i, &mut diags);
+            check_asset(data_dir, script_dir, modes, obj, ty, cid, i, &mut diags);
         }
     }
     diags
@@ -1852,9 +1889,23 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// 给剧本包写一份用户约束（`.agent/constraints.md`），只写要用的那几行。
+    fn write_constraints(dir: &std::path::Path, lines: &[&str]) {
+        let agent = dir.join(".agent");
+        std::fs::create_dir_all(&agent).unwrap();
+        let mut text = String::from("# 用户约束\n\n");
+        for l in lines {
+            text.push_str("- ");
+            text.push_str(l);
+            text.push('\n');
+        }
+        std::fs::write(agent.join("constraints.md"), text).unwrap();
+    }
+
     #[test]
-    fn chapter_check_flags_missing_asset() {
+    fn chapter_check_flags_missing_asset_in_only_existing_mode() {
         let dir = script_dir_with_night_webp("missing");
+        write_constraints(&dir, &["素材模式：只用已有"]);
         let data_dir = std::env::temp_dir().join("lingchat-validate-missing-data");
         let diags = check_chapter_assets(&data_dir, &dir, "01", &chapter_with_image("不存在.webp"));
         assert_eq!(diags.len(), 1, "{diags:?}");
@@ -1862,6 +1913,41 @@ mod tests {
         assert_eq!(diags[0].severity, Severity::Error);
         // 事件下标指向 background 那一条（第 2 个）
         assert_eq!(diags[0].event_index, Some(1));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chapter_check_missing_asset_is_not_an_error_unless_user_said_only_existing() {
+        // 用户说过「素材之后补」和「还没问过」都不该拦人：缺素材只是登记。
+        // 这条和 read_asset_mode 共用一份解析，防的是两处各判一套（真机踩过）。
+        let data_dir = std::env::temp_dir().join("lingchat-validate-missing-data");
+        for (tag, constraints) in [
+            ("reserve", Some(["素材模式：先预留"])),
+            ("undeclared", None),
+        ] {
+            let dir = script_dir_with_night_webp(tag);
+            if let Some(lines) = constraints {
+                write_constraints(&dir, &lines);
+            }
+            let diags =
+                check_chapter_assets(&data_dir, &dir, "01", &chapter_with_image("不存在.webp"));
+            assert_eq!(diags.len(), 1, "{tag}: {diags:?}");
+            assert_eq!(diags[0].code, "asset.missing");
+            assert_eq!(diags[0].severity, Severity::Warn, "{tag}: {diags:?}");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    #[test]
+    fn chapter_check_zero_asset_mode_forbids_every_reference() {
+        // 零素材模式下连磁盘上真有的素材也不许引用
+        let dir = script_dir_with_night_webp("zero");
+        write_constraints(&dir, &["素材模式：零素材"]);
+        let data_dir = std::env::temp_dir().join("lingchat-validate-missing-data");
+        let diags = check_chapter_assets(&data_dir, &dir, "01", &chapter_with_image("夜晚.webp"));
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert_eq!(diags[0].code, "asset.forbidden");
+        assert_eq!(diags[0].severity, Severity::Error);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1885,5 +1971,62 @@ mod tests {
         let diags = check_chapter_assets(&data_dir, &dir, "01", &chapter_with_image("夜晚.webp"));
         assert!(diags.is_empty(), "{diags:?}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 造一个能跑完整 `validate()` 的最小剧本包：配置 + 一章，引用不存在的角色。
+    fn script_dir_with_unknown_character(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "lingchat-validate-cast-{}-{}",
+            tag,
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Chapters")).unwrap();
+        std::fs::write(
+            dir.join("story_config.yaml"),
+            "script_name: 校验用\nintro_chapter: main\n",
+        )
+        .unwrap();
+        // characters/ 是空的，「陌生人」这张卡还不存在
+        std::fs::write(
+            dir.join("Chapters").join("main.yaml"),
+            "name: 开场\nevents:\n  - type: dialogue\n    character: 陌生人\n    text: 你好\n  - type: chapter_end\n    next: end\n",
+        )
+        .unwrap();
+        dir
+    }
+
+    #[test]
+    fn unknown_character_is_only_a_warning_unless_user_said_only_existing() {
+        // 角色卡也允许缺失：用户没说过「只用已有」时，缺卡不能算错误，
+        // 否则「素材之后补、角色卡之后补」的剧本会被自己的校验卡死在试玩。
+        let data_dir = std::env::temp_dir().join("lingchat-validate-cast-data");
+        for (tag, expected) in [
+            ("undeclared", Severity::Warn),
+            ("allow", Severity::Warn),
+            ("strict", Severity::Error),
+        ] {
+            let dir = script_dir_with_unknown_character(tag);
+            if tag == "allow" {
+                write_constraints(&dir, &["角色卡模式：允许缺失"]);
+            }
+            if tag == "strict" {
+                write_constraints(&dir, &["角色卡模式：只用已有"]);
+            }
+            let report = validate(&data_dir, &dir, "standalone/校验用", &HashMap::new());
+            let d = report
+                .diagnostics
+                .iter()
+                .find(|d| d.code == "character.unknown")
+                .unwrap_or_else(|| panic!("{tag}: 没报出未知角色：{:?}", report.diagnostics));
+            assert_eq!(d.severity, expected, "{tag}: {}", d.message);
+            assert_eq!(
+                report.error_count,
+                usize::from(expected == Severity::Error),
+                "{tag}: {:?}",
+                report.diagnostics
+            );
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
 }
