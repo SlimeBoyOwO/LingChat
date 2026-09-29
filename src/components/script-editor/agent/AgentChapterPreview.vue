@@ -1,12 +1,6 @@
 <script setup lang="ts">
-/**
- * 章节预览浮窗：只读展示某个剧本已落盘的章节与事件时间线。
- *
- * 用文件系统事实当真相（章节列表来自 `Chapters/` 扫描），因此旧剧本一样能看。
- * 渲染直接复用编辑器的 `ChapterTimeline`（只读模式）与 `MenuItem` 卡片，
- * 保证与「章节流程」的观感一致。刻意不碰 store.chapter —— 那是编辑器正在编辑的
- * 章节，带自动保存防抖，误用会写盘。
- */
+/** 章节预览浮窗：只读展示某剧本已落盘的章节与事件时间线（章节列表来自 `Chapters/` 扫描）。
+ * 刻意不碰 store.chapter —— 那是编辑器正在编辑的章节，带自动保存防抖，误用会写盘。 */
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Icon, Toggle } from "@/components/base";
@@ -30,11 +24,8 @@ const loading = ref(false);
 const currentId = ref("");
 const events = ref<ScriptEventData[]>([]);
 const opening = ref(false);
-/** 流程产物（`.agent/` 下的设计稿、队列、约束等）；只读展示 */
 const artifacts = ref<AgentArtifact[]>([]);
-/** 非空表示左侧正在看这份产物，而不是章节时间线 */
 const artifactName = ref("");
-/** 合并转场等固定组合：视图开关，与编辑器同名同义（只读预览里是本地状态） */
 const foldCompounds = ref(true);
 
 const chapters = computed<ChapterSummary[]>(() => detail.value?.chapters ?? []);
@@ -52,12 +43,11 @@ const roleNameMap = computed(
   () => new Map((detail.value?.characters ?? []).map((c) => [c.roleKey, c.aiName])),
 );
 
-/** 左侧正在看的产物内容；没选中时为空串。 */
 const artifactContent = computed(
   () => artifacts.value.find((a) => a.name === artifactName.value)?.content ?? "",
 );
 
-/** MAIN 的展示名：与编辑器 getter 同口径（绑定角色优先，其次剧本里的玩家名）。 */
+/** MAIN 展示名：绑定角色优先，其次剧本里的玩家名（与编辑器 getter 同口径）。 */
 const mainRoleName = computed(() => {
   const d = detail.value;
   if (!d) return "";
@@ -80,7 +70,6 @@ async function openChapter(id: string) {
     const content = await readChapter(key, id);
     events.value = content.events;
     currentId.value = id;
-    // 从产物切回章节：左侧跟着换回时间线
     artifactName.value = "";
   } catch (e) {
     error.value = String(e);
@@ -89,7 +78,6 @@ async function openChapter(id: string) {
   }
 }
 
-/** 每次打开重新加载：关闭期间编辑器和 Agent 都可能改过东西 */
 async function load() {
   detail.value = null;
   error.value = "";
@@ -125,7 +113,7 @@ watch(
   { immediate: true },
 );
 
-/** 让编辑器打开本章所属的剧本（openScript 自己会先落盘未保存的改动） */
+/** openScript 自己会先落盘未保存的改动 */
 async function focusScript() {
   const key = props.scriptKey;
   if (!key) return false;
@@ -133,7 +121,6 @@ async function focusScript() {
   return editor.scriptKey === key;
 }
 
-/** 跳到编辑器里当前这一章（浮窗关掉，编辑器的自动保存/校验才开始接手） */
 async function jumpToEditor() {
   const id = currentId.value;
   if (!id) return;
@@ -141,7 +128,6 @@ async function jumpToEditor() {
   if (await focusScript()) await editor.openChapter(id);
 }
 
-/** 从当前这一章开始试玩（校验/主角可行性由 startPreview 自己拦） */
 async function previewFromChapter() {
   const id = currentId.value;
   if (!id) return;
@@ -201,7 +187,6 @@ async function previewFromChapter() {
             {{ t("scriptEditor.agentScriptPreview.loadFailed", { error }) }}
           </div>
           <div v-else class="flex min-h-0 flex-1 gap-4 px-4 py-3.5">
-            <!-- 左：只读事件时间线 / 流程产物 -->
             <div class="flex min-w-0 flex-1 flex-col">
               <MenuItem
                 :title="
@@ -215,11 +200,9 @@ async function previewFromChapter() {
                   <Icon icon="text" :size="20" />
                 </template>
                 <div class="mb-2 flex items-center gap-2">
-                  <!-- 纯文字：这是当前正在看的那一章（只读，不做成输入框免得像能改） -->
                   <span class="min-w-0 flex-1 truncate text-sm text-white/85">{{
                     artifactName || currentName
                   }}</span>
-                  <!-- 产物是纯文本，章节才有转场折叠与两个跳转动作 -->
                   <template v-if="artifactName">
                     <span class="shrink-0 text-xs text-white/40">
                       {{ t("scriptEditor.agentScriptPreview.artifactHint") }}
@@ -238,7 +221,6 @@ async function previewFromChapter() {
                     <span class="shrink-0 text-xs text-white/40">
                       {{ t("scriptEditor.chapterFlow.events", { count: events.length }) }}
                     </span>
-                    <!-- 两个动作作用于「当前这一章」，所以跟章节名放同一行 -->
                     <button
                       class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-2.5 py-[0.25rem] text-[0.76rem] whitespace-nowrap text-white/70 transition-all duration-200 hover:bg-white/[0.12] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                       :title="t('scriptEditor.agentScriptPreview.jumpHint')"
@@ -278,7 +260,6 @@ async function previewFromChapter() {
               </MenuItem>
             </div>
 
-            <!-- 右：已落盘章节 + 流程产物 -->
             <div class="flex min-h-0 w-[236px] shrink-0 flex-col gap-3">
               <MenuItem
                 :title="t('scriptEditor.agentScriptPreview.chapters', { count: chapters.length })"
@@ -319,8 +300,7 @@ async function previewFromChapter() {
               </MenuItem>
 
               <!-- 流程产物（.agent/）：设计稿、任务队列、用户约束……只读，改就在对话里说 -->
-              <!-- 每行 shrink-0：不给的话 flex 会把几行一起压扁（真机 6 个产物挤成一坨），
-                   要的是"一行一个、放不下就滚动" -->
+              <!-- 每行 shrink-0：不给 flex 会把几行一起压扁，要的是"一行一个、放不下就滚动" -->
               <MenuItem
                 :title="t('scriptEditor.agentScriptPreview.artifacts', { count: artifacts.length })"
                 class="fill flex max-h-[46%] min-h-[132px] shrink-0 flex-col"
@@ -363,8 +343,7 @@ async function previewFromChapter() {
   display: flex;
   flex-direction: column;
 }
-/* MenuItem 自带的表面是 rgba(255,255,255,0.1)，铺在弹层底上偏暗；
-   这里提到 0.16，与「章节流程」里卡片压在编辑器背景上的亮度接近 */
+/* MenuItem 表面默认 rgba(255,255,255,0.1) 铺在弹层底上偏暗，这里提到 0.16 与「章节流程」卡片亮度接近 */
 :deep(.menu-item) {
   background: rgba(255, 255, 255, 0.16);
 }
