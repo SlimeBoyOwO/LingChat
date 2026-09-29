@@ -23,11 +23,65 @@ pub const CONSTRAINTS_REL_PATH: &str = ".agent/constraints.md";
 /// 任务队列。这一版只读不写：写它的是流程 Agent（尚未实现）。
 pub const QUEUE_REL_PATH: &str = ".agent/queue.md";
 
+/// 素材缺口表。**由代码维护**（见 [`update_assets_gap`]）。
+pub const ASSETS_REL_PATH: &str = ".agent/assets.md";
+
+/// 登场角色名单。**由代码从设计稿汇总**（见 [`write_cast`]）。
+pub const CAST_REL_PATH: &str = ".agent/cast.md";
+
+/// 自动骨架的标记行。`progress_block` 靠它判断"这份配置还没被补全"。
+pub const SKELETON_MARKER: &str = "本文件由系统自动创建";
+
+/// 确保剧本包有个**能加载**的骨架：缺 `story_config.yaml` 就补一份最小的，缺 `Chapters/` 就建。
+///
+/// 包一诞生就该能打开。新建剧本的正常路径是"先写 `.agent/design.md`、之后再建工程"，
+/// 而编辑器是按 `story_config.yaml` 认剧本的 —— 少了它，剧本列表里看不到、
+/// 打开报「读取剧本失败」，引擎也把它算作无效目录跳过。真机踩过。
+///
+/// 只补最小骨架、不当真：`script_name` 取文件夹名（引擎要求两者一致）；
+/// 目录布局是 `character/<角色>/<剧本>` 时顺带写上冒险块；其余留给工程创建阶段补全。
+/// **已存在就一个字都不动。**
+pub fn ensure_package_skeleton(dir: &Path, key: &str) -> std::io::Result<bool> {
+    if !dir.join("Chapters").is_dir() {
+        std::fs::create_dir_all(dir.join("Chapters"))?;
+    }
+    let config = dir.join("story_config.yaml");
+    if config.exists() {
+        return Ok(false);
+    }
+
+    let name = dir
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let mut text = format!(
+        "# LingChat 剧本配置文件\n\
+         # {SKELETON_MARKER}（剧本包骨架），请在「大纲与工程创建」阶段按剧本类型补全。\n\
+         # 剧本名必须与文件夹名一致：{name}\n\
+         script_name: {name}\n\
+         intro_chapter: 01\n"
+    );
+    // 布局从 key 就能看出来：三层且首段是 character → 角色卡羁绊冒险
+    let segs: Vec<&str> = key.split('/').collect();
+    if segs.len() == 3 && segs[0] == "character" {
+        text.push_str(&format!(
+            "\n# ===== 羁绊冒险专属配置（按目录布局推断）=====\n\
+             adventure:\n  is_adventure: true\n  bound_character_folder: \"{}\"\n  \
+             trigger:\n    mode: \"manual\"\n",
+            segs[1]
+        ));
+    }
+    text.push_str("\nscript_settings:\n  user_name: \"玩家\"\n");
+    std::fs::write(&config, text)?;
+    Ok(true)
+}
+
 // 相对技能目录（`data/game_data/skills`）的材料路径。
+// 角色手册的路径由 `role.rs` 拥有，这里只引用，免得同一份路径写两处。
 const HUB_DOC: &str = "lingchat-script-editor/SKILL.md";
-const WRITER_DOC: &str = "script-writer/SKILL.md";
-const TRANSFORMER_DOC: &str = "script-transformer/SKILL.md";
-const OPTIMIZER_DOC: &str = "script-optimizer/SKILL.md";
+const WRITER_DOC: &str = super::role::Role::Writer.doc();
+const TRANSFORMER_DOC: &str = super::role::Role::Transformer.doc();
+const OPTIMIZER_DOC: &str = super::role::Role::Optimizer.doc();
 const EVENT_REFERENCE: &str = "lingchat-script-editor/references/event-reference.md";
 const CHAPTER_TEMPLATE: &str = "lingchat-script-editor/assets/templates/chapter_template.yaml";
 
@@ -214,27 +268,203 @@ pub fn build_stage_block(skills_dir: &Path, stage: Stage) -> String {
 fn load_system_materials(skills_dir: &Path, stage: Stage) -> String {
     let mut out = String::new();
     for rel in profile(stage).system_materials {
-        let path = skills_dir.join(rel);
-        match std::fs::read_to_string(&path) {
-            Ok(text) => {
-                out.push_str(&format!("\n\n【角色指令 · {}】\n", rel));
-                out.push_str(text.trim_end());
-            },
-            // 缺失必须让模型看见：只打日志的话，它会凭记忆补规范且无人知情
-            Err(_) => {
-                tracing::warn!("[skill_agent] 阶段材料缺失: {}", path.display());
-                out.push_str(&format!(
-                    "\n\n【角色指令缺失 · {rel}】\n本文件读取失败。其中的规范不得凭记忆代替，\
+        out.push_str(&load_one_material(skills_dir, rel));
+    }
+    out
+}
+
+/// 读一份手册，冠以「角色指令」来源头。
+///
+/// 读不到必须让模型看见：只打日志的话，它会凭记忆补规范且无人知情。
+fn load_one_material(skills_dir: &Path, rel: &str) -> String {
+    let mut out = String::new();
+    let path = skills_dir.join(rel);
+    match std::fs::read_to_string(&path) {
+        Ok(text) => {
+            out.push_str(&format!("\n\n【角色指令 · {}】\n", rel));
+            out.push_str(text.trim_end());
+        },
+        // 缺失必须让模型看见：只打日志的话，它会凭记忆补规范且无人知情
+        Err(_) => {
+            tracing::warn!("[skill_agent] 阶段材料缺失: {}", path.display());
+            out.push_str(&format!(
+                "\n\n【角色指令缺失 · {rel}】\n本文件读取失败。其中的规范不得凭记忆代替，\
                      也不要静默继续；先告知用户技能文件缺失（可能需要在数据同步里重新勾选）。\n"
-                ));
-            },
+            ));
+        },
+    }
+    out
+}
+
+/// 本轮的注入块：任务 + 行为要求 + 职责边界 + 承接说明 + **该任务要的那几本手册**。
+///
+/// 按任务注入（而不是按阶段）是这次改造的要点：实录显示同一阶段里
+/// 「只提问的那一轮」并不需要落盘手册（R1 注入了 6363 字符、0 次写文件）。
+pub fn build_task_block(
+    task: super::role::TaskKind,
+    handoff: super::role::Handoff,
+    plan: &super::router::RoutePlan,
+    user_msg: &str,
+    skills_dir: &Path,
+) -> String {
+    let mut out = format!("\n\n【本轮任务】{}", task.label());
+    match task.role() {
+        Some(role) => out.push_str(&format!("（{}）", role.label())),
+        None => out.push_str("（不涉及剧本）"),
+    }
+
+    // 用户这一轮的原话。任务名是从这句话里判出来的，"他到底要什么"得看他怎么说的 ——
+    // 一句话里顺手捎带的别的事，光看任务名会漏掉。
+    if !user_msg.trim().is_empty() {
+        out.push_str(&format!("\n【用户这一轮的原话】{}", user_msg.trim()));
+    }
+
+    // 听用户的：**能力范围内就按他说的来**。推荐写法只是默认，不是死规矩。
+    out.push_str(&format!(
+        "\n【听用户的】你这一轮能用的工具是 {}。用户要的事只要这些工具做得到，就按他说的做 —— \
+         下面那些只是**推荐写法**，用户有别的写法就以他的为准（他说一次写三章就写三章；\
+         他说顺手把某章改掉，而你有 write_file，就改）。\
+         做不到的（这一轮的工具里没有那个手段）不要硬编，直说做不到，并告诉他该在什么时候做。",
+        task.tools().join(" / ")
+    ));
+
+    // 队列是这一轮的**工作清单**：用户提了三件事就得三件都做完再收尾。
+    // 只给一行"还剩几项"不够 —— 模型会做完手上这件就收尾。
+    let queue = &plan.items;
+    if queue.len() > 1 || queue.iter().any(|i| !i.target.trim().is_empty()) {
+        out.push_str(&format!(
+            "\n\n【本轮队列】共 {} 项，**全部做完才算这一轮结束**：",
+            queue.len()
+        ));
+        for (i, item) in queue.iter().enumerate() {
+            let target = item.target.trim();
+            out.push_str(&format!(
+                "\n- {} {}：{}",
+                if i == 0 { "[当前]" } else { "[待做]" },
+                item.kind.label(),
+                if target.is_empty() {
+                    "（未指明）"
+                } else {
+                    target
+                }
+            ));
+        }
+        out.push_str(
+            "\n每做完一项都要留在最终回复里（做了什么、落到哪个文件）；\
+             某一项缺信息做不了，就停下来问用户，并说明剩下的还在队列里 —— \
+             除这两种情况，别只做一部分就收尾。",
+        );
+    }
+
+    let directive = task.directive();
+    if !directive.is_empty() {
+        out.push('\n');
+        out.push_str(directive);
+    }
+
+    // 任务自带的产出物说明 + 流程 Agent 给的补充，两条都留下
+    let note = match (task.boundary_note(), plan.boundary.as_deref()) {
+        (Some(a), Some(b)) => Some(format!("{a}；{b}")),
+        (Some(a), None) => Some(a.to_string()),
+        (None, Some(b)) => Some(b.to_string()),
+        (None, None) => None,
+    };
+    out.push_str("\n【职责边界】");
+    out.push_str(&super::role::render_boundary(note.as_deref()));
+
+    let handoff_text = super::role::render_handoff(handoff);
+    if !handoff_text.is_empty() {
+        out.push_str("\n【承接说明】");
+        out.push_str(&handoff_text);
+    }
+
+    let materials = task.materials();
+    if materials.is_empty() {
+        // 仅对话：连手册都不给，免得它顺手把剧本的事也做了
+        out.push_str(
+            "\n\n（本轮是仅对话：不注入任何角色指令。这一轮不要动任何文件 —— \
+             如果用户其实想改剧本，先问清楚要改哪里。）",
+        );
+    } else {
+        out.push_str(
+            "\n\n以下技能文档是本轮**必须遵守的角色指令**，不是参考资料；已注入的无需重复读取。",
+        );
+        for rel in materials {
+            out.push_str(&load_one_material(skills_dir, rel));
         }
     }
     out
 }
 
+/// 把本轮的队列落盘成 `.agent/queue.md`。
+///
+/// **勾选只依据能被代码核对的事实**：`write_chapter` 的 target 是章节 id、
+/// 而那一章已经落盘 → 算做完。别的类型（改章节、盘点、校验）**不打勾** ——
+/// "那一章早就在磁盘上"不等于"这一轮改完了它"，按磁盘事实打勾会当场误判成做完。
+/// 队列是给人看的事实，用户可以随时手改；它不落库。
+pub fn write_queue(
+    dir: &Path,
+    items: &[super::router::QueueItem],
+    written: &[String],
+) -> std::io::Result<()> {
+    let mut out = String::from("# 任务队列（流程 Agent 维护；可以直接手改）\n\n");
+    for item in items {
+        let target = item.target.trim();
+        let done = item.kind == super::role::TaskKind::WriteChapter
+            && !target.is_empty()
+            && written.iter().any(|w| w == target);
+        out.push_str(&format!(
+            "- [{}] {}：{}\n",
+            if done { "x" } else { " " },
+            item.kind.label(),
+            if target.is_empty() {
+                "（未指明）"
+            } else {
+                target
+            }
+        ));
+    }
+    std::fs::write(dir.join(QUEUE_REL_PATH), out)
+}
+
+/// 流程总纲全文。稳定部分，流程 Agent 每次都要用它来判断流程走到哪了。
+///
+/// 读不到就返回 `None` —— 调用方应当**回落**而不是凭记忆补规则。
+pub fn hub_doc(skills_dir: &Path) -> Option<String> {
+    std::fs::read_to_string(skills_dir.join(HUB_DOC))
+        .ok()
+        .map(|t| t.trim_end().to_string())
+}
+
+/// 承接判断要用的事实。与 [`StageSnapshot`] 同源，但保留阶段投影会丢掉的细节。
+///
+/// `target` 是用户点名的章节 id；`target_exists` 只认**已落盘**的
+/// （唯一看它的是「改章节」，改不到还没写的东西）。
+pub fn facts_of(snap: &StageSnapshot, target: Option<&str>) -> super::role::ScriptFacts {
+    let target_exists = target.map(|t| {
+        let t = t.trim();
+        !t.is_empty() && snap.written.iter().any(|w| w == t)
+    });
+    // 「文件在」与「读得出章节」是两件事：前者决定能不能改它，
+    // 后者只是"格式对不对"的提醒 —— 别把后者当前置用。
+    let has_design = snap
+        .script_dir
+        .as_deref()
+        .and_then(|d| std::fs::metadata(d.join(DESIGN_REL_PATH)).ok())
+        .is_some_and(|m| m.len() > 0);
+    super::role::ScriptFacts {
+        has_design,
+        has_plan: !snap.plan.is_empty(),
+        has_written: !snap.written.is_empty(),
+        has_next: snap.next_chapter().is_some(),
+        target_exists,
+    }
+}
+
 /// 组装本轮动态材料（待写章节 + 上一章收尾状态 + 落盘进度）；不落库，每轮重算。
-pub fn build_run_materials(snap: &StageSnapshot) -> String {
+///
+/// `data_dir` 由调用方给，理由同 [`check_written_chapter`]。
+pub fn build_run_materials(snap: &StageSnapshot, data_dir: &Path) -> String {
     let Some(dir) = snap.script_dir.as_deref() else {
         return String::new();
     };
@@ -261,7 +491,7 @@ pub fn build_run_materials(snap: &StageSnapshot) -> String {
         },
         _ => String::new(),
     };
-    out.push_str(&progress_block(snap, dir, &crate::api::data_dir()));
+    out.push_str(&progress_block(snap, dir, data_dir));
     out
 }
 
@@ -272,10 +502,10 @@ pub fn build_run_materials(snap: &StageSnapshot) -> String {
 /// `data_dir` 由调用方给（判素材要用它），这样这条逻辑离开全局静态也能测。
 fn progress_block(snap: &StageSnapshot, dir: &Path, data_dir: &Path) -> String {
     let mode = read_asset_mode(dir);
-    let mut lines: Vec<String> = vec![format!(
-        "素材模式：{}（随时可改，说一句就行）",
-        mode.describe()
-    )];
+    let mut lines: Vec<String> = vec![
+        format!("素材模式：{}（随时可改，说一句就行）", mode.describe()),
+        config_line(dir),
+    ];
 
     lines.push(format!(
         "已落盘：{}",
@@ -346,10 +576,30 @@ fn asset_impact_line(mode: AssetMode, missing: &[String]) -> String {
              改成「只用已有」它们会变成必须修的错",
             n, list
         ),
-        AssetMode::Unspecified => format!(
-            "已落盘章节里有 {} 处引用了磁盘上没有的素材：{}。先问用户要「只用已有」还是「先预留」",
+        AssetMode::None => format!(
+            "「零素材」模式下这些引用本来就不该有（{}）：{}。改成纯文字剧情，或说一句换模式",
             n, list
         ),
+        AssetMode::Unspecified => format!(
+            "已落盘章节里有 {} 处引用了磁盘上没有的素材：{}。先问用户要「只用已有」「先预留」还是「零素材」",
+            n, list
+        ),
+    }
+}
+
+/// 剧本配置那一行：让模型知道现在是"还没建"还是"只有系统骨架、等你补全"。
+///
+/// 不这么做的话，自动骨架会让模型以为工程已经建好了，就不去补 description /
+/// 触发方式 / 成就这些真正要按剧本类型决定的东西。
+fn config_line(dir: &Path) -> String {
+    match std::fs::read_to_string(dir.join("story_config.yaml")) {
+        Err(_) => "剧本配置：缺（系统会补一份最小骨架，能打开但不是成品）".to_string(),
+        Ok(text) if text.contains(SKELETON_MARKER) => {
+            "剧本配置：只有系统建的最小骨架 —— 请在工程创建阶段按剧本类型补全\
+             （简介 / 触发方式 / 解锁与成就 / 玩家称呼）"
+                .to_string()
+        },
+        Ok(_) => "剧本配置：已就绪".to_string(),
     }
 }
 
@@ -509,7 +759,7 @@ fn is_superseded_chapter_write(
 }
 
 /// 从写入路径里取出章节 id（`…/Chapters/<id>.yaml`，允许 `\` 分隔与子目录）。
-fn chapter_id_of_path(path: &str) -> Option<String> {
+pub(crate) fn chapter_id_of_path(path: &str) -> Option<String> {
     let normalized = path.replace('\\', "/");
     let tail = normalized.split("/Chapters/").nth(1)?;
     let id = tail
@@ -539,6 +789,30 @@ pub(crate) fn script_key_of_script_path(path: &str, keys: &[String]) -> Option<S
         .cloned()
 }
 
+/// 从剧本包内任意写入路径反推 key —— **靠三类锚点**，不要求那个包已经被枚举到。
+///
+/// 包根 = `.agent/`、`Chapters/`、`story_config.yaml` 三者中任一个之前的那段路径。
+///
+/// 为什么不能只按"已知剧本包"匹配：`enumerate_script_keys()` 要求包里有
+/// `story_config.yaml`，而**新建剧本的正常中间态是「只有 `.agent/design.md`、
+/// 还没建工程」**。真机踩过这个坑：包认不出来 → 会话一直没绑定 script_key →
+/// `derive` 退化成 Routing、`script_dir` 为 None → 章节自检/登场名单/缺口表/队列
+/// 整套都不生效，用户喊着「落盘第一二章」而它一直在写大纲。
+pub fn script_key_of_package_path(path: &str) -> Option<String> {
+    let normalized = path.replace('\\', "/");
+    let (_, tail) = normalized.split_once("/scripts/")?;
+    for anchor in ["/.agent/", "/Chapters/"] {
+        if let Some((root, _)) = tail.split_once(anchor) {
+            if !root.is_empty() {
+                return Some(root.to_string());
+            }
+        }
+    }
+    tail.strip_suffix("/story_config.yaml")
+        .filter(|root| !root.is_empty())
+        .map(str::to_string)
+}
+
 /// 若这是一次写章节文件的调用，返回章节 id。
 fn written_chapter_id(tool: &str, arguments: &str) -> Option<String> {
     if tool != "write_file" {
@@ -558,21 +832,24 @@ pub enum AssetMode {
     OnlyExisting,
     /// 之后补素材，先留位置 —— 缺失只登记，不阻断。
     Reserve,
+    /// 零素材：纯文字剧情，**连磁盘上有的也不引用**。
+    None,
 }
 
 impl AssetMode {
     /// 交接单里那一行：既说模式，也说缺素材在这一模式下算不算错。
     pub fn describe(self) -> &'static str {
         match self {
-            AssetMode::Unspecified => "未声明（先问用户：只用已有 / 先预留）",
+            AssetMode::Unspecified => "未声明（先问用户：只用已有 / 先预留 / 零素材）",
             AssetMode::OnlyExisting => "只用已有（引用不存在的素材 = 错误，当场改）",
             AssetMode::Reserve => "先预留（缺素材只登记进 .agent/assets.md）",
+            AssetMode::None => "零素材（不引用任何素材，纯文字剧情）",
         }
     }
 
     /// 未声明时不拦人：没问过就按警告处理，同时催去问。
     fn missing_is_error(self) -> bool {
-        self == AssetMode::OnlyExisting
+        matches!(self, AssetMode::OnlyExisting | AssetMode::None)
     }
 
     /// 怎么换一个模式。
@@ -582,7 +859,7 @@ impl AssetMode {
     pub fn switch_hint(self) -> &'static str {
         match self {
             AssetMode::Unspecified => {
-                "素材模式还没定：问用户要「只用已有」还是「先预留」，\
+                "素材模式还没定：问用户要「只用已有」「先预留」还是「零素材」，\
                  写进 .agent/constraints.md（`- 素材模式：只用已有`）。\
                  定下来之后想换，说一句就行。\n"
             },
@@ -595,13 +872,17 @@ impl AssetMode {
                 "素材模式是「先预留」。若想改成「只用已有」，说一句就行；\
                  改成后已落盘章节里留空的素材会变成必须修的错。\n"
             },
+            AssetMode::None => {
+                "素材模式是「零素材」：这一章不该引用任何素材（连磁盘上有的也不用），\
+                 画面全靠旁白与对白写出来。若想改成「只用已有」或「先预留」，说一句就行。\n"
+            },
         }
     }
 }
 
 /// 从约束卡片里读素材模式，格式 `- 素材模式：只用已有`（半角全角冒号都认）。
 ///
-/// 只在「仅用已有」「之后补充」两个同义写法上放宽；其余一律当未声明 ——
+/// 只在同义写法上放宽（「仅用已有」「之后补充」「不要素材」）；其余一律当未声明 ——
 /// 认错的代价是校验松紧反了，宁可多问一次也不要猜。
 pub fn parse_asset_mode(text: &str) -> AssetMode {
     for line in text.lines() {
@@ -613,6 +894,7 @@ pub fn parse_asset_mode(text: &str) -> AssetMode {
         return match value {
             "只用已有" | "仅用已有" => AssetMode::OnlyExisting,
             "先预留" | "之后补充" => AssetMode::Reserve,
+            "零素材" | "不要素材" | "不用素材" | "无素材" => AssetMode::None,
             _ => AssetMode::Unspecified,
         };
     }
@@ -630,8 +912,8 @@ fn read_asset_mode(script_dir: &Path) -> AssetMode {
 pub struct ChapterCheck {
     pub errors: Vec<String>,
     pub warnings: Vec<String>,
-    /// 本章有素材缺口（先预留模式下只登记，不阻断）。
-    pub assets_missing: bool,
+    /// 本章引用了但磁盘上没有的素材名（先预留模式下只登记，不阻断）。
+    pub missing_assets: Vec<String>,
     /// 本轮生效的素材模式；决定回执里怎么告诉用户"还能改"。
     pub mode: AssetMode,
 }
@@ -657,8 +939,11 @@ impl ChapterCheck {
                 out.push_str(&format!("- {}\n", w));
             }
         }
-        if self.assets_missing {
-            out.push_str("缺的素材登记进 .agent/assets.md，别等交付才发现。\n");
+        if !self.missing_assets.is_empty() {
+            out.push_str(&format!(
+                "缺的素材（{}）已经记进 .agent/assets.md，别等交付才发现。\n",
+                self.missing_assets.join("、")
+            ));
             // 卡在这里的其实是用户当初选的那个模式，所以把换法的句子一并给出
             out.push_str(self.mode.switch_hint());
         }
@@ -670,9 +955,15 @@ impl ChapterCheck {
 ///
 /// 不做整剧本校验：未写完时的断链诊断会误导模型去补后续章节。
 /// 但素材是「写完这一章就能定论」的事实，所以这里当场查。
-pub fn check_written_chapter(snap: &StageSnapshot, path: &str) -> Option<ChapterCheck> {
+///
+/// `data_dir` 由调用方给 —— 本模块不碰全局静态，判定逻辑才测得动。
+pub fn check_written_chapter(
+    snap: &StageSnapshot,
+    path: &str,
+    data_dir: &Path,
+) -> Option<ChapterCheck> {
     let (dir, id) = chapter_of_write(snap, path)?;
-    check_chapter(dir, &id, &crate::api::data_dir())
+    check_chapter(dir, &id, data_dir)
 }
 
 /// 认出「刚写的是本会话这个剧本的哪一章」；认不出就不产生自检。
@@ -712,19 +1003,50 @@ fn check_chapter(dir: &Path, id: &str, data_dir: &Path) -> Option<ChapterCheck> 
     };
 
     let findings = validate::check_chapter_assets(data_dir, dir, id, &value);
-    for d in findings {
-        check.assets_missing = true;
-        let at = d.event_index.map(|i| i + 1).unwrap_or_default();
-        let line = format!("第 {} 个事件 · {}", at, d.message);
-        if check.mode.missing_is_error() {
-            check.errors.push(line);
-        } else {
-            check.warnings.push(line);
+    if check.mode == AssetMode::None {
+        // 零素材：不该引用任何素材，所以不必逐条报"找不到"——有引用本身就是错
+        let refs = validate::chapter_media_paths(&value);
+        if !refs.is_empty() {
+            check.errors.push(format!(
+                "素材模式是「零素材」，但这一章引用了 {} 个素材：{}。\
+                 改成纯文字剧情（旁白 + 对白把画面写出来），或说一句换模式",
+                refs.len(),
+                refs.join("、")
+            ));
+        }
+    } else {
+        for d in findings {
+            if let Some(name) = validate::missing_asset_name(&d) {
+                if !check.missing_assets.iter().any(|m| m == name) {
+                    check.missing_assets.push(name.to_string());
+                }
+            }
+            let at = d.event_index.map(|i| i + 1).unwrap_or_default();
+            let line = format!("第 {} 个事件 · {}", at, d.message);
+            if check.mode.missing_is_error() {
+                check.errors.push(line);
+            } else {
+                check.warnings.push(line);
+            }
         }
     }
-    if check.assets_missing && check.mode == AssetMode::Unspecified {
+    // 设计稿说这一章谁登场，而这一章的 events 里一次都没出现 → 警告。
+    // 这就是「想加的角色没加」：写在设计稿里，落盘时漏了。
+    let design = std::fs::read_to_string(dir.join(DESIGN_REL_PATH)).unwrap_or_default();
+    if let Some(block) = extract_chapter_block(&design, id) {
+        let appearing = appearing_cast(&value);
+        for who in declared_cast(&block) {
+            if !appearing.iter().any(|a| a.eq_ignore_ascii_case(&who)) {
+                check.warnings.push(format!(
+                    "设计稿说本章「{who}」登场，但这一章里没有它出场\
+                     （没有任何事件的 `character` 是 {who}）"
+                ));
+            }
+        }
+    }
+    if !check.missing_assets.is_empty() && check.mode == AssetMode::Unspecified {
         check.warnings.push(format!(
-            "`素材模式`还没声明：这一轮先问用户「只用已有」还是「先预留」，\
+            "`素材模式`还没声明：这一轮先问用户「只用已有」「先预留」还是「零素材」，\
              写进 {}（格式 `- 素材模式：只用已有`）。\
              未声明时缺失只按警告算，但这正是用户最在意的那类错。",
             CONSTRAINTS_REL_PATH
@@ -734,8 +1056,130 @@ fn check_chapter(dir: &Path, id: &str, data_dir: &Path) -> Option<ChapterCheck> 
     (!check.is_empty()).then_some(check)
 }
 
-/// 已落盘章节里引用了磁盘上不存在的素材，返回 `章节 id + 素材名`。
+/// 设计稿里这一章声明登场的角色（`登场:` 那一行）。
 ///
+/// 与 YAML 里的 `character` 字段同口径（实录的剧本两边都写 `MAIN` / 角色 key），
+/// 所以可以直接比名字。
+fn declared_cast(chapter_block: &str) -> Vec<String> {
+    for line in chapter_block.lines() {
+        let head = line.trim_start_matches(['-', '*', ' ', '\t']);
+        let Some(rest) = head.strip_prefix("登场") else {
+            continue;
+        };
+        let value = rest.trim_start_matches([':', '：']);
+        return value
+            .split([',', '，', '、', '/', ' '])
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect();
+    }
+    Vec::new()
+}
+
+/// 章节 YAML 里实际出现的角色：事件顶层的 `character` 字段。
+///
+/// 不按事件类型硬编码 —— `dialogue` / `ai_dialogue` / `free_dialogue` /
+/// `modify_character` 都带这个键，直接扫键更不容易漏。
+fn appearing_cast(value: &serde_json::Value) -> Vec<String> {
+    let Some(events) = value.get("events").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = Vec::new();
+    for ev in events {
+        let Some(name) = ev.get("character").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let name = name.trim();
+        if !name.is_empty() && !out.iter().any(|c| c == name) {
+            out.push(name.to_string());
+        }
+    }
+    out
+}
+
+/// 把设计稿里的登场角色汇总成 `.agent/cast.md`。
+///
+/// 同缺口表一样由**代码**维护：名单是从设计稿各章的 `登场:` 直接汇总出来的事实，
+/// 让模型抄一遍只会多一次出错机会。它是给人看的（浮窗里能看到），也用来回答
+/// 「这个角色到底出现过没有」。
+pub fn write_cast(dir: &Path) -> std::io::Result<()> {
+    let design = std::fs::read_to_string(dir.join(DESIGN_REL_PATH)).unwrap_or_default();
+    let lines: Vec<&str> = design.lines().collect();
+
+    // 章节 id → 登场名单；顺便记住谁在哪几章登场
+    let mut order: Vec<String> = Vec::new();
+    let mut where_: Vec<String> = Vec::new();
+    for (start, end) in block_ranges(&lines) {
+        let block = &lines[start..end];
+        let Some(id) = block_id(&block[1..]) else {
+            continue;
+        };
+        for who in declared_cast(&block.join("\n")) {
+            match order.iter().position(|w| w.eq_ignore_ascii_case(&who)) {
+                Some(i) => {
+                    if !where_[i].split(' ').any(|c| c == id) {
+                        where_[i].push_str(&format!(" {id}"));
+                    }
+                },
+                None => {
+                    order.push(who);
+                    where_.push(id.to_string());
+                },
+            }
+        }
+    }
+
+    let mut out = String::from(
+        "# 登场角色名单\n\n\
+         由系统从设计稿各章的「登场:」汇总。`MAIN` 是主角，`玩家` 是玩家自己。\n\n",
+    );
+    if order.is_empty() {
+        out.push_str("（设计稿还没列出登场角色）\n");
+    } else {
+        out.push_str("| 角色 | 登场章节 |\n| --- | --- |\n");
+        for (who, chapters) in order.iter().zip(where_.iter()) {
+            out.push_str(&format!("| {who} | {chapters} |\n"));
+        }
+    }
+    std::fs::write(dir.join(CAST_REL_PATH), out)
+}
+
+/// 把本章的素材缺口并进 `.agent/assets.md`。
+///
+/// 缺口表由**代码**维护而不是让模型抄一遍：它就是把自检已经算出来的事实写下来，
+/// 抄一遍只会多一次出错机会。同名素材只登记一次（保留最早引用的那一章）。
+pub fn update_assets_gap(dir: &Path, chapter: &str, missing: &[String]) -> std::io::Result<()> {
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let path = dir.join(ASSETS_REL_PATH);
+    let old = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut rows: Vec<String> = old
+        .lines()
+        .filter(|l| l.trim_start().starts_with("-「"))
+        .map(|l| l.trim().to_string())
+        .collect();
+
+    for name in missing {
+        let marker = format!("-「{name}」");
+        if rows.iter().any(|r| r.starts_with(&marker)) {
+            continue;
+        }
+        rows.push(format!("-「{name}」（第 {chapter} 章引用，磁盘上没有）"));
+    }
+
+    let mut out = String::from(
+        "# 素材缺口表\n\n\
+         由系统按章节自检维护：写完一章发现引用了磁盘上没有的素材就登记在这里。\n\
+         处理方式：补素材 / 改剧情 / 明确接受这个素材没有（三选一，问用户）。\n\n",
+    );
+    out.push_str(&rows.join("\n"));
+    out.push('\n');
+    std::fs::write(path, out)
+}
+
+/// 已落盘章节里引用了磁盘上不存在的素材，返回 `章节 id + 素材名`。///
 /// 与当前模式无关 —— 它回答的是「换个模式会多出/少掉哪些要改的地方」，
 /// 也就是用户改主意时的影响面。改了模式，已写好的章节不会自动重写，得摊开给他看。
 fn missing_assets_of_written(snap: &StageSnapshot, dir: &Path, data_dir: &Path) -> Vec<String> {
@@ -1173,9 +1617,30 @@ id: Intro/02
             script_key: Some("standalone/A".into()),
             ..Default::default()
         };
-        assert!(check_written_chapter(&snap, "/p/standalone/B/Chapters/01.yaml").is_none());
+        // 数据目录随便给一个：这些路径压根走不到要用它那一步
+        let data_dir = Path::new("/nonexistent-data");
+        assert!(
+            check_written_chapter(&snap, "/p/standalone/B/Chapters/01.yaml", data_dir).is_none()
+        );
         // 未绑定剧本时不检查
-        assert!(check_written_chapter(&StageSnapshot::default(), "/p/Chapters/01.yaml").is_none());
+        assert!(
+            check_written_chapter(&StageSnapshot::default(), "/p/Chapters/01.yaml", data_dir)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn check_written_chapter_is_testable_end_to_end() {
+        // 以前这个入口内部自己取全局 data 目录，一传合法路径就会 panic，
+        // 整条链路没法测。现在目录从参数进来，这里能直接跑完整判定。
+        let (pkg, data_dir) = tmp_script_package("entry", BAD_CHAPTER, "- 素材模式：只用已有\n");
+        let chapter = pkg.join("Chapters").join("01.yaml");
+
+        let check = check_written_chapter(&snap_of(&pkg), chapter.to_str().unwrap(), &data_dir)
+            .expect("缺 name + 缺素材，必须给出自检");
+        assert_eq!(check.errors.len(), 2, "{:?}", check.errors);
+
+        let _ = std::fs::remove_dir_all(pkg.parent().unwrap().parent().unwrap());
     }
 
     #[test]
@@ -1271,6 +1736,289 @@ id: Intro/02
     }
 
     #[test]
+    fn declared_cast_reads_the_line_and_tolerates_separators() {
+        let block = "## 第3章 · 雨夜\nid: 03\n梗概: …\n登场: MAIN, 老管家、小雨\n素材: 夜晚.webp\n";
+        assert_eq!(declared_cast(block), vec!["MAIN", "老管家", "小雨"]);
+        // 没有这一行 → 空（不误报）
+        assert!(declared_cast("## 第3章\nid: 03\n梗概: …\n").is_empty());
+    }
+
+    #[test]
+    fn appearing_cast_collects_character_fields() {
+        let chapter = serde_json::json!({
+            "name": "雨夜",
+            "events": [
+                {"type": "narration", "text": "…"},
+                {"type": "dialogue", "character": "MAIN", "text": "…"},
+                {"type": "modify_character", "character": "老管家", "action": "show_character"},
+                {"type": "ai_dialogue", "character": "MAIN"},
+            ],
+        });
+        assert_eq!(appearing_cast(&chapter), vec!["MAIN", "老管家"]);
+    }
+
+    #[test]
+    fn zero_asset_mode_rejects_even_existing_assets() {
+        // 章里引用的「夜晚.webp」磁盘上真的有（tmp_script_package 会预置），
+        // 但模式是零素材 → 连它也不该引用
+        let chapter = "name: 雨夜\nevents:\n  - type: background\n    imagePath: 夜晚.webp\n  - type: chapter_end\n    next: end\n";
+        let (pkg, data_dir) = tmp_script_package("zero", chapter, "- 素材模式：零素材\n");
+        let check = check_chapter(&pkg, "01", &data_dir).expect("应当给出自检");
+        assert_eq!(check.errors.len(), 1, "{:?}", check.errors);
+        assert!(check.errors[0].contains("零素材"), "{:?}", check.errors);
+        assert!(check.errors[0].contains("夜晚.webp"), "{:?}", check.errors);
+        // 不该再去逐条报"找不到"（有引用本身就是错）
+        assert!(
+            check.missing_assets.is_empty(),
+            "{:?}",
+            check.missing_assets
+        );
+        let _ = std::fs::remove_dir_all(pkg.parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn self_check_flags_declared_but_absent_character() {
+        let clean = "name: 雨夜\nevents:\n  - type: dialogue\n    character: MAIN\n  - type: chapter_end\n    next: end\n";
+        let (pkg, data_dir) = tmp_script_package("cast", clean, "- 素材模式：只用已有\n");
+        // 设计稿说这一章老管家也登场，但 YAML 里没有它
+        std::fs::write(
+            pkg.join(DESIGN_REL_PATH),
+            "## 第1章\nid: 01\n登场: MAIN, 老管家\n",
+        )
+        .unwrap();
+
+        let check = check_chapter(&pkg, "01", &data_dir).expect("应当给出自检");
+        assert!(
+            check
+                .warnings
+                .iter()
+                .any(|w| w.contains("老管家") && w.contains("没有它出场")),
+            "{:?}",
+            check.warnings
+        );
+        // 真登场了的那个不该被报
+        assert!(
+            !check.warnings.iter().any(|w| w.contains("「MAIN」")),
+            "{check:?}"
+        );
+        let _ = std::fs::remove_dir_all(pkg.parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn assets_gap_file_is_written_once_per_asset() {
+        let dir = tmp_script_dir("gap");
+        update_assets_gap(&dir, "03", &["夜晚.png".into(), "走廊.mp3".into()]).unwrap();
+        let text = std::fs::read_to_string(dir.join(ASSETS_REL_PATH)).unwrap();
+        assert!(
+            text.contains("-「夜晚.png」（第 03 章引用，磁盘上没有）"),
+            "{text}"
+        );
+        assert!(text.contains("走廊.mp3"), "{text}");
+
+        // 同一份素材在另一章再缺一次：不重复登记，保留最早那一章
+        update_assets_gap(&dir, "05", &["夜晚.png".into()]).unwrap();
+        let text = std::fs::read_to_string(dir.join(ASSETS_REL_PATH)).unwrap();
+        assert_eq!(text.matches("夜晚.png").count(), 1, "{text}");
+        assert!(text.contains("第 03 章"), "{text}");
+
+        // 没有缺口时不动文件
+        let before = text.clone();
+        update_assets_gap(&dir, "06", &[]).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.join(ASSETS_REL_PATH)).unwrap(),
+            before
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cast_file_aggregates_declared_roles() {
+        let dir = tmp_script_dir("castfile");
+        std::fs::write(
+            dir.join(DESIGN_REL_PATH),
+            "## 第1章\nid: 01\n登场: MAIN, 老管家\n\n## 第2章\nid: 02\n登场: MAIN、小雨\n",
+        )
+        .unwrap();
+        write_cast(&dir).unwrap();
+        let text = std::fs::read_to_string(dir.join(CAST_REL_PATH)).unwrap();
+        assert!(text.contains("| MAIN | 01 02 |"), "{text}");
+        assert!(text.contains("| 老管家 | 01 |"), "{text}");
+        assert!(text.contains("| 小雨 | 02 |"), "{text}");
+
+        // 设计稿还没列登场时也要给出一份（而不是报错）
+        std::fs::write(dir.join(DESIGN_REL_PATH), "## 只是标题\n正文\n").unwrap();
+        write_cast(&dir).unwrap();
+        assert!(
+            std::fs::read_to_string(dir.join(CAST_REL_PATH))
+                .unwrap()
+                .contains("还没列出登场角色")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn package_key_derives_from_anchors_without_story_config() {
+        // 新建剧本的正常中间态：只有 `.agent/`，还没有 story_config.yaml
+        let hit = |p: &str| script_key_of_package_path(p);
+        assert_eq!(
+            hit("game_data/scripts/character/风雪/无限占卜/.agent/design.md").as_deref(),
+            Some("character/风雪/无限占卜")
+        );
+        assert_eq!(
+            hit(r"D:\d\data\game_data\scripts\standalone\我的剧本\Chapters\01.yaml").as_deref(),
+            Some("standalone/我的剧本")
+        );
+        assert_eq!(
+            hit("game_data/scripts/character/风雪/无限占卜/story_config.yaml").as_deref(),
+            Some("character/风雪/无限占卜")
+        );
+        // 嵌套剧本包照样认
+        assert_eq!(
+            hit("game_data/scripts/character/风雪/高塔逆位/嵌套/Chapters/01.yaml").as_deref(),
+            Some("character/风雪/高塔逆位/嵌套")
+        );
+        // 不在 scripts 下 / 没有锚点 → 一律不认
+        assert_eq!(hit("game_data/skills/script-writer/.agent/a.md"), None);
+        assert_eq!(
+            hit("game_data/scripts/character/风雪/无限占卜/Assets/夜晚.webp"),
+            None
+        );
+    }
+
+    #[test]
+    fn task_block_lists_the_whole_queue_and_demands_completion() {
+        use crate::ai_service::skill_agent::{
+            role,
+            router::{QueueItem, RoutePlan},
+        };
+        let q = |kind, target: &str| QueueItem {
+            kind,
+            target: target.to_string(),
+        };
+        let plan = |items: Vec<QueueItem>| RoutePlan {
+            items,
+            boundary: None,
+            reason: None,
+            fallback: false,
+        };
+        let queue = vec![
+            q(role::TaskKind::WriteChapter, "03"),
+            q(role::TaskKind::ReviseChapter, "12"),
+        ];
+        let block = build_task_block(
+            role::TaskKind::WriteChapter,
+            role::Handoff::Proceed,
+            &plan(queue),
+            "把第三第四张都写了，顺手把第十二章那句改掉",
+            Path::new("/nonexistent-skills"),
+        );
+        assert!(block.contains("【本轮队列】共 2 项"), "{block}");
+        assert!(block.contains("[当前] 编写章节：03"), "{block}");
+        assert!(block.contains("[待做] 改章节：12"), "{block}");
+        assert!(block.contains("全部做完才算这一轮结束"), "{block}");
+        // 用户原话要带给角色；能力范围内要按用户的来
+        assert!(block.contains("【用户这一轮的原话】"), "{block}");
+        assert!(block.contains("顺手把第十二章那句改掉"), "{block}");
+        assert!(block.contains("【听用户的】"), "{block}");
+        assert!(block.contains("只是**推荐写法**"), "{block}");
+
+        // 只有一项、又没指明对象（用户就说了一句"继续"）→ 不刷队列段
+        let single = plan(vec![q(role::TaskKind::Chat, "")]);
+        let block = build_task_block(
+            role::TaskKind::Chat,
+            role::Handoff::Proceed,
+            &single,
+            "继续",
+            Path::new("/x"),
+        );
+        assert!(!block.contains("【本轮队列】"), "{block}");
+    }
+
+    #[test]
+    fn queue_only_ticks_chapters_that_actually_landed() {
+        use crate::ai_service::skill_agent::{role, router::QueueItem};
+        let dir = tmp_script_dir("queue-tick");
+        let items = vec![
+            QueueItem {
+                kind: role::TaskKind::WriteChapter,
+                target: "01".into(),
+            },
+            QueueItem {
+                kind: role::TaskKind::ReviseChapter,
+                target: "02".into(),
+            },
+        ];
+        // 01 是这一轮写的、02 早就在磁盘上
+        write_queue(&dir, &items, &["01".into(), "02".into()]).unwrap();
+        let text = std::fs::read_to_string(dir.join(QUEUE_REL_PATH)).unwrap();
+        assert!(text.contains("- [x] 编写章节：01"), "{text}");
+        assert!(
+            text.contains("- [ ] 改章节：02"),
+            "「它早就在磁盘上」不等于「这一轮改完了它」，不该打勾：{text}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn skeleton_makes_a_new_package_loadable_and_never_overwrites() {
+        // 每个测试**只碰自己那一个目录**。这个用例需要把包放在某个根下，
+        // 所以自己开一个 root —— 绝不能用 `tmp_script_dir(..).parent()`：
+        // 那等于整个 %TEMP%，一旦 remove_dir_all 就会扫掉别人的临时文件。
+        let root = std::env::temp_dir().join(format!("lingchat-skeleton-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+
+        let pkg = root.join("无限占卜");
+        std::fs::create_dir_all(&pkg).unwrap();
+        let key = "character/风雪/无限占卜";
+        assert!(
+            ensure_package_skeleton(&pkg, key).unwrap(),
+            "第一次应当创建"
+        );
+        assert!(pkg.join("Chapters").is_dir(), "章节目录要一起建");
+        let text = std::fs::read_to_string(pkg.join("story_config.yaml")).unwrap();
+        assert!(text.contains("script_name: 无限占卜"), "{text}");
+        assert!(text.contains(SKELETON_MARKER), "{text}");
+        assert!(text.contains("bound_character_folder: \"风雪\""), "{text}");
+
+        // 第二次不动它（也不覆盖模型后来写的正式配置）
+        assert!(!ensure_package_skeleton(&pkg, key).unwrap());
+        std::fs::write(pkg.join("story_config.yaml"), "script_name: 无限占卜\n").unwrap();
+        assert!(!ensure_package_skeleton(&pkg, key).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(pkg.join("story_config.yaml")).unwrap(),
+            "script_name: 无限占卜\n",
+            "已存在就一个字都不能动"
+        );
+
+        // 独立剧本不该带冒险块
+        let flat = root.join("我的剧本");
+        std::fs::create_dir_all(&flat).unwrap();
+        ensure_package_skeleton(&flat, "standalone/我的剧本").unwrap();
+        assert!(
+            !std::fs::read_to_string(flat.join("story_config.yaml"))
+                .unwrap()
+                .contains("adventure")
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn config_line_tells_the_model_the_skeleton_is_not_finished() {
+        let dir = tmp_script_dir("cfgline");
+        assert!(config_line(&dir).contains("缺"), "还没建时要说明");
+        ensure_package_skeleton(&dir, "standalone/A").unwrap();
+        assert!(
+            config_line(&dir).contains("最小骨架"),
+            "只有骨架时要催它按类型补全：{}",
+            config_line(&dir)
+        );
+        std::fs::write(dir.join("story_config.yaml"), "script_name: A\n").unwrap();
+        assert!(config_line(&dir).contains("已就绪"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn artifact_paths_all_live_under_agent_dir() {
         // 「详情」浮窗按目录列产物、按目录取文件，写歪一处就会静默漏掉一份
         for rel in [DESIGN_REL_PATH, CONSTRAINTS_REL_PATH, QUEUE_REL_PATH] {
@@ -1287,7 +2035,10 @@ id: Intro/02
         assert_eq!(read("- 素材模式：只用已有"), AssetMode::OnlyExisting);
         assert_eq!(read("- 素材模式: 先预留"), AssetMode::Reserve);
         assert_eq!(read("  * 素材模式：仅用已有"), AssetMode::OnlyExisting);
-        assert_eq!(read("素材模式：之后补充"), AssetMode::Reserve);
+        assert_eq!(read("- 素材模式：之后补充"), AssetMode::Reserve);
+        // 真人真的会这么说：「素材的话就零素材」
+        assert_eq!(read("- 素材模式：零素材"), AssetMode::None);
+        assert_eq!(read("- 素材模式：不要素材"), AssetMode::None);
     }
 
     #[test]
@@ -1315,7 +2066,7 @@ id: Intro/02
         let check = ChapterCheck {
             errors: vec!["缺少顶层 `name`".into()],
             warnings: vec!["第 2 个事件 · 找不到素材「夜晚.png」".into()],
-            assets_missing: true,
+            missing_assets: vec!["夜晚.png".into()],
             mode: AssetMode::OnlyExisting,
         };
         let text = check.render();
@@ -1501,7 +2252,7 @@ id: Intro/02
             .unwrap();
         assert!(asset.contains("疑似写错了扩展名"), "{asset}");
         assert!(check.warnings.is_empty(), "{:?}", check.warnings);
-        assert!(check.assets_missing);
+        assert_eq!(check.missing_assets, vec!["夜晚.png"]);
         assert!(check.render().contains("还不算写完"));
         let _ = std::fs::remove_dir_all(pkg.parent().unwrap().parent().unwrap());
     }

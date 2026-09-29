@@ -335,6 +335,19 @@ fn read_artifacts(script_dir: &Path) -> Vec<AgentArtifact> {
     out
 }
 
+/// 剧作事件流水：这一轮判成了什么、哪一章落盘了、缺了什么素材。
+///
+/// 审计用，**不是权威状态**（权威状态在磁盘）。它主要用来回看流程 Agent 的判断。
+#[tauri::command]
+pub async fn editor_agent_list_script_events(
+    state: State<'_, AppState>,
+    script_key: String,
+    limit: Option<u32>,
+) -> Result<Vec<db::ScriptEvent>, String> {
+    let limit = limit.unwrap_or(50).clamp(1, 500) as u64;
+    db::list_events(&state.db, &script_key, limit).await
+}
+
 // ==================== 对话 ====================
 
 /// 开始一轮对话。返回本次用户消息的 DB id（前端用于「回溯删除」定位删除起点）。
@@ -400,6 +413,7 @@ pub async fn editor_agent_start_chat(
         config,
         sandbox_dir,
         skills_dir,
+        data_dir: crate::api::data_dir(),
         script_key,
         stage_snapshot,
     };

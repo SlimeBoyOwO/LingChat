@@ -7,14 +7,26 @@ use serde_json::json;
 #[cfg(desktop)]
 use crate::ai_service::skill_agent::command_executor;
 use crate::ai_service::skill_agent::core::SkillAgentRunContext;
+use crate::ai_service::skill_agent::db;
 use crate::ai_service::skill_agent::file_tools::FileTools;
 use crate::ai_service::skill_agent::skills;
 use crate::ai_service::skill_agent::stage;
 use crate::ai_service::types::ToolDefinition;
 use crate::api::script_editor::validate::{self, Diagnostic, Severity, ValidationReport};
 
-/// LLM 可调用的工具定义。
-pub fn tool_definitions() -> Vec<ToolDefinition> {
+/// LLM 可调用的工具定义。**只给 `allowed` 里的那些**。
+///
+/// 藏能力靠这一步，不只是靠"手册里不提" —— 模型看得到全部工具的说明，
+/// 也就等于知道还有别的路可以走。
+pub fn tool_definitions(allowed: &[&str]) -> Vec<ToolDefinition> {
+    all_tool_definitions()
+        .into_iter()
+        .filter(|t| allowed.contains(&t.function.name.as_str()))
+        .collect()
+}
+
+/// 工具全集。只有 [`tool_definitions`] 该用这个。
+fn all_tool_definitions() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition::new(
             "list_skills",
@@ -104,9 +116,9 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
-/// 全部工具名（供系统提示枚举）。
-pub fn tool_names() -> String {
-    tool_definitions()
+/// 本轮工具名清单（供系统提示枚举）。只列真正给出去的那些。
+pub fn tool_names(allowed: &[&str]) -> String {
+    tool_definitions(allowed)
         .iter()
         .map(|t| t.function.name.clone())
         .collect::<Vec<_>>()
@@ -116,9 +128,23 @@ pub fn tool_names() -> String {
 /// 执行工具。返回 `(ok, 输出文本或错误信息)`。
 pub async fn execute_tool(
     ctx: &SkillAgentRunContext,
+    allowed: &[&str],
     name: &str,
     args: &serde_json::Value,
 ) -> (bool, String) {
+    // 二次拒绝：工具说明已经过滤过一遍，但模型仍可能照历史里的旧印象硬调。
+    // 这里挡住它，并且如实回一句 —— 不静默失败，否则它会以为调用成功了。
+    if !allowed.contains(&name) {
+        return (
+            false,
+            format!(
+                "本轮不允许调用 `{name}`（当前这一轮没有这个能力；工具清单里只有 {}）。\
+                 请用允许的工具，或者如实告诉用户你这一轮做不了什么。",
+                allowed.join(" / ")
+            ),
+        );
+    }
+
     let ft = || FileTools {
         sandbox_dir: ctx.sandbox_dir.clone(),
         allow_any_path: ctx.config.allow_any_path,
@@ -238,7 +264,7 @@ pub async fn execute_tool(
             match ft().write_file(path, content, append) {
                 Ok(out) => {
                     bind_script_key_if_new(ctx, path).await;
-                    (true, with_chapter_check(ctx, path, out, append))
+                    (true, with_chapter_check(ctx, path, out, append).await)
                 },
                 Err(e) => (false, e.to_string()),
             }
@@ -367,14 +393,65 @@ fn format_validation_report(key: &str, report: &ValidationReport) -> String {
 /// 写完章节后附上自检回执 —— 写一章和查一章是同一个动作，不攒到最后。
 ///
 /// 分段追加（`append = true`）时跳过：那时文件还没写完，查了只会误报。
-fn with_chapter_check(ctx: &SkillAgentRunContext, path: &str, out: String, append: bool) -> String {
+async fn with_chapter_check(
+    ctx: &SkillAgentRunContext,
+    path: &str,
+    out: String,
+    append: bool,
+) -> String {
     if append {
         return out;
     }
-    match stage::check_written_chapter(&ctx.stage_snapshot, path) {
-        Some(check) => format!("{}{}", out, check.render()),
-        None => out,
+    let Some(check) = stage::check_written_chapter(&ctx.stage_snapshot, path, &ctx.data_dir) else {
+        return out;
+    };
+    let chapter = stage::chapter_id_of_path(path).unwrap_or_default();
+
+    // 名单与缺口表都由代码维护：自检/设计稿已经算出来了，让模型再抄一遍只会多一次出错机会
+    if let Some(dir) = ctx.stage_snapshot.script_dir.as_deref() {
+        if let Err(e) = stage::write_cast(dir) {
+            tracing::warn!("[skill_agent] 登场名单写入失败: {e}");
+        }
     }
+    if !check.missing_assets.is_empty() {
+        if let Some(dir) = ctx.stage_snapshot.script_dir.as_deref() {
+            if let Err(e) = stage::update_assets_gap(dir, &chapter, &check.missing_assets) {
+                tracing::warn!("[skill_agent] 素材缺口表写入失败: {e}");
+            }
+        }
+        db::record_event(
+            &ctx.db,
+            ctx.conversation_id,
+            ctx.script_key.as_deref(),
+            db::EVENT_ASSETS_GAP,
+            &chapter,
+            &check.missing_assets.join("、"),
+        )
+        .await;
+    }
+
+    // 这一章的结局：改完才算落盘，所以记下当场有没有必须修的
+    db::record_event(
+        &ctx.db,
+        ctx.conversation_id,
+        ctx.script_key.as_deref(),
+        db::EVENT_CHAPTER,
+        &chapter,
+        &format!(
+            "错误 {} 条 · 警告 {} 条 · 缺口 {} 个{}",
+            check.errors.len(),
+            check.warnings.len(),
+            check.missing_assets.len(),
+            if check.errors.is_empty() {
+                "（通过）"
+            } else {
+                "（待修）"
+            }
+        ),
+    )
+    .await;
+
+    format!("{}{}", out, check.render())
 }
 
 /// `story_config.yaml` 落盘即剧本包诞生，从写入路径反推 key 绑到会话上。
@@ -384,12 +461,23 @@ async fn bind_script_key_if_new(ctx: &SkillAgentRunContext, path: &str) {
     if ctx.stage_snapshot.script_key.is_some() {
         return;
     }
-    let Some(key) = stage::script_key_of_story_config(path) else {
+    // 写 story_config.yaml 是"包诞生"；但先写 `.agent/design.md` 也是正常路径 ——
+    // 那时包还没有 story_config.yaml，只认前者会让会话一直绑不上。
+    let Some(key) =
+        stage::script_key_of_story_config(path).or_else(|| stage::script_key_of_package_path(path))
+    else {
         return;
     };
-    // 复核它确实是引擎认得的剧本包
-    if crate::utils::script_paths::resolve_script_dir(&key).is_err() {
+    // 复核它确实是引擎认得的剧本目录（`resolve_script_dir` 只要求目录存在）
+    let Ok(dir) = crate::utils::script_paths::resolve_script_dir(&key) else {
         return;
+    };
+    // 包一诞生就补骨架：编辑器是按 story_config.yaml 认剧本的，少了它
+    // 这个包在剧本列表里看不到、打开还报「读取剧本失败」
+    match stage::ensure_package_skeleton(&dir, &key) {
+        Ok(true) => tracing::info!("[skill_agent] 已为新剧本包补最小骨架: {}", key),
+        Ok(false) => {},
+        Err(e) => tracing::warn!("[skill_agent] 补剧本骨架失败: {e}"),
     }
     match crate::ai_service::skill_agent::db::update_conversation_script_key(
         &ctx.db,

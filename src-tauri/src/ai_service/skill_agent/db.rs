@@ -249,9 +249,13 @@ pub async fn derive_script_key(db: &DatabaseConnection, conversation_id: i32) ->
             let Some(path) = args.get("path").and_then(|v| v.as_str()) else {
                 continue;
             };
-            let Some(key) =
-                crate::ai_service::skill_agent::stage::script_key_of_script_path(path, &known)
-            else {
+            // 先按锚点反推（`.agent/` / `Chapters/` / `story_config.yaml`）——
+            // 新建剧本时包里还没有 story_config.yaml，按"已知剧本包"匹配会认不出来
+            let derived = crate::ai_service::skill_agent::stage::script_key_of_package_path(path)
+                .or_else(|| {
+                    crate::ai_service::skill_agent::stage::script_key_of_script_path(path, &known)
+                });
+            let Some(key) = derived else {
                 continue;
             };
             match votes.iter_mut().find(|(k, _)| *k == key) {
@@ -272,4 +276,82 @@ pub async fn derive_script_key(db: &DatabaseConnection, conversation_id: i32) ->
         }
     }
     best.map(|(key, _)| key)
+}
+
+// ==================== 事件流水 ====================
+
+/// 事件类型。都是"当时发生了什么"，不是状态。
+pub const EVENT_ROUTE: &str = "route";
+pub const EVENT_CHAPTER: &str = "chapter";
+pub const EVENT_ASSETS_GAP: &str = "assets_gap";
+
+/// 一条事件流水的读法。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptEvent {
+    pub kind: String,
+    pub target: String,
+    pub detail: String,
+    pub created_at: i64,
+}
+
+/// 记一条剧作事件流水。
+///
+/// **失败只记日志**：这是审计信息，不该因为它写不进去就打断正在进行的创作。
+/// 用裸 SQL 而不是拉一套 entity —— 全表只有一次 INSERT 和一次 SELECT。
+pub async fn record_event(
+    db: &DatabaseConnection,
+    conversation_id: i32,
+    script_key: Option<&str>,
+    kind: &str,
+    target: &str,
+    detail: &str,
+) {
+    use sea_orm::{ConnectionTrait, Statement};
+    let stmt = Statement::from_sql_and_values(
+        db.get_database_backend(),
+        "INSERT INTO script_events \
+         (conversation_id, script_key, kind, target, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            conversation_id.into(),
+            script_key.map(str::to_string).into(),
+            kind.into(),
+            target.into(),
+            detail.into(),
+            chrono::Utc::now().timestamp().into(),
+        ],
+    );
+    if let Err(e) = db.execute(stmt).await {
+        tracing::warn!("[skill_agent] 事件流水写入失败: {e}");
+    }
+}
+
+/// 读某个剧本最近的事件（新的在前）。
+pub async fn list_events(
+    db: &DatabaseConnection,
+    script_key: &str,
+    limit: u64,
+) -> Result<Vec<ScriptEvent>, String> {
+    use sea_orm::{ConnectionTrait, Statement};
+    let stmt = Statement::from_sql_and_values(
+        db.get_database_backend(),
+        "SELECT kind, target, detail, created_at FROM script_events \
+         WHERE script_key = ? ORDER BY id DESC LIMIT ?",
+        [script_key.into(), (limit as i64).into()],
+    );
+    let rows = db
+        .query_all(stmt)
+        .await
+        .map_err(|e| format!("读取事件流水失败: {e}"))?;
+
+    rows.iter()
+        .map(|row| {
+            Ok(ScriptEvent {
+                kind: row.try_get("", "kind").map_err(|e| e.to_string())?,
+                target: row.try_get("", "target").unwrap_or_default(),
+                detail: row.try_get("", "detail").unwrap_or_default(),
+                created_at: row.try_get("", "created_at").map_err(|e| e.to_string())?,
+            })
+        })
+        .collect()
 }

@@ -12,6 +12,8 @@ pub mod core;
 pub mod db;
 pub mod events;
 pub mod file_tools;
+pub mod role;
+pub mod router;
 pub mod skills;
 pub mod stage;
 pub mod tools;

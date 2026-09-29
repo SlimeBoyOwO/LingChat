@@ -888,6 +888,11 @@ fn check_asset(
     if path.is_empty() {
         return; // 必填检查已经报过了
     }
+    // `none` 是引擎的"清空该轨"写法（实录里 musicPath: none 就是用来停音乐的），
+    // 它不是素材引用；当成缺失报出来是假报警 —— 真机踩过。
+    if path.eq_ignore_ascii_case("none") {
+        return;
+    }
 
     if resolve_script_media(data_dir, Some(script_dir), path, media).is_none() {
         let mut message = format!("{}{}」{}", ASSET_MISSING_PREFIX, path, ASSET_MISSING_TAIL);
@@ -959,6 +964,44 @@ fn sibling_extension_asset(
         }
     }
     None
+}
+
+/// 章节里引用的**全部**素材名（不管磁盘上有没有）。
+///
+/// 与 [`check_chapter_assets`] 的区别：那个只报"找不到的"，这个要的是"引用了什么" ——
+/// 「零素材」模式下引用了哪怕磁盘上有的素材也是错的。
+/// `none` / 空串是引擎的"清空"写法，不算引用。
+pub fn chapter_media_paths(chapter: &serde_json::Value) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let Some(events) = chapter.get("events").and_then(|v| v.as_array()) else {
+        return out;
+    };
+    for ev in events {
+        let Some(obj) = ev.as_object() else {
+            continue;
+        };
+        let Some(ty) = obj.get("type").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if !matches!(
+            ty,
+            "background" | "present_pic" | "music" | "sound" | "ambient"
+        ) {
+            continue;
+        }
+        let (key, _) = media_field_of(ty);
+        let Some(path) = obj.get(key).and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let path = path.trim();
+        if path.is_empty() || path.eq_ignore_ascii_case("none") {
+            continue;
+        }
+        if !out.iter().any(|p| p == path) {
+            out.push(path.to_string());
+        }
+    }
+    out
 }
 
 /// 单章素材自检：只查这一章引用的素材存不存在。
@@ -1754,6 +1797,46 @@ mod tests {
                 {"type": "chapter_end", "next": "end"},
             ],
         })
+    }
+
+    #[test]
+    fn none_means_clear_the_track_not_a_missing_asset() {
+        // 实录里 `musicPath: none` 就是用来停音乐的；当成缺失报出来是假报警
+        let dir = script_dir_with_night_webp("none");
+        let data_dir = std::env::temp_dir().join("lingchat-validate-missing-data");
+        let chapter = serde_json::json!({
+            "name": "x",
+            "events": [
+                {"type": "music", "musicPath": "none"},
+                {"type": "music", "musicPath": "NONE"},
+                {"type": "chapter_end", "next": "end"},
+            ],
+        });
+        assert!(
+            check_chapter_assets(&data_dir, &dir, "01", &chapter).is_empty(),
+            "none 不是素材引用"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chapter_media_paths_lists_references_without_looking_at_disk() {
+        let chapter = serde_json::json!({
+            "name": "x",
+            "events": [
+                {"type": "background", "imagePath": "夜晚.webp"},
+                {"type": "music", "musicPath": "none"},        // 引擎的清空写法，不算引用
+                {"type": "sound", "soundPath": "  "},          // 空，不算引用
+                {"type": "background", "imagePath": "夜晚.webp"}, // 重复
+                {"type": "ambient", "ambientPath": "雨声.mp3", "stop": false},
+                {"type": "narration", "text": "…"},
+            ],
+        });
+        assert_eq!(
+            chapter_media_paths(&chapter),
+            vec!["夜晚.webp", "雨声.mp3"],
+            "只列真的引用，去重，跳过 none / 空串"
+        );
     }
 
     #[test]

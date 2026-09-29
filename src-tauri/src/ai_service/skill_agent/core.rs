@@ -20,7 +20,7 @@ use crate::ai_service::llm::{LlmChunk, LlmClient};
 use crate::ai_service::skill_agent::command_executor::ApprovalMap;
 use crate::ai_service::skill_agent::config::SkillAgentConfig;
 use crate::ai_service::skill_agent::events::{SkillAgentEvent, Usage};
-use crate::ai_service::skill_agent::{db, skills, stage, tools};
+use crate::ai_service::skill_agent::{db, role, router, skills, stage, tools};
 use crate::ai_service::types::{
     FunctionCall, LlmMessage, ToolCall, ToolDefinition, parse_tool_args,
 };
@@ -50,6 +50,9 @@ pub struct SkillAgentRunContext {
     pub config: SkillAgentConfig,
     pub sandbox_dir: std::path::PathBuf,
     pub skills_dir: std::path::PathBuf,
+    /// `data/` 根目录。在这里解析一次：`stage` 等纯逻辑模块只收参数，不碰全局静态，
+    /// 否则它们在没有 App 的测试环境里一取就 panic。
+    pub data_dir: std::path::PathBuf,
     /// 会话绑定的剧本 key（运行时解析为路径注入系统提示）。
     pub script_key: Option<String>,
     /// 由剧本包状态推导出的当前阶段。
@@ -88,48 +91,110 @@ fn build_script_block(sandbox_dir: &Path, script_key: Option<&str>) -> String {
 
 fn build_system_prompt(
     config: &SkillAgentConfig,
+    allowed: &[&str],
     skills_block: &str,
     script_block: &str,
-    stage_block: &str,
+    task_block: &str,
     sandbox_dir: &Path,
     skills_dir: &Path,
 ) -> String {
-    let tool_names = tools::tool_names();
+    let can = |name: &str| allowed.contains(&name);
+    let tool_names = tools::tool_names(allowed);
     let platform = if cfg!(mobile) { "移动端" } else { "桌面" };
-    let command_guidance = if cfg!(mobile) {
-        "\n- 当前移动端不提供 execute_command，不能运行 shell 命令\
-         \n3. 不要尝试调用或编造 execute_command 结果；需要产出文件时使用 write_file"
-    } else {
-        "\n- execute_command 可能需要用户确认\
-         \n3. 需要运行本地命令时使用 execute_command；命令由系统 shell 执行，带空格的参数请用引号包裹（引号会原样传递）"
-    };
-    let default = format!(
+
+    // 能力说明按**本轮真正给出去的工具**写：广告里列出用不到的工具，
+    // 等于告诉模型"还有别的路"，也会把它往不允许的动作上引。
+    let mut abilities = format!(
         "你是运行在本机 LingChat {platform}应用里的 AI 剧本创作助手。你拥有以下能力：\
-\n- 调用工具完成真实操作：{tool_names}\
-\n- 通过 read_skill 加载技能指令后再执行任务\
-\n- 文件路径默认相对于文件沙箱根目录（{sandbox}）\
-\n- 技能目录：{skills_dir}（技能文件以 SKILL.md 存放，需要时可用 list_files / read_file 直接查看）\
-{command_guidance}\
-\n使用规则：\
-\n1. 当任务匹配某个技能的描述时，先调用 read_skill 加载该技能，再按指令执行；已读取过的技能不要重复读取\
-\n2. 需要操作文件时使用 list_files / read_file / write_file / delete_file\
-\n4. 任务必须完成到产出物为止：读取技能、查询配色、运行搜索都只是中间步骤，最终必须调用 write_file 实际写出用户要求的文件，才算完成任务\
-\n5. 未写出文件之前禁止总结收尾，禁止以「已获取到所需信息」「以上就是设计建议」之类的说法结束回答；继续调用工具，直到文件真正创建成功\
-\n6. 写文件时一次性用 write_file 写完整内容，不要提前分段；只有当一次写入因参数过长而失败（报错会附带 [诊断] 提示）时，才改用 write_file（append=true）分段补齐\
-\n7. 文件范围受限时如实说明，不要编造文件内容",
-        tool_names = tool_names,
-        platform = platform,
-        command_guidance = command_guidance,
-        sandbox = sandbox_dir.display(),
-        skills_dir = skills_dir.display(),
+         \n- 调用工具完成真实操作：{tool_names}"
     );
+    if can("read_skill") {
+        abilities.push_str("\n- 通过 read_skill 加载技能指令后再执行任务");
+    }
+    abilities.push_str(&format!(
+        "\n- 文件路径默认相对于文件沙箱根目录（{}）\
+         \n- 技能目录：{}（技能文件以 SKILL.md 存放，需要时可用 list_files / read_file 直接查看）",
+        sandbox_dir.display(),
+        skills_dir.display()
+    ));
+    if can("execute_command") {
+        abilities.push_str(if cfg!(mobile) {
+            "\n- 当前移动端不提供 execute_command，不能运行 shell 命令"
+        } else {
+            "\n- execute_command 可能需要用户确认；命令由系统 shell 执行，带空格的参数请用引号包裹（引号会原样传递）"
+        });
+    }
+
+    let mut rules: Vec<String> = Vec::new();
+    if can("read_skill") {
+        rules.push(
+            "当任务匹配某个技能的描述时，先调用 read_skill 加载该技能，再按指令执行；\
+             已读取过的技能不要重复读取"
+                .to_string(),
+        );
+    }
+    let mut file_tools = vec!["list_files", "read_file"];
+    for extra in ["write_file", "delete_file"] {
+        if can(extra) {
+            file_tools.push(extra);
+        }
+    }
+    rules.push(format!("需要操作文件时使用 {}", file_tools.join(" / ")));
+    if can("write_file") {
+        // 「催它动手」只对会落盘的任务说：仅对话 / 只提问的轮次说这个，
+        // 会把它逼去写这一轮不该写的文件
+        rules.push(
+            "任务必须完成到产出物为止：读取技能、查询配色、运行搜索都只是中间步骤，\
+             最终必须调用 write_file 实际写出用户要求的文件，才算完成任务"
+                .to_string(),
+        );
+        rules.push(
+            "未写出文件之前禁止总结收尾，禁止以「已获取到所需信息」「以上就是设计建议」\
+             之类的说法结束回答；继续调用工具，直到文件真正创建成功"
+                .to_string(),
+        );
+        rules.push(
+            "写文件时一次性用 write_file 写完整内容，不要提前分段；只有当一次写入因参数过长\
+             而失败（报错会附带 [诊断] 提示）时，才改用 write_file（append=true）分段补齐"
+                .to_string(),
+        );
+    }
+    rules.push("文件范围受限时如实说明，不要编造文件内容".to_string());
+
+    let numbered = rules
+        .iter()
+        .enumerate()
+        .map(|(i, r)| format!("\n{}. {}", i + 1, r))
+        .collect::<String>();
+    let default = format!("{abilities}\n使用规则：{numbered}");
 
     let base = match &config.system_prompt {
         Some(custom) if !custom.trim().is_empty() => custom.clone(),
         _ => default,
     };
-    // 阶段块拼在最后：前三段一次会话内稳定，拼在尾部可保缓存前缀。
-    format!("{}{}{}{}", base, script_block, skills_block, stage_block)
+    // 任务块拼在最后：前三段一次会话内稳定，拼在尾部可保缓存前缀。
+    format!("{}{}{}{}", base, script_block, skills_block, task_block)
+}
+
+/// 从上两句「纯对话」里取最近 N 轮，用于解「继续 / 都行 / 按你说的」。
+///
+/// 只取 assistant 的**纯文本**回复（带 tool_calls 的不算）与它前面那条 user 消息。
+fn recent_turns(history: &[LlmMessage], n: usize) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for (i, msg) in history.iter().enumerate().rev() {
+        if msg.role != "assistant" || msg.tool_calls.is_some() || msg.content.trim().is_empty() {
+            continue;
+        }
+        let Some(prev) = history[..i].iter().rev().find(|m| m.role == "user") else {
+            continue;
+        };
+        out.push((prev.content.clone(), msg.content.clone()));
+        if out.len() >= n {
+            break;
+        }
+    }
+    out.reverse();
+    out
 }
 
 // ---------- 历史规整 ----------
@@ -215,15 +280,124 @@ pub async fn run_chat(
         content: format!("思考中…（{}）", approval_mode),
     });
 
-    let skill_list = skills::find_all_skills(&ctx.skills_dir);
-    let skills_block = skills::build_skills_xml(&skill_list);
     let script_block = build_script_block(&ctx.sandbox_dir, ctx.script_key.as_deref());
-    let stage_block = stage::build_stage_block(&ctx.skills_dir, ctx.stage_snapshot.stage);
+
+    // 已绑定的会话顺手把包骨架补上（修"半成品包"：只有 .agent/、编辑器打不开）。
+    // 新建剧本的绑定发生在写文件那一刻，那时也已经补过了；这里是既有包的兜底。
+    if let (Some(key), Some(dir)) = (
+        ctx.stage_snapshot.script_key.as_deref(),
+        ctx.stage_snapshot.script_dir.as_deref(),
+    ) {
+        if let Err(e) = stage::ensure_package_skeleton(dir, key) {
+            tracing::warn!("[skill_agent] 补剧本骨架失败: {e}");
+        }
+    }
+
+    // ---------- 流程 Agent：这一轮到底要干什么 ----------
+    //
+    // 必须在消费 history 之前跑：它要「上两句纯对话」来解「继续 / 都行」。
+    let user_msg = history
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .map(|m| m.content.clone())
+        .unwrap_or_default();
+    let recent = recent_turns(&history, 2);
+    let queue_text = ctx
+        .stage_snapshot
+        .script_dir
+        .as_deref()
+        .map(|d| std::fs::read_to_string(d.join(stage::QUEUE_REL_PATH)).unwrap_or_default())
+        .unwrap_or_default();
+    let plan = router::route(
+        &ctx.llm,
+        &router::RouteInput {
+            snapshot: &ctx.stage_snapshot,
+            queue: &queue_text,
+            recent: &recent,
+            user_msg: &user_msg,
+            skills_dir: &ctx.skills_dir,
+        },
+    )
+    .await;
+
+    // 承接：这一轮能不能直接做那件事
+    let facts = stage::facts_of(&ctx.stage_snapshot, plan.target());
+    let handoff = role::reconcile(plan.current(), facts);
+    // 要补前置就这轮先补前置（只补一级）；做不了就保持原任务但只给只读工具
+    let task = match handoff {
+        role::Handoff::Prerequisite { first, .. } => first,
+        _ => plan.current(),
+    };
+    let allowed: &[&str] = if plan.fallback {
+        // 回落到按阶段推的老行为：工具照旧全给，免得连现状都跑不动
+        role::ALL_TOOLS
+    } else if matches!(handoff, role::Handoff::Explain(_)) {
+        // 「说清缺什么，不动文件」—— 靠工具收窄兜住，不只是靠提示词
+        role::CHAT_TOOLS
+    } else {
+        task.tools()
+    };
+    tracing::info!(
+        "[router] 任务={} 目标={:?} 回落={} 队列={}项 承接={:?} 工具={}",
+        task.label(),
+        plan.target(),
+        plan.fallback,
+        plan.items.len(),
+        handoff,
+        allowed.join("/")
+    );
+
+    // 队列落盘（只有绑定了剧本包才写）；已完成项按磁盘事实打勾
+    if let Some(dir) = ctx.stage_snapshot.script_dir.as_deref() {
+        if let Err(e) = stage::write_queue(dir, &plan.items, &ctx.stage_snapshot.written) {
+            tracing::warn!("[router] 队列落盘失败: {e}");
+        }
+    }
+
+    // 记一笔"这一轮判成了什么" —— 这是没有真机验收时的回看手段
+    db::record_event(
+        &ctx.db,
+        ctx.conversation_id,
+        ctx.script_key.as_deref(),
+        db::EVENT_ROUTE,
+        plan.current().label(),
+        &format!(
+            "任务={} 承接={:?} 队列={} 项 回落={} 工具={} 判据={}",
+            task.label(),
+            handoff,
+            plan.items.len(),
+            plan.fallback,
+            allowed.join("/"),
+            plan.reason.as_deref().unwrap_or("（无）")
+        ),
+    )
+    .await;
+
+    // 技能菜单：只在**真的能给 read_skill** 的轮次注入。
+    // 实录里它 1848 字符、4 轮贡献 0 次有效 read_skill —— 而正常路径按角色过滤后
+    // 没有任何角色能调 read_skill，列出来等于告诉模型"还有别的手册"。
+    let skills_block = if allowed.contains(&"read_skill") {
+        skills::build_skills_xml(&skills::find_all_skills(&ctx.skills_dir))
+    } else {
+        String::new()
+    };
+
+    let task_block = if plan.fallback {
+        // 回落：退回按阶段注入，并把底线边界补上
+        let mut block = stage::build_stage_block(&ctx.skills_dir, ctx.stage_snapshot.stage);
+        block.push_str("\n\n【职责边界】");
+        block.push_str(&role::render_boundary(None));
+        block
+    } else {
+        stage::build_task_block(task, handoff, &plan, &user_msg, &ctx.skills_dir)
+    };
     let system_prompt = build_system_prompt(
         &ctx.config,
+        allowed,
         &skills_block,
         &script_block,
-        &stage_block,
+        &task_block,
         &ctx.sandbox_dir,
         &ctx.skills_dir,
     );
@@ -241,7 +415,7 @@ pub async fn run_chat(
         &ctx.stage_snapshot,
     )));
     // 动态材料不落库，每轮重算。
-    let run_materials = stage::build_run_materials(&ctx.stage_snapshot);
+    let run_materials = stage::build_run_materials(&ctx.stage_snapshot, &ctx.data_dir);
     if !run_materials.is_empty() {
         messages.push(LlmMessage::user(run_materials));
     }
@@ -267,7 +441,7 @@ pub async fn run_chat(
             return Ok(());
         }
 
-        let defs = tools::tool_definitions();
+        let defs = tools::tool_definitions(allowed);
         let (assistant_text, reasoning_text, tool_calls, finish_reason, usage) =
             match stream_completion(&ctx, &messages, &defs, &cancelled).await {
                 Ok(r) => r,
@@ -401,7 +575,7 @@ pub async fn run_chat(
                 raw_args: tc.arguments.clone(),
             });
 
-            let (ok, mut output) = tools::execute_tool(&ctx, &tc.name, &args).await;
+            let (ok, mut output) = tools::execute_tool(&ctx, allowed, &tc.name, &args).await;
 
             // 参数不是有效 JSON → 大概率生成被截断，附上原文片段便于模型/user 定位
             if !ok
