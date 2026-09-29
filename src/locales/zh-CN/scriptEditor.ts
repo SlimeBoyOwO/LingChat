@@ -251,6 +251,7 @@ export default {
     importCharacter: "↓ 从全局角色库导入",
     emotionSep: "、",
     delete: "删除角色（移到 .trash/）",
+    edit: "点这一行查看 / 修改人设",
   },
   assets: {
     menuTitle: "素材",
@@ -428,6 +429,7 @@ export default {
     newScript: "新建剧本",
     newChapter: "新建章节",
     newCharacter: "新建角色",
+    editCharacter: "编辑角色",
     importCharacter: "从全局角色库导入",
     scriptName: "剧本名",
     scriptNameHint: "同时作为文件目录名，羁绊冒险不能重名哦",
@@ -646,5 +648,7 @@ export default {
     bgListFailed: "加载全局背景列表失败",
     characterCreated: "角色已创建",
     characterCreatedDesc: "剧本里写 character: {key}",
+    characterUpdated: "角色已更新",
+    characterUpdateFailed: "更新角色失败",
   },
 };

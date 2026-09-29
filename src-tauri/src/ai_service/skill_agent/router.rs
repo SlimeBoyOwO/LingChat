@@ -37,17 +37,22 @@ pub struct RoutePlan {
     pub boundary: Option<String>,
     /// 这么判的判据（一句话）。进事件流水，供事后回看路由判断。
     pub reason: Option<String>,
+    /// 这一轮落不落盘。**默认 false** —— 用户明说了落盘（或在回答"要不要落盘"时答要）才是 true。
+    /// 判错的代价不对称：该落没落只是多问一句；不该落却落了会凭空生成文件。
+    pub land: bool,
     /// 这一次是不是回落结果（没问模型 / 模型没给 / 解析不过）。
     pub fallback: bool,
 }
 
 impl RoutePlan {
-    /// 本轮任务。
+    /// 本轮任务。队列是逐项执行的，所以"本轮"只对回落路径与测试有意义。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn current(&self) -> TaskKind {
         self.items.first().map(|i| i.kind).unwrap_or(TaskKind::Chat)
     }
 
     /// 本轮作用对象（去空白；空串当没有）。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn target(&self) -> Option<&str> {
         self.items
             .first()
@@ -63,6 +68,8 @@ impl RoutePlan {
             }],
             boundary: None,
             reason: None,
+            // 回落路径等于改造前的行为：那时是照写不误的
+            land: fallback,
             fallback,
         }
     }
@@ -161,15 +168,19 @@ fn build_router_system(hub: &str) -> String {
          \n\
          可用的任务类型：\n{}\n\
          \n\
+         {}\n\
+         \n\
          判断规则：\n\
          1. `tasks` 是**有序队列**，第一项就是本轮要做的；用户按顺序说了几件事，就按他的顺序排。\
          已经做完的事不要再列。\n\
-         2. `target` 写清作用对象（章节 id 如 `03`、`大纲`、`素材`）。\n\
+         2. `target` 写清作用对象：**一章就写一个章节 id**（如 `03`）；\
+         多章要拆成多项，**不要写成 `01-04` 这种区间**。没有具体对象就留空。\n\
          3. **用户只是在讲自己的想法、还没让你写**（例如「我想让主角是个剑客」）→ 用 `summarize`；\
          需要先问清情况（这一章讲什么、一共多少章、素材怎么来）→ 用 `collect`。\
          这两类都只产出话术，不落笔。\n\
-         4. 只有用户**明确要求写**（「写出来」「按这个写大纲」「把第 9 章写了」）才用 `outline` / \
-         `write_chapter` 这类会落盘的。\n\
+         4. **`land` 这个字段单独判**：用户这一句说了落盘（落盘 / 生成章节 / 写进 Chapters / 存下来），\
+         或者他是在回答你上一轮的「要不要落盘」并且答的是要 —— 才 `land: true`。\
+         其余一律 `land: false`。**「写」「写出来」「写大纲」「写第三章」都不等于落盘。**\n\
          5. **用户这一句跟这个剧本无关**（闲聊、问软件怎么用、道谢）→ 用 `chat`。\
          跟剧本有关还是无关，看它谈不谈这个剧本的人物、情节、章节、素材。\n\
          6. **认不出意图就用 `chat`** —— 这一条没有例外，不要猜。\n\
@@ -180,6 +191,7 @@ fn build_router_system(hub: &str) -> String {
          \n\
          【流程总纲】\n{}",
         kinds.join("\n"),
+        crate::ai_service::skill_agent::role::ACTION_VOCAB,
         hub,
     )
 }
@@ -265,6 +277,10 @@ fn submit_plan_tool() -> ToolDefinition {
                     "type": "string",
                     "description": "本轮边界补充（≤40 字，只能更谨慎）；没必要就留空"
                 },
+                "land": {
+                    "type": "boolean",
+                    "description": "这一轮落不落盘：用户明说了落盘（落盘/生成章节/写进 Chapters/存下来），或他在回答你上一轮的「要不要落盘」并答了要 → true。只说「写」「写大纲」「写第三章」→ false（那是纯写，不写文件）。拿不准一律 false。"
+                },
                 "reason": {
                     "type": "string",
                     "description": "这么判的判据，一句话（≤40 字）。例如「用户在讲想法，没让写」"
@@ -317,10 +333,14 @@ fn parse_plan(arguments: &str) -> Option<RoutePlan> {
         .filter(|s| !s.is_empty() && s.chars().count() <= 60)
         .map(|s| s.to_string());
 
+    // 落盘与不落盘是一条**默认安全**的判断：拿不准一律 false（多问一句 vs 凭空生成文件）
+    let land = args.get("land").and_then(|v| v.as_bool()).unwrap_or(false);
+
     Some(RoutePlan {
         items,
         boundary,
         reason,
+        land,
         fallback: false,
     })
 }

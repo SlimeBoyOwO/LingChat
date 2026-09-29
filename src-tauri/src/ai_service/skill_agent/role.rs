@@ -17,9 +17,11 @@ pub enum TaskKind {
     Collect,
     /// 复述整理用户的设想。产物是话术，**不落笔**。
     Summarize,
-    /// 写设计稿（大纲 + 章节设计）。
+    /// 编写剧本：把剧本写出来（粗梗概那一步 —— 每章一两句话）。
+    /// 落盘与否看 `RoutePlan::land`：用户说"写剧本"只是**写给他看**，说"落盘"才写进
+    /// `.agent/design.md`。
     Outline,
-    /// 改已有的设计稿。
+    /// 改已有的剧本设计。
     ReviseOutline,
     /// 写章节并落盘。
     WriteChapter,
@@ -66,14 +68,18 @@ impl TaskKind {
     }
 
     /// 中文标签：进交接单、队列文件与回执。
+    ///
+    /// **只有「落盘章节」这个名字带"落盘"** —— 名字就是这个任务会不会写文件的答案。
+    /// 其余任务名只说做什么内容；落不落盘由 [`ACTION_VOCAB`] 那套规则与流程 Agent 的
+    /// `land` 字段决定（用户说"写大纲"是纯写，说"落盘"才是写文件）。
     pub const fn label(self) -> &'static str {
         match self {
             TaskKind::Chat => "仅对话",
             TaskKind::Collect => "收集设想",
             TaskKind::Summarize => "整理设想",
-            TaskKind::Outline => "编写大纲",
-            TaskKind::ReviseOutline => "改大纲",
-            TaskKind::WriteChapter => "编写章节",
+            TaskKind::Outline => "编写剧本",
+            TaskKind::ReviseOutline => "改剧本",
+            TaskKind::WriteChapter => "落盘章节",
             TaskKind::ReviseChapter => "改章节",
             TaskKind::CheckAssets => "素材盘点",
             TaskKind::Polish => "校验修复",
@@ -124,10 +130,11 @@ impl TaskKind {
     pub const fn directive(self) -> &'static str {
         match self {
             TaskKind::WriteChapter => {
-                "粒度是「一章一个落盘单元」：写文件 → 看 write_file 返回的 [章节自检] → \
-                 有错误当场改好，这一章才算落盘。\
-                 \n**队列里还有别的章节就接着写**，直到队列做完再收尾；\
-                 不要在一条消息里把没让写的章节也一并写了。\
+                "粒度是「一章一个落盘单元」：**先把这一章的小说全文写进 `.agent/chapter-details.md`**\
+                 的那一章那一节（起因 → 经过 → 结果，对白、神态、环境都写全；**不写素材名/变量/事件类型\
+                 这类施工信息**），再按它写 `Chapters/<id>.yaml`；\
+                 写完看 write_file 返回的 [章节自检]，有错误当场改好，这一章才算落盘。\
+                 \n队列里还有别的章节，代码会另起一轮，不用你在这一轮里连着写。\
                  \n回执必须让人看得见成果：**哪一章（id + 标题）、落到哪个文件、这一章到底\
                  发生了什么（3~5 条，按事件顺序）、自检结果、设计稿里的下一章是哪一章**。\
                  只报「已落盘」或只报字节数等于没汇报。\
@@ -135,15 +142,16 @@ impl TaskKind {
                  （断链、不可达），照着改会把你引向提前补写后续章节。"
             },
             TaskKind::Outline => {
-                "**回执里要把大纲贴出来给人看** —— 每章一行：`id` + 标题 + 一句梗概，\
+                "**回执里要把剧本贴出来给人看** —— 每章一行：`id` + 标题 + 一句梗概，\
                  末尾带上结局走向与预计章节数。只说「写完了 / 已落盘 / 多少字节」\
                  等于没交付：用户要看的正是这份清单。\
-                 设计稿落地后，队列里若还有别的事（接着写章节、盘点素材等）就继续做完再收尾。"
+                 \n这一步只写**粗梗概**（每章一两句话）；用户要细的、或者要落盘章节时，\
+                 把那一章的**小说全文**写进 `.agent/chapter-details.md`，别把设计稿堆成小说。"
             },
             TaskKind::ReviseOutline => {
                 "回执要说清**改前是什么、改后是什么**，并把改过的章节那一行重新贴出来\
-                 （`id` + 标题 + 梗概）；只报「已更新设计稿」等于没交付。\
-                 只改点名的那几处，不要顺手重写没让动的章节；队列里若还有别的项，继续做完再收尾。"
+                 （`id` + 标题 + 梗概）；只报「已更新」等于没交付。\
+                 只改点名的那几处，不要顺手重写没让动的章节。"
             },
             TaskKind::Polish => {
                 "按诊断逐条修复；需要新编剧情内容才能补上的缺口交回用户，不要自行编造。\
@@ -194,6 +202,45 @@ impl TaskKind {
 /// 意图认不出时按仅对话处理，这条限制保证"猜错"不破坏任何文件 ——
 /// 最坏的后果是它回一句「这个我改不了，你是想改哪儿吗」。
 pub const CHAT_TOOLS: &[&str] = &[TOOL_LIST_FILES, TOOL_READ_FILE];
+
+/// 口述轮能用的工具：**只读**。有正经任务（写剧本、写章节），只是**用户没让落盘**，
+/// 所以只让他把内容写进回复。
+///
+/// `validate_script` 留着：它是**只读**的，"跑一遍校验"本来就该给报告 ——
+/// 收掉它只会让"口述版校验"变成什么都干不了。
+pub const DICTATE_TOOLS: &[&str] = &[TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_VALIDATE_SCRIPT];
+
+/// 「写」与「落盘」的分界。**流程 Agent 与角色 Agent 都要看到这一段**，
+/// 一处定义、两处注入 —— 两边口径不一致时，最先崩的就是用户。
+///
+/// 由来：用户说「把这段剧情写出来」，模型直接落盘成 `Chapters/*.yaml`。
+/// 根因是整套词表里"落盘"这个意思全由"写"承担，谁也分不出他要文字还是要文件。
+pub const ACTION_VOCAB: &str = "\
+【两个动作词，别混用】
+- **写（口述）** = 把内容写出来给用户看，**只进回复，一个字都不写文件**。\
+用户说「写大纲」「写第三章」「把这段剧情写出来」「写细一点」都是这个意思。
+- **落盘** = 变成文件。落盘永远要指得出落到哪：剧本 → `.agent/design.md`；\
+章节细节 → `.agent/chapter-details.md`；**可运行章节 → `Chapters/<id>.yaml`**；\
+素材缺口 → `.agent/assets.md`；用户约束 → `.agent/constraints.md`。
+- **只有下面两种情况才落盘**：①用户这一句明确说了落盘（「落盘」「生成章节」\
+「写进 Chapters」「存下来」）；②你**上一轮问过要不要落盘、他答了「要 / 是 / 可以 / 落盘」**。
+- **其余一律先写出来给他看**，并在结尾问一句，把区别说明白：\
+「这一轮我只写了文字，没动文件；要落盘成 `<文件>` 就说一声『落盘』——落盘之后才会\
+变成能跑的 YAML。」分不清要文字还是要文件时，按**写**处理（问一句的代价，比凭空生成文件小得多）。
+
+【`chapter-details.md` 里写什么：小说，不是施工单】
+用户会直接打开这个文件读，所以**每一章那一节就是这一章的小说原文**：
+- 用写小说的笔法把这一章的**起因 → 经过 → 结果**写完整；
+- **人物对白写成对白**（谁说的、说了什么），该有的神态、动作、环境描写都写上；
+- 读起来要像一篇小说，用户看到的是**剧情本身**。
+- **不要写技术清单**：素材文件名、变量名、事件类型（`input` / `choices` / `ai_dialogue`）、\
+「玩家参与点」这类施工信息**一律不要** —— 那些是落盘时你自己处理的事，用户不是来看施工单的。";
+
+/// 口述轮的统一要求：贴在任务块里，覆盖手册里"写完落盘"那部分。
+pub const DICTATE_NOTE: &str = "\
+【本轮是口述，不落盘】用户没让落盘（也没回答过「要不要落盘」）。\
+这一轮**一个字都不许写进文件**：把内容完整写在回复里给他看。\
+结尾按「两个动作词」那套说法问一句要不要落盘，并说清落盘会变成哪个文件。";
 
 // 手册路径。角色手册由 [`Role::doc`] 拥有，这里只是给切片字面量用的别名。
 const WRITER_DOC: &str = Role::Writer.doc();
@@ -342,6 +389,9 @@ pub struct ScriptFacts {
     pub has_next: bool,
     /// 用户点名的目标存在吗；`None` = 这一轮没点名。
     pub target_exists: Option<bool>,
+    /// 点名的目标里**有的在、有的不在**（`01-04` 而 04 还没落盘）。
+    /// 这类要照做能做的部分并说明缺哪几章，不能整轮拒绝。
+    pub target_partial: bool,
     /// 用户点名要写的那一章，正好是设计稿里**下一个待写**的章。
     ///
     /// 用来认出"跳着写"：设计稿有 7 章、只落盘了 3 章时直接写 07，
@@ -432,6 +482,13 @@ pub fn reconcile(kind: TaskKind, facts: ScriptFacts) -> Handoff {
                 Handoff::Explain("还没有任何章节可以改")
             } else if facts.target_exists == Some(false) {
                 Handoff::Explain("你点名的那一章还没有落盘，改不了它")
+            } else if facts.target_partial {
+                // `01-04` 而 04 还没落盘：改能改的，并说清哪几章还没有 ——
+                // 早先这里整轮拒绝，队列里别的项跟着一起废掉。
+                Handoff::ProceedNote(
+                    "用户点名的章节里有还没落盘的：这一轮先改已经落盘的那些，\
+                     并在回执里点明哪几章还没有、所以这轮没动",
+                )
             } else {
                 Handoff::Proceed
             }
@@ -570,6 +627,7 @@ mod tests {
             has_written: written,
             has_next: next,
             target_exists: None,
+            target_partial: false,
             target_is_next: next,
         }
     }
@@ -728,6 +786,7 @@ mod tests {
             has_written: true,
             has_next: true,
             target_exists: Some(false),
+            target_partial: false,
             target_is_next: false,
         };
         let Handoff::ProceedNote(note) = reconcile(TaskKind::WriteChapter, skipping) else {

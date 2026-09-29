@@ -271,6 +271,7 @@ export default {
     importCharacter: "↓ Import from global library",
     emotionSep: ", ",
     delete: "Delete character (move to .trash/)",
+    edit: "Click the row to view / edit the persona",
   },
   assets: {
     menuTitle: "Assets",
@@ -455,6 +456,7 @@ export default {
     newScript: "New Script",
     newChapter: "New Chapter",
     newCharacter: "New Character",
+    editCharacter: "Edit Character",
     importCharacter: "Import from global library",
     scriptName: "Script name",
     scriptNameHint: "Also used as the folder name; must be unique among bond adventures",
@@ -686,5 +688,7 @@ export default {
     bgListFailed: "Failed to load global backgrounds",
     characterCreated: "Character created",
     characterCreatedDesc: "The script will reference character: {key}",
+    characterUpdated: "Character updated",
+    characterUpdateFailed: "Failed to update character",
   },
 };

@@ -348,31 +348,16 @@ pub async fn run_chat(
     )
     .await;
 
-    // 承接：这一轮能不能直接做那件事
-    let facts = stage::facts_of(&ctx.stage_snapshot, plan.target());
-    let handoff = role::reconcile(plan.current(), facts);
-    // 要补前置就这轮先补前置（只补一级）；做不了就保持原任务但只给只读工具
-    let task = match handoff {
-        role::Handoff::Prerequisite { first, .. } => first,
-        _ => plan.current(),
-    };
-    let allowed: &[&str] = if plan.fallback {
-        // 回落到按阶段推的老行为：工具照旧全给，免得连现状都跑不动
-        role::ALL_TOOLS
-    } else if matches!(handoff, role::Handoff::Explain(_)) {
-        // 「说清缺什么，不动文件」—— 靠工具收窄兜住，不只是靠提示词
-        role::CHAT_TOOLS
-    } else {
-        task.tools()
-    };
+    // ---------- 落盘口径：用户说了算，代码兜住 ----------
+    //
+    // 「写」= 只把内容写进回复；「落盘」= 变成文件。判错的代价不对称：
+    // 该落没落只是多问一句，不该落却落了会凭空生成一堆文件。
+    let land = wants_landing(&user_msg, &recent, plan.land);
     tracing::info!(
-        "[router] 任务={} 目标={:?} 回落={} 队列={}项 承接={:?} 工具={}",
-        task.label(),
-        plan.target(),
-        plan.fallback,
+        "[router] 落盘={} 队列={} 项 回落={}",
+        land,
         plan.items.len(),
-        handoff,
-        allowed.join("/")
+        plan.fallback
     );
 
     // 队列落盘（只有绑定了剧本包才写）；已完成项按磁盘事实打勾
@@ -382,95 +367,337 @@ pub async fn run_chat(
         }
     }
 
-    // 记一笔"这一轮判成了什么" —— 这是没有真机验收时的回看手段
-    db::record_event(
-        &ctx.db,
-        ctx.conversation_id,
-        ctx.script_key.as_deref(),
-        db::EVENT_ROUTE,
-        plan.current().label(),
-        &format!(
-            "任务={} 承接={:?} 队列={} 项 回落={} 工具={} 判据={}",
-            task.label(),
-            handoff,
-            plan.items.len(),
-            plan.fallback,
-            allowed.join("/"),
-            plan.reason.as_deref().unwrap_or("（无）")
-        ),
-    )
-    .await;
-
-    // 技能菜单：只在**真的能给 read_skill** 的轮次注入。
-    // 实录里它 1848 字符、4 轮贡献 0 次有效 read_skill —— 而正常路径按角色过滤后
-    // 没有任何角色能调 read_skill，列出来等于告诉模型"还有别的手册"。
-    let skills_block = if allowed.contains(&"read_skill") {
-        skills::build_skills_xml(&skills::find_all_skills(&ctx.skills_dir))
-    } else {
-        String::new()
-    };
-
-    let task_block = if plan.fallback {
-        // 回落：退回按阶段注入，并把底线边界补上
-        let mut block = stage::build_stage_block(&ctx.skills_dir, ctx.stage_snapshot.stage);
-        block.push_str("\n\n【职责边界】");
-        block.push_str(&role::render_boundary(None));
-        block
-    } else {
-        stage::build_task_block(task, handoff, &plan, &user_msg, &ctx.skills_dir)
-    };
-    let system_prompt = build_system_prompt(
-        &ctx.config,
-        allowed,
-        &skills_block,
-        &script_block,
-        &task_block,
-        &ctx.sandbox_dir,
-        &ctx.skills_dir,
-    );
-
-    let mut messages: Vec<LlmMessage> = Vec::with_capacity(history.len() + 1);
-    messages.push(LlmMessage::system(system_prompt));
-    // 首轮判定必须在 sanitize_history(history) 移动 history 之前记录：
-    // 本会话第一条 assistant 回复（含工具调用轮）结束时用于自动生成会话标题。
-    // 不能等收尾时再用 messages 判——工具轮会让 messages 提前含 assistant(tool_calls)。
+    // 首轮判定要在动手之前记：本会话第一条 assistant 回复（含工具轮）结束时用于自动生成标题。
     let is_first_turn = !history.iter().any(|m| m.role == "assistant");
-    // 历史先规整再并入：DB 里可能残留上一轮中断产生的「无 tool 回应的 assistant
-    // (tool_calls)」，不处理会触发 OpenAI 400（insufficient tool messages）。
-    messages.extend(sanitize_history(stage::compact_history(
-        history,
-        &ctx.stage_snapshot,
-    )));
-    // 动态材料不落库，每轮重算。
-    let run_materials = stage::build_run_materials(&ctx.stage_snapshot, &ctx.data_dir);
-    if !run_materials.is_empty() {
-        messages.push(LlmMessage::user(run_materials));
-    }
-
+    // 历史规整一次、之后每项复用：DB 里可能残留上一轮中断产生的「无 tool 回应的
+    // assistant(tool_calls)」，不处理会触发 OpenAI 400（insufficient tool messages）。
+    let base_history = sanitize_history(stage::compact_history(history, &ctx.stage_snapshot));
     // -1 表示无上限（保留全部上下文与工具轮次）；否则为有限轮数，至少 1 轮。
-    // 无上限时用 usize::MAX 作区间上界，`round == max_rounds - 1` 的下限检查永不触发。
     let max_rounds: usize = if ctx.config.max_tool_rounds < 0 {
         usize::MAX
     } else {
         (ctx.config.max_tool_rounds as usize).max(1)
     };
-    let mut turn_prompt_tokens: u64 = 0;
-    let mut turn_completion_tokens: u64 = 0;
-    let mut turn_cached_tokens: u64 = 0;
-    // 截断自动续跑预算（最多补一次生成）
-    let mut recovery_budget: usize = RECOVERY_BUDGET;
 
-    for round in 0..max_rounds {
+    // ---------- 逐项执行队列 ----------
+    //
+    // 一轮 = 把队列**逐项做完**：每项按它自己的角色注入手册与工具，做完再换下一个角色。
+    // 早先是一轮只做第一项、其余留给下一轮 —— 用户看到的就是"排完队列就停了，只跟我解释"。
+    // 某一项真的做不了（比如改一个还没落盘的章）只跳过它并说明，**不牵连别的项**：
+    // 早先"一项做不了就把整轮工具收成只读"，会让队列里所有项一起废掉（真机连着三轮
+    // 一个字都没改成，用户说"我让他开始改，操作也被拦下来了"）。
+    let mut planned: Vec<(usize, role::TaskKind, role::Handoff)> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
+    for (idx, item) in plan.items.iter().enumerate() {
+        if plan.fallback {
+            planned.push((idx, item.kind, role::Handoff::Proceed));
+            continue;
+        }
+        let snap = refreshed_snapshot(&ctx);
+        let handoff = role::reconcile(
+            item.kind,
+            stage::facts_of(&snap, Some(item.target.as_str())),
+        );
+        match handoff {
+            role::Handoff::Explain(why) => skipped.push(format!("{}：{why}", item.kind.label())),
+            role::Handoff::Prerequisite { first, .. } => planned.push((idx, first, handoff)),
+            _ => planned.push((idx, item.kind, handoff)),
+        }
+    }
+    // 一项都做不了时仍要有人把原因说给用户听：拿第一项走"只解释"那一轮
+    if planned.is_empty() {
+        let item = &plan.items[0];
+        let snap = refreshed_snapshot(&ctx);
+        let handoff = role::reconcile(
+            item.kind,
+            stage::facts_of(&snap, Some(item.target.as_str())),
+        );
+        planned.push((0, item.kind, handoff));
+    }
+
+    // 项与项之间的交接材料（只进内存，不落库）：前面各项做了什么，后面各项要看得见
+    let mut handoffs: Vec<LlmMessage> = Vec::new();
+    let mut reply = String::new();
+    let mut usage = TurnUsage::default();
+
+    for (n, (idx, task, handoff)) in planned.iter().enumerate() {
         if cancelled.load(Ordering::SeqCst) {
             let _ = ctx.channel.send(SkillAgentEvent::Status {
                 content: "已停止生成".into(),
             });
-            return Ok(());
+            break;
+        }
+        // 每项重新读盘：上一项刚落盘的章节，这一项要看得见
+        let snap = refreshed_snapshot(&ctx);
+        let allowed: &[&str] = if plan.fallback {
+            // 回落到按阶段推的老行为：工具照旧全给，免得连现状都跑不动
+            role::ALL_TOOLS
+        } else if matches!(handoff, role::Handoff::Explain(_)) {
+            // 「说清缺什么，不动文件」—— 靠工具收窄兜住，不只是靠提示词
+            role::CHAT_TOOLS
+        } else if !land {
+            // 用户没让落盘：这一轮只口述，一个字都不许写文件
+            role::DICTATE_TOOLS
+        } else {
+            task.tools()
+        };
+        tracing::info!(
+            "[router] 第{}/{}项 任务={} 目标={:?} 承接={:?} 落盘={} 工具={} 跳过={} 回落={} 判据={}",
+            n + 1,
+            planned.len(),
+            task.label(),
+            plan.items.get(*idx).map(|i| i.target.as_str()),
+            handoff,
+            land,
+            allowed.join("/"),
+            skipped.len(),
+            plan.fallback,
+            plan.reason.as_deref().unwrap_or("（无）")
+        );
+        db::record_event(
+            &ctx.db,
+            ctx.conversation_id,
+            ctx.script_key.as_deref(),
+            db::EVENT_ROUTE,
+            task.label(),
+            &format!(
+                "第{}/{}项 任务={} 承接={:?} 队列={} 项 落盘={} 跳过={} 回落={} 工具={} 判据={}",
+                n + 1,
+                planned.len(),
+                task.label(),
+                handoff,
+                plan.items.len(),
+                land,
+                skipped.len(),
+                plan.fallback,
+                allowed.join("/"),
+                plan.reason.as_deref().unwrap_or("（无）")
+            ),
+        )
+        .await;
+
+        // 项与项之间在回复里留个界 —— 用户才看得出这是队列的第几项、谁在做
+        if planned.len() > 1 {
+            let head = format!("\n\n---\n\n**（第 {} 项 · {}）**\n\n", n + 1, task.label());
+            let _ = ctx.channel.send(SkillAgentEvent::MessageDelta {
+                content: head.clone(),
+            });
+            reply.push_str(&head);
         }
 
+        // 技能菜单：只在**真的能给 read_skill** 的轮次注入。
+        // 实录里它 1848 字符、4 轮贡献 0 次有效 read_skill —— 而正常路径按角色过滤后
+        // 没有任何角色能调 read_skill，列出来等于告诉模型"还有别的手册"。
+        let skills_block = if allowed.contains(&"read_skill") {
+            skills::build_skills_xml(&skills::find_all_skills(&ctx.skills_dir))
+        } else {
+            String::new()
+        };
+
+        let task_block = if plan.fallback {
+            // 回落：退回按阶段注入，并把底线边界补上
+            let mut block = stage::build_stage_block(&ctx.skills_dir, snap.stage);
+            block.push_str("\n\n【职责边界】");
+            block.push_str(&role::render_boundary(None));
+            block
+        } else {
+            stage::build_task_block(&stage::TaskBlockInput {
+                task: *task,
+                handoff: *handoff,
+                plan: &plan,
+                user_msg: &user_msg,
+                skills_dir: &ctx.skills_dir,
+                land,
+                item_index: *idx,
+                skipped: &skipped,
+            })
+        };
+        let system_prompt = build_system_prompt(
+            &ctx.config,
+            allowed,
+            &skills_block,
+            &script_block,
+            &task_block,
+            &ctx.sandbox_dir,
+            &ctx.skills_dir,
+        );
+
+        // 动态材料不落库，每项重算（待写章节 / 上一章收尾 / 落盘进度）
+        let run_materials = stage::build_run_materials(&snap, &ctx.data_dir);
+        let mut messages = item_messages(system_prompt, &base_history, &handoffs, run_materials);
+
+        let text = run_item_tools(
+            &ctx,
+            &mut messages,
+            allowed,
+            &cancelled,
+            max_rounds,
+            &mut usage,
+            is_first_turn && n == 0,
+        )
+        .await?;
+        handoffs.push(LlmMessage::user(handoff_note(n, *task, &text)));
+        reply.push_str(&text);
+    }
+
+    // 队列重新落一次：这一轮刚落盘的章节要当场打勾（不然要等下一轮）
+    if let (Some(dir), Some(key)) = (
+        ctx.stage_snapshot.script_dir.as_deref(),
+        ctx.script_key.as_deref(),
+    ) {
+        let snap = stage::derive(Some(key));
+        if let Err(e) = stage::write_queue(dir, &plan.items, &snap.written) {
+            tracing::warn!("[router] 队列打勾失败: {e}");
+        }
+    }
+
+    let _ = ctx.channel.send(SkillAgentEvent::Done {
+        final_text: reply,
+        usage: usage.into_option(),
+    });
+    Ok(())
+}
+
+/// 每项执行前重新读盘 —— 上一项刚落盘的章节，这一项要看得见。
+fn refreshed_snapshot(ctx: &SkillAgentRunContext) -> stage::StageSnapshot {
+    match ctx.script_key.as_deref() {
+        Some(key) => stage::derive(Some(key)),
+        None => ctx.stage_snapshot.clone(),
+    }
+}
+
+/// 拼一项请求的消息表：system + 历史 + 前面各项的交接材料 + 本轮动态材料。
+///
+/// 单独成函数是为了守住一条真机踩出来的规矩：**请求不能以"没带思考链的
+/// assistant 消息"结尾**。DeepSeek 的思考模式在带 tools 时要求那样一条消息必须
+/// 把 `reasoning_content` 带回（否则 400 `The reasoning_content in the thinking
+/// mode must be passed back to the API`）；队列里第 2 项起前面会多出第 1 项的产出，
+/// 而未绑定剧本的会话又没有动态材料垫在后面，正好凑成那个形状。
+fn item_messages(
+    system_prompt: String,
+    base_history: &[LlmMessage],
+    handoffs: &[LlmMessage],
+    run_materials: String,
+) -> Vec<LlmMessage> {
+    let mut messages = Vec::with_capacity(base_history.len() + handoffs.len() + 2);
+    messages.push(LlmMessage::system(system_prompt));
+    messages.extend(base_history.iter().cloned());
+    messages.extend(handoffs.iter().cloned());
+    if !run_materials.is_empty() {
+        messages.push(LlmMessage::user(run_materials));
+    }
+    messages
+}
+
+/// 队列项之间的交接材料：本项做完了什么，后面各项要看得见。
+///
+/// 走 user 角色而不是 assistant：一来这就是交给下一个角色的交接说明，二来见
+/// [`item_messages`] —— assistant 角色会撞上思考模式那条要求。
+fn handoff_note(index: usize, task: role::TaskKind, text: &str) -> String {
+    format!(
+        "【本轮第 {} 项 · {} · 产出】\n{}\n\n（以上是你前面各项的产出，供后续项交接；用户的原话只有上面那条 user 消息。）",
+        index + 1,
+        task.label(),
+        text.trim()
+    )
+}
+
+/// 这一轮落不落盘。
+///
+/// 流程 Agent 会给一个 `land`，但用户原话里明说了就按他说的 —— 模型漏判的代价是
+/// 「用户说落盘，它却在原地问要不要落盘」，比多落一次更烦人。反过来，
+/// 只说"写"（写大纲/写章节/把剧情写出来）**不算**落盘。
+fn wants_landing(user_msg: &str, recent: &[(String, String)], plan_land: bool) -> bool {
+    /// 用户明说落盘的说法。宁可漏一种，也别把"写"塞进来。
+    const LAND_WORDS: [&str; 7] = [
+        "落盘",
+        "存下来",
+        "存成",
+        "生成章节",
+        "写进 chapters",
+        "写进chapters",
+        "落成",
+    ];
+    let msg = user_msg.to_lowercase();
+    if LAND_WORDS.iter().any(|w| msg.contains(w)) {
+        return true;
+    }
+    if plan_land {
+        return true;
+    }
+    // 上一轮它问过「要不要落盘」，用户回了个短促的"要/好/可以" —— 也算明说
+    let asked = recent
+        .last()
+        .map(|(_, assistant)| assistant.contains("落盘"))
+        .unwrap_or(false);
+    asked && is_short_yes(user_msg)
+}
+
+/// 短促的肯定回答（"要" / "好，落盘" / "可以"）。
+fn is_short_yes(user_msg: &str) -> bool {
+    let t = user_msg
+        .trim()
+        .trim_end_matches(['。', '！', '!', '~', '～']);
+    if t.is_empty() || t.chars().count() > 8 {
+        return false;
+    }
+    [
+        "要", "好", "可以", "行", "是", "对", "嗯", "ok", "OK", "Ok", "落盘", "来吧", "开始",
+    ]
+    .iter()
+    .any(|w| t.contains(w))
+}
+
+/// 本轮累计用量。逐项加起来，收尾时一次报给前端。
+#[derive(Default)]
+struct TurnUsage {
+    prompt: u64,
+    completion: u64,
+    cached: u64,
+}
+
+impl TurnUsage {
+    fn add(&mut self, usage: Option<&Usage>) {
+        if let Some(u) = usage {
+            self.prompt += u.prompt_tokens;
+            self.completion += u.completion_tokens;
+            self.cached += u.cached_tokens;
+        }
+    }
+
+    fn into_option(self) -> Option<Usage> {
+        (self.prompt + self.completion > 0).then(|| Usage {
+            prompt_tokens: self.prompt,
+            completion_tokens: self.completion,
+            total_tokens: self.prompt + self.completion,
+            cached_tokens: self.cached,
+        })
+    }
+}
+
+/// 跑**一项**任务的工具轮：流式生成 → 执行工具 → 直到模型不再调工具。
+///
+/// 返回这一项的最终回复文本；每一轮的 assistant / tool 都照旧落库。
+async fn run_item_tools(
+    ctx: &SkillAgentRunContext,
+    messages: &mut Vec<LlmMessage>,
+    allowed: &[&str],
+    cancelled: &CancelFlag,
+    max_rounds: usize,
+    usage: &mut TurnUsage,
+    first_turn: bool,
+) -> Result<String, String> {
+    // 截断自动续跑预算（最多补一次生成）
+    let mut recovery_budget: usize = RECOVERY_BUDGET;
+    let mut last_text = String::new();
+
+    for round in 0..max_rounds {
+        if cancelled.load(Ordering::SeqCst) {
+            break;
+        }
         let defs = tools::tool_definitions(allowed);
-        let (assistant_text, reasoning_text, tool_calls, finish_reason, usage) =
-            match stream_completion(&ctx, &messages, &defs, &cancelled).await {
+        let (assistant_text, reasoning_text, tool_calls, finish_reason, round_usage) =
+            match stream_completion(ctx, messages, &defs, cancelled).await {
                 Ok(r) => r,
                 Err(e) => {
                     let _ = ctx
@@ -479,14 +706,10 @@ pub async fn run_chat(
                     return Err(e);
                 },
             };
-        // 逐轮累加当轮用量（provider 未上报时为 None，跳过）
-        if let Some(u) = &usage {
-            turn_prompt_tokens += u.prompt_tokens;
-            turn_completion_tokens += u.completion_tokens;
-            turn_cached_tokens += u.cached_tokens;
-        }
+        usage.add(round_usage.as_ref());
+        last_text = assistant_text.clone();
 
-        // 无工具调用 → 完成
+        // 无工具调用 → 这一项完成
         if tool_calls.is_empty() {
             // 被输出长度上限截断（finish_reason=max_tokens）且未取消 → 推一条纠正提示
             // 自动续跑一次。纠正提示只进内存 messages，不落库，用户界面无感知。
@@ -507,14 +730,14 @@ pub async fn run_chat(
                 ctx.conversation_id,
                 &final_msg,
                 Some(&reasoning_text),
-                usage.as_ref(),
+                round_usage.as_ref(),
             )
             .await;
 
             // 首轮（本会话第一条 assistant 回复，含工具调用轮）→ 后台自动生成会话标题。
             // 不阻塞 Done：生成/写库/通知都在独立任务里完成；用户已在 UI 手动
             // 改名后（title 非空）自动生成会跳过（见 auto_title_conversation）。
-            if is_first_turn {
+            if first_turn {
                 let title_db = ctx.db.clone();
                 let title_llm = Arc::clone(&ctx.llm);
                 let title_channel = ctx.channel.clone();
@@ -539,22 +762,7 @@ pub async fn run_chat(
                     .await;
                 });
             }
-
-            let usage = if turn_prompt_tokens + turn_completion_tokens > 0 {
-                Some(Usage {
-                    prompt_tokens: turn_prompt_tokens,
-                    completion_tokens: turn_completion_tokens,
-                    total_tokens: turn_prompt_tokens + turn_completion_tokens,
-                    cached_tokens: turn_cached_tokens,
-                })
-            } else {
-                None
-            };
-            let _ = ctx.channel.send(SkillAgentEvent::Done {
-                final_text: assistant_text,
-                usage,
-            });
-            return Ok(());
+            return Ok(assistant_text);
         }
 
         // 有工具调用：回填 assistant(tool_calls) 并持久化
@@ -583,7 +791,7 @@ pub async fn run_chat(
             ctx.conversation_id,
             &assistant_msg,
             Some(&reasoning_text),
-            usage.as_ref(),
+            round_usage.as_ref(),
         )
         .await;
 
@@ -602,7 +810,7 @@ pub async fn run_chat(
                 raw_args: tc.arguments.clone(),
             });
 
-            let (ok, mut output) = tools::execute_tool(&ctx, allowed, &tc.name, &args).await;
+            let (ok, mut output) = tools::execute_tool(ctx, allowed, &tc.name, &args).await;
 
             // 参数不是有效 JSON → 大概率生成被截断，附上原文片段便于模型/user 定位
             if !ok
@@ -633,11 +841,11 @@ pub async fn run_chat(
             let _ = ctx.channel.send(SkillAgentEvent::Error {
                 message: format!("已达到最大工具调用轮数（{}），已停止", max_rounds),
             });
-            return Ok(());
+            break;
         }
     }
 
-    Ok(())
+    Ok(last_text)
 }
 
 // ---------- 会话自动命名 ----------
@@ -841,4 +1049,57 @@ async fn stream_completion(
         }
     }
     Ok((text_out, reasoning_out, tool_calls, finish_reason, usage))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn last_role(messages: &[LlmMessage]) -> Option<&str> {
+        messages.last().map(|m| m.role.as_str())
+    }
+
+    /// 未绑定剧本的会话里没有动态材料垫底，第 2 项起请求的最后一条就是交接材料。
+    /// 它一旦是 assistant，思考模式 + tools 会直接 400（真机实录见文件头注释）。
+    #[test]
+    fn unbound_queue_request_does_not_end_with_assistant() {
+        let base = vec![LlmMessage::user("我想写一个校园恋爱剧情")];
+        let handoffs = vec![LlmMessage::user(handoff_note(
+            0,
+            role::TaskKind::Collect,
+            "我先问了他几个问题",
+        ))];
+        let messages = item_messages("系统提示".into(), &base, &handoffs, String::new());
+        assert_ne!(last_role(&messages), Some("assistant"));
+        assert_eq!(last_role(&messages), Some("user"));
+    }
+
+    #[test]
+    fn handoff_note_names_the_item_and_keeps_the_text() {
+        let note = handoff_note(2, role::TaskKind::WriteChapter, "  设计稿已经口述完  ");
+        assert!(
+            note.starts_with("【本轮第 3 项 · "),
+            "应标明是队列第几项：{note}"
+        );
+        assert!(note.contains("设计稿已经口述完"), "产出正文要保留：{note}");
+        assert!(!note.contains("  设计稿"), "正文两端应去掉空白：{note}");
+    }
+
+    /// 有动态材料（绑定剧本的会话）时，材料照旧垫在最后，交接材料不会顶到结尾。
+    #[test]
+    fn run_materials_stay_last() {
+        let handoffs = vec![LlmMessage::user(handoff_note(
+            0,
+            role::TaskKind::Collect,
+            "产出",
+        ))];
+        let messages = item_messages(
+            "系统提示".into(),
+            &[LlmMessage::user("把第二章写出来")],
+            &handoffs,
+            "【待写章节 · 02】…".into(),
+        );
+        assert_eq!(last_role(&messages), Some("user"));
+        assert!(messages.last().unwrap().content.contains("待写章节"));
+    }
 }

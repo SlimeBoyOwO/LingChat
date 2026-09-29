@@ -84,6 +84,9 @@ pub struct ScriptCharacter {
     /// 剧本里 `character:` 应该写的值（settings.yml 的 script_role_key，缺省为目录名）
     pub role_key: String,
     pub ai_name: String,
+    /// 人设（`settings.yml` 的 `system_prompt`）。编辑角色时回填用 ——
+    /// 早先只能读名字，用户想改人设只能删了重建。
+    pub system_prompt: String,
     /// avatar/ 下能找到的情绪名（不含扩展名）
     pub emotions: Vec<String>,
     /// avatar/ 下的服装子目录
@@ -310,6 +313,12 @@ fn read_characters(script_dir: &Path) -> Vec<ScriptCharacter> {
             })
             .unwrap_or_else(|| folder.clone());
 
+        let system_prompt = settings
+            .get("system_prompt")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
         let avatar = e.path().join("avatar");
         let mut emotions: Vec<String> = Vec::new();
         let mut clothes: Vec<String> = Vec::new();
@@ -338,6 +347,7 @@ fn read_characters(script_dir: &Path) -> Vec<ScriptCharacter> {
             folder,
             role_key,
             ai_name,
+            system_prompt,
             emotions,
             clothes,
             preview_image,
@@ -1114,9 +1124,96 @@ pub fn editor_create_character(
         folder: folder.clone(),
         role_key: folder,
         ai_name: name,
+        system_prompt: system_prompt.trim().to_string(),
         emotions: Vec::new(),
         clothes: Vec::new(),
         preview_image: None,
+        global_avatar,
+    })
+}
+
+/// 改一个剧本内角色：**只动显示名与人设，其余键原样保留**。
+///
+/// 立绘、情绪、服装、`script_role_key` 都不该因为改个人设就被重写 ——
+/// 早先没有这条命令，用户想改只能删了重建，等于把立绘也一起扔了。
+/// 目录名不给改：改目录要连带改 `script_role_key` 和所有章节里对它的引用，
+/// 那是"换个角色"而不是"改角色"，得走删+建。
+#[tauri::command]
+pub fn editor_update_character(
+    key: String,
+    folder: String,
+    ai_name: String,
+    system_prompt: String,
+) -> Result<ScriptCharacter, String> {
+    let dir = paths::resolve_script_dir(&key)?;
+    let safe = paths::sanitize_folder_name(&folder)?;
+    let char_dir = dir.join("characters").join(&safe);
+    if !char_dir.is_dir() {
+        return Err(format!("角色目录不存在: characters/{}", safe));
+    }
+
+    let settings_path = char_dir.join("settings.yml");
+    let mut settings: Map<String, JsonValue> = std::fs::read_to_string(&settings_path)
+        .ok()
+        .and_then(|s| serde_yaml::from_str::<JsonValue>(&s).ok())
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default();
+
+    let name = if ai_name.trim().is_empty() {
+        safe.clone()
+    } else {
+        ai_name.trim().to_string()
+    };
+    settings.insert("ai_name".into(), JsonValue::String(name.clone()));
+    // 作者把真正的名字写在 `name` 里时（read_characters 优先读它），一起改，别留两个名字
+    if settings.contains_key("name") {
+        settings.insert("name".into(), JsonValue::String(name.clone()));
+    }
+    settings.insert(
+        "system_prompt".into(),
+        JsonValue::String(system_prompt.trim().to_string()),
+    );
+    // 老角色卡可能缺 script_role_key：顺手补上（缺了引擎每次启动都会新建重复角色）
+    settings
+        .entry("script_role_key".to_string())
+        .or_insert_with(|| JsonValue::String(safe.clone()));
+
+    let role_key = settings
+        .get("script_role_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&safe)
+        .to_string();
+    yaml_file::write_json_as_yaml(&settings_path, &JsonValue::Object(settings))?;
+
+    let global_avatar_dir = crate::api::characters_dir().join(&safe).join("avatar");
+    let mut emotions: Vec<String> = Vec::new();
+    let mut clothes: Vec<String> = Vec::new();
+    if let Ok(files) = std::fs::read_dir(char_dir.join("avatar")) {
+        for f in files.flatten() {
+            let n = f.file_name().to_string_lossy().to_string();
+            if f.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                clothes.push(n);
+            } else if let Some(stem) = Path::new(&n).file_stem() {
+                emotions.push(stem.to_string_lossy().to_string());
+            }
+        }
+    }
+    emotions.sort();
+    emotions.dedup();
+    clothes.sort();
+    let avatar = char_dir.join("avatar");
+    let global_avatar = first_avatar_image(&global_avatar_dir).is_some();
+    let preview_image =
+        first_avatar_image(&avatar).or_else(|| first_avatar_image(&global_avatar_dir));
+
+    Ok(ScriptCharacter {
+        folder: safe.clone(),
+        role_key,
+        ai_name: name,
+        system_prompt: system_prompt.trim().to_string(),
+        emotions,
+        clothes,
+        preview_image,
         global_avatar,
     })
 }

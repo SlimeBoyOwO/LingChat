@@ -291,7 +291,7 @@ async function previewFromChapter() {
                   <button
                     v-for="c in chapters"
                     :key="c.id"
-                    class="rounded-lg border px-2.5 py-2 text-left transition-all duration-150"
+                    class="shrink-0 rounded-lg border px-2.5 py-2 text-left transition-all duration-150"
                     :class="
                       c.id === currentId && !artifactName
                         ? 'border-brand/60 bg-brand/12'
@@ -319,9 +319,11 @@ async function previewFromChapter() {
               </MenuItem>
 
               <!-- 流程产物（.agent/）：设计稿、任务队列、用户约束……只读，改就在对话里说 -->
+              <!-- 每行 shrink-0：不给的话 flex 会把几行一起压扁（真机 6 个产物挤成一坨），
+                   要的是"一行一个、放不下就滚动" -->
               <MenuItem
                 :title="t('scriptEditor.agentScriptPreview.artifacts', { count: artifacts.length })"
-                class="fill flex max-h-[38%] min-h-0 flex-col"
+                class="fill flex max-h-[46%] min-h-[132px] shrink-0 flex-col"
               >
                 <template #header>
                   <Icon icon="log" :size="20" />
@@ -330,7 +332,7 @@ async function previewFromChapter() {
                   <button
                     v-for="a in artifacts"
                     :key="a.name"
-                    class="truncate rounded-lg border px-2.5 py-1.5 text-left font-mono text-[0.72rem] transition-all duration-150"
+                    class="shrink-0 truncate rounded-lg border px-2.5 py-[7px] text-left font-mono text-[0.72rem] leading-normal transition-all duration-150"
                     :class="
                       a.name === artifactName
                         ? 'border-brand/60 bg-brand/12 text-brand'

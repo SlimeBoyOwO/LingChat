@@ -250,6 +250,7 @@ export default {
     importCharacter: "↓ 從全局角色庫匯入",
     emotionSep: "、",
     delete: "刪除角色（移到 .trash/）",
+    edit: "點這一行查看 / 修改人設",
   },
   assets: {
     menuTitle: "素材",
@@ -426,6 +427,7 @@ export default {
     newScript: "新建劇本",
     newChapter: "新建章節",
     newCharacter: "新建角色",
+    editCharacter: "編輯角色",
     importCharacter: "從全局角色庫導入",
     scriptName: "劇本名",
     scriptNameHint: "同時作為文件目錄名，羈絆冒險不能重名哦",
@@ -642,5 +644,7 @@ export default {
     bgListFailed: "加載全局背景列表失敗",
     characterCreated: "角色已創建",
     characterCreatedDesc: "劇本裡寫 character: {key}",
+    characterUpdated: "角色已更新",
+    characterUpdateFailed: "更新角色失敗",
   },
 };

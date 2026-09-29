@@ -304,27 +304,68 @@ fn load_one_material(skills_dir: &Path, rel: &str) -> String {
     out
 }
 
+/// 组装任务块的输入。参数多到一个程度就没人看得懂了，收成一个结构。
+pub struct TaskBlockInput<'a> {
+    pub task: super::role::TaskKind,
+    pub handoff: super::role::Handoff,
+    pub plan: &'a super::router::RoutePlan,
+    pub user_msg: &'a str,
+    pub skills_dir: &'a Path,
+    /// 这一轮落不落盘（用户明说了才 true）。
+    pub land: bool,
+    /// 正在执行队列里的第几项（0 起）。
+    pub item_index: usize,
+    /// 队列里被跳过的项（做不了），让模型在回执里说明。
+    pub skipped: &'a [String],
+}
+
 /// 本轮的注入块：任务 + 行为要求 + 职责边界 + 承接说明 + **该任务要的那几本手册**。
 ///
 /// 按任务注入（而不是按阶段）是这次改造的要点：实录显示同一阶段里
 /// 「只提问的那一轮」并不需要落盘手册（R1 注入了 6363 字符、0 次写文件）。
-pub fn build_task_block(
-    task: super::role::TaskKind,
-    handoff: super::role::Handoff,
-    plan: &super::router::RoutePlan,
-    user_msg: &str,
-    skills_dir: &Path,
-) -> String {
+pub fn build_task_block(input: &TaskBlockInput<'_>) -> String {
+    let TaskBlockInput {
+        task,
+        handoff,
+        plan,
+        user_msg,
+        skills_dir,
+        land,
+        item_index,
+        skipped,
+    } = *input;
     let mut out = format!("\n\n【本轮任务】{}", task.label());
     match task.role() {
         Some(role) => out.push_str(&format!("（{}）", role.label())),
         None => out.push_str("（不涉及剧本）"),
+    }
+    // 队列是逐项执行的：告诉它这是第几项，免得它以为要一次把全部内容塞进一条回复
+    if plan.items.len() > 1 {
+        out.push_str(&format!(
+            "　队列第 {}/{} 项，只做这一项",
+            item_index + 1,
+            plan.items.len()
+        ));
+    }
+    if !skipped.is_empty() {
+        out.push_str(&format!(
+            "\n【队列里做不了的项】{}（在回执里逐条说明为什么，别装没看见）",
+            skipped.join("；")
+        ));
     }
 
     // 用户这一轮的原话。任务名是从这句话里判出来的，"他到底要什么"得看他怎么说的 ——
     // 一句话里顺手捎带的别的事，光看任务名会漏掉。
     if !user_msg.trim().is_empty() {
         out.push_str(&format!("\n【用户这一轮的原话】{}", user_msg.trim()));
+    }
+
+    // 「写」还是「落盘」：这一段两个 Agent 都要看到，口径不一致时最先崩的是用户。
+    out.push('\n');
+    out.push_str(super::role::ACTION_VOCAB);
+    if !land && !task.materials().is_empty() && task.role().is_some() {
+        out.push('\n');
+        out.push_str(super::role::DICTATE_NOTE);
     }
 
     // 听用户的：**能力范围内就按他说的来**。推荐写法只是默认，不是死规矩。
@@ -342,14 +383,18 @@ pub fn build_task_block(
     let queue = &plan.items;
     if queue.len() > 1 || queue.iter().any(|i| !i.target.trim().is_empty()) {
         out.push_str(&format!(
-            "\n\n【本轮队列】共 {} 项，**全部做完才算这一轮结束**：",
+            "\n\n【本轮队列】共 {} 项，代码会**逐项**交给对应角色执行，这一轮只做其中一项：",
             queue.len()
         ));
         for (i, item) in queue.iter().enumerate() {
             let target = item.target.trim();
             out.push_str(&format!(
                 "\n- {} {}：{}",
-                if i == 0 { "[当前]" } else { "[待做]" },
+                if i == item_index {
+                    "[本项]"
+                } else {
+                    "[其余]"
+                },
                 item.kind.label(),
                 if target.is_empty() {
                     "（未指明）"
@@ -359,10 +404,9 @@ pub fn build_task_block(
             ));
         }
         out.push_str(
-            "\n**一项一项按顺序做**：上一项没做完就别同时铺开下一项（写章节就是一章落盘了再写下一章）。\
-             每做完一项都要留在最终回复里（做了什么、落到哪个文件）；\
-             某一项缺信息做不了，就停下来问用户，并说明剩下的还在队列里 —— \
-             除这两种情况，别只做一部分就收尾。",
+            "\n**只做标着 [本项] 的那一件**：它的承接与工具就是为它准备的。\
+             其余项别顺手替它们做（该轮到谁的活，代码会换个角色再来一轮）。\
+             回执里写清这一项做了什么、落到哪个文件。",
         );
     }
 
@@ -440,7 +484,7 @@ pub fn write_queue(
         if *done {
             continue;
         }
-        if let Some(target) = text.strip_prefix("编写章节：") {
+        if let Some(target) = text.strip_prefix("落盘章节：") {
             if !target.trim().is_empty() && written.iter().any(|w| w == target.trim()) {
                 *done = true;
             }
@@ -505,11 +549,16 @@ pub fn hub_doc(skills_dir: &Path) -> Option<String> {
 /// `target` 是用户点名的章节 id；`target_exists` 只认**已落盘**的
 /// （唯一看它的是「改章节」，改不到还没写的东西）。
 pub fn facts_of(snap: &StageSnapshot, target: Option<&str>) -> super::role::ScriptFacts {
-    let wanted = target.map(str::trim).filter(|t| !t.is_empty());
-    let target_exists = target.map(|t| {
-        let t = t.trim();
-        !t.is_empty() && snap.written.iter().any(|w| w == t)
-    });
+    let wanted: Vec<String> = target.map(chapter_ids_in).unwrap_or_default();
+    let present: Vec<bool> = wanted
+        .iter()
+        .map(|t| snap.written.iter().any(|w| w == t))
+        .collect();
+    let target_exists = if wanted.is_empty() {
+        None
+    } else {
+        Some(present.iter().any(|p| *p))
+    };
     // 「文件在」与「读得出章节」是两件事：前者决定能不能改它，
     // 后者只是"格式对不对"的提醒 —— 别把后者当前置用。
     let has_design = snap
@@ -517,14 +566,74 @@ pub fn facts_of(snap: &StageSnapshot, target: Option<&str>) -> super::role::Scri
         .as_deref()
         .and_then(|d| std::fs::metadata(d.join(DESIGN_REL_PATH)).ok())
         .is_some_and(|m| m.len() > 0);
+    let next = snap.next_chapter();
     super::role::ScriptFacts {
         has_design,
         has_plan: !snap.plan.is_empty(),
         has_written: !snap.written.is_empty(),
-        has_next: snap.next_chapter().is_some(),
+        has_next: next.is_some(),
         target_exists,
-        target_is_next: wanted.is_some_and(|t| snap.next_chapter() == Some(t)),
+        target_partial: present.iter().any(|p| *p) && present.iter().any(|p| !*p),
+        target_is_next: next.is_some_and(|n| wanted.iter().any(|w| w == n)),
     }
+}
+
+/// 用户点名的章节 id 列表。
+///
+/// **区间与列表要拆开**：真机上模型把 target 写成 `01-04`，代码按"单个章节 id"去查，
+/// 查不到 → 判"你点名的那一章还没有落盘" → 整轮工具被收成只读 → 队列里其余项全废。
+/// 这里顺手把 `第 3 章` 这种口语写法也归一成 `3`。
+pub fn chapter_ids_in(raw: &str) -> Vec<String> {
+    /// 一个区间最多展开这么多章，防止 `01-9999` 这种写法把内存撑爆。
+    const MAX_SPAN: u32 = 200;
+
+    let mut out: Vec<String> = Vec::new();
+    for part in raw.split([',', '，', '、', ';', '；', '和', '与', ' ']) {
+        let p = normalize_chapter_token(part);
+        if p.is_empty() {
+            continue;
+        }
+        let Some(dash) = p.find(['-', '~', '–', '—']) else {
+            out.push(p);
+            continue;
+        };
+        let (a, b) = (
+            p[..dash].trim(),
+            p[dash + 1..]
+                .trim_start_matches(['-', '~', '–', '—'])
+                .trim(),
+        );
+        // 只有"两边都是同一宽度的数字"才当区间展开；`Intro/01-Intro/04` 这种不猜
+        match (a.parse::<u32>(), b.parse::<u32>()) {
+            (Ok(start), Ok(end))
+                if start <= end
+                    && end - start <= MAX_SPAN
+                    && a.chars().all(|c| c.is_ascii_digit())
+                    && b.chars().all(|c| c.is_ascii_digit()) =>
+            {
+                let width = a.len().max(b.len());
+                for n in start..=end {
+                    out.push(format!("{:0width$}", n, width = width));
+                }
+            },
+            _ => out.push(p),
+        }
+    }
+    out.dedup();
+    out
+}
+
+/// `第 3 章` / `03节` / `"03"` → `03`（去空白与引号，剥掉"第/章/节"）。
+fn normalize_chapter_token(raw: &str) -> String {
+    let t = raw
+        .trim()
+        .trim_matches(['"', '\'', '`', '《', '》', '「', '」']);
+    let t = t.strip_prefix('第').unwrap_or(t);
+    let t = t
+        .strip_suffix('章')
+        .or_else(|| t.strip_suffix('节'))
+        .unwrap_or(t);
+    t.trim().to_string()
 }
 
 /// 组装本轮动态材料（待写章节 + 上一章收尾状态 + 落盘进度）；不落库，每轮重算。
@@ -1946,7 +2055,7 @@ id: Intro/02
     }
 
     #[test]
-    fn task_block_lists_the_whole_queue_and_demands_completion() {
+    fn task_block_names_the_item_and_carries_the_user_words() {
         use crate::ai_service::skill_agent::{
             role,
             router::{QueueItem, RoutePlan},
@@ -1959,42 +2068,114 @@ id: Intro/02
             items,
             boundary: None,
             reason: None,
+            land: true,
             fallback: false,
         };
         let queue = vec![
             q(role::TaskKind::WriteChapter, "03"),
             q(role::TaskKind::ReviseChapter, "12"),
         ];
-        let block = build_task_block(
-            role::TaskKind::WriteChapter,
-            role::Handoff::Proceed,
-            &plan(queue),
-            "把第三第四张都写了，顺手把第十二章那句改掉",
-            Path::new("/nonexistent-skills"),
-        );
+        let block = build_task_block(&TaskBlockInput {
+            task: role::TaskKind::WriteChapter,
+            handoff: role::Handoff::Proceed,
+            plan: &plan(queue),
+            user_msg: "把第三第四张都写了，顺手把第十二章那句改掉",
+            skills_dir: Path::new("/nonexistent-skills"),
+            land: true,
+            item_index: 0,
+            skipped: &[],
+        });
         assert!(block.contains("【本轮队列】共 2 项"), "{block}");
-        assert!(block.contains("[当前] 编写章节：03"), "{block}");
-        assert!(block.contains("[待做] 改章节：12"), "{block}");
-        assert!(block.contains("全部做完才算这一轮结束"), "{block}");
-        // 顺序执行：不能一口气把两章一起铺开
-        assert!(block.contains("一项一项按顺序做"), "{block}");
+        // 队列是逐项执行的：这一轮只做标明的那一项
+        assert!(block.contains("[本项] 落盘章节：03"), "{block}");
+        assert!(block.contains("[其余] 改章节：12"), "{block}");
+        assert!(block.contains("只做标着 [本项] 的那一件"), "{block}");
         // 用户原话要带给角色；能力范围内要按用户的来
         assert!(block.contains("【用户这一轮的原话】"), "{block}");
         assert!(block.contains("顺手把第十二章那句改掉"), "{block}");
         assert!(block.contains("【听用户的】"), "{block}");
         assert!(block.contains("只是**推荐写法**"), "{block}");
         assert!(block.contains("这些工具加这本手册做得到"), "{block}");
+        // 落盘轮不该出现"口述"那一段
+        assert!(!block.contains("【本轮是口述，不落盘】"), "{block}");
+        assert!(block.contains("两个动作词"), "{block}");
 
         // 只有一项、又没指明对象（用户就说了一句"继续"）→ 不刷队列段
         let single = plan(vec![q(role::TaskKind::Chat, "")]);
-        let block = build_task_block(
-            role::TaskKind::Chat,
-            role::Handoff::Proceed,
-            &single,
-            "继续",
-            Path::new("/x"),
-        );
+        let block = build_task_block(&TaskBlockInput {
+            task: role::TaskKind::Chat,
+            handoff: role::Handoff::Proceed,
+            plan: &single,
+            user_msg: "继续",
+            skills_dir: Path::new("/x"),
+            land: false,
+            item_index: 0,
+            skipped: &[],
+        });
         assert!(!block.contains("【本轮队列】"), "{block}");
+    }
+
+    #[test]
+    fn dictate_turn_forbids_writing_files() {
+        use crate::ai_service::skill_agent::{
+            role,
+            router::{QueueItem, RoutePlan},
+        };
+        let plan = RoutePlan {
+            items: vec![QueueItem {
+                kind: role::TaskKind::WriteChapter,
+                target: "03".into(),
+            }],
+            boundary: None,
+            reason: None,
+            land: false,
+            fallback: false,
+        };
+        let block = build_task_block(&TaskBlockInput {
+            task: role::TaskKind::WriteChapter,
+            handoff: role::Handoff::Proceed,
+            plan: &plan,
+            user_msg: "把第三章写出来我看看",
+            skills_dir: Path::new("/nonexistent-skills"),
+            land: false,
+            item_index: 0,
+            skipped: &[],
+        });
+        // 用户只说"写"→ 这一轮只口述；提示词必须把它说死，并教它怎么问落盘
+        assert!(block.contains("【本轮是口述，不落盘】"), "{block}");
+        assert!(block.contains("一个字都不许写进文件"), "{block}");
+        assert!(block.contains("要不要落盘"), "{block}");
+    }
+
+    #[test]
+    fn skipped_items_are_reported_to_the_model() {
+        use crate::ai_service::skill_agent::{
+            role,
+            router::{QueueItem, RoutePlan},
+        };
+        let plan = RoutePlan {
+            items: vec![QueueItem {
+                kind: role::TaskKind::ReviseChapter,
+                target: "07".into(),
+            }],
+            boundary: None,
+            reason: None,
+            land: true,
+            fallback: false,
+        };
+        let skipped = vec!["改章节：你点名的那一章还没有落盘，改不了它".to_string()];
+        let block = build_task_block(&TaskBlockInput {
+            task: role::TaskKind::ReviseChapter,
+            handoff: role::Handoff::Explain("你点名的那一章还没有落盘，改不了它"),
+            plan: &plan,
+            user_msg: "改第七章",
+            skills_dir: Path::new("/nonexistent-skills"),
+            land: true,
+            item_index: 0,
+            skipped: &skipped,
+        });
+        assert!(block.contains("【队列里做不了的项】"), "{block}");
+        assert!(block.contains("改不了它"), "{block}");
     }
 
     #[test]
@@ -2014,7 +2195,7 @@ id: Intro/02
         // 01 是这一轮写的、02 早就在磁盘上
         write_queue(&dir, &items, &["01".into(), "02".into()]).unwrap();
         let text = std::fs::read_to_string(dir.join(QUEUE_REL_PATH)).unwrap();
-        assert!(text.contains("- [x] 编写章节：01"), "{text}");
+        assert!(text.contains("- [x] 落盘章节：01"), "{text}");
         assert!(
             text.contains("- [ ] 改章节：02"),
             "「它早就在磁盘上」不等于「这一轮改完了它」，不该打勾：{text}"
@@ -2232,14 +2413,14 @@ id: Intro/02
         )
         .unwrap();
         let text = std::fs::read_to_string(dir.join(QUEUE_REL_PATH)).unwrap();
-        assert!(text.contains("- [ ] 编写章节：04"), "{text}");
+        assert!(text.contains("- [ ] 落盘章节：04"), "{text}");
         assert!(text.contains("- [ ] 素材盘点：（未指明）"), "{text}");
 
         // 下一轮只是闲聊（仅对话）—— 队列**不该**被这条闲聊清空（真机踩过）
         write_queue(&dir, &[q(TaskKind::Chat, "")], &["01".into()]).unwrap();
         let text = std::fs::read_to_string(dir.join(QUEUE_REL_PATH)).unwrap();
         assert!(
-            text.contains("- [ ] 编写章节：04"),
+            text.contains("- [ ] 落盘章节：04"),
             "闲聊轮把待办抹掉了：{text}"
         );
         assert!(!text.contains("仅对话"), "仅对话不该进队列：{text}");
@@ -2252,9 +2433,9 @@ id: Intro/02
         )
         .unwrap();
         let text = std::fs::read_to_string(dir.join(QUEUE_REL_PATH)).unwrap();
-        assert!(text.contains("- [x] 编写章节：04"), "{text}");
+        assert!(text.contains("- [x] 落盘章节：04"), "{text}");
         assert_eq!(
-            text.matches("编写章节：04").count(),
+            text.matches("落盘章节：04").count(),
             1,
             "重复添加了：{text}"
         );
@@ -2328,6 +2509,45 @@ id: Intro/02
         let block = progress_block(&snap, &dir, &dir);
         assert!(!block.contains("角色卡模式"), "{block}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn target_ranges_and_lists_are_split_into_chapters() {
+        assert_eq!(chapter_ids_in("03"), vec!["03"]);
+        assert_eq!(chapter_ids_in("01-04"), vec!["01", "02", "03", "04"]);
+        assert_eq!(chapter_ids_in("01~03"), vec!["01", "02", "03"]);
+        assert_eq!(chapter_ids_in("1-3"), vec!["1", "2", "3"]);
+        assert_eq!(chapter_ids_in("01、02"), vec!["01", "02"]);
+        assert_eq!(chapter_ids_in("01 02"), vec!["01", "02"]);
+        assert_eq!(chapter_ids_in("第 3 章"), vec!["3"]);
+        // 子目录章节 id 不能被当成区间拆坏
+        assert_eq!(chapter_ids_in("Intro/01"), vec!["Intro/01"]);
+        assert_eq!(chapter_ids_in(""), Vec::<String>::new());
+        // 区间太夸张就当普通名字，绝不展开
+        assert_eq!(chapter_ids_in("01-9999"), vec!["01-9999"]);
+    }
+
+    #[test]
+    fn a_range_target_is_not_reported_as_missing() {
+        use crate::ai_service::skill_agent::role::{Handoff, TaskKind, reconcile};
+        // 真机：队列里写着 `改章节：01-04`，代码按"单个章节 id"查不到 → 判"那一章还没落盘"
+        // → 整轮工具收成只读，队列里其余项全废。01~03 在盘上、04 没有 → 应当照改能改的。
+        let snap = forge(&["01", "02", "03", "04"], &["01", "02", "03"]);
+        let facts = facts_of(&snap, Some("01-04"));
+        assert_eq!(facts.target_exists, Some(true), "有在盘上的就不算'找不到'");
+        assert!(facts.target_partial, "04 还没落盘，要能说出来");
+        let Handoff::ProceedNote(note) = reconcile(TaskKind::ReviseChapter, facts) else {
+            panic!("部分存在要照做 + 说明，不是整轮拒绝")
+        };
+        assert!(note.contains("还没落盘"), "{note}");
+
+        // 一个都不在盘上 → 仍然是"改不了"
+        let facts = facts_of(&snap, Some("07-09"));
+        assert_eq!(facts.target_exists, Some(false));
+        assert!(matches!(
+            reconcile(TaskKind::ReviseChapter, facts),
+            Handoff::Explain(_)
+        ));
     }
 
     #[test]

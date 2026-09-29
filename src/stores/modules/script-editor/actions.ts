@@ -325,6 +325,9 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       // 选中第一个没被折叠进复合块的事件。官方剧本每章开头都是一个转场块，
       // 直接选 0 会出现「右侧显示字段、左侧那行是收起的转场」。
       s.selectedEvent.value = firstVisibleIndex(content.events, s.foldCompounds.value);
+      // 顺手切到流程页：不切的话，从别的标签页（校验、章节预览浮窗）跳进来时
+      // 内容确实打开了、用户却还看着原来那一页 —— 表现就是「跳转按钮没反应」。
+      s.tab.value = "flow";
       s.level.value = "chapter";
       return true;
     } catch (e) {
@@ -946,6 +949,27 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
   }
 
   /**
+   * 改一个剧本内角色（显示名 + 人设）。
+   *
+   * 改完跑一次校验：人设清空会变成 `character.no_persona`，让作者当场看见。
+   * 目录名不给改（要改就删了重建）—— 所以这里只认 folder 定位。
+   */
+  async function updateCharacter(folder: string, aiName: string, systemPrompt: string) {
+    const key = g.scriptKey.value;
+    if (!key || !s.detail.value) return;
+    try {
+      const c = await api.updateCharacter(key, folder, aiName, systemPrompt);
+      const list = s.detail.value.characters;
+      const at = list.findIndex((x) => x.folder === folder);
+      if (at >= 0) list.splice(at, 1, c);
+      notifyOk(t("scriptEditor.notify.characterUpdated"), c.aiName);
+      await runValidation();
+    } catch (e) {
+      notifyError(t("scriptEditor.notify.characterUpdateFailed"), e);
+    }
+  }
+
+  /**
    * 删除剧本内一个角色。
    * 删完后跑一次校验——剧本里若有 `character: <被删角色>` 的引用，会立刻变成
    * 一条看得见的诊断，提示作者哪里还在用它。
@@ -1151,6 +1175,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     resetEditorBg,
     refreshGlobalBgFiles,
     createCharacter,
+    updateCharacter,
     deleteCharacter,
     refreshAssetFiles,
     deleteAsset,

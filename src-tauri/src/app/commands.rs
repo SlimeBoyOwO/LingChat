@@ -139,6 +139,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::script_editor::editor_upload_editor_bg,
         api::script_editor::editor_upload_editor_bg_data,
         api::script_editor::editor_create_character,
+        api::script_editor::editor_update_character,
         api::script_editor::editor_list_global_assets,
         api::script_editor::editor_list_asset_files,
         api::script_editor::editor_delete_asset,

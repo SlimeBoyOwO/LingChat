@@ -269,6 +269,7 @@ export default {
     importCharacter: "↓ グローバルキャラクターライブラリからインポート",
     emotionSep: "、",
     delete: "キャラクターを削除（.trash/ へ移動）",
+    edit: "行をクリックして人設を確認・編集",
   },
   assets: {
     menuTitle: "素材",
@@ -455,6 +456,7 @@ export default {
     newScript: "新しいシナリオ",
     newChapter: "新しい章",
     newCharacter: "新しいキャラクター",
+    editCharacter: "キャラクターを編集",
     importCharacter: "グローバルキャラクターライブラリからインポート",
     scriptName: "シナリオ名",
     scriptNameHint: "ファイルのディレクトリ名も兼ねます。絆アドベンチャーでは重複不可です",
@@ -687,5 +689,7 @@ export default {
     bgListFailed: "グローバル背景一覧の読み込みに失敗",
     characterCreated: "キャラクターを作成しました",
     characterCreatedDesc: "シナリオには character: {key} と書かれます",
+    characterUpdated: "キャラクターを更新しました",
+    characterUpdateFailed: "キャラクターの更新に失敗しました",
   },
 };
