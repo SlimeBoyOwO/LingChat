@@ -12,7 +12,9 @@ use tauri::{AppHandle, State};
 use tauri_plugin_store::StoreExt;
 
 use crate::AppState;
-use crate::ai_service::skill_agent::config::{SkillAgentConfig, resolve_skill_agent_provider};
+use crate::ai_service::skill_agent::config::{
+    SkillAgentConfig, resolve_context_window, resolve_skill_agent_provider,
+};
 use crate::ai_service::skill_agent::core::{SkillAgentRunContext, run_chat};
 use crate::ai_service::skill_agent::events::SkillAgentEvent;
 use crate::ai_service::skill_agent::{db, skills, stage};
@@ -391,6 +393,9 @@ pub async fn editor_agent_start_chat(
     let config = SkillAgentConfig::load(&app);
     let sandbox_dir = config.resolve_sandbox_dir();
     let skills_dir = config.resolve_skills_dir();
+    // 上下文预算用的窗口：provider 自报优先，读不到就是 DeepSeek 的 1M。
+    // 只在会话开始时解析一次（fail 也不阻断对话，最坏只是预算按默认值算）。
+    let context_window = resolve_context_window(&llm).await;
 
     let mut history = db::list_messages(&state.db, conversation_id)
         .await?
@@ -418,6 +423,7 @@ pub async fn editor_agent_start_chat(
         // 这一轮之前就存在的剧本包。新建剧本时它自己写的包不在里面，所以不受限。
         existing_script_keys: crate::utils::script_paths::enumerate_script_keys(),
         stage_snapshot,
+        context_window,
     };
 
     let cancelled = state.skill_agent.cancelled.clone();

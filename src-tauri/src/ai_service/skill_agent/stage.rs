@@ -985,6 +985,373 @@ fn is_superseded_chapter_write(
     })
 }
 
+// ---------- 上下文预算 ----------
+//
+// 目标只有一个：**绝不把超窗口的请求发出去换 400**。做法是每次请求前估一次，
+// 到水位就只丢"丢了不损失能力"的东西（能不能重取 = 判据），丢完还超才继续降级，
+// 一路降不下去就由调用方**主动报错**，而不是让 provider 拒。
+//
+// 不设"目标水位"：不写"压到 40k"这类数字。触发后按"无用程度"逐级丢，
+// 够用就停 —— 绝大多数情况停在第 ① 级（旧只读结果），因为它通常占体量的一半以上。
+
+/// 单次请求给模型**输出**留的余量（上限）。
+///
+/// DeepSeek 的 `max_output_tokens` 是 393,216，但一章 YAML 加思考链远用不到；
+/// 128K 已经很宽裕（窗口的 12.5%）。
+///
+/// **但它是上限，不是定值**：见 [`input_cap`] —— 小窗口上按定值留会把输入上限
+/// 压得极小（200k 窗口留 128K → 硬线只剩 72k，正常会话也会被折、被拒），
+/// 所以实际预留取 `min(128K, 窗口/8)`。
+pub const OUTPUT_RESERVE_TOKENS: usize = 128 * 1024;
+
+/// 窗口读不到时的兜底：DeepSeek 官方文档与 `/models` 都写 1,048,576（1M）。
+///
+/// 之所以用"最大值"而不是保守的小值：本项目的默认 provider 就是 DeepSeek，
+/// 而宁可少收束也不要在正常会话里丢记忆 —— 真有超限风险时，第 ③ 级之后的
+/// 主动报错会兜住（见 [`BudgetOutcome::TooLong`]）。
+pub const DEFAULT_CONTEXT_WINDOW: usize = 1_048_576;
+
+/// 收束水位：可用输入的 80%。低于它一律原样发。
+const TRIGGER_PERCENT: usize = 80;
+
+/// 值得折的只读结果下限（字符）。小结果折了省不下什么，还多一行噪音。
+const MIN_FOLD_CHARS: usize = 1200;
+
+/// 最近几轮原文保留（正在进行的事，不能压）。
+const KEEP_RECENT_TURNS: usize = 2;
+
+/// 估算 token：CJK 按 0.85 token/字，其余按 0.3；每条消息再加 4 的结构开销。
+///
+/// **故意估高**：估高只是早一点收束（无害），估低就会撞窗口（致命）。
+///
+/// 校准数据（真机 10 个会话，估算 vs 实际 `prompt_tokens`，两者都含系统提示）：
+/// 按 CJK=1.0 估时，估算高出实际 6%~27%（会话 #7 232,542 vs 183,744）。
+/// 也就是真实 CJK 约 0.7 token/字 —— 这里取 0.85，留约 10% 的保守余量，
+/// 而不是按 1.0 让它在真实占用约 60% 时就动手（那会过早丢记忆）。
+pub fn estimate_tokens(messages: &[LlmMessage]) -> usize {
+    messages.iter().map(estimate_message_tokens).sum()
+}
+
+fn estimate_message_tokens(msg: &LlmMessage) -> usize {
+    let mut wide = 0usize;
+    let mut narrow = 0usize;
+    let mut count = |text: &str| {
+        for ch in text.chars() {
+            if is_wide_char(ch) {
+                wide += 1;
+            } else {
+                narrow += 1;
+            }
+        }
+    };
+    count(&msg.content);
+    if let Some(calls) = msg.tool_calls.as_deref() {
+        for call in calls {
+            // 工具参数也要算：整章 YAML 就在 arguments 里
+            count(&call.function.name);
+            count(&call.function.arguments);
+        }
+    }
+    wide * 85 / 100 + narrow * 3 / 10 + 4
+}
+
+/// 宽字符（中日韩、全角标点）—— 这些基本一个字符一个 token。
+fn is_wide_char(ch: char) -> bool {
+    matches!(ch as u32, 0x2E80..=0x9FFF | 0xAC00..=0xD7AF | 0xF900..=0xFAFF | 0xFE30..=0xFE4F | 0xFF00..=0xFFEF)
+}
+
+/// 一次收束做了什么。调用方据此决定要不要告诉用户。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BudgetOutcome {
+    /// 没到水位，原样发。
+    Untouched { tokens: usize },
+    /// 丢掉了一些"可重取"的内容，仍在硬线内。
+    Trimmed {
+        before: usize,
+        after: usize,
+        folded_reads: usize,
+        digested_turns: usize,
+    },
+    /// 丢到不能再丢仍然超硬线 —— **调用方必须主动报错，不许发请求**。
+    TooLong { tokens: usize, cap: usize },
+}
+
+impl BudgetOutcome {
+    /// 给用户看的一句话（`None` 表示不必打扰）。
+    pub fn note(&self) -> Option<String> {
+        match self {
+            BudgetOutcome::Untouched { .. } => None,
+            BudgetOutcome::Trimmed {
+                before,
+                after,
+                folded_reads,
+                digested_turns,
+            } => {
+                let mut did: Vec<String> = Vec::new();
+                if *folded_reads > 0 {
+                    did.push(format!("折叠 {folded_reads} 条历史只读结果"));
+                }
+                if *digested_turns > 0 {
+                    did.push(format!("把 {digested_turns} 轮更早的对话压成摘要"));
+                }
+                Some(format!(
+                    "上下文偏长（约 {before} → {after} token），已{}（你的原话与最近几轮都完整保留）",
+                    did.join("、")
+                ))
+            },
+            BudgetOutcome::TooLong { tokens, cap } => Some(format!(
+                "这个对话的上下文满了（约 {tokens} token，上限 {cap}）：已无法再自动压缩。\
+                 请**新开一个对话**继续 —— 剧本文件都在磁盘上，新会话里照样能接着改。"
+            )),
+        }
+    }
+}
+
+/// 按窗口收束一次。到水位才动手；丢不下去就返回 [`BudgetOutcome::TooLong`]。
+///
+/// 顺序（先丢最不可惜的）：
+/// ① 旧的只读工具结果（`read_file` / `list_files`）折成一行 —— 随时可重取；
+/// ② 更早的轮次整体压成一行摘要 —— 用户的原话仍保留原文。
+pub fn apply_context_budget(messages: &mut Vec<LlmMessage>, window: usize) -> BudgetOutcome {
+    let cap = input_cap(window);
+    let trigger = cap * TRIGGER_PERCENT / 100;
+
+    let before = estimate_tokens(messages);
+    if before < trigger {
+        return BudgetOutcome::Untouched { tokens: before };
+    }
+
+    // 最近两轮是"正在进行的事"，整段保护起来
+    let protected_from = recent_turns_start(messages, KEEP_RECENT_TURNS);
+
+    let folded_reads = fold_old_readonly_results(messages, protected_from);
+    let after_fold = estimate_tokens(messages);
+    if after_fold <= cap {
+        // 没找到可丢的东西、也没超硬线 → 原样发，**别拿"折了 0 条"去打扰用户**。
+        // 水位只是"开始找可丢的东西"的线，不是"必须丢点什么"的命令。
+        return if folded_reads == 0 {
+            BudgetOutcome::Untouched { tokens: before }
+        } else {
+            BudgetOutcome::Trimmed {
+                before,
+                after: after_fold,
+                folded_reads,
+                digested_turns: 0,
+            }
+        };
+    }
+
+    let digested_turns = digest_older_turns(messages, protected_from);
+    let after_digest = estimate_tokens(messages);
+    if after_digest <= cap {
+        return BudgetOutcome::Trimmed {
+            before,
+            after: after_digest,
+            folded_reads,
+            digested_turns,
+        };
+    }
+
+    BudgetOutcome::TooLong {
+        tokens: after_digest,
+        cap,
+    }
+}
+
+/// 请求前要不要拦（`TooLong` 一律不许发；其余照发）。
+pub fn budget_allows_send(outcome: &BudgetOutcome) -> bool {
+    !matches!(outcome, BudgetOutcome::TooLong { .. })
+}
+
+/// 输入硬线：窗口减去给输出留的余量。
+///
+/// 预留取 `min(128K, 窗口/8)` —— **必须随窗口缩小**：定值 128K 在小窗口上会
+/// 把硬线压到窗口的三分之一（200k → 只剩 72k），于是"以前完全正常的会话"
+/// 也会被折叠甚至被拒，那是自己造出来的故障。
+fn input_cap(window: usize) -> usize {
+    let reserve = OUTPUT_RESERVE_TOKENS.min(window / 8);
+    window.saturating_sub(reserve).max(1)
+}
+
+/// 从末尾往前数 `keep` 个"轮"（user 消息开头）的起点下标。
+///
+/// 第 0 条（system）与第一个 user 之前的内容永远在保护区内。
+pub(crate) fn recent_turns_start(messages: &[LlmMessage], keep: usize) -> usize {
+    let mut seen = 0usize;
+    for (i, m) in messages.iter().enumerate().rev() {
+        if m.role == "user" {
+            seen += 1;
+            if seen == keep {
+                return i;
+            }
+        }
+    }
+    0
+}
+
+/// 轮的范围（每轮从一条 user 开始，到下一个 user 之前）。第 0 条 system 不属于任何轮。
+pub(crate) fn turn_ranges(messages: &[LlmMessage]) -> Vec<(usize, usize)> {
+    let starts: Vec<usize> = messages
+        .iter()
+        .enumerate()
+        .filter(|(i, m)| *i > 0 && m.role == "user")
+        .map(|(i, _)| i)
+        .collect();
+    starts
+        .iter()
+        .enumerate()
+        .map(|(n, &s)| (s, starts.get(n + 1).copied().unwrap_or(messages.len())))
+        .collect()
+}
+
+/// 工具调用 id → (工具名, 参数里的 path)。用来认出"这条 tool 结果是哪个工具产生的"。
+fn call_meta(messages: &[LlmMessage]) -> std::collections::HashMap<String, (String, String)> {
+    let mut out = std::collections::HashMap::new();
+    for m in messages {
+        let Some(calls) = m.tool_calls.as_deref() else {
+            continue;
+        };
+        for call in calls {
+            out.insert(
+                call.id.clone(),
+                (
+                    call.function.name.clone(),
+                    arg_path(&call.function.arguments),
+                ),
+            );
+        }
+    }
+    out
+}
+
+/// 从工具参数的 JSON 里取 `path`（取不到就空串）。
+fn arg_path(arguments: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(arguments)
+        .ok()
+        .and_then(|v| v.get("path").and_then(|p| p.as_str()).map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// 只读、且**随时可以再读一次**的工具 —— 结果丢了不损失能力。
+fn is_rereadable_tool(name: &str) -> bool {
+    matches!(name, "read_file" | "list_files")
+}
+
+fn fold_line(name: &str, path: &str, chars: usize) -> String {
+    let what = if path.is_empty() {
+        String::new()
+    } else {
+        format!(" {path}")
+    };
+    format!("[已折叠] {name}{what}（原 {chars} 字符）。要看细节就再 {name} 一次。")
+}
+
+/// ① 把保护区之外的旧只读结果折成一行。只换 `content`，**不删消息** ——
+/// `assistant(tool_calls)` 与它的 `tool` 回应必须成对，删了就 400。
+fn fold_old_readonly_results(messages: &mut [LlmMessage], protected_from: usize) -> usize {
+    let meta = call_meta(messages);
+    let mut folded = 0usize;
+    for (i, msg) in messages.iter_mut().enumerate() {
+        if i >= protected_from || msg.role != "tool" {
+            continue;
+        }
+        let Some(id) = msg.tool_call_id.as_deref() else {
+            continue;
+        };
+        let Some((name, path)) = meta.get(id) else {
+            continue;
+        };
+        if !is_rereadable_tool(name) {
+            continue;
+        }
+        let chars = msg.content.chars().count();
+        if chars < MIN_FOLD_CHARS {
+            continue;
+        }
+        msg.content = fold_line(name, path, chars);
+        folded += 1;
+    }
+    folded
+}
+
+/// ② 把保护区之外的每一轮压成一行摘要：**该轮的 user 原话保留原文**，其余消息
+/// 合并成一条 assistant 摘要（写了哪个文件、用过哪些工具、最后说了什么）。
+fn digest_older_turns(messages: &mut Vec<LlmMessage>, protected_from: usize) -> usize {
+    let ranges = turn_ranges(messages);
+    let mut drop = vec![false; messages.len()];
+    let mut digests: Vec<(usize, String)> = Vec::new();
+    for (start, end) in ranges {
+        if start >= protected_from || messages[start].role != "user" {
+            continue;
+        }
+        // 只有一句 user 话、背后没有任何动作的"回合"（队列各项的交接材料就是这样）
+        // 没有可压的东西 —— 给它插一条「这一轮没有调用工具」纯属噪音。
+        let Some(digest) = turn_digest(&messages[start..end]) else {
+            continue;
+        };
+        for flag in drop.iter_mut().take(end).skip(start + 1) {
+            *flag = true;
+        }
+        digests.push((start + 1, digest));
+    }
+    if digests.is_empty() {
+        return 0;
+    }
+
+    let count = digests.len();
+    let mut out = Vec::with_capacity(messages.len());
+    for (i, msg) in messages.drain(..).enumerate() {
+        if !drop[i] {
+            out.push(msg);
+        }
+        if let Some((_, text)) = digests.iter().find(|(at, _)| *at == i) {
+            out.push(LlmMessage::assistant(text.clone()));
+        }
+    }
+    *messages = out;
+    count
+}
+
+/// 一轮的摘要：用过哪些工具（带路径）+ 最后的结论开头。
+///
+/// 没有任何动作、也没有结论的回合（只有一句 user 话）返回 `None` —— 那种回合
+/// 没有可压的内容，压缩它只会平白插一条噪音。
+fn turn_digest(turn: &[LlmMessage]) -> Option<String> {
+    let mut used: Vec<String> = Vec::new();
+    for msg in turn {
+        let Some(calls) = msg.tool_calls.as_deref() else {
+            continue;
+        };
+        for call in calls {
+            let path = arg_path(&call.function.arguments);
+            used.push(if path.is_empty() {
+                call.function.name.clone()
+            } else {
+                format!("{}({path})", call.function.name)
+            });
+        }
+    }
+    let tail: String = turn
+        .iter()
+        .rev()
+        .find(|m| m.role == "assistant" && m.tool_calls.is_none())
+        .map(|m| m.content.chars().take(60).collect())
+        .unwrap_or_default();
+    if used.is_empty() && tail.trim().is_empty() {
+        return None;
+    }
+    let mut out = String::from("[摘要] ");
+    if used.is_empty() {
+        out.push_str("这一轮没有调用工具。");
+    } else {
+        out.push_str(&format!("这一轮用过：{}。", used.join("、")));
+    }
+    if !tail.trim().is_empty() {
+        out.push_str(&format!("结论：{}…", tail.trim()));
+    }
+    Some(out)
+}
+
 /// 从写入路径里取出章节 id（`…/Chapters/<id>.yaml`，允许 `\` 分隔与子目录）。
 pub(crate) fn chapter_id_of_path(path: &str) -> Option<String> {
     let normalized = path.replace('\\', "/");
@@ -2739,5 +3106,239 @@ id: Intro/02
             Some("01".to_string())
         );
         let _ = std::fs::remove_dir_all(pkg.parent().unwrap().parent().unwrap());
+    }
+
+    // ---------- 上下文预算 ----------
+
+    /// 造一轮：user + assistant(tool_calls) + tool 结果。
+    fn tool_turn(
+        user: &str,
+        call_id: &str,
+        tool: &str,
+        path: &str,
+        result: &str,
+    ) -> Vec<LlmMessage> {
+        let args = format!(r#"{{"path":"{path}"}}"#);
+        let mut assistant = LlmMessage::assistant("我来看一眼。");
+        assistant.tool_calls = Some(vec![crate::ai_service::types::ToolCall {
+            id: call_id.into(),
+            type_: "function".into(),
+            function: crate::ai_service::types::FunctionCall {
+                name: tool.into(),
+                arguments: args,
+            },
+        }]);
+        vec![
+            LlmMessage::user(user),
+            assistant,
+            LlmMessage::tool_result(call_id, result),
+            LlmMessage::assistant("看完了。"),
+        ]
+    }
+
+    /// 造一段"很长"的只读结果。
+    fn long_read(call_id: &str, path: &str) -> Vec<LlmMessage> {
+        let long = "章节正文。".repeat(400); // 2000 字 > MIN_FOLD_CHARS
+        tool_turn("读一下", call_id, "read_file", path, &long)
+    }
+
+    #[test]
+    fn small_windows_keep_a_sane_input_cap() {
+        // 预留必须随窗口缩小：定值 128K 会让 200k 窗口的硬线只剩 72k
+        assert_eq!(input_cap(1_048_576), 1_048_576 - OUTPUT_RESERVE_TOKENS);
+        assert_eq!(input_cap(200_000), 200_000 - 25_000);
+        assert_eq!(input_cap(64_000), 64_000 - 8_000);
+        assert!(
+            input_cap(200_000) > 150_000,
+            "200k 窗口的硬线不该被压到 150k 以下"
+        );
+    }
+
+    #[test]
+    fn estimate_stays_conservative_but_not_absurd() {
+        let zh = LlmMessage::user("字".repeat(100));
+        let en = LlmMessage::user("a".repeat(100));
+        let zh_tokens = estimate_tokens(&[zh]);
+        let en_tokens = estimate_tokens(&[en]);
+        // 真机校准：中文实际约 0.7 token/字，这里取 0.85（估高 = 安全方向）
+        assert!(
+            (85..=100).contains(&zh_tokens),
+            "中文估计应当略高于实测的 0.7/字：{zh_tokens}"
+        );
+        assert!(
+            en_tokens < zh_tokens,
+            "英文应当明显更便宜：{en_tokens} vs {zh_tokens}"
+        );
+    }
+
+    #[test]
+    fn small_history_is_untouched() {
+        let mut messages = vec![LlmMessage::system("系统"), LlmMessage::user("你好")];
+        let before = estimate_tokens(&messages);
+        let outcome = apply_context_budget(&mut messages, DEFAULT_CONTEXT_WINDOW);
+        assert_eq!(outcome, BudgetOutcome::Untouched { tokens: before });
+        assert_eq!(messages.len(), 2, "没到水位就不许动");
+    }
+
+    #[test]
+    fn old_read_results_are_folded_and_recent_ones_kept() {
+        let mut messages = vec![LlmMessage::system("系统")];
+        // 三轮旧历史 + 两轮"最近"（保护区）—— 最近两轮里的长结果不能折
+        messages.extend(long_read("c1", ".agent/design.md"));
+        messages.extend(long_read("c2", "Chapters/01.yaml"));
+        messages.extend(long_read("c3", "Chapters/02.yaml"));
+        messages.extend(long_read("c4", "Chapters/03.yaml"));
+        messages.extend(long_read("c5", "Chapters/04.yaml"));
+
+        let window = 7_000; // cap=5,250 / trigger=4,200 → 折完刚好落回去
+        let outcome = apply_context_budget(&mut messages, window);
+        let BudgetOutcome::Trimmed { folded_reads, .. } = outcome else {
+            panic!("应当折叠：{outcome:?}");
+        };
+        assert!(folded_reads >= 2, "旧的只读结果应当被折：{folded_reads}");
+
+        let folded: Vec<&str> = messages
+            .iter()
+            .filter(|m| m.content.starts_with("[已折叠]"))
+            .map(|m| m.content.as_str())
+            .collect();
+        assert!(folded.iter().any(|c| c.contains("design.md")), "{folded:?}");
+
+        // 最近两轮的长结果保持原文（模型正在用）
+        let last = messages
+            .iter()
+            .filter(|m| m.role == "tool")
+            .next_back()
+            .expect("还有 tool 消息");
+        assert!(
+            !last.content.starts_with("[已折叠]"),
+            "最近一轮的结果不该被折"
+        );
+    }
+
+    #[test]
+    fn user_words_and_pairing_survive() {
+        let mut messages = vec![LlmMessage::system("系统")];
+        messages.extend(long_read("c1", "a.md"));
+        messages.extend(long_read("c2", "b.md"));
+        messages.extend(long_read("c3", "c.md"));
+        messages.extend(long_read("c4", "d.md"));
+
+        apply_context_budget(&mut messages, 4000);
+
+        assert!(
+            messages.iter().any(|m| m.content == "读一下"),
+            "user 原话要留"
+        );
+        // 结构不许坏：每个 tool 都要有其 assistant(tool_calls) 主
+        let mut pending: Vec<&str> = Vec::new();
+        for m in &messages {
+            if let Some(calls) = m.tool_calls.as_deref() {
+                pending.extend(calls.iter().map(|c| c.id.as_str()));
+            }
+            if m.role == "tool" {
+                let id = m.tool_call_id.as_deref().unwrap_or("");
+                assert!(
+                    pending.iter().any(|p| *p == id),
+                    "孤儿 tool 消息会导致 400：{id}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn nothing_useless_to_drop_stays_untouched() {
+        // 水位到了，但历史里全是"不能丢"的东西（用户原话 + 最近两轮，没有旧工具结果）
+        // → 在硬线内就原样发，**不许拿"折了 0 条"去打扰用户**。
+        let mut messages = vec![
+            LlmMessage::system("系统"),
+            LlmMessage::user(&"字".repeat(1300)),
+            LlmMessage::assistant("好。"),
+            LlmMessage::user(&"字".repeat(1300)),
+        ];
+        let before = estimate_tokens(&messages);
+        let outcome = apply_context_budget(&mut messages, 4_000);
+        assert_eq!(outcome, BudgetOutcome::Untouched { tokens: before });
+        assert!(outcome.note().is_none(), "没什么可丢时不该给用户发状态");
+    }
+
+    #[test]
+    fn pure_note_turns_are_not_digested() {
+        // 队列各项的交接材料就是"只有一句 user 话"的回合：压它只会插噪音，
+        // 所以它既不算被压、也不该多出一条「这一轮没有调用工具」。
+        let mut messages = vec![
+            LlmMessage::system("系统"),
+            LlmMessage::user("【本轮第 1 项 · 收集设想 · 产出】我问了他几个问题"),
+            LlmMessage::user("【本轮第 2 项 · 落盘章节 · 产出】落了第一章"),
+            LlmMessage::user("【待写章节 · 02】…"),
+        ];
+        let before = estimate_tokens(&messages);
+        let outcome = apply_context_budget(&mut messages, 4_000);
+        assert_eq!(outcome, BudgetOutcome::Untouched { tokens: before });
+        assert!(
+            !messages.iter().any(|m| m.content.contains("[摘要]")),
+            "纯交接材料回合不该被压成摘要：{:?}",
+            messages
+                .iter()
+                .map(|m| m.content.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn impossible_budget_refuses_to_send() {
+        // 窗口小到连"最近一轮原文"都塞不下 → 只能主动报错
+        let mut messages = vec![LlmMessage::system("系统")];
+        messages.extend(long_read("c1", "a.md"));
+        messages.extend(long_read("c2", "b.md"));
+        let outcome = apply_context_budget(&mut messages, 100);
+        assert!(
+            matches!(outcome, BudgetOutcome::TooLong { .. }),
+            "{outcome:?}"
+        );
+        assert!(!budget_allows_send(&outcome), "TooLong 一律不许发请求");
+        let note = outcome.note().expect("要给用户一句话");
+        assert!(note.contains("新开一个对话"), "{note}");
+    }
+
+    #[test]
+    fn older_turns_become_one_line_digests() {
+        // 只在"折不动"的东西撑大时才走第 ② 级 —— 所以用 write_file 的大结果
+        // （写类结果永不折：它带着 [章节自检]，折了会重复写、漏改）。
+        let big = "已写入 Chapters/01.yaml（3,600 字节）".to_string() + &"e".repeat(3_600);
+        let mut messages = vec![LlmMessage::system("系统")];
+        for (i, id) in ["c1", "c2", "c3"].iter().enumerate() {
+            messages.push(LlmMessage::user(format!("第{i}件事")));
+            messages.push(LlmMessage::assistant("好。"));
+            messages.extend(tool_turn(
+                "写一下",
+                id,
+                "write_file",
+                "Chapters/01.yaml",
+                &big,
+            ));
+        }
+        // 最近两轮：正常的只读结果（要被保护）
+        messages.extend(long_read("c4", "Chapters/02.yaml"));
+        messages.extend(long_read("c5", "Chapters/03.yaml"));
+
+        let outcome = apply_context_budget(&mut messages, 6_000);
+        let BudgetOutcome::Trimmed { digested_turns, .. } = outcome else {
+            panic!("应当走到摘要级：{outcome:?}");
+        };
+        assert!(
+            digested_turns >= 3,
+            "更早的轮次要被压成摘要：{digested_turns}"
+        );
+        assert!(
+            messages.iter().any(|m| m.content.contains("[摘要]")),
+            "应当有摘要行"
+        );
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.role == "user" && m.content.starts_with("第0件事")),
+            "更早轮次的 user 原话仍要留原文"
+        );
     }
 }

@@ -12,6 +12,8 @@ use crate::ai_service::llm::provider_config::{
 use crate::api::{data_dir, game_data_dir};
 use crate::config::{self, keys};
 
+use super::stage;
+
 /// Skill Agent 运行参数。
 #[derive(Debug, Clone)]
 pub struct SkillAgentConfig {
@@ -143,4 +145,68 @@ pub fn resolve_skill_agent_provider(
 
     tracing::warn!("Skill Agent 未找到可用 LLM");
     None
+}
+
+/// 会话开始时按 `provider/model` 缓存的窗口值。它只在开新会话时解析一次，
+/// 缓存是为了换 provider 后不重复问、同一 provider 下不重复查。
+fn window_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, usize>> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, usize>>> =
+        std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// 探窗口的超时。**这条必须有**：有的 provider 的 `list_models` 会真的发 HTTP 请求
+/// （kimi_code 就是），端点不通时会把用户**第一条消息**卡到 LLM 客户端的整体超时。
+/// 探不到就用默认值 —— 绝不为了一个预算数字拖住对话。
+const WINDOW_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// 这一轮算上下文预算用的**模型窗口**（token）。
+///
+/// 优先读 provider 自报的 `context_length`（`/models`）；读不到就用
+/// [`stage::DEFAULT_CONTEXT_WINDOW`]（DeepSeek 的 1M）。
+///
+/// 为什么兜底取"最大值"而不是保守的小值：本项目的默认 provider 就是 DeepSeek，
+/// 保守值会让正常会话过早丢记忆；真超限时 `core::run_item_tools` 会主动报错兜住。
+pub async fn resolve_context_window(llm: &LlmClient) -> usize {
+    let cfg = llm.config();
+    let key = format!("{}/{}", cfg.provider, cfg.model);
+    if let Ok(cache) = window_cache().lock() {
+        if let Some(found) = cache.get(&key) {
+            return *found;
+        }
+    }
+
+    let reported = match tokio::time::timeout(WINDOW_PROBE_TIMEOUT, llm.list_models()).await {
+        Ok(Ok(models)) => models
+            .iter()
+            .find(|m| m.id == cfg.model)
+            .and_then(|m| m.context_length)
+            .map(|v| v as usize),
+        // 拉不到就当没报：默认 provider 的 `list_models` 本来就返回空表
+        Ok(Err(e)) => {
+            tracing::debug!("[skill_agent] 读取模型窗口失败，用默认值: {e}");
+            None
+        },
+        Err(_) => {
+            tracing::debug!("[skill_agent] 读取模型窗口超时，用默认值");
+            None
+        },
+    };
+
+    let window = reported
+        .filter(|v| *v > 0)
+        .unwrap_or(stage::DEFAULT_CONTEXT_WINDOW);
+    tracing::info!(
+        "[skill_agent] 上下文窗口 {} token（{}）",
+        window,
+        if reported.is_some() {
+            "provider 自报"
+        } else {
+            "默认值"
+        }
+    );
+    if let Ok(mut cache) = window_cache().lock() {
+        cache.insert(key, window);
+    }
+    window
 }

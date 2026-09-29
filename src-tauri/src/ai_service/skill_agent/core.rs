@@ -60,6 +60,9 @@ pub struct SkillAgentRunContext {
     pub existing_script_keys: Vec<String>,
     /// 由剧本包状态推导出的当前阶段。
     pub stage_snapshot: stage::StageSnapshot,
+    /// 这一轮算上下文预算用的模型窗口（token）。命令层解析 `/models` 得到；
+    /// 读不到就是 DeepSeek 的默认值（见 [`stage::DEFAULT_CONTEXT_WINDOW`]）。
+    pub context_window: usize,
 }
 
 /// 累积中的工具调用（流式分片拼接）。
@@ -695,15 +698,45 @@ async fn run_item_tools(
         if cancelled.load(Ordering::SeqCst) {
             break;
         }
+        // 每次请求前收一次预算：本轮工具结果刚 append 进来，涨得最快的正是这里。
+        // 丢到不能再丢仍然超硬线时**不发请求** —— 主动报一句人话，比换 provider 的
+        // 英文 400 好得多（用户至少知道该新开一个对话）。
+        match stage::apply_context_budget(messages, ctx.context_window) {
+            outcome if !stage::budget_allows_send(&outcome) => {
+                let note = outcome.note().unwrap_or_else(|| "上下文已满".into());
+                tracing::warn!("[ctx] {}", note.replace('\n', " "));
+                let _ = ctx.channel.send(SkillAgentEvent::Error {
+                    message: note.clone(),
+                });
+                return Err(note);
+            },
+            outcome => {
+                if let Some(note) = outcome.note() {
+                    tracing::info!("[ctx] {}", note.replace('\n', " "));
+                    let _ = ctx.channel.send(SkillAgentEvent::Status { content: note });
+                }
+            },
+        }
         let defs = tools::tool_definitions(allowed);
         let (assistant_text, reasoning_text, tool_calls, finish_reason, round_usage) =
             match stream_completion(ctx, messages, &defs, cancelled).await {
                 Ok(r) => r,
                 Err(e) => {
-                    let _ = ctx
-                        .channel
-                        .send(SkillAgentEvent::Error { message: e.clone() });
-                    return Err(e);
+                    // provider 自己判超限时，也翻译成同一句人话（兜底：预算估算与
+                    // provider 的真实计数总有偏差，这条保证用户永远看得懂）
+                    let message = if looks_like_context_overflow(&e) {
+                        format!(
+                            "这个对话的上下文满了（模型拒绝了这一次请求）。请**新开一个对话**继续 —— \
+                             剧本文件都在磁盘上，新会话里照样能接着改。\n\n原始报错：{}",
+                            e.lines().next().unwrap_or("")
+                        )
+                    } else {
+                        e.clone()
+                    };
+                    let _ = ctx.channel.send(SkillAgentEvent::Error {
+                        message: message.clone(),
+                    });
+                    return Err(message);
                 },
             };
         usage.add(round_usage.as_ref());
@@ -1051,12 +1084,46 @@ async fn stream_completion(
     Ok((text_out, reasoning_out, tool_calls, finish_reason, usage))
 }
 
+/// provider 的报错是不是"超出上下文"。
+///
+/// 各家措辞不同，只做宽松匹配：**宁可漏判**（原样透出报错）也不要误判
+/// （把别的错误说成"上下文满了"，用户会去新开会话却发现问题还在）。
+fn looks_like_context_overflow(err: &str) -> bool {
+    const PATTERNS: [&str; 5] = [
+        "maximum context length",
+        "context_length_exceeded",
+        "context window",
+        "too many tokens",
+        "reduce the length",
+    ];
+    let lower = err.to_lowercase();
+    PATTERNS.iter().any(|p| lower.contains(p))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn last_role(messages: &[LlmMessage]) -> Option<&str> {
         messages.last().map(|m| m.role.as_str())
+    }
+
+    #[test]
+    fn context_overflow_errors_are_recognized() {
+        for text in [
+            "HTTP error. Status: 400 Bad Request Bad Request Body: {\"error\":{\"message\":\"This model's maximum context length is 1048576 tokens\"}}",
+            "context_length_exceeded",
+            "too many tokens in request",
+        ] {
+            assert!(looks_like_context_overflow(text), "应当认出：{text}");
+        }
+        // 别的错误不许误判（宁可原样透出）
+        for text in [
+            "insufficient tool messages",
+            "The reasoning_content in the thinking mode must be passed back",
+        ] {
+            assert!(!looks_like_context_overflow(text), "不该误判：{text}");
+        }
     }
 
     /// 未绑定剧本的会话里没有动态材料垫底，第 2 项起请求的最后一条就是交接材料。
