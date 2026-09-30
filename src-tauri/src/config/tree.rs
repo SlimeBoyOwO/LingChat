@@ -179,6 +179,16 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         description: "ENABLE_EMOTION_CLASSIFIER — 启用情感分类器（ONNX 模型，用于自动标注对话 emotion）".to_string(),
                         setting_type: "bool".to_string(),
                     },
+                    ConfigSetting {
+                        key: keys::WEATHER_CITY.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::WEATHER_CITY,
+                            &app_defaults.weather_city,
+                        ),
+                        description: "WEATHER_CITY — 天气查询的手动城市（填写后 AI 即可感知该城市的实时天气并联动换装/场景/特效；IP 段定位与实际所在地经常不符，故不提供自动定位）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
                 ],
             },
         );

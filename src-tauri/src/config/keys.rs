@@ -39,6 +39,8 @@ pub const TRANSLATE_ENABLE: &str = "translate.enable";
 // ========== 对话增强 ==========
 pub const ENABLE_TIME_SENSE: &str = "features.enable_time_sense";
 pub const ENABLE_EMOTION_CLASSIFIER: &str = "features.enable_emotion_classifier";
+/// 天气工具的手动城市（最高优先级；填写后 AI 即可感知该城市天气）
+pub const WEATHER_CITY: &str = "features.weather_city";
 
 // ========== 自动存档 ==========
 pub const AUTO_SAVE_ENABLED: &str = "features.auto_save_enabled";

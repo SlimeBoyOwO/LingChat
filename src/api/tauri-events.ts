@@ -423,7 +423,29 @@ export function initializeTauriEventListeners() {
     uiStore.showCharacterSubtitle = role.roleSubTitle;
   });
 
+  // AI 工具换装（change_clothes）：clothesName 一变，立绘/Live2D 的 watch 即时重载
+  // （select_clothes 命令路径由 CharacterCard 在成功回调里本地更新，不经此事件）
+  listen("clothes:changed", (event) => {
+    const payload = event.payload as { type: string; roleId: number; clothesName: string };
+    console.log("[Tauri] clothes:changed", payload);
+    const gameStore = useGameStore();
+    const role = gameStore.getGameRole(payload.roleId);
+    if (role) {
+      role.clothesName = payload.clothesName;
+    }
+  });
+
   // === LLM 场景工具事件 ===
+
+  // AI 工具的氛围特效（set_background_effect）：直达更新特效状态，不走对话事件
+  // 队列——剧本通道（script:background-effect）进队列会翻转 currentStatus 并插队
+  // 在未显示的台词前面，把聊天状态机搅乱。
+  listen("ambient:effect", (event) => {
+    const payload = event.payload as { type: string; effect: string; duration?: number };
+    console.log("[Tauri] ambient:effect", payload);
+    const uiStore = useUIStore();
+    uiStore.setBackgroundEffect(payload.effect);
+  });
 
   listen("scene:switch", (event) => {
     const payload = event.payload as { type: string; scene: SceneInfo };
@@ -435,7 +457,7 @@ export function initializeTauriEventListeners() {
   });
 
   console.log(
-    "[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 13 script events + character:switch + scene:switch)"
+    "[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 13 script events + character:switch + clothes:changed + scene:switch)"
   );
 }
 

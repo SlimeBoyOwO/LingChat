@@ -310,6 +310,12 @@ impl MessageProcessor {
             system_parts.push(sys_time_part);
             sys_flag = true;
         }
+        // 天气感知：缓存未过期时注入所在地天气摘要（由 query_weather 与后台刷新
+        // 循环维护）——让模型像知道当前时间一样随时知道外面什么天气
+        if let Some(summary) = crate::ai_service::tools::weather::cached_summary() {
+            system_parts.push(format!("用户所在地天气：{summary}"));
+            sys_flag = true;
+        }
         if !user_instruction_part.is_empty() {
             system_parts.push(user_instruction_part.clone());
         }
