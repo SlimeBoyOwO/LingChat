@@ -39,6 +39,8 @@ pub const TRANSLATE_ENABLE: &str = "translate.enable";
 // ========== 对话增强 ==========
 pub const ENABLE_TIME_SENSE: &str = "features.enable_time_sense";
 pub const ENABLE_EMOTION_CLASSIFIER: &str = "features.enable_emotion_classifier";
+/// 天气工具的 IP 自动定位开关（默认关闭；定位属敏感操作且代理用户会定位到出口节点）
+pub const WEATHER_IP_LOCATION: &str = "features.weather_ip_location";
 
 // ========== 自动存档 ==========
 pub const AUTO_SAVE_ENABLED: &str = "features.auto_save_enabled";

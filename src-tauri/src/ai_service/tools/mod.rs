@@ -1,6 +1,7 @@
 pub mod background_command;
 pub mod character;
 pub mod clock;
+pub mod clothes;
 pub mod executor;
 pub mod memory;
 pub mod permissions;
@@ -12,6 +13,7 @@ pub mod settings;
 pub mod skill_files;
 pub mod status;
 pub mod tool_loop;
+pub mod weather;
 pub mod web_search;
 
 use std::io::Write;
@@ -28,12 +30,13 @@ use crate::ai_service::game_system::game_status::GameStatus;
 
 use character::{CharacterList, CharacterSwitch};
 use clock::CurrentTimeTool;
+use clothes::{ChangeClothes, CharacterOutfits};
 use memory::{AddNote, DeleteNote, GetCurrentMemory, GetNotes, UpdateNote};
 use permissions::CONFIG_FILE_NAME;
 use permissions::ToolPermissionConfig;
 use read_media_file::ReadMediaFileTool;
 use registry::ToolRegistry;
-use scene::{SceneList, SceneSwitch};
+use scene::{SceneList, SceneSwitch, SetBackgroundEffect};
 use schedule::{AddTodo, DeleteTodo, GetAllSchedule, UpdateTodo};
 use settings::SharedToolSettings;
 #[cfg(desktop)]
@@ -43,6 +46,7 @@ use skill_files::{
     SearchFiles, WriteFile,
 };
 use status::{CurrentStatus, SceneStatus};
+use weather::WeatherTool;
 use web_search::WebSearchTool;
 
 /// 从 AppHandle 获取共享的 `GameStatus` 句柄。
@@ -111,8 +115,12 @@ pub fn built_in_registry(
     registry.register(Arc::new(SceneStatus))?;
     registry.register(Arc::new(SceneList))?;
     registry.register(Arc::new(SceneSwitch))?;
+    registry.register(Arc::new(SetBackgroundEffect))?;
     registry.register(Arc::new(CharacterList))?;
     registry.register(Arc::new(CharacterSwitch))?;
+    registry.register(Arc::new(CharacterOutfits))?;
+    registry.register(Arc::new(ChangeClothes))?;
+    registry.register(Arc::new(WeatherTool))?;
     registry.register(Arc::new(ListSkills))?;
     registry.register(Arc::new(ReadSkill))?;
     registry.register(Arc::new(ReadMediaFileTool::new(tool_settings.clone())))?;

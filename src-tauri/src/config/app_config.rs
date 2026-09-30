@@ -105,6 +105,9 @@ pub struct AppConfig {
     pub enable_time_sense: bool,
     #[serde(default = "default_enable_emotion_classifier")]
     pub enable_emotion_classifier: bool,
+    /// 天气工具的 IP 自动定位（敏感操作，默认关闭；代理/VPN 用户会定位到出口节点）
+    #[serde(default)]
+    pub weather_ip_location: bool,
 
     // ---- 功能开关（记忆系统） ----
     #[serde(default = "default_true")]
@@ -156,6 +159,7 @@ impl Default for AppConfig {
             enable_translate: default_enable_translate(),
             enable_time_sense: default_enable_time_sense(),
             enable_emotion_classifier: default_enable_emotion_classifier(),
+            weather_ip_location: false,
             use_persistent_memory: true,
             memory_update_interval: default_memory_update_interval(),
             memory_recent_window: default_memory_recent_window(),
@@ -257,6 +261,11 @@ impl AppConfig {
                 &store,
                 keys::ENABLE_EMOTION_CLASSIFIER,
                 default.enable_emotion_classifier,
+            ),
+            weather_ip_location: get_bool(
+                &store,
+                keys::WEATHER_IP_LOCATION,
+                default.weather_ip_location,
             ),
             use_persistent_memory: get_bool(
                 &store,
