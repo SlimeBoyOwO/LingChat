@@ -41,6 +41,8 @@ pub const ENABLE_TIME_SENSE: &str = "features.enable_time_sense";
 pub const ENABLE_EMOTION_CLASSIFIER: &str = "features.enable_emotion_classifier";
 /// 天气工具的 IP 自动定位开关（默认关闭；定位属敏感操作且代理用户会定位到出口节点）
 pub const WEATHER_IP_LOCATION: &str = "features.weather_ip_location";
+/// 天气工具的手动城市（最高优先级；填写后覆盖 IP 自动定位）
+pub const WEATHER_CITY: &str = "features.weather_city";
 
 // ========== 自动存档 ==========
 pub const AUTO_SAVE_ENABLED: &str = "features.auto_save_enabled";

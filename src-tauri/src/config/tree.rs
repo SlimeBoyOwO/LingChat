@@ -189,6 +189,16 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         description: "WEATHER_IP_LOCATION — 天气查询的 IP 自动定位（默认关闭：定位属敏感操作；使用代理/VPN 时会定位到出口节点，不准确）。关闭时 AI 会在需要时直接询问你所在城市".to_string(),
                         setting_type: "bool".to_string(),
                     },
+                    ConfigSetting {
+                        key: keys::WEATHER_CITY.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::WEATHER_CITY,
+                            &app_defaults.weather_city,
+                        ),
+                        description: "WEATHER_CITY — 天气查询的手动城市（最高优先级，填写后覆盖 IP 自动定位；IP 定位按 IP 段登记地归档，与实际所在地可能不符）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
                 ],
             },
         );

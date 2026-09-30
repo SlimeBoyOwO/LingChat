@@ -108,6 +108,9 @@ pub struct AppConfig {
     /// 天气工具的 IP 自动定位（敏感操作，默认关闭；代理/VPN 用户会定位到出口节点）
     #[serde(default)]
     pub weather_ip_location: bool,
+    /// 天气工具的手动城市（最高优先级；空 = 未配置）
+    #[serde(default)]
+    pub weather_city: String,
 
     // ---- 功能开关（记忆系统） ----
     #[serde(default = "default_true")]
@@ -160,6 +163,7 @@ impl Default for AppConfig {
             enable_time_sense: default_enable_time_sense(),
             enable_emotion_classifier: default_enable_emotion_classifier(),
             weather_ip_location: false,
+            weather_city: String::new(),
             use_persistent_memory: true,
             memory_update_interval: default_memory_update_interval(),
             memory_recent_window: default_memory_recent_window(),
@@ -267,6 +271,7 @@ impl AppConfig {
                 keys::WEATHER_IP_LOCATION,
                 default.weather_ip_location,
             ),
+            weather_city: get_string(&store, keys::WEATHER_CITY).unwrap_or_default(),
             use_persistent_memory: get_bool(
                 &store,
                 keys::USE_PERSISTENT_MEMORY,
