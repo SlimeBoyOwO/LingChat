@@ -114,14 +114,17 @@ jobs:
             ${{ runner.os == 'macOS' && '' || '' }}
         run: pnpm tauri build --no-bundle
 
-      - name: 收集产物（Windows 附带 onnxruntime.dll）
+      - name: 收集产物（Windows 附带 onnxruntime.dll 与 DirectML.dll）
         shell: bash
         run: |
           mkdir -p "${{ runner.temp }}/dist"
           cp "${{ matrix.artifact-path }}" "${{ runner.temp }}/dist/"
-          if [ "${{ runner.os }}" = "Windows" ] && [ -f "src-tauri/target/release/onnxruntime.dll" ]; then
-            cp "src-tauri/target/release/onnxruntime.dll" "${{ runner.temp }}/dist/"
-          fi
+          # DirectML.dll 是 DML EP 的运行时依赖，缺了它选 GPU 会静默回落 CPU
+          for dll in onnxruntime.dll DirectML.dll; do
+            if [ "${{ runner.os }}" = "Windows" ] && [ -f "src-tauri/target/release/$dll" ]; then
+              cp "src-tauri/target/release/$dll" "${{ runner.temp }}/dist/"
+            fi
+          done
 
       - name: 上传 artifact
         uses: actions/upload-artifact@v4
