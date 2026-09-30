@@ -21,6 +21,12 @@ use std::sync::Arc;
 use serde_json::Value;
 use tokio::sync::Semaphore;
 
+use tauri::{AppHandle, Manager};
+
+use crate::AppState;
+use crate::ai_service::message_system::responses::ReplyResponse;
+use crate::db::managers::role_repo::RoleRepo;
+
 use super::types::{PluginRecord, SubscribeDecl};
 
 /// 同时执行的 handler 上限。信号可能从任意业务点高频发出，不设上限会把
@@ -187,4 +193,51 @@ impl SignalRegistry {
             })
             .unwrap_or_default()
     }
+}
+
+/// 把一条助手回复派发给订阅了 [`SIGNAL_AI_REPLY`] 的插件。
+///
+/// 只做两件事：补齐插件侧要用的字段（目前是 `avatarDir`），然后交给
+/// [`PluginManager::dispatch_signal`]。handler 在后台线程跑，这里不阻塞回复流水线；
+/// 没有插件订阅时 `dispatch_signal` 内部直接返回，几乎没有开销。
+pub async fn emit_ai_reply(app: &AppHandle, resp: &ReplyResponse) {
+    let mut payload = match serde_json::to_value(resp) {
+        Ok(payload) => payload,
+        Err(e) => {
+            tracing::warn!("ai_reply 信号载荷序列化失败: {e}");
+            return;
+        },
+    };
+
+    if let Some(role_id) = resp.role_id {
+        if let Some(dir) = avatar_dir(app, role_id).await {
+            payload["avatarDir"] = serde_json::Value::String(dir);
+        }
+    }
+
+    app.state::<AppState>()
+        .data()
+        .plugin_manager
+        .dispatch_signal(app, SIGNAL_AI_REPLY, &payload)
+        .await;
+}
+
+/// 角色立绘目录（相对 `data/`，URL 风格）。
+///
+/// 角色的**显示名和目录名不一定一样**（`resource_folder` 才是目录名），所以这里
+/// 复用 [`RoleRepo::get_role_settings_by_id`]——它已经按角色类型（主角色 / 剧本 NPC /
+/// 插件角色）解析好了目录，不用另写一套。
+///
+/// 拿不到就返回 `None`：插件少了 `avatarDir` 只是发不出表情包，不该影响文字本身。
+async fn avatar_dir(app: &AppHandle, role_id: i32) -> Option<String> {
+    let state = app.state::<AppState>();
+    let data_dir = crate::api::data_dir();
+    let settings = RoleRepo::get_role_settings_by_id(&state.db, &data_dir, role_id)
+        .await
+        .ok()
+        .flatten()?;
+    let dir = std::path::PathBuf::from(settings.resource_path?).join("avatar");
+    let rel = dir.strip_prefix(&data_dir).ok()?;
+    // 插件侧按 URL 风格拼路径，统一用 `/`
+    Some(rel.to_string_lossy().replace('\\', "/"))
 }

@@ -12,10 +12,9 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use sea_orm::DatabaseConnection;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
-use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::god_agent::GodAgentCore;
@@ -739,36 +738,12 @@ pub(super) async fn publish_ordered(
                         tracing::warn!("emit ai:reply 失败: {e}");
                         return false;
                     }
-                    // 插件信号：同一条回复也交给订阅了 ai_reply 的插件。
-                    // 派发只做筛选 + spawn（handler 在后台线程跑），不拖慢发射；
-                    // 没有插件订阅时这里几乎零开销。
-                    //
-                    // 这里拿不到调用方的 `AppHandle`（本函数是自由函数，顺序契约测试
-                    // 也直接调它），所以用启动时登记的全局句柄；测试里没有句柄，
-                    // 这段自然跳过。
+                    // 插件信号：同一条回复也交给订阅了 ai_reply 的插件
+                    //（补字段与派发都在 plugins::signal 里，这里只转发）。
+                    // 本函数拿不到 AppHandle，所以用启动时登记的全局句柄；
+                    // 测试里没有句柄，这段自然跳过。
                     if let Some(app) = crate::plugins::app_handle() {
-                        match serde_json::to_value(&resp) {
-                            Ok(mut payload) => {
-                                // 顺手带上立绘目录：插件要发角色表情包时，
-                                // 得先知道图在 `data/` 下的哪儿（角色显示名和
-                                // 目录名不一定一样，查库最稳）。
-                                if let Some(role_id) = resp.role_id {
-                                    if let Some(dir) = avatar_dir_for_role(&app, role_id).await {
-                                        payload["avatarDir"] = serde_json::Value::String(dir);
-                                    }
-                                }
-                                let manager =
-                                    app.state::<AppState>().data().plugin_manager.clone();
-                                manager
-                                    .dispatch_signal(
-                                        &app,
-                                        crate::plugins::signal::SIGNAL_AI_REPLY,
-                                        &payload,
-                                    )
-                                    .await;
-                            },
-                            Err(e) => tracing::warn!("ai_reply 信号载荷序列化失败: {e}"),
-                        }
+                        crate::plugins::signal::emit_ai_reply(&app, &resp).await;
                     }
                     reply_before_fence = true;
                     if is_final {
@@ -784,26 +759,6 @@ pub(super) async fn publish_ordered(
         }
     }
     false
-}
-
-/// 角色立绘目录（相对 `data/`），随 `ai_reply` 信号一起给插件。
-///
-/// 角色的**显示名和目录名不一定一样**（`resource_folder` 才是目录名），所以这里
-/// 查一次库。查不到就返回 `None`——插件拿不到 `avatarDir` 时只是发不出表情包，
-/// 不该影响文字本身。
-async fn avatar_dir_for_role(app: &AppHandle, role_id: i32) -> Option<String> {
-    use crate::db::managers::role_repo::RoleRepo;
-
-    let state = app.state::<AppState>();
-    let role = RoleRepo::get_role_by_id(&state.db, role_id)
-        .await
-        .ok()
-        .flatten()?;
-    let folder = role.resource_folder?;
-    let dir = crate::api::resolve_character_dir(&folder).join("avatar");
-    let rel = dir.strip_prefix(data_dir()).ok()?;
-    // 插件侧按 URL 风格拼路径，统一用 `/`
-    Some(rel.to_string_lossy().replace('\\', "/"))
 }
 
 // ============================================================
