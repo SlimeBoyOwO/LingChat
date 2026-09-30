@@ -316,12 +316,14 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import {
   Ban,
   Sparkles,
-  CloudRain,
   Flower2,
-  Snowflake,
   PartyPopper,
   Sun,
+  CloudDrizzle,
+  CloudRain,
   CloudLightning,
+  CloudSnow,
+  Snowflake,
   CloudFog,
 } from "lucide-vue-next";
 import { PARTICLE_EFFECTS, WEATHER_EFFECTS } from "@/components/game/standard/particles";
@@ -354,9 +356,7 @@ const { t } = useI18n();
 // 没补进这份列表，于是设置页选不到它。改成读注册表后就不会再漏。
 const PARTICLE_ICONS: Record<string, Component> = {
   StarField: Sparkles,
-  Rain: CloudRain,
   Sakura: Flower2,
-  Snow: Snowflake,
   Fireworks: PartyPopper,
   BA: Sun,
 };
@@ -372,8 +372,11 @@ const particleOptions = computed(() => [
 
 // 天气层同理，只是词条前缀不同
 const WEATHER_ICONS: Record<string, Component> = {
+  Drizzle: CloudDrizzle,
   Rain: CloudRain,
   Thunderstorm: CloudLightning,
+  Snow: Snowflake,
+  Blizzard: CloudSnow,
   Fog: CloudFog,
 };
 

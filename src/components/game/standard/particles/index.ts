@@ -5,8 +5,8 @@
  * 导致特效被静默清空（上游复核要求：从前端获取粒子列表、防范输入错误）。
  *
  * 新增粒子：在此加一项 + 在 GameBackground.vue 加对应渲染分支 + 补两份词条。
- * 若还想让剧本能写这个特效，需同步 Rust 的 `KNOWN_EFFECTS`
- * （`background_effect_event.rs`），否则校验器会判它非法。
+ * 剧本能写的特效清单由本文件生成到 Rust（`pnpm gen:effects`，已挂在提交钩子上），
+ * 不需要手抄。不跑生成也不会报错，只是编辑器里少了「这不是内置特效」那条警告。
  *
  * 设置页与剧本编辑器的下拉均已改读此处；GameBackground 仍是硬编码 v-if
  * （每个粒子的 props 各不相同），新增粒子时两边都要动。
@@ -33,10 +33,13 @@ export interface ParticleEffect {
 export const PARTICLE_EFFECTS: ParticleEffect[] = [
   { key: "StarField", label: "星空", i18n: "starField", petSupported: true },
   { key: "Sakura", label: "樱花", i18n: "sakura" },
-  { key: "Snow", label: "雪", i18n: "snow" },
   { key: "Fireworks", label: "烟花", i18n: "fireworks" },
   // 星辉：原桌宠专属粒子，现已并入主界面可选项（i18n 沿用桌宠既有的「星辉 / Starglow」）
   { key: "BA", label: "星辉", i18n: "ba", petSupported: true },
+  // 萤火虫：夜场氛围件，不依赖天气。桌宠圆头像里装不下它那套游走与落点，故不进桌宠
+  { key: "Fireflies", label: "萤火虫", i18n: "fireflies" },
+  // 流星雨：夜场氛围件，只画流星不带星空 —— 夜空背景多半本来就画了星星，再叠一层会重
+  { key: "MeteorShower", label: "流星雨", i18n: "meteorShower" },
 ];
 
 /**
@@ -44,12 +47,16 @@ export const PARTICLE_EFFECTS: ParticleEffect[] = [
  * （`settings.background.weather.<i18n>`，氛围层是 `...particle.<i18n>`）。
  * 天气都是全屏量级的，不进桌宠头像，所以没有 petSupported。
  *
- * 雨从氛围层挪到了这里：它和雷阵雨本质是同一种天气的两个档位，
- * 分属两层就会出现「同时开着雨和雷阵雨」这种没人想要的状态。
+ * 雨和雪从氛围层挪到了这里：同一种天气的不同档位分属两层，
+ * 就会出现「小雨和雷阵雨同时开着」这种没人想要的状态。把同一族放在一起，
+ * 单选本身就替我们排除了这种组合。
  */
 export const WEATHER_EFFECTS: ParticleEffect[] = [
+  { key: "Drizzle", label: "小雨", i18n: "drizzle" },
   { key: "Rain", label: "雨", i18n: "rain" },
   { key: "Thunderstorm", label: "雷阵雨", i18n: "thunderstorm" },
+  { key: "Snow", label: "雪", i18n: "snow" },
+  { key: "Blizzard", label: "雪暴", i18n: "blizzard" },
   { key: "Fog", label: "雾", i18n: "fog" },
 ];
 

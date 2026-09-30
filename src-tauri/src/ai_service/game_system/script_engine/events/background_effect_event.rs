@@ -14,27 +14,11 @@ use crate::ai_service::message_system::events::emit;
 
 /// Effect names the frontend actually renders.
 ///
-/// `GameBackground.vue` compares with `===`, so these are **case sensitive**:
-/// `starfield` and `Starfield` both silently render nothing. Anything not in
-/// this list (including the conventional `None`) clears the current effect.
-///
-/// Mirrors the frontend registry in
-/// `src/components/game/standard/particles/index.ts` (ambient plus weather) —
-/// adding an effect there without adding it here makes the validator reject it.
-///
-/// The frontend keeps two independent layers (ambient / weather) but this list
-/// is deliberately flat: a script names one effect and the frontend decides
-/// which layer it belongs to.
-pub const KNOWN_EFFECTS: [&str; 8] = [
-    "StarField",
-    "Sakura",
-    "Snow",
-    "Fireworks",
-    "BA",
-    "Rain",
-    "Thunderstorm",
-    "Fog",
-];
+/// Generated from the frontend particle registry by
+/// `scripts/generate-known-effects.mjs` — add an effect there and run
+/// `pnpm gen:effects`, never edit the list by hand. Re-exported under the old
+/// path so the schema builder and the validator keep importing it from here.
+pub use super::known_effects::KNOWN_EFFECTS;
 
 /// Names that explicitly mean "no effect" and therefore must not be warned about.
 const CLEARING_EFFECTS: [&str; 3] = ["none", "None", ""];

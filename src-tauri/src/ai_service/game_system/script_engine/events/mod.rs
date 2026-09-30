@@ -15,6 +15,8 @@ pub mod choice_event;
 pub mod dialog_event;
 pub mod free_dialogue_event;
 pub mod input_event;
+/// 由 scripts/generate-known-effects.mjs 生成，勿手改
+pub mod known_effects;
 pub mod modify_character_event;
 pub mod music_event;
 pub mod narration_event;

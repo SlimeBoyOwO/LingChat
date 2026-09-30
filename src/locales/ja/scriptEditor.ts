@@ -244,13 +244,17 @@ export default {
     particle: {
       none: "エフェクトなし",
       starField: "星空",
+      drizzle: "小雨",
       rain: "雨",
+      blizzard: "吹雪",
       fog: "霧",
       sakura: "桜",
       snow: "雪",
       fireworks: "花火",
       ba: "星の輝き",
       thunderstorm: "雷雨",
+      fireflies: "蛍",
+      meteorShower: "流星群",
     },
   },
   characters: {

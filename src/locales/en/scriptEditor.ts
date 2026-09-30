@@ -247,13 +247,17 @@ export default {
     particle: {
       none: "No effect",
       starField: "Starry sky",
+      drizzle: "Drizzle",
       rain: "Rain",
+      blizzard: "Blizzard",
       fog: "Fog",
       sakura: "Cherry blossoms",
       snow: "Snow",
       fireworks: "Fireworks",
       ba: "Starglow",
       thunderstorm: "Thunderstorm",
+      fireflies: "Fireflies",
+      meteorShower: "Meteor shower",
     },
   },
   characters: {
