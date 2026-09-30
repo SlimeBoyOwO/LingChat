@@ -65,6 +65,13 @@ export const llmPresets: LlmPreset[] = [
     base_url: "https://api.moonshot.cn/v1",
   },
   {
+    key: "zhipu-glm",
+    label: "智谱 GLM",
+    provider: "openai",
+    model: "glm-4.7",
+    base_url: "https://open.bigmodel.cn/api/paas/v4",
+  },
+  {
     key: "ollama",
     label: "Ollama",
     provider: "openai",
