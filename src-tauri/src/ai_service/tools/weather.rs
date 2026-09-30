@@ -297,8 +297,8 @@ impl Tool for WeatherTool {
             locate_by_ip(&client).await?
         } else {
             return Err(ToolError::Execution(
-                "没有可用的城市信息：用户没有说过所在城市，设置里也没配置城市，\
-                 IP 自动定位未开启。请用自然的口语向用户询问在哪个城市"
+                "没有可用的城市信息：用户没有说过所在城市，设置里也未配置城市，\
+                 IP 自动定位未开启。本次无法查询天气，请自然地回应，不要追问城市"
                     .into(),
             ));
         };
