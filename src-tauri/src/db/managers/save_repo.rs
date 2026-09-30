@@ -383,23 +383,45 @@ impl SaveRepo {
                 .map_err(|e| anyhow!("{e}"))?;
         }
 
+        // 匹配到的行（0..diverge）的感知集合：`line` 表字段更新不覆盖
+        // `line_perception`，只改 `perceived_role_ids` 的编辑会静默丢失，这里补同步。
+        let matched_ids: Vec<i32> = db_lines[..diverge].iter().map(|l| l.id).collect();
+        let mut existing_perceptions: HashMap<i32, Vec<i32>> = HashMap::new();
+        if !matched_ids.is_empty() {
+            let rows = line_perception::Entity::find()
+                .filter(line_perception::Column::LineId.is_in(matched_ids))
+                .all(&txn)
+                .await
+                .map_err(|e| anyhow!("{e}"))?;
+            for row in rows {
+                existing_perceptions
+                    .entry(row.line_id)
+                    .or_default()
+                    .push(row.role_id);
+            }
+        }
+
         // Updates for matching IDs belong to the same transaction as the
         // divergence replacement below.
         for i in 0..diverge {
             let db_line = &db_lines[i];
             let input_line = &input_lines[i];
-            if input_line.base.id == Some(db_line.id)
-                && (db_line.content != input_line.base.content
-                    || db_line.attribute != input_line.base.attribute.0
-                    || db_line.sender_role_id != input_line.base.sender_role_id
-                    || db_line.original_emotion != input_line.base.original_emotion
-                    || db_line.predicted_emotion != input_line.base.predicted_emotion
-                    || db_line.tts_content != input_line.base.tts_content
-                    || db_line.audio_file != input_line.base.audio_file
-                    || db_line.thinking != input_line.base.thinking
-                    || db_line.action_content != input_line.base.action_content
-                    || db_line.display_name != input_line.base.display_name
-                    || db_line.tool_call != input_line.base.tool_call)
+            if input_line.base.id != Some(db_line.id) {
+                continue;
+            }
+
+            // 1) line 表字段
+            if db_line.content != input_line.base.content
+                || db_line.attribute != input_line.base.attribute.0
+                || db_line.sender_role_id != input_line.base.sender_role_id
+                || db_line.original_emotion != input_line.base.original_emotion
+                || db_line.predicted_emotion != input_line.base.predicted_emotion
+                || db_line.tts_content != input_line.base.tts_content
+                || db_line.audio_file != input_line.base.audio_file
+                || db_line.thinking != input_line.base.thinking
+                || db_line.action_content != input_line.base.action_content
+                || db_line.display_name != input_line.base.display_name
+                || db_line.tool_call != input_line.base.tool_call
             {
                 let mut active: line::ActiveModel = db_line.clone().into();
                 active.content = Set(input_line.base.content.clone());
@@ -414,6 +436,32 @@ impl SaveRepo {
                 active.display_name = Set(input_line.base.display_name.clone());
                 active.tool_call = Set(input_line.base.tool_call.clone());
                 active.update(&txn).await.map_err(|e| anyhow!("{e}"))?;
+            }
+
+            // 2) perception 表：按集合语义比较（顺序无关、去重）后整体替换
+            let mut existing = existing_perceptions
+                .get(&db_line.id)
+                .cloned()
+                .unwrap_or_default();
+            let mut desired = input_line.perceived_role_ids.clone();
+            existing.sort_unstable();
+            desired.sort_unstable();
+            desired.dedup();
+            if existing != desired {
+                line_perception::Entity::delete_many()
+                    .filter(line_perception::Column::LineId.eq(db_line.id))
+                    .exec(&txn)
+                    .await
+                    .map_err(|e| anyhow!("{e}"))?;
+                for role_id in &input_line.perceived_role_ids {
+                    line_perception::ActiveModel {
+                        line_id: Set(db_line.id),
+                        role_id: Set(*role_id),
+                    }
+                    .insert(&txn)
+                    .await
+                    .map_err(|e| anyhow!("{e}"))?;
+                }
             }
         }
 

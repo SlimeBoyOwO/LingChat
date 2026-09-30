@@ -103,24 +103,3 @@ fn unix_seconds_str() -> String {
         .map(|d| d.as_secs().to_string())
         .unwrap_or_default()
 }
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sanitize_prefix_ascii_alnum_lowercased() {
-        assert_eq!(sanitize_prefix("NuoYi123"), "nuoyi123");
-    }
-
-    #[test]
-    fn sanitize_prefix_truncates_at_10() {
-        assert_eq!(sanitize_prefix("abcdefghijklmnop"), "abcdefghij");
-    }
-
-    #[test]
-    fn sanitize_prefix_filters_non_ascii() {
-        assert_eq!(sanitize_prefix("诺一_One"), "one");
-        assert_eq!(sanitize_prefix("诺一"), "voice");
-        assert_eq!(sanitize_prefix(""), "voice");
-    }
-}

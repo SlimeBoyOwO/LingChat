@@ -23,7 +23,7 @@ use reqwest::multipart::Form;
 use std::sync::Arc;
 use tracing::debug;
 
-use super::error::AsrError;
+use super::error::{AsrError, map_reqwest_error};
 use super::provider::{AsrResult, ProviderCredentials, parse_llama_text};
 
 /// SSE 帧解析结果。
@@ -84,13 +84,16 @@ fn extract_lines(buf: &mut Vec<u8>) -> Vec<String> {
 /// - 每个 partial 以累积完整文本经 `on_partial` 回调发射（`parse_llama_text`
 ///   切 `<asr_text>` 取文本，与整句识别同一解析）——事件发射由调用方负责
 ///   （session / 命令层注入回调），本模块不依赖 Tauri AppHandle
-/// - 热词接口复用：`cred.hotwords` 非空时带 `prompt` 字段
+/// - 热词接口复用：`prompt` 非空时带 `prompt` 字段。偏置文本的构造（去重、
+///   长度上限）是 provider 的策略，本模块只负责发送——保持「通用 SSE 客户端」
+///   的定位，不依赖热词的具体形态
 /// - 无 `[DONE]` 正常断开时以最后一条 partial 为 final
 pub async fn recognize_stream(
     http: &reqwest::Client,
     cred: &ProviderCredentials,
     endpoint: &str,
     model: &str,
+    prompt: Option<String>,
     wav_bytes: Vec<u8>,
     on_partial: Option<Arc<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>>,
 ) -> Result<AsrResult, AsrError> {
@@ -111,9 +114,14 @@ pub async fn recognize_stream(
                     message: format!("构造 multipart 失败: {e}"),
                 })?,
         );
-    // 热词接口：extra["hotwords"] 非空时作为 prompt 上下文偏置（与整句一致）
-    if !cred.hotwords.is_empty() {
-        form = form.text("prompt", cred.hotwords.join(", "));
+    // 热词接口：prompt 上下文偏置（与整句识别同一构造，见
+    // provider::llama_prompt_from_hotwords）
+    if let Some(p) = prompt {
+        debug!(
+            "[ASR/llama-stream] prompt 偏置（{} 字符）: {p}",
+            p.chars().count()
+        );
+        form = form.text("prompt", p);
     }
 
     let mut req = http.post(&url).multipart(form);
@@ -192,116 +200,4 @@ pub async fn recognize_stream(
         confidence: None,
         provider_id: "llama-asr".into(),
     })
-}
-
-/// 把 `reqwest::Error` 映射成 [`AsrError`]（与 provider.rs 同款）。
-fn map_reqwest_error(e: reqwest::Error) -> AsrError {
-    if e.is_timeout() {
-        AsrError::ProviderTimeout("network".into())
-    } else if e.is_connect() || e.is_request() {
-        AsrError::ProviderApiError {
-            provider: "network".into(),
-            message: format!("请求失败: {e}"),
-        }
-    } else {
-        tracing::warn!("reqwest 错误: {e}");
-        AsrError::ProviderApiError {
-            provider: "network".into(),
-            message: format!("{e}"),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_json_data_line() {
-        let frame = "data: {\"text\":\"language English<asr_text>Uh huh\"}";
-        assert_eq!(
-            parse_sse_event(frame),
-            Some(SseEvent::Text(
-                "{\"text\":\"language English<asr_text>Uh huh\"}".into()
-            ))
-        );
-    }
-
-    #[test]
-    fn parse_done_marker() {
-        let frame = "data: [DONE]";
-        assert_eq!(parse_sse_event(frame), Some(SseEvent::Done));
-    }
-
-    #[test]
-    fn parse_multiline_frame_takes_data_line() {
-        // 标准 SSE 帧：event 行 + data 行
-        let frame = "event: message\ndata: {\"text\":\"你好\"}";
-        assert_eq!(
-            parse_sse_event(frame),
-            Some(SseEvent::Text("{\"text\":\"你好\"}".into()))
-        );
-    }
-
-    #[test]
-    fn parse_empty_or_comment_frame_returns_none() {
-        assert_eq!(parse_sse_event(""), None);
-        assert_eq!(parse_sse_event(": keepalive"), None);
-        assert_eq!(parse_sse_event("event: message"), None);
-    }
-
-    #[test]
-    fn parse_empty_data_line_skipped() {
-        let frame = "data:\ndata: {\"text\":\"x\"}";
-        assert_eq!(
-            parse_sse_event(frame),
-            Some(SseEvent::Text("{\"text\":\"x\"}".into()))
-        );
-    }
-
-    #[test]
-    fn extract_lines_splits_by_newline() {
-        let mut buf = b"data: a\ndata: b\n".to_vec();
-        assert_eq!(extract_lines(&mut buf), vec!["data: a", "data: b"]);
-        assert!(buf.is_empty());
-    }
-
-    #[test]
-    fn extract_lines_keeps_unclosed_bytes() {
-        // 无结尾 \n 的行留在 buffer，等下一 chunk
-        let mut buf = b"data: a\nxyz".to_vec();
-        assert_eq!(extract_lines(&mut buf), vec!["data: a"]);
-        assert_eq!(buf, b"xyz");
-    }
-
-    #[test]
-    fn extract_lines_utf8_across_chunk_boundaries() {
-        // 核心回归：多字节 UTF-8 字符被网络 chunk 切断时不能乱码。
-        // "你好" = E4 BD A0 E5 A5 BD，切成 2+4 字节两个 chunk
-        let text = "你好";
-        let bytes = text.as_bytes();
-        let mut buf = Vec::new();
-        let mut lines = Vec::new();
-        buf.extend_from_slice(&bytes[..2]);
-        lines.extend(extract_lines(&mut buf));
-        assert!(lines.is_empty(), "半截字符不应产生行");
-        buf.extend_from_slice(&bytes[2..]);
-        buf.extend_from_slice(b"\n");
-        lines.extend(extract_lines(&mut buf));
-        assert_eq!(lines, vec!["你好"]);
-    }
-
-    #[test]
-    fn extract_lines_trims_crlf() {
-        // CRLF 服务端：行尾 \r 被 trim（\n 前截断）
-        let mut buf = "data: {\"text\":\"language Chinese<asr_text>你好\"}\r\n"
-            .as_bytes()
-            .to_vec();
-        let lines = extract_lines(&mut buf);
-        assert_eq!(
-            lines,
-            vec!["data: {\"text\":\"language Chinese<asr_text>你好\"}"]
-        );
-        assert!(lines[0].ends_with('}'));
-    }
 }

@@ -103,6 +103,7 @@ pub fn init_onnx_runtime(app: &AppHandle) -> bool {
     }
 }
 
+// 钦灵：这个我就保留了，防止之后开发者哭哭
 #[cfg(test)]
 #[cfg(target_os = "windows")]
 mod tests {

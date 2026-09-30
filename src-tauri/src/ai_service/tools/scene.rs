@@ -38,8 +38,9 @@ impl Tool for SceneList {
         let scenes = store
             .load_all()
             .map_err(|e| ToolError::Execution(format!("加载场景失败: {e}")))?;
-        Ok(json!(
-            scenes
+        Ok(json!({
+            "ok": true,
+            "scenes": scenes
                 .iter()
                 .map(|s| json!({
                     "id": s.id,
@@ -48,7 +49,7 @@ impl Tool for SceneList {
                     "background": s.background,
                 }))
                 .collect::<Vec<_>>()
-        ))
+        }))
     }
 }
 

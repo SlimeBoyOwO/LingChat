@@ -1,165 +1,370 @@
 <template>
   <div
-    @click="handleDialogueClick"
-    class="relative z-30 flex w-full cursor-pointer items-center justify-center transition-all duration-300 ease-out"
-    :class="
-      isVisible
-        ? 'translate-y-0 opacity-100'
-        : 'pointer-events-none h-0 -translate-y-2 overflow-hidden opacity-0'
-    "
+    class="absolute z-30 flex cursor-pointer"
+    :class="[horizontal ? 'w-[85%] flex-col' : 'inset-x-0 justify-center px-2', frameClass]"
+    :style="frameStyle"
+    @click="emit('advance')"
   >
     <div
       ref="bubbleRef"
-      class="hover:-translate-y-0.2 relative w-[85%] rounded-[calc(20px*var(--pet-ui-scale,1))] border border-white/10 bg-neutral-950/50 px-[calc(18px*var(--pet-ui-scale,1))] py-[calc(6px*var(--pet-ui-scale,1))] text-white backdrop-blur-xl backdrop-saturate-200 transition-all duration-300 [text-shadow:0_1px_4px_rgba(0,0,0,0.5)] hover:scale-[1.02] hover:border-white/20 hover:bg-neutral-950/65"
-      :style="{ maxHeight: `calc(var(--dialog-h) - 20px)` }"
+      class="hover-up relative rounded-[calc(20px*var(--pet-ui-scale,1))] border border-white/10 bg-neutral-950/50 px-[calc(18px*var(--pet-ui-scale,1))] py-[calc(6px*var(--pet-ui-scale,1))] text-white backdrop-blur-xl backdrop-saturate-200 transition-all duration-300 [text-shadow:0_1px_4px_rgba(0,0,0,0.5)] hover:scale-[1.02] hover:border-white/20 hover:bg-neutral-950/65"
+      :class="[horizontal ? 'w-full' : 'w-[85%]', animClass]"
+      :style="{ maxHeight: `${maxHeight}px` }"
     >
-      <div
-        class="absolute -bottom-2.5 left-1/2 h-0 w-0 -translate-x-1/2 border-r-10 border-l-10 border-t-white/10 border-r-transparent border-l-transparent drop-shadow-md"
-      ></div>
-      <div
-        class="absolute -bottom-2 left-1/2 h-0 w-0 -translate-x-1/2 border-t-8 border-r-8 border-l-8 border-t-white/8 border-r-transparent border-l-transparent"
-      ></div>
-
       <div class="relative overflow-hidden">
         <Transition name="emotion-slide">
           <div
-            v-if="characterEmotion"
-            :key="characterEmotion"
+            v-if="emotion"
+            :key="emotion"
             class="mb-0.5 inline-block max-w-full truncate text-[calc(12px*var(--pet-ui-scale,1))] font-semibold tracking-wider text-cyan-400 italic drop-shadow-[0_1px_4px_rgba(0,176,255,0.5)]"
           >
-            {{ characterEmotion }}
+            {{ emotion }}
           </div>
         </Transition>
       </div>
 
       <div
-        ref="textareaRef"
-        class="dialog-text-lock overflow-y-auto pb-[0.4em] text-[calc(15px*var(--pet-ui-scale,1))] leading-snug font-medium break-all whitespace-pre-line [text-shadow:0_0_3px_rgba(0,0,0,0.9),0_1px_4px_rgba(0,0,0,0.5)]"
-        :style="{ maxHeight: `calc(var(--dialog-h) - 52px)` }"
+        ref="textRef"
+        class="dialog-text-lock overflow-y-auto pb-[0.4em] text-[calc(15px*var(--pet-ui-scale,1))] leading-snug font-medium break-all whitespace-pre-line [text-shadow:0_0_3px_rgba(0,0,0,0.9),0_1px_4px_rgba(0,0,0,0.5)] [&::-webkit-scrollbar]:hidden"
       ></div>
+
+      <div class="absolute h-0 w-0 drop-shadow-md" :class="tailOuterClass"></div>
+      <div class="absolute h-0 w-0" :class="tailInnerClass"></div>
+    </div>
+
+    <div
+      class="absolute inset-x-0 flex justify-center"
+      :class="top ? 'top-full mt-1' : 'bottom-full mb-1'"
+      :style="{ maxHeight: 'var(--notify-h)' }"
+    >
+      <PetNotification />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from "vue";
-import { useGameStore } from "../../stores/modules/game";
-import { useUIStore } from "../../stores/modules/ui/ui";
-import { useTypeWriter } from "../../composables/ui/useTypeWriter";
-import { useDialogAdvance } from "../../composables/chat/useDialogAdvance";
-import { createCharRevealWriter } from "../../utils/typewriter/charReveal";
-import { charRevealCharHtml } from "../../utils/typewriter/charHtml";
+import { computed, ref, watch } from "vue";
+import type { BubbleAlign, BubbleSide } from "./bubbleMirror";
+import { useTypeWriter } from "@/composables/ui/useTypeWriter";
+import { createCharRevealWriter } from "@/utils/typewriter/charReveal";
+import { charRevealCharHtml } from "@/utils/typewriter/charHtml";
+import PetNotification from "./PetNotification.vue";
 
-const gameStore = useGameStore();
-const uiStore = useUIStore();
+const props = defineProps<{
+  visible: boolean;
+  line: string;
+  /** 台词序号，由宠物窗随镜像一起发下来；drained 时原样回传，用于区分是哪一句 */
+  lineId: number;
+  emotion?: string;
+  speed?: number;
+  instant?: boolean;
+  maxHeight: number;
+  side?: BubbleSide;
+  align?: BubbleAlign;
+  alignInset?: number;
+}>();
 
-const currentDisplayedText = ref("");
+const emit = defineEmits<{ advance: []; drained: [lineId: number] }>();
 
-const emit = defineEmits(["player-continued", "dialog-proceed"]);
+const side = computed<BubbleSide>(() => props.side ?? "above");
+const horizontal = computed(() => side.value === "left" || side.value === "right");
+const top = computed(() => (horizontal.value ? props.align !== "bottom" : side.value === "below"));
 
-const isVisible = computed(() => {
-  return gameStore.currentStatus === "responding" && gameStore.currentLine.trim() !== "";
+const frameClass = computed(() => [
+  ...(horizontal.value
+    ? [side.value === "left" ? "right-(--tail) items-end" : "left-(--tail) items-start"]
+    : [top.value ? "top-(--tail) items-start" : "bottom-(--tail) items-end"]),
+  props.visible ? "" : "pointer-events-none",
+]);
+
+const ALIGN_INSET_TRANSITION_MS = 120;
+
+const frameStyle = computed(() => {
+  if (!horizontal.value) return undefined;
+  const inset = Math.max(0, props.alignInset ?? 0);
+  const transition = `top ${ALIGN_INSET_TRANSITION_MS}ms ease-out, bottom ${ALIGN_INSET_TRANSITION_MS}ms ease-out`;
+  return top.value ? { top: `${inset}px`, transition } : { bottom: `${inset}px`, transition };
 });
 
-const characterEmotion = computed(() => {
-  return uiStore.showCharacterEmotion ? uiStore.showCharacterEmotion : "";
-});
-
-const handleDialogueClick = () => {
-  if (isVisible.value) {
-    continueDialog(true);
+const tailOuterClass = computed(() => {
+  if (side.value === "left") {
+    return "-right-2.5 top-1/2 -translate-y-1/2 border-t-10 border-b-10 border-r-white/10 border-t-transparent border-b-transparent";
   }
-};
+  if (side.value === "right") {
+    return "-left-2.5 top-1/2 -translate-y-1/2 border-t-10 border-b-10 border-l-white/10 border-t-transparent border-b-transparent";
+  }
+  return top.value
+    ? "-top-2.5 left-1/2 -translate-x-1/2 border-r-10 border-l-10 border-b-white/10 border-r-transparent border-l-transparent"
+    : "-bottom-2.5 left-1/2 -translate-x-1/2 border-r-10 border-l-10 border-t-white/10 border-r-transparent border-l-transparent";
+});
 
-const textareaRef = ref<HTMLElement | null>(null);
+const tailInnerClass = computed(() => {
+  if (side.value === "left") {
+    return "-right-2 top-1/2 -translate-y-1/2 border-t-8 border-b-8 border-r-white/8 border-t-transparent border-b-transparent";
+  }
+  if (side.value === "right") {
+    return "-left-2 top-1/2 -translate-y-1/2 border-t-8 border-b-8 border-l-white/8 border-t-transparent border-b-transparent";
+  }
+  return top.value
+    ? "-top-2 left-1/2 -translate-x-1/2 border-r-8 border-l-8 border-b-white/8 border-r-transparent border-l-transparent"
+    : "-bottom-2 left-1/2 -translate-x-1/2 border-r-8 border-l-8 border-t-white/8 border-r-transparent border-l-transparent";
+});
+
+const hasShown = ref(false);
+watch(
+  () => props.visible,
+  (visible) => {
+    if (visible) hasShown.value = true;
+  },
+  { immediate: true },
+);
+
+const animClass = computed(() => {
+  if (props.visible) return `enter-${side.value}`;
+  if (!hasShown.value) return "bubble-hidden";
+  return `leave-${side.value}`;
+});
+
+const textRef = ref<HTMLElement | null>(null);
 const bubbleRef = ref<HTMLElement | null>(null);
 
-// 逐字符淡入+上浮渲染器（颜色/阴影继承气泡样式）
-const charReveal = createCharRevealWriter({
-  charHtml: charRevealCharHtml,
-});
+const charReveal = createCharRevealWriter({ charHtml: charRevealCharHtml });
 
 const { startTyping, stopTyping, finishTyping, isTyping } = useTypeWriter(
-  textareaRef,
-  (text) => {
-    currentDisplayedText.value = text;
-  },
-  // DialogueBox 正文为普通 <div>（非 textarea/input），必须提供 writeFn
-  // 逐字符渲染：由 charReveal 增量生成动画 span
+  textRef,
+  undefined,
   charReveal.writeFn,
 );
 
-watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLine, newStatus]) => {
-  if (newLine && newLine !== "" && newStatus === "responding") {
-    currentDisplayedText.value = "";
-    // 清空旧行并重置渲染器增量状态，避免新台词被误判为旧文本的延续
-    if (textareaRef.value) {
-      textareaRef.value.innerHTML = "";
-      charReveal.reset();
-      // 锁定最终高度：用离屏克隆同步测量完整文本渲染后的高度（受 maxHeight 钳制），
-      // 再把真实容器高度设为该值。打字期间盒子不再随逐字换行而跳动；
-      // 行与行之间的高度变化由 .dialog-text-lock 的 height 过渡平滑扩展/收缩。
-      const el = textareaRef.value;
-      const clone = el.cloneNode(false) as HTMLDivElement;
-      clone.style.position = "fixed";
-      clone.style.left = "-9999px";
-      clone.style.top = "0";
-      clone.style.visibility = "hidden";
-      clone.style.pointerEvents = "none";
-      clone.style.height = "auto";
-      clone.style.overflowY = "visible";
-      clone.style.width = el.clientWidth + "px";
-      el.parentElement?.appendChild(clone);
-      charReveal.renderInstant(clone, newLine);
-      const finalH = clone.offsetHeight;
-      clone.remove();
-      charReveal.reset();
-      el.style.height = finalH + "px";
+const displayEmpty = ref(true);
+const shownLine = ref<string | null>(null);
+
+let renderToken = 0;
+
+const applyTextHeight = (line: string) => {
+  const el = textRef.value;
+  if (!el) return;
+  if (!line.trim()) {
+    el.style.height = "0px";
+    return;
+  }
+  const clone = el.cloneNode(false) as HTMLDivElement;
+  clone.style.cssText = `position:fixed;left:-9999px;top:0;visibility:hidden;height:auto;overflow:visible;width:${el.clientWidth}px`;
+  el.parentElement?.appendChild(clone);
+  charReveal.renderInstant(clone, line);
+  const measured = clone.offsetHeight;
+  clone.remove();
+  charReveal.reset();
+  el.style.height = `${Math.min(measured, props.maxHeight)}px`;
+};
+
+const clearDisplay = () => {
+  stopTyping();
+  if (textRef.value) {
+    textRef.value.innerHTML = "";
+    textRef.value.style.height = "0px";
+  }
+  charReveal.reset();
+  displayEmpty.value = true;
+  shownLine.value = null;
+};
+
+const render = async (line: string, instant: boolean) => {
+  const token = ++renderToken;
+  // 和 token 一起捕获：完成信号必须属于本次渲染的那一句，emit 时再读 props.lineId 会串号
+  const id = props.lineId;
+
+  stopTyping();
+  if (textRef.value) {
+    textRef.value.innerHTML = "";
+    textRef.value.style.height = "0px";
+    void textRef.value.offsetHeight;
+  }
+  charReveal.reset();
+  applyTextHeight(line);
+
+  if (instant) {
+    if (textRef.value) charReveal.renderInstant(textRef.value, line);
+    displayEmpty.value = false;
+    shownLine.value = line;
+    emit("drained", id);
+    return;
+  }
+
+  await startTyping(line, props.speed);
+  if (token !== renderToken) return;
+  displayEmpty.value = false;
+  shownLine.value = line;
+  // 自然打完或被 finishTyping 补全（TypeWriter.finish 会收口 start 的 promise）；过期渲染已被 token 挡掉
+  if (!isTyping.value) emit("drained", id);
+};
+
+watch(
+  () => [props.visible, props.line, props.instant] as const,
+  ([visible, line, instant], prev) => {
+    // 台词清空才丢弃显示内容。drained 只代表「这一句完整显示过」，
+    // 隐藏（状态切走）不是结束，更不能上报——否则宠物窗会把它当成能推进的信号。
+    if (!line) {
+      renderToken++;
+      clearDisplay();
+      return;
     }
-    startTyping(newLine, uiStore.typeWriterSpeed);
-  } else if (newStatus === "input") {
-    stopTyping();
-    currentDisplayedText.value = "";
-    if (textareaRef.value) textareaRef.value.style.height = "";
-  }
-});
+    // 只是隐藏：显示内容与进度原样留着，视觉效果由 CSS 淡出负责
+    if (!visible) return;
 
-// 模式切换重挂载：立即从 store 恢复当前台词（不重播打字动画）
-onMounted(() => {
-  const line = uiStore.showCharacterLine;
-  if (line && line !== "" && gameStore.currentStatus === "responding" && textareaRef.value) {
-    charReveal.renderInstant(textareaRef.value, line);
-    currentDisplayedText.value = line;
-  }
-});
+    const sameLine = shownLine.value === line;
+    const stillShown = prev?.[0] === true && !displayEmpty.value;
 
-// 推进状态机 —— 与主界面 GameDialog 共用；桌宠没有两段式动作文本，故不传 motion
-const { continueDialog } = useDialogAdvance({
-  isTyping,
-  finishTyping,
-  onProceed: ({ isPlayerTrigger }) => {
-    if (isPlayerTrigger) emit("player-continued");
-    emit("dialog-proceed");
+    if (stillShown && sameLine) return;
+
+    const restoring = prev?.[0] === false && sameLine;
+    void render(line, instant || restoring);
   },
-});
+  { immediate: true, flush: "post" },
+);
 
 defineExpose({
-  continueDialog,
   isTyping,
+  finishTyping,
   bubbleRef,
 });
 </script>
 
 <style scoped>
-/* 情绪标签切换：上一个情绪向左滑出，下一个情绪从右侧滑入（推挤效果） */
+.bubble-hidden {
+  opacity: 0;
+}
+
+.enter-above {
+  animation: bubble-in-above 300ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.leave-above {
+  animation: bubble-out-above 300ms cubic-bezier(0, 0, 0.2, 1) forwards;
+}
+
+@keyframes bubble-in-above {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bubble-out-above {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+.enter-below {
+  animation: bubble-in-below 300ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.leave-below {
+  animation: bubble-out-below 300ms cubic-bezier(0, 0, 0.2, 1) forwards;
+}
+
+@keyframes bubble-in-below {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bubble-out-below {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+.enter-right {
+  animation: bubble-in-right 300ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.leave-right {
+  animation: bubble-out-right 300ms cubic-bezier(0, 0, 0.2, 1) forwards;
+}
+
+@keyframes bubble-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bubble-out-right {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-4px) scale(0.98);
+  }
+}
+
+.enter-left {
+  animation: bubble-in-left 300ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.leave-left {
+  animation: bubble-out-left 300ms cubic-bezier(0, 0, 0.2, 1) forwards;
+}
+
+@keyframes bubble-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bubble-out-left {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(4px) scale(0.98);
+  }
+}
+
+.hover-up:hover {
+  transform: translateY(-0.8px);
+}
+
 .emotion-slide-enter-active,
 .emotion-slide-leave-active {
   transition:
     transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
     opacity 0.3s ease;
 }
-/* 离开中的旧情绪脱离文档流，覆盖在新情绪上方向左滑出，
- * 容器宽度由新情绪决定 */
 .emotion-slide-leave-active {
   position: absolute;
   left: 0;
@@ -174,9 +379,7 @@ defineExpose({
   opacity: 0;
 }
 
-/* 打字期间高度锁定为最终高度；行切换时高度平滑扩展/收缩 */
 .dialog-text-lock {
   transition: height 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
-/* 逐字符淡入+上浮动画的 @keyframes 已移入 src/assets/styles/dialogue-text.css（全局引入） */
 </style>

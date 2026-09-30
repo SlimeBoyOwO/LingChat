@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use sea_orm::sea_query::Expr;
@@ -288,7 +288,7 @@ impl RoleRepo {
         Ok(())
     }
 
-    /// 读取某个角色的 settings.yml（MAIN 在 characters/下；NPC 在 scripts/{key}/characters/下）
+    /// 读取某个角色的设定文件（MAIN 在 characters/下；NPC 在 scripts/{key}/characters/下）。
     pub async fn get_role_settings_by_id(
         db: &DatabaseConnection,
         data_dir: &Path,
@@ -301,24 +301,16 @@ impl RoleRepo {
             return Ok(None);
         };
 
-        let base = data_dir.join("game_data");
-        let path: PathBuf = match role.role_type {
-            RoleType::Main => crate::api::resolve_character_dir_in(data_dir, &folder),
-            RoleType::Npc => {
-                let Some(script_key) = role.script_key.clone() else {
-                    return Ok(None);
-                };
-                base.join("scripts")
-                    .join(&script_key)
-                    .join("characters")
-                    .join(&folder)
-            },
-            RoleType::System | RoleType::User => {
-                return Ok(None);
-            },
+        let Ok(path) = crate::api::resolve_role_dir_in(
+            data_dir,
+            &role.role_type,
+            role.script_key.as_deref(),
+            &folder,
+        ) else {
+            return Ok(None);
         };
 
-        let yaml = path.join("settings.yml");
+        let yaml = crate::utils::yaml_file::resolve_settings_file(&path);
         if !yaml.exists() {
             tracing::warn!("角色设置文件不存在: {:?}", path);
             return Ok(None);

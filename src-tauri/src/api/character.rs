@@ -8,14 +8,17 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::AppState;
-use crate::ai_service::types::CharacterSettings;
+use crate::ai_service::types::{CharacterSettings, strip_transient_fields};
 use crate::config;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::system::open_folder;
-use crate::utils::yaml_file::write_json_as_yaml;
+use crate::utils::yaml_file::{resolve_settings_file, write_json_as_yaml};
 
-use super::{characters_dir, data_dir, decode_plugin_folder, game_data_dir, resolve_character_dir};
+use super::{
+    characters_dir, data_dir, decode_plugin_folder, game_data_dir, resolve_character_dir,
+    resolve_role_dir,
+};
 
 const LEGACY_VOICE_MODEL_FIELDS: &[&str] = &[
     "sva_speaker_id",
@@ -78,6 +81,43 @@ pub struct CharacterPageResult {
     pub total_pages: i32,
 }
 
+const CHARACTER_FAVORITES_FILE: &str = "favorites.json";
+
+fn character_favorites_path() -> PathBuf {
+    characters_dir().join(CHARACTER_FAVORITES_FILE)
+}
+
+#[tauri::command]
+pub fn get_character_favorites() -> Result<Vec<i32>, String> {
+    let path = character_favorites_path();
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let content = fs::read_to_string(&path).map_err(|e| format!("读取角色收藏失败: {e}"))?;
+    let mut ids: Vec<i32> =
+        serde_json::from_str(&content).map_err(|e| format!("解析角色收藏失败: {e}"))?;
+    ids.retain(|id| *id > 0);
+    ids.dedup();
+    Ok(ids)
+}
+
+#[tauri::command]
+pub fn save_character_favorites(character_ids: Vec<i32>) -> Result<(), String> {
+    let path = character_favorites_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建角色目录失败: {e}"))?;
+    }
+    let mut ids = Vec::with_capacity(character_ids.len());
+    for id in character_ids {
+        if id > 0 && !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    let content =
+        serde_json::to_string_pretty(&ids).map_err(|e| format!("序列化角色收藏失败: {e}"))?;
+    fs::write(&path, content).map_err(|e| format!("保存角色收藏失败: {e}"))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct RoleInfoResponse {
@@ -95,16 +135,20 @@ pub struct RoleInfoResponse {
     pub bubble_left: i32,
     pub clothes: Option<Vec<HashMap<String, String>>>,
     pub clothes_name: String,
+    pub avatar_mode: Option<String>,
     pub body_part: Option<HashMap<String, JsonValue>>,
     pub live2d: Option<crate::ai_service::types::Live2dSettings>,
+    pub avatar_mode_p: Option<String>,
+    /// 桌宠无框模式，语义见 `CharacterSettings::pet_frameless`。
+    pub pet_frameless: Option<bool>,
     pub character_folder: String,
 }
 
 // ========== 辅助函数 ==========
 
-/// 读取某个角色的 settings.yml，失败时返回默认值
+/// 读取某个角色的设定文件（settings_local.yml 优先），失败时返回默认值
 pub(crate) fn read_character_settings(resource_folder: &str) -> CharacterSettings {
-    let yaml_path = resolve_character_dir(resource_folder).join("settings.yml");
+    let yaml_path = resolve_settings_file(&resolve_character_dir(resource_folder));
     if !yaml_path.exists() {
         tracing::warn!("角色设置文件不存在: {:?}", yaml_path);
         let mut s = CharacterSettings::default();
@@ -157,7 +201,10 @@ fn find_avatar_in_dir(dir: &PathBuf) -> Option<PathBuf> {
 }
 
 /// 扫描角色头像目录，返回衣服列表（每项包含头像文件的绝对路径）
-fn scan_clothes(resource_folder: &str) -> Vec<ClothesItem> {
+///
+/// 同时是「这个角色能换哪些服装」的权威来源：`get_avatar_file` 按 title 去
+/// `avatar/<title>/` 找立绘，玩家的换装面板也走这里（见 `get_character_list`）。
+pub(crate) fn scan_clothes(resource_folder: &str) -> Vec<ClothesItem> {
     let allowed_extensions = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
 
     let avatar_dir = resolve_character_dir(resource_folder).join("avatar");
@@ -362,8 +409,11 @@ pub async fn get_role_info(app: AppHandle, role_id: i32) -> Result<RoleInfoRespo
         bubble_left: settings.bubble_left,
         clothes: settings.clothes,
         clothes_name: settings.clothes_name.unwrap_or_default(),
+        avatar_mode: settings.avatar_mode,
         body_part: settings.body_part,
         live2d: settings.live2d,
+        avatar_mode_p: settings.avatar_mode_p,
+        pet_frameless: settings.pet_frameless,
         character_folder: folder,
     })
 }
@@ -583,23 +633,8 @@ pub async fn update_role_settings(
         .clone()
         .ok_or_else(|| format!("角色 {} 资源不存在", role_id))?;
 
-    let base_path = match role.role_type {
-        RoleType::Main => resolve_character_dir(&folder),
-        RoleType::Npc => {
-            let script_key = role
-                .script_key
-                .clone()
-                .ok_or_else(|| format!("角色 {} 缺少剧本关联", role_id))?;
-            game_data_dir()
-                .join("scripts")
-                .join(&script_key)
-                .join("characters")
-                .join(&folder)
-        },
-        RoleType::System | RoleType::User => {
-            return Err("系统角色不允许修改配置".to_string());
-        },
-    };
+    let base_path = resolve_role_dir(&role.role_type, role.script_key.as_deref(), &folder)
+        .map_err(|e| format!("角色 {} 资源目录不可用: {}", role_id, e))?;
 
     if !base_path.exists() {
         return Err(format!("角色目录不存在: {:?}", base_path));
@@ -611,15 +646,10 @@ pub async fn update_role_settings(
 
     let mut save_data =
         serde_json::to_value(&validated).map_err(|e| format!("配置规范化失败: {}", e))?;
-    if let Some(obj) = save_data.as_object_mut() {
-        obj.remove("character_id");
-        obj.remove("resource_path");
-        obj.remove("character_folder");
-        obj.remove("script_key");
-        obj.remove("script_role_key");
-    }
+    strip_transient_fields(&mut save_data);
 
-    let yaml_path = base_path.join("settings.yml");
+    // 角色目录里有 settings_local.yml 时写它，否则写 settings.yml —— 与读取同一规则。
+    let yaml_path = resolve_settings_file(&base_path);
     write_json_as_yaml(&yaml_path, &save_data).map_err(|e| format!("保存失败: {e}"))?;
 
     let runtime_updated = {

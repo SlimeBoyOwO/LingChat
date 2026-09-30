@@ -1,6 +1,6 @@
 <template>
   <Live2DRolePresentation
-    v-if="role.live2d"
+    v-if="useLive2d"
     ref="presentationRef"
     :role-id="role.roleId"
     :src="targetAvatarUrl"
@@ -17,10 +17,20 @@
     :animation-classes="containerClasses"
     :object-fit="computedObjectFit"
     @animation-end="handleAnimationEnd"
-  />
+  >
+    <!-- 触摸区域只对静态立绘生效：Live2D 的可摸范围来自模型的 touch_motions，
+         与 body_part 无关，所以不渲染这层。 -->
+    <template #overlay>
+      <TouchAreas
+        v-if="gameStore.command === 'touch'"
+        :role="role"
+        :src="targetAvatarUrl"
+        :object-fit="computedObjectFit"
+      />
+    </template>
+  </StaticRolePresentation>
 
-  <!-- 原有气泡、触摸层和情绪音效位于共享 Pixi 舞台上方。 -->
-  <TouchAreas v-if="gameStore.command === 'touch'" :body-parts="role.bodyPart" />
+  <!-- 原有气泡与情绪音效位于共享 Pixi 舞台上方。 -->
   <div
     class="role-container-transition pointer-events-none absolute h-full w-full origin-[center_0%]"
     :style="effectsLayerStyle"
@@ -38,7 +48,8 @@ import type { GameRole } from "@/stores/modules/game/state";
 import Live2DRolePresentation from "./Live2DRolePresentation.vue";
 import StaticRolePresentation from "./StaticRolePresentation.vue";
 import TouchAreas from "./TouchAreas.vue";
-import { useRoleAvatar } from "@/composables/role/useRoleAvatar";
+import { avatarObjectFit, useRoleAvatar } from "@/composables/role/useRoleAvatar";
+import { prefersLive2d } from "@/types/live2d";
 import "@/assets/styles/avatar-animation.css";
 
 const props = defineProps<{
@@ -59,6 +70,9 @@ const presentationRef = ref<
   InstanceType<typeof Live2DRolePresentation> | InstanceType<typeof StaticRolePresentation> | null
 >(null);
 
+// 主对话用 Live2D 还是静态立绘：角色设定里可选，缺省沿袭「有模型就用模型」
+const useLive2d = computed(() => prefersLive2d(role.value, "standard"));
+
 // 头像解析 + 情绪演出（动画类 / 气泡 / 音效）—— 与桌宠共用同一实现
 const {
   targetAvatarUrl,
@@ -76,12 +90,7 @@ const {
 // --- 移动端适配：从 uiStore 读取视口尺寸（全局唯一 resize 监听） ---
 
 // 窄屏适配：宽高比 1.0→0.5 区间，高度 100%→80%（rate=40）
-const computedObjectFit = computed(() => {
-  const ratio = uiStore.aspectRatio;
-  if (ratio >= 1.0) return "contain";
-  const percent = Math.max(80, 100 - (1.0 - ratio) * 40);
-  return `auto ${Math.round(percent)}%`;
-});
+const computedObjectFit = computed(() => avatarObjectFit(uiStore.aspectRatio));
 
 // 窄屏 Y 轴补偿：同步上述区间，0%→20% 视口高度上移（rate=40）
 const narrowScreenYCompensation = computed(() => {
@@ -177,9 +186,3 @@ const bubbleStyles = computed(() => ({
   backgroundImage: `url(${currentBubbleImageUrl.value})`,
 }));
 </script>
-
-<style scoped>
-:deep(.touch-area) {
-  pointer-events: auto;
-}
-</style>

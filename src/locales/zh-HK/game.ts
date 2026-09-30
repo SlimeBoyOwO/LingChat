@@ -53,6 +53,26 @@ export default {
     stopAll: "全部停晒",
     noAmbientPlaying: "冇環境音播緊",
     availableAmbient: "可用環境音",
+    spectrum: {
+      title: "音頻頻譜",
+      hint: "實時採集播緊嘅背景音樂同環境音，顯示喺右下角",
+      palette: "配色",
+      styleMirror: "鏡像",
+      styleBars: "柱狀",
+      styleRing: "圓環",
+      custom: "自訂",
+      customFrom: "主色",
+      customTo: "輔色",
+    },
+  },
+  // 右下角迷你頻譜（同左下角聲效掣對稱）
+  spectrum: {
+    title: "音頻頻譜",
+    expand: "展開頻譜面板",
+    collapse: "收埋",
+    idle: "冇嘢播緊",
+    paused: "暫停咗",
+    ambientCount: "環境音 ×{n}",
   },
   freeDialogue: {
     banner: "進入自由對話",

@@ -15,6 +15,7 @@ use crate::db::entities::role::{Column, Entity as RoleEntity};
 use crate::utils::archive::{
     self, ArchiveError, ArchiveFormat, ConflictPolicy, EntryEvent, ExtractSummary,
 };
+use crate::utils::yaml_file::resolve_settings_file;
 
 use super::ImportResult;
 
@@ -208,12 +209,12 @@ pub(super) async fn do_import(
     let _ = tokio::fs::remove_dir_all(&staging_root).await;
     tracing::info!("[RoleArchive] do_import staging 已清理");
 
-    // 8.5 校验 `settings.yml`；缺失时删除刚移动的目录并返回错误。
-    let settings_yml = resolution.target.join("settings.yml");
-    if !settings_yml.exists() {
+    // 8.5 校验设定文件（settings_local.yml 优先，否则 settings.yml）；缺失时删除刚移动的目录并返回错误。
+    let settings_file = resolve_settings_file(&resolution.target);
+    if !settings_file.exists() {
         tracing::error!(
-            "[RoleArchive] do_import 缺少 settings.yml: {}",
-            settings_yml.display()
+            "[RoleArchive] do_import 缺少设定文件: {}",
+            settings_file.display()
         );
         let _ = tokio::fs::remove_dir_all(&resolution.target).await;
         // 返回 i18n 错误码，前端按 ui.archiveProgress.errors.<code> 查表翻译。

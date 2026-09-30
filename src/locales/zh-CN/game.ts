@@ -52,6 +52,26 @@ export default {
     stopAll: "全部停止",
     noAmbientPlaying: "没有正在播放的环境音",
     availableAmbient: "可用环境音",
+    spectrum: {
+      title: "音频频谱",
+      hint: "实时采集正在播放的背景音乐与环境音，显示在右下角",
+      palette: "配色",
+      styleMirror: "镜像",
+      styleBars: "柱状",
+      styleRing: "圆环",
+      custom: "自定义",
+      customFrom: "主色",
+      customTo: "辅色",
+    },
+  },
+  // 右下角迷你频谱（与左下角声效按钮对称）
+  spectrum: {
+    title: "音频频谱",
+    expand: "展开频谱面板",
+    collapse: "收起",
+    idle: "静默",
+    paused: "已暂停",
+    ambientCount: "环境音 ×{n}",
   },
   freeDialogue: {
     banner: "进入自由对话",

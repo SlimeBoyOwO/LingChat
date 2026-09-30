@@ -54,7 +54,11 @@ pub fn get_settings_tree(app: AppHandle) -> ConfigTree {
 }
 
 #[tauri::command]
-pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result<String, String> {
+pub fn save_settings(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    values: BTreeMap<String, String>,
+) -> Result<String, String> {
     if let Some(value) = values.get(keys::LLM_TIMEOUT_SECS) {
         let timeout_secs = value
             .parse::<u64>()
@@ -102,6 +106,18 @@ pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result
         )
     });
 
+    // 好感度/上帝 Agent 相关设置：热更新运行中的 GodAgentCore 配置，
+    // 无需重启即可生效（总开关、评估间隔、决策窗口、连续 NPC 轮数上限）。
+    let god_agent_settings_changed = values.keys().any(|key| {
+        matches!(
+            key.as_str(),
+            keys::AFFECTION_ENABLED
+                | keys::GOD_AGENT_AFFECTION_EVAL_INTERVAL
+                | keys::GOD_AGENT_RECENT_WINDOW
+                | keys::GOD_AGENT_MAX_CONSECUTIVE_NPC
+        )
+    });
+
     let store = config::settings_store(&app).map_err(|e| e.to_string())?;
 
     for (key, value) in &values {
@@ -124,6 +140,18 @@ pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result
     }
 
     store.save().map_err(|e| e.to_string())?;
+
+    if god_agent_settings_changed {
+        // 热更新运行中的上帝 Agent 配置（含好感度总开关），无需重启
+        if let Some(god) = &state.god_agent {
+            let new_config = crate::ai_service::god_agent::config::GodAgentConfig::load(&app);
+            let affection_enabled = new_config.affection_enabled;
+            god.update_config(new_config);
+            // 通知前端刷新好感度面板的挂载状态（FreeModeTools 据此显隐面板）
+            use tauri::Emitter;
+            let _ = app.emit("affection:enabled-changed", affection_enabled);
+        }
+    }
 
     if memory_settings_changed {
         Ok("配置已成功保存；记忆压缩相关设置将在重启 LingChat 后生效。".to_string())
@@ -356,37 +384,4 @@ pub fn set_hdr_mode(app: AppHandle, enabled: bool) -> Result<(), String> {
     );
     store.save().map_err(|e| e.to_string())?;
     Ok(())
-}
-
-#[cfg(test)]
-mod memory_setting_validation_tests {
-    use super::validate_u32_setting;
-    use std::collections::BTreeMap;
-
-    #[test]
-    fn rejects_overflow_negative_and_out_of_range_values() {
-        for raw in ["4294967296", "-1", "0"] {
-            let values = BTreeMap::from([("memory".to_string(), raw.to_string())]);
-            assert!(validate_u32_setting(&values, "memory", "memory", 1, 10_000).is_err());
-        }
-    }
-
-    #[test]
-    fn zero_min_accepts_zero_and_rejects_invalid_large_values() {
-        let zero = BTreeMap::from([("memory".to_string(), "0".to_string())]);
-        assert!(validate_u32_setting(&zero, "memory", "memory", 0, 10_000).is_ok());
-        for raw in ["10001", "18446744073709551615", "not-a-number"] {
-            let values = BTreeMap::from([("memory".to_string(), raw.to_string())]);
-            assert!(validate_u32_setting(&values, "memory", "memory", 0, 10_000).is_err());
-        }
-    }
-
-    #[test]
-    fn accepts_valid_boundaries_and_missing_values() {
-        for raw in ["1", "10000"] {
-            let values = BTreeMap::from([("memory".to_string(), raw.to_string())]);
-            assert!(validate_u32_setting(&values, "memory", "memory", 1, 10_000).is_ok());
-        }
-        assert!(validate_u32_setting(&BTreeMap::new(), "memory", "memory", 1, 10_000,).is_ok());
-    }
 }

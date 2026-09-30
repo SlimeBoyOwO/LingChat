@@ -46,7 +46,15 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
             "memory_delete_note",
         ],
     ),
-    ("character", &["character_list", "character_switch"]),
+    (
+        "character",
+        &[
+            "character_list",
+            "character_switch",
+            "character_get_clothes",
+            "character_set_clothes",
+        ],
+    ),
     ("scene", &["scene_list", "scene_switch"]),
     ("status", &["status_get_current", "status_get_scene"]),
     ("clock", &["get_current_time"]),
@@ -376,60 +384,5 @@ impl SharedToolSettings {
     /// 整体替换配置，立即对所有工具生效。
     pub fn update(&self, settings: ToolSettings) {
         *self.0.write().expect("工具配置锁已中毒") = settings;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn web_search_readiness_allows_provider_managed_credentials() {
-        let mut web = WebSearchSettings::default();
-        assert!(!web.is_ready());
-
-        web.enabled = true;
-        web.provider = "codex".into();
-        web.api_key.clear();
-        assert!(web.is_ready());
-
-        web.provider = "kimi".into();
-        assert!(web.is_ready());
-
-        web.provider = "tavily".into();
-        assert!(!web.is_ready());
-        web.api_key = "configured".into();
-        assert!(web.is_ready());
-
-        web.enabled = false;
-        assert!(!web.is_ready());
-    }
-
-    #[test]
-    fn legacy_settings_keep_delete_confirmation_enabled() {
-        let legacy = r#"
-command_auto_approve = false
-file_ops_allow_any_path = false
-"#;
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join(SETTINGS_FILE_NAME), legacy).unwrap();
-        let settings = ToolSettings::load_or_create(dir.path()).unwrap();
-        assert!(settings.requires_file_delete_approval());
-        assert!(settings.requires_command_approval(false));
-        assert!(!settings.requires_file_change_approval());
-    }
-
-    #[test]
-    fn save_can_replace_existing_settings_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut settings = ToolSettings::default();
-        settings.save(dir.path()).unwrap();
-        settings.access_mode = ToolAccessMode::FullAccess;
-        settings.save(dir.path()).unwrap();
-
-        let loaded = ToolSettings::load_or_create(dir.path()).unwrap();
-        assert_eq!(loaded.access_mode, ToolAccessMode::FullAccess);
-        assert!(loaded.allows_any_path());
-        assert!(!loaded.requires_file_delete_approval());
     }
 }

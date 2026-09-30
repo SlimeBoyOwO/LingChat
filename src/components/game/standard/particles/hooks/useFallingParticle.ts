@@ -1,223 +1,67 @@
-import { ref, onMounted, onUnmounted, watch, nextTick, type Ref } from "vue";
-import type {
-  FallingParticle,
-  FallingParticleConfig,
-  UseFallingParticleOptions,
-  UseFallingParticleReturn,
-  KeyframeConfig,
-  ParticleCustomization,
-} from "../types/falling";
+import { onBeforeUnmount, onMounted, watch, type Ref } from "vue";
+import { FallingField } from "./useFallingField";
+import type { FallingEffect, FallingProps } from "../types/falling";
 
 /**
- * Generate a unique ID for particles
+ * 把下落粒子的渲染场挂到画布上：负责尺寸观察、生命周期与可见性。
+ *
+ * 画布尺寸取自父元素，所以主界面铺满整屏、塞进小容器里也成立。
+ * 雪与樱花共用这一份实现，差异只在传入的 effect。
  */
-export function generateParticleId(): string {
-  return Math.random().toString(36).substr(2, 9);
-}
+export function useFallingParticle(
+  canvasRef: Ref<HTMLCanvasElement | null>,
+  props: FallingProps,
+  effect: FallingEffect,
+) {
+  let field: FallingField | null = null;
+  let observer: ResizeObserver | null = null;
 
-/**
- * Calculate random value within a range
- */
-export function randomInRange(min: number, max: number): number {
-  return Math.random() * (max - min) + min;
-}
+  const resize = () => field?.resize();
 
-/**
- * Default particle factory - creates a basic falling particle
- */
-export function createDefaultParticle(
-  id: string,
-  config: FallingParticleConfig,
-  customization?: ParticleCustomization,
-): FallingParticle {
-  const size = randomInRange(config.minSize, config.maxSize);
-  const left = Math.random() * window.innerWidth;
-  const duration = randomInRange(config.minDuration, config.maxDuration);
-  const opacity = randomInRange(config.minOpacity, config.maxOpacity);
-  const horizontalMovement = randomInRange(-config.horizontalRange, config.horizontalRange);
-
-  // When randomStartY is enabled, use negative delay so particles appear
-  // distributed across the screen at different Y positions instead of
-  // all starting from the top
-  const delay = config.randomStartY ? -Math.random() * duration : Math.random() * config.maxDelay;
-
-  return {
-    id,
-    size,
-    left,
-    top: config.initialTopOffset,
-    opacity,
-    duration,
-    delay,
-    horizontalMovement,
-    ...customization,
-  };
-}
-
-/**
- * Default keyframe generator - creates CSS keyframes for falling animation
- */
-export function createDefaultKeyframes(
-  particle: FallingParticle,
-  maxHeight: number,
-  keyframeConfig: KeyframeConfig,
-): string {
-  const { rotation, opacity } = keyframeConfig;
-  const ranges = rotation.rotationRanges;
-  const kf = opacity.keyframes;
-
-  return `
-  @keyframes fall-${particle.id} {
-    0% {
-      transform: translate(0, 0) rotate(${rotation.startRotation}deg);
-      opacity: ${particle.opacity * kf[0]!};
-    }
-    25% {
-      transform: translate(${particle.horizontalMovement * 0.25}px, ${maxHeight * 0.25}px) 
-                 rotate(${rotation.startRotation + randomInRange(ranges[0]!.min, ranges[0]!.max)}deg);
-      opacity: ${particle.opacity * kf[1]!};
-    }
-    50% {
-      transform: translate(${particle.horizontalMovement * 0.5}px, ${maxHeight * 0.5}px) 
-                 rotate(${rotation.startRotation + randomInRange(ranges[1]!.min, ranges[1]!.max)}deg);
-      opacity: ${particle.opacity * kf[2]!};
-    }
-    75% {
-      transform: translate(${particle.horizontalMovement * 0.75}px, ${maxHeight * 0.75}px) 
-                 rotate(${rotation.startRotation + randomInRange(ranges[2]!.min, ranges[2]!.max)}deg);
-      opacity: ${particle.opacity * kf[3]!};
-    }
-    100% {
-      transform: translate(${particle.horizontalMovement}px, ${maxHeight}px) 
-                 rotate(${rotation.startRotation + randomInRange(ranges[3]!.min, ranges[3]!.max)}deg);
-      opacity: ${particle.opacity * kf[4]!};
-    }
-  }
-`;
-}
-
-export function useFallingParticle<T extends FallingParticle>(
-  props: { enabled?: boolean; intensity?: number },
-  options: UseFallingParticleOptions<T>,
-  containerRef: Ref<HTMLElement | null>,
-): UseFallingParticleReturn<T> {
-  const { config, baseCount, createParticle, generateKeyframes } = options;
-
-  // Normalize props with defaults
-  const enabled = props.enabled ?? true;
-  const intensity = props.intensity ?? 1;
-
-  // Reactive state
-  const particles = ref<T[]>([]) as Ref<T[]>;
-
-  const maxHeight = ref(0);
-  const particleCount = ref(Math.floor(baseCount * intensity));
-
-  /**
-   * Create animation stylesheet for a particle
-   */
-  const createParticleAnimation = (particle: T): void => {
-    const styleSheet = document.createElement("style");
-    document.head.appendChild(styleSheet);
-
-    const keyframes = generateKeyframes(particle, maxHeight.value);
-    styleSheet.innerHTML = keyframes;
-    particle.styleSheet = styleSheet;
+  const onVisibilityChange = () => {
+    if (document.hidden) field?.stop();
+    else if (props.enabled ?? true) field?.start();
   };
 
-  /**
-   * Create multiple particles
-   */
-  const createParticles = (count: number): void => {
-    for (let i = 0; i < count; i++) {
-      const id = generateParticleId();
-      const particle = createParticle(id, config);
-      particle.id = id;
-      createParticleAnimation(particle);
-      particles.value.push(particle);
-    }
-  };
+  onMounted(() => {
+    const canvas = canvasRef.value;
+    if (!canvas) return;
 
-  /**
-   * Remove all particles and cleanup stylesheets
-   */
-  const removeAllParticles = (): void => {
-    particles.value.forEach((particle) => {
-      if (particle.styleSheet && particle.styleSheet.parentNode) {
-        particle.styleSheet.parentNode.removeChild(particle.styleSheet);
-      }
-    });
-    particles.value = [];
-  };
+    field = new FallingField(canvas, effect, props.intensity ?? 1);
 
-  /**
-   * Set max height from container or window
-   */
-  const setMaxHeight = (): void => {
-    if (containerRef.value && containerRef.value.parentElement) {
-      maxHeight.value = containerRef.value.parentElement.clientHeight;
+    // 观察父元素而不是窗口：布局变化（对话框展开、窗口分屏）同样会改变可用区域
+    const host = canvas.parentElement;
+    if (host && typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(resize);
+      observer.observe(host);
     } else {
-      maxHeight.value = window.innerHeight;
+      window.addEventListener("resize", resize);
     }
-  };
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
-  /**
-   * Recreate all particles (used for resize events)
-   */
-  const recreateParticles = (): void => {
-    removeAllParticles();
-    createParticles(particleCount.value);
-  };
+    field.resize();
+    if (props.enabled ?? true) field.start();
+  });
 
-  // Watch for intensity changes
   watch(
     () => props.intensity,
-    (newIntensity) => {
-      particleCount.value = Math.floor(baseCount * (newIntensity ?? 1));
-      recreateParticles();
-    },
+    (value) => field?.setIntensity(value ?? 1),
   );
 
-  // Watch for enabled state changes
   watch(
     () => props.enabled,
-    (newVal) => {
-      if (newVal ?? true) {
-        setMaxHeight();
-        createParticles(particleCount.value);
-      } else {
-        removeAllParticles();
-      }
+    (enabled) => {
+      if (enabled && !document.hidden) field?.start();
+      else field?.stop();
     },
   );
 
-  // Lifecycle hooks
-  onMounted(() => {
-    nextTick(() => {
-      setMaxHeight();
-      if (enabled) {
-        createParticles(particleCount.value);
-      }
-    });
-
-    window.addEventListener("resize", () => {
-      setMaxHeight();
-      recreateParticles();
-    });
+  onBeforeUnmount(() => {
+    observer?.disconnect();
+    observer = null;
+    window.removeEventListener("resize", resize);
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+    field?.destroy();
+    field = null;
   });
-
-  onUnmounted(() => {
-    removeAllParticles();
-    window.removeEventListener("resize", setMaxHeight);
-  });
-
-  return {
-    particles,
-    maxHeight,
-    createParticles,
-    removeAllParticles,
-    recreateParticles,
-    setMaxHeight,
-    particleCount,
-  };
 }

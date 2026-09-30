@@ -49,7 +49,7 @@ App.vue → <router-view> → CompanionMode.vue → MainChat.vue
 
 根节点是三个兄弟（无包裹容器）：
 
-1. `Live2DRolePresentation v-if="role.live2d"` / `StaticRolePresentation v-else` —— 静态图 `z:1`
+1. `Live2DRolePresentation v-if="prefersLive2d(role, 'standard')"` / `StaticRolePresentation v-else` —— 静态图 `z:1`
 2. `TouchAreas v-if="command==='touch'"` —— `fixed z:2`
 3. effects div（含 `.bubble`）—— `z:2`，`.bubble` 自身 `z-index:2`
 

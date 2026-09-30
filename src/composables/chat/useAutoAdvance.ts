@@ -94,6 +94,8 @@ export function useAutoAdvance(o: UseAutoAdvanceOptions): UseAutoAdvanceApi {
         advanceTimer = null;
         if (!uiStore.autoMode || gameStore.currentStatus !== "responding") return;
         if (!typingFinished.value || !audioFinished.value) return;
+        // 兜底：延迟窗口内冒出来的新台词还没吐完
+        if (o.dialog()?.isTyping) return;
 
         const needWait = o.dialog()?.continueDialog(false) ?? true;
         if (!needWait) {

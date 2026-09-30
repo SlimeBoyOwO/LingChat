@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use super::types::{PluginRecord, ResourceKind};
+use crate::utils::yaml_file::resolve_settings_file;
 
 pub const IMAGE_EXTENSIONS: [&str; 8] = ["png", "jpg", "jpeg", "webp", "bmp", "svg", "tif", "gif"];
 pub const AUDIO_EXTENSIONS: [&str; 7] = ["mp3", "wav", "flac", "webm", "weba", "ogg", "oga"];
@@ -85,7 +86,8 @@ pub fn scan_kind(record: &PluginRecord, kind: ResourceKind) -> Vec<PluginResourc
         .collect()
 }
 
-/// 角色：子目录含 settings.yml 即一个角色；key = folder 名，name = title。
+/// 角色：子目录含设定文件（settings_local.yml 优先，否则 settings.yml）即一个角色；
+/// key = folder 名，name = title。
 fn scan_character_packages(root: &Path) -> Vec<PluginResourceEntry> {
     let mut out = Vec::new();
     let Ok(entries) = fs::read_dir(root) else {
@@ -100,7 +102,7 @@ fn scan_character_packages(root: &Path) -> Vec<PluginResourceEntry> {
         if folder == "avatar" || folder.starts_with('.') {
             continue;
         }
-        let settings = path.join("settings.yml");
+        let settings = resolve_settings_file(&path);
         if !settings.exists() {
             continue;
         }

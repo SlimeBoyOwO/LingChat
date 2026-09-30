@@ -1,5 +1,6 @@
 //! 上帝 Agent 配置。对标 Translator 的独立 LLM 配置模式。
 
+use serde_json::Value as JsonValue;
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
@@ -22,6 +23,10 @@ pub struct GodAgentConfig {
     pub max_consecutive_npc: usize,
     /// 决策时参考的最近台词行数。
     pub recent_window: usize,
+    /// 好感度评估间隔：每累计多少段真实对话评估一次。
+    pub affection_eval_interval: usize,
+    /// 好感度系统总开关：关闭后不评估、不写情感状态旁白台词。
+    pub affection_enabled: bool,
 }
 
 impl Default for GodAgentConfig {
@@ -30,11 +35,23 @@ impl Default for GodAgentConfig {
             provider_id: None,
             max_consecutive_npc: 3,
             recent_window: 20,
+            affection_eval_interval: 5,
+            affection_enabled: true,
         }
     }
 }
 
 impl GodAgentConfig {
+    /// 从 store 读取 usize：save_settings 会把数字输入规范化成 JSON Number，
+    /// 旧版本存的是字符串，两种形态都要认（Bool 一并兜住，防误存）。
+    fn read_usize(store: &tauri_plugin_store::Store<tauri::Wry>, key: &str) -> Option<usize> {
+        store.get(key).and_then(|v| match v {
+            JsonValue::Number(n) => n.as_u64().map(|n| n as usize),
+            JsonValue::String(s) => s.parse::<usize>().ok(),
+            JsonValue::Bool(b) => Some(usize::from(u8::from(b))),
+            _ => None,
+        })
+    }
     /// 从 Tauri store 加载配置。
     pub fn load(app: &AppHandle) -> Self {
         let Ok(store) = app.store(config::STORE_FILE) else {
@@ -45,22 +62,36 @@ impl GodAgentConfig {
             .get(keys::LLM_GOD_AGENT_PROVIDER_ID)
             .and_then(|v| v.as_str().map(|s| s.to_string()));
 
-        let max_consecutive_npc = store
-            .get(keys::GOD_AGENT_MAX_CONSECUTIVE_NPC)
-            .and_then(|v| v.as_str().and_then(|s| s.parse::<usize>().ok()))
+        let max_consecutive_npc = Self::read_usize(&store, keys::GOD_AGENT_MAX_CONSECUTIVE_NPC)
             .unwrap_or(3)
             .max(1);
 
-        let recent_window = store
-            .get(keys::GOD_AGENT_RECENT_WINDOW)
-            .and_then(|v| v.as_str().and_then(|s| s.parse::<usize>().ok()))
+        let recent_window = Self::read_usize(&store, keys::GOD_AGENT_RECENT_WINDOW)
             .unwrap_or(20)
             .max(5);
+
+        let affection_eval_interval =
+            Self::read_usize(&store, keys::GOD_AGENT_AFFECTION_EVAL_INTERVAL)
+                .unwrap_or(5)
+                .max(1);
+
+        let affection_enabled = store
+            .get(keys::AFFECTION_ENABLED)
+            .map(|v| match v {
+                // save_settings 会把 "true"/"false" 规范化成 JSON Bool；
+                // 旧版本存的是字符串，两种形态都要认。
+                JsonValue::Bool(b) => b,
+                JsonValue::String(s) => s == "true",
+                _ => true,
+            })
+            .unwrap_or(true);
 
         Self {
             provider_id,
             max_consecutive_npc,
             recent_window,
+            affection_eval_interval,
+            affection_enabled,
         }
     }
 }

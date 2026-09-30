@@ -45,12 +45,14 @@
         );
       "
     >
+      <!-- 星空挂在视口尺寸的容器上，而不是跟着名单一起滚动的内容容器上：
+           它是一层静止的深空背景，不该随名单上移，也不该被撑成名单那么高的画布 -->
+      <StarField ref="starfieldRef" />
+
       <div
         class="credits-scroll absolute top-0 left-0 flex w-full flex-col items-center text-center"
         :class="[!isStarted ? 'translate-y-[100dvh]' : '']"
       >
-        <StarField ref="starfieldRef" />
-
         <!-- Logo 与 标题 -->
         <div class="mb-20 flex w-full flex-col items-center">
           <img

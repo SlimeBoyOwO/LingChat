@@ -52,6 +52,26 @@ export default {
     stopAll: "すべて停止",
     noAmbientPlaying: "再生中の環境音はありません",
     availableAmbient: "利用可能な環境音",
+    spectrum: {
+      title: "オーディオスペクトラム",
+      hint: "再生中のBGMと環境音をリアルタイムで取得し、右下に表示します",
+      palette: "配色",
+      styleMirror: "ミラー",
+      styleBars: "バー",
+      styleRing: "リング",
+      custom: "カスタム",
+      customFrom: "メインカラー",
+      customTo: "サブカラー",
+    },
+  },
+  // 右下のミニスペクトラム（左下のサウンドボタンと対称）
+  spectrum: {
+    title: "オーディオスペクトラム",
+    expand: "スペクトラムを展開",
+    collapse: "折りたたむ",
+    idle: "無音",
+    paused: "一時停止中",
+    ambientCount: "環境音 ×{n}",
   },
   freeDialogue: {
     banner: "フリートーク開始",

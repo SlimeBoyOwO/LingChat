@@ -30,7 +30,11 @@ export interface PluginInfo {
   tools: string[];
   /** 插件声明携带的资源类型（characters / scripts / musics / backgrounds / ambients）。 */
   resources: string[];
+  /** 前置插件 id：这些插件必须已安装且已启用，本插件才能启用。 */
+  depends_on: string[];
   error?: string | null;
+  /** 启动阶段未能运行的原因（`错误码|补充信息` 或纯错误码）。 */
+  startup_error?: string | null;
 }
 
 /** 后端 plugins/resources.rs PluginResourceEntry 的镜像。 */

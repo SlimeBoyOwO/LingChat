@@ -1,9 +1,12 @@
 <template>
-  <audio ref="audio1" @ended="handleEnded(1)"></audio>
-  <audio ref="audio2" @ended="handleEnded(2)"></audio>
+  <!-- crossorigin 供频谱可视化接入（见 utils/audioSpectrum.ts）：
+       asset 协议自带 Access-Control-Allow-Origin，走 CORS 加载才能接进 AudioContext -->
+  <audio ref="audio1" crossorigin="anonymous" @ended="handleEnded(1)"></audio>
+  <audio ref="audio2" crossorigin="anonymous" @ended="handleEnded(2)"></audio>
 </template>
 
 <script setup lang="ts">
+import { registerSpectrumSource, unregisterSpectrumSource } from "@/utils/audioSpectrum";
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
 
 const props = withDefaults(
@@ -54,6 +57,8 @@ const clearFade = () => {
 
 onBeforeUnmount(() => {
   clearFade();
+  unregisterSpectrumSource(audio1.value);
+  unregisterSpectrumSource(audio2.value);
 });
 
 // 只派发当前主音频轨道的结束事件，忽略备用轨道的事件
@@ -149,6 +154,9 @@ const crossFadeTo = async (newUrl: string | null | undefined) => {
 
 // 初始化
 onMounted(() => {
+  // 注册给频谱可视化（未开启该功能时不做任何事，见 utils/audioSpectrum.ts）
+  registerSpectrumSource(audio1.value);
+  registerSpectrumSource(audio2.value);
   if (props.src && props.src !== "None" && audio1.value) {
     audio1.value.src = props.src;
     audio1.value.volume = props.volume / 100;

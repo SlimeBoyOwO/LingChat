@@ -2,7 +2,12 @@ import { invoke } from "@tauri-apps/api/core";
 import http from "../http";
 import type { Character, CharacterSelectParams } from "../../types";
 import type { WebInitData } from "./game-info";
-import type { Live2dImportResult, Live2dSettings } from "@/types/live2d";
+import type {
+  AvatarDisplayMode,
+  Live2dImportResult,
+  Live2dSettings,
+  Live2dVariantAssets,
+} from "@/types/live2d";
 import { i18n } from "@/locales";
 
 interface CharacterSelectResponse {
@@ -74,8 +79,12 @@ export interface RoleInfo {
   bubble_left: number;
   clothes: object;
   clothes_name: string;
+  avatar_mode?: AvatarDisplayMode | null;
   body_part: object;
   live2d?: Live2dSettings | null;
+  avatar_mode_p?: AvatarDisplayMode | null;
+  /** 桌宠无框模式：true = 隐藏圆形外框/半透明底/粒子并取消圆形裁剪 */
+  pet_frameless?: boolean | null;
   character_folder: string;
 }
 
@@ -162,6 +171,13 @@ export const inspectLive2d = async (roleId: number): Promise<Live2dImportResult>
 
 export const getLive2dFilePath = async (roleId: number, filePath: string): Promise<string> => {
   return invoke<string>("get_live2d_file", { roleId, filePath });
+};
+
+export const getLive2dVariantAssets = async (
+  roleId: number,
+  variantName: string,
+): Promise<Live2dVariantAssets> => {
+  return invoke<Live2dVariantAssets>("get_live2d_variant_assets", { roleId, variantName });
 };
 
 /** 获取角色资源文件的绝对路径（供 convertFileSrc 使用） */

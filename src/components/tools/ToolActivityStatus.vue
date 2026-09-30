@@ -62,6 +62,7 @@ const readTools = new Set([
   "memory_get_notes",
   "schedule_get_all",
   "character_list",
+  "character_get_clothes",
   "scene_list",
   "status_get_current",
   "status_get_scene",
@@ -74,6 +75,7 @@ const updateTools = new Set([
   "memory_add_note",
   "memory_update_note",
   "memory_delete_note",
+  "character_set_clothes",
 ]);
 const switchTools = new Set(["character_switch", "scene_switch"]);
 

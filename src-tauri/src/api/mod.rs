@@ -1,5 +1,6 @@
 pub mod achievement;
 pub mod adventure;
+pub mod affection;
 pub mod ambient;
 pub mod asr;
 pub mod asset;
@@ -28,6 +29,7 @@ pub mod workshop;
 use std::path::PathBuf;
 
 use crate::AppState;
+use crate::db::entities::role::RoleType;
 use tauri::Manager;
 
 // ========== 共享辅助函数 ==========
@@ -95,6 +97,45 @@ pub fn resolve_character_dir(resource_folder: &str) -> PathBuf {
 /// 复用底层 `utils::path::resolve_character_path`（其内部已处理 `plugin:` 编码前缀）。
 pub fn resolve_character_dir_in(base_data_dir: &std::path::Path, resource_folder: &str) -> PathBuf {
     crate::utils::path::resolve_character_path(base_data_dir, resource_folder)
+}
+
+/// 角色在磁盘上的资源目录。
+///
+/// - `Main` → `game_data/characters/<folder>`，经 `resolve_character_dir_in`，
+///   因此 `plugin:<id>/<folder>` 编码前缀能被正确展开。
+/// - `Npc` → `game_data/scripts/<script_key>/characters/<folder>`。
+/// - `System` / `User` 没有磁盘目录 → `Err`。
+pub fn resolve_role_dir_in(
+    base_data_dir: &std::path::Path,
+    role_type: &RoleType,
+    script_key: Option<&str>,
+    resource_folder: &str,
+) -> Result<PathBuf, String> {
+    match role_type {
+        RoleType::Main => Ok(resolve_character_dir_in(base_data_dir, resource_folder)),
+        RoleType::Npc => {
+            let script_key = script_key
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| "剧本角色缺少 script_key".to_string())?;
+            Ok(base_data_dir
+                .join("game_data")
+                .join("scripts")
+                .join(script_key)
+                .join("characters")
+                .join(resource_folder))
+        },
+        RoleType::System | RoleType::User => Err("系统角色没有磁盘资源目录".to_string()),
+    }
+}
+
+/// `resolve_role_dir_in` 的全局 data_dir 版本。
+pub fn resolve_role_dir(
+    role_type: &RoleType,
+    script_key: Option<&str>,
+    resource_folder: &str,
+) -> Result<PathBuf, String> {
+    resolve_role_dir_in(&data_dir(), role_type, script_key, resource_folder)
 }
 
 pub(crate) fn backgrounds_dir() -> PathBuf {

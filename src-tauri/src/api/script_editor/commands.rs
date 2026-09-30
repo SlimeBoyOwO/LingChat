@@ -16,8 +16,8 @@ use tauri::{AppHandle, Manager};
 
 use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
-use crate::ai_service::types::ScriptStatus;
-use crate::api::{data_dir, game_data_dir};
+use crate::ai_service::types::{ScriptStatus, strip_transient_fields};
+use crate::api::{data_dir, game_data_dir, resolve_role_dir};
 use crate::db::managers::role_repo::RoleRepo;
 
 use sea_orm::DatabaseConnection;
@@ -284,10 +284,11 @@ fn read_characters(script_dir: &Path) -> Vec<ScriptCharacter> {
             continue;
         }
         let folder = e.file_name().to_string_lossy().to_string();
-        let settings: JsonValue = std::fs::read_to_string(e.path().join("settings.yml"))
-            .ok()
-            .and_then(|s| serde_yaml::from_str(&s).ok())
-            .unwrap_or(JsonValue::Null);
+        let settings: JsonValue =
+            std::fs::read_to_string(yaml_file::resolve_settings_file(&e.path()))
+                .ok()
+                .and_then(|s| serde_yaml::from_str(&s).ok())
+                .unwrap_or(JsonValue::Null);
 
         let role_key = settings
             .get("script_role_key")
@@ -1114,7 +1115,10 @@ pub fn editor_create_character(
         JsonValue::String(system_prompt.trim().to_string()),
     );
 
-    yaml_file::write_json_as_yaml(&char_dir.join("settings.yml"), &JsonValue::Object(settings))?;
+    yaml_file::write_json_as_yaml(
+        &yaml_file::resolve_settings_file(&char_dir),
+        &JsonValue::Object(settings),
+    )?;
 
     // 刚创建的角色 avatar 目录是空的；全局同名角色若有立绘，仍按引擎回退顺序标出来
     let global_avatar_dir = crate::api::characters_dir().join(&folder).join("avatar");
@@ -1257,10 +1261,11 @@ pub fn editor_list_global_characters(key: String) -> Result<Vec<GlobalCharacter>
         if folder.starts_with('.') {
             continue;
         }
-        let settings: JsonValue = std::fs::read_to_string(e.path().join("settings.yml"))
-            .ok()
-            .and_then(|s| serde_yaml::from_str(&s).ok())
-            .unwrap_or(JsonValue::Null);
+        let settings: JsonValue =
+            std::fs::read_to_string(yaml_file::resolve_settings_file(&e.path()))
+                .ok()
+                .and_then(|s| serde_yaml::from_str(&s).ok())
+                .unwrap_or(JsonValue::Null);
         // 服装候选：avatar/ 下的子目录（与 read_characters 的扫描规则一致）
         let mut clothes = Vec::new();
         if let Ok(files) = std::fs::read_dir(e.path().join("avatar")) {
@@ -1324,9 +1329,9 @@ pub fn editor_import_global_character(
     if !src.is_dir() {
         return Err(format!("全局角色库里没有「{}」", folder));
     }
-    let src_settings = src.join("settings.yml");
+    let src_settings = yaml_file::resolve_settings_file(&src);
     if !src_settings.is_file() {
-        return Err(format!("角色「{}」缺少 settings.yml，无法导入", folder));
+        return Err(format!("角色「{}」缺少设定文件，无法导入", folder));
     }
 
     let dest = dir.join("characters").join(&folder);
@@ -1340,15 +1345,13 @@ pub fn editor_import_global_character(
         std::fs::read_to_string(&src_settings).map_err(|e| format!("读取角色设定失败: {}", e))?;
     let mut settings: JsonValue =
         serde_yaml::from_str(&raw).map_err(|e| format!("角色设定不是合法 YAML: {}", e))?;
+    strip_transient_fields(&mut settings);
     let obj = settings
         .as_object_mut()
         .ok_or_else(|| "角色设定顶层必须是键值映射".to_string())?;
-    obj.remove("character_id");
-    obj.remove("resource_path");
-    obj.remove("script_key");
     obj.insert("script_role_key".into(), JsonValue::String(folder.clone()));
 
-    yaml_file::write_json_as_yaml(&dest.join("settings.yml"), &settings)?;
+    yaml_file::write_json_as_yaml(&yaml_file::resolve_settings_file(&dest), &settings)?;
 
     if with_avatar {
         let avatar = src.join("avatar");
@@ -1863,22 +1866,15 @@ async fn find_main_role_by_folder(
 /// 角色显示名，查不到就算了 —— 这只是给作者看的提示文案，不值得让整个命令失败。
 ///
 /// DB 的 roles.name 是角色初始化时写入的 title（见 role_sync），不是显示名；
-/// 这里改读角色的 settings.yml（name → ai_name），与 read_characters 同一规则。
+/// 这里改读角色的设定文件（name → ai_name），与 read_characters 同一规则。
 /// 剧本 NPC 用 script_key 定位到剧本内 characters/，全局角色直接读全局目录。
 async fn role_name_of(db: &DatabaseConnection, id: i32) -> Option<String> {
     let role = RoleRepo::get_role_by_id(db, id).await.ok().flatten()?;
     let folder = role.resource_folder.as_deref().unwrap_or_default();
 
-    let settings_path = match role.script_key.as_deref() {
-        Some(script_key) => paths::resolve_script_dir(script_key)
-            .ok()
-            .map(|d| d.join("characters").join(folder).join("settings.yml")),
-        None => Some(
-            crate::api::characters_dir()
-                .join(folder)
-                .join("settings.yml"),
-        ),
-    };
+    let settings_path = resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)
+        .ok()
+        .map(|dir| yaml_file::resolve_settings_file(&dir));
 
     if let Some(path) = settings_path {
         if let Ok(content) = std::fs::read_to_string(path) {
@@ -1901,7 +1897,7 @@ async fn role_name_of(db: &DatabaseConnection, id: i32) -> Option<String> {
         }
     }
 
-    // settings.yml 读不到时兜底 DB name（聊胜于无）
+    // 设定文件读不到时兜底 DB name（聊胜于无）
     Some(role.name)
 }
 

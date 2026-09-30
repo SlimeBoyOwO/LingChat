@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use sea_orm::DatabaseConnection;
@@ -11,7 +12,10 @@ use crate::ai_service::game_system::persistent_memory_system::{
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::tts::local::LocalTtsRuntime;
-use crate::ai_service::types::{CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage};
+use crate::ai_service::types::{
+    AffectionVector, CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage,
+    NegativeVector,
+};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::memory_repo::MemoryRepo;
@@ -27,7 +31,8 @@ pub struct GameRoleManager {
     /// 槽位本身始终存在，内部值为 None 时表示尚未配置模型。
     llm: LlmSlot,
     /// 每个角色的 MemoryBank 后台压缩引擎（惰性构造）。
-    memory_bank_systems: HashMap<i32, PersistentMemorySystem>,
+    /// 用 `Arc` 包装，便于在锁外 `await` 压缩时持有句柄（见 `memory_bank_handles`）。
+    memory_bank_systems: HashMap<i32, Arc<PersistentMemorySystem>>,
     /// TTS 引擎配置（适配器 URL、音频格式等）。
     tts_config: TtsConfig,
     /// 本地 TTS 共享运行时（进程内引擎 + 路径 + 全局开关）。
@@ -234,6 +239,62 @@ impl GameRoleManager {
         Ok(())
     }
 
+    /// 调整角色好感度与负面情绪的内存值；角色未加载时返回 None。
+    /// 持久化由调用方写入存档全局变量（见 `affection::var_key`）。
+    /// 返回调整后的（好感六维, 负面六维）。
+    pub fn adjust_affection(
+        &mut self,
+        role_id: i32,
+        deltas: &[(String, i32)],
+        negative_deltas: &[(String, i32)],
+    ) -> Option<(AffectionVector, NegativeVector)> {
+        let role = self.loaded_roles.get_mut(&role_id)?;
+        for (dim, delta) in deltas {
+            role.affection.add_delta(dim, *delta);
+        }
+        for (dim, delta) in negative_deltas {
+            role.negative.add_delta(dim, *delta);
+        }
+        Some((role.affection, role.negative))
+    }
+
+    /// 用存档全局变量中的好感度覆盖所有已加载角色的内存值（读档恢复用）。
+    pub fn overlay_affections_from_vars(&mut self, vars: &HashMap<String, serde_json::Value>) {
+        for role in self.loaded_roles.values_mut() {
+            let Some(rid) = role.role_id else {
+                continue;
+            };
+            if let Some(state) = vars
+                .get(&crate::ai_service::affection::var_key(rid))
+                .and_then(crate::ai_service::affection::state_from_value)
+            {
+                role.affection = state.vector;
+                role.negative = state.negative;
+            }
+        }
+    }
+
+    /// 所有已加载角色的当前好感度状态（role_id 字符串键，便于 JSON 序列化）。
+    pub fn loaded_affections(
+        &self,
+    ) -> HashMap<String, crate::ai_service::affection::AffectionState> {
+        self.loaded_roles
+            .iter()
+            .filter_map(|(id, role)| {
+                role.role_id.map(|_| {
+                    (
+                        id.to_string(),
+                        crate::ai_service::affection::AffectionState {
+                            total: role.affection.average(),
+                            vector: role.affection,
+                            negative: role.negative,
+                        },
+                    )
+                })
+            })
+            .collect()
+    }
+
     /// 通过 script_key/script_role_key 获取运行时角色。
     pub async fn get_role_by_script_keys(
         &mut self,
@@ -404,7 +465,7 @@ impl GameRoleManager {
         }
         self.memory_bank_systems.insert(
             role_id,
-            PersistentMemorySystem::new(
+            Arc::new(PersistentMemorySystem::new(
                 role_id,
                 bank,
                 self.llm.clone(),
@@ -413,7 +474,7 @@ impl GameRoleManager {
                 recent_window,
                 limits,
                 display_name,
-            ),
+            )),
         );
     }
 
@@ -529,6 +590,11 @@ impl GameRoleManager {
         true
     }
 
+    /// 刷新已加载角色的形象配置：Live2D 模型、主对话/桌宠的显示方式、桌宠无框模式。
+    ///
+    /// 这四个字段必须一起拷：内存里的 `role.settings` 是之后
+    /// `init_game` / 切角色时 `onstage_roles` 的数据源，漏拷会让保存后的
+    /// 显示方式在下一次 init 时被打回旧值。
     pub fn update_role_live2d_settings(
         &mut self,
         role_id: i32,
@@ -539,6 +605,9 @@ impl GameRoleManager {
             return false;
         };
         role.settings.live2d = settings.live2d.clone();
+        role.settings.avatar_mode = settings.avatar_mode.clone();
+        role.settings.avatar_mode_p = settings.avatar_mode_p.clone();
+        role.settings.pet_frameless = settings.pet_frameless;
         true
     }
 
@@ -691,6 +760,45 @@ impl GameRoleManager {
         self.memory_bank_systems
             .get(&role_id)
             .map(|s| s.is_enabled())
+    }
+
+    /// 取出所有永久记忆运行时的 `Arc` 句柄（廉价克隆）。
+    ///
+    /// 给「短锁取句柄 → 锁外 await 压缩」的调用方用：这样等待压缩（若干次 LLM
+    /// 调用）期间不必一直持有 `game_status` 锁、冻住前端。配合
+    /// `PersistentMemorySystem::compress_if_needed` 使用。
+    pub fn memory_bank_handles(&self) -> Vec<Arc<PersistentMemorySystem>> {
+        self.memory_bank_systems.values().cloned().collect()
+    }
+
+    /// 对所有已加载、开了永久记忆的角色：达到压缩阈值就同步压一次并**等它完成**，
+    /// 未达阈值的直接跳过。返回实际触发压缩的角色数（0 = 全都无需压缩）。
+    ///
+    /// 用于「请求 LLM 前把记忆追平」这类需要确定性时机的场景。会 `await` 若干次
+    /// LLM 调用，**不要在持有 `game_status` 锁时调用**；压缩失败会提前返回
+    /// （指针不推进），不会死等。
+    pub async fn compress_memories_if_needed(&self, lines: &[GameLine]) -> usize {
+        let role_ids: Vec<i32> = self.memory_bank_systems.keys().copied().collect();
+        let mut triggered = 0usize;
+        for role_id in role_ids {
+            if let Some(system) = self.memory_bank_systems.get(&role_id) {
+                if system.compress_if_needed(lines).await {
+                    triggered += 1;
+                }
+            }
+        }
+        triggered
+    }
+
+    /// 把所有已加载角色的永久记忆压缩指针回拨到 `idx`（各自仅当指针在其之后）。
+    /// 编辑台词历史后调用：让被编辑区间重新进入渲染窗口、下次压缩重新摘要。
+    pub async fn rewind_memory_pointers(&self, idx: usize) {
+        let role_ids: Vec<i32> = self.memory_bank_systems.keys().copied().collect();
+        for role_id in role_ids {
+            if let Some(system) = self.memory_bank_systems.get(&role_id) {
+                system.rewind_pointer(idx).await;
+            }
+        }
     }
 }
 

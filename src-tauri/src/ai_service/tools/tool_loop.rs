@@ -440,13 +440,19 @@ pub(crate) fn emit_tool_call_event(
     result: &str,
 ) -> bool {
     // executor 的可恢复错误统一编码为 {"ok": false, "error": {...}}；
-    // 成功结果没有 "ok" 字段（或显式 "ok": true）。
+    // 成功结果带 "ok": true。工具自身的 ok 缺省为成功；execute_command 额外以
+    // exit_code 判定命令成败，保住「命令非零退出仍标红」的现有体验。
     let parsed = serde_json::from_str::<serde_json::Value>(result).ok();
+    let exit_code = parsed
+        .as_ref()
+        .and_then(|v| v.get("exit_code"))
+        .and_then(|v| v.as_i64());
     let ok = parsed
         .as_ref()
         .and_then(|v| v.get("ok"))
         .and_then(|v| v.as_bool())
-        .unwrap_or(true);
+        .unwrap_or(true)
+        && exit_code.map(|code| code == 0).unwrap_or(true);
     let error = if ok {
         None
     } else {
@@ -455,6 +461,7 @@ pub(crate) fn emit_tool_call_event(
             .and_then(|v| v.pointer("/error/message"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
+            .or_else(|| exit_code.map(|code| format!("命令退出码为 {code}")))
     };
     // 参数摘要：优先取 query 字段，否则截断整个参数串。
     let summary = serde_json::from_str::<serde_json::Value>(arguments)

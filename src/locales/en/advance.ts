@@ -42,5 +42,12 @@ export default {
     memoryDesc:
       "Inspect a role's memory bank and the context actually sent to the LLM, for diagnosing memory compaction and injection",
     memoryButton: "Open Memory Debug",
+    affectionTitle: "Affection System",
+    affectionDesc:
+      "Master switch for the affection system (applies immediately); heartbeat and wave animation toggles are under Other Advanced Settings",
+    affectionMasterToggle: "Enable affection system",
+    affectionToggleConfirm:
+      "Toggle the affection system? When disabled, affection evaluation stops and the affection panel is hidden immediately.",
+    affectionToggleFailed: "Failed to toggle the affection system, please try again later",
   },
 };

@@ -18,6 +18,21 @@ pub struct Rect {
     pub height: f64,
 }
 
+/// 当前显示器工作区，已按与鼠标位置**完全相同**的公式换算成窗口相对逻辑像素。
+///
+/// 桌宠前端用它算视线衰减的参考距离（锚点沿鼠标方向到屏幕边缘有多远），所以
+/// 必须与 x/y 同坐标系、同 scale_factor。前端自己读 window.screenX/availLeft 不行：
+/// 混合 DPI 多显示器下 Chromium 会混用设备像素与 CSS 像素，而这是两个数的比值，
+/// 分子分母必须同源误差才会相消。
+#[cfg_attr(not(desktop), allow(dead_code))]
+#[derive(Clone, Debug, Serialize)]
+pub struct ScreenBox {
+    pub left: f64,
+    pub top: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
 /// 桌宠窗口内的鼠标位置（逻辑/CSS 像素），由 Rust 侧全局轮询循环计算并广播给前端。
 /// 坐标系与 DOM 的 clientX/clientY 一致（窗口非装饰时即 webview 视口坐标）。
 #[cfg_attr(not(desktop), allow(dead_code))]
@@ -25,6 +40,8 @@ pub struct Rect {
 pub struct CursorPosition {
     pub x: f64,
     pub y: f64,
+    /// 取不到显示器信息时为 None，前端据此退回径向参考距离
+    pub screen: Option<ScreenBox>,
 }
 
 pub struct HitTestState {
@@ -38,6 +55,46 @@ impl Default for HitTestState {
             solid_rects: Arc::new(Mutex::new(Vec::new())),
             enabled: Arc::new(Mutex::new(false)),
         }
+    }
+}
+
+/// 气泡相对宠物的方位与（左右置时的）纵向贴边。
+///
+/// **由前端决定**（手动设置、"放不下就换边"的自动判定都在宠物窗里算），
+/// Rust 只负责据此摆窗口 —— 判定要用到显示器工作区与宠物窗位置，而宠物窗本来
+/// 就在跟踪这些信息（输入框显隐、视线衰减都依赖它）。
+///
+/// 左右置时纵向位置按 `align` 与宠物窗**对齐同一条边**（贴上边 = 气泡窗顶边对齐宠物窗
+/// 顶边；贴下边 = 底边对齐底边），气泡因此始终跟着宠物在屏幕上的高低走，
+/// 短气泡也不会飘出屏幕。
+pub struct BubbleSideState(pub Mutex<BubblePlacement>);
+
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub struct BubblePlacement {
+    pub side: BubbleSide,
+    pub align: BubbleAlign,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum BubbleSide {
+    #[default]
+    Above,
+    Below,
+    Left,
+    Right,
+}
+
+/// 左右置时气泡贴气泡窗的上边还是下边（由前端按宠物在屏幕上的高低判定）
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum BubbleAlign {
+    #[default]
+    Top,
+    Bottom,
+}
+
+impl Default for BubbleSideState {
+    fn default() -> Self {
+        Self(Mutex::new(BubblePlacement::default()))
     }
 }
 
@@ -56,12 +113,53 @@ pub fn update_solid_regions(rects: Vec<Rect>, state: tauri::State<'_, HitTestSta
 /// Tauri 的跨平台 API，改用前者后三个桌面平台可以共用同一个循环。
 /// （Linux 未实测：X11 / Wayland 下最差情况是 API 返回 Err，本轮直接跳过。）
 ///
+/// 把气泡窗重新提到最前。
+///
+/// `always_on_top` 只是把窗口标记为 topmost，**同一 topmost 组内的前后顺序**会随焦点
+/// 变化丢失：用户点了别的窗口后，气泡窗可能落到后面。而 tao 的 `set_always_on_top`
+/// 只在标志**变化**时才调 `SetWindowPos`，重复设 true 是无操作 —— 所以必须自己调。
+///
+/// `SWP_NOACTIVATE` 保证重申置顶不会抢走用户当前窗口的焦点。
+#[cfg(target_os = "windows")]
+fn raise_bubble(app: &AppHandle) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        HWND_TOPMOST, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
+    };
+
+    let Some(bubble) = app.get_webview_window("pet_bubble") else {
+        return;
+    };
+    let Ok(hwnd) = bubble.hwnd() else {
+        return;
+    };
+    // tauri 依赖的 windows crate 与本 crate 版本不同，HWND 类型不通用，
+    // 只能走裸句柄转换（与 api/save.rs、cast/capture.rs 的做法一致）。
+    let raw = HWND(hwnd.0 as *mut core::ffi::c_void);
+    unsafe {
+        let _ = SetWindowPos(
+            raw,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_ASYNCWINDOWPOS | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+    }
+}
+
+#[cfg(all(desktop, not(target_os = "windows")))]
+fn raise_bubble(_app: &AppHandle) {}
+
 /// 同时承担 pet:cursor 鼠标广播：向桌宠前端广播全局鼠标位置驱动 Live2D 视线。
 #[cfg(desktop)]
 pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
     let hit_test_state = window.state::<HitTestState>();
     let rects_arc = hit_test_state.solid_rects.clone();
     let enabled_arc = hit_test_state.enabled.clone();
+    // 供轮询里重申气泡窗置顶用（需 owned，故在进入 spawn 前取出）
+    let app = window.app_handle().clone();
 
     tauri::async_runtime::spawn(async move {
         let mut was_ignored = false;
@@ -69,6 +167,11 @@ pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
         // emit，webview 渲染进程会被 IPC 持续唤醒而无法进入空闲。
         // 只有位移超过 1 逻辑像素（过滤亚像素抖动）才真正广播。
         let mut last_emitted: Option<(f64, f64)> = None;
+        // 上一次广播的工作区矩形。原生拖拽窗口时窗口跟着光标走，窗口相对坐标几乎
+        // 不变，只看鼠标位移会漏掉「参考系变了」，所以它也要参与判重。
+        let mut last_screen: Option<(f64, f64, f64, f64)> = None;
+        // 周期性重申气泡窗置顶：20Hz 轮询里每 ~2s 一次
+        let mut ticks: u32 = 0;
         loop {
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
@@ -86,6 +189,12 @@ pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
                 continue;
             }
 
+            // 每 ~2s 重申一次气泡窗置顶：别的窗口抢焦点后它会掉到后面去
+            ticks = ticks.wrapping_add(1);
+            if ticks % 40 == 0 {
+                raise_bubble(&app);
+            }
+
             // 桌面全局坐标（物理像素），与 outer_position() 同一坐标系
             let Ok(cursor) = window.cursor_position() else {
                 continue;
@@ -99,6 +208,20 @@ pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
                     let logical_x = mouse_x / scale_factor;
                     let logical_y = mouse_y / scale_factor;
 
+                    // 当前显示器工作区，换算方式与鼠标位置逐字一致，
+                    // 保证两者是同一帧的原子快照。
+                    let screen = window.current_monitor().ok().flatten().map(|monitor| {
+                        let area = monitor.work_area();
+                        ScreenBox {
+                            left: (f64::from(area.position.x) - f64::from(window_pos.x))
+                                / scale_factor,
+                            top: (f64::from(area.position.y) - f64::from(window_pos.y))
+                                / scale_factor,
+                            width: f64::from(area.size.width) / scale_factor,
+                            height: f64::from(area.size.height) / scale_factor,
+                        }
+                    });
+
                     // 向桌宠前端广播全局鼠标位置：桌宠窗口非全屏，DOM
                     // pointermove 在鼠标移出窗口后停发，Live2D 视线会冻结在
                     // 最后一次窗口内位置。这里把窗口内逻辑坐标（即 webview
@@ -111,15 +234,20 @@ pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
                         },
                         None => true,
                     };
-                    if moved {
+                    let screen_key = screen
+                        .as_ref()
+                        .map(|area| (area.left, area.top, area.width, area.height));
+                    if moved || screen_key != last_screen {
                         let _ = window.emit(
                             "pet:cursor",
                             CursorPosition {
                                 x: logical_x,
                                 y: logical_y,
+                                screen,
                             },
                         );
                         last_emitted = Some((logical_x, logical_y));
+                        last_screen = screen_key;
                     }
 
                     let mut is_over_solid = false;
@@ -153,6 +281,173 @@ pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
     });
 }
 
+// ═══════════════════════════ 气泡窗（双窗口）═══════════════════════════
+//
+// 宠物窗是锚点：尺寸固定、位置只由用户拖动决定。气泡窗是独立窗口，位置**相对宠物窗
+// 恒定**（底边落在宠物头顶上方 BUBBLE_GAP 处），靠监听宠物窗的移动事件跟随 ——
+// 不用原生父子窗口是因为那种从属关系在三个桌面平台的 z-order 表现不一致，
+// 而"按绝对坐标重算一次"到处都一样。
+//
+// 气泡窗整窗点击穿透：它叠在宠物窗上方，不穿透就会抢走头像的拖拽与点击。
+
+/// 两窗共用的宽度基准：视觉上必须一致，否则气泡窗与宠物窗明显错位。
+const WINDOW_W: f64 = 264.0;
+/// 宠物窗高度 = 头像带 210 + 输入带 64（与 constants.ts 的 PET_WINDOW_H_BASE 同步）
+const PET_WINDOW_H: f64 = 274.0;
+/// 气泡窗高度 = 气泡带 278 + 长尾余量 10 + 间隙 8
+const BUBBLE_H: f64 = 296.0;
+const BUBBLE_GAP: f64 = 8.0;
+
+/// 按宠物窗当前位置重算气泡窗位置。
+///
+/// 上置：气泡窗底边落在宠物窗顶边上方 `BUBBLE_GAP` 处；
+/// 下置：气泡窗顶边落在宠物窗底边下方 `BUBBLE_GAP` 处；
+/// 左/右置：气泡窗贴宠物窗左侧/右侧（长尾水平指向宠物），纵向按 `align` 与宠物窗
+/// 对齐同一条边 —— 贴上边则两窗顶边齐平，贴下边则两窗底边齐平。
+///
+/// 用气泡窗/宠物窗**实测**逻辑尺寸而不是常量，这样换缩放倍率时偏移自动跟着变。
+/// 两窗共用同一 scale_factor，逻辑坐标可直接相加。
+#[cfg(desktop)]
+fn place_bubble(app: &AppHandle, pet: &tauri::WebviewWindow) {
+    let Some(bubble) = app.get_webview_window("pet_bubble") else {
+        return;
+    };
+    let (Ok(pos), Ok(scale)) = (pet.outer_position(), pet.scale_factor()) else {
+        return;
+    };
+    let bubble_size = bubble.outer_size().unwrap_or_default();
+    let bubble_h = f64::from(bubble_size.height) / scale;
+    let bubble_w = if bubble_size.width > 0 {
+        f64::from(bubble_size.width) / scale
+    } else {
+        WINDOW_W
+    };
+    let pet_size = pet.outer_size().unwrap_or_default();
+    let pet_h = f64::from(pet_size.height) / scale;
+    let pet_w = if pet_size.width > 0 {
+        f64::from(pet_size.width) / scale
+    } else {
+        WINDOW_W
+    };
+    let placement = app
+        .state::<BubbleSideState>()
+        .0
+        .lock()
+        .map(|placement| *placement)
+        .unwrap_or_default();
+    let pet_left = f64::from(pos.x) / scale;
+    let pet_top = f64::from(pos.y) / scale;
+    // 左右置时的纵向基准：与宠物窗对齐同一条边
+    let side_y = match placement.align {
+        BubbleAlign::Top => pet_top,
+        BubbleAlign::Bottom => pet_top + pet_h - bubble_h,
+    };
+    let (x, y) = match placement.side {
+        BubbleSide::Above => (pet_left, pet_top - bubble_h - BUBBLE_GAP),
+        BubbleSide::Below => (pet_left, pet_top + pet_h + BUBBLE_GAP),
+        BubbleSide::Left => (pet_left - bubble_w - BUBBLE_GAP, side_y),
+        BubbleSide::Right => (pet_left + pet_w + BUBBLE_GAP, side_y),
+    };
+    let _ = bubble.set_position(tauri::LogicalPosition::new(x, y));
+}
+
+/// 设置气泡相对宠物的方位（`align` 只在左右置时起作用），并立即重排一次。
+///
+/// `side` 取值 `"above"`（默认）/`"below"`/`"left"`/`"right"`，其余一律按上方处理；
+/// `align` 取值 `"top"`（默认）/`"bottom"`。
+#[tauri::command]
+#[cfg_attr(not(desktop), allow(unused_variables))]
+pub fn set_bubble_side(
+    side: String,
+    align: Option<String>,
+    app: AppHandle,
+    state: tauri::State<'_, BubbleSideState>,
+) {
+    if let Ok(mut locked) = state.0.lock() {
+        locked.side = match side.as_str() {
+            "below" => BubbleSide::Below,
+            "left" => BubbleSide::Left,
+            "right" => BubbleSide::Right,
+            _ => BubbleSide::Above,
+        };
+        if let Some(align) = align {
+            locked.align = if align == "bottom" {
+                BubbleAlign::Bottom
+            } else {
+                BubbleAlign::Top
+            };
+        }
+    }
+    #[cfg(desktop)]
+    if let Some(pet) = app.get_webview_window("main") {
+        place_bubble(&app, &pet);
+    }
+}
+
+#[cfg(desktop)]
+fn close_bubble_window(app: &AppHandle) {
+    if let Some(bubble) = app.get_webview_window("pet_bubble") {
+        let _ = bubble.close();
+    }
+}
+
+/// 确保气泡窗存在且尺寸正确。
+///
+/// **已存在时只改尺寸、不重建** —— 重建会销毁 webview，气泡里的台词与打字机状态
+/// 一起丢失，改缩放滑杆时会看到气泡闪一下重新出现。
+#[cfg(desktop)]
+fn ensure_bubble_window(app: &AppHandle, scale: f64) -> tauri::Result<()> {
+    use tauri::{LogicalSize, WebviewUrl, WebviewWindowBuilder};
+
+    if let Some(bubble) = app.get_webview_window("pet_bubble") {
+        let _ = bubble.set_size(LogicalSize::new(WINDOW_W * scale, BUBBLE_H * scale));
+        return Ok(());
+    }
+
+    let bubble = WebviewWindowBuilder::new(
+        app,
+        "pet_bubble",
+        WebviewUrl::App("index.html?window=bubble".into()),
+    )
+    .title("LingChat Bubble")
+    .inner_size(WINDOW_W * scale, BUBBLE_H * scale)
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .resizable(false)
+    .maximizable(false)
+    .minimizable(false)
+    .skip_taskbar(true)
+    .always_on_top(true)
+    .focused(false)
+    .visible(false)
+    .build()?;
+
+    // 气泡窗只负责画，不接收任何鼠标事件
+    let _ = bubble.set_ignore_cursor_events(true);
+    bubble.show()?;
+
+    // 跟随：宠物窗每移动一次，气泡窗按固定偏移重算一次（拖动期间跟随本身的频率）。
+    // 宠物窗重新获得焦点时也重申一次置顶 —— 用户从别的程序切回桌宠时，
+    // topmost 组内的前后顺序会丢失，靠 2s 轮询兜底会有一段被遮挡的空窗期。
+    if let Some(pet) = app.get_webview_window("main") {
+        place_bubble(app, &pet);
+        let handle = app.clone();
+        pet.on_window_event(move |event| {
+            if let tauri::WindowEvent::Focused(true) = event {
+                raise_bubble(&handle);
+            }
+            if let tauri::WindowEvent::Moved(_) = event {
+                if let Some(pet) = handle.get_webview_window("main") {
+                    place_bubble(&handle, &pet);
+                }
+            }
+        });
+    }
+
+    tracing::info!("气泡窗已创建");
+    Ok(())
+}
 /// 退出全屏，并等到它真正结束。
 ///
 /// 窗口处于全屏时，平台会吞掉后续的 `set_decorations` / `set_size`：
@@ -255,11 +550,10 @@ pub async fn set_pet_mode(
         if enable {
             let scale_val = scale.unwrap_or(1.0);
 
-            // 窗口尺寸与前端 constants.ts 一一对应：宽 240（圆框 210 + 两侧 15 呼吸边），
-            // 高 = 头像带 210 + 气泡带预算 200 + 输入带 70 = 480。改前端带高时这里必须同步。
-            // GameRoleAvatar 头像框: Math.round(210 * scale)
-            let width = (240.0 * scale_val) as u32;
-            let height = ((210.0 + 200.0 + 70.0) * scale_val) as u32;
+            // 宠物窗 = 头像带 + 输入带，**不含气泡**：气泡独立成窗，宠物窗顶边因此
+            // 就是头像顶边，可以贴到屏幕最顶。改这里必须同步 components/pet/constants.ts。
+            let width = (WINDOW_W * scale_val) as u32;
+            let height = (PET_WINDOW_H * scale_val) as u32;
 
             let _ = window.set_skip_taskbar(true);
             let _ = window.set_always_on_top(true);
@@ -267,7 +561,17 @@ pub async fn set_pet_mode(
             let _ = window.set_decorations(false);
             let _ = window.set_maximizable(false);
             let _ = window.set_size(LogicalSize::new(width, height));
+
+            if let Err(e) = ensure_bubble_window(&app_handle, scale_val) {
+                tracing::warn!("气泡窗创建失败，桌宠降级为无气泡: {e}");
+            }
+            // 改尺寸走的是"只 resize 不重建"，位置需要跟着新尺寸重算一次
+            if let Some(pet) = app_handle.get_webview_window("main") {
+                place_bubble(&app_handle, &pet);
+            }
         } else {
+            close_bubble_window(&app_handle);
+
             // 兜底退全屏 / 取消最大化：leave_fullscreen 依赖 tao 内部全屏标志
             // （set_fullscreen(false) 一调用标志即同步清除，OS 侧可能尚未真正退出，
             //  Windows 上等待循环基本是空转），这里再补一刀让残留状态别吞掉后续 set_size。

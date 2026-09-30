@@ -1,30 +1,71 @@
-//! 上帝 Agent 核心：决策逻辑、prompt 构建、发言者选择。
+//! 上帝 Agent 核心：配置持有、任务运行与两个共享判定。
+//!
+//! 这里是各能力共用的基础设施：LLM 槽位、配置、工具注册表，加上「该不该激活」
+//! 与「NPC 轮数还有没有额度」。具体能力（选人、好感度）各自在自己的模块里，
+//! 副作用的落地在 `ai_service::tools::god_agent` 的工具里。
+//!
+//! 任务一律在**锁外**运行——决策工具内部会自己取 `game_status`，tokio 的 Mutex
+//! 不可重入，持锁调用会自死锁。调用方负责先快照、再调用本模块。
+
+use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
+use tauri::AppHandle;
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::god_agent::config::GodAgentConfig;
-use crate::ai_service::god_agent::tools;
 use crate::ai_service::llm::{LlmSlot, slot_snapshot};
-use crate::ai_service::types::{GameLine, LlmMessage};
-
-// ============================================================
-// GodAgentCore
-// ============================================================
+use crate::ai_service::tools::agent::{AgentOutput, AgentTask, run_tool_agent};
+use crate::ai_service::tools::god_agent::god_agent_registry;
+use crate::ai_service::tools::registry::ToolRegistry;
+use crate::ai_service::types::GameLine;
 
 pub struct GodAgentCore {
     /// LLM 槽位（支持运行时热切换）。
     pub llm: LlmSlot,
-    pub config: GodAgentConfig,
+    /// 运行配置（支持运行时热更新：save_settings 保存 god_agent/affection
+    /// 相关设置后立即生效，无需重启；读写走 RwLock 快照）。
+    pub config: std::sync::RwLock<GodAgentConfig>,
+    /// 决策工具的专用注册表，与聊天注册表隔离（不进工具权限页）。
+    registry: Arc<ToolRegistry>,
 }
 
 impl GodAgentCore {
     pub fn new(llm: LlmSlot, config: GodAgentConfig) -> Self {
-        Self { llm, config }
+        Self {
+            llm,
+            config: std::sync::RwLock::new(config),
+            registry: Arc::new(god_agent_registry()),
+        }
+    }
+
+    /// 运行时热更新配置（save_settings 保存相关设置后调用）。
+    pub fn update_config(&self, config: GodAgentConfig) {
+        *self.config.write().expect("上帝 Agent 配置锁中毒") = config.clone();
+        tracing::info!(
+            "[GodAgent] 配置已热更新: affection_enabled={}, eval_interval={}, recent_window={}, max_consecutive_npc={}",
+            config.affection_enabled,
+            config.affection_eval_interval,
+            config.recent_window,
+            config.max_consecutive_npc,
+        );
+    }
+
+    /// 配置快照（读锁拷贝；GodAgentConfig 是小值类型，拷贝开销可忽略）。
+    pub fn config_snapshot(&self) -> GodAgentConfig {
+        self.config.read().expect("上帝 Agent 配置锁中毒").clone()
+    }
+
+    /// 取 LLM 槽位快照后无头运行一个任务。
+    pub async fn run_task(&self, task: &AgentTask, app: &AppHandle) -> Result<AgentOutput> {
+        let llm = slot_snapshot(&self.llm)
+            .await
+            .ok_or_else(|| anyhow!("上帝Agent LLM 未配置"))?;
+        run_tool_agent(&llm, &self.registry, task, Some(app.clone())).await
     }
 
     // ============================================================
-    // 激活判断
+    // 共享判定
     // ============================================================
 
     /// 判断上帝 Agent 是否应在当前场景下激活。
@@ -36,182 +77,21 @@ impl GodAgentCore {
         gs.script_status.is_none() && gs.present_role_ids.len() > 1
     }
 
-    // ============================================================
-    // Prompt 构建
-    // ============================================================
-
-    /// 构建上帝 Agent 的决策 prompt。
-    ///
-    /// 参考 `MemoryBuilder` 的格式化模式，将最近 N 条台词按角色分组呈现，
-    /// 同时附上每个在场 NPC 的角色信息。
-    fn build_decision_prompt(
-        &self,
-        lines: &[GameLine],
-        npc_ids: &[i32],
-        current_speaker: Option<i32>,
-        gs: &GameStatus,
-    ) -> Vec<LlmMessage> {
-        // --- 角色信息 ---
-        let mut role_info_block = String::from("【当前在场的非玩家角色列表】\n");
-        for &rid in npc_ids {
-            let name = gs
-                .role_manager
-                .get_loaded(rid)
-                .and_then(|r| r.display_name.clone())
-                .unwrap_or_else(|| format!("角色{}", rid));
-            let subtitle = gs
-                .role_manager
-                .get_loaded(rid)
-                .and_then(|r| r.settings.ai_subtitle.clone())
-                .unwrap_or_default();
-            let info = gs
-                .role_manager
-                .get_loaded(rid)
-                .and_then(|r| r.settings.info.clone())
-                .unwrap_or_default();
-            role_info_block.push_str(&format!(
-                "- role_id={}: {}\n  简介: {}\n  设定: {}\n",
-                rid,
-                name,
-                if subtitle.is_empty() {
-                    "无"
-                } else {
-                    &subtitle
-                },
-                if info.is_empty() { "无" } else { &info },
-            ));
-        }
-
-        // --- 最近对话 ---
-        let mut dialog_block = String::from("【最近对话记录（由旧到新）】\n");
-        if lines.is_empty() {
-            dialog_block.push_str("（无对话记录）\n");
-        } else {
-            for line in lines {
-                let name = line.base.display_name.as_deref().unwrap_or("未知");
-                let sid = line.base.sender_role_id.unwrap_or(-1);
-                let emotion = line
-                    .base
-                    .original_emotion
-                    .as_deref()
-                    .filter(|v| !v.is_empty())
-                    .map(|v| format!("【{}】", v))
-                    .unwrap_or_default();
-                let content = &line.base.content;
-                dialog_block.push_str(&format!(
-                    "[role_id={}] {}: {}{}\n",
-                    sid, name, emotion, content
-                ));
-            }
-        }
-
-        // --- 当前发言者提示 ---
-        let current_hint = match current_speaker {
-            Some(0) => "当前发言者是「玩家」。请选择下一个发言的 NPC 角色。\n".to_string(),
-            Some(rid) => {
-                let name = gs
-                    .role_manager
-                    .get_loaded(rid)
-                    .and_then(|r| r.display_name.clone())
-                    .unwrap_or_else(|| format!("角色{}", rid));
-                format!(
-                    "当前发言者是「{}」(role_id={})，刚刚说完话。请判断：\n- 如果对话应该继续（比如另一个角色有强烈反应或话题未完），选择下一个发言的 NPC\n- 如果应该交还给玩家，选择 role_id=0\n",
-                    name, rid
-                )
-            },
-            None => String::new(),
-        };
-
-        let system_prompt = format!(
-            "你是一个多人对话的导演（上帝视角）。你的任务是：根据当前场景中的角色列表和最近的对话历史，\
-             判断下一个应该发言的角色。\n\
-             \n\
-             {}\n\
-             {}\n\
-             {}\n\
-             请调用 select_next_speaker 工具来选择下一个发言者。",
-            role_info_block, dialog_block, current_hint,
-        );
-
-        vec![LlmMessage::system(system_prompt)]
+    /// 连续 NPC 发言轮数是否仍在配置上限内。到顶后应由调用方交还玩家。
+    pub fn within_npc_budget(&self, consecutive_npc_rounds: usize) -> bool {
+        consecutive_npc_rounds < self.config_snapshot().max_consecutive_npc
     }
+}
 
-    pub async fn decide_next_speaker(
-        &self,
-        gs: &GameStatus,
-        current_speaker: Option<i32>,
-    ) -> Result<(i32, String)> {
-        let npc_ids: Vec<i32> = gs
-            .present_role_ids
-            .iter()
-            .filter(|&&id| id != 0)
-            .copied()
-            .collect();
-
-        if npc_ids.len() <= 1 {
-            return Ok((npc_ids.first().copied().unwrap_or(0), "single_npc".into()));
-        }
-
-        let window = self.config.recent_window;
-        let lines: Vec<GameLine> = gs
-            .line_list
-            .iter()
-            .rev()
-            .take(window)
-            .cloned()
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect();
-
-        let messages = self.build_decision_prompt(&lines, &npc_ids, current_speaker, gs);
-
-        let tools = vec![tools::select_next_speaker_tool()];
-        let llm = slot_snapshot(&self.llm)
-            .await
-            .ok_or_else(|| anyhow!("上帝Agent LLM 未配置"))?;
-
-        let response = llm
-            .complete_with_tools(&messages, &tools, Some("auto"))
-            .await
-            .map_err(|e| anyhow!("LLM 调用失败: {}", e))?; // 增加具体错误
-
-        // 更详细的错误信息
-        if let Some(ref tool_calls) = response.tool_calls {
-            if let Some(tc) = tool_calls.first() {
-                if let Some(result) = tools::parse_speaker_selection(tc) {
-                    if result.0 == 0 || gs.present_role_ids.contains(&result.0) {
-                        return Ok(result);
-                    }
-                    tracing::warn!("上帝Agent 选择了不在场的角色 {}，忽略", result.0);
-                    return Err(anyhow!(
-                        "上帝Agent 选择了不在场的角色 {}，在场角色: {:?}",
-                        result.0,
-                        gs.present_role_ids
-                    ));
-                }
-                // 解析失败
-                return Err(anyhow!(
-                    "解析 tool_call 失败: {:?}, available roles: {:?}",
-                    tc,
-                    npc_ids
-                ));
-            }
-            // tool_calls 不为空但第一个元素不存在（理论上不可能）
-            return Err(anyhow!("tool_calls 为空数组"));
-        }
-
-        // LLM 没有返回 tool_calls
-        let content_info = response
-            .content
-            .as_ref()
-            .map(|c| format!("，返回文本: {}", c))
-            .unwrap_or_default();
-
-        Err(anyhow!(
-            "上帝Agent 未调用工具{}，可用角色: {:?}",
-            content_info,
-            npc_ids
-        ))
-    }
+/// 取台词列表末尾 `window` 条，按由旧到新返回。各能力的视图快照共用。
+pub(super) fn tail_lines(gs: &GameStatus, window: usize) -> Vec<GameLine> {
+    gs.line_list
+        .iter()
+        .rev()
+        .take(window)
+        .cloned()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect()
 }

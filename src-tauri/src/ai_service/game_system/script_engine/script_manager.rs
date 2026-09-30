@@ -24,6 +24,7 @@ use crate::db::entities::line::LineAttribute;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::prompt::{PromptOptions, sys_prompt_builder};
+use crate::utils::yaml_file::resolve_settings_file;
 
 /// YAML structure for `story_config.yaml` top-level keys.
 #[derive(serde::Deserialize, Default)]
@@ -336,16 +337,9 @@ impl ScriptManager {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            // Read settings.yml BEFORE the existence check: the lookup key comes
-            // out of it. Previously the check used `role_folder` while creation
-            // passed `settings.script_role_key`, so whenever settings.yml omitted
-            // that field the two disagreed — `find_or_create_role` skipped its
-            // own lookup (it needs Some(script_role_key)) and inserted a fresh
-            // duplicate row on *every* script start, while `character: <folder>`
-            // in the YAML could never resolve to any of them.
-            let settings_path = path.join("settings.yml");
+            let settings_path = resolve_settings_file(&path);
             if !settings_path.exists() {
-                tracing::warn!("[ScriptManager] 角色缺少 settings.yml: {:?}", settings_path);
+                tracing::warn!("[ScriptManager] 角色缺少设定文件: {:?}", settings_path);
                 continue;
             }
 

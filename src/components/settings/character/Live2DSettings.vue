@@ -136,6 +136,52 @@
           </div>
 
           <div
+            v-if="currentVariant"
+            class="space-y-2 rounded-lg border border-white/10 bg-white/5 p-3"
+          >
+            <h4 class="text-sm font-semibold text-white/75">
+              {{ t("settings.characterInfo.live2d.touchReactions") }}
+            </h4>
+            <p class="text-xs text-white/45">
+              {{ t("settings.characterInfo.live2d.touchHint") }}
+            </p>
+            <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <div v-for="part in touchParts" :key="part" class="rounded-lg bg-black/15 p-2">
+                <label class="mb-2 flex items-center gap-2 text-xs font-medium text-white/70">
+                  <input
+                    type="checkbox"
+                    :checked="touchEnabled(part)"
+                    @change="setTouchEnabled(part, ($event.target as HTMLInputElement).checked)"
+                  />
+                  {{ touchPartLabel(part) }}
+                </label>
+                <select
+                  class="live2d-control mb-2"
+                  :disabled="!touchEnabled(part)"
+                  :value="touchExpression(part)"
+                  @change="setTouchExpression(part, ($event.target as HTMLSelectElement).value)"
+                >
+                  <option value="">{{ t("settings.characterInfo.live2d.noExpression") }}</option>
+                  <option v-for="name in expressionOptions" :key="name" :value="name">
+                    {{ name }}
+                  </option>
+                </select>
+                <select
+                  class="live2d-control"
+                  :disabled="!touchEnabled(part)"
+                  :value="touchMotionValue(part)"
+                  @change="setTouchMotion(part, ($event.target as HTMLSelectElement).value)"
+                >
+                  <option value="">{{ t("settings.characterInfo.live2d.noMotion") }}</option>
+                  <option v-for="motion in motionOptions" :key="motion.value" :value="motion.value">
+                    {{ motion.label }}
+                  </option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div
             v-if="clothesNames.length"
             class="space-y-2 rounded-lg border border-white/10 bg-white/5 p-3"
           >
@@ -181,6 +227,7 @@ import { useI18n } from "vue-i18n";
 
 import { importLive2d, inspectLive2d } from "@/api/services/character";
 import Live2DStage from "@/components/game/live2d/Live2DStage.vue";
+import { TOUCH_PART_ORDER } from "@/components/game/live2d/live2d-touch";
 import type { GameRole } from "@/stores/modules/game/state";
 import type { Live2dImportResult, Live2dSettings } from "@/types/live2d";
 import { isAndroid } from "@/utils/platform";
@@ -345,6 +392,70 @@ function setMotion(emotion: string, value: string) {
     index: Number(value.slice(separator + 1)),
     loop: false,
   };
+}
+
+// --- 抚摸反应 ---
+
+/** 判定顺序同时也是展示顺序，与运行时共用一份，免得两处各列一遍导致漏配部位。 */
+const touchParts = TOUCH_PART_ORDER;
+
+function touchBinding(part: string) {
+  return currentVariant.value?.touch_motions?.[part];
+}
+
+/** 部位出现在表里就代表可摸，所以「只晃动、表情动作都留空」也是合法配置。 */
+function touchEnabled(part: string) {
+  return touchBinding(part) !== undefined;
+}
+
+function touchPartLabel(part: string) {
+  return t(`settings.characterInfo.live2d.touchPart_${part}`);
+}
+
+function setTouchEnabled(part: string, enabled: boolean) {
+  const variant = currentVariant.value;
+  if (!variant) return;
+  const bindings = { ...(variant.touch_motions ?? {}) };
+  if (enabled) {
+    if (!bindings[part]) bindings[part] = {};
+  } else {
+    delete bindings[part];
+  }
+  // 空表整个删掉而不是留个 null：Rust 侧这个字段是 HashMap 不是 Option，
+  // 写出 null 下次读取会反序列化失败
+  if (Object.keys(bindings).length) variant.touch_motions = bindings;
+  else delete variant.touch_motions;
+}
+
+function touchExpression(part: string) {
+  return touchBinding(part)?.expression ?? "";
+}
+
+function setTouchExpression(part: string, value: string) {
+  const binding = touchBinding(part);
+  if (!binding) return;
+  if (value) binding.expression = value;
+  else delete binding.expression;
+}
+
+function touchMotionValue(part: string) {
+  const binding = touchBinding(part);
+  if (binding?.group === undefined || binding.index === undefined) return "";
+  return `${binding.group}:${binding.index}`;
+}
+
+function setTouchMotion(part: string, value: string) {
+  const binding = touchBinding(part);
+  if (!binding) return;
+  // group 与 index 必须同进同退，只给一个运行时不会播任何动作
+  if (!value) {
+    delete binding.group;
+    delete binding.index;
+    return;
+  }
+  const separator = value.lastIndexOf(":");
+  binding.group = value.slice(0, separator);
+  binding.index = Number(value.slice(separator + 1));
 }
 
 async function pickSource(sourceKind: "directory" | "zip") {

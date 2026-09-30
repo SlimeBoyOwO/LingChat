@@ -14,13 +14,60 @@ use tauri::AppHandle;
 use tauri::Emitter;
 
 use crate::AppState;
+use crate::ai_service::asr::debug_log;
 use crate::ai_service::asr::error::AsrError;
-use crate::ai_service::asr::provider::{self, AsrResult, ProviderInfo, list_provider_info};
+#[cfg(desktop)]
+use crate::ai_service::asr::global_hotkey;
+use crate::ai_service::asr::provider::{
+    self, AsrOptions, AsrResult, Hotword, ProviderInfo, list_provider_info,
+};
 use crate::ai_service::asr::session::{AsrSession, AsrSource};
 use crate::ai_service::asr::settings::{self, AsrSettings};
 
 fn parse_source(s: &str) -> Result<AsrSource, String> {
     AsrSource::from_str(s).ok_or_else(|| format!("invalid source: {s}"))
+}
+
+/// 命令层的热词入参，兼容两种 JSON 形态：
+///
+/// ```json
+/// ["量子计算", "Anthropic"]                    // 纯词表，用默认权重
+/// [{"text": "量子计算", "weight": 5}]          // 带权重
+/// ```
+///
+/// **这是热词的唯一入口**：ASR 设置页已不再有热词设置，热词归角色
+/// （每个角色独立、存数据库），接入时只需在调用处填这个参数，
+/// **provider 侧零改动**。前端目前一律传 `None`。
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+pub enum HotwordInput {
+    Text(String),
+    Weighted { text: String, weight: Option<u8> },
+}
+
+impl HotwordInput {
+    fn into_hotword(self) -> Hotword {
+        match self {
+            Self::Text(t) => Hotword::new(t),
+            Self::Weighted { text, weight } => match weight {
+                Some(w) => Hotword::with_weight(text, w),
+                None => Hotword::new(text),
+            },
+        }
+    }
+}
+
+/// 组装一次识别调用的参数。空词条（含只输空白的）直接丢弃。
+fn build_options(language_hint: Option<String>, hotwords: Option<Vec<HotwordInput>>) -> AsrOptions {
+    AsrOptions {
+        language_hint,
+        hotwords: hotwords
+            .unwrap_or_default()
+            .into_iter()
+            .map(HotwordInput::into_hotword)
+            .filter(|h| !h.text.trim().is_empty())
+            .collect(),
+    }
 }
 
 /// 错误转前端可读字符串：`{"code":"<i18n_code>","detail":"<详情>"}` JSON。
@@ -141,6 +188,7 @@ pub async fn asr_recognize_wav(
     provider_id: String,
     wav_bytes: Vec<u8>,
     language_hint: Option<String>,
+    hotwords: Option<Vec<HotwordInput>>,
     app: AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<AsrResult, String> {
@@ -153,9 +201,14 @@ pub async fn asr_recognize_wav(
     let p = resolve_provider(&providers, &provider_id, &app, &http)
         .await
         .map_err(|e| err_to_user(&e))?;
-    tracing::info!("[ASR] 发送音频到 {provider_id}: {} bytes", wav_bytes.len());
+    let opts = build_options(language_hint, hotwords);
+    tracing::info!(
+        "[ASR] 发送音频到 {provider_id}: {} bytes, {} 条热词",
+        wav_bytes.len(),
+        opts.hotwords.len()
+    );
     let result = tokio::select! {
-        result = p.recognize(wav_bytes, language_hint.as_deref()) => result,
+        result = p.recognize(wav_bytes, &opts) => result,
         _ = cancel_child.cancelled() => Err(AsrError::Canceled),
     };
     match result {
@@ -181,6 +234,7 @@ pub async fn asr_recognize_wav(
 pub async fn asr_recognize_wav_stream(
     provider_id: String,
     wav_bytes: Vec<u8>,
+    hotwords: Option<Vec<HotwordInput>>,
     app: AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<AsrResult, String> {
@@ -203,8 +257,9 @@ pub async fn asr_recognize_wav_stream(
         Some(std::sync::Arc::new(move |text: &str| {
             let _ = app_handle.emit("asr://stream_partial", text.to_string());
         }));
+    let opts = build_options(None, hotwords);
     let result = tokio::select! {
-        result = p.stream_recognize(wav_bytes, on_partial) => result,
+        result = p.stream_recognize(wav_bytes, &opts, on_partial) => result,
         _ = cancel_child.cancelled() => Err(AsrError::Canceled),
     };
     match result {
@@ -258,6 +313,7 @@ pub async fn asr_cancel(state: tauri::State<'_, AppState>) -> Result<(), String>
 pub async fn asr_start_streaming(
     provider_id: String,
     language_hint: Option<String>,
+    hotwords: Option<Vec<HotwordInput>>,
     app: AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
@@ -274,27 +330,30 @@ pub async fn asr_start_streaming(
         return Err(err_to_user(&AsrError::StreamingNotSupported(provider_id)));
     }
     let settings = settings::load(&app).map_err(|e| err_to_user(&e))?;
-    let cred = settings
+    let creds = settings
         .provider_configs
         .get(&provider_id)
         .cloned()
-        .unwrap_or_default();
-    // 流式模型：配置为空或为非流式模型（实时端点不认识 fun-asr-realtime，
-    // 会返回 400 url error）→ 回退默认流式模型
-    let model = if cred.model.is_empty() || !provider::qwen_is_streaming_model(&cred.model) {
-        "paraformer-realtime-v2".to_string()
+        .unwrap_or_default()
+        .to_credentials();
+    // 流式模型回退：配置为空、或配了非流式模型（实时端点不认识它们，
+    // 会返回 400 url error）→ 该地域的流式默认模型。
+    // **仅 qwen provider 参与回退**：其它 provider 的模型名不能套 qwen 的清单
+    //（旧实现在这里写死 "paraformer-realtime-v2" 且不判断 provider，会把 qwen
+    // 的模型名塞给 llama-asr 之类的 provider）。
+    let model = if provider_id == provider::QwenAsrProvider::ID {
+        let m = creds.model.trim();
+        if m.is_empty() || !provider::qwen_is_streaming_model(m) {
+            provider::qwen_default_model(true, creds.region_enum()).to_string()
+        } else {
+            m.to_string()
+        }
     } else {
-        cred.model
+        creds.model.clone()
     };
+    let opts = build_options(language_hint, hotwords);
     session
-        .start_streaming(
-            &app,
-            &provider_id,
-            cred.endpoint,
-            cred.api_key,
-            model,
-            language_hint,
-        )
+        .start_streaming(&app, &provider_id, &creds, &model, &opts)
         .await
         .map_err(|e| err_to_user(&e))
 }
@@ -331,14 +390,18 @@ pub async fn asr_list_providers() -> Vec<ProviderInfo> {
     list_provider_info()
 }
 
+/// `region`：调用方当前选中的地域，优先于持久化配置（设置页改地域后要立刻刷新
+/// 模型清单，而保存有 500ms debounce，见 `provider::list_models`）。缺省/空白
+/// 时读持久化配置。
 #[tauri::command]
 pub async fn asr_list_models(
     provider_id: String,
+    region: Option<String>,
     app: AppHandle,
 ) -> Result<Vec<provider::ModelInfo>, String> {
     // llama-asr 需要发 HTTP 请求拉服务端模型列表（qwen 是静态清单，不走网络）
     let http = build_http().map_err(|e| err_to_user(&e))?;
-    provider::list_models(&provider_id, &app, &http)
+    provider::list_models(&provider_id, region.as_deref(), &app, &http)
         .await
         .map_err(|e| err_to_user(&e))
 }
@@ -357,6 +420,9 @@ pub async fn asr_set_settings(
     settings::save(&app, &settings).map_err(|e| err_to_user(&e))?;
     // 重建 provider registry（settings 改了 credentials 后立即生效）
     rebuild_providers(&state, &settings).await?;
+    // 逐帧 VAD 调试日志开关立即生效。模块内原子量，不依赖 VAD session 是否就绪
+    // （VAD 加载失败时也应记录设置值，故不等下面的 session_ref）
+    debug_log::set(settings.vad_debug_log);
     // VAD 静音计时立即生效（下一轮录音按新配置切分）；
     // session 未初始化（VAD 加载失败）时跳过——设置本身已保存成功
     if let Ok(session) = session_ref(&state.asr_state.session).await {
@@ -364,6 +430,27 @@ pub async fn asr_set_settings(
             .vad
             .set_silence_timeout_ms(settings.vad_silence_ms)
             .await;
+    }
+    // 全局快捷键同步（仅桌面）：开关开 → 注册 ptt_key 映射的组合串，关 → 注销。
+    // 注册失败（键被占用/插件不支持）：保存本身已成功，**不返回 Err**——返回 Err
+    // 会让前端 store 不提交（与落盘文件分叉），且错误可见性已由 emit 状态事件
+    // 承担（设置页红字提示，审查中危 2）。
+    //
+    // 三种结果都上报（registered / inactive / failed）：前端既要据此提示用户，
+    // 也要据此决定窗口内 keydown 是否退位（pttGlobalOk）。状态判别集中在
+    // `global_hotkey::status_from` —— 此前三个分支各自手写 ok/reason，「已注销」
+    // 与「注册失败」共用 ok:false，关闭开关时设置页误报「注册失败」。
+    #[cfg(desktop)]
+    {
+        let result = global_hotkey::sync(&app, &settings);
+        if let Err(e) = &result {
+            tracing::warn!("[ASR] 全局快捷键注册失败: {e}");
+        }
+        let _ = app.emit_to(
+            "main",
+            "asr:ptt-global-status",
+            global_hotkey::status_from(result, settings.ptt_global),
+        );
     }
     Ok(())
 }
@@ -385,8 +472,10 @@ pub async fn asr_test_provider(
         .await
         .map_err(|e| err_to_user(&e))?;
     tracing::info!("[ASR] 测试连接: 发送静音探测到 {provider_id}");
+    // 探测不带热词（只验连通性与 key 合法性）
+    let opts = AsrOptions::default();
     let result = tokio::select! {
-        result = p.recognize(silence_wav, None) => result,
+        result = p.recognize(silence_wav, &opts) => result,
         _ = cancel_child.cancelled() => Err(AsrError::Canceled),
     };
     match result {
@@ -455,6 +544,9 @@ pub struct AsrStatus {
     /// VAD 模型是否加载成功。session 存在 = init_asr 完成 = AsrVad::load 成功
     /// （模型加载失败会直接中断 init_asr，session 保持 None）。
     pub vad_loaded: bool,
+    /// 全局快捷键注册是否健康（ptt_global=true 且实际已注册）。设置页启动查询用——
+    /// asr:ptt-global-status 事件不缓存，打开晚于失败时刻会错过。
+    pub ptt_global_ok: bool,
 }
 
 /// 查询 ASR 运行时状态。
@@ -462,9 +554,48 @@ pub struct AsrStatus {
 /// 设置页状态面板用。`asr://vad_ready` 事件在启动早期 emit，前端监听器注册
 /// 晚于事件会丢失（Tauri 事件不缓存历史）——查询式获取无竞态。
 #[tauri::command]
-pub async fn asr_get_status(state: tauri::State<'_, AppState>) -> Result<AsrStatus, String> {
+pub async fn asr_get_status(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<AsrStatus, String> {
     let guard = state.asr_state.session.lock().await;
+    // 全局快捷键健康检查（仅桌面）：开关开且实际注册成功才算 ok。
+    // 注册失败（键被占用等）时设置页据此显示红字提示
+    #[cfg(desktop)]
+    let ptt_global_ok = settings::load(&app)
+        .map(|s| global_hotkey::is_healthy(&app, &s))
+        .unwrap_or(false);
+    #[cfg(not(desktop))]
+    let ptt_global_ok = false;
     Ok(AsrStatus {
         vad_loaded: guard.as_ref().is_some(),
+        ptt_global_ok,
     })
+}
+
+/// 全局快捷键的界面门控（前端 chatActive 驱动）：仅 /chat 与 /pet 界面激活。
+/// 离开界面注销释放键位（OS 级注册会拦截其它应用的同键输入）；
+/// 回到界面按当前设置重新注册。移动端 no-op（全局快捷键为桌面端专属）。
+#[tauri::command]
+pub async fn asr_ptt_global_set_active(app: AppHandle, active: bool) -> Result<(), String> {
+    #[cfg(desktop)]
+    {
+        let settings = settings::load(&app).map_err(|e| err_to_user(&e))?;
+        let result = global_hotkey::set_active(&app, active, &settings);
+        // 门控开启时才上报状态：前端 runtime.pttGlobalOk 必须与实际注册同步
+        //（true 才让窗口内 keydown 退位；注册失败必须回到 false 由窗口内兜底，
+        // 否则双源触发 toggle）。门控关闭（设置页打开）不上报——设置页监听
+        // 该事件提示失败，门控关闭时"未注册"是预期状态，上报会造成误报。
+        if active {
+            // 与 asr_set_settings 共用同一套状态判别（见 status_from 的说明）
+            let status = global_hotkey::status_from(result.clone(), settings.ptt_global);
+            let _ = app.emit_to("main", "asr:ptt-global-status", status);
+        }
+        result
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (app, active);
+        Ok(())
+    }
 }

@@ -23,6 +23,7 @@ use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::AppState;
+use crate::ai_service::asr::provider::AsrOptions;
 use crate::ai_service::asr::settings;
 
 /// 一段待识别的音频缓冲（16kHz mono f32，跨 `data` 帧累积）。
@@ -145,8 +146,10 @@ async fn recognize(app: &AppHandle, pcm: &[f32]) -> Result<String, String> {
         .try_lock()
         .map_err(|_| "正在识别中，请稍后再试".to_string())?;
 
+    // 不带热词：本条链路尚无角色上下文
+    let opts = AsrOptions::default();
     let result = session
-        .recognize_wav(provider_id.clone(), wav, None)
+        .recognize_wav(provider_id.clone(), wav, &opts)
         .await
         .map_err(|e| format!("语音识别失败: {e}"))?;
     tracing::info!(

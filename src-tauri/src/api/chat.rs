@@ -27,6 +27,7 @@ fn chat_native_vision_supported(app: &AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// 发送玩家消息，进入正常对话生成流程。
 #[tauri::command]
 pub async fn send_chat_message(
     app: AppHandle,
@@ -43,6 +44,40 @@ pub async fn send_chat_message(
         return handle_debug_command(&app, &text).await;
     }
 
+    dispatch_chat_turn(app, Some(text), screenshot_base64, None).await
+}
+
+/// 发送系统消息（系统事件、玩法提示等），本轮没有玩家发言，
+/// 只写入一条系统台词作为上下文，再走与 send_chat_message 相同的生成流程。
+///
+/// 该台词属性仍为 USER —— 这是刻意设计：系统提示需要进入模型的历史上下文，
+/// 但语义上不是旁白，具体封装交给 PromptRole::System。
+#[tauri::command]
+pub async fn send_system_message(
+    app: AppHandle,
+    text: String,
+    screenshot_base64: Option<String>,
+) -> Result<(), String> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("消息内容不能为空".to_string());
+    }
+
+    let preamble = PromptRole::System.build_prompt(&text);
+    dispatch_chat_turn(app, None, screenshot_base64, Some(preamble)).await
+}
+
+/// 一轮对话的公共流程：截图处理 → 组装生成依赖 → 入队生成。
+///
+/// `text` 为本轮玩家消息，None 表示本轮没有玩家发言（系统消息、主动触发）。
+/// `preamble` 非空时，会在拿到 generation_lock 之后、生成本轮回复之前先落库，
+/// 保证系统台词排在本轮上下文的最前面，且不会被插进还在生成中的上一轮里。
+async fn dispatch_chat_turn(
+    app: AppHandle,
+    text: Option<String>,
+    screenshot_base64: Option<String>,
+    preamble: Option<String>,
+) -> Result<(), String> {
     let state = app.state::<AppState>();
 
     let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm)
@@ -97,7 +132,8 @@ pub async fn send_chat_message(
             if transient_image.is_none() {
                 let prompt = format!(
                     "你是一个图像信息转述者，你将饰演旁白这一角色输出台词，用第三人称叙述把你看到的画面描述给其他AI让他理解用户的图片内容。用户（名字是\"{}\"）的信息是：\"{}\"\n\n以上是用户发的消息，请切合用户实际获取信息的需要，获取画面中的重点内容，用200字描述主体部分即可。如果你看到一个聊天窗口，有角色的立绘和对话框，不要描述这部分，只描述桌面上的其他内容。因为那部分是玩家与AI的聊天窗口。但如果用户信息中明确提到了AI的立绘，背景等（比如用户消息说“看看你的周围，这是哪里呀？”）的时候，你可以描述AI的立绘或背景来告诉主AI的环境感知能力。",
-                    user_name, text
+                    user_name,
+                    text.as_deref().unwrap_or_default()
                 );
 
                 let analysis = {
@@ -123,6 +159,10 @@ pub async fn send_chat_message(
             }
         }
     }
+
+    // game_status / db 随后会被移入 deps，系统台词落库要用，先留一份句柄
+    let preamble_gs = game_status.clone();
+    let preamble_db = state.db.clone();
 
     let deps = GeneratorDeps {
         source: GeneratorSource::UserChat,
@@ -153,7 +193,7 @@ pub async fn send_chat_message(
     // 成就触发检查
     let achievement_manager = state.achievement_manager.clone();
     let app_handle = app.clone();
-    let trigger_text = text.clone();
+    let trigger_text = text.clone().unwrap_or_default();
     tokio::spawn(async move {
         let mut mgr = achievement_manager.lock().await;
         let unlocks = crate::achievements::triggers::AchievementTriggerHandler::handle_user_message(
@@ -200,7 +240,24 @@ pub async fn send_chat_message(
 
     tokio::spawn(async move {
         let _lock = gen_lock.lock().await;
-        match generator.process_message(Some(text)).await {
+
+        // 系统台词先于本轮玩家消息落库，模型按「系统提示 → 玩家发言」的顺序读取；
+        // 本轮无玩家发言时它就是本轮唯一的输入。
+        // sender_role_id 保持 None，不计入玩家消息序号，回溯对话不会在它上面截断。
+        if let Some(content) = preamble {
+            let mut gs = preamble_gs.lock().await;
+            let line = LineBase {
+                content,
+                attribute: LineAttributeExt(LineAttribute::User),
+                display_name: Some("系统".to_string()),
+                ..Default::default()
+            };
+            if let Err(e) = gs.add_line(&preamble_db, line).await {
+                tracing::error!("写入系统台词失败: {:#}", e);
+            }
+        }
+
+        match generator.process_message(text).await {
             Ok(acc) => tracing::info!("消息生成完成，长度: {}", acc.len()),
             Err(e) => tracing::error!("消息生成失败: {:#}", e),
         }

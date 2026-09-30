@@ -1,4 +1,9 @@
 //! 暴露给 LLM 的文件工具，除非显式关闭，否则一律受沙箱约束。
+//!
+//! 每个操作提供返回结构化结果的方法（`list_entries` / `read_text` /
+//! `grep_output` …），供主聊天工具构造 JSON。`list_files` / `read_file` /
+//! `write_file` / `delete_file` 另保留原 String 包装，供脚本编辑器 agent
+//! 复用，输出文本逐字不变；其余操作已并入结构化方法，无 String 包装。
 
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
@@ -28,6 +33,94 @@ fn atomic_write(path: &Path, content: &[u8]) -> anyhow::Result<()> {
         anyhow::anyhow!("failed to replace {}: {}", path.display(), error.error)
     })?;
     Ok(())
+}
+
+/// 目录项类型。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EntryKind {
+    Dir,
+    File,
+    Symlink,
+}
+
+impl EntryKind {
+    /// 供 JSON 输出的稳定标识。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Dir => "dir",
+            Self::File => "file",
+            Self::Symlink => "symlink",
+        }
+    }
+
+    /// 排版文本里的前缀图标。
+    fn icon(self) -> &'static str {
+        match self {
+            Self::Dir => "📂 ",
+            Self::Symlink => "🔗 ",
+            Self::File => "📄 ",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct FileEntry {
+    pub name: String,
+    pub kind: EntryKind,
+}
+
+#[derive(Clone, Debug)]
+pub struct ListResult {
+    pub dir: PathBuf,
+    pub entries: Vec<FileEntry>,
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct ReadResult {
+    pub path: PathBuf,
+    pub content: String,
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct WriteResult {
+    pub path: PathBuf,
+    pub bytes: usize,
+    pub appended: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct EditResult {
+    pub path: PathBuf,
+    pub replacements: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct SearchResult {
+    pub hits: Vec<String>,
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct GrepHit {
+    pub path: String,
+    pub line: usize,
+    pub text: String,
+}
+
+/// grep 的三态输出，对应 `output_mode`。
+#[derive(Clone, Debug)]
+pub enum GrepOutput {
+    Content(Vec<GrepHit>),
+    Files(Vec<String>),
+    Count(Vec<(String, usize)>),
+}
+
+#[derive(Clone, Debug)]
+pub struct GrepResult {
+    pub output: GrepOutput,
+    pub truncated: bool,
 }
 
 #[derive(Clone)]
@@ -69,7 +162,8 @@ impl FileTools {
         }
     }
 
-    pub fn list_files(&self, path: &str) -> anyhow::Result<String> {
+    /// 列出目录项（结构化），最多 `MAX_LIST_ENTRIES` 项，超出置 `truncated`。
+    pub fn list_entries(&self, path: &str) -> anyhow::Result<ListResult> {
         let dir = self.sanitize(path)?;
         if !dir.is_dir() {
             anyhow::bail!("目录不存在: {}", dir.display());
@@ -79,26 +173,38 @@ impl FileTools {
             .filter_map(|entry| {
                 let file_type = entry.file_type().ok()?;
                 let kind = if file_type.is_symlink() {
-                    2
+                    EntryKind::Symlink
                 } else if file_type.is_dir() {
-                    0
+                    EntryKind::Dir
                 } else {
-                    1
+                    EntryKind::File
                 };
-                Some((kind, entry.file_name().to_string_lossy().into_owned()))
+                Some(FileEntry {
+                    name: entry.file_name().to_string_lossy().into_owned(),
+                    kind,
+                })
             })
             .collect::<Vec<_>>();
-        entries.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+        entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         let truncated = entries.len() > MAX_LIST_ENTRIES;
+        entries.truncate(MAX_LIST_ENTRIES);
+        Ok(ListResult {
+            dir,
+            entries,
+            truncated,
+        })
+    }
+
+    pub fn list_files(&self, path: &str) -> anyhow::Result<String> {
+        let ListResult {
+            dir,
+            entries,
+            truncated,
+        } = self.list_entries(path)?;
 
         let mut lines = format!("📂 {}\n", dir.display());
-        for (kind, name) in entries.into_iter().take(MAX_LIST_ENTRIES) {
-            let prefix = match kind {
-                0 => "📂 ",
-                2 => "🔗 ",
-                _ => "📄 ",
-            };
-            lines.push_str(&format!("{prefix}{name}\n"));
+        for entry in entries {
+            lines.push_str(&format!("{}{}\n", entry.kind.icon(), entry.name));
         }
         if truncated {
             lines.push_str(&format!(
@@ -108,7 +214,8 @@ impl FileTools {
         Ok(lines)
     }
 
-    pub fn read_file(&self, path: &str) -> anyhow::Result<String> {
+    /// 读取文本文件（结构化），超 `MAX_READ_BYTES` 截断并置 `truncated`。
+    pub fn read_text(&self, path: &str) -> anyhow::Result<ReadResult> {
         use std::io::Read;
 
         let file = self.sanitize(path)?;
@@ -124,8 +231,20 @@ impl FileTools {
         let truncated = bytes.len() > MAX_READ_BYTES as usize;
         bytes.truncate(MAX_READ_BYTES as usize);
 
-        let content = String::from_utf8_lossy(&bytes);
-        let mut out = format!("===== {} =====\n{}", file.display(), content);
+        Ok(ReadResult {
+            path: file,
+            content: String::from_utf8_lossy(&bytes).into_owned(),
+            truncated,
+        })
+    }
+
+    pub fn read_file(&self, path: &str) -> anyhow::Result<String> {
+        let ReadResult {
+            path,
+            content,
+            truncated,
+        } = self.read_text(path)?;
+        let mut out = format!("===== {} =====\n{}", path.display(), content);
         if truncated {
             out.push_str("\n...[文件过大，已截断]...");
         }
@@ -133,7 +252,12 @@ impl FileTools {
     }
 
     /// 写入完整文件；仅在显式要求时才追加。
-    pub fn write_file(&self, path: &str, content: &str, append: bool) -> anyhow::Result<String> {
+    pub fn write_text(
+        &self,
+        path: &str,
+        content: &str,
+        append: bool,
+    ) -> anyhow::Result<WriteResult> {
         let file = self.sanitize(path)?;
         if let Some(parent) = file.parent() {
             if !parent.as_os_str().is_empty() {
@@ -148,15 +272,33 @@ impl FileTools {
         } else {
             atomic_write(&file, content.as_bytes())?;
         }
+        Ok(WriteResult {
+            path: file,
+            bytes: content.len(),
+            appended: append,
+        })
+    }
+
+    pub fn write_file(&self, path: &str, content: &str, append: bool) -> anyhow::Result<String> {
+        let WriteResult {
+            path,
+            bytes,
+            appended,
+        } = self.write_text(path, content, append)?;
         Ok(format!(
             "{} {}（{} 字节）",
-            if append { "已追加到" } else { "已写入" },
-            file.display(),
-            content.len()
+            if appended {
+                "已追加到"
+            } else {
+                "已写入"
+            },
+            path.display(),
+            bytes
         ))
     }
 
-    pub fn delete_file(&self, path: &str) -> anyhow::Result<String> {
+    /// 删除文件（结构化），返回被删文件的绝对路径。
+    pub fn remove_file(&self, path: &str) -> anyhow::Result<PathBuf> {
         let file = self.sanitize(path)?;
         let metadata = std::fs::symlink_metadata(&file)
             .map_err(|_| anyhow::anyhow!("文件不存在: {}", file.display()))?;
@@ -164,17 +306,22 @@ impl FileTools {
             anyhow::bail!("delete_file 只能删除文件，不能删除目录: {}", file.display());
         }
         std::fs::remove_file(&file)?;
+        Ok(file)
+    }
+
+    pub fn delete_file(&self, path: &str) -> anyhow::Result<String> {
+        let file = self.remove_file(path)?;
         Ok(format!("已删除 {}", file.display()))
     }
 
     /// 精确替换文本；除非 `replace_all=true`，否则 `old_string` 必须唯一。
-    pub fn edit_file(
+    pub fn edit_text(
         &self,
         path: &str,
         old_string: &str,
         new_string: &str,
         replace_all: bool,
-    ) -> anyhow::Result<String> {
+    ) -> anyhow::Result<EditResult> {
         let file = self.sanitize(path)?;
         if !file.is_file() {
             anyhow::bail!("文件不存在: {}", file.display());
@@ -198,15 +345,14 @@ impl FileTools {
             content.replacen(old_string, new_string, 1)
         };
         atomic_write(&file, replaced.as_bytes())?;
-        Ok(format!(
-            "已编辑 {}（替换 {} 处）",
-            file.display(),
-            if replace_all { count } else { 1 }
-        ))
+        Ok(EditResult {
+            path: file,
+            replacements: if replace_all { count } else { 1 },
+        })
     }
 
     /// 以大小写不敏感的 `*` / `?` 通配符递归搜索文件名。
-    pub fn search_files(&self, path: &str, pattern: &str) -> anyhow::Result<String> {
+    pub fn search_names(&self, path: &str, pattern: &str) -> anyhow::Result<SearchResult> {
         let dir = self.sanitize(path)?;
         if !dir.is_dir() {
             anyhow::bail!("目录不存在: {}", dir.display());
@@ -223,28 +369,16 @@ impl FileTools {
             .map(|path| self.display_path(path))
             .collect::<Vec<_>>();
         hits.sort_by_key(|path| path.to_lowercase());
-        if hits.is_empty() {
-            return Ok(format!("没有文件名匹配“{pattern}”的文件。"));
-        }
-        let suffix = if truncated {
-            format!("\n...[搜索已达到 {MAX_WALK_FILES} 个文件或 {MAX_WALK_DEPTH} 层限制]...")
-        } else {
-            String::new()
-        };
-        Ok(format!(
-            "匹配 {} 个文件:\n{}{suffix}",
-            hits.len(),
-            hits.join("\n")
-        ))
+        Ok(SearchResult { hits, truncated })
     }
 
     /// 按相对路径 glob 模式递归查找文件，支持 `*`、`?` 和 `**`。
-    pub fn glob_files(
+    pub fn glob_paths(
         &self,
         path: &str,
         pattern: &str,
         max_results: usize,
-    ) -> anyhow::Result<String> {
+    ) -> anyhow::Result<SearchResult> {
         let dir = self.sanitize(path)?;
         if !dir.is_dir() {
             anyhow::bail!("目录不存在: {}", dir.display());
@@ -261,33 +395,14 @@ impl FileTools {
         hits.sort_by_key(|path| path.to_lowercase());
         let result_truncated = hits.len() > cap;
         hits.truncate(cap);
-        if hits.is_empty() {
-            return Ok(format!("没有文件匹配 glob 模式“{pattern}”。"));
-        }
-        let suffix = if result_truncated || walk_truncated {
-            "\n...[结果已达到限制]..."
-        } else {
-            ""
-        };
-        Ok(format!(
-            "匹配 {} 个文件:\n{}{suffix}",
-            hits.len(),
-            hits.join("\n")
-        ))
+        Ok(SearchResult {
+            hits,
+            truncated: result_truncated || walk_truncated,
+        })
     }
 
-    /// 用正则表达式搜索文本文件，返回 `文件:行号: 内容` 条目。
-    pub fn grep_files(
-        &self,
-        path: &str,
-        pattern: &str,
-        max_results: usize,
-    ) -> anyhow::Result<String> {
-        self.grep(path, pattern, None, false, "content", max_results)
-    }
-
-    /// 类似 ripgrep 的文本搜索，可按 glob 过滤文件并切换输出模式。
-    pub fn grep(
+    /// 用正则表达式搜索文本文件（结构化），输出形态随 `output_mode` 变化。
+    pub fn grep_output(
         &self,
         path: &str,
         pattern: &str,
@@ -295,7 +410,7 @@ impl FileTools {
         case_insensitive: bool,
         output_mode: &str,
         max_results: usize,
-    ) -> anyhow::Result<String> {
+    ) -> anyhow::Result<GrepResult> {
         let dir = self.sanitize(path)?;
         if !dir.is_dir() {
             anyhow::bail!("目录不存在: {}", dir.display());
@@ -311,9 +426,16 @@ impl FileTools {
         let cap = max_results.clamp(1, MAX_GREP_RESULTS);
         let mut files = Vec::new();
         let walk_truncated = walk_files(&dir, 0, &mut files);
-        let mut hits = Vec::new();
+
+        let mut content_hits: Vec<GrepHit> = Vec::new();
+        let mut file_hits: Vec<String> = Vec::new();
+        let mut count_hits: Vec<(String, usize)> = Vec::new();
         for file in files {
-            if hits.len() >= cap {
+            let collected = match output_mode {
+                "content" => content_hits.len(),
+                _ => file_hits.len() + count_hits.len(),
+            };
+            if collected >= cap {
                 break;
             }
             if let (Some(matcher), Some(pattern)) = (&file_matcher, file_glob) {
@@ -334,45 +456,50 @@ impl FileTools {
                 continue;
             }
             let content = String::from_utf8_lossy(&bytes);
+            let display = self.display_path(&file);
             let mut file_match_count = 0usize;
             for (index, line) in content.lines().enumerate() {
                 if regex.is_match(line) {
                     file_match_count += 1;
                     if output_mode == "content" {
-                        hits.push(format!(
-                            "{}:{}: {}",
-                            self.display_path(&file),
-                            index + 1,
-                            line.trim_end()
-                        ));
-                    }
-                    if hits.len() >= cap {
-                        break;
+                        content_hits.push(GrepHit {
+                            path: display.clone(),
+                            line: index + 1,
+                            text: line.trim_end().to_string(),
+                        });
+                        if content_hits.len() >= cap {
+                            break;
+                        }
                     }
                 }
             }
             if file_match_count > 0 && output_mode != "content" {
-                hits.push(if output_mode == "count" {
-                    format!("{}: {file_match_count}", self.display_path(&file))
+                if output_mode == "count" {
+                    count_hits.push((display, file_match_count));
                 } else {
-                    self.display_path(&file)
-                });
+                    file_hits.push(display);
+                }
             }
         }
-        if hits.is_empty() {
-            return Ok(format!("没有匹配“{pattern}”的内容。"));
-        }
-        let truncated = hits.len() >= cap || walk_truncated;
-        let suffix = if truncated {
-            "\n...[结果已达到限制]..."
-        } else {
-            ""
+
+        let (output, collected) = match output_mode {
+            "count" => {
+                let count = count_hits.len();
+                (GrepOutput::Count(count_hits), count)
+            },
+            "files_with_matches" => {
+                let count = file_hits.len();
+                (GrepOutput::Files(file_hits), count)
+            },
+            _ => {
+                let count = content_hits.len();
+                (GrepOutput::Content(content_hits), count)
+            },
         };
-        Ok(format!(
-            "匹配 {} 个结果:\n{}{suffix}",
-            hits.len(),
-            hits.join("\n")
-        ))
+        Ok(GrepResult {
+            output,
+            truncated: collected >= cap || walk_truncated,
+        })
     }
 
     fn display_path(&self, path: &Path) -> String {

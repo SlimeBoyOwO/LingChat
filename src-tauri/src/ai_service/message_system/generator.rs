@@ -18,6 +18,10 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::god_agent::GodAgentCore;
+use crate::ai_service::god_agent::capabilities::{
+    affection::{self as god_affection, NpcAffectionView},
+    speaker::{self as god_speaker, SpeakerView},
+};
 use crate::ai_service::llm::LlmClient;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::processor::{
@@ -152,6 +156,10 @@ impl MessageGenerator {
             }
         }
 
+        // 好感度定期评估：真实对话累计到间隔后，后台 spawn 上帝 Agent 评估，
+        // 不阻塞本轮回复的呈现。
+        self.maybe_evaluate_affection().await;
+
         Ok(accumulated)
     }
 
@@ -254,6 +262,7 @@ impl MessageGenerator {
             return Ok(Vec::new());
         };
         let role = gs.get_role(&self.deps.db, rid).await?;
+        // 好感度不再逐轮注入上下文；变化时以旁白台词写入历史（见 maybe_evaluate_affection）
         Ok(role.memory.clone())
     }
 
@@ -307,45 +316,33 @@ impl MessageGenerator {
     // ============================================================
 
     /// 预处理：用户发消息时，上帝 Agent 决定哪个角色先回应。
+    ///
+    /// 视图必须在锁内取完并释放锁再调用——发言权的切换由 `select_next_speaker`
+    /// 工具内部完成，它会再取 game_status 锁，持锁调用会自死锁。
     async fn god_agent_pre_select(&self) -> Result<()> {
         let Some(god) = &self.deps.god_agent else {
             return Ok(());
         };
 
-        let (should_activate, current_speaker) = {
+        let view = {
             let gs = self.deps.game_status.lock().await;
-            (god.should_activate(&gs), gs.current_role_id)
-        };
-        if !should_activate {
-            return Ok(());
-        }
-
-        // 决策下一个说话者
-        let (selected_role_id, reason) = {
-            let gs = self.deps.game_status.lock().await;
-            god.decide_next_speaker(&gs, current_speaker).await?
+            if !god.should_activate(&gs) {
+                return Ok(());
+            }
+            SpeakerView::capture(&gs, god.config_snapshot().recent_window)
         };
 
-        if selected_role_id == 0 {
+        let decision = god_speaker::decide_next_speaker(god, &view, &self.deps.app).await?;
+        if decision.role_id == 0 {
             return Ok(()); // 选择玩家，保持现状
         }
 
-        // 设定新的 current_role_id
-        let character_name = {
-            let mut gs = self.deps.game_status.lock().await;
-            gs.current_role_id = Some(selected_role_id);
-            let role = gs.get_role(&self.deps.db, selected_role_id).await?;
-            role.display_name.clone().unwrap_or_default()
-        };
-
         tracing::info!(
-            "[GodAgent] pre-select: role_id={}, name={}, reason={}",
-            selected_role_id,
-            character_name,
-            reason
+            "[GodAgent] pre-select: role_id={}, name={:?}, reason={}",
+            decision.role_id,
+            decision.name,
+            decision.reason
         );
-
-        self.emit_character_switch(selected_role_id, &character_name);
         Ok(())
     }
 
@@ -360,7 +357,7 @@ impl MessageGenerator {
         };
 
         // 检查是否超过连续 NPC 轮数上限
-        if consecutive_npc_rounds >= god.config.max_consecutive_npc {
+        if !god.within_npc_budget(consecutive_npc_rounds) {
             tracing::info!(
                 "[GodAgent] 连续 {} 轮 NPC 发言，强制返回玩家",
                 consecutive_npc_rounds
@@ -368,55 +365,84 @@ impl MessageGenerator {
             return Ok((false, 0));
         }
 
-        // 检查是否应激活
-        let (should_activate, current_speaker) = {
+        let view = {
             let gs = self.deps.game_status.lock().await;
-            (god.should_activate(&gs), gs.current_role_id)
-        };
-        if !should_activate {
-            return Ok((false, 0));
-        }
-
-        // 决策
-        let (selected_role_id, reason) = {
-            let gs = self.deps.game_status.lock().await;
-            god.decide_next_speaker(&gs, current_speaker).await?
+            if !god.should_activate(&gs) {
+                return Ok((false, 0));
+            }
+            SpeakerView::capture(&gs, god.config_snapshot().recent_window)
         };
 
-        if selected_role_id == 0 {
+        let decision = god_speaker::decide_next_speaker(god, &view, &self.deps.app).await?;
+        if decision.role_id == 0 {
             // 交还玩家
             return Ok((false, 0));
         }
 
-        // 设定下一个说话者
-        let character_name = {
-            let mut gs = self.deps.game_status.lock().await;
-            gs.current_role_id = Some(selected_role_id);
-            let role = gs.get_role(&self.deps.db, selected_role_id).await?;
-            role.display_name.clone().unwrap_or_default()
-        };
-
         tracing::info!(
-            "[GodAgent] post-select: role_id={}, name={}, reason={}",
-            selected_role_id,
-            character_name,
-            reason
+            "[GodAgent] post-select: role_id={}, name={:?}, reason={}",
+            decision.role_id,
+            decision.name,
+            decision.reason
         );
-
-        self.emit_character_switch(selected_role_id, &character_name);
-        Ok((true, selected_role_id))
+        Ok((true, decision.role_id))
     }
 
-    /// 通知前端当前说话角色已切换。
-    fn emit_character_switch(&self, role_id: i32, name: &str) {
-        let payload = serde_json::json!({
-            "type": "character_switch",
-            "roleId": role_id,
-            "characterName": name,
-        });
-        if let Err(e) = self.deps.app.emit("character:switch", &payload) {
-            tracing::warn!("emit character:switch 失败: {e}");
+    /// 好感度定期评估：真实对话每累计 `affection_eval_interval` 段，spawn 一个
+    /// 上帝 Agent 评估任务在后台调整在场 NPC 的六维好感度。
+    ///
+    /// 不阻塞本轮回复：触发判定与视图快照在锁内取、LLM 调用与落地在锁外。
+    /// 调整结果由 `update_affection` 工具写角色文件、广播 `affection:changed`
+    /// 并补写旁白台词。游标先推进，即使评估失败也不会形成重试风暴。
+    async fn maybe_evaluate_affection(&self) {
+        let Some(god) = &self.deps.god_agent else {
+            return;
+        };
+        // 好感度系统总开关（高级设置）：关闭后不评估、不写旁白台词。
+        // config 可被 save_settings 热更新，这里取快照保证读到最新值。
+        let god_config = god.config_snapshot();
+        if !god_config.affection_enabled {
+            return;
         }
+
+        let snapshot = {
+            let mut gs = self.deps.game_status.lock().await;
+            // 剧本模式下的对话不进好感度评估（剧本事件接口另行扩展）。
+            if gs.script_status.is_some() {
+                None
+            } else {
+                let interval = god_config.affection_eval_interval.max(1);
+                let real_count = gs
+                    .line_list
+                    .iter()
+                    .filter(|l| crate::ai_service::game_system::auto_save::is_real_dialogue(l))
+                    .count();
+                if real_count < gs.affection_eval_cursor + interval {
+                    None
+                } else {
+                    gs.affection_eval_cursor = real_count;
+                    let (npcs, lines) =
+                        NpcAffectionView::capture_all(&gs, god_config.recent_window);
+                    if npcs.is_empty() {
+                        None
+                    } else {
+                        Some((npcs, lines))
+                    }
+                }
+            }
+        };
+        let Some((npcs, lines)) = snapshot else {
+            return;
+        };
+
+        let god = Arc::clone(god);
+        let app = self.deps.app.clone();
+        tauri::async_runtime::spawn(async move {
+            // 后台任务：失败只记日志，不影响已经呈现给用户的回复。
+            if let Err(e) = god_affection::evaluate_affection(&god, &npcs, &lines, &app).await {
+                tracing::warn!("[Affection] 好感度评估失败: {e:#}");
+            }
+        });
     }
 
     async fn run_pipeline(

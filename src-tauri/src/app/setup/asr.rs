@@ -17,10 +17,31 @@ pub async fn init_asr(
     app: &tauri::AppHandle,
     asr_state: &Arc<crate::ai_service::asr::AsrState>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use crate::ai_service::asr::{provider, session::AsrSession, settings, vad::AsrVad};
+    use crate::ai_service::asr::{debug_log, provider, session::AsrSession, settings, vad::AsrVad};
 
     tracing::info!("[ASR] init_asr 开始");
-    let cfg = settings::load(app)?;
+    let mut cfg = settings::load(app)?;
+    // 一次性迁移：把引入地域 / 双端点之前的 qwen 老配置补齐（详见
+    // settings::migrate_provider_cfg）。放在 load 之后、构建 provider 之前，
+    // 保证本次启动就用迁移后的值。**有变更才落盘**——迁移函数对已迁移过的
+    // 配置直接返回 false，不会每次启动都重写 settings.json。
+    let mut migrated = false;
+    for (id, c) in cfg.provider_configs.iter_mut() {
+        if settings::migrate_provider_cfg(id, c) {
+            migrated = true;
+        }
+    }
+    if migrated {
+        if let Err(e) = settings::save(app, &cfg) {
+            // 落盘失败不阻塞启动：内存里的 cfg 已是迁移后的值，本次运行正常
+            tracing::warn!("[ASR] 配置迁移落盘失败（本次仍按迁移后的值运行）: {e}");
+        } else {
+            tracing::info!("[ASR] 已迁移老配置（补齐地域与双端点）");
+        }
+    }
+    // 逐帧 VAD 调试日志开关（默认关）。放在 VAD 加载之前：加载失败会提前 return，
+    // 开关值也要按设置落定，不留半初始化状态
+    debug_log::set(cfg.vad_debug_log);
     // TLS 走统一的 webpki-roots 配置（Android 上 rustls-platform-verifier 未初始化会 panic）
     let tls_config = crate::utils::tls::build_tls_config()?;
     let http = reqwest::Client::builder()

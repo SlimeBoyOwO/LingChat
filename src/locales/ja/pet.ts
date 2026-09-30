@@ -24,6 +24,8 @@ export default {
     bubbleSideAuto: "自動",
     bubbleSideAbove: "ペットの上",
     bubbleSideBelow: "ペットの下",
+    bubbleSideLeft: "ペットの左",
+    bubbleSideRight: "ペットの右",
     particleTitle: "背景パーティクル効果（オフにすると動作が軽くなります）",
     particleNone: "なし",
     particleStarField: "星空",

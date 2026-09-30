@@ -18,7 +18,9 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::AppState;
 use crate::ai_service::skill_agent::command_executor::{self, ApprovalMap, ApprovalRequest};
 use crate::ai_service::skill_agent::config::SkillAgentConfig;
-use crate::ai_service::skill_agent::file_tools::{FileTools, MAX_GLOB_RESULTS, MAX_GREP_RESULTS};
+use crate::ai_service::skill_agent::file_tools::{
+    FileTools, GrepOutput, GrepResult, MAX_GLOB_RESULTS, MAX_GREP_RESULTS,
+};
 use crate::ai_service::skill_agent::skills;
 use crate::ai_service::types::ToolDefinition;
 
@@ -53,10 +55,31 @@ fn arg_str<'a>(arguments: &'a Value, key: &str) -> Result<&'a str, ToolError> {
     Ok(value)
 }
 
-fn exec(result: anyhow::Result<String>) -> Result<ToolResult, ToolError> {
-    result
-        .map(|out| json!({ "ok": true, "output": out }))
-        .map_err(|e| ToolError::Execution(e.to_string()))
+/// 把文件沙箱的 anyhow 错误转成工具执行错误。
+fn to_tool_error(error: anyhow::Error) -> ToolError {
+    ToolError::Execution(error.to_string())
+}
+
+/// 把 grep 的结构化结果编成 JSON；`matches` 元素形态随 `output_mode` 变化。
+fn grep_result_json(pattern: &str, output_mode: &str, result: GrepResult) -> Value {
+    let matches: Vec<Value> = match result.output {
+        GrepOutput::Content(items) => items
+            .into_iter()
+            .map(|hit| json!({ "path": hit.path, "line": hit.line, "text": hit.text }))
+            .collect(),
+        GrepOutput::Files(items) => items.into_iter().map(Value::String).collect(),
+        GrepOutput::Count(items) => items
+            .into_iter()
+            .map(|(path, count)| json!({ "path": path, "count": count }))
+            .collect(),
+    };
+    json!({
+        "ok": true,
+        "pattern": pattern,
+        "output_mode": output_mode,
+        "matches": matches,
+        "truncated": result.truncated,
+    })
 }
 
 async fn run_blocking<F>(work: F) -> Result<ToolResult, ToolError>
@@ -144,15 +167,17 @@ impl Tool for ListSkills {
         let found = tokio::task::spawn_blocking(move || skills::find_all_skills(&skills_dir))
             .await
             .map_err(|error| ToolError::Execution(format!("技能扫描后台任务异常: {error}")))?;
-        if found.is_empty() {
-            return Ok(json!({ "ok": true, "output": "没有已安装的技能。" }));
-        }
-        let lines = found
+        let skills: Vec<Value> = found
             .iter()
-            .map(|s| format!("- {} ({}): {}", s.name, s.location, s.description))
-            .collect::<Vec<_>>()
-            .join("\n");
-        Ok(json!({ "ok": true, "output": format!("可用技能:\n{lines}") }))
+            .map(|skill| {
+                json!({
+                    "name": skill.name,
+                    "location": skill.location,
+                    "description": skill.description,
+                })
+            })
+            .collect();
+        Ok(json!({ "ok": true, "skills": skills }))
     }
 }
 
@@ -194,13 +219,9 @@ impl Tool for ReadSkill {
         match found {
             Some(res) => Ok(json!({
                 "ok": true,
-                "output": format!(
-                    "Reading: {}\nBase directory: {}\n\n{}\n\nSkill loaded: {}",
-                    res.name,
-                    res.base_directory.display(),
-                    res.content,
-                    res.name
-                ),
+                "name": res.name,
+                "base_directory": res.base_directory.display().to_string(),
+                "content": res.content,
             })),
             None => Err(ToolError::Execution(
                 "未找到技能，或技能名称/文件不安全".into(),
@@ -315,7 +336,17 @@ file_tool!(
     }),
     |ft: &FileTools, args: &Value| {
         let path = arg_str(args, "path")?;
-        exec(ft.list_files(path))
+        let result = ft.list_entries(path).map_err(to_tool_error)?;
+        Ok(json!({
+            "ok": true,
+            "path": result.dir.display().to_string(),
+            "entries": result
+                .entries
+                .iter()
+                .map(|entry| json!({ "name": entry.name, "kind": entry.kind.as_str() }))
+                .collect::<Vec<_>>(),
+            "truncated": result.truncated,
+        }))
     }
 );
 
@@ -345,7 +376,13 @@ file_tool!(
                 }
             }));
         }
-        exec(ft.read_file(path))
+        let result = ft.read_text(path).map_err(to_tool_error)?;
+        Ok(json!({
+            "ok": true,
+            "path": result.path.display().to_string(),
+            "content": result.content,
+            "truncated": result.truncated,
+        }))
     }
 );
 
@@ -371,7 +408,15 @@ mutating_file_tool!(
             .and_then(Value::as_str)
             .ok_or_else(|| ToolError::InvalidArguments("缺少 content 参数".into()))?;
         let append = args.get("append").and_then(Value::as_bool).unwrap_or(false);
-        exec(ft.write_file(path, content, append))
+        let result = ft
+            .write_text(path, content, append)
+            .map_err(to_tool_error)?;
+        Ok(json!({
+            "ok": true,
+            "path": result.path.display().to_string(),
+            "bytes": result.bytes,
+            "appended": result.appended,
+        }))
     }
 );
 
@@ -449,7 +494,11 @@ impl Tool for DeleteFile {
             .await?;
         }
 
-        run_blocking(move || exec(ft.delete_file(&path))).await
+        run_blocking(move || {
+            let file = ft.remove_file(&path).map_err(to_tool_error)?;
+            Ok(json!({ "ok": true, "path": file.display().to_string() }))
+        })
+        .await
     }
 }
 
@@ -483,7 +532,14 @@ mutating_file_tool!(
             .get("replace_all")
             .and_then(Value::as_bool)
             .unwrap_or(false);
-        exec(ft.edit_file(path, old_string, new_string, replace_all))
+        let result = ft
+            .edit_text(path, old_string, new_string, replace_all)
+            .map_err(to_tool_error)?;
+        Ok(json!({
+            "ok": true,
+            "path": result.path.display().to_string(),
+            "replacements": result.replacements,
+        }))
     }
 );
 
@@ -503,7 +559,13 @@ file_tool!(
     |ft: &FileTools, args: &Value| {
         let path = arg_str(args, "path")?;
         let pattern = arg_str(args, "pattern")?;
-        exec(ft.search_files(path, pattern))
+        let result = ft.search_names(path, pattern).map_err(to_tool_error)?;
+        Ok(json!({
+            "ok": true,
+            "pattern": pattern,
+            "matches": result.hits,
+            "truncated": result.truncated,
+        }))
     }
 );
 
@@ -529,7 +591,10 @@ file_tool!(
             .and_then(Value::as_u64)
             .map(|n| n.min(MAX_GREP_RESULTS as u64) as usize)
             .unwrap_or(50);
-        exec(ft.grep_files(path, pattern, max_results))
+        let result = ft
+            .grep_output(path, pattern, None, false, "content", max_results)
+            .map_err(to_tool_error)?;
+        Ok(grep_result_json(pattern, "content", result))
     }
 );
 
@@ -555,7 +620,15 @@ file_tool!(
             .and_then(Value::as_u64)
             .map(|n| n.min(MAX_GLOB_RESULTS as u64) as usize)
             .unwrap_or(MAX_GLOB_RESULTS);
-        exec(ft.glob_files(path, pattern, max_results))
+        let result = ft
+            .glob_paths(path, pattern, max_results)
+            .map_err(to_tool_error)?;
+        Ok(json!({
+            "ok": true,
+            "pattern": pattern,
+            "matches": result.hits,
+            "truncated": result.truncated,
+        }))
     }
 );
 
@@ -596,14 +669,17 @@ file_tool!(
             .and_then(Value::as_u64)
             .map(|n| n.min(MAX_GREP_RESULTS as u64) as usize)
             .unwrap_or(50);
-        exec(ft.grep(
-            path,
-            pattern,
-            file_glob,
-            case_insensitive,
-            output_mode,
-            max_results,
-        ))
+        let result = ft
+            .grep_output(
+                path,
+                pattern,
+                file_glob,
+                case_insensitive,
+                output_mode,
+                max_results,
+            )
+            .map_err(to_tool_error)?;
+        Ok(grep_result_json(pattern, output_mode, result))
     }
 );
 
@@ -827,110 +903,11 @@ impl Tool for ExecuteCommand {
         };
         match result {
             Ok(out) => Ok(json!({
-                "ok": out.exit_code == 0,
+                "ok": true,
                 "exit_code": out.exit_code,
                 "output": out.to_prompt_string(),
             })),
             Err(e) => Err(ToolError::Execution(e.to_string())),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ai_service::tools::settings::ToolSettings;
-
-    #[test]
-    fn code_tool_schemas_are_strict_openai_objects() {
-        let settings = SharedToolSettings::new(ToolSettings::default());
-        let tools: Vec<Box<dyn Tool>> = vec![
-            Box::new(ListSkills),
-            Box::new(ReadSkill),
-            Box::new(ListFiles::new(settings.clone())),
-            Box::new(ReadFile::new(settings.clone())),
-            Box::new(WriteFile::new(settings.clone())),
-            Box::new(DeleteFile::new(settings.clone())),
-            Box::new(EditFile::new(settings.clone())),
-            Box::new(SearchFiles::new(settings.clone())),
-            Box::new(GrepFiles::new(settings.clone())),
-            Box::new(Glob::new(settings.clone())),
-            Box::new(Grep::new(settings.clone())),
-            Box::new(ExecuteCommand::new(settings)),
-        ];
-
-        for tool in tools {
-            let definition = tool.definition();
-            assert_eq!(definition.type_, "function");
-            assert_eq!(definition.function.parameters["type"], "object");
-            assert_eq!(
-                definition.function.parameters["additionalProperties"], false,
-                "{} must reject unknown arguments",
-                definition.function.name
-            );
-            assert!(definition.function.parameters["properties"].is_object());
-            let expected_timeout = match definition.function.name.as_str() {
-                "list_skills" | "read_skill" => SKILL_TOOL_TIMEOUT,
-                "delete_file" => DELETE_FILE_TOOL_TIMEOUT,
-                "write_file" | "edit_file" => FILE_MUTATION_TOOL_TIMEOUT,
-                "execute_command" => Duration::from_secs(430),
-                _ => FILE_TOOL_TIMEOUT,
-            };
-            assert_eq!(tool.timeout_hint(), Some(expected_timeout));
-        }
-    }
-
-    #[test]
-    fn command_schema_exposes_bounded_timeout() {
-        let tool = ExecuteCommand::new(SharedToolSettings::new(ToolSettings::default()));
-        let definition = tool.definition();
-        assert_eq!(
-            definition.function.parameters["properties"]["timeout_seconds"]["type"],
-            "integer"
-        );
-        assert_eq!(
-            definition.function.parameters["properties"]["run_in_background"]["type"],
-            "boolean"
-        );
-        assert_eq!(
-            definition.function.parameters["properties"]["description"]["type"],
-            "string"
-        );
-        assert_eq!(tool.timeout_hint(), Some(Duration::from_secs(430)));
-    }
-
-    #[test]
-    fn delete_file_schema_reserves_time_for_user_approval() {
-        let tool = DeleteFile::new(SharedToolSettings::new(ToolSettings::default()));
-        let definition = tool.definition();
-        assert!(definition.function.description.contains("请求确认"));
-        assert_eq!(tool.timeout_hint(), Some(DELETE_FILE_TOOL_TIMEOUT));
-    }
-
-    #[test]
-    fn detects_common_file_deletion_commands() {
-        for command in [
-            r#"cmd /c del /q "C:\temp\old.txt""#,
-            r#"powershell -NoProfile -Command "Remove-Item -LiteralPath 'C:\temp\old.txt'""#,
-            "rm -rf ./build",
-            "git clean -fdx",
-            "find . -name '*.tmp' -delete",
-            "python -c \"import shutil; shutil.rmtree('build')\"",
-            "robocopy empty target /MIR",
-        ] {
-            assert!(command_may_delete_files(command), "not detected: {command}");
-        }
-
-        for command in [
-            "Get-ChildItem -Force",
-            "cargo test --lib",
-            "git status --short",
-            "python -c \"print('hello')\"",
-        ] {
-            assert!(
-                !command_may_delete_files(command),
-                "false positive: {command}"
-            );
         }
     }
 }

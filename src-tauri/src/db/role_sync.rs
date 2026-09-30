@@ -6,6 +6,7 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, Qu
 use serde::Deserialize;
 
 use crate::db::entities::role::{self, RoleType};
+use crate::utils::yaml_file::resolve_settings_file;
 
 #[derive(Debug, Deserialize)]
 struct CharacterSettings {
@@ -113,7 +114,7 @@ pub async fn sync_roles_from_folder(db: &DatabaseConnection, data_dir: &Path) ->
             continue;
         }
 
-        let settings_path = entry.path().join("settings.yml");
+        let settings_path = resolve_settings_file(&entry.path());
         if !settings_path.exists() {
             continue;
         }

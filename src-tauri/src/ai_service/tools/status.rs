@@ -38,6 +38,7 @@ impl Tool for CurrentStatus {
         let mut present_role_ids: Vec<i32> = gs.present_role_ids.iter().copied().collect();
         present_role_ids.sort_unstable();
         Ok(json!({
+            "ok": true,
             "player": gs.player.user_name,
             "current_role_id": gs.current_role_id,
             "onstage_role_ids": gs.onstage_role_ids,
@@ -87,6 +88,7 @@ impl Tool for SceneStatus {
         let store = SceneStore::new(&data_dir());
         match store.find_by_id(&id) {
             Ok(Some(scene)) => Ok(json!({
+                "ok": true,
                 "current_scene_id": id,
                 "name": scene.name,
                 "description": scene.description,

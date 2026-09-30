@@ -22,12 +22,14 @@
         </div>
       </div>
 
-      <!-- 3. 常驻特效：现代科技感流光圆环 -->
+      <!-- 3. 常驻特效：现代科技感流光圆环（无框模式整组隐藏） -->
       <div
+        v-if="!frameless"
         class="animate-pulse-slow pointer-events-none absolute inset-3 rounded-full border-[1.5px] border-cyan-400/20"
       ></div>
       <!-- 流光扫边特效环 -->
       <div
+        v-if="!frameless"
         class="sweep-glow-ring pointer-events-none absolute -inset-1 rounded-full drop-shadow-[0_0_6px_rgba(34,211,238,0.4)]"
       ></div>
 
@@ -40,27 +42,36 @@
         Windows 的 -webkit-app-region: drag 保持原样。
       -->
       <div
-        class="avatar-breath-frame relative z-10 flex h-full w-full items-center justify-center overflow-hidden rounded-full border-2 border-white/60 bg-white/10 shadow-[0_8px_32px_rgba(0,176,255,0.15)] backdrop-blur-md transition-colors duration-300 dark:border-white/20 dark:bg-black/10"
+        class="avatar-breath-frame relative z-10 flex h-full w-full items-center justify-center overflow-hidden transition-colors duration-300"
+        :class="
+          frameless
+            ? ''
+            : 'rounded-full border-2 border-white/60 bg-white/10 shadow-[0_8px_32px_rgba(0,176,255,0.15)] backdrop-blur-md dark:border-white/20 dark:bg-black/10'
+        "
         data-tauri-drag-region="false"
         @mousedown="startWindowDrag"
         @dragstart.prevent
       >
-        <!-- 下降效果的粒子系统 -->
+        <!-- 下降效果的粒子系统（无框模式与玻璃底一起隐藏） -->
         <BAParticles
-          v-if="uiStore.currentBackgroundEffect === 'BA'"
+          v-if="!frameless && uiStore.currentBackgroundEffect === 'BA'"
           class="pointer-events-none absolute inset-0 z-0 h-full w-full"
           :particle-count="60"
           :speed="0.2"
         />
 
         <StarField
-          v-if="uiStore.currentBackgroundEffect === 'StarField'"
+          v-if="!frameless && uiStore.currentBackgroundEffect === 'StarField'"
           class="pointer-events-none absolute inset-0 z-0 h-full w-full"
         />
 
         <!-- 头像图片容器 -->
         <div
-          :class="['z-10 h-full w-full overflow-hidden rounded-full', containerClasses]"
+          :class="[
+            'z-10 h-full w-full overflow-hidden',
+            frameless ? '' : 'rounded-full',
+            containerClasses,
+          ]"
           @animationend="handleAnimationEnd"
         >
           <div class="h-full w-full origin-top" :style="avatarStyles">
@@ -115,6 +126,14 @@ const emit = defineEmits(["avatar-click"]);
 const bubbleAudio = ref<HTMLAudioElement | null>(null);
 const imageFadeRef = ref<InstanceType<typeof ImageCrossFade> | null>(null);
 const uiStore = useUIStore();
+
+// 无框模式（角色设定 → 桌宠 → 无框桌宠）：隐藏圆形外框、玻璃底与粒子，
+// 并取消圆形裁剪，让角色在本来的方形区域内完整显示。
+//
+// ⚠️ 注意：Vue 的 `:class` 只能**加**类名，减不掉静态 `class` 里的 token。
+// 所以 `rounded-full` / `border-2` / `bg-white/10` 这些必须真的从上面的静态串里
+// 拿掉、改由 `:class` 按需补上 —— 否则开关打开后外观照旧。
+const frameless = computed(() => !!role.value.petFrameless);
 
 // ─── 窗口拖曳 ────────────────────────────────────────────────
 // macOS 的 WKWebView 不支持 -webkit-app-region: drag，桌宠窗口因此完全拖不动。

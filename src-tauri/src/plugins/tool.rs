@@ -63,12 +63,12 @@ impl Tool for PluginTool {
         // 外层 timeout_hint 兜底。app 随闭包传入，供脚本内 call_tool 使用。
         let result = tokio::task::spawn_blocking(move || {
             let manager = app.state::<AppState>().data().plugin_manager.clone();
-            let (config, env) = manager.plugin_run_env(&plugin_id);
+            let run_env = manager.plugin_run_env(&plugin_id);
             let script_path = manager
                 .plugin_dir(&plugin_id)
                 .map(|dir| dir.join(&script_rel))
                 .ok_or_else(|| format!("插件 {plugin_id} 目录不存在"))?;
-            python_backend::run_plugin_script(&script_path, &name, &arguments, &config, &env, app)
+            python_backend::run_plugin_script(&script_path, &name, &arguments, run_env, app)
         })
         .await
         .map_err(|join_err| ToolError::Execution(format!("插件线程异常: {join_err}")))?;
