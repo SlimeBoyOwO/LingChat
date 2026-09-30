@@ -581,6 +581,12 @@ pub fn run() {
                 .await;
             });
 
+            // 天气缓存后台刷新：IP 定位开关打开时每 5 分钟检查一次，缓存过期即
+            // 重新定位拉取，供消息处理器注入"用户所在地天气"系统提醒
+            tauri::async_runtime::spawn(ai_service::tools::weather::run_refresh_loop(
+                app.handle().clone(),
+            ));
+
             // 桌宠点击穿透：全局轮询鼠标位置，只有落在前端上报的 solid 区域内才接收鼠标事件，
             // 其余透明区域把点击让给底下的窗口。
             //

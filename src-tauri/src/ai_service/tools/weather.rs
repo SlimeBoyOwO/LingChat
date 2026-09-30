@@ -1,11 +1,75 @@
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use serde_json::{Value, json};
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use crate::ai_service::types::ToolDefinition;
 use crate::config::AppConfig;
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
+
+/// ============ 天气上下文缓存 ============
+///
+/// 天气感知定位为"环境上下文"而非"问答工具"：模型应该随时知道外面什么天气
+/// （像知道当前时间一样），而不是被问到才临时查。缓存在两处被填充——
+/// query_weather 工具执行成功时、后台刷新循环（run_refresh_loop）定时拉取时；
+/// 消息处理器（processor.rs）把未过期的摘要注入系统提醒。
+
+const WEATHER_TTL: Duration = Duration::from_secs(30 * 60);
+
+struct CachedWeather {
+    summary: String,
+    fetched_at: Instant,
+}
+
+static WEATHER_CACHE: Lazy<Mutex<Option<CachedWeather>>> = Lazy::new(|| Mutex::new(None));
+
+/// 未过期的自然语言天气摘要，如「成都 小雨 21.5°C（体感 20°C）」。
+pub fn cached_summary() -> Option<String> {
+    let cache = WEATHER_CACHE.lock().ok()?;
+    let cached = cache.as_ref()?;
+    (cached.fetched_at.elapsed() <= WEATHER_TTL).then(|| cached.summary.clone())
+}
+
+fn store_summary(summary: String) {
+    if let Ok(mut cache) = WEATHER_CACHE.lock() {
+        *cache = Some(CachedWeather {
+            summary,
+            fetched_at: Instant::now(),
+        });
+    }
+}
+
+/// 后台刷新循环：每 5 分钟检查一次，缓存缺失/过期且用户开启了 IP 自动定位时
+/// 重新定位 + 拉取。由 lib.rs 在启动时 spawn。
+pub(crate) async fn run_refresh_loop(app: tauri::AppHandle) {
+    loop {
+        let ip_enabled = AppConfig::load(&app)
+            .map(|c| c.weather_ip_location)
+            .unwrap_or(false);
+        if ip_enabled {
+            let stale = WEATHER_CACHE
+                .lock()
+                .ok()
+                .and_then(|c| c.as_ref().map(|w| w.fetched_at.elapsed() > WEATHER_TTL))
+                .unwrap_or(true);
+            if stale {
+                match reqwest::Client::builder()
+                    .timeout(Duration::from_secs(10))
+                    .build()
+                {
+                    Ok(client) => match fetch_summary_via_ip(&client).await {
+                        Ok(summary) => store_summary(summary),
+                        Err(e) => tracing::warn!("天气缓存刷新失败: {e}"),
+                    },
+                    Err(e) => tracing::warn!("天气客户端创建失败: {e}"),
+                }
+            }
+        }
+        tokio::time::sleep(Duration::from_secs(5 * 60)).await;
+    }
+}
 
 /// WMO weather interpretation code → 中文天气描述。
 fn describe_weather_code(code: i64) -> &'static str {
@@ -92,6 +156,43 @@ async fn locate_by_ip(client: &reqwest::Client) -> Result<(String, String, Strin
     ))
 }
 
+/// 经纬度 → 当前天气 JSON（Open-Meteo Forecast）。
+async fn fetch_current(client: &reqwest::Client, lat: &str, lon: &str) -> Result<Value, ToolError> {
+    let url = format!(
+        "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}\
+         &current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,\
+         wind_speed_10m&timezone=auto&forecast_days=1"
+    );
+    let weather: Value = client
+        .get(&url)
+        .send()
+        .await
+        .and_then(|r| r.error_for_status())
+        .map_err(|e| ToolError::Execution(format!("天气查询失败（请检查网络）: {e}")))?
+        .json()
+        .await
+        .map_err(|e| ToolError::Execution(format!("解析天气数据失败: {e}")))?;
+    if weather["current"].is_null() {
+        return Err(ToolError::Execution("天气数据为空".into()));
+    }
+    Ok(weather)
+}
+
+/// 拉取并组装自然语言摘要（供后台刷新循环使用）。
+async fn fetch_summary_via_ip(client: &reqwest::Client) -> Result<String, ToolError> {
+    let (city, lat, lon) = locate_by_ip(client).await?;
+    let weather = fetch_current(client, &lat, &lon).await?;
+    let current = &weather["current"];
+    let code = current["weather_code"].as_i64().unwrap_or(-1);
+    Ok(format!(
+        "{} {} {}°C（体感 {}°C）",
+        city,
+        describe_weather_code(code),
+        current["temperature_2m"],
+        current["apparent_temperature"],
+    ))
+}
+
 /// query_weather：查询实时天气（Open-Meteo，免 API key）。
 ///
 /// 城市解析两级策略：用户在对话中明确说出的城市优先；未说时若用户开启了
@@ -163,27 +264,19 @@ impl Tool for WeatherTool {
             ));
         };
 
-        // 经纬度 → 当前天气（Open-Meteo Forecast）
-        let url = format!(
-            "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}\
-             &current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,\
-             wind_speed_10m&timezone=auto&forecast_days=1"
-        );
-        let weather: Value = client
-            .get(&url)
-            .send()
-            .await
-            .and_then(|r| r.error_for_status())
-            .map_err(|e| ToolError::Execution(format!("天气查询失败（请检查网络）: {e}")))?
-            .json()
-            .await
-            .map_err(|e| ToolError::Execution(format!("解析天气数据失败: {e}")))?;
-
+        let weather = fetch_current(&client, &lat, &lon).await?;
         let current = &weather["current"];
-        if current.is_null() {
-            return Err(ToolError::Execution("天气数据为空".into()));
-        }
         let code = current["weather_code"].as_i64().unwrap_or(-1);
+
+        // 成功的查询同时喂给上下文缓存：模型之后没调工具也"知道"天气
+        store_summary(format!(
+            "{} {} {}°C（体感 {}°C）",
+            city,
+            describe_weather_code(code),
+            current["temperature_2m"],
+            current["apparent_temperature"],
+        ));
+
         Ok(json!({
             "city": city,
             "temperature_c": current["temperature_2m"],
