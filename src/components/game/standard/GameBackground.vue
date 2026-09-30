@@ -25,12 +25,6 @@
       :style="`z-index:${BACKGROUND_ZINDEX}`"
       @ready="onStarfieldReady"
     />
-    <Rain
-      v-if="uiStore.currentBackgroundEffect === 'Rain'"
-      :enabled="rainEnabled"
-      :intensity="rainIntensity"
-      :style="`z-index:${BACKGROUND_ZINDEX}`"
-    />
     <Sakura
       v-if="uiStore.currentBackgroundEffect === 'Sakura'"
       :enabled="true"
@@ -65,6 +59,30 @@
     class="pointer-events-none absolute inset-0"
     :style="bgOverlayStyle as any"
   ></div>
+
+  <!-- 天气层：与上面的氛围特效相互独立，两者可同时存在。
+       刻意排在光照叠加层之后 —— 那层是带混合模式的暗角色罩，
+       闪电画在它下面会被压暗。仍在角色与对话框之下 -->
+  <div class="pointer-events-none absolute inset-0" style="isolation: isolate">
+    <Rain
+      v-if="uiStore.currentWeatherEffect === 'Rain'"
+      :enabled="weatherEnabled"
+      :intensity="rainIntensity"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+    />
+    <Thunderstorm
+      v-if="uiStore.currentWeatherEffect === 'Thunderstorm'"
+      :enabled="weatherEnabled"
+      :intensity="thunderstormIntensity"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+    />
+    <Fog
+      v-if="uiStore.currentWeatherEffect === 'Fog'"
+      :enabled="weatherEnabled"
+      :intensity="fogIntensity"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+    />
+  </div>
 
   <!-- 短效音效保留默认实现即可，不需要淡入淡出 -->
   <audio ref="soundEffectPlayer"></audio>
@@ -110,6 +128,8 @@ import Sakura from "./particles/Sakura.vue";
 import Snow from "./particles/Snow.vue";
 import Fireworks from "./particles/Fireworks.vue";
 import BAParticles from "./particles/BAParticles.vue";
+import Thunderstorm from "./particles/Thunderstorm.vue";
+import Fog from "./particles/Fog.vue";
 
 const uiStore = useUIStore();
 const gameStore = useGameStore();
@@ -202,6 +222,11 @@ const rainEnabled = ref<boolean>(true);
 
 const rainIntensity = ref<number>(1);
 const snowIntensity = ref<number>(1.5);
+
+// 天气层参数：暴雨本身密度就高，强度再压到 0.8 免得糊住背景
+const weatherEnabled = ref<boolean>(true);
+const thunderstormIntensity = ref<number>(0.8);
+const fogIntensity = ref<number>(1);
 
 const handleTrackEnd = (): void => {
   uiStore.handleBackgroundMusicEnd();

@@ -132,3 +132,89 @@ export const MAX_SCALE = 2;
 
 /** 后备缓冲的最小缩放倍率，再低就糊得不像雨了 */
 export const MIN_SCALE = 0.75;
+
+/** 风的参数 */
+export interface WindConfig {
+  /** 基础风速，深度为 1 时的像素每秒 */
+  base: number;
+  /** 阵风分量，两条周期互质的正弦叠加 */
+  gust: { amplitude: number; period: number }[];
+}
+
+/** 落地涟漪的参数 */
+export interface SplashConfig {
+  groundRatio: number;
+  chance: number;
+  maxRadius: number;
+  life: number;
+  flatten: number;
+  alpha: number[];
+}
+
+/** 镜头玻璃光斑的参数 */
+export interface BokehConfig {
+  perMegapixel: number;
+  maxCount: number;
+  minRadius: number;
+  maxRadius: number;
+  minSpeed: number;
+  maxSpeed: number;
+  minAlpha: number;
+  maxAlpha: number;
+  color: string;
+}
+
+/** 闪电的参数，只有雷阵雨用得上 */
+export interface LightningConfig {
+  /** 两次闪电之间间隔的区间，秒 */
+  intervalMin: number;
+  intervalMax: number;
+  /** 一次闪电的持续时长，秒，含数次急促脉冲与之后的缓慢衰减 */
+  duration: number;
+  /** 闪光峰值透明度 */
+  maxAlpha: number;
+  /** 闪光颜色，填进 rgb() */
+  color: string;
+  /** 触发分叉闪电的概率。远处的雷只闪不画，不给每一道雷都配折线 */
+  boltChance: number;
+  /** 折线主干段数区间 */
+  boltMinSegments: number;
+  boltMaxSegments: number;
+  /** 折线垂直延伸占画布高度的比例区间 */
+  boltMinReach: number;
+  boltMaxReach: number;
+  /**
+   * 顶点横向抖动的幅度，相对每段的长度而不是像素 ——
+   * 绝对像素在小画布上会把折线抖成一团锯齿，比例才随尺寸一起缩放
+   */
+  boltJitter: number;
+  /** 分支横向张开的幅度，同样相对每段的长度。太小贴着主干，太大像另一道雷 */
+  boltDrift: number;
+}
+
+/**
+ * 一套完整的雨参数。引擎按它渲染，换一个 profile 就是另一种雨。
+ *
+ * 拖尾长度（快门时间）、速度抖动、颜色与后备缓冲预算不在这里 ——
+ * 那些是引擎自身的常量，几种雨共用。
+ */
+export interface RainProfile {
+  layers: RainLayerOption[];
+  dropsPerMegapixel: number;
+  maxDrops: number;
+  wind: WindConfig;
+  splash: SplashConfig;
+  bokeh: BokehConfig;
+  /** 有值才会打雷闪电 */
+  lightning?: LightningConfig;
+}
+
+/** 默认的雨。数值与收成 profile 之前逐字一致。 */
+export const RAIN_PROFILE: RainProfile = {
+  layers: RAIN_LAYERS,
+  dropsPerMegapixel: DROPS_PER_MEGAPIXEL,
+  maxDrops: MAX_DROPS,
+  wind: WIND,
+  splash: SPLASH,
+  bokeh: BOKEH,
+};

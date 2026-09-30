@@ -18,10 +18,23 @@ use crate::ai_service::message_system::events::emit;
 /// `starfield` and `Starfield` both silently render nothing. Anything not in
 /// this list (including the conventional `None`) clears the current effect.
 ///
-/// Mirrors `PARTICLE_EFFECTS` in
-/// `src/components/game/standard/particles/index.ts` — adding a particle there
-/// without adding it here makes the script validator reject it.
-pub const KNOWN_EFFECTS: [&str; 6] = ["StarField", "Rain", "Sakura", "Snow", "Fireworks", "BA"];
+/// Mirrors the frontend registry in
+/// `src/components/game/standard/particles/index.ts` (ambient plus weather) —
+/// adding an effect there without adding it here makes the validator reject it.
+///
+/// The frontend keeps two independent layers (ambient / weather) but this list
+/// is deliberately flat: a script names one effect and the frontend decides
+/// which layer it belongs to.
+pub const KNOWN_EFFECTS: [&str; 8] = [
+    "StarField",
+    "Sakura",
+    "Snow",
+    "Fireworks",
+    "BA",
+    "Rain",
+    "Thunderstorm",
+    "Fog",
+];
 
 /// Names that explicitly mean "no effect" and therefore must not be warned about.
 const CLEARING_EFFECTS: [&str; 3] = ["none", "None", ""];

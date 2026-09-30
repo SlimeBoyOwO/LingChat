@@ -245,10 +245,12 @@ export default {
       none: "エフェクトなし",
       starField: "星空",
       rain: "雨",
+      fog: "霧",
       sakura: "桜",
       snow: "雪",
       fireworks: "花火",
       ba: "星の輝き",
+      thunderstorm: "雷雨",
     },
   },
   characters: {

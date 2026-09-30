@@ -35,6 +35,7 @@ export function useCastMirror() {
         status: gameStore.currentStatus,
         background: uiStore.currentBackground,
         backgroundEffect: uiStore.currentBackgroundEffect,
+        weatherEffect: uiStore.currentWeatherEffect,
         currentSceneId: gameStore.currentScene?.id ?? null,
         presentRoleIds: [...gameStore.presentRoleIds],
         currentRoleId: gameStore.currentInteractRoleId,
@@ -53,4 +54,6 @@ export function useCastMirror() {
   // 只监听台词的话，换背景 / 换特效时投屏窗口收不到任何更新。
   watch(() => uiStore.currentBackground, sendMirror);
   watch(() => uiStore.currentBackgroundEffect, sendMirror);
+  // 天气层与氛围层相互独立，各自变化都要广播
+  watch(() => uiStore.currentWeatherEffect, sendMirror);
 }

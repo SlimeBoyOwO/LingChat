@@ -230,10 +230,12 @@ export default {
       none: "无特效",
       starField: "星空",
       rain: "雨",
+      fog: "雾",
       sakura: "樱花",
       snow: "雪",
       fireworks: "烟花",
       ba: "星辉",
+      thunderstorm: "雷阵雨",
     },
   },
   characters: {

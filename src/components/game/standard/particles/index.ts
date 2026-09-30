@@ -10,6 +10,10 @@
  *
  * 设置页与剧本编辑器的下拉均已改读此处；GameBackground 仍是硬编码 v-if
  * （每个粒子的 props 各不相同），新增粒子时两边都要动。
+ *
+ * 特效分两层：氛围层（PARTICLE_EFFECTS）与天气层（WEATHER_EFFECTS），
+ * 两者各自单选、互不干扰，可以同时开着。天气天生是叠加的（雷阵雨 = 暴雨 + 闪电，
+ * 以后还有雾），不该和雪、樱花抢同一个槽位。
  */
 export interface ParticleEffect {
   /** 写进 YAML 的值，与 GameBackground 的 v-if 分支、引擎的 KNOWN_EFFECTS 对应 */
@@ -28,7 +32,6 @@ export interface ParticleEffect {
 
 export const PARTICLE_EFFECTS: ParticleEffect[] = [
   { key: "StarField", label: "星空", i18n: "starField", petSupported: true },
-  { key: "Rain", label: "雨", i18n: "rain" },
   { key: "Sakura", label: "樱花", i18n: "sakura" },
   { key: "Snow", label: "雪", i18n: "snow" },
   { key: "Fireworks", label: "烟花", i18n: "fireworks" },
@@ -37,12 +40,34 @@ export const PARTICLE_EFFECTS: ParticleEffect[] = [
 ];
 
 /**
+ * 天气层。设置页里是独立的一组按钮，词条前缀也因此不同
+ * （`settings.background.weather.<i18n>`，氛围层是 `...particle.<i18n>`）。
+ * 天气都是全屏量级的，不进桌宠头像，所以没有 petSupported。
+ *
+ * 雨从氛围层挪到了这里：它和雷阵雨本质是同一种天气的两个档位，
+ * 分属两层就会出现「同时开着雨和雷阵雨」这种没人想要的状态。
+ */
+export const WEATHER_EFFECTS: ParticleEffect[] = [
+  { key: "Rain", label: "雨", i18n: "rain" },
+  { key: "Thunderstorm", label: "雷阵雨", i18n: "thunderstorm" },
+  { key: "Fog", label: "雾", i18n: "fog" },
+];
+
+/** 全部内置特效。给编辑器下拉与大小写纠错用，不区分它属于哪一层。 */
+export const ALL_EFFECTS: ParticleEffect[] = [...PARTICLE_EFFECTS, ...WEATHER_EFFECTS];
+
+/** 这个特效是不是天气层的。剧本与存档只记一个特效值，靠它决定落到哪一层。 */
+export const isWeatherEffect = (key: string): boolean => WEATHER_EFFECTS.some((p) => p.key === key);
+
+/**
  * 给编辑器下拉用的选项：首项「无特效」对应引擎的清空值 None，
- * 其余为各粒子。返回 { value, label } 以便下拉显示中文、写入英文 key。
+ * 其余为各特效。返回 { value, label } 以便下拉显示中文、写入英文 key。
+ *
+ * 两层都列出来：剧本作者不必关心引擎把它们放在哪一层。
  */
 export const particleEffectOptions = (): { value: string; label: string }[] => [
   { value: "None", label: "无特效" },
-  ...PARTICLE_EFFECTS.map((p) => ({ value: p.key, label: p.label })),
+  ...ALL_EFFECTS.map((p) => ({ value: p.key, label: p.label })),
 ];
 
 /**
@@ -58,5 +83,5 @@ export const canonicalEffectKey = (value: string): string | null => {
   const v = value.trim();
   if (!v) return "None";
   if (v.toLowerCase() === "none") return "None";
-  return PARTICLE_EFFECTS.find((p) => p.key.toLowerCase() === v.toLowerCase())?.key ?? null;
+  return ALL_EFFECTS.find((p) => p.key.toLowerCase() === v.toLowerCase())?.key ?? null;
 };

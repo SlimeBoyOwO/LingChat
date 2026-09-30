@@ -248,10 +248,12 @@ export default {
       none: "No effect",
       starField: "Starry sky",
       rain: "Rain",
+      fog: "Fog",
       sakura: "Cherry blossoms",
       snow: "Snow",
       fireworks: "Fireworks",
       ba: "Starglow",
+      thunderstorm: "Thunderstorm",
     },
   },
   characters: {

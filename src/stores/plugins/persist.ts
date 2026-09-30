@@ -11,6 +11,11 @@ interface PersistOptions {
   /** 点路径深度排除（如 `settings.provider_configs`）——exclude 只过滤顶层 key，
    *  嵌套对象里含敏感字段（api_key 等）时必须用路径排除才能真剔除 */
   excludePaths?: string[];
+  /**
+   * 恢复完持久化数据后的补充处理，用于把历史上的旧字段归位。
+   * 在 $subscribe 注册之后调用，所以它做的改动会立刻写回存储。
+   */
+  afterHydrate?: (store: any) => void;
 }
 
 // 扩展 Pinia 的 DefineStoreOptions
@@ -98,4 +103,6 @@ export function persist({ store, options }: PiniaPluginContext) {
       console.error(`保存设置失败 (${storageKey}):`, e);
     }
   });
+
+  persistOptions.afterHydrate?.(store);
 }

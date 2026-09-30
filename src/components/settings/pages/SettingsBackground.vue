@@ -21,6 +21,25 @@
       </div>
     </MenuItem>
 
+    <!-- 天气与上面的氛围特效分层，两者可以同时开着 -->
+    <MenuItem :title="$t('settings.background.weather.title')" size="large">
+      <template #header>
+        <CloudLightning :size="20" />
+      </template>
+      <div class="effect-list flex gap-4 overflow-x-auto pb-2">
+        <Button
+          v-for="opt in weatherOptions"
+          :key="opt.value"
+          type="transparent"
+          :active="currentWeather === opt.value"
+          @click="updateWeather(opt.value)"
+        >
+          <component :is="opt.icon" :size="16" style="margin-right: 6px" />
+          {{ opt.label }}
+        </Button>
+      </div>
+    </MenuItem>
+
     <MenuItem :title="$t('settings.background.animation.switchTitle')" size="large">
       <template #header>
         <Settings :size="20" />
@@ -281,14 +300,6 @@
         </button>
       </div>
     </MenuItem>
-
-    <!-- ========== 对话框外观（自定义） ========== -->
-    <MenuItem :title="$t('settings.background.dialog.title')" size="large">
-      <template #header>
-        <MessageSquare :size="20" />
-      </template>
-      <DialogAppearancePanel />
-    </MenuItem>
   </MenuPage>
 </template>
 
@@ -302,8 +313,18 @@ import { useDialogStore } from "../../../stores/modules/ui/dialog";
 import { useSettingsStore } from "../../../stores/modules/settings";
 import { isWindows } from "@/utils/platform";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { Ban, Sparkles, CloudRain, Flower2, Snowflake, PartyPopper, Sun } from "lucide-vue-next";
-import { PARTICLE_EFFECTS } from "@/components/game/standard/particles";
+import {
+  Ban,
+  Sparkles,
+  CloudRain,
+  Flower2,
+  Snowflake,
+  PartyPopper,
+  Sun,
+  CloudLightning,
+  CloudFog,
+} from "lucide-vue-next";
+import { PARTICLE_EFFECTS, WEATHER_EFFECTS } from "@/components/game/standard/particles";
 import {
   getCpuInfo,
   redetectCpu,
@@ -322,7 +343,6 @@ import {
 } from "../../../api/services/gpu-perf";
 import { Settings, Cpu } from "lucide-vue-next";
 import SceneManageSection from "../background/SceneManageSection.vue";
-import DialogAppearancePanel from "../dialog/DialogAppearancePanel.vue";
 
 const uiStore = useUIStore();
 const settingsStore = useSettingsStore();
@@ -350,6 +370,22 @@ const particleOptions = computed(() => [
   })),
 ]);
 
+// 天气层同理，只是词条前缀不同
+const WEATHER_ICONS: Record<string, Component> = {
+  Rain: CloudRain,
+  Thunderstorm: CloudLightning,
+  Fog: CloudFog,
+};
+
+const weatherOptions = computed(() => [
+  { label: t("settings.background.weather.none"), value: "None", icon: Ban },
+  ...WEATHER_EFFECTS.map((p) => ({
+    label: t(`settings.background.weather.${p.i18n}`),
+    value: p.key,
+    icon: WEATHER_ICONS[p.key] ?? CloudLightning,
+  })),
+]);
+
 const mainMenuStarsEnabled = computed(() => settingsStore.mainMenuStarsEnabled);
 const mainMenuMeteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled);
 const globalMouseTrailEnabled = computed(() => settingsStore.globalMouseTrailEnabled);
@@ -358,6 +394,7 @@ const cursorEffectEngine = computed(() => settingsStore.cursorEffectEngine);
 const sceneAwarenessEnabled = computed(() => settingsStore.sceneAwarenessEnabled);
 const hdrModeEnabled = computed(() => settingsStore.hdrModeEnabled);
 const currentParticle = computed(() => settingsStore.backgroundEffect);
+const currentWeather = computed(() => settingsStore.weatherEffect);
 
 // 记录进入设置页时的初始值；开关改变后「立即重启」按钮才可用，改回原值则恢复置灰
 const initialHdrMode = ref(settingsStore.hdrModeEnabled);
@@ -489,6 +526,12 @@ async function handleRedetectPerf(): Promise<void> {
 
 function updateParticle(value: string): void {
   uiStore.setBackgroundEffect(value);
+}
+
+// 天气层直接写自己的槽位，不走 applyEffectValue —— 那会把氛围层一起清掉，
+// 而设置页正是要允许两层并存的地方
+function updateWeather(value: string): void {
+  uiStore.setWeatherEffect(value);
 }
 
 function handleMeteorFpsChange(value: number) {
