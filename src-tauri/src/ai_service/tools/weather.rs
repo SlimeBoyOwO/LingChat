@@ -47,16 +47,12 @@ fn configured_city(config: &AppConfig) -> Option<String> {
     (!city.is_empty()).then_some(city)
 }
 
-/// 后台刷新循环：每 5 分钟检查一次，缓存缺失/过期时重新拉取。城市来源优先级：
-/// 手动配置的城市 > IP 自动定位（需开关打开）。由 lib.rs 在启动时 spawn。
+/// 后台刷新循环：每 5 分钟检查一次，缓存缺失/过期且配置了手动城市时重新拉取。
+/// 没配城市就不刷新——天气感知只在用户主动指定过城市时工作，不做自动定位。
+/// 由 lib.rs 在启动时 spawn。
 pub(crate) async fn run_refresh_loop(app: tauri::AppHandle) {
     loop {
-        let config = AppConfig::load(&app).ok();
-        let city = config.as_ref().and_then(configured_city);
-        let ip_enabled = config
-            .as_ref()
-            .map(|c| c.weather_ip_location)
-            .unwrap_or(false);
+        let city = AppConfig::load(&app).ok().and_then(|c| configured_city(&c));
 
         let stale = WEATHER_CACHE
             .lock()
@@ -64,28 +60,14 @@ pub(crate) async fn run_refresh_loop(app: tauri::AppHandle) {
             .and_then(|c| c.as_ref().map(|w| w.fetched_at.elapsed() > WEATHER_TTL))
             .unwrap_or(true);
 
-        if stale {
+        if let (true, Some(city)) = (stale, city) {
             match reqwest::Client::builder()
                 .timeout(Duration::from_secs(10))
                 .build()
             {
-                Ok(client) => {
-                    // 三种来源都可能不适用（没配城市且 IP 关闭），用 Option 表达
-                    let fetch = if let Some(city) = city {
-                        Some(fetch_summary_for_city(&client, &city).await)
-                    } else if ip_enabled {
-                        Some(fetch_summary_via_ip(&client).await)
-                    } else {
-                        // 没配城市也没开 IP 定位：不刷新，等对话中说出城市后
-                        // 由 query_weather 填充缓存
-                        None
-                    };
-                    if let Some(result) = fetch {
-                        match result {
-                            Ok(summary) => store_summary(summary),
-                            Err(e) => tracing::warn!("天气缓存刷新失败: {e}"),
-                        }
-                    }
+                Ok(client) => match fetch_summary_for_city(&client, &city).await {
+                    Ok(summary) => store_summary(summary),
+                    Err(e) => tracing::warn!("天气缓存刷新失败: {e}"),
                 },
                 Err(e) => tracing::warn!("天气客户端创建失败: {e}"),
             }
@@ -152,33 +134,6 @@ async fn geocode_city(
     ))
 }
 
-/// IP 定位 → (中文城市名, 纬度, 经度)。
-///
-/// ip-api.com 免费端点（免 key，支持中文，返回经纬度）；免费版仅提供 http，
-/// 本地原型可接受。挂在用户显式开启的开关之后，开启方式在设置页。
-async fn locate_by_ip(client: &reqwest::Client) -> Result<(String, String, String), ToolError> {
-    let ip: Value = client
-        .get("http://ip-api.com/json/?lang=zh-CN&fields=status,city,lat,lon")
-        .send()
-        .await
-        .and_then(|r| r.error_for_status())
-        .map_err(|e| ToolError::Execution(format!("IP 定位失败: {e}。请自然地请用户直接说城市名")))?
-        .json()
-        .await
-        .map_err(|e| ToolError::Execution(format!("解析 IP 定位数据失败: {e}")))?;
-
-    if ip["status"].as_str() != Some("success") {
-        return Err(ToolError::Execution(
-            "IP 定位失败。请自然地请用户直接说城市名".into(),
-        ));
-    }
-    Ok((
-        ip["city"].as_str().unwrap_or("当前城市").to_string(),
-        ip["lat"].to_string(),
-        ip["lon"].to_string(),
-    ))
-}
-
 /// 经纬度 → 当前天气 JSON（Open-Meteo Forecast）。
 async fn fetch_current(client: &reqwest::Client, lat: &str, lon: &str) -> Result<Value, ToolError> {
     let url = format!(
@@ -201,13 +156,6 @@ async fn fetch_current(client: &reqwest::Client, lat: &str, lon: &str) -> Result
     Ok(weather)
 }
 
-/// 城市名 → 自然语言摘要（geocode + 拉取 + 组装）。
-async fn fetch_summary_for_city(client: &reqwest::Client, city: &str) -> Result<String, ToolError> {
-    let (city, lat, lon) = geocode_city(client, city).await?;
-    let weather = fetch_current(client, &lat, &lon).await?;
-    Ok(format_summary(&city, &weather["current"]))
-}
-
 fn format_summary(city: &str, current: &Value) -> String {
     let code = current["weather_code"].as_i64().unwrap_or(-1);
     format!(
@@ -219,17 +167,17 @@ fn format_summary(city: &str, current: &Value) -> String {
     )
 }
 
-/// IP 定位 → 自然语言摘要。
-async fn fetch_summary_via_ip(client: &reqwest::Client) -> Result<String, ToolError> {
-    let (city, lat, lon) = locate_by_ip(client).await?;
+/// 城市名 → 自然语言摘要（geocode + 拉取 + 组装）。
+async fn fetch_summary_for_city(client: &reqwest::Client, city: &str) -> Result<String, ToolError> {
+    let (city, lat, lon) = geocode_city(client, city).await?;
     let weather = fetch_current(client, &lat, &lon).await?;
     Ok(format_summary(&city, &weather["current"]))
 }
 
 /// query_weather：查询实时天气（Open-Meteo，免 API key）。
 ///
-/// 城市解析两级策略：用户在对话中明确说出的城市优先；未说时若用户开启了
-/// 「IP 自动定位」开关则走 IP 定位；两者皆无则提示模型自然地向用户询问。
+/// 城市两级来源：用户在对话中明确说出的城市优先；未说时使用设置里手动配置的
+/// 城市；两者皆无则本次不查询，且不追问用户。
 pub struct WeatherTool;
 
 #[async_trait]
@@ -242,9 +190,7 @@ impl Tool for WeatherTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             "query_weather",
-            "获取用户所在城市的实时天气。城市解析：用户在对话里说过的城市优先（填入 city）；\
-             没说时不要向用户追问城市名，直接不带 city 调用——若用户开启了 IP 自动定位会自动定位，\
-             未开启则会提示你询问。\
+            "获取用户所在地（设置中配置的城市）的实时天气。\
              返回结果只是给你自己看的参考——**绝不要在回复里罗列温度、湿度等原始数据**，\
              用一两句自然的口语把天气感受融进对话（例如「外面下着雨呢，出门记得带把伞」）。\
              拿到结果后可以顺手用 set_background_effect 切粒子特效（effect_hint 字段给了建议值）、\
@@ -252,7 +198,7 @@ impl Tool for WeatherTool {
             json!({
                 "type": "object",
                 "properties": {
-                    "city": {"type": "string", "description": "城市中文名；仅当用户在对话中明确说了城市时才填"}
+                    "city": {"type": "string", "description": "城市中文名；仅当用户在对话中明确说了别的城市时才填"}
                 },
                 "required": [],
                 "additionalProperties": false
@@ -276,29 +222,22 @@ impl Tool for WeatherTool {
             .map(str::to_string);
 
         let app = context.require_app()?;
-        let config = AppConfig::load(&app).ok();
-        let ip_enabled = config
-            .as_ref()
-            .map(|c| c.weather_ip_location)
-            .unwrap_or(false);
-        let configured_city = config.as_ref().and_then(configured_city);
+        let configured = AppConfig::load(&app).ok().and_then(|c| configured_city(&c));
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
             .build()
             .map_err(|e| ToolError::Execution(format!("创建 HTTP 客户端失败: {e}")))?;
 
-        // 城市优先级：用户当轮明说的 > 设置里手动配置的 > IP 自动定位（需开关）
+        // 城市两级来源：用户当轮明说的 > 设置里手动配置的；都没有就不查、不追问
         let (city, lat, lon) = if let Some(city) = stated_city {
             geocode_city(&client, &city).await?
-        } else if let Some(city) = configured_city {
+        } else if let Some(city) = configured {
             geocode_city(&client, &city).await?
-        } else if ip_enabled {
-            locate_by_ip(&client).await?
         } else {
             return Err(ToolError::Execution(
-                "没有可用的城市信息：用户没有说过所在城市，设置里也未配置城市，\
-                 IP 自动定位未开启。本次无法查询天气，请自然地回应，不要追问城市"
+                "没有可用的城市信息：用户没有说过所在城市，设置里也未配置城市。\
+                 本次无法查询天气，请自然地回应，不要追问城市"
                     .into(),
             ));
         };
