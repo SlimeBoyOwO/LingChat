@@ -8,33 +8,16 @@
         <Sparkles :size="20" />
       </template>
       <div class="effect-list flex gap-4 overflow-x-auto pb-2">
-        <Button type="big" :active="currentParticle === 'None'" @click="updateParticle(`None`)">{{
-          $t("settings.background.particle.none")
-        }}</Button>
         <Button
-          type="big"
-          :active="currentParticle === 'StarField'"
-          @click="updateParticle(`StarField`)"
-          >{{ $t("settings.background.particle.starField") }}</Button
+          v-for="opt in particleOptions"
+          :key="opt.value"
+          type="transparent"
+          :active="currentParticle === opt.value"
+          @click="updateParticle(opt.value)"
         >
-        <Button type="big" :active="currentParticle === 'Rain'" @click="updateParticle(`Rain`)">{{
-          $t("settings.background.particle.rain")
-        }}</Button>
-        <Button
-          type="big"
-          :active="currentParticle === 'Sakura'"
-          @click="updateParticle(`Sakura`)"
-          >{{ $t("settings.background.particle.sakura") }}</Button
-        >
-        <Button type="big" :active="currentParticle === 'Snow'" @click="updateParticle(`Snow`)">{{
-          $t("settings.background.particle.snow")
-        }}</Button>
-        <Button
-          type="big"
-          :active="currentParticle === 'Fireworks'"
-          @click="updateParticle(`Fireworks`)"
-          >{{ $t("settings.background.particle.fireworks") }}</Button
-        >
+          <component :is="opt.icon" :size="16" style="margin-right: 6px" />
+          {{ opt.label }}
+        </Button>
       </div>
     </MenuItem>
 
@@ -310,7 +293,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from "vue";
+import { ref, onMounted, watch, computed, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import { MenuPage, MenuItem } from "../../ui";
 import { Button, Toggle, Slider } from "../../base";
@@ -319,6 +302,8 @@ import { useDialogStore } from "../../../stores/modules/ui/dialog";
 import { useSettingsStore } from "../../../stores/modules/settings";
 import { isWindows } from "@/utils/platform";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { Ban, Sparkles, CloudRain, Flower2, Snowflake, PartyPopper, Sun } from "lucide-vue-next";
+import { PARTICLE_EFFECTS } from "@/components/game/standard/particles";
 import {
   getCpuInfo,
   redetectCpu,
@@ -335,7 +320,7 @@ import {
   getActiveGpu,
   type GpuInfo,
 } from "../../../api/services/gpu-perf";
-import { Sparkles, Settings, Cpu } from "lucide-vue-next";
+import { Settings, Cpu } from "lucide-vue-next";
 import SceneManageSection from "../background/SceneManageSection.vue";
 import DialogAppearancePanel from "../dialog/DialogAppearancePanel.vue";
 
@@ -343,6 +328,27 @@ const uiStore = useUIStore();
 const settingsStore = useSettingsStore();
 const dialogStore = useDialogStore();
 const { t } = useI18n();
+
+// 粒子选项来自注册表，与桌宠设置页读同一份真相。
+// 从前这里是六个硬编码按钮：星辉（BA）并入主界面可选项时只接了渲染分支，
+// 没补进这份列表，于是设置页选不到它。改成读注册表后就不会再漏。
+const PARTICLE_ICONS: Record<string, Component> = {
+  StarField: Sparkles,
+  Rain: CloudRain,
+  Sakura: Flower2,
+  Snow: Snowflake,
+  Fireworks: PartyPopper,
+  BA: Sun,
+};
+
+const particleOptions = computed(() => [
+  { label: t("settings.background.particle.none"), value: "None", icon: Ban },
+  ...PARTICLE_EFFECTS.map((p) => ({
+    label: t(`settings.background.particle.${p.i18n}`),
+    value: p.key,
+    icon: PARTICLE_ICONS[p.key] ?? Sparkles,
+  })),
+]);
 
 const mainMenuStarsEnabled = computed(() => settingsStore.mainMenuStarsEnabled);
 const mainMenuMeteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled);
