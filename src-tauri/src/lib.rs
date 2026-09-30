@@ -581,8 +581,8 @@ pub fn run() {
                 .await;
             });
 
-            // 天气缓存后台刷新：IP 定位开关打开时每 5 分钟检查一次，缓存过期即
-            // 重新定位拉取，供消息处理器注入"用户所在地天气"系统提醒
+            // 天气缓存后台刷新：每 5 分钟检查一次，配置了手动城市且缓存过期才拉取
+            //（没有自动定位），供消息处理器注入"用户所在地天气"系统提醒
             tauri::async_runtime::spawn(ai_service::tools::weather::run_refresh_loop(
                 app.handle().clone(),
             ));
