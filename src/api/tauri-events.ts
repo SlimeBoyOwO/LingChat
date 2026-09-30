@@ -437,6 +437,16 @@ export function initializeTauriEventListeners() {
 
   // === LLM 场景工具事件 ===
 
+  // AI 工具的氛围特效（set_background_effect）：直达更新特效状态，不走对话事件
+  // 队列——剧本通道（script:background-effect）进队列会翻转 currentStatus 并插队
+  // 在未显示的台词前面，把聊天状态机搅乱。
+  listen("ambient:effect", (event) => {
+    const payload = event.payload as { type: string; effect: string; duration?: number };
+    console.log("[Tauri] ambient:effect", payload);
+    const uiStore = useUIStore();
+    uiStore.setBackgroundEffect(payload.effect);
+  });
+
   listen("scene:switch", (event) => {
     const payload = event.payload as { type: string; scene: SceneInfo };
     console.log("[Tauri] scene:switch", payload);
