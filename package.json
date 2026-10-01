@@ -21,7 +21,7 @@
     "format:rs": "cargo fmt --manifest-path src-tauri/Cargo.toml",
     "format:frontend": "prettier --write \"src/**/*.{vue,js,ts,css,scss}\"",
     "format:check": "prettier --check . && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
-    "check:rs": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "check:rs": "cargo check --manifest-path src-tauri/Cargo.toml --lib",
     "gen:effects": "node scripts/generate-known-effects.mjs",
     "check:effects": "node scripts/generate-known-effects.mjs --check",
     "prepare": "husky"

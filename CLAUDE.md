@@ -1,102 +1,76 @@
-# CLAUDE.md
+## 项目概览
+LingChat 是一个 AI Galgame 引擎，一个桌面 AI 聊天伴侣 / 桌宠应用，基于Tauri 2。核心功能：LLM 驱动的聊天，内置情绪分类器、TTS 语音、屏幕感知、基于剧本的多角色故事、AI 宠物/桌面伴侣模式、Python 插件系统、局域网同步，以及存档/成就。
+代码、注释、提交信息和文档主要使用**中文**编写。编写注释时，请与周围语言保持一致。
+## 常用命令
+包管理器是pnpm
+-pnpm tauri dev：以开发模式运行完整桌面应用
+-pnpm dev：仅启动 Vite 开发服务器，针对已在运行的 Rust 后端进行纯前端迭代
+-pnpm build：前端类型检查和生产构建（必须使用此命令检查前端，不得加tail/head等）
+-pnpm tauri build：完整桌面打包，生成 NSIS / dmg / deb / AppImage + 更新器产物
+-pnpm format/pnpm format:check：prettier和cargo fmt
+-pnpm check:rs：cargo check --manifest-path src-tauri/Cargo.toml --lib
+-测试 — `cargo test --manifest-path src-tauri/Cargo.toml`，没有前端测试框架
+-pnpm init生成应用图标，准备桌面资源，下载情绪 ONNX 模型。
+-Android：pnpm android:prepare、pnpm android:dev、pnpm android:build（aarch64，apk）、pnpm android:check（cargo ndk check）
+-iOS：pnpm ios:init，pnpm ios:build（`docs/ios-build.md`；`.npmrc` 记录了 Xcode 下 pnpm-11 的限制）。
+## 高层架构
+### 前端和后端 IPC 通信
+前端通过 `@tauri-apps/api/core` 的 `invoke()` 调用 Rust 命令。`src/api/services/*` 中每个域都有一个服务模块，但许多组件直接 `invoke`。**所有**命令都在一个地方注册：`src-tauri/src/lib.rs` 中的 `invoke_handler!` 宏
+**自定义应用命令不受 ACL 门控。** 项目已移除应用命令的 ACL 门控。将 `#[tauri::command]` 添加到 `lib.rs` 的 `generate_handler!` 就足够了。`src-tauri/capabilities/*.json` 只门控核心/插件命令（updater、fs、dialog、screenshots 等）。编辑 capabilities 时，`src-tauri/gen/schemas/` 下生成的 schema 会通过 `build.rs` 重新生成；如果更改未生效，可用 `touch src-tauri/build.rs` 强制触发
+### 对话事件管线（核心运行时）
+需要理解的最重要流程：
+1. **Rust**：`src-tauri/src/ai_service/message_system/generator.rs` 将对话作为 Tauri 事件流式发送——`ai:reply`、`ai:thinking` 等。载荷是 `ScriptEventType` 对象
+2. **前端**：`src/api/tauri-events.ts` 监听并将它们送入 `EventQueue`（`src/core/events/event-queue.ts`）
+3. 队列通过 `src/core/events/processors/*.ts` 中按类型划分的处理器逐个处理事件（dialogue、narration、background、music、sound、thinking 等），这些处理器由 `src/core/events/index.ts` 通过 `import.meta.glob` 自动注册
+4. 推进语义来自 `duration`：`-1` = 等待用户点击继续，`0` = 立即继续，`>0` = 等待 N 秒。`isFinal` 标记回合结束。`dialogue-merge.ts` 实现同一角色短连续回复的内联合并
+中心游戏状态是 Pinia 的 `game` store（`src/stores/modules/game/`），尤其是 `currentStatus`（`input` / `responding`）。`script-editor` store 有自己的预览事件流，并会丢弃过期回复（`tauri-events.ts` 中的 `isStalePreviewReply`）
+### 后端布局（`src-tauri/src/`）
+-lib.rs：应用引导 + 庞大的 `invoke_handler!`。`AppState` 将 `InnerAppState` 包装在 `OnceLock` 中：先 `manage()` 一个空壳（Android 在 `setup` 完成前就创建 webview，因此命令可能在初始化完成前触发），然后用真实状态 `fill()`。桌面端在初始化前访问会 panic；Android 则自旋等待
+-api：每个命令域一个文件（character、chat、game、save、scene、settings、script、script_editor、plugins、pet、asr 等）。`api::data_dir()` 解析数据目录
+-init：启动序列（`initialize()`）：播种数据目录 → 应用 LAN 同步暂存（必须在数据库初始化之前）→ 打开数据库 → 从文件夹同步角色 → 迁移 LLM 配置 → 构建 LLM 槽位 → 构造 `AIService`、情绪分类器等
+-ai_service：整个 AI 栈：
+  -llm：基于 genai 的客户端。`LlmSlot` 是可热插拔的 `RwLock`。提供商预设位于前端 `src/constants/llm-presets.ts`；见 `docs/llm-provider-presets.md`——添加新的 `provider` 类型还需要在 `ai_service/llm/provider_config.rs` 中添加分支。
+  -message_system：聊天处理 + `ai:reply` 流式发送
+  -game_system：剧本引擎 + 事件、自动存档、角色管理器、持久记忆
+  -asr：流式 ASR（VAD 分段、可插拔提供商、WebSocket）
+  -tts：本地进程内 TTS（SBV2 / onnxruntime、DeBerta、设备选择）+ 云端 CosyVoice
+  -emotion：ONNX 情绪分类器（19-emo 模型位于 `data/third_party/emotion_model_19emo/`）。
+  -screen_analyzer.rs`、`proactive_system/`、`god_agent/`、`skill_agent/`、`translator.rs`、`tools/`（ToolRegistry + 内置工具定义）
+-db：sea-orm + SQLite；`entities/` + `managers/`（仓库）。迁移位于 `migration/`
+-plugins：— 插件管理器（见 `docs/plugin-dev-guide.md`）
+-lan_sync：axum HTTP+WebSocket 服务器 + mDNS 对等发现，manifest 差异推送/拉取
+-cast：投屏（screen-cast）：第二个窗口，镜像主窗口的对话（`cast:mirror`）
+- `resource_sync/` + `manifest/` — 安装器种子 / 数据版本同步。
+- `achievements/`、`adventures/` — 成就触发器 + 按角色的冒险 / 羁绊系统。
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Project Overview
-
-LingChat is an **AI Galgame Engine** — a desktop AI chat companion / 桌宠 app. It's a Tauri 2 app: Rust backend in `src-tauri/`, Vue 3 + TypeScript frontend in `src/`. Targets Windows / Linux / macOS (desktop) and Android / iOS (mobile). Core features: LLM-driven chat with an in-house emotion classifier, TTS voice, screen awareness (the AI "peeks" at your screen), script-based multi-character stories (剧本), an AI pet/desktop-companion mode (桌宠), a Python plugin system, LAN sync, and save/achievements.
-
-Code, comments, commits, and `docs/` are written primarily in **Chinese**. Match the surrounding language when writing comments.
-
-## Common Commands
-
-Package manager is `pnpm` (v11.21.0, pinned in `package.json`). Rust crate is `src-tauri/`.
-
-- `pnpm tauri dev` — run the full desktop app in dev mode. The `tauri` script forwards directly to the `tauri` CLI (no auto-format on launch; formatting is handled at commit time by husky + lint-staged, or manually via `pnpm format`).
-- `pnpm dev` — Vite dev server only (fixed port 1420, strict). Frontend-only iteration against the already-running Rust side.
-- `pnpm build` — frontend type-check (`vue-tsc --noEmit --skipLibCheck`) + production build to `dist/`.
-- `pnpm tauri build` — full desktop bundle. Runs `beforeBuildCommand`: `node scripts/prepare-desktop-resources.mjs && pnpm build`. Produces NSIS / dmg / deb / AppImage + updater artifacts.
-- `pnpm format` / `pnpm format:check` — prettier (frontend) + `cargo fmt` (Rust). CI runs the `:check` variant.
-- `pnpm check:rs` — `cargo check --manifest-path src-tauri/Cargo.toml`.
-- Rust tests — `cargo test --manifest-path src-tauri/Cargo.toml`. Unit tests live in `#[cfg(test)]` modules inside `src-tauri/src/**`. **There is no frontend test framework.**
-- `pnpm init` — generate app icons (`tauri icon`), prepare desktop resources, download the emotion ONNX model.
-- Android — `pnpm android:prepare`, `pnpm android:dev`, `pnpm android:build` (builds `--target aarch64 --apk`), `pnpm android:check` (`cargo ndk check`).
-- iOS — `pnpm ios:init` / `pnpm ios:build` (see `docs/ios-build.md`; `.npmrc` documents pnpm-11 constraints under Xcode).
-
-## High-Level Architecture
-
-### Frontend ↔ Backend IPC
-
-The frontend calls Rust commands with `invoke()` from `@tauri-apps/api/core`. There's a service module per domain in `src/api/services/*`, but many components `invoke` directly. **All** commands are registered in one place: the `invoke_handler!` macro in `src-tauri/src/lib.rs`.
-
-**Custom app commands are NOT ACL-gated.** The project removed app-command ACL gating (commit `7f3476b8`). Adding a `#[tauri::command]` to `lib.rs`'s `generate_handler!` is sufficient — no allowlist entry needed. `src-tauri/capabilities/*.json` only gates core/plugin commands (updater, fs, dialog, screenshots, …). When you edit capabilities, the generated schemas under `src-tauri/gen/schemas/` regenerate through `build.rs`; force with `touch src-tauri/build.rs` if a change doesn't take effect.
-
-### The dialogue event pipeline (core runtime)
-
-The most important flow to understand:
-
-1. **Rust**: `src-tauri/src/ai_service/message_system/generator.rs` streams dialogue as Tauri events — `ai:reply`, `ai:thinking`, etc. Payloads are `ScriptEventType` objects.
-2. **Frontend**: `src/api/tauri-events.ts` listens and feeds them into the `EventQueue` (`src/core/events/event-queue.ts`).
-3. The queue processes events one at a time through per-type processors in `src/core/events/processors/*.ts` (dialogue, narration, background, music, sound, thinking, …), auto-registered by `src/core/events/index.ts` via `import.meta.glob`.
-4. Advance semantics come from `duration`: `-1` = wait for user click to continue, `0` = continue immediately, `>0` = wait N seconds. `isFinal` marks end of turn. `dialogue-merge.ts` implements inline merging of short consecutive replies from the same role.
-
-Central game state is the Pinia `game` store (`src/stores/modules/game/`), especially `currentStatus` (`input` / `responding`). The `script-editor` store has its own preview event flow with stale-reply dropping (`isStalePreviewReply` in `tauri-events.ts`).
-
-### Backend layout (`src-tauri/src/`)
-
-- `lib.rs` — app bootstrap + the giant `invoke_handler!`. `AppState` wraps `InnerAppState` in a `OnceLock`: an empty shell is `manage()`d first (Android creates the webview before `setup` finishes, so commands can fire before init completes), then `fill()`ed with real state. Desktop panics on pre-init access; Android spin-loops.
-- `api/` — one file per command domain (character, chat, game, save, scene, settings, script, script_editor, plugins, pet, asr, …). `api::data_dir()` resolves the data directory.
-- `init/` — the startup sequence (`initialize()`): seed data dir → apply LAN-sync staging (must precede DB init) → open DB → sync roles from folders → migrate LLM config → build LLM slots → construct `AIService`, emotion classifier, etc.
-- `ai_service/` — the whole AI stack:
-  - `llm/` — genai-based clients. `LlmSlot` is a hot-swappable `RwLock`. Provider presets live in frontend `src/constants/llm-presets.ts`; see `docs/llm-provider-presets.md` — adding a new `provider` type also needs a branch in `ai_service/llm/provider_config.rs`.
-  - `message_system/` — chat processing + `ai:reply` streaming.
-  - `game_system/` — script engine (剧本) + events, auto-save, role manager, persistent memory.
-  - `asr/` — streaming ASR (VAD segmentation, pluggable providers, WebSocket).
-  - `tts/` — local in-process TTS (SBV2 / onnxruntime, DeBerta, device selection) + cloud CosyVoice.
-  - `emotion/` — ONNX emotion classifier (19-emo model under `data/third_party/emotion_model_19emo/`).
-  - `screen_analyzer.rs`, `proactive_system/`, `god_agent/`, `skill_agent/`, `translator.rs`, `tools/` (ToolRegistry + built-in tool definitions).
-- `db/` — sea-orm + SQLite; `entities/` + `managers/` (repos). Migrations in `migration/`.
-- `plugins/` — plugin manager. Plugins are `data/plugins/<id>/` dirs with `manifest.toml` + Python scripts run in a **RustPython sandbox** (`run(ctx)`; blocked imports include os/subprocess/shutil/pathlib/ctypes). See `docs/plugin-dev-guide.md`.
-- `lan_sync/` — axum HTTP+WebSocket server + mDNS peer discovery, manifest-diff push/pull.
-- `cast/` — 投屏 (screen-cast): a second window that mirrors the main window's dialogue (`cast:mirror`).
-- `resource_sync/` + `manifest/` — installer-seed / data-version sync.
-- `achievements/`, `adventures/` — achievement triggers + per-character adventure / 羁绊 system.
-
-### Frontend layout (`src/`)
-
-- `components/` — views by feature: `game/` (chat/galgame UI), `pet/` (桌宠 mode), `settings/`, `script-editor/`, `schedule/`, `pomodoro/`, `effects/`, plus root views (`MainMenu`, `CompanionMode`, `PetMode`, `CastWindow`, `LogWindow`, `ScriptEditor`, `WorkshopPage`).
-- `stores/modules/` — Pinia stores (game, settings, ui, user, agent, script-editor, adventure, asr) with a custom persistence plugin (`stores/plugins/persist`).
-- `core/events/` — the event queue + processors (see above).
-- `api/` — service modules + `tauri-events.ts`; a legacy axios `http.ts` layer (mostly unused).
-- `locales/` — vue-i18n for `en`, `ja`, `zh-CN`, `zh-HK` (+ `schema-i18n.ts`).
-- Routes (`src/router/index.ts`): `/` MainMenu, `/chat`, `/pet`, `/second`, `/credit`, `/log-window`, `/cast`, `/script-editor`, `/workshop`.
-
-### Data directory model
-
-`data/` is the runtime data dir (`api::data_dir()` / `init/static_copy.rs`). In desktop **dev** mode it's the repo-root `data/` (live editable game data); in release it's `data/` next to the exe; on mobile it's unpacked from a bundled `data.7z`.
-
-- `game_data/` — characters/, scripts/, backgrounds/, musics/, ambients/, schedules.json.
-- `data_manifest.json` — data version + SHA-256 file list (`manifest/` module).
-- `.official/` — desktop installs bundle resources here; first launch seeds them into `data/` then deletes `.official/`; app updates re-create it and the user syncs via `ResourceSyncDialog` (`resource_sync/`). `third_party/` (ONNX models) ships directly and is overwritten on update.
-- `plugins/` — user/imported plugins.
-- Saves, `settings.json` (tauri-plugin-store), logs (`utils/file_logger`).
-
-## Key Gotchas
-
-- `pnpm tauri dev` runs `pnpm format` first — files may get reformatted before the app launches.
-- `src-tauri/build.rs` and `.cargo/config.toml` carry platform link workarounds (esaxx-rs static-CRT patch for Windows/MSVC, comctl32 v6 so `cargo test` runs, libffi for rustpython on Android). Don't remove them.
-- **`.cargo/config.toml` exists twice** — repo root and `src-tauri/`. Cargo resolves config by walking up from **cwd**, not from the manifest, so `cd src-tauri && cargo build` reads one and `cargo --manifest-path src-tauri/Cargo.toml` (from the repo root, as CI does) reads the other. Both are live: **edit both, or local and CI silently diverge.** New `[profile.*.package."*"]` / `build-override` overrides go in `src-tauri/Cargo.toml` instead — package overrides are manifest-only and the manifest is cwd-independent.
-- `[lib] crate-type` is `["cdylib", "rlib"]`: `staticlib` is omitted because desktop builds would otherwise re-archive a ~1.4 GB `ling_chat_lib.lib` on every incremental build. **Manual iOS builds must add `"staticlib"` back** — see `docs/ios-build.md`.
-- Mobile builds require the `custom-protocol` Cargo feature (declared under `[features]`).
-- LLM providers, model/device selection, and ONNX backends are **platform-specific** in Cargo.toml (Windows = DirectML, Linux = Vulkan/webgpu, macOS = Metal/CoreML). Adding a dependency that forces a static CRT will break the Windows build.
-- Vite ignores `src-tauri/**`, `target/**`, and `data/**` for HMR.
-
-## Reference Docs
-
-Per-feature authoritative docs live in `docs/`: plugins (`plugin-dev-guide.md`), script editor (`script-editor/`), Live2D authoring (`live2d/`), function-call tools (`function_call/`), LLM presets (`llm-provider-presets.md`), i18n (`i18n.md`), local TTS API (`local-tts-api.md`), inference devices (`inference-devices.md`), Android (`android/`), iOS (`ios-build.md`), update logic (`自动更新逻辑.md`), Rust 构建耗时优化 (`build-performance.md`)
-
-## Agent 开发需要遵守的
-
-1. 与用户交流的时候，以专业的软件工程师的口吻交流，避免频繁提及函数名与内部实现细节，注重交流整体软件结构和功能。发言不要 AI 化严重。重点是让用户理解软件目前架构和情况，方便开发者定位问题。
-2. 进行代码更改的时候，保证最小化破坏更改，代码上仅保留必要的注释，注释中禁止出现md语法。
-3. 遵循 MVP 原则，不要过度设计，不要过度实现，不要过度优化，不要过度封装，开发中能先用简洁的方式实现就不要用过于复杂的方法，随着开发和需求动态调整代码结构设计。
+### 前端布局（`src/`）
+-components按功能划分的视图：game、pet、settings、script-editor、schedule、pomodoro、effects，以及根视图（`MainMenu`、`CompanionMode`、`PetMode`、`CastWindow`、`LogWindow`、`ScriptEditor`、`WorkshopPage`）。
+-stores/modules：Pinia stores（game、settings、ui、user、agent、script-editor、adventure、asr），带自定义持久化插件（`stores/plugins/persist`）。
+-core/events：事件队列 + 处理器
+-api：服务模块+tauri-events.ts；遗留的 axios `http.ts` 层（基本未使用）。
+-locales：用于 `en`、`ja`、`zh-CN`、`zh-HK` 的 vue-i18n（+ `schema-i18n.ts`）。
+-路由（src/router/index.ts）：/MainMenu、`/chat`、`/pet`、`/second`、`/credit`、`/log-window`、`/cast`、`/script-editor`、`/workshop`。
+### 数据目录模型
+`data/` 是运行时数据目录（`api::data_dir()` / `init/static_copy.rs`）。在桌面 **dev** 模式下是仓库根目录的 `data/`（可实时编辑的游戏数据）；发布版中是与 exe 相邻的 `data/`；移动端则从打包的 `data.7z` 解压。
+-`game_data/` — characters/、scripts/、backgrounds/、musics/、ambients/、schedules.json。
+-`data_manifest.json` — 数据版本 + SHA-256 文件列表（`manifest/` 模块）。
+-`.official/` — 桌面安装包将资源捆绑在此处；首次启动会将其播种到 `data/`，然后删除 `.official/`；应用更新会重新创建它，用户通过 `ResourceSyncDialog`（`resource_sync/`）同步。`third_party/`（ONNX 模型）直接随包发布，并在更新时覆盖。
+-`plugins/` — 用户/导入的插件。
+-存档、`settings.json`（tauri-plugin-store）、日志（`utils/file_logger`）。
+## 关键注意事项
+-pnpm tauri dev会先运行格式化
+-`src-tauri/build.rs` 和 `.cargo/config.toml` 包含平台链接变通方案，不要移除它们
+-`[lib] crate-type` 为 `["cdylib", "rlib"]`：省略 `staticlib`，因为否则桌面构建会在每次增量构建时重新归档约 1.4 GB 的 `ling_chat_lib.lib`。**手动 iOS 构建必须把 `"staticlib"` 加回来**——见 `docs/ios-build.md`
+-移动端构建需要 `custom-protocol` Cargo feature（在 `[features]` 下声明）
+## 参考文档
+各功能的权威文档位于 `docs/`：插件（`plugin-dev-guide.md`）、脚本编辑器（`script-editor/`）、Live2D 创作（`live2d/`）、函数调用工具（`function_call/`）、LLM 预设（`llm-provider-presets.md`）、i18n（`i18n.md`）、本地 TTS API（`local-tts-api.md`）、推理设备（`inference-devices.md`）、Android（`android/`）、iOS（`ios-build.md`）、更新逻辑（`自动更新逻辑.md`）、Rust 构建耗时优化（`build-performance.md`）
+## 关键约定
+-与用户交流的时候，以专业的软件工程师的口吻交流，避免频繁提及函数名与内部实现细节，注重交流整体软件结构和功能。发言不要 AI 化严重。重点是让用户理解软件目前架构和情况，方便开发者定位问题。
+-进行代码更改的时候，保证最小化破坏更改，代码上仅保留必要的注释，注释中禁止出现md语法。
+-遵循 MVP 原则，不要过度设计，不要过度实现，不要过度优化，不要过度封装，开发中能先用简洁的方式实现就不要用过于复杂的方法，随着开发和需求动态调整代码结构设计。
+-Rust 格式化字符串优先内联捕获变量：tracing等宏里用 `{role_id}` 直接捕获同名变量，优先于位置参数写法（可读性更高）。复杂表达式（字段访问 / 方法调用）不能内联，先绑定局部变量或继续用 `{}` 位置参数。新写的代码一律用这种风格；顺手改旧代码时也可以替换，但不要为此单独发起纯风格重构。
+-代码注释、commit message、变量命名倾向中文。commit 用cc前缀 + 中文：`feat：xxx`、`fix：xxx`、`chore: xxx`、`build：xxx`、`refactor: xxx`（注意前缀中文冒号用全角）。**commit 用单行标题**，不加正文、**不要加 `Co-Authored-By:` 尾注**。避免在无关改动里顺手重构，仓库维护者明确不欢迎无上下文的风格性重构。
+-格式化：用户明确不要求，格式检查不作为验收依据，格式化在提交时由 husky + lint-staged 处理
+-换行/编码：`.gitattributes` 强制文本文件 LF + UTF-8（Windows 脚本 CRLF）。媒体/大文件走 Git LFS，不要提交大的二进制
+-样式优先用 Tailwind CSS v4，而不是传统css：项目用 `@tailwindcss/vite` 4.x，CSS-first 配置，v4 语法与 v3 有差异，不确定时可查网络或 context7 文档，官方库 ID：`/websites/tailwindcss`（无需再 resolve-library-id）
+-provider 预设：LLM 服务商快捷配置在 `src/constants/llm-presets.ts`，改这个数组即可，勿动组件。
