@@ -8,6 +8,7 @@
 //! - **读素材**：`read_data_file`，把 `data/` 下的文件（角色立绘、TTS 语音等）
 //!   读成 base64 交给插件；只允许 `data/` 内的相对路径，且必须落在该插件
 //!   manifest `read` 声明的前缀之下（未声明一律拒绝）。
+//! - **送消息**：`send_user_message`，把外部消息当成玩家说的话送进对话。
 //!
 //! 这是**插件专属**面——LLM 拿不到，与 `ctx["call_tool"]` 那条共用通道相对。
 //! 新增宿主能力时，`#[pyfunction]` 直接加在下面的 `plugin_host` 模块里，
@@ -451,6 +452,18 @@ fn read_data_file_impl_in(
     }
 }
 
+/// 把一条用户消息送进对话（等同玩家在输入框里发了一句）。
+///
+/// 复用前端那条入口，所以行为完全一致：写进对话、走当前配置生成回复、该有的
+/// 记忆与工具都会生效。生成在后台跑，这里不等它——插件 handler 不该被一轮回复
+/// 卡住。
+async fn send_user_message_impl(app: AppHandle, text: String) -> serde_json::Value {
+    match crate::api::chat::send_chat_message(app, text, None).await {
+        Ok(()) => serde_json::json!({ "ok": true }),
+        Err(e) => serde_json::json!({ "ok": false, "error": e }),
+    }
+}
+
 /// 插件宿主原生模块。插件脚本里用 `from plugin_host import ...` 取用。
 #[pymodule]
 mod plugin_host {
@@ -517,6 +530,26 @@ mod plugin_host {
             vm,
             &super::read_data_file_impl(&path),
         ))
+    }
+
+    /// 把一条用户消息送进对话。
+    ///
+    /// 用法：`send_user_message("在 QQ 里说的话")`
+    ///
+    /// 返回：成功 `{ "ok": true }`；失败 `{ "ok": false, "error": "..." }`（不抛异常）。
+    ///
+    /// 等同玩家自己发了一句：会写进对话并触发回复生成（生成在后台跑，本调用
+    /// 立刻返回）。注意 `/` 开头的内容会被当成调试指令，插件侧应自行过滤。
+    #[pyfunction]
+    fn send_user_message(text: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+        let Some(app) = crate::plugins::app_handle() else {
+            return Ok(super::value_to_pyobject(
+                vm,
+                &serde_json::json!({ "ok": false, "error": "宿主句柄未初始化" }),
+            ));
+        };
+        let result = super::runtime().block_on(super::send_user_message_impl(app, text));
+        Ok(super::value_to_pyobject(vm, &result))
     }
 
     /// 完整切换当前角色：清空对话上下文、重置角色内存、刷新前端。

@@ -201,6 +201,24 @@ r = read_data_file("game_data/characters/风雪/avatar/高兴.webp")
 - 单个文件上限 64MB，超了返回 `ok: false`
 - 失败不抛异常，按返回值处理即可；`error` 里只有你自己给的相对路径，不会带宿主绝对路径
 - 目录名和角色显示名不一定一样（立绘目录由角色数据决定），插件侧别按显示名硬拼
+## 送消息进对话：`from plugin_host import send_user_message`
+
+插件想「替玩家说一句话」时用这个——比如把外部平台（QQ、Discord…）收到的消息转进来，
+让角色像平时一样回应：
+
+```python
+from plugin_host import send_user_message
+
+r = send_user_message("今天好累啊")
+
+# 成功：{ "ok": true }（回复在后台生成）
+# 失败：{ "ok": false, "error": "..." }
+```
+
+- 和玩家在输入框里发一句走的是**同一条路**：写进对话、按当前配置生成回复，
+  记忆与工具照常生效
+- 生成在后台跑，本调用立刻返回，不会把插件 handler 卡住
+- `/` 开头的内容会被当成调试指令（`/查看记忆` 等），插件侧应自行过滤
 
 ## 订阅宿主信号：`[[subscribe]]`
 
