@@ -193,14 +193,27 @@ impl SignalRegistry {
             })
             .unwrap_or_default()
     }
+
+    /// 是否有插件订阅了该信号（只看索引，不做 `match` 筛选，未登记的信号恒为 false）。
+    ///
+    /// 给发射点用：载荷准备（序列化、查库读文件）可能不便宜，先探一次有没有人订阅，
+    /// 没有就免掉这份开销——零插件订阅是常态。
+    pub(crate) fn has_subscribers(&self, signal: &str) -> bool {
+        self.specs.contains_key(signal)
+            && self.index.get(signal).is_some_and(|subs| !subs.is_empty())
+    }
 }
 
 /// 把一条助手回复派发给订阅了 [`SIGNAL_AI_REPLY`] 的插件。
 ///
-/// 只做两件事：补齐插件侧要用的字段（目前是 `avatarDir`），然后交给
-/// [`PluginManager::dispatch_signal`]。handler 在后台线程跑，这里不阻塞回复流水线；
-/// 没有插件订阅时 `dispatch_signal` 内部直接返回，几乎没有开销。
+/// 先探一次有没有订阅者再准备载荷：`avatarDir` 要走一次「查库 + 读角色 YAML」，
+/// 零插件订阅时不该为它买单。handler 本身在后台线程执行，不阻塞回复流水线。
 pub async fn emit_ai_reply(app: &AppHandle, resp: &ReplyResponse) {
+    let manager = app.state::<AppState>().data().plugin_manager.clone();
+    if !manager.has_signal_subscribers(SIGNAL_AI_REPLY) {
+        return;
+    }
+
     let mut payload = match serde_json::to_value(resp) {
         Ok(payload) => payload,
         Err(e) => {
@@ -209,15 +222,18 @@ pub async fn emit_ai_reply(app: &AppHandle, resp: &ReplyResponse) {
         },
     };
 
-    if let Some(role_id) = resp.role_id {
-        if let Some(dir) = avatar_dir(app, role_id).await {
-            payload["avatarDir"] = serde_json::Value::String(dir);
-        }
-    }
+    // avatarDir 恒定存在：能解析出立绘目录就是相对 `data/` 的路径，解析不出
+    // （没有 role_id，或剧本/插件角色本就没有立绘目录）就置 null。键位恒定，
+    // 插件可以直接下标取值，与文档「该字段为 null」一致。
+    payload["avatarDir"] = match resp.role_id {
+        Some(role_id) => match avatar_dir(app, role_id).await {
+            Some(dir) => serde_json::Value::String(dir),
+            None => serde_json::Value::Null,
+        },
+        None => serde_json::Value::Null,
+    };
 
-    app.state::<AppState>()
-        .data()
-        .plugin_manager
+    manager
         .dispatch_signal(app, SIGNAL_AI_REPLY, &payload)
         .await;
 }

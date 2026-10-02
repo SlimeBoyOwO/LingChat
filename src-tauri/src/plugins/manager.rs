@@ -636,6 +636,12 @@ impl PluginManager {
     // 宿主信号派发
     // ============================================================
 
+    /// 是否有插件订阅了该信号。发射点用它先短路：没有订阅者时连载荷都不用准备。
+    pub fn has_signal_subscribers(&self, signal: &str) -> bool {
+        let signals = self.signals.read().unwrap_or_else(|e| e.into_inner());
+        signals.has_subscribers(signal)
+    }
+
     /// 把信号派发给命中的插件订阅。
     ///
     /// 筛选全在宿主侧完成：未登记的信号、`match` 不中的订阅都不会产生执行，
