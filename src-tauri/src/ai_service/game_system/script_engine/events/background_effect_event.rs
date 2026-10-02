@@ -26,6 +26,8 @@ const CLEARING_EFFECTS: [&str; 3] = ["none", "None", ""];
 pub struct BackgroundEffectEvent {
     effect: String,
     duration: Option<f64>,
+    text: Option<String>,
+    echo: Option<String>,
 }
 
 impl BackgroundEffectEvent {
@@ -40,8 +42,11 @@ impl BackgroundEffectEvent {
         // The warning exists because the failure was previously completely
         // silent: two of the shipped scripts write `starfield` / `Starfield`
         // and get no particles at all with no diagnostic anywhere.
-        if !CLEARING_EFFECTS.contains(&effect.as_str()) && !KNOWN_EFFECTS.contains(&effect.as_str())
-        {
+        // 支持 '+' 组合叠加（如 "Glitch+BloodDrip"），逐段校验
+        let all_known = effect.split('+').map(|p| p.trim()).all(|p| {
+            CLEARING_EFFECTS.contains(&p) || KNOWN_EFFECTS.contains(&p)
+        });
+        if !all_known && !CLEARING_EFFECTS.contains(&effect.as_str()) {
             let hint = KNOWN_EFFECTS
                 .iter()
                 .find(|k| k.eq_ignore_ascii_case(&effect));
@@ -62,6 +67,14 @@ impl BackgroundEffectEvent {
         Self {
             effect,
             duration: parse_duration(data),
+            text: data
+                .get("text")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            echo: data
+                .get("echo")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
         }
     }
 }
@@ -69,11 +82,17 @@ impl BackgroundEffectEvent {
 #[async_trait]
 impl ScriptEvent for BackgroundEffectEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        ctx.game_status.lock().await.background_effect = self.effect.clone();
+        // 限时特效只是一层瞬时演出，由前端计时并还原；不要把它写进存档快照，
+        // 否则恰好在闪烁期间自动保存，重载后会把血色 UI / Tear 永久恢复出来。
+        if self.duration.unwrap_or(0.0) <= 0.0 {
+            ctx.game_status.lock().await.background_effect = self.effect.clone();
+        }
 
         let payload = BackgroundEffectPayload {
             effect: self.effect.clone(),
             duration: self.duration,
+            text: self.text.clone(),
+            echo: self.echo.clone(),
         };
         let _ = emit(ctx.app, SCRIPT_BACKGROUND_EFFECT, &payload);
 

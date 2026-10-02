@@ -1,6 +1,6 @@
 [package]
 name = "ling_chat"
-version = "0.5.2"
+version = "0.5.3"
 default-run = "ling_chat"
 description = "AI Galgame Engine"
 authors = ["LingChat Team"]
@@ -148,6 +148,8 @@ sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", defau
     "directml",
 ] }
 windows = { version = "0.62.2", features = [
+    "Win32_UI_Controls",
+    "Win32_Storage_FileSystem",
     "Win32_UI_WindowsAndMessaging",
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

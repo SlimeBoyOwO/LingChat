@@ -1,6 +1,6 @@
 <template>
   <img
-    src="../../../../assets/images/LingChatLogo.png"
+    :src="corrupted ? glitchLogoUrl : normalLogoUrl"
     alt="LingChatLogo"
     draggable="false"
     class="absolute right-0 z-5 h-[16vw] w-auto max-w-[40vw] cursor-pointer
@@ -12,5 +12,16 @@
 </template>
 
 <script setup lang="ts">
+import normalLogoUrl from "../../../../assets/images/LingChatLogo.png";
+import glitchLogoUrl from "../../../../assets/images/LingChatLogoGlitch.png";
+
 defineOptions({ inheritAttrs: false });
+
+// 剧本主菜单特效（blood/ghost）生效时切换为崩坏 logo
+defineProps({
+  corrupted: {
+    type: Boolean,
+    default: false,
+  },
+});
 </script>

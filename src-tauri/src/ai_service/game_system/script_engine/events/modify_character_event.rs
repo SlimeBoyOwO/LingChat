@@ -20,6 +20,9 @@ pub struct ModifyCharacterEvent {
     clothes: Option<String>,
     perceive: Option<bool>,
     duration: Option<f64>,
+    flash: bool,
+    noise: Option<String>,
+    noise_fade_in: Option<f64>,
 }
 
 impl ModifyCharacterEvent {
@@ -44,6 +47,19 @@ impl ModifyCharacterEvent {
                 .map(|s| s.to_string()),
             perceive: data.get("perceive").and_then(loose_bool),
             duration: parse_duration(data),
+            flash: data.get("flash").and_then(loose_bool).unwrap_or(false),
+            noise: data
+                .get("noise")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            noise_fade_in: data
+                .get("noise_fade_in")
+                .and_then(|v| v.as_f64())
+                .or_else(|| {
+                    data.get("noise_fade_in")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.trim().parse::<f64>().ok())
+                }),
         }
     }
 }
@@ -147,14 +163,19 @@ impl ScriptEvent for ModifyCharacterEvent {
             action: self.action.clone(),
             clothes: self.clothes.clone(),
             duration: self.duration,
+            flash: self.flash.then_some(true),
+            noise: self.noise.clone(),
+            noise_fade_in: self.noise_fade_in,
         };
         let _ = emit(ctx.app, SCRIPT_MODIFY_CHARACTER, &payload);
 
         tracing::info!(
-            "[ModifyCharacterEvent] role={} action={:?} emotion={:?}",
+            "[ModifyCharacterEvent] role={} action={:?} emotion={:?} flash={} noise={:?}",
             role_id,
             self.action,
-            self.emotion
+            self.emotion,
+            self.flash,
+            self.noise
         );
         Ok(None)
     }
