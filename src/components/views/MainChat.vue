@@ -70,7 +70,6 @@ import { isMobile, isWindows } from "@/utils/platform";
 import {
   getFloatingPetStatus,
   hideFloatingPet,
-  isVisible,
   requestFloatingPetPermission,
   showFloatingPet,
 } from "@/api/services/floating-pet";
@@ -140,15 +139,57 @@ const floatingPetActive = ref(false);
  */
 const pendingPetEntry = ref(false);
 
-/** 同步悬浮窗状态。从系统设置页返回时刷新（按钮高亮与否）。 */
+/**
+ * 同步悬浮窗状态。从系统设置页返回时刷新（按钮高亮与否）。
+ *
+ * ## 为什么不用 `isVisible()`
+ *
+ * 它底层是裸 `invoke`，失败就抛，调用方只能 catch 成 `false`——
+ * 而 `false` 在这里会被读作「桌宠没在运行」。一次 IPC 失败（搬运 / 重排
+ * 期间主线程忙）就会让按钮变回「启动」，用户再点一下，**正在悬浮窗里跑**
+ * 的桌宠会被重新搬一次（窗口重建、位置重置到 (0,0)、角色闪没）。
+ *
+ * 聚合查询带 `queried` 标记，能把「查不到」和「确实没在运行」分开：
+ * 查不到就保持上一次的按钮状态，不误判。
+ */
 const syncFloatingPetState = async () => {
   if (!isMobile()) return;
-  try {
-    floatingPetActive.value = await isVisible();
-  } catch {
-    floatingPetActive.value = false;
-  }
+  const status = await getFloatingPetStatus();
+  if (!status.queried) return;
+  floatingPetActive.value = status.visible;
 };
+
+/**
+ * 兜底自愈：修掉「页面不在 `/pet`，但 WebView 还在悬浮窗里」这个非法状态。
+ *
+ * ## 它只可能由一次误判造成
+ *
+ * 悬浮窗里应该**永远**是桌宠页。这个状态只可能来自 `PetMode` 里一次
+ * 「已回到 App」的误判（见 `confirmReturnedToApp`）—— 页面被 push 到了
+ * `/chat`，原生窗口却还挂着。用户看到的就是「悬浮窗卡成聊天页、角色凭空
+ * 消失」，而且因为那次误判顺带停掉了轮询，它**永远不会自愈**。
+ *
+ * ## 为什么要延迟 + 二次确认
+ *
+ * **不能**一读到 `detached === true` 就跳。正常收回（点 ✕）时也会短暂出现
+ * 完全一样的读数：`PetMode` 是「先 `handleReturnedToApp()` 切路由、再
+ * `hideFloatingPet()`」，而原生的 `hide` 命令内部还有 `HIDE_DELAY_MS`(80ms)
+ * 的延迟。这段窗口里 MainChat 已经挂载、页面已是 `/chat`，而原生还没摘窗口
+ * —— 此时若立刻跳回 `/pet`，用户会看到「刚收回又被弹回桌宠页」。
+ *
+ * 因此等一拍（1.5s，远大于 80ms + IPC 往返）再查一次：原生确实还在悬浮窗里
+ * 才补导航。
+ */
+const healStuckFloatingState = async () => {
+  if (router.currentRoute.value.path === "/pet") return;
+  const status = await getFloatingPetStatus();
+  // 查不到就不动；已经收回了也正常，什么都不用做
+  if (!status.queried || !status.detached) return;
+  await router.push("/pet").catch(() => {});
+};
+
+/** [healStuckFloatingState] 的延迟时长（毫秒）。见其说明。 */
+const STUCK_HEAL_DELAY_MS = 1500;
 
 /**
  * 退出悬浮桌宠：把 WebView 搬回 Activity。
@@ -185,11 +226,33 @@ const goToPetMode = async () => {
     // 先探测再切页：没授权/不支持时不该让用户白跳一次 /pet 路由。
     const status = await getFloatingPetStatus();
 
+    // 查询失败：既不能当成「不支持」（会误报设备不兼容），也不能当成
+    // 「没在运行」（会去重复搬一次）。老实说没问到，让用户再点一次。
+    if (!status.queried) {
+      uiStore.showWarning({
+        title: "刚刚没问清楚呢…",
+        message: "系统这会儿没回我话，过一会儿再点一次试试？",
+      });
+      return;
+    }
+
     if (!status.supported) {
       uiStore.showWarning({
         title: "这台设备帮不上忙呢",
         message: "系统的限制下我暂时浮不起来，换个设备再喊我吧～",
       });
+      return;
+    }
+
+    // 已经在悬浮窗里了（按钮状态可能过期，见 syncFloatingPetState）。
+    // 这时**绝不能**再 show 一次：`show()` 的幂等分支会把窗口整个重建
+    // ——位置重置到 (0,0)、WebView 重新挂载，用户看到的就是「角色闪一下
+    // 没了、桌宠跳到左上角」。只需要把页面送回 /pet。
+    if (status.detached) {
+      floatingPetActive.value = true;
+      if (router.currentRoute.value.path !== "/pet") {
+        await router.push("/pet");
+      }
       return;
     }
 
@@ -260,6 +323,11 @@ const handleVisibilityChange = async () => {
 onMounted(() => {
   if (!isMobile()) return;
   void syncFloatingPetState();
+  // 兜底自愈：等一拍再查「页面不在 /pet 但 WebView 还在悬浮窗」这个非法状态。
+  // 必须延迟 —— 正常收回时也会短暂出现同样的读数，见 healStuckFloatingState。
+  // 挂在 onMounted 而不是 syncFloatingPetState 里：误判之后页面会被 push 到
+  // /chat，那一刻正是本组件挂载的时候。
+  window.setTimeout(() => void healStuckFloatingState(), STUCK_HEAL_DELAY_MS);
   document.addEventListener("visibilitychange", handleVisibilityChange);
 });
 

@@ -592,6 +592,21 @@ let metricsTimer: number | undefined;
 let sawDetached = false;
 
 /**
+ * 连续观察到「原生说 WebView 已不在悬浮窗里」的轮数。
+ *
+ * 收回是**不可逆**的（`handleReturnedToApp` 会 `router.push("/chat")`
+ * 并停掉轮询），所以不能凭单轮读数下结论：搬运 / 重排 / 旋转期间主线程
+ * 忙着布局，查询本身可能失败或拿到中间态。连续 [RETURNED_CONFIRM_ROUNDS]
+ * 轮（间隔 500ms）都是 false 才认。
+ *
+ * 正常收回有 `pet-attached` 事件做快路径，轮询只是兜底，多等一轮无感。
+ */
+let returnedStreak = 0;
+
+/** 收回判定需要连续确认的轮数。见 [returnedStreak]。 */
+const RETURNED_CONFIRM_ROUNDS = 2;
+
+/**
  * 已回到 Activity：重置形态、切回聊天页。
  *
  * 事件（`pet-attached`）与轮询（`detached` 变 false）两条路都走它，
@@ -603,6 +618,7 @@ const handleReturnedToApp = () => {
   markFloatingWindowMode(false);
   stopMetricsPolling();
   stopSelfHeal();
+  returnedStreak = 0;
   petExpanded.value = false;
   showChatInput.value = false;
   // 页面不再缩放：不归位的话 --pet-fit 还留着悬浮窗里的系数（约 0.25），
@@ -617,7 +633,53 @@ const handleReturnedToApp = () => {
     returningTimer = undefined;
     returningToApp.value = false;
   }, 1500);
-  void router.push("/chat");
+  void router.push("/chat").then(() => {
+    // 导航没落地（页面还停在 /pet）→ 形态已经切成「桌面端」，而窗口还是
+    // 悬浮窗那个小矩形，用户看到的就是「角色凭空消失、窗口还在」。
+    // 这是**唯一**能自愈的地方：MainChat 没挂载，它那条兜底跑不到。
+    // 回滚形态并让轮询继续跑，等下一次真收回时再切。
+    if (router.currentRoute.value.path === "/pet") {
+      console.warn("[PetMode] 切回聊天页未生效，回滚为悬浮窗形态");
+      enterFloatingLayout();
+    }
+  });
+};
+
+/**
+ * 复核一条「已回到 App」的信号，确认后才真的收回。
+ *
+ * ## 为什么不能直接相信 `pet-attached`
+ *
+ * 原生在收回后会**重发 4 次** `pet-attached`（0/300/1000/3000ms，见 Kotlin
+ * 侧的 `PET_ATTACHED_RETRY_DELAYS_MS`）——那串重试是为「用户是在别的 App
+ * 里收回的、WebView 当时收不到 JS」准备的。但用户**很快又重新进悬浮窗**
+ * 时它就成了毒药：
+ *
+ * ```
+ * t=0.0  点 ✕ 收回 → 排队 [0, 300, 1000, 3000]
+ * t=1.5  又点「启动桌宠」→ 重新搬进悬浮窗，页面重新挂载、监听器重新绑上
+ * t=3.0  最后一条陈旧的 pet-attached 到达 → 命中**新一轮**的监听器
+ *        → 页面以为用户收回了桌宠 → push /chat + 停轮询（不可逆）
+ *        → 悬浮窗里变成聊天页、角色凭空消失
+ * ```
+ *
+ * 这就是「反复切来切去就卡成聊天页」的直接成因。原生侧已按轮次作废这类
+ * 陈旧事件（见 `petModeEpoch`），这里是**第二道防线**：即使事件真的发出来
+ * 了（evaluateJavascript 已经执行、无法撤回），也回问原生一次再决定。
+ *
+ * 查询失败时**什么都不做** —— 宁可晚一轮收回，也不能凭猜测把用户踢走。
+ */
+const confirmReturnedToApp = async () => {
+  const status = await getFloatingPetStatus();
+  if (!status.queried) return;
+  if (status.detached) {
+    // 原生说 WebView 还在悬浮窗里 → 这是上一轮的残响，丢弃。
+    // api 层的标记已被事件回调置成 false，这里改回来。
+    markFloatingWindowMode(true);
+    if (!floatingWindowMode.value) enterFloatingLayout();
+    return;
+  }
+  handleReturnedToApp();
 };
 
 const stopMetricsPolling = () => {
@@ -633,8 +695,16 @@ const pollNativeState = async () => {
   if (!isInFloatingWindow() && !isAndroid()) return;
   try {
     const status = await getFloatingPetStatus();
+    // ── 查询失败：这一轮不作数 ────────────────────────────────
+    //
+    // 绝不能把「没查到」当成「已经回到 App」。`handleReturnedToApp` 会
+    // push /chat 并停掉轮询，一旦误判就再也回不来（真机表现：悬浮窗
+    // 卡成聊天页、角色凭空消失）。搬运 / 旋转重排期间主线程忙着布局，
+    // 查询失败恰恰是最常见的时候 —— 也就是「反复切来切去」时。
+    if (!status.queried) return;
     if (status.detached) {
       sawDetached = true;
+      returnedStreak = 0;
       // 兜底自愈：万一进悬浮窗时的事件丢了、页面还停在桌面端布局
       // （见 enterFloatingLayout 的说明），这里按原生的权威答案切回来。
       if (!floatingWindowMode.value) enterFloatingLayout();
@@ -647,7 +717,10 @@ const pollNativeState = async () => {
     }
     // 原生说 WebView 已经不在悬浮窗里了 → 按「已回到 App」处理。
     // 只有**见过** detached 才认，否则会误伤「刚挂载、还没搬进去」。
-    if (sawDetached) handleReturnedToApp();
+    if (!sawDetached) return;
+    // 连续确认，避免把中间态当成最终态。见 [returnedStreak]。
+    returnedStreak += 1;
+    if (returnedStreak >= RETURNED_CONFIRM_ROUNDS) handleReturnedToApp();
   } catch {
     // 插件不可用或瞬时失败，下一轮重试
   }
@@ -858,6 +931,8 @@ let viewportObserver: ResizeObserver | undefined;
 const enterFloatingLayout = () => {
   metricsReceived = false;
   lastReportedHeight = -1;
+  // 新一轮开始：清掉上一轮残留的收回确认计数（见 returnedStreak）
+  returnedStreak = 0;
   floatingWindowMode.value = true;
   // 视口尺寸先落进 ref：`floatingCanvasHeight` 用它兜「画布不小于视口」，
   // 这里不刷的话第一次 computed 会拿 0 当视口高、跳过那层兜底。
@@ -921,7 +996,11 @@ onMounted(async () => {
     //
     // 这个事件只是**快路径**：它在搬运/收回前后并不可靠（实测即使在前台
     // 收回也可能收不到），真正兜底的是 pollNativeState 的轮询。
-    handleReturnedToApp();
+    //
+    // ⚠️ 但**不能**直接照做：收回时原生会重发 4 次本事件（跨度 3 秒），
+    // 用户中途重新进悬浮窗时，迟到的那些会把「刚进来」误判成「已收回」。
+    // 因此先回问原生一次再决定，见 confirmReturnedToApp 的说明。
+    void confirmReturnedToApp();
   });
 
   // 原生改完窗口尺寸后同步展开态

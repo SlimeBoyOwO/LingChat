@@ -62,6 +62,22 @@ export interface FloatingPetStatus {
   width: number;
   /** 悬浮窗高度（dp）。不在悬浮窗里时为 0。 */
   height: number;
+  /**
+   * 本次查询是否**真的拿到了原生答案**。
+   *
+   * `false` 表示 IPC 失败（WebView 正在被搬运、宿主主线程被布局阻塞、
+   * 插件瞬时不可用等），此时其余字段**全是占位值**，不代表任何真实状态。
+   *
+   * ## 为什么必须有这个字段
+   *
+   * 早先 catch 里直接返回 `detached: false`，而 `PetMode` 的轮询把
+   * `detached === false` 读作「用户已经收回桌宠了」——于是一次查询失败
+   * 就会让页面主动 `router.push('/chat')` 并**停掉轮询**（不可逆）。
+   * 真机表现就是「反复切换时悬浮窗偶尔卡成聊天页、角色凭空消失」。
+   *
+   * 调用方凡是要根据 `detached` 做**不可逆决定**的，都必须先看这个字段。
+   */
+  queried: boolean;
 }
 
 /** 进入悬浮桌宠的流程结果。 */
@@ -183,9 +199,14 @@ export async function getFloatingPetStatus(): Promise<FloatingPetStatus> {
       scale: Number(status?.scale) > 0 ? Number(status.scale) : 1,
       width: Number(status?.width) || 0,
       height: Number(status?.height) || 0,
+      queried: true,
     };
   } catch {
-    // 插件不可用（如桌面端未注册、旧版本）时降级为「不支持」
+    // 插件不可用（如桌面端未注册、旧版本）时降级为「不支持」。
+    //
+    // ⚠️ `queried: false` 是这里唯一可靠的信号 —— 下面那些字段全是占位值。
+    // 尤其 `detached: false` **不能**被读作「用户已收回桌宠」：它只表示
+    // 「没查到」。见接口里 `queried` 的说明。
     return {
       supported: false,
       granted: false,
@@ -194,6 +215,7 @@ export async function getFloatingPetStatus(): Promise<FloatingPetStatus> {
       scale: 1,
       width: 0,
       height: 0,
+      queried: false,
     };
   }
 }

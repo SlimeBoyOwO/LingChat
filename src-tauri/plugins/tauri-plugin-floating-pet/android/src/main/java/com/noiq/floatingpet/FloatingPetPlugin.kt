@@ -365,6 +365,32 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      */
     private var pendingAttachNotify: WebView? = null
 
+    /**
+     * 「进出悬浮窗」的轮次号，每次 [show] / [restoreWebViewToActivity] 递增。
+     *
+     * ## 为什么需要它
+     *
+     * 收回时 [restoreWebViewToActivity] 会在 0/300/1000/3000ms 各重发一次
+     * `pet-attached`（见 [PET_ATTACHED_RETRY_DELAYS_MS]）。那串重试是为
+     * 「用户是在别的 App 里收回的、WebView 当时收不到 JS」准备的，但它在
+     * **用户很快又重新进悬浮窗**时变成了毒药：
+     *
+     * ```
+     * t=0.0  用户点 ✕ 收回 → 排队 [0, 300, 1000, 3000]
+     * t=1.5  用户又点了「启动桌宠」→ 重新搬进悬浮窗，页面重新挂载
+     * t=3.0  最后一条陈旧的 pet-attached 到达
+     *        → 页面把它当成「用户收回了桌宠」
+     *        → router.push('/chat') + 停掉轮询（不可逆）
+     *        → 悬浮窗里变成聊天页，角色凭空消失
+     * ```
+     *
+     * 每个延迟任务在**入队时**记下当时的轮次，执行前比对：轮次变了就说明
+     * 期间已经重新进出过一次，这条事件属于上一轮，直接丢弃。
+     *
+     * 这样「反复切来切去」就不会再把用户踢回聊天页。
+     */
+    private var petModeEpoch = 0
+
     /** [ensureLifecycleCallbacks] 的幂等标记。 */
     private var lifecycleCallbacksRegistered = false
 
@@ -853,6 +879,14 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 // → 主界面永久黑屏。
                 petView = webView
                 petDetached = true
+                // 开新一轮（见 [petModeEpoch]）：作废上一轮所有排队中的
+                // pet-attached 重试，否则它们会在几秒后落进这一轮的页面里，
+                // 把「刚进来」误判成「已收回」。
+                petModeEpoch += 1
+                // 同理：上一轮收回时留下的补发引用也必须清掉，不然 Activity
+                // 一 resume 就会补发一条陈旧的 pet-attached（见
+                // [ensureLifecycleCallbacks] 的 onActivityResumed）。
+                pendingAttachNotify = null
 
                 val root = activity.findViewById<ViewGroup>(android.R.id.content)
                 root?.removeView(webView)
@@ -1134,6 +1168,12 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      *   因此传 false 跳过。
      */
     private fun restoreWebViewToActivity(notifyPage: Boolean = true) {
+        // 开新一轮（见 [petModeEpoch]）：作废上一轮所有排队中的 pet-attached
+        // 重试，并把本轮排队的重试标记成「本轮专属」—— 只要用户中途又进了
+        // 悬浮窗（轮次再次递增），下面那些延迟任务就会自行作废。
+        petModeEpoch += 1
+        val epoch = petModeEpoch
+
         val view = petView
         if (view != null) {
             try {
@@ -1246,6 +1286,14 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 for (delay in PET_ATTACHED_RETRY_DELAYS_MS) {
                     view.postDelayed(
                         {
+                            // 轮次变了 == 期间用户又重新进过悬浮窗（或又收回过一次）。
+                            // 这条事件属于上一轮，发出去只会让页面把「刚进来」误判成
+                            // 「已收回」→ router.push('/chat') 且轮询被停（不可逆）。
+                            // 真机表现就是「反复切来切去时悬浮窗卡成聊天页」。
+                            if (epoch != petModeEpoch) {
+                                Log.i(TAG, "丢弃过期的 pet-attached（轮次已变，用户已重新进出悬浮窗）")
+                                return@postDelayed
+                            }
                             // Handler 里逃出去的异常会直接杀进程，必须兜住
                             try {
                                 notifyWeb(wv, "pet-attached", JSObject())
@@ -1257,9 +1305,10 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                     )
                 }
                 // 兜底清理：万一 Activity 一直没 resume（例如用户再也没回来），
-                // 不要让引用一直挂着。
+                // 不要让引用一直挂着。同样按轮次判断，避免把**新一轮**刚记下的
+                // 补发引用误清掉。
                 keepAliveHandler.postDelayed(
-                    { pendingAttachNotify = null },
+                    { if (epoch == petModeEpoch) pendingAttachNotify = null },
                     KEEP_ALIVE_GRACE_MS
                 )
             }
