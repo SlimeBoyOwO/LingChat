@@ -1,7 +1,16 @@
 <template>
+  <!-- 根元素上的四个 .xx-safe 工具类（定义在 src/assets/styles/base.css）：
+       手机端设置页是**独立 Activity**，同样跑 edge-to-edge（targetSdk 36，
+       Android 15+ 强制），不内缩就会被状态栏 / 手势条压住。
+       变量 --safe-area-inset-* 由 SettingsActivity 通过 SafeAreaInsets 注入
+       （Android WebView 的 env(safe-area-inset-*) 恒为 0，不可用）；
+       桌面端这些变量恒为 0px，因此是零回归的空操作。
+
+       max-md:rounded-none：窄屏下设置页铺满整屏，圆角会切出四个小三角露出
+       窗口底色，干脆在 <768px 去掉圆角。 -->
   <div
     :class="[
-      `relative flex h-full w-full flex-col overflow-hidden rounded-xl border font-sans transition-colors duration-300`,
+      `pt-safe pr-safe pb-safe pl-safe relative flex h-full w-full flex-col overflow-hidden rounded-xl border font-sans transition-colors duration-300 max-md:rounded-none`,
       isDarkMode
         ? 'dark border-slate-700 bg-slate-900 text-slate-200 selection:bg-sky-800'
         : 'border-slate-200 bg-[#FAFCFF] text-slate-800 selection:bg-sky-200',
@@ -83,6 +92,7 @@ const PET_SCALE_DEFAULT = 1.0;
 const PET_SCALE_MAX = 1.3;
 const PET_SCALE_MIN = 0.7;
 import { useGameStore } from "../../../stores/modules/game";
+import { isMobile } from "@/utils/platform";
 
 // 引入 Lucide 图标
 import { Ruler, Book, Cat, CheckCircle2 } from "lucide-vue-next";
@@ -162,7 +172,14 @@ const petLive2dFps = computed(() => settingsStore.pet.live2dFps ?? 30);
 const petBubbleSide = computed(() => settingsStore.pet.bubbleSide);
 
 const syncMaximizedState = async () => {
-  isMaximized.value = await appWindow.isMaximized();
+  // 移动端没有「最大化」概念，`isMaximized()` 在 Android 上行为不确定。
+  // 这里必须兜住：`onMounted` 里是 `await syncMaximizedState()`，
+  // 一旦抛异常，后面的深色模式加载与事件监听就都不会执行了。
+  try {
+    isMaximized.value = await appWindow.isMaximized();
+  } catch {
+    isMaximized.value = false;
+  }
 };
 
 const emitScaleChanged = async (scale: number) => {
@@ -211,6 +228,7 @@ const updateBubbleSide = async (side: BubbleSide) => {
 };
 
 const minimizeWindow = async () => {
+  // 桌面端专属：手机上头部已经不显示这个按钮（见 SettingsHeader）。
   await appWindow.minimize();
 };
 
@@ -219,7 +237,31 @@ const toggleMaximizeWindow = async () => {
   await syncMaximizedState();
 };
 
+/**
+ * 关闭设置窗口。
+ *
+ * ## 手机端必须走原生 `finish()`
+ *
+ * 桌面端 `Window.close()` 是关掉一个系统窗口，Android 上**没有对应实现** ——
+ * 翻 `tao` 的 `platform_impl/android/mod.rs`，`Window` 上没有 `close()` /
+ * `destroy()`，`on_window_close` 只是把 Rust 侧的 wrapper 置空。
+ * 直接调的结果是：WebView 被销毁、承载它的 Activity 还在 → **一块黑屏**。
+ *
+ * 所以手机端改调 `SettingsActivity` 通过 `onWebViewCreate` 注入的接口
+ * （见 `gen/android/.../com/noiq/lingchat/SettingsActivity.kt`），由原生
+ * `finish()` 结束那个 Activity。
+ *
+ * 接口拿不到时（理论上不该发生）退回原来的行为，至少不会更差。
+ */
 const closeWindow = async () => {
+  if (isMobile()) {
+    const bridge = (window as unknown as { LingChatSettings?: { close?: () => void } })
+      .LingChatSettings;
+    if (typeof bridge?.close === "function") {
+      bridge.close();
+      return;
+    }
+  }
   await appWindow.close();
 };
 

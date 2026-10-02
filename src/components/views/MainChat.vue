@@ -185,7 +185,7 @@ const healStuckFloatingState = async () => {
   const status = await getFloatingPetStatus();
   // 查不到就不动；已经收回了也正常，什么都不用做
   if (!status.queried || !status.detached) return;
-  await router.push("/pet").catch(() => {});
+  await router.replace("/pet").catch(() => {});
 };
 
 /** [healStuckFloatingState] 的延迟时长（毫秒）。见其说明。 */
@@ -195,14 +195,14 @@ const STUCK_HEAL_DELAY_MS = 1500;
  * 退出悬浮桌宠：把 WebView 搬回 Activity。
  *
  * 页面此时停在 `/pet`，搬回后要再切回 `/chat`，行为与桌面端一致
- * （桌面端 `set_pet_mode(false)` 之后同样 `router.push("/chat")`）。
+ * （桌面端 `set_pet_mode(false)` 之后同样 `router.replace("/chat")`）。
  */
 const leavePetMode = async () => {
   try {
     await hideFloatingPet();
     floatingPetActive.value = false;
     if (router.currentRoute.value.path === "/pet") {
-      await router.push("/chat");
+      await router.replace("/chat");
     }
   } catch (e) {
     console.error("[MainChat] 收回悬浮桌宠失败:", e);
@@ -211,7 +211,11 @@ const leavePetMode = async () => {
 
 const goToPetMode = async () => {
   if (!isMobile()) {
-    router.push("/pet");
+    // `/pet` 与 `/chat` 是**同一个界面的两种形态**，不是「上一页 / 下一页」。
+    // 用 replace 而不是 push：Android 的返回键由 WryActivity 交给 WebView
+    // 历史栈（`mWebView.goBack()`），push 会让每切一次形态都多压一条历史 ——
+    // 用户按返回就会在 /chat 和 /pet 之间来回弹（见 docs 5.4）。
+    router.replace("/pet");
     return;
   }
 
@@ -251,7 +255,7 @@ const goToPetMode = async () => {
     if (status.detached) {
       floatingPetActive.value = true;
       if (router.currentRoute.value.path !== "/pet") {
-        await router.push("/pet");
+        await router.replace("/pet");
       }
       return;
     }
@@ -278,7 +282,7 @@ const goToPetMode = async () => {
     }
 
     // ① 先切页 —— 此时还在屏幕内，用户看到 /pet 渲染完成
-    await router.push("/pet");
+    await router.replace("/pet");
     // ② 再搬移 —— 原生把 WebView 摘进悬浮窗，Activity 换成占位页
     await showFloatingPet({ scale: settingsStore.pet?.scale ?? 1 });
     floatingPetActive.value = true;
@@ -286,7 +290,7 @@ const goToPetMode = async () => {
     console.error("[MainChat] 启动悬浮桌宠失败:", e);
     // 搬移失败时把页面退回来，避免用户停在 /pet 却不在悬浮窗里
     if (router.currentRoute.value.path === "/pet") {
-      await router.push("/chat").catch(() => {});
+      await router.replace("/chat").catch(() => {});
     }
     uiStore.showError({
       title: "桌宠没能爬出来…",

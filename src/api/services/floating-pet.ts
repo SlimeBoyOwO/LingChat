@@ -72,7 +72,7 @@ export interface FloatingPetStatus {
    *
    * 早先 catch 里直接返回 `detached: false`，而 `PetMode` 的轮询把
    * `detached === false` 读作「用户已经收回桌宠了」——于是一次查询失败
-   * 就会让页面主动 `router.push('/chat')` 并**停掉轮询**（不可逆）。
+   * 就会让页面主动 `router.replace('/chat')` 并**停掉轮询**（不可逆）。
    * 真机表现就是「反复切换时悬浮窗偶尔卡成聊天页、角色凭空消失」。
    *
    * 调用方凡是要根据 `detached` 做**不可逆决定**的，都必须先看这个字段。
@@ -338,7 +338,7 @@ export async function requestFloatingPetPermission(): Promise<void> {
 /**
  * 进入悬浮桌宠的完整流程：探测能力 → 检查授权 → 必要时引导授权 → 搬运 WebView。
  *
- * **调用前必须已经把页面切到 `/pet` 路由**（`router.push("/pet")`），
+ * **调用前必须已经把页面切到 `/pet` 路由**（`router.replace("/pet")`），
  * 否则搬移的瞬间用户会看到主界面闪一下。切页与搬移的顺序由调用方保证，
  * 见 `MainChat.vue` 的 `goToPetMode`。
  *

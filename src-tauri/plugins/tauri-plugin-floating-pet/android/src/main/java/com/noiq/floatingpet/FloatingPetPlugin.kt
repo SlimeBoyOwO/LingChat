@@ -2204,8 +2204,28 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      *
      * 用 [detachPetView] 而非 [restoreWebViewToActivity]：Activity 正在销毁，
      * 把 WebView 装回内容视图没有意义，反而可能在销毁流程里制造新引用。
+     *
+     * ## ⚠️ 必须只对**宿主** Activity 生效
+     *
+     * `PluginManager.onDestroy(activity)` 会把**每一个** Tauri Activity 的销毁
+     * 都转给插件。自从桌宠的「设置」改成独立窗口（`SettingsActivity : TauriActivity`，
+     * 见 `com/noiq/lingchat/SettingsActivity.kt`）之后，就有了**第二个**宿主 ——
+     * 用户一关设置窗，这里就会被调一次，把还开着的悬浮窗一起拆掉。
+     *
+     * 真机表现是「打开设置、返回，桌宠就没了」——看起来像收回逻辑出错，
+     * 其实是这里误伤。
+     *
+     * 判据用**实例相等**（`activity === this.activity`）而不是类名或 `isFinishing`：
+     * 插件在构造时绑定的是 MainActivity（`PluginManager.onActivityCreate` 里
+     * 有 `if (::activity.isInitialized) return` 守卫，只会记第一个），
+     * 所以只有那个实例才是悬浮窗的宿主。
      */
     override fun onDestroy(activity: AppCompatActivity) {
+        if (activity !== this.activity) {
+            // 不是宿主（例如设置窗口的 Activity）销毁 —— 与悬浮窗无关，别动它
+            super.onDestroy(activity)
+            return
+        }
         activity.runOnUiThread { detachPetView() }
         super.onDestroy(activity)
     }

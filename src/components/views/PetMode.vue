@@ -170,7 +170,7 @@ const floatingWindowMode = ref(isInFloatingWindow());
  *
  * 收回的那一瞬间页面还停在 `/pet`：`floatingWindowMode` 已经是 false，
  * 于是走桌面分支按 240×480 渲染——在整屏 Activity 里就是**左上角一小块**，
- * 看起来和「没收回去」一模一样。`router.push("/chat")` 落地通常只要几十
+ * 看起来和「没收回去」一模一样。`router.replace("/chat")` 落地通常只要几十
  * 毫秒，但慢机器上足够被看见。这里先把桌宠页藏起来。
  */
 const returningToApp = ref(false);
@@ -630,7 +630,7 @@ let sawDetached = false;
 /**
  * 连续观察到「原生说 WebView 已不在悬浮窗里」的轮数。
  *
- * 收回是**不可逆**的（`handleReturnedToApp` 会 `router.push("/chat")`
+ * 收回是**不可逆**的（`handleReturnedToApp` 会 `router.replace("/chat")`
  * 并停掉轮询），所以不能凭单轮读数下结论：搬运 / 重排 / 旋转期间主线程
  * 忙着布局，查询本身可能失败或拿到中间态。连续 [RETURNED_CONFIRM_ROUNDS]
  * 轮（间隔 500ms）都是 false 才认。
@@ -669,7 +669,7 @@ const handleReturnedToApp = () => {
     returningTimer = undefined;
     returningToApp.value = false;
   }, 1500);
-  void router.push("/chat").then(() => {
+  void router.replace("/chat").then(() => {
     // 导航没落地（页面还停在 /pet）→ 形态已经切成「桌面端」，而窗口还是
     // 悬浮窗那个小矩形，用户看到的就是「角色凭空消失、窗口还在」。
     // 这是**唯一**能自愈的地方：MainChat 没挂载，它那条兜底跑不到。
@@ -949,7 +949,7 @@ let viewportObserver: ResizeObserver | undefined;
  *
  * ## 为什么形态不能由事件或平台假设决定
  *
- * `MainChat.goToPetMode` 的顺序是「① `router.push('/pet')` → ② `showFloatingPet()`」，
+ * `MainChat.goToPetMode` 的顺序是「① `router.replace('/pet')` → ② `showFloatingPet()`」，
  * 所以本页 `onMounted` 跑的时候第②步还没执行，`isInFloatingWindow()` **必然是 false**。
  *
  * - 如果就此按「桌面端」渲染，搬移完成后页面**不会自己切回来**（`pet-detached`
@@ -983,7 +983,7 @@ const enterFloatingLayout = () => {
   //
   // 监听器在 `onMounted` 里**无条件**绑上（见 onViewportResize 的说明），
   // 所以这里不再重复绑。早先只在「挂载时已经是悬浮窗」的分支里绑，
-  // 而按本页的启动顺序（`goToPetMode` 是先 `router.push('/pet')` 再
+  // 而按本页的启动顺序（`goToPetMode` 是先 `router.replace('/pet')` 再
   // `showFloatingPet()`），那条分支**永远走不到** —— 整条 resize 通道是死的，
   // 窗口变化时页面只能等原生轮询，展开后画布停在收起态大小、挤在左上角。
   startMetricsPolling();
@@ -1394,6 +1394,16 @@ const handleOpenSettings = async () => {
       return;
     }
 
+    // ★ Android 必须显式给出承载窗口的 Activity。
+    //
+    // Tauri 在 Android 上建窗走的是 `tao` 的
+    // `AndroidContext::create_activity` —— `find_class("<包名>/<activityName>")`
+    // 之后 `startActivity(Class)`。所以：
+    //   · 不传 `activityName` → 找不到类，窗口建不出来，只走 `tauri://error`
+    //     （表现就是「点了设置没反应」，这正是真机反馈的那个 bug）；
+    //   · 传的名字要与 `com/noiq/lingchat/SettingsActivity.kt` 对上，
+    //     且它已在 AndroidManifest.xml 注册。
+    // 桌面端不需要这个字段（多窗口是原生能力），所以按平台给。
     const webview = new WebviewWindow("settings", {
       url: "/second",
       title: t("views.petMode.settingsWindowTitle"),
@@ -1404,6 +1414,7 @@ const handleOpenSettings = async () => {
       decorations: false,
       transparent: true,
       alwaysOnTop: false,
+      ...(isAndroid() ? { activityName: "SettingsActivity" } : {}),
     });
 
     webview.once("tauri://created", () => {
@@ -1469,7 +1480,10 @@ const handleExitPetMode = async () => {
   // 1. 关闭桌宠窗口特性，恢复 1500x800 的正常主窗口
   await invoke("set_pet_mode", { enable: false });
   // 2. 路由导航回聊天主页面
-  router.push("/chat");
+  //    用 replace：`/pet` 与 `/chat` 是同一界面的两种形态，push 会在 Android
+  //    的 WebView 历史栈里堆出一条「chat → pet → chat → …」的来回链条，
+  //    按返回键就会在两页之间反复弹（见 docs 5.4）。
+  router.replace("/chat");
 };
 </script>
 

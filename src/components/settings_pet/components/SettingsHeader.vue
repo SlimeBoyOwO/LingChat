@@ -43,37 +43,43 @@
         <Moon v-else class="h-4 w-4" />
       </button>
 
-      <!-- 分割线 -->
+      <!-- 分割线（仅桌面端：手机上没有「最小化/最大化」这两个概念） -->
       <div
+        v-if="!isMobile()"
         class="mx-1 h-4 w-px transition-colors"
         :class="isDarkMode ? 'bg-slate-700' : 'bg-slate-200'"
       ></div>
 
-      <button
-        type="button"
-        @click="$emit('minimizeWindow')"
-        class="pointer-events-auto flex h-8 w-8 items-center justify-center rounded transition-colors"
-        :class="
-          isDarkMode
-            ? 'text-slate-400 hover:bg-slate-700 hover:text-sky-400'
-            : 'text-slate-400 hover:bg-slate-100 hover:text-sky-500'
-        "
-      >
-        <Minus class="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        @click="$emit('toggleMaximizeWindow')"
-        class="pointer-events-auto flex h-8 w-8 items-center justify-center rounded transition-colors"
-        :class="
-          isDarkMode
-            ? 'text-slate-400 hover:bg-slate-700 hover:text-sky-400'
-            : 'text-slate-400 hover:bg-slate-100 hover:text-sky-500'
-        "
-      >
-        <Square class="h-3.5 w-3.5" v-if="!isMaximized" />
-        <Copy class="h-3.5 w-3.5" v-else />
-      </button>
+      <!-- 最小化 / 最大化：桌面端专属。
+           手机上设置窗是一个独立的全屏 Activity，没有窗口最小化/最大化的语义，
+           `Window.minimize()` / `toggleMaximize()` 在 Android 上是空操作。 -->
+      <template v-if="!isMobile()">
+        <button
+          type="button"
+          @click="$emit('minimizeWindow')"
+          class="pointer-events-auto flex h-8 w-8 items-center justify-center rounded transition-colors"
+          :class="
+            isDarkMode
+              ? 'text-slate-400 hover:bg-slate-700 hover:text-sky-400'
+              : 'text-slate-400 hover:bg-slate-100 hover:text-sky-500'
+          "
+        >
+          <Minus class="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          @click="$emit('toggleMaximizeWindow')"
+          class="pointer-events-auto flex h-8 w-8 items-center justify-center rounded transition-colors"
+          :class="
+            isDarkMode
+              ? 'text-slate-400 hover:bg-slate-700 hover:text-sky-400'
+              : 'text-slate-400 hover:bg-slate-100 hover:text-sky-500'
+          "
+        >
+          <Square class="h-3.5 w-3.5" v-if="!isMaximized" />
+          <Copy class="h-3.5 w-3.5" v-else />
+        </button>
+      </template>
       <button
         type="button"
         @click="$emit('closeWindow')"
@@ -92,6 +98,7 @@
 
 <script setup lang="ts">
 import { Sun, Moon, Minus, Square, Copy, X } from "lucide-vue-next";
+import { isMobile } from "@/utils/platform";
 
 defineProps<{
   isDarkMode: boolean;

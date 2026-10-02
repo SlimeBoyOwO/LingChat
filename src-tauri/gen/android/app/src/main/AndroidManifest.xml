@@ -38,6 +38,30 @@
             </intent-filter>
         </activity>
 
+        <!-- 桌宠「设置」独立窗口的宿主（见 SettingsActivity.kt）。
+             Tauri 在 Android 上建窗走的是 `tao` 的 `startActivity(Class)`，
+             所以这个 Activity **必须在这里声明**，否则 startActivity 直接抛
+             ActivityNotFoundException。
+
+             · configChanges 与 MainActivity 保持一致：不声明的话转屏会重建
+               Activity，而 Activity 一重建 WebView 就没了，设置页要重新加载。
+             · exported="false"：只给本应用自己启动。tao 是从 MainActivity 的
+               Context 调 startActivity（同应用同 UID），不需要导出。
+             · launchMode 用默认的 standard：tao 建窗后会等 Activity 的创建回调
+               （超时 5 秒），singleTask/singleTop 在复用已有实例时不会触发回调，
+               会让建窗白等 5 秒然后失败。重复点击由前端
+               `WebviewWindow.getByLabel("settings")` 拦掉。
+             · theme 必须换成 Theme.ling_chat.settings：默认继承的是 application 上的
+               Theme.ling_chat（全屏 + 半透明 + 透壁纸），设置窗用那套会糊在壁纸上，
+               见 res/values/themes.xml 里的说明。 -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ling_chat.settings"
+            android:label="@string/main_activity_title"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:windowSoftInputMode="adjustResize" />
+
         <provider
           android:name="androidx.core.content.FileProvider"
           android:authorities="${applicationId}.fileprovider"
