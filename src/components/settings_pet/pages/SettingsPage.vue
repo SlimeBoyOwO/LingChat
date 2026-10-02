@@ -6,11 +6,11 @@
        （Android WebView 的 env(safe-area-inset-*) 恒为 0，不可用）；
        桌面端这些变量恒为 0px，因此是零回归的空操作。
 
-       max-md:rounded-none：窄屏下设置页铺满整屏，圆角会切出四个小三角露出
+       max-[768px]:rounded-none：窄屏下设置页铺满整屏，圆角会切出四个小三角露出
        窗口底色，干脆在 <768px 去掉圆角。 -->
   <div
     :class="[
-      `pt-safe pr-safe pb-safe pl-safe relative flex h-full w-full flex-col overflow-hidden rounded-xl border font-sans transition-colors duration-300 max-md:rounded-none`,
+      `pt-safe pr-safe pb-safe pl-safe relative flex h-full w-full flex-col overflow-hidden rounded-xl border font-sans transition-colors duration-300 max-[768px]:rounded-none`,
       isDarkMode
         ? 'dark border-slate-700 bg-slate-900 text-slate-200 selection:bg-sky-800'
         : 'border-slate-200 bg-[#FAFCFF] text-slate-800 selection:bg-sky-200',
@@ -22,7 +22,7 @@
     ></div>
 
     <section
-      class="relative z-10 m-1 flex h-full w-full flex-col overflow-hidden rounded-xl border shadow-2xl backdrop-blur-md transition-colors duration-300 md:m-2"
+      class="relative z-10 m-1 flex h-full w-full flex-col overflow-hidden rounded-xl border shadow-2xl backdrop-blur-md transition-colors duration-300 min-[768px]:m-2"
       :class="isDarkMode ? 'border-slate-700 bg-slate-800/70' : 'border-slate-200 bg-white/60'"
       style="height: calc(100% - 1rem); width: calc(100% - 1rem)"
     >
@@ -35,14 +35,18 @@
         @closeWindow="closeWindow"
       />
 
-      <!-- ★ 方向必须是**窄屏竖排、宽屏横排**。
+      <!-- ★ 方向必须是**窄屏竖排、宽屏横排** —— 这是整个响应式的枢纽。
            这里曾经漏了 `flex-col`：`SettingsSidebar` 在窄屏是
            `w-full shrink-0`（顶部横向标签条），而 `main` 还是 `flex`（横向）——
            于是标签条把整行宽度吃光，内容区被压成 **0 宽** 并被 `overflow-hidden`
            裁掉。真机表现：竖屏进设置页只看到一条标签条，下面一片空白，
            点标签也没反应（内容确实切换了，只是宽度是 0 看不见）。
-           `md:` 以上恢复成原来的「左侧竖栏 + 右侧内容」。 -->
-      <main class="relative flex flex-1 flex-col overflow-hidden md:flex-row">
+           `min-[768px]:` 以上恢复成原来的「左侧竖栏 + 右侧内容」。
+
+           用 `min-[768px]:` 而**不是** `md:`：`md:` 是 48rem，而根字号被
+           `clamp(12px, min(2.5vw,2.5vh), 16px)` 缩放过了（手机 12px → 576px，
+           桌面 16px → 768px），断点会漂移。见 SettingsSidebar 头部的说明。 -->
+      <main class="relative flex flex-1 flex-col overflow-hidden min-[768px]:flex-row">
         <SettingsSidebar
           :isDarkMode="isDarkMode"
           :activeTab="activeTab"
@@ -50,7 +54,7 @@
           @update:activeTab="activeTab = $event"
         />
 
-        <section class="relative z-10 flex-1 overflow-y-auto scroll-smooth p-6 md:p-8">
+        <section class="relative z-10 flex-1 overflow-y-auto scroll-smooth p-6 min-[768px]:p-8">
           <transition name="fade-slide" mode="out-in">
             <PetTab
               v-if="activeTab === 'pet'"
