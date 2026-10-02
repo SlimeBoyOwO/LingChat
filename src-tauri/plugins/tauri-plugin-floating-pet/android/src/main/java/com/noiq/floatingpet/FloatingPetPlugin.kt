@@ -15,11 +15,11 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Display
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.Surface
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -624,7 +624,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     /**
      * 屏幕物理尺寸（px，含系统栏），**当前旋转**下的值。
      *
-     * ## 这个读数被证伪过两次 —— 而两次其实是同一个来源
+     * ## 这个读数被证伪过三次 —— 三次都绕回了同一个 Resources
      *
      * 真机现象一：**横屏时桌宠只能停在左半边** —— 往右拖到大约「竖屏宽度」
      * 的位置就停住，右边一大片过不去。
@@ -632,44 +632,44 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      *
      * 两者是**同一个成因**：读到的屏幕尺寸一直停在竖屏。
      *
-     * 前两版来源都不对：
+     * 三版来源，一版比一版像对的：
      *
-     * 1. `activity.resources.displayMetrics`
-     * 2. `activity.getSystemService(WINDOW_SERVICE).maximumWindowMetrics`
-     *
-     * 第 2 版看着像「窗口服务」的权威读数，但 AOSP 的实现
-     * （`android/window/WindowMetricsController.java`）是：
+     * 1. `activity.resources.displayMetrics` —— 直接读 Resources。
+     * 2. `getSystemService(WINDOW_SERVICE).maximumWindowMetrics` —— AOSP 的
+     *    `WindowMetricsController` 里它就是
+     *    `mContext.getResources().getConfiguration().windowConfiguration.maxBounds`，
+     *    同一个 Resources 换了个字段，等于没改。
+     * 3. `DisplayManager.getDisplay().getRealMetrics()` —— 看着终于离开
+     *    Resources 了，其实**又绕了回去**（`android/view/Display.java`）：
      *
      * ```java
-     * final Configuration config = mContext.getResources().getConfiguration();
-     * final WindowConfiguration winConfig = config.windowConfiguration;
-     * bounds = (isMaximum) ? winConfig.getMaxBounds() : winConfig.getBounds();
+     * mDisplayInfo.getLogicalMetrics(outMetrics, ...);   // ← 这里已经是当前旋转的尺寸
+     * final int rotation = getLocalRotation();           // ← 读的却是 mResources 的配置
+     * if (rotation != mDisplayInfo.rotation) {
+     *     adjustMetrics(outMetrics, mDisplayInfo.rotation, rotation);  // ← 又交换回竖屏
+     * }
      * ```
      *
-     * —— **读的还是同一个 Resources**，只是换了个字段。所以第 2 版等于没改。
+     * `mResources` 就是这个 `Display` 关联的 Resources —— `DisplayManager` 由
+     * `activity.getSystemService(DISPLAY_SERVICE)` 拿到，所以它就是 Activity 的。
+     * 悬浮窗里 Activity 在后台，它的旋转停在「进入悬浮窗那一刻」，于是
+     * **已经正确的横屏尺寸被 `adjustMetrics` 又交换回竖屏**，边界回到老样子。
      *
-     * ## 为什么这个 Resources 在悬浮窗场景里必然不准
+     * （`shouldReportMaxBounds()` 为真时更直接：走 `getMaxBoundsMetrics`，
+     * 那本来就是拿 `mResources.getConfiguration()` 算的。）
      *
-     * 桌宠浮在桌面上时，宿主 Activity 已经被 `moveTaskToBack(true)` 退到
-     * 后台。**系统只对可见 Activity 派发配置变化**，后台 Activity 的
-     * Resources 配置不保证跟随此后发生的旋转刷新。于是屏宽永远停在
-     * 「进入悬浮窗那一刻」的竖屏值：
+     * ## 正确的来源：两个直读 DisplayInfo 的读数
      *
-     * - 边界偏小 → 现象一：永远拖不过「竖屏宽度」那条看不见的线
-     * - [lastScreenW] / [lastScreenH] 也永远不变 → 旋转重排永不触发 → 现象二
+     * `Display.getRotation()` 和 `Display.getMode()` 都只读 `mDisplayInfo`
+     * 自己的字段，**不经过任何 Resources / DisplayAdjustments**：
      *
-     * 同一个原因还让 `onConfigurationChanged` 收不到，见 [ensureDisplayListener]。
+     * - `getRotation()` → `mDisplayInfo.rotation`，物理旋转，实时
+     * - `getMode()` → 物理分辨率，**不随旋转**，所以要用 rotation 自己换宽高
      *
-     * ## 正确的来源
+     * 两者组合就是「当前旋转下的屏幕尺寸」，与 App 可不可见完全无关。
      *
-     * `DisplayManager` 的 `Display`，它的 `DisplayInfo` 由 DisplayManagerService
-     * 直接维护，**与 App 可不可见、Resources 刷没刷新全都无关**，旋转后立刻
-     * 是新值。`getRealMetrics` 给的是含系统栏的物理尺寸，正是悬浮窗
-     * `x` / `y` 所在的那个坐标系。
-     *
-     * `getRealMetrics` 自 API 31 起标记废弃（官方让改用 `WindowMetrics`），
-     * 但 `WindowMetrics` 读的正是上面那条不可用的 Resources 路径 ——
-     * 这里只能继续用 `getRealMetrics`。
+     * 不用 `getRealMetrics` / `getSize` / `WindowMetrics` —— 它们全都经过
+     * Resources 或 DisplayAdjustments，在这个场景下都会拿到滞后的旋转。
      *
      * 读数失败时退回 `resources.displayMetrics`：宁可边界偏小，也不能让
      * 拖拽 / 吸附整条路径抛异常。
@@ -678,19 +678,36 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         try {
             val display = displayManager().getDisplay(Display.DEFAULT_DISPLAY)
             if (display != null) {
-                val metrics = DisplayMetrics()
-                @Suppress("DEPRECATION")
-                display.getRealMetrics(metrics)
-                if (metrics.widthPixels > 0 && metrics.heightPixels > 0) {
-                    return metrics.widthPixels to metrics.heightPixels
+                val mode = display.mode
+                val pw = mode?.physicalWidth ?: 0
+                val ph = mode?.physicalHeight ?: 0
+                if (pw > 0 && ph > 0) {
+                    val rotated = display.rotation == Surface.ROTATION_90 ||
+                        display.rotation == Surface.ROTATION_270
+                    return if (rotated) ph to pw else pw to ph
                 }
             }
-            Log.w(TAG, "DisplayManager 未返回默认显示器，退回 resources.displayMetrics")
+            Log.w(TAG, "DisplayManager 未返回可用的显示器尺寸，退回 resources.displayMetrics")
         } catch (t: Throwable) {
             Log.w(TAG, "读取屏幕尺寸失败，退回 resources.displayMetrics", t)
         }
         val dm = activity.resources.displayMetrics
         return dm.widthPixels to dm.heightPixels
+    }
+
+    /**
+     * 屏幕调试信息（只用于日志）。
+     *
+     * 真机排查「转屏后位置不对」时，光看 `screenSizePx()` 的结果分不清是
+     * 「旋转没读到」还是「读到但算错了」。把 rotation 与物理分辨率一起打出来，
+     * 一眼就能判断。
+     */
+    private fun screenDebugInfo(): String = try {
+        val d = displayManager().getDisplay(Display.DEFAULT_DISPLAY)
+        val m = d?.mode
+        "rotation=${d?.rotation}, mode=${m?.physicalWidth}x${m?.physicalHeight}"
+    } catch (t: Throwable) {
+        "unavailable"
     }
 
     /** 屏幕宽度（dp）。见 [screenSizePx] —— 刻意不用 `resources.displayMetrics`。 */
@@ -1635,7 +1652,8 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             notifyMetrics(params, view)
             Log.i(
                 TAG,
-                "屏幕尺寸变化：悬浮窗重排为 ${width}x$height @ (${params.x},${params.y})，屏幕 ${screenW}x$screenH"
+                "屏幕尺寸变化：悬浮窗重排为 ${width}x$height @ (${params.x},${params.y})，" +
+                    "屏幕 ${screenW}x$screenH（${screenDebugInfo()}）"
             )
         } catch (t: Throwable) {
             Log.w(TAG, "屏幕配置变化后重排悬浮窗失败（可忽略）", t)
@@ -1782,15 +1800,25 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                     params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED
                 }
 
+                // ── 先把权威几何推给页面，**再**改窗口 ────────────────────
+                //
+                // 顺序不能反。折叠时窗口从展开态（约 0.6 屏宽）缩到收起态
+                // （约 1/6 屏宽），缩放系数从约 1.03 掉到约 0.29 —— 三倍多。
+                // 若先改窗口，页面在之后的一两帧里仍按**旧的大系数**渲染，
+                // 画布比窗口大一大截、内容被裁掉一块，几帧后才跟着缩小：
+                // 用户看到的就是「折叠时闪一下」。
+                //
+                // 先推的话，页面在窗口变化前就拿到了新系数（前端 `liveFit`
+                // 会顶着用它，见 PetMode.vue 里那段说明），窗口再收，
+                // 全程只有平滑的缩小。
+                //
+                // 注意 [notifyMetrics] 读的是 `params.width`，此时已是**新**值。
+                notifyMetrics(params, view)
+
                 windowManager?.updateViewLayout(view, params)
 
                 // 展开后主动请求焦点，页面里的输入框才能拿到 IME
                 if (expanded) view.requestFocus()
-
-                // 先把权威尺寸推给页面（页面据此重算 scale 与内容高度），
-                // 再通知展开态。顺序不能反：页面收到展开态会立刻按新布局
-                // 量高度，那时 scale 必须已经是新的。
-                notifyMetrics(params, view)
 
                 // 通知页面切换布局（头像态 vs 完整态）
                 notifyWeb(view as? WebView, "pet-expanded-changed", JSObject().apply { put("expanded", expanded) })

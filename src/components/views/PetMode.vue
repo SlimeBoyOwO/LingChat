@@ -273,9 +273,45 @@ const syncViewportSize = () => {
  */
 const liveFit = computed(() => {
   const w = viewportSize.value.w;
-  if (w > 0) return w / FLOATING_LOGICAL_WIDTH;
-  return floatingFit.value;
+  const fromViewport = w > 0 ? w / FLOATING_LOGICAL_WIDTH : 0;
+
+  // ── 视口还没跟上窗口变化时，改用原生**即时**推来的权威系数 ──────
+  //
+  // 展开 / 折叠会改窗口尺寸，而 WebView 的**视口**要过一会儿才跟着变。
+  // 这段窗口里 `fromViewport` 还是旧值：折叠时窗口已经缩到约 1/6 屏宽，
+  // 画布却仍按展开态的大系数渲染 → 比窗口大一大截 → 内容被裁掉一块，
+  // 几帧后才缩回来。用户看到的就是「折叠时闪一下」。
+  //
+  // 原生的 `pet-metrics` 是**改完窗口立刻**推的（与窗口尺寸同源），所以这段
+  // 时间用它。视口一跟上两者就相等，自动切回现算 —— 而现算正是「画布宽 ≡
+  // 视口宽」那条恒等关系的来源（见本函数的说明），不能丢。
+  //
+  // 两个条件都要满足才切：`authoritativeAt` 限定「刚刚推过」（避免用 500ms
+  // 轮询的滞后值），相对差 2% 限定「确实对不上」（避免稳定态下的浮点抖动）。
+  const auth = floatingFit.value;
+  if (
+    auth > 0 &&
+    fromViewport > 0 &&
+    Date.now() - authoritativeAt < AUTHORITATIVE_TTL_MS &&
+    Math.abs(fromViewport - auth) / auth > 0.02
+  ) {
+    return auth;
+  }
+
+  if (fromViewport > 0) return fromViewport;
+  return auth > 0 ? auth : 1;
 });
+
+/**
+ * 最近一次收到原生**即时**推来的权威几何（`pet-metrics`）的时间戳。
+ *
+ * 见 [liveFit]：窗口尺寸变化后的几百毫秒内，WebView 视口还没跟上，
+ * 现算会拿到旧系数，必须先用原生推来的那个。
+ */
+let authoritativeAt = 0;
+
+/** [authoritativeAt] 的有效期（毫秒）。超过就无条件切回「从视口现算」。 */
+const AUTHORITATIVE_TTL_MS = 400;
 
 /**
  * 画布逻辑高度。
@@ -1015,6 +1051,11 @@ onMounted(async () => {
     if (scale > 0) {
       metricsReceived = true;
       floatingFit.value = scale;
+      // 打上时间戳：接下来这几百毫秒里 WebView 视口还没跟上新的窗口尺寸，
+      // liveFit 要先顶着用这个权威值（见其说明），否则折叠/展开时会闪一下。
+      // 注意**只有**这条「原生改完窗口立刻推」的通道打戳；500ms 轮询更新
+      // floatingFit 时不能打，否则会把滞后值也当成权威值。
+      authoritativeAt = Date.now();
     }
     // 系数变了，内容高度的换算结果也变了，立刻按新系数重报一次
     reportFloatingHeight();

@@ -609,7 +609,7 @@ android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|sma
 > ⚠️ 这里最初用的是 `ComponentCallbacks.onConfigurationChanged`，**它在悬浮窗场景里
 > 永远不会被调用** —— 见 4.4.2.3。
 
-##### 4.4.2.1 屏幕尺寸**不能**读 `activity.resources` —— 两个来源都被证伪过
+##### 4.4.2.1 屏幕尺寸**不能**经过 App 的 Resources —— 三个来源都被证伪过
 
 真机现象一：**横屏时桌宠只能停在左半边** —— 往右拖到大约「竖屏宽度」的位置就停住，
 右边一大片过不去。
@@ -617,14 +617,15 @@ android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|sma
 
 两者是**同一个成因**：读到的屏幕尺寸一直停在竖屏。
 
-前两版读数来源都不对：
+三版读数来源，一版比一版像对的：
 
-| 版本    | 来源                                                             | 结果            |
-| ------- | ---------------------------------------------------------------- | --------------- |
-| 第 1 版 | `activity.resources.displayMetrics`                              | ❌ 现象依旧     |
-| 第 2 版 | `activity.getSystemService(WINDOW_SERVICE).maximumWindowMetrics` | ❌ **现象依旧** |
+| 版本    | 来源                                                             | 结果                                      |
+| ------- | ---------------------------------------------------------------- | ----------------------------------------- |
+| 第 1 版 | `activity.resources.displayMetrics`                              | ❌ 现象依旧                               |
+| 第 2 版 | `activity.getSystemService(WINDOW_SERVICE).maximumWindowMetrics` | ❌ **现象依旧**（同一个 Resources）       |
+| 第 3 版 | `DisplayManager.getDisplay().getRealMetrics()`                   | ❌ **现象依旧**（又绕回同一个 Resources） |
 
-第 2 版看着像「窗口服务」的权威读数，但 AOSP 的实现
+**第 2 版**看着像「窗口服务」的权威读数，但 AOSP 的实现
 （`android/window/WindowMetricsController.java`）是：
 
 ```java
@@ -637,7 +638,30 @@ private WindowMetrics getWindowMetricsInternal(boolean isMaximum) {
 ```
 
 —— **读的还是同一个 Resources**，只是把 `displayMetrics` 换成了
-`windowConfiguration.maxBounds`。所以第 2 版等于没改，难怪现象一模一样。
+`windowConfiguration.maxBounds`。所以第 2 版等于没改。
+
+**第 3 版**看着终于离开 Resources 了，其实**又绕了回去**
+（`android/view/Display.java`）：
+
+```java
+public void getRealMetrics(DisplayMetrics outMetrics) {
+    ...
+    mDisplayInfo.getLogicalMetrics(outMetrics, ...);   // ← 这里已经是当前旋转的尺寸
+    final int rotation = getLocalRotation();           // ← 读的却是 mResources 的配置
+    if (rotation != mDisplayInfo.rotation) {
+        adjustMetrics(outMetrics, mDisplayInfo.rotation, rotation);   // ← 又交换回竖屏
+    }
+}
+```
+
+`mResources` 就是这个 `Display` 关联的 Resources —— `DisplayManager` 是
+`activity.getSystemService(DISPLAY_SERVICE)` 拿到的，`getDisplay(id)` 内部走
+`mGlobal.getCompatibleDisplay(id, mContext.getResources())`，所以它**就是 Activity 的**。
+悬浮窗里 Activity 在后台，它的旋转停在「进入悬浮窗那一刻」，于是**已经正确的
+横屏尺寸被 `adjustMetrics` 又交换回竖屏**。
+
+> `shouldReportMaxBounds()` 为真时更直接：走 `getMaxBoundsMetrics`，那本来就是拿
+> `mResources.getConfiguration()` 算的。
 
 **为什么这个 Resources 在悬浮窗场景里必然不准**：桌宠浮在桌面上时，宿主 Activity
 已经被 `moveTaskToBack(true)` 退到后台（见 4.3.1）。**系统只对可见 Activity 派发
@@ -649,17 +673,21 @@ private WindowMetrics getWindowMetricsInternal(boolean isMaximum) {
 
 同一个原因还让 `onConfigurationChanged` 收不到（见 4.4.2.3）。
 
-**正确来源：`DisplayManager`。**
+**正确来源：两个直读 `DisplayInfo` 的读数。**
 
 ```kotlin
 private fun screenSizePx(): Pair<Int, Int> {
     try {
         val display = displayManager().getDisplay(Display.DEFAULT_DISPLAY)
         if (display != null) {
-            val metrics = DisplayMetrics()
-            @Suppress("DEPRECATION") display.getRealMetrics(metrics)
-            if (metrics.widthPixels > 0 && metrics.heightPixels > 0) {
-                return metrics.widthPixels to metrics.heightPixels
+            val mode = display.mode
+            val pw = mode?.physicalWidth ?: 0
+            val ph = mode?.physicalHeight ?: 0
+            if (pw > 0 && ph > 0) {
+                // 物理分辨率**不随旋转**，所以要用 rotation 自己换宽高
+                val rotated = display.rotation == Surface.ROTATION_90 ||
+                    display.rotation == Surface.ROTATION_270
+                return if (rotated) ph to pw else pw to ph
             }
         }
     } catch (t: Throwable) {
@@ -670,16 +698,24 @@ private fun screenSizePx(): Pair<Int, Int> {
 }
 ```
 
-`DisplayManager` 的 `Display`，其 `DisplayInfo` 由 DisplayManagerService 直接维护，
-**与 App 可不可见、Resources 刷没刷新全都无关**，旋转后立刻是新值。`getRealMetrics`
-给的是含系统栏的物理尺寸，正是悬浮窗 `x` / `y` 所在的那个坐标系。
+`Display.getRotation()` 与 `Display.getMode()` 都只读 `mDisplayInfo` 自己的字段，
+**不经过任何 Resources / DisplayAdjustments**：
+
+- `getRotation()` → `mDisplayInfo.rotation`，物理旋转，实时；
+- `getMode()` → 物理分辨率，不随旋转，所以要用 rotation 自己换宽高。
+
+**判据**：只要一个 API 的签名里出现 `Resources` / `Configuration` /
+`DisplayAdjustments`，或者内部会读它们，在这个场景下就**不可信**。
+`getRealMetrics` / `getSize` / `getMetrics` / `WindowMetrics` 全都中招 ——
+前两个看着在 `Display` 上，实则内部都要过一次 `adjustMetrics`。
 
 所有读屏幕尺寸的路径都收敛到这一个函数（`screenWidthDp` / `screenHeightDp` /
 `clampIntoScreen` / `snapToEdge` / `reapplyWindowAfterConfigChange` / `show()` /
 `keepAliveTick`），改一处即全部生效。
 
-> `getRealMetrics` 自 API 31 起标记废弃（官方让改用 `WindowMetrics`），但
-> `WindowMetrics` 读的正是上面那条不可用的 Resources 路径 —— 这里只能继续用它。
+> **转屏后位置不对时先看日志**：
+> `屏幕尺寸变化：悬浮窗重排为 … 屏幕 WxH（rotation=…, mode=…x…）` ——
+> rotation 与物理尺寸都在，一眼能分清是「旋转没读到」还是「读到但算错了」。
 
 > `density` 仍然取自 `activity.resources.displayMetrics.density` —— 密度不受旋转影响，
 > 而且 WebView 的 `devicePixelRatio` 也来自它，两边必须同源。
@@ -1034,6 +1070,60 @@ WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
 > 也这样」是一句**极强的定位信息**——它一次性排除了宿主 Activity 这个
 > 嫌疑对象，应该第一时间被当作主线而不是补充说明。
 
+#### 5.1.5 折叠时会「闪一下」 —— 视口跟不上窗口
+
+真机现象：折叠（展开态 → 头像态）时界面闪一下。
+
+**成因**：折叠要同时改两样东西 —— 窗口尺寸（原生）和缩放系数（页面），而它们
+**不可能在同一帧里生效**：
+
+```
+t=0    原生 updateViewLayout：窗口 216dp → 60dp
+t=0    页面还在按展开态的系数（约 1.03）渲染
+       → 画布渲染宽 = 210 × 1.03 ≈ 216 CSS px，而窗口只有 60dp
+       → 内容被裁掉一大块
+t+几帧 WebView 视口才跟上 → liveFit 重算 → 内容缩回来
+```
+
+中间那几帧就是「闪」。
+
+**为什么「提前推系数」单独不够**：`--pet-fit` 是 `liveFit` **从视口现算**的
+（见 5.1.3），原生推的 `floatingFit` 只在视口尺寸为 0 时兜底。所以推得再早，
+页面用的还是「从**旧**视口算出来的旧系数」。
+
+**修法**（两侧各一处，缺一不可）：
+
+1. **原生**：把 `notifyMetrics(params, view)` 挪到 `updateViewLayout` **之前**。
+   它读的是 `params.width`（此时已是新值），所以推出去的就是新系数 ——
+   页面能在窗口变化**之前**拿到它。
+2. **前端**：`liveFit` 在「刚收到原生即时推来的几何」且「与现算值对不上」时，
+   改用原生的权威系数：
+
+   ```ts
+   const auth = floatingFit.value;
+   if (
+     auth > 0 &&
+     fromViewport > 0 &&
+     Date.now() - authoritativeAt < AUTHORITATIVE_TTL_MS && // 刚推过
+     Math.abs(fromViewport - auth) / auth > 0.02 // 确实对不上
+   ) {
+     return auth;
+   }
+   ```
+
+   `authoritativeAt` **只**在 `onPetMetrics` 里打戳 —— 500ms 轮询也会更新
+   `floatingFit`，但那是滞后值，不能当权威值用。
+
+两个条件缺一不可：只判「对不上」会在稳定态被浮点抖动误触发；只判「刚推过」
+会在推送内容与视口本就一致时白白绕开现算。
+
+视口一跟上两者就相等，自动切回现算 —— 而现算正是「画布宽 ≡ 视口宽」那条
+恒等关系的来源（见 5.1.3），不能丢。
+
+> 这条同时解释了「展开后一大片空白」：那是**同一个滞后**的另一个方向
+> （画布比窗口小 → 露透明）。所以 5.1.3 的「现算」和这里的「权威值顶替」
+> 不是互相矛盾，而是分工：**稳定态用现算保恒等，过渡态用权威值保同步。**
+
 ### 5.2 手势：拖动 / 点头像 / 左侧按钮收回
 
 手机没有鼠标，桌面端那套 `mouseenter/mouseleave` 完全不适用：
@@ -1211,11 +1301,19 @@ gh run download <run-id> --repo <你的fork> -n lingchat-dev-android
     不能被「竖屏宽度」那道看不见的墙挡住
 13. **来回旋转**：竖屏 ↔ 横屏至少切 3 次，分别从「贴左沿」和「贴右沿」两种
     位置开始 → 桌宠都不能跑出屏幕，也不该莫名跳到对面
-14. **反复进出悬浮窗**（★ 本轮重点，见 4.4.2.4）：点左侧「返回主页」收回，
-    **立刻**再点一次「桌宠」重新进入 —— 至少来回 5 次，且刻意在收回后 3 秒内
-    就重进（那正是 `pet-attached` 重试序列的跨度）→
+14. **反复进出悬浮窗**（见 4.4.2.4）：点左侧「返回主页」收回，**立刻**再点一次
+    「桌宠」重新进入 —— 至少来回 5 次，且刻意在收回后 3 秒内就重进
+    （那正是 `pet-attached` 重试序列的跨度）→
     **悬浮窗里必须一直是桌宠页**，不能变成聊天页，角色也不能消失
-15. **确认没有诊断浮层**：屏幕左上角不该再出现绿字的 `[enter] / [live]` 读数框
+15. **折叠不闪**（★ 本轮重点，见 5.1.5）：在**横屏**和竖屏各展开 → 折叠 5 次
+    → 折叠过程中内容应该平滑缩小，**不该出现「被裁掉一块再缩回来」的闪**
+16. **横屏边界**（★ 本轮重点，见 4.4.2.1）：转成横屏后，桌宠要能拖到屏幕
+    **右半边**，不能被「竖屏宽度」那道看不见的墙挡住；横屏下展开/折叠也要正常
+17. **确认没有诊断浮层**：屏幕左上角不该再出现绿字的 `[enter] / [live]` 读数框
+
+> 转屏相关的问题排查时，先看 logcat 里 `FloatingPet` 的这行：
+> `屏幕尺寸变化：悬浮窗重排为 … 屏幕 WxH（rotation=…, mode=…x…）`。
+> 没有这行 = 旋转压根没触发重排；有这行但尺寸是竖屏的 = 读数取错了源。
 
 ### 8.3 当前能验证到哪一步
 
@@ -1270,7 +1368,8 @@ gh run download <run-id> --repo <你的fork> -n lingchat-dev-android
 | **展开后右边空 120 / 下边空 322 的空白**                 | **`fit` 的三个来源全失效**（`pet-metrics` 推送、500ms IPC 轮询、`resize` 事件），系数停在初值 1.0。判据：诊断里 `win=0x0dp` 且标签停在 `[enter]`（没变成 `[live]`）。已加 500ms 本地心跳自愈（见 4.4.1），并把 `resize` 改成在 `onMounted` 里**无条件**绑定（早先只在「挂载时已是悬浮窗」的分支绑，而启动顺序是先 `push('/pet')` 再 `showFloatingPet()` → 那条分支永远走不到）                                                                                                                                                                                                                                                                                                                                                  |
 | **画布高度比窗口矮，底部留一条透明**                     | 已加兜底：`floatingCanvasHeight = max(内容高, 视口高 / fit)`。宽度是构造出来的（`逻辑宽 × fit ≡ 窗口宽`），高度不是，必须显式兜                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | **点空白区域会收起输入框**                               | 空白落在 `#pet-app` 之外、窗口之内 → 手指派发 `mouseleave` → 桌面端的「光标离开即收起」。它是「空白存在」的旁证。已把悬浮窗里的 `mouseenter/leave` 改成空操作（见 4.4.1）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| **横屏时桌宠只能停在左半边（右边一大片拖不过去）**       | 边界读数**经过 Activity 的 Resources**。这条走过两版、都被证伪：① `resources.displayMetrics`；② `maximumWindowMetrics`（AOSP 里它读的就是 `getResources().getConfiguration().windowConfiguration.maxBounds`，**同一个 Resources**）。桌宠悬浮时 App 已 `moveTaskToBack` 到后台，后台 Activity 的 Resources 不跟随旋转刷新 → 边界永远停在竖屏宽度。改用 `DisplayManager` + `getRealMetrics`（见 4.4.2.1）                                                                                                                                                                                                                                                                                                                        |
+| **横屏时桌宠只能停在左半边（右边一大片拖不过去）**       | 边界读数**经过 Activity 的 Resources**。这条走过**三版**、都被证伪：① `resources.displayMetrics`；② `maximumWindowMetrics`（AOSP 里它读的就是 `getResources().getConfiguration().windowConfiguration.maxBounds`，同一个 Resources）；③ `DisplayManager.getDisplay().getRealMetrics()` —— 看着离开了 Resources，实则内部 `adjustMetrics` 又按 `mResources` 的旋转交换一次，**还是绕回去**。桌宠悬浮时 App 已 `moveTaskToBack` 到后台，后台 Activity 的 Resources 不跟随旋转刷新 → 边界永远停在竖屏宽度。改用 `Display.getRotation()` + `Display.getMode()`（两者直读 DisplayInfo，见 4.4.2.1）                                                                                                                                   |
+| **折叠（展开 → 头像）时界面闪一下**                      | 窗口尺寸与缩放系数**不可能同帧生效**：窗口先缩到约 60dp，页面还按展开态的大系数（约 1.03）渲染 → 画布比窗口大、内容被裁掉一块，几帧后才缩回来（见 5.1.5）。修法两侧各一处：原生把 `notifyMetrics` 挪到 `updateViewLayout` **之前**；前端 `liveFit` 在「刚收到原生即时几何」且「与现算对不上」时改用权威系数。⚠️ 这两条都是**顺序 / 取值**改动，验包脚本无法用字符串断言，只能真机确认                                                                                                                                                                                                                                                                                                                                           |
 | **旋转屏幕后桌宠跑到屏幕外**                             | 三个成因，都在 4.4.2：① `x/y` 是屏幕坐标系里的**绝对值**，旋转后屏宽高对调就飞出屏幕；② **读数来源取错**，`lastScreenW/H` 永远不变 → 重排判据永不成立（见 4.4.2.1）；③ **回调根本不会来** —— `ComponentCallbacks.onConfigurationChanged` 只对可见 Activity 送达，而悬浮时 Activity 在后台。修法是 `DisplayManager` 的显示器回调 + 500ms 轮询兜底（见 4.4.2.2 / 4.4.2.3），**两个方向（横→竖、竖→横）都要验**                                                                                                                                                                                                                                                                                                                    |
 | **竖屏↔横屏来回切，桌宠跑出屏幕 / 贴不到边**             | 同上。验证时至少来回切 3 次，并分别试「贴着左沿」和「贴着右沿」两种起始位置                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | **反复进出悬浮窗后，悬浮窗里变成聊天页 / 角色凭空消失**  | `handleReturnedToApp()` 被**误触发**（见 4.4.2.4）。**三条误判路径都要查**：① `getFloatingPetStatus()` 的 catch 把 IPC 失败伪装成 `detached: false` → 轮询当成「已收回」（现在靠 `queried` 字段拦住）；② 收回时排队的 `pet-attached` 重试（0/300/1000/**3000**ms）在 3 秒内重进悬浮窗后**迟到送达** → 命中新一轮监听器（**主因**，现在靠原生 `petModeEpoch` 作废 + 前端 `confirmReturnedToApp` 复核）；③ `show()` 没清 `pendingAttachNotify`，跨轮残留的引用会在 resume 时补发。注意这个 bug **不可逆**（`handleReturnedToApp` 会停掉轮询），所以还有第 6 条兜底：`MainChat.healStuckFloatingState` 在挂载 1.5s 后发现「页面不在 /pet 但 WebView 在悬浮窗」会补一次导航自愈（**必须延迟** —— 正常收回时也会短暂出现同样的读数） |
