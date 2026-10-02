@@ -189,15 +189,27 @@ for (const key of sortedKeys) {
 manifest.files = sortedFiles;
 
 // 写入 staging dir（供 Tauri 打包进 .official/）
+//
+// ⚠️ 走 writeIfChanged 而不是裸 writeFileSync：`data_manifest.json` 会被
+// `tauri-build` 以 `cargo:rerun-if-changed=...` 登记（它读的是 `bundle.resources`
+// 里的 pattern），无条件重写会**每次都刷新 mtime**，于是每轮构建都把
+// `ling_chat` 的 build script 判为脏、连带重编这个 crate（实测约 6.5 分钟）。
+// 内容没变就不写，mtime 不动，增量构建才真的是增量。
 const manifestPath = join(stagingDir, "data_manifest.json");
-writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
-console.log(
-  `📄 已生成 data_manifest.json (data_version=${dataVersion}, ${Object.keys(manifest.files).length} 个文件)`,
-);
+const manifestJson = JSON.stringify(manifest, null, 2);
+if (writeIfChanged(manifestPath, manifestJson)) {
+  console.log(
+    `📄 已生成 data_manifest.json (data_version=${dataVersion}, ${Object.keys(manifest.files).length} 个文件)`,
+  );
+} else {
+  console.log(
+    `📄 data_manifest.json 内容未变，跳过写入 (data_version=${dataVersion}, ${Object.keys(manifest.files).length} 个文件)`,
+  );
+}
 
 // 同时写入项目根目录（供 generate-data-manifest 兼容）
 const projectManifestPath = join(projectRoot, "data", "data_manifest.json");
-writeFileSync(projectManifestPath, JSON.stringify(manifest, null, 2), "utf-8");
+writeIfChanged(projectManifestPath, manifestJson);
 
 const totalSize = Object.values(manifest.files).reduce((sum, f) => sum + f.size, 0);
 const sizeMB = (totalSize / (1024 * 1024)).toFixed(1);
@@ -205,6 +217,24 @@ console.log(`   总大小: ${sizeMB} MB`);
 console.log("✅ 桌面端资源准备完成");
 
 // ─── 辅助函数 ────────────────────────────────────────────────
+
+/**
+ * 内容相同就不写文件，返回「是否真的写了」。
+ *
+ * 存在的唯一理由是**保住 mtime**：`data_manifest.json` 被
+ * `tauri-build` 的 `cargo:rerun-if-changed` 登记着，无条件重写会让
+ * 依赖它的 crate 每轮构建都被判脏、重复编译。
+ */
+function writeIfChanged(filePath, content) {
+  try {
+    if (readFileSync(filePath, "utf-8") === content) return false;
+  } catch {
+    // 文件不存在 / 读不动 → 当作「需要写」
+  }
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, content, "utf-8");
+  return true;
+}
 
 function copyDirRecursive(src, dst) {
   mkdirSync(dst, { recursive: true });

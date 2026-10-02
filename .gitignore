@@ -70,7 +70,13 @@ build/
 dist/
 dist_old_*/
 dist-windows/
+# 本地存放 CI 产出的 Android 测试包（体积大，不入库）
+dist-android/
 target/
+
+# 本地解包 / 下载的 .deb 安装包（单个 300MB+，误提交会让 push 直接失败）
+debs/
+*.deb
 
 ling_chat/static/frontend/
 # Tauri auto-generated files

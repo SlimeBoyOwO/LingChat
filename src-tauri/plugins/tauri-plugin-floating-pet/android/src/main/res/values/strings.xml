@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="floating_pet_permission_hint">桌宠需要「显示在其他应用上层」权限</string>
+</resources>

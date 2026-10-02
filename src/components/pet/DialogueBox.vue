@@ -1,7 +1,11 @@
 <template>
   <div
-    class="absolute z-30 flex cursor-pointer"
-    :class="[horizontal ? 'w-[85%] flex-col' : 'inset-x-0 justify-center px-2', frameClass]"
+    class="z-30 flex cursor-pointer"
+    :class="[
+      inline ? 'relative w-full' : 'absolute',
+      horizontal ? 'w-[85%] flex-col' : inline ? 'justify-center' : 'inset-x-0 justify-center px-2',
+      frameClass,
+    ]"
     :style="frameStyle"
     @click="emit('advance')"
   >
@@ -33,6 +37,7 @@
     </div>
 
     <div
+      v-if="!inline"
       class="absolute inset-x-0 flex justify-center"
       :class="top ? 'top-full mt-1' : 'bottom-full mb-1'"
       :style="{ maxHeight: 'var(--notify-h)' }"
@@ -62,6 +67,18 @@ const props = defineProps<{
   side?: BubbleSide;
   align?: BubbleAlign;
   alignInset?: number;
+  /**
+   * **内联模式**：气泡按**文档流**排版，而不是绝对定位铺在整窗上。
+   *
+   * 桌面端气泡独占 `pet_bubble` 窗（那个窗就是为了装这一个气泡而开的），
+   * 所以它 `absolute` + `top/bottom: var(--tail)` 把尾巴的伸出量留出来即可。
+   * Android 悬浮窗里气泡是**内联**在桌宠页的一条「装饰带」里的（见
+   * `PetMode.vue`），必须参与文档流，否则那条带子高度恒为 0、
+   * 窗口也永远长不高。
+   *
+   * 内联模式下由**父容器**负责与宠物之间的间距，这里不再自己偏移。
+   */
+  inline?: boolean;
 }>();
 
 const emit = defineEmits<{ advance: []; drained: [lineId: number] }>();
@@ -71,9 +88,12 @@ const horizontal = computed(() => side.value === "left" || side.value === "right
 const top = computed(() => (horizontal.value ? props.align !== "bottom" : side.value === "below"));
 
 const frameClass = computed(() => [
-  ...(horizontal.value
-    ? [side.value === "left" ? "right-(--tail) items-end" : "left-(--tail) items-start"]
-    : [top.value ? "top-(--tail) items-start" : "bottom-(--tail) items-end"]),
+  ...(props.inline
+    ? // 内联：不做任何绝对定位偏移，间距交给父容器（装饰带的 justify-end / 余量）
+      []
+    : horizontal.value
+      ? [side.value === "left" ? "right-(--tail) items-end" : "left-(--tail) items-start"]
+      : [top.value ? "top-(--tail) items-start" : "bottom-(--tail) items-end"]),
   props.visible ? "" : "pointer-events-none",
 ]);
 

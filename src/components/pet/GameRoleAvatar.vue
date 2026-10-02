@@ -5,10 +5,13 @@
   >
     <!-- 缩放与尺寸控制层 (无位移) -->
     <div class="relative h-full w-full">
-      <!-- 1. 右上角信息铭牌（悬停显隐由祖先 .is-hovered 驱动，不能用 CSS :hover：
-           窗口会开点击穿透，见 GameRolesStage.vue 的 isStageHovered 说明） -->
+      <!-- 1. 右上角信息铭牌（显隐由祖先 .is-hovered 驱动，不能用 CSS :hover：
+           窗口会开点击穿透，见 GameRolesStage.vue 的 isStageHovered 说明。
+           悬浮窗里 .is-hovered 由「展开态」提供，时机与电脑端一致；
+           横向定位要换 —— 画布没有呼吸边，-right-4 会被裁掉，见 props 说明） -->
       <div
-        class="pointer-events-none absolute top-1 -right-4 z-50 flex translate-x-4 flex-col items-start opacity-0 transition-all duration-400 ease-out group-[.is-hovered]:translate-x-0 group-[.is-hovered]:opacity-100"
+        class="pointer-events-none absolute top-1 z-50 flex translate-x-4 flex-col items-start opacity-0 transition-all duration-400 ease-out group-[.is-hovered]:translate-x-0 group-[.is-hovered]:opacity-100"
+        :class="floatingWindow ? 'right-1' : '-right-4'"
       >
         <div
           class="rounded-tl-md rounded-br-md bg-cyan-500 px-2 py-0.5 text-[10px] font-black tracking-wider text-white italic shadow-sm"
@@ -119,7 +122,22 @@ import { useUIStore } from "@/stores/modules/ui/ui";
 import { useRoleAvatar } from "@/composables/role/useRoleAvatar";
 import "@/assets/styles/avatar-animation.css";
 
-const props = defineProps<{ role: GameRole; live2dActive?: boolean; live2dFailed?: boolean }>();
+const props = defineProps<{
+  role: GameRole;
+  live2dActive?: boolean;
+  live2dFailed?: boolean;
+  /**
+   * 是否渲染在 Android 悬浮窗里（由 `pet/GameRolesStage.vue` 传入）。
+   *
+   * 只影响右上角铭牌的**横向定位**：悬浮窗的逻辑画布宽度就是
+   * `AVATAR_BAND_BASE`(210)，没有电脑端那圈「呼吸边」，`-right-4` 会让铭牌
+   * 有 16px 落到画布外、被 `#pet-app` 的 `overflow-hidden` 裁掉。
+   *
+   * 显隐时机**两个形态共用**（`group-[.is-hovered]:`），悬浮窗里
+   * `.is-hovered` 由展开态驱动，见 `GameRolesStage.vue` 的 `isStageHovered`。
+   */
+  floatingWindow?: boolean;
+}>();
 const { role } = toRefs(props);
 
 const emit = defineEmits(["avatar-click"]);

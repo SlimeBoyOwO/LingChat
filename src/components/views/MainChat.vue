@@ -29,12 +29,13 @@
       >
         <h3 class="hidden xl:block">{{ $t("views.mainChat.auto") }}</h3>
       </Button>
-      <!-- 桌宠模式依赖 Windows 透明置顶窗口与 hit-test（lib.rs 为 cfg(windows)），移动端不可用 -->
+      <!-- 桌面端：走原生窗口桌宠（/pet 路由 + set_pet_mode）。
+           移动端：走 Android 系统级悬浮窗（floating-pet 插件），见 goToPetMode。 -->
       <Button
-        v-if="!isMobile()"
         type="nav"
         icon="character"
         @click="goToPetMode"
+        :active="floatingPetActive"
         v-show="uiStore.showSettings !== true"
       >
         <h3 class="hidden xl:block">{{ $t("views.mainChat.pet") }}</h3>
@@ -59,10 +60,12 @@ import FreeModeTools from "@/components/tools/FreeModeTools.vue";
 import StatusInfoBar from "@/components/tools/StatusInfoBar.vue";
 import ToolActivityStatus from "@/components/tools/ToolActivityStatus.vue";
 import { eventQueue } from "@/core/events/event-queue";
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useGameStore } from "../../stores/modules/game";
+import { useSettingsStore } from "../../stores/modules/settings";
 import { useUIStore } from "../../stores/modules/ui/ui";
+import { useDialogStore } from "../../stores/modules/ui/dialog";
 import { Button } from "../base";
 import { GameBackground, GameDialog, GameRolesStage } from "../game/standard";
 import LoadingTransition from "./LoadingTransition.vue";
@@ -70,6 +73,12 @@ import LoadingTransition from "./LoadingTransition.vue";
 import FullAccessWarning from "@/components/tools/FullAccessWarning.vue";
 import ImageSourcePicker from "@/components/ui/ImageSourcePicker.vue";
 import { isMobile, isWindows } from "@/utils/platform";
+import {
+  getFloatingPetStatus,
+  hideFloatingPet,
+  requestFloatingPetPermission,
+  showFloatingPet,
+} from "@/api/services/floating-pet";
 import { useAutoAdvance } from "@/composables/chat/useAutoAdvance";
 import GameExtraUI from "../game/standard/GameExtraUI.vue";
 
@@ -82,7 +91,9 @@ let loadingShownThisSession = false;
 
 const router = useRouter();
 const uiStore = useUIStore();
+const dialogStore = useDialogStore();
 const gameStore = useGameStore();
+const settingsStore = useSettingsStore();
 
 // 首次加载过渡状态：仅当本次 session 未播放过且 localStorage 未标记时播放
 const showLoading = ref(!loadingShownThisSession && !localStorage.getItem(LOADING_STORAGE_KEY));
@@ -109,9 +120,230 @@ getEnvConfigByKey("display.disable_splash_animation")
     // 读取失败（键不存在等）按默认行为播放开屏动画
   });
 
-const goToPetMode = () => {
-  router.push("/pet");
+/**
+ * 进入/退出桌宠模式，按平台分流：
+ *
+ * - 桌面端：跳 `/pet` 路由，由 `set_pet_mode` 把窗口缩成透明置顶小窗
+ * - Android：**先切 `/pet` 路由，再把主 WebView 搬进系统悬浮窗**
+ *
+ * ## 为什么必须先切页再搬移
+ *
+ * 悬浮窗里放的就是**主 WebView 本身**（不是新建实例），因此搬移是
+ * 「瞬间完成、不重载页面」的。如果先搬移再切页，用户会看到主界面
+ * 闪一下才变成桌宠；先切页则切页在屏幕内完成、搬移对用户无感。
+ *
+ * 悬浮窗路径的授权是「特殊权限」，无法运行时弹窗申请 —— 首次点击会跳系统
+ * 设置页，用户授权返回后需再点一次。
+ */
+const floatingPetActive = ref(false);
+
+/**
+ * 用户被引导去系统设置页授权悬浮窗时置位。
+ *
+ * 回来后 `handleVisibilityChange` 会据此自动接着进桌宠——否则用户得自己
+ * 再点一次「桌宠」按钮，而多数人不会知道要这么做。
+ */
+const pendingPetEntry = ref(false);
+
+/**
+ * 同步悬浮窗状态。从系统设置页返回时刷新（按钮高亮与否）。
+ *
+ * ## 为什么不用 `isVisible()`
+ *
+ * 它底层是裸 `invoke`，失败就抛，调用方只能 catch 成 `false`——
+ * 而 `false` 在这里会被读作「桌宠没在运行」。一次 IPC 失败（搬运 / 重排
+ * 期间主线程忙）就会让按钮变回「启动」，用户再点一下，**正在悬浮窗里跑**
+ * 的桌宠会被重新搬一次（窗口重建、位置重置到 (0,0)、角色闪没）。
+ *
+ * 聚合查询带 `queried` 标记，能把「查不到」和「确实没在运行」分开：
+ * 查不到就保持上一次的按钮状态，不误判。
+ */
+const syncFloatingPetState = async () => {
+  if (!isMobile()) return;
+  const status = await getFloatingPetStatus();
+  if (!status.queried) return;
+  floatingPetActive.value = status.visible;
 };
+
+/**
+ * 兜底自愈：修掉「页面不在 `/pet`，但 WebView 还在悬浮窗里」这个非法状态。
+ *
+ * ## 它只可能由一次误判造成
+ *
+ * 悬浮窗里应该**永远**是桌宠页。这个状态只可能来自 `PetMode` 里一次
+ * 「已回到 App」的误判（见 `confirmReturnedToApp`）—— 页面被 push 到了
+ * `/chat`，原生窗口却还挂着。用户看到的就是「悬浮窗卡成聊天页、角色凭空
+ * 消失」，而且因为那次误判顺带停掉了轮询，它**永远不会自愈**。
+ *
+ * ## 为什么要延迟 + 二次确认
+ *
+ * **不能**一读到 `detached === true` 就跳。正常收回（点 ✕）时也会短暂出现
+ * 完全一样的读数：`PetMode` 是「先 `handleReturnedToApp()` 切路由、再
+ * `hideFloatingPet()`」，而原生的 `hide` 命令内部还有 `HIDE_DELAY_MS`(80ms)
+ * 的延迟。这段窗口里 MainChat 已经挂载、页面已是 `/chat`，而原生还没摘窗口
+ * —— 此时若立刻跳回 `/pet`，用户会看到「刚收回又被弹回桌宠页」。
+ *
+ * 因此等一拍（1.5s，远大于 80ms + IPC 往返）再查一次：原生确实还在悬浮窗里
+ * 才补导航。
+ */
+const healStuckFloatingState = async () => {
+  if (router.currentRoute.value.path === "/pet") return;
+  const status = await getFloatingPetStatus();
+  // 查不到就不动；已经收回了也正常，什么都不用做
+  if (!status.queried || !status.detached) return;
+  await router.replace("/pet").catch(() => {});
+};
+
+/** [healStuckFloatingState] 的延迟时长（毫秒）。见其说明。 */
+const STUCK_HEAL_DELAY_MS = 1500;
+
+/**
+ * 退出悬浮桌宠：把 WebView 搬回 Activity。
+ *
+ * 页面此时停在 `/pet`，搬回后要再切回 `/chat`，行为与桌面端一致
+ * （桌面端 `set_pet_mode(false)` 之后同样 `router.replace("/chat")`）。
+ */
+const leavePetMode = async () => {
+  try {
+    await hideFloatingPet();
+    floatingPetActive.value = false;
+    if (router.currentRoute.value.path === "/pet") {
+      await router.replace("/chat");
+    }
+  } catch (e) {
+    console.error("[MainChat] 收回悬浮桌宠失败:", e);
+  }
+};
+
+const goToPetMode = async () => {
+  if (!isMobile()) {
+    // `/pet` 与 `/chat` 是**同一个界面的两种形态**，不是「上一页 / 下一页」。
+    // 用 replace 而不是 push：Android 的返回键由 WryActivity 交给 WebView
+    // 历史栈（`mWebView.goBack()`），push 会让每切一次形态都多压一条历史 ——
+    // 用户按返回就会在 /chat 和 /pet 之间来回弹（见 docs 5.4）。
+    router.replace("/pet");
+    return;
+  }
+
+  // 已开启则关闭：给用户一个明确的退出路径，避免悬浮窗无法收回
+  if (floatingPetActive.value) {
+    await leavePetMode();
+    uiStore.showInfo({ title: "桌宠已收回", message: "已切回主界面。" });
+    return;
+  }
+
+  try {
+    // 先探测再切页：没授权/不支持时不该让用户白跳一次 /pet 路由。
+    const status = await getFloatingPetStatus();
+
+    // 查询失败：既不能当成「不支持」（会误报设备不兼容），也不能当成
+    // 「没在运行」（会去重复搬一次）。老实说没问到，让用户再点一次。
+    if (!status.queried) {
+      uiStore.showWarning({
+        title: "刚刚没问清楚呢…",
+        message: "系统这会儿没回我话，过一会儿再点一次试试？",
+      });
+      return;
+    }
+
+    if (!status.supported) {
+      uiStore.showWarning({
+        title: "这台设备帮不上忙呢",
+        message: "系统的限制下我暂时浮不起来，换个设备再喊我吧～",
+      });
+      return;
+    }
+
+    // 已经在悬浮窗里了（按钮状态可能过期，见 syncFloatingPetState）。
+    // 这时**绝不能**再 show 一次：`show()` 的幂等分支会把窗口整个重建
+    // ——位置重置到 (0,0)、WebView 重新挂载，用户看到的就是「角色闪一下
+    // 没了、桌宠跳到左上角」。只需要把页面送回 /pet。
+    if (status.detached) {
+      floatingPetActive.value = true;
+      if (router.currentRoute.value.path !== "/pet") {
+        await router.replace("/pet");
+      }
+      return;
+    }
+
+    if (!status.granted) {
+      // 先解释、再跳转。
+      //
+      // 原来这里是「直接跳系统设置页 + showInfo 提示」，但那个 toast 是在
+      // 应用**已经切到后台**之后才弹的，用户正盯着系统设置页，根本看不到——
+      // 表现就是「点了桌宠什么都没发生」。
+      //
+      // 改成模态确认框：用户看清要开哪个开关、点确定才跳，返回后自动继续。
+      const confirmed = await dialogStore.confirm(
+        "想浮在别的应用上面陪你，我还差一个「显示在其他应用上层」的开关没打开呢。\n\n" +
+          "点「确定」我就带你去系统设置，在列表里找到 LingChat，把这个开关打开就好啦。\n" +
+          "回到这里我会自己接着跑，不用再点一次桌宠哦～",
+        "还差一个小开关～",
+      );
+      if (!confirmed) return;
+
+      pendingPetEntry.value = true;
+      await requestFloatingPetPermission();
+      return;
+    }
+
+    // ① 先切页 —— 此时还在屏幕内，用户看到 /pet 渲染完成
+    await router.replace("/pet");
+    // ② 再搬移 —— 原生把 WebView 摘进悬浮窗，Activity 换成占位页
+    await showFloatingPet({ scale: settingsStore.pet?.scale ?? 1 });
+    floatingPetActive.value = true;
+  } catch (e) {
+    console.error("[MainChat] 启动悬浮桌宠失败:", e);
+    // 搬移失败时把页面退回来，避免用户停在 /pet 却不在悬浮窗里
+    if (router.currentRoute.value.path === "/pet") {
+      await router.replace("/chat").catch(() => {});
+    }
+    uiStore.showError({
+      title: "桌宠没能爬出来…",
+      message: "悬浮窗没建起来，看看「显示在其他应用上层」的开关是不是给到我啦？",
+    });
+  }
+};
+
+// 用户去系统设置授权后返回、或从悬浮窗切回 App，重新同步按钮状态
+const handleVisibilityChange = async () => {
+  if (document.visibilityState !== "visible") return;
+  await syncFloatingPetState();
+
+  // 刚才是为了授权才跳走的：回来后自动接着进桌宠，不用再点一次
+  if (!pendingPetEntry.value) return;
+  pendingPetEntry.value = false;
+
+  const status = await getFloatingPetStatus();
+  if (status.granted) {
+    await goToPetMode();
+    return;
+  }
+
+  // 没授权成功就别静默失败——用户很可能在系统设置里没找到那个开关
+  uiStore.showWarning({
+    title: "开关还是关着的呀",
+    message:
+      "LingChat 的「显示在其他应用上层」还没打开，我出不来呢。\n" +
+      "有些系统把它叫「悬浮窗」或者「后台弹出界面」，换个名字找找看～",
+    duration: 8000,
+  });
+};
+
+onMounted(() => {
+  if (!isMobile()) return;
+  void syncFloatingPetState();
+  // 兜底自愈：等一拍再查「页面不在 /pet 但 WebView 还在悬浮窗」这个非法状态。
+  // 必须延迟 —— 正常收回时也会短暂出现同样的读数，见 healStuckFloatingState。
+  // 挂在 onMounted 而不是 syncFloatingPetState 里：误判之后页面会被 push 到
+  // /chat，那一刻正是本组件挂载的时候。
+  window.setTimeout(() => void healStuckFloatingState(), STUCK_HEAL_DELAY_MS);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+});
+
+onUnmounted(() => {
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+});
 
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null);
 const menuPanelRef = ref<HTMLElement | null>(null);
