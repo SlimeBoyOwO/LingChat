@@ -4,7 +4,7 @@
     <aside class="flex min-h-0 w-[230px] shrink-0 flex-col gap-3">
       <button
         class="border-brand/45 bg-brand/14 text-brand hover:bg-brand/24 inline-flex items-center justify-center gap-1 rounded-xl border px-3 py-2 text-[0.82rem] transition-all duration-200 disabled:opacity-50"
-        :disabled="store.loading"
+        :disabled="store.loading || store.sending"
         @click="store.createConversation()"
       >
         <span class="text-[1rem] leading-none">＋</span>
@@ -41,23 +41,37 @@
               <span class="truncate text-[0.8rem] text-white/85">{{
                 c.title || t("scriptEditor.agentChat.conversationTitle", { id: c.id })
               }}</span>
-              <span
-                class="inline-flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
-              >
-                <Icon
-                  icon="edit"
-                  :size="13"
-                  class="hover:text-brand cursor-pointer text-white/50"
-                  :title="t('scriptEditor.agentChat.rename')"
-                  @click.stop="startRename(c)"
-                />
-                <Icon
-                  icon="close"
-                  :size="13"
-                  class="cursor-pointer text-white/50 hover:text-red-300"
-                  :title="t('scriptEditor.agentChat.deleteConversation')"
-                  @click.stop="removeConversation(c)"
-                />
+              <span class="flex shrink-0 items-center gap-1.5">
+                <!-- 常显：这一行是「看它写了什么」的入口，做成发送键那种小号按钮 -->
+                <span
+                  class="border-brand/45 bg-brand/14 text-brand hover:bg-brand/24 shrink-0 cursor-pointer rounded-md border px-1.5 py-px text-[0.66rem] transition-colors"
+                  :title="t('scriptEditor.agentChat.scriptDetailHint')"
+                  @click.stop="openScriptDetail(c)"
+                  >{{ t("scriptEditor.agentChat.scriptDetail") }}</span
+                >
+                <span
+                  class="inline-flex items-center gap-1 transition-opacity"
+                  :class="
+                    store.sending
+                      ? 'pointer-events-none opacity-30'
+                      : 'opacity-0 group-hover:opacity-100'
+                  "
+                >
+                  <Icon
+                    icon="edit"
+                    :size="13"
+                    class="hover:text-brand cursor-pointer text-white/50"
+                    :title="t('scriptEditor.agentChat.rename')"
+                    @click.stop="startRename(c)"
+                  />
+                  <Icon
+                    icon="close"
+                    :size="13"
+                    class="cursor-pointer text-white/50 hover:text-red-300"
+                    :title="t('scriptEditor.agentChat.deleteConversation')"
+                    @click.stop="removeConversation(c)"
+                  />
+                </span>
               </span>
             </div>
             <div v-if="c.scriptKey" class="text-brand/70 mt-1 truncate font-mono text-[0.66rem]">
@@ -68,7 +82,8 @@
       </div>
 
       <button
-        class="text-[0.72rem] text-white/40 transition-colors hover:text-white/70"
+        class="text-[0.72rem] text-white/40 transition-colors hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="store.sending"
         @click="clearConversation"
       >
         {{ t("scriptEditor.agentChat.clearConversation") }}
@@ -306,6 +321,12 @@
         </div>
       </div>
     </div>
+
+    <AgentChapterPreview
+      :open="previewOpen"
+      :script-key="previewKey"
+      @close="previewOpen = false"
+    />
   </div>
 </template>
 
@@ -317,6 +338,7 @@ import { useDialogStore } from "@/stores/modules/ui/dialog";
 import { useAgentStore } from "@/stores/modules/agent";
 import AgentThinkingBlock from "./AgentThinkingBlock.vue";
 import AgentToolCard from "./AgentToolCard.vue";
+import AgentChapterPreview from "./AgentChapterPreview.vue";
 import MarkdownText from "./MarkdownText.vue";
 import type { ConversationInfo } from "@/api/services/agent";
 import type { ChatItem, ChatRound, ToolRun } from "@/stores/modules/agent/state";
@@ -327,6 +349,17 @@ const dialogStore = useDialogStore();
 
 const draft = ref("");
 const composing = ref(false);
+
+// ==================== 章节预览（只读） ====================
+
+const previewOpen = ref(false);
+/** null = 该会话没有可预览的剧本（后端会先按存储值、再从历史写入路径反推） */
+const previewKey = ref<string | null>(null);
+
+async function openScriptDetail(c: ConversationInfo) {
+  previewKey.value = await store.resolveScriptKey(c.id);
+  previewOpen.value = true;
+}
 
 /**
  * 一轮的「思考/规划」展示文本（折叠思考块内容）：

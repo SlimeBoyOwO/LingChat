@@ -9,8 +9,9 @@ use crate::ai_service::llm::LlmClient;
 use crate::ai_service::llm::provider_config::{
     LlmProviderConfig, build_llm_client_from_provider, load_providers, load_role_assignment,
 };
-use crate::api::{data_dir, game_data_dir};
 use crate::config::{self, keys};
+
+use super::stage;
 
 /// Skill Agent 运行参数。
 #[derive(Debug, Clone)]
@@ -86,31 +87,34 @@ impl SkillAgentConfig {
 
     /// 解析后的沙箱根目录（默认 `data/`）。
     pub fn resolve_sandbox_dir(&self) -> PathBuf {
-        self.sandbox_dir.clone().unwrap_or_else(data_dir)
+        self.sandbox_dir
+            .clone()
+            .unwrap_or_else(|| crate::data_dir::get_data_dir().clone())
     }
 
     /// 技能库目录（固定为 `data/game_data/skills`）。
     pub fn resolve_skills_dir(&self) -> PathBuf {
-        game_data_dir().join("skills")
+        crate::data_dir::game_data_dir().join("skills")
     }
 }
 
-/// 解析 Skill Agent 使用的 LLM provider，fallback 到聊天主 LLM（镜像 God Agent）。
-pub fn resolve_skill_agent_provider(app: &AppHandle) -> Option<LlmClient> {
+/// 解析 Skill Agent 使用的 LLM provider，fallback 到聊天主 LLM；`stage_thinking` 优先于设置项。
+pub fn resolve_skill_agent_provider(
+    app: &AppHandle,
+    stage_thinking: Option<bool>,
+) -> Option<LlmClient> {
     let config = SkillAgentConfig::load(app);
     let assignment = load_role_assignment(app);
 
-    // 构建客户端时套用 agent 的思考模式覆盖：克隆 provider 配置、改 enable_thinking，
-    // 只影响本次 agent 的 client，不触碰 llm.providers 存储（主对话设置不受影响）。
+    let thinking = stage_thinking.or(config.enable_thinking);
     let build_client = |p: &LlmProviderConfig| {
         let mut cfg = p.clone();
-        if let Some(v) = config.enable_thinking {
+        if let Some(v) = thinking {
             cfg.enable_thinking = v;
         }
         build_llm_client_from_provider(app, &cfg)
     };
 
-    // 1. 显式指定的 agent provider
     if let Some(ref id) = config.provider_id {
         let providers = load_providers(app);
         if let Some(p) = providers.iter().find(|p| &p.id == id && p.is_usable()) {
@@ -119,7 +123,6 @@ pub fn resolve_skill_agent_provider(app: &AppHandle) -> Option<LlmClient> {
         }
     }
 
-    // 2. Fallback：聊天主 LLM
     if let Some(ref id) = assignment.chat_provider_id {
         let providers = load_providers(app);
         if let Some(p) = providers.iter().find(|p| &p.id == id && p.is_usable()) {
@@ -128,7 +131,6 @@ pub fn resolve_skill_agent_provider(app: &AppHandle) -> Option<LlmClient> {
         }
     }
 
-    // 3. 任何可用的 provider
     let providers = load_providers(app);
     if let Some(p) = providers.iter().find(|p| p.is_usable()) {
         tracing::info!("Skill Agent 使用第一个可用 LLM: {} ({})", p.label, p.id);
@@ -137,4 +139,58 @@ pub fn resolve_skill_agent_provider(app: &AppHandle) -> Option<LlmClient> {
 
     tracing::warn!("Skill Agent 未找到可用 LLM");
     None
+}
+
+/// 会话开始时按 `provider/model` 缓存的窗口值，只在开新会话时解析一次，免得换 provider 后重复探测。
+fn window_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, usize>> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, usize>>> =
+        std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// 探窗口的超时：有的 provider（如 kimi_code）的 `list_models` 会真的发 HTTP 请求，
+const WINDOW_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// 这一轮算上下文预算用的模型窗口（token）：优先读 provider 自报的 `context_length`（`/models`），读不到用 [`stage::budget::DEFAULT_CONTEXT_WINDOW`]。
+pub async fn resolve_context_window(llm: &LlmClient) -> usize {
+    let cfg = llm.config();
+    let key = format!("{}/{}", cfg.provider, cfg.model);
+    if let Ok(cache) = window_cache().lock() {
+        if let Some(found) = cache.get(&key) {
+            return *found;
+        }
+    }
+
+    let reported = match tokio::time::timeout(WINDOW_PROBE_TIMEOUT, llm.list_models()).await {
+        Ok(Ok(models)) => models
+            .iter()
+            .find(|m| m.id == cfg.model)
+            .and_then(|m| m.context_length)
+            .map(|v| v as usize),
+        Ok(Err(e)) => {
+            tracing::debug!("[skill_agent] 读取模型窗口失败，用默认值: {e}");
+            None
+        },
+        Err(_) => {
+            tracing::debug!("[skill_agent] 读取模型窗口超时，用默认值");
+            None
+        },
+    };
+
+    let window = reported
+        .filter(|v| *v > 0)
+        .unwrap_or(stage::budget::DEFAULT_CONTEXT_WINDOW);
+    tracing::info!(
+        "[skill_agent] 上下文窗口 {} token（{}）",
+        window,
+        if reported.is_some() {
+            "provider 自报"
+        } else {
+            "默认值"
+        }
+    );
+    if let Ok(mut cache) = window_cache().lock() {
+        cache.insert(key, window);
+    }
+    window
 }

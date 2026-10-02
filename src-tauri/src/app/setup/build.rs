@@ -36,11 +36,11 @@ use ling_chat_main::ai_service::service::{AIService, SharedAIService};
 use ling_chat_main::ai_service::translator::Translator;
 use ling_chat_main::ai_service::tts::local::LocalTtsRuntime;
 use ling_chat_main::ai_service::types::CharacterSettings;
-use ling_chat_main::{ChatComponents, InnerAppState, ScreenshotCaptureState};
 use ling_chat_main::config::{self, AppConfig};
 use ling_chat_main::db;
 use ling_chat_main::db::managers::role_repo::RoleRepo;
 use ling_chat_main::utils::prompt::PromptOptions;
+use ling_chat_main::{ChatComponents, InnerAppState, ScreenshotCaptureState};
 use ling_chat_main::{achievements, ai_service, api};
 use ling_chat_plugins as plugins;
 
@@ -68,7 +68,7 @@ pub(super) fn build_service_graph(
     app_config: AppConfig,
     local_tts: Option<LocalTtsRuntime>,
 ) -> Result<Services> {
-    let data_dir = api::data_dir();
+    let data_dir = ling_chat_main::data_dir::get_data_dir().clone();
 
     // ═══ 原 initialize() 后半：构建 AIService 与聊天组件 ═══
     // 构建聊天主 LLM 槽位（支持运行时热切换）。
@@ -168,7 +168,9 @@ pub(super) fn build_service_graph(
         &db,
     ))?;
     let tool_settings = ai_service::tools::settings::SharedToolSettings::new(
-        ai_service::tools::settings::ToolSettings::load_or_create(&api::data_dir())?,
+        ai_service::tools::settings::ToolSettings::load_or_create(
+            ling_chat_main::data_dir::get_data_dir(),
+        )?,
     );
     let tool_registry = Arc::new(ai_service::tools::built_in_registry(
         role_names,
@@ -220,7 +222,7 @@ pub(super) fn build_service_graph(
 
     // 创建成就管理器
     let achievement_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
-        achievements::manager::AchievementManager::new(&api::data_dir()),
+        achievements::manager::AchievementManager::new(ling_chat_main::data_dir::get_data_dir()),
     ));
 
     // 创建屏幕分析器
@@ -250,7 +252,9 @@ pub(super) fn build_service_graph(
     });
 
     // Skill Agent：确保技能库目录存在（兜底，不阻断启动）
-    if let Err(e) = ai_service::skill_agent::ensure_skills_dir(&api::data_dir()) {
+    if let Err(e) =
+        ai_service::skill_agent::ensure_skills_dir(ling_chat_main::data_dir::get_data_dir())
+    {
         tracing::warn!("Skill Agent 技能库目录初始化失败: {}", e);
     }
 

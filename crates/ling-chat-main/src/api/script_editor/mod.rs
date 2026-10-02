@@ -8,8 +8,8 @@
 //!
 //! | 模块 | 职责 |
 //! |---|---|
-//! | [`schema`] | 16 种事件及其全部字段的**单一真相源**，导出给前端驱动表单 |
-//! | [`validate`] | 校验器：把引擎里的静默失败变成作者能看见的诊断 |
+//! | `script_engine::schema` | 17 种事件及其全部字段的单一真相源，导出给前端驱动表单（**已下沉到引擎那一层**） |
+//! | `script_engine::validate` | 校验器：把引擎里的静默失败变成作者能看见的诊断（**同上，已下沉**） |
 //! | [`commands`] | Tauri 命令层 |
 //!
 //! 设计约束：
@@ -23,7 +23,5 @@
 
 pub mod agent;
 pub mod commands;
-pub mod schema;
-pub mod validate;
 
 pub use commands::*;

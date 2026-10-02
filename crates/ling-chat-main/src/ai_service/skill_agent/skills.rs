@@ -1,8 +1,4 @@
 //! SKILL.md 技能库发现与读取。
-//!
-//! 技能 = 一个含 `SKILL.md`（YAML frontmatter + 指令正文）的目录。选择完全
-//! 交给 LLM：系统提示注入 `<available_skills>` 列表，模型用 `read_skill` 把
-//! 具体技能的指令加载进上下文后再执行。没有任何规则引擎。
 
 use serde::Serialize;
 use std::collections::HashSet;
