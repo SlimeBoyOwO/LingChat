@@ -64,7 +64,7 @@
 
       <!-- 保存操作栏：完美复刻你的第3个卡片 (Anchor Logic) 样式 -->
       <div
-        class="mt-2 flex shrink-0 items-center justify-between rounded-xl border p-5 shadow-sm transition-colors duration-300 md:col-span-2"
+        class="mt-2 flex shrink-0 items-center justify-between rounded-xl border p-5 shadow-sm transition-colors duration-300 min-[768px]:col-span-2"
         :class="isDarkMode ? 'border-slate-700 bg-slate-800/80' : 'border-slate-200 bg-slate-50'"
       >
         <div class="flex flex-col gap-1.5">
