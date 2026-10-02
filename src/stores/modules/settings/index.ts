@@ -12,6 +12,7 @@ import {
   type SpectrumStyle,
 } from "@/constants/spectrum";
 import type { ShortcutAction, ShortcutBinding } from "@/utils/shortcuts";
+import { isAndroid } from "@/utils/platform";
 import { DEFAULT_SHORTCUTS, sanitizeShortcuts } from "@/utils/shortcuts";
 import { isWeatherEffect } from "@/components/game/standard/particles";
 import { defineStore } from "pinia";
@@ -73,7 +74,12 @@ export const DEFAULT_SETTINGS = {
   pet: {
     scale: 1, // 桌宠缩放比例
     live2dFps: 30, // Live2D 渲染帧率上限（0 = 不限制）；桌宠窗口小，30 帧足够且显著降 CPU
-    bubbleSide: "above" as BubbleSide, // 气泡/通知位置：气泡在宠物的哪一侧（四向 + 自动）
+    // 气泡/通知位置：气泡在宠物的哪一侧（四向 + 自动）
+    //
+    // 手机上默认「下方」：悬浮窗是被用户拖到哪儿算哪儿的小窗，一旦停靠在屏幕
+    // 上半部，气泡往上弹就会顶出屏幕；往下弹则总是有空间（窗口下方到屏幕底部
+    // 通常比上方富余）。桌面端窗口可以贴任意边、还有左右两侧可用，保持 "above"。
+    bubbleSide: (isAndroid() ? "below" : "above") as BubbleSide,
   },
   // 剧本编辑器快捷键（默认不含 Command 键；可在编辑器快捷键面板自定义）
   shortcuts: DEFAULT_SHORTCUTS,
@@ -162,6 +168,40 @@ export interface SettingsState {
   character: CharacterSettings;
   pet: PetSettings;
   shortcuts: Record<ShortcutAction, ShortcutBinding>;
+}
+
+/**
+ * 一次性迁移：Android 上把「从没动过的老默认值 above」改成 below。
+ *
+ * ## 为什么需要它
+ *
+ * `bubbleSide` 的默认值改成了平台相关（手机 below / 桌面 above），但
+ * **老用户的 localStorage 里已经存着 "above"** —— 默认值对他们不生效，
+ * 表现就是「改了默认值但手机上一动不动」。所以必须在 hydrate 之后纠一次。
+ *
+ * ## 为什么只纠一次
+ *
+ * 单看持久化数据无法区分「用户主动选了 above」和「从没动过」。这里用一个
+ * 独立的 localStorage 标记来区分：标记不存在 = 还没纠过 → 纠一次并打标记；
+ * 之后用户在设置里改回 above 也不会再被覆盖。
+ *
+ * 标记刻意不走 `persist`（不进 SettingsState）：它是一次性迁移的状态，
+ * 不是用户偏好，混进设置类型里只会污染 schema。
+ */
+const ANDROID_BUBBLE_SIDE_MIGRATED_KEY = "lingchat:migrated:android-bubble-side-v1";
+
+function migrateAndroidBubbleSide(store: SettingsState) {
+  if (!isAndroid()) return;
+  try {
+    if (window.localStorage.getItem(ANDROID_BUBBLE_SIDE_MIGRATED_KEY)) return;
+    window.localStorage.setItem(ANDROID_BUBBLE_SIDE_MIGRATED_KEY, "1");
+  } catch {
+    // 隐私模式 / 存储被禁用：拿不到标记就**不纠**，宁可不改也不误改用户的选择
+    return;
+  }
+  if (store.pet?.bubbleSide === "above") {
+    store.pet.bubbleSide = "below";
+  }
 }
 
 export const useSettingsStore = defineStore("settings", {
@@ -436,9 +476,12 @@ export const useSettingsStore = defineStore("settings", {
     // 氛围层已经没有的 key —— 不报错，但什么也不显示。这里把它归位。
     // 写成不变量而不是一次性迁移：任何来源的越界值都会在读取时被纠正
     afterHydrate: (store: SettingsState) => {
-      if (!isWeatherEffect(store.display.backgroundEffect)) return;
-      store.display.weatherEffect = store.display.backgroundEffect;
-      store.display.backgroundEffect = "None";
+      if (isWeatherEffect(store.display.backgroundEffect)) {
+        store.display.weatherEffect = store.display.backgroundEffect;
+        store.display.backgroundEffect = "None";
+      }
+
+      migrateAndroidBubbleSide(store);
     },
   },
 });
