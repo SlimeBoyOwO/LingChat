@@ -23,7 +23,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 ## 现状
 
 - 后端（Rust）已支持 iOS：数据播种走 `data.7z`（与 Android 同一机制，见
-  `src-tauri/src/init/static_copy.rs` 的 `seed_via_fs_plugin`）。
+  `crates/ling-chat-main/src/data_dir.rs` 的 `seed_via_fs_plugin`）。
 - iOS 数据目录 = 沙盒内 **Documents**（`<container>/Documents`），配合
   `src-tauri/Info.ios.plist` 的 `UIFileSharingEnabled` / `LSSupportsOpeningDocumentsInPlace`，
   用户可在系统「文件」App 中直接看到并访问整个 `data/` 目录

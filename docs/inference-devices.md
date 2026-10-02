@@ -230,10 +230,10 @@ WebGPU EP 的 `deviceId` 选项是否被 ORT 采纳需真机双显卡复核—�
 
 ## 8. 相关代码位置
 
-| 内容        | 路径                                                                                     |
-| ----------- | ---------------------------------------------------------------------------------------- |
-| 枚举 / 解析 | `crates/ling-chat-main/src/utils/device.rs`                                              |
-| 后端命令    | `crates/ling-chat-main/src/ai_service/tts/local/mod.rs`（`tts_local_list_devices` 等）   |
-| EP 组装     | `src-tauri/patches/sbv2_core/src/model.rs`（`webgpu` 分支，`with_device_id`）            |
-| 前端选择器  | `src/components/settings/pages/SettingsTts.vue`                                          |
-| 依赖        | `crates/ling-chat-main/Cargo.toml`（Windows target `windows` DXGI / Linux target `ash`） |
+| 内容        | 路径                                                                                           |
+| ----------- | ---------------------------------------------------------------------------------------------- |
+| 枚举 / 解析 | `crates/ling-chat-main/src/utils/device.rs`                                                    |
+| 后端命令    | `crates/ling-chat-main/src/ai_service/tts/local/mod.rs`（`tts_local_list_devices` 等）         |
+| EP 组装     | `sbv2_core`（git 依赖 shadow01a/sbv2-api）的 `src/model.rs`（`webgpu` 分支，`with_device_id`） |
+| 前端选择器  | `src/components/settings/pages/SettingsTts.vue`                                                |
+| 依赖        | `crates/ling-chat-main/Cargo.toml`（Windows target `windows` DXGI / Linux target `ash`）       |

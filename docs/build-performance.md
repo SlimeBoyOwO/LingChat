@@ -102,7 +102,7 @@
   且都绑在 TTS 依赖链上。
 - `ort-sys` 带 `links = "onnxruntime"`：如果两边各 pin 一次 ort 版本，会直接 hard error。
   历史上为此专门写过 `[patch]`（见 `404f8896` 的 Cargo.toml 注释）。
-- `src-tauri/src/utils/device.rs` 是 `sbv2_core` 泄漏到共享层的唯一引用，拆之前必须先把
+- `crates/ling-chat-main/src/utils/device.rs` 是 `sbv2_core` 泄漏到共享层的唯一引用，拆之前必须先把
   `InferenceDevice` 抽成不依赖 `sbv2_core` 的本地类型。
 - TTS 目录里有 **21 个 `#[tauri::command]`**、6 个文件 `use tauri::*`、依赖
   `config::settings_store`（`Arc<Store<Wry>>`）——拆出去也不是纯库，得带着 tauri。
@@ -115,7 +115,7 @@
 - `1c93ba2c`（2026-07-30）把它删掉合回主项目，删 8193 行、加 902 行，提交信息是
   「将sbv2适配层代码嵌入项目，**复用大部分工具逻辑**」。
 
-现在 `src-tauri/src/ai_service/tts/local/mod.rs` 第 1 行仍留着
+现在 `crates/ling-chat-main/src/ai_service/tts/local/mod.rs` 第 1 行仍留着
 `// Local TTS engine module (formerly the sbv2-local-tts crate, now embedded).`
 
 **如果要重新讨论这个方向，请先读本节。**

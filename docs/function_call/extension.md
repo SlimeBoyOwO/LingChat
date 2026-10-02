@@ -16,7 +16,7 @@
 
 ## 2. 第一步：实现 `Tool` trait
 
-把 `src-tauri/src/ai_service/tools/clock.rs` 当模板（它就是内置示例工具 `get_current_time`）：
+把 `crates/ling-chat-main/src/ai_service/tools/clock.rs` 当模板（它就是内置示例工具 `get_current_time`）：
 
 ```rust
 use async_trait::async_trait;
