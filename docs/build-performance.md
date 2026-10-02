@@ -174,11 +174,12 @@ linker = "rust-lld"
 
 Cargo 解析配置是**从 cwd 向上查找**，不是从 manifest 向上。因此：
 
-- `cd src-tauri && cargo build` → 读 `src-tauri/.cargo/config.toml`
-- 仓库根 `cargo --manifest-path src-tauri/Cargo.toml`（CI 的做法）→ 读根目录那份
+- 在仓库根跑 `cargo …`（workspace 根，CI 的做法）→ 只读仓库根那份
+- `cd src-tauri && cargo …` → 先读 `src-tauri/.cargo/config.toml`，再读仓库根那份（越近优先级越高）
 
-两份都在实际生效，只改一份会让本地与 CI 的编译行为静默不一致。已在两份文件顶部
-互相加注释警示。
+两份都在实际生效，只改一份会让「从 src-tauri 跑」与「从仓库根跑」的编译行为静默不一致。
+已在两份文件顶部互相加注释警示。注意 profile 覆盖**不支持** config.toml，只能放仓库根
+`Cargo.toml`（见 4.2）。
 
 ## 5. 如何复现测量
 
@@ -187,20 +188,20 @@ Cargo 解析配置是**从 cwd 向上查找**，不是从 manifest 向上。因�
 pnpm tauri dev 需已停止；rust-analyzer 应只有 1 个进程
 
 # 1) 基线：无改动时的耗时（应接近 0，确认缓存是热的）
-cargo check --manifest-path src-tauri/Cargo.toml
+cargo check --workspace
 
 # 2) 改一行源码后重新构建（把 <file> 换成任意 .rs）
 #    注意用 ${PIPESTATUS[0]} 取退出码，`| tail` 会把失败伪装成成功
 start=$(date +%s)
-cargo build --manifest-path src-tauri/Cargo.toml
+cargo build -p ling_chat
 echo "$(( $(date +%s) - start )) 秒"
 
 # 3) 看每次构建写了哪些产物、多大
-ls -la --time-style=+%H:%M:%S src-tauri/target/debug/ | grep ling_chat
+ls -la --time-style=+%H:%M:%S target/debug/ | grep ling_chat
 
 # 4) 逐编译单元的耗时分解
-cargo build --manifest-path src-tauri/Cargo.toml --timings
-#    报告在 src-tauri/target/cargo-timings/
+cargo build -p ling_chat --timings
+#    报告在 target/cargo-timings/
 ```
 
 测量要点：改一行后测 3 轮取中位数；确认 `ling_chat_lib.lib` 不再出现。
