@@ -19,7 +19,8 @@ use crate::ai_service::screen_analyzer::ScreenAnalyzer;
 use crate::ai_service::service::SharedAIService;
 use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::translator::Translator;
-use crate::{achievements, ai_service, api, plugins};
+use crate::plugin_contract::PluginResourceSource;
+use crate::{achievements, ai_service, api};
 
 /// 聊天组件集合。
 ///
@@ -59,8 +60,8 @@ pub struct InnerAppState {
     pub tool_registry: Arc<ToolRegistry>,
     /// 聊天工具的用户配置（网页搜索 API Key、代理等），热更新共享句柄。
     pub tool_settings: ai_service::tools::settings::SharedToolSettings,
-    /// 插件管理器（扫描/启停/配置）。
-    pub plugin_manager: Arc<plugins::PluginManager>,
+    /// 插件资源只读来源（由插件侧的 `PluginManager` 实现，宿主经窄接口读取）。
+    pub plugin_resources: Arc<dyn PluginResourceSource>,
     pub proactive_system:
         Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
     /// 成就管理器。

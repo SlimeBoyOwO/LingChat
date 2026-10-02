@@ -11,12 +11,12 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::AppState;
 use crate::ai_service::tools::registry::ToolRegistry;
+use crate::plugin_contract::PluginResourceEntry;
 
 use super::manifest;
 use super::python_backend;
-use super::resources::{self, PluginResourceEntry};
+use super::resources;
 use super::signal::SignalRegistry;
 use super::tool::PluginTool;
 use super::types::{
@@ -745,7 +745,7 @@ impl PluginManager {
                     timeout,
                     tokio::task::spawn_blocking(move || {
                         let _permit = permit;
-                        let manager = app.state::<AppState>().data().plugin_manager.clone();
+                        let manager = app.state::<Arc<PluginManager>>().inner().clone();
                         let run_env = manager.plugin_run_env(&plugin_id);
                         python_backend::run_plugin_handler(
                             &script_path,
@@ -1188,7 +1188,10 @@ impl PluginManager {
                 if token.is_cancelled() {
                     return Err("插件已被停用".to_string());
                 }
-                let manager = app_handle.state::<AppState>().data().plugin_manager.clone();
+                let manager = app_handle
+                    .state::<Arc<PluginManager>>()
+                    .inner()
+                    .clone();
                 let run_env = manager.plugin_run_env(&plugin_id);
                 python_backend::run_plugin_startup(&script_path, &handler, run_env, app_handle)
             }),
@@ -1311,6 +1314,13 @@ impl PluginManager {
     /// 插件是否已停用（令牌不存在，或已被取消）。
     async fn is_stopped(&self, id: &str) -> bool {
         self.live_token(id).await.is_none()
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::plugin_contract::PluginResourceSource for PluginManager {
+    async fn visible_file_entries(&self, kind: ResourceKind) -> Vec<PluginResourceEntry> {
+        PluginManager::visible_file_entries(self, kind).await
     }
 }
 

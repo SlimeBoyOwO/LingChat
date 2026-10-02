@@ -20,6 +20,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::utils::archive::{self, ArchiveError, ArchiveFormat, ConflictPolicy, EntryEvent};
 
+use super::PluginManager;
 use super::manifest;
 use super::types::PluginManifest;
 
@@ -48,7 +49,7 @@ enum LayoutError {
 }
 
 /// 导入一个插件压缩包。`policy` 只接受 [`ConflictPolicy::Overwrite`] 与
-/// [`ConflictPolicy::Skip`]；调用方（`api::plugins::import_plugin_from_path`）负责拒绝其他值。
+/// [`ConflictPolicy::Skip`]；调用方（`plugins::commands::import_plugin_from_path`）负责拒绝其他值。
 pub async fn do_import_plugin(
     app: &AppHandle,
     tmp_path: &Path,
@@ -177,7 +178,7 @@ pub async fn do_import_plugin(
     // 8. 覆盖：先经 manager.delete_plugin 注销工具并删除旧目录与状态条目。
     //    直接 remove_dir_all 会把已注册的工具留在 registry 里，重启前一直可调。
     if resolution.action == "overwritten" {
-        let manager = app.state::<crate::AppState>().data().plugin_manager.clone();
+        let manager = app.state::<Arc<PluginManager>>().inner().clone();
         match manager.delete_plugin(&plugin_id).await {
             Ok(()) => {},
             // 目标目录存在但 manager 里没有对应记录（例如手工丢进去、manifest 损坏的
@@ -205,11 +206,11 @@ pub async fn do_import_plugin(
     let _ = tokio::fs::remove_dir_all(&staging_root).await;
 
     // 10. 重扫并收敛派生状态（插件角色入库 / 剧本合并 / 背景场景化）。
-    let manager = app.state::<crate::AppState>().data().plugin_manager.clone();
+    let manager = app.state::<Arc<PluginManager>>().inner().clone();
     tokio::task::spawn_blocking(move || manager.reload())
         .await
         .map_err(|e| format!("插件重载线程异常: {e}"))?;
-    crate::api::plugins::refresh_plugin_content(app).await;
+    crate::plugins::commands::refresh_plugin_content(app).await;
 
     tracing::info!(
         "[PluginImport] 完成: id={plugin_id}, action={}, files={}, bytes={}",

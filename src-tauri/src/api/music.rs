@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_store::StoreExt;
 
-use crate::plugins::ResourceKind;
+use crate::plugin_contract::ResourceKind;
 use crate::utils::path::{move_directory_files_to, validate_directory_name, validate_path_in_base};
 use crate::utils::system::open_folder;
 
@@ -135,7 +135,7 @@ pub async fn get_music_list(app: AppHandle) -> Result<Vec<MusicItemInfo>, String
     let plugin_entries = app
         .state::<crate::AppState>()
         .data()
-        .plugin_manager
+        .plugin_resources
         .visible_file_entries(ResourceKind::Musics)
         .await;
     for e in plugin_entries {

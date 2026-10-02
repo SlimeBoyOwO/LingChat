@@ -738,13 +738,10 @@ pub(super) async fn publish_ordered(
                         tracing::warn!("emit ai:reply 失败: {e}");
                         return false;
                     }
-                    // 插件信号：同一条回复也交给订阅了 ai_reply 的插件
-                    //（补字段与派发都在 plugins::signal 里，这里只转发）。
-                    // 本函数拿不到 AppHandle，所以用启动时登记的全局句柄；
-                    // 测试里没有句柄，这段自然跳过。
-                    if let Some(app) = crate::plugins::app_handle() {
-                        crate::plugins::signal::emit_ai_reply(&app, &resp).await;
-                    }
+                    // 插件信号：同一条回复也转发给订阅了 ai_reply 的插件
+                    //（补字段与派发在启动时登记的回调里，见 plugin_contract::set_reply_hook）。
+                    // 测试环境未登记回调，这里自然跳过。
+                    crate::plugin_contract::notify_reply(&resp);
                     reply_before_fence = true;
                     if is_final {
                         return true;

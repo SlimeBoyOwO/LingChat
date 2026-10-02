@@ -8,38 +8,12 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
-
 use super::types::{PluginRecord, ResourceKind};
+use crate::plugin_contract::PluginResourceEntry;
 use crate::utils::yaml_file::resolve_settings_file;
 
 pub const IMAGE_EXTENSIONS: [&str; 8] = ["png", "jpg", "jpeg", "webp", "bmp", "svg", "tif", "gif"];
 pub const AUDIO_EXTENSIONS: [&str; 7] = ["mp3", "wav", "flac", "webm", "weba", "ogg", "oga"];
-
-/// 单条插件资源条目（前端资源管理列表 & 各内容列表合并共用）。
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub struct PluginResourceEntry {
-    pub kind: ResourceKind,
-    /// 定位 key：角色 = folder 名；剧本 = script_name；图/音 = 文件名（含扩展名）。
-    pub key: String,
-    /// 显示名：角色 = settings.yml title；剧本 = script_name；图/音 = 文件 stem。
-    pub name: String,
-    /// 资源绝对路径（目录或文件）。
-    pub path: PathBuf,
-    pub plugin_id: String,
-    /// 与游戏现有资源同名冲突（列表中被游戏版压制）。
-    pub conflict: bool,
-    /// 已被玩家软删除隐藏。
-    pub hidden: bool,
-}
-
-impl PluginResourceEntry {
-    /// 软删除标记值：`"<kind>/<key>"`。
-    pub fn hidden_mark(&self) -> String {
-        format!("{}/{}", self.kind.subdir(), self.key)
-    }
-}
 
 /// 拆分隐藏标记为 (kind, key)。
 pub fn split_hidden_mark(mark: &str) -> Option<(ResourceKind, &str)> {

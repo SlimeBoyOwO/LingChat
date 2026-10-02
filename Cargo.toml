@@ -1,0 +1,16 @@
+[workspace]
+members = ["src-tauri"]
+resolver = "2"
+
+# [patch] 与 [profile] 只能放在 workspace 根：成员 crate 里的这两段会被 Cargo 静默忽略。
+# esaxx-rs 的 patch 路径相对本文件，故补 src-tauri/ 前缀。
+[patch.crates-io]
+esaxx-rs = { path = "src-tauri/patches/esaxx-rs" }
+jpreprocess-naist-jdic = { git = "https://gh-proxy.org/github.com/shadow01a/jpreprocess", branch = "main" }
+
+# 依赖不生成调试符号。proc-macro 每次指纹变化都要重编，PDB 体积大且无需单步调试。
+[profile.dev.build-override]
+debug = false
+
+[profile.dev.package."*"]
+debug = false

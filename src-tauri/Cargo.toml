@@ -184,24 +184,3 @@ ort = { version = "=2.0.0-rc.13", default-features = false, features = [
 sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
     "coreml",
 ] }
-
-
-# esaxx-rs 强制静态 CRT (/MT) 会在 Windows 下与 ort 等库冲突（LNK2038/LNK2005）。
-# 仓库已自带 patches/esaxx-rs（唯一改动：build.rs 去掉 .static_crt(true)，
-# 改用动态 CRT /MD），这里把它接到 [patch] 上真正生效。
-# 详见 patches/esaxx-rs/build.rs 的注释。
-[patch.crates-io]
-esaxx-rs = { path = "patches/esaxx-rs" }
-jpreprocess-naist-jdic = { git = "https://gh-proxy.org/github.com/shadow01a/jpreprocess", branch = "main" }
-
-# ── 增量编译速度 ──────────────────────────────────────────────
-# 依赖不生成调试符号。dev 下单个 proc-macro 的 PDB 就有 34 MB（tauri_macros），
-# 而 proc-macro 每次指纹变化都要重编一次；普通依赖同样在往磁盘写大量 PDB。
-# 依赖里没有需要单步调试的代码，关掉是纯收益。
-# 放在 manifest 而不是 .cargo/config.toml：package 覆盖只支持 manifest，
-# 且 manifest 的 profile 不受 cwd 影响（config 有两份副本，容易改漏一份）。
-[profile.dev.build-override]
-debug = false
-
-[profile.dev.package."*"]
-debug = false

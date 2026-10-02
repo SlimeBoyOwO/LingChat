@@ -13,6 +13,7 @@
 //! - [`importer::do_import_plugin`](importer::do_import_plugin)：从 zip/7z 压缩包安装插件
 //! - [`signal::SignalRegistry`](signal::SignalRegistry)：宿主信号登记与插件订阅派发
 
+pub mod commands;
 pub mod host_api;
 pub mod importer;
 pub mod manager;
@@ -28,9 +29,9 @@ use std::sync::OnceLock;
 
 use tauri::AppHandle;
 
+pub use crate::plugin_contract::{PluginResourceEntry, ResourceKind};
 pub use manager::PluginManager;
-pub use resources::PluginResourceEntry;
-pub use types::{PluginInfo, ResourceKind};
+pub use types::PluginInfo;
 
 /// 宿主 `AppHandle` 的全局副本。
 ///

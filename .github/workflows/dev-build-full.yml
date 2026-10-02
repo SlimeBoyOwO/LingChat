@@ -25,19 +25,19 @@ jobs:
           - platform: windows-amd64
             os: windows-latest
             artifact-name: lingchat-dev-windows
-            artifact-path: src-tauri/target/release/ling_chat.exe
+            artifact-path: target/release/ling_chat.exe
           - platform: linux-amd64
             os: ubuntu-latest
             artifact-name: lingchat-dev-linux-amd64
-            artifact-path: src-tauri/target/release/ling_chat
+            artifact-path: target/release/ling_chat
           - platform: macos
             os: macos-latest
             artifact-name: lingchat-dev-macos
-            artifact-path: src-tauri/target/release/ling_chat
+            artifact-path: target/release/ling_chat
           - platform: linux-aarch64
             os: ubuntu-24.04-arm
             artifact-name: lingchat-dev-linux-aarch64
-            artifact-path: src-tauri/target/release/ling_chat
+            artifact-path: target/release/ling_chat
 
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +57,7 @@ jobs:
         with:
           cache-on-failure: true
           workspaces: |
-            src-tauri
+            .
           save-if: ${{ github.ref == 'refs/heads/dev' }}
 
       - name: 安装 Linux 依赖 (Ubuntu)
@@ -121,8 +121,8 @@ jobs:
           cp "${{ matrix.artifact-path }}" "${{ runner.temp }}/dist/"
           # DirectML.dll 是 DML EP 的运行时依赖，缺了它选 GPU 会静默回落 CPU
           for dll in onnxruntime.dll DirectML.dll; do
-            if [ "${{ runner.os }}" = "Windows" ] && [ -f "src-tauri/target/release/$dll" ]; then
-              cp "src-tauri/target/release/$dll" "${{ runner.temp }}/dist/"
+            if [ "${{ runner.os }}" = "Windows" ] && [ -f "target/release/$dll" ]; then
+              cp "target/release/$dll" "${{ runner.temp }}/dist/"
             fi
           done
 

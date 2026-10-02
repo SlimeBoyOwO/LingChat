@@ -15,7 +15,6 @@ pub mod locale;
 pub mod memory;
 pub mod music;
 pub mod pet;
-pub mod plugins;
 pub mod save;
 pub mod scene;
 pub mod schedule;

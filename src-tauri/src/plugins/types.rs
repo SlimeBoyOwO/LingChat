@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub use crate::plugin_contract::ResourceKind;
+
 /// 配置字段的类型（前端据此渲染表单控件）。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -242,34 +244,6 @@ fn default_retry_interval_ms() -> u64 {
 
 fn default_true() -> bool {
     true
-}
-
-/// 插件可携带的资源类型（与 game_data 下同名子目录一一对应）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ResourceKind {
-    Characters,
-    Scripts,
-    Musics,
-    Backgrounds,
-    Ambients,
-}
-
-impl ResourceKind {
-    /// 插件内与游戏目录同名同构的子目录名。
-    pub fn subdir(&self) -> &'static str {
-        match self {
-            Self::Characters => "characters",
-            Self::Scripts => "scripts",
-            Self::Musics => "musics",
-            Self::Backgrounds => "backgrounds",
-            Self::Ambients => "ambients",
-        }
-    }
-
-    pub fn as_str(&self) -> &'static str {
-        self.subdir()
-    }
 }
 
 /// 插件 manifest（manifest.toml）。

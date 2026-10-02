@@ -13,11 +13,13 @@ use crate::AppState;
 use crate::ai_service::game_system::scene_store::{Scene, SceneStore};
 use crate::api::encode_plugin_folder;
 use crate::db::role_sync::PluginRoleInput;
-use crate::plugins::{PluginInfo, PluginManager, PluginResourceEntry, ResourceKind};
 use crate::utils::archive::{self, ArchiveImportState, ConflictPolicy};
 
+use super::importer;
+use super::{PluginInfo, PluginManager, PluginResourceEntry, ResourceKind};
+
 fn manager(app: &AppHandle) -> Arc<PluginManager> {
-    app.state::<AppState>().data().plugin_manager.clone()
+    app.state::<Arc<PluginManager>>().inner().clone()
 }
 
 /// 列出所有插件（含启停状态与配置 schema）。
@@ -112,7 +114,7 @@ pub async fn import_plugin_from_path(
     path: String,
     format: Option<String>,
     conflict: String,
-) -> Result<crate::plugins::importer::PluginImportResult, String> {
+) -> Result<importer::PluginImportResult, String> {
     // 与角色导入共用同一把全局并发锁：同一时刻只允许一个解压任务。
     if state
         .importing
@@ -161,7 +163,7 @@ pub async fn import_plugin_from_path(
         if !src.path.exists() {
             return Err(format!("文件不存在: {}", src.path.display()));
         }
-        crate::plugins::importer::do_import_plugin(&app, &src.path, format, policy, cancel_token)
+        importer::do_import_plugin(&app, &src.path, format, policy, cancel_token)
             .await
     }
     .await;
@@ -280,7 +282,7 @@ async fn sync_plugin_roles_cmd(app: &AppHandle) -> Result<(), String> {
 async fn collect_plugin_role_inputs(state: &AppState) -> Vec<PluginRoleInput> {
     let entries = state
         .data()
-        .plugin_manager
+        .plugin_resources
         .visible_file_entries(ResourceKind::Characters)
         .await;
     entries
@@ -297,7 +299,7 @@ async fn sync_plugin_scripts_cmd(app: &AppHandle) {
     let state = app.state::<AppState>();
     let entries = state
         .data()
-        .plugin_manager
+        .plugin_resources
         .visible_file_entries(ResourceKind::Scripts)
         .await;
     let plugin_scripts: Vec<(String, std::path::PathBuf)> =
@@ -311,7 +313,7 @@ async fn sync_plugin_scenes_cmd(app: &AppHandle) {
     let state = app.state::<AppState>();
     let entries = state
         .data()
-        .plugin_manager
+        .plugin_resources
         .visible_file_entries(ResourceKind::Backgrounds)
         .await;
     let data_dir = crate::api::data_dir();

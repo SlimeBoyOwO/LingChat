@@ -4,7 +4,7 @@ use std::path::Path;
 
 use tauri::{AppHandle, Manager};
 
-use crate::plugins::ResourceKind;
+use crate::plugin_contract::ResourceKind;
 use crate::utils::path::{move_directory_files_to, validate_directory_name, validate_path_in_base};
 use crate::utils::system::open_folder;
 use serde::{Deserialize, Serialize};
@@ -158,7 +158,7 @@ pub async fn get_background_list(app: AppHandle) -> Result<Vec<BackgroundItemInf
     let plugin_entries = app
         .state::<crate::AppState>()
         .data()
-        .plugin_manager
+        .plugin_resources
         .visible_file_entries(ResourceKind::Backgrounds)
         .await;
     for e in plugin_entries {

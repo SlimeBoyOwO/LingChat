@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_store::StoreExt;
 
-use crate::plugins::ResourceKind;
+use crate::plugin_contract::ResourceKind;
 use crate::utils::path::validate_path_in_base;
 
 use super::{ambient_dir, default_source, mtime_secs};
@@ -70,7 +70,7 @@ pub async fn get_ambient_list(app: AppHandle) -> Result<Vec<AmbientItemInfo>, St
     let plugin_entries = app
         .state::<crate::AppState>()
         .data()
-        .plugin_manager
+        .plugin_resources
         .visible_file_entries(ResourceKind::Ambients)
         .await;
     for e in plugin_entries {

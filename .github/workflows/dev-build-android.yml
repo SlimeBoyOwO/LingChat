@@ -35,7 +35,7 @@ jobs:
         with:
           cache-on-failure: true
           workspaces: |
-            src-tauri
+            .
           save-if: ${{ github.ref == 'refs/heads/dev' }}
 
       - name: 安装 Linux 依赖 (Ubuntu)

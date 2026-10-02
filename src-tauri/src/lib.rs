@@ -10,6 +10,7 @@ mod db;
 mod lan_sync;
 mod manifest;
 mod migration;
+mod plugin_contract;
 mod plugins;
 mod resource_sync;
 pub mod utils;

@@ -36,8 +36,7 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
-use crate::AppState;
-
+use super::PluginManager;
 use super::signal::SIGNAL_WS_MESSAGE;
 use super::types::{WsMode, WsState};
 
@@ -384,7 +383,7 @@ async fn emit(
         "binary": binary,
         "error": error,
     });
-    let manager = app.state::<AppState>().data().plugin_manager.clone();
+    let manager = app.state::<Arc<PluginManager>>().inner().clone();
     manager
         .dispatch_signal(&app, SIGNAL_WS_MESSAGE, &payload, Some(plugin_id))
         .await;

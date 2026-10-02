@@ -676,7 +676,10 @@ mod plugin_host {
         let Some(plugin_id) = super::current_plugin() else {
             return Ok(super::err_json(vm, "无法确定当前插件"));
         };
-        let manager = app.state::<crate::AppState>().data().plugin_manager.clone();
+        let manager = app
+            .state::<std::sync::Arc<crate::plugins::PluginManager>>()
+            .inner()
+            .clone();
         let result =
             super::runtime().block_on(manager.ws_open(&plugin_id, Some(&conn_id), url.as_deref()));
         Ok(super::result_to_py(vm, result))
@@ -695,7 +698,10 @@ mod plugin_host {
         let Some(plugin_id) = super::current_plugin() else {
             return Ok(super::err_json(vm, "无法确定当前插件"));
         };
-        let manager = app.state::<crate::AppState>().data().plugin_manager.clone();
+        let manager = app
+            .state::<std::sync::Arc<crate::plugins::PluginManager>>()
+            .inner()
+            .clone();
         manager.ws_close(&plugin_id, Some(&conn_id));
         Ok(super::value_to_pyobject(
             vm,
@@ -728,7 +734,10 @@ mod plugin_host {
                 other => crate::plugins::ws::WsCommand::Text(other.to_string()),
             },
         };
-        let manager = app.state::<crate::AppState>().data().plugin_manager.clone();
+        let manager = app
+            .state::<std::sync::Arc<crate::plugins::PluginManager>>()
+            .inner()
+            .clone();
         let result = manager.ws_send(&plugin_id, &conn_id, cmd);
         Ok(super::result_to_py(vm, result))
     }
@@ -752,7 +761,10 @@ mod plugin_host {
         let Some(plugin_id) = super::current_plugin() else {
             return Ok(super::err_json(vm, "无法确定当前插件"));
         };
-        let manager = app.state::<crate::AppState>().data().plugin_manager.clone();
+        let manager = app
+            .state::<std::sync::Arc<crate::plugins::PluginManager>>()
+            .inner()
+            .clone();
         match manager.ws_status(&plugin_id, conn_id.as_deref()) {
             // 指定 conn_id 时 manager 保证非空，取首条。
             Ok(list) if conn_id.is_some() => {

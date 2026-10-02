@@ -8,8 +8,8 @@ LingChat 是一个 AI Galgame 引擎，一个桌面 AI 聊天伴侣 / 桌宠应�
 -pnpm build：前端类型检查和生产构建（必须使用此命令检查前端，不得加tail/head等）
 -pnpm tauri build：完整桌面打包，生成 NSIS / dmg / deb / AppImage + 更新器产物
 -pnpm format/pnpm format:check：prettier和cargo fmt
--pnpm check:rs：cargo check --manifest-path src-tauri/Cargo.toml --lib
--测试 — `cargo test --manifest-path src-tauri/Cargo.toml`，没有前端测试框架
+-pnpm check:rs：cargo check --workspace
+-测试 — `cargo test --workspace`，没有前端测试框架
 -pnpm init生成应用图标，准备桌面资源，下载情绪 ONNX 模型。
 -Android：pnpm android:prepare、pnpm android:dev、pnpm android:build（aarch64，apk）、pnpm android:check（cargo ndk check）
 -iOS：pnpm ios:init，pnpm ios:build（`docs/ios-build.md`；`.npmrc` 记录了 Xcode 下 pnpm-11 的限制）。

@@ -28,6 +28,7 @@ use crate::AppState;
 use crate::ai_service::message_system::responses::ReplyResponse;
 use crate::db::managers::role_repo::RoleRepo;
 
+use super::PluginManager;
 use super::types::{MatchValue, PluginRecord, SubscribeDecl};
 
 /// 同时执行的 handler 上限。信号可能从任意业务点高频发出，不设上限会把
@@ -250,7 +251,7 @@ impl SignalRegistry {
 /// 先探一次有没有订阅者再准备载荷：`avatarDir` 要走一次「查库 + 读角色 YAML」，
 /// 零插件订阅时不该为它买单。handler 本身在后台线程执行，不阻塞回复流水线。
 pub async fn emit_ai_reply(app: &AppHandle, resp: &ReplyResponse) {
-    let manager = app.state::<AppState>().data().plugin_manager.clone();
+    let manager = app.state::<Arc<PluginManager>>().inner().clone();
     if !manager.has_signal_subscribers(SIGNAL_AI_REPLY) {
         return;
     }

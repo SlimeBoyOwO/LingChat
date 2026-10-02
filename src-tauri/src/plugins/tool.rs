@@ -6,10 +6,10 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tauri::Manager;
 
-use crate::AppState;
 use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
 use crate::ai_service::types::ToolDefinition;
 
+use super::PluginManager;
 use super::python_backend;
 use super::types::ToolSpec;
 
@@ -62,7 +62,7 @@ impl Tool for PluginTool {
         // 用 blocking_lock，RustPython 需要线程局部状态），整体放 spawn_blocking；
         // 外层 timeout_hint 兜底。app 随闭包传入，供脚本内 call_tool 使用。
         let result = tokio::task::spawn_blocking(move || {
-            let manager = app.state::<AppState>().data().plugin_manager.clone();
+            let manager = app.state::<std::sync::Arc<PluginManager>>().inner().clone();
             let run_env = manager.plugin_run_env(&plugin_id);
             let script_path = manager
                 .plugin_dir(&plugin_id)

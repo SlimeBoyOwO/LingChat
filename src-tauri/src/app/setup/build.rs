@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use sea_orm::DatabaseConnection;
-use tauri::App;
+use tauri::{App, Manager};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
@@ -175,7 +175,9 @@ pub(super) fn build_service_graph(
     )?);
 
     // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）。
-    let plugin_manager = {
+    // `PluginManager` 以 `Arc<PluginManager>` 单独 manage，供插件侧代码用
+    // `app.state::<Arc<PluginManager>>()` 取自己；宿主业务侧只经下面的窄接口读取资源。
+    let plugin_resources: Arc<dyn crate::plugin_contract::PluginResourceSource> = {
         let data_dir = api::data_dir();
         let plugins_root = data_dir.join("plugins");
         if std::fs::create_dir_all(&plugins_root).is_err() {
@@ -189,6 +191,7 @@ pub(super) fn build_service_graph(
         if let Err(e) = tool_registry.save_permissions(&data_dir) {
             tracing::warn!("插件注册后保存权限配置失败: {e}");
         }
+        app.manage(manager.clone());
         manager
     };
 
@@ -259,7 +262,7 @@ pub(super) fn build_service_graph(
         generation_lock,
         tool_registry,
         tool_settings,
-        plugin_manager,
+        plugin_resources,
         proactive_system: Some(proactive),
         achievement_manager,
         screen_analyzer,
