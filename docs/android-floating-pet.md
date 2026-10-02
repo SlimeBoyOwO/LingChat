@@ -2119,7 +2119,7 @@ CARGO_LOG="cargo::core::compiler::fingerprint=trace" cargo build ...
 `workingDir = app/../../../`），**两趟读到的是同一组配置** ——
 所以它**不是**重复编译的原因，删掉 `src-tauri/.cargo/config.toml` 也修不了这个问题。
 
-#### 9.2.1 成因二：`data_manifest.json` 每次都被重写（**未修**）
+#### 9.2.1 成因二：`data_manifest.json` 每次都被重写（⚠️ **旧 tauri 版本的行为，2026-10-03 复核已作废 —— 见 9.2.2**）
 
 上面那个成因修掉之后，构建**仍会**多编一次 `ling_chat`（约 6.5 分钟）。第二个成因是
 **构建脚本自己踩了 cargo 的 `RerunIfChanged`**。
@@ -2154,6 +2154,77 @@ CARGO_LOG="cargo::core::compiler::fingerprint=trace" cargo build ...
 
 方案 1 最干净 —— 语义上「清单没变就不该算变更」，但它要改 `scripts/` 下的生成器，
 超出本分支「悬浮窗」的范围，所以先记在这里。
+
+#### 9.2.2 复核（2026-10-03）：成因二在 dev 上**已经不成立**，但重编仍在
+
+用一次真实构建（`pet20.log`）复核，结论有三条。
+
+**① 成因二的输入已经不存在了。** 当前 build script 的 `output`（`target/.../build/ling_chat-<hash>/output`）里：
+
+```
+cargo:rerun-if-env-changed=TAURI_CONFIG
+cargo:rerun-if-changed=.../tauri.conf.json
+cargo:rerun-if-changed=.../tauri.android.conf.json
+cargo:rerun-if-changed=.../gen/android/tauri.settings.gradle
+cargo:rerun-if-changed=.../gen/android/app/tauri.build.gradle.kts
+cargo:rerun-if-changed=capabilities
+cargo:rerun-if-env-changed=REMOVE_UNUSED_COMMANDS
+```
+
+**`.bundled_resources\data_manifest.json` 不在里面了** —— 它只出现在
+`src-tauri/target/` 下 10-01 的**废弃单元**里。所以 §9.2.1 记的是**旧 tauri 版本**
+的行为；rebase 到 dev（tauri 2.11.1）之后，这条路径已经不参与判定。
+
+**② 重编仍然存在。** 同一次构建：`Compiling ling_chat` 两次，两个
+``Finished `release` profile``（13m 04s + 6m 06s）。第二趟是 gradle 的
+`BuildTask` 跑 `$ tauri "android" "android-studio-script" "--release" "--target" "aarch64"`。
+
+**③ 但两趟是「同一个单元」，所以确实等价。** 判据在 fingerprint：
+
+- 每个带 build script 的包**天然有两个** `<pkg>-<hash>/` 目录 ——
+  一个装 `run-build-script-build-script-build`，一个装 `lib-*`。
+  实测 `tauri-plugin-floating-pet`、`ling-chat-main`、`ling_chat` **全都是 2 个**。
+  ⚠️ **不要**把这 2 个 hash 误读成「编了两遍」—— 这是我 10-03 踩过的坑。
+- 真正该数的是 **lib 单元**：当前 target 里 `ling_chat` 只有
+  **1 个 lib 单元**（+1 个 build-script 单元）。两趟用的是**同一个 unit hash**
+  → **同一组 rustflags / profile / features / target** → 从 cargo 的输入视角看，
+  这两次编译**是等价的**，第二趟是**纯缓存失效**（白烧 6 分钟），不是「编了两个不同的东西」。
+
+**⚠️ 一个保留**：unit hash 相同**不保证产物逐字节一致** —— build script 吐出的
+`cargo:rustc-cfg` / `cargo:rustc-env` **不进 hash**。要钉死「产物也一致」得比对两次
+产物的哈希；而第一趟的产物已被第二趟覆盖，拿不到。**别把「等价」说得比证据更满。**
+
+**④ 新的嫌疑（未验证）：`rerun-if-env-changed=TAURI_CONFIG`。**
+本地构建脚本给 `tauri android build` 传了
+`--config '{"build":{"beforeBuildCommand":""}}'`，tauri-cli 会把它塞进 `TAURI_CONFIG`。
+两趟若该变量不同 → build script 重跑 → `ling_chat` 判脏 → 重编。
+一锤定音的办法是让 cargo 自己说：
+
+```bash
+CARGO_LOG="cargo::core::compiler::fingerprint=trace" cargo build --target aarch64-linux-android --release
+```
+
+它会逐字打出 `dirty: <原因>`。**别在构建进行中跑**（target 目录锁）。
+
+**⑤ 一处自相矛盾，尚未裁决。** `.cargo/config.toml` 的头注释（本分支 `5dd49484`
+改写的，**不是 dev 的**）说「两趟 cwd 不同 → rustflags 不同 → 同一个 crate 编两遍；
+删掉第二份就消失」；而本文 §9.2 的「顺带纠正一个常见误判」说「两趟 cwd 都是
+`src-tauri/`，两份 config 不是原因，删掉也修不了」。两者不能同时成立。
+**实测站后者**：`src-tauri/.cargo/config.toml` 早已删除，仍然会重编一次。
+dev 原版的注释说的是**相反**的话（「两份必须保持一致」「两份都在实际生效」），
+而 dev 里那份文件是**存在**的 —— 删除动作是本分支引入的偏离。
+
+#### 9.2.3 复核这类问题时的四个坑（可复用）
+
+1. **cargo 的日志带 ANSI 颜色码**，且把 `Compiling` 和 crate 名**分别染色** →
+   `grep "Compiling ling_chat"` 永远 0 命中。先剥颜色码：
+   `sed -r 's/\x1b\[[0-9;]*[A-Za-z]//g'`。
+2. **crate 名 ≠ 包名**。包是 `ling_chat`，lib target 叫 `ling_chat_lib`
+   （产物 `libling_chat_lib.so`，fingerprint 里是 `lib-ling_chat_lib`）。
+   搜「`Compiling ling_chat`」时别把 `ling-chat-main` / `ling-chat-plugins` 混进来。
+3. **target 根会随 workspace 布局变化**（见 §9.6）。老路径不会消失，只会变成
+   陈旧残留 —— 拿它做判断会得到**整体相反**的结论。
+4. **`<pkg>-<hash>` 的个数不等于编译次数**（见上面 ③）。
 
 ### 9.3 为什么 Android 改动本地 `cargo check` 测不出来
 
@@ -2235,3 +2306,66 @@ Git Bash 的 `du` 在 Windows 上会被**硬链接**骗到（cargo 会把
 fsutil volume diskfree D:
 [System.IO.DriveInfo]::new('D').AvailableFreeSpace/1GB
 ```
+
+### 9.6 `verify-pet-apk.sh` 的 codegen 缓存路径会**随 workspace 布局失效**
+
+**事故（2026-10-03）**：验包脚本报了 **22 条 ❌「应存在，却没找到」**，清一色是
+前端标记，看着像「前端根本没进包」。
+
+**真相：包完全正确，是脚本读错了目录。**
+
+dev 把后端 workspace 化之后（根 `Cargo.toml` 的 `members` 含 `src-tauri`，
+而 `src-tauri/Cargo.toml` **不再自带 `[workspace]`**）→ **workspace 根 = 仓库根**
+→ cargo 的 target 目录从 `src-tauri/target/` 变成了 `<repo>/target/`。
+而 `verify-pet-apk.sh` 里 `ASSETS` 写死的是：
+
+```bash
+"$REPO"/src-tauri/target/aarch64-linux-android/release/build/ling_chat-*/out/tauri-codegen-assets
+```
+
+那个目录**不会消失**，只会变成陈旧残留。实测对照：
+
+| 目录                                   | 文件数 | mtime                  |
+| -------------------------------------- | ------ | ---------------------- |
+| `<repo>/target/.../ling_chat-51c7b0…`  | 133    | **10-03 00:19** ← 真实 |
+| `src-tauri/target/.../ling_chat-1670…` | 299    | 10-02 13:11 ← 陈旧     |
+
+脚本按「brotli 解压后取 sha256，与当前 `dist/` 比对」筛「本次在用」分块，
+读旧目录时只剩 **2** 个命中 → 所有 `present` 断言**集体假失败**。
+
+**修法**：两个候选根都找，`ls -dt` 取 mtime 最新：
+
+```bash
+ASSETS=$(ls -dt "$REPO"/target/aarch64-linux-android/release/build/ling_chat-*/out/tauri-codegen-assets \
+               "$REPO"/src-tauri/target/aarch64-linux-android/release/build/ling_chat-*/out/tauri-codegen-assets \
+          2>/dev/null | head -1)
+```
+
+修完重跑：`本次在用分块 38 个；剔除陈旧残留 0 个`，全绿。
+
+**教训**：验包脚本里**任何写死的构建产物路径都是定时炸弹** —— 构建布局一变，
+断言不是报错而是**静默给出相反结论**（这里是「前端没进包」）。
+所以脚本第 0 节要打印产物时间线，看到 `tauri-codegen-assets/` 的时间明显落后于
+`dist/index.html`，就该怀疑路径而不是代码。
+
+#### 9.6.1 顺带补上的三类断言（695cd804）
+
+同一次复核里补了此前没有覆盖的项：
+
+- **`setScale` / `setExpanded`（dex 方法名）** —— Tauri v2 移动端**按方法名反射派发**
+  （`PluginManager` 扫 `@Command` 方法），R8 一改名就变成运行时报「命令不存在」，
+  而且**不是编译错误、不是崩溃**，是静默失败。所以必须断言方法名原样在包里。
+  `setExpanded` 作为**对照组**同时断言：它挂了说明断言本身失效。
+- **`NOT_VISIBLE`** —— `setScale` 的可见性守卫错误码（该轮新增的字面量）。
+- **`windowLayoutInDisplayCutoutMode=always`（第 5.6 节）** —— 这是**主题属性**，
+  在 arsc 里是属性 ID 的数值、**不是可搜文本**，所以不能像
+  `Theme.ling_chat.settings` 那样 grep 字符串。正确姿势：
+
+  ```bash
+  aapt2 dump resources <apk> | grep -oaF -e "0x01010586=3"
+  ```
+
+  属性 id `0x01010586`，值 `3` = ALWAYS。**必须 >= 2 处**：`windowLayoutInDisplayCutoutMode`
+  是 **API 28 属性**，aapt2 会自动把它归到 `(v28)` 与 `(night-v28)` 两个配置；
+  只在 `values/themes.xml` 写、漏了 `values-night/`，就会**恰好少一次** ——
+  那正是「白天修好了、深色下没修」这个坑的判据。
