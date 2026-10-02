@@ -1,0 +1,306 @@
+@import "tailwindcss";
+
+@theme {
+  /* 字体配置 */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* 用户自定义字体名（为空走 --font-sans 默认栈）；运行时由设置覆盖 */
+  --font-app: "";
+
+  /* 颜色配置 */
+  --color-brand: var(--accent-color);
+
+  /* 动画配置 */
+  --animate-blob: blob 7s infinite;
+  --animate-fade-in-up: fadeInUp 0.8s ease-out forwards;
+  /* ASR 语音录入中：mic 图标蓝色呼吸（颜色深浅渐变脉动） */
+  --animate-asr-breathe: asr-breathe 1.6s ease-in-out infinite;
+}
+
+/* ─── 刘海屏安全区变量 ──────────────────────────────────── */
+/* 优先使用原生注入的 --safe-area-inset-*, 回退到 env(), 再回退到 0px */
+:root {
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+}
+
+/* ─── 安全区快捷工具类 ─────────────────────────────────── */
+.pt-safe {
+  padding-top: var(--safe-area-inset-top);
+}
+.pb-safe {
+  padding-bottom: var(--safe-area-inset-bottom);
+}
+.pl-safe {
+  padding-left: var(--safe-area-inset-left);
+}
+.pr-safe {
+  padding-right: var(--safe-area-inset-right);
+}
+/* 带 gap 的变体（给状态栏/Home Indicator 额外留 8px 呼吸空间） */
+.pt-safe-gap {
+  padding-top: calc(8px + var(--safe-area-inset-top));
+}
+.pb-safe-gap {
+  padding-bottom: calc(8px + var(--safe-area-inset-bottom));
+}
+
+/* 输入控件字号下限 16px：阻止 iOS 聚焦时对 <16px 输入框的自动缩放（页面放大一下） */
+input,
+textarea {
+  font-size: max(16px, 1em);
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* ASR 录音中 mic 图标：蓝色深浅渐变呼吸（配合 animate-asr-breathe 工具类；
+   border-color 供桌宠按钮的边框同步呼吸） */
+@keyframes asr-breathe {
+  0%,
+  100% {
+    color: var(--color-blue-500);
+    border-color: color-mix(in srgb, var(--color-blue-500) 50%, transparent);
+  }
+  50% {
+    color: var(--color-blue-300);
+    border-color: color-mix(in srgb, var(--color-blue-300) 80%, transparent);
+  }
+}
+
+@layer base {
+  html {
+    font-family: var(--font-app), var(--font-sans);
+    font-size: clamp(12px, min(2.5vw, 2.5vh), 16px) !important;
+    /* 应用为固定视口游戏 UI：禁止页面级滚动（所有滚动都在组件内部容器），
+       同时避免 transform 缩放下 body 溢出出现滚动条/被滚动（见 useZoom） */
+    overflow: hidden;
+  }
+
+  body {
+    overflow: hidden;
+  }
+
+  /* 移动端禁用原生缩放手势（双指捏合 / 双击放大）：
+     viewport meta 的 user-scalable=no + maximum-scale=1 为主,
+     touch-action: manipulation 在组件索引里作为兜底再压掉一次双击缩放。
+     manipulation = 允许 pan/滚动（保留组件内容滚动），仅禁用双击缩放。 */
+  html,
+  body {
+    touch-action: manipulation;
+  }
+}
+
+/* 滚动条样式（轨道透明，避免深色轨道在圆角面板边缘露出黑色直角区域，issue #707 图 30） */
+::-webkit-scrollbar {
+  width: 8px; /* 垂直滚动条宽度 */
+  height: 8px; /* 水平滚动条高度 */
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--accent-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-color);
+}
+
+/* 毛玻璃效果 */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.125);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.1),
+    inset 0 1px 1px rgba(255, 255, 255, 0.1);
+}
+
+/* 玻璃态输入框。与 .glass-effect 同类：一处定义，避免每个用到表单的组件
+   各抄一份。剧本编辑器的三个组件原先是逐字相同的三份。 */
+.glass-input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  color: #fff;
+  backdrop-filter: blur(20px) saturate(150%);
+  transition: all 0.2s;
+}
+.glass-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(121, 217, 255, 0.2);
+}
+.glass-input option,
+.glass-input optgroup {
+  background: #16202c;
+  color: #fff;
+}
+
+/* 图标按钮基类：设置页里反复出现的 34×34 方形图标按钮（删除/刷新/试听）。
+   这些按钮此前是逐个手抄一长串 utility 的，抄出过 cyan/red 抢同一属性的死代码，
+   故收敛到此处，hover 意图拆成 danger/primary 两个修饰类。放进 @layer components，
+   调用点的工具类（如 ml-auto）仍可覆盖。 */
+@layer components {
+  .btn-icon {
+    @apply inline-flex h-8.5 w-8.5 items-center justify-center gap-1.75 rounded-md border border-white/15 bg-white/5 text-white/80 transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .btn-icon-danger {
+    @apply enabled:hover:border-red-400/50 enabled:hover:bg-red-400/10 enabled:hover:text-red-300;
+  }
+  .btn-icon-primary {
+    @apply enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50;
+  }
+}
+
+/* ─── Markdown 渲染（剧本导师聊天） ─────────────────────
+   配套 MarkdownText.vue；深色主题下的完整排版，作用于 v-html 内容。 */
+.markdown-body {
+  font-size: 0.86rem;
+  line-height: 1.7;
+  word-break: break-word;
+  color: rgba(255, 255, 255, 0.88);
+}
+.markdown-body > :first-child {
+  margin-top: 0;
+}
+.markdown-body > :last-child {
+  margin-bottom: 0;
+}
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin: 0.85em 0 0.4em;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #fff;
+}
+.markdown-body h1 {
+  font-size: 1.25rem;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.markdown-body h2 {
+  font-size: 1.12rem;
+}
+.markdown-body h3 {
+  font-size: 1rem;
+}
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  font-size: 0.92rem;
+}
+.markdown-body p {
+  margin: 0.5em 0;
+}
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+.markdown-body ul {
+  list-style: disc;
+}
+.markdown-body ol {
+  list-style: decimal;
+}
+.markdown-body li {
+  margin: 0.2em 0;
+}
+.markdown-body li > ul,
+.markdown-body li > ol {
+  margin: 0.2em 0;
+}
+.markdown-body code {
+  font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.82em;
+}
+.markdown-body pre {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 0.7em 0.9em;
+  overflow-x: auto;
+  margin: 0.6em 0;
+}
+.markdown-body pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+.markdown-body blockquote {
+  border-left: 3px solid var(--accent-color);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 0 6px 6px 0;
+  margin: 0.6em 0;
+  padding: 0.2em 0.9em;
+  color: rgba(255, 255, 255, 0.7);
+}
+.markdown-body blockquote p {
+  margin: 0.3em 0;
+}
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  width: 100%;
+  font-size: 0.84rem;
+}
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 0.35em 0.7em;
+  text-align: left;
+}
+.markdown-body th {
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 600;
+}
+.markdown-body a {
+  color: var(--accent-color);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.markdown-body a:hover {
+  text-decoration: none;
+}
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  margin: 0.8em 0;
+}
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 8px;
+}

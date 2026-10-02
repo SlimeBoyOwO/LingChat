@@ -1,0 +1,229 @@
+name: 打包发行版
+
+on:
+  #push:
+  #  tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      data_version:
+        description: "数据版本号（整数）"
+        required: false
+        default: "1"
+      tag_name:
+        description: "Release Tag 名称"
+        required: true
+        type: string
+        default: "v0.0.0"
+      is_prerelease:
+        description: "是否标记为预发布版本（仅新建时生效）"
+        required: false
+        type: boolean
+        default: true
+
+env:
+  DATA_VERSION: ${{ github.event.inputs.data_version || github.run_number }}
+
+permissions:
+  contents: write
+
+jobs:
+  generate-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: pnpm/setup@v1
+        with:
+          runtime: node@26
+          cache: false
+
+      - name: 生成 data_manifest.json
+        run: node scripts/generate-data-manifest.js --data-version ${{ env.DATA_VERSION }}
+
+      - name: 打包 data_files.zip
+        run: |
+          if [ -d data/game_data ]; then
+            cd data
+            zip -r ../data_files.zip game_data/ -x "game_data/screenshots/*" "game_data/voice/*" "game_data/.trash/*" "*.db" "*.backup.db"
+            cd ..
+          else
+            echo "⚠ 未找到 data/game_data/ 目录，将创建空 zip"
+            touch empty.txt
+            zip data_files.zip empty.txt
+            rm empty.txt
+          fi
+
+      - name: 上传 data 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-artifacts
+          path: |
+            data_manifest.json
+            data_files.zip
+
+  build:
+    needs: generate-data
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-amd64
+            os: windows-latest
+            target: ""
+          - platform: macos
+            os: macos-latest
+            target: ""
+          - platform: linux-amd64
+            os: ubuntu-latest
+            target: ""
+          - platform: linux-aarch64
+            os: ubuntu-24.04-arm
+            target: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 拉取 LFS 文件
+        run: git lfs pull
+
+      # 下载 data 产物，如有需要可以复制到构建目录
+      - uses: actions/download-artifact@v4
+        with:
+          name: data-artifacts
+
+      - uses: pnpm/setup@v1
+        with:
+          runtime: node@26
+          cache: true
+
+      - name: 安装前端依赖
+        run: |
+          pnpm run init
+
+      - name: 安装系统依赖 (仅 Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install eatmydata
+          sudo eatmydata apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libpipewire-0.3-dev libgbm-dev libxdo-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev libssl-dev mold zip mold xdg-utils
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 设置 rust 缓存
+        uses: swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
+
+      # 其它平台：tauri-action 直接构建
+      - name: 构建 Tauri 应用
+        if: matrix.platform != 'linux-amd64'
+        uses: tauri-apps/tauri-action@v1
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          RUSTFLAGS: |
+            ${{ runner.os == 'Linux' && '' || '' }}
+            ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
+            ${{ runner.os == 'macOS' && '' || '' }}
+        with:
+          # 不用 tauri-action 内置的 uploadWorkflowArtifacts：
+          # 它会对每个 bundle 循环 create artifact，若名字不含 [bundle] 会重复 create 同名 → 409，
+          # 导致后续产物（AppImage / .sig 等）丢失。改由下方独立 step 按白名单上传安装包。
+          args: ${{ matrix.target }}
+
+      # linux-amd64 特例：ort `webgpu` feature 链接 libwebgpu_dawn.so（Dawn dylib，无法静态链接）。
+      # 该库随 ort download-binaries 下载，cargo build 后由 ort `copy-dylibs` symlink 到 target/release。
+      # linuxdeploy 打包 AppImage 时必须在库路径解析到它，否则报 `Could not find dependency: libwebgpu_dawn.so`。
+      # 这里先 cargo build，把 dawn.so 复制到系统库路径，再 tauri build（增量）让 linuxdeploy 找到它。
+      - name: 构建 Tauri 应用（linux-amd64：放置 libwebgpu_dawn.so）
+        if: matrix.platform == 'linux-amd64'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          cargo build --release
+          DAWN=$(find target/release -name "libwebgpu_dawn.so" 2>/dev/null | head -1)
+          if [ -z "$DAWN" ]; then
+            echo "!! 未找到 libwebgpu_dawn.so（检查 ort webgpu feature）"
+          else
+            sudo cp -L "$DAWN" /usr/lib/x86_64-linux-gnu/libwebgpu_dawn.so
+            sudo ldconfig
+            echo "已放置 /usr/lib/x86_64-linux-gnu/libwebgpu_dawn.so"
+          fi
+          pnpm tauri build
+
+      - name: 上传构建产物（仅安装包与更新签名）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-build
+          # 用 `bundle/*` 而不是 `bundle/**`，只用一层通配，把中间产物挡在外面：
+          # - `bundle/deb/<Name>_<版本>_<架构>/{data,control}.tar.gz`：deb 打包用的暂存目录
+          # - `bundle/appimage/<Name>.AppDir/`、`bundle/macos/LingChat.app/`：解包目录，含全部依赖库
+          # 这些都不是分发文件，通配进来会让 artifact 与 Release 多出几百 MB 无用内容。
+          path: |
+            target/release/bundle/*/*.deb
+            target/release/bundle/*/*.rpm
+            target/release/bundle/*/*.AppImage
+            target/release/bundle/*/*.dmg
+            target/release/bundle/*/*.msi
+            target/release/bundle/*/*.exe
+            target/release/bundle/*/*.tar.gz
+            target/release/bundle/*/*.sig
+          if-no-files-found: warn
+
+  release:
+    needs: [generate-data, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 下载 data 产物
+      - uses: actions/download-artifact@v4
+        with:
+          name: data-artifacts
+          path: artifacts/data
+
+      # 下载各平台的构建产物
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "*-build"
+          path: artifacts/builds
+          merge-multiple: true
+
+      - name: 显示产物结构
+        run: ls -R artifacts
+
+      - name: 创建 GitHub Release 并上传所有文件
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name }}
+          name: "LingChat ${{ github.ref_name }}"
+          body: |
+            ## 更新内容
+
+            请查看 [CHANGELOG](https://github.com/SlimeBoyOwO/LingChat/blob/main/CHANGELOG.md) 了解详情。
+
+            ## 安装
+
+            请根据你的平台下载对应的安装包。
+            - Windows: `.exe`
+            - macOS: `.dmg`
+            - Linux: `.AppImage` / `.deb`
+
+            ## 数据资源
+
+            如需手动更新游戏资源，请下载 `data_files.zip` 并解压到程序目录下的 `data/` 文件夹。
+          draft: true
+          prerelease: ${{ github.event.inputs.is_prerelease }}
+          files: |
+            artifacts/data/*
+            artifacts/builds/**

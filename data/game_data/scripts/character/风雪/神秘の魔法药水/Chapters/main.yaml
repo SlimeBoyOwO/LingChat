@@ -1,0 +1,109 @@
+name: 神秘の魔法药水
+
+events:
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+    perceive: true
+    duration: 1.5
+
+  - type: background
+    imagePath: "占卜摊2.png"
+    duration: 1.5
+
+  - type: narration
+    text: |
+      今天的天空格外清澈，%player%难得准时放学。
+      风雪的占卜摊今天却异常安静，没有往日的魔法光芒。
+
+  - type: player
+    text: 奇怪，小雪今天怎么这么安静...
+
+  - type: modify_character
+    action: show_character
+    character: MAIN
+    emotion: 正常
+    duration: 1.5
+
+  - type: narration
+    text: |
+      %player%走近一看，发现风雪正专注地调配着一瓶闪着奇异蓝光的药剂。
+      桌上散落着各种魔法材料和古籍。
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪正在研究一个提高智商的高级魔法药水，不想被打扰。
+
+  - type: input
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪炫耀着关于这个药水的功能。
+
+  - type: narration
+    text: |
+      就在风雪得意的举起药水的时候...
+      风雪手一抖，药剂瓶在空中划出蓝色弧线。
+      在慌乱中，她不小心接住了瓶子，却因为惯性喝下了一小口。
+
+  - type: modify_character
+    character: MAIN
+    emotion: 害羞
+    duration: 1.5
+
+  - type: modify_character
+    character: MAIN
+    emotion: 心动
+    duration: 2.0
+
+  - type: narration
+    text: |
+      药水入口的瞬间，风雪的眼神突然变得迷茫。
+      她眨了眨眼，直勾勾地盯着%player%。
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪喝下的药水，实际的功能是“印记药水”，会把第一眼看到的人当做自己的妈妈，会把自己当成孩子，一直找%player%撒娇，同时会忘记自己之前所有的记忆。接下来的对话中风雪会一直变成一个幼稚的小孩子找%player%撒娇要抱抱。变成可爱粘人的摸样。
+
+  - type: player
+    text: 何...何意味...
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪继续撒娇
+
+  - type: narration
+    text: |
+      平时高冷的风雪此刻像只真正的小猫一样，
+      用脑袋不断蹭着%player%，尾巴愉快地摇晃着。
+
+  - type: input
+    hint: "面对突然撒娇的风雪..."
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: "风雪因为药效完全变成了黏人的小猫性格，把%player%当成了妈妈，不断撒娇求关注"
+
+  - type: free_dialogue
+    character: MAIN
+    hint: "和可爱的风雪聊聊天吧，或者通过“求求你快复原啊！”来尝试唤醒她"
+    prompt: "药效还在持续发作，风雪不断地找%player%撒娇，风雪完全忘记了之前的自己"
+    max_rounds: 5
+    end_line: "求求你快复原啊！"
+    end_prompt: "风雪的药效突然消退了，意识到自己刚才的失态"
+
+  - type: player
+    text: 啊啊...变正常了...
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: "风雪害羞的要死，恨不得找个洞钻进去"
+
+  - type: input
+
+  - type: ai_dialogue
+    character: MAIN
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: "end"

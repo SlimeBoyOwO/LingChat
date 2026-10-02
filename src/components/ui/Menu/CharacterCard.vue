@@ -1,0 +1,402 @@
+<template>
+  <div
+    class="group relative flex items-center rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-white/40 hover:shadow-2xl hover:shadow-indigo-500/20"
+  >
+    <div
+      class="text-brand absolute -top-2 -left-2 flex h-6 w-6 -rotate-18 transform items-center justify-center rounded-full shadow-md"
+    >
+      <Cat :size="20" />
+    </div>
+    <button
+      class="absolute top-2 left-2 z-10 rounded-lg bg-black/5 p-1.5 opacity-0 transition-all group-hover:opacity-100 focus-visible:opacity-100"
+      @click.stop="handleToggleFavored"
+      :title="favored ? $t('ui.characterCard.unfav') : $t('ui.characterCard.fav')"
+    >
+      <Star
+        :size="16"
+        :class="favored ? 'fill-amber-400 text-amber-400' : 'text-white/60 hover:text-white'"
+      />
+    </button>
+    <div class="absolute top-3 right-3 z-10 flex items-center gap-2">
+      <RoleExportMenu :role-id="id" :role-name="name" />
+      <button
+        class="flex items-center justify-center rounded-full bg-black/5 p-1 text-white/60 transition-all hover:rotate-90 hover:bg-white/10 hover:text-white"
+        title="角色设置"
+        @click.stop="openSettingsModal"
+      >
+        <Settings :size="24" />
+      </button>
+    </div>
+
+    <div
+      class="flex w-28 shrink-0 flex-col items-center space-y-2 border-r border-white/10 pr-4 md:w-32"
+    >
+      <div
+        class="h-24 w-24 overflow-hidden rounded-full border-2 border-indigo-400/50 shadow-lg md:h-24 md:w-24"
+      >
+        <img
+          :src="avatar"
+          :alt="name"
+          class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+        />
+      </div>
+      <span class="bg-brand mt-1 h-1 w-6 rounded-full"></span>
+      <h4 class="text-md text-center font-bold tracking-wide text-white drop-shadow-md">
+        {{ title }}
+      </h4>
+      <PluginTag :source="source" />
+    </div>
+
+    <div class="flex h-full min-h-36 flex-1 flex-col justify-between pl-4">
+      <div class="pr-8">
+        <div class="flex items-center gap-2">
+          <div class="text-brand mb-3 text-xl font-bold tracking-widest uppercase opacity-80">
+            {{ name }}
+          </div>
+          <div class="text-brand mb-3 text-sm font-medium tracking-widest uppercase opacity-80">
+            {{ subName }}
+          </div>
+        </div>
+        <p class="line-clamp-3 text-base leading-relaxed text-gray-200/90 opacity-80">
+          {{ info || $t("ui.characterCard.noInfo") }}
+        </p>
+      </div>
+
+      <div class="mt-4 flex items-center justify-end gap-2">
+        <button
+          @click="showDetailModal"
+          class="rounded-full border border-white/10 bg-white/10 px-4 py-1.5 text-xs font-semibold text-white transition-all hover:bg-white/20"
+        >
+          {{ $t("ui.characterCard.detail") }}
+        </button>
+        <!-- 加入/退场 切换按钮 -->
+        <button
+          v-if="!isInScene()"
+          @click="joinScene"
+          class="rounded-full border border-cyan-400 bg-cyan-500/80 px-4 py-1.5 text-xs font-semibold text-white shadow-lg shadow-cyan-500/20 transition-all hover:bg-cyan-500"
+        >
+          {{ $t("ui.characterCard.join") }}
+        </button>
+        <button
+          v-else-if="!isSelected()"
+          @click="leaveScene"
+          class="rounded-full border border-red-400 bg-red-500/80 px-4 py-1.5 text-xs font-semibold text-white shadow-lg shadow-red-500/20 transition-all hover:bg-red-500"
+        >
+          {{ $t("ui.characterCard.leave") }}
+        </button>
+        <button
+          v-else
+          disabled
+          class="cursor-not-allowed rounded-full border border-cyan-400/50 bg-cyan-500/50 px-4 py-1.5 text-xs font-semibold text-cyan-200 shadow-lg transition-all"
+        >
+          {{ $t("ui.characterCard.inScene") }}
+        </button>
+        <button
+          @click="selectCharacter"
+          :class="[
+            'rounded-full border px-5 py-1.5 text-xs font-bold shadow-lg transition-all',
+            isSelected()
+              ? 'border-emerald-400 bg-emerald-500/80 text-white shadow-emerald-500/20'
+              : `border-indigo-500 bg-indigo-600/80 text-white shadow-indigo-500/20 hover:bg-indigo-500`,
+          ]"
+        >
+          {{ isSelected() ? $t("ui.characterCard.selected") : $t("ui.characterCard.select") }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <Transition name="modal">
+    <div
+      v-if="isDetailVisible"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-md"
+      @click="closeDetailModal"
+    >
+      <div
+        class="relative flex max-h-[85dvh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/20 bg-slate-900/40 shadow-2xl backdrop-blur-2xl"
+        @click.stop
+      >
+        <div class="flex items-center gap-4 border-b border-white/10 bg-white/10 p-6">
+          <img
+            :src="avatar"
+            class="h-16 w-16 rounded-2xl border-2 border-indigo-500/50 object-cover"
+          />
+          <div class="flex-1">
+            <h2 class="text-2xl leading-none font-bold text-white">{{ name }}</h2>
+            <p class="mt-1 text-sm tracking-tighter text-indigo-300">
+              {{ $t("ui.characterCard.detailSubtitle") }}
+            </p>
+          </div>
+          <button
+            @click="closeDetailModal"
+            class="rounded-full p-2 text-white/50 transition-colors hover:bg-red-500/20 hover:text-white"
+          >
+            <Icon icon="close" class="h-6 w-6" />
+          </button>
+        </div>
+
+        <div class="flex-1 space-y-8 overflow-y-auto p-6">
+          <section>
+            <h3 class="mb-4 flex items-center gap-2 font-bold text-white">
+              <span class="h-4 w-1 rounded-full bg-orange-500"></span>
+              {{ $t("ui.characterCard.basicInfo") }}
+            </h3>
+            <div
+              class="mb-3 text-sm font-bold tracking-widest text-gray-200/90 uppercase opacity-80"
+            >
+              {{ $t("ui.characterCard.nameLabel") }}{{ name }}
+            </div>
+            <div
+              class="mb-3 text-sm font-medium tracking-widest text-gray-200/90 uppercase opacity-80"
+            >
+              {{ $t("ui.characterCard.belongLabel") }}{{ subName }}
+            </div>
+            <div
+              class="mb-1 text-sm font-medium tracking-widest text-gray-200/90 uppercase opacity-80"
+            >
+              {{ $t("ui.characterCard.infoLabel") }}
+            </div>
+            <p
+              class="mb-3 text-sm font-medium tracking-widest text-gray-200/90 uppercase opacity-80"
+            >
+              {{ info || $t("ui.characterCard.noInfo") }}
+            </p>
+          </section>
+
+          <section>
+            <h3 class="mb-4 flex items-center gap-2 font-bold text-white">
+              <span class="h-4 w-1 rounded-full bg-indigo-500"></span>
+              {{ $t("ui.characterCard.outfits") }}
+            </h3>
+            <div
+              v-if="clothes?.length"
+              class="clothes-scroll flex snap-x gap-4 overflow-x-auto pb-2"
+            >
+              <div
+                v-for="cloth in clothes"
+                :key="cloth.title"
+                @click="selectClothes(id, cloth.title)"
+                class="group w-48 shrink-0 cursor-pointer snap-start"
+              >
+                <div
+                  :class="[
+                    'relative mb-2 aspect-1/2 overflow-hidden rounded-xl border-2 transition-all',
+                    isClothesSelected(id, cloth.title)
+                      ? 'border-indigo-400 shadow-[0_0_15px_rgba(129,140,248,0.5)]'
+                      : 'border-white/10',
+                  ]"
+                >
+                  <img
+                    :src="cloth.avatar"
+                    class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                  <div
+                    v-if="isClothesSelected(id, cloth.title)"
+                    class="absolute top-1 right-1 rounded-full bg-indigo-500 p-1"
+                  >
+                    <Check class="h-4 w-4"></Check>
+                  </div>
+                </div>
+                <p class="truncate text-center text-xs text-white/80">{{ cloth.title }}</p>
+              </div>
+            </div>
+            <div v-else class="rounded-xl bg-white/5 p-4 text-center text-sm text-white/40 italic">
+              {{ $t("ui.characterCard.noOutfits") }}
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </Transition>
+
+  <SettingsCharacterInfo
+    :visible="isSettingsModalVisible"
+    :role-id="id"
+    :title="name"
+    :source="source"
+    :clothes="clothes"
+    @close="closeSettingsModal"
+    @saved="handleSettingsSaved"
+  />
+</template>
+
+<script setup lang="ts">
+import { ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { invoke } from "@tauri-apps/api/core";
+import { Icon } from "../../base";
+import SettingsCharacterInfo from "@/components/settings/pages/SettingsCharacterInfo.vue";
+import RoleExportMenu from "@/components/ui/RoleExportMenu.vue";
+import PluginTag from "@/components/ui/PluginTag.vue";
+import {
+  selectCharacter as selectCharacterApi,
+  selectClothes as selectClothesApi,
+} from "@/api/services/character";
+import { useGameStore } from "@/stores/modules/game";
+import { applyWebInitData } from "@/stores/modules/game/actions";
+import { eventQueue } from "@/core/events/event-queue";
+import { useDialogStore } from "@/stores/modules/ui/dialog";
+import { Settings, Star } from "lucide-vue-next";
+import { Cat, Check } from "lucide-vue-next";
+import type { Clothes } from "@/types";
+
+interface CharacterProps {
+  id: number;
+  avatar?: string;
+  name?: string;
+  title?: string;
+  subName?: string;
+  info?: string;
+  clothes?: Clothes[];
+  resourceFolder?: string;
+  /** 来源："game" 或提供该角色的插件 id。 */
+  source?: string | null;
+  favored?: boolean;
+}
+
+const props = withDefaults(defineProps<CharacterProps>(), {
+  avatar: "",
+  name: "Unknown",
+  info: "",
+  clothes: () => [],
+  resourceFolder: "",
+  favored: false,
+});
+
+const emit = defineEmits(["saved", "favoredChange"]);
+
+// 状态管理
+const isDetailVisible = ref(false);
+const isSettingsModalVisible = ref(false);
+function handleToggleFavored(): void {
+  emit("favoredChange", props.id);
+}
+
+const { t } = useI18n();
+const gameStore = useGameStore();
+const dialogStore = useDialogStore();
+
+// 逻辑函数
+const isSelected = () => gameStore.mainRoleId === props.id;
+const isClothesSelected = (role_id: number, clothes_name: string) =>
+  gameStore.getGameRole(role_id)?.clothesName === clothes_name;
+
+const showDetailModal = () => (isDetailVisible.value = true);
+const closeDetailModal = () => (isDetailVisible.value = false);
+
+const selectCharacter = async () => {
+  const confirmed = await dialogStore.confirm(t("ui.characterCard.confirmSwitch"));
+  if (!confirmed) return;
+
+  try {
+    const data = await selectCharacterApi(props.id);
+    applyWebInitData(gameStore.$state, data);
+    // 切换角色后丢弃旧角色残留事件队列（防止未说完的回复串进新角色对话，issue #796）
+    eventQueue.clear();
+    eventQueue.resume();
+  } catch (error) {
+    console.error("切换角色失败:", error);
+  }
+};
+
+const selectClothes = async (role_id: number, clothes_name: string) => {
+  try {
+    // 调用后端API选择衣服
+    const response = await selectClothesApi(role_id, clothes_name);
+
+    if (response.success) {
+      // 更新本地状态
+      const role = gameStore.getGameRole(role_id);
+      if (role) {
+        role.clothesName = clothes_name;
+      }
+    }
+  } catch (error) {
+    console.error("选择衣服失败:", error);
+    // 可选：显示错误提示
+  }
+};
+
+// 多人对话：将角色加入场景
+const isInScene = () => gameStore.presentRoleIds.includes(props.id);
+
+const joinScene = async () => {
+  if (isInScene()) return;
+  try {
+    const result = (await invoke("add_role_to_scene", { roleId: props.id })) as {
+      success: boolean;
+      message: string;
+    };
+    if (result.success) {
+      gameStore.presentRoleIds.push(props.id);
+      // 确保角色信息已加载
+      await gameStore.getOrCreateGameRole(props.id);
+    }
+    console.log("[CharacterCard] 角色加入场景:", result.message);
+  } catch (error) {
+    console.error("[CharacterCard] 角色加入场景失败:", error);
+  }
+};
+
+// 多人对话：将角色移出场景
+const leaveScene = async () => {
+  if (!isInScene()) return;
+  try {
+    const result = (await invoke("remove_role_from_scene", { roleId: props.id })) as {
+      success: boolean;
+      message: string;
+    };
+    if (result.success) {
+      gameStore.presentRoleIds = gameStore.presentRoleIds.filter((id) => id !== props.id);
+    }
+    console.log("[CharacterCard] 角色退场:", result.message);
+  } catch (error) {
+    console.error("[CharacterCard] 角色退场失败:", error);
+  }
+};
+
+const openSettingsModal = () => (isSettingsModalVisible.value = true);
+const closeSettingsModal = () => (isSettingsModalVisible.value = false);
+const handleSettingsSaved = () => emit("saved");
+</script>
+
+<style scoped>
+/* 仅保留必要的动画定义，其余全部由 Tailwind 处理 */
+.modal-enter-active,
+.modal-leave-active {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+  transform: scale(0.95) translateY(10px);
+}
+
+/* 隐藏滚动条但允许滚动 */
+.overflow-x-auto::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar {
+  display: none;
+}
+
+/* 服装横向列表保留可见滚动条，方便拖动查看后续服装。 */
+.clothes-scroll {
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(129, 140, 248, 0.55) rgba(255, 255, 255, 0.06);
+}
+.clothes-scroll::-webkit-scrollbar {
+  display: block;
+  height: 8px;
+}
+.clothes-scroll::-webkit-scrollbar-track {
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.clothes-scroll::-webkit-scrollbar-thumb {
+  border-radius: 20px;
+  background-color: rgba(129, 140, 248, 0.55);
+}
+.clothes-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(129, 140, 248, 0.8);
+}
+</style>

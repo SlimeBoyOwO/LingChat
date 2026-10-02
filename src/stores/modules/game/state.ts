@@ -1,0 +1,164 @@
+import type { AvatarDisplayMode, Live2dSettings } from "@/types/live2d";
+import type { SceneInfo } from "@/api/services/scene"; // 导入场景类型
+import type { ScriptChoiceItem } from "@/types/script";
+
+export interface GameMessage {
+  type: "message" | "reply";
+  displayName: string;
+  content: string;
+  emotion?: string;
+  audioFile?: string;
+  isFinal?: boolean;
+  motionText?: string;
+  originalTag?: string;
+  timestamp?: number;
+  /** 玩家消息序号（1-indexed），用于回溯定位 */
+  userMessageSeq?: number;
+  /** 该轮生成的思考链（仅每轮最后一条回复消息有值） */
+  thinking?: string;
+  /** 该台词的第二语言（日语）译文，日文界面下显示 */
+  ttsText?: string;
+  /** 台词关联的角色 ID（null = 无角色，如工具调用回填行；生成语音计数时跳过） */
+  senderRoleId?: number | null;
+}
+
+export interface FreeDialogueInfo {
+  isFreeDialogue: boolean;
+  maxRounds: number;
+  endLine: string;
+  currentRound: number;
+}
+
+export interface ScriptInfo {
+  scriptName: string;
+  currentChapterName: string;
+  choices: ScriptChoiceItem[];
+  isRunning: boolean;
+  freeDialogueInfo: FreeDialogueInfo;
+}
+
+/** 六维好感度向量（与 Rust AffectionVector 同 snake_case 键名），各项 0~100 */
+export interface AffectionVector {
+  fondness: number;
+  trust: number;
+  intimacy: number;
+  rapport: number;
+  interest: number;
+  longing: number;
+}
+
+/** 负面六维向量（与 Rust NegativeVector 同 snake_case 键名），下限 0、允许超 100 */
+export interface NegativeVector {
+  anger: number;
+  hurt: number;
+  disappointment: number;
+  indifference: number;
+  jealousy: number;
+  estrangement: number;
+}
+
+export interface GameRole {
+  roleId: number;
+  roleName: string;
+  roleSubTitle: string;
+  thinkMessage: string;
+  emotion: string;
+  originalEmotion: string;
+  scale: number;
+  offsetY: number;
+  offsetX: number;
+  scaleP: number;
+  offsetXP: number;
+  offsetYP: number;
+  bubbleTop: number;
+  bubbleLeft: number;
+  show: boolean;
+  clothes: object;
+  clothesName: string;
+  bodyPart: object;
+  live2d?: Live2dSettings | null;
+  /** 主对话形象（`"live2d"` / `"image"`）；缺省等价于 live2d，见 `prefersLive2d` */
+  avatarMode?: AvatarDisplayMode | null;
+  /** 桌宠形象，语义同 `avatarMode` */
+  avatarModeP?: AvatarDisplayMode | null;
+  /** 桌宠无框模式：true = 隐藏圆形外框/半透明底/粒子并取消圆形裁剪 */
+  petFrameless?: boolean | null;
+  character_folder: string;
+  /** 对玩家的六维好感度（init 数据携带，affection:changed 事件刷新；未加载时为 undefined） */
+  affection?: AffectionVector;
+  /** 负面六维（被冒犯/伤害时增加、安抚时减少，随 affection 同源刷新；未加载时为 undefined） */
+  negative?: NegativeVector;
+}
+
+export interface GameState {
+  runningScript: ScriptInfo | null;
+
+  gameRoles: Record<number, GameRole>;
+  presentRoleIds: number[];
+  mainRoleId: number;
+  currentInteractRoleId: number | null;
+
+  userName: string;
+  userSubtitle: string;
+
+  currentLine: string;
+  currentStatus: "input" | "thinking" | "responding" | "presenting";
+  /** 当前思考链累计字数（用于实时显示“已深度思考 N 字”） */
+  thinkingLength: number;
+  dialogHistory: GameMessage[];
+  currentScene: SceneInfo | null; // 当前加载的场景
+  command: string | null;
+
+  /** 最近一次好感度变化（面板「最近变化」展示；deltas/reason 直接来自事件负载） */
+  lastAffectionChange: {
+    roleId: number;
+    deltaSum: number;
+    deltas: Record<string, number>;
+    /** 负面六维的本轮增量（键名为负面维度序列化键） */
+    negativeDeltas: Record<string, number>;
+    reason: string;
+    at: number;
+  } | null;
+
+  initialized: boolean;
+  /** LoadingTransition 启动动画是否已完成（§1.9 门控：动画期间不启动 ASR） */
+  loadingComplete: boolean;
+  latestScreenshot: string | null;
+  /** 正在进行的截图 Promise，供 save handler 等待 */
+  screenshotPending: Promise<string | null> | null;
+
+  /** 剧本阅读锚点：队列按阅读速度消费 script:progress 时更新；存档时传给后端记录精确恢复点 */
+  scriptReadCursor: {
+    chapter: string;
+    eventIndex: number;
+    lineCount: number;
+    vars: Record<string, unknown>;
+  } | null;
+}
+
+export const state: GameState = {
+  runningScript: null,
+
+  gameRoles: {},
+  presentRoleIds: [],
+  mainRoleId: -1,
+  currentInteractRoleId: -1,
+
+  userName: "",
+  userSubtitle: "",
+
+  currentLine: "",
+  currentStatus: "input",
+  thinkingLength: 0,
+  dialogHistory: [],
+  currentScene: null,
+  command: null,
+  lastAffectionChange: null,
+
+  initialized: false,
+  loadingComplete: false,
+  latestScreenshot: null,
+  screenshotPending: null,
+
+  scriptReadCursor: null,
+};

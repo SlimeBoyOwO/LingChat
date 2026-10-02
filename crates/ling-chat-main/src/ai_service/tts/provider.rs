@@ -1,0 +1,270 @@
+//! TTS 适配器 trait + 统一 Provider。
+
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+
+use anyhow::{Result, anyhow};
+use async_trait::async_trait;
+use serde_json::Value as JsonValue;
+
+use super::adapters::aivis::AivisAdapter;
+use super::adapters::bv2::Bv2Adapter;
+use super::adapters::cosyvoice::CosyvoiceAdapter;
+use super::adapters::fish_s2::FishS2Adapter;
+use super::adapters::gsv::GsvAdapter;
+use super::adapters::indextts::IndexTtsAdapter;
+use super::adapters::opentts::OpenTtsAdapter;
+use super::adapters::sbv2::Sbv2Adapter;
+use super::adapters::sbv2api::Sbv2ApiAdapter;
+use super::adapters::vits::VitsAdapter;
+
+/// TTS 一次合成返回原始音频字节。
+#[async_trait]
+pub trait TtsAdapter: Send + Sync {
+    /// `emo` 参数由 IndexTTS2 和 Fish S2 使用，其它 adapter 忽略。
+    async fn generate_voice(&self, text: &str, emo: &str) -> Result<Vec<u8>>;
+
+    /// 返回当前适配器参数（对应 Python `get_params`）。
+    #[allow(dead_code)]
+    fn get_params(&self) -> HashMap<String, JsonValue>;
+
+    /// 流式语音合成。默认返回 `None`（不支持流式）。
+    #[allow(dead_code)]
+    async fn generate_voice_stream(&self, _text: &str) -> Option<Vec<u8>> {
+        None
+    }
+}
+
+/// 连续合成失败多少次才禁用 TTS。
+///
+/// 单句失败不应该关掉整个语音服务：个别句子可能因为文本本身（纯标点、
+/// 推理后端不支持的张量形状等）失败，而后面的句子完全正常。只有连续
+/// 失败才说明后端真的不可用（服务没启动、URL 配错等）。
+const MAX_CONSECUTIVE_FAILURES: u32 = 3;
+
+/// TTS Provider：持有所有已初始化的适配器并按 `tts_type` 路由。
+/// 对应 Python `TTS` 类。
+#[derive(Clone)]
+pub struct TtsProvider {
+    pub audio_format: String,
+    enable: Arc<AtomicBool>,
+    recovery_in_flight: Arc<AtomicBool>,
+    /// 连续失败计数；任意一次成功即归零。达到 [`MAX_CONSECUTIVE_FAILURES`] 才禁用。
+    consecutive_failures: Arc<AtomicU32>,
+
+    pub sva: Option<Arc<VitsAdapter>>,
+    pub sbv2: Option<Arc<Sbv2Adapter>>,
+    pub sbv2api: Option<Arc<Sbv2ApiAdapter>>,
+    pub sbv2_local: Option<Arc<crate::ai_service::tts::local::adapter::LocalTtsAdapter>>,
+    pub bv2: Option<Arc<Bv2Adapter>>,
+    pub gsv: Option<Arc<GsvAdapter>>,
+    pub aivis: Option<Arc<AivisAdapter>>,
+    pub indextts: Option<Arc<IndexTtsAdapter>>,
+    pub opentts: Option<Arc<OpenTtsAdapter>>,
+    pub fish_s2: Option<Arc<FishS2Adapter>>,
+    pub cosyvoice: Option<Arc<CosyvoiceAdapter>>,
+}
+
+impl Default for TtsProvider {
+    fn default() -> Self {
+        Self {
+            audio_format: String::new(),
+            enable: Arc::new(AtomicBool::new(true)),
+            recovery_in_flight: Arc::new(AtomicBool::new(false)),
+            consecutive_failures: Arc::new(AtomicU32::new(0)),
+            sva: None,
+            sbv2: None,
+            sbv2api: None,
+            sbv2_local: None,
+            bv2: None,
+            gsv: None,
+            aivis: None,
+            indextts: None,
+            opentts: None,
+            fish_s2: None,
+            cosyvoice: None,
+        }
+    }
+}
+
+impl std::fmt::Debug for TtsProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TtsProvider")
+            .field("audio_format", &self.audio_format)
+            .field("enable", &self.enable)
+            .field("recovery_in_flight", &self.recovery_in_flight)
+            .field("consecutive_failures", &self.consecutive_failures)
+            .field("sva", &self.sva.is_some())
+            .field("sbv2", &self.sbv2.is_some())
+            .field("sbv2api", &self.sbv2api.is_some())
+            .field("sbv2_local", &self.sbv2_local.is_some())
+            .field("bv2", &self.bv2.is_some())
+            .field("gsv", &self.gsv.is_some())
+            .field("aivis", &self.aivis.is_some())
+            .field("indextts", &self.indextts.is_some())
+            .field("opentts", &self.opentts.is_some())
+            .field("fish_s2", &self.fish_s2.is_some())
+            .field("cosyvoice", &self.cosyvoice.is_some())
+            .finish()
+    }
+}
+
+impl TtsProvider {
+    pub fn new(audio_format: impl Into<String>) -> Self {
+        Self {
+            audio_format: audio_format.into(),
+            enable: Arc::new(AtomicBool::new(true)),
+            recovery_in_flight: Arc::new(AtomicBool::new(false)),
+            ..Default::default()
+        }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.enable.load(Ordering::Relaxed)
+    }
+
+    pub fn disable(&self) {
+        self.enable.store(false, Ordering::Relaxed);
+        tracing::warn!("TTS 服务已被禁用（请使用 reactivate_tts 重新启用）");
+    }
+
+    pub fn reactivate(&self) {
+        self.enable.store(true, Ordering::Relaxed);
+        self.consecutive_failures.store(0, Ordering::Relaxed);
+        tracing::info!("TTS 服务已重新启用");
+    }
+
+    /// TTS 被禁用后，用当前消息在后台探测服务是否恢复。
+    ///
+    /// 探测音频不会写入文件；成功后仅重新启用 TTS，让下一条消息正常输出语音。
+    /// 同一时刻最多执行一次探测，避免多分段消息重复请求。
+    pub fn recover_in_background(&self, text: String, tts_type: String, emo: String) {
+        if self.is_enabled() || text.trim().is_empty() {
+            return;
+        }
+        if self.recovery_in_flight.swap(true, Ordering::AcqRel) {
+            return;
+        }
+
+        let adapter = match self.select(&tts_type) {
+            Ok(adapter) => adapter,
+            Err(error) => {
+                self.recovery_in_flight.store(false, Ordering::Release);
+                tracing::debug!("TTS 后台恢复探测跳过: {error}");
+                return;
+            },
+        };
+        let provider = self.clone();
+        tokio::spawn(async move {
+            tracing::debug!("开始后台探测 TTS 服务: {tts_type}");
+            match adapter.generate_voice(&text, &emo).await {
+                Ok(_) => provider.reactivate(),
+                Err(error) => tracing::debug!("TTS 服务仍不可用: {error}"),
+            }
+            provider.recovery_in_flight.store(false, Ordering::Release);
+        });
+    }
+
+    fn select(&self, tts_type: &str) -> Result<Arc<dyn TtsAdapter>> {
+        let adapter: Arc<dyn TtsAdapter> = match tts_type {
+            "sva-vits" => self
+                .sva
+                .clone()
+                .ok_or_else(|| anyhow!("Vits 适配器未初始化"))?,
+            "sbv2" => self
+                .sbv2
+                .clone()
+                .ok_or_else(|| anyhow!("Style-Bert-Vits2 适配器未初始化"))?,
+            "sbv2api" => self
+                .sbv2api
+                .clone()
+                .ok_or_else(|| anyhow!("sbv2-api 适配器未初始化"))?,
+            "localsbv2api" => self
+                .sbv2_local
+                .clone()
+                .ok_or_else(|| anyhow!("SBV2 local 适配器未初始化"))?,
+            "sva-bv2" => self
+                .bv2
+                .clone()
+                .ok_or_else(|| anyhow!("Bert-Vits2 适配器未初始化"))?,
+            "gsv" => self
+                .gsv
+                .clone()
+                .ok_or_else(|| anyhow!("GPT-SoVITS 适配器未初始化"))?,
+            "aivis" => self
+                .aivis
+                .clone()
+                .ok_or_else(|| anyhow!("AIVIS 适配器未初始化"))?,
+            "indextts2" => self
+                .indextts
+                .clone()
+                .ok_or_else(|| anyhow!("IndexTTS2 适配器未初始化"))?,
+            "opentts" => self
+                .opentts
+                .clone()
+                .ok_or_else(|| anyhow!("OpenTTS 适配器未初始化"))?,
+            "fishs2" => self
+                .fish_s2
+                .clone()
+                .ok_or_else(|| anyhow!("Fish S2 适配器未初始化"))?,
+            "cosyvoice" => self
+                .cosyvoice
+                .clone()
+                .ok_or_else(|| anyhow!("CosyVoice 适配器未初始化"))?,
+            "" => {
+                // 旧版：未指定时优先 sbv2
+                if let Some(a) = self.sbv2.clone() {
+                    tracing::warn!("未指定 tts_type，默认使用 sbv2");
+                    a
+                } else {
+                    return Err(anyhow!("没有可用的 TTS 适配器"));
+                }
+            },
+            other => return Err(anyhow!("未知的 TTS 类型: {other}")),
+        };
+        Ok(adapter)
+    }
+
+    /// 合成并把字节写入 `file_path`。
+    ///
+    /// 连续失败 [`MAX_CONSECUTIVE_FAILURES`] 次才禁用 TTS —— 单句失败只回报错误，
+    /// 后面的句子仍会正常尝试合成。
+    pub async fn generate_voice(
+        &self,
+        text: &str,
+        file_path: &std::path::Path,
+        tts_type: &str,
+        emo: &str,
+    ) -> Result<()> {
+        if !self.is_enabled() {
+            return Err(anyhow!("TTS 服务未启用"));
+        }
+        if text.trim().is_empty() {
+            tracing::debug!("TTS 输入文本为空，跳过");
+            return Ok(());
+        }
+        let adapter = self.select(tts_type)?;
+        match adapter.generate_voice(text, emo).await {
+            Ok(bytes) => {
+                self.consecutive_failures.store(0, Ordering::Relaxed);
+                tokio::fs::write(file_path, &bytes).await?;
+                tracing::debug!("TTS 生成成功: {}", file_path.display());
+                Ok(())
+            },
+            Err(e) => {
+                let failures = self.consecutive_failures.fetch_add(1, Ordering::AcqRel) + 1;
+                if failures >= MAX_CONSECUTIVE_FAILURES {
+                    self.disable();
+                } else {
+                    tracing::warn!(
+                        "TTS 合成失败({}/{}), 保持启用继续尝试下一句: {e}",
+                        failures,
+                        MAX_CONSECUTIVE_FAILURES
+                    );
+                }
+                Err(e)
+            },
+        }
+    }
+}

@@ -1,0 +1,39 @@
+name: 被...被发现了！
+
+events:
+  - type: narration
+    text: |
+      此时，钦灵的黄油突然进入了“高峰”，里面开始不停的发出小狼一样的叫声。
+
+  - type: ai_dialogue
+    character: MAIN
+
+  - type: choices
+    options:
+      - text: 真是个淫荡的小色狼呢
+        actions:
+          - type: add_line
+            content: 真是个淫荡的小色狼呢
+      - text: 钦灵...你...
+        actions:
+          - type: add_line
+            content: 钦灵...你...
+      - text: （转过头去，假装什么都没发生）
+        actions:
+          - type: add_line
+            content: （转过头去，假装什么都没发生）
+    allow_free: true
+
+  - type: ai_dialogue
+    character: MAIN
+
+  - type: input
+    hint: ""
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: "钦灵想狡辩自己玩黄油主要是因为黄油的游戏制作理念很纯粹，对游戏开发很有启发才玩的。"
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: "end"

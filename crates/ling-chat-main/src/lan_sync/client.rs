@@ -1,0 +1,273 @@
+//! LAN 同步 HTTP 客户端。
+//!
+//! 封装对等设备的 HTTP API 调用，供 sync_engine 使用。
+//! 使用模块级 `LazyLock<Client>` 共享连接池，支持 TCP Keep-Alive。
+
+use std::path::Path;
+use std::sync::LazyLock;
+
+use reqwest::Client;
+use tokio_util::io::ReaderStream;
+use tracing::info;
+
+use super::messages::{CompleteManifest, PeerInfo};
+
+/// 全模块共享的 HTTP 客户端（连接池复用 + Keep-Alive）。
+static HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
+    Client::builder()
+        .timeout(std::time::Duration::from_secs(300)) // 5 分钟总超时（大文件）
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .no_proxy() // 局域网同步不走系统代理
+        .pool_max_idle_per_host(4) // 每对端最多 4 个空闲连接
+        .build()
+        .expect("reqwest 客户端构建失败")
+});
+
+/// 获取对端的完整文件清单。
+pub async fn fetch_remote_manifest(peer: &PeerInfo) -> Result<CompleteManifest, String> {
+    let url = format!("http://{}:{}/manifest", peer.host, peer.port);
+    info!("请求对端清单: {}", url);
+
+    let client = &*HTTP_CLIENT;
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("请求清单失败 [{}:{}]: {}", peer.host, peer.port, e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "对端返回错误 [{}:{}]: {}",
+            peer.host,
+            peer.port,
+            response.status()
+        ));
+    }
+
+    let manifest: CompleteManifest = response
+        .json()
+        .await
+        .map_err(|e| format!("解析清单失败 [{}:{}]: {}", peer.host, peer.port, e))?;
+
+    info!(
+        "获取清单成功: {} 个清单文件 + {} 个运行时文件",
+        manifest.files.len(),
+        manifest.runtime_files.len()
+    );
+    Ok(manifest)
+}
+
+/// 快速健康检查：确认对端的 HTTP 服务可达。
+pub async fn check_peer_health(peer: &PeerInfo) -> Result<(), String> {
+    let url = format!("http://{}:{}/health", peer.host, peer.port);
+    let client = &*HTTP_CLIENT;
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("对端健康检查失败 [{}:{}]: {}", peer.host, peer.port, e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "对端返回异常状态 [{}:{}]: {}",
+            peer.host,
+            peer.port,
+            response.status()
+        ));
+    }
+    Ok(())
+}
+
+/// 从对端下载单个文件到本地目标路径。
+///
+/// 使用流式下载，边下边写，避免大文件撑爆内存。
+/// 先写入 `.tmp` 文件，下载完成后 rename 到最终路径。
+pub async fn download_file(
+    peer: &PeerInfo,
+    remote_path: &str,
+    dest_path: &Path,
+) -> Result<(), String> {
+    let url = format!(
+        "http://{}:{}/file?path={}",
+        peer.host,
+        peer.port,
+        urlencoding(remote_path)
+    );
+    crate::utils::download::download_to_file(&HTTP_CLIENT, &url, dest_path, None, None, 0)
+        .await
+        .map_err(|e| format!("[{}]: {e}", remote_path))?;
+
+    info!("已下载: {} -> {:?}", remote_path, dest_path);
+    Ok(())
+}
+
+/// 向对端流式推送单个文件（避免将大文件一次加载到内存）。
+pub async fn upload_file(
+    peer: &PeerInfo,
+    local_path: &Path,
+    remote_path: &str,
+) -> Result<(), String> {
+    let url = format!(
+        "http://{}:{}/push-file?path={}",
+        peer.host,
+        peer.port,
+        urlencoding(remote_path)
+    );
+    let client = &*HTTP_CLIENT;
+
+    let file = tokio::fs::File::open(local_path)
+        .await
+        .map_err(|e| format!("打开本地文件失败 [{}]: {e}", remote_path))?;
+
+    let file_size = file.metadata().await.map(|m| m.len()).unwrap_or(0);
+    info!(
+        "开始流式推送: {} ({:.1} MB)",
+        remote_path,
+        file_size as f64 / 1_048_576.0
+    );
+
+    // 用 ReaderStream 将文件变为字节流，避免 std::fs::read 一次加载全部
+    let stream = ReaderStream::new(file);
+    let body = reqwest::Body::wrap_stream(stream);
+
+    let response = client
+        .post(&url)
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| format!("推送文件失败 [{}]: {e}", remote_path))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "对端拒绝文件 [{}]: {}",
+            remote_path,
+            response.status()
+        ));
+    }
+
+    info!("已推送: {:?} -> {}", local_path, remote_path);
+    Ok(())
+}
+
+/// 向对端发送删除指令。
+pub async fn push_delete(peer: &PeerInfo, remote_path: &str) -> Result<(), String> {
+    let url = format!(
+        "http://{}:{}/push-delete?path={}",
+        peer.host,
+        peer.port,
+        urlencoding(remote_path)
+    );
+    let client = &*HTTP_CLIENT;
+
+    let response = client
+        .post(&url)
+        .send()
+        .await
+        .map_err(|e| format!("发送删除指令失败 [{}]: {e}", remote_path))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "对端拒绝删除 [{}]: {}",
+            remote_path,
+            response.status()
+        ));
+    }
+
+    Ok(())
+}
+
+/// 从对端拉取全部数据库记录。
+pub async fn fetch_db_records(peer: &PeerInfo) -> Result<super::messages::DbRecords, String> {
+    let url = format!("http://{}:{}/db-records", peer.host, peer.port);
+    info!("请求对端数据库记录: {}", url);
+
+    let client = &*HTTP_CLIENT;
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("请求数据库记录失败 [{}:{}]: {}", peer.host, peer.port, e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "对端返回错误 [{}:{}]: {}",
+            peer.host,
+            peer.port,
+            response.status()
+        ));
+    }
+
+    let records: super::messages::DbRecords = response
+        .json()
+        .await
+        .map_err(|e| format!("解析数据库记录失败 [{}:{}]: {}", peer.host, peer.port, e))?;
+
+    let total: usize = records.roles.len()
+        + records.saves.len()
+        + records.running_scripts.len()
+        + records.adventure_unlocks.len()
+        + records.lines.len()
+        + records.memory_banks.len()
+        + records.line_perceptions.len();
+    info!("拉取数据库记录完成: {} 条记录", total);
+    Ok(records)
+}
+
+/// 向对端推送全部数据库记录。
+pub async fn push_db_records(
+    peer: &PeerInfo,
+    records: &super::messages::DbRecords,
+) -> Result<(), String> {
+    let url = format!("http://{}:{}/db-records", peer.host, peer.port);
+    let total: usize = records.roles.len()
+        + records.saves.len()
+        + records.running_scripts.len()
+        + records.adventure_unlocks.len()
+        + records.lines.len()
+        + records.memory_banks.len()
+        + records.line_perceptions.len();
+    info!(
+        "推送数据库记录到 {}:{} ({} 条)",
+        peer.host, peer.port, total
+    );
+
+    let client = &*HTTP_CLIENT;
+
+    let response = client
+        .post(&url)
+        .json(records)
+        .send()
+        .await
+        .map_err(|e| format!("推送数据库记录失败 [{}:{}]: {}", peer.host, peer.port, e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "对端拒绝数据库记录 [{}:{}]: {}",
+            peer.host,
+            peer.port,
+            response.status()
+        ));
+    }
+
+    info!("推送数据库记录完成");
+    Ok(())
+}
+
+/// URL 编码（仅编码路径中需要编码的字符，保留 `/` 作为路径分隔符）。
+fn urlencoding(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    for byte in s.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' => {
+                result.push(byte as char);
+            },
+            _ => {
+                result.push_str(&format!("%{:02X}", byte));
+            },
+        }
+    }
+    result
+}

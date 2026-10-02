@@ -1,0 +1,1421 @@
+<template>
+  <div class="flex h-full min-h-0 flex-1 overflow-hidden">
+    <!-- ========== LEFT: Provider List ========== -->
+    <!-- 窄屏浏览编辑/测试面板时隐藏列表 -->
+    <div
+      v-show="!uiStore.isNarrowScreen || !sidePanel"
+      class="flex min-h-0 flex-col transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1)]"
+      :class="
+        !uiStore.isNarrowScreen && sidePanel ? 'w-[45%] border-r border-white/10 pr-4' : 'w-full'
+      "
+    >
+      <div class="mb-4 flex shrink-0 items-center justify-between">
+        <h3 class="text-base font-semibold text-white">
+          {{ $t("settings.llmProviders.list.title") }}
+        </h3>
+        <div class="flex items-center gap-2">
+          <button
+            class="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-300 transition-colors hover:bg-amber-500/30"
+            @click="restartApp"
+          >
+            <svg
+              class="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {{ $t("settings.llmProviders.list.restartApp") }}
+          </button>
+          <button
+            class="bg-brand hover:bg-brand/80 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors"
+            @click="startAdd"
+          >
+            + {{ $t("settings.llmProviders.list.addModel") }}
+          </button>
+        </div>
+      </div>
+
+      <div v-if="store.providers.length === 0" class="py-8 text-center text-base text-white/50">
+        {{ $t("settings.llmProviders.list.empty") }}
+      </div>
+      <div v-else class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+        <div
+          v-for="p in store.providers"
+          :key="p.id"
+          class="flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3.5 transition-colors hover:border-white/20"
+          :class="{ 'border-brand/40 bg-brand/5': sidePanel && editing.id === p.id }"
+          @click="startEdit(p)"
+        >
+          <!-- Info -->
+          <div class="min-w-0 flex-1">
+            <div class="mb-1 flex items-center gap-2">
+              <span class="truncate text-[15px] font-semibold text-white">{{
+                p.label || $t("settings.llmProviders.list.unnamed")
+              }}</span>
+              <span class="bg-brand/20 text-brand/90 rounded px-2 py-0.5 text-xs">{{
+                p.provider
+              }}</span>
+            </div>
+            <div class="truncate text-sm text-white/40">
+              {{ p.model || $t("settings.llmProviders.list.modelNotSet") }}
+            </div>
+            <!-- Role badges -->
+            <div class="mt-1.5 flex flex-wrap gap-1.5">
+              <span
+                v-if="store.chatProviderId === p.id"
+                class="rounded-full border border-green-500/30 bg-green-500/20 px-2 py-0.5 text-xs text-green-300"
+                >{{ $t("settings.llmProviders.role.chat") }}</span
+              >
+              <span
+                v-if="store.translateProviderId === p.id"
+                class="rounded-full border border-blue-500/30 bg-blue-500/20 px-2 py-0.5 text-xs text-blue-300"
+                >{{ $t("settings.llmProviders.role.translate") }}</span
+              >
+              <span
+                v-if="store.godAgentProviderId === p.id"
+                class="rounded-full border border-purple-500/30 bg-purple-500/20 px-2 py-0.5 text-xs text-purple-300"
+                >Agent</span
+              >
+              <span
+                v-if="store.visionProviderId === p.id"
+                class="rounded-full border border-orange-500/30 bg-orange-500/20 px-2 py-0.5 text-xs text-orange-300"
+                >{{ $t("settings.llmProviders.role.vision") }}</span
+              >
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex shrink-0 gap-1" @click.stop>
+            <button
+              class="rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white/70 transition-colors hover:bg-white/20 hover:text-white"
+              @click="startEdit(p)"
+            >
+              {{ $t("settings.llmProviders.action.edit") }}
+            </button>
+            <button
+              class="rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white/70 transition-colors hover:bg-blue-500/20 hover:text-blue-300"
+              @click="startTest(p)"
+            >
+              {{ $t("settings.llmProviders.action.test") }}
+            </button>
+            <button
+              class="rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white/70 transition-colors hover:bg-red-500/20 hover:text-red-300"
+              @click="confirmDelete(p)"
+            >
+              {{ $t("settings.llmProviders.action.delete") }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Role assignment -->
+      <div class="mt-4 shrink-0 border-t border-white/10 pt-4">
+        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-white/60">{{
+              $t("settings.llmProviders.role.chatModel")
+            }}</label>
+            <div class="relative">
+              <select
+                :value="store.chatProviderId"
+                @change="onChatRoleChange(($event.target as HTMLSelectElement).value)"
+                class="focus:border-brand w-full cursor-pointer appearance-none rounded-lg border border-white/20 bg-white/10 py-2 pr-8 pl-3 text-sm text-white transition-colors outline-none"
+              >
+                <option :value="null" class="bg-gray-800 text-white">
+                  {{ $t("settings.llmProviders.role.notSelected") }}
+                </option>
+                <option
+                  v-for="p in store.providers"
+                  :key="p.id"
+                  :value="p.id"
+                  class="bg-gray-800 text-white"
+                >
+                  {{ p.label || p.model || $t("settings.llmProviders.list.unnamed") }}
+                </option>
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
+                <svg
+                  class="h-4 w-4 text-white/40"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-white/60">{{
+              $t("settings.llmProviders.role.translateModel")
+            }}</label>
+            <div class="relative">
+              <select
+                :value="store.translateProviderId ?? '__follow__'"
+                @change="onTranslateRoleChange(($event.target as HTMLSelectElement).value)"
+                class="focus:border-brand w-full cursor-pointer appearance-none rounded-lg border border-white/20 bg-white/10 py-2 pr-8 pl-3 text-sm text-white transition-colors outline-none"
+              >
+                <option value="__follow__" class="bg-gray-800 text-white">
+                  {{ $t("settings.llmProviders.role.followChat") }}
+                </option>
+                <option
+                  v-for="p in store.providers"
+                  :key="p.id"
+                  :value="p.id"
+                  class="bg-gray-800 text-white"
+                >
+                  {{ p.label || p.model || $t("settings.llmProviders.list.unnamed") }}
+                </option>
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
+                <svg
+                  class="h-4 w-4 text-white/40"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-white/60">{{
+              $t("settings.llmProviders.role.godAgent")
+            }}</label>
+            <div class="relative">
+              <select
+                :value="store.godAgentProviderId ?? '__follow__'"
+                @change="onGodAgentRoleChange(($event.target as HTMLSelectElement).value)"
+                class="focus:border-brand w-full cursor-pointer appearance-none rounded-lg border border-white/20 bg-white/10 py-2 pr-8 pl-3 text-sm text-white transition-colors outline-none"
+              >
+                <option value="__follow__" class="bg-gray-800 text-white">
+                  {{ $t("settings.llmProviders.role.followChat") }}
+                </option>
+                <option
+                  v-for="p in store.providers"
+                  :key="p.id"
+                  :value="p.id"
+                  class="bg-gray-800 text-white"
+                >
+                  {{ p.label || p.model || $t("settings.llmProviders.list.unnamed") }}
+                </option>
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
+                <svg
+                  class="h-4 w-4 text-white/40"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-white/60">{{
+              $t("settings.llmProviders.role.visionModel")
+            }}</label>
+            <div class="relative">
+              <select
+                :value="store.visionProviderId ?? '__follow__'"
+                @change="onVisionRoleChange(($event.target as HTMLSelectElement).value)"
+                class="focus:border-brand w-full cursor-pointer appearance-none rounded-lg border border-white/20 bg-white/10 py-2 pr-8 pl-3 text-sm text-white transition-colors outline-none"
+              >
+                <option value="__follow__" class="bg-gray-800 text-white">
+                  {{ $t("settings.llmProviders.role.followChat") }}
+                </option>
+                <option
+                  v-for="p in store.providers"
+                  :key="p.id"
+                  :value="p.id"
+                  class="bg-gray-800 text-white"
+                >
+                  {{ p.label || p.model || $t("settings.llmProviders.list.unnamed") }}
+                </option>
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
+                <svg
+                  class="h-4 w-4 text-white/40"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p
+        v-if="saveMessage"
+        class="mt-3 shrink-0 text-xs"
+        :class="saveError ? 'text-red-400' : 'text-green-400'"
+      >
+        {{ saveMessage }}
+      </p>
+    </div>
+
+    <!-- ========== RIGHT: Slide-in Panel ========== -->
+    <Transition
+      enter-active-class="transition duration-[350ms] ease-[cubic-bezier(0.18,0.89,0.32,1)]"
+      enter-from-class="translate-x-10 opacity-0"
+      leave-active-class="transition duration-[250ms] ease-[cubic-bezier(0.6,-0.28,0.74,0.05)]"
+      leave-to-class="translate-x-10 opacity-0"
+    >
+      <div
+        v-if="sidePanel"
+        class="flex min-h-0 flex-col"
+        :class="uiStore.isNarrowScreen ? 'w-full' : 'w-[55%] pl-4'"
+      >
+        <!-- Header: narrow shows back button, wide shows close button -->
+        <div class="mb-4 flex shrink-0 items-center justify-between">
+          <!-- 窄屏：返回按钮 + 标题 -->
+          <template v-if="uiStore.isNarrowScreen">
+            <button
+              class="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              @click="closePanel"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
+              {{ $t("settings.llmProviders.panel.backToList") }}
+            </button>
+          </template>
+          <template v-else>
+            <h3 class="text-base font-semibold text-white">
+              <template v-if="sidePanel === 'edit'">{{
+                editing.id
+                  ? $t("settings.llmProviders.panel.editTitle")
+                  : $t("settings.llmProviders.panel.addTitle")
+              }}</template>
+              <template v-else>{{
+                $t("settings.llmProviders.panel.testTitle", {
+                  name: testProvider?.label || testProvider?.model || "",
+                })
+              }}</template>
+            </h3>
+            <button
+              class="rounded-lg p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+              @click="closePanel"
+            >
+              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </template>
+        </div>
+
+        <!-- ===== EDIT FORM ===== -->
+        <template v-if="sidePanel === 'edit'">
+          <form
+            @submit.prevent="saveCurrent"
+            class="flex flex-1 flex-col gap-4 overflow-y-auto pr-1"
+          >
+            <!-- Presets -->
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-medium text-white/60">{{
+                $t("settings.llmProviders.form.presets")
+              }}</label>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="preset in presets"
+                  :key="preset.key"
+                  type="button"
+                  class="rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors"
+                  :class="
+                    editing.label === preset.label &&
+                    editing.provider === preset.provider &&
+                    editing.model === preset.model
+                      ? 'bg-brand/20 text-brand border-brand/40'
+                      : `border-white/15 bg-white/5 text-white/60 hover:border-white/25 hover:bg-white/10 hover:text-white/80`
+                  "
+                  @click="applyPreset(preset)"
+                >
+                  {{ preset.label }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Label -->
+            <div class="flex flex-col gap-1">
+              <label class="text-xs font-medium text-white/60">{{
+                $t("settings.llmProviders.form.label")
+              }}</label>
+              <input
+                v-model="editing.label"
+                type="text"
+                :placeholder="$t('settings.llmProviders.form.labelPlaceholder')"
+                class="focus:border-brand rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white transition-colors outline-none placeholder:text-white/20"
+              />
+            </div>
+
+            <!-- Provider type -->
+            <div class="flex flex-col gap-1">
+              <label class="text-xs font-medium text-white/60">{{
+                $t("settings.llmProviders.form.providerType")
+              }}</label>
+              <div class="relative">
+                <select
+                  v-model="editing.provider"
+                  @change="onProviderChange"
+                  class="focus:border-brand w-full cursor-pointer appearance-none rounded-lg border border-white/20 bg-white/10 py-2 pr-8 pl-3 text-sm text-white transition-colors outline-none"
+                >
+                  <option value="deepseek" class="bg-gray-800 text-white">DeepSeek</option>
+                  <option value="openai" class="bg-gray-800 text-white">
+                    {{ $t("settings.llmProviders.form.providerOpenai") }}
+                  </option>
+                  <option value="lmstudio" class="bg-gray-800 text-white">
+                    {{ $t("settings.llmProviders.form.providerLmstudio") }}
+                  </option>
+                  <option value="gemini" class="bg-gray-800 text-white">Gemini</option>
+                  <option value="kimicode" class="bg-gray-800 text-white">
+                    Kimi Code (kimi-for-coding)
+                  </option>
+                  <option value="codex" class="bg-gray-800 text-white">
+                    {{ $t("settings.llmProviders.form.providerCodex") }}
+                  </option>
+                </select>
+                <div
+                  class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5"
+                >
+                  <svg
+                    class="h-4 w-4 text-white/40"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- Model -->
+            <div v-if="!isOAuthProvider" class="flex flex-col gap-1">
+              <label class="text-xs font-medium text-white/60">{{
+                $t("settings.llmProviders.form.modelName")
+              }}</label>
+              <input
+                v-model="editing.model"
+                type="text"
+                :placeholder="
+                  editing.provider === 'lmstudio'
+                    ? $t('settings.llmProviders.form.modelPlaceholderLmstudio')
+                    : $t('settings.llmProviders.form.modelPlaceholderDefault')
+                "
+                class="focus:border-brand rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white transition-colors outline-none placeholder:text-white/20"
+              />
+            </div>
+
+            <!-- Kimi Code model discovery -->
+            <div v-else class="flex flex-col gap-1">
+              <label class="text-xs font-medium text-white/60">{{
+                $t("settings.llmProviders.form.modelName")
+              }}</label>
+              <div class="flex gap-2">
+                <div v-if="availableModels.length > 0" class="relative min-w-0 flex-1">
+                  <select
+                    v-model="editing.model"
+                    class="focus:border-brand w-full cursor-pointer appearance-none rounded-lg border border-white/20 bg-white/10 py-2 pr-8 pl-3 text-sm text-white transition-colors outline-none"
+                  >
+                    <option
+                      v-for="model in availableModels"
+                      :key="model.id"
+                      :value="model.id"
+                      class="bg-gray-800 text-white"
+                    >
+                      {{ model.display_name ? `${model.display_name} (${model.id})` : model.id }}
+                    </option>
+                  </select>
+                  <div
+                    class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5"
+                  >
+                    <svg
+                      class="h-4 w-4 text-white/40"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </div>
+                </div>
+                <input
+                  v-else
+                  v-model="editing.model"
+                  type="text"
+                  :placeholder="editing.provider === 'codex' ? 'gpt-5.6-sol' : 'kimi-for-coding'"
+                  class="focus:border-brand min-w-0 flex-1 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white transition-colors outline-none placeholder:text-white/20"
+                />
+                <button
+                  type="button"
+                  class="bg-brand/80 hover:bg-brand shrink-0 rounded-lg px-3 py-2 text-sm text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="loadingModels"
+                  @click="fetchProviderModels"
+                >
+                  {{
+                    loadingModels
+                      ? $t("settings.llmProviders.form.fetchingModels")
+                      : $t("settings.llmProviders.form.fetchModels")
+                  }}
+                </button>
+              </div>
+              <p
+                v-if="modelsMessage"
+                class="text-xs"
+                :class="modelsError ? 'text-red-400' : 'text-green-400'"
+              >
+                {{ modelsMessage }}
+              </p>
+            </div>
+
+            <!-- Reasoning effort（按模型能力显示） -->
+            <div v-if="showReasoningEffort" class="flex flex-col gap-1">
+              <label class="text-xs font-medium text-white/60">{{
+                $t("settings.llmProviders.form.reasoningEffort")
+              }}</label>
+              <div class="relative">
+                <select
+                  v-model="editing.reasoning_effort"
+                  class="focus:border-brand w-full cursor-pointer appearance-none rounded-lg border border-white/20 bg-white/10 py-2 pr-8 pl-3 text-sm text-white transition-colors outline-none"
+                >
+                  <option :value="null" class="bg-gray-800 text-white">
+                    {{ $t("settings.llmProviders.form.reasoningDefault") }}
+                  </option>
+                  <option
+                    v-for="effort in reasoningEffortOptions"
+                    :key="effort"
+                    :value="effort"
+                    class="bg-gray-800 text-white"
+                  >
+                    {{ effortLabel(effort) }}
+                  </option>
+                </select>
+                <div
+                  class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5"
+                >
+                  <svg
+                    class="h-4 w-4 text-white/40"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- API Key（Codex 走 OAuth 订阅登录，无需 API Key） -->
+            <div v-if="editing.provider !== 'codex'" class="flex flex-col gap-1">
+              <label class="text-xs font-medium text-white/60">{{
+                $t("settings.llmProviders.form.apiKey")
+              }}</label>
+              <input
+                v-model="editing.api_key"
+                type="password"
+                placeholder="sk-..."
+                class="focus:border-brand rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white transition-colors outline-none placeholder:text-white/20"
+              />
+            </div>
+
+            <!-- Codex 登录区：设备码授权 ChatGPT 订阅 -->
+            <div
+              v-else
+              class="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-3"
+            >
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-medium text-white/60">{{
+                  $t("settings.llmProviders.codex.account")
+                }}</span>
+                <span v-if="codexStatus?.logged_in" class="text-xs text-green-400">
+                  ● {{ $t("settings.llmProviders.codex.loggedIn") }}
+                </span>
+                <span v-else class="text-xs text-white/40">{{
+                  $t("settings.llmProviders.codex.notLoggedIn")
+                }}</span>
+              </div>
+              <div v-if="codexStatus?.logged_in" class="font-mono text-xs break-all text-white/50">
+                {{ codexStatus.account_id }}
+              </div>
+
+              <!-- 授权进行中：展示用户码 -->
+              <div v-if="codexLogin" class="flex flex-col gap-2 rounded bg-black/30 p-3">
+                <div class="text-xs text-white/60">
+                  {{ $t("settings.llmProviders.codex.enterCodeHint") }}
+                </div>
+                <div
+                  class="text-brand py-1 text-center font-mono text-2xl tracking-[0.3em] select-all"
+                >
+                  {{ codexLogin.user_code }}
+                </div>
+                <button
+                  type="button"
+                  class="text-brand text-center text-xs break-all underline underline-offset-2"
+                  @click="openUrl(codexLogin!.verification_url)"
+                >
+                  {{ codexLogin.verification_url }}
+                </button>
+              </div>
+
+              <p
+                v-if="codexLoginMessage"
+                class="text-xs"
+                :class="codexLoginError ? 'text-red-400' : 'text-green-400'"
+              >
+                {{ codexLoginMessage }}
+              </p>
+
+              <div class="flex gap-2">
+                <template v-if="!codexStatus?.logged_in">
+                  <button
+                    v-if="!codexLogin"
+                    type="button"
+                    class="bg-brand/80 hover:bg-brand rounded-lg px-3 py-1.5 text-xs text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                    :disabled="codexLoginBusy"
+                    @click="startCodexLogin"
+                  >
+                    {{ codexLoginBusy ? "···" : $t("settings.llmProviders.codex.login") }}
+                  </button>
+                  <button
+                    v-else
+                    type="button"
+                    class="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white/70 transition-colors hover:bg-white/20"
+                    @click="cancelCodexLogin"
+                  >
+                    {{ $t("settings.llmProviders.codex.cancel") }}
+                  </button>
+                </template>
+                <button
+                  v-else
+                  type="button"
+                  class="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white/70 transition-colors hover:bg-white/20"
+                  @click="doCodexLogout"
+                >
+                  {{ $t("settings.llmProviders.codex.logout") }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Base URL -->
+            <div v-if="!isOAuthProvider" class="flex flex-col gap-1">
+              <label class="text-xs font-medium text-white/60">{{
+                $t("settings.llmProviders.form.baseUrl")
+              }}</label>
+              <input
+                v-model="editing.base_url"
+                type="text"
+                placeholder="https://api.deepseek.com"
+                class="focus:border-brand rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white transition-colors outline-none placeholder:text-white/20"
+              />
+            </div>
+
+            <!-- Hidden base_url for OAuth providers -->
+            <input v-if="isOAuthProvider" v-model="editing.base_url" type="hidden" />
+
+            <!-- Codex Fast Mode（1.5× 速度，额度消耗更快） -->
+            <div
+              v-if="editing.provider === 'codex'"
+              class="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2"
+            >
+              <div class="flex flex-col gap-0.5">
+                <span class="text-xs font-medium text-white/60">{{
+                  $t("settings.llmProviders.codex.fastMode")
+                }}</span>
+                <span class="text-[11px] text-white/35">{{
+                  $t("settings.llmProviders.codex.fastModeHint")
+                }}</span>
+              </div>
+              <button
+                type="button"
+                class="relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200"
+                :class="editing.fast_mode ? 'bg-brand' : 'bg-white/15'"
+                @click="editing.fast_mode = !editing.fast_mode"
+              >
+                <span
+                  class="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all duration-200"
+                  :class="editing.fast_mode ? 'left-5.5' : 'left-0.5'"
+                ></span>
+              </button>
+            </div>
+
+            <!-- Temperature -->
+            <div class="flex flex-col gap-1">
+              <label class="text-xs font-medium text-white/60">{{
+                $t("settings.llmProviders.form.temperature")
+              }}</label>
+              <input
+                v-model.number="editing.temperature"
+                type="number"
+                step="0.1"
+                min="0"
+                max="2"
+                class="focus:border-brand rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white transition-colors outline-none"
+              />
+            </div>
+
+            <!-- Top P -->
+            <div class="flex flex-col gap-1">
+              <label class="text-xs font-medium text-white/60">{{
+                $t("settings.llmProviders.form.topP")
+              }}</label>
+              <input
+                v-model.number="editing.top_p"
+                type="number"
+                step="0.05"
+                min="0"
+                max="1"
+                class="focus:border-brand rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white transition-colors outline-none"
+              />
+            </div>
+
+            <!-- Enable thinking -->
+            <label class="flex cursor-pointer items-center gap-3">
+              <span class="text-xs font-medium text-white/60">{{
+                $t("settings.llmProviders.form.enableThinking")
+              }}</span>
+              <div class="relative">
+                <input v-model="editing.enable_thinking" type="checkbox" class="peer sr-only" />
+                <div
+                  class="peer-checked:bg-brand peer-checked:border-brand h-5 w-9 rounded-full border border-white/20 bg-white/10 transition-colors"
+                ></div>
+                <div
+                  class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4"
+                ></div>
+              </div>
+            </label>
+
+            <!-- 思考等级：始终显示，仅在开启思考模式时可调整（OAuth 提供商走上方按模型能力渲染的下拉） -->
+            <div v-if="!isOAuthProvider" class="flex flex-col gap-1">
+              <label class="text-xs font-medium text-white/60">{{
+                $t("settings.llmProviders.form.thinkingLevel")
+              }}</label>
+              <div class="relative">
+                <select
+                  v-model="editing.reasoning_effort"
+                  :disabled="!editing.enable_thinking"
+                  class="focus:border-brand w-full cursor-pointer appearance-none rounded-lg border border-white/20 bg-white/10 py-2 pr-8 pl-3 text-sm text-white transition-colors outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option :value="null" class="bg-gray-800 text-white">
+                    {{ $t("settings.llmProviders.form.reasoningDefault") }}
+                  </option>
+                  <option
+                    v-for="effort in thinkingLevelOptions"
+                    :key="effort"
+                    :value="effort"
+                    class="bg-gray-800 text-white"
+                  >
+                    {{ effortLabel(effort) }}
+                  </option>
+                </select>
+                <div
+                  class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5"
+                >
+                  <svg
+                    class="h-4 w-4 text-white/40"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- 支持识图（原生多模态）：勾选后用户发图/截图直接走对话模型，不再旁白转述 -->
+            <div
+              class="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2"
+            >
+              <div class="flex flex-col gap-0.5">
+                <span class="text-xs font-medium text-white/60">{{
+                  $t("settings.llmProviders.form.supportVision")
+                }}</span>
+                <span class="text-[11px] text-white/35">{{
+                  $t("settings.llmProviders.form.supportVisionHint")
+                }}</span>
+              </div>
+              <button
+                type="button"
+                class="relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200"
+                :class="editing.support_vision ? 'bg-brand' : 'bg-white/15'"
+                @click="editing.support_vision = !editing.support_vision"
+              >
+                <span
+                  class="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all duration-200"
+                  :class="editing.support_vision ? 'left-[22px]' : 'left-0.5'"
+                ></span>
+              </button>
+            </div>
+
+            <!-- 原生识图压缩设置：仅启用识图时展示，默认不压缩（原图直发） -->
+            <div
+              v-if="editing.support_vision"
+              class="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/5 p-3"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex flex-col gap-0.5">
+                  <span class="text-xs font-medium text-white/60">{{
+                    $t("settings.llmProviders.form.visionCompress")
+                  }}</span>
+                  <span class="text-[11px] text-white/35">{{
+                    $t("settings.llmProviders.form.visionCompressHint")
+                  }}</span>
+                </div>
+                <button
+                  type="button"
+                  class="relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200"
+                  :class="editing.vision_compress ? 'bg-brand' : 'bg-white/15'"
+                  @click="editing.vision_compress = !editing.vision_compress"
+                >
+                  <span
+                    class="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all duration-200"
+                    :class="editing.vision_compress ? 'left-[22px]' : 'left-0.5'"
+                  ></span>
+                </button>
+              </div>
+
+              <template v-if="editing.vision_compress">
+                <!-- 最大边长（像素） -->
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs font-medium text-white/60">{{
+                    $t("settings.llmProviders.form.visionMaxEdge")
+                  }}</label>
+                  <input
+                    v-model.number="editing.vision_max_edge"
+                    type="number"
+                    step="64"
+                    min="64"
+                    max="8192"
+                    class="focus:border-brand rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white transition-colors outline-none"
+                  />
+                  <span class="text-[11px] text-white/30">{{
+                    $t("settings.llmProviders.form.visionMaxEdgeHint")
+                  }}</span>
+                </div>
+
+                <!-- 编码质量（0-100） -->
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs font-medium text-white/60">{{
+                    $t("settings.llmProviders.form.visionQuality")
+                  }}</label>
+                  <input
+                    v-model.number="editing.vision_jpeg_quality"
+                    type="number"
+                    min="1"
+                    max="100"
+                    class="focus:border-brand rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white transition-colors outline-none"
+                  />
+                  <span class="text-[11px] text-white/30">{{
+                    $t("settings.llmProviders.form.visionQualityHint")
+                  }}</span>
+                </div>
+              </template>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="flex gap-3 pt-2">
+              <button
+                type="submit"
+                class="bg-brand hover:bg-brand/80 rounded-lg px-5 py-2 text-sm font-medium text-white transition-colors"
+              >
+                {{ $t("settings.llmProviders.form.save") }}
+              </button>
+              <button
+                type="button"
+                class="rounded-lg bg-white/10 px-5 py-2 text-sm text-white/70 transition-colors hover:bg-white/20"
+                @click="closePanel"
+              >
+                {{ $t("settings.llmProviders.form.cancel") }}
+              </button>
+            </div>
+
+            <p
+              v-if="saveMessage"
+              class="text-xs"
+              :class="saveError ? 'text-red-400' : 'text-green-400'"
+            >
+              {{ saveMessage }}
+            </p>
+          </form>
+        </template>
+
+        <!-- ===== TEST VIEW ===== -->
+        <template v-if="sidePanel === 'test'">
+          <div class="flex min-h-0 flex-1 flex-col gap-4">
+            <div class="flex gap-2">
+              <input
+                v-model="testMessage"
+                type="text"
+                :placeholder="$t('settings.llmProviders.test.placeholder')"
+                class="focus:border-brand flex-1 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white transition-colors outline-none placeholder:text-white/20"
+                @keydown.enter="doTest"
+              />
+              <button
+                class="bg-brand hover:bg-brand/80 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="testing || !testMessage.trim()"
+                @click="doTest"
+              >
+                {{
+                  testing
+                    ? $t("settings.llmProviders.test.testing")
+                    : $t("settings.llmProviders.test.send")
+                }}
+              </button>
+            </div>
+
+            <div
+              class="min-h-0 flex-1 overflow-y-auto rounded-lg border border-white/10 bg-white/5 p-4"
+            >
+              <div v-if="testing" class="flex items-center gap-2 text-sm text-white/40">
+                <div
+                  class="border-t-brand h-4 w-4 animate-spin rounded-full border-2 border-white/20"
+                ></div>
+                {{ $t("settings.llmProviders.test.waiting") }}
+              </div>
+              <div v-else-if="testError" class="text-sm whitespace-pre-wrap text-red-400">
+                {{ testError }}
+              </div>
+              <div
+                v-else-if="testResponse"
+                class="text-sm leading-relaxed whitespace-pre-wrap text-white/80"
+              >
+                {{ testResponse }}
+              </div>
+              <div v-else class="text-sm text-white/30">
+                {{ $t("settings.llmProviders.test.hint") }}
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </Transition>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted, reactive, computed, watch } from "vue";
+import { useLlmProvidersStore } from "@/stores/modules/llm-providers";
+import { useUIStore } from "@/stores/modules/ui/ui";
+import { invoke } from "@tauri-apps/api/core";
+import { relaunch } from "@tauri-apps/plugin-process";
+import {
+  listLlmModels,
+  type LlmModelInfo,
+  type LlmProviderConfig,
+} from "@/api/services/llm-providers";
+import {
+  codexAuthStatus,
+  codexStartLogin,
+  codexPollLogin,
+  codexLogout,
+  type CodexAuthStatus,
+  type DeviceLoginStart,
+} from "@/api/services/codex";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { useI18n } from "vue-i18n";
+import { llmPresets as presets, type LlmPreset } from "@/constants/llm-presets";
+
+const store = useLlmProvidersStore();
+const uiStore = useUIStore();
+const { t } = useI18n();
+
+function applyPreset(preset: LlmPreset) {
+  editing.label = preset.label;
+  editing.provider = preset.provider;
+  editing.model = preset.model;
+  editing.base_url = preset.base_url;
+  // 重置自动填充标记
+  lmstudioAutoFilled.value = false;
+  kimicodeAutoFilled.value = false;
+  resetModelList();
+  // Codex 预设：获取账号模型目录并刷新登录状态
+  if (preset.provider === "codex") {
+    fetchProviderModels();
+    refreshCodexStatus();
+  }
+}
+// --------------------
+
+const sidePanel = ref<"edit" | "test" | null>(null);
+const editing = reactive<LlmProviderConfig>(emptyProvider());
+const saveMessage = ref("");
+const saveError = ref(false);
+const lmstudioAutoFilled = ref(false);
+const kimicodeAutoFilled = ref(false);
+const availableModels = ref<LlmModelInfo[]>([]);
+const loadingModels = ref(false);
+let modelRequestId = 0;
+const modelsMessage = ref("");
+const modelsError = ref(false);
+
+// ---- Codex（ChatGPT 订阅）登录状态 ----
+const codexStatus = ref<CodexAuthStatus | null>(null);
+// 登录流程进行中：非 null 时展示用户码与等待状态
+const codexLogin = ref<DeviceLoginStart | null>(null);
+const codexLoginMessage = ref("");
+const codexLoginError = ref(false);
+const codexLoginBusy = ref(false);
+let codexPollTimer: ReturnType<typeof setInterval> | null = null;
+
+// Test state
+const testProvider = ref<LlmProviderConfig | null>(null);
+const testMessage = ref("");
+const testResponse = ref("");
+const testError = ref("");
+const testing = ref(false);
+
+function emptyProvider(): LlmProviderConfig {
+  return {
+    id: "",
+    label: "",
+    provider: "deepseek",
+    model: "deepseek-flash",
+    api_key: "",
+    base_url: "https://api.deepseek.com",
+    temperature: null,
+    top_p: null,
+    enable_thinking: false,
+    reasoning_effort: null,
+    fast_mode: false,
+    support_vision: false,
+    vision_compress: false,
+    vision_max_edge: 2048,
+    vision_jpeg_quality: 85,
+  };
+}
+
+function closePanel() {
+  resetModelList();
+  sidePanel.value = null;
+  saveMessage.value = "";
+}
+
+// OAuth 订阅类提供商（Kimi Code / OpenAI Codex）：免填 base_url，模型走自动发现
+const isOAuthProvider = computed(
+  () => editing.provider === "kimicode" || editing.provider === "codex",
+);
+
+// 推理深度档位完全由模型声明的 think_efforts.valid_efforts 驱动（与 kimi-code 官方一致）：
+// 列表非空 → 显示选择器并按其渲染档位；为空（如 K2.7 思考常开、不可调档）→ 不显示。
+// 列表尚未加载时无法判断能力，先不显示（startEdit 会自动拉取列表）
+const reasoningEffortOptions = computed<string[]>(() => {
+  if (!isOAuthProvider.value) return [];
+  const info = availableModels.value.find((m) => m.id === editing.model);
+  return info?.think_efforts?.valid_efforts ?? [];
+});
+const showReasoningEffort = computed(() => reasoningEffortOptions.value.length > 0);
+
+// 非 OAuth 提供商的思考等级固定档位（仅开启思考模式时生效，见后端 GenaiProvider 接线）
+const thinkingLevelOptions = ["low", "medium", "high", "xhigh", "max"];
+
+function effortLabel(effort: string): string {
+  const labels: Record<string, string> = {
+    off: t("settings.llmProviders.form.effortOff"),
+    minimal: t("settings.llmProviders.form.effortMinimal"),
+    low: t("settings.llmProviders.form.effortLow"),
+    medium: t("settings.llmProviders.form.effortMedium"),
+    high: t("settings.llmProviders.form.effortHigh"),
+    xhigh: t("settings.llmProviders.form.effortXhigh"),
+    max: t("settings.llmProviders.form.effortMax"),
+  };
+  return labels[effort] ?? effort;
+}
+
+// 切到不可调档的模型/提供商时清掉已选档位，避免残留值被静默发往其他模型；
+// 已选档位不在新模型的档位列表中时同样清空（跟随新模型默认）。
+// 但 Kimi Code 模型列表尚未加载时无法判断能力，先保留已配置值，待列表返回后再决定
+watch([() => editing.provider, () => editing.model, reasoningEffortOptions], () => {
+  if (isOAuthProvider.value && availableModels.value.length === 0) return;
+  const options = isOAuthProvider.value ? reasoningEffortOptions.value : thinkingLevelOptions;
+  if (
+    options.length === 0 ||
+    (editing.reasoning_effort && !options.includes(editing.reasoning_effort))
+  ) {
+    editing.reasoning_effort = null;
+  }
+});
+
+function resetModelList() {
+  modelRequestId++;
+  loadingModels.value = false;
+  availableModels.value = [];
+  modelsMessage.value = "";
+  modelsError.value = false;
+}
+
+// LM Studio 兼容：本质是 OpenAI 协议，这里只帮用户预填默认地址和假 key
+function onProviderChange() {
+  resetModelList();
+  if (editing.provider === "deepseek") {
+    editing.model = "deepseek-flash";
+    editing.base_url = "https://api.deepseek.com";
+  } else if (editing.provider === "lmstudio") {
+    editing.base_url = "http://localhost:1234/v1";
+    editing.api_key = "sk-lingchat70";
+    lmstudioAutoFilled.value = true;
+  } else if (editing.provider === "kimicode") {
+    editing.model = "kimi-for-coding";
+    editing.base_url = "https://api.kimi.com/coding";
+    kimicodeAutoFilled.value = true;
+  } else if (editing.provider === "codex") {
+    // Codex：OAuth 订阅，无需 key/base_url；模型从登录账号在线发现
+    editing.model = "gpt-5.6-sol";
+    editing.base_url = "";
+    editing.api_key = "";
+    fetchProviderModels();
+    refreshCodexStatus();
+  } else {
+    // 仅清除由 LM Studio 自动填入的默认值，不误伤用户手写的相同值
+    if (lmstudioAutoFilled.value) {
+      if (editing.base_url === "http://localhost:1234/v1") {
+        editing.base_url = "";
+      }
+      if (editing.api_key === "sk-lingchat70") {
+        editing.api_key = "";
+      }
+      lmstudioAutoFilled.value = false;
+    }
+    if (kimicodeAutoFilled.value) {
+      if (editing.model === "kimi-for-coding") {
+        editing.model = "";
+      }
+      if (editing.base_url === "https://api.kimi.com/coding") {
+        editing.base_url = "";
+      }
+      kimicodeAutoFilled.value = false;
+    }
+  }
+}
+
+function startAdd() {
+  Object.assign(editing, emptyProvider());
+  resetModelList();
+  sidePanel.value = "edit";
+  saveMessage.value = "";
+}
+
+function startEdit(p: LlmProviderConfig) {
+  Object.assign(editing, { ...p });
+  resetModelList();
+  sidePanel.value = "edit";
+  saveMessage.value = "";
+  // Kimi Code 已有 API 密钥时自动拉取模型列表，
+  // 以便按各模型的 supports_reasoning 能力显示推理深度选项
+  if (editing.provider === "kimicode" && editing.api_key.trim()) {
+    fetchProviderModels();
+  }
+  // Codex 复用订阅登录凭据获取模型目录；同时刷新登录状态
+  if (editing.provider === "codex") {
+    fetchProviderModels();
+    refreshCodexStatus();
+  }
+}
+
+function confirmDelete(p: LlmProviderConfig) {
+  const name = p.label || p.model || t("settings.llmProviders.list.unnamed");
+  if (!confirm(t("settings.llmProviders.msg.confirmDelete", { name }))) return;
+  deleteProvider(p.id);
+}
+
+async function deleteProvider(id: string) {
+  try {
+    await store.deleteProvider(id);
+    saveMessage.value = t("settings.llmProviders.msg.deleted");
+    saveError.value = false;
+    if (editing.id === id) closePanel();
+  } catch (e: any) {
+    saveMessage.value = t("settings.llmProviders.msg.deleteFailed", { error: e });
+    saveError.value = true;
+  }
+}
+
+async function saveCurrent() {
+  saveMessage.value = "";
+  saveError.value = false;
+  try {
+    await store.saveProvider({ ...editing });
+    saveMessage.value = t("settings.llmProviders.msg.saveSuccess");
+    const saved = store.providers.find(
+      (p) => p.label === editing.label && p.model === editing.model,
+    );
+    if (saved && !editing.id) {
+      editing.id = saved.id;
+    }
+  } catch (e: any) {
+    saveMessage.value = t("settings.llmProviders.msg.saveFailed", { error: e });
+    saveError.value = true;
+  }
+}
+
+async function fetchProviderModels() {
+  if (loadingModels.value) return;
+
+  const requestId = ++modelRequestId;
+  loadingModels.value = true;
+  modelsMessage.value = "";
+  modelsError.value = false;
+  try {
+    const models = await listLlmModels({ ...editing });
+    if (requestId !== modelRequestId) return;
+    availableModels.value = models;
+    if (!models.some((model) => model.id === editing.model)) {
+      editing.model = models[0]?.id ?? editing.model;
+    }
+    modelsMessage.value = t("settings.llmProviders.msg.modelsFetched", { count: models.length });
+  } catch (error: any) {
+    if (requestId !== modelRequestId) return;
+    availableModels.value = [];
+    // 命令返回结构化 { code, detail }：code → i18n 文案，detail = 原始错误
+    const code = error?.code || "other";
+    const raw = error?.detail || (typeof error === "string" ? error : "");
+    modelsMessage.value = t(`stores.llmErrors.${code}`) + (raw ? `\n原始错误：${raw}` : "");
+    modelsError.value = true;
+  } finally {
+    if (requestId === modelRequestId) loadingModels.value = false;
+  }
+}
+
+async function onChatRoleChange(value: string) {
+  try {
+    await store.assignRole("chat", value || null);
+    saveMessage.value = t("settings.llmProviders.msg.chatSwitched");
+    saveError.value = false;
+  } catch (e: any) {
+    saveMessage.value = t("settings.llmProviders.msg.switchFailed", { error: e });
+    saveError.value = true;
+    console.error("Failed to set chat role:", e);
+  }
+}
+
+async function onTranslateRoleChange(value: string) {
+  try {
+    await store.assignRole("translate", value === "__follow__" ? null : value);
+    saveMessage.value = t("settings.llmProviders.msg.translateSwitched");
+    saveError.value = false;
+  } catch (e: any) {
+    saveMessage.value = t("settings.llmProviders.msg.switchFailed", { error: e });
+    saveError.value = true;
+    console.error("Failed to set translate role:", e);
+  }
+}
+
+async function onGodAgentRoleChange(value: string) {
+  try {
+    await store.assignRole("god_agent", value === "__follow__" ? null : value);
+    saveMessage.value = t("settings.llmProviders.msg.godAgentSwitched");
+    saveError.value = false;
+  } catch (e: any) {
+    saveMessage.value = t("settings.llmProviders.msg.switchFailed", { error: e });
+    saveError.value = true;
+    console.error("Failed to set god_agent role:", e);
+  }
+}
+
+async function onVisionRoleChange(value: string) {
+  try {
+    await store.assignRole("vision", value === "__follow__" ? null : value);
+  } catch (e: any) {
+    console.error("Failed to set vision role:", e);
+  }
+}
+
+function startTest(p: LlmProviderConfig) {
+  testProvider.value = p;
+  testMessage.value = "";
+  testResponse.value = "";
+  testError.value = "";
+  sidePanel.value = "test";
+}
+
+async function restartApp() {
+  try {
+    await relaunch();
+  } catch (e) {
+    console.error("重启失败:", e);
+  }
+}
+
+async function doTest() {
+  if (!testProvider.value || !testMessage.value.trim()) return;
+  testing.value = true;
+  testResponse.value = "";
+  testError.value = "";
+  try {
+    const res = await invoke<string>("test_llm_provider", {
+      provider: testProvider.value,
+      message: testMessage.value,
+    });
+    testResponse.value = res;
+  } catch (e: any) {
+    // 命令返回结构化 { code, detail }：code → i18n 文案，detail = 原始错误
+    const code = e?.code || "other";
+    const raw = e?.detail || (typeof e === "string" ? e : "");
+    testError.value = t(`stores.llmErrors.${code}`) + (raw ? `\n原始错误：${raw}` : "");
+  } finally {
+    testing.value = false;
+  }
+}
+
+// ---- Codex 设备码登录流程 ----
+async function refreshCodexStatus() {
+  try {
+    codexStatus.value = await codexAuthStatus();
+  } catch {
+    codexStatus.value = null;
+  }
+}
+
+function stopCodexPolling() {
+  if (codexPollTimer) {
+    clearInterval(codexPollTimer);
+    codexPollTimer = null;
+  }
+}
+
+async function startCodexLogin() {
+  if (codexLoginBusy.value) return;
+  codexLoginBusy.value = true;
+  codexLoginError.value = false;
+  codexLoginMessage.value = "";
+  stopCodexPolling();
+  try {
+    const start = await codexStartLogin();
+    codexLogin.value = start;
+    codexLoginMessage.value = t("settings.llmProviders.codex.waitingAuth");
+    // 自动打开浏览器到授权页
+    openUrl(start.verification_url).catch(() => {});
+    let interval = Math.max(2, start.interval) * 1000;
+    const startPolling = (ms: number) => {
+      stopCodexPolling();
+      codexPollTimer = setInterval(async () => {
+        const login = codexLogin.value;
+        if (!login) {
+          stopCodexPolling();
+          return;
+        }
+        try {
+          const result = await codexPollLogin(login.device_auth_id, login.user_code);
+          if (result.status === "slow_down") {
+            interval += 5000;
+            startPolling(interval);
+          } else if (result.status === "complete") {
+            stopCodexPolling();
+            codexLogin.value = null;
+            codexLoginError.value = false;
+            codexLoginMessage.value = t("settings.llmProviders.codex.loginSuccess");
+            await refreshCodexStatus();
+            if (editing.provider === "codex") {
+              resetModelList();
+              await fetchProviderModels();
+            }
+          }
+        } catch (e: any) {
+          stopCodexPolling();
+          codexLogin.value = null;
+          codexLoginError.value = true;
+          codexLoginMessage.value = t("settings.llmProviders.codex.loginFailed", {
+            error: String(e?.message ?? e),
+          });
+        }
+      }, ms);
+    };
+    startPolling(interval);
+  } catch (e: any) {
+    codexLoginError.value = true;
+    codexLoginMessage.value = t("settings.llmProviders.codex.loginFailed", {
+      error: String(e?.message ?? e),
+    });
+  } finally {
+    codexLoginBusy.value = false;
+  }
+}
+
+function cancelCodexLogin() {
+  stopCodexPolling();
+  codexLogin.value = null;
+  codexLoginMessage.value = "";
+  codexLoginError.value = false;
+}
+
+async function doCodexLogout() {
+  try {
+    await codexLogout();
+  } catch {
+    /* 本地文件清理失败可忽略 */
+  }
+  await refreshCodexStatus();
+  if (editing.provider === "codex") resetModelList();
+}
+
+onMounted(async () => {
+  await store.load();
+  refreshCodexStatus();
+});
+
+onUnmounted(() => {
+  modelRequestId++;
+  stopCodexPolling();
+});
+</script>

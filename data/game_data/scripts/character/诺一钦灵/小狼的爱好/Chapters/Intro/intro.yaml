@@ -1,0 +1,24 @@
+name: 狼の爱好
+
+events:
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 钦灵好奇%player%平时的兴趣是什么
+
+  - type: input
+
+  - type: ai_dialogue
+    character: MAIN
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 钦灵也想和%player%说说自己喜欢编程和玩游戏的兴趣了
+
+  - type: input
+
+  - type: ai_dialogue
+    character: MAIN
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: "end"

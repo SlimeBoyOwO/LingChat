@@ -1,0 +1,81 @@
+[package]
+name = "ling_chat"
+version = "0.5.2"
+default-run = "ling_chat"
+description = "AI Galgame Engine"
+authors = ["LingChat Team"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "ling_chat_lib"
+# staticlib 只有 iOS 需要（Xcode 链接 libling_chat_lib.a），cdylib 供 Android，
+# rlib 供桌面端与 bin 自身。桌面开发只用到 rlib，但 staticlib 会让每次增量构建
+# 都重新归档一个 ~1.4 GB 的 .lib（见 .cargo/config.toml 顶部的说明）。
+# pnpm ios:build 会临时加回 staticlib 并在结束后恢复；直接调用 tauri ios build
+# 时仍需手动加回，详见 docs/ios-build.md。
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# 移动端（Android/iOS）构建时必须启用：让 webview 从应用内嵌资产加载前端
+# （不走 devUrl）。桌面端不受影响。
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# 业务主 crate 与插件 crate（原 src-tauri/src 下的模块已拆分至此）。
+# 外壳只依赖这两者 + Tauri 及其插件；业务侧的重依赖（ort / sbv2_core / rustpython /
+# axum / wgpu / windows 等）由对应 crate 自带，无需在此重复声明。
+ling-chat-main = { path = "../crates/ling-chat-main" }
+ling-chat-plugins = { path = "../crates/ling-chat-plugins" }
+# macos-private-api：macOS 上透明窗口（桌宠模式）的必要条件。缺少它时 tauri.conf.json
+# 的 transparent: true 会被静默忽略，webview 仍然绘制不透明白底。
+# 该 feature 内部由 cfg(target_os = "macos") 门控，Windows / Linux / Android 无影响。
+# 由 tauri.conf.json 的 app.macOSPrivateApi 驱动，tauri CLI 会自动同步这里的 features。
+tauri = { version = "2", features = ["macos-private-api", "protocol-asset"] }
+tauri-plugin-opener = "2"
+tauri-plugin-store = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-notification = "2.4"
+tauri-plugin-screenshots = { path = "plugins/tauri-plugin-screenshots" }
+tauri-plugin-android-fs = "28"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+# setup 编排里直接用到 DatabaseConnection 类型与少量 EntityTrait 调用
+sea-orm = { version = "1", features = [
+    "sqlx-sqlite",
+    "runtime-tokio-rustls",
+    "macros",
+    "with-chrono",
+] }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = [
+    "env-filter",
+    "ansi",
+    "chrono",
+] }
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.13", features = [
+    "json",
+    "form",
+    "multipart",
+    "query",
+    "stream",
+    "rustls",
+    "system-proxy",
+], default-features = false }
+rustls = { version = "0.23", features = ["aws-lc-rs"] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+tauri-plugin-global-shortcut = "2"

@@ -1,0 +1,683 @@
+// stores/ui.ts
+import { defineStore } from "pinia";
+import { useSettingsStore } from "../settings";
+import { saveBgmState } from "../../../api/services/music";
+import { saveAmbientState } from "../../../api/services/ambient";
+import { i18n } from "@/locales";
+import { isWeatherEffect } from "@/components/game/standard/particles";
+
+// 通知类型
+export type NotificationType = "error" | "success" | "info" | "warning";
+export type ScheduleViewType =
+  | "schedule_groups"
+  | "schedule_details"
+  | "todo_groups"
+  | "todo_detail"
+  | "calendar";
+
+// 通知状态接口
+interface NotificationState {
+  isVisible: boolean;
+  type: NotificationType;
+  title: string;
+  message: string;
+  avatarUrl: string;
+  duration: number;
+}
+
+interface UIState {
+  showCharacterTitle: string;
+  showCharacterSubtitle: string;
+  showCharacterEmotion: string;
+  showCharacterLine: string;
+  showCharacterMotionText: string;
+  showPlayerHintLine: string;
+  showCharacterThinkLine: string;
+  showSettings: boolean;
+  currentSettingsTab: string;
+  /** 高级设置内的子标签（menu / llm / tts / other / tools） */
+  advanceTab: string;
+
+  currentBackgroundTransition: number;
+  currentPresentPic: string;
+  currentPresentPicScale: number;
+  currentBackgroundMusic: string;
+  bgMusicMode: "loop-list" | "loop-single" | "random";
+  bgMusicPaused: boolean;
+  bgMusicStoped: boolean;
+  /** 背景音乐播放速度倍率（1.0 原速），由剧本 music 事件的 playbackSpeed 设置 */
+  bgMusicPlaybackRate: number;
+
+  currentSoundEffect: string;
+  currentAvatarAudio: string;
+  autoMode: boolean;
+
+  // 环境音轨道列表（多轨并行，最多8轨）
+  ambientTracks: Array<{
+    id: string; // 唯一标识（基于时间戳+随机数）
+    src: string; // 音频文件URL
+    name?: string; // 显示名称（可选，回退到从路径推断）
+    volume: number; // 单轨音量 0-100
+    loop: boolean; // 是否循环
+    paused?: boolean; // 是否暂停
+    fade?: boolean; // 是否启用淡入淡出
+  }>;
+
+  // 视口响应式追踪（全局唯一 resize 监听，组件直接读值）
+  viewportWidth: number;
+  viewportHeight: number;
+
+  // 刘海屏安全区（px，由 CSS env() 或原生注入的变量提供）
+  safeAreaInsetTop: number;
+  safeAreaInsetBottom: number;
+  safeAreaInsetLeft: number;
+  safeAreaInsetRight: number;
+
+  // Schedule 相关状态
+  scheduleView: string;
+
+  // Notification 相关状态
+  notification: NotificationState;
+  tipsMap: Record<string, { title: string; message: string }>;
+  tipsAvailable: boolean;
+
+  // 背景音乐结束时间戳，用于触发音乐切换
+  _musicEndTime: number;
+}
+
+// 默认 avatar
+const DEFAULT_AVATAR = "/characters/诺一钦灵/头像.png";
+
+// 防抖相关
+const notificationDebounceMap = new Map<string, number>();
+const DEBOUNCE_MS_NETWORK = 10000; // "未注明的错误" 10秒
+const DEBOUNCE_MS_DEFAULT = 3000; // 其他 3秒
+
+let hideTimer: number | null = null;
+
+export const useUIStore = defineStore("ui", {
+  state: (): UIState => ({
+    showCharacterTitle: "Lovely You",
+    showCharacterSubtitle: "Bilibili",
+    showCharacterEmotion: "",
+    showCharacterLine: "",
+    showCharacterMotionText: "",
+    showPlayerHintLine: "",
+    showCharacterThinkLine: "Ling Ling Thinking...",
+    showSettings: false,
+    currentSettingsTab: "text",
+    advanceTab: "menu",
+    currentBackgroundTransition: 300,
+    currentPresentPic: "",
+    currentPresentPicScale: 1,
+
+    currentBackgroundMusic: "None",
+    bgMusicMode: "loop-single",
+    bgMusicPaused: false,
+    bgMusicStoped: false,
+    bgMusicPlaybackRate: 1,
+
+    currentSoundEffect: "None",
+    currentAvatarAudio: "None",
+    autoMode: false,
+
+    // 环境音轨道列表初始值
+    ambientTracks: [],
+
+    // 视口响应式追踪
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+
+    // 刘海屏安全区（会在 initUIStore 中从 CSS 变量同步）
+    safeAreaInsetTop: 0,
+    safeAreaInsetBottom: 0,
+    safeAreaInsetLeft: 0,
+    safeAreaInsetRight: 0,
+
+    // Schedule 相关状态
+    scheduleView: "schedule_groups",
+
+    // Notification 初始状态
+    notification: {
+      isVisible: false,
+      type: "info",
+      title: "",
+      message: "",
+      avatarUrl: DEFAULT_AVATAR,
+      duration: 3000,
+    },
+    tipsMap: {},
+    tipsAvailable: false,
+
+    // 背景音乐结束时间戳
+    _musicEndTime: 0,
+  }),
+
+  getters: {
+    currentBackground(): string {
+      return useSettingsStore().currentBackground;
+    },
+    // 从 settings store 获取设置值（向后兼容）
+    typeWriterSpeed(): number {
+      return useSettingsStore().textSpeed;
+    },
+    enableChatEffectSound(): boolean {
+      return useSettingsStore().chatEffectSound;
+    },
+    currentBackgroundEffect(): string {
+      return useSettingsStore().backgroundEffect;
+    },
+    currentWeatherEffect(): string {
+      return useSettingsStore().weatherEffect;
+    },
+    characterVolume(): number {
+      return useSettingsStore().characterVolume;
+    },
+    backgroundVolume(): number {
+      return useSettingsStore().backgroundVolume;
+    },
+    bubbleVolume(): number {
+      return useSettingsStore().bubbleVolume;
+    },
+    achievementVolume(): number {
+      return useSettingsStore().achievementVolume;
+    },
+    // 从 settings store 获取全局环境音音量
+    ambientVolume(): number {
+      return useSettingsStore().ambientVolume;
+    },
+    // 角色文件夹（从 settings store 获取）
+    currentCharacterFolder(): string {
+      return useSettingsStore().characterFolder;
+    },
+    // 视口宽高比
+    aspectRatio(): number {
+      return this.viewportWidth / this.viewportHeight;
+    },
+    // 窄屏判断（竖屏 / 移动端）
+    isNarrowScreen(): boolean {
+      return this.aspectRatio < 1.0;
+    },
+    // 小屏/低分辨率判断（手机横竖屏、小窗口均覆盖）
+    isSmallScreen(): boolean {
+      return Math.min(this.viewportWidth, this.viewportHeight) < 500;
+    },
+  },
+
+  actions: {
+    setCurrentBackground(background: string) {
+      useSettingsStore().setCurrentBackground(background);
+    },
+    // 设置氛围特效（写入 settings store）
+    setBackgroundEffect(effect: string) {
+      useSettingsStore().setBackgroundEffect(effect);
+    },
+    // 设置天气特效（写入 settings store）
+    setWeatherEffect(effect: string) {
+      useSettingsStore().setWeatherEffect(effect);
+    },
+    /**
+     * 把「一个特效值」落到它该去的那一层，并清空另一层。
+     *
+     * 剧本事件与存档都只认一个特效值（Rust 侧 background_effect 是单值），
+     * 落到哪一层由注册表决定。落到某一层时清空另一层，是为了让「剧本说现在是雷阵雨」
+     * 与原来的单值语义完全一致，不会叠出作者没写过的组合。
+     * 两层的并存只发生在设置页 —— 那是玩家自己的长期偏好，直接调上面两个 action。
+     */
+    applyEffectValue(effect: string) {
+      const settings = useSettingsStore();
+      if (isWeatherEffect(effect)) {
+        settings.setWeatherEffect(effect);
+        settings.setBackgroundEffect("None");
+      } else {
+        settings.setBackgroundEffect(effect);
+        settings.setWeatherEffect("None");
+      }
+    },
+    // 设置对话音效开关（写入 settings store）
+    setEnableChatEffectSound(enabled: boolean) {
+      useSettingsStore().setChatEffectSound(enabled);
+    },
+
+    toggleSettings(show: boolean) {
+      this.showSettings = show;
+    },
+    setSettingsTab(tab: string) {
+      this.currentSettingsTab = tab;
+    },
+
+    // ========== Notification Actions ==========
+
+    /**
+     * 加载角色专属提示
+     */
+    async loadCharacterTips(folderName: string): Promise<boolean> {
+      // 清空之前的提示
+      this.tipsMap = {};
+      this.tipsAvailable = false;
+
+      // 保存到 settings store（自动持久化）
+      useSettingsStore().setCharacterFolder(folderName);
+
+      // 尝试加载指定角色的 tips
+      await this._loadTipsFromFolder(folderName);
+
+      return this.tipsAvailable;
+    },
+
+    /**
+     * 从指定文件夹加载 tips（内部方法）
+     */
+    async _loadTipsFromFolder(folderName: string): Promise<boolean> {
+      try {
+        const response = await fetch(`/characters/${folderName}/tips.txt`);
+
+        if (!response.ok) {
+          console.log(`⚠️ 角色 ${folderName} 没有 tips.txt`);
+          return false;
+        }
+
+        const text = await response.text();
+        const newTipsMap: Record<string, { title: string; message: string }> = {};
+
+        // 解析 txt 格式：代码 = 标题 | 内容
+        text.split("\n").forEach((line) => {
+          line = line.trim();
+          if (!line || line.startsWith("#")) return;
+
+          const [code, content] = line.split("=").map((s) => s.trim());
+          if (code && content) {
+            const [title, message] = content.split("|").map((s) => s.trim());
+            if (title && message) {
+              newTipsMap[code] = { title, message };
+            }
+          }
+        });
+
+        // 只有有内容才算加载成功
+        if (Object.keys(newTipsMap).length === 0) {
+          console.log(`⚠️ 角色 ${folderName} 的 tips.txt 为空`);
+          return false;
+        }
+
+        this.tipsMap = newTipsMap;
+        this.tipsAvailable = true;
+        console.log(`✅ 已加载角色 ${folderName} 的提示:`, this.tipsMap);
+        return true;
+      } catch (error) {
+        console.log(`⚠️ 加载角色 ${folderName} 的提示失败:`, error);
+        return false;
+      }
+    },
+
+    /**
+     * 显示通知（通用方法）
+     */
+    showNotification(options: {
+      type?: NotificationType;
+      title?: string;
+      message?: string;
+      avatarUrl?: string;
+      duration?: number;
+      skipTipsCheck?: boolean; // 跳过 tips 检查（用于网络错误等必须显示的通知）
+    }) {
+      const {
+        type = "info",
+        title = "",
+        message = "",
+        avatarUrl,
+        duration = 3000,
+        skipTipsCheck = false,
+      } = options;
+
+      // 如果当前角色没有配置 tips.txt，且没有跳过检查，则不显示弹窗
+      if (!this.tipsAvailable && !skipTipsCheck) {
+        console.log("跳过弹窗：当前角色没有配置 tips.txt");
+        return;
+      }
+
+      const now = Date.now();
+      const notificationKey = `${title}:${message}`;
+
+      // 判断是否为"未注明的错误"，使用更长的防抖时间
+      const isDefaultError = title === "未注明的错误";
+      const debounceMs = isDefaultError ? DEBOUNCE_MS_NETWORK : DEBOUNCE_MS_DEFAULT;
+
+      // 防抖检查
+      const lastTime = notificationDebounceMap.get(notificationKey) || 0;
+      if (now - lastTime < debounceMs) {
+        console.log(`跳过重复通知：${title}（${debounceMs / 1000}秒内已显示过）`);
+        return;
+      }
+
+      notificationDebounceMap.set(notificationKey, now);
+
+      // 清除之前的定时器
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+      }
+
+      // 更新通知状态
+      this.notification = {
+        isVisible: true,
+        type,
+        title,
+        message,
+        avatarUrl: avatarUrl || `/characters/${this.currentCharacterFolder}/头像.png`,
+        duration,
+      };
+
+      // 自动隐藏
+      if (duration > 0) {
+        hideTimer = window.setTimeout(() => {
+          this.hideNotification();
+        }, duration);
+      }
+    },
+
+    /**
+     * 隐藏通知
+     */
+    hideNotification() {
+      this.notification.isVisible = false;
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    },
+
+    /**
+     * 显示错误通知（支持错误代码自动翻译）
+     */
+    showError(options: {
+      errorCode?: string;
+      statusCode?: number;
+      title?: string;
+      message?: string;
+      avatarUrl?: string;
+      duration?: number;
+    }) {
+      const { errorCode, statusCode, title, message, avatarUrl, duration = 3000 } = options;
+
+      let finalTitle = title || i18n.global.t("stores.notification.errorTitle");
+      let finalMessage = message || i18n.global.t("stores.notification.unknownError");
+
+      // 优先使用错误代码查询
+      if (errorCode) {
+        // LLM 错误的内置 i18n 文案（stores.llmErrors.*），优先于角色 tips
+        const llmMsg = i18n.global.te(`stores.llmErrors.${errorCode}`)
+          ? i18n.global.t(`stores.llmErrors.${errorCode}`)
+          : "";
+        const tip = this.tipsMap[errorCode] ||
+          this.tipsMap["default_error"] || {
+            title: i18n.global.t("stores.notification.errorTitle"),
+            message: i18n.global.t("stores.notification.unknownError"),
+          };
+        // 显式 message / 内置 LLM i18n 文案 → 标题用通用「错误」，避免「未注明的错误」
+        finalTitle =
+          title ||
+          (message || llmMsg ? i18n.global.t("stores.notification.errorTitle") : tip.title);
+        finalMessage = message || llmMsg || tip.message;
+      }
+      // 其次使用 HTTP 状态码
+      else if (statusCode) {
+        const code = statusCode.toString();
+        const httpCode = code + "_http";
+        const tip = this.tipsMap[httpCode] || this.tipsMap[code];
+        if (tip) {
+          finalTitle = title || tip.title;
+          finalMessage = message || tip.message;
+        }
+      }
+
+      // 网络错误必须显示，不受 tips 配置限制
+      const isNetworkError = errorCode === "network_error";
+
+      this.showNotification({
+        type: "error",
+        title: finalTitle,
+        message: finalMessage,
+        avatarUrl,
+        duration,
+        skipTipsCheck: isNetworkError,
+      });
+    },
+
+    /**
+     * 显示成功通知
+     */
+    showSuccess(options: {
+      title?: string;
+      message?: string;
+      avatarUrl?: string;
+      duration?: number;
+    }) {
+      this.showNotification({ ...options, type: "success" });
+    },
+
+    /**
+     * 显示信息通知
+     */
+    showInfo(options: { title?: string; message?: string; avatarUrl?: string; duration?: number }) {
+      this.showNotification({ ...options, type: "info" });
+    },
+
+    /**
+     * 显示警告通知
+     */
+    showWarning(options: {
+      title?: string;
+      message?: string;
+      avatarUrl?: string;
+      duration?: number;
+    }) {
+      this.showNotification({ ...options, type: "warning" });
+    },
+
+    /**
+     * 获取角色切换提示
+     */
+    getSwitchTip(type: "success" | "fail") {
+      const key = type === "success" ? "switch_success" : "switch_fail";
+      return (
+        this.tipsMap[key] || {
+          title:
+            type === "success"
+              ? i18n.global.t("stores.notification.switchSuccessTitle")
+              : i18n.global.t("stores.notification.switchFailTitle"),
+          message:
+            type === "success"
+              ? i18n.global.t("stores.notification.switchSuccessMessage")
+              : i18n.global.t("stores.notification.switchFailMessage"),
+        }
+      );
+    },
+
+    /**
+     * 获取角色刷新提示
+     */
+    getRefreshTip(type: "success" | "fail") {
+      const key = type === "success" ? "refresh_success" : "refresh_fail";
+      return (
+        this.tipsMap[key] || {
+          title:
+            type === "success"
+              ? i18n.global.t("stores.notification.refreshSuccessTitle")
+              : i18n.global.t("stores.notification.refreshFailTitle"),
+          message:
+            type === "success"
+              ? i18n.global.t("stores.notification.refreshSuccessMessage")
+              : i18n.global.t("stores.notification.refreshFailMessage"),
+        }
+      );
+    },
+
+    /**
+     * 处理背景音乐结束事件
+     * 当背景音乐播放结束时调用此方法，通知相关组件处理音乐切换
+     */
+    handleBackgroundMusicEnd() {
+      // 触发一个内部状态变化，让SettingsSound组件能够监听到
+      // 使用时间戳确保每次都能触发watch
+      this._musicEndTime = Date.now();
+    },
+
+    // ========== 环境音轨道管理 ==========
+
+    /**
+     * 添加环境音轨道
+     * 如果已存在相同 src 的轨道则替换，超出上限时移除最早的
+     */
+    addAmbientTrack(track: {
+      src: string;
+      volume: number;
+      loop: boolean;
+      name?: string;
+      paused?: boolean;
+      fade?: boolean;
+    }) {
+      const MAX_AMBIENT_TRACKS = 8;
+      // 提取文件名用于去重（剧本 Assets 和手动导入可能路径不同但文件相同）
+      const getFileName = (src: string) => {
+        const parts = src.replace(/\\/g, "/").split("/");
+        return parts.pop() || src;
+      };
+      const newFileName = getFileName(track.src);
+      // 按完整路径或文件名去重，剧本指令优先覆盖手动导入
+      this.ambientTracks = this.ambientTracks.filter(
+        (t) => t.src !== track.src && getFileName(t.src) !== newFileName,
+      );
+      // 超出上限时移除最早的
+      if (this.ambientTracks.length >= MAX_AMBIENT_TRACKS) {
+        this.ambientTracks.shift();
+      }
+      const id = `ambient_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      this.ambientTracks.push({
+        id,
+        ...track,
+        paused: track.paused ?? false,
+        fade: track.fade ?? true,
+      });
+    },
+
+    /**
+     * 更新指定环境音轨道的音量
+     */
+    updateAmbientTrackVolume(id: string, volume: number) {
+      const track = this.ambientTracks.find((t) => t.id === id);
+      if (track) track.volume = volume;
+    },
+
+    /**
+     * 切换环境音轨道暂停状态
+     */
+    toggleAmbientTrackPause(id: string) {
+      const track = this.ambientTracks.find((t) => t.id === id);
+      if (track) track.paused = !track.paused;
+    },
+
+    /**
+     * 移除指定环境音轨道（通过ID）
+     */
+    removeAmbientTrack(id: string) {
+      this.ambientTracks = this.ambientTracks.filter((t) => t.id !== id);
+    },
+
+    /**
+     * 清除环境音轨道
+     * 传入 targetSrc 时按文件名匹配清除指定轨道，否则清除全部
+     */
+    clearAmbientTracks(targetSrc?: string) {
+      if (targetSrc) {
+        // 按文件名匹配清除指定轨道
+        this.ambientTracks = this.ambientTracks.filter(
+          (t) => !t.src.endsWith(targetSrc) && !t.src.includes(targetSrc),
+        );
+      } else {
+        this.ambientTracks = [];
+      }
+    },
+
+    // ========== 会话状态持久化 ==========
+
+    /** 持久化 BGM 状态（防抖 500ms），由 $subscribe 自动触发 */
+    persistBgmState() {
+      if (bgmSaveTimer) clearTimeout(bgmSaveTimer);
+      bgmSaveTimer = setTimeout(() => {
+        saveBgmState(this.currentBackgroundMusic, this.bgMusicPaused, this.bgMusicMode);
+      }, 500);
+    },
+
+    /** 持久化环境音轨道（防抖 500ms），由 $subscribe 自动触发 */
+    persistAmbientState() {
+      if (ambientSaveTimer) clearTimeout(ambientSaveTimer);
+      ambientSaveTimer = setTimeout(() => {
+        saveAmbientState(JSON.stringify(this.ambientTracks));
+      }, 500);
+    },
+  },
+});
+
+// 标记是否已初始化
+let initialized = false;
+
+// 防抖定时器（模块级，避免污染 store state）
+let bgmSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let ambientSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+// 初始化函数：在首次使用时调用
+export function initUIStore() {
+  if (initialized) return;
+  initialized = true;
+
+  const store = useUIStore();
+
+  // 从 CSS 变量同步安全区值（由 Android 原生 / iOS env() 注入）
+  function syncSafeArea() {
+    const style = getComputedStyle(document.documentElement);
+    const parsePx = (val: string) => Math.round(parseFloat(val) || 0);
+    store.safeAreaInsetTop = parsePx(style.getPropertyValue("--safe-area-inset-top"));
+    store.safeAreaInsetBottom = parsePx(style.getPropertyValue("--safe-area-inset-bottom"));
+    store.safeAreaInsetLeft = parsePx(style.getPropertyValue("--safe-area-inset-left"));
+    store.safeAreaInsetRight = parsePx(style.getPropertyValue("--safe-area-inset-right"));
+  }
+  syncSafeArea();
+
+  // 全局唯一 resize 监听：更新视口尺寸供所有组件复用
+  window.addEventListener("resize", () => {
+    store.viewportWidth = window.innerWidth;
+    store.viewportHeight = window.innerHeight;
+    syncSafeArea();
+  });
+
+  const settingsStore = useSettingsStore();
+  // 使用 getter 获取角色文件夹
+  store.loadCharacterTips(store.currentCharacterFolder);
+
+  // 订阅 BGM / 环境音状态变更，自动持久化到 settings.json。
+  // 注意：Pinia 的 mutation.events 仅在 Vue DevTools 激活时填充，
+  // 所以不能依赖它来判断变更。这里直接用前后值比较，每次 mutation
+  // 都检查，实际写盘由 500ms 防抖控制。
+  let prevBgmTrack = store.currentBackgroundMusic;
+  let prevBgmPaused = store.bgMusicPaused;
+  let prevBgmMode = store.bgMusicMode;
+  let prevAmbientJson = JSON.stringify(store.ambientTracks);
+
+  store.$subscribe((_mutation, state) => {
+    if (
+      state.currentBackgroundMusic !== prevBgmTrack ||
+      state.bgMusicPaused !== prevBgmPaused ||
+      state.bgMusicMode !== prevBgmMode
+    ) {
+      store.persistBgmState();
+      prevBgmTrack = state.currentBackgroundMusic;
+      prevBgmPaused = state.bgMusicPaused;
+      prevBgmMode = state.bgMusicMode;
+    }
+    const curAmbientJson = JSON.stringify(state.ambientTracks);
+    if (curAmbientJson !== prevAmbientJson) {
+      store.persistAmbientState();
+      prevAmbientJson = curAmbientJson;
+    }
+  });
+}

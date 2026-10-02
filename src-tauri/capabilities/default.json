@@ -1,0 +1,36 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": ["main", "settings", "log", "screenshot-overlay", "cast", "pet_bubble"],
+  "permissions": [
+    "core:default",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:window:allow-hide",
+    "core:window:allow-minimize",
+    "core:window:allow-unminimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-set-focus",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-inner-position",
+    "core:window:allow-inner-size",
+    "opener:default",
+    "dialog:allow-open",
+    "screenshots:default",
+    "fs:default",
+    "dialog:default",
+    "notification:default",
+    "android-fs:allow-get-name",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "$RESOURCE/**" }, { "path": "$APPCACHE/**" }, { "path": "$APPDATA/**" }]
+    }
+  ]
+}

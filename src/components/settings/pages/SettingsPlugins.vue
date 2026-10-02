@@ -1,0 +1,534 @@
+<template>
+  <MenuPage>
+    <MenuItem :title="$t('settings.plugins.title')">
+      <template #header>
+        <Icon icon="package" :size="20" />
+      </template>
+
+      <!-- 错误提示 -->
+      <div
+        v-if="error"
+        class="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm text-red-200"
+      >
+        {{ error }}
+      </div>
+
+      <div class="space-y-4">
+        <div
+          v-for="plugin in plugins"
+          :key="plugin.id"
+          class="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md"
+        >
+          <!-- 头部：名称 + 版本 + 开关 -->
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <h3 class="truncate text-base font-bold text-white">{{ plugin.name }}</h3>
+                <span
+                  class="shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-white/60"
+                >
+                  v{{ plugin.version }}
+                </span>
+              </div>
+              <p class="mt-0.5 text-xs text-white/60">{{ plugin.description }}</p>
+            </div>
+            <Toggle
+              class="shrink-0"
+              :checked="plugin.enabled"
+              :disabled="!!plugin.error"
+              @change="(v: boolean) => toggle(plugin, v)"
+            />
+          </div>
+
+          <!-- 错误信息 -->
+          <p v-if="plugin.error" class="mt-2 text-xs text-red-300">{{ plugin.error }}</p>
+
+          <!-- 启动阶段未能运行的原因（前置未就绪 / 启动入口失败，插件已被自动禁用） -->
+          <p v-if="plugin.startup_error" class="mt-2 text-xs whitespace-pre-line text-amber-300">
+            {{ formatPluginError(plugin.startup_error) }}
+          </p>
+
+          <!-- 前置插件：未满足时后端会拒绝启用 -->
+          <p v-if="plugin.depends_on.length" class="mt-2 text-xs text-white/50">
+            {{ $t("settings.plugins.dependsOn") }}：{{ plugin.depends_on.join("、") }}
+          </p>
+
+          <!-- 工具列表 -->
+          <div v-if="plugin.tools.length" class="mt-3 flex flex-wrap gap-1.5">
+            <span
+              v-for="tool in plugin.tools"
+              :key="tool"
+              class="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[11px] text-white/70"
+            >
+              {{ tool }}
+            </span>
+          </div>
+
+          <!-- 声明的 WebSocket 连接（含实时状态） -->
+          <div v-if="plugin.ws.length" class="mt-3">
+            <p class="mb-1 text-[11px] text-white/50">{{ $t("settings.plugins.wsTitle") }}</p>
+            <div class="flex flex-wrap gap-1.5">
+              <span
+                v-for="conn in plugin.ws"
+                :key="conn.id"
+                class="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[11px] text-white/70"
+                :title="`${conn.mode} · ${wsStateLabel(conn.state)}`"
+              >
+                <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="wsStateDot(conn.state)" />
+                {{ conn.id }}
+              </span>
+            </div>
+          </div>
+
+          <!-- 携带资源区 -->
+          <div v-if="plugin.resources.length" class="mt-3">
+            <button
+              type="button"
+              class="flex items-center gap-1.5 text-[11px] text-white/60 transition-colors hover:text-white/90"
+              @click="toggleResourcePanel(plugin.id)"
+            >
+              <ChevronDown
+                :size="13"
+                class="transition-transform"
+                :class="expandedResources[plugin.id] ? '' : '-rotate-90'"
+              />
+              {{ $t("settings.plugins.resourcesTitle") }}（{{
+                plugin.resources.map((k) => kindLabel(k as ResourceKind)).join(" / ")
+              }}）
+            </button>
+
+            <div v-if="expandedResources[plugin.id]" class="mt-2 space-y-1.5">
+              <p v-if="!resourcesOf(plugin.id).length" class="pl-4 text-[11px] text-white/40">
+                {{ $t("settings.plugins.resourcesEmpty") }}
+              </p>
+              <div
+                v-for="res in resourcesOf(plugin.id)"
+                :key="res.kind + '/' + res.key"
+                class="flex items-center gap-2 pl-4 text-xs"
+              >
+                <span
+                  class="shrink-0 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/50"
+                >
+                  {{ kindLabel(res.kind) }}
+                </span>
+                <span class="min-w-0 flex-1 truncate text-white/80">{{ res.name }}</span>
+                <span
+                  v-if="res.conflict"
+                  class="shrink-0 text-[10px] text-amber-300"
+                  :title="$t('settings.plugins.resourceConflictHint')"
+                >
+                  {{ $t("settings.plugins.resourceConflict") }}
+                </span>
+                <span v-else-if="res.hidden" class="shrink-0 text-[10px] text-white/40">
+                  {{ $t("settings.plugins.resourceHidden") }}
+                </span>
+
+                <template v-if="res.hidden">
+                  <button
+                    type="button"
+                    class="shrink-0 rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/70 transition-colors hover:bg-white/10"
+                    @click="restoreResource(plugin.id, res)"
+                  >
+                    {{ $t("settings.plugins.resourceRestore") }}
+                  </button>
+                </template>
+                <template v-else>
+                  <button
+                    v-if="!res.conflict"
+                    type="button"
+                    class="bg-brand/70 hover:bg-brand shrink-0 rounded-md px-2 py-0.5 text-[11px] text-white transition-colors"
+                    :title="$t('settings.plugins.resourceKeepHint')"
+                    @click="keepResource(plugin.id, res)"
+                  >
+                    {{ $t("settings.plugins.resourceKeep") }}
+                  </button>
+                  <button
+                    type="button"
+                    class="shrink-0 rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/70 transition-colors hover:bg-white/10"
+                    @click="hideResource(plugin.id, res)"
+                  >
+                    {{ $t("settings.plugins.resourceHide") }}
+                  </button>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <!-- 环境变量提示 -->
+          <div v-if="plugin.env.length" class="mt-3">
+            <p class="mb-1 text-[11px] text-white/50">{{ $t("settings.plugins.envHint") }}</p>
+            <div v-for="env in plugin.env" :key="env.key" class="flex items-center gap-2">
+              <span class="font-mono text-xs text-white/80">{{ env.key }}</span>
+              <span
+                class="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/50"
+              >
+                {{ $t("settings.plugins.envFromProcess") }}
+              </span>
+            </div>
+          </div>
+
+          <!-- 配置表单 -->
+          <div v-if="plugin.config_schema.length" class="mt-3 space-y-2.5">
+            <div
+              v-for="field in plugin.config_schema"
+              :key="field.key"
+              class="flex items-start gap-2"
+            >
+              <label class="w-28 shrink-0 pt-1.5 text-xs text-white/70">{{ field.label }}</label>
+              <div class="min-w-0 flex-1">
+                <input
+                  v-if="field.kind === 'boolean'"
+                  type="checkbox"
+                  class="accent-brand"
+                  :checked="(formState[plugin.id]?.[field.key] as boolean) === true"
+                  @change="
+                    onBoolChange(plugin, field.key, ($event.target as HTMLInputElement).checked)
+                  "
+                />
+                <input
+                  v-else
+                  :type="
+                    field.kind === 'secret'
+                      ? 'password'
+                      : field.kind === 'number'
+                        ? 'number'
+                        : 'text'
+                  "
+                  class="focus:border-brand/60 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:outline-none"
+                  :value="formState[plugin.id]?.[field.key] ?? ''"
+                  @input="onInput(plugin, field.key, ($event.target as HTMLInputElement).value)"
+                />
+                <!-- 字段说明：告诉用户这里该填什么、去哪儿拿 -->
+                <p
+                  v-if="field.hint"
+                  class="mt-1 text-[11px] leading-relaxed whitespace-pre-line text-white/45"
+                >
+                  {{ field.hint }}
+                </p>
+              </div>
+            </div>
+            <div class="flex justify-end">
+              <button
+                type="button"
+                class="bg-brand/70 hover:bg-brand rounded-lg px-3 py-1.5 text-xs text-white transition-colors"
+                :disabled="saving"
+                @click="saveConfig(plugin)"
+              >
+                {{ $t("settings.plugins.saveConfig") }}
+              </button>
+            </div>
+          </div>
+
+          <!-- 删除 -->
+          <div class="mt-3 flex justify-end">
+            <button
+              type="button"
+              class="flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-300 transition-colors hover:bg-red-500/20"
+              @click="removePlugin(plugin)"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M3 6h18" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                <line x1="10" x2="10" y1="11" y2="17" />
+                <line x1="14" x2="14" y1="11" y2="17" />
+              </svg>
+              {{ $t("settings.plugins.delete") }}
+            </button>
+          </div>
+        </div>
+
+        <p v-if="!plugins.length" class="py-8 text-center text-sm text-white/50">
+          {{ $t("settings.plugins.empty") }}
+        </p>
+      </div>
+    </MenuItem>
+
+    <PluginArchiveProgress />
+
+    <MenuItem :title="$t('settings.plugins.import.title')" size="small">
+      <template #header>
+        <PackageOpen :size="20" />
+      </template>
+      <div class="space-y-2">
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs font-medium text-white/60">{{
+            $t("settings.plugins.import.conflictPolicy")
+          }}</label>
+          <select
+            v-model="conflictPolicy"
+            class="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white transition-all duration-200 outline-none"
+          >
+            <option value="overwrite">{{ $t("settings.plugins.import.policyOverwrite") }}</option>
+            <option value="abort">{{ $t("settings.plugins.import.policyAbort") }}</option>
+          </select>
+        </div>
+        <Button type="big" @click="handleImport">{{ $t("settings.plugins.import.button") }}</Button>
+        <p class="text-[11px] leading-relaxed text-white/40">
+          {{ $t("settings.plugins.import.hint") }}
+        </p>
+      </div>
+    </MenuItem>
+  </MenuPage>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted, reactive } from "vue";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { ChevronDown, PackageOpen } from "lucide-vue-next";
+import { MenuPage, MenuItem } from "../../ui";
+import { Button } from "../../base";
+import Icon from "@/components/base/widget/Icon.vue";
+import { Toggle } from "@/components/base";
+import { i18n } from "@/locales";
+import { useDialogStore } from "@/stores/modules/ui/dialog";
+import PluginArchiveProgress from "@/components/ui/PluginArchiveProgress.vue";
+import { usePluginImport } from "@/composables/usePluginImport";
+import type { PluginConflictPolicy } from "@/api/services/plugins";
+import {
+  listPlugins,
+  setPluginEnabled,
+  savePluginConfig,
+  deletePlugin,
+  pluginResources,
+  pluginResourceHide,
+  pluginResourceRestore,
+  pluginResourceKeep,
+  type PluginInfo,
+  type PluginResourceEntry,
+  type ResourceKind,
+  type WsState,
+} from "@/api/services/plugins";
+
+const plugins = ref<PluginInfo[]>([]);
+const error = ref("");
+const saving = ref(false);
+const formState = reactive<Record<string, Record<string, unknown>>>({});
+const dialogStore = useDialogStore();
+
+/**
+ * 后端错误可能是纯错误码（`PLUGIN_MISSING_DEPENDENCY`），也可能是
+ * 「错误码|补充信息」（`PLUGIN_INACTIVE_DEPENDENCY|base_lib`）。
+ * 查表翻译错误码，补充信息附在下一行；查不到则原样显示（兼容其它字符串错误）。
+ */
+const formatPluginError = (raw: string): string => {
+  const [code, ...rest] = raw.split("|");
+  const detail = rest.join("|").trim();
+  const base = i18n.global.t(`settings.plugins.errors.${code}`, code);
+  return detail ? `${base}\n${detail}` : base;
+};
+
+/** 用弹窗而不是内联提示的错误码：都是「用户主动启用被拒」，需要解释该先做什么。 */
+const DIALOG_ERROR_CODES = new Set([
+  "PLUGIN_MISSING_DEPENDENCY",
+  "PLUGIN_INACTIVE_DEPENDENCY",
+  "PLUGIN_DEPENDENCY_CYCLE",
+]);
+
+// 每个插件的资源条目 + 展开状态（懒加载：只在展开或声明资源时拉取）
+const resourceMap = reactive<Record<string, PluginResourceEntry[]>>({});
+const expandedResources = reactive<Record<string, boolean>>({});
+
+const resourcesOf = (id: string): PluginResourceEntry[] => resourceMap[id] ?? [];
+
+const kindLabel = (kind: ResourceKind): string =>
+  i18n.global.t(`settings.plugins.resourceKinds.${kind}`);
+
+const WS_STATE_DOT: Record<WsState, string> = {
+  connected: "bg-emerald-400",
+  connecting: "bg-amber-400 animate-pulse",
+  error: "bg-red-400",
+  stopped: "bg-white/30",
+};
+
+/** WS 连接状态 → 小圆点的颜色类。 */
+const wsStateDot = (state: WsState): string => WS_STATE_DOT[state] ?? "bg-white/30";
+
+/** WS 连接状态 → 展示文案。 */
+const wsStateLabel = (state: WsState): string => i18n.global.t(`settings.plugins.wsState.${state}`);
+
+const loadResources = async (id: string) => {
+  try {
+    resourceMap[id] = await pluginResources(id);
+  } catch (e) {
+    error.value = String(e);
+  }
+};
+
+const toggleResourcePanel = async (id: string) => {
+  expandedResources[id] = !expandedResources[id];
+  if (expandedResources[id] && !resourceMap[id]) {
+    await loadResources(id);
+  }
+};
+
+const refreshAfter = async (id: string) => {
+  await loadResources(id);
+  await load();
+};
+
+const hideResource = async (id: string, res: PluginResourceEntry) => {
+  try {
+    await pluginResourceHide(id, `${res.kind}/${res.key}`);
+    await refreshAfter(id);
+  } catch (e) {
+    error.value = String(e);
+  }
+};
+
+const restoreResource = async (id: string, res: PluginResourceEntry) => {
+  try {
+    await pluginResourceRestore(id, `${res.kind}/${res.key}`);
+    await refreshAfter(id);
+  } catch (e) {
+    error.value = String(e);
+  }
+};
+
+const keepResource = async (id: string, res: PluginResourceEntry) => {
+  const confirmed = await dialogStore.confirm(
+    i18n.global.t("settings.plugins.resourceKeepConfirm", {
+      name: res.name,
+      kind: kindLabel(res.kind),
+    }),
+  );
+  if (!confirmed) return;
+  try {
+    await pluginResourceKeep(id, `${res.kind}/${res.key}`);
+    await refreshAfter(id);
+  } catch (e) {
+    error.value = String(e);
+  }
+};
+
+const load = async () => {
+  try {
+    plugins.value = await listPlugins();
+    for (const plugin of plugins.value) {
+      if (!formState[plugin.id]) {
+        formState[plugin.id] = {};
+      }
+      // 声明了资源且面板已展开的，刷新条目
+      if (plugin.resources.length && expandedResources[plugin.id]) {
+        await loadResources(plugin.id);
+      }
+    }
+  } catch (e) {
+    error.value = String(e);
+  }
+};
+
+const toggle = async (plugin: PluginInfo, enabled: boolean) => {
+  if (plugin.error) return;
+  // 禁用会移除插件角色并级联删除其存档/记忆（重启用不恢复），破坏性操作前确认。
+  if (!enabled && plugin.resources.includes("characters")) {
+    const ok = await dialogStore.confirm(
+      i18n.global.t("settings.plugins.disableCharactersConfirm", { name: plugin.name }),
+    );
+    if (!ok) return;
+  }
+  try {
+    await setPluginEnabled(plugin.id, enabled);
+    plugin.enabled = enabled;
+    plugin.startup_error = null;
+    if (plugin.resources.length) {
+      await loadResources(plugin.id);
+    }
+  } catch (e) {
+    const raw = String(e);
+    // 前置插件没装 / 没启用 / 成环：用户主动启用被拒，弹窗说明该先做什么。
+    // 其余错误仍走页面顶部的内联提示。
+    if (DIALOG_ERROR_CODES.has(raw.split("|")[0])) {
+      await dialogStore.alert(
+        formatPluginError(raw),
+        i18n.global.t("settings.plugins.enableFailedTitle"),
+      );
+    } else {
+      error.value = raw;
+    }
+  }
+};
+
+const onInput = (plugin: PluginInfo, key: string, value: string) => {
+  formState[plugin.id][key] = value;
+};
+
+const onBoolChange = (plugin: PluginInfo, key: string, value: boolean) => {
+  formState[plugin.id][key] = value;
+};
+
+const saveConfig = async (plugin: PluginInfo) => {
+  saving.value = true;
+  try {
+    await savePluginConfig(plugin.id, formState[plugin.id] ?? {});
+  } catch (e) {
+    error.value = String(e);
+  } finally {
+    saving.value = false;
+  }
+};
+
+const removePlugin = async (plugin: PluginInfo) => {
+  const confirmed = await dialogStore.confirm(
+    i18n.global.t("settings.plugins.deleteConfirm", { name: plugin.name }),
+  );
+  if (!confirmed) return;
+  try {
+    await deletePlugin(plugin.id);
+    delete formState[plugin.id];
+    await load();
+  } catch (e) {
+    error.value = String(e);
+  }
+};
+
+// ===== 压缩包导入 =====
+
+const { store: importStore, pickAndImport } = usePluginImport();
+const conflictPolicy = ref<PluginConflictPolicy>("overwrite");
+
+const handleImport = async () => {
+  await pickAndImport(conflictPolicy.value);
+  const result = importStore.import.result as { plugin_id?: string } | null;
+  // 覆盖导入会换掉整套资源文件，丢弃该插件的资源缓存，避免展开时显示旧条目。
+  if (result?.plugin_id) {
+    delete resourceMap[result.plugin_id];
+    delete formState[result.plugin_id];
+  }
+  // 导入对话框关闭后（成功、失败或取消）都重新拉一次列表。
+  await load();
+};
+
+let unlistenAutoDisabled: UnlistenFn | null = null;
+
+onMounted(async () => {
+  load();
+  // 后端自动禁用插件（启动入口失败 / 前置未就绪 / 循环依赖）时同步 UI：
+  // 只改状态，让开关滑块自己动画关闭并显示原因；**不弹窗**——弹窗留给
+  // 用户主动启用被拒的场景，否则「刚点开又被推回去」还会再弹一次。
+  unlistenAutoDisabled = await listen<{ id: string; reason: string }>(
+    "plugin:auto-disabled",
+    (event) => {
+      const target = plugins.value.find((p) => p.id === event.payload.id);
+      if (!target) return;
+      target.enabled = false;
+      target.startup_error = event.payload.reason;
+    },
+  );
+});
+
+onUnmounted(() => {
+  unlistenAutoDisabled?.();
+  unlistenAutoDisabled = null;
+});
+</script>

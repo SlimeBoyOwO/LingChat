@@ -1,0 +1,195 @@
+//! 前端消息响应模型。与旧版 `ling_chat.core.schemas.responses` 对应。
+//!
+//! Tauri 版通过 `window.emit("ai:reply", payload)` 发送给前端。序列化字段
+//! 保持与旧版一致（camelCase），使前端事件 handler 可以直接复用。
+
+use serde::{Deserialize, Serialize};
+
+// ============================================================
+// 事件名（供 events.rs 使用）
+// ============================================================
+
+pub mod event_names {
+    /// AI 回复流（每个句子一个事件，最后一个 `isFinal=true`）。
+    pub const AI_REPLY: &str = "ai:reply";
+    /// AI 思考状态切换。
+    pub const AI_THINKING: &str = "ai:thinking";
+    /// AI 思考链字数进度（流式统计，仅在启用思考链时触发）。
+    pub const AI_THINKING_PROGRESS: &str = "ai:thinking_progress";
+    /// TTS 语音缓存（孤立文件）清理结果。
+    pub const TTS_CLEANUP: &str = "tts:cleanup";
+    /// AI 侧错误（鉴权失败 / 网络错误等）。
+    pub const AI_ERROR: &str = "ai:error";
+    /// 工具调用结果（成功/失败、工具名、参数摘要）。
+    pub const AI_TOOL_CALL: &str = "ai:tool_call";
+    /// 工具执行生命周期（started/finished），供顶栏显示实时调用状态。
+    pub const AI_TOOL_ACTIVITY: &str = "ai:tool_activity";
+    /// 工具调用参数的流式生成进度（工具名 + 已生成字符数），供顶栏实时显示。
+    pub const AI_TOOL_CALL_PROGRESS: &str = "ai:tool_call_progress";
+    /// 一轮 LLM 流结束、参数生成阶段收尾：前端据此清除「正在生成…」进度提示。
+    pub const AI_TOOL_CALL_PROGRESS_END: &str = "ai:tool_call_progress_end";
+    /// 强制将前端状态重置为 `input`。
+    pub const STATUS_RESET: &str = "status:reset";
+}
+
+// ============================================================
+// Reply
+// ============================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplyResponse {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub duration: f64,
+    pub is_final: bool,
+
+    pub character: Option<String>,
+    pub role_id: Option<i32>,
+    pub emotion: String,
+    pub original_tag: String,
+    pub message: String,
+    pub tts_text: Option<String>,
+    pub motion_text: Option<String>,
+    pub audio_file: Option<String>,
+    pub original_message: String,
+    pub display_name: Option<String>,
+    pub display_subtitle: Option<String>,
+    /// 触发此回复的用户消息序号（1-indexed，由 sender_role_id == Some(0) 计数得出）。
+    /// `None` 表示主动对话等非用户触发的回复。`None` 时不序列化该字段，
+    /// 避免前端把 `null` 当成有效序号回填进用户消息、导致回溯传 null 报错。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_message_seq: Option<u32>,
+    /// 本轮生成的思考链全文（仅最后一帧 is_final=true 时携带）。
+    pub thinking: Option<String>,
+    /// 试玩会话代号（编辑器试玩才有值）。前端据此丢弃试玩中止后迟到的
+    /// 流式回复：代号与当前轮不一致即过期。自由对话/正式剧本为 `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview_gen: Option<u64>,
+}
+
+impl ReplyResponse {
+    pub fn new_reply() -> Self {
+        Self {
+            type_: "reply".to_string(),
+            duration: -1.0,
+            is_final: false,
+            character: None,
+            role_id: None,
+            emotion: String::new(),
+            original_tag: String::new(),
+            message: String::new(),
+            tts_text: None,
+            motion_text: None,
+            audio_file: None,
+            original_message: String::new(),
+            display_name: None,
+            display_subtitle: None,
+            user_message_seq: None,
+            thinking: None,
+            preview_gen: None,
+        }
+    }
+}
+
+// ============================================================
+// Thinking / Error / Reset
+// ============================================================
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThinkingResponse {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub is_thinking: bool,
+    pub duration: f64,
+}
+
+impl ThinkingResponse {
+    pub fn new(is_thinking: bool) -> Self {
+        Self {
+            type_: "thinking".to_string(),
+            is_thinking,
+            duration: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThinkingProgressResponse {
+    #[serde(rename = "type")]
+    pub type_: String,
+    /// 当前思考链累计字数（按 Unicode 字符计数）。
+    pub thinking_length: usize,
+}
+
+impl ThinkingProgressResponse {
+    pub fn new(thinking_length: usize) -> Self {
+        Self {
+            type_: "thinking_progress".to_string(),
+            thinking_length,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TtsCleanupResponse {
+    #[serde(rename = "type")]
+    pub type_: String,
+    /// 本次清理的孤立语音文件数量。
+    pub deleted: u64,
+    /// 当前剩余的孤立语音文件数量（清理后）。
+    pub orphan_files: usize,
+    /// 当前剩余孤立语音文件总大小（字节）。
+    pub orphan_size: u64,
+}
+
+impl TtsCleanupResponse {
+    pub fn new(deleted: u64, orphan_files: usize, orphan_size: u64) -> Self {
+        Self {
+            type_: "tts_cleanup".to_string(),
+            deleted,
+            orphan_files,
+            orphan_size,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorResponse {
+    #[serde(rename = "type")]
+    pub type_: String,
+    #[serde(rename = "error_code")]
+    pub error_code: String,
+    pub detail: String,
+}
+
+impl ErrorResponse {
+    pub fn new(error_code: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self {
+            type_: "error".to_string(),
+            error_code: error_code.into(),
+            detail: detail.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusResetResponse {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub status: String,
+}
+
+impl StatusResetResponse {
+    pub fn new(status: impl Into<String>) -> Self {
+        Self {
+            type_: "status_reset".to_string(),
+            status: status.into(),
+        }
+    }
+}

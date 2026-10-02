@@ -1,0 +1,518 @@
+//! Multi-provider LLM configuration management.
+//!
+//! Replaces the old flat `llm.provider` / `llm.model` / ... keys with a list of named
+//! provider configs, each assignable as the "chat" or "translate" model.
+
+use anyhow::Context;
+use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
+use tauri::AppHandle;
+use tauri_plugin_store::StoreExt;
+
+use crate::ai_service::llm::{LlmClient, LlmConfig, create_llm_client};
+use crate::config::app_config::AppConfig;
+use crate::config::{self, keys};
+
+// ============================================================
+// Data types
+// ============================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmProviderConfig {
+    pub id: String,
+    pub label: String,
+    pub provider: String,
+    pub model: String,
+    #[serde(default)]
+    pub api_key: String,
+    #[serde(default)]
+    pub base_url: String,
+    #[serde(default)]
+    pub temperature: Option<f64>,
+    #[serde(default)]
+    pub top_p: Option<f64>,
+    #[serde(default)]
+    pub enable_thinking: bool,
+    /// 推理深度（如 "low" / "high" / "max"），由支持 reasoning 的模型使用（如 Kimi Code K3 系列）。
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
+    /// Codex Fast Mode（1.5× 速度，额度消耗更快）；仅 provider = codex 时有意义。
+    #[serde(default)]
+    pub fast_mode: bool,
+    /// 是否支持原生多模态识图（支持把图片直接发给该模型而不用旁白转述）。
+    /// 需要该 provider 的协议能承载图片内容（OpenAI 兼容 image_url / Gemini 多模态）。
+    #[serde(default)]
+    pub support_vision: bool,
+    /// 原生识图时是否压缩图片（默认 false：原图直发）。
+    /// 开启后可进一步用 `vision_max_edge`/`vision_jpeg_quality` 控制压缩强度，
+    /// 以节省多模态输入的 token 与上下文缓存占用。
+    #[serde(default)]
+    pub vision_compress: bool,
+    /// 压缩时图片最大边长（像素），超宽图等比缩放。默认 2048。
+    #[serde(default = "default_vision_max_edge")]
+    pub vision_max_edge: u32,
+    /// 压缩时 JPEG 编码质量（0-100）。默认 85。
+    #[serde(default = "default_vision_jpeg_quality")]
+    pub vision_jpeg_quality: u8,
+}
+
+/// 压缩设置默认值（防旧配置反序列化时字段缺失）。
+fn default_vision_max_edge() -> u32 {
+    2048
+}
+fn default_vision_jpeg_quality() -> u8 {
+    85
+}
+
+impl LlmProviderConfig {
+    /// 判断该 provider 是否可用于发起 LLM 请求。
+    ///
+    /// 允许 api_key 为空（本地模型 / 自托管 OpenAI 兼容服务无需密钥），
+    /// 只要求 model 非空。
+    pub fn is_usable(&self) -> bool {
+        !self.model.is_empty()
+    }
+
+    /// 判断该 provider 是否走 genai 的 OpenAI 兼容 / Gemini 多模态路径，从而
+    /// 能原生承载图片内容。kimi_code / codex 有独立 provider 实现，暂不支持
+    /// 在对话消息里直接注入图片，仍需走旁白转述。
+    pub fn is_genai_multimodal_capable(&self) -> bool {
+        matches!(
+            self.provider.to_lowercase().as_str(),
+            "openai" | "deepseek" | "lmstudio" | "gemini"
+        )
+    }
+
+    /// 解析原生识图的图片压缩参数。
+    ///
+    /// 关闭压缩时返回「原图直发」配置；开启时返回用户指定的边长上限与 JPEG 质量
+    /// （并做边界钳制，防止手滑填出非法值）。
+    pub fn native_image_compress(&self) -> crate::ai_service::screen_analyzer::NativeImageCompress {
+        let max_edge = self.vision_max_edge.clamp(64, 8192);
+        // 质量只保留 1-100 的合法区间；0 视为未设置，用默认 85
+        let quality = if (1..=100).contains(&self.vision_jpeg_quality) {
+            self.vision_jpeg_quality
+        } else {
+            85
+        };
+        crate::ai_service::screen_analyzer::NativeImageCompress {
+            enabled: self.vision_compress,
+            max_edge,
+            jpeg_quality: quality,
+        }
+    }
+
+    pub fn to_llm_config(&self, timeout_secs: u64) -> LlmConfig {
+        LlmConfig {
+            provider: self.provider.clone(),
+            model: self.model.clone(),
+            api_key: self.api_key.clone(),
+            base_url: self.base_url.clone(),
+            timeout_secs,
+            temperature: self.temperature,
+            top_p: self.top_p,
+            enable_thinking: self.enable_thinking,
+            reasoning_effort: self.reasoning_effort.clone(),
+            fast_mode: self.fast_mode,
+            support_vision: self.support_vision,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LlmRoleAssignment {
+    #[serde(default)]
+    pub chat_provider_id: Option<String>,
+    #[serde(default)]
+    pub translate_provider_id: Option<String>,
+    #[serde(default)]
+    pub god_agent_provider_id: Option<String>,
+    #[serde(default)]
+    pub vision_provider_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmProvidersResponse {
+    pub providers: Vec<LlmProviderConfig>,
+    pub chat_provider_id: Option<String>,
+    pub translate_provider_id: Option<String>,
+    pub god_agent_provider_id: Option<String>,
+    pub vision_provider_id: Option<String>,
+}
+
+// ============================================================
+// Load / Save helpers
+// ============================================================
+
+pub fn load_providers(app: &AppHandle) -> Vec<LlmProviderConfig> {
+    let Some(store) = app.store(config::STORE_FILE).ok() else {
+        return Vec::new();
+    };
+    match store.get(keys::LLM_PROVIDERS) {
+        Some(JsonValue::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| serde_json::from_value(v.clone()).ok())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+pub fn save_providers(app: &AppHandle, providers: &[LlmProviderConfig]) -> anyhow::Result<()> {
+    let store = app
+        .store(config::STORE_FILE)
+        .context("Failed to open settings store")?;
+    let arr: Vec<JsonValue> = providers
+        .iter()
+        .map(|p| serde_json::to_value(p).unwrap_or(JsonValue::Null))
+        .collect();
+    store.set(keys::LLM_PROVIDERS.to_string(), JsonValue::Array(arr));
+    store.save().context("Failed to save settings store")?;
+    Ok(())
+}
+
+pub fn load_role_assignment(app: &AppHandle) -> LlmRoleAssignment {
+    let Some(store) = app.store(config::STORE_FILE).ok() else {
+        return LlmRoleAssignment::default();
+    };
+    LlmRoleAssignment {
+        chat_provider_id: get_string_opt(&store, keys::LLM_CHAT_PROVIDER_ID),
+        translate_provider_id: get_string_opt(&store, keys::LLM_TRANSLATE_PROVIDER_ID),
+        god_agent_provider_id: get_string_opt(&store, keys::LLM_GOD_AGENT_PROVIDER_ID),
+        vision_provider_id: get_string_opt(&store, keys::LLM_VISION_PROVIDER_ID),
+    }
+}
+
+pub fn save_role_assignment(app: &AppHandle, assignment: &LlmRoleAssignment) -> anyhow::Result<()> {
+    let store = app
+        .store(config::STORE_FILE)
+        .context("Failed to open settings store")?;
+    store.set(
+        keys::LLM_CHAT_PROVIDER_ID.to_string(),
+        json_string_opt(assignment.chat_provider_id.as_deref()),
+    );
+    store.set(
+        keys::LLM_TRANSLATE_PROVIDER_ID.to_string(),
+        json_string_opt(assignment.translate_provider_id.as_deref()),
+    );
+    store.set(
+        keys::LLM_GOD_AGENT_PROVIDER_ID.to_string(),
+        json_string_opt(assignment.god_agent_provider_id.as_deref()),
+    );
+    store.set(
+        keys::LLM_VISION_PROVIDER_ID.to_string(),
+        json_string_opt(assignment.vision_provider_id.as_deref()),
+    );
+    store.save().context("Failed to save settings store")?;
+    Ok(())
+}
+
+// ============================================================
+// Resolution
+// ============================================================
+
+pub fn resolve_chat_provider(app: &AppHandle) -> Option<LlmProviderConfig> {
+    let assignment = load_role_assignment(app);
+    let providers = load_providers(app);
+    assignment
+        .chat_provider_id
+        .and_then(|id| providers.into_iter().find(|p| p.id == id && p.is_usable()))
+}
+
+pub fn resolve_translate_provider(app: &AppHandle) -> Option<LlmProviderConfig> {
+    let assignment = load_role_assignment(app);
+    let providers = load_providers(app);
+
+    // 1. Explicit translate provider
+    if let Some(ref id) = assignment.translate_provider_id {
+        if let Some(p) = providers.iter().find(|p| p.id == *id) {
+            if p.is_usable() {
+                tracing::info!("Using explicit translate provider: {} ({})", p.label, p.id);
+                return Some(p.clone());
+            }
+        }
+    }
+
+    // 2. Fallback to chat provider
+    if let Some(ref id) = assignment.chat_provider_id {
+        if let Some(p) = providers.iter().find(|p| p.id == *id) {
+            if p.is_usable() {
+                tracing::info!(
+                    "Translate provider not set, falling back to chat provider: {} ({})",
+                    p.label,
+                    p.id
+                );
+                return Some(p.clone());
+            }
+        }
+    }
+
+    tracing::warn!("No usable LLM provider for translation");
+    None
+}
+
+/// 解析视觉分析（截图理解）使用的 provider。
+/// 优先使用「视觉模型」角色显式指定的 provider，缺省时跟随对话模型。
+pub fn resolve_vision_provider(app: &AppHandle) -> Option<LlmProviderConfig> {
+    let assignment = load_role_assignment(app);
+    let providers = load_providers(app);
+
+    // 1. Explicit vision provider
+    if let Some(ref id) = assignment.vision_provider_id {
+        if let Some(p) = providers.iter().find(|p| p.id == *id) {
+            if p.is_usable() {
+                tracing::info!("Using explicit vision provider: {} ({})", p.label, p.id);
+                return Some(p.clone());
+            }
+        }
+    }
+
+    // 2. Fallback to chat provider
+    if let Some(ref id) = assignment.chat_provider_id {
+        if let Some(p) = providers.iter().find(|p| p.id == *id) {
+            if p.is_usable() {
+                tracing::info!(
+                    "Vision provider not set, falling back to chat provider: {} ({})",
+                    p.label,
+                    p.id
+                );
+                return Some(p.clone());
+            }
+        }
+    }
+
+    tracing::warn!("No usable LLM provider for vision analysis");
+    None
+}
+
+pub fn build_llm_client_from_provider(
+    app: &AppHandle,
+    cfg: &LlmProviderConfig,
+) -> Option<LlmClient> {
+    if !cfg.is_usable() {
+        tracing::warn!("Skipping unusable LLM provider: {} ({})", cfg.label, cfg.id);
+        return None;
+    }
+    let timeout_secs = AppConfig::load(app).unwrap_or_default().llm_timeout_secs;
+    match create_llm_client(cfg.to_llm_config(timeout_secs)) {
+        Ok(client) => Some(client),
+        Err(e) => {
+            tracing::error!("Failed to create LLM client for {}: {e}", cfg.label);
+            None
+        },
+    }
+}
+
+// ============================================================
+// Migration
+// ============================================================
+
+pub fn migrate_if_needed(app: &AppHandle) {
+    let Ok(store) = app.store(config::STORE_FILE) else {
+        return;
+    };
+
+    // Already migrated
+    if store.has(keys::LLM_PROVIDERS) {
+        return;
+    }
+
+    // No old config to migrate
+    let Some(old_provider) = get_string_opt(&store, keys::LLM_PROVIDER) else {
+        return;
+    };
+
+    tracing::info!("Migrating flat LLM config keys to provider list...");
+
+    let old_model = get_string_opt(&store, keys::LLM_MODEL).unwrap_or_default();
+    let old_api_key = get_string_opt(&store, keys::LLM_API_KEY).unwrap_or_default();
+    let old_base_url = get_string_opt(&store, keys::LLM_BASE_URL).unwrap_or_default();
+    let old_temperature = get_f64_opt(&store, keys::LLM_TEMPERATURE);
+    let old_top_p = get_f64_opt(&store, keys::LLM_TOP_P);
+    let old_thinking = get_bool_opt(&store, keys::LLM_ENABLE_THINKING, false);
+
+    let mut providers: Vec<LlmProviderConfig> = Vec::new();
+    let mut chat_id: Option<String> = None;
+
+    // Migrate main LLM
+    // 仅要求 model 非空；api_key 允许为空（本地/自托管模型无需密钥）
+    if !old_model.is_empty() {
+        let id = uuid::Uuid::new_v4().to_string();
+        let label = old_model.clone();
+        providers.push(LlmProviderConfig {
+            id: id.clone(),
+            label,
+            provider: old_provider,
+            model: old_model,
+            api_key: old_api_key,
+            base_url: old_base_url,
+            temperature: old_temperature,
+            top_p: old_top_p,
+            enable_thinking: old_thinking,
+            reasoning_effort: None,
+            fast_mode: false,
+            support_vision: false,
+            vision_compress: false,
+            vision_max_edge: 2048,
+            vision_jpeg_quality: 85,
+        });
+        chat_id = Some(id);
+    }
+
+    // Migrate translate LLM
+    let trans_provider = get_string_opt(&store, keys::TRANSLATE_PROVIDER).unwrap_or_default();
+    let trans_model = get_string_opt(&store, keys::TRANSLATE_MODEL).unwrap_or_default();
+    let trans_api_key = get_string_opt(&store, keys::TRANSLATE_API_KEY).unwrap_or_default();
+    let trans_base_url = get_string_opt(&store, keys::TRANSLATE_BASE_URL).unwrap_or_default();
+
+    let mut translate_id: Option<String> = None;
+    // 仅要求 model 非空；api_key 允许为空（本地/自托管模型无需密钥）
+    if !trans_model.is_empty() {
+        // Check if translate config is different from chat
+        let is_different = trans_provider
+            != get_string_opt(&store, keys::LLM_PROVIDER).unwrap_or_default()
+            || trans_model != get_string_opt(&store, keys::LLM_MODEL).unwrap_or_default()
+            || trans_api_key != get_string_opt(&store, keys::LLM_API_KEY).unwrap_or_default()
+            || trans_base_url != get_string_opt(&store, keys::LLM_BASE_URL).unwrap_or_default();
+
+        if is_different {
+            let id = uuid::Uuid::new_v4().to_string();
+            let label = format!("{} (翻译)", trans_model);
+            providers.push(LlmProviderConfig {
+                id: id.clone(),
+                label,
+                provider: trans_provider,
+                model: trans_model,
+                api_key: trans_api_key,
+                base_url: trans_base_url,
+                temperature: None,
+                top_p: None,
+                enable_thinking: false,
+                reasoning_effort: None,
+                fast_mode: false,
+                support_vision: false,
+                vision_compress: false,
+                vision_max_edge: 2048,
+                vision_jpeg_quality: 85,
+            });
+            translate_id = Some(id);
+        }
+        // If same as chat, don't add a duplicate — fallback will handle it
+    }
+
+    // Save
+    let arr: Vec<JsonValue> = providers
+        .iter()
+        .map(|p| serde_json::to_value(p).unwrap_or(JsonValue::Null))
+        .collect();
+    store.set(keys::LLM_PROVIDERS.to_string(), JsonValue::Array(arr));
+    store.set(
+        keys::LLM_CHAT_PROVIDER_ID.to_string(),
+        json_string_opt(chat_id.as_deref()),
+    );
+    store.set(
+        keys::LLM_TRANSLATE_PROVIDER_ID.to_string(),
+        json_string_opt(translate_id.as_deref()),
+    );
+
+    if let Err(e) = store.save() {
+        tracing::error!("Migration save failed: {e}");
+    } else {
+        tracing::info!("Migration complete: {} provider(s)", providers.len());
+    }
+}
+
+/// 将旧的主动视觉独立配置（VD_API_KEY / VD_BASE_URL / VD_MODEL）迁移为
+/// 大模型管理中的一个 provider，并分配为「视觉模型」角色。
+/// 视觉模型配置已统一到大模型管理，旧键迁移后会被清理。
+pub fn migrate_legacy_vision_keys(app: &AppHandle) {
+    let Ok(store) = app.store(config::STORE_FILE) else {
+        return;
+    };
+
+    let api_key = get_string_opt(&store, keys::VD_API_KEY).unwrap_or_default();
+    let model = get_string_opt(&store, keys::VD_MODEL).unwrap_or_default();
+    // 仅要求 model 非空；api_key 允许为空（本地/自托管模型无需密钥）
+    if model.trim().is_empty() {
+        return;
+    }
+
+    // 已分配过视觉角色则不重复迁移
+    if get_string_opt(&store, keys::LLM_VISION_PROVIDER_ID).is_some() {
+        return;
+    }
+
+    let base_url = get_string_opt(&store, keys::VD_BASE_URL).unwrap_or_default();
+
+    tracing::info!("Migrating legacy VD_* vision config into LLM provider list...");
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let label = if model.is_empty() {
+        "视觉模型".to_string()
+    } else {
+        format!("{model} (视觉)")
+    };
+    let provider = LlmProviderConfig {
+        id: id.clone(),
+        label,
+        provider: "openai".to_string(),
+        model,
+        api_key,
+        base_url,
+        temperature: None,
+        top_p: None,
+        enable_thinking: false,
+        reasoning_effort: None,
+        fast_mode: false,
+        support_vision: false,
+        vision_compress: false,
+        vision_max_edge: 2048,
+        vision_jpeg_quality: 85,
+    };
+
+    let mut providers = load_providers(app);
+    providers.push(provider);
+    if let Err(e) = save_providers(app, &providers) {
+        tracing::error!("Legacy vision config migration failed to save providers: {e}");
+        return;
+    }
+
+    let mut assignment = load_role_assignment(app);
+    assignment.vision_provider_id = Some(id);
+    if let Err(e) = save_role_assignment(app, &assignment) {
+        tracing::error!("Legacy vision config migration failed to assign vision role: {e}");
+        return;
+    }
+
+    // 清理旧键，避免重复迁移
+    store.delete(keys::VD_API_KEY);
+    store.delete(keys::VD_BASE_URL);
+    store.delete(keys::VD_MODEL);
+    if let Err(e) = store.save() {
+        tracing::warn!("Legacy vision keys cleanup save failed: {e}");
+    }
+}
+
+// ============================================================
+// Private helpers
+// ============================================================
+
+fn get_string_opt(store: &tauri_plugin_store::Store<tauri::Wry>, key: &str) -> Option<String> {
+    store
+        .get(key)
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+}
+
+fn get_f64_opt(store: &tauri_plugin_store::Store<tauri::Wry>, key: &str) -> Option<f64> {
+    store.get(key).and_then(|v| v.as_f64())
+}
+
+fn get_bool_opt(store: &tauri_plugin_store::Store<tauri::Wry>, key: &str, default: bool) -> bool {
+    store.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
+}
+
+fn json_string_opt(s: Option<&str>) -> JsonValue {
+    match s {
+        Some(v) => JsonValue::String(v.to_string()),
+        None => JsonValue::Null,
+    }
+}

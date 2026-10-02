@@ -1,0 +1,29 @@
+name: 1 舒适的一天~
+
+events:
+  - type: narration
+    text: 今天是个出去玩的好日子呢。
+
+  - type: choices
+    options:
+      - text: 钦灵今天想不想出去玩呀？
+        actions:
+          - type: add_line
+            content: 钦灵今天想不想出去玩呀？
+      - text: 天气不错哎~很适合去外面呼吸一点新鲜空气呢
+        actions:
+          - type: add_line
+            content: 天气不错哎~很适合去外面呼吸一点新鲜空气呢
+    allow_free: false
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 钦灵虽然平常比较宅，不过还是愿意和%player%一起去玩的
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 钦灵想到周围有一个公园，想去那里逛逛了呢
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: "main2"

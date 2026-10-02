@@ -1,0 +1,26 @@
+script_name: 神秘の魔法药水
+intro_chapter: main
+description: 占仆师也会一点点魔法哦
+recommand_start: 刚进入风雪的占仆摊的时候
+
+# ===== 羁绊冒险专属配置 =====
+adventure:
+  # 标记为羁绊冒险剧本
+  is_adventure: true
+
+  # 绑定的主角色文件夹名（对应 characters/ 下的目录名）
+  bound_character_folder: "风雪"
+
+  # 冒险排序（决定在角色卡中的显示顺序和解锁链关系）
+  order: 2
+
+  # 触发方式
+  trigger:
+    mode: "manual" # manual | auto_random | auto_immediate
+
+  unlock_conditions:
+    - type: adventure_completed
+      adventure_folder: "试着仰望星空"
+
+script_settings:
+  user_name: ""

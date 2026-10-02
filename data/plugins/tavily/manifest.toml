@@ -1,0 +1,25 @@
+id = "tavily"
+name = "Tavily 搜索"
+description = "基于 Tavily 的联网搜索与网页提取"
+version = "0.1.0"
+author = "LingChat"
+
+# api_key 不走设置页表单，改用环境变量（与 tvly CLI 一致）。
+# 宿主仅把这些环境变量注入 ctx.env(name)，插件读不到其他环境变量。
+[[env]]
+key = "TAVILY_API_KEY"
+label = "Tavily API Key（来自环境变量）"
+
+[[tools]]
+name = "tavily_search"
+description = "联网搜索，返回相关网页摘要与链接"
+timeout_ms = 30000
+parameters = '{ "type":"object", "properties":{ "query":{"type":"string"}, "max_results":{"type":"integer","default":5} }, "required":["query"] }'
+script = "tavily.py"
+
+[[tools]]
+name = "tavily_extract"
+description = "提取指定 URL 的正文内容"
+timeout_ms = 30000
+parameters = '{ "type":"object", "properties":{ "url":{"type":"string"} }, "required":["url"] }'
+script = "tavily.py"

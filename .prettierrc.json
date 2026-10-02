@@ -1,0 +1,20 @@
+{
+  "semi": true,
+  "singleQuote": false,
+  "tabWidth": 2,
+  "useTabs": false,
+  "trailingComma": "all",
+  "printWidth": 100,
+  "endOfLine": "lf",
+  "vueIndentScriptAndStyle": false,
+  "singleAttributePerLine": false,
+  "htmlWhitespaceSensitivity": "css",
+  "bracketSameLine": false,
+  "bracketSpacing": true,
+  "arrowParens": "always",
+  "proseWrap": "preserve",
+  "plugins": ["prettier-plugin-classnames", "prettier-plugin-merge", "prettier-plugin-tailwindcss"],
+  "tailwindFunctions": ["clsx", "cn", "classNames", "classNamesBind"],
+  "tailwindAttributes": ["class", "className", "ngClass", "class:list"],
+  "customFunctions": ["clsx", "cn", "classNames", "classNamesBind"]
+}

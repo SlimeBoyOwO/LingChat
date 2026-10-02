@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>剧本编辑器编辑流程 · 数据流图</title>
+<style>
+  :root {
+    --bg:#0f1720; --panel:#16202c; --border:#2a3a4a; --text:#e6edf3; --muted:#8b98a5;
+    --brand:#79d9ff; --vue:#34d399; --rust:#f4a261; --db:#a78bfa; --ok:#4ade80; --warn:#fbbf24; --red:#f87171;
+  }
+  body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft YaHei",sans-serif;padding:24px;}
+  h1{font-size:20px;margin:0 0 4px;}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:18px;}
+  .wrap{max-width:1240px;margin:0 auto;}
+  svg{width:100%;height:auto;display:block;}
+  text{font-family:"Segoe UI","Microsoft YaHei",sans-serif;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>剧本编辑器编辑流程 —— 数据流图</h1>
+  <p class="sub">编辑操作 → 撤销栈 → 防抖自动保存（800ms）→ Rust 原子写；同时触发校验（2500ms）→ 诊断回填 UI。schema 从 Rust 导出，驱动全部表单与校验。</p>
+
+  <svg viewBox="0 0 1220 980" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#79d9ff"/></marker>
+      <marker id="aV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#34d399"/></marker>
+      <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f4a261"/></marker>
+      <marker id="aO" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4ade80"/></marker>
+      <marker id="aG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8b98a5"/></marker>
+    </defs>
+
+    <!-- ============ 左列：schema 驱动 ============ -->
+    <g>
+      <rect x="20" y="120" width="230" height="72" rx="10" fill="#241f17" stroke="#f4a261" stroke-width="1.5" />
+      <text x="135" y="146" text-anchor="middle" font-size="13" font-weight="700" fill="#f4a261">schema.rs · build_schema()</text>
+      <text x="135" y="166" text-anchor="middle" font-size="10" fill="#8b98a5">16 事件 · 字段 · FieldKind</text>
+      <text x="135" y="181" text-anchor="middle" font-size="10" fill="#8b98a5">action / 解锁条件 / 语法说明</text>
+    </g>
+    <g stroke="#f4a261" stroke-width="1.4" fill="none">
+      <path d="M135,192 L135,258" marker-end="url(#aR)"/>
+      <path d="M60,192 L60,380" marker-end="url(#aR)"/>
+    </g>
+    <g>
+      <rect x="20" y="260" width="230" height="62" rx="10" fill="#16202c" stroke="#f4a261" stroke-opacity="0.4" />
+      <text x="135" y="284" text-anchor="middle" font-size="12" font-weight="600" fill="#e6edf3">editor_get_schema</text>
+      <text x="135" y="301" text-anchor="middle" font-size="10" fill="#8b98a5">Tauri 命令 · 前端只渲染</text>
+    </g>
+    <g>
+      <rect x="20" y="384" width="230" height="130" rx="10" fill="#16202c" stroke="#34d399" stroke-opacity="0.5" />
+      <text x="135" y="410" text-anchor="middle" font-size="12.5" font-weight="700" fill="#34d399">前端消费 schema</text>
+      <text x="135" y="432" text-anchor="middle" font-size="10" fill="#e6edf3">getters.eventSpecs</text>
+      <text x="135" y="450" text-anchor="middle" font-size="10" fill="#8b98a5">属性面板表单（FieldRow）</text>
+      <text x="135" y="468" text-anchor="middle" font-size="10" fill="#8b98a5">blankEvent 生成骨架</text>
+      <text x="135" y="486" text-anchor="middle" font-size="10" fill="#8b98a5">插入事件面板（分组）</text>
+      <text x="135" y="504" text-anchor="middle" font-size="10" fill="#8b98a5">校验字段白名单</text>
+    </g>
+
+    <!-- ============ 中列：编辑操作 ============ -->
+    <g>
+      <rect x="330" y="70" width="330" height="196" rx="12" fill="#101c28" stroke="#34d399" stroke-opacity="0.4" />
+      <text x="495" y="96" font-size="12.5" fill="#8b98a5" letter-spacing="1">编辑操作（actions.ts）</text>
+      <g stroke="#34d399" stroke-width="1.2" fill="none">
+        <path d="M360,118 L630,118" stroke-dasharray="3 4" opacity="0.4"/>
+        <path d="M360,252 L630,252" stroke-dasharray="3 4" opacity="0.4"/>
+      </g>
+      <text x="352" y="140" font-size="10.5" fill="#e6edf3">insertEvent —— 默认插到「章节结束」之前</text>
+      <text x="352" y="160" font-size="10.5" fill="#e6edf3">removeEvent / duplicateEvent</text>
+      <text x="352" y="180" font-size="10.5" fill="#e6edf3">moveEvent / moveEventRange（整段搬）</text>
+      <text x="352" y="200" font-size="10.5" fill="#e6edf3">setEventField —— 空值删键，不写空串</text>
+      <text x="352" y="220" font-size="10.5" fill="#e6edf3">replaceEvent（换类型，字段名+控件类型同才保留）</text>
+      <text x="352" y="240" font-size="10.5" fill="#e6edf3">setChapterName</text>
+    </g>
+
+    <!-- 编辑 → 撤销栈 -->
+    <path d="M495,266 L495,330" stroke="#34d399" stroke-width="1.4" fill="none" marker-end="url(#aV)"/>
+    <g>
+      <rect x="350" y="334" width="290" height="120" rx="10" fill="#16202c" stroke="#34d399" stroke-opacity="0.45" />
+      <text x="495" y="358" text-anchor="middle" font-size="12.5" font-weight="700" fill="#34d399">撤销栈（pushHistory）</text>
+      <text x="495" y="382" text-anchor="middle" font-size="10.5" fill="#8b98a5">改动前深拷贝整章 events + 选中下标</text>
+      <text x="495" y="402" text-anchor="middle" font-size="10.5" fill="#8b98a5">上限 UNDO_LIMIT = 100 帧</text>
+      <text x="495" y="422" text-anchor="middle" font-size="10.5" fill="#8b98a5">新改动清空 redo 栈</text>
+      <text x="495" y="442" text-anchor="middle" font-size="10.5" fill="#8b98a5">Ctrl+Z / Ctrl+Shift+Z / Ctrl+D</text>
+    </g>
+
+    <!-- 撤销栈 → 应用 -->
+    <path d="M495,454 L495,500" stroke="#8b98a5" stroke-width="1.2" fill="none" marker-end="url(#aG)" stroke-dasharray="5 4"/>
+
+    <!-- ============ 中列：markDirty 分叉 ============ -->
+    <g>
+      <rect x="330" y="504" width="330" height="52" rx="9" fill="#241f17" stroke="#fbbf24" stroke-width="1.5" />
+      <text x="495" y="526" text-anchor="middle" font-size="12.5" font-weight="700" fill="#fbbf24">markDirty()</text>
+      <text x="495" y="544" text-anchor="middle" font-size="10" fill="#8b98a5">dirty = true · revision++ · 触发两条防抖</text>
+    </g>
+
+    <path d="M495,556 L495,612" stroke="#fbbf24" stroke-width="1.5" fill="none" marker-end="url(#aO)"/>
+    <path d="M495,612 L495,668" stroke="#fbbf24" stroke-width="1.5" fill="none" marker-end="url(#aO)"/>
+    <g>
+      <rect x="330" y="612" width="150" height="52" rx="9" fill="#16202c" stroke="#4ade80" />
+      <text x="405" y="634" text-anchor="middle" font-size="11" font-weight="600" fill="#4ade80">自动保存防抖</text>
+      <text x="405" y="652" text-anchor="middle" font-size="9.5" fill="#8b98a5">AUTOSAVE_DELAY = 800ms</text>
+    </g>
+    <g>
+      <rect x="510" y="612" width="150" height="52" rx="9" fill="#16202c" stroke="#4ade80" />
+      <text x="585" y="634" text-anchor="middle" font-size="11" font-weight="600" fill="#4ade80">校验防抖</text>
+      <text x="585" y="652" text-anchor="middle" font-size="9.5" fill="#8b98a5">VALIDATE_DELAY = 2500ms</text>
+    </g>
+
+    <!-- ============ 自动保存链路 ============ -->
+    <g>
+      <rect x="330" y="686" width="330" height="52" rx="9" fill="#16202c" stroke="#79d9ff" />
+      <text x="495" y="708" text-anchor="middle" font-size="12" font-weight="600" fill="#79d9ff">save()</text>
+      <text x="495" y="726" text-anchor="middle" font-size="9.5" fill="#8b98a5">revision 比对：期间无新改动才算干净；有则 savePending 再写一次</text>
+    </g>
+    <g>
+      <rect x="330" y="756" width="330" height="52" rx="9" fill="#16202c" stroke="#a78bfa" />
+      <text x="495" y="778" text-anchor="middle" font-size="12" font-weight="600" fill="#a78bfa">editor_write_chapter</text>
+      <text x="495" y="796" text-anchor="middle" font-size="9.5" fill="#8b98a5">IPC invoke · 整章 events + extra</text>
+    </g>
+    <g>
+      <rect x="330" y="826" width="330" height="52" rx="9" fill="#241f17" stroke="#f4a261" />
+      <text x="495" y="848" text-anchor="middle" font-size="12" font-weight="600" fill="#f4a261">io::write_json_as_yaml</text>
+      <text x="495" y="866" text-anchor="middle" font-size="9.5" fill="#8b98a5">备份 .bak → 临时文件 → fsync → rename</text>
+    </g>
+    <g>
+      <rect x="330" y="896" width="330" height="56" rx="9" fill="#151028" stroke="#a78bfa" stroke-width="1.4" />
+      <text x="495" y="920" text-anchor="middle" font-size="12" font-weight="600" fill="#a78bfa">Chapters/&lt;id&gt;.yaml</text>
+      <text x="495" y="938" text-anchor="middle" font-size="9.5" fill="#8b98a5">磁盘 · 原子替换 · 崩溃不会清空章节</text>
+    </g>
+    <path d="M405,664 L405,686" stroke="#4ade80" stroke-width="1.3" fill="none" marker-end="url(#aO)"/>
+    <path d="M495,738 L495,756" stroke="#79d9ff" stroke-width="1.3" fill="none" marker-end="url(#a)"/>
+    <path d="M495,808 L495,826" stroke="#a78bfa" stroke-width="1.3" fill="none" marker-end="url(#a)"/>
+    <path d="M495,878 L495,896" stroke="#f4a261" stroke-width="1.3" fill="none" marker-end="url(#aR)"/>
+
+    <!-- ============ 校验链路 ============ -->
+    <g>
+      <rect x="760" y="70" width="440" height="52" rx="9" fill="#16202c" stroke="#4ade80" />
+      <text x="980" y="92" text-anchor="middle" font-size="12" font-weight="600" fill="#4ade80">runValidation()</text>
+      <text x="980" y="110" text-anchor="middle" font-size="9.5" fill="#8b98a5">validateSeq 代次守卫 · 快速切换只认最新</text>
+    </g>
+    <g>
+      <rect x="760" y="142" width="440" height="52" rx="9" fill="#16202c" stroke="#79d9ff" />
+      <text x="980" y="164" text-anchor="middle" font-size="12" font-weight="600" fill="#79d9ff">editor_validate_script</text>
+      <text x="980" y="182" text-anchor="middle" font-size="9.5" fill="#8b98a5">IPC · 收集全部剧本 script_name 查重</text>
+    </g>
+    <g>
+      <rect x="760" y="214" width="440" height="88" rx="10" fill="#241f17" stroke="#f4a261" />
+      <text x="980" y="240" text-anchor="middle" font-size="12" font-weight="700" fill="#f4a261">validate.rs :: validate()</text>
+      <text x="980" y="262" text-anchor="middle" font-size="10" fill="#8b98a5">story_config → 章节清单 → 逐事件细查</text>
+      <text x="980" y="280" text-anchor="middle" font-size="10" fill="#8b98a5">→ 章节图（可达性/环）→ 变量分析</text>
+    </g>
+    <g>
+      <rect x="760" y="322" width="440" height="52" rx="9" fill="#16202c" stroke="#4ade80" />
+      <text x="980" y="344" text-anchor="middle" font-size="12" font-weight="600" fill="#4ade80">ValidationReport</text>
+      <text x="980" y="362" text-anchor="middle" font-size="9.5" fill="#8b98a5">diagnostics · errorCount · variables · edges</text>
+    </g>
+    <g>
+      <rect x="760" y="394" width="440" height="132" rx="10" fill="#101c28" stroke="#34d399" stroke-opacity="0.4" />
+      <text x="980" y="420" text-anchor="middle" font-size="12.5" font-weight="700" fill="#34d399">回填 UI</text>
+      <text x="980" y="444" text-anchor="middle" font-size="10" fill="#e6edf3">校验页（按章节聚合 · 点击跳转）</text>
+      <text x="980" y="462" text-anchor="middle" font-size="10" fill="#e6edf3">时间线事件行打标（chapterDiagnostics）</text>
+      <text x="980" y="480" text-anchor="middle" font-size="10" fill="#e6edf3">流程图连线（edges → ChapterFlow BFS）</text>
+      <text x="980" y="498" text-anchor="middle" font-size="10" fill="#e6edf3">属性面板逐字段诊断提示</text>
+      <text x="980" y="516" text-anchor="middle" font-size="10" fill="#e6edf3">试玩前拦截（hasBlockingErrors）</text>
+    </g>
+    <path d="M660,640 L760,640 L760,676" stroke="#8b98a5" stroke-width="1.3" fill="none" marker-end="url(#aG)" stroke-dasharray="5 4"/>
+    <text x="712" y="630" font-size="9.5" fill="#8b98a5">2.5s 后</text>
+    <path d="M585,640 L700,640" stroke="#4ade80" stroke-width="1.3" fill="none"/>
+    <path d="M980,122 L980,142" stroke="#4ade80" stroke-width="1.3" fill="none" marker-end="url(#aO)"/>
+    <path d="M980,194 L980,214" stroke="#79d9ff" stroke-width="1.3" fill="none" marker-end="url(#a)"/>
+    <path d="M980,302 L980,322" stroke="#f4a261" stroke-width="1.3" fill="none" marker-end="url(#aR)"/>
+    <path d="M980,374 L980,394" stroke="#4ade80" stroke-width="1.3" fill="none" marker-end="url(#aO)"/>
+
+    <!-- 底部：试玩拦截 -->
+    <g>
+      <rect x="760" y="560" width="440" height="92" rx="10" fill="#2a1a2a" stroke="#e879f9" stroke-width="1.5" />
+      <text x="980" y="588" text-anchor="middle" font-size="12.5" font-weight="700" fill="#e879f9">试玩启动拦截</text>
+      <text x="980" y="610" text-anchor="middle" font-size="10.5" fill="#e6edf3">先 flushPendingSave → runValidation</text>
+      <text x="980" y="630" text-anchor="middle" font-size="10.5" fill="#e6edf3">errorCount &gt; 0 → 跳校验页，拒绝试玩</text>
+    </g>
+    <path d="M980,526 L980,560" stroke="#e879f9" stroke-width="1.3" fill="none" marker-end="url(#aG)"/>
+
+    <!-- 右侧注解：backToFlow -->
+    <g>
+      <rect x="760" y="686" width="440" height="80" rx="10" fill="#16202c" stroke="#fbbf24" stroke-opacity="0.5" />
+      <text x="980" y="712" text-anchor="middle" font-size="12" font-weight="600" fill="#fbbf24">backToFlow() —— 流程图看到的必须是真的</text>
+      <text x="980" y="734" text-anchor="middle" font-size="10" fill="#8b98a5">先强制落盘（flushPendingSave）再重新校验（runValidation），</text>
+      <text x="980" y="752" text-anchor="middle" font-size="10" fill="#8b98a5">否则 800ms/2.5s 防抖未到期，图上仍是旧连线。</text>
+    </g>
+  </svg>
+</div>
+</body>
+</html>
