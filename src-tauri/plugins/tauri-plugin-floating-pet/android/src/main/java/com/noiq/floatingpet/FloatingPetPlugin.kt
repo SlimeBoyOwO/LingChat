@@ -16,6 +16,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
@@ -319,10 +320,37 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                         petNeedsResume = false
                     }
                 }
-                // 顺带重推一次窗口几何：前端靠它算缩放系数，而 WebView 的视口
-                // 在原生改完尺寸后会滞后一会儿，自算必然出错。低频重推让页面
-                // 即使漏掉某次事件也能在半秒内自愈。
-                if (petDetached) layoutParams?.let { notifyMetrics(it, petView) }
+                if (petDetached) {
+                    // ── 屏幕尺寸变了就重排 ────────────────────────────
+                    //
+                    // 这是一条**不依赖 `ComponentCallbacks` 是否送达**的兜底。
+                    //
+                    // 旋转本来靠 [configCallback] 处理（见
+                    // [reapplyWindowAfterConfigChange]），但本项目已经反复踩到
+                    // 「系统回调不保证送达」（`pet-detached` / `pet-attached`
+                    // 都丢过）。那条回调一旦丢掉，桌宠就会一直停在旧屏幕的坐标
+                    // 系里 —— 竖屏贴下沿的 `y` 在横屏里远大于屏高，整个窗口跑到
+                    // 屏幕外，而用户没有任何办法把它拉回来。
+                    //
+                    // 判据是 [lastScreenW] / [lastScreenH]：它们表示「当前 x/y 是按
+                    // 哪块屏幕算出来的」，[clampIntoScreen] / `show()` /
+                    // [reapplyWindowAfterConfigChange] 都会写。两者与实时读数不一致
+                    // == 屏幕变过、但窗口还没跟着重排。
+                    //
+                    // 代价：每 500ms 一次 WindowManager 读数（本地调用，可忽略）。
+                    val (curW, curH) = screenSizePx()
+                    val screenChanged = lastScreenW > 0 && lastScreenH > 0 &&
+                        (curW != lastScreenW || curH != lastScreenH)
+                    if (screenChanged) {
+                        // 内部会重算尺寸/位置，并把新几何推给页面
+                        reapplyWindowAfterConfigChange()
+                    } else {
+                        // 顺带重推一次窗口几何：前端靠它算缩放系数，而 WebView 的
+                        // 视口在原生改完尺寸后会滞后一会儿，自算必然出错。低频重推
+                        // 让页面即使漏掉某次事件也能在半秒内自愈。
+                        layoutParams?.let { notifyMetrics(it, petView) }
+                    }
+                }
             } catch (t: Throwable) {
                 // 轮询体绝不能抛出：Handler 里未捕获的异常会直接杀掉进程
                 Log.w(TAG, "保活轮询出错（已忽略）", t)
@@ -377,8 +405,8 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     private val configCallback = object : ComponentCallbacks {
         override fun onConfigurationChanged(newConfig: Configuration) {
             // 统一切回主线程做布局（布局只能在主线程）。
-            // 延后 120ms 是为了让 `resources.displayMetrics` 落定 —— 它是
-            // 布局的唯一依据，读到旧值会把窗口夹进旧屏幕的坐标系里。
+            // 延后 120ms 是等显示状态落定 —— 布局的唯一依据是 [screenSizePx]
+            // 读到的屏幕尺寸，读到旧值会把窗口夹进旧屏幕的坐标系里。
             keepAliveHandler.postDelayed({ reapplyWindowAfterConfigChange() }, 120)
         }
 
@@ -519,17 +547,51 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     private fun dp(value: Double): Int = (value * density).toInt()
 
     /**
-     * 屏幕可用宽度（dp）。
+     * 屏幕物理尺寸（px，含系统栏）。
      *
-     * 用 `resources.displayMetrics.widthPixels` 而不是 `WindowManager.currentWindowMetrics`：
-     * 后者在部分 ROM 上返回值受多窗口/折叠屏影响，且 API 30 才有。
-     * 这里要的是「这块屏幕多宽」这个稳定物理量。
+     * ## 为什么不能用 `activity.resources.displayMetrics`
+     *
+     * 真机反馈：**横屏时桌宠只能停在左半边** —— 往右拖到大约「竖屏宽度」的
+     * 位置就拖不动了，右边一大片拖不过去，像是边界还在按竖屏的宽度算。
+     *
+     * `Resources.displayMetrics` 走的是 Activity 的资源配置，而本 App 的
+     * manifest 声明了 `configChanges="orientation|screenSize|..."`（旋转不重建
+     * Activity）—— 这条路径上 Resources 的显示度量**并不保证**跟着旋转刷新。
+     * 悬浮窗的 `x` / `y` 是**屏幕坐标系里的绝对值**，边界一旦偏小，桌宠就被
+     * 永久关在左边那半屏里，怎么拖都出不来。
+     *
+     * `WindowManager` 的窗口度量直接取自 WindowManagerService 的显示状态，
+     * 与 Activity 的 Resources 刷没刷新无关，旋转后立刻是新值。
+     *
+     * 读数失败时退回 `resources.displayMetrics`：宁可边界偏小，也不能让
+     * 拖拽 / 吸附整条路径抛异常。
      */
-    private fun screenWidthDp(): Double =
-        activity.resources.displayMetrics.widthPixels / density.toDouble()
+    private fun screenSizePx(): Pair<Int, Int> {
+        return try {
+            val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val bounds = wm.maximumWindowMetrics.bounds
+                bounds.width() to bounds.height()
+            } else {
+                @Suppress("DEPRECATION")
+                val display = wm.defaultDisplay
+                val metrics = DisplayMetrics()
+                @Suppress("DEPRECATION")
+                display.getRealMetrics(metrics)
+                metrics.widthPixels to metrics.heightPixels
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "读取屏幕尺寸失败，退回 resources.displayMetrics", t)
+            val dm = activity.resources.displayMetrics
+            dm.widthPixels to dm.heightPixels
+        }
+    }
 
-    private fun screenHeightDp(): Double =
-        activity.resources.displayMetrics.heightPixels / density.toDouble()
+    /** 屏幕宽度（dp）。见 [screenSizePx] —— 刻意不用 `resources.displayMetrics`。 */
+    private fun screenWidthDp(): Double = screenSizePx().first / density.toDouble()
+
+    /** 屏幕高度（dp）。见 [screenSizePx]。 */
+    private fun screenHeightDp(): Double = screenSizePx().second / density.toDouble()
 
     /**
      * 尺寸基准：屏幕的**短边**（dp）。
@@ -827,8 +889,9 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 // 是那个大值，于是整个窗口跑到屏幕外。没有任何系统回调会替我
                 // 们处理这件事（manifest 声明了 configChanges，Activity 不重建），
                 // 所以必须自己监听、自己重排。见 [reapplyWindowAfterConfigChange]。
-                lastScreenW = activity.resources.displayMetrics.widthPixels
-                lastScreenH = activity.resources.displayMetrics.heightPixels
+                val (startScreenW, startScreenH) = screenSizePx()
+                lastScreenW = startScreenW
+                lastScreenH = startScreenH
                 ensureConfigCallback()
 
                 // 通知页面：你现在在悬浮窗里了。
@@ -1203,20 +1266,23 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      */
     private fun buildPlaceholderView(): View {
         val context = activity
-        // ⚠️ **绝不能**给这里刷不透明底色。
+        // ── 底色：不透明的近黑 #101014 ──────────────────────────────
         //
-        // 主题（`res/values/themes.xml` 的 `Theme.ling_chat`）已经配好
-        //     android:windowIsTranslucent  = true
-        //     android:windowShowWallpaper  = true
-        //     android:windowBackground     = @android:color/transparent
-        // 也就是「窗口透明 + 显示系统壁纸」。这里**曾经**写的是
-        //     setBackgroundColor(Color.parseColor("#101014"))
-        // 一层不透明的近黑色，正好把整块壁纸盖掉 —— 于是桌宠悬浮时，
-        // 用户看到的是「一整屏深色区域」，那正是反复被报的「外面很大一片
-        // 区域」。它是 App 自己的占位页，不是悬浮窗，也不是桌宠。
+        // 这一页只有**用户主动切回 App 时**才看得到（桌宠浮在桌面上期间 App
+        // 自己退在后台，见 show() 末尾的 moveTaskToBack），所以它需要的是一块
+        // 读得清字的背板，而不是「透出壁纸」。
         //
-        // 去掉底色后：壁纸透出来，占位页只剩下面那两行引导文案。
+        // 这里曾经去掉过这个底色，理由是「主题已经配了 windowIsTranslucent +
+        // windowShowWallpaper，刷不透明底色会把壁纸盖掉，而那正是用户反复报的
+        // 『外面很大一片区域』」。那个诊断是**错的**：那片区域的真身是悬浮窗缺
+        // FLAG_NOT_TOUCH_MODAL 时被它吃掉的整屏触摸（见 show() 里的说明），
+        // 与占位页底色无关。去掉底色之后，下面那两行文案直接压在壁纸上，
+        // 深色壁纸下几乎看不清 —— 用户反馈「改成透明背景后上面显示的内容都不清晰」。
+        //
+        // 主题里的 windowIsTranslucent / windowShowWallpaper 保持不动：它们对
+        // 占位页之外的行为（进入 /pet 那一瞬间的过渡）仍然有意义。
         val root = android.widget.FrameLayout(context)
+        root.setBackgroundColor(Color.parseColor("#101014"))
 
         // 背景：App 图标放大、淡化后铺底，保持与 App 一致的视觉调性。
         // 用 applicationInfo.icon —— 它是 App 自己的资源，不需要往插件目录
@@ -1377,7 +1443,15 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     /**
      * 屏幕旋转 / 分屏 / 折叠屏展开之后，把悬浮窗重排到新屏幕里。
      *
-     * 见 [configCallback] 的说明。要点：
+     * ## 两个调用点，缺一不可
+     *
+     * - [configCallback] 的 `onConfigurationChanged`（正常路径，延后 120ms）
+     * - [keepAliveTick] 的 500ms 轮询（兜底：那条系统回调丢了也要能自愈）
+     *
+     * 只留前者是不够的 —— 本项目已经反复踩到「系统回调不保证送达」。
+     * 那条回调一旦丢掉，桌宠会永远停在旧屏幕的坐标系里。
+     *
+     * 要点：
      *
      * - **尺寸**按当前展开态重算（基准是屏幕短边，见 [screenBasisDp]）。
      * - **左右**：保留原来贴的那一边。竖屏贴右沿的桌宠，转横屏后应该还在
@@ -1392,9 +1466,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         val params = layoutParams ?: return
         val view = petView ?: return
         try {
-            val dm = activity.resources.displayMetrics
-            val screenW = dm.widthPixels
-            val screenH = dm.heightPixels
+            val (screenW, screenH) = screenSizePx()
 
             // 旋转前的屏幕尺寸。首次调用时可能还没记录，退回当前值 ——
             // 此时相对位置退化为「不动」，但下面仍会夹回屏幕内。
@@ -1430,7 +1502,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             notifyMetrics(params, view)
             Log.i(
                 TAG,
-                "屏幕配置变化：悬浮窗重排为 ${width}x$height @ (${params.x},${params.y})，屏幕 ${screenW}x$screenH"
+                "屏幕尺寸变化：悬浮窗重排为 ${width}x$height @ (${params.x},${params.y})，屏幕 ${screenW}x$screenH"
             )
         } catch (t: Throwable) {
             Log.w(TAG, "屏幕配置变化后重排悬浮窗失败（可忽略）", t)
@@ -1451,8 +1523,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * 记录点，旋转后靠它判断桌宠原来贴哪一边。
      */
     private fun clampIntoScreen(params: WindowManager.LayoutParams) {
-        val screenW = activity.resources.displayMetrics.widthPixels
-        val screenH = activity.resources.displayMetrics.heightPixels
+        val (screenW, screenH) = screenSizePx()
         lastScreenW = screenW
         lastScreenH = screenH
         params.x = if (params.width >= screenW) {
@@ -1478,7 +1549,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      *   [setExpanded] 里已经在同一次布局里改了尺寸，传 false 少一次遍历。
      */
     private fun snapToEdge(params: WindowManager.LayoutParams, apply: Boolean = true) {
-        val screenW = activity.resources.displayMetrics.widthPixels
+        val (screenW, _) = screenSizePx()
         val margin = dp(8.0)
         val width = params.width
         val centerX = params.x + width / 2

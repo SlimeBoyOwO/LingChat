@@ -10,51 +10,48 @@
       class="animate-pet-scale relative transition-transform duration-300 ease-out"
       :style="{ width: frameSize + 'px', height: frameSize + 'px' }"
     >
-      <!-- 设置按钮：悬浮窗里隐藏 —— 手机上没有 hover，按钮永远不浮现；
-           而且整页等比缩放后它们挂在头像左外侧，会被 overflow-hidden 裁掉。
-           手机端交互收敛为「点头像 = 展开/收起，双击 = 收回 App」。 -->
+      <!-- 设置按钮：两个形态都在，位置/显隐的差异全在 sideButtonClass 里
+           （桌面端在头像左外侧、悬停浮现；悬浮窗在画布内侧、常驻）。 -->
       <button
-        v-if="!floatingMode"
         type="button"
         :aria-label="$t('views.pet.stage.openSettingsAria')"
         :title="$t('views.pet.stage.settings')"
-        class="absolute top-1 -left-3.5 z-40 flex h-8 w-8 translate-y-2 items-center justify-center rounded-full border border-white/10 bg-neutral-950/60 text-white opacity-0 shadow-[0_4px_12px_rgba(0,0,0,0.3)] backdrop-blur-xl transition-all duration-300 group-[.is-hovered]:translate-y-0 group-[.is-hovered]:opacity-100 hover:scale-110 hover:bg-cyan-500/80 hover:text-white"
+        class="absolute top-1 z-40 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-neutral-950/60 text-white shadow-[0_4px_12px_rgba(0,0,0,0.3)] backdrop-blur-xl transition-all duration-300 hover:scale-110 hover:bg-cyan-500/80 hover:text-white"
+        :class="sideButtonClass"
         @click.stop="handleOpenSettings"
       >
         <Settings :size="16" />
       </button>
 
-      <!-- 自动按钮 -->
+      <!-- 自动按钮。注意 :class 只能有一个 —— 定位类与「自动模式开启」的高亮
+           类必须并进同一个数组，否则后写的那个会整体覆盖前一个。 -->
       <button
-        v-if="!floatingMode"
         type="button"
         :aria-label="$t('views.pet.stage.openAutoAria')"
         :title="$t('views.pet.stage.auto')"
-        class="absolute top-10 -left-3.5 z-40 flex h-8 w-8 translate-y-2 items-center justify-center rounded-full border border-white/10 bg-neutral-950/60 text-white opacity-0 shadow-[0_4px_12px_rgba(0,0,0,0.3)] backdrop-blur-xl transition-all duration-300 group-[.is-hovered]:translate-y-0 group-[.is-hovered]:opacity-100 hover:scale-110 hover:bg-cyan-500/80 hover:text-white"
-        :class="{ '!border-cyan-400/50 !bg-cyan-500/80': uiStore.autoMode }"
+        class="absolute top-10 z-40 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-neutral-950/60 text-white shadow-[0_4px_12px_rgba(0,0,0,0.3)] backdrop-blur-xl transition-all duration-300 hover:scale-110 hover:bg-cyan-500/80 hover:text-white"
+        :class="[sideButtonClass, { '!border-cyan-400/50 !bg-cyan-500/80': uiStore.autoMode }]"
         @click.stop="handleSwitchAutoMode"
       >
         <Play v-if="!uiStore.autoMode" :size="16" />
         <Pause v-else :size="16" />
       </button>
 
-      <!-- 返回主页按钮 -->
+      <!-- 返回主页按钮。悬浮窗里**就是**收回悬浮窗的入口 —— PetMode 不再另放
+           一个自造的返回键，两个形态共用这一个（见 PetMode 模板里的说明）。 -->
       <button
-        v-if="!floatingMode"
         type="button"
         :aria-label="$t('views.pet.stage.backHome')"
         :title="$t('views.pet.stage.backHome')"
-        class="absolute top-19 -left-3.5 z-40 flex h-8 w-8 translate-y-2 items-center justify-center rounded-full border border-white/10 bg-neutral-950/60 text-white opacity-0 shadow-[0_4px_12px_rgba(0,0,0,0.3)] backdrop-blur-xl transition-all duration-300 group-[.is-hovered]:translate-y-0 group-[.is-hovered]:opacity-100 hover:scale-110 hover:bg-cyan-500/80 hover:text-white"
+        class="absolute top-19 z-40 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-neutral-950/60 text-white shadow-[0_4px_12px_rgba(0,0,0,0.3)] backdrop-blur-xl transition-all duration-300 hover:scale-110 hover:bg-cyan-500/80 hover:text-white"
+        :class="sideButtonClass"
         @click.stop="handleExitPetMode"
       >
         <LogOut :size="16" />
       </button>
 
       <!-- 截图按钮 -->
-      <div
-        v-if="!floatingMode"
-        class="absolute top-28 -left-3.5 z-40 translate-y-2 opacity-0 transition-all duration-300 group-[.is-hovered]:translate-y-0 group-[.is-hovered]:opacity-100"
-      >
+      <div class="absolute top-28 z-40 transition-all duration-300" :class="sideButtonClass">
         <button
           type="button"
           :title="titleText"
@@ -72,10 +69,7 @@
       </div>
 
       <!-- 语音输入按钮（与桌面 GameDialog 同源：useAsrInput 共享会话） -->
-      <div
-        v-if="!floatingMode"
-        class="absolute top-37 -left-3.5 z-40 translate-y-2 opacity-0 transition-all duration-300 group-[.is-hovered]:translate-y-0 group-[.is-hovered]:opacity-100"
-      >
+      <div class="absolute top-37 z-40 transition-all duration-300" :class="sideButtonClass">
         <!-- 自动监听开着但当前已暂停时，用强调色提示"点一下可恢复"。
              原先这里写的是 !asrPhase，而 phase 只会是 idle/recording/recognizing
              （都是真值），该条件恒为 false、这段样式从未生效；改为显式判断 idle -->
@@ -225,6 +219,39 @@ const petFrameless = computed(() => singleRole.value?.petFrameless === true);
 const ownFloatingMode = ref(isInFloatingWindow());
 let floatingModeUnlisten: (() => void) | null = null;
 const floatingMode = computed(() => props.floatingWindow ?? ownFloatingMode.value);
+
+/**
+ * 左侧那排圆形按钮（设置 / 自动 / 返回主页 / 截图 / 麦克风）的定位与显隐类。
+ *
+ * ## 桌面端
+ *
+ * 挂在头像框**左外侧**（`-left-3.5` = -14px），正好落在 `PET_WIDTH_BASE`(240)
+ * 比 `AVATAR_BAND_BASE`(210) 多出来的那 15px「呼吸边」里；平时透明，
+ * 悬停（`.is-hovered`）才浮现。
+ *
+ * ## 悬浮窗
+ *
+ * 上面两条**都不成立**，所以不能照搬：
+ *
+ * 1. **没有呼吸边**。悬浮窗的逻辑画布宽度就是 `FLOATING_LOGICAL_WIDTH`(210)
+ *    = 头像带宽（见 constants.ts 的说明），`-left-3.5` 会落到画布外，被
+ *    `#pet-app` 的 `overflow-hidden` 整个裁掉 —— 真机上根本点不到。因此改成
+ *    贴在画布**内侧**（`left-1`）。
+ * 2. **没有 hover**。手机没有鼠标，`opacity-0 group-[.is-hovered]:opacity-100`
+ *    会让它们永远不可见，因此悬浮窗里常驻显示。
+ *
+ * `top-*` 两个形态共用：`top-1 / top-10 / top-19 / top-28 / top-37` 对应逻辑
+ * y = 4 / 40 / 76 / 112 / 148，最下面那个按钮底边 148+32 = 180，仍在 210 高的
+ * 头像带内 —— 收起态（窗口约 60dp）也不会越出窗口。
+ *
+ * 共享的静态类（圆底、描边、backdrop-blur、hover 放大）留在各按钮的 `class`
+ * 里，这里只放「两个形态不一样」的那部分。
+ */
+const sideButtonClass = computed(() =>
+  floatingMode.value
+    ? "left-1"
+    : "-left-3.5 translate-y-2 opacity-0 group-[.is-hovered]:translate-y-0 group-[.is-hovered]:opacity-100",
+);
 
 /**
  * 头像框边长（逻辑画布 px）。

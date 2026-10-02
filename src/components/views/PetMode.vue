@@ -23,27 +23,13 @@
       @mouseleave="handleMouseLeave"
       class="relative flex h-(--app-height) w-(--app-width) flex-col items-center justify-start overflow-hidden bg-transparent transition-none select-none"
     >
-      <!-- 悬浮窗展开态的返回按钮：收回悬浮窗并切回聊天页。
-
-           位置必须在逻辑画布**内部**（top-1 / right-1，而不是 -top-1 / -right-1）：
-           早先挂在头像右上角用负偏移，整体等比缩放后会被 #pet-app 的
-           overflow-hidden 裁掉一半，真机上根本点不到。
-
-           z 值给到 100：气泡带、头像里的 Live2D 画布都是同层的定位元素，
-           给低了会被压在下面看不见。
-
-           只在展开态出现——收起态只有头像、没有放按钮的地方，而展开本来就靠
-           点头像，退出需要一个明确、看得见的入口。 -->
-      <button
-        v-if="floatingWindowMode && petExpanded"
-        type="button"
-        aria-label="返回"
-        title="返回"
-        class="absolute top-1 right-1 z-[100] flex h-7 w-7 items-center justify-center rounded-full border border-white/25 bg-neutral-950/85 text-white/95 shadow-lg backdrop-blur-xl active:scale-95"
-        @click.stop="handleExitPetMode"
-      >
-        <ArrowLeft :size="15" />
-      </button>
+      <!-- 这里**不再**单放一个「返回」按钮。
+           桌面端本来就有一排左侧圆形按钮（设置 / 自动 / 返回主页 / 截图 /
+           麦克风，见 GameRolesStage.vue），「返回主页」就在里面。悬浮窗里需要
+           做的只是让那一排别被 `v-if="!floatingMode"` 隐藏、别被
+           `#pet-app` 的 overflow-hidden 裁掉（见 GameRolesStage 的
+           `sideButtonClass`），而不是另造一个图标和位置都不同的按钮 ——
+           同一件事有两套入口，迟早对不上。 -->
 
       <!-- 装饰带（气泡/通知）：高度完全随内容（无预留）→ 顶部永远没有透明空间：
            默认在宠物上方（气泡吸顶，宠物被往下让位）；设置=下方时夹在宠物与输入框之间（气泡贴宠物下沿）
@@ -148,7 +134,6 @@ import DialogueBox from "../pet/DialogueBox.vue";
 import DragArea from "../pet/DragArea.vue";
 import GameRolesStage from "../pet/GameRolesStage.vue";
 import PetNotification from "../pet/PetNotification.vue";
-import { ArrowLeft } from "lucide-vue-next";
 import { isAndroid } from "@/utils/platform";
 import {
   AVATAR_BAND_BASE,
@@ -631,8 +616,6 @@ const handleReturnedToApp = () => {
     returningTimer = undefined;
     returningToApp.value = false;
   }, 1500);
-  // 临时诊断：这一帧的视口尺寸就是「只有左上一角」的关键证据
-  showViewportDiagnostic("returned");
   void router.push("/chat");
 };
 
@@ -649,8 +632,6 @@ const pollNativeState = async () => {
   if (!isInFloatingWindow() && !isAndroid()) return;
   try {
     const status = await getFloatingPetStatus();
-    nativeWindowWidth.value = status.width;
-    nativeWindowHeight.value = status.height;
     if (status.detached) {
       sawDetached = true;
       // 兜底自愈：万一进悬浮窗时的事件丢了、页面还停在桌面端布局
@@ -661,9 +642,6 @@ const pollNativeState = async () => {
         floatingFit.value = status.scale;
       }
       reportFloatingHeight();
-      // 每轮轮询都重画一次：文字必须和描边同一时刻，否则截图会误导
-      // （早先只画一次，文字写着 fit=1.000 而实际早就变了）。
-      renderDiagnostic("live");
       return;
     }
     // 原生说 WebView 已经不在悬浮窗里了 → 按「已回到 App」处理。
@@ -678,185 +656,6 @@ const startMetricsPolling = () => {
   if (metricsTimer !== undefined) return;
   void pollNativeState();
   metricsTimer = window.setInterval(() => void pollNativeState(), METRICS_POLL_MS);
-};
-
-// ─── 临时诊断（定位完即删，合并前必须移除） ──────────────────────
-//
-// 「收回后只有左上一角」「展开后一大片透明区」这类问题靠推理定不下来：
-// 必须知道窗口、画布、各条带各自的**实际矩形**。这里把关键数字和
-// 描边直接画到屏幕上，用户截一张图就能定位。
-//
-// 挂在 document.body 而不是组件里，这样路由切到 /chat 之后它还在
-// ——出问题的正是切换之后那一刻。
-//
-// ⚠️ 合并前必须整段删除（含 DEBUG_FLOATING_OVERLAY 常量与
-// showViewportDiagnostic / renderDiagnostic 的全部调用点）。
-
-/** 诊断开关：置 false 即关闭（保留代码便于下次排查）。 */
-const DEBUG_FLOATING_OVERLAY = true;
-
-/** 原生报告的窗口宽度（dp），用于和 window.innerWidth 对照。 */
-const nativeWindowWidth = ref(0);
-/** 原生报告的窗口高度（dp）。 */
-const nativeWindowHeight = ref(0);
-
-/** 给元素加一圈描边（outline 不参与布局，不会改变被观测的几何）。 */
-/**
- * 撤掉所有诊断描边与画布底色。
- *
- * 保留本函数是为了清掉**上一次渲染**可能已经画上去的样式 —— 诊断层
- * 自己画出来的品红底/青色框，曾经被误认成「宠物外面那一圈」。
- */
-const clearOutlines = () => {
-  for (const el of [
-    document.getElementById("app"),
-    document.getElementById("pet-app"),
-    avatarContainer.value,
-    decorBand.value,
-    chatContainer.value,
-  ]) {
-    if (el) (el as HTMLElement).style.outline = "";
-  }
-  const canvasEl = document.getElementById("pet-app") as HTMLElement | null;
-  if (canvasEl) canvasEl.style.backgroundColor = "";
-};
-
-/** `w×h @ x,y` 形式的矩形摘要。 */
-const rectOf = (el: HTMLElement | null): string => {
-  if (!el) return "null";
-  const r = el.getBoundingClientRect();
-  return `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.left)},${Math.round(r.top)}`;
-};
-
-/**
- * 诊断浮层：**实时**刷新、**常驻**，并给画布铺底色。
- *
- * ## 为什么要实时
- *
- * 早先它只在 `enter` / `returned` 那一刻画一次，之后 30 秒内不再更新。
- * 于是截图里的**文字是那一刻的快照，而描边是实时的** —— 两者对不上。
- * 排查时被这个误导过整整一轮：文字写着 `fit=1.000`，实际早就不是了。
- * 现在它挂在轮询上，文字和描边永远取自同一时刻。
- *
- * ## 为什么要给画布铺底色
- *
- * 描边只能说「框在哪」，说不出「框里是透明的还是有内容」。铺一层半透明
- * 品红之后，一次截图就能定性：
- *   - 品红铺满窗口   → 画布尺寸是对的，空白在**画布内部**
- *   - 品红只盖住一块 → 窗口比画布大，空白在**画布外**
- */
-const renderDiagnostic = (label: string) => {
-  if (!DEBUG_FLOATING_OVERLAY) return;
-  // 悬浮窗内一直显示；回到 App 后只在视口明显不对时才显示，修好就自然消失。
-  const screenW = window.screen?.width ?? 0;
-  const suspicious = floatingWindowMode.value || (screenW > 0 && window.innerWidth < screenW * 0.9);
-  if (!suspicious) {
-    document.getElementById("__lc_pet_diag")?.remove();
-    clearOutlines();
-    return;
-  }
-
-  // ⚠️ 这里**不再画任何描边 / 底色**。
-  //
-  // 早先给每条带都描了边（橙 = #app、品红 = #pet-app、青 = 头像带、
-  // 黄 = 气泡带、绿 = 输入带），还给画布铺了 `rgba(255,0,255,.22)` 的品红底。
-  // 那些都是**用户可见**的：画布底色在宠物轮廓之外露出来的那一圈，
-  // 加上头像容器那圈青色描边，看起来就是「宠物外面套了一圈」——
-  // 正是用户反复报的「外面那一圈」。诊断代码把被诊断的现象自己制造了出来。
-  //
-  // 现在只保留左上角那行文字读数（矩形坐标、gap、fit 都在里面），
-  // 足够定位问题，且不会在宠物周围留下任何可见形状。
-  clearOutlines();
-
-  let el = document.getElementById("__lc_pet_diag") as HTMLDivElement | null;
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "__lc_pet_diag";
-    // 贴左上角；诊断读数，合并前整段删除
-    el.style.cssText =
-      "position:fixed;left:0;top:0;z-index:2147483647;pointer-events:none;" +
-      "background:rgba(0,0,0,.72);color:#4ade80;font:10px/1.35 monospace;" +
-      "padding:2px 5px;white-space:pre;border-bottom-right-radius:6px";
-    document.body.appendChild(el);
-  }
-
-  const appEl = document.getElementById("app");
-  const canvasEl = document.getElementById("pet-app") as HTMLElement | null;
-  // 画布**不铺底色**：早先这里涂了 `rgba(255,0,255,0.22)`，本意是区分
-  // 「空白在画布内还是画布外」，但它是**用户可见**的 —— 画布比宠物大时
-  // 那层品红就成了宠物外面的一圈粉色，正是用户反复报的「外面那一圈」。
-  // 现在整条描边/底色通道都关掉了（见上面的 clearOutlines 说明）。
-  if (canvasEl) canvasEl.style.backgroundColor = "";
-
-  const canvasRect = canvasEl?.getBoundingClientRect();
-  const innerW = window.innerWidth;
-  const innerH = window.innerHeight;
-
-  const canvasW = canvasRect ? Math.round(canvasRect.width) : 0;
-  const canvasH = canvasRect ? Math.round(canvasRect.height) : 0;
-  const offX = canvasRect ? Math.round(canvasRect.left) : 0;
-  const offY = canvasRect ? Math.round(canvasRect.top) : 0;
-
-  // 画布四边相对视口的余量。**全 0 才是对的**；哪个方向是正数，
-  // 那个方向就是吃触摸的透明区。
-  const gapL = offX;
-  const gapT = offY;
-  const gapR = innerW - (offX + canvasW);
-  const gapB = innerH - (offY + canvasH);
-  const noGap = gapL <= 1 && gapT <= 1 && gapR <= 1 && gapB <= 1;
-
-  // **实际**生效的缩放系数：直接从 transform 矩阵里读，不信任任何变量。
-  // 变量可能是过期的（Vue 尚未 flush），矩阵不会。
-  const appliedFit = (() => {
-    if (!canvasEl) return 0;
-    const t = getComputedStyle(canvasEl).transform;
-    if (!t || t === "none") return 1;
-    const m = t.match(/matrix\(([-\d.]+)/);
-    return m ? Number(m[1]) : 1;
-  })();
-
-  const r = gameStore.presentRolesList[0];
-  const roleInfo = r
-    ? `role scaleP=${r.scaleP} offX=${r.offsetXP} offY=${r.offsetYP} frameless=${r.petFrameless}`
-    : "role=none";
-
-  // 外壳层（= WebView 视口）实测矩形。它和 inner 必须完全一致 ——
-  // 不一致就说明「外面」那一层本身没套住窗口，问题在 CSS 而不在计算。
-  const shellRect = document.getElementById("pet-shell")?.getBoundingClientRect();
-  const shellInfo = shellRect
-    ? `${Math.round(shellRect.width)}x${Math.round(shellRect.height)}` +
-      `@${Math.round(shellRect.left)},${Math.round(shellRect.top)}`
-    : "none";
-
-  el.textContent =
-    `[${label}] inner=${innerW}x${innerH} dpr=${window.devicePixelRatio}\n` +
-    `shell=${shellInfo} liveFit=${liveFit.value.toFixed(3)}\n` +
-    `win=${nativeWindowWidth.value}x${nativeWindowHeight.value}dp ` +
-    `fit=${floatingFit.value.toFixed(3)} applied=${appliedFit.toFixed(3)}\n` +
-    `app=${rectOf(appEl as HTMLElement | null)}\n` +
-    `canvas=${canvasW}x${canvasH}@${offX},${offY}\n` +
-    `gap L${gapL} T${gapT} R${gapR} B${gapB} ${noGap ? "OK" : "<== 空白!"}\n` +
-    `scroll=${window.scrollX},${window.scrollY} ` +
-    `doc=${document.documentElement.scrollHeight}x${document.documentElement.scrollWidth}\n` +
-    `avatar=${rectOf(avatarContainer.value)} band=${decorBand.value?.offsetHeight ?? -1}\n` +
-    `chat=${rectOf(chatContainer.value)} exp=${petExpanded.value}\n` +
-    `floating=${floatingWindowMode.value} metrics=${metricsReceived} ` +
-    `canvasLogical=${Math.round(floatingCanvasHeight.value)}\n` +
-    roleInfo;
-};
-
-/**
- * 兼容旧调用点：进/出悬浮窗、收到原生几何时各画一次。
- *
- * **必须等一帧**：`enterFloatingLayout` / `handleReturnedToApp` 都是
- * 「改完 ref 立刻调用」的，此刻 Vue 还没 flush，读到的 DOM 是**上一次**
- * 的布局。于是浮层文字里 `floating=` / `exp=` 是新值，而 `canvas=` /
- * `applied=` 是旧值 —— 两者混在同一行里，前后误导过两轮排查
- * （`[enter]` 那帧显示 `inner=802x360` 却 `canvas=240x480`，就是这个原因）。
- * 包一层 `nextTick` 让文字和 DOM 同源。
- */
-const showViewportDiagnostic = (label: string) => {
-  void nextTick().then(() => renderDiagnostic(label));
 };
 
 // 气泡/通知位置（用户设置）：above = 宠物上方，below = 宠物与输入框之间，auto = 按宠物在屏幕中的位置自动选
@@ -1079,8 +878,6 @@ const enterFloatingLayout = () => {
   // 本地自愈心跳：即使原生推事件与 500ms 轮询两条路都失效，也能靠
   // `window.innerWidth` 把系数拉回来。见 startSelfHeal 的说明。
   startSelfHeal();
-  // 立刻画一次诊断，不等轮询的第一拍（用户截屏时它必须已经在屏幕上）
-  showViewportDiagnostic("enter");
   void nextTick().then(() => {
     // 第一帧就把系数按当前视口算出来：`pet-detached` 是 addView 之后立刻
     // 派发的，此刻 WebView 视口往往还是搬运前那个（整屏）值。先按它算一次，
