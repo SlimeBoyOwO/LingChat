@@ -274,7 +274,7 @@ async fn read_manifest(dir: &Path) -> anyhow::Result<PluginManifest> {
     Ok(manifest::parse(&text)?)
 }
 
-/// 返回第一个「manifest 声明了但实际不存在」的脚本名（工具、信号订阅、启动入口一起查）。
+/// 返回第一个「manifest 声明了但实际不存在」的脚本名（工具、信号订阅、启动入口、WS 内联处理一起查）。
 async fn find_missing_script(dir: &Path, manifest: &PluginManifest) -> Option<String> {
     manifest
         .tools
@@ -282,6 +282,7 @@ async fn find_missing_script(dir: &Path, manifest: &PluginManifest) -> Option<St
         .map(|tool| &tool.script)
         .chain(manifest.subscribe.iter().map(|sub| &sub.script))
         .chain(manifest.startup.iter().map(|startup| &startup.script))
+        .chain(manifest.ws.iter().filter_map(|ws| ws.script.as_ref()))
         // manifest::validate 已保证 script 是单个文件名，这里只判存在性。
         .find(|script| !dir.join(script).is_file())
         .cloned()

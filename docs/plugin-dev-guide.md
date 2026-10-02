@@ -8,8 +8,24 @@
 data/plugins/<id>/
 ├── manifest.toml   # 插件声明（必须）
 ├── <脚本文件>.py    # 工具处理脚本（manifest 里声明）
+├── plugin_host.pyi # 可选：类型存根，仅供编辑器补全，不参与运行（见下）
 └── 资源子目录（可选）# 见「插件携带资源」：characters / scripts / musics / backgrounds / ambients
 ```
+
+## 编辑器补全：`plugin_host.pyi`
+
+`plugin_host` 是宿主注入进解释器的原生模块（源码在 `src-tauri/src/plugins/host_api.rs`），磁盘上并没有这个包，所以 `from plugin_host import http_post` 在编辑器里会被标成「找不到模块 / 无法解析导入」。**这不影响运行**，只是缺补全和类型检查。
+
+仓库里的 `docs/plugin_host.pyi` 就是它的类型存根（覆盖全部宿主函数）。把这份文件拷进插件目录（与 `.py` 脚本同级），报错即消失并恢复补全：
+
+```
+data/plugins/<id>/
+├── manifest.toml
+├── main.py
+└── plugin_host.pyi   # 类型检查器读取；运行时不加载，可安全随插件一起分发
+```
+
+存根靠「与脚本同级」被解析——把插件目录本身作为 IDE 工程根打开即可命中。若工程根在别处，把存根所在目录加进 Pylance 的 `extraPaths`（PyCharm 用「Sources Root」）同样有效。
 
 ## 打包与导入
 
@@ -60,6 +76,16 @@ label = "默认返回条数"
 kind = "number"
 required = false
 
+# hint 可选：会以一行小字显示在输入框下面，告诉用户该填什么、去哪儿拿。
+# \n 可以换行（比如一行写本机、一行写服务器）。
+[[config]]
+key = "endpoint"
+label = "接收地址"
+kind = "string"
+required = true
+default = "http://127.0.0.1:8080/reply"
+hint = "本机就用默认值；对接别的机器时，把 127.0.0.1 换成对方的地址。"
+
 # 可选：环境变量白名单。宿主只把这里声明的变量注入 ctx.env，插件读不到其他环境变量
 [[env]]
 key = "TAVILY_API_KEY"
@@ -75,7 +101,7 @@ script = "tavily.py"
 parameters = '{ "type":"object", "properties":{ "query":{"type":"string"}, "max_results":{"type":"integer","default":5} }, "required":["query"] }'
 ```
 
-除工具与资源，插件还可以订阅宿主信号（`[[subscribe]]`）、声明启动入口（`[startup]`）、前置插件（`depends_on`）与可读素材范围（`read`），见后文对应章节。
+除工具与资源，插件还可以订阅宿主信号（`[[subscribe]]`）、声明 WebSocket 连接（`[[ws]]` 与 `ws_allow`）、声明启动入口（`[startup]`）、前置插件（`depends_on`）与可读素材范围（`read`），见后文对应章节。
 
 ## 插件携带资源（人物 / 剧本 / 音乐 / 背景图 / 环境音）
 
@@ -208,14 +234,40 @@ r = read_data_file("game_data/characters/风雪/avatar/高兴.webp")
 
 ```toml
 [[subscribe]]
-signal = "scene:switch"          # 宿主注册的信号名
+signal = "ai_reply"              # 宿主注册的信号名，见下表
 script = "hook.py"               # 处理脚本（相对插件目录的单个文件名）
-handler = "on_scene"             # 脚本内的处理函数，签名为 handler(ctx)
+handler = "on_reply"             # 脚本内的处理函数，签名为 handler(ctx)
 timeout_ms = 30000               # 可选，单次执行超时（默认 30000，上限 120000）
-match = { scene_id = "night" }   # 可选，见下
+match = { emotion = "高兴" }      # 可选，见下
 ```
 
-> **当前宿主还没有注册任何信号，所以这里声明的订阅暂时不会触发。** 先声明是安全的：加载时只会对未注册的信号打一条 warn，不算 manifest 错误，插件包在信号上线前后都能正常安装启用。
+### 已注册的信号
+
+| 信号         | 触发时机                                               | payload                                              |
+| ------------ | ------------------------------------------------------ | ---------------------------------------------------- |
+| `ai_reply`   | 每条助手回复。自由对话、剧本固定台词、主动消息都会触发 | 与前端 `ai:reply` 事件一致（camelCase），见下        |
+| `ws_message` | 插件声明的 WS 连接：建立 / 断开 / 收到帧 / 出错        | `{ connId, mode, event, data, binary, error }`，见下 |
+
+`ai_reply` 的 payload 顶层字段：`type`、`duration`、`isFinal`、`character`、`roleId`、`emotion`、`originalTag`、`message`、`ttsText`、`motionText`、`audioFile`、`originalMessage`、`displayName`、`displaySubtitle`、`userMessageSeq`、`thinking`、`previewGen`。
+
+比前端收到的 `ai:reply` 事件多一个 `avatarDir`：角色的立绘目录（相对 `data/`），
+例如 `game_data/characters/风雪/avatar`。角色的显示名和目录名不一定一样，所以由宿主查库给出。该键**始终存在**：没有立绘目录（剧本 / 插件角色等）时为 `null`，可直接下标取值。
+
+`ws_message` 的 payload 顶层字段：
+
+| 字段     | 类型 | 说明                                                                     |
+| -------- | ---- | ------------------------------------------------------------------------ |
+| `connId` | str  | 连接名（`[[ws]]` 的 `id`）                                               |
+| `mode`   | str  | 连接方向：`"client"` / `"server"`                                        |
+| `event`  | str  | `"connect"` / `"disconnect"` / `"message"` / `"error"`                   |
+| `data`   | any  | 仅 `message`：文本帧尽量解析成 JSON（失败给原字符串）；二进制帧给 base64 |
+| `binary` | bool | `data` 是否为二进制帧的 base64                                           |
+| `error`  | str? | 仅 `error`：失败原因                                                     |
+
+> `ws_message` 只派发给**声明了该连接的插件**——别的插件就算订阅了同名信号也收不到。
+> 连接本身用 `[[ws]]` 声明、用 `ws_open` / `ws_send` / `ws_close` 操作，见「WebSocket 连接」。`ws_message` 的 handler `ctx` 与 `ai_reply` 完全一致（`ctx["signal"]` 为 `"ws_message"`）。
+
+> 声明**未注册**的信号是安全的：加载时只对未注册的信号打一条 warn，不算 manifest 错误，插件包在信号上线前后都能正常安装启用。
 >
 > 插件也可以**只有订阅、没有工具和资源**。
 
@@ -223,8 +275,8 @@ match = { scene_id = "night" }   # 可选，见下
 
 `match` 在**宿主侧**筛选，键是信号 payload 的顶层字段名：
 
-- 标量 = 等值命中：`match = { scene_id = "night" }`
-- 数组 = 命中其中任一：`match = { scene_id = ["night", "rooftop"] }`
+- 标量 = 等值命中：`match = { emotion = "高兴" }`
+- 数组 = 命中其中任一：`match = { emotion = ["高兴", "害羞"] }`
 - 省略 `match` = 一律派发
 - payload 里没有该字段 = **不命中**（不会退化成通配）
 - 多个键之间是「与」
@@ -245,9 +297,16 @@ match = { scene_id = "night" }   # 可选，见下
 
 ```python
 # data/plugins/my_plugin/hook.py
-def on_scene(ctx):
+from plugin_host import http_post
+
+
+def on_reply(ctx):
     payload = ctx["payload"]
-    ctx["call_tool"]("memory_add_note", {"content": f"去过 {payload.get('name')}"})
+    # 例：把每条回复推给外部服务（配置项在 manifest 的 [[config]] 里声明）
+    http_post(
+        ctx["config"]["endpoint"],
+        body={"text": payload.get("message"), "emotion": payload.get("emotion")},
+    )
 ```
 
 约定与限制：
@@ -258,6 +317,119 @@ def on_scene(ctx):
 - **每次派发都新建解释器**，全局状态不跨派发保留，和工具调用一样。
 - **沙箱规则与工具脚本完全一致**（见文末「沙箱与限制」）。
 - 插件被禁用 / 删除后订阅立即失效；重新启用后恢复。
+
+## WebSocket 连接：`[[ws]]`
+
+插件可以声明 WebSocket 连接，与外部程序双向通信。**连接本体常驻宿主**（插件脚本跑完即弃，长连接没法活在插件里），插件只做两件事：**收到帧时被叫醒执行 handler**（`ws_message` 信号）、**主动发帧**（`ws_send`）。
+
+```toml
+# 顶层：允许 client 连接的 URL 白名单。省略 = 允许全网段（默认）。
+# 每项是前缀，可含 * 通配；"*" 等价全网段。
+ws_allow = ["wss://example.com/*", "wss://*.mycorp.com/*"]
+
+# client：插件连出去（连外部服务）
+[[ws]]
+id = "gateway"                 # 连接名，脚本按它 send/open/close；同一插件内唯一
+mode = "client"
+url = "wss://example.com/ws"   # 可含 ${config.键名} / ${env.变量名} 占位符；缺省则靠 ws_open(url=...) 传
+auto_reconnect = true          # 可选，默认 true：断开后宿主带退避自动重连
+
+# server：宿主监听，被外部连进来
+[[ws]]
+id = "remote"
+mode = "server"
+bind = "127.0.0.1:8787"        # 监听地址（必填）
+path = "/ws"                   # 可选，默认 /ws
+```
+
+字段一览：
+
+| 字段               | 适用   | 说明                                                                     |
+| ------------------ | ------ | ------------------------------------------------------------------------ |
+| `id`               | 都要   | 连接名，脚本按它操作；同一插件内唯一                                     |
+| `mode`             | 都要   | `"client"`（连出去）/ `"server"`（被连进来）                             |
+| `url`              | client | 默认连接的 URL（支持占位符）；缺省则由脚本 `ws_open(id, url=...)` 给出   |
+| `headers`          | client | 可选，连接时的请求头（值支持占位符），如 `{ Authorization = "Bot xxx" }` |
+| `auto_reconnect`   | client | 可选，默认 `true`                                                        |
+| `bind`             | server | 监听地址，必填                                                           |
+| `path`             | server | 可选，WebSocket 路径，默认 `/ws`                                         |
+| `script`/`handler` | 都可   | 可选，内联事件处理脚本（等价于一条 `ws_message` 订阅，见下）             |
+| `timeout_ms`       | 都可   | 可选，内联 handler 的超时，默认 30000                                    |
+
+### 占位符
+
+`url` 与 `headers` 的值里可以写 `${config.键名}` / `${env.变量名}`，宿主在建连时替换成运行期的配置值 / 白名单环境变量。适合放 token 等敏感信息（写进 `[[config]]` 的 `secret` 字段，别硬编码）。未命中的占位符原样保留。
+
+```toml
+[[ws]]
+id = "gateway"
+mode = "client"
+url = "wss://gateway.example.com/ws?token=${config.bot_token}"
+```
+
+```toml
+[[config]]
+key = "bot_token"
+label = "机器人 Token"
+kind = "secret"
+required = true
+```
+
+### 收到消息：handler 与 `ws_message`
+
+连接建立 / 断开 / 收到帧 / 出错都会以 `ws_message` 信号派发（payload 见「订阅宿主信号」一节）。两种写法：
+
+**写法一：内联 handler**（推荐，连接和处理放一处）
+
+```toml
+[[ws]]
+id = "gateway"
+mode = "client"
+url = "wss://example.com/ws"
+script = "ws_handler.py"
+handler = "on_ws"
+```
+
+```python
+# data/plugins/my_plugin/ws_handler.py
+def on_ws(ctx):
+    p = ctx["payload"]
+    if p["event"] == "message" and p["connId"] == "gateway":
+        print("收到:", p["data"])
+```
+
+**写法二：常规 `[[subscribe]]`**（用 `match` 只收某个连接）
+
+```toml
+[[subscribe]]
+signal = "ws_message"
+script = "hook.py"
+handler = "on_ws"
+match = { connId = "gateway" }
+```
+
+两种写法等价，`ctx` 形状完全一样。
+
+### 发出消息：`ws_send`
+
+在任意脚本里（工具、信号 handler、启动入口都行）调 `plugin_host.ws_send`（见「插件系统的私有 API」）：
+
+```python
+from plugin_host import ws_send
+ws_send("gateway", {"op": 1, "d": {"hello": "world"}})   # dict → JSON 文本帧
+ws_send("gateway", "plain text")                          # str → 文本帧
+```
+
+`ws_send` **同步发出、不等回执**。要拿对端响应，就等下一次 `ws_message` 事件（`event == "message"`）。
+
+### 生命周期与脚本控制
+
+- 插件**启用时**，宿主自动建立它声明的全部连接；**禁用 / 删除 / 重载**时全部断开，不留孤儿连接。
+- 脚本可用 `ws_open(conn_id)` / `ws_close(conn_id)` 按需启停（例如先等配置就绪再连、或临时断开），用 `ws_status` 读当前状态。
+- client 断开后由宿主自动重连（`auto_reconnect = false` 可关掉）。
+- server 监听失败（端口被占等）以 `ws_message` 的 `error` 事件通知插件。
+
+> server 模式会在本机监听端口。写 `0.0.0.0` 会把服务暴露到局域网 / 公网，请只在明确需要时这么做。
 
 ## 前置插件：`depends_on`
 
@@ -612,6 +784,27 @@ r = compress_context()   # {"ok": True, "triggered": 1}
 
 > **和永久记忆的关系**：如果永久记忆已经把早期台词压缩成了摘要，那些行**仍在历史里，但发给 LLM 的是摘要**——只改行对 LLM 无效（system 人设行除外）。`edit_context` 会自动把压缩指针回拨到编辑处，让这段重新进入上下文；随后的压缩把改动重新摘要进去。代价是**逐字内容会被 LLM 改写成摘要**，所以想保留原文就别在改动后紧接着压缩。
 
+### WebSocket：`ws_open` / `ws_close` / `ws_send` / `ws_status`
+
+操作本插件 `[[ws]]` 声明的连接（见「WebSocket 连接」一节）。只会操作**自己声明过的**连接，别的插件的连接碰不到。
+
+**`ws_open(conn_id, url=None)`** — 启用 / 重连一个连接。插件启用时宿主已自动建立全部连接，本函数用于关闭后重连，或用 `url` 覆盖声明值（仍受 `ws_allow` 白名单约束）。返回 `{ "ok": true }` 或 `{ "ok": false, "error": "..." }`（如未声明该连接、url 不在白名单）。
+
+**`ws_close(conn_id)`** — 关闭一个连接。返回 `{ "ok": true }`。
+
+**`ws_send(conn_id, data)`** — 向连接发一帧。`str` / `bytes` / 其余（dict、list、数字，转 JSON）分别对应文本帧 / 二进制帧 / JSON 文本帧。**同步发出、不等回执**；要拿对端响应等下一次 `ws_message` 事件。返回 `{ "ok": true }` 或 `{ "ok": false, "error": "..." }`（如连接未建立）。
+
+**`ws_status(conn_id=None)`** — 查询连接状态。不传返回全部声明：`{ "ok": true, "connections": [ { "id", "mode", "state" } ] }`；传 `conn_id` 返回单条：`{ "ok": true, "id", "mode", "state" }`。`state` 取 `"connected"` / `"connecting"` / `"stopped"` / `"error"`。
+
+```python
+from plugin_host import ws_send, ws_close, ws_status
+
+def on_start(ctx):
+    ws_send("gateway", {"op": 1})        # 发一帧
+    r = ws_status("gateway")             # {"ok": True, "id": "gateway", "mode": "client", "state": "connected"}
+    # ws_close("gateway")                # 临时断开
+```
+
 ## 完整示例
 
 一个「查询并汇报当前状态」的插件：
@@ -656,6 +849,7 @@ def run(ctx):
 - 禁用的顶层模块：`os`、`subprocess`、`shutil`、`pathlib`、`ctypes`、`sysconfig`
 - 环境变量只有 manifest `[[env]]` 白名单内的会注入 `ctx["env"]`
 - 脚本无法直接写文件系统、启动子进程、加载系统库；读也只有一个口子——`read_data_file`，且只能读 manifest `read` 声明过的 `data/` 子目录（未声明 = 一律拒绝，见「读游戏素材」一节）。
+- 网络出站：`http_get` / `http_post` 可发往任意 URL；WebSocket client 连接受 manifest `ws_allow` 白名单约束（省略 `ws_allow` = 允许全网段），且脚本只能操作自己在 `[[ws]]` 里声明过的连接。
 - 每次调用新建解释器，无跨调用状态；超时（`timeout_ms`，上限 120000ms）后执行结果作废、本次调用终止。
 - **注意**：超时无法强制中断脚本所在的阻塞线程，死循环可能残留占用线程直至进程退出，插件作者（和你们的agent）应避免写死循环。
 - `call_tool` 是有意的受信任通道，可触达所有注册工具（含写操作）。（谨慎使用）

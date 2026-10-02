@@ -8,6 +8,8 @@ export type ConfigKind = "string" | "secret" | "number" | "boolean";
 export interface ConfigFieldDecl {
   key: string;
   label: string;
+  /** 输入框下面那行小字（可选），说明这个字段该填什么、去哪儿拿。 */
+  hint?: string | null;
   kind: ConfigKind;
   required: boolean;
   default?: unknown;
@@ -16,6 +18,19 @@ export interface ConfigFieldDecl {
 export interface EnvDecl {
   key: string;
   label: string;
+}
+
+/** WS 连接方向：client 连出去 / server 监听。 */
+export type WsMode = "client" | "server";
+
+/** WS 连接运行状态。 */
+export type WsState = "stopped" | "connecting" | "connected" | "error";
+
+/** 插件声明的一条 WebSocket 连接及其当前状态。 */
+export interface WsConnInfo {
+  id: string;
+  mode: WsMode;
+  state: WsState;
 }
 
 export interface PluginInfo {
@@ -30,6 +45,8 @@ export interface PluginInfo {
   tools: string[];
   /** 插件声明携带的资源类型（characters / scripts / musics / backgrounds / ambients）。 */
   resources: string[];
+  /** 插件声明的 WebSocket 连接（含当前运行状态）。 */
+  ws: WsConnInfo[];
   /** 前置插件 id：这些插件必须已安装且已启用，本插件才能启用。 */
   depends_on: string[];
   error?: string | null;

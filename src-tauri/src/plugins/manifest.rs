@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use serde_json::Value;
 
-use super::types::PluginManifest;
+use super::types::{PluginManifest, WsMode};
 
 /// 从 TOML 文本解析并校验插件 manifest。
 pub fn parse(text: &str) -> Result<PluginManifest> {
@@ -88,10 +88,11 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
     if manifest.tools.is_empty()
         && manifest.resources.is_empty()
         && manifest.subscribe.is_empty()
+        && manifest.ws.is_empty()
         && manifest.startup.is_none()
     {
         anyhow::bail!(
-            "插件 '{}' 未声明任何工具、资源、信号订阅或启动入口",
+            "插件 '{}' 未声明任何工具、资源、信号订阅、WS 连接或启动入口",
             manifest.id
         );
     }
@@ -178,6 +179,77 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
             );
         }
         validate_timeout(&manifest.id, &owner, sub.timeout_ms)?;
+    }
+    for entry in &manifest.ws_allow {
+        validate_ws_allow_entry(&manifest.id, entry)?;
+    }
+    for ws in &manifest.ws {
+        let owner = format!("WS 连接 '{}'", ws.id);
+        if !is_valid_plugin_id(&ws.id) {
+            anyhow::bail!(
+                "插件 '{}' {owner} 的 id '{}' 只能包含字母、数字、下划线与连字符",
+                manifest.id,
+                ws.id
+            );
+        }
+        match ws.mode {
+            WsMode::Client => {
+                // url 可选（缺省由脚本 ws_open 传入）；给空串则视为笔误，拒绝。
+                if ws.url.as_deref().is_some_and(|u| u.trim().is_empty()) {
+                    anyhow::bail!("插件 '{}' {owner} 的 url 为空", manifest.id);
+                }
+            },
+            WsMode::Server => {
+                let bind = ws.bind.as_deref().map(str::trim).unwrap_or("");
+                if bind.is_empty() {
+                    anyhow::bail!(
+                        "插件 '{}' {owner} 为 server 模式，必须声明 bind（监听地址）",
+                        manifest.id
+                    );
+                }
+            },
+        }
+        // 内联处理脚本：script 与 handler 必须成对出现，否则无法派发。
+        match (&ws.script, &ws.handler) {
+            (Some(script), Some(handler)) => {
+                validate_script_name(&manifest.id, &owner, script)?;
+                if !is_valid_handler_name(handler) {
+                    anyhow::bail!(
+                        "插件 '{}' {owner} 的处理函数名 '{handler}' 不是合法标识符",
+                        manifest.id
+                    );
+                }
+                validate_timeout(&manifest.id, &owner, ws.timeout_ms)?;
+            },
+            (None, None) => {},
+            _ => anyhow::bail!(
+                "插件 '{}' {owner} 的 script 与 handler 必须同时声明或同时省略",
+                manifest.id
+            ),
+        }
+    }
+    Ok(())
+}
+
+/// 校验 `ws_allow` 白名单项：`*`（等价全网段）或 `<scheme>://<host>[:port]`
+/// （host 段可含 `*` 通配）。这里只查形状，实际前缀匹配在 `plugins::ws`。
+fn validate_ws_allow_entry(plugin_id: &str, entry: &str) -> Result<()> {
+    let entry = entry.trim();
+    if entry.is_empty() {
+        anyhow::bail!("插件 '{plugin_id}' 的 ws_allow 存在空项");
+    }
+    if entry == "*" {
+        return Ok(());
+    }
+    let Some((scheme, rest)) = entry.split_once("://") else {
+        anyhow::bail!("插件 '{plugin_id}' 的 ws_allow 项 '{entry}' 缺少 scheme://");
+    };
+    if scheme.is_empty() {
+        anyhow::bail!("插件 '{plugin_id}' 的 ws_allow 项 '{entry}' scheme 为空");
+    }
+    let host = rest.split('/').next().unwrap_or("");
+    if host.is_empty() {
+        anyhow::bail!("插件 '{plugin_id}' 的 ws_allow 项 '{entry}' 缺少主机名");
     }
     Ok(())
 }
