@@ -4,8 +4,10 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.ActivityManager
 import android.app.Application
+import android.content.ComponentCallbacks
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.net.Uri
@@ -40,7 +42,7 @@ private const val TAG = "FloatingPet"
  * ## 为什么是「固定逻辑尺寸 + 整体缩放」
  *
  * 悬浮窗里的页面**不再**按窗口宽度做响应式布局，而是始终按桌面端那套
- * 240dp 宽的布局排版，再由前端 `transform: scale(window.innerWidth / 240)`
+ * 逻辑画布排版，再由前端 `transform: scale(window.innerWidth / 210)`
  * 整体等比缩放到窗口大小。
  *
  * 这样做的理由：
@@ -48,10 +50,9 @@ private const val TAG = "FloatingPet"
  * - 文字/按钮/输入框随窗口等比缩放，小窗下不会「挤成一团」
  * - 页面内容恰好铺满逻辑画布 → 窗口里没有大块透明区域
  *
- * 代价：文字绝对大小与窗口宽度成正比，因此展开态不能太窄——
- * 2/5 屏宽时缩放系数只有 0.6，15px 字缩到 9px 就看不清了。
+ * 代价：文字绝对大小与窗口宽度成正比，因此展开态不能太窄。
  */
-private const val PET_LOGICAL_WIDTH = 240.0
+private const val FLOATING_LOGICAL_WIDTH = 210.0
 private const val COLLAPSED_LOGICAL_HEIGHT = 210.0
 private const val EXPANDED_LOGICAL_HEIGHT = 280.0
 
@@ -63,9 +64,9 @@ private const val EXPANDED_LOGICAL_HEIGHT = 280.0
  * 视觉占比一致——固定 dp 在小屏上会显得过大（这正是此前 240dp
  * 占了普通手机 60% 屏宽的原因）。
  *
- * 展开态取 0.6 而不是 2/5：逻辑宽 240dp 缩到 0.6×360=216dp 时
- * 缩放系数 0.9，15px 的字约 13.5px，勉强可读；2/5 屏宽（144dp）
- * 只有 0.6 倍，字会小到看不清。
+ * 展开态取 0.6 而不是 2/5：逻辑宽 210dp 缩到 0.6×360=216dp 时
+ * 缩放系数约 1.03（内容不再被缩小），15px 的字渲染成约 15.4px；
+ * 2/5 屏宽（144dp）只有 0.69 倍，字会小到看不清。
  */
 private const val COLLAPSED_WIDTH_RATIO = 1.0 / 6.0
 private const val EXPANDED_WIDTH_RATIO = 0.6
@@ -75,11 +76,12 @@ private const val EXPANDED_WIDTH_RATIO = 0.6
  * 与前端按同一套常量算出的内容高度一致，避免「先给一个错的高度、
  * 前端再纠正一次」造成的闪动。
  *
- * 收起态只有头像（210）；展开态是头像 + 输入框（210 + 70 = 280）。
- * 气泡出现时窗口高度由前端通过 `set_size` 再撑高，不在这里预留。
+ * 收起态只有头像（210/210 = 1，正方形）；展开态是头像 + 输入框
+ * （280/210 ≈ 1.3333）。气泡出现时窗口高度由前端通过 `set_size`
+ * 再撑高，不在这里预留。
  */
-private const val COLLAPSED_HEIGHT_RATIO = COLLAPSED_LOGICAL_HEIGHT / PET_LOGICAL_WIDTH
-private const val EXPANDED_HEIGHT_RATIO = EXPANDED_LOGICAL_HEIGHT / PET_LOGICAL_WIDTH
+private const val COLLAPSED_HEIGHT_RATIO = COLLAPSED_LOGICAL_HEIGHT / FLOATING_LOGICAL_WIDTH
+private const val EXPANDED_HEIGHT_RATIO = EXPANDED_LOGICAL_HEIGHT / FLOATING_LOGICAL_WIDTH
 
 /**
  * 尺寸兜底上下限（dp），防止异常比例算出不可见或超屏的窗口。
@@ -138,6 +140,16 @@ private const val KEEP_ALIVE_GRACE_MS = 20000L
 private const val HIDE_DELAY_MS = 80L
 
 /**
+ * 桌宠搬进悬浮窗后，把 App 自己退到后台的延迟（毫秒）。
+ *
+ * 不能同步退：`pet-detached` / `pet-metrics` 是 `evaluateJavascript`
+ * 异步投递的，WebView 一旦因宿主 Activity 进后台被 `onPause`，
+ * 未执行的那几条会被**整体丢弃**，页面就永远停在桌面端布局里。
+ * 让它们先落地，再退后台。
+ */
+private const val BACKGROUND_DELAY_MS = 400L
+
+/**
  * 单击与拖拽的判定阈值（dp）：按下到抬起位移超过它就算拖动，不触发点击。
  *
  * 取 16dp 而不是 Android 默认的 8dp。这里判定的是「整个窗口要不要跟着
@@ -167,6 +179,19 @@ class MoveArgs {
 class SizeArgs {
     var width: Double = 240.0
     var height: Double = 360.0
+
+    /**
+     * 逻辑画布高度（dp，**未缩放**）。
+     *
+     * `> 0` 时原生忽略 [height]，自己按 `逻辑高度 × 当前缩放系数` 算实际高度。
+     *
+     * 这是页面回报高度的**推荐口径**。页面按「实际 dp」回报时，那个数字是
+     * 「逻辑高度 × 页面手里的缩放系数」——一旦页面手里的系数过期（原生刚
+     * 改完尺寸、`pet-metrics` 还没送达），它就会把一个和窗口宽度不匹配的
+     * 高度写进窗口：宽度已经展开、高度还是收起态，于是「展开后一大片空白」。
+     * 改报逻辑高度后，窗口高度与窗口宽度**在构造上**由原生保证一致。
+     */
+    var logicalHeight: Double = 0.0
 }
 
 @InvokeArg
@@ -318,6 +343,70 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     /** [ensureLifecycleCallbacks] 的幂等标记。 */
     private var lifecycleCallbacksRegistered = false
 
+    /** [ensureConfigCallback] 的幂等标记。 */
+    private var configCallbackRegistered = false
+
+    /** 上一次已知的屏幕物理宽度。旋转后用来判断「桌宠原本贴哪一边」。 */
+    private var lastScreenW = 0
+
+    /** 上一次已知的屏幕物理高度。旋转后用来换算纵向的相对位置。 */
+    private var lastScreenH = 0
+
+    /**
+     * 屏幕配置变化回调（旋转 / 分屏 / 折叠屏展开）。
+     *
+     * ## 为什么必须有
+     *
+     * `MainActivity` 在 manifest 里声明了
+     * `android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|..."`
+     * —— 所以旋转**不会重建 Activity**。这对悬浮窗是好事（插件实例、
+     * WebView、窗口全都活着），但也意味着**没有任何人**会去处理旋转之后的事：
+     *
+     * - 悬浮窗的 `x` / `y` 是**屏幕坐标系里的绝对值**，而旋转会把屏幕宽高
+     *   对调。竖屏 360×802 里 `y = 700`（贴着屏幕下沿）的桌宠，转到横屏
+     *   802×360 之后 `y` 仍然是 700 > 360 —— 整个窗口跑到屏幕外面。
+     *   用户看到的就是「一转屏桌宠就没了」。
+     * - 尺寸基准是屏幕**短边**（见 [screenBasisDp]），旋转后要按新的短边
+     *   重算（竖屏 360×802 与横屏 802×360 的短边都是 360，通常不变；
+     *   但分屏 / 折叠屏展开会变）。
+     *
+     * 这里在配置变化后重排：按当前展开态重算尺寸 → 把位置映射到新屏幕
+     * （左右保留原来那一边、上下保留相对位置）→ 重新布局 → 把新的权威
+     * 几何推给页面。具体见 [reapplyWindowAfterConfigChange]。
+     */
+    private val configCallback = object : ComponentCallbacks {
+        override fun onConfigurationChanged(newConfig: Configuration) {
+            // 统一切回主线程做布局（布局只能在主线程）。
+            // 延后 120ms 是为了让 `resources.displayMetrics` 落定 —— 它是
+            // 布局的唯一依据，读到旧值会把窗口夹进旧屏幕的坐标系里。
+            keepAliveHandler.postDelayed({ reapplyWindowAfterConfigChange() }, 120)
+        }
+
+        override fun onLowMemory() = Unit
+    }
+
+    /** 注册配置变化回调（幂等）。只在桌宠真的在悬浮窗里时注册。 */
+    private fun ensureConfigCallback() {
+        if (configCallbackRegistered) return
+        configCallbackRegistered = true
+        try {
+            activity.application.registerComponentCallbacks(configCallback)
+        } catch (e: Exception) {
+            Log.w(TAG, "注册配置变化回调失败（可忽略）", e)
+        }
+    }
+
+    /** 注销配置变化回调。桌宠不在悬浮窗里时没必要继续收系统广播。 */
+    private fun releaseConfigCallback() {
+        if (!configCallbackRegistered) return
+        configCallbackRegistered = false
+        try {
+            activity.application.unregisterComponentCallbacks(configCallback)
+        } catch (e: Exception) {
+            Log.w(TAG, "注销配置变化回调失败（可忽略）", e)
+        }
+    }
+
     /**
      * 注册进程级 Activity 生命周期回调。
      *
@@ -442,17 +531,38 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     private fun screenHeightDp(): Double =
         activity.resources.displayMetrics.heightPixels / density.toDouble()
 
-    /** 收起态尺寸：宽度约 1/6 屏宽。 */
+    /**
+     * 尺寸基准：屏幕的**短边**（dp）。
+     *
+     * 窗口尺寸必须由短边推出来，否则横屏必崩：
+     *
+     * ```
+     * 横屏 802×360 dp，展开态宽 = 802 × 0.6 = 481dp
+     *   高 = 481 × (280/240) = 561dp  >  屏幕高 360dp
+     * ```
+     *
+     * 窗口比屏幕还高 201dp，`clampIntoScreen` 只能把它按到 y=0，
+     * 结果是宠物下半身和整个输入带被挤到屏幕外，用户看到的正是
+     * 「展开后一片空白 + 输入框不见了」。
+     *
+     * 取短边后：竖屏 min(360,802)=360 → 216×252（与旧行为逐位相同，无回归）；
+     * 横屏 min(802,360)=360 → 同样是 216×252，稳稳落在屏幕里。
+     *
+     * 这也让桌宠的**物理尺寸与方向无关** —— 转屏时宠物不会突然变大变小。
+     */
+    private fun screenBasisDp(): Double = minOf(screenWidthDp(), screenHeightDp())
+
+    /** 收起态尺寸：宽度约 1/6 屏（短边）。 */
     private fun collapsedSize(): Pair<Int, Int> {
-        val w = (screenWidthDp() * COLLAPSED_WIDTH_RATIO * petScale)
+        val w = (screenBasisDp() * COLLAPSED_WIDTH_RATIO * petScale)
             .coerceIn(MIN_SIZE_DP, MAX_SIZE_DP)
         val h = (w * COLLAPSED_HEIGHT_RATIO).coerceIn(MIN_SIZE_DP, MAX_SIZE_DP)
         return dp(w) to dp(h)
     }
 
-    /** 展开态尺寸：宽度约 2/5 屏宽。 */
+    /** 展开态尺寸：宽度约 3/5 屏（短边）。 */
     private fun expandedSize(): Pair<Int, Int> {
-        val w = (screenWidthDp() * EXPANDED_WIDTH_RATIO * petScale)
+        val w = (screenBasisDp() * EXPANDED_WIDTH_RATIO * petScale)
             .coerceIn(MIN_SIZE_DP, MAX_SIZE_DP)
         val h = (w * EXPANDED_HEIGHT_RATIO).coerceIn(MIN_SIZE_DP, MAX_SIZE_DP)
         return dp(w) to dp(h)
@@ -532,10 +642,10 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 put("visible", visible)
                 put("detached", petDetached)
                 // 不在悬浮窗里时给中性值，前端会忽略
-                put("scale", if (params != null) currentScale(params, view) else 1.0)
+                put("scale", if (params != null) currentScale(params) else 1.0)
                 put(
                     "width",
-                    if (params != null) actualWidthPx(params, view) / density.toDouble() else 0.0
+                    if (params != null) authoritativeWidthPx(params) / density.toDouble() else 0.0
                 )
                 put("height", if (params != null) params.height / density.toDouble() else 0.0)
             }
@@ -569,7 +679,8 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 // 断开引用，WebView 会变成无父容器的孤儿，随后
                 // findMainWebView() 就再也找不到它了。
                 // notifyPage=false：马上又会搬回去，没必要让页面闪一次「已回到 App」。
-                if (petView != null) {
+                val previousView = petView
+                if (previousView != null) {
                     restoreWebViewToActivity(notifyPage = false)
                 }
 
@@ -577,6 +688,14 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
 
                 val webView = findMainWebView()
                 if (webView == null) {
+                    // 上面的幂等分支已经把 WebView 还给 Activity 了。此时页面
+                    // 如果还停在悬浮窗布局，就会**永远**停下去：页面轮询看到
+                    // `detached=false`，但它从没观察到过 `detached=true`
+                    // （sawDetached 仍为 false），不会自愈。
+                    // 补发一次 pet-attached，把页面送回桌面布局。
+                    if (previousView != null) {
+                        notifyWeb(previousView as? WebView, "pet-attached", JSObject())
+                    }
                     invoke.reject("主 WebView 尚未创建，无法搬入悬浮窗")
                     return@runOnUiThread
                 }
@@ -600,6 +719,34 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 activity.setContentView(buildPlaceholderView())
 
                 // ── 3. 把 WebView 放进悬浮窗 ──
+                //
+                // ── 为什么必须有 FLAG_NOT_TOUCH_MODAL ──────────────────
+                //
+                // 这是「桌宠外面一整屏的透明区域都能被摸、摸着还能把桌宠拖走」
+                // 这个老问题的**真正**成因。Android 官方对它的定义是：
+                //
+                //   Window flag: even when this window is focusable (its
+                //   FLAG_NOT_FOCUSABLE is not set), allow any pointer events
+                //   outside of the window to be sent to the windows behind it.
+                //   **Otherwise it will consume all pointer events itself,
+                //   regardless of whether they are inside of the window.**
+                //
+                // 也就是说：**不给这个 flag 的窗口，可触摸区域不是它自己那块
+                // 矩形，而是整块屏幕。** 窗口外的触摸也照样投递给它 —— 于是
+                // [buildPetTouchListener] 的 ACTION_DOWN 被触发、窗口跟着手指走，
+                // 用户看到的就是「外面很大一片区域可以被触摸来拖动桌宠」，
+                // 而且**在别的应用里同样如此**（那里根本没有我们的 Activity）。
+                //
+                // 为什么偏偏**展开态**才明显：收起态带着 FLAG_NOT_FOCUSABLE，
+                // 系统对不可获焦窗口的处理要收敛得多；而 [setExpanded] 展开时会把
+                // FLAG_NOT_FOCUSABLE 摘掉（为了能弹输入法），窗口一旦可获焦，
+                // 「吃掉整屏触摸」这条就完整生效了 —— 正是用户观察到的
+                // 「缩小的时候正常，放大就不正常」。
+                //
+                // 修法就是把它**常驻**（收起态也留着，无害）：窗口的可触摸区域
+                // 从此严格等于窗口自己那块矩形，窗口外的触摸原样交给下层应用。
+                // 注意 [setExpanded] 只做 `flags or / and inv(FLAG_NOT_FOCUSABLE)`，
+                // 不重建 flags，所以本 flag 在两个形态下都不会被弄丢。
                 val (width, height) = collapsedSize()
                 val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -613,9 +760,11 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                     height,
                     type,
                     // FLAG_NOT_FOCUSABLE：默认不抢输入焦点（不弹键盘、不挡返回键）
+                    // FLAG_NOT_TOUCH_MODAL：**落在窗口外的触摸必须交给下层窗口**
                     // FLAG_LAYOUT_NO_LIMITS：允许气泡绘制到窗口外/贴边
                     // FLAG_HARDWARE_ACCELERATED：WebView 需要硬件加速渲染
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                         WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                     PixelFormat.TRANSLUCENT
@@ -623,6 +772,32 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                     gravity = Gravity.TOP or Gravity.START
                     x = dp(args.x)
                     y = dp(args.y)
+
+                    // ── 明确声明「本窗口自己处理 insets」──────────────────
+                    //
+                    // 窗口一旦**可获焦**（展开态会摘掉 FLAG_NOT_FOCUSABLE），
+                    // 系统就会开始给它算 window insets：状态栏、导航栏、挖孔。
+                    // 默认行为是把这些 inset 当成 padding 加到内容视图上，
+                    // 于是 WebView 比窗口小一圈，窗口半透明的底透出来 ——
+                    // 表现就是「四周一圈透明」，而且那圈透明区照样吃触摸。
+                    //
+                    // 收起态因为一直是 FLAG_NOT_FOCUSABLE，从不进这套机制，
+                    // 所以「缩小的时候正常、放大就不正常」。
+                    //
+                    // fitInsetsTypes = 0 明确告诉系统：别给我加任何 inset，
+                    // 我要的就是整个窗口。API 30 以下用等价的 systemUiVisibility。
+                    //
+                    // ⚠️ 这两行**必须在 apply 块内**：它们是
+                    // WindowManager.LayoutParams 的成员，出了这个块就没有接收者。
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        fitInsetsTypes = 0
+                    } else {
+                        @Suppress("DEPRECATION")
+                        systemUiVisibility =
+                            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    }
                 }
 
                 applyTouchableFlag(params, touchable)
@@ -645,6 +820,17 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 expanded = false
                 instance = this
 
+                // 记住这次布局所在的屏幕尺寸，并开始监听屏幕配置变化。
+                //
+                // 旋转会把屏幕宽高**对调**，而窗口的 `x` / `y` 是屏幕坐标系里
+                // 的绝对值 —— 竖屏贴着下沿（y 很大）的桌宠，转到横屏后 y 仍然
+                // 是那个大值，于是整个窗口跑到屏幕外。没有任何系统回调会替我
+                // 们处理这件事（manifest 声明了 configChanges，Activity 不重建），
+                // 所以必须自己监听、自己重排。见 [reapplyWindowAfterConfigChange]。
+                lastScreenW = activity.resources.displayMetrics.widthPixels
+                lastScreenH = activity.resources.displayMetrics.heightPixels
+                ensureConfigCallback()
+
                 // 通知页面：你现在在悬浮窗里了。
                 // 页面据此切换为「仅头像」布局——这必须发生在 addView 之后，
                 // 因为 evaluateJavascript 需要有可用的 WebView 实例。
@@ -666,6 +852,39 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 // 注册 Activity 生命周期回调（幂等）：收回时若 App 在后台，
                 // 靠它在用户切回来时补发 pet-attached。
                 ensureLifecycleCallbacks()
+
+                // ── 把 App 自己退到后台 ────────────────────────────────
+                //
+                // 桌宠要浮在**桌面 / 其他应用**之上，App 自己必须先让开。
+                //
+                // 主题里已经配好 `windowIsTranslucent` + `windowShowWallpaper`
+                // + `windowBackground=transparent`（窗口透明、显示系统壁纸），
+                // 但那只是「窗口透明」。只要 App 还留在前台，它就占着整块屏幕：
+                //   - 用户看不到自己的桌面，也点不到别的应用图标
+                //   - 那整屏区域仍然归我们的窗口所有，触摸会落到它身上
+                // 真机表现就是「桌宠外面有覆盖整个屏幕的一大片区域」。
+                //
+                // 退到后台后：壁纸立刻可见，桌宠浮在上面；用户从最近任务
+                // 切回来时看到的是占位页上那两行引导文案。
+                //
+                // WebView 此刻已经在 WindowManager 里（不随 Activity 进后台），
+                // 加上 PetForegroundService 的前台优先级，渲染与 IPC 都不受影响。
+                // 收回时由 [bringActivityToFront] 把任务栈拉回来。
+                //
+                // **延后 400ms 再退**：上面那两条 `evaluateJavascript`
+                // （pet-detached / pet-metrics）是异步投递的，而 WebView 一旦
+                // 因宿主 Activity 进后台被 onPause，未执行的 evaluateJavascript
+                // 会被整体丢弃 —— 页面就永远停在桌面端布局里。等它落地再退。
+                keepAliveHandler.postDelayed(
+                    {
+                        try {
+                            activity.moveTaskToBack(true)
+                        } catch (t: Throwable) {
+                            Log.w(TAG, "把 App 退到后台失败（可忽略）", t)
+                        }
+                    },
+                    BACKGROUND_DELAY_MS
+                )
 
                 Log.i(TAG, "桌宠已展开 ${width}x${height} @ (${params.x},${params.y})")
                 invoke.resolve()
@@ -796,33 +1015,51 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         windowManager = null
         expanded = false
         instance = null
+        // 桌宠不在悬浮窗里了，旋转重排已经没有意义，注销监听
+        releaseConfigCallback()
 
         // 桌宠已收回，不再需要前台优先级
         PetForegroundService.stop(activity)
 
         if (view != null && petDetached) {
-            // 直接 setContentView(webView) 即可完成内容视图替换，无需手动 addView。
-            activity.setContentView(view)
-
-            // ── 必须显式把 LayoutParams 改回 MATCH_PARENT ──────────────
+            // ── 必须把 LayoutParams 改回 MATCH_PARENT ──────────────────────
             //
             // `setContentView(view)` **不会**重置 View 的 LayoutParams：实测它
-            // 保留了悬浮窗那套 `WindowManager.LayoutParams`。于是 WebView 回到
-            // Activity 后视图本身仍然只有悬浮窗那么大（展开态 216×252dp），
-            // 整个 App 被挤在屏幕左上角一小块里。
+            // 保留了悬浮窗那套尺寸（展开态 216×252dp）。于是 WebView 回到
+            // Activity 后视图本身仍然只有悬浮窗那么大，整个 App 被挤在屏幕
+            // 左上角一小块里。
             //
             // 真机诊断数据（360×803dp 的屏幕）：
             //     innerW=216 innerH=252 fit=1.000 floating=false
             // 216×252 正是展开态悬浮窗的尺寸 —— 视口没跟上只是表象，
             // 真正的原因是 View 的尺寸压根没被改回来。
             //
-            // 上一版只改过 height（forceViewportRefresh 里），所以表现成
-            // 「高度对了、宽度不对」，这里必须两个都显式设。
-            view.layoutParams =
+            // ⚠️ 但**绝不能**事后写
+            //     `view.layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)`
+            //
+            // `setContentView(view)` 内部走的是 `contentParent.addView(view)`，
+            // 而 contentParent 是 FrameLayout：`addViewInner` 会把 View 的
+            // LayoutParams 归一成 `FrameLayout.LayoutParams`。事后塞一个
+            // **基类** `ViewGroup.LayoutParams` 进去，下一次 measure 时
+            // `FrameLayout.onMeasure` 里的
+            //     `final LayoutParams lp = (LayoutParams) child.getLayoutParams();`
+            // 会抛 **ClassCastException**。那是主线程未捕获异常 → 直接杀进程。
+            //
+            // 这就是「点 ✕ 收回就闪退」的真凶：它从第 50 轮（82ef290b 引入这行）
+            // 起一直存在，后面几轮改的 startActivity / moveTaskToFront /
+            // forceViewportRefresh 都不是病根。
+            //
+            // 正确做法是走 `setContentView(view, params)` 这个重载：它把参数
+            // 交给 `ViewGroup.addView(child, params)`，由 `addViewInner` 用
+            // `checkLayoutParams` / `generateLayoutParams` 归一成正确的子类，
+            // 既拿到 MATCH_PARENT，又不会留下类型不匹配的坑。
+            activity.setContentView(
+                view,
                 ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
+            )
 
             view.setBackgroundColor(Color.TRANSPARENT)
 
@@ -927,6 +1164,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         petDetached = false
         petNeedsResume = false
         pendingAttachNotify = null
+        releaseConfigCallback()
         stopKeepAlive()
         // Activity 正在销毁，前台服务若继续留着会变成没有悬浮窗的空服务
         PetForegroundService.stop(activity)
@@ -965,9 +1203,20 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      */
     private fun buildPlaceholderView(): View {
         val context = activity
-        val root = android.widget.FrameLayout(context).apply {
-            setBackgroundColor(Color.parseColor("#101014"))
-        }
+        // ⚠️ **绝不能**给这里刷不透明底色。
+        //
+        // 主题（`res/values/themes.xml` 的 `Theme.ling_chat`）已经配好
+        //     android:windowIsTranslucent  = true
+        //     android:windowShowWallpaper  = true
+        //     android:windowBackground     = @android:color/transparent
+        // 也就是「窗口透明 + 显示系统壁纸」。这里**曾经**写的是
+        //     setBackgroundColor(Color.parseColor("#101014"))
+        // 一层不透明的近黑色，正好把整块壁纸盖掉 —— 于是桌宠悬浮时，
+        // 用户看到的是「一整屏深色区域」，那正是反复被报的「外面很大一片
+        // 区域」。它是 App 自己的占位页，不是悬浮窗，也不是桌宠。
+        //
+        // 去掉底色后：壁纸透出来，占位页只剩下面那两行引导文案。
+        val root = android.widget.FrameLayout(context)
 
         // 背景：App 图标放大、淡化后铺底，保持与 App 一致的视觉调性。
         // 用 applicationInfo.icon —— 它是 App 自己的资源，不需要往插件目录
@@ -1126,6 +1375,69 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
+     * 屏幕旋转 / 分屏 / 折叠屏展开之后，把悬浮窗重排到新屏幕里。
+     *
+     * 见 [configCallback] 的说明。要点：
+     *
+     * - **尺寸**按当前展开态重算（基准是屏幕短边，见 [screenBasisDp]）。
+     * - **左右**：保留原来贴的那一边。竖屏贴右沿的桌宠，转横屏后应该还在
+     *   右沿，而不是因为 `x` 越界被夹到左上角。
+     * - **上下**：保留**相对**位置（`y / (屏高 − 窗高)`）。竖屏贴下沿的
+     *   桌宠转到横屏后仍在下方，而不是原样带着 `y = 700` 飞出屏幕。
+     *
+     * 全程在 UI 线程；失败只记日志 —— 旋转是用户高频操作，绝不能因为
+     * 一次布局异常把进程带走。
+     */
+    private fun reapplyWindowAfterConfigChange() {
+        val params = layoutParams ?: return
+        val view = petView ?: return
+        try {
+            val dm = activity.resources.displayMetrics
+            val screenW = dm.widthPixels
+            val screenH = dm.heightPixels
+
+            // 旋转前的屏幕尺寸。首次调用时可能还没记录，退回当前值 ——
+            // 此时相对位置退化为「不动」，但下面仍会夹回屏幕内。
+            val oldW = if (lastScreenW > 0) lastScreenW else screenW
+            val oldH = if (lastScreenH > 0) lastScreenH else screenH
+            lastScreenW = screenW
+            lastScreenH = screenH
+
+            val oldWidth = if (params.width > 0) params.width else 1
+            val wasRightHalf = params.x + oldWidth / 2 >= oldW / 2
+            val yRatio = if (oldH > params.height) {
+                (params.y.toDouble() / (oldH - params.height)).coerceIn(0.0, 1.0)
+            } else {
+                0.5
+            }
+
+            val (width, height) = if (expanded) expandedSize() else collapsedSize()
+            params.width = width
+            params.height = height
+
+            val margin = dp(8.0)
+            params.x = if (wasRightHalf) {
+                (screenW - width - margin).coerceAtLeast(margin)
+            } else {
+                margin
+            }
+            params.y = ((screenH - height) * yRatio).toInt()
+            clampIntoScreen(params)
+
+            windowManager?.updateViewLayout(view, params)
+            // 窗口宽度可能变了（分屏 / 折叠屏），必须把新的权威系数推给页面，
+            // 否则页面还按旧宽度缩放 —— 那正是「展开后一大片空白」的配方。
+            notifyMetrics(params, view)
+            Log.i(
+                TAG,
+                "屏幕配置变化：悬浮窗重排为 ${width}x$height @ (${params.x},${params.y})，屏幕 ${screenW}x$screenH"
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "屏幕配置变化后重排悬浮窗失败（可忽略）", t)
+        }
+    }
+
+    /**
      * 把窗口位置夹回屏幕内。
      *
      * 展开态是**以中心为锚点**放大的，若桌宠原本贴着屏幕下沿，
@@ -1133,10 +1445,16 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * 「看不到也点不到」了。尺寸变化后一律夹一次。
      *
      * 宽度超过屏幕时左对齐（此时 x 已无意义，保证左边缘可见）。
+     *
+     * 顺带把当前屏幕尺寸记进 [lastScreenW] / [lastScreenH]：
+     * 本函数是所有布局路径的必经之地，是「上一次已知屏幕尺寸」最可靠的
+     * 记录点，旋转后靠它判断桌宠原来贴哪一边。
      */
     private fun clampIntoScreen(params: WindowManager.LayoutParams) {
         val screenW = activity.resources.displayMetrics.widthPixels
         val screenH = activity.resources.displayMetrics.heightPixels
+        lastScreenW = screenW
+        lastScreenH = screenH
         params.x = if (params.width >= screenW) {
             0
         } else {
@@ -1236,10 +1554,24 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 if (expanded) {
                     params.flags =
                         params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                    // ADJUST_RESIZE：键盘弹出时把窗口往上顶，输入框不被遮住
+                    // ADJUST_RESIZE：键盘弹出时把窗口往上顶/缩内容区，输入框不被遮住。
+                    //
+                    // ⚠️ 这里**绝不能**再带 SOFT_INPUT_STATE_VISIBLE。
+                    //
+                    // 早先写了 `ADJUST_RESIZE or SOFT_INPUT_STATE_VISIBLE`，于是
+                    // **一点展开输入法就自动弹出来**，系统随即改写窗口的内容区，
+                    // WebView 的真实视口跟着变小 —— 而画布的尺寸只由窗口**宽度**
+                    // 推出（`--pet-fit = 窗口宽/240`，高度恒为 `280 × fit`），
+                    // 高度被系统改小它完全不知情。结果是画布比视口高 → 溢出 →
+                    // 浏览器把内容往上顶 → 宠物顶部被切掉、下方空出一片。
+                    //
+                    // 这正是「收起态正常、展开态不正常」的唯一结构性差异：
+                    // 收起态是 FLAG_NOT_FOCUSABLE，压根进不了这套机制。
+                    //
+                    // 只留 ADJUST_RESIZE：键盘仍然会在**用户点输入框时**正常弹出
+                    // （窗口已可获焦），但不会在展开的一瞬间被系统强行改写尺寸。
                     params.softInputMode =
-                        WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
-                        WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE
+                        WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
                 } else {
                     params.flags =
                         params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
@@ -1311,7 +1643,18 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 if (args.width > 0) {
                     params.width = dp(args.width.coerceIn(MIN_SIZE_DP, MAX_SIZE_DP))
                 }
-                params.height = dp(args.height.coerceIn(MIN_SIZE_DP, MAX_SIZE_DP))
+                // 高度两种口径：
+                // 1. logicalHeight > 0（**推荐**）：页面报的是「逻辑画布多高」，
+                //    由原生按自己手里的权威窗口宽度换算成实际高度。窗口高度
+                //    与窗口宽度因此在**构造上**一致——页面即使拿着过期的缩放
+                //    系数，也不可能把窗口改成一个和宽度不匹配的高度。
+                // 2. 否则用 height（实际 dp），只为兼容旧调用方。
+                if (args.logicalHeight > 0) {
+                    val logical = args.logicalHeight.coerceIn(MIN_SIZE_DP, MAX_SIZE_DP)
+                    params.height = dp((logical * currentScale(params)).coerceIn(MIN_SIZE_DP, MAX_SIZE_DP))
+                } else {
+                    params.height = dp(args.height.coerceIn(MIN_SIZE_DP, MAX_SIZE_DP))
+                }
                 clampIntoScreen(params)
                 windowManager?.updateViewLayout(view, params)
                 notifyMetrics(params, view)
@@ -1398,14 +1741,29 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * 窗口**实际**宽度（物理 px）。
+     * 窗口的**权威**宽度（物理 px）—— 一律取 `params.width`。
      *
-     * 优先取 View 的布局尺寸而不是 `params.width`：系统可能因为 insets /
-     * 多窗口对窗口做过调整，`params` 里记的只是我们请求的值。前端要的是
-     * 「WebView 现在到底多宽」，那必须以实际布局为准。
+     * ## 为什么不能取 `view.width`
+     *
+     * `updateViewLayout()` 是**异步**的：它只把「重新布局」排进下一帧，
+     * 返回时 `view.width` 仍是**上一次**布局的结果。而 show / setExpanded /
+     * setSize 都在 `updateViewLayout()` 之后**立刻**把几何推给页面，
+     * 于是推出去的是**上一形态**的宽度：
+     *
+     * ```
+     * 展开时把收起态的 60dp 当成窗口宽度 → 页面算出 fit = 0.25
+     * → 240dp 的画布只渲染成 60dp 宽，而窗口已经是 216dp
+     * → 「展开后一大片空白，但每个框都没问题」
+     * ```
+     *
+     * 这不是理论推演：`view.width` 在 `addView` 之后要等第一帧才有值，
+     * 在 `updateViewLayout` 之后要等下一帧才更新，两条路都会踩到。
+     *
+     * `params.width` 是我们自己写进去的请求值，永不过期。悬浮窗带
+     * `FLAG_LAYOUT_NO_LIMITS`，系统不会改写它，因此它就是真实窗口宽度。
+     * 万一某个 ROM 确实改了，[notifyMetrics] 在布局落定后还会用实测值补一次。
      */
-    private fun actualWidthPx(params: WindowManager.LayoutParams, view: View?): Int =
-        if (view != null && view.width > 0) view.width else params.width
+    private fun authoritativeWidthPx(params: WindowManager.LayoutParams): Int = params.width
 
     /**
      * 逻辑画布 → 窗口的缩放系数，与前端 `transform: scale()` 用的值一致。
@@ -1417,8 +1775,8 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      *
      * 原生手里有权威的实际尺寸，因此由原生算好推给前端。
      */
-    private fun currentScale(params: WindowManager.LayoutParams, view: View?): Double =
-        actualWidthPx(params, view) / density.toDouble() / PET_LOGICAL_WIDTH
+    private fun currentScale(params: WindowManager.LayoutParams): Double =
+        authoritativeWidthPx(params) / density.toDouble() / FLOATING_LOGICAL_WIDTH
 
     /**
      * 把窗口几何推给页面（`pet-metrics`）。
@@ -1426,16 +1784,43 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * 每次窗口尺寸变化后都要调：show / setExpanded / setSize。
      * 页面据此更新缩放系数，并重新回报内容高度。
      *
+     * 分两拍推：
+     *
+     * 1. **立刻**用 [authoritativeWidthPx]（= `params.width`）推一次。
+     *    这是我们自己请求的尺寸，绝不会过期，页面当场就能算出正确的缩放系数。
+     * 2. **布局落定后**再用实测 `view.width` 补一次。正常情况下两者相同
+     *    （`FLAG_LAYOUT_NO_LIMITS` 下系统不改窗口尺寸），所以这只是廉价的
+     *    兜底；万一某 ROM 改了尺寸，页面会被拉回真实值——而第 1 拍
+     *    **绝不会**推出过期值。
+     *
      * 注意这只是**快路径**：原生 → 页面的事件在搬运/收回前后并不可靠，
      * 页面还会轮询 `status` 命令拿同样的数据（见 [status]）。
      */
     private fun notifyMetrics(params: WindowManager.LayoutParams, view: View?) {
+        val target = view as? WebView
+        pushMetrics(target, params, authoritativeWidthPx(params))
+        if (target == null) return
+        target.post {
+            try {
+                // 视图可能已被搬回 Activity（petView 易主），那就别再推了
+                if (petView !== target || target.width <= 0) return@post
+                pushMetrics(target, params, target.width)
+            } catch (t: Throwable) {
+                Log.w(TAG, "补推窗口几何失败（可忽略）", t)
+            }
+        }
+    }
+
+    /** 按给定宽度（物理 px）组装并派发一次 `pet-metrics`。 */
+    private fun pushMetrics(view: WebView?, params: WindowManager.LayoutParams, widthPx: Int) {
+        if (view == null || widthPx <= 0) return
+        val widthDp = widthPx / density.toDouble()
         notifyWeb(
-            view as? WebView,
+            view,
             "pet-metrics",
             JSObject().apply {
-                put("scale", currentScale(params, view))
-                put("width", actualWidthPx(params, view) / density.toDouble())
+                put("scale", widthDp / FLOATING_LOGICAL_WIDTH)
+                put("width", widthDp)
                 put("height", params.height / density.toDouble())
             }
         )

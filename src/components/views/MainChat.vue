@@ -187,8 +187,8 @@ const goToPetMode = async () => {
 
     if (!status.supported) {
       uiStore.showWarning({
-        title: "当前设备不支持",
-        message: "这台设备的系统不允许创建悬浮窗，桌宠暂时无法使用。",
+        title: "这台设备帮不上忙呢",
+        message: "系统的限制下我暂时浮不起来，换个设备再喊我吧～",
       });
       return;
     }
@@ -202,10 +202,10 @@ const goToPetMode = async () => {
       //
       // 改成模态确认框：用户看清要开哪个开关、点确定才跳，返回后自动继续。
       const confirmed = await dialogStore.confirm(
-        "桌宠需要「显示在其他应用上层」权限，才能浮在别的应用之上。\n\n" +
-          "点「确定」会打开系统设置页，请在列表里找到 LingChat 并打开该开关。\n" +
-          "返回本应用后会自动继续，不用再点一次桌宠。",
-        "需要悬浮窗权限",
+        "想浮在别的应用上面陪你，我还差一个「显示在其他应用上层」的开关没打开呢。\n\n" +
+          "点「确定」我就带你去系统设置，在列表里找到 LingChat，把这个开关打开就好啦。\n" +
+          "回到这里我会自己接着跑，不用再点一次桌宠哦～",
+        "还差一个小开关～",
       );
       if (!confirmed) return;
 
@@ -226,8 +226,8 @@ const goToPetMode = async () => {
       await router.push("/chat").catch(() => {});
     }
     uiStore.showError({
-      title: "桌宠启动失败",
-      message: "悬浮窗没能创建成功，请检查是否已授予悬浮窗权限。",
+      title: "桌宠没能爬出来…",
+      message: "悬浮窗没建起来，看看「显示在其他应用上层」的开关是不是给到我啦？",
     });
   }
 };
@@ -249,10 +249,10 @@ const handleVisibilityChange = async () => {
 
   // 没授权成功就别静默失败——用户很可能在系统设置里没找到那个开关
   uiStore.showWarning({
-    title: "还没有拿到权限",
+    title: "开关还是关着的呀",
     message:
-      "LingChat 的「显示在其他应用上层」开关仍是关闭的，桌宠无法启动。\n" +
-      "部分系统里这个开关叫「悬浮窗」或「后台弹出界面」。",
+      "LingChat 的「显示在其他应用上层」还没打开，我出不来呢。\n" +
+      "有些系统把它叫「悬浮窗」或者「后台弹出界面」，换个名字找找看～",
     duration: 8000,
   });
 };

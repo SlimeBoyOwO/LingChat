@@ -51,7 +51,7 @@ export interface FloatingPetStatus {
    */
   detached: boolean;
   /**
-   * 逻辑画布 → 窗口的缩放系数（`窗口宽度 / PET_WIDTH_BASE`）。
+   * 逻辑画布 → 窗口的缩放系数（`窗口宽度 / FLOATING_LOGICAL_WIDTH`）。
    *
    * 必须用这个值做整体 `transform: scale()`，不要自己从
    * `window.innerWidth` 推：原生刚改完窗口尺寸时 WebView 视口还没跟上，
@@ -133,7 +133,7 @@ export function onPetExpandedChange(handler: (expanded: boolean) => void): () =>
 
 /** 原生推来的窗口几何。 */
 export interface FloatingPetMetrics {
-  /** 逻辑画布 → 窗口的缩放系数，等于 `窗口宽度 / PET_WIDTH_BASE`。 */
+  /** 逻辑画布 → 窗口的缩放系数，等于 `窗口宽度 / FLOATING_LOGICAL_WIDTH`。 */
   scale: number;
   /** 窗口宽度（dp）。 */
   width: number;
@@ -146,7 +146,7 @@ export interface FloatingPetMetrics {
  *
  * ## 为什么缩放系数必须由原生给
  *
- * 悬浮窗里页面按固定逻辑画布（240dp 宽）排版，再整体 `transform: scale()`
+ * 悬浮窗里页面按固定逻辑画布（210dp 宽，= 头像带宽）排版，再整体 `transform: scale()`
  * 到窗口大小。这个系数**不能**由页面从 `window.innerWidth` 推：
  * 原生 `updateViewLayout` 之后 WebView 的视口要过一会儿才跟上，
  * 这中间读到的宽度是滞后的，算出来的系数偏小——内容只占窗口一角、
@@ -258,12 +258,23 @@ export async function moveFloatingPet(x: number, y: number): Promise<void> {
 /**
  * 更新悬浮窗尺寸（dp）。
  *
+ * 推荐用 `logicalHeight` 口径：传**逻辑画布高度**（未缩放），由原生按它
+ * 手里的权威窗口宽度换算成实际高度。这样窗口高度与窗口宽度在构造上就
+ * 一致——页面即使拿着过期的缩放系数，也不可能把窗口改错。
+ *
  * `width <= 0` 表示**只改高度、宽度保持不变** —— 宽度由原生按屏幕比例
  * 独占（前端回传的宽度是滞后值，会把刚展开的窗口缩回去）。
- * 一般不需要直接调用；展开/收起请用 {@link setFloatingPetExpanded}。
+ *
+ * @param width        窗口宽度（dp）。传 0 = 不改宽度。
+ * @param height       窗口高度（dp）。仅在 `logicalHeight <= 0` 时生效。
+ * @param logicalHeight 逻辑画布高度（dp，未缩放）。传 0 = 用 `height`。
  */
-export async function resizeFloatingPet(width: number, height: number): Promise<void> {
-  await invoke(`${PLUGIN}|set_size`, { args: { width, height } });
+export async function resizeFloatingPet(
+  width: number,
+  height: number,
+  logicalHeight = 0,
+): Promise<void> {
+  await invoke(`${PLUGIN}|set_size`, { args: { width, height, logicalHeight } });
 }
 
 /**

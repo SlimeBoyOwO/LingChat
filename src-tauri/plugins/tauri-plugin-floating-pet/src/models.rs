@@ -42,8 +42,19 @@ pub struct MoveArgs {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SizeArgs {
+    /// 窗口宽度（dp）。`<= 0` 表示「只改高度，宽度由原生独占」。
     pub width: f64,
+    /// 窗口高度（dp）。仅在 `logical_height <= 0` 时生效。
     pub height: f64,
+    /// 逻辑画布高度（dp，**未缩放**）。`> 0` 时原生忽略 `height`，
+    /// 自己按 `逻辑高度 × 当前缩放系数` 算实际高度。
+    ///
+    /// 页面应当优先用这个口径回报高度：按「实际 dp」回报时，那个数字
+    /// 是「逻辑高度 × 页面手里的缩放系数」，一旦页面手里的系数过期，
+    /// 就会把与窗口宽度不匹配的高度写进窗口（宽度已展开、高度还是收起态），
+    /// 表现就是「展开后一大片空白」。改报逻辑高度后，这个不变式由原生保证。
+    #[serde(default)]
+    pub logical_height: f64,
 }
 
 /// `set_touchable` 命令的参数。
@@ -84,7 +95,7 @@ pub struct PetStatus {
     /// **不依赖任何原生事件**的情况下判断自己是否已被搬回 Activity。
     #[serde(default)]
     pub detached: bool,
-    /// 逻辑画布 → 窗口的缩放系数（`窗口宽度 / PET_LOGICAL_WIDTH`）。
+    /// 逻辑画布 → 窗口的缩放系数（`窗口宽度 / FLOATING_LOGICAL_WIDTH`）。
     ///
     /// 前端用它做整体 `transform: scale()`。**必须由原生给**：页面从
     /// `window.innerWidth` 自算会踩到「原生刚改完尺寸、WebView 视口还没

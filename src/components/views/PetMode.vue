@@ -1,101 +1,121 @@
 <template>
-  <div
-    id="pet-app"
-    v-show="!returningToApp"
-    :style="appStyleVars"
-    @mouseenter="handleMouseEnter"
-    @mouseleave="handleMouseLeave"
-    class="relative flex h-(--app-height) w-(--app-width) flex-col items-center justify-start overflow-hidden bg-transparent transition-none select-none"
-  >
-    <!-- 悬浮窗展开态的返回按钮：收回悬浮窗并切回聊天页。
+  <!--
+    外壳层：**恰好等于 WebView 视口**。
 
-         位置必须在逻辑画布**内部**（top-1 / right-1，而不是 -top-1 / -right-1）：
-         早先挂在头像右上角用负偏移，整体等比缩放后会被 #pet-app 的
-         overflow-hidden 裁掉一半，真机上根本点不到。
+    `#app` 是 `position: fixed; width: 100dvw; height: 100dvh` —— 它读的就是
+    WebView 的实际视口尺寸。本层 `inset: 0` 套在它里面，因此本层的尺寸
+    **就是** WebView 的尺寸，不经过任何计算、不依赖任何原生上报。
 
-         z 值给到 100：气泡带、头像里的 Live2D 画布都是同层的定位元素，
-         给低了会被压在下面看不见。
+    这一层存在的意义就是把「外面」这件事钉死：无论里层的逻辑画布算成什么，
+    外面这一层永远是窗口本身，不可能比窗口小、不可能在外面露出一圈透明；
+    里层万一算大了也只是被这里 `overflow: hidden` 裁掉。
 
-         只在展开态出现——收起态只有头像、没有放按钮的地方，而展开本来就靠
-         点头像，退出需要一个明确、看得见的入口。 -->
-    <button
-      v-if="floatingWindowMode && petExpanded"
-      type="button"
-      aria-label="返回"
-      title="返回"
-      class="absolute top-1 right-1 z-[100] flex h-7 w-7 items-center justify-center rounded-full border border-white/25 bg-neutral-950/85 text-white/95 shadow-lg backdrop-blur-xl active:scale-95"
-      @click.stop="handleExitPetMode"
-    >
-      <ArrowLeft :size="15" />
-    </button>
-
-    <!-- 装饰带（气泡/通知）：高度完全随内容（无预留）→ 顶部永远没有透明空间：
-         默认在宠物上方（气泡吸顶，宠物被往下让位）；设置=下方时夹在宠物与输入框之间（气泡贴宠物下沿）
-
-         悬浮窗收起态不渲染：窗口只有 1/6 屏宽，整体缩放系数约 0.25，
-         气泡里的字会小到看不清，没有可读空间。
-         悬浮窗展开态则**必须**排到头像之后（order=1）：气泡撑高窗口时
-         头像不动、只有输入框下移，视觉上气泡像是从宠物下方长出来。 -->
+    里层 `#pet-app` 仍是「固定逻辑画布 + 整体等比缩放」，但它现在被钉在一个
+    尺寸恒等于窗口的盒子里 —— 它的渲染宽 = `--app-width × --pet-fit`
+    = `210 × (视口宽 / 210)` ≡ 视口宽，是**恒等式**，不是估算。
+  -->
+  <div id="pet-shell">
     <div
-      v-show="!(floatingWindowMode && !petExpanded)"
-      ref="decorBand"
-      class="flex w-full shrink-0 flex-col justify-end bg-transparent transition-none"
-      :style="{ order: floatingWindowMode || bubbleBelow ? 1 : 0 }"
+      id="pet-app"
+      v-show="!returningToApp"
+      :style="appStyleVars"
+      @mouseenter="handleMouseEnter"
+      @mouseleave="handleMouseLeave"
+      class="relative flex h-(--app-height) w-(--app-width) flex-col items-center justify-start overflow-hidden bg-transparent transition-none select-none"
     >
-      <!-- 悬浮窗里不显示通知条：窗口太小，通知会挤占头像 -->
-      <PetNotification v-if="!floatingWindowMode" />
-      <div class="flex items-end justify-center" :class="{ 'mb-1': bubbleVisible }">
-        <DialogueBox ref="gameDialogRef" @player-continued="manualTriggerContinue" />
-      </div>
-    </div>
+      <!-- 悬浮窗展开态的返回按钮：收回悬浮窗并切回聊天页。
 
-    <!-- Avatar 区域 -->
-    <DragArea :isDragging="isDragging">
-      <div
-        ref="avatarContainer"
-        class="relative flex shrink-0 items-center justify-center bg-transparent transition-all duration-100"
-        :style="
-          floatingWindowMode
-            ? undefined
-            : { width: 'var(--avatar-size)', height: 'var(--avatar-size)' }
-        "
+           位置必须在逻辑画布**内部**（top-1 / right-1，而不是 -top-1 / -right-1）：
+           早先挂在头像右上角用负偏移，整体等比缩放后会被 #pet-app 的
+           overflow-hidden 裁掉一半，真机上根本点不到。
+
+           z 值给到 100：气泡带、头像里的 Live2D 画布都是同层的定位元素，
+           给低了会被压在下面看不见。
+
+           只在展开态出现——收起态只有头像、没有放按钮的地方，而展开本来就靠
+           点头像，退出需要一个明确、看得见的入口。 -->
+      <button
+        v-if="floatingWindowMode && petExpanded"
+        type="button"
+        aria-label="返回"
+        title="返回"
+        class="absolute top-1 right-1 z-[100] flex h-7 w-7 items-center justify-center rounded-full border border-white/25 bg-neutral-950/85 text-white/95 shadow-lg backdrop-blur-xl active:scale-95"
+        @click.stop="handleExitPetMode"
       >
-        <GameRolesStage
-          :floating-window="floatingWindowMode"
-          @avatar-click="handleAvatarClick"
-          @open-settings="handleOpenSettings"
-          @switch-auto-mode="handleSwitchAutoMode"
-          @exit-pet-mode="handleExitPetMode"
-          @audio-ended="handleAudioFinished"
-          @audio-started="handleAudioStarted"
-        />
+        <ArrowLeft :size="15" />
+      </button>
 
-        <!-- 悬浮窗里不再放「收起 / 关闭」按钮。
-             原先那两个圆形按钮挂在头像右上角（-top-1 -right-1），在
-             整体缩放的悬浮窗里会被 #pet-app 的 overflow-hidden 裁掉一半，
-             实测点不到。手机上的手势约定改为：
-             点头像 = 展开/收起切换，双击头像 = 收回 App。
-             少两个按钮同时也少一次「按钮在不在窗口内」的布局风险。 -->
+      <!-- 装饰带（气泡/通知）：高度完全随内容（无预留）→ 顶部永远没有透明空间：
+           默认在宠物上方（气泡吸顶，宠物被往下让位）；设置=下方时夹在宠物与输入框之间（气泡贴宠物下沿）
+
+           悬浮窗收起态不渲染：窗口只有 1/6 屏宽，整体缩放系数约 0.25，
+           气泡里的字会小到看不清，没有可读空间。
+           悬浮窗展开态则**必须**排到头像之后（order=1）：气泡撑高窗口时
+           头像不动、只有输入框下移，视觉上气泡像是从宠物下方长出来。 -->
+      <div
+        v-show="!(floatingWindowMode && !petExpanded)"
+        ref="decorBand"
+        class="flex w-full shrink-0 flex-col justify-end bg-transparent transition-none"
+        :style="{ order: floatingWindowMode || bubbleBelow ? 1 : 0 }"
+      >
+        <!-- 悬浮窗里不显示通知条：窗口太小，通知会挤占头像 -->
+        <PetNotification v-if="!floatingWindowMode" />
+        <div class="flex items-end justify-center" :class="{ 'mb-1': bubbleVisible }">
+          <DialogueBox ref="gameDialogRef" @player-continued="manualTriggerContinue" />
+        </div>
       </div>
-    </DragArea>
 
-    <!-- ChatInput 区域（始终贴住上方元素：默认在宠物正下方，设置=下方时在气泡带之下）
+      <!-- Avatar 区域 -->
+      <DragArea :isDragging="isDragging">
+        <div
+          ref="avatarContainer"
+          class="relative flex shrink-0 items-center justify-center bg-transparent transition-all duration-100"
+          :style="
+            floatingWindowMode
+              ? undefined
+              : { width: 'var(--avatar-size)', height: 'var(--avatar-size)' }
+          "
+        >
+          <GameRolesStage
+            :floating-window="floatingWindowMode"
+            @avatar-click="handleAvatarClick"
+            @open-settings="handleOpenSettings"
+            @switch-auto-mode="handleSwitchAutoMode"
+            @exit-pet-mode="handleExitPetMode"
+            @audio-ended="handleAudioFinished"
+            @audio-started="handleAudioStarted"
+          />
 
-         悬浮窗收起态不渲染：此时只有头像，输入框在展开后才出现。 -->
-    <div
-      v-show="!(floatingWindowMode && !petExpanded)"
-      ref="chatContainer"
-      class="flex w-full shrink-0 items-start justify-center bg-transparent transition-none"
-      :style="{ height: 'var(--chat-h)', order: floatingWindowMode || bubbleBelow ? 2 : 0 }"
-    >
-      <ChatInput ref="ChatInputRef" :visible="showChatInput" />
+          <!-- 悬浮窗里不再放「收起 / 关闭」按钮。
+               原先那两个圆形按钮挂在头像右上角（-top-1 -right-1），在
+               整体缩放的悬浮窗里会被 #pet-app 的 overflow-hidden 裁掉一半，
+               实测点不到。手机上的手势约定改为：
+               点头像 = 展开/收起切换，双击头像 = 收回 App。
+               少两个按钮同时也少一次「按钮在不在窗口内」的布局风险。 -->
+        </div>
+      </DragArea>
+
+      <!-- ChatInput 区域（始终贴住上方元素：默认在宠物正下方，设置=下方时在气泡带之下）
+
+           悬浮窗收起态不渲染：此时只有头像，输入框在展开后才出现。 -->
+      <div
+        v-show="!(floatingWindowMode && !petExpanded)"
+        ref="chatContainer"
+        class="flex w-full shrink-0 items-start justify-center bg-transparent transition-none"
+        :style="{ height: 'var(--chat-h)', order: floatingWindowMode || bubbleBelow ? 2 : 0 }"
+      >
+        <ChatInput ref="ChatInputRef" :visible="showChatInput" />
+      </div>
+
+      <!-- 余量吸收带：只在“下方”模式接管气泡带腾出的空间，保证窗口总高恒定（不上报 solid 区域）
+
+           悬浮窗里必须排在最后（order=3）：它带 flex-1，若 order 仍是 0
+           会插到头像与气泡之间，把气泡挤到窗口底部。 -->
+      <div
+        class="w-full flex-1"
+        :style="{ order: floatingWindowMode || bubbleBelow ? 3 : 0 }"
+      ></div>
     </div>
-
-    <!-- 余量吸收带：只在“下方”模式接管气泡带腾出的空间，保证窗口总高恒定（不上报 solid 区域）
-
-         悬浮窗里必须排在最后（order=3）：它带 flex-1，若 order 仍是 0
-         会插到头像与气泡之间，把气泡挤到窗口底部。 -->
-    <div class="w-full flex-1" :style="{ order: floatingWindowMode || bubbleBelow ? 3 : 0 }"></div>
   </div>
 </template>
 
@@ -130,7 +150,13 @@ import GameRolesStage from "../pet/GameRolesStage.vue";
 import PetNotification from "../pet/PetNotification.vue";
 import { ArrowLeft } from "lucide-vue-next";
 import { isAndroid } from "@/utils/platform";
-import { AVATAR_BAND_BASE, CHAT_BASE_H, DIALOG_MAX_BASE, PET_WIDTH_BASE } from "../pet/constants";
+import {
+  AVATAR_BAND_BASE,
+  CHAT_BASE_H,
+  DIALOG_MAX_BASE,
+  FLOATING_LOGICAL_WIDTH,
+  PET_WIDTH_BASE,
+} from "../pet/constants";
 
 const { t } = useI18n();
 const router = useRouter();
@@ -183,8 +209,9 @@ const ChatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
 
 // ─── 悬浮窗的「逻辑画布 + 整体缩放」模型 ───────────────────────────
 //
-// 悬浮窗里的页面**不做响应式布局**：始终按桌面端那套 240dp 宽的布局排版
-// （下称逻辑画布），再整体 `transform: scale(窗口宽度 / 240)` 缩放到窗口。
+// 悬浮窗里的页面**不做响应式布局**：始终按同一套逻辑画布（宽度见
+// `FLOATING_LOGICAL_WIDTH`，= 头像带宽 210dp）排版，再整体
+// `transform: scale(窗口宽度 / 210)` 缩放到窗口。
 //
 // 之前是让布局跟着窗口宽度走，结果是三件事同时坏掉：
 //   1. 展开态窗口 2.75 倍宽，但头像仍按收起态宽度渲染 → 窗口里一大片透明区
@@ -195,9 +222,14 @@ const ChatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
 // 换成整体缩放后布局只有一套（与桌面端完全一致），内容恰好铺满逻辑画布，
 // 于是窗口里没有透明区、所有控件等比可点。
 //
+// ⚠️ 逻辑宽度**不能**用桌面端的 `PET_WIDTH_BASE`(240)：那 240 里有
+// 两侧各 15px 是给桌面端悬停按钮与光晕留的「呼吸边」，悬浮窗里按钮
+// 全被隐藏 → 那 15px 就是纯透明空白，头像被居中后左右各露出一圈
+// （展开态单侧 13.5px ≈ 2.9mm，肉眼一眼可见）。详见 constants.ts
+// 里 `FLOATING_LOGICAL_WIDTH` 的实测数字。
+//
 // 代价：文字绝对大小与窗口宽度成正比，所以展开态不能太窄——见
-// FloatingPetPlugin.kt 的 EXPANDED_WIDTH_RATIO（取 0.6 屏宽，缩放系数约 0.9）。
-const FLOATING_LOGICAL_WIDTH = PET_WIDTH_BASE;
+// FloatingPetPlugin.kt 的 EXPANDED_WIDTH_RATIO（取 0.6 屏宽，缩放系数约 1.03）。
 
 /** 逻辑画布 → 实际窗口的缩放系数。仅悬浮窗模式有意义。 */
 const floatingFit = ref(1);
@@ -210,10 +242,102 @@ const floatingFit = ref(1);
  */
 const floatingContentHeight = ref(AVATAR_BAND_BASE);
 
-/** 画布高度：至少容纳当前形态的固定部分，再多容纳气泡。 */
+/**
+ * 视口尺寸（CSS px）。
+ *
+ * `window.innerWidth/innerHeight` 是**非响应式**的，直接写进 `computed`
+ * 里不会触发重算。这里把它们同步进一个 ref，让画布高度能跟着视口变。
+ *
+ * 同步点：`onMounted`、`resize` 事件、进悬浮窗、自愈心跳（见
+ * {@link startSelfHeal}）。心跳那条最关键——它是唯一不依赖任何原生通道的
+ * 兜底，视口没变过时 `resize` 一次都不会来。
+ */
+const viewportSize = ref({ w: 0, h: 0 });
+const syncViewportSize = () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  if (w === viewportSize.value.w && h === viewportSize.value.h) return;
+  viewportSize.value = { w, h };
+};
+
+/**
+ * **当前**缩放系数 —— 直接从视口尺寸现算，不经过任何缓存。
+ *
+ * ## 这是「外面那一圈」的结构性根治
+ *
+ * `--app-width` 是常量 210，`--pet-fit` 由本函数从**视口宽**现算，
+ * 两者在**同一次渲染**里取值，于是
+ *
+ * ```
+ * 画布渲染宽 = --app-width × --pet-fit = 210 × (视口宽 / 210) ≡ 视口宽
+ * ```
+ *
+ * 恒成立 —— 画布**不可能**比 WebView 窄，也就**不可能**在外面露出一圈。
+ *
+ * ## 早先错在哪
+ *
+ * 早先这里读的是 `floatingFit` 那个 ref，而它由三条**异步**通道更新
+ * （原生推 `pet-metrics` / 500ms IPC 轮询 / `resize` 事件），最多滞后
+ * 500ms。在滞后的那段时间里画布是按**旧**系数渲染的：视口已经变成
+ * 216 宽，画布还按收起态的 0.25 渲染成 52 宽 —— 右边 164px 全是透明。
+ * 这不是「算错了」，而是「用了过期的值」。
+ *
+ * 现在 `floatingFit` 只作为「视口尺寸还没同步进来」（`viewportSize.w === 0`，
+ * 即 `syncViewportSize` 一次都没跑过）时的兜底。
+ */
+const liveFit = computed(() => {
+  const w = viewportSize.value.w;
+  if (w > 0) return w / FLOATING_LOGICAL_WIDTH;
+  return floatingFit.value;
+});
+
+/**
+ * 画布逻辑高度。
+ *
+ * = `max(内容需要的高度, 视口高度 ÷ fit)`
+ *
+ * 后一项让画布**在任何方向都不小于视口** —— 窗口是矩形、画布是矩形，
+ * 只要画布比窗口小，就会露出一圈透明（用户报的「外面那一圈」）。
+ * 画布比视口大是**无害**的：多出来的部分由末尾那条 `flex-1` 余量带
+ * 吸收，内容仍然顶部对齐。
+ *
+ * ## 为什么宽度不用同一套「不小于视口」的约束
+ *
+ * 宽度是**构造出来**的：`fit = 视口宽 / FLOATING_LOGICAL_WIDTH`，
+ * 所以 `逻辑宽 × fit ≡ 视口宽`，恒等成立、不需要再兜。
+ * 高度做不到这一点——它由内容决定（气泡是流式输出的），
+ * 所以必须显式取 max 兜住「窗口比内容高」那一半。
+ *
+ * 这里用的 `fit` 必须是 {@link liveFit}（现算），不能是 `floatingFit`
+ * （缓存）——否则画布高度会按过期系数算，和宽度对不上。
+ *
+ * 注意上报给原生的仍然是**内容高度**（见 reportFloatingHeight），
+ * 所以窗口高度由内容决定，不会和视口形成
+ * 「改高度 → 视口变 → 再改高度」的来回震荡。
+ */
 const floatingCanvasHeight = computed(() => {
   const base = petExpanded.value ? AVATAR_BAND_BASE + CHAT_BASE_H : AVATAR_BAND_BASE;
-  return Math.max(base, floatingContentHeight.value);
+  const content = Math.max(base, floatingContentHeight.value);
+  if (!floatingWindowMode.value) return content;
+  const fit = liveFit.value;
+  const vh = viewportSize.value.h;
+  if (!(fit > 0) || !(vh > 0)) return content;
+  return Math.max(content, vh / fit);
+});
+
+// 形态一变就把量到的内容高度作废。
+//
+// `floatingContentHeight` 是「上一次量到的内容高度」，它只在
+// reportFloatingHeight 里被写。如果形态切换后那一次测量没跑成
+// （原生通道失效、DOM 还没排好版），画布高度会**留在上一个形态的值**上：
+// 展开态量到 280（或气泡撑到 480）之后收起，画布仍按 480 撑着 ——
+// 窗口只有 52dp 高，画布却是 480×0.25=120dp，下方多出来的一条
+// 在窗口里就是透明带（窗口是矩形，画布不是）。
+//
+// 作废后 `floatingCanvasHeight` 立刻回落到新形态的基准值，等真正的
+// 测量结果到达再修正。
+watch(petExpanded, () => {
+  floatingContentHeight.value = AVATAR_BAND_BASE;
 });
 
 /**
@@ -228,14 +352,174 @@ let metricsReceived = false;
 const syncFloatingFit = () => {
   if (!isInFloatingWindow()) return;
   if (metricsReceived) return;
+  // Android 上这条分支是**故意关掉**的：它只在「改完布局立刻读」的场合
+  // 被调用（onMounted），读到的是滞后值。悬浮窗里系数一律由
+  // onFloatingResize / startSelfHeal 在视口落定之后算（见 fitForViewport）。
+  if (isAndroid()) return;
   const k = window.innerWidth / FLOATING_LOGICAL_WIDTH;
   if (k > 0) floatingFit.value = k;
 };
 
-/** 悬浮窗尺寸变化（展开/收起、气泡撑高、原生改尺寸）后重算并回报。 */
+/**
+ * 按**视口宽度**算缩放系数。`fit = window.innerWidth / FLOATING_LOGICAL_WIDTH`。
+ *
+ * 与 {@link syncFloatingFit} 的区别是**调用时机**，不是算法：
+ * 那个函数是在「改完布局立刻读」的场合被调用的，读到的是滞后值；
+ * 本函数只在视口尺寸**刚刚确定**之后调用。
+ *
+ * ## 为什么只取宽度、**不**再对高度取 min
+ *
+ * 画布的视觉高度是 `逻辑高 × fit`；而窗口高度由原生按**同一个**
+ * `逻辑高 × fit` 反算出来（`set_size` 的 `logicalHeight` 口径，见
+ * FloatingPetPlugin.setSize）。也就是说
+ * 「画布视觉高度 == 窗口高度」是**构造出来**的，页面不需要、也不应该
+ * 再自己约束一次高度。
+ *
+ * 早先这里写的是 `min(byWidth, byHeight)`，本意是防「系统把视口压矮、
+ * 内容溢出被顶到屏幕上方」。但它把系数压小的同时，**画布宽度也跟着
+ * 小于窗口宽度** —— 于是窗口右侧、下侧各留一条透明带，用户看到的就是
+ * 「展开后一大片空白」。
+ *
+ * 真机诊断实测（诊断浮层的 `gap` 一行）：
+ *
+ * ```
+ * inner=360x802  canvas=240x480@0,0  fit=1.000
+ * gap L0 T0 R120 B322 <== 空白!      // 360-240=120，803-480=323
+ * ```
+ *
+ * 而且那条透明带**照样吃触摸**：它落在 `#pet-app` 之外、窗口之内，
+ * 手指点上去会触发 `mouseleave`，把输入框收起来 —— 用户报的
+ * 「展开后按空白区域会触发输入框折叠」就是这么来的。
+ *
+ * 现在只认宽度：**画布永远铺满窗口宽度**，无论窗口尺寸是原生给的、
+ * 系统改的，还是页面自己读到的。
+ */
+const fitForViewport = (): number => {
+  const w = window.innerWidth;
+  if (!(w > 0)) return 0;
+  return w / FLOATING_LOGICAL_WIDTH;
+};
+
+/**
+ * 把可能被系统顶上去的内容归位。
+ *
+ * 输入法弹出时浏览器会平移视口（visual viewport）去露出被聚焦的元素，
+ * 而 `#app` 是 `position: fixed` —— 固定定位元素会跟着视口一起平移，
+ * 于是整个画布被顶到屏幕上方。这里在每次 resize 后把它拉回来。
+ */
+const resetViewportPan = () => {
+  try {
+    if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+  } catch {
+    // 忽略：某些 WebView 在文档不可滚动时会抛
+  }
+};
+
+/**
+ * 悬浮窗尺寸变化（展开/收起、气泡撑高、系统改窗口、旋转）后重算并回报。
+ *
+ * 这里是**唯一**不依赖原生 `evaluateJavascript` 的通道：原生推事件那条路
+ * 在搬运/回收前后并不可靠，而 `resize` 是浏览器自己派发的。
+ *
+ * ⚠️ 调用方一律走 {@link onViewportResize}（它先同步视口再进这里），
+ * 因为 `floatingCanvasHeight` 依赖 `viewportSize`。
+ */
+let fitRafId: number | undefined;
 const onFloatingResize = () => {
-  syncFloatingFit();
+  if (!floatingWindowMode.value) return;
+  // 先同步视口：`floatingCanvasHeight` 依赖它（画布必须不小于视口），
+  // 顺序反了会先用上一帧的视口算一次高度。
+  syncViewportSize();
+  resetViewportPan();
+  const k = fitForViewport();
+  if (k > 0) {
+    floatingFit.value = k;
+    // 视口实测值比原生推来的值更贴近「用户真正看得见的区域」，采信它。
+    // 同时把 metricsReceived 置真，避免 syncFloatingFit 再用更差的来源覆盖。
+    metricsReceived = true;
+  }
   reportFloatingHeight();
+
+  // ── 再等一帧复核一次 ────────────────────────────────────────
+  // 原生 `updateViewLayout` 之后 WebView 的视口要下一帧才更新；连续两次
+  // 尺寸变化（收起→展开、气泡撑高→回落）时，第一帧读到的可能还是中间值。
+  // 一帧后复核，成本可忽略，但能把「差一点点」的系数纠回来。
+  if (fitRafId !== undefined) return;
+  fitRafId = window.requestAnimationFrame(() => {
+    fitRafId = undefined;
+    if (!floatingWindowMode.value) return;
+    const k2 = fitForViewport();
+    if (k2 > 0 && Math.abs(k2 - floatingFit.value) > 1e-4) {
+      floatingFit.value = k2;
+      reportFloatingHeight();
+    }
+  });
+};
+
+/**
+ * `resize` 事件的统一入口：**先同步视口，再走悬浮窗重算**。
+ *
+ * `window.innerWidth/innerHeight` 不是响应式的，`floatingCanvasHeight`
+ * 只认 `viewportSize`。两件事拆成两个监听器就会漏掉其中一个
+ * （早先 `resize` 只挂了 `onFloatingResize`，视口 ref 永远是初值 0）。
+ */
+const onViewportResize = () => {
+  syncViewportSize();
+  onFloatingResize();
+};
+
+/**
+ * 本地自愈心跳：**不依赖任何原生通道**地把系数拉回正确值。
+ *
+ * ## 为什么必须有
+ *
+ * `fit` 只有三个来源，且都可能失效：
+ *
+ * | 来源 | 失效场景 |
+ * |---|---|
+ * | 原生推 `pet-metrics`（`evaluateJavascript`） | WebView 刚重挂 / 宿主在后台时整体丢失 |
+ * | 原生轮询 `status`（500ms IPC） | 任一环节失败就永远是初值 |
+ * | `resize` 事件 | 只在视口尺寸**变化**时才有；视口没变过就一次都不来 |
+ *
+ * 三者同时失效是**真实发生过**的。真机诊断浮层抓到过这样一帧：
+ *
+ * ```
+ * [enter] inner=360x802  win=0x0dp  fit=1.000 applied=1.00
+ * canvas=240x480@0,0     gap L0 T0 R120 B322 <== 空白!
+ * ```
+ *
+ * `win=0x0dp` 说明 IPC 那条路一次都没成功（`fit` 停在初值 1.000），
+ * 而视口从未变过 → `resize` 一次都没派发 → 页面**永远**停在
+ * 「240×480 的画布铺在 360×802 的视口里」，右边和下边全是空白。
+ *
+ * 这个心跳只读 `window.innerWidth`、不碰 IPC，因此**只要页面还在跑，
+ * 系数就一定会收敛到「画布铺满视口宽度」**，不需要任何原生配合。
+ * 收敛之后每次心跳只是一次 `Math.abs` 比较，成本可忽略。
+ */
+const SELF_HEAL_INTERVAL_MS = 500;
+let selfHealTimer: number | undefined;
+const startSelfHeal = () => {
+  if (selfHealTimer !== undefined) return;
+  selfHealTimer = window.setInterval(() => {
+    if (!floatingWindowMode.value) return;
+    // 视口可能变过而 resize 没派发（原生改窗口、转屏、输入法收起）——
+    // 心跳顺手把它同步进 ref，`floatingCanvasHeight` 才会跟着重算。
+    syncViewportSize();
+    const k = fitForViewport();
+    if (k > 0 && Math.abs(k - floatingFit.value) > 1e-3) {
+      // 系数不对：走完整路径（重算 + 回报高度）
+      onFloatingResize();
+      return;
+    }
+    // 系数对了，但内容高度可能变了（气泡流式输出），补一次上报。
+    // reportFloatingHeight 自带去重，没变化时不会产生 IPC。
+    reportFloatingHeight();
+  }, SELF_HEAL_INTERVAL_MS);
+};
+const stopSelfHeal = () => {
+  if (selfHealTimer === undefined) return;
+  window.clearInterval(selfHealTimer);
+  selfHealTimer = undefined;
 };
 
 /**
@@ -244,15 +528,25 @@ const onFloatingResize = () => {
  * 原生只知道宽度（按屏幕比例算），高度得由页面说了算——气泡出现时
  * 内容会变高，窗口必须跟着长，否则气泡被裁掉、用户以为「消息发不出去」。
  *
+ * ## 上报的是「逻辑高度」，不是「实际 dp」
+ *
+ * 传 `logicalHeight` 让**原生**按它手里的权威窗口宽度换算实际高度。
+ * 早先这里传的是 `Math.round(logical * k)`（实际 dp），而 `k` 是页面
+ * 手里的缩放系数——它可能过期（原生刚 `updateViewLayout` 完、`pet-metrics`
+ * 还没送达）。那一刻页面会拿「收起态的 k」乘「展开态的逻辑高度」，
+ * 把一个 70dp 的高度写进一个已经展开到 216dp 宽的窗口：宽度对了、高度
+ * 塌了，剩下的区域就是用户看到的「大片空白」。
+ *
+ * 改报逻辑高度后，窗口高度与宽度**在构造上**由原生保证一致，
+ * 这条竞态从根上消失。
+ *
  * 高度只依赖内容（头像带 + 输入带 + 气泡带），**不依赖窗口高度**，
- * 因此这里不会和原生形成「改高度 → 重排 → 再改高度」的来回震荡。
+ * 因此不会和原生形成「改高度 → 重排 → 再改高度」的来回震荡。
  * `lastReportedHeight` 再去掉重复上报。
  */
 let lastReportedHeight = -1;
 const reportFloatingHeight = () => {
   if (!floatingWindowMode.value) return;
-  const k = floatingFit.value;
-  if (!(k > 0)) return;
   const base = petExpanded.value ? AVATAR_BAND_BASE + CHAT_BASE_H : AVATAR_BAND_BASE;
   // offsetHeight 是布局尺寸（未乘 transform），正是逻辑画布里的高度
   const band = decorBand.value?.offsetHeight ?? 0;
@@ -260,15 +554,14 @@ const reportFloatingHeight = () => {
   // 先让画布长高再报尺寸：反过来的话，窗口先变大而画布还是旧的，
   // 中间那一帧气泡会把输入框顶出画布、被 overflow-hidden 裁掉。
   floatingContentHeight.value = logical;
-  const height = Math.round(logical * k);
-  if (height <= 0) return;
-  // 容差 2px：原生改高度后视口可能抖动 1px，进而让算出的高度抖 1px。
+  const logicalRounded = Math.round(logical);
+  if (logicalRounded <= 0) return;
+  // 容差 1px（逻辑像素）：气泡是流式输出的，每次多一两个字都会让高度抖 1px。
   // 没有容差就会和原生来回改尺寸停不下来。
-  if (lastReportedHeight > 0 && Math.abs(height - lastReportedHeight) <= 2) return;
-  lastReportedHeight = height;
-  // 宽度传 0 = 「只改高度」：宽度归原生独占。回传 window.innerWidth 会踩到
-  // 视口滞后——原生刚改完尺寸时那个值还是旧的，等于把刚展开的窗口缩回去。
-  void resizeFloatingPet(0, height).catch(() => {
+  if (lastReportedHeight > 0 && Math.abs(logicalRounded - lastReportedHeight) <= 1) return;
+  lastReportedHeight = logicalRounded;
+  // 宽度传 0 = 「只改高度」：宽度归原生独占。
+  void resizeFloatingPet(0, 0, logicalRounded).catch(() => {
     // 失败时清掉缓存，下一轮重试
     lastReportedHeight = -1;
   });
@@ -323,6 +616,7 @@ const handleReturnedToApp = () => {
   floatingWindowMode.value = false;
   markFloatingWindowMode(false);
   stopMetricsPolling();
+  stopSelfHeal();
   petExpanded.value = false;
   showChatInput.value = false;
   // 页面不再缩放：不归位的话 --pet-fit 还留着悬浮窗里的系数（约 0.25），
@@ -356,6 +650,7 @@ const pollNativeState = async () => {
   try {
     const status = await getFloatingPetStatus();
     nativeWindowWidth.value = status.width;
+    nativeWindowHeight.value = status.height;
     if (status.detached) {
       sawDetached = true;
       // 兜底自愈：万一进悬浮窗时的事件丢了、页面还停在桌面端布局
@@ -366,7 +661,9 @@ const pollNativeState = async () => {
         floatingFit.value = status.scale;
       }
       reportFloatingHeight();
-      showViewportDiagnostic("floating");
+      // 每轮轮询都重画一次：文字必须和描边同一时刻，否则截图会误导
+      // （早先只画一次，文字写着 fit=1.000 而实际早就变了）。
+      renderDiagnostic("live");
       return;
     }
     // 原生说 WebView 已经不在悬浮窗里了 → 按「已回到 App」处理。
@@ -393,27 +690,26 @@ const startMetricsPolling = () => {
 // ——出问题的正是切换之后那一刻。
 //
 // ⚠️ 合并前必须整段删除（含 DEBUG_FLOATING_OVERLAY 常量与
-// showViewportDiagnostic 的全部调用点）。
+// showViewportDiagnostic / renderDiagnostic 的全部调用点）。
 
 /** 诊断开关：置 false 即关闭（保留代码便于下次排查）。 */
 const DEBUG_FLOATING_OVERLAY = true;
 
 /** 原生报告的窗口宽度（dp），用于和 window.innerWidth 对照。 */
 const nativeWindowWidth = ref(0);
-
-const DIAG_VISIBLE_MS = 30000;
-let diagTimer: number | undefined;
+/** 原生报告的窗口高度（dp）。 */
+const nativeWindowHeight = ref(0);
 
 /** 给元素加一圈描边（outline 不参与布局，不会改变被观测的几何）。 */
-const outlineOf = (el: HTMLElement | null, color: string) => {
-  if (!el) return;
-  el.style.outline = `1px solid ${color}`;
-  el.style.outlineOffset = "-1px";
-};
-
-/** 撤掉所有诊断描边。 */
+/**
+ * 撤掉所有诊断描边与画布底色。
+ *
+ * 保留本函数是为了清掉**上一次渲染**可能已经画上去的样式 —— 诊断层
+ * 自己画出来的品红底/青色框，曾经被误认成「宠物外面那一圈」。
+ */
 const clearOutlines = () => {
   for (const el of [
+    document.getElementById("app"),
     document.getElementById("pet-app"),
     avatarContainer.value,
     decorBand.value,
@@ -421,6 +717,8 @@ const clearOutlines = () => {
   ]) {
     if (el) (el as HTMLElement).style.outline = "";
   }
+  const canvasEl = document.getElementById("pet-app") as HTMLElement | null;
+  if (canvasEl) canvasEl.style.backgroundColor = "";
 };
 
 /** `w×h @ x,y` 形式的矩形摘要。 */
@@ -430,11 +728,26 @@ const rectOf = (el: HTMLElement | null): string => {
   return `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.left)},${Math.round(r.top)}`;
 };
 
-const showViewportDiagnostic = (label: string) => {
+/**
+ * 诊断浮层：**实时**刷新、**常驻**，并给画布铺底色。
+ *
+ * ## 为什么要实时
+ *
+ * 早先它只在 `enter` / `returned` 那一刻画一次，之后 30 秒内不再更新。
+ * 于是截图里的**文字是那一刻的快照，而描边是实时的** —— 两者对不上。
+ * 排查时被这个误导过整整一轮：文字写着 `fit=1.000`，实际早就不是了。
+ * 现在它挂在轮询上，文字和描边永远取自同一时刻。
+ *
+ * ## 为什么要给画布铺底色
+ *
+ * 描边只能说「框在哪」，说不出「框里是透明的还是有内容」。铺一层半透明
+ * 品红之后，一次截图就能定性：
+ *   - 品红铺满窗口   → 画布尺寸是对的，空白在**画布内部**
+ *   - 品红只盖住一块 → 窗口比画布大，空白在**画布外**
+ */
+const renderDiagnostic = (label: string) => {
   if (!DEBUG_FLOATING_OVERLAY) return;
-  // 悬浮窗内**一直**显示：本轮要拿到 innerW 与 nativeW 的对照，判断「展开后
-  // 四周空白」到底是视口滞后（innerW ≠ nativeW）还是窗口真的大了。
-  // 回到 App 后只在视口明显不对时才显示，修好就自然消失。
+  // 悬浮窗内一直显示；回到 App 后只在视口明显不对时才显示，修好就自然消失。
   const screenW = window.screen?.width ?? 0;
   const suspicious = floatingWindowMode.value || (screenW > 0 && window.innerWidth < screenW * 0.9);
   if (!suspicious) {
@@ -443,44 +756,107 @@ const showViewportDiagnostic = (label: string) => {
     return;
   }
 
-  // 描边：一眼看出「透明区」到底属于哪条带
-  //   品红 = #pet-app 画布，青 = 头像带，黄 = 气泡带，绿 = 输入带
-  outlineOf(document.getElementById("pet-app"), "#ff00ff");
-  outlineOf(avatarContainer.value, "#22d3ee");
-  outlineOf(decorBand.value, "#facc15");
-  outlineOf(chatContainer.value, "#4ade80");
+  // ⚠️ 这里**不再画任何描边 / 底色**。
+  //
+  // 早先给每条带都描了边（橙 = #app、品红 = #pet-app、青 = 头像带、
+  // 黄 = 气泡带、绿 = 输入带），还给画布铺了 `rgba(255,0,255,.22)` 的品红底。
+  // 那些都是**用户可见**的：画布底色在宠物轮廓之外露出来的那一圈，
+  // 加上头像容器那圈青色描边，看起来就是「宠物外面套了一圈」——
+  // 正是用户反复报的「外面那一圈」。诊断代码把被诊断的现象自己制造了出来。
+  //
+  // 现在只保留左上角那行文字读数（矩形坐标、gap、fit 都在里面），
+  // 足够定位问题，且不会在宠物周围留下任何可见形状。
+  clearOutlines();
 
   let el = document.getElementById("__lc_pet_diag") as HTMLDivElement | null;
   if (!el) {
     el = document.createElement("div");
     el.id = "__lc_pet_diag";
-    // 贴左下角：别盖住宠物本体，截图时才看得见宠物到底多大
+    // 贴左上角；诊断读数，合并前整段删除
     el.style.cssText =
-      "position:fixed;left:0;bottom:0;z-index:2147483647;pointer-events:none;" +
-      "background:rgba(0,0,0,.8);color:#4ade80;font:11px/1.4 monospace;" +
-      "padding:2px 5px;white-space:pre;border-top-right-radius:6px";
+      "position:fixed;left:0;top:0;z-index:2147483647;pointer-events:none;" +
+      "background:rgba(0,0,0,.72);color:#4ade80;font:10px/1.35 monospace;" +
+      "padding:2px 5px;white-space:pre;border-bottom-right-radius:6px";
     document.body.appendChild(el);
   }
-  const expected = Math.round(FLOATING_LOGICAL_WIDTH * floatingFit.value);
-  // 角色侧的「桌宠缩放 / 偏移」：这是**桌面端**的调参项，桌面上透明区靠
-  // 点击穿透忽略掉，但 Android 悬浮窗没有逐像素穿透——若 scaleP < 1，
-  // 宠物就只占头像框的一部分，四周全是吃触摸的透明区。见 GameRoleAvatar。
+
+  const appEl = document.getElementById("app");
+  const canvasEl = document.getElementById("pet-app") as HTMLElement | null;
+  // 画布**不铺底色**：早先这里涂了 `rgba(255,0,255,0.22)`，本意是区分
+  // 「空白在画布内还是画布外」，但它是**用户可见**的 —— 画布比宠物大时
+  // 那层品红就成了宠物外面的一圈粉色，正是用户反复报的「外面那一圈」。
+  // 现在整条描边/底色通道都关掉了（见上面的 clearOutlines 说明）。
+  if (canvasEl) canvasEl.style.backgroundColor = "";
+
+  const canvasRect = canvasEl?.getBoundingClientRect();
+  const innerW = window.innerWidth;
+  const innerH = window.innerHeight;
+
+  const canvasW = canvasRect ? Math.round(canvasRect.width) : 0;
+  const canvasH = canvasRect ? Math.round(canvasRect.height) : 0;
+  const offX = canvasRect ? Math.round(canvasRect.left) : 0;
+  const offY = canvasRect ? Math.round(canvasRect.top) : 0;
+
+  // 画布四边相对视口的余量。**全 0 才是对的**；哪个方向是正数，
+  // 那个方向就是吃触摸的透明区。
+  const gapL = offX;
+  const gapT = offY;
+  const gapR = innerW - (offX + canvasW);
+  const gapB = innerH - (offY + canvasH);
+  const noGap = gapL <= 1 && gapT <= 1 && gapR <= 1 && gapB <= 1;
+
+  // **实际**生效的缩放系数：直接从 transform 矩阵里读，不信任任何变量。
+  // 变量可能是过期的（Vue 尚未 flush），矩阵不会。
+  const appliedFit = (() => {
+    if (!canvasEl) return 0;
+    const t = getComputedStyle(canvasEl).transform;
+    if (!t || t === "none") return 1;
+    const m = t.match(/matrix\(([-\d.]+)/);
+    return m ? Number(m[1]) : 1;
+  })();
+
   const r = gameStore.presentRolesList[0];
   const roleInfo = r
     ? `role scaleP=${r.scaleP} offX=${r.offsetXP} offY=${r.offsetYP} frameless=${r.petFrameless}`
     : "role=none";
+
+  // 外壳层（= WebView 视口）实测矩形。它和 inner 必须完全一致 ——
+  // 不一致就说明「外面」那一层本身没套住窗口，问题在 CSS 而不在计算。
+  const shellRect = document.getElementById("pet-shell")?.getBoundingClientRect();
+  const shellInfo = shellRect
+    ? `${Math.round(shellRect.width)}x${Math.round(shellRect.height)}` +
+      `@${Math.round(shellRect.left)},${Math.round(shellRect.top)}`
+    : "none";
+
   el.textContent =
-    `[${label}] inner=${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio}\n` +
-    `fit=${floatingFit.value.toFixed(3)} expectW=${expected} nativeW=${nativeWindowWidth.value}\n` +
-    `canvas=${rectOf(document.getElementById("pet-app"))} floating=${floatingWindowMode.value}\n` +
+    `[${label}] inner=${innerW}x${innerH} dpr=${window.devicePixelRatio}\n` +
+    `shell=${shellInfo} liveFit=${liveFit.value.toFixed(3)}\n` +
+    `win=${nativeWindowWidth.value}x${nativeWindowHeight.value}dp ` +
+    `fit=${floatingFit.value.toFixed(3)} applied=${appliedFit.toFixed(3)}\n` +
+    `app=${rectOf(appEl as HTMLElement | null)}\n` +
+    `canvas=${canvasW}x${canvasH}@${offX},${offY}\n` +
+    `gap L${gapL} T${gapT} R${gapR} B${gapB} ${noGap ? "OK" : "<== 空白!"}\n` +
+    `scroll=${window.scrollX},${window.scrollY} ` +
+    `doc=${document.documentElement.scrollHeight}x${document.documentElement.scrollWidth}\n` +
     `avatar=${rectOf(avatarContainer.value)} band=${decorBand.value?.offsetHeight ?? -1}\n` +
     `chat=${rectOf(chatContainer.value)} exp=${petExpanded.value}\n` +
+    `floating=${floatingWindowMode.value} metrics=${metricsReceived} ` +
+    `canvasLogical=${Math.round(floatingCanvasHeight.value)}\n` +
     roleInfo;
-  if (diagTimer !== undefined) window.clearTimeout(diagTimer);
-  diagTimer = window.setTimeout(() => {
-    diagTimer = undefined;
-    el?.remove();
-  }, DIAG_VISIBLE_MS);
+};
+
+/**
+ * 兼容旧调用点：进/出悬浮窗、收到原生几何时各画一次。
+ *
+ * **必须等一帧**：`enterFloatingLayout` / `handleReturnedToApp` 都是
+ * 「改完 ref 立刻调用」的，此刻 Vue 还没 flush，读到的 DOM 是**上一次**
+ * 的布局。于是浮层文字里 `floating=` / `exp=` 是新值，而 `canvas=` /
+ * `applied=` 是旧值 —— 两者混在同一行里，前后误导过两轮排查
+ * （`[enter]` 那帧显示 `inner=802x360` 却 `canvas=240x480`，就是这个原因）。
+ * 包一层 `nextTick` 让文字和 DOM 同源。
+ */
+const showViewportDiagnostic = (label: string) => {
+  void nextTick().then(() => renderDiagnostic(label));
 };
 
 // 气泡/通知位置（用户设置）：above = 宠物上方，below = 宠物与输入框之间，auto = 按宠物在屏幕中的位置自动选
@@ -591,7 +967,7 @@ const appStyleVars = computed(() => {
   const scale = settingsStore.pet?.scale || 1.0;
 
   // ─── 悬浮窗：固定逻辑画布 + 整体等比缩放 ──────────────────────
-  // 窗口尺寸由原生按屏幕比例给，页面则始终按桌面端那套 240dp 宽的布局
+  // 窗口尺寸由原生按屏幕比例给，页面则始终按那套逻辑画布（210dp 宽）的布局
   // 排版，再由 `--pet-fit` 整体缩放铺满窗口（见 #pet-app 的 scoped 样式
   // 与 reportFloatingHeight）。
   //
@@ -608,7 +984,9 @@ const appStyleVars = computed(() => {
       "--avatar-size": `${AVATAR_BAND_BASE}px`,
       "--chat-h": `${CHAT_BASE_H}px`,
       "--dialog-h": `${DIALOG_MAX_BASE}px`,
-      "--pet-fit": floatingFit.value.toString(),
+      // 必须用 liveFit（现算），不能用 floatingFit（缓存）：
+      // 见 liveFit 的注释 —— 缓存值滞后会让画布比窗口小，露出一圈透明。
+      "--pet-fit": liveFit.value.toString(),
     };
   }
 
@@ -645,6 +1023,19 @@ let expandedUnlisten: (() => void) | null = null;
 let metricsUnlisten: (() => void) | null = null;
 
 /**
+ * 监听**根元素**尺寸变化，把 WebView 视口尺寸实时同步进 `viewportSize`。
+ *
+ * 为什么不只靠 `window.resize`：在 Android WebView 里，窗口被原生改尺寸
+ * （`updateViewLayout`）、转屏、输入法弹出/收起时，`resize` 事件**并不保证
+ * 派发**（实测抓到过「视口已经从 360 变成 216，页面一次 resize 都没收到」）。
+ * `ResizeObserver` 观察的是布局结果本身，比窗口事件可靠得多。
+ *
+ * 这一条是 `liveFit` 的数据源：只要它同步上了，`--pet-fit` 就一定是
+ * 「视口宽 / 210」，画布就永远铺满 WebView。
+ */
+let viewportObserver: ResizeObserver | undefined;
+
+/**
  * 切到「悬浮窗形态」：页面布局、缩放、轮询三件事一起就位。
  *
  * ## 为什么形态不能由事件或平台假设决定
@@ -668,19 +1059,52 @@ const enterFloatingLayout = () => {
   metricsReceived = false;
   lastReportedHeight = -1;
   floatingWindowMode.value = true;
+  // 视口尺寸先落进 ref：`floatingCanvasHeight` 用它兜「画布不小于视口」，
+  // 这里不刷的话第一次 computed 会拿 0 当视口高、跳过那层兜底。
+  syncViewportSize();
   // 让 api 层的 isInFloatingWindow() 与本页保持一致（进/出都靠它）
   markFloatingWindowMode(true);
   document.body.style.backgroundColor = "transparent";
   document.documentElement.style.backgroundColor = "transparent";
   document.body.style.overflow = "hidden";
+  document.documentElement.style.overflow = "hidden";
+  // ── resize 通道 ─────────────────────────────────────────────
+  //
+  // 监听器在 `onMounted` 里**无条件**绑上（见 onViewportResize 的说明），
+  // 所以这里不再重复绑。早先只在「挂载时已经是悬浮窗」的分支里绑，
+  // 而按本页的启动顺序（`goToPetMode` 是先 `router.push('/pet')` 再
+  // `showFloatingPet()`），那条分支**永远走不到** —— 整条 resize 通道是死的，
+  // 窗口变化时页面只能等原生轮询，展开后画布停在收起态大小、挤在左上角。
   startMetricsPolling();
+  // 本地自愈心跳：即使原生推事件与 500ms 轮询两条路都失效，也能靠
+  // `window.innerWidth` 把系数拉回来。见 startSelfHeal 的说明。
+  startSelfHeal();
   // 立刻画一次诊断，不等轮询的第一拍（用户截屏时它必须已经在屏幕上）
   showViewportDiagnostic("enter");
-  void nextTick().then(() => reportFloatingHeight());
+  void nextTick().then(() => {
+    // 第一帧就把系数按当前视口算出来：`pet-detached` 是 addView 之后立刻
+    // 派发的，此刻 WebView 视口往往还是搬运前那个（整屏）值。先按它算一次，
+    // 免得在「画布只有 210 宽、视口却有 360 宽」那一帧留下大片空白；
+    // 真正的值由 resize / 心跳在视口跟上后修正。
+    onViewportResize();
+  });
 };
 
 onMounted(async () => {
   floatingWindowMode.value = isInFloatingWindow();
+  // 视口尺寸落进 ref：`floatingCanvasHeight` 依赖它。
+  syncViewportSize();
+  // 无条件绑定 —— 对同一函数引用是幂等的，不在悬浮窗里时 onFloatingResize
+  // 第一行就 return，成本可忽略。见 onViewportResize 的说明。
+  window.addEventListener("resize", onViewportResize);
+  // 再补一层 ResizeObserver：`resize` 在 Android WebView 里不保证派发，
+  // 而 `viewportSize` 是 `liveFit`（画布缩放系数）的唯一数据源。
+  try {
+    viewportObserver = new ResizeObserver(() => onViewportResize());
+    viewportObserver.observe(document.documentElement);
+  } catch (e) {
+    console.warn("ResizeObserver 不可用，退回 resize 事件", e);
+  }
 
   // 原生搬移/移出悬浮窗时同步本页形态
   floatingModeUnlisten = onFloatingWindowModeChange((active) => {
@@ -741,7 +1165,7 @@ onMounted(async () => {
 
     // 逻辑画布 → 窗口的缩放系数，窗口尺寸变化（展开/收起、气泡撑高）时重算
     syncFloatingFit();
-    window.addEventListener("resize", onFloatingResize);
+    // resize 监听器已在 onMounted 顶部无条件绑好，这里不再重复绑
     // 开始轮询原生几何：这是缩放系数与「是否已收回」的可靠来源
     startMetricsPolling();
     // 首帧就要把真实内容高度报给原生：原生只知道宽度，收起态/展开态的
@@ -943,7 +1367,14 @@ onUnmounted(() => {
   if (heightReportTimer !== undefined) window.clearTimeout(heightReportTimer);
   if (returningTimer !== undefined) window.clearTimeout(returningTimer);
   stopMetricsPolling();
-  window.removeEventListener("resize", onFloatingResize);
+  stopSelfHeal();
+  if (fitRafId !== undefined) {
+    window.cancelAnimationFrame(fitRafId);
+    fitRafId = undefined;
+  }
+  window.removeEventListener("resize", onViewportResize);
+  viewportObserver?.disconnect();
+  viewportObserver = undefined;
   bandObserver.disconnect();
 
   if (hitTestInterval !== undefined) {
@@ -956,11 +1387,24 @@ const setShowChatInput = (insideWindow: boolean) => {
   showChatInput.value = insideWindow || (ChatInputRef.value?.isTyping() ?? false);
 };
 
+/**
+ * 桌面端：光标进入桌宠窗口 → 显示输入框。
+ *
+ * 悬浮窗里**不用**这条：手机没有 hover，而 Android WebView 会把触摸
+ * 合成成 mouseenter/mouseleave。悬浮窗的窗口是矩形、宠物不是，手指落在
+ * 窗口边角（宠物轮廓之外、`#pet-app` 之内）就会派发一次 mouseenter/leave，
+ * 把输入框的显隐交给「有没有摸到窗口角落」这种随机事件 —— 展开态被
+ * 这么打断一次，用户看到的就是「按一下空白，输入框没了」。
+ *
+ * 悬浮窗里的输入框显隐只由 expandPet / collapsePet 决定。
+ */
 const handleMouseEnter = () => {
+  if (floatingWindowMode.value) return;
   setShowChatInput(true);
 };
 
 const handleMouseLeave = () => {
+  if (floatingWindowMode.value) return;
   setShowChatInput(false);
 };
 
@@ -1118,7 +1562,7 @@ const handleExitPetMode = async () => {
  * `w-(--app-width) h-(--app-height)` 全部压掉，悬浮窗里页面就永远是
  * 「满视口」而不是「逻辑画布」，整体缩放随之失效。
  *
- * --pet-fit 只在悬浮窗模式下有值（= window.innerWidth / 240），
+ * --pet-fit 只在悬浮窗模式下有值（= window.innerWidth / FLOATING_LOGICAL_WIDTH），
  * 桌面端缺省 1，缩放是恒等变换。
  */
 #pet-app {
@@ -1128,5 +1572,25 @@ const handleExitPetMode = async () => {
   overflow: hidden;
   transform: scale(var(--pet-fit, 1));
   transform-origin: top left;
+}
+
+/*
+ * 外壳层 —— **恰好是 WebView 视口**。
+ *
+ * `#app` 已经铺满整个视觉视口（`position: fixed` + `100dvw/100dvh`），
+ * 本层 `inset: 0` 套在它里面，所以本层的尺寸**就是** WebView 的实际尺寸：
+ * 不经过任何计算、不依赖任何原生上报、也不依赖 `--pet-fit`。
+ *
+ * 于是「宠物外面那一圈透明」在结构上不可能出现 —— 外面这一层永远是窗口
+ * 本身；里层逻辑画布算大了被这里裁掉，算小了才会露白，而它的渲染宽
+ * `= 210 × (视口宽 / 210) ≡ 视口宽` 是恒等式（见 liveFit）。
+ *
+ * 另：`#pet-app` 里的 ✕ 按钮用 `absolute top-1 right-1` 定位，依赖
+ * `#pet-app` 的 `position: relative` —— 那一层没有变，位置不受影响。
+ */
+#pet-shell {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
 }
 </style>
