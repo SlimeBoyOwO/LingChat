@@ -96,7 +96,8 @@
 
 ### 3.2 成本很高
 
-- 仓库现在**没有 `[workspace]`**，`src-tauri/Cargo.lock` 有 1048 个包需要迁移。
+- 仓库已于 2026-10 拆为 workspace，`Cargo.lock` 在仓库根；下文关于 lock / patch 迁移成本的
+  描述是拆分**前**的评估结论，仅供参考。
 - 两个 `[patch.crates-io]`（`esaxx-rs`、`jpreprocess-naist-jdic`）**只有 workspace 根生效**，
   且都绑在 TTS 依赖链上。
 - `ort-sys` 带 `links = "onnxruntime"`：如果两边各 pin 一次 ort 版本，会直接 hard error。
@@ -230,7 +231,7 @@ cargo build -p ling_chat --timings
 ### 7.1 rust-analyzer 进程残留（本机已多次出现）
 
 rust-analyzer 重启时旧进程不会退出，会累积多个实例（父进程是 `rustup.exe`）。
-它们都在对同一个 `src-tauri/target` 跑 `cargo check`，后果是：
+它们都在对同一个 `target`（仓库根）跑 `cargo check`，后果是：
 
 - 每次手动 `cargo` 都打印 `Blocking waiting for file lock on build directory`
 - `cargo build` 可能因 `ling_chat.exe` 被运行中的应用锁住而报
@@ -257,7 +258,7 @@ Get-Process rust-analyzer | Select-Object Id,@{n='GB';e={[math]::Round($_.Workin
 ### 7.4 修改 profile 时要同时改两份 config
 
 见 §4.4。新增 `package."*"` / `build-override` 之类的覆盖则放进
-`src-tauri/Cargo.toml`。
+仓库根 `Cargo.toml`。
 
 ## 8. 未做但可考虑的方向
 
