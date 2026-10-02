@@ -64,6 +64,7 @@
         >
           <GameRolesStage
             :floating-window="floatingWindowMode"
+            :expanded="petExpanded"
             @avatar-click="handleAvatarClick"
             @open-settings="handleOpenSettings"
             @switch-auto-mode="handleSwitchAutoMode"

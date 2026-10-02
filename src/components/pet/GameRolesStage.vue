@@ -10,8 +10,9 @@
       class="animate-pet-scale relative transition-transform duration-300 ease-out"
       :style="{ width: frameSize + 'px', height: frameSize + 'px' }"
     >
-      <!-- 设置按钮：两个形态都在，位置/显隐的差异全在 sideButtonClass 里
-           （桌面端在头像左外侧、悬停浮现；悬浮窗在画布内侧、常驻）。 -->
+      <!-- 设置按钮：两个形态都在，差异全在 sideButtonClass 里
+           （桌面端挂在头像左外侧、悬浮窗贴画布内侧；显隐时机两者相同 ——
+            悬停 / 展开才浮现，收起即隐藏）。 -->
       <button
         type="button"
         :aria-label="$t('views.pet.stage.openSettingsAria')"
@@ -116,6 +117,7 @@
         :role="singleRole"
         :live2d-active="petLive2d && live2dActiveRoleIds.has(singleRole.roleId)"
         :live2d-failed="petLive2d && live2dFailedRoleIds.has(singleRole.roleId)"
+        :floating-window="floatingMode"
         @avatar-click="emit('avatar-click')"
       />
     </div>
@@ -158,7 +160,18 @@ const settingsStore = useSettingsStore();
  *
  * 不传时退回自己判断，保持组件可独立使用。
  */
-const props = defineProps<{ floatingWindow?: boolean }>();
+const props = defineProps<{
+  /** 是否处于悬浮窗形态，见下方 `floatingMode`。 */
+  floatingWindow?: boolean;
+  /**
+   * 悬浮窗是否处于**展开态**（收起态 = 只有一个头像）。
+   *
+   * 悬浮窗里它就是桌面端的「悬停」：手机没有鼠标，于是把「悬停才浮现」的
+   * 元素（左侧按钮排、角色铭牌）改由展开态驱动 —— 时机与电脑端一一对应，
+   * 只是触发源从鼠标换成了「点开」。见 `isStageHovered`。
+   */
+  expanded?: boolean;
+}>();
 
 const emit = defineEmits([
   "audio-ended",
@@ -208,8 +221,12 @@ const petFrameless = computed(() => singleRole.value?.petFrameless === true);
 /**
  * 是否运行在 Android 悬浮窗里（响应式）。
  *
- * 悬浮窗里要隐藏那排「悬停才浮现」的桌面端按钮：手机没有 hover，
- * 而且整页是等比缩放的，挂在头像角上的按钮会被 `overflow-hidden` 裁掉。
+ * 它**只改两件事**，其余一律与电脑端一致：
+ *
+ * 1. 画布尺寸固定 210（见 `frameSize`）；
+ * 2. 悬停的触发源从指针换成展开态（见 `isStageHovered`），
+ *    以及随之而来的定位微调（见 `sideButtonClass`）。
+ *
  * 手机上的交互收敛为「点头像 = 展开/收起，双击 = 收回 App」。
  *
  * 形态以 `PetMode` 传进来的为准（见 `props.floatingWindow` 的说明）；
@@ -223,22 +240,28 @@ const floatingMode = computed(() => props.floatingWindow ?? ownFloatingMode.valu
 /**
  * 左侧那排圆形按钮（设置 / 自动 / 返回主页 / 截图 / 麦克风）的定位与显隐类。
  *
- * ## 桌面端
+ * ## 显隐时机：两个形态**共用同一份**
  *
- * 挂在头像框**左外侧**（`-left-3.5` = -14px），正好落在 `PET_WIDTH_BASE`(240)
- * 比 `AVATAR_BAND_BASE`(210) 多出来的那 15px「呼吸边」里；平时透明，
- * 悬停（`.is-hovered`）才浮现。
+ * 电脑上这排按钮平时透明、悬停（`.is-hovered`）才浮现；悬浮窗里把「悬停」
+ * 换成「展开态」（见 `isStageHovered`）。因此下面这段
+ * `translate-y-2 opacity-0 group-[.is-hovered]:…` 在两条分支里**逐字相同**，
+ * 连 300ms 的过渡都是同一份 —— 这就是「收起时机严格按电脑」。
  *
- * ## 悬浮窗
+ * ## 定位：只有这里不一样
  *
- * 上面两条**都不成立**，所以不能照搬：
+ * 电脑端挂在头像框**左外侧**（`-left-3.5` = -14px），正好落在
+ * `PET_WIDTH_BASE`(240) 比 `AVATAR_BAND_BASE`(210) 多出来的那 15px「呼吸边」里。
+ * 悬浮窗的逻辑画布宽度**就是** 210（见 constants.ts 的说明），没有那圈余量，
+ * `-left-3.5` 会落到画布外、被 `#pet-app` 的 `overflow-hidden` 整个裁掉 ——
+ * 真机上根本点不到。所以悬浮窗改贴画布**内侧**（`left-1`），换算到电脑端的
+ * 坐标系约等于「呼吸边内侧 1px」，观感一致。
  *
- * 1. **没有呼吸边**。悬浮窗的逻辑画布宽度就是 `FLOATING_LOGICAL_WIDTH`(210)
- *    = 头像带宽（见 constants.ts 的说明），`-left-3.5` 会落到画布外，被
- *    `#pet-app` 的 `overflow-hidden` 整个裁掉 —— 真机上根本点不到。因此改成
- *    贴在画布**内侧**（`left-1`）。
- * 2. **没有 hover**。手机没有鼠标，`opacity-0 group-[.is-hovered]:opacity-100`
- *    会让它们永远不可见，因此悬浮窗里常驻显示。
+ * ## 悬浮窗还要多一条「隐藏时挡触摸」
+ *
+ * 悬浮窗的画布只有 210 宽，这排按钮**压在头像上**。`opacity-0` 的元素照样
+ * 接收触摸，于是收起态点头像想展开、却会先命中那个看不见的按钮（比如直接
+ * 打开设置）。电脑端按钮在头像外侧、不存在这个问题，所以这条只加在悬浮窗
+ * 分支。
  *
  * `top-*` 两个形态共用：`top-1 / top-10 / top-19 / top-28 / top-37` 对应逻辑
  * y = 4 / 40 / 76 / 112 / 148，最下面那个按钮底边 148+32 = 180，仍在 210 高的
@@ -249,7 +272,7 @@ const floatingMode = computed(() => props.floatingWindow ?? ownFloatingMode.valu
  */
 const sideButtonClass = computed(() =>
   floatingMode.value
-    ? "left-1"
+    ? "left-1 pointer-events-none translate-y-2 opacity-0 group-[.is-hovered]:pointer-events-auto group-[.is-hovered]:translate-y-0 group-[.is-hovered]:opacity-100"
     : "-left-3.5 translate-y-2 opacity-0 group-[.is-hovered]:translate-y-0 group-[.is-hovered]:opacity-100",
 );
 
@@ -275,23 +298,54 @@ const frameSize = computed(() => {
 });
 
 // --- 舞台悬停态（驱动按钮与角色铭牌的显隐）---
-// 桌面端不能用 CSS :hover：光标离开 solid 区域后窗口会自动开启点击穿透
+//
+// 两套触发源，汇到同一个 `is-hovered` 类（模板里的 group-[.is-hovered]: 变体，
+// 含 GameRoleAvatar 的角色铭牌）：
+//   · 桌面端 = 指针悬停（下面这套判定）
+//   · 悬浮窗 = 展开态（props.expanded）
+//
+// 桌面端为什么不能用 CSS :hover：光标离开 solid 区域后窗口会自动开启点击穿透
 // （见 src-tauri/src/api/pet.rs 的 spawn_hit_test_poll），webview 从此收不到鼠标事件，
 // :hover 会冻结在最后一次状态，按钮/铭牌第一次悬停后就再也隐藏不掉。
 // 因此优先用 Rust 侧的全局鼠标广播 pet:cursor（每 50ms 上报窗口内逻辑坐标，
 // 与 getBoundingClientRect 同坐标系，Live2D 视线也用的它）自行判定；
-// 该事件只由桌面端轮询广播，没有它的环境（移动端、Linux 取坐标失败时）退回 DOM
+// 该事件只由桌面端轮询广播，没有它的环境（Linux 取坐标失败时）退回 DOM
 // 指针事件——那些环境没有点击穿透，DOM 事件本来就是可靠的。
-// 模板对应 group-[.is-hovered]: 变体（含 GameRoleAvatar 的角色铭牌）。
 const stageRootRef = ref<HTMLElement | null>(null);
-const isStageHovered = ref(false);
 let cursorUnlisten: (() => void) | null = null;
 
+/** 桌面端的指针悬停态，由 `pet:cursor` 广播 / DOM 指针事件写入。 */
+const pointerHovered = ref(false);
+
+/**
+ * 悬停态 —— 驱动按钮排与角色铭牌的显隐（模板里的 `is-hovered`）。
+ *
+ * ## 桌面端
+ *
+ * 用 `pointerHovered`，由上面那套 `pet:cursor` / DOM 指针事件判定。
+ *
+ * ## 悬浮窗
+ *
+ * 直接取 `props.expanded`。**这就是「收起时机严格按电脑」**：
+ * 电脑上光标离开 → 元素收起；悬浮窗里收起态 → 元素收起，一一对应。
+ *
+ * 不能沿用指针判定：Android WebView 会把触摸合成成 pointer 事件，手指落在
+ * 窗口边角（宠物轮廓之外、`#pet-app` 之内）就派发一次 pointerdown/move，
+ * 等于把显隐交给「有没有摸到窗口角落」这种随机事件 —— 表现就是展开后
+ * 摸一下，按钮和铭牌莫名其妙地闪一下、或者卡住不消失。
+ */
+const isStageHovered = computed(() =>
+  floatingMode.value ? props.expanded === true : pointerHovered.value,
+);
+
 const syncStageHover = (x: number, y: number) => {
+  // 悬浮窗里指针判定已被 props.expanded 取代。这里提前返回而不是「照写不误」：
+  // 那个值在悬浮窗里没有任何接收者，写进去只会白白触发一次响应式更新。
+  if (floatingMode.value) return;
   const rect = stageRootRef.value?.getBoundingClientRect();
   if (!rect) return;
   // 光标移出窗口时上报的坐标会越界（负值/超出），该判断同时覆盖"离开窗口"
-  isStageHovered.value = x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  pointerHovered.value = x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 };
 
 // DOM 兜底：pointermove 覆盖鼠标环境，pointerdown 让触屏点按也能唤出按钮

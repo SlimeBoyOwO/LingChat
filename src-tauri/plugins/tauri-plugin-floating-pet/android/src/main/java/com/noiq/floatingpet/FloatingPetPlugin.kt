@@ -4,12 +4,11 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.ActivityManager
 import android.app.Application
-import android.content.ComponentCallbacks
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.hardware.display.DisplayManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -18,6 +17,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.util.Log
+import android.view.Display
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -159,6 +159,16 @@ private const val BACKGROUND_DELAY_MS = 400L
  * ——表现就是「单击经常没反应，窗口还会被带偏一点」。
  */
 private const val TAP_SLOP_DP = 16.0
+
+/**
+ * 显示器变化回调 → 真正重排之间的等待（毫秒）。
+ *
+ * 旋转时显示状态不会立刻落定：回调到达时 `DisplayInfo` 可能还是中间态，
+ * 立刻读会拿到一个错误尺寸，把桌宠夹进一个不存在的屏幕里。等一拍再读。
+ *
+ * 这段时间内重复到达的回调会被合并（见 [FloatingPetPlugin.displayListener]）。
+ */
+private const val CONFIG_SETTLE_MS = 120L
 
 
 // ─── 参数结构（字段名需与 Rust 侧 serde camelCase 对应） ──────────
@@ -323,31 +333,18 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 if (petDetached) {
                     // ── 屏幕尺寸变了就重排 ────────────────────────────
                     //
-                    // 这是一条**不依赖 `ComponentCallbacks` 是否送达**的兜底。
-                    //
-                    // 旋转本来靠 [configCallback] 处理（见
-                    // [reapplyWindowAfterConfigChange]），但本项目已经反复踩到
-                    // 「系统回调不保证送达」（`pet-detached` / `pet-attached`
+                    // 旋转的**快路径**是 [displayListener]（约 120ms 响应）。
+                    // 这里是**不依赖系统回调是否送达**的兜底：本项目已经反复
+                    // 踩到「系统回调不保证送达」（`pet-detached` / `pet-attached`
                     // 都丢过）。那条回调一旦丢掉，桌宠就会一直停在旧屏幕的坐标
                     // 系里 —— 竖屏贴下沿的 `y` 在横屏里远大于屏高，整个窗口跑到
                     // 屏幕外，而用户没有任何办法把它拉回来。
                     //
-                    // 判据是 [lastScreenW] / [lastScreenH]：它们表示「当前 x/y 是按
-                    // 哪块屏幕算出来的」，[clampIntoScreen] / `show()` /
-                    // [reapplyWindowAfterConfigChange] 都会写。两者与实时读数不一致
-                    // == 屏幕变过、但窗口还没跟着重排。
-                    //
-                    // 代价：每 500ms 一次 WindowManager 读数（本地调用，可忽略）。
-                    val (curW, curH) = screenSizePx()
-                    val screenChanged = lastScreenW > 0 && lastScreenH > 0 &&
-                        (curW != lastScreenW || curH != lastScreenH)
-                    if (screenChanged) {
-                        // 内部会重算尺寸/位置，并把新几何推给页面
-                        reapplyWindowAfterConfigChange()
-                    } else {
-                        // 顺带重推一次窗口几何：前端靠它算缩放系数，而 WebView 的
-                        // 视口在原生改完尺寸后会滞后一会儿，自算必然出错。低频重推
-                        // 让页面即使漏掉某次事件也能在半秒内自愈。
+                    // 判据与代价见 [maybeReapplyForScreenChange]。
+                    if (!maybeReapplyForScreenChange()) {
+                        // 没变就顺带重推一次窗口几何：前端靠它算缩放系数，而
+                        // WebView 的视口在原生改完尺寸后会滞后一会儿，自算必然
+                        // 出错。低频重推让页面即使漏掉某次事件也能在半秒内自愈。
                         layoutParams?.let { notifyMetrics(it, petView) }
                     }
                 }
@@ -371,8 +368,8 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     /** [ensureLifecycleCallbacks] 的幂等标记。 */
     private var lifecycleCallbacksRegistered = false
 
-    /** [ensureConfigCallback] 的幂等标记。 */
-    private var configCallbackRegistered = false
+    /** [ensureDisplayListener] 的幂等标记。 */
+    private var displayListenerRegistered = false
 
     /** 上一次已知的屏幕物理宽度。旋转后用来判断「桌宠原本贴哪一边」。 */
     private var lastScreenW = 0
@@ -380,8 +377,11 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     /** 上一次已知的屏幕物理高度。旋转后用来换算纵向的相对位置。 */
     private var lastScreenH = 0
 
+    /** [displayListener] 的延时体：把「回调到达」与「真正重排」错开，见 [CONFIG_SETTLE_MS]。 */
+    private val reapplyRunnable = Runnable { maybeReapplyForScreenChange() }
+
     /**
-     * 屏幕配置变化回调（旋转 / 分屏 / 折叠屏展开）。
+     * 显示器变化回调（旋转 / 分屏 / 折叠屏展开 / 分辨率或刷新率切换）。
      *
      * ## 为什么必须有
      *
@@ -398,40 +398,85 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      *   重算（竖屏 360×802 与横屏 802×360 的短边都是 360，通常不变；
      *   但分屏 / 折叠屏展开会变）。
      *
-     * 这里在配置变化后重排：按当前展开态重算尺寸 → 把位置映射到新屏幕
+     * 这里在尺寸变化后重排：按当前展开态重算尺寸 → 把位置映射到新屏幕
      * （左右保留原来那一边、上下保留相对位置）→ 重新布局 → 把新的权威
      * 几何推给页面。具体见 [reapplyWindowAfterConfigChange]。
+     *
+     * ## 为什么不是 `ComponentCallbacks.onConfigurationChanged`
+     *
+     * 那个回调**只在 Activity 可见时才送达**。而桌宠浮在桌面上时，宿主
+     * Activity 已经被 `moveTaskToBack(true)` 退到后台 —— 恰恰是最需要它的
+     * 那个场景，它**永远不会来**。这条不是理论推演：它就是「旋转后桌宠
+     * 跑出屏幕」一直修不掉的原因之一（另一个是读数本身取错了源，
+     * 见 [screenSizePx]）。
+     *
+     * `DisplayManager` 的监听走**进程级**的显示器回调，不看 Activity 可不可见，
+     * 只要进程活着就会收到（悬浮窗有前台服务保活）。
+     *
+     * ## 这个回调不只管旋转
+     *
+     * 亮度、刷新率、分辨率变化都会触发它，所以**不能**无条件重排 ——
+     * 无条件重排会把桌宠重新吸附到边缘，用户正拖着它时会被直接拽走。
+     * 真正决定要不要动的是 [maybeReapplyForScreenChange] 里的尺寸比较。
      */
-    private val configCallback = object : ComponentCallbacks {
-        override fun onConfigurationChanged(newConfig: Configuration) {
-            // 统一切回主线程做布局（布局只能在主线程）。
-            // 延后 120ms 是等显示状态落定 —— 布局的唯一依据是 [screenSizePx]
-            // 读到的屏幕尺寸，读到旧值会把窗口夹进旧屏幕的坐标系里。
-            keepAliveHandler.postDelayed({ reapplyWindowAfterConfigChange() }, 120)
-        }
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = Unit
 
-        override fun onLowMemory() = Unit
-    }
+        override fun onDisplayRemoved(displayId: Int) = Unit
 
-    /** 注册配置变化回调（幂等）。只在桌宠真的在悬浮窗里时注册。 */
-    private fun ensureConfigCallback() {
-        if (configCallbackRegistered) return
-        configCallbackRegistered = true
-        try {
-            activity.application.registerComponentCallbacks(configCallback)
-        } catch (e: Exception) {
-            Log.w(TAG, "注册配置变化回调失败（可忽略）", e)
+        override fun onDisplayChanged(displayId: Int) {
+            if (displayId != Display.DEFAULT_DISPLAY) return
+            // 旋转时这个回调会连着来好几次，且显示状态未必已经落定。
+            // 撤掉上一次的待办、只保留最后那次 —— 合成一拍。
+            keepAliveHandler.removeCallbacks(reapplyRunnable)
+            keepAliveHandler.postDelayed(reapplyRunnable, CONFIG_SETTLE_MS)
         }
     }
 
-    /** 注销配置变化回调。桌宠不在悬浮窗里时没必要继续收系统广播。 */
-    private fun releaseConfigCallback() {
-        if (!configCallbackRegistered) return
-        configCallbackRegistered = false
+    /**
+     * 屏幕尺寸**真的变了**才重排。
+     *
+     * 判据是 [lastScreenW] / [lastScreenH]：它们表示「当前 x/y 是按哪块屏幕
+     * 算出来的」，[clampIntoScreen] / `show()` / [reapplyWindowAfterConfigChange]
+     * 都会写。两者与实时读数不一致 == 屏幕变过、但窗口还没跟着重排。
+     *
+     * 代价：每 500ms 一次 [screenSizePx] 读数（本地调用，可忽略）。
+     *
+     * @return 是否真的重排了 —— [keepAliveTick] 靠它决定要不要顺手补推几何。
+     */
+    private fun maybeReapplyForScreenChange(): Boolean {
+        if (!petDetached) return false
+        return try {
+            val (curW, curH) = screenSizePx()
+            val changed = lastScreenW > 0 && lastScreenH > 0 &&
+                (curW != lastScreenW || curH != lastScreenH)
+            if (changed) reapplyWindowAfterConfigChange()
+            changed
+        } catch (t: Throwable) {
+            Log.w(TAG, "屏幕尺寸变化后重排失败（可忽略）", t)
+            false
+        }
+    }
+
+    /** 注册显示器回调（幂等）。只在桌宠真的在悬浮窗里时注册。 */
+    private fun ensureDisplayListener() {
+        if (displayListenerRegistered) return
+        displayListenerRegistered = true
         try {
-            activity.application.unregisterComponentCallbacks(configCallback)
-        } catch (e: Exception) {
-            Log.w(TAG, "注销配置变化回调失败（可忽略）", e)
+            displayManager().registerDisplayListener(displayListener, keepAliveHandler)
+        } catch (t: Throwable) {
+            Log.w(TAG, "注册显示器回调失败（可忽略）", t)
+        }
+    }
+
+    /** 注销显示器回调。桌宠不在悬浮窗里时没必要继续收系统广播。 */
+    private fun releaseDisplayListener() {
+        if (!displayListenerRegistered) return
+        displayListenerRegistered = false
+        try {
+            displayManager().unregisterDisplayListener(displayListener)
+        } catch (t: Throwable) {
+            Log.w(TAG, "注销显示器回调失败（可忽略）", t)
         }
     }
 
@@ -546,45 +591,80 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
 
     private fun dp(value: Double): Int = (value * density).toInt()
 
+    /** `DisplayManager` 系统服务。 */
+    private fun displayManager(): DisplayManager =
+        activity.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+
     /**
-     * 屏幕物理尺寸（px，含系统栏）。
+     * 屏幕物理尺寸（px，含系统栏），**当前旋转**下的值。
      *
-     * ## 为什么不能用 `activity.resources.displayMetrics`
+     * ## 这个读数被证伪过两次 —— 而两次其实是同一个来源
      *
-     * 真机反馈：**横屏时桌宠只能停在左半边** —— 往右拖到大约「竖屏宽度」的
-     * 位置就拖不动了，右边一大片拖不过去，像是边界还在按竖屏的宽度算。
+     * 真机现象一：**横屏时桌宠只能停在左半边** —— 往右拖到大约「竖屏宽度」
+     * 的位置就停住，右边一大片过不去。
+     * 真机现象二：**旋转屏幕后桌宠跑出屏幕**，怎么转都回不来。
      *
-     * `Resources.displayMetrics` 走的是 Activity 的资源配置，而本 App 的
-     * manifest 声明了 `configChanges="orientation|screenSize|..."`（旋转不重建
-     * Activity）—— 这条路径上 Resources 的显示度量**并不保证**跟着旋转刷新。
-     * 悬浮窗的 `x` / `y` 是**屏幕坐标系里的绝对值**，边界一旦偏小，桌宠就被
-     * 永久关在左边那半屏里，怎么拖都出不来。
+     * 两者是**同一个成因**：读到的屏幕尺寸一直停在竖屏。
      *
-     * `WindowManager` 的窗口度量直接取自 WindowManagerService 的显示状态，
-     * 与 Activity 的 Resources 刷没刷新无关，旋转后立刻是新值。
+     * 前两版来源都不对：
+     *
+     * 1. `activity.resources.displayMetrics`
+     * 2. `activity.getSystemService(WINDOW_SERVICE).maximumWindowMetrics`
+     *
+     * 第 2 版看着像「窗口服务」的权威读数，但 AOSP 的实现
+     * （`android/window/WindowMetricsController.java`）是：
+     *
+     * ```java
+     * final Configuration config = mContext.getResources().getConfiguration();
+     * final WindowConfiguration winConfig = config.windowConfiguration;
+     * bounds = (isMaximum) ? winConfig.getMaxBounds() : winConfig.getBounds();
+     * ```
+     *
+     * —— **读的还是同一个 Resources**，只是换了个字段。所以第 2 版等于没改。
+     *
+     * ## 为什么这个 Resources 在悬浮窗场景里必然不准
+     *
+     * 桌宠浮在桌面上时，宿主 Activity 已经被 `moveTaskToBack(true)` 退到
+     * 后台。**系统只对可见 Activity 派发配置变化**，后台 Activity 的
+     * Resources 配置不保证跟随此后发生的旋转刷新。于是屏宽永远停在
+     * 「进入悬浮窗那一刻」的竖屏值：
+     *
+     * - 边界偏小 → 现象一：永远拖不过「竖屏宽度」那条看不见的线
+     * - [lastScreenW] / [lastScreenH] 也永远不变 → 旋转重排永不触发 → 现象二
+     *
+     * 同一个原因还让 `onConfigurationChanged` 收不到，见 [ensureDisplayListener]。
+     *
+     * ## 正确的来源
+     *
+     * `DisplayManager` 的 `Display`，它的 `DisplayInfo` 由 DisplayManagerService
+     * 直接维护，**与 App 可不可见、Resources 刷没刷新全都无关**，旋转后立刻
+     * 是新值。`getRealMetrics` 给的是含系统栏的物理尺寸，正是悬浮窗
+     * `x` / `y` 所在的那个坐标系。
+     *
+     * `getRealMetrics` 自 API 31 起标记废弃（官方让改用 `WindowMetrics`），
+     * 但 `WindowMetrics` 读的正是上面那条不可用的 Resources 路径 ——
+     * 这里只能继续用 `getRealMetrics`。
      *
      * 读数失败时退回 `resources.displayMetrics`：宁可边界偏小，也不能让
      * 拖拽 / 吸附整条路径抛异常。
      */
     private fun screenSizePx(): Pair<Int, Int> {
-        return try {
-            val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val bounds = wm.maximumWindowMetrics.bounds
-                bounds.width() to bounds.height()
-            } else {
-                @Suppress("DEPRECATION")
-                val display = wm.defaultDisplay
+        try {
+            val display = displayManager().getDisplay(Display.DEFAULT_DISPLAY)
+            if (display != null) {
                 val metrics = DisplayMetrics()
                 @Suppress("DEPRECATION")
                 display.getRealMetrics(metrics)
-                metrics.widthPixels to metrics.heightPixels
+                if (metrics.widthPixels > 0 && metrics.heightPixels > 0) {
+                    return metrics.widthPixels to metrics.heightPixels
+                }
             }
+            Log.w(TAG, "DisplayManager 未返回默认显示器，退回 resources.displayMetrics")
         } catch (t: Throwable) {
             Log.w(TAG, "读取屏幕尺寸失败，退回 resources.displayMetrics", t)
-            val dm = activity.resources.displayMetrics
-            dm.widthPixels to dm.heightPixels
         }
+        val dm = activity.resources.displayMetrics
+        return dm.widthPixels to dm.heightPixels
     }
 
     /** 屏幕宽度（dp）。见 [screenSizePx] —— 刻意不用 `resources.displayMetrics`。 */
@@ -892,7 +972,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 val (startScreenW, startScreenH) = screenSizePx()
                 lastScreenW = startScreenW
                 lastScreenH = startScreenH
-                ensureConfigCallback()
+                ensureDisplayListener()
 
                 // 通知页面：你现在在悬浮窗里了。
                 // 页面据此切换为「仅头像」布局——这必须发生在 addView 之后，
@@ -1079,7 +1159,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         expanded = false
         instance = null
         // 桌宠不在悬浮窗里了，旋转重排已经没有意义，注销监听
-        releaseConfigCallback()
+        releaseDisplayListener()
 
         // 桌宠已收回，不再需要前台优先级
         PetForegroundService.stop(activity)
@@ -1227,7 +1307,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         petDetached = false
         petNeedsResume = false
         pendingAttachNotify = null
-        releaseConfigCallback()
+        releaseDisplayListener()
         stopKeepAlive()
         // Activity 正在销毁，前台服务若继续留着会变成没有悬浮窗的空服务
         PetForegroundService.stop(activity)
@@ -1445,11 +1525,15 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      *
      * ## 两个调用点，缺一不可
      *
-     * - [configCallback] 的 `onConfigurationChanged`（正常路径，延后 120ms）
+     * - [displayListener] 的 `onDisplayChanged`（正常路径，延后 [CONFIG_SETTLE_MS]）
      * - [keepAliveTick] 的 500ms 轮询（兜底：那条系统回调丢了也要能自愈）
      *
      * 只留前者是不够的 —— 本项目已经反复踩到「系统回调不保证送达」。
      * 那条回调一旦丢掉，桌宠会永远停在旧屏幕的坐标系里。
+     *
+     * 两个调用点都必须先过 [maybeReapplyForScreenChange] 的尺寸比较：
+     * 本函数一旦执行就会把桌宠**重新吸附到边缘**，无变化时误触发会把
+     * 用户正拖着的桌宠拽走。
      *
      * 要点：
      *
