@@ -1,10 +1,7 @@
 //! Background effect event — sets `game_status.background_effect`.
 
-use std::sync::OnceLock;
-
 use anyhow::Result;
 use async_trait::async_trait;
-use serde::Deserialize;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
@@ -15,26 +12,13 @@ use crate::ai_service::game_system::script_engine::responses::{
 };
 use crate::ai_service::message_system::events::emit;
 
-#[derive(Deserialize)]
-struct EffectManifestEntry {
-    key: String,
-}
-
-static KNOWN_EFFECTS: OnceLock<Vec<String>> = OnceLock::new();
-
-/// Rust 与 Vue 共用 `shared/script-effects.json`，避免编辑器、校验器和渲染层名单漂移。
-pub fn known_effects() -> &'static [String] {
-    KNOWN_EFFECTS.get_or_init(|| {
-        serde_json::from_str::<Vec<EffectManifestEntry>>(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../shared/script-effects.json"
-        )))
-        .expect("shared/script-effects.json must be valid")
-        .into_iter()
-        .map(|entry| entry.key)
-        .collect()
-    })
-}
+/// Effect names the frontend actually renders.
+///
+/// Generated from the frontend particle registry by
+/// `scripts/generate-known-effects.mjs` — add an effect there and run
+/// `pnpm gen:effects`, never edit the list by hand. Re-exported under the old
+/// path so the schema builder and the validator keep importing it from here.
+pub use super::known_effects::KNOWN_EFFECTS;
 
 /// Names that explicitly mean "no effect" and therefore must not be warned about.
 const CLEARING_EFFECTS: [&str; 3] = ["none", "None", ""];
@@ -60,10 +44,10 @@ impl BackgroundEffectEvent {
         // and get no particles at all with no diagnostic anywhere.
         // 支持 '+' 组合叠加（如 "Glitch+BloodDrip"），逐段校验
         let all_known = effect.split('+').map(|p| p.trim()).all(|p| {
-            CLEARING_EFFECTS.contains(&p) || known_effects().iter().any(|known| known == p)
+            CLEARING_EFFECTS.contains(&p) || KNOWN_EFFECTS.contains(&p)
         });
         if !all_known && !CLEARING_EFFECTS.contains(&effect.as_str()) {
-            let hint = known_effects()
+            let hint = KNOWN_EFFECTS
                 .iter()
                 .find(|k| k.eq_ignore_ascii_case(&effect));
             match hint {
@@ -75,7 +59,7 @@ impl BackgroundEffectEvent {
                 None => tracing::warn!(
                     "[BackgroundEffectEvent] 未知特效 '{}'，将清空当前特效；可用值: {:?}",
                     effect,
-                    known_effects()
+                    KNOWN_EFFECTS
                 ),
             }
         }

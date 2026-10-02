@@ -4,7 +4,11 @@
     ref="host"
     class="pointer-events-none absolute inset-0 overflow-hidden"
     aria-hidden="true"
-  ></div>
+  >
+    <!-- 抚摸粒子放在画布容器内部：它要盖住模型却压在气泡之下，而 PIXI 的画布是
+         运行时才追加到这个 div 末尾的，只能靠 z-1 压过它那个 auto -->
+    <TouchParticles ref="touchParticles" />
+  </div>
   <slot></slot>
 </template>
 
@@ -14,7 +18,6 @@ import { listen } from "@tauri-apps/api/event";
 import { onBeforeUnmount, onMounted, provide, readonly, ref, watch } from "vue";
 
 import { getLive2dFilePath, getLive2dVariantAssets } from "@/api/services/character";
-import { EMOTION_CONFIG_EMO } from "@/controllers/emotion/config";
 import type { GameRole } from "@/stores/modules/game/state";
 import {
   prefersLive2d,
@@ -27,19 +30,28 @@ import {
   areEyesOpen,
   gazeFromPointer,
   GAZE_MAGNITUDE_MIN,
-  radialReferenceDistance,
+  screenFallbackReferenceDistance,
   type ScreenBox,
 } from "./live2d-interaction";
 import { live2dStageContextKey } from "./live2d-stage-context";
 import { calculatePetLayout } from "./live2d-layout";
+import { emotionExpression, pickEmotionBinding } from "./live2d-emotion";
 import { trackMotionLifecycle } from "./live2d-motion";
 import { loadLive2dRuntime, type Live2dRuntime } from "./live2d-runtime";
+import TouchParticles from "./TouchParticles.vue";
+import {
+  hitTouchPart,
+  resolveTouchRegions,
+  type TouchBounds,
+  type TouchRegion,
+} from "./live2d-touch";
 import {
   configureRuntimeIdle,
   mergeVariantAssets,
   rewriteModelReferences,
   type Live2dModelSource,
 } from "./model-source";
+import { createTouchSession } from "./useLive2dTouch";
 import { decodeVoiceForLipSync, sampleVoiceAmplitude, type DecodedVoice } from "./useLive2dLipSync";
 
 defineOptions({ inheritAttrs: false });
@@ -59,6 +71,8 @@ const props = defineProps<{
   /** 渲染帧率上限（0 = 不限制）。桌宠窗口很小，30fps 足够且大幅降低挂机 CPU；
       仅桌宠舞台（pet/GameRolesStage）传入，标准模式/预览不传保持原行为 */
   maxFps?: number;
+  /** 抚摸交互开关。缺省 false 是刻意的：设置界面的预览挂同一个组件，不传就自动免疫。 */
+  touchEnabled?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -80,9 +94,7 @@ interface RoleModel {
   model: any;
   variant: Live2dVariant;
   runtimeIdle: Live2dMotionBinding | null;
-  /** 当前表情态，存的是**原始**情绪词（分类器/剧本产出的那个）。它是状态变化本身的
-      标识，也是查绑定的第一优先键；用 `EMOTION_CONFIG_EMO` 的映射词去重会让
-      哭泣与伤心、难为情与羞耻各塌成同一个键，切换时动作不会重放。 */
+  /** 当前表情态，存的是原始情绪词。用映射词去重会让哭泣与伤心塌成同一个键，动作不再重放。 */
   emotion: string;
   requestId: number;
   mouthParameterIndex: number;
@@ -99,11 +111,15 @@ interface RoleModel {
   /** 视线原点在模型局部坐标系里的位置，首次用到时由 drawable bounds 与
       focus_anchor 算出后缓存——bounds 随呼吸/动作漂移，每帧重算会让锚点抖动。 */
   focusOrigin: { x: number; y: number } | null;
+  /** 抚摸命中区域与推导它所用的 bounds，与 focusOrigin 同一次算出，无绑定或无锚点时为 null */
+  touchRegions: Record<string, TouchRegion> | null;
+  touchBounds: TouchBounds | null;
   reactionSequence: number;
   reactionLifecycleCleanup: (() => void) | null;
 }
 
 const host = ref<HTMLDivElement | null>(null);
+const touchParticles = ref<InstanceType<typeof TouchParticles> | null>(null);
 let runtime: Live2dRuntime | null = null;
 let application: any = null;
 let disposed = false;
@@ -112,16 +128,34 @@ let requestSequence = 0;
 let decodedVoice: DecodedVoice | null = null;
 let decodeSequence = 0;
 let resizeObserver: ResizeObserver | null = null;
-let pointerPosition: { clientX: number; clientY: number } | null = null;
-/** 当前显示器工作区（窗口相对逻辑像素），由 Rust 侧的 pet:cursor 广播带过来。
-    前端自己读 window.screenX/availLeft 在混合 DPI 多显示器下会混用设备像素与
-    CSS 像素；尺寸可靠但位置不可靠，所以位置必须跟指针走同一个来源。 */
-let screenBox: ScreenBox | null = null;
 let cursorUnlisten: (() => void) | null = null;
 const models = new Map<number, RoleModel>();
 const failedRoleIds = new Set<number>();
 const readyRoleIds = ref<ReadonlySet<number>>(new Set());
 const unavailableRoleIds = ref<ReadonlySet<number>>(new Set());
+
+/** 抚摸交互的全部跨帧状态都在这里，舞台只提供命中判定与画面反馈。 */
+const touch = createTouchSession({
+  hitTest: partAtPoint,
+  gazeAnchor: (roleId) => {
+    const entry = models.get(roleId);
+    return entry ? focusOriginViewport(entry) : null;
+  },
+  onStrokeStart: ({ roleId, part }) => {
+    const entry = models.get(roleId);
+    if (entry) applyTouchExpression(entry, part);
+  },
+  onReactionDue: ({ roleId, part }) => {
+    const entry = models.get(roleId);
+    if (entry) playTouchReaction(entry, part);
+  },
+  onExpressionDue: (roleId) => {
+    const entry = models.get(roleId);
+    if (entry) applyExpression(entry, emotionExpression(entry.variant, entry.emotion));
+  },
+  reactionInFlight: (roleId) => !!models.get(roleId)?.reactionLifecycleCleanup,
+  spawnParticle: (clientX, clientY) => touchParticles.value?.spawn(clientX, clientY),
+});
 
 provide(live2dStageContextKey, {
   readyRoleIds: readonly(readyRoleIds),
@@ -150,38 +184,6 @@ function motionBindingEquals(
     left.index === right.index &&
     (left.loop ?? true) === (right.loop ?? true)
   );
-}
-
-/**
- * 查情绪绑定用的键，按优先级排列。
- *
- * 第一项是分类器与剧本产出的原始情绪词（见 `data/third_party/emotion_model_19emo/label_mapping.json`），
- * 也正是设置界面写进 `settings.yml` 的键，所以它必须先命中。
- *
- * 第二项是 `EMOTION_CONFIG_EMO` 的映射词。那张表是给静态立绘挑气泡图和音效用的
- * （哭泣 → 伤心.webp），Live2D 这里带上它只是让已经写成映射词的配置不回归。少了第一项
- * 会让「哭泣」「难为情」两行变成死键——设置界面绑得上，运行时永远查不到。
- *
- * 表外情绪（如剧本里的「尴尬」）映射词就是「正常」，与映射表出现前的行为一致。
- */
-function emotionBindingKeys(emotion: string): string[] {
-  const mapped = EMOTION_CONFIG_EMO[emotion] || "正常";
-  return emotion === mapped ? [emotion] : [emotion, mapped];
-}
-
-/**
- * 按上述顺序取第一个「存在」的绑定。
- *
- * 判空用 `!== undefined` 而不是真值判断：设置界面的「无表情」选项把值写成空串，
- * 那表示用户显式关掉了这个情绪的表情，不能穿透到下一级——这正是 Live2D 文档里
- * 「只在绑定缺失时才回退到 default_expression」的意思。
- */
-function pickEmotionBinding<T>(table: Record<string, T>, emotion: string): T | undefined {
-  for (const key of emotionBindingKeys(emotion)) {
-    const value = table[key];
-    if (value !== undefined) return value;
-  }
-  return undefined;
 }
 
 function variantNameFor(role: GameRole): string | null {
@@ -219,7 +221,6 @@ function destroyApplication() {
     application.destroy({ removeView: true, releaseGlobalResources: false }, true);
     application = null;
   }
-  pointerPosition = null;
   runtime = null;
 }
 
@@ -246,6 +247,7 @@ async function ensureApplication() {
   const fpsCap = props.maxFps ?? 0;
   if (fpsCap > 0) app.ticker.maxFPS = fpsCap;
   app.ticker.add(updateLipSync);
+  app.ticker.add(() => touch.update());
   resizeObserver = new ResizeObserver(() => {
     for (const entry of models.values()) {
       const role = props.roles.find((item) => item.roleId === entry.roleId);
@@ -264,77 +266,106 @@ function findParameterIndex(entry: RoleModel, parameter: string): number {
   return -1;
 }
 
-/** 工作区矩形缺失时（移动端、浏览器 dev）的径向参考距离。
-    window.screen 的尺寸在多 DPI 下可靠、位置不可靠，所以只取尺寸；
-    连尺寸都拿不到时返回 0，gazeFromPointer 据此退回「不衰减」。 */
-function fallbackReferenceDistance() {
-  const screen = window.screen;
-  return radialReferenceDistance(screen?.availWidth ?? 0, screen?.availHeight ?? 0);
+/** 舞台几何：宿主矩形与 PIXI 逻辑尺寸。分母一律取 screen，rect 会被 CSS transform 缩放。 */
+function stageGeometry() {
+  if (!host.value || !application) return null;
+  const rect = host.value.getBoundingClientRect();
+  const stage = application.screen;
+  if (rect.width <= 0 || rect.height <= 0 || stage.width <= 0 || stage.height <= 0) return null;
+  return { rect, stage };
 }
 
-/** 视线原点（模型局部坐标）= drawable bounds 上的 focus_anchor 位置。
-    没配 focus_anchor 时取 bounds 中心，与设置界面的 placeholder 一致。
-    getLocalBounds() 读的是当前（带呼吸/动作）的 drawable 顶点，会随动画漂移，
-    所以只算一次缓存；局部 bounds 不受 model.scale/position/anchor 影响，
-    桌宠改缩放不会让它失效。 */
-function resolveFocusOrigin(entry: RoleModel) {
-  if (entry.focusOrigin) return entry.focusOrigin;
+/** 解析并缓存模型局部几何。只算一次：bounds 随呼吸与动作漂移，每帧重算会让锚点抖动。 */
+function resolveLocalGeometry(entry: RoleModel) {
+  if (entry.focusOrigin && entry.touchBounds) return entry.focusOrigin;
   const bounds = entry.model.getLocalBounds();
-  const anchor = entry.variant.focus_anchor ?? { x: 0.5, y: 0.5 };
+  const minX = bounds.minX ?? bounds.x ?? 0;
+  const minY = bounds.minY ?? bounds.y ?? 0;
+  const anchor = entry.variant.focus_anchor ?? null;
   entry.focusOrigin = {
-    x: (bounds.minX ?? bounds.x ?? 0) + bounds.width * anchor.x,
-    y: (bounds.minY ?? bounds.y ?? 0) + bounds.height * anchor.y,
+    x: minX + bounds.width * (anchor?.x ?? 0.5),
+    y: minY + bounds.height * (anchor?.y ?? 0.5),
   };
+  entry.touchBounds = { minX, minY, width: bounds.width, height: bounds.height };
+  // 区域用 variant 上的原始锚点，不回落：回落后头区会落在躯干正中，宁可一个都不生成
+  entry.touchRegions = resolveTouchRegions(anchor, entry.variant.touch_motions);
   return entry.focusOrigin;
+}
+
+/** 视线原点换算到视口坐标 */
+function focusOriginViewport(entry: RoleModel): { x: number; y: number } | null {
+  const geometry = stageGeometry();
+  if (!geometry) return null;
+  const { rect, stage } = geometry;
+  const origin = entry.model.toGlobal(resolveLocalGeometry(entry));
+  return {
+    x: rect.left + origin.x * (rect.width / stage.width),
+    y: rect.top + origin.y * (rect.height / stage.height),
+  };
 }
 
 function updateModelFocus(entry: RoleModel) {
   if (entry.focusFrozen) return;
   const focusController = entry.model.internalModel.focusController;
-  // 标准聊天模式：始终直视前方（不跟随鼠标）；仅桌宠模式用指针驱动视线
+  // 标准模式默认直视前方，抚摸期间把焦点通道临时交给手；桌宠模式才用指针驱动视线
   if (props.mode !== "pet") {
-    focusController.focus(0, 0);
+    const sway = touch.swayFor(entry.roleId);
+    focusController.focus(sway?.x ?? 0, sway?.y ?? 0);
     return;
   }
-  // 眨眼/隐藏期间冻结视线目标：不重置回中。引擎的眨眼控制器会在
-  // beforeModelUpdate 之前把眼部参数写成闭眼值，此时若走回中分支，
-  // 弹簧插值会把瞳孔/头短暂拽向正中，表现为眨眼瞬间“瞬视中间”。
-  // 下面每条早退分支都保持 gazeMagnitude 不变：焦点弹簧自己会衰减到 0，
-  // 瞳孔补偿量随之归零，路径连续；清零反而会漏掉补偿、多出一个小跳变。
+  const pointer = touch.pointer;
+  // 眨眼或隐藏期间冻结视线目标而不是回中，否则弹簧插值会把瞳孔与头短暂拽向正中
   if (!entry.eyesOpen || !entry.model.visible) return;
-  if (!pointerPosition || !host.value || !application) {
+  const anchor = focusOriginViewport(entry);
+  if (!pointer || !anchor) {
     focusController.focus(0, 0);
     return;
   }
-  // 全程在视口坐标里算距离：指针与工作区矩形都在这个坐标系。
-  // 反算用 application.screen 而非 rect 做分母——PIXI 的 ResizePlugin 读
-  // clientWidth，application.screen 不受 CSS transform 影响，而 rect 会
-  // （桌宠入场有 scale(0.8→1) 动画，期间两者差 0.8 倍）。
-  const rect = host.value.getBoundingClientRect();
-  const stage = application.screen;
-  if (rect.width <= 0 || rect.height <= 0 || stage.width <= 0 || stage.height <= 0) {
-    focusController.focus(0, 0);
-    return;
-  }
-  const origin = entry.model.toGlobal(resolveFocusOrigin(entry));
   const gaze = gazeFromPointer(
-    { x: pointerPosition.clientX, y: pointerPosition.clientY },
-    {
-      x: rect.left + origin.x * (rect.width / stage.width),
-      y: rect.top + origin.y * (rect.height / stage.height),
-    },
-    screenBox,
-    screenBox ? 0 : fallbackReferenceDistance(),
+    pointer,
+    anchor,
+    touch.screenBox,
+    touch.screenBox ? 0 : screenFallbackReferenceDistance(),
   );
-  // 方向按单位向量交给引擎驱动瞳孔；幅度只用来衰减头部旋转，
-  // 被缩掉的瞳孔偏转由 beforeModelUpdate 补回。
+  // 方向按单位向量交给引擎；幅度只衰减头部旋转，被缩掉的瞳孔偏转由 beforeModelUpdate 补回
   const magnitude = Math.max(gaze.magnitude, GAZE_MAGNITUDE_MIN);
   entry.gazeMagnitude = magnitude;
   focusController.focus(gaze.x * magnitude, gaze.y * magnitude);
 }
 
 function handlePointerMove(event: PointerEvent) {
-  pointerPosition = { clientX: event.clientX, clientY: event.clientY };
+  touch.setPointer(event.clientX, event.clientY);
+}
+
+/** 视口坐标换算到模型局部坐标，与 focusOriginViewport 互为逆运算。 */
+function localPointFor(entry: RoleModel, clientX: number, clientY: number) {
+  const geometry = stageGeometry();
+  if (!geometry) return null;
+  const { rect, stage } = geometry;
+  return entry.model.toLocal({
+    x: (clientX - rect.left) * (stage.width / rect.width),
+    y: (clientY - rect.top) * (stage.height / rect.height),
+  });
+}
+
+/** 指针落在哪个角色的哪个部位。多角色站位重叠时取舞台层级最高的那个。 */
+function partAtPoint(clientX: number, clientY: number) {
+  if (!application) return null;
+  const candidates = [...models.values()]
+    .filter((entry) => entry.model.visible && entry.variant.touch_motions)
+    // 用 children.indexOf 而不是 getChildIndex：后者在模型不在舞台上时会抛错
+    .sort(
+      (a, b) =>
+        application.stage.children.indexOf(b.model) - application.stage.children.indexOf(a.model),
+    );
+  for (const entry of candidates) {
+    resolveLocalGeometry(entry); // 标准模式的视线路径走不到这里，必须自己触发，否则区域恒为空
+    const local = localPointFor(entry, clientX, clientY);
+    if (!local || !entry.touchBounds || !entry.touchRegions) continue;
+    const part = hitTouchPart(local, entry.touchBounds, entry.touchRegions);
+    if (part) return { roleId: entry.roleId, part };
+  }
+  return null;
 }
 
 function destroyModel(model: any) {
@@ -410,44 +441,69 @@ function finishReaction(entry: RoleModel, sequence: number) {
   updateModelFocus(entry);
 }
 
+/** 启动一次 FORCE 优先级的动作反应。步骤顺序见 docs/live2d/development.md 的 Reaction Completion，不要改成超时或直接写参数。 */
+function startReaction(entry: RoleModel, binding: Live2dMotionBinding) {
+  if (!runtime) return;
+  const sequence = ++entry.reactionSequence;
+  freezeModelFocus(entry);
+  entry.reactionLifecycleCleanup?.();
+  entry.reactionLifecycleCleanup = trackMotionLifecycle(
+    entry.model.internalModel.motionManager,
+    binding.group,
+    binding.index,
+    runtime.engine.MotionPriority.FORCE,
+    () => finishReaction(entry, sequence),
+  );
+  void entry.model
+    .motion(binding.group, binding.index, runtime.engine.MotionPriority.FORCE, {
+      loop: binding.loop ?? false,
+      resetExpression: false,
+    })
+    .then((started: boolean) => {
+      if (!started) finishReaction(entry, sequence);
+    })
+    .catch((error: unknown) => {
+      finishReaction(entry, sequence);
+      console.warn(`[Live2D] motion failed for role ${entry.roleId}`, error);
+    });
+}
+
+/** 播放某个部位绑定的抚摸动作。优先级必须 FORCE，否则会被在播的待机动作直接拒掉。 */
+function playTouchReaction(entry: RoleModel, part: string): boolean {
+  const binding = entry.variant.touch_motions?.[part];
+  const { group, index } = binding ?? {};
+  if (!binding || group === undefined || index === undefined || !runtime) return false;
+  if (entry.reactionLifecycleCleanup) {
+    // 已有反应在跑就静默丢弃，保住剧本的情绪节拍，顺带当冷却用
+    console.debug(`[Live2D] touch reaction dropped, reaction in flight (role ${entry.roleId})`);
+    return false;
+  }
+  startReaction(entry, { group, index, loop: binding.loop ?? false });
+  return true;
+}
+
+function applyExpression(entry: RoleModel, expression: string | null | undefined) {
+  if (!expression) return;
+  void entry.model
+    .expression(expression)
+    .catch((error: unknown) =>
+      console.warn(`[Live2D] expression failed for role ${entry.roleId}`, error),
+    );
+}
+
+/** 换上抚摸表情。按下时就换比等到动作开演更跟手，收回去的时机由抚摸会话决定。 */
+function applyTouchExpression(entry: RoleModel, part: string) {
+  const expression = entry.variant.touch_motions?.[part]?.expression;
+  if (expression) applyExpression(entry, expression);
+}
+
 function applyEmotion(entry: RoleModel, emotion: string) {
   if (entry.emotion === emotion || !runtime) return;
   entry.emotion = emotion;
-  const expression =
-    pickEmotionBinding(entry.variant.expressions, emotion) ?? entry.variant.default_expression;
-  if (expression) {
-    void entry.model
-      .expression(expression)
-      .catch((error: unknown) =>
-        console.warn(`[Live2D] expression failed for role ${entry.roleId}`, error),
-      );
-  }
+  applyExpression(entry, emotionExpression(entry.variant, emotion));
   const motion = pickEmotionBinding(entry.variant.motions, emotion);
-  if (motion) {
-    const sequence = ++entry.reactionSequence;
-    freezeModelFocus(entry);
-    const motionManager = entry.model.internalModel.motionManager;
-    entry.reactionLifecycleCleanup?.();
-    entry.reactionLifecycleCleanup = trackMotionLifecycle(
-      motionManager,
-      motion.group,
-      motion.index,
-      runtime.engine.MotionPriority.FORCE,
-      () => finishReaction(entry, sequence),
-    );
-    void entry.model
-      .motion(motion.group, motion.index, runtime.engine.MotionPriority.FORCE, {
-        loop: motion.loop ?? false,
-        resetExpression: false,
-      })
-      .then((started: boolean) => {
-        if (!started) finishReaction(entry, sequence);
-      })
-      .catch((error: unknown) => {
-        finishReaction(entry, sequence);
-        console.warn(`[Live2D] motion failed for role ${entry.roleId}`, error);
-      });
-  }
+  // 情绪反应无条件抢占：entry.emotion 已经写进去了，这次丢掉就再也不会重播
+  if (motion) startReaction(entry, motion);
 }
 
 function destroyEntry(entry: RoleModel) {
@@ -458,6 +514,68 @@ function destroyEntry(entry: RoleModel) {
   destroyModel(entry.model);
   models.delete(entry.roleId);
   emitActiveRoles();
+}
+
+/** 引擎更新模型前的最后一道写入。顺序不能改：瞳孔补偿与视线覆写都依赖 updateModelFocus 尚未生效时的焦点值。 */
+function applyModelParameters(entry: RoleModel, model: any) {
+  // 全部用「加上差值」而不是赋值：不必把 coreModel 拓宽到 set 方法，中间值也不会越界
+  const coreModel = model.internalModel.coreModel as {
+    addParameterValueByIndex(index: number, value: number, weight?: number): void;
+    getParameterValueByIndex(index: number): number;
+  };
+  if (entry.mouthParameterIndex >= 0) {
+    coreModel.addParameterValueByIndex(entry.mouthParameterIndex, entry.mouthValue, 1);
+  }
+  const eyeValues: number[] = [];
+  if (entry.eyeLeftParameterIndex >= 0) {
+    eyeValues.push(coreModel.getParameterValueByIndex(entry.eyeLeftParameterIndex));
+  }
+  if (entry.eyeRightParameterIndex >= 0) {
+    eyeValues.push(coreModel.getParameterValueByIndex(entry.eyeRightParameterIndex));
+  }
+  entry.eyesOpen = areEyesOpen(eyeValues);
+
+  // 抚摸闭眼：眨眼控制器本帧已经写过开合参数，这里是覆盖它
+  const closed = touch.eyeCloseFor(entry.roleId);
+  if (closed > 0) {
+    const openness = 1 - closed;
+    for (const index of [entry.eyeLeftParameterIndex, entry.eyeRightParameterIndex]) {
+      if (index < 0) continue;
+      coreModel.addParameterValueByIndex(
+        index,
+        openness - coreModel.getParameterValueByIndex(index),
+        1,
+      );
+    }
+  }
+
+  const focusController = model.internalModel.focusController;
+  // 瞳孔补偿：把引擎按衰减后焦点写的那份补回，fc/magnitude 恰是未衰减时瞳孔应有的值
+  const magnitude = entry.gazeMagnitude;
+  if (props.mode === "pet" && magnitude < 1) {
+    const gain = 1 / magnitude - 1;
+    if (entry.eyeBallXParameterIndex >= 0) {
+      coreModel.addParameterValueByIndex(entry.eyeBallXParameterIndex, focusController.x * gain, 1);
+    }
+    if (entry.eyeBallYParameterIndex >= 0) {
+      coreModel.addParameterValueByIndex(entry.eyeBallYParameterIndex, focusController.y * gain, 1);
+    }
+  }
+
+  // 触摸模式下瞳孔看向指针：把引擎这一帧写的那份减掉换成指针方向，精确抵消，头摆头的
+  const gaze = touch.gazeFor(entry.roleId);
+  if (gaze) {
+    const deltaX = gaze.x * gaze.weight - focusController.x;
+    const deltaY = gaze.y * gaze.weight - focusController.y;
+    if (entry.eyeBallXParameterIndex >= 0) {
+      coreModel.addParameterValueByIndex(entry.eyeBallXParameterIndex, deltaX, 1);
+    }
+    if (entry.eyeBallYParameterIndex >= 0) {
+      coreModel.addParameterValueByIndex(entry.eyeBallYParameterIndex, deltaY, 1);
+    }
+  }
+
+  updateModelFocus(entry);
 }
 
 async function loadRole(
@@ -523,6 +641,8 @@ async function loadRole(
       focusFrozen: false,
       gazeMagnitude: 1,
       focusOrigin: null,
+      touchRegions: null,
+      touchBounds: null,
       reactionSequence: 0,
       reactionLifecycleCleanup: null,
     };
@@ -537,49 +657,7 @@ async function loadRole(
     // 缺失时索引为 -1，该模型就只衰减头部、瞳孔也跟着衰减（降级而非报错）
     entry.eyeBallXParameterIndex = findParameterIndex(entry, "ParamEyeBallX");
     entry.eyeBallYParameterIndex = findParameterIndex(entry, "ParamEyeBallY");
-    model.internalModel.on("beforeModelUpdate", () => {
-      const coreModel = model.internalModel.coreModel as {
-        addParameterValueByIndex(index: number, value: number, weight?: number): void;
-        getParameterValueByIndex(index: number): number;
-      };
-      if (entry.mouthParameterIndex >= 0) {
-        coreModel.addParameterValueByIndex(entry.mouthParameterIndex, entry.mouthValue, 1);
-      }
-      const eyeValues: number[] = [];
-      if (entry.eyeLeftParameterIndex >= 0) {
-        eyeValues.push(coreModel.getParameterValueByIndex(entry.eyeLeftParameterIndex));
-      }
-      if (entry.eyeRightParameterIndex >= 0) {
-        eyeValues.push(coreModel.getParameterValueByIndex(entry.eyeRightParameterIndex));
-      }
-      entry.eyesOpen = areEyesOpen(eyeValues);
-      // 瞳孔补偿。引擎已按衰减后的焦点写了一次眼球参数，这里把被缩掉的那份补回，
-      // 使瞳孔仍然是满幅追踪（头部不受影响，只衰减那一份）。
-      // 幅度必须在 updateModelFocus 覆写之前读：focusController.update(dt) 在帧首
-      // 执行，追赶的是上一帧 handler 里设的 target，所以本帧的 fc 对应的是旧幅度。
-      // fc 是「径向 + 限速」的弹簧，从原点出发时恒为 s·magnitude·u，故 fc/magnitude
-      // 恰是未衰减时瞳孔应有的值，且 |fc/magnitude| ≤ 1，这次写入不会被参数 clamp 削掉。
-      const magnitude = entry.gazeMagnitude;
-      if (props.mode === "pet" && magnitude < 1) {
-        const focusController = model.internalModel.focusController;
-        const gain = 1 / magnitude - 1;
-        if (entry.eyeBallXParameterIndex >= 0) {
-          coreModel.addParameterValueByIndex(
-            entry.eyeBallXParameterIndex,
-            focusController.x * gain,
-            1,
-          );
-        }
-        if (entry.eyeBallYParameterIndex >= 0) {
-          coreModel.addParameterValueByIndex(
-            entry.eyeBallYParameterIndex,
-            focusController.y * gain,
-            1,
-          );
-        }
-      }
-      updateModelFocus(entry);
-    });
+    model.internalModel.on("beforeModelUpdate", () => applyModelParameters(entry, model));
     if (previous) {
       application.stage.removeChild(previous.model);
       previousDetached = true;
@@ -676,9 +754,10 @@ async function syncRoles() {
     if (entry.variant !== variant) {
       entry.variant = variant;
       entry.emotion = "";
-      // 变体换了但模型没换（例如只改了 focus_anchor）：缓存的视线原点已经失效，
-      // 不清掉的话新锚点要等模型下次重新加载才生效
+      // 变体换了但模型没换：缓存的几何已失效，不清掉新锚点要等模型重载才生效
       entry.focusOrigin = null;
+      entry.touchRegions = null;
+      entry.touchBounds = null;
       startIdle(entry);
     }
     applyLayout(entry, role);
@@ -746,6 +825,13 @@ watch(
   },
 );
 
+// 进出触摸模式即时生效，不必重进 /chat。桌宠模式本次不接抚摸，两个条件必须同时成立。
+function isStrokeEnabled() {
+  return props.mode === "standard" && props.touchEnabled === true;
+}
+
+watch(isStrokeEnabled, (enabled) => touch.setEnabled(enabled));
+
 watch(
   () => [props.voiceDataUrl, props.roles.some((role) => prefersLive2d(role, props.mode))] as const,
   async ([url, hasLive2dRole]) => {
@@ -764,9 +850,9 @@ onMounted(() => {
   if (props.mode === "pet") {
     window.addEventListener("pointermove", handlePointerMove, { passive: true });
     void listen<CursorPayload>("pet:cursor", (event) => {
-      pointerPosition = { clientX: event.payload.x, clientY: event.payload.y };
+      touch.setPointer(event.payload.x, event.payload.y);
       // 旧版 Rust 载荷没有 screen 字段：保持上一次的值，别把参考系清掉
-      if (event.payload.screen !== undefined) screenBox = event.payload.screen ?? null;
+      if (event.payload.screen !== undefined) touch.setScreenBox(event.payload.screen ?? null);
     })
       .then((unlisten) => {
         if (disposed) {
@@ -779,6 +865,7 @@ onMounted(() => {
         // 非 Tauri 环境或事件系统不可用时静默降级（DOM 监听仍覆盖窗口内移动）
       });
   }
+  touch.setEnabled(isStrokeEnabled());
   queueSync();
 });
 onBeforeUnmount(() => {
@@ -788,6 +875,7 @@ onBeforeUnmount(() => {
     cursorUnlisten?.();
     cursorUnlisten = null;
   }
+  touch.setEnabled(false);
   decodeSequence += 1;
   for (const entry of [...models.values()]) destroyEntry(entry);
   destroyApplication();

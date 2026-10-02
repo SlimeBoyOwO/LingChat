@@ -7,12 +7,29 @@
 //! 原型编辑器是 `open(f, "w")` 直接截断后再写，中途崩溃或断电会把章节清零。
 //!
 //! 原为 `api/script_editor/io.rs`，迁到 utils 后成为通用的 YAML 文件工具。
+//! 除剧本外也服务角色设定（见 `resolve_settings_file`）。
 
 use std::fs;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value as JsonValue};
+
+/// 角色设定文件名（云端/官方版本，随 git 与安装包分发）。
+pub const SETTINGS_FILE: &str = "settings.yml";
+
+/// 开发者本地覆盖文件名。存在时读写一律走它，`settings.yml` 完全不参与。
+pub const SETTINGS_LOCAL_FILE: &str = "settings_local.yml";
+
+/// 解析角色目录下的设定文件：优先 `settings_local.yml`，否则 `settings.yml`。
+pub fn resolve_settings_file(character_dir: &Path) -> PathBuf {
+    let local = character_dir.join(SETTINGS_LOCAL_FILE);
+    if local.is_file() {
+        local
+    } else {
+        character_dir.join(SETTINGS_FILE)
+    }
+}
 
 /// 读 YAML 文件并转成 JSON 值。
 ///

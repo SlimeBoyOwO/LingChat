@@ -25,6 +25,8 @@ export default {
     bubbleSideAuto: "自動",
     bubbleSideAbove: "寵物上方",
     bubbleSideBelow: "寵物下方",
+    bubbleSideLeft: "寵物左側",
+    bubbleSideRight: "寵物右側",
     particleTitle: "背景粒子效果 (冇粒子會暢順啲)",
     particleNone: "冇",
     particleStarField: "星空",

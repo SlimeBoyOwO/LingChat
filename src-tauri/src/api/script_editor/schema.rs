@@ -15,11 +15,11 @@
 //! - **章节名**是每个剧本自己的，前端从已加载的章节列表填。
 //! - **素材文件名**同理，前端从素材索引填。
 //! - **角色**是 `MAIN` 加上该剧本 `characters/` 下的目录名。
-//! - **背景特效**来自前后端共用的 `shared/script-effects.json`。
+//! - **背景特效**来自前端粒子注册表生成的清单（`pnpm gen:effects`）。
 
 use serde::Serialize;
 
-use crate::ai_service::game_system::script_engine::events::background_effect_event::known_effects;
+use crate::ai_service::game_system::script_engine::events::background_effect_event::KNOWN_EFFECTS;
 
 /// 字段该用什么控件渲染。
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -213,7 +213,7 @@ fn emotion_field() -> FieldSpec {
 
 fn effect_options() -> Vec<String> {
     let mut v = vec!["None".to_string()];
-    v.extend(known_effects().iter().cloned());
+    v.extend(KNOWN_EFFECTS.iter().map(|s| s.to_string()));
     v
 }
 

@@ -4,7 +4,7 @@ import { useSettingsStore } from "../settings";
 import { saveBgmState } from "../../../api/services/music";
 import { saveAmbientState } from "../../../api/services/ambient";
 import { i18n } from "@/locales";
-import { HORROR_EFFECT_KEYS } from "@/components/game/standard/particles";
+import { HORROR_EFFECT_KEYS, isWeatherEffect } from "@/components/game/standard/particles";
 
 // 通知类型
 export type NotificationType = "error" | "success" | "info" | "warning";
@@ -247,6 +247,9 @@ export const useUIStore = defineStore("ui", {
     currentBackgroundEffect(): string {
       return useSettingsStore().backgroundEffect;
     },
+    currentWeatherEffect(): string {
+      return useSettingsStore().weatherEffect;
+    },
     characterVolume(): number {
       return useSettingsStore().characterVolume;
     },
@@ -285,7 +288,7 @@ export const useUIStore = defineStore("ui", {
     setCurrentBackground(background: string) {
       useSettingsStore().setCurrentBackground(background);
     },
-    // 设置背景效果（写入 settings store）
+    // 设置氛围特效（写入 settings store）
     setBackgroundEffect(effect: string) {
       useSettingsStore().setBackgroundEffect(effect);
     },
@@ -380,6 +383,30 @@ export const useUIStore = defineStore("ui", {
           resolve();
         }, 1900);
       });
+    },
+    // 设置天气特效（写入 settings store）
+    setWeatherEffect(effect: string) {
+      useSettingsStore().setWeatherEffect(effect);
+    },
+    /**
+     * 把「一个特效值」落到它该去的那一层，并清空另一层。
+     *
+     * 剧本事件与存档都只认一个特效值（Rust 侧 background_effect 是单值），
+     * 落到哪一层由注册表决定。落到某一层时清空另一层，是为了让「剧本说现在是雷阵雨」
+     * 与原来的单值语义完全一致，不会叠出作者没写过的组合。
+     * 两层的并存只发生在设置页 —— 那是玩家自己的长期偏好，直接调上面两个 action。
+     * 恐怖层的组合特效（"Glitch+BloodDrip" 这类 "+" 叠加）整体视为氛围层值：
+     * isWeatherEffect 对组合返回 false，落到背景层由 GameBackground 逐段渲染。
+     */
+    applyEffectValue(effect: string) {
+      const settings = useSettingsStore();
+      if (isWeatherEffect(effect)) {
+        settings.setWeatherEffect(effect);
+        settings.setBackgroundEffect("None");
+      } else {
+        settings.setBackgroundEffect(effect);
+        settings.setWeatherEffect("None");
+      }
     },
     // 设置对话音效开关（写入 settings store）
     setEnableChatEffectSound(enabled: boolean) {

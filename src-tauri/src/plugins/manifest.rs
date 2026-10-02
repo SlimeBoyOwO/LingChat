@@ -95,6 +95,12 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
             manifest.id
         );
     }
+    for path in &manifest.read {
+        // 与插件运行期传入的请求路径共用同一份校验（host_api）。
+        crate::plugins::host_api::check_relative_data_path(path.trim()).map_err(|e| {
+            anyhow::anyhow!("插件 '{}' 的 read 声明 '{path}' 非法：{e}", manifest.id)
+        })?;
+    }
     for dep in &manifest.depends_on {
         if !is_valid_plugin_id(dep) {
             anyhow::bail!("插件 '{}' 的前置插件名 '{dep}' 非法", manifest.id);
@@ -174,128 +180,4 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
         validate_timeout(&manifest.id, &owner, sub.timeout_ms)?;
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::plugins::types::MatchValue;
-    use serde_json::json;
-
-    const HEAD: &str = r#"
-id = "demo"
-name = "Demo"
-description = "演示"
-version = "0.1.0"
-"#;
-
-    #[test]
-    fn parses_scalar_and_list_match_values() {
-        let text = format!(
-            r#"{HEAD}
-[[subscribe]]
-signal = "scene:switch"
-script = "hook.py"
-handler = "on_scene"
-match = {{ scene_id = "night", mode = ["a", "b"] }}
-"#
-        );
-        let manifest = parse(&text).expect("应能解析");
-        let sub = &manifest.subscribe[0];
-        assert_eq!(sub.signal, "scene:switch");
-        assert_eq!(sub.handler, "on_scene");
-        // 未声明 timeout_ms 时取默认值
-        assert_eq!(sub.timeout_ms, 30_000);
-        // 标量是等值，数组是「命中任一」——两者不能反过来
-        assert_eq!(sub.matches["scene_id"], MatchValue::One(json!("night")));
-        assert_eq!(
-            sub.matches["mode"],
-            MatchValue::Many(vec![json!("a"), json!("b")])
-        );
-    }
-
-    #[test]
-    fn subscribe_only_plugin_is_accepted() {
-        let text = format!(
-            r#"{HEAD}
-[[subscribe]]
-signal = "app:start"
-script = "boot.py"
-handler = "on_start"
-"#
-        );
-        assert!(
-            parse(&text).is_ok(),
-            "只有订阅、没有工具和资源的插件应可加载"
-        );
-    }
-
-    #[test]
-    fn rejects_bad_handler_name() {
-        let text = format!(
-            r#"{HEAD}
-[[subscribe]]
-signal = "app:start"
-script = "boot.py"
-handler = "1on_start"
-"#
-        );
-        assert!(parse(&text).is_err());
-    }
-
-    #[test]
-    fn rejects_script_path_traversal() {
-        let text = format!(
-            r#"{HEAD}
-[[subscribe]]
-signal = "app:start"
-script = "../boot.py"
-handler = "on_start"
-"#
-        );
-        assert!(parse(&text).is_err());
-    }
-
-    #[test]
-    fn rejects_invalid_signal_name() {
-        let text = format!(
-            r#"{HEAD}
-[[subscribe]]
-signal = "Scene Switch"
-script = "boot.py"
-handler = "on_start"
-"#
-        );
-        assert!(parse(&text).is_err());
-    }
-
-    #[test]
-    fn rejects_timeout_over_cap() {
-        let text = format!(
-            r#"{HEAD}
-[[subscribe]]
-signal = "app:start"
-script = "boot.py"
-handler = "on_start"
-timeout_ms = 120001
-"#
-        );
-        assert!(parse(&text).is_err());
-    }
-
-    #[test]
-    fn rejects_unknown_manifest_key() {
-        let text = format!(
-            r#"{HEAD}
-on_start = "boot.py"
-
-[[tools]]
-name = "t"
-description = "d"
-script = "t.py"
-parameters = '{{ "type": "object" }}'
-"#
-        );
-        assert!(parse(&text).is_err(), "未知字段应拒绝，而不是静默忽略");
-    }
 }

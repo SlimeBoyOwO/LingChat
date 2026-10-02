@@ -98,6 +98,9 @@ Place `lingchat-live2d.json` at the package root:
       "lip_sync": {
         "parameter": "ParamMouthOpenY",
         "gain": 1.0
+      },
+      "touch_motions": {
+        "head": { "group": "Reactions", "index": 0, "loop": false }
       }
     },
     "uniform": {
@@ -131,20 +134,21 @@ Place `lingchat-live2d.json` at the package root:
 
 ### Manifest Fields
 
-| Field                | Meaning                                                                                                                                                                                                    |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `version`            | Manifest protocol version. Currently `1`.                                                                                                                                                                  |
-| `default_variant`    | Variant used when no outfit mapping applies. It must exist in `variants`.                                                                                                                                  |
-| `variants`           | Named Live2D rigs belonging to this character.                                                                                                                                                             |
-| `model`              | Path to the variant's `.model3.json`, relative to the manifest.                                                                                                                                            |
-| `default_expression` | Fallback expression used only when the current LingChat emotion has no entry in `expressions`. It does not define the expression for the `正常` (Normal) emotion; map that emotion explicitly when needed. |
-| `expressions`        | LingChat emotion name to model3 expression `Name`.                                                                                                                                                         |
-| `motions`            | LingChat emotion name to model3 motion group and zero-based index.                                                                                                                                         |
-| `idle`               | The exact motion used for automatic idle playback.                                                                                                                                                         |
-| `eye_blink`          | Cubism parameter IDs used to detect whether the eyes are open.                                                                                                                                             |
-| `focus_anchor`       | Optional gaze origin within drawable bounds; both values are in `0..1`. It is also the point the head-rotation distance is measured from.                                                                  |
-| `lip_sync`           | Mouth-open parameter and optional amplitude gain.                                                                                                                                                          |
-| `clothes_variants`   | LingChat outfit name to variant name. Use `default` for the default outfit.                                                                                                                                |
+| Field                | Meaning                                                                                                                                                                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`            | Manifest protocol version. Currently `1`.                                                                                                                                                                                                                            |
+| `default_variant`    | Variant used when no outfit mapping applies. It must exist in `variants`.                                                                                                                                                                                            |
+| `variants`           | Named Live2D rigs belonging to this character.                                                                                                                                                                                                                       |
+| `model`              | Path to the variant's `.model3.json`, relative to the manifest.                                                                                                                                                                                                      |
+| `default_expression` | Fallback expression used only when the current LingChat emotion has no entry in `expressions`. It does not define the expression for the `正常` (Normal) emotion; map that emotion explicitly when needed.                                                           |
+| `expressions`        | LingChat emotion name to model3 expression `Name`.                                                                                                                                                                                                                   |
+| `motions`            | LingChat emotion name to model3 motion group and zero-based index.                                                                                                                                                                                                   |
+| `idle`               | The exact motion used for automatic idle playback.                                                                                                                                                                                                                   |
+| `eye_blink`          | Cubism parameter IDs used to detect whether the eyes are open.                                                                                                                                                                                                       |
+| `focus_anchor`       | Optional gaze origin within drawable bounds; both values are in `0..1`. It is also the point the head-rotation distance is measured from.                                                                                                                            |
+| `lip_sync`           | Mouth-open parameter and optional amplitude gain.                                                                                                                                                                                                                    |
+| `touch_motions`      | Body part name to a binding of an optional expression, an optional motion, and an optional `region` rect. Listing a part makes it strokable; the head leans with the stroke, the expression goes on, and the motion, when given, plays afterwards. See step 9 below. |
+| `clothes_variants`   | LingChat outfit name to variant name. Use `default` for the default outfit.                                                                                                                                                                                          |
 
 If no manifest is included, LingChat scans all `.model3.json` files, creates variants, and suggests common expression and motion bindings. Review those suggestions in settings; keyword matching cannot understand the artistic intent of every motion.
 
@@ -160,6 +164,7 @@ Import the package, open the character's **Live2D** settings, and select each va
 6. Adjust the gaze anchor to the center between the rendered eyes. It is also the origin that the head-rotation distance is measured from, so an anchor left on the torso makes the head turn later and further than it should.
 7. Map every LingChat outfit to the correct variant.
 8. Save, leave settings, and test the character in both standard and desktop pet modes.
+9. Optionally bind `touch_motions` by hand in `settings.yml`; the settings UI does not cover it yet. Each key is a body part, and listing it makes that part strokable: while you stroke it the head leans with your hand, `expression` goes on as your hand lands, and once your hand stops the motion plays. Both `expression` and the motion are optional — `{ "expression": "04_Shy" }` gives just the face, `{}` gives just the lean. `expression` takes a model3 expression `Name`, the same values used in the `expressions` map above. Regions are derived from the gaze anchor, so calibrate `focus_anchor` first. The `head`, `body`, and `legs` regions are estimated from the drawable bounds and may land in the wrong place; override one by adding a `region` rectangle, normalized to the drawable bounds and contained in `0..1`, for example `{ "x": 0.28, "y": 0.04, "width": 0.44, "height": 0.34 }`. Parts that cannot be inferred from the bounds, such as ears, always need an explicit `region`.
 
 `focus_anchor` is relative to each variant's drawable bounds, not its texture and not another variant's canvas. Two rigs of the same character can have different transparent margins and head positions. Measure and save each variant independently; copying one rig's values to another can place the gaze origin on the torso.
 

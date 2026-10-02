@@ -13,6 +13,7 @@ import {
 } from "@/constants/spectrum";
 import type { ShortcutAction, ShortcutBinding } from "@/utils/shortcuts";
 import { DEFAULT_SHORTCUTS, sanitizeShortcuts } from "@/utils/shortcuts";
+import { isWeatherEffect } from "@/components/game/standard/particles";
 import { defineStore } from "pinia";
 
 // 默认设置值
@@ -50,26 +51,18 @@ export const DEFAULT_SETTINGS = {
   // 显示设置
   display: {
     currentBackground: "@/assets/images/default_bg.jpg", // 当前背景图片
-    backgroundEffect: "StarField", // 背景效果名称
+    backgroundEffect: "StarField", // 氛围特效名称
+    weatherEffect: "None", // 天气特效名称，与氛围特效相互独立
     mainMenuStarsEnabled: true, // 主菜单星星粒子开关
     mainMenuMeteorsEnabled: true, // 主菜单流星开关
     globalMouseTrailEnabled: true, // 全局鼠标滑动动画开关
     clickAnimationEnabled: true, // 点击动画开关
+    cursorEffectEngine: "ba-click-fx" as CursorEffectEngine, // 光标特效引擎：新版 WebGL2 / 旧 Canvas2D 实现
     meteorFps: 30, // 流星动画帧率
     starsFps: 30, // 星星动画帧率
     sceneAwarenessEnabled: true, // 场景感知开关
     hdrModeEnabled: false, // HDR 模式开关（仅 Windows）
     locale: "zh-CN", // 界面显示语言（i18n，'zh-CN' / 'ja'）
-    // 对话框外观（自定义）
-    dialogBackgroundImage: "", // 自定义背景图 base64/dataURL；空字符串=无图
-    dialogOpacity: 0.7, // 背景透明度（0-1）
-    dialogBlur: 8, // 背景模糊（px）
-    dialogBorderRadius: 16, // 圆角（px）
-    dialogGradientColor: "#000e27", // 渐变底色
-    dialogTextColor: "#ffffff", // 文字颜色
-    dialogScrollHistoryEnabled: true, // 滚轮向上查看历史记录
-    dialogSpacebarHideEnabled: true, // 空格键隐藏/显示对话框
-    dialogAutoHideOnThinkEnabled: true, // AI 思考时自动隐藏
     affectionHeartbeatEnabled: true, // 好感度爱心心跳动画开关（关闭后液体爱心静止）
     affectionWaveEnabled: true, // 好感度爱心液体波浪动画开关（关闭后液面为静止平面）
   },
@@ -81,7 +74,7 @@ export const DEFAULT_SETTINGS = {
   pet: {
     scale: 1, // 桌宠缩放比例
     live2dFps: 30, // Live2D 渲染帧率上限（0 = 不限制）；桌宠窗口小，30 帧足够且显著降 CPU
-    bubbleSide: "above" as BubbleSide, // 气泡/通知位置：above = 宠物上方，below = 宠物与输入框之间，auto = 自动
+    bubbleSide: "above" as BubbleSide, // 气泡/通知位置：气泡在宠物的哪一侧（四向 + 自动）
   },
   // 剧本编辑器快捷键（默认不含 Command 键；可在编辑器快捷键面板自定义）
   shortcuts: DEFAULT_SHORTCUTS,
@@ -118,28 +111,28 @@ export interface AudioSettings {
   spectrumColor1: string;
   spectrumColor2: string;
 }
+/**
+ * 光标特效引擎。
+ *
+ * `ba-click-fx` = 第三方库实现（WebGL2，性能更好，默认）；
+ * `legacy` = 内置的 Canvas2D 实现（src/components/effects/CursorEffects.vue）。
+ */
+export type CursorEffectEngine = "ba-click-fx" | "legacy";
+
 export interface DisplaySettings {
   currentBackground: string;
   backgroundEffect: string;
+  weatherEffect: string;
   mainMenuStarsEnabled: boolean;
   mainMenuMeteorsEnabled: boolean;
   globalMouseTrailEnabled: boolean;
   clickAnimationEnabled: boolean;
+  cursorEffectEngine: CursorEffectEngine;
   meteorFps: number;
   starsFps: number;
   sceneAwarenessEnabled: boolean;
   hdrModeEnabled: boolean;
   locale: string;
-  // 对话框外观
-  dialogBackgroundImage: string;
-  dialogOpacity: number;
-  dialogBlur: number;
-  dialogBorderRadius: number;
-  dialogGradientColor: string;
-  dialogTextColor: string;
-  dialogScrollHistoryEnabled: boolean;
-  dialogSpacebarHideEnabled: boolean;
-  dialogAutoHideOnThinkEnabled: boolean;
   affectionHeartbeatEnabled: boolean;
   affectionWaveEnabled: boolean;
 }
@@ -148,8 +141,13 @@ export interface CharacterSettings {
   folder: string;
 }
 
-/** 气泡/通知位置：above = 宠物上方；below = 宠物与输入框之间；auto = 按宠物在屏幕中的位置自动选 */
-export type BubbleSide = "above" | "below" | "auto";
+/**
+ * 气泡/通知位置：气泡放在宠物的哪一侧。
+ *
+ * `above` / `below` / `left` / `right` = 手动指定；`auto` = 由宠物窗按宠物在屏幕上的
+ * 位置与工作区余量自动选边（优先上、下，再右、左；都放不下时选余量最大的一边）。
+ */
+export type BubbleSide = "above" | "below" | "left" | "right" | "auto";
 
 export interface PetSettings {
   scale: number;
@@ -200,10 +198,14 @@ export const useSettingsStore = defineStore("settings", {
     // 背景效果
     currentBackground: (state) => state.display.currentBackground,
     backgroundEffect: (state) => state.display.backgroundEffect,
+    weatherEffect: (state) => state.display.weatherEffect,
     mainMenuStarsEnabled: (state) => state.display.mainMenuStarsEnabled,
     mainMenuMeteorsEnabled: (state) => state.display.mainMenuMeteorsEnabled,
     globalMouseTrailEnabled: (state) => state.display.globalMouseTrailEnabled,
     clickAnimationEnabled: (state) => state.display.clickAnimationEnabled,
+    // 光标特效引擎（旧持久化数据缺该字段时回退新版）
+    cursorEffectEngine: (state): CursorEffectEngine =>
+      state.display.cursorEffectEngine ?? "ba-click-fx",
     meteorFps: (state) => state.display.meteorFps,
     starsFps: (state) => state.display.starsFps,
     sceneAwarenessEnabled: (state) => state.display.sceneAwarenessEnabled,
@@ -211,16 +213,6 @@ export const useSettingsStore = defineStore("settings", {
     hdrModeEnabled: (state) => state.display.hdrModeEnabled,
     // 界面显示语言（i18n）
     uiLocale: (state) => state.display.locale,
-    // 对话框外观
-    dialogBackgroundImage: (state) => state.display.dialogBackgroundImage,
-    dialogOpacity: (state) => state.display.dialogOpacity,
-    dialogBlur: (state) => state.display.dialogBlur,
-    dialogBorderRadius: (state) => state.display.dialogBorderRadius,
-    dialogGradientColor: (state) => state.display.dialogGradientColor,
-    dialogTextColor: (state) => state.display.dialogTextColor,
-    dialogScrollHistoryEnabled: (state) => state.display.dialogScrollHistoryEnabled,
-    dialogSpacebarHideEnabled: (state) => state.display.dialogSpacebarHideEnabled,
-    dialogAutoHideOnThinkEnabled: (state) => state.display.dialogAutoHideOnThinkEnabled,
     // 好感度爱心心跳动画开关（旧持久化数据缺该字段时回退 true）
     affectionHeartbeatEnabled: (state) => state.display.affectionHeartbeatEnabled ?? true,
     // 好感度爱心液体波浪动画开关（同上回退 true）
@@ -357,6 +349,11 @@ export const useSettingsStore = defineStore("settings", {
     setBackgroundEffect(effect: string) {
       this.display.backgroundEffect = effect;
     },
+
+    // 设置天气效果
+    setWeatherEffect(effect: string) {
+      this.display.weatherEffect = effect;
+    },
     // 设置主菜单星星粒子开关
     setMainMenuStarsEnabled(enabled: boolean) {
       this.display.mainMenuStarsEnabled = enabled;
@@ -372,6 +369,10 @@ export const useSettingsStore = defineStore("settings", {
     // 设置点击动画开关
     setClickAnimationEnabled(enabled: boolean) {
       this.display.clickAnimationEnabled = enabled;
+    },
+    // 设置光标特效引擎
+    setCursorEffectEngine(engine: CursorEffectEngine) {
+      this.display.cursorEffectEngine = engine;
     },
 
     // 设置流星动画帧率
@@ -401,34 +402,6 @@ export const useSettingsStore = defineStore("settings", {
       this.display.locale = locale;
     },
 
-    // ===== 对话框外观 =====
-    setDialogBackgroundImage(image: string) {
-      this.display.dialogBackgroundImage = image;
-    },
-    setDialogOpacity(opacity: number) {
-      this.display.dialogOpacity = Math.min(1, Math.max(0, opacity));
-    },
-    setDialogBlur(blur: number) {
-      this.display.dialogBlur = Math.max(0, blur);
-    },
-    setDialogBorderRadius(radius: number) {
-      this.display.dialogBorderRadius = Math.max(0, radius);
-    },
-    setDialogGradientColor(color: string) {
-      this.display.dialogGradientColor = color;
-    },
-    setDialogTextColor(color: string) {
-      this.display.dialogTextColor = color;
-    },
-    setDialogScrollHistoryEnabled(enabled: boolean) {
-      this.display.dialogScrollHistoryEnabled = enabled;
-    },
-    setDialogSpacebarHideEnabled(enabled: boolean) {
-      this.display.dialogSpacebarHideEnabled = enabled;
-    },
-    setDialogAutoHideOnThinkEnabled(enabled: boolean) {
-      this.display.dialogAutoHideOnThinkEnabled = enabled;
-    },
     // 设置好感度爱心心跳动画开关
     setAffectionHeartbeatEnabled(enabled: boolean) {
       this.display.affectionHeartbeatEnabled = enabled;
@@ -437,20 +410,6 @@ export const useSettingsStore = defineStore("settings", {
     setAffectionWaveEnabled(enabled: boolean) {
       this.display.affectionWaveEnabled = enabled;
     },
-    // 全部重置为默认
-    resetDialogAppearance() {
-      const d = DEFAULT_SETTINGS.display;
-      this.display.dialogBackgroundImage = d.dialogBackgroundImage;
-      this.display.dialogOpacity = d.dialogOpacity;
-      this.display.dialogBlur = d.dialogBlur;
-      this.display.dialogBorderRadius = d.dialogBorderRadius;
-      this.display.dialogGradientColor = d.dialogGradientColor;
-      this.display.dialogTextColor = d.dialogTextColor;
-      this.display.dialogScrollHistoryEnabled = d.dialogScrollHistoryEnabled;
-      this.display.dialogSpacebarHideEnabled = d.dialogSpacebarHideEnabled;
-      this.display.dialogAutoHideOnThinkEnabled = d.dialogAutoHideOnThinkEnabled;
-    },
-
     // 设置角色文件夹
     setCharacterFolder(folder: string) {
       this.character.folder = folder;
@@ -474,5 +433,14 @@ export const useSettingsStore = defineStore("settings", {
   },
 
   // 启用持久化
-  persist: true,
+  persist: {
+    // 雨从氛围层挪到天气层之后，老配置里的 backgroundEffect: "Rain" 就指向了一个
+    // 氛围层已经没有的 key —— 不报错，但什么也不显示。这里把它归位。
+    // 写成不变量而不是一次性迁移：任何来源的越界值都会在读取时被纠正
+    afterHydrate: (store: SettingsState) => {
+      if (!isWeatherEffect(store.display.backgroundEffect)) return;
+      store.display.weatherEffect = store.display.backgroundEffect;
+      store.display.backgroundEffect = "None";
+    },
+  },
 });

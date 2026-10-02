@@ -21,7 +21,7 @@ use crate::AppState;
 use crate::ai_service::tools::executor::{ToolContext, ToolExecutor};
 
 use super::host_api;
-use super::types::PluginManifest;
+use super::types::{PluginManifest, PluginRunEnv};
 
 /// 沙箱拦截的顶层模块名：碰文件系统、跑命令、调底层 C 的一律禁止导入。
 const BLOCKED_MODULES: &[&str] = &[
@@ -71,18 +71,20 @@ fn block_dangerous_imports(vm: &VirtualMachine) -> PyResult<()> {
 fn inject_common(
     vm: &VirtualMachine,
     ctx: &PyDictRef,
-    config: &HashMap<String, Value>,
-    env: &HashMap<String, String>,
+    run_env: &PluginRunEnv,
     app: AppHandle,
 ) -> PyResult<()> {
     ctx.set_item(
         vm.ctx.intern_str("config"),
-        host_api::value_to_pyobject(vm, &serde_json::to_value(config).unwrap_or(Value::Null)),
+        host_api::value_to_pyobject(
+            vm,
+            &serde_json::to_value(&run_env.config).unwrap_or(Value::Null),
+        ),
         vm,
     )?;
     // ctx.env 是 dict：白名单环境变量查询，脚本用 ctx.env.get("KEY")
     let env_dict = vm.ctx.new_dict();
-    for (k, v) in env {
+    for (k, v) in &run_env.env {
         env_dict.set_item(
             vm.ctx.intern_str(k.as_str()),
             vm.ctx.new_str(v.clone()).into(),
@@ -100,8 +102,7 @@ fn build_tool_ctx(
     vm: &VirtualMachine,
     tool_name: &str,
     args: &Value,
-    config: &HashMap<String, Value>,
-    env: &HashMap<String, String>,
+    run_env: &PluginRunEnv,
     app: AppHandle,
 ) -> PyResult<PyObjectRef> {
     let ctx = vm.ctx.new_dict();
@@ -115,7 +116,7 @@ fn build_tool_ctx(
         host_api::value_to_pyobject(vm, args),
         vm,
     )?;
-    inject_common(vm, &ctx, config, env, app)?;
+    inject_common(vm, &ctx, run_env, app)?;
     Ok(ctx.into())
 }
 
@@ -127,8 +128,7 @@ fn build_signal_ctx(
     vm: &VirtualMachine,
     signal: &str,
     payload: &Value,
-    config: &HashMap<String, Value>,
-    env: &HashMap<String, String>,
+    run_env: &PluginRunEnv,
     app: AppHandle,
 ) -> PyResult<PyObjectRef> {
     let ctx = vm.ctx.new_dict();
@@ -142,7 +142,7 @@ fn build_signal_ctx(
         host_api::value_to_pyobject(vm, payload),
         vm,
     )?;
-    inject_common(vm, &ctx, config, env, app)?;
+    inject_common(vm, &ctx, run_env, app)?;
     Ok(ctx.into())
 }
 
@@ -194,12 +194,15 @@ fn run_entry(
     script_path: &Path,
     entry: &str,
     collect_result: bool,
+    run_env: &PluginRunEnv,
     app: AppHandle,
     build_ctx: impl FnOnce(&VirtualMachine, AppHandle) -> PyResult<PyObjectRef>,
 ) -> Result<Option<Value>, String> {
     let script = std::fs::read_to_string(script_path).map_err(|e| format!("读取脚本失败: {e}"))?;
     let interpreter = build_interpreter();
     interpreter.enter(|vm| {
+        // 本次执行期间，read_data_file 只认这个插件 manifest 的 read 声明
+        let _read_guard = host_api::set_read_allow(&run_env.read);
         let scope = vm.new_scope_with_builtins();
         let code = vm
             .compile(&script, Mode::Exec, script_path.display().to_string())
@@ -234,12 +237,11 @@ pub(crate) fn run_plugin_script(
     script_path: &Path,
     tool_name: &str,
     args: &Value,
-    config: &HashMap<String, Value>,
-    env: &HashMap<String, String>,
+    run_env: PluginRunEnv,
     app: AppHandle,
 ) -> Result<Value, String> {
-    run_entry(script_path, "run", true, app, |vm, app| {
-        build_tool_ctx(vm, tool_name, args, config, env, app)
+    run_entry(script_path, "run", true, &run_env, app, |vm, app| {
+        build_tool_ctx(vm, tool_name, args, &run_env, app)
     })
     .map(|result| result.unwrap_or(Value::Null))
 }
@@ -250,13 +252,12 @@ pub(crate) fn run_plugin_script(
 pub(crate) fn run_plugin_startup(
     script_path: &Path,
     handler: &str,
-    config: &HashMap<String, Value>,
-    env: &HashMap<String, String>,
+    run_env: PluginRunEnv,
     app: AppHandle,
 ) -> Result<(), String> {
-    run_entry(script_path, handler, false, app, |vm, app| {
+    run_entry(script_path, handler, false, &run_env, app, |vm, app| {
         let ctx = vm.ctx.new_dict();
-        inject_common(vm, &ctx, config, env, app)?;
+        inject_common(vm, &ctx, &run_env, app)?;
         Ok(ctx.into())
     })
     .map(|_| ())
@@ -271,12 +272,11 @@ pub(crate) fn run_plugin_handler(
     handler: &str,
     signal: &str,
     payload: &Value,
-    config: &HashMap<String, Value>,
-    env: &HashMap<String, String>,
+    run_env: PluginRunEnv,
     app: AppHandle,
 ) -> Result<(), String> {
-    run_entry(script_path, handler, false, app, |vm, app| {
-        build_signal_ctx(vm, signal, payload, config, env, app)
+    run_entry(script_path, handler, false, &run_env, app, |vm, app| {
+        build_signal_ctx(vm, signal, payload, &run_env, app)
     })
     .map(|_| ())
 }

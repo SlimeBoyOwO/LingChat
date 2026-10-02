@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use anyhow::Result;
 use chrono::{DateTime, Local};
@@ -146,10 +147,125 @@ impl GameStatus {
         Ok(())
     }
 
+    /// 把台词插入到第 `index` 条之前（下标基于 `line_list`，越界夹到末尾），
+    /// 用于把内容挂到「较近但非最新」的位置
+    pub async fn insert_line(
+        &mut self,
+        db: &DatabaseConnection,
+        index: usize,
+        line: LineBase,
+    ) -> Result<()> {
+        let perceived: Vec<i32> = self.present_role_ids.iter().copied().collect();
+        let game_line = GameLine::from_base(line, perceived);
+        // 中段插入会平移其后的下标，先让进行中的后台摘要作废，避免过期结果落库
+        //（与工具消息回填、edit_context_lines 的处理一致）。
+        self.role_manager.invalidate_memory_history();
+        self.line_list
+            .insert(index.min(self.line_list.len()), game_line);
+        self.refresh_memories(db).await?;
+        Ok(())
+    }
+
     pub async fn refresh_memories(&mut self, db: &DatabaseConnection) -> Result<()> {
         self.role_manager
             .sync_memories(db, &self.line_list, None)
             .await
+    }
+
+    // ── 台词历史（上下文源）的区间查看 / 编辑 ──
+    //
+    // 「第 start~end 条」一律指 `line_list` 的下标：**从 1 开始、闭区间**，第 1 条
+    // 通常就是 role system 的人设行；越界会被夹到可用范围。这里操作的是台词行
+    // （`GameLine`，全字段），**不是**渲染后发给 LLM 的 `LlmMessage`——渲染会按角色
+    // 合并/过滤，两者不是同一套下标空间。
+    //
+    // 参数名用 `start`/`end` 而非 `from`/`to`：与插件侧同名 API 对齐（Python 里
+    // `from` 是关键字，用不了）。
+
+    /// 读取第 `start`~`end` 条台词（含两端，1 起）的完整运行时行。
+    ///
+    /// 返回的 `GameLine` 携带全部字段（情绪、动作、TTS、音频、thinking、tool_call、
+    /// 感知集合等），可改后原样回传给 [`Self::edit_context_lines`]；只读，无副作用。
+    pub fn read_context_lines(&self, start: usize, end: usize) -> Vec<GameLine> {
+        match Self::clamp_line_range(self.line_list.len(), start, end) {
+            Some((lo, hi)) => self.line_list[lo..hi].to_vec(),
+            None => Vec::new(),
+        }
+    }
+
+    /// 用 `replacement` 替换第 `start`~`end` 条台词（含两端，1 起），并让改动真正
+    /// 落进上下文。`replacement` 条数不限：空 = 删除该区间，多条 = 展开。
+    ///
+    /// 依次做：
+    /// - 生成进行中直接拒绝（`generation_lock` 被占），避免改历史与流式写入打架；
+    /// - System 人设行可编辑/删除：删掉后相应角色的上下文失去 system 前缀，只记
+    ///   一条 warn，不拦截；
+    /// - `replacement` 中未带 id 的行按位置继承被替换行的 id，保住存档链锚点
+    ///   （否则 `SaveRepo::sync_lines` 可能因「首行分歧」拒绝覆盖）；
+    /// - 回拨所有角色的压缩指针到编辑起点（仅当指针在其之后），使被编辑的早期
+    ///   内容重新进入窗口、下次压缩重新摘要；
+    /// - `invalidate_memory_history` + `refresh_memories`。
+    ///
+    /// 返回被替换掉的条数。**落库不在这里**，由调用方走正常存盘流程
+    /// （`SaveRepo::sync_lines`）持久化。
+    pub async fn edit_context_lines(
+        &mut self,
+        db: &DatabaseConnection,
+        generation_lock: &Arc<tokio::sync::Mutex<()>>,
+        start: usize,
+        end: usize,
+        mut replacement: Vec<GameLine>,
+    ) -> Result<usize> {
+        let Some((lo, hi)) = Self::clamp_line_range(self.line_list.len(), start, end) else {
+            return Err(anyhow::anyhow!(
+                "编辑区间无效：start={start}, end={end}，当前共 {} 条台词",
+                self.line_list.len()
+            ));
+        };
+
+        // 生成中拒绝：此刻改了 line_list，会让流式任务记下的 line_index / seq 漂移。
+        let _generation = generation_lock
+            .try_lock()
+            .map_err(|_| anyhow::anyhow!("正在生成回复，暂不能编辑历史，请稍后再试"))?;
+
+        // System 人设行允许被编辑/删除：去掉后该角色的上下文将失去 system 前缀
+        // （`sync_memories` 会记录「人设丢失」警告）；之后重新加载角色时，`game.rs`
+        // 会按 `already_has_system` 判定并重新注入。
+        let dropped_system = self.line_list[lo..hi]
+            .iter()
+            .any(|l| matches!(l.attribute(), LineAttribute::System))
+            && !replacement
+                .iter()
+                .any(|l| matches!(l.attribute(), LineAttribute::System));
+        if dropped_system {
+            tracing::warn!("edit_context_lines 移除了 System 人设行（区间 {start}~{end}）");
+        }
+
+        // 未带 id 的替换行按位置继承被替换行的 id，保住存档链锚点。
+        for (i, line) in replacement.iter_mut().enumerate() {
+            if line.base.id.is_none() && i < hi - lo {
+                line.base.id = self.line_list[lo + i].base.id;
+            }
+        }
+
+        self.role_manager.invalidate_memory_history();
+        let removed = self.line_list.splice(lo..hi, replacement).count();
+        // 指针在编辑点之后的角色回拨到编辑起点，让这段重新进入窗口。
+        self.role_manager.rewind_memory_pointers(lo).await;
+        self.refresh_memories(db).await?;
+
+        Ok(removed)
+    }
+
+    /// 把「1 起闭区间」换算成 `Vec` 的 `[lo, hi)` 半开区间，并夹到 `[0, len]`。
+    /// 区间无有效内容（`start == 0`、`start > end`、空列表）时返回 `None`。
+    fn clamp_line_range(len: usize, start: usize, end: usize) -> Option<(usize, usize)> {
+        if start == 0 || start > end || len == 0 {
+            return None;
+        }
+        let lo = (start - 1).min(len);
+        let hi = end.min(len);
+        (lo < hi).then_some((lo, hi))
     }
 
     // ============ 全局变量便捷方法 ============

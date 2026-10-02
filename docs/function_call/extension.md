@@ -76,6 +76,8 @@ impl Tool for MyTool {
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn definition(&self) -> ToolDefinition;
+    fn timeout_hint(&self) -> Option<Duration> { None }
+    fn lenient_arguments(&self) -> bool { false }
     async fn execute(&self, context: &ToolContext, arguments: Value)
         -> Result<ToolResult, ToolError>;
 }
@@ -83,7 +85,8 @@ pub trait Tool: Send + Sync {
 
 - 必须 `Send + Sync`：注册后放进 `Arc<dyn Tool>`，被多个并发生成任务共享；
 - `definition()` 同步返回，每次下发前都会被调用（所以描述要稳定，不要依赖可变状态）；
-- `execute()` 是异步的，可以自由 `await` 任何东西（HTTP、DB、文件），但**有 2 秒超时** —— 慢操作要么自己分页/截断，要么返回「需要继续」之类让调用方知晓。
+- `execute()` 是异步的，可以自由 `await` 任何东西（HTTP、DB、文件），但**有 2 秒超时** —— 慢操作要么自己分页/截断，要么用 `timeout_hint()` 放宽（God Agent 的 `update_affection` 因为要写库而放宽到 30 秒）；
+- `lenient_arguments()` 默认 `false`（严格：参数必须是合法 JSON object 且通过 schema 校验）。**除非你的工具需要容忍模型把整数写成 `"6"` 这类畸形输出，否则不要覆写**——放宽后 schema 不再兜住类型错误，得自己在 `execute()` 里容错。
 
 ## 3. 第二步：注册
 

@@ -21,6 +21,7 @@ pub mod glitch_window_event;
 pub mod horror_log_event;
 pub mod input_event;
 pub mod jumpscare_event;
+pub mod known_effects; // 由 scripts/generate-known-effects.mjs 生成，勿手改
 pub mod menu_effect_event;
 pub mod modify_character_event;
 pub mod music_event;

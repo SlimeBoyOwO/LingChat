@@ -70,6 +70,12 @@ export function radialReferenceDistance(width: number, height: number): number {
   return GAZE_REFERENCE_RATIO * Math.min(width, height);
 }
 
+/** 拿不到工作区矩形时的兜底，直接读 window.screen。连尺寸都没有时返回 0，视线退回「不衰减」。 */
+export function screenFallbackReferenceDistance(): number {
+  const screen = window.screen;
+  return radialReferenceDistance(screen?.availWidth ?? 0, screen?.availHeight ?? 0);
+}
+
 /**
  * 指针 + 锚点 → 视线向量。
  *

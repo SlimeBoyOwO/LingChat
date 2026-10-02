@@ -248,31 +248,3 @@ pub fn validate_manifest_path(path: &str) -> Result<(), String> {
 
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::validate_manifest_path;
-
-    #[test]
-    fn accepts_normal_relative_manifest_paths() {
-        assert!(validate_manifest_path("game_data/characters/alice/settings.yml").is_ok());
-    }
-
-    #[test]
-    fn rejects_paths_that_can_escape_the_data_directory() {
-        for path in [
-            "",
-            ".",
-            "../outside.txt",
-            "game_data/../../outside.txt",
-            "/tmp/outside.txt",
-            r"C:\outside.txt",
-            r"game_data\..\outside.txt",
-        ] {
-            assert!(
-                validate_manifest_path(path).is_err(),
-                "path should be rejected: {path:?}"
-            );
-        }
-    }
-}

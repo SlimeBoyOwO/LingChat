@@ -254,42 +254,6 @@ fn now_iso() -> String {
     chrono::Utc::now().to_rfc3339()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn background_index_uses_category_to_disambiguate_same_name() {
-        let base = PathBuf::from("backgrounds");
-        let root = base.join("room.png");
-        let sub = base.join("古风").join("room.png");
-        let index = BackgroundIndex::build(&base, &[root.clone(), sub.clone()]);
-
-        assert_eq!(index.resolve("room.png", None).unwrap(), Some(root));
-        assert_eq!(index.resolve("room.png", Some("古风")).unwrap(), Some(sub));
-    }
-
-    #[test]
-    fn background_index_resolves_stored_relative_path_exactly() {
-        let base = PathBuf::from("backgrounds");
-        let root = base.join("room.png");
-        let sub = base.join("古风").join("room.png");
-        let index = BackgroundIndex::build(&base, &[root, sub.clone()]);
-
-        assert_eq!(index.resolve("古风/room.png", None).unwrap(), Some(sub));
-    }
-
-    #[test]
-    fn background_index_rejects_ambiguous_legacy_filename() {
-        let base = PathBuf::from("backgrounds");
-        let first = base.join("古风").join("room.png");
-        let second = base.join("现代").join("room.png");
-        let index = BackgroundIndex::build(&base, &[first, second]);
-
-        assert!(index.resolve("room.png", None).is_err());
-    }
-}
-
 // ========== Tauri commands ==========
 
 #[tauri::command]

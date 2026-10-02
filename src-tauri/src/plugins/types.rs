@@ -190,6 +190,10 @@ pub struct PluginManifest {
     /// 插件订阅的宿主信号（空 = 不订阅任何信号）。
     #[serde(default)]
     pub subscribe: Vec<SubscribeDecl>,
+    /// 允许 `read_data_file` 读取的 `data/` 下相对路径（目录前缀，含其子树）。
+    /// 空 = 不能读任何文件；未声明的路径一律拒绝。
+    #[serde(default)]
+    pub read: Vec<String>,
     /// 启动（或启用）时执行的入口。
     #[serde(default)]
     pub startup: Option<StartupDecl>,
@@ -197,6 +201,19 @@ pub struct PluginManifest {
     /// 启动时也会等它们的启动函数执行完再执行自己的。与是否有启动函数无关。
     #[serde(default)]
     pub depends_on: Vec<String>,
+}
+
+/// 插件脚本运行期从宿主取用的数据：设置页配置、环境变量白名单值、可读路径声明。
+///
+/// 由 `PluginManager::plugin_run_env` 组装，再经 `python_backend` 注入解释器。
+#[derive(Clone, Debug, Default)]
+pub struct PluginRunEnv {
+    /// 设置页里填的配置值（键为 manifest `[[config]]` 的 key）。
+    pub config: HashMap<String, Value>,
+    /// manifest `[[env]]` 白名单里、进程环境中确实存在的变量。
+    pub env: HashMap<String, String>,
+    /// manifest `read` 声明（相对 `data/` 的前缀），空 = 不能读任何文件。
+    pub read: Vec<String>,
 }
 
 /// 插件运行期状态（含持久化开关与配置）。

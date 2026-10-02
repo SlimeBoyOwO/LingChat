@@ -187,7 +187,7 @@ pub const CAST_DIALOG_WIDTH: &str = "cast.dialog_width";
 pub const CAST_DIALOG_HEIGHT: &str = "cast.dialog_height";
 /// 投屏对话框字体大小（px，默认 20 = 与主界面 text-xl 一致）。
 pub const CAST_DIALOG_FONT_SIZE: &str = "cast.dialog_font_size";
-/// 投屏对话框背景色透明度（0–100，默认 70 = 复刻主界面 dialogOpacity 0.7 的渐变）。
+/// 投屏对话框背景色透明度（0–100，默认 70 = 复刻主界面 0.7 的渐变）。
 pub const CAST_DIALOG_BG_OPACITY: &str = "cast.dialog_bg_opacity";
 /// 投屏隐藏对话框（默认 false）：开启后对话层整层 display:none，只保留背景与角色舞台。
 pub const CAST_DIALOG_HIDDEN: &str = "cast.dialog_hidden";

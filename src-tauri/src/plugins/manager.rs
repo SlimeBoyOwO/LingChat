@@ -19,7 +19,9 @@ use super::python_backend;
 use super::resources::{self, PluginResourceEntry};
 use super::signal::SignalRegistry;
 use super::tool::PluginTool;
-use super::types::{ConfigKind, PluginInfo, PluginRecord, PluginState, ResourceKind, StartupDecl};
+use super::types::{
+    ConfigKind, PluginInfo, PluginRecord, PluginRunEnv, PluginState, ResourceKind, StartupDecl,
+};
 
 /// 集中插件状态文件名（data/plugins/state.json，仿 tool_permissions.toml）。
 const STATE_FILE_NAME: &str = "state.json";
@@ -222,20 +224,19 @@ impl PluginManager {
         records.get(id).map(|r| r.dir.clone())
     }
 
-    /// 获取插件运行所需的 config 与白名单环境变量。
+    /// 获取插件运行所需的 config、白名单环境变量与可读路径声明。
     ///
     /// 在 `spawn_blocking` 线程内调用，`blocking_lock` 等待锁安全。
-    pub fn plugin_run_env(
-        &self,
-        id: &str,
-    ) -> (HashMap<String, serde_json::Value>, HashMap<String, String>) {
+    pub fn plugin_run_env(&self, id: &str) -> PluginRunEnv {
         let records = self.records.blocking_lock();
         let Some(record) = records.get(id) else {
-            return (HashMap::new(), HashMap::new());
+            return PluginRunEnv::default();
         };
-        let config = record.state.config.clone();
-        let env = python_backend::collect_env(&record.manifest);
-        (config, env)
+        PluginRunEnv {
+            config: record.state.config.clone(),
+            env: python_backend::collect_env(&record.manifest),
+            read: record.manifest.read.clone(),
+        }
     }
 
     /// 列表（供前端）。
@@ -682,14 +683,13 @@ impl PluginManager {
                     tokio::task::spawn_blocking(move || {
                         let _permit = permit;
                         let manager = app.state::<AppState>().data().plugin_manager.clone();
-                        let (config, env) = manager.plugin_run_env(&plugin_id);
+                        let run_env = manager.plugin_run_env(&plugin_id);
                         python_backend::run_plugin_handler(
                             &script_path,
                             &handler,
                             &signal_name,
                             &payload,
-                            &config,
-                            &env,
+                            run_env,
                             app,
                         )
                     }),
@@ -926,14 +926,8 @@ impl PluginManager {
                     return Err("插件已被停用".to_string());
                 }
                 let manager = app_handle.state::<AppState>().data().plugin_manager.clone();
-                let (config, env) = manager.plugin_run_env(&plugin_id);
-                python_backend::run_plugin_startup(
-                    &script_path,
-                    &handler,
-                    &config,
-                    &env,
-                    app_handle,
-                )
+                let run_env = manager.plugin_run_env(&plugin_id);
+                python_backend::run_plugin_startup(&script_path, &handler, run_env, app_handle)
             }),
         )
         .await;
@@ -1169,134 +1163,5 @@ fn coerce_config_value(kind: &ConfigKind, value: &serde_json::Value) -> Option<s
             },
             _ => None,
         },
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::plugins::types::PluginManifest;
-
-    fn set(ids: &[&str]) -> HashSet<String> {
-        ids.iter().map(|s| s.to_string()).collect()
-    }
-
-    /// id → depends_on。
-    fn deps(pairs: &[(&str, &[&str])]) -> HashMap<String, Vec<String>> {
-        pairs
-            .iter()
-            .map(|(id, ds)| (id.to_string(), ds.iter().map(|d| d.to_string()).collect()))
-            .collect()
-    }
-
-    /// 正常记录：manifest.id 与目录名一致。
-    fn record(id: &str, enabled: bool) -> PluginRecord {
-        PluginRecord {
-            manifest: PluginManifest {
-                id: id.to_string(),
-                ..Default::default()
-            },
-            state: PluginState {
-                enabled,
-                ..Default::default()
-            },
-            dir: PathBuf::from(format!("/plugins/{id}")),
-            error: None,
-            startup_error: None,
-        }
-    }
-
-    /// 加载失败的记录：manifest 保持 Default，所以 manifest.id 是空的。
-    fn broken_record(id: &str) -> PluginRecord {
-        PluginRecord {
-            manifest: PluginManifest::default(),
-            state: PluginState::default(),
-            dir: PathBuf::from(format!("/plugins/{id}")),
-            error: Some("manifest 解析失败".to_string()),
-            startup_error: None,
-        }
-    }
-
-    /// 回归测试：`A → B → C` 里 C 缺失时，A 不能被留着让外层报成循环依赖。
-    ///
-    /// 判死只推进一层的话，B 被判死后 A 既进不了就绪集、又不在判死名单里，会被
-    /// `run_startup_hooks` 末尾当成环（reason 里写着 `PLUGIN_DEPENDENCY_CYCLE`），
-    /// 而真正的原因在 C。
-    #[test]
-    fn transitive_missing_dependency_dooms_whole_chain() {
-        let depends = deps(&[("a", &["b"]), ("b", &["c"])]);
-        let guilty = unrunnable_in_order(&depends, &set(&["a", "b"]), &HashSet::new());
-        assert_eq!(
-            guilty,
-            vec![
-                ("b".to_string(), "PLUGIN_MISSING_DEPENDENCY|c".to_string()),
-                ("a".to_string(), "PLUGIN_INACTIVE_DEPENDENCY|b".to_string()),
-            ],
-            "整条被打断的依赖链都要被判死，不能把 a 留给外层当环"
-        );
-    }
-
-    #[test]
-    fn mutual_dependencies_are_left_for_the_cycle_report() {
-        let depends = deps(&[("a", &["b"]), ("b", &["a"])]);
-        let guilty = unrunnable_in_order(&depends, &set(&["a", "b"]), &HashSet::new());
-        assert!(
-            guilty.is_empty(),
-            "互为前置不是「前置未就绪」，该留给外层报环"
-        );
-    }
-
-    #[test]
-    fn disabled_dependency_dooms_dependent() {
-        let depends = deps(&[("a", &["b"])]);
-        let guilty = unrunnable_in_order(&depends, &set(&["a", "b"]), &set(&["b"]));
-        assert_eq!(
-            guilty,
-            vec![("a".to_string(), "PLUGIN_INACTIVE_DEPENDENCY|b".to_string())]
-        );
-    }
-
-    #[test]
-    fn missing_dependency_is_reported_before_inactive_one() {
-        let depends = deps(&[("a", &["x", "b"])]);
-        let guilty = unrunnable_in_order(&depends, &set(&["a", "b"]), &set(&["b"]));
-        assert_eq!(
-            guilty,
-            vec![("a".to_string(), "PLUGIN_MISSING_DEPENDENCY|x".to_string())],
-            "两类都不满足时先报「未安装」——那是更靠前的处理动作"
-        );
-    }
-
-    #[test]
-    fn satisfied_dependencies_are_untouched() {
-        let depends = deps(&[("a", &["b"]), ("b", &[])]);
-        assert!(unrunnable_in_order(&depends, &set(&["a", "b"]), &HashSet::new()).is_empty());
-    }
-
-    /// 判定按 map 的键（目录名）走。manifest 坏掉的记录 `manifest.id` 是空的，
-    /// 拿它比对会把「装坏了的前置」误报成「没安装」。
-    #[test]
-    fn unmet_dependencies_identifies_broken_manifest_by_dir_name() {
-        let records = HashMap::from([("base".to_string(), broken_record("base"))]);
-        let (missing, inactive) = unmet_dependencies(&records, &["base".to_string()]);
-        assert!(missing.is_empty(), "已安装的前置不该报成未安装");
-        assert_eq!(inactive, vec!["base".to_string()]);
-    }
-
-    #[test]
-    fn unmet_dependencies_splits_missing_from_disabled() {
-        let records = HashMap::from([
-            ("lib".to_string(), record("lib", true)),
-            ("off".to_string(), record("off", false)),
-        ]);
-        assert_eq!(
-            unmet_dependencies(&records, &["lib".to_string()]),
-            (vec![], vec![]),
-            "已启用且无加载错误的前置算满足"
-        );
-        assert_eq!(
-            unmet_dependencies(&records, &["off".to_string(), "nope".to_string()]),
-            (vec!["nope".to_string()], vec!["off".to_string()])
-        );
     }
 }

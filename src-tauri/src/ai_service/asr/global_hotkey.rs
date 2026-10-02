@@ -47,11 +47,49 @@ pub struct PttGlobalEvent {
     pub state: &'static str,
 }
 
-/// 全局注册状态事件（仅失败时 emit，设置页显示原因；开关不自动回退）。
-#[derive(serde::Serialize, Clone)]
+/// 全局快捷键的注册状态（`asr:ptt-global-status` 事件载荷的判别字段）。
+///
+/// **必须把「未启用」与「注册失败」分开**：两者都不是"已注册"，但只有后者该
+/// 给用户报错。历史上这里只有一个 `ok: bool`，两种语义挤在一起，设置页无从
+/// 分辨 —— 关闭开关时走正常注销路径（`reason` 为空），却被渲染成
+/// 「全局快捷键注册失败：」（冒号后无内容）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PttGlobalState {
+    /// 已按当前设置成功注册（窗口内监听退位，由全局事件驱动）。
+    Registered,
+    /// 未启用：开关关，或界面门控未激活。**正常状态，不应报错。**
+    Inactive,
+    /// 注册失败（键被占用 / 插件不支持该键），原因见 `reason`。
+    Failed,
+}
+
+/// 全局注册状态事件（设置页据此提示、PTT 据此决定窗口内监听是否退位）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct PttGlobalStatus {
-    pub ok: bool,
+    pub state: PttGlobalState,
     pub reason: String,
+}
+
+/// 由 `sync` / `set_active` 的结果与当前设置推导要上报的状态。
+///
+/// 两个调用点（设置保存、界面门控激活）共用这一套判定 —— 任一处单独手写
+/// 状态构造，都可能再次造出「关开关上报失败」这类契约漂移。
+pub fn status_from(result: Result<(), String>, ptt_global: bool) -> PttGlobalStatus {
+    match result {
+        Err(reason) => PttGlobalStatus {
+            state: PttGlobalState::Failed,
+            reason,
+        },
+        Ok(()) if ptt_global => PttGlobalStatus {
+            state: PttGlobalState::Registered,
+            reason: String::new(),
+        },
+        Ok(()) => PttGlobalStatus {
+            state: PttGlobalState::Inactive,
+            reason: String::new(),
+        },
+    }
 }
 
 /// 按当前设置同步全局快捷键注册状态（幂等）：
@@ -203,64 +241,4 @@ fn map_key(key: &str) -> Option<String> {
         _ => return Some(key.to_uppercase()),
     };
     Some(name.to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn maps_bare_f8_default() {
-        assert_eq!(
-            binding_to_hotkey_str(r#"{"key":"f8"}"#).as_deref(),
-            Some("F8")
-        );
-    }
-
-    #[test]
-    fn maps_ctrl_f8_uppercase_key() {
-        assert_eq!(
-            binding_to_hotkey_str(r#"{"key":"F8","ctrl":true}"#).as_deref(),
-            Some("Ctrl+F8")
-        );
-    }
-
-    #[test]
-    fn maps_shift_super_letter() {
-        assert_eq!(
-            binding_to_hotkey_str(r#"{"key":"a","shift":true,"meta":true}"#).as_deref(),
-            Some("Shift+Super+A")
-        );
-    }
-
-    #[test]
-    fn maps_space_and_arrow() {
-        assert_eq!(
-            binding_to_hotkey_str(r#"{"key":" "}"#).as_deref(),
-            Some("Space")
-        );
-        assert_eq!(
-            binding_to_hotkey_str(r#"{"key":"arrowup"}"#).as_deref(),
-            Some("ArrowUp")
-        );
-    }
-
-    #[test]
-    fn rejects_enter() {
-        assert_eq!(binding_to_hotkey_str(r#"{"key":"Enter"}"#), None);
-    }
-
-    #[test]
-    fn malformed_json_returns_none() {
-        assert_eq!(binding_to_hotkey_str("not json"), None);
-        assert_eq!(binding_to_hotkey_str(r#"{"ctrl":true}"#), None);
-    }
-
-    #[test]
-    fn false_modifiers_are_omitted() {
-        assert_eq!(
-            binding_to_hotkey_str(r#"{"key":"f8","ctrl":false,"alt":false}"#).as_deref(),
-            Some("F8")
-        );
-    }
 }

@@ -6,7 +6,6 @@
         isHidden,
       'max-h-[40dvh]': !uiStore.isNarrowScreen,
     }"
-    :style="dialogWrapperStyle"
     @wheel="handleWheelHistory"
   >
     <div :style="{ width: containerWidth + '%' }" class="relative">
@@ -25,7 +24,6 @@
                 :class="{
                   'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap': uiStore.isNarrowScreen,
                 }"
-                :style="{ color: dialogTextColorValue }"
               >
                 <div id="character">{{ uiStore.showCharacterTitle }}</div>
               </div>
@@ -65,7 +63,6 @@
                     :title="$t('game.dialog.sceneSettings')"
                     @click="openSceneSettings"
                   ></Button>
-                  <!--
                   <Button
                     type="nav"
                     icon="hand"
@@ -73,7 +70,6 @@
                     @click="toggleTouchMode"
                     @contextmenu.prevent="exitTouchMode"
                   ></Button>
-                  -->
                   <Button
                     type="nav"
                     icon="history"
@@ -227,7 +223,7 @@ import { setMobileMenuOpen, useAsrInput } from "../../../composables/asr";
 import { useChatInput } from "../../../composables/chat/useChatInput";
 import { useDialogAdvance } from "../../../composables/chat/useDialogAdvance";
 import { useDialogStatus } from "../../../composables/chat/useDialogStatus";
-import { useDialogAppearance } from "../../../composables/useDialogAppearance";
+import { useDialogInteraction } from "../../../composables/useDialogInteraction";
 import { useMicControl } from "../../../composables/useMicControl";
 import { useScreenshot } from "../../../composables/useScreenshot";
 import { dialogueMerge } from "../../../core/events/dialogue-merge";
@@ -251,14 +247,13 @@ const uiStore = useUIStore();
 const dialogStore = useDialogStore();
 const settingsStore = useSettingsStore();
 
-// Dialog appearance managed by composable: useDialogAppearance
-const { isHidden, hide, dialogWrapperStyle, dialogTextColorValue, handleWheelHistory } =
-  useDialogAppearance({
-    openHistory: () => {
-      uiStore.toggleSettings(true);
-      uiStore.setSettingsTab("history");
-    },
-  });
+// 隐藏状态与滚轮/空格交互由 composable 管理
+const { isHidden, hide, handleWheelHistory } = useDialogInteraction({
+  openHistory: () => {
+    uiStore.toggleSettings(true);
+    uiStore.setSettingsTab("history");
+  },
+});
 
 // 移动端按钮折叠状态（但是基于长宽比判断）
 const isMobile = ref(uiStore.aspectRatio <= 1);
@@ -695,9 +690,6 @@ function removeDialog(_e: Event) {
   hide();
 }
 
-// ── 对话框外观（响应 settings store） ──
-// Dialog appearance logic extracted to composable: useDialogAppearance
-
 defineExpose({
   continueDialog,
   isTyping,
@@ -875,9 +867,13 @@ defineExpose({
 
 <style>
 /* 底部 Home 指示器安全区：对话框本体铺到屏幕底（其半透明底盖住背景条带），
-     仅内容底部让出 env() 高度，输入框不被 Home 指示器遮挡（桌面/Android 桌面 env=0） */
+     仅内容底部让出 env() 高度，输入框不被 Home 指示器遮挡（桌面/Android 桌面 env=0）。
+     外观（渐变底色 / 圆角 / 文字色）固定于此，投屏窗口另有 !important 覆盖。 */
 .game-dialog {
   padding-bottom: calc(15px + var(--safe-area-inset-bottom, 0px));
+  color: #ffffff;
+  border-radius: 16px;
+  background: linear-gradient(to top, rgba(0, 14, 39, 0.7), rgba(0, 14, 39, 0.6));
 }
 /* 逐字符淡入+上浮动画的 @keyframes 已移入 src/assets/styles/dialogue-text.css（全局引入） */
 </style>

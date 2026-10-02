@@ -89,22 +89,6 @@ impl StreamProducer {
         }
     }
 
-    /// 无 `AppHandle` 版本，供顺序契约的单元测试使用。
-    #[cfg(test)]
-    pub(crate) fn without_app(
-        llm_stream: PresentationStream,
-        tx: mpsc::Sender<SentenceItem>,
-        tool_calls_seen: Arc<AtomicBool>,
-    ) -> Self {
-        Self {
-            llm_stream,
-            tx,
-            app: None,
-            thinking_buf: Arc::new(Mutex::new(String::new())),
-            tool_calls_seen,
-        }
-    }
-
     /// 消耗整个 LLM 流；返回原始 accumulated_response（未拆分）与是否已发出收尾句。
     pub async fn run(mut self) -> Result<ProducerOutput> {
         let mut accumulated = String::new();

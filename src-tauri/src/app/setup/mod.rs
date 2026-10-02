@@ -52,6 +52,7 @@ pub fn setup(
 
     // 管理各种状态
     app.manage(api::pet::HitTestState::default());
+    app.manage(api::pet::BubbleSideState::default());
     app.manage(resource_sync::ResourceSyncState::default());
     app.manage(lan_sync::LanSyncState::default());
     app.manage(cast::CastManager::default());

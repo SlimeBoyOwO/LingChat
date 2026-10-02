@@ -25,7 +25,7 @@ import type { SceneInfo } from "./services/scene";
 import { resetScriptWindowTitle } from "@/utils/windowTitleCoordinator";
 import { isOwnedByStandaloneDlc } from "@/utils/dlcMediaOwnership";
 import type { WebInitData } from "./services/game-info";
-import type { AffectionChangedPayload } from "./services/affection";
+import { getAffection, type AffectionChangedPayload } from "./services/affection";
 
 function asEvent(
   payload: unknown,
@@ -543,6 +543,20 @@ export function initializeTauriEventListeners() {
     // 同步主界面/桌宠标题（对话中名字由 currentInteractRole 驱动，已覆盖）
     uiStore.showCharacterTitle = role.roleName;
     uiStore.showCharacterSubtitle = role.roleSubTitle;
+    // 好感度跟随角色：get_role_info 不携带 affection，切到尚未建档的角色时
+    // 好感度面板会短暂沿用旧角色数值（跨角色显示污染），这里全量兜底刷新
+    try {
+      const all = await getAffection();
+      for (const [roleId, values] of Object.entries(all)) {
+        const r = gameStore.gameRoles[Number(roleId)];
+        if (r) {
+          r.affection = values;
+          r.negative = values.negative;
+        }
+      }
+    } catch (e) {
+      console.warn("[Affection] 切换角色后刷新好感度失败:", e);
+    }
   });
 
   // === LLM 工具事件（场景 / 换装） ===
@@ -624,8 +638,6 @@ export function initializeCastWindowListeners() {
   });
 
   // 投屏客户端麦克风经投屏 /ws 送到 Rust ASR，识别文本由这里注入对话。
-  // 复用既有 asr-send 自定义事件 → GameDialog.onAsrAutoSend → send()（sendMessage）。
-  // 仅投屏窗口注册此监听（主窗口不注册），保证每次识别恰好注入一次。
   listen("cast:mic:recognized", (event) => {
     const { text } = event.payload as { text: string };
     if (!text) return;

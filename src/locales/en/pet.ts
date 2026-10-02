@@ -25,6 +25,8 @@ export default {
     bubbleSideAuto: "Auto",
     bubbleSideAbove: "Above the pet",
     bubbleSideBelow: "Below the pet",
+    bubbleSideLeft: "Left of the pet",
+    bubbleSideRight: "Right of the pet",
     particleTitle: "Background Particle Effects (smoother with none)",
     particleNone: "None",
     particleStarField: "Starfield",

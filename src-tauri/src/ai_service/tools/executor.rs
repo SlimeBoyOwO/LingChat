@@ -67,6 +67,14 @@ pub trait Tool: Send + Sync {
         None
     }
 
+    /// 宽松参数模式：跳过执行器的 JSON object 硬门槛与 Schema 子集校验，改用
+    /// `types::parse_tool_args` 归一化（拆嵌套 arguments/params、拆双编码 JSON）后
+    /// 交给工具自行容错解析。默认 false；只有需要容忍模型把整数写成 "6"/6.0 的
+    /// 工具才覆写为 true。
+    fn lenient_arguments(&self) -> bool {
+        false
+    }
+
     /// 使用解析后的 JSON object 参数执行工具。
     async fn execute(
         &self,
@@ -103,17 +111,25 @@ impl<'a> ToolExecutor<'a> {
             return error_result("unknown_tool", format!("未知工具: {name}"));
         };
 
-        let arguments = match serde_json::from_str::<Value>(arguments) {
-            Ok(Value::Object(values)) => Value::Object(values),
-            Ok(_) => return error_result("invalid_arguments", "工具参数必须是 JSON object"),
-            Err(error) => {
-                tracing::warn!(tool = name, "工具参数 JSON 解析失败: {error}");
-                return error_result("invalid_json", format!("工具参数不是合法 JSON: {error}"));
-            },
+        let lenient = tool.lenient_arguments();
+        let arguments = if lenient {
+            // 宽松工具自行容错解析，这里只做归一化，不设 object 硬门槛。
+            crate::ai_service::types::parse_tool_args(arguments)
+        } else {
+            match serde_json::from_str::<Value>(arguments) {
+                Ok(Value::Object(values)) => Value::Object(values),
+                Ok(_) => return error_result("invalid_arguments", "工具参数必须是 JSON object"),
+                Err(error) => {
+                    tracing::warn!(tool = name, "工具参数 JSON 解析失败: {error}");
+                    return error_result("invalid_json", format!("工具参数不是合法 JSON: {error}"));
+                },
+            }
         };
-        let definition = tool.definition();
-        if let Err(error) = validate_value(name, &definition.function.parameters, &arguments) {
-            return error_result("invalid_arguments", error);
+        if !lenient {
+            let definition = tool.definition();
+            if let Err(error) = validate_value(name, &definition.function.parameters, &arguments) {
+                return error_result("invalid_arguments", error);
+            }
         }
 
         let timeout = tool.timeout_hint().unwrap_or(self.timeout);

@@ -17,7 +17,7 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 
-use crate::ai_service::game_system::script_engine::events::background_effect_event::known_effects;
+use crate::ai_service::game_system::script_engine::events::background_effect_event::KNOWN_EFFECTS;
 use crate::ai_service::game_system::script_engine::events::split_once_unquoted;
 use crate::ai_service::game_system::script_engine::utils::media::{
     MediaType, resolve_script_media,
@@ -572,13 +572,13 @@ pub fn validate(
                 "background_effect" => {
                     let effect = obj.get("effect").and_then(|v| v.as_str()).unwrap_or("");
                     // 运行时允许 `Glitch+BloodDrip` 形式叠加，校验器必须逐段使用
-                    // 同一份共享 manifest 判定，不能把整个组合误报为未知特效。
+                    // 同一份生成清单判定，不能把整个组合误报为未知特效。
                     for part in effect.split('+').map(str::trim) {
                         let clearing = part.is_empty() || part.eq_ignore_ascii_case("none");
-                        if clearing || known_effects().iter().any(|known| known == part) {
+                        if clearing || KNOWN_EFFECTS.contains(&part) {
                             continue;
                         }
-                        let hint = known_effects()
+                        let hint = KNOWN_EFFECTS
                             .iter()
                             .find(|known| known.eq_ignore_ascii_case(part));
                         // 大小写不对 → 打开章节时前端会自动纠错为规范写法，故只给 Info；
@@ -948,8 +948,8 @@ fn collect_script_characters(script_dir: &Path) -> HashSet<String> {
         for e in entries.flatten() {
             if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 let folder = e.file_name().to_string_lossy().to_string();
-                // 引擎实际用的键是 settings.yml 的 script_role_key，缺省回落目录名
-                let key = std::fs::read_to_string(e.path().join("settings.yml"))
+                // 引擎实际用的键是角色设定文件的 script_role_key，缺省回落目录名
+                let key = std::fs::read_to_string(yaml_file::resolve_settings_file(&e.path()))
                     .ok()
                     .and_then(|s| serde_yaml::from_str::<JsonValue>(&s).ok())
                     .and_then(|v| {
@@ -987,7 +987,7 @@ fn check_character_personas(
             continue;
         }
         let folder = e.file_name().to_string_lossy().to_string();
-        let settings = std::fs::read_to_string(e.path().join("settings.yml"))
+        let settings = std::fs::read_to_string(yaml_file::resolve_settings_file(&e.path()))
             .ok()
             .and_then(|s| serde_yaml::from_str::<JsonValue>(&s).ok());
         let Some(settings) = settings else {
@@ -1014,7 +1014,7 @@ fn check_character_personas(
                 Severity::Warn,
                 "character.no_role_key",
                 format!(
-                    "角色「{}」缺少 script_role_key，引擎不会加载它（剧本 NPC 必须显式声明该字段）。请在 settings.yml 里补上。",
+                    "角色「{}」缺少 script_role_key，引擎不会加载它（剧本 NPC 必须显式声明该字段）。请在角色设定文件里补上。",
                     display
                 ),
             ));
@@ -1032,7 +1032,7 @@ fn check_character_personas(
                 Severity::Info,
                 "character.no_persona",
                 format!(
-                    "角色「{}」没有填写人设（settings.yml 的 system_prompt 为空）。它的 AI 对话会缺少性格设定，试玩时后台可能提示「人设丢失」",
+                    "角色「{}」没有填写人设（角色设定文件的 system_prompt 为空）。它的 AI 对话会缺少性格设定，试玩时后台可能提示「人设丢失」",
                     display
                 ),
             ));

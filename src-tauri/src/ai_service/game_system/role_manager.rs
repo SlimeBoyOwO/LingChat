@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use sea_orm::DatabaseConnection;
@@ -30,7 +31,8 @@ pub struct GameRoleManager {
     /// 槽位本身始终存在，内部值为 None 时表示尚未配置模型。
     llm: LlmSlot,
     /// 每个角色的 MemoryBank 后台压缩引擎（惰性构造）。
-    memory_bank_systems: HashMap<i32, PersistentMemorySystem>,
+    /// 用 `Arc` 包装，便于在锁外 `await` 压缩时持有句柄（见 `memory_bank_handles`）。
+    memory_bank_systems: HashMap<i32, Arc<PersistentMemorySystem>>,
     /// TTS 引擎配置（适配器 URL、音频格式等）。
     tts_config: TtsConfig,
     /// 本地 TTS 共享运行时（进程内引擎 + 路径 + 全局开关）。
@@ -476,7 +478,7 @@ impl GameRoleManager {
         }
         self.memory_bank_systems.insert(
             role_id,
-            PersistentMemorySystem::new(
+            Arc::new(PersistentMemorySystem::new(
                 role_id,
                 bank,
                 self.llm.clone(),
@@ -485,7 +487,7 @@ impl GameRoleManager {
                 recent_window,
                 limits,
                 display_name,
-            ),
+            )),
         );
     }
 
@@ -771,6 +773,45 @@ impl GameRoleManager {
         self.memory_bank_systems
             .get(&role_id)
             .map(|s| s.is_enabled())
+    }
+
+    /// 取出所有永久记忆运行时的 `Arc` 句柄（廉价克隆）。
+    ///
+    /// 给「短锁取句柄 → 锁外 await 压缩」的调用方用：这样等待压缩（若干次 LLM
+    /// 调用）期间不必一直持有 `game_status` 锁、冻住前端。配合
+    /// `PersistentMemorySystem::compress_if_needed` 使用。
+    pub fn memory_bank_handles(&self) -> Vec<Arc<PersistentMemorySystem>> {
+        self.memory_bank_systems.values().cloned().collect()
+    }
+
+    /// 对所有已加载、开了永久记忆的角色：达到压缩阈值就同步压一次并**等它完成**，
+    /// 未达阈值的直接跳过。返回实际触发压缩的角色数（0 = 全都无需压缩）。
+    ///
+    /// 用于「请求 LLM 前把记忆追平」这类需要确定性时机的场景。会 `await` 若干次
+    /// LLM 调用，**不要在持有 `game_status` 锁时调用**；压缩失败会提前返回
+    /// （指针不推进），不会死等。
+    pub async fn compress_memories_if_needed(&self, lines: &[GameLine]) -> usize {
+        let role_ids: Vec<i32> = self.memory_bank_systems.keys().copied().collect();
+        let mut triggered = 0usize;
+        for role_id in role_ids {
+            if let Some(system) = self.memory_bank_systems.get(&role_id) {
+                if system.compress_if_needed(lines).await {
+                    triggered += 1;
+                }
+            }
+        }
+        triggered
+    }
+
+    /// 把所有已加载角色的永久记忆压缩指针回拨到 `idx`（各自仅当指针在其之后）。
+    /// 编辑台词历史后调用：让被编辑区间重新进入渲染窗口、下次压缩重新摘要。
+    pub async fn rewind_memory_pointers(&self, idx: usize) {
+        let role_ids: Vec<i32> = self.memory_bank_systems.keys().copied().collect();
+        for role_id in role_ids {
+            if let Some(system) = self.memory_bank_systems.get(&role_id) {
+                system.rewind_pointer(idx).await;
+            }
+        }
     }
 }
 

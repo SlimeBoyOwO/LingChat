@@ -38,10 +38,26 @@ export const useAsrStore = defineStore("asr", {
     lastError: null as string | null,
     vadEvent: null as VadEvent | null,
     providers: [] as ProviderInfo[],
-    models: [] as ModelInfo[],
+    /**
+     * provider id → 该 provider 的模型清单。
+     *
+     * 存**全部** provider 而非只存当前那个：设置页的服务选择是一个扁平列表，
+     * 要一次把每个服务商的模型都列出来，不能只拉当前 provider。
+     */
+    modelsByProvider: {} as Record<string, ModelInfo[]>,
     micState: "idle" as "idle" | "recording" | "denied",
     vadLoaded: false,
   }),
+  getters: {
+    /**
+     * 当前 provider 的模型清单。
+     *
+     * 保持**只读**语义（getter 而非 state）：`composables/asr/gates.ts` 的
+     * `isStreamEnabled()` 读它做流式能力判定，改成 getter 后那边一行都不用动。
+     * 写入走 {@link reloadModels}。
+     */
+    models: (state): ModelInfo[] => state.modelsByProvider[state.settings.active_provider] ?? [],
+  },
   actions: {
     async load() {
       try {
@@ -51,10 +67,32 @@ export const useAsrStore = defineStore("asr", {
         // 不参与决策（除被 excludePaths 剔除的 provider_configs）。
         this.settings = { ...DEFAULT_SETTINGS, ...this.settings, ...(await asrGetSettings()) };
         this.providers = await asrListProviders();
-        // 模型清单（按 active provider 拉取；provider 切换时由 SettingsAsr 重新拉）
-        this.models = await asrListModels(this.settings.active_provider).catch(() => []);
+        // 逐个 provider 独立拉取并**独立 catch**：本地 llama-asr 的服务没启动
+        // 是常态，不能让它一个失败就把整个扁平列表清空。
+        await Promise.all(
+          this.providers.map(async (p) => {
+            this.modelsByProvider[p.id] = await asrListModels(p.id).catch(() => []);
+          }),
+        );
       } catch (e) {
         console.warn("[ASR] load failed:", e);
+      }
+    },
+    /**
+     * 重拉单个 provider 的模型清单（llama 换模型/重启后刷新用）。
+     *
+     * `region` 传调用方当前选中的地域（见 `asrListModels`）：设置页改地域后
+     * 保存还没落盘时就重拉，不传会拿到旧地域的清单。
+     *
+     * 失败时清空该 provider 的条目**并抛出**——由调用方决定怎么提示
+     * （设置页要显示"模型列表拉取失败"，静默吞掉会让用户以为服务端没有模型）。
+     */
+    async reloadModels(providerId: string, region?: string) {
+      try {
+        this.modelsByProvider[providerId] = await asrListModels(providerId, region);
+      } catch (e) {
+        this.modelsByProvider[providerId] = [];
+        throw e;
       }
     },
     async save(s: AsrSettings) {
@@ -98,7 +136,10 @@ export const useAsrStore = defineStore("asr", {
   // 设置页"接上服务后仍显示红色"（旧错误跨会话残留）。
   persist: {
     key: "lingchat-asr",
-    exclude: ["provider_configs", "lastError"],
+    // modelsByProvider 是每次 load 从后端拉取的瞬时数据（本地 llama 的清单甚至
+    // 取决于服务是否在跑），持久化没有意义，还会让设置页在 load 完成前短暂
+    // 显示上一次会话的陈旧模型列表。
+    exclude: ["provider_configs", "lastError", "modelsByProvider"],
     excludePaths: ["settings.provider_configs"],
   },
 });

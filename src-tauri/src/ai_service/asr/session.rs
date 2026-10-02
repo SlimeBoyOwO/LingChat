@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use super::error::AsrError;
-use super::provider::{AsrProvider, AsrResult};
+use super::provider::{self, AsrOptions, AsrProvider, AsrResult, ProviderCredentials};
 use super::provider_stream::{self, StreamCommand};
 use super::vad::AsrVad;
 
@@ -121,7 +121,7 @@ impl AsrSession {
         &self,
         provider_id: String,
         wav_bytes: Vec<u8>,
-        language_hint: Option<String>,
+        opts: &AsrOptions,
     ) -> Result<AsrResult, AsrError> {
         let provider = self
             .providers
@@ -130,7 +130,7 @@ impl AsrSession {
             .get(&provider_id)
             .cloned()
             .ok_or_else(|| AsrError::ProviderNotFound(provider_id.clone()))?;
-        self.recognize_wav_with(provider.clone(), wav_bytes, language_hint.as_deref())
+        self.recognize_wav_with(provider.clone(), wav_bytes, opts)
             .await
     }
 
@@ -140,13 +140,13 @@ impl AsrSession {
         &self,
         provider: Arc<dyn AsrProvider>,
         wav_bytes: Vec<u8>,
-        language_hint: Option<&str>,
+        opts: &AsrOptions,
     ) -> Result<AsrResult, AsrError> {
         // 锁内克隆当前令牌（CancellationToken 是 Arc 语义，clone 廉价），
         // 锁外 select——cancel() 换新 token 不影响本次已克隆的引用
         let cancel_child = self.cancel_token.lock().await.clone().child_token();
         tokio::select! {
-            result = provider.recognize(wav_bytes, language_hint) => result,
+            result = provider.recognize(wav_bytes, opts) => result,
             _ = cancel_child.cancelled() => Err(AsrError::Canceled),
         }
     }
@@ -174,10 +174,9 @@ impl AsrSession {
         &self,
         app: &tauri::AppHandle,
         provider_id: &str,
-        endpoint: String,
-        api_key: String,
-        model: String,
-        language_hint: Option<String>,
+        cred: &ProviderCredentials,
+        model: &str,
+        opts: &AsrOptions,
     ) -> Result<(), AsrError> {
         // 防御：残留句柄（前端异常路径未清理）先丢弃，避免 SessionBusy
         // 卡死后续所有录音（症状：流式启动失败 → 无法录音）
@@ -189,9 +188,16 @@ impl AsrSession {
         let on_partial = std::sync::Arc::new(move |text: &str| {
             let _ = app_handle.emit("asr://stream_partial", text.to_string());
         });
-        let tx =
-            provider_stream::start_streaming(on_partial, endpoint, api_key, model, language_hint)
-                .await?;
+        // 端点按地域派生（配置为空时）；热词（来自调用方，逐角色）按模型能力门控后注入
+        let params = provider::build_stream_params(model, opts);
+        let tx = provider_stream::start_streaming(
+            on_partial,
+            cred.effective_ws_endpoint(),
+            cred.api_key.clone(),
+            model.to_string(),
+            params,
+        )
+        .await?;
         *self.stream.lock().await = Some(StreamHandle {
             provider_id: provider_id.to_string(),
             tx,

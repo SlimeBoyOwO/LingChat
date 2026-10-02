@@ -25,7 +25,12 @@ import {
   voicePlaying,
 } from "./state";
 export { asrVoiceActive, ASR_DISPLAY_MS } from "./state";
-import { asrGetStatus, asrPttGlobalSetActive, type VadEvent } from "@/api/services/asr";
+import {
+  asrGetStatus,
+  asrPttGlobalSetActive,
+  type PttGlobalStatus,
+  type VadEvent,
+} from "@/api/services/asr";
 import { useGameStore } from "@/stores/modules/game";
 import { useAsrStore } from "@/stores/modules/settings/asr";
 import { useUIStore } from "@/stores/modules/ui/ui";
@@ -151,11 +156,12 @@ function ensureInit() {
     }
   });
 
-  // 全局注册状态：失败事件（后端仅失败时 emit）→ pttGlobalOk=false → 窗口内监听
-  // 兜底；设置保存成功时后端 emit ok:true 复位
-  listen<{ ok: boolean; reason: string }>("asr:ptt-global-status", (e) => {
+  // 全局注册状态：registered → 窗口内监听退位（由全局事件驱动，防双触发）；
+  // inactive（开关关 / 不在聊天界面）与 failed 一样走窗口内兜底。
+  // 注意 inactive 是正常状态而非失败，不能拿它给用户提示错误。
+  listen<PttGlobalStatus>("asr:ptt-global-status", (e) => {
     runtime.pttStatusEventSeen = true;
-    runtime.pttGlobalOk = e.payload.ok;
+    runtime.pttGlobalOk = e.payload.state === "registered";
   });
   // 启动时查询式初始化：重启后注册失败（启动 sync 失败只 warn 不 emit 事件）→
   // pttGlobalOk=false → 窗口内监听兜底，不再"双重失效"静默。

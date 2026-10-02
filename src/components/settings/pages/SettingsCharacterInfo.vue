@@ -205,6 +205,19 @@
                   {{ $t("settings.characterInfo.clothes.empty") }}
                 </div>
               </div>
+
+              <!-- Touch Tab：区域绘制放在独立的全屏层里，这里只做入口与概览 -->
+              <div v-if="activeTab === 'touch'" class="space-y-4">
+                <p class="text-[13px] leading-relaxed text-white/50">
+                  {{ $t("settings.characterInfo.touch.hint") }}
+                </p>
+                <button
+                  class="cursor-pointer rounded-lg border-none bg-[#5e72e4] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#4a5acf]"
+                  @click="touchEditorVisible = true"
+                >
+                  {{ $t("settings.characterInfo.touch.open") }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -279,6 +292,15 @@
             </button>
           </div>
         </div>
+
+        <!-- 触摸区域编辑器：留在弹窗的 DOM 子树内，才能被 Live2D 抚摸的元素守卫一起挡住 -->
+        <TouchRegionsEditor
+          v-if="touchEditorVisible"
+          :body-part="localSettings.body_part"
+          :clothes="props.clothes ?? []"
+          @apply="onTouchRegionsApply"
+          @close="touchEditorVisible = false"
+        />
       </div>
     </div>
   </Transition>
@@ -294,6 +316,7 @@ import {
 } from "../../../api/services/character";
 import { Icon } from "../../base";
 import Live2DSettings from "../character/Live2DSettings.vue";
+import TouchRegionsEditor from "../character/TouchRegionsEditor.vue";
 import { isSystemProtectedRole } from "@/constants/character";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
 import { useGameStore } from "@/stores/modules/game";
@@ -307,6 +330,8 @@ const props = defineProps<{
   title?: string;
   /** 来源："game" 或提供该角色的插件 id（插件角色不可直接删除）。 */
   source?: string | null;
+  /** 该角色实际存在的服装（标题 + 立绘 URL），由设置列表页透传，触摸区域编辑器按它分服装 */
+  clothes?: Array<{ title: string; avatar: string }>;
 }>();
 
 const emit = defineEmits(["close", "saved"]);
@@ -320,6 +345,7 @@ const { t } = useI18n();
 const uiStore = useUIStore();
 const gameStore = useGameStore();
 const localSettings = ref<any>({});
+const touchEditorVisible = ref(false);
 const installedVoices = ref<TtsLocal.VoiceRecord[]>([]);
 const cloudVoices = ref<TtsCosyvoice.CosyVoiceView[]>([]);
 
@@ -406,6 +432,7 @@ const tabs = computed(() => [
   { id: "prompts", label: t("settings.characterInfo.tabs.prompts") },
   { id: "visuals", label: t("settings.characterInfo.tabs.visuals") },
   { id: "clothes", label: t("settings.characterInfo.tabs.clothes") },
+  { id: "touch", label: t("settings.characterInfo.tabs.touch") },
   { id: "live2d", label: t("settings.characterInfo.tabs.live2d") },
   { id: "pet", label: t("settings.characterInfo.tabs.pet") },
   { id: "voice", label: t("settings.characterInfo.tabs.voice") },
@@ -1070,8 +1097,9 @@ const handleFieldChange = (field: FieldSchema) => {
   }, REALTIME_SAVE_DEBOUNCE_MS);
 };
 
-const saveSettings = async () => {
-  if (!props.roleId) return;
+/** 落盘 + 运行时热更。返回是否成功，成功与否由调用方决定要不要关弹窗。 */
+async function persistSettings(): Promise<boolean> {
+  if (!props.roleId) return false;
   clearRealtimeSaveTimer();
   saving.value = true;
   try {
@@ -1087,16 +1115,34 @@ const saveSettings = async () => {
       // /chat 与 /pet 是互斥路由，弹窗和桌宠不会同时在屏幕上，全靠这次内存热更
       // 才不必后端 re-init；不进 Live2DStage 的 watch 依赖，因为它只换一个 CSS 类
       runtimeRole.petFrameless = localSettings.value.pet_frameless ?? false;
+      // 触摸区域热更：TouchAreas 直接读 role.bodyPart，不更的话要重进 /chat 才生效
+      runtimeRole.bodyPart = structuredClone(toRaw(localSettings.value.body_part)) ?? {};
     }
-    emit("saved");
-    emit("close");
+    return true;
   } catch (e) {
     console.error("Failed to save settings", e);
     await dialogStore.alert(t("settings.characterInfo.messages.saveFailed"));
+    return false;
   } finally {
     saving.value = false;
   }
+}
+
+const saveSettings = async () => {
+  if (await persistSettings()) {
+    emit("saved");
+    emit("close");
+  }
 };
+
+/** 触摸区域编辑器自带保存：它是个子流程，写完不关弹窗，用户可以接着改别的标签页 */
+async function onTouchRegionsApply(value: Record<string, unknown>) {
+  if (Object.keys(value).length) localSettings.value.body_part = value;
+  else delete localSettings.value.body_part;
+  if (!(await persistSettings())) return;
+  emit("saved");
+  touchEditorVisible.value = false;
+}
 
 onUnmounted(clearRealtimeSaveTimer);
 </script>

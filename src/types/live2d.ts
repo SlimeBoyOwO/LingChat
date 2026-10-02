@@ -23,6 +23,30 @@ export interface Live2dFocusAnchor {
   [key: string]: unknown;
 }
 
+/** 抚摸命中区域：相对 drawable bounds 的比例矩形，原点在左上、y 向下。 */
+export interface Live2dTouchRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  [key: string]: unknown;
+}
+
+/** 抚摸反应绑定：某个部位被抚摸时先随手的移动方向晃动、换上一张表情，松手回正之后
+    播放这里绑定的动作。动作与表情都可省略，两个都不给就只剩晃动。 */
+export interface Live2dTouchBinding {
+  group?: string;
+  index?: number;
+  loop?: boolean;
+  /** 抚摸时换上的表情，直接给模型的表情名。省略表示不动表情。
+      松手后（动作播完）会换回当前情绪的表情。 */
+  expression?: string | null;
+  /** 可选，覆盖由 focus_anchor 推出的默认区域。与默认模板同坐标系，
+      所以可以只覆盖其中一部分位。 */
+  region?: Live2dTouchRegion | null;
+  [key: string]: unknown;
+}
+
 export interface Live2dVariant {
   model: string;
   default_expression?: string | null;
@@ -32,6 +56,9 @@ export interface Live2dVariant {
   eye_blink?: Live2dEyeBlinkBinding | null;
   focus_anchor?: Live2dFocusAnchor | null;
   lip_sync?: Live2dParameterBinding | null;
+  /** 抚摸反应：部位键（head/body/legs/earLeft/earRight，可扩展）到绑定。
+      不要写 null：Rust 侧是 HashMap 而非 Option，null 反序列化会直接失败。 */
+  touch_motions?: Record<string, Live2dTouchBinding>;
   [key: string]: unknown;
 }
 

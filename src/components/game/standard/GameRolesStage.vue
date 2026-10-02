@@ -10,6 +10,7 @@
       :voice-data-url="voiceDataUrl"
       :cast-scale="castScale"
       :cast-offset-y="castOffsetY"
+      :touch-enabled="gameStore.command === 'touch'"
     >
       <!-- 2. 每个角色保留原有静态视觉、气泡和触摸层 -->
       <RoleAvatar

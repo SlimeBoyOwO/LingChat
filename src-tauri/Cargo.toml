@@ -84,10 +84,9 @@ async-trait = "0.1"
 # 实时 ASR 用官方 /api-ws/v1/inference 端点（标准 GET 升级 + Bearer）；
 # rustls-tls-webpki-roots 与项目 reqwest 的 TLS 栈一致
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
-# ort（ONNX Runtime）：Windows 用 load-dynamic 运行时加载，避免静态链接 pyke 预编译的
-# x86-64-v3（要求 AVX2/FMA）二进制——旧 CPU（如三代酷睿，无 AVX2）上启动会因非法指令崩溃。
-# 改为运行时从应用目录加载官方 onnxruntime.dll（SSE3 基线，兼容旧 CPU）。
-# 注意：load-dynamic 仅限 Windows（见下方 target 配置）；Linux/macOS 保持 download-binaries 静态链接，行为不变。
+# ort：Windows 用 load-dynamic 运行时加载，避开 pyke 预编译的 x86-64-v3（要求 AVX2/FMA）
+# 二进制在旧 CPU 上的非法指令崩溃。dll 由 scripts/download-onnxruntime.mjs 取回（含 DML EP）。
+# load-dynamic 仅限 Windows；Linux/macOS 保持 download-binaries 静态链接。
 ort = { version = "=2.0.0-rc.13", default-features = false, features = [
     "std",
     "ndarray",

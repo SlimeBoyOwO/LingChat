@@ -403,6 +403,64 @@ where
     Ok(anchor)
 }
 
+/// 抚摸命中区域：相对 drawable bounds 的比例矩形，原点在左上、y 向下。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Live2dTouchRegion {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+fn deserialize_live2d_touch_region<'de, D>(
+    deserializer: D,
+) -> Result<Option<Live2dTouchRegion>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let region = Option::<Live2dTouchRegion>::deserialize(deserializer)?;
+    if let Some(region) = &region {
+        // 浮点相加会漂出一点点，给一个容差，免得「本意正好占满」的矩形被拒
+        const EPSILON: f64 = 1e-9;
+        let finite = region.x.is_finite()
+            && region.y.is_finite()
+            && region.width.is_finite()
+            && region.height.is_finite();
+        if !finite
+            || region.width <= 0.0
+            || region.height <= 0.0
+            || region.x < -EPSILON
+            || region.y < -EPSILON
+            || region.x + region.width > 1.0 + EPSILON
+            || region.y + region.height > 1.0 + EPSILON
+        {
+            return Err(serde::de::Error::custom(
+                "touch region x/y/width/height must be finite, positive-sized, lie within 0..1, and fit inside the drawable bounds",
+            ));
+        }
+    }
+    Ok(region)
+}
+
+/// 抚摸反应绑定：某个部位被抚摸时先随手的移动方向晃动、换上一张表情，松手回正之后
+/// 播放这里绑定的动作。动作与表情都可省略，两个都不给就只剩晃动。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Live2dTouchBinding {
+    #[serde(default)]
+    pub group: Option<String>,
+    #[serde(default)]
+    pub index: Option<usize>,
+    #[serde(default, rename = "loop")]
+    pub loop_motion: bool,
+    /// 抚摸时换上的表情，直接给模型的表情名。松手后会换回当前情绪的表情。
+    #[serde(default)]
+    pub expression: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_live2d_touch_region")]
+    pub region: Option<Live2dTouchRegion>,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub struct Live2dVariant {
     pub model: String,
@@ -420,6 +478,11 @@ pub struct Live2dVariant {
     pub focus_anchor: Option<Live2dFocusAnchor>,
     #[serde(default)]
     pub lip_sync: Option<Live2dParameterBinding>,
+    /// 抚摸反应：部位键（head/body/legs/earLeft/earRight，可扩展）到动作与可选区域。
+    /// 用 HashMap 而非 Option：老角色的 settings.yml 没有这个键，解析出空表即可，
+    /// 行为与加字段之前逐字节一致。
+    #[serde(default)]
+    pub touch_motions: HashMap<String, Live2dTouchBinding>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }
@@ -542,6 +605,28 @@ pub struct CharacterSettings {
     // Pydantic `extra="allow"` 允许任意扩展字段
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
+}
+
+/// 只存在于运行时的字段，写盘前一律剥掉。
+///
+/// `CharacterSettings` 用 `#[serde(flatten)] extra` 兜底未知键，不剥会把这些瞬态值
+/// 原样落到 YAML 里。字段由 `db::managers::role_repo` 在读取时回填，YAML 中即使写了
+/// 也会被覆盖，所以剥掉是纯净化。
+pub const TRANSIENT_SETTINGS_FIELDS: [&str; 5] = [
+    "character_id",
+    "resource_path",
+    "character_folder",
+    "script_key",
+    "script_role_key",
+];
+
+/// 从已序列化的角色设定里剥掉瞬态字段。非对象则原样返回。
+pub fn strip_transient_fields(value: &mut Value) {
+    if let Some(obj) = value.as_object_mut() {
+        for field in TRANSIENT_SETTINGS_FIELDS {
+            obj.remove(field);
+        }
+    }
 }
 
 fn default_ai_name() -> String {

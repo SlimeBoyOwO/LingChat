@@ -17,10 +17,20 @@
     :animation-classes="containerClasses"
     :object-fit="computedObjectFit"
     @animation-end="handleAnimationEnd"
-  />
+  >
+    <!-- 触摸区域只对静态立绘生效：Live2D 的可摸范围来自模型的 touch_motions，
+         与 body_part 无关，所以不渲染这层。 -->
+    <template #overlay>
+      <TouchAreas
+        v-if="gameStore.command === 'touch'"
+        :role="role"
+        :src="targetAvatarUrl"
+        :object-fit="computedObjectFit"
+      />
+    </template>
+  </StaticRolePresentation>
 
-  <!-- 原有气泡、触摸层和情绪音效位于共享 Pixi 舞台上方。 -->
-  <TouchAreas v-if="gameStore.command === 'touch'" :body-parts="role.bodyPart" />
+  <!-- 原有气泡与情绪音效位于共享 Pixi 舞台上方。触摸层已随立绘组件内嵌（见上方 #overlay）。 -->
 
   <!-- 角色级演出覆盖层：跟随最新 Live2D/静态展示层的位置，同时保留 DLC 恐怖特效。 -->
   <div
@@ -63,7 +73,7 @@ import Live2DRolePresentation from "./Live2DRolePresentation.vue";
 import StaticRolePresentation from "./StaticRolePresentation.vue";
 import TouchAreas from "./TouchAreas.vue";
 import SpriteNoiseOverlay from "./SpriteNoiseOverlay.vue";
-import { useRoleAvatar } from "@/composables/role/useRoleAvatar";
+import { avatarObjectFit, useRoleAvatar } from "@/composables/role/useRoleAvatar";
 import { prefersLive2d } from "@/types/live2d";
 import "@/assets/styles/avatar-animation.css";
 
@@ -105,12 +115,7 @@ const {
 // --- 移动端适配：从 uiStore 读取视口尺寸（全局唯一 resize 监听） ---
 
 // 窄屏适配：宽高比 1.0→0.5 区间，高度 100%→80%（rate=40）
-const computedObjectFit = computed(() => {
-  const ratio = uiStore.aspectRatio;
-  if (ratio >= 1.0) return "contain";
-  const percent = Math.max(80, 100 - (1.0 - ratio) * 40);
-  return `auto ${Math.round(percent)}%`;
-});
+const computedObjectFit = computed(() => avatarObjectFit(uiStore.aspectRatio));
 
 // 窄屏 Y 轴补偿：同步上述区间，0%→20% 视口高度上移（rate=40）
 const narrowScreenYCompensation = computed(() => {
@@ -302,5 +307,4 @@ const bubbleStyles = computed(() => ({
     opacity: 1;
   }
 }
-
 </style>

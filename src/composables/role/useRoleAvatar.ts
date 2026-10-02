@@ -65,6 +65,38 @@ export function avatarFolderParams(role: GameRole): {
   };
 }
 
+/**
+ * 立绘的取景方式（纯函数）。
+ *
+ * 宽屏按 contain 完整显示；窄屏把高度锁死到 80%~100%，宽度按比例溢出后被容器裁掉，
+ * 这样人物在竖屏下不会缩成一条。触摸区域叠层要靠它还原立绘的实际落位，
+ * 所以编辑器与游戏必须取同一个值，不要各写一份。
+ */
+/**
+ * 立绘的宽高比，取不到返回 null。
+ *
+ * 触摸区域要按立绘的实际落位摆放，而落位由图片宽高比决定；立绘本身是画在
+ * background-image 上的，读不到自然尺寸，只能自己加载一次（URL 已在缓存里）。
+ * 用 onload/onerror 而不是 decode()：decode() 在部分情况下会为一个已经加载成功的
+ * 图片抛错，那样宽高比就永远拿不到，整块区域功能会静默失效。
+ */
+export function loadImageAspect(url: string): Promise<number | null> {
+  if (!url) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () =>
+      resolve(image.naturalHeight ? image.naturalWidth / image.naturalHeight : null);
+    image.onerror = () => resolve(null);
+    image.src = url;
+  });
+}
+
+export function avatarObjectFit(aspectRatio: number): string {
+  if (aspectRatio >= 1.0) return "contain";
+  const percent = Math.max(80, 100 - (1.0 - aspectRatio) * 40);
+  return `auto ${Math.round(percent)}%`;
+}
+
 export function useRoleAvatar(options: UseRoleAvatarOptions): UseRoleAvatarApi {
   const { role, audioRef } = options;
   const bubbleDurationMs = options.bubbleDurationMs ?? DEFAULT_BUBBLE_MS;

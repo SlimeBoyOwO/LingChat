@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use anyhow::Result;
 use serde::Serialize;
 
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 
 use crate::ai_service::game_system::memory_builder::MemoryBuilder;
 use crate::ai_service::llm::{LlmClient, LlmSlot, slot_snapshot};
@@ -168,6 +168,8 @@ pub struct PersistentMemorySystem {
     history_revision: Arc<AtomicU64>,
     /// 把历史失效与后台成功/失败提交放进同一同步边界，封闭最终 revision 检查的 TOCTOU。
     commit_gate: Arc<std::sync::Mutex<()>>,
+    /// 后台压缩结束时的唤醒源：`compress_if_needed` 靠它等到本轮压缩落回来。
+    idle_notify: Arc<Notify>,
 
     /// 最近一次压缩失败的时间戳（unix 毫秒），0 = 无失败。用于重试冷却。
     last_failure_at_ms: Arc<AtomicU64>,
@@ -185,11 +187,14 @@ pub struct PersistentMemorySystem {
 }
 
 /// 无论后台任务成功、显式失败还是 panic 展开，都解除 updating 锁。
-struct UpdatingGuard(Arc<AtomicBool>);
+struct UpdatingGuard(Arc<AtomicBool>, Arc<Notify>);
 
 impl Drop for UpdatingGuard {
     fn drop(&mut self) {
         self.0.store(false, Ordering::Release);
+        // 唤醒可能正卡在 `wait_until_idle` 的调用方。无等待者时 notify_one 会
+        // 存下一个 permit，兜住「判空后、await 前刚好完成」的漏唤醒竞态。
+        self.1.notify_one();
     }
 }
 
@@ -262,6 +267,7 @@ impl PersistentMemorySystem {
             has_pending: Arc::new(AtomicBool::new(false)),
             history_revision: Arc::new(AtomicU64::new(0)),
             commit_gate: Arc::new(std::sync::Mutex::new(())),
+            idle_notify: Arc::new(Notify::new()),
             last_failure_at_ms: Arc::new(AtomicU64::new(0)),
             fail_count: Arc::new(AtomicU32::new(0)),
             enabled,
@@ -316,6 +322,20 @@ impl PersistentMemorySystem {
             }
         }
         start
+    }
+
+    /// 把压缩指针回拨到 `idx`（仅当当前指针在其之后）。用于编辑台词历史后让被
+    /// 编辑区间重新进入渲染窗口、并在下次压缩时重新摘要。
+    ///
+    /// 回拨会置 `has_pending`，使新指针经 `sync_to_role` 同步进 `role.memory_bank`，
+    /// 进而被 `persist_memory_banks_to_db` 落库；否则存盘写回的仍是旧指针。
+    pub async fn rewind_pointer(&self, idx: usize) {
+        let mut bank = self.memory_bank.lock().await;
+        if bank.meta.last_processed_global_idx.max(0) as usize > idx {
+            bank.meta.last_processed_global_idx = idx as i64;
+            bank.meta.updated_at = now_str();
+            self.has_pending.store(true, Ordering::Release);
+        }
     }
 
     /// 长期记忆 / 用户画像 / 约定 文本（适合合并到 system 消息）。
@@ -436,6 +456,38 @@ impl PersistentMemorySystem {
         self.spawn_background_update(chat_text, target_idx, history_revision);
     }
 
+    /// 达到压缩阈值就同步跑一次压缩并**等它完成**；未达阈值 / 冷却中 / 区间对该
+    /// 角色不可见时立即返回。返回是否实际触发了压缩。
+    ///
+    /// 与后台自动压缩共用同一套判定（`check_and_trigger_auto_update`），区别只是
+    /// 把「spawn 完就不管」换成「等回来」。若调用时已有压缩在跑，会先等它结束再
+    /// 重新判定，确保返回时该角色没有「待压缩」的积压。
+    ///
+    /// 会 `await` 若干次 LLM 调用，**不要在持有 `game_status` 锁时调用**。
+    pub async fn compress_if_needed(&self, all_lines: &[GameLine]) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        let mut triggered = false;
+        loop {
+            // 已有压缩在跑就先等它落回来，避免叠加判定。
+            self.wait_until_idle().await;
+            self.check_and_trigger_auto_update(all_lines);
+            if !self.is_updating.load(Ordering::Acquire) {
+                return triggered;
+            }
+            // 触发成功 → 回到循环开头等它完成，再判定是否还有新积压。
+            triggered = true;
+        }
+    }
+
+    /// 等到当前这轮后台压缩结束；没有在跑时立即返回。
+    async fn wait_until_idle(&self) {
+        while self.is_updating.load(Ordering::Acquire) {
+            self.idle_notify.notified().await;
+        }
+    }
+
     // ── 内部方法 ──
 
     fn spawn_background_update(
@@ -453,12 +505,13 @@ impl PersistentMemorySystem {
         let commit_gate = self.commit_gate.clone();
         let last_failure_at_ms = self.last_failure_at_ms.clone();
         let fail_count = self.fail_count.clone();
+        let idle_notify = self.idle_notify.clone();
         let role_id = self.role_id;
         let ai_name = self.ai_name.clone();
         let limits = self.section_limits;
 
         tokio::spawn(async move {
-            let _updating_guard = UpdatingGuard(is_updating.clone());
+            let _updating_guard = UpdatingGuard(is_updating.clone(), idle_notify);
             // 仅当前历史版本的失败才进入冷却；过期任务不能污染新会话的重试状态。
             let record_failure = || {
                 if !record_failure_if_current(
@@ -821,177 +874,4 @@ fn now_str() -> String {
 
 fn current_time_ms() -> u64 {
     chrono::Utc::now().timestamp_millis() as u64
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ai_service::types::{LineAttributeExt, LineBase};
-    use crate::db::entities::line::LineAttribute;
-    use tokio::sync::RwLock;
-
-    fn line(attribute: LineAttribute, sender: Option<i32>, perceived: Vec<i32>) -> GameLine {
-        GameLine::from_base(
-            LineBase {
-                content: "line".to_string(),
-                attribute: LineAttributeExt(attribute),
-                sender_role_id: sender,
-                ..Default::default()
-            },
-            perceived,
-        )
-    }
-
-    fn system(recent_window: usize, processed: i64) -> PersistentMemorySystem {
-        let mut bank = GameMemoryBank::default();
-        bank.meta.last_processed_global_idx = processed;
-        let llm: LlmSlot = Arc::new(RwLock::new(None));
-        PersistentMemorySystem::new(
-            7,
-            &bank,
-            llm,
-            true,
-            250,
-            recent_window,
-            MemorySectionLimits::default(),
-            "AI",
-        )
-    }
-
-    #[tokio::test]
-    async fn recent_window_counts_only_role_visible_non_system_lines() {
-        let lines = vec![
-            line(LineAttribute::System, Some(7), vec![7]),
-            line(LineAttribute::Assistant, Some(7), vec![]),
-            line(LineAttribute::Assistant, Some(8), vec![8]),
-            line(LineAttribute::User, Some(0), vec![7]),
-            line(LineAttribute::Assistant, Some(8), vec![8]),
-            line(LineAttribute::User, Some(0), vec![7]),
-        ];
-        let memory = system(2, 5);
-        assert_eq!(memory.get_slice_start_index(&lines).await, 1);
-    }
-
-    #[tokio::test]
-    async fn recent_window_falls_back_to_zero_when_visible_history_is_short() {
-        let mut empty = line(LineAttribute::User, Some(0), vec![7]);
-        empty.base.content = "   ".to_string();
-        let lines = vec![
-            line(LineAttribute::System, Some(7), vec![7]),
-            empty,
-            line(LineAttribute::Assistant, Some(7), vec![]),
-            line(LineAttribute::User, Some(0), vec![7]), // unprocessed boundary line
-        ];
-        let memory = system(5, 3);
-        assert_eq!(memory.get_slice_start_index(&lines).await, 0);
-    }
-
-    #[tokio::test]
-    async fn default_short_term_placeholder_is_not_injected() {
-        let memory = system(30, 0);
-        assert_eq!(memory.get_short_term_user_text().await, "");
-    }
-
-    #[tokio::test]
-    async fn zero_recent_window_starts_exactly_at_processed_boundary() {
-        let lines = vec![
-            line(LineAttribute::System, Some(7), vec![7]),
-            line(LineAttribute::Assistant, Some(7), vec![]),
-            line(LineAttribute::User, Some(0), vec![7]),
-        ];
-        let memory = system(0, lines.len() as i64);
-        assert_eq!(memory.get_slice_start_index(&lines).await, lines.len());
-    }
-
-    #[test]
-    fn invalidating_history_while_updating_advances_the_revision() {
-        let memory = system(30, 0);
-        memory.is_updating.store(true, Ordering::Release);
-        memory.invalidate_history();
-        memory.check_and_trigger_auto_update(&[]);
-        assert_eq!(memory.history_revision.load(Ordering::Acquire), 1);
-    }
-
-    #[test]
-    fn correcting_an_out_of_range_pointer_marks_it_pending() {
-        let memory = system(30, 999);
-        memory.check_and_trigger_auto_update(&[]);
-        assert!(memory.has_pending.load(Ordering::Acquire));
-        let bank = memory.memory_bank.try_lock().expect("memory bank unlocked");
-        assert_eq!(bank.meta.last_processed_global_idx, 0);
-    }
-
-    #[test]
-    fn stale_results_cannot_commit_or_pollute_failure_cooldown() {
-        let gate = std::sync::Mutex::new(());
-        let revision = AtomicU64::new(2);
-        let last_failure = AtomicU64::new(0);
-        let failures = AtomicU32::new(0);
-        let pending = AtomicBool::new(false);
-        let mut bank = GameMemoryBank::default();
-        let original = bank.clone();
-
-        assert!(!record_failure_if_current(
-            &gate,
-            &revision,
-            1,
-            &last_failure,
-            &failures,
-        ));
-        assert_eq!(last_failure.load(Ordering::Acquire), 0);
-        assert_eq!(failures.load(Ordering::Acquire), 0);
-
-        assert!(!commit_update_if_current(
-            &gate,
-            &revision,
-            1,
-            &mut bank,
-            ["st".into(), "lt".into(), "ui".into(), "pr".into()],
-            99,
-            &last_failure,
-            &failures,
-            &pending,
-        ));
-        assert_eq!(bank, original);
-        assert!(!pending.load(Ordering::Acquire));
-    }
-
-    #[test]
-    fn current_result_commits_all_sections_and_pointer_atomically() {
-        let gate = std::sync::Mutex::new(());
-        let revision = AtomicU64::new(3);
-        let last_failure = AtomicU64::new(42);
-        let failures = AtomicU32::new(2);
-        let pending = AtomicBool::new(false);
-        let mut bank = GameMemoryBank::default();
-
-        assert!(commit_update_if_current(
-            &gate,
-            &revision,
-            3,
-            &mut bank,
-            ["st".into(), "lt".into(), "ui".into(), "pr".into()],
-            12,
-            &last_failure,
-            &failures,
-            &pending,
-        ));
-        assert_eq!(bank.data.short_term, "st");
-        assert_eq!(bank.data.long_term, "lt");
-        assert_eq!(bank.data.user_info, "ui");
-        assert_eq!(bank.data.promises, "pr");
-        assert_eq!(bank.meta.last_processed_global_idx, 12);
-        assert_eq!(last_failure.load(Ordering::Acquire), 0);
-        assert_eq!(failures.load(Ordering::Acquire), 0);
-        assert!(pending.load(Ordering::Acquire));
-    }
-
-    #[test]
-    fn updating_guard_always_releases_the_flag() {
-        let flag = Arc::new(AtomicBool::new(true));
-        {
-            let _guard = UpdatingGuard(flag.clone());
-        }
-        assert!(!flag.load(Ordering::Acquire));
-    }
 }

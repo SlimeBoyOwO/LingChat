@@ -1,7 +1,8 @@
 {
   "bundle": {
     "resources": {
-      "binaries/onnxruntime.dll": "onnxruntime.dll"
+      "binaries/onnxruntime.dll": "onnxruntime.dll",
+      "binaries/DirectML.dll": "DirectML.dll"
     }
   }
 }

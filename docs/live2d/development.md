@@ -26,6 +26,10 @@ The existing systems remain active. A static avatar is hidden only after a Live2
 | `src/components/game/standard/Live2DRolePresentation.vue` | Stage-result consumption, static fallback visibility, and localized unavailable result                                                               |
 | `src/components/game/live2d/model-source.ts`              | Safe model3 reference rewriting, loose-asset injection, and configured idle projection                                                               |
 | `src/components/game/live2d/live2d-interaction.ts`        | Pointer coordinate and gaze calculations                                                                                                             |
+| `src/components/game/live2d/live2d-emotion.ts`            | Emotion-key priority and the resulting expression lookup shared by the runtime and settings UI                                                       |
+| `src/components/game/live2d/live2d-touch.ts`              | Drawable-bounds touch regions and stroke-gesture detection                                                                                           |
+| `src/components/game/live2d/useLive2dTouch.ts`            | Touch runtime: pointer listeners, sway ownership, eye lid, gaze weight, touch sound, and particle pacing                                             |
+| `src/components/game/live2d/TouchParticles.vue`           | Stroke-trail motes drawn over the model during a touch                                                                                               |
 | `src/components/game/live2d/live2d-layout.ts`             | Pure layout calculations shared with tests                                                                                                           |
 | `src/components/game/live2d/live2d-motion.ts`             | Motion start/finish attribution through engine lifecycle events                                                                                      |
 | `src/components/game/live2d/useLive2dLipSync.ts`          | Passive audio decoding and mouth amplitude sampling                                                                                                  |
@@ -127,6 +131,76 @@ Do not read `window.screenX` or `availLeft` on the frontend for the work area. U
 Read eye-open parameters from the Cubism core model. Closed eyes suspend gaze updates. A reaction freezes the current focus direction and completion restores pointer tracking. Do not infer eye state from emotion names and do not force eye parameters after a motion.
 
 Each rig needs its own anchor. Texture margins, canvas dimensions, and drawable placement can differ between variants of the same character.
+
+## Touch Reactions
+
+A variant binds motions to body parts under `touch_motions`. Stroking such a part does three things: while the hand moves, the head leans with it; a bound expression goes on as soon as the stroke is accepted; and once the stroke ends and the head has settled, the motion bound to that part plays. All three parts of a binding are optional — the parts listed under `touch_motions` are exactly the touchable ones. Bindings are written by hand for now; there is no settings UI for them yet.
+
+### Expression
+
+A binding's `expression` names a model3 expression directly, not a LingChat emotion. It goes on at pointer-down rather than with the motion, so the face reacts as soon as the hand lands.
+
+It is handed back once the sway has settled and no reaction is in flight — which covers both the motion case (wait for the motion) and the sway-only case (nothing to wait for). The hand-back re-applies the expression the current emotion resolves to, so it must reuse the emotion path's lookup rather than inventing its own, and it is also forced when touch mode is left, otherwise the face keeps the pat expression indefinitely.
+
+Note this bypasses the emotion state: the touch expression is never written into the entry's emotion, precisely so the emotion path still sees a change and re-applies later.
+
+### Sway
+
+Sway drives the focus controller instead of writing head parameters directly. That controller maps one 2D input onto yaw, pitch, roll, and a little body lean, and forms roll from the product of the two axes, so a diagonal rub tilts the head. It is a speed- and acceleration-limited pursuit, not a spring: it lags and eases naturally but never oscillates on its own, which is why returning to centre is smooth and free.
+
+The input is the pointer's smoothed velocity direction, scaled by speed up to a reference value, so the feel does not depend on mouse polling rate. The amplitude cap is deliberately well below full deflection: the engine multiplies it by 30 into head yaw, while the breath controller writes the same parameters with a ±15 swing. At full deflection the write saturates and the clamp removes the breathing, leaving the head stiff. Keep it around a third or less.
+
+Standard mode otherwise holds the focus at zero so the character faces front. A stroke borrows that channel and hands it back once the sway has decayed — hence the hand-back is deferred rather than done on release, which would make the head jump.
+
+### Closing the Eyes
+
+A pat closes the character's eyes for two seconds, or until the hand is released, whichever comes first; a new pat re-arms it. Releasing opens them at once rather than finishing the two seconds, and only the role being touched closes its eyes.
+
+This overrides the eye blink rather than driving it. The blink controller writes the eye-open parameters early in `internalModel.update()`, and `beforeModelUpdate` runs after it, so writing the target there wins for that frame. The write adds the delta between the current and target values rather than setting them outright, which keeps `coreModel` typed to the narrower surface the rest of the handler uses; both values sit within `0..1`, so the intermediate never leaves the parameter range and the write-time clamp cannot clip it. The override does not persist: the engine restores its saved parameters at the end of the frame, so the blink and any motion keys are unaffected on the next one.
+
+Closing and opening are both eased over the same short duration; releasing ends the two-second window at once and the eyes ease open from wherever the lid had reached. The weight is stepped linearly against elapsed time rather than eased exponentially, because an exponential never actually reaches its target — the weight would stay non-zero forever and the per-frame hook would never go idle again.
+
+The parameters come from the variant's `eye_blink` binding, so a rig without one simply does not close.
+
+### Eye Tracking
+
+Entering touch mode makes the character look at the player, meaning the pupils follow the cursor. It is scoped to the mode rather than to a stroke, so it holds from the moment the button is pressed, across a pat, and until touch mode is left; a weight fades it in and out so neither edge snaps. Every Live2D role on the stage does it, not just the one being touched.
+
+The engine drives head and eyes from a single focus value, so the eye contribution has to be replaced rather than steered: the handler subtracts the focus value the engine wrote this frame and adds the pointer direction in its place. That cancellation is exact because nothing changes the focus between the engine's write and `beforeModelUpdate`, and both land on the same parameter — which also keeps the result inside the parameter range, so the write-time clamp cannot eat the correction. The same trick backs the pet-mode pupil compensation.
+
+This is what keeps the sway and the gaze from fighting: while a stroke is in progress the focus holds the sway, so the head leans with the hand, and the subtraction removes exactly that share from the eyes and puts the pointer direction there instead. Pointer position is maintained by the stroke handlers themselves, because standard mode has no `pointermove` listener of its own.
+
+Note the sway and the eyes are deliberately separated — the head follows the hand's motion, the eyes follow its position, and they only agree when the hand is moving.
+
+### Touch Sound
+
+A pat plays `public/audio/pet.mp3` every ~300 ms, stepping through a five-note pentatonic pattern and wrapping back rather than looping to the root, so a long stroke sounds like it is swaying rather than repeatedly dropping to the base note. Pitch comes from `playbackRate`, so one file covers the whole pattern and the timbre never changes.
+
+Each note gets its own `Audio` element: replaying a single element would cut the previous note off, and the overlap is what makes the scale audible as a run. The step resets to the root on every pointer-down, so each pat sounds the same.
+
+It follows the same gating as the particles — it stops when the hand leaves the model, not merely when the pointer is released — and is muted by the 气泡音量 (bubble volume) slider, which is this project's bus for short non-voice effects. The interval is driven from the same per-frame hook as everything else, so there is no separate timer to start and stop; the frame delta is already clamped, which bounds a stall to one late note instead of a burst.
+
+### Touch Particles
+
+A canvas overlay inside the stage's host div spawns faint pink motes and hearts along the stroke path. It is driven by distance travelled rather than by time, so a still hand emits nothing and the spacing does not change with hand speed, and it only emits while the pointer is still over a touchable part.
+
+The canvas lives inside the host rather than beside it for two reasons: the host is a stacking context, so a `z-1` canvas beats the PIXI canvas that gets appended to the same div at runtime with no z-index; and being inside the host keeps the particles under the bubbles and touch layer, which the slot renders afterwards.
+
+It has no resident particle pool, unlike the background effects under `standard/particles`: the animation frame loop stops as soon as the last mote dies, so an unpetted stage costs nothing. The canvas is sized lazily on spawn rather than on mount, because the host may not have been laid out yet when the component mounts.
+
+### Gesture
+
+A stroke is a drag, not a click, and it is measured by accumulated path length: a stroke doubles back on itself, so net displacement would not see it. A small threshold separates a deliberate rub from a drag that merely passes over the model. The motion fires on release rather than during the stroke, and only once the sway has decayed close to centre — otherwise it plays out under whatever tilt the hand left behind. That wait is a scheduling delay with a bounded backstop, not a timer used to detect the end of a motion. Pointer-up, `pointercancel`, window blur, and unmount all share one release path, because a drag can end without a pointer-up.
+
+The motion reuses the same FORCE-priority lifecycle and `startReaction` order as emotion reactions, and does not interrupt one in flight. FORCE is required: the engine rejects a request at or below the current priority.
+
+Regions come from geometry, not from the model's `HitAreas`. No shipped rig declares any, so the engine's hit-test always returns nothing. The eye-centred `focus_anchor` is the only cross-model hint for where the head is, so the default `head` / `body` / `legs` regions are expressed relative to it, and a variant without `focus_anchor` gets no default regions at all — a fallback anchor would put the head region on the torso. Ears, tails, and other rig-specific parts cannot be inferred and need an explicit `region`. The defaults are estimates: calibrate them against the target rig and override with `region` where they are wrong.
+
+Standard mode bottom-anchors the drawable and clips the lower body, so the `legs` region is usually out of reach there. Do not assume it is usable.
+
+Hit-testing converts the pointer into model-local space with `toLocal`, the inverse of the transform `updateModelFocus` applies to the gaze origin, so both stay consistent. Regions and the cached bounds are read in the same `getLocalBounds()` call as the gaze origin, because they drift with breathing and motions.
+
+The gate is the standard-mode touch mode flag, passed to the stage as `touchEnabled`. The prop defaults to false, so the settings preview is inert without a separate switch. Only rigs with Live2D are affected; characters rendering a static avatar ignore a stroke, and desktop pet mode is not wired up.
 
 ## Layout Contracts
 

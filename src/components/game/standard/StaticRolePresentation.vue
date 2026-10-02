@@ -14,7 +14,10 @@
         :duration="300"
         position="center bottom"
         :object-fit="objectFit"
-      />
+      >
+        <!-- 触摸区域叠层：必须落在 ImageAcrossFade 内部才与立绘同一个绘制盒子 -->
+        <template #overlay><slot name="overlay"></slot></template>
+      </ImageAcrossFade>
       <slot></slot>
     </div>
   </Transition>

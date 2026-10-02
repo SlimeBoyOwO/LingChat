@@ -63,6 +63,8 @@ PR #523 的目标：
 | `tools/registry.rs`               | `ToolRegistry`：注册 / 查找 / 按权限裁剪工具定义                                                  |
 | `tools/executor.rs`               | `Tool` trait、`ToolContext`、`ToolExecutor`（权限校验 → 查找 → 解析 → 2s 超时 → 稳定错误编码）    |
 | `tools/tool_loop.rs`              | `stream_with_tool_loop`：流式工具闭环（最多 3 轮）                                                |
+| `tools/agent.rs`                  | `run_tool_agent`：无头非流式运行器（God Agent 决策用，`max_rounds = 1`，不产前端事件）            |
+| `tools/god_agent.rs`              | God Agent 的两个决策工具 + `god_agent_registry()`（独立注册表，不进权限页）                       |
 | `tools/permissions.rs`            | `ToolPermissionConfig`：「场景组 × 角色组」权限矩阵、`tool_permissions.toml` 读写                 |
 | `tools/clock.rs`                  | 内置示例工具 `CurrentTimeTool`（`get_current_time`）                                              |
 | `llm/mod.rs`                      | `LlmChunk`（含 `ToolCalls`）、`LlmClient`（`complete_stream_with_tools` / `complete_with_tools`） |

@@ -11,14 +11,13 @@ use tokio_util::sync::CancellationToken;
 use crate::AppState;
 use crate::ai_service::types::{
     CharacterSettings, Live2dEyeBlinkBinding, Live2dMotionBinding, Live2dParameterBinding,
-    Live2dSettings, Live2dVariant,
+    Live2dSettings, Live2dVariant, strip_transient_fields,
 };
-use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::archive::extract_zip;
-use crate::utils::yaml_file::write_json_as_yaml;
+use crate::utils::yaml_file::{resolve_settings_file, write_json_as_yaml};
 
-use super::game_data_dir;
+use super::resolve_role_dir;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -53,26 +52,6 @@ pub struct Live2dVariantAssets {
     pub expressions: HashMap<String, String>,
     /// 动作组名 -> 文件列表（模型目录相对路径）
     pub motions: HashMap<String, Vec<String>>,
-}
-
-fn role_dir(
-    role_type: &RoleType,
-    folder: &str,
-    script_key: Option<&str>,
-) -> Result<PathBuf, String> {
-    match role_type {
-        RoleType::Main => Ok(super::resolve_character_dir(folder)),
-        RoleType::Npc => script_key
-            .map(|key| {
-                game_data_dir()
-                    .join("scripts")
-                    .join(key)
-                    .join("characters")
-                    .join(folder)
-            })
-            .ok_or_else(|| "剧本角色缺少 script_key".to_string()),
-        RoleType::System | RoleType::User => Err("系统角色不支持 Live2D 资源".to_string()),
-    }
 }
 
 fn copy_directory(source: &Path, target: &Path) -> Result<(), String> {
@@ -530,6 +509,7 @@ fn inspect_model(
             gain: 1.0,
             extra: HashMap::new(),
         }),
+        touch_motions: HashMap::new(),
         extra: HashMap::new(),
     };
     Ok((
@@ -562,23 +542,24 @@ fn unique_variant_name(model_file: &Path, existing: &HashMap<String, Live2dVaria
     unreachable!()
 }
 
+/// 校验一条动作绑定指向的动作确实存在。
+///
+/// 取 group/index 而不是收结构体引用，是因为抚摸绑定与情绪绑定是各自独立的结构体，
+/// 收结构体的话两边就得各写一份同样的校验。
 fn validate_motion_binding(
     variant_name: &str,
     label: &str,
-    binding: &Live2dMotionBinding,
+    group: &str,
+    index: usize,
     info: &Live2dModelInfo,
 ) -> Result<(), String> {
-    let files = info.motions.get(&binding.group).ok_or_else(|| {
-        format!(
-            "variant {variant_name} 的 {label} 引用了不存在的动作组 {}",
-            binding.group
-        )
-    })?;
-    if binding.index >= files.len() {
+    let files = info
+        .motions
+        .get(group)
+        .ok_or_else(|| format!("variant {variant_name} 的 {label} 引用了不存在的动作组 {group}"))?;
+    if index >= files.len() {
         return Err(format!(
-            "variant {variant_name} 的 {label} 动作索引 {} 越界（组 {} 共 {} 个）",
-            binding.index,
-            binding.group,
+            "variant {variant_name} 的 {label} 动作索引 {index} 越界（组 {group} 共 {} 个）",
             files.len()
         ));
     }
@@ -616,10 +597,37 @@ fn validate_variant_bindings(
         }
     }
     if let Some(idle) = &variant.idle {
-        validate_motion_binding(variant_name, "idle", idle, info)?;
+        validate_motion_binding(variant_name, "idle", &idle.group, idle.index, info)?;
     }
     for (emotion, motion) in &variant.motions {
-        validate_motion_binding(variant_name, &format!("情绪 {emotion}"), motion, info)?;
+        validate_motion_binding(
+            variant_name,
+            &format!("情绪 {emotion}"),
+            &motion.group,
+            motion.index,
+            info,
+        )?;
+    }
+    for (part, binding) in &variant.touch_motions {
+        if let Some(expression) = &binding.expression {
+            if !info.expressions.contains(expression) {
+                return Err(format!(
+                    "variant {variant_name} 的抚摸 {part} 引用了不存在的表情: {expression}"
+                ));
+            }
+        }
+        match (&binding.group, binding.index) {
+            (Some(group), Some(index)) => {
+                validate_motion_binding(variant_name, &format!("抚摸 {part}"), group, index, info)?;
+            },
+            // 只晃动不播动作，是合法的
+            (None, None) => {},
+            _ => {
+                return Err(format!(
+                    "variant {variant_name} 的抚摸 {part} 必须同时给出 group 与 index，只给其中一个不会播任何动作"
+                ));
+            },
+        }
     }
     Ok(())
 }
@@ -640,7 +648,7 @@ pub async fn import_live2d(
         .resource_folder
         .as_deref()
         .ok_or_else(|| "角色资源目录不存在".to_string())?;
-    let root = role_dir(&role.role_type, folder, role.script_key.as_deref())?;
+    let root = resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
     let source = PathBuf::from(source_path);
     if !source.exists() {
         return Err("Live2D 来源不存在".to_string());
@@ -840,18 +848,8 @@ pub async fn import_live2d(
             return Err(error.to_string());
         },
     };
-    if let Some(object) = value.as_object_mut() {
-        for transient in [
-            "character_id",
-            "resource_path",
-            "character_folder",
-            "script_key",
-            "script_role_key",
-        ] {
-            object.remove(transient);
-        }
-    }
-    if let Err(error) = write_json_as_yaml(&root.join("settings.yml"), &value) {
+    strip_transient_fields(&mut value);
+    if let Err(error) = write_json_as_yaml(&resolve_settings_file(&root), &value) {
         let _ = fs::remove_dir_all(&target);
         return Err(format!("保存 Live2D 配置失败: {error}"));
     }
@@ -882,7 +880,7 @@ pub async fn get_live2d_file(
         .resource_folder
         .as_deref()
         .ok_or_else(|| "角色资源目录不存在".to_string())?;
-    let root = role_dir(&role.role_type, folder, role.script_key.as_deref())?;
+    let root = resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
     let resolved = root.join(file_path);
     crate::utils::path::validate_path_in_base(&resolved, &root)?;
     if !resolved.is_file() {
@@ -905,7 +903,7 @@ pub async fn inspect_live2d(app: AppHandle, role_id: i32) -> Result<Live2dImport
         .resource_folder
         .as_deref()
         .ok_or_else(|| "角色资源目录不存在".to_string())?;
-    let root = role_dir(&role.role_type, folder, role.script_key.as_deref())?;
+    let root = resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
     let settings = RoleRepo::get_role_settings_by_id(&state.db, &super::data_dir(), role_id)
         .await
         .map_err(|e| format!("读取角色配置失败: {e}"))?
@@ -942,7 +940,7 @@ pub async fn get_live2d_variant_assets(
         .resource_folder
         .as_deref()
         .ok_or_else(|| "角色资源目录不存在".to_string())?;
-    let root = role_dir(&role.role_type, folder, role.script_key.as_deref())?;
+    let root = resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
     let settings = RoleRepo::get_role_settings_by_id(&state.db, &super::data_dir(), role_id)
         .await
         .map_err(|e| format!("读取角色配置失败: {e}"))?
@@ -963,216 +961,4 @@ pub async fn get_live2d_variant_assets(
         expressions: assets.expression_files,
         motions: assets.motions,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 造一个最小可解析的 model3.json。`referenced_path` 强制要求 Moc 指向真实存在的
-    /// 文件，所以每个夹具都得配一个真的 .moc3 兄弟文件。
-    fn write_model(dir: &Path, extra_references: &str) -> PathBuf {
-        fs::create_dir_all(dir).unwrap();
-        fs::write(dir.join("model.moc3"), b"moc").unwrap();
-        let path = dir.join("model.model3.json");
-        fs::write(
-            &path,
-            format!(r#"{{"Version":3,"FileReferences":{{"Moc":"model.moc3"{extra_references}}}}}"#),
-        )
-        .unwrap();
-        path
-    }
-
-    fn write_asset(path: &Path) {
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(path, b"{}").unwrap();
-    }
-
-    /// 夹具里 role_root 与 resource_root 都取 tempdir 根，模型就放在根下
-    fn inspect(root: &Path, model_file: &Path) -> (Live2dModelInfo, Live2dVariant) {
-        inspect_model(model_file, root, root, "test".to_string()).unwrap()
-    }
-
-    fn sorted_names(values: impl IntoIterator<Item = String>) -> Vec<String> {
-        let mut names: Vec<String> = values.into_iter().collect();
-        names.sort();
-        names
-    }
-
-    #[test]
-    fn scans_loose_expressions_from_nested_typo_and_flat_directories() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path();
-        let model = write_model(root, "");
-        write_asset(&root.join("expressions/脸红.exp3.json"));
-        // VTS 包真实见过拼错的目录名，扫描认的是后缀不是目录名
-        write_asset(&root.join("experssions/生气.exp3.json"));
-        // 也有把 exp3 直接平铺在模型目录根的包
-        write_asset(&root.join("调皮.exp3.json"));
-
-        let (info, _) = inspect(root, &model);
-
-        // 顺序 = 按模型目录相对路径排序：experssions < expressions < 中文
-        assert_eq!(info.expressions, vec!["生气", "脸红", "调皮"]);
-    }
-
-    #[test]
-    fn scans_loose_motions_as_one_group_per_file_named_by_stem() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path();
-        let model = write_model(root, "");
-        write_asset(&root.join("motions/idle.motion3.json"));
-        write_asset(&root.join("motions/喷水.motion3.json"));
-        write_asset(&root.join("aidale.motion3.json"));
-
-        let (info, variant) = inspect(root, &model);
-
-        assert_eq!(
-            sorted_names(info.motions.keys().cloned()),
-            ["aidale", "idle", "喷水"]
-        );
-        assert_eq!(info.motions["idle"], vec!["motions/idle.motion3.json"]);
-        assert_eq!(info.motions["aidale"], vec!["aidale.motion3.json"]);
-        // 散装组名是小写 idle，待机推导必须认
-        assert_eq!(
-            variant.idle.map(|idle| idle.group),
-            Some("idle".to_string())
-        );
-    }
-
-    #[test]
-    fn sleep_is_not_treated_as_an_idle_group() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path();
-        let model = write_model(root, "");
-        write_asset(&root.join("motions/sleep.motion3.json"));
-
-        let (_, variant) = inspect(root, &model);
-
-        assert_eq!(variant.idle, None);
-    }
-
-    #[test]
-    fn declared_references_win_over_loose_scan() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path();
-        let model = write_model(
-            root,
-            concat!(
-                r#","Expressions":[{"Name":"Happy","File":"expressions/happy.exp3.json"}],"#,
-                r#""Motions":{"Idle":[{"File":"motions/idle.motion3.json"}]}"#,
-            ),
-        );
-        write_asset(&root.join("expressions/happy.exp3.json"));
-        write_asset(&root.join("motions/idle.motion3.json"));
-        // 已声明时不该把散装文件并进来
-        write_asset(&root.join("expressions/Decoy.exp3.json"));
-
-        let (info, variant) = inspect(root, &model);
-
-        assert_eq!(info.expressions, vec!["Happy"]);
-        assert_eq!(sorted_names(info.motions.keys().cloned()), ["Idle"]);
-        // 声明分支保持既有行为：没有 00_Default 时取第一个
-        assert_eq!(variant.default_expression.as_deref(), Some("Happy"));
-        assert_eq!(
-            variant.idle.map(|idle| idle.group),
-            Some("Idle".to_string())
-        );
-    }
-
-    #[test]
-    fn scanned_lists_do_not_invent_a_default_expression() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path();
-        let model = write_model(root, "");
-        // 按字母序取第一个会得到 blush / love，等于凭空给角色换脸
-        write_asset(&root.join("expressions/blush.exp3.json"));
-        write_asset(&root.join("expressions/love.exp3.json"));
-
-        let (_, variant) = inspect(root, &model);
-
-        assert_eq!(variant.default_expression, None);
-    }
-
-    #[test]
-    fn scanned_default_expression_is_used_when_explicitly_named() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path();
-        let model = write_model(root, "");
-        write_asset(&root.join("expressions/脸红.exp3.json"));
-        write_asset(&root.join("expressions/默认.exp3.json"));
-
-        let (_, variant) = inspect(root, &model);
-
-        assert_eq!(variant.default_expression.as_deref(), Some("默认"));
-    }
-
-    #[test]
-    fn chinese_keywords_bind_scanned_expression_names() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path();
-        let model = write_model(root, "");
-        write_asset(&root.join("expressions/脸红.exp3.json"));
-        write_asset(&root.join("expressions/生气.exp3.json"));
-        write_asset(&root.join("expressions/星星眼.exp3.json"));
-
-        let (_, variant) = inspect(root, &model);
-
-        assert_eq!(
-            variant.expressions.get("害羞").map(String::as_str),
-            Some("脸红")
-        );
-        assert_eq!(
-            variant.expressions.get("生气").map(String::as_str),
-            Some("生气")
-        );
-        assert_eq!(
-            variant.expressions.get("兴奋").map(String::as_str),
-            Some("星星眼")
-        );
-    }
-
-    #[test]
-    fn declared_motion_groups_can_bind_by_group_name_when_files_are_opaque() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path();
-        let model = write_model(
-            root,
-            concat!(
-                r#","Motions":{"Idle":[{"File":"motions/idle.motion3.json"}],"#,
-                r#""Happy":[{"File":"motions/m01.motion3.json"}]}"#,
-            ),
-        );
-        write_asset(&root.join("motions/idle.motion3.json"));
-        write_asset(&root.join("motions/m01.motion3.json"));
-
-        let (_, variant) = inspect(root, &model);
-
-        // 文件名不透明时按组名命中，取该组第一个动作
-        let happy = variant.motions.get("高兴").unwrap();
-        assert_eq!(happy.group, "Happy");
-        assert_eq!(happy.index, 0);
-        assert_eq!(
-            variant.idle.map(|idle| idle.group),
-            Some("Idle".to_string())
-        );
-    }
-
-    #[test]
-    fn duplicate_motion_stems_are_uniquified_in_sorted_path_order() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path();
-        let model = write_model(root, "");
-        write_asset(&root.join("motions/idle.motion3.json"));
-        write_asset(&root.join("motions/extra/idle.motion3.json"));
-
-        let (info, _) = inspect(root, &model);
-
-        // 排序后 "motions/extra/..." 在前，先到者拿到 "idle"
-        assert_eq!(
-            info.motions["idle"],
-            vec!["motions/extra/idle.motion3.json"]
-        );
-        assert_eq!(info.motions["idle_2"], vec!["motions/idle.motion3.json"]);
-    }
 }

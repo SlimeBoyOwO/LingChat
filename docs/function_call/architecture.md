@@ -124,19 +124,21 @@ let tool_registry = Arc::new(tools::built_in_registry(role_names)?);
 execute(name, arguments, context)
   ① context.allows(name) 不通过        → {ok:false, error:{code:"tool_not_allowed"}}
   ② registry.get(name) 找不到          → {ok:false, error:{code:"unknown_tool"}}
-  ③ arguments 不是合法 JSON            → {ok:false, error:{code:"invalid_json"}}
-  ④ arguments 不是 JSON object         → {ok:false, error:{code:"invalid_arguments"}}
-  ⑤ tool.execute() 返回 Err            → {ok:false, error:{code:"tool_error", message}}
-  ⑥ 超过 2 秒                          → {ok:false, error:{code:"timeout"}}
-  ⑦ 结果序列化失败                     → {ok:false, error:{code:"serialization_error"}}
-  ⑧ 成功                               → 结果的 JSON 字符串
+  ③ arguments 不是合法 JSON            → {ok:false, error:{code:"invalid_json"}}          （宽松模式跳过）
+  ④ arguments 不是 JSON object         → {ok:false, error:{code:"invalid_arguments"}}     （宽松模式跳过）
+  ⑤ schema 校验不过                    → {ok:false, error:{code:"invalid_arguments"}}     （宽松模式跳过）
+  ⑥ tool.execute() 返回 Err            → {ok:false, error:{code:"tool_error", message}}
+  ⑦ 超过 timeout_hint（默认 2 秒）     → {ok:false, error:{code:"timeout"}}
+  ⑧ 结果序列化失败                     → {ok:false, error:{code:"serialization_error"}}
+  ⑨ 成功                               → 结果的 JSON 字符串
 ```
 
 要点：
 
 - **`ToolContext` 只读**：持有一个 `allowed_tools: HashSet<String>`（本轮由权限矩阵预计算），`Tool` 实现里可自行 `context.allows(name)` 二次校验；
-- **2 秒超时**：`tokio::time::timeout`，慢工具直接返回 `timeout` 错误结果，不卡生成管线；
-- **错误可回填**：错误 JSON 走 `LlmMessage::tool_result` 回填给模型 —— 模型会看到「工具调用了、但报错了」，这是与「工具抛异常导致整轮崩溃」的本质区别。
+- **超时可覆写**：`Tool::timeout_hint()` 默认 `None` → 执行器用 2 秒；God Agent 的 `update_affection` 因为要写库而放宽到 30 秒；
+- **参数校验可放宽**：`Tool::lenient_arguments()` 默认 `false`；覆写为 `true` 则跳过 ③④⑤，改用 `parse_tool_args` 归一化后由工具自行容错解析。只有需要容忍模型把整数写成 `"6"` 的 God Agent 决策工具开了这个口子；
+- **错误可回填**：错误 JSON 走 `LlmMessage::tool_result` 回填给模型 —— 模型会看到「工具调用了、但报错了」，这是与「工具抛异常导致整轮崩溃」的本质区别。上帝 Agent 的决策是单发的，没有回填这一步，所以它必须自己把 `ok:false` 重新提升为 `Err`（见 `god-agent/architecture.md` §4）。
 
 ## 5. 工具循环（stream_with_tool_loop）
 
@@ -290,16 +292,20 @@ async fn run_pipeline(&self, context: Vec<LlmMessage>, ...) -> Result<String> {
 
 持久化：`save_repo.rs` 读写存档时同步读写 `tool_call` 列；`m20260727_add_line_tool_call` 迁移给 `line` 表加列；前端展示历史时按 `attribute === 'tool'` 过滤（`game/actions.ts`）—— **工具过程对玩家不可见，只活在台词表与记忆里**。
 
-## 9. 与既有 God Agent 工具的关系（两条路径并存）
+## 9. 与 God Agent 工具的关系（共用基础设施，闭环形态不同）
 
-PR #523 引入的是「通用聊天工具」路径；God Agent 的「选说话人」是**另一条独立的专用路径**：
+God Agent 的两个能力（`select_next_speaker` / `update_affection`）现在是本子系统的**真实工具**，实现 `Tool` trait、走同一个 `ToolExecutor`，因而共享 schema 校验、超时与统一的错误编码。差别只在注册表与闭环形态：
 
-|          | 通用聊天工具（PR #523）                  | God Agent 选说话人（既有）                         |
-| -------- | ---------------------------------------- | -------------------------------------------------- |
-| 注册     | `ToolRegistry`                           | God Agent 私有 `tools::select_next_speaker_tool()` |
-| 入口     | `complete_stream_with_tools`（流式循环） | `complete_with_tools`（非流式单次）                |
-| 权限     | 「场景组 × 角色组」矩阵                  | 无（硬编码）                                       |
-| 结果去向 | 台词表 + 记忆                            | 仅用于选说话者，不进台词表                         |
+|          | 通用聊天工具（PR #523）             | God Agent 决策工具                                       |
+| -------- | ----------------------------------- | -------------------------------------------------------- |
+| 注册     | `built_in_registry()`（含权限页）   | `tools::god_agent::god_agent_registry()`（独立注册表）   |
+| 权限     | 「场景组 × 角色组」矩阵             | 无（不进权限矩阵，也不出现在 `tool_permissions.toml`）   |
+| 入口     | `stream_with_tool_loop`（流式闭环） | `tools::agent::run_tool_agent`（非流式，`max_rounds=1`） |
+| 结果去向 | 台词表 + 记忆                       | 副作用就地落地（切说话者 / 改好感度），不进台词表        |
+
+God Agent 的决策是单发的：执行结果不回填给 LLM，因此 `agent.rs` 不需要聊天侧那套 continuation / final-synthesis 提示词，也不产任何前端事件。
+
+为了让这两个工具容忍模型把整数写成 `"6"`、把参数包成 `{"arguments":{...}}`，`Tool` trait 上加了 `lenient_arguments()`（默认 `false`）：覆写为 `true` 时执行器跳过 JSON object 硬门槛与 schema 校验，改用 `parse_tool_args` 归一化。既有 31 个聊天工具不受影响。
 
 ## 10. 设计取舍
 
