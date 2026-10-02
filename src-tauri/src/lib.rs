@@ -1,22 +1,14 @@
-mod achievements;
-mod adventures;
-mod ai_service;
-mod api;
-mod app;
-mod cast;
-mod config;
-mod data_dir;
-mod db;
-mod lan_sync;
-mod manifest;
-mod migration;
-mod plugin_contract;
-mod plugins;
-mod resource_sync;
-pub mod utils;
+//! Tauri 外壳 crate。
+//!
+//! 业务模块（api / ai_service / db / …）已拆至 `ling-chat-main`，插件系统拆至
+//! `ling-chat-plugins`；本 crate 只保留 Tauri 外壳：`lib.rs` / `main.rs` 与
+//! `app/` 组合根（状态注入、命令注册、setup 编排、日志与平台适配）。
 
-// 全局状态容器已拆分至 `app::state`，这里重导出以保持 `crate::AppState`
-pub use app::state::{AppState, ChatComponents, InnerAppState, ScreenshotCaptureState};
+mod app;
+
+// 全局状态容器定义在 `ling_chat_main::state`，这里重导出以保持外壳内部
+// `crate::AppState` 等既有路径不变。
+pub use ling_chat_main::{AppState, ChatComponents, InnerAppState, ScreenshotCaptureState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

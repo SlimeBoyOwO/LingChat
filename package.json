@@ -17,10 +17,10 @@
     "android:devbuild": "node scripts/prepare-bundled-resources.mjs 5 && tauri android build -d -t aarch64 --apk",
     "ios:init": "tauri ios init",
     "ios:build": "bash scripts/build-ios-unsigned.sh",
-    "format": "prettier --write . && cargo fmt -p ling_chat",
-    "format:rs": "cargo fmt -p ling_chat",
+    "format": "prettier --write . && cargo fmt -p ling_chat -p ling-chat-main -p ling-chat-plugins",
+    "format:rs": "cargo fmt -p ling_chat -p ling-chat-main -p ling-chat-plugins",
     "format:frontend": "prettier --write \"src/**/*.{vue,js,ts,css,scss}\"",
-    "format:check": "prettier --check . && cargo fmt -p ling_chat -- --check",
+    "format:check": "prettier --check . && cargo fmt -p ling_chat -p ling-chat-main -p ling-chat-plugins -- --check",
     "check:rs": "cargo check --workspace",
     "gen:effects": "node scripts/generate-known-effects.mjs",
     "check:effects": "node scripts/generate-known-effects.mjs --check",
@@ -76,7 +76,7 @@
     ],
     "src/components/game/standard/particles/index.ts": [
       "node scripts/generate-known-effects.mjs",
-      "git add src-tauri/src/ai_service/game_system/script_engine/events/known_effects.rs"
+      "git add crates/ling-chat-main/src/ai_service/game_system/script_engine/events/known_effects.rs"
     ]
   }
 }

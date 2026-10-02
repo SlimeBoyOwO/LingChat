@@ -62,7 +62,7 @@
 
 ## 3. Tauri 命令清单
 
-注册位置：`src-tauri/src/lib.rs:488-493`，由 `RoleArchiveState` 注入。
+注册位置：`src-tauri/src/app/commands.rs`（命令注册表），`RoleArchiveState` 由 `src-tauri/src/app/setup/mod.rs` 注入。
 
 | 命令                    | 入口         | 说明                                                                                      |
 | ----------------------- | ------------ | ----------------------------------------------------------------------------------------- |
@@ -119,7 +119,7 @@ idle─┤     └─► error ─► (dismiss)
 
 ## 6. 后端架构
 
-### 6.1 模块拆分（`src-tauri/src/api/role_archive/`）
+### 6.1 模块拆分（`crates/ling-chat-main/src/api/role_archive/`）
 
 | 文件                 | 职责                                                                                                                                              |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -128,7 +128,7 @@ idle─┤     └─► error ─► (dismiss)
 | `import_pipeline.rs` | `do_import`、`write_temp_archive`、`prepare_import_source`、`sanitize_role_folder_name`、`find_role_id_by_folder`、`parse_format`、`parse_policy` |
 | `export_pipeline.rs` | `compress_role_to_temp`、`sanitize_file_name`                                                                                                     |
 
-### 6.2 归档工具（`src-tauri/src/utils/archive/`）
+### 6.2 归档工具（`crates/ling-chat-main/src/utils/archive/`）
 
 | 文件              | 职责                                                                                                                                           |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -179,22 +179,22 @@ Tauri 命令层把所有错误转成 `String`，前端通过 `invoke` 的 `Promi
 
 ## 10. 关键代码位置
 
-| 文件                                                | 用途                   |
-| --------------------------------------------------- | ---------------------- |
-| `src-tauri/src/api/role_archive/mod.rs`             | 5 个 Tauri 命令 + 类型 |
-| `src-tauri/src/api/role_archive/state.rs`           | 全局状态与守卫         |
-| `src-tauri/src/api/role_archive/import_pipeline.rs` | 导入流水线             |
-| `src-tauri/src/api/role_archive/export_pipeline.rs` | 导出流水线             |
-| `src-tauri/src/utils/archive/mod.rs`                | 公共类型与 API         |
-| `src-tauri/src/utils/archive/safety.rs`             | 路径与压缩比安全       |
-| `src-tauri/src/utils/archive/extract.rs`            | zip / 7z 解压          |
-| `src-tauri/src/utils/archive/compress.rs`           | zip / 7z 压缩          |
-| `src-tauri/src/utils/archive/resolve.rs`            | 冲突策略               |
-| `src/composables/useRoleImportExport.ts`            | 前端调度               |
-| `src/stores/modules/ui/role-archive.ts`             | 进度状态 store         |
-| `src/components/ui/ImportProgressBar.vue`           | 进度条 UI              |
-| `src/components/ui/RoleArchiveProgress.vue`         | 进度条挂载点           |
-| `src/api/services/role-archive.ts`                  | invoke 封装            |
+| 文件                                                            | 用途                   |
+| --------------------------------------------------------------- | ---------------------- |
+| `crates/ling-chat-main/src/api/role_archive/mod.rs`             | 5 个 Tauri 命令 + 类型 |
+| `crates/ling-chat-main/src/api/role_archive/state.rs`           | 全局状态与守卫         |
+| `crates/ling-chat-main/src/api/role_archive/import_pipeline.rs` | 导入流水线             |
+| `crates/ling-chat-main/src/api/role_archive/export_pipeline.rs` | 导出流水线             |
+| `crates/ling-chat-main/src/utils/archive/mod.rs`                | 公共类型与 API         |
+| `crates/ling-chat-main/src/utils/archive/safety.rs`             | 路径与压缩比安全       |
+| `crates/ling-chat-main/src/utils/archive/extract.rs`            | zip / 7z 解压          |
+| `crates/ling-chat-main/src/utils/archive/compress.rs`           | zip / 7z 压缩          |
+| `crates/ling-chat-main/src/utils/archive/resolve.rs`            | 冲突策略               |
+| `src/composables/useRoleImportExport.ts`                        | 前端调度               |
+| `src/stores/modules/ui/role-archive.ts`                         | 进度状态 store         |
+| `src/components/ui/ImportProgressBar.vue`                       | 进度条 UI              |
+| `src/components/ui/RoleArchiveProgress.vue`                     | 进度条挂载点           |
+| `src/api/services/role-archive.ts`                              | invoke 封装            |
 
 ## 11. 已知约束
 

@@ -18,8 +18,8 @@
 //! 因此原先每一处 `?` 表达式都无需改写。
 
 use crate::app::logging::LogFilterHandle;
-use crate::app::state::AppState;
-use crate::{ai_service, api, cast, data_dir, lan_sync, resource_sync, utils};
+use ling_chat_main::{ai_service, api, cast, data_dir, lan_sync, resource_sync, utils};
+use ling_chat_main::AppState;
 use tauri::Manager;
 
 mod asr;
@@ -37,17 +37,17 @@ pub fn setup(
     utils::log_bridge::set_app_handle(app.handle().clone());
 
     // 插件脚本在独立线程执行，需要一份全局句柄才能访问宿主状态
-    crate::plugins::set_app_handle(app.handle().clone());
+    ling_chat_plugins::set_app_handle(app.handle().clone());
 
     // 回复信号：宿主每产出一条 ai:reply 就经此回调转发给订阅的插件。generator
     // 线程拿不到 AppHandle，故用全局回调；回调内自行 spawn 到 async runtime。
     {
         let handle = app.handle().clone();
-        crate::plugin_contract::set_reply_hook(std::sync::Arc::new(move |resp| {
+        ling_chat_main::plugin_contract::set_reply_hook(std::sync::Arc::new(move |resp| {
             let handle = handle.clone();
             let resp = resp.clone();
             tauri::async_runtime::spawn(async move {
-                crate::plugins::signal::emit_ai_reply(&handle, &resp).await;
+                ling_chat_plugins::signal::emit_ai_reply(&handle, &resp).await;
             });
         }));
     }

@@ -62,9 +62,9 @@ pnpm tauri ios dev "iPhone 17 Pro"             # 设备名可换成任意可用�
 
 - **`tauri ios dev` 前必须先有 `gen/apple/assets/data/data.7z`**（`prepare-bundled-resources.mjs` 生成），
   否则首启播种失败，setup 报错后在 `did_finish_launching` 内触发不可 unwind 的 panic（SIGABRT）。
-- 不要给该命令设置相对路径的 `CARGO_TARGET_DIR`（如 `src-tauri/target`）：cargo 会把它解析到
-  `src-tauri` 内部（如 `src-tauri/src-tauri/target`），tauri-cli 的文件 watcher 监听到 target 目录
-  变化会无限触发重建-重部署循环。默认（不设该变量，产物落在 `src-tauri/target`）即正常。
+- 不要给该命令设置相对路径的 `CARGO_TARGET_DIR`（如 `target` 或 `src-tauri/target`）：cargo 会把它
+  解析到 manifest 所在目录内部（如 `src-tauri/src-tauri/target`），tauri-cli 的文件 watcher 监听到
+  target 目录变化会无限触发重建-重部署循环。默认（不设该变量，产物落在 workspace 根的 `target`）即正常。
 
 ## 打包无签名 IPA
 

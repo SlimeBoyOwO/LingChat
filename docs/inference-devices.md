@@ -57,7 +57,7 @@ ash = { version = "0.38", default-features = false, features = ["loaded"] }
 
 ### 4.2 Windows/DirectML 枚举（DXGI）
 
-Windows 端用 DXGI 枚举 DirectML 可用的 GPU，位于 `src-tauri/src/utils/device.rs` 的
+Windows 端用 DXGI 枚举 DirectML 可用的 GPU，位于 `crates/ling-chat-main/src/utils/device.rs` 的
 `#[cfg(target_os = "windows")]` 分支：
 
 ```rust
@@ -170,7 +170,7 @@ _ if s.starts_with("device:") => { /* → InferenceDevice::Specific(id) */ }
 
 ### 4.6 后端命令
 
-`tts_local_list_devices`（`src-tauri/src/ai_service/tts/local/mod.rs`）
+`tts_local_list_devices`（`crates/ling-chat-main/src/ai_service/tts/local/mod.rs`）
 委托 `crate::utils::device::list_devices()`，前端经 `TtsLocal.listDevices()` 调用。
 
 ## 5. 设备选择与热切换流程
@@ -230,10 +230,10 @@ WebGPU EP 的 `deviceId` 选项是否被 ORT 采纳需真机双显卡复核—�
 
 ## 8. 相关代码位置
 
-| 内容        | 路径                                                                          |
-| ----------- | ----------------------------------------------------------------------------- |
-| 枚举 / 解析 | `src-tauri/src/utils/device.rs`                                               |
-| 后端命令    | `src-tauri/src/ai_service/tts/local/mod.rs`（`tts_local_list_devices` 等）    |
-| EP 组装     | `src-tauri/patches/sbv2_core/src/model.rs`（`webgpu` 分支，`with_device_id`） |
-| 前端选择器  | `src/components/settings/pages/SettingsTts.vue`                               |
-| 依赖        | `src-tauri/Cargo.toml`（Windows target `windows` DXGI / Linux target `ash`）  |
+| 内容        | 路径                                                                                   |
+| ----------- | -------------------------------------------------------------------------------------- |
+| 枚举 / 解析 | `crates/ling-chat-main/src/utils/device.rs`                                            |
+| 后端命令    | `crates/ling-chat-main/src/ai_service/tts/local/mod.rs`（`tts_local_list_devices` 等） |
+| EP 组装     | `src-tauri/patches/sbv2_core/src/model.rs`（`webgpu` 分支，`with_device_id`）          |
+| 前端选择器  | `src/components/settings/pages/SettingsTts.vue`                                        |
+| 依赖        | `src-tauri/Cargo.toml`（Windows target `windows` DXGI / Linux target `ash`）           |

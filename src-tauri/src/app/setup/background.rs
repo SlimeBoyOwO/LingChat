@@ -5,8 +5,9 @@
 
 use std::sync::Arc;
 
-use crate::app::state::AppState;
-use crate::{ai_service, api, cast, config, plugins};
+use ling_chat_main::AppState;
+use ling_chat_main::{ai_service, api, cast, config};
+use ling_chat_plugins as plugins;
 use tauri::Manager;
 
 /// 启动后台任务与处理器。

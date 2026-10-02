@@ -1,5 +1,5 @@
 [workspace]
-members = ["src-tauri"]
+members = ["src-tauri", "crates/ling-chat-main", "crates/ling-chat-plugins"]
 resolver = "2"
 
 # [patch] 与 [profile] 只能放在 workspace 根：成员 crate 里的这两段会被 Cargo 静默忽略。

@@ -6,8 +6,8 @@ use anyhow::{Result, anyhow};
 use sea_orm::*;
 use tauri::AppHandle;
 
-use crate::ai_service::message_system::events;
-use crate::db::entities::line;
+use ling_chat_main::ai_service::message_system::events;
+use ling_chat_main::db::entities::line;
 
 /// 清理统计信息。
 #[derive(Debug, Clone, Default)]
@@ -36,7 +36,7 @@ pub async fn cleanup_orphan_voice_files(
     tracing::info!("数据库中引用了 {} 个语音文件", referenced.len());
 
     // 2. 检查 voice/ 目录是否存在（首次运行可能还没有）
-    let voice_dir = crate::api::voice_dir();
+    let voice_dir = ling_chat_main::api::voice_dir();
     if !voice_dir.exists() {
         tracing::info!("语音目录不存在，跳过清理");
         events::emit_tts_cleanup(app, 0, 0, 0);
@@ -90,7 +90,7 @@ pub async fn cleanup_orphan_voice_files(
 }
 
 async fn count_orphan_voice_files(referenced: &HashSet<String>) -> Result<(usize, u64)> {
-    let voice_dir = crate::api::voice_dir();
+    let voice_dir = ling_chat_main::api::voice_dir();
     if !voice_dir.exists() {
         return Ok((0, 0));
     }

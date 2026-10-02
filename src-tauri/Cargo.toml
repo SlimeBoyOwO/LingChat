@@ -29,6 +29,9 @@ custom-protocol = ["tauri/custom-protocol"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# 业务主 crate 与插件 crate（原 src-tauri/src 下的模块已拆分至此）
+ling-chat-main = { path = "../crates/ling-chat-main" }
+ling-chat-plugins = { path = "../crates/ling-chat-plugins" }
 # macos-private-api：macOS 上透明窗口（桌宠模式）的必要条件。缺少它时 tauri.conf.json
 # 的 transparent: true 会被静默忽略，webview 仍然绘制不透明白底。
 # 该 feature 内部由 cfg(target_os = "macos") 门控，Windows / Linux / Android 无影响。
@@ -111,19 +114,6 @@ sevenz-rust2 = "0.21"
 sha2 = "0.10"
 tempfile = "3"
 zip = { version = "2", default-features = false, features = ["deflate"] }
-
-# 插件系统：嵌入 RustPython 跑插件 Python 脚本（目前是一个受限沙箱）。
-# 桌面与移动端（Android/iOS）都编译，供安卓自测。
-rustpython-vm = { version = "0.5", default-features = false, features = [
-    "compiler",
-    "gc",
-    "stdio",
-    "serde",
-    "freeze-stdlib",
-] }
-rustpython-pylib = { version = "0.5", features = ["freeze-stdlib"] }
-rustpython-derive = "0.5"
-
 
 # LAN Sync
 axum = { version = "0.7", features = ["tokio", "ws"] }

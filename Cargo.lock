@@ -4285,7 +4285,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ling_chat"
+name = "ling-chat-main"
 version = "0.5.2"
 dependencies = [
  "anyhow",
@@ -4312,9 +4312,92 @@ dependencies = [
  "regex",
  "reqwest 0.13.3",
  "rustls",
+ "sbv2_core",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sevenz-rust2",
+ "sha2 0.10.9",
+ "tauri",
+ "tauri-plugin-android-fs",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-screenshots",
+ "tauri-plugin-store",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "tokio-util",
+ "toml 0.8.2",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "webpki-roots 0.26.11",
+ "wgpu",
+ "windows 0.62.2",
+ "zip 2.4.2",
+]
+
+[[package]]
+name = "ling-chat-plugins"
+version = "0.5.2"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "futures-util",
+ "ling-chat-main",
+ "reqwest 0.13.3",
  "rustpython-derive",
  "rustpython-pylib",
  "rustpython-vm",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tauri",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "tokio-util",
+ "toml 0.8.2",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "ling_chat"
+version = "0.5.2"
+dependencies = [
+ "anyhow",
+ "ash",
+ "async-stream",
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "encoding_rs",
+ "futures-executor",
+ "futures-util",
+ "genai",
+ "if-addrs",
+ "image",
+ "indoc",
+ "infer",
+ "ling-chat-main",
+ "ling-chat-plugins",
+ "mdns-sd",
+ "ndarray",
+ "once_cell",
+ "ort",
+ "rand 0.8.7",
+ "regex",
+ "reqwest 0.13.3",
+ "rustls",
  "sbv2_core",
  "sea-orm",
  "sea-orm-migration",

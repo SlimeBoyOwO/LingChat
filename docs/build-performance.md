@@ -3,8 +3,15 @@
 > 记录 #603（内置 TTS 推理 GPU 加速，提交 `85ae3757`）之后 Rust 侧增量编译明显变慢的
 > 排查结论与优化措施。
 >
-> 相关文件：`src-tauri/Cargo.toml`、`.cargo/config.toml`、`src-tauri/.cargo/config.toml`、
+> 相关文件：`Cargo.toml`（仓库根 workspace）、`.cargo/config.toml`、`src-tauri/.cargo/config.toml`、
 > `docs/ios-build.md`。
+>
+> **2026-10 更新**：后端已拆为 Cargo workspace（仓库根 `Cargo.toml` + `crates/ling-chat-main`
+>
+> - `crates/ling-chat-plugins`）。`Cargo.lock` 已从 `src-tauri/` 上移到仓库根；target 目录
+>   也从 `src-tauri/target` 变为仓库根 `target/`；性能相关的 `[profile.*]` 覆盖集中在仓库根
+>   `Cargo.toml`（workspace 成员里的 profile 会被静默忽略）。下文若出现「没有 workspace」
+>   「`src-tauri/Cargo.lock`」「`--manifest-path src-tauri/Cargo.toml`」等旧表述，请按此理解。
 
 ## 1. 结论摘要
 
@@ -17,7 +24,7 @@
 | #   | 措施                                                   | 位置                      |
 | --- | ------------------------------------------------------ | ------------------------- |
 | 1   | `crate-type` 去掉 `staticlib`                          | `src-tauri/Cargo.toml`    |
-| 2   | 依赖与 proc-macro 不生成调试符号                       | `src-tauri/Cargo.toml`    |
+| 2   | 依赖与 proc-macro 不生成调试符号                       | 仓库根 `Cargo.toml`       |
 | 3   | Windows 链接器改用 `rust-lld`                          | 两份 `.cargo/config.toml` |
 | 4   | 两份 `.cargo/config.toml` 加同步警告（防止静默不一致） | 两份 `.cargo/config.toml` |
 
@@ -147,9 +154,10 @@ debug = false
 `build-override` 管 build script 与 proc-macro，`package."*"` 管普通依赖。
 自己写的代码仍保留 `[profile.dev] debug = 1`，可以正常下断点。
 
-放在 `src-tauri/Cargo.toml` 而不是 `.cargo/config.toml` 有两个原因：
-`package` 覆盖本来就只支持 manifest；且 manifest 的 profile 不受 cwd 影响，
-天然绕开「两份 config 要同步」的问题（见 4.4）。
+放在**仓库根 `Cargo.toml`**（workspace 根）而不是 `.cargo/config.toml` 有两个原因：
+`package` 覆盖本来就只支持 manifest；且 workspace 根的 profile 不受 cwd 影响，
+天然绕开「两份 config 要同步」的问题（见 4.4）。注意放在成员 crate（如
+`src-tauri/Cargo.toml`）里的 profile 会被 Cargo **静默忽略**。
 
 ### 4.3 Windows 链接器改用 `rust-lld`
 

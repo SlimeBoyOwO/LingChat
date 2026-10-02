@@ -22,26 +22,27 @@ use tauri::{App, Manager};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
-use crate::ai_service::emotion::EmotionClassifier;
-use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
-use crate::ai_service::god_agent::GodAgentCore;
-use crate::ai_service::god_agent::config::resolve_god_agent_provider;
-use crate::ai_service::llm::LlmSlot;
-use crate::ai_service::llm::provider_config::{
+use ling_chat_main::ai_service::emotion::EmotionClassifier;
+use ling_chat_main::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
+use ling_chat_main::ai_service::god_agent::GodAgentCore;
+use ling_chat_main::ai_service::god_agent::config::resolve_god_agent_provider;
+use ling_chat_main::ai_service::llm::LlmSlot;
+use ling_chat_main::ai_service::llm::provider_config::{
     build_llm_client_from_provider, resolve_chat_provider, resolve_translate_provider,
 };
-use crate::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
-use crate::ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
-use crate::ai_service::service::{AIService, SharedAIService};
-use crate::ai_service::translator::Translator;
-use crate::ai_service::tts::local::LocalTtsRuntime;
-use crate::ai_service::types::CharacterSettings;
-use crate::app::state::{ChatComponents, InnerAppState, ScreenshotCaptureState};
-use crate::config::{self, AppConfig};
-use crate::db;
-use crate::db::managers::role_repo::RoleRepo;
-use crate::utils::prompt::PromptOptions;
-use crate::{achievements, ai_service, api, plugins};
+use ling_chat_main::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
+use ling_chat_main::ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
+use ling_chat_main::ai_service::service::{AIService, SharedAIService};
+use ling_chat_main::ai_service::translator::Translator;
+use ling_chat_main::ai_service::tts::local::LocalTtsRuntime;
+use ling_chat_main::ai_service::types::CharacterSettings;
+use ling_chat_main::{ChatComponents, InnerAppState, ScreenshotCaptureState};
+use ling_chat_main::config::{self, AppConfig};
+use ling_chat_main::db;
+use ling_chat_main::db::managers::role_repo::RoleRepo;
+use ling_chat_main::utils::prompt::PromptOptions;
+use ling_chat_main::{achievements, ai_service, api};
+use ling_chat_plugins as plugins;
 
 /// 建图结果。
 pub(super) struct Services {
@@ -177,7 +178,7 @@ pub(super) fn build_service_graph(
     // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）。
     // `PluginManager` 以 `Arc<PluginManager>` 单独 manage，供插件侧代码用
     // `app.state::<Arc<PluginManager>>()` 取自己；宿主业务侧只经下面的窄接口读取资源。
-    let plugin_resources: Arc<dyn crate::plugin_contract::PluginResourceSource> = {
+    let plugin_resources: Arc<dyn ling_chat_main::plugin_contract::PluginResourceSource> = {
         let data_dir = api::data_dir();
         let plugins_root = data_dir.join("plugins");
         if std::fs::create_dir_all(&plugins_root).is_err() {

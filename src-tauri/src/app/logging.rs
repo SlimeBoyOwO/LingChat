@@ -9,7 +9,7 @@ use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-use crate::{config, data_dir, utils};
+use ling_chat_main::{config, data_dir, utils};
 
 /// 本地时间格式化器，用于日志输出的时间戳。
 struct LocalTimer;
@@ -25,8 +25,15 @@ impl FormatTime for LocalTimer {
 /// `genai_debug` 为 true 时把 `genai` crate 的日志级别从 error 提到 debug，
 /// 用于查看 LLM 请求/响应细节（默认关闭，由 `log.genai_debug` 设置控制）。
 fn build_log_filter(genai_debug: bool) -> tracing_subscriber::EnvFilter {
+    // 业务代码分散在三个 crate：外壳 ling_chat_lib、业务主 crate ling_chat_main、
+    // 插件 crate ling_chat_plugins，默认过滤器需逐一提到 info，否则业务日志会被
+    // warn 默认级别吞掉。
     let base = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,ling_chat_lib=info"))
+        .unwrap_or_else(|_| {
+            tracing_subscriber::EnvFilter::new(
+                "warn,ling_chat_lib=info,ling_chat_main=info,ling_chat_plugins=info",
+            )
+        })
         .add_directive("sqlx=warn".parse().unwrap());
     if genai_debug {
         base.add_directive("genai=debug".parse().unwrap())
@@ -68,10 +75,10 @@ pub fn init_tracing() -> LogFilterHandle {
     // 初始化日志系统
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer().with_timer(LocalTimer))
-        .with(crate::utils::log_bridge::LogBridgeLayer)
+        .with(ling_chat_main::utils::log_bridge::LogBridgeLayer)
         .with(
             tracing_subscriber::fmt::layer()
-                .with_writer(crate::utils::file_logger::LogFileWriter)
+                .with_writer(ling_chat_main::utils::file_logger::LogFileWriter)
                 .with_timer(LocalTimer)
                 .with_ansi(false),
         )

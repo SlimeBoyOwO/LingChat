@@ -6,13 +6,14 @@
 //!
 //! `generate_handler!` 内的路径在**调用点**展开，所以顶部这行 `use` 把
 //! `api::` / `ai_service::` 等拉到本模块作用域，使下面 234 行清单与原先在
-//! `lib.rs` 中逐字一致（无需改成 `crate::api::…`）。
+//! `lib.rs` 中逐字一致（无需改成 `ling_chat_main::api::…`）。
 //!
 //! 注意：`exit_app` 定义在本文件末尾而非 `api/`。这是对「command 放 api/」约定的
 //! 有意例外——它是进程生命周期命令，没有对应的 `config/` 业务逻辑，且与注册表
 //! 同文件时可保持清单里的裸 `exit_app` 条目不变。
 
-use crate::{ai_service, api, cast, lan_sync, plugins, resource_sync, utils};
+use ling_chat_main::{ai_service, api, cast, lan_sync, resource_sync, utils};
+use ling_chat_plugins as plugins;
 
 /// 把全部命令注册到 `builder` 上。
 pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {

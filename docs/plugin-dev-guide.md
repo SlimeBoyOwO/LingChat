@@ -14,7 +14,7 @@ data/plugins/<id>/
 
 ## 编辑器补全：`plugin_host.pyi`
 
-`plugin_host` 是宿主注入进解释器的原生模块（源码在 `src-tauri/src/plugins/host_api.rs`），磁盘上并没有这个包，所以 `from plugin_host import http_post` 在编辑器里会被标成「找不到模块 / 无法解析导入」。**这不影响运行**，只是缺补全和类型检查。
+`plugin_host` 是宿主注入进解释器的原生模块（源码在 `crates/ling-chat-plugins/src/host_api.rs`），磁盘上并没有这个包，所以 `from plugin_host import http_post` 在编辑器里会被标成「找不到模块 / 无法解析导入」。**这不影响运行**，只是缺补全和类型检查。
 
 仓库里的 `docs/plugin_host.pyi` 就是它的类型存根（覆盖全部宿主函数）。把这份文件拷进插件目录（与 `.py` 脚本同级），报错即消失并恢复补全：
 
