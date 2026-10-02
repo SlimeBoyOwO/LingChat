@@ -12,6 +12,7 @@ pub mod onnx;
 pub mod path;
 pub mod prompt;
 pub mod proxy;
+pub mod script_modes;
 pub mod script_paths;
 pub mod system;
 pub mod tls;

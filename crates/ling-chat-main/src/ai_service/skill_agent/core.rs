@@ -432,7 +432,7 @@ pub async fn run_chat(
             &ctx.skills_dir,
         );
 
-        let run_materials = stage::prompt::build_run_materials(&snap);
+        let run_materials = stage::prompt::build_run_materials(&snap, &ctx.data_dir);
         let digest = queue_dir(&ctx)
             .map(|dir| stage::prompt::handoff_digest(&dir, &plan.items, idx, &deferred))
             .unwrap_or_default();

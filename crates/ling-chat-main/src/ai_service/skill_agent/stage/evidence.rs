@@ -2,7 +2,10 @@
 
 use super::queue::{Mark, QueueEntry, epoch_nanos};
 use super::{ASSETS_REL_PATH, CHAPTER_DETAILS_REL_PATH, DESIGN_REL_PATH, StageSnapshot};
+use crate::ai_service::game_system::script_engine::validate;
 use crate::ai_service::skill_agent::role::TaskKind;
+use crate::utils::script_modes::CONSTRAINTS_REL_PATH;
+use crate::utils::script_modes::{self, Mode, ScriptModes};
 use crate::utils::script_paths;
 use std::path::{Path, PathBuf};
 
@@ -415,4 +418,282 @@ pub fn script_key_of(path: &str, known: &[String]) -> Option<String> {
     keys.into_iter()
         .find(|k| normalized.contains(&format!("/scripts/{}/", k.trim_matches('/'))))
         .cloned()
+}
+
+/// 这个剧本用不用人物卡（卡片声明过模式、角色卡羁绊冒险、或已建 `characters/`），决定交接单要不要带角色卡模式那一行。
+pub(super) fn uses_character_cards(
+    snap: &StageSnapshot,
+    script_dir: &Path,
+    constraints: &str,
+) -> bool {
+    if script_modes::declares_cast(constraints) {
+        return true;
+    }
+    if snap
+        .script_key
+        .as_deref()
+        .is_some_and(|k| k.replace('\\', "/").starts_with("character/"))
+    {
+        return true;
+    }
+    std::fs::read_dir(script_dir.join("characters")).is_ok_and(|mut d| d.next().is_some())
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct ChapterCheck {
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+    /// 本章引用了但磁盘上没有的素材名（允许缺失时只登记，不阻断）。
+    pub missing_assets: Vec<String>,
+    pub mode: Mode,
+}
+
+impl ChapterCheck {
+    pub fn is_empty(&self) -> bool {
+        self.errors.is_empty() && self.warnings.is_empty()
+    }
+
+    pub fn render(&self) -> String {
+        let mut out = String::new();
+        if !self.errors.is_empty() {
+            out.push_str("\n\n[章节自检] 这一章还不算写完，先改这些：\n");
+            for e in &self.errors {
+                out.push_str(&format!("- {}\n", e));
+            }
+            out.push_str("改好后重新 write_file 覆盖它（不要 append）。\n");
+        }
+        if !self.warnings.is_empty() {
+            out.push_str("\n[章节自检] 记下来即可，不阻断：\n");
+            for w in &self.warnings {
+                out.push_str(&format!("- {}\n", w));
+            }
+        }
+        if !self.missing_assets.is_empty() {
+            out.push_str(&format!(
+                "缺的素材（{}）已经记进 .agent/assets.md，别等交付才发现。\n",
+                self.missing_assets.join("、")
+            ));
+            out.push_str(&self.mode.switch_hint("素材"));
+        }
+        out
+    }
+}
+
+/// 章节写入后的轻量自检，不适用或无问题时返回 `None`；不做整剧本校验（断链诊断会误导模型去补后续章节）。
+pub fn check_written_chapter(
+    snap: &StageSnapshot,
+    path: &str,
+    data_dir: &Path,
+) -> Option<ChapterCheck> {
+    let (dir, id) = chapter_of_write(snap, path)?;
+    check_chapter(dir, &id, data_dir)
+}
+
+/// 认出「刚写的是本会话这个剧本的哪一章」；认不出就不产生自检（数据目录也留到确认之后再取）。
+fn chapter_of_write<'a>(snap: &'a StageSnapshot, path: &str) -> Option<(&'a Path, String)> {
+    let dir = snap.script_dir.as_deref()?;
+    let id = chapter_id_of_path(path)?;
+    let normalized = path.replace('\\', "/").to_lowercase();
+    let key = snap.script_key.as_deref()?;
+    if !normalized.contains(&format!("{}/chapters/", key.to_lowercase())) {
+        return None;
+    }
+    Some((dir, id))
+}
+
+fn check_chapter(dir: &Path, id: &str, data_dir: &Path) -> Option<ChapterCheck> {
+    let file = chapter_file(dir, id)?;
+    let value = match crate::utils::yaml_file::read_yaml_as_json(&file) {
+        Ok(v) => v,
+        Err(e) => {
+            return Some(ChapterCheck {
+                errors: vec![format!("`{}` 不是可解析的 YAML：{}", id, e)],
+                ..Default::default()
+            });
+        },
+    };
+
+    let constraints = std::fs::read_to_string(dir.join(CONSTRAINTS_REL_PATH)).unwrap_or_default();
+    let mut check = ChapterCheck {
+        errors: chapter_shape_problems(&value),
+        mode: ScriptModes::parse(&constraints).asset,
+        ..Default::default()
+    };
+
+    let findings = validate::check_chapter_assets(data_dir, dir, id, &value);
+    for d in findings {
+        if let Some(name) = validate::missing_asset_name(&d) {
+            if !check.missing_assets.iter().any(|m| m == name) {
+                check.missing_assets.push(name.to_string());
+            }
+        }
+        let at = d.event_index.map(|i| i + 1).unwrap_or_default();
+        let line = format!("第 {} 个事件 · {}", at, d.message);
+        if check.mode == Mode::OnlyExisting {
+            // 松紧由用户声明的素材模式决定：只有"只用已有"才算错误，"允许缺失"是用户允许的缺口。
+            check.errors.push(line);
+        } else {
+            check.warnings.push(line);
+        }
+    }
+    let design = std::fs::read_to_string(dir.join(DESIGN_REL_PATH)).unwrap_or_default();
+    if let Some(block) = extract_chapter_block(&design, id) {
+        let appearing = appearing_cast(&value);
+        for who in declared_cast(&block) {
+            if !appearing.iter().any(|a| a.eq_ignore_ascii_case(&who)) {
+                check.warnings.push(format!(
+                    "设计稿说本章「{who}」登场，但这一章里没有它出场\
+                     （没有任何事件的 `character` 是 {who}）"
+                ));
+            }
+        }
+    }
+    if !check.missing_assets.is_empty() && !script_modes::declares_asset(&constraints) {
+        check.warnings.push(format!(
+            "`素材模式`还没声明：这一轮先问用户「只用已有」还是「允许缺失、之后补」，\
+             写进 {}（格式 `- 素材模式：只用已有`）。\
+             未声明时缺失只按警告算，但这正是用户最在意的那类错。",
+            CONSTRAINTS_REL_PATH
+        ));
+    }
+
+    (!check.is_empty()).then_some(check)
+}
+
+/// 设计稿里这一章声明登场的角色（`登场:` 那一行）；与 YAML 的 `character` 同口径，可直接比名字。
+fn declared_cast(chapter_block: &str) -> Vec<String> {
+    for line in chapter_block.lines() {
+        let head = line.trim_start_matches(['-', '*', ' ', '\t']);
+        let Some(rest) = head.strip_prefix("登场") else {
+            continue;
+        };
+        let value = rest.trim_start_matches([':', '：']);
+        return value
+            .split([',', '，', '、', '/', ' '])
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect();
+    }
+    Vec::new()
+}
+
+/// 章节 YAML 里实际出现的角色：事件顶层的 `character` 字段（不按事件类型硬编码，扫键更不易漏）。
+fn appearing_cast(value: &serde_json::Value) -> Vec<String> {
+    let Some(events) = value.get("events").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = Vec::new();
+    for ev in events {
+        let Some(name) = ev.get("character").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let name = name.trim();
+        if !name.is_empty() && !out.iter().any(|c| c == name) {
+            out.push(name.to_string());
+        }
+    }
+    out
+}
+
+/// 把本章的素材缺口并进 `.agent/assets.md`，由代码维护，同名素材只登记一次。
+pub fn update_assets_gap(dir: &Path, chapter: &str, missing: &[String]) -> std::io::Result<()> {
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let path = dir.join(ASSETS_REL_PATH);
+    let old = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut rows: Vec<String> = old
+        .lines()
+        .filter(|l| l.trim_start().starts_with("-「"))
+        .map(|l| l.trim().to_string())
+        .collect();
+
+    for name in missing {
+        let marker = format!("-「{name}」");
+        if rows.iter().any(|r| r.starts_with(&marker)) {
+            continue;
+        }
+        rows.push(format!("-「{name}」（第 {chapter} 章引用，磁盘上没有）"));
+    }
+
+    let mut out = String::from(
+        "# 素材缺口表\n\n\
+         由系统按章节自检维护：写完一章发现引用了磁盘上没有的素材就登记在这里。\n\
+         处理方式：补素材 / 改剧情 / 明确接受这个素材没有（三选一，问用户）。\n\n",
+    );
+    out.push_str(&rows.join("\n"));
+    out.push('\n');
+    std::fs::write(path, out)
+}
+
+/// 已落盘章节引用的磁盘上没有的素材；与当前模式无关 —— 回答"换个模式会多出/少掉哪些要改的地方"。
+pub(super) fn missing_assets_of_written(
+    snap: &StageSnapshot,
+    dir: &Path,
+    data_dir: &Path,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for id in &snap.written {
+        let Some(file) = chapter_file(dir, id) else {
+            continue;
+        };
+        let Ok(value) = crate::utils::yaml_file::read_yaml_as_json(&file) else {
+            continue;
+        };
+        for d in validate::check_chapter_assets(data_dir, dir, id, &value) {
+            if let Some(name) = validate::missing_asset_name(&d) {
+                out.push(format!("{} {}", id, name));
+            }
+        }
+    }
+    out
+}
+
+fn chapter_shape_problems(value: &serde_json::Value) -> Vec<String> {
+    let mut problems = Vec::new();
+
+    if value
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .is_empty()
+    {
+        problems.push("缺少顶层 `name`".to_string());
+    }
+
+    let Some(events) = value.get("events").and_then(|v| v.as_array()) else {
+        problems.push("缺少 `events` 列表".to_string());
+        return problems;
+    };
+    let Some(last) = events.last() else {
+        problems.push("`events` 是空的".to_string());
+        return problems;
+    };
+
+    if last.get("type").and_then(|v| v.as_str()) != Some("chapter_end") {
+        problems.push(format!(
+            "最后一个事件是 `{}`，必须以 `chapter_end` 收尾",
+            last.get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("(缺失)")
+        ));
+        return problems;
+    }
+
+    let end_type = last
+        .get("end_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("linear");
+    if end_type == "linear"
+        && last.get("next").and_then(|v| v.as_str()).is_none()
+        && last.get("next_chapter").and_then(|v| v.as_str()).is_none()
+    {
+        problems.push(
+            "`chapter_end` 是 linear 却没给 `next_chapter` / `next`（结尾写 \"end\"）".to_string(),
+        );
+    }
+
+    problems
 }

@@ -1,10 +1,15 @@
 //! 注入文本：任务块、交接单、材料与进度行，只读入参、只产文本。
 
-use super::evidence::{extract_chapter_block, mark_phrase, read_chapter, tail_state};
+use super::evidence::{
+    extract_chapter_block, mark_phrase, missing_assets_of_written, read_chapter, read_or_empty,
+    tail_state, uses_character_cards,
+};
 use super::queue::{QUEUE_JSON_REL_PATH, read_queue_progress, read_state};
 use super::{CHAPTER_DETAILS_REL_PATH, DESIGN_REL_PATH, SKELETON_MARKER, Stage, StageSnapshot};
 use crate::ai_service::skill_agent::role::TaskKind;
 use crate::ai_service::skill_agent::router::QueueItem;
+use crate::utils::script_modes::CONSTRAINTS_REL_PATH;
+use crate::utils::script_modes::{self, Mode, ScriptModes};
 use std::path::Path;
 
 const HUB_DOC: &str = "lingchat-script-editor/SKILL.md";
@@ -283,11 +288,12 @@ pub fn hub_doc(skills_dir: &Path) -> Option<String> {
         .map(|t| t.trim_end().to_string())
 }
 
-pub fn build_run_materials(snap: &StageSnapshot) -> String {
+pub fn build_run_materials(snap: &StageSnapshot, data_dir: &Path) -> String {
     let Some(dir) = snap.script_dir.as_deref() else {
         return String::new();
     };
     let design = snap.design.as_deref().unwrap_or_default();
+    let constraints = read_or_empty(&dir.join(CONSTRAINTS_REL_PATH));
 
     let mut out = match snap.stage {
         Stage::Setup | Stage::Modify if !design.is_empty() => {
@@ -310,13 +316,32 @@ pub fn build_run_materials(snap: &StageSnapshot) -> String {
         },
         _ => String::new(),
     };
-    out.push_str(&progress_block(snap, dir));
+    out.push_str(&progress_block(snap, dir, data_dir, &constraints));
     out
 }
 
-/// 交接单里的进度事实；设计稿取快照里那份，同一份事实只算一次。
-pub(super) fn progress_block(snap: &StageSnapshot, dir: &Path) -> String {
-    let mut lines: Vec<String> = vec![config_line(dir)];
+/// 交接单里的进度事实；`constraints` 由 [`build_run_materials`] 读好传进来，设计稿取快照里那份，同一份事实只算一次。
+pub(super) fn progress_block(
+    snap: &StageSnapshot,
+    dir: &Path,
+    data_dir: &Path,
+    constraints: &str,
+) -> String {
+    let modes = ScriptModes::parse(constraints);
+    let mut lines: Vec<String> = vec![format!(
+        "{}（`.agent/constraints.md` 是唯一来源；要改就改那一行，并检查别处有没有旧说法）",
+        modes.asset.describe("素材")
+    )];
+    if uses_character_cards(snap, dir, constraints) {
+        lines.push(format!(
+            "{}（同上，改一处就全都对齐）",
+            modes.cast.describe("角色卡")
+        ));
+    }
+    if let Some(note) = script_modes::conflict_note(constraints) {
+        lines.push(format!("⚠️ {note}"));
+    }
+    lines.push(config_line(dir));
     if dir.join(DESIGN_REL_PATH).is_file() || !snap.written.is_empty() {
         lines.push(design_line(snap.design.as_deref(), &snap.plan));
     }
@@ -335,6 +360,14 @@ pub(super) fn progress_block(snap: &StageSnapshot, dir: &Path) -> String {
             snap.written.join(" ")
         }
     ));
+
+    if !snap.written.is_empty() {
+        // 换模式的影响面：已落盘的章节不会跟着重写，所以先把要改的地方摊开
+        let missing = missing_assets_of_written(snap, dir, data_dir);
+        if !missing.is_empty() {
+            lines.push(asset_impact_line(modes.asset, &missing));
+        }
+    }
 
     if let Some(after) = chapter_after(snap) {
         let exists = snap.written.iter().any(|w| w == &after);
@@ -357,6 +390,34 @@ pub(super) fn progress_block(snap: &StageSnapshot, dir: &Path) -> String {
         out.push_str(&format!("- {}\n", line));
     }
     out
+}
+
+/// 已落盘的素材缺口在当前模式下意味着什么：换了模式已写好的章节不会自动重写，得把影响面摊开。
+fn asset_impact_line(mode: Mode, missing: &[String]) -> String {
+    const SHOW: usize = 4;
+
+    let mut list = missing
+        .iter()
+        .take(SHOW)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("、");
+    if missing.len() > SHOW {
+        list.push_str(&format!("…（共 {} 处）", missing.len()));
+    }
+    let n = missing.len();
+    match mode {
+        Mode::OnlyExisting => format!(
+            "按「只用已有」有 {} 处要改：{}。若这些其实打算之后补素材，\
+             说一句「素材我之后补，先留位置」就能改成「允许缺失」",
+            n, list
+        ),
+        Mode::AllowMissing => format!(
+            "已留空 {} 处：{}。逐条补 / 改 / 接受看 .agent/assets.md；\
+             改成「只用已有」它们会变成必须修的错",
+            n, list
+        ),
+    }
 }
 
 /// 设计稿那一行：告诉模型代码从设计稿里读出了什么；`design` 只回答读没读到（空文件也算读到），章节列表用事实层解析好的 `plan`。

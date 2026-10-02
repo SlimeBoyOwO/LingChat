@@ -325,7 +325,7 @@ async fn tool_write_file(
     match ft.write_file(path, content, append) {
         Ok(out) => {
             bind_script_key_if_new(ctx, path).await;
-            (true, out)
+            (true, with_chapter_check(ctx, path, out, append).await)
         },
         Err(e) => (false, e.to_string()),
     }
@@ -387,7 +387,7 @@ async fn tool_edit_file(
                 result.path.display(),
                 result.replacements
             );
-            (true, out)
+            (true, with_chapter_check(ctx, path, out, false).await)
         },
         Err(e) => (false, e.to_string()),
     }
@@ -530,6 +530,44 @@ fn format_validation_report(key: &str, report: &ValidationReport) -> String {
     }
 
     out
+}
+
+/// 写完章节后附上自检回执（写一章和查一章是同一个动作，不攒到最后）；分段追加（`append = true`）时跳过，那时文件还没写完。
+async fn with_chapter_check(
+    ctx: &SkillAgentRunContext,
+    path: &str,
+    out: String,
+    append: bool,
+) -> String {
+    if append {
+        return out;
+    }
+    let Some(check) =
+        stage::evidence::check_written_chapter(&ctx.stage_snapshot, path, &ctx.data_dir)
+    else {
+        return out;
+    };
+    let chapter = stage::evidence::chapter_id_of_path(path).unwrap_or_default();
+
+    if !check.missing_assets.is_empty() {
+        if let Some(dir) = ctx.stage_snapshot.script_dir.as_deref() {
+            if let Err(e) = stage::evidence::update_assets_gap(dir, &chapter, &check.missing_assets)
+            {
+                tracing::warn!("[skill_agent] 素材缺口表写入失败: {e}");
+            }
+        }
+    }
+
+    tracing::info!(
+        // 这一章的结局只进日志（原先那条事件流水已删）：改完才算落盘，记下当场有没有必须修的
+        "[skill_agent] 章节自检 剧本={} 章={chapter} 错误={} 警告={} 缺口={}",
+        ctx.script_key.as_deref().unwrap_or("-"),
+        check.errors.len(),
+        check.warnings.len(),
+        check.missing_assets.len()
+    );
+
+    format!("{}{}", out, check.render())
 }
 
 /// 未绑定会话想往已经存在的剧本包里写就拦住：模型会自己扫盘挑一个"正好缺这一章"的包当成用户的剧本，

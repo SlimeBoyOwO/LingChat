@@ -1,14 +1,19 @@
 <script setup lang="ts">
-import { computed, reactive } from "vue";
+import { computed, reactive, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Toggle } from "@/components/base";
 import { useScriptEditorStore } from "@/stores/modules/script-editor";
 import { createScript } from "@/api/services/script-editor";
+import type { ScriptCharacter } from "@/api/services/script-editor";
 
 const { t } = useI18n();
 const store = useScriptEditorStore();
 
-const props = defineProps<{ modal: "script" | "chapter" | "character" | "importChar" | null }>();
+const props = defineProps<{
+  modal: "script" | "chapter" | "character" | "importChar" | null;
+  /** 传入即进入编辑模式（改显示名与人设）；null = 新建 */
+  editingCharacter?: ScriptCharacter | null;
+}>();
 const emit = defineEmits<{
   "update:modal": [value: "script" | "chapter" | "character" | "importChar" | null];
 }>();
@@ -23,7 +28,9 @@ const MODAL_TITLES: Record<string, string> = {
   character: "scriptEditor.editorModals.newCharacter",
   importChar: "scriptEditor.editorModals.importCharacter",
 };
+const isEditingChar = computed(() => props.modal === "character" && props.editingCharacter != null);
 const modalTitle = computed(() => {
+  if (isEditingChar.value) return t("scriptEditor.editorModals.editCharacter");
   const key = MODAL_TITLES[props.modal ?? ""];
   return key ? t(key) : "";
 });
@@ -36,6 +43,20 @@ const scriptForm = reactive({
 });
 const chapterForm = reactive({ id: "", name: "" });
 const charForm = reactive({ folder: "", aiName: "", systemPrompt: "" });
+
+/** 打开编辑模式时把人设回填进表单（新建模式清空）。 */
+watch(
+  () => [props.modal, props.editingCharacter] as const,
+  ([modal, c]) => {
+    if (modal !== "character") return;
+    Object.assign(charForm, {
+      folder: c?.folder ?? "",
+      aiName: c?.aiName ?? "",
+      systemPrompt: c?.systemPrompt ?? "",
+    });
+  },
+  { immediate: true },
+);
 
 const confirmModal = async () => {
   const which = props.modal;
@@ -59,7 +80,16 @@ const confirmModal = async () => {
     chapterForm.id = "";
     chapterForm.name = "";
   } else if (which === "character") {
-    await store.createCharacter(charForm.folder, charForm.aiName, charForm.systemPrompt);
+    if (props.editingCharacter) {
+      // 目录名不给改：改目录要连带改 script_role_key 与章节引用，那是"换个角色"
+      await store.updateCharacter(
+        props.editingCharacter.folder,
+        charForm.aiName,
+        charForm.systemPrompt,
+      );
+    } else {
+      await store.createCharacter(charForm.folder, charForm.aiName, charForm.systemPrompt);
+    }
     Object.assign(charForm, { folder: "", aiName: "", systemPrompt: "" });
   } else if (which === "importChar") {
     if (importForm.folders.size === 0) return;
@@ -241,6 +271,8 @@ const confirmModal = async () => {
               <input
                 v-model="charForm.folder"
                 class="glass-input"
+                :readonly="isEditingChar"
+                :class="isEditingChar ? 'cursor-not-allowed opacity-60' : ''"
                 :placeholder="t('scriptEditor.editorModals.characterFolderHint')"
               />
             </div>
