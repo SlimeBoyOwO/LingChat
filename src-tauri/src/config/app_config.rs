@@ -68,6 +68,23 @@ fn default_auto_compress_image() -> bool {
 pub const DEFAULT_LLM_TIMEOUT_SECS: u64 = 120;
 pub const MIN_LLM_TIMEOUT_SECS: u64 = 10;
 pub const MAX_LLM_TIMEOUT_SECS: u64 = 3600;
+
+/// 单轮生成的**绝对**硬上限（秒）。
+///
+/// 与 [`DEFAULT_LLM_TIMEOUT_SECS`] 的区别：后者是**空闲**超时（reqwest
+/// `read_timeout`，只在两次数据块之间计时）。若服务端持续发送 SSE 心跳/注释
+/// 字节，空闲超时永不触发，单轮生成可能永不返回。
+///
+/// 而 `generation_lock` 是全局唯一的生成锁，被持有跨越整条 LLM 流式生成
+/// （见 `api/chat.rs`、`ai_service/proactive_system/mod.rs`）。一旦某一轮生成
+/// 卡死不返回，后续**所有**对话请求都会永久排在它后面 —— 前端表现为「消息能
+/// 发出去但没反应」（特效/按钮仍正常，因为卡的是 Rust 侧而非前端 JS），
+/// 且不可恢复。
+///
+/// 本上限是最后一道保险：无论是否还在收数据，超过即中断本轮并释放锁。
+/// 取 600 秒是为了给「思考链 + 长输出 + 工具调用」留足余量，同时保证异常时
+/// 能在可接受的时间内自动恢复。
+pub const GENERATION_HARD_LIMIT_SECS: u64 = 600;
 pub const MIN_AUTO_SAVE_INTERVAL_SECS: u32 = 30;
 pub const MAX_AUTO_SAVE_INTERVAL_SECS: u32 = 3600;
 pub const MIN_MEMORY_UPDATE_INTERVAL: u32 = 1;

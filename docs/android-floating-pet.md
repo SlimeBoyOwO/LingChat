@@ -720,7 +720,61 @@ private fun screenSizePx(): Pair<Int, Int> {
 > `density` 仍然取自 `activity.resources.displayMetrics.density` —— 密度不受旋转影响，
 > 而且 WebView 的 `devicePixelRatio` 也来自它，两边必须同源。
 
-##### 4.4.2.2 旋转还有一条**不依赖系统回调**的兜底
+##### 4.4.2.2 贴边要贴**安全区**，不是物理边缘
+
+真机现象：横屏时桌宠贴右沿会「**右边溢出去一点**」。
+
+`screenSizePx()` 给的是**物理**尺寸 —— 含挖孔、圆角、手势条所在的那圈区域。
+而桌宠是可以贴边吸附的：按物理边缘钳制，它就会有一部分压在挖孔 / 圆角上。
+横屏尤其明显，因为挖孔通常落在屏幕的某一侧，那一侧的可视宽度本来就比
+物理宽度窄。
+
+**修法**：把安全区（挖孔 + 系统栏）从钳制与吸附的边界里扣掉。
+
+```kotlin
+private fun safeInsetsPx(): SafeInsets {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val insets = activity.getSystemService(WindowManager::class.java)
+            ?.currentWindowMetrics?.windowInsets ?: return SafeInsets.NONE
+        var l = 0; var t = 0; var r = 0; var b = 0
+        insets.displayCutout?.let {              // 挖孔 / 圆角
+            l = maxOf(l, it.safeInsetLeft); t = maxOf(t, it.safeInsetTop)
+            r = maxOf(r, it.safeInsetRight); b = maxOf(b, it.safeInsetBottom)
+        }
+        val bars = insets.getInsets(WindowInsets.Type.systemBars())   // 状态栏 / 手势条
+        l = maxOf(l, bars.left); t = maxOf(t, bars.top)
+        r = maxOf(r, bars.right); b = maxOf(b, bars.bottom)
+        return SafeInsets(l, t, r, b)
+    }
+    return SafeInsets.NONE
+}
+```
+
+`clampIntoScreen` 与 `snapToEdge` 都改成在 `[safe.left, screenW - safe.right]`、
+`[safe.top, screenH - safe.bottom]` 里取值；`reapplyWindowAfterConfigChange`
+的上下插值也按安全区跨度算。
+
+> ⚠️ **这条读数和 4.4.2.1 那三个被证伪的来源是「同一个类、不同代码路径」。**
+> `WindowMetrics` 上：
+>
+> - `bounds` ← `windowConfiguration.getMaxBounds()` —— **就是** 4.4.2.1 里被证伪
+>   的那条 Resources 路径，**绝不能用**；
+> - `windowInsets` ← `InsetsStateController` —— **与 Resources 无关**，旋转后
+>   立刻是新值。
+>
+> 所以这里**只取 insets，绝不取 bounds**。下次谁看到 `getCurrentWindowMetrics`
+> 想顺手把 `bounds` 也用了，请先读回 4.4.2.1。
+
+> 取的是**整块屏幕**口径的 insets，不是悬浮窗自己的 —— 后者会随窗口位置变化
+> （窗口没压到状态栏时上内缩就是 0），拿来当安全区会时灵时不灵。
+>
+> `getInsets(Type)` 会把**当前不可见**的系统栏算作 0（沉浸式时手势条隐藏就
+> 不该避让），正是我们要的语义。
+
+> 低于 API 30 退回「无边距」：宁可和以前一样贴物理边缘，也不要因为拿不到
+> insets 把桌宠挤到屏幕中间。
+
+##### 4.4.2.3 旋转还有一条**不依赖系统回调**的兜底
 
 `onDisplayChanged` 是快路径（约 120ms），但本项目已经反复踩到「系统回调不保证送达」
 （`pet-detached` / `pet-attached` 都丢过）。那条回调一旦丢掉，桌宠会一直停在旧屏幕的
@@ -833,6 +887,118 @@ private fun maybeReapplyForScreenChange(): Boolean {
 > 的**幂等分支**，把窗口整个重建（位置重置到 `(0,0)`、WebView 重新挂载 → 角色
 > 闪没）。现在改成聚合查询 + `queried` 判断，查不到就保持原状态。
 > `goToPetMode` 同理：先看 `status.detached`，已经在悬浮窗里就只补导航、不再 `show`。
+
+### 4.5 放久了「消息能发出去，但没反应」—— 全局生成锁 + 缺一层**绝对**超时
+
+**真机症状**（用户报告）：
+
+> 悬浮窗放久之后，那些特效还在动，也能折叠展开，自动播放键也能点，
+> 但跟角色对话时消息能发出去，就是没反应。角色卡、剧本日志也都变成空的，
+> 背景正常。
+
+拆开看：
+
+| 现象                        | 说明什么                                                       |
+| --------------------------- | -------------------------------------------------------------- |
+| 特效在动、能折叠、按钮可点  | **前端 JS 活着** —— WebView 没崩，进程也没被杀                 |
+| 消息「能发出去」            | 只是前端**乐观地**把这条消息插进了列表，不代表 Rust 真的收到了 |
+| 没有回复、角色卡 / 日志变空 | 卡在 **Rust 侧**：凡是需要拿锁的状态查询与生成，全排在后面     |
+
+也就是：**Rust 还活着，但某把锁被永久持有了。**
+
+#### 4.5.1 病灶：`generation_lock` 被持有跨越整条 LLM 流式生成
+
+`AppState::generation_lock`（`app/state.rs:57`）是**全局唯一**的生成锁，
+类型 `Arc<tokio::sync::Mutex<()>>`。它的持有范围不是「拿一下」，而是**整条生成**：
+
+```rust
+// api/chat.rs:202（用户发消息）
+let _lock = gen_lock.lock().await;
+match generator.process_message(Some(text)).await { ... }
+
+// ai_service/proactive_system/mod.rs:240（主动对话）
+let _lock = self.generation_lock.lock().await;
+let _ = generator.process_message(None).await;
+```
+
+全部持锁站点：`api/chat.rs`（202 / 302 / 398 / 579）、`api/game.rs`（391 / 930）、
+`ai_service/proactive_system/mod.rs:240`、`ai_service/tools/background_command.rs:268`。
+
+于是只要**任意一轮生成永不返回**，后续所有对话请求都会永久排在它后面 ——
+而且**不可恢复**：`tokio::sync::Mutex` 没有超时，也没有强制释放。
+
+#### 4.5.2 为什么「永不返回」是可能的
+
+LLM 侧现有的超时**都只在「空闲」时计时**：
+
+| 层      | 位置                                                    | 计时口径           |
+| ------- | ------------------------------------------------------- | ------------------ |
+| reqwest | `llm/factory.rs`：`Client::builder().read_timeout(...)` | 两次**数据块**之间 |
+| 流包装  | `llm/mod.rs:189`：`timeout(idle_timeout, inner.next())` | 两次 `next()` 之间 |
+
+**只要服务端持续发送 SSE 心跳 / 注释字节，这两层都不会触发。**
+另外没有配 connect timeout，网络被系统挂起（Android 后台省电、doze、切网）时
+连接可以挂很久。
+
+「放久之后」这个时机也刚好对上：`ProactiveSystem` 每 30 秒一轮，兴趣累积到
+阈值就会主动发起一次生成 —— 正是用户闲置一段时间之后。而它 `deliver()` 里
+第一件事就是拿 `generation_lock`。
+
+#### 4.5.3 修法：给「前置步骤」和「每一轮生成」各加一层**绝对**上限
+
+新增 `GENERATION_HARD_LIMIT_SECS = 600`（`config/app_config.rs`），
+在 `MessageGenerator`（`ai_service/message_system/generator.rs`）里包两处：
+
+```rust
+// process_message：前置步骤（用户消息落库 / 翻译、场景检测、上帝 Agent 预选）
+let user_ctx = match tokio::time::timeout(
+    Self::hard_limit(),
+    self.prepare_user_turn(user_message.as_deref()),
+).await {
+    Ok(result) => result?,
+    Err(_) => return Err(self.abort_on_hard_limit("前置处理")),
+};
+
+// execute_pipeline：每一轮 LLM 生成
+let outcome = tokio::time::timeout(
+    Self::hard_limit(),
+    self.run_pipeline(context, user_message.to_string(), user_msg_seq),
+).await;
+let outcome = match outcome {
+    Ok(result) => result,
+    Err(_) => Err(self.abort_on_hard_limit("LLM 生成")),
+};
+```
+
+**为什么选在 `MessageGenerator`，而不是逐个去改那 8 个持锁站点：**
+
+- **它是唯一咽喉。** `api/chat.rs`、`api/game.rs`、`proactive_system`、
+  `background_command` 的生成全部经由 `process_message` / `process_notification`。
+  改一处，所有站点都受保护，也完全不用动各站点的锁结构。
+- **超时后锁一定会放。** `tokio::time::timeout` 超时会把 future **drop** 掉，
+  future 里持有的 `MutexGuard` 随之 drop —— 生成锁、`ai_service`、`game_status`
+  一起释放；同时 drop 掉 reqwest 的响应流，连接也就断了。
+- **前端自动复位。** `abort_on_hard_limit` 里调 `events::emit_error`，它本来就
+  会 emit `ai:error`（载荷 `{ error_code, detail }`）+ `status:reset`，前端据此
+  把输入框从等待态放回来。文案里特意带「超时」二字，好让
+  `classify_llm_error` 归成 `error_code = "timeout"`，复用现成的 i18n。
+- **按「轮」而不是按「整轮对话」计时。** 上帝 Agent 模式下一轮对话可能连发
+  多个 NPC（受 `max_consecutive_npc` 限制），按整轮计时会误伤；按每一轮
+  LLM 生成计时才是真正的「单次不可控等待」粒度。
+
+#### 4.5.4 这层上限**不**覆盖什么（诚实的边界）
+
+它只保证「生成链路上的锁不会永久持有」。以下路径仍是裸的：
+
+- `api/chat.rs::generate_line_voice` —— 持 `generation_lock` 跑 TTS 网络请求
+- `api/chat.rs::rollback_conversation` / `api/game.rs::clear_conversation` —— DB 操作
+- `proactive_system` 里 `get_proactive_prompt` 那段：**同时持有 `ai_service`
+  与 `game_status` 两把锁**去跑视觉模型（那段代码自己的注释就写了
+  「SCREEN 调用视觉模型可能耗时」）。这是目前**第二可疑**的一处 —— 它一旦卡住，
+  连 `send_message` 构建 deps 都进不去，症状与本次完全一致。
+- `ScreenAnalyzer`（图片投喂路径）持自己的锁跑视觉模型。
+
+如果真机复现后「发消息没反应」仍在，**下一步就按这个清单逐个加界**。
 
 ## 五、手机端的交互设计
 
@@ -1310,6 +1476,15 @@ gh run download <run-id> --repo <你的fork> -n lingchat-dev-android
 16. **横屏边界**（★ 本轮重点，见 4.4.2.1）：转成横屏后，桌宠要能拖到屏幕
     **右半边**，不能被「竖屏宽度」那道看不见的墙挡住；横屏下展开/折叠也要正常
 17. **确认没有诊断浮层**：屏幕左上角不该再出现绿字的 `[enter] / [live]` 读数框
+18. **安全区不溢出**（★ 本轮重点，见 4.4.2.2）：分别在**竖屏**和**横屏**下，
+    把桌宠拖到并吸附在**左沿**和**右沿** → 展开、折叠、再展开 →
+    圆角 / 挖孔 / 手势条那一圈**不能被桌宠压住**，右边也不能溢出去
+19. **放久之后还能对话**（★ 本轮重点，见 4.5）：进悬浮窗后**放着不动 10 分钟以上**
+    （主动对话系统若开着，这段时间里它会自己发起生成）→ 然后发一条消息 →
+    必须能正常收到回复；同时看聊天页的角色卡 / 剧本日志是否还是空的。
+    若仍然卡住，抓 logcat 搜 `生成超时` / `超过硬上限` —— 有这行说明锁被按时
+    强制释放了（但病根在别处，按 4.5.4 的清单继续查）；没有这行则说明卡在
+    4.5.4 里某条尚未加界的路径上。
 
 > 转屏相关的问题排查时，先看 logcat 里 `FloatingPet` 的这行：
 > `屏幕尺寸变化：悬浮窗重排为 … 屏幕 WxH（rotation=…, mode=…x…）`。
@@ -1350,38 +1525,40 @@ gh run download <run-id> --repo <你的fork> -n lingchat-dev-android
 > 它自己会画出用户可见的形状，把被诊断的现象制造出来（见 5.1.2）。
 > 那些行保留下来只作为**成因解释**；下次要量几何，得先把诊断重新打开。
 
-| 现象                                                     | 可能原因                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 切回 App 白屏                                            | 占位页没生效，`setContentView` 顺序有问题                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| 收回后主界面黑屏                                         | WebView 搬回失败，需看 `restoreWebViewToActivity` 日志                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| **收回后只剩左上一角、不回聊天页**                       | `pet-attached` 没送达。三层保险：`notifyWeb` 显式收 WebView 参数、0/300/1000/3000ms 重试、Activity resume 时由 `ensureLifecycleCallbacks` 补发                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| **收回后整个界面缩在左上角**                             | **`setContentView` 没重置 LayoutParams**（见 4.4）。先量 `window.innerWidth` 和屏宽对照：等于悬浮窗宽度就是这条，等于屏宽则是视口问题                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| **点 ✕ 收回直接闪退**                                    | **`setContentView` 之后事后赋值 `view.layoutParams` → `FrameLayout.onMeasure` 的 ClassCastException**（见 4.4）。改成两参重载即可。已从「startActivity flag」「moveTaskToFront」等嫌疑点排除                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **收回后整个 App 用窄视口渲染**                          | 先量 `window.innerWidth`。等于屏宽就是视口问题；等于悬浮窗宽度则是 LayoutParams 没改回 MATCH_PARENT                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| **展开后一大片空白（内容挤在左上角）**                   | 两种成因，先看诊断 `gap L…T…R…B…` 那一行定位：**左右有余量** = 缩放系数错（`notifyMetrics` 曾用 `view.width`，它在 `updateViewLayout()` 之后是上一形态的值）；**上边为负 / 下边大** = 内容被系统顶偏了（见下一条）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| **展开后内容被顶到屏幕上方、下方空一片**                 | 展开态摘掉 `FLAG_NOT_FOCUSABLE` 后，系统开始插手窗口内容区（insets / 输入法），而画布尺寸只由窗口**宽度**推出，高度被改它不知情（见 4.4）。检查 `SOFT_INPUT_STATE_VISIBLE` 是否还在、`fitInsetsTypes` 是否设了 0；诊断里看 `scroll=` 与 `doc=`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| **展开后透明区特别大、且随桌宠缩放变**                   | 页面走了桌面端分支（`PET_WIDTH_BASE × pet.scale`，没有 `--pet-fit`）。看诊断 `applied=` 与 `role scaleP=`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| **展开后四周一圈透明**                                   | ✅ **已修**（见 5.1.1 / 5.1.2 / 5.1.3）。**三个来源，别再只查一个**：① **诊断代码自绘** —— 画布上的品红底色 + 头像容器的青色描边，宠物是非矩形，露出来的那一圈看起来就是「套了一圈」（见 5.1.2，已全部关掉）；② 画布**外**的透明 —— 系统给窗口加了 insets，WebView 比窗口小一圈（见 4.4）；③ 缩放系数用了**缓存值** —— `--pet-fit` 滞后 500ms 时画布按旧系数渲染，比窗口小（见 5.1.3，已改成现算的 `liveFit`）。诊断里看 `gap` 行（全 0 才对）与 `shell` 行（必须等于 `inner`）                                                                                                                                                                                                                                                 |
-| **展开后「一整屏」都能被触摸、摸着还能把桌宠拖走**       | **少写 `FLAG_NOT_TOUCH_MODAL`**（见 5.1.4）。没有它，窗口的可触摸区域是**整块屏幕**，窗口外的触摸也被投递给它 → `buildPetTouchListener` 的 ACTION_DOWN 触发 → 窗口跟手走。**在别的应用里同样发生**（那里没有我们的 Activity，正好可用来确认）。修法是一行 flag，且注意别用整体赋值 `params.flags = ...` 把它抹掉                                                                                                                                                                                                                                                                                                                                                                                                                |
-| 展开后**窗口矩形之内**、宠物轮廓之外的角落吃触摸（固有） | 悬浮窗是矩形、宠物是圆形，那圈角落**无法**逐像素穿透（见 4.4）。范围仅限窗口自身矩形（收起 60×60dp / 展开 216×252dp），**窗口之外不受影响**；看诊断 `band=`（不为 0 = 气泡带占了高没渲染）、`role scaleP=`（< 1 = 宠物只占头像框一部分）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| **横屏下宠物被挤出屏幕**                                 | 尺寸基准用了 `screenWidthDp()`。横屏 0.6×屏宽 推出的高度超过屏高。已改为 `min(屏宽, 屏高)`（见 4.4）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| **展开后右边空 120 / 下边空 322 的空白**                 | **`fit` 的三个来源全失效**（`pet-metrics` 推送、500ms IPC 轮询、`resize` 事件），系数停在初值 1.0。判据：诊断里 `win=0x0dp` 且标签停在 `[enter]`（没变成 `[live]`）。已加 500ms 本地心跳自愈（见 4.4.1），并把 `resize` 改成在 `onMounted` 里**无条件**绑定（早先只在「挂载时已是悬浮窗」的分支绑，而启动顺序是先 `push('/pet')` 再 `showFloatingPet()` → 那条分支永远走不到）                                                                                                                                                                                                                                                                                                                                                  |
-| **画布高度比窗口矮，底部留一条透明**                     | 已加兜底：`floatingCanvasHeight = max(内容高, 视口高 / fit)`。宽度是构造出来的（`逻辑宽 × fit ≡ 窗口宽`），高度不是，必须显式兜                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| **点空白区域会收起输入框**                               | 空白落在 `#pet-app` 之外、窗口之内 → 手指派发 `mouseleave` → 桌面端的「光标离开即收起」。它是「空白存在」的旁证。已把悬浮窗里的 `mouseenter/leave` 改成空操作（见 4.4.1）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| **横屏时桌宠只能停在左半边（右边一大片拖不过去）**       | 边界读数**经过 Activity 的 Resources**。这条走过**三版**、都被证伪：① `resources.displayMetrics`；② `maximumWindowMetrics`（AOSP 里它读的就是 `getResources().getConfiguration().windowConfiguration.maxBounds`，同一个 Resources）；③ `DisplayManager.getDisplay().getRealMetrics()` —— 看着离开了 Resources，实则内部 `adjustMetrics` 又按 `mResources` 的旋转交换一次，**还是绕回去**。桌宠悬浮时 App 已 `moveTaskToBack` 到后台，后台 Activity 的 Resources 不跟随旋转刷新 → 边界永远停在竖屏宽度。改用 `Display.getRotation()` + `Display.getMode()`（两者直读 DisplayInfo，见 4.4.2.1）                                                                                                                                   |
-| **折叠（展开 → 头像）时界面闪一下**                      | 窗口尺寸与缩放系数**不可能同帧生效**：窗口先缩到约 60dp，页面还按展开态的大系数（约 1.03）渲染 → 画布比窗口大、内容被裁掉一块，几帧后才缩回来（见 5.1.5）。修法两侧各一处：原生把 `notifyMetrics` 挪到 `updateViewLayout` **之前**；前端 `liveFit` 在「刚收到原生即时几何」且「与现算对不上」时改用权威系数。⚠️ 这两条都是**顺序 / 取值**改动，验包脚本无法用字符串断言，只能真机确认                                                                                                                                                                                                                                                                                                                                           |
-| **旋转屏幕后桌宠跑到屏幕外**                             | 三个成因，都在 4.4.2：① `x/y` 是屏幕坐标系里的**绝对值**，旋转后屏宽高对调就飞出屏幕；② **读数来源取错**，`lastScreenW/H` 永远不变 → 重排判据永不成立（见 4.4.2.1）；③ **回调根本不会来** —— `ComponentCallbacks.onConfigurationChanged` 只对可见 Activity 送达，而悬浮时 Activity 在后台。修法是 `DisplayManager` 的显示器回调 + 500ms 轮询兜底（见 4.4.2.2 / 4.4.2.3），**两个方向（横→竖、竖→横）都要验**                                                                                                                                                                                                                                                                                                                    |
-| **竖屏↔横屏来回切，桌宠跑出屏幕 / 贴不到边**             | 同上。验证时至少来回切 3 次，并分别试「贴着左沿」和「贴着右沿」两种起始位置                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| **反复进出悬浮窗后，悬浮窗里变成聊天页 / 角色凭空消失**  | `handleReturnedToApp()` 被**误触发**（见 4.4.2.4）。**三条误判路径都要查**：① `getFloatingPetStatus()` 的 catch 把 IPC 失败伪装成 `detached: false` → 轮询当成「已收回」（现在靠 `queried` 字段拦住）；② 收回时排队的 `pet-attached` 重试（0/300/1000/**3000**ms）在 3 秒内重进悬浮窗后**迟到送达** → 命中新一轮监听器（**主因**，现在靠原生 `petModeEpoch` 作废 + 前端 `confirmReturnedToApp` 复核）；③ `show()` 没清 `pendingAttachNotify`，跨轮残留的引用会在 resume 时补发。注意这个 bug **不可逆**（`handleReturnedToApp` 会停掉轮询），所以还有第 6 条兜底：`MainChat.healStuckFloatingState` 在挂载 1.5s 后发现「页面不在 /pet 但 WebView 在悬浮窗」会补一次导航自愈（**必须延迟** —— 正常收回时也会短暂出现同样的读数） |
-| **窗口尺寸变了但页面不跟**                               | `resize` 监听没绑上（`enterFloatingLayout` 里漏绑，见 4.4）。诊断里 `inner=` 与 `win=` 长期不一致就是这条                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| **退后台后桌宠不动**                                     | 保活轮询没起来；看 logcat 里 `FloatingPet` 的「已启动保活轮询」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| **悬浮窗里点不到按钮 / 按钮看不见**                      | 左侧那排按钮仍在挂桌面端的 `-left-3.5`（落在画布外的「呼吸边」里，被 `overflow-hidden` 裁掉）。定位必须换、显隐时机**不该**换：它和电脑端一样是「悬停才浮现」，悬浮窗里的「悬停」由**展开态**提供（`isStageHovered`），所以收起态看不见是**正确行为**（见 5.3）                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| **收起态点头像，却打开了设置（或按钮闪一下）**           | 两个成因：① 隐藏的按钮仍在接收触摸 —— 悬浮窗里按钮压在头像上，需要 `pointer-events-none`（见 5.3.1）；② 悬停仍由指针事件判定 —— Android 会把触摸合成成 pointer 事件，落在窗口边角就触发一次（见 5.3.2）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| **旋转后要等半秒才归位**                                 | `displayListener` 没注册上（`ensureDisplayListener`），只剩 500ms 轮询兜底。看 logcat 有没有「屏幕尺寸变化：悬浮窗重排为 …」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **气泡看不到 / 以为消息没发出**                          | 窗口高度没跟着内容长，气泡被裁；查 `reportFloatingHeight` 的 IPC 是否成功                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| **单击经常没反应、窗口被带偏**                           | `TAP_SLOP_DP` 偏小，正常点按被判成拖动                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| 悬浮窗里输入框弹不出键盘                                 | 窗口 `FLAG_NOT_FOCUSABLE` 没在展开态摘掉                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| 按住 Home 后悬浮窗消失                                   | 前台服务被 ROM 拦截，需加「后台弹出界面」白名单                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 现象                                                                | 可能原因                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 切回 App 白屏                                                       | 占位页没生效，`setContentView` 顺序有问题                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 收回后主界面黑屏                                                    | WebView 搬回失败，需看 `restoreWebViewToActivity` 日志                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **收回后只剩左上一角、不回聊天页**                                  | `pet-attached` 没送达。三层保险：`notifyWeb` 显式收 WebView 参数、0/300/1000/3000ms 重试、Activity resume 时由 `ensureLifecycleCallbacks` 补发                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **收回后整个界面缩在左上角**                                        | **`setContentView` 没重置 LayoutParams**（见 4.4）。先量 `window.innerWidth` 和屏宽对照：等于悬浮窗宽度就是这条，等于屏宽则是视口问题                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **点 ✕ 收回直接闪退**                                               | **`setContentView` 之后事后赋值 `view.layoutParams` → `FrameLayout.onMeasure` 的 ClassCastException**（见 4.4）。改成两参重载即可。已从「startActivity flag」「moveTaskToFront」等嫌疑点排除                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **收回后整个 App 用窄视口渲染**                                     | 先量 `window.innerWidth`。等于屏宽就是视口问题；等于悬浮窗宽度则是 LayoutParams 没改回 MATCH_PARENT                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **展开后一大片空白（内容挤在左上角）**                              | 两种成因，先看诊断 `gap L…T…R…B…` 那一行定位：**左右有余量** = 缩放系数错（`notifyMetrics` 曾用 `view.width`，它在 `updateViewLayout()` 之后是上一形态的值）；**上边为负 / 下边大** = 内容被系统顶偏了（见下一条）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **展开后内容被顶到屏幕上方、下方空一片**                            | 展开态摘掉 `FLAG_NOT_FOCUSABLE` 后，系统开始插手窗口内容区（insets / 输入法），而画布尺寸只由窗口**宽度**推出，高度被改它不知情（见 4.4）。检查 `SOFT_INPUT_STATE_VISIBLE` 是否还在、`fitInsetsTypes` 是否设了 0；诊断里看 `scroll=` 与 `doc=`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **展开后透明区特别大、且随桌宠缩放变**                              | 页面走了桌面端分支（`PET_WIDTH_BASE × pet.scale`，没有 `--pet-fit`）。看诊断 `applied=` 与 `role scaleP=`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **展开后四周一圈透明**                                              | ✅ **已修**（见 5.1.1 / 5.1.2 / 5.1.3）。**三个来源，别再只查一个**：① **诊断代码自绘** —— 画布上的品红底色 + 头像容器的青色描边，宠物是非矩形，露出来的那一圈看起来就是「套了一圈」（见 5.1.2，已全部关掉）；② 画布**外**的透明 —— 系统给窗口加了 insets，WebView 比窗口小一圈（见 4.4）；③ 缩放系数用了**缓存值** —— `--pet-fit` 滞后 500ms 时画布按旧系数渲染，比窗口小（见 5.1.3，已改成现算的 `liveFit`）。诊断里看 `gap` 行（全 0 才对）与 `shell` 行（必须等于 `inner`）                                                                                                                                                                                                                                                 |
+| **展开后「一整屏」都能被触摸、摸着还能把桌宠拖走**                  | **少写 `FLAG_NOT_TOUCH_MODAL`**（见 5.1.4）。没有它，窗口的可触摸区域是**整块屏幕**，窗口外的触摸也被投递给它 → `buildPetTouchListener` 的 ACTION_DOWN 触发 → 窗口跟手走。**在别的应用里同样发生**（那里没有我们的 Activity，正好可用来确认）。修法是一行 flag，且注意别用整体赋值 `params.flags = ...` 把它抹掉                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 展开后**窗口矩形之内**、宠物轮廓之外的角落吃触摸（固有）            | 悬浮窗是矩形、宠物是圆形，那圈角落**无法**逐像素穿透（见 4.4）。范围仅限窗口自身矩形（收起 60×60dp / 展开 216×252dp），**窗口之外不受影响**；看诊断 `band=`（不为 0 = 气泡带占了高没渲染）、`role scaleP=`（< 1 = 宠物只占头像框一部分）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **横屏下宠物被挤出屏幕**                                            | 尺寸基准用了 `screenWidthDp()`。横屏 0.6×屏宽 推出的高度超过屏高。已改为 `min(屏宽, 屏高)`（见 4.4）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **展开后右边空 120 / 下边空 322 的空白**                            | **`fit` 的三个来源全失效**（`pet-metrics` 推送、500ms IPC 轮询、`resize` 事件），系数停在初值 1.0。判据：诊断里 `win=0x0dp` 且标签停在 `[enter]`（没变成 `[live]`）。已加 500ms 本地心跳自愈（见 4.4.1），并把 `resize` 改成在 `onMounted` 里**无条件**绑定（早先只在「挂载时已是悬浮窗」的分支绑，而启动顺序是先 `push('/pet')` 再 `showFloatingPet()` → 那条分支永远走不到）                                                                                                                                                                                                                                                                                                                                                  |
+| **画布高度比窗口矮，底部留一条透明**                                | 已加兜底：`floatingCanvasHeight = max(内容高, 视口高 / fit)`。宽度是构造出来的（`逻辑宽 × fit ≡ 窗口宽`），高度不是，必须显式兜                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **点空白区域会收起输入框**                                          | 空白落在 `#pet-app` 之外、窗口之内 → 手指派发 `mouseleave` → 桌面端的「光标离开即收起」。它是「空白存在」的旁证。已把悬浮窗里的 `mouseenter/leave` 改成空操作（见 4.4.1）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **横屏时桌宠只能停在左半边（右边一大片拖不过去）**                  | 边界读数**经过 Activity 的 Resources**。这条走过**三版**、都被证伪：① `resources.displayMetrics`；② `maximumWindowMetrics`（AOSP 里它读的就是 `getResources().getConfiguration().windowConfiguration.maxBounds`，同一个 Resources）；③ `DisplayManager.getDisplay().getRealMetrics()` —— 看着离开了 Resources，实则内部 `adjustMetrics` 又按 `mResources` 的旋转交换一次，**还是绕回去**。桌宠悬浮时 App 已 `moveTaskToBack` 到后台，后台 Activity 的 Resources 不跟随旋转刷新 → 边界永远停在竖屏宽度。改用 `Display.getRotation()` + `Display.getMode()`（两者直读 DisplayInfo，见 4.4.2.1）                                                                                                                                   |
+| **贴边时右边（或左侧）溢出去一点**                                  | **按物理边缘夹，没扣系统安全区**（挖孔 / 圆角 / 手势条那圈）。`screenSizePx()` 给的是**物理**尺寸，而桌宠是贴边吸附的 —— 横屏时挖孔通常落在某一侧，那一侧可视宽度本来就更窄，于是贴到「物理右沿」就压在挖孔上（见 4.4.2.2）。修法是新增 `safeInsetsPx()`，`clampIntoScreen` / `snapToEdge` / 旋转重排全部按安全区取值。⚠️ 安全区**必须**取 `getCurrentWindowMetrics().getWindowInsets()` —— 同一个 `WindowMetrics` 上的 `bounds` 走的是 `windowConfiguration.getMaxBounds()`，就是上面那条被证伪三版的 Resources 路径，**同源不同路，别顺手用**                                                                                                                                                                                 |
+| **折叠（展开 → 头像）时界面闪一下**                                 | 窗口尺寸与缩放系数**不可能同帧生效**：窗口先缩到约 60dp，页面还按展开态的大系数（约 1.03）渲染 → 画布比窗口大、内容被裁掉一块，几帧后才缩回来（见 5.1.5）。修法两侧各一处：原生把 `notifyMetrics` 挪到 `updateViewLayout` **之前**；前端 `liveFit` 在「刚收到原生即时几何」且「与现算对不上」时改用权威系数。⚠️ 这两条都是**顺序 / 取值**改动，验包脚本无法用字符串断言，只能真机确认                                                                                                                                                                                                                                                                                                                                           |
+| **旋转屏幕后桌宠跑到屏幕外**                                        | 三个成因，都在 4.4.2：① `x/y` 是屏幕坐标系里的**绝对值**，旋转后屏宽高对调就飞出屏幕；② **读数来源取错**，`lastScreenW/H` 永远不变 → 重排判据永不成立（见 4.4.2.1）；③ **回调根本不会来** —— `ComponentCallbacks.onConfigurationChanged` 只对可见 Activity 送达，而悬浮时 Activity 在后台。修法是 `DisplayManager` 的显示器回调 + 500ms 轮询兜底（见 4.4.2.2 / 4.4.2.3），**两个方向（横→竖、竖→横）都要验**                                                                                                                                                                                                                                                                                                                    |
+| **竖屏↔横屏来回切，桌宠跑出屏幕 / 贴不到边**                        | 同上。验证时至少来回切 3 次，并分别试「贴着左沿」和「贴着右沿」两种起始位置                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **反复进出悬浮窗后，悬浮窗里变成聊天页 / 角色凭空消失**             | `handleReturnedToApp()` 被**误触发**（见 4.4.2.4）。**三条误判路径都要查**：① `getFloatingPetStatus()` 的 catch 把 IPC 失败伪装成 `detached: false` → 轮询当成「已收回」（现在靠 `queried` 字段拦住）；② 收回时排队的 `pet-attached` 重试（0/300/1000/**3000**ms）在 3 秒内重进悬浮窗后**迟到送达** → 命中新一轮监听器（**主因**，现在靠原生 `petModeEpoch` 作废 + 前端 `confirmReturnedToApp` 复核）；③ `show()` 没清 `pendingAttachNotify`，跨轮残留的引用会在 resume 时补发。注意这个 bug **不可逆**（`handleReturnedToApp` 会停掉轮询），所以还有第 6 条兜底：`MainChat.healStuckFloatingState` 在挂载 1.5s 后发现「页面不在 /pet 但 WebView 在悬浮窗」会补一次导航自愈（**必须延迟** —— 正常收回时也会短暂出现同样的读数） |
+| **悬浮窗放久之后，消息能发出去但没反应**（角色卡 / 剧本日志还变空） | **全局生成锁被永久持有**（见 4.5）。`generation_lock` 被持有跨越整条 LLM 流式生成，而 LLM 侧的超时**只在空闲时计时**（reqwest `read_timeout`、两次 `next()` 之间的 `idle_timeout`）—— 服务端只要持续发 SSE 心跳/注释字节就永不触发。任意一轮生成卡死 → 后续**所有**请求永久排队。注意「消息能发出去」只是前端**乐观插入**，不代表 Rust 收到了；特效/按钮正常恰说明卡的是 Rust 侧。已给「前置步骤」与「每一轮生成」各加一层**绝对**硬上限（`GENERATION_HARD_LIMIT_SECS = 600`），超时即 drop 掉 future 释放锁并 emit `ai:error` + `status:reset`。⚠️ 4.5.4 列了几条**尚未加界**的路径（`generate_line_voice` 的 TTS、`get_proactive_prompt` 那段同时持 `ai_service`+`game_status` 跑视觉模型），复现仍在就先查那里               |
+| **窗口尺寸变了但页面不跟**                                          | `resize` 监听没绑上（`enterFloatingLayout` 里漏绑，见 4.4）。诊断里 `inner=` 与 `win=` 长期不一致就是这条                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **退后台后桌宠不动**                                                | 保活轮询没起来；看 logcat 里 `FloatingPet` 的「已启动保活轮询」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **悬浮窗里点不到按钮 / 按钮看不见**                                 | 左侧那排按钮仍在挂桌面端的 `-left-3.5`（落在画布外的「呼吸边」里，被 `overflow-hidden` 裁掉）。定位必须换、显隐时机**不该**换：它和电脑端一样是「悬停才浮现」，悬浮窗里的「悬停」由**展开态**提供（`isStageHovered`），所以收起态看不见是**正确行为**（见 5.3）                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **收起态点头像，却打开了设置（或按钮闪一下）**                      | 两个成因：① 隐藏的按钮仍在接收触摸 —— 悬浮窗里按钮压在头像上，需要 `pointer-events-none`（见 5.3.1）；② 悬停仍由指针事件判定 —— Android 会把触摸合成成 pointer 事件，落在窗口边角就触发一次（见 5.3.2）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **旋转后要等半秒才归位**                                            | `displayListener` 没注册上（`ensureDisplayListener`），只剩 500ms 轮询兜底。看 logcat 有没有「屏幕尺寸变化：悬浮窗重排为 …」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **气泡看不到 / 以为消息没发出**                                     | 窗口高度没跟着内容长，气泡被裁；查 `reportFloatingHeight` 的 IPC 是否成功                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **单击经常没反应、窗口被带偏**                                      | `TAP_SLOP_DP` 偏小，正常点按被判成拖动                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| 悬浮窗里输入框弹不出键盘                                            | 窗口 `FLAG_NOT_FOCUSABLE` 没在展开态摘掉                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 按住 Home 后悬浮窗消失                                              | 前台服务被 ROM 拦截，需加「后台弹出界面」白名单                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ## 九、工程验证方式
 

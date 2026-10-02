@@ -22,6 +22,7 @@ import android.view.MotionEvent
 import android.view.Surface
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.webkit.WebView
 import androidx.appcompat.app.AppCompatActivity
@@ -705,9 +706,76 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     private fun screenDebugInfo(): String = try {
         val d = displayManager().getDisplay(Display.DEFAULT_DISPLAY)
         val m = d?.mode
-        "rotation=${d?.rotation}, mode=${m?.physicalWidth}x${m?.physicalHeight}"
+        val s = safeInsetsPx()
+        "rotation=${d?.rotation}, mode=${m?.physicalWidth}x${m?.physicalHeight}, " +
+            "safe=L${s.left}/T${s.top}/R${s.right}/B${s.bottom}"
     } catch (t: Throwable) {
         "unavailable"
+    }
+
+    /** 系统安全区（挖孔 / 圆角 / 手势条）在屏幕四周的内缩，单位 px。 */
+    private data class SafeInsets(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+        companion object {
+            val NONE = SafeInsets(0, 0, 0, 0)
+        }
+    }
+
+    /**
+     * 当前旋转下的系统安全区内缩（px）。
+     *
+     * ## 为什么必须扣掉
+     *
+     * [screenSizePx] 给的是**物理**尺寸 —— 含挖孔、圆角、手势条所在的那圈区域。
+     * 而桌宠是可以贴边吸附的：按物理尺寸钳制，它就会有一部分压在挖孔 / 圆角上。
+     * 真机表现就是「横屏时右边溢出去一点」。横屏尤其明显 —— 挖孔通常落在
+     * 屏幕的某一侧，那一侧的可视宽度本来就比物理宽度窄。
+     *
+     * ## 为什么这里的读数**可以**信
+     *
+     * 来源是 `WindowManager.getCurrentWindowMetrics().getWindowInsets()`：
+     * insets 由 `InsetsStateController` 维护，**与 Resources 无关**，
+     * 旋转后立刻是新值 —— 性质上和第 4.4.2.1 节里那三个被证伪的读数来源
+     * 完全不同（那三个都绕回了 Activity 的 `Configuration`）。
+     *
+     * ⚠️ **只取 insets，绝不取它的 `bounds`。** 同一个 `WindowMetrics` 上，
+     * `bounds` 来自 `windowConfiguration.getMaxBounds()`（就是 4.4.2.1 里
+     * 被证伪的那条 Resources 路径），而 `windowInsets` 走的是 insets 控制器。
+     * 两者同源不同路，别顺手把 `bounds` 也用上。
+     *
+     * 取的是**整块屏幕**口径的 insets（`getWindowInsets` 内部传的是
+     * maximum bounds），不是我们这个悬浮窗自己的 —— 后者会随窗口位置变化
+     * （窗口没压到状态栏时上内缩就是 0），拿来当安全区会时灵时不灵。
+     *
+     * 低于 API 30 时退回「无边距」：宁可和以前一样贴到物理边缘，
+     * 也不要因为拿不到 insets 而把桌宠挤到屏幕中间。
+     */
+    private fun safeInsetsPx(): SafeInsets {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val wm = activity.getSystemService(WindowManager::class.java)
+                    ?: return SafeInsets.NONE
+                val insets = wm.currentWindowMetrics.windowInsets
+                var l = 0
+                var t = 0
+                var r = 0
+                var b = 0
+                insets.displayCutout?.let {
+                    l = maxOf(l, it.safeInsetLeft)
+                    t = maxOf(t, it.safeInsetTop)
+                    r = maxOf(r, it.safeInsetRight)
+                    b = maxOf(b, it.safeInsetBottom)
+                }
+                val bars = insets.getInsets(WindowInsets.Type.systemBars())
+                l = maxOf(l, bars.left)
+                t = maxOf(t, bars.top)
+                r = maxOf(r, bars.right)
+                b = maxOf(b, bars.bottom)
+                return SafeInsets(l, t, r, b)
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "读取系统安全区失败，按无边距处理", t)
+        }
+        return SafeInsets.NONE
     }
 
     /** 屏幕宽度（dp）。见 [screenSizePx] —— 刻意不用 `resources.displayMetrics`。 */
@@ -1637,13 +1705,19 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             params.width = width
             params.height = height
 
+            val safe = safeInsetsPx()
             val margin = dp(8.0)
-            params.x = if (wasRightHalf) {
-                (screenW - width - margin).coerceAtLeast(margin)
+            val leftX = safe.left + margin
+            val rightX = (screenW - safe.right - width - margin).coerceAtLeast(leftX)
+            params.x = if (wasRightHalf) rightX else leftX
+            // 上下按**安全区**跨度插值：挖孔/手势条占掉的那圈不算可用高度
+            val yMin = safe.top
+            val yMax = screenH - safe.bottom - height
+            params.y = if (yMax > yMin) {
+                (yMin + (yMax - yMin) * yRatio).toInt()
             } else {
-                margin
+                yMin
             }
-            params.y = ((screenH - height) * yRatio).toInt()
             clampIntoScreen(params)
 
             windowManager?.updateViewLayout(view, params)
@@ -1667,7 +1741,13 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * 放大后窗口下半部分会跑到屏幕外——输入框正好在那里，用户就
      * 「看不到也点不到」了。尺寸变化后一律夹一次。
      *
-     * 宽度超过屏幕时左对齐（此时 x 已无意义，保证左边缘可见）。
+     * ## 夹的是**安全区**，不是物理边缘
+     *
+     * 物理尺寸含挖孔 / 圆角 / 手势条那圈区域（见 [safeInsetsPx]）。
+     * 若按物理边缘夹，桌宠贴边时会有一部分压在挖孔或圆角上 ——
+     * 真机表现就是「右边溢出去一点」。所以上下限各自再内缩安全区。
+     *
+     * 可用区间退化（窗口比安全区还大）时左/上对齐，保证边缘可见。
      *
      * 顺带把当前屏幕尺寸记进 [lastScreenW] / [lastScreenH]：
      * 本函数是所有布局路径的必经之地，是「上一次已知屏幕尺寸」最可靠的
@@ -1677,16 +1757,13 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         val (screenW, screenH) = screenSizePx()
         lastScreenW = screenW
         lastScreenH = screenH
-        params.x = if (params.width >= screenW) {
-            0
-        } else {
-            params.x.coerceIn(0, screenW - params.width)
-        }
-        params.y = if (params.height >= screenH) {
-            0
-        } else {
-            params.y.coerceIn(0, screenH - params.height)
-        }
+        val safe = safeInsetsPx()
+        val minX = safe.left
+        val maxX = screenW - safe.right - params.width
+        params.x = if (maxX <= minX) minX else params.x.coerceIn(minX, maxX)
+        val minY = safe.top
+        val maxY = screenH - safe.bottom - params.height
+        params.y = if (maxY <= minY) minY else params.y.coerceIn(minY, maxY)
     }
 
     /**
@@ -1701,14 +1778,15 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      */
     private fun snapToEdge(params: WindowManager.LayoutParams, apply: Boolean = true) {
         val (screenW, _) = screenSizePx()
+        val safe = safeInsetsPx()
         val margin = dp(8.0)
         val width = params.width
         val centerX = params.x + width / 2
-        params.x = if (centerX < screenW / 2) {
-            margin
-        } else {
-            (screenW - width - margin).coerceAtLeast(margin)
-        }
+        // 贴的是**安全区**边缘而不是物理边缘，否则贴右沿时会压在挖孔/圆角上
+        // （真机表现：「右边溢出去一点」）。见 [safeInsetsPx]。
+        val leftX = safe.left + margin
+        val rightX = (screenW - safe.right - width - margin).coerceAtLeast(leftX)
+        params.x = if (centerX < screenW / 2) leftX else rightX
         if (!apply) return
         val view = petView ?: return
         try {
