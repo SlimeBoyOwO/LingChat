@@ -1879,10 +1879,27 @@ y = 4 / 40 / 76 / 112 / 148，最下面那个按钮底边 148+32 = 180，仍在 
 
 ```bash
 cd /d/LingChat-BuildEnv
-bash build-android-pet.sh      # 约 10–13 分钟，产出未签名 APK
-bash sign-apk-pet.sh           # zipalign + apksigner → *-signed.apk
-bash verify-pet-apk.sh         # 验包：确认改动真的进了包（见下）
+bash build-android-pet.sh                        # 约 10–13 分钟，产出未签名 APK
+bash sign-apk-pet.sh <改动摘要>                   # zipalign + apksigner → *-signed.apk，并落位
+bash verify-pet-apk.sh                           # 验包：确认改动真的进了包（见下）
 ```
+
+**「落位」的约定（别漏）**：签名脚本会把成品复制到构建根目录，命名
+
+```
+/d/LingChat-BuildEnv/LingChat-pet-YYYYMMDD-<改动摘要>.apk
+```
+
+摘要用**短横线连接的英文小写**，一眼能看出这版改了什么：
+
+```
+LingChat-pet-20261002-fix-safeinset-and-gen-lock.apk
+LingChat-pet-20261002-settings-window-and-backkey.apk
+LingChat-pet-20261003-responsive-settings-and-petsize.apk
+```
+
+⚠️ 这一步**漏过两次**，所以已经固化进 `sign-apk-pet.sh` 的第 4 步：
+不传摘要就只提示、不落位（避免生成一堆名字没意义的包）。
 
 `verify-pet-apk.sh` 这一步别省：Android 包里前端资产是 brotli 压缩、Kotlin 是 R8 混淆过的，
 **直接 `grep` 字符串搜不到**，很容易出现「改了、打了包、装上去没变」而查不出原因的情况。
