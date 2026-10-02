@@ -100,6 +100,29 @@ impl MessageGenerator {
         Self { deps }
     }
 
+    /// 单轮生成 / 前置步骤的**绝对**硬上限。
+    fn hard_limit() -> std::time::Duration {
+        std::time::Duration::from_secs(crate::config::app_config::GENERATION_HARD_LIMIT_SECS)
+    }
+
+    /// 硬上限触发时的统一收尾：记日志、复位前端、返回错误。
+    ///
+    /// 错误文案里特意带「超时」二字，好让 `classify_llm_error` 把它归成
+    /// `error_code = "timeout"`，前端 i18n 已有对应文案。
+    fn abort_on_hard_limit(&self, stage: &str) -> anyhow::Error {
+        let err = anyhow::anyhow!(
+            "生成超时：{} 超过硬上限 {} 秒仍未结束，已强制中断并释放生成锁（source={:?}）",
+            stage,
+            Self::hard_limit().as_secs(),
+            self.deps.source
+        );
+        events::emit_error(&self.deps.app, &err);
+        if !self.deps.suppress_thinking {
+            events::emit_thinking(&self.deps.app, false);
+        }
+        err
+    }
+
     /// 处理一轮用户消息。返回 accumulated LLM 原始输出（便于日志 / 单测）。
     ///
     /// `None` 只表示本轮没有原始用户输入；业务调用来源由 `GeneratorDeps::source` 表示。
@@ -107,20 +130,33 @@ impl MessageGenerator {
     ///
     /// 在多人自由对话模式下（God Agent 激活），会自动循环生成多轮 NPC 对话。
     pub async fn process_message(&self, user_message: Option<String>) -> Result<String> {
-        // 1. 处理用户消息
-        let user_ctx = self.handle_user_message(user_message.as_deref()).await?;
+        // 1~2. 前置步骤（用户消息落库/翻译、场景检测、本轮锚点、上帝 Agent 预选）
+        //      统一加硬上限：`handle_user_message` 内部可能调用翻译模型，
+        //      同样存在「永不返回」的风险，不能只保生成轮次。
+        let (user_ctx, recent_anchor_hint) =
+            match tokio::time::timeout(Self::hard_limit(), async {
+                // 1 处理用户消息
+                let user_ctx = self.handle_user_message(user_message.as_deref()).await?;
 
-        // 1.5. 场景变化检测
-        self.detect_scene_change().await?;
+                // 1.5 场景变化检测
+                self.detect_scene_change().await?;
 
-        // 1.6. 本轮 user 行的下标：好感度这类后台产出之后要挂回这一轮。
-        // 真正的指纹在评估时再取，避免 `cleanup_temp_message` 改写玩家行后对不上。
-        let recent_anchor_hint = user_ctx.line_index.or(self.deps.round_anchor_hint);
+                // 1.6 本轮 user 行的下标：好感度这类后台产出之后要挂回这一轮。
+                // 真正的指纹在评估时再取，避免 `cleanup_temp_message` 改写玩家行后对不上。
+                let anchor = user_ctx.line_index.or(self.deps.round_anchor_hint);
 
-        // 2. 上帝 Agent 预处理：用户发消息时，先决定谁回应
-        if user_message.is_some() {
-            self.god_agent_pre_select().await?;
-        }
+                // 2 上帝 Agent 预处理：用户发消息时，先决定谁回应
+                if user_message.is_some() {
+                    self.god_agent_pre_select().await?;
+                }
+
+                Ok::<_, anyhow::Error>((user_ctx, anchor))
+            })
+            .await
+            {
+                Ok(result) => result?,
+                Err(_) => return Err(self.abort_on_hard_limit("前置处理")),
+            };
 
         // 2.5 工具推荐：按设置走「不推荐 / 上帝 Agent / 静默检索」三条路之一，
         // 结果只是一条临时提示与几个本轮可直接调用的工具名，不写台词表也不进记忆。
@@ -251,10 +287,24 @@ impl MessageGenerator {
             events::emit_thinking(&self.deps.app, true);
         }
 
-        match self
-            .run_pipeline(context, user_message.to_string(), user_msg_seq, tool_hint)
-            .await
-        {
+        // 单轮 LLM 生成加**绝对**硬上限。
+        //
+        // 空闲超时（reqwest `read_timeout`、两次 chunk 之间的 `idle_timeout`）挡不住
+        // 「服务端持续发 SSE 心跳/注释字节、流永不结束」这种情形；而生成锁
+        // （`AppState::generation_lock`）被持有跨越整轮生成，一旦卡死就等于
+        // **全局对话永久阻塞**。超时后 drop 掉生成 future，连带释放底层连接与锁。
+        let outcome = tokio::time::timeout(
+            Self::hard_limit(),
+            self.run_pipeline(context, user_message.to_string(), user_msg_seq, tool_hint),
+        )
+        .await;
+
+        let outcome = match outcome {
+            Ok(result) => result,
+            Err(_) => Err(self.abort_on_hard_limit("LLM 生成")),
+        };
+
+        match outcome {
             Ok(acc) => {
                 if !self.deps.suppress_thinking {
                     events::emit_thinking(&self.deps.app, false);

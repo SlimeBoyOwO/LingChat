@@ -12,4 +12,31 @@
     <item name="android:windowIsTranslucent">true</item>
     <item name="android:windowBackground">@android:color/transparent</item>
     </style>
+
+    <!-- 桌宠「设置」独立窗口（SettingsActivity）的专属主题。
+         必须覆盖掉 Theme.ling_chat 里几项「桌宠专属」的配置：
+
+         · windowShowWallpaper / windowIsTranslucent / windowBackground=transparent
+           —— 那是为了让桌宠悬浮窗透出系统壁纸。设置窗照抄会变成「半透明 + 透壁纸」；
+           而且 wry 在窗口选项 `transparent: true` 时还会把 WebView 背景也置成
+           全透明（见 wry `android/main_pipe.rs` 的 `set_background_color`），
+           两者叠加的结果就是「设置页糊在壁纸上、字看不清」。
+           这里换成不透明的 ?android:colorBackground（DayNight 主题，
+           随系统深浅色自动取白/近黑）。
+
+         · windowFullscreen=true —— 桌宠是全屏沉浸式，留着会在 Android 14 及以下
+           把状态栏一起藏掉（看不到时间/电量）；而 Android 15+ 因为对
+           targetSdk ≥ 35 强制 edge-to-edge 又是另一套行为。显式关掉，两端统一。
+
+         安全区不靠主题解决，靠 SafeAreaInsets 注入的 safe-area-inset-* 那组
+         CSS 变量（注意：XML 注释里不能出现连续两个减号，所以这里不写变量名的
+         前导双横线），见 SettingsPage.vue 根元素上的 .pt-safe/.pb-safe。 -->
+    <style name="Theme.ling_chat.settings" parent="Theme.ling_chat">
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowTranslucentStatus">false</item>
+        <item name="android:windowTranslucentNavigation">false</item>
+        <item name="android:windowShowWallpaper">false</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowBackground">?android:colorBackground</item>
+    </style>
 </resources>
