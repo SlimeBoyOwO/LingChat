@@ -3,7 +3,7 @@
 //! 插件是 `data/plugins/<id>/` 目录，含 `manifest.toml`（工具声明）与若干
 //! `.py` 脚本。启用后工具注册进 `ToolRegistry`，AI 即可调用；执行时用
 //! 嵌入的 RustPython 跑脚本，脚本通过注入的 `ctx` 使用受限能力
-//! （HTTP、白名单环境变量），无法访问文件系统/执行命令。
+//! （HTTP、白名单环境变量、WebSocket），无法访问文件系统/执行命令。
 //!
 //! # 公开 API
 //!
@@ -22,6 +22,7 @@ pub mod resources;
 pub mod signal;
 pub mod tool;
 pub mod types;
+pub mod ws;
 
 use std::sync::OnceLock;
 

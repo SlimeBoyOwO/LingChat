@@ -114,6 +114,106 @@ pub struct SubscribeDecl {
     pub matches: HashMap<String, MatchValue>,
 }
 
+/// WebSocket 连接方向。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WsMode {
+    /// 插件主动连出去（连外部服务）。
+    Client,
+    /// 宿主监听端口，被外部连进来。
+    Server,
+}
+
+impl WsMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Client => "client",
+            Self::Server => "server",
+        }
+    }
+}
+
+/// 插件声明的一条 WebSocket 连接。
+///
+/// 连接本体常驻宿主 Rust（插件脚本无状态、跑完即弃），插件只做「发一帧」与
+/// 「收帧时被叫醒执行 handler」。插件启用时宿主按此建立连接，脚本可再用
+/// `plugin_host.ws_open` / `ws_close` 按 `id` 启停。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WsDecl {
+    /// 连接名（脚本按它启停；同一插件内唯一）。
+    pub id: String,
+    pub mode: WsMode,
+    /// client：默认连接的 URL（可含 `${config.key}` / `${env.KEY}` 占位符）。
+    /// 缺省则由脚本 `ws_open(id, url=...)` 传入。
+    #[serde(default)]
+    pub url: Option<String>,
+    /// server：监听地址，如 `127.0.0.1:8787`。
+    #[serde(default)]
+    pub bind: Option<String>,
+    /// server：WebSocket 路径，默认 `/ws`。
+    #[serde(default)]
+    pub path: Option<String>,
+    /// client：连接时附带的请求头（值同样支持占位符）。
+    #[serde(default)]
+    pub headers: HashMap<String, String>,
+    /// 可选的内联事件处理脚本（相对插件目录）。与 `handler` 同时给出才生效，
+    /// 加载时合成一条等价的 `ws_message` 订阅（`match` 自动填本连接 id）。
+    #[serde(default)]
+    pub script: Option<String>,
+    /// 内联处理脚本里的函数名，签名 `handler(ctx)`。
+    #[serde(default)]
+    pub handler: Option<String>,
+    /// 单次 handler 执行超时（毫秒），默认 30s。
+    #[serde(default = "default_timeout_ms")]
+    pub timeout_ms: u64,
+    /// client：断开后是否由宿主自动重连（指数退避），默认 true。
+    #[serde(default = "default_true")]
+    pub auto_reconnect: bool,
+}
+
+/// WS 连接的运行状态（暴露给前端展示）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WsState {
+    /// 未建立（插件未启用，或连接已关闭 / 任务已结束）。
+    Stopped,
+    /// 正在连接或重连（client）/ 监听就绪前（server）。
+    Connecting,
+    /// 已连接（client 连上对端；server 表示已就绪监听）。
+    Connected,
+    /// 出错且不再重试（server 绑定失败 / client 关闭了自动重连后的最终失败）。
+    Error,
+}
+
+impl WsState {
+    /// 存进 `AtomicU8` 用的紧凑编码。
+    pub(crate) fn as_u8(self) -> u8 {
+        match self {
+            Self::Stopped => 0,
+            Self::Connecting => 1,
+            Self::Connected => 2,
+            Self::Error => 3,
+        }
+    }
+
+    pub(crate) fn from_u8(v: u8) -> Self {
+        match v {
+            1 => Self::Connecting,
+            2 => Self::Connected,
+            3 => Self::Error,
+            _ => Self::Stopped,
+        }
+    }
+}
+
+/// 暴露给前端的单条 WS 连接信息（声明 + 当前状态）。
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WsConnInfo {
+    pub id: String,
+    pub mode: WsMode,
+    pub state: WsState,
+}
+
 /// 插件在程序启动（或启用）时执行的入口声明。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StartupDecl {
@@ -194,6 +294,13 @@ pub struct PluginManifest {
     /// 插件订阅的宿主信号（空 = 不订阅任何信号）。
     #[serde(default)]
     pub subscribe: Vec<SubscribeDecl>,
+    /// 插件声明的 WebSocket 连接（空 = 无 WS 能力）。
+    #[serde(default)]
+    pub ws: Vec<WsDecl>,
+    /// 允许 client 连接的 URL 白名单（前缀，可含 `*` 通配主机段）。
+    /// 空 = 允许全网段；非空时实际连接的 url 必须命中其一。
+    #[serde(default)]
+    pub ws_allow: Vec<String>,
     /// 允许 `read_data_file` 读取的 `data/` 下相对路径（目录前缀，含其子树）。
     /// 空 = 不能读任何文件；未声明的路径一律拒绝。
     #[serde(default)]
@@ -212,6 +319,8 @@ pub struct PluginManifest {
 /// 由 `PluginManager::plugin_run_env` 组装，再经 `python_backend` 注入解释器。
 #[derive(Clone, Debug, Default)]
 pub struct PluginRunEnv {
+    /// 当前执行的插件 id（供 `ws_send` 等按插件定位资源）。
+    pub plugin_id: String,
     /// 设置页里填的配置值（键为 manifest `[[config]]` 的 key）。
     pub config: HashMap<String, Value>,
     /// manifest `[[env]]` 白名单里、进程环境中确实存在的变量。
@@ -273,6 +382,8 @@ pub struct PluginInfo {
     pub tools: Vec<String>,
     /// 该插件声明携带的资源类型（如 `["characters", "musics"]`）。
     pub resources: Vec<String>,
+    /// 该插件声明的 WS 连接（含当前运行状态，供插件页展示）。
+    pub ws: Vec<WsConnInfo>,
     /// 本插件依赖的前置插件 id（前端据此提示「需要先启用谁」）。
     pub depends_on: Vec<String>,
     pub error: Option<String>,
@@ -302,6 +413,17 @@ impl From<&PluginRecord> for PluginInfo {
                 .resources
                 .iter()
                 .map(|k| k.as_str().to_string())
+                .collect(),
+            ws: record
+                .manifest
+                .ws
+                .iter()
+                .map(|w| WsConnInfo {
+                    id: w.id.clone(),
+                    mode: w.mode,
+                    // 默认 Stopped；`PluginManager::list` 会查连接表覆盖为实时状态。
+                    state: WsState::Stopped,
+                })
                 .collect(),
             depends_on: record.manifest.depends_on.clone(),
             error: record.error.clone(),

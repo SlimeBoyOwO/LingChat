@@ -21,7 +21,9 @@ use super::signal::SignalRegistry;
 use super::tool::PluginTool;
 use super::types::{
     ConfigKind, PluginInfo, PluginRecord, PluginRunEnv, PluginState, ResourceKind, StartupDecl,
+    WsConnInfo, WsDecl, WsMode, WsState,
 };
+use super::ws::{self, WsCommand, WsHandle};
 
 /// 集中插件状态文件名（data/plugins/state.json，仿 tool_permissions.toml）。
 const STATE_FILE_NAME: &str = "state.json";
@@ -46,6 +48,11 @@ pub struct PluginManager {
     /// 也会先查一次。注意它取消的是**等待**，不是正在执行的脚本——阻塞线程里的
     /// 解释器没有任何外部中断手段，只能等它自己返回并丢弃结果。
     cancels: Mutex<HashMap<String, CancellationToken>>,
+    /// plugin_id → (conn_id → 连接句柄)。与 `cancels` 同步维护：插件启用即建、停用即断。
+    ///
+    /// 用 `std::sync::Mutex`：读写都是「查表 + 发 mpsc」的同步操作，且发送端可能在
+    /// `spawn_blocking` 的脚本线程里被调用（那里不能 await）。
+    ws: std::sync::Mutex<HashMap<String, HashMap<String, WsHandle>>>,
 }
 
 impl PluginManager {
@@ -60,6 +67,7 @@ impl PluginManager {
             records: Mutex::new(HashMap::new()),
             signals: RwLock::new(SignalRegistry::new()),
             cancels: Mutex::new(HashMap::new()),
+            ws: std::sync::Mutex::new(HashMap::new()),
         };
         manager.sync_state_file();
         manager.reload();
@@ -114,16 +122,29 @@ impl PluginManager {
         self.rebuild_signal_index(&records);
         // 重扫会重建记录：取消令牌对齐到新的启用集合。旧令牌一律作废，
         // 让重扫前还在跑的启动重试立刻停下来。
-        {
+        let inputs: Vec<(String, WsOpenInput)> = {
             let mut cancels = self.cancels.blocking_lock();
             for token in cancels.values() {
                 token.cancel();
             }
             cancels.clear();
+            let mut inputs = Vec::new();
             for record in records.values() {
                 if record.state.enabled && record.error.is_none() {
                     cancels.insert(record.manifest.id.clone(), CancellationToken::new());
+                    if !record.manifest.ws.is_empty() {
+                        inputs.push((record.manifest.id.clone(), ws_open_input(record)));
+                    }
                 }
+            }
+            inputs
+        };
+        // 记录已重建：WS 连接先全部断开，再按新的启用集合重建。
+        drop(records);
+        self.ws_close_all();
+        for (id, input) in &inputs {
+            if let Err(e) = self.spawn_ws_from(id, input, None, None) {
+                tracing::warn!(plugin = %id, "重建 WS 连接失败: {e}");
             }
         }
     }
@@ -233,6 +254,7 @@ impl PluginManager {
             return PluginRunEnv::default();
         };
         PluginRunEnv {
+            plugin_id: id.to_string(),
             config: record.state.config.clone(),
             env: python_backend::collect_env(&record.manifest),
             read: record.manifest.read.clone(),
@@ -242,7 +264,22 @@ impl PluginManager {
     /// 列表（供前端）。
     pub async fn list(&self) -> Vec<PluginInfo> {
         let records = self.records.lock().await;
-        records.values().map(PluginInfo::from).collect()
+        let ws_states = self.ws.lock().unwrap_or_else(|e| e.into_inner());
+        records
+            .values()
+            .map(|record| {
+                let mut info = PluginInfo::from(record);
+                // 用连接表的实时状态覆盖：表里没有该连接 = 未建立（Stopped）。
+                if let Some(conns) = ws_states.get(&record.manifest.id) {
+                    for c in &mut info.ws {
+                        if let Some(handle) = conns.get(&c.id) {
+                            c.state = handle.state();
+                        }
+                    }
+                }
+                info
+            })
+            .collect()
     }
 
     /// 启用/禁用插件：注册或注销其工具，保存状态，刷新权限。
@@ -294,8 +331,19 @@ impl PluginManager {
                 .lock()
                 .await
                 .insert(id.to_string(), CancellationToken::new());
+            // 建立该插件声明的 WS 连接（脚本仍可用 ws_open/ws_close 按需启停）。
+            let input = {
+                let records = self.records.lock().await;
+                records.get(id).map(ws_open_input)
+            };
+            if let Some(input) = input {
+                if let Err(e) = self.spawn_ws_from(id, &input, None, None) {
+                    tracing::warn!(plugin = %id, "建立 WS 连接失败: {e}");
+                }
+            }
         } else {
             self.cancel_plugin(id).await;
+            self.ws_close(id, None);
         }
         Ok(())
     }
@@ -342,8 +390,9 @@ impl PluginManager {
         drop(records);
         std::fs::remove_dir_all(&dir).map_err(|e| format!("删除插件目录失败: {e}"))?;
         let _ = self.registry.save_permissions(&self.data_dir);
-        // 插件本体没了：让它的启动重试立刻停下。依赖它的插件由调用方级联禁用。
+        // 插件本体没了：让它的启动重试立刻停下、WS 连接断开。依赖它的插件由调用方级联禁用。
         self.cancel_plugin(id).await;
+        self.ws_close(id, None);
         Ok(())
     }
 
@@ -648,15 +697,24 @@ impl PluginManager {
     /// 免得为不关心的插件白新建一个解释器。handler 的返回值按约定丢弃，执行失败
     /// 只记日志——信号是宿主业务的旁路，不能反过来影响发出方。
     ///
-    /// 目前只有 `ai_reply` 一个信号，在回复流水线的发射点调用（见
-    /// `ai_service::message_system::generator`）。
-    pub async fn dispatch_signal(&self, app: &AppHandle, signal: &str, payload: &Value) {
+    /// `only_plugin` 给出时只派发给该插件的订阅：`ws_message` 用它把事件限定在
+    /// 连接所属插件，避免别的订阅了同名信号的插件收到不相关的帧。
+    pub async fn dispatch_signal(
+        &self,
+        app: &AppHandle,
+        signal: &str,
+        payload: &Value,
+        only_plugin: Option<&str>,
+    ) {
         let (subscriptions, slots) = {
             let signals = self.signals.read().unwrap_or_else(|e| e.into_inner());
             (signals.matching(signal, payload), signals.slots())
         };
 
         for sub in subscriptions {
+            if only_plugin.is_some_and(|p| p != sub.plugin_id) {
+                continue;
+            }
             // 插件可能刚被停用：不再为它起新的解释器（已在跑的不受影响）。
             if self.is_stopped(&sub.plugin_id).await {
                 tracing::debug!(plugin = %sub.plugin_id, signal, "插件已停用，跳过派发");
@@ -721,6 +779,201 @@ impl PluginManager {
                 }
             });
         }
+    }
+
+    // ============================================================
+    // 插件 WebSocket 连接（[[ws]]）
+    // ============================================================
+
+    /// 建立某插件声明的 WS 连接（脚本 `ws_open` 用）。`conn_id` 为 None 时处理全部。
+    pub(crate) async fn ws_open(
+        &self,
+        id: &str,
+        conn_id: Option<&str>,
+        url_override: Option<&str>,
+    ) -> Result<(), String> {
+        let input = {
+            let records = self.records.lock().await;
+            let record = records
+                .get(id)
+                .ok_or_else(|| format!("插件 '{id}' 不存在"))?;
+            ws_open_input(record)
+        };
+        self.spawn_ws_from(id, &input, conn_id, url_override)
+    }
+
+    /// 关闭某插件的 WS 连接（`conn_id` 为 None 时关闭全部）。
+    pub(crate) fn ws_close(&self, id: &str, conn_id: Option<&str>) {
+        let mut table = self.ws.lock().unwrap_or_else(|e| e.into_inner());
+        match conn_id {
+            None => {
+                if let Some(conns) = table.remove(id) {
+                    for handle in conns.values() {
+                        let _ = handle.tx.send(WsCommand::Close);
+                    }
+                }
+            },
+            Some(cid) => {
+                if let Some(conns) = table.get_mut(id) {
+                    if let Some(handle) = conns.remove(cid) {
+                        let _ = handle.tx.send(WsCommand::Close);
+                    }
+                }
+            },
+        }
+    }
+
+    /// 关闭所有插件的 WS 连接（重载时全量重建用）。
+    fn ws_close_all(&self) {
+        let mut table = self.ws.lock().unwrap_or_else(|e| e.into_inner());
+        for (_, conns) in table.drain() {
+            for handle in conns.values() {
+                let _ = handle.tx.send(WsCommand::Close);
+            }
+        }
+    }
+
+    /// 向某连接发一帧（脚本 `ws_send` 用）。同步、不等待、不回调。
+    pub(crate) fn ws_send(
+        &self,
+        plugin_id: &str,
+        conn_id: &str,
+        cmd: WsCommand,
+    ) -> Result<(), String> {
+        let table = self.ws.lock().unwrap_or_else(|e| e.into_inner());
+        let conns = table
+            .get(plugin_id)
+            .ok_or_else(|| format!("插件 '{plugin_id}' 没有活动连接"))?;
+        let handle = conns
+            .get(conn_id)
+            .ok_or_else(|| format!("连接 '{conn_id}' 未建立或已关闭"))?;
+        handle
+            .tx
+            .send(cmd)
+            .map_err(|_| format!("连接 '{conn_id}' 的发送通道已关闭"))
+    }
+
+    /// 查询某插件声明的 WS 连接及其当前状态（脚本 `ws_status` 用）。
+    ///
+    /// `conn_id` 指定时只返回该连接（未声明则报错）；否则返回全部声明。
+    pub(crate) fn ws_status(
+        &self,
+        plugin_id: &str,
+        conn_id: Option<&str>,
+    ) -> Result<Vec<WsConnInfo>, String> {
+        let records = self.records.blocking_lock();
+        let record = records
+            .get(plugin_id)
+            .ok_or_else(|| format!("插件 '{plugin_id}' 不存在"))?;
+        let ws_states = self.ws.lock().unwrap_or_else(|e| e.into_inner());
+        let conns = ws_states.get(plugin_id);
+        let mut out = Vec::new();
+        for decl in &record.manifest.ws {
+            if conn_id.is_some_and(|c| c != decl.id) {
+                continue;
+            }
+            // 表里没有该连接 = 未建立（Stopped）。
+            let state = conns
+                .and_then(|c| c.get(&decl.id))
+                .map(|h| h.state())
+                .unwrap_or(WsState::Stopped);
+            out.push(WsConnInfo {
+                id: decl.id.clone(),
+                mode: decl.mode,
+                state,
+            });
+        }
+        if let Some(cid) = conn_id {
+            if out.is_empty() {
+                return Err(format!("插件 '{plugin_id}' 未声明连接 '{cid}'"));
+            }
+        }
+        Ok(out)
+    }
+
+    /// 同步建立连接（只碰 ws 表，不取 records 锁）。`only` 指定时只处理该 conn_id，
+    /// `url_override` 覆盖 client 的声明 url。
+    fn spawn_ws_from(
+        &self,
+        id: &str,
+        input: &WsOpenInput,
+        only: Option<&str>,
+        url_override: Option<&str>,
+    ) -> Result<(), String> {
+        let mut table = self.ws.lock().unwrap_or_else(|e| e.into_inner());
+        let conns = table.entry(id.to_string()).or_default();
+        let mut matched = false;
+        for decl in &input.decls {
+            if only.is_some_and(|c| c != decl.id) {
+                continue;
+            }
+            matched = true;
+            if conns.contains_key(&decl.id) {
+                continue; // 幂等：已建立则跳过
+            }
+            match decl.mode {
+                WsMode::Client => {
+                    let url = url_override
+                        .map(str::to_string)
+                        .or_else(|| decl.url.clone())
+                        .map(|u| ws::resolve_placeholders(&u, &input.config, &input.env))
+                        .unwrap_or_default();
+                    if url.is_empty() {
+                        let msg = format!("连接 '{}' 未提供 url", decl.id);
+                        if only.is_some() {
+                            return Err(msg);
+                        }
+                        tracing::warn!(plugin = %id, conn = %decl.id, "{msg}，跳过");
+                        continue;
+                    }
+                    if let Err(e) = ws::check_ws_url_allowed(&url, &input.allow) {
+                        if only.is_some() {
+                            return Err(e);
+                        }
+                        tracing::warn!(plugin = %id, conn = %decl.id, "url 不在白名单，跳过: {e}");
+                        continue;
+                    }
+                    let headers = decl
+                        .headers
+                        .iter()
+                        .map(|(k, v)| {
+                            (
+                                k.clone(),
+                                ws::resolve_placeholders(v, &input.config, &input.env),
+                            )
+                        })
+                        .collect();
+                    let handle = ws::spawn_client(
+                        id.to_string(),
+                        decl.id.clone(),
+                        ws::ClientTarget {
+                            url,
+                            headers,
+                            auto_reconnect: decl.auto_reconnect,
+                        },
+                    );
+                    conns.insert(decl.id.clone(), handle);
+                },
+                WsMode::Server => {
+                    let bind = decl.bind.clone().unwrap_or_default();
+                    let raw_path = decl.path.clone().unwrap_or_else(|| "/ws".to_string());
+                    // axum 的 route 要求以 / 开头，缺了会 panic。
+                    let path = if raw_path.starts_with('/') {
+                        raw_path
+                    } else {
+                        format!("/{raw_path}")
+                    };
+                    let handle = ws::spawn_server(id.to_string(), decl.id.clone(), bind, path);
+                    conns.insert(decl.id.clone(), handle);
+                },
+            }
+        }
+        if let Some(only) = only {
+            if !matched {
+                return Err(format!("插件 '{id}' 未声明连接 '{only}'"));
+            }
+        }
+        Ok(())
     }
 
     // ============================================================
@@ -1053,6 +1306,25 @@ impl PluginManager {
     /// 插件是否已停用（令牌不存在，或已被取消）。
     async fn is_stopped(&self, id: &str) -> bool {
         self.live_token(id).await.is_none()
+    }
+}
+
+/// 建立某插件 WS 连接所需的、已从 records 取出的数据（取出后与锁无关，
+/// 因此可在 async 与 blocking 两种上下文里建连）。
+struct WsOpenInput {
+    decls: Vec<WsDecl>,
+    allow: Vec<String>,
+    config: HashMap<String, Value>,
+    env: HashMap<String, String>,
+}
+
+/// 从插件记录拍出建连输入。
+fn ws_open_input(record: &PluginRecord) -> WsOpenInput {
+    WsOpenInput {
+        decls: record.manifest.ws.clone(),
+        allow: record.manifest.ws_allow.clone(),
+        config: record.state.config.clone(),
+        env: python_backend::collect_env(&record.manifest),
     }
 }
 

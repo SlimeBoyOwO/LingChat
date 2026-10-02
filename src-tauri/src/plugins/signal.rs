@@ -7,6 +7,7 @@
 //! 已登记的信号：
 //!
 //! - [`SIGNAL_AI_REPLY`]：每条助手回复（自由对话、剧本固定台词、主动消息都会触发）
+//! - [`SIGNAL_WS_MESSAGE`]：插件声明的 WS 连接的建立 / 断开 / 收到帧 / 出错
 //!
 //! 接入新信号时：
 //! 1. 在 [`SignalRegistry::new`] 里 `register` 一条 [`SignalSpec`]（名称 + payload 字段）；
@@ -27,7 +28,7 @@ use crate::AppState;
 use crate::ai_service::message_system::responses::ReplyResponse;
 use crate::db::managers::role_repo::RoleRepo;
 
-use super::types::{PluginRecord, SubscribeDecl};
+use super::types::{MatchValue, PluginRecord, SubscribeDecl};
 
 /// 同时执行的 handler 上限。信号可能从任意业务点高频发出，不设上限会把
 /// 阻塞线程打满。
@@ -35,6 +36,15 @@ const MAX_CONCURRENT_HANDLERS: usize = 4;
 
 /// 每条助手回复。payload 与前端收到的 `ai:reply` 事件完全一致（camelCase）。
 pub const SIGNAL_AI_REPLY: &str = "ai_reply";
+
+/// WebSocket 连接事件：连接建立 / 断开、收到帧、出错都会发。
+///
+/// payload 顶层字段见 [`WS_MESSAGE_FIELDS`]。只有声明了该连接的插件会收到
+/// （派发时按连接所属插件过滤，见 `PluginManager::dispatch_signal`）。
+pub const SIGNAL_WS_MESSAGE: &str = "ws_message";
+
+/// [`SIGNAL_WS_MESSAGE`] payload 的顶层字段（camelCase）。
+pub const WS_MESSAGE_FIELDS: &[&str] = &["connId", "mode", "event", "data", "binary", "error"];
 
 /// [`SIGNAL_AI_REPLY`] payload 的顶层字段（camelCase）。
 ///
@@ -119,6 +129,11 @@ impl SignalRegistry {
             description: "每条助手回复（自由对话、剧本固定台词、主动消息都会触发）",
             fields: AI_REPLY_FIELDS,
         });
+        registry.register(SignalSpec {
+            name: SIGNAL_WS_MESSAGE,
+            description: "插件声明的 WS 连接：建立 / 断开 / 收到帧 / 出错",
+            fields: WS_MESSAGE_FIELDS,
+        });
         registry
     }
 
@@ -173,6 +188,32 @@ impl SignalRegistry {
                         plugin_id: plugin_id.clone(),
                         dir: record.dir.clone(),
                         decl: decl.clone(),
+                    });
+            }
+            // [[ws]] 内联 handler：合成一条等价的 ws_message 订阅，match 本连接 id。
+            // 派发路径不分叉——插件用内联 handler 还是 [[subscribe]] 效果一致。
+            for ws in &record.manifest.ws {
+                let (Some(script), Some(handler)) = (&ws.script, &ws.handler) else {
+                    continue;
+                };
+                let mut matches = HashMap::new();
+                matches.insert(
+                    "connId".to_string(),
+                    MatchValue::One(Value::String(ws.id.clone())),
+                );
+                self.index
+                    .entry(SIGNAL_WS_MESSAGE.to_string())
+                    .or_default()
+                    .push(Subscription {
+                        plugin_id: plugin_id.clone(),
+                        dir: record.dir.clone(),
+                        decl: SubscribeDecl {
+                            signal: SIGNAL_WS_MESSAGE.to_string(),
+                            script: script.clone(),
+                            handler: handler.clone(),
+                            timeout_ms: ws.timeout_ms,
+                            matches,
+                        },
                     });
             }
         }
@@ -234,7 +275,7 @@ pub async fn emit_ai_reply(app: &AppHandle, resp: &ReplyResponse) {
     };
 
     manager
-        .dispatch_signal(app, SIGNAL_AI_REPLY, &payload)
+        .dispatch_signal(app, SIGNAL_AI_REPLY, &payload, None)
         .await;
 }
 

@@ -343,6 +343,13 @@ export default {
     delete: "Delete",
     deleteConfirm: 'Delete plugin "{name}"? This removes the plugin folder and cannot be undone.',
     dependsOn: "Requires",
+    wsTitle: "WebSocket connections",
+    wsState: {
+      stopped: "Disconnected",
+      connecting: "Connecting",
+      connected: "Connected",
+      error: "Error",
+    },
     enableFailedTitle: "Cannot enable plugin",
     errors: {
       PLUGIN_MISSING_DEPENDENCY: "Missing required plugin(s). Install them first",

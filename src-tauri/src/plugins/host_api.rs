@@ -334,6 +334,49 @@ fn current_read_allow() -> Vec<String> {
     READ_ALLOW.with(|cell| cell.borrow().clone())
 }
 
+thread_local! {
+    /// 当前线程正在执行的插件 id（由 `python_backend::run_entry` 设置）。
+    /// `ws_send` / `ws_open` / `ws_close` 按插件定位连接时用它，与 `READ_ALLOW` 同款。
+    static CURRENT_PLUGIN: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// 设置当前线程的插件 id；Drop 时还原（见 `CURRENT_PLUGIN`）。
+pub(crate) struct CurrentPluginGuard {
+    prev: Option<String>,
+}
+
+impl Drop for CurrentPluginGuard {
+    fn drop(&mut self) {
+        CURRENT_PLUGIN.with(|cell| *cell.borrow_mut() = std::mem::take(&mut self.prev));
+    }
+}
+
+/// 设置当前线程的插件 id，返回还原用 guard。
+pub(crate) fn set_current_plugin(id: &str) -> CurrentPluginGuard {
+    let prev = CURRENT_PLUGIN.with(|cell| cell.borrow_mut().replace(id.to_string()));
+    CurrentPluginGuard { prev }
+}
+
+fn current_plugin() -> Option<String> {
+    CURRENT_PLUGIN.with(|cell| cell.borrow().clone())
+}
+
+/// 把 `Result<(), String>` 包成 `{ok, error}` 信封（插件好处理，不抛异常）。
+fn result_to_py(vm: &VirtualMachine, r: Result<(), String>) -> PyObjectRef {
+    value_to_pyobject(
+        vm,
+        &match r {
+            Ok(()) => serde_json::json!({ "ok": true }),
+            Err(e) => serde_json::json!({ "ok": false, "error": e }),
+        },
+    )
+}
+
+/// `{ok: false, error}` 信封。
+fn err_json(vm: &VirtualMachine, msg: &str) -> PyObjectRef {
+    value_to_pyobject(vm, &serde_json::json!({ "ok": false, "error": msg }))
+}
+
 /// 校验「相对 `data/` 的路径」字面是否合法：非空、相对、不含 `..` 与盘符。
 ///
 /// manifest 的 `read` 声明与插件传入的请求路径共用这一份校验，别各写一套。
@@ -454,7 +497,10 @@ fn read_data_file_impl_in(
 /// 插件宿主原生模块。插件脚本里用 `from plugin_host import ...` 取用。
 #[pymodule]
 mod plugin_host {
-    use rustpython_vm::{PyObjectRef, PyResult, VirtualMachine, function::KwArgs};
+    use rustpython_vm::{
+        PyObjectRef, PyResult, VirtualMachine, builtins::PyBytes, function::KwArgs,
+    };
+    use tauri::Manager;
 
     use crate::ai_service::types::GameLine;
 
@@ -605,6 +651,123 @@ mod plugin_host {
         };
         let result = super::runtime().block_on(super::compress_context_impl(app));
         Ok(super::value_to_pyobject(vm, &result))
+    }
+
+    /// 启用一个已在 manifest 声明的 WebSocket 连接。
+    ///
+    /// 用法：`ws_open("gateway")` / `ws_open("gateway", url="wss://...")`
+    ///
+    /// 插件启用时宿主已自动建立声明的连接，`ws_open` 用于关闭后重连，或用脚本给出的
+    /// url 覆盖声明值（仍受 manifest `ws_allow` 白名单约束）。返回 `{ "ok": true }`
+    /// 或 `{ "ok": false, "error": "..." }`。
+    #[pyfunction]
+    fn ws_open(
+        conn_id: String,
+        kwargs: KwArgs<PyObjectRef>,
+        vm: &VirtualMachine,
+    ) -> PyResult<PyObjectRef> {
+        let kwargs = super::kwargs_map(kwargs);
+        let url = kwargs
+            .get("url")
+            .and_then(|v| super::py_to_value(vm, v).as_str().map(str::to_string));
+        let Some(app) = crate::plugins::app_handle() else {
+            return Ok(super::no_host(vm));
+        };
+        let Some(plugin_id) = super::current_plugin() else {
+            return Ok(super::err_json(vm, "无法确定当前插件"));
+        };
+        let manager = app.state::<crate::AppState>().data().plugin_manager.clone();
+        let result =
+            super::runtime().block_on(manager.ws_open(&plugin_id, Some(&conn_id), url.as_deref()));
+        Ok(super::result_to_py(vm, result))
+    }
+
+    /// 关闭一个 WebSocket 连接。
+    ///
+    /// 用法：`ws_close("gateway")`
+    ///
+    /// 关闭后可用 `ws_open` 重新连接。返回 `{ "ok": true }`。
+    #[pyfunction]
+    fn ws_close(conn_id: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+        let Some(app) = crate::plugins::app_handle() else {
+            return Ok(super::no_host(vm));
+        };
+        let Some(plugin_id) = super::current_plugin() else {
+            return Ok(super::err_json(vm, "无法确定当前插件"));
+        };
+        let manager = app.state::<crate::AppState>().data().plugin_manager.clone();
+        manager.ws_close(&plugin_id, Some(&conn_id));
+        Ok(super::value_to_pyobject(
+            vm,
+            &serde_json::json!({ "ok": true }),
+        ))
+    }
+
+    /// 向已建立的 WebSocket 连接发一帧。
+    ///
+    /// 用法：`ws_send("gateway", {"op": 1})` / `ws_send("gateway", "hello")` /
+    /// `ws_send("gateway", b"\x01")`
+    ///
+    /// `str` → 文本帧；`bytes` → 二进制帧；dict / list / 数字 → JSON 文本帧。
+    /// **同步发出、不等回执**；要拿对端响应就等下一次 `ws_message` 事件。
+    /// 返回 `{ "ok": true }` 或 `{ "ok": false, "error": "..." }`。
+    #[pyfunction]
+    fn ws_send(conn_id: String, data: PyObjectRef, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+        let Some(app) = crate::plugins::app_handle() else {
+            return Ok(super::no_host(vm));
+        };
+        let Some(plugin_id) = super::current_plugin() else {
+            return Ok(super::err_json(vm, "无法确定当前插件"));
+        };
+        // clone 廉价（引用计数）；downcast 会消耗 receiver，之后还要读 data。
+        let cmd = match data.clone().downcast::<PyBytes>() {
+            Ok(bytes) => crate::plugins::ws::WsCommand::Binary(bytes.as_bytes().to_vec()),
+            // 其余（含 str）：转成 JSON 值——str 得到文本原样，dict/数字得到 JSON 文本。
+            Err(_) => match super::py_to_value(vm, &data) {
+                serde_json::Value::String(s) => crate::plugins::ws::WsCommand::Text(s),
+                other => crate::plugins::ws::WsCommand::Text(other.to_string()),
+            },
+        };
+        let manager = app.state::<crate::AppState>().data().plugin_manager.clone();
+        let result = manager.ws_send(&plugin_id, &conn_id, cmd);
+        Ok(super::result_to_py(vm, result))
+    }
+
+    /// 查询本插件 WS 连接的当前状态。
+    ///
+    /// 用法：`ws_status()` 返回全部声明；`ws_status(conn_id="gateway")` 返回单条。
+    ///
+    /// 返回：全部 `{ "ok": true, "connections": [ { "id", "mode", "state" } ] }`；
+    /// 单条 `{ "ok": true, "id", "mode", "state" }`。
+    /// `state` 取值：`"connected"` / `"connecting"` / `"stopped"` / `"error"`。
+    #[pyfunction]
+    fn ws_status(kwargs: KwArgs<PyObjectRef>, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+        let kwargs = super::kwargs_map(kwargs);
+        let conn_id = kwargs
+            .get("conn_id")
+            .and_then(|v| super::py_to_value(vm, v).as_str().map(str::to_string));
+        let Some(app) = crate::plugins::app_handle() else {
+            return Ok(super::no_host(vm));
+        };
+        let Some(plugin_id) = super::current_plugin() else {
+            return Ok(super::err_json(vm, "无法确定当前插件"));
+        };
+        let manager = app.state::<crate::AppState>().data().plugin_manager.clone();
+        match manager.ws_status(&plugin_id, conn_id.as_deref()) {
+            // 指定 conn_id 时 manager 保证非空，取首条。
+            Ok(list) if conn_id.is_some() => {
+                let c = &list[0];
+                Ok(super::value_to_pyobject(
+                    vm,
+                    &serde_json::json!({ "ok": true, "id": c.id, "mode": c.mode, "state": c.state }),
+                ))
+            },
+            Ok(list) => Ok(super::value_to_pyobject(
+                vm,
+                &serde_json::json!({ "ok": true, "connections": list }),
+            )),
+            Err(e) => Ok(super::err_json(vm, &e)),
+        }
     }
 }
 

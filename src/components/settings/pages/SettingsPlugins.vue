@@ -64,6 +64,22 @@
             </span>
           </div>
 
+          <!-- 声明的 WebSocket 连接（含实时状态） -->
+          <div v-if="plugin.ws.length" class="mt-3">
+            <p class="mb-1 text-[11px] text-white/50">{{ $t("settings.plugins.wsTitle") }}</p>
+            <div class="flex flex-wrap gap-1.5">
+              <span
+                v-for="conn in plugin.ws"
+                :key="conn.id"
+                class="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[11px] text-white/70"
+                :title="`${conn.mode} · ${wsStateLabel(conn.state)}`"
+              >
+                <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="wsStateDot(conn.state)" />
+                {{ conn.id }}
+              </span>
+            </div>
+          </div>
+
           <!-- 携带资源区 -->
           <div v-if="plugin.resources.length" class="mt-3">
             <button
@@ -291,6 +307,7 @@ import {
   type PluginInfo,
   type PluginResourceEntry,
   type ResourceKind,
+  type WsState,
 } from "@/api/services/plugins";
 
 const plugins = ref<PluginInfo[]>([]);
@@ -326,6 +343,19 @@ const resourcesOf = (id: string): PluginResourceEntry[] => resourceMap[id] ?? []
 
 const kindLabel = (kind: ResourceKind): string =>
   i18n.global.t(`settings.plugins.resourceKinds.${kind}`);
+
+const WS_STATE_DOT: Record<WsState, string> = {
+  connected: "bg-emerald-400",
+  connecting: "bg-amber-400 animate-pulse",
+  error: "bg-red-400",
+  stopped: "bg-white/30",
+};
+
+/** WS 连接状态 → 小圆点的颜色类。 */
+const wsStateDot = (state: WsState): string => WS_STATE_DOT[state] ?? "bg-white/30";
+
+/** WS 连接状态 → 展示文案。 */
+const wsStateLabel = (state: WsState): string => i18n.global.t(`settings.plugins.wsState.${state}`);
 
 const loadResources = async (id: string) => {
   try {

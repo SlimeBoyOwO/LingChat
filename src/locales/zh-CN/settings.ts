@@ -337,6 +337,13 @@ export default {
     disableCharactersConfirm:
       "禁用插件「{name}」会将其携带的角色从列表中移除，并删除这些角色的全部存档与对话记忆（重新启用也不会恢复）。确定要禁用吗？",
     dependsOn: "前置插件",
+    wsTitle: "WebSocket 连接",
+    wsState: {
+      stopped: "未连接",
+      connecting: "连接中",
+      connected: "已连接",
+      error: "错误",
+    },
     enableFailedTitle: "无法启用插件",
     errors: {
       PLUGIN_MISSING_DEPENDENCY: "缺少前置插件，需要先安装它们",

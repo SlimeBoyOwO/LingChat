@@ -324,6 +324,13 @@ export default {
     deleteConfirm:
       "プラグイン「{name}」を削除しますか？プラグインフォルダごと削除され、元に戻せません",
     dependsOn: "前提プラグイン",
+    wsTitle: "WebSocket 接続",
+    wsState: {
+      stopped: "未接続",
+      connecting: "接続中",
+      connected: "接続済み",
+      error: "エラー",
+    },
     enableFailedTitle: "プラグインを有効化できません",
     errors: {
       PLUGIN_MISSING_DEPENDENCY:

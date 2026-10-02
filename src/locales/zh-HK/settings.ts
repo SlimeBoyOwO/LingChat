@@ -314,6 +314,13 @@ export default {
     delete: "刪除",
     deleteConfirm: "確定要刪除插件「{name}」嗎？會刪除插件目錄，不可恢復",
     dependsOn: "前置插件",
+    wsTitle: "WebSocket 連接",
+    wsState: {
+      stopped: "未連接",
+      connecting: "連接中",
+      connected: "已連接",
+      error: "錯誤",
+    },
     enableFailedTitle: "無法啟用插件",
     errors: {
       PLUGIN_MISSING_DEPENDENCY: "缺少前置插件，需要先安裝它們",
