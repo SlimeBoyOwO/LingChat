@@ -313,6 +313,24 @@ export async function setFloatingPetExpanded(expanded: boolean): Promise<void> {
 }
 
 /**
+ * 改「桌宠大小」（设置页滑块）。
+ *
+ * ## 为什么必须调它
+ *
+ * 悬浮窗的**宽度**由原生独占：`屏幕短边 × 比例 × scale`。页面只负责内容高度，
+ * 所以用户拖动「桌宠大小」滑块时，光写 store 是没用的 —— 原生手里的系数没变，
+ * 窗口尺寸就不会变（真机表现：「滑块拖了等于没拖」）。
+ *
+ * 这个命令让原生按新系数重算窗口宽度、以中心为锚点重排，并把新的权威几何
+ * 通过 `pet-metrics` 推回页面（页面的 `--pet-fit` 随之更新，内容跟着缩放）。
+ *
+ * 只应在悬浮窗里调（`isInFloatingWindow()`）；桌面端走 `set_pet_mode`。
+ */
+export async function setFloatingPetScale(scale: number): Promise<void> {
+  await invoke(`${PLUGIN}|set_scale`, { args: { scale } });
+}
+
+/**
  * 切换悬浮窗点击穿透。
  *
  * - `false`：整个悬浮窗不接收触摸，手势落到下层 App（桌宠「挂机」状态）

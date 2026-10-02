@@ -11,5 +11,9 @@
     <item name="android:windowShowWallpaper">true</item>
     <item name="android:windowIsTranslucent">true</item>
     <item name="android:windowBackground">@android:color/transparent</item>
+        <!-- 挖孔布局模式，必须与 values/themes.xml 保持一致（两处都要写：
+             values-night 重新定义的是同名主题，不会继承 values 那一份）。
+             原因见 values/themes.xml 里的详细说明。 -->
+    <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="27">always</item>
     </style>
 </resources>

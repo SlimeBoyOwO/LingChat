@@ -1,5 +1,6 @@
 package com.noiq.lingchat
 
+import android.content.res.Configuration
 import android.os.Bundle
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -56,6 +57,9 @@ import androidx.activity.enableEdgeToEdge
  * MainActivity 早就声明了，这里照抄。
  */
 class SettingsActivity : TauriActivity() {
+    /** [onWebViewCreate] 里拿到的 WebView，供转屏后强制重排用。 */
+    private var settingsWebView: WebView? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // 与 MainActivity 一致：让内容铺到系统栏下面，再由前端的
         // `--safe-area-inset-*` 自己内缩。
@@ -98,6 +102,8 @@ class SettingsActivity : TauriActivity() {
      * `finish()` 必须回 UI 线程，所以套一层 `runOnUiThread`。
      */
     override fun onWebViewCreate(webView: WebView) {
+        settingsWebView = webView
+
         // 安全区：设置窗也是 edge-to-edge，不注入就会被状态栏 / 手势条压住。
         // 变量由前端 `.pt-safe / .pb-safe / .pl-safe / .pr-safe` 消费
         // （见 SettingsPage.vue 的根元素）。
@@ -112,5 +118,42 @@ class SettingsActivity : TauriActivity() {
             },
             "LingChatSettings",
         )
+    }
+
+    /**
+     * 转屏（以及分屏、折叠屏展开等）后的强制重排。
+     *
+     * ## 为什么必须自己写
+     *
+     * `AndroidManifest.xml` 里给本 Activity 声明了
+     * `configChanges="orientation|screenSize|…"`，好处是转屏**不重建** Activity
+     * （WebView 不会被销毁、设置页不用重新加载），代价是**系统不再帮我们重排** ——
+     * 它只调一次 `onConfigurationChanged`，剩下的全归应用自己。
+     * 而 `TauriActivity` 只把它转发给 `PluginManager`（插件默认空实现）。
+     *
+     * 于是：Activity 在后台时转屏（用户在别的 App 里转了屏再切回来）最明显 ——
+     * 窗口尺寸是回到前台时才真正变的，WebView 的视觉视口
+     * （`window.innerWidth/innerHeight`）可能仍停在**旧方向**，页面就按旧尺寸
+     * 排版；横屏回竖屏时表现为「内容比屏幕宽、右边被切掉」。
+     *
+     * 这里补三件事，缺一不可：
+     * 1. `requestApplyInsets()`：重新分发 insets，刷新安全区 CSS 变量
+     *    （横竖屏的 `--safe-area-inset-*` 是不同的，挖孔会换到另一侧）；
+     * 2. `requestLayout()`：强制 WebView 重新测量；
+     * 3. 给页面派发一次 `resize`：前端的布局（`--pet-fit`、画布高度、
+     *    各种尺寸缓存）都挂在 resize 上，光重测 DOM 不会让 JS 重算。
+     */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+
+        window.decorView.requestApplyInsets()
+
+        settingsWebView?.let { webView ->
+            webView.requestLayout()
+            webView.evaluateJavascript(
+                "window.dispatchEvent(new Event('resize'));",
+                null,
+            )
+        }
     }
 }

@@ -8,6 +8,7 @@ const COMMANDS: &[&str] = &[
     "set_touchable",
     "set_expanded",
     "set_size",
+    "set_scale",
     "is_visible",
     "status",
 ];

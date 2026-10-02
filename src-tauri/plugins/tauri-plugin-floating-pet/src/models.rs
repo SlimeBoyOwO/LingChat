@@ -75,6 +75,26 @@ pub struct ExpandedArgs {
     pub expanded: bool,
 }
 
+/// `set_scale` 命令的参数 —— 设置页里的「桌宠大小」。
+///
+/// ## 为什么需要一个独立命令
+///
+/// 悬浮窗的**宽度**由原生独占（`screenBasis × 比例 × petScale`，见
+/// `FloatingPetPlugin.collapsedSize/expandedSize`），前端只负责高度。
+/// 所以用户拖动「桌宠大小」滑块时，前端除了写 store 之外**必须**把新系数
+/// 送回原生重算窗口宽度 —— 否则原生手里还是旧系数，窗口尺寸不变，
+/// 表现就是「滑块拖了等于没拖」。
+///
+/// 曾经想复用 `show`（它也接收 `scale`），但 `show` 是「把 WebView 搬进
+/// 悬浮窗」的完整流程（先还给 Activity 再搬出来），用来改个尺寸代价太大，
+/// 而且会闪一下。这里只做「重算尺寸 + 重排」，不动 WebView 的宿主。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScaleArgs {
+    /// 用户缩放系数（设置页滑块，0.7–1.3）。原生会再夹到 0.5–2.0。
+    pub scale: f64,
+}
+
 /// 权限 / 可见性 / 窗口几何查询结果。
 ///
 /// 需要 `Deserialize`：Android 侧这些字段由 Kotlin 插件返回

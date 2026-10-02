@@ -11,6 +11,23 @@
     <item name="android:windowShowWallpaper">true</item>
     <item name="android:windowIsTranslucent">true</item>
     <item name="android:windowBackground">@android:color/transparent</item>
+        <!-- ★ 挖孔（刘海）布局模式：必须显式声明为 always。
+
+             不声明时取系统默认值。Android 15（API 35）及以上、且 targetSdk >= 35
+             时默认就是 always（配合强制 edge-to-edge），但**Android 14 及以下不是**：
+             默认值在**横屏**下会把窗口「信箱化」—— 系统在挖孔那一侧留出空白，
+             窗口本身被挤窄。
+
+             后果与真机症状完全对应（横屏）：
+               · 系统已经在挖孔一侧留了空白，前端的 .pl-safe 又按 insets 补一次
+                 → **左侧多出一块空白**；
+               · 窗口实际可用宽度小于物理宽度，而 WebView 的 100dvw 仍按整屏算
+                 → **右侧内容被切掉/超出屏幕**。
+
+             显式写 always 之后，窗口在所有方向都铺满整块屏幕，安全区**只由**
+             前端按 safe-area-inset 那组 CSS 变量内缩一次，不再叠加系统那一份。
+             （注意：XML 注释里不能出现连续两个 ASCII 减号，所以变量名不写前导双横线。） -->
+    <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="27">always</item>
     </style>
 
     <!-- 桌宠「设置」独立窗口（SettingsActivity）的专属主题。

@@ -171,6 +171,19 @@ fn set_expanded<R: Runtime>(
     imp::set_expanded(&app, expanded, &state)
 }
 
+/// 改「桌宠大小」（设置页滑块）。
+///
+/// 悬浮窗宽度由原生独占，前端改完 store 之后必须调这个命令让原生
+/// 按新系数重算窗口宽度，否则窗口尺寸不变、滑块形同虚设。
+#[tauri::command]
+fn set_scale<R: Runtime>(
+    app: AppHandle<R>,
+    args: ScaleArgs,
+    state: tauri::State<'_, FloatingPetState>,
+) -> Result<()> {
+    imp::set_scale(&app, args, &state)
+}
+
 /// 查询平台能力、授权状态与**窗口几何**的聚合接口。
 ///
 /// Android 上 `detached` / `scale` / `width` / `height` 只有 Kotlin 侧知道，
@@ -213,6 +226,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             set_size,
             set_touchable,
             set_expanded,
+            set_scale,
             is_visible,
             status,
         ])
