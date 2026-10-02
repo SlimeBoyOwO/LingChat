@@ -475,6 +475,16 @@ export default {
       item: "衣装 #{index}",
       empty: "衣装設定がまだありません。「衣装を追加」をクリックして作成してください",
     },
+    gsvEmo: {
+      title: "GSV 感情参照音声",
+      description: "オンにすると感情分類（驚き/喜び/恐怖/悲しみ/怒り/中立）ごとに参照音声とテキストをリアルタイムで切り替えます。オフの場合は上の gsv_voice_filename / gsv_voice_text を使用します。",
+      enable: "オン",
+      disable: "オフ",
+      voiceFile: "参照音声ファイル",
+      voiceFilePlaceholder: "GSV サーバーからアクセス可能な音声パス（例: /refs/开心.wav）",
+      text: "参照テキスト",
+      textPlaceholder: "参照音声に対応するテキスト",
+    },
     touch: {
       hint: "立ち絵の上に触れられる範囲を描き、部位ごとに AI へ送る一言を設定します。衣装ごとに別々の範囲を持てます。静止画の立ち絵にのみ有効で、Live2D モデルの触れられる範囲はモデル側の設定で決まります。",
       open: "タッチ領域を編集",
