@@ -13,10 +13,9 @@
     <div
       class="group flex items-start gap-2 rounded-lg border border-transparent px-[9px] py-1.5 transition-all hover:bg-white/[0.07]"
       :class="{
-        '!border-[rgba(121,217,255,0.4)] !bg-[rgba(121,217,255,0.12)]':
-          index === store.selectedEvent,
+        '!border-[rgba(121,217,255,0.4)] !bg-[rgba(121,217,255,0.12)]': selected,
       }"
-      @click="store.selectedEvent = index"
+      @click="select"
     >
       <span
         class="shrink-0 rounded-[5px] border px-[7px] py-0.5 text-[0.7rem] leading-[1.5] font-medium whitespace-nowrap"
@@ -60,36 +59,38 @@
         >{{ t("scriptEditor.chapterFlow.warns", { count: warnCount }) }}</span
       >
 
-      <button
-        class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:bg-white/[0.1] hover:text-[var(--accent-color)]"
-        :title="t('scriptEditor.eventRow.copy')"
-        @click.stop="store.duplicateEvent(index)"
-      >
-        ⧉
-      </button>
-      <button
-        v-if="canMoveUp"
-        class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:bg-white/[0.1] hover:text-white/60"
-        :title="t('scriptEditor.eventRow.moveUp')"
-        @click.stop="store.moveEvent(index, index - 1)"
-      >
-        ▲
-      </button>
-      <button
-        v-if="canMoveDown"
-        class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:bg-white/[0.1] hover:text-white/60"
-        :title="t('scriptEditor.eventRow.moveDown')"
-        @click.stop="store.moveEvent(index, index + 1)"
-      >
-        ▼
-      </button>
-      <button
-        class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
-        :title="t('scriptEditor.eventRow.delete')"
-        @click.stop="store.removeEvent(index)"
-      >
-        ✕
-      </button>
+      <template v-if="!readonly">
+        <button
+          class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:bg-white/[0.1] hover:text-[var(--accent-color)]"
+          :title="t('scriptEditor.eventRow.copy')"
+          @click.stop="store.duplicateEvent(index)"
+        >
+          ⧉
+        </button>
+        <button
+          v-if="canMoveUp"
+          class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:bg-white/[0.1] hover:text-white/60"
+          :title="t('scriptEditor.eventRow.moveUp')"
+          @click.stop="store.moveEvent(index, index - 1)"
+        >
+          ▲
+        </button>
+        <button
+          v-if="canMoveDown"
+          class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:bg-white/[0.1] hover:text-white/60"
+          :title="t('scriptEditor.eventRow.moveDown')"
+          @click.stop="store.moveEvent(index, index + 1)"
+        >
+          ▼
+        </button>
+        <button
+          class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:bg-[rgba(248,113,113,0.15)] hover:text-[#fca5a5]"
+          :title="t('scriptEditor.eventRow.delete')"
+          @click.stop="store.removeEvent(index)"
+        >
+          ✕
+        </button>
+      </template>
     </div>
   </div>
 </template>
@@ -99,13 +100,18 @@ import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useScriptEditorStore } from "@/stores/modules/script-editor";
 import { eventSummary } from "@/composables/useEventFolding";
-import type { ScriptEventData } from "@/api/services/script-editor";
+import type { Diagnostic, ScriptEventData } from "@/api/services/script-editor";
 import { eventLabelOf } from "@/locales/schema-i18n";
 
 const { t } = useI18n();
 const props = defineProps<{
   index: number;
   event: ScriptEventData;
+  /** 只读预览：不读也不写编辑器状态，选中/诊断/角色表一律由外部传入 */
+  readonly?: boolean;
+  diagnostics?: Diagnostic[];
+  roleNameMap?: Map<string, string>;
+  mainRoleName?: string;
 }>();
 
 const store = useScriptEditorStore();
@@ -115,6 +121,12 @@ const eventType = computed(() =>
 );
 
 const spec = computed(() => store.eventSpecs[eventType.value]);
+
+/** 只读预览里没有任何一行是选中态，也不接受点击 */
+const selected = computed(() => !props.readonly && props.index === store.selectedEvent);
+const select = () => {
+  if (!props.readonly) store.selectedEvent = props.index;
+};
 
 const conditionText = computed(() =>
   typeof props.event.condition === "string" && props.event.condition.trim() !== ""
@@ -177,18 +189,26 @@ const varBadgeLabel = computed(() => {
   return t("scriptEditor.eventRow.vars", { count: varNames.value.length });
 });
 
-const diagnostics = computed(() => store.chapterDiagnostics[props.index] ?? []);
+const diagnostics = computed<Diagnostic[]>(() =>
+  props.readonly ? (props.diagnostics ?? []) : (store.chapterDiagnostics[props.index] ?? []),
+);
 const errorCount = computed(() => diagnostics.value.filter((d) => d.severity === "error").length);
 const warnCount = computed(() => diagnostics.value.filter((d) => d.severity === "warn").length);
 
 /** roleKey → aiName 映射，供摘要显示角色名字（与事件属性下拉一致） */
-const roleNameMap = computed<Map<string, string>>(
-  () => new Map((store.detail?.characters ?? []).map((c) => [c.roleKey, c.aiName])),
+const roleNameMap = computed<Map<string, string>>(() =>
+  props.readonly
+    ? (props.roleNameMap ?? new Map())
+    : new Map((store.detail?.characters ?? []).map((c) => [c.roleKey, c.aiName])),
+);
+
+const mainRoleName = computed(() =>
+  props.readonly ? (props.mainRoleName ?? "") : store.mainRoleDisplayName,
 );
 
 /** 把摘要按 %player% 切开，占位符用强调色标出来 */
 const highlighted = computed(() => {
-  const text = eventSummary(props.event, store.mainRoleDisplayName, roleNameMap.value);
+  const text = eventSummary(props.event, mainRoleName.value, roleNameMap.value);
   const parts: { text: string; token: boolean }[] = [];
   let rest = text;
   while (true) {
