@@ -8,8 +8,24 @@
 data/plugins/<id>/
 ├── manifest.toml   # 插件声明（必须）
 ├── <脚本文件>.py    # 工具处理脚本（manifest 里声明）
+├── plugin_host.pyi # 可选：类型存根，仅供编辑器补全，不参与运行（见下）
 └── 资源子目录（可选）# 见「插件携带资源」：characters / scripts / musics / backgrounds / ambients
 ```
+
+## 编辑器补全：`plugin_host.pyi`
+
+`plugin_host` 是宿主注入进解释器的原生模块（源码在 `src-tauri/src/plugins/host_api.rs`），磁盘上并没有这个包，所以 `from plugin_host import http_post` 在编辑器里会被标成「找不到模块 / 无法解析导入」。**这不影响运行**，只是缺补全和类型检查。
+
+仓库里的 `docs/plugin_host.pyi` 就是它的类型存根（覆盖全部宿主函数）。把这份文件拷进插件目录（与 `.py` 脚本同级），报错即消失并恢复补全：
+
+```
+data/plugins/<id>/
+├── manifest.toml
+├── main.py
+└── plugin_host.pyi   # 类型检查器读取；运行时不加载，可安全随插件一起分发
+```
+
+存根靠「与脚本同级」被解析——把插件目录本身作为 IDE 工程根打开即可命中。若工程根在别处，把存根所在目录加进 Pylance 的 `extraPaths`（PyCharm 用「Sources Root」）同样有效。
 
 ## 打包与导入
 

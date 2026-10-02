@@ -98,45 +98,19 @@ pub(crate) fn spawn_client(plugin_id: String, conn_id: String, target: ClientTar
                 Ok(ws) => {
                     backoff = RECONNECT_BACKOFF_START;
                     set_state(&st, WsState::Connected);
-                    emit(
-                        &plugin_id,
-                        &conn_id,
-                        WsMode::Client,
-                        "connect",
-                        None,
-                        false,
-                        None,
-                    )
-                    .await;
+                    emit_conn(&plugin_id, &conn_id, WsMode::Client, "connect", None).await;
                     match run_client(ws, &mut rx, &plugin_id, &conn_id).await {
                         ClientExit::Closed => break WsState::Stopped,
                         ClientExit::Disconnected => {
-                            emit(
-                                &plugin_id,
-                                &conn_id,
-                                WsMode::Client,
-                                "disconnect",
-                                None,
-                                false,
-                                None,
-                            )
-                            .await;
+                            emit_conn(&plugin_id, &conn_id, WsMode::Client, "disconnect", None)
+                                .await;
                             if !target.auto_reconnect {
                                 break WsState::Stopped;
                             }
                             set_state(&st, WsState::Connecting);
                         },
                         ClientExit::Error(e) => {
-                            emit(
-                                &plugin_id,
-                                &conn_id,
-                                WsMode::Client,
-                                "error",
-                                None,
-                                false,
-                                Some(e),
-                            )
-                            .await;
+                            emit_conn(&plugin_id, &conn_id, WsMode::Client, "error", Some(e)).await;
                             if !target.auto_reconnect {
                                 break WsState::Error;
                             }
@@ -145,16 +119,7 @@ pub(crate) fn spawn_client(plugin_id: String, conn_id: String, target: ClientTar
                     }
                 },
                 Err(e) => {
-                    emit(
-                        &plugin_id,
-                        &conn_id,
-                        WsMode::Client,
-                        "error",
-                        None,
-                        false,
-                        Some(e),
-                    )
-                    .await;
+                    emit_conn(&plugin_id, &conn_id, WsMode::Client, "error", Some(e)).await;
                     if !target.auto_reconnect {
                         break WsState::Error;
                     }
@@ -197,13 +162,11 @@ pub(crate) fn spawn_server(
         let listener = match TcpListener::bind(&bind).await {
             Ok(l) => l,
             Err(e) => {
-                emit(
+                emit_conn(
                     &plugin_id,
                     &conn_id,
                     WsMode::Server,
                     "error",
-                    None,
-                    false,
                     Some(format!("监听 {bind} 失败: {e}")),
                 )
                 .await;
@@ -238,43 +201,23 @@ pub(crate) fn spawn_server(
         });
 
         set_state(&st, WsState::Connected);
-        emit(
-            &plugin_id,
-            &conn_id,
-            WsMode::Server,
-            "connect",
-            None,
-            false,
-            None,
-        )
-        .await;
+        emit_conn(&plugin_id, &conn_id, WsMode::Server, "connect", None).await;
         if let Err(e) = axum::serve(listener, router)
             .with_graceful_shutdown(async move {
                 let _ = shutdown_rx.await;
             })
             .await
         {
-            emit(
+            emit_conn(
                 &plugin_id,
                 &conn_id,
                 WsMode::Server,
                 "error",
-                None,
-                false,
                 Some(format!("服务异常: {e}")),
             )
             .await;
         }
-        emit(
-            &plugin_id,
-            &conn_id,
-            WsMode::Server,
-            "disconnect",
-            None,
-            false,
-            None,
-        )
-        .await;
+        emit_conn(&plugin_id, &conn_id, WsMode::Server, "disconnect", None).await;
         set_state(&st, WsState::Stopped);
         tracing::debug!(plugin = %plugin_id, conn = %conn_id, "server 监听任务结束");
     });
@@ -409,8 +352,9 @@ async fn handle_server_ws(state: ServerState, mut socket: WebSocket) {
                     let _ = socket.send(AxumMessage::Binary(b.into())).await;
                 },
                 Ok(WsCommand::Close) => break,
-                // 广播通道关闭（服务停止）：仅保留读支路
-                Err(_) => {},
+                // 广播落后（容量小、发帧快）丢帧继续；通道关闭仅在服务停止时发生，退出。
+                Err(broadcast::error::RecvError::Lagged(_)) => {},
+                Err(broadcast::error::RecvError::Closed) => break,
             },
         }
     }
@@ -444,6 +388,17 @@ async fn emit(
     manager
         .dispatch_signal(&app, SIGNAL_WS_MESSAGE, &payload, Some(plugin_id))
         .await;
+}
+
+/// 生命周期事件（`connect` / `disconnect` / `error`）的便捷派发：不带数据帧。
+async fn emit_conn(
+    plugin_id: &str,
+    conn_id: &str,
+    mode: WsMode,
+    event: &str,
+    error: Option<String>,
+) {
+    emit(plugin_id, conn_id, mode, event, None, false, error).await;
 }
 
 /// 文本帧的数据载荷：能解析成 JSON 就给结构化值，否则原样字符串。
@@ -484,9 +439,22 @@ fn ws_url_matches(url: &str, pattern: &str) -> bool {
 
 /// 极简 glob：无 `*` 时按前缀匹配；有 `*` 时首段锚定前缀、末段锚定后缀、
 /// 中间段顺序查找。不处理 `?` 与字符类。模式以 `*` 结尾时等价于纯前缀。
+///
+/// 无 `*` 的前缀匹配必须停在 URL 分隔符上：否则白名单里写 `wss://a.com`
+/// 会连同 `wss://a.com.evil.com` 一起放行，白名单形同虚设。
 fn glob_match(text: &str, pattern: &str) -> bool {
     if !pattern.contains('*') {
-        return text.starts_with(pattern);
+        let Some(rest) = text.strip_prefix(pattern) else {
+            return false;
+        };
+        if rest.is_empty() {
+            return true;
+        }
+        // 模式自身已收在分隔符上（如 `.../`），后续路径不再设限。
+        if matches!(pattern.chars().last(), Some('/' | ':' | '?' | '#')) {
+            return true;
+        }
+        return matches!(rest.chars().next(), Some('/' | ':' | '?' | '#'));
     }
     let parts: Vec<&str> = pattern.split('*').collect();
     let mut pos = 0usize;
@@ -575,6 +543,14 @@ mod tests {
         let allow = vec!["wss://example.com".to_string()];
         assert!(check_ws_url_allowed("wss://example.com/ws", &allow).is_ok());
         assert!(check_ws_url_allowed("wss://evil.com/ws", &allow).is_err());
+    }
+
+    #[test]
+    fn prefix_must_stop_at_url_boundary() {
+        let allow = vec!["wss://example.com".to_string()];
+        assert!(check_ws_url_allowed("wss://example.com:8443/ws", &allow).is_ok());
+        // 不能让 example.com 顺带放行 example.com.evil.com
+        assert!(check_ws_url_allowed("wss://example.com.evil.com/ws", &allow).is_err());
     }
 
     #[test]

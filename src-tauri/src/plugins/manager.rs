@@ -900,6 +900,11 @@ impl PluginManager {
         only: Option<&str>,
         url_override: Option<&str>,
     ) -> Result<(), String> {
+        // 无任何 ws 声明：不在连接表里留空条目（启用无 WS 能力的插件会走到这里）。
+        // 脚本按 id 显式请求（only 有值）时继续往下走，在末尾报「未声明」。
+        if input.decls.is_empty() && only.is_none() {
+            return Ok(());
+        }
         let mut table = self.ws.lock().unwrap_or_else(|e| e.into_inner());
         let conns = table.entry(id.to_string()).or_default();
         let mut matched = false;
