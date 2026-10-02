@@ -159,6 +159,7 @@ import {
   onPetMetrics,
   resizeFloatingPet,
   setFloatingPetExpanded,
+  setFloatingPetScale,
 } from "@/api/services/floating-pet";
 
 import ChatInput from "../pet/ChatInput.vue";
@@ -1478,6 +1479,21 @@ onMounted(async () => {
     const scale = Number(event.payload?.scale);
     if (!Number.isNaN(scale)) {
       settingsStore.pet.scale = scale;
+      // ★ 悬浮窗分支：必须把新系数送回原生重算**窗口宽度**。
+      //
+      // 悬浮窗的宽度是原生独占的（`屏幕短边 × 比例 × scale`），页面只负责
+      // 内容高度；而 appStyleVars 的悬浮窗分支又刻意不乘 pet.scale
+      // （手机上再乘一次会双重缩放，见那里的注释）。所以两头都不动 ——
+      // 真机表现就是「桌宠大小滑块拖了等于没拖」。
+      //
+      // 桌面端则相反：窗口尺寸本来就是 Rust 按 pet.scale 定的，
+      // 走 applyWindowLayout() 那条路即可。
+      if (floatingWindowMode.value) {
+        void setFloatingPetScale(scale).catch((e) => {
+          console.warn("同步桌宠大小到悬浮窗失败（可忽略）:", e);
+        });
+        return;
+      }
       void applyWindowLayout();
     }
   });

@@ -35,7 +35,14 @@
         @closeWindow="closeWindow"
       />
 
-      <main class="relative flex flex-1 overflow-hidden">
+      <!-- ★ 方向必须是**窄屏竖排、宽屏横排**。
+           这里曾经漏了 `flex-col`：`SettingsSidebar` 在窄屏是
+           `w-full shrink-0`（顶部横向标签条），而 `main` 还是 `flex`（横向）——
+           于是标签条把整行宽度吃光，内容区被压成 **0 宽** 并被 `overflow-hidden`
+           裁掉。真机表现：竖屏进设置页只看到一条标签条，下面一片空白，
+           点标签也没反应（内容确实切换了，只是宽度是 0 看不见）。
+           `md:` 以上恢复成原来的「左侧竖栏 + 右侧内容」。 -->
+      <main class="relative flex flex-1 flex-col overflow-hidden md:flex-row">
         <SettingsSidebar
           :isDarkMode="isDarkMode"
           :activeTab="activeTab"

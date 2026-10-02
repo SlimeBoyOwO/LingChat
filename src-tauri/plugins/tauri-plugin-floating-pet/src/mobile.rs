@@ -133,6 +133,21 @@ pub fn set_expanded<R: Runtime>(
     call::<R, _, ()>(app, "setExpanded", ExpandedArgs { expanded })
 }
 
+/// 改「桌宠大小」（设置页滑块）。
+///
+/// 悬浮窗宽度由原生独占，所以改系数必须回到原生重算 —— 见
+/// [`crate::models::ScaleArgs`] 的说明。
+pub fn set_scale<R: Runtime>(
+    app: &AppHandle<R>,
+    args: ScaleArgs,
+    state: &FloatingPetState,
+) -> Result<()> {
+    if !state.is_visible() {
+        return Err(Error::NotVisible);
+    }
+    call::<R, _, ()>(app, "setScale", args)
+}
+
 /// 查询实时状态与窗口几何。
 ///
 /// 直接转发给 Kotlin 的 `status`：那里的 `detached` / `scale` 才是真值，

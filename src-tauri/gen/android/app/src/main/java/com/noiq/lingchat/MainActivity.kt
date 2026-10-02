@@ -1,5 +1,6 @@
 package com.noiq.lingchat
 
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
@@ -8,6 +9,9 @@ import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 
 class MainActivity : TauriActivity() {
+  /** [onWebViewCreate] 里拿到的 WebView，供转屏后强制重排用。 */
+  private var mainWebView: WebView? = null
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
@@ -39,7 +43,40 @@ class MainActivity : TauriActivity() {
    * 是替换监听器），重复执行无害。
    */
   override fun onWebViewCreate(webView: WebView) {
+    mainWebView = webView
     prepareWebView(webView)
+  }
+
+  /**
+   * 转屏（以及分屏、折叠屏展开等）后的强制重排。
+   *
+   * 与 `SettingsActivity` 同一套理由：`configChanges` 里声明了
+   * `orientation|screenSize|…`，系统因此**不会**重建 Activity，也就**不会**
+   * 帮我们重排 —— 它只调一次 `onConfigurationChanged`，而 `TauriActivity`
+   * 仅把它转发给 `PluginManager`（插件默认空实现）。
+   *
+   * 真机症状：在**别的 App 里**转屏再切回来，主界面按旧方向排版（内容比屏幕
+   * 宽 / 高，一侧被切掉）；而在本 App 内转屏是好的 —— 差别就在于后台转屏时
+   * 窗口尺寸是回到前台那一刻才真正变的，WebView 的视觉视口没跟着更新。
+   *
+   * ⚠️ 桌宠在悬浮窗里时这个 WebView 已被原生搬进 `WindowManager`，
+   * 不在本 Activity 的视图树里。那种情况下几何由 `FloatingPetPlugin`
+   * 自己的 `DisplayManager` 回调 + 保活轮询负责；这里多派发一次 resize
+   * 只会让页面用当前视口重算一次，无害。
+   */
+  override fun onConfigurationChanged(newConfig: Configuration) {
+    super.onConfigurationChanged(newConfig)
+
+    // 重新分发 insets：横竖屏的挖孔位置不同，安全区 CSS 变量必须跟着换边
+    window.decorView.requestApplyInsets()
+
+    mainWebView?.let { webView ->
+      webView.requestLayout()
+      webView.evaluateJavascript(
+        "window.dispatchEvent(new Event('resize'));",
+        null,
+      )
+    }
   }
 
   /** 把 MainActivity 专属的「透壁纸」处理 + 安全区注入一次性做完。 */

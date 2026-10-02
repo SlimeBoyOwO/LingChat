@@ -12,6 +12,7 @@ permissions = [
     "allow-set-size",
     "allow-set-touchable",
     "allow-set-expanded",
+    "allow-set-scale",
     "allow-is-visible",
     "allow-status",
 ]

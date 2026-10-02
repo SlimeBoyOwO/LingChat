@@ -228,6 +228,17 @@ class ExpandedArgs {
 }
 
 /**
+ * `set_scale` 的参数 —— 设置页里的「桌宠大小」。
+ *
+ * 悬浮窗**宽度**由原生独占（`屏幕短边 × 比例 × scale`），前端只报高度。
+ * 所以滑块一动，前端必须把新系数送回来，否则窗口尺寸不会变。
+ */
+@InvokeArg
+class ScaleArgs {
+    var scale: Double = 1.0
+}
+
+/**
  * Android 系统级悬浮窗插件 —— **搬运主 WebView** 的实现。
  *
  * ## 为什么是「搬运」而不是「新建」
@@ -676,9 +687,12 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * 自己的字段，**不经过任何 Resources / DisplayAdjustments**：
      *
      * - `getRotation()` → `mDisplayInfo.rotation`，物理旋转，实时
-     * - `getMode()` → 物理分辨率，**不随旋转**，所以要用 rotation 自己换宽高
+     * - `getMode()` → 物理分辨率，**不随旋转**（但方向约定不保证，见下）
      *
      * 两者组合就是「当前旋转下的屏幕尺寸」，与 App 可不可见完全无关。
+     * ⚠️ 组合方式**不是**「按 rotation 交换 pw/ph」——那个写法只对「自然方向」
+     * 一种约定成立，换成「当前方向」的机型就会把横屏又算回竖屏。
+     * 正确写法是取短/长边再按 rotation 分配，见 [screenSizePx] 内的说明。
      *
      * 不用 `getRealMetrics` / `getSize` / `WindowMetrics` —— 它们全都经过
      * Resources 或 DisplayAdjustments，在这个场景下都会拿到滞后的旋转。
@@ -694,9 +708,32 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 val pw = mode?.physicalWidth ?: 0
                 val ph = mode?.physicalHeight ?: 0
                 if (pw > 0 && ph > 0) {
+                    // ★ 绝不能用「pw 当宽、ph 当高」再按 rotation 交换。
+                    //
+                    // `Display.Mode.getPhysicalWidth()/Height()` 的**方向约定是不保证的**：
+                    // AOSP 文档说它是「面板自然方向」，但不少机型（以及某些
+                    // DisplayInfo 合成路径）直接给的是**当前方向**的宽高。
+                    // 两种约定下按 rotation 交换的结果正好相反 ——
+                    // 前者交换后是对的，后者交换后**又变回竖屏**。
+                    //
+                    // 真机症状（就是本条修掉的那个）：
+                    //   · 横屏时桌宠「只能停在左半边」—— screenW 读成竖屏的 360dp，
+                    //     `maxX = 360 - width` 把拖拽范围锁死在左边；
+                    //   · 且「会超出屏幕」—— screenH 读成竖屏的 800dp，
+                    //     窗口被允许放到真实横屏高度（360dp）之外。
+                    //   · 页面里 `fit = window.innerWidth / 210` 也跟着错，
+                    //     看着就像「悬浮窗以为自己是竖屏」。
+                    //
+                    // 解法：**只取短边 / 长边**，再按 rotation 决定谁当宽谁当高。
+                    // 这个写法对上面两种约定**同时成立**：
+                    //   · 自然方向报法：竖屏 pw=1080,ph=2400 → 短 1080 长 2400
+                    //   · 当前方向报法：横屏 pw=2400,ph=1080 → 短 1080 长 2400
+                    // 两者算出的短/长完全一致，于是结果唯一。
+                    val shortSide = minOf(pw, ph)
+                    val longSide = maxOf(pw, ph)
                     val rotated = display.rotation == Surface.ROTATION_90 ||
                         display.rotation == Surface.ROTATION_270
-                    return if (rotated) ph to pw else pw to ph
+                    return if (rotated) longSide to shortSide else shortSide to longSide
                 }
             }
             Log.w(TAG, "DisplayManager 未返回可用的显示器尺寸，退回 resources.displayMetrics")
@@ -1915,6 +1952,71 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             } catch (e: Exception) {
                 Log.e(TAG, "切换展开状态失败", e)
                 invoke.reject("切换展开状态失败: ${e.message}")
+            }
+        }
+    }
+
+    // ─── 用户缩放（设置页「桌宠大小」） ────────────────────────
+
+    /**
+     * 改「桌宠大小」。
+     *
+     * ## 为什么必须回到原生
+     *
+     * 悬浮窗的**宽度**由原生独占 —— 它是 `屏幕短边 × 比例 × petScale` 算出来的
+     * （见 [collapsedSize] / [expandedSize]），前端只负责内容高度。所以设置页里
+     * 拖动「桌宠大小」滑块时，前端除了写 store 之外还必须把新系数送回来，
+     * 由原生重算窗口宽度。
+     *
+     * 之前前端只做了 `settingsStore.pet.scale = scale` 加一句 `applyWindowLayout()`
+     * （那是桌面端「改原生窗口尺寸」的路径），悬浮窗分支里**刻意**不乘
+     * `pet.scale`（见 PetMode.vue 的 appStyleVars 注释：手机上再乘一次会双重缩放）。
+     * 两头都不动 → 真机表现就是「滑块拖了等于没拖」，这正是「桌宠大小没实现」。
+     *
+     * ## 与 [show] 的区别
+     *
+     * `show` 也收 `scale`，但它是「把 WebView 搬进悬浮窗」的完整流程
+     * （先把 WebView 还给 Activity、再搬出来），用来改个尺寸代价太大还会闪。
+     * 这里只做「重算尺寸 + 重排」，不动 WebView 的宿主。
+     *
+     * ## 尺寸变化的锚点
+     *
+     * 与 [setExpanded] 同一套：以**中心**为锚点缩放，收起态再贴一次边。
+     * 若直接改宽高，窗口会往右下角长，看着像跳了一下。
+     */
+    @Command
+    fun setScale(invoke: Invoke) {
+        val args = invoke.parseArgs(ScaleArgs::class.java)
+        activity.runOnUiThread {
+            val params = layoutParams
+            val view = petView
+            if (params == null || view == null) {
+                invoke.reject("NOT_VISIBLE")
+                return@runOnUiThread
+            }
+            try {
+                petScale = args.scale.coerceIn(0.5, 2.0)
+
+                val (width, height) = if (expanded) expandedSize() else collapsedSize()
+                val centerX = params.x + view.width / 2
+                val centerY = params.y + view.height / 2
+
+                params.width = width
+                params.height = height
+                params.x = centerX - width / 2
+                params.y = centerY - height / 2
+                clampIntoScreen(params)
+                if (!expanded) snapToEdge(params, apply = false)
+
+                // 先推权威几何再改窗口，理由同 setExpanded：页面要先拿到新的
+                // 缩放系数（`--pet-fit`），否则会有几帧按旧系数渲染而溢出。
+                notifyMetrics(params, view)
+
+                windowManager?.updateViewLayout(view, params)
+                invoke.resolve()
+            } catch (e: Exception) {
+                Log.e(TAG, "改桌宠大小失败", e)
+                invoke.reject("改桌宠大小失败: ${e.message}")
             }
         }
     }

@@ -67,6 +67,16 @@ pub fn set_expanded<R: Runtime>(
     Err(Error::NotSupported)
 }
 
+/// 桌面端同理：窗口尺寸由 `api::pet::set_pet_mode` 按 `pet.scale` 直接定，
+/// 不需要经由插件改。这个命令只是给 Android 悬浮窗用的。
+pub fn set_scale<R: Runtime>(
+    _app: &AppHandle<R>,
+    _args: ScaleArgs,
+    _state: &FloatingPetState,
+) -> Result<()> {
+    Err(Error::NotSupported)
+}
+
 /// 桌面端没有系统悬浮窗，几何查询一律 `NotSupported`，
 /// 由 `lib.rs` 回落到纯 Rust 状态（只有 `supported: false`）。
 pub fn status<R: Runtime>(_app: &AppHandle<R>, _state: &FloatingPetState) -> Result<PetStatus> {
