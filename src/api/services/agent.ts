@@ -91,6 +91,8 @@ export interface TokenUsage {
 export type SkillAgentEvent =
   | { type: "status"; content: string }
   | { type: "message_delta"; content: string }
+  /** 一项的开始：这是一段的边界（一轮可能逐项做多件事），收到就要另起一段。 */
+  | { type: "item_start"; index: number; total: number; title: string }
   | { type: "reasoning"; content: string }
   | {
       type: "tool_call";
@@ -157,8 +159,26 @@ export const renameAgentConversation = (conversationId: number, title: string) =
 export const getAgentMessages = (conversationId: number) =>
   invoke<PersistedMessage[]>("editor_agent_get_messages", { conversationId });
 
+/** 会话归属的剧本 key；库里没绑定时后端会从历史写入路径反推（老会话兜底）。 */
+export const resolveAgentScriptKey = (conversationId: number) =>
+  invoke<string | null>("editor_agent_resolve_script_key", { conversationId });
+
 export const clearAgentConversation = (conversationId: number) =>
   invoke<void>("editor_agent_clear_conversation", { conversationId });
+
+// ============================================================
+// 流程产物
+// ============================================================
+
+/** 剧本包 `.agent/` 下的一份流程产物（设计稿、任务队列、用户约束……）。 */
+export interface AgentArtifact {
+  name: string;
+  content: string;
+}
+
+/** 只读列出流程产物；没产出过时返回空数组。 */
+export const listAgentArtifacts = (scriptKey: string) =>
+  invoke<AgentArtifact[]>("editor_agent_list_artifacts", { scriptKey });
 
 // ============================================================
 // 对话
