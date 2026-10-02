@@ -16,6 +16,11 @@ pub fn get_data_dir() -> &'static PathBuf {
         .expect("data_dir not initialized — call init_data_dir first")
 }
 
+/// `data` 下的游戏内容目录（`data/game_data`）。
+pub fn game_data_dir() -> PathBuf {
+    get_data_dir().join("game_data")
+}
+
 /// 解析 data 目录路径。
 ///
 /// 优先级：

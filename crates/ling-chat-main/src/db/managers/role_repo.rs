@@ -248,7 +248,7 @@ impl RoleRepo {
             .filter(role::Column::RoleType.is_in([RoleType::Main, RoleType::Npc]))
             .all(db)
             .await?;
-        let data_dir = crate::api::data_dir();
+        let data_dir = crate::data_dir::get_data_dir();
         let mut names = Vec::with_capacity(roles.len());
 
         for role in roles {

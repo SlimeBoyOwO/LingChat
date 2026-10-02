@@ -12,7 +12,6 @@ use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::types::ToolDefinition;
 use crate::api::character::read_character_settings;
-use crate::api::data_dir;
 use crate::db::managers::role_repo::RoleRepo;
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
@@ -31,7 +30,7 @@ pub struct Note {
 }
 
 fn notes_dir() -> PathBuf {
-    data_dir().join("game_data").join("notes")
+    crate::data_dir::game_data_dir().join("notes")
 }
 
 /// 角色笔记文件路径。文件名取自 LingChat 权威角色名（display_name），

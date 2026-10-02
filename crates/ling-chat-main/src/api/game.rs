@@ -202,7 +202,7 @@ pub async fn clear_tts_cache(app: AppHandle) -> Result<serde_json::Value, String
     let state = app.state::<AppState>();
     let db = state.db.clone();
 
-    let data_dir = crate::api::data_dir();
+    let data_dir = crate::data_dir::get_data_dir();
     let voice_dir = data_dir.join("voice");
 
     if !voice_dir.exists() {
@@ -287,7 +287,7 @@ pub async fn get_tts_cache_info(app: AppHandle) -> Result<serde_json::Value, Str
     let state = app.state::<AppState>();
     let db = state.db.clone();
 
-    let data_dir = crate::api::data_dir();
+    let data_dir = crate::data_dir::get_data_dir();
     let voice_dir = data_dir.join("voice");
 
     let referenced = get_referenced_voice_files(&db).await?;

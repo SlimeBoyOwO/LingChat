@@ -103,7 +103,7 @@ pub async fn save_tool_settings(
     mut settings: ToolSettings,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let data_dir = super::data_dir();
+    let data_dir = crate::data_dir::get_data_dir();
     settings.normalize();
     settings.apply_platform_constraints();
     settings.save(&data_dir).map_err(|e| e.to_string())?;

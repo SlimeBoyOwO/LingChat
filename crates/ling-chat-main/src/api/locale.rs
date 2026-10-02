@@ -31,7 +31,7 @@ pub fn get_locale_messages(locale: String, seed_content: String) -> Result<Strin
         return Err(format!("非法 locale 名: {locale}"));
     }
 
-    let dir = super::data_dir().join("locales");
+    let dir = crate::data_dir::get_data_dir().join("locales");
     std::fs::create_dir_all(&dir).map_err(|e| format!("创建语言目录失败: {e}"))?;
 
     let path = dir.join(format!("{locale}.json"));

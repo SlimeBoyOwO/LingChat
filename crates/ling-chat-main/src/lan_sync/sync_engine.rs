@@ -15,8 +15,6 @@ use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 use tracing::{error, info, warn};
 
-use crate::api::data_dir;
-
 use super::client;
 use super::db_sync;
 use super::manifest as sync_manifest;
@@ -27,7 +25,7 @@ use super::staging;
 
 /// 生成推送计划（本地 → 对端）。
 pub async fn plan_push(identity: &DeviceIdentity, peer: &PeerInfo) -> Result<SyncPlan, String> {
-    let data_dir = data_dir();
+    let data_dir = crate::data_dir::get_data_dir();
 
     let local_manifest =
         sync_manifest::build_complete_manifest(&data_dir, None, &identity.device_id)
@@ -51,7 +49,7 @@ pub async fn plan_push(identity: &DeviceIdentity, peer: &PeerInfo) -> Result<Syn
 
 /// 生成拉取计划（对端 → 本地）。
 pub async fn plan_pull(identity: &DeviceIdentity, peer: &PeerInfo) -> Result<SyncPlan, String> {
-    let data_dir = data_dir();
+    let data_dir = crate::data_dir::get_data_dir();
 
     let remote_manifest = client::fetch_remote_manifest(peer).await?;
 
@@ -79,7 +77,7 @@ pub async fn execute_push(
     app: &AppHandle,
     cancel: &AtomicBool,
 ) -> Result<SyncResult, String> {
-    let data_dir = data_dir();
+    let data_dir = crate::data_dir::get_data_dir();
     let total = plan.files_to_transfer.len() as u64 + plan.files_to_delete.len() as u64;
     let mut current: u64 = 0;
     let mut bytes_transferred: u64 = 0;
@@ -258,7 +256,7 @@ pub async fn execute_pull(
         sync_manifest::validate_manifest_path(path)?;
     }
 
-    let data_dir = data_dir();
+    let data_dir = crate::data_dir::get_data_dir();
     let total = plan.files_to_transfer.len() as u64 + plan.files_to_delete.len() as u64;
     let mut current: u64 = 0;
     let mut bytes_transferred: u64 = 0;

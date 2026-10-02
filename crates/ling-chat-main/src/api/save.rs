@@ -44,7 +44,7 @@ fn format_datetime(dt: &chrono::NaiveDateTime) -> String {
 }
 
 async fn save_screenshot_file(save_id: i32, source_path: &str) -> Result<(), String> {
-    let screenshots_dir = super::data_dir().join("screenshots");
+    let screenshots_dir = crate::data_dir::get_data_dir().join("screenshots");
     std::fs::create_dir_all(&screenshots_dir).map_err(|e| e.to_string())?;
     let dest_path = screenshots_dir.join(format!("{}.png", save_id));
     std::fs::copy(source_path, &dest_path)
@@ -142,7 +142,7 @@ pub async fn list_saves(
         }
     }
 
-    let data_dir = super::data_dir();
+    let data_dir = crate::data_dir::get_data_dir();
     let screenshots_dir = data_dir.join("screenshots");
 
     let items: Vec<SaveListItem> = saves
@@ -550,7 +550,7 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
     }
 
     // 删除关联的截图文件
-    let screenshot_path = super::data_dir()
+    let screenshot_path = crate::data_dir::get_data_dir()
         .join("screenshots")
         .join(format!("{}.png", save_id));
     if screenshot_path.exists() {

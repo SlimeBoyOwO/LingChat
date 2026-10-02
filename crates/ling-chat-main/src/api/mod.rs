@@ -57,12 +57,8 @@ pub fn data_dir() -> PathBuf {
     crate::data_dir::get_data_dir().clone()
 }
 
-pub(crate) fn game_data_dir() -> PathBuf {
-    data_dir().join("game_data")
-}
-
 pub(crate) fn characters_dir() -> PathBuf {
-    game_data_dir().join("characters")
+    crate::data_dir::game_data_dir().join("characters")
 }
 
 /// 插件角色的 `resource_folder` 编码前缀：`plugin:<plugin_id>/<folder>`。
@@ -89,7 +85,7 @@ pub fn decode_plugin_folder(resource_folder: &str) -> Option<(&str, &str)> {
 /// `plugin:<id>/<folder>` → `data/plugins/<id>/characters/<folder>`；
 /// 其余 → `game_data/characters/<folder>`（原行为）。
 pub fn resolve_character_dir(resource_folder: &str) -> PathBuf {
-    resolve_character_dir_in(&data_dir(), resource_folder)
+    resolve_character_dir_in(crate::data_dir::get_data_dir(), resource_folder)
 }
 
 /// `resolve_character_dir` 的显式 base 版本（供已持有 data_dir 的调用方使用，如 role_repo）。
@@ -134,19 +130,24 @@ pub fn resolve_role_dir(
     script_key: Option<&str>,
     resource_folder: &str,
 ) -> Result<PathBuf, String> {
-    resolve_role_dir_in(&data_dir(), role_type, script_key, resource_folder)
+    resolve_role_dir_in(
+        crate::data_dir::get_data_dir(),
+        role_type,
+        script_key,
+        resource_folder,
+    )
 }
 
 pub(crate) fn backgrounds_dir() -> PathBuf {
-    game_data_dir().join("backgrounds")
+    crate::data_dir::game_data_dir().join("backgrounds")
 }
 
 pub(crate) fn music_dir() -> PathBuf {
-    game_data_dir().join("musics")
+    crate::data_dir::game_data_dir().join("musics")
 }
 
 pub(crate) fn ambient_dir() -> PathBuf {
-    game_data_dir().join("ambients")
+    crate::data_dir::game_data_dir().join("ambients")
 }
 
 pub fn voice_dir() -> PathBuf {
@@ -154,7 +155,7 @@ pub fn voice_dir() -> PathBuf {
 }
 
 pub(crate) fn fonts_dir() -> PathBuf {
-    data_dir().join("fonts")
+    crate::data_dir::get_data_dir().join("fonts")
 }
 
 // ========== 主动对话系统指令 ==========

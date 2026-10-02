@@ -832,14 +832,19 @@ pub async fn import_live2d(
         }
     };
 
-    let mut settings =
-        match RoleRepo::get_role_settings_by_id(&state.db, &super::data_dir(), role_id).await {
-            Ok(settings) => settings.unwrap_or_else(CharacterSettings::default),
-            Err(error) => {
-                let _ = fs::remove_dir_all(&target);
-                return Err(format!("读取角色配置失败: {error}"));
-            },
-        };
+    let mut settings = match RoleRepo::get_role_settings_by_id(
+        &state.db,
+        crate::data_dir::get_data_dir(),
+        role_id,
+    )
+    .await
+    {
+        Ok(settings) => settings.unwrap_or_else(CharacterSettings::default),
+        Err(error) => {
+            let _ = fs::remove_dir_all(&target);
+            return Err(format!("读取角色配置失败: {error}"));
+        },
+    };
     settings.live2d = Some(live2d.clone());
     let mut value = match serde_json::to_value(&settings) {
         Ok(value) => value,
@@ -904,10 +909,11 @@ pub async fn inspect_live2d(app: AppHandle, role_id: i32) -> Result<Live2dImport
         .as_deref()
         .ok_or_else(|| "角色资源目录不存在".to_string())?;
     let root = resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
-    let settings = RoleRepo::get_role_settings_by_id(&state.db, &super::data_dir(), role_id)
-        .await
-        .map_err(|e| format!("读取角色配置失败: {e}"))?
-        .ok_or_else(|| "角色配置不存在".to_string())?;
+    let settings =
+        RoleRepo::get_role_settings_by_id(&state.db, crate::data_dir::get_data_dir(), role_id)
+            .await
+            .map_err(|e| format!("读取角色配置失败: {e}"))?
+            .ok_or_else(|| "角色配置不存在".to_string())?;
     let live2d = settings
         .live2d
         .ok_or_else(|| "角色未配置 Live2D".to_string())?;
@@ -941,10 +947,11 @@ pub async fn get_live2d_variant_assets(
         .as_deref()
         .ok_or_else(|| "角色资源目录不存在".to_string())?;
     let root = resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
-    let settings = RoleRepo::get_role_settings_by_id(&state.db, &super::data_dir(), role_id)
-        .await
-        .map_err(|e| format!("读取角色配置失败: {e}"))?
-        .ok_or_else(|| "角色配置不存在".to_string())?;
+    let settings =
+        RoleRepo::get_role_settings_by_id(&state.db, crate::data_dir::get_data_dir(), role_id)
+            .await
+            .map_err(|e| format!("读取角色配置失败: {e}"))?
+            .ok_or_else(|| "角色配置不存在".to_string())?;
     let live2d = settings
         .live2d
         .ok_or_else(|| "角色未配置 Live2D".to_string())?;

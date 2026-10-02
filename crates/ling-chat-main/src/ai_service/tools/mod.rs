@@ -133,7 +133,7 @@ pub fn built_in_registry(
     // 避免模型选中 execute_command 后才得到系统级执行失败。
     #[cfg(desktop)]
     registry.register(Arc::new(ExecuteCommand::new(tool_settings.clone())))?;
-    let data_dir = crate::api::data_dir();
+    let data_dir = crate::data_dir::get_data_dir();
     let mut permissions = ToolPermissionConfig::load_or_create(
         &data_dir,
         registry

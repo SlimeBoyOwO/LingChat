@@ -32,8 +32,6 @@ use tauri::{AppHandle, Emitter, State};
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use crate::api::data_dir;
-
 use self::messages::{DeviceIdentity, PeerInfo, SyncPlan, SyncResult};
 
 // ─── 全局状态 ────────────────────────────────────────────────
@@ -92,7 +90,7 @@ fn generate_instance_id(state: &LanSyncState) -> String {
 
 /// 设备身份文件路径。
 fn device_identity_path() -> PathBuf {
-    data_dir().join(".lan_sync_device.json")
+    crate::data_dir::get_data_dir().join(".lan_sync_device.json")
 }
 
 /// 获取或创建设备身份。

@@ -15,10 +15,7 @@ use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::system::open_folder;
 use crate::utils::yaml_file::{resolve_settings_file, write_json_as_yaml};
 
-use super::{
-    characters_dir, data_dir, decode_plugin_folder, game_data_dir, resolve_character_dir,
-    resolve_role_dir,
-};
+use super::{characters_dir, decode_plugin_folder, resolve_character_dir, resolve_role_dir};
 
 const LEGACY_VOICE_MODEL_FIELDS: &[&str] = &[
     "sva_speaker_id",
@@ -389,7 +386,7 @@ pub async fn get_role_info(app: AppHandle, role_id: i32) -> Result<RoleInfoRespo
         .ok_or_else(|| format!("角色 {} 不存在", role_id))?;
 
     let folder = role.resource_folder.clone().unwrap_or_default();
-    let settings = RoleRepo::get_role_settings_by_id(db, &data_dir(), role_id)
+    let settings = RoleRepo::get_role_settings_by_id(db, crate::data_dir::get_data_dir(), role_id)
         .await
         .map_err(|e| format!("读取角色配置失败: {e}"))?
         .unwrap_or_else(|| read_character_settings(&folder));
@@ -423,7 +420,7 @@ pub async fn get_role_settings(app: AppHandle, role_id: i32) -> Result<Character
     let state = app.state::<AppState>();
     let db = &state.db;
 
-    RoleRepo::get_role_settings_by_id(db, &data_dir(), role_id)
+    RoleRepo::get_role_settings_by_id(db, crate::data_dir::get_data_dir(), role_id)
         .await
         .map_err(|e| format!("读取角色配置失败: {}", e))?
         .ok_or_else(|| format!("角色 {} 不存在或其配置不可用", role_id))
@@ -454,7 +451,7 @@ pub fn get_character_file(file_path: String) -> Result<String, String> {
 /// so a script NPC living under the two-level `character/<角色>/<剧本>/` layout —
 /// which is what every 羁绊冒险 uses — could never have its portrait found.
 fn script_package_dirs() -> Vec<PathBuf> {
-    let scripts_dir = game_data_dir().join("scripts");
+    let scripts_dir = crate::data_dir::game_data_dir().join("scripts");
     let mut out = Vec::new();
 
     let Ok(level1) = fs::read_dir(&scripts_dir) else {

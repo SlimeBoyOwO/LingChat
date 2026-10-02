@@ -24,7 +24,6 @@ use tokio::sync::oneshot;
 use tokio_util::io::ReaderStream;
 use tracing::{error, info};
 
-use crate::api::data_dir;
 use crate::manifest::DataManifest;
 use crate::utils::path::validate_path_in_base;
 
@@ -56,7 +55,7 @@ struct FileQuery {
 pub async fn start_server(app: tauri::AppHandle, identity: &DeviceIdentity) -> Result<u16, String> {
     let state = ServerState {
         device_id: identity.device_id.clone(),
-        data_dir: data_dir(),
+        data_dir: crate::data_dir::get_data_dir().clone(),
     };
 
     let router = Router::new()
