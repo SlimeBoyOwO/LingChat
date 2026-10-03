@@ -1236,7 +1236,7 @@ override fun onWebViewCreate(webView: WebView) {
     webView.addJavascriptInterface(
         object {
             @JavascriptInterface
-            fun close() { runOnUiThread { finish() } }
+            fun close() { runOnUiThread { moveTaskToBack(true) } }
         },
         "LingChatSettings",
     )
@@ -1245,6 +1245,9 @@ override fun onWebViewCreate(webView: WebView) {
 
 前端 `SettingsPage.closeWindow` 在移动端优先调 `window.LingChatSettings.close()`，
 拿不到接口时才退回 `appWindow.close()`。
+
+> ⚠️ **这个接口里原来是 `finish()`，2026-10-03 改成了 `moveTaskToBack`** ——
+> 语义与理由见 **4.7.12**。`finish()` 会连带把用户扔回聊天页。
 
 **为什么用 `onWebViewCreate` 而不是 `window.decorView.post { findWebView() }`**：
 翻 `wry/src/android/main_pipe.rs`，`CreateWebView` 消息按 `activity_id` 找到
@@ -1450,6 +1453,194 @@ override fun onConfigurationChanged(newConfig: Configuration) {
 `setScale` 的排布与 `setExpanded` 同一套：以**中心**为锚点重算宽高 → `clampIntoScreen`
 → 收起态 `snapToEdge` → **先 `notifyMetrics` 再 `updateViewLayout`**
 （页面要先拿到新的 `--pet-fit`，否则会有几帧按旧系数渲染而溢出）。
+
+#### 4.7.12 ★ 设置页的「关闭 / 返回键」= **不销毁 + 退到后台**（2026-10-03 重写）
+
+**真机反馈**（用户原话）：
+
+> 宠物设置页应该有复用吧？短时间内如果反复调起就不销毁及隐藏即可。只要设置页
+> 一推到后台就隐藏。……折叠态下可能会触发回到聊天页，这个我不知道怎么复现。
+> 然后设置页应该配置返回键。
+
+三条诉求，对应三个缺陷：
+
+| 诉求                   | 旧行为（`finish()`）                                       |
+| ---------------------- | ---------------------------------------------------------- |
+| 反复调起不销毁         | 每次重建 Activity + WebView + Pinia store，重开必卡一下    |
+| 「折叠态下回到聊天页」 | `finish()` 落到 MainActivity，也就是**聊天页** —— 就是这条 |
+| 返回键要配好           | 无历史时同样走 `finish()`，症状与「关闭」一模一样          |
+
+##### 4.7.12.1 改法：`moveTaskToBack(true)`
+
+```kotlin
+// 关闭（✕）
+fun close() { runOnUiThread { moveTaskToBack(true) } }
+
+// 返回键
+onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+    override fun handleOnBackPressed() { moveTaskToBack(true) }
+})
+```
+
+`moveTaskToBack` 的参数是 `nonRoot`，**必须传 `true`**：传 `false` 时只有
+「本 Activity 是任务根」才生效，而设置窗是任务根（MainActivity）**之上**的第二个
+Activity，会静默什么都不做。
+
+##### 4.7.12.2 返回键为什么要注册**两次**
+
+`OnBackPressedDispatcher` 按**注册顺序倒序**派发（后注册的先被问）。WebView 自己
+会在初始化时注册一个「能回退就 `goBack()`」的回调，时点不确定；它一旦排在后面，
+返回键就被它截走。所以 `onCreate` 注册一份，`onWebViewCreate`（必然晚于 WebView
+构造）再注册一份，让我们的稳定排在最后 = 稳定优先。
+
+> 覆写 `onBackPressed()` 保留作为兜底：Chromium 那份回调在 `canGoBack()` 为假时会
+> `isEnabled = false` 再回落到 `onBackPressed()`。但**不能只靠它** —— API 33+ 的
+> 预测性返回手势下 `onBackPressed()` 根本不会被调用，注册回调才会被 androidx
+> 接到 `OnBackInvokedCallback` 上。
+
+##### 4.7.12.3 「拉到后台就隐藏」—— `pendingShow` 守卫
+
+`moveTaskToBack` 只解决了「用户主动关」。另一半是：设置窗在后台活着时，用户从
+**别的入口**回到 App（桌面图标、桌宠「返回主页」、通知……），系统把整个任务拉到
+前台，**栈顶仍是设置窗** —— 用户想看聊天页却看到设置页。用户明确要求这种情况必须隐藏。
+
+判据是一个静态标记 + 一个实例标记：
+
+```kotlin
+// companion
+@Volatile private var pendingShow = false      // 下一次回前台是不是「用户主动要设置」
+
+// onCreate 与 bringToFront() 里置真
+override fun onStop() { super.onStop(); wentToBackground = true }
+override fun onResume() {
+    super.onResume()
+    val requested = pendingShow; pendingShow = false
+    if (requested) { wentToBackground = false; return }
+    if (wentToBackground) window.decorView.post { finish() }
+}
+```
+
+用 `onStop` 而不是 `onPause`：`onPause` 会被权限弹窗、下拉通知栏这类**短暂打断**
+触发，只看它会把正常使用中的设置窗误杀。
+
+走到 `finish()` 那一支时实例会销毁，但那是**用户已经离开设置语境**的情况；而
+「关 → 再点设置」这条主路径（也就是用户说的「短时间内反复调起」）不经过这里，
+实例是保留的。
+
+##### 4.7.12.4 再点「设置」必须有原生通道 —— `setFocus()` 是空实现
+
+前端发现窗口已存在时走的是 `WebviewWindow.getByLabel("settings")` → `setFocus()`。
+但 `tao-0.35.2/src/platform_impl/android/mod.rs` 里：
+
+```rust
+pub fn set_focus(&self) {
+    warn!("set_focus not yet implemented on Android");
+}
+```
+
+**空实现。** 而「关闭」现在是 `moveTaskToBack`（窗口活着但在后台），没有替代通道
+的话，用户第二次点「设置」就是**毫无反应**。
+
+所以 `MainActivity` 在主窗口的 WebView 上挂了一条 JS 桥：
+
+```kotlin
+// MainActivity.installSettingsBridge
+webView.addJavascriptInterface(object {
+    @JavascriptInterface
+    fun focusSettings(): Boolean = SettingsActivity.bringToFront()
+}, "LingChatApp")
+```
+
+`bringToFront()` 用 `ActivityManager.moveTaskToFront(taskId, 0)`：
+
+- **不能用 `startActivity`** —— MainActivity 是 `singleTask`，用 `startActivity` 拉它
+  会把**它上面所有 Activity 销毁**，设置窗正好在它上面（这条在
+  `FloatingPetPlugin.bringActivityToFront` 的注释里已经被证伪过两次）；
+- 需要 `REORDER_TASKS`，`AndroidManifest.xml` 里已声明（与桌宠「返回主页」共用）；
+- 先置 `pendingShow` 再 `moveTaskToFront`：后者会同步触发 `onRestart → onResume`，
+  标记必须在那之前就绪，否则会被守卫当成「非用户主动」而自杀。
+
+**为什么是 JS 桥而不是 Tauri 命令**：`SettingsActivity` 在 app 模块，而
+`tauri-plugin-floating-pet` 是它依赖的 library 模块，插件反向引用 app 的类得靠反射。
+JS 桥同模块直调，编译期就能查错。
+
+##### 4.7.12.5 ⚠️ 顺带确认的硬约束：**一个 Tauri 窗口 = 一个 Activity**
+
+一度考虑过「去掉 SettingsActivity，把设置页渲染进 MainActivity 那个 WebView」。
+不行，两个原因：
+
+1. `tao` 建窗必须给 `activityName`，`startActivity(Class)` 是**真起一个 Activity**，
+   没法让两个 `WebviewWindow` 共用一个；
+2. 更关键的是，MainActivity 那个 WebView **就是桌宠本体** —— 桌宠浮在桌面上时它被
+   原生搬进了 `WindowManager`，不在 Activity 视图树里。要在主活动里显示全屏设置页，
+   就得先把它搬回来（等于强制收回桌宠）。
+
+所以设置页要么是「独立 Activity + 独立 WebView」（现状），要么干脆不要独立窗口。
+2026-10-03 与用户确认后选的是**前者**。
+
+#### 4.7.13 ★ `Type.systemBars()` **不含挖孔** —— 安全区回归的成因
+
+**真机症状**（用户原话）：「不知道为什么 lc 本身的安全区没了」，
+「我们的（桌宠设置页）好像在切换横竖屏就有安全区了」。
+
+`SafeAreaInsets` 早期只取 `Type.systemBars()`。而 `systemBars` 的定义是
+**状态栏 + 导航栏 + 标题栏 —— 根本不含挖孔**。
+
+在没有 `windowLayoutInDisplayCutoutMode=always` 时这够用：Android 14 及以下默认会把
+窗口在挖孔那一侧「信箱化」，系统替我们留了白。但 4.7.9 为了修悬浮窗横屏被信箱化，
+给 `Theme.ling_chat` 显式加了 `always` —— 窗口从此**铺满整块屏幕、含挖孔**，而
+`systemBars().left/right` 恒为 0：
+
+| 方向 | 表现                                                       |
+| ---- | ---------------------------------------------------------- |
+| 竖屏 | 状态栏通常比挖孔高，看不出来                               |
+| 横屏 | 挖孔跑到左右两侧，`left/right` 为 0 → 内容直接钻到摄像头下 |
+
+悬浮窗那边一直是 `maxOf(systemBars, displayCutout)`（`FloatingPetPlugin.safeInsetsPx()`），
+所以悬浮窗没事 —— 回归只出在走 `SafeAreaInsets` 的**主窗口与设置窗**上。
+
+**修法**：`apply()` 改成接收整个 `WindowInsetsCompat`，四边都取 `max(bars, cutout)`：
+
+```kotlin
+private fun apply(webView: WebView, insets: WindowInsetsCompat) {
+    val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+    val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())  // ★ 必须单独取
+    val top = maxOf(bars.top, cutout.top)
+    // bottom / left / right 同理
+}
+```
+
+> 这条与 4.7.9 是**耦合**的：`always` 修好了横屏信箱化，代价就是挖孔那一条要自己补。
+> 以后谁再动 `windowLayoutInDisplayCutoutMode`，必须同时复核这里。
+
+#### 4.7.14 桌宠设置页的左右滑动切标签（复用 LC 设置面板那套）
+
+用户要求「尽可能模仿现有设置页」。LC 自己的设置面板
+（`src/components/settings/SettingsPanel.vue`）早就有一套滑动切标签，判断条件都是
+踩过坑定下来的，所以**直接照搬**，不另起一套：
+
+| 判断                                         | 为什么                                              |
+| -------------------------------------------- | --------------------------------------------------- |
+| 起点在 `input[type=range]` 上 → 不切页       | 否则拖「桌宠大小」滑块会把页面翻走                  |
+| 起点在**确实有横向溢出**的容器里 → 不切页    | 日志/历史页的横向表格要能拖；内容不满的页面仍可滑动 |
+| `\|dx\| < 50` 或 `\|dx\| <= \|dy\|` → 不切页 | 和垂直滚动区分开，误触比切不动更烦                  |
+| 300ms 内只认一次                             | 快速连划会一次跳好几页                              |
+
+标签顺序 `pet → interaction → todo → window`，**必须与 `SettingsSidebar` 收到的
+`tabs` 一致** —— 方向是靠索引比较算出来的。
+
+转场从原来的 `fade-slide`（上下淡入淡出）换成有方向感的
+`slide-left` / `slide-right`，参数与 LC 面板一致（`0.32s cubic-bezier(0.32,0.72,0,1)`，
+起步即快的缓动，掩盖切页时挂载/卸载的 1~2 帧开销）。
+
+> ⚠️ 两个容易漏的点：
+>
+> 1. **内容区必须加 `overflow-x-hidden`**。LC 那边是靠外层 `overflow-hidden` +
+>    子元素 `absolute inset-0` 做到的；这里的内容区自己就是滚动容器，不加的话
+>    横向位移会把 `scrollWidth` 撑大，滑完还能横向拖走一截。
+> 2. **滑动门槛用 768px 可用宽度，不用 `uiStore.isSmallScreen`**。后者是
+>    `min(宽,高) < 500`，手机横屏约 780×360 时判为「小屏」，而布局早就切成宽屏
+>    左侧竖栏了，两者会打架。
 
 ## 五、手机端的交互设计
 

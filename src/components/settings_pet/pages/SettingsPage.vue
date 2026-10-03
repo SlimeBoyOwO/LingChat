@@ -54,8 +54,19 @@
           @update:activeTab="activeTab = $event"
         />
 
-        <section class="relative z-10 flex-1 overflow-y-auto scroll-smooth p-6 min-[768px]:p-8">
-          <transition name="fade-slide" mode="out-in">
+        <!-- 左右滑动切标签：与 LC 自己的设置面板（components/settings/SettingsPanel.vue）
+             同一套实现 —— 那里已经跑过一段时间，判断条件（排除滑块 / 横向滚动容器、
+             只认明显水平滑动）都是踩过坑才定下来的，这里直接照搬，不另起一套。
+
+             挂在**内容区**而不是整页：标签条本身是横向可滚动的（窄屏下四个标签
+             排在顶部横条里），挂在整页会把「滑标签条」也吃成切页。 -->
+        <section
+          ref="contentRef"
+          class="relative z-10 flex-1 overflow-x-hidden overflow-y-auto scroll-smooth p-6 min-[768px]:p-8"
+          @touchstart="onTouchStart"
+          @touchend="onTouchEnd"
+        >
+          <transition :name="transitionName" mode="out-in">
             <PetTab
               v-if="activeTab === 'pet'"
               key="pet"
@@ -89,7 +100,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 // 替换为你项目中实际存在的 store 路径
@@ -98,6 +109,7 @@ import {
   useSettingsStore,
   type BubbleSide,
 } from "../../../stores/modules/settings";
+import { useUIStore } from "../../../stores/modules/ui/ui";
 
 const PET_SCALE_DEFAULT = 1.0;
 const PET_SCALE_MAX = 1.3;
@@ -122,6 +134,7 @@ const DARK_MODE_KEY = "lingchat-dark-mode";
 const appWindow = getCurrentWindow();
 const settingsStore = useSettingsStore();
 const gameStore = useGameStore();
+const uiStore = useUIStore();
 const { t } = useI18n();
 
 const isMaximized = ref(false);
@@ -176,6 +189,99 @@ const tabs = computed(() => [
     en: "PROACTIVE SYSTEM",
   } as TabItem,
 ]);
+
+// ========== 手机端左右滑动切换标签 ==========
+//
+// 与 LC 自己的设置面板（`components/settings/SettingsPanel.vue`）**同一套实现**：
+// 那边已经跑过一段时间，几个判断条件都是踩过坑才定下来的，这里照搬，不另起一套。
+//
+// 顺序必须与 SettingsSidebar 收到的 `tabs` 一致 —— 滑动方向靠索引比较得出。
+const SWIPE_TABS = ["pet", "interaction", "todo", "window"] as const;
+
+// 分页转场方向：左滑（下一项）→ slide-left（新页从右侧进）；右滑（上一项）→ slide-right。
+// watch 默认 flush: 'pre'，在重渲染前更新 transitionName，Transition 开始动画时能取到正确方向。
+const transitionName = ref<"slide-left" | "slide-right">("slide-left");
+
+watch(activeTab, (newTab, oldTab) => {
+  if (!oldTab || oldTab === newTab) return;
+  const newIdx = SWIPE_TABS.indexOf(newTab);
+  const oldIdx = SWIPE_TABS.indexOf(oldTab);
+  // 目标 / 来源不在滑动顺序里（理论不应发生）→ 保持原方向
+  if (newIdx === -1 || oldIdx === -1) return;
+  transitionName.value = newIdx > oldIdx ? "slide-left" : "slide-right";
+});
+
+const contentRef = ref<HTMLElement | null>(null);
+let touchStartX = 0;
+let touchStartY = 0;
+let touchOnHorizontalScrollable = false;
+let isSwipeAnimating = false;
+
+/**
+ * 触摸起点是否落在「可滚动」容器内（数值滑块、横向滚动表格等）。
+ *
+ * 是则不切页 —— 用户多半是在拖滑块或滚横向内容，不是在翻页。
+ * 只排除**确实有溢出可滚**的容器：内容不满的页面（无可滚动区域）仍可滑动切换。
+ * 竖向滚动容器不在此列：竖向滚动由 [onTouchEnd] 里 `|dx| <= |dy|` 兜底。
+ */
+function isInsideScrollable(el: Element | null): boolean {
+  while (el && el !== contentRef.value) {
+    // 数值调节滑块（原生 range / 自定义 Slider）→ 拖动它不该切页
+    if (el.tagName === "INPUT" && (el as HTMLInputElement).type === "range") return true;
+    const s = getComputedStyle(el);
+    if (
+      (s.overflowX === "auto" || s.overflowX === "scroll") &&
+      el.scrollWidth > el.clientWidth + 4
+    ) {
+      return true;
+    }
+    el = el.parentElement;
+  }
+  return false;
+}
+
+/**
+ * 是否允许滑动切页。
+ *
+ * 门槛用 **768px 可用宽度**，与 `SettingsSidebar` 的断点一致：窄屏时四个标签是
+ * 顶部横条，左右滑动顺手；宽屏是左侧竖栏，滑动反而容易误触。
+ *
+ * ⚠️ 不用 `uiStore.isSmallScreen`（那是 `min(宽,高) < 500`）：手机横屏约 780×360
+ * 时它判为「小屏」，而布局早就切成宽屏竖栏了，两者会打架。
+ */
+const canSwipe = computed(() => uiStore.viewportWidth < 768);
+
+const onTouchStart = (e: TouchEvent) => {
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+  touchOnHorizontalScrollable = isInsideScrollable(e.target as Element);
+};
+
+const onTouchEnd = (e: TouchEvent) => {
+  if (!canSwipe.value) return;
+  // 起点在可横向滚动区域（历史表格等）→ 让原生滚动处理
+  if (touchOnHorizontalScrollable) return;
+  if (isSwipeAnimating) return;
+
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const dy = e.changedTouches[0].clientY - touchStartY;
+
+  // 只响应明显的水平滑动（避免和垂直滚动 / 滑块冲突）
+  if (Math.abs(dx) < 50 || Math.abs(dx) <= Math.abs(dy)) return;
+
+  const currentIdx = SWIPE_TABS.indexOf(activeTab.value);
+  if (currentIdx === -1) return;
+  let nextIdx = dx < 0 ? currentIdx + 1 : currentIdx - 1; // 左滑 → 下一个，右滑 → 上一个
+  if (nextIdx < 0) nextIdx = SWIPE_TABS.length - 1;
+  if (nextIdx >= SWIPE_TABS.length) nextIdx = 0;
+
+  // 动画期间屏蔽连击，否则快速连划会一次跳好几页
+  isSwipeAnimating = true;
+  activeTab.value = SWIPE_TABS[nextIdx];
+  setTimeout(() => {
+    isSwipeAnimating = false;
+  }, 300);
+};
 
 const petScale = computed(() => settingsStore.pet.scale);
 const petVolume = computed(() => settingsStore.characterVolume);
@@ -251,7 +357,7 @@ const toggleMaximizeWindow = async () => {
 /**
  * 关闭设置窗口。
  *
- * ## 手机端必须走原生 `finish()`
+ * ## 手机端必须走原生桥，而且**不是** `finish()`
  *
  * 桌面端 `Window.close()` 是关掉一个系统窗口，Android 上**没有对应实现** ——
  * 翻 `tao` 的 `platform_impl/android/mod.rs`，`Window` 上没有 `close()` /
@@ -259,8 +365,17 @@ const toggleMaximizeWindow = async () => {
  * 直接调的结果是：WebView 被销毁、承载它的 Activity 还在 → **一块黑屏**。
  *
  * 所以手机端改调 `SettingsActivity` 通过 `onWebViewCreate` 注入的接口
- * （见 `gen/android/.../com/noiq/lingchat/SettingsActivity.kt`），由原生
- * `finish()` 结束那个 Activity。
+ * （见 `gen/android/.../com/noiq/lingchat/SettingsActivity.kt`）。
+ *
+ * ⚠️ **2026-10-03 起那个接口做的是 `moveTaskToBack`，不再是 `finish()`**：
+ *
+ * - `finish()` 会销毁设置窗（每次重开都要重建 WebView + 重载页面），
+ *   而且**会落到 MainActivity，也就是聊天页** —— 用户报的「关掉设置却回到
+ *   聊天页」就是这条；
+ * - `moveTaskToBack` 只把整个任务退到后台，设置窗（连同标签页选择、
+ *   滚动位置）原样保留，再点「设置」由原生拉回前台即可。
+ *
+ * 语义的完整说明与「推到后台就隐藏」的守卫见 `SettingsActivity` 头注释。
  *
  * 接口拿不到时（理论上不该发生）退回原来的行为，至少不会更差。
  */
@@ -314,21 +429,38 @@ onMounted(async () => {
   background-image: radial-gradient(circle, #334155 1px, transparent 1px);
 }
 
-/* 页面切换动画 */
-.fade-slide-enter-active,
-.fade-slide-leave-active {
-  transition:
-    opacity 0.25s ease,
-    transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+/* 分页转场：与 LC 设置面板（SettingsPanel.vue）同一套参数。
+   用「起步即快」的缓动（而非默认的慢起步）—— 切 Tab 时新页挂载 / 旧页卸载
+   会有 1~2 帧主线程开销，慢起步缓动会让旧页看起来「卡在原地」形成残留。 */
+.slide-left-enter-active,
+.slide-left-leave-active,
+.slide-right-enter-active,
+.slide-right-leave-active {
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-.fade-slide-enter-from {
-  opacity: 0;
-  transform: translateY(10px);
+.slide-left-enter-from {
+  transform: translateX(100%);
+}
+.slide-left-leave-to {
+  transform: translateX(-100%);
 }
 
-.fade-slide-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
+.slide-right-enter-from {
+  transform: translateX(-100%);
 }
+.slide-right-leave-to {
+  transform: translateX(100%);
+}
+
+.slide-left-enter-to,
+.slide-left-leave-from,
+.slide-right-enter-to,
+.slide-right-leave-from {
+  transform: translateX(0);
+}
+
+/* ⚠️ 位移会被内容区裁掉，所以 `section` 上必须有 `overflow-x-hidden`
+   （LC 那边是靠外层 `overflow-hidden` + 子元素 `absolute inset-0` 做到的）。
+   不加的话横向溢出会把内容区变成可横向滚动的容器，滑动切页之后能横向拖走一截。 */
 </style>
