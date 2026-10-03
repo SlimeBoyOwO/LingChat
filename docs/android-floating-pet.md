@@ -2258,6 +2258,7 @@ D:\LingChat-BuildEnv\
 ├─ jdk\  android-sdk\  rust\  mingw\  gradle-home\   ← 工具链与缓存
 ├─ android-keystore\debug.keystore                    ← 调试签名
 ├─ build-android-pet.sh     ← 一键出包（对照 CI 步骤，pnpm 换成直接 node）
+├─ build-android-pet-fast.sh ← ⚡ 快速迭代：只改 Kotlin ~50s、只改 Rust ~6.5min（见 §9.7）
 ├─ sign-apk-pet.sh          ← zipalign + apksigner
 └─ verify-pet-apk.sh        ← 验包：确认改动真的进了包（R8 混淆 + brotli 压缩后搜字符串的坑）
 ```
@@ -2268,6 +2269,11 @@ bash build-android-pet.sh          # 约 10–13 分钟
 bash sign-apk-pet.sh               # 产出 *-signed.apk，可直接覆盖安装
 bash verify-pet-apk.sh             # 可选但强烈建议：确认改动真的进了包
 ```
+
+> ⚡ **迭代时先看 §9.7**：只改 Kotlin / XML / 资源的话，
+> `bash build-android-pet-fast.sh` 约 **50 秒**出包（完整构建要 12–13 分钟，
+> 其中 11 分钟是在重编一个字节都没变的 Rust）。改了 Rust 用
+> `bash build-android-pet-fast.sh rust`，约 6.5 分钟。
 
 构建前建议先跑前端类型检查（`build-android-pet.sh` 里刻意跳过 vue-tsc）：
 
@@ -2577,3 +2583,146 @@ ASSETS=$(ls -dt "$REPO"/target/aarch64-linux-android/release/build/ling_chat-*/o
   是 **API 28 属性**，aapt2 会自动把它归到 `(v28)` 与 `(night-v28)` 两个配置；
   只在 `values/themes.xml` 写、漏了 `values-night/`，就会**恰好少一次** ——
   那正是「白天修好了、深色下没修」这个坑的判据。
+
+### 9.7 快速迭代：只改 Kotlin 时 cargo 可以**整个跳过**（2026-10-03）
+
+**动机**：完整构建 ~12–13 分钟（构成见 §9.1 / §9.2），其中 **cargo 两趟各 ~5.5 分钟**。
+而改 `SettingsActivity.kt` 这种 Kotlin 文件时，**Rust 侧一个字节都没变**，
+那 11 分钟纯粹是白烧。
+
+**做法**：`mergeUniversalReleaseJniLibFolders` 只是「把 jniLibs 里的 .so 合并进 APK」，
+它依赖 `rustBuildUniversalRelease` 仅仅是因为**首次构建**时 .so 还不存在。
+只要 `.so` 已经在 `app/src/main/jniLibs/arm64-v8a/`（符号链接指向
+`target/aarch64-linux-android/release/libling_chat_lib.so`），
+就可以把那个叶子任务排除掉：
+
+```bash
+cd src-tauri/gen/android
+./gradlew assembleUniversalRelease \
+  -PtargetList=aarch64 -PabiList=arm64-v8a -ParchList=arm64 \
+  -x rustBuildArm64Release
+```
+
+脚本：`/d/LingChat-BuildEnv/build-android-pet-fast.sh`（默认 kotlin 模式）。
+
+#### 9.7.1 实测数字
+
+| 场景                   | Gradle | 含签名总计 | 对比完整构建     |
+| ---------------------- | ------ | ---------- | ---------------- |
+| **有 Kotlin 改动**     | 44s    | **~51s**   | 12–13 min → ~15× |
+| 无任何改动（固定开销） | 7s     | ~16s       | —                |
+
+（第一次跑是 77s —— daemon 刚被 `--stop` 掉、且增量状态被上一轮误构建污染；
+daemon 热起来后稳定在 44s。所以**别在快速迭代前 stop daemon**。）
+
+#### 9.7.2 ★ 必须自己传 `-PtargetList` / `-PabiList` / `-ParchList`
+
+**这是本方案唯一的坑，而且它不报错、只是变慢。**
+
+`RustPlugin.kt` 里这三个属性都是「不传 = 全部」：
+
+```kotlin
+val defaultAbiList  = listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+val defaultArchList = listOf("arm64", "arm", "x86", "x86_64")
+val targetsList = (findProperty("targetList") as? String)?.split(',')
+                  ?: listOf("aarch64", "armv7", "i686", "x86_64")
+```
+
+平时只编 aarch64，是因为 **tauri CLI 自己传了这三个属性**（在
+`node_modules/.pnpm/@tauri-apps+cli-win32-x64-msvc@*/…/cli.win32-x64-msvc.node`
+里能 grep 到字面量 `-PtargetList=` / `-PabiList=` / `-ParchList=`；
+它经 cargo-mobile2 调 `assembleUniversal<Profile>`）。
+我们绕过 CLI 直接调 `gradlew`，就必须自己补齐。
+
+**只 `-x rustBuildArm64Release` 是不够的** —— 另外三个 target 会顶上来：
+
+```
+:app:rustBuildArmRelease       ← armv7
+:app:rustBuildX86Release       ← x86
+:app:rustBuildX86_64Release    ← x86_64
+:app:rustBuildUniversalRelease
+```
+
+而且每个**新 target 都要从零重编全部依赖**。2026-10-03 实测：漏了这三个属性，
+构建卡在 armv7 上 **20 分钟还没完**（`target/armv7-linux-androideabi/` 都没建出来就手动掐了）。
+
+**自查方法**：`--dry-run` 后 grep 任务名，必须**只剩** `rustBuildUniversalRelease`
+（空壳 DefaultTask，无 action）和 `assembleUniversalRelease`：
+
+```bash
+./gradlew assembleUniversalRelease -PtargetList=aarch64 -PabiList=arm64-v8a \
+  -ParchList=arm64 -x rustBuildArm64Release --dry-run | grep -i rustbuild
+# => :app:rustBuildUniversalRelease SKIPPED     ← 只应有这一条
+```
+
+#### 9.7.3 rust 模式：用 init script 关掉 Gradle 那趟重复 cargo
+
+改了 `src-tauri/**/*.rs` 时 cargo 必须跑，但**只需跑一趟**。
+`android-studio-script` 那条路走不通（见 9.7.4），所以改成
+「CLI 照常驱动 + 从 Gradle 侧把重复任务禁掉」。
+
+`$GRADLE_USER_HOME/init.d/skip-rust-build.gradle`，由环境变量触发：
+
+```groovy
+if (System.getenv("LINGCHAT_SKIP_GRADLE_RUST") == "1") {
+    gradle.taskGraph.whenReady { graph ->
+        def rustTasks = graph.allTasks.findAll { it.name.startsWith("rustBuild") }
+        // 空任务图（`./gradlew --stop` 那次）不报警
+        if (rustTasks.isEmpty()) { ...; return }
+        rustTasks.each { it.enabled = false }
+    }
+}
+```
+
+然后：
+
+```bash
+LINGCHAT_SKIP_GRADLE_RUST=1 tauri android build --target aarch64 --apk \
+  --config '{"build":{"beforeBuildCommand":""}}'
+```
+
+**为什么敢禁**：**两趟 cargo 都会把 .so 铺进 jniLibs**。
+证据：`pet21.log` 里 `symlinking lib ... in jniLibs dir` 出现 **4 次 = 2 对**
+（每对 = `libling_chat_lib.so` + `libc++_shared.so`）。
+所以禁掉 Gradle 那趟后，`mergeUniversalReleaseJniLibFolders` 照样有货。
+
+实测（Rust 无改动，cargo 秒回）：**103s**，日志里 `Compiling ling_chat` **0 次**、
+`symlinking lib` **2 次**（只剩 CLI 那一趟）、`[skip-rust-build] 已禁用 2 个任务`。
+有真实 Rust 改动时约 **5.5 min（cargo）+ 1 min（gradle）≈ 6.5 min**，
+对比完整构建省约 6 分钟。
+
+#### 9.7.4 ⚠️ `android-studio-script` **不能**独立调用
+
+它要连 `tauri android build` **父进程托管的 WebSocket**。独立调用直接 panic：
+
+```
+thread '<unnamed>' panicked at crates\tauri-cli\src\mobile\mod.rs:403:6:
+failed to read CLI options: Context("failed to build WebSocket client",
+  Io(Os { code: 10061, kind: ConnectionRefused, message: "由于目标计算机积极拒绝，无法连接。" }))
+```
+
+所以只能「让 CLI 驱动 + 禁 Gradle 侧任务」，不能「自己跑 cargo + 自己跑 gradle」。
+
+#### 9.7.5 逐字节一致的证据
+
+kotlin 模式产出的 APK 与完整构建 **sha256 完全相同**：
+
+```
+837ba0dd28d598fa3b1cffd89f13ce5cbc0e6e061fa317b26653dc2149b4c3bd
+```
+
+即 `-x rustBuildArm64Release` 不改变产物，只是省掉重复劳动。
+（验包脚本 76 条断言同样全绿。）
+
+#### 9.7.6 脚本的预检 —— 因为近路的失效方式是**静默产出旧内容**
+
+`build-android-pet-fast.sh` 在构建前会拒掉不该走近路的情况：
+
+| 模式   | 条件                                                                 | 动作                      |
+| ------ | -------------------------------------------------------------------- | ------------------------- |
+| kotlin | `src-tauri/{src,crates,plugins}/**/*.rs` 或 `Cargo.toml` 比 `.so` 新 | 退出码 2，提示改走 `rust` |
+| kotlin | `dist/` 比 `.so` 新（前端改过）                                      | 退出码 2，提示走完整构建  |
+| rust   | `dist/` 比 `.so` 新                                                  | 只警告                    |
+
+`dist/` 那条尤其重要：它会被 tauri-codegen 用 brotli 压进 `libling_chat_lib.so`，
+只跑 Gradle 拿到的是**上一次的前端** —— 不报错，只是行为诡异。
