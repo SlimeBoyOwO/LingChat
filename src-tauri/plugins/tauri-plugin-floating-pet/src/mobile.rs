@@ -115,6 +115,25 @@ pub fn set_touchable<R: Runtime>(
     call::<R, _, ()>(app, "setTouchable", TouchableArgs { touchable })
 }
 
+/// 让出 / 收回悬浮窗的输入焦点。
+///
+/// 悬浮窗展开时若一直摘着 `FLAG_NOT_FOCUSABLE`，它就会在**整个展开期间**持有
+/// 输入焦点 —— 其他 App 的键盘弹不出来、返回键也先被它吃掉。
+/// 现在由页面输入框的 `focus` / `blur` 驱动这个开关：
+///
+/// - `focused = true`  → Kotlin 侧摘掉 `FLAG_NOT_FOCUSABLE` 并弹出输入法；
+/// - `focused = false` → 收起输入法并把标志加回去。
+pub fn set_ime_focus<R: Runtime>(
+    app: &AppHandle<R>,
+    focused: bool,
+    state: &FloatingPetState,
+) -> Result<()> {
+    if !state.is_visible() {
+        return Err(Error::NotVisible);
+    }
+    call::<R, _, ()>(app, "setImeFocus", ImeFocusArgs { focused })
+}
+
 /// 展开 / 收起桌宠窗口。
 ///
 /// 收起态只显示头像（约 1/6 屏宽），展开态容纳头像 + 输入框

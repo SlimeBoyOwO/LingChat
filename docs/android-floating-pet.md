@@ -1642,6 +1642,219 @@ private fun apply(webView: WebView, insets: WindowInsetsCompat) {
 >    `min(宽,高) < 500`，手机横屏约 780×360 时判为「小屏」，而布局早就切成宽屏
 >    左侧竖栏了，两者会打架。
 
+#### 4.7.15 ★ 安全区注入的**时机**：为什么「旋转一下屏幕就好了」
+
+**真机症状**（用户原话）：「我发现设置页的安全区还是**需要旋转一下屏幕**」。
+转一下就对了 —— 这个「转一下」就是全部线索。
+
+`SafeAreaInsets` 早期只有一条注入路径：insets 分发时 `evaluateJavascript` 一次。
+但两条时间线根本对不上：
+
+| 事件                                            | 时刻        |
+| ----------------------------------------------- | ----------- |
+| WebView 被 `addView` 进视图树 → **insets 分发** | t≈0ms       |
+| `loadUrl` 建出真正的 document                   | t≈300–800ms |
+
+也就是说那一次 `evaluateJavascript` 打在 **`about:blank` 的 document** 上，
+真页面一加载就把 `--safe-area-inset-*` 冲掉了。而转屏会触发
+`requestApplyInsets` → 再注入一次 —— 那时页面**已经在了**，于是「转一下就好了」。
+
+**修法**：加第三条路径，把值注册成**每个新 document 开始时都自动执行**的脚本。
+这才是构造上正确的做法 —— 页面无论何时加载，脚本都已经带着当前值等在那里：
+
+```kotlin
+// androidx.webkit，需 WebViewFeature.isFeatureSupported(DOCUMENT_START_SCRIPT) 守卫
+handlers.remove(webView)?.remove()   // ⚠️ 同名脚本后注册覆盖先注册，必须先摘旧的
+handlers[webView] = WebViewCompat.addDocumentStartJavaScript(
+    webView, values.script, setOf("*"),
+)
+```
+
+值**内联在脚本字面量里**（不去问原生），这样同一段脚本既能
+`evaluateJavascript` 打进当前文档，也能作为 document-start 脚本自动跑。
+
+脚本自身还要防御 `documentElement` 尚未建出的情况：
+
+```js
+if (!s()) {
+  document.addEventListener("DOMContentLoaded", s, { once: true });
+  window.addEventListener("load", s, { once: true });
+}
+```
+
+现在三条路一起兜：
+
+1. **insets 分发时**立即注入 —— 管旋转、分屏等运行时变化；
+2. **`addDocumentStartJavaScript`** —— 管「页面还没加载」这一段，**主路径**；
+3. `attach()` 里两次 `postDelayed`（600 / 1800ms）补注入 —— 给不支持
+   document-start 脚本的老 WebView 兜底。
+
+> ⚠️ 三个坑：
+>
+> 1. **重新注册前必须 `ScriptHandler.remove()`**。同名脚本是「后注册覆盖先注册」，
+>    不摘旧的话每次 insets 变化都往队列里堆一份。
+> 2. **能力守卫不能省**。`DOCUMENT_START_SCRIPT` 在旧 WebView 上不支持，
+>    直接调用会抛异常。
+> 3. **`WeakHashMap` 而不是普通 Map**。`handlers` / `lastValues` 都以 WebView
+>    为 key，用强引用会把已销毁的 WebView 永久钉住（内存泄漏）。
+
+#### 4.7.16 ★ 修正 4.7.10：`onConfigurationChanged` **不够**
+
+4.7.10 让两个 Activity 都覆写了 `onConfigurationChanged` 来强制重排。真机上
+「转屏后布局错乱」**依旧复发** —— 因为覆写的时机选错了。
+
+`onConfigurationChanged` 只在**配置变化那一刻**触发。而后台转屏时（App 不在前台），
+那一刻窗口尺寸**还没变**：`Activity` 的 `Resources` 更新了，但 View 树要等回到前台
+重新测量才拿到新尺寸。于是那次重排用的是**旧尺寸**，等于没做。
+
+**修法**：改用 `View.addOnLayoutChangeListener`，判据从「配置变了」换成
+**「尺寸真的变了」**：
+
+```kotlin
+webView.addOnLayoutChangeListener { v, left, top, right, bottom, _, _, _, _ ->
+    val w = right - left; val h = bottom - top
+    if (w == lastWebViewW && h == lastWebViewH) return@addOnLayoutChangeListener  // ★ 去重
+    lastWebViewW = w; lastWebViewH = h
+    v.post {
+        SafeAreaInsets.reapply(view)                                    // 重注安全区
+        view.evaluateJavascript("window.dispatchEvent(new Event('resize'));", null)
+    }
+}
+```
+
+两个要点：
+
+- **去重（`lastWebViewW/H`）不能省**。`OnLayoutChangeListener` 在一次布局流程里
+  可能被调用多次，而且**改窗口尺寸本身又会触发下一次布局** → 不去重就是
+  resize 风暴，WebView 会卡死。
+- **`v.post { }` 也不能省**。在布局回调里直接改视图会打断当前 layout pass。
+
+`onConfigurationChanged` 那套**保留**（它管的是非尺寸类的配置变化），
+两者互补而不是替代。
+
+#### 4.7.17 ★ 挖孔只认「主导边」—— 竖屏右边莫名多出的空白
+
+**真机症状**（用户原话）：「至少在竖屏下**右边会莫名其妙多一点空白**」。
+
+4.7.13 把安全区改成四边都 `max(systemBars, displayCutout)`，方向是对的
+（`systemBars` 不含挖孔）。但 `displayCutout` 的语义被想当然了：
+
+> `DisplayCutout` 会把**同一块挖孔在相邻边上的投影**也报出来。
+
+具体到「竖屏 + 顶部/右上角打孔」：
+
+```
+┌─────────────────────┐
+│                  ▢  │  ← 挖孔在右上角
+│                     │
+```
+
+`cutout.top` = 挖孔高度（主导），但 `cutout.right` **也非 0** —— 它表示
+「挖孔向右延伸到了边」。而 `cutout.right` 的数值等于挖孔那一小块的高度，
+**不是**「右边整条边都要内缩」。四边照单全收 → 给**整条右边**加出一条内缩
+→ 竖屏下右侧凭空多一块空白。
+
+**修法**：只取四边里**数值最大**的方向当作「挖孔所在边」，其余方向置零：
+
+```kotlin
+val cutMax = maxOf(cut.left, cut.top, cut.right, cut.bottom)
+fun cutOn(v: Int) = if (cutMax > 0 && v == cutMax) v else 0
+
+val values = Values(
+    top    = cssPx(maxOf(bars.top,    cutOn(cut.top)),    density),
+    bottom = cssPx(maxOf(bars.bottom, cutOn(cut.bottom)), density),
+    left   = cssPx(maxOf(bars.left,   cutOn(cut.left)),   density),
+    right  = cssPx(maxOf(bars.right,  cutOn(cut.right)),  density),
+)
+```
+
+依据是这个窗口的 `windowLayoutInDisplayCutoutMode=always`（4.7.9）：
+窗口铺满整屏，挖孔**只可能**从某一条边侵入，不存在「两块挖孔在两个方向上并列」
+的合法布局。所以「主导边」是一个安全且够用的近似。
+
+`systemBars` **不受影响** —— 它本来就是整边语义（状态栏 / 手势条确实横贯整边），
+只对 `displayCutout` 做主导边过滤。
+
+日志里直接打出原始读数与判定结果，真机排查一条命令搞定：
+
+```bash
+adb logcat -s LingChatSafeArea
+# insets bars=0/0/0/48 cutout=0/112/0/0 (主导边=112) → css T=37.3 B=16.0 L=0.0 R=0.0
+```
+
+> ⚠️ 用户在这条上纠正过我的理解方向：他说的是「**右边边界扣掉刘海屏**」，
+> 我最初理解成「左边边界增加刘海屏」。差别在于：问题**不是**「某条边少留了」，
+> 而是「**不该留的那条边留了**」。横屏摄像头在左侧时才需要给左边让位；
+> 竖屏时右侧那点 `cutout.right` 是投影，**不该**让位。
+
+#### 4.7.18 ★ 悬浮窗的输入焦点：只有点输入框时才抢
+
+**真机症状**（用户原话）：「展开时会把其他地方的**键盘和返回**给拦截掉」。
+
+`TYPE_APPLICATION_OVERLAY` 窗口有个不显眼的性质：
+
+> 一旦摘掉 `FLAG_NOT_FOCUSABLE`，它就是**系统里最上层的可获焦窗口**，
+> 会一直霸着输入焦点。
+
+而展开态**必须**摘掉它 —— `FLAG_NOT_FOCUSABLE` 的窗口**永远收不到输入法**
+（IME 只服务于持有输入焦点的窗口）。于是：
+
+| 状态       | `FLAG_NOT_FOCUSABLE`   | 后果                                           |
+| ---------- | ---------------------- | ---------------------------------------------- |
+| 收起       | 有                     | 正常，不抢焦点                                 |
+| 展开（旧） | **摘掉**               | 键盘/返回键被悬浮窗吃掉；别的 App 键盘弹不出来 |
+| 展开（新） | 有，**点输入框时**才摘 | 展开本身不抢焦点；只有真的要打字时才短暂获得   |
+
+**修法**：把「可获焦」从**状态**改成**动作**。
+
+- `setExpanded(true)` 只设 `softInputMode`，**不动** `FLAG_NOT_FOCUSABLE`；
+- 新增 `set_ime_focus` 命令，由页面输入框的 `focus` / `blur` 驱动：
+  - `focused=true` → 摘 flag + `updateViewLayout` + `requestFocus()`，
+    **隔一帧**再 `showSoftInput`；
+  - `focused=false` → `hideSoftInput` + 加回 flag + `updateViewLayout`。
+
+```kotlin
+// ⚠️ showSoftInput **不能**和 updateViewLayout 同步调用
+view.postDelayed({ showIme(view) }, IME_SHOW_DELAY_MS)   // 80ms
+```
+
+原因：`showSoftInput` 要求「调用时存在持有输入焦点的窗口」。`updateViewLayout`
+摘 flag 是异步的，系统完成窗口焦点切换要一帧 —— 同步调用会因「没有可获焦窗口」
+被 IME **直接丢掉**，表现为「点了输入框键盘不弹」。
+
+`softInputMode` 里**绝不能**带 `SOFT_INPUT_STATE_VISIBLE`：那会让展开的一瞬间
+就弹键盘，等于把「一直抢焦点」换成了「一展开就抢焦点」，症状只减轻没消失。
+
+##### 4.7.18.1 兜底：失去窗口焦点时无条件让出
+
+页面的 `blur` 在「用户直接切到别的 App」这类场景**不一定送得到**（WebView 还在
+后台，JS 事件要等回到前台才派发）。所以还要在原生侧挂一层：
+
+```kotlin
+webView.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
+    if (!hasFocus && 当前可获焦) {
+        params.flags = params.flags or FLAG_NOT_FOCUSABLE
+        wm.updateViewLayout(webView, params)
+    }
+}
+```
+
+无条件让出是安全的：失去窗口焦点时用户**不可能**在悬浮窗里打字，
+让出不会误伤；而让出之后想再打字，点一下输入框就能重新拿到。
+
+##### 4.7.18.2 三处断言缺一不可
+
+这条链路横跨三层，任何一层断掉都是**静默失败**（不崩溃、不报编译错）：
+
+| 层     | 标记                     | 断了会怎样                                       |
+| ------ | ------------------------ | ------------------------------------------------ |
+| 前端   | 字面量 `\|set_ime_focus` | 输入框 focus 时不发命令，键盘永不弹              |
+| Rust   | `set_ime_focus` 命令名   | `invoke` 报「命令不存在」                        |
+| Kotlin | 方法名 `setImeFocus`     | R8 改名 → Tauri 反射找不到，同样报「命令不存在」 |
+
+`verify-pet-apk.sh` 里三条**各断言一次**（前端查 brotli 解压后的分块、Rust 查
+`.so` 的 `.rodata`、Kotlin 查 dex 字符串表），缺一环即报错。
+
 ## 五、手机端的交互设计
 
 ### 5.1 尺寸：固定逻辑画布 + 整体等比缩放
@@ -2718,11 +2931,66 @@ kotlin 模式产出的 APK 与完整构建 **sha256 完全相同**：
 
 `build-android-pet-fast.sh` 在构建前会拒掉不该走近路的情况：
 
-| 模式   | 条件                                                                 | 动作                      |
-| ------ | -------------------------------------------------------------------- | ------------------------- |
-| kotlin | `src-tauri/{src,crates,plugins}/**/*.rs` 或 `Cargo.toml` 比 `.so` 新 | 退出码 2，提示改走 `rust` |
-| kotlin | `dist/` 比 `.so` 新（前端改过）                                      | 退出码 2，提示走完整构建  |
-| rust   | `dist/` 比 `.so` 新                                                  | 只警告                    |
+| 模式   | 条件                                                                 | 动作                              |
+| ------ | -------------------------------------------------------------------- | --------------------------------- |
+| kotlin | `src-tauri/{src,crates,plugins}/**/*.rs` 或 `Cargo.toml` 比 `.so` 新 | 退出码 2，提示改走 `rust`         |
+| kotlin | 前端源码（`src/**` / `index.html`）比 `dist/` 新                     | 退出码 2，提示改走 `rust`         |
+| rust   | 前端源码比 `dist/` 新                                                | **自动补跑 `vite build`**（见下） |
 
-`dist/` 那条尤其重要：它会被 tauri-codegen 用 brotli 压进 `libling_chat_lib.so`，
+前端那条尤其重要：`dist/` 会被 tauri-codegen 用 brotli 压进 `libling_chat_lib.so`，
 只跑 Gradle 拿到的是**上一次的前端** —— 不报错，只是行为诡异。
+
+#### 9.7.7 ★ 预检曾经是**假的** —— `stat` 不解引用符号链接（2026-10-03 踩到）
+
+第一版预检用 `dist/` 和 `$SO`（jniLibs 里那个 `.so`）比 mtime。它**永远为假**，
+于是 rust 模式静默跳过 vite build，打出「新后端 + 旧前端」的包。
+
+两个独立的错叠在一起：
+
+**① `$SO` 是符号链接，`stat` / `find -newer` 默认不解引用。**
+
+```
+jniLibs/arm64-v8a/libling_chat_lib.so  ->  ../target/aarch64-linux-android/release/libling_chat_lib.so
+```
+
+`stat -c '%s'` 拿到的是**链接自身**的 90 字节，不是真 `.so` 的 136 MB。
+日志里那句 `.so: 90 bytes` 就是症状 —— **一个 90 字节的 `.so` 本该当场可疑**。
+修法：`SO_REAL=$(readlink -f "$SO")`，之后一律比 `$SO_REAL`；
+打印也改成 `stat -L`。
+
+**② 判据方向本身是自指的。**
+
+「`dist/` 比 `.so` 新」只说明「上次构建之后前端改过」。但**上次构建可能本来
+就没重跑 vite**（正是本脚本引入的新情况）→ 判据的前提被自己破坏，永远为假。
+
+正确的判据是问这个问题的本来语义：
+
+```bash
+find "$PROJ/src" "$PROJ/index.html" -type f -newer "$PROJ/dist"
+```
+
+即「**前端源码**是不是比 `dist/` 旧」。它不依赖任何构建产物的时间戳，
+在「前端 / Rust / Kotlin 改了什么」这三种情况下都成立。
+
+> **教训**：预检的判据不能建立在**上一轮的产物**上，只能建立在**源码**上。
+> 产物是「上一次构建做了什么」的函数，而预检恰恰是用来判断「上一次构建
+> 该不该那样做」的 —— 拿它当输入就是循环论证。
+>
+> 附带一条：日志里任何**数值离谱的读数**（90 字节的 `.so`、0 字节的 dist）
+> 都应当被当成断言失败，而不是被忽略过去。这次就是靠那行日志发现的。
+
+#### 9.7.8 rust 模式为什么会**自动补跑** `vite build`
+
+`tauri android build` 的 `beforeBuildCommand` 被脚本用 `--config` 置空了
+（因为完整构建已经自己跑过一遍，不置空会跑两次）。所以 rust 模式**不碰前端**。
+
+但「改 Rust」和「改前端」经常同时发生（本轮就是：Kotlin + Rust + 前端三处一起改）。
+不补的话就是 9.7.7 说的静默旧前端。
+
+默认 `--front auto`：预检发现前端源码比 `dist/` 新就自动补跑一次
+`node node_modules/vite/bin/vite.js build`（约 30s，与完整构建 `[5/7]` 同一条命令，
+**跳过 `vue-tsc` 类型检查**）。`--front` / `--no-front` 可强制 / 跳过。
+
+> `data.7z`（`prepare-bundled-resources.mjs`）**不在**本脚本职责内：
+> 它只跟 `src-tauri/resources` 下的素材有关，前端 / Kotlin 改动都不影响它。
+> 素材变了请走完整构建 `build-android-pet.sh`。

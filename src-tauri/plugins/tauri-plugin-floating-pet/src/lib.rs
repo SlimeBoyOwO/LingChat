@@ -158,6 +158,19 @@ fn is_visible(state: tauri::State<'_, FloatingPetState>) -> bool {
     state.is_visible()
 }
 
+/// 让出 / 收回悬浮窗的输入焦点（由页面输入框的 focus / blur 驱动）。
+///
+/// 展开时**不能**无条件摘掉 `FLAG_NOT_FOCUSABLE`：那会让悬浮窗在整个展开期间
+/// 持有输入焦点，把其他 App 的键盘和返回键都拦掉。改成只在真的要打字时才要焦点。
+#[tauri::command]
+fn set_ime_focus<R: Runtime>(
+    app: AppHandle<R>,
+    focused: bool,
+    state: tauri::State<'_, FloatingPetState>,
+) -> Result<()> {
+    imp::set_ime_focus(&app, focused, &state)
+}
+
 /// 展开 / 收起桌宠窗口。
 ///
 /// 手机端没有鼠标悬停，展开动作由前端「点击头像」触发，
@@ -225,6 +238,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             move_pet,
             set_size,
             set_touchable,
+            set_ime_focus,
             set_expanded,
             set_scale,
             is_visible,
