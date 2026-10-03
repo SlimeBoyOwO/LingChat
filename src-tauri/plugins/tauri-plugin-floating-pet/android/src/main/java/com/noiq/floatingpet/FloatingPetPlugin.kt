@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import android.view.Display
@@ -369,7 +370,23 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             if (!keepAliveRunning) return
             try {
                 // 只在「wry 刚把它暂停过」时补唤醒一次（见 petNeedsResume）。
-                if (petDetached && petNeedsResume) {
+                //
+                // ★ 但**屏幕灭着就别唤**（2026-10-03 三修）。
+                //
+                // 熄屏会走 Activity 的 onPause → 上面的 onActivityPaused 置位
+                // `petNeedsResume` → 这里原本会立刻把 WebView 唤醒。结果是
+                // **屏幕全黑、谁都看不见的时候，WebView 仍在跑 JS 定时器、
+                // 跑 Live2D 的 requestAnimationFrame**，持续唤醒 CPU ——
+                // 用户反馈的「这东西有点吃配置 / 发热耗电」，这是白烧的那一份。
+                //
+                // 屏幕亮回来时不需要这里补：`WryActivity.onResume()` 会自己
+                // 唤醒 WebView，并且 `hostResumed = true` / `petNeedsResume = false`
+                // 会把标记清掉（见 [ensureLifecycleCallbacks] 的 onActivityResumed）。
+                //
+                // ⚠️ 只挡「熄屏」，**不能**顺手挡「用户切到别的 App」——
+                // 那种情况宿主 Activity 同样 paused，但桌宠浮在别的 App 上
+                // 必须继续动，那正是悬浮窗存在的意义。
+                if (petDetached && petNeedsResume && isScreenInteractive()) {
                     (petView as? WebView)?.let {
                         resumePetWebView(it, "keep-alive")
                         petNeedsResume = false
@@ -448,6 +465,23 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     /** 上一次已知的屏幕物理高度。旋转后用来换算纵向的相对位置。 */
     private var lastScreenH = 0
 
+    /**
+     * 上一次已知的**显示旋转角**（`Surface.ROTATION_*`），`Int.MIN_VALUE` = 还没采过样。
+     *
+     * ## 为什么不能只看屏幕尺寸（2026-10-03 三修）
+     *
+     * 旋转在**手机上**恰好是个「尺寸不变」的事件：尺寸基准是屏幕**短边**
+     * （见 [screenBasisDp]），竖屏 360×802 与横屏 802×360 的短边都是 360 ——
+     * 算出来的 `screenSizePx()` 短/长边也完全一样，只是分配方式对调。
+     * 于是原来那条「`curW != lastScreenW || curH != lastScreenH`」的判据
+     * 在**部分机型/部分场景**下可能恰好判为「没变」，重排整条路径就不跑了。
+     *
+     * 真机表现（用户原话）：「旋转屏幕时好像**桌宠感知到的屏幕方向没有变**」。
+     *
+     * 旋转角是**直接**的事实，不再依赖尺寸这个间接量。两者任一变了都重排。
+     */
+    private var lastRotation = Int.MIN_VALUE
+
     /** [displayListener] 的延时体：把「回调到达」与「真正重排」错开，见 [CONFIG_SETTLE_MS]。 */
     private val reapplyRunnable = Runnable { maybeReapplyForScreenChange() }
 
@@ -497,6 +531,10 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
 
         override fun onDisplayChanged(displayId: Int) {
             if (displayId != Display.DEFAULT_DISPLAY) return
+            // 真机排查「转屏后桌宠没反应」：这行说明**系统回调送到了**，
+            // 那之后若没有 `★ 屏幕变化` 那行，问题就在判定里（尺寸+旋转角
+            // 都读成了旧值），而不是回调没来。两条日志一起看就能分段。
+            Log.i(TAG, "收到 onDisplayChanged（${screenDebugInfo()}）")
             // 旋转时这个回调会连着来好几次，且显示状态未必已经落定。
             // 撤掉上一次的待办、只保留最后那次 —— 合成一拍。
             keepAliveHandler.removeCallbacks(reapplyRunnable)
@@ -505,11 +543,14 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * 屏幕尺寸**真的变了**才重排。
+     * 屏幕**真的变了**（尺寸或旋转角）才重排。
      *
-     * 判据是 [lastScreenW] / [lastScreenH]：它们表示「当前 x/y 是按哪块屏幕
-     * 算出来的」，[clampIntoScreen] / `show()` / [reapplyWindowAfterConfigChange]
-     * 都会写。两者与实时读数不一致 == 屏幕变过、但窗口还没跟着重排。
+     * 判据是两个**直接事实**：
+     *
+     * 1. [lastScreenW] / [lastScreenH] —— 表示「当前 x/y 是按哪块屏幕算出来的」，
+     *    [clampIntoScreen] / `show()` / [reapplyWindowAfterConfigChange] 都会写；
+     * 2. [lastRotation] —— 显示旋转角。见那个字段的说明：手机上旋转时
+     *    **屏幕尺寸可能恰好不变**（尺寸基准是短边），只靠 ① 会漏判。
      *
      * 代价：每 500ms 一次 [screenSizePx] 读数（本地调用，可忽略）。
      *
@@ -519,14 +560,40 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         if (!petDetached) return false
         return try {
             val (curW, curH) = screenSizePx()
-            val changed = lastScreenW > 0 && lastScreenH > 0 &&
+            val curRot = displayRotation()
+            val sizeChanged = lastScreenW > 0 && lastScreenH > 0 &&
                 (curW != lastScreenW || curH != lastScreenH)
-            if (changed) reapplyWindowAfterConfigChange()
+            val rotationChanged = lastRotation != Int.MIN_VALUE && curRot != lastRotation
+            val changed = sizeChanged || rotationChanged
+            if (changed) {
+                Log.i(
+                    TAG,
+                    "★ 屏幕变化：${lastScreenW}x${lastScreenH}@rot$lastRotation → " +
+                        "${curW}x${curH}@rot$curRot " +
+                        "(尺寸变=$sizeChanged 旋转变=$rotationChanged) ${screenDebugInfo()}",
+                )
+                reapplyWindowAfterConfigChange()
+            }
+            lastRotation = curRot
             changed
         } catch (t: Throwable) {
-            Log.w(TAG, "屏幕尺寸变化后重排失败（可忽略）", t)
+            Log.w(TAG, "屏幕变化后重排失败（可忽略）", t)
             false
         }
+    }
+
+    /**
+     * 当前显示旋转角（`Surface.ROTATION_0/90/180/270`）。
+     *
+     * 与 [screenSizePx] 同一个来源（`Display.getRotation()` 直读 `DisplayInfo`，
+     * 不经 Resources / DisplayAdjustments），所以拿到的就是**物理**旋转。
+     * 读不到时返回 `Int.MIN_VALUE`，调用方据此跳过这一轮判定。
+     */
+    private fun displayRotation(): Int = try {
+        displayManager().getDisplay(Display.DEFAULT_DISPLAY)?.rotation ?: Int.MIN_VALUE
+    } catch (t: Throwable) {
+        Log.w(TAG, "读取显示旋转角失败（可忽略）", t)
+        Int.MIN_VALUE
     }
 
     /** 注册显示器回调（幂等）。只在桌宠真的在悬浮窗里时注册。 */
@@ -829,11 +896,25 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 var t = 0
                 var r = 0
                 var b = 0
-                insets.displayCutout?.let {
-                    l = maxOf(l, it.safeInsetLeft)
-                    t = maxOf(t, it.safeInsetTop)
-                    r = maxOf(r, it.safeInsetRight)
-                    b = maxOf(b, it.safeInsetBottom)
+                insets.displayCutout?.let { cut ->
+                    // ⚠️ 这里与 `SafeAreaInsets.kt`（WebView 侧）**故意不一致**，
+                    // 别顺手"对齐"回去（2026-10-03 三修）。
+                    //
+                    // 1. 只认「主导边」—— `DisplayCutout` 会把同一块挖孔在相邻边上的
+                    //    投影也报出来，四边照单全收会给整条边加出一条内缩；
+                    // 2. ★ **left 一律不吃挖孔** —— 用户明确要求
+                    //    「横屏下右边边界内缩，而左边边界完全不变」。
+                    //
+                    // 而 `SafeAreaInsets.kt` 那边四边都吃挖孔（含 left），因为
+                    // 设置页 / 主界面是**整页内容**，左边被挖孔压住会切掉字；
+                    // 悬浮窗只有一小块，贴左沿时让出去一点点比多一大截空白更自然。
+                    //
+                    // 用户明确要求这次**只动悬浮窗**，所以两边口径就是不一样的。
+                    val cutMax =
+                        maxOf(cut.safeInsetLeft, cut.safeInsetTop, cut.safeInsetRight, cut.safeInsetBottom)
+                    if (cut.safeInsetTop == cutMax) t = maxOf(t, cut.safeInsetTop)
+                    if (cut.safeInsetRight == cutMax) r = maxOf(r, cut.safeInsetRight)
+                    if (cut.safeInsetBottom == cutMax) b = maxOf(b, cut.safeInsetBottom)
                 }
                 val bars = insets.getInsets(WindowInsets.Type.systemBars())
                 l = maxOf(l, bars.left)
@@ -1166,6 +1247,9 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 val (startScreenW, startScreenH) = screenSizePx()
                 lastScreenW = startScreenW
                 lastScreenH = startScreenH
+                // 旋转角也要一起采样：否则第一次轮询会把「从没采过样」
+                // 误判成「旋转变了」而白重排一次。见 [lastRotation]。
+                lastRotation = displayRotation()
                 ensureDisplayListener()
 
                 // 通知页面：你现在在悬浮窗里了。
@@ -1768,6 +1852,13 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             lastScreenW = screenW
             lastScreenH = screenH
 
+            // 重排前的窗口几何，只用于日志（真机排查「转屏后位置不对」时，
+            // 光看结果分不清是「没重排」还是「重排算错了」）。
+            val beforeX = params.x
+            val beforeY = params.y
+            val beforeW = params.width
+            val beforeH = params.height
+
             val oldWidth = if (params.width > 0) params.width else 1
             val wasRightHalf = params.x + oldWidth / 2 >= oldW / 2
             val yRatio = if (oldH > params.height) {
@@ -1801,8 +1892,12 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             notifyMetrics(params, view)
             Log.i(
                 TAG,
-                "屏幕尺寸变化：悬浮窗重排为 ${width}x$height @ (${params.x},${params.y})，" +
-                    "屏幕 ${screenW}x$screenH（${screenDebugInfo()}）"
+                "悬浮窗重排：屏幕 ${oldW}x$oldH → ${screenW}x$screenH，" +
+                    "窗口 ${beforeW}x$beforeH@($beforeX,$beforeY) → " +
+                    "${width}x$height@(${params.x},${params.y})，" +
+                    "贴${if (wasRightHalf) "右" else "左"}沿 yRatio=${"%.3f".format(yRatio)}，" +
+                    "safe=L${safe.left}/T${safe.top}/R${safe.right}/B${safe.bottom} " +
+                    "（${screenDebugInfo()}）",
             )
         } catch (t: Throwable) {
             Log.w(TAG, "屏幕配置变化后重排悬浮窗失败（可忽略）", t)
@@ -2449,6 +2544,23 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         } catch (e: Exception) {
             Log.w(TAG, "唤醒桌宠 WebView 失败（$from，可忽略）", e)
         }
+    }
+
+    /**
+     * 屏幕是否亮着（可交互）。
+     *
+     * 熄屏时**不能**唤醒桌宠 WebView —— 否则屏幕全黑的时候它还在跑 JS 定时器
+     * 和 Live2D 的 `requestAnimationFrame`，持续唤醒 CPU。见 [keepAliveTick]。
+     *
+     * 读不到时返回 `true`（保守）：宁可多跑一点，也不要因为一次读数失败
+     * 让桌宠在用户眼前冻住。
+     */
+    private fun isScreenInteractive(): Boolean = try {
+        val pm = activity.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        pm?.isInteractive ?: true
+    } catch (t: Throwable) {
+        Log.w(TAG, "读取屏幕状态失败，按「亮着」处理", t)
+        true
     }
 
     /**

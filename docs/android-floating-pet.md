@@ -1855,6 +1855,209 @@ webView.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
 `verify-pet-apk.sh` 里三条**各断言一次**（前端查 brotli 解压后的分块、Rust 查
 `.so` 的 `.rodata`、Kotlin 查 dex 字符串表），缺一环即报错。
 
+#### 4.7.19 ★★ 修正 4.7.18：触发点必须是 `touchstart`，不能是 `focus`
+
+4.7.18 上线后，用户立刻报了一个**更严重**的问题：
+
+> 现在呃窗口不能调起输入法。
+
+也就是说 4.7.18 把「霸占焦点」修好了，代价是**键盘彻底弹不出来**。根因是一个
+循环依赖：
+
+```
+窗口带 FLAG_NOT_FOCUSABLE
+  → WebView 永远拿不到输入焦点
+  → textarea 无法 focus
+  → focus 事件不触发
+  → setImeFocus(true) 不被调用
+  → 原生不摘 flag
+  → ↺
+```
+
+**`focus` 是「已经能打字了」的*结果*，而我们恰恰要靠它去争取「能打字」。**
+拿结果当输入，就是循环论证 —— 这一版是照抄了「状态驱动」的直觉，但选错了状态。
+
+改法：触发点换成 `@touchstart.passive`。
+
+- 触摸**不受**窗口可获焦与否影响。`FLAG_NOT_FOCUSABLE` 只挡**输入焦点**，
+  不挡触摸；窗口上另挂的 `FLAG_NOT_TOUCH_MODAL` 只影响窗口**外**的触摸。
+  所以「手指按到输入框」这件事，在摘 flag 之前就已经能送达页面了。
+- `@focus` 保留（覆盖外接键盘 Tab 进焦点这类非触摸路径），与 `touchstart`
+  共用一个幂等守卫 `imeFocusHeld`，不会重复下命令。
+
+##### 4.7.19.1 还要补一次 `focus()`：摘 flag 是异步的
+
+原生摘 `FLAG_NOT_FOCUSABLE` 要先 `updateViewLayout`、等系统完成窗口焦点切换，
+80ms 后才 `showSoftInput`（见 4.7.18）。在那之前 WebView 拿不到输入焦点，
+浏览器**不会**把 textarea 真正 focus 上 —— 表现是「键盘弹出来了，但按键进不去
+输入框」。
+
+所以前端在发完命令后补一次延迟 `focus()`：
+
+```ts
+void setFloatingPetImeFocus(true).catch(() => {});
+window.setTimeout(() => textareaRef.value?.focus(), 150); // > 原生的 80ms
+```
+
+##### 4.7.19.2 断言
+
+`verify-pet-apk.sh` 断言前端分块里存在 `onTouchstartPassive`。
+
+选它而不是 `touchstart`：后者是**通用**字符串，`useMobileViewport` 里也有，
+不具区分度。Vue 的 `.passive` 修饰符会把事件名编译成 `onTouchstartPassive`
+（后缀式，运行时据此回挂 passive 监听），它是**对象字面量的键名** ——
+esbuild 不改对象键，所以能可靠地证明这行绑定真的进了包。
+
+#### 4.7.20 ★ 悬浮窗的左右安全区：左边界**完全不变**
+
+用户原话：
+
+> 我们需要的是**横屏下右边边界内缩，而左边边界完全不变**。
+
+在这之前，`FloatingPetPlugin.safeInsetsPx()` 是四边都 `max(systemBars, cutout)`，
+于是「横屏 + 摄像头在左侧」时左边被内缩一大截 —— 正是用户之前报的
+「在左侧时就会明显多一大截空白」。
+
+现在的规则（**只对悬浮窗**）：
+
+| 场景             | 挖孔主导边 | left           | right           |
+| ---------------- | ---------- | -------------- | --------------- |
+| 竖屏、顶部打孔   | top        | `bars.left`(0) | `bars.right`(0) |
+| 横屏、挖孔在右侧 | right      | `bars.left`(0) | 挖孔宽度        |
+| 横屏、挖孔在左侧 | left       | `bars.left`(0) | `bars.right`(0) |
+
+两条同时生效：① 只认「主导边」（见 4.7.17）；② **`left` 一律不吃挖孔**。
+
+##### 4.7.20.1 ⚠️ 这里与 `SafeAreaInsets.kt` **故意不一致**，别"对齐"回去
+
+`SafeAreaInsets.kt`（注入给设置页 / 主界面 WebView 的那份）**四边都吃挖孔**，
+含 `left`。两边口径不同是**有意的**：
+
+- 设置页 / 主界面是**整页内容**，左边被挖孔压住会切掉字，必须让；
+- 悬浮窗只有一小块，贴左沿时让它钻到摄像头下一点点，比多出一大截空白自然。
+
+用户明确要求这次**只动悬浮窗**，所以两份实现就是这么写的。将来若有人想统一，
+先回去问这个取舍，不要直接改。
+
+#### 4.7.21 ★★ 转屏：判定条件不能只看屏幕尺寸
+
+用户原话：
+
+> 反正就是旋转屏幕时好像**桌宠感知到的屏幕方向没有变**。
+
+这条很关键，它把范围缩到了「**判定**」而不是「重排」。
+
+原来的判据是：
+
+```kotlin
+val changed = curW != lastScreenW || curH != lastScreenH
+```
+
+而 `screenSizePx()` 是按屏幕**短边**推的（见 4.4.2.1）—— 竖屏 360×802 与横屏
+802×360 的**短边都是 360**，算出来的短/长边完全一样，只是分配方式对调。
+于是这个判据在部分机型/部分场景下会判成「没变」，**整条重排路径根本不跑**，
+桌宠就停在旧坐标里。
+
+修法：加 `lastRotation`（`Surface.ROTATION_*`），**尺寸或旋转角任一变了都重排**。
+旋转角是**直接事实**，不再依赖尺寸这个间接量。
+
+##### 4.7.21.1 配套的两条日志，用来分段定位
+
+真机排查时，「桌宠没反应」有两种完全不同的原因，光看结果分不清：
+
+| 日志                     | 出现 | 没出现意味着                             |
+| ------------------------ | ---- | ---------------------------------------- |
+| `收到 onDisplayChanged`  | ✅   | 系统回调没送到（或显示器 id 不是默认屏） |
+| `★ 屏幕变化：… → …`      | ✅   | 回调到了但判定为「没变」（读数问题）     |
+| `悬浮窗重排：屏幕 … → …` | ✅   | 判定命中但重排抛异常（见 `Log.w`）       |
+
+`★ 屏幕变化` 那行会把 `尺寸变=…` 与 `旋转变=…` **分别打出来**，一眼能看出是哪条判据命中的。
+`悬浮窗重排` 那行带**前后屏幕尺寸、前后窗口几何、贴哪一边、yRatio、四个安全区**。
+
+排查命令：
+
+```bash
+adb logcat -s FloatingPetPlugin | grep -E "onDisplayChanged|屏幕变化|悬浮窗重排"
+```
+
+#### 4.7.22 ★ 熄屏时**不要**唤醒桌宠 WebView
+
+用户原话：
+
+> 还有这东西好像有点吃配置啊。
+
+排查时找到一条**确定的浪费**（不是猜测，是代码路径上白烧的一份）：
+
+1. 熄屏 → Activity 走 `onPause` → `onActivityPaused` 里置位 `petNeedsResume = true`；
+2. 保活轮询（500ms 一次）看到 `petNeedsResume` → 调 `resumePetWebView()`
+   → `WebView.onResume()` + `resumeTimers()`。
+
+结果是**屏幕全黑、谁都看不见的时候，WebView 仍在跑 JS 定时器、跑 Live2D 的
+`requestAnimationFrame`**，持续唤醒 CPU。
+
+修法：唤醒前先问一句屏幕亮没亮。
+
+```kotlin
+if (petDetached && petNeedsResume && isScreenInteractive()) { … }
+```
+
+`PowerManager.isInteractive` 读不到时返回 `true`（保守）：宁可多跑一点，
+也不要因为一次读数失败让桌宠在用户眼前冻住。
+
+屏幕亮回来**不需要**这里补：`WryActivity.onResume()` 会自己唤醒 WebView，
+并把 `hostResumed` / `petNeedsResume` 一起复位。
+
+##### 4.7.22.1 ⚠️ 只挡「熄屏」，**不能**顺手挡「切到别的 App」
+
+两种情况宿主 Activity 都是 paused、`petNeedsResume` 都是 true，但语义完全相反：
+
+- **熄屏** → 没人看得见 → 不该跑；
+- **切到别的 App** → 桌宠浮在那个 App 上面 → **必须继续动**，那正是悬浮窗存在的意义。
+
+判据必须是 `isInteractive`（屏幕状态），不能是「Activity 是否 resumed」。
+
+#### 4.7.23 ★ 桌宠设置页竖屏右边多出的空白：纯 Vue 尺寸算式
+
+用户原话：
+
+> 然后在设置页应该是 vue 问题，右边多一小段空白在竖屏下。
+
+**猜对了**，跟安全区、跟原生一点关系都没有。
+
+`SettingsPage.vue` 里内层卡片原来是这么写的：
+
+```html
+<section
+  class="m-1 flex h-full w-full flex-col … …"
+  style="height: calc(100% - 1rem); width: calc(100% - 1rem)"
+></section>
+```
+
+三个尺寸来源互相打架：
+
+| 来源                     | 效果                                         |
+| ------------------------ | -------------------------------------------- |
+| `w-full`                 | 100% 父内容宽                                |
+| 行内 `calc(100% - 1rem)` | **覆盖** `w-full` → 卡片宽 = 父内容宽 − 16px |
+| `m-1`                    | 左右各 4px 外边距                            |
+
+于是：左边距只有 **4px**，而右边空出 `4 + (16 − 4) = 12px` —— **右边比左边多 8px**。
+`height` 那边是同一个毛病（`h-full` 被行内 `calc(100% - 1rem)` 覆盖）。
+
+修法：**去掉行内尺寸，也别写 `h-full w-full`**，让布局自己算：
+
+```html
+<section class="m-1 flex min-h-0 flex-1 flex-col … …"></section>
+```
+
+- 宽度：父容器是 `flex flex-col`，`align-items` 默认 `stretch`，卡片自动铺满
+  父内容宽**减去左右外边距** → 天然对称；
+- 高度：`flex-1` + `min-h-0`（`min-h-0` 是让内部的 `overflow-hidden` 真的生效）；
+- 四边只剩 `m-1`（窄屏 4px）/ `min-[768px]:m-2`（宽屏 8px）。
+
+`verify-pet-apk.sh` 用 **absent** 断言兜住它：`calc(100% - 1rem)` 现在只出现在
+代码注释里，而 Vue 生产构建会剥掉注释，所以「搜不到」就是改动进了包的证据。
+
 ## 五、手机端的交互设计
 
 ### 5.1 尺寸：固定逻辑画布 + 整体等比缩放

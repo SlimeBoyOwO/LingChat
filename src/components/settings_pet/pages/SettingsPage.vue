@@ -21,10 +21,23 @@
       style="background-size: 24px 24px"
     ></div>
 
+    <!-- ★ 内层卡片：靠 flex 拉伸取尺寸，**不要**再写 `w-full` / `h-full` 或
+         `calc(100% - 1rem)`（2026-10-03 三修）。
+
+         之前是 `h-full w-full` + 行内 `width: calc(100% - 1rem)` 配 `m-1`，
+         三者互相打架，结果是**左右不对称**：
+           · 行内 width 覆盖掉 w-full → 卡片宽 = 父内容宽 − 1rem(16px)
+           · 左边距只有 m-1 的 4px
+           · 于是右边空出 4 + (16 − 4) = 12px，左边只有 4px
+         真机表现（用户原话）：「设置页右边多一小段空白」。用户猜是 Vue 问题，
+         猜对了 —— 跟安全区、跟原生都无关，纯粹是这里的尺寸算式。
+
+         现在只留 `m-1`（窄屏 4px / `min-[768px]:m-2` 8px），宽度交给父容器的
+         `align-items: stretch`（`flex-col` 默认值），高度交给 `flex-1`，
+         四边边距天然对称。`min-h-0` 是让内部的 `overflow-hidden` 生效。 -->
     <section
-      class="relative z-10 m-1 flex h-full w-full flex-col overflow-hidden rounded-xl border shadow-2xl backdrop-blur-md transition-colors duration-300 min-[768px]:m-2"
+      class="relative z-10 m-1 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border shadow-2xl backdrop-blur-md transition-colors duration-300 min-[768px]:m-2"
       :class="isDarkMode ? 'border-slate-700 bg-slate-800/70' : 'border-slate-200 bg-white/60'"
-      style="height: calc(100% - 1rem); width: calc(100% - 1rem)"
     >
       <SettingsHeader
         :isDarkMode="isDarkMode"

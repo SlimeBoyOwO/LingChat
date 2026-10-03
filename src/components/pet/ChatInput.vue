@@ -25,8 +25,9 @@
         @keydown.enter.exact.prevent="send"
         @compositionstart="isCompsing = true"
         @compositionend="isCompsing = false"
-        @focus="onInputFocus"
-        @blur="onInputBlur"
+        @touchstart.passive="acquireImeFocus"
+        @focus="acquireImeFocus"
+        @blur="releaseImeFocus"
       ></textarea>
     </div>
     <!-- 发送键在输入框外右侧：与输入框垂直居中对齐 -->
@@ -114,23 +115,54 @@ const {
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
 /**
- * 输入框获得 / 失去焦点 → 让原生决定悬浮窗要不要持有输入焦点。
+ * 输入框被触摸 / 获得焦点 → 让原生把悬浮窗切成「可获焦」，好让输入法能弹出来。
  *
  * 悬浮窗是 `TYPE_APPLICATION_OVERLAY`，一直可获焦就会**霸占**系统输入焦点：
  * 其他 App 的键盘弹不出来、返回键也先送到它这里（用户反馈的
  * 「展开时会把其他地方的键盘和返回给拦截掉」）。所以只在真要打字的那段
  * 时间才让原生摘掉 `FLAG_NOT_FOCUSABLE`。
  *
+ * ## ★ 为什么必须是 `touchstart` 而不是 `focus`（2026-10-03 三修）
+ *
+ * 上一版只挂了 `@focus`，结果**键盘再也弹不出来**了。原因是死锁：
+ *
+ * ```
+ * 窗口带 FLAG_NOT_FOCUSABLE  →  WebView 永远拿不到输入焦点
+ *   →  textarea 无法 focus  →  focus 事件不触发
+ *   →  setImeFocus(true) 不被调用  →  原生不摘 flag  →  ↺
+ * ```
+ *
+ * `focus` 是「已经能打字了」的结果，而我们恰恰要靠它去争取「能打字」，
+ * 拿结果当输入就是循环依赖。
+ *
+ * `touchstart` 不受窗口可获焦与否影响 —— `FLAG_NOT_FOCUSABLE` 只挡输入焦点，
+ * 不挡触摸（窗口另有 `FLAG_NOT_TOUCH_MODAL`，只影响窗口**外**的触摸）。
+ * 所以它才是可靠的触发点。
+ *
+ * 保留 `@focus` 是为了覆盖非触摸路径（外接键盘 Tab 进焦点等），
+ * 与 `touchstart` 共用下面这个幂等守卫，不会重复下命令。
+ *
  * 非悬浮窗（桌面端、Android 主界面）直接跳过：那边窗口本来就是前台普通窗口，
  * 不存在抢焦点的问题，调了也只会拿到 `NotSupported`。
  */
-const onInputFocus = () => {
+let imeFocusHeld = false;
+
+const acquireImeFocus = () => {
   if (!isInFloatingWindow()) return;
+  if (imeFocusHeld) return;
+  imeFocusHeld = true;
   void setFloatingPetImeFocus(true).catch(() => {});
+  // 原生摘 `FLAG_NOT_FOCUSABLE` 是**异步**的（要先 `updateViewLayout`，
+  // 等系统完成窗口焦点切换，80ms 后才 `showSoftInput`）。在那之前 WebView
+  // 拿不到输入焦点，浏览器不会把 textarea 真正 focus 上 —— 表现为键盘弹了、
+  // 但按键进不去输入框。所以这里等原生切完再补一次 focus。
+  window.setTimeout(() => textareaRef.value?.focus(), 150);
 };
 
-const onInputBlur = () => {
+const releaseImeFocus = () => {
   if (!isInFloatingWindow()) return;
+  if (!imeFocusHeld) return;
+  imeFocusHeld = false;
   void setFloatingPetImeFocus(false).catch(() => {});
 };
 
