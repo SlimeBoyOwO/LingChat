@@ -57,6 +57,16 @@ pub fn set_touchable<R: Runtime>(
     Err(Error::NotSupported)
 }
 
+/// 桌面端没有系统悬浮窗，也就不存在「悬浮窗抢走别处输入焦点」这个问题 ——
+/// 桌面窗口本来就是前台普通窗口。这个命令只是给 Android 悬浮窗用的。
+pub fn set_ime_focus<R: Runtime>(
+    _app: &AppHandle<R>,
+    _focused: bool,
+    _state: &FloatingPetState,
+) -> Result<()> {
+    Err(Error::NotSupported)
+}
+
 /// 桌面端的展开/收起不由这个插件管：窗口尺寸归 `api::pet::set_pet_mode`，
 /// 悬停展开输入框是纯前端行为（见 `PetMode.vue` 的 mouseenter/mouseleave）。
 pub fn set_expanded<R: Runtime>(

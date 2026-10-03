@@ -25,6 +25,8 @@
         @keydown.enter.exact.prevent="send"
         @compositionstart="isCompsing = true"
         @compositionend="isCompsing = false"
+        @focus="onInputFocus"
+        @blur="onInputBlur"
       ></textarea>
     </div>
     <!-- 发送键在输入框外右侧：与输入框垂直居中对齐 -->
@@ -48,6 +50,7 @@ import { useChatInput } from "@/composables/chat/useChatInput";
 import { useDialogStatus } from "@/composables/chat/useDialogStatus";
 import { useScreenshot } from "@/composables/useScreenshot";
 import { Forward } from "@lucide/vue";
+import { isInFloatingWindow, setFloatingPetImeFocus } from "@/api/services/floating-pet";
 
 const { t } = useI18n();
 const uiStore = useUIStore();
@@ -109,6 +112,27 @@ const {
 });
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
+
+/**
+ * 输入框获得 / 失去焦点 → 让原生决定悬浮窗要不要持有输入焦点。
+ *
+ * 悬浮窗是 `TYPE_APPLICATION_OVERLAY`，一直可获焦就会**霸占**系统输入焦点：
+ * 其他 App 的键盘弹不出来、返回键也先送到它这里（用户反馈的
+ * 「展开时会把其他地方的键盘和返回给拦截掉」）。所以只在真要打字的那段
+ * 时间才让原生摘掉 `FLAG_NOT_FOCUSABLE`。
+ *
+ * 非悬浮窗（桌面端、Android 主界面）直接跳过：那边窗口本来就是前台普通窗口，
+ * 不存在抢焦点的问题，调了也只会拿到 `NotSupported`。
+ */
+const onInputFocus = () => {
+  if (!isInFloatingWindow()) return;
+  void setFloatingPetImeFocus(true).catch(() => {});
+};
+
+const onInputBlur = () => {
+  if (!isInFloatingWindow()) return;
+  void setFloatingPetImeFocus(false).catch(() => {});
+};
 
 /** 自动增高：先置 auto 再按 scrollHeight；上限由 maxHeight（2 行）兜住，超出内部滚动 */
 const grow = () => {

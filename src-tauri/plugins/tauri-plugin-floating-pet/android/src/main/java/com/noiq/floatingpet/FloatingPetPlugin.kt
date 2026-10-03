@@ -24,6 +24,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import androidx.appcompat.app.AppCompatActivity
 import app.tauri.annotation.Command
@@ -153,6 +154,15 @@ private const val KEEP_ALIVE_GRACE_MS = 20000L
 private const val HIDE_DELAY_MS = 80L
 
 /**
+ * 「让悬浮窗可获焦」到「弹出输入法」之间的等待。
+ *
+ * 必须先让 `updateViewLayout` 摘掉 `FLAG_NOT_FOCUSABLE` 并由系统完成窗口焦点
+ * 切换，`showSoftInput` 才有窗口可依附 —— 同步调用会被丢掉（IME 只服务于
+ * 已经持有输入焦点的窗口）。80ms 是够走完一次窗口焦点事务的最小值。
+ */
+private const val IME_SHOW_DELAY_MS = 80L
+
+/**
  * 桌宠搬进悬浮窗后，把 App 自己退到后台的延迟（毫秒）。
  *
  * 不能同步退：`pet-detached` / `pet-metrics` 是 `evaluateJavascript`
@@ -220,6 +230,18 @@ class SizeArgs {
 @InvokeArg
 class TouchableArgs {
     var touchable: Boolean = true
+}
+
+/**
+ * `set_ime_focus` 的参数 —— 悬浮窗要不要持有输入焦点。
+ *
+ * 见 [FloatingPetPlugin.setImeFocus]：展开时**不能**一直摘掉
+ * `FLAG_NOT_FOCUSABLE`，否则悬浮窗会霸着输入焦点，把其他 App 的键盘和
+ * 返回键都拦掉。改成由页面输入框的 `focus` / `blur` 驱动。
+ */
+@InvokeArg
+class ImeFocusArgs {
+    var focused: Boolean = false
 }
 
 @InvokeArg
@@ -1114,6 +1136,11 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
                 wm.addView(webView, params)
 
+                // 兜底：失去窗口焦点时无条件让出输入焦点。
+                // 见 watchWindowFocus —— 只靠页面的 blur 不够可靠，
+                // 而我们只要还挂着可获焦就会继续拦住别处的键盘和返回键。
+                watchWindowFocus(webView)
+
                 // WebView 的背景必须透明，否则悬浮窗是个白方块。
                 // 主界面里它是贴满屏幕的不透明内容，这里改成透明不影响
                 // 页面自身的 html/body 背景（由 /pet 路由控制）。
@@ -1891,39 +1918,43 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 // updateViewLayout 里生效，省一次布局遍历。
                 if (!expanded) snapToEdge(params, apply = false)
 
-                // ── 输入法：只有展开态才让窗口可获焦 ──────────────────
-                // FLAG_NOT_FOCUSABLE 的窗口永远收不到输入法：IME 只服务于
-                // 持有输入焦点的窗口。收起态保持 NOT_FOCUSABLE（不抢焦点、
-                // 不挡返回键）；展开态必须去掉它，否则点输入框毫无反应。
+                // ── 输入法焦点：不再「展开就抢」，改成「要打字才抢」 ──────
                 //
-                // 代价：展开期间悬浮窗会持有输入焦点，返回键也会先给它。
-                // 因此收起时一定要把标志加回去（见 else 分支），
-                // 不能只在展开时改一次。
+                // 背景：FLAG_NOT_FOCUSABLE 的窗口永远收不到输入法（IME 只服务于
+                // 持有输入焦点的窗口），所以早期是「展开时摘掉它、收起时加回去」。
+                //
+                // 但那有代价，用户已经明确反馈：
+                //   「展开时会把其他地方的键盘和返回给拦截掉」。
+                // 悬浮窗是 TYPE_APPLICATION_OVERLAY，一旦可获焦就是系统里
+                // **最上层可获焦窗口** —— 它在整个展开期间一直持有输入焦点，
+                // 其他 App 的键盘弹不出来、返回键也先送到它这里。
+                //
+                // 现在改成由页面输入框的 focus / blur 驱动（见 [setImeFocus]，
+                // 前端在 ChatInput.vue 里接线）：
+                //   · 展开：只设 softInputMode，**不动** FLAG_NOT_FOCUSABLE；
+                //   · 收起：把 FLAG_NOT_FOCUSABLE 加回去，确保让出焦点。
+                //
+                // ⚠️ softInputMode 里**绝不能**带 SOFT_INPUT_STATE_VISIBLE。
+                //
+                // 早先写了 `ADJUST_RESIZE or SOFT_INPUT_STATE_VISIBLE`，于是
+                // **一点展开输入法就自动弹出来**，系统随即改写窗口的内容区，
+                // WebView 的真实视口跟着变小 —— 而画布的尺寸只由窗口**宽度**
+                // 推出（`--pet-fit = 窗口宽/210`，高度恒为 `274 × fit`），
+                // 高度被系统改小它完全不知情。结果是画布比视口高 → 溢出 →
+                // 浏览器把内容往上顶 → 宠物顶部被切掉、下方空出一片。
+                //
+                // 只留 ADJUST_RESIZE：键盘仍然会在**用户点输入框时**正常弹出
+                // （那一刻 [setImeFocus] 会让窗口可获焦），但不会在展开的一瞬间
+                // 被系统强行改写尺寸。
                 if (expanded) {
-                    params.flags =
-                        params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                    // ADJUST_RESIZE：键盘弹出时把窗口往上顶/缩内容区，输入框不被遮住。
-                    //
-                    // ⚠️ 这里**绝不能**再带 SOFT_INPUT_STATE_VISIBLE。
-                    //
-                    // 早先写了 `ADJUST_RESIZE or SOFT_INPUT_STATE_VISIBLE`，于是
-                    // **一点展开输入法就自动弹出来**，系统随即改写窗口的内容区，
-                    // WebView 的真实视口跟着变小 —— 而画布的尺寸只由窗口**宽度**
-                    // 推出（`--pet-fit = 窗口宽/210`，高度恒为 `274 × fit`），
-                    // 高度被系统改小它完全不知情。结果是画布比视口高 → 溢出 →
-                    // 浏览器把内容往上顶 → 宠物顶部被切掉、下方空出一片。
-                    //
-                    // 这正是「收起态正常、展开态不正常」的唯一结构性差异：
-                    // 收起态是 FLAG_NOT_FOCUSABLE，压根进不了这套机制。
-                    //
-                    // 只留 ADJUST_RESIZE：键盘仍然会在**用户点输入框时**正常弹出
-                    // （窗口已可获焦），但不会在展开的一瞬间被系统强行改写尺寸。
                     params.softInputMode =
                         WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
                 } else {
                     params.flags =
                         params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                     params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED
+                    // 收起时可能正处在「点着输入框」的状态，顺手把输入法收掉
+                    hideIme(view)
                 }
 
                 // ── 先把权威几何推给页面，**再**改窗口 ────────────────────
@@ -1953,6 +1984,117 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 Log.e(TAG, "切换展开状态失败", e)
                 invoke.reject("切换展开状态失败: ${e.message}")
             }
+        }
+    }
+
+    // ─── 输入法焦点（只给展开态用） ────────────────────────────
+
+    /**
+     * 让出 / 收回悬浮窗的输入焦点。
+     *
+     * ## 为什么需要这个命令
+     *
+     * `FLAG_NOT_FOCUSABLE` 的窗口永远收不到输入法（IME 只服务于持有输入焦点的
+     * 窗口），所以「点输入框要能打字」就必须让窗口可获焦。但悬浮窗是
+     * `TYPE_APPLICATION_OVERLAY`，一旦可获焦就是系统里**最上层可获焦窗口** ——
+     * 它会一直霸着输入焦点，其他 App 的键盘弹不出来、返回键也先送到它这里。
+     * 用户原话：「展开时会把其他地方的键盘和返回给拦截掉」。
+     *
+     * 所以不再「展开就抢」，改成**只在真要打字的那段时间抢**：
+     * 由页面输入框的 `focus` / `blur` 驱动（前端见 `ChatInput.vue`）。
+     *
+     * ## 时序
+     *
+     * `focused = true` 时不能同步 `showSoftInput` —— 那一刻窗口还没完成
+     * 焦点切换，IME 会因为「没有持有输入焦点的窗口」而把请求丢掉。
+     * 所以先 `updateViewLayout` 摘掉 flag，隔一帧（[IME_SHOW_DELAY_MS]）再弹。
+     *
+     * ## 兜底
+     *
+     * 页面里的 `blur` 不一定总能送到（比如用户在别的 App 里点了别处）。
+     * 所以 [watchWindowFocus] 还会在悬浮窗**失去窗口焦点**时无条件让出，
+     * 保证「别处的键盘和返回键」不会再被拦住。
+     */
+    @Command
+    fun setImeFocus(invoke: Invoke) {
+        val args = invoke.parseArgs(ImeFocusArgs::class.java)
+        activity.runOnUiThread {
+            val params = layoutParams
+            val view = petView
+            if (params == null || view == null) {
+                invoke.reject("NOT_VISIBLE")
+                return@runOnUiThread
+            }
+            try {
+                if (args.focused) {
+                    params.flags =
+                        params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                    // 与 setExpanded 保持一致：只 ADJUST_RESIZE，绝不要
+                    // SOFT_INPUT_STATE_VISIBLE（见那里的长注释）
+                    params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                    windowManager?.updateViewLayout(view, params)
+                    view.requestFocus()
+                    view.postDelayed({ showIme(view) }, IME_SHOW_DELAY_MS)
+                    Log.i(TAG, "输入框获得焦点：悬浮窗改为可获焦，准备弹出输入法")
+                } else {
+                    hideIme(view)
+                    params.flags =
+                        params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    windowManager?.updateViewLayout(view, params)
+                    Log.i(TAG, "输入框失焦：悬浮窗让出输入焦点")
+                }
+                invoke.resolve()
+            } catch (e: Exception) {
+                Log.e(TAG, "切换输入法焦点失败", e)
+                invoke.reject("切换输入法焦点失败: ${e.message}")
+            }
+        }
+    }
+
+    /** 弹出输入法。失败只记日志 —— 输入框本身仍可用（外接键盘 / 候选栏）。 */
+    private fun showIme(view: View) {
+        try {
+            val imm =
+                activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                    ?: return
+            imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+        } catch (t: Throwable) {
+            Log.w(TAG, "弹出输入法失败（可忽略）", t)
+        }
+    }
+
+    /** 收起输入法。 */
+    private fun hideIme(view: View) {
+        try {
+            val imm =
+                activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                    ?: return
+            imm.hideSoftInputFromWindow(view.windowToken, 0)
+        } catch (t: Throwable) {
+            Log.w(TAG, "收起输入法失败（可忽略）", t)
+        }
+    }
+
+    /**
+     * 悬浮窗**失去窗口焦点**时立刻让出输入焦点。
+     *
+     * 这是 [`setImeFocus`] 的兜底：页面的 `blur` 在「用户切到别的 App」这类
+     * 场景下不一定送得到，而只要我们还挂着可获焦状态，就会继续拦住别处的
+     * 键盘和返回键。窗口焦点丢失是个可靠信号 —— 那一刻一定轮不到我们了。
+     */
+    private fun watchWindowFocus(webView: WebView) {
+        webView.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
+            if (hasFocus) return@addOnWindowFocusChangeListener
+            val params = layoutParams ?: return@addOnWindowFocusChangeListener
+            val notFocusable = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            if (params.flags and notFocusable != 0) return@addOnWindowFocusChangeListener
+            params.flags = params.flags or notFocusable
+            try {
+                windowManager?.updateViewLayout(webView, params)
+            } catch (t: Throwable) {
+                Log.w(TAG, "失去窗口焦点后让出输入焦点失败（可忽略）", t)
+            }
+            Log.i(TAG, "悬浮窗失去窗口焦点，已让出输入焦点")
         }
     }
 

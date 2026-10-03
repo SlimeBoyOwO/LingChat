@@ -344,6 +344,26 @@ export async function setFloatingPetTouchable(touchable: boolean): Promise<void>
 }
 
 /**
+ * 让出 / 收回悬浮窗的输入焦点。
+ *
+ * ## 为什么需要它
+ *
+ * 悬浮窗是 `TYPE_APPLICATION_OVERLAY`，一旦可获焦就是系统里**最上层可获焦窗口**。
+ * 早期是「展开就摘掉 `FLAG_NOT_FOCUSABLE`」，结果它在整个展开期间一直霸着输入
+ * 焦点 —— 其他 App 的键盘弹不出来、返回键也先送到它这里。用户反馈原话：
+ * 「展开时会把其他地方的键盘和返回给拦截掉」。
+ *
+ * 现在改成**只在真要打字时才要焦点**：`ChatInput.vue` 在 textarea 的
+ * `focus` / `blur` 上调用本函数。原生那边还有一层兜底 —— 悬浮窗一旦失去
+ * **窗口焦点**就无条件让出。
+ *
+ * 只应在悬浮窗里调（`isInFloatingWindow()`）；桌面端该命令返回 `NotSupported`。
+ */
+export async function setFloatingPetImeFocus(focused: boolean): Promise<void> {
+  await invoke(`${PLUGIN}|set_ime_focus`, { focused });
+}
+
+/**
  * 跳转到系统的「显示在其他应用上层」授权页。
  *
  * 该权限是 Android 特殊权限，无法运行时弹窗申请。用户操作后**不会收到回调**，

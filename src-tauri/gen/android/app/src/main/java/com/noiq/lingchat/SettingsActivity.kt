@@ -106,6 +106,10 @@ class SettingsActivity : TauriActivity() {
     /** [onWebViewCreate] 里拿到的 WebView，供转屏后强制重排用。 */
     private var settingsWebView: WebView? = null
 
+    /** 上一次已知的 WebView 尺寸。只有真的变了才派发 resize，见 [watchSizeChanges]。 */
+    private var lastWebViewW = 0
+    private var lastWebViewH = 0
+
     /**
      * 是否**确实退过后台**（走过 `onStop`）。
      *
@@ -287,6 +291,9 @@ class SettingsActivity : TauriActivity() {
         // （见 SettingsPage.vue 的根元素）。
         SafeAreaInsets.attach(webView)
 
+        // 尺寸真的变了就派发 resize（后台转屏、分屏等 onConfigurationChanged 漏掉的场景）
+        watchSizeChanges(webView)
+
         webView.addJavascriptInterface(
             object {
                 @JavascriptInterface
@@ -296,6 +303,37 @@ class SettingsActivity : TauriActivity() {
             },
             "LingChatSettings",
         )
+    }
+
+    /**
+     * 监视 WebView 的**实际尺寸**，变了才给页面派发一次 `resize`。
+     *
+     * 与 [MainActivity] 同一套理由：`onConfigurationChanged` 只在配置变化那一刻
+     * 触发，而 Activity 在后台转屏时那一刻窗口尺寸还没变（要等回到前台才真正测量），
+     * 于是页面按旧尺寸排版。真机表现就是「在别的 App 里转屏再切回来，
+     * 设置页还是按旧方向排版、右边多出一截空白」。
+     *
+     * 监听 `OnLayoutChangeListener` 是按**事实**触发，同时覆盖后台转屏、分屏拖拽、
+     * 折叠屏展开收起、键盘压小内容区这几种情况。
+     *
+     * 用尺寸去重：这个回调每次布局都会来一遍，不去重会被 resize 风暴打爆
+     * （前端的布局计算都挂在 resize 上）。
+     */
+    private fun watchSizeChanges(webView: WebView) {
+        webView.addOnLayoutChangeListener { v, left, top, right, bottom, _, _, _, _ ->
+            val w = right - left
+            val h = bottom - top
+            if (w == lastWebViewW && h == lastWebViewH) return@addOnLayoutChangeListener
+            lastWebViewW = w
+            lastWebViewH = h
+            Log.i(TAG, "WebView 尺寸变为 ${w}x${h}，派发 resize")
+            v.post {
+                val view = v as? WebView ?: return@post
+                // 尺寸变了往往也意味着 insets 变了（转屏），顺手刷一次安全区
+                SafeAreaInsets.reapply(view)
+                view.evaluateJavascript("window.dispatchEvent(new Event('resize'));", null)
+            }
+        }
     }
 
     /** 记下「确实退过后台」，供 [onResume] 的守卫判断。见头注释。 */

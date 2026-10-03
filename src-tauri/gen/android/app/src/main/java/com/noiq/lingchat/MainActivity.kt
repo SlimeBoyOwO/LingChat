@@ -4,14 +4,24 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.util.Log
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 
+private const val TAG = "LingChatMain"
+
 class MainActivity : TauriActivity() {
   /** [onWebViewCreate] 里拿到的 WebView，供转屏后强制重排用。 */
   private var mainWebView: WebView? = null
+
+  /** 已经挂过尺寸监听的 WebView，避免 `prepareWebView` 被两条路径调用时重复挂。 */
+  private var watchedWebView: WebView? = null
+
+  /** 上一次已知的 WebView 尺寸。只有真的变了才派发 resize，见 [watchSizeChanges]。 */
+  private var lastWebViewW = 0
+  private var lastWebViewH = 0
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
@@ -94,6 +104,54 @@ class MainActivity : TauriActivity() {
 
     // 与 SettingsActivity 通信的 JS 桥（详见下方 installSettingsBridge）。
     installSettingsBridge(webView)
+
+    // 尺寸真的变了就派发 resize。见 watchSizeChanges 的说明 ——
+    // 这是 onConfigurationChanged 之外的**兜底**，覆盖它在后台转屏时漏掉的场景。
+    watchSizeChanges(webView)
+  }
+
+  /**
+   * 监视 WebView 的**实际尺寸**，变了才给页面派发一次 `resize`。
+   *
+   * ## 为什么 `onConfigurationChanged` 还不够
+   *
+   * [onConfigurationChanged] 只在**配置变化那一刻**被调用。而 Activity 在后台时
+   * 转屏，那一刻窗口尺寸**还没变**（要等回到前台才真正测量）—— 此时读到的
+   * `window.innerWidth/innerHeight` 仍是旧方向的值，页面于是按旧尺寸排版；
+   * 真机表现就是「在别的 App 里转屏再切回来，主界面还是横/竖排错乱」。
+   *
+   * 监听 `OnLayoutChangeListener` 是按**事实**触发：WebView 什么时候真的换了尺寸，
+   * 就什么时候派发。它同时覆盖：
+   *
+   * - 后台转屏后回到前台；
+   * - 分屏 / 自由窗口拖拽改变大小；
+   * - 折叠屏展开收起；
+   * - 键盘弹出把内容区压小（`ADJUST_RESIZE`）。
+   *
+   * 用「尺寸是否真的变了」做去重：这个回调在每次布局都会来一遍，
+   * 不去重的话页面会被 resize 风暴打爆（前端 `--pet-fit` 等都在 resize 上重算）。
+   *
+   * ⚠️ 桌宠在悬浮窗里时这个 WebView 已被原生搬进 `WindowManager`，
+   * 不在本 Activity 的视图树里，本监听不会触发 —— 那种情况由
+   * `FloatingPetPlugin` 自己的 `DisplayManager` 回调负责。
+   */
+  private fun watchSizeChanges(webView: WebView) {
+    if (watchedWebView === webView) return
+    watchedWebView = webView
+    webView.addOnLayoutChangeListener { v, left, top, right, bottom, _, _, _, _ ->
+      val w = right - left
+      val h = bottom - top
+      if (w == lastWebViewW && h == lastWebViewH) return@addOnLayoutChangeListener
+      lastWebViewW = w
+      lastWebViewH = h
+      Log.i(TAG, "WebView 尺寸变为 ${w}x${h}，派发 resize")
+      v.post {
+        val view = v as? WebView ?: return@post
+        // 尺寸变了往往也意味着 insets 变了（转屏），顺手刷一次安全区
+        SafeAreaInsets.reapply(view)
+        view.evaluateJavascript("window.dispatchEvent(new Event('resize'));", null)
+      }
+    }
   }
 
   /**

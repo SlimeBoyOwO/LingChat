@@ -64,6 +64,20 @@ pub struct TouchableArgs {
     pub touchable: bool,
 }
 
+/// `set_ime_focus` 命令的参数。
+///
+/// 悬浮窗展开时**不能**无条件摘掉 `FLAG_NOT_FOCUSABLE` —— 那会让它在整个展开
+/// 期间持有输入焦点，其他 App 的键盘弹不出来、返回键也先被它吃掉。
+/// 现在改成由页面的输入框 `focus` / `blur` 驱动：
+///
+/// - `focused = true`  → 摘掉 `FLAG_NOT_FOCUSABLE` 并弹出输入法；
+/// - `focused = false` → 收起输入法并把标志加回去，让出焦点。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImeFocusArgs {
+    pub focused: bool,
+}
+
 /// `set_expanded` 命令的参数。
 ///
 /// 手机端没有鼠标悬停，展开/收起由前端「点头像」触发，
