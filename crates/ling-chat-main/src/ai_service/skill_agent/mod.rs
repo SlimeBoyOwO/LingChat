@@ -1,10 +1,4 @@
 //! Skill Agent：剧本编辑器里的 AI 助手。
-//!
-//! 能让 LLM 通过 `skills/` 技能库（SKILL.md）自动编写剧本 —— 具备文件读写、
-//! shell 命令执行 + 用户审批、技能发现/读取能力。LLM 接入复用 LingChat 现有
-//! `LlmClient`/provider 系统（镜像 God Agent），核心循环在 [`core::run_chat`]。
-//!
-//! 与游戏角色的工具系统（`tools/`）完全独立，不与 `tool_permissions.toml` 纠缠。
 
 pub mod command_executor;
 pub mod config;
@@ -12,9 +6,13 @@ pub mod core;
 pub mod db;
 pub mod events;
 pub mod file_tools;
+pub mod role;
+pub mod router;
 pub mod skills;
+pub mod stage;
 pub mod tools;
 
+/// 对拍台：把喂给模型的文本逐字节钉住，等价重构靠它自证没改行为（只在测试里编译）。
 pub use command_executor::ApprovalMap;
 pub use core::CancelFlag;
 

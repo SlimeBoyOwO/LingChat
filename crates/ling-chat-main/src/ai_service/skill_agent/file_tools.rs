@@ -1,9 +1,4 @@
 //! 暴露给 LLM 的文件工具，除非显式关闭，否则一律受沙箱约束。
-//!
-//! 每个操作提供返回结构化结果的方法（`list_entries` / `read_text` /
-//! `grep_output` …），供主聊天工具构造 JSON。`list_files` / `read_file` /
-//! `write_file` / `delete_file` 另保留原 String 包装，供脚本编辑器 agent
-//! 复用，输出文本逐字不变；其余操作已并入结构化方法，无 String 包装。
 
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
@@ -17,7 +12,6 @@ pub const MAX_GLOB_RESULTS: usize = 100;
 pub const MAX_GREP_RESULTS: usize = 100;
 
 /// 先写入目标旁的临时文件，完整刷盘后，再原子地替换目标文件。
-/// 这能避免被取消或中断的 LLM 工具调用留下写了一半的文件。
 fn atomic_write(path: &Path, content: &[u8]) -> anyhow::Result<()> {
     use std::io::Write;
 
@@ -131,7 +125,6 @@ pub struct FileTools {
 
 impl FileTools {
     /// 解析路径：保留不存在的后缀部分，并解析最深一层存在的祖先目录。
-    /// 这能防止 `..`、符号链接和 Windows junction 逃出沙箱。
     pub fn sanitize(&self, path: &str) -> anyhow::Result<PathBuf> {
         let requested = PathBuf::from(path.trim());
         let joined = if requested.is_absolute() {
