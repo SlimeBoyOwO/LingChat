@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.ViewGroup
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 
@@ -79,7 +80,7 @@ class MainActivity : TauriActivity() {
     }
   }
 
-  /** 把 MainActivity 专属的「透壁纸」处理 + 安全区注入一次性做完。 */
+  /** 把 MainActivity 专属的「透壁纸」处理 + 安全区注入 + JS 桥一次性做完。 */
   private fun prepareWebView(webView: WebView) {
     // 关键：Android WebView 默认背景是不透明的白色，必须置透明才能透出系统壁纸。
     // 前端 html/body 已设为 transparent，这里兜底去掉 WebView 的白底。
@@ -90,5 +91,51 @@ class MainActivity : TauriActivity() {
     // 安全区 CSS 变量注入。与 SettingsActivity 共用同一个实现，
     // 见 SafeAreaInsets.kt 头部说明「为什么不能靠 env(safe-area-inset-*)」。
     SafeAreaInsets.attach(webView)
+
+    // 与 SettingsActivity 通信的 JS 桥（详见下方 installSettingsBridge）。
+    installSettingsBridge(webView)
+  }
+
+  /**
+   * 在主窗口的 WebView 上挂一个 `LingChatApp` 桥，只暴露一件事：
+   * 「把已经存在但退到后台的设置窗拉回前台」。
+   *
+   * ## 为什么必须有它
+   *
+   * `SettingsActivity` 的「关闭」语义是**不销毁 + 退到后台**（`moveTaskToBack`），
+   * 所以窗口会一直活着。用户再点「设置」时，前端走的是
+   * `WebviewWindow.getByLabel("settings")` → `setFocus()`。
+   *
+   * 但 `setFocus()` **在 Android 上是空实现** ——
+   * `tao-0.35.2/src/platform_impl/android/mod.rs` 里只有一句
+   * `warn!("set_focus not yet implemented on Android")`。
+   * 没有这条桥，用户第二次点「设置」就是**毫无反应**。
+   *
+   * ## 为什么是 JS 桥而不是 Tauri 命令
+   *
+   * 拉回前台这件事只有**主窗口**的 JS 需要（判断窗口是否存在、再决定是新建
+   * 还是拉回）。而 `SettingsActivity` 在 app 模块里，`tauri-plugin-floating-pet`
+   * 是它依赖的 library 模块 —— 插件反向引用 app 的类得靠反射。JS 桥同模块直调，
+   * 少一层且编译期就能查错。
+   *
+   * ## 幂等
+   *
+   * `addJavascriptInterface` 对同名接口是**替换**语义，而 [prepareWebView] 会被
+   * 两条路径各调一次（`onWebViewCreate` 主路径 + `onCreate` 里的兜底）。
+   * 重复挂同一个名字只会把旧对象换掉，无害。
+   *
+   * ⚠️ `@JavascriptInterface` 的方法跑在 WebView 的 JavaBridge 线程上，
+   * 里面不能碰 UI（`moveTaskToFront` 是 binder 调用，本身线程安全）。
+   * R8 对带 `@JavascriptInterface` 的方法有默认 keep 规则，不会被改名。
+   */
+  private fun installSettingsBridge(webView: WebView) {
+    webView.addJavascriptInterface(
+      object {
+        /** @return 设置窗是否还活着（活着才会被拉回前台）。 */
+        @JavascriptInterface
+        fun focusSettings(): Boolean = SettingsActivity.bringToFront()
+      },
+      "LingChatApp",
+    )
   }
 }

@@ -1799,8 +1799,30 @@ const handleOpenSettings = async () => {
   try {
     const existing = await WebviewWindow.getByLabel("settings");
     if (existing) {
-      await existing.setFocus();
-      return;
+      // ★ Android：**不能**用 `setFocus()`。
+      //
+      // 设置窗的「关闭」语义是「不销毁 + 退到后台」（`moveTaskToBack`，见
+      // `SettingsActivity` 头注释），所以关掉之后窗口仍然活着、只是整个任务
+      // 退到了后台。再点「设置」时前端拿到的是这个活着的窗口，需要把它拉回前台。
+      //
+      // 而 `WebviewWindow.setFocus()` 在 Android 上**是空实现** ——
+      // `tao-0.35.2/src/platform_impl/android/mod.rs`：
+      //   `pub fn set_focus(&self) { warn!("set_focus not yet implemented on Android"); }`
+      // 没有这条原生桥，用户第二次点「设置」就是**毫无反应**。
+      //
+      // 桥由 MainActivity 在 `onWebViewCreate` 时挂到主窗口的 WebView 上
+      // （见 `MainActivity.installSettingsBridge`）。
+      const bridge = (window as unknown as { LingChatApp?: { focusSettings?: () => boolean } })
+        .LingChatApp;
+      if (isAndroid() && typeof bridge?.focusSettings === "function") {
+        if (bridge.focusSettings()) return;
+        // 返回 false = 原生那边实例已经没了（但窗口登记还在，属于罕见的
+        // 不同步）。不 return，往下走新建流程，交给 `tauri://error` 兜底。
+        console.warn("[PetMode] 设置窗实例已不存在，改为新建");
+      } else {
+        await existing.setFocus();
+        return;
+      }
     }
 
     // ★ Android 必须显式给出承载窗口的 Activity。
