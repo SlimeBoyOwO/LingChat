@@ -5,7 +5,7 @@
   "packageManager": "pnpm@11.21.0",
   "type": "module",
   "scripts": {
-    "init": "tauri icon src-tauri/icons/icon.png && node scripts/prepare-desktop-resources.mjs && node scripts/download_emotion_model.mjs",
+    "init": "tauri icon src-tauri/icons/icon.png && node scripts/prepare-desktop-resources.mjs && node scripts/download_emotion_model.mjs && node scripts/ensure-onnxruntime.mjs",
     "dev": "vite",
     "build": "vue-tsc --noEmit --skipLibCheck && vite build",
     "preview": "vite preview",

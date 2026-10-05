@@ -2,7 +2,7 @@
 //!
 //! `ort` 默认静态链接 pyke 预编译的 x86-64-v3 二进制（要求 AVX2/FMA），旧 CPU 上启动即
 //! 非法指令崩溃。**仅 Windows** 改用 `load-dynamic`（见 Cargo.toml），运行时从这里加载
-//! 应用目录下的 onnxruntime.dll（由 scripts/download-onnxruntime.mjs 取回，含 DirectML EP）。
+//! 应用目录下的 onnxruntime.dll（由 scripts/ensure-onnxruntime.mjs 取回，含 DirectML EP）。
 //!
 //! `ort::init_from` 只在 `load-dynamic` 下存在，故本模块限定 `#[cfg(target_os = "windows")]`。
 //! 找不到 dll 时返回 false，上层据此降级。
@@ -102,9 +102,9 @@ pub fn init_onnx_runtime(app: &AppHandle) -> bool {
 #[cfg(target_os = "windows")]
 mod tests {
     /// 运行时验证 onnxruntime.dll：ort API 版本匹配、含 DirectML EP、能用 DML 建 session。
-    /// 需先跑 `node scripts/download-onnxruntime.mjs`。
+    /// 需先跑 `node scripts/ensure-onnxruntime.mjs`。
     #[test]
-    #[ignore = "需要已下载的 onnxruntime.dll（scripts/download-onnxruntime.mjs）"]
+    #[ignore = "需要已下载的 onnxruntime.dll（scripts/ensure-onnxruntime.mjs）"]
     fn load_official_onnxruntime() {
         // 本 crate 位于 <repo>/crates/ling-chat-main，dll 与 data 都在 src-tauri/ 与仓库根下。
         let dll = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

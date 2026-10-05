@@ -78,7 +78,7 @@ ling_chat/static/frontend/
 # src-tauri/gen/schemas/ 为 JSON schema 自动生成文件，可追踪
 src-tauri/bundled_resources/
 src-tauri/.bundled_resources/
-# 外部二进制：onnxruntime.dll / DirectML.dll 由 scripts/download-onnxruntime.mjs 下载
+# 外部二进制：onnxruntime.dll / DirectML.dll 由 scripts/ensure-onnxruntime.mjs 下载
 src-tauri/binaries/
 ~/.tauri/
 frontend_vue/
