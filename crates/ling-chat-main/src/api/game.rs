@@ -164,7 +164,7 @@ async fn get_referenced_voice_files(db: &DatabaseConnection) -> Result<HashSet<S
         .into_tuple::<Option<String>>()
         .all(db)
         .await
-        .map(|v| v.into_iter().filter_map(|x| x).collect())
+        .map(|v| v.into_iter().flatten().collect())
         .map_err(|e| format!("查询语音文件引用失败: {e}"))
 }
 

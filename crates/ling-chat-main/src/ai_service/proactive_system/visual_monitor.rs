@@ -7,6 +7,12 @@ pub struct VisualMonitor {
     _last_hash: Option<u64>,
 }
 
+impl Default for VisualMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VisualMonitor {
     pub fn new() -> Self {
         Self { _last_hash: None }

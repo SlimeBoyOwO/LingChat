@@ -18,8 +18,8 @@
 //! 因此原先每一处 `?` 表达式都无需改写。
 
 use crate::app::logging::LogFilterHandle;
-use ling_chat_main::{ai_service, api, cast, data_dir, lan_sync, resource_sync, utils};
 use ling_chat_main::AppState;
+use ling_chat_main::{ai_service, api, cast, data_dir, lan_sync, resource_sync, utils};
 use tauri::Manager;
 
 mod asr;
@@ -54,7 +54,7 @@ pub fn setup(
 
     // 提前初始化数据目录缓存，以便在数据层引导之前
     // 将其传递给独立的本地 TTS crate。
-    data_dir::init_data_dir(&app.handle());
+    data_dir::init_data_dir(app.handle());
 
     // ONNX Runtime：定位 onnxruntime.dll 并显式加载
     // （仅 Windows 的 load-dynamic 模式，兼容无 AVX2 的旧 CPU，如三代酷睿；

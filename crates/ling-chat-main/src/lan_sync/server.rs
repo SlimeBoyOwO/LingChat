@@ -228,7 +228,7 @@ async fn push_file_handler(
                 format!("创建目录失败: {e}"),
             )
         })?;
-        validate_path_in_base(&parent.to_path_buf(), &state.data_dir)
+        validate_path_in_base(parent, &state.data_dir)
             .map_err(|e| AppError(StatusCode::FORBIDDEN, e))?;
     }
 

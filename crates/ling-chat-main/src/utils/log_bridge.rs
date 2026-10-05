@@ -90,18 +90,10 @@ pub struct LogEntry {
     pub message: String,
 }
 
+#[derive(Default)]
 struct LogVisitor {
     message: String,
     fields: Vec<(String, String)>,
-}
-
-impl Default for LogVisitor {
-    fn default() -> Self {
-        Self {
-            message: String::new(),
-            fields: Vec::new(),
-        }
-    }
 }
 
 impl Visit for LogVisitor {

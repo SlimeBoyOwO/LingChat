@@ -688,6 +688,7 @@ impl MessageGenerator {
 /// 栅栏与回复共用同一个索引空间：publisher 只有在推进到栅栏索引（即所有更小索引
 /// 都已处理完，包括被丢弃的 `None` 结果）之后才会回 ack，从而保证"前导台词的
 /// `ai:reply` 已 emit"严格先于"工具事件 emit"。
+#[allow(clippy::large_enum_variant)]
 pub(super) enum PublishItem {
     Reply {
         index: usize,

@@ -102,11 +102,11 @@ fn resolve_exact(
 /// 引用第一层是类型目录名（如 `backgrounds/`、`musics\\`）时返回剥掉前缀的部分，
 /// 否则返回 None。只剥已知类型词，自定义子目录（如 `海边/白天.webp`）不受影响；
 /// 同时拒绝绝对路径和 `..` 等不安全的剩余路径，避免兜底逻辑扩大原始查找范围。
-fn strip_type_dir_prefix<'a>(file_path: &'a str, media_type: MediaType) -> Option<&'a str> {
-    let separator = file_path.find(|c| c == '/' || c == '\\')?;
+fn strip_type_dir_prefix(file_path: &str, media_type: MediaType) -> Option<&str> {
+    let separator = file_path.find(['/', '\\'])?;
     let (prefix, rest_with_separator) = file_path.split_at(separator);
     let rest = rest_with_separator.get(1..)?;
-    let mut components = rest.split(|c| c == '/' || c == '\\');
+    let mut components = rest.split(['/', '\\']);
     let first = components.next()?;
     if first.is_empty()
         || first == "."

@@ -18,7 +18,9 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
-use ling_chat_main::utils::archive::{self, ArchiveError, ArchiveFormat, ConflictPolicy, EntryEvent};
+use ling_chat_main::utils::archive::{
+    self, ArchiveError, ArchiveFormat, ConflictPolicy, EntryEvent,
+};
 
 use super::PluginManager;
 use super::manifest;
@@ -272,7 +274,7 @@ async fn read_manifest(dir: &Path) -> anyhow::Result<PluginManifest> {
     let text = tokio::fs::read_to_string(dir.join("manifest.toml"))
         .await
         .map_err(|e| anyhow::anyhow!("读取 manifest.toml 失败: {e}"))?;
-    Ok(manifest::parse(&text)?)
+    manifest::parse(&text)
 }
 
 /// 返回第一个「manifest 声明了但实际不存在」的脚本名（工具、信号订阅、启动入口、WS 内联处理一起查）。

@@ -76,7 +76,7 @@ impl ProactiveSystem {
         let schedule_manager = ScheduleManager::new();
         let strategy_dispatcher = StrategyDispatcher::new(&app);
 
-        let system = Self {
+        Self {
             app,
             db,
             ai_service,
@@ -94,9 +94,7 @@ impl ProactiveSystem {
             is_running: false,
             can_deliver: false,
             pending_intents: Vec::new(),
-        };
-
-        system
+        }
     }
 
     /// 启动主动对话的后台轮询 Loop。

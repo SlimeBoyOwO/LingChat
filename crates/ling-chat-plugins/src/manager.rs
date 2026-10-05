@@ -160,14 +160,14 @@ impl PluginManager {
     /// 加载单个插件记录（解析 manifest + 从集中状态读取 state）。
     fn load_record(
         &self,
-        dir: &PathBuf,
+        dir: &Path,
         id: &str,
         states: &HashMap<String, PluginState>,
     ) -> PluginRecord {
         let mut record = PluginRecord {
             manifest: Default::default(),
             state: PluginState::new(),
-            dir: dir.clone(),
+            dir: dir.to_path_buf(),
             error: None,
             startup_error: None,
         };
@@ -313,10 +313,9 @@ impl PluginManager {
         // （见 `disable_with_reason`，顺序反了会被这里冲掉）。
         record.startup_error = None;
         if enabled {
-            self.register_tools(record).map_err(|e| {
+            self.register_tools(record).inspect_err(|_e| {
                 record.state.enabled = false;
                 self.persist_state(id, &record.state);
-                e
             })?;
         } else {
             self.unregister_tools(record);
@@ -1188,10 +1187,7 @@ impl PluginManager {
                 if token.is_cancelled() {
                     return Err("插件已被停用".to_string());
                 }
-                let manager = app_handle
-                    .state::<Arc<PluginManager>>()
-                    .inner()
-                    .clone();
+                let manager = app_handle.state::<Arc<PluginManager>>().inner().clone();
                 let run_env = manager.plugin_run_env(&plugin_id);
                 python_backend::run_plugin_startup(&script_path, &handler, run_env, app_handle)
             }),

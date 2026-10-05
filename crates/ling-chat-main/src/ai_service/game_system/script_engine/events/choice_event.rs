@@ -120,7 +120,7 @@ impl ScriptEvent for ChoiceEvent {
         let matched = {
             let mut gs = ctx.game_status.lock().await;
             script_function::process_options(
-                &mut *gs,
+                &mut gs,
                 ctx.db,
                 &mut script_status,
                 &self.options,
