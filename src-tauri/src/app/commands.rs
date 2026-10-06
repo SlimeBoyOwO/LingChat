@@ -65,6 +65,8 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::character_avatars::delete_character_avatar,
         api::character_costumes::list_character_costumes,
         api::character_costumes::manage_character_costume,
+        api::character_voice::read_character_reference_audio,
+        api::character_voice::preview_character_voice,
         api::character::select_clothes,
         api::character::update_role_settings,
         api::character::delete_character,

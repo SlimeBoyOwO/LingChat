@@ -166,7 +166,7 @@ impl TtsProvider {
         });
     }
 
-    fn select(&self, tts_type: &str) -> Result<Arc<dyn TtsAdapter>> {
+    pub(super) fn select(&self, tts_type: &str) -> Result<Arc<dyn TtsAdapter>> {
         let adapter: Arc<dyn TtsAdapter> = match tts_type {
             "sva-vits" => self
                 .sva

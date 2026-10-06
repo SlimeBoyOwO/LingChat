@@ -10,6 +10,16 @@ import type {
 } from "@/types/live2d";
 import { i18n } from "@/locales";
 
+export const readCharacterReferenceAudio = (path: string) =>
+  invoke<ArrayBuffer | number[]>("read_character_reference_audio", { path });
+
+export const previewCharacterVoice = (
+  roleId: number,
+  settings: Record<string, unknown>,
+  text: string,
+  emotion: string,
+) => invoke<ArrayBuffer | number[]>("preview_character_voice", { roleId, settings, text, emotion });
+
 export interface CharacterAvatarSlot {
   emotion: string;
   path: string | null;

@@ -834,7 +834,7 @@ impl GameRoleManager {
 ///
 /// 未启用 TTS / 配置缺失时返回 `None`。对应 Python `GameRole` 构造时调用
 /// `voice_maker = VoiceMaker(...)`。
-fn build_voice_maker(
+pub(crate) fn build_voice_maker(
     data_dir: &Path,
     settings: &CharacterSettings,
     tts_config: &TtsConfig,

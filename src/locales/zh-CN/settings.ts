@@ -25,6 +25,27 @@ export default {
     confirmRemove:
       "确定移除「{name}」吗？会保存当前设置，清除关联的服装、触摸区域和 Live2D 映射。原立绘将移入角色目录的 .editor-trash 回收区，当前穿着此服装时切回默认服装。",
   },
+  voicePreview: {
+    title: "角色语音试听",
+    hint: "使用上方当前配置合成试听音频；沿用全局语音服务地址与密钥。远程服务将收到试听文本，并按其规则计费。",
+    reference: "参考音频",
+    chooseFile: "选择本机音频",
+    noReference: "尚未填写参考音频路径",
+    serverPathHint:
+      "GPT-SoVITS 按服务器文件系统读取此路径。本机选择适用于同机服务；远程服务请在上方填写服务器路径，本机预听不可用时仍可合成试听。选择后按现有语音配置规则自动保存。",
+    loadReference: "读取并预听本机文件",
+    reading: "正在读取…",
+    audioInfo: "音频大小 {size} · 时长 {duration}",
+    unplayable: "当前设备无法播放此音频，请检查文件内容或音频格式",
+    text: "试听文本",
+    textPlaceholder: "输入一段与所选语音语言一致的文本…",
+    emotion: "试听情绪",
+    generate: "生成试听",
+    generating: "正在合成…",
+    languageHint: "试听直接朗读输入文本，不进行翻译；情绪仅对支持它的语音服务生效。",
+    stale: "配置或文本已修改，下方为上一次的试听结果，请重新生成。",
+    selectService: "请先在上方选择语音服务。",
+  },
   live2dPreview: {
     title: "Live2D 调试预览",
     test: "演示",

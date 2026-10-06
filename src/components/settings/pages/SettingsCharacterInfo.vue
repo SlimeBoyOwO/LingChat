@@ -156,6 +156,20 @@
                 </div>
               </div>
 
+              <VoicePreview
+                v-if="activeTab === 'voice' && props.roleId"
+                :role-id="props.roleId"
+                :model-value="localSettings"
+                @reference-selected="
+                  handleFieldChange({
+                    key: 'gsv_voice_filename',
+                    label: t('settings.voicePreview.reference'),
+                    type: 'text',
+                    realtime: true,
+                  })
+                "
+              />
+
               <AvatarManager
                 v-if="activeTab === 'avatars' && props.roleId"
                 :role-id="props.roleId"
@@ -298,6 +312,7 @@ import AvatarManager from "../character/AvatarManager.vue";
 import RoleLayoutEditor from "../character/RoleLayoutEditor.vue";
 import CostumeManager from "../character/CostumeManager.vue";
 import PetLayoutEditor from "../character/PetLayoutEditor.vue";
+import VoicePreview from "../character/VoicePreview.vue";
 import TouchRegionsEditor from "../character/TouchRegionsEditor.vue";
 import { isSystemProtectedRole } from "@/constants/character";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
