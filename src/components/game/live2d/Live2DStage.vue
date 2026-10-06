@@ -73,11 +73,14 @@ const props = defineProps<{
   maxFps?: number;
   /** 抚摸交互开关。缺省 false 是刻意的：设置界面的预览挂同一个组件，不传就自动免疫。 */
   touchEnabled?: boolean;
+  /** 仅配置预览开放实例内的调试方法，不影响其他舞台。 */
+  editorPreview?: boolean;
 }>();
 
 const emit = defineEmits<{
   activeChange: [roleIds: number[]];
   failedChange: [roleIds: number[]];
+  previewGeometry: [value: { roleId: number; x: number; y: number }];
 }>();
 
 interface CursorPayload {
@@ -114,6 +117,8 @@ interface RoleModel {
   /** 抚摸命中区域与推导它所用的 bounds，与 focusOrigin 同一次算出，无绑定或无锚点时为 null */
   touchRegions: Record<string, TouchRegion> | null;
   touchBounds: TouchBounds | null;
+  geometryConfig: string;
+  previewGeometry: { x: number; y: number } | null;
   reactionSequence: number;
   reactionLifecycleCleanup: (() => void) | null;
 }
@@ -416,6 +421,18 @@ function applyLayout(entry: RoleModel, role: GameRole) {
     );
   }
   model.visible = role.show;
+  if (props.editorPreview && application.screen.width && application.screen.height) {
+    const point = model.toGlobal(resolveLocalGeometry(entry));
+    const geometry = {
+      x: point.x / application.screen.width,
+      y: point.y / application.screen.height,
+    };
+    // 布局 watcher 会被父组件的预览标记更新触发；相同坐标不重复发送，避免渲染反馈循环。
+    if (entry.previewGeometry?.x !== geometry.x || entry.previewGeometry?.y !== geometry.y) {
+      entry.previewGeometry = geometry;
+      emit("previewGeometry", { roleId: role.roleId, ...geometry });
+    }
+  }
 }
 
 function startIdle(entry: RoleModel) {
@@ -443,7 +460,7 @@ function finishReaction(entry: RoleModel, sequence: number) {
 
 /** 启动一次 FORCE 优先级的动作反应。步骤顺序见 docs/live2d/development.md 的 Reaction Completion，不要改成超时或直接写参数。 */
 function startReaction(entry: RoleModel, binding: Live2dMotionBinding) {
-  if (!runtime) return;
+  if (!runtime) return Promise.resolve(false);
   const sequence = ++entry.reactionSequence;
   freezeModelFocus(entry);
   entry.reactionLifecycleCleanup?.();
@@ -454,17 +471,19 @@ function startReaction(entry: RoleModel, binding: Live2dMotionBinding) {
     runtime.engine.MotionPriority.FORCE,
     () => finishReaction(entry, sequence),
   );
-  void entry.model
+  return entry.model
     .motion(binding.group, binding.index, runtime.engine.MotionPriority.FORCE, {
       loop: binding.loop ?? false,
       resetExpression: false,
     })
     .then((started: boolean) => {
       if (!started) finishReaction(entry, sequence);
+      return started;
     })
     .catch((error: unknown) => {
       finishReaction(entry, sequence);
       console.warn(`[Live2D] motion failed for role ${entry.roleId}`, error);
+      return false;
     });
 }
 
@@ -643,6 +662,8 @@ async function loadRole(
       focusOrigin: null,
       touchRegions: null,
       touchBounds: null,
+      geometryConfig: JSON.stringify([variant.focus_anchor, variant.touch_motions]),
+      previewGeometry: null,
       reactionSequence: 0,
       reactionLifecycleCleanup: null,
     };
@@ -670,7 +691,7 @@ async function loadRole(
     models.set(role.roleId, entry);
     pendingModel = null;
     startIdle(entry);
-    applyEmotion(entry, role.emotion);
+    if (!props.editorPreview) applyEmotion(entry, role.emotion);
     failedRoleIds.delete(role.roleId);
     emitFailedRoles();
     emitActiveRoles();
@@ -760,8 +781,15 @@ async function syncRoles() {
       entry.touchBounds = null;
       startIdle(entry);
     }
+    const geometryConfig = JSON.stringify([variant.focus_anchor, variant.touch_motions]);
+    if (geometryConfig !== entry.geometryConfig) {
+      entry.geometryConfig = geometryConfig;
+      entry.focusOrigin = null;
+      entry.touchBounds = null;
+      entry.touchRegions = null;
+    }
     applyLayout(entry, role);
-    applyEmotion(entry, role.emotion);
+    if (!props.editorPreview) applyEmotion(entry, role.emotion);
     application.stage.setChildIndex(
       entry.model,
       Math.min(index, application.stage.children.length - 1),
@@ -786,6 +814,62 @@ function updateLipSync() {
     entry.mouthValue += (Math.min(1, target) - entry.mouthValue) * 0.38;
   }
 }
+
+// 预览操作只作用于此组件持有的模型，不发送全局事件、不修改游戏角色状态。
+function previewEntry(roleId: number) {
+  return props.editorPreview ? models.get(roleId) : undefined;
+}
+async function previewExpression(roleId: number, expression: string) {
+  const entry = previewEntry(roleId);
+  if (!entry) return false;
+  return Boolean(await entry.model.expression(expression));
+}
+async function previewEmotion(roleId: number, emotion: string) {
+  const entry = previewEntry(roleId);
+  if (!entry) return false;
+  entry.emotion = emotion;
+  const expression = emotionExpression(entry.variant, emotion);
+  let applied = false;
+  if (expression) applied = Boolean(await entry.model.expression(expression));
+  else entry.model.internalModel.motionManager.expressionManager?.resetExpression();
+  const motion = pickEmotionBinding(entry.variant.motions, emotion);
+  return motion
+    ? (await startReaction(entry, { ...motion, loop: false })) || applied
+    : applied || !expression;
+}
+async function previewMotion(roleId: number, binding: Live2dMotionBinding) {
+  const entry = previewEntry(roleId);
+  if (!entry || !Number.isInteger(binding.index) || binding.index < 0) return false;
+  return await startReaction(entry, { ...binding, loop: false });
+}
+async function previewTouch(roleId: number, part: string) {
+  const entry = previewEntry(roleId);
+  const binding = entry?.variant.touch_motions?.[part];
+  if (!entry || !binding) return false;
+  let applied = false;
+  if (binding.expression) applied = Boolean(await entry.model.expression(binding.expression));
+  if (binding.group !== undefined && binding.index !== undefined)
+    return await startReaction(entry, { group: binding.group, index: binding.index, loop: false });
+  return applied;
+}
+function pickFocusAnchor(roleId: number, clientX: number, clientY: number) {
+  const entry = previewEntry(roleId);
+  const geometry = stageGeometry();
+  if (!entry || !geometry) return null;
+  resolveLocalGeometry(entry);
+  const bounds = entry.touchBounds;
+  if (!bounds || !bounds.width || !bounds.height) return null;
+  const local = entry.model.toLocal({
+    x: ((clientX - geometry.rect.left) * geometry.stage.width) / geometry.rect.width,
+    y: ((clientY - geometry.rect.top) * geometry.stage.height) / geometry.rect.height,
+  });
+  const x = (local.x - bounds.minX) / bounds.width;
+  const y = (local.y - bounds.minY) / bounds.height;
+  return x >= 0 && x <= 1 && y >= 0 && y <= 1
+    ? { x: Math.round(x * 1000) / 1000, y: Math.round(y * 1000) / 1000 }
+    : null;
+}
+defineExpose({ previewExpression, previewEmotion, previewMotion, previewTouch, pickFocusAnchor });
 
 watch(
   () =>
