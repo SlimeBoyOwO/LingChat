@@ -77,6 +77,12 @@
             </div>
 
             <div v-else class="mx-auto max-w-3xl space-y-6">
+              <PetLayoutEditor
+                v-if="activeTab === 'pet' && props.roleId"
+                v-model="localSettings"
+                :role-id="props.roleId"
+                :clothes="props.clothes"
+              />
               <RoleLayoutEditor
                 v-if="activeTab === 'visuals' && props.roleId"
                 v-model="localSettings"
@@ -291,6 +297,7 @@ import Live2DSettings from "../character/Live2DSettings.vue";
 import AvatarManager from "../character/AvatarManager.vue";
 import RoleLayoutEditor from "../character/RoleLayoutEditor.vue";
 import CostumeManager from "../character/CostumeManager.vue";
+import PetLayoutEditor from "../character/PetLayoutEditor.vue";
 import TouchRegionsEditor from "../character/TouchRegionsEditor.vue";
 import { isSystemProtectedRole } from "@/constants/character";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
@@ -1082,6 +1089,9 @@ function applySettingsToRuntime() {
     runtimeRole.scale = Number(localSettings.value.scale ?? 1);
     runtimeRole.offsetX = Number(localSettings.value.offset_x ?? 0);
     runtimeRole.offsetY = Number(localSettings.value.offset_y ?? 0);
+    runtimeRole.scaleP = Number(localSettings.value.scale_p ?? 1);
+    runtimeRole.offsetXP = Number(localSettings.value.offset_x_p ?? 0);
+    runtimeRole.offsetYP = Number(localSettings.value.offset_y_p ?? 0);
     runtimeRole.bubbleTop = Number(localSettings.value.bubble_top ?? 5);
     runtimeRole.bubbleLeft = Number(localSettings.value.bubble_left ?? 20);
     runtimeRole.live2d = localSettings.value.live2d

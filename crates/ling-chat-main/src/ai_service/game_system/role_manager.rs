@@ -628,6 +628,9 @@ impl GameRoleManager {
         role.settings.scale = settings.scale;
         role.settings.offset_x = settings.offset_x;
         role.settings.offset_y = settings.offset_y;
+        role.settings.scale_p = settings.scale_p;
+        role.settings.offset_x_p = settings.offset_x_p;
+        role.settings.offset_y_p = settings.offset_y_p;
         role.settings.bubble_top = settings.bubble_top;
         role.settings.bubble_left = settings.bubble_left;
         role.settings.clothes = settings.clothes.clone();

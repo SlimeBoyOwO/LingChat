@@ -264,6 +264,12 @@ const previewRole = computed<GameRole>(() => ({
 const live2dActive = computed(
   () => prefersLive2d(previewRole.value, "standard") && !live2dFailed.value,
 );
+watch(
+  () => [props.roleId, props.modelValue.avatar_mode, props.modelValue.live2d, costume.value],
+  () => {
+    live2dFailed.value = false;
+  },
+);
 const roleStyle = computed(() => standardAvatarStyle(previewRole.value, size.value));
 const bubbleImage = computed(() => {
   const image = EMOTION_CONFIG[emotion.value]?.bubbleImage;
