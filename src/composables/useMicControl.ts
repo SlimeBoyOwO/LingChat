@@ -15,7 +15,7 @@
 import { computed, type ComputedRef } from "vue";
 import { useI18n } from "vue-i18n";
 import { useAsrStore } from "@/stores/modules/settings/asr";
-import { useAsrInput } from "@/composables/useAsrInput";
+import { useAsrInput } from "@/composables/asr";
 import type { AsrPhase } from "@/api/services/asr";
 
 /** 图标语义名：各组件映射到自己的图标体系 */
@@ -67,10 +67,14 @@ export function useMicControl(): UseMicControlApi {
   // enabled 条件（与 useAsrInput.canStartAsr 对齐）：
   // - 功能开关可用时始终可点
   // - 录音中可点（用于停止）
+  // - recognizing（识别在飞）：手动分支禁用——点击无任何分支可走（审查 M5），
+  //   避免"按下无反应"；功能开关分支不受影响（recognizing 中仍可暂停监听）
   // - 总开关关 → 整体禁用；显示锁只挡 auto 触发，手动不受限（故 forManual = true）
   const micEnabled = computed(
     () =>
-      functionSwitchOn.value || phase.value === "recording" || asrInput.canStartAsr(false, true),
+      functionSwitchOn.value ||
+      phase.value === "recording" ||
+      (phase.value !== "recognizing" && asrInput.canStartAsr({ forManual: true })),
   );
 
   const toggleRecording = () => {

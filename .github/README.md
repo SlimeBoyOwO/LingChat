@@ -169,6 +169,7 @@
 - **[Style-Bert-VITS2](https://github.com/litagin02/Style-Bert-VITS2)**：实现了 Bert-VITS 的语音合成与训练，极少数据量也能达到完美效果！
 - **[ProgrammingVTuberLogos](https://github.com/Aikoyori/ProgrammingVTuberLogos)**：提供了超可爱的标题风格灵感。
 - **[Emotion Training](https://github.com/SlimeBoyOwO/Emotion-Model-Trainer)**：用于实现 18 种短句情绪识别的人工智能模型训练。
+- **[BA-Click-Fx](https://github.com/CialloKing/ba-click-fx)**：BA粒子特效，很可爱
 
 ---
 

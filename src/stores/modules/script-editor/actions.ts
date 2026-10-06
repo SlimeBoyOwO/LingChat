@@ -114,6 +114,7 @@ function capturePreviewSceneState() {
     // settingsStore.display（持久化，必须还原）
     background: settingsStore.display.currentBackground,
     backgroundEffect: settingsStore.display.backgroundEffect,
+    weatherEffect: settingsStore.display.weatherEffect,
     // uiStore
     backgroundTransition: uiStore.currentBackgroundTransition,
     backgroundMusic: uiStore.currentBackgroundMusic,
@@ -163,6 +164,7 @@ function restorePreviewSceneState(s: PreviewSceneSnapshot) {
   // settingsStore：直接写字段（与 setCurrentBackground/setBackgroundEffect 等价，还原走直写更直接）
   settingsStore.display.currentBackground = s.background;
   settingsStore.display.backgroundEffect = s.backgroundEffect;
+  settingsStore.display.weatherEffect = s.weatherEffect;
   // uiStore
   uiStore.currentBackgroundTransition = s.backgroundTransition;
   uiStore.currentBackgroundMusic = s.backgroundMusic;

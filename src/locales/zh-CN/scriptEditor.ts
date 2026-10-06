@@ -229,11 +229,17 @@ export default {
     particle: {
       none: "无特效",
       starField: "星空",
+      drizzle: "小雨",
       rain: "雨",
+      blizzard: "雪暴",
+      fog: "雾",
       sakura: "樱花",
       snow: "雪",
       fireworks: "烟花",
       ba: "星辉",
+      thunderstorm: "雷阵雨",
+      fireflies: "萤火虫",
+      meteorShower: "流星雨",
     },
   },
   characters: {

@@ -18,8 +18,8 @@
 //! 因此原先每一处 `?` 表达式都无需改写。
 
 use crate::app::logging::LogFilterHandle;
-use crate::app::state::AppState;
-use crate::{ai_service, api, cast, data_dir, lan_sync, resource_sync, utils};
+use ling_chat_main::AppState;
+use ling_chat_main::{ai_service, api, cast, data_dir, lan_sync, resource_sync, utils};
 use tauri::Manager;
 
 mod asr;
@@ -36,9 +36,25 @@ pub fn setup(
     // 设置日志桥接的应用句柄
     utils::log_bridge::set_app_handle(app.handle().clone());
 
+    // 插件脚本在独立线程执行，需要一份全局句柄才能访问宿主状态
+    ling_chat_plugins::set_app_handle(app.handle().clone());
+
+    // 回复信号：宿主每产出一条 ai:reply 就经此回调转发给订阅的插件。generator
+    // 线程拿不到 AppHandle，故用全局回调；回调内自行 spawn 到 async runtime。
+    {
+        let handle = app.handle().clone();
+        ling_chat_main::plugin_contract::set_reply_hook(std::sync::Arc::new(move |resp| {
+            let handle = handle.clone();
+            let resp = resp.clone();
+            tauri::async_runtime::spawn(async move {
+                ling_chat_plugins::signal::emit_ai_reply(&handle, &resp).await;
+            });
+        }));
+    }
+
     // 提前初始化数据目录缓存，以便在数据层引导之前
     // 将其传递给独立的本地 TTS crate。
-    data_dir::init_data_dir(&app.handle());
+    data_dir::init_data_dir(app.handle());
 
     // ONNX Runtime：定位 onnxruntime.dll 并显式加载
     // （仅 Windows 的 load-dynamic 模式，兼容无 AVX2 的旧 CPU，如三代酷睿；
@@ -49,12 +65,16 @@ pub fn setup(
 
     // 管理各种状态
     app.manage(api::pet::HitTestState::default());
+    app.manage(api::pet::BubbleSideState::default());
     app.manage(resource_sync::ResourceSyncState::default());
     app.manage(lan_sync::LanSyncState::default());
     app.manage(cast::CastManager::default());
     app.manage(utils::cpu_perf::CpuDetectionCache::new());
     app.manage(utils::gpu_perf::GpuDetectionCache::new());
     app.manage(api::role_archive::RoleArchiveState::default());
+
+    #[cfg(desktop)]
+    app.manage(ai_service::asr::global_hotkey::GlobalHotkeyState::default());
 
     // Android 修复：Tauri 在 setup 闭包执行前已创建 webview 窗口，前端 invoke
     // 命令会在 IPC runtime worker 上立即 dispatch；如果 AppState 还没 manage
@@ -65,6 +85,11 @@ pub fn setup(
     // 本地 TTS（SBV2 进程内实现）：解析路径、注册 State/开关并收敛运行时。
     let local_tts = ai_service::tts::local::setup::bootstrap(app)?;
     let (db, app_config) = rt.block_on(data::bootstrap(app))?;
+
+    // 语音快捷键全局注册（失去焦点可用）由**前端界面门控**驱动：仅 /chat 与
+    // /pet 界面注册，离开界面注销释放 OS 键位（见 composables/asr 的 chatActive
+    // watch → asr_ptt_global_set_active 命令）。启动停在主菜单（门控未激活），
+    // 此处无需注册；按键事件转发见 app::builder 的 with_handler 回调。
 
     // 初始化文件日志（从设置读取开关和保留天数）+ 应用 genai 调试开关
     crate::app::logging::apply_log_settings(app, &log_filter);

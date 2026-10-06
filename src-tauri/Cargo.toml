@@ -16,7 +16,8 @@ name = "ling_chat_lib"
 # staticlib 只有 iOS 需要（Xcode 链接 libling_chat_lib.a），cdylib 供 Android，
 # rlib 供桌面端与 bin 自身。桌面开发只用到 rlib，但 staticlib 会让每次增量构建
 # 都重新归档一个 ~1.4 GB 的 .lib（见 .cargo/config.toml 顶部的说明）。
-# 手动 iOS 构建（pnpm ios:build）前需要把 "staticlib" 加回列表首位，详见 docs/ios-build.md。
+# pnpm ios:build 会临时加回 staticlib 并在结束后恢复；直接调用 tauri ios build
+# 时仍需手动加回，详见 docs/ios-build.md。
 crate-type = ["cdylib", "rlib"]
 
 [features]
@@ -28,6 +29,11 @@ custom-protocol = ["tauri/custom-protocol"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# 业务主 crate 与插件 crate（原 src-tauri/src 下的模块已拆分至此）。
+# 外壳只依赖这两者 + Tauri 及其插件；业务侧的重依赖（ort / sbv2_core / rustpython /
+# axum / wgpu / windows 等）由对应 crate 自带，无需在此重复声明。
+ling-chat-main = { path = "../crates/ling-chat-main" }
+ling-chat-plugins = { path = "../crates/ling-chat-plugins" }
 # macos-private-api：macOS 上透明窗口（桌宠模式）的必要条件。缺少它时 tauri.conf.json
 # 的 transparent: true 会被静默忽略，webview 仍然绘制不透明白底。
 # 该 feature 内部由 cfg(target_os = "macos") 门控，Windows / Linux / Android 无影响。
@@ -42,14 +48,13 @@ tauri-plugin-screenshots = { path = "plugins/tauri-plugin-screenshots" }
 tauri-plugin-android-fs = "28"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
-toml = "0.8"
+# setup 编排里直接用到 DatabaseConnection 类型与少量 EntityTrait 调用
 sea-orm = { version = "1", features = [
     "sqlx-sqlite",
     "runtime-tokio-rustls",
     "macros",
     "with-chrono",
 ] }
-sea-orm-migration = "1"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 tracing = "0.1"
@@ -58,9 +63,7 @@ tracing-subscriber = { version = "0.3", features = [
     "ansi",
     "chrono",
 ] }
-serde_yaml = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
-thiserror = "2"
 reqwest = { version = "0.13", features = [
     "json",
     "form",
@@ -71,136 +74,8 @@ reqwest = { version = "0.13", features = [
     "system-proxy",
 ], default-features = false }
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
-webpki-roots = "0.26"
-futures-util = "0.3"
-futures-executor = "0.3"
-async-stream = "0.3"
-bytes = "1"
-regex = "1"
-genai = "0.6"
-uuid = { version = "1", features = ["v4"] }
-async-trait = "0.1"
-# 实时 ASR 用官方 /api-ws/v1/inference 端点（标准 GET 升级 + Bearer）；
-# rustls-tls-webpki-roots 与项目 reqwest 的 TLS 栈一致
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
-# ort（ONNX Runtime）：Windows 用 load-dynamic 运行时加载，避免静态链接 pyke 预编译的
-# x86-64-v3（要求 AVX2/FMA）二进制——旧 CPU（如三代酷睿，无 AVX2）上启动会因非法指令崩溃。
-# 改为运行时从应用目录加载官方 onnxruntime.dll（SSE3 基线，兼容旧 CPU）。
-# 注意：load-dynamic 仅限 Windows（见下方 target 配置）；Linux/macOS 保持 download-binaries 静态链接，行为不变。
-ort = { version = "=2.0.0-rc.13", default-features = false, features = [
-    "std",
-    "ndarray",
-] }
-ndarray = "0.17"
-
-sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
-    "std",
-] }
-once_cell = "1"
-base64 = "0.22"
-rand = "0.8"
-indoc = "2"
-
-image = { version = "0.25", default-features = false, features = [
-    "png",
-    "jpeg",
-    "webp",
-] }
-infer = "0.19"
-sevenz-rust2 = "0.21"
-sha2 = "0.10"
-tempfile = "3"
-zip = { version = "2", default-features = false, features = ["deflate"] }
-
-# 插件系统：嵌入 RustPython 跑插件 Python 脚本（目前是一个受限沙箱）。
-# 桌面与移动端（Android/iOS）都编译，供安卓自测。
-rustpython-vm = { version = "0.5", default-features = false, features = [
-    "compiler",
-    "gc",
-    "stdio",
-    "serde",
-    "freeze-stdlib",
-] }
-rustpython-pylib = { version = "0.5", features = ["freeze-stdlib"] }
-rustpython-derive = "0.5"
-
-
-# LAN Sync
-axum = { version = "0.7", features = ["tokio", "ws"] }
-mdns-sd = "0.11"
-if-addrs = "0.13"
-tokio-util = { version = "0.7", features = ["io"] }
-
-# Skill Agent：命令输出在中文 Windows 上是 GBK，需要回退解码
-encoding_rs = "0.8"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
-
-[target.'cfg(target_os = "windows")'.dependencies]
-ort = { version = "=2.0.0-rc.13", default-features = false, features = [
-    "directml",
-    "load-dynamic",
-] }
-sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
-    "directml",
-] }
-windows = { version = "0.62.2", features = [
-    "Win32_UI_WindowsAndMessaging",
-    "Win32_Foundation",
-    "Win32_Graphics_Gdi",
-    "Win32_Graphics_Dxgi",
-    "Win32_Security",
-    "Win32_System_Threading",
-] }
-
-[target.'cfg(any(target_os = "linux", all(target_os = "macos", target_arch = "x86_64")))'.dependencies]
-# GPU 性能分级：Linux 走 Vulkan、macOS(x86_64) 走 Metal（WebGPU / wgpu）
-wgpu = "26"
-
-
-[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
-ort = { version = "=2.0.0-rc.13", default-features = false, features = [
-    "webgpu",
-    "download-binaries",
-] }
-sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
-    "webgpu",
-] }
-ash = { version = "0.38", default-features = false, features = ["loaded"] }
-
-[target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
-# 与 x86_64 不同：aarch64 无 AVX2 问题，直接静态链接官方/预编译二进制即可
-ort = { version = "=2.0.0-rc.13", default-features = false, features = ["download-binaries"] }
-
-
-[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
-ort = { version = "=2.0.0-rc.13", default-features = false, features = [
-    "coreml",
-    "download-binaries",
-] }
-sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
-    "coreml",
-] }
-
-
-# esaxx-rs 强制静态 CRT (/MT) 会在 Windows 下与 ort 等库冲突（LNK2038/LNK2005）。
-# 仓库已自带 patches/esaxx-rs（唯一改动：build.rs 去掉 .static_crt(true)，
-# 改用动态 CRT /MD），这里把它接到 [patch] 上真正生效。
-# 详见 patches/esaxx-rs/build.rs 的注释。
-[patch.crates-io]
-esaxx-rs = { path = "patches/esaxx-rs" }
-jpreprocess-naist-jdic = { git = "https://gh-proxy.org/github.com/shadow01a/jpreprocess", branch = "main" }
-
-# ── 增量编译速度 ──────────────────────────────────────────────
-# 依赖不生成调试符号。dev 下单个 proc-macro 的 PDB 就有 34 MB（tauri_macros），
-# 而 proc-macro 每次指纹变化都要重编一次；普通依赖同样在往磁盘写大量 PDB。
-# 依赖里没有需要单步调试的代码，关掉是纯收益。
-# 放在 manifest 而不是 .cargo/config.toml：package 覆盖只支持 manifest，
-# 且 manifest 的 profile 不受 cwd 影响（config 有两份副本，容易改漏一份）。
-[profile.dev.build-override]
-debug = false
-
-[profile.dev.package."*"]
-debug = false
+tauri-plugin-global-shortcut = "2"

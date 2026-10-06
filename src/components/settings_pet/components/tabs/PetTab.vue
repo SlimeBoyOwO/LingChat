@@ -496,6 +496,8 @@ const bubbleSideOptions = computed(() => [
   { label: t("pet.petTab.bubbleSideAuto"), value: "auto" as const },
   { label: t("pet.petTab.bubbleSideAbove"), value: "above" as const },
   { label: t("pet.petTab.bubbleSideBelow"), value: "below" as const },
+  { label: t("pet.petTab.bubbleSideLeft"), value: "left" as const },
+  { label: t("pet.petTab.bubbleSideRight"), value: "right" as const },
 ]);
 
 // ===== Live2D 帧率 =====

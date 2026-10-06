@@ -6,6 +6,7 @@ import type { ScriptEventType } from "../types";
 import { useAdventureStore } from "../stores/modules/adventure";
 import { useUIStore } from "../stores/modules/ui/ui";
 import { useGameStore } from "../stores/modules/game";
+import { applyWebInitData } from "../stores/modules/game/actions";
 import { i18n } from "@/locales";
 import { useScriptEditorStore } from "../stores/modules/script-editor";
 import {
@@ -21,6 +22,8 @@ import { useDialogStore } from "../stores/modules/ui/dialog";
 import { useAsrStore } from "../stores/modules/settings/asr";
 import type { VadEvent } from "../api/services/asr";
 import type { SceneInfo } from "./services/scene";
+import type { WebInitData } from "./services/game-info";
+import { getAffection, type AffectionChangedPayload } from "./services/affection";
 
 function asEvent(
   payload: unknown,
@@ -63,18 +66,18 @@ export function initializeTauriEventListeners() {
     const payload = event.payload as Record<string, unknown>;
     // 试玩中止后迟到的流式回复：直接丢弃，不放进事件队列
     if (isStalePreviewReply(payload)) return;
-    console.log("[Tauri] ai:reply", event.payload);
+    console.log("[Tauri] 收到 ai:reply", event.payload);
     eventQueue.addEvent(asEvent(payload, { type: "reply", defaultDuration: -1 }));
   });
 
   listen("ai:thinking", (event) => {
-    console.log("[Tauri] ai:thinking", event.payload);
+    console.log("[Tauri] 收到 ai:thinking", event.payload);
     eventQueue.addEvent(asEvent(event.payload, { type: "thinking", defaultDuration: 0 }));
   });
 
   listen("ai:thinking_progress", (event) => {
     const payload = event.payload as { thinkingLength?: number };
-    console.log("[Tauri] ai:thinking_progress", payload);
+    console.log("[Tauri] 收到 ai:thinking_progress", payload);
     const gameStore = useGameStore();
     if (typeof payload.thinkingLength === "number") {
       gameStore.thinkingLength = payload.thinkingLength;
@@ -83,7 +86,7 @@ export function initializeTauriEventListeners() {
 
   listen("ai:error", (event) => {
     const p = event.payload as Record<string, unknown>;
-    console.log("[Tauri] ai:error", p);
+    console.log("[Tauri] 收到 ai:error", p);
     interruptToolActivities();
     eventQueue.addEvent({
       type: "error",
@@ -245,7 +248,7 @@ export function initializeTauriEventListeners() {
   });
 
   listen("status:reset", (event) => {
-    console.log("[Tauri] status:reset", event.payload);
+    console.log("[Tauri] 收到 status:reset", event.payload);
     eventQueue.addEvent(asEvent(event.payload, { type: "status_reset", defaultDuration: 0 }));
   });
 
@@ -255,7 +258,7 @@ export function initializeTauriEventListeners() {
       orphanFiles?: number;
       orphanSize?: number;
     };
-    console.log("[Tauri] tts:cleanup", payload);
+    console.log("[Tauri] 收到 tts:cleanup", payload);
     try {
       localStorage.setItem(
         "lingchat:last_tts_cleanup",
@@ -296,7 +299,7 @@ export function initializeTauriEventListeners() {
 
   listen("adventure:unlocked", (event) => {
     const payload = event.payload as any;
-    console.log("[Tauri] adventure:unlocked", payload);
+    console.log("[Tauri] 收到 adventure:unlocked", payload);
     const adventureStore = useAdventureStore();
     if (payload?.adventure_folder) {
       adventureStore.unlockNotifications.push(payload);
@@ -305,7 +308,7 @@ export function initializeTauriEventListeners() {
 
   listen("adventure:completed", (event) => {
     const payload = event.payload as any;
-    console.log("[Tauri] adventure:completed", payload);
+    console.log("[Tauri] 收到 adventure:completed", payload);
     const adventureStore = useAdventureStore();
     if (payload?.adventure_folder) {
       adventureStore.markAdventureCompleted(payload.adventure_folder);
@@ -316,7 +319,7 @@ export function initializeTauriEventListeners() {
 
   listen("save:auto-saved", async (event) => {
     const payload = event.payload as { save_id: number; title: string; timestamp: string };
-    console.log("[Tauri] save:auto-saved", payload);
+    console.log("[Tauri] 收到 save:auto-saved", payload);
 
     // Capture screenshot for auto-save slot
     const gameStore = useGameStore();
@@ -328,7 +331,7 @@ export function initializeTauriEventListeners() {
           screenshotPath,
         });
       } catch (e) {
-        console.error("[Tauri] Failed to save auto-save screenshot", e);
+        console.error("[Tauri] 保存自动存档截图失败", e);
       }
     }
 
@@ -339,6 +342,30 @@ export function initializeTauriEventListeners() {
       duration: 2500,
       skipTipsCheck: true,
     });
+  });
+
+  // === Affection events ===
+
+  // 六维好感度评估结果（几分钟一次、仅实际变化时发）：写回角色数据，
+  // 并记录 lastAffectionChange 供面板展示最近一次评估的变化维度与理由
+  listen("affection:changed", (event) => {
+    const payload = event.payload as AffectionChangedPayload;
+    console.log("[Tauri] 收到 affection:changed", payload);
+    const gameStore = useGameStore();
+    const role = gameStore.gameRoles[payload.role_id];
+    if (role) {
+      role.affection = payload.values;
+      role.negative = payload.negative;
+    }
+    const deltaSum = Object.values(payload.deltas).reduce((sum, d) => sum + d, 0);
+    gameStore.lastAffectionChange = {
+      roleId: payload.role_id,
+      deltaSum,
+      deltas: payload.deltas,
+      negativeDeltas: payload.negative_deltas,
+      reason: payload.reason,
+      at: Date.now(),
+    };
   });
 
   // === Script events ===
@@ -397,7 +424,7 @@ export function initializeTauriEventListeners() {
   });
 
   listen("script:end", (event) => {
-    console.log("[Tauri] script:end", event.payload);
+    console.log("[Tauri] 收到 script:end", event.payload);
     eventQueue.addEvent(
       asEvent(event.payload, { type: "script_end", defaultDuration: 0, isFinal: true }),
     );
@@ -411,7 +438,7 @@ export function initializeTauriEventListeners() {
 
   listen("character:switch", async (event) => {
     const payload = event.payload as { type: string; roleId: number; characterName: string };
-    console.log("[Tauri] character:switch", payload);
+    console.log("[Tauri] 收到 character:switch", payload);
     const gameStore = useGameStore();
     const uiStore = useUIStore();
     // 先确保角色数据已加载（立绘/名字都从这里取）
@@ -425,21 +452,56 @@ export function initializeTauriEventListeners() {
     // 同步主界面/桌宠标题（对话中名字由 currentInteractRole 驱动，已覆盖）
     uiStore.showCharacterTitle = role.roleName;
     uiStore.showCharacterSubtitle = role.roleSubTitle;
+    // 好感度跟随角色：get_role_info 不携带 affection，切到尚未建档的角色时
+    // 好感度面板会短暂沿用旧角色数值（跨角色显示污染），这里全量兜底刷新
+    try {
+      const all = await getAffection();
+      for (const [roleId, values] of Object.entries(all)) {
+        const r = gameStore.gameRoles[Number(roleId)];
+        if (r) {
+          r.affection = values;
+          r.negative = values.negative;
+        }
+      }
+    } catch (e) {
+      console.warn("[Affection] 切换角色后刷新好感度失败:", e);
+    }
   });
 
-  // === LLM 场景工具事件 ===
+  // === LLM 工具事件（场景 / 换装） ===
 
   listen("scene:switch", (event) => {
     const payload = event.payload as { type: string; scene: SceneInfo };
-    console.log("[Tauri] scene:switch", payload);
+    console.log("[Tauri] 收到 scene:switch", payload);
     const gameStore = useGameStore();
     const uiStore = useUIStore();
     gameStore.setCurrentScene(payload.scene);
     uiStore.setCurrentBackground(payload.scene.background ?? "");
   });
 
+  // 工具换装：后端状态已经改完，这里只把前端 store 的立绘状态对齐——
+  // 立绘（useRoleAvatar）与 Live2D（Live2DStage）都 watch 了 role.clothesName。
+  // 角色不在 store 里说明它没被展示，不必为它凭空创建角色对象。
+  listen("character:clothes-changed", (event) => {
+    const payload = event.payload as { roleId: number; clothesName: string };
+    console.log("[Tauri] 收到 character:clothes-changed", payload);
+    const role = useGameStore().gameRoles[payload.roleId];
+    if (role) role.clothesName = payload.clothesName;
+  });
+
+  // 插件完整切换角色（plugin_host.switch_character）：后端已清空上下文并重建角色，
+  // 这里整体替换前端状态。与菜单里切换角色（CharacterCard.vue）同一套动作——
+  // 应用 init data 后必须丢弃旧角色残留的事件队列，否则未说完的回复会串进新角色
+  // （issue #796）。载荷就是 select_character 的返回值，前端不再回查一次。
+  listen("character:full-switch", (event) => {
+    console.log("[Tauri] 收到 character:full-switch", event.payload);
+    applyWebInitData(useGameStore().$state, event.payload as WebInitData);
+    eventQueue.clear();
+    eventQueue.resume();
+  });
+
   console.log(
-    "[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 13 script events + character:switch + scene:switch)",
+    "[Tauri] 事件监听已注册（ai + ai:thinking_progress + tts:cleanup + adventure + 自动存档 + affection:changed + 13 个剧本事件 + character:switch + scene:switch + character:clothes-changed + character:full-switch）",
   );
 }
 
@@ -451,6 +513,8 @@ export function initializeTauriEventListeners() {
  * ai:reply 等会驱动队列的监听，投屏就会「按消息到达时间显示」而与主界面
  * 脱节。这里只注册投屏需要的即时状态事件：
  * - scene:switch / character:switch：背景、场景光照、立绘即时同步
+ * - character:clothes-changed：换装即时同步（投屏镜像 cast:mirror 与 2s 快照都不带
+ *   服装，不在这里接一次，投屏会一直停在旧服装）
  * （其余场景状态由 CastWindow 的 2s 快照对账兜底）。
  */
 export function initializeCastWindowListeners() {
@@ -467,6 +531,13 @@ export function initializeCastWindowListeners() {
     uiStore.showCharacterSubtitle = role.roleSubTitle;
   });
 
+  // 与主窗口同一份处理：投屏窗口的 store 是独立实例，必须自己接一次
+  listen("character:clothes-changed", (event) => {
+    const payload = event.payload as { roleId: number; clothesName: string };
+    const role = useGameStore().gameRoles[payload.roleId];
+    if (role) role.clothesName = payload.clothesName;
+  });
+
   listen("scene:switch", (event) => {
     const payload = event.payload as { type: string; scene: SceneInfo };
     const gameStore = useGameStore();
@@ -476,8 +547,6 @@ export function initializeCastWindowListeners() {
   });
 
   // 投屏客户端麦克风经投屏 /ws 送到 Rust ASR，识别文本由这里注入对话。
-  // 复用既有 asr-send 自定义事件 → GameDialog.onAsrAutoSend → send()（sendMessage）。
-  // 仅投屏窗口注册此监听（主窗口不注册），保证每次识别恰好注入一次。
   listen("cast:mic:recognized", (event) => {
     const { text } = event.payload as { text: string };
     if (!text) return;
@@ -485,6 +554,6 @@ export function initializeCastWindowListeners() {
   });
 
   console.log(
-    "[Tauri] Cast window listeners initialized (scene:switch + character:switch + cast:mic:recognized)",
+    "[Tauri] 投屏窗口事件监听已注册（scene:switch + character:switch + character:clothes-changed + cast:mic:recognized）",
   );
 }

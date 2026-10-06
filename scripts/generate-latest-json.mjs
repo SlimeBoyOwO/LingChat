@@ -8,7 +8,7 @@
  *   node scripts/generate-latest-json.mjs 0.4.7
  *   node scripts/generate-latest-json.mjs 0.4.7 "修复了若干bug"
  *
- * 输出: src-tauri/target/release/bundle/latest.json
+ * 输出: target/release/bundle/latest.json
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
@@ -26,7 +26,7 @@ if (!version) {
   process.exit(1);
 }
 
-const bundleDir = join(projectRoot, "src-tauri", "target", "release", "bundle", "nsis");
+const bundleDir = join(projectRoot, "target", "release", "bundle", "nsis");
 
 // 查找安装包和签名文件
 const files = existsSync(bundleDir) ? readdirRecursive(bundleDir) : [];

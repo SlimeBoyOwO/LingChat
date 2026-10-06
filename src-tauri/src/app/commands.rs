@@ -6,13 +6,14 @@
 //!
 //! `generate_handler!` 内的路径在**调用点**展开，所以顶部这行 `use` 把
 //! `api::` / `ai_service::` 等拉到本模块作用域，使下面 234 行清单与原先在
-//! `lib.rs` 中逐字一致（无需改成 `crate::api::…`）。
+//! `lib.rs` 中逐字一致（无需改成 `ling_chat_main::api::…`）。
 //!
 //! 注意：`exit_app` 定义在本文件末尾而非 `api/`。这是对「command 放 api/」约定的
 //! 有意例外——它是进程生命周期命令，没有对应的 `config/` 业务逻辑，且与注册表
 //! 同文件时可保持清单里的裸 `exit_app` 条目不变。
 
-use crate::{ai_service, api, cast, lan_sync, resource_sync, utils};
+use ling_chat_main::{ai_service, api, cast, lan_sync, resource_sync, utils};
+use ling_chat_plugins as plugins;
 
 /// 把全部命令注册到 `builder` 上。
 pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
@@ -21,17 +22,17 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         utils::log_bridge::get_log_history,
         utils::log_bridge::open_log_window,
         utils::log_bridge::is_log_window_open,
-        api::plugins::plugin_list,
-        api::plugins::plugin_set_enabled,
-        api::plugins::plugin_save_config,
-        api::plugins::plugin_reload,
-        api::plugins::plugin_delete,
-        api::plugins::plugin_resources,
-        api::plugins::plugin_resource_hide,
-        api::plugins::plugin_resource_restore,
-        api::plugins::plugin_resource_keep,
-        api::plugins::import_plugin_from_path,
-        api::plugins::cancel_plugin_import,
+        plugins::commands::plugin_list,
+        plugins::commands::plugin_set_enabled,
+        plugins::commands::plugin_save_config,
+        plugins::commands::plugin_reload,
+        plugins::commands::plugin_delete,
+        plugins::commands::plugin_resources,
+        plugins::commands::plugin_resource_hide,
+        plugins::commands::plugin_resource_restore,
+        plugins::commands::plugin_resource_keep,
+        plugins::commands::import_plugin_from_path,
+        plugins::commands::cancel_plugin_import,
         api::settings::get_settings_tree,
         api::settings::save_settings,
         api::settings::get_setting_by_key,
@@ -66,21 +67,31 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::live2d::import_live2d,
         api::live2d::get_live2d_file,
         api::live2d::inspect_live2d,
+        api::live2d::get_live2d_variant_assets,
         api::background::get_background_list,
         api::background::get_background_file,
         api::background::upload_background_image,
         api::background::open_backgrounds_folder,
+        api::background::list_background_categories,
+        api::background::create_background_category,
+        api::background::delete_background_category,
         api::scene::list_scenes,
         api::scene::create_scene,
         api::scene::update_scene,
         api::scene::delete_scene,
         api::scene::select_scene,
         api::scene::set_scene_awareness,
+        api::scene::clear_empty_scenes,
+        api::scene::move_scene_to_category,
         api::music::get_music_list,
         api::music::get_music_file,
         api::music::upload_music,
         api::music::delete_music,
         api::music::save_bgm_state,
+        api::music::list_music_categories,
+        api::music::create_music_category,
+        api::music::delete_music_category,
+        api::music::open_music_folder,
         api::locale::get_locale_messages,
         api::ambient::get_ambient_list,
         api::ambient::upload_ambient,
@@ -100,7 +111,9 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::game::notify_player_entry,
         api::memory::get_memory_debug_overview,
         api::memory::get_role_memory_snapshot,
+        api::affection::get_affection,
         api::chat::send_chat_message,
+        api::chat::send_system_message,
         api::chat::rollback_conversation,
         api::chat::generate_line_voice,
         api::chat::feed_image,
@@ -167,6 +180,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::script_editor::agent::editor_agent_resolve_approval,
         api::pet::update_solid_regions,
         api::pet::set_pet_mode,
+        api::pet::set_bubble_side,
         api::schedule::get_schedules,
         api::schedule::save_schedules,
         api::schedule::reload_proactive_system,
@@ -255,6 +269,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::asr::asr_get_settings,
         api::asr::asr_set_settings,
         api::asr::asr_get_status,
+        api::asr::asr_ptt_global_set_active,
         api::asr::asr_test_provider,
         api::asr::asr_start_streaming,
         api::asr::asr_stream_audio_chunk,

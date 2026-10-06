@@ -52,6 +52,7 @@ import SettingsPanel from "@/components/settings/SettingsPanel.vue";
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { listScenes, type SceneInfo } from "@/api/services/scene";
+import { isWeatherEffect } from "@/components/game/standard/particles";
 
 /**
  * 主窗口镜像（App.vue 在台词变化时经 cast_emit_mirror 存储 + 广播 cast:mirror）。
@@ -69,6 +70,7 @@ interface CastMirror {
   status: string;
   background: string | null;
   backgroundEffect: string | null;
+  weatherEffect: string | null;
   currentSceneId: string | null;
   presentRoleIds: number[];
   currentRoleId: number | null;
@@ -121,7 +123,7 @@ const castShellStyle = computed<Record<string, string>>(() => {
     "--cast-dialog-width": `${tune.dialogWidth}%`,
     "--cast-dialog-height": `${tune.dialogHeight}vh`,
     "--cast-dialog-font-size": `${tune.dialogFontSize}px`,
-    // 背景渐变 alpha：底 0.7、顶 0.6（复刻主界面默认 dialogOpacity 0.7）
+    // 背景渐变 alpha：底 0.7、顶 0.6（对齐主界面固定的渐变底色）
     "--cast-dialog-bg-alpha": String(bgAlpha),
     "--cast-dialog-bg-alpha-top": String(Math.max(0, bgAlpha - 0.1)),
   };
@@ -186,10 +188,21 @@ function applyCastMute() {
 
 // ── 场景 / 角色应用（镜像与快照对账共用） ──────────────────
 
-// 背景图 / 背景效果
-function applyBackground(bg: string, effect: string) {
+// 背景图 / 氛围特效 / 天气特效。
+//
+// effect 按注册表落到它该去的那一层，但不像剧本事件那样清空另一层 ——
+// 投屏是纯镜像，两层各是什么该由镜像数据自己说清楚。
+// Rust 侧的场景快照只带一个特效值，所以那里可能是个天气 key，必须走这条判断。
+function applyBackground(bg: string, effect: string, weather = "") {
   if (bg && bg !== uiStore.currentBackground) uiStore.setCurrentBackground(bg);
-  if (effect !== uiStore.currentBackgroundEffect) uiStore.setBackgroundEffect(effect);
+  if (effect) {
+    if (isWeatherEffect(effect)) {
+      if (effect !== uiStore.currentWeatherEffect) uiStore.setWeatherEffect(effect);
+    } else if (effect !== uiStore.currentBackgroundEffect) {
+      uiStore.setBackgroundEffect(effect);
+    }
+  }
+  if (weather && weather !== uiStore.currentWeatherEffect) uiStore.setWeatherEffect(weather);
 }
 
 // 场景光照（GameRolesStage 的 lightOverlayStyle 依赖 currentScene）
@@ -248,7 +261,7 @@ async function applyRoleEmotion(roleId: number, emotion: string, originalEmotion
 // ── 镜像应用：主窗口当前显示什么，投屏就显示什么 ────────────
 async function applyMirror(m: CastMirror) {
   // 场景部分（仅变化时应用，避免打断 Live2D 舞台）
-  applyBackground(m.background ?? "", m.backgroundEffect ?? "");
+  applyBackground(m.background ?? "", m.backgroundEffect ?? "", m.weatherEffect ?? "");
   if (m.currentSceneId) void applyScene(m.currentSceneId);
   await applyRoles(m.presentRoleIds ?? [], m.currentRoleId ?? null);
 
@@ -464,8 +477,8 @@ onUnmounted(() => {
 .cast-shell .cast-dialog-layer #character {
   font-size: calc(var(--cast-dialog-font-size, 20px) * 1.2) !important;
 }
-/* 对话框背景色透明度（投屏独立覆盖，默认 70 = 复刻主界面 dialogOpacity 0.7 的
-     渐变底色 #000e27）。覆盖内联的 dialogWrapperStyle 背景，并关掉模糊以保持一致。 */
+/* 对话框背景色透明度（投屏独立覆盖，默认 70 = 对齐主界面 #000e27 的渐变底色）。
+     覆盖 .game-dialog 的背景，并关掉模糊以保持一致。 */
 .cast-shell .cast-dialog-layer > div {
   background: linear-gradient(
     to top,

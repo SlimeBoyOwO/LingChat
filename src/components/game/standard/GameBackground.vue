@@ -25,22 +25,10 @@
       :style="`z-index:${BACKGROUND_ZINDEX}`"
       @ready="onStarfieldReady"
     />
-    <Rain
-      v-if="uiStore.currentBackgroundEffect === 'Rain'"
-      :enabled="rainEnabled"
-      :intensity="rainIntensity"
-      :style="`z-index:${BACKGROUND_ZINDEX}`"
-    />
     <Sakura
       v-if="uiStore.currentBackgroundEffect === 'Sakura'"
       :enabled="true"
       :intensity="1.5"
-      :style="`z-index:${BACKGROUND_ZINDEX}`"
-    />
-    <Snow
-      v-if="uiStore.currentBackgroundEffect === 'Snow'"
-      :intensity="snowIntensity"
-      :enabled="true"
       :style="`z-index:${BACKGROUND_ZINDEX}`"
     />
     <Fireworks
@@ -57,6 +45,18 @@
       :speed="0.4"
       :style="`z-index:${BACKGROUND_ZINDEX}`"
     />
+    <Fireflies
+      v-if="uiStore.currentBackgroundEffect === 'Fireflies'"
+      :enabled="true"
+      :intensity="1"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+    />
+    <MeteorShower
+      v-if="uiStore.currentBackgroundEffect === 'MeteorShower'"
+      :enabled="true"
+      :intensity="1"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+    />
   </div>
 
   <!-- 背景光照叠加层（在背景上方、角色下方） -->
@@ -65,6 +65,48 @@
     class="pointer-events-none absolute inset-0"
     :style="bgOverlayStyle as any"
   ></div>
+
+  <!-- 天气层：与上面的氛围特效相互独立，两者可同时存在。
+       刻意排在光照叠加层之后 —— 那层是带混合模式的暗角色罩，
+       闪电画在它下面会被压暗。仍在角色与对话框之下 -->
+  <div class="pointer-events-none absolute inset-0" style="isolation: isolate">
+    <Drizzle
+      v-if="uiStore.currentWeatherEffect === 'Drizzle'"
+      :enabled="weatherEnabled"
+      :intensity="drizzleIntensity"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+    />
+    <Rain
+      v-if="uiStore.currentWeatherEffect === 'Rain'"
+      :enabled="weatherEnabled"
+      :intensity="rainIntensity"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+    />
+    <Thunderstorm
+      v-if="uiStore.currentWeatherEffect === 'Thunderstorm'"
+      :enabled="weatherEnabled"
+      :intensity="thunderstormIntensity"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+    />
+    <Snow
+      v-if="uiStore.currentWeatherEffect === 'Snow'"
+      :enabled="weatherEnabled"
+      :intensity="snowIntensity"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+    />
+    <Blizzard
+      v-if="uiStore.currentWeatherEffect === 'Blizzard'"
+      :enabled="weatherEnabled"
+      :intensity="blizzardIntensity"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+    />
+    <Fog
+      v-if="uiStore.currentWeatherEffect === 'Fog'"
+      :enabled="weatherEnabled"
+      :intensity="fogIntensity"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+    />
+  </div>
 
   <!-- 短效音效保留默认实现即可，不需要淡入淡出 -->
   <audio ref="soundEffectPlayer"></audio>
@@ -110,6 +152,12 @@ import Sakura from "./particles/Sakura.vue";
 import Snow from "./particles/Snow.vue";
 import Fireworks from "./particles/Fireworks.vue";
 import BAParticles from "./particles/BAParticles.vue";
+import Fireflies from "./particles/Fireflies.vue";
+import MeteorShower from "./particles/MeteorShower.vue";
+import Thunderstorm from "./particles/Thunderstorm.vue";
+import Drizzle from "./particles/Drizzle.vue";
+import Blizzard from "./particles/Blizzard.vue";
+import Fog from "./particles/Fog.vue";
 
 const uiStore = useUIStore();
 const gameStore = useGameStore();
@@ -197,11 +245,15 @@ const starColors = ref<string[]>([
   "rgb(173, 230, 216)",
 ]);
 
-// 其他特效参数控制
-const rainEnabled = ref<boolean>(true);
+// 天气层的开关是共用的，各档只差强度
+const weatherEnabled = ref<boolean>(true);
 
+const drizzleIntensity = ref<number>(1);
 const rainIntensity = ref<number>(1);
+const thunderstormIntensity = ref<number>(0.8);
 const snowIntensity = ref<number>(1.5);
+const blizzardIntensity = ref<number>(1);
+const fogIntensity = ref<number>(1);
 
 const handleTrackEnd = (): void => {
   uiStore.handleBackgroundMusicEnd();

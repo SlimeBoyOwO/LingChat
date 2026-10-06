@@ -18,6 +18,12 @@
 
     <!-- 6. 声效控制面板 -->
     <SoundEffectPanel />
+
+    <!-- 7. 好感度/负面情绪变化飘出标签 -->
+    <AffectionChangeFloat />
+
+    <!-- 8. 音频频谱可视化（右下角，与左下角声效按钮对称） -->
+    <SpectrumVisualizer />
   </div>
 </template>
 
@@ -28,4 +34,6 @@ import ScriptCompleteDisplay from "./extra/ScriptCompleteDisplay.vue";
 import ScriptPicDisplay from "./extra/ScriptPicDisplay.vue";
 import ScriptFreeDialogueDisplay from "./extra/ScriptFreeDialogueDisplay.vue";
 import SoundEffectPanel from "./extra/SoundEffectPanel.vue";
+import AffectionChangeFloat from "./extra/AffectionChangeFloat.vue";
+import SpectrumVisualizer from "./extra/SpectrumVisualizer.vue";
 </script>

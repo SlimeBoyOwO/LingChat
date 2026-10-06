@@ -4,7 +4,7 @@
 
 ## 1. 分层结构
 
-PR #540 在 `src-tauri/src/api/script_editor/` 下新增了完整的后端模块，并以前端 `src/components/script-editor/` 与 `src/stores/modules/script-editor/` 承载编辑器 UI。整体分为五层：
+PR #540 在 `crates/ling-chat-main/src/api/script_editor/` 下新增了完整的后端模块，并以前端 `src/components/script-editor/` 与 `src/stores/modules/script-editor/` 承载编辑器 UI。整体分为五层：
 
 ```
 前端组件层  ScriptEditor.vue + 7 个 script-editor/* 子组件

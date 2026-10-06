@@ -11,7 +11,17 @@ import Icon from "./Icon.vue";
 import type { IconType } from "./Icon.vue";
 
 interface ButtonProps {
-  type?: "big" | "menu" | "nav" | "select" | "delete" | "add" | "save" | "start" | "close";
+  type?:
+    | "big"
+    | "menu"
+    | "nav"
+    | "select"
+    | "delete"
+    | "add"
+    | "save"
+    | "start"
+    | "close"
+    | "transparent";
   disabled?: boolean;
   icon?: IconType;
   icon_size?: number;
@@ -51,7 +61,7 @@ const typeClasses = computed(() => {
 
     case "nav":
       return `
-        px-[15px] py-[10px] mx-[5px] rounded-lg text-base font-bold relative z-10 
+        px-[15px] py-[10px] mx-[5px] rounded-lg text-base font-bold relative z-10
         [text-shadow:0_2px_4px_rgba(0,0,0,0.2)] transition-colors duration-300
         [&>svg]:w-[1.125rem] [&>svg]:h-[1.125rem] [&>svg]:stroke-[2.5px] [&>svg]:shrink-0
         ${
@@ -70,6 +80,15 @@ const typeClasses = computed(() => {
             : "bg-[#e9ecef] text-[#495057] hover:bg-[var(--accent-color)] hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)]"
         }
       `;
+
+    case "transparent":
+      return `
+      w-full p-3 text-base font-bold rounded-lg flex max-w-full items-center gap-1.5 border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300
+      ${
+        props.active
+          ? "border-brand/50 bg-brand/15 text-brand"
+          : "border-transparent bg-white/5 text-white/65 hover:bg-white/10 hover:text-white"
+      }`;
 
     case "select":
       return `

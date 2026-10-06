@@ -6,6 +6,7 @@ import { getRoleInfo } from "../../../api/services/character";
 import { useUIStore } from "../ui/ui";
 import { useSettingsStore } from "../settings";
 import type { SceneInfo } from "@/api/services/scene";
+import { canonicalEffectKey } from "@/components/game/standard/particles";
 import { invoke } from "@tauri-apps/api/core";
 
 export const actions = {
@@ -56,8 +57,11 @@ export const actions = {
         bubbleTop: roleInfo.bubble_top,
         clothes: roleInfo.clothes,
         clothesName: roleInfo.clothes_name,
+        avatarMode: roleInfo.avatar_mode,
         bodyPart: roleInfo.body_part,
         live2d: roleInfo.live2d,
+        avatarModeP: roleInfo.avatar_mode_p,
+        petFrameless: roleInfo.pet_frameless,
         character_folder: roleInfo.character_folder,
         emotion: "正常",
         originalEmotion: "正常",
@@ -160,9 +164,14 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
       bubbleTop: settings.bubble_top,
       clothes: settings.clothes,
       clothesName: settings.clothes_name,
+      avatarMode: settings.avatar_mode,
       bodyPart: settings.body_part,
       live2d: settings.live2d,
+      avatarModeP: settings.avatar_mode_p,
+      petFrameless: settings.pet_frameless,
       character_folder: settings.character_folder,
+      affection: settings.affection ?? undefined,
+      negative: settings.negative ?? undefined,
       emotion: "正常",
       originalEmotion: "正常",
       show: true,
@@ -186,9 +195,14 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
       bubbleTop: characterInfo.bubble_top,
       clothes: characterInfo.clothes,
       clothesName: characterInfo.clothes_name,
+      avatarMode: characterInfo.avatar_mode,
       bodyPart: characterInfo.body_part,
       live2d: characterInfo.live2d,
+      avatarModeP: characterInfo.avatar_mode_p,
+      petFrameless: characterInfo.pet_frameless,
       character_folder: characterInfo.character_folder,
+      affection: characterInfo.affection ?? undefined,
+      negative: characterInfo.negative ?? undefined,
       emotion: "正常",
       originalEmotion: "正常",
       show: true,
@@ -209,7 +223,11 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
   uiStore.showCharacterSubtitle = characterInfo.ai_subtitle;
 
   if (gameInfo.background !== "") uiStore.setCurrentBackground(gameInfo.background);
-  if (gameInfo.background_effect !== "") uiStore.setBackgroundEffect(gameInfo.background_effect);
+  // 存档里只存了一个特效值，落到氛围层还是天气层由注册表决定（同剧本事件）
+  if (gameInfo.background_effect !== "")
+    uiStore.applyEffectValue(
+      canonicalEffectKey(gameInfo.background_effect) ?? gameInfo.background_effect,
+    );
 
   // 恢复背景音乐：用户上次手动选择优先于场景/剧本设定
   if (gameInfo.last_bgm_track && gameInfo.last_bgm_track !== "None") {

@@ -1,176 +1,42 @@
 <template>
   <MenuPage>
-    <!-- ========== 场景管理 ========== -->
-    <MenuItem :title="$t('settings.background.scene.title')">
-      <template #header>
-        <PictureInPicture :size="20" />
-      </template>
-
-      <!-- 当前场景信息 + 操作按钮 -->
-      <div class="mb-4 flex items-center gap-3">
-        <div class="text-brand font-bold">
-          {{ $t("settings.background.scene.current") }}{{ currentSceneDisplay }}
-        </div>
-        <div class="ml-auto flex gap-3">
-          <button
-            class="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-white/80 shadow-lg transition-all hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
-            :title="$t('settings.background.scene.refresh')"
-            :disabled="refreshing"
-            @click="handleRefreshScenes"
-          >
-            <RefreshCw :size="16" :class="refreshing ? 'animate-spin' : ''" />
-          </button>
-          <button
-            class="bg-brand/80 border-brand hover:bg-brand rounded-full border px-5 py-1.5 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 transition-all"
-            @click="handleCreateScene"
-          >
-            {{ $t("settings.background.scene.create") }}
-          </button>
-          <button
-            class="rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-sm font-bold text-white/80 shadow-lg transition-all hover:bg-white/20"
-            @click="triggerUpload"
-          >
-            {{ $t("settings.background.scene.upload") }}
-          </button>
-          <button
-            v-if="!isAndroid()"
-            class="rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-sm font-bold text-white/80 shadow-lg transition-all hover:bg-white/20"
-            @click="handleOpenFolder"
-          >
-            {{ $t("settings.background.scene.openFolder") }}
-          </button>
-          <button
-            class="rounded-full border border-red-500/30 bg-red-500/20 px-4 py-1.5 text-sm font-bold text-red-300 shadow-lg transition-all hover:bg-red-500/30"
-            :disabled="!currentScene"
-            @click="handleDeleteScene"
-          >
-            {{ $t("settings.background.scene.delete") }}
-          </button>
-        </div>
-      </div>
-
-      <!-- 场景卡片网格 -->
-      <div class="grid w-full grid-cols-1 gap-5 pb-5 sm:grid-cols-2 xl:grid-cols-3">
-        <div
-          v-for="scene in paginatedScenes"
-          :key="scene.id"
-          :class="[
-            `group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-white/12.5 bg-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.1)] backdrop-blur-[20px] backdrop-saturate-180 transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:bg-white/15 hover:shadow-[0_12px_40px_rgba(0,0,0,0.15),inset_0_2px_2px_rgba(255,255,255,0.15)] hover:backdrop-blur-[25px] hover:backdrop-saturate-200`,
-            isSceneSelected(scene.id)
-              ? `border-2! border-sky-400! shadow-[0_0_12px_rgba(56,189,248,0.5),0_0_3px_rgba(56,189,248,0.8),inset_0_0_8px_rgba(56,189,248,0.15)]`
-              : '',
-          ]"
-          @click="handleSceneClick(scene)"
-        >
-          <!-- 编辑按钮（右上角扳手）—— 插件场景只读，不提供编辑 -->
-          <button
-            v-if="!scene.source || scene.source === 'game'"
-            class="absolute top-2 right-2 z-10 rounded-lg bg-black/50 p-1.5 text-white/60 opacity-0 transition-all group-hover:opacity-100 hover:bg-black/70 hover:text-white"
-            @click.stop="handleWrenchClick(scene)"
-            :title="$t('settings.background.scene.edit')"
-          >
-            <Wrench :size="16" />
-          </button>
-          <PluginTag
-            v-if="scene.source && scene.source !== 'game'"
-            :source="scene.source"
-            class="absolute top-2 left-2 z-10"
-          />
-
-          <!-- 背景预览 -->
-          <div
-            class="relative flex-1 overflow-hidden after:pointer-events-none after:absolute after:inset-0 after:bg-linear-to-b after:from-transparent after:to-black/30"
-          >
-            <img
-              v-if="scene.background"
-              :src="convertFileSrc(scene.background)"
-              :alt="scene.scene_name"
-              class="aspect-video h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-            />
-            <div
-              v-else
-              class="flex aspect-video h-full w-full items-center justify-center bg-black/40 text-white/20"
-            >
-              <Image :size="48" />
-            </div>
-          </div>
-
-          <!-- 信息栏 -->
-          <div
-            class="relative z-2 flex flex-col gap-1 border-t border-white/20 bg-white/15 px-4 py-3 backdrop-blur-[10px]"
-          >
-            <span class="truncate font-medium text-white/90 drop-shadow-md">
-              {{ scene.scene_name }}
-            </span>
-            <span v-if="scene.scene_description" class="line-clamp-2 text-xs text-white/50">{{
-              scene.scene_description
-            }}</span>
-            <span v-else class="text-xs text-yellow-400/60 italic">{{
-              $t("settings.background.scene.noDescription")
-            }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- 分页控件 -->
-      <div v-if="totalPages > 1" class="flex items-center justify-center gap-2 pb-2">
-        <button
-          :disabled="currentPage <= 1"
-          @click="currentPage = 1"
-          class="px-2 py-1 text-xs text-white/50 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
-        >
-          {{ $t("settings.background.pagination.first") }}
-        </button>
-        <button
-          :disabled="currentPage <= 1"
-          @click="currentPage = currentPage - 1"
-          class="px-3 py-1 text-sm text-white/50 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
-        >
-          {{ $t("settings.shared.prevPage") }}
-        </button>
-        <span class="px-3 text-xs text-white/60">
-          {{ $t("settings.shared.pageOf", { current: currentPage, total: totalPages }) }}
-        </span>
-        <button
-          :disabled="currentPage >= totalPages"
-          @click="currentPage = currentPage + 1"
-          class="px-3 py-1 text-sm text-white/50 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
-        >
-          {{ $t("settings.shared.nextPage") }}
-        </button>
-        <button
-          :disabled="currentPage >= totalPages"
-          @click="currentPage = totalPages"
-          class="px-2 py-1 text-xs text-white/50 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
-        >
-          {{ $t("settings.background.pagination.last") }}
-        </button>
-      </div>
-
-      <!-- 隐藏的文件上传 input -->
-      <input
-        type="file"
-        ref="uploadInput"
-        @change="handleFileUpload"
-        accept=".jpg,.jpeg,.png,.webp,.bmp,.svg,.tif,.gif"
-        style="display: none"
-      />
-    </MenuItem>
+    <!-- ========== 场景管理（含背景分类、收藏排序、右键移动） ========== -->
+    <SceneManageSection />
 
     <MenuItem :title="$t('settings.background.particle.title')" size="large">
       <template #header>
         <Sparkles :size="20" />
       </template>
-      <!-- 选项由粒子注册表驱动：新增粒子只需改 particles/index.ts + 补词条 -->
       <div class="effect-list flex gap-4 overflow-x-auto pb-2">
         <Button
           v-for="opt in particleOptions"
           :key="opt.value"
-          type="big"
+          type="transparent"
           :active="currentParticle === opt.value"
           @click="updateParticle(opt.value)"
-          >{{ opt.label }}</Button
         >
+          <component :is="opt.icon" :size="16" style="margin-right: 6px" />
+          {{ opt.label }}
+        </Button>
+      </div>
+    </MenuItem>
+
+    <!-- 天气与上面的氛围特效分层，两者可以同时开着 -->
+    <MenuItem :title="$t('settings.background.weather.title')" size="large">
+      <template #header>
+        <CloudLightning :size="20" />
+      </template>
+      <div class="effect-list flex gap-4 overflow-x-auto pb-2">
+        <Button
+          v-for="opt in weatherOptions"
+          :key="opt.value"
+          type="transparent"
+          :active="currentWeather === opt.value"
+          @click="updateWeather(opt.value)"
+        >
+          <component :is="opt.icon" :size="16" style="margin-right: 6px" />
+          {{ opt.label }}
+        </Button>
       </div>
     </MenuItem>
 
@@ -203,6 +69,22 @@
         >
           {{ $t("settings.background.animation.clickAnimation") }}
         </Toggle>
+        <div class="flex items-center gap-2">
+          <Button
+            type="big"
+            :active="cursorEffectEngine === 'ba-click-fx'"
+            @click="settingsStore.setCursorEffectEngine('ba-click-fx')"
+          >
+            {{ $t("settings.background.animation.cursorEngine.ba") }}
+          </Button>
+          <Button
+            type="big"
+            :active="cursorEffectEngine === 'legacy'"
+            @click="settingsStore.setCursorEffectEngine('legacy')"
+          >
+            {{ $t("settings.background.animation.cursorEngine.legacy") }}
+          </Button>
+        </div>
         <Toggle
           :checked="sceneAwarenessEnabled"
           @change="settingsStore.setSceneAwarenessEnabled($event)"
@@ -418,56 +300,33 @@
         </button>
       </div>
     </MenuItem>
-
-    <!-- ========== 对话框外观（自定义） ========== -->
-    <MenuItem :title="$t('settings.background.dialog.title')" size="large">
-      <template #header>
-        <MessageSquare :size="20" />
-      </template>
-      <DialogAppearancePanel />
-    </MenuItem>
-
-    <SceneEditModal
-      :show="showSceneEdit"
-      :mode="editMode"
-      :backgrounds="backgroundList"
-      :initial-data="editInitialData"
-      @close="showSceneEdit = false"
-      @submit="handleSceneSubmit"
-      @upload="triggerUpload"
-    />
   </MenuPage>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from "vue";
+import { ref, onMounted, watch, computed, type Component } from "vue";
 import { useI18n } from "vue-i18n";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { MenuPage, MenuItem } from "../../ui";
 import { Button, Toggle, Slider } from "../../base";
-import { useGameStore } from "../../../stores/modules/game";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
 import { useSettingsStore } from "../../../stores/modules/settings";
-import { isAndroid, isWindows } from "@/utils/platform";
+import { isWindows } from "@/utils/platform";
 import { relaunch } from "@tauri-apps/plugin-process";
 import {
-  listScenes,
-  createScene,
-  updateScene,
-  deleteScene,
-  selectScene,
-  type SceneInfo,
-  type LightingParams,
-} from "../../../api/services/scene";
-import type { BackgroundImageInfo } from "../../../types";
-import {
-  getBackgroundImages,
-  uploadBackgroundImage,
-  generateBackgroundImage,
-  openBackgroundsFolder,
-} from "../../../api/services/background";
-import { unlockAchievement } from "../../../api/services/achievement";
+  Ban,
+  Sparkles,
+  Flower2,
+  PartyPopper,
+  Sun,
+  CloudDrizzle,
+  CloudRain,
+  CloudLightning,
+  CloudSnow,
+  Snowflake,
+  CloudFog,
+} from "lucide-vue-next";
+import { PARTICLE_EFFECTS, WEATHER_EFFECTS } from "@/components/game/standard/particles";
 import {
   getCpuInfo,
   redetectCpu,
@@ -484,45 +343,61 @@ import {
   getActiveGpu,
   type GpuInfo,
 } from "../../../api/services/gpu-perf";
-import {
-  Image,
-  PictureInPicture,
-  Sparkles,
-  Settings,
-  Wand2,
-  Wrench,
-  Cpu,
-  RefreshCw,
-} from "lucide-vue-next";
-import SceneEditModal from "../scene/SceneEditModal.vue";
-import DialogAppearancePanel from "../dialog/DialogAppearancePanel.vue";
-import PluginTag from "@/components/ui/PluginTag.vue";
-import { useUserStore } from "../../../stores/modules/user/user";
-import { PARTICLE_EFFECTS } from "@/components/game/standard/particles";
+import { Settings, Cpu } from "lucide-vue-next";
+import SceneManageSection from "../background/SceneManageSection.vue";
 
-const gameStore = useGameStore();
 const uiStore = useUIStore();
 const settingsStore = useSettingsStore();
-const userStore = useUserStore();
 const dialogStore = useDialogStore();
 const { t } = useI18n();
+
+// 粒子选项来自注册表，与桌宠设置页读同一份真相。
+// 从前这里是六个硬编码按钮：星辉（BA）并入主界面可选项时只接了渲染分支，
+// 没补进这份列表，于是设置页选不到它。改成读注册表后就不会再漏。
+const PARTICLE_ICONS: Record<string, Component> = {
+  StarField: Sparkles,
+  Sakura: Flower2,
+  Fireworks: PartyPopper,
+  BA: Sun,
+};
+
+const particleOptions = computed(() => [
+  { label: t("settings.background.particle.none"), value: "None", icon: Ban },
+  ...PARTICLE_EFFECTS.map((p) => ({
+    label: t(`settings.background.particle.${p.i18n}`),
+    value: p.key,
+    icon: PARTICLE_ICONS[p.key] ?? Sparkles,
+  })),
+]);
+
+// 天气层同理，只是词条前缀不同
+const WEATHER_ICONS: Record<string, Component> = {
+  Drizzle: CloudDrizzle,
+  Rain: CloudRain,
+  Thunderstorm: CloudLightning,
+  Snow: Snowflake,
+  Blizzard: CloudSnow,
+  Fog: CloudFog,
+};
+
+const weatherOptions = computed(() => [
+  { label: t("settings.background.weather.none"), value: "None", icon: Ban },
+  ...WEATHER_EFFECTS.map((p) => ({
+    label: t(`settings.background.weather.${p.i18n}`),
+    value: p.key,
+    icon: WEATHER_ICONS[p.key] ?? CloudLightning,
+  })),
+]);
 
 const mainMenuStarsEnabled = computed(() => settingsStore.mainMenuStarsEnabled);
 const mainMenuMeteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled);
 const globalMouseTrailEnabled = computed(() => settingsStore.globalMouseTrailEnabled);
 const clickAnimationEnabled = computed(() => settingsStore.clickAnimationEnabled);
+const cursorEffectEngine = computed(() => settingsStore.cursorEffectEngine);
 const sceneAwarenessEnabled = computed(() => settingsStore.sceneAwarenessEnabled);
 const hdrModeEnabled = computed(() => settingsStore.hdrModeEnabled);
 const currentParticle = computed(() => settingsStore.backgroundEffect);
-
-// 粒子选项：注册表是唯一真相源，此处只负责把 i18n 后缀翻成当前语言
-const particleOptions = computed(() => [
-  { value: "None", label: t("settings.background.particle.none") },
-  ...PARTICLE_EFFECTS.map((p) => ({
-    value: p.key,
-    label: t(`settings.background.particle.${p.i18n}`),
-  })),
-]);
+const currentWeather = computed(() => settingsStore.weatherEffect);
 
 // 记录进入设置页时的初始值；开关改变后「立即重启」按钮才可用，改回原值则恢复置灰
 const initialHdrMode = ref(settingsStore.hdrModeEnabled);
@@ -556,9 +431,6 @@ const starsFps = computed({
   },
 });
 const starsFpsInput = ref(settingsStore.starsFps);
-
-const backgroundList = ref<BackgroundImageInfo[]>([]);
-const uploadInput = ref<HTMLInputElement | null>(null);
 
 // ── 硬件性能检测（CPU + GPU） ──
 const cpuInfo = ref<CpuInfo | null>(null);
@@ -600,199 +472,10 @@ const suggestedFps = computed(() =>
   combinedTier.value ? getSuggestedMaxFps(combinedTier.value) : 30,
 );
 
-const scenes = ref<SceneInfo[]>([]);
-const refreshing = ref(false);
-
-// 分页
-const ITEMS_PER_PAGE = 6;
-const currentPage = ref(1);
-const totalPages = computed(() => Math.max(1, Math.ceil(scenes.value.length / ITEMS_PER_PAGE)));
-const paginatedScenes = computed(() => {
-  const start = (currentPage.value - 1) * ITEMS_PER_PAGE;
-  return scenes.value.slice(start, start + ITEMS_PER_PAGE);
-});
-// 场景变化时回到第一页
-watch(scenes, () => {
-  if (currentPage.value > totalPages.value) currentPage.value = totalPages.value;
-});
-
-const showSceneEdit = ref(false);
-const editMode = ref<"create" | "update">("create");
-const editingSceneId = ref<string | null>(null);
-const editInitialData = ref<
-  | {
-      sceneName: string;
-      sceneImage: string | null;
-      sceneDescription: string;
-      lighting?: LightingParams | null;
-    }
-  | undefined
->();
-
-const currentSceneDisplay = computed(
-  () => gameStore.currentScene?.scene_name || t("settings.background.scene.none"),
-);
-const currentScene = computed(() => gameStore.currentScene);
-
-const fetchScenes = async () => {
-  try {
-    scenes.value = await listScenes();
-  } catch (error) {
-    console.error("获取场景列表失败", error);
-  }
-};
-
-const handleRefreshScenes = async () => {
-  if (refreshing.value) return;
-  refreshing.value = true;
-  try {
-    await Promise.all([fetchScenes(), refreshBackground()]);
-    uiStore.showSuccess({
-      title: t("settings.background.scene.refreshSuccess"),
-      duration: 2000,
-    });
-  } finally {
-    refreshing.value = false;
-  }
-};
-
-const isSceneSelected = (sceneId: string): boolean => {
-  return gameStore.currentScene?.id === sceneId;
-};
-
-const handleSceneClick = async (scene: SceneInfo) => {
-  // 点击当前已激活的场景则取消选中，背景默认为透明
-  if (gameStore.currentScene?.id === scene.id) {
-    gameStore.clearCurrentScene();
-    uiStore.setCurrentBackground("");
-    unlockAchievement("see_through").catch(console.error);
-    await fetchScenes();
-    return;
-  }
-
-  // 无描述时提醒用户
-  if (!scene.scene_description?.trim()) {
-    uiStore.showInfo({
-      title: t("settings.background.scene.tip"),
-      message: t("settings.background.scene.noDescriptionTip", { name: scene.scene_name }),
-      duration: 4000,
-    });
-  }
-
-  try {
-    await selectScene(scene.id);
-    gameStore.setCurrentScene(scene);
-    if (scene.background) {
-      uiStore.setCurrentBackground(scene.background);
-    }
-    await fetchScenes();
-  } catch (error) {
-    console.error("选择场景失败", error);
-  }
-};
-
-const handleWrenchClick = (scene: SceneInfo) => {
-  editMode.value = "update";
-  editingSceneId.value = scene.id;
-  editInitialData.value = {
-    sceneName: scene.scene_name,
-    sceneImage: scene.background || null,
-    sceneDescription: scene.scene_description,
-    lighting: scene.lighting,
-  };
-  showSceneEdit.value = true;
-};
-
-const handleCreateScene = () => {
-  editMode.value = "create";
-  editingSceneId.value = null;
-  editInitialData.value = undefined;
-  showSceneEdit.value = true;
-};
-
-const handleDeleteScene = async () => {
-  if (!currentScene.value) return;
-  if (currentScene.value.source && currentScene.value.source !== "game") {
-    await dialogStore.alert(t("settings.background.scene.pluginNotDeletable"));
-    return;
-  }
-  if (
-    !(await dialogStore.confirm(
-      t("settings.background.scene.deleteConfirm", { name: currentScene.value.scene_name }),
-    ))
-  )
-    return;
-
-  try {
-    await deleteScene(currentScene.value.id);
-    gameStore.clearCurrentScene();
-    await fetchScenes();
-  } catch (error) {
-    console.error("删除场景失败", error);
-  }
-};
-
-const handleSceneSubmit = async (data: {
-  sceneName: string;
-  sceneImage: string | null;
-  sceneDescription: string;
-  lighting?: LightingParams | null;
-}) => {
-  try {
-    if (editMode.value === "create") {
-      await createScene({
-        scene_name: data.sceneName,
-        scene_description: data.sceneDescription,
-        background: data.sceneImage || "",
-        lighting: data.lighting ?? null,
-      });
-    } else {
-      if (!editingSceneId.value) return;
-      await updateScene({
-        id: editingSceneId.value,
-        scene_name: data.sceneName,
-        scene_description: data.sceneDescription,
-        background: data.sceneImage || "",
-        lighting: data.lighting ?? null,
-      });
-    }
-    showSceneEdit.value = false;
-    await fetchScenes();
-
-    // 如果更新的是当前选中的场景，立即同步到 gameStore 使光影等参数即时生效
-    if (editMode.value === "update" && editingSceneId.value === gameStore.currentScene?.id) {
-      const updatedScene = scenes.value.find((s) => s.id === editingSceneId.value);
-      if (updatedScene) {
-        gameStore.setCurrentScene(updatedScene);
-        if (updatedScene.background) {
-          uiStore.setCurrentBackground(updatedScene.background);
-        }
-      }
-    }
-  } catch (error) {
-    console.error("操作失败", error);
-  }
-};
-
 onMounted(async () => {
-  try {
-    await refreshBackground();
-  } catch (error) {
-    console.error("加载背景图片失败", error);
-  }
-
-  await fetchScenes();
-
-  // 恢复上次选中的场景
-  if (gameStore.currentScene?.background) {
-    uiStore.setCurrentBackground(gameStore.currentScene.background);
-  }
-
   // 加载 CPU + GPU 性能信息
   await fetchPerfInfo();
 });
-
-// ── 硬件性能检测（CPU + GPU） ──
 
 async function fetchPerfInfo(): Promise<void> {
   perfLoading.value = true;
@@ -844,71 +527,14 @@ async function handleRedetectPerf(): Promise<void> {
   }
 }
 
-async function fetchBackgrounds(): Promise<BackgroundImageInfo[]> {
-  try {
-    const data = await getBackgroundImages();
-    return data.map((background: BackgroundImageInfo) => ({
-      title: background.title || "Untitled",
-      url: background.url || "",
-      time: background.time,
-    }));
-  } catch (error) {
-    console.error("Failed to fetch background list:", error);
-    return [];
-  }
-}
-
-async function refreshBackground(): Promise<void> {
-  const items = await fetchBackgrounds();
-  backgroundList.value = items;
-}
-
-function triggerUpload(): void {
-  uploadInput.value?.click();
-}
-
-async function handleFileUpload(event: Event): Promise<void> {
-  const target = event.target as HTMLInputElement;
-  const file = target.files?.[0];
-  if (!file) return;
-
-  const fileName = file.name;
-  const fileExt = fileName.slice(fileName.lastIndexOf(".")).toLowerCase();
-  const allowedExts = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".svg", ".tif", ".gif"];
-
-  if (!allowedExts.includes(fileExt)) {
-    await dialogStore.alert(
-      t("settings.background.upload.invalidFormat", { formats: allowedExts.join(", ") }),
-    );
-    return;
-  }
-
-  try {
-    const buf = await file.arrayBuffer();
-    await uploadBackgroundImage(fileName, new Uint8Array(buf));
-    await refreshBackground();
-    // 刷新场景列表（后端会自动将新背景注册为场景）
-    await fetchScenes();
-    if (target) target.value = "";
-  } catch (error) {
-    console.error("上传失败", error);
-    await dialogStore.alert(t("settings.background.upload.failed"));
-  }
-}
-
 function updateParticle(value: string): void {
   uiStore.setBackgroundEffect(value);
 }
 
-async function handleOpenFolder(): Promise<void> {
-  try {
-    await openBackgroundsFolder();
-  } catch (e: any) {
-    uiStore.showError({
-      title: t("settings.background.folder.errorTitle"),
-      message: t("settings.background.folder.openFailed"),
-    });
-  }
+// 天气层直接写自己的槽位，不走 applyEffectValue —— 那会把氛围层一起清掉，
+// 而设置页正是要允许两层并存的地方
+function updateWeather(value: string): void {
+  uiStore.setWeatherEffect(value);
 }
 
 function handleMeteorFpsChange(value: number) {
@@ -954,16 +580,4 @@ function handleStarsInputEnter() {
 watch(starsFps, (newValue) => {
   starsFpsInput.value = newValue;
 });
-
-// ── 对话框外观 ──
-const dialogBgInput = ref<HTMLInputElement | null>(null);
-
-function hexToRgba(hex: string, alpha: number): string {
-  const m = hex.replace("#", "").match(/^([0-9a-fA-F]{6})$/);
-  if (!m) return `rgba(0,14,39,${alpha})`;
-  const r = parseInt(m[1]!.substring(0, 2), 16);
-  const g = parseInt(m[1]!.substring(2, 4), 16);
-  const b = parseInt(m[1]!.substring(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
 </script>

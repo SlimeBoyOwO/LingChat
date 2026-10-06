@@ -18,30 +18,31 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use sea_orm::DatabaseConnection;
-use tauri::App;
+use tauri::{App, Manager};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
-use crate::ai_service::emotion::EmotionClassifier;
-use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
-use crate::ai_service::god_agent::GodAgentCore;
-use crate::ai_service::god_agent::config::resolve_god_agent_provider;
-use crate::ai_service::llm::LlmSlot;
-use crate::ai_service::llm::provider_config::{
+use ling_chat_main::ai_service::emotion::EmotionClassifier;
+use ling_chat_main::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
+use ling_chat_main::ai_service::god_agent::GodAgentCore;
+use ling_chat_main::ai_service::god_agent::config::resolve_god_agent_provider;
+use ling_chat_main::ai_service::llm::LlmSlot;
+use ling_chat_main::ai_service::llm::provider_config::{
     build_llm_client_from_provider, resolve_chat_provider, resolve_translate_provider,
 };
-use crate::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
-use crate::ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
-use crate::ai_service::service::{AIService, SharedAIService};
-use crate::ai_service::translator::Translator;
-use crate::ai_service::tts::local::LocalTtsRuntime;
-use crate::ai_service::types::CharacterSettings;
-use crate::app::state::{ChatComponents, InnerAppState, ScreenshotCaptureState};
-use crate::config::{self, AppConfig};
-use crate::db;
-use crate::db::managers::role_repo::RoleRepo;
-use crate::utils::prompt::PromptOptions;
-use crate::{achievements, ai_service, api, plugins};
+use ling_chat_main::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
+use ling_chat_main::ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
+use ling_chat_main::ai_service::service::{AIService, SharedAIService};
+use ling_chat_main::ai_service::translator::Translator;
+use ling_chat_main::ai_service::tts::local::LocalTtsRuntime;
+use ling_chat_main::ai_service::types::CharacterSettings;
+use ling_chat_main::config::{self, AppConfig};
+use ling_chat_main::db;
+use ling_chat_main::db::managers::role_repo::RoleRepo;
+use ling_chat_main::utils::prompt::PromptOptions;
+use ling_chat_main::{ChatComponents, InnerAppState, ScreenshotCaptureState};
+use ling_chat_main::{achievements, ai_service, api};
+use ling_chat_plugins as plugins;
 
 /// 建图结果。
 pub(super) struct Services {
@@ -73,8 +74,8 @@ pub(super) fn build_service_graph(
     // 构建聊天主 LLM 槽位（支持运行时热切换）。
     // 槽位本身始终存在，未配置模型时内部值为 None。
     let llm: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(
-        resolve_chat_provider(&app.handle())
-            .and_then(|p| build_llm_client_from_provider(&app.handle(), &p))
+        resolve_chat_provider(app.handle())
+            .and_then(|p| build_llm_client_from_provider(app.handle(), &p))
             .map(Arc::new),
     ));
 
@@ -130,8 +131,8 @@ pub(super) fn build_service_graph(
     // —— 构建聊天组件 ——
     // 翻译 LLM 槽位（支持运行时热切换）；槽位本身始终存在。
     let translate_llm: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(
-        resolve_translate_provider(&app.handle())
-            .and_then(|p| build_llm_client_from_provider(&app.handle(), &p))
+        resolve_translate_provider(app.handle())
+            .and_then(|p| build_llm_client_from_provider(app.handle(), &p))
             .map(Arc::new),
     ));
 
@@ -175,7 +176,9 @@ pub(super) fn build_service_graph(
     )?);
 
     // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）。
-    let plugin_manager = {
+    // `PluginManager` 以 `Arc<PluginManager>` 单独 manage，供插件侧代码用
+    // `app.state::<Arc<PluginManager>>()` 取自己；宿主业务侧只经下面的窄接口读取资源。
+    let plugin_resources: Arc<dyn ling_chat_main::plugin_contract::PluginResourceSource> = {
         let data_dir = api::data_dir();
         let plugins_root = data_dir.join("plugins");
         if std::fs::create_dir_all(&plugins_root).is_err() {
@@ -189,6 +192,7 @@ pub(super) fn build_service_graph(
         if let Err(e) = tool_registry.save_permissions(&data_dir) {
             tracing::warn!("插件注册后保存权限配置失败: {e}");
         }
+        app.manage(manager.clone());
         manager
     };
 
@@ -221,7 +225,7 @@ pub(super) fn build_service_graph(
 
     // 创建屏幕分析器
     let screen_analyzer = {
-        let sa_config = ScreenAnalyzerConfig::resolve(&app.handle());
+        let sa_config = ScreenAnalyzerConfig::resolve(app.handle());
         std::sync::Arc::new(tokio::sync::Mutex::new(ScreenAnalyzer::new(sa_config)))
     };
 
@@ -239,8 +243,8 @@ pub(super) fn build_service_graph(
     ));
 
     // 构建上帝 Agent（多人对话编排器）—— 使用独立槽位以支持热切换
-    let god_agent = resolve_god_agent_provider(&app.handle()).map(|llm| {
-        let config = ai_service::god_agent::config::GodAgentConfig::load(&app.handle());
+    let god_agent = resolve_god_agent_provider(app.handle()).map(|llm| {
+        let config = ai_service::god_agent::config::GodAgentConfig::load(app.handle());
         let slot: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(Some(Arc::new(llm))));
         Arc::new(GodAgentCore::new(slot, config))
     });
@@ -259,7 +263,7 @@ pub(super) fn build_service_graph(
         generation_lock,
         tool_registry,
         tool_settings,
-        plugin_manager,
+        plugin_resources,
         proactive_system: Some(proactive),
         achievement_manager,
         screen_analyzer,

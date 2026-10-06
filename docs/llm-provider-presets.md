@@ -64,5 +64,5 @@
 - **`key` 必须唯一**：重复会导致按钮渲染异常。
 - 预设只是**填充表单**，不会自动保存或测试连接；用户仍需点击「保存」。
 - 若需支持新的 `provider` 类型（除 openai / lmstudio 外），需要同时在 Rust 侧
-  `src-tauri/src/ai_service/llm/provider_config.rs`（`build_llm_client_from_provider`）
+  `crates/ling-chat-main/src/ai_service/llm/provider_config.rs`（`build_llm_client_from_provider`）
   增加对应分支，否则前端填了也连不上。

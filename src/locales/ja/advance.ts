@@ -39,5 +39,12 @@ export default {
     memoryDesc:
       "キャラクターの記憶バンクと実際のコンテキストを確認し、記憶の圧縮・注入の問題を調査します",
     memoryButton: "記憶デバッグ画面へ",
+    affectionTitle: "好感度システム",
+    affectionDesc:
+      "好感度システムのマスタースイッチ（保存後すぐ有効）。鼓動・波アニメーションの切替は「その他の詳細設定」にあります",
+    affectionMasterToggle: "好感度システムを有効化",
+    affectionToggleConfirm:
+      "好感度システムを切り替えますか？オフにすると、好感度の評価が直ちに停止し、好感度パネルも非表示になります。",
+    affectionToggleFailed: "好感度システムの切替に失敗しました。後でもう一度お試しください",
   },
 };

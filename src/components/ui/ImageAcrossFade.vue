@@ -2,6 +2,9 @@
   <div class="relative h-full w-full">
     <!-- 底层图片（当前显示的图片） -->
     <slot></slot>
+    <!-- 叠层插槽：两个背景层都是 absolute inset-0，放进来的东西也用 absolute inset-0 就与
+         立绘的绘制盒子结构上重合，不必去猜这一层的 relative 与外部传入的 absolute 谁生效 -->
+    <slot name="overlay"></slot>
     <div
       class="absolute inset-0 z-10 h-full w-full bg-no-repeat will-change-[opacity,background-image] backface-hidden"
       :style="{

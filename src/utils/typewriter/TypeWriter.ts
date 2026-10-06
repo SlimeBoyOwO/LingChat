@@ -18,6 +18,8 @@ export class TypeWriter {
 
   private onFinishCallback: (() => void) | null;
   private onTextUpdateCallback: ((text: string) => void) | null;
+  /** 本次 start() 的收口函数：被 finish() 抢先补全时由它 resolve，否则 await start() 永挂 */
+  private pendingResolve: (() => void) | null;
 
   // Audio
   private audioContext: AudioContext | null;
@@ -42,6 +44,7 @@ export class TypeWriter {
     this.writeFn = writeFn || null;
     this.onFinishCallback = null;
     this.onTextUpdateCallback = onTextUpdateCallback || null;
+    this.pendingResolve = null;
     this.audioContext = null;
     this.soundBuffers = [];
     this.soundUrls = soundUrls ?? ["../audio_effects/对话.wav"];
@@ -158,6 +161,7 @@ export class TypeWriter {
     }
 
     return new Promise<void>((resolve) => {
+      this.pendingResolve = resolve;
       const typing = (): void => {
         // Guard: stale generation means a newer start() has taken over
         if (this.generation !== currentGen) {
@@ -257,6 +261,10 @@ export class TypeWriter {
     if (this.onFinishCallback) {
       this.onFinishCallback();
     }
+    // 收口 start() 的 promise：自然完成已在闭包里 resolve 过，这里补的是被 finish() 抢先补全的那条
+    const settle = this.pendingResolve;
+    this.pendingResolve = null;
+    settle?.();
   }
 
   /**
@@ -268,6 +276,9 @@ export class TypeWriter {
     this.generation++; // invalidate any lingering typing closures
     this.typingLoop = null;
     this._status = "idle";
+    // 只丢弃、不 resolve：被新渲染顶掉的旧 start() 必须永远停在 await 上，
+    // 否则它会复活并发出属于上一句的完成信号（调用方靠 token 判别过期渲染）
+    this.pendingResolve = null;
   }
 
   /** Clear the DOM element and internal text buffer. */

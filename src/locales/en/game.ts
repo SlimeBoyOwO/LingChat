@@ -53,6 +53,26 @@ export default {
     stopAll: "Stop All",
     noAmbientPlaying: "No ambient sounds playing",
     availableAmbient: "Available Ambient Sounds",
+    spectrum: {
+      title: "Audio Spectrum",
+      hint: "Samples the background music and ambient sounds in real time, shown at the bottom right",
+      palette: "Palette",
+      styleMirror: "Mirror",
+      styleBars: "Bars",
+      styleRing: "Ring",
+      custom: "Custom",
+      customFrom: "Primary",
+      customTo: "Secondary",
+    },
+  },
+  // Mini spectrum at the bottom right (mirrors the sound button at the bottom left)
+  spectrum: {
+    title: "Audio Spectrum",
+    expand: "Expand spectrum panel",
+    collapse: "Collapse",
+    idle: "Silent",
+    paused: "Paused",
+    ambientCount: "Ambient ×{n}",
   },
   freeDialogue: {
     banner: "Entering Free Chat",

@@ -1,0 +1,913 @@
+//! 主聊天可用的技能库 / 文件沙箱 / 命令执行工具。
+//!
+//! 复用 skill_agent 的技能发现（`skills.rs`）、文件沙箱（`file_tools.rs`）与
+//! 命令执行（`command_executor.rs`），让主对话角色也能读技能、操作文件、跑命令。
+//! 文件工具默认锁定沙箱（`data/`），仅「完全访问」模式会放开任意路径。
+//! `execute_command` 默认每次都要用户在前端弹窗确认（`chat:command_approval`
+//! 事件 + `resolve_command_approval` 回调），可在工具配置开启免确认；
+//! `uac=true` 时以管理员权限运行（Windows 弹系统 UAC 框）；耗时任务可选择后台
+//! 运行，任务完成后会自动触发一轮仅对模型可见的结果通知。
+//! 不含 `validate_script`（剧本编辑器会话专用）。
+
+use std::time::Duration;
+
+use async_trait::async_trait;
+use serde_json::{Value, json};
+use tauri::{AppHandle, Emitter, Manager};
+
+use crate::AppState;
+use crate::ai_service::skill_agent::command_executor::{self, ApprovalMap, ApprovalRequest};
+use crate::ai_service::skill_agent::config::SkillAgentConfig;
+use crate::ai_service::skill_agent::file_tools::{
+    FileTools, GrepOutput, GrepResult, MAX_GLOB_RESULTS, MAX_GREP_RESULTS,
+};
+use crate::ai_service::skill_agent::skills;
+use crate::ai_service::types::ToolDefinition;
+
+use super::background_command;
+use super::executor::{Tool, ToolContext, ToolError, ToolResult};
+use super::settings::SharedToolSettings;
+
+const SKILL_TOOL_TIMEOUT: Duration = Duration::from_secs(5);
+const FILE_TOOL_TIMEOUT: Duration = Duration::from_secs(15);
+const FILE_MUTATION_TOOL_TIMEOUT: Duration = Duration::from_secs(135);
+const DELETE_FILE_TOOL_TIMEOUT: Duration = Duration::from_secs(135);
+
+/// 从工具上下文加载 skill agent 配置（沙箱目录 / 任意路径开关）。
+fn load_config(context: &ToolContext) -> Result<SkillAgentConfig, ToolError> {
+    let app = context.require_app()?;
+    Ok(SkillAgentConfig::load(&app))
+}
+
+/// 由配置构造文件沙箱工具。「助手设置」或工具配置任一方放开任意路径即生效。
+fn file_tools(config: &SkillAgentConfig, settings: &SharedToolSettings) -> FileTools {
+    FileTools {
+        sandbox_dir: config.resolve_sandbox_dir(),
+        allow_any_path: settings.get().allows_any_path(),
+    }
+}
+
+fn arg_str<'a>(arguments: &'a Value, key: &str) -> Result<&'a str, ToolError> {
+    let value = arguments.get(key).and_then(Value::as_str).unwrap_or("");
+    if value.trim().is_empty() {
+        return Err(ToolError::InvalidArguments(format!("缺少 {key} 参数")));
+    }
+    Ok(value)
+}
+
+/// 把文件沙箱的 anyhow 错误转成工具执行错误。
+fn to_tool_error(error: anyhow::Error) -> ToolError {
+    ToolError::Execution(error.to_string())
+}
+
+/// 把 grep 的结构化结果编成 JSON；`matches` 元素形态随 `output_mode` 变化。
+fn grep_result_json(pattern: &str, output_mode: &str, result: GrepResult) -> Value {
+    let matches: Vec<Value> = match result.output {
+        GrepOutput::Content(items) => items
+            .into_iter()
+            .map(|hit| json!({ "path": hit.path, "line": hit.line, "text": hit.text }))
+            .collect(),
+        GrepOutput::Files(items) => items.into_iter().map(Value::String).collect(),
+        GrepOutput::Count(items) => items
+            .into_iter()
+            .map(|(path, count)| json!({ "path": path, "count": count }))
+            .collect(),
+    };
+    json!({
+        "ok": true,
+        "pattern": pattern,
+        "output_mode": output_mode,
+        "matches": matches,
+        "truncated": result.truncated,
+    })
+}
+
+async fn run_blocking<F>(work: F) -> Result<ToolResult, ToolError>
+where
+    F: FnOnce() -> Result<ToolResult, ToolError> + Send + 'static,
+{
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|error| ToolError::Execution(format!("文件工具后台任务异常: {error}")))?
+}
+
+/// 发送主聊天审批事件并等待用户决定。审批请求自身 120 秒超时，调用工具的
+/// `timeout_hint` 必须留出额外清理时间。
+async fn request_user_approval(
+    app: &AppHandle,
+    approvals: ApprovalMap,
+    event: &str,
+    mut payload: Value,
+    action: &str,
+) -> Result<(), ToolError> {
+    let request_id = command_executor::new_request_id();
+    let object = payload
+        .as_object_mut()
+        .ok_or_else(|| ToolError::Execution("审批事件载荷必须是 JSON object".into()))?;
+    object.insert("request_id".into(), Value::String(request_id.clone()));
+
+    let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
+    approvals
+        .lock()
+        .await
+        .insert(request_id.clone(), ApprovalRequest { tx });
+    // 审批框只挂载在主窗口。使用全局广播会让日志/截图等独立窗口也收到事件，
+    // 这些窗口没有 AppDialog，回调会一直等待并最终触发 120 秒超时。
+    if app.get_webview_window("main").is_none() {
+        approvals.lock().await.remove(&request_id);
+        return Err(ToolError::Execution(format!(
+            "无法发送{action}审批请求: 主窗口不可用"
+        )));
+    }
+    if let Err(error) = app.emit_to("main", event, payload) {
+        approvals.lock().await.remove(&request_id);
+        return Err(ToolError::Execution(format!(
+            "无法发送{action}审批请求: {error}"
+        )));
+    }
+    tracing::info!("[approval] 已向主窗口发送审批事件: event={event} request_id={request_id}");
+
+    let decision = tokio::time::timeout(Duration::from_secs(120), rx).await;
+    approvals.lock().await.remove(&request_id);
+    match decision {
+        Ok(Ok(true)) => {
+            tracing::info!("[approval] 用户已批准: request_id={request_id}");
+            Ok(())
+        },
+        Ok(Ok(false)) => Err(ToolError::Execution(format!("{action}已被用户拒绝"))),
+        Ok(Err(_)) => Err(ToolError::Execution(format!(
+            "审批通道已关闭，{action}未执行"
+        ))),
+        Err(_) => Err(ToolError::Execution(format!(
+            "{action}审批超时（120 秒），已自动拒绝"
+        ))),
+    }
+}
+
+/// list_skills：列出技能库中全部可用技能。
+pub struct ListSkills;
+
+#[async_trait]
+impl Tool for ListSkills {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            "list_skills",
+            "列出所有可用技能的名称、描述与位置。",
+            json!({"type": "object", "properties": {}, "additionalProperties": false}),
+        )
+    }
+
+    fn timeout_hint(&self) -> Option<Duration> {
+        Some(SKILL_TOOL_TIMEOUT)
+    }
+
+    async fn execute(&self, context: &ToolContext, _: Value) -> Result<ToolResult, ToolError> {
+        let config = load_config(context)?;
+        let skills_dir = config.resolve_skills_dir();
+        let found = tokio::task::spawn_blocking(move || skills::find_all_skills(&skills_dir))
+            .await
+            .map_err(|error| ToolError::Execution(format!("技能扫描后台任务异常: {error}")))?;
+        let skills: Vec<Value> = found
+            .iter()
+            .map(|skill| {
+                json!({
+                    "name": skill.name,
+                    "location": skill.location,
+                    "description": skill.description,
+                })
+            })
+            .collect();
+        Ok(json!({ "ok": true, "skills": skills }))
+    }
+}
+
+/// read_skill：把某个技能的 SKILL.md 指令加载进上下文。
+pub struct ReadSkill;
+
+#[async_trait]
+impl Tool for ReadSkill {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            "read_skill",
+            "加载某个技能的 SKILL.md 指令到上下文。当任务匹配某个可用技能的描述时，在执行任务前调用它。",
+            json!({
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "要加载的技能名（kebab-case）"}
+                },
+                "required": ["name"],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    fn timeout_hint(&self) -> Option<Duration> {
+        Some(SKILL_TOOL_TIMEOUT)
+    }
+
+    async fn execute(
+        &self,
+        context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
+        let config = load_config(context)?;
+        let name = arg_str(&arguments, "name")?.to_string();
+        let skills_dir = config.resolve_skills_dir();
+        let found = tokio::task::spawn_blocking(move || skills::find_skill(&skills_dir, &name))
+            .await
+            .map_err(|error| ToolError::Execution(format!("技能读取后台任务异常: {error}")))?;
+        match found {
+            Some(res) => Ok(json!({
+                "ok": true,
+                "name": res.name,
+                "base_directory": res.base_directory.display().to_string(),
+                "content": res.content,
+            })),
+            None => Err(ToolError::Execution(
+                "未找到技能，或技能名称/文件不安全".into(),
+            )),
+        }
+    }
+}
+
+/// 文件类工具共用：持有工具配置句柄（沙箱外开关热更新）。
+macro_rules! file_tool {
+    ($name:ident, $tool_name:literal, $desc:literal, $schema:expr, $body:expr) => {
+        pub struct $name {
+            settings: SharedToolSettings,
+        }
+
+        impl $name {
+            pub fn new(settings: SharedToolSettings) -> Self {
+                Self { settings }
+            }
+        }
+
+        #[async_trait]
+        impl Tool for $name {
+            fn definition(&self) -> ToolDefinition {
+                ToolDefinition::new($tool_name, $desc, $schema)
+            }
+
+            fn timeout_hint(&self) -> Option<Duration> {
+                Some(FILE_TOOL_TIMEOUT)
+            }
+
+            async fn execute(
+                &self,
+                context: &ToolContext,
+                arguments: Value,
+            ) -> Result<ToolResult, ToolError> {
+                let config = load_config(context)?;
+                let ft = file_tools(&config, &self.settings);
+                let run: fn(&FileTools, &Value) -> Result<ToolResult, ToolError> = $body;
+                run_blocking(move || run(&ft, &arguments)).await
+            }
+        }
+    };
+}
+
+/// 带副作用的文件工具：逐次确认模式下先展示规范化目标路径，再执行修改。
+macro_rules! mutating_file_tool {
+    ($name:ident, $tool_name:literal, $desc:literal, $operation:literal, $schema:expr, $body:expr) => {
+        pub struct $name {
+            settings: SharedToolSettings,
+        }
+
+        impl $name {
+            pub fn new(settings: SharedToolSettings) -> Self {
+                Self { settings }
+            }
+        }
+
+        #[async_trait]
+        impl Tool for $name {
+            fn definition(&self) -> ToolDefinition {
+                ToolDefinition::new($tool_name, $desc, $schema)
+            }
+
+            fn timeout_hint(&self) -> Option<Duration> {
+                Some(FILE_MUTATION_TOOL_TIMEOUT)
+            }
+
+            async fn execute(
+                &self,
+                context: &ToolContext,
+                arguments: Value,
+            ) -> Result<ToolResult, ToolError> {
+                let app = context.require_app()?;
+                let config = SkillAgentConfig::load(&app);
+                let ft = file_tools(&config, &self.settings);
+                if self.settings.get().requires_file_change_approval() {
+                    let path = arg_str(&arguments, "path")?;
+                    let display_path = ft
+                        .sanitize(path)
+                        .map_err(|error| ToolError::Execution(error.to_string()))?
+                        .display()
+                        .to_string();
+                    let approvals = app.state::<AppState>().chat_file_change_approvals.clone();
+                    request_user_approval(
+                        &app,
+                        approvals,
+                        "chat:file_change_approval",
+                        json!({ "path": display_path, "operation": $operation }),
+                        "文件修改",
+                    )
+                    .await?;
+                }
+                let run: fn(&FileTools, &Value) -> Result<ToolResult, ToolError> = $body;
+                run_blocking(move || run(&ft, &arguments)).await
+            }
+        }
+    };
+}
+
+file_tool!(
+    ListFiles,
+    "list_files",
+    "列出指定目录下的文件与子目录。",
+    json!({
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "目录路径，绝对路径或相对于文件沙箱根目录"}
+        },
+        "required": ["path"],
+        "additionalProperties": false
+    }),
+    |ft: &FileTools, args: &Value| {
+        let path = arg_str(args, "path")?;
+        let result = ft.list_entries(path).map_err(to_tool_error)?;
+        Ok(json!({
+            "ok": true,
+            "path": result.dir.display().to_string(),
+            "entries": result
+                .entries
+                .iter()
+                .map(|entry| json!({ "name": entry.name, "kind": entry.kind.as_str() }))
+                .collect::<Vec<_>>(),
+            "truncated": result.truncated,
+        }))
+    }
+);
+
+file_tool!(
+    ReadFile,
+    "read_file",
+    "读取文本文件的内容。",
+    json!({
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "文件路径，绝对路径或相对于文件沙箱根目录"}
+        },
+        "required": ["path"],
+        "additionalProperties": false
+    }),
+    |ft: &FileTools, args: &Value| {
+        let path = arg_str(args, "path")?;
+        let safe_path = ft
+            .sanitize(path)
+            .map_err(|error| ToolError::Execution(error.to_string()))?;
+        if super::read_media_file::is_supported_media_file(&safe_path) {
+            return Ok(json!({
+                "ok": false,
+                "error": {
+                    "code": "media_file",
+                    "message": "这是图片或视频文件，请改用 ReadMediaFile 识别媒体内容"
+                }
+            }));
+        }
+        let result = ft.read_text(path).map_err(to_tool_error)?;
+        Ok(json!({
+            "ok": true,
+            "path": result.path.display().to_string(),
+            "content": result.content,
+            "truncated": result.truncated,
+        }))
+    }
+);
+
+mutating_file_tool!(
+    WriteFile,
+    "write_file",
+    "向文件写入内容，自动创建父目录。逐次确认模式会在写入前询问；默认覆盖整个文件，append=true 时追加。",
+    "write",
+    json!({
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "文件路径，绝对路径或相对于文件沙箱根目录"},
+            "content": {"type": "string", "description": "要写入的内容（append=true 时为要追加的内容）"},
+            "append": {"type": "boolean", "description": "true 表示追加到已有文件末尾，仅用于修复被截断的写入"}
+        },
+        "required": ["path", "content"],
+        "additionalProperties": false
+    }),
+    |ft: &FileTools, args: &Value| {
+        let path = arg_str(args, "path")?;
+        let content = args
+            .get("content")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ToolError::InvalidArguments("缺少 content 参数".into()))?;
+        let append = args.get("append").and_then(Value::as_bool).unwrap_or(false);
+        let result = ft
+            .write_text(path, content, append)
+            .map_err(to_tool_error)?;
+        Ok(json!({
+            "ok": true,
+            "path": result.path.display().to_string(),
+            "bytes": result.bytes,
+            "appended": result.appended,
+        }))
+    }
+);
+
+/// delete_file：默认在真正删除前弹窗显示解析后的目标路径并等待确认。
+pub struct DeleteFile {
+    settings: SharedToolSettings,
+}
+
+impl DeleteFile {
+    pub fn new(settings: SharedToolSettings) -> Self {
+        Self { settings }
+    }
+}
+
+#[async_trait]
+impl Tool for DeleteFile {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            "delete_file",
+            "删除一个文件。默认会先向用户显示目标路径并请求确认；用户拒绝或审批超时则不会删除。",
+            json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "要删除的文件路径"}
+                },
+                "required": ["path"],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    fn timeout_hint(&self) -> Option<Duration> {
+        Some(DELETE_FILE_TOOL_TIMEOUT)
+    }
+
+    async fn execute(
+        &self,
+        context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
+        let app = context.require_app()?;
+        let path = arg_str(&arguments, "path")?.to_string();
+        let config = SkillAgentConfig::load(&app);
+        let ft = file_tools(&config, &self.settings);
+
+        // 审批前先做同样的沙箱/类型检查，确保弹窗展示真实且允许访问的目标。
+        let checked_ft = ft.clone();
+        let checked_path = path.clone();
+        let display_path = tokio::task::spawn_blocking(move || {
+            let target = checked_ft
+                .sanitize(&checked_path)
+                .map_err(|error| ToolError::Execution(error.to_string()))?;
+            let metadata = std::fs::symlink_metadata(&target)
+                .map_err(|_| ToolError::Execution(format!("文件不存在: {}", target.display())))?;
+            if metadata.file_type().is_dir() {
+                return Err(ToolError::Execution(format!(
+                    "delete_file 只能删除文件，不能删除目录: {}",
+                    target.display()
+                )));
+            }
+            Ok(target.display().to_string())
+        })
+        .await
+        .map_err(|error| ToolError::Execution(format!("删除目标检查异常: {error}")))??;
+
+        if self.settings.get().requires_file_delete_approval() {
+            let approvals = app.state::<AppState>().chat_file_delete_approvals.clone();
+            request_user_approval(
+                &app,
+                approvals,
+                "chat:file_delete_approval",
+                json!({ "path": display_path }),
+                "文件删除",
+            )
+            .await?;
+        }
+
+        run_blocking(move || {
+            let file = ft.remove_file(&path).map_err(to_tool_error)?;
+            Ok(json!({ "ok": true, "path": file.display().to_string() }))
+        })
+        .await
+    }
+}
+
+mutating_file_tool!(
+    EditFile,
+    "edit_file",
+    "精确替换文件中的文本。逐次确认模式会在编辑前询问；old_string 必须唯一匹配（除非 replace_all=true）。",
+    "edit",
+    json!({
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "文件路径，绝对路径或相对于文件沙箱根目录"},
+            "old_string": {"type": "string", "description": "要被替换的原文（须唯一匹配）"},
+            "new_string": {"type": "string", "description": "替换成的新文本"},
+            "replace_all": {"type": "boolean", "description": "true 时替换全部匹配处"}
+        },
+        "required": ["path", "old_string", "new_string"],
+        "additionalProperties": false
+    }),
+    |ft: &FileTools, args: &Value| {
+        let path = arg_str(args, "path")?;
+        let old_string = args
+            .get("old_string")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ToolError::InvalidArguments("缺少 old_string 参数".into()))?;
+        let new_string = args
+            .get("new_string")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ToolError::InvalidArguments("缺少 new_string 参数".into()))?;
+        let replace_all = args
+            .get("replace_all")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let result = ft
+            .edit_text(path, old_string, new_string, replace_all)
+            .map_err(to_tool_error)?;
+        Ok(json!({
+            "ok": true,
+            "path": result.path.display().to_string(),
+            "replacements": result.replacements,
+        }))
+    }
+);
+
+file_tool!(
+    SearchFiles,
+    "search_files",
+    "按文件名通配符（* 匹配任意序列、? 匹配单字符，大小写不敏感）在目录中递归查找文件，返回路径列表。",
+    json!({
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "要搜索的目录，绝对路径或相对于文件沙箱根目录"},
+            "pattern": {"type": "string", "description": "文件名通配符，如 *.txt、report_????.csv"}
+        },
+        "required": ["path", "pattern"],
+        "additionalProperties": false
+    }),
+    |ft: &FileTools, args: &Value| {
+        let path = arg_str(args, "path")?;
+        let pattern = arg_str(args, "pattern")?;
+        let result = ft.search_names(path, pattern).map_err(to_tool_error)?;
+        Ok(json!({
+            "ok": true,
+            "pattern": pattern,
+            "matches": result.hits,
+            "truncated": result.truncated,
+        }))
+    }
+);
+
+file_tool!(
+    GrepFiles,
+    "grep_files",
+    "用正则表达式在目录的文本文件中搜索内容，返回 文件:行号: 内容 列表（大文件与二进制自动跳过）。",
+    json!({
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "要搜索的目录，绝对路径或相对于文件沙箱根目录"},
+            "pattern": {"type": "string", "description": "正则表达式"},
+            "max_results": {"type": "integer", "description": "最多返回多少条匹配（默认 50，上限 100）"}
+        },
+        "required": ["path", "pattern"],
+        "additionalProperties": false
+    }),
+    |ft: &FileTools, args: &Value| {
+        let path = arg_str(args, "path")?;
+        let pattern = arg_str(args, "pattern")?;
+        let max_results = args
+            .get("max_results")
+            .and_then(Value::as_u64)
+            .map(|n| n.min(MAX_GREP_RESULTS as u64) as usize)
+            .unwrap_or(50);
+        let result = ft
+            .grep_output(path, pattern, None, false, "content", max_results)
+            .map_err(to_tool_error)?;
+        Ok(grep_result_json(pattern, "content", result))
+    }
+);
+
+file_tool!(
+    Glob,
+    "glob",
+    "按 glob 模式递归查找文件。支持 *、? 和 **（例如 **/*.py）；只读工具，无需审批。",
+    json!({
+        "type": "object",
+        "properties": {
+            "pattern": {"type": "string", "description": "glob 模式，例如 **/*.rs、src/**/*.vue"},
+            "path": {"type": "string", "description": "搜索根目录；默认文件沙箱根目录"},
+            "max_results": {"type": "integer", "description": "最多返回条数，默认 100，最大 100"}
+        },
+        "required": ["pattern"],
+        "additionalProperties": false
+    }),
+    |ft: &FileTools, args: &Value| {
+        let pattern = arg_str(args, "pattern")?;
+        let path = args.get("path").and_then(Value::as_str).unwrap_or(".");
+        let max_results = args
+            .get("max_results")
+            .and_then(Value::as_u64)
+            .map(|n| n.min(MAX_GLOB_RESULTS as u64) as usize)
+            .unwrap_or(MAX_GLOB_RESULTS);
+        let result = ft
+            .glob_paths(path, pattern, max_results)
+            .map_err(to_tool_error)?;
+        Ok(json!({
+            "ok": true,
+            "pattern": pattern,
+            "matches": result.hits,
+            "truncated": result.truncated,
+        }))
+    }
+);
+
+file_tool!(
+    Grep,
+    "grep",
+    "用正则表达式递归搜索文本内容，支持 glob 文件过滤、忽略大小写及内容/文件名/计数输出；只读工具，无需审批。",
+    json!({
+        "type": "object",
+        "properties": {
+            "pattern": {"type": "string", "description": "Rust 正则表达式"},
+            "path": {"type": "string", "description": "搜索根目录；默认文件沙箱根目录"},
+            "glob": {"type": "string", "description": "可选文件 glob 过滤，例如 **/*.rs"},
+            "case_insensitive": {"type": "boolean", "description": "是否忽略大小写，默认 false"},
+            "output_mode": {"type": "string", "enum": ["content", "files_with_matches", "count"], "description": "输出匹配行、匹配文件名或每文件匹配数"},
+            "max_results": {"type": "integer", "description": "最多返回条数，默认 50，最大 100"}
+        },
+        "required": ["pattern"],
+        "additionalProperties": false
+    }),
+    |ft: &FileTools, args: &Value| {
+        let pattern = arg_str(args, "pattern")?;
+        let path = args.get("path").and_then(Value::as_str).unwrap_or(".");
+        let file_glob = args
+            .get("glob")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty());
+        let case_insensitive = args
+            .get("case_insensitive")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let output_mode = args
+            .get("output_mode")
+            .and_then(Value::as_str)
+            .unwrap_or("content");
+        let max_results = args
+            .get("max_results")
+            .and_then(Value::as_u64)
+            .map(|n| n.min(MAX_GREP_RESULTS as u64) as usize)
+            .unwrap_or(50);
+        let result = ft
+            .grep_output(
+                path,
+                pattern,
+                file_glob,
+                case_insensitive,
+                output_mode,
+                max_results,
+            )
+            .map_err(to_tool_error)?;
+        Ok(grep_result_json(pattern, output_mode, result))
+    }
+);
+
+/// 保守识别常见的文件删除命令。任意 shell/程序都可能间接删除文件，因此这里
+/// 优先避免漏报；误报只会多要求一次用户确认，不会改变命令内容。
+#[cfg_attr(not(desktop), allow(dead_code))]
+fn command_may_delete_files(command: &str) -> bool {
+    let normalized = command.to_ascii_lowercase();
+    let tokens = normalized
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.')))
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+
+    if tokens.iter().any(|token| {
+        matches!(
+            *token,
+            "del"
+                | "del.exe"
+                | "erase"
+                | "erase.exe"
+                | "rd"
+                | "rd.exe"
+                | "rmdir"
+                | "rmdir.exe"
+                | "rm"
+                | "rm.exe"
+                | "ri"
+                | "unlink"
+                | "unlink.exe"
+                | "shred"
+                | "shred.exe"
+                | "sdelete"
+                | "sdelete.exe"
+                | "rimraf"
+                | "rimraf.cmd"
+                | "truncate"
+                | "truncate.exe"
+                | "remove-item"
+                | "clear-content"
+                | "-delete"
+                | "--delete"
+        )
+    }) {
+        return true;
+    }
+
+    (tokens.contains(&"git") || tokens.contains(&"git.exe"))
+        && (tokens.contains(&"rm") || tokens.contains(&"clean"))
+        || (tokens.contains(&"robocopy") || tokens.contains(&"robocopy.exe"))
+            && tokens.contains(&"mir")
+        || normalized.contains("os.remove(")
+        || normalized.contains("os.unlink(")
+        || normalized.contains("os.rmdir(")
+        || normalized.contains("shutil.rmtree(")
+        || normalized.contains(".unlink(")
+        || normalized.contains("file.delete(")
+        || normalized.contains("directory.delete(")
+}
+
+/// execute_command：在本机运行 shell 命令（默认需用户弹窗确认，可后台运行或 UAC 提权）。
+#[cfg_attr(not(desktop), allow(dead_code))]
+pub struct ExecuteCommand {
+    settings: SharedToolSettings,
+}
+
+#[cfg_attr(not(desktop), allow(dead_code))]
+impl ExecuteCommand {
+    pub fn new(settings: SharedToolSettings) -> Self {
+        Self { settings }
+    }
+}
+
+#[async_trait]
+impl Tool for ExecuteCommand {
+    fn definition(&self) -> ToolDefinition {
+        let shell_hint = if cfg!(windows) {
+            "当前运行环境是 Windows，命令由 cmd.exe /D /C 执行且没有交互输入；需要 PowerShell 语法时请显式调用 powershell -NoProfile -Command，延时请使用 PowerShell Start-Sleep 而不是依赖控制台输入的 timeout。"
+        } else {
+            "当前命令由 sh -c 执行。"
+        };
+        ToolDefinition::new(
+            "execute_command",
+            format!(
+                "在本机运行 shell 命令。{shell_hint}执行前通常会弹窗请用户确认；uac=true 时以管理员权限运行（仅 Windows，会再弹系统 UAC 确认框）。耗时任务可设 run_in_background=true 并提供 description：工具会立即返回任务 ID，完成后自动通知，无需轮询。"
+            ),
+            json!({
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "要运行的 shell 命令"},
+                    "cwd": {"type": "string", "description": "工作目录，绝对路径或相对于文件沙箱根目录。留空表示沙箱根目录。"},
+                    "uac": {"type": "boolean", "description": "true 时要求管理员权限运行；若 LingChat 已是管理员进程则直接复用，否则弹 Windows UAC"},
+                    "timeout_seconds": {"type": "integer", "description": "命令最长运行秒数（前台默认 60/最大 300；后台默认 600/最大 3600；最小 1）"},
+                    "run_in_background": {"type": "boolean", "description": "true 时在后台运行并立即返回任务 ID；完成后会自动通知模型。标准权限下不能与 uac=true 同用，管理员进程可直接继承权限"},
+                    "description": {"type": "string", "description": "后台任务的简短说明；run_in_background=true 时必填"}
+                },
+                "required": ["command"],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    fn timeout_hint(&self) -> Option<Duration> {
+        // 覆盖审批等待（120s）+ 最大命令时间（300s）+ 清理余量。
+        Some(Duration::from_secs(430))
+    }
+
+    async fn execute(
+        &self,
+        context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
+        let app = context.require_app()?;
+        let command = arg_str(&arguments, "command")?;
+        let cwd = arguments.get("cwd").and_then(Value::as_str).unwrap_or("");
+        let uac = arguments
+            .get("uac")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let run_in_background = arguments
+            .get("run_in_background")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let description = arguments
+            .get("description")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim();
+        if run_in_background && description.is_empty() {
+            return Err(ToolError::InvalidArguments(
+                "run_in_background=true 时必须提供非空 description".into(),
+            ));
+        }
+        let process_elevated = command_executor::is_current_process_elevated();
+        if run_in_background && uac && !process_elevated {
+            return Err(ToolError::InvalidArguments(
+                "标准权限下，后台命令不支持 uac=true；请先以前台方式提权，或将 LingChat 以管理员身份重启".into(),
+            ));
+        }
+        let (default_timeout, max_timeout) = if run_in_background {
+            (
+                background_command::DEFAULT_BACKGROUND_COMMAND_TIMEOUT,
+                background_command::MAX_BACKGROUND_COMMAND_TIMEOUT,
+            )
+        } else {
+            (
+                command_executor::DEFAULT_COMMAND_TIMEOUT,
+                command_executor::MAX_COMMAND_TIMEOUT,
+            )
+        };
+        let timeout = Duration::from_secs(
+            arguments
+                .get("timeout_seconds")
+                .and_then(Value::as_u64)
+                .unwrap_or(default_timeout.as_secs())
+                .clamp(1, max_timeout.as_secs()),
+        );
+        let config = SkillAgentConfig::load(&app);
+        let sandbox_dir = config.resolve_sandbox_dir();
+        let settings = self.settings.get();
+        let is_delete_command = command_may_delete_files(command);
+
+        if is_delete_command && settings.requires_command_approval(true) {
+            let approvals = app.state::<AppState>().chat_file_delete_approvals.clone();
+            request_user_approval(
+                &app,
+                approvals,
+                "chat:command_delete_approval",
+                json!({
+                    "command": command,
+                    "cwd": cwd,
+                    "uac": uac,
+                    "run_in_background": run_in_background,
+                    "description": description,
+                }),
+                "删除命令",
+            )
+            .await?;
+        } else if !is_delete_command && settings.requires_command_approval(false) {
+            let approvals = app.state::<AppState>().chat_command_approvals.clone();
+            request_user_approval(
+                &app,
+                approvals,
+                "chat:command_approval",
+                json!({
+                    "command": command,
+                    "cwd": cwd,
+                    "uac": uac,
+                    "run_in_background": run_in_background,
+                    "description": description,
+                }),
+                "命令",
+            )
+            .await?;
+        }
+
+        if run_in_background {
+            return background_command::start_background_command(
+                app,
+                sandbox_dir,
+                command.to_string(),
+                cwd.to_string(),
+                description.to_string(),
+                timeout,
+            )
+            .await;
+        }
+
+        let use_elevated_launcher =
+            command_executor::needs_elevated_launcher(uac, process_elevated);
+        let result = if use_elevated_launcher {
+            command_executor::run_shell_command_elevated_with_timeout(
+                &sandbox_dir,
+                command,
+                cwd,
+                timeout,
+            )
+            .await
+        } else {
+            command_executor::run_shell_command_with_timeout(&sandbox_dir, command, cwd, timeout)
+                .await
+        };
+        match result {
+            Ok(out) => Ok(json!({
+                "ok": true,
+                "exit_code": out.exit_code,
+                "output": out.to_prompt_string(),
+            })),
+            Err(e) => Err(ToolError::Execution(e.to_string())),
+        }
+    }
+}

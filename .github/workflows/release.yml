@@ -134,7 +134,7 @@ jobs:
         with:
           # 不用 tauri-action 内置的 uploadWorkflowArtifacts：
           # 它会对每个 bundle 循环 create artifact，若名字不含 [bundle] 会重复 create 同名 → 409，
-          # 导致后续产物（AppImage / .sig 等）丢失。改由下方独立 step 一次性上传整个 bundle 目录。
+          # 导致后续产物（AppImage / .sig 等）丢失。改由下方独立 step 按白名单上传安装包。
           args: ${{ matrix.target }}
 
       # linux-amd64 特例：ort `webgpu` feature 链接 libwebgpu_dawn.so（Dawn dylib，无法静态链接）。
@@ -149,7 +149,6 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          cd src-tauri
           cargo build --release
           DAWN=$(find target/release -name "libwebgpu_dawn.so" 2>/dev/null | head -1)
           if [ -z "$DAWN" ]; then
@@ -159,15 +158,26 @@ jobs:
             sudo ldconfig
             echo "已放置 /usr/lib/x86_64-linux-gnu/libwebgpu_dawn.so"
           fi
-          cd ..
           pnpm tauri build
 
-      - name: 上传构建产物（bundle 全量）
+      - name: 上传构建产物（仅安装包与更新签名）
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}-build
-          path: src-tauri/target/release/bundle/**
+          # 用 `bundle/*` 而不是 `bundle/**`，只用一层通配，把中间产物挡在外面：
+          # - `bundle/deb/<Name>_<版本>_<架构>/{data,control}.tar.gz`：deb 打包用的暂存目录
+          # - `bundle/appimage/<Name>.AppDir/`、`bundle/macos/LingChat.app/`：解包目录，含全部依赖库
+          # 这些都不是分发文件，通配进来会让 artifact 与 Release 多出几百 MB 无用内容。
+          path: |
+            target/release/bundle/*/*.deb
+            target/release/bundle/*/*.rpm
+            target/release/bundle/*/*.AppImage
+            target/release/bundle/*/*.dmg
+            target/release/bundle/*/*.msi
+            target/release/bundle/*/*.exe
+            target/release/bundle/*/*.tar.gz
+            target/release/bundle/*/*.sig
           if-no-files-found: warn
 
   release:

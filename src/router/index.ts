@@ -62,6 +62,11 @@ const routes = [
     component: CastWindow,
   },
   {
+    path: "/bubble",
+    name: "BubbleWindow",
+    component: () => import("../components/views/BubbleWindow.vue"),
+  },
+  {
     path: "/script-editor",
     name: "ScriptEditor",
     component: ScriptEditor,

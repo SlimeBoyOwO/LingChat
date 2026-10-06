@@ -3,8 +3,15 @@
 > 记录 #603（内置 TTS 推理 GPU 加速，提交 `85ae3757`）之后 Rust 侧增量编译明显变慢的
 > 排查结论与优化措施。
 >
-> 相关文件：`src-tauri/Cargo.toml`、`.cargo/config.toml`、`src-tauri/.cargo/config.toml`、
+> 相关文件：`Cargo.toml`（仓库根 workspace）、`.cargo/config.toml`、`src-tauri/.cargo/config.toml`、
 > `docs/ios-build.md`。
+>
+> **2026-10 更新**：后端已拆为 Cargo workspace（仓库根 `Cargo.toml` + `crates/ling-chat-main`
+>
+> - `crates/ling-chat-plugins`）。`Cargo.lock` 已从 `src-tauri/` 上移到仓库根；target 目录
+>   也从 `src-tauri/target` 变为仓库根 `target/`；性能相关的 `[profile.*]` 覆盖集中在仓库根
+>   `Cargo.toml`（workspace 成员里的 profile 会被静默忽略）。下文若出现「没有 workspace」
+>   「`src-tauri/Cargo.lock`」「`--manifest-path src-tauri/Cargo.toml`」等旧表述，请按此理解。
 
 ## 1. 结论摘要
 
@@ -17,7 +24,7 @@
 | #   | 措施                                                   | 位置                      |
 | --- | ------------------------------------------------------ | ------------------------- |
 | 1   | `crate-type` 去掉 `staticlib`                          | `src-tauri/Cargo.toml`    |
-| 2   | 依赖与 proc-macro 不生成调试符号                       | `src-tauri/Cargo.toml`    |
+| 2   | 依赖与 proc-macro 不生成调试符号                       | 仓库根 `Cargo.toml`       |
 | 3   | Windows 链接器改用 `rust-lld`                          | 两份 `.cargo/config.toml` |
 | 4   | 两份 `.cargo/config.toml` 加同步警告（防止静默不一致） | 两份 `.cargo/config.toml` |
 
@@ -89,12 +96,13 @@
 
 ### 3.2 成本很高
 
-- 仓库现在**没有 `[workspace]`**，`src-tauri/Cargo.lock` 有 1048 个包需要迁移。
+- 仓库已于 2026-10 拆为 workspace，`Cargo.lock` 在仓库根；下文关于 lock / patch 迁移成本的
+  描述是拆分**前**的评估结论，仅供参考。
 - 两个 `[patch.crates-io]`（`esaxx-rs`、`jpreprocess-naist-jdic`）**只有 workspace 根生效**，
   且都绑在 TTS 依赖链上。
 - `ort-sys` 带 `links = "onnxruntime"`：如果两边各 pin 一次 ort 版本，会直接 hard error。
   历史上为此专门写过 `[patch]`（见 `404f8896` 的 Cargo.toml 注释）。
-- `src-tauri/src/utils/device.rs` 是 `sbv2_core` 泄漏到共享层的唯一引用，拆之前必须先把
+- `crates/ling-chat-main/src/utils/device.rs` 是 `sbv2_core` 泄漏到共享层的唯一引用，拆之前必须先把
   `InferenceDevice` 抽成不依赖 `sbv2_core` 的本地类型。
 - TTS 目录里有 **21 个 `#[tauri::command]`**、6 个文件 `use tauri::*`、依赖
   `config::settings_store`（`Arc<Store<Wry>>`）——拆出去也不是纯库，得带着 tauri。
@@ -107,7 +115,7 @@
 - `1c93ba2c`（2026-07-30）把它删掉合回主项目，删 8193 行、加 902 行，提交信息是
   「将sbv2适配层代码嵌入项目，**复用大部分工具逻辑**」。
 
-现在 `src-tauri/src/ai_service/tts/local/mod.rs` 第 1 行仍留着
+现在 `crates/ling-chat-main/src/ai_service/tts/local/mod.rs` 第 1 行仍留着
 `// Local TTS engine module (formerly the sbv2-local-tts crate, now embedded).`
 
 **如果要重新讨论这个方向，请先读本节。**
@@ -147,9 +155,10 @@ debug = false
 `build-override` 管 build script 与 proc-macro，`package."*"` 管普通依赖。
 自己写的代码仍保留 `[profile.dev] debug = 1`，可以正常下断点。
 
-放在 `src-tauri/Cargo.toml` 而不是 `.cargo/config.toml` 有两个原因：
-`package` 覆盖本来就只支持 manifest；且 manifest 的 profile 不受 cwd 影响，
-天然绕开「两份 config 要同步」的问题（见 4.4）。
+放在**仓库根 `Cargo.toml`**（workspace 根）而不是 `.cargo/config.toml` 有两个原因：
+`package` 覆盖本来就只支持 manifest；且 workspace 根的 profile 不受 cwd 影响，
+天然绕开「两份 config 要同步」的问题（见 4.4）。注意放在成员 crate（如
+`src-tauri/Cargo.toml`）里的 profile 会被 Cargo **静默忽略**。
 
 ### 4.3 Windows 链接器改用 `rust-lld`
 
@@ -166,11 +175,12 @@ linker = "rust-lld"
 
 Cargo 解析配置是**从 cwd 向上查找**，不是从 manifest 向上。因此：
 
-- `cd src-tauri && cargo build` → 读 `src-tauri/.cargo/config.toml`
-- 仓库根 `cargo --manifest-path src-tauri/Cargo.toml`（CI 的做法）→ 读根目录那份
+- 在仓库根跑 `cargo …`（workspace 根，CI 的做法）→ 只读仓库根那份
+- `cd src-tauri && cargo …` → 先读 `src-tauri/.cargo/config.toml`，再读仓库根那份（越近优先级越高）
 
-两份都在实际生效，只改一份会让本地与 CI 的编译行为静默不一致。已在两份文件顶部
-互相加注释警示。
+两份都在实际生效，只改一份会让「从 src-tauri 跑」与「从仓库根跑」的编译行为静默不一致。
+已在两份文件顶部互相加注释警示。注意 profile 覆盖**不支持** config.toml，只能放仓库根
+`Cargo.toml`（见 4.2）。
 
 ## 5. 如何复现测量
 
@@ -179,20 +189,20 @@ Cargo 解析配置是**从 cwd 向上查找**，不是从 manifest 向上。因�
 pnpm tauri dev 需已停止；rust-analyzer 应只有 1 个进程
 
 # 1) 基线：无改动时的耗时（应接近 0，确认缓存是热的）
-cargo check --manifest-path src-tauri/Cargo.toml
+cargo check --workspace
 
 # 2) 改一行源码后重新构建（把 <file> 换成任意 .rs）
 #    注意用 ${PIPESTATUS[0]} 取退出码，`| tail` 会把失败伪装成成功
 start=$(date +%s)
-cargo build --manifest-path src-tauri/Cargo.toml
+cargo build -p ling_chat
 echo "$(( $(date +%s) - start )) 秒"
 
 # 3) 看每次构建写了哪些产物、多大
-ls -la --time-style=+%H:%M:%S src-tauri/target/debug/ | grep ling_chat
+ls -la --time-style=+%H:%M:%S target/debug/ | grep ling_chat
 
 # 4) 逐编译单元的耗时分解
-cargo build --manifest-path src-tauri/Cargo.toml --timings
-#    报告在 src-tauri/target/cargo-timings/
+cargo build -p ling_chat --timings
+#    报告在 target/cargo-timings/
 ```
 
 测量要点：改一行后测 3 轮取中位数；确认 `ling_chat_lib.lib` 不再出现。
@@ -221,7 +231,7 @@ cargo build --manifest-path src-tauri/Cargo.toml --timings
 ### 7.1 rust-analyzer 进程残留（本机已多次出现）
 
 rust-analyzer 重启时旧进程不会退出，会累积多个实例（父进程是 `rustup.exe`）。
-它们都在对同一个 `src-tauri/target` 跑 `cargo check`，后果是：
+它们都在对同一个 `target`（仓库根）跑 `cargo check`，后果是：
 
 - 每次手动 `cargo` 都打印 `Blocking waiting for file lock on build directory`
 - `cargo build` 可能因 `ling_chat.exe` 被运行中的应用锁住而报
@@ -248,7 +258,7 @@ Get-Process rust-analyzer | Select-Object Id,@{n='GB';e={[math]::Round($_.Workin
 ### 7.4 修改 profile 时要同时改两份 config
 
 见 §4.4。新增 `package."*"` / `build-override` 之类的覆盖则放进
-`src-tauri/Cargo.toml`。
+仓库根 `Cargo.toml`。
 
 ## 8. 未做但可考虑的方向
 

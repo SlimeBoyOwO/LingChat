@@ -45,12 +45,14 @@
         );
       "
     >
+      <!-- 星空挂在视口尺寸的容器上，而不是跟着名单一起滚动的内容容器上：
+           它是一层静止的深空背景，不该随名单上移，也不该被撑成名单那么高的画布 -->
+      <StarField ref="starfieldRef" />
+
       <div
         class="credits-scroll absolute top-0 left-0 flex w-full flex-col items-center text-center"
         :class="[!isStarted ? 'translate-y-[100dvh]' : '']"
       >
-        <StarField ref="starfieldRef" />
-
         <!-- Logo 与 标题 -->
         <div class="mb-20 flex w-full flex-col items-center">
           <img
@@ -104,7 +106,7 @@
               <div
                 v-for="(item, i) in section.items"
                 :key="i"
-                class="grid w-55 grid-cols-2 items-center"
+                class="grid min-w-55 grid-cols-2 items-center"
               >
                 <p class="pr-4 text-right text-[1.5em] leading-[1.8] font-light whitespace-nowrap">
                   {{ item.name }}
@@ -126,8 +128,9 @@
             <h2 class="mb-2 text-[2.2em] font-light text-[#00e5ff]">{{ sectionTitle(section) }}</h2>
             <p class="mb-6.25 text-[1em] text-white opacity-60">{{ sectionSubtitle(section) }}</p>
             <div class="grid w-[80%] max-w-200 grid-cols-4 justify-items-center gap-x-8 gap-y-6">
-              <div v-for="(item, i) in section.items" :key="i">
-                <p class="overflow-visible text-[1.5em] leading-[1.8] font-light whitespace-nowrap">
+              <div v-for="(item, i) in section.items" :key="i" class="max-w-full">
+                <!-- 允许长名换行（break-words），避免 nowrap 溢出列宽与相邻名字重叠 -->
+                <p class="text-center text-[1.5em] leading-[1.8] font-light break-words">
                   {{ item.name }}
                 </p>
               </div>

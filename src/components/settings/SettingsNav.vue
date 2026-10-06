@@ -10,7 +10,8 @@
     >
       <div
         ref="indicator"
-        class="bg-brand absolute bottom-0 left-0 z-10 h-1 w-0 rounded shadow-[0_0_10px_rgba(121,217,255,0.4)]"
+        class="bg-brand absolute bottom-[3px] left-0 z-10 h-1 w-0 rounded
+          shadow-[0_0_10px_rgba(121,217,255,0.4)]"
       ></div>
       <Button
         ref="characterBtn"
@@ -365,8 +366,19 @@ watch(
 </script>
 
 <style lang="css" scoped>
-.custom-scroll ::-webkit-scrollbar {
-  width: 8px;
-  height: 2px;
-}
+  /* 原写法 ".custom-scroll ::-webkit-scrollbar" 中间的空格使其匹配后代元素，
+     从未作用于 nav 自身，横向滚动条一直回退到全局 8px 样式（issue #707 图 30） */
+  .custom-scroll::-webkit-scrollbar {
+    width: 8px;
+    height: 2px;
+  }
+
+  .custom-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scroll::-webkit-scrollbar-thumb {
+    background: var(--accent-color);
+    border-radius: 2px;
+  }
 </style>

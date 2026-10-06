@@ -10,7 +10,7 @@
  * 时才需要补词条 + 在此登记映射。
  */
 import { i18n } from "@/locales";
-import { PARTICLE_EFFECTS } from "@/components/game/standard/particles";
+import { ALL_EFFECTS } from "@/components/game/standard/particles";
 
 /** schema 里字段的通用形状（取用前端的字段子集） */
 export interface SchemaFieldLike {
@@ -296,7 +296,7 @@ export const emotionLabelOf = (emotion: string) => {
  */
 const PARTICLE_KEYS: Record<string, string> = {
   None: "particle.none",
-  ...Object.fromEntries(PARTICLE_EFFECTS.map((p) => [p.key, `particle.${p.i18n}`])),
+  ...Object.fromEntries(ALL_EFFECTS.map((p) => [p.key, `particle.${p.i18n}`])),
 };
 
 export const particleLabelOf = (value: string, label: string) =>

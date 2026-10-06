@@ -1,0 +1,432 @@
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+
+use anyhow::Result;
+use chrono::{DateTime, Local};
+use sea_orm::DatabaseConnection;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::ai_service::game_system::role_manager::GameRoleManager;
+use crate::ai_service::types::{
+    GameLine, GameRole, LineAttributeExt, LineBase, Player, ScriptStatus,
+};
+use crate::db::entities::line::LineAttribute;
+use crate::utils::prompt::PromptRole;
+
+/// 存储所有运行时共享的游戏状态。
+pub struct GameStatus {
+    pub player: Player,
+
+    /// 台词列表，用于记忆构建和历史记忆
+    pub line_list: Vec<GameLine>,
+
+    pub role_manager: GameRoleManager,
+    /// 当前对话角色的 role_id；作为 LLM 传输入的对象，使用本角色的记忆
+    pub current_role_id: Option<i32>,
+    /// 舞台角色 role_id 列表：用于展示舞台上角色的信息（保持顺序）
+    pub onstage_role_ids: Vec<i32>,
+    /// 在场角色 role_id 集合：只有在场的角色才能感知到台词
+    pub present_role_ids: HashSet<i32>,
+    /// 游戏主角的 role_id（剧本模式冒险的主角）
+    pub main_role_id: Option<i32>,
+
+    pub background: String,
+    pub present_pic: String,
+    pub background_music: String,
+    pub background_effect: String,
+
+    /// 当前用户选择的场景 ID（对应 scenes.json 中的场景）
+    pub current_scene_id: Option<String>,
+    /// 上一次 process_message 处理时的场景 ID，用于检测场景切换
+    pub last_processed_scene_id: Option<String>,
+
+    pub global_variables: HashMap<String, Value>,
+    pub completed_scripts: HashSet<String>,
+    pub last_dialog_time: Option<DateTime<Local>>,
+
+    pub script_status: Option<ScriptStatus>,
+
+    /// 当前激活的存档 ID（用于 MemoryBank 持久化/载入/自动压缩）
+    pub active_save_id: Option<i32>,
+
+    /// 试玩会话代号。每次试玩「进来备份 / 走时还原」都会递增；
+    /// 消息生成管线在写入台词前比对捕获值与当前值，不一致即视为已过期
+    /// （试玩任务被中止后，游离的流式任务可能仍在写）——直接丢弃，保证
+    /// 试玩内容不会漏进已还原的自由对话会话。自由对话本身不递增，恒等比对，
+    /// 行为不受影响。
+    pub preview_generation: u64,
+
+    /// 本会话是否已触发过入场问候（内存标记，重启/清档重置）。
+    /// `notify_player_entry` 靠它去重，避免重复生成问候台词；与"玩家是否在游戏里"无关。
+    pub entry_greeting_done: bool,
+
+    /// 好感度评估游标：上次评估时「真实对话」的段数。
+    /// 每累计 `GodAgentConfig.affection_eval_interval` 段新对话触发一次上帝 Agent 评估。
+    pub affection_eval_cursor: usize,
+
+    /// 场景感知开关（关闭后切换场景不再触发旁白）
+    pub scene_awareness_enabled: bool,
+}
+
+impl GameStatus {
+    pub fn new(role_manager: GameRoleManager) -> Self {
+        Self {
+            player: Player::default(),
+            line_list: Vec::new(),
+            role_manager,
+            current_role_id: None,
+            onstage_role_ids: Vec::new(),
+            present_role_ids: HashSet::new(),
+            main_role_id: None,
+            background: String::new(),
+            present_pic: String::new(),
+            background_music: String::new(),
+            background_effect: String::new(),
+            current_scene_id: None,
+            last_processed_scene_id: None,
+            global_variables: HashMap::new(),
+            completed_scripts: HashSet::new(),
+            last_dialog_time: None,
+            script_status: None,
+            active_save_id: None,
+            preview_generation: 0,
+            entry_greeting_done: false,
+            affection_eval_cursor: 0,
+            scene_awareness_enabled: true,
+        }
+    }
+
+    pub async fn get_role<'a>(
+        &'a mut self,
+        db: &DatabaseConnection,
+        role_id: i32,
+    ) -> Result<&'a mut GameRole> {
+        // 存档全局变量里的好感度覆盖角色加载时的默认值
+        let var = self
+            .global_variables
+            .get(&crate::ai_service::affection::var_key(role_id))
+            .cloned();
+        let role = self.role_manager.get_role(db, role_id).await?;
+        if let Some(state) = var
+            .as_ref()
+            .and_then(crate::ai_service::affection::state_from_value)
+        {
+            role.affection = state.vector;
+            role.negative = state.negative;
+        }
+        Ok(role)
+    }
+
+    /// 追加台词，记录当前在场者为感知列表，并刷新相关角色的记忆。
+    pub async fn add_line(&mut self, db: &DatabaseConnection, line: LineBase) -> Result<()> {
+        let perceived: Vec<i32> = self.present_role_ids.iter().copied().collect();
+        let game_line = GameLine::from_base(line, perceived);
+        self.line_list.push(game_line);
+        self.refresh_memories(db).await?;
+        Ok(())
+    }
+
+    /// 把台词插入到第 `index` 条之前（下标基于 `line_list`，越界夹到末尾），
+    /// 用于把内容挂到「较近但非最新」的位置
+    pub async fn insert_line(
+        &mut self,
+        db: &DatabaseConnection,
+        index: usize,
+        line: LineBase,
+    ) -> Result<()> {
+        let perceived: Vec<i32> = self.present_role_ids.iter().copied().collect();
+        let game_line = GameLine::from_base(line, perceived);
+        // 中段插入会平移其后的下标，先让进行中的后台摘要作废，避免过期结果落库
+        //（与工具消息回填、edit_context_lines 的处理一致）。
+        self.role_manager.invalidate_memory_history();
+        self.line_list
+            .insert(index.min(self.line_list.len()), game_line);
+        self.refresh_memories(db).await?;
+        Ok(())
+    }
+
+    pub async fn refresh_memories(&mut self, db: &DatabaseConnection) -> Result<()> {
+        self.role_manager
+            .sync_memories(db, &self.line_list, None)
+            .await
+    }
+
+    // ── 台词历史（上下文源）的区间查看 / 编辑 ──
+    //
+    // 「第 start~end 条」一律指 `line_list` 的下标：**从 1 开始、闭区间**，第 1 条
+    // 通常就是 role system 的人设行；越界会被夹到可用范围。这里操作的是台词行
+    // （`GameLine`，全字段），**不是**渲染后发给 LLM 的 `LlmMessage`——渲染会按角色
+    // 合并/过滤，两者不是同一套下标空间。
+    //
+    // 参数名用 `start`/`end` 而非 `from`/`to`：与插件侧同名 API 对齐（Python 里
+    // `from` 是关键字，用不了）。
+
+    /// 读取第 `start`~`end` 条台词（含两端，1 起）的完整运行时行。
+    ///
+    /// 返回的 `GameLine` 携带全部字段（情绪、动作、TTS、音频、thinking、tool_call、
+    /// 感知集合等），可改后原样回传给 [`Self::edit_context_lines`]；只读，无副作用。
+    pub fn read_context_lines(&self, start: usize, end: usize) -> Vec<GameLine> {
+        match Self::clamp_line_range(self.line_list.len(), start, end) {
+            Some((lo, hi)) => self.line_list[lo..hi].to_vec(),
+            None => Vec::new(),
+        }
+    }
+
+    /// 用 `replacement` 替换第 `start`~`end` 条台词（含两端，1 起），并让改动真正
+    /// 落进上下文。`replacement` 条数不限：空 = 删除该区间，多条 = 展开。
+    ///
+    /// 依次做：
+    /// - 生成进行中直接拒绝（`generation_lock` 被占），避免改历史与流式写入打架；
+    /// - System 人设行可编辑/删除：删掉后相应角色的上下文失去 system 前缀，只记
+    ///   一条 warn，不拦截；
+    /// - `replacement` 中未带 id 的行按位置继承被替换行的 id，保住存档链锚点
+    ///   （否则 `SaveRepo::sync_lines` 可能因「首行分歧」拒绝覆盖）；
+    /// - 回拨所有角色的压缩指针到编辑起点（仅当指针在其之后），使被编辑的早期
+    ///   内容重新进入窗口、下次压缩重新摘要；
+    /// - `invalidate_memory_history` + `refresh_memories`。
+    ///
+    /// 返回被替换掉的条数。**落库不在这里**，由调用方走正常存盘流程
+    /// （`SaveRepo::sync_lines`）持久化。
+    pub async fn edit_context_lines(
+        &mut self,
+        db: &DatabaseConnection,
+        generation_lock: &Arc<tokio::sync::Mutex<()>>,
+        start: usize,
+        end: usize,
+        mut replacement: Vec<GameLine>,
+    ) -> Result<usize> {
+        let Some((lo, hi)) = Self::clamp_line_range(self.line_list.len(), start, end) else {
+            return Err(anyhow::anyhow!(
+                "编辑区间无效：start={start}, end={end}，当前共 {} 条台词",
+                self.line_list.len()
+            ));
+        };
+
+        // 生成中拒绝：此刻改了 line_list，会让流式任务记下的 line_index / seq 漂移。
+        let _generation = generation_lock
+            .try_lock()
+            .map_err(|_| anyhow::anyhow!("正在生成回复，暂不能编辑历史，请稍后再试"))?;
+
+        // System 人设行允许被编辑/删除：去掉后该角色的上下文将失去 system 前缀
+        // （`sync_memories` 会记录「人设丢失」警告）；之后重新加载角色时，`game.rs`
+        // 会按 `already_has_system` 判定并重新注入。
+        let dropped_system = self.line_list[lo..hi]
+            .iter()
+            .any(|l| matches!(l.attribute(), LineAttribute::System))
+            && !replacement
+                .iter()
+                .any(|l| matches!(l.attribute(), LineAttribute::System));
+        if dropped_system {
+            tracing::warn!("edit_context_lines 移除了 System 人设行（区间 {start}~{end}）");
+        }
+
+        // 未带 id 的替换行按位置继承被替换行的 id，保住存档链锚点。
+        for (i, line) in replacement.iter_mut().enumerate() {
+            if line.base.id.is_none() && i < hi - lo {
+                line.base.id = self.line_list[lo + i].base.id;
+            }
+        }
+
+        self.role_manager.invalidate_memory_history();
+        let removed = self.line_list.splice(lo..hi, replacement).count();
+        // 指针在编辑点之后的角色回拨到编辑起点，让这段重新进入窗口。
+        self.role_manager.rewind_memory_pointers(lo).await;
+        self.refresh_memories(db).await?;
+
+        Ok(removed)
+    }
+
+    /// 把「1 起闭区间」换算成 `Vec` 的 `[lo, hi)` 半开区间，并夹到 `[0, len]`。
+    /// 区间无有效内容（`start == 0`、`start > end`、空列表）时返回 `None`。
+    fn clamp_line_range(len: usize, start: usize, end: usize) -> Option<(usize, usize)> {
+        if start == 0 || start > end || len == 0 {
+            return None;
+        }
+        let lo = (start - 1).min(len);
+        let hi = end.min(len);
+        (lo < hi).then_some((lo, hi))
+    }
+
+    // ============ 全局变量便捷方法 ============
+
+    pub fn set_variable(&mut self, key: impl Into<String>, value: Value) {
+        self.global_variables.insert(key.into(), value);
+    }
+
+    pub fn get_variable(&self, key: &str) -> Option<&Value> {
+        self.global_variables.get(key)
+    }
+
+    /// 非系统消息数量（用于羁绊冒险解锁条件检测）
+    pub fn chat_message_count(&self) -> usize {
+        self.line_list
+            .iter()
+            .filter(|l| !matches!(l.attribute(), LineAttribute::System))
+            .count()
+    }
+
+    // ============ 舞台管理 ============
+
+    pub fn onstage_role(&mut self, role_id: i32) {
+        if !self.onstage_role_ids.contains(&role_id) {
+            self.onstage_role_ids.push(role_id);
+        }
+        self.present_role_ids.insert(role_id);
+    }
+
+    pub fn offstage_role(&mut self, role_id: i32) {
+        self.onstage_role_ids.retain(|id| *id != role_id);
+        self.present_role_ids.remove(&role_id);
+    }
+
+    pub async fn add_character_clothes_change_line(
+        &mut self,
+        db: &DatabaseConnection,
+        role_id: i32,
+        clothes_name: &str,
+    ) -> Result<()> {
+        let role = self
+            .role_manager
+            .get_loaded_mut(role_id)
+            .ok_or_else(|| anyhow::anyhow!("角色 {} 未加载", role_id))?;
+
+        role.current_clothes = clothes_name.to_string();
+
+        let ai_name = role.settings.ai_name.clone();
+        let clothes_prompt = role
+            .settings
+            .clothes
+            .as_ref()
+            .and_then(|list| {
+                list.iter().find_map(|item| {
+                    if item.get("name").map(|s| s.as_str()) == Some(clothes_name) {
+                        item.get("prompt").cloned()
+                    } else {
+                        None
+                    }
+                })
+            })
+            .unwrap_or_default();
+
+        let prompt = format!(
+            "{}换上了新服装：{}，{}",
+            ai_name, clothes_name, clothes_prompt
+        );
+
+        self.add_line(
+            db,
+            LineBase {
+                content: PromptRole::Narrator.build_prompt(&prompt),
+                attribute: LineAttributeExt(LineAttribute::User),
+                display_name: Some("旁白".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("添加换装台词失败: {}", e))?;
+
+        Ok(())
+    }
+
+    /// 切换角色服装并生成旁白台词。
+    /// 若已是目标服装则跳过。返回是否实际切换。
+    pub async fn on_character_change_clothes(
+        &mut self,
+        db: &DatabaseConnection,
+        role_id: i32,
+        clothes_name: &str,
+    ) -> Result<bool> {
+        let role = self
+            .role_manager
+            .get_loaded_mut(role_id)
+            .ok_or_else(|| anyhow::anyhow!("角色 {} 未加载", role_id))?;
+
+        if role.current_clothes == clothes_name {
+            return Ok(false);
+        }
+
+        self.add_character_clothes_change_line(db, role_id, clothes_name)
+            .await?;
+
+        Ok(true)
+    }
+
+    pub fn reactivate_all_voice_makers(&self) {
+        self.role_manager.reactivate_all_voice_makers();
+    }
+
+    // ============ 存档状态快照 ============
+
+    /// 将当前 GameStatus 中需要持久化的字段导出为可序列化的快照
+    pub fn to_snapshot(&self) -> GameStatusSnapshot {
+        GameStatusSnapshot {
+            present_role_ids: self.present_role_ids.iter().copied().collect(),
+            current_role_id: self.current_role_id,
+            background: self.background.clone(),
+            background_music: self.background_music.clone(),
+            background_effect: self.background_effect.clone(),
+            current_scene_id: self.current_scene_id.clone(),
+            global_variables: self.global_variables.clone(),
+            completed_scripts: self.completed_scripts.iter().cloned().collect(),
+            last_dialog_time: self.last_dialog_time.map(|dt| dt.to_rfc3339()),
+            scene_awareness_enabled: self.scene_awareness_enabled,
+        }
+    }
+
+    /// 从快照恢复场景状态
+    pub fn apply_snapshot(&mut self, snapshot: &GameStatusSnapshot) {
+        self.background = snapshot.background.clone();
+        self.background_music = snapshot.background_music.clone();
+        self.background_effect = snapshot.background_effect.clone();
+        self.current_scene_id = snapshot.current_scene_id.clone();
+        self.global_variables = snapshot.global_variables.clone();
+        self.completed_scripts = snapshot.completed_scripts.iter().cloned().collect();
+        self.last_dialog_time = snapshot.last_dialog_time.as_ref().and_then(|s| {
+            chrono::DateTime::parse_from_rfc3339(s)
+                .ok()
+                .map(|dt| dt.with_timezone(&Local))
+        });
+        self.current_role_id = snapshot.current_role_id;
+        self.present_role_ids = snapshot.present_role_ids.iter().copied().collect();
+        self.onstage_role_ids = snapshot.present_role_ids.clone();
+        self.scene_awareness_enabled = snapshot.scene_awareness_enabled;
+        // 好感度跟随存档：快照里的全局变量覆盖已加载角色的内存值
+        self.role_manager
+            .overlay_affections_from_vars(&self.global_variables);
+    }
+}
+
+/// `GameStatus` 中需要持久化到 `save.status` JSON 的字段。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct GameStatusSnapshot {
+    pub present_role_ids: Vec<i32>,
+    pub current_role_id: Option<i32>,
+    #[serde(default)]
+    pub background: String,
+    #[serde(default = "default_background_music")]
+    pub background_music: String,
+    #[serde(default = "default_background_effect")]
+    pub background_effect: String,
+    #[serde(default)]
+    pub current_scene_id: Option<String>,
+    #[serde(default)]
+    pub global_variables: HashMap<String, Value>,
+    #[serde(default)]
+    pub completed_scripts: Vec<String>,
+    pub last_dialog_time: Option<String>,
+    #[serde(default = "default_true")]
+    pub scene_awareness_enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_background_music() -> String {
+    "none".into()
+}
+fn default_background_effect() -> String {
+    "none".into()
+}
