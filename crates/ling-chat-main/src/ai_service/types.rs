@@ -873,6 +873,7 @@ impl NegativeVector {
 pub struct GameRole {
     pub role_id: Option<i32>,
     pub memory: Vec<LlmMessage>,
+    pub worldbook: Option<crate::ai_service::worldbook::Worldbook>,
 
     pub display_name: Option<String>,
     pub settings: CharacterSettings,
