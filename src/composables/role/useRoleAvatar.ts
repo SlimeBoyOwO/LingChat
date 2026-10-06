@@ -114,6 +114,22 @@ export function useRoleAvatar(options: UseRoleAvatarOptions): UseRoleAvatarApi {
   let avatarRevision = 0;
   let disposed = false;
   let stopAvatarUpdates: (() => void) | undefined;
+  let stopCostumeUpdates: (() => void) | undefined;
+  void listen<{ role_id: number; old_name: string; new_name: string }>(
+    "character:costume-renamed",
+    (event) => {
+      if (event.payload.role_id !== role.value.roleId) return;
+      if (role.value.clothesName === event.payload.old_name)
+        role.value.clothesName = event.payload.new_name;
+      avatarRevision = Date.now();
+      void resolveAvatar();
+    },
+  )
+    .then((stop) => {
+      if (disposed) stop();
+      else stopCostumeUpdates = stop;
+    })
+    .catch((error) => console.error("监听角色服装更新失败", error));
   void listen<number>("character:avatars-updated", (event) => {
     if (event.payload !== role.value.roleId) return;
     avatarRevision = Date.now();
@@ -127,6 +143,7 @@ export function useRoleAvatar(options: UseRoleAvatarOptions): UseRoleAvatarApi {
   onUnmounted(() => {
     disposed = true;
     stopAvatarUpdates?.();
+    stopCostumeUpdates?.();
     resolveAvatarId++;
   });
 

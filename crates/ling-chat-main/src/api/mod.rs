@@ -7,6 +7,7 @@ pub mod asset;
 pub mod background;
 pub mod character;
 pub mod character_avatars;
+pub mod character_costumes;
 pub mod chat;
 pub mod codex;
 pub mod font;

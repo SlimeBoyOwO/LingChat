@@ -156,6 +156,7 @@
                 :clothes="clothesList"
                 @changed="emit('saved')"
                 :resource-clothes="props.clothes"
+                :initial-costume="avatarCostume"
               />
 
               <Live2DSettings
@@ -169,56 +170,13 @@
                 :offset-y="Number(localSettings.offset_y) || 0"
               />
 
-              <!-- Clothes Tab (custom UI, outside data-driven block) -->
-              <div v-if="activeTab === 'clothes'" class="space-y-4">
-                <div class="flex items-center justify-between">
-                  <h3 class="text-sm font-bold text-white/70">
-                    {{ $t("settings.characterInfo.clothes.listTitle") }}
-                  </h3>
-                  <button
-                    class="cursor-pointer rounded-lg border-none bg-[#5e72e4] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#4a5acf]"
-                    @click="addClothesItem"
-                  >
-                    + {{ $t("settings.characterInfo.clothes.add") }}
-                  </button>
-                </div>
-                <div
-                  v-for="(item, idx) in clothesList"
-                  :key="idx"
-                  class="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4"
-                >
-                  <div class="flex items-center justify-between">
-                    <span class="text-sm font-medium text-white/80">{{
-                      $t("settings.characterInfo.clothes.item", { index: idx + 1 })
-                    }}</span>
-                    <button
-                      class="h-6 w-6 cursor-pointer rounded-full border-none bg-red-500/20 text-xs text-red-400 transition-colors hover:bg-red-500/40"
-                      @click="removeClothesItem(idx)"
-                    >
-                      x
-                    </button>
-                  </div>
-                  <div class="flex flex-col gap-2">
-                    <label class="text-[13px] font-medium text-white/60">name</label>
-                    <input
-                      v-model="item.name"
-                      type="text"
-                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
-                    />
-                  </div>
-                  <div class="flex flex-col gap-2">
-                    <label class="text-[13px] font-medium text-white/60">prompt</label>
-                    <textarea
-                      v-model="item.prompt"
-                      rows="3"
-                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 font-mono text-sm leading-relaxed text-white transition-all duration-200 outline-none"
-                    ></textarea>
-                  </div>
-                </div>
-                <div v-if="clothesList.length === 0" class="py-8 text-center text-sm text-white/40">
-                  {{ $t("settings.characterInfo.clothes.empty") }}
-                </div>
-              </div>
+              <CostumeManager
+                v-if="activeTab === 'clothes' && props.roleId"
+                v-model="localSettings"
+                :role-id="props.roleId"
+                @changed="onCostumeChanged"
+                @edit-avatars="openCostumeAvatars"
+              />
 
               <!-- Touch Tab：区域绘制放在独立的全屏层里，这里只做入口与概览 -->
               <div v-if="activeTab === 'touch'" class="space-y-4">
@@ -332,6 +290,7 @@ import { Icon } from "../../base";
 import Live2DSettings from "../character/Live2DSettings.vue";
 import AvatarManager from "../character/AvatarManager.vue";
 import RoleLayoutEditor from "../character/RoleLayoutEditor.vue";
+import CostumeManager from "../character/CostumeManager.vue";
 import TouchRegionsEditor from "../character/TouchRegionsEditor.vue";
 import { isSystemProtectedRole } from "@/constants/character";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
@@ -353,6 +312,7 @@ const props = defineProps<{
 const emit = defineEmits(["close", "saved"]);
 
 const activeTab = ref("basic");
+const avatarCostume = ref("default");
 const loading = ref(false);
 const saving = ref(false);
 const deleting = ref(false);
@@ -1012,19 +972,6 @@ const clothesList = computed({
   },
 });
 
-const addClothesItem = () => {
-  if (!Array.isArray(localSettings.value.clothes)) {
-    localSettings.value.clothes = [];
-  }
-  localSettings.value.clothes.push({ name: "", prompt: "" });
-};
-
-const removeClothesItem = (idx: number) => {
-  if (Array.isArray(localSettings.value.clothes)) {
-    localSettings.value.clothes.splice(idx, 1);
-  }
-};
-
 // --- Watchers & Methods ---
 
 watch(
@@ -1114,6 +1061,45 @@ const handleFieldChange = (field: FieldSchema) => {
   }, REALTIME_SAVE_DEBOUNCE_MS);
 };
 
+function openCostumeAvatars(name: string) {
+  avatarCostume.value = name;
+  activeTab.value = "avatars";
+}
+
+function onCostumeChanged(change: { oldName: string; newName: string }) {
+  if (props.roleId) {
+    const role = gameStore.gameRoles[props.roleId];
+    if (role?.clothesName === change.oldName) role.clothesName = change.newName;
+  }
+  applySettingsToRuntime();
+  emit("saved");
+}
+
+function applySettingsToRuntime() {
+  if (!props.roleId) return;
+  const runtimeRole = gameStore.gameRoles[props.roleId];
+  if (runtimeRole) {
+    runtimeRole.scale = Number(localSettings.value.scale ?? 1);
+    runtimeRole.offsetX = Number(localSettings.value.offset_x ?? 0);
+    runtimeRole.offsetY = Number(localSettings.value.offset_y ?? 0);
+    runtimeRole.bubbleTop = Number(localSettings.value.bubble_top ?? 5);
+    runtimeRole.bubbleLeft = Number(localSettings.value.bubble_left ?? 20);
+    runtimeRole.live2d = localSettings.value.live2d
+      ? structuredClone(toRaw(localSettings.value.live2d))
+      : null;
+    // 形象一并热更，保存后舞台立刻切换（Live2DStage 的 watch 依赖含这两个字段）
+    runtimeRole.avatarMode = localSettings.value.avatar_mode ?? null;
+    runtimeRole.avatarModeP = localSettings.value.avatar_mode_p ?? null;
+    // /chat 与 /pet 是互斥路由，弹窗和桌宠不会同时在屏幕上，全靠这次内存热更
+    // 才不必后端 re-init；不进 Live2DStage 的 watch 依赖，因为它只换一个 CSS 类
+    runtimeRole.petFrameless = localSettings.value.pet_frameless ?? false;
+    // 触摸区域热更：TouchAreas 直接读 role.bodyPart，不更的话要重进 /chat 才生效
+    runtimeRole.bodyPart = structuredClone(toRaw(localSettings.value.body_part)) ?? {};
+  }
+  const role = gameStore.gameRoles[props.roleId];
+  if (role) role.clothes = structuredClone(toRaw(localSettings.value.clothes)) ?? [];
+}
+
 /** 落盘 + 运行时热更。返回是否成功，成功与否由调用方决定要不要关弹窗。 */
 async function persistSettings(): Promise<boolean> {
   if (!props.roleId) return false;
@@ -1121,25 +1107,7 @@ async function persistSettings(): Promise<boolean> {
   saving.value = true;
   try {
     await updateRoleSettings(props.roleId, localSettings.value);
-    const runtimeRole = gameStore.gameRoles[props.roleId];
-    if (runtimeRole) {
-      runtimeRole.scale = Number(localSettings.value.scale ?? 1);
-      runtimeRole.offsetX = Number(localSettings.value.offset_x ?? 0);
-      runtimeRole.offsetY = Number(localSettings.value.offset_y ?? 0);
-      runtimeRole.bubbleTop = Number(localSettings.value.bubble_top ?? 5);
-      runtimeRole.bubbleLeft = Number(localSettings.value.bubble_left ?? 20);
-      runtimeRole.live2d = localSettings.value.live2d
-        ? structuredClone(toRaw(localSettings.value.live2d))
-        : null;
-      // 形象一并热更，保存后舞台立刻切换（Live2DStage 的 watch 依赖含这两个字段）
-      runtimeRole.avatarMode = localSettings.value.avatar_mode ?? null;
-      runtimeRole.avatarModeP = localSettings.value.avatar_mode_p ?? null;
-      // /chat 与 /pet 是互斥路由，弹窗和桌宠不会同时在屏幕上，全靠这次内存热更
-      // 才不必后端 re-init；不进 Live2DStage 的 watch 依赖，因为它只换一个 CSS 类
-      runtimeRole.petFrameless = localSettings.value.pet_frameless ?? false;
-      // 触摸区域热更：TouchAreas 直接读 role.bodyPart，不更的话要重进 /chat 才生效
-      runtimeRole.bodyPart = structuredClone(toRaw(localSettings.value.body_part)) ?? {};
-    }
+    applySettingsToRuntime();
     return true;
   } catch (e) {
     console.error("Failed to save settings", e);

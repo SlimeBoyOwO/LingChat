@@ -1,4 +1,21 @@
 export default {
+  costumes: {
+    hint: "按服装查看立绘资源和 Live2D 映射。新增、重命名、移除会连同当前角色设置立即保存；提示词和模型选择也可以用底部保存按钮保存。",
+    newName: "新服装名称",
+    add: "新增服装",
+    noPreview: "缺少正常立绘",
+    complete: "静态差分 {present}/{total}",
+    renameName: "{name}的新名称",
+    rename: "重命名",
+    remove: "移除服装",
+    prompt: "服装提示词",
+    model: "Live2D 模型",
+    defaultModel: "使用默认模型",
+    missing: "查看缺失情绪",
+    editAvatars: "管理此服装差分 →",
+    confirmRemove:
+      "确定移除「{name}」吗？会保存当前设置，清除关联的服装、触摸区域和 Live2D 映射。原立绘将移入角色目录的 .editor-trash 回收区，当前穿着此服装时切回默认服装。",
+  },
   roleLayout: {
     title: "布局预览",
     hint: "拖动画布调整立绘，拖动虚线框调整气泡；滚轮缩放立绘。方向键微调，Shift + 方向键加速。修改后点击底部保存生效。",

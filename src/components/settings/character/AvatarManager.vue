@@ -92,12 +92,13 @@ const props = defineProps<{
   roleId: number;
   clothes: Array<{ name?: string }>;
   resourceClothes?: Array<{ title: string }>;
+  initialCostume?: string;
 }>();
 const emit = defineEmits<{ changed: [] }>();
 const { t } = useI18n();
 const dialog = useDialogStore();
 type Slot = CharacterAvatarSlot;
-const costume = ref("default");
+const costume = ref(props.initialCostume || "default");
 const costumeNames = computed(() => [
   ...new Set(
     [...props.clothes.map((c) => c.name), ...(props.resourceClothes ?? []).map((c) => c.title)]

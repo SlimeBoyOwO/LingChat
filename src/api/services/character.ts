@@ -16,6 +16,31 @@ export interface CharacterAvatarSlot {
   fallback: boolean;
 }
 
+export interface CharacterCostumeSummary {
+  name: string;
+  preview: string | null;
+  present: number;
+  total: number;
+  missing: string[];
+}
+export const listCharacterCostumes = (roleId: number) =>
+  invoke<CharacterCostumeSummary[]>("list_character_costumes", { roleId });
+
+export const manageCharacterCostume = (
+  roleId: number,
+  action: "create" | "rename" | "remove",
+  oldName: string,
+  newName: string,
+  settings: Record<string, unknown>,
+) =>
+  invoke<Record<string, any>>("manage_character_costume", {
+    roleId,
+    action,
+    oldName,
+    newName,
+    settings,
+  });
+
 export const listCharacterAvatars = (roleId: number, clothes: string) =>
   invoke<CharacterAvatarSlot[]>("list_character_avatars", { roleId, clothes });
 

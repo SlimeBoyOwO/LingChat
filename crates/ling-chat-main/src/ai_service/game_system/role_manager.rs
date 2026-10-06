@@ -93,6 +93,21 @@ impl GameRoleManager {
         self.clothes_overrides.insert(role_id, clothes);
     }
 
+    pub fn remap_character_costume(&mut self, role_id: i32, old: &str, new: &str) {
+        if self
+            .clothes_overrides
+            .get(&role_id)
+            .is_some_and(|name| name == old)
+        {
+            self.clothes_overrides.insert(role_id, new.into());
+        }
+        if let Some(role) = self.loaded_roles.get_mut(&role_id) {
+            if role.current_clothes == old {
+                role.current_clothes = new.into();
+            }
+        }
+    }
+
     /// 获取角色；若未加载则从 DB 惰性注册。
     pub async fn get_role(
         &mut self,
@@ -615,6 +630,9 @@ impl GameRoleManager {
         role.settings.offset_y = settings.offset_y;
         role.settings.bubble_top = settings.bubble_top;
         role.settings.bubble_left = settings.bubble_left;
+        role.settings.clothes = settings.clothes.clone();
+        role.settings.clothes_name = settings.clothes_name.clone();
+        role.settings.body_part = settings.body_part.clone();
         true
     }
 

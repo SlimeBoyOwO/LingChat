@@ -7,12 +7,12 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::{AppState, db::managers::role_repo::RoleRepo};
 
 const EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "bmp", "gif"];
-const EMOTIONS: &[&str] = &[
+pub(super) const EMOTIONS: &[&str] = &[
     "头像", "正常", "平静", "厌恶", "高兴", "担心", "生气", "紧张", "害怕", "害羞", "慌张", "认真",
     "无奈", "兴奋", "疑惑", "伤心", "心动", "调皮", "羞耻", "自信", "惊讶",
 ];
 
-fn validate_segment(value: &str) -> Result<(), String> {
+pub(super) fn validate_segment(value: &str) -> Result<(), String> {
     if value.is_empty()
         || value.contains(['/', '\\', ':'])
         || value.ends_with(['.', ' '])
@@ -26,7 +26,11 @@ fn validate_segment(value: &str) -> Result<(), String> {
     Ok(())
 }
 
-async fn avatar_dir(app: &AppHandle, role_id: i32, clothes: &str) -> Result<PathBuf, String> {
+pub(super) async fn avatar_dir(
+    app: &AppHandle,
+    role_id: i32,
+    clothes: &str,
+) -> Result<PathBuf, String> {
     let state = app.state::<AppState>();
     let role = RoleRepo::get_role_by_id(&state.db, role_id)
         .await
@@ -55,7 +59,7 @@ async fn avatar_dir(app: &AppHandle, role_id: i32, clothes: &str) -> Result<Path
     Ok(dir)
 }
 
-fn emotion_files(dir: &Path, emotion: &str) -> Result<Vec<PathBuf>, String> {
+pub(super) fn emotion_files(dir: &Path, emotion: &str) -> Result<Vec<PathBuf>, String> {
     if !dir.exists() {
         return Ok(Vec::new());
     }
@@ -124,6 +128,7 @@ pub async fn write_character_avatar(
     emotion: String,
     bytes: Vec<u8>,
 ) -> Result<(), String> {
+    let _guard = super::character_costumes::RESOURCE_LOCK.lock().await;
     if !EMOTIONS.contains(&emotion.as_str()) {
         return Err("不支持的情绪".into());
     }
@@ -171,6 +176,7 @@ pub async fn delete_character_avatar(
     clothes: String,
     emotion: String,
 ) -> Result<(), String> {
+    let _guard = super::character_costumes::RESOURCE_LOCK.lock().await;
     if !EMOTIONS.contains(&emotion.as_str()) {
         return Err("不支持的情绪".into());
     }
